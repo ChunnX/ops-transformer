@@ -342,8 +342,14 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::Init(
         }
     }
 #if __CCE_AICORE__ == 310
-    enableCubeVecSharePath_ = MLAPT::enableDequantOpt && (cvRatio_ == 2U) &&
-                              (baseParams_->vectorBlockNum >= 48U);
+    // TODO: dequantOpt CV-share path has runtime alignment issues to debug; force-disable
+    // to fall back to baseline GM round-trip path. Re-enable once 32B alignment fixed.
+    // Mirror dequant_opt.py:is_dequant_opt_applicable — byte-quant weight & numHeadSize >= 8.
+    constexpr bool hasByteQuantWeight = std::is_same<mmQcQrInputType, int8_t>::value ||
+                                        std::is_same<mmQcQrInputType, FP8E4M3>::value ||
+                                        std::is_same<mmQcQrInputType, HIF8>::value;
+    (void)hasByteQuantWeight;
+    enableCubeVecSharePath_ = false;
 #endif
     curVecTokenMax_ = (curVectorBlockNum_ + vectorCoreNum_ - 1) / vectorCoreNum_;
     enableSmoothScalesCq_ = smoothScaleCq == nullptr ? false : true;
@@ -592,7 +598,17 @@ __aicore__ inline bool MlaPrologVecS1CubS2<MLAPT>::EnableCubeVecSharePath() cons
 template<typename MLAPT>
 __aicore__ inline uint32_t MlaPrologVecS1CubS2<MLAPT>::GetCubeVecSharedBytes() const
 {
-    return 192U * 128U * sizeof(float);
+    // MM3 chunk output: T × (D + Dr) elements of mmQcQrOutputType (BF16/INT32/FP32).
+    // MM4 output (when needQnDynamicQuant): T × headSizeCkv elements of mmQnOutputType.
+    // (headSizeCkv here is the per-head Ckv dim, e.g. 512, NOT numHead × per-head.)
+    // MM3 and MM4 are sequential within an outer iteration; share the buffer (max).
+    const uint32_t mm3Bytes = baseParams_->stepBatchSize *
+                              (baseParams_->dimHeadSizeQc + baseParams_->dimHeadRope) *
+                              sizeof(mmQcQrOutputType);
+    const uint32_t mm4Bytes = baseParams_->stepBatchSize *
+                              baseParams_->headSizeCkv *
+                              sizeof(mmQnOutputType);
+    return Std::max(mm3Bytes, mm4Bytes);
 }
 
 template<typename MLAPT>
@@ -604,13 +620,21 @@ __aicore__ inline uint32_t MlaPrologVecS1CubS2<MLAPT>::GetCubeVecSharedHalfBytes
 template<typename MLAPT>
 __aicore__ inline uint32_t MlaPrologVecS1CubS2<MLAPT>::GetMm3SharedRowsPerHalf() const
 {
-    return GetCubeVecSharedHalfBytes() / (DIM_HEAD_SIZE_QCQR * sizeof(float));
+    // Use actual MM3 output dtype (BF16=2B / INT32=4B / FP32=4B), NOT hardcoded sizeof(float).
+    const uint32_t cols = baseParams_->dimHeadSizeQc + baseParams_->dimHeadRope;
+    const uint32_t bytesPerRow = cols * sizeof(mmQcQrOutputType);
+    return bytesPerRow == 0U ? 0U : GetCubeVecSharedHalfBytes() / bytesPerRow;
 }
 
 template<typename MLAPT>
 __aicore__ inline uint32_t MlaPrologVecS1CubS2<MLAPT>::GetMm4SharedRowsPerHalf() const
 {
-    return Std::min(GetCubeVecSharedHalfBytes() / (baseParams_->headSizeCkv * sizeof(mmQnOutputType)), 32U);
+    // headSizeCkv is the per-head dim (e.g. 512); divisor is bytes per row.
+    const uint32_t bytesPerRow = baseParams_->headSizeCkv * sizeof(mmQnOutputType);
+    if (bytesPerRow == 0U) {
+        return 0U;
+    }
+    return Std::min(GetCubeVecSharedHalfBytes() / bytesPerRow, 32U);
 }
 
 template<typename MLAPT>
@@ -1348,9 +1372,6 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MatmulQcQr(AicOffset &aicOffs
     bool isAFullLoad = (mmQcQrParam_.m <= mSize) ? true : false;
 
     if (EnableCubeVecSharePath()) {
-        constexpr uint32_t MM_SHARED_READY = 0xA;
-        constexpr uint32_t VEC_SHARED_DONE0 = 0xC;
-        constexpr uint32_t VEC_SHARED_DONE1 = 0xD;
         const uint32_t headChunkCols = baseParams_->dimHeadSizeQc + baseParams_->dimHeadRope;
         const uint32_t nChunkLoops = CeilDivT(mmQcQrParam_.n, headChunkCols);
 
@@ -1377,9 +1398,11 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MatmulQcQr(AicOffset &aicOffs
                     weightUqQrGm_[aicOffset.weightUqQrOffset],
                     chunkParam, bufParam_, nOffset, curCols, 0U, headChunkCols);
             }
-            SignalSharedReady(MM_SHARED_READY);
-            WaitSharedDone(VEC_SHARED_DONE0);
-            WaitSharedDone(VEC_SHARED_DONE1);
+            // Dual-AIV ready: cube wakes both AIV0 and AIV1 (FIA arch35 pattern).
+            SignalSharedReady(MM_CV_READY_AIV0);
+            SignalSharedReady(MM_CV_READY_AIV1);
+            WaitSharedDone(VEC_CV_DONE_AIV0);
+            WaitSharedDone(VEC_CV_DONE_AIV1);
         }
         return;
     }
@@ -1545,9 +1568,6 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MatmulQnSyncDynamicQuantAndMu
     // [32, 2, 128] * [2, 128, 512] = [32, 2, 512]
     if constexpr (needQnDynamicQuant) {
         if (EnableCubeVecSharePath()) {
-            constexpr uint32_t MM_SHARED_READY = 0xA;
-            constexpr uint32_t VEC_SHARED_DONE0 = 0xC;
-            constexpr uint32_t VEC_SHARED_DONE1 = 0xD;
             const uint32_t rowsPerChunk = GetMm4SharedRowsPerHalf();
             const uint32_t halfOffset = GetCubeVecSharedHalfBytes() / sizeof(mmQnOutputType);
             const uint32_t rowBase0 = GetCvShareRowBase(mmQnParam_.m, 0U);
@@ -1568,9 +1588,10 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MatmulQnSyncDynamicQuantAndMu
                     rows1,
                     rowsPerChunk,
                     halfOffset,
-                    MM_SHARED_READY,
-                    VEC_SHARED_DONE0,
-                    VEC_SHARED_DONE1,
+                    MM_CV_READY_AIV0,
+                    MM_CV_READY_AIV1,
+                    VEC_CV_DONE_AIV0,
+                    VEC_CV_DONE_AIV1,
                     baseParams_->headSizeCkv);
 
                 if constexpr (std::is_same<mmQcQrOutputType, int32_t>::value || std::is_same<mmQcQrInputType, FP8E4M3>::value ||
@@ -2500,17 +2521,15 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantAndRopeSplitNSyncMMQcQ
         return;
     }
     if (EnableCubeVecSharePath()) {
-        constexpr uint32_t MM_SHARED_READY = 0xA;
-        constexpr uint32_t VEC_SHARED_DONE0 = 0xC;
-        constexpr uint32_t VEC_SHARED_DONE1 = 0xD;
         const uint32_t colQc = baseParams_->dimHeadSizeQc;
         const uint32_t colQr = baseParams_->dimHeadRope;
         const uint32_t headChunkCols = colQc + colQr;
         const uint32_t subBlockIdx = blockIdx_ % cvRatio_;
         const uint32_t rowBase = GetCvShareRowBase(mmQcQrParam_.m, subBlockIdx);
         const uint32_t vecRows = GetCvShareRowCount(mmQcQrParam_.m, subBlockIdx);
-        const uint32_t readyFlag = MM_SHARED_READY;
-        const uint32_t doneFlag = subBlockIdx == 0 ? VEC_SHARED_DONE0 : VEC_SHARED_DONE1;
+        // Per-AIV ready/done flags so cube's dual SetFlag wakes both (FIA arch35 pattern).
+        const uint32_t readyFlag = (subBlockIdx == 0U) ? MM_CV_READY_AIV0 : MM_CV_READY_AIV1;
+        const uint32_t doneFlag  = (subBlockIdx == 0U) ? VEC_CV_DONE_AIV0 : VEC_CV_DONE_AIV1;
         const uint32_t nChunkLoops = CeilDivT(mmQcQrParam_.n, headChunkCols);
         const uint32_t localOffset = rowBase * headChunkCols;
         LocalTensor<uint8_t> shareTmpUb = shareBuffer_.Get<uint8_t>();
@@ -2721,9 +2740,6 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DynamicQuantQnAndMulQrSyncMMQ
     WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
 
     if (EnableCubeVecSharePath()) {
-        constexpr uint32_t MM_SHARED_READY = 0xA;
-        constexpr uint32_t VEC_SHARED_DONE0 = 0xC;
-        constexpr uint32_t VEC_SHARED_DONE1 = 0xD;
         const uint32_t subBlockIdx = blockIdx_ % cvRatio_;
         const uint32_t rowsPerChunk = GetMm4SharedRowsPerHalf();
         const uint32_t rowsPerVec = GetCvShareRowCount(static_cast<uint32_t>(curStepBatchSize), subBlockIdx);
@@ -2743,30 +2759,32 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DynamicQuantQnAndMulQrSyncMMQ
         LocalTensor<uint8_t> shareTmpUb = shareBuffer_.Get<uint8_t>();
         LocalTensor<mmQnOutputType> qnLocal = cube2VecLocal_.template ReinterpretCast<mmQnOutputType>();
         float quantScaleCkv = quantScaleCkvGm_.GetValue(0);
-        const uint32_t readyFlag = MM_SHARED_READY;
-        const uint32_t doneFlag = subBlockIdx == 0 ? VEC_SHARED_DONE0 : VEC_SHARED_DONE1;
+        // Per-AIV ready/done flags so cube's dual SetFlag wakes both (FIA arch35 pattern).
+        const uint32_t readyFlag = (subBlockIdx == 0U) ? MM_CV_READY_AIV0 : MM_CV_READY_AIV1;
+        const uint32_t doneFlag  = (subBlockIdx == 0U) ? VEC_CV_DONE_AIV0 : VEC_CV_DONE_AIV1;
+        (void)peerRowsPerVec; // cube wakes each AIV independently; we only iterate our own rows
         for (int64_t loopIdx = 0; loopIdx < mmQnLoops; ++loopIdx) {
             const uint32_t localOffset = subBlockIdx == 0 ? 0U : halfOffset;
             int64_t loopDynamicQuantQueryResOffset = dynamicQuantQueryResOffset;
             int64_t loopScaleQueryNopeOffset = scaleQueryNopeOffset;
             int64_t loopQrPostProcessResOffset = qrPostProcessResOffset;
-            const uint32_t maxRowsPerVec = Std::max(rowsPerVec, peerRowsPerVec);
-            for (uint32_t rowBase = 0; rowBase < maxRowsPerVec; rowBase += rowsPerChunk) {
+            // Only iterate OUR own rows. Cube SetFlag is gated by per-AIV active state in
+            // MatmulQnDirectShared, so empty AIV would otherwise deadlock waiting for a flag
+            // that never arrives.
+            for (uint32_t rowBase = 0; rowBase < rowsPerVec; rowBase += rowsPerChunk) {
                 WaitSharedReady(readyFlag);
-                if (rowBase < rowsPerVec) {
-                    const uint32_t curRows = Std::min(rowsPerChunk, rowsPerVec - rowBase);
-                    DynamicQuantQnWithMulQrLocal<ropeOutputType, dequantScaleQNopeType, queryOutputType>(
-                        dequantScaleQNopeGm_[loopScaleQueryNopeOffset],
-                        queryOutGm_[loopDynamicQuantQueryResOffset],
-                        qrOutGm_[loopQrPostProcessResOffset],
-                        qnLocal[localOffset], shareTmpUb, curRows, baseParams_->headSizeCkv,
-                        baseParams_->numHeadSize, totalSizeCkv,
-                        qrOutGm_[loopQrPostProcessResOffset],
-                        quantScaleCkv, baseParams_->dimHeadRope, qrOutputStride, cvRatio_);
-                    loopDynamicQuantQueryResOffset += static_cast<int64_t>(curRows) * totalSizeCkv;
-                    loopScaleQueryNopeOffset += static_cast<int64_t>(curRows) * baseParams_->numHeadSize;
-                    loopQrPostProcessResOffset += static_cast<int64_t>(curRows) * baseParams_->headSizeQr;
-                }
+                const uint32_t curRows = Std::min(rowsPerChunk, rowsPerVec - rowBase);
+                DynamicQuantQnWithMulQrLocal<ropeOutputType, dequantScaleQNopeType, queryOutputType>(
+                    dequantScaleQNopeGm_[loopScaleQueryNopeOffset],
+                    queryOutGm_[loopDynamicQuantQueryResOffset],
+                    qrOutGm_[loopQrPostProcessResOffset],
+                    qnLocal[localOffset], shareTmpUb, curRows, baseParams_->headSizeCkv,
+                    baseParams_->numHeadSize, totalSizeCkv,
+                    qrOutGm_[loopQrPostProcessResOffset],
+                    quantScaleCkv, baseParams_->dimHeadRope, qrOutputStride, cvRatio_);
+                loopDynamicQuantQueryResOffset += static_cast<int64_t>(curRows) * totalSizeCkv;
+                loopScaleQueryNopeOffset += static_cast<int64_t>(curRows) * baseParams_->numHeadSize;
+                loopQrPostProcessResOffset += static_cast<int64_t>(curRows) * baseParams_->headSizeQr;
                 SignalSharedDone(doneFlag);
             }
             dynamicQuantQueryResOffset += static_cast<int64_t>(baseParams_->headSizeCkv);

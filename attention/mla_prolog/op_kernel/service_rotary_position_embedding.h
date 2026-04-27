@@ -214,7 +214,8 @@ __aicore__ inline void RotaryPosEmbPerHead(LocalTensor<O>& outputLocal, const Gl
     AscendC::PipeBarrier<PIPE_V>();
 }
 
-template <typename T, typename C, typename O, bool enableDequant = false>
+template <typename T, typename C, typename O, bool enableDequant = false,
+          typename ScaleT = float, typename LocalScaleT = float>
 __aicore__ inline void RotaryPosEmbPerHeadLocal(const GlobalTensor<O>& outputGm,
                                                 const LocalTensor<T>& inputLocalSrc,
                                                 const LocalTensor<C>& cosLocal,
@@ -223,8 +224,8 @@ __aicore__ inline void RotaryPosEmbPerHeadLocal(const GlobalTensor<O>& outputGm,
                                                 Rectangle ropeParams,
                                                 uint32_t srcStride,
                                                 uint32_t dstStride,
-                                                GlobalTensor<float> channelDeqScaleGm = GlobalTensor<float>(),
-                                                LocalTensor<float> deQuantScale = LocalTensor<float>(),
+                                                GlobalTensor<ScaleT> channelDeqScaleGm = GlobalTensor<ScaleT>(),
+                                                LocalTensor<LocalScaleT> deQuantScale = LocalTensor<LocalScaleT>(),
                                                 uint32_t channelScaleOffset = 0)
 {
     if (ropeParams.row == 0) {
@@ -232,7 +233,7 @@ __aicore__ inline void RotaryPosEmbPerHeadLocal(const GlobalTensor<O>& outputGm,
     }
 
     uint32_t col = ropeParams.col;
-    LocalTensor<float> channelScaleLocal = shareTmpUb.ReinterpretCast<float>();
+    LocalTensor<ScaleT> channelScaleLocal = shareTmpUb.ReinterpretCast<ScaleT>();
     LocalTensor<C> kFp32Local = channelScaleLocal[col + FP32_BLOCK_ELEMENT_NUM].template ReinterpretCast<C>();
     LocalTensor<C> ropeShareUb = kFp32Local[col].template ReinterpretCast<C>();
     LocalTensor<C> kFp32OutputLocal = ropeShareUb[col * 2].template ReinterpretCast<C>();

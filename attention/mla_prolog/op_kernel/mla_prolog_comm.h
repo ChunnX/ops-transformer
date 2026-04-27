@@ -150,6 +150,17 @@ constexpr int FINISH_MM_QN_SPLIT_N = 0X6;
 #if __CCE_AICORE__ == 310
 constexpr int FINISH_MM_CQ_KN = 0x3;
 constexpr int FINISH_MM_CKVKR_KN = 0x4;
+
+// dequantOpt CV-share flags (MM3/MM4 inner-loop, AIV0/AIV1 split following FIA pattern).
+// Reused after MM3-prior pipeline stages have drained their flags. AIV0/AIV1 must use
+// distinct ids so cube's dual SetFlag wakes both AIVs (single id would be consumed by first
+// waiter only). MM3 and MM4 reuse the same id pool because they are sequential within an
+// outer iteration.
+constexpr uint32_t AIV0_AIV1_FLAG_OFFSET = 0x10; // mirror FA arch35 buffer.h convention
+constexpr uint32_t MM_CV_READY_AIV0 = 0xA;
+constexpr uint32_t MM_CV_READY_AIV1 = MM_CV_READY_AIV0 + AIV0_AIV1_FLAG_OFFSET; // 0x1A
+constexpr uint32_t VEC_CV_DONE_AIV0 = 0xC;
+constexpr uint32_t VEC_CV_DONE_AIV1 = VEC_CV_DONE_AIV0 + AIV0_AIV1_FLAG_OFFSET; // 0x1C
 #endif
 
 #ifdef ENABLE_DUMP_DATA

@@ -875,7 +875,8 @@ __aicore__ inline void MatmulQnDirectShared(const LocalTensor<O> &tensorCLocal,
                                             uint32_t rows1,
                                             uint32_t rowsPerChunk,
                                             uint32_t halfOffset,
-                                            uint32_t readyFlag,
+                                            uint32_t readyFlagAiv0,
+                                            uint32_t readyFlagAiv1,
                                             uint32_t doneFlag0,
                                             uint32_t doneFlag1,
                                             uint32_t dstStride)
@@ -885,7 +886,8 @@ __aicore__ inline void MatmulQnDirectShared(const LocalTensor<O> &tensorCLocal,
     uint32_t maxChunkCount = Std::max(chunkCount0, chunkCount1);
     for (uint32_t chunkIdx = 0; chunkIdx < maxChunkCount; ++chunkIdx) {
         uint32_t localRow0 = chunkIdx * rowsPerChunk;
-        if (localRow0 < rows0) {
+        bool aiv0Active = (localRow0 < rows0);
+        if (aiv0Active) {
             uint32_t curRows = Std::min(rowsPerChunk, rows0 - localRow0);
             MMParams chunkParam = para;
             chunkParam.m = curRows;
@@ -915,7 +917,8 @@ __aicore__ inline void MatmulQnDirectShared(const LocalTensor<O> &tensorCLocal,
             }
         }
         uint32_t localRow1 = chunkIdx * rowsPerChunk;
-        if (localRow1 < rows1) {
+        bool aiv1Active = (localRow1 < rows1);
+        if (aiv1Active) {
             uint32_t curRows = Std::min(rowsPerChunk, rows1 - localRow1);
             MMParams chunkParam = para;
             chunkParam.m = curRows;
@@ -944,9 +947,15 @@ __aicore__ inline void MatmulQnDirectShared(const LocalTensor<O> &tensorCLocal,
                     tensorBGm, chunkParam, bufParam, halfOffset, dstStride);
             }
         }
-        CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_FIX>(readyFlag);
-        CrossCoreWaitFlag(doneFlag0);
-        CrossCoreWaitFlag(doneFlag1);
+        // Wake only the AIVs that have actual work this chunk.
+        if (aiv0Active) {
+            CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_FIX>(readyFlagAiv0);
+            CrossCoreWaitFlag(doneFlag0);
+        }
+        if (aiv1Active) {
+            CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_FIX>(readyFlagAiv1);
+            CrossCoreWaitFlag(doneFlag1);
+        }
     }
 }
 
