@@ -23,6 +23,12 @@ if (BUILD_OPEN_PROJECT)  # custom
     set(matmul_reduce_scatter_v2_depends mc2/common mc2/3rd PARENT_SCOPE)
     set(matmul_reduce_scatter_v2_apt_depends mc2/common mc2/3rd PARENT_SCOPE)
 
+    # Add catlass include path for kernel compilation
+    add_ops_compile_options(
+        OP_NAME MatmulReduceScatterV2
+        OPTIONS -I${CMAKE_SOURCE_DIR}/3rdparty/catlass/include
+    )
+
     # --cce-auto-sync=off：指定CCE编译器是否自动执行线程间或模块间的同步操作
     # -mllvm -cce-aicore-dcci-before-kernel-end=false：禁用在kernel函数结束前插入DCCI指令
     # -DENABLE_CV_COMM_VIA_SSBUF=true: 启用CV模块通过共享系统缓冲区进行数据通信。
