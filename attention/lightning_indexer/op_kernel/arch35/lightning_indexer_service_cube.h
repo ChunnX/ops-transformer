@@ -221,7 +221,8 @@ __aicore__ inline void LightningIndexerServiceCube<LIT>::ComputeMm1(const LIComm
 
                     SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + l0BufIdx_ % L0_BUF_NUM);
 
-                    bool g64topK2048LastIter = constInfo_.gSize == 64 && constInfo_.sparseCount <= 2048 // g=64, topk=2K场景，循环1-2次
+                    bool g64topK2048LastIter = constInfo_.gSize == 64 // g=64, topk=2K场景，循环1-2次
+                        && constInfo_.sparseCount <= 2048
                         && (s1gL1SizeAlign2G == 256 && s1gL1Offset == 128 || s1gL1SizeAlign2G == 128);
                     bool lastIter = g64topK2048LastIter || (constInfo_.gSize < 64) || (constInfo_.sparseCount > 2048);
                     if (lastIter) {

@@ -163,11 +163,8 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::InitBuffers(TPipe *pi
     vec1OutUB_ = outBuf_.Get<uint16_t>(); // out
 
     // returnvalue
-    //pipe->InitBuffer(uIntToBfloat16Buf_, topkCountAlign256_ * sizeof(bfloat16_t));      // 大小：topK * sizeof(bfloat16_t)
-    
     pipe->InitBuffer(valueOutBuf_, topkCountAlign256_ * sizeof(K_T));      // 大小：topK * sizeof(K_T)
     valueOutLocal_ = valueOutBuf_.Get<K_T>(); // returnValue float
-
 
     // Topk
     pipe->InitBuffer(mrgValueBuf_,
@@ -180,7 +177,7 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::InitBuffers(TPipe *pi
     indicesOutLocal_ = indicesOutBuf_.Get<uint32_t>();
 
     pipe->InitBuffer(scoreOutBuf_, topkCountAlign256_ * sizeof(uint16_t));
-    scoreOutLocal_ = scoreOutBuf_.Get<uint16_t>(); 
+    scoreOutLocal_ = scoreOutBuf_.Get<uint16_t>();
 
     uint64_t topkSharedTmpSize = topkOp_.GetSharedTmpBufferSize();
     pipe->InitBuffer(topkSharedTmpBuf_, topkSharedTmpSize);
@@ -188,7 +185,6 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::InitBuffers(TPipe *pi
     topkOp_.InitBuffers(topkSharedTmpLocal_);
 
     // 刷-1
-    //pipe->InitBuffer(outInvalidBuf_, topkCount_ * sizeof(int32_t));
     outInvalidLocal_ = resMm1Buf_.Get<int32_t>();
 }
 
@@ -564,7 +560,8 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessTopK(const LIC
         if (returnValueFlag) {
             // uint16_t -> bfloat16
             if (std::is_same_v<K_T, bfloat16_t>) {
-                vector1::UIntToFloatReturnValue(valueOutLocal_.template ReinterpretCast<bfloat16_t>(), scoreOutLocal_, topkCountAlign256_);
+                vector1::UIntToFloatReturnValue(valueOutLocal_.template ReinterpretCast<bfloat16_t>(),
+                    scoreOutLocal_, topkCountAlign256_);
             } else {
                 vector1::UIntToFloatReturnValue(uIntToBfloat16Local_, scoreOutLocal_, topkCountAlign256_);
                 Cast(valueOutLocal_, uIntToBfloat16Local_, RoundMode::CAST_RINT, topkCountAlign256_);
