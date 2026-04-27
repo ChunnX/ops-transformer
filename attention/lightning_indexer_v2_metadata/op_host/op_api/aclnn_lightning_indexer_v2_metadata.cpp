@@ -116,7 +116,7 @@ aclnnStatus CheckExistenceLiV2(char* layoutQOptional, char* layoutKOptional, con
     if (strcmp(layoutKOptional, "TND") == 0) {
         auto ret = aclGetViewShape(cuSeqLensKOptional, &viewDims, &viewDimsNum);
         if (ret == ACLNN_ERR_PARAM_INVALID || viewDimsNum == 0 || viewDims[0] == 0) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "For layout_k TND, seqused_k must be provided!");
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "For layout_k TND, cu_seqlens_k must be provided!");
             delete[] viewDims;
             return ACLNN_ERR_PARAM_INVALID;
         }

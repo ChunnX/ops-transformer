@@ -728,36 +728,36 @@ bool LightningIndexerV2MetadataCpuKernel::GenMetaData(SplitResult &splitRes)
     // LI Metadata Generate
     for (size_t i = 0; i < aicCoreNum_; ++i) {
         if (i >= splitRes.usedCoreNum) {
-            metaDataPtr->liV2Metadata[i][LIV2_CORE_ENABLE_INDEX] = 0; // AIC disenable
+            metaDataPtr->liV2Metadata[i][LI_V2_CORE_ENABLE_INDEX] = 0; // AIC disenable
             continue;
         }
-        metaDataPtr->liV2Metadata[i][LIV2_CORE_ENABLE_INDEX] = 1; // AIC enable
+        metaDataPtr->liV2Metadata[i][LI_V2_CORE_ENABLE_INDEX] = 1; // AIC enable
         // FA START
-        metaDataPtr->liV2Metadata[i][LIV2_BN2_START_INDEX] = i == 0 ? 0 : splitRes.bN2End[i-1];
-        metaDataPtr->liV2Metadata[i][LIV2_M_START_INDEX] = i == 0 ? 0 : splitRes.gS1End[i-1];
-        metaDataPtr->liV2Metadata[i][LIV2_S2_START_INDEX] = i == 0 ? 0 : splitRes.s2End[i-1];
+        metaDataPtr->liV2Metadata[i][LI_V2_BN2_START_INDEX] = i == 0 ? 0 : splitRes.bN2End[i-1];
+        metaDataPtr->liV2Metadata[i][LI_V2_M_START_INDEX] = i == 0 ? 0 : splitRes.gS1End[i-1];
+        metaDataPtr->liV2Metadata[i][LI_V2_S2_START_INDEX] = i == 0 ? 0 : splitRes.s2End[i-1];
         // FA END
-        metaDataPtr->liV2Metadata[i][LIV2_BN2_END_INDEX] = splitRes.bN2End[i];
-        metaDataPtr->liV2Metadata[i][LIV2_M_END_INDEX] = splitRes.gS1End[i];
-        metaDataPtr->liV2Metadata[i][LIV2_S2_END_INDEX] = splitRes.s2End[i];
+        metaDataPtr->liV2Metadata[i][LI_V2_BN2_END_INDEX] = splitRes.bN2End[i];
+        metaDataPtr->liV2Metadata[i][LI_V2_M_END_INDEX] = splitRes.gS1End[i];
+        metaDataPtr->liV2Metadata[i][LI_V2_S2_END_INDEX] = splitRes.s2End[i];
         //
-        metaDataPtr->liV2Metadata[i][LIV2_FIRST_LDV2_DATA_WORKSPACE_IDX_INDEX] = splitRes.firstFdDataWorkspaceIdx[i];
+        metaDataPtr->liV2Metadata[i][LI_V2_FIRST_LD_V2_DATA_WORKSPACE_IDX_INDEX] = splitRes.firstFdDataWorkspaceIdx[i];
     }
 
     // LD Metadata Generate
     for (size_t i = 0; i < aivCoreNum_; ++i) {
         if (i >= splitRes.fdRes.fdUsedVecNum) {
-            metaDataPtr->ldV2Metadata[i][LDV2_CORE_ENABLE_INDEX] = 0; // AIV disenable
+            metaDataPtr->ldV2Metadata[i][LD_V2_CORE_ENABLE_INDEX] = 0; // AIV disenable
             continue;
         }
-        metaDataPtr->ldV2Metadata[i][LDV2_CORE_ENABLE_INDEX] = 1; // AIV enable
+        metaDataPtr->ldV2Metadata[i][LD_V2_CORE_ENABLE_INDEX] = 1; // AIV enable
         uint32_t curFdIdx = splitRes.fdRes.fdIdx[i];
-        metaDataPtr->ldV2Metadata[i][LDV2_BN2_IDX_INDEX] = splitRes.fdRes.fdBN2Idx[curFdIdx];
-        metaDataPtr->ldV2Metadata[i][LDV2_M_IDX_INDEX] = splitRes.fdRes.fdMIdx[curFdIdx];
-        metaDataPtr->ldV2Metadata[i][LDV2_WORKSPACE_IDX_INDEX] = splitRes.fdRes.fdWorkspaceIdx[curFdIdx];
-        metaDataPtr->ldV2Metadata[i][LDV2_WORKSPACE_NUM_INDEX] = splitRes.fdRes.fdS2SplitNum[curFdIdx];
-        metaDataPtr->ldV2Metadata[i][LDV2_M_START_INDEX] = splitRes.fdRes.fdMStart[i];
-        metaDataPtr->ldV2Metadata[i][LDV2_M_NUM_INDEX] = splitRes.fdRes.fdMNum[i];
+        metaDataPtr->ldV2Metadata[i][LD_V2_BN2_IDX_INDEX] = splitRes.fdRes.fdBN2Idx[curFdIdx];
+        metaDataPtr->ldV2Metadata[i][LD_V2_M_IDX_INDEX] = splitRes.fdRes.fdMIdx[curFdIdx];
+        metaDataPtr->ldV2Metadata[i][LD_V2_WORKSPACE_IDX_INDEX] = splitRes.fdRes.fdWorkspaceIdx[curFdIdx];
+        metaDataPtr->ldV2Metadata[i][LD_V2_WORKSPACE_NUM_INDEX] = splitRes.fdRes.fdS2SplitNum[curFdIdx];
+        metaDataPtr->ldV2Metadata[i][LD_V2_M_START_INDEX] = splitRes.fdRes.fdMStart[i];
+        metaDataPtr->ldV2Metadata[i][LD_V2_M_NUM_INDEX] = splitRes.fdRes.fdMNum[i];
     }
     return true;
 }
