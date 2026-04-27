@@ -1967,7 +1967,7 @@ TEST_F(MoeDistributeCombineV2Arch32TilingTest, A2ValidCopyExpertWithOriX)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(MoeDistributeCombineV2Arch32TilingTest, A2InvalidSharedExpertNumMismatch)
+TEST_F(MoeDistributeCombineV2Arch32TilingTest, A2ValidSharedExpertNumMismatch)
 {
     struct MoeDistributeCombineV2TilingCompileInfo {};
     MoeDistributeCombineV2TilingCompileInfo compileInfo;
@@ -2010,7 +2010,7 @@ TEST_F(MoeDistributeCombineV2Arch32TilingTest, A2InvalidSharedExpertNumMismatch)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(MoeDistributeCombineV2Arch32TilingTest, A2InvalidSharedExpertRankNumMismatch)
+TEST_F(MoeDistributeCombineV2Arch32TilingTest, A2ValidSharedExpertRankNumMismatch)
 {
     struct MoeDistributeCombineV2TilingCompileInfo {};
     MoeDistributeCombineV2TilingCompileInfo compileInfo;
@@ -2053,7 +2053,7 @@ TEST_F(MoeDistributeCombineV2Arch32TilingTest, A2InvalidSharedExpertRankNumMisma
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(MoeDistributeCombineV2Arch32TilingTest, A2XActiveMask2dims)
+TEST_F(MoeDistributeCombineV2Arch32TilingTest, A2XActiveMask2dimsSuccess)
 {
     struct MoeDistributeCombineV2TilingCompileInfo {};
     MoeDistributeCombineV2TilingCompileInfo compileInfo;
@@ -2183,7 +2183,7 @@ TEST_F(MoeDistributeCombineV2Arch32TilingTest, A2InvalidExpertIdsDim)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(MoeDistributeCombineV2Arch32TilingTest, A2InvalidGlobalBs)
+TEST_F(MoeDistributeCombineV2Arch32TilingTest, A2ValidGlobalBs)
 {
     struct MoeDistributeCombineV2TilingCompileInfo {};
     MoeDistributeCombineV2TilingCompileInfo compileInfo;
@@ -2402,7 +2402,7 @@ TEST_F(MoeDistributeCombineV2Arch32TilingTest, A2ValidNoSharedExpert)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
-TEST_F(MoeDistributeCombineV2Arch32TilingTest, A2InvalidOutputDim)
+TEST_F(MoeDistributeCombineV2Arch32TilingTest, A2Output1DimSuccess)
 {
     struct MoeDistributeCombineV2TilingCompileInfo {};
     MoeDistributeCombineV2TilingCompileInfo compileInfo;
