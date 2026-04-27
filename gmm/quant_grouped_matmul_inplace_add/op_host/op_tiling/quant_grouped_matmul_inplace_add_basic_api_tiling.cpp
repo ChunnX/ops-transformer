@@ -113,14 +113,23 @@ ge::graphStatus QGMMInplaceAddBasicApiTiling::DoOpTiling()
     tilingData_.gmmQuantParams.groupNum = inputParams_.groupNum;
     tilingData_.gmmQuantParams.aQuantMode = static_cast<uint32_t>(inputParams_.aQuantMode);
     tilingData_.gmmQuantParams.bQuantMode = static_cast<uint32_t>(inputParams_.bQuantMode);
-    tilingData_.gmmQuantParams.singleX = static_cast<uint8_t>(inputParams_.isSingleX);
-    tilingData_.gmmQuantParams.singleW = static_cast<uint8_t>(inputParams_.isSingleW);
-    tilingData_.gmmQuantParams.singleY = static_cast<uint8_t>(inputParams_.isSingleY);
-    tilingData_.gmmQuantParams.groupType = static_cast<int8_t>(inputParams_.groupType);
     tilingData_.gmmQuantParams.groupListType = static_cast<uint8_t>(inputParams_.groupListType);
-    tilingData_.gmmQuantParams.hasBias = static_cast<uint8_t>(inputParams_.hasBias);
-    GroupedQmmBasicApiTiling::PrintQuantParams();
+    PrintQuantParams();
     return ge::GRAPH_SUCCESS;
+}
+
+void QGMMInplaceAddBasicApiTiling::PrintQuantParams()
+{
+    int32_t enable = CheckLogLevel(static_cast<int32_t>(OP), DLOG_DEBUG);
+    if (enable != 1) {
+        return;
+    }
+    std::ostringstream oss;
+    oss << "QGmmInplaceAddBasicApiParams: groupNum = " << tilingData_.gmmQuantParams.groupNum
+        << ", aQuantMode = " << tilingData_.gmmQuantParams.aQuantMode
+        << ", bQuantMode = " << tilingData_.gmmQuantParams.bQuantMode
+        << ", groupListType = " << static_cast<uint32_t>(tilingData_.gmmQuantParams.groupListType);
+    OP_LOGD(inputParams_.opName, "%s", oss.str().c_str());
 }
 
 ge::graphStatus QGMMInplaceAddBasicApiTiling::DoLibApiTiling()
@@ -143,6 +152,22 @@ ge::graphStatus QGMMInplaceAddBasicApiTiling::DoLibApiTiling()
 uint64_t QGMMInplaceAddBasicApiTiling::GetTilingKey() const
 {
     return GetTilingKeyForInplaceAdd(inputParams_);
+}
+
+ge::graphStatus QGMMInplaceAddBasicApiTiling::PostTiling()
+{
+    context_->SetBlockDim(aicoreParams_.aicNum);
+    OP_CHECK_IF(sizeof(tilingData_) % sizeof(uint64_t) != 0,
+                OP_LOGE(context_->GetNodeName(), "Tiling data size[%zu] is not aligned to 8", sizeof(tilingData_)),
+                return ge::GRAPH_FAILED);
+    errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
+                           reinterpret_cast<void *>(&tilingData_), sizeof(tilingData_));
+    if (ret != EOK) {
+        OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", ret);
+        return ge::GRAPH_FAILED;
+    }
+    context_->GetRawTilingData()->SetDataSize(sizeof(tilingData_));
+    return ge::GRAPH_SUCCESS;
 }
 
 }  // namespace optiling

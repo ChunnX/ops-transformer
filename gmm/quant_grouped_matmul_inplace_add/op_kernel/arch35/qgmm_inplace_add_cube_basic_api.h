@@ -29,9 +29,9 @@ template <typename layoutA, typename layoutB>
 __aicore__ inline void QGmmInplaceAddCubeBasicAPI(GM_ADDR x1, GM_ADDR x2, GM_ADDR scale2, GM_ADDR groupList,
                                                   GM_ADDR scale1, GM_ADDR y, GM_ADDR tiling)
 {
-    GET_TILING_DATA_MEMBER(QuantGroupedMatmulInplaceAdd::GMMQuantBasicApiTilingData, gmmQuantParams, gmmQuantParams_,
+    GET_TILING_DATA_MEMBER(QuantGroupedMatmulInplaceAdd::QGmmInplaceAddBasicApiTilingData, gmmQuantParams, gmmQuantParams_,
                            tiling);
-    GET_TILING_DATA_MEMBER(QuantGroupedMatmulInplaceAdd::GMMQuantBasicApiTilingData, mmTilingData, mmTilingData_, tiling);
+    GET_TILING_DATA_MEMBER(QuantGroupedMatmulInplaceAdd::QGmmInplaceAddBasicApiTilingData, mmTilingData, mmTilingData_, tiling);
     // 定义L1和L0的TileShape
     using L1TileShape = AscendC::Shape<_0, _0, _0>;
     using L0TileShape = AscendC::Shape<_0, _0, _0>;
