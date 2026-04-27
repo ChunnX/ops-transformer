@@ -107,11 +107,12 @@ void MoeReRoutingReTiling::PrintTilingData()
 
 ge::graphStatus MoeReRoutingReTiling::PostTiling()
 {
-    if (tokenDtype_ == ge::DT_FLOAT4_E2M1 || tokenDtype_ == ge::DT_FLOAT4_E1M2) {
-        tilingData_.set_tokenSize(Ops::Base::CeilDiv(tokenSize_, NUM_TWO));
-    } else {
-        tilingData_.set_tokenSize(tokenSize_);
-    }
+    // if (tokenDtype_ == ge::DT_FLOAT4_E2M1 || tokenDtype_ == ge::DT_FLOAT4_E1M2) {
+    //     tilingData_.set_tokenSize(Ops::Base::CeilDiv(tokenSize_, NUM_TWO));
+    // } else {
+    //     tilingData_.set_tokenSize(tokenSize_);
+    // }
+    tilingData_.set_tokenSize(tokenSize_);
     if ((tokenDtype_ == ge::DT_FLOAT8_E4M3FN || tokenDtype_ == ge::DT_FLOAT8_E5M2 || tokenDtype_ == ge::DT_HIFLOAT8 ||
          tokenDtype_ == ge::DT_FLOAT4_E2M1 || tokenDtype_ == ge::DT_FLOAT4_E1M2) &&
         scaleDtype_ == ge::DT_FLOAT) {
