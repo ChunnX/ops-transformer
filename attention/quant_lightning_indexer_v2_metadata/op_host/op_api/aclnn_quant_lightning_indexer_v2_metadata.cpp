@@ -90,7 +90,7 @@ aclnnStatus CheckSingleParamQliV2(int64_t batchSizeOptional, int64_t maxSeqlenQO
     }
     // num_heads_k 校验
     if (numHeadsK < 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "num_heads_k should not be negative1, but got %d", numHeadsK);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "num_heads_k should not be negative, but got %d", numHeadsK);
         return ACLNN_ERR_PARAM_INVALID;
     }
     // layout_q 校验
@@ -101,6 +101,10 @@ aclnnStatus CheckSingleParamQliV2(int64_t batchSizeOptional, int64_t maxSeqlenQO
     // layout_k 校验
     if (strcmp(layoutKOptional, "TND") != 0 && strcmp(layoutKOptional, "BSND") != 0 && strcmp(layoutKOptional, "PA_BBND") != 0) {
     	OP_LOGE(ACLNN_ERR_PARAM_INVALID, "For layout_k, layout must be TND/BSND/PA_BBND!");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (strcmp(layoutKOptional, "PA_BBND") != 0 && strcmp(layoutQOptional, layoutKOptional) != 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "For layout_k != PA_BBND, layout_q and layout_k must be the same!");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // mask_mode 校验
