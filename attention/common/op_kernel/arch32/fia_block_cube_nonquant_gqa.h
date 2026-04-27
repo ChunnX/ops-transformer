@@ -161,7 +161,7 @@
 
 #define DEBUG_MATMUL_GQA 0
 #define DEBUG_DISABLE_C1 0
-#define DEBUG_DISABLE_C2 0
+#define DEBUG_DISABLE_C2 1
 
 /**
  *
