@@ -21,7 +21,7 @@
 #include "arch32/matmul_allto_all_tiling_key.h"
 #include "arch32/matmul_allto_all_tiling.h"
 #include "arch32/matmul_allto_all.h"
-
+ 
 using namespace AscendC;
 using namespace matmul_allto_all_910b_tiling_key;
 using namespace MatmulAlltoAllImpl;
