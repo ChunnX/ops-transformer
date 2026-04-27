@@ -99,7 +99,6 @@ protected:
     GlobalTensor<float> softmaxLseGm;
     GlobalTensor<SINK_T> sinkGm;
 
-
     // postquant
     FaGmTensor<T, PostQuant_FORMAT> quantScale2GmTensor;
     FaGmTensor<T, PostQuant_FORMAT> quantOffset2GmTensor;

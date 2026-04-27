@@ -319,9 +319,7 @@ void FiaTilingNonQuantMlaArch35::SplitOutSeq()
 void FiaTilingNonQuantMlaArch35::SplitPolicy()
 {
     AdjustSinnerAndSouter(); // 确认tiling切块
-
     dnFlag_ = CheckEnableDN();
-
     if (dnFlag_ && CheckQKVActualSeqLengthsRight() && fiaInfo_->qkHeadDim == fiaInfo_->vHeadDim &&
         fiaInfo_->qkHeadDim == DSIZE_64) {
         sInnerFactor_ = SINNER_256;

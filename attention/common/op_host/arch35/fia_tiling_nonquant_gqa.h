@@ -6,12 +6,12 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+*/
 
 /*!
  * \file fia_tiling_nonquant.h
  * \brief
- */
+*/
 #ifndef FIA_TILING_NONQUANT_GQA_H
 #define FIA_TILING_NONQUANT_GQA_H
 
@@ -19,7 +19,7 @@
 #include "exe_graph/runtime/tiling_context.h"
 #include "../fia_tiling_base.h"
 #include "../fia_tiling_info.h"
-#include "tiling/tiling_api.h" //这个头文件顺序必须在手写的tiling data前
+#include "tiling/tiling_api.h" // 这个头文件顺序必须在手写的tiling data前
 #include "../../op_kernel/arch35/fia_tiling_data_noquant_gqa.h"
 #include "../split_core_v2.h"
 // #include "../../../fused_infer_attention_score/op_host/fused_infer_attention_score_tiling.h"

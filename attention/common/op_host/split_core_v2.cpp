@@ -6,12 +6,12 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+*/
 
 /*!
  * \file fia_tiling_split_core.cpp
  * \brief
- */
+*/
 
 #include "split_core_v2.h"
 #include <cstdio>
@@ -469,7 +469,7 @@ void AssignByBlock(const SplitContext &splitContext, AssignContext &assignContex
 
     while (IsWithinTolerance(assignContext.coreCache.costLimit, curCost / FA_TOLERANCE_RATIO,
                              assignContext.coreCache.cost +
-                                 curCost)) { // (costLimit - curCostOnCore) * FA_TOLERANCE_RATIO > curCost；至少分配1块
+                             curCost)) { // (costLimit - curCostOnCore) * FA_TOLERANCE_RATIO > curCost；至少分配1块
         assignContext.coreCache.cost += curCost;
         assignContext.coreCache.block++;
         assignContext.curS2Idx++;
@@ -745,7 +745,6 @@ void SplitCore(uint32_t coreNum, const BaseInfo &baseInfo, const SplitParam &par
     //  uint32_t gapBlockNum = 9U; // 实验计算值： 9 * BlockCost(64,256) = 10 * fdblockCost
     //  uint32_t maxFdSize = *std::max_element(result.fdRes.mSize.begin(), result.fdRes.mSize.end());
 
-
     // if (result.usedCoreNum - tmpResult.usedCoreNum < gapCoreNum){
     //     if (tmpResult.maxCost - result.maxCost < gapBlockNum *
     //     CalcCost(std::min(maxFdSize,param.mBaseSize),param.s2BaseSize)){
@@ -758,7 +757,6 @@ void SplitCore(uint32_t coreNum, const BaseInfo &baseInfo, const SplitParam &par
     //         CopyTmpResult(tmpResult,result);
     //     }
     // }
-
 
     // 3、存在FD任务，对FD进行负载均衡分配
     if (result.fdRes.fdNum > 0U) {
