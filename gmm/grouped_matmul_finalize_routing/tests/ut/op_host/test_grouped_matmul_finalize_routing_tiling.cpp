@@ -286,20 +286,39 @@ vector<GroupedMatmulFinalizeRoutingTilingCase> LoadCases(const string &csvPath)
     return cases;
 }
 
+const GroupedMatmulFinalizeRoutingTilingCase &GetCaseByPrefix(const string &prefix)
+{
+    static const auto cases = LoadCases(ops::ut::ResolveCsvPath("test_grouped_matmul_finalize_routing_tiling.csv",
+                                                                "gmm/grouped_matmul_finalize_routing/tests/ut/op_host",
+                                                                __FILE__));
+    for (const auto &testCase : cases) {
+        if (testCase.prefix == prefix) {
+            return testCase;
+        }
+    }
+    ADD_FAILURE() << "Failed to find tiling case with prefix: " << prefix;
+    return cases.front();
+}
+
 }  // namespace
 
 namespace GroupedMatmulFinalizeRoutingTilingUT {
 
 class TestGroupedMatmulFinalizeRoutingTiling : public testing::Test {};
 
-TEST_F(TestGroupedMatmulFinalizeRoutingTiling, csvDrivenCase)
-{
-    const auto cases = LoadCases(ops::ut::ResolveCsvPath("test_grouped_matmul_finalize_routing_tiling.csv",
-                                                         "gmm/grouped_matmul_finalize_routing/tests/ut/op_host",
-                                                         __FILE__));
-    for (const auto &testCase : cases) {
-        testCase.Run();
-    }
-}
+TEST_F(TestGroupedMatmulFinalizeRoutingTiling, test_w8a8_normal_case) { GetCaseByPrefix("test_w8a8_normal_case").Run(); }
+TEST_F(TestGroupedMatmulFinalizeRoutingTiling, test_w8a8_rowindex_int32_case) { GetCaseByPrefix("test_w8a8_rowindex_int32_case").Run(); }
+TEST_F(TestGroupedMatmulFinalizeRoutingTiling, test_w8a8_scale_bf16_case) { GetCaseByPrefix("test_w8a8_scale_bf16_case").Run(); }
+TEST_F(TestGroupedMatmulFinalizeRoutingTiling, test_w8a8_no_shared_input_case) { GetCaseByPrefix("test_w8a8_no_shared_input_case").Run(); }
+TEST_F(TestGroupedMatmulFinalizeRoutingTiling, test_w8a8_group_list_cumsum_case) { GetCaseByPrefix("test_w8a8_group_list_cumsum_case").Run(); }
+TEST_F(TestGroupedMatmulFinalizeRoutingTiling, test_w4a8_normal_case) { GetCaseByPrefix("test_w4a8_normal_case").Run(); }
+TEST_F(TestGroupedMatmulFinalizeRoutingTiling, test_mxfp8_normal_case_transpose_weight_false) { GetCaseByPrefix("test_mxfp8_normal_case_transpose_weight_false").Run(); }
+TEST_F(TestGroupedMatmulFinalizeRoutingTiling, test_mxfp8_normal_case_transpose_weight_true) { GetCaseByPrefix("test_mxfp8_normal_case_transpose_weight_true").Run(); }
+TEST_F(TestGroupedMatmulFinalizeRoutingTiling, test_mxfp8_illegal_case_shared_offset) { GetCaseByPrefix("test_mxfp8_illegal_case_shared_offset").Run(); }
+TEST_F(TestGroupedMatmulFinalizeRoutingTiling, test_mxfp8_illegal_case_null_rowindex) { GetCaseByPrefix("test_mxfp8_illegal_case_null_rowindex").Run(); }
+TEST_F(TestGroupedMatmulFinalizeRoutingTiling, test_mxfp8_illegal_case_wrong_x_dtype) { GetCaseByPrefix("test_mxfp8_illegal_case_wrong_x_dtype").Run(); }
+TEST_F(TestGroupedMatmulFinalizeRoutingTiling, test_mxfp8_illegal_case_wrong_scale_dtype) { GetCaseByPrefix("test_mxfp8_illegal_case_wrong_scale_dtype").Run(); }
+TEST_F(TestGroupedMatmulFinalizeRoutingTiling, test_core_num_check_fail_non_zero) { GetCaseByPrefix("test_core_num_check_fail_non_zero").Run(); }
+TEST_F(TestGroupedMatmulFinalizeRoutingTiling, test_core_num_check_fail_zero) { GetCaseByPrefix("test_core_num_check_fail_zero").Run(); }
 
 }  // namespace GroupedMatmulFinalizeRoutingTilingUT
