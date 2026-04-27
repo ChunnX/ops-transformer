@@ -97,6 +97,7 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Init(
     // 初始化 HCCL
     hccl_.Init(contextGM, mc2InitTiling);
     hccl_.SetCcTiling(mc2CcTiling);
+    AscendC::PRINTF("[CCU_TO_AICPU] HCCL initialized with AICPU mode for matmul_a2a_vec_reduce_fp16_bf16.\n");
 
     // 读取上下文和配置
     context_ = (__gm__ HcclCombinOpParam *)(contextGM);

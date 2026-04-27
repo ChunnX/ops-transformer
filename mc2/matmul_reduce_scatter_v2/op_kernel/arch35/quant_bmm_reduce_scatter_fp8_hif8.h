@@ -86,6 +86,7 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::Init(
     tilingData_ = tilingData;
     hccl_.Init(contextGM, mc2InitTiling);
     hccl_.SetCcTiling(mc2CcTiling);
+    AscendC::PRINTF("[CCU_TO_AICPU] HCCL initialized with AICPU mode for quant_bmm_reduce_scatter_fp8_hif8.\n");
     context_ = (__gm__ HcclCombinOpParam *)(contextGM);
     tPipe_ = tPipe;
     debugMode_ = tilingData_->debugMode;

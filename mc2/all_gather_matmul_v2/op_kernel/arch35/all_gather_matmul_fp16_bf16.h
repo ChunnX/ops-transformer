@@ -79,6 +79,7 @@ __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::I
     // 初始化Hccl类
     hccl_.Init(context_, mc2InitTiling);
     hccl_.SetCcTiling(mc2CcTiling);
+    AscendC::PRINTF("[CCU_TO_AICPU] HCCL initialized with AICPU mode for all_gather_matmul_fp16_bf16.\n");
     // 管道初始化
     tPipe_ = tPipe;
 

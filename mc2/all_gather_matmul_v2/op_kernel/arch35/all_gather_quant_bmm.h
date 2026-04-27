@@ -109,6 +109,7 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CT
     context_ = contextGM;
     hcclAllgather_.Init(context_, mc2InitTiling);
     hcclAllgather_.SetCcTiling(mc2CcTiling);
+    AscendC::PRINTF("[CCU_TO_AICPU] HCCL initialized with AICPU mode for all_gather_quant_bmm.\n");
     tilingData_ = tilingData;
     tPipe_ = tPipe;
     aGM_ = aGM;

@@ -396,6 +396,7 @@ ge::graphStatus QuantBmmReduceScatterTiling::SetMc2Hcomm()
         group, opType, rsConfig, reduceType, dataType, dataType
     );
     mc2CcTilingConfig.SetCommEngine(mc2tiling::AICPU_ENGINE);
+    OP_LOGD(opName_, "[CCU_TO_AICPU] Set CommEngine to AICPU_ENGINE for quant_bmm_reduce_scatter.");
 
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(quantBmmMatmulReducescatterTilingData_->mc2InitTiling) != 0,
         OP_LOGE(opName_, "mc2CcTilingConfig mc2tiling GetTiling mc2InitTiling failed"), return ge::GRAPH_FAILED);

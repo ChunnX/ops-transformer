@@ -112,6 +112,7 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::Init(
     // 初始化 HCCL
     hccl_.Init(contextGM, mc2InitTiling);
     hccl_.SetCcTiling(mc2CcTiling);
+    AscendC::PRINTF("[CCU_TO_AICPU] HCCL initialized with AICPU mode for quant_bmm_a2a_vec_reduce_fp8_hif8.\n");
 
     // 读取上下文和配置
     context_ = (__gm__ HcclCombinOpParam *)(contextGM);

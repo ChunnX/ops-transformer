@@ -48,6 +48,7 @@ public:
     {
         hccl_.Init(context_, mc2InitTiling);
         hccl_.SetCcTiling(mc2CcTiling);
+        AscendC::PRINTF("[CCU_TO_AICPU] HCCL initialized with AICPU mode for all_gather_matmul_base.\n");
         rankId_ = ((__gm__ HcclCombinOpParam*)context_)->rankId;
         // 计算scale1的数据个数及地址偏移
         nBlockSizeCnt_ = (tileInfo_.mmTiling->matmulTiling.Ka + PERBLOCK_BLOCK_SIZE - 1) / PERBLOCK_BLOCK_SIZE;
