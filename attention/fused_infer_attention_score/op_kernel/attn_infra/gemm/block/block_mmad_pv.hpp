@@ -204,14 +204,14 @@ public:
                 uint32_t curBlockSize = (curBlockIdx > 0) ? ((curBlockIdx - 1) * blockSize + blockStart) : 0;
                 MatrixCoord l1BTileCoord{curBlockSize, 0};
                 auto l1BTile = l1BTensor[layoutBInL1.GetOffset(l1BTileCoord)];
-                copyGmToL1B(l1BTile, gB[gBOffset], layoutBInL1, layoutBTile);
+                // copyGmToL1B(l1BTile, gB[gBOffset], layoutBInL1, layoutBTile);
                 updateBlockOffset(nowLen, curBlockIdx, blockSize);
             }
         } else {
             getBlockShape(actualShape, stackSeqTile);
             getKVOffset(gBOffset, nIdx, strideKV);
             auto layoutBTile = layoutB.GetTileLayout(MakeCoord(actualShape.k(), actualShape.n()));
-            copyGmToL1B(l1BTensor, gB[gBOffset], layoutBInL1, layoutBTile);
+            // copyGmToL1B(l1BTensor, gB[gBOffset], layoutBInL1, layoutBTile);
         }
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(EVENT_ID0);
@@ -234,7 +234,7 @@ public:
                     auto gmTileA = gA[layoutA.GetOffset(gmATileCoord)];
                     auto layoutTileA = layoutA.GetTileLayout(MakeCoord(mL1Actual, kL1Actual));
                     LayoutAInL1 layoutAInL1 = LayoutAInL1::template MakeLayout<ElementA>(mL1Actual, kL1Actual);
-                    copyGmToL1A(l1ATensor[l1PPingPongFlag], gmTileA, layoutAInL1, layoutTileA);
+                    // copyGmToL1A(l1ATensor[l1PPingPongFlag], gmTileA, layoutAInL1, layoutTileA);
                     AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(l1PPingPongFlag);
 
                     uint32_t kL0Loop = NpuArch::Detail::Alignment::CeilDiv(kL1Actual, L0TileShape::K);
