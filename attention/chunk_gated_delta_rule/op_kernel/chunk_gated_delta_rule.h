@@ -167,7 +167,7 @@ public:
         actualSeqLens_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(initParams.seqlens), tiling_->b);
 
         uint64_t offset = 0;
-        gCumExp_.SetGlobalBuffer(reinterpret_cast<__gm__ highType *>(user + offset));
+        gCum_.SetGlobalBuffer(reinterpret_cast<__gm__ highType *>(user + offset));
         offset += sizeof(highType) * tiling_->nv * tiling_->maxGroupLength;
 
         kCumDecay_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(user + offset));
@@ -243,7 +243,7 @@ private:
     __aicore__ inline void RunStage1(const ChunkGroup& cg)
     {
         GDRStageOneInitParams initStageOneParams {query_, key_, value_, beta_, g_,
-                                                gCumExp_, kCumDecay_, vInner_, qPrime_, kg_, qkt_,
+                                                gCum_, kCumDecay_, vInner_, qPrime_, kg_, qkt_,
                                                 stageWsAddr_, stageOneMask_, cg, gFlag_};
         stageOneOp_.Init(initStageOneParams, pipe_, tiling_);
         stageOneOp_.Process();
@@ -255,7 +255,7 @@ private:
     {
         Stage2 stageTwoOp;
         StageTwoParams initStageTwoParams{
-            qPrime_, vInner_, gCumExp_, kCumDecay_, stateIn, stateOut, kg_,
+            qPrime_, vInner_, gCum_, kCumDecay_, stateIn, stateOut, kg_,
             out_[cg.startPos * tiling_->nv * tiling_->dv], stageWsAddr_, &stage2MT_, pipe_, &cg,
             tiling_->nv, tiling_->nk, tiling_->dv, tiling_->dk, gFlag_};
         stageTwoOp.Init(&initStageTwoParams, tiling_->aiCoreNum);
@@ -267,7 +267,7 @@ private:
     {
         Stage3 stageThreeOp;
         StageThreeParams initStageThreeParams{
-            qkt_, gCumExp_, vInner_,
+            qkt_, gCum_, vInner_,
             stageThreeMask_[int(GetBlockIdx() / 2) * tiling_->chunkSize * tiling_->chunkSize],
             stageWsAddr_, out_[cg.startPos * tiling_->nv * tiling_->dv],
             &stage3MT_, pipe_, &cg, tiling_->scale,
@@ -291,7 +291,7 @@ private:
     GlobalTensor<lowType> initState_;
     GlobalTensor<int32_t> actualSeqLens_;
 
-    GlobalTensor<highType> gCumExp_;      // (Nv, maxGroupLength)
+    GlobalTensor<highType> gCum_;      // (Nv, maxGroupLength)
     GlobalTensor<lowType> kCumDecay_;     // (Nv, maxGroupLength, Dk)
     GlobalTensor<lowType> vInner_;       // (Nv, maxGroupLength, Dv)
     GlobalTensor<lowType> qPrime_;        // (Nv, maxGroupLength, Dk)
