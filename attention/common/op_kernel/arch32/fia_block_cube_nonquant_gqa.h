@@ -1099,7 +1099,6 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::ComputeMm2(const R
     Axis n(constInfo.headDim);
     Axis k(info.actualSingleProcessSInnerSize);
     auto mmResGm = this->mm2ResGm[info.loop % CFG::PRELOAD_NUM];
-
     ResetLoad3DConfig<M_SPLIT_SIZE>();
 
     auto KL1Slices = k.Split(K_SPLIT_SIZE);
@@ -1120,7 +1119,6 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::ComputeMm2(const R
             WaitFlag<HardEvent::MTE1_MTE2>(KP_EVENT0 + this->kpL1BufId);
             CopyPToL1<AFormat>(this->kpL1BufId, info, (AFormat == CubeFormat::NZ) ? m.AlignedSize() : info.actualSingleProcessSInnerSizeAlign, /* P为ND时，每行元素个数会按32对齐 */
                                              mL1.start, mL1.sizeAct, kL1.start, kL1.sizeAct);
-            
             SetFlag<HardEvent::MTE2_MTE1>(KP_EVENT0 + this->kpL1BufId);
             WaitFlag<HardEvent::MTE2_MTE1>(KP_EVENT0 + this->kpL1BufId);
 
@@ -1133,7 +1131,6 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::ComputeMm2(const R
                 vBufId = this->vL1BufId;
                 WaitFlag<HardEvent::MTE1_MTE2>(V_EVENT0 + vBufId);
                 CopyVToL1(vBufId, info, kL1.start, kL1.sizeAct);
-
                 SetFlag<HardEvent::MTE2_MTE1>(V_EVENT0 + vBufId);
                 WaitFlag<HardEvent::MTE2_MTE1>(V_EVENT0 + vBufId);
                 vL1Snapshot.bufCnt += static_cast<uint32_t>(canFullLoadV); // 不能全载V时，不缓存到快照中
@@ -1143,7 +1140,6 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::ComputeMm2(const R
 
             for (auto& kL0 : kL1.Split(K_BASE)) {
                 WaitFlag<HardEvent::M_MTE1>(L0AB_EVENT0 + this->abL0BufId);
-
                 LoadAToL0<M_SPLIT_SIZE>(this->abL0BufId, kpL1Tensor[this->kpL1BufId], mL1.AlignedSize(), 0, mL1.AlignedSize(), kL0.start, kL0.AlignedSize());
                 LoadBToL0(this->abL0BufId, vL1Tensor[vBufId], kL1.AlignedSize(), kL0.start, kL0.AlignedSize(), 0, n.AlignedSize());
                 SetFlag<HardEvent::MTE1_M>(L0_READY_EVENT);

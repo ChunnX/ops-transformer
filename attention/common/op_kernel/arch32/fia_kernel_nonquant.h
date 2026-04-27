@@ -875,20 +875,28 @@ __aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBl
 
     if (extraInfo0.isValid) {
         if ASCEND_IS_AIC {
+            PRINTF("wmk123 mm1 s \n");
             ComputeMm1(extraInfo0);
+            PRINTF("wmk123 mm1 e \n");
         }
     }
     if (extraInfo2.isValid) {
         if ASCEND_IS_AIV {
+            PRINTF("wmk123 v1 s \n");
             ComputeVec1(extraInfo2);
+            PRINTF("wmk123 v1 e \n");
         }
         if ASCEND_IS_AIC {
+            PRINTF("wmk123 mm2 s \n");
             ComputeMm2(extraInfo2);
+            PRINTF("wmk123 mm2 e \n");
         }
     }
     if (extraInfo1.isValid) {
         if ASCEND_IS_AIV {
+            PRINTF("wmk123 v2 s \n");
             ComputeVec2(extraInfo1);
+            PRINTF("wmk123 v2 e \n");
         }
         extraInfo1.isValid = false;
     }
