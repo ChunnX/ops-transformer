@@ -275,10 +275,8 @@ __aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDa
     quantOutEvent[1] = tPipe_->AllocEventID<AscendC::HardEvent::MTE3_S>();
     // 申请event同步permute数据搬出
     AscendC::TEventID transOutEvent[2];
-    if (this->isTransOut_) {
-        transOutEvent[0] = tPipe_->AllocEventID<AscendC::HardEvent::MTE3_S>();
-        transOutEvent[1] = tPipe_->AllocEventID<AscendC::HardEvent::MTE3_S>();
-    }
+    transOutEvent[0] = tPipe_->AllocEventID<AscendC::HardEvent::MTE3_S>();
+    transOutEvent[1] = tPipe_->AllocEventID<AscendC::HardEvent::MTE3_S>();
 
     // 数据搬入相关参数
     uint32_t gmStrideBytes = static_cast<uint32_t>(
@@ -292,9 +290,7 @@ __aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDa
         rawInputTensor[0], quantInputGM_[globalInputIdx0], inputCopyParams, {false, 0, 0, 0});
     AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(copyInEvent[0]);
     // 保证循环中同步配对
-    if (this->isTransOut_) {
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(transOutEvent[1]);
-    }
+    AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(transOutEvent[1]);
     AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(quantOutEvent[0]);
     AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(quantOutEvent[1]);
 
@@ -305,9 +301,7 @@ __aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDa
         uint32_t bufIdx = r % 2;
         uint32_t nextBufIdx = (r + 1) % 2;
         //提前启动下一轮搬入
-        if (this->isTransOut_) {
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(transOutEvent[nextBufIdx]);
-        }
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(transOutEvent[nextBufIdx]);
         if (r+1 < this->rowsThisCore_) {
             uint64_t nextGlobalInputIdx = globalInputIdx + context_.colNumPerBlock;
             DataCopyPad<quantInputDataType>(
@@ -320,8 +314,8 @@ __aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDa
             DataCopyPad<quantInputDataType, PaddingMode::Normal>(
                 transOutGM_[globalOutIdx], rawInputTensor[bufIdx],
                 {static_cast<uint16_t>(context_.blockNum), perBlockDataLength, ubStrideBlocks, 0, 0});
-            AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(transOutEvent[bufIdx]);
         }
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(transOutEvent[bufIdx]);
         //求最大值
         __local_mem__ quantInputDataType *xAddr = (__local_mem__ quantInputDataType *)rawInputTensor[bufIdx].GetPhyAddr();
         __local_mem__ float *maxValueAddr = (__local_mem__ float *)maxValueData.GetPhyAddr();
@@ -358,18 +352,14 @@ __aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDa
     uint64_t lastRow = this->rowsThisCore_ - 1;
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(quantOutEvent[0]);
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(quantOutEvent[1]);
-    if (this->isTransOut_) {
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(transOutEvent[lastRow % 2]);
-    }
+    AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(transOutEvent[lastRow % 2]);
     // 释放event
     tPipe_->ReleaseEventID<AscendC::HardEvent::MTE2_S>(copyInEvent[0]);
     tPipe_->ReleaseEventID<AscendC::HardEvent::MTE2_S>(copyInEvent[1]);
     tPipe_->ReleaseEventID<AscendC::HardEvent::MTE3_S>(quantOutEvent[0]);
     tPipe_->ReleaseEventID<AscendC::HardEvent::MTE3_S>(quantOutEvent[1]);
-    if (this->isTransOut_) {
-        tPipe_->ReleaseEventID<AscendC::HardEvent::MTE3_S>(transOutEvent[0]);
-        tPipe_->ReleaseEventID<AscendC::HardEvent::MTE3_S>(transOutEvent[1]);
-    }
+    tPipe_->ReleaseEventID<AscendC::HardEvent::MTE3_S>(transOutEvent[0]);
+    tPipe_->ReleaseEventID<AscendC::HardEvent::MTE3_S>(transOutEvent[1]);
 }
 
 template <typename quantInputDataType, typename quantOutputDataType, bool isSmallK>
