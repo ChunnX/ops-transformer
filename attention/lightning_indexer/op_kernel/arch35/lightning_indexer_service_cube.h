@@ -206,7 +206,7 @@ __aicore__ inline void LightningIndexerServiceCube<LIT>::ComputeMm1(const LIComm
                                                            ? s1gL1SizeAlign2G - s1gL1Offset
                                                            : constInfo_.mBaseSize;
                     if (constInfo_.gSize == 64 && constInfo_.sparseCount <= 2048) {
-                        s1gL0RealSize = 128;
+                        s1gL0RealSize = 128; // g=64, topK=2k时固定m=128
                     }
                     LoadQueryToL0a(s1gGmOffset, s1gL1Offset, s1gL1SizeAlign2G, s1gL0RealSize, runInfo);
                     if (s1gL1Offset == 0) {
