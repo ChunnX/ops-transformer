@@ -58,9 +58,8 @@ struct MhcPostBackwardParams {
     aclTensor *gradHpost = nullptr;
 };
 
-static aclnnStatus CheckNotNull(const aclTensor *gradOutput, const aclTensor *x, const aclTensor *hRes,
-                                const aclTensor *hOut, const aclTensor *hPost, aclTensor *gradX,
-                                aclTensor *gradHres, aclTensor *gradHout, aclTensor *gradHpost)
+static aclnnStatus CheckNotNull(const aclTensor *gradOutput, const aclTensor *x, const aclTensor *hRes, const aclTensor *hOut,
+                                const aclTensor *hPost, aclTensor *gradX, aclTensor *gradHres, aclTensor *gradHout, aclTensor *gradHpost)
 {
     CHECK_COND(gradOutput != nullptr, ACLNN_ERR_PARAM_NULLPTR, "gradOutput must not be nullptr.");
     CHECK_COND(x != nullptr, ACLNN_ERR_PARAM_NULLPTR, "x must not be nullptr.");
@@ -84,7 +83,7 @@ static aclnnStatus CheckDtype(const MhcPostBackwardParams &params)
     // hRes: FP32 only
     OP_CHECK_DTYPE_NOT_MATCH(params.hRes, op::DataType::DT_FLOAT, return ACLNN_ERR_PARAM_INVALID);
 
-    // hOut: FP16 or BF16
+    // hOut: FP16 or BF16 
     OP_CHECK_DTYPE_NOT_SUPPORT(params.hOut, SupportDtypeList, return ACLNN_ERR_PARAM_INVALID);
 
     // hPost: FP32 only
@@ -101,6 +100,7 @@ static aclnnStatus CheckDtype(const MhcPostBackwardParams &params)
 
     // gradHpost: must be same as hPost
     OP_CHECK_DTYPE_NOT_SAME(params.hPost, params.gradHpost, return ACLNN_ERR_PARAM_INVALID);
+
 
     return ACLNN_SUCCESS;
 }
@@ -287,6 +287,7 @@ static aclnnStatus CheckShape4D(const MhcPostBackwardParams &params)
     CHECK_COND(gradHresDim3 == hResDim3, ACLNN_ERR_PARAM_INVALID,
                "gradHres dim[3] %ld must equal hRes dim[3] %ld", gradHresDim3, hResDim3);
                
+
     // gradHout shape: [B, S, D]
     auto gradHoutDim0 = params.gradHout->GetViewShape().GetDim(DIM_IDX_0);
     auto gradHoutDim1 = params.gradHout->GetViewShape().GetDim(DIM_IDX_1);
@@ -329,44 +330,44 @@ static aclnnStatus CheckShape(const MhcPostBackwardParams &params)
     if (IsTNDFormat(xDimNum)) {
         auto xDim1 = params.x->GetViewShape().GetDim(DIM_IDX_1);
         CHECK_COND((xDim1 == 4) || (xDim1 == 6) || (xDim1 == 8), ACLNN_ERR_PARAM_INVALID,
-            "the dim n should be 4 / 6 / 8 for 3D format");
+               "the dim n should be 4 / 6 / 8 for 3D format");
         CHECK_COND(gradOutputDimNum == DIM_NUM_3, ACLNN_ERR_PARAM_INVALID,
-            "GradOutput dim num should be 3 for 3D format, but got %zu", gradOutputDimNum);
+                   "GradOutput dim num should be 3 for 3D format, but got %zu", gradOutputDimNum);
         CHECK_COND(hResDimNum == DIM_NUM_3, ACLNN_ERR_PARAM_INVALID,
-            "hRes dim num should be 3 for 3D format, but got %zu", hResDimNum);
+                   "hRes dim num should be 3 for 3D format, but got %zu", hResDimNum);
         CHECK_COND(hOutDimNum == DIM_NUM_2, ACLNN_ERR_PARAM_INVALID,
-            "hOut dim num should be 2 for 3D format, but got %zu", hOutDimNum);
+                   "hOut dim num should be 2 for 3D format, but got %zu", hOutDimNum);
         CHECK_COND(hPostDimNum == DIM_NUM_2, ACLNN_ERR_PARAM_INVALID,
-            "hPost dim num should be 2 for 3D format, but got %zu", hPostDimNum);
+                   "hPost dim num should be 2 for 3D format, but got %zu", hPostDimNum);
         CHECK_COND(gradXDimNum == DIM_NUM_3, ACLNN_ERR_PARAM_INVALID,
-            "gradX dim num should be 3 for 3D format, but got %zu", gradXDimNum);
+                   "gradX dim num should be 3 for 3D format, but got %zu", gradXDimNum);
         CHECK_COND(gradHresDimNum == DIM_NUM_3, ACLNN_ERR_PARAM_INVALID,
-            "gradHres dim num should be 3 for 3D format, but got %zu", gradHresDimNum);
+                   "gradHres dim num should be 3 for 3D format, but got %zu", gradHresDimNum);
         CHECK_COND(gradHoutDimNum == DIM_NUM_2, ACLNN_ERR_PARAM_INVALID,
-            "gradHout dim num should be 2 for 3D format, but got %zu", gradHoutDimNum);
+                   "gradHout dim num should be 2 for 3D format, but got %zu", gradHoutDimNum);
         CHECK_COND(gradHpostDimNum == DIM_NUM_2, ACLNN_ERR_PARAM_INVALID,
-            "gradHpost dim num should be 2 for 3D format, but got %zu", gradHpostDimNum);
+                   "gradHpost dim num should be 2 for 3D format, but got %zu", gradHpostDimNum);
         CHECK_COND(CheckShape3D(params) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID, "invalid shape for 3D format");
     } else {
         auto xDim2 = params.x->GetViewShape().GetDim(DIM_IDX_2);
         CHECK_COND((xDim2 == 4) || (xDim2 == 6) || (xDim2 == 8), ACLNN_ERR_PARAM_INVALID,
-            "the dim n should be 4 / 6 / 8 for 4D format");
+               "the dim n should be 4 / 6 / 8 for 4D format");
         CHECK_COND(gradOutputDimNum == DIM_NUM_4, ACLNN_ERR_PARAM_INVALID,
-            "GradOutput dim num should be 4 for 4D format, but got %zu", gradOutputDimNum);
+                   "GradOutput dim num should be 4 for 4D format, but got %zu", gradOutputDimNum);
         CHECK_COND(hResDimNum == DIM_NUM_4, ACLNN_ERR_PARAM_INVALID,
-            "hRes dim num should be 4 for 4D format, but got %zu", hResDimNum);
+                   "hRes dim num should be 4 for 4D format, but got %zu", hResDimNum);
         CHECK_COND(hOutDimNum == DIM_NUM_3, ACLNN_ERR_PARAM_INVALID,
-            "hOut dim num should be 3 for 4D format, but got %zu", hOutDimNum);
+                   "hOut dim num should be 3 for 4D format, but got %zu", hOutDimNum);
         CHECK_COND(hPostDimNum == DIM_NUM_3, ACLNN_ERR_PARAM_INVALID,
-            "hPost dim num should be 3 for 4D format, but got %zu", hPostDimNum);
+                   "hPost dim num should be 3 for 4D format, but got %zu", hPostDimNum);
         CHECK_COND(gradXDimNum == DIM_NUM_4, ACLNN_ERR_PARAM_INVALID,
-            "gradX dim num should be 4 for 4D format, but got %zu", gradXDimNum);
+                   "gradX dim num should be 4 for 4D format, but got %zu", gradXDimNum);
         CHECK_COND(gradHresDimNum == DIM_NUM_4, ACLNN_ERR_PARAM_INVALID,
-            "gradHres dim num should be 4 for 4D format, but got %zu", gradHresDimNum);
+                   "gradHres dim num should be 4 for 4D format, but got %zu", gradHresDimNum);
         CHECK_COND(gradHoutDimNum == DIM_NUM_3, ACLNN_ERR_PARAM_INVALID,
-            "gradHout dim num should be 3 for 4D format, but got %zu", gradHoutDimNum);
+                   "gradHout dim num should be 3 for 4D format, but got %zu", gradHoutDimNum);
         CHECK_COND(gradHpostDimNum == DIM_NUM_3, ACLNN_ERR_PARAM_INVALID,
-            "gradHpost dim num should be 3 for 4D format, but got %zu", gradHpostDimNum);
+                   "gradHpost dim num should be 3 for 4D format, but got %zu", gradHpostDimNum);
         CHECK_COND(CheckShape4D(params) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID, "invalid shape for 4D format");
     }
 
@@ -402,14 +403,13 @@ static aclnnStatus CheckParam(const MhcPostBackwardParams &params)
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus aclnnMhcPostBackwardGetWorkspaceSize(const aclTensor *gradOutput, const aclTensor *x, const aclTensor *hRes,
-    const aclTensor *hOut, const aclTensor *hPost, aclTensor *gradX,
-    aclTensor *gradHres, aclTensor *gradHout, aclTensor *gradHpost,
-    uint64_t *workspaceSize, aclOpExecutor **executor)
+aclnnStatus aclnnMhcPostBackwardGetWorkspaceSize(const aclTensor *gradOutput, const aclTensor *x, const aclTensor *hRes, const aclTensor *hOut,
+                                        const aclTensor *hPost, aclTensor *gradX, aclTensor *gradHres, aclTensor *gradHout, aclTensor *gradHpost, 
+                                        uint64_t *workspaceSize,
+                                        aclOpExecutor **executor)
 {
-    CHECK_COND(CheckNotNull(gradOutput, x, hRes, hOut, hPost, gradX, gradHres, gradHout, gradHpost) == ACLNN_SUCCESS,
-        ACLNN_ERR_PARAM_NULLPTR,
-        "one of required inputs for aclnnMhcPostBackwardGetWorkspaceSize is nullptr.");
+    CHECK_COND(CheckNotNull(gradOutput, x, hRes, hOut, hPost, gradX, gradHres, gradHout, gradHpost) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR,
+               "one of required inputs for aclnnMhcPostBackwardGetWorkspaceSize is nullptr.");
     // Check if input tensors are empty
     if (gradOutput->IsEmpty() || x->IsEmpty() || hRes->IsEmpty() || hOut->IsEmpty() || hPost->IsEmpty()) {
         OP_LOGE(ACLNN_ERR_INNER, "aclnn_mhc_post_backward do not support empty tensor!");
@@ -427,8 +427,7 @@ aclnnStatus aclnnMhcPostBackwardGetWorkspaceSize(const aclTensor *gradOutput, co
     aclTensor* outGradHout = nullptr;
     aclTensor* outGradHpost = nullptr;
 
-    L2_DFX_PHASE_1(aclnnMhcPostBackward, DFX_IN(params.gradOutput, params.x, params.hRes, params.hOut, params.hPost),
-        DFX_OUT(params.gradX, params.gradHres, params.gradHout, params.gradHpost));
+    L2_DFX_PHASE_1(aclnnMhcPostBackward, DFX_IN(params.gradOutput, params.x, params.hRes, params.hOut, params.hPost), DFX_OUT(params.gradX, params.gradHres, params.gradHout, params.gradHpost));
 
     // Convert input tensors to contiguous
     auto reformatedGradOutput = l0op::Contiguous(gradOutput, uniqueExecutor.get());
@@ -443,8 +442,8 @@ aclnnStatus aclnnMhcPostBackwardGetWorkspaceSize(const aclTensor *gradOutput, co
     CHECK_COND(reformatedHPost != nullptr, ACLNN_ERR_INNER_NULLPTR, "hPost Contiguous failed.");
 
     // Call l0 interface: MhcPostBackward kernel
-    const auto Result = l0op::MhcPostBackward(reformatedGradOutput, reformatedX,
-        reformatedHRes, reformatedHOut, reformatedHPost, uniqueExecutor.get());
+    const auto Result =
+        l0op::MhcPostBackward(reformatedGradOutput, reformatedX, reformatedHRes, reformatedHOut, reformatedHPost, uniqueExecutor.get());
     
     CHECK_RET(std::get<0>(Result) != nullptr, ACLNN_ERR_INNER_NULLPTR);
     outGradX = std::get<0>(Result);
@@ -467,6 +466,7 @@ aclnnStatus aclnnMhcPostBackwardGetWorkspaceSize(const aclTensor *gradOutput, co
     
     auto viewCopygradHpostResult = l0op::ViewCopy(outGradHpost, gradHpost, uniqueExecutor.get());
     CHECK_RET(viewCopygradHpostResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
 
     // Get workspace size
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();

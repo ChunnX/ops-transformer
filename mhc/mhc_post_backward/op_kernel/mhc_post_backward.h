@@ -6,10 +6,10 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+ */
 
 /*!
- * \file mhc_post_backward_kernel.h
+ * \file mhc_post_backward.h
  * \brief
  */
 
@@ -19,7 +19,6 @@
 #include "kernel_utils.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
-#include "mhc_post_backward_tiling_data_arch35.h"
 
 namespace MhcPostBackward {
 using namespace AscendC;
@@ -31,14 +30,21 @@ constexpr uint32_t FLOAT32_ALIGN_SIZE = 8; // 8 elements = 32 bytes for float32
 // Queue depth configuration
 constexpr uint32_t QUEUE_DEPTH = 1; // Single Buffer depth for all queues
 
-template<typename T>
+// Template macro definitions - 用于编译时优化
+// IS_N_ALIGNED: n == 8 (only n=8 is 32-byte aligned for DataCopy)
+// IS_NN_ALIGNED: (n*n) % 8 == 0 (16,64: true; 36: false)
+// IS_D_ALIGNED: D % 16 == 0 && nTilesD == 1
+#define TEMPLATE_DECLARE template<typename T, uint16_t IS_N_ALIGNED, uint16_t IS_NN_ALIGNED, uint16_t IS_D_ALIGNED>
+#define TEMPLATE_ARGS T, IS_N_ALIGNED, IS_NN_ALIGNED, IS_D_ALIGNED
+
+TEMPLATE_DECLARE
 class MhcPostBackwardKernel {
 public:
     __aicore__ inline MhcPostBackwardKernel() {}
     __aicore__ inline void Init(GM_ADDR gradOutput, GM_ADDR x, GM_ADDR hRes, GM_ADDR hOut, GM_ADDR hPost,
                             GM_ADDR gradX, GM_ADDR gradHRes, GM_ADDR gradHOut, GM_ADDR gradHPost,
                             GM_ADDR workspace,
-                            const MhcPostBackwardTilingDataArch35 *tilingData,
+                            const MhcPostBackwardTilingData *tilingData,
                             TPipe *tPipe);
     __aicore__ inline void Process();
 
@@ -50,23 +56,15 @@ private:
     __aicore__ inline void CopyOutGradHOut(uint32_t globalItemIdx, uint32_t tileId);
     __aicore__ inline void CopyOutGradX(uint32_t globalItemIdx, uint32_t tileId);
     __aicore__ inline void CopyOutWeightGrads(uint32_t globalItemIdx);
-    __aicore__ inline void SetMMParaAndCompute(uint32_t globalItemIdx);
+    // Hierarchical reduce sum to avoid precision loss from large accumulations
     __aicore__ inline float HierarchicalReduceSum(const LocalTensor<float> &srcLocal,
                                                 LocalTensor<float> &workLocal,
                                                 uint32_t count);
-    __aicore__ inline void ComputeGradHOutTile(LocalTensor<float> gradOutF32UB, LocalTensor<float> hPostLocalUB,
-                                                LocalTensor<T> gradHOutTileUB, uint32_t actualTileD);
-    __aicore__ inline void ComputeGradXTile(LocalTensor<float> gradOutF32UB,
-                                            LocalTensor<float> hResLocalUB,
-                                            LocalTensor<T> gradXTileUB,
-                                            uint32_t actualTileD);
+    __aicore__ inline void SetMMParaAndCompute(uint32_t globalItemIdx);
 
 private:
     TPipe *pipe_;
-    constexpr static AscendC::MicroAPI::CastTrait castB32ToB16 = { AscendC::MicroAPI::RegLayout::ZERO,
-        AscendC::MicroAPI::SatMode::NO_SAT,
-        AscendC::MicroAPI::MaskMergeMode::ZEROING,
-        AscendC::RoundMode::CAST_RINT};
+
     // Input queues
     TQue<QuePosition::VECIN, QUEUE_DEPTH> gradOutTileQueue_;
     TQue<QuePosition::VECIN, QUEUE_DEPTH> hOutTileQueue_;
@@ -82,6 +80,7 @@ private:
     TBuf<QuePosition::VECCALC> gradOutF32Buf_;
     TBuf<QuePosition::VECCALC> hOutF32Buf_;
     TBuf<QuePosition::VECCALC> tempBuf_;
+    TBuf<QuePosition::VECCALC> accumBuf_;
     TBuf<QuePosition::VECCALC> workBuf_;
     // Additional buffers for vectorized accumulation
     TBuf<QuePosition::VECCALC> gradHPostTileSumsBuf_;    // n elements
@@ -130,12 +129,12 @@ private:
     uint32_t itemStart_;
 };
 
-template<typename T>
-__aicore__ inline void MhcPostBackwardKernel<T>::Init(
+TEMPLATE_DECLARE
+__aicore__ inline void MhcPostBackwardKernel<TEMPLATE_ARGS>::Init(
     GM_ADDR gradOutput, GM_ADDR x, GM_ADDR hRes, GM_ADDR hOut, GM_ADDR hPost,
     GM_ADDR gradX, GM_ADDR gradHRes, GM_ADDR gradHOut, GM_ADDR gradHPost,
     GM_ADDR workspace,
-    const MhcPostBackwardTilingDataArch35 *tilingData,
+    const MhcPostBackwardTilingData *tilingData,
     TPipe *tPipe)
 {
     pipe_ = tPipe;
@@ -204,6 +203,7 @@ __aicore__ inline void MhcPostBackwardKernel<T>::Init(
         pipe_->InitBuffer(gradOutF32Buf_, n_ * tileD_ * sizeof(float));
         pipe_->InitBuffer(hOutF32Buf_, tileD_ * sizeof(float));
         pipe_->InitBuffer(tempBuf_, tileD_ * sizeof(float));
+        pipe_->InitBuffer(accumBuf_, tileD_ * sizeof(float));
         pipe_->InitBuffer(workBuf_, tileD_ * sizeof(float));
         // Initialize buffers for vectorized accumulation (use aligned sizes)
         pipe_->InitBuffer(gradHPostTileSumsBuf_, alignedN_ * sizeof(float));
@@ -222,8 +222,8 @@ __aicore__ inline void MhcPostBackwardKernel<T>::Init(
     }
 }
 
-template<typename T>
-__aicore__ inline void MhcPostBackwardKernel<T>::Process()
+TEMPLATE_DECLARE
+__aicore__ inline void MhcPostBackwardKernel<TEMPLATE_ARGS>::Process()
 {
     if ASCEND_IS_AIV {
         if (blockIdx_ >= usedCores_) {
@@ -258,43 +258,59 @@ __aicore__ inline void MhcPostBackwardKernel<T>::Process()
     }
 }
 
-template <typename T>
-__aicore__ inline void MhcPostBackwardKernel<T>::CopyInWeights(uint32_t globalItemIdx)
+TEMPLATE_DECLARE
+__aicore__ inline void MhcPostBackwardKernel<TEMPLATE_ARGS>::CopyInWeights(uint32_t globalItemIdx)
 {
     uint32_t hPostOffset = globalItemIdx * n_;
     uint32_t hResOffset = globalItemIdx * n_ * n_;
 
     LocalTensor<float> hPostLocal = hPostQueue_.AllocTensor<float>();
-    // Slow path: need padding, zero out first then copy
-    uint8_t hPostrightPad = static_cast<uint8_t>(alignedN_ - n_);
-    DataCopyPadParams hPostpadParams = {true, 0, hPostrightPad, 0};
-    DataCopyPad(hPostLocal, hPostGm_[hPostOffset],
-                {1, static_cast<uint16_t>(n_ * sizeof(float)), 0, 0}, hPostpadParams);
+    if constexpr (IS_N_ALIGNED == 1) {
+        // Fast path: n is aligned, direct copy
+        DataCopy(hPostLocal, hPostGm_[hPostOffset], n_);
+    } else {
+        // Slow path: need padding, zero out first then copy
+        // Duplicate(hPostLocal, 0.0f, alignedN_);
+        // DataCopyPad(hPostLocal, hPostGm_[hPostOffset], {1, static_cast<uint16_t>(n_ * sizeof(float)), 0, 0}, {false, 0, 0, 0});
+        uint8_t rightPad = static_cast<uint8_t>(alignedN_ - n_);
+        DataCopyPadParams padParams = {true, 0, rightPad, 0};
+        DataCopyPad(hPostLocal, hPostGm_[hPostOffset], {1, static_cast<uint16_t>(n_ * sizeof(float)), 0, 0}, padParams);
+    }
     hPostQueue_.EnQue(hPostLocal);
 
     LocalTensor<float> hResLocal = hResQueue_.AllocTensor<float>();
-    // Slow path: need padding, zero out first then copy
-    uint8_t hResrightPad = static_cast<uint8_t>(alignedNN_ - n_ * n_);
-    DataCopyPadParams hRespadParams = {true, 0, hResrightPad, 0};
-    DataCopyPad(hResLocal, hResGm_[hResOffset], {1, static_cast<uint16_t>(n_ * n_ * sizeof(float)), 0, 0},
-                hRespadParams);
+    if constexpr (IS_NN_ALIGNED == 1) {
+        // Fast path: n*n is aligned, direct copy
+        DataCopy(hResLocal, hResGm_[hResOffset], n_ * n_);
+    } else {
+        // Slow path: need padding, zero out first then copy
+        // Duplicate(hResLocal, 0.0f, alignedNN_);
+        // DataCopyPad(hResLocal, hResGm_[hResOffset], {1, static_cast<uint16_t>(n_ * n_ * sizeof(float)), 0, 0}, {false, 0, 0, 0});
+        uint8_t rightPad = static_cast<uint8_t>(alignedNN_ - n_ * n_);
+        DataCopyPadParams padParams = {true, 0, rightPad, 0};
+        DataCopyPad(hResLocal, hResGm_[hResOffset], {1, static_cast<uint16_t>(n_ * n_ * sizeof(float)), 0, 0}, padParams);
+    }
     hResQueue_.EnQue(hResLocal);
 }
 
-template <typename T>
-__aicore__ inline void MhcPostBackwardKernel<T>::ComputeInitGrads()
+TEMPLATE_DECLARE
+__aicore__ inline void MhcPostBackwardKernel<TEMPLATE_ARGS>::ComputeInitGrads()
 {
     LocalTensor<float> gradHPostLocal = gradHPostQueue_.AllocTensor<float>();
 
     // Initialize gradHPost and gradHRes to zero
     // Use actual size when aligned, aligned size when not
-    Duplicate(gradHPostLocal, 0.0f, alignedN_);
-    
+    if constexpr (IS_N_ALIGNED == 1) {
+        Duplicate(gradHPostLocal, 0.0f, n_);
+    } else {
+        Duplicate(gradHPostLocal, 0.0f, alignedN_);
+    }
+
     gradHPostQueue_.EnQue(gradHPostLocal);
 }
 
-template <typename T>
-__aicore__ inline void MhcPostBackwardKernel<T>::CopyInTile(uint32_t globalItemIdx, uint32_t tileId)
+TEMPLATE_DECLARE
+__aicore__ inline void MhcPostBackwardKernel<TEMPLATE_ARGS>::CopyInTile(uint32_t globalItemIdx, uint32_t tileId)
 {
     uint32_t dStart = tileId * tileD_;
     uint64_t gradOutBase = globalItemIdx * n_ * D_;
@@ -306,28 +322,44 @@ __aicore__ inline void MhcPostBackwardKernel<T>::CopyInTile(uint32_t globalItemI
     LocalTensor<T> gradOutTileLocal = gradOutTileQueue_.AllocTensor<T>();
     LocalTensor<T> hOutTileLocal = hOutTileQueue_.AllocTensor<T>();
 
-    // Slow path: multi-tile or non-aligned
-    // 数据在 buffer 中连续存放，第 i 行起始位置为 i * actualTileD
-    // Load hOut tile
-    // 需要 padding 到 actualTileD（已对齐到 16）
-    uint8_t rightPad = static_cast<uint8_t>(actualTileD - gmCopyD);
-    DataCopyPadParams padParams = {true, 0, rightPad, 0};
-    DataCopyPad(hOutTileLocal, hOutGm_[hOutBase + dStart],
-            {1, static_cast<uint16_t>(gmCopyD * sizeof(T)), 0, 0}, padParams);
-    // Load grad_output and x row by row，连续存放
-    for (uint32_t i = 0; i < n_; i++) {
-        uint8_t rightPad = static_cast<uint8_t>(actualTileD - gmCopyD);
-        DataCopyPadParams padParams = {true, 0, rightPad, 0};
-        DataCopyPad(gradOutTileLocal[i * actualTileD], gradOutputGm_[gradOutBase + i * D_ + dStart],
-                {1, static_cast<uint16_t>(gmCopyD * sizeof(T)), 0, 0}, padParams);
+    if constexpr (IS_D_ALIGNED == 1) {
+        // Fast path: D is aligned and single tile, use direct DataCopy
+        DataCopy(hOutTileLocal, hOutGm_[hOutBase], tileD_);
+        DataCopy(gradOutTileLocal, gradOutputGm_[gradOutBase], n_ * tileD_);
+    } else {
+        // Slow path: multi-tile or non-aligned
+        // 数据在 buffer 中连续存放，第 i 行起始位置为 i * actualTileD
+
+        // Load hOut tile
+        if (gmCopyD % BF16_FP16_ALIGN_SIZE == 0) {
+            DataCopy(hOutTileLocal, hOutGm_[hOutBase + dStart], gmCopyD);
+        } else {
+            // 需要 padding 到 actualTileD（已对齐到 16）
+            uint8_t rightPad = static_cast<uint8_t>(actualTileD - gmCopyD);
+            DataCopyPadParams padParams = {true, 0, rightPad, 0};
+            DataCopyPad(hOutTileLocal, hOutGm_[hOutBase + dStart],
+                    {1, static_cast<uint16_t>(gmCopyD * sizeof(T)), 0, 0}, padParams);
+        }
+
+        // Load grad_output and x row by row，连续存放
+        for (uint32_t i = 0; i < n_; i++) {
+            if (gmCopyD % BF16_FP16_ALIGN_SIZE == 0) {
+                DataCopy(gradOutTileLocal[i * actualTileD], gradOutputGm_[gradOutBase + i * D_ + dStart], gmCopyD);
+            } else {
+                uint8_t rightPad = static_cast<uint8_t>(actualTileD - gmCopyD);
+                DataCopyPadParams padParams = {true, 0, rightPad, 0};
+                DataCopyPad(gradOutTileLocal[i * actualTileD], gradOutputGm_[gradOutBase + i * D_ + dStart],
+                        {1, static_cast<uint16_t>(gmCopyD * sizeof(T)), 0, 0}, padParams);
+            }
+        }
     }
 
     gradOutTileQueue_.EnQue(gradOutTileLocal);
     hOutTileQueue_.EnQue(hOutTileLocal);
 }
 
-template<typename T>
-__aicore__ inline void MhcPostBackwardKernel<T>::ComputeTile(uint32_t tileId)
+TEMPLATE_DECLARE
+__aicore__ inline void MhcPostBackwardKernel<TEMPLATE_ARGS>::ComputeTile(uint32_t tileId)
 {
     uint32_t actualTileD = (tileId == nTilesD_ - 1) ? lastTileD_ : tileD_;
 
@@ -339,24 +371,31 @@ __aicore__ inline void MhcPostBackwardKernel<T>::ComputeTile(uint32_t tileId)
 
     LocalTensor<T> gradHOutTile = gradHOutTileQueue_.AllocTensor<T>();
     LocalTensor<T> gradXTile = gradXTileQueue_.AllocTensor<T>();
-     // Get work buffers
+
+    // Get work buffers
     LocalTensor<float> tempLocal = tempBuf_.Get<float>();
     LocalTensor<float> workLocal = workBuf_.Get<float>();
     LocalTensor<float> gradHPostTileSums = gradHPostTileSumsBuf_.Get<float>();
 
     // Only zero out when not aligned (padding area needs to be zero)
     // When aligned, SetValue will fill all valid positions
-    Duplicate(gradHPostTileSums, 0.0f, alignedN_);
-    
+    if constexpr (IS_N_ALIGNED == 0) {
+        Duplicate(gradHPostTileSums, 0.0f, alignedN_);
+    }
 
     // ===== Common path for bf16 and fp16: Cast to f32 for computation =====
     LocalTensor<float> gradOutF32 = gradOutF32Buf_.Get<float>();
     LocalTensor<float> hOutF32 = hOutF32Buf_.Get<float>();
-    Cast(gradOutF32, gradOutTile, RoundMode::CAST_NONE, n_ * actualTileD);
+    LocalTensor<float> accumLocal = accumBuf_.Get<float>();
 
+    Cast(gradOutF32, gradOutTile, RoundMode::CAST_NONE, n_ * actualTileD);
     Cast(hOutF32, hOutTile, RoundMode::CAST_NONE, actualTileD);
-    
+
+    Duplicate(accumLocal, 0.0f, actualTileD);
     for (uint32_t i = 0; i < n_; i++) {
+        // Step 1: accumLocal += hPost[i] * grad_output[i,:]
+        Axpy(accumLocal, gradOutF32[i * actualTileD], hPostLocal.GetValue(i), actualTileD);
+        // Step 2: gradHPost[i] = sum_d(grad_output[i] * hOut)
         Mul(tempLocal, gradOutF32[i * actualTileD], hOutF32, actualTileD);
         float sumHPost = HierarchicalReduceSum(tempLocal, workLocal, actualTileD);
         event_t eventVtoS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
@@ -364,15 +403,30 @@ __aicore__ inline void MhcPostBackwardKernel<T>::ComputeTile(uint32_t tileId)
         WaitFlag<HardEvent::V_S>(eventVtoS);
         gradHPostTileSums.SetValue(i, sumHPost);
     }
-    Add(gradHPostLocal, gradHPostLocal, gradHPostTileSums, alignedN_);
-    gradHPostQueue_.EnQue(gradHPostLocal);
-
-    ComputeGradHOutTile(gradOutF32, hPostLocal, gradHOutTile, actualTileD);
+    Cast(gradHOutTile, accumLocal, RoundMode::CAST_RINT, actualTileD);
     gradHOutTileQueue_.EnQue(gradHOutTile);
 
-    ComputeGradXTile(gradOutF32, hResLocal, gradXTile, actualTileD);
+    // Use aligned size for Add when not aligned (to handle padding)
+    if constexpr (IS_N_ALIGNED == 1) {
+        Add(gradHPostLocal, gradHPostLocal, gradHPostTileSums, n_);
+    } else {
+        Add(gradHPostLocal, gradHPostLocal, gradHPostTileSums, alignedN_);
+    }
+    gradHPostQueue_.EnQue(gradHPostLocal);
+
+    // Step 3: gradX[i] = sum_j(hRes[i,j] * gradOut[j,:])
+    // This computation can overlap with gradHOutTile CopyOut
+    for (uint32_t i = 0; i < n_; i++) {
+        float hRes0 = hResLocal.GetValue(i * n_);
+        Muls(accumLocal, gradOutF32, hRes0, actualTileD);
+        for (uint32_t j = 1; j < n_; j++) {
+            Axpy(accumLocal, gradOutF32[j * actualTileD], hResLocal.GetValue(i * n_ + j), actualTileD);
+        }
+        Cast(gradXTile[i * actualTileD], accumLocal, RoundMode::CAST_RINT, actualTileD);
+    }
+
+    // Enqueue remaining outputs
     gradXTileQueue_.EnQue(gradXTile);
-    
     hPostQueue_.EnQue(hPostLocal);
     hResQueue_.EnQue(hResLocal);
 
@@ -380,8 +434,83 @@ __aicore__ inline void MhcPostBackwardKernel<T>::ComputeTile(uint32_t tileId)
     hOutTileQueue_.FreeTensor(hOutTile);
 }
 
-template<typename T>
-__aicore__ inline float MhcPostBackwardKernel<T>::HierarchicalReduceSum(
+TEMPLATE_DECLARE
+__aicore__ inline void MhcPostBackwardKernel<TEMPLATE_ARGS>::CopyOutGradHOut(uint32_t globalItemIdx, uint32_t tileId)
+{
+    uint32_t dStart = tileId * tileD_;
+    uint64_t hOutBase = globalItemIdx * D_;
+
+    uint32_t actualTileD = (tileId == nTilesD_ - 1) ? lastTileD_ : tileD_;
+    uint32_t gmCopyD = (dStart + actualTileD > D_) ? (D_ - dStart) : actualTileD;
+
+    LocalTensor<T> gradHOutTile = gradHOutTileQueue_.DeQue<T>();
+
+    if constexpr (IS_D_ALIGNED == 1) {
+        // Fast path: D is aligned and single tile
+        DataCopy(gradHOutGm_[hOutBase], gradHOutTile, tileD_);
+    } else {
+        // Copy gradHOut
+        if (gmCopyD % BF16_FP16_ALIGN_SIZE == 0) {
+            DataCopy(gradHOutGm_[hOutBase + dStart], gradHOutTile, gmCopyD);
+        } else {
+            DataCopyPad(gradHOutGm_[hOutBase + dStart], gradHOutTile,
+                    {1, static_cast<uint16_t>(gmCopyD * sizeof(T)), 0, 0});
+        }
+    }
+
+    gradHOutTileQueue_.FreeTensor(gradHOutTile);
+}
+
+TEMPLATE_DECLARE
+__aicore__ inline void MhcPostBackwardKernel<TEMPLATE_ARGS>::CopyOutGradX(uint32_t globalItemIdx, uint32_t tileId)
+{
+    uint32_t dStart = tileId * tileD_;
+    uint64_t gradXBase = globalItemIdx * n_ * D_;
+
+    uint32_t actualTileD = (tileId == nTilesD_ - 1) ? lastTileD_ : tileD_;
+    uint32_t gmCopyD = (dStart + actualTileD > D_) ? (D_ - dStart) : actualTileD;
+
+    LocalTensor<T> gradXTile = gradXTileQueue_.DeQue<T>();
+
+    if constexpr (IS_D_ALIGNED == 1) {
+        // Fast path: D is aligned and single tile
+        DataCopy(gradXGm_[gradXBase], gradXTile, n_ * tileD_);
+    } else {
+        // Copy gradX row by row，从 buffer 的连续位置读取
+        for (uint32_t i = 0; i < n_; i++) {
+            if (gmCopyD % BF16_FP16_ALIGN_SIZE == 0) {
+                DataCopy(gradXGm_[gradXBase + i * D_ + dStart], gradXTile[i * actualTileD], gmCopyD);
+            } else {
+                DataCopyPad(gradXGm_[gradXBase + i * D_ + dStart], gradXTile[i * actualTileD],
+                        {1, static_cast<uint16_t>(gmCopyD * sizeof(T)), 0, 0});
+            }
+        }
+    }
+
+    gradXTileQueue_.FreeTensor(gradXTile);
+}
+
+TEMPLATE_DECLARE
+__aicore__ inline void MhcPostBackwardKernel<TEMPLATE_ARGS>::CopyOutWeightGrads(uint32_t globalItemIdx)
+{
+    uint32_t hPostOffset = globalItemIdx * n_;
+
+    LocalTensor<float> hPostLocal = hPostQueue_.DeQue<float>();
+    LocalTensor<float> hResLocal = hResQueue_.DeQue<float>();
+    hPostQueue_.FreeTensor(hPostLocal);
+    hResQueue_.FreeTensor(hResLocal);
+
+    LocalTensor<float> gradHPostLocal = gradHPostQueue_.DeQue<float>();
+    if constexpr (IS_N_ALIGNED == 1) {
+        DataCopy(gradHPostGm_[hPostOffset], gradHPostLocal, n_);
+    } else {
+        DataCopyPad(gradHPostGm_[hPostOffset], gradHPostLocal, {1, static_cast<uint16_t>(n_ * sizeof(float)), 0, 0});
+    }
+    gradHPostQueue_.FreeTensor(gradHPostLocal);
+}
+
+TEMPLATE_DECLARE
+__aicore__ inline float MhcPostBackwardKernel<TEMPLATE_ARGS>::HierarchicalReduceSum(
 const LocalTensor<float> &srcLocal,
 LocalTensor<float> &workLocal,
 uint32_t count)
@@ -456,141 +585,13 @@ uint32_t count)
     event_t eventVtoS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
     SetFlag<HardEvent::V_S>(eventVtoS);
     WaitFlag<HardEvent::V_S>(eventVtoS);
+    PipeBarrier<PIPE_V>();
 
     return workLocal.GetValue(0);
 }
 
-template<typename T>
-__aicore__ inline void MhcPostBackwardKernel<T>::ComputeGradHOutTile(LocalTensor<float> gradOutF32UB,
-                                                                    LocalTensor<float> hPostLocalUB,
-                                                                    LocalTensor<T> gradHOutTileUB,
-                                                                    uint32_t actualTileD) {
-    uint32_t vfLen = 256 / sizeof(float);
-    uint16_t repeatTimes = (actualTileD + vfLen - 1) / vfLen;
-    uint16_t ntimes = n_;
-
-    auto gradOutTileAddr = (__ubuf__ float*)gradOutF32UB.GetPhyAddr();
-    auto hPostLocalAddr = (__ubuf__ float*)hPostLocalUB.GetPhyAddr();
-    auto gradHOutTileAddr = (__ubuf__ T*)gradHOutTileUB.GetPhyAddr();
-    __VEC_SCOPE__
-    {
-        uint32_t gradOutDealNum = static_cast<uint32_t>(actualTileD);
-        AscendC::MicroAPI::RegTensor<float> gradOutF32Reg;
-        AscendC::MicroAPI::RegTensor<float> hPostLocalReg;
-        AscendC::MicroAPI::RegTensor<float> gradHOutTileReg;
-        AscendC::MicroAPI::RegTensor<T> gradHOutTileB16Reg;
-        AscendC::MicroAPI::MaskReg pMask;
-        AscendC::MicroAPI::MaskReg pregMain = AscendC::MicroAPI::CreateMask<float,
-                                            AscendC::MicroAPI::MaskPattern::ALL>();
-        for (uint16_t k = 0; k < repeatTimes; k++) {
-            pMask = AscendC::MicroAPI::UpdateMask<float>(gradOutDealNum);
-            AscendC::MicroAPI::Duplicate(gradHOutTileReg, 0.0f);
-            for (uint16_t i = 0; i < ntimes; i++) {
-                AscendC::MicroAPI::LoadAlign(gradOutF32Reg, gradOutTileAddr + i * actualTileD + k * vfLen);
-                AscendC::MicroAPI::LoadAlign<float, AscendC::MicroAPI::LoadDist::DIST_BRC_B32>(hPostLocalReg,
-                                                                                                hPostLocalAddr + i);
-                AscendC::MicroAPI::MulAddDst(gradHOutTileReg, gradOutF32Reg, hPostLocalReg, pMask);
-            }
-            AscendC::MicroAPI::Cast<T, float, castB32ToB16>(gradHOutTileB16Reg, gradHOutTileReg, pMask);
-            AscendC::MicroAPI::StoreAlign<T, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(gradHOutTileAddr + k * vfLen,
-                gradHOutTileB16Reg, pMask);
-        }
-    }
-}
-
-
-template<typename T>
-__aicore__ inline void MhcPostBackwardKernel<T>::ComputeGradXTile(LocalTensor<float> gradOutF32UB,
-                            LocalTensor<float> hResLocalUB, LocalTensor<T> gradXTileUB, uint32_t actualTileD) {
-    uint32_t vfLen = 256 / sizeof(float);
-    uint16_t repeatTimes = (actualTileD + vfLen - 1) / vfLen;
-    uint16_t ntimes = n_;
-
-    auto gradOutTileAddr = (__ubuf__ float*)gradOutF32UB.GetPhyAddr();
-    auto hResLocalAddr = (__ubuf__ float*)hResLocalUB.GetPhyAddr();
-    auto gradXTileAddr = (__ubuf__ T*)gradXTileUB.GetPhyAddr();
-    
-    __VEC_SCOPE__
-    {
-        uint32_t curDealNum = vfLen;
-        AscendC::MicroAPI::RegTensor<float> gradOutF32Reg;
-        AscendC::MicroAPI::RegTensor<float> hResLocalReg;
-        AscendC::MicroAPI::RegTensor<float> gradXTileReg;
-        AscendC::MicroAPI::RegTensor<T> gradXTileB16Reg;
-        AscendC::MicroAPI::MaskReg pMask;
-        AscendC::MicroAPI::MaskReg pregMain = AscendC::MicroAPI::CreateMask<float,
-                                                AscendC::MicroAPI::MaskPattern::ALL>();
-        for (uint16_t i = 0; i < ntimes; i++) {
-            for (uint16_t k = 0; k < repeatTimes; k++) {
-                curDealNum = (k == repeatTimes - 1) ? (actualTileD % vfLen == 0 ? vfLen : actualTileD % vfLen) : vfLen;
-                pMask = AscendC::MicroAPI::UpdateMask<float>(curDealNum);
-                AscendC::MicroAPI::Duplicate(gradXTileReg, 0.0f, pregMain);
-                for (uint16_t j = 0; j < ntimes; j++) {
-                    AscendC::MicroAPI::LoadAlign(gradOutF32Reg, gradOutTileAddr + j * actualTileD + k * vfLen);
-                    AscendC::MicroAPI::LoadAlign<float, AscendC::MicroAPI::LoadDist::DIST_BRC_B32>(hResLocalReg,
-                                                                                    hResLocalAddr + i * n_ + j);
-                    AscendC::MicroAPI::MulAddDst(gradXTileReg, gradOutF32Reg, hResLocalReg, pMask);
-                }
-                AscendC::MicroAPI::Cast<T, float, castB32ToB16>(gradXTileB16Reg, gradXTileReg, pMask);
-                AscendC::MicroAPI::StoreAlign<T, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(
-                            gradXTileAddr + i * actualTileD + k * vfLen,
-                            gradXTileB16Reg, pMask);
-            }
-        }
-    }
-}
-
-template <typename T>
-__aicore__ inline void MhcPostBackwardKernel<T>::CopyOutGradHOut(uint32_t globalItemIdx, uint32_t tileId)
-{
-    uint32_t dStart = tileId * tileD_;
-    uint64_t hOutBase = globalItemIdx * D_;
-
-    uint32_t actualTileD = (tileId == nTilesD_ - 1) ? lastTileD_ : tileD_;
-    uint32_t gmCopyD = (dStart + actualTileD > D_) ? (D_ - dStart) : actualTileD;
-
-    LocalTensor<T> gradHOutTile = gradHOutTileQueue_.DeQue<T>();
-    DataCopyPad(gradHOutGm_[hOutBase + dStart], gradHOutTile, {1, static_cast<uint16_t>(gmCopyD * sizeof(T)), 0, 0});
-
-    gradHOutTileQueue_.FreeTensor(gradHOutTile);
-}
-
-template <typename T>
-__aicore__ inline void MhcPostBackwardKernel<T>::CopyOutGradX(uint32_t globalItemIdx, uint32_t tileId)
-{
-    uint32_t dStart = tileId * tileD_;
-    uint64_t gradXBase = globalItemIdx * n_ * D_;
-
-    uint32_t actualTileD = (tileId == nTilesD_ - 1) ? lastTileD_ : tileD_;
-    uint32_t gmCopyD = (dStart + actualTileD > D_) ? (D_ - dStart) : actualTileD;
-
-    LocalTensor<T> gradXTile = gradXTileQueue_.DeQue<T>();
-        // Copy gradX row by row，从 buffer 的连续位置读取
-    for (uint32_t i = 0; i < n_; i++) {
-        DataCopyPad(gradXGm_[gradXBase + i * D_ + dStart], gradXTile[i * actualTileD],
-                {1, static_cast<uint16_t>(gmCopyD * sizeof(T)), 0, 0});
-    }
-    
-    gradXTileQueue_.FreeTensor(gradXTile);
-}
-
-template <typename T>
-__aicore__ inline void MhcPostBackwardKernel<T>::CopyOutWeightGrads(uint32_t globalItemIdx)
-{
-    uint32_t hPostOffset = globalItemIdx * n_;
-
-    LocalTensor<float> hPostLocal = hPostQueue_.DeQue<float>();
-    LocalTensor<float> hResLocal = hResQueue_.DeQue<float>();
-    hPostQueue_.FreeTensor(hPostLocal);
-    hResQueue_.FreeTensor(hResLocal);
-
-    LocalTensor<float> gradHPostLocal = gradHPostQueue_.DeQue<float>();
-    DataCopyPad(gradHPostGm_[hPostOffset], gradHPostLocal, {1, static_cast<uint16_t>(n_ * sizeof(float)), 0, 0});
-    gradHPostQueue_.FreeTensor(gradHPostLocal);
-}
-
-template<typename T>
-__aicore__ inline void MhcPostBackwardKernel<T>::SetMMParaAndCompute(
+TEMPLATE_DECLARE
+__aicore__ inline void MhcPostBackwardKernel<TEMPLATE_ARGS>::SetMMParaAndCompute(
     uint32_t globalItemIdx)
 {
     uint64_t inputBase = globalItemIdx * n_ * D_;
@@ -611,4 +612,4 @@ __aicore__ inline void MhcPostBackwardKernel<T>::SetMMParaAndCompute(
 
 } // namespace MhcPostBackward
 
-#endif // MHC_POST_BACKWARD_H
+#endif // MHC_POST_GRAD_H
