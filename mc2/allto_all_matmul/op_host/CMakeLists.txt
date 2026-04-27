@@ -21,7 +21,11 @@ if (BUILD_OPEN_PROJECT)  # custom
     set(MC2_OPT ON PARENT_SCOPE)
     set(allto_all_matmul_depends mc2/common mc2/3rd mc2/matmul_allto_all PARENT_SCOPE)
     set(allto_all_matmul_apt_depends mc2/common mc2/3rd mc2/matmul_allto_all PARENT_SCOPE)
-    
+    # Add catlass include path for kernel compilation
+    add_ops_compile_options(
+        OP_NAME AlltoAllMatmul
+        OPTIONS -I${CMAKE_SOURCE_DIR}/3rdparty/catlass/include
+    )
     set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
     if("${CONDITION_UNIT}" STREQUAL "ascend950")
         add_ops_compile_options(
