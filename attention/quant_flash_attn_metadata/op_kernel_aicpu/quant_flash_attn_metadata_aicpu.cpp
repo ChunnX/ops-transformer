@@ -68,7 +68,7 @@ bool QuantFlashAttnMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     // return true;
 }
 
-std::vector<int64_t> FlashAttnMetadataCpuKernel::GetTensorDataAsInt64(Tensor *tensor, size_t size)
+std::vector<int64_t> QuantFlashAttnMetadataCpuKernel::GetTensorDataAsInt64(Tensor *tensor, size_t size)
 {
     std::vector<int64_t> result(size);
     if (tensor == nullptr || tensor->GetData() == nullptr || size == 0) {
@@ -133,7 +133,7 @@ std::vector<int64_t> FlashAttnMetadataCpuKernel::GetTensorDataAsInt64(Tensor *te
     return result;
 }
 
-bool FlashAttnMetadataCpuKernel::ParamsInit()
+bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
 {
     // Device info
     deviceInfo.aicCoreMaxNum = aicCoreNum_;
@@ -243,7 +243,7 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
     }
     param.mBaseSize = mBaseSize_;
     param.s2BaseSize = s2BaseSize_;
-param.l2Byte = 0U;
+    param.l2Byte = 0U; // sectionNum = 1
     return true;
 }
 
