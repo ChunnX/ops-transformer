@@ -38,7 +38,7 @@ public:
     }
 
 protected:
-    bool IsCapable() const override;
+    bool IsCapable() override;
     // 3、计算数据切分TilingData
     ge::graphStatus DoOpTiling() override;
     // 4、计算高阶API的TilingData
@@ -54,7 +54,7 @@ private:
     bool AnalyzeInputs() override;
     bool SetQuantModeForQGmmInplaceAdd();
     bool CheckCoreNum() const override;
-    void PrintQuantParams() const override;
+    void PrintQuantParams() override;
 
     QuantGroupedMatmulInplaceAdd::QGmmInplaceAddBasicApiTilingData tilingData_;
 };
