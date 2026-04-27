@@ -172,11 +172,10 @@ __aicore__ inline void AdjustActualS1Size(RunParamStr<isInfer>& runParam,
                     runParam.actualS2Size + runParam.preTokensPerBatch :
                     runParam.actualS1Size;
             }
-
-            // 计算S1的尾块大小，非对齐
-            if (runParam.nextTokensPerBatch < 0) {
-                runParam.actualS1Size = runParam.actualS1Size + runParam.nextTokensPerBatch;
-            }
+        }
+        // 计算S1的尾块大小，非对齐
+        if (runParam.nextTokensPerBatch < 0) {
+            runParam.actualS1Size = runParam.actualS1Size + runParam.nextTokensPerBatch;
         }
     }
 
