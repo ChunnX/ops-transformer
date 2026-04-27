@@ -70,6 +70,7 @@ if (ENABLE_BUILT_IN)
   set(COMMON_LIB_INSTALL_DIR          ops_transformer/lib)
   set(VERSION_INFO_INSTALL_DIR        ops_transformer)
   set(IMPL_INSTALL_DIR                ops_transformer/built-in/op_impl/ai_core/tbe/impl/ops_transformer)
+  set(AICPU_HOST_KERNEL_IMPL          ops_transformer/built-in/op_impl/host_cpu)
 else()
  	# custom pkg
  	set(ES_INC_INSTALL_DIR              packages/vendors/${VENDOR_NAME}_transformer/op_proto/es/include)
