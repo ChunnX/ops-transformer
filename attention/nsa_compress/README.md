@@ -49,4 +49,4 @@ $$
 
 | 调用方式        | 调用样例        | 说明                                                 |
 |----------------|----------------|------------------------------------------------------|
-| aclnn调用 | [test_aclnn_nsa_compress](./examples/test_aclnn_nsa_compress.cpp) | 非TND场景，通过[aclnnNsaCompress](./docs/aclnnNsaCompress.md)接口方式调用NsaCompress算子。|
+| aclnn调用 | [test_aclnn_nsa_compress](./examples/test_aclnn_nsa_compress.cpp) | TND场景，通过[aclnnNsaCompress](./docs/aclnnNsaCompress.md)接口方式调用NsaCompress算子。|
