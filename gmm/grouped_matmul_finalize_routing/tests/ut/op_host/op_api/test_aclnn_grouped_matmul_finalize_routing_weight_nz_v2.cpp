@@ -325,7 +325,6 @@ class grouped_matmul_finalize_routing_weight_nz_v2_csv_test : public testing::Te
 TEST_F(grouped_matmul_finalize_routing_weight_nz_v2_csv_test, run_case)
 {
     for (const auto &testCase : GetWeightNzV2Cases()) {
-        SCOPED_TRACE("case=" + testCase.caseName);
         testCase.Run();
     }
 }
@@ -520,7 +519,6 @@ class grouped_matmul_finalize_routing_weight_nz_v2_mxa8w4_csv_test : public test
 TEST_F(grouped_matmul_finalize_routing_weight_nz_v2_mxa8w4_csv_test, run_case)
 {
     for (const auto &testCase : GetMxa8w4Cases()) {
-        SCOPED_TRACE("case=" + testCase.caseName + ", comment=" + testCase.comment);
         testCase.Run();
     }
 }

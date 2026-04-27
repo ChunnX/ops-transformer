@@ -230,7 +230,6 @@ protected:
 TEST_F(TestGroupedMatmulFinalizeRoutingInfershape, csvDrivenCase)
 {
     for (const auto &testCase : GetFinalizeRoutingInfershapeCases()) {
-        SCOPED_TRACE("prefix=" + testCase.prefix + ", case=" + testCase.caseName);
         testCase.Run();
     }
 }

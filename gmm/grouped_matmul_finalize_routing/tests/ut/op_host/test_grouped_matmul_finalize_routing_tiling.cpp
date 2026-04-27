@@ -303,7 +303,6 @@ class TestGroupedMatmulFinalizeRoutingTiling : public testing::Test {};
 TEST_F(TestGroupedMatmulFinalizeRoutingTiling, csvDrivenCase)
 {
     for (const auto &testCase : GetTilingCases()) {
-        SCOPED_TRACE("prefix=" + testCase.prefix);
         testCase.Run();
     }
 }

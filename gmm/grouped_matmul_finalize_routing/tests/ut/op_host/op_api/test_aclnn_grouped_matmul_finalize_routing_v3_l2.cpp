@@ -325,7 +325,6 @@ class grouped_matmul_finalize_routing_v3_csv_test : public testing::Test {};
 TEST_F(grouped_matmul_finalize_routing_v3_csv_test, run_case)
 {
     for (const auto &testCase : GetV3Cases()) {
-        SCOPED_TRACE("case=" + testCase.caseName);
         testCase.Run();
     }
 }
