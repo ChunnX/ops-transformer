@@ -185,6 +185,33 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr& runParam, const ConstIn
         if (constInfo.subBlockIdx == 1) {
             runParam.attentionOutOffset += runParam.firstHalfMRealSize * constInfo.dSizeV;
         }
+        if (constInfo.returnSoftmaxLse) {
+            if constexpr (LAYOUT_T == SFA_LAYOUT::TND) {
+                // [N2, T, G] (TND)
+                runParam.softmaxLseOffset = runParam.n2oIdx * constInfo.s1Size * constInfo.gSize +
+                    (seqOffset + runParam.sOuterOffset) * constInfo.gSize;
+            } else {
+                // [B, N2, S1, G] (BSND)
+                runParam.softmaxLseOffset = sIdx * constInfo.n2Size * constInfo.s1Size * constInfo.gSize +
+                    runParam.n2oIdx * constInfo.s1Size * constInfo.gSize +
+                    runParam.sOuterOffset * constInfo.gSize;
+            }
+            if (constInfo.subBlockIdx == 1) {
+                runParam.softmaxLseOffset += runParam.firstHalfMRealSize;
+                }
+            }
+    } else {
+        if constexpr (LAYOUT_T == SFA_LAYOUT::TND) {
+            runParam.tensorQOffset = runParam.qBOffset + runParam.cubeSOuterOffset * constInfo.n2GD +
+                runParam.n2oIdx * constInfo.gD + runParam.goIdx * constInfo.dSize;
+            runParam.tensorQRopeOffset = runParam.qRopeBOffset + runParam.cubeSOuterOffset * constInfo.n2GD +
+                runParam.n2oIdx * constInfo.gD + runParam.goIdx * constInfo.dSizeRope;
+        } else {
+            runParam.tensorQOffset = runParam.qBOffset + runParam.n2oIdx * constInfo.gS1D +
+                runParam.goIdx * constInfo.s1D + runParam.cubeSOuterOffset * constInfo.dSize;
+            runParam.tensorQRopeOffset = runParam.qRopeBOffset + runParam.n2oIdx * constInfo.gS1D +
+                runParam.goIdx * constInfo.s1D + runParam.cubeSOuterOffset * constInfo.dSizeRope;
+        }
     }
 }
 

@@ -54,11 +54,12 @@ public:
 
     __aicore__ inline SparseFlashAttentionKernelMla(){};
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-        __gm__ uint8_t *sparseIndices, __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
-        __gm__ uint8_t *blockTable, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
-        __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum,
-        __gm__ uint8_t *workspace, const SparseFlashAttentionTilingDataMla *__restrict tiling,
-        __gm__ uint8_t *gmTiling, TPipe *tPipe);
+                                __gm__ uint8_t *sparseIndices, __gm__ uint8_t *actualSeqLengthsQ,
+                                __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *blockTable,
+                                __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope, __gm__ uint8_t *attentionOut,
+                                __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *workspace,
+                                const SparseFlashAttentionTilingDataMla *__restrict tiling,
+                                __gm__ uint8_t *gmTiling, TPipe *tPipe);
     __aicore__ inline void Process();
 
 private:
@@ -66,7 +67,8 @@ private:
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
         __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope, __gm__ uint8_t *sparseIndices,
         __gm__ uint8_t *blockTable, __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
-        __gm__ uint8_t *workspace, const SparseFlashAttentionTilingDataMla *__restrict tiling,
+        __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *workspace,
+        const SparseFlashAttentionTilingDataMla *__restrict tiling,
         TPipe *tPipe);
     __aicore__ inline void InitLocalBuffer();
     __aicore__ inline void InitMMResBuf(__gm__ uint8_t *workspace);
@@ -156,8 +158,9 @@ template <typename CubeBlockType, typename VecBlockType>
         constInfo.s1Size = this->sharedParams.s1Size;
         constInfo.dSizeV = 512;
         constInfo.needInit = this->sharedParams.needInit;
+        constInfo.returnSoftmaxLse = this->sharedParams.returnSoftmaxLse;
     }
-    vecBlock.CleanOutput(attentionOut, constInfo);
+    vecBlock.CleanOutput(attentionOut, softmaxMax, softmaxSum, constInfo);
     /* cube侧不依赖sharedParams的scalar前置 */
     InitMMResBuf(workspace);
     if ASCEND_IS_AIC {
@@ -173,7 +176,7 @@ template <typename CubeBlockType, typename VecBlockType>
     }
     this->ComputeConstexpr();
     this->InitGlobalBuffer(query, key, value, queryRope, keyRope, sparseIndices, \
-        blockTable, actualSeqLengthsQ, actualSeqLengths, \
+        blockTable, actualSeqLengthsQ, actualSeqLengths, softmaxMax, softmaxSum, \
         workspace, tiling, tPipe); // gm设置
     this->InitCalcParamsEach();
     this->InitLocalBuffer();
@@ -319,6 +322,7 @@ void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType>::InitGlobalBuffe
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
     __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope, __gm__ uint8_t *sparseIndices,
     __gm__ uint8_t *blockTable, __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
+    __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum,
     __gm__ uint8_t *workspace, const SparseFlashAttentionTilingDataMla *__restrict tiling, TPipe *tPipe)
 {
     if (actualSeqLengthsQ != nullptr) {
@@ -328,7 +332,7 @@ void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType>::InitGlobalBuffe
         actualSeqKvlenAddr = (__gm__ int32_t *)actualSeqLengths;
     }
 
-    vecBlock.InitGlobalBuffer(key, value, keyRope, sparseIndices, blockTable);
+    vecBlock.InitGlobalBuffer(key, value, keyRope, sparseIndices, blockTable, softmaxMax, softmaxSum);
     cubeBlock.InitCubeInput(key, keyRope, sparseIndices, blockTable, actualSeqLengthsQ, constInfo);
 }
 
@@ -407,12 +411,13 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
     constInfo.n2G = constInfo.n2Size * constInfo.gSize;
     constInfo.gD = constInfo.gSize * constInfo.dSize;
     constInfo.n2GD = constInfo.n2Size * constInfo.gD;
-
     constInfo.s1Dv = constInfo.s1Size * constInfo.dSizeV;
     constInfo.s2Dv = constInfo.s2Size * constInfo.dSizeV;
     constInfo.n2Dv = constInfo.n2Size * constInfo.dSizeV;
     constInfo.gDv = constInfo.gSize * constInfo.dSizeV;
     constInfo.gS1Dv = constInfo.gSize * constInfo.s1Dv;
+    constInfo.isActualLenDimsNull = sharedParams.isActualSeqLengthsNull;
+    constInfo.isActualLenDimsKVNull = sharedParams.isActualSeqLengthsKVNull;
     constInfo.n2S2Dv = constInfo.n2Size * constInfo.s2Dv;
     constInfo.n2GDv = constInfo.n2Size * constInfo.gDv;
     constInfo.s2BaseN2Dv = constInfo.s2BaseSize * constInfo.n2Dv;
