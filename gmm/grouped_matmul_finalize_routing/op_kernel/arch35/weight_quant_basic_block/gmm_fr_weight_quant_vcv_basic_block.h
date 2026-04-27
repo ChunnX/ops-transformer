@@ -103,8 +103,6 @@ protected:
 #endif
     };
 
-    __aicore__ inline void FillL1WithZero(const LocalTensor<uint32_t> &l1Buf, uint64_t blockCount);
-
     GMMFRWeightQuantVecCompute<xType, wType, biasType, yType, sharedInputDType, logitsType, rowIndexType, hasBias,
                                wqmmConfig, vecConfig>
         vecCompute_;
@@ -334,7 +332,7 @@ GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS::IterateNzNkWithKAic(const BasicBlockO
             LocalTensor<uint32_t> fillTensor =
                 weightL1_[(cvLoopIdx_ & 1) * weightL1DbOffset_ + nL1AlignSize * kbL1RealSize]
                     .template ReinterpretCast<uint32_t>();
-            FillL1WithZero(fillTensor, nL1AlignSize);
+            cubeCompute_.FillL1WithZero(fillTensor, nL1AlignSize);
         }
         WaitAivToAic<PIPE_MTE1>(SYNC_AIV_AIC_FLAG);
         cubeCompute_.LaunchMatmul(weightL1_[(cvLoopIdx_ & 1) * weightL1DbOffset_], kbL1Offset, kbL1RealSize, cvLoopIdx_,
@@ -373,18 +371,6 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS::End(const Basi
         WaitAicToAiv<PIPE_MTE3>(SYNC_AIC_AIV_FLAG);
         vecCompute_.End();
     }
-}
-
-GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_TEMPLATE_PARAM
-__aicore__ inline void GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS::FillL1WithZero(const LocalTensor<uint32_t> &l1Buf,
-                                                                                 uint64_t blockCount)
-{
-    AscendC::InitConstValueParams<uint32_t> initParams;
-    initParams.repeatTimes = 1;
-    initParams.dstGap = 0;
-    initParams.initValue = 0;
-    initParams.blockNum = blockCount;
-    AscendC::Fill(l1Buf, initParams);
 }
 } // namespace WeightQuantBatchMatmulV2::Arch35
 

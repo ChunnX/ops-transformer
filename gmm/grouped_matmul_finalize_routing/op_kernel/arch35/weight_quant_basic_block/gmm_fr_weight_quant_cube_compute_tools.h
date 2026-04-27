@@ -106,6 +106,7 @@ __aicore__ inline void LoadAAndScaleL1ToL0(const LocalTensor<DstType> &aL0Tensor
     aL0Load2dMx.xStep = mL0AlignSize / static_cast<uint64_t>(BLOCK_CUBE);
     aL0Load2dMx.yStep =
         Ops::Base::CeilDiv(static_cast<uint64_t>(CeilAlign(l0CopyAndCalcParams.kL0Size, K_ALIGN_SIZE)), 64UL);
+    // 64:表示K方向夸过了几个32B分型，计算过程k/32/2
     aL0Load2dMx.srcStride = Ops::Base::CeilDiv(l0CopyAndCalcParams.scaleKL1Size, 64UL);
     aL0Load2dMx.dstStride = aL0Load2dMx.yStep;
     AscendC::LoadData(aL0Tensor, aL1Tensor, scaleL1Tensor, aL0Load2dParams, aL0Load2dMx);
