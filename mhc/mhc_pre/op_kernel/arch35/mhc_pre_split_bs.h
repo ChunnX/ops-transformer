@@ -367,40 +367,8 @@ __aicore__ inline void MhcPreKernelSplitBS<T, P>::AIV1Prologue(uint64_t offsetT,
     __ubuf__ P *hPostBuffPtr = (__ubuf__ P *)hPostBuff_.GetPhyAddr();
     __ubuf__ P *hResOutLocalPtr = (__ubuf__ P *)hResOutLocal.GetPhyAddr();
 
-    __VEC_SCOPE__
-    {
-        MicroAPI::RegTensor<P> matmulResReg;
-        MicroAPI::RegTensor<P> invRmsReg;
-        MicroAPI::RegTensor<P> invRmsBroadReg;
-        MicroAPI::RegTensor<P> biasInReg;
-        MicroAPI::RegTensor<P> alphaInReg;
-
-        for (uint16_t tIdx = 0; tIdx < static_cast<uint16_t>(lenT); tIdx++) {
-            MicroAPI::Load<P>(invRmsReg, invRmsPtr + singleCoreOffset + tIdx);
-
-            uint32_t loopCntPerN = (mnConfig_.n + eleNumPerVf_ - 1) / eleNumPerVf_;
-            uint32_t curLen = mnConfig_.n;
-            for (uint16_t vfBlockIdx = 0; vfBlockIdx < (uint16_t)loopCntPerN; vfBlockIdx++) {
-                uint32_t maskOffset = tIdx * mnConfig_.n + vfBlockIdx * eleNumPerVf_;
-                uint32_t alphaOffset = vfBlockIdx * eleNumPerVf_;
-                uint32_t biasOffset = vfBlockIdx * eleNumPerVf_;
-                MicroAPI::MaskReg curMask = MicroAPI::UpdateMask<P>(curLen);
-
-                MicroAPI::LoadAlign<P>(matmulResReg, matmulPtr + maskOffset);
-                MicroAPI::LoadAlign<P>(biasInReg, biasInPtr + biasOffset);
-                MicroAPI::LoadAlign<P>(alphaInReg, alphaInPtr + alphaOffset);
-
-                MicroAPI::Duplicate(invRmsBroadReg, invRmsReg, curMask);
-                MicroAPI::Mul(matmulResReg, matmulResReg, invRmsBroadReg, curMask);
-
-                MicroAPI::Mul(matmulResReg, matmulResReg, alphaInReg, curMask);
-
-                MicroAPI::Add(matmulResReg, matmulResReg, biasInReg, curMask);
-
-                MicroAPI::StoreAlign<P>(matmulPtr + maskOffset, matmulResReg, curMask);
-            }
-        }
-    }
+    VFAiv1PrologueImpl<P>(matmulPtr, invRmsPtr, biasInPtr, alphaInPtr,
+                          static_cast<uint16_t>(lenT), mnConfig_.n, eleNumPerVf_, singleCoreOffset);
 
     Gather(hPreBuff_, matmulRes_, preOffsetBuf_, uint32_t(0), lenT * N_);
     Gather(hPostBuff_, matmulRes_, postOffsetBuf_, uint32_t(0), lenT * N_);
