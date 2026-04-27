@@ -484,6 +484,7 @@ protected:
     const char *templateName = "base";
     const char *opName;
     const char *inputLayout;
+    std::string inputLayoutUpper;
     const char *softmaxOutLayout;
     const int64_t *prefixNData;
 
