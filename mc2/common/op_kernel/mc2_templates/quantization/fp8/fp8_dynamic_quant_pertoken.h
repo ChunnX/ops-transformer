@@ -319,7 +319,7 @@ __aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDa
         if (this->isTransOut_) {
             DataCopyPad<quantInputDataType, PaddingMode::Normal>(
                 transOutGM_[globalOutIdx], rawInputTensor[bufIdx],
-                {static_cast<uint16_t>(context_.blockNum), perBlockDataLength, 0, 0, 0});
+                {static_cast<uint16_t>(context_.blockNum), perBlockDataLength, ubStrideBlocks, 0, 0});
             AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(transOutEvent[bufIdx]);
         }
         //求最大值
