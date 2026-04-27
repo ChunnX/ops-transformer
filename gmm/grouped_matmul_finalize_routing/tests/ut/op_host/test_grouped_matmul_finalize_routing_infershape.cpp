@@ -211,6 +211,14 @@ vector<GroupedMatmulFinalizeRoutingInfershapeCase> LoadCases()
     return cases;
 }
 
+void RunCsvDrivenInfershapeCases()
+{
+    const auto cases = LoadCases();
+    for (const auto &testCase : cases) {
+        testCase.Run();
+    }
+}
+
 } // namespace
 
 namespace GroupedMatmulFinalizeRoutingInfershapeUT {
@@ -223,9 +231,6 @@ protected:
 
 TEST_F(TestGroupedMatmulFinalizeRoutingInfershape, csvDrivenCase)
 {
-    const auto cases = LoadCases();
-    for (const auto &testCase : cases) {
-        testCase.Run();
-    }
+    RunCsvDrivenInfershapeCases();
 }
 } // namespace GroupedMatmulFinalizeRoutingInfershapeUT
