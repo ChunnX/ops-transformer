@@ -49,7 +49,7 @@ const aclTensor* MoeFinalizeRoutingV2(
             auto ret = ADD_TO_LAUNCHER_LIST_AICORE(MoeFinalizeRoutingV2,
                 OP_INPUT(expanded_x, expanded_row_idx, x1, x2, bias, scales, expert_idx),
                 OP_OUTPUT(y),
-                OP_ATTR(drop_pad_mode));
+                OP_ATTR(drop_pad_mode, zeroExpertRange, copyExpertRange, constantExpertRange));
             OP_CHECK_ADD_TO_LAUNCHER_LIST_AICORE(ret != ACLNN_SUCCESS, return nullptr,
                                                 "MoeFinalizeRoutingV2AiCore ADD_TO_LAUNCHER_LIST_AICORE failed.");
         }
