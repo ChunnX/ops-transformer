@@ -22,8 +22,8 @@
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
 #include "dense_lightning_indexer_softmax_lse_common.h"
-#include "dense_li_softmax_lse_matmul.h"
-#include "dense_li_softmax_lse_vector.h"
+#include "dense_li_softmax_lse_service_cube.h"
+#include "dense_li_softmax_lse_service_vector.h"
 
 namespace DenseLISoftmaxLseKernel {
 using namespace DenseLISoftmaxLseCommon;

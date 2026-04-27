@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file dense_li_softmax_lse_vector.h
+ * \file dense_li_softmax_lse_service_vector.h
  * \brief
  */
 
-#ifndef __DENSE_LI_SOFTMAX_LSE_VECTOR_H__
-#define __DENSE_LI_SOFTMAX_LSE_VECTOR_H__
+#ifndef __DENSE_LI_SOFTMAX_LSE_SERVICE_VECTOR_H__
+#define __DENSE_LI_SOFTMAX_LSE_SERVICE_VECTOR_H__
 
 #include "kernel_operator.h"
 #include "kernel_operator_list_tensor_intf.h"
@@ -394,4 +394,4 @@ __aicore__ inline void DenseLISoftmaxLseServiceVector<T>::ProcessReduceSum(uint3
 }
 
 }
-#endif // DENSE_LI_SOFTMAX_LSE_VECTOR_H
+#endif // DENSE_LI_SOFTMAX_LSE_SERVICE_VECTOR_H
