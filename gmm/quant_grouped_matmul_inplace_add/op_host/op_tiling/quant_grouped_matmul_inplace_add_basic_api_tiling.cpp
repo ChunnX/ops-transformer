@@ -12,15 +12,18 @@
  * \file quant_grouped_matmul_inplace_add_basic_api_tiling.cpp
  * \brief
  */
+#include "quant_grouped_matmul_inplace_add_basic_api_tiling.h"
+
 #include <alog_pub.h>
+
 #include <climits>
+
+#include "../../op_kernel/arch35/qgmm_inplace_add_tiling_key.h"
 #include "log/log.h"
+#include "quant_grouped_matmul_inplace_add_tiling_utils.h"
+#include "register/op_impl_registry.h"
 #include "tiling_base/tiling_templates_registry.h"
 #include "tiling_base/tiling_type.h"
-#include "register/op_impl_registry.h"
-#include "../../op_kernel/arch35/qgmm_inplace_add_tiling_key.h"
-#include "quant_grouped_matmul_inplace_add_basic_api_tiling.h"
-#include "quant_grouped_matmul_inplace_add_tiling_utils.h"
 
 using namespace Ops::Transformer::OpTiling;
 using namespace QuantGroupedMatmulInplaceAdd;
@@ -46,10 +49,7 @@ bool QGMMInplaceAddBasicApiTiling::IsCapable()
            (scaleDimNum == 1 || (scaleDimNum == 2 && static_cast<uint64_t>(wScaleShape.GetDim(1)) == 1));
 }
 
-bool QGMMInplaceAddBasicApiTiling::AnalyzeAttrs()
-{
-    return AnalyzeAttrsForInplaceAdd(context_, inputParams_);
-}
+bool QGMMInplaceAddBasicApiTiling::AnalyzeAttrs() { return AnalyzeAttrsForInplaceAdd(context_, inputParams_); }
 
 bool QGMMInplaceAddBasicApiTiling::AnalyzeDtype()
 {
@@ -102,10 +102,7 @@ bool QGMMInplaceAddBasicApiTiling::SetQuantModeForQGmmInplaceAdd()
     return true;
 }
 
-bool QGMMInplaceAddBasicApiTiling::CheckCoreNum() const
-{
-    return CheckCoreNumForInplaceAdd(context_, inputParams_);
-}
+bool QGMMInplaceAddBasicApiTiling::CheckCoreNum() const { return CheckCoreNumForInplaceAdd(context_, inputParams_); }
 
 ge::graphStatus QGMMInplaceAddBasicApiTiling::DoOpTiling()
 {
@@ -148,10 +145,7 @@ ge::graphStatus QGMMInplaceAddBasicApiTiling::DoLibApiTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-uint64_t QGMMInplaceAddBasicApiTiling::GetTilingKey() const
-{
-    return GetTilingKeyForInplaceAdd(inputParams_);
-}
+uint64_t QGMMInplaceAddBasicApiTiling::GetTilingKey() const { return GetTilingKeyForInplaceAdd(inputParams_); }
 
 ge::graphStatus QGMMInplaceAddBasicApiTiling::PostTiling()
 {

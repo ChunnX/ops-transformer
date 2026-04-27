@@ -16,9 +16,9 @@
 
 #include <graph/utils/type_utils.h>
 
-#include "log/log.h"
-#include "../quant_grouped_matmul_inplace_add_host_utils.h"
 #include "../../op_kernel/arch35/qgmm_inplace_add_tiling_key.h"
+#include "../quant_grouped_matmul_inplace_add_host_utils.h"
+#include "log/log.h"
 
 using namespace optiling;
 using namespace optiling::GmmConstant;
@@ -29,8 +29,20 @@ bool AnalyzeAttrsForInplaceAdd(gert::TilingContext *context, GQmmInputInfo &inpu
 {
     auto attrs = context->GetAttrs();
     if (attrs != nullptr) {
-        const int64_t *groupListTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_GROUP_LIST_TYPE); // 通路保证非负数
-        inputParams.groupListType = groupListTypePtr != nullptr ? *groupListTypePtr : inputParams.groupListType;
+        const int64_t *groupListTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_GROUP_LIST_TYPE);
+        if (groupListTypePtr != nullptr) {
+            OP_CHECK_IF(*groupListTypePtr != 0 && *groupListTypePtr != 1,
+                        OP_LOGE(context->GetNodeName(), "GroupListType must be 0 or 1, but actual value is %ld.",
+                                *groupListTypePtr),
+                        return false);
+            inputParams.groupListType = static_cast<int8_t>(*groupListTypePtr);
+        }
+        const int64_t *groupSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_GROUP_SIZE);
+        if (groupSizePtr != nullptr) {
+            OP_CHECK_IF(*groupSizePtr != 0,
+                        OP_LOGE(context->GetNodeName(), "GroupSize must be 0, but actual value is %ld.", *groupSizePtr),
+                        return false);
+        }
     }
     inputParams.transA = true;
     return true;
@@ -68,16 +80,16 @@ bool CheckDtypeForInplaceAdd(const GQmmInputInfo &inputParams)
                  (inputParams.bDtype == ge::DT_FLOAT8_E4M3FN || inputParams.bDtype == ge::DT_FLOAT8_E5M2);
 
     if (isHif8) {
-        OP_CHECK_IF(inputParams.scaleDtype != ge::DT_FLOAT,
-                    OP_LOGE(inputParams.opName,
-                            "With DT_HIFLOAT8 inputs, scale2 dtype should be DT_FLOAT, actual dtype is %s.",
-                            ge::TypeUtils::DataTypeToSerialString(inputParams.scaleDtype).c_str()),
-                    return false);
-        OP_CHECK_IF(inputParams.perTokenScaleDtype != ge::DT_FLOAT,
-                    OP_LOGE(inputParams.opName,
-                            "With DT_HIFLOAT8 inputs, scale1 dtype should be DT_FLOAT, actual dtype is %s.",
-                            ge::TypeUtils::DataTypeToSerialString(inputParams.perTokenScaleDtype).c_str()),
-                    return false);
+        OP_CHECK_IF(
+            inputParams.scaleDtype != ge::DT_FLOAT,
+            OP_LOGE(inputParams.opName, "With DT_HIFLOAT8 inputs, scale2 dtype should be DT_FLOAT, actual dtype is %s.",
+                    ge::TypeUtils::DataTypeToSerialString(inputParams.scaleDtype).c_str()),
+            return false);
+        OP_CHECK_IF(
+            inputParams.perTokenScaleDtype != ge::DT_FLOAT,
+            OP_LOGE(inputParams.opName, "With DT_HIFLOAT8 inputs, scale1 dtype should be DT_FLOAT, actual dtype is %s.",
+                    ge::TypeUtils::DataTypeToSerialString(inputParams.perTokenScaleDtype).c_str()),
+            return false);
         return true;
     }
 
@@ -125,8 +137,7 @@ bool CheckShapeForHif8Quant(const gert::Shape &x1ScaleShape, const gert::Shape &
     auto x1ScaleDimNum = x1ScaleShape.GetDimNum();
     OP_CHECK_IF(x1ScaleDimNum != 1 && x1ScaleDimNum != 2,
                 OP_LOGE(inputParams.opName,
-                        "In T-T/T-C mode, the dimension of scale1 should be 1 or 2, but actual is %zu",
-                        x1ScaleDimNum),
+                        "In T-T/T-C mode, the dimension of scale1 should be 1 or 2, but actual is %zu", x1ScaleDimNum),
                 return false);
     auto x1FirstDim = static_cast<uint64_t>(x1ScaleShape.GetDim(0));
     OP_CHECK_IF(x1FirstDim != inputParams.groupNum,
@@ -143,11 +154,10 @@ bool CheckShapeForHif8Quant(const gert::Shape &x1ScaleShape, const gert::Shape &
     }
 
     auto x2ScaleDimNum = x2ScaleShape.GetDimNum();
-    OP_CHECK_IF(x2ScaleDimNum != 1 && x2ScaleDimNum != 2,
-                OP_LOGE(inputParams.opName,
-                        "The dimension of scale2 should be 1 or 2, but actual is %zu",
-                        x2ScaleDimNum),
-                return false);
+    OP_CHECK_IF(
+        x2ScaleDimNum != 1 && x2ScaleDimNum != 2,
+        OP_LOGE(inputParams.opName, "The dimension of scale2 should be 1 or 2, but actual is %zu", x2ScaleDimNum),
+        return false);
     auto x2FirstDim = static_cast<uint64_t>(x2ScaleShape.GetDim(0));
     OP_CHECK_IF(x2FirstDim != inputParams.groupNum,
                 OP_LOGE(inputParams.opName,
@@ -170,8 +180,8 @@ bool CheckShapeForMxQuant(const gert::Shape &x1ScaleShape, const gert::Shape &x2
 {
     auto x2ScaleDimNum = x2ScaleShape.GetDimNum();
     OP_CHECK_IF(x2ScaleDimNum != MXFP_TYPE_K_SCALE_DIM_NUM,
-                OP_LOGE(inputParams.opName,
-                        "The dimension of scale2 should be 3 in mx quant mode, but actual is %zu", x2ScaleDimNum),
+                OP_LOGE(inputParams.opName, "The dimension of scale2 should be 3 in mx quant mode, but actual is %zu",
+                        x2ScaleDimNum),
                 return false);
     auto x1ScaleDimNum = x1ScaleShape.GetDimNum();
     OP_CHECK_IF(x1ScaleDimNum != MXFP_PER_TOKEN_SCALE_DIM_NUM,
@@ -187,30 +197,27 @@ actual is %zu",
     auto wScaleNDim = static_cast<uint64_t>(x2ScaleShape.GetDim(x2ScaleDimNum - LAST_SECOND_DIM_INDEX));
     auto wScaleKDim = static_cast<uint64_t>(x1ScaleShape.GetDim(0));
     auto expectedKDimValue = inputParams.kSize / MXFP_BASEK_FACTOR + inputParams.groupNum;
-    OP_CHECK_IF(xScaleLastDim != MXFP_MULTI_BASE_SIZE || xScaleKDim != expectedKDimValue ||
-                    xScaleMDim != inputParams.mSize,
-                OP_LOGE(inputParams.opName,
-                        "In mx quant mode, the expected shape of scale1 is \
+    OP_CHECK_IF(
+        xScaleLastDim != MXFP_MULTI_BASE_SIZE || xScaleKDim != expectedKDimValue || xScaleMDim != inputParams.mSize,
+        OP_LOGE(inputParams.opName,
+                "In mx quant mode, the expected shape of scale1 is \
 (%lu,%lu,%lu), but the actual is (%lu,%lu,%lu).",
-                        expectedKDimValue, inputParams.mSize, MXFP_MULTI_BASE_SIZE, xScaleKDim, xScaleMDim,
-                        xScaleLastDim),
-                return false);
-    OP_CHECK_IF(wScaleLastDim != MXFP_MULTI_BASE_SIZE || wScaleKDim != expectedKDimValue ||
-                    wScaleNDim != inputParams.nSize,
-                OP_LOGE(inputParams.opName,
-                        "In mx quant mode, the expected shape of scale2 is (%lu,%lu,%lu), \
+                expectedKDimValue, inputParams.mSize, MXFP_MULTI_BASE_SIZE, xScaleKDim, xScaleMDim, xScaleLastDim),
+        return false);
+    OP_CHECK_IF(
+        wScaleLastDim != MXFP_MULTI_BASE_SIZE || wScaleKDim != expectedKDimValue || wScaleNDim != inputParams.nSize,
+        OP_LOGE(inputParams.opName,
+                "In mx quant mode, the expected shape of scale2 is (%lu,%lu,%lu), \
 but the actual is (%lu,%lu,%lu).",
-                        expectedKDimValue, inputParams.nSize, MXFP_MULTI_BASE_SIZE, wScaleKDim, wScaleNDim,
-                        wScaleLastDim),
-                return false);
+                expectedKDimValue, inputParams.nSize, MXFP_MULTI_BASE_SIZE, wScaleKDim, wScaleNDim, wScaleLastDim),
+        return false);
     return true;
 }
 
 uint64_t GetTilingKeyForInplaceAdd(const GQmmInputInfo &inputParams)
 {
-    return GET_TPL_TILING_KEY(static_cast<uint64_t>(inputParams.transB),
-                              static_cast<uint64_t>(inputParams.transA),
+    return GET_TPL_TILING_KEY(static_cast<uint64_t>(inputParams.transB), static_cast<uint64_t>(inputParams.transA),
                               static_cast<uint64_t>(inputParams.kernelType));
 }
 
-} // namespace QuantGroupedMatmulInplaceAdd
+}  // namespace QuantGroupedMatmulInplaceAdd
