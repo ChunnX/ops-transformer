@@ -120,6 +120,7 @@ struct ConstInfo {
     bool isSparseCountOver2K = false; //sparseCount小于等于2048为false
     bool isLDOpen = false;
     bool returnValueFlag = false;
+    bool splitMFlag = false;
 };
 
 struct SplitCoreInfo {

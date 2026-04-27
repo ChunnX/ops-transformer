@@ -28,7 +28,7 @@ namespace LIKernel {
 using namespace LICommon;
 constexpr uint32_t TRUNK_LEN_16K = 16384;
 constexpr uint32_t TRUNK_LEN_8K = 8192;
-constexpr uint32_t TOPK_LEN_6K = 6144;
+constexpr uint32_t TOPK_LEN_4K = 4096;
 
 template<typename Q_T, typename W_T = void>
 struct LightningIndexerTypeTraits {
@@ -202,7 +202,7 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::InitParams(const stru
     maxBlockNumPerBatch_ = constInfo.maxBlockNumPerBatch;
     returnValueFlag = constInfo.returnValueFlag;
     blockId_ = GetBlockIdx();
-    trunkLen_ = constInfo.sparseCount >= TOPK_LEN_6K ? TRUNK_LEN_8K : TRUNK_LEN_16K;
+    trunkLen_ = constInfo.sparseCount >= TOPK_LEN_4K ? TRUNK_LEN_8K : TRUNK_LEN_16K;
     topkCount_ = constInfo.sparseCount;
     topkOp_.Init(topkCount_, trunkLen_);
     topkCountAlign256_ = LICommon::Align(constInfo.sparseCount, (uint64_t)256); // topkCount对齐到256

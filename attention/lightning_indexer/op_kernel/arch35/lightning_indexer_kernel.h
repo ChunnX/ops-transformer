@@ -177,6 +177,7 @@ __aicore__ inline void LightningIndexerKernel<LIT>::InitTilingData(const LITilin
     }
     constInfo.s2BaseSize = S2_BASE_SIZE;
     constInfo.returnValueFlag = tilingData->returnValue;
+    constInfo.splitMFlag = (constInfo_.gSize == 64 && constInfo_.sparseCount <= 2048);
 }
 
 template <typename LIT>

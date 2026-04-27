@@ -195,7 +195,7 @@ __aicore__ inline void LightningIndexerServiceCube<LIT>::ComputeMm1(const LIComm
                     s2L1Offset + S2_BASIC_BLOCK_L0 > s2L1RealSize ? s2L1RealSize - s2L1Offset : S2_BASIC_BLOCK_L0;
                 
                 uint64_t l0Stride = constInfo_.mBaseSize;
-                if (constInfo_.gSize == 64 && constInfo_.sparseCount <= 2048) {
+                if (constInfo_.splitMFlag) {
                     l0Stride /= 2;
                 }
                 
@@ -205,7 +205,7 @@ __aicore__ inline void LightningIndexerServiceCube<LIT>::ComputeMm1(const LIComm
                         s1gL1Offset + constInfo_.mBaseSize > s1gL1SizeAlign2G
                                                            ? s1gL1SizeAlign2G - s1gL1Offset
                                                            : constInfo_.mBaseSize;
-                    if (constInfo_.gSize == 64 && constInfo_.sparseCount <= 2048) {
+                    if (constInfo_.splitMFlag) {
                         s1gL0RealSize = 128; // g=64, topK=2k时固定m=128
                     }
                     LoadQueryToL0a(s1gGmOffset, s1gL1Offset, s1gL1SizeAlign2G, s1gL0RealSize, runInfo);
@@ -221,8 +221,7 @@ __aicore__ inline void LightningIndexerServiceCube<LIT>::ComputeMm1(const LIComm
 
                     SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + l0BufIdx_ % L0_BUF_NUM);
 
-                    bool g64topK2048LastIter = constInfo_.gSize == 64 // g=64, topk=2K场景，循环1-2次
-                        && constInfo_.sparseCount <= 2048
+                    bool g64topK2048LastIter = constInfo_.splitMFlag // g=64, topk=2K场景，循环1-2次
                         && (s1gL1SizeAlign2G == 256 && s1gL1Offset == 128 || s1gL1SizeAlign2G == 128);
                     bool lastIter = g64topK2048LastIter || (constInfo_.gSize < 64) || (constInfo_.sparseCount > 2048);
                     if (lastIter) {
@@ -326,7 +325,7 @@ __aicore__ inline void LightningIndexerServiceCube<LIT>::LoadQueryToL0a(uint64_t
                                                      uint64_t s1gL0RealSize, const LICommon::RunInfo &runInfo)
 {
     LoadData2DParamsV2 loadData2DParamsV2;
-    if (constInfo_.gSize == 64 && constInfo_.sparseCount <= 2048 && runInfo.actMBaseSize > 128) { // 非尾块，切M
+    if (constInfo_.splitMFlag && runInfo.actMBaseSize > 128) { // 非尾块，切M
         uint64_t dstOffset = 0;
         loadData2DParamsV2.kStartPosition = 0;
         loadData2DParamsV2.mStep = CeilDiv(64, BLOCK_CUBE);
@@ -411,7 +410,7 @@ __aicore__ inline void LightningIndexerServiceCube<LIT>::Fixp(uint64_t s1gGmOffs
     fixpipeParams.dualDstCtl = 1; // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
 
     uint64_t dstOffset = 0;
-    if (constInfo_.gSize == 64 && constInfo_.sparseCount <= 2048 && runInfo.actMBaseSize > 128) { // 非尾块，切M
+    if (constInfo_.splitMFlag && runInfo.actMBaseSize > 128) { // 非尾块，切M
         dstOffset = s1gGmOffset * 64;
     }
 
