@@ -701,21 +701,6 @@ static aclnnStatus ContiguousOptionalInputTensor(
     return ret;
 }
 
-static aclnnStatus ContiguousQuantOptionalInputTensor(
-    const aclTensor *dsScaleOptional, const aclTensor *pScaleOptional, const aclTensor **dsScaleOptionalCngs, const aclTensor **pScaleOptionalCngs, 
-    aclOpExecutor *executor)
-{
-    auto ret = ACLNN_SUCCESS;
-
-    // 如果非连续，需要转连续
-    ret = ContiguousTensorWithCheck(dsScaleOptional, dsScaleOptionalCngs, executor);
-    CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
-
-    ret = ContiguousTensorWithCheck(pScaleOptional, pScaleOptionalCngs, executor);
-    CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
-    return ret;
-}
-
 static void GetInputAndOutputReshapeArray(const aclTensor *query, const aclTensor *key, FagInShapeInfo fagShape,
                                           FagShapeArray &fagShapeArray, aclOpExecutor *executor)
 {
@@ -2590,21 +2575,21 @@ aclnnStatus aclnnFlashAttentionScoreGradV4GetWorkspaceSize(
     const aclTensor *dScaleKOptional, const aclTensor *dScaleVOptional, const aclTensor *dScaleDyOptional,
     const aclTensor *dScaleOOptional, const aclIntArray *prefixOptional,
     const aclIntArray *actualSeqQLenOptional, const aclIntArray *actualSeqKvLenOptional,
-    const aclIntArray *qStartIdxOptional, const aclIntArray *kvStartIdxOptional, double scaleValueOptional,
-    double keepProbOptional, int64_t preTokensOptional, int64_t nextTokensOptional, int64_t headNum,
-    char *inputLayout, char *softmaxInLayout, int64_t innerPreciseOptional, int64_t sparseModeOptional, int64_t pseTypeOptional,
-    int64_t seed, int64_t offset, int64_t outDtypeOptional,
+    const aclIntArray *qStartIdxOptional, const aclIntArray *kvStartIdxOptional, double scaleValue,
+    double keepProb, int64_t preTokens, int64_t nextTokens, int64_t headNum,
+    char *inputLayout, char *softmaxInLayout, int64_t innerPrecise, int64_t sparseMode, int64_t pseType,
+    int64_t seed, int64_t offset, int64_t outDtype,
     const aclTensor *dqOut, const aclTensor *dkOut, const aclTensor *dvOut,
     const aclTensor *dqRopeOut, const aclTensor *dkRopeOut, const aclTensor *dpseOut, const aclTensor *dsinkOut, 
-    uint64_t *workspaceSize, aclOpExecutor **executor) 
+    uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnFlashAttentionScoreGradV4,
         DFX_IN(query, keyIn, value, dy, pseShiftOptional, dropMaskOptional, paddingMaskOptional, attenMaskOptional,
                softmaxMaxOptional, softmaxSumOptional, softmaxInOptional, attentionInOptional, sinkInOptional, queryRopeOptional,
                keyRopeOptional, dScaleQOptional, dScaleKOptional, dScaleVOptional, dScaleDyOptional, dScaleOOptional,
                prefixOptional, actualSeqQLenOptional, actualSeqKvLenOptional, qStartIdxOptional, kvStartIdxOptional,
-               scaleValueOptional, keepProbOptional, preTokensOptional, nextTokensOptional, headNum, inputLayout, 
-               softmaxInLayout, innerPreciseOptional, sparseModeOptional, pseTypeOptional, seed, offset, outDtypeOptional),
+               scaleValue, keepProb, preTokens, nextTokens, headNum, inputLayout,
+               softmaxInLayout, innerPrecise, sparseMode, pseType, seed, offset, outDtype),
         DFX_OUT(dqOut, dkOut, dvOut, dqRopeOut, dkRopeOut, dpseOut, dsinkOut));
     // 固定写法，创建OpExecutor
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -2656,8 +2641,8 @@ aclnnStatus aclnnFlashAttentionScoreGradV4GetWorkspaceSize(
         softmaxMaxOptional, softmaxSumOptional, softmaxInOptional, attentionInOptional, sinkInOptional, queryRopeOptional,
         keyRopeOptional, dScaleQOptional, dScaleKOptional, dScaleVOptional, dScaleDyOptional, dScaleOOptional,
         prefixOptional, actualSeqQLenOptional, actualSeqKvLenOptional, qStartIdxOptional, kvStartIdxOptional,
-        scaleValueOptional, keepProbOptional, preTokensOptional, nextTokensOptional, headNum, inputLayout, softmaxInLayout, 
-        innerPreciseOptional, sparseModeOptional, pseTypeOptional, seed, offset, outDtypeOptional, dqOut, dkOut,
+        scaleValue, keepProb, preTokens, nextTokens, headNum, inputLayout, softmaxInLayout,
+        innerPrecise, sparseMode, pseType, seed, offset, outDtype, dqOut, dkOut,
         dvOut, dqRopeOut, dkRopeOut, dpseOut, dsinkOut, uniqueExecutor.get());
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
  
@@ -2668,202 +2653,9 @@ aclnnStatus aclnnFlashAttentionScoreGradV4GetWorkspaceSize(
 }
  
 aclnnStatus aclnnFlashAttentionScoreGradV4(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                                    const aclrtStream stream) {
-    L2_DFX_PHASE_2(aclnnFlashAttentionScoreGradV4);
-    return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
-}
-
-static aclnnStatus QuantFlashAttentionScoreGradGetWorkspace(
-    const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *dy,
-    const aclTensor *softmaxMaxOptional, const aclTensor *softmaxSumOptional, const aclTensor *attentionInOptional,
-    const aclTensor *dScaleQOptional, const aclTensor *dScaleKOptional, const aclTensor *dScaleVOptional,
-    const aclTensor *dScaleDyOptional, const aclTensor *dsScaleOptional, const aclTensor *pScaleOptional,
-    double scaleValue, int64_t headNum,
-    char *inputLayout, int64_t outDtypeOptional, const aclTensor *dqOut, const aclTensor *dkOut, const aclTensor *dvOut,
-    aclOpExecutor *executor) {
-    // 获取基本参数
-    FagInShapeInfo fagShape;
-    // 检查tensor维度是否大于2
-    auto ret = InvalidTensorDimCheck(query, nullptr, key, nullptr, value, dy, attentionInOptional,
-    dqOut, nullptr, dkOut, nullptr, dvOut, nullptr, nullptr);
-    CHECK_RET(ret == ACLNN_SUCCESS, ret);
-    double keepProb = 1.0;
-    int64_t preTokens = 2147483647;
-    int64_t nextTokens = 2147483647;
-    int64_t innerPrecise = 0;
-    int64_t sparseMode = 0;
-    int64_t pseType = 1;
-    int64_t seed = 0;
-    int64_t offset = 0;
-    ret = GetInputShapeInfo(query, key, value, headNum, inputLayout, fagShape, nullptr, 
-        nullptr, keepProb);
-    if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Invalid input, pls check input shape.");
-        return ret;
-    }
-
-    // 输入连续性转换
-    const aclTensor *queryCngs = nullptr;
-    const aclTensor *keyCngs = nullptr;
-    const aclTensor *valueCngs = nullptr;
-    const aclTensor *dyCngs = nullptr;
-
-    const aclTensor *attentionInOptionalCngs = nullptr;
-    const aclTensor *pseShiftOptionalCngs = nullptr;
-    const aclTensor *dropMaskOptionalCngs = nullptr;
-    const aclTensor *paddingMaskOptionalCngs = nullptr;
-    const aclTensor *attenMaskOptionalCngs = nullptr;
-    const aclTensor *softmaxMaxOptionalCngs = nullptr;
-    const aclTensor *softmaxSumOptionalCngs = nullptr;
-    const aclTensor *softmaxInOptionalCngs = nullptr;
-    const aclTensor *queryRopeOptionalCngs = nullptr;
-    const aclTensor *keyRopeOptionalCngs = nullptr;
-    const aclTensor *dScaleQOptionalCngs = nullptr;
-    const aclTensor *dScaleKOptionalCngs = nullptr;
-    const aclTensor *dScaleVOptionalCngs = nullptr;
-    const aclTensor *dScaleDyOptionalCngs = nullptr;
-    const aclTensor *dScaleOOptionalCngs = nullptr;
-    const aclTensor *sinkInOptionalCngs = nullptr;
-    const aclTensor *dsink = nullptr;
-    const aclTensor *dsScaleOptionalCngs = nullptr;
-    const aclTensor *pScaleOptionalCngs = nullptr;
-    ret = ContiguousInputTensor(query, nullptr, key, nullptr, value, dy,
-        attentionInOptional, &queryCngs, &queryRopeOptionalCngs, &keyCngs, &keyRopeOptionalCngs, &valueCngs, &dyCngs,
-        &attentionInOptionalCngs, executor); 
-    CHECK_RET(ret == ACLNN_SUCCESS, ret);
-
-
-    ret = ContiguousOptionalInputTensor(
-        nullptr, nullptr, nullptr, nullptr, softmaxMaxOptional,
-        softmaxSumOptional, nullptr, nullptr, nullptr,
-        dScaleQOptional, dScaleKOptional, dScaleVOptional, dScaleDyOptional, nullptr, nullptr,
-        &pseShiftOptionalCngs, &dropMaskOptionalCngs, &paddingMaskOptionalCngs,
-        &attenMaskOptionalCngs, &softmaxMaxOptionalCngs, &softmaxSumOptionalCngs, &softmaxInOptionalCngs,
-        &queryRopeOptionalCngs, &keyRopeOptionalCngs, &dScaleQOptionalCngs, &dScaleKOptionalCngs,
-        &dScaleVOptionalCngs, &dScaleDyOptionalCngs, &dScaleOOptionalCngs, &sinkInOptionalCngs, executor);
-    CHECK_RET(ret == ACLNN_SUCCESS, ret);
-
-    ret = ContiguousQuantOptionalInputTensor(dsScaleOptional, pScaleOptional, &dsScaleOptionalCngs, &pScaleOptionalCngs, executor);
-    CHECK_RET(ret == ACLNN_SUCCESS, ret);
-
-    // reshape + PAD + Transpose
-    FagShapeArray fagShapeArray;
-    ret = PreFlashAttentionScoreGrad(&queryCngs, &keyCngs, &valueCngs, &dyCngs, &attentionInOptionalCngs, fagShape,
-                                     fagShapeArray, executor);
-    CHECK_RET(ret == ACLNN_SUCCESS, ret);
-
-    // 调整input layout
-    char inputLayoutUnderTrans[MAX_LAYOUT_SIZE] = {0};
-    ConvertInputLayout(fagShape, inputLayout, inputLayoutUnderTrans, MAX_LAYOUT_SIZE);
-
-    // 调用FAG ascendc接口
-    auto fagRes = l0op::FlashAttentionScoreGrad(
-        queryCngs, keyCngs, valueCngs, dyCngs, pseShiftOptionalCngs, dropMaskOptionalCngs, paddingMaskOptionalCngs,
-        attenMaskOptionalCngs, softmaxMaxOptionalCngs, softmaxSumOptionalCngs, softmaxInOptionalCngs,
-        attentionInOptionalCngs, nullptr, nullptr, nullptr, nullptr,
-        nullptr, dScaleQOptionalCngs, dScaleKOptionalCngs, dScaleVOptionalCngs, dScaleDyOptionalCngs,
-        dScaleOOptionalCngs, dsScaleOptionalCngs, pScaleOptionalCngs, nullptr, nullptr, nullptr, scaleValue, keepProb,
-        preTokens, nextTokens, headNum, inputLayoutUnderTrans, innerPrecise, sparseMode, pseType,
-        seed, offset, outDtypeOptional, defaultSoftmaxInLayout, executor);
-    CHECK_RET(fagRes[0] != nullptr && fagRes[1] != nullptr && fagRes[2] != nullptr,  // 0: dqOut 1: dkOut 2:dvOut
-              ACLNN_ERR_PARAM_NULLPTR);
-
-    // transpose + slice + reshape + viewCopy
-    ret = PostFlashAttentionScoreGrad(fagRes, &dqOut, nullptr, &dkOut, nullptr, &dvOut,
-        nullptr, nullptr, fagShape, fagShapeArray, executor);
-    CHECK_RET(ret == ACLNN_SUCCESS, ret);
-
-    return ACLNN_SUCCESS;
-}
-
-aclnnStatus aclnnQuantFlashAttentionScoreGradGetWorkspaceSize(
-  const aclTensor   *query,
-  const aclTensor   *keyIn,
-  const aclTensor   *value,
-  const aclTensor   *dy,
-  const aclTensor   *attenMaskOptional,
-  const aclTensor   *softmaxMax,
-  const aclTensor   *softmaxSum,
-  const aclTensor   *attentionIn,
-  const aclTensor   *dScaleQ,
-  const aclTensor   *dScaleK,
-  const aclTensor   *dScaleV,
-  const aclTensor   *dScaleDy,
-  const aclTensor   *dsScale,
-  const aclTensor   *pScale,
-  double             scaleValueOptional,
-  int64_t            preTokensOptional,
-  int64_t            nextTokensOptional,
-  int64_t            headNum,
-  char              *inputLayout,
-  int64_t            sparseModeOptional,
-  int64_t            outDtypeOptional,
-  aclTensor         *dqOut,
-  aclTensor         *dkOut,
-  aclTensor         *dvOut,
-  uint64_t          *workspaceSize,
-  aclOpExecutor    **executor)
+    aclrtStream stream)
 {
-    L2_DFX_PHASE_1(aclnnQuantFlashAttentionScoreGrad,
-        DFX_IN(query, keyIn, value, dy, softmaxMax, softmaxSum, attentionIn, dScaleQ, dScaleK, dScaleV, dScaleDy,
-        scaleValueOptional, headNum, inputLayout, outDtypeOptional, dsScale, pScale),
-        DFX_OUT(dqOut, dkOut, dvOut));
- 
-    // 固定写法，创建OpExecutor
-    auto uniqueExecutor = CREATE_EXECUTOR();
-    CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
- 
-    // 空Tensor处理
-    OP_CHECK(query != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "the query cannot be nullptr"),
-        return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK(keyIn != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "the keyIn cannot be nullptr"),
-        return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK(value != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "the value cannot be nullptr"),
-        return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK(dy != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "the dy cannot be nullptr"),
-        return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK(dqOut != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "the dqOut cannot be nullptr"),
-        return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK(dkOut != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "the dkOut cannot be nullptr"),
-        return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK(dvOut != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "the dvOut cannot be nullptr"),
-        return ACLNN_ERR_PARAM_NULLPTR);
-    if (dqOut->IsEmpty() && dkOut->IsEmpty() && dvOut->IsEmpty()) {
-        OP_LOGD("All out tensor is empty");
-        *workspaceSize = 0;
-        uniqueExecutor.ReleaseTo(executor);
-        return ACLNN_SUCCESS;
-    }
-    // 异常防护
-    if (headNum <= 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Invalid HeadNum, pls check input attr");
-        return ACLNN_ERR_PARAM_INVALID;
-    }
- 
-    // calculate fag
-    auto ret = QuantFlashAttentionScoreGradGetWorkspace(
-        query, keyIn, value, dy, softmaxMax, softmaxSum, attentionIn,
-        dScaleQ, dScaleK, dScaleV, dScaleDy, dsScale, pScale, scaleValueOptional, headNum, inputLayout, 
-        outDtypeOptional, dqOut, dkOut,
-        dvOut, uniqueExecutor.get());
-    CHECK_RET(ret == ACLNN_SUCCESS, ret);
- 
-    // 固定写法，获取计算过程中需要使用的workspace大小
-    *workspaceSize = uniqueExecutor->GetWorkspaceSize();
-    uniqueExecutor.ReleaseTo(executor);
-    return ACLNN_SUCCESS;
-}
- 
-aclnnStatus aclnnQuantFlashAttentionScoreGrad(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                                    const aclrtStream stream) {
-    L2_DFX_PHASE_2(aclnnQuantFlashAttentionScoreGrad);
+    L2_DFX_PHASE_2(aclnnFlashAttentionScoreGradV4);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }
 }  // namespace

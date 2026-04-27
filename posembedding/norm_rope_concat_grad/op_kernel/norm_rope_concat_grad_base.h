@@ -177,8 +177,21 @@ public:
             return;
         }
         LocalTensor<DTYPE_ROPE_SIN> rope = ropeQueue_.AllocTensor<DTYPE_ROPE_SIN>();
-        DataCopy(rope, sinGm_[curSeq * ropeDim_], alignedRopeDim_);
-        DataCopy(rope[alignedRopeDim_], cosGm_[curSeq * ropeDim_], alignedRopeDim_);
+        auto sinLen = ropeDim_ * actualSeq_;
+        auto curSeqropeDimLen = curSeq * ropeDim_;
+        auto leftLen = sinLen - curSeqropeDimLen;
+        if (leftLen >= alignedRopeDim_) {
+            DataCopyExtParams params{1, static_cast<uint32_t>(alignedRopeDim_ * sizeof(DTYPE_ROPE_SIN)), 0, 0, 0};
+            DataCopyPadExtParams<DTYPE_ROPE_SIN> padParams{false, 0, 0, 0};
+            DataCopyPad(rope, sinGm_[curSeq * ropeDim_], params, padParams);
+            DataCopyPad(rope[alignedRopeDim_], cosGm_[curSeq * ropeDim_], params, padParams);
+        } else {
+            DataCopyExtParams params{1, static_cast<uint32_t>(leftLen * sizeof(DTYPE_ROPE_SIN)), 0, 0, 0};
+            DataCopyPadExtParams<DTYPE_ROPE_SIN> padParams{true, 0, static_cast<uint8_t>(alignedRopeDim_ - leftLen), 0};
+            DataCopyPad(rope, sinGm_[curSeq * ropeDim_], params, padParams);
+            DataCopyPad(rope[alignedRopeDim_], cosGm_[curSeq * ropeDim_], params, padParams);
+        }
+        
         ropeQueue_.EnQue(rope);
         LocalTensor<DTYPE_ROPE_SIN> deQue = ropeQueue_.DeQue<DTYPE_ROPE_SIN>();
         if (sizeof(DTYPE_ROPE_SIN) < sizeof(float)) {

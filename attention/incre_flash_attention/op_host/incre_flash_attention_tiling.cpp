@@ -2071,7 +2071,7 @@ void IFATiling::SplitBalancedForEachHeadFd(
         for (uint32_t s2Idx = 0U; s2Idx < seqTilingInfo.s2OuterNum[bIdx]; s2Idx++) {
             // 计算当前的目标权重
             uint64_t targetS2Length = static_cast<uint64_t>(tilingInfo.currCoreIdx + 1U) * seqTilingInfo.avgS2Length;
-            if (tilingInfo.accumS2Length + 1U >= targetS2Length) {
+            if (tilingInfo.accumS2Length + 1U >= targetS2Length && tilingInfo.currCoreIdx + 2 <= aicNum_) {
                 EndSplitForCurrentCore(TilingIndexes(bIdx, s1OuterIdx, s2Idx), seqTilingInfo, currKvSplitPart, tilingInfo);
             } else {
                 tilingInfo.accumS2Length += 1U;
@@ -2113,7 +2113,7 @@ void IFATiling::SplitBalancedForEachHead(
         for (uint32_t s2Idx = 0U; s2Idx < seqTilingInfo.s2OuterNum[bIdx]; s2Idx++) {
             // 计算当前的目标权重
             uint64_t targetS2Length = static_cast<uint64_t>(tilingInfo.currCoreIdx + 1U) * seqTilingInfo.avgS2Length;
-            if (tilingInfo.accumS2Length + 1U >= targetS2Length) {
+            if (tilingInfo.accumS2Length + 1U >= targetS2Length && tilingInfo.currCoreIdx + 2 <= aicNum_) {
                 EndSplitForCurrentCore(TilingIndexes(bIdx, s1OuterIdx, s2Idx), seqTilingInfo, currKvSplitPart, tilingInfo);
             } else {
                 tilingInfo.accumS2Length += 1U;
@@ -4179,6 +4179,7 @@ ge::graphStatus IFATiling::DoSubOpTiling(IncreFlashAttentionContext& ifaContext)
     if (RunBigKernelTiling(ifaContext, ifaTilingData) == ge::SUCCESS) {
         context_->SetTilingKey(ifaContext.tilingKey);
         context_->SetBlockDim(ifaContext.numBlocks);
+        context_->SetScheduleMode(BATCH_MODE_SCHEDULE);
         IncreFlashAttentionSetTilingData(*context_, ifaTilingData);
         return ge::GRAPH_SUCCESS;
     }

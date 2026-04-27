@@ -2889,7 +2889,8 @@ bool PromptFlashAttentionTilingV2::CheckTransposeLayoutCrossover(ContextParamsFo
     return true;
 }
 
-bool PromptFlashAttentionTilingV2::CheckLearnSink(ContextParamsForPFATiling &contextKeyParams, PFAShapeInfo &queryShapeInfo)
+bool PromptFlashAttentionTilingV2::CheckLearnSink(ContextParamsForPFATiling &contextKeyParams,
+    PFAShapeInfo &queryShapeInfo, PFAShapeInfo &valueShapeInfo)
 {
     if (!enableLearnSink) {
         return true;
@@ -2908,6 +2909,9 @@ bool PromptFlashAttentionTilingV2::CheckLearnSink(ContextParamsForPFATiling &con
         return false);
     OP_CHECK_IF(queryShapeInfo.d != 192 && queryShapeInfo.d != 128 && queryShapeInfo.d != 64, OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
             "When learnable sink is used, query headdim must be one of {192, 128, 64}."),
+        return false);
+    OP_CHECK_IF(valueShapeInfo.d != 128 && valueShapeInfo.d != 64, OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
+            "When learnable sink is used, value headdim must be one of {128, 64}."),
         return false);
     OP_CHECK_IF(enablePseShift, OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, 
             "When learnable sink is used, pse is not supported!"),
@@ -4399,6 +4403,8 @@ ge::graphStatus PromptFlashAttentionTilingV2::SetAttributeInfo(ContextParamsForP
         if (*keyAntiquantMode == static_cast<int64_t>(AntiquantTypeEnum::PER_BLOCK) && *queryQuantMode == static_cast<int64_t>(AntiquantTypeEnum::PER_BLOCK)
             && *valueAntiquantMode == static_cast<int64_t>(AntiquantTypeEnum::PER_BLOCK)) { // 7: FP8 perblock quant
             enablePerblockQuant = true;
+            OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "Per-block quant scenario is not supported.");
+            return ge::GRAPH_FAILED;
         } else {
             if (!enableIFAMLAFullQuant) {
                 enablePertensorQuant = true;
@@ -4407,6 +4413,8 @@ ge::graphStatus PromptFlashAttentionTilingV2::SetAttributeInfo(ContextParamsForP
     }
     if (enablePertensorQuant) {
         faRunFlag_ = false;
+        OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "Per-tensor quant scenario is not supported.");
+        return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -4588,7 +4596,7 @@ ge::graphStatus PromptFlashAttentionTilingV2::CheckSingleAttribute(ContextParams
     }
 
     // attention sink check
-    if (!CheckLearnSink(contextKeyParams, queryShapeInfo)) {
+    if (!CheckLearnSink(contextKeyParams, queryShapeInfo, valueShapeInfo)) {
         OP_LOGE(contextKeyParams.opName, "Check sink failed!");
         return ge::GRAPH_FAILED;
     }

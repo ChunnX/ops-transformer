@@ -75,7 +75,7 @@
 ```c++
 aclnnStatus aclnnScatterPaCacheGetWorkspaceSize(
   const aclTensor *key, 
-  const aclTensor *keyCacheRef, 
+  aclTensor       *keyCacheRef, 
   const aclTensor *slotMapping, 
   const aclTensor *compressLensOptional, 
   const aclTensor *compressSeqOffsetOptional, 

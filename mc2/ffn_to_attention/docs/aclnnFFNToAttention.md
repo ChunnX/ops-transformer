@@ -95,7 +95,7 @@ aclnnStatus aclnnFFNToAttention(
       <td>microBatchIds</td>
       <td>输入</td>
       <td>每个token的microBatch索引。</td>
-      <td>shape为 <code>(Y, )</code>，取值区间为[0, MircoBatchNum-1]。</td>
+      <td>shape为 <code>(Y, )</code>，取值区间为[0, MicroBatchNum-1]。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>1</td>
@@ -165,7 +165,7 @@ aclnnStatus aclnnFFNToAttention(
       <td>tokenInfoTableShape</td>
       <td>输入</td>
       <td>Token信息列表大小。</td>
-      <td>包含microBatch的大小（MircoBatchNum）、BatchSize大小（Bs）、以及每个Token对应的Expert数量（ExpertNumPerToken）。</td>
+      <td>包含microBatch的大小（MicroBatchNum）、BatchSize大小（Bs）、以及每个Token对应的Expert数量（ExpertNumPerToken）。</td>
       <td>INT32</td>
       <td>-</td>
       <td>-</td>
@@ -175,7 +175,7 @@ aclnnStatus aclnnFFNToAttention(
       <td>tokenDataShape</td>
       <td>输入</td>
       <td>Token数据列表大小。</td>
-      <td>包含microBatch的大小（MircoBatchNum）、BatchSize大小（Bs）、每个Token对应的Expert数量(ExpertNumPerToken)、以及token和scale长度(HS)。</td>
+      <td>包含microBatch的大小（MicroBatchNum）、BatchSize大小（Bs）、每个Token对应的Expert数量(ExpertNumPerToken)、以及token和scale长度(HS)。</td>
       <td>INT32</td>
       <td>-</td>
       <td>-</td>
@@ -299,7 +299,7 @@ aclnnStatus aclnnFFNToAttention(
   | Bs           | 表示各Attention节点上的发送token数。<ul><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：<code>0 < Bs ≤ 512 </code>。</li></ul> |
   | H（hidden size） | 表示hidden size隐藏层大小。<ul><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：<code>1024 ≤  H ≤ 8192 </code>。</li></ul> |
   | HS（hidden and scale size） | 表示hidden与scale 隐藏层大小。<ul><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：<code>1152 ≤  HS ≤ 8320 </code>。</li></ul>|
-  | MircoBatchNum    | 表示microBatch的大小，目前仅支持<code>MircoBatchNum = 1</code>。 |  
+  | MicroBatchNum    | 表示microBatch的大小，目前仅支持<code>MicroBatchNum = 1</code>。 |  
   | ExpertNumPerToken    | 表示每个Token对应的发送的Expert数量，<code>ExpertNumPerToken = K + sharedExpertNum</code>。 |  
   | K    | 表示选取topK个专家，取值范围为<code>0 < K ≤ 16 </code>。 |  
   | ffnRankNum    | 表示选取ffnRankNum个卡作为FFnWorker，取值范围为<code>0 < ffnRankNum < worldSize </code>。 | 

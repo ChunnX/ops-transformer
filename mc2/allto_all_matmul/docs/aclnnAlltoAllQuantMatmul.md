@@ -85,8 +85,8 @@ aclnnStatus aclnnAlltoAllQuantMatmulGetWorkspaceSize(
   int64_t            groupSize,
   bool               transposeX1,
   bool               transposeX2,
-  aclTensor*         output,
-  aclTensor*         alltoAllOutOptional,
+  const aclTensor*   output,
+  const aclTensor*   alltoAllOutOptional,
   uint64_t*          workspaceSize,
   aclOpExecutor**    executor)
 ```

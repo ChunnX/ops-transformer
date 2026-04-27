@@ -451,8 +451,8 @@ ge::graphStatus BSATiling::ParseAttenMask(gert::TilingContext *bsaContext)
 {
     const auto *attenMaskTensor = bsaContext->GetOptionalInputTensor(ATTEN_MASK_INDEX);
     if (attenMaskTensor != nullptr) {
-        OP_LOGW(bsaContext->GetNodeName(),
-            "AttenMask is NOT YET supported, therefore any type of mask would not be dealt with in this operator.");
+        OP_LOGE(bsaContext->GetNodeName(), "AttenMask is NOT YET supported.");
+        return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -461,8 +461,9 @@ ge::graphStatus BSATiling::ParseBlockTable(gert::TilingContext *bsaContext)
 {
     const auto *blockTableTensor = bsaContext->GetOptionalInputTensor(BLOCK_TABLE_INDEX);
     if (blockTableTensor != nullptr) {
-        OP_LOGW(bsaContext->GetNodeName(),
-            "Paged cache is NOT YET supported, therefore blockTable would not be dealt with in this operator.");
+        OP_LOGE(bsaContext->GetNodeName(),
+            "Paged cache is NOT YET supported, therefore blockTable should be nullptr.");
+        return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
