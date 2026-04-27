@@ -54,9 +54,10 @@ private:
     bool BalanceSchedule(SectionStreamKResult &splitRes);
     bool GenMetaData(SectionStreamKResult &splitRes);
     bool ParamsInit();
+    std::vector<int64_t> GetTensorDataAsInt64(Tensor *tensor, size_t size);
 
 private:
-    CpuKernelContext* context_ = nullptr;
+    CpuKernelContext *context_ = nullptr;
     // input tensor
     Tensor *cuSeqlensQ_ = nullptr;
     Tensor *cuSeqlensKv_ = nullptr;
@@ -89,6 +90,7 @@ private:
     load_balance::DeviceInfo deviceInfo;
     load_balance::BaseInfo baseInfo;
     load_balance::SectionStreamKParam param;
+
 private:
     enum class ParamId : uint32_t {
         // input

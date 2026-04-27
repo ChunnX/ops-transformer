@@ -45,11 +45,11 @@ bool FlashAttnMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     metaData_ = ctx.Output(static_cast<uint32_t>(ParamId::metaData));
 
     bool requiredAttrs =
-                GetAttrValue(ctx, "num_heads_q", numHeadsQ_) &&
+        GetAttrValue(ctx, "num_heads_q", numHeadsQ_) &&
                 GetAttrValue(ctx, "num_heads_kv", numHeadsKv_) &&
-                GetAttrValue(ctx, "head_dim", headDim_) &&
+        GetAttrValue(ctx, "head_dim", headDim_) &&
                 GetAttrValue(ctx, "soc_version", socVersion_) &&
-                GetAttrValue(ctx, "aic_core_num", aicCoreNum_) &&
+        GetAttrValue(ctx, "aic_core_num", aicCoreNum_) &&
                 GetAttrValue(ctx, "aiv_core_num", aivCoreNum_);
     if (!requiredAttrs) {
         return false;
@@ -68,9 +68,74 @@ bool FlashAttnMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     // return true;
 }
 
+std::vector<int64_t> FlashAttnMetadataCpuKernel::GetTensorDataAsInt64(Tensor *tensor, size_t size)
+{
+    std::vector<int64_t> result(size);
+    if (tensor == nullptr || tensor->GetData() == nullptr || size == 0) {
+        return result;
+    }
+
+    DataType dataType = tensor->GetDataType();
+    void *data = tensor->GetData();
+
+    switch (dataType) {
+        case DT_INT32:
+            {
+                int32_t *ptr = static_cast<int32_t *>(data);
+                for (size_t i = 0; i < size; ++i) {
+                    result[i] = static_cast<int64_t>(ptr[i]);
+                }
+                break;
+            }
+        case DT_INT64:
+            {
+                int64_t *ptr = static_cast<int64_t *>(data);
+                for (size_t i = 0; i < size; ++i) {
+                    result[i] = ptr[i];
+                }
+                break;
+            }
+        case DT_INT16:
+            {
+                int16_t *ptr = static_cast<int16_t *>(data);
+                for (size_t i = 0; i < size; ++i) {
+                    result[i] = static_cast<int64_t>(ptr[i]);
+                }
+                break;
+            }
+        case DT_UINT32:
+            {
+                uint32_t *ptr = static_cast<uint32_t *>(data);
+                for (size_t i = 0; i < size; ++i) {
+                    result[i] = static_cast<int64_t>(ptr[i]);
+                }
+                break;
+            }
+        case DT_UINT64:
+            {
+                uint64_t *ptr = static_cast<uint64_t *>(data);
+                for (size_t i = 0; i < size; ++i) {
+                    result[i] = static_cast<int64_t>(ptr[i]);
+                }
+                break;
+            }
+        case DT_UINT16:
+            {
+                uint16_t *ptr = static_cast<uint16_t *>(data);
+                for (size_t i = 0; i < size; ++i) {
+                    result[i] = static_cast<int64_t>(ptr[i]);
+                }
+                break;
+            }
+        default:
+            break;
+    }
+    return result;
+}
+
 bool FlashAttnMetadataCpuKernel::ParamsInit()
 {
-    // Device info 
+    // Device info
     deviceInfo.aicCoreMaxNum = aicCoreNum_;
     deviceInfo.aivCoreMaxNum = aivCoreNum_;
     deviceInfo.aicCoreMinNum = aicCoreNum_;
@@ -87,7 +152,7 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
     }
     if (!baseInfo.isCumulativeQuerySeq && sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr) {
         batchSize_ = sequsedQ_->GetTensorShape()->GetDimSize(0);
-        auto sequsedQ = (int64_t *)sequsedQ_->GetData();
+        auto sequsedQ = GetTensorDataAsInt64(sequsedQ_, batchSize_);
         baseInfo.actualQuerySeqSize.resize(batchSize_, maxSeqlenQ_);
         for (uint32_t i = 0; i < batchSize_; ++i) {
             baseInfo.actualQuerySeqSize[i] = sequsedQ[i];
@@ -95,16 +160,16 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
         }
     } else if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
         batchSize_ = cuSeqlensQ_->GetTensorShape()->GetDimSize(0) - 1;
-        auto cuSeqlensQ = (int64_t *)cuSeqlensQ_->GetData();
+        auto cuSeqlensQ = GetTensorDataAsInt64(cuSeqlensQ_, batchSize_ + 1);
         baseInfo.actualQuerySeqSize.resize(batchSize_, maxSeqlenQ_);
         for (uint32_t i = 0; i < batchSize_; ++i) {
             baseInfo.actualQuerySeqSize[i] = cuSeqlensQ[i + 1];
-            maxSeqlenQ_ = std::max(static_cast<int64_t>(maxSeqlenQ_) , cuSeqlensQ[i + 1] - cuSeqlensQ[i]);
+            maxSeqlenQ_ = std::max(static_cast<int64_t>(maxSeqlenQ_), cuSeqlensQ[i + 1] - cuSeqlensQ[i]);
         }
     }
     if (!baseInfo.isCumulativeKvSeq && sequsedKv_ != nullptr && sequsedKv_->GetData() != nullptr) {
         batchSize_ = sequsedKv_->GetTensorShape()->GetDimSize(0);
-        auto sequsedKv = (int64_t *)sequsedKv_->GetData();
+        auto sequsedKv = GetTensorDataAsInt64(sequsedKv_, batchSize_);
         baseInfo.actualKvSeqSize.resize(batchSize_, maxSeqlenKv_);
         for (uint32_t i = 0; i < batchSize_; ++i) {
             baseInfo.actualKvSeqSize[i] = sequsedKv[i];
@@ -112,14 +177,14 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
         }
     } else if (cuSeqlensKv_ != nullptr && cuSeqlensKv_->GetData() != nullptr) {
         batchSize_ = cuSeqlensKv_->GetTensorShape()->GetDimSize(0) - 1;
-        auto cuSeqlensKv = (int64_t *)cuSeqlensKv_->GetData();
+        auto cuSeqlensKv = GetTensorDataAsInt64(cuSeqlensKv_, batchSize_ + 1);
         baseInfo.actualKvSeqSize.resize(batchSize_, maxSeqlenKv_);
         for (uint32_t i = 0; i < batchSize_; ++i) {
             baseInfo.actualKvSeqSize[i] = cuSeqlensKv[i + 1];
-            maxSeqlenKv_ = std::max(static_cast<int64_t>(maxSeqlenKv_) , cuSeqlensKv[i + 1] - cuSeqlensKv[i]);
+            maxSeqlenKv_ = std::max(static_cast<int64_t>(maxSeqlenKv_), cuSeqlensKv[i + 1] - cuSeqlensKv[i]);
         }
     }
-    baseInfo.batchSize = batchSize_;
+        baseInfo.batchSize = batchSize_;
     baseInfo.queryHeadNum = numHeadsQ_;
     baseInfo.querySeqSize = maxSeqlenQ_;
     baseInfo.kvHeadNum = numHeadsKv_;
@@ -159,14 +224,14 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
             s2BaseSize_ = NUM_256;
         } else if (((baseInfo.layoutQuery == Layout::BSH) || (baseInfo.layoutQuery == Layout::BSND) ||
                     (baseInfo.layoutQuery == Layout::TND)) &&
-                   pfaMergeFlag) {
+                pfaMergeFlag) {
             mBaseSize_ = NUM_32;
             s2BaseSize_ = NUM_256;
         }
     } else if (baseInfo.headDim > NUM_128 && baseInfo.querySeqSize != 1) {
         if (((baseInfo.layoutQuery == Layout::BSH) || (baseInfo.layoutQuery == Layout::BSND) ||
-                    (baseInfo.layoutQuery == Layout::TND)) &&
-                   pfaMergeFlag && baseInfo.headDim <= NUM_256) { // 256 : D size
+            (baseInfo.layoutQuery == Layout::TND)) &&
+            pfaMergeFlag && baseInfo.headDim <= NUM_256) { // 256 : D size
             mBaseSize_ = NUM_32;
             s2BaseSize_ = NUM_256;
         } else {
