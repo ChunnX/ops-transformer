@@ -103,7 +103,7 @@ private:
         return (a + b - 1) / b * b;
     }
 
-    __aicore__ inline void gmSignalWait(__gm__ int32_t *sig_addr, int32_t cmp_val)
+    __aicore__ inline void GmSignalWait(__gm__ int32_t *sig_addr, int32_t cmp_val)
     {
         do {
             if (ReadGmByPassDCache(sig_addr) != cmp_val) {
@@ -112,7 +112,7 @@ private:
         } while (true);
     }
 
-    __aicore__ inline void gmSignalWaitBarrier(__gm__ int32_t *sig_addr, int32_t cmp_val)
+    __aicore__ inline void GmSignalWaitBarrier(__gm__ int32_t *sig_addr, int32_t cmp_val)
     {
         do {
             if (ReadGmByPassDCache(sig_addr) == cmp_val) {
@@ -154,14 +154,12 @@ private:
     uint32_t expertPerRank_ = 0;
     uint32_t groupListType_ = 0;
     uint64_t maxOutputSize_ = 0;
-
     int32_t prevSum_ = 0;
     int32_t dispatchRows_ = 0;
     int32_t vecSetSyncCom_ = 0;
     uint32_t startBlockIdx_ = 0;
     uint32_t dispatchBlockNumPerEP_ = 2;
     int32_t perRankStridesInTokenPerExpert_ = 0;
-
     uint32_t blockNum_ = GetBlockNum();
     uint32_t blockIdx_ = GetBlockIdx() / GetTaskRation();
     uint32_t aivCoreIdx_ = GetBlockIdx();
@@ -367,7 +365,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CrossRankSyncCntPerExpe
         if (dstRankIdx != rankId_) {
             for (int32_t checkIdx = 0; checkIdx < numPerCore; checkIdx += intPer512) {
                 __gm__ int32_t* syncCheck = reinterpret_cast<__gm__ int32_t*>(params_.peermemInfo.ptrTokenPerExpert) + TokenPerExpertLayout(dstRankIdx, 0, checkIdx);
-                gmSignalWait(syncCheck, 0);
+                GmSignalWait(syncCheck, 0);
             }
             DataCopy(tmpBuffer, tokenPerExpertWin_[TokenPerExpertLayout(dstRankIdx, 0, 0)], numPerCore);
             SyncFunc<AscendC::HardEvent::MTE2_V>();
@@ -643,7 +641,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CrossRankSyncInWorldSiz
         __gm__ int32_t* syncRemoteAddr = (__gm__ int32_t*)(winRankAddr_[i]) + rankId_ * 16;
         WriteGmByPassDCache(syncRemoteAddr, count);
         auto syncCheck = syncRank + i * 16;
-        gmSignalWaitBarrier(syncCheck, count);
+        GmSignalWaitBarrier(syncCheck, count);
     }
     SyncAll<true>();
     *(syncCount + aivCoreIdx_ * 16) = count;
