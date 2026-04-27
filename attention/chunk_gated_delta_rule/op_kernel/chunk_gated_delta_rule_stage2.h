@@ -110,11 +110,11 @@ public:
                 if ASCEND_IS_AIV {
                     if (GetSubBlockIdx() == 0) {
                         CopyIn(curState, Dv_, Dk_);
-                        CalGCumExp(finalState, sTP_->gCum[nvId * Sp_ + length]);
+                        CalGCumExp(sTP_->gCum[nvId * Sp_ + length]);
                     }
                     CrossCoreWaitFlag(0x2);
                     if (GetSubBlockIdx() == 0) {
-                        CopyOutState();
+                        CopyOutState(finalState);
                     }
                     CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5);
                     CrossCoreWaitFlag(0x4);
@@ -136,7 +136,7 @@ public:
         }
     }
 
-    __aicore__ inline void CalGCumExp(GlobalTensor<bfloat16_t> stateNew, GlobalTensor<float> gCum)
+    __aicore__ inline void CalGCumExp(GlobalTensor<float> gCum)
     {
         if (gOptional_) {
             // 刷新cache
@@ -147,7 +147,7 @@ public:
             Exp<float, 0, true>(lastGCum_, lastGCum_, 1);
         }
         else {
-            lastGCum_.SetValue(1.0f);
+            lastGCum_.SetValue(0, 1.0f);
         }
         
         auto stateIn = inQueue_.DeQue<bfloat16_t>();
@@ -161,6 +161,7 @@ public:
         SetFlag<HardEvent::V_MTE3>(V_MTE3_EVENT);
         WaitFlag<HardEvent::V_MTE3>(V_MTE3_EVENT);
         outQueue_.EnQue(stateOut);
+        inQueue_.FreeTensor(stateIn);
     }
 
     __aicore__ inline void CalAttnInter(GlobalTensor<bfloat16_t> qPrime,
@@ -216,10 +217,9 @@ public:
         inQueue_.EnQue(inLocal);
     }
 
-    __aicore__ inline void CopyOutState()
+    __aicore__ inline void CopyOutState(GlobalTensor<bfloat16_t> stateNew)
     {
         CopyOut<bfloat16_t>(stateNew, Dv_, Dk_, false);
-        inQueue_.FreeTensor(stateIn);
     }
 
     template <typename outType>
