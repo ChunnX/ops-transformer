@@ -491,19 +491,19 @@ bool CheckMxA8W4InputShape(gert::TilingContext *contex)
                 return false);
 
     // Validate K and N alignment for MX-A8W4 weight quant
-    OP_CHECK_IF(kSize % ALIGN_SIZE_KN != 0,
-                OP_LOGE(contex->GetNodeName(), "K dimension must be aligned to %u, actual K=%lld", ALIGN_SIZE_KN, kSize),
-                return false);
-    OP_CHECK_IF(nSize % ALIGN_SIZE_KN != 0,
-                OP_LOGE(contex->GetNodeName(), "N dimension must be aligned to %u, actual N=%lld", ALIGN_SIZE_KN, nSize),
-                return false);
+    OP_CHECK_IF(
+        kSize % ALIGN_SIZE_KN != 0,
+        OP_LOGE(contex->GetNodeName(), "K dimension must be aligned to %u, actual K=%lld", ALIGN_SIZE_KN, kSize),
+        return false);
+    OP_CHECK_IF(
+        nSize % ALIGN_SIZE_KN != 0,
+        OP_LOGE(contex->GetNodeName(), "N dimension must be aligned to %u, actual N=%lld", ALIGN_SIZE_KN, nSize),
+        return false);
 
     // Validate K and N minimum size for MX-A8W4 weight quant
-    OP_CHECK_IF(kSize < 64,
-                OP_LOGE(contex->GetNodeName(), "K dimension must be >= 64, actual K=%lld", kSize),
+    OP_CHECK_IF(kSize < 64, OP_LOGE(contex->GetNodeName(), "K dimension must be >= 64, actual K=%lld", kSize),
                 return false);
-    OP_CHECK_IF(nSize < 32,
-                OP_LOGE(contex->GetNodeName(), "N dimension must be >= 32, actual N=%lld", nSize),
+    OP_CHECK_IF(nSize < 32, OP_LOGE(contex->GetNodeName(), "N dimension must be >= 32, actual N=%lld", nSize),
                 return false);
 
     // 3. Validate group_list shape
