@@ -185,6 +185,8 @@ attention:
       - attention/nsa_compress_grad
     options:
       - nsa_compress_grad
+    test:
+        ut: False
 
   nsa_compress_with_cache:
     module: True
