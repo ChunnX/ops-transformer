@@ -326,9 +326,9 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::AdjustSinnerAndSouter(gert::
                             SINNER_128;
         softmaxSOuterFactor = SOUTER_64;
     }
-    if (enableMxfp8FullQuant) {
-        sOuterFactor_ = 64;
-        sInnerFactor_ = 512;
+    if (fiaInfo.fullQuantMode == FiaFullQuantMode::MXFP8_FULL_QUANT) {
+        sOuterFactor_ = SOUTER_64;
+        sInnerFactor_ = SINNER_512;
     }
     OP_LOGI(fiaInfo.opName, "Souter:%u SInner:%u softmaxSOuterFactor %u", sOuterFactor_, sInnerFactor_,
             softmaxSOuterFactor);
@@ -1136,9 +1136,9 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SplitPolicy(gert::TilingCont
         if (dnFlag_ && fiaInfo.fullQuantMode == FiaFullQuantMode::PER_BLOCK_FULL_QUANT  && fiaInfo.qkHeadDim == fiaInfo.vHeadDim && fiaInfo.qkHeadDim <= 128) {
             sInnerFactor_ = SINNER_256;
         }
-        if (enableMxfp8FullQuant) {
-            sOuterFactor_ = 64;
-            sInnerFactor_ = 512;
+        if (fiaInfo.fullQuantMode == FiaFullQuantMode::MXFP8_FULL_QUANT) {
+            sOuterFactor_ = SOUTER_64;
+            sInnerFactor_ = SINNER_512;
         }
 
         enableS1OutSplit = CheckS1OutSplit(fiaInfo);
@@ -1326,7 +1326,8 @@ void FusedInferAttentionScoreTilingImpl::UpdateTilingKeyQuantMode(const FiaTilin
         } else if (*fiaInfo.opParamInfo.keyAntiquantMode == 7 && *fiaInfo.opParamInfo.valueAntiquantMode == 7 &&
                    *fiaInfo.opParamInfo.queryQuantMode == 7) {
             tilingKeyInfo_.quantMode = PerBlock;
-        } else if(enableMxfp8FullQuant){
+        } else if(*fiaInfo.opParamInfo.keyAntiquantMode == 6 && *fiaInfo.opParamInfo.valueAntiquantMode == 8 &&
+                   *fiaInfo.opParamInfo.queryQuantMode == 6){
             tilingKeyInfo_.quantMode = FULLQUANT_MODE_MXFP8;
         } else {
             tilingKeyInfo_.quantMode = FullQuantMode;
