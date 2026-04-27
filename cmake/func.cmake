@@ -576,6 +576,9 @@ function(add_bin_compile_target)
  	                endif()
                     get_filename_component(_depend_op_name "${depend_info}" NAME)
                     set(_depend_op_target ${_depend_op_name}_${BINARY_COMPUTE_UNIT}_src_copy)
+                    if("${_depend_op_name}" STREQUAL "common")
+                        continue()
+                    endif()
                     add_ops_src_copy(
                             TARGET_NAME
                             ${_depend_op_target}
@@ -701,7 +704,7 @@ function(add_bin_compile_target)
                 add_dependencies(${OP_TARGET_NAME}_${op_index} optiling_compat generate_ops_info)
             endif ()
             add_dependencies(${OP_TARGET_NAME}_${op_index} ${OP_TARGET_NAME}_src_copy ${OP_TARGET_NAME}_py_copy ${OP_TARGET_NAME}_mkdir)
-            add_dependencies(${OP_TARGET_NAME}_${op_index} generate_compile_cmd)
+            add_dependencies(${OP_TARGET_NAME}_${op_index} generate_compile_cmd common_src_copy)
             add_dependencies(${OP_TARGET_NAME} ${OP_TARGET_NAME}_${op_index})
         endif ()
     endforeach()

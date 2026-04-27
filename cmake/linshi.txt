@@ -1,0 +1,68 @@
+    foreach (op_dir ${OP_DIR_LIST})
+        get_filename_component(_op_name "${op_dir}" NAME)
+        set(CURRENT_KERNEL_DIR "${op_dir}/op_kernel")
+        file(GLOB KERNEL_SUB_DIRS RELATIVE "${CURRENT_KERNEL_DIR}" "${CURRENT_KERNEL_DIR}/*")
+        filter_copy_files(SELECTED_FILES SELECTED_DIRS)
+        install(FILES ${SELECTED_FILES}
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}
+            OPTIONAL
+        )
+        install(DIRECTORY ${SELECTED_DIRS}
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}
+            OPTIONAL
+        )
+
+        foreach (op_depend_dir ${${_op_name}_depends})
+            set(CURRENT_KERNEL_DIR "${OPS_TRANSFORMER_DIR}/${op_depend_dir}/op_kernel")
+            file(GLOB KERNEL_SUB_DIRS RELATIVE "${CURRENT_KERNEL_DIR}" "${CURRENT_KERNEL_DIR}/*")
+            get_filename_component(_op_depened_name "${op_depend_dir}" NAME)
+            get_filename_component(_op_parent_name "${op_depend_dir}" DIRECTORY)
+            filter_copy_files(SELECTED_DEPEND_FILES SELECTED_DEPEND_DIRS)
+            install(FILES ${SELECTED_DEPEND_FILES}
+                    DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_depened_name}
+                    OPTIONAL
+            )
+            install(DIRECTORY ${SELECTED_DEPEND_DIRS}
+                    DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_depened_name}
+                    OPTIONAL
+            )
+            MESSAGE(STATUS "++++++++++++++++***************")
+            MESSAGE(STATUS "${_op_parent_name}")
+            MESSAGE(STATUS "${_op_depened_name}")
+            if (ENABLE_OPS_KERNEL AND ${_op_depened_name} STREQUAL "common")
+                if(NOT TARGET common_src_copy)
+                    add_custom_target(common_src_copy ALL)
+                endif()
+                set(_common_compute_unit ${ASCEND_COMPUTE_UNIT})
+                set(_common_out_src_dir ${ASCEND_BINARY_OUT_DIR}/${_common_compute_unit}/src/comm)
+                set(COMMON_SRC_DIR "${OPS_TRANSFORMER_DIR}/${op_depend_dir}")
+                get_filename_component(COMMON_SRC_DIR "${COMMON_SRC_DIR}" REALPATH)
+                MESSAGE(STATUS "xxxxx ${_common_compute_unit}")
+                MESSAGE(STATUS "xxxxx ${_common_out_src_dir}")
+
+                set(COMMON_TARGET_NAME ${_op_parent_name}_${_op_depened_name}_${_common_compute_unit}_src_copy_xxx)
+                MESSAGE(STATUS "xxxxx ${COMMON_TARGET_NAME}")
+                if (NOT TARGET ${COMMON_TARGET_NAME})
+                    set(COMMON_COPY_STAMP "${_common_out_src_dir}/.all_common_copy.stamp")
+                    file(GLOB_RECURSE COMMON_FILES CONFIGURE_DEPENDS 
+                        ${COMMON_SRC_DIR}/*
+                    )
+                    MESSAGE(STATUS "yyyyy ${COMMON_TARGET_NAME}")
+                    MESSAGE(STATUS "yyyyy ${COMMON_FILES}")
+                    add_custom_command(OUTPUT ${COMMON_COPY_STAMP}
+                        COMMAND ${CMAKE_COMMAND} -E make_directory ${_common_out_src_dir}
+                        COMMAND ${CMAKE_COMMAND} -E copy_directory ${COMMON_SRC_DIR} ${_common_out_src_dir}
+                        COMMAND echo "xxxxy ${COMMON_SRC_DIR} ${_common_out_src_dir}"
+                        COMMAND ${CMAKE_COMMAND} -E touch ${COMMON_COPY_STAMP}
+                        DEPENDS ${COMMON_FILES}
+                        VERBATIM
+                    )
+                    add_custom_target(${COMMON_TARGET_NAME}
+                        DEPENDS ${COMMON_COPY_STAMP}
+                    )
+                    add_dependencies(common_src_copy ${COMMON_TARGET_NAME})
+                endif ()
+            endif ()
+        endforeach ()
+    endforeach ()
+endif()
