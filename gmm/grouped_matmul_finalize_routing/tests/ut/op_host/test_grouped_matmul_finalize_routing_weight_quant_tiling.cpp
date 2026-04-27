@@ -382,6 +382,8 @@ protected:
 TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzNormalCase) { ExecuteCsvTest("TestMXA8W4WeightNzNormalCase"); }
 TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzCoreNum) { ExecuteCsvTest("TestMXA8W4WeightNzCoreNum"); }
 TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzNullSharedInput) { ExecuteCsvTest("TestMXA8W4WeightNzNullSharedInput"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzKNotAligned) { ExecuteCsvTest("TestMXA8W4WeightNzKNotAligned"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzNNotAligned) { ExecuteCsvTest("TestMXA8W4WeightNzNNotAligned"); }
 TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzNullScale) { ExecuteCsvTest("TestMXA8W4WeightNzNullScale"); }
 TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzNullPertokenScale) { ExecuteCsvTest("TestMXA8W4WeightNzNullPertokenScale"); }
 TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzNullRowIndex) { ExecuteCsvTest("TestMXA8W4WeightNzNullRowIndex"); }
@@ -404,7 +406,7 @@ TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzEZeroWit
 TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestCsvFileLoaded)
 {
     auto& cases = GetCsvTestCases();
-    EXPECT_EQ(cases.size(), 24) << "Expected 24 test cases in CSV file";
+    EXPECT_EQ(cases.size(), 26) << "Expected 26 test cases in CSV file";
     
     cout << "Successfully loaded " << cases.size() << " test cases from CSV" << endl;
     for (const auto& pair : cases) {
