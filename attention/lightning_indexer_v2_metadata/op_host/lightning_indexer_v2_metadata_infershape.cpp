@@ -9,30 +9,30 @@
  */
 
 /*!
- * \file lightning_indexer_metadata_infershape.cpp
+ * \file lightning_indexer_v2_metadata_infershape.cpp
  * \brief
  */
 #include "register/op_impl_registry.h"
-#include "../op_kernel_aicpu/lightning_indexer_metadata.h"
+#include "../op_kernel_aicpu/lightning_indexer_v2_metadata.h"
 
 using namespace ge;
 
 namespace ops {
-static ge::graphStatus InferShapeQuantLightningIndexerMetaData(gert::InferShapeContext* context)
+static ge::graphStatus InferShapeLightningIndexerV2MetaData(gert::InferShapeContext* context)
 {
     gert::Shape* oShape = context->GetOutputShape(0);
     oShape->SetDimNum(1);
-    oShape->SetDim(0, optiling::LI_META_SIZE);
+    oShape->SetDim(0, optiling::LIV2_META_SIZE);
     return GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDtypeQuantLightningIndexerMetaData(gert::InferDataTypeContext* context)
+static ge::graphStatus InferDtypeLightningIndexerV2MetaData(gert::InferDataTypeContext* context)
 {
     context->SetOutputDataType(0, DT_INT32);
     return GRAPH_SUCCESS;
 }
 
-IMPL_OP_INFERSHAPE(LightningIndexerMetadata)
-    .InferShape(InferShapeQuantLightningIndexerMetaData)
-    .InferDataType(InferDtypeQuantLightningIndexerMetaData);
+IMPL_OP_INFERSHAPE(LightningIndexerV2Metadata)
+    .InferShape(InferShapeLightningIndexerV2MetaData)
+    .InferDataType(InferDtypeLightningIndexerV2MetaData);
 } // namespace ops
