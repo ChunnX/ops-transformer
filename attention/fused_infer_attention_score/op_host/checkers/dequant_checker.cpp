@@ -1320,7 +1320,8 @@ ge::graphStatus DequantChecker::CheckFeatureForAntiquant(const FiaTilingInfo &fi
 {
     if (ge::GRAPH_SUCCESS != CheckFeatureLayoutForAntiquant(fiaInfo) ||
         ge::GRAPH_SUCCESS != CheckFeatureQuerySForAntiquant(fiaInfo) ||
-        ge::GRAPH_SUCCESS != CheckFeaturePAForAntiquant(fiaInfo)) {
+        ge::GRAPH_SUCCESS != CheckFeaturePAForAntiquant(fiaInfo) ||
+        ge::GRAPH_SUCCESS != CheckFeatureRopeForAntiquant(fiaInfo)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -1492,6 +1493,15 @@ ge::graphStatus DequantChecker::CheckFeaturePAForAntiquant(const FiaTilingInfo &
             return ge::GRAPH_FAILED);
     }
 
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus DequantChecker::CheckFeatureRopeForAntiquant(const FiaTilingInfo &fiaInfo)
+{
+     OP_CHECK_IF((fiaInfo.ropeMode == RopeMode::ROPE_COMBINE),
+            OP_LOGE(fiaInfo.opName,
+                    "Combined rope is not supported in antiquant scenario."),
+            return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

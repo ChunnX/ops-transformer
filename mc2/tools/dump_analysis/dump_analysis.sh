@@ -382,13 +382,14 @@ else
             if [ -z "$om_file" ]; then
                 echo "warning:卡$rank_num :$dir 中未找到对应的graph文件(.om文件)"
                 continue
+            else
+                json_file="${om_file%.om}_device${rank_num}.json"
+                echo
+                echo "开始转换卡$rank_num 的graph图文件:$om_file"
+                atc --mode=1 --om="$om_file" --json="$json_file"
+                echo "转换后的文件为: $json_file"
+                echo
             fi
-            json_file="${om_file%.om}_device${rank_num}.json"
-            echo
-            echo "开始转换卡$rank_num 的graph图文件:$om_file"
-            atc --mode=1 --om="$om_file" --json="$json_file"
-            echo "转换后的文件为: $json_file"
-            echo
         done
 
     else
@@ -397,15 +398,15 @@ else
 
         if [ -z "$root_om" ]; then
             echo "warning:路径下没有任何 .om 文件"
+        else
+            rank_num=0
+            json_file="${root_om%.om}_device${rank_num}.json"
+            echo
+            echo "开始转换卡$rank_num 的graph图文件:$root_om"
+            atc --mode=1 --om="$root_om" --json="$json_file"
+            echo "转换后的文件为: $json_file"
+            echo
         fi
-
-        rank_num=0
-        json_file="${root_om%.om}_device${rank_num}.json"
-        echo
-        echo "开始转换卡$rank_num 的graph图文件:$root_om"
-        atc --mode=1 --om="$root_om" --json="$json_file"
-        echo "转换后的文件为: $json_file"
-        echo
     fi
 
     # 所有处理完成后，强制回到脚本初始执行路径

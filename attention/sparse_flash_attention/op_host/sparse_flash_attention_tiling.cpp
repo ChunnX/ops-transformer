@@ -368,6 +368,8 @@ void SFAMlaTiling::FillTilingBaseParamsMla()
     tilingData_.baseParams.set_sparseBlockCount(sfaInfo_->sparseBlockCount);
     tilingData_.baseParams.set_attentionMode(sfaInfo_->attentionMode);
     tilingData_.baseParams.set_returnSoftmaxLse(sfaInfo_->returnSoftmaxLse);
+    tilingData_.baseParams.set_isActualLenDimsNull(sfaInfo_->actualQSeqLenFlag ? 0U : 1U);
+    tilingData_.baseParams.set_isActualLenDimsKVNull(sfaInfo_->actualSeqLenFlag ? 0U : 1U);
 }
 
 // for flash decode
@@ -417,7 +419,7 @@ void SFAMlaTiling::NormalCalcFDWorkSpace(const uint32_t actCoreNum)
         accumOutSize = FDParamNums * headDimAlign_;
         logSumExpSize = 2 * FDParamNums * (BYTE_BLOCK / sfaInfo_->blockTypeSize);  // log和sum的存储空间一致，共需要2份内存
         workspaceSize_ += (accumOutSize + logSumExpSize) * sfaInfo_->blockTypeSize;
-        if (sfaInfo_->socVersion == platform_ascendc::SocVersion::ASCEND310P) {
+        if (sfaInfo_->npuArch == NpuArch::DAV_2002) {
             workspaceSize_ += static_cast<size_t>(actCoreNum) * 32; // 每个核SyncAll软同步需要32Byte记录状态
         }
     }
@@ -1415,7 +1417,8 @@ void SFATilingCheck::Init()
     opName_ = sfaInfo_.opName;
     platformInfo_ = sfaInfo_.platformInfo;
     opParamInfo_ = sfaInfo_.opParamInfo;
-    socVersion_ = sfaInfo_.socVersion;
+    npuArch_ = sfaInfo_.npuArch;
+    isA5_ = sfaInfo_.isA5;
 
     bSize_ = sfaInfo_.bSize;
     n1Size_ = sfaInfo_.n1Size;
@@ -1601,10 +1604,10 @@ ge::graphStatus SFAInfoParser::GetNpuInfo()
     OP_CHECK_IF(aicNum == 0 || aivNum == 0,
         OPS_REPORT_VECTOR_INNER_ERR(opName_, "num of core obtained is 0."), return GRAPH_FAILED);
 
-    socVersion_ = ascendcPlatform.GetSocVersion();
-    if (socVersion_ != platform_ascendc::SocVersion::ASCEND910B &&
-        socVersion_ != platform_ascendc::SocVersion::ASCEND950) {
-        OPS_REPORT_VECTOR_INNER_ERR(opName_, "SOC Version[%d] is not support.", static_cast<int32_t>(socVersion_));
+    npuArch_ = ascendcPlatform.GetCurNpuArch();
+    isA5_ = (npuArch_ == NpuArch::DAV_3510);
+    if (npuArch_ != NpuArch::DAV_2201 && npuArch_ != NpuArch::DAV_3510) {
+        OPS_REPORT_VECTOR_INNER_ERR(opName_, "Npu Arch Version[%d] is not support.", static_cast<int32_t>(npuArch_));
         return GRAPH_FAILED;
     }
 
@@ -1954,7 +1957,8 @@ void SFAInfoParser::GenerateInfo(SFATilingInfo &sfaInfo)
     sfaInfo.opName = opName_;
     sfaInfo.platformInfo = platformInfo_;
     sfaInfo.opParamInfo = opParamInfo_;
-    sfaInfo.socVersion = socVersion_;
+    sfaInfo.npuArch = npuArch_;
+    sfaInfo.isA5 = isA5_;
 
     sfaInfo.bSize = bSize_;
     sfaInfo.n1Size = n1Size_;
@@ -1989,9 +1993,11 @@ void SFAInfoParser::GenerateInfo(SFATilingInfo &sfaInfo)
     sfaInfo.actualLenDimsQ = actualLenDimsQ_;
     sfaInfo.actualLenDimsKV = actualLenDimsKV_;
     sfaInfo.maxActualseq = maxActualseq_;
-    sfaInfo.actualSeqLenFlag = (opParamInfo_.actualSeqLengths.tensor != nullptr);
     sfaInfo.isSameSeqAllKVTensor = isSameSeqAllKVTensor_;
     sfaInfo.isSameActualseq = isSameActualseq_;
+
+    sfaInfo.actualQSeqLenFlag = (opParamInfo_.actualSeqLengthsQ.tensor != nullptr);
+    sfaInfo.actualSeqLenFlag = (opParamInfo_.actualSeqLengths.tensor != nullptr);
 
     sfaInfo.sparseMode = *opParamInfo_.sparseMode;
     sfaInfo.preTokens = *opParamInfo_.preTokens;

@@ -639,7 +639,9 @@ void SFAVectorService<TEMPLATE_ARGS>::InitGlobalBuffer(__gm__ uint8_t *key,
     __gm__ uint8_t *sparseIndices, __gm__ uint8_t *blockTable)
 {
     keyGm.SetGlobalBuffer((__gm__ KV_T *)(key));
-    blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
+    if constexpr (isPa) {
+        blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);;
+    }
     sparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
     keyRopeGm.SetGlobalBuffer((__gm__ KV_T *)(keyRope));
 }
@@ -673,9 +675,6 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline
 void SFAVectorService<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo)
 {
-    // ub buffer
-    pipe->InitBuffer(dequantScaleBuff, 64 * 16 * 2 * sizeof(float)); // v0阶段每次处理16行，每行64个元素，开2个buffer
-
     SoftmaxInitBuffer();
 
     tPipe->InitBuffer(commonTBuf, 512); // commonTBuf内存申请512B
@@ -732,7 +731,8 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
     }
     
     // actQ->TND, actKV pa场景任意layout均有
-    sharedParams.isActualSeqLengthsKVNull = 0U;
+    sharedParams.isActualSeqLengthsNull = sparseAttnSharedkvBaseParams.isActualLenDimsNull;
+    sharedParams.isActualSeqLengthsKVNull = sparseAttnSharedkvBaseParams.isActualLenDimsKVNull;
 
     sharedParams.needInit = 0;
     for (uint32_t bIdx = 0; bIdx < sharedParams.bSize; bIdx++) {
@@ -752,7 +752,11 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
             s1Size = bIdx == 0 ? cuSeqlensQGm.GetValue(bIdx) : \
             cuSeqlensQGm.GetValue(bIdx) - cuSeqlensQGm.GetValue(bIdx - 1);
         } else {
-            s1Size = sharedParams.s1Size;
+            if (sharedParams.isActualSeqLengthsNull) {
+                s1Size = sharedParams.s1Size;
+            } else {
+                s1Size = cuSeqlensQGm.GetValue(bIdx);
+            }
         }
         if (s1Size > s2Size) {
             sharedParams.needInit = 1;
