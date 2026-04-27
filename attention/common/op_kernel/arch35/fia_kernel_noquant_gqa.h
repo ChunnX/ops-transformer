@@ -844,7 +844,6 @@ public:
         }
     }
 }; // FlashAttentionNoQuantGqaKernel
-
 } // namespace BaseApi
 
 #endif // FLASH_ATTENTION_NOQUANT_GQA_KERNEL_H_

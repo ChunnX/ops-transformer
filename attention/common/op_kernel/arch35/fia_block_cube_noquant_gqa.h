@@ -229,7 +229,6 @@ public:
                          constInfo.n2Size, constInfo.blockSize, constInfo.dSizeRope, keyRopeGm, keyRope);
         }
 
-
         if constexpr (HAS_PREFIX) {
             static_assert(!isPa);
             static_assert(GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD);

@@ -214,7 +214,6 @@ struct ConstInfo_t<FiaKernelType::NO_QUANT> : CommonConstInfo,
                                               LeftPaddingConstInfo,
                                               SysPrefixConstInfo {};
 
-
 // struct FusedTransposeInfo {
 //     // 以下是FlashDecode分支区分的信息
 //     uint32_t n2Idx = 0;
