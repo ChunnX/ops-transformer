@@ -138,10 +138,13 @@ static const aclTensor *TransGmmWeightTensor(const aclTensor *gmmWeight)
     viewDim[2] = gmmWeight->GetViewShape().GetDim(1);
 
     aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
-    aclGetDataType(gmmWeight, &dataType);
-    std::vector<int64_t> stride(viewShapeDimNum);
+    aclnnStatus dtypeRet = aclGetDataType(gmmWeight, &dataType);
+    if (dtypeRet != ACLNN_SUCCESS) {
+        OP_LOGE(ACLNN_ERR_INNER, "aclGetDataType failed for gmmWeight, ret=%d", dtypeRet);
+        return nullptr;
+    }
     auto transStride = gmmWeight->GetViewStrides();
-    stride = std::vector<int64_t>(transStride.begin(), transStride.end());
+    std::vector<int64_t> stride(transStride.begin(), transStride.end());
     // transpose the two dimensions
     stride[1] = transStride[2];
     stride[2] = transStride[1];
@@ -177,10 +180,13 @@ static const aclTensor *TransGmmWeightScaleTensor(const aclTensor *gmmWeightScal
     viewDim[2] = gmmWeightScale->GetViewShape().GetDim(1);
 
     aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
-    aclGetDataType(gmmWeightScale, &dataType);
-    std::vector<int64_t> stride(viewShapeDimNum);
+    aclnnStatus dtypeRet = aclGetDataType(gmmWeightScale, &dataType);
+    if (dtypeRet != ACLNN_SUCCESS) {
+        OP_LOGE(ACLNN_ERR_INNER, "aclGetDataType failed for gmmWeightScale, ret=%d", dtypeRet);
+        return nullptr;
+    }
     auto transStride = gmmWeightScale->GetViewStrides();
-    stride = std::vector<int64_t>(transStride.begin(), transStride.end());
+    std::vector<int64_t> stride(transStride.begin(), transStride.end());
     stride[1] = transStride[2];
     stride[2] = transStride[1];
 
@@ -211,10 +217,13 @@ static const aclTensor *TransMmWeightOptionalTensor(const aclTensor *mmWeightOpt
     viewDim[1] = mmWeightOptional->GetViewShape().GetDim(0);
 
     aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
-    aclGetDataType(mmWeightOptional, &dataType);
-    std::vector<int64_t> stride(viewShapeDimNum);
+    aclnnStatus dtypeRet = aclGetDataType(mmWeightOptional, &dataType);
+    if (dtypeRet != ACLNN_SUCCESS) {
+        OP_LOGE(ACLNN_ERR_INNER, "aclGetDataType failed for mmWeightOptional, ret=%d", dtypeRet);
+        return nullptr;
+    }
     auto transStride = mmWeightOptional->GetViewStrides();
-    stride = std::vector<int64_t>(transStride.begin(), transStride.end());
+    std::vector<int64_t> stride(transStride.begin(), transStride.end());
     // transpose the two dimensions
     stride[0] = transStride[1];
     stride[1] = transStride[0];
@@ -250,10 +259,13 @@ static const aclTensor *TransMmWeightScaleTensor(const aclTensor *mmWeightScale)
     viewDim[1] = mmWeightScale->GetViewShape().GetDim(0);
 
     aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
-    aclGetDataType(mmWeightScale, &dataType);
-    std::vector<int64_t> stride(viewShapeDimNum);
+    aclnnStatus dtypeRet = aclGetDataType(mmWeightScale, &dataType);
+    if (dtypeRet != ACLNN_SUCCESS) {
+        OP_LOGE(ACLNN_ERR_INNER, "aclGetDataType failed for mmWeightScale, ret=%d", dtypeRet);
+        return nullptr;
+    }
     auto transStride = mmWeightScale->GetViewStrides();
-    stride = std::vector<int64_t>(transStride.begin(), transStride.end());
+    std::vector<int64_t> stride(transStride.begin(), transStride.end());
     stride[0] = transStride[1];
     stride[1] = transStride[0];
 
