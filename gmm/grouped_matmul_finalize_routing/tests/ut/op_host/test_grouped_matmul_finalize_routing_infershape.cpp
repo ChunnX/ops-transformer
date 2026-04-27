@@ -211,11 +211,6 @@ vector<GroupedMatmulFinalizeRoutingInfershapeCase> LoadCases()
     return cases;
 }
 
-string MakeParamName(const testing::TestParamInfo<GroupedMatmulFinalizeRoutingInfershapeCase> &info)
-{
-    return ops::ut::MakeSafeParamName(info.param.prefix);
-}
-
 } // namespace
 
 namespace GroupedMatmulFinalizeRoutingInfershapeUT {
@@ -226,17 +221,17 @@ const vector<GroupedMatmulFinalizeRoutingInfershapeCase> &GetFinalizeRoutingInfe
 }
 
 class TestGroupedMatmulFinalizeRoutingInfershape
-    : public testing::TestWithParam<GroupedMatmulFinalizeRoutingInfershapeCase> {
+    : public testing::Test {
 protected:
     static void SetUpTestCase() {}
     static void TearDownTestCase() {}
 };
 
-TEST_P(TestGroupedMatmulFinalizeRoutingInfershape, csvDrivenCase)
+TEST_F(TestGroupedMatmulFinalizeRoutingInfershape, csvDrivenCase)
 {
-    GetParam().Run();
+    for (const auto &testCase : GetFinalizeRoutingInfershapeCases()) {
+        SCOPED_TRACE("prefix=" + testCase.prefix + ", case=" + testCase.caseName);
+        testCase.Run();
+    }
 }
-
-INSTANTIATE_TEST_SUITE_P(GMMFR_INFERSHAPE_CSV, TestGroupedMatmulFinalizeRoutingInfershape,
-                         testing::ValuesIn(GetFinalizeRoutingInfershapeCases()), MakeParamName);
 } // namespace GroupedMatmulFinalizeRoutingInfershapeUT
