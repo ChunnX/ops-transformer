@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -15,12 +15,7 @@
 #define VF_POST_QUANT_V2_H
 #include "kernel_tensor.h"
 namespace FaVectorApi {
-// static constexpr MicroAPI::::CastTrait castTraitP0 = {
-//     MicroAPI::RegLayout::ZERO,
-//     MicroAPI::SatMode::NO_SAT,
-//     MicroAPI::MaskMergeMode::ZEROING,
-//     RoundMode::CAST_RINT
-// };
+
 __simd_vf__ inline void CastBf16ToFp32VF(__ubuf__ float *dstFp32Ub, __ubuf__ bfloat16_t *srcBf16Ub,
                                          uint32_t elementCount)
 {

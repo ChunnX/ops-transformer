@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -178,8 +178,6 @@ public:
     {
         this->lseMaxFdGm = lseMaxFdGm;
         this->lseSumFdGm = lseSumFdGm;
-        // AscendC::DumpTensor(this->lseMaxFdGm,__LINE__,512);
-        // AscendC::DumpTensor(this->lseSumFdGm,__LINE__,512);
         this->accumOutGm = accumOutGm;
         this->attentionOutGm = attentionOutGm;
         this->actualSeqLengthsGmQ = actualSeqLengthsGmQ;
@@ -471,7 +469,6 @@ protected:
         LocalTensor<T> sinkBrcbBuf = fdSinkValueBuf.Get<T>();
         Brcb(sinkBrcbBuf, tmpSinkCastBuf, (constInfo.gSize + BLOCK_ELEMENT_NUM - 1) / BLOCK_ELEMENT_NUM,
              {1, BLOCK_ELEMENT_NUM});
-        // AscendC:DumpTensor(sinkBrcbBuf,__LINE__,64);
         AscendC::PipeBarrier<PIPE_V>();
     }
     __aicore__ inline void SinkMax(uint32_t startRow, uint32_t dealRowCount)
@@ -688,16 +685,9 @@ protected:
 public:
     __aicore__ inline void FlashDecode(FDparamsX &fd)
     {
-        // printf("fd.fdCoreEnable:%u\n",fd.fdCoreEnable);
         if (!fd.fdCoreEnable) {
             return;
         }
-        // printf("fd.fdBN2Idx:%u\n",fd.fdBN2Idx);
-        // printf("fd.fdMIdx:%u\n",fd.fdMIdx);
-        // printf("fd.fdS2SplitNum:%u\n",fd.fdS2SplitNum);
-        // printf("fd.mStart:%u\n",fd.mStart);
-        // printf("fd.mLen:%u\n",fd.mLen);
-        // printf("fd.fdWorkspaceIdx:%u\n",fd.fdWorkspaceIdx);
 
         uint32_t fdBalanceMBaseSize = 8U;
         uint32_t fdBalanceMSplitNum = (fd.mLen + fdBalanceMBaseSize - 1) / fdBalanceMBaseSize;
@@ -715,10 +705,7 @@ public:
         taskInfo.actualCombineLoopSize = fd.fdS2SplitNum; // 当前规约任务kv方向有几份
         uint64_t combineTaskPrefixSum = fd.fdWorkspaceIdx;
         uint64_t taskOffset = combineTaskPrefixSum * s1BaseSize;
-        // printf("tmpFdS1gOuterMStart:%u\n",tmpFdS1gOuterMStart);
-        // printf("tmpFdS1gOuterMEnd:%u\n",tmpFdS1gOuterMEnd);
-        // printf("s1BaseSize:%u\n",s1BaseSize);
-        // printf("taskInfo.actualCombineLoopSize:%u\n",taskInfo.actualCombineLoopSize);
+
         for (uint32_t fdS1gOuterMIdx = tmpFdS1gOuterMStart; fdS1gOuterMIdx <= tmpFdS1gOuterMEnd;
              fdS1gOuterMIdx++) { // 左闭右闭
             uint32_t actualGSplitSize = fdBalanceMBaseSize;
@@ -752,7 +739,6 @@ public:
                 // 新增 计算规约后的max和sum
                 // WaitFlag<HardEvent::MTE3_V>(SYNC_LSEOUTPUT_BUF_FLAG);
                 LocalTensor<T> maxLseUb = fdLseUbBuf.Get<T>();
-                // AscendC::DumpTensor(maxLseUb,__LINE__,64);
                 // 判断是否行无效
                 // bool isInValidRowsFlag = fa_base_vector::IsExistInvalidRows(nextTokensPerBatch, preTokensPerBatch,
                 // constInfo.sparseMode,

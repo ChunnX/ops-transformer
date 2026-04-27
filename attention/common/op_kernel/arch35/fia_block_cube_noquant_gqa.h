@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file flash_attention_noquant_block_cube.h
+ * \file fia_block_cube_noquant_gqa.h
  * \brief
  */
-#ifndef FLASH_ATTENTION_NOQUANT_GQA_BLOCK_CUBE_H_
-#define FLASH_ATTENTION_NOQUANT_GQA_BLOCK_CUBE_H_
+#ifndef FIA_BLOCK_CUBE_NOQUANT_GQA_H_
+#define FIA_BLOCK_CUBE_NOQUANT_GQA_H_
 #include "../offset_calculator.h"
 #include "../matmul.h"
 #include "../FixpipeOut.h"

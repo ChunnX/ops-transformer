@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -9,7 +9,7 @@
 */
 
 /*!
- * \file ifa_public_define.h
+ * \file fia_template_dispatcher.h
  * \brief
 */
 
@@ -17,13 +17,6 @@
 #define FIA_TEMPLATE_DISPATCHER_H
 
 #include "fia_kernel_noquant_gqa.h"
-
-// TODO，Dummy是否还需要支持
-// class BlockDummy {
-// public:
-//     template <typename CONST_INFO_T>
-//     BlockDummy(CONST_INFO_T & constInfo) {}
-// };
 
 template <typename INPUT_T, typename OUT_T, uint8_t inOutLayoutType, uint16_t config, uint8_t pseMode,
           uint8_t quantMode, bool hasAttenMask, bool hasRope, uint8_t KvLayoutType, bool isFd, bool emptyTensor,

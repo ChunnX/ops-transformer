@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file flash_attention_noquant_block_vec_base.h
+ * \file fia_block_vec_noquant_gqa.h
  * \brief
  */
-#ifndef FLASH_ATTENTION_NOQUANT_GQA_BLOCK_VEC_H_
-#define FLASH_ATTENTION_NOQUANT_GQA_BLOCK_VEC_H_
+#ifndef FIA_BLOCK_VEC_NOQUANT_GQA_H_
+#define FIA_BLOCK_VEC_NOQUANT_GQA_H_
 
 #include "kernel_operator.h"
 
@@ -564,7 +564,6 @@ public:
         LocalTensor<uint8_t> attenMaskUb;
         LocalTensor<uint8_t> attenMaskUbPre;
         if constexpr (hasAtten == true) {
-            // TODO，attenMaskInQue后续可以改成TBuf，用set/wait同步
             attenMaskUb = this->attenMaskInQue[runInfo.loop % DB].template AllocTensor<uint8_t>();
             attenMaskUbPre = this->attenMaskInQue[1 - runInfo.loop % DB].template AllocTensor<uint8_t>();
             AttenMaskCopyIn(attenMaskUb, attenMaskUbPre, 0, runInfo.actVecMSize, runInfo); // 全量拷贝
@@ -866,7 +865,7 @@ public:
 
             // 经过了跳读，UB上每行是按照dTemplateAlign64对齐的
             int64_t vec2ResInnerOffset = mIdx * constInfo.dBasicBlock;
-            if (vec2LoopLimit > 1) { // TODO 这个分支有疑问 ！！！！！！！！！！！！！！！！
+            if (vec2LoopLimit > 1) { // TODO 这个分支有疑问
                 SetFlag<HardEvent::MTE3_MTE2>(mte3ToMte2);
                 WaitFlag<HardEvent::MTE3_MTE2>(mte3ToMte2);
                 if constexpr (useDn) {
@@ -989,21 +988,12 @@ public:
                                        ((constInfo.sparseMode != SparseMode::LEFT_UP_CAUSAL) &&
                                         hasValidRow); // sparse = 0 or 3 or 4，preToekens or nextTokens负数
 
-            // printf("########################\n");
-            // printf("bIdx:%d, n2Idx:%d, gIdx:%d, s1Idx:%d, gS1Idx:%d\n", runInfo.bIdx, runInfo.n2Idx, runInfo.gIdx,
-            // runInfo.s1Idx, runInfo.gS1Idx); printf("batchNeedRowInvalid:%d\n", batchNeedRowInvalid);
-
             if (!batchNeedRowInvalid) {
                 return;
             }
 
-            // printf("s1FirstValidToken:%d, s1LastValidToken:%d\n", s1FirstValidToken, s1LastValidToken);
-
             bool blockNeedRowInvalid = CalcBlockNeedRowInvalid(runInfo, s1FirstValidToken, s1LastValidToken);
             blockNeedRowInvalid = blockNeedRowInvalid || constInfo.isRowInvalidOpen;
-
-            // printf("blockNeedRowInvalid:%d\n", blockNeedRowInvalid);
-            // printf("########################\n");
 
             if (blockNeedRowInvalid) {
                 LocalTensor<float> maxTensor =
@@ -1547,4 +1537,4 @@ public:
     // }
 };
 } // namespace BaseApi
-#endif // FLASH_ATTENTION_NOQUANT_GQA_BLOCK_VEC_H_
+#endif // FIA_BLOCK_VEC_NOQUANT_GQA_H_

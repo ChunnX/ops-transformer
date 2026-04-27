@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file flash_attention_noquant_kernel_base.h
+ * \file fia_kernel_noquant_gqa.h
  * \brief
  */
 
-#ifndef FLASH_ATTENTION_NOQUANT_GQA_KERNEL_H_
-#define FLASH_ATTENTION_NOQUANT_GQA_KERNEL_H_
+#ifndef FIA_KERNEL_NOQUANT_GQA_H_
+#define FIA_KERNEL_NOQUANT_GQA_H_
 
 #include "fia_public_define_arch35.h"
 #include "fia_block_cube_noquant_gqa.h"
@@ -267,7 +267,6 @@ public:
         constInfo.coreNum = fiaBaseParams.coreNum;
         constInfo.outputLayout = static_cast<FIA_LAYOUT>(fiaBaseParams.outputLayout);
 
-        // if constexpr (HAS_MASK) {
         constInfo.sparseMode =
             fiaAttenMaskParams.sparseMode; // TODO，后续sparseType、attenMaskCompressMode引用全部改成sparseMode
         constInfo.preTokens = fiaAttenMaskParams.preTokens;
@@ -277,7 +276,6 @@ public:
         constInfo.attenMaskS2Size = fiaAttenMaskParams.attenMaskS2Size;
         constInfo.isRowInvalidOpen = fiaAttenMaskParams.isRowInvalidOpen;
         constInfo.isExistRowInvalid = fiaAttenMaskParams.isExistRowInvalid;
-        // }
 
         if ASCEND_IS_AIV {
             if constexpr (VecFaBlockType::hasPse) {
@@ -764,19 +762,6 @@ public:
                 info.faTmpOutWsPos = headS2Split ? (info.faTmpOutWsPos + 1) : info.faTmpOutWsPos;
             }
         }
-
-        // PRINTF("CalcParams loop:%d, mloop:%d, isValid:%d, isChangeBatch:%d, isFirstS2Loop:%d, isLastS2Loop:%d,
-        // bIdx:%d, n2Idx:%d, gS1Idx:%d, s1Idx:%d, s2Idx:%d\n",
-        //     info.loop, info.mloop, info.isValid, info.isChangeBatch, info.isFirstS2Loop, info.isLastS2Loop,
-        //     info.bIdx, info.n2Idx, info.gS1Idx, info.s1Idx, info.s2Idx);
-        // PRINTF("CalcParams actS1Size:%d, actS2Size:%d, actMSize:%d, actMSizeAlign32:%d, actVecMSize:%d,
-        // vecMbaseIdx:%d, actSingleLoopS2Size:%d, isS2SplitCore:%d\n",
-        //     info.actS1Size, info.actS2Size, info.actMSize, info.actMSizeAlign32, info.actVecMSize, info.vecMbaseIdx,
-        //     info.actSingleLoopS2Size, info.isS2SplitCore);
-        // PRINTF("CalcParams faTmpOutWsPos:%d, preTokensLeftUp:%d, nextTokensLeftUp:%d, qPaddingBeginOffset:%d,
-        // kvPaddingBeginOffset:%d\n",
-        //     info.faTmpOutWsPos, info.preTokensLeftUp, info.nextTokensLeftUp, info.qPaddingBeginOffset,
-        //     info.kvPaddingBeginOffset);
     }
 
     __aicore__ inline void UpdateAxisInfo(TASK_DEAL_MODE taskDealMode, uint32_t &bN2Cur, uint32_t &gS1Cur,
@@ -846,4 +831,4 @@ public:
 }; // FlashAttentionNoQuantGqaKernel
 } // namespace BaseApi
 
-#endif // FLASH_ATTENTION_NOQUANT_GQA_KERNEL_H_
+#endif // FIA_KERNEL_NOQUANT_GQA_H_

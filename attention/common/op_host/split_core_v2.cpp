@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -16,8 +16,9 @@
 #include "split_core_v2.h"
 #include <cstdio>
 #include <math.h>
+#include "log/log.h"
 
-namespace split_core_v2 { // TODOx，需要确定2套分核的演进策略
+namespace split_core_v2 {
 
 uint32_t GetS1SeqSize(uint32_t bIdx, const BaseInfo &baseInfo)
 {
@@ -656,55 +657,55 @@ void SplitFD(FAMetaData &result)
 
 void SplitCore(uint32_t coreNum, const BaseInfo &baseInfo, const SplitParam &param, FAMetaData &result)
 {
-    printf("========== BaseInfo ==========\n");
-    printf("bSize: %u\n", baseInfo.bSize);
-    printf("n2Size: %u\n", baseInfo.n2Size);
-    printf("gSize: %u\n", baseInfo.gSize);
-    printf("s1Size: %u\n", baseInfo.s1Size);
-    printf("s2Size: %u\n", baseInfo.s2Size);
-    printf("isS1G: %u\n", baseInfo.isS1G);
-    printf("isAccumSeqS1: %u\n", baseInfo.isAccumSeqS1);
-    printf("isAccumSeqS2: %u\n", baseInfo.isAccumSeqS2);
-    printf("actualLenQDims: %u\n", baseInfo.actualLenQDims);
-    printf("actualLenKvDims: %u\n", baseInfo.actualLenKvDims);
-    printf("attenMaskFlag: %u\n", baseInfo.attenMaskFlag);
-    printf("sparseMode: %u\n", baseInfo.sparseMode);
-    printf("preToken: %lld\n", baseInfo.preToken);
-    printf("nextToken: %lld\n", baseInfo.nextToken);
-    printf("actualSeqPrefixSize: %lld\n", baseInfo.actualSeqPrefixSize);
-    printf("result.usedCoreNum: %d \n", result.usedCoreNum);
+    OP_LOGI("FusedInferAttentionScore", "========== BaseInfo ==========\n");
+    OP_LOGI("FusedInferAttentionScore", "bSize: %u\n", baseInfo.bSize);
+    OP_LOGI("FusedInferAttentionScore", "n2Size: %u\n", baseInfo.n2Size);
+    OP_LOGI("FusedInferAttentionScore", "gSize: %u\n", baseInfo.gSize);
+    OP_LOGI("FusedInferAttentionScore", "s1Size: %u\n", baseInfo.s1Size);
+    OP_LOGI("FusedInferAttentionScore", "s2Size: %u\n", baseInfo.s2Size);
+    OP_LOGI("FusedInferAttentionScore", "isS1G: %u\n", baseInfo.isS1G);
+    OP_LOGI("FusedInferAttentionScore", "isAccumSeqS1: %u\n", baseInfo.isAccumSeqS1);
+    OP_LOGI("FusedInferAttentionScore", "isAccumSeqS2: %u\n", baseInfo.isAccumSeqS2);
+    OP_LOGI("FusedInferAttentionScore", "actualLenQDims: %u\n", baseInfo.actualLenQDims);
+    OP_LOGI("FusedInferAttentionScore", "actualLenKvDims: %u\n", baseInfo.actualLenKvDims);
+    OP_LOGI("FusedInferAttentionScore", "attenMaskFlag: %u\n", baseInfo.attenMaskFlag);
+    OP_LOGI("FusedInferAttentionScore", "sparseMode: %u\n", baseInfo.sparseMode);
+    OP_LOGI("FusedInferAttentionScore", "preToken: %lld\n", baseInfo.preToken);
+    OP_LOGI("FusedInferAttentionScore", "nextToken: %lld\n", baseInfo.nextToken);
+    OP_LOGI("FusedInferAttentionScore", "actualSeqPrefixSize: %lld\n", baseInfo.actualSeqPrefixSize);
+    OP_LOGI("FusedInferAttentionScore", "result.usedCoreNum: %d \n", result.usedCoreNum);
 
     // 打印 actualSeqS1Size
     if (baseInfo.actualSeqS1Size.empty()) {
-        printf("actualSeqS1Size: nullptr\n");
+        OP_LOGI("FusedInferAttentionScore", "actualSeqS1Size: nullptr\n");
     } else {
-        printf("actualSeqS1Size: [");
+        OP_LOGI("FusedInferAttentionScore", "actualSeqS1Size: [");
         for (size_t i = 0; i < baseInfo.actualSeqS1Size.size(); ++i) {
-            printf("%lld", baseInfo.actualSeqS1Size[i]);
+            OP_LOGI("FusedInferAttentionScore", "%lld", baseInfo.actualSeqS1Size[i]);
             if (i < baseInfo.actualSeqS1Size.size() - 1) {
-                printf(", ");
+                OP_LOGI("FusedInferAttentionScore", ", ");
             }
         }
-        printf("]\n");
+        OP_LOGI("FusedInferAttentionScore", "]\n");
     }
 
     // 打印 actualSeqS2Size
     if (baseInfo.actualSeqS2Size.empty()) {
-        printf("actualSeqS2Size: nullptr\n");
+        OP_LOGI("FusedInferAttentionScore", "actualSeqS2Size: nullptr\n");
     } else {
-        printf("actualSeqS2Size: [");
+        OP_LOGI("FusedInferAttentionScore", "actualSeqS2Size: [");
         for (size_t i = 0; i < baseInfo.actualSeqS2Size.size(); ++i) {
-            printf("%lld", baseInfo.actualSeqS2Size[i]);
+            OP_LOGI("FusedInferAttentionScore", "%lld", baseInfo.actualSeqS2Size[i]);
             if (i < baseInfo.actualSeqS2Size.size() - 1) {
-                printf(", ");
+                OP_LOGI("FusedInferAttentionScore", ", ");
             }
         }
-        printf("]\n");
+        OP_LOGI("FusedInferAttentionScore", "]\n");
     }
 
-    printf("mBaseSize: %u\n", param.mBaseSize);
-    printf("s2BaseSize: %u\n", param.s2BaseSize);
-    printf("gS1BaseSizeOfFd: %u\n", param.gS1BaseSizeOfFd);
+    OP_LOGI("FusedInferAttentionScore", "mBaseSize: %u\n", param.mBaseSize);
+    OP_LOGI("FusedInferAttentionScore", "s2BaseSize: %u\n", param.s2BaseSize);
+    OP_LOGI("FusedInferAttentionScore", "gS1BaseSizeOfFd: %u\n", param.gS1BaseSizeOfFd);
 
     SplitContext splitContext(baseInfo, param);
     // 1、划分基本块，统计信息
@@ -764,30 +765,30 @@ void SplitCore(uint32_t coreNum, const BaseInfo &baseInfo, const SplitParam &par
 
     result.usedCoreNum = std::max(result.usedCoreNum, 1U); // 至少使用1个core
 
-    printf("========== start print split core res ==========\n");
-    printf("result.usedCoreNum: %d \n", result.usedCoreNum);
-    printf("result.maxCost: %lld \n", result.maxCost);
-    printf("result.fdRes.fdNum: %d \n", result.fdRes.fdNum);
-    printf("result.fdRes.fdUsedVecNum: %d \n", result.fdRes.fdUsedVecNum);
+    OP_LOGI("FusedInferAttentionScore", "========== start print split core res ==========\n");
+    OP_LOGI("FusedInferAttentionScore", "result.usedCoreNum: %d \n", result.usedCoreNum);
+    OP_LOGI("FusedInferAttentionScore", "result.maxCost: %lld \n", result.maxCost);
+    OP_LOGI("FusedInferAttentionScore", "result.fdRes.fdNum: %d \n", result.fdRes.fdNum);
+    OP_LOGI("FusedInferAttentionScore", "result.fdRes.fdUsedVecNum: %d \n", result.fdRes.fdUsedVecNum);
     for (uint32_t i = 0; i < result.usedCoreNum; i++) {
-        printf("outerSplitParams.bN2End[%d]: %d \n", i, result.bN2End[i]);
-        printf("outerSplitParams.mEnd[%d]: %d \n", i, result.mEnd[i]);
-        printf("outerSplitParams.s2End[%d]: %d \n", i, result.s2End[i]);
-        printf("fDParams.firstFdDataWorkspaceIdx[%d]: %d \n", i, result.firstFdDataWorkspaceIdx[i]);
+        OP_LOGI("FusedInferAttentionScore", "outerSplitParams.bN2End[%d]: %d \n", i, result.bN2End[i]);
+        OP_LOGI("FusedInferAttentionScore", "outerSplitParams.mEnd[%d]: %d \n", i, result.mEnd[i]);
+        OP_LOGI("FusedInferAttentionScore", "outerSplitParams.s2End[%d]: %d \n", i, result.s2End[i]);
+        OP_LOGI("FusedInferAttentionScore", "fDParams.firstFdDataWorkspaceIdx[%d]: %d \n", i, result.firstFdDataWorkspaceIdx[i]);
     }
 
     for (uint32_t i = 0; i < result.fdRes.fdNum; i++) {
-        printf("fDParams.fdRes.fdBN2Idx[%d]: %d \n", i, result.fdRes.fdBN2Idx[i]);
-        printf("fDParams.fdRes.fdMIdx[%d]: %d \n", i, result.fdRes.fdMIdx[i]);
-        printf("fDParams.fdRes.fdS2SplitNum[%d]: %d \n", i, result.fdRes.fdS2SplitNum[i]);
-        printf("fDParams.fdRes.fdWorkspaceIdx[%d]: %d \n", i, result.fdRes.fdWorkspaceIdx[i]);
-        printf("fDParams.fdRes.mSize[%d]: %d \n", i, result.fdRes.mSize[i]);
+        OP_LOGI("FusedInferAttentionScore", "fDParams.fdRes.fdBN2Idx[%d]: %d \n", i, result.fdRes.fdBN2Idx[i]);
+        OP_LOGI("FusedInferAttentionScore", "fDParams.fdRes.fdMIdx[%d]: %d \n", i, result.fdRes.fdMIdx[i]);
+        OP_LOGI("FusedInferAttentionScore", "fDParams.fdRes.fdS2SplitNum[%d]: %d \n", i, result.fdRes.fdS2SplitNum[i]);
+        OP_LOGI("FusedInferAttentionScore", "fDParams.fdRes.fdWorkspaceIdx[%d]: %d \n", i, result.fdRes.fdWorkspaceIdx[i]);
+        OP_LOGI("FusedInferAttentionScore", "fDParams.fdRes.mSize[%d]: %d \n", i, result.fdRes.mSize[i]);
     }
 
     for (uint32_t i = 0; i < result.fdRes.fdUsedVecNum; i++) {
-        printf("fDParams.fdRes.taskIdx[%d]: %d \n", i, result.fdRes.taskIdx[i]);
-        printf("fDParams.fdRes.mStart[%d]: %d \n", i, result.fdRes.mStart[i]);
-        printf("fDParams.fdRes.mLen[%d]: %d \n", i, result.fdRes.mLen[i]);
+        OP_LOGI("FusedInferAttentionScore", "fDParams.fdRes.taskIdx[%d]: %d \n", i, result.fdRes.taskIdx[i]);
+        OP_LOGI("FusedInferAttentionScore", "fDParams.fdRes.mStart[%d]: %d \n", i, result.fdRes.mStart[i]);
+        OP_LOGI("FusedInferAttentionScore", "fDParams.fdRes.mLen[%d]: %d \n", i, result.fdRes.mLen[i]);
     }
 }
 } // namespace split_core_v2

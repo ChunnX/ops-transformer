@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -22,12 +22,11 @@
 #include "tiling/tiling_api.h" // 这个头文件顺序必须在手写的tiling data前
 #include "../../op_kernel/arch35/fia_tiling_data_noquant_gqa.h"
 #include "../split_core_v2.h"
-// #include "../../../fused_infer_attention_score/op_host/fused_infer_attention_score_tiling.h"
 #include "../../../fused_infer_attention_score/op_kernel/fused_infer_attention_score_template_tiling_key.h"
-#include "../../../prompt_flash_attention/op_kernel/arch35/prompt_flash_attention_tiling_regbase.h" // TODO，后续删除
+#include "../../../prompt_flash_attention/op_kernel/arch35/prompt_flash_attention_tiling_regbase.h"
 
 namespace optiling {
-constexpr int64_t SPARSE_MODE_INT_MAX = 2147483647; // TODO，这个变量定义后续要放到哪里？
+constexpr int64_t SPARSE_MODE_INT_MAX = 2147483647;
 
 struct FiaTilingKeyInfo {
     uint64_t inputLayout = 0;
