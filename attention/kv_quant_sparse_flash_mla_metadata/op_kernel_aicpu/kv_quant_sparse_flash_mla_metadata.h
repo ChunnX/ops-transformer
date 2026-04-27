@@ -9,12 +9,12 @@
  */
  
 /*!
- * \file sparse_flash_attention_metadata.h
+ * \file kv_quant_sparse_flash_mla_metadata.h
  * \brief
  */
 
-#ifndef SPARSE_FLASH_ATTENTION_METADATA_H
-#define SPARSE_FLASH_ATTENTION_METADATA_H
+#ifndef KV_QUANT_SPARSE_FLASH_MLA_METADATA_H
+#define KV_QUANT_SPARSE_FLASH_MLA_METADATA_H
 
 #include <cstdint>
 
@@ -23,8 +23,8 @@ namespace optiling {
 // Constants
 constexpr uint32_t AIC_CORE_NUM = 36;
 constexpr uint32_t AIV_CORE_NUM = 72;
-constexpr uint32_t SFA_META_SIZE = 1024;
-using SFA_METADATA_T = int32_t;
+constexpr uint32_t QSMLAA_META_SIZE = 1024;
+using QSMLA_METADATA_T = int32_t;
 
 constexpr uint32_t FA_METADATA_SIZE = 9;
 constexpr uint32_t FD_METADATA_SIZE = 8;
@@ -68,13 +68,13 @@ __aicore__ inline uint32_t GetAttrAbsIndex(uint32_t coreIdx, uint32_t metaIdx, b
 #endif
 
 namespace detail {
-    struct SfaMetaData {
+    struct QsmlaMetaData {
         uint32_t faMetadata[AIC_CORE_NUM][FA_METADATA_SIZE];
         uint32_t fdMetadata[AIV_CORE_NUM][FD_METADATA_SIZE];
     };
 };
 
-static_assert(SFA_META_SIZE * sizeof(SFA_METADATA_T) >= sizeof(detail::SfaMetaData));
+static_assert(QSMLA_META_SIZE * sizeof(QSMLA_METADATA_T) >= sizeof(detail::QsmlaMetaData));
 };
 
-#endif // SPARSE_FLASH_ATTENTION_METADATA_H
+#endif // KV_QUANT_SPARSE_FLASH_MLA_METADATA_H
