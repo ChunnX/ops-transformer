@@ -16,16 +16,17 @@ import concurrent.futures
 import pytest
 import torch
 import utils
-from batch import kv_quant_sparse_flash_attention_process
-import result_compare_method
 
 
-TESTCASE_PATH = "./pt_files/"
+TESTCASE_PATH = os.environ.get("PT_FILES_PATH", "./pt_files/")
 RESULT_PATH = Path("result.xlsx")
 DEVICE_ID = 0
 
 locals()["testcase_files"] = []
-if os.path.isdir(TESTCASE_PATH):
+if os.path.isfile(TESTCASE_PATH) and TESTCASE_PATH.endswith('.pt'):
+    locals()["testcase_files"] = [TESTCASE_PATH]
+    print(f"指定单个 pt 文件: {TESTCASE_PATH}")
+elif os.path.isdir(TESTCASE_PATH):
     pt_files = [f for f in os.listdir(TESTCASE_PATH) if f.endswith('.pt')]
     if not pt_files:
         print(f"错误: 目录中没有找到.pt文件: {TESTCASE_PATH}")
@@ -40,20 +41,24 @@ else:
 
 def execute_qsfa(testcase_files):
     test_data = torch.load(testcase_files, map_location="cpu")
-    cpu_result = test_data["cpu_output"]
-    params = test_data["params"]
-    npu_result = kv_quant_sparse_flash_attention_process.call_npu(test_data["input"], params)
-    result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result)
-    utils.save_result(params, result, fulfill_percent, RESULT_PATH)
+    testcase_name = os.path.basename(testcase_files).replace(".pt", "")
+    result = utils.qsfa_run_npu(test_data, testcase_name=testcase_name, device_id=DEVICE_ID, result_path=RESULT_PATH)
+    return result, test_data
 
 
 @pytest.mark.ci
 @pytest.mark.parametrize("testcase_files", locals()["testcase_files"])
 def test_kv_quant_sparse_flash_attention(testcase_files):
+    test_data = None
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
         futures = executor.submit(execute_qsfa, testcase_files)
         for future in concurrent.futures.as_completed([futures]):
             try:
-                result = future.result()
+                result, test_data = future.result()
+                if result == "Failed":
+                    pytest.fail(f"测试结果为Failed")
             except Exception as e:
+                params = test_data.get("params") if test_data else None
+                if params:
+                    utils.save_result(params, "Failed", "", RESULT_PATH)
                 pytest.fail(f"当前用例线程执行失败")
