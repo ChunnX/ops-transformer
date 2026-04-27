@@ -24,7 +24,7 @@ USER_ID=$(id -u)
 PARENT_JOB="false"
 HOST_TILING="false"
 CHECK_COMPATIBLE="true"
-ASAN="true"
+ASAN="false"
 UBSAN="false"
 COV="false"
 CLANG="false"
@@ -105,6 +105,7 @@ function help_info() {
                 echo "    --cann_3rd_lib_path=<PATH>"
                 echo "                           Set ascend third_party package install path, default ./third_party"
                 echo "    --oom                  Build with oom mode on the kernel side, with options: '-g --cce-enable-oom'"
+                echo "    --asan                 Enable ASAN (Address Sanitizer) on the host side"
                 echo "    --kernel_template_input=args0,args1"
                 echo "                           Specify kernel template input arguments (comma-separated for multiple)"
                 echo "    --bisheng_flags        Specify bisheng compiler flags (comma-separated for multiple)"
@@ -124,7 +125,6 @@ function help_info() {
                 echo "    --noexec               Only compile ut, do not execute"
                 echo "    --cov                  Enable code coverage for unit tests"
                 echo "    --ops=op1,op2,...      Compile specified operators (comma-separated for multiple)"
-                echo "    --disable_asan         Disable ASAN (Address Sanitizer)"
                 echo "    --soc=soc_version      Run unit tests for specified Ascend SoC"
                 echo "    --valgrind             Run unit tests with valgrind (disables ASAN and noexec)"
                 echo "    --ophost_test          Build and run ophost unit tests"
@@ -224,7 +224,6 @@ function help_info() {
                 echo "    --noexec               Only compile ut, do not execute"
                 echo "    --cov                  Enable code coverage for unit tests"
                 echo "    --ops=op1,op2,...      Compile specified operators (comma-separated for multiple)"
-                echo "    --disable_asan         Disable ASAN (Address Sanitizer)"
                 echo "    --soc=soc_version      Run unit tests for specified Ascend SoC"
                 echo "    --valgrind             Run unit tests with valgrind (disables ASAN and noexec)"
                 echo $dotted_line
@@ -239,7 +238,6 @@ function help_info() {
                 echo "    --noexec               Only compile ut, do not execute"
                 echo "    --cov                  Enable code coverage for unit tests"
                 echo "    --ops=op1,op2,...      Compile specified operators (comma-separated for multiple)"
-                echo "    --disable_asan         Disable ASAN (Address Sanitizer)"
                 echo "    --soc=soc_version      Run unit tests for specified Ascend SoC"
                 echo "    --valgrind             Run unit tests with valgrind (disables ASAN and noexec)"
                 echo $dotted_line
@@ -254,7 +252,6 @@ function help_info() {
                 echo "    --noexec               Only compile ut, do not execute"
                 echo "    --cov                  Enable code coverage for unit tests"
                 echo "    --ops=op1,op2,...      Compile specified operators (comma-separated for multiple)"
-                echo "    --disable_asan         Disable ASAN (Address Sanitizer)"
                 echo "    --soc=soc_version      Run unit tests for specified Ascend SoC"
                 echo "    --valgrind             Run unit tests with valgrind (disables ASAN and noexec)"
                 echo $dotted_line
@@ -320,7 +317,7 @@ function help_info() {
     echo "    --cov When building uTest locally, count the coverage."
     echo "    --noexec Only compile ut, do not execute the compiled executable file"
     echo "    --make_clean Clean build artifacts"
-    echo "    --disable_asan Disable ASAN (Address Sanitizer)"
+    echo "    --asan Enable asan on the host side"
     echo "    --valgrind run ut with valgrind. This option will disable asan, noexec and run utest by valgrind"
     echo "    --ops Compile specified operator, use snake name, like: --ops=add,add_lora, use ',' to separate different operator"
     echo "    --soc Compile binary with specified Ascend SoC, like: --soc=ascend910b,ascend910_93,ascend950 use ',' to separate different SoC"
@@ -1256,8 +1253,8 @@ while [[ $# -gt 0 ]]; do
         VERBOSE="true"
         shift
         ;;
-    --disable_asan)
-        ASAN="false"
+    --asan)
+        ASAN="true"
         shift
         ;;
     --valgrind)
@@ -1530,6 +1527,7 @@ if [ -n "${TEST}" ];then
         CUSTOM_OPTION="${CUSTOM_OPTION} -DCMAKE_OBJCOPY=${CLANG_OBJCOPY}"
     fi
 
+    ASAN="true"
     if [ "${ASAN}" == "true" ];then
         CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_ASAN=TRUE"
     fi
@@ -1543,6 +1541,10 @@ if [ -n "${TEST}" ];then
     fi
 
     BUILD=ops_test_utest
+fi
+
+if [ "${ASAN}" == "true" ];then
+    CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_ASAN=TRUE"
 fi
 
 if [ "${COV}" == "true" ];then
