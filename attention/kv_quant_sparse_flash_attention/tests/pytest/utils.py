@@ -65,6 +65,11 @@ def _parse_excel_cell_value(value):
     return _normalize_numeric_value(value)
 
 
+def load_paramset(paramset_file):
+    module = __import__(paramset_file)
+    return module.ENABLED_PARAMS
+
+
 def load_excel_test_cases(excel_file_path, sheet_name):
     if sheet_name is None:
         sheet_name = "Sheet1"
@@ -79,7 +84,7 @@ def load_excel_test_cases(excel_file_path, sheet_name):
 
     required_columns = [
         "Testcase_Prefix", "Testcase_Number",
-        "layout_query", "layout_kv", "q_type", "kv_dtype",
+        "layout_query", "layout_kv", "q_type", "kv_type",
         "B", "S1", "S2", "N1", "N2", "D", "K",
         "scale_value", "key_quant_mode", "value_quant_mode",
         "sparse_block_size", "tile_size", "rope_head_dim",
@@ -96,11 +101,10 @@ def save_result(params, result, fulfill_percent, result_path):
     """保存测试结果，列与 example.xlsx 一致，结果文件可直接用于批量生成 pt。"""
     row_data = {
         "Testcase_Prefix": params.get("Testcase_Prefix", "kvQuantSparseFlashAttn"),
-        "Testcase_Number": params.get("Testcase_Number", 1),
         "layout_query": params.get("layout_query"),
         "layout_kv": params.get("layout_kv"),
         "q_type": str(params.get("q_type")),
-        "kv_dtype": str(params.get("kv_dtype")) if params.get("kv_dtype") is not None else None,
+        "kv_type": str(params.get("kv_type")) if params.get("kv_type") is not None else None,
         "B": params.get("B"),
         "T": params.get("T"),
         "T2": params.get("T2"),
@@ -139,7 +143,7 @@ def combin_params(enabled_params, pytest_paramset=True):
     param_combination_set = []
     param_names = [
         "Testcase_Prefix", "Testcase_Number",
-        "layout_query", "layout_kv", "q_type", "kv_dtype",
+        "layout_query", "layout_kv", "q_type", "kv_type",
         "B", "T", "T2", "S1", "S2", "N1", "N2", "D", "K",
         "scale_value", "key_quant_mode", "value_quant_mode",
         "sparse_block_size", "tile_size", "rope_head_dim",
@@ -158,7 +162,7 @@ def combin_params(enabled_params, pytest_paramset=True):
             current_params.get("layout_query"),
             current_params.get("layout_kv"),
             current_params.get("q_type"),
-            current_params.get("kv_dtype"),
+            current_params.get("kv_type"),
             current_params.get("B"),
             current_params.get("T", [None]),
             current_params.get("T2", [None]),
@@ -204,7 +208,7 @@ def convert_param_combination_to_cs_format(param_combination):
     D = param_combination["D"]
     K = param_combination["K"]
     q_type = param_combination["q_type"]
-    kv_dtype = param_combination["kv_dtype"]
+    kv_type = param_combination["kv_type"]
     scale_value = param_combination["scale_value"]
     key_quant_mode = param_combination["key_quant_mode"]
     value_quant_mode = param_combination["value_quant_mode"]
@@ -240,10 +244,10 @@ def convert_param_combination_to_cs_format(param_combination):
     else:
         q_dtype_str = "fp32"
     
-    if kv_dtype is None or str(kv_dtype) == "float8_e4m3fn":
+    if kv_type is None or str(kv_type) == "float8_e4m3fn":
         kv_dtype_str = "float8_e4m3fn"
     else:
-        kv_dtype_str = str(kv_dtype)
+        kv_dtype_str = str(kv_type)
     if (layout_kv == 'PA_BSND'):
         if (layout_query == 'BSND'):
             shape_input = {
@@ -366,9 +370,8 @@ def convert_param_combination_to_cs_format(param_combination):
         "antiquant_offset": 0,
         # 原始参数，用于结果保存（与 example.xlsx 列对齐）
         "Testcase_Prefix": testcase_prefix,
-        "Testcase_Number": testcase_number,
         "q_type": q_type,
-        "kv_dtype": kv_dtype,
+        "kv_type": kv_type,
         "B": B,
         "T": param_combination.get("T"),
         "T2": param_combination.get("T2"),
@@ -490,3 +493,16 @@ def modify_alcnn_input_file(name: str,
         params["range_input"][name] = data_range
 
     return out_tensor
+
+
+def qsfa_run_npu(test_data, testcase_name=None, device_id=0, result_path=None):
+    from batch import kv_quant_sparse_flash_attention_process
+    params = test_data.get("params")
+    if testcase_name:
+        params["Testcase_Prefix"] = testcase_name
+    cpu_result = test_data["cpu_output"]
+    npu_result = kv_quant_sparse_flash_attention_process.call_npu(test_data["input"], params)
+    result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result)
+    if result_path:
+        save_result(params, result, fulfill_percent, result_path)
+    return result
