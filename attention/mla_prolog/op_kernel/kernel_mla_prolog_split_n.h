@@ -342,12 +342,13 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::Init(
         }
     }
 #if __CCE_AICORE__ == 310
-    // Mirror dequant_opt.py:is_dequant_opt_applicable — byte-quant weight & numHeadSize >= 8.
+    // CV-share path is eligible only for byte-quant weight + cv1:2 + ≥8 heads.
+    // FixPipe→UB direct (DUAL_TARGET_MODE_SPLIT_M) skips MM3/MM4 GM round-trip.
     constexpr bool hasByteQuantWeight = std::is_same<mmQcQrInputType, int8_t>::value ||
                                         std::is_same<mmQcQrInputType, FP8E4M3>::value ||
                                         std::is_same<mmQcQrInputType, HIF8>::value;
-    enableCubeVecSharePath_ = MLAPT::enableDequantOpt && (cvRatio_ == 2U) &&
-                              hasByteQuantWeight && (baseParams_->numHeadSize >= 8U);
+    enableCubeVecSharePath_ = MLAPT::enableDequantOpt && (cvRatio_ == 2U) && hasByteQuantWeight &&
+                              (baseParams_->numHeadSize >= 8U);
 #endif
     curVecTokenMax_ = (curVectorBlockNum_ + vectorCoreNum_ - 1) / vectorCoreNum_;
     enableSmoothScalesCq_ = smoothScaleCq == nullptr ? false : true;
@@ -1409,7 +1410,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MatmulQcQr(AicOffset &aicOffs
                     weightUqQrGm_[aicOffset.weightUqQrOffset],
                     chunkParam, bufParam_, nOffset, curCols, 0U, headChunkCols);
             }
-            // Dual-AIV ready: cube wakes both AIV0 and AIV1 (FIA arch35 pattern).
+            // Dual-AIV fan-out: cube fires both AIV ready flags and waits both done flags.
             SignalSharedReady(MM_CV_READY_AIV0);
             SignalSharedReady(MM_CV_READY_AIV1);
             WaitSharedDone(VEC_CV_DONE_AIV0);
@@ -2538,11 +2539,13 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantAndRopeSplitNSyncMMQcQ
         const uint32_t subBlockIdx = blockIdx_ % cvRatio_;
         const uint32_t rowBase = GetCvShareRowBase(mmQcQrParam_.m, subBlockIdx);
         const uint32_t vecRows = GetCvShareRowCount(mmQcQrParam_.m, subBlockIdx);
-        // FA arch35 intra-AIC-pair sync: both AIVs use the same base id (id0_); the +OFFSET
-        // routing is the AIC-side view only. Hardware delivers cube's SetFlag(id) to AIV0
-        // and SetFlag(id+OFFSET) to AIV1 — each AIV reads from its own physical slot.
+        // Cross-core sync ids: cube fires both AIV0+AIV1 ready ids; AIVs wait on AIV0 id
+        // (hardware routes cube's id+OFFSET fire to AIV1's mailbox slot id, transparently).
+        // Done direction: each AIV explicitly fires its own done id so cube's WaitFlag on
+        // both 0xC and 0x1C matches without depending on AIV→cube +OFFSET auto-routing
+        // (cannsim does NOT model that auto-routing, see commit notes).
         const uint32_t readyFlag = MM_CV_READY_AIV0;
-        const uint32_t doneFlag  = VEC_CV_DONE_AIV0;
+        const uint32_t doneFlag  = (subBlockIdx == 0U) ? VEC_CV_DONE_AIV0 : VEC_CV_DONE_AIV1;
         const uint32_t nChunkLoops = CeilDivT(mmQcQrParam_.n, headChunkCols);
         const uint32_t localOffset = rowBase * headChunkCols;
         LocalTensor<uint8_t> shareTmpUb = shareBuffer_.Get<uint8_t>();
@@ -2756,7 +2759,6 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DynamicQuantQnAndMulQrSyncMMQ
         const uint32_t subBlockIdx = blockIdx_ % cvRatio_;
         const uint32_t rowsPerChunk = GetMm4SharedRowsPerHalf();
         const uint32_t rowsPerVec = GetCvShareRowCount(static_cast<uint32_t>(curStepBatchSize), subBlockIdx);
-        const uint32_t peerRowsPerVec = GetCvShareRowCount(static_cast<uint32_t>(curStepBatchSize), 1U - subBlockIdx);
         const uint32_t halfOffset = GetCubeVecSharedHalfBytes() / sizeof(mmQnOutputType);
         const int64_t totalSizeCkv = static_cast<int64_t>(baseParams_->numHeadSize) * static_cast<int64_t>(baseParams_->headSizeCkv);
         const int64_t blockBatchOffset = GetCvShareRowBase(static_cast<uint32_t>(curStepBatchSize), subBlockIdx);
@@ -2772,10 +2774,11 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DynamicQuantQnAndMulQrSyncMMQ
         LocalTensor<uint8_t> shareTmpUb = shareBuffer_.Get<uint8_t>();
         LocalTensor<mmQnOutputType> qnLocal = cube2VecLocal_.template ReinterpretCast<mmQnOutputType>();
         float quantScaleCkv = quantScaleCkvGm_.GetValue(0);
-        // FA arch35 intra-AIC-pair sync: AIV uses base id0_; hardware routes per-AIV.
+        // Each AIV explicitly fires its own done id — cannsim does NOT auto-route
+        // AIV1's SetFlag(0xC) to cube slot 0x1C, so cube's WaitFlag(0x1C) would block
+        // forever otherwise. See MM3 vec sync comment for full rationale.
         const uint32_t readyFlag = MM_CV_READY_AIV0;
-        const uint32_t doneFlag  = VEC_CV_DONE_AIV0;
-        (void)peerRowsPerVec; // cube wakes each AIV independently; we only iterate our own rows
+        const uint32_t doneFlag  = (subBlockIdx == 0U) ? VEC_CV_DONE_AIV0 : VEC_CV_DONE_AIV1;
         for (int64_t loopIdx = 0; loopIdx < mmQnLoops; ++loopIdx) {
             const uint32_t localOffset = subBlockIdx == 0 ? 0U : halfOffset;
             int64_t loopDynamicQuantQueryResOffset = dynamicQuantQueryResOffset;
