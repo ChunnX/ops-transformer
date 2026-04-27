@@ -36,7 +36,7 @@ set(_LIG_TilingPrivateIncludesExt
 set(_LIG_UTestCommonPrivateIncludeExt
         ${OPBASE_INC_DIRS}
         ${OPS_TRANSFORMER_DIR}/common/include
-        ${OPS_TRANSFORMER_DIR}/common/include/kernel
+        ${OPS_TRANSFORMER_DIR}/common/include/op_kernel
         ${OPS_TRANSFORMER_DIR}/attention/lightning_indexer_grad/op_host
         ${CMAKE_SOURCE_DIR}/attention/lightning_indexer_grad/op_host/op_api/
 )
@@ -46,7 +46,7 @@ set(_LIG_TargetPrivateLinkLibrariesExt
         error_manager
 )
 set(_LIG_OpKernelPrivateIncludesExt
-        ${OPS_TRANSFORMER_DIR}/common/include/kernel
+        ${OPS_TRANSFORMER_DIR}/common/include/op_kernel
 )
 
 set(_LIG_OpKernelPrivateCompileDefinitionsExt

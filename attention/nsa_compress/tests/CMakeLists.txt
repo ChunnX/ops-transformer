@@ -38,7 +38,7 @@ set(_NSA_OpKernelTilingDataDefH
 set(_NSA_OpKernelSourcesExt)
 
 set(_NSA_OpKernelPrivateIncludesExt
-        ${OPS_TRANSFORMER_DIR}/common/include/kernel
+        ${OPS_TRANSFORMER_DIR}/common/include/op_kernel
 )
 
 set(_NSA_OpKernelPrivateCompileDefinitionsExt

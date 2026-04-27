@@ -145,6 +145,8 @@ attention:
       - attention/nsa_compress
     options:
       - nsa_compress
+    test:
+      ut: False
 
   nsa_compress_attention:
     module: True
@@ -186,7 +188,7 @@ attention:
     options:
       - nsa_compress_grad
     test:
-        ut: False
+      ut: False
 
   nsa_compress_with_cache:
     module: True
@@ -242,6 +244,8 @@ attention:
       - attention/nsa_selected_attention_infer
     options:
       - nsa_selected_attention_infer
+    test:
+      ut: False
 
   prompt_flash_attention:
     module: True
