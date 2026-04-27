@@ -84,7 +84,7 @@ void FlashAttnTilingImpl::InitImplParam(const FaTilingInfo &faInfo) // TODO æ”¹å
 
     OP_LOGI(faInfo.opName, "gsMergeFlag:%u nLoopTimes:%u gsSize:%u ", gsMergeFlag_, nLoopTimes_, gsSize_);
 
-    headDimAlign_ = AlignUp(faInfo.qkHeadDim, NUM_32);
+    headDimAlign_ = AlignUp(static_cast<uint32_t>(faInfo.qkHeadDim), NUM_32);
 }
 
 ge::graphStatus FlashAttnTilingImpl::AdjustSinnerAndSouter(gert::TilingContext *context, const FaTilingInfo &faInfo)

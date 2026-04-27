@@ -31,7 +31,7 @@ public:
     ge::graphStatus CheckRequiredAttrExistence() const;
     ge::graphStatus CheckRequiredParaExistence() const;
     ge::graphStatus GetEmptyTensorFlag();
-    ge::graphStatus GetCuSeqLenQSize(uint32_t &size);
+    ge::graphStatus GetCuSeqLenQSize(int64_t &size);
     ge::graphStatus GetOpName();
     ge::graphStatus GetNpuInfo();
     void GetOptionalInputParaMaskInfo();
@@ -89,16 +89,16 @@ public:
     FAParaInfo opParamInfo_;
 
     // BaseParams
-    uint32_t bSize_ = 0;
-    uint32_t n1Size_ = 0;
-    uint32_t n2Size_ = 0;
-    uint32_t gSize_ = 0;
-    uint32_t s1Size_ = 0;
+    int64_t bSize_ = 0;
+    int64_t n1Size_ = 0;
+    int64_t n2Size_ = 0;
+    int64_t gSize_ = 0;
+    int64_t s1Size_ = 0;
     int64_t s2Size_ = 0;
-    uint32_t qkHeadDim_ = 0;
-    uint32_t vHeadDim_ = 0;
-    uint32_t queryTSize_ = 0;
-    uint32_t keyTSize_ = 0;
+    int64_t qkHeadDim_ = 0;
+    int64_t vHeadDim_ = 0;
+    int64_t queryTSize_ = 0;
+    int64_t keyTSize_ = 0;
     KvStorageMode kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
 
     // Layout
@@ -107,7 +107,7 @@ public:
     FaLayout layoutOut_ = FaLayout::BSND;
 
     // PageAttention
-    uint32_t maxBlockNumPerBatch_ = 0;
+    int64_t maxBlockNumPerBatch_ = 0;
     int32_t blockSize_ = 0;
     int32_t blockNum_ = 0;
 
@@ -136,10 +136,10 @@ public:
     int64_t deterministic_ = 0;
 
     // seqLen信息
-    uint32_t seqLenQDims_ = 0;
-    uint32_t seqLenKvDims_ = 0;
-    uint32_t cuseqLenQDims_ = 0;
-    uint32_t cuseqLenKvDims_ = 0;
+    int64_t seqLenQDims_ = 0;
+    int64_t seqLenKvDims_ = 0;
+    int64_t cuseqLenQDims_ = 0;
+    int64_t cuseqLenKvDims_ = 0;
     int64_t maxSeqQ_ = -1;
     int64_t maxSeqKv_ = -1;
 

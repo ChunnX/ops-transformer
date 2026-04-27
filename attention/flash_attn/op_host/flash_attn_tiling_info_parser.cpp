@@ -87,7 +87,7 @@ ge::graphStatus FaInfoParser::CheckRequiredParaExistence() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FaInfoParser::GetCuSeqLenQSize(uint32_t &size)
+ge::graphStatus FaInfoParser::GetCuSeqLenQSize(int64_t &size)
 {
     if (opParamInfo_.cuSeqlensQ.tensor == nullptr) {
         OP_LOGE(opName_, "when %s's layout is %s, %s must be provided.", QUERY_NAME.c_str(),
@@ -99,7 +99,7 @@ ge::graphStatus FaInfoParser::GetCuSeqLenQSize(uint32_t &size)
         OP_LOGE(opName_, "%s's shape size is %ld, it should be greater than 1.", CU_SEQLENS_Q_NAME.c_str(), shapeSize);
         return ge::GRAPH_FAILED;
     }
-    size = static_cast<uint32_t>(shapeSize) - 1;
+    size = shapeSize - 1;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -484,7 +484,7 @@ ge::graphStatus FaInfoParser::GetGSize()
     // TODO wmk n2 = 0校验
     // 获取G基准值
     if (n1Size_ % n2Size_ != 0U) {
-        OP_LOGE(opName_, "Q numHeads(%u) should be a multiple of Kv Heads(%u).", n1Size_, n2Size_);
+        OP_LOGE(opName_, "Q numHeads(%ld) should be a multiple of Kv Heads(%ld).", n1Size_, n2Size_);
         return ge::GRAPH_FAILED;
     }
     gSize_ = n1Size_ / n2Size_;

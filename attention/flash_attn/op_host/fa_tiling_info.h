@@ -150,16 +150,16 @@ public:
     FAParaInfo opParamInfo;
 
     // Base Param
-    uint32_t bSize = 0;
+    int64_t bSize = 0;
     int64_t n1Size = 0;
     int64_t n2Size = 0;
-    uint32_t s1Size = 0;
+    int64_t s1Size = 0;
     int64_t s2Size = 0;
-    uint32_t qkHeadDim = 0;
-    uint32_t vHeadDim = 0;
-    uint32_t gSize = 0;
-    uint32_t qTSize = 0; // 仅TND/NTD时生效
-    uint32_t kTSize = 0;
+    int64_t qkHeadDim = 0;
+    int64_t vHeadDim = 0;
+    int64_t gSize = 0;
+    int64_t qTSize = 0; // 仅TND/NTD时生效
+    int64_t kTSize = 0;
     float softmaxScale = 0;
 
     uint64_t totalOutputSize = 0;
@@ -168,19 +168,19 @@ public:
     // PageAttention
     bool pageAttentionFlag = false;
     int32_t blockSize = 0;
-    uint32_t blockTypeSize = 0; // 计算中间量大小
-    uint32_t maxBlockNumPerBatch = 0;
-    uint32_t totalBlockNum = 0;
+    int64_t blockTypeSize = 0; // 计算中间量大小
+    int64_t maxBlockNumPerBatch = 0;
+    int64_t totalBlockNum = 0;
 
 
     // Q seq_lens
-    uint32_t seqUsedQDims = 0;
-    uint32_t cuSeqLenQDims = 0;
+    int64_t seqUsedQDims = 0;
+    int64_t cuSeqLenQDims = 0;
     int64_t maxSeqQ = 0;
 
     // Kv seq_lensKv
-    uint32_t seqUsedKvDims = 0;
-    uint32_t cuSeqLenKvDims = 0;
+    int64_t seqUsedKvDims = 0;
+    int64_t cuSeqLenKvDims = 0;
     int64_t maxSeqKv = 0;
 
     // Mask
