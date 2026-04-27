@@ -11,6 +11,13 @@
 if(UT_TEST_ALL OR OP_HOST_UT)
     add_modules_ut_sources(UT_NAME ${OP_TILING_MODULE_NAME} MODE PRIVATE DIR ${CMAKE_CURRENT_SOURCE_DIR})
     add_modules_ut_sources(UT_NAME ${OP_INFERSHAPE_MODULE_NAME} MODE PRIVATE DIR ${CMAKE_CURRENT_SOURCE_DIR})
+
+    target_sources(${OP_TILING_MODULE_NAME}_cases_obj PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../grouped_matmul/op_host/op_tiling/arch35/grouped_quant_basic_api_matmul_tiling.cpp)
+
+    target_link_libraries(${OP_TILING_MODULE_NAME}_cases_obj PRIVATE
+        $<$<BOOL:${alog_FOUND}>:$<BUILD_INTERFACE:alog_headers>>)
 endif()
 
 file(GLOB CURRENT_DIRS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/*)
