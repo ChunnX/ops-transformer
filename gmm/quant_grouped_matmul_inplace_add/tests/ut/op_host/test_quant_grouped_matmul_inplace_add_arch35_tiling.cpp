@@ -37,16 +37,6 @@ using ops::ut::ParseBool;
 using ops::ut::SplitStr2Vec;
 using ops::ut::Trim;
 
-DataType ParseDtype(const string &dtype)
-{
-    return ops::ut::ParseGeDtype(dtype);
-}
-
-vector<int64_t> ParseDims(const string &value)
-{
-    return ops::ut::ParseDims(value);
-}
-
 gert::StorageShape MakeShape(const vector<int64_t> &dims)
 {
     return ops::ut::MakeGertStorageShape(dims);
@@ -159,18 +149,18 @@ vector<QGmmInplaceAddArch35Param> GetParams(const string &socVersion)
             p.m = stoll(Trim(items[idx++]));
             p.k = stoll(Trim(items[idx++]));
             p.n = stoll(Trim(items[idx++]));
-            p.xDtype = ParseDtype(items[idx++]);
-            p.wDtype = ParseDtype(items[idx++]);
-            p.scale2Dtype = ParseDtype(items[idx++]);
-            p.scale1Dtype = ParseDtype(items[idx++]);
-            p.yDtype = ParseDtype(items[idx++]);
+            p.xDtype = ops::ut::ParseGeDtype(items[idx++]);
+            p.wDtype = ops::ut::ParseGeDtype(items[idx++]);
+            p.scale2Dtype = ops::ut::ParseGeDtype(items[idx++]);
+            p.scale1Dtype = ops::ut::ParseGeDtype(items[idx++]);
+            p.yDtype = ops::ut::ParseGeDtype(items[idx++]);
             p.groupListType = stoll(Trim(items[idx++]));
             p.expectSuccess = ParseBool(items[idx++]);
             string keyField = Trim(items[idx++]);
             p.checkTilingKey = !keyField.empty() && keyField != "NONE";
             p.expectTilingKey = p.checkTilingKey ? static_cast<uint64_t>(stoull(keyField)) : 0;
-            p.scale2Shape = ParseDims(items[idx++]);
-            p.scale1Shape = ParseDims(items[idx++]);
+            p.scale2Shape = ops::ut::ParseDims(items[idx++]);
+            p.scale1Shape = ops::ut::ParseDims(items[idx++]);
             params.push_back(p);
         } catch (const std::exception &error) {
             ADD_FAILURE() << ops::ut::BuildCsvParseErrorMessage(csvPath, lineNo, caseName, error);

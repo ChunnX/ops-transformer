@@ -10,7 +10,6 @@
 
 #include <exception>
 #include <fstream>
-#include <map>
 #include <string>
 #include <vector>
 
@@ -19,8 +18,8 @@
 #include "../../../../op_api/aclnn_quant_grouped_matmul_inplace_add.h"
 #include "op_api_ut_common/op_api_ut.h"
 #include "op_api_ut_common/tensor_desc.h"
-#include "opdev/platform.h"
 #include "gmm_csv_acl_parse_utils.h"
+#include "gmm_soc_version_utils.h"
 
 using namespace std;
 
@@ -37,54 +36,22 @@ vector<int64_t> ParseDims(const string &value)
     return ops::ut::ParseAclTensorViewDims(value);
 }
 
-vector<int64_t> ParseI64List(const string &value)
-{
-    return ops::ut::ParseI64List(value);
-}
-
-aclDataType ParseDtype(const string &dtype)
-{
-    return ops::ut::ParseAclDtype(dtype);
-}
-
-aclnnStatus ParseStatus(const string &value)
-{
-    static const map<string, aclnnStatus> statusMap = {
-        {"ACLNN_SUCCESS", ACLNN_SUCCESS},
-        {"ACLNN_ERR_PARAM_INVALID", ACLNN_ERR_PARAM_INVALID},
-    };
-    auto it = statusMap.find(value);
-    if (it != statusMap.end()) {
-        return it->second;
-    }
-    return static_cast<aclnnStatus>(stoll(value));
-}
-
-void SetupPlatformForCase(const string &socVersion)
-{
-    static const map<string, op::SocVersion> socMap = {
-        {"Ascend910B", op::SocVersion::ASCEND910B},
-        {"Ascend950", op::SocVersion::ASCEND950},
-    };
-    auto it = socMap.find(socVersion);
-    op::SetPlatformSocVersion(it == socMap.end() ? op::SocVersion::ASCEND910B : it->second);
-}
-
 struct QGmmInplaceAddOpApiCase {
     void Run() const
     {
         if (!enable) {
             GTEST_SKIP() << "Skip disabled case: " << caseName;
         }
-        SetupPlatformForCase(socVersion);
+        ops::ut::SetPlatformSocVersion(socVersion);
 
-        TensorDesc x1Desc(ParseDims(x1Shape), ParseDtype(x1Dtype), ACL_FORMAT_ND, ParseDims(x1Stride));
-        TensorDesc x2Desc(ParseDims(x2Shape), ParseDtype(x2Dtype), ACL_FORMAT_ND, ParseDims(x2Stride));
-        TensorDesc scale2Desc(ParseDims(scale2Shape), ParseDtype(scale2Dtype), ACL_FORMAT_ND);
-        TensorDesc yDesc(ParseDims(yShape), ParseDtype(yDtype), ACL_FORMAT_ND);
-        TensorDesc scale1Desc(ParseDims(scale1Shape), ParseDtype(scale1Dtype), ACL_FORMAT_ND, ParseDims(scale1Stride));
+        TensorDesc x1Desc(ParseDims(x1Shape), ops::ut::ParseAclDtype(x1Dtype), ACL_FORMAT_ND, ParseDims(x1Stride));
+        TensorDesc x2Desc(ParseDims(x2Shape), ops::ut::ParseAclDtype(x2Dtype), ACL_FORMAT_ND, ParseDims(x2Stride));
+        TensorDesc scale2Desc(ParseDims(scale2Shape), ops::ut::ParseAclDtype(scale2Dtype), ACL_FORMAT_ND);
+        TensorDesc yDesc(ParseDims(yShape), ops::ut::ParseAclDtype(yDtype), ACL_FORMAT_ND);
+        TensorDesc scale1Desc(ParseDims(scale1Shape), ops::ut::ParseAclDtype(scale1Dtype), ACL_FORMAT_ND,
+                              ParseDims(scale1Stride));
         TensorDesc groupListDesc(ParseDims(groupListShape), ACL_INT64, ACL_FORMAT_ND);
-        const vector<int64_t> groupVals = ParseI64List(groupListValues);
+        const vector<int64_t> groupVals = ops::ut::ParseI64List(groupListValues);
         if (!groupVals.empty()) {
             groupListDesc.Value(groupVals);
         }
@@ -96,7 +63,7 @@ struct QGmmInplaceAddOpApiCase {
         uint64_t workspaceSize = 0;
         aclnnStatus ret = ut.TestGetWorkspaceSize(&workspaceSize);
         if (checkRet) {
-            EXPECT_EQ(ret, ParseStatus(expectRet)) << "case=" << caseName;
+            EXPECT_EQ(ret, ops::ut::ParseAclnnStatus(expectRet)) << "case=" << caseName;
         }
     }
 
