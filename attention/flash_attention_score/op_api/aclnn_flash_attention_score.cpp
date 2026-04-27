@@ -182,6 +182,9 @@ static aclnnStatus AnalysisAxis(const aclTensor *query, const aclTensor *key, co
     // N1等于g*N2
     shapeInfo.axes.n1 = headNum;
     std::string inputLayoutStr = op::ToString(inputLayout).GetString();
+    for (auto &c : inputLayoutStr) {
+        c = toupper(c);
+    }
     if (shapeInfo.dimNum == DIM_NUM_3 && inputLayoutStr == "BSH") {
         // query: (B,S1,N1*D)
         // key/value: (B,S2,N2*D)
@@ -203,7 +206,7 @@ static aclnnStatus AnalysisAxis(const aclTensor *query, const aclTensor *key, co
         // key/value: (T,N2,D)
         AnalysisAxisForTnd(qShape, kShape, vShape, shapeInfo);
     } else {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "not support input_layout %s with dim_num %lu", inputLayout, shapeInfo.dimNum);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "not support inputLayout %s with dim_num %lu", inputLayout, shapeInfo.dimNum);
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (shapeInfo.axes.d != shapeInfo.axes.dk) {
@@ -1487,20 +1490,24 @@ aclnnStatus aclnnFlashAttentionScoreV4GetWorkspaceSize(
               ACLNN_ERR_PARAM_NULLPTR);
 
     auto viewCopyResult0 = l0op::ViewCopy(l0SoftmaxMaxOut, softmaxMaxOut, l0Executor);
-    OP_CHECK(viewCopyResult0 != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "the viewCopyResult0 cannot be nullptr"),
-        return ACLNN_ERR_PARAM_NULLPTR);
+    if (viewCopyResult0 == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "the viewCopyResult0 cannot be nullptr, softmaxMaxOut is invalid,
+            dtype should be FLOAT, format and shape should be ND.");
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
     auto viewCopyResult1 = l0op::ViewCopy(l0SoftmaxSumOut, softmaxSumOut, l0Executor);
-    OP_CHECK(viewCopyResult1 != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "the viewCopyResult1 cannot be nullptr"),
-        return ACLNN_ERR_PARAM_NULLPTR);
+    if (viewCopyResult1 == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "the viewCopyResult1 cannot be nullptr, softmaxSumOut is invalid,
+            dtype should be FLOAT, format and shape should be ND.");
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
     // l0SoftmaxOutOut not used now
     auto viewCopyResult3 = l0op::ViewCopy(l0AttentionOutOut, attentionOutOut, l0Executor);
-    OP_CHECK(viewCopyResult3 != nullptr,
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "the viewCopyResult3 cannot be nullptr"),
-        return ACLNN_ERR_PARAM_NULLPTR);
-
-    *workspaceSize = uniqueExecutor->GetWorkspaceSize();
+    if (viewCopyResult3 == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "the viewCopyResult3 cannot be nullptr, attentionOutOut is invalid,
+            dtype should be %s, format and shape should be ND.", op::ToString(attentionOutOut->GetDataType()).GetString());
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
     uniqueExecutor.ReleaseTo(executor);
     return ACLNN_SUCCESS;
 }
