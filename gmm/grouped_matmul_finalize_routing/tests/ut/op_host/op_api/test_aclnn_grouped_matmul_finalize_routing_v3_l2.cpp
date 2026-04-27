@@ -312,19 +312,14 @@ vector<GroupedMatmulFinalizeRoutingV3Case> LoadCases(const string &csvFilePath)
     return cases;
 }
 
-const vector<GroupedMatmulFinalizeRoutingV3Case> &GetV3Cases()
-{
-    static const vector<GroupedMatmulFinalizeRoutingV3Case> cases = LoadCases(ops::ut::ResolveCsvPath(
-        "test_aclnn_grouped_matmul_finalize_routing_v3_l2.csv",
-        "gmm/grouped_matmul_finalize_routing/tests/ut/op_host/op_api", __FILE__));
-    return cases;
-}
-
 class grouped_matmul_finalize_routing_v3_csv_test : public testing::Test {};
 
 TEST_F(grouped_matmul_finalize_routing_v3_csv_test, run_case)
 {
-    for (const auto &testCase : GetV3Cases()) {
+    const auto cases = LoadCases(ops::ut::ResolveCsvPath("test_aclnn_grouped_matmul_finalize_routing_v3_l2.csv",
+                                                         "gmm/grouped_matmul_finalize_routing/tests/ut/op_host/op_api",
+                                                         __FILE__));
+    for (const auto &testCase : cases) {
         testCase.Run();
     }
 }

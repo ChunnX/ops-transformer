@@ -312,19 +312,14 @@ vector<GroupedMatmulFinalizeRoutingWeightNzV2Case> LoadCases(const string &csvFi
     return cases;
 }
 
-const vector<GroupedMatmulFinalizeRoutingWeightNzV2Case> &GetWeightNzV2Cases()
-{
-    static const vector<GroupedMatmulFinalizeRoutingWeightNzV2Case> cases = LoadCases(ops::ut::ResolveCsvPath(
-        "test_aclnn_grouped_matmul_finalize_routing_weight_nz_v2.csv",
-        "gmm/grouped_matmul_finalize_routing/tests/ut/op_host/op_api", __FILE__));
-    return cases;
-}
-
 class grouped_matmul_finalize_routing_weight_nz_v2_csv_test : public testing::Test {};
 
 TEST_F(grouped_matmul_finalize_routing_weight_nz_v2_csv_test, run_case)
 {
-    for (const auto &testCase : GetWeightNzV2Cases()) {
+    const auto cases =
+        LoadCases(ops::ut::ResolveCsvPath("test_aclnn_grouped_matmul_finalize_routing_weight_nz_v2.csv",
+                                          "gmm/grouped_matmul_finalize_routing/tests/ut/op_host/op_api", __FILE__));
+    for (const auto &testCase : cases) {
         testCase.Run();
     }
 }
@@ -389,26 +384,64 @@ struct GroupedMatmulFinalizeRoutingWeightNzV2Mxa8w4Case {
         }
 
         uint64_t workspaceSize = 0;
-        auto runWithBias = [&](auto biasArg, auto perTokenScaleArg, auto sharedInputArg) {
+        aclnnStatus ret = ACLNN_SUCCESS;
+        if (bias.has_value() && perTokenScale.has_value() && sharedInput.has_value()) {
             auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingWeightNzV2,
-                                INPUT(x1, x2, scale, biasArg, nullptr, nullptr, nullptr, perTokenScaleArg, groupList,
-                                      sharedInputArg, logits, rowIndex, 0, 1.0, sharedInputOffset, false, transposeW,
+                                INPUT(x1, x2, scale, *bias, nullptr, nullptr, nullptr, *perTokenScale, groupList,
+                                      *sharedInput, logits, rowIndex, 0, 1.0, sharedInputOffset, false, transposeW,
                                       groupListType, nullptr),
                                 OUTPUT(out));
-            return ut.TestGetWorkspaceSize(&workspaceSize);
-        };
-
-        auto runWithPerTokenScale = [&](auto perTokenScaleArg) {
-            if (bias.has_value()) {
-                return sharedInput.has_value() ? runWithBias(*bias, perTokenScaleArg, *sharedInput)
-                                               : runWithBias(*bias, perTokenScaleArg, nullptr);
-            }
-            return sharedInput.has_value() ? runWithBias(nullptr, perTokenScaleArg, *sharedInput)
-                                           : runWithBias(nullptr, perTokenScaleArg, nullptr);
-        };
-
-        aclnnStatus ret =
-            perTokenScale.has_value() ? runWithPerTokenScale(*perTokenScale) : runWithPerTokenScale(nullptr);
+            ret = ut.TestGetWorkspaceSize(&workspaceSize);
+        } else if (bias.has_value() && perTokenScale.has_value()) {
+            auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingWeightNzV2,
+                                INPUT(x1, x2, scale, *bias, nullptr, nullptr, nullptr, *perTokenScale, groupList,
+                                      nullptr, logits, rowIndex, 0, 1.0, sharedInputOffset, false, transposeW,
+                                      groupListType, nullptr),
+                                OUTPUT(out));
+            ret = ut.TestGetWorkspaceSize(&workspaceSize);
+        } else if (bias.has_value() && sharedInput.has_value()) {
+            auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingWeightNzV2,
+                                INPUT(x1, x2, scale, *bias, nullptr, nullptr, nullptr, nullptr, groupList,
+                                      *sharedInput, logits, rowIndex, 0, 1.0, sharedInputOffset, false, transposeW,
+                                      groupListType, nullptr),
+                                OUTPUT(out));
+            ret = ut.TestGetWorkspaceSize(&workspaceSize);
+        } else if (bias.has_value()) {
+            auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingWeightNzV2,
+                                INPUT(x1, x2, scale, *bias, nullptr, nullptr, nullptr, nullptr, groupList, nullptr,
+                                      logits, rowIndex, 0, 1.0, sharedInputOffset, false, transposeW, groupListType,
+                                      nullptr),
+                                OUTPUT(out));
+            ret = ut.TestGetWorkspaceSize(&workspaceSize);
+        } else if (perTokenScale.has_value() && sharedInput.has_value()) {
+            auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingWeightNzV2,
+                                INPUT(x1, x2, scale, nullptr, nullptr, nullptr, nullptr, *perTokenScale, groupList,
+                                      *sharedInput, logits, rowIndex, 0, 1.0, sharedInputOffset, false, transposeW,
+                                      groupListType, nullptr),
+                                OUTPUT(out));
+            ret = ut.TestGetWorkspaceSize(&workspaceSize);
+        } else if (perTokenScale.has_value()) {
+            auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingWeightNzV2,
+                                INPUT(x1, x2, scale, nullptr, nullptr, nullptr, nullptr, *perTokenScale, groupList,
+                                      nullptr, logits, rowIndex, 0, 1.0, sharedInputOffset, false, transposeW,
+                                      groupListType, nullptr),
+                                OUTPUT(out));
+            ret = ut.TestGetWorkspaceSize(&workspaceSize);
+        } else if (sharedInput.has_value()) {
+            auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingWeightNzV2,
+                                INPUT(x1, x2, scale, nullptr, nullptr, nullptr, nullptr, nullptr, groupList,
+                                      *sharedInput, logits, rowIndex, 0, 1.0, sharedInputOffset, false, transposeW,
+                                      groupListType, nullptr),
+                                OUTPUT(out));
+            ret = ut.TestGetWorkspaceSize(&workspaceSize);
+        } else {
+            auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingWeightNzV2,
+                                INPUT(x1, x2, scale, nullptr, nullptr, nullptr, nullptr, nullptr, groupList, nullptr,
+                                      logits, rowIndex, 0, 1.0, sharedInputOffset, false, transposeW, groupListType,
+                                      nullptr),
+                                OUTPUT(out));
+            ret = ut.TestGetWorkspaceSize(&workspaceSize);
+        }
         EXPECT_EQ(ret, ParseStatus(expectRet));
     }
 
@@ -506,19 +539,14 @@ vector<GroupedMatmulFinalizeRoutingWeightNzV2Mxa8w4Case> LoadMxa8w4Cases(const s
     return cases;
 }
 
-const vector<GroupedMatmulFinalizeRoutingWeightNzV2Mxa8w4Case> &GetMxa8w4Cases()
-{
-    static const vector<GroupedMatmulFinalizeRoutingWeightNzV2Mxa8w4Case> cases = LoadMxa8w4Cases(
-        ops::ut::ResolveCsvPath("test_aclnn_grouped_matmul_finalize_routing_weight_nz_v2_mxa8w4.csv",
-                                "gmm/grouped_matmul_finalize_routing/tests/ut/op_host/op_api", __FILE__));
-    return cases;
-}
-
 class grouped_matmul_finalize_routing_weight_nz_v2_mxa8w4_csv_test : public testing::Test {};
 
 TEST_F(grouped_matmul_finalize_routing_weight_nz_v2_mxa8w4_csv_test, run_case)
 {
-    for (const auto &testCase : GetMxa8w4Cases()) {
+    const auto cases = LoadMxa8w4Cases(
+        ops::ut::ResolveCsvPath("test_aclnn_grouped_matmul_finalize_routing_weight_nz_v2_mxa8w4.csv",
+                                "gmm/grouped_matmul_finalize_routing/tests/ut/op_host/op_api", __FILE__));
+    for (const auto &testCase : cases) {
         testCase.Run();
     }
 }

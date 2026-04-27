@@ -214,12 +214,6 @@ vector<GroupedMatmulFinalizeRoutingInfershapeCase> LoadCases()
 } // namespace
 
 namespace GroupedMatmulFinalizeRoutingInfershapeUT {
-const vector<GroupedMatmulFinalizeRoutingInfershapeCase> &GetFinalizeRoutingInfershapeCases()
-{
-    static const vector<GroupedMatmulFinalizeRoutingInfershapeCase> cases = LoadCases();
-    return cases;
-}
-
 class TestGroupedMatmulFinalizeRoutingInfershape
     : public testing::Test {
 protected:
@@ -229,7 +223,8 @@ protected:
 
 TEST_F(TestGroupedMatmulFinalizeRoutingInfershape, csvDrivenCase)
 {
-    for (const auto &testCase : GetFinalizeRoutingInfershapeCases()) {
+    const auto cases = LoadCases();
+    for (const auto &testCase : cases) {
         testCase.Run();
     }
 }

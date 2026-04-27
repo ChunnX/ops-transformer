@@ -290,19 +290,14 @@ vector<GroupedMatmulFinalizeRoutingTilingCase> LoadCases(const string &csvPath)
 
 namespace GroupedMatmulFinalizeRoutingTilingUT {
 
-const vector<GroupedMatmulFinalizeRoutingTilingCase> &GetTilingCases()
-{
-    static const vector<GroupedMatmulFinalizeRoutingTilingCase> cases =
-        LoadCases(ops::ut::ResolveCsvPath("test_grouped_matmul_finalize_routing_tiling.csv",
-                                          "gmm/grouped_matmul_finalize_routing/tests/ut/op_host", __FILE__));
-    return cases;
-}
-
 class TestGroupedMatmulFinalizeRoutingTiling : public testing::Test {};
 
 TEST_F(TestGroupedMatmulFinalizeRoutingTiling, csvDrivenCase)
 {
-    for (const auto &testCase : GetTilingCases()) {
+    const auto cases = LoadCases(ops::ut::ResolveCsvPath("test_grouped_matmul_finalize_routing_tiling.csv",
+                                                         "gmm/grouped_matmul_finalize_routing/tests/ut/op_host",
+                                                         __FILE__));
+    for (const auto &testCase : cases) {
         testCase.Run();
     }
 }
