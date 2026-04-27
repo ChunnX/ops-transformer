@@ -380,7 +380,8 @@ bool FlashAttentionScoreTilingRegbase::Analyze3DimLayout(const gert::Shape &quer
     int64_t h3 = 0;
     int64_t hRope = 0;
     if (layoutLen == 3UL) {
-        if (inputLayout[0] == 'B' && inputLayout[1] == 'S' && inputLayout[DIM_NUM_2] == 'H') { // 2: H idx
+        if (inputLayout[0] == 'B' && inputLayout[1] == 'S' &&
+            inputLayout[DIM_NUM_2] == 'H') { // 2: H idx
             s1Size = queryShape.GetDim(1);
             bSize = queryShape.GetDim(0);
             s2Size = keyShape.GetDim(1);
@@ -394,7 +395,8 @@ bool FlashAttentionScoreTilingRegbase::Analyze3DimLayout(const gert::Shape &quer
             s2StrideSize = h2;
             inputParamsRegbase_->set_layoutType(static_cast<uint8_t>(LayoutType::LAYOUT_BSH));
             tilingKeyLayout = LayoutType::LAYOUT_BSH;
-        } else if (inputLayout[0] == 'S' && inputLayout[1] == 'B' && inputLayout[DIM_NUM_2] == 'H') { // 2: H idx
+        } else if (inputLayout[0] == 'S' && inputLayout[1] == 'B' &&
+                   inputLayout[DIM_NUM_2] == 'H') { // 2: H idx
             s1Size = queryShape.GetDim(0);
             s2Size = keyShape.GetDim(0);
             bSize = queryShape.GetDim(1);
@@ -448,7 +450,8 @@ bool FlashAttentionScoreTilingRegbase::Analyze4DimLayout(const gert::Shape &quer
 {
     if (layoutLen == 4UL) {
         // 2: N idx, 3: D idx
-        if (inputLayout[0] == 'B' && inputLayout[1] == 'S' && inputLayout[2] == 'N' && inputLayout[3] == 'D') {
+        if (inputLayout[0] == 'B' && inputLayout[1] == 'S' && inputLayout[2] == 'N' &&
+            inputLayout[3] == 'D') {
             bSize = queryShape.GetDim(0);
             s1Size = queryShape.GetDim(1);
             s2Size = keyShape.GetDim(1);
