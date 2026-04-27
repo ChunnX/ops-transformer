@@ -28,6 +28,8 @@
 #include <vector>
 #include "version/runtime_version.h"
 #include "version/metadef_version.h"
+#include <dlfcn.h>
+#include <cstring>
 
 #define EXCEPTION_DUMP_SUPPORT_VERSION 90000000
 
@@ -39,7 +41,32 @@ const uint32_t WIN_SIZE = 1024U * 1024U;
 const uint32_t MS_WIDTH = 3U;
 const uint32_t MS_PER_S = 1000U;
 const mode_t FILE_MODE = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
+// 函数指针类型定义
+typedef aclError (*aclrtGetArgsFromExceptionInfo_t)(aclrtExceptionInfo *info, void **args, uint32_t *argsSize);
 
+// 动态加载函数
+inline aclrtGetArgsFromExceptionInfo_t GetAclrtGetArgsFromExceptionInfoFunc()
+{
+    static aclrtGetArgsFromExceptionInfo_t func = nullptr;
+    static bool initialized = false;
+    
+    if (!initialized) {
+        initialized = true;
+        
+        // 直接从 libacl_rt.so 加载符号
+        void *handle = dlopen("libacl_rt.so", RTLD_NOLOAD | RTLD_LAZY);
+        
+        if (handle != nullptr) {
+            func = (aclrtGetArgsFromExceptionInfo_t)dlsym(handle, "aclrtGetArgsFromExceptionInfo");
+            if (func == nullptr) {
+                OP_LOGE(OP_NAME, "dlsym aclrtGetArgsFromExceptionInfo failed: %s", dlerror());
+            }
+        } else {
+            OP_LOGE(OP_NAME, "dlopen failed: %s", dlerror());
+        }
+    }
+    return func;
+}
 inline std::string GetTimestampWithMilliseconds()
 {
     auto now = std::chrono::system_clock::now();
@@ -184,11 +211,19 @@ inline void Mc2ExceptionImpl(aclrtExceptionInfo *args, void *userdata, const cha
     // Get addr of hccl context from ExceptionInfo
     void* devArgsPtr = nullptr;
     uint32_t devArgsLen = 0;
-    auto ret = aclrtGetArgsFromExceptionInfo(args, &devArgsPtr, &devArgsLen);
+
+    auto aclrtGetArgsFromExceptionInfoFunc = GetAclrtGetArgsFromExceptionInfoFunc();
+    if (aclrtGetArgsFromExceptionInfoFunc == nullptr) {
+        OP_LOGE(OP_NAME, "Failed to load aclrtGetArgsFromExceptionInfo function.");
+        return;
+    }
+
+    auto ret = aclrtGetArgsFromExceptionInfoFunc(args, &devArgsPtr, &devArgsLen);
     if (ret != ACL_SUCCESS) {
         OP_LOGE(OP_NAME, "aclrtGetArgsFromExceptionInfo failed. ret=%d", ret);
         return;
     }
+
     uint32_t deviceId = aclrtGetDeviceIdFromExceptionInfo(args);
     if (ret != ACL_SUCCESS) {
         OP_LOGE(OP_NAME, "aclrtGetDeviceIdFromExceptionInfo failed. ret=%d", ret);
