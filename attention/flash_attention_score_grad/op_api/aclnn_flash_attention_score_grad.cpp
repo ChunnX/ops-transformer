@@ -403,7 +403,7 @@ static aclnnStatus GetInputShapeInfo(const aclTensor *query, const aclTensor *ke
         fagShape.dkDim = keyShape.GetDim(3); // key Head-dim
         fagShape.dvDim = valueShape.GetDim(3); // value Head-dim
     } else {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dimension of the tensor whose input is BNSD/BSND is less than 4.");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The inputLayout should be BSH/SBH/BSND/BNSD/TND, but got %s.", fagShape.inputLayoutStr.c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
 
