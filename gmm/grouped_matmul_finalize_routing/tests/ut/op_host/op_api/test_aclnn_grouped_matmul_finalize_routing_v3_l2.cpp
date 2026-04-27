@@ -79,35 +79,60 @@ TensorDesc MakeTensorDesc(const vector<int64_t> &shape, aclDataType dtype, aclFo
 }
 
 struct GroupedMatmulFinalizeRoutingV3Case {
+    template <typename SharedInputArg, typename LogitsArg, typename OffsetArg, typename AntiQuantScaleArg,
+              typename TuningConfigArg>
+    aclnnStatus RunUt(const TensorDesc &x1, const TensorDesc &x2, const TensorDesc &scale, const TensorDesc &bias,
+                      OffsetArg offsetArg, AntiQuantScaleArg antiQuantScaleArg, const TensorDesc &perTokenScale,
+                      const TensorDesc &groupList, SharedInputArg sharedInputArg, LogitsArg logitsArg,
+                      const TensorDesc &rowIndex, TuningConfigArg tuningConfigArg, const TensorDesc &out,
+                      uint64_t *workspaceSize) const
+    {
+        auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingV3,
+                            INPUT(x1, x2, scale, bias, offsetArg, antiQuantScaleArg, nullptr, perTokenScale,
+                                  groupList, sharedInputArg, logitsArg, rowIndex, dtype, sharedInputWeight,
+                                  sharedInputOffset, transposeX, transposeW, groupListType, tuningConfigArg),
+                            OUTPUT(out));
+        return ut.TestGetWorkspaceSize(workspaceSize);
+    }
+
     void Run() const
     {
         SetupPlatformForCase(socVersion);
 
-        TensorDesc x1 = MakeTensorDesc(ParseDims(x1Shape), ParseDtype(x1Dtype), ACL_FORMAT_ND, {});
-        TensorDesc x2 =
-            MakeTensorDesc(ParseDims(x2Shape), ParseDtype(x2Dtype), ParseFormat(x2Format), ParseDims(x2StorageShape));
-        TensorDesc scale =
-            MakeTensorDesc(ParseDims(scaleShape), ParseDtype(scaleDtype), ACL_FORMAT_ND, {}).ValueRange(0, 3);
-        TensorDesc bias = MakeTensorDesc(ParseDims(biasShape), ParseDtype(biasDtype), ACL_FORMAT_ND, {});
-        TensorDesc offset =
-            MakeTensorDesc(ParseDims(offsetShape), ParseDtype(offsetDtype), ParseFormat(offsetFormat), {});
+        const vector<int64_t> x1Dims = ParseDims(x1Shape);
+        const vector<int64_t> x2Dims = ParseDims(x2Shape);
+        const vector<int64_t> x2StorageDims = ParseDims(x2StorageShape);
+        const vector<int64_t> scaleDims = ParseDims(scaleShape);
+        const vector<int64_t> biasDims = ParseDims(biasShape);
+        const vector<int64_t> offsetDims = ParseDims(offsetShape);
+        const vector<int64_t> antiQuantScaleDims = ParseDims(antiQuantScaleShape);
+        const vector<int64_t> perTokenScaleDims = ParseDims(perTokenScaleShape);
+        const vector<int64_t> groupListDims = ParseDims(groupListShape);
+        const vector<int64_t> sharedInputDims = ParseDims(sharedInputShape);
+        const vector<int64_t> logitsDims = ParseDims(logitsShape);
+        const vector<int64_t> rowIndexDims = ParseDims(rowIndexShape);
+        const vector<int64_t> outDims = ParseDims(outShape);
+
+        TensorDesc x1 = MakeTensorDesc(x1Dims, ParseDtype(x1Dtype), ACL_FORMAT_ND, {});
+        TensorDesc x2 = MakeTensorDesc(x2Dims, ParseDtype(x2Dtype), ParseFormat(x2Format), x2StorageDims);
+        TensorDesc scale = MakeTensorDesc(scaleDims, ParseDtype(scaleDtype), ACL_FORMAT_ND, {}).ValueRange(0, 3);
+        TensorDesc bias = MakeTensorDesc(biasDims, ParseDtype(biasDtype), ACL_FORMAT_ND, {});
+        TensorDesc offset = MakeTensorDesc(offsetDims, ParseDtype(offsetDtype), ParseFormat(offsetFormat), {});
         TensorDesc antiQuantScale =
-            MakeTensorDesc(ParseDims(antiQuantScaleShape), ParseDtype(antiQuantScaleDtype), ACL_FORMAT_ND, {});
+            MakeTensorDesc(antiQuantScaleDims, ParseDtype(antiQuantScaleDtype), ACL_FORMAT_ND, {});
         TensorDesc perTokenScale =
-            MakeTensorDesc(ParseDims(perTokenScaleShape), ParseDtype(perTokenScaleDtype), ACL_FORMAT_ND, {})
+            MakeTensorDesc(perTokenScaleDims, ParseDtype(perTokenScaleDtype), ACL_FORMAT_ND, {})
                 .ValueRange(0, 3);
-        TensorDesc groupList =
-            MakeTensorDesc(ParseDims(groupListShape), ACL_INT64, ACL_FORMAT_ND, {}).ValueRange(-1, 1);
+        TensorDesc groupList = MakeTensorDesc(groupListDims, ACL_INT64, ACL_FORMAT_ND, {}).ValueRange(-1, 1);
         const vector<int64_t> groupListVals = ParseI64List(groupListValues);
         if (!groupListVals.empty()) {
             groupList.Value(groupListVals);
         }
-        TensorDesc sharedInput =
-            MakeTensorDesc(ParseDims(sharedInputShape), ParseDtype(sharedInputDtype), ACL_FORMAT_ND, {});
-        TensorDesc logits = MakeTensorDesc(ParseDims(logitsShape), ParseDtype(logitsDtype), ACL_FORMAT_ND, {});
-        TensorDesc rowIndex =
-            MakeTensorDesc(ParseDims(rowIndexShape), ParseDtype(rowIndexDtype), ACL_FORMAT_ND, {});
-        TensorDesc out = MakeTensorDesc(ParseDims(outShape), ParseDtype(outDtype), ACL_FORMAT_ND, {});
+        TensorDesc sharedInput = MakeTensorDesc(sharedInputDims, ParseDtype(sharedInputDtype), ACL_FORMAT_ND, {});
+        TensorDesc logits = MakeTensorDesc(logitsDims, ParseDtype(logitsDtype), ACL_FORMAT_ND, {});
+        TensorDesc rowIndex = MakeTensorDesc(rowIndexDims, ParseDtype(rowIndexDtype), ACL_FORMAT_ND, {});
+        TensorDesc out = MakeTensorDesc(outDims, ParseDtype(outDtype), ACL_FORMAT_ND, {});
+        const bool hasSharedInputTensor = !sharedInputDims.empty();
 
         const vector<int64_t> tuningVals = ParseI64List(tuningConfig);
         aclIntArray *tuningConfigPtr = nullptr;
@@ -119,33 +144,37 @@ struct GroupedMatmulFinalizeRoutingV3Case {
         aclnnStatus ret = ACLNN_SUCCESS;
 
         if (!ParseBool(hasOffset)) {
-            auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingV3,
-                                INPUT(x1, x2, scale, bias, nullptr, nullptr, nullptr, perTokenScale, groupList,
-                                      sharedInput, logits, rowIndex, dtype, sharedInputWeight, sharedInputOffset,
-                                      transposeX, transposeW, groupListType, nullptr),
-                                OUTPUT(out));
-            ret = ut.TestGetWorkspaceSize(&workspaceSize);
+            if (hasSharedInputTensor) {
+                ret = RunUt(x1, x2, scale, bias, nullptr, nullptr, perTokenScale, groupList, sharedInput, logits,
+                            rowIndex, nullptr, out, &workspaceSize);
+            } else {
+                ret = RunUt(x1, x2, scale, bias, nullptr, nullptr, perTokenScale, groupList, nullptr, logits,
+                            rowIndex, nullptr, out, &workspaceSize);
+            }
         } else if (!ParseBool(hasLogits)) {
-            auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingV3,
-                                INPUT(x1, x2, scale, bias, offset, nullptr, nullptr, perTokenScale, groupList,
-                                      sharedInput, nullptr, rowIndex, dtype, sharedInputWeight, sharedInputOffset,
-                                      transposeX, transposeW, groupListType, tuningConfigPtr),
-                                OUTPUT(out));
-            ret = ut.TestGetWorkspaceSize(&workspaceSize);
+            if (hasSharedInputTensor) {
+                ret = RunUt(x1, x2, scale, bias, offset, nullptr, perTokenScale, groupList, sharedInput, nullptr,
+                            rowIndex, tuningConfigPtr, out, &workspaceSize);
+            } else {
+                ret = RunUt(x1, x2, scale, bias, offset, nullptr, perTokenScale, groupList, nullptr, nullptr,
+                            rowIndex, tuningConfigPtr, out, &workspaceSize);
+            }
         } else if (ParseBool(hasAntiQuantScale)) {
-            auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingV3,
-                                INPUT(x1, x2, scale, bias, offset, antiQuantScale, nullptr, perTokenScale, groupList,
-                                      sharedInput, logits, rowIndex, dtype, sharedInputWeight, sharedInputOffset,
-                                      transposeX, transposeW, groupListType, tuningConfigPtr),
-                                OUTPUT(out));
-            ret = ut.TestGetWorkspaceSize(&workspaceSize);
+            if (hasSharedInputTensor) {
+                ret = RunUt(x1, x2, scale, bias, offset, antiQuantScale, perTokenScale, groupList, sharedInput,
+                            logits, rowIndex, tuningConfigPtr, out, &workspaceSize);
+            } else {
+                ret = RunUt(x1, x2, scale, bias, offset, antiQuantScale, perTokenScale, groupList, nullptr, logits,
+                            rowIndex, tuningConfigPtr, out, &workspaceSize);
+            }
         } else {
-            auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingV3,
-                                INPUT(x1, x2, scale, bias, offset, nullptr, nullptr, perTokenScale, groupList,
-                                      sharedInput, logits, rowIndex, dtype, sharedInputWeight, sharedInputOffset,
-                                      transposeX, transposeW, groupListType, tuningConfigPtr),
-                                OUTPUT(out));
-            ret = ut.TestGetWorkspaceSize(&workspaceSize);
+            if (hasSharedInputTensor) {
+                ret = RunUt(x1, x2, scale, bias, offset, nullptr, perTokenScale, groupList, sharedInput, logits,
+                            rowIndex, tuningConfigPtr, out, &workspaceSize);
+            } else {
+                ret = RunUt(x1, x2, scale, bias, offset, nullptr, perTokenScale, groupList, nullptr, logits,
+                            rowIndex, tuningConfigPtr, out, &workspaceSize);
+            }
         }
 
         if (ParseBool(checkRet)) {
