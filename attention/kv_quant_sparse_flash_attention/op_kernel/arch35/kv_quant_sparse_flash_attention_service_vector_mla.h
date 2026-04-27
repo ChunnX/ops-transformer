@@ -821,7 +821,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
                 s1Size = cuSeqlensQGm.GetValue(bIdx);
             }
         }
-        if (s1Size > s2Size) {
+        if (s1Size > s2Size || (LAYOUT_T == QSFA_LAYOUT::BSND && s1Size < sharedParams.s1Size)) {
             sharedParams.needInit = 1;
             break;
         }
