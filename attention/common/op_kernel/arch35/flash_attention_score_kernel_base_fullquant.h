@@ -107,7 +107,7 @@ public:
     static constexpr uint32_t s1BaseSize = (uint32_t)s1TemplateType;
     static constexpr uint32_t s2BaseSize = (uint32_t)s2TemplateType;
     static constexpr bool isFp8 = CubeBlockType::isFp8;
-    static constexpr bool isMxfp8FullQuant = true;
+    static constexpr bool isMxfp8FullQuant = s1BaseSize == 128 && s2BaseSize == 512;
     /* 是否使能dn的信息; 没有可选输入并且S2切分的时候使用dn，s2比较小的时候nd效果更好 */
     static constexpr bool useDn = CubeBlockType::useDn;
     /* HIFLOAT8场景 softmax计算使用Nz格式计算，vec1ResBuffer可以和bmm1ResBuffer进行复用*/

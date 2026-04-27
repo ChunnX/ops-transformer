@@ -254,7 +254,7 @@ ge::graphStatus DequantChecker::CheckDequantModeGQAPertensor(const FiaTilingInfo
 // mxfp9 qk:per-token-group v:per-channel-group
 ge::graphStatus DequantChecker::CheckDequantModeMXFP8Fullquant(const FiaTilingInfo &fiaInfo)
 {
-if (!enableMxfp8FullQuant_) {
+    if (!enableMxfp8FullQuant_) {
         return ge::GRAPH_SUCCESS;
     }
     OP_CHECK_IF(
@@ -1115,7 +1115,7 @@ ge::graphStatus DequantChecker::CheckInputDTypeFullquant(const FiaTilingInfo &fi
                             "In per-block quant scenario, input datatype(%s) should be FLOAT8_E4M3FN or HIFLOAT8.",
                             DataTypeToSerialString(fiaInfo.inputQType).c_str()),
                     return ge::GRAPH_FAILED);
-    } else if (enableMxfp8FullQuant_) {  // MXFP8 fp8_e4m3
+    } else if (enableMxfp8FullQuant_) {
         OP_CHECK_IF(!(fiaInfo.inputQType == ge::DT_FLOAT8_E4M3FN),
                     OP_LOGE(fiaInfo.opName,
                             "In MXFP8 fullquant scenario, query datatype(%s) and key/value datatype(%s), "
