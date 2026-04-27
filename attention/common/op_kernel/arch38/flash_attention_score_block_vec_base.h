@@ -238,7 +238,6 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1DnRegbaseV
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf, LocalTensor<T> mmRes,
     RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo)
 {
-    LocalTensor<INPUT_T> tmpSoftmaxResUb[2];
     LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>()[0];
     LocalTensor<T> maxUb = this->softmaxMaxBuf[runInfo.multiCoreIdxMod3].template Get<T>()[0];
  
