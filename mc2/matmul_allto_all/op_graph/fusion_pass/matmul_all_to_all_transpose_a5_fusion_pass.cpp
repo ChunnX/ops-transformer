@@ -33,6 +33,17 @@ const size_t PERM_SIZE_ONE = 1;
 const size_t PERM_SIZE_TWO = 2;
 const size_t PERM_SIZE_THREE = 3;
 
+struct ReplaceGraphInputs {
+    ge::es::EsTensorHolder rX1;
+    ge::es::EsTensorHolder rX2;
+    ge::es::EsTensorHolder rBias;
+    ge::es::EsTensorHolder rX1Scale;
+    ge::es::EsTensorHolder rX2Scale;
+    ge::es::EsTensorHolder rCommScale;
+    ge::es::EsTensorHolder rX1Offset;
+    ge::es::EsTensorHolder rX2Offset;
+};
+
 // 加载 EsTranspose 符号
 namespace {
     typedef EsCTensorHolder* (*EsTransposeFunc)(EsCTensorHolder*, EsCTensorHolder*);
@@ -52,26 +63,14 @@ namespace {
         return func;
     }
     
-    EsTensorHolder TransposeDL(const EsTensorLike& x, const EsTensorLike& perm) {
+    ge::es::EsTensorHolder TransposeDL(const ge::es::EsTensorLike& x, const ge::es::EsTensorLike& perm) {
         static EsTransposeFunc func = GetEsTransposeFunc();
-        auto* builder = ResolveBuilder(x, perm);
+        auto* builder = ge::es::ResolveBuilder(x, perm);
         auto* result = func(x.ToTensorHolder(builder).GetCTensorHolder(),
                             perm.ToTensorHolder(builder).GetCTensorHolder());
-        return EsTensorHolder(result);
+        return ge::es::EsTensorHolder(result);
     }
 }
-
-
-struct ReplaceGraphInputs {
-    ge::es::EsTensorHolder rX1;
-    ge::es::EsTensorHolder rX2;
-    ge::es::EsTensorHolder rBias;
-    ge::es::EsTensorHolder rX1Scale;
-    ge::es::EsTensorHolder rX2Scale;
-    ge::es::EsTensorHolder rCommScale;
-    ge::es::EsTensorHolder rX1Offset;
-    ge::es::EsTensorHolder rX2Offset;
-};
 
 static ge::fusion::PatternUniqPtr MakePatternForTranspose(bool hasBias)
 {
