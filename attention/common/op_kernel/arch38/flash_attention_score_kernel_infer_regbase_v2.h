@@ -204,6 +204,7 @@ __aicore__ inline void FlashAttentionScoreKernelInferRegbaseV2<CubeBlockType, Ve
             }
 
             for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; ++s2LoopCount) {
+                bool oneLoop = (bnEndIdx - bnStartIdx == 1) && (runParam.s1LoopTimes - gS1StartIdx == 1) && (s2LoopLimit == 0);
                 if (notLastThreeLoop) {
                     RunInfo<isInfer> &runInfo1 = runInfo[taskId & 3];
                     this->SetRunInfo(runInfo1, runParam, taskId, s2LoopCount, s2LoopLimit, multiCoreInnerIdx);
@@ -217,7 +218,11 @@ __aicore__ inline void FlashAttentionScoreKernelInferRegbaseV2<CubeBlockType, Ve
                 if (taskId > 0 && notLastTwoLoop) {
                     auto &runInfo3 = runInfo[(taskId + 3) & 3];
                     WaitFlag<HardEvent::FIX_V>(BaseClass::SYNC_C1_V1_FLAG[runInfo3.taskIdMod2]);
-                    this->vecBlock.ProcessVec1(this->l1PBuffers.GetVec(), this->bmm1Buffers.Get(), runInfo3, this->constInfo); //单基本块需要getPre
+                    if (oneLoop) {
+                        this->vecBlock.ProcessVec1(this->l1PBuffers.GetVec(), this->bmm1Buffers.GetPre(), runInfo3, this->constInfo);
+                    } else {
+                        this->vecBlock.ProcessVec1(this->l1PBuffers.GetVec(), this->bmm1Buffers.Get(), runInfo3, this->constInfo);
+                    }
                 }
                 if (taskId > 1 && notLast) {
                     RunInfo<isInfer> &runInfo2 = runInfo[(taskId + 2) & 3];
@@ -232,7 +237,11 @@ __aicore__ inline void FlashAttentionScoreKernelInferRegbaseV2<CubeBlockType, Ve
                 if (taskId > 2) {
                     RunInfo<isInfer> &runInfo3 = runInfo[(taskId + 1) & 3];
                     WaitFlag<HardEvent::FIX_V>(BaseClass::SYNC_C2_V2_FLAG[runInfo3.taskIdMod2]);
-                    this->vecBlock.ProcessVec2(this->bmm2Buffers.Get(), runInfo3, this->constInfo);
+                    if (oneLoop) {
+                        this->vecBlock.ProcessVec2(this->bmm2Buffers.GetPre(), runInfo3, this->constInfo);
+                    } else {
+                        this->vecBlock.ProcessVec2(this->bmm2Buffers.Get(), runInfo3, this->constInfo);
+                    }
                 }
                 ++taskId;
             }
