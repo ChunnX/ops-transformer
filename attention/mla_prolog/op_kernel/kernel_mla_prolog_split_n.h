@@ -186,6 +186,17 @@ private:
     __aicore__ inline void DequantAndRopeSplitNSyncMMQcQr(int64_t mmQnPreDequantOffset, int64_t mmQnPreDequantResOffset,
                                                             int64_t ropeQrOffset, int64_t ropeQrResOffset);
     __aicore__ inline void DynamicQuantQnAndMulQrSyncMMQn(int64_t batchOffset, int64_t curStepBatchSize, int64_t numHeadOffset, int64_t mmQnLoops);
+    __aicore__ inline bool EnableCubeVecSharePath() const;
+    __aicore__ inline uint32_t GetCubeVecSharedBytes() const;
+    __aicore__ inline uint32_t GetCubeVecSharedHalfBytes() const;
+    __aicore__ inline uint32_t GetMm3SharedRowsPerHalf() const;
+    __aicore__ inline uint32_t GetMm4SharedRowsPerHalf() const;
+    __aicore__ inline uint32_t GetCvShareRowBase(uint32_t totalRows, uint32_t subBlockIdx) const;
+    __aicore__ inline uint32_t GetCvShareRowCount(uint32_t totalRows, uint32_t subBlockIdx) const;
+    __aicore__ inline void SignalSharedReady(uint32_t flagId);
+    __aicore__ inline void WaitSharedReady(uint32_t flagId);
+    __aicore__ inline void SignalSharedDone(uint32_t flagId);
+    __aicore__ inline void WaitSharedDone(uint32_t flagId);
 
     TPipe* pipe_;
     const optiling::MlaPrologTilingData* __restrict tilingData_;
@@ -204,6 +215,7 @@ private:
     static constexpr uint32_t cvMode = MLAPT::cvRatio; // 编译态，默认cv1:2
     static constexpr bool isFp8E8m0 = std::is_same<dequantScaleType, FP8E8M0>::value;
     uint32_t cvRatio_ = 2U; // 默认cv 1:2
+    bool enableCubeVecSharePath_ = false;
 
     struct DequantTool {
         GlobalTensor<dequantScaleType> deQuantScaleCqGm_;
@@ -329,6 +341,10 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::Init(
             vectorCoreNum_ = vectorCoreNum_ * 2; // 修正为运行态vector数目
         }
     }
+#if __CCE_AICORE__ == 310
+    enableCubeVecSharePath_ = MLAPT::enableDequantOpt && (cvRatio_ == 2U) &&
+                              (baseParams_->vectorBlockNum >= 48U);
+#endif
     curVecTokenMax_ = (curVectorBlockNum_ + vectorCoreNum_ - 1) / vectorCoreNum_;
     enableSmoothScalesCq_ = smoothScaleCq == nullptr ? false : true;
     // GM
@@ -417,15 +433,15 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmParamInit() {
 template<typename MLAPT>
 __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmCqParamInit() {
     mmCqParam_.m = baseParams_->stepBatchSize; // 32
-    if (baseParams_->mm1KnKGroupSize != 1) {
-        mmCqParam_.n = baseParams_->headSizeCq / baseParams_->mm1KnNGroupSize;
+    if (baseParams_.mm1KnKGroupSize != 1) {
+        mmCqParam_.n = baseParams_->headSizeCq / baseParams_.mm1KnNGroupSize;
         mmCqParam_.baseK = (sizeof(mmInputType) == ONE_BYTE_TYPE_SIZE) ? 128 : 64; // 128KB / (128 max baseN * 4 stepK * sizeof(type))
-        mmCqParam_.k = (baseParams_->headSizeX / mmCqParam_.baseK) / baseParams_->mm1KnKGroupSize * mmCqParam_.baseK;
-        mmCqParam_.kStart = (cubeBlockIdx_ / baseParams_->mm1KnKGroupSize) * mmCqParam_.k;
-        if (cubeBlockIdx_ < (baseParams_->headSizeX / mmCqParam_.baseK) % baseParams_->mm1KnKGroupSize) {
+        mmCqParam_.k = (baseParams_->headSizeX / mmCqParam_.baseK) / baseParams_.mm1KnKGroupSize * mmCqParam_.baseK;
+        mmCqParam_.kStart = (cubeBlockIdx_ / baseParams_.mm1KnKGroupSize) * mmCqParam_.k;
+        if (cubeBlockIdx_ < (baseParams_->headSizeX / mmCqParam_.baseK) % baseParams_.mm1KnKGroupSize) {
             mmCqParam_.k += mmCqParam_.baseK;
         }
-        mmCqParam_.kStart += Std::min(cubeBlockIdx_, (baseParams_->headSizeX / mmCqParam_.baseK) % baseParams_->mm1KnKGroupSize) * mmCqParam_.baseK;
+        mmCqParam_.kStart += Std::min(cubeBlockIdx_, (baseParams_->headSizeX / mmCqParam_.baseK) % baseParams_.mm1KnKGroupSize) * mmCqParam_.baseK
         mmCqParam_.baseN = 192;
         mmCqParam_.stepKMax = L1_B_SIZE / (mmCqParam_.baseK * mmCqParam_.baseN * sizeof(mmInputType));
     } else {
@@ -434,7 +450,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmCqParamInit() {
         } else {
             mmCqParam_.n = baseParams_->mm1SingleCoreN; // 1536 / 24 = 64
         }
-        mmCqParam_.k = baseParams_->headSizeX / baseParams_->mm1KnKGroupSize; // 7168
+        mmCqParam_.k = baseParams_->headSizeX / baseParams_.mm1KnKGroupSize; // 7168
         mmCqParam_.baseK = (sizeof(mmInputType) == ONE_BYTE_TYPE_SIZE) ? 256 : 128; // 128KB / (128 max baseN * 4 stepK * sizeof(type))
         mmCqParam_.baseN = (std::is_same<mmInputType, FP8E4M3>::value && isFp8E8m0) ? 64 : 128;
         mmCqParam_.stepK = 4;
@@ -458,16 +474,16 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmCqParamInit() {
 template<typename MLAPT>
 __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmCkvKrParamInit() {
     mmCkvKrParam_.m = baseParams_->stepBatchSize; // 32
-    if (baseParams_->mm2KnKGroupSize != 1) {
-        mmCkvKrParam_.n = (baseParams_->headSizeCkv + baseParams_->headSizeKr) / baseParams_->mm2KnNGroupSize;
+    if (baseParams_.mm2KnKGroupSize != 1) {
+        mmCkvKrParam_.n = (baseParams_->headSizeCkv + baseParams_->headSizeKr) / baseParams_.mm2KnNGroupSize;
         mmCkvKrParam_.baseK = (sizeof(mmInputType) == ONE_BYTE_TYPE_SIZE) ? 128 : 64; // 128KB / (128 max baseN * 4 stepK * sizeof(type))
-        mmCkvKrParam_.k = (baseParams_->headSizeX / mmCkvKrParam_.baseK) / baseParams_->mm2KnKGroupSize * mmCkvKrParam_.baseK;
-        mmCkvKrParam_.kStart = (cubeBlockIdx_ / baseParams_->mm2KnKGroupSize) * mmCkvKrParam_.k;
-        if (cubeBlockIdx_ < (baseParams_->headSizeX / mmCkvKrParam_.baseK) % baseParams_->mm2KnKGroupSize) {
+        mmCkvKrParam_.k = (baseParams_->headSizeX / mmCkvKrParam_.baseK) / baseParams_.mm2KnKGroupSize * mmCkvKrParam_.baseK;
+        mmCkvKrParam_.kStart = (cubeBlockIdx_ / baseParams_.mm2KnKGroupSize) * mmCkvKrParam_.k;
+        if (cubeBlockIdx_ < (baseParams_->headSizeX / mmCkvKrParam_.baseK) % baseParams_.mm2KnKGroupSize) {
             mmCkvKrParam_.k += mmCkvKrParam_.baseK;
         }
-        mmCkvKrParam_.kStart += Std::min(cubeBlockIdx_, (baseParams_->headSizeX / mmCkvKrParam_.baseK) % baseParams_->mm2KnKGroupSize) * mmCkvKrParam_.baseK;
-        mmCkvKrParam_.k = baseParams_->headSizeX / baseParams_->mm2KnKGroupSize;
+        mmCkvKrParam_.kStart += Std::min(cubeBlockIdx_, (baseParams_->headSizeX / mmCkvKrParam_.baseK) % baseParams_.mm2KnKGroupSize) * mmCkvKrParam_.baseK
+        mmCkvKrParam_.k = baseParams_->headSizeX / baseParams_.mm2KnKGroupSize;
         mmCkvKrParam_.baseN = 192;
         mmCkvKrParam_.stepKMax = L1_B_SIZE / (mmCkvKrParam_.baseK * mmCkvKrParam_.baseN * sizeof(mmInputType));
     } else {
@@ -476,7 +492,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmCkvKrParamInit() {
         } else {
             mmCkvKrParam_.n = baseParams_->mm2SingleCoreN;
         }
-        mmCqParam_.k = baseParams_->headSizeX / baseParams_->mm2KnKGroupSize;
+        mmCqParam_.k = baseParams_->headSizeX / baseParams_.mm2KnKGroupSize;
         mmCkvKrParam_.baseK = 128;//(sizeof(mmInputType) == ONE_BYTE_TYPE_SIZE) ? 256 : 128; // 128KB / (128 max baseN * 4 stepK * sizeof(type))
         mmCkvKrParam_.baseN = 192;
         mmCkvKrParam_.stepK = 4;
@@ -563,20 +579,91 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmQnParamInit() {
     mmQnParam_.kScale = mmQnParam_.k / FP8_E4M3_BLOCK_SIZE;
 }
 
+template<typename MLAPT>
+__aicore__ inline bool MlaPrologVecS1CubS2<MLAPT>::EnableCubeVecSharePath() const
+{
+#if __CCE_AICORE__ == 310
+    return enableCubeVecSharePath_;
+#else
+    return false;
+#endif
+}
+
+template<typename MLAPT>
+__aicore__ inline uint32_t MlaPrologVecS1CubS2<MLAPT>::GetCubeVecSharedBytes() const
+{
+    return 192U * 128U * sizeof(float);
+}
+
+template<typename MLAPT>
+__aicore__ inline uint32_t MlaPrologVecS1CubS2<MLAPT>::GetCubeVecSharedHalfBytes() const
+{
+    return GetCubeVecSharedBytes() / 2U;
+}
+
+template<typename MLAPT>
+__aicore__ inline uint32_t MlaPrologVecS1CubS2<MLAPT>::GetMm3SharedRowsPerHalf() const
+{
+    return GetCubeVecSharedHalfBytes() / (DIM_HEAD_SIZE_QCQR * sizeof(float));
+}
+
+template<typename MLAPT>
+__aicore__ inline uint32_t MlaPrologVecS1CubS2<MLAPT>::GetMm4SharedRowsPerHalf() const
+{
+    return Std::min(GetCubeVecSharedHalfBytes() / (baseParams_->headSizeCkv * sizeof(mmQnOutputType)), 32U);
+}
+
+template<typename MLAPT>
+__aicore__ inline uint32_t MlaPrologVecS1CubS2<MLAPT>::GetCvShareRowBase(uint32_t totalRows, uint32_t subBlockIdx) const
+{
+    uint32_t baseRows = totalRows / cvRatio_;
+    return baseRows * subBlockIdx;
+}
+
+template<typename MLAPT>
+__aicore__ inline uint32_t MlaPrologVecS1CubS2<MLAPT>::GetCvShareRowCount(uint32_t totalRows, uint32_t subBlockIdx) const
+{
+    uint32_t baseRows = totalRows / cvRatio_;
+    if (subBlockIdx + 1U == cvRatio_) {
+        return totalRows - baseRows * subBlockIdx;
+    }
+    return baseRows;
+}
+
+template<typename MLAPT>
+__aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::SignalSharedReady(uint32_t flagId)
+{
+    CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_FIX>(flagId);
+}
+
+template<typename MLAPT>
+__aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::WaitSharedReady(uint32_t flagId)
+{
+    CrossCoreWaitFlag(flagId);
+}
+
+template<typename MLAPT>
+__aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::SignalSharedDone(uint32_t flagId)
+{
+    CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE3>(flagId);
+}
+
+template<typename MLAPT>
+__aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::WaitSharedDone(uint32_t flagId)
+{
+    CrossCoreWaitFlag(flagId);
+}
+
 
 template<typename MLAPT>
 __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::ShareBufferInit() {
     usedShareBytes = 0;
-    // if constexpr (MLAPT::enableDequantOpt) {
-    //     uint64_t cvShareBufferSize =
-    //         CeilDivT(baseParams_->stepBatchSize, static_cast<uint32_t>(vectorCoreNum_)) *
-    //         Align(baseParams_->dimHeadSizeQc + baseParams_->dimHeadRope + mmQcQrParam_.baseN, mmQcQrParam_.baseN) *
-    //         sizeof(mmQcQrOutputType);
-    //     pipe_->InitBuffer(cube2VecBuffer_, cvShareBufferSize); // [128, D + Dr + baseN]
-    //     cube2VecLocal_ = cube2VecBuffer_.Get<mmQcQrOutputType>();
-    //     usedShareBytes += cvShareBufferSize;
-    // }
-
+    if (EnableCubeVecSharePath()) {
+        uint64_t cvShareBufferSize = GetCubeVecSharedBytes();
+        pipe_->InitBuffer(cube2VecBuffer_, cvShareBufferSize);
+        cube2VecLocal_ = cube2VecBuffer_.Get<mmQcQrOutputType>();
+        usedShareBytes += cvShareBufferSize;
+    }
 }
 
 
@@ -735,15 +822,15 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::WorkspaceInit(__gm__ uint8_t 
     dequantScaleCqSize_ = Align(dequantScaleCqSize_, BYTE_BLOCK);
 #if __CCE_AICORE__ == 310
     // Ascend 950: allocate partial sum buffers for Split-KN
-    if (baseParams_->mm1KnKGroupSize > 0) {
+    if (baseParams_->mm1KnKGroups > 0) {
         cqPartialsGm_.SetGlobalBuffer((__gm__ mmCqAccumType *)(workspace + workspaceOffset));
-        workspaceOffset += static_cast<int64_t>(baseParams_->mm1KnKGroupSize)
+        workspaceOffset += static_cast<int64_t>(baseParams_->mm1KnKGroups)
                          * static_cast<int64_t>(baseParams_->stepBatchSize)
                          * static_cast<int64_t>(baseParams_->headSizeCq) * sizeof(mmCqAccumType);
     }
-    if (baseParams_->mm2KnKGroupSize > 0) {
+    if (baseParams_->mm2KnKGroups > 0) {
         ckvKrPartialsGm_.SetGlobalBuffer((__gm__ mmCkvKrAccumType *)(workspace + workspaceOffset));
-        workspaceOffset += static_cast<int64_t>(baseParams_->mm2KnKGroupSize)
+        workspaceOffset += static_cast<int64_t>(baseParams_->mm2KnKGroups)
                          * static_cast<int64_t>(baseParams_->stepBatchSize)
                          * static_cast<int64_t>(baseParams_->headSizeCkv + baseParams_->dimHeadRope)
                          * sizeof(mmCkvKrAccumType);
@@ -914,10 +1001,10 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AicProcess(AicOffset &aicOffs
 #if __CCE_AICORE__ == 310
     // Ascend 950: Split-KN for MM1 (MatmulCq)
     {
-        uint32_t mm1KGroupIdx = blockIdx_ % baseParams_->mm1KnKGroupSize;
-        uint32_t mm1NGroupIdx = blockIdx_ / baseParams_->mm1KnKGroupSize;
-        uint64_t mm1KStartOffset = mmCqParam_.kStart;
-        uint64_t mm1NStartOffset = mm1NGroupIdx * mmCqParam_.n;
+        uint32_t mm1KGroupIdx = blockIdx_ % baseParams_->mm1KnKGroups;
+        uint32_t mm1NGroupIdx = blockIdx_ / baseParams_->mm1KnKGroups;
+        uint64_t mm1KStartOffset = mm1KGroupIdx * mm1SingleKSize;
+        uint64_t mm1NStartOffset = mm1NGroupIdx * mm1SingleNSize;
 
         // Partial output offset: [kGroup][stepBS][Hcq] layout, write to [nStart] columns
         uint64_t mm1OutputOffset = static_cast<int64_t>(mm1KGroupIdx) * baseParams_->stepBatchSize * baseParams_->headSizeCq + mm1NStartOffset;
@@ -930,13 +1017,13 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AicProcess(AicOffset &aicOffs
                 cqPartialsGm_[mm1OutputOffset],
                 tokenXGm_[tokenXOffset + mm1KStartOffset],  // A: offset to K-slice start column
                 weightDqGm_[mm1NStartOffset * baseParams_->headSizeX],
-                mmCqParam_, UsedBlockParams{0, baseParams_->mm1KnKGroupSize * baseParams_->mm1KnNGroupSize}, dequantScaleXGm_[mm1DequantScaleXOffset], dequantScaleWDqGm_[dequantScaleWDqOffset]);
+                mmCqParam_, UsedBlockParams{0, baseParams_->mm1KnKGroups * baseParams_->mm1KnNGroups}, dequantScaleXGm_[mm1DequantScaleXOffset], dequantScaleWDqGm_[dequantScaleWDqOffset]);
         } else {
             MatmulSplitN<mmInputType, mmCqAccumType, dequantScaleType>(
                 cqPartialsGm_[mm1OutputOffset],
                 tokenXGm_[tokenXOffset + mm1KStartOffset],  // A: offset to K-slice start column
                 weightDqGm_[mm1NStartOffset * baseParams_->headSizeX],
-                mmCqParam_, UsedBlockParams{0, baseParams_->mm1KnKGroupSize * baseParams_->mm1KnNGroupSize});
+                mmCqParam_, UsedBlockParams{0, baseParams_->mm1KnKGroups * baseParams_->mm1KnNGroups});
         }
         CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_FIX>(FINISH_MM_CQ);
     }
@@ -959,10 +1046,10 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AicProcess(AicOffset &aicOffs
     // Ascend 950: Split-KN for MM2 (MatmulCkvKr)
     {
 
-        uint32_t mm2KGroupIdx =  blockIdx_ % baseParams_->mm2KnKGroupSize;
-        uint32_t mm2NGroupIdx =  blockIdx_ / baseParams_->mm2KnKGroupSize;
-        uint64_t mm2KStartOffset = mmCkvKrParam_.kStart;
-        uint64_t mm2NStartOffset = mm2NGroupIdx * mmCkvKrParam_.n;
+        uint32_t mm2KGroupIdx =  blockIdx_ % mm2KGroupSize;
+        uint32_t mm2NGroupIdx =  blockIdx_ / mm2KGroupSize;
+        uint64_t mm2KStartOffset = mm2KGroupIdx * mm2SingleKSize;
+        uint64_t mm2NStartOffset = mm2NGroupIdx * mm2SingleNSize;
 
         // Partial output offset: [kGroup][stepBS][Hckv+Dr] layout
         int64_t mm2OutputOffset = static_cast<int64_t>(mm2KGroupIdx) * baseParams_->stepBatchSize
@@ -975,14 +1062,14 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AicProcess(AicOffset &aicOffs
                 ckvKrPartialsGm_[mm2OutputOffset],
                 tokenXGm_[tokenXOffset + mm2KStartOffset],  // A: offset to K-slice start column
                 weightDkvKrGm_[mm2NStartOffset * baseParams_->headSizeX],
-                mmCkvKrParam_, UsedBlockParams{0, baseParams_->mm2KnKGroupSize * baseParams_->mm2KnNGroupSize}, dequantScaleXGm_[mm2DequantScaleXOffset],
+                mmCkvKrParam_, UsedBlockParams{0, baseParams_->mm2KnKGroups * baseParams_->mm2KnNGroups}, dequantScaleXGm_[mm2DequantScaleXOffset],
             dequantScaleWDkvkrGm_[dequantScaleWDkvKrOffset]);
         } else {
             MatmulSplitN<mmInputType, mmCkvKrAccumType, dequantScaleType, true>(
                 ckvKrPartialsGm_[mm2OutputOffset],
                 tokenXGm_[tokenXOffset + mm2KStartOffset],  // A: offset to K-slice start column
                 weightDkvKrGm_[mm2NStartOffset * baseParams_->headSizeX],
-                mmCkvKrParam_, UsedBlockParams{0, baseParams_->mm2KnKGroupSize * baseParams_->mm2KnNGroupSize});
+                mmCkvKrParam_, UsedBlockParams{0, baseParams_->mm2KnKGroups * baseParams_->mm2KnNGroups});
         }
         CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_FIX>(FINISH_MM_CKVKR);
     }
@@ -1254,6 +1341,43 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MatmulQcQr(AicOffset &aicOffs
         INT8_AFULLLOAD_MAX_MSIZE : BF16_AFULLLOAD_MAX_MSIZE;
     bool isAFullLoad = (mmQcQrParam_.m <= mSize) ? true : false;
 
+    if (EnableCubeVecSharePath()) {
+        constexpr uint32_t MM_SHARED_READY = 0xA;
+        constexpr uint32_t VEC_SHARED_DONE0 = 0xC;
+        constexpr uint32_t VEC_SHARED_DONE1 = 0xD;
+        const uint32_t headChunkCols = baseParams_->dimHeadSizeQc + baseParams_->dimHeadRope;
+        const uint32_t nChunkLoops = CeilDivT(mmQcQrParam_.n, headChunkCols);
+
+        for (uint32_t nChunk = 0; nChunk < nChunkLoops; ++nChunk) {
+            const uint32_t nOffset = nChunk * headChunkCols;
+            const uint32_t curCols = Std::min(headChunkCols, mmQcQrParam_.n - nOffset);
+            MMParams chunkParam = mmQcQrParam_;
+            chunkParam.n = curCols;
+            chunkParam.orgN = curCols;
+            chunkParam.orgKc = headChunkCols;
+
+            if constexpr (std::is_same<mmQcQrInputType, FP8E4M3>::value && isFp8E8m0) {
+                MatmulSplitK<rmsNormCqOutputType, mmQcQrOutputType, dequantScaleType, false, true, false, DataFormat::NZ, LocalTensor>(
+                    cube2VecLocal_,
+                    rmsNormCqResGm_[aicOffset.rmsNormCqResOffset],
+                    weightUqQrGm_[aicOffset.weightUqQrOffset],
+                    chunkParam, bufParam_, nOffset, curCols, 0U, headChunkCols,
+                    dequantTool_.deQuantScaleCqGm_[aicOffset.dequantScaleCqOffset],
+                    deqScaleQcQrW_[aicOffset.dequantScaleWuqqrOffset + nOffset]);
+            } else {
+                MatmulSplitK<rmsNormCqOutputType, mmQcQrOutputType, dequantScaleType, false, false, false, DataFormat::NZ, LocalTensor>(
+                    cube2VecLocal_,
+                    rmsNormCqResGm_[aicOffset.rmsNormCqResOffset],
+                    weightUqQrGm_[aicOffset.weightUqQrOffset],
+                    chunkParam, bufParam_, nOffset, curCols, 0U, headChunkCols);
+            }
+            SignalSharedReady(MM_SHARED_READY);
+            WaitSharedDone(VEC_SHARED_DONE0);
+            WaitSharedDone(VEC_SHARED_DONE1);
+        }
+        return;
+    }
+
     uint32_t nInput = mmQcQrParam_.n;
     uint32_t nL1SplitSize = mmQcQrParam_.baseN;
     uint32_t nL1loops = CeilDivT(nInput, nL1SplitSize);
@@ -1413,6 +1537,48 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MatmulQnSyncDynamicQuantAndMu
     // MatmulQcQr ──> MatmulQn ──> query_out
     // [32, 128] * [128, 512] = [32, 512]
     // [32, 2, 128] * [2, 128, 512] = [32, 2, 512]
+    if constexpr (needQnDynamicQuant) {
+        if (EnableCubeVecSharePath()) {
+            constexpr uint32_t MM_SHARED_READY = 0xA;
+            constexpr uint32_t VEC_SHARED_DONE0 = 0xC;
+            constexpr uint32_t VEC_SHARED_DONE1 = 0xD;
+            const uint32_t rowsPerChunk = GetMm4SharedRowsPerHalf();
+            const uint32_t halfOffset = GetCubeVecSharedHalfBytes() / sizeof(mmQnOutputType);
+            const uint32_t rowBase0 = GetCvShareRowBase(mmQnParam_.m, 0U);
+            const uint32_t rowBase1 = GetCvShareRowBase(mmQnParam_.m, 1U);
+            const uint32_t rows0 = GetCvShareRowCount(mmQnParam_.m, 0U);
+            const uint32_t rows1 = GetCvShareRowCount(mmQnParam_.m, 1U);
+
+            for (int64_t i = 0; i < subLoopTimes; ++i) {
+                MatmulQnDirectShared<mmQnInputType, mmQnOutputType, dequantScaleType>(
+                    cube2VecLocal_.template ReinterpretCast<mmQnOutputType>(),
+                    mmQcQrResDequantGm_[qcOffset],
+                    weightUkGm_[weightUkOffset],
+                    mmQnParam_,
+                    bufParam_,
+                    rowBase0,
+                    rows0,
+                    rowBase1,
+                    rows1,
+                    rowsPerChunk,
+                    halfOffset,
+                    MM_SHARED_READY,
+                    VEC_SHARED_DONE0,
+                    VEC_SHARED_DONE1,
+                    baseParams_->headSizeCkv);
+
+                if constexpr (std::is_same<mmQcQrOutputType, int32_t>::value || std::is_same<mmQcQrInputType, FP8E4M3>::value ||
+                    std::is_same<mmQcQrOutputType, float>::value) {
+                    qcOffset += static_cast<int64_t>(baseParams_->dimHeadSizeQc);
+                } else {
+                    qcOffset += static_cast<int64_t>(baseParams_->dimHeadSizeQc + baseParams_->dimHeadRope);
+                }
+                weightUkOffset += static_cast<int64_t>(baseParams_->dimHeadSizeQc) * static_cast<int64_t>(baseParams_->headSizeCkv);
+                qnResOffset += static_cast<int64_t>(baseParams_->headSizeCkv);
+            }
+            return;
+        }
+    }
     bool needSparseSync = subLoopTimes > MAX_SYNC_FLAG_COUNT;
     for (int64_t i = 0; i < subLoopTimes; i++) {
         if constexpr (MLAPT::enableDequantOpt) {
@@ -1582,7 +1748,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RmsNormCq(int64_t tokenIndex,
         };
         
 #if __CCE_AICORE__ == 310
-        SplitKnAccumParams splitKnAccumParams = {baseParams_->mm1KnKGroupSize, baseParams_->stepBatchSize * baseParams_->headSizeCq};
+        SplitKnAccumParams splitKnAccumParams = {baseParams_->mm1KnKGroups, baseParams_->stepBatchSize * baseParams_->headSizeCq};
         if constexpr (std::is_same<rmsNormCqOutputType, int8_t>::value ||
             std::is_same<rmsNormCqOutputType, FP8E4M3>::value ||
             std::is_same<rmsNormCqOutputType, HIF8>::value) {
@@ -1737,7 +1903,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RmsNormAndScatterCkv(LocalTen
     };
     
 #if __CCE_AICORE__ == 310
-        SplitKnAccumParams splitKnAccumParams = {baseParams_->mm2KnKGroupSize, baseParams_->stepBatchSize * (baseParams_->headSizeCkv + baseParams_->dimHeadRope)};
+        SplitKnAccumParams splitKnAccumParams = {baseParams_->mm2KnKGroups, baseParams_->stepBatchSize * (baseParams_->headSizeCkv + baseParams_->dimHeadRope)};
 #endif
 
     if constexpr (std::is_same<rmsNormCkvOutputType, int8_t>::value ||
@@ -1914,7 +2080,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RopeAndScatterKr(
         (uint32_t)stride// stride
     };
 #if __CCE_AICORE__ == 310
-    SplitKnAccumParams splitKnAccumParams = {baseParams_->mm2KnKGroupSize, baseParams_->stepBatchSize * (baseParams_->headSizeCkv + baseParams_->dimHeadRope)};
+    SplitKnAccumParams splitKnAccumParams = {baseParams_->mm2KnKGroups, baseParams_->stepBatchSize * (baseParams_->headSizeCkv + baseParams_->dimHeadRope)};
     if constexpr ((std::is_same<mmCkvKrOutputType, int32_t>::value || (std::is_same<mmCkvKrOutputType, float>::value &&
         !isFp8E8m0)) && std::is_same<krCacheType, bfloat16_t>::value) {
         LocalTensor<uint8_t> sharedBuf = ropeShareTmpUb.ReinterpretCast<uint8_t>()[baseParams_->dimHeadRope * sizeof(ropeSinCosType)];
@@ -2327,6 +2493,48 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantAndRopeSplitNSyncMMQcQ
     if (cubeBlockIdx_ >= baseParams_->mm3BlockNum) {
         return;
     }
+    if (EnableCubeVecSharePath()) {
+        constexpr uint32_t MM_SHARED_READY = 0xA;
+        constexpr uint32_t VEC_SHARED_DONE0 = 0xC;
+        constexpr uint32_t VEC_SHARED_DONE1 = 0xD;
+        const uint32_t colQc = baseParams_->dimHeadSizeQc;
+        const uint32_t colQr = baseParams_->dimHeadRope;
+        const uint32_t headChunkCols = colQc + colQr;
+        const uint32_t subBlockIdx = blockIdx_ % cvRatio_;
+        const uint32_t rowBase = GetCvShareRowBase(mmQcQrParam_.m, subBlockIdx);
+        const uint32_t vecRows = GetCvShareRowCount(mmQcQrParam_.m, subBlockIdx);
+        const uint32_t readyFlag = MM_SHARED_READY;
+        const uint32_t doneFlag = subBlockIdx == 0 ? VEC_SHARED_DONE0 : VEC_SHARED_DONE1;
+        const uint32_t nChunkLoops = CeilDivT(mmQcQrParam_.n, headChunkCols);
+        const uint32_t localOffset = rowBase * headChunkCols;
+        LocalTensor<uint8_t> shareTmpUb = shareBuffer_.Get<uint8_t>();
+
+        for (uint32_t nChunk = 0; nChunk < nChunkLoops; ++nChunk) {
+            WaitSharedReady(readyFlag);
+            const uint32_t qcOutputOffset = rowBase * baseParams_->headSizeQc + nChunk * colQc;
+            if constexpr (std::is_same<mmQcQrInputType, int8_t>::value || std::is_same<mmQcQrInputType, HIF8>::value ||
+                (std::is_same<mmQcQrInputType, FP8E4M3>::value && !isFp8E8m0)) {
+                DequantPerTokenQcLocal(mmQcQrResDequantGm_[mmQnPreDequantResOffset + qcOutputOffset],
+                                       cube2VecLocal_[localOffset], deqScaleQcQrW_,
+                                       dequantTool_.deQuantScaleCqLocal_[rowBase * FP32_BLOCK_ELEMENT_NUM],
+                                       shareTmpUb, Rectangle{1U, colQc, colQc}, vecRows, headChunkCols,
+                                       baseParams_->headSizeQc, nChunk * headChunkCols);
+            } else if constexpr (std::is_same<mmQcQrInputType, FP8E4M3>::value && isFp8E8m0) {
+                CastPerTokenQcLocal(mmQcQrResDequantGm_[mmQnPreDequantResOffset + qcOutputOffset],
+                                    cube2VecLocal_[localOffset], shareTmpUb, Rectangle{1U, colQc, colQc},
+                                    vecRows, headChunkCols, baseParams_->headSizeQc);
+            }
+            RotaryPosEmbPerHeadLocal<mmQcQrOutputType, ropeComputType, ropeOutputType,
+                (std::is_same<mmQcQrInputType, int8_t>::value || std::is_same<mmQcQrInputType, HIF8>::value ||
+                (std::is_same<mmQcQrInputType, FP8E4M3>::value && !isFp8E8m0))>(
+                qrOutGm_[ropeQrResOffset + rowBase * baseParams_->headSizeQr + nChunk * colQr],
+                cube2VecLocal_[localOffset + colQc], cosLocal_, sinLocal_, shareTmpUb,
+                Rectangle{vecRows, colQr, colQr}, headChunkCols, baseParams_->headSizeQr, deqScaleQcQrW_,
+                dequantTool_.deQuantScaleCqLocal_[rowBase * FP32_BLOCK_ELEMENT_NUM], nChunk * headChunkCols + colQc);
+            SignalSharedDone(doneFlag);
+        }
+        return;
+    }
     // mmQcQr一个C核算stepBatchSize * singleN，每两个V核做对应C核输出的Qc部分的dequant
     // singleN一定整除(dimHeadSizeQc + dimHeadSizeQc)，保证dequant能找到dimHeadSizeQc部分的起始位置
     uint32_t subBlockIdx_ = blockIdx_ % cvRatio_;
@@ -2360,14 +2568,14 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantAndRopeSplitNSyncMMQcQ
     uint32_t dequantLoopCount = 0;
     uint32_t totalDequantLoops = CeilDiv(oriCol, (colQc + colQr));
     bool needSparseSync = totalDequantLoops > MAX_SYNC_FLAG_COUNT;
-    // uint32_t loopIdx = 0;
+    uint32_t loopIdx = 0;
     while (colOffsetCube < oriCol) {    // 循环CeilDiv(oriCol, colCube)次
         colOffsetCube += colCube;
         if (colOffsetCube > oriCol) {   // 当oriCol不被colCube整除时，mm最后一个base块需要刷新col end
             colOffsetCube = oriCol;
         }
         CrossCoreWaitFlag(FINISH_MM_QCQR_SPLIT_N);
-        // loopIdx++;
+        loopIdx++;
         // DequantSplitN
         while (colOffsetVec + colQc <= colOffsetCube) {   // 循环singleNumHeadSize次
             if constexpr (std::is_same<mmQcQrInputType, int8_t>::value || std::is_same<mmQcQrInputType, HIF8>::value ||
@@ -2384,7 +2592,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantAndRopeSplitNSyncMMQcQ
             dequantLoopCount++;
             colOffsetVec += (colQc + colQr);
             inputOffset += (colQc + colQr);
-            // inputOffset %= Align(baseParams_->dimHeadSizeQc + baseParams_->dimHeadRope + mmQcQrParam_.baseN, mmQcQrParam_.baseN);
+            inputOffset %= Align(baseParams_->dimHeadSizeQc + baseParams_->dimHeadRope + mmQcQrParam_.baseN, mmQcQrParam_.baseN);
             outputOffset += colQc;
         }
         // RopeQrSplitN
@@ -2505,6 +2713,62 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DynamicQuantQnAndMulQrSyncMMQ
     // 等待前面的Qr部分完成
     SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
     WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+
+    if (EnableCubeVecSharePath()) {
+        constexpr uint32_t MM_SHARED_READY = 0xA;
+        constexpr uint32_t VEC_SHARED_DONE0 = 0xC;
+        constexpr uint32_t VEC_SHARED_DONE1 = 0xD;
+        const uint32_t subBlockIdx = blockIdx_ % cvRatio_;
+        const uint32_t rowsPerChunk = GetMm4SharedRowsPerHalf();
+        const uint32_t rowsPerVec = GetCvShareRowCount(static_cast<uint32_t>(curStepBatchSize), subBlockIdx);
+        const uint32_t peerRowsPerVec = GetCvShareRowCount(static_cast<uint32_t>(curStepBatchSize), 1U - subBlockIdx);
+        const uint32_t halfOffset = GetCubeVecSharedHalfBytes() / sizeof(mmQnOutputType);
+        const int64_t totalSizeCkv = static_cast<int64_t>(baseParams_->numHeadSize) * static_cast<int64_t>(baseParams_->headSizeCkv);
+        const int64_t blockBatchOffset = GetCvShareRowBase(static_cast<uint32_t>(curStepBatchSize), subBlockIdx);
+        int64_t dynamicQuantQueryResOffset = batchOffset * totalSizeCkv + blockBatchOffset * totalSizeCkv +
+            numHeadOffset * static_cast<int64_t>(baseParams_->headSizeCkv);
+        int64_t scaleQueryNopeOffset = batchOffset * static_cast<int64_t>(baseParams_->numHeadSize) +
+            blockBatchOffset * static_cast<int64_t>(baseParams_->numHeadSize) + numHeadOffset;
+        int64_t qrOutputStride = static_cast<int64_t>(baseParams_->numHeadSize) * static_cast<int64_t>(baseParams_->dimHeadRope);
+        int64_t qrPostProcessResOffset = batchOffset * static_cast<int64_t>(baseParams_->headSizeQr) +
+            numHeadOffset * static_cast<int64_t>(baseParams_->dimHeadRope) +
+            blockBatchOffset * static_cast<int64_t>(baseParams_->headSizeQr);
+
+        LocalTensor<uint8_t> shareTmpUb = shareBuffer_.Get<uint8_t>();
+        LocalTensor<mmQnOutputType> qnLocal = cube2VecLocal_.template ReinterpretCast<mmQnOutputType>();
+        float quantScaleCkv = quantScaleCkvGm_.GetValue(0);
+        const uint32_t readyFlag = MM_SHARED_READY;
+        const uint32_t doneFlag = subBlockIdx == 0 ? VEC_SHARED_DONE0 : VEC_SHARED_DONE1;
+        for (int64_t loopIdx = 0; loopIdx < mmQnLoops; ++loopIdx) {
+            const uint32_t localOffset = subBlockIdx == 0 ? 0U : halfOffset;
+            int64_t loopDynamicQuantQueryResOffset = dynamicQuantQueryResOffset;
+            int64_t loopScaleQueryNopeOffset = scaleQueryNopeOffset;
+            int64_t loopQrPostProcessResOffset = qrPostProcessResOffset;
+            const uint32_t maxRowsPerVec = Std::max(rowsPerVec, peerRowsPerVec);
+            for (uint32_t rowBase = 0; rowBase < maxRowsPerVec; rowBase += rowsPerChunk) {
+                WaitSharedReady(readyFlag);
+                if (rowBase < rowsPerVec) {
+                    const uint32_t curRows = Std::min(rowsPerChunk, rowsPerVec - rowBase);
+                    DynamicQuantQnWithMulQrLocal<ropeOutputType, dequantScaleQNopeType, queryOutputType>(
+                        dequantScaleQNopeGm_[loopScaleQueryNopeOffset],
+                        queryOutGm_[loopDynamicQuantQueryResOffset],
+                        qrOutGm_[loopQrPostProcessResOffset],
+                        qnLocal[localOffset], shareTmpUb, curRows, baseParams_->headSizeCkv,
+                        baseParams_->numHeadSize, totalSizeCkv,
+                        qrOutGm_[loopQrPostProcessResOffset],
+                        quantScaleCkv, baseParams_->dimHeadRope, qrOutputStride, cvRatio_);
+                    loopDynamicQuantQueryResOffset += static_cast<int64_t>(curRows) * totalSizeCkv;
+                    loopScaleQueryNopeOffset += static_cast<int64_t>(curRows) * baseParams_->numHeadSize;
+                    loopQrPostProcessResOffset += static_cast<int64_t>(curRows) * baseParams_->headSizeQr;
+                }
+                SignalSharedDone(doneFlag);
+            }
+            dynamicQuantQueryResOffset += static_cast<int64_t>(baseParams_->headSizeCkv);
+            scaleQueryNopeOffset += 1;
+            qrPostProcessResOffset += static_cast<int64_t>(baseParams_->dimHeadRope);
+        }
+        return;
+    }
 
     constexpr uint32_t DYNAMIC_QUANT_INPUT_READY = EVENT_ID0;
     constexpr uint32_t MUL_QR_INPUT_COPY_READY = EVENT_ID3;

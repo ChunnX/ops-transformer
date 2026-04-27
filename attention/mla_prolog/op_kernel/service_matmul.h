@@ -502,31 +502,31 @@ __aicore__ inline void GetTensorC(const outputTensorType<O> &tensorCGm, const Lo
  */
 template <typename T, bool hasL1ALoaded, DataFormat bLoadFormat = DataFormat::NZ>
 __aicore__ inline void LoadL1AB(const GlobalTensor<T> &tensorAGm, const GlobalTensor<T> &tensorBGm, uint32_t kL1,
-                                uint32_t kL1Loops, uint32_t kL1StepSize, const MMParams &para, uint32_t nL1Offset, uint32_t nL1Size,
+                                uint32_t kL1Loops, const MMParams &para, uint32_t nL1Offset, uint32_t nL1Size,
                                 uint32_t kOffesetUnit, MMBufParams &bufParam)
 {
     if (kL1 == 0) {
         if constexpr (!hasL1ALoaded) {
-            LoadL1A(tensorAGm, para.m, kL1StepSize, para.orgKa, bufParam);
+            LoadL1A(tensorAGm, para.m, para.kL1StepSize, para.orgKa, bufParam);
         }
         if constexpr (bLoadFormat == DataFormat::NZ) {
-            LoadL1B(tensorBGm[nL1Offset * para.orgKb + para.kStart * GetC0Num<T>()], nL1Size, para.n, kL1StepSize, para.orgKb, bufParam);
+            LoadL1B(tensorBGm[nL1Offset * para.orgKb + para.kStart * GetC0Num<T>()], nL1Size, para.n, para.kL1StepSize, para.orgKb, bufParam);
         } else {
-            LoadL1B<T, DataFormat::ND, false>(tensorBGm[kL1 * kL1StepSize * para.n + nL1Offset], nL1Size, para.n, 
-                                       kL1StepSize, kL1StepSize, bufParam);
+            LoadL1B<T, DataFormat::ND, false>(tensorBGm[kL1 * para.kL1StepSize * para.n + nL1Offset], nL1Size, para.n, 
+                                       para.kL1StepSize, para.kL1StepSize, bufParam);
         }
     }
 
     if (kL1 + 1 < kL1Loops) {
         if constexpr (!hasL1ALoaded) {
-            LoadL1A<T, true>(tensorAGm[(kL1 + 1) * kL1StepSize], para.m, kL1StepSize, para.orgKa, bufParam);
+            LoadL1A<T, true>(tensorAGm[(kL1 + 1) * para.kL1StepSize], para.m, para.kL1StepSize, para.orgKa, bufParam);
         }
         if constexpr (bLoadFormat == DataFormat::NZ) {
             LoadL1B<T, DataFormat::NZ, true>(tensorBGm[nL1Offset * para.orgKb + para.kStart * GetC0Num<T>() + (kL1 + 1) * kOffesetUnit], nL1Size, para.n,
-            kL1StepSize, para.orgKb, bufParam);
+            para.kL1StepSize, para.orgKb, bufParam);
         } else {
-            LoadL1B<T, DataFormat::ND, true>(tensorBGm[(kL1 + 1) * kL1StepSize * para.n + nL1Offset], nL1Size, para.n, 
-                                       kL1StepSize, kL1StepSize, bufParam);
+            LoadL1B<T, DataFormat::ND, true>(tensorBGm[(kL1 + 1) * para.kL1StepSize * para.n + nL1Offset], nL1Size, para.n, 
+                                       para.kL1StepSize, para.kL1StepSize, bufParam);
         }
     }
 }
@@ -552,27 +552,27 @@ __aicore__ inline void LoadL1AB(const GlobalTensor<T> &tensorAGm, const GlobalTe
 template <typename T, typename S, bool hasL1ALoaded, bool scaleSrcPadFlag = false>
 __aicore__ inline void LoadL1ABAndScale(const GlobalTensor<T> &tensorAGm, const GlobalTensor<T> &tensorBGm,
         const GlobalTensor<S> &tensorAScaleGm, const GlobalTensor<S> &tensorBScaleGm, uint32_t kL1,
-        uint32_t kL1Loops, uint32_t kL1StepSize, const MMParams &para, uint32_t nL1Offset, uint32_t nL1Size, uint32_t kOffesetUnit,
+        uint32_t kL1Loops, const MMParams &para, uint32_t nL1Offset, uint32_t nL1Size, uint32_t kOffesetUnit,
         MMBufParams &bufParam)
 {
 #if __CCE_AICORE__ == 310
     uint64_t offsetL1A = L1_A_SIZE / 2 / sizeof(T); // // 2表示scale起始地址固定从L1A上ping的64k开始
     if (kL1 == 0) {
         if constexpr (!hasL1ALoaded) {
-            LoadL1AAndScale<T, S, hasL1ALoaded, scaleSrcPadFlag>(tensorAGm, tensorAScaleGm, para.m, kL1StepSize,
+            LoadL1AAndScale<T, S, hasL1ALoaded, scaleSrcPadFlag>(tensorAGm, tensorAScaleGm, para.m, para.kL1StepSize,
                 para.orgKa, para.kScale, para.orgKa / 32, offsetL1A, bufParam);
         }
         uint64_t scaleOffsetL1A = offsetL1A + L1_A_SIZE / sizeof(T); // 表示scale起始地址固定从L1A上pong的64k开始
         LoadL1BAndScale(tensorBGm[nL1Offset * para.orgKb + para.kStart * GetC0Num<T>()], tensorBScaleGm[nL1Offset * para.orgKb / 32], nL1Size,
-            kL1StepSize, para.orgKb, para.kScale, para.orgKb / 32, scaleOffsetL1A, bufParam);
+            para.kL1StepSize, para.orgKb, para.kScale, para.orgKb / 32, scaleOffsetL1A, bufParam);
     }
 
     if (kL1 + 1 < kL1Loops) {
         if constexpr (!hasL1ALoaded) {
-            LoadL1A<T, true>(tensorAGm[(kL1 + 1) * kL1StepSize], para.m, kL1StepSize, para.orgKa, bufParam);
+            LoadL1A<T, true>(tensorAGm[(kL1 + 1) * para.kL1StepSize], para.m, para.kL1StepSize, para.orgKa, bufParam);
         }
         LoadL1B<T, DataFormat::NZ, true>(tensorBGm[nL1Offset * para.orgKb + para.kStart * GetC0Num<T>() + (kL1 + 1) * kOffesetUnit], nL1Size, para.n,
-            kL1StepSize, para.orgKb, bufParam);
+            para.kL1StepSize, para.orgKb, bufParam);
     }
 #endif
 }
@@ -631,7 +631,7 @@ __aicore__ inline void LoadL1BGroupCompute(LocalTensor<T> &bL1, const GlobalTens
 template <typename T, typename O, typename S, typename O_L0C, bool enUnitFlag>
 __aicore__ inline void MatmulL1(const LocalTensor<O_L0C> &cL0, const LocalTensor<T> &aL1, const LocalTensor<T> &bL1,
     const mmLocalTensors<T, O_L0C> &localTensors, MMBufParams &bufParam, const MMParams &para, uint32_t kL1,
-    uint32_t kL1Loops, uint32_t kL1StepSize, uint32_t stepK, MmadParams &mmadParams, int64_t &aOffset)
+    uint32_t kL1Loops, MmadParams &mmadParams, int64_t &aOffset)
 {
     uint32_t mSize = Align(para.m, BLOCK_CUBE_SIZE);
     uint64_t weightSizeL1A = L1_A_SIZE / 2 / sizeof(T); // 2表示scale起始地址固定从L1A上ping的64k开始
@@ -647,13 +647,13 @@ __aicore__ inline void MatmulL1(const LocalTensor<O_L0C> &cL0, const LocalTensor
     const LocalTensor<T> scaleALocalTensor = localTensors.aL1Tensor[weightSizeL1A];
     const LocalTensor<T> scaleBLocalTensor = scaleALocalTensor[scaleASize];
 
-    for (int64_t kL0Loops = 0; kL0Loops < stepK; kL0Loops++) {
+    for (int64_t kL0Loops = 0; kL0Loops < para.stepK; kL0Loops++) {
         mmadParams.cmatrixInitVal = ((kL1 == 0) && (kL0Loops == 0));
         if constexpr (enUnitFlag) {
-            mmadParams.unitFlag = (kL1 == kL1Loops - 1) && (kL0Loops == stepK - 1) ? UNIT_FLAG_SET : UNIT_FLAG_CHECK;
+            mmadParams.unitFlag = (kL1 == kL1Loops - 1) && (kL0Loops == para.stepK - 1) ? UNIT_FLAG_SET : UNIT_FLAG_CHECK;
         }
         MatmulL0<T, O_L0C, S>(bufParam, aL1[aOffset], bL1[bOffset], localTensors.aL0Tensor,
-                localTensors.bL0Tensor, cL0, mmadParams, kL1StepSize, para.k,
+                localTensors.bL0Tensor, cL0, mmadParams, para.kL1StepSize, para.k,
                 scaleALocalTensor[aScaleOffset], scaleBLocalTensor[bScaleOffset]);
         aOffset += aOffsetUnit; // 16(BS)*256=4096
         bOffset += bOffsetUnit; // 32(Get<T>)*256=8192
@@ -714,14 +714,14 @@ __aicore__ inline void MatmulSplitK(const outputTensorType<O> &tensorCGm, const 
     }
 
     for (uint32_t kL1 = 0; kL1 < kL1Loops; kL1++) {
-        uint32_t kL1StepSize = Std::min(para.kL1StepSize, para.k - kL1 * para.kL1StepSize);
-        uint32_t stepK = kL1StepSize / para.baseK;
+        para.kL1StepSize = Std::min(para.kL1StepSize, para.k - kL1 * para.kL1StepSize);
+        para.stepK = para.kL1StepSize / para.baseK;
         // Load data from global memory to L1 cache
         if constexpr (std::is_same<T, FP8E4M3>::value && std::is_same<S, fp8_e8m0_t>::value) {
             LoadL1ABAndScale<T, S, hasL1ALoaded, scaleSrcPadFlag>(tensorAGm, tensorBGm, tensorAScaleGm, tensorBScaleGm,
-                kL1, kL1Loops, kL1StepSize, para, nL1Offset, nL1Size, kOffesetUnit, bufParam);
+                kL1, kL1Loops, para, nL1Offset, nL1Size, kOffesetUnit, bufParam);
         } else {
-            LoadL1AB<T, hasL1ALoaded, bLoadFormat>(tensorAGm, tensorBGm, kL1, kL1Loops, kL1StepSize, para, nL1Offset, nL1Size, kOffesetUnit, bufParam);
+            LoadL1AB<T, hasL1ALoaded, bLoadFormat>(tensorAGm, tensorBGm, kL1, kL1Loops, para, nL1Offset, nL1Size, kOffesetUnit, bufParam);
         }
 
         WaitFlag<HardEvent::MTE2_MTE1>(B_EVENT0 + (bufParam.bL1BufIter & 1u));
@@ -735,7 +735,7 @@ __aicore__ inline void MatmulSplitK(const outputTensorType<O> &tensorCGm, const 
         }
 
         // Perform core K L0 loops computation
-        MatmulL1<T, O, S, O_L0C, enUnitFlag>(cL0, aL1, bL1, localTensors, bufParam, para, kL1, kL1Loops, kL1StepSize, stepK,
+        MatmulL1<T, O, S, O_L0C, enUnitFlag>(cL0, aL1, bL1, localTensors, bufParam, para, kL1, kL1Loops,
                                        mmadParams, aOffset);
 
         SetFlag<HardEvent::MTE1_MTE2>(B_EVENT0 + (bufParam.bL1BufIter & 1u));
@@ -814,6 +814,146 @@ __aicore__ inline void MatmulFullLoad(const GlobalTensor<O> &tensorCGm, const Gl
     bufParam.aL1BufIter++;
 }
 
+template <typename T, typename O, typename S, bool hasL1BLoaded = false, bool enUnitFlag = false>
+__aicore__ inline void MatmulFullLoadLocal(const LocalTensor<O> &tensorCLocal, const GlobalTensor<T> &tensorAGm,
+                                           const GlobalTensor<T> &tensorBGm, const MMParams &para,
+                                           MMBufParams &bufParam, const uint32_t outputOffset = 0,
+                                           const uint32_t dstStride = 0)
+{
+    using O_L0C = typename std::conditional<std::is_same<T, int8_t>::value, int32_t, float>::type;
+    uint32_t mSize = Align(para.m, BLOCK_CUBE_SIZE);
+    constexpr uint32_t aL1Offset = L1_A_SIZE / sizeof(T);
+    constexpr uint32_t bL1Offset = L1_B_SIZE / sizeof(T);
+
+    mmLocalTensors<T, O_L0C> localTensors;
+    localTensors.Init(bufParam);
+
+    LoadL1A(tensorAGm, para.m, para.k, para.orgKa, bufParam);
+    WaitFlag<HardEvent::MTE2_MTE1>(A_EVENT0 + (bufParam.aL1BufIter & 1u));
+    LocalTensor<T> aL1 = localTensors.aL1Tensor[(bufParam.aL1BufIter & 1u) * aL1Offset];
+
+    if constexpr (!hasL1BLoaded) {
+        LoadL1B<T, DataFormat::ND, false>(tensorBGm, para.n, para.n, para.k, para.k, bufParam);
+        WaitFlag<HardEvent::MTE2_MTE1>(B_EVENT0 + (bufParam.bL1BufIter & 1u));
+    }
+    LocalTensor<T> bL1 = localTensors.bL1Tensor[(bufParam.bL1BufIter & 1u) * bL1Offset];
+
+    uint32_t nSplitSize = 128;
+    uint32_t nSplitSizeAct = nSplitSize;
+    uint32_t nloops = CeilDivT(para.n, nSplitSize);
+    MmadParams mmadParams = MmadParams(mSize, nSplitSizeAct, para.k, UNIT_FLAG_DISABLE, false, true);
+
+    for (uint32_t n = 0; n < nloops; ++n) {
+        if (n == nloops - 1) {
+            nSplitSizeAct = para.n - (nloops - 1) * nSplitSize;
+            mmadParams.n = nSplitSizeAct;
+        }
+        if constexpr (enUnitFlag) {
+            mmadParams.unitFlag = UNIT_FLAG_SET;
+        }
+        WaitFlag<HardEvent::FIX_M>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
+        LocalTensor<O_L0C> cL0 = localTensors.cL0Tensor[(bufParam.cL0BufIter & 1u) * (L0C_PP_SIZE / sizeof(O_L0C))];
+        MatmulL0<T, O_L0C, S>(bufParam, aL1, bL1[para.k * nSplitSize * n], localTensors.aL0Tensor,
+                localTensors.bL0Tensor, cL0, mmadParams, para.kL1StepSize);
+        GetTensorC<T, O, O_L0C, enUnitFlag, LocalTensor>(tensorCLocal[outputOffset + n * nSplitSize], cL0, para.m,
+                                                          nSplitSizeAct, mSize, dstStride == 0 ? para.n : dstStride, bufParam);
+        SetFlag<HardEvent::FIX_M>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
+        bufParam.cL0BufIter++;
+    }
+
+    SetFlag<HardEvent::MTE1_MTE2>(B_EVENT0 + (bufParam.bL1BufIter & 1u));
+    bufParam.bL1BufIter++;
+    SetFlag<HardEvent::MTE1_MTE2>(A_EVENT0 + (bufParam.aL1BufIter & 1u));
+    bufParam.aL1BufIter++;
+}
+
+template <typename T, typename O, typename S>
+__aicore__ inline void MatmulQnDirectShared(const LocalTensor<O> &tensorCLocal,
+                                            const GlobalTensor<T> &tensorAGm,
+                                            const GlobalTensor<T> &tensorBGm,
+                                            const MMParams &para,
+                                            MMBufParams &bufParam,
+                                            uint32_t rowBase0,
+                                            uint32_t rows0,
+                                            uint32_t rowBase1,
+                                            uint32_t rows1,
+                                            uint32_t rowsPerChunk,
+                                            uint32_t halfOffset,
+                                            uint32_t readyFlag,
+                                            uint32_t doneFlag0,
+                                            uint32_t doneFlag1,
+                                            uint32_t dstStride)
+{
+    uint32_t chunkCount0 = CeilDivT(rows0, rowsPerChunk);
+    uint32_t chunkCount1 = CeilDivT(rows1, rowsPerChunk);
+    uint32_t maxChunkCount = Std::max(chunkCount0, chunkCount1);
+    for (uint32_t chunkIdx = 0; chunkIdx < maxChunkCount; ++chunkIdx) {
+        uint32_t localRow0 = chunkIdx * rowsPerChunk;
+        if (localRow0 < rows0) {
+            uint32_t curRows = Std::min(rowsPerChunk, rows0 - localRow0);
+            MMParams chunkParam = para;
+            chunkParam.m = curRows;
+            chunkParam.orgM = curRows;
+
+            if (unlikely(para.baseK < para.k)) {
+                uint32_t nInput = para.n;
+                uint32_t nL1SplitSize = para.baseN;
+                uint32_t nL1loops = CeilDivT(nInput, nL1SplitSize);
+                uint32_t subNL1SplitSize = nL1SplitSize;
+                for (int64_t nL1 = 0; nL1 < nL1loops; ++nL1) {
+                    if (nL1 == nL1loops - 1) {
+                        subNL1SplitSize = nInput - (nL1loops - 1) * nL1SplitSize;
+                    }
+                    MatmulSplitK<T, O, S, false, false, false, DataFormat::ND, LocalTensor>(
+                        tensorCLocal,
+                        tensorAGm[(rowBase0 + localRow0) * para.orgKa],
+                        tensorBGm, chunkParam, bufParam,
+                        nL1 * nL1SplitSize, subNL1SplitSize,
+                        nL1 * nL1SplitSize, dstStride);
+                }
+            } else {
+                MatmulFullLoadLocal<T, O, S, false, true>(
+                    tensorCLocal,
+                    tensorAGm[(rowBase0 + localRow0) * para.orgKa],
+                    tensorBGm, chunkParam, bufParam, 0U, dstStride);
+            }
+        }
+        uint32_t localRow1 = chunkIdx * rowsPerChunk;
+        if (localRow1 < rows1) {
+            uint32_t curRows = Std::min(rowsPerChunk, rows1 - localRow1);
+            MMParams chunkParam = para;
+            chunkParam.m = curRows;
+            chunkParam.orgM = curRows;
+
+            if (unlikely(para.baseK < para.k)) {
+                uint32_t nInput = para.n;
+                uint32_t nL1SplitSize = para.baseN;
+                uint32_t nL1loops = CeilDivT(nInput, nL1SplitSize);
+                uint32_t subNL1SplitSize = nL1SplitSize;
+                for (int64_t nL1 = 0; nL1 < nL1loops; ++nL1) {
+                    if (nL1 == nL1loops - 1) {
+                        subNL1SplitSize = nInput - (nL1loops - 1) * nL1SplitSize;
+                    }
+                    MatmulSplitK<T, O, S, false, false, false, DataFormat::ND, LocalTensor>(
+                        tensorCLocal,
+                        tensorAGm[(rowBase1 + localRow1) * para.orgKa],
+                        tensorBGm, chunkParam, bufParam,
+                        nL1 * nL1SplitSize, subNL1SplitSize,
+                        halfOffset + nL1 * nL1SplitSize, dstStride);
+                }
+            } else {
+                MatmulFullLoadLocal<T, O, S, false, true>(
+                    tensorCLocal,
+                    tensorAGm[(rowBase1 + localRow1) * para.orgKa],
+                    tensorBGm, chunkParam, bufParam, halfOffset, dstStride);
+            }
+        }
+        CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_FIX>(readyFlag);
+        CrossCoreWaitFlag(doneFlag0);
+        CrossCoreWaitFlag(doneFlag1);
+    }
+}
+
 /**
  * @brief MatmulGroupComputeAFullLoad
  * A矩阵能够全载，通过切分K轴，进行L1的数据管理和矩阵乘运算，仅适用于算力分组场景下的mmQc和mmQr;
@@ -867,7 +1007,7 @@ __aicore__ inline void MatmulGroupComputeAFullLoad(const GlobalTensor<O> &tensor
             WaitFlag<HardEvent::MTE2_MTE1>(B_EVENT0 + (bufParam.bL1BufIter & 1u));
 
             // Perform core K L0 loops computation using shared function
-            MatmulL1<T, O, S, O_L0C, enUnitFlag>(cL0, aL1, bL1, localTensors, bufParam, para, kL1, kL1Loops, para.kL1StepSize, para.stepK,
+            MatmulL1<T, O, S, O_L0C, enUnitFlag>(cL0, aL1, bL1, localTensors, bufParam, para, kL1, kL1Loops,
                                            mmadParams, aOffset);
             SetFlag<HardEvent::MTE1_MTE2>(B_EVENT0 + (bufParam.bL1BufIter & 1u));
             bufParam.bL1BufIter++;

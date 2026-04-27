@@ -214,6 +214,67 @@ __aicore__ inline void RotaryPosEmbPerHead(LocalTensor<O>& outputLocal, const Gl
     AscendC::PipeBarrier<PIPE_V>();
 }
 
+template <typename T, typename C, typename O, bool enableDequant = false>
+__aicore__ inline void RotaryPosEmbPerHeadLocal(const GlobalTensor<O>& outputGm,
+                                                const LocalTensor<T>& inputLocalSrc,
+                                                const LocalTensor<C>& cosLocal,
+                                                const LocalTensor<C>& sinLocal,
+                                                LocalTensor<uint8_t>& shareTmpUb,
+                                                Rectangle ropeParams,
+                                                uint32_t srcStride,
+                                                uint32_t dstStride,
+                                                GlobalTensor<float> channelDeqScaleGm = GlobalTensor<float>(),
+                                                LocalTensor<float> deQuantScale = LocalTensor<float>(),
+                                                uint32_t channelScaleOffset = 0)
+{
+    if (ropeParams.row == 0) {
+        return;
+    }
+
+    uint32_t col = ropeParams.col;
+    LocalTensor<float> channelScaleLocal = shareTmpUb.ReinterpretCast<float>();
+    LocalTensor<C> kFp32Local = channelScaleLocal[col + FP32_BLOCK_ELEMENT_NUM].template ReinterpretCast<C>();
+    LocalTensor<C> ropeShareUb = kFp32Local[col].template ReinterpretCast<C>();
+    LocalTensor<C> kFp32OutputLocal = ropeShareUb[col * 2].template ReinterpretCast<C>();
+    LocalTensor<O> outputLocal = kFp32OutputLocal[col].template ReinterpretCast<O>();
+
+    if constexpr (std::is_same<T, int32_t>::value || enableDequant) {
+        DataCopy(channelScaleLocal, channelDeqScaleGm[channelScaleOffset], col);
+        SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
+        WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
+    }
+
+    Rectangle rowParams {1U, col, col};
+    for (uint32_t rowIdx = 0; rowIdx < ropeParams.row; ++rowIdx) {
+        if constexpr (std::is_same<T, int32_t>::value || enableDequant) {
+            Dequant(kFp32Local,
+                    inputLocalSrc[rowIdx * srcStride],
+                    channelScaleLocal,
+                    deQuantScale[rowIdx * FP32_BLOCK_ELEMENT_NUM],
+                    rowParams);
+            AscendC::PipeBarrier<PIPE_V>();
+        } else if constexpr (std::is_same<T, bfloat16_t>::value) {
+            Cast(kFp32Local, inputLocalSrc[rowIdx * srcStride], RoundMode::CAST_NONE, col);
+            AscendC::PipeBarrier<PIPE_V>();
+        } else if constexpr (std::is_same<T, float>::value) {
+            DataCopy(kFp32Local, inputLocalSrc[rowIdx * srcStride], col);
+            AscendC::PipeBarrier<PIPE_V>();
+        }
+
+        RotaryPosEmb(kFp32OutputLocal, kFp32Local, cosLocal[rowIdx * col], sinLocal[rowIdx * col],
+                     ropeShareUb.template ReinterpretCast<uint8_t>(), 1U, col, 0U);
+        AscendC::PipeBarrier<PIPE_V>();
+
+        if constexpr (std::is_same<O, C>::value) {
+            DataCopy(outputGm[rowIdx * dstStride], kFp32OutputLocal, col);
+        } else {
+            Cast(outputLocal, kFp32OutputLocal, RoundMode::CAST_RINT, col);
+            AscendC::PipeBarrier<PIPE_V>();
+            DataCopy(outputGm[rowIdx * dstStride], outputLocal, col);
+        }
+    }
+}
+
 template <typename T, typename O>
 __aicore__ inline void RopePostQuantPerChannel(LocalTensor<O> &outputLocal, LocalTensor<T> &inputLocal, LocalTensor<float> &quantScaleLocal,
                                                LocalTensor<uint8_t> &shareTmpUb, int64_t cnt) {
