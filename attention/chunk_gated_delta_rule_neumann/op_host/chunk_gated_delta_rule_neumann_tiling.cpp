@@ -110,7 +110,7 @@ ge::graphStatus ChunkGatedDeltaRuleNeumannTiling::GetShapeAttrsInfo()
 
 ge::graphStatus ChunkGatedDeltaRuleNeumannTiling::DoOpTiling()
 {
-    int64_t c = 64;    // chunk size 取 64
+    int64_t c = 16;
     int64_t p = P_NUM; // 一个 chunk 组中，单核最大处理 chunk 数
     tilingData_.chunkSize = c;
     tilingData_.maxGroupLength = p * tilingData_.aiCoreNum * tilingData_.chunkSize;

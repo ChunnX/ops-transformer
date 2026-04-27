@@ -2,6 +2,7 @@
 """
 生成 C++ aclnn 测试所需的输入数据
 
+输出路径: build/test_data/ (避免污染项目目录)
 关键：对 q 和 k 进行 L2 normalize
 """
 
@@ -42,9 +43,15 @@ actual_seq_lengths = torch.tensor([seqlen] * B, dtype=torch.int32, device=f"npu:
 q = torch.nn.functional.normalize(q.float(), p=2, dim=-1).to(torch.bfloat16)
 k = torch.nn.functional.normalize(k.float(), p=2, dim=-1).to(torch.bfloat16)
 
-# 保存到文件
-output_dir = os.path.dirname(os.path.abspath(__file__))
-data_file = os.path.join(output_dir, "..", "..", "test_inputs.bin")
+# 输出到 build/test_data 目录
+repo_root = os.path.dirname(os.path.abspath(__file__))
+while not os.path.exists(os.path.join(repo_root, "build.sh")):
+    repo_root = os.path.dirname(repo_root)
+
+output_dir = os.path.join(repo_root, "build", "test_data")
+os.makedirs(output_dir, exist_ok=True)
+
+data_file = os.path.join(output_dir, "test_inputs.bin")
 
 print(f"\n保存数据到: {data_file}")
 
@@ -119,8 +126,7 @@ print(f"  state shape: {state_golden.shape}")
 print(f"  out range: [{o_golden.min().item():.4f}, {o_golden.max().item():.4f}]")
 print(f"  state range: [{state_golden.min().item():.4f}, {state_golden.max().item():.4f}]")
 
-# 保存 golden 结果
-golden_file = os.path.join(output_dir, "..", "..", "golden_output.bin")
+golden_file = os.path.join(output_dir, "golden_output.bin")
 
 o_golden_data = bf16_to_uint16(o_golden)
 state_golden_data = bf16_to_uint16(state_golden)

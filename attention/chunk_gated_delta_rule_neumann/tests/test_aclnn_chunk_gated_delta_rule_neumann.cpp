@@ -70,7 +70,7 @@ bool read_test_inputs(const char* filename, TestParams& params,
                       std::vector<uint16_t>& q_data, std::vector<uint16_t>& k_data,
                       std::vector<uint16_t>& v_data, std::vector<uint16_t>& beta_data,
                       std::vector<float>& g_data, std::vector<uint16_t>& initial_state_data,
-                      std::vector<int64_t>& seqlens_data) {
+                      std::vector<int32_t>& seqlens_data) {
     std::ifstream file(filename, std::ios::binary);
     if (!file) {
         LOG_PRINT("Failed to open: %s\n", filename);
@@ -104,7 +104,6 @@ bool read_test_inputs(const char* filename, TestParams& params,
     seqlens_data.resize(params.B);
 
     std::vector<uint32_t> g_raw(g_size);
-    std::vector<int32_t> seqlens_raw(params.B);
     
     file.read(reinterpret_cast<char*>(q_data.data()), q_size * sizeof(uint16_t));
     file.read(reinterpret_cast<char*>(k_data.data()), k_size * sizeof(uint16_t));
@@ -112,13 +111,10 @@ bool read_test_inputs(const char* filename, TestParams& params,
     file.read(reinterpret_cast<char*>(beta_data.data()), beta_size * sizeof(uint16_t));
     file.read(reinterpret_cast<char*>(g_raw.data()), g_size * sizeof(uint32_t));
     file.read(reinterpret_cast<char*>(initial_state_data.data()), state_size * sizeof(uint16_t));
-    file.read(reinterpret_cast<char*>(seqlens_raw.data()), params.B * sizeof(int32_t));
+    file.read(reinterpret_cast<char*>(seqlens_data.data()), params.B * sizeof(int32_t));
 
     for (size_t i = 0; i < g_size; ++i) {
         g_data[i] = *reinterpret_cast<float*>(&g_raw[i]);
-    }
-    for (size_t i = 0; i < params.B; ++i) {
-        seqlens_data[i] = static_cast<int64_t>(seqlens_raw[i]);
     }
 
     LOG_PRINT("Data loaded: q=%ld, k=%ld, v=%ld, beta=%ld, g=%ld, state=%ld\n",
@@ -199,21 +195,29 @@ int main() {
   TestParams params;
   std::vector<uint16_t> q_data, k_data, v_data, beta_data, initial_state_data;
   std::vector<float> g_data;
-  std::vector<int64_t> seqlens_data;
-
-  if (!read_test_inputs("test_inputs.bin", params, q_data, k_data, v_data,
-                        beta_data, g_data, initial_state_data, seqlens_data)) {
-    LOG_PRINT("Failed to read test inputs\n");
-    aclFinalize();
-    return 1;
-  }
-
-  int64_t out_size = params.T * params.nv * params.dv;
-  int64_t state_size = params.B * params.nv * params.dv * params.dk;
-
+  std::vector<int32_t> seqlens_data;
   std::vector<uint16_t> out_golden, state_golden;
-  if (!read_golden_output("golden_output.bin", out_golden, state_golden, out_size, state_size)) {
-    LOG_PRINT("Failed to read golden output\n");
+  int64_t out_size = 0;
+  int64_t state_size = 0;
+
+  const char* input_files[] = {"test_data/test_inputs.bin", "test_inputs.bin", "test_inputs_multi.bin", "test_inputs_simple.bin"};
+  const char* golden_files[] = {"test_data/golden_output.bin", "golden_output.bin", "golden_output_multi.bin", "golden_output_simple.bin"};
+  bool loaded = false;
+  
+  for (int i = 0; i < 4 && !loaded; i++) {
+    if (read_test_inputs(input_files[i], params, q_data, k_data, v_data,
+                          beta_data, g_data, initial_state_data, seqlens_data)) {
+      out_size = params.T * params.nv * params.dv;
+      state_size = params.B * params.nv * params.dv * params.dk;
+      if (read_golden_output(golden_files[i], out_golden, state_golden, out_size, state_size)) {
+        loaded = true;
+        LOG_PRINT("Using: %s and %s\n", input_files[i], golden_files[i]);
+      }
+    }
+  }
+  
+  if (!loaded) {
+    LOG_PRINT("Failed to read any test inputs\n");
     aclFinalize();
     return 1;
   }
