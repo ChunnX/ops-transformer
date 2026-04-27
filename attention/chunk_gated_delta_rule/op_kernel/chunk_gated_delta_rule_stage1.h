@@ -611,7 +611,9 @@ private:
             Broadcast<float, BROADCAST_AXIS, 0>(gEndBroadUbFloat_, gCumSumUbFloat[chunkSize_ - 1],
                                                 gBroadShape, gEndShape);
             PipeBarrier<PIPE_V>();
-            Div(gEndBroadUbFloat_, gEndBroadUbFloat_, gCumSumUbFloat[subOffset_], halfChunkSize_);
+            Sub(gEndBroadUbFloat_, gEndBroadUbFloat_, gCumSumUbFloat[subOffset_], halfChunkSize_);
+            PipeBarrier<PIPE_V>();
+            Exp<float, 0, true>(gEndBroadUbFloat_, gEndBroadUbFloat_, halfChunkSize_);
             PipeBarrier<PIPE_V>();
             Broadcast<float, BROADCAST_AXIS, 1>(kgUbFloat_, gEndBroadUbFloat_, kShape, gBroadShape);
             PipeBarrier<PIPE_V>();
