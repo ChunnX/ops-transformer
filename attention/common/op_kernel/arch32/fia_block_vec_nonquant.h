@@ -1350,7 +1350,7 @@ template <typename FIAT> __aicore__ inline void FiaBlockVecNonQuant<FIAT>::Compu
 {
     SetMSplitInfo(info.actMBaseSize);
     CrossCoreWaitFlag(constInfo.syncC1V1);
-    // ProcessVec1SingleBuf(info);
+    ProcessVec1SingleBuf(info);
     CrossCoreSetFlag<ConstInfo::FIA_SYNC_MODE2, PIPE_MTE3>(constInfo.syncV1C2);
 }
 
@@ -1358,7 +1358,7 @@ template <typename FIAT> __aicore__ inline void FiaBlockVecNonQuant<FIAT>::Compu
 {
     SetMSplitInfo(info.actMBaseSize);
     CrossCoreWaitFlag(constInfo.syncC2V2);
-    ProcessVec2SingleBuf(info);
+    // ProcessVec2SingleBuf(info);
 }
 
 #endif
