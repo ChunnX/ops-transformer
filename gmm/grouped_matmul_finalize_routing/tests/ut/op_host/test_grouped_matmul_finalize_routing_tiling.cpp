@@ -286,28 +286,26 @@ vector<GroupedMatmulFinalizeRoutingTilingCase> LoadCases(const string &csvPath)
     return cases;
 }
 
-string MakeParamName(const testing::TestParamInfo<GroupedMatmulFinalizeRoutingTilingCase> &info)
-{
-    return ops::ut::MakeSafeParamName(info.param.prefix);
-}
-
 }  // namespace
 
 namespace GroupedMatmulFinalizeRoutingTilingUT {
 
-class TestGroupedMatmulFinalizeRoutingTiling : public testing::TestWithParam<GroupedMatmulFinalizeRoutingTilingCase> {
-};
-
-TEST_P(TestGroupedMatmulFinalizeRoutingTiling, generalTest)
+const vector<GroupedMatmulFinalizeRoutingTilingCase> &GetTilingCases()
 {
-    GetParam().Run();
+    static const vector<GroupedMatmulFinalizeRoutingTilingCase> cases =
+        LoadCases(ops::ut::ResolveCsvPath("test_grouped_matmul_finalize_routing_tiling.csv",
+                                          "gmm/grouped_matmul_finalize_routing/tests/ut/op_host", __FILE__));
+    return cases;
 }
 
-INSTANTIATE_TEST_SUITE_P(
-    GROUPED_MATMUL_FINALIZE_ROUTING_TILING, TestGroupedMatmulFinalizeRoutingTiling,
-    testing::ValuesIn(LoadCases(ops::ut::ResolveCsvPath("test_grouped_matmul_finalize_routing_tiling.csv",
-                                                        "gmm/grouped_matmul_finalize_routing/tests/ut/op_host",
-                                                        __FILE__))),
-    MakeParamName);
+class TestGroupedMatmulFinalizeRoutingTiling : public testing::Test {};
+
+TEST_F(TestGroupedMatmulFinalizeRoutingTiling, csvDrivenCase)
+{
+    for (const auto &testCase : GetTilingCases()) {
+        SCOPED_TRACE("prefix=" + testCase.prefix);
+        testCase.Run();
+    }
+}
 
 }  // namespace GroupedMatmulFinalizeRoutingTilingUT
