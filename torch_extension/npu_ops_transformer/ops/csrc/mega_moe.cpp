@@ -47,24 +47,25 @@ aclDataType ConvertToAclDataType(const at::ScalarType &data_type)
 }
 // const std::vector<at::Tensor> &weight1
 std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
-                const at::Tensor &context, const at::Tensor &x, const at::Tensor &topk_ids,
-                const at::Tensor &topk_weights, const std::vector<at::Tensor> &weight1,
-                const std::vector<at::Tensor> &weight2, int64_t moe_expert_num, int64_t ep_world_size,
-                int64_t ccl_buffer_size,
-                const c10::optional<std::vector<at::Tensor>> &weight_scales1,
-                const c10::optional<std::vector<at::Tensor>> &weight_scales2,
-                const c10::optional<at::Tensor> &x_active_mask,
-                const c10::optional<at::Tensor> &scales,                        
-                int64_t max_recv_token_num,
-                int64_t dispatch_quant_mode,
-                int64_t combine_quant_mode, std::string comm_alg, int64_t global_bs,
-                c10::optional<int64_t> dispatch_quant_out_type,
-                c10::optional<int64_t> weight1_type,
-                c10::optional<int64_t> weight2_type)
+    const at::Tensor &context, const at::Tensor &x, const at::Tensor &topk_ids,
+    const at::Tensor &topk_weights, const std::vector<at::Tensor> &weight1,
+    const std::vector<at::Tensor> &weight2, int64_t moe_expert_num, int64_t ep_world_size,
+    int64_t ccl_buffer_size,
+    const c10::optional<std::vector<at::Tensor>> &weight_scales1,
+    const c10::optional<std::vector<at::Tensor>> &weight_scales2,
+    const c10::optional<at::Tensor> &x_active_mask,
+    const c10::optional<at::Tensor> &scales,                        
+    int64_t max_recv_token_num,
+    int64_t dispatch_quant_mode,
+    int64_t combine_quant_mode, std::string comm_alg, int64_t global_bs,
+    c10::optional<int64_t> dispatch_quant_out_type,
+    c10::optional<int64_t> weight1_type,
+    c10::optional<int64_t> weight2_type)
 {
     TORCH_CHECK((ep_world_size > 0), "The ep_world_sizes should be greater than 0, current is: ", ep_world_size);
     TORCH_CHECK((x.dim() == DIM_TWO) && (topk_ids.dim() == DIM_TWO), "The x and topk_ids should be 2D");
-    TORCH_CHECK(((x.scalar_type() == at::kBFloat16) || (x.scalar_type() == at::kHalf)) && (topk_ids.scalar_type() == at::kInt),
+    TORCH_CHECK(((x.scalar_type() == at::kBFloat16) || (x.scalar_type() == at::kHalf)) &&
+                (topk_ids.scalar_type() == at::kInt),
                 "dtype of x should be bfloat16, float16, dtype of topk_ids should be int.");
 
     at::TensorList weight1_ref = weight1;
@@ -85,15 +86,12 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
     
     auto x_size = x.sizes();
     auto topk_ids_size = topk_ids.sizes();
-    std::cout << "ep_world_size :" << ep_world_size << "\n"; 
-    std::cout << "ccl_buffer_size :" << ccl_buffer_size << "\n"; 
     int64_t bs = x_size[0];
     int64_t h = x_size[1];
     int64_t k = topk_ids_size[1];
 
     int64_t local_moe_expert_num = 1;
     local_moe_expert_num = moe_expert_num / ep_world_size;
-    std::cout << "local_moe_expert_num: " << local_moe_expert_num << std::endl;
     at::Tensor expert_token_nums;
     expert_token_nums = at::empty({local_moe_expert_num}, x.options().dtype(at::kInt));
 
@@ -105,12 +103,12 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
     at::Tensor y;
     y = at::empty({bs, h}, topk_ids.options().dtype(x.scalar_type()));
 
-    std::cout << "npu_mega_moe out" << "\n";
 
     ACLNN_CMD(aclnnMegaMoe, context, x, topk_ids, topk_weights, weight1_ref,
         weight2_ref, weight_scales1_ref, weight_scales2_ref, x_active_mask, scales,
         moe_expert_num, ep_world_size, ccl_buffer_size, max_recv_token_num,
-        dispatch_quant_mode, dispatch_quant_result_type, combine_quant_mode, comm_alg_ptr, global_bs, y, expert_token_nums);
+        dispatch_quant_mode, dispatch_quant_result_type, combine_quant_mode,
+        comm_alg_ptr, global_bs, y, expert_token_nums);
 
     return std::tie(y, expert_token_nums);
 }

@@ -80,7 +80,7 @@ static int32_t GetHcclCommLink(const HcclComm &commHandle, uint32_t netLayerId, 
     }
     if (netLinkNum == 0) {
         ASCEND_LOGE("The Net Link Is nullptr. srcRankId is %u, dstRankId is %u, layerId is %u", srcRankId,
- 	                 dstRankId, netLayerId);
+ 	                dstRankId, netLayerId);
         return -1;
     }
     ASCEND_LOGI("Get HCCL Rank Links Success Links Num is: %u", netLinkNum);
@@ -99,7 +99,7 @@ static int32_t GetHcclCommLink(const HcclComm &commHandle, uint32_t netLayerId, 
 }
 
 static int32_t InitHcclChannel(const HcclComm &commHandle, uint32_t rankDim, uint32_t srcRankId,
-                                const CommProtocol &protocol, std::vector<HcclChannelDesc> &channelDesc)
+                               const CommProtocol &protocol, std::vector<HcclChannelDesc> &channelDesc)
 {
     uint32_t channelNum = channelDesc.size();
     auto hcclRet = HcclChannelDescInit(channelDesc.data(), channelNum);
@@ -142,8 +142,8 @@ static int32_t InitHcclChannel(const HcclComm &commHandle, uint32_t rankDim, uin
 }
 
 static int32_t GetHcclCommChannel(const HcclComm &commHandle, uint32_t rankDim, uint32_t srcRankId,
-                                   const CommProtocol &protocol, const CommEngine &engine, std::vector<ChannelHandle> &channels,
-                                   uint32_t &rankSizePerServer)
+                                  const CommProtocol &protocol, const CommEngine &engine,
+                                  std::vector<ChannelHandle> &channels, uint32_t &rankSizePerServer)
 {
     ASCEND_LOGI("Start to get HCCL communication channel");
     uint32_t channelNum = rankDim - 1;
@@ -178,7 +178,7 @@ static int32_t GetHcclCommChannel(const HcclComm &commHandle, uint32_t rankDim, 
 }
 
 static int32_t GetHcclCommResource(const HcclComm &commHandle, const CommEngine &engine, const CommProtocol &protocol,
-                                    Mc2MoeContext *mc2ContextStruct, uint32_t epRankSize, uint64_t &hcclBuffSize)
+                                   Mc2MoeContext *mc2ContextStruct, uint32_t epRankSize, uint64_t &hcclBuffSize)
 {
     ASCEND_LOGI("Start to get HCCL communication resource");
     uint32_t rankId = mc2ContextStruct->epRankId;
@@ -236,7 +236,7 @@ static int32_t CheckProtocolSupport(const HcclComm &commHandle, uint32_t *&layer
     uint32_t dstRankId = 0;
     uint32_t netLinkNum = 0;
     uint32_t rankNumInLayer = 0;
- 	uint32_t *rankIdLists = nullptr;
+    uint32_t *rankIdLists = nullptr;
     CommLink *linksList = nullptr;
 
     auto hcclRet = HcclGetRankIdFunc(commHandle, &srcRankId);
@@ -358,7 +358,8 @@ static int32_t GetOrCreateMc2Context(const HcclComm &commHandle, const std::stri
     uint64_t ctxSize = 0;
     auto hcclRet = HcclEngineCtxGetFunc(commHandle, mc2ContextTag.c_str(), engine, &ctx, &ctxSize);
     if (hcclRet != HCCL_SUCCESS) {
-        auto aclnnRet = CreatMc2Context(commHandle, mc2ContextTag, engine, protocol, ctx, &mc2ContextStruct, hcclBuffSize);
+        auto aclnnRet = CreatMc2Context(commHandle, mc2ContextTag, engine, protocol, ctx,
+                        &mc2ContextStruct, hcclBuffSize);
         if (aclnnRet != 0) {
             return aclnnRet;
         }
@@ -377,7 +378,7 @@ static int32_t GetOrCreateMc2Context(const HcclComm &commHandle, const std::stri
 }
 
 bool update_context_by_hccl_channel(std::string group_ep, py::object ep_world_size, py::object ccl_buffer_size,
-                                           at::Tensor &context)
+                                    at::Tensor &context)
 {
     ASCEND_LOGI("Start to get Mc2MoeContext Tensor, groupEp: %s", group_ep.c_str());
     InitHcclEngineCtxFunctions();
@@ -410,7 +411,8 @@ bool update_context_by_hccl_channel(std::string group_ep, py::object ep_world_si
     }
 
     Mc2MoeContext mc2ContextStruct;
-    ret = GetOrCreateMc2Context(hcclHandle, mc2ContextTag, engine, protocol, ctx, cclBufferSize, mc2ContextStruct, epWorldSize);
+    ret = GetOrCreateMc2Context(hcclHandle, mc2ContextTag, engine, protocol, ctx, cclBufferSize,
+                    mc2ContextStruct, epWorldSize);
     if (ret != 0) {
         ASCEND_LOGE("GetOrCreateMc2Context failed");
         return false;
@@ -422,7 +424,8 @@ bool update_context_by_hccl_channel(std::string group_ep, py::object ep_world_si
     // 将context拷贝到输出的tensor中
     at::Tensor hostContext = at::from_blob(&mc2ContextStruct, {sizeof(Mc2MoeContext) / sizeof(int32_t)}, at::kInt);
     context.copy_(hostContext);
-    ASCEND_LOGI("Get Mc2MoeContext Tensor Success, groupEp: %s, ep_world_size: %d, ccl_buffer_size: %d", group_ep.c_str(), ep_world_size.attr("value"), ccl_buffer_size.attr("value"));
+    ASCEND_LOGI("Get Mc2MoeContext Tensor Success, groupEp: %s, ep_world_size: %d, ccl_buffer_size: %d",
+                    group_ep.c_str(), ep_world_size.attr("value"), ccl_buffer_size.attr("value"));
 
     return true;
 }

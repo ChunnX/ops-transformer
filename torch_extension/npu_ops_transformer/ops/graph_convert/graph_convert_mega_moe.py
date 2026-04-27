@@ -37,13 +37,13 @@ if _TORCHAIR_AVAILABLE:
         [False, False, False, False, True, True, True, True, False, False],
         [False, False, False, False, False, False, False, False, True, True])
     def MegaMoe(context: Tensor, x: Tensor, topk_ids: Tensor, topk_weights: Tensor,
-                              weight1: List[Tensor], weight2: List[Tensor],
-                              weight_scales1: List[Tensor], weight_scales2: List[Tensor],
-                              x_active_mask: Optional[Tensor], scales: Optional[Tensor], *,
-                              moe_expert_num: int, ep_world_size: int, ccl_buffer_size: int,
-                              max_recv_token_num: int = 0, dispatch_quant_mode: int = 0,
-                              dispatch_quant_out_type: int = 28, combine_quant_mode: int = 0, comm_alg: str = "", global_bs: int = 0,
-                              dependencies=[], node_name=None):
+                weight1: List[Tensor], weight2: List[Tensor],
+                weight_scales1: List[Tensor], weight_scales2: List[Tensor],
+                x_active_mask: Optional[Tensor], scales: Optional[Tensor], *,
+                moe_expert_num: int, ep_world_size: int, ccl_buffer_size: int,
+                max_recv_token_num: int = 0, dispatch_quant_mode: int = 0,
+                dispatch_quant_out_type: int = 28, combine_quant_mode: int = 0, comm_alg: str = "",
+                global_bs: int = 0, dependencies=[], node_name=None):
         """REG_OP(MegaMoe)\n
         .INPUT(context, TensorType({DT_INT32}))\n
         .INPUT(x, TensorType({DT_BF16, DT_FLOAT16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2}))\n
@@ -126,8 +126,8 @@ if _TORCHAIR_AVAILABLE:
             .attr("combine_quant_mode", attr.Int(0)) \
             .attr("comm_alg", attr.Str("")) \
             .attr("global_bs", attr.Int(0)) \
-            .output("y" , "DT_BF16, DT_FLOAT16") \
-            .output("expert_token_nums" , "DT_INT32")
+            .output("y", "DT_BF16, DT_FLOAT16") \
+            .output("expert_token_nums", "DT_INT32")
         )
 
     @register_fx_node_ge_converter(torch.ops.npu_ops_transformer.npu_mega_moe.default)
@@ -157,22 +157,21 @@ if _TORCHAIR_AVAILABLE:
         meta_outputs: TensorSpec = None):
 
         return MegaMoe(context=context,
-                                     x=x,
-                                     topk_ids=topk_ids,
-                                     topk_weights=topk_weights,
-                                     weight1=weight1,
-                                     weight2=weight2,
-                                     weight_scales1=weight_scales1,
-                                     weight_scales2=weight_scales2,
-                                     x_active_mask=x_active_mask,
-                                     scales=scales,
-                                     moe_expert_num=moe_expert_num,
-                                     ep_world_size=ep_world_size,
-                                     ccl_buffer_size=ccl_buffer_size,
-                                     max_recv_token_num=max_recv_token_num,
-                                     dispatch_quant_mode=dispatch_quant_mode,
-                                     combine_quant_mode=combine_quant_mode,
-                                     comm_alg=comm_alg,
-                                     global_bs=global_bs,
-                                     dispatch_quant_out_type=dispatch_quant_out_type,
-                                     )
+                       x=x,
+                       topk_ids=topk_ids,
+                       topk_weights=topk_weights,
+                       weight1=weight1,
+                       weight2=weight2,
+                       weight_scales1=weight_scales1,
+                       weight_scales2=weight_scales2,
+                       x_active_mask=x_active_mask,
+                       scales=scales,
+                       moe_expert_num=moe_expert_num,
+                       ep_world_size=ep_world_size,
+                       ccl_buffer_size=ccl_buffer_size,
+                       max_recv_token_num=max_recv_token_num,
+                       dispatch_quant_mode=dispatch_quant_mode,
+                       combine_quant_mode=combine_quant_mode,
+                       comm_alg=comm_alg,
+                       global_bs=global_bs,
+                       dispatch_quant_out_type=dispatch_quant_out_type)

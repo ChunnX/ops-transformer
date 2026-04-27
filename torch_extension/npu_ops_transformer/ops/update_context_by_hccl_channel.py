@@ -22,7 +22,8 @@ class UpdateContextByHcclChannelOpBuilder(OpBuilder):
         return ['ops/csrc/update_context_by_hccl_channel.cpp']
 
     def schema(self) -> str:
-        return "update_context_by_hccl_channel(str group_ep, int ep_world_size, int ccl_buffer_size, Tensor context) -> bool"
+        return "update_context_by_hccl_channel(str group_ep, int ep_world_size, " \
+               "int ccl_buffer_size, Tensor context) -> bool"
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")

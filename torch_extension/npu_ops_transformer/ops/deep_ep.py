@@ -27,15 +27,15 @@ class IntWrapper:
 
 class MoeDistributeBuffer:
     def __init__(self, group, ccl_buffer_size: int = 0, comm_alg: int = 0,
-                 context_mode: str = "kfc"):
+                 context_mode: str = "OpRes"):
         """
         Args:
             group: torch.distributed group
             ccl_buffer_size: CCL buffer size (unused, kept for compatibility)
             comm_alg: communication algorithm (unused, kept for compatibility)
             context_mode: context initialization mode
-                "kfc"     - KFC IPC mode, for dispatch_v3/combine_v3
-                "channel" - HCCL channel mode, for moe_dispatch_ffn_combine
+                "OpRes"     - OpRes IPC mode, for dispatch_v3/combine_v3
+                "Channel" - HCCL Channel mode, for moe_dispatch_ffn_combine
         """
         self.group = group
         self.rank_id = torch.distributed.get_rank(group)
@@ -47,14 +47,14 @@ class MoeDistributeBuffer:
         self.ccl_buffer_size = IntWrapper()
         self.context_mode = context_mode
 
-        if context_mode == "kfc":
+        if context_mode == "OpRes":
             res = update_context(self.group_name, self.world_size, self.ccl_buffer_size, self.context)
-        elif context_mode == "channel":
+        elif context_mode == "Channel":
             ep_world_size = IntWrapper()
             update_context_by_hccl_channel(self.group_name, ep_world_size, self.ccl_buffer_size, self.context)
             self.world_size = ep_world_size.value
         else:
-            raise ValueError(f"Unknown context_mode: {context_mode}, expected 'kfc' or 'channel'")
+            raise ValueError(f"Unknown context_mode: {context_mode}, expected 'OpRes' or 'Channel'")
 
     @staticmethod
     def get_low_latency_ccl_buffer_size(world_size: int, num_max_dispatch_tokens_per_rank: int, hidden: int,

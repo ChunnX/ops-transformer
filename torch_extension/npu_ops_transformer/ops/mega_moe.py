@@ -10,6 +10,7 @@
 import torch
 import torch_npu
 from torch.library import impl
+from torch_npu.utils._error_code import ErrCode, ops_error
 from npu_ops_transformer.op_builder.builder import OpBuilder
 from npu_ops_transformer.op_builder.builder import AS_LIBRARY
 
@@ -32,11 +33,18 @@ class MegaMoeOpBuilder(OpBuilder):
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
         def npu_mega_moe_meta(context, x, topk_ids, topk_weights, weight1, weight2,
-                                               moe_expert_num, ep_world_size, ccl_buffer_size,
-                                               weight_scales1=None, weight_scales2=None, x_active_mask=None,
-                                               scales=None, max_recv_token_num=0, dispatch_quant_mode=0,
-                                               combine_quant_mode=0, comm_alg="", global_bs=0,
-                                               dispatch_quant_out_type=28, weight1_type=28, weight2_type=28):
+                              moe_expert_num, ep_world_size, ccl_buffer_size,
+                              weight_scales1=None, weight_scales2=None, x_active_mask=None,
+                              scales=None, max_recv_token_num=0, dispatch_quant_mode=0,
+                              combine_quant_mode=0, comm_alg="", global_bs=0,
+                              dispatch_quant_out_type=28, weight1_type=28, weight2_type=28):
+            torch._check(
+                ep_world_size != 0,
+                lambda: (
+                    f"ep_rank_id should not be 0, "
+                    f"{ops_error(ErrCode.VALUE)}."
+                ),
+            )
             bs = x.size(0)
             h = x.size(1)
             local_moe_expert_num = moe_expert_num // ep_world_size
@@ -52,14 +60,15 @@ op_module = mega_moe_op_builder.load()
 
 @impl(AS_LIBRARY, mega_moe_op_builder.name, "PrivateUse1")
 def npu_mega_moe(context, x, topk_ids, topk_weights, weight1, weight2,
-                                  moe_expert_num, ep_world_size, ccl_buffer_size,
-                                  weight_scales1=None, weight_scales2=None,
-                                  x_active_mask=None, scales=None, max_recv_token_num=0,
-                                  dispatch_quant_mode=0, combine_quant_mode=0,
-                                  comm_alg="", global_bs=0,
-                                  dispatch_quant_out_type=28, weight1_type=28, weight2_type=28):
+                 moe_expert_num, ep_world_size, ccl_buffer_size,
+                 weight_scales1=None, weight_scales2=None,
+                 x_active_mask=None, scales=None, max_recv_token_num=0,
+                 dispatch_quant_mode=0, combine_quant_mode=0,
+                 comm_alg="", global_bs=0,
+                 dispatch_quant_out_type=28, weight1_type=28, weight2_type=28):
 
     return op_module.npu_mega_moe(
-        context, x, topk_ids, topk_weights, weight1, weight2, moe_expert_num, ep_world_size, ccl_buffer_size,
-        weight_scales1, weight_scales2, x_active_mask, scales, max_recv_token_num,
-        dispatch_quant_mode, combine_quant_mode, comm_alg, global_bs, dispatch_quant_out_type, weight1_type, weight2_type)
+        context, x, topk_ids, topk_weights, weight1, weight2, moe_expert_num, ep_world_size,
+        ccl_buffer_size, weight_scales1, weight_scales2, x_active_mask, scales, max_recv_token_num,
+        dispatch_quant_mode, combine_quant_mode, comm_alg, global_bs,
+        dispatch_quant_out_type, weight1_type, weight2_type)
