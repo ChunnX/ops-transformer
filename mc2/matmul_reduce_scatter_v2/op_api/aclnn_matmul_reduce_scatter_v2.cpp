@@ -73,6 +73,20 @@ static inline bool IsAscend950(void)
     return op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
 }
 
+static void SetNnopbaseHcclServerTypeByArch(aclOpExecutor *executor)
+{
+    if ((executor == nullptr) || (NnopbaseSetHcclServerType == nullptr)) {
+        return;
+    }
+
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
+        NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
+    } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        OP_LOGD("[CCU_TO_AICPU] Set HcclServerType to AICPU for DAV_3510 architecture.");
+        NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+    }
+}
+
 // 检查入参是否为nullptr
 static bool CheckNotNull(const aclTensor* x1, const aclTensor* x2, const aclTensor* output)
 {
@@ -445,6 +459,9 @@ aclnnStatus aclnnMatmulReduceScatterV2GetWorkspaceSize(const aclTensor* x1, cons
         ret = matmulReduceScatterV2GetWorkSpaceSizeAivMode(x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, group, reduceOp, commTurn,
                                                        streamMode, groupSize, commMode, output, amaxOutOptional, workspaceSize, executor);
     }
+    if ((ret == ACLNN_SUCCESS) && (executor != nullptr) && (*executor != nullptr)) {
+        SetNnopbaseHcclServerTypeByArch(*executor);
+    }
     return ret;
 }
 
@@ -456,14 +473,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(void* workspace, uint64_t workspaceSize, 
         return ACLNN_SUCCESS;
     }
 
-    if (NnopbaseSetHcclServerType) {
-        if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
-            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
-        } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            OP_LOGD("[CCU_TO_AICPU] Set HcclServerType to AICPU for DAV_3510 architecture.");
-            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-        }
-    }
+    SetNnopbaseHcclServerTypeByArch(executor);
 
     aclnnStatus ret = aclnnInnerMatmulReduceScatterV2(workspace, workspaceSize, executor, stream);
     if (ret != 0) {
