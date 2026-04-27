@@ -230,8 +230,7 @@ def convert_param_combination_to_cs_format(param_combination):
     testcase_name = f"{testcase_prefix}_{layout_query}_{layout_kv}_{q_type_str}_{B}_{N1}_{N2}_{S1}_{S2}_{D}_{K}_{testcase_number:06d}"
     
     if layout_kv == "PA_BSND":
-        max_kv = max(actual_seq_kv) if actual_seq_kv else S2
-        block_num_per_batch = math.ceil(max_kv / block_size)
+        block_num_per_batch = math.ceil(S2 / block_size)
     if layout_kv == "PA_BSND" and block_num is None:
         block_num = 0
         for length in actual_seq_kv:
