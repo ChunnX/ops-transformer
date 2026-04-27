@@ -174,6 +174,8 @@ public:
         WaitFlag<HardEvent::S_MTE3>(EVENT_ID2);
         LocalTensor<int32_t> ubTensor = uBuf_.template Get<int32_t>();
         ubTensor(0) = flag;
+        SetFlag<HardEvent::S_MTE3>(EVENT_ID2);
+        WaitFlag<HardEvent::S_MTE3>(EVENT_ID2);
         CopyUbufToGmAlignB16(buff, ubTensor, 1, sizeof(int32_t), 0, 0);
     }
 

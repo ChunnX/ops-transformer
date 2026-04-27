@@ -253,6 +253,8 @@ public:
         WaitFlag<HardEvent::S_MTE3>(EVENT_ID2);
         LocalTensor<int32_t> ubTensor = uBuf_.AllocTensor<int32_t>();
         ubTensor(0) = flag + RAND_BASE;
+        SetFlag<HardEvent::S_MTE3>(EVENT_ID2);
+        WaitFlag<HardEvent::S_MTE3>(EVENT_ID2);
         CopyUbufToGmAlignB16(buff, ubTensor, 1, sizeof(int32_t), 0, 0);
     }
 
