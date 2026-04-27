@@ -675,3 +675,167 @@ remain the path forward:
 - Stage 3: true gather into L1 ping-pong (Tricks 1, 6, 10, 14, 16).
 - Host-side `chunkSubMask` metadata precompute (removes per-chunk sabi
   scan + collapses `isBlockSparse ?:` branches to single variant).
+
+---
+
+## Session 8 — Stage 2-lite batched Duplicate: Pareto-different, reverted
+
+### Goal
+
+Close the ~10 ms gap at 10 % sparsity (BSA 168 ms vs PFA 157 ms) by
+attacking Stage 2 of the approved plan (`i-need-you-to-elegant-river.md`):
+replace the `Duplicate(-10000)` sub-block correction pass at
+`blitz_sparse_attention_s1s2_bns1_x910.h:~697` with a cheaper primitive.
+
+### Context check before changing anything
+
+Ran the Session-7 baseline end-to-end (clean build + install + benchmark).
+Numbers match prior log within run-to-run noise (~1 ms):
+
+```
+sparsity   Session 7 (queue=8)   This session's rerun
+0.00             ~172 100              170 823 (−1.3)
+0.05             ~169 500              168 720 (−0.8)
+0.10             ~168 300              167 718 (−0.6)   ← target <157 400
+0.20             ~169 800              169 190 (−0.6)
+0.30             ~171 400              170 932 (−0.5)
+0.40             ~172 500              172 058 (−0.4)
+0.50             ~169 500              169 067 (−0.4)
+0.60             ~157 700              157 590
+0.70             ~134 900              134 643
+0.80              ~97 100               96 855
+0.90              ~39 400               39 400
+```
+
+Confirmed golden-rule DCCI is untouched and `feedback_never_touch_dcci`
+memory matches `CLAUDE.md`.
+
+### Why the "fold into softmax max-subtract" form of Stage 2 is not
+    tractable in one autonomous session
+
+The plan cites `attention/prompt_flash_attention/op_kernel/arch35/vf_softmaxflashv3.h:97–200`
+as the reference CreateMask/Select pattern. That code is a MicroAPI
+`__VEC_SCOPE__` block inside `SoftmaxFlashV3NoUpdateGeneralImpl*` — a
+template that BSA reaches only indirectly through the higher-level
+`SoftmaxBasicComputeFirstNoTail` / `SoftmaxComputeFirstTail` wrappers
+(line ~729 / 732 in `Res1VecCompute`). Folding a sub-block predicate
+into that call requires either:
+
+- forking the softmax template into a BSA-specific variant (adds an
+  extra `chunkSubMask` parameter, threads a `CreateMask`+`Select`
+  inside the per-row max-reduce loop), or
+- patching the shared PFA softmax template directly (affects dense PFA).
+
+Both are multi-day undertakings with a non-trivial risk of hurting the
+dense baseline. Out of scope for a single autonomous session.
+
+### What was actually tried: batched 2D Duplicate via 6-arg repeat form
+
+A lighter Stage-2-lite: collapse the existing per-row inner `Duplicate`
+loop into a 2D Duplicate with `repeatTimes=souterSize`, so one call
+writes `subCols` columns × `souterSize` rows across mmResUb. The
+per-repeat stride advances one row of mmResUb.
+
+Pattern mirrored from
+`attention/incre_flash_attention/op_kernel/arch32/incre_flash_attention_preload_dd.h:3984–3988`:
+
+```cpp
+uint64_t m[2] = { mask_for_chunk, 0ULL };
+Duplicate(mmResUb[ubPingpong][colStart + written],
+          static_cast<computeType>(-10000.0f),
+          m, /*reps*/ souterSize, /*blkStride*/ 1, /*rptStride*/ sInnerNow*4/32);
+```
+
+Outer fp32 has 64 lanes per 256 B repeat → for a 128-col sub-block the
+code emits 2 Duplicate calls (each 64-lane) per inactive sub-block per
+`souterOffset` iteration, instead of the current `souterSize` per
+inactive sub-block. Expected dispatch reduction: ~4×.
+
+### Benchmark result — Pareto-different, not shippable
+
+80/80 `test_attn.py` still pass. But:
+
+```
+sparsity   Session 7 (queue=8)   Stage 2-lite (this attempt)   Δ
+0.00             ~170 800              212 172                   +41.4 ms   ✗
+0.05             ~168 700              203 159                   +34.4 ms   ✗
+0.10             ~167 700              193 524                   +25.8 ms   ✗ (target band)
+0.20             ~169 200              171 836                   +2.6 ms    (budget breach)
+0.30             ~170 900              166 686                   −4.2 ms    ✓
+0.40             ~172 100              162 584                   −9.5 ms    ✓
+0.50             ~169 100              155 220                   −13.8 ms   ✓ (beats PFA)
+0.60             ~157 600              142 360                   −15.2 ms   ✓
+0.70             ~134 600              121 012                   −13.6 ms   ✓
+0.80              ~96 900               86 888                   −10.0 ms   ✓
+0.90              ~39 400               37 005                    −2.4 ms   ✓
+```
+
+### Diagnosis
+
+This is the **exact I-cache land mine** Session 5/6 warned about. The
+new code path is guarded by `isBlockSparse && sabiSubBlockMask != 0xFu`
+— at 0 % sparsity the guard is always false and the helper body never
+executes — yet 0 % regressed by 41 ms. That regression is pure
+**code-layout shift inside the inlined hot loop**: the helper adds an
+`uint64_t m[2]` stack slot, a `while (written < subCols)` loop, and
+additional branch structure, moving the sparse-path instructions
+relative to the cube/softmax preamble.
+
+The mid-high sparsity wins (−10 to −15 ms) are also real: where a large
+fraction of chunks are partial, the 4× dispatch reduction pays off.
+But with the hard "no sparsity regresses more than 2 ms vs Session 7"
+constraint, the 0–20 % regressions disqualify shipping.
+
+### What I did not try, and why
+
+| Mitigation | Why it's unlikely to help inside this session's budget |
+|---|---|
+| **Move batched Duplicate into an out-of-line `__aicore__ inline` helper** | Session 5 tried `__attribute__((noinline))` on `SInnerLoopFunc` and got a similar non-monotonic regression (+9 ms at 0 %, wins only at 30–50 %). Function-call boundaries in the AICore kernel are not free, and the compiler's default inlining heuristic has been the *best* option every time this was measured. |
+| **Tight-path-only: 2 Duplicates always (no `while`, no stack mask)** | Still adds branch + two calls' worth of code to the hot inline body. Every "smaller" layout variation has tested non-monotonically in Sessions 4–6; without the ability to A/B iterate, blind tweaks are net negative expected value. |
+| **True fold of `-10000` into softmax max-subtract** | Requires forking `SoftmaxBasicComputeFirstNoTail` and its dependents. Stage 2 as the plan literally describes it. Multi-session scope. |
+
+### Why Stage 2 alone cannot close the 10 % gap anyway
+
+Per the Session 6 physics analysis: at 10 % sparsity with
+`FRAME=(29,1,29,1)`, a 4-sub-block cube chunk is fully empty with
+probability `~7·10⁻³`, so **essentially every cube tile still runs**.
+BSA performs the same cube/softmax work as PFA plus per-chunk sabi-read
+and sub-block-mask overhead. The Duplicate pass itself is a small
+fraction of that overhead (~0.15–1.5 ms per core by rough dispatch
+accounting). Even a perfect Stage 2 removing that pass would not close
+the full ~10 ms. **Structural cube-work reduction (Stage 3, true
+gather) is the only thing that can.**
+
+### State at end of Session 8
+
+Kernel reverted to the Session 7 baseline. No files changed beyond
+this log entry. Benchmark rerun after revert confirms the Session-7
+curve holds within 1 ms noise.
+
+### Updated TODO
+
+- **Stage 2 as plan-literal (softmax fold) is deferred** until the
+  team is willing to spend a multi-session block forking the softmax
+  templates; a one-session attempt can only land partial-risk code
+  like this one, and the budget is too tight to absorb a ±5 ms layout
+  kick.
+- **Stage 3 (true gather) remains the only meaningful path** to beat
+  PFA at 10 %. Preparatory work that can land independently:
+    - **Host-side `chunkSubMask` metadata precompute** (Stage 1 in the
+      plan): moves per-chunk sabi scan out of the hot inline loop.
+      This is a host-side code change plus a small kernel edit; layout
+      impact on the inline loop is a *shrink* (deletion), which
+      historically regresses less than an addition.
+    - **SetBufferSpace wiring** in `AdjustCVTilingCVDiff` to reserve
+      L1 room for 2×128 KB ping-pong staging (Trick 16). Independent
+      of the gather itself and testable via the matmul still running
+      with less L1.
+- **An alternative to a true L1 gather**: *shrink cube N when the
+  active sub-blocks within a chunk are contiguous* (`SetTail` to
+  `activeCount × 128` and adjust the offset to the first active sub-
+  block). At 10 % sparsity roughly 19 % of chunks hit this pattern
+  (single- or contiguous-active), with average 42 % cube-work saving
+  on those chunks → ~7 % of total cube time, ~9 ms. Needs a
+  per-params 128-granularity sub-offset field and softmax-N plumbing;
+  scope is smaller than full L1 gather but still a multi-session lift.
+  Noted here so a future session can pick it up.
