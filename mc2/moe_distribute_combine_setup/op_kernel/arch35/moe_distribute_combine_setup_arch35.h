@@ -10,7 +10,7 @@
 
 /*!
  * \file moe_distribute_combine_setup_arch35.h
- * \brief
+ * \brief combine_setup
  */
 #ifndef MOE_DISTRIBUTE_COMBINE_SETUP_ARCH35_H
 #define MOE_DISTRIBUTE_COMBINE_SETUP_ARCH35_H
