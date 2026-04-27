@@ -265,9 +265,13 @@
   </tbody>
   </table>
 
+Ascend 950PR/Ascend 950DT：
+  - query N1仅支持8、16、24、32、64。
+  - 参数weights不支持`float32`类型。
+
 ## 约束说明
 
-- 该接口支持aclnn和图模式。
+- 该接口支持图模式。
 - 参数query中的N支持小于等于64，key的N支持1。
 - headdim支持128。
 - block_size取值为16的倍数，最大支持1024。
