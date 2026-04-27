@@ -65,6 +65,11 @@ def _parse_excel_cell_value(value):
     return _normalize_numeric_value(value)
 
 
+def load_paramset(paramset_file):
+    module = __import__(paramset_file)
+    return module.ENABLED_PARAMS
+
+
 def load_excel_test_cases(excel_file_path, sheet_name):
     # batch 模式从 Excel 读取原始参数行，并校验字段完整性。
     if sheet_name is None:
