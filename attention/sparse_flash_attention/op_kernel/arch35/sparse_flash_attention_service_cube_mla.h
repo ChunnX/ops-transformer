@@ -153,10 +153,6 @@ __aicore__ inline void SFAMatmulService<TEMPLATE_ARGS>::InitCubeInput(__gm__ uin
     const ConstInfo& constInfo)
 {
     if ASCEND_IS_AIC {
-        this->keyGm.gmTensor.SetGlobalBuffer((__gm__ KV_T *)key);
-        if constexpr (KV_LAYOUT_T == SFA_LAYOUT::PA_BSND) {
-            this->blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
-        }
         if constexpr (IS_SPLIT_G) {
             mte1ToMte2Id[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE1>();
             mte1ToMte2Id[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE1>();
