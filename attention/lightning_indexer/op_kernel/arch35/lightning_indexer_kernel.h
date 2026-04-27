@@ -168,7 +168,7 @@ __aicore__ inline void LightningIndexerKernel<LIT>::InitTilingData(const LITilin
     constInfo.kHeadNum = K_HEAD_NUM;
     constInfo.headDim = HEAD_DIM;
 
-    if (constInfo.gSize == 64) {
+    if (constInfo.sparseCount > 2048) {
         constInfo.mBaseSize = S1_BASE_SIZE_SMALL * constInfo.gSize;
         constInfo.s1BaseSize = S1_BASE_SIZE_SMALL;
     } else {
@@ -177,6 +177,7 @@ __aicore__ inline void LightningIndexerKernel<LIT>::InitTilingData(const LITilin
     }
     constInfo.s2BaseSize = S2_BASE_SIZE;
     constInfo.returnValueFlag = tilingData->returnValue;
+    constInfo.splitMFlag = (constInfo.gSize == 64 && constInfo.sparseCount <= 2048);
 }
 
 template <typename LIT>
