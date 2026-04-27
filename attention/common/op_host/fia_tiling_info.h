@@ -285,6 +285,7 @@ public:
     uint32_t blockTypeSize = 0; // 计算中间量大小
     uint32_t maxBlockNumPerBatch = 0;
     uint32_t totalBlockNum = 0;
+    uint32_t kvLayoutType = 0;
 
     // antiquant
     bool antiQuantFlag = false;
