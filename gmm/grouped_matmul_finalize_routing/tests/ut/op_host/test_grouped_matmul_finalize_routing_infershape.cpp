@@ -211,12 +211,16 @@ vector<GroupedMatmulFinalizeRoutingInfershapeCase> LoadCases()
     return cases;
 }
 
-void RunCsvDrivenInfershapeCases()
+const GroupedMatmulFinalizeRoutingInfershapeCase &GetCaseByPrefix(const string &prefix)
 {
-    const auto cases = LoadCases();
+    static const auto cases = LoadCases();
     for (const auto &testCase : cases) {
-        testCase.Run();
+        if (testCase.prefix == prefix) {
+            return testCase;
+        }
     }
+    ADD_FAILURE() << "Failed to find infershape case with prefix: " << prefix;
+    return cases.front();
 }
 
 } // namespace
@@ -229,8 +233,43 @@ protected:
     static void TearDownTestCase() {}
 };
 
-TEST_F(TestGroupedMatmulFinalizeRoutingInfershape, csvDrivenCase)
+TEST_F(TestGroupedMatmulFinalizeRoutingInfershape, w8a8_normal_1)
 {
-    RunCsvDrivenInfershapeCases();
+    GetCaseByPrefix("w8a8_normal_1").Run();
+}
+
+TEST_F(TestGroupedMatmulFinalizeRoutingInfershape, mxfp8_normal_1)
+{
+    GetCaseByPrefix("mxfp8_normal_1").Run();
+}
+
+TEST_F(TestGroupedMatmulFinalizeRoutingInfershape, w8a8_align_fail)
+{
+    GetCaseByPrefix("w8a8_align_fail").Run();
+}
+
+TEST_F(TestGroupedMatmulFinalizeRoutingInfershape, shared_input_bad_n)
+{
+    GetCaseByPrefix("shared_input_bad_n").Run();
+}
+
+TEST_F(TestGroupedMatmulFinalizeRoutingInfershape, logit_bad_dim)
+{
+    GetCaseByPrefix("logit_bad_dim").Run();
+}
+
+TEST_F(TestGroupedMatmulFinalizeRoutingInfershape, rowindex_bad_dim)
+{
+    GetCaseByPrefix("rowindex_bad_dim").Run();
+}
+
+TEST_F(TestGroupedMatmulFinalizeRoutingInfershape, dynamic_dim)
+{
+    GetCaseByPrefix("dynamic_dim").Run();
+}
+
+TEST_F(TestGroupedMatmulFinalizeRoutingInfershape, mxfp8_transpose_true)
+{
+    GetCaseByPrefix("mxfp8_transpose_true").Run();
 }
 } // namespace GroupedMatmulFinalizeRoutingInfershapeUT
