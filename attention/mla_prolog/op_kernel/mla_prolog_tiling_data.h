@@ -65,6 +65,15 @@ namespace optiling {
         float kcScale;                       // kv 的尺度矫正因子
         uint16_t isQcQrScaleEnable;          // query 的尺度矫正因子是否生效（默认是1.0的时候不生效）
         uint16_t isKcScaleEnable;            // kv 的尺度矫正因子是否生效（默认是1.0的时候不生效）
+        // Split-KN parameters (Ascend 950 default, set to 0 for other chips)
+        uint32_t mm1KnNGroups;       // MM1: N-group count
+        uint32_t mm1KnKGroups;       // MM1: K-group count
+        uint32_t mm1KnSingleN;       // MM1: N per N-group
+        uint32_t mm1KnSingleK;       // MM1: K per K-group
+        uint32_t mm2KnNGroups;       // MM2: N-group count
+        uint32_t mm2KnKGroups;       // MM2: K-group count
+        uint32_t mm2KnSingleN;       // MM2: N per N-group
+        uint32_t mm2KnSingleK;       // MM2: K per K-group
     };
 
     // 2. 完整分块数据结构体（对应 MlaPrologTilingData 宏定义，嵌套基础参数）

@@ -455,6 +455,61 @@ ge::graphStatus MlaPrologTiling::FillMatmul4Tiling()
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus MlaPrologTiling::FillSplitKnTiling()
+{
+    uint32_t totalCores = aicNum_;
+    uint32_t He = baseShapeInfo_.heSize;
+    uint32_t Hcq = baseShapeInfo_.hcqSize;
+    uint32_t HckvKr = baseShapeInfo_.hckvSize + baseShapeInfo_.drSize;
+
+    auto dataType = context_->weightDq.desc->GetDataType();
+    uint32_t alignN = BLOCK_SIZE / DTYPE_TO_SIZE.at(dataType);
+    if (alignN == 0) alignN = 16;
+
+    // MM1 (MatmulCq): N=Hcq, K=He
+    ComputeKnSplit(Hcq, He, totalCores, alignN,
+                   baseParams_->mm1KnNGroups, baseParams_->mm1KnKGroups,
+                   baseParams_->mm1KnSingleN, baseParams_->mm1KnSingleK);
+
+    // MM2 (MatmulCkvKr): N=Hckv+Dr, K=He
+    ComputeKnSplit(HckvKr, He, totalCores, alignN,
+                   baseParams_->mm2KnNGroups, baseParams_->mm2KnKGroups,
+                   baseParams_->mm2KnSingleN, baseParams_->mm2KnSingleK);
+
+    // Override block counts — all cores participate in Split-KN
+    mm1BlockNum_ = totalCores;
+    mm2BlockNum_ = totalCores;
+    baseParams_->mm1BlockNum = totalCores;
+    baseParams_->mm2BlockNum = totalCores;
+
+    return ge::GRAPH_SUCCESS;
+}
+
+void MlaPrologTiling::ComputeKnSplit(
+    uint32_t N, uint32_t K, uint32_t totalCores, uint32_t alignN,
+    uint32_t &nGroups, uint32_t &kGroups,
+    uint32_t &singleN, uint32_t &singleK)
+{
+    // Find the factorization ng × kg = totalCores that maximizes kGroups
+    // while keeping singleN >= alignN (minimum useful N per core)
+    // uint32_t bestNg = totalCores;
+    // uint32_t bestKg = 1;
+    // for (uint32_t kg = 1; kg <= totalCores; kg++) {
+    //     if (totalCores % kg != 0) continue;
+    //     uint32_t ng = totalCores / kg;
+    //     uint32_t sn = CeilDiv(N, ng * alignN) * alignN;
+    //     if (sn >= 128 && ng * sn >= N) {
+    //         bestNg = ng;
+    //         bestKg = kg;
+    //         break;  // First valid with max kGroups
+    //     }
+    // }
+    singleK = K % 1024 == 0 ? 1024 : 512;
+    kGroups = K / singleK;
+    singleN = std::max(192U, N / (totalCores / kGroups));
+    nGroups = N / singleN;
+}
+
 ge::graphStatus MlaPrologTiling::ProcessBaseInputs()
 {
     stepBatchSize_ = std::min(128U, baseShapeInfo_.tSize);
@@ -553,6 +608,20 @@ ge::graphStatus MlaPrologTiling::FillTiling()
         baseParams_->isKcScaleEnable = 0U;
     }
 
+    // Split-KN parameters for Ascend 950
+    if (GetCurNpuArch() == NpuArch::DAV_3510) {
+        FillSplitKnTiling();
+    } else {
+        baseParams_->mm1KnNGroups = 0;
+        baseParams_->mm1KnKGroups = 0;
+        baseParams_->mm1KnSingleN = 0;
+        baseParams_->mm1KnSingleK = 0;
+        baseParams_->mm2KnNGroups = 0;
+        baseParams_->mm2KnKGroups = 0;
+        baseParams_->mm2KnSingleN = 0;
+        baseParams_->mm2KnSingleK = 0;
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -601,6 +670,16 @@ ge::graphStatus MlaPrologTiling::CalcWorkSpace()
 
     if (enableGroupComputeOpt_ || enableDequantOpt_) {
         workspaceSize_ += static_cast<size_t>(stepBatchSize_) * static_cast<size_t>(BLOCK_SIZE);
+    }
+    // Split-KN workspace: partial sum buffers for Ascend 950
+    if (GetCurNpuArch() == NpuArch::DAV_3510 && baseParams_->mm1KnKGroups > 0) {
+        // MM1 Cq partials: k_groups × stepBS × Hcq × sizeof(float)
+        workspaceSize_ += static_cast<uint64_t>(baseParams_->mm1KnKGroups)
+                        * stepBatchSize_ * baseShapeInfo_.hcqSize * sizeof(float);
+        // MM2 CkvKr partials: k_groups × stepBS × (Hckv+Dr) × sizeof(float)
+        workspaceSize_ += static_cast<uint64_t>(baseParams_->mm2KnKGroups)
+                        * stepBatchSize_
+                        * (baseShapeInfo_.hckvSize + baseShapeInfo_.drSize) * sizeof(float);
     }
     if (context_->workSpaces) {
         context_->workSpaces[0] = workspaceSize_;

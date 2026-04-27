@@ -335,6 +335,10 @@ private:
     ge::graphStatus FillMatmul2Tiling();
     ge::graphStatus FillMatmul3Tiling();
     ge::graphStatus FillMatmul4Tiling();
+    ge::graphStatus FillSplitKnTiling();
+    void ComputeKnSplit(uint32_t N, uint32_t K, uint32_t totalCores, uint32_t alignN,
+                        uint32_t &nGroups, uint32_t &kGroups,
+                        uint32_t &singleN, uint32_t &singleK);
     uint32_t CalcSingleCoreN(uint32_t n, uint32_t coreNum, uint32_t alignNum = 16) const;
     bool GetMatmulType(ge::DataType getype, matmul_tiling::DataType *mmType);
     ge::graphStatus CalcWorkSpace();
