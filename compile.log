@@ -1,0 +1,1565 @@
+HEAD is now at 457c785 modify error word TENSER to TENSOR
+[2026-04-28 17:23:27] Warning: The current environment is configured for ascend950, Please use Ascend 950PR/Ascend 950DT series hardware for optimal performance.
+[2026-04-28 17:23:27] /mnt/workspace/DTS/transformer-issue/build/gen_bisheng_dir /mnt/workspace/DTS/transformer-issue
+[2026-04-28 17:23:27] /mnt/workspace/DTS/transformer-issue
+[2026-04-28 17:23:27] [2026-04-28 17:23:27] Info: cmake config -DBUILD_OPEN_PROJECT=ON -DASCEND_OP_NAME=flash_attention_score -DENABLE_TILING_SINK=OFF -DUT_INFERSHAPE_FLAG=TRUE -DENABLE_UT_EXEC=TRUE -DCANN_3RD_LIB_PATH=/mnt/workspace/DTS/transformer-issue/third_party -DENABLE_AICPU_KERNEL=FALSE -DCUSTOM_ASCEND_CANN_PACKAGE_PATH=/home/developer/Ascend/cann-9.0.0-beta.2 -DCHECK_COMPATIBLE=true -DENABLE_CCACHE=ON -DCUSTOM_CCACHE=/usr/local/bin/ccache -DASCEND_COMPUTE_UNIT=ascend950 -DENABLE_BUILT_IN=OFF -DENABLE_OPS_HOST=ON -DENABLE_OPS_KERNEL=ON -DENABLE_BUILD_PKG=ON .
+[2026-04-28 17:23:27] -- The C compiler identification is GNU 9.4.0
+[2026-04-28 17:23:27] -- The CXX compiler identification is GNU 9.4.0
+[2026-04-28 17:23:27] -- Detecting C compiler ABI info
+[2026-04-28 17:23:27] -- Detecting C compiler ABI info - done
+[2026-04-28 17:23:27] -- Check for working C compiler: /usr/bin/cc - skipped
+[2026-04-28 17:23:27] -- Detecting C compile features
+[2026-04-28 17:23:27] -- Detecting C compile features - done
+[2026-04-28 17:23:27] -- Detecting CXX compiler ABI info
+[2026-04-28 17:23:27] -- Detecting CXX compiler ABI info - done
+[2026-04-28 17:23:27] -- Check for working CXX compiler: /usr/bin/c++ - skipped
+[2026-04-28 17:23:27] -- Detecting CXX compile features
+[2026-04-28 17:23:27] -- Detecting CXX compile features - done
+[2026-04-28 17:23:27] -- ASCEND_CANN_PACKAGE_PATH=/home/developer/Ascend/cann-9.0.0-beta.2
+[2026-04-28 17:23:27] -- compile project with library
+[2026-04-28 17:23:27] -- Find opbase source dir: /mnt/workspace/DTS/transformer-issue/third_party/opbase
+[2026-04-28 17:23:27] D	aicpu_common/context/CMakeLists.txt
+[2026-04-28 17:23:27] D	aicpu_common/context/common/async_cpu_kernel.cc
+[2026-04-28 17:23:27] D	aicpu_common/context/common/async_event_util.cc
+[2026-04-28 17:23:27] D	aicpu_common/context/common/context.cc
+[2026-04-28 17:23:27] D	aicpu_common/context/common/cpu_kernel_cache.cc
+[2026-04-28 17:23:27] D	aicpu_common/context/common/cpu_kernel_register.cc
+[2026-04-28 17:23:27] D	aicpu_common/context/common/cpu_kernel_utils.cc
+[2026-04-28 17:23:27] D	aicpu_common/context/common/device.cc
+[2026-04-28 17:23:27] D	aicpu_common/context/common/device_cpu_kernel.cc
+[2026-04-28 17:23:27] D	aicpu_common/context/common/device_sharder.cc
+[2026-04-28 17:23:27] D	aicpu_common/context/common/eigen_threadpool.cc
+[2026-04-28 17:23:27] D	aicpu_common/context/common/eigen_threadpool_embedding.cc
+[2026-04-28 17:23:27] D	aicpu_common/context/common/host_sharder.cc
+[2026-04-28 17:23:27] D	aicpu_common/context/common/node_def_builder.cpp
+[2026-04-28 17:23:27] D	aicpu_common/context/cpu_proto/attr_value.cc
+[2026-04-28 17:23:27] D	aicpu_common/context/cpu_proto/attr_value_impl.cc
+[2026-04-28 17:23:27] D	aicpu_common/context/cpu_proto/node_def.cc
+[2026-04-28 17:23:27] D	aicpu_common/context/cpu_proto/node_def_impl.cc
+[2026-04-28 17:23:27] D	aicpu_common/context/cpu_proto/proto/cpu_attr.proto
+[2026-04-28 17:23:27] D	aicpu_common/context/cpu_proto/proto/cpu_node_def.proto
+[2026-04-28 17:23:27] D	aicpu_common/context/cpu_proto/proto/cpu_tensor.proto
+[2026-04-28 17:23:27] D	aicpu_common/context/cpu_proto/proto/cpu_tensor_shape.proto
+[2026-04-28 17:23:27] D	aicpu_common/context/cpu_proto/tensor.cc
+[2026-04-28 17:23:27] D	aicpu_common/context/cpu_proto/tensor_impl.cc
+[2026-04-28 17:23:27] D	aicpu_common/context/cpu_proto/tensor_shape.cc
+[2026-04-28 17:23:27] D	aicpu_common/context/cpu_proto/tensor_shape_impl.cc
+[2026-04-28 17:23:27] D	aicpu_common/context/cust_op/cust_dlog_record.cc
+[2026-04-28 17:23:27] D	aicpu_common/context/cust_op/cust_dlog_record.h
+[2026-04-28 17:23:27] D	aicpu_common/context/cust_op/cust_op_log.cc
+[2026-04-28 17:23:27] D	aicpu_common/context/device/CMakeLists.txt
+[2026-04-28 17:23:HEAD is now at 457c785 modify error word TENSER to TENSOR
+json found in /mnt/workspace/DTS/transformer-issue/third_party/json, and not force rebuild cann third_party
+json found in /mnt/workspace/DTS/transformer-issue/third_party/json, and not force rebuild cann third_party
+27] D	aicpu_common/context/host/CMakeLists.txt
+[2026-04-28 17:23:27] D	aicpu_common/context/utils/bcast.cc
+[2026-04-28 17:23:27] D	aicpu_common/context/utils/eigen_tensor.cc
+[2026-04-28 17:23:27] D	aicpu_common/context/utils/kernel_util.cc
+[2026-04-28 17:23:27] D	include/aclnnop/aclnn_util.h
+[2026-04-28 17:23:27] D	include/nnopbase/aclnn/acl_meta.h
+[2026-04-28 17:23:27] D	include/nnopbase/aclnn/aclnn_base.h
+[2026-04-28 17:23:27] D	include/nnopbase/opdev/aicpu/aicpu_any_value.h
+[2026-04-28 17:23:27] D	include/nnopbase/opdev/aicpu/aicpu_args_handler.h
+[2026-04-28 17:23:27] D	include/nnopbase/opdev/aicpu/aicpu_ext_info_handle.h
+[2026-04-28 17:23:27] D	include/nnopbase/opdev/aicpu/aicpu_kernel_launcher.h
+[2026-04-28 17:23:27] D	include/nnopbase/opdev/aicpu/aicpu_task.h
+[2026-04-28 17:23:27] D	include/nnopbase/opdev/aicpu/aicpu_utils.h
+[2026-04-28 17:23:27] D	include/nnopbase/opdev/bfloat16.h
+[2026-04-28 17:23:27] D	include/nnopbase/opdev/common_types.h
+[2026-04-28 17:23:27] D	include/nnopbase/opdev/data_type_utils.h
+[2026-04-28 17:23:27] D	include/nnopbase/opdev/fast_vector.h
+[2026-04-28 17:23:27] D	include/nnopbase/opdev/float4_e1m2.h
+[2026-04-28 17:23:27] D	include/nnopbase/opdev/float4_e2m1.h
+[2026-04-28 17:23:27] D	include/nnopbase/opdev/float6_e2m3.h
+[2026-04-28 17:23:27] D	include/nnopbase/opdev/float6_e3m2.h
+[2026-04-28 17:23:27] D	include/nnopbase/opdev/float8_e4m3fn.h
+[2026-04-28 17:23:27] D	include/nnopbase/opdev/float8_e5m2.h
+[2026-04-28 17:23:27] D	include/nnopbase/opdev/float8_e8m0.h
+[2026-04-28 17:23:27] D	include/nnopbase/opdev/format_utils.h
+[2026-04-28 17:23:27] D	include/nnopbase/opdev/fp16_t.h
+[2026-04-28 17:23:27] D	include/nnopbase/opdev/framework_op.h
+[2026-04-28 17:23:27] D	include/nnopbase/opdev/hifloat4.h
+[2026-04-28 17:23:27] D	include/nnopbase/opdev/hifloat8.h
+[2026-04-28 17:23:27] D	include/nnopbase/opdev/make_op_executor.h
+[2026-04-28 17:23:27] D	include/nnopbase/opdev/object.h
+[2026-04-28 17:23:27] D	include/nnopbase/opdev/op_arg_def.h
+[2026-04-28 17:23:27] D	include/nnopbase/opdev/op_cache.h
+[2026-04-28 17:23:27] D	include/nnopbase/opdev/op_cache_container.h
+[2026-04-28 17:23:27] D	include/nnopbase/opdev/op_common/data_type_utils.h
+[2026-04-28 17:23:27] D	include/nnopbase/opdev/op_config.h
+[2026-04-28 17:23:27] D	include/nnopbase/opdev/op_def.h
+[2026-04-28 17:23:27] D	include/nnopbase/opdev/op_dfx.h
+[2026-04-28 17:23:27] D	include/nnopbase/opdev/op_errno.h
+[2026-04-28 17:23:27] D	include/nnopbase/opdev/op_executor.h
+[2026-04-28 17:23:27] D	include/nnopbase/opdev/op_log.h
+[2026-04-28 17:23:27] D	include/nnopbase/opdev/platform.h
+[2026-04-28 17:23:27] D	include/nnopbase/opdev/pool_allocator.h
+[2026-04-28 17:23:27] D	include/nnopbase/opdev/shape_utils.h
+[2026-04-28 17:23:27] D	include/nnopbase/opdev/small_vector.h
+[2026-04-28 17:23:27] D	include/nnopbase/opdev/tensor_view_utils.h
+[2026-04-28 17:23:28] -- Found Python3: /usr/local/bin/python3 (found version "3.11.4") found components: Interpreter 
+[2026-04-28 17:23:28] -- ENABLE_CCACHE=ON, CUSTOM_CCACHE=/usr/local/bin/ccache
+[2026-04-28 17:23:28] -- CCACHE_PROGRAM=/usr/local/bin/ccache
+[2026-04-28 17:23:28] -- ASCEND_COMPUTE_UNIT=ascend950
+[2026-04-28 17:23:28] -- ASCEND_OP_NAME=flash_attention_score
+[2026-04-28 17:23:28] -- TILING_KEY=
+[2026-04-28 17:23:28] -- TESTS_UT_OPS_TEST=
+[2026-04-28 17:23:28] -- TESTS_EXAMPLE_OPS_TEST=
+[2026-04-28 17:23:28] -- CMAKE_BUILD_TYPE=Release
+[2026-04-28 17:23:28] -- VERSION=
+[2026-04-28 17:23:32] -- Found json: /mnt/workspace/DTS/transformer-issue/third_party/json/include  
+[2026-04-28 17:23:32] -- Start building custom package.
+[2026-04-28 17:23:32] -- Search libs under install path /home/developer/Ascend/cann-9.0.0-beta.2
+[2026-04-28 17:23:32] -- CMAKE_MODULE_PATH            :/mnt/workspace/DTS/transformer-issue/cmake/modules;/home/developer/Ascend/cann-9.0.0-beta.2/include/ge/cmake
+[2026-04-28 17:23:32] -- compile option:   -Wall -Wextra -Wshadow -Wformat=2 -fno-common -fPIC -Wformat-signedness -Wno-missing-include-dirs -Wno-write-strings
+[2026-04-28 17:23:32] -- Found dlog: /home/developer/Ascend/cann-9.0.0-beta.2/pkg_inc/base  
+[2026-04-28 17:23:32] -- Transformer Variables in dlog module:
+[2026-04-28 17:23:32] -- dlog_TRANSFORMER_INCLUDE_DIR="/home/developer/Ascend/cann-9.0.0-beta.2/pkg_inc/base"
+[2026-04-28 17:23:32] -- dlog_SHARED_LIBRARY="/home/developer/Ascend/cann-9.0.0-beta.2/lib64/libascendalog.so"
+[2026-04-28 17:23:32] -- 
+[2026-04-28 17:23:32]  Properties for TARGET dlog:
+[2026-04-28 17:23:32]    dlog.INTERFACE_COMPILE_DEFINITIONS = "LOG_CPP;PROCESS_LOG"
+[2026-04-28 17:23:32]    dlog.INTERFACE_LINK_LIBRARIES = "dlog_headers"
+[2026-04-28 17:23:32]    dlog.IMPORTED_LOCATION = "/home/developer/Ascend/cann-9.0.0-beta.2/lib64/libascendalog.so"
+[2026-04-28 17:23:32] 
+[2026-04-28 17:23:32] -- 
+[2026-04-28 17:23:32]  Properties for TARGET dlog_headers:
+[2026-04-28 17:23:32]    dlog_headers.INTERFACE_INCLUDE_DIRECTORIES = "/home/developer/Ascend/cann-9.0.0-beta.2/pkg_inc/base"
+[2026-04-28 17:23:32] 
+[2026-04-28 17:23:32] -- Found securec: /home/developer/Ascend/cann-9.0.0-beta.2/include  
+[2026-04-28 17:23:32] -- Found OPBASE: /mnt/workspace/DTS/transformer-issue/third_party/opbase/pkg_inc  
+[2026-04-28 17:23:32] -- Found OPABSE include:/mnt/workspace/DTS/transformer-issue/third_party/opbase/pkg_inc
+[2026-04-28 17:23:32] -- Found OPABSE lib:
+[2026-04-28 17:23:32] -- Found platform: /home/developer/Ascend/cann-9.0.0-beta.2/include  
+[2026-04-28 17:23:32] -- Found platform include:/home/developer/Ascend/cann-9.0.0-beta.2/aarch64-linux/include
+[2026-04-28 17:23:32] -- Found register library:/home/developer/Ascend/cann-9.0.0-beta.2/aarch64-linux/lib64/libregister.so
+[2026-04-28 17:23:32] -- Found opp_registry library:/home/developer/Ascend/cann-9.0.0-beta.2/aarch64-linux/lib64/libopp_registry.so
+[2026-04-28 17:23:32] -- Found exe_graph library:/home/developer/Ascend/cann-9.0.0-beta.2/aarch64-linux/lib64/libexe_graph.so
+[2026-04-28 17:23:32] -- Found graph_base library:/home/developer/Ascend/cann-9.0.0-beta.2/aarch64-linux/lib64/libgraph_base.so
+[2026-04-28 17:23:32] -- Found error_manager library:/home/developer/Ascend/cann-9.0.0-beta.2/aarch64-linux/lib64/liberror_manager.so
+[2026-04-28 17:23:32] -- Found metadef library:/home/developer/Ascend/cann-9.0.0-beta.2/aarch64-linux/lib64/libmetadef.so
+[2026-04-28 17:23:32] -- Found rt2_registry library:/home/developer/Ascend/cann-9.0.0-beta.2/aarch64-linux/lib64/librt2_registry.a
+[2026-04-28 17:23:32] -- Found metadef: /home/developer/Ascend/cann-9.0.0-beta.2/include  
+[2026-04-28 17:23:32] -- Found source metadef include dir:  /home/developer/Ascend/cann-9.0.0-beta.2/aarch64-linux/include/;/home/developer/Ascend/cann-9.0.0-beta.2/aarch64-linux/include/exe_graph
+[2026-04-28 17:23:32] -- Found graph library:/home/developer/Ascend/cann-9.0.0-beta.2/aarch64-linux/lib64/libgraph.so
+[2026-04-28 17:23:32] -- Found source acl include dir:  /home/developer/Ascend/cann-9.0.0-beta.2/aarch64-linux/include
+[2026-04-28 17:23:32] -- [transformer]Found source npuruntime include dir: /home/developer/Ascend/cann-9.0.0-beta.2/aarch64-linux/pkg_inc/runtime
+[2026-04-28 17:23:32] -- Found aclnn include dir:  /home/developer/Ascend/cann-9.0.0-beta.2/aarch64-linux/include
+[2026-04-28 17:23:32] -- Found opdev include dir:  /home/developer/Ascend/cann-9.0.0-beta.2/aarch64-linux/include/aclnn
+[2026-04-28 17:23:32] -- Found tilingapi include:/home/developer/Ascend/cann-9.0.0-beta.2/aarch64-linux/include
+[2026-04-28 17:23:32] -- TILINGAPI_INC_DIRS: /home/developer/Ascend/cann-9.0.0-beta.2/aarch64-linux/include;/home/developer/Ascend/cann-9.0.0-beta.2/aarch64-linux/ascendc;/home/developer/Ascend/cann-9.0.0-beta.2/aarch64-linux/ascendc/include;/home/developer/Ascend/cann-9.0.0-beta.2/aarch64-linux/ascendc/include/highlevel_api;/home/developer/Ascend/cann-9.0.0-beta.2/aarch64-linux/ascendc/include/highlevel_api/lib;/home/developer/Ascend/cann-9.0.0-beta.2/aarch64-linux/ascendc/include/highlevel_api/impl;/home/developer/Ascend/cann-9.0.0-beta.2/aarch64-linux/ascendc/include/highlevel_api/tiling
+[2026-04-28 17:23:32] -- Found tilingapi lib:/home/developer/Ascend/cann-9.0.0-beta.2/aarch64-linux/lib64/libtiling_api.a
+[2026-04-28 17:23:32] -- Using AICPU include dirs: /home/developer/Ascend/cann-9.0.0-beta.2/aarch64-linux/include/experiment;/home/developer/Ascend/cann-9.0.0-beta.2/aarch64-linux/include/experiment/cce;/home/developer/Ascend/cann-9.0.0-beta.2/aarch64-linux/include/experiment/msprof;/home/developer/Ascend/cann-9.0.0-beta.2/aarch64-linux/pkg_inc/aicpu_common/context;/home/developer/Ascend/cann-9.0.0-beta.2/aarch64-linux/pkg_inc/aicpu_common/context/common;/home/developer/Ascend/cann-9.0.0-beta.2/aarch64-linux/pkg_inc/aicpu_common/context/cpu_proto;/home/developer/Ascend/cann-9.0.0-beta.2/aarch64-linux/pkg_inc/aicpu_common/context/utils;/home/developer/Ascend/cann-9.0.0-beta.2/aarch64-linux/include/aicpu_common/context;/home/developer/Ascend/cann-9.0.0-beta.2/aarch64-linux/include/aicpu_common/context/common;/home/developer/Ascend/cann-9.0.0-beta.2/aarch64-linux/include/aicpu_common/context/cpu_proto;/home/developer/Ascend/cann-9.0.0-beta.2/aarch64-linux/include/aicpu_common/context/utils;/home/developer/Ascend/cann-9.0.0-beta.2/aarch64-linux/include/experiment/datagw/aicpu/common;/home/developer/Ascend/cann-9.0.0-beta.2/aarch64-linux/include/experiment/datagw/aicpu/common;/home/developer/Ascend/cann-9.0.0-beta.2/aarch64-linux/pkg_inc;/home/developer/Ascend/cann-9.0.0-beta.2/aarch64-linux/pkg_inc/aicpu
+[2026-04-28 17:23:32] -- Finding gen es pkg
+[2026-04-28 17:23:32] -- [add_es_library] Module loaded from: /home/developer/Ascend/cann-9.0.0-beta.2/include/ge/cmake
+[2026-04-28 17:23:32] -- Eigen path found in cache: /mnt/workspace/DTS/transformer-issue/third_party/eigen
+[2026-04-28 17:23:32] -- Eigen already exists at /mnt/workspace/DTS/transformer-issue/third_party/eigen
+[2026-04-28 17:23:32] -- Could NOT find abseil-cpp (missing: ABSL_SOURCE_DIR) 
+[2026-04-28 17:23:32] -- [ThirdPartyLib][abseil-cpp] found in /mnt/workspace/DTS/transformer-issue/third_party/pkg/abseil-cpp-20230802.1.tar.gz.
+[2026-04-28 17:23:32] -- Could NOT find ascend_protobuf_build_transformer (missing: ASCEND_PROTOBUF_SHARED_INCLUDE) 
+[2026-04-28 17:23:32] -- [ThirdPartyLib][ascend protobuf] ascend protobuf shared not found, finding binary file.
+[2026-04-28 17:23:32] -- [ThirdPartyLib][ascend protobuf] found in file:///mnt/workspace/DTS/transformer-issue/third_party/pkg/protobuf-25.1.tar.gz.
+[2026-04-28 17:23:32] -- Found alog: /home/developer/Ascend/cann-9.0.0-beta.2/include  
+[2026-04-28 17:23:32] -- Variables in alog module:
+[2026-04-28 17:23:32] -- alog_a_INCLUDE_DIR="/home/developer/Ascend/cann-9.0.0-beta.2/include"
+[2026-04-28 17:23:32] -- slog_a_SHARED_LIBRARY="/home/developer/Ascend/cann-9.0.0-beta.2/lib64/libascendalog.so"
+[2026-04-28 17:23:32] -- alog_a_SHARED_LIBRARY="/home/developer/Ascend/cann-9.0.0-beta.2/lib64/libascendalog.so"
+[2026-04-28 17:23:32] -- 
+[2026-04-28 17:23:32]  Properties for TARGET slog_a:
+[2026-04-28 17:23:32]    slog_a.INTERFACE_COMPILE_DEFINITIONS = "LOG_CPP;PROCESS_LOG"
+[2026-04-28 17:23:32]    slog_a.INTERFACE_LINK_LIBRARIES = "alog_headers"
+[2026-04-28 17:23:32]    slog_a.IMPORTED_LOCATION = "/home/developer/Ascend/cann-9.0.0-beta.2/lib64/libascendalog.so"
+[2026-04-28 17:23:32] 
+[2026-04-28 17:23:32] -- 
+[2026-04-28 17:23:32]  Properties for TARGET alog_a:
+[2026-04-28 17:23:32]    alog_a.INTERFACE_COMPILE_DEFINITIONS = "LOG_CPP;PROCESS_LOG"
+[2026-04-28 17:23:32]    alog_a.INTERFACE_LINK_LIBRARIES = "alog_headers"
+[2026-04-28 17:23:32]    alog_a.IMPORTED_LOCATION = "/home/developer/Ascend/cann-9.0.0-beta.2/lib64/libascendalog.so"
+[2026-04-28 17:23:32] 
+[2026-04-28 17:23:32] -- 
+[2026-04-28 17:23:32]  Properties for TARGET alog_headers:
+[2026-04-28 17:23:32]    alog_headers.INTERFACE_INCLUDE_DIRECTORIES = "/home/developer/Ascend/cann-9.0.0-beta.2/include;/home/developer/Ascend/cann-9.0.0-beta.2/include/base"
+[2026-04-28 17:23:32] 
+[2026-04-28 17:23:32] -- Could NOT find unified_dlog (missing: _INCLUDE_ROOT_DIR) 
+[2026-04-28 17:23:32] -- Generated helper script: /mnt/workspace/DTS/transformer-issue/build/cmake/run_gen_esb_with_lock.sh
+[2026-04-28 17:23:32] -- Using existing Python3: /usr/local/bin/python3
+[2026-04-28 17:23:32] -- _add_es_library_impl: EXCLUDE_OPS is not provided
+[2026-04-28 17:23:32] -- add_es_package: OPP_PROTO_TARGET output directory: /mnt/workspace/DTS/transformer-issue/build
+[2026-04-28 17:23:32] -- add_es_package: Derived ASCEND_OPP_PATH: /mnt/workspace/DTS/transformer-issue/build
+[2026-04-28 17:23:32] --   - Created standard OPP path: /mnt/workspace/DTS/transformer-issue/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math
+[2026-04-28 17:23:32] -- _add_es_library_impl: gen_esb target not found, searching in environment...
+[2026-04-28 17:23:32] --     Found gen_esb in PATH (environment variables configured)
+[2026-04-28 17:23:32] --     - gen_esb path: /home/developer/Ascend/cann-9.0.0-beta.2/bin/gen_esb
+[2026-04-28 17:23:32] --     - library path: /home/developer/Ascend/cann-9.0.0-beta.2/lib64
+[2026-04-28 17:23:32] -- Using proto library path (derived from OPP_PROTO_TARGET): /mnt/workspace/DTS/transformer-issue/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math
+[2026-04-28 17:23:32] -- add_es_package: Module name for gen_esb: math
+[2026-04-28 17:23:32] -- Trying to locate eager_style_graph_builder_base library from run package...
+[2026-04-28 17:23:32] --   Found library in run package: /home/developer/Ascend/cann-9.0.0-beta.2/lib64/libeager_style_graph_builder_base.so
+[2026-04-28 17:23:32] -- Configuring ES package: es_math
+[2026-04-28 17:23:32] --   - Exported target: es_math (public interface)
+[2026-04-28 17:23:32] --   - Internal .obj target: es_math_obj (compile once)
+[2026-04-28 17:23:32] --   - Internal .so target: es_math_so
+[2026-04-28 17:23:32] --   - Internal .a target: es_math_a
+[2026-04-28 17:23:32] --   - Module name (for gen_esb): math
+[2026-04-28 17:23:32] --   - OPP proto target: proto_math
+[2026-04-28 17:23:32] --   - OPP proto path: /mnt/workspace/DTS/transformer-issue/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math
+[2026-04-28 17:23:32] --   - Output path: /mnt/workspace/DTS/transformer-issue/build/es_packages_math
+[2026-04-28 17:23:32] --   - Library files: libes_math.so, libes_math.a
+[2026-04-28 17:23:32] --   - Python package: es_math
+[2026-04-28 17:23:32] -- ES package 'es_math' using single-file compilation mode
+[2026-04-28 17:23:32] --   - Wrapper file: /mnt/workspace/DTS/transformer-issue/build/common/stub/op_graph/es_math_build/generated_code/es_math_all_in_one.cpp
+[2026-04-28 17:23:32] --   - Module name: math
+[2026-04-28 17:23:32] -- add_es_library: Using default compile options: -fPIC;-Wall;-fstack-protector-all;-std=c++17;-D_GLIBCXX_USE_CXX11_ABI=0;-O2;-Wno-free-nonheap-object
+[2026-04-28 17:23:32] -- add_es_library: Set _GLIBCXX_USE_CXX11_ABI=0 for ABI compatibility
+[2026-04-28 17:23:32] -- add_es_library: Deduced header base path from cmake file: /home/developer/Ascend/cann-9.0.0-beta.2
+[2026-04-28 17:23:32] -- add_es_library: metadef_headers target not found, skipping
+[2026-04-28 17:23:32] -- add_es_library: Found c_sec target
+[2026-04-28 17:23:32] -- add_es_library: Linking with CANN libraries: c_sec
+[2026-04-28 17:23:32] -- add_es_package: 'build_es_math' is the first ES package (will be built first)
+[2026-04-28 17:23:32] -- ES package 'es_math' configured successfully (single-file mode):
+[2026-04-28 17:23:32] --   - Exported target (for linking): es_math
+[2026-04-28 17:23:32] --   - Build target: build_es_math
+[2026-04-28 17:23:32] --   - Wrapper file: /mnt/workspace/DTS/transformer-issue/build/common/stub/op_graph/es_math_build/generated_code/es_math_all_in_one.cpp
+[2026-04-28 17:23:32] --   - Internal targets:
+[2026-04-28 17:23:32] --     * Code generation: generate_es_math_code
+[2026-04-28 17:23:32] --     * Object library: es_math_obj (compiled once)
+[2026-04-28 17:23:32] --     * Shared library: es_math_so
+[2026-04-28 17:23:32] --     * Static library: es_math_a
+[2026-04-28 17:23:32] --     * Wheel generation: generate_es_math_whl
+[2026-04-28 17:23:32] --     * Install: install_es_math
+[2026-04-28 17:23:32] --   - Library files: libes_math.so, libes_math.a
+[2026-04-28 17:23:32] --   - Python package: es_math
+[2026-04-28 17:23:32] --   - ES base library: /home/developer/Ascend/cann-9.0.0-beta.2/lib64/libeager_style_graph_builder_base.so (from library)
+[2026-04-28 17:23:32] -- 
+[2026-04-28 17:23:32] -- Build mode: Single-file compilation (no reconfiguration needed)
+[2026-04-28 17:23:32] -- 
+[2026-04-28 17:23:32] -- Quick start:
+[2026-04-28 17:23:32] --   1. Link:    target_link_libraries(your_target PRIVATE es_math)
+[2026-04-28 17:23:32] --   2. Build:   make your_target  (recommended, triggers automatically)
+[2026-04-28 17:23:32] -- 
+[2026-04-28 17:23:32] -- Update proto header path: /mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_graph/flash_attention_score_proto.h
+[2026-04-28 17:23:32] -- Start Generating es transformer for custom pkg
+[2026-04-28 17:23:32] -- _add_es_library_impl: EXCLUDE_OPS is not provided
+[2026-04-28 17:23:32] -- add_es_package: Using default output directory: /mnt/workspace/DTS/transformer-issue/build
+[2026-04-28 17:23:32] -- add_es_package: OPP_PROTO_TARGET output directory: /mnt/workspace/DTS/transformer-issue/build
+[2026-04-28 17:23:32] -- add_es_package: Derived ASCEND_OPP_PATH: /mnt/workspace/DTS/transformer-issue/build
+[2026-04-28 17:23:32] --   - Created standard OPP path: /mnt/workspace/DTS/transformer-issue/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
+[2026-04-28 17:23:32] -- _add_es_library_impl: gen_esb target not found, searching in environment...
+[2026-04-28 17:23:32] --     Found gen_esb in PATH (environment variables configured)
+[2026-04-28 17:23:32] --     - gen_esb path: /home/developer/Ascend/cann-9.0.0-beta.2/bin/gen_esb
+[2026-04-28 17:23:32] --     - library path: /home/developer/Ascend/cann-9.0.0-beta.2/lib64
+[2026-04-28 17:23:32] -- Using proto library path (derived from OPP_PROTO_TARGET): /mnt/workspace/DTS/transformer-issue/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
+[2026-04-28 17:23:32] -- add_es_package: Module name for gen_esb: transformer_cust
+[2026-04-28 17:23:32] -- Trying to locate eager_style_graph_builder_base library from run package...
+[2026-04-28 17:23:32] --   Found library in run package: /home/developer/Ascend/cann-9.0.0-beta.2/lib64/libeager_style_graph_builder_base.so
+[2026-04-28 17:23:32] -- Configuring ES package: es_transformer_cust
+[2026-04-28 17:23:32] --   - Exported target: es_transformer_cust (public interface)
+[2026-04-28 17:23:32] --   - Internal .obj target: es_transformer_cust_obj (compile once)
+[2026-04-28 17:23:32] --   - Internal .so target: es_transformer_cust_so
+[2026-04-28 17:23:32] --   - Internal .a target: es_transformer_cust_a
+[2026-04-28 17:23:32] --   - Module name (for gen_esb): transformer_cust
+[2026-04-28 17:23:32] --   - OPP proto target: proto_transformer_cust
+[2026-04-28 17:23:32] --   - OPP proto path: /mnt/workspace/DTS/transformer-issue/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
+[2026-04-28 17:23:32] --   - Output path: /mnt/workspace/DTS/transformer-issue/build/es_packages
+[2026-04-28 17:23:32] --   - Library files: libes_transformer_cust.so, libes_transformer_cust.a
+[2026-04-28 17:23:32] --   - Python package: es_transformer_cust
+[2026-04-28 17:23:32] -- ES package 'es_transformer_cust' using single-file compilation mode
+[2026-04-28 17:23:32] --   - Wrapper file: /mnt/workspace/DTS/transformer-issue/build/es_transformer_cust_build/generated_code/es_transformer_cust_all_in_one.cpp
+[2026-04-28 17:23:32] --   - Module name: transformer_cust
+[2026-04-28 17:23:32] -- add_es_library: Using default compile options: -fPIC;-Wall;-fstack-protector-all;-std=c++17;-D_GLIBCXX_USE_CXX11_ABI=0;-O2;-Wno-free-nonheap-object
+[2026-04-28 17:23:32] -- add_es_library: Set _GLIBCXX_USE_CXX11_ABI=0 for ABI compatibility
+[2026-04-28 17:23:32] -- add_es_library: Deduced header base path from cmake file: /home/developer/Ascend/cann-9.0.0-beta.2
+[2026-04-28 17:23:32] -- add_es_library: metadef_headers target not found, skipping
+[2026-04-28 17:23:32] -- add_es_library: Found c_sec target
+[2026-04-28 17:23:32] -- add_es_library: Linking with CANN libraries: c_sec
+[2026-04-28 17:23:32] -- add_es_package: 'build_es_transformer_cust' depends on 'build_es_math' to avoid concurrent builds of shared dependencies
+[2026-04-28 17:23:32] -- ES package 'es_transformer_cust' configured successfully (single-file mode):
+[2026-04-28 17:23:32] --   - Exported target (for linking): es_transformer_cust
+[2026-04-28 17:23:32] --   - Build target: build_es_transformer_cust
+[2026-04-28 17:23:32] --   - Wrapper file: /mnt/workspace/DTS/transformer-issue/build/es_transformer_cust_build/generated_code/es_transformer_cust_all_in_one.cpp
+[2026-04-28 17:23:32] --   - Internal targets:
+[2026-04-28 17:23:32] --     * Code generation: generate_es_transformer_cust_code
+[2026-04-28 17:23:32] --     * Object library: es_transformer_cust_obj (compiled once)
+[2026-04-28 17:23:32] --     * Shared library: es_transformer_cust_so
+[2026-04-28 17:23:32] --     * Static library: es_transformer_cust_a
+[2026-04-28 17:23:32] --     * Wheel generation: generate_es_transformer_cust_whl
+[2026-04-28 17:23:32] --     * Install: install_es_transformer_cust
+[2026-04-28 17:23:32] --   - Library files: libes_transformer_cust.so, libes_transformer_cust.a
+[2026-04-28 17:23:32] --   - Python package: es_transformer_cust
+[2026-04-28 17:23:32] --   - ES base library: /home/developer/Ascend/cann-9.0.0-beta.2/lib64/libeager_style_graph_builder_base.so (from library)
+[2026-04-28 17:23:32] -- 
+[2026-04-28 17:23:32] -- Build mode: Single-file compilation (no reconfiguration needed)
+[2026-04-28 17:23:32] -- 
+[2026-04-28 17:23:32] -- Quick start:
+[2026-04-28 17:23:32] --   1. Link:    target_link_libraries(your_target PRIVATE es_transformer_cust)
+[2026-04-28 17:23:32] --   2. Build:   make your_target  (recommended, triggers automatically)
+[2026-04-28 17:23:32] -- 
+[2026-04-28 17:23:32] -- Detected architecture: ARM64
+[2026-04-28 17:23:32] -- End building custom package.
+[2026-04-28 17:23:32] -- create aclnn master header file: /mnt/workspace/DTS/transformer-issue/build/aclnn_ops_transformer_custom.h
+[2026-04-28 17:23:32] -- no operator info to generate
+[2026-04-28 17:23:32] -- Start building custom package.
+[2026-04-28 17:23:32] -- No aicpu json files to merge, skipping.
+[2026-04-28 17:23:32] -- No aicpu cust obj targets found, skipping.
+[2026-04-28 17:23:32] -- Configuring done
+[2026-04-28 17:23:32] -- Generating done
+[2026-04-28 17:23:32] -- Build files have been written to: /mnt/workspace/DTS/transformer-issue/build
+[2026-04-28 17:23:32] [  1%] Generating op_host_aclnn_exc_stub.cpp
+[2026-04-28 17:23:32] [  2%] Generating op_host_aclnn_stub.cpp
+[2026-04-28 17:23:32] [  3%] Building CXX object CMakeFiles/op_host_aclnnInner.dir/attention/flash_attention_score/op_host/flash_attention_score_def.cpp.o
+[2026-04-28 17:23:32] [  4%] Generating binary/ascend950/bin/flash_attention_score_apt
+[2026-04-28 17:23:32] [  5%] Building CXX object common/stub/op_tiling/CMakeFiles/optiling.dir/runtime_kb_api.cpp.o
+[2026-04-28 17:23:32] [  6%] Building CXX object common/stub/op_tiling/CMakeFiles/optiling.dir/tbe_tiling_api.cpp.o
+[2026-04-28 17:23:32] [  7%] Generating binary/ascend950/src/ascendc/common/.utils_copy.stamp
+[2026-04-28 17:23:32] [  8%] Building CXX object common/CMakeFiles/common_transformer_fallback_obj.dir/src/fallback/fallback_comm.cpp.o
+[2026-04-28 17:23:32] [  9%] Building CXX object common/CMakeFiles/common_transformer_obj.dir/src/tiling_base/tiling_util.cpp.o
+[2026-04-28 17:23:32] [ 10%] Building CXX object common/stub/op_api/CMakeFiles/opapi_math.dir/opapi_stub.cpp.o
+[2026-04-28 17:23:32] [ 12%] Building CXX object attention/flash_attention_score/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/flash_attention_score_tiling.cpp.o
+[2026-04-28 17:23:32] [ 13%] Building CXX object attention/flash_attention_score/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/arch35/flash_attention_score_tiling_regbase.cpp.o
+[2026-04-28 17:23:32] [ 13%] Generating binary/ascend950/src/flash_attention_score_apt/FlashAttentionScore.py
+[2026-04-28 17:23:32] [ 14%] Building CXX object attention/flash_attention_score/op_host/CMakeFiles/ophost_trCMake Warning at /mnt/workspace/DTS/transformer-issue/build/abseil_build_transformer-prefix/src/abseil_build_transformer-stamp/verify-abseil_build_transformer.cmake:15 (message):
+  File will not be verified since no URL_HASH specified
+
+
+ansformer_tiling_obj.dir/arch35/flash_attention_score_tiling_basic.cpp.o
+[2026-04-28 17:23:32] [ 16%] Building CXX object common/CMakeFiles/common_transformer_fallback_obj.dir/src/fallback/fallback_comm_2stages.cpp.o
+[2026-04-28 17:23:32] [ 16%] Copying update proto /mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_graph/flash_attention_score_proto.h to /mnt/workspace/DTS/transformer-issue/build/autogen/updateproto/flash_attention_score_proto.cpp
+[2026-04-28 17:23:32] [ 17%] Generating version.ops-transformer.info
+[2026-04-28 17:23:32] [ 18%] Building CXX object attention/flash_attention_score/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/arch35/flash_attention_score_tiling_dropmask.cpp.o
+[2026-04-28 17:23:32] [ 18%] Building CXX object attention/flash_attention_score/op_host/CMakeFiles/ophost_transformer_tiling_obj.dir/arch35/flash_attention_score_tiling_varlen.cpp.o
+[2026-04-28 17:23:32] [ 19%] Building CXX object attention/flash_attention_score/op_host/CMakeFiles/ophost_transformer_infer_obj.dir/flash_attention_score_infershape.cpp.o
+[2026-04-28 17:23:32] [ 20%] Generating version.info
+[2026-04-28 17:23:32] [ 22%] Building CXX object common/stub/op_graph/CMakeFiles/proto_math.dir/math_proto_stub.cpp.o
+[2026-04-28 17:23:32] [ 22%] Creating directories for 'abseil_build_transformer'
+[2026-04-28 17:23:32] [ 23%] Generating scripts/install.sh, scripts/upgrade.sh
+[2026-04-28 17:23:32] [ 24%] Building CXX object CMakeFiles/op_host_aclnn.dir/op_host_aclnn_stub.cpp.o
+[2026-04-28 17:23:32] [ 25%] Building CXX object CMakeFiles/op_host_aclnnExc.dir/op_host_aclnn_exc_stub.cpp.o
+[2026-04-28 17:23:32] [ 25%] Built target flash_attention_score_apt_ascend950_mkdir
+[2026-04-28 17:23:32] [ 25%] Built target flash_attention_score_apt_ascend950_py_copy
+[2026-04-28 17:23:32] [ 26%] Building update proto files
+[2026-04-28 17:23:32] [ 26%] Built target gen_version_info
+[2026-04-28 17:23:32] [ 26%] Built target update_proto_target
+[2026-04-28 17:23:32] [ 27%] Performing download step (verify and extract) for 'abseil_build_transformer'
+[2026-04-28 17:23:32] [ 27%] Built target modify_vendor
+[2026-04-28 17:23:32] -- extracting...
+[2026-04-28 17:23:32]      src='/mnt/workspace/DTS/transformer-issue/third_party/pkg/abseil-cpp-20230802.1.tar.gz'
+[2026-04-28 17:23:32]      dst='/mnt/workspace/DTS/transformer-issue/third_party/abseil-cpp'
+[2026-04-28 17:23:32] -- extracting... [tar xfz]
+[2026-04-28 17:23:32] [ 28%] Linking CXX shared library libop_host_aclnnExc.so
+[2026-04-28 17:23:32] [ 28%] Built target version_ops-transformer_info
+[2026-04-28 17:23:32] [ 28%] Built target ops_utils_inc_kernel_ascend950
+[2026-04-28 17:23:32] [ 29%] Generating binary/ascend950/src/common/attention_common_ascend950_src_copy.done
+[2026-04-28 17:23:32] [ 29%] Built target op_host_aclnnExc
+[2026-04-28 17:23:32] [ 30%] Linking CXX shared library libop_host_aclnn.so
+[2026-04-28 17:23:32] [ 30%] Built target opbuild_gen_exc
+[2026-04-28 17:23:32] -- extracting... [analysis]
+[2026-04-28 17:23:32] -- extracting... [rename]
+[2026-04-28 17:23:32] [ 30%] Built target op_host_aclnn
+[2026-04-28 17:23:32] -- extracting... [clean up]
+[2026-04-28 17:23:32] -- extracting... done
+[2026-04-28 17:23:32] [ 30%] Built target opbuild_gen_default
+[2026-04-28 17:23:32] [ 31%] No update step for 'abseil_build_transformer'
+[2026-04-28 17:23:32] [ 32%] Performing patch step for 'abseil_build_transformer'
+[2026-04-28 17:23:32] (Stripping trailing CRs from patch; use --binary to disable.)
+[2026-04-28 17:23:32] patching file CMakeLists.txt
+[2026-04-28 17:23:32] (Stripping trailing CRs from patch; use --binary to disable.)
+[2026-04-28 17:23:32] patching file absl/base/options.h
+[2026-04-28 17:23:32] (Stripping trailing CRs from patch; use --binary to disable.)
+[2026-04-28 17:23:32] patching file absl/hash/internal/hash.cc
+[2026-04-28 17:23:32] (Stripping trailing CRs from patch; use --binary to disable.)
+[2026-04-28 17:23:32] patching file absl/hash/internal/hash.h
+[2026-04-28 17:23:32] patch unexpectedly ends in middle of line
+[2026-04-28 17:23:32] Hunk #1 succeeded CMake Warning at /mnt/workspace/DTS/transformer-issue/build/ascend_protobuf_build_transformer-prefix/src/ascend_protobuf_build_transformer-stamp/verify-ascend_protobuf_build_transformer.cmake:15 (message):
+  File will not be verified since no URL_HASH specified
+
+
+[2026-04-28 17:23:33] [ES-GEN] ========== ES Code Generation Started ==========
+[2026-04-28 17:23:33] [ES-GEN] Lock file: /mnt/workspace/DTS/transformer-issue/build/common/stub/op_graph/es_math_build/generated_code/.gen.lock
+[2026-04-28 17:23:33] [ES-GEN] Gen ESB: /home/developer/Ascend/cann-9.0.0-beta.2/bin/gen_esb
+[2026-04-28 17:23:33] [ES-GEN] OPP path: /mnt/workspace/DTS/transformer-issue/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math
+[2026-04-28 17:23:33] [ES-GEN] Output dir: /mnt/workspace/DTS/transformer-issue/build/common/stub/op_graph/es_math_build/generated_code
+[2026-04-28 17:23:33] [ES-GEN] Module: math
+[2026-04-28 17:23:33] [ES-GEN] Lib path: /home/developer/Ascend/cann-9.0.0-beta.2/lib64
+[2026-04-28 17:23:33] [ES-GEN] Exclude ops: 
+[2026-04-28 17:23:33] [ES-GEN] ========== Main Logic Started ==========
+[2026-04-28 17:23:33] [ES-GEN] Using flock file locking mechanism
+[2026-04-28 17:23:33] [ES-GEN] [flock] Acquired lock immediately
+[2026-04-28 17:23:33] [ES-GEN] Waiting for filesystem sync...
+at 1159 with fuzz 1.
+[2026-04-28 17:23:32] [ 33%] No configure step for 'abseil_build_transformer'
+[2026-04-28 17:23:32] [ 34%] No build step for 'abseil_build_transformer'
+[2026-04-28 17:23:32] [ 35%] No install step for 'abseil_build_transformer'
+[2026-04-28 17:23:32] [ 35%] Built target attention_common_ascend950_src_copy
+[2026-04-28 17:23:32] [ 35%] Completed 'abseil_build_transformer'
+[2026-04-28 17:23:32] [ 36%] Generating binary/ascend950/src/flash_attention_score_apt/flash_attention_score_apt_ascend950_src_copy.done
+[2026-04-28 17:23:32] [ 36%] Built target abseil_build_transformer
+[2026-04-28 17:23:32] [ 37%] Creating directories for 'ascend_protobuf_build_transformer'
+[2026-04-28 17:23:32] [ 38%] Performing download step (verify and extract) for 'ascend_protobuf_build_transformer'
+[2026-04-28 17:23:32] -- extracting...
+[2026-04-28 17:23:32]      src='/mnt/workspace/DTS/transformer-issue/third_party/pkg/protobuf-25.1.tar.gz'
+[2026-04-28 17:23:32]      dst='/mnt/workspace/DTS/transformer-issue/third_party/ascend_protobuf'
+[2026-04-28 17:23:32] -- extracting... [tar xfz]
+[2026-04-28 17:23:32] [ 38%] Built target flash_attention_score_apt_ascend950_src_copy
+[2026-04-28 17:23:32] -- extracting... [analysis]
+[2026-04-28 17:23:32] -- extracting... [rename]
+[2026-04-28 17:23:32] -- extracting... [clean up]
+[2026-04-28 17:23:32] -- extracting... done
+[2026-04-28 17:23:32] [ 39%] No update step for 'ascend_protobuf_build_transformer'
+[2026-04-28 17:23:32] [ 40%] Performing patch step for 'ascend_protobuf_build_transformer'
+[2026-04-28 17:23:32] (Stripping trailing CRs from patch; use --binary to disable.)
+[2026-04-28 17:23:32] patching file CMakeLists.txt
+[2026-04-28 17:23:32] (Stripping trailing CRs from patch; use --binary to disable.)
+[2026-04-28 17:23:32] patching file src/google/protobuf/arenastring.cc
+[2026-04-28 17:23:32] (Stripping trailing CRs from patch; use --binary to disable.)
+[2026-04-28 17:23:32] patching file src/google/protobuf/arenastring.h
+[2026-04-28 17:23:32] (Stripping trailing CRs from patch; use --binary to disable.)
+[2026-04-28 17:23:32] patching file src/google/protobuf/compiler/cpp/field_generators/string_field.cc
+[2026-04-28 17:23:32] (Stripping trailing CRs from patch; use --binary to disable.)
+[2026-04-28 17:23:32] patching file src/google/protobuf/compiler/cpp/helpers.cc
+[2026-04-28 17:23:32] (Stripping trailing CRs from patch; use --binary to disable.)
+[2026-04-28 17:23:32] patching file src/google/protobuf/compiler/cpp/helpers.h
+[2026-04-28 17:23:32] (Stripping trailing CRs from patch; use --binary to disable.)
+[2026-04-28 17:23:32] patching file src/google/protobuf/compiler/csharp/csharp_helpers.cc
+[2026-04-28 17:23:32] (Stripping trailing CRs from patch; use --binary to disable.)
+[2026-04-28 17:23:32] patching file src/google/protobuf/compiler/java/names.cc
+[2026-04-28 17:23:32] (Stripping trailing CRs from patch; use --binary to disable.)
+[2026-04-28 17:23:32] patching file src/google/protobuf/extension_set.h
+[2026-04-28 17:23:32] (Stripping trailing CRs from patch; use --binary to disable.)
+[2026-04-28 17:23:32] patching file src/google/protobuf/message_lite.h
+[2026-04-28 17:23:32] (Stripping trailing CRs from patch; use --binary to disable.)
+[2026-04-28 17:23:32] patching file src/google/protobuf/port_def.inc
+[2026-04-28 17:23:32] patch unexpectedly ends in middle of line
+[2026-04-28 17:23:32] Hunk #1 succeeded at 572 with fuzz 1.
+[2026-04-28 17:23:32] [ 41%] Performing configure step for 'ascend_protobuf_build_transformer'
+[2026-04-28 17:23:33] [ 42%] Linking CXX shared library ../../../libproto_math.so
+[2026-04-28 17:23:33] [ 42%] Built target common_transformer_fallback_obj
+[2026-04-28 17:23:33] [ 42%] Built target common_transformer_obj
+[2026-04-28 17:23:33] -- Configuring done
+[2026-04-28 17:23:33] [ 42%] Built target proto_math
+[2026-04-28 17:23:33] [ 43%] Copying OPP proto library to standard path...
+[2026-04-28 17:23:33] [ 44%] Generating ES API code for package 'es_math' using run package gen_esb...
+[2026-04-28 17:23:33] Generating ES code for package: es_math
+[2026-04-28 17CMake Warning:
+  Manually-specified variables were not used by the project:
+
+    CMAKE_CXX_LDFLAGS
+
+
+/mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_host/flash_attention_score_infershape.cpp: In function ‘ge::graphStatus ops::InferDataTypeFlashAttentionScore(gert::InferDataTypeContext*)’:
+/mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_host/flash_attention_score_infershape.cpp:182:17: warning: unused variable ‘outDtype’ [-Wunused-variable]
+  182 |         int64_t outDtype = *outDtypePtr;
+      |                 ^~~~~~~~
+:23:33] [ 45%] Linking CXX shared library ../../../libopapi_math.so
+[2026-04-28 17:23:33] [ 45%] Built target opapi_math
+[2026-04-28 17:23:33] -- Generating done
+[2026-04-28 17:23:33] -- Build files have been written to: /mnt/workspace/DTS/transformer-issue/build/ascend_protobuf_build_transformer-prefix/src/ascend_protobuf_build_transformer-build
+[2026-04-28 17:23:33] [ 46%] Performing build step for 'ascend_protobuf_build_transformer'
+[2026-04-28 17:23:34] [  0%] Building CXX object third_party/abseil-cpp/absl/base/CMakeFiles/spinlock_wait.dir/internal/spinlock_wait.cc.o
+[2026-04-28 17:23:34] [  1%] Building CXX object third_party/abseil-cpp/absl/base/CMakeFiles/strerror.dir/internal/strerror.cc.o
+[2026-04-28 17:23:34] [  1%] Building CXX object third_party/abseil-cpp/absl/base/CMakeFiles/log_severity.dir/log_severity.cc.o
+[2026-04-28 17:23:34] [  1%] Building CXX object third_party/abseil-cpp/absl/profiling/CMakeFiles/exponential_biased.dir/internal/exponential_biased.cc.o
+[2026-04-28 17:23:34] [  2%] Building CXX object third_party/abseil-cpp/absl/log/CMakeFiles/log_internal_nullguard.dir/internal/nullguard.cc.o
+[2026-04-28 17:23:34] [  2%] Building CXX object third_party/abseil-cpp/absl/numeric/CMakeFiles/int128.dir/int128.cc.o
+[2026-04-28 17:23:34] [  2%] Building CXX object third_party/abseil-cpp/absl/debugging/CMakeFiles/leak_check.dir/leak_check.cc.o
+[2026-04-28 17:23:34] [  2%] Building CXX object third_party/abseil-cpp/absl/time/CMakeFiles/civil_time.dir/internal/cctz/src/civil_time_detail.cc.o
+[2026-04-28 17:23:34] [  2%] Building CXX object third_party/abseil-cpp/absl/time/CMakeFiles/time_zone.dir/internal/cctz/src/time_zone_fixed.cc.o
+[2026-04-28 17:23:34] [  2%] Building CXX object third_party/abseil-cpp/absl/random/CMakeFiles/random_internal_platform.dir/internal/randen_round_keys.cc.o
+[2026-04-28 17:23:34] [  2%] Building CXX object third_party/abseil-cpp/absl/flags/CMakeFiles/flags_commandlineflag_internal.dir/internal/commandlineflag.cc.o
+[2026-04-28 17:23:34] [  2%] Building CXX object third_party/abseil-cpp/absl/time/CMakeFiles/time_zone.dir/internal/cctz/src/time_zone_format.cc.o
+[2026-04-28 17:23:34] [  3%] Building CXX object third_party/abseil-cpp/absl/time/CMakeFiles/time_zone.dir/internal/cctz/src/time_zone_if.cc.o
+[2026-04-28 17:23:34] [  4%] Building CXX object third_party/abseil-cpp/absl/time/CMakeFiles/time_zone.dir/internal/cctz/src/time_zone_impl.cc.o
+[2026-04-28 17:23:34] [  4%] Building C object third_party/utf8_range/CMakeFiles/utf8_range.dir/naive.c.o
+[2026-04-28 17:23:34] [  4%] Building CXX object third_party/abseil-cpp/absl/random/CMakeFiles/random_seed_gen_exception.dir/seed_gen_exception.cc.o
+[2026-04-28 17:23:34] [  4%] Building C object third_party/utf8_range/CMakeFiles/utf8_range.dir/range2-sse.c.o
+[2026-04-28 17:23:34] [  4%] Building CXX object third_party/abseil-cpp/absl/time/CMakeFiles/time_zone.dir/internal/cctz/src/time_zone_info.cc.o
+[2026-04-28 17:23:34] [  5%] Building CXX object third_party/abseil-cpp/absl/time/CMakeFiles/time_zone.dir/internal/cctz/src/time_zone_lookup.cc.o
+[2026-04-28 17:23:34] [  6%] Building C object third_party/utf8_range/CMakeFiles/utf8_range.dir/range2-neon.c.o
+[2026-04-28 17:23:34] [  6%] Building CXX object third_party/abseil-cpp/absl/time/CMakeFiles/time_zone.dir/internal/cctz/src/time_zone_libc.cc.o
+[2026-04-28 17:23:34] [  6%] Building CXX object third_party/abseil-cpp/absl/time/CMakeFiles/time_zone.dir/internal/cctz/src/time_zone_posix.cc.o
+[2026-04-28 17:23:34] [  6%] Building CXX object third_party/abseil-cpp/absl/time/CMakeFiles/time_zone.dir/internal/cctz/src/zone_info_source.cc.o
+[2026-04-28 17:23:34] [ 46%] Built target ophost_transformer_infer_obj
+[2026-04-28 17:23:34] [  6%] Linking CXX static library libabsl_flags_commandlineflag_internal.a
+[2026-04-28 17:23:34] [  7%] Linking CXX static library libabsl_random_internal_platform.a
+[2026-04-28 17:23:34] [  7%] Linking CXX static library libabsl_leak_check.a
+[2026-04-28 17:23:34] [  7%] Built target flags_commandlineflag_internal
+[2026-04-28 17:23:34] [  7%] Built target random_inte[2026-04-28 17:23:34] [ES-GEN] [Attempt 1/10] Executing gen_esb...
+[2026-04-28 17:23:34] [ES-GEN] Command: LD_LIBRARY_PATH=/home/developer/Ascend/cann-9.0.0-beta.2/lib64:$LD_LIBRARY_PATH ASCEND_OPP_PATH=/mnt/workspace/DTS/transformer-issue/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math "/home/developer/Ascend/cann-9.0.0-beta.2/bin/gen_esb" --output_dir="/mnt/workspace/DTS/transformer-issue/build/common/stub/op_graph/es_math_build/generated_code" --module_name="math" --exclude_ops=""
+rnal_platform
+[2026-04-28 17:23:34] [  7%] Built target leak_check
+[2026-04-28 17:23:34] [  7%] Building CXX object third_party/abseil-cpp/absl/random/CMakeFiles/random_internal_randen_hwaes_impl.dir/internal/randen_hwaes.cc.o
+[2026-04-28 17:23:34] [  8%] Building CXX object third_party/abseil-cpp/absl/random/CMakeFiles/random_internal_randen_slow.dir/internal/randen_slow.cc.o
+[2026-04-28 17:23:34] [  8%] Linking CXX static library libabsl_spinlock_wait.a
+[2026-04-28 17:23:34] ==========================================
+[2026-04-28 17:23:34] ES Graph Builder Generator v1.0
+[2026-04-28 17:23:34] Copyright (c) 2025 Huawei Technologies Co., Ltd.
+[2026-04-28 17:23:34] ==========================================
+[2026-04-28 17:23:34] Starting code generation...
+[2026-04-28 17:23:34] Environment variable check: ASCEND_OPP_PATH = /mnt/workspace/DTS/transformer-issue/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math
+[2026-04-28 17:23:34] Environment variable check: LD_LIBRARY_PATH = /home/developer/Ascend/cann-9.0.0-beta.2/lib64:/mnt/workspace/DTS/transformer-issue/build:/home/developer/Ascend/cann-9.0.0-beta.2/lib64:/home/developer/Ascend/cann-9.0.0-beta.2/lib64/plugin/opskernel:/home/developer/Ascend/cann-9.0.0-beta.2/lib64/plugin/nnengine:/home/developer/Ascend/cann-9.0.0-beta.2/opp/built-in/op_impl/ai_core/tbe/op_tiling/lib/linux/aarch64:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/home/developer/Ascend/cann-9.0.0-beta.2/devlib
+[2026-04-28 17:23:34] Output directory: /mnt/workspace/DTS/transformer-issue/build/common/stub/op_graph/es_math_build/generated_code/
+[2026-04-28 17:23:34] Module name: math
+[2026-04-28 17:23:34] ASCEND_OPP_PATH is: /mnt/workspace/DTS/transformer-issue/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math
+[2026-04-28 17:23:34] ops proto path: /mnt/workspace/DTS/transformer-issue/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math/op_proto/custom/:/mnt/workspace/DTS/transformer-issue/build/common/stub/op_graph/es_math_build/opp_standard_path_proto_math/op_proto/built-in/
+[2026-04-28 17:23:34] Get ops num: 1
+[2026-04-28 17:23:34] Generate done, generated num 1, unsupported: 
+[2026-04-28 17:23:34] Write to file: /mnt/workspace/DTS/transformer-issue/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops_c.h
+[2026-04-28 17:23:34] Generated C generator aggregate file: /mnt/workspace/DTS/transformer-issue/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops_c.h
+[2026-04-28 17:23:34] Write to file: /mnt/workspace/DTS/transformer-issue/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops.h
+[2026-04-28 17:23:34] Generated C++ generator aggregate file: /mnt/workspace/DTS/transformer-issue/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops.h
+[2026-04-28 17:23:34] Write to file: /mnt/workspace/DTS/transformer-issue/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops.py
+[2026-04-28 17:23:34] Generated Python generator aggregate file: /mnt/workspace/DTS/transformer-issue/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops.py
+[2026-04-28 17:23:34] Generated aggregate files:
+[2026-04-28 17:23:34] [ES-GEN] [Success] gen_esb executed successfully
+[2026-04-28 17:23:34] [ES-GEN] [flock] Execution completed, exit code: 0
+[2026-04-28 17:23:34]   C generator: /mnt/workspace/DTS/transformer-issue/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops_c.h
+[2026-04-28 17:23:34]   C++ generator: /mnt/workspace/DTS/transformer-issue/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops.h
+[2026-04-28 17:23:34]   Python generator: /mnt/workspace/DTS/transformer-issue/build/common/stub/op_graph/es_math_build/generated_code/es_math_ops.py
+[2026-04-28 17:23:34] Generated util files:
+[2026-04-28 17:23:34]   Utils generator:
+[2026-04-28 17:23:34]     /mnt/workspace/DTS/transformer-issue/build/common/stub/op_graph/es_math_build/generated_code/es_log.h
+[2026-04-28 17:23:34] Generated files in: /mnt/workspace/DTS/transformer-issue/build/common/stub/op_graph/es_math_build/generated_code/
+[2026-04-28 17:23:34] 
+[2026-04-28 17:23:34] ==========================================
+[2026-04-28 17:23:34] Code generation completed!
+[2026-04-28 17:23:34] Module name: math
+[2026-04-28 17:23:34] ==========================================
+[2026-04-28 17:23:34] [  8%] Built target spinlock_wait
+[2026-04-28 17:23:34] -- [ES Wrapper] Generated: /mnt/workspace/DTS/transformer-issue/build/common/stub/op_graph/es_math_build/generated_code/es_math_all_in_one.cpp
+[2026-04-28 17:23:34] -- [ES Wrapper] Total operators included: 1
+[2026-04-28 17:23:34] [ 46%] Built target generate_es_math_code
+[2026-04-28 17:23:34] [ 47%] Building CXX object common/stub/op_graph/CMakeFiles/es_math_obj.dir/es_math_build/generated_code/es_math_all_in_one.cpp.o
+[2026-04-28 17:23:34] [ 48%] Building Python wheel package for 'es_math'...
+[2026-04-28 17:23:34] Building Python wheel for package: es_math
+[2026-04-28 17:23:34] [  8%] Linking C static library libutf8_range.a
+[2026-04-28 17:23:34] [  8%] Built target utf8_range
+[2026-04-28 17:23:34] -- Copied: es_Transpose.py
+[2026-04-28 17:23:34] -- Copied: es_math_ops.py
+[2026-04-28 17:23:34] -- Created setup.py for package 'es_math'
+[2026-04-28 17:23:34] [  9%] Linking CXX static library libabsl_exponential_biased.a
+[2026-04-28 17:23:34] [  9%] Built target exponential_biased
+[2026-04-28 17:23:34] [  9%] Linking CXX static library libabsl_log_internal_nullguard.a
+[2026-04-28 17:23:34] [  9%] Building CXX object third_party/abseil-cpp/absl/profiling/CMakeFiles/periodic_sampler.dir/internal/periodic_sampler.cc.o
+[2026-04-28 17:23:34] [  9%] Built target log_internal_nullguard
+[2026-04-28 17:23:34] [  9%] Linking CXX static library libabsl_strerror.a
+[2026-04-28 17:23:34] [  9%] Built target strerror
+[2026-04-28 17:23:34] [  9%] Linking CXX static library libabsl_log_severity.a
+[2026-04-28 17:23:34] [  9%] Linking CXX static library libabsl_random_seed_gen_exception.a
+[2026-04-28 17:23:34] [  9%] Built target log_severity
+[2026-04-28 17:23:34] [  9%] Built target random_seed_gen_exception
+[2026-04-28 17:23:34] [ 10%] Linking CXX static library libabsl_periodic_sampler.a
+[2026-04-28 17:23:34] [ 10%] Building CXX object third_party/abseil-cpp/absl/base/CMakeFiles/raw_logging_internal.dir/internal/raw_logging.cc.o
+[2026-04-28 17:23:34] [ 10%] Built target periodic_sampler
+[2026-04-28 17:23:34] [ 10%] Linking CXX static library libabsl_random_internal_randen_slow.a
+[2026-04-28 17:23:34] Looking in indexes: https://repo.huaweicloud.com/repository/pypi/simple
+[2026-04-28 17:23:34] Processing ./.
+[2026-04-28 17:23:34]   Installing build dependencies: started
+[2026-04-28 17:23:34] [ 10%] Built target random_internal_randen_slow
+[2026-04-28 17:23:34] [ 49%] Linking CXX shared library ../../../liboptiling.so
+[2026-04-28 17:23:34] [ 49%] Built target optiling
+[2026-04-28 17:23:34] [ 10%] Linking CXX static library libabsl_civil_time.a
+[2026-04-28 17:23:34] [ 10%] Built target civil_time
+[2026-04-28 17:23:34] [ 10%] Linking CXX static library libabsl_int128.a
+[2026-04-28 17:23:34] [ 10%] Built target int128
+[2026-04-28 17:23:34] [ 10%] Linking CXX static library libabsl_random_internal_randen_hwaes_impl.a
+[2026-04-28 17:23:34] [ 10%] Built target random_internal_randen_hwaes_impl
+[2026-04-28 17:23:34] [ 10%] Linking CXX static library libabsl_raw_logging_internal.a
+[2026-04-28 17:23:34] [ 10%] Building CXX object third_party/abseil-cpp/absl/random/CMakeFiles/random_internal_randen_hwaes.dir/internal/randen_detect.cc.o
+[2026-04-28 17:23:34] [ 10%] Built target raw_logging_internal
+[2026-04-28 17:23:34] [ 10%] Building CXX object third_party/abseil-cpp/absl/types/CMakeFiles/bad_optional_access.dir/bad_optional_access.cc.o
+[2026-04-28 17:23:34] [ 10%] Building CXX object third_party/abseil-cpp/absl/base/CMakeFiles/base.dir/internal/cycleclock.cc.o
+[2026-04-28 17:23:34] [ 10%] Building CXX object third_party/abseil-cpp/absl/base/CMakeFiles/base.dir/internal/spinlock.cc.o
+[2026-04-28 17:23:34] [ 10%] Building CXX object third_party/abseil-cpp/absl/base/CMakeFiles/throw_delegate.dir/internal/throw_delegate.cc.o
+[2026-04-28 17:23:34] [ 10%] Building CXX object third_party/abseil-cpp/absl/base/CMakeFiles/base.dir/internal/sysinfo.cc.o
+[2026-04-28 17:23:34] [ 10%] Building CXX object third_party/abseil-cpp/absl/debugging/CMakeFiles/debugging_internal.dir/internal/address_is_readable.cc.o
+[2026-04-28 17:23:34] [ 11%] Building CXX object third_party/abseil-cpp/absl/base/CMakeFiles/base.dir/internal/thread_identity.cc.o
+[2026-04-28 17:23:34] [ 11%] Building CXX object third_party/abseil-cpp/absl/debugging/CMakeFiles/debugging_internal.dir/internal/elf_mem_image.cc.o
+[2026-04-28 17:23:34] [ 11%] Building CXX object third_party/abseil-cpp/absl/base/CMakeFiles/base.dir/internal/unscaledcycleclock.cc.o
+[2026-04-28 17:23:34] [ 12%] Building CXX object third_party/abseil-cpp/absl/types/CMakeFiles/bad_variant_access.dir/bad_variant_access.cc.o
+[2026-04-28 17:23:34] [ 12%] Building CXX object third_party/abseil-cpp/absl/base/CMakeFiles/scoped_set_env.dir/internal/scoped_set_env.cc.o
+[2026-04-28 17:23:34] [ 12%] Building CXX object third_party/abseil-cpp/absl/types/CMakeFiles/bad_any_cast_impl.dir/bad_any_cast.cc.o
+[2026-04-28 17:23:34] [ 13%] Building CXX object third_party/abseil-cpp/absl/strings/CMakeFiles/cordz_functions.dir/internal/cordz_functions.cc.o
+[2026-04-28 17:23:34] [ 13%] Building CXX object third_party/abseil-cpp/absl/debugging/CMakeFiles/debugging_internal.dir/internal/vdso_support.cc.o
+[2026-04-28 17:23:34] [ 13%] Linking CXX static library libabsl_random_internal_randen_hwaes.a
+[2026-04-28 17:23:34] [ 13%] Built target random_internal_randen_hwaes
+[2026-04-28 17:23:34] [ 13%] Building CXX object third_party/abseil-cpp/absl/random/CMakeFiles/random_internal_randen.dir/internal/randen.cc.o
+[2026-04-28 17:23:35] [ 50%] Linking CXX shared library libop_host_aclnnInner.so
+[2026-04-28 17:23:35] [ 13%] Linking CXX static library libabsl_bad_any_cast_impl.a
+[2026-04-28 17:23:35] [ 13%] Linking CXX static library libabsl_bad_optional_access.a
+[2026-04-28 17:23:35] [ 13%] Built target bad_any_cast_impl
+[2026-04-28 17:23:35] [ 13%] Built target bad_optional_access
+[2026-04-28 17:23:35] [ 14%] Linking CXX static library libabsl_scoped_set_env.a
+[2026-04-28 17:23:35] [ 14%] Built target scoped_set_env
+[2026-04-28 17:23:35] [ 50%] Built target op_host_aclnnInner
+[2026-04-28 17:23:35] [ 51%] Built target opbuild_gen_inner
+[2026-04-28 17:23:35] [ 52%] Generating autogen/aic-ascend950-ops-info.json
+[2026-04-28 17:23:35] [ 53%] Building CXX object CMakeFiles/proto_transformer_cust.dir/autogen/updateproto/flash_attention_score_proto.cpp.o
+[2026-04-28 17:23:35] [ 54%] Building CXX object CMakeFiles/ops_aclnn.dir/autogen/inner/aclnnInner_flash_attention_score.cpp.o
+[2026-04-28 17:23:35] [ 55%] Filtering proto srcs from update files
+[2026-04-28 17:23:35] [ 14%] Linking CXX static library libabsl_bad_variant_access.a
+[2026-04-28 17:23:35] [ 56%] Built target generate_proto_filtered_target
+[2026-04-28 17:23:35] [ 15%] Linking CXX static library libabsl_random_internal_randen.a
+[2026-04-28 17:23:35] [ 15%] Built target bad_variant_access
+[2026-04-28 17:23:35] [ 15%] Built target random_internal_randen
+[2026-04-28 17:23:35] [ 16%] Linking CXX static library libabsl_throw_delegate.a
+[2026-04-28 17:23:35] 
+[2026-04-28 17:23:35] 
+[2026-04-28 17:23:35] ==============check valid for ops info start==============
+[2026-04-28 17:23:35] ==============check valid for ops info end================
+[2026-04-28 17:23:35] 
+[2026-04-28 17:23:35] 
+[2026-04-28 17:23:35] Compile op info cfg successfully.
+[2026-04-28 17:23:35] [ 56%] Built target generate_ops_info_ascend950
+[2026-04-28 17:23:35] [ 16%] Built target throw_delegate
+[2026-04-28 17:23:35] [ 56%] Built target generate_ops_info
+[2026-04-28 17:23:35] INFO: /mnt/workspace/DTS/transformer-issue/build/autogen/aic-ascend950-ops-info.ini does not exists in this project, skip generating compile commands.
+[2026-04-28 17:23:35] [ 56%] Built target generate_transformer_adapt_py
+[2026-04-28 17:23:35] [ 16%] Linking CXX static library libabsl_debugging_internal.a
+[2026-04-28 17:23:35] [ 16%] Built target debugging_internal
+[2026-04-28 17:23:35] [ 16%] Building CXX object third_party/abseil-cpp/absl/debugging/CMakeFiles/stacktrace.dir/stacktrace.cc.o
+[2026-04-28 17:23:35] [ 16%] Linking CXX static library libabsl_cordz_functions.a
+[2026-04-28 17:23:35] [ 16%] Built target cordz_functions
+[2026-04-28 17:23:35] INFO: /mnt/workspace/DTS/transformer-issue/build/autogen/exc/aic-ascend950-ops-info.ini does not exists in this project, skip generating compile commands.
+[2026-04-28 17:23:35] [ 56%] Built target generate_compile_cmd_ascend950
+[2026-04-28 17:23:35] [ 56%] Built target generate_compile_cmd
+[2026-04-28 17:23:35] [ 56%] Built target prepare_build
+[2026-04-28 17:23:35] [ 16%] Linking CXX static library libabsl_base.a
+[2026-04-28 17:23:35] [ 16%] Built target base
+[2026-04-28 17:23:35] [ 16%] Building CXX object third_party/abseil-cpp/absl/strings/CMakeFiles/strings_internal.dir/internal/ostringstream.cc.o
+[2026-04-28 17:23:35] [ 18%] Building CXX object third_party/abseil-cpp/absl/strings/CMakeFiles/string_view.dir/string_view.cc.o
+[2026-04-28 17:23:35] [ 18%] Building CXX object third_party/abseil-cpp/absl/strings/CMakeFiles/strings_internal.dir/internal/utf8.cc.o
+[2026-04-28 17:23:35] [ 18%] Building CXX object third_party/abseil-cpp/absl/strings/CMakeFiles/strings_internal.dir/internal/escaping.cc.o
+[2026-04-28 17:23:35] [ 18%] Building CXX object third_party/abseil-cpp/absl/base/CMakeFiles/malloc_internal.dir/internal/low_level_alloc.cc.o
+[2026-04-28 17:23:35] [ 18%] Building CXX object third_party/abseil-cpp/absl/debugging/CMakeFiles/demangle_internal.dir/internal/demangle.cc.o
+[2026-04-28 17:23:35] [ 18%] Building CXX object third_party/abseil-cpp/absl/hash/CMakeFiles/low_level_hash.dir/internal/low_level_hash.cc.o
+[2026-04-28 17:23:35] [ 18%] Building CXX object third_party/abseil-cpp/absl/crc/CMakeFiles/crc_cpu_detect.dir/internal/cpu_detect.cc.o
+[2026-04-28 17:23:35] [ 19%] Building CXX object third_party/abseil-cpp/absl/log/CMakeFiles/log_internal_conditions.dir/internal/conditions.cc.o
+[2026-04-28 17:23:35] [ 19%] Building CXX object third_party/abseil-cpp/absl/hash/CMakeFiles/city.dir/internal/city.cc.o
+[2026-04-28 17:23:35] [ 19%] Linking CXX static library libabsl_log_internal_conditions.a
+[2026-04-28 17:23:35] [ 19%] Built target log_internal_conditions
+[2026-04-28 17:23:35] [ 19%] Linking CXX static library libabsl_crc_cpu_detect.a
+[2026-04-28 17:23:35] [ 19%] Built target crc_cpu_detect
+[2026-04-28 17:23:35] [ 20%] Building CXX object third_party/abseil-cpp/absl/crc/CMakeFiles/crc_internal.dir/internal/crc.cc.o
+[2026-04-28 17:23:35] [ 20%] Building CXX object third_party/abseil-cpp/absl/crc/CMakeFiles/crc_internal.dir/internal/crc_x86_arm_combined.cc.o
+[2026-04-28 17:23:35] [ 20%] Linking CXX static library libabsl_stacktrace.a
+[2026-04-28 17:23:35] [ 20%] Built target stacktrace
+[2026-04-28 17:23:35] [ 21%] Linking CXX static library libabsl_low_level_hash.a
+[2026-04-28 17:23:35] [ 21%] Built target low_level_hash
+[2026-04-28 17:23:35]   Installing build dependencies: finished with status 'done'
+[2026-04-28 17:23:35]   Getting requirements to build wheel: started
+[2026-04-28 17:23:35] [ 57%] Linking CXX static library libops_aclnn.a
+[2026-04-28 17:23:35] [ 22%] Linking CXX static library libabsl_city.a
+[2026-04-28 17:23:35] [ 22%] Linking CXX static lib<command-line>: warning: "__FILE__" redefined [-Wbuiltin-macro-redefined]
+[2026-04-28 17:23:35] [ES-GEN] ========== ES Code Generation Started ==========
+[2026-04-28 17:23:35] [ES-GEN] Lock file: /mnt/workspace/DTS/transformer-issue/build/es_transformer_cust_build/generated_code/.gen.lock
+[2026-04-28 17:23:35] [ES-GEN] Gen ESB: /home/developer/Ascend/cann-9.0.0-beta.2/bin/gen_esb
+[2026-04-28 17:23:35] [ES-GEN] OPP path: /mnt/workspace/DTS/transformer-issue/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
+[2026-04-28 17:23:35] [ES-GEN] Output dir: /mnt/workspace/DTS/transformer-issue/build/es_transformer_cust_build/generated_code
+[2026-04-28 17:23:35] [ES-GEN] Module: transformer_cust
+[2026-04-28 17:23:35] [ES-GEN] Lib path: /home/developer/Ascend/cann-9.0.0-beta.2/lib64
+[2026-04-28 17:23:35] [ES-GEN] Exclude ops: 
+[2026-04-28 17:23:35] [ES-GEN] ========== Main Logic Started ==========
+[2026-04-28 17:23:35] [ES-GEN] Using flock file locking mechanism
+[2026-04-28 17:23:35] [ES-GEN] [flock] Acquired lock immediately
+[2026-04-28 17:23:35] [ES-GEN] Waiting for filesystem sync...
+rary libabsl_time_zone.a
+[2026-04-28 17:23:35] [ 58%] Built target ops_aclnn
+[2026-04-28 17:23:35] [ 22%] Built target city
+[2026-04-28 17:23:35] [ 59%] Building CXX object attention/flash_attention_score/op_host/CMakeFiles/ophost_transformer_opapi_obj.dir/__/op_api/aclnn_flash_attention_score.cpp.o
+[2026-04-28 17:23:35] [ 60%] Building CXX object attention/flash_attention_score/op_host/CMakeFiles/ophost_transformer_opapi_obj.dir/__/op_api/flash_attention_score.cpp.o
+[2026-04-28 17:23:35] [ 22%] Built target time_zone
+[2026-04-28 17:23:35] [ 22%] Linking CXX static library libabsl_strings_internal.a
+[2026-04-28 17:23:35] [ 22%] Built target strings_internal
+[2026-04-28 17:23:35] [ 22%] Linking CXX static library libabsl_string_view.a
+[2026-04-28 17:23:35] [ 22%] Built target string_view
+[2026-04-28 17:23:35] [ 22%] Building CXX object third_party/abseil-cpp/absl/strings/CMakeFiles/strings.dir/ascii.cc.o
+[2026-04-28 17:23:35] [ 22%] Building CXX object third_party/abseil-cpp/absl/strings/CMakeFiles/strings.dir/charconv.cc.o
+[2026-04-28 17:23:35] [ 23%] Building CXX object third_party/abseil-cpp/absl/strings/CMakeFiles/strings.dir/escaping.cc.o
+[2026-04-28 17:23:35] [ 23%] Building CXX object third_party/abseil-cpp/absl/strings/CMakeFiles/strings.dir/internal/charconv_bigint.cc.o
+[2026-04-28 17:23:35] [ 23%] Building CXX object third_party/abseil-cpp/absl/strings/CMakeFiles/strings.dir/internal/charconv_parse.cc.o
+[2026-04-28 17:23:35] [ 23%] Building CXX object third_party/abseil-cpp/absl/strings/CMakeFiles/strings.dir/internal/damerau_levenshtein_distance.cc.o
+[2026-04-28 17:23:35] [ 23%] Building CXX object third_party/abseil-cpp/absl/strings/CMakeFiles/strings.dir/internal/memutil.cc.o
+[2026-04-28 17:23:35] [ 24%] Building CXX object third_party/abseil-cpp/absl/strings/CMakeFiles/strings.dir/internal/stringify_sink.cc.o
+[2026-04-28 17:23:35] [ 24%] Building CXX object third_party/abseil-cpp/absl/strings/CMakeFiles/strings.dir/match.cc.o
+[2026-04-28 17:23:35] [ 24%] Building CXX object third_party/abseil-cpp/absl/strings/CMakeFiles/strings.dir/numbers.cc.o
+[2026-04-28 17:23:35] [ 24%] Building CXX object third_party/abseil-cpp/absl/strings/CMakeFiles/strings.dir/str_cat.cc.o
+[2026-04-28 17:23:35] [ 24%] Building CXX object third_party/abseil-cpp/absl/strings/CMakeFiles/strings.dir/str_replace.cc.o
+[2026-04-28 17:23:35] [ 25%] Building CXX object third_party/abseil-cpp/absl/strings/CMakeFiles/strings.dir/str_split.cc.o
+[2026-04-28 17:23:35] [ 25%] Building CXX object third_party/abseil-cpp/absl/strings/CMakeFiles/strings.dir/substitute.cc.o
+[2026-04-28 17:23:35] [ 61%] Linking CXX shared library libproto_transformer_cust.so
+[2026-04-28 17:23:35] [ 61%] Built target es_math_obj
+[2026-04-28 17:23:35] [ 62%] Linking CXX shared library ../../../libes_math.so
+[2026-04-28 17:23:35] [ 63%] Linking CXX static library libes_math.a
+[2026-04-28 17:23:35] [ 63%] Built target es_math_a
+[2026-04-28 17:23:35] [ 64%] Built target proto_transformer_cust
+[2026-04-28 17:23:35] [ 65%] Copying OPP proto library to standard path...
+[2026-04-28 17:23:35] [ 25%] Linking CXX static library libabsl_malloc_internal.a
+[2026-04-28 17:23:35] [ 66%] Generating ES API code for package 'es_transformer_cust' using run package gen_esb...
+[2026-04-28 17:23:35] [ 66%] Built target es_math_so
+[2026-04-28 17:23:35] Generating ES code for package: es_transformer_cust
+[2026-04-28 17:23:35] [ 25%] Built target malloc_internal
+[2026-04-28 17:23:35] [ 25%] Building CXX object third_party/abseil-cpp/absl/synchronization/CMakeFiles/graphcycles_internal.dir/internal/graphcycles.cc.o
+[2026-04-28 17:23:35] [ 25%] Linking CXX static library libabsl_demangle_internal.a
+[2026-04-28 17:23:35] [ 25%] Built target demangle_internal
+[2026-04-28 17:23:36]   Getting requirements to build wheel: finished with status 'done'
+[2026-04-28 17:23:36]   Preparing metadata (pyproject.toml): started
+[2026-04-28 17:23:36] [ 25%] Linking CXX static library libabsl_crc_internal.a
+[2026-04-28 17:23:36] [ 25%] Built target crc_internal
+[2026-04-28 17:23:36]   Preparing metadata (pyproject.tom[2026-04-28 17:23:36] [ES-GEN] [Attempt 1/10] Executing gen_esb...
+[2026-04-28 17:23:36] [ES-GEN] Command: LD_LIBRARY_PATH=/home/developer/Ascend/cann-9.0.0-beta.2/lib64:$LD_LIBRARY_PATH ASCEND_OPP_PATH=/mnt/workspace/DTS/transformer-issue/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust "/home/developer/Ascend/cann-9.0.0-beta.2/bin/gen_esb" --output_dir="/mnt/workspace/DTS/transformer-issue/build/es_transformer_cust_build/generated_code" --module_name="transformer_cust" --exclude_ops=""
+l): finished with status 'done'
+[2026-04-28 17:23:36] Building wheels for collected packages: es_math
+[2026-04-28 17:23:36]   Building wheel for es_math (pyproject.toml): started
+[2026-04-28 17:23:36] ==========================================
+[2026-04-28 17:23:36] ES Graph Builder Generator v1.0
+[2026-04-28 17:23:36] Copyright (c) 2025 Huawei Technologies Co., Ltd.
+[2026-04-28 17:23:36] ==========================================
+[2026-04-28 17:23:36] Starting code generation...
+[2026-04-28 17:23:36] Environment variable check: ASCEND_OPP_PATH = /mnt/workspace/DTS/transformer-issue/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
+[2026-04-28 17:23:36] Environment variable check: LD_LIBRARY_PATH = /home/developer/Ascend/cann-9.0.0-beta.2/lib64:/mnt/workspace/DTS/transformer-issue/build:/home/developer/Ascend/cann-9.0.0-beta.2/lib64:/home/developer/Ascend/cann-9.0.0-beta.2/lib64/plugin/opskernel:/home/developer/Ascend/cann-9.0.0-beta.2/lib64/plugin/nnengine:/home/developer/Ascend/cann-9.0.0-beta.2/opp/built-in/op_impl/ai_core/tbe/op_tiling/lib/linux/aarch64:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/home/developer/Ascend/cann-9.0.0-beta.2/devlib
+[2026-04-28 17:23:36] Output directory: /mnt/workspace/DTS/transformer-issue/build/es_transformer_cust_build/generated_code/
+[2026-04-28 17:23:36] Module name: transformer_cust
+[2026-04-28 17:23:36] ASCEND_OPP_PATH is: /mnt/workspace/DTS/transformer-issue/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
+[2026-04-28 17:23:36] ops proto path: /mnt/workspace/DTS/transformer-issue/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust/op_proto/custom/:/mnt/workspace/DTS/transformer-issue/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust/op_proto/built-in/
+[2026-04-28 17:23:36] Get ops num: 1
+[2026-04-28 17:23:36] Generate done, generated num 1, unsupported: 
+[2026-04-28 17:23:36] Write to file: /mnt/workspace/DTS/transformer-issue/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops_c.h
+[2026-04-28 17:23:36] Generated C generator aggregate file: /mnt/workspace/DTS/transformer-issue/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops_c.h
+[2026-04-28 17:23:36] Write to file: /mnt/workspace/DTS/transformer-issue/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops.h
+[2026-04-28 17:23:36] Generated C++ generator aggregate file: /mnt/workspace/DTS/transformer-issue/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops.h
+[2026-04-28 17:23:36] Write to file: /mnt/workspace/DTS/transformer-issue/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops.py
+[2026-04-28 17:23:36] Generated Python generator aggregate file: /mnt/workspace/DTS/transformer-issue/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops.py
+[2026-04-28 17:23:36] Generated aggregate files:
+[2026-04-28 17:23:36]   C generator: /mnt/workspace/DTS/transformer-issue/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops_c.h
+[2026-04-28 17:23:36]   C++ generator: /mnt/workspace/DTS/transformer-issue/build/es_transformer_cu[2026-04-28 17:23:36] [ES-GEN] [Success] gen_esb executed successfully
+[2026-04-28 17:23:36] [ES-GEN] [flock] Execution completed, exit code: 0
+
+[notice] A new release of pip is available: 26.0.1 -> 26.1
+[notice] To update, run: python3 -m pip install --upgrade pip
+st_build/generated_code/es_transformer_cust_ops.h
+[2026-04-28 17:23:36]   Python generator: /mnt/workspace/DTS/transformer-issue/build/es_transformer_cust_build/generated_code/es_transformer_cust_ops.py
+[2026-04-28 17:23:36] Generated util files:
+[2026-04-28 17:23:36]   Utils generator:
+[2026-04-28 17:23:36]     /mnt/workspace/DTS/transformer-issue/build/es_transformer_cust_build/generated_code/es_log.h
+[2026-04-28 17:23:36] Generated files in: /mnt/workspace/DTS/transformer-issue/build/es_transformer_cust_build/generated_code/
+[2026-04-28 17:23:36] 
+[2026-04-28 17:23:36] ==========================================
+[2026-04-28 17:23:36] Code generation completed!
+[2026-04-28 17:23:36] Module name: transformer_cust
+[2026-04-28 17:23:36] ==========================================
+[2026-04-28 17:23:36] -- [ES Wrapper] Generated: /mnt/workspace/DTS/transformer-issue/build/es_transformer_cust_build/generated_code/es_transformer_cust_all_in_one.cpp
+[2026-04-28 17:23:36] -- [ES Wrapper] Total operators included: 1
+[2026-04-28 17:23:36] [ 66%] Built target generate_es_transformer_cust_code
+[2026-04-28 17:23:36] [ 67%] Skipping Python wheel package generation for 'es_transformer_cust'
+[2026-04-28 17:23:36] [ 67%] Building CXX object CMakeFiles/es_transformer_cust_obj.dir/es_transformer_cust_build/generated_code/es_transformer_cust_all_in_one.cpp.o
+[2026-04-28 17:23:36] Skipping wheel generation
+[2026-04-28 17:23:36] [ 67%] Built target generate_es_transformer_cust_whl
+[2026-04-28 17:23:36]   Building wheel for es_math (pyproject.toml): finished with status 'done'
+[2026-04-28 17:23:36]   Created wheel for es_math: filename=es_math-1.0.0-py3-none-any.whl size=3844 sha256=c2c108bd27f5fc73b6b7852a1e1d1d83dfd4d432d1d5abd2ab50fbe71c0f5d64
+[2026-04-28 17:23:36]   Stored in directory: /tmp/pip-ephem-wheel-cache-k_4onv21/wheels/8e/cd/90/0cd24ab449c86de978afcc1304e30a260533358c5ed89e5a30
+[2026-04-28 17:23:36] Successfully built es_math
+[2026-04-28 17:23:36] [ 67%] Built target generate_es_math_whl
+[2026-04-28 17:23:36] [ 68%] Installing ES package 'es_math' to /mnt/workspace/DTS/transformer-issue/build/es_packages_math
+[2026-04-28 17:23:36] Installing ES package: es_math
+[2026-04-28 17:23:36] -- Copied header: es_Transpose.h
+[2026-04-28 17:23:36] -- Copied header: es_Transpose_c.h
+[2026-04-28 17:23:36] -- Copied header: es_log.h
+[2026-04-28 17:23:36] -- Copied header: es_math_ops.h
+[2026-04-28 17:23:36] -- Copied header: es_math_ops_c.h
+[2026-04-28 17:23:36] -- Copied wheel: es_math-1.0.0-py3-none-any.whl
+[2026-04-28 17:23:36] [ 68%] Built target install_es_math
+[2026-04-28 17:23:36] [ 68%] ES package 'es_math' build completed (single-file mode)
+[2026-04-28 17:23:36] [ 68%] Built target build_es_math
+[2026-04-28 17:23:36] [ 26%] Linking CXX static library libabsl_graphcycles_internal.a
+[2026-04-28 17:23:36] [ 26%] Built target graphcycles_internal
+[2026-04-28 17:23:36] [ 26%] Linking CXX static library libabsl_strings.a
+[2026-04-28 17:23:36] [ 26%] Built target strings
+[2026-04-28 17:23:36] [ 26%] Building CXX object third_party/abseil-cpp/absl/debugging/CMakeFiles/symbolize.dir/symbolize.cc.o
+[2026-04-28 17:23:36] [ 26%] Building CXX object third_party/utf8_range/CMakeFiles/utf8_validity.dir/utf8_validity.cc.o
+[2026-04-28 17:23:36] [ 26%] Building CXX object third_party/abseil-cpp/absl/time/CMakeFiles/time.dir/civil_time.cc.o
+[2026-04-28 17:23:36] [ 26%] Building CXX object third_party/abseil-cpp/absl/hash/CMakeFiles/hash.dir/internal/hash.cc.o
+[2026-04-28 17:23:36] [ 26%] Building CXX object third_party/abseil-cpp/absl/time/CMakeFiles/time.dir/duration.cc.o
+[2026-04-28 17:23:36] [ 26%] Building CXX object third_party/abseil-cpp/absl/time/CMakeFiles/time.dir/clock.cc.o
+[2026-04-28 17:23:36] [ 27%] Building CXX object third_party/abseil-cpp/absl/flags/CMakeFiles/flags_commandlineflag.dir/commandlineflag.cc.o
+[2026-04-28 17:23:36] [ 28%] Building CXX object third_party/abseil-cpp/absl/time/CMakeFiles/time.dir/time.cc.o
+[2026-04-28 17:23:36] [ 28%] Building CXX object third_party/abseil-cpp/absl/time/CMakeFiles/time.dir/format.cc.o
+[2026-04-2In file included from /mnt/workspace/DTS/transformer-issue/common/include/tiling_base/tiling_base.h:23,
+                 from /mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.h:17,
+                 from /mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:11:
+/mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp: In member function ‘virtual ge::graphStatus optiling::FA::FlashAttentionScoreTilingRegbase::GetShapeAttrsInfo()’:
+/mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:519:53: warning: format ‘%d’ expects argument of type ‘int’, but argument 11 has type ‘int64_t’ {aka ‘long int’} [-Wformat=]
+  519 |                 OPS_REPORT_VECTOR_INNER_ERR(opName, "HIFLOAT8 can only support layout:BSND without any optional inputs, "
+......
+  525 |                 bSize, s1Size, s2Size, n1Size, n2Size, dSize, dSizeV), return ge::GRAPH_FAILED);
+      |                 ~~~~~                                
+      |                 |
+      |                 int64_t {aka long int}
+/mnt/workspace/DTS/transformer-issue/third_party/opbase/pkg_inc/op_common/log/log.h:565:13: note: in definition of macro ‘OP_CHECK_IF’
+  565 |             log;                                 \
+      |             ^~~
+/mnt/workspace/DTS/transformer-issue/common/include/err/ops_err.h:29:52: note: in expansion of macro ‘OPS_INNER_ERR_STUB’
+   29 | #define OPS_REPORT_VECTOR_INNER_ERR(OPS_DESC, ...) OPS_INNER_ERR_STUB("E89999", OPS_DESC, __VA_ARGS__)
+      |                                                    ^~~~~~~~~~~~~~~~~~
+/mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:519:17: note: in expansion of macro ‘OPS_REPORT_VECTOR_INNER_ERR’
+  519 |                 OPS_REPORT_VECTOR_INNER_ERR(opName, "HIFLOAT8 can only support layout:BSND without any optional inputs, "
+      |                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:523:98: note: format string is defined here
+  523 |                 "[hasAttenMask:%d, hasPse:%d, hasDropOut:%d, hasRope:%d, input_layout:%s, bSize:%d, s1Size:%d, s2Size:%d, "
+      |                                                                                                 ~^
+      |                                                                                                  |
+      |                                                                                                  int
+      |                                                                                                 %ld
+In file included from /mnt/workspace/DTS/transformer-issue/common/include/tiling_base/tiling_base.h:23,
+                 from /mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.h:17,
+                 from /mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:11:
+/mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:519:53: warning: format ‘%d’ expects argument of type ‘int’, but argument 12 has type ‘int64_t’ {aka ‘long int’} [-Wformat=]
+  519 |                 OPS_REPORT_VECTOR_INNER_ERR(opName, "HIFLOAT8 can only support layout:BSND without any optional inputs, "
+......
+  525 |                 bSize, s1Size, s2Size, n1Size, n2Size, dSize, dSizeV), return ge::GRAPH_FAILED);
+      |                        ~~~~~~                        
+      |                        |
+      |                        int64_t {aka long int}
+/mnt/workspace/DTS/transformer-issue/third_party/opbase/pkg_inc/op_common/log/log.h:565:13: note: in definition of macro ‘OP_CHECK_IF’
+  565 |             log;                                 \
+      |             ^~~
+/mnt/workspace/DTS/transformer-issue/common/include/err/ops_err.h:29:52: note: in expansion of macro ‘OPS_INNER_ERR_STUB’
+   29 | #define OPS_REPORT_VECTOR_INNER_ERR(OPS_DESC, ...) OPS_INNER_ERR_STUB("E89999", OPS_DESC, __VA_ARGS__)
+      |                                                    ^~~~~~~~~~~~~~~~~~
+/mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:519:17: note: in expansion of macro ‘OPS_REPORT_VECTOR_INNER_ERR’
+  519 |                 OPS_REPORT_VECTOR_INNER_ERR(opName, "HIFLOAT8 can only support layout:BSND without any optional inputs, "
+      |                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:523:109: note: format string is defined here
+  523 |                 "[hasAttenMask:%d, hasPse:%d, hasDropOut:%d, hasRope:%d, input_layout:%s, bSize:%d, s1Size:%d, s2Size:%d, "
+      |                                                                                                            ~^
+      |                                                                                                             |
+      |                                                                                                             int
+      |                                                                                                            %ld
+In file included from /mnt/workspace/DTS/transformer-issue/common/include/tiling_base/tiling_base.h:23,
+                 from /mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.h:17,
+                 from /mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:11:
+/mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:519:53: warning: format ‘%d’ expects argument of type ‘int’, but argument 13 has type ‘int64_t’ {aka ‘long int’} [-Wformat=]
+  519 |                 OPS_REPORT_VECTOR_INNER_ERR(opName, "HIFLOAT8 can only support layout:BSND without any optional inputs, "
+......
+  525 |                 bSize, s1Size, s2Size, n1Size, n2Size, dSize, dSizeV), return ge::GRAPH_FAILED);
+      |                                ~~~~~~                
+      |                                |
+      |                                int64_t {aka long int}
+/mnt/workspace/DTS/transformer-issue/third_party/opbase/pkg_inc/op_common/log/log.h:565:13: note: in definition of macro ‘OP_CHECK_IF’
+  565 |             log;                                 \
+      |             ^~~
+/mnt/workspace/DTS/transformer-issue/common/include/err/ops_err.h:29:52: note: in expansion of macro ‘OPS_INNER_ERR_STUB’
+   29 | #define OPS_REPORT_VECTOR_INNER_ERR(OPS_DESC, ...) OPS_INNER_ERR_STUB("E89999", OPS_DESC, __VA_ARGS__)
+      |                                                    ^~~~~~~~~~~~~~~~~~
+/mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:519:17: note: in expansion of macro ‘OPS_REPORT_VECTOR_INNER_ERR’
+  519 |                 OPS_REPORT_VECTOR_INNER_ERR(opName, "HIFLOAT8 can only support layout:BSND without any optional inputs, "
+      |                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:523:120: note: format string is defined here
+  523 |                 "[hasAttenMask:%d, hasPse:%d, hasDropOut:%d, hasRope:%d, input_layout:%s, bSize:%d, s1Size:%d, s2Size:%d, "
+      |                                                                                                                       ~^
+      |                                                                                                                        |
+      |                                                                                                                        int
+      |                                                                                                                       %ld
+In file included from /mnt/workspace/DTS/transformer-issue/common/include/tiling_base/tiling_base.h:23,
+                 from /mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.h:17,
+                 from /mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:11:
+/mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:519:53: warning: format ‘%d’ expects argument of type ‘int’, but argument 14 has type ‘int64_t’ {aka ‘long int’} [-Wformat=]
+  519 |                 OPS_REPORT_VECTOR_INNER_ERR(opName, "HIFLOAT8 can only support layout:BSND without any optional inputs, "
+......
+  525 |                 bSize, s1Size, s2Size, n1Size, n2Size, dSize, dSizeV), return ge::GRAPH_FAILED);
+      |                                        ~~~~~~        
+      |                                        |
+      |                                        int64_t {aka long int}
+/mnt/workspace/DTS/transformer-issue/third_party/opbase/pkg_inc/op_common/log/log.h:565:13: note: in definition of macro ‘OP_CHECK_IF’
+  565 |             log;                                 \
+      |             ^~~
+/mnt/workspace/DTS/transformer-issue/common/include/err/ops_err.h:29:52: note: in expansion of macro ‘OPS_INNER_ERR_STUB’
+   29 | #define OPS_REPORT_VECTOR_INNER_ERR(OPS_DESC, ...) OPS_INNER_ERR_STUB("E89999", OPS_DESC, __VA_ARGS__)
+      |                                                    ^~~~~~~~~~~~~~~~~~
+/mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:519:17: note: in expansion of macro ‘OPS_REPORT_VECTOR_INNER_ERR’
+  519 |                 OPS_REPORT_VECTOR_INNER_ERR(opName, "HIFLOAT8 can only support layout:BSND without any optional inputs, "
+      |                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:524:26: note: format string is defined here
+  524 |                 "n1Size:%d, n2Size:%d, dSize:%d, dSizeV:%d]", hasAttenMask, hasPse, hasDropOut, hasRope, inputLayout,
+      |                         ~^
+      |                          |
+      |                          int
+      |                         %ld
+In file included from /mnt/workspace/DTS/transformer-issue/common/include/tiling_base/tiling_base.h:23,
+                 from /mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.h:17,
+                 from /mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:11:
+/mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:519:53: warning: format ‘%d’ expects argument of type ‘int’, but argument 15 has type ‘int64_t’ {aka ‘long int’} [-Wformat=]
+  519 |                 OPS_REPORT_VECTOR_INNER_ERR(opName, "HIFLOAT8 can only support layout:BSND without any optional inputs, "
+......
+  525 |                 bSize, s1Size, s2Size, n1Size, n2Size, dSize, dSizeV), return ge::GRAPH_FAILED);
+      |                                                ~~~~~~
+      |                                                |
+      |                                                int64_t {aka long int}
+/mnt/workspace/DTS/transformer-issue/third_party/opbase/pkg_inc/op_common/log/log.h:565:13: note: in definition of macro ‘OP_CHECK_IF’
+  565 |             log;                                 \
+      |             ^~~
+/mnt/workspace/DTS/transformer-issue/common/include/err/ops_err.h:29:52: note: in expansion of macro ‘OPS_INNER_ERR_STUB’
+   29 | #define OPS_REPORT_VECTOR_INNER_ERR(OPS_DESC, ...) OPS_INNER_ERR_STUB("E89999", OPS_DESC, __VA_ARGS__)
+      |                                                    ^~~~~~~~~~~~~~~~~~
+/mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:519:17: note: in expansion of macro ‘OPS_REPORT_VECTOR_INNER_ERR’
+  519 |                 OPS_REPORT_VECTOR_INNER_ERR(opName, "HIFLOAT8 can only support layout:BSND without any optional inputs, "
+      |                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:524:37: note: format string is defined here
+  524 |                 "n1Size:%d, n2Size:%d, dSize:%d, dSizeV:%d]", hasAttenMask, hasPse, hasDropOut, hasRope, inputLayout,
+      |                                    ~^
+      |                                     |
+      |                                     int
+      |                                    %ld
+In file included from /mnt/workspace/DTS/transformer-issue/common/include/tiling_base/tiling_base.h:23,
+                 from /mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.h:17,
+                 from /mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:11:
+/mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:519:53: warning: format ‘%d’ expects argument of type ‘int’, but argument 16 has type ‘int64_t’ {aka ‘long int’} [-Wformat=]
+  519 |                 OPS_REPORT_VECTOR_INNER_ERR(opName, "HIFLOAT8 can only support layout:BSND without any optional inputs, "
+......
+  525 |                 bSize, s1Size, s2Size, n1Size, n2Size, dSize, dSizeV), return ge::GRAPH_FAILED);
+      |                                                        ~~~~~
+      |                                                        |
+      |                                                        int64_t {aka long int}
+/mnt/workspace/DTS/transformer-issue/third_party/opbase/pkg_inc/op_common/log/log.h:565:13: note: in definition of macro ‘OP_CHECK_IF’
+  565 |             log;                                 \
+      |             ^~~
+/mnt/workspace/DTS/transformer-issue/common/include/err/ops_err.h:29:52: note: in expansion of macro ‘OPS_INNER_ERR_STUB’
+   29 | #define OPS_REPORT_VECTOR_INNER_ERR(OPS_DESC, ...) OPS_INNER_ERR_STUB("E89999", OPS_DESC, __VA_ARGS__)
+      |                                                    ^~~~~~~~~~~~~~~~~~
+/mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:519:17: note: in expansion of macro ‘OPS_REPORT_VECTOR_INNER_ERR’
+  519 |                 OPS_REPORT_VECTOR_INNER_ERR(opName, "HIFLOAT8 can only support layout:BSND without any optional inputs, "
+      |                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:524:47: note: format string is defined here
+  524 |                 "n1Size:%d, n2Size:%d, dSize:%d, dSizeV:%d]", hasAttenMask, hasPse, hasDropOut, hasRope, inputLayout,
+      |                                              ~^
+      |                                               |
+      |                                               int
+      |                                              %ld
+In file included from /mnt/workspace/DTS/transformer-issue/common/include/tiling_base/tiling_base.h:23,
+                 from /mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.h:17,
+                 from /mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:11:
+/mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:519:53: warning: format ‘%d’ expects argument of type ‘int’, but argument 17 has type ‘int64_t’ {aka ‘long int’} [-Wformat=]
+  519 |                 OPS_REPORT_VECTOR_INNER_ERR(opName, "HIFLOAT8 can only support layout:BSND without any optional inputs, "
+......
+  525 |                 bSize, s1Size, s2Size, n1Size, n2Size, dSize, dSizeV), return ge::GRAPH_FAILED);
+      |                                                               ~~~~~~
+      |                                                               |
+      |                                                               int64_t {aka long int}
+/mnt/workspace/DTS/transformer-issue/third_party/opbase/pkg_inc/op_common/log/log.h:565:13: note: in definition of macro ‘OP_CHECK_IF’
+  565 |             log;                                 \
+      |             ^~~
+/mnt/workspace/DTS/transformer-issue/common/include/err/ops_err.h:29:52: note: in expansion of macro ‘OPS_INNER_ERR_STUB’
+   29 | #define OPS_REPORT_VECTOR_INNER_ERR(OPS_DESC, ...) OPS_INNER_ERR_STUB("E89999", OPS_DESC, __VA_ARGS__)
+      |                                                    ^~~~~~~~~~~~~~~~~~
+/mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:519:17: note: in expansion of macro ‘OPS_REPORT_VECTOR_INNER_ERR’
+  519 |                 OPS_REPORT_VECTOR_INNER_ERR(opName, "HIFLOAT8 can only support layout:BSND without any optional inputs, "
+      |                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp:524:58: note: format string is defined here
+  524 |                 "n1Size:%d, n2Size:%d, dSize:%d, dSizeV:%d]", hasAttenMask, hasPse, hasDropOut, hasRope, inputLayout,
+      |                                                         ~^
+      |                                                          |
+      |                                                          int
+      |                                                         %ld
+8 17:23:36] [ 28%] Building CXX object third_party/abseil-cpp/absl/log/CMakeFiles/log_internal_proto.dir/internal/proto.cc.o
+[2026-04-28 17:23:36] [ 28%] Building CXX object third_party/abseil-cpp/absl/random/CMakeFiles/random_distributions.dir/discrete_distribution.cc.o
+[2026-04-28 17:23:36] [ 28%] Building CXX object third_party/abseil-cpp/absl/strings/CMakeFiles/str_format_internal.dir/internal/str_format/bind.cc.o
+[2026-04-28 17:23:36] [ 29%] Building CXX object third_party/abseil-cpp/absl/strings/CMakeFiles/str_format_internal.dir/internal/str_format/arg.cc.o
+[2026-04-28 17:23:36] [ 29%] Building CXX object third_party/abseil-cpp/absl/random/CMakeFiles/random_internal_seed_material.dir/internal/seed_material.cc.o
+[2026-04-28 17:23:36] [ 29%] Building CXX object third_party/abseil-cpp/absl/strings/CMakeFiles/str_format_internal.dir/internal/str_format/extension.cc.o
+[2026-04-28 17:23:36] [ 29%] Building CXX object third_party/abseil-cpp/absl/strings/CMakeFiles/str_format_internal.dir/internal/str_format/float_conversion.cc.o
+[2026-04-28 17:23:36] [ 30%] Building CXX object third_party/abseil-cpp/absl/strings/CMakeFiles/str_format_internal.dir/internal/str_format/parser.cc.o
+[2026-04-28 17:23:36] [ 30%] Building CXX object third_party/abseil-cpp/absl/strings/CMakeFiles/str_format_internal.dir/internal/str_format/output.cc.o
+[2026-04-28 17:23:36] [ 30%] Building CXX object third_party/abseil-cpp/absl/random/CMakeFiles/random_distributions.dir/gaussian_distribution.cc.o
+[2026-04-28 17:23:37] [ 31%] Linking CXX static library libutf8_validity.a
+[2026-04-28 17:23:37] [ 31%] Built target utf8_validity
+[2026-04-28 17:23:37] [ 31%] Linking CXX static library libabsl_flags_commandlineflag.a
+[2026-04-28 17:23:37] [ 31%] Built target flags_commandlineflag
+[2026-04-28 17:23:37] [ 31%] Building CXX object third_party/abseil-cpp/absl/flags/CMakeFiles/flags_private_handle_accessor.dir/internal/private_handle_accessor.cc.o
+[2026-04-28 17:23:37] [ 31%] Linking CXX static library libabsl_log_internal_proto.a
+[2026-04-28 17:23:37] [ 31%] Built target log_internal_proto
+[2026-04-28 17:23:37] [ 32%] Linking CXX static library libabsl_random_distributions.a
+[2026-04-28 17:23:37] [ 32%] Built target random_distributions
+[2026-04-28 17:23:37] [ 32%] Linking CXX static library libabsl_random_internal_seed_material.a
+[2026-04-28 17:23:37] [ 32%] Built target random_internal_seed_material
+[2026-04-28 17:23:37] [ 32%] Building CXX object third_party/abseil-cpp/absl/random/CMakeFiles/random_internal_pool_urbg.dir/internal/pool_urbg.cc.o
+[2026-04-28 17:23:37] [ 68%] Built target ophost_transformer_tiling_obj
+[2026-04-28 17:23:37] [ 69%] Linking CXX shared library libcust_opmaster_rt2.0.so
+[2026-04-28 17:23:37] [ 32%] Linking CXX static library libabsl_hash.a
+[2026-04-28 17:23:37] [ 32%] Built target hash
+[2026-04-28 17:23:37] [ 32%] Building CXX object third_party/abseil-cpp/absl/log/CMakeFiles/log_globals.dir/globals.cc.o
+[2026-04-28 17:23:37] [ 32%] Linking CXX static library libabsl_symbolize.a
+[2026-04-28 17:23:37] [ 32%] Built target symbolize
+[2026-04-28 17:23:37] [ 32%] Building CXX object third_party/abseil-cpp/absl/debugging/CMakeFiles/examine_stack.dir/internal/examine_stack.cc.o
+[2026-04-28 17:23:37] [ 32%] Linking CXX static library libabsl_flags_private_handle_accessor.a
+[2026-04-28 17:23:37] [ 32%] Built target flags_private_handle_accessor
+[2026-04-28 17:23:37] [ 69%] Built target cust_opmaster
+[2026-04-28 17:23:37] [ 70%] Generating compat/liboptiling.so
+[2026-04-28 17:23:37] [ 70%] Built target optiling_compat
+[2026-04-28 17:23:37] [ 71%] Generating binary/ascend950/gen/flash_attention_score_apt_ascend950_7.done
+[2026-04-28 17:23:37] [ 72%] Generating binary/ascend950/gen/flash_attention_score_apt_ascend950_6.done
+[2026-04-28 17:23:37] [ 73%] Generating binary/ascend950/gen/flash_attention_score_apt_ascend950_5.done
+[2026-04-28 17:23:37] [ 74%] Generating binary/ascend950/gen/flash_attention_score_apt_ascend950_4.done
+[2026-04-28 17:23:37] [ 75%] Generating binary/ascend950/gen/flash_attention_score_apt_ascend950_8.done
+[2026-04-28 17:23:37] [ 76%] Generating binary/ascend950/gen/flash_attention_score_apt_ascend950_2.done
+[2026-04-28 17:23:37] [ 77%] Generating binary/ascend950/gen/flash_attention_score_apt_ascend950_3.done
+[2026-04-28 17:23:37] [ 78%] Generating binary/ascend950/gen/flash_attention_score_apt_ascend950_1.done
+[2026-04-28 17:23:37] [ 78%] Generating binary/ascend950/gen/flash_attention_score_apt_ascend950_0.done
+[2026-04-28 17:23:37] [ascend950] Generating FlashAttentionScore_f13062768a34c80f914d861d804e1dd9 ...
+[2026-04-28 17:23:37] [ascend950] Generating FlashAttentionScore_2713efb6da0b1818de4e336c9b1a5797 ...
+[2026-04-28 17:23:37] [ascend950] Generating FlashAttentionScore_569ffd4c4d0d40275bf7583939fbe90c ...
+[2026-04-28 17:23:37] [ascend950] Generating FlashAttentionScore_ebbad589462def4957c1042c3e292bb3 ...
+[2026-04-28 17:23:37] [ascend950] Generating FlashAttentionScore_fa7b6be74ff4dd68661d2b32ea199c85 ...
+[2026-04-28 17:23:37] [ascend950] Generating FlashAttentionScore_9d6a04df15c0ec6754a9d9860ceb8208 ...
+[2026-04-28 17:23:37] [ascend950] Generating FlashAttentionScore_643870ea4f8bc6c1e93de65cf55d3f9f ...
+[2026-04-28 17:23:37] [ascend950] Generating FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5 ...
+[2026-04-28 17:23:37] [ascend950] Generating FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4 ...
+[2026-04-28 17:23:37] [ 32%] Linking CXX static library libabsl_time.a
+[2026-04-28 17:23:37] [ 32%] Built target time
+[2026-04-28 17:23:37] [ 32%] Building CXX object third_party/abseil-cpp/absl/synchronization/CMakeFiles/kernel_timeout_internal.dir/internal/kernel_timeout.cc.o
+[2026-04-28 17:23:37] [ 32%] Building CXX object third_party/abseil-cpp/absl/log/CMakeFiles/log_entry.dir/log_entry.cc.o
+[2026-04-28 17:23:37] [ 32%] Building CXX object third_party/abseil-cpp/absl/log/CMakeFiles/log_internal_globals.dir/internal/globals.cc.o
+[2026-04-28 17:23:38] [ 32%] Linking CXX static library libabsl_examine_stack.a
+[2026-04-28 17:23:38] [ 32%] Built target examine_stack
+[2026-04-28 17:23:38] [ 32%] Building CXX object third_party/abseil-cpp/absl/debugging/CMakeFiles/failure_signal_handler.dir/failure_signal_handler.cc.o
+[2026-04-28 17:23:38] [ 32%] Linking CXX static library libabsl_str_format_internal.a
+[2026-04-28 17:23:38] [ 32%] Built target str_format_internal
+[2026-04-28 17:23:38] [ 33%] Building CXX object third_party/abseil-cpp/absl/crc/CMakeFiles/crc32c.dir/crc32c.cc.o
+[2026-04-28 17:23:38] [ 33%] Building CXX object third_party/abseil-cpp/absl/crc/CMakeFiles/crc32c.dir/internal/crc_memcpy_fallback.cc.o
+[2026-04-28 17:23:38] [ 33%] Building CXX object third_party/abseil-cpp/absl/crc/CMakeFiles/crc32c.dir/internal/crc_memcpy_x86_64.cc.o
+[2026-04-28 17:23:38] [ 33%] Building CXX object third_party/abseil-cpp/absl/crc/CMakeFiles/crc32c.dir/internal/crc_non_temporal_memcpy.cc.o
+[2026-04-28 17:23:38] [ 33%] Building CXX object third_party/abseil-cpp/absl/flags/CMakeFiles/flags_marshalling.dir/marshalling.cc.o
+[2026-04-28 17:23:38] [ 33%] Building CXX object third_party/abseil-cpp/absl/random/CMakeFiles/random_internal_distribution_test_util.dir/internal/distribution_test_util.cc.o
+[2026-04-28 17:23:38] [ 33%] Building CXX object third_party/abseil-cpp/absl/random/CMakeFiles/random_internal_distribution_test_util.dir/internal/chi_square.cc.o
+[2026-04-28 17:23:38] [ 33%] Linking CXX static library libabsl_random_internal_pool_urbg.a
+[2026-04-28 17:23:38] [ 33%] Built target random_internal_pool_urbg
+[2026-04-28 17:23:38] [ 33%] Building CXX object third_party/abseil-cpp/absl/random/CMakeFiles/random_seed_sequences.dir/seed_sequences.cc.o
+[2026-04-28 17:23:38] [ 33%] Linking CXX static library libabsl_log_globals.a
+[2026-04-28 17:23:38] [ 78%] Built target es_transformer_cust_obj
+[2026-04-28 17:23:38] [ 33%] Built target log_globals
+[2026-04-28 17:23:38] [ 80%] Linking CXX shared library libes_transformer_cust.so
+[2026-04-28 17:23:38] [ 80%] Linking CXX static library libes_transformer_cust.a
+[2026-04-28 17:23:38] [ 34%] Linking CXX static library libabsl_log_entry.a
+[2026-04-28 17:23:38] [ 80%] Built target es_transformer_cust_a
+[2026-04-28 17:23:38] [ 34%] Built target log_entry
+[2026-04-28 17:23:38] [ 34%] Building CXX object third_party/abseil-cpp/absl/log/CMakeFiles/log_sink.dir/log_sink.cc.o
+[2026-04-28 17:23:38] [ 35%] Linking CXX static library libabsl_log_internal_globals.a
+[2026-04-28 17:23:38] [ 35%] Built target log_internal_globals
+[2026-04-28 17:23:38] [ 80%] Built target es_transformer_cust_so
+[2026-04-28 17:23:38] [ 35%] Building CXX object third_party/abseil-cpp/absl/log/CMakeFiles/log_internal_format.dir/internal/log_format.cc.o
+[2026-04-28 17:23:38] [ 36%] Building CXX object third_party/abseil-cpp/absl/log/CMakeFiles/log_initialize.dir/initialize.cc.o
+[2026-04-28 17:23:38] [ 81%] Installing ES package 'es_transformer_cust' to /mnt/workspace/DTS/transformer-issue/build/es_packages
+[2026-04-28 17:23:38] Installing ES package: es_transformer_cust
+[2026-04-28 17:23:38] -- Copied header: es_FlashAttentionScore.h
+[2026-04-28 17:23:38] -- Copied header: es_FlashAttentionScore_c.h
+[2026-04-28 17:23:38] -- Copied header: es_log.h
+[2026-04-28 17:23:38] -- Copied header: es_transformer_cust_ops.h
+[2026-04-28 17:23:38] -- Copied header: es_transformer_cust_ops_c.h
+[2026-04-28 17:23:38] [ 81%] Built target install_es_transformer_cust
+[2026-04-28 17:23:38] [ 82%] ES package 'es_transformer_cust' build completed (single-file mode)
+[2026-04-28 17:23:38] [ 82%] Built target build_es_transformer_cust
+[2026-04-28 17:23:38] [ 83%] Building CXX object CMakeFiles/cust_proto.dir/autogen/updateproto/flash_attention_score_proto.cpp.o
+[2026-04-28 17:23:38] [ 37%] Linking CXX static library libabsl_kernel_timeout_internal.a
+[2026-04-28 17:23:38] [ 37%] Built target kernel_timeout_internal
+[2026-04-28 17:23:38] [ 38%] Building CXX object third_party/abseil-cpp/absl/synchronization/CMakeFiles/synchronization.dir/barrier.cc.o
+[2026-04-28 17:23:38] [ 38%] Building CXX object third_party/abseil-cpp/absl/synchronization/CMakeFiles/synchronization.dir/blocking_counter.cc.o
+[2026-04-28 17:23:38] [ 38%] Building CXX object third_party/abseil-cpp/absl/synchronization/CMakeFiles/synchronization.dir/internal/create_thread_identity.cc.o
+[2026-04-28 17:23:38] [ 38%] Building CXX object third_party/abseil-cpp/absl/synchronization/CMakeFiles/synchronization.dir/internal/futex_waiter.cc.o
+[2026-04-28 17:23:38] [ 38%] Building CXX object third_party/abseil-cpp/absl/synchronization/CMakeFiles/synchronization.dir/internal/pthread_waiter.cc.o
+[2026-04-28 17:23:38] [ 38%] Building CXX object third_party/abseil-cpp/absl/synchronization/CMakeFiles/synchronization.dir/internal/stdcpp_waiter.cc.o
+[2026-04-28 17:23:38] [ 38%] Building CXX object third_party/abseil-cpp/absl/synchronization/CMakeFiles/synchronization.dir/internal/sem_waiter.cc.o
+[2026-04-28 17:23:38] [ 38%] Building CXX object third_party/abseil-cpp/absl/synchronization/CMakeFiles/synchronization.dir/internal/waiter_base.cc.o
+[2026-04-28 17:23:38] [ 39%] Building CXX object third_party/abseil-cpp/absl/synchronization/CMakeFiles/synchronization.dir/internal/win32_waiter.cc.o
+[2026-04-28 17:23:38] [ 39%] Building CXX object third_party/abseil-cpp/absl/synchronization/CMakeFiles/synchronization.dir/notification.cc.o
+[2026-04-28 17:23:38] [ 39%] Building CXX object third_party/abseil-cpp/absl/synchronization/CMakeFiles/synchronization.dir/mutex.cc.o
+[2026-04-28 17:23:38] [ 39%] Linking CXX static library libabsl_failure_signal_handler.a
+[2026-04-28 17:23:38] [ 40%] Building CXX object third_party/abseil-cpp/absl/synchronization/CMakeFiles/synchronization.dir/internal/per_thread_sem.cc.o
+[2026-04-28 17:23:38] [ 40%] Built target failure_signal_handler
+[2026-04-28 17:23:38] [ 40%] Linking CXX static library libabsl_random_seed_sequences.a
+[2026-04-28 17:23:38] [ 40%] Built target random_seed_sequences
+[2026-04-28 17:23:38] [ 40%] Linking CXX static library libabsl_log_initialize.a
+[2026-04-28 17:23:38] [ 40%] Built target log_initialize
+[2026-04-28 17:23:38] [ 40%] Linking CXX static library libabsl_log_sink.a
+[2026-04-28 17:23:38] [ 40%] Built target log_sink
+[2026-04-28 17:23:39] [ 40%] Linking CXX static library/mnt/workspace/DTS/transformer-issue/build/autogen/updateproto/flash_attention_score_proto.cpp:113:1: warning: macro "FLASH_ATTENTION_SCORE_PROTO_H_" is not used [-Wunused-macros]
+  113 | }  // namespace ge
+      | ^
+ libabsl_random_internal_distribution_test_util.a
+[2026-04-28 17:23:39] [ 40%] Built target random_internal_distribution_test_util
+[2026-04-28 17:23:39] [ 40%] Linking CXX static library libabsl_crc32c.a
+[2026-04-28 17:23:39] [ 40%] Built target crc32c
+[2026-04-28 17:23:39] [ 41%] Building CXX object third_party/abseil-cpp/absl/crc/CMakeFiles/crc_cord_state.dir/internal/crc_cord_state.cc.o
+[2026-04-28 17:23:39] [ 41%] Linking CXX static library libabsl_log_internal_format.a
+[2026-04-28 17:23:39] [ 41%] Built target log_internal_format
+[2026-04-28 17:23:39] [ 84%] Linking CXX shared library libcust_opsproto_rt2.0.so
+[2026-04-28 17:23:39] [ 85%] Built target cust_proto
+[2026-04-28 17:23:39] [ 42%] Linking CXX static library libabsl_flags_marshalling.a
+[2026-04-28 17:23:39] [ 42%] Built target flags_marshalling
+[2026-04-28 17:23:39] [ 42%] Linking CXX static library libabsl_synchronization.a
+[2026-04-28 17:23:39] [ 42%] Built target synchronization
+[2026-04-28 17:23:39] [ 42%] Building CXX object third_party/abseil-cpp/absl/container/CMakeFiles/hashtablez_sampler.dir/internal/hashtablez_sampler.cc.o
+[2026-04-28 17:23:39] [ 43%] Building CXX object third_party/abseil-cpp/absl/container/CMakeFiles/hashtablez_sampler.dir/internal/hashtablez_sampler_force_weak_definition.cc.o
+[2026-04-28 17:23:39] [ 43%] Building CXX object third_party/abseil-cpp/absl/strings/CMakeFiles/cordz_handle.dir/internal/cordz_handle.cc.o
+[2026-04-28 17:23:39] [ 44%] Building CXX object third_party/abseil-cpp/absl/log/CMakeFiles/log_internal_log_sink_set.dir/internal/log_sink_set.cc.o
+[2026-04-28 17:23:39] [ 44%] Building CXX object third_party/abseil-cpp/absl/flags/CMakeFiles/flags_program_name.dir/internal/program_name.cc.o
+[2026-04-28 17:23:40] [ 44%] Linking CXX static library libabsl_crc_cord_state.a
+[2026-04-28 17:23:40] [ 44%] Built target crc_cord_state
+[2026-04-28 17:23:40] [ 44%] Building CXX object third_party/abseil-cpp/absl/strings/CMakeFiles/cord_internal.dir/internal/cord_internal.cc.o
+[2026-04-28 17:23:40] [ 45%] Building CXX object third_party/abseil-cpp/absl/strings/CMakeFiles/cord_internal.dir/internal/cord_rep_btree_navigator.cc.o
+[2026-04-28 17:23:40] [ 45%] Building CXX object third_party/abseil-cpp/absl/strings/CMakeFiles/cord_internal.dir/internal/cord_rep_btree_reader.cc.o
+[2026-04-28 17:23:40] [ 45%] Building CXX object third_party/abseil-cpp/absl/strings/CMakeFiles/cord_internal.dir/internal/cord_rep_btree.cc.o
+[2026-04-28 17:23:40] [ 45%] Building CXX object third_party/abseil-cpp/absl/strings/CMakeFiles/cord_internal.dir/internal/cord_rep_consume.cc.o
+[2026-04-28 17:23:40] [ 45%] Building CXX object third_party/abseil-cpp/absl/strings/CMakeFiles/cord_internal.dir/internal/cord_rep_crc.cc.o
+[2026-04-28 17:23:40] [ 45%] Building CXX object third_party/abseil-cpp/absl/strings/CMakeFiles/cord_internal.dir/internal/cord_rep_ring.cc.o
+[2026-04-28 17:23:40] [ 45%] Linking CXX static library libabsl_flags_program_name.a
+[2026-04-28 17:23:40] [ 45%] Built target flags_program_name
+[2026-04-28 17:23:40] [ 46%] Building CXX object third_party/abseil-cpp/absl/flags/CMakeFiles/flags_config.dir/usage_config.cc.o
+[2026-04-28 17:23:40] [ 46%] Linking CXX static library libabsl_cordz_handle.a
+[2026-04-28 17:23:40] [ 46%] Linking CXX static library libabsl_hashtablez_sampler.a
+[2026-04-28 17:23:40] [ 46%] Built target cordz_handle
+[2026-04-28 17:23:40] [ 46%] Built target hashtablez_sampler
+[2026-04-28 17:23:40] [ 46%] Building CXX object third_party/abseil-cpp/absl/container/CMakeFiles/raw_hash_set.dir/internal/raw_hash_set.cc.o
+[2026-04-28 17:23:40] [ 46%] Linking CXX static library libabsl_log_internal_log_sink_set.a
+[2026-04-28 17:23:40] [ 46%] Built target log_internal_log_sink_set
+[2026-04-28 17:23:40] [ 46%] Building CXX object third_party/abseil-cpp/absl/log/CMakeFiles/log_internal_message.dir/internal/log_message.cc.o
+[2026-04-28 17:23:41] [ 46%] Linking CXX static library libabsl_flags_config.a
+[2026-04-28 17:23:41] [ 46%] Built target flags_config
+[2026-04-28 17:23:41] [ 46%] Building CXX object third_party/abseil-cpp/absl/flags/CM/mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_api/aclnn_flash_attention_score.cpp: In function ‘aclnnStatus {anonymous}::InputDtypeCheckQuant(const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*)’:
+/mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_api/aclnn_flash_attention_score.cpp:457:10: warning: unused variable ‘outDtype’ [-Wunused-variable]
+  457 |     auto outDtype = attentionOut->GetDataType();
+      |          ^~~~~~~~
+/mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_api/aclnn_flash_attention_score.cpp: In function ‘aclnnStatus {anonymous}::aclnnQuantFlashAttentionScoreGetWorkspaceSize(const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, double, int64_t, int64_t, int64_t, char*, int64_t, aclTensor*, aclTensor*, aclTensor*, aclTensor*, uint64_t*, aclOpExecutor**)’:
+/mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_api/aclnn_flash_attention_score.cpp:1539:92: warning: unused parameter ‘attenMaskOptional’ [-Wunused-parameter]
+ 1539 |     const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *attenMaskOptional,
+      |                                                                           ~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~
+/mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_api/aclnn_flash_attention_score.cpp:1541:32: warning: unused parameter ‘preTokens’ [-Wunused-parameter]
+ 1541 |     double scaleValue, int64_t preTokens, int64_t nextTokens, int64_t headNum, char *inputLayout,
+      |                        ~~~~~~~~^~~~~~~~~
+/mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_api/aclnn_flash_attention_score.cpp:1541:51: warning: unused parameter ‘nextTokens’ [-Wunused-parameter]
+ 1541 |     double scaleValue, int64_t preTokens, int64_t nextTokens, int64_t headNum, char *inputLayout,
+      |                                           ~~~~~~~~^~~~~~~~~~
+/mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_api/aclnn_flash_attention_score.cpp:1542:13: warning: unused parameter ‘sparseMode’ [-Wunused-parameter]
+ 1542 |     int64_t sparseMode, aclTensor *softmaxMaxOut, aclTensor *softmaxSumOut, aclTensor *softmaxOutout,
+      |     ~~~~~~~~^~~~~~~~~~
+/mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_api/aclnn_flash_attention_score.cpp: In function ‘aclnnStatus {anonymous}::ExecFlashAttentionVarLenScoreV5GetWorkspaceSize(const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclIntArray*, const aclIntArray*, const aclIntArray*, const aclIntArray*, const aclIntArray*, double, double, int64_t, int64_t, int64_t, char*, int64_t, int64_t, int64_t, char*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, uint64_t*, aclOpExecutor**, bool)’:
+/mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_api/aclnn_flash_attention_score.cpp:1950:86: warning: unused parameter ‘softmaxOutOut’ [-Wunused-parameter]
+ 1950 |     const aclTensor *softmaxMaxOut, const aclTensor *softmaxSumOut, const aclTensor *softmaxOutOut,
+      |                                                                     ~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~
+/mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_api/aclnn_flash_attention_score.cpp: In function ‘aclnnStatus {anonymous}::aclnnFlashAttentionVarLenScoreV5GetMaxWorkspaceSize(const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclIntArray*, const aclIntArray*, const aclIntArray*, const aclIntArray*, const aclIntArray*, double, double, int64_t, int64_t, int64_t, char*, int64_t, int64_t, int64_t, char*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, uint64_t*, aclOpExecutor**)’:
+/mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_api/aclnn_flash_attention_score.cpp:2079:22: warning: unused parameter ‘dropMaskOptional’ [-Wunused-parameter]
+ 2079 |     const aclTensor *dropMaskOptional, const aclTensor *paddingMaskOptional,
+      |     ~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~
+/mnt/workspace/DTS/transformer-issue/attention/flash_attention_score/op_api/aclnn_flash_attention_score.cpp:2083:70: warning: unused parameter ‘keepProb’ [-Wunused-parameter]
+ 2083 |     const aclIntArray *kvStartIdxOptional, double scaleValue, double keepProb,
+      |                                                               ~~~~~~~^~~~~~~~
+akeFiles/flags_internal.dir/internal/flag.cc.o
+[2026-04-28 17:23:41] [ 46%] Linking CXX static library libabsl_log_internal_message.a
+[2026-04-28 17:23:41] [ 46%] Built target log_internal_message
+[2026-04-28 17:23:41] [ 47%] Linking CXX static library libabsl_raw_hash_set.a
+[2026-04-28 17:23:42] [ 47%] Built target raw_hash_set
+[2026-04-28 17:23:43] [ 85%] Built target ophost_transformer_opapi_obj
+[2026-04-28 17:23:43] [ 48%] Linking CXX static library libabsl_cord_internal.a
+[2026-04-28 17:23:43] [ 48%] Linking CXX static library libabsl_flags_internal.a
+[2026-04-28 17:23:43] [ 48%] Built target cord_internal
+[2026-04-28 17:23:43] [ 48%] Built target flags_internal
+[2026-04-28 17:23:43] [ 48%] Building CXX object third_party/abseil-cpp/absl/log/CMakeFiles/log_internal_check_op.dir/internal/check_op.cc.o
+[2026-04-28 17:23:45] [ 48%] Linking CXX static library libabsl_log_internal_check_op.a
+[2026-04-28 17:23:45] [ 48%] Built target log_internal_check_op
+[2026-04-28 17:23:45] [ 48%] Building CXX object third_party/abseil-cpp/absl/log/CMakeFiles/die_if_null.dir/die_if_null.cc.o
+[2026-04-28 17:23:47] [ 49%] Linking CXX static library libabsl_die_if_null.a
+[2026-04-28 17:23:47] [ 49%] Built target die_if_null
+[2026-04-28 17:23:47] [ 50%] Building CXX object third_party/abseil-cpp/absl/strings/CMakeFiles/cordz_info.dir/internal/cordz_info.cc.o
+[2026-04-28 17:23:50] [ 50%] Linking CXX static library libabsl_cordz_info.a
+[2026-04-28 17:23:50] [ 86%] Generating cust_opapi_stub.cpp
+[2026-04-28 17:23:50] [ 87%] Building CXX object CMakeFiles/cust_opapi.dir/cust_opapi_stub.cpp.o
+[2026-04-28 17:23:50] [ 50%] Built target cordz_info
+[2026-04-28 17:23:50] [ 50%] Building CXX object third_party/abseil-cpp/absl/strings/CMakeFiles/cord.dir/cord.cc.o
+[2026-04-28 17:23:50] [ 88%] Linking CXX shared library libcust_opapi.so
+[2026-04-28 17:23:50] [ 50%] Building CXX object third_party/abseil-cpp/absl/strings/CMakeFiles/cord.dir/cord_analysis.cc.o
+[2026-04-28 17:23:50] [ 88%] Built target cust_opapi
+[2026-04-28 17:23:50] [ 51%] Building CXX object third_party/abseil-cpp/absl/strings/CMakeFiles/cord.dir/cord_buffer.cc.o
+[2026-04-28 17:23:51] [ 51%] Building CXX object third_party/abseil-cpp/absl/strings/CMakeFiles/cordz_sample_token.dir/internal/cordz_sample_token.cc.o
+[2026-04-28 17:23:52] [ 51%] Linking CXX static library libabsl_cordz_sample_token.a
+[2026-04-28 17:23:52] [ 51%] Built target cordz_sample_token
+[2026-04-28 17:23:54] [ 51%] Linking CXX static library libabsl_cord.a
+[2026-04-28 17:23:54] [ 51%] Built target cord
+[2026-04-28 17:23:54] [ 51%] Building CXX object third_party/abseil-cpp/absl/flags/CMakeFiles/flags_reflection.dir/reflection.cc.o
+[2026-04-28 17:23:54] [ 52%] Building CXX object third_party/abseil-cpp/absl/status/CMakeFiles/status.dir/status.cc.o
+[2026-04-28 17:23:54] [ 52%] Building CXX object third_party/abseil-cpp/absl/status/CMakeFiles/status.dir/status_payload_printer.cc.o
+[2026-04-28 17:23:57] [ 52%] Linking CXX static library libabsl_status.a
+[2026-04-28 17:23:57] [ 52%] Built target status
+[2026-04-28 17:23:59] [ 52%] Building CXX object third_party/abseil-cpp/absl/status/CMakeFiles/statusor.dir/statusor.cc.o
+[2026-04-28 17:24:00] [ 52%] Linking CXX static library libabsl_flags_reflection.a
+[2026-04-28 17:24:00] [ 52%] Built target flags_reflection
+[2026-04-28 17:24:00] [ 52%] Building CXX object third_party/abseil-cpp/absl/flags/CMakeFiles/flags.dir/flag.cc.o
+[2026-04-28 17:24:01] [ 52%] Linking CXX static library libabsl_statusor.a
+[2026-04-28 17:24:01] [ 52%] Built target statusor
+[2026-04-28 17:24:01] [ 52%] Linking CXX static library libabsl_flags.a
+[2026-04-28 17:24:01] [ 52%] Built target flags
+[2026-04-28 17:24:01] Opc tool start working now, please wait for a moment.
+[2026-04-28 17:24:01] [ 52%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/any.pb.cc.o
+[2026-04-28 17:24:02] [ascend950] Generating FlashAttentionScore_2713efb6da0b1818de4e336c9b1a5797 Done
+[2026-04-28 17:24:02] /usr/bin/make
+[2026-04-28 17:24:02] [ 88%] Built target flash_attention_score_apt_ascend950_6
+[2026-04-28 17:24:02] [ 53%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/api.pb.cc.o
+[2026-04-28 17:24:02] [ 53%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/duration.pb.cc.o
+[2026-04-28 17:24:03] [ 53%] Building CXX object CMakeFiles/libprotobuf-lite.dir/src/google/protobuf/any_lite.cc.o
+[2026-04-28 17:24:03] [ 53%] Building CXX object third_party/abseil-cpp/absl/flags/CMakeFiles/flags_usage_internal.dir/internal/usage.cc.o
+[2026-04-28 17:24:03] [ 53%] Building CXX object CMakeFiles/libprotobuf-lite.dir/src/google/protobuf/arena.cc.o
+[2026-04-28 17:24:04] [ 54%] Building CXX object CMakeFiles/libprotobuf-lite.dir/src/google/protobuf/arena_align.cc.o
+[2026-04-28 17:24:04] [ 54%] Building CXX object CMakeFiles/libprotobuf-lite.dir/src/google/protobuf/arenastring.cc.o
+[2026-04-28 17:24:05] [ 54%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/empty.pb.cc.o
+[2026-04-28 17:24:05] [ 54%] Building CXX object CMakeFiles/libprotobuf-lite.dir/src/google/protobuf/arenaz_sampler.cc.o
+[2026-04-28 17:24:05] [ 54%] Building CXX object CMakeFiles/libprotobuf-lite.dir/src/google/protobuf/extension_set.cc.o
+[2026-04-28 17:24:06] [ 54%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/field_mask.pb.cc.o
+[2026-04-28 17:24:06] [ 54%] Linking CXX static library libabsl_flags_usage_internal.a
+[2026-04-28 17:24:06] [ 54%] Built target flags_usage_internal
+[2026-04-28 17:24:06] [ 54%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/source_context.pb.cc.o
+[2026-04-28 17:24:07] [ 55%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/struct.pb.cc.o
+[2026-04-28 17:24:07] [ 55%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/timestamp.pb.cc.o
+[2026-04-28 17:24:08] [ 56%] Building CXX object CMakeFiles/libprotobuf-lite.dir/src/google/protobuf/generated_enum_util.cc.o
+[2026-04-28 17:24:08] [ 56%] Building CXX object CMakeFiles/libprotobuf-lite.dir/src/google/protobuf/generated_message_tctable_lite.cc.o
+[2026-04-28 17:24:08] [ 56%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/type.pb.cc.o
+[2026-04-28 17:24:08] [ 56%] Building CXX object CMakeFiles/libprotobuf-lite.dir/src/google/protobuf/generated_message_util.cc.o
+[2026-04-28 17:24:09] [ 56%] Building CXX object CMakeFiles/libprotobuf-lite.dir/src/google/protobuf/implicit_weak_message.cc.o
+[2026-04-28 17:24:09] [ 56%] Building CXX object CMakeFiles/libprotobuf-lite.dir/src/google/protobuf/inlined_string_field.cc.o
+[2026-04-28 17:24:10] Opc tool start working now, please wait for a moment.
+[2026-04-28 17:24:10] [ascend950] Generating FlashAttentionScore_569ffd4c4d0d40275bf7583939fbe90c Done
+[2026-04-28 17:24:10] /usr/bin/make
+[2026-04-28 17:24:10] [ 88%] Built target flash_attention_score_apt_ascend950_5
+[2026-04-28 17:24:10] [ 57%] Building CXX object CMakeFiles/libprotobuf-lite.dir/src/google/protobuf/io/coded_stream.cc.o
+[2026-04-28 17:24:11] [ 57%] Building CXX object third_party/abseil-cpp/absl/log/CMakeFiles/log_flags.dir/flags.cc.o
+[2026-04-28 17:24:11] Opc tool start working now, please wait for a moment.
+[2026-04-28 17:24:11] [ascend950] Generating FlashAttentionScore_fa7b6be74ff4dd68661d2b32ea199c85 Done
+[2026-04-28 17:24:11] /usr/bin/make
+[2026-04-28 17:24:11] [ 88%] Built target flash_attention_score_apt_ascend950_8
+[2026-04-28 17:24:11] [ 57%] Building CXX object CMakeFiles/libprotobuf-lite.dir/src/google/protobuf/io/io_win32.cc.o
+[2026-04-28 17:24:11] [ 57%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/wrappers.pb.cc.o
+[2026-04-28 17:24:11] [ 57%] Building CXX object CMakeFiles/libprotobuf-lite.dir/src/google/protobuf/io/zero_copy_stream.cc.o
+[2026-04-28 17:24:12] [ 57%] Building CXX object CMakeFiles/libprotobuf-lite.dir/src/google/protobuf/io/zero_copy_stream_impl.cc.o
+[2026-04-28 17:24:12] [ 58%] Building CXX object CMakeFiles/libprotobuf-lite.dir/src/google/protobuf/io/zero_copy_stream_impl_lite.cc.o
+[2026-04-28 17:24:12] [ 58%] Building CXX object CMakeFiles/libprotobuf-lite.dir/src/google/protobuf/map.cc.o
+[2026-/mnt/workspace/DTS/transformer-issue/third_party/ascend_protobuf/src/google/protobuf/message_lite.cc: In member function ‘int ascend_private::protobuf::MessageLite::GetCachedSize() const’:
+/mnt/workspace/DTS/transformer-issue/third_party/ascend_protobuf/src/google/protobuf/message_lite.cc:69:71: warning: ‘int ascend_private::protobuf::MessageLite::ByteSize() const’ is deprecated: Please use ByteSizeLong() instead [-Wdeprecated-declarations]
+   69 |   if (PROTOBUF_PREDICT_FALSE(cached_size == nullptr)) return ByteSize();
+      |                                                                       ^
+In file included from /mnt/workspace/DTS/transformer-issue/third_party/ascend_protobuf/src/google/protobuf/message_lite.cc:13:
+/mnt/workspace/DTS/transformer-issue/third_party/ascend_protobuf/src/google/protobuf/message_lite.h:454:59: note: declared here
+  454 |   [[deprecated("Please use ByteSizeLong() instead")]] int ByteSize() const {
+      |                                                           ^~~~~~~~
+In file included from /mnt/workspace/DTS/transformer-issue/third_party/ascend_protobuf/src/google/protobuf/generated_message_tctable_decl.h:22,
+                 from /mnt/workspace/DTS/transformer-issue/third_party/ascend_protobuf/src/google/protobuf/generated_message_tctable_lite.cc:22:
+/mnt/workspace/DTS/transformer-issue/third_party/ascend_protobuf/src/google/protobuf/parse_context.h:1125:1: warning: always_inline function might not be inlinable [-Wattributes]
+ 1125 | ParseContext::ParseLengthDelimitedInlined(const char* ptr, const Func& func) {
+      | ^~~~~~~~~~~~
+/mnt/workspace/DTS/transformer-issue/third_party/ascend_protobuf/src/google/protobuf/parse_context.h:1125:1: warning: always_inline function might not be inlinable [-Wattributes]
+/mnt/workspace/DTS/transformer-issue/third_party/ascend_protobuf/src/google/protobuf/generated_message_tctable_lite.cc:830:36: warning: always_inline function might not be inlinable [-Wattributes]
+  830 | PROTOBUF_ALWAYS_INLINE const char* TcParser::FastVarintS1(
+      |                                    ^~~~~~~~
+/mnt/workspace/DTS/transformer-issue/third_party/ascend_protobuf/src/google/protobuf/generated_message_tctable_lite.cc:830:36: warning: always_inline function might not be inlinable [-Wattributes]
+/mnt/workspace/DTS/transformer-issue/third_party/ascend_protobuf/src/google/protobuf/generated_message_tctable_lite.cc:753:29: warning: always_inline function might not be inlinable [-Wattributes]
+  753 | PROTOBUF_ALWAYS_INLINE bool EnumIsValidAux(int32_t val, uint16_t xform_val,
+      |                             ^~~~~~~~~~~~~~
+/mnt/workspace/DTS/transformer-issue/third_party/ascend_protobuf/src/google/protobuf/generated_message_tctable_lite.cc:741:29: warning: always_inline function might not be inlinable [-Wattributes]
+  741 | PROTOBUF_ALWAYS_INLINE void PrefetchEnumData(uint16_t xform_val,
+      |                             ^~~~~~~~~~~~~~~~
+04-28 17:24:12] [ 58%] Linking CXX static library libabsl_log_flags.a
+[2026-04-28 17:24:13] [ 58%] Built target log_flags
+[2026-04-28 17:24:13] [ 58%] Building CXX object CMakeFiles/libprotobuf-lite.dir/src/google/protobuf/message_lite.cc.o
+[2026-04-28 17:24:13] [ 59%] Building CXX object third_party/abseil-cpp/absl/flags/CMakeFiles/flags_usage.dir/usage.cc.o
+[2026-04-28 17:24:13] [ 59%] Building CXX object CMakeFiles/libprotobuf-lite.dir/src/google/protobuf/parse_context.cc.o
+[2026-04-28 17:24:14] [ 59%] Building CXX object CMakeFiles/libprotobuf-lite.dir/src/google/protobuf/port.cc.o
+[2026-04-28 17:24:14] [ 60%] Building CXX object CMakeFiles/libprotobuf-lite.dir/src/google/protobuf/raw_ptr.cc.o
+[2026-04-28 17:24:14] [ 60%] Building CXX object CMakeFiles/libprotobuf-lite.dir/src/google/protobuf/repeated_field.cc.o
+[2026-04-28 17:24:14] [ 60%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/any.cc.o
+[2026-04-28 17:24:14] [ 60%] Building CXX object CMakeFiles/libprotobuf-lite.dir/src/google/protobuf/repeated_ptr_field.cc.o
+[2026-04-28 17:24:14] [ 60%] Linking CXX static library libabsl_flags_usage.a
+[2026-04-28 17:24:14] [ 60%] Built target flags_usage
+[2026-04-28 17:24:15] [ 60%] Building CXX object CMakeFiles/libprotobuf-lite.dir/src/google/protobuf/stubs/common.cc.o
+[2026-04-28 17:24:15] [ 61%] Building CXX object CMakeFiles/libprotobuf-lite.dir/src/google/protobuf/wire_format_lite.cc.o
+[2026-04-28 17:24:15] [ 62%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/any_lite.cc.o
+[2026-04-28 17:24:15] [ 62%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/arena.cc.o
+[2026-04-28 17:24:15] [ 62%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/arena_align.cc.o
+[2026-04-28 17:24:15] [ 62%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/arenastring.cc.o
+[2026-04-28 17:24:15] [ 63%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/arenaz_sampler.cc.o
+[2026-04-28 17:24:15] [ 63%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/compiler/importer.cc.o
+[2026-04-28 17:24:16] [ 63%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/compiler/parser.cc.o
+[2026-04-28 17:24:17] [ 63%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/cpp_features.pb.cc.o
+[2026-04-28 17:24:17] [ 63%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/descriptor.cc.o
+[2026-04-28 17:24:17] [ 64%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/descriptor.pb.cc.o
+[2026-04-28 17:24:18] [ 64%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/descriptor_database.cc.o
+[2026-04-28 17:24:18] Opc tool start working now, please wait for a moment.
+[2026-04-28 17:24:18] [ascend950] Generating FlashAttentionScore_f13062768a34c80f914d861d804e1dd9 Done
+[2026-04-28 17:24:18] /usr/bin/make
+[2026-04-28 17:24:18] [ 88%] Built target flash_attention_score_apt_ascend950_7
+[2026-04-28 17:24:18] [ 64%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/dynamic_message.cc.o
+[2026-04-28 17:24:19] [ 64%] Building CXX object third_party/abseil-cpp/absl/flags/CMakeFiles/flags_parse.dir/parse.cc.o
+[2026-04-28 17:24:19] [ 64%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/extension_set.cc.o
+[2026-04-28 17:24:19] [ 65%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/extension_set_heavy.cc.o
+[2026-04-28 17:24:19] [ 65%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/feature_resolver.cc.o
+[2026-04-28 17:24:19] [ 65%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/generated_enum_util.cc.o
+[2026-04-28 17:24:19] [ 65%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/generated_message_bases.cc.o
+[2026-04-28 17:24:20] [ 65%] Linking CXX static library libascend_protobuf-lite.a
+[2026-04-28 17:24:20] [ 65%] Built target libprotobuf-lite
+[2026-04-28 17:24:20] [ 65%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/generated_message_reflection.cc.o
+In file included from /mnt/workspace/DTS/transformer-issue/third_party/ascend_protobuf/src/google/protobuf/generated_message_tctable_decl.h:22,
+                 from /mnt/workspace/DTS/transformer-issue/third_party/ascend_protobuf/src/google/protobuf/generated_message_tctable_lite.cc:22:
+/mnt/workspace/DTS/transformer-issue/third_party/ascend_protobuf/src/google/protobuf/parse_context.h:1125:1: warning: always_inline function might not be inlinable [-Wattributes]
+ 1125 | ParseContext::ParseLengthDelimitedInlined(const char* ptr, const Func& func) {
+      | ^~~~~~~~~~~~
+/mnt/workspace/DTS/transformer-issue/third_party/ascend_protobuf/src/google/protobuf/parse_context.h:1125:1: warning: always_inline function might not be inlinable [-Wattributes]
+/mnt/workspace/DTS/transformer-issue/third_party/ascend_protobuf/src/google/protobuf/generated_message_tctable_lite.cc:830:36: warning: always_inline function might not be inlinable [-Wattributes]
+  830 | PROTOBUF_ALWAYS_INLINE const char* TcParser::FastVarintS1(
+      |                                    ^~~~~~~~
+/mnt/workspace/DTS/transformer-issue/third_party/ascend_protobuf/src/google/protobuf/generated_message_tctable_lite.cc:830:36: warning: always_inline function might not be inlinable [-Wattributes]
+/mnt/workspace/DTS/transformer-issue/third_party/ascend_protobuf/src/google/protobuf/generated_message_tctable_lite.cc:753:29: warning: always_inline function might not be inlinable [-Wattributes]
+  753 | PROTOBUF_ALWAYS_INLINE bool EnumIsValidAux(int32_t val, uint16_t xform_val,
+      |                             ^~~~~~~~~~~~~~
+/mnt/workspace/DTS/transformer-issue/third_party/ascend_protobuf/src/google/protobuf/generated_message_tctable_lite.cc:741:29: warning: always_inline function might not be inlinable [-Wattributes]
+  741 | PROTOBUF_ALWAYS_INLINE void PrefetchEnumData(uint16_t xform_val,
+      |                             ^~~~~~~~~~~~~~~~
+/mnt/workspace/DTS/transformer-issue/third_party/ascend_protobuf/src/google/protobuf/message_lite.cc: In member function ‘int ascend_private::protobuf::MessageLite::GetCachedSize() const’:
+/mnt/workspace/DTS/transformer-issue/third_party/ascend_protobuf/src/google/protobuf/message_lite.cc:69:71: warning: ‘int ascend_private::protobuf::MessageLite::ByteSize() const’ is deprecated: Please use ByteSizeLong() instead [-Wdeprecated-declarations]
+   69 |   if (PROTOBUF_PREDICT_FALSE(cached_size == nullptr)) return ByteSize();
+      |                                                                       ^
+In file included from /mnt/workspace/DTS/transformer-issue/third_party/ascend_protobuf/src/google/protobuf/message_lite.cc:13:
+/mnt/workspace/DTS/transformer-issue/third_party/ascend_protobuf/src/google/protobuf/message_lite.h:454:59: note: declared here
+  454 |   [[deprecated("Please use ByteSizeLong() instead")]] int ByteSize() const {
+      |                                                           ^~~~~~~~
+[2026-04-28 17:24:21] [ 66%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/generated_message_tctable_full.cc.o
+[2026-04-28 17:24:21] [ 66%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/generated_message_tctable_gen.cc.o
+[2026-04-28 17:24:22] [ 66%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/generated_message_tctable_lite.cc.o
+[2026-04-28 17:24:22] [ 66%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/generated_message_util.cc.o
+[2026-04-28 17:24:22] [ 66%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/implicit_weak_message.cc.o
+[2026-04-28 17:24:22] [ 67%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/inlined_string_field.cc.o
+[2026-04-28 17:24:22] [ 67%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/internal_message_util.cc.o
+[2026-04-28 17:24:23] [ 67%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/io/coded_stream.cc.o
+[2026-04-28 17:24:23] [ 67%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/io/gzip_stream.cc.o
+[2026-04-28 17:24:23] [ 68%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/io/io_win32.cc.o
+[2026-04-28 17:24:23] [ 68%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/io/printer.cc.o
+[2026-04-28 17:24:23] [ 68%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/io/strtod.cc.o
+[2026-04-28 17:24:24] [ 68%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/io/tokenizer.cc.o
+[2026-04-28 17:24:24] [ 68%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/io/zero_copy_sink.cc.o
+[2026-04-28 17:24:24] [ 69%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/io/zero_copy_stream.cc.o
+[2026-04-28 17:24:25] [ 69%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/io/zero_copy_stream_impl.cc.o
+[2026-04-28 17:24:25] [ 69%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/io/zero_copy_stream_impl_lite.cc.o
+[2026-04-28 17:24:25] [ 69%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/json/internal/lexer.cc.o
+[2026-04-28 17:24:25] [ 70%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/json/internal/message_path.cc.o
+[2026-04-28 17:24:25] [ 70%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/json/internal/parser.cc.o
+[2026-04-28 17:24:25] [ 70%] Linking CXX static library libabsl_flags_parse.a
+[2026-04-28 17:24:25] [ 70%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/json/internal/unparser.cc.o
+[2026-04-28 17:24:25] [ 70%] Built target flags_parse
+[2026-04-28 17:24:25] [ 70%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/json/internal/untyped_message.cc.o
+[2026-04-28 17:24:25] [ 70%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/json/internal/writer.cc.o
+[2026-04-28 17:24:25] [ 71%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/json/internal/zero_copy_buffered_stream.cc.o
+[2026-04-28 17:24:26] [ 71%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/json/json.cc.o
+[2026-04-28 17:24:26] [ 71%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/map.cc.o
+[2026-04-28 17:24:26] [ 71%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/map_field.cc.o
+[2026-04-28 17:24:26] [ 71%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/message.cc.o
+[2026-04-28 17:24:27] [ 72%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/message_lite.cc.o
+[2026-04-28 17:24:27] [ 72%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/parse_context.cc.o
+[2026-04-28 17:24:27] [ 72%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/port.cc.o
+[2026-04-28 17:24:27] [ 72%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/raw_ptr.cc.o
+[2026-04-28 17:24:27] [ 73%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/reflection_mode.cc.o
+[2026-04-28 17:24:27] [ 73%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/reflection_ops.cc.o
+[2026-04-28 17:24:27] [ 73%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/repeated_field.cc.o
+[2026-04-28 17:24:27] [ 73%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/repeated_ptr_field.cc.o
+[2026-04-28 17:24:27] [ 73%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/service.cc.o
+[2026-04-28 17:24:28] [ 74%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/stubs/common.cc.o
+[2026-04-28 17:24:28] [ 74%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/text_format.cc.o
+[2026-04-28 17:24:28] Opc tool start working now, please wait for a moment.
+[2026-04-28 17:24:29] [ 74%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/unknown_field_set.cc.o
+[2026-04-28 17:24:29] [ 74%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/util/delimited_message_util.cc.o
+[2026-04-28 17:24:29] [ascend950] Generating FlashAttentionScore_ebbad589462def4957c1042c3e292bb3 Done
+[2026-04-28 17:24:29] /usr/bin/make
+[2026-04-28 17:24:29] [ 75%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/util/field_comparator.cc.o
+[2026-04-28 17:24:29] [ 88%] Built target flash_attention_score_apt_ascend950_4
+[2026-04-28 17:24:29] [ 75%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/util/field_mask_util.cc.o
+[2026-04-28 17:24:29] Opc tool start working now, please wait for a moment.
+[2026-04-28 17:24:29] [ 75%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/util/message_differencer.cc.o
+[2026-04-28 17:24:29] [ascend950] Generating FlashAttentionScore_643870ea4f8bc6c1e93de65cf55d3f9f Done
+[2026-04-28 17:24:29] /usr/bin/make
+[2026-04-28 17:24:29] [ 88%] Built target flash_attention_score_apt_ascend950_3
+[2026-04-28 17:24:29] [ 75%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/util/time_util.cc.o
+[2026-04-28 17:24:30] [ 75%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/util/type_resolver_util.cc.o
+[2026-04-28 17:24:31] [ 76%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/wire_format.cc.o
+[2026-04-28 17:24:32] [ 76%] Building CXX object CMakeFiles/libprotobuf.dir/src/google/protobuf/wire_format_lite.cc.o
+[2026-04-28 17:24:56] [ 76%] Linking CXX static library libascend_protobuf.a
+[2026-04-28 17:24:56] [ 76%] Built target libprotobuf
+[2026-04-28 17:24:56] [ 76%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/allowlists/editions.cc.o
+[2026-04-28 17:24:56] [ 76%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/allowlists/empty_package.cc.o
+[2026-04-28 17:24:57] [ 76%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/allowlists/open_enum.cc.o
+[2026-04-28 17:24:57] [ 77%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/allowlists/unused_imports.cc.o
+[2026-04-28 17:24:58] [ 77%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/allowlists/weak_imports.cc.o
+[2026-04-28 17:24:58] [ 77%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/code_generator.cc.o
+[2026-04-28 17:24:58] [ 77%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/command_line_interface.cc.o
+[2026-04-28 17:24:58] [ 77%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/cpp/enum.cc.o
+[2026-04-28 17:24:59] [ 78%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/cpp/extension.cc.o
+[2026-04-28 17:24:59] [ 78%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/cpp/field.cc.o
+[2026-04-28 17:24:59] [ 78%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/cpp/field_generators/cord_field.cc.o
+[2026-04-28 17:24:59] [ 78%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/cpp/field_generators/enum_field.cc.o
+[2026-04-28 17:25:01] [ 79%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/cpp/field_generators/map_field.cc.o
+[2026-04-28 17:25:01] [ 79%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/cpp/field_generators/message_field.cc.o
+[2026-04-28 17:25:01] [ 79%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/cpp/field_generators/primitive_field.cc.o
+[2026-04-28 17:25:01] [ 79%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/cpp/field_generators/string_field.cc.o
+[2026-04-28 17:25:02] [ 79%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/cpp/file.cc.o
+[2026-04-28 17:25:04] [ 80%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/cpp/generator.cc.o
+[2026-04-28 17:25:05] [ 80%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/cpp/helpers.cc.o
+[2026-04-28 17:25:05] [ 80%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/cpp/message.cc.o
+[2026-04-28 17:25:05] [ 80%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/cpp/padding_optimizer.cc.o
+[2026-04-28 17:25:06] [ 81%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/cpp/parse_function_generator.cc.o
+[2026-04-28 17:25:06] [ 81%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/cpp/service.cc.o
+[2026-04-28 17:25:07] [ 81%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/cpp/tracker.cc.o
+[2026-04-28 17:25:08] [ 81%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/csharp/csharp_doc_comment.cc.o
+[2026-04-28 17:25:08] [ 81%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/csharp/csharp_enum.cc.o
+[2026-04-28 17:25:08] [ 82%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/csharp/csharp_enum_field.cc.o
+[2026-04-28 17:25:09] [ 82%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/csharp/csharp_field_base.cc.o
+[2026-04-28 17:25:09] [ 82%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/csharp/csharp_generator.cc.o
+[2026-04-28 17:25:09] [ 82%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/csharp/csharp_helpers.cc.o
+[2026-04-28 17:25:10] [ 82%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/csharp/csharp_map_field.cc.o
+[2026-04-28 17:25:11] [ 83%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/csharp/csharp_message.cc.o
+[2026-04-28 17:25:12] [ 83%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/csharp/csharp_message_field.cc.o
+[2026-04-28 17:25:13] [ 83%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/csharp/csharp_primitive_field.cc.o
+[2026-04-28 17:25:14] [ 83%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/csharp/csharp_reflection_class.cc.o
+[2026-04-28 17:25:14] [ 84%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/csharp/csharp_repeated_enum_field.cc.o
+[2026-04-28 17:25:15] [ 84%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/csharp/csharp_repeated_message_field.cc.o
+[2026-04-28 17:25:15] [ 84%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/csharp/csharp_repeated_primitive_field.cc.o
+[2026-04-28 17:25:15] [ 84%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/csharp/csharp_source_generator_base.cc.o
+[2026-04-28 17:25:15] [ 84%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/csharp/csharp_wrapper_field.cc.o
+[2026-04-28 17:25:16] [ 85%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/csharp/names.cc.o
+[2026-04-28 17:25:16] [ 85%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/java/context.cc.o
+[2026-04-28 17:25:16] [ 85%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/java/doc_comment.cc.o
+[2026-04-28 17:25:16] [ 85%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/java/enum.cc.o
+[2026-04-28 17:25:17] [ 86%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/java/enum_field.cc.o
+[2026-04-28 17:25:18] [ 86%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/java/enum_field_lite.cc.o
+[2026-04-28 17:25:19] [ 86%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/java/enum_lite.cc.o
+[2026-04-28 17:25:20] [ 86%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/java/extension.cc.o
+[2026-04-28 17:25:20] [ 86%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/java/extension_lite.cc.o
+[2026-04-28 17:25:21] [ 87%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/java/field.cc.o
+[2026-04-28 17:25:21] [ 87%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/java/file.cc.o
+[2026-04-28 17:25:22] [ 87%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/java/generator.cc.o
+[2026-04-28 17:25:22] [ 87%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/java/generator_factory.cc.o
+[2026-04-28 17:25:22] [ 87%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/java/helpers.cc.o
+[2026-04-28 17:25:22] [ 88%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/java/java_features.pb.cc.o
+[2026-04-28 17:25:24] [ 88%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/java/kotlin_generator.cc.o
+[2026-04-28 17:25:25] [ 88%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/java/map_field.cc.o
+[2026-04-28 17:25:26] [ 88%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/java/map_field_lite.cc.o
+[2026-04-28 17:25:26] [ 89%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/java/message.cc.o
+[2026-04-28 17:25:27] [ 89%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/java/message_builder.cc.o
+[2026-04-28 17:25:27] [ 89%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/java/message_builder_lite.cc.o
+[2026-04-28 17:25:28] [ 89%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/java/message_field.cc.o
+[2026-04-28 17:25:28] [ 89%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/java/message_field_lite.cc.o
+[2026-04-28 17:25:30] [ 90%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/java/message_lite.cc.o
+[2026-04-28 17:25:30] [ 90%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/java/message_serialization.cc.o
+[2026-04-28 17:25:30] [ 90%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/java/name_resolver.cc.o
+[2026-04-28 17:25:30] [ 90%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/java/names.cc.o
+[2026-04-28 17:25:35] [ 91%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/java/primitive_field.cc.o
+[2026-04-28 17:25:36] [ 91%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/java/primitive_field_lite.cc.o
+[2026-04-28 17:25:36] [ 91%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/java/service.cc.o
+[2026-04-28 17:25:36] [ 91%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/java/shared_code_generator.cc.o
+[2026-04-28 17:25:36] [ 91%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/java/string_field.cc.o
+[2026-04-28 17:25:37] [ 92%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/java/string_field_lite.cc.o
+[2026-04-28 17:25:38] [ 92%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/objectivec/enum.cc.o
+[2026-04-28 17:25:38] [ 92%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/objectivec/enum_field.cc.o
+[2026-04-28 17:25:39] [ 92%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/objectivec/extension.cc.o
+[2026-04-28 17:25:40] [ 93%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/objectivec/field.cc.o
+[2026-04-28 17:25:40] [ 93%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/objectivec/file.cc.o
+[2026-04-28 17:25:41] [ 93%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/objectivec/generator.cc.o
+[2026-04-28 17:25:42] [ 93%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/objectivec/helpers.cc.o
+[2026-04-28 17:25:44] [ 93%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/objectivec/import_writer.cc.o
+[2026-04-28 17:25:44] [ 94%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/objectivec/line_consumer.cc.o
+[2026-04-28 17:25:45] [ 94%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/objectivec/map_field.cc.o
+[2026-04-28 17:25:46] [ 94%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/objectivec/message.cc.o
+[2026-04-28 17:25:47] [ 94%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/objectivec/message_field.cc.o
+[2026-04-28 17:25:48] [ 94%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/objectivec/names.cc.o
+[2026-04-28 17:25:48] [ 95%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/objectivec/oneof.cc.o
+[2026-04-28 17:25:48] [ 95%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/objectivec/primitive_field.cc.o
+[2026-04-28 17:25:48] [ 95%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/objectivec/text_format_decode_data.cc.o
+[2026-04-28 17:25:49] [ 95%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/php/names.cc.o
+[2026-04-28 17:25:49] [ 96%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/php/php_generator.cc.o
+[2026-04-28 17:25:49] [ 96%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/plugin.cc.o
+[2026-04-28 17:25:49] [ 96%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/plugin.pb.cc.o
+[2026-04-28 17:25:50] [ 96%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/python/generator.cc.o
+[2026-04-28 17:25:50] [ 96%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/python/helpers.cc.o
+[2026-04-28 17:25:51] [ 97%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/python/pyi_generator.cc.o
+[2026-04-28 17:25:52] [ 97%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/retention.cc.o
+[2026-04-28 17:25:52] [ 97%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/ruby/ruby_generator.cc.o
+[2026-04-28 17:25:52] [ 97%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/rust/accessors/accessors.cc.o
+[2026-04-28 17:25:55] [ 98%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/rust/accessors/singular_message.cc.o
+[2026-04-28 17:25:55] [ 98%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/rust/accessors/singular_scalar.cc.o
+[2026-04-28 17:25:55] [ 98%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/rust/accessors/singular_string.cc.o
+[2026-04-28 17:25:55] [ 98%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/rust/accessors/unsupported_field.cc.o
+[2026-04-28 17:25:56] [ 98%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/rust/context.cc.o
+[2026-04-28 17:25:56] [ 99%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/rust/generator.cc.o
+[2026-04-28 17:25:57] [ 99%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/rust/message.cc.o
+[2026-04-28 17:25:57] [ 99%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/rust/naming.cc.o
+[2026-04-28 17:25:58] [ 99%] Building CXX object CMakeFiles/libprotoc.dir/src/google/protobuf/compiler/rusmake[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595.mk:1844: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595_2544533792149733952] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595.mk:1852: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595_2328361009230905920] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595.mk:1854: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595_2328361009767776832] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595.mk:1864: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595_2738196272439624512] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595.mk:1868: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595_2666138678401696576] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595.mk:1872: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595_2810253866477552448] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595.mk:1886: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595_2526527089953211200] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595.mk:1888: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595_2814757466104922944] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595.mk:1894: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595_2458973095542653760] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595.mk:1896: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595_2747203471694365504] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595.mk:1900: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595_2675145877656437568] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595.mk:1902: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595_2531030689580581696] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595.mk:1904: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595_2819261065732293440] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595.mk:1906: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595_2319361507094168384] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595.mk:1912: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595_2751707071321736000] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595.mk:1914: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595_2391419101132096320] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595.mk:1916: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595_2679649477283808064] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595.mk:1920: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595_2823764665359663936] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595.mk:1922: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595_2328368706348909376] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595.mk:1924: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595_2616599082500621120] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594.mk:1886: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594_2526527089953211200] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594.mk:1892: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594_2603088283618509632] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594.mk:1894: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594_2458973095542653760] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594.mk:1898: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594_2386915501504725824] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594.mk:1904: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594_2819261065732293440] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594.mk:1908: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594_2607591883245880128] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594.mk:1910: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594_2463476695170024256] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594.mk:1914: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594_2391419101132096320] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594.mk:1916: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594_2679649477283808064] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594.mk:1918: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594_2535534289207952192] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594.mk:1924: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594_2616599082500621120] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594.mk:1926: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594_2472483894424765248] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594.mk:1928: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594_2760714270576476992] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594.mk:1930: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594_2400426300386837312] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594.mk:1932: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594_2688656676538549056] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594.mk:1934: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594_2544541488462693184] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595.mk:1910: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595_2463476695170024256] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594.mk:1906: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594_2319361507094168384] Hangup
+make[2]: *** wait: No child processes.  Stop.
+make[2]: *** Waiting for unfinished jobs....
+make[2]: *** wait: No child processes.  Stop.
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594.mk:1900: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594_2675145877656437568] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594.mk:1912: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594_2751707071321736000] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594.mk:1920: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594_2823764665359663936] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594.mk:1922: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594_2328368706348909376] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595.mk:1862: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595_2449965896287912768] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595.mk:1876: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595_2598584683991139136] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595.mk:1892: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595_2603088283618509632] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595.mk:1908: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595_2607591883245880128] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595.mk:1918: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595_2535534289207952192] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595.mk:1880: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595_2742699872066995008] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595.mk:1884: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595_2670642278029067072] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594.mk:1902: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594_2531030689580581696] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595.mk:1882: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595_2382411901877355328] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595.mk:1898: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595_2386915501504725824] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594.mk:1882: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594_2382411901877355328] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595.mk:1850: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595_2328361008425599552] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595.mk:1878: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595_2454469495915283264] Hangup
+make[1]: *** [CMakeFiles/Makefile2:823: CMakeFiles/flash_attention_score_apt_ascend950_0.dir/all] Error 2
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595.mk:1890: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595_2314857907466797888] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595.mk:1860: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595_2594081084363768640] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595.mk:1874: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595_2310354307839427392] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594.mk:1896: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594_2747203471694365504] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594.mk:1878: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5/kernel_meta/FlashAttentionScore_50348df09d0b3ee451d3693a6b2ab3f5_tmp_aiv_7594_2454469495915283264] Hangup
+make[2]: *** wait: No child processes.  Stop.
+make[2]: *** Waiting for unfinished jobs....
+make[2]: *** wait: No child processes.  Stop.
+make[1]: *** [CMakeFiles/Makefile2:764: CMakeFiles/flash_attention_score_apt_ascend950_1.dir/all] Error 2
+make: *** [Makefile:156: all] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595.mk:1848: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595_2616599082500883008] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595.mk:1856: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595_2328361010036212288] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595.mk:1866: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595_2377908302249984832] Hangup
+make[3]: *** [/mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595.mk:1870: /mnt/workspace/DTS/transformer-issue/build/binary/ascend950/gen/kernel_meta_FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4/kernel_meta/FlashAttentionScore_236874ba12878eb501b11f3f4feb2ce4_tmp_aiv_7595_2522023490325840704] Hangup
