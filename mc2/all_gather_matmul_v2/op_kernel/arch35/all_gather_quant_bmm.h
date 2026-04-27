@@ -76,7 +76,7 @@ private:
     uint32_t rankId_;
 
     HcclHandle handleList_[MAX_HANDLE_WITH_SCALE1];             /* hccl handle */
-    Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hcclAllgather_;        /* CCU */
+    Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU> hcclAllgather_;        /* CCU */
     uint64_t preCoreNum_ = 0;
 };
 
