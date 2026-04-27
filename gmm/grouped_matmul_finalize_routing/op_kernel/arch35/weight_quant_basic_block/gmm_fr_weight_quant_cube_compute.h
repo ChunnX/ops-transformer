@@ -229,7 +229,7 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::CopyMxScaleGmToL1
     if (kbL1Offset % MX_SCALE_K_L1_SIZE != 0) {
         return;
     }
-    uint64_t kSizeAligned = CeilAlign(param.kSize, 64UL);
+    uint64_t kSizeAligned = CeilAlign(param.kSize, ALIGN_64_FACTOR);
     uint64_t scaleKGmSize = kSizeAligned / MX_GROUPSIZE;
     // 当前scaleFactor为1，暂不考虑scaleFactor相关计算
     uint64_t scaleKL1StandardLen = MX_SCALE_K_L1_SIZE / MX_GROUPSIZE;
