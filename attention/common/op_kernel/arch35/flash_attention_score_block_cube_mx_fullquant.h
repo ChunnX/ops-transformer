@@ -357,7 +357,7 @@ __aicore__ inline void FABlockCubeMxFullquant<TEMPLATE_ARGS>::InitLocalBuffer()
     l0bBufferManager.Init(tPipe, 65536); // 64 * 1024
     l0cBufferManager.Init(tPipe, 262144); // 256 * 1024
     // L0A B C当前写死，要改成通过计算获取
-    if (IsSameType<INPUT_T, float>::value) {
+    if constexpr (IsSameType<INPUT_T, float>::value) {
         mmL0ABuffers.Init(l0aBufferManager, 64 * 1024);
         mmL0BBuffers.Init(l0bBufferManager, 64 * 1024);
     } else {
@@ -487,7 +487,7 @@ __aicore__ inline void FABlockCubeMxFullquant<TEMPLATE_ARGS>::IterateBmm1(
     CalcS1Coord(runInfo, constInfo);
     CalcS2Coord(runInfo, constInfo);
     if constexpr (isFp8) {
-        if (isMxfp8FullQuant) {
+        if constexpr (isMxfp8FullQuant) {
             IterateBmm1MxFp8(outputBuf, runInfo, constInfo, subLoop);
         } else if constexpr (useDn) {
             IterateBmm1Dn(outputBuf, runInfo, constInfo);
@@ -764,7 +764,6 @@ __aicore__ inline void FABlockCubeMxFullquant<TEMPLATE_ARGS>::IterateBmm1Nz(
     mm1A.Wait<HardEvent::MTE2_MTE1>(); // 等待L1A
     mm1B.Wait<HardEvent::MTE2_MTE1>(); // 等待L1B
 
-
     float deScaleValueTile1 = 1.0f;
     float deScaleValueTile2 = 1.0f;
     if constexpr (isFp8) {
@@ -818,7 +817,6 @@ __aicore__ inline void FABlockCubeMxFullquant<TEMPLATE_ARGS>::IterateBmm1Nz(
             }
             mm1B.Set<HardEvent::MTE1_MTE2>(); // 释放L1B
         }
-
 
         mm1ResL0C.Set<HardEvent::M_FIX>(); // 通知
         mm1ResL0C.Wait<HardEvent::M_FIX>(); // 等待L0C

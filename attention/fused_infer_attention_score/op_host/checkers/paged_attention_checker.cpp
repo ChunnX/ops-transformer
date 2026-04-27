@@ -517,13 +517,10 @@ ge::graphStatus PagedAttentionChecker::CheckKVLayout(const FiaTilingInfo &fiaInf
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(dimNum == 5, OP_LOGE(fiaInfo.opName, "In MXFP8 fullquant scenario, PA_NZ is not supported."),
                     return ge::GRAPH_FAILED);
-    } else {
-        if (inputLayout == "BSH" || inputLayout == "BSND" || inputLayout == "BSH_NBSD" || inputLayout == "BSND_NBSD") {
-            OP_CHECK_IF(dimNum == 4,
-                OP_LOGE(fiaInfo.opName,
-                    "When page attention enable and input layout is %s, PA BnNBsD is not supported.", inputLayout.c_str()),
-                return ge::GRAPH_FAILED);
-        }
+    } else if (inputLayout == "BSH" || inputLayout == "BSND" || inputLayout == "BSH_NBSD" || inputLayout == "BSND_NBSD") {
+        OP_CHECK_IF(dimNum == 4, OP_LOGE(fiaInfo.opName, "When page attention enable and input layout is %s, "
+                "PA BnNBsD is not supported.", inputLayout.c_str()),
+            return ge::GRAPH_FAILED);
     }
     if (fiaInfo.socVersion == platform_ascendc::SocVersion::ASCEND910B) {
         OP_CHECK_IF(fiaInfo.kvLayout == FiaLayout::BnBsH && (fiaInfo.qLayout != FiaLayout::BSH && fiaInfo.qLayout != FiaLayout::BSND &&

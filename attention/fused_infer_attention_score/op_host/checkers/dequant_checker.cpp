@@ -830,7 +830,7 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeMXFP8(const FiaTilingInfo 
     const uint32_t valueDimNum = valueInputShape.GetDimNum();
     const gert::Shape valueAntiquantScaleShape = fiaInfo.opParamInfo.valueAntiquantScale.tensor->GetStorageShape();
     const uint32_t valueAntiquantScaleDimNum = valueAntiquantScaleShape.GetDimNum();
-    const int64_t mxfp8BlockSize= 64;
+    const int64_t mxfp8BlockSize = 64;
     uint32_t scaleQDim = 4;
     uint32_t scaleKVDim = fiaInfo.pageAttentionFlag ? 5 : 4;
 
