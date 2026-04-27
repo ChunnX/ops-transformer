@@ -277,7 +277,6 @@ Ascend 950PR/Ascend 950DT：
 - block_size取值为16的倍数，最大支持1024。
 - 参数query、key的数据类型应保持一致。
 - 参数weights不为`float32`时，参数query、key、weights的数据类型应保持一致。
-- Ascend 950PR/Ascend 950DT：参数query中的N暂时仅支持8、16、24、32和64，且参数weights不支持`float32`类型。
 
 ## 调用示例
 
