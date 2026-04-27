@@ -1148,7 +1148,7 @@ aclnnStatus aclnnNormRopeConcat(
 
       if (workspaceSize > 0) {
           aclrtFree(workspaceAddr);
-      }f
+      }
       aclrtDestroyStream(stream);
       aclrtDestroyContext(context);
       aclrtResetDevice(deviceId);
