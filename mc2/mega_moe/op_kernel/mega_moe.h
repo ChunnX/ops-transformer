@@ -154,14 +154,12 @@ private:
     uint32_t expertPerRank_ = 0;
     uint32_t groupListType_ = 0;
     uint64_t maxOutputSize_ = 0;
-
     int32_t prevSum_ = 0;
     int32_t dispatchRows_ = 0;
     int32_t vecSetSyncCom_ = 0;
     uint32_t startBlockIdx_ = 0;
     uint32_t dispatchBlockNumPerEP_ = 2;
     int32_t perRankStridesInTokenPerExpert_ = 0;
-
     uint32_t blockNum_ = GetBlockNum();
     uint32_t blockIdx_ = GetBlockIdx() / GetTaskRation();
     uint32_t aivCoreIdx_ = GetBlockIdx();
