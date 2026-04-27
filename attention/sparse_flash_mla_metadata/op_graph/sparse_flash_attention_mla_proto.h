@@ -9,40 +9,38 @@
  */
 
 /*!
- * \file sparse_flash_attention_metadata_proto.h
+ * \file sparse_flash_mla_metadata_proto.h
  * \brief
  */
-#ifndef SPARSE_FLASH_ATTENTION_METADATA_PROTO_H
-#define SPARSE_FLASH_ATTENTION_METADATA_PROTO_H
+#ifndef SPARSE_FLASH_MLA_METADATA_PROTO_H
+#define SPARSE_FLASH_MLA_METADATA_PROTO_H
 
 #include "graph/operator_reg.h"
 #include "graph/types.h"
 
 namespace ge {
 
-REG_OP(SparseFlashAttentionMetadata)
-    .OPTIONAL_INPUT(actual_seq_lengths_query, TensorType({DT_INT32}))
-    .OPTIONAL_INPUT(actual_seq_lengths_kv, TensorType({DT_INT32}))
-    .OUTPUT(metadata, TensorType({DT_INT32}))
+REG_OP(SparseFlashMlaMetadata)
+    .OPTIONAL_INPUT(cu_seqlens_q, TensorType({DT_INT32}))
+    .OPTIONAL_INPUT(cu_seqlens_ori_kv, TensorType({DT_INT32}))
+    .OPTIONAL_INPUT(seqused_q, TensorType({DT_INT32}))
+    .OPTIONAL_INPUT(seqused_ori_kv, TensorType({DT_INT32}))
     .REQUIRED_ATTR(num_heads_q, Int)
     .REQUIRED_ATTR(num_heads_kv, Int)
     .REQUIRED_ATTR(head_dim, Int)
-    .ATTR(batch_size, Int, 0)
-    .ATTR(max_seqlen_q, Int, 0)
-    .ATTR(max_seqlen_kv, Int, 0)
-    .ATTR(rope_head_dim, Int, 0)
-    .ATTR(topk, Int, 0)
-    .ATTR(sparse_block_size, Int, 1)
-    .ATTR(layout_query, String, "BSND")
-    .ATTR(layout_kv, String, "BSND")
-    .ATTR(sparse_mode, Int, 3)
-    .ATTR(pre_tokens, Int, 9223372036854775807)
-    .ATTR(next_tokens, Int, 9223372036854775807)
-    .ATTR(attention_mode, Int, 0)
     .REQUIRED_ATTR(soc_version, String)
     .REQUIRED_ATTR(aic_core_num, Int)
     .REQUIRED_ATTR(aiv_core_num, Int)
-    .OP_END_FACTORY_REG(SparseFlashAttentionMetadata)
+    .ATTR(batch_size, Int, 0)
+    .ATTR(max_seqlen_q, Int, 0)
+    .ATTR(max_seqlen_kv, Int, 0)
+    .ATTR(ori_topk, Int, 0)
+    .ATTR(ori_mask_mode, Int, 0)
+    .ATTR(layout_q, String, "BSND")
+    .ATTR(layout_kv, String, "BSND")
+    .ATTR(has_ori_kv, Bool, true)
+    .OUTPUT(metadata, TensorType({DT_INT32}))
+    .OP_END_FACTORY_REG(SparseFlashMlaMetadata)
 } // namespace ge
 
-#endif // SPARSE_FLASH_ATTENTION_METADATA_PROTO_H
+#endif // SPARSE_FLASH_MLA_METADATA_PROTO_H

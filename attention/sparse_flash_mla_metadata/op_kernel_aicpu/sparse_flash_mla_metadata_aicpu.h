@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file kv_quant_sparse_flash_attention_metadata_aicpu.h
+ * \file sparse_flash_mla_metadata_aicpu.h
  * \brief
  */
 
-#ifndef KV_QUANT_SPARSE_FLASH_ATTENTION_METADATA_AICPU_H
-#define KV_QUANT_SPARSE_FLASH_ATTENTION_METADATA_AICPU_H
+#ifndef SPARSE_FLASH_MLA_METADATA_AICPU_H
+#define SPARSE_FLASH_MLA_METADATA_AICPU_H
 
 #include <array>
 #include <string>
@@ -22,7 +22,7 @@
 #include "cpu_context.h"
 #include "cpu_kernel.h"
 #include "cpu_tensor.h"
-#include "kv_quant_sparse_flash_attention_metadata.h"
+#include "sparse_flash_mla_metadata.h"
 
 namespace aicpu {
 constexpr int64_t FA_TOLERANCE_RATIO = 2;
@@ -267,10 +267,10 @@ struct AssignContext {
     CoreCache coreCache {};
 };
 
-class KvQuantSparseFlashAttentionMetadataCpuKernel : public CpuKernel {
+class SparseFlashMlaMetadataCpuKernel : public CpuKernel {
 public:
-    KvQuantSparseFlashAttentionMetadataCpuKernel() = default;
-    ~KvQuantSparseFlashAttentionMetadataCpuKernel() = default;
+    SparseFlashMlaMetadataCpuKernel() = default;
+    ~SparseFlashMlaMetadataCpuKernel() = default;
     uint32_t Compute(CpuKernelContext &ctx) override;
 
 private:
@@ -323,23 +323,24 @@ private:
 
 private:
     // input
-    Tensor *actSeqLenQ_ = nullptr;
-    Tensor *actSeqLenKv_ = nullptr;
+    Tensor *cuSeqLenQ_ = nullptr;
+    Tensor *cuSeqLenOriKv_ = nullptr;
+    Tensor *seqUsedQ_ = nullptr;
+    Tensor *seqUsedOriKv_ = nullptr;
 
     // output
     Tensor *metaData_ = nullptr;
 
     // attributes
     int32_t batchSize_ = 0;
-    int32_t maxSeqlenQ_ = 0;
     int32_t queryHeadNum_ = 0;
-    int32_t maxSeqlenK_ = 0;
     int32_t kvHeadNum_ = 0;
+    int32_t maxSeqlenQ_ = 0;
+    int32_t maxSeqlenKv_ = 0;
     int32_t headDim_ = 0;
-    int32_t topK_ = 0;
-    int32_t sparseMode_ = 3;
-    int64_t preTokens_ = 9223372036854775807;
-    int64_t nextTokens_ = 9223372036854775807;
+    int32_t oriTopK_ = 0;
+    int32_t maskMode_ = 3;
+    SparseMode maskModeEnum_ = SparseMode::SPARSE_BUTT;
     std::string layoutQuery_ = "BSND";
     std::string layoutKv_ = "BSND";
     uint32_t aicCoreNum_ = 24U;
@@ -356,16 +357,18 @@ private:
     bool supportFd = false;
     uint32_t attentionMode_ = 1;
     BlockCost<int64_t> typeCost_ = {};
-    bool isN128 = false;
-    bool hasTopk = false;
+    bool isN128_ = false;
+    bool hasTopk_ = false;
     
 private:
     enum class ParamId : uint32_t {
-    // input
-    actSeqLenQ = 0,
-    actSeqLenKv = 1,
-    // output
-    metaData = 0,
+        // input
+        cuSeqLenQ = 0,
+        cuSeqLenOriKv = 1,
+        seqUsedQ = 2,
+        seqUsedOriKv = 3,
+        // output
+        metaData = 0,
     };
 };
 } // namespace aicpu

@@ -9,16 +9,16 @@
  */
 
 /*!
- * \file sparse_flash_attention_metadata_infershape.cpp
+ * \file sparse_flash_mla_metadata_infershape.cpp
  * \brief
  */
 #include "register/op_impl_registry.h"
-#include "../op_kernel_aicpu/sparse_flash_attention_metadata.h"
+#include "../op_kernel_aicpu/sparse_flash_mla_metadata.h"
 
 using namespace ge;
 
 namespace ops {
-static ge::graphStatus InferShapeSparseFlashAttentionMetadata(gert::InferShapeContext* context)
+static ge::graphStatus InferShapeSparseFlashMlaMetadata(gert::InferShapeContext* context)
 {
     gert::Shape* oShape = context->GetOutputShape(0);
     oShape->SetDimNum(1);
@@ -26,13 +26,13 @@ static ge::graphStatus InferShapeSparseFlashAttentionMetadata(gert::InferShapeCo
     return GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDtypeSparseFlashAttentionMetadata(gert::InferDataTypeContext* context)
+static ge::graphStatus InferDtypeSparseFlashMlaMetadata(gert::InferDataTypeContext* context)
 {
     context->SetOutputDataType(0, DT_INT32);
     return GRAPH_SUCCESS;
 }
 
-IMPL_OP_INFERSHAPE(SparseFlashAttentionMetadata)
-    .InferShape(InferShapeSparseFlashAttentionMetadata)
-    .InferDataType(InferDtypeSparseFlashAttentionMetadata);
+IMPL_OP_INFERSHAPE(SparseFlashMlaMetadata)
+    .InferShape(InferShapeSparseFlashMlaMetadata)
+    .InferDataType(InferDtypeSparseFlashMlaMetadata);
 } // namespace ops
