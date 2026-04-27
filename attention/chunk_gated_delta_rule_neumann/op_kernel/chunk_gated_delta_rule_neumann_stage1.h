@@ -16,8 +16,8 @@
 #define CHUNK_GATED_DELTA_RULE_NEUMANN_STAGE1_H
 
 #include "kernel_tiling/kernel_tiling.h"
-#include "chunk_gated_delta_rule_utils.h"
-#include "chunk_gated_delta_rule_tiling_data.h"
+#include "chunk_gated_delta_rule_neumann_utils.h"
+#include "chunk_gated_delta_rule_neumann_tiling_data.h"
 
 namespace ChunkGatedDeltaRuleNeumann {
 using namespace AscendC;

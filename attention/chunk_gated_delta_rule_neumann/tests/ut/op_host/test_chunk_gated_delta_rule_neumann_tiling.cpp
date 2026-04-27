@@ -36,7 +36,7 @@
 #include <string>
 #include <gtest/gtest.h>
 
-#include "../../../op_host/chunk_gated_delta_rule_tiling.h"
+#include "../../../op_host/chunk_gated_delta_rule_neumann_tiling.h"
 #include "tiling_context_faker.h"
 #include "tiling_case_executor.h"
 

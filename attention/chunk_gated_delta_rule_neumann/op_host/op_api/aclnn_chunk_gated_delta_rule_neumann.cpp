@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file aclnn_chunk_gated_delta_rule.cpp
+ * \file aclnn_chunk_gated_delta_rule_neumann.cpp
  * \brief
  */
 
-#include "aclnn_chunk_gated_delta_rule.h"
-#include "chunk_gated_delta_rule.h"
+#include "aclnn_chunk_gated_delta_rule_neumann.h"
+#include "chunk_gated_delta_rule_neumann.h"
 
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/common_types.h"

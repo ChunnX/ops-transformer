@@ -9,18 +9,18 @@
   */
 
 /*!
- * \file chunk_gated_delta_rule.cpp
+ * \file chunk_gated_delta_rule_neumann.cpp
  * \brief
  */
 
-#include "chunk_gated_delta_rule.h"
-#include "chunk_gated_delta_rule_tiling_data.h"
+#include "chunk_gated_delta_rule_neumann.h"
+#include "chunk_gated_delta_rule_neumann_tiling_data.h"
 
 using namespace AscendC;
 using namespace matmul;
 using namespace ChunkGatedDeltaRuleNeumann;
 
-extern "C" __global__ __aicore__ void chunk_gated_delta_rule(
+extern "C" __global__ __aicore__ void chunk_gated_delta_rule_neumann(
     GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR beta, GM_ADDR initialState, GM_ADDR seqlens, GM_ADDR gOptional,
     GM_ADDR out, GM_ADDR finalState, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {

@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file chunk_gated_delta_rule.cpp
+ * \file chunk_gated_delta_rule_neumann.cpp
  * \brief
  */
 
-#include "chunk_gated_delta_rule.h"
+#include "chunk_gated_delta_rule_neumann.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/op_def.h"

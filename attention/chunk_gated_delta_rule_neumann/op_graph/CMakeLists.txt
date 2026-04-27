@@ -8,4 +8,4 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-message(STATUS "=== Debug: start ops.attention.chunk_gated_delta_rule.op_graph.CMakeLists.txt ")
+message(STATUS "=== Debug: start ops.attention.chunk_gated_delta_rule_neumann.op_graph.CMakeLists.txt ")

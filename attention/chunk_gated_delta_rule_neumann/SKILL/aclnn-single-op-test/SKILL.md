@@ -127,3 +127,7 @@ k = torch.nn.functional.normalize(k, p=2, dim=-1)
 - `reference/error_codes.md` - 错误码参考
 - `reference/code_template.md` - 测试代码完整模板
 - `reference/example_solution.md` - chunk_gated_delta_rule 实例
+
+## 相关 SKILL
+
+- `../operator-clone/` - 从现有算子创建新算子的工作流

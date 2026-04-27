@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file chunk_gated_delta_rule_tiling.h
+ * \file chunk_gated_delta_rule_neumann_tiling.h
  * \brief
  */
 #ifndef __OP_HOST_CHUNK_GATED_DELTA_RULE_NEUMANN_TILING_H__
@@ -19,7 +19,7 @@
 #include "register/tilingdata_base.h"
 #include "tiling_base/tiling_base.h"
 #include "err/ops_err.h"
-#include "../op_kernel/chunk_gated_delta_rule_tiling_data.h"
+#include "../op_kernel/chunk_gated_delta_rule_neumann_tiling_data.h"
 
 namespace optiling {
 

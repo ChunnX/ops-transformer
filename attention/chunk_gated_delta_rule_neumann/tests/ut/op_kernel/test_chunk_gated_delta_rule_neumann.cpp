@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file test_chunk_gated_delta_rule.cpp
+ * \file test_chunk_gated_delta_rule_neumann.cpp
  * \brief Chunk Gated Delta Rule 算子单元测试
  *
  * 测试类别:
@@ -415,7 +415,7 @@ TEST_P(ChunkGatedDeltaRuleNeumannTest, RunTest) {
 
     uint32_t blockDim = 8;
     ICPU_SET_TILING_KEY(0);
-    ICPU_RUN_KF(chunk_gated_delta_rule, blockDim,
+    ICPU_RUN_KF(chunk_gated_delta_rule_neumann, blockDim,
                 queryGm, keyGm, valueGm, betaGm, stateGm, seqlensGm,
                 (hasGamma ? gammaGm : nullptr),
                 outGm, finalStateGm, workspace, tiling);

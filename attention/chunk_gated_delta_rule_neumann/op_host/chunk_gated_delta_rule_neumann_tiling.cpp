@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file chunk_gated_delta_rule_tiling.cpp
+ * \file chunk_gated_delta_rule_neumann_tiling.cpp
  * \brief
  */
 
-#include "chunk_gated_delta_rule_tiling.h"
+#include "chunk_gated_delta_rule_neumann_tiling.h"
 #include "tiling_base/tiling_templates_registry.h"
 #include "register/op_def_registry.h"
 #include "platform/platform_infos_def.h"

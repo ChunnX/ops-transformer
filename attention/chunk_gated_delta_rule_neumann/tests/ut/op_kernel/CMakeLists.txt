@@ -10,10 +10,10 @@
 
 if (UT_TEST_ALL OR OP_KERNEL_UT)
     # 算子自己的tiling文件路径
-    set(chunk_gated_delta_rule_files
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/chunk_gated_delta_rule_tiling.cpp
+    set(chunk_gated_delta_rule_neumann_files
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/chunk_gated_delta_rule_neumann_tiling.cpp
     )
 
-    AddOpTestCase(chunk_gated_delta_rule "Ascend910B1" "" "${chunk_gated_delta_rule_files}")
+    AddOpTestCase(chunk_gated_delta_rule_neumann "Ascend910B1" "" "${chunk_gated_delta_rule_neumann_files}")
 
 endif()

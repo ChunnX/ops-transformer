@@ -137,6 +137,10 @@ bash build.sh --pkg --soc=ascend910_93 --ops=chunk_gated_delta_rule_neumann -j8
 - `reference/common-mistakes.md` - 常见错误及解决方案
 - `reference/checklist.md` - 操作检查清单
 
+## 相关 SKILL
+
+- `../aclnn-single-op-test/` - aclnn 单算子直调测试，用于验证新算子功能
+
 ## 关键要点
 
 1. **只在新目录内操作** - 绝不要在原目录执行 rename

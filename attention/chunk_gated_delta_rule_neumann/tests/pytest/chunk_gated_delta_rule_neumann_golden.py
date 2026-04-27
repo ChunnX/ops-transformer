@@ -318,7 +318,7 @@ def cgdr_benchmark(q, k, v, g, beta, scale, initial_state, actual_seq_lengths):
 
 
 def cgdr_npu(q, k, v, g, beta, scale, initial_state, actual_seq_lengths):
-    o_npu, state_npu = torch_npu.npu_chunk_gated_delta_rule(
+    o_npu, state_npu = torch_npu.npu_chunk_gated_delta_rule_neumann(
         q, k, v,
         beta=beta,
         initial_state=initial_state.clone(),

@@ -12,9 +12,9 @@ add_op_to_compiled_list()
 
 if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnnExc PRIVATE
-        chunk_gated_delta_rule_def.cpp
+        chunk_gated_delta_rule_neumann_def.cpp
     )
 endif()
 
-add_modules_sources(OPTYPE chunk_gated_delta_rule ACLNNTYPE aclnn_exclude)
+add_modules_sources(OPTYPE chunk_gated_delta_rule_neumann ACLNNTYPE aclnn_exclude)
 

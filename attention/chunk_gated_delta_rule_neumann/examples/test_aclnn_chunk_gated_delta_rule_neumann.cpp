@@ -1,20 +1,15 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
  */
 
 #include <iostream>
+#include <fstream>
 #include <vector>
 #include <cstdint>
 #include <cstring>
 #include <cmath>
 #include "acl/acl.h"
-#include "aclnnop/aclnn_chunk_gated_delta_rule.h"
+#include "aclnnop/aclnn_chunk_gated_delta_rule_neumann.h"
 
 #define CHECK_RET(cond, return_expr) \
   do {                               \
@@ -30,9 +25,7 @@
 
 int64_t GetShapeSize(const std::vector<int64_t>& shape) {
   int64_t shapeSize = 1;
-  for (auto i : shape) {
-    shapeSize *= i;
-  }
+  for (auto i : shape) shapeSize *= i;
   return shapeSize;
 }
 
@@ -56,31 +49,143 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); return ret);
 
   std::vector<int64_t> strides(shape.size(), 1);
-  for (int64_t i = shape.size() - 2; i >= 0; i--) {
-    strides[i] = shape[i + 1] * strides[i + 1];
-  }
+  for (int64_t i = shape.size() - 2; i >= 0; i--) strides[i] = shape[i + 1] * strides[i + 1];
 
   *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
                             shape.data(), shape.size(), *deviceAddr);
   return 0;
 }
 
-void PrintBf16Result(std::vector<int64_t>& shape, void** deviceAddr, int maxPrint = 10) {
-  auto size = GetShapeSize(shape);
-  std::vector<uint16_t> resultData(size, 0);
-  auto ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(uint16_t),
-                         *deviceAddr, size * sizeof(uint16_t), ACL_MEMCPY_DEVICE_TO_HOST);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result failed. ERROR: %d\n", ret); return);
-  
-  int printCount = std::min((int64_t)maxPrint, size);
-  for (int i = 0; i < printCount; i++) {
-    uint16_t bf16_val = resultData[i];
-    uint32_t float_bits = ((uint32_t)bf16_val) << 16;
-    float float_val;
-    memcpy(&float_val, &float_bits, sizeof(float));
-    LOG_PRINT("result[%d] = %f (bf16: 0x%04x)\n", i, float_val, bf16_val);
-  }
-  LOG_PRINT("Total elements: %ld, printed %d\n", size, printCount);
+struct TestParams {
+    int64_t B;
+    int64_t T;
+    int64_t nk;
+    int64_t nv;
+    int64_t dk;
+    int64_t dv;
+    float scale;
+};
+
+bool read_test_inputs(const char* filename, TestParams& params,
+                      std::vector<uint16_t>& q_data, std::vector<uint16_t>& k_data,
+                      std::vector<uint16_t>& v_data, std::vector<uint16_t>& beta_data,
+                      std::vector<float>& g_data, std::vector<uint16_t>& initial_state_data,
+                      std::vector<int64_t>& seqlens_data) {
+    std::ifstream file(filename, std::ios::binary);
+    if (!file) {
+        LOG_PRINT("Failed to open: %s\n", filename);
+        return false;
+    }
+
+    file.read(reinterpret_cast<char*>(&params.B), sizeof(int64_t));
+    file.read(reinterpret_cast<char*>(&params.T), sizeof(int64_t));
+    file.read(reinterpret_cast<char*>(&params.nk), sizeof(int64_t));
+    file.read(reinterpret_cast<char*>(&params.nv), sizeof(int64_t));
+    file.read(reinterpret_cast<char*>(&params.dk), sizeof(int64_t));
+    file.read(reinterpret_cast<char*>(&params.dv), sizeof(int64_t));
+    file.read(reinterpret_cast<char*>(&params.scale), sizeof(float));
+
+    LOG_PRINT("Parameters: B=%ld, T=%ld, nk=%ld, nv=%ld, dk=%ld, dv=%ld, scale=%f\n",
+              params.B, params.T, params.nk, params.nv, params.dk, params.dv, params.scale);
+
+    int64_t q_size = params.T * params.nk * params.dk;
+    int64_t k_size = params.T * params.nk * params.dk;
+    int64_t v_size = params.T * params.nv * params.dv;
+    int64_t beta_size = params.T * params.nv;
+    int64_t g_size = params.T * params.nv;
+    int64_t state_size = params.B * params.nv * params.dv * params.dk;
+
+    q_data.resize(q_size);
+    k_data.resize(k_size);
+    v_data.resize(v_size);
+    beta_data.resize(beta_size);
+    g_data.resize(g_size);
+    initial_state_data.resize(state_size);
+    seqlens_data.resize(params.B);
+
+    std::vector<uint32_t> g_raw(g_size);
+    std::vector<int32_t> seqlens_raw(params.B);
+    
+    file.read(reinterpret_cast<char*>(q_data.data()), q_size * sizeof(uint16_t));
+    file.read(reinterpret_cast<char*>(k_data.data()), k_size * sizeof(uint16_t));
+    file.read(reinterpret_cast<char*>(v_data.data()), v_size * sizeof(uint16_t));
+    file.read(reinterpret_cast<char*>(beta_data.data()), beta_size * sizeof(uint16_t));
+    file.read(reinterpret_cast<char*>(g_raw.data()), g_size * sizeof(uint32_t));
+    file.read(reinterpret_cast<char*>(initial_state_data.data()), state_size * sizeof(uint16_t));
+    file.read(reinterpret_cast<char*>(seqlens_raw.data()), params.B * sizeof(int32_t));
+
+    for (size_t i = 0; i < g_size; ++i) {
+        g_data[i] = *reinterpret_cast<float*>(&g_raw[i]);
+    }
+    for (size_t i = 0; i < params.B; ++i) {
+        seqlens_data[i] = static_cast<int64_t>(seqlens_raw[i]);
+    }
+
+    LOG_PRINT("Data loaded: q=%ld, k=%ld, v=%ld, beta=%ld, g=%ld, state=%ld\n",
+              q_size, k_size, v_size, beta_size, g_size, state_size);
+    return true;
+}
+
+bool read_golden_output(const char* filename, std::vector<uint16_t>& out_golden,
+                        std::vector<uint16_t>& state_golden, int64_t out_size, int64_t state_size) {
+    std::ifstream file(filename, std::ios::binary);
+    if (!file) {
+        LOG_PRINT("Failed to open golden: %s\n", filename);
+        return false;
+    }
+
+    out_golden.resize(out_size);
+    state_golden.resize(state_size);
+
+    file.read(reinterpret_cast<char*>(out_golden.data()), out_size * sizeof(uint16_t));
+    file.read(reinterpret_cast<char*>(state_golden.data()), state_size * sizeof(uint16_t));
+
+    LOG_PRINT("Golden loaded: out=%ld, state=%ld\n", out_size, state_size);
+    return true;
+}
+
+float bf16_to_float(uint16_t bf16) {
+    uint32_t bits = static_cast<uint32_t>(bf16) << 16;
+    return *reinterpret_cast<float*>(&bits);
+}
+
+void compute_error(const std::vector<uint16_t>& npu_data,
+                   const std::vector<uint16_t>& golden_data,
+                   const char* name) {
+    if (npu_data.size() != golden_data.size()) {
+        LOG_PRINT("Size mismatch for %s\n", name);
+        return;
+    }
+
+    float max_err = 0.0f;
+    float max_rel = 0.0f;
+    int max_idx = 0;
+
+    for (size_t i = 0; i < npu_data.size(); ++i) {
+        float npu_val = bf16_to_float(npu_data[i]);
+        float golden_val = bf16_to_float(golden_data[i]);
+        float err = fabs(npu_val - golden_val);
+        float rel = (fabs(golden_val) > 0.0f) ? err / fabs(golden_val) : err;
+
+        if (err > max_err) {
+            max_err = err;
+            max_rel = rel;
+            max_idx = i;
+        }
+    }
+
+    LOG_PRINT("\n%s precision:\n", name);
+    LOG_PRINT("  max_abs_err: %.6f at idx %d\n", max_err, max_idx);
+    LOG_PRINT("  max_rel_err: %.6f%%\n", max_rel * 100);
+    
+    float threshold = 0.01f;
+    if (max_err < threshold) {
+        LOG_PRINT("  PASS (threshold %.6f)\n", threshold);
+    } else {
+        LOG_PRINT("  FAIL (threshold %.6f)\n", threshold);
+        LOG_PRINT("  npu[idx] = %.6f, golden[idx] = %.6f\n",
+                  bf16_to_float(npu_data[max_idx]), bf16_to_float(golden_data[max_idx]));
+    }
 }
 
 int main() {
@@ -89,157 +194,135 @@ int main() {
   auto ret = Init(deviceId, &stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
-  int64_t B = 2;
-  int64_t T = 128;
-  int64_t nk = 4;
-  int64_t nv = 4;
-  int64_t dk = 64;
-  int64_t dv = 64;
-  float scaleValue = 1.0f;
-  int64_t hasGamma = 1;
+  LOG_PRINT("Reading test data from binary files...\n");
+  
+  TestParams params;
+  std::vector<uint16_t> q_data, k_data, v_data, beta_data, initial_state_data;
+  std::vector<float> g_data;
+  std::vector<int64_t> seqlens_data;
 
-  std::vector<int64_t> queryShape = {T, nk, dk};
-  std::vector<int64_t> keyShape = {T, nk, dk};
-  std::vector<int64_t> valueShape = {T, nv, dv};
-  std::vector<int64_t> betaShape = {T, nv};
-  std::vector<int64_t> initialStateShape = {B, nv, dv, dk};
-  std::vector<int64_t> seqlensShape = {B};
-  std::vector<int64_t> gShape = {T, nv};
-  std::vector<int64_t> outShape = {T, nv, dv};
-  std::vector<int64_t> finalStateShape = {B, nv, dv, dk};
+  if (!read_test_inputs("test_inputs.bin", params, q_data, k_data, v_data,
+                        beta_data, g_data, initial_state_data, seqlens_data)) {
+    LOG_PRINT("Failed to read test inputs\n");
+    aclFinalize();
+    return 1;
+  }
 
-  int64_t querySize = GetShapeSize(queryShape);
-  int64_t keySize = GetShapeSize(keyShape);
-  int64_t valueSize = GetShapeSize(valueShape);
-  int64_t betaSize = GetShapeSize(betaShape);
-  int64_t stateSize = GetShapeSize(initialStateShape);
-  int64_t seqlensSize = GetShapeSize(seqlensShape);
-  int64_t gSize = GetShapeSize(gShape);
-  int64_t outSize = GetShapeSize(outShape);
+  int64_t out_size = params.T * params.nv * params.dv;
+  int64_t state_size = params.B * params.nv * params.dv * params.dk;
 
-  void* queryDeviceAddr = nullptr;
-  void* keyDeviceAddr = nullptr;
-  void* valueDeviceAddr = nullptr;
-  void* betaDeviceAddr = nullptr;
-  void* initialStateDeviceAddr = nullptr;
-  void* seqlensDeviceAddr = nullptr;
-  void* gDeviceAddr = nullptr;
-  void* outDeviceAddr = nullptr;
-  void* finalStateDeviceAddr = nullptr;
-
-  aclTensor* queryTensor = nullptr;
-  aclTensor* keyTensor = nullptr;
-  aclTensor* valueTensor = nullptr;
-  aclTensor* betaTensor = nullptr;
-  aclTensor* initialStateTensor = nullptr;
-  aclTensor* seqlensTensor = nullptr;
-  aclTensor* gTensor = nullptr;
-  aclTensor* outTensor = nullptr;
-  aclTensor* finalStateTensor = nullptr;
-
-  std::vector<uint16_t> queryHostData(querySize, 0x3f80);
-  std::vector<uint16_t> keyHostData(keySize, 0x3f80);
-  std::vector<uint16_t> valueHostData(valueSize, 0x3f80);
-  std::vector<uint16_t> betaHostData(betaSize, 0x3f80);
-  std::vector<uint16_t> stateHostData(stateSize, 0x3f80);
-  std::vector<float> gHostData(gSize, -0.5f);
-  std::vector<int32_t> seqlensHostData = {64, 64};
-  std::vector<uint16_t> outHostData(outSize, 0);
-  std::vector<uint16_t> finalStateHostData(stateSize, 0);
+  std::vector<uint16_t> out_golden, state_golden;
+  if (!read_golden_output("golden_output.bin", out_golden, state_golden, out_size, state_size)) {
+    LOG_PRINT("Failed to read golden output\n");
+    aclFinalize();
+    return 1;
+  }
 
   LOG_PRINT("Creating tensors...\n");
 
-  ret = CreateAclTensor(queryHostData, queryShape, &queryDeviceAddr, aclDataType::ACL_BF16, &queryTensor);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Create query tensor failed. ERROR: %d\n", ret); return ret);
-  ret = CreateAclTensor(keyHostData, keyShape, &keyDeviceAddr, aclDataType::ACL_BF16, &keyTensor);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Create key tensor failed. ERROR: %d\n", ret); return ret);
-  ret = CreateAclTensor(valueHostData, valueShape, &valueDeviceAddr, aclDataType::ACL_BF16, &valueTensor);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Create value tensor failed. ERROR: %d\n", ret); return ret);
-  ret = CreateAclTensor(betaHostData, betaShape, &betaDeviceAddr, aclDataType::ACL_BF16, &betaTensor);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Create beta tensor failed. ERROR: %d\n", ret); return ret);
-  ret = CreateAclTensor(stateHostData, initialStateShape, &initialStateDeviceAddr, aclDataType::ACL_BF16, &initialStateTensor);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Create initialState tensor failed. ERROR: %d\n", ret); return ret);
-  ret = CreateAclTensor(seqlensHostData, seqlensShape, &seqlensDeviceAddr, aclDataType::ACL_INT32, &seqlensTensor);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Create seqlens tensor failed. ERROR: %d\n", ret); return ret);
+  std::vector<int64_t> qShape = {params.T, params.nk, params.dk};
+  std::vector<int64_t> kShape = {params.T, params.nk, params.dk};
+  std::vector<int64_t> vShape = {params.T, params.nv, params.dv};
+  std::vector<int64_t> betaShape = {params.T, params.nv};
+  std::vector<int64_t> gShape = {params.T, params.nv};
+  std::vector<int64_t> stateShape = {params.B, params.nv, params.dv, params.dk};
+  std::vector<int64_t> outShape = {params.T, params.nv, params.dv};
 
-  if (hasGamma) {
-    ret = CreateAclTensor(gHostData, gShape, &gDeviceAddr, aclDataType::ACL_FLOAT, &gTensor);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Create g tensor failed. ERROR: %d\n", ret); return ret);
-  }
+  std::vector<int64_t> seqlensShape = {params.B};
 
-  ret = CreateAclTensor(outHostData, outShape, &outDeviceAddr, aclDataType::ACL_BF16, &outTensor);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Create out tensor failed. ERROR: %d\n", ret); return ret);
-  ret = CreateAclTensor(finalStateHostData, finalStateShape, &finalStateDeviceAddr, aclDataType::ACL_BF16, &finalStateTensor);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Create finalState tensor failed. ERROR: %d\n", ret); return ret);
+  void* qDeviceAddr = nullptr;
+  void* kDeviceAddr = nullptr;
+  void* vDeviceAddr = nullptr;
+  void* betaDeviceAddr = nullptr;
+  void* gDeviceAddr = nullptr;
+  void* initialStateDeviceAddr = nullptr;
+  void* seqlensDeviceAddr = nullptr;
+  void* outDeviceAddr = nullptr;
+  void* finalStateDeviceAddr = nullptr;
 
-  LOG_PRINT("All tensors created successfully.\n");
-  LOG_PRINT("Input shapes: query(%ld,%ld,%ld), key(%ld,%ld,%ld), value(%ld,%ld,%ld)\n",
-            T, nk, dk, T, nk, dk, T, nv, dv);
-  LOG_PRINT("State shape: (%ld,%ld,%ld,%ld)\n", B, nv, dv, dk);
+  aclTensor* qTensor = nullptr;
+  aclTensor* kTensor = nullptr;
+  aclTensor* vTensor = nullptr;
+  aclTensor* betaTensor = nullptr;
+  aclTensor* gTensor = nullptr;
+  aclTensor* initialStateTensor = nullptr;
+  aclTensor* seqlensTensor = nullptr;
+  aclTensor* outTensor = nullptr;
+  aclTensor* finalStateTensor = nullptr;
+
+  CreateAclTensor(q_data, qShape, &qDeviceAddr, aclDataType::ACL_BF16, &qTensor);
+  CreateAclTensor(k_data, kShape, &kDeviceAddr, aclDataType::ACL_BF16, &kTensor);
+  CreateAclTensor(v_data, vShape, &vDeviceAddr, aclDataType::ACL_BF16, &vTensor);
+  CreateAclTensor(beta_data, betaShape, &betaDeviceAddr, aclDataType::ACL_BF16, &betaTensor);
+  CreateAclTensor(g_data, gShape, &gDeviceAddr, aclDataType::ACL_FLOAT, &gTensor);
+  CreateAclTensor(initial_state_data, stateShape, &initialStateDeviceAddr, aclDataType::ACL_BF16, &initialStateTensor);
+  CreateAclTensor(seqlens_data, seqlensShape, &seqlensDeviceAddr, aclDataType::ACL_INT32, &seqlensTensor);
+  CreateAclTensor(std::vector<uint16_t>(out_size, 0), outShape, &outDeviceAddr, aclDataType::ACL_BF16, &outTensor);
+  CreateAclTensor(std::vector<uint16_t>(state_size, 0), stateShape, &finalStateDeviceAddr, aclDataType::ACL_BF16, &finalStateTensor);
+
+  LOG_PRINT("Calling aclnnChunkGatedDeltaRuleNeumannGetWorkspaceSize...\n");
 
   uint64_t workspaceSize = 0;
   aclOpExecutor* executor = nullptr;
-
-  LOG_PRINT("Calling aclnnChunkGatedDeltaRuleNeumannGetWorkspaceSize...\n");
-  
   ret = aclnnChunkGatedDeltaRuleNeumannGetWorkspaceSize(
-      queryTensor, keyTensor, valueTensor, betaTensor,
-      initialStateTensor, seqlensTensor, gTensor, scaleValue,
+      qTensor, kTensor, vTensor, betaTensor, initialStateTensor,
+      seqlensTensor, gTensor, params.scale,
       outTensor, finalStateTensor, &workspaceSize, &executor);
-  
-  if (ret != ACL_SUCCESS) {
-    LOG_PRINT("aclnnChunkGatedDeltaRuleNeumannGetWorkspaceSize failed. ERROR: %d\n", ret);
-    return ret;
-  }
+  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("GetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 
   LOG_PRINT("Workspace size: %lu bytes\n", workspaceSize);
 
   void* workspaceAddr = nullptr;
   if (workspaceSize > 0) {
     ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc for workspace failed. ERROR: %d\n", ret); return ret);
   }
 
   LOG_PRINT("Calling aclnnChunkGatedDeltaRuleNeumann...\n");
   ret = aclnnChunkGatedDeltaRuleNeumann(workspaceAddr, workspaceSize, executor, stream);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnChunkGatedDeltaRuleNeumann failed. ERROR: %d\n", ret); return ret);
+  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnn execution failed. ERROR: %d\n", ret); return ret);
 
-  LOG_PRINT("Synchronizing stream...\n");
   ret = aclrtSynchronizeStream(stream);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
+  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("SynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
-  LOG_PRINT("\n=== Output Results ===\n");
-  LOG_PRINT("Output (out):\n");
-  PrintBf16Result(outShape, &outDeviceAddr, 5);
-  LOG_PRINT("\nFinal State:\n");
-  PrintBf16Result(finalStateShape, &finalStateDeviceAddr, 5);
+  LOG_PRINT("aclnn execution succeeded\n");
 
-  LOG_PRINT("\nReleasing resources...\n");
-  aclDestroyTensor(queryTensor);
-  aclDestroyTensor(keyTensor);
-  aclDestroyTensor(valueTensor);
+  std::vector<uint16_t> out_npu(out_size);
+  std::vector<uint16_t> state_npu(state_size);
+
+  aclrtMemcpy(out_npu.data(), out_size * sizeof(uint16_t), outDeviceAddr,
+              out_size * sizeof(uint16_t), ACL_MEMCPY_DEVICE_TO_HOST);
+  aclrtMemcpy(state_npu.data(), state_size * sizeof(uint16_t), finalStateDeviceAddr,
+              state_size * sizeof(uint16_t), ACL_MEMCPY_DEVICE_TO_HOST);
+
+  LOG_PRINT("\n========== Precision Comparison ==========\n");
+  compute_error(out_npu, out_golden, "Output");
+  compute_error(state_npu, state_golden, "FinalState");
+
+  aclDestroyTensor(qTensor);
+  aclDestroyTensor(kTensor);
+  aclDestroyTensor(vTensor);
   aclDestroyTensor(betaTensor);
+  aclDestroyTensor(gTensor);
   aclDestroyTensor(initialStateTensor);
   aclDestroyTensor(seqlensTensor);
-  if (gTensor) aclDestroyTensor(gTensor);
   aclDestroyTensor(outTensor);
   aclDestroyTensor(finalStateTensor);
 
-  aclrtFree(queryDeviceAddr);
-  aclrtFree(keyDeviceAddr);
-  aclrtFree(valueDeviceAddr);
+  if (workspaceAddr) aclrtFree(workspaceAddr);
+  aclrtFree(qDeviceAddr);
+  aclrtFree(kDeviceAddr);
+  aclrtFree(vDeviceAddr);
   aclrtFree(betaDeviceAddr);
+  aclrtFree(gDeviceAddr);
   aclrtFree(initialStateDeviceAddr);
   aclrtFree(seqlensDeviceAddr);
-  if (gDeviceAddr) aclrtFree(gDeviceAddr);
   aclrtFree(outDeviceAddr);
   aclrtFree(finalStateDeviceAddr);
-  if (workspaceSize > 0) aclrtFree(workspaceAddr);
 
   aclrtDestroyStream(stream);
-  aclrtResetDevice(deviceId);
   aclFinalize();
 
-  LOG_PRINT("Test completed successfully!\n");
+  LOG_PRINT("\nTest completed\n");
   return 0;
 }
