@@ -1099,7 +1099,6 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::ComputeMm2(const R
     Axis n(constInfo.headDim);
     Axis k(info.actualSingleProcessSInnerSize);
     auto mmResGm = this->mm2ResGm[info.loop % CFG::PRELOAD_NUM];
-    PRINFT("wmk 1 \n");
     ResetLoad3DConfig<M_SPLIT_SIZE>();
 
     auto KL1Slices = k.Split(K_SPLIT_SIZE);
@@ -1118,10 +1117,8 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::ComputeMm2(const R
         for (auto& kL1 : KL1Slices) {
             ++kL1Id;
             WaitFlag<HardEvent::MTE1_MTE2>(KP_EVENT0 + this->kpL1BufId);
-            PRINFT("wmk 2 \n");
             CopyPToL1<AFormat>(this->kpL1BufId, info, (AFormat == CubeFormat::NZ) ? m.AlignedSize() : info.actualSingleProcessSInnerSizeAlign, /* P为ND时，每行元素个数会按32对齐 */
                                              mL1.start, mL1.sizeAct, kL1.start, kL1.sizeAct);
-            PRINFT("wmk 3 \n");
             SetFlag<HardEvent::MTE2_MTE1>(KP_EVENT0 + this->kpL1BufId);
             WaitFlag<HardEvent::MTE2_MTE1>(KP_EVENT0 + this->kpL1BufId);
 
@@ -1133,9 +1130,7 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::ComputeMm2(const R
             if (unlikely(!reuseVBuf)) {
                 vBufId = this->vL1BufId;
                 WaitFlag<HardEvent::MTE1_MTE2>(V_EVENT0 + vBufId);
-                PRINFT("wmk 4 \n");
                 CopyVToL1(vBufId, info, kL1.start, kL1.sizeAct);
-                PRINFT("wmk 5 \n");
                 SetFlag<HardEvent::MTE2_MTE1>(V_EVENT0 + vBufId);
                 WaitFlag<HardEvent::MTE2_MTE1>(V_EVENT0 + vBufId);
                 vL1Snapshot.bufCnt += static_cast<uint32_t>(canFullLoadV); // 不能全载V时，不缓存到快照中
@@ -1145,11 +1140,8 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::ComputeMm2(const R
 
             for (auto& kL0 : kL1.Split(K_BASE)) {
                 WaitFlag<HardEvent::M_MTE1>(L0AB_EVENT0 + this->abL0BufId);
-                PRINFT("wmk 6 \n");
                 LoadAToL0<M_SPLIT_SIZE>(this->abL0BufId, kpL1Tensor[this->kpL1BufId], mL1.AlignedSize(), 0, mL1.AlignedSize(), kL0.start, kL0.AlignedSize());
-                PRINFT("wmk 7 \n");
                 LoadBToL0(this->abL0BufId, vL1Tensor[vBufId], kL1.AlignedSize(), kL0.start, kL0.AlignedSize(), 0, n.AlignedSize());
-                PRINFT("wmk 8 \n");
                 SetFlag<HardEvent::MTE1_M>(L0_READY_EVENT);
                 WaitFlag<HardEvent::MTE1_M>(L0_READY_EVENT);
 
@@ -1163,13 +1155,9 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::ComputeMm2(const R
                 if constexpr (CFG::ENABLE_UNIFLAG) {
                     mmadParams.unitFlag = isLastK ? 3 : 2;
                 }
-                PRINFT("wmk 9 \n");
                 Mmad(cL0Tensor[this->cL0BufId], aL0Tensor[this->abL0BufId], bL0Tensor[this->abL0BufId], mmadParams);
-                PRINFT("wmk 10 \n");
                 if (likely(! isLastK)) {
-                    
                     AscendC::PipeBarrier<PIPE_M>();
-                    PRINFT("wmk 11 \n");
                 }
                 SetFlag<HardEvent::M_MTE1>(L0AB_EVENT0 + this->abL0BufId);
                 this->abL0BufId = (this->abL0BufId + 1) % L0AB_BUFCNT;
@@ -1196,7 +1184,6 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::ComputeMm2(const R
         }
         FixpipeCToGM<OutFormat>(mmResGm, this->cL0BufId, (OutFormat == CubeFormat::NZ) ? m.sizeAct : constInfo.headDimAlign, /* 输出ND时，mm2ResGm两行之间间隔元素个数按32对齐 */
                                 mL1.start, mL1.sizeAct, 0, (OutFormat == CubeFormat::NZ) ? n.AlignedSize() : n.sizeAct);
-        PRINFT("wmk 12 \n");
         SetFlag<HardEvent::FIX_M>(L0C_EVENT0 + this->cL0BufId);
         this->cL0BufId = (this->cL0BufId + 1) % L0C_BUFCNT;
     }
