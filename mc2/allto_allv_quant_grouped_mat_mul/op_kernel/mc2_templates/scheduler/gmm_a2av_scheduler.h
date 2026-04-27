@@ -40,7 +40,6 @@ public:
             SyncAll<false>();
             hcclOp_.Launch(expertIdx, 1);   // 每次专家数量设置为1
         }
-        SyncAll<false>();
 
         if (IsNeedMM) {
             shareComputeOp_.Process(0);

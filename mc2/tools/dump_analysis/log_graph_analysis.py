@@ -290,20 +290,26 @@ if __name__ == "__main__":
     if log_path != "NA":
         logging.info("开始进行错误日志分析")
         log_path_list = get_log_path(log_path)
-        error_dict = get_plog_error(log_path_list)
-        error3_dict = print_error_result(error_dict)
-        check_error3_kernel(error3_dict)
-        dict_to_csv(error_dict)
-        logging.info("错误日志分析完成")
+        if log_path_list != []:
+            error_dict = get_plog_error(log_path_list)
+            error3_dict = print_error_result(error_dict)
+            check_error3_kernel(error3_dict)
+            dict_to_csv(error_dict)
+            logging.info("错误日志分析完成")
+        else:
+            logging.warning("未在指定路径下搜索到plog日志")
     else:
         logging.warning("未输入plog路径,不进行错误日志分析")
     if graph_path != "NA":
         logging.info("开始进行graph图文件分析")
         graph_path_dict = get_graph_path(graph_path)
-        for num, path in graph_path_dict.items():
-            logging.info("卡%s graph文件:%s", num, path)
-        graph_info = get_graph_info(graph_path_dict)
-        compare_graph_info(graph_info)
-        logging.info("graph图文件分析完成")
+        if graph_path_dict != {}:
+            for num, path in graph_path_dict.items():
+                logging.info("卡%s graph文件:%s", num, path)
+            graph_info = get_graph_info(graph_path_dict)
+            compare_graph_info(graph_info)
+            logging.info("graph图文件分析完成")
+        else:
+            logging.warning("未在指定路径下搜索到graph图文件")
     else:
         logging.warning("未输入graph图文件路径,不进行graph图文件分析")
