@@ -1,99 +1,148 @@
 ---
 name: migrate-op
-description: 将 CANN 开源仓库（ops-nn/cv/math/transformer）中的 AscendC 算子迁移到 NPUKernelBench 单算子工程格式。输入算子名称，完成源码定位、工程适配、编译验证、精度测试和通用经验沉淀。用户要求迁移算子，输入算子名称。例如："迁移 GatherV3 算子"、"把 BatchMatMulV3 迁移过来"、"/migrate-op ScatterElementsV2"，则需要使用该skill
+description: Migrate AscendC operators from the local CANN open-source repositories into NPUKernelBench msopgen single-operator tasks. Use when the user asks to migrate, port, adapt, or validate an operator such as "迁移 GatherV3", "把 BatchMatMulV3 迁移过来", or "/migrate-op ScatterElementsV2". The workflow is copy-first, pattern-based, and ends with compile and precision validation.
 ---
 
 # AscendC 算子迁移
 
-核心任务：将 CANN 开源仓库（ops-nn、ops-cv、ops-math、ops-transformer）算子完成编译通过且精度验证通过的迁移到 NPUKernelBench 单算子工程格式。
-**严禁修改算子计算逻辑**，仅做工程框架适配。
+把本地 CANN 开源仓算子迁移到 NPUKernelBench 的独立 msopgen 编译单元，产出可用于微调数据集的 `answer/0` 参考实现，并用当前测试框架验证编译和精度。
 
-允许的工程适配包括：OpDef 注册、CMake、依赖本地化、目标芯片配置裁剪、pybind 桥接、validation 侧数据布局转换，以及因 msopgen/pybind 限制导致的接口桥接调整。禁止改变 kernel 数学路径、tiling 算法意图、TilingData ABI 和用户可见算子语义。
+迁移时保持原始算子的用户语义、tiling 意图、kernel 计算路径和 TilingData ABI。工程适配集中在 OpDef 注册、CMake 收录、依赖本地化、目标芯片裁剪、pybind 桥接、validation 输入和布局转换。
 
-## 输入
+## 固定上下文
 
-`$ARGUMENTS`：算子名称（必填），可选附带 level 和 category。
+- 工作仓库：`/home/zhangqijia/repo/NPUKernelBench`
+- 开源仓：`/home/zhangqijia/repo/{ops-nn,ops-cv,ops-math,ops-transformer}`
+- 目标平台：CANN 9.0.0 + torch-npu，目标芯片配置保留 `ascend910b` 和 `ascend910_93`，其他芯片都不需要。
+- 任务目录：`tasks/level{N}/{Category}/{OpName}/`
+- 运行目录：`runs/lvl{N}/{Category}/{OpName}/fixed_case_{case_id}/sample{sample_id}/`
+- 默认配置：`kernel_only_mode: True`，`compile.mode: msopgen`，`compile.common_dir: libs/common_include`
+- 框架编译准备顺序：复制 `libs/common_include/msopgen/` 到 `runs/.../src/`，复制 `validation/`，再把 `answer/{sample_id}/` 覆盖到 `runs/.../src/`；这是框架行为，迁移时维护 `tasks/.../answer/0`，不手动编辑 `runs/.../src`
+- `answer/0/CMakeLists.txt` 会覆盖 msopgen 根 CMake；只在必须改根编译规则时创建
+- aclnn API 只使用 msopgen/opbuild 从 OpDef 自动生成的 `build_out/autogen/aclnn_*.cpp` 和 `aclnn_*.h`；迁移时不导入开源仓 `op_api/`，不手写 `aclnn_*` 源码
+- `answer/0/op_host/CMakeLists.txt` 会覆盖默认 host CMake；只在 host 有子目录 `.cpp`、多策略 registry 或额外 include/链接规则时创建
+- 默认 host CMake 只收集 `op_host` 当前目录 `.cpp`，不递归收集 `op_host/common/*.cpp`
+- `validation/pybind.cpp` 中 `aclnnCustomOp` 和 `custom_pybind_api` 是占位符，编译前自动替换为 `aclnn{OpName}` 和 `{kernel_name}`
+- precision 运行时会设置 `ASCEND_CUSTOM_OPP_PATH`、`CUST_OPAPI_LIB_PATH`、`CUSTOM_OPTILING_LIB_PATH` 和 `LD_LIBRARY_PATH`，加载本次编译的 `libcust_opapi.so` 与 `liboptiling.so`
 
-## 执行流程
+## 工作方式
 
-严格按序执行 11 个步骤。使用当前代理可用的任务计划/进度工具记录步骤状态；没有专用工具时，用简短状态更新代替。
+先把必要源码导入并本地化到 `answer/0`，再识别模式并做最小工程适配。对大代码量算子尤其如此：用文件清单和模式匹配判断结构，不全文阅读源码。
 
-执行前先阅读 `references/single_op_build_runtime_paths.md`，确认当前框架的源码复制、msopgen CMake、OPP 产物和 precision 运行加载路径。遇到路径或 CMake 判断分歧时，以该文档和当前代码为准。
+默认读取本文件即可开始迁移。按需读取：
 
-### 步骤 1：源码定位与目标目录确定
+- `references/copy-first-migration.md`：源码导入、本地化、模式识别、host/kernel/CMake 适配
+- `references/validation.md`：`validation/`、`question/`、`api_desc.md` 生成规则
+- `references/troubleshooting.md`：编译或精度失败后的错误定位
+- `references/framework-contract.md`：需要重新判断 msopgen 复制、产物或运行加载路径时读取
+- `references/iteration.md`：迁移成功后沉淀经过本次验证的规则
 
-1. 在同级目录的 `{ops-nn,ops-cv,ops-math,ops-transformer}` 中搜索算子。开源仓用下划线命名（`gather_v3`），NPUKernelBench 用大驼峰（`GatherV3`）。
-2. 先扫描现有 `tasks/`、同类算子和 category 结构推断 level（1/2/3）和 category；无法合理推断时再询问用户。
-3. 在 `tasks/level{N}/{category}/` 下创建 `{OpName}` 目录。
+保持探索预算小而明确：
 
-### 步骤 2：工程目录初始化
+- 定位源码时只搜索四个开源仓的目录名、OpDef、kernel 入口和接口语义文档
+- 迁移早期不查看其他已迁移算子的实现
+- 编译或精度失败后，先根据当前错误日志修复；连续两轮仍无法定位时，再搜索一个最相似的已迁移算子或同类错误
+- 查看相似算子时只看对应的 `CMakeLists.txt`、报错相关文件或同名接口模式
 
-创建目录结构：`api_desc.md`、`question/`（op_host + op_kernel）、`answer/0/`（op_host + op_kernel）、`validation/`（module.py、prepare_inputs.py、pybind.cpp、test_cases.csv）。`answer/0/CMakeLists.txt` 和 `answer/0/op_host/CMakeLists.txt` 不是默认必需文件；只有需要覆盖 msopgen 根 CMake 或 host CMake 时再添加。
+## 流程
 
-### 步骤 3：源码提取
+1. 标准化算子名
 
-从开源仓提取 op_host、op_kernel 文件到 `answer/0/`。默认优先使用 msopgen autogen 生成的 `aclnn_*.cpp`，不迁移仓库级 config；但若原算子依赖手写 op_api、fallback、公共 tiling 源码或多文件 registry，必须一并本地化并补齐 CMake。不要把“只要 tiling 和 kernel”当成通用规则。
+将用户输入转为：
 
-### 步骤 4：op_host 代码适配（核心）
+```text
+OpName      = 大驼峰，例如 ScatterElementsV2
+kernel_name = snake_case，例如 scatter_elements_v2
+source_name = 开源仓目录名，通常同 kernel_name
+```
 
-参照 `references/tiling_migration_guide.md` 完整执行。
+若用户给出 level/category，直接使用。若未给出，先用轻量目录列表确认已有 category；能从开源仓一级目录或算子语义稳定映射时直接选择，不能稳定判断时询问一次。
 
-### 步骤 5：op_kernel 代码清理
+2. 定位源算子
 
-参照 `references/kernel_migration_guide.md` 完整执行。op_kernel 只做目标架构裁剪、入口签名核对、依赖本地化和编译必要清理；不得改写计算路径。
+在四个开源仓中定位 `source_name` 目录，优先选择同时包含 `op_host/` 与 `op_kernel/` 的实现。若只有 `arch35/`、`*_apt.cpp`、Kirin 或 ascend950-only 路径，继续在同仓查找 910B/membase 实现；找不到时记录阻塞证据。
 
-### 步骤 6：题目骨架生成
+3. 初始化目标目录
 
-参照 `templates/question_skeleton.md` 生成 `question/` 下的骨架代码。kernel 签名必须与 answer 完全匹配。
+创建：
 
-### 步骤 7：验证体系代码生成
+```text
+tasks/level{N}/{Category}/{OpName}/
+  question/api_desc.md
+  question/op_host/
+  question/op_kernel/
+  answer/0/op_host/
+  answer/0/op_kernel/
+  validation/module.py
+  validation/prepare_inputs.py
+  validation/pybind.cpp
+  validation/test_cases.csv
+```
 
-参照 `references/validation_guide.md` 生成 `validation/` 下所有文件。注意 ListFloat 拆分、OPTIONAL 输入、标量类型匹配等专项规则。
+4. 导入并本地化 answer
 
-### 步骤 8：API 文档生成
+先把源算子的 `op_host/`、`op_kernel/` 和被 include 的公共依赖导入到 `answer/0/`，再在目标目录内做适配。`op_api/` 可作为接口语义参考，但不作为迁移源码导入；`aclnn_*` 始终由 opbuild 自动生成。用 `rg` 识别结构、依赖和入口；只在命中处或报错处打开局部代码。
 
-参照 `templates/api_doc.md` 生成 `api_desc.md`。
+5. 识别迁移模式
 
-### 步骤 9：编译验证与迭代修复
+在 `answer/0` 内用模式匹配分类：
+
+- 简单 gert：`gert::TilingContext*` + `.SetTiling`
+- 分文件 gert：`*_def.cpp`、`*_tiling.cpp`、`*_infershape.cpp`
+- 复杂 registry：`TilingBaseClass`、`REGISTER_TILING_TEMPLATE`、`IMPL_OP_OPTILING`
+- 旧接口：`TeOpParas`、`OpRunInfo`、`ge::Operator`、`nlohmann`
+- 非目标架构：`arch35`、`*_apt.cpp`、`kirin`、`310p`、`ascend950`
+
+按 `references/copy-first-migration.md` 做对应适配。
+
+6. 生成 question、validation 和 API 文档
+
+`question/` 是题目骨架，不参与 answer 编译，但必须与 answer 的接口和 kernel 签名一致。`validation/` 是真实测试桥接，必须保持 PyTorch golden 语义。生成前读取 `references/validation.md`。
+
+7. 编译验证
+
+先只编译算子，尤其是编译时间较长的算子：
 
 ```bash
-# 编译
 python scripts/run_test.py -task_name <OpName> -stages compile
-
-# 查看编译日志
-cat runs/lvl{N}/{Category}/{OpName}/fixed_case_0/sample0/log/lvl{N}_category{Category}_{OpName}_compile.log
-
-# 编译失败修复后，删除缓存重新编译
-rm -rf runs/lvl{N}/{Category}/{OpName}
 ```
 
-只删除当前目标算子的 `runs/.../{OpName}` 缓存目录，不删除其他任务产物。编译错误诊断见 `references/troubleshooting.md` 第 1 节。
+`-stages compile` 不带 `-skip_op_build` 会执行完整算子编译。编译已经通过后，进入精度验证时不要再运行不带 `-skip_op_build` 的 `-stages compile precision`，否则会重复编译 OPP 产物。
 
-### 步骤 10：精度验证与迭代修复
+查看编译日志：
 
 ```bash
-# 精度测试
-python scripts/run_test.py -task_name <OpName> -stages precision
-
-# 查看精度日志
-cat runs/lvl{N}/{Category}/{OpName}/fixed_case_0/sample0/case_{i}/log/lvl{N}_category{Category}_{OpName}_sample0_case{i}_precision.log
-
-# 仅修改 validation 时，跳过 op_build
-python scripts/run_test.py -task_name <OpName> -stages compile precision -skip_op_build
-
-# 修改了 op_host/op_kernel 时，删除缓存
-rm -rf runs/lvl{N}/{Category}/{OpName}
+runs/lvl{N}/{Category}/{OpName}/fixed_case_0/sample0/log/lvl{N}_category{Category}_{OpName}_compile.log
 ```
 
-持续修复直到编译和精度全部通过。常见错误诊断见 `references/troubleshooting.md`。若遇到源码缺失、仅有非目标架构实现、缺 CANN/NPU 环境、框架级问题等阻塞，必须说明阻塞证据、已尝试步骤和最小下一步。
+修改 `op_host/` 或 `op_kernel/` 后，删除当前算子的 `runs/lvl{N}/{Category}/{OpName}`，再重新执行完整 compile。只修改 `validation/`、`pybind.cpp`、`module.py`、`prepare_inputs.py` 或测试用例时，保留已编译 OPP 产物并使用 `-skip_op_build`。
 
-### 步骤 11：经验沉淀
+8. 精度验证
 
-迁移完成后，参照 `references/iteration.md` 执行迭代流程：回顾本次迁移经验，判断是否具备通用性，若值得沉淀则归入对应文档。
+编译通过后，先用已有 OPP 产物跑少量 case：
 
-## 红线
+```bash
+python scripts/run_test.py -task_name <OpName> -stages compile precision -skip_op_build -n_case 1
+```
 
-- 严禁修改算子计算逻辑
-- 迁移单个算子时严禁顺手修改 `npukernelbench/` 工程基础文件；只有用户明确要求修框架时才可改
-- 严禁迁移非目标平台内容（arch35、`*_apt.cpp`、310p tiling、kirin）
-- 严禁为通过精度测试而放宽 golden 语义或跳过失败用例
+少量 case 通过后，继续复用已有 OPP 产物跑全部 case：
+
+```bash
+python scripts/run_test.py -task_name <OpName> -stages compile precision -skip_op_build
+```
+
+查看精度日志：
+
+```bash
+runs/lvl{N}/{Category}/{OpName}/fixed_case_0/sample0/case_0/log/lvl{N}_category{Category}_{OpName}_sample0_case0_precision.log
+```
+
+完成条件是编译通过且所有精度 case 通过。若受环境、源码缺失或目标架构缺失阻塞，给出具体日志路径、错误摘要、已尝试步骤和最小下一步。
+
+## 边界
+
+- 保持 kernel 数学计算路径、tiling 算法意图、TilingData 字段顺序和用户可见语义
+- 工程适配只落在当前算子目录；框架代码 `npukernelbench/` 只有在用户明确要求修框架时修改
+- 目标工程自包含，`answer/0` 不依赖开源仓根目录
+- 精度验证用真实 golden 语义；不通过放宽容差、跳过失败 case 或改参考语义掩盖迁移问题
+- 经验沉淀只写入已由本次编译/精度日志验证的规则

@@ -1,37 +1,36 @@
 # API 文档模板
 
-api_desc.md 使用中文，严格遵循以下结构：
+`question/api_desc.md` 使用中文：
 
-```markdown
+````markdown
 # aclnn<OpName>
 
 ## 功能描述
 
-### 算子功能
-（一句话描述算子功能）
-
-### 计算公式
-$$公式$$
+说明算子的用户可见功能。
 
 ## 接口定义
 
-### Python 接口
-通过 PyBind11 封装 C++ 实现，以 `kernel_gen_ops.<opname>()` 函数形式提供：
+```python
+kernel_gen_ops.<kernel_name>(...)
+```
 
-​```python
-def <opname>(<params>):
-    """..."""
-​```
+## 参数说明
 
-## 使用案例
-​```python
+列出输入张量、属性参数和返回值。
+
+## 使用示例
+
+```python
 import torch
 import kernel_gen_ops
-# 完整可运行的调用示例
-​```
+
+# 构造输入并调用 kernel_gen_ops.<kernel_name>(...)
+```
 
 ## 约束与限制
-- 支持的数据类型
-- 支持的数据格式
-- 其他算子特有约束
-```
+
+- 支持 dtype
+- 支持 format/layout
+- shape、index、attr 的合法范围
+````

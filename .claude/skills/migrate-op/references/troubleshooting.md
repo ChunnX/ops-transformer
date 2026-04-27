@@ -1,173 +1,94 @@
-# 迁移排障指南
+# 迁移排障
 
-本文档汇总算子迁移过程中遇到的常见问题、错误特征及其解决方案，按编译、运行、精度验证三个阶段组织。迁移规则与适配方法见各专项指南，本文仅覆盖问题诊断与修复。
+先读当前失败日志，再按症状定位。连续两轮仍无法定位时，才搜索一个相似已迁移算子作对照。
 
----
+## 编译失败
 
-## 1. 编译阶段
+### `undefined reference to TilingRegistry`
 
-### 1.1 `undefined reference to TilingRegistry`
+registry 相关 `.cpp` 未编入 `cust_optiling`，或注册命名空间不一致。检查 `op_host/CMakeLists.txt` 是否收录 `tiling_base`/`common` 实现文件，注册宏和入口调用是否使用同一 namespace。
 
-**原因**：registry 命名空间不一致或 CMake 未收录 tiling_base 源码。
+### `OP_LOGE` / `OPS_ERR_IF` / `OP_TILING_CHECK` 未定义
 
-**解决**：检查 `tiling_base/*.cpp` 是否被编进 `cust_optiling`，确认注册宏和入口调用使用同一个命名空间。
+日志或错误宏来自开源仓公共头。优先本地化最小公共头；若只是调试日志，可删除日志调用或换成当前工程可用日志，不改变 tiling 分支。
 
-### 1.2 `OP_LOGE` / `OPS_ERR_IF` / `OP_TILING_CHECK` 未定义
+### `nlohmann/json.hpp not found`
 
-**原因**：日志/错误宏来自开源仓公共头，单算子工程中不可用。
+旧 tiling 接口残留。用 `gert::TilingContext` 和 `PlatformAscendC` 获取平台信息，不引入 JSON 依赖。
 
-**解决**：复制本地 `common/log.h`，或将宏替换为本地已有宏。
+### `.SetTiling()` 与 `IMPL_OP_OPTILING` 冲突
 
-### 1.3 `nlohmann/json.hpp not found`
+同一 op 同时注册两套 tiling。简单算子保留 `.SetTiling()`；复杂 registry 算子用 `IMPL_OP_OPTILING`，并从 `_def.cpp` 移除 `.SetTiling()`。
 
-**原因**：旧接口遗留，开源仓用 JSON 解析 compileInfo。
+### 找不到 `aclnn_*.h` 或 pybind 链接失败
 
-**解决**：不要引入 JSON 依赖，改用 `PlatformAscendC` 或 `TilingParse` 填充的 `CompileInfo`。
+OpDef 未被 `opbuild` 正确处理，或 `OP_ADD(OpName)`、类名、文件收录不一致。检查 `op_host` 编译源列表和 `build_out/autogen/`；不要通过手写或复制 `aclnn_*` 源码解决。
 
-### 1.4 `.SetTiling()` 和 `IMPL_OP_OPTILING` 重复注册
+## 运行失败
 
-**原因**：同一个算子同时用两种方式注册 tiling，导致运行时注册冲突。
+### `Check out != nullptr`
 
-**解决**：简单算子只用 `.SetTiling()`；复杂算子 `_def.cpp` 不写 `.SetTiling()`，在 `_tiling.cpp` 里用 `IMPL_OP_OPTILING`。
+`EXEC_NPU_CMD` 参数顺序错误。输出 tensor 放在参数列表最后，并与 OpDef 输出顺序一致。
 
----
+### 所有输出为 0
 
-## 2. 运行阶段
+常见原因是 tiling key 未命中、TilingData 字段错位或 block dim 为 0。检查 `SetTilingKey()`、kernel `TILING_KEY_IS`、TilingData 字段顺序和 `SetBlockDim()`。
 
-### 2.1 所有输出为 0
+### 随机大误差
 
-**原因**：tiling key 没匹配到有效分支，或 TilingData 字段错位。
+优先检查 GM_ADDR 参数顺序、dtype 分支、workspace 大小、block 分块长度、layout 转换和原算子精度提升逻辑。
 
-**解决**：
-- 检查 host 侧 `context->SetTilingKey(key)` 是否与 kernel 中 `TILING_KEY_IS(...)` / `GetTilingKey()` 分支一致
-- 确认 kernel 读取的 TilingData 字段顺序与 `_tiling.h` 定义一致
+### workspace 崩溃
 
-### 2.2 随机大误差
+确认 `context->GetWorkspaceSizes(1)` 判空后设置，即使 workspace 为 0 也显式写 `workspace[0] = 0`。
 
-**原因**：block dim、分块长度、workspace 大小或 dtype 分支与 host 不一致。
+### `GetCompileInfo()` 为空
 
-**解决**：对比 host tiling 计算的 block dim、分块长度与 kernel 预期，检查 dtype 分支是否遗漏。
+缺少 `TilingParse<CompileInfoType>` 或 prepare 阶段没有填充 compile info。保留原结构，并确认注册与读取类型一致。
 
-### 2.3 运行崩溃
+### `compileInfoPtr is nullptr`
 
-**原因**：GM_ADDR 参数顺序错误、workspace 未分配、tiling data size 未写入。
+可能命中了 CANN 内置同名算子的 tiling。先确认本次产物存在：
 
-**解决**：
-- 检查 kernel 入口 GM_ADDR 参数顺序与 OpDef 输入/输出声明顺序匹配
-- 确认 host 设置了 `SetBlockDim()` 且 workspace 指针判空
-- 检查 tiling data size 是否通过 `SetDataSize()` 写入
-
-### 2.4 workspace 崩溃
-
-**原因**：`context->GetWorkspaceSizes(1)` 返回值未判空。
-
-**解决**：即使 workspace 为 0，也应判空后设置 `workspace[0] = 0`。
-
-### 2.5 `GetCompileInfo()` 为空
-
-**原因**：缺少 `TilingParse<CompileInfoType>(...)` 注册，或 `TilingPrepare` 没有写入字段。
-
-**解决**：保留/补齐 CompileInfo 结构和 parse 注册。
-
-### 2.6 `compileInfoPtr is nullptr`（CANN 同名算子冲突）
-
-**特征**：TilingParse 和打包的 `liboptiling.so` 都正确，但 precision 仍报同名内置算子的 `compileInfoPtr is nullptr`。
-
-**原因**：运行期未优先加载自定义 tiling 库，CANN 使用了内置同名算子。当前框架应在 precision worker 中设置 `CUST_OPAPI_LIB_PATH`、`CUSTOM_OPTILING_LIB_PATH`，并由公共 `pytorch_npu_helper.hpp` 在 `EXEC_NPU_CMD` 前显式 `dlopen(CUSTOM_OPTILING_LIB_PATH, RTLD_NOW | RTLD_GLOBAL)`。
-
-**解决**：不要在单个 `validation/pybind.cpp` 中重复手写 `dlopen`。优先检查框架生成的运行环境和自定义 OPP 产物：
-
-- `CUST_OPAPI_LIB_PATH=<custom_opp_root>/op_api/lib/libcust_opapi.so`
-- `CUSTOM_OPTILING_LIB_PATH=<custom_opp_root>/op_impl/ai_core/tbe/op_tiling/liboptiling.so`
-- `LD_LIBRARY_PATH` 已前置 `<custom_opp_root>/op_api/lib`
-
-若 `CUSTOM_OPTILING_LIB_PATH` 指向的 so 缺失或 `dlopen(...RTLD_NOW...)` 失败，说明自定义 CMake 打包不完整或 so 存在未解析符号。用 `ldd` 检查该 so 没有未解析依赖。
-
-常见未解析符号来自迁移时保留了开源仓调试函数声明但没有实现，例如 `Ops::NN::DebugTilingContext(...)`。这类调试打印不属于 tiling 语义，单算子工程中应删除对应 include 和日志调用，或复制完整实现。
-
-### 2.7 动态输入数量错误
-
-**特征**：`ParamType(DYNAMIC)` 的输入遍历数量不正确。
-
-**原因**：用固定 `GetInputTensor(i)` 循环到所有张量。
-
-**解决**：使用 `GetDynamicInputTensor(dynamicInputIndex, j)`，遇到 `nullptr` 停止。
-
-### 2.8 tiling key 不匹配
-
-**特征**：kernel 中按 `TILING_KEY_IS(...)` 或 `GetTilingKey()` 分支，但 host 未设置对应 key。
-
-**解决**：host 必须调用 `context->SetTilingKey(key)`，且 key 值与 kernel 编译分支一致。
-
-### 2.9 `Check out != nullptr`
-
-**原因**：`EXEC_NPU_CMD` 参数顺序错误，输出张量不在最后。
-
-**解决**：输出张量必须放在 `EXEC_NPU_CMD` 参数列表的最后位置。
-
-### 2.10 标量参数恒为 0（类型不匹配）
-
-**特征**：tiling 日志显示属性值恒为 0（如 `scale: 0.000000`），但测试传入非零值。
-
-**原因**：pybind.cpp 中标量参数类型（如 `float`）与 autogen 生成的 `aclnnXxxGetWorkspaceSize` 函数签名中对应参数类型（如 `double`）不一致，导致 ABI 不匹配。
-
-**解决**：
-1. 打开编译目录下 `build_out/autogen/aclnn_xxx.h`，查看 `GetWorkspaceSize` 签名中每个参数的类型
-2. pybind.cpp 中标量参数的类型必须与 autogen 签名**完全一致**
-
-查找 autogen 头文件：
-```bash
-find runs -path "*<OpName>*" -name "aclnn_*.h" -print
+```text
+op_api/lib/libcust_opapi.so
+op_impl/ai_core/tbe/op_tiling/liboptiling.so
 ```
 
-### 2.11 `std::bad_alloc` / `MemoryError`（ListFloat 未拆分）
+再确认 precision 环境中的 `CUSTOM_OPTILING_LIB_PATH` 指向本次产物。不要在单个 `pybind.cpp` 中重复手写全局 `dlopen`。
 
-**原因**：`pytorch_npu_helper.hpp` 的 `EXEC_NPU_CMD` 宏没有 `std::vector<float>` → `aclFloatArray*` 的转换重载。
+### 标量参数恒为 0
 
-**解决**：将 `ListFloat` 属性拆分为独立的 `Float` 属性。详见 `validation_guide.md` 第 5 节。
+pybind 标量类型与 `build_out/autogen/aclnn_*.h` 的 `GetWorkspaceSize` 签名不一致。查看 autogen 头，按签名精确修改 pybind 参数类型。
 
----
+### `std::bad_alloc` / `MemoryError`
 
-## 3. 精度验证阶段
+常见于 `ListFloat` 属性桥接。按 `references/validation.md` 将固定长度 ListFloat 拆成多个 Float 属性，并在 `ModelNew` 中保持用户语义。
 
-### 3.1 Model 未复制精度提升逻辑
+## 精度失败
 
-**特征**：精度测试误差过大。
+### golden 与算子语义不一致
 
-**原因**：`Model`（golden）未复制算子的精度提升逻辑（如 int16→float32→计算→转回）。
+检查 `Model.forward()` 是否复现原算子的 dtype cast、舍入、clamp、layout、广播、边界处理和特殊值行为。
 
-**解决**：`Model.forward()` 中必须复制与算子一致的精度提升逻辑。
+### 参数数量不匹配
 
-### 3.2 推导参数泄露到 `get_inputs()`
+`get_inputs()` 只返回用户可见参数。推导参数在 `ModelNew.forward()` 中计算。
 
-**特征**：运行时报参数数量不匹配。
+### 调用了 `custom_pybind_api`
 
-**原因**：`get_inputs()` 返回了推导参数。
+module 中应调用 `kernel_gen_ops.<kernel_name>(...)`。`custom_pybind_api` 只作为 pybind 源文件占位符。
 
-**解决**：`get_inputs()` 只返回用户直接指定的参数；推导参数由 `ModelNew.forward()` 计算。
+### diff 返回类型错误
 
-### 3.3 使用 `custom_pybind_api` 而非 `<opname>`
+`custom_check_precision()` 返回 `(bool, torch.Tensor, torch.Tensor)`。
 
-**特征**：调用自定义算子失败。
+## 查看相似算子的时机
 
-**原因**：module.py 中使用了模板占位符名 `custom_pybind_api` 而非渲染后的实际函数名。
+满足以下条件之一再看：
 
-**解决**：使用 `kernel_gen_ops.<opname>(...)` 调用。
+- 当前错误已经按日志修了两轮仍无进展
+- 报错指向框架接口差异，当前 skill 未覆盖
+- 需要确认某类复杂 registry 的本地 CMake 写法
 
-### 3.4 `all_abs_diff` / `all_rel_diff` 类型错误
-
-**原因**：`custom_check_precision` 返回了 Python `float` 而非 `torch.Tensor`。
-
-**解决**：确保 `all_abs_diff` 和 `all_rel_diff` 是 `torch.Tensor`。
-
-### 3.5 CSV bool 字段解析错误
-
-**特征**：bool 参数未正确解析。
-
-**原因**：CSV bool 字段可能被解析为 `int`（1/0）。
-
-**解决**：
-```python
-ac = param['align_corners']
-align_corners = bool(ac) if not isinstance(ac, str) else (ac.lower() == 'true')
-```
+查看时只打开一个最相似算子的相关文件，并记录借鉴点来自哪个错误症状。

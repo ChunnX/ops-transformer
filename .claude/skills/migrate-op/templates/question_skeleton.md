@@ -1,6 +1,6 @@
-# 题目骨架代码模板
+# 题目骨架模板
 
-## question/op_host/<opname>.cpp
+## question/op_host/<kernel_name>.cpp
 
 ```cpp
 #include "register/op_def_registry.h"
@@ -9,21 +9,20 @@
 namespace optiling {
 static ge::graphStatus TilingFunc(gert::TilingContext *context)
 {
-    context->SetBlockDim(platform_ascendc::PlatformAscendCManager::GetInstance()->GetCoreNumAiv());
+    auto platform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    uint32_t coreNum = platform.GetCoreNumAiv();
+    context->SetBlockDim(coreNum == 0 ? 1 : coreNum);
     return ge::GRAPH_SUCCESS;
 }
-} // namespace optiling
-
+}  // namespace optiling
 
 namespace ops {
 class <OpName> : public OpDef {
 public:
-    explicit <OpName>(const char* name) : OpDef(name)
+    explicit <OpName>(const char *name) : OpDef(name)
     {
-        // 从 answer 复制 Input/Output 定义，仅保留 ascend910b/ascend910_93
-        // 删除 aicoreConfig、TilingParse、ExtendCfgInfo
-        // 如果 answer 中有 SetInferShape，也要包含
-
+        // Copy Input/Output/Attr declarations from answer.
+        // Keep ascend910b and ascend910_93 configs.
         this->AICore().SetTiling(optiling::TilingFunc);
         this->AICore().AddConfig("ascend910b");
         this->AICore().AddConfig("ascend910_93");
@@ -31,19 +30,21 @@ public:
 };
 
 OP_ADD(<OpName>);
-}
+}  // namespace ops
 ```
 
-## question/op_kernel/<opname>.cpp
+## question/op_kernel/<kernel_name>.cpp
 
 ```cpp
 #include "kernel_operator.h"
 
-using namespace AscendC;
-
-extern "C" __global__ __aicore__ void <opname>(GM_ADDR input1, ..., GM_ADDR output1, ..., GM_ADDR workspace, GM_ADDR tiling)
+extern "C" __global__ __aicore__ void <kernel_name>(
+    GM_ADDR input,
+    GM_ADDR output,
+    GM_ADDR workspace,
+    GM_ADDR tiling)
 {
 }
 ```
 
-**注意：** kernel 函数签名参数顺序（输入、输出、workspace、tiling）必须与 answer 内核**完全匹配**。
+Kernel 函数名和 `GM_ADDR` 参数顺序必须与 `answer/0/op_kernel` 完全一致。
