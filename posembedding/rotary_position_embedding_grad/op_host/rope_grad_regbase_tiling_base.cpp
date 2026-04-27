@@ -111,8 +111,9 @@ ge::graphStatus RopeGradRegBaseTilingClass::CheckInPutShapeAllPositive(const int
         if (shape.GetDim(i) <= 0) {
             std::string reasonMsg = "The shape of input " + inputNames[idx] +
                 " can not be an empty tensor or an invalid tensor with a negative dimension";
+            std::string shapeStr = ToString(shape);
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), inputNames[idx].c_str(),
-                ToString(shape).c_str(), reasonMsg.c_str());
+                shapeStr.c_str(), reasonMsg.c_str());
             return ge::GRAPH_FAILED;
         }
     }
@@ -126,8 +127,9 @@ ge::graphStatus RopeGradRegBaseTilingClass::CheckOutPutShapeAllPositive(const in
         if (shape.GetDim(i) <= 0) {
             std::string reasonMsg = "The shape of output " + outputNames[idx] +
                 " can not be an empty tensor or an invalid tensor with a negative dimension";
+            std::string shapeStr = ToString(shape);
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), outputNames[idx].c_str(),
-                ToString(shape).c_str(), reasonMsg.c_str());
+                shapeStr.c_str(), reasonMsg.c_str());
             return ge::GRAPH_FAILED;
         }
     }
@@ -403,11 +405,12 @@ ge::graphStatus RopeGradRegBaseTilingClass::CheckParam()
 ge::graphStatus RopeGradRegBaseTilingClass::CheckRotaryModeShapeRelation(const int64_t d)
 {
     auto dyShape = context_->GetInputShape(DY_INDEX)->GetStorageShape();
+    std::string dyShapeStr = ToString(dyShape);
     if (d > D_LIMIT) {
         std::string reasonMsg = "The D axis of input dy can not be greater than " + std::to_string(D_LIMIT) +
             ", where D refers to the 3rd dim";
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "dy",
-            ToString(dyShape).c_str(), reasonMsg.c_str());
+            dyShapeStr.c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
     if (rotaryMode_ == RotaryPosEmbeddingMode::HALF || rotaryMode_ == RotaryPosEmbeddingMode::INTERLEAVE ||
@@ -418,7 +421,7 @@ ge::graphStatus RopeGradRegBaseTilingClass::CheckRotaryModeShapeRelation(const i
                 "when the attr mode is half, interleave or deepseek_interleave, "
                 "where D refers to the 3rd dim";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "dy",
-                ToString(dyShape).c_str(), reasonMsg.c_str());
+                dyShapeStr.c_str(), reasonMsg.c_str());
             return ge::GRAPH_FAILED;
         }
     } else if (rotaryMode_ == RotaryPosEmbeddingMode::QUARTER) {
@@ -427,7 +430,7 @@ ge::graphStatus RopeGradRegBaseTilingClass::CheckRotaryModeShapeRelation(const i
                 "The D axis of input dy should be divisible by " + std::to_string(QUARTER_MODE_COEF) +
                 "when the attr mode is quarter, where D refers to the 3rd dim";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "dy",
-                ToString(dyShape).c_str(), reasonMsg.c_str());
+                dyShapeStr.c_str(), reasonMsg.c_str());
             return ge::GRAPH_FAILED;
         }
     }
