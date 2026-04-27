@@ -620,6 +620,7 @@ namespace SplitFuse {
                 LayoutV layoutVTemp(stackSeqTile, strideV);
                 blockMmadQK.resetBlockStart(kvStart, pagedBlockSize);
                 blockMmadPV.resetBlockStart(kvStart, pagedBlockSize);
+                // 定位到存在oom问题的地方
                 blockMmadQK.loadQGM(gQ[gmOffsetQ], layoutQTemp, rowNum, qNBlockSize, qHeads);
 #endif
                 for (uint32_t kvSIdx = kvStart; kvSIdx < kvEnd + preKVNum; kvSIdx++) {
