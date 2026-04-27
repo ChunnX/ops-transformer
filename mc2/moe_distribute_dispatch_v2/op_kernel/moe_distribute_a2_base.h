@@ -142,7 +142,9 @@ protected:
     constexpr static uint32_t B32_PER_BLOCK = UB_32B_ALIGN / sizeof(int32_t); // 8
     constexpr static uint32_t EXTRA_TOKEN_INFO_NUM = 4U; // 专家信息 权重信息 量化Scale 到达标志位
     constexpr static uint64_t IPC_MAGIC_OFFSET = 2 * 1024 * 1024UL - 128 * 32UL; // 理论为2 * 1024 * 1024UL - aivNum * 32UL
-    constexpr static uint64_t IPC_DISPATCH_FLAG_OFFSET = 1 * 1024 * 1024UL;
+    constexpr static uint64_t IPC_ADUMP_WIN_OFFSET = 1 * 1024 * 1024UL;
+    constexpr static uint64_t IPC_ADUMP_WIN_SIZE = 50 * 1024UL;
+    constexpr static uint64_t IPC_DISPATCH_FLAG_OFFSET = 1 * 1024 * 1024UL + IPC_ADUMP_WIN_SIZE * 2UL + 32UL;
     constexpr static uint64_t IPC_COMBINE_FLAG_OFFSET = 0UL;
     constexpr static uint64_t IPC_TOKEN_CNT_OFFSET = 0UL;
     constexpr static uint64_t IPC_HALF_NON_DATA_BYTES = 2 * 1024 * 1024UL;
@@ -297,6 +299,11 @@ public:
         ipcTokenCntAddrStart_ = ipcFlagAddrStart_[1] + IPC_TOKEN_CNT_OFFSET;
     }
 
+    __aicore__ inline GM_ADDR GetIpcAdumpWinAddr() const
+    {
+        return shareAddrs[curRankId_ % SERVER_RANK_SIZE] + ipcFlagAddrStart_[0] + IPC_ADUMP_WIN_OFFSET + aivId_ * BUFFER_ALIGN;
+    }
+
     // ===== Sender =====
     // Dispatch阶段：获取本地发送缓冲区数据地址
     // 待发送的Token数据是累加存放的，不需要区分目标卡
@@ -375,6 +382,11 @@ public:
         // 这里使用aivNum是为了添加冗余，确保处理不同server的token级flag不重叠
         ipcTokenFlagSize_ = RoundUp(static_cast<uint32_t>((maxBs + aivNum / serverNum_ + 1U) * sizeof(uint64_t)), UB_32B_ALIGN);
         ipcTokenFlagAddrStart_ = ipcSyncFlagAddrStart_ + (SERVER_RANK_SIZE + 1) * UB_32B_ALIGN;
+    }
+
+    __aicore__ inline GM_ADDR GetIpcAdumpWinAddr() const
+    {
+        return shareAddrs[curRankId_ % SERVER_RANK_SIZE] + ipcFlagAddrStart_[0] + IPC_ADUMP_WIN_OFFSET + IPC_ADUMP_WIN_SIZE + aivId_ * BUFFER_ALIGN;
     }
 
     // ===== Sender =====
