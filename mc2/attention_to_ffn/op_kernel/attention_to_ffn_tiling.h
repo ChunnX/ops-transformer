@@ -19,35 +19,35 @@
 #include "kernel_tiling/kernel_tiling.h"
 
 struct AttentionToFFNInfo {
-    uint32_t X;
-    uint32_t BS;
-    uint32_t H;
-    uint32_t K;
-    uint32_t L;
-    uint32_t expertNum;                // 所有专家数
-    uint32_t moeExpertNum;          // 路由专家数
-    uint32_t sharedExpertNum;       // 共享专家
-    uint32_t HS;
-    uint32_t expRankTableM;            // expert_rank_table 中最大支持冗余度
-    uint32_t microBatchNum;
-    uint32_t attentionWorkerNum;
-    uint32_t infoTableLastDimNum;
-    uint32_t aivNum;
-    uint32_t worldSize;
-    uint32_t syncFlag;
-    uint32_t quantMode;
-    uint32_t ffnStartRankId;
-    bool isScales;
-    bool isActiveMask;
-    uint8_t windowType;
-    uint64_t totalUbSize;
-    uint64_t totalWinSize;
+    uint32_t X;                       // micro batch sequence size（token组数），当前版本只支持X=1
+    uint32_t BS;                      // batch sequence size（本卡最终输出的token数量），范围(0, 512]
+    uint32_t H;                       // hidden size隐藏层大小，范围[1024, 8192]
+    uint32_t K;                       // 每个token选取的topK专家数量，范围(0, min(16, moeExpertNum)]
+    uint32_t L;                       // 模型层数，当前版本只支持L=1
+    uint32_t expertNum;               // 所有专家数 = moeExpertNum + sharedExpertNum
+    uint32_t moeExpertNum;            // 路由专家（MoE专家）数量，范围(0, 1024]
+    uint32_t sharedExpertNum;         // 共享专家数量，范围[0, 4]
+    uint32_t HS;                      // ffnTokenDataShape的第5维，即单个token发送到FFN的数据长度
+    uint32_t expRankTableM;           // expert_rank_table最后一维的长度，体现为部署在FFN节点上数量最多的专家部署信息列表的长度
+    uint32_t microBatchNum;           // microBatch切分的数量，来自ffnTokenDataShape[1]
+    uint32_t attentionWorkerNum;      // Attention节点数量，来自ffnTokenDataShape[0]
+    uint32_t infoTableLastDimNum;     // tokenInfoTable最后一维的大小，来自ffnTokenInfoTableShape[2]
+    uint32_t aivNum;                  // AI Vector核心总数，用于多核并行
+    uint32_t worldSize;               // 通信域大小（总卡数），范围[2, 768]
+    uint32_t syncFlag;                // 同步标志：0=同步模式，1=异步模式
+    uint32_t quantMode;               // 量化模式：0=非量化，1=静态量化（暂不支持），2=动态量化
+    uint32_t ffnStartRankId;          // FFN节点的起始rankId
+    bool isScales;                    // 是否输入了smoothScales量化参数
+    bool isActiveMask;                // 是否输入了activeMask激活掩码
+    uint8_t windowType;               // 通信窗口类型，由环境变量ASCEND_ATTN_TO_FFN_WIN_TYPE控制
+    uint64_t totalUbSize;             // 每个AIV核心的UB（Unified Buffer）总大小
+    uint64_t totalWinSize;            // 通信窗口总大小（字节），由HCCL_BUFFSIZE环境变量决定
 };
 
 struct AttentionToFFNTilingData {
-    Mc2InitTiling mc2InitTiling;
-    Mc2CcTiling mc2CcTiling1;
-    AttentionToFFNInfo attentionToFFNInfo;
+    Mc2InitTiling mc2InitTiling;      // MC2通信初始化Tiling参数，包含通信域基础配置
+    Mc2CcTiling mc2CcTiling1;         // MC2集合通信Tiling参数，包含AlltoAll通信算法配置
+    AttentionToFFNInfo attentionToFFNInfo; // 算子核心Tiling信息
 };
 
 #endif // ATTENTION_TO_FFN_TILING_H

@@ -17,16 +17,19 @@
 
 using namespace ge;
 namespace ops {
+// AttentionToFFN算子的形状推导函数
 static ge::graphStatus InferShapeAttentionToFFN(gert::InferShapeContext *context)
 {
     return ge::GRAPH_SUCCESS;
 }
 
+// AttentionToFFN算子的数据类型推导函数
 static ge::graphStatus InferDataTypeAttentionToFFN(gert::InferDataTypeContext *context)
 {
     return ge::GRAPH_SUCCESS;
 }
 
+// 注册AttentionToFFN算子的形状推导和数据类型推导函数
 IMPL_OP_INFERSHAPE(AttentionToFFN)
     .InferShape(InferShapeAttentionToFFN)
     .InferDataType(InferDataTypeAttentionToFFN);

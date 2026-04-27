@@ -34,20 +34,20 @@
 #endif
 
 namespace AttentionToFFNImpl {
-constexpr uint8_t BUFFER_NUM = 2; // 多Buf
-constexpr uint32_t UB_ALIGN = 32; // UB按32字节对齐
-constexpr uint8_t WIN_OFFSET_CNT = 2;
-constexpr uint32_t SCALE_PARAM_PAD_SIZE = 128; // 预留128B给量化参数
-constexpr uint32_t WIN_ALIGN = 512; // win offset 512字节对齐
-constexpr uint32_t REP_STRIDE = 8; // 相邻迭代间的地址步长
-constexpr uint32_t STATUS_REP_STRIDE = 8; // 32B / sizeof(int32) = 8
-constexpr uint32_t EXPERT_TABLE_REP_STRIDE = 16; // 64B / sizeof(int32) = 16
-constexpr uint32_t WORKSPACE_ELEMENT_OFFSET = 128;
-constexpr uint32_t DYNAMIC_QUANT = 2; // 动态量化
-constexpr uint32_t RANK_OFFSET_STRIDE = 2; // RankTable第一个为rankCnt，后面两两组合
-constexpr uint32_t TOKEN_INFO_TABLE_RS = 2; // tokenInfoTable前2位为flag和layer_id
-constexpr uint32_t TOKEN_INFO_TABLE_COPY_BLOCK_CNT = 2; // tokenInfoTable在DataCopy时每次搬运2个int32
-constexpr float INT8_MAX_VALUE = 127.0f;
+constexpr uint8_t BUFFER_NUM = 2;              // 双缓冲机制，提高数据搬运和计算的重叠度
+constexpr uint32_t UB_ALIGN = 32;              // UB（Unified Buffer）按32字节对齐，硬件约束
+constexpr uint8_t WIN_OFFSET_CNT = 2;          // 通信窗口偏移数量：[0]=tokenInfoTable偏移，[1]=tokenData偏移
+constexpr uint32_t SCALE_PARAM_PAD_SIZE = 128; // 量化参数预留128字节，用于存放动态量化的反量化scale
+constexpr uint32_t WIN_ALIGN = 512;            // 通信窗口偏移按512字节对齐
+constexpr uint32_t REP_STRIDE = 8;             // ReduceMax相邻迭代间的地址步长（256bit/sizeof(float)=8）
+constexpr uint32_t STATUS_REP_STRIDE = 8;      // 状态tensor相邻元素间的步长（32B/sizeof(int32)=8）
+constexpr uint32_t EXPERT_TABLE_REP_STRIDE = 16; // 专家RankTable缓存刷新步长（64B/sizeof(int32)=16）
+constexpr uint32_t WORKSPACE_ELEMENT_OFFSET = 128; // Workspace元素偏移对齐粒度（128字节）
+constexpr uint32_t DYNAMIC_QUANT = 2;          // 动态量化模式标识
+constexpr uint32_t RANK_OFFSET_STRIDE = 2;     // RankTable中每条记录的步长：第0位为rankCnt，之后每2个一组(rankId, localExpId)
+constexpr uint32_t TOKEN_INFO_TABLE_RS = 2;    // tokenInfoTable前2位为flag和layer_id，后续为各token的状态
+constexpr uint32_t TOKEN_INFO_TABLE_COPY_BLOCK_CNT = 2; // tokenInfoTable在DataCopy时每次搬运2个int32（flag+layerId）
+constexpr float INT8_MAX_VALUE = 127.0f;       // int8最大值，用于动态量化scale计算
 
 
 #define TemplateAttentionToFFNTypeClass typename XType, bool isQuant, bool isSync, bool isActiveMask
@@ -77,89 +77,89 @@ private:
     __aicore__ inline void FindExpertRank(int32_t expertId);
     __aicore__ inline void SetExpertAndRank(uint32_t tokenIdx, uint32_t tokenId, uint32_t topkId);
     __aicore__ inline void CheckFlagAndSetTableGM(int32_t toRankId, GM_ADDR &toRankAddr, GlobalTensor<int32_t> &tokenInfoTableGMTensor);
-    TPipe *tpipe_{nullptr};
-    GlobalTensor<XType> xGMTensor_;
-    GlobalTensor<int32_t> sessionIdGMTensor_;
-    GlobalTensor<int32_t> microBatchIdGMTensor_;
-    GlobalTensor<int32_t> layerIdGMTensor_;
-    GlobalTensor<int32_t> expertIdsGMTensor_;
-    GlobalTensor<int32_t> expertRankTableGMTensor_;
-    GlobalTensor<int32_t> syncStatusGMTensor_;
-    GlobalTensor<float> scalesGMTensor_;
-    GlobalTensor<bool> activeMaskGMTensor_;
-    LocalTensor<XType> xInTensor_;
-    LocalTensor<int32_t> statusTensor_;
-    LocalTensor<float> scalesFp32Tensor_;
-    LocalTensor<int8_t> xOutTensor_;
-    LocalTensor<int32_t> ffnStatusTensor_;
-    LocalTensor<int32_t> syncStatusWorkspaceTensor_;
-    LocalTensor<int32_t> ffnFlagTensor_;
-    LocalTensor<float> smoothScalesTensor_;
-    LocalTensor<int32_t> expertIdsTensor_;
+    TPipe *tpipe_{nullptr};                          // 管道管理器，管理AscendC的Queue和Buffer
+    GlobalTensor<XType> xGMTensor_;                  // GM上输入token数据（FP16/BF16）
+    GlobalTensor<int32_t> sessionIdGMTensor_;        // GM上sessionId，标识当前Attention Worker
+    GlobalTensor<int32_t> microBatchIdGMTensor_;     // GM上microBatchId，标识当前microBatch
+    GlobalTensor<int32_t> layerIdGMTensor_;          // GM上layerId，标识当前模型层
+    GlobalTensor<int32_t> expertIdsGMTensor_;        // GM上expertIds，每个token的topK专家索引
+    GlobalTensor<int32_t> expertRankTableGMTensor_;  // GM上expertRankTable，专家到FFN卡的映射表
+    GlobalTensor<int32_t> syncStatusGMTensor_;       // GM上同步状态，异步场景记录发送状态到workspace
+    GlobalTensor<float> scalesGMTensor_;             // GM上smoothScales量化参数
+    GlobalTensor<bool> activeMaskGMTensor_;          // GM上activeMask激活掩码
+    LocalTensor<XType> xInTensor_;                   // UB上输入token数据（从GM搬入）
+    LocalTensor<int32_t> statusTensor_;              // UB上状态tensor，存放localExpId用于写入tokenInfoTable
+    LocalTensor<float> scalesFp32Tensor_;            // UB上量化scale（FP32）
+    LocalTensor<int8_t> xOutTensor_;                 // UB上量化后的int8输出数据
+    LocalTensor<int32_t> ffnStatusTensor_;           // UB上FFN发送状态（同步模式使用）
+    LocalTensor<int32_t> syncStatusWorkspaceTensor_; // UB上同步状态workspace（同步模式使用）
+    LocalTensor<int32_t> ffnFlagTensor_;             // UB上FFN flag（用于检查FFN端是否可写入）
+    LocalTensor<float> smoothScalesTensor_;          // UB上smoothScales（量化模式使用）
+    LocalTensor<int32_t> expertIdsTensor_;           // UB上expertIds（从GM搬入）
 
-    TBuf<> smoothScalesBuf_;    // 量化使用，搬入smoothScales
-    TBuf<> expertIdsBuf_;
-    TBuf<> statusBuf_;
-    TBuf<> receiveDataCastFloatBuf_;
-    TBuf<> sumOutBuf_;
-    TBuf<> activeMaskBuf_;
-    TBuf<> castTempBuf_;
-    TBuf<> ffnStatusBuf_;
-    TBuf<> syncStatusWorkspaceBuf_;
-    TBuf<> ffnFlagBuf_;
-    TBuf<> attnStatusBuf_;
-    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> xQueue_;  // 非量化使用
-    TQue<QuePosition::VECIN, 1> xInQueue_; // 量化使用，量化前的输入
-    TQue<QuePosition::VECOUT, 1> xOutQueue_; // 量化使用，量化后的输出
-    GM_ADDR syncStatusWorkspaceGM_;    // 异步场景使用workSpace记录发送状态信息
+    TBuf<> smoothScalesBuf_;                         // 量化使用，搬入smoothScales
+    TBuf<> expertIdsBuf_;                            // 存放expertIds数据
+    TBuf<> statusBuf_;                               // 存放status状态数据
+    TBuf<> receiveDataCastFloatBuf_;                  // 量化使用，存放Cast到FP32的中间结果
+    TBuf<> sumOutBuf_;                               // 存放Sum归约结果（activeMask计算有效token数）
+    TBuf<> activeMaskBuf_;                           // 存放activeMask数据
+    TBuf<> castTempBuf_;                             // Cast临时缓冲区
+    TBuf<> ffnStatusBuf_;                            // 存放FFN发送状态
+    TBuf<> syncStatusWorkspaceBuf_;                  // 存放同步状态workspace数据
+    TBuf<> ffnFlagBuf_;                              // 存放FFN flag数据
+    TBuf<> attnStatusBuf_;                           // 存放Attention侧状态（activeMask场景复用expertIdsBuf_）
+    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> xQueue_;  // 非量化使用，双缓冲Queue
+    TQue<QuePosition::VECIN, 1> xInQueue_;           // 量化使用，量化前的输入Queue
+    TQue<QuePosition::VECOUT, 1> xOutQueue_;         // 量化使用，量化后的输出Queue
+    GM_ADDR syncStatusWorkspaceGM_;                  // 异步场景使用workSpace记录发送状态信息
 
-    int32_t dstExpertId_{0};
-    int32_t toRankId_{0};
-    int32_t localExpId_{0};
+    int32_t dstExpertId_{0};           // 当前token要发送到的目标专家ID
+    int32_t toRankId_{0};              // 当前token要发送到的目标FFN rank ID
+    int32_t localExpId_{0};            // 目标专家在目标FFN卡上的本地专家ID
 
-    uint32_t aivId_{0};
-    uint32_t rankId_{0};
-    uint32_t axisX_{0};
-    uint32_t axisBS_{0};
-    uint32_t axisH_{0};
-    uint32_t axisL_{0};
-    uint32_t axisK_{0};
-    bool isScales_{false};
-    uint32_t expertNum_{0};
-    uint32_t expRankTableM_{0};
-    uint32_t attentionWorkerNum_{0};
-    uint32_t infoTableLastDimNum_{0};
-    uint32_t aivNum_{0};
-    uint32_t worldSize_{0};
-    uint64_t hSize_{0};
-    uint32_t sessionId_{0};
-    uint32_t microBatchId_{0};
-    uint32_t expertIdsCnt_{0};
-    uint32_t layerId_{0};
-    uint32_t totalSendNum_{0};
-    uint32_t sendNum_{0};
-    uint32_t quantMode_{0};
-    uint32_t scaleParamPad_{0};
-    uint32_t ffnNum_{0};
-    uint32_t ffnStartRankId_{0};
-    uint64_t microBatchNum_{0};
-    uint64_t axisHS_{0};
-    uint64_t hCommuSize_{0};
-    uint64_t ffnNumAlignSize_{0};
-    uint64_t layIdsExpRankTableOffset_{0};
-    uint64_t preExpRankTableOffset_{0};
-    uint64_t winTokenDataOffset_{0};
-    uint64_t winInfoTableOffset_{0};
-    uint64_t winOffset_[WIN_OFFSET_CNT]{0, 0};
-    uint32_t curBsCnt_{0}; 
-    uint32_t axisBsAlignSize_{0};
-    uint32_t moeExpertNum_{0};
-    uint32_t expertRankTableCnt_{0};
-    uint32_t ffnNumAlignCnt_{0};
-    uint32_t aivWorkspaceOffset_{0};
-    uint8_t windowType_{0};
-    uint8_t sharedExpertNum_{1};
-    __gm__ HcclOpResParam *winContext_{nullptr};
+    uint32_t aivId_{0};                // 当前AIV核心ID（用于多核并行分配）
+    uint32_t rankId_{0};               // 当前卡在本通信域中的rank ID
+    uint32_t axisX_{0};                // token组数X
+    uint32_t axisBS_{0};               // batch sequence size
+    uint32_t axisH_{0};                // hidden size
+    uint32_t axisL_{0};                // 模型层数L
+    uint32_t axisK_{0};                // topK专家数
+    bool isScales_{false};             // 是否有smoothScales输入
+    uint32_t expertNum_{0};            // 所有专家总数（moeExpert + sharedExpert）
+    uint32_t expRankTableM_{0};        // expertRankTable最后一维长度M
+    uint32_t attentionWorkerNum_{0};   // Attention Worker节点数量
+    uint32_t infoTableLastDimNum_{0};  // tokenInfoTable最后一维大小
+    uint32_t aivNum_{0};               // AIV核心总数
+    uint32_t worldSize_{0};            // 通信域大小（总卡数）
+    uint64_t hSize_{0};                // 单个token的隐藏层字节数 = H * sizeof(XType)
+    uint32_t sessionId_{0};            // 当前Attention Worker的session ID
+    uint32_t microBatchId_{0};         // 当前microBatch的ID
+    uint32_t expertIdsCnt_{0};         // expertIds元素总数 = X * BS * K
+    uint32_t layerId_{0};              // 当前模型层ID
+    uint32_t totalSendNum_{0};         // 总发送token数 = X * curBsCnt * (K + sharedExpertNum)
+    uint32_t sendNum_{0};              // 当前AIV核心需要发送的token数
+    uint32_t quantMode_{0};            // 量化模式
+    uint32_t scaleParamPad_{0};        // 量化参数填充大小
+    uint32_t ffnNum_{0};               // FFN节点数量 = worldSize - attentionWorkerNum
+    uint32_t ffnStartRankId_{0};       // FFN节点起始rank ID
+    uint64_t microBatchNum_{0};        // microBatch切分数量
+    uint64_t axisHS_{0};               // ffnTokenDataShape第5维（单个token发送数据长度）
+    uint64_t hCommuSize_{0};           // 量化模式下通信数据大小 = H * sizeof(int8) + scaleParamPad
+    uint64_t ffnNumAlignSize_{0};      // FFN数量对齐后的大小（32B对齐）
+    uint64_t layIdsExpRankTableOffset_{0}; // expertRankTable中当前层的偏移 = layerId * expertRankTableCnt
+    uint64_t preExpRankTableOffset_{0};    // expertRankTable前一层偏移（预留）
+    uint64_t winTokenDataOffset_{0};       // 通信窗口中tokenData区域的偏移（基于sessionId和microBatchId）
+    uint64_t winInfoTableOffset_{0};       // 通信窗口中tokenInfoTable区域的偏移（基于sessionId和microBatchId）
+    uint64_t winOffset_[WIN_OFFSET_CNT]{0, 0}; // 通信窗口偏移：[0]=tokenInfoTable起始偏移，[1]=tokenData起始偏移
+    uint32_t curBsCnt_{0};             // 当前有效token数（activeMask场景可能小于axisBS_）
+    uint32_t axisBsAlignSize_{0};      // BS按32B对齐后的大小
+    uint32_t moeExpertNum_{0};         // MoE路由专家数量
+    uint32_t expertRankTableCnt_{0};   // expertRankTable元素总数 = expertNum * expRankTableM
+    uint32_t ffnNumAlignCnt_{0};       // ffnNumAlignSize对应的int32元素个数
+    uint32_t aivWorkspaceOffset_{0};   // 每个AIV核心在workspace中的偏移（128B对齐）
+    uint8_t windowType_{0};            // 通信窗口类型
+    uint8_t sharedExpertNum_{1};       // 共享专家数量（默认1个）
+    __gm__ HcclOpResParam *winContext_{nullptr}; // HCCL通信窗口上下文，包含通信域和窗口信息
 };
 
 template <TemplateAttentionToFFNTypeClass>

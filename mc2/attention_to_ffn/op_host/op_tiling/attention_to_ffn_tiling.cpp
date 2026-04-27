@@ -43,35 +43,35 @@ using namespace Mc2Tiling;
 namespace MC2Tiling {
 constexpr char ATTN_TO_FFN_WIN_TYPE_ENV[] = "ASCEND_ATTN_TO_FFN_WIN_TYPE";
 
-constexpr uint32_t INPUT_X_INDEX = 0;
-constexpr uint32_t INPUT_SESSION_IDS_INDEX = 1;
-constexpr uint32_t INPUT_MICRO_BATCH_IDS_INDEX = 2;
-constexpr uint32_t INPUT_LAYER_IDS_INDEX = 3;
-constexpr uint32_t INPUT_EXPERT_IDS_INDEX = 4;
-constexpr uint32_t INPUT_EXPERT_RANK_TABLE_INDEX = 5;
-constexpr uint32_t INPUT_SCALES_INDEX = 6;
-constexpr uint32_t INPUT_ACTIVE_MASK_INDEX = 7;
+constexpr uint32_t INPUT_X_INDEX = 0;                    // 输入x的索引：token数据
+constexpr uint32_t INPUT_SESSION_IDS_INDEX = 1;          // 输入sessionId的索引：会话ID
+constexpr uint32_t INPUT_MICRO_BATCH_IDS_INDEX = 2;      // 输入microBatchId的索引：微批次ID
+constexpr uint32_t INPUT_LAYER_IDS_INDEX = 3;            // 输入layerId的索引：层ID
+constexpr uint32_t INPUT_EXPERT_IDS_INDEX = 4;           // 输入expertIds的索引：专家ID
+constexpr uint32_t INPUT_EXPERT_RANK_TABLE_INDEX = 5;    // 输入expertRankTable的索引：专家排名表
+constexpr uint32_t INPUT_SCALES_INDEX = 6;               // 可选输入scales的索引：量化平滑参数
+constexpr uint32_t INPUT_ACTIVE_MASK_INDEX = 7;          // 可选输入activeMask的索引：激活掩码
  
-constexpr uint32_t ATTR_GROUP_INDEX = 0;
-constexpr uint32_t ATTR_WORLD_SIZE_INDEX = 1;
-constexpr uint32_t ATTR_FFN_TOKEN_INFO_TABLE_SHAPE_INDEX = 2;
-constexpr uint32_t ATTR_FFN_TOKEN_DATA_SHAPE = 3;
-constexpr uint32_t ATTR_ATTN_TOKEN_INFO_TABLE_SHAPE_INDEX = 4;
-constexpr uint32_t ATTR_MOE_EXPERT_NUM_INDEX = 5;
-constexpr uint32_t ATTR_QUANT_MODE_INDEX = 6;
-constexpr uint32_t ATTR_SYNC_FLAG_INDEX = 7;
-constexpr uint32_t ATTR_FFN_START_RANK_INDEX = 8;
+constexpr uint32_t ATTR_GROUP_INDEX = 0;                 // 属性group的索引：通信域名称
+constexpr uint32_t ATTR_WORLD_SIZE_INDEX = 1;            // 属性worldSize的索引：通信域大小
+constexpr uint32_t ATTR_FFN_TOKEN_INFO_TABLE_SHAPE_INDEX = 2; // 属性ffnTokenInfoTableShape的索引
+constexpr uint32_t ATTR_FFN_TOKEN_DATA_SHAPE = 3;        // 属性ffnTokenDataShape的索引
+constexpr uint32_t ATTR_ATTN_TOKEN_INFO_TABLE_SHAPE_INDEX = 4; // 属性attnTokenInfoTableShape的索引
+constexpr uint32_t ATTR_MOE_EXPERT_NUM_INDEX = 5;        // 属性moeExpertNum的索引
+constexpr uint32_t ATTR_QUANT_MODE_INDEX = 6;            // 属性quantMode的索引
+constexpr uint32_t ATTR_SYNC_FLAG_INDEX = 7;             // 属性syncFlag的索引
+constexpr uint32_t ATTR_FFN_START_RANK_INDEX = 8;        // 属性ffnStartRankId的索引
  
 constexpr uint32_t INDEX_TWO = 2;
-constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16 * 1024 * 1024;
-constexpr uint32_t WORKSPACE_ELEMENT_OFFSET = 128;
-constexpr uint64_t MB_SIZE = 1024 * 1024;
-constexpr uint32_t OP_TYPE_ALL_TO_ALL = 8;
+constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16 * 1024 * 1024; // 系统预留workspace大小：16MB
+constexpr uint32_t WORKSPACE_ELEMENT_OFFSET = 128;           // workspace元素偏移对齐粒度：128字节
+constexpr uint64_t MB_SIZE = 1024 * 1024;                    // 1MB字节数
+constexpr uint32_t OP_TYPE_ALL_TO_ALL = 8;                   // AlltoAll通信操作类型
 const char* ATTN_FFN_INNER_DEBUG = "AttentionToFFN Tiling Debug";
 
-constexpr uint32_t INFO_HS_INDEX = 4;
-constexpr uint32_t INFO_TABLE_LAST_DIM_NUM_INDEX = 2;
-constexpr uint32_t NO_QUANT_MODE_WIN_SIZE = 2;
+constexpr uint32_t INFO_HS_INDEX = 4;                        // ffnTokenDataShape中HS的索引位置
+constexpr uint32_t INFO_TABLE_LAST_DIM_NUM_INDEX = 2;        // ffnTokenInfoTableShape中最后一维的索引位置
+constexpr uint32_t NO_QUANT_MODE_WIN_SIZE = 2;               // 非量化模式下窗口大小倍数（FP16/BF16占2字节）
 
 constexpr uint32_t ONE_DIM = 1;
 constexpr uint32_t TWO_DIMS = 2;
@@ -80,21 +80,21 @@ constexpr uint32_t DIM2 = 2;
 constexpr uint32_t DIM3 = 3;
 constexpr uint32_t DIM5 = 5;
 
-constexpr uint32_t SYNC_MODE = 1;
-constexpr uint32_t UNQUANT_MODE = 0;
-constexpr uint32_t STATIC_QUANT_MODE = 1;
-constexpr uint32_t DYNAMIC_QUANT_MODE = 2;
-constexpr uint32_t NO_SCALES = 0;
-constexpr uint32_t STATIC_SCALES = 1;
-constexpr uint32_t DYNAMIC_SCALES = 2;
-constexpr int64_t MOE_EXPERT_MAX_NUM = 1024;
-constexpr int64_t SHARED_EXPERT_MAX_NUM = 4;
-constexpr int64_t BS_MAX = 512;
-constexpr int64_t H_MIN = 1024;
-constexpr int64_t H_MAX = 8192;
-constexpr int64_t K_MAX = 16;
-constexpr int64_t MAX_WORLD_SIZE = 768L; // 384 * 2
-constexpr int64_t MIN_WORLD_SIZE = 2;
+constexpr uint32_t SYNC_MODE = 1;                            // 同步模式标志
+constexpr uint32_t UNQUANT_MODE = 0;                         // 非量化模式
+constexpr uint32_t STATIC_QUANT_MODE = 1;                    // 静态量化模式（暂不支持）
+constexpr uint32_t DYNAMIC_QUANT_MODE = 2;                   // 动态量化模式
+constexpr uint32_t NO_SCALES = 0;                            // 无scales输入
+constexpr uint32_t STATIC_SCALES = 1;                        // 静态scales
+constexpr uint32_t DYNAMIC_SCALES = 2;                       // 动态scales
+constexpr int64_t MOE_EXPERT_MAX_NUM = 1024;                 // MoE专家最大数量
+constexpr int64_t SHARED_EXPERT_MAX_NUM = 4;                 // 共享专家最大数量
+constexpr int64_t BS_MAX = 512;                              // BS最大值
+constexpr int64_t H_MIN = 1024;                              // H最小值
+constexpr int64_t H_MAX = 8192;                              // H最大值
+constexpr int64_t K_MAX = 16;                                // K最大值
+constexpr int64_t MAX_WORLD_SIZE = 768L;                     // worldSize最大值（384 * 2）
+constexpr int64_t MIN_WORLD_SIZE = 2;                        // worldSize最小值
  
 static void PrintTilingDataInfo(AttentionToFFNTilingData &tilingData)
 {
@@ -157,7 +157,6 @@ static bool CheckAndSetShapeAttrs(gert::TilingContext* context, AttentionToFFNTi
         "attn_token_data_shape dims2=%ld is not equal ffn_token_data_shape dims3=%ld!",
         attnTokenDataShape[DIM2], ffnTokenDataShape[DIM3]), return false);
     
-    // 校验 attentionWorkerNum 的值
     uint32_t attentionWorkerNum = ffnTokenDataShape[0];
     OP_TILING_CHECK(attentionWorkerNum <= 0 || attentionWorkerNum >= *worldSizePtr, OP_LOGE(ATTN_FFN_INNER_DEBUG,
         "attentionWorkerNum is invalid, only support (0, worldSize = %u), but got attentionWorkerNum=%u.",
@@ -513,27 +512,32 @@ static bool CheckInputAndSetTilingData(gert::TilingContext* context, AttentionTo
     return true;
 }
  
+// 根据同步标志、量化模式和激活掩码标志计算tilingKey，用于选择对应的kernel实现
 static uint64_t CalTilingKey(const uint32_t syncFlag, const uint32_t quantMode, const bool activeMaskFlag)
 {
-    // TilingKey 
     bool isSync = false;
     bool isQuant = false;
     bool isActiveMask = false;
 
+    // 判断是否为同步通信模式
     if (syncFlag == SYNC_MODE) {
         isSync = true;
     }
+    // 判断是否为动态量化模式
     if (quantMode == DYNAMIC_QUANT_MODE) {
         isQuant = true;
     } 
+    // 判断是否存在激活掩码
     if (activeMaskFlag) {
         isActiveMask = true;
     }
 
+    // 根据量化、同步、激活掩码三个维度组合生成tilingKey
     const uint64_t tilingKey = GET_TPL_TILING_KEY(isQuant, isSync, isActiveMask, TILINGKEY_TPL_A3);
     return tilingKey;
 }
  
+// 设置workspace大小，包括系统预留的API workspace和FFN通信所需的额外workspace
 static ge::graphStatus SetWorkSpace(gert::TilingContext *context, AttentionToFFNTilingData *tilingData)
 {
     size_t *workSpaces = context->GetWorkspaceSizes(1);
@@ -541,14 +545,19 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, AttentionToFFN
         return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
+    // 计算FFN worker数量：总worldSize减去attention worker数量
     uint32_t ffnNum = tilingData->attentionToFFNInfo.worldSize - tilingData->attentionToFFNInfo.attentionWorkerNum;
+    // 按WORKSPACE_ELEMENT_OFFSET对齐计算每个AIV核所需的FFN workspace大小
     uint32_t ffnNumAlignSize = (ffnNum * sizeof(int32_t) + WORKSPACE_ELEMENT_OFFSET - 1) / WORKSPACE_ELEMENT_OFFSET * WORKSPACE_ELEMENT_OFFSET;
+    // 总workspace = 系统API workspace + 每个AIV核的FFN workspace之和
     workSpaces[0] = ascendcPlatform.GetLibApiWorkSpaceSize() + static_cast<size_t>(ffnNumAlignSize * aivNum);
     return ge::GRAPH_SUCCESS;
 }
  
+// 计算通信窗口大小，包括token信息表和token数据所需的窗口大小，并与最大可用窗口大小进行比较
 static void CalWinSize(AttentionToFFNTilingData &tilingData, const uint32_t quantMode, uint64_t &neededSize, uint64_t &viableWindowSize)
 {
+    // 获取tiling数据中的关键参数
     uint64_t BS = static_cast<uint64_t>(tilingData.attentionToFFNInfo.BS);
     uint64_t K = static_cast<uint64_t>(tilingData.attentionToFFNInfo.K);
     uint64_t HS = static_cast<uint64_t>(tilingData.attentionToFFNInfo.HS);
@@ -557,15 +566,20 @@ static void CalWinSize(AttentionToFFNTilingData &tilingData, const uint32_t quan
     uint64_t infoTableLastDimNum = static_cast<uint64_t>(tilingData.attentionToFFNInfo.infoTableLastDimNum);
     uint64_t sharedExpertNum = static_cast<uint64_t>(tilingData.attentionToFFNInfo.sharedExpertNum);
     
+    // 计算token信息表所需的窗口大小（int32类型）
     uint64_t tokenInfoNeedWinSize = attentionWorkerNum * microBatchNum * infoTableLastDimNum * sizeof(int32_t);
     uint64_t tokenDataNeedWinSize = 0;
+    // 根据量化模式计算token数据所需的窗口大小：量化模式为int8占1字节，非量化模式为FP16/BF16占2字节
     if (quantMode != 0) {
-        tokenDataNeedWinSize = attentionWorkerNum * microBatchNum * BS * (K + sharedExpertNum) * HS; // 量化模式
+        tokenDataNeedWinSize = attentionWorkerNum * microBatchNum * BS * (K + sharedExpertNum) * HS;
     } else {
-        tokenDataNeedWinSize = attentionWorkerNum * microBatchNum * BS * (K + sharedExpertNum) * HS * NO_QUANT_MODE_WIN_SIZE; // 非量化模式
+        tokenDataNeedWinSize = attentionWorkerNum * microBatchNum * BS * (K + sharedExpertNum) * HS * NO_QUANT_MODE_WIN_SIZE;
     }
+    // 实际需要的总窗口大小 = token信息表 + token数据
     uint64_t actualNeedWinSize = tokenInfoNeedWinSize + tokenDataNeedWinSize;
+    // 获取系统支持的最大通信窗口大小
     uint64_t maxWindowSize = mc2tiling::Mc2TilingUtils::GetMaxWindowSize();
+    // 将大小转换为MB单位，neededSize向上取整加1
     neededSize = actualNeedWinSize / MB_SIZE + 1;
     viableWindowSize = maxWindowSize / MB_SIZE;
     tilingData.attentionToFFNInfo.totalWinSize = maxWindowSize;
@@ -577,33 +591,39 @@ static void CalWinSize(AttentionToFFNTilingData &tilingData, const uint32_t quan
     return;
 }
  
+// 设置HCCL通信配置，包括AlltoAll通信算法配置，并获取对应的tiling数据
 static ge::graphStatus SetHcommCfg(AttentionToFFNTilingData &tilingData, const std::string group)
 {
     OP_LOGD(ATTN_FFN_INNER_DEBUG, "attentionToFFN group = %s", group.c_str());
+    // 设置通信操作类型为AlltoAll
     uint32_t opType1 = OP_TYPE_ALL_TO_ALL;
+    // 配置AlltoAll算法：level0使用fullmesh，level1使用pairwise
     std::string algConfigAllToAllStr = "AlltoAll=level0:fullmesh;level1:pairwise";
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(group, opType1, algConfigAllToAllStr);
 
+    // 获取HCCL初始化tiling数据和通信tiling数据
     mc2CcTilingConfig.GetTiling(tilingData.mc2InitTiling);
     mc2CcTilingConfig.GetTiling(tilingData.mc2CcTiling1);
  
     return ge::GRAPH_SUCCESS;
 }
  
+// AttentionToFFN算子的主tiling函数，负责校验输入、计算tiling参数并设置tiling数据
 ge::graphStatus AttentionToFFNTilingFunc(gert::TilingContext* context)
 {
+    // 获取tiling数据结构体指针
     AttentionToFFNTilingData *tilingData = context->GetTilingData<AttentionToFFNTilingData>();
     std::string group = "";
  
-    // Function that get check and set Attrs
+    // 第一步：校验并设置算子属性（worldSize、quantMode、syncFlag等）
     OP_TILING_CHECK(!CheckAndSetAttrs(context, *tilingData, group),
                     OP_LOGE(ATTN_FFN_INNER_DEBUG, "Check and set attributes failed!"), return ge::GRAPH_FAILED);
  
-    // Function that check input
+    // 第二步：校验输入张量的维度、数据类型、格式，并设置tiling数据
     OP_TILING_CHECK(!CheckInputAndSetTilingData(context, *tilingData),
                     OP_LOGE(ATTN_FFN_INNER_DEBUG, "Check Inputs and Outputs failed!"), return ge::GRAPH_FAILED);
  
-    // Check window Size
+    // 第三步：计算通信窗口大小，校验所需窗口大小是否超过可用窗口大小
     uint64_t neededSize = 0;
     uint64_t viableWindowSize = 0;
     uint32_t quantMode = tilingData->attentionToFFNInfo.quantMode;
@@ -613,27 +633,28 @@ ge::graphStatus AttentionToFFNTilingFunc(gert::TilingContext* context)
                     "needed size:%lu is greater than viable window size:%lu.", neededSize, viableWindowSize),
                     return ge::GRAPH_FAILED);
  
-    // Set WorkSpace
+    // 第四步：设置workspace大小
     OP_TILING_CHECK(SetWorkSpace(context, tilingData) != ge::GRAPH_SUCCESS,
         OP_LOGE(ATTN_FFN_INNER_DEBUG, "Tiling set workspace failed."), return ge::GRAPH_FAILED);
  
-    // Set HcommCfg
+    // 第五步：设置HCCL通信配置（AlltoAll通信算法）
     OP_TILING_CHECK(SetHcommCfg(*tilingData, group) != ge::GRAPH_SUCCESS, OP_LOGE(ATTN_FFN_INNER_DEBUG, "setHcommCfg failed."),
         return ge::GRAPH_FAILED);
  
-    // Set TilingKey
+    // 第六步：根据同步标志、量化模式和激活掩码计算tilingKey，用于选择对应的kernel实现
     uint32_t syncFlag = tilingData->attentionToFFNInfo.syncFlag;
     bool activeMaskFlag = tilingData->attentionToFFNInfo.isActiveMask;
-    uint64_t tilingKey = CalTilingKey(syncFlag, quantMode, activeMaskFlag); // 同步/异步、量化/非量化、mask/非mask
+    uint64_t tilingKey = CalTilingKey(syncFlag, quantMode, activeMaskFlag);
     OP_LOGD(ATTN_FFN_INNER_DEBUG, "cur case tilingKey is %lu", tilingKey);
     context->SetTilingKey(tilingKey);
  
-    // Set numBlocks
+    // 第七步：获取平台信息，计算并设置核数、UB大小等参数
     uint32_t numBlocks = 1U;
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint64_t ubSize = 0U;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
+    // 根据AIV核数计算调度块维度
     numBlocks = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
     context->SetBlockDim(numBlocks);
     tilingData->attentionToFFNInfo.totalUbSize = ubSize;

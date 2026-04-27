@@ -23,19 +23,17 @@ extern "C" {
 #endif
 
 enum NnopbaseHcclServerType {
-    NNOPBASE_HCCL_SERVER_TYPE_AICPU = 0,
-    NNOPBASE_HCCL_SERVER_TYPE_MTE,
+    NNOPBASE_HCCL_SERVER_TYPE_AICPU = 0,  // HCCL服务端运行在AICPU上
+    NNOPBASE_HCCL_SERVER_TYPE_MTE,        // HCCL服务端运行在MTE（Memory Transfer Engine）上
     NNOPBASE_HCCL_SERVER_TYPE_END
 };
 
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
-// check nullptr
 static bool CheckNullStatus(const aclTensor *x, const aclTensor *sessionId, const aclTensor *microBatchId,
                             const aclTensor *layerId, const aclTensor *expertIds, const aclTensor *expertRankTable,
                             const char *group)
 {
-    // 检查必选入参出参为非空
     OP_CHECK_NULL(x, return false);
     OP_CHECK_NULL(sessionId, return false);
     OP_CHECK_NULL(microBatchId, return false);
@@ -50,7 +48,6 @@ static bool CheckNullStatus(const aclTensor *x, const aclTensor *sessionId, cons
     return true;
 }
 
-// 入参校验
 static aclnnStatus CheckParams(const aclTensor *x, const aclTensor *sessionId, const aclTensor *microBatchId,
                                const aclTensor *layerId, const aclTensor *expertIds, const aclTensor *expertRankTable,
                                const char *group)
