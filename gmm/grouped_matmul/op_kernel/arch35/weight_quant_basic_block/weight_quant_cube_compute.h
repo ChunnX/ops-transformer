@@ -62,7 +62,8 @@ public:
                                 uint64_t mxBiasL1DbOffset);
     __aicore__ inline void MxA8W4Init(uint64_t aPrefetchSize, uint64_t l1RemainSize, uint64_t l1StartSize,
                                       uint64_t mxBiasL1DbOffset, const TCubeTiling *__restrict matmulTiling,
-                                      const LocalTensor<biasType> &biasL1);
+                                      const LocalTensor<biasType> &biasL1, uint64_t mxScaleBL1DbOffset,
+                                      const LocalTensor<fp8_e8m0_t> &mxScaleBL1);
     __aicore__ inline void LaunchMatmul(const LocalTensor<xType> &weightL1, int64_t kbOffset, uint64_t kbL1RealSize,
                                         uint64_t cvLoopIdx, const BasicBlockOffsetParam &param);
     __aicore__ inline void WaitMTE1ToMTE2(uint64_t kaGmOffset, const BasicBlockOffsetParam &offsetParam);
@@ -77,6 +78,7 @@ public:
     __aicore__ inline void EndSync();
     __aicore__ inline void ClearAFullLoadFlag();
     __aicore__ inline void PrefetchA(uint64_t aPrefetchSize, uint64_t xSizeLimit);
+    __aicore__ inline LocalTensor<fp8_e8m0_t> &GetMxScaleBL1() { return mxScaleBL1_; }
 
 private:
     __aicore__ inline void PrefetchA(uint64_t aPrefetchSize, uint64_t aGmSize, const LocalTensor<xType> &perloadBuffer);
@@ -487,7 +489,9 @@ WQBMM_CUBE_COMPUTE_TEMPLATE_PARAM
 __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::MxA8W4Init(uint64_t aPrefetchSize, uint64_t l1RemainSize,
                                                             uint64_t l1StartSize, uint64_t mxBiasL1DbOffset,
                                                             const TCubeTiling *__restrict matmulTiling,
-                                                            const LocalTensor<biasType> &biasL1)
+                                                            const LocalTensor<biasType> &biasL1,
+                                                            uint64_t mxScaleBL1DbOffset,
+                                                            const LocalTensor<fp8_e8m0_t> &mxScaleBL1)
 {
     //  MxA8W4场景空间分配: 其中 weight\Bias为全局分配，此处不感知
     //  L1 (0~512KB): WeightL1_P0(64KB) |    Bias_P0(4KB)   | ScaleAL1_P0(32KB) | ScaleBL1_P0(32KB) | AL1_P0(80KB) |
@@ -503,8 +507,8 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::MxA8W4Init(uint64_t aPrefetchSi
     l1RemainSize -= DOUBLE_BUFFER_NUM * MX_SCALE_L1_SIZE;
     l1StartSize += MX_SCALE_L1_SIZE;
 
-    mxScaleBL1_ = LocalTensor<fp8_e8m0_t>(TPosition::TSCM, l1StartSize, l1RemainSize / sizeof(fp8_e8m0_t));
-    mxScaleBL1DbOffset_ = l1RemainSize - MX_SCALE_L1_SIZE;
+    mxScaleBL1_ = mxScaleBL1;
+    mxScaleBL1DbOffset_ = mxScaleBL1DbOffset;
     l1RemainSize -= DOUBLE_BUFFER_NUM * MX_SCALE_L1_SIZE;
     l1StartSize += MX_SCALE_L1_SIZE;
 

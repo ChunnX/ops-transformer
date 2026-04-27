@@ -102,8 +102,10 @@ protected:
 
     LocalTensor<xType> weightL1_;
     LocalTensor<biasType> biasL1_;
+    LocalTensor<fp8_e8m0_t> mxScaleBL1_;
     uint64_t weightL1DbOffset_;
     uint64_t biasL1DbOffset_;
+    uint64_t mxScaleBL1DbOffset_;
     bool hasBias_;
 };
 
@@ -128,8 +130,17 @@ __aicore__ inline void GMM_WQ_BASIC_BLOCK_CLASS::Init(bool hasBias, uint64_t ant
             l1StartSize += MX_BIAS_L1_SIZE;
         }
 
+        static constexpr uint64_t MX_SCALE_L1_SIZE = 32 * GetKBUnit<xType>() * sizeof(xType);
+        uint64_t mxScaleAL1L1StartSize = l1StartSize;
+        uint64_t mxScaleAL1L1RemainSize = l1RemainSize;
+        l1RemainSize -= DOUBLE_BUFFER_NUM * MX_SCALE_L1_SIZE;
+        l1StartSize += MX_SCALE_L1_SIZE;
+        mxScaleBL1_ = LocalTensor<fp8_e8m0_t>(TPosition::TSCM, l1StartSize, l1RemainSize / sizeof(fp8_e8m0_t));
+        mxScaleBL1DbOffset_ = (l1RemainSize - MX_SCALE_L1_SIZE) / sizeof(fp8_e8m0_t);
+
         if ASCEND_IS_AIC {
-            cubeCompute_.MxA8W4Init(aPrefetchSize, l1RemainSize, l1StartSize, biasL1DbOffset_, matmulTiling, biasL1_);
+            cubeCompute_.MxA8W4Init(aPrefetchSize, mxScaleAL1L1RemainSize, mxScaleAL1L1StartSize, biasL1DbOffset_,
+                                    matmulTiling, biasL1_, mxScaleBL1DbOffset_, mxScaleBL1_);
         } else {
             vectorCompute_.Init(tPipe, hasBias_);
         }
@@ -282,11 +293,11 @@ __aicore__ inline void GMM_WQ_BASIC_BLOCK_CLASS::ComputeBasicBlockAivNdKnNzNk(co
             WaitAicToAiv();
         }
         if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
-            if (kbGmOffset % MX_SCALE_K_L1_SIZE == 0) {
+            if (kMte2Offset % MX_SCALE_K_L1_SIZE == 0) {
                 vectorCompute_.WaitVToMTE2();
-                vectorCompute_.CopyWeightMxScaleGmToUb();
-                vectorCompute_.TransWeightMxScale();
-                vectorCompute_.CopyWeightMxScaleUbToL1();
+                vectorCompute_.CopyWeightMxScaleGmToUb(offsetParam, kMte2Offset, mte2RealK);
+                vectorCompute_.TransWeightMxScale(offsetParam.nL1Size, mte2RealK);
+                vectorCompute_.CopyWeightMxScaleUbToL1(cubeCompute_.GetMxScaleBL1(), 0, offsetParam.nL1Size, mte2RealK);
                 vectorCompute_.SetVToMTE2();
             }
         }

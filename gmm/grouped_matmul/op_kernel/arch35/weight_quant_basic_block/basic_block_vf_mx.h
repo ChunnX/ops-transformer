@@ -402,8 +402,9 @@ __simd_vf__ inline void AntiQuantMxA8W4NzNkVf(MxA8W4NzParams<xType, wType, biasT
 }
 
 template <uint16_t groupNumDefaultLen, uint16_t dstInnerStride>
-__simd_vf__ inline void TransMxScaleNdToDnVf(__ubuf__ uint16_t scaleInAddr, __ubuf__ uint16_t scaleOutAddr, __ubuf__ uint16_t transIdAddr, 
-                                             uint16_t nCount, uint16_t groupNumCount, uint16_t nStride)
+__simd_vf__ inline void TransMxScaleNdToDnVf(__ubuf__ uint16_t *scaleInAddr, __ubuf__ uint16_t *scaleOutAddr,
+                                             __ubuf__ uint16_t *transIdAddr, uint16_t nCount, uint16_t groupNumCount,
+                                             uint16_t nStride)
 {
     MicroAPI::RegTensor<uint16_t> scaleVreg;
     MicroAPI::RegTensor<uint16_t> ubTransIdVreg;
