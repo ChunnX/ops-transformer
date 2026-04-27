@@ -277,8 +277,8 @@ struct ConstInfo {
     SAS_LAYOUT outputLayout;  // 输出的Transpose格式
     uint32_t oriMaskMode = 0;
     uint32_t cmpMaskMode = 0;
-    uint32_t oriKvStride = 0;
-    uint32_t cmpKvStride = 0;
+    uint64_t oriKvStride0 = 0;
+    uint64_t cmpKvStride0 = 0;
     bool needInit = false;
     uint32_t templateMode = 0;
 
