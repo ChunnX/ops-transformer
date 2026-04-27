@@ -54,6 +54,7 @@ private:
     bool BalanceSchedule(SectionStreamKResult &splitRes);
     bool GenMetaData(SectionStreamKResult &splitRes);
     bool ParamsInit();
+    std::vector<int64_t> GetTensorDataAsInt64(Tensor *tensor, size_t size);
 
 private:
     CpuKernelContext *context_ = nullptr;
@@ -72,7 +73,7 @@ private:
     int32_t numHeadsQ_ = 0;
     int32_t numHeadsKv_ = 0;
     int32_t headDim_ = 0;
-    int32_t qQuantMode_ = 0;
+int32_t qQuantMode_ = 0;
     int32_t kQuantMode_ = 0;
     int32_t vQuantMode_ = 0;
     int32_t qDtype_ = 0;
