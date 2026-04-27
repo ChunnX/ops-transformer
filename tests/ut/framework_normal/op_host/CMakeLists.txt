@@ -77,6 +77,7 @@ if(UT_TEST_ALL OR OP_HOST_UT)
           ${OP_TILING_MODULE_NAME}_cases
           ${OP_INFERSHAPE_MODULE_NAME}_cases
       -Wl,--no-whole-archive
+      tiling_api
       -Wl,--no-as-needed
           metadef
       -Wl,--as-needed
