@@ -20,6 +20,7 @@ operator_group_1:
   - mhc_sinkhorn
   - mhc_pre
   - mhc_pre_backward
+  - mhc_sinkhorn_backward
 operator_group_2:
   - grouped_matmul
   - grouped_matmul_add

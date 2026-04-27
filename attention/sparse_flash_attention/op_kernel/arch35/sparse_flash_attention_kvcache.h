@@ -27,7 +27,6 @@ using namespace AscendC::Impl::Detail;
 
 static constexpr uint32_t sparseModeZero = 0;
 static constexpr uint32_t sparseModeThree = 3;
-static constexpr uint32_t IS_SPLIT_G = 0;
 
 TEMPLATE_INTF
 __aicore__ inline void CalculateQueryOffset(RunParamStr& runParam,
@@ -90,7 +89,7 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
     } else {
         runParam.nextTokensPerBatch = runParam.actualS2Size - runParam.actualS1Size;
     }
-    runParam.preTokensPerBatch = Min(runParam.preTokensPerBatch, runParam.actualS1Size);
+    runParam.preTokensPerBatch = runParam.actualS1Size;
 }
 
 TEMPLATE_INTF
@@ -121,6 +120,10 @@ __aicore__ inline void ComputeS1LoopInfo(RunParamStr& runParam, const ConstInfo 
         runParam.gs1LoopEndIdx = gs1LoopEndIdx;
     } else { // 最后一个bn, 从数组下一个元素取值
         runParam.gs1LoopEndIdx = nextGs1Idx == 0 ? gs1LoopEndIdx : nextGs1Idx;
+    }
+
+    if (runParam.gs1LoopStartIdx > runParam.gs1LoopEndIdx) {
+        runParam.gs1LoopStartIdx = runParam.gs1LoopEndIdx;
     }
 }
 
@@ -180,7 +183,7 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr& runParam, const ConstIn
                 runParam.goIdx * constInfo.dSizeV;
         }
         if (constInfo.subBlockIdx == 1) {
-            runParam.attentionOutOffset += runParam.halfMRealSize * constInfo.dSizeV;
+            runParam.attentionOutOffset += runParam.firstHalfMRealSize * constInfo.dSizeV;
         }
         if (constInfo.returnSoftmaxLse) {
             if constexpr (LAYOUT_T == SFA_LAYOUT::TND) {
@@ -254,8 +257,7 @@ TEMPLATE_INTF
 __aicore__ inline bool ComputeS2LoopInfo(RunParamStr& runParam, const ConstInfo &constInfo)
 {
     if (runParam.actualS2Size == 0) {
-        runParam.oriKvLoopEndIdx = 0;
-        runParam.cmpKvLoopEndIdx = 0;
+        runParam.kvLoopEndIdx = 0;
         runParam.s2LoopEndIdx = 0;
         return true;
     }
@@ -270,12 +272,11 @@ __aicore__ inline bool ComputeS2LoopInfo(RunParamStr& runParam, const ConstInfo 
         runParam.s2LineEndIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(
             runParam.cubeSOuterOffset + runParam.nextTokensPerBatch +
             runParam.s1RealSize, 0, runParam.actualS2Size);
-        runParam.s2LineEndIdx = Min(runParam.s2LineEndIdx /
-            constInfo.cmpRatio, constInfo.sparseBlockCount); // 当前LI输出的block size只可能是1
+        runParam.s2LineEndIdx = Min(runParam.s2LineEndIdx, constInfo.sparseBlockCount); // 当前LI输出的block size只可能是1
     }
 
-    runParam.oriKvLoopEndIdx = (runParam.s2LineEndIdx + s2BaseSize - 1) / s2BaseSize;
-    runParam.s2LoopEndIdx = runParam.oriKvLoopEndIdx;
+    runParam.kvLoopEndIdx = (runParam.s2LineEndIdx + s2BaseSize - 1) / s2BaseSize;
+    runParam.s2LoopEndIdx = runParam.kvLoopEndIdx;
     return false;
 }
 
@@ -289,7 +290,7 @@ __aicore__ inline void InitTaskParamByRun(const RunParamStr& runParam, RunInfo &
     runInfo.actualS2Size = runParam.actualS2Size;
     runInfo.softmaxLseOffset = runParam.softmaxLseOffset;
     runInfo.qSNumInOneBlock = runParam.qSNumInOneBlock;
-    runInfo.oriKvLoopEndIdx = runParam.oriKvLoopEndIdx;
+    runInfo.kvLoopEndIdx = runParam.kvLoopEndIdx;
 }
 
 #endif  // SPARSE_FLASH_ATTENTION_KVCACHE_H

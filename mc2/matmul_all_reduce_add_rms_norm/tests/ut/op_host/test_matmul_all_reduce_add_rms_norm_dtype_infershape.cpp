@@ -15,20 +15,20 @@
 
 namespace MatmulAllReduceAddRmsNormUT {
 
-class InferDataTypeTest : public testing::TestWithParam<MatmulAllReduceAddRmsNormInferDataTypeUtParam> {
+class InferDataTypeMatmulAllReduceAddRmsNormTest : public testing::TestWithParam<MatmulAllReduceAddRmsNormInferDataTypeUtParam> {
 protected:
     static void SetUpTestCase()
     {
-        std::cout << "MatmulAllReduceAddRmsNorm InferDataTypeTest SetUp" << std::endl;
+        std::cout << "MatmulAllReduceAddRmsNorm InferDataTypeMatmulAllReduceAddRmsNormTest SetUp" << std::endl;
     }
 
     static void TearDownTestCase()
     {
-        std::cout << "MatmulAllReduceAddRmsNorm InferDataTypeTest TearDown" << std::endl;
+        std::cout << "MatmulAllReduceAddRmsNorm InferDataTypeMatmulAllReduceAddRmsNormTest TearDown" << std::endl;
     }
 };
 
-TEST_P(InferDataTypeTest, param)
+TEST_P(InferDataTypeMatmulAllReduceAddRmsNormTest, param)
 {
     auto param = GetParam();
     std::vector<void *> inputDataTypes;
@@ -81,7 +81,7 @@ TEST_P(InferDataTypeTest, param)
     }
 }
 
-INSTANTIATE_TEST_SUITE_P(MatmulAllReduceAddRmsNorm, InferDataTypeTest,
+INSTANTIATE_TEST_SUITE_P(MatmulAllReduceAddRmsNorm, InferDataTypeMatmulAllReduceAddRmsNormTest,
                          testing::ValuesIn(GetCasesFromCsv<MatmulAllReduceAddRmsNormInferDataTypeUtParam>(
                              ReplaceFileExtension2Csv(__FILE__))),
                          PrintCaseInfoString<MatmulAllReduceAddRmsNormInferDataTypeUtParam>);

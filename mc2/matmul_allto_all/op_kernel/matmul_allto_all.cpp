@@ -18,9 +18,9 @@
 #else
 #include "kernel_operator.h"
 #endif
-#include "arch32/matmul_allto_all_tiling_key.h"
-#include "arch32/matmul_allto_all_tiling.h"
-#include "arch32/matmul_allto_all.h"
+#include "arch22/matmul_allto_all_tiling_key.h"
+#include "arch22/matmul_allto_all_tiling.h"
+#include "arch22/matmul_allto_all.h"
 
 using namespace AscendC;
 using namespace matmul_allto_all_910b_tiling_key;

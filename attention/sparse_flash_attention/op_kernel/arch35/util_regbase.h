@@ -67,8 +67,7 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     int64_t softmaxLseOffset;       // souter层确定
 
     int64_t qSNumInOneBlock;
-    int64_t oriKvLoopEndIdx;
-    int64_t cmpKvLoopEndIdx;
+    int64_t kvLoopEndIdx;
 };
 
 #define COMMON_RUN_INFO \
@@ -116,8 +115,7 @@ struct RunInfo {
     int64_t softmaxLseOffset;
 
     int64_t qSNumInOneBlock;
-    int64_t oriKvLoopEndIdx;
-    int64_t cmpKvLoopEndIdx;
+    int64_t kvLoopEndIdx;
 };
 
 #define COMMON_CONST_INFO \

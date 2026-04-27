@@ -185,6 +185,8 @@ attention:
       - attention/nsa_compress_grad
     options:
       - nsa_compress_grad
+    test:
+        ut: False
 
   nsa_compress_with_cache:
     module: True
@@ -1423,23 +1425,25 @@ mc2:
         - mc2/moe_distribute_combine_setup/docs
         - mc2/moe_distribute_combine_setup/README.md
       ut_cov_exclude:
+        - mc2/moe_distribute_combine_setup/op_api
         - mc2/moe_distribute_combine_setup/op_graph
         - mc2/moe_distribute_combine_setup/op_kernel
       test:
         examples: False
-        ut: False
       options:
         - moe_distribute_combine_setup
-
+      
     moe_distribute_combine_teardown:
       module: True
       src:
         - mc2/moe_distribute_combine_teardown
         - mc2/common
+        - mc2/3rd
       exclude:
         - mc2/moe_distribute_combine_teardown/docs
         - mc2/moe_distribute_combine_teardown/README.md
       ut_cov_exclude:
+        - mc2/moe_distribute_combine_teardown/op_api
         - mc2/moe_distribute_combine_teardown/op_graph
         - mc2/moe_distribute_combine_teardown/op_kernel
       test:
@@ -1615,6 +1619,20 @@ mhc:
     ut_cov_exclude:
       - mhc/mhc_sinkhorn/examples
       - mhc/mhc_sinkhorn/tests
+  mhc_sinkhorn_backward:
+    module: True
+    src:
+      - mhc/mhc_sinkhorn_backward
+      - mhc/mhc_sinkhorn_common
+    exclude:
+      - mhc/mhc_sinkhorn_backward/docs
+      - mhc/mhc_sinkhorn_backward/README.md
+    ut_cov_exclude:
+      - mhc/mhc_sinkhorn_backward/examples
+      - mhc/mhc_sinkhorn_backward/tests
+    test:
+      examples: False
+      ut: True
   mhc_post:
     module: True
     src:

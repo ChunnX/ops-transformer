@@ -221,7 +221,9 @@ __aicore__ inline void MhcPostKernel<TEMPLATE_ARGS>::ComputeCopyOutAllX(int64_t 
 
         Muls(outF32, hOutF32, hPostGm_.GetValue(hPostBase + i), dNum);
         for (int64_t j = 0; j < tilingData_->n; j++) {
+            PipeBarrier<PIPE_V>();
             Axpy(outF32, xF32[j * dNumAlign], hResGm_.GetValue(hResBase + j * tilingData_->n + i), dNum);
+            PipeBarrier<PIPE_V>();
         }
 
         Cast(outputTile, outF32, RoundMode::CAST_RINT, dNum);

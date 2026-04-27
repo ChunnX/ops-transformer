@@ -20,6 +20,7 @@
   相比于FusedInferAttentionScoreV4，本接口新增qStartIdxOptional、kvStartIdxOptional、pseType参数。
 
   **说明：**
+  
   decode场景下特有KV Cache：KV Cache是大模型推理性能优化的一个常用技术。采样时，Transformer模型会以给定的prompt/context作为初始输入进行推理（可以并行处理），随后逐一生成额外的token来继续完善生成的序列（体现了模型的自回归性质）。在采样过程中，Transformer会执行自注意力操作，为此需要给当前序列中的每个项目（无论是prompt/context还是生成的token）提取键值（KV）向量。这些向量存储在一个矩阵中，通常被称为kv缓存（KV Cache）。
 - 计算公式：
 
@@ -904,6 +905,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>-</td>
       </tr>
     </tbody></table>
+
 - **返回值：**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -977,6 +979,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         </tr>
     </tbody>
     </table>
+
 - **返回值：**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -1125,6 +1128,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
             </tr>
         </tbody>
     </table>
+
 - 存在性约束
 
   <table style="undefined;table-layout: fixed; width: 700px">
@@ -1153,6 +1157,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
             </tr>
         </tbody>
     </table>
+
 - 一致性约束
 
   <table style="undefined;table-layout: fixed; width: 1500px">
@@ -1209,6 +1214,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
             </tr>
         </tbody>
     </table>
+
 - 特性交叉约束
 
   - 非量化场景
@@ -1488,6 +1494,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
         - per-token 模式，shape 的最后一维应大于等于 maxBlockNumPerBatch * blockSize
         - per-token 叠加 per-head 模式，shape 的最后一维应大于等于 maxBlockNumPerBatch * blockSize
         - per-token-group 模式，shape 的倒数第二维应大于等于 maxBlockNumPerBatch * blockSize
+    - 不支持合并rope
   - 全量化场景
     - Decode MLA 全量化
       - query、key、value 的dtype为 FLOAT8_E4M3FN/INT8/HIFLOAT8
