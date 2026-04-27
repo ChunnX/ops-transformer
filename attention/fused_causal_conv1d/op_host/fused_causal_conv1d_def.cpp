@@ -52,6 +52,22 @@ public:
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
+        this->Input("num_computed_tokens")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND});
+        this->Input("block_idx_first_scheduled_token")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND});
+        this->Input("block_idx_last_scheduled_token")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND});
+        this->Input("initial_state_idx")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND});
 
         this->Output("y")
             .ParamType(REQUIRED)
@@ -66,6 +82,9 @@ public:
         this->Attr("pad_slot_id").AttrType(OPTIONAL).Int(-1);
         this->Attr("run_mode").AttrType(OPTIONAL).Int(0);
         this->Attr("residual_connection").AttrType(OPTIONAL).Int(0);
+        this->Attr("block_size").AttrType(OPTIONAL).Int(0);
+        this->Attr("conv_mode").AttrType(OPTIONAL).Int(0);
+        this->Attr("inplace").AttrType(OPTIONAL).Int(0);
 
         OpAICoreConfig config_950;
         config_950.DynamicCompileStaticFlag(true)

@@ -63,6 +63,15 @@ int64_t padSlotId;               // padding batch which will not be calculated
 int64_t xInputMode;               // Input mode: 0 for 3D 1 for 2D
 int64_t hasAcceptTokenNum;        // Whether acceptTokenNum input is provided: 0 for false, 1 for true
 int64_t residualConnection;       // Whether use residual connection: 0 for false, 1 for true
+
+// ===== 新增字段（第二期需求）=====
+int64_t apcEnable;          // 是否开启 APC：0=关闭，1=开启
+int64_t blockSize;          // APC block 大小（128 或 256）
+int64_t maxNumBlocks;       // cache_indices 第二维大小（APC 开启时有效）
+int64_t hasCacheIndices;    // cacheIndices 是否有效：0=无（batch_idx 直接作为索引），1=有
+int64_t inplace;            // 0=非原地，1=原地（y 写回 x）
+int64_t convMode;           // 0=Qwen3；1=Pangu v2（前 width-1 个 token 置零）
+int64_t hasNumComputedTokens; // numComputedTokens 是否有效：0=无，1=有
 };
 
 #endif
