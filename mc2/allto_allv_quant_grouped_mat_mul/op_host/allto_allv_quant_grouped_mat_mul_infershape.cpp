@@ -50,7 +50,7 @@ static const size_t INDEX_ATTR_MM_DTYPE_INDEX = 13;
 static constexpr size_t DIM_0 = 0;
 static constexpr size_t DIM_1 = 1;
 static constexpr size_t DIM_2 = 2;
-static constexpr size_t DTYPE_UNDEFINED_VALUE = 28;
+static constexpr size_t UNDEFINED_VALUE = 28;
 
 static constexpr int64_t FIRST_ELE_SIZE = -1;
 static constexpr int64_t MXFP4_PACK_FACTOR = 2;
@@ -232,9 +232,9 @@ static ge::graphStatus InferDataTypeAlltoAllvGroupedMatMul(gert::InferDataTypeCo
         mmDtypePtr = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_MM_DTYPE_INDEX);
     }
     ge::DataType yDataType =
-        (yDtypePtr == nullptr || *yDtypePtr == DTYPE_UNDEFINED_VALUE) ? dType : static_cast<ge::DataType>(*yDtypePtr);
+        (yDtypePtr == nullptr || *yDtypePtr == UNDEFINED_VALUE) ? dType : static_cast<ge::DataType>(*yDtypePtr);
     ge::DataType mmDataType =
-        (mmDtypePtr == nullptr || *mmDtypePtr == DTYPE_UNDEFINED_VALUE) ? dType : static_cast<ge::DataType>(*mmDtypePtr);
+        (mmDtypePtr == nullptr || *mmDtypePtr == UNDEFINED_VALUE) ? dType : static_cast<ge::DataType>(*mmDtypePtr);
     context->SetOutputDataType(INDEX_OUT_MM_Y, mmDataType);
     OP_LOGD(context->GetNodeName(), "infershape mmY data type: %s.",
         TypeUtils::DataTypeToAscendString(mmDataType).GetString());
