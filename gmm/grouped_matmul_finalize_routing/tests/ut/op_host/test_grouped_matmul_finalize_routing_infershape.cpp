@@ -211,34 +211,32 @@ vector<GroupedMatmulFinalizeRoutingInfershapeCase> LoadCases()
     return cases;
 }
 
-const GroupedMatmulFinalizeRoutingInfershapeCase &GetCaseByPrefix(const string &prefix)
+const vector<GroupedMatmulFinalizeRoutingInfershapeCase> &GetCases()
 {
     static const auto cases = LoadCases();
-    for (const auto &testCase : cases) {
-        if (testCase.prefix == prefix) {
-            return testCase;
-        }
-    }
-    ADD_FAILURE() << "Failed to find infershape case with prefix: " << prefix;
-    return cases.front();
+    return cases;
+}
+
+string MakeParamName(const testing::TestParamInfo<GroupedMatmulFinalizeRoutingInfershapeCase> &info)
+{
+    return ops::ut::MakeSafeParamName(info.param.prefix);
 }
 
 } // namespace
 
 namespace GroupedMatmulFinalizeRoutingInfershapeUT {
 class TestGroupedMatmulFinalizeRoutingInfershape
-    : public testing::Test {
+    : public testing::TestWithParam<GroupedMatmulFinalizeRoutingInfershapeCase> {
 protected:
     static void SetUpTestCase() {}
     static void TearDownTestCase() {}
 };
 
-TEST_F(TestGroupedMatmulFinalizeRoutingInfershape, w8a8_normal_1) { GetCaseByPrefix("w8a8_normal_1").Run(); }
-TEST_F(TestGroupedMatmulFinalizeRoutingInfershape, mxfp8_normal_1) { GetCaseByPrefix("mxfp8_normal_1").Run(); }
-TEST_F(TestGroupedMatmulFinalizeRoutingInfershape, w8a8_align_fail) { GetCaseByPrefix("w8a8_align_fail").Run(); }
-TEST_F(TestGroupedMatmulFinalizeRoutingInfershape, shared_input_bad_n) { GetCaseByPrefix("shared_input_bad_n").Run(); }
-TEST_F(TestGroupedMatmulFinalizeRoutingInfershape, logit_bad_dim) { GetCaseByPrefix("logit_bad_dim").Run(); }
-TEST_F(TestGroupedMatmulFinalizeRoutingInfershape, rowindex_bad_dim) { GetCaseByPrefix("rowindex_bad_dim").Run(); }
-TEST_F(TestGroupedMatmulFinalizeRoutingInfershape, dynamic_dim) { GetCaseByPrefix("dynamic_dim").Run(); }
-TEST_F(TestGroupedMatmulFinalizeRoutingInfershape, mxfp8_transpose_true) { GetCaseByPrefix("mxfp8_transpose_true").Run(); }
+TEST_P(TestGroupedMatmulFinalizeRoutingInfershape, csvDrivenCase)
+{
+    GetParam().Run();
+}
+
+INSTANTIATE_TEST_SUITE_P(GMMFR_INFERSHAPE_CSV, TestGroupedMatmulFinalizeRoutingInfershape,
+                         testing::ValuesIn(GetCases()), MakeParamName);
 } // namespace GroupedMatmulFinalizeRoutingInfershapeUT
