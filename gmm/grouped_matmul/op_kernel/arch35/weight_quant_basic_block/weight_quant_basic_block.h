@@ -294,10 +294,24 @@ __aicore__ inline void GMM_WQ_BASIC_BLOCK_CLASS::ComputeBasicBlockAivNdKnNzNk(co
         }
         if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
             if (kMte2Offset % MX_SCALE_K_L1_SIZE == 0) {
+                uint64_t mxScaleKSize = (kMte2Offset + MX_SCALE_K_L1_SIZE) > offsetParam.kSize ?
+                                            offsetParam.kSize - kMte2Offset :
+                                            MX_SCALE_K_L1_SIZE;
+                uint64_t mxScaleNSize0 = offsetParam.nL1Size > 16 ?
+                                             CeilAlign(offsetParam.nL1Size >> 1, static_cast<uint64_t>(16)) :
+                                             offsetParam.nL1Size;
+                uint64_t mxScaleNSize = (GetSubBlockIdx() == 0) ? mxScaleNSize0 : (offsetParam.nL1Size - mxScaleNSize0);
+                uint64_t mxScaleNOffset = GetSubBlockIdx() * mxScaleNSize0;
+                uint64_t mxScaleL1NOffset = GetSubBlockIdx() * mxScaleNSize0;
+
+                BasicBlockOffsetParam mxScaleOffsetParam = offsetParam;
+                mxScaleOffsetParam.nL1Size = mxScaleNSize;
+                mxScaleOffsetParam.nOffset += mxScaleNOffset;
+
                 vectorCompute_.WaitVToMTE2();
-                vectorCompute_.CopyWeightMxScaleGmToUb(offsetParam, kMte2Offset, mte2RealK);
-                vectorCompute_.TransWeightMxScale(offsetParam.nL1Size, mte2RealK);
-                vectorCompute_.CopyWeightMxScaleUbToL1(mxScaleBL1_, 0, offsetParam.nL1Size, mte2RealK);
+                vectorCompute_.CopyWeightMxScaleGmToUb(mxScaleOffsetParam, kMte2Offset, mxScaleKSize);
+                vectorCompute_.TransWeightMxScale(mxScaleNSize, mxScaleKSize);
+                vectorCompute_.CopyWeightMxScaleUbToL1(mxScaleBL1_, mxScaleL1NOffset, mxScaleNSize, mxScaleKSize);
                 vectorCompute_.SetVToMTE2();
             }
         }
