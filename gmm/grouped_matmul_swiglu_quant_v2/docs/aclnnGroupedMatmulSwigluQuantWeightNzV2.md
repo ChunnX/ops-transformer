@@ -426,6 +426,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
         <td><ul>
           <li>暂不支持，默认行为0。</li>
           <li>0表示per-token。</li>
+          <li>2表示MX量化。</li>
         </ul></td>
         <td>INT64</td>
         <td>-</td>
