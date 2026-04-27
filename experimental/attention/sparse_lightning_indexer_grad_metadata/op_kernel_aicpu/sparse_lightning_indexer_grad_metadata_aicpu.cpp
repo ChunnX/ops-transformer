@@ -197,19 +197,11 @@ void SparseLightningIndexerGradMetadataCpuKernel::CalcSplitInfo(SplitContext &sp
     for (uint32_t bIdx = 0; bIdx < batchSize_; bIdx++) {
         uint32_t s1Size = GetS1SeqSize(bIdx);
         uint32_t cmpS2Size = GetS2SeqSize(bIdx);
-        uint32_t oriS2Size = 0;
-        if (cmpResidualK_ != nullptr && cmpResidualK_->GetData() != nullptr) {
-            const int32_t *residualPtr = static_cast<const int32_t*>(cmpResidualK_->GetData());
-            oriS2Size = cmpS2Size * cmpRatio_ + residualPtr[bIdx];
-        } else {
-            oriS2Size = cmpS2Size * cmpRatio_;
-        }
-        uint32_t actS1Size = std::min(s1Size, oriS2Size);
-        totalNum += actS1Size;
+        totalNum += s1Size;
         splitInfo.s1GBaseNum[bIdx] = (s1Size * groupSize_ + (mBaseSize_ - 1U)) / mBaseSize_;
         splitInfo.s1GTailSize[bIdx] = (s1Size * groupSize_) % mBaseSize_;
-        splitInfo.s2BaseNum[bIdx] = (oriS2Size + s2BaseSize_ - 1U) / s2BaseSize_;
-        splitInfo.s2TailSize[bIdx] = oriS2Size % s2BaseSize_;
+        splitInfo.s2BaseNum[bIdx] = (cmpS2Size + s2BaseSize_ - 1U) / s2BaseSize_;
+        splitInfo.s2TailSize[bIdx] = cmpS2Size % s2BaseSize_;
         if (splitInfo.s1GBaseNum[bIdx] != 0U && splitInfo.s2BaseNum[bIdx] != 0U) {
             splitInfo.isKvSeqAllZero = false;
         }
