@@ -45,7 +45,7 @@ constexpr uint8_t COMM_EP_IDX = 0;
 constexpr uint64_t WIN_STATE_OFFSET = 384UL * 1024UL; // 64 + 320
 constexpr uint64_t FLAG_FIELD_OFFSET = 768UL * 1024UL; // 384 * 2，0/1标识区偏移
 constexpr uint64_t CUMSUM_CAL_OFFSET = 868UL * 1024UL; // 768 + 100
-constexpr uint64_t CUMSUM_FLAG_OFFSET = 886UL * 1024UL; // 868 + 18
+constexpr uint64_t CUMSUM_FLAG_OFFSET = 943UL * 1024UL; // 868 + 75
 constexpr uint64_t WIN_ADDR_ALIGN = 512UL;
 constexpr uint64_t SPLIT_BLOCK_SIZE = 512UL;
 constexpr uint64_t SPLIT_BLOCK_COUNT = 128UL;  // 128 = SPLIT_BLOCK_SIZE / sizeof(float)
