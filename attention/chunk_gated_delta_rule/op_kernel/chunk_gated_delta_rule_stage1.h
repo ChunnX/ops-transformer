@@ -159,6 +159,9 @@ public:
         inputGatherBuffer_ = tmpBuff_.GetWithOffset<uint32_t>(static_cast<uint32_t>(chunkSize_), buffOffset);
         buffOffset += chunkSize_ * sizeof(uint32_t);
 
+        gCumSumUbFloat_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(chunkSize_ * paraNum_), buffOffset);
+        buffOffset += chunkSize_ * sizeof(float) * paraNum_;
+
         gCumExpUbFloat_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(chunkSize_ * paraNum_), buffOffset);
         buffOffset += chunkSize_ * sizeof(float) * paraNum_;
 
@@ -344,10 +347,10 @@ private:
             for (uint32_t i = 0; i < curParaNum; ++i) {
                 // g_cum_exp = g.cumsum(dim=-1).exp()
                 GCumExpCompute(gGm_[bgOffsetBatch_[i]], outGCumExpGm_[chunkRowBase_[i]],
-                               gCumExpUbFloat_[i * chunkSize_], validLenBatch_[i]);
+                               gCumSumUbFloat_[i * chunkSize_], gCumExpUbFloat_[i * chunkSize_], validLenBatch_[i]);
                 // attn_1 = (g_cum_exp[:None] / g_cum_exp[None,:]) * mask
                 uint64_t gUbOffset = i * chunkSize_ * maxLen_;
-                GammaCompute(gBroadUbFloat_[gUbOffset], gammaUbFloat_[gUbOffset], gCumExpUbFloat_[i * chunkSize_]);
+                GammaCompute(gBroadUbFloat_[gUbOffset], gammaUbFloat_[gUbOffset], gCumSumUbFloat_[i * chunkSize_]);
             }
         }
         
@@ -374,7 +377,7 @@ private:
             uint64_t betaUbOffset = i * halfChunkSize_;
             uint64_t wsOffset_ = i * ckOffset_ + subOffset_ * dk_;
             GBKCompute(gBKWsGm_[i * ckOffset_], outKgGm_, betaUbFloat_[betaUbOffset],
-                       gCumExpUbFloat_[i * chunkSize_], keyConGm_[wsOffset_]);
+                       gCumSumUbFloat_[i * chunkSize_], gCumExpUbFloat_[i * chunkSize_], keyConGm_[wsOffset_]);
         }
         AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0x6); // 同步3
 
@@ -392,7 +395,7 @@ private:
             // q_prime = query * scale_ * g_cum_exp[:, None]  # (C, Dk)
             uint64_t wsOffset_ = i * ckOffset_ + subOffset_ * dk_;
             QPrimeCompute(outQPrimeGm_[chunkRowBase_[i] * dk_],
-                          gCumExpUbFloat_[i * chunkSize_], queryConGm_[wsOffset_]);
+                          gCumSumUbFloat_[i * chunkSize_], gCumExpUbFloat_[i * chunkSize_], queryConGm_[wsOffset_]);
         }
     }
     __aicore__ inline void QKPreProcess(const GlobalTensor<bfloat16_t>& srcGm, const GlobalTensor<bfloat16_t>& dstGm,
@@ -427,7 +430,7 @@ private:
     }
 
     __aicore__ inline void GCumExpCompute(const GlobalTensor<float> src, const GlobalTensor<float> dst,
-                                          LocalTensor<float> gCumExpUbFloat, uint32_t validLen)
+                                          LocalTensor<float> gCumSumUbFloat, LocalTensor<float> gCumExpUbFloat, uint32_t validLen)
     {
         // Copy g
         GCopyInWithStride(src, validLen);
@@ -435,14 +438,15 @@ private:
         uint32_t outer = 1;
         uint32_t inner = chunkSize_;
         CumSumInfo cumSumInfo{outer, inner};
-        CumSum<float>(gCumUbFloat_, gCumUbFloat_, gCumUbFloat_, cumSumInfo);
+        CumSum<float>(gCumSumUbFloat, gCumUbFloat_, gCumUbFloat_, cumSumInfo);
         PipeBarrier<PIPE_V>();
         // Exp计算
-        Exp<float, 0, true>(gCumExpUbFloat, gCumUbFloat_, chunkSize_);
+        Exp<float, 0, true>(gCumExpUbFloat, gCumSumUbFloat, chunkSize_);
         PipeBarrier<PIPE_V>();
+
         if (subBlockIdx_ == 0) {
             auto tmpOut = gOutQueue_.AllocTensor<float>();
-            DataCopy(tmpOut, gCumExpUbFloat, chunkSize_);
+            DataCopy(tmpOut, gCumSumUbFloat, chunkSize_);
             gOutQueue_.EnQue(tmpOut);
             tmpOut = gOutQueue_.DeQue<float>();
             DataCopyExtParams params{static_cast<uint16_t>(1),
@@ -454,22 +458,30 @@ private:
     }
 
     __aicore__ inline void GammaCompute(const LocalTensor<float> gBroadUbFloat,
-                                        LocalTensor<float> gammaUbFloat, LocalTensor<float> gCumExpUbFloat)
+                                        LocalTensor<float> gammaUbFloat, LocalTensor<float> gCumSumUbFloat)
     {
         // BroadCast
         uint32_t divShape[2] = {chunkSize_, chunkSize_};
         uint32_t gShape[2] = {chunkSize_, 1};
         uint32_t gTransShape[2] = {1, chunkSize_};
-        Broadcast<float, BROADCAST_AXIS, 1>(gBroadUbFloat, gCumExpUbFloat, divShape, gShape);
-        Broadcast<float, BROADCAST_AXIS, 0>(gTransBroadUbFloat_, gCumExpUbFloat, divShape, gTransShape);
+        Broadcast<float, BROADCAST_AXIS, 1>(gBroadUbFloat, gCumSumUbFloat, divShape, gShape);
+        Broadcast<float, BROADCAST_AXIS, 0>(gTransBroadUbFloat_, gCumSumUbFloat, divShape, gTransShape);
         PipeBarrier<PIPE_V>();
         // div
-        Div(gammaUbFloat, gBroadUbFloat, gTransBroadUbFloat_, ccOffset_);
+        // Div(gammaUbFloat, gBroadUbFloat, gTransBroadUbFloat_, ccOffset_);
+        Sub(gammaUbFloat, gBroadUbFloat, gTransBroadUbFloat_, ccOffset_);
         PipeBarrier<PIPE_V>();
-        // mask
+        // mask  1
         DataCopyInFp32(ccOffset_, stageOneMask_[GetBlockIdx() * ccOffset_]);
         auto maskLocal = inQueue_.DeQue<float>();
         Mul(gammaUbFloat, gammaUbFloat, maskLocal, ccOffset_);
+
+        Exp<float, 0, true>(gammaUbFloat, gammaUbFloat, chunkSize_);
+        PipeBarrier<PIPE_V>();
+        // mask  2
+        Mul(gammaUbFloat, gammaUbFloat, maskLocal, ccOffset_);
+        PipeBarrier<PIPE_V>();
+
         inQueue_.FreeTensor(maskLocal);
         PipeBarrier<PIPE_V>();
     }
@@ -560,11 +572,11 @@ private:
     }
 
     __aicore__ inline void GBKCompute(const GlobalTensor<bfloat16_t> gBKWsGm, const GlobalTensor<bfloat16_t> outKgGm,
-                                      LocalTensor<float> betaUbFloat, LocalTensor<float> gCumExpUbFloat,
+                                      LocalTensor<float> betaUbFloat, LocalTensor<float> gCumSumUbFloat, LocalTensor<float> gCumExpUbFloat,
                                       const GlobalTensor<bfloat16_t> keyContinousGm)
     {
         if (gOptional_) {
-            // tmp = -1.0 * beta * g_cum_exp
+            // tmp = -1.0 * beta * exp(g_cum)
             Mul(gBUbFloat_, betaUbFloat, gCumExpUbFloat[subOffset_], halfChunkSize_);
             PipeBarrier<PIPE_V>();
             Muls(gBUbFloat_, gBUbFloat_, static_cast<float>(-1), halfChunkSize_);
@@ -596,10 +608,10 @@ private:
             // kg = k * (g_cum_exp[-1, None] / g_cum_exp)[..., None]
             uint32_t gEndShape[2] = {1, 1};
             uint32_t gBroadShape[2] = {halfChunkSize_, 1};
-            Broadcast<float, BROADCAST_AXIS, 0>(gEndBroadUbFloat_, gCumExpUbFloat[chunkSize_ - 1],
+            Broadcast<float, BROADCAST_AXIS, 0>(gEndBroadUbFloat_, gCumSumUbFloat[chunkSize_ - 1],
                                                 gBroadShape, gEndShape);
             PipeBarrier<PIPE_V>();
-            Div(gEndBroadUbFloat_, gEndBroadUbFloat_, gCumExpUbFloat[subOffset_], halfChunkSize_);
+            Div(gEndBroadUbFloat_, gEndBroadUbFloat_, gCumSumUbFloat[subOffset_], halfChunkSize_);
             PipeBarrier<PIPE_V>();
             Broadcast<float, BROADCAST_AXIS, 1>(kgUbFloat_, gEndBroadUbFloat_, kShape, gBroadShape);
             PipeBarrier<PIPE_V>();
@@ -641,7 +653,7 @@ private:
     }
 
     __aicore__ inline void QPrimeCompute(const GlobalTensor<bfloat16_t> outQPrimeGm,
-                                         LocalTensor<float> gCumExpUbFloat, const GlobalTensor<bfloat16_t> queryContinousGm)
+                                         LocalTensor<float> gCumSumUbFloat, LocalTensor<float> gCumExpUbFloat, const GlobalTensor<bfloat16_t> queryContinousGm)
     {
         // data copy in qUbFloatCon_
         DataCopyInBf16WithStride(halfChunkSize_, dk_, queryContinousGm, dk_);
@@ -655,10 +667,9 @@ private:
             PipeBarrier<PIPE_V>();
             uint32_t gCumExpShape[2] = {halfChunkSize_, 1};
             uint32_t qShape[2] = {halfChunkSize_, dkAligned_};
-            Broadcast<float, BROADCAST_AXIS, 1>(gCumExpBroadUbFloat_, gCumExpUbFloat[subOffset_],
-                                                qShape, gCumExpShape);
+            Broadcast<float, BROADCAST_AXIS, 1>(gCumExpBroadUbFloat_, gCumExpUbFloat[subOffset_], qShape, gCumExpShape);
             PipeBarrier<PIPE_V>();
-            // query * scale * g_cum_exp[:, None]       # (C, Dk)
+            // query * scale * exp(g_cum)[:, None]       # (C, Dk)
             Mul(qPrimeUbFloat_, qUbFloat_, gCumExpBroadUbFloat_, halfChunkSize_ * dkAligned_);
         } else {
             Muls(qPrimeUbFloat_, qUbFloatCon_, scale_, halfChunkSize_ * dkAligned_);
@@ -874,6 +885,7 @@ private:
     LocalTensor<float> inverseBuffer_;
     LocalTensor<float> inverseRes_;
     LocalTensor<float> gCumUbFloat_;
+    LocalTensor<float> gCumSumUbFloat_;
     LocalTensor<float> gCumExpUbFloat_;
     LocalTensor<float> gCumExpBroadUbFloat_;
     LocalTensor<float> gBUbFloat_;
