@@ -1357,11 +1357,17 @@ ge::graphStatus DequantChecker::CheckFeatureLayoutForAntiquant(const FiaTilingIn
 
 ge::graphStatus DequantChecker::CheckFeatureQuerySForAntiquant(const FiaTilingInfo &fiaInfo)
 {
+    gert::Shape keyAntiquantScaleTensorShape = keyAntiquantScaleTensor->GetStorageShape();
+    uint32_t keyAntiquantScaleTensorDimNum = keyAntiquantScaleTensorShape.GetDimNum();
+    int64_t keyAntiquantMode = 0;
+    if (fiaInfo.opParamInfo.keyAntiquantMode != nullptr) {
+        keyAntiquantMode = *fiaInfo.opParamInfo.keyAntiquantMode;
+    }
+    int64_t valueAntiquantMode = 0;
+    if (fiaInfo.opParamInfo.valueAntiquantMode != nullptr) {
+        valueAntiquantMode = *fiaInfo.opParamInfo.valueAntiquantMode;
+    }
     if (fiaInfo.s1Size > 1) {
-        int64_t keyAntiquantMode = 0;
-        if (fiaInfo.opParamInfo.keyAntiquantMode != nullptr) {
-            keyAntiquantMode = *fiaInfo.opParamInfo.keyAntiquantMode;
-        }
         OP_CHECK_IF((keyAntiquantMode == PER_TENSOR_HEAD_MODE || keyAntiquantMode == PER_TOKEN_HEAD_MODE ||
                      keyAntiquantMode == PER_TOKEN_PA_MODE || keyAntiquantMode == PER_TOKEN_HEAD_PA_MODE) &&
                      fiaInfo.inputKvType == ge::DT_INT8,
@@ -1396,6 +1402,34 @@ ge::graphStatus DequantChecker::CheckFeatureQuerySForAntiquant(const FiaTilingIn
                     OP_LOGE(fiaInfo.opName, "In keyAntiquant/valueAntiquant split mode scenario, int4 and int32 data "
                                             "types are not supported for the key and value."),
                     return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF(((keyAntiquantMode == PER_CHANNEL_MODE && valueAntiquantMode == PER_TOKEN_MODE) &&
+                    fiaInfo.inputKvType == ge::DT_INT8 && (fiaInfo.inputQType != ge::DT_FLOAT16 || fiaInfo.outputType != ge::DT_FLOAT16)),
+                    OP_LOGE(fiaInfo.opName,
+                            "When key in per-channel scenario and value in per-token scenario,"
+                            "if inputKvType is int8, inputQType and outputType only must be Float16,"
+                            "but now inputQType is %s, outputType is %s.",
+                            DataTypeToSerialString(fiaInfo.inputQType).c_str(),
+                            DataTypeToSerialString(fiaInfo.outputType).c_str()),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF((keyAntiquantMode == PER_TENSOR_HEAD_MODE && (fiaInfo.inputKvType != ge::DT_INT8)),
+                    OP_LOGE(fiaInfo.opName,
+                            "When keyAntiquantMode/valueAntiquantMode is 2, "
+                            "the inputKvType only supports INT8, but got %s",
+                            DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
+                    return ge::GRAPH_FAILED);
+        if (keyAntiquantScaleTensorDimNum == DIM_NUM_1) {
+                // 维度为1，shape可能为[H]，per-channel模式
+                // 维度为1，shape可能为[1]，per-tensor模式
+                gert::Shape expectedShape1 = gert::Shape({1});
+                OP_CHECK_IF(
+                    ((keyAntiquantScaleTensorShape == expectedShape1) && fiaInfo.inputKvType != ge::DT_INT8),
+                    OP_LOGE(fiaInfo.opName,
+                            "When keyAntiquantMode/valueAntiquantMode is 0 and shape of keyAntiquantScale/valueAntiquantScale is (1), "
+                            "the inputKvType only supports INT8, but got %s",DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
+                    return ge::GRAPH_FAILED);
+                return ge::GRAPH_SUCCESS;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }

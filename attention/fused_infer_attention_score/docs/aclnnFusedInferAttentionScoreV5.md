@@ -1480,7 +1480,9 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
   - 伪量化场景
     - inputLayout 仅支持 BSH, BNSD, BSND, BNSD_BSND, TND
     - key/value 的数据类型为 INT8 时，inputLayout 不支持 TND
-    - 当 Q_S 等于 1 时，inputLayout 不支持 BNSD_BSND
+    - Q_S =1 时：
+      - inputLayout 不支持 BNSD_BSND
+      - 当 keyAntiquantMode = 0 且 valueAntiquantMode = 1 时，query 和 output 的数据类型仅支持FLOAT16
     - Q_S > 1 时：
       - key/value 的数据类型为 INT8 时，keyAntiquantMode 不支持 2，3，4，5
       - key/value 的数据类型为 INT8，且keyAntiquantMode 为0或1时，query 和 output 的数据类型仅支持 BF16
