@@ -152,7 +152,7 @@ private:
     uint64_t cOffset_;
     TPipe* tPipe_;
     bool notifyFlag_{false};
-    Hccl<HCCL_SERVER_TYPE_CCU> hccl_;
+    Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;
     AscendC::HcclHandle hcclHandleId_;
 };
 

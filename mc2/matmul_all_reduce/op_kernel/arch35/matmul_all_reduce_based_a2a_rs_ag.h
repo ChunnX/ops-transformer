@@ -287,7 +287,7 @@ protected:
     MC2TilingHeader* tilingData_;
     MC2TileInfo tileInfo_, tailInfo_;
     TPipe* tPipe_;
-    Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;
+    Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU> hccl_;
     
     AscendC::HcclHandle all2allHandleId_[A2A_VSUM_AG_MAX_HANDLE_ID_NUM] = {0};
     AscendC::HcclHandle allgatherHandleId_[A2A_VSUM_AG_MAX_HANDLE_ID_NUM] = {0};

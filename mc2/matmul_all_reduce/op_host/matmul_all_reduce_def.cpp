@@ -770,6 +770,7 @@ public:
             .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
         this->AICore().AddConfig("ascend310p", aicore_config_310p);
         this->MC2().HcclGroup("group");
+        this->MC2().HcclServerType(HcclServerType::AICPU);
     }
 };
 
