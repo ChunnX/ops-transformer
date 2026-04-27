@@ -141,9 +141,19 @@ def npu_grouped_matmul_v5(
 
     'PrivateUse1' is the dispatch key for custom NPU backends.
     """
+    def _to_vec(v):
+        if v is None:
+            return []
+        if isinstance(v, (list, tuple)):
+            return list(v)
+        return [v]
+    
     return op_module.npu_grouped_matmul_v5(
-        x, weight, bias, scale, offset, antiquant_scale, antiquant_offset,
-        per_token_scale, group_list, activation_input, activation_quant_scale,
-        activation_quant_offset, split_item, group_type, group_list_type,
+        x, weight,
+        _to_vec(bias), _to_vec(scale), _to_vec(offset),
+        _to_vec(antiquant_scale), _to_vec(antiquant_offset), _to_vec(per_token_scale),
+        group_list,
+        _to_vec(activation_input), _to_vec(activation_quant_scale), _to_vec(activation_quant_offset),
+        split_item, group_type, group_list_type,
         act_type, tuning_config, output_dtype
     )

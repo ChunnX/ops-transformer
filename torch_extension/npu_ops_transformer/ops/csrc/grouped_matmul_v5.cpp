@@ -20,18 +20,18 @@ namespace op_api {
 using npu_utils = at_npu::native::NpuUtils;
 
 std::vector<at::Tensor> npu_grouped_matmul_v5(
-    const at::TensorList x,
-    const at::TensorList weight,
-    const c10::optional<at::TensorList> bias,
-    const c10::optional<at::TensorList> scale,
-    const c10::optional<at::TensorList> offset,
-    const c10::optional<at::TensorList> antiquant_scale,
-    const c10::optional<at::TensorList> antiquant_offset,
-    const c10::optional<at::TensorList> per_token_scale,
+    std::vector<at::Tensor> x,
+    std::vector<at::Tensor> weight,
+    std::vector<at::Tensor> bias,
+    std::vector<at::Tensor> scale,
+    std::vector<at::Tensor> offset,
+    std::vector<at::Tensor> antiquant_scale,
+    std::vector<at::Tensor> antiquant_offset,
+    std::vector<at::Tensor> per_token_scale,
     const c10::optional<at::Tensor>& group_list,
-    const c10::optional<at::TensorList> activation_input,
-    const c10::optional<at::TensorList> activation_quant_scale,
-    const c10::optional<at::TensorList> activation_quant_offset,
+    std::vector<at::Tensor> activation_input,
+    std::vector<at::Tensor> activation_quant_scale,
+    std::vector<at::Tensor> activation_quant_offset,
     int64_t split_item,
     int64_t group_type,
     int64_t group_list_type,
@@ -52,31 +52,9 @@ std::vector<at::Tensor> npu_grouped_matmul_v5(
     auto group_list_real = group_list.value_or(at::Tensor());
     auto num_group_list = group_list_real.defined() ? group_list_real.size(0) : 0;
 
-    // Validate dimensions
-    if (split_item == 0 || split_item == 1) {
-        if (num_group_list > 0) {
-            TORCH_CHECK(num_x == 1 && num_weight == num_group_list,
-                        "When split_item is 0 or 1 and group_list is not None, "
-                        "num of x must be 1 and num of weight must equal group_list length. "
-                        "Got x=", num_x, ", weight=", num_weight, ", group_list=", num_group_list);
-        } else {
-            TORCH_CHECK(num_x == num_weight,
-                        "When split_item is 0 or 1 and group_list is None, "
-                        "num of x must equal num of weight. Got x=", num_x, ", weight=", num_weight);
-        }
-    } else {
-        if (num_group_list > 0) {
-            TORCH_CHECK(num_x == num_group_list && num_weight == num_group_list,
-                        "When split_item is 2 or 3 and group_list is not None, "
-                        "num of x and weight must both equal group_list length. "
-                        "Got x=", num_x, ", weight=", num_weight, ", group_list=", num_group_list);
-        }
-    }
-
     c10::TensorOptions options = x[0].options().dtype(output_dtype.value_or(x[0].scalar_type()));
     size_t dim_num_w = weight[0].sizes().size();
     size_t n0 = static_cast<size_t>(weight[0].size(dim_num_w - 1));
-
     std::vector<at::Tensor> y;
 
     if (split_item == 0 || split_item == 1) {
@@ -129,44 +107,22 @@ std::vector<at::Tensor> npu_grouped_matmul_v5(
     }
 
     at::TensorList result = at::TensorList(y);
-
-    auto bias_real = bias.value_or(at::TensorList());
-    auto scale_real = scale.value_or(at::TensorList());
-    auto offset_real = offset.value_or(at::TensorList());
-    auto antiquant_scale_real = antiquant_scale.value_or(at::TensorList());
-    auto antiquant_offset_real = antiquant_offset.value_or(at::TensorList());
-    auto per_token_scale_real = per_token_scale.value_or(at::TensorList());
-    auto activation_input_real = activation_input.value_or(at::TensorList());
-    auto activation_quant_scale_real = activation_quant_scale.value_or(at::TensorList());
-    auto activation_quant_offset_real = activation_quant_offset.value_or(at::TensorList());
+    auto x_real = at::TensorList(x);
+    auto weight_real = at::TensorList(weight);
+    auto bias_real = at::TensorList(bias);
+    auto scale_real = at::TensorList(scale);
+    auto offset_real = at::TensorList(offset);
+    auto antiquant_scale_real = at::TensorList(antiquant_scale);
+    auto antiquant_offset_real = at::TensorList(antiquant_offset);
+    auto per_token_scale_real = at::TensorList(per_token_scale);
+    auto activation_input_real = at::TensorList(activation_input);
+    auto activation_quant_scale_real = at::TensorList(activation_quant_scale);
+    auto activation_quant_offset_real = at::TensorList(activation_quant_offset);
     auto act_out = at::TensorList();
     auto dynamic_quant_scale_out = at::TensorList();
     auto tuning_config_real = tuning_config.value_or(at::IntArrayRef{});
 
-    // Check if weight is FRACTAL_NZ format
-    bool is_weight_nz = false;
-    try {
-        is_weight_nz = at_npu::native::custom_ops::get_npu_format(weight[0]) == ACL_FORMAT_FRACTAL_NZ;
-    } catch (...) {
-        is_weight_nz = false;
-    }
-
-    if (is_weight_nz) {
-        static const bool is_weight_nz_available = check_aclnn_kernel_available("aclnnGroupedMatmulWeightNz");
-        TORCH_CHECK(is_weight_nz_available,
-                    "Format of weight in npu_grouped_matmul_v5 is FRACTAL_NZ, "
-                    "but aclnnGroupedMatmulWeightNz is not available in current CANN version.");
-        int64_t quant_per_group_size = 0;
-        EXEC_NPU_CMD(aclnnGroupedMatmulWeightNz, x, weight, bias_real, scale_real, offset_real,
-            antiquant_scale_real, antiquant_offset_real, per_token_scale_real, group_list_real,
-            activation_input_real, activation_quant_scale_real, activation_quant_offset_real,
-            split_item, group_type, group_list_type, act_type, tuning_config_real,
-            quant_per_group_size, result, act_out, dynamic_quant_scale_out);
-        return y;
-    }
-
-    // Use aclnnGroupedMatmulV5 (default, no is_weight_nz check needed)
-    EXEC_NPU_CMD(aclnnGroupedMatmulV5, x, weight, bias_real, scale_real, offset_real,
+    ACLNN_CMD(aclnnGroupedMatmulV5, x_real, weight_real, bias_real, scale_real, offset_real,
         antiquant_scale_real, antiquant_offset_real, per_token_scale_real, group_list_real,
         activation_input_real, activation_quant_scale_real, activation_quant_offset_real,
         split_item, group_type, group_list_type, act_type, tuning_config_real,
