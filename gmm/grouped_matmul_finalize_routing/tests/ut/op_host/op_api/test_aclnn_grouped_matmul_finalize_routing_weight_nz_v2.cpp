@@ -49,6 +49,15 @@ aclDataType ParseDtype(const string &dtype)
 
 aclFormat ParseFormat(const string &format)
 {
+    static const map<string, aclFormat> extraFormatMap = {
+        {"FRACTAL_NZ_C0_8", ACL_FORMAT_FRACTAL_NZ_C0_8},
+        {"FRACTAL_NZ_C0_16", ACL_FORMAT_FRACTAL_NZ_C0_16},
+        {"FRACTAL_NZ_C0_32", ACL_FORMAT_FRACTAL_NZ_C0_32},
+    };
+    auto it = extraFormatMap.find(Trim(format));
+    if (it != extraFormatMap.end()) {
+        return it->second;
+    }
     return ops::ut::ParseAclFormat(format);
 }
 
