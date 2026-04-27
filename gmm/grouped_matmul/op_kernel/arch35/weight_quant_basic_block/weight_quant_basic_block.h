@@ -297,7 +297,7 @@ __aicore__ inline void GMM_WQ_BASIC_BLOCK_CLASS::ComputeBasicBlockAivNdKnNzNk(co
                 vectorCompute_.WaitVToMTE2();
                 vectorCompute_.CopyWeightMxScaleGmToUb(offsetParam, kMte2Offset, mte2RealK);
                 vectorCompute_.TransWeightMxScale(offsetParam.nL1Size, mte2RealK);
-                vectorCompute_.CopyWeightMxScaleUbToL1(cubeCompute_.GetMxScaleBL1(), 0, offsetParam.nL1Size, mte2RealK);
+                vectorCompute_.CopyWeightMxScaleUbToL1(mxScaleBL1_, 0, offsetParam.nL1Size, mte2RealK);
                 vectorCompute_.SetVToMTE2();
             }
         }

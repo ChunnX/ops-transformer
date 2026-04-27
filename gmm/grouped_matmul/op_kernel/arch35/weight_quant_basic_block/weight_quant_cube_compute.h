@@ -78,8 +78,6 @@ public:
     __aicore__ inline void EndSync();
     __aicore__ inline void ClearAFullLoadFlag();
     __aicore__ inline void PrefetchA(uint64_t aPrefetchSize, uint64_t xSizeLimit);
-    __aicore__ inline LocalTensor<fp8_e8m0_t> &GetMxScaleBL1() { return mxScaleBL1_; }
-
 private:
     __aicore__ inline void PrefetchA(uint64_t aPrefetchSize, uint64_t aGmSize, const LocalTensor<xType> &perloadBuffer);
     __aicore__ inline void InitSync();
