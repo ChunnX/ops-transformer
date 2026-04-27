@@ -161,10 +161,10 @@ FORCE_INLINE_AICORE void CheckBuffFlag(__gm__ int32_t *buff, TBuf<AscendC::TPosi
 
 FORCE_INLINE_AICORE void SetBuffFlag(__gm__ int32_t *buff, TBuf<AscendC::TPosition::VECCALC> uBuf_, int32_t flag)
 {
-    SetFlag<HardEvent::S_MTE3>(EVENT_ID2);
-    WaitFlag<HardEvent::S_MTE3>(EVENT_ID2);
     LocalTensor<int32_t> ubTensor = uBuf_.AllocTensor<int32_t>();
     ubTensor(0) = flag;
+    SetFlag<HardEvent::S_MTE3>(EVENT_ID2);
+    WaitFlag<HardEvent::S_MTE3>(EVENT_ID2);
     CopyUbufToGmAlignB16(buff, ubTensor, 1, sizeof(int32_t), 0, 0);
     uBuf_.FreeTensor<int32_t>(ubTensor);
 }
