@@ -46,11 +46,14 @@ if _TORCHAIR_AVAILABLE:
                 global_bs: int = 0, dependencies=[], node_name=None):
         """REG_OP(MegaMoe)\n
         .INPUT(context, TensorType({DT_INT32}))\n
-        .INPUT(x, TensorType({DT_BF16, DT_FLOAT16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2}))\n
+        .INPUT(x, TensorType({DT_BF16, DT_FLOAT16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_HIFLOAT8,\n
+            DT_FLOAT4_E2M1, DT_FLOAT4_E1M2}))\n
         .INPUT(topk_ids, TensorType({DT_INT32}))\n
         .INPUT(topk_weights, TensorType({DT_FLOAT, DT_BF16}))\n
-        .DYNAMIC_INPUT(weight1, TensorType({DT_BF16, DT_FLOAT16, DT_INT8, DT_INT4, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2}))\n
-        .DYNAMIC_INPUT(weight2, TensorType({DT_BF16, DT_FLOAT16, DT_INT8, DT_INT4, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2}))\n
+        .DYNAMIC_INPUT(weight1, TensorType({DT_BF16, DT_FLOAT16, DT_INT8, DT_INT4, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN,\n
+            DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2}))\n
+        .DYNAMIC_INPUT(weight2, TensorType({DT_BF16, DT_FLOAT16, DT_INT8, DT_INT4, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN,\n
+            DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2}))\n
         .DYNAMIC_INPUT(weight_scales1, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))\n
         .DYNAMIC_INPUT(weight_scales2, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))\n
         .OPTIONAL_INPUT(x_active_mask, TensorType({DT_INT8}))\n
@@ -108,11 +111,14 @@ if _TORCHAIR_AVAILABLE:
             dependencies=dependencies,
             ir=IrDef("MegaMoe") \
             .input("context", "DT_INT32") \
-            .input("x", "DT_BF16, DT_FLOAT16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2") \
+            .input("x", "DT_BF16, DT_FLOAT16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_HIFLOAT8, " \
+                "DT_FLOAT4_E2M1, DT_FLOAT4_E1M2") \
             .input("topk_ids", "DT_INT32") \
             .input("topk_weights", "DT_FLOAT, DT_BF16") \
-            .dynamic_input("weight1", "DT_BF16, DT_FLOAT16, DT_INT8, DT_INT4, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2") \
-            .dynamic_input("weight2", "DT_BF16, DT_FLOAT16, DT_INT8, DT_INT4, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2") \
+            .dynamic_input("weight1", "DT_BF16, DT_FLOAT16, DT_INT8, DT_INT4, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, " \
+                "DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2") \
+            .dynamic_input("weight2", "DT_BF16, DT_FLOAT16, DT_INT8, DT_INT4, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, " \
+                "DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2") \
             .dynamic_input("weight_scales1", "DT_FLOAT, DT_FLOAT8_E8M0") \
             .dynamic_input("weight_scales2", "DT_FLOAT, DT_FLOAT8_E8M0") \
             .optional_input("x_active_mask", "DT_INT8") \
