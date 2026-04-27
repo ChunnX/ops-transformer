@@ -155,7 +155,7 @@ private:
     GlobalTensor<int32_t> cuSeqlensQGm;
     GlobalTensor<int32_t> actualSeqLengthsKVGm;
     GlobalTensor<float> softmaxMaxGm;
-    GlobalTensor<float> softmaxSumGm;   
+    GlobalTensor<float> softmaxSumGm;
 
     TBuf<> commonTBuf; // common的复用空间
     TBuf<> sinksBuf;
@@ -635,10 +635,11 @@ void SFAVectorService<TEMPLATE_ARGS>::InitOutputSingleCore(ConstInfo &constInfo)
         } else if constexpr (LAYOUT_T == SFA_LAYOUT::TND) {
             totalReturnSoftmaxSize = constInfo.n2Size * constInfo.s1Size * constInfo.gSize; // (N2,T1,G)
         }
-        if (coreNum != 0 && totalReturnSoftmaxSize > 0){
+        if (coreNum != 0 && totalReturnSoftmaxSize > 0) {
             uint64_t singleCoreSoftmaxSize = (totalReturnSoftmaxSize + (CV_RATIO * coreNum) - 1) / (CV_RATIO * coreNum);
             uint64_t tailSoftmaxSize = totalReturnSoftmaxSize - constInfo.aivIdx * singleCoreSoftmaxSize;
-            uint64_t singleInitSoftmaxSize = tailSoftmaxSize < singleCoreSoftmaxSize ? tailSoftmaxSize : singleCoreSoftmaxSize;
+            uint64_t singleInitSoftmaxSize = tailSoftmaxSize < singleCoreSoftmaxSize ?
+                                             tailSoftmaxSize : singleCoreSoftmaxSize;
             if (constInfo.aivIdx * singleCoreSoftmaxSize < totalReturnSoftmaxSize && singleInitSoftmaxSize > 0) {
                 matmul::InitOutput<float>(this->softmaxSumGm[constInfo.aivIdx * singleCoreSoftmaxSize], singleInitSoftmaxSize, 0);
                 matmul::InitOutput<float>(this->softmaxMaxGm[constInfo.aivIdx * singleCoreSoftmaxSize], singleInitSoftmaxSize, 0);
@@ -685,16 +686,16 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
     tPipe->InitBuffer(softmaxExpBuf[1], softmaxBufSize);
 }
 
-TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::CopyFALseToGm(RunInfo &runInfo, ConstInfo &constInfo)
+TEMPLATES_DEF_NO_DEFAULT __aicore__ inline
+void SFAVectorService<TEMPLATE_ARGS>::CopyFALseToGm(RunInfo &runInfo, ConstInfo &constInfo)
 {
-    // LocalTensor<float> tmpBuffer = this->commonTBuf.template Get<float>();
     LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
     LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.multiCoreIdxMod2].template Get<float>();
-    LocalTensor<float> tmpBuffer = this->commonTBuf.template Get<float>(); //cl
+    LocalTensor<float> tmpBuffer = this->commonTBuf.template Get<float>();
 
     size_t alignedSize = (sizeof(float) * runInfo.halfMRealSize + 31) / 32 * 32 / sizeof(float);
 
-    int64_t lseOffset = runInfo.softmaxLseOffset;  //kvcache中获取
+    int64_t lseOffset = runInfo.softmaxLseOffset;
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = 1;
     dataCopyParams.blockLen = sizeof(float) * runInfo.halfMRealSize;
@@ -797,7 +798,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
     
     // actQ->TND, actKV pa场景任意layout均有
     sharedParams.isActualSeqLengthsKVNull = 0U;
-    sharedParams.returnSoftmaxLse = sparseAttnSharedkvBaseParams.returnSoftmaxLse;  
+    sharedParams.returnSoftmaxLse = sparseAttnSharedkvBaseParams.returnSoftmaxLse;
     sharedParams.needInit = 0;
     for (uint32_t bIdx = 0; bIdx < sharedParams.bSize; bIdx++) {
         int64_t s2Size;
