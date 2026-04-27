@@ -1018,6 +1018,7 @@ endforeach(    )
             set(CURRENT_KERNEL_DIR "${OPS_TRANSFORMER_DIR}/${op_depend_dir}/op_kernel")
             file(GLOB KERNEL_SUB_DIRS RELATIVE "${CURRENT_KERNEL_DIR}" "${CURRENT_KERNEL_DIR}/*")
             get_filename_component(_op_depened_name "${op_depend_dir}" NAME)
+            get_filename_component(_op_parent_name "${op_depend_dir}" DIRECTORY)
             filter_copy_files(SELECTED_DEPEND_FILES SELECTED_DEPEND_DIRS)
             install(FILES ${SELECTED_DEPEND_FILES}
                     DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_depened_name}
@@ -1027,8 +1028,67 @@ endforeach(    )
                     DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_depened_name}
                     OPTIONAL
             )
+            if (ENABLE_OPS_KERNEL AND ${_op_depened_name} STREQUAL "common")
+                set(COMMON_SRC_DIR "")
+                if (ENABLE_EXPERIMENTAL)
+                    get_filename_component(COMMON_SRC_DIR "${OPS_TRANSFORMER_DIR}/experimental/${op_depend_dir}" REALPATH)
+                else()
+                    get_filename_component(COMMON_SRC_DIR "${OPS_TRANSFORMER_DIR}/${op_depend_dir}" REALPATH)
+                endif()
+                list(APPEND ALL_COMMON_SRC_DIRS "${COMMON_SRC_DIR}")
+            endif()
+        endforeach ()
+        foreach (op_depend_dir ${${_op_name}_apt_depends})
+            get_filename_component(_op_depened_name "${op_depend_dir}" NAME)
+            get_filename_component(_op_parent_name "${op_depend_dir}" DIRECTORY)
+            if (ENABLE_OPS_KERNEL AND ${_op_depened_name} STREQUAL "common")
+                set(COMMON_SRC_DIR "")
+                if (ENABLE_EXPERIMENTAL)
+                    get_filename_component(COMMON_SRC_DIR "${OPS_TRANSFORMER_DIR}/experimental/${op_depend_dir}" REALPATH)
+                else()
+                    get_filename_component(COMMON_SRC_DIR "${OPS_TRANSFORMER_DIR}/${op_depend_dir}" REALPATH)
+                endif()
+                list(APPEND ALL_COMMON_SRC_DIRS "${COMMON_SRC_DIR}")
+            endif()
         endforeach ()
     endforeach ()
+endif()
+
+if (ALL_COMMON_SRC_DIRS)
+    list(REMOVE_DUPLICATES ALL_COMMON_SRC_DIRS)
+
+    set(_COMMON_COMPUTE_UNIT ${ASCEND_COMPUTE_UNIT})
+    set(_COMMON_OUT_SRC_DIR ${ASCEND_BINARY_OUT_DIR}/${_COMMON_COMPUTE_UNIT}/src/common)
+
+    set(ALL_COMMON_FILES "")
+    set(COMMON_COPY_COMMANDS "")
+    foreach (SRC_DIR ${ALL_COMMON_SRC_DIRS})
+        file(GLOB_RECURSE DIR_FILES CONFIGURE_DEPENDS ${SRC_DIR}/*)
+        list(APPEND ALL_COMMON_FILES ${DIR_FILES})
+        list(APPEND COMMON_COPY_COMMANDS
+            COMMAND ${CMAKE_COMMAND} -E copy_directory ${SRC_DIR} ${_COMMON_OUT_SRC_DIR}
+        )
+        if (SRC_DIR MATCHES "mc2/common$")
+            list(APPEND COMMON_COPY_COMMANDS
+                COMMAND ${CMAKE_COMMAND} -E copy_directory ${SRC_DIR}/op_kernel ${_COMMON_OUT_SRC_DIR}
+            )
+        endif()
+    endforeach()
+
+    if(NOT TARGET common_src_copy)
+        set(ALL_COMMON_COPY_STAMP "${_COMMON_OUT_SRC_DIR}/.all_common_copy.stamp")
+        add_custom_command(OUTPUT ${ALL_COMMON_COPY_STAMP}
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${_COMMON_OUT_SRC_DIR}
+            ${COMMON_COPY_COMMANDS}
+            COMMAND ${CMAKE_COMMAND} -E touch ${ALL_COMMON_COPY_STAMP}
+            DEPENDS ${ALL_COMMON_FILES}
+            VERBATIM
+            COMMAND_EXPAND_LISTS
+        )
+        add_custom_target(common_src_copy ALL
+            DEPENDS ${ALL_COMMON_COPY_STAMP}
+        )
+    endif()
 endif()
 
 # ------------------------------------------------ generate compile cmd ------------------------------------------------
