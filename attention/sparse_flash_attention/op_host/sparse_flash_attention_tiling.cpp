@@ -419,9 +419,6 @@ void SFAMlaTiling::NormalCalcFDWorkSpace(const uint32_t actCoreNum)
         accumOutSize = FDParamNums * headDimAlign_;
         logSumExpSize = 2 * FDParamNums * (BYTE_BLOCK / sfaInfo_->blockTypeSize);  // log和sum的存储空间一致，共需要2份内存
         workspaceSize_ += (accumOutSize + logSumExpSize) * sfaInfo_->blockTypeSize;
-        if (sfaInfo_->npuArch == NpuArch::DAV_2002) {
-            workspaceSize_ += static_cast<size_t>(actCoreNum) * 32; // 每个核SyncAll软同步需要32Byte记录状态
-        }
     }
 }
 
@@ -1387,6 +1384,10 @@ ge::graphStatus SFATilingCheck::CheckFeatureMlaNoquantPa() const
     OP_CHECK_IF(blockSize_ % sparseBlockSize_ > 0,
         OP_LOGE(opName_, "when page attention is enabled, block_size(%d) must be divided by sparse_block_size(%d), but now the remainder is %d.",
         blockSize_, sparseBlockSize_, blockSize_ % sparseBlockSize_), return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF((npuArch_ == NpuArch::DAV_3510 && sparseBlockSize_ != 1),
+        OP_LOGE(opName_, "when NpuArch is DAV_3510, sparse_block_size must be 1, but now is %d.",
+        sparseBlockSize_), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
