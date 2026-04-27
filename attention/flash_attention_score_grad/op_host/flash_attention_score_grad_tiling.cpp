@@ -287,6 +287,13 @@ static ge::graphStatus CheckBaseInput(gert::TilingContext *context){
                OP_LOGE(context, "headNum is 0."),
                return ge::GRAPH_FAILED);
     const char *inputLayout = context->GetAttrs()->GetAttrPointer<char>(LAYOUT_ATTR_IDX);
+    std::string inputLayoutStr = std::string(inputLayout);
+    if (inputLayoutStr != "BSH" && inputLayoutStr != "SBH" && inputLayoutStr != "BSND" && inputLayoutStr != "BNSD" &&
+        inputLayoutStr != "TND") {
+        OP_LOGE(context, "The inputLayout should be BSH/SBH/BSND/BNSD/TND, but got %s.",
+                inputLayoutStr.c_str());
+        return ge::GRAPH_FAILED;
+    }
     if (strlen(inputLayout) == 3) { // 3: BSH or SBH or TND
         if (inputLayout[0] == 'B') {
             // layout is BSH
