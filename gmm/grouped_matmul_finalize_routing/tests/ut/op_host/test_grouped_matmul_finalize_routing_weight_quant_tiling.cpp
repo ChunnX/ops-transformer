@@ -209,16 +209,6 @@ static map<string, CsvWeightQuantTestCase>& GetCsvTestCases()
     return cases;
 }
 
-static void VerifyCsvFileLoaded()
-{
-    auto &cases = GetCsvTestCases();
-    EXPECT_EQ(cases.size(), 24) << "Expected 24 test cases in CSV file";
-    cout << "Successfully loaded " << cases.size() << " test cases from CSV" << endl;
-    for (const auto &pair : cases) {
-        cout << "  - " << pair.first << endl;
-    }
-}
-
 // ============================================================================
 // Test Fixture with CSV Support
 // ============================================================================
@@ -411,4 +401,13 @@ TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzEmptyBia
 TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzEZeroNullOutputBs) { ExecuteCsvTest("TestMXA8W4WeightNzEZeroNullOutputBs"); }
 TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzEZeroWithOutputBs) { ExecuteCsvTest("TestMXA8W4WeightNzEZeroWithOutputBs"); }
 
-TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestCsvFileLoaded) { VerifyCsvFileLoaded(); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestCsvFileLoaded)
+{
+    auto& cases = GetCsvTestCases();
+    EXPECT_EQ(cases.size(), 24) << "Expected 24 test cases in CSV file";
+    
+    cout << "Successfully loaded " << cases.size() << " test cases from CSV" << endl;
+    for (const auto& pair : cases) {
+        cout << "  - " << pair.first << endl;
+    }
+}
