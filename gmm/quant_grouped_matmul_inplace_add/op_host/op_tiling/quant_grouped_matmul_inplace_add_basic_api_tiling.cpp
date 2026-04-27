@@ -30,7 +30,6 @@ namespace optiling {
 QGMMInplaceAddBasicApiTiling::QGMMInplaceAddBasicApiTiling(gert::TilingContext *context)
     : GroupedQmmBasicApiTiling(context)
 {
-    GroupedQmmBasicApiTiling::Reset();
 }
 
 bool QGMMInplaceAddBasicApiTiling::IsCapable()

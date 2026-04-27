@@ -33,9 +33,8 @@ public:
 
     void Reset(gert::TilingContext *context) override
     {
-        Ops::Transformer::OpTiling::TilingBaseClass::Reset(context);
         GroupedQmmBasicApiTiling::Reset(context);
-        // 和GroupedQmmBasicApiTiling::Reset(); 有什么区别，这句还需要写吗
+        tilingData_ = QuantGroupedMatmulInplaceAdd::QGmmInplaceAddBasicApiTilingData();
     }
 
 protected:
