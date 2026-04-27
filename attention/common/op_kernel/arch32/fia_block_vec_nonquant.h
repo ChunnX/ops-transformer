@@ -984,7 +984,8 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::DealInvalidRows(const RunInfo 
 template <typename FIAT>
 __aicore__ inline void FiaBlockVecNonQuant<FIAT>::SinkCopyIn(const RunInfo &info, LocalTensor<COMPUTE_T> &sinkBuf)
 {
-    uint32_t copySize = constInfo.gSize + 16; //DataCopy函数搬运量要求是32字节整数倍，不对齐时，将向下取整，因此该处多搬运16*sizeof(bf16)占位
+    // uint32_t copySize = constInfo.gSize + 16; //DataCopy函数搬运量要求是32字节整数倍，不对齐时，将向下取整，因此该处多搬运16*sizeof(bf16)占位
+    uint32_t copySize = constInfo.gSize;
     uint64_t sinkGmOffset = info.n2Idx * constInfo.gSize;
     LocalTensor<SINK_T> sinkCopyInBuf = inputQue1.AllocTensor<SINK_T>();
     DataCopy(sinkCopyInBuf, sinkGm[sinkGmOffset], copySize);
@@ -1350,7 +1351,7 @@ template <typename FIAT> __aicore__ inline void FiaBlockVecNonQuant<FIAT>::Compu
 {
     SetMSplitInfo(info.actMBaseSize);
     CrossCoreWaitFlag(constInfo.syncC1V1);
-    // ProcessVec1SingleBuf(info);
+    ProcessVec1SingleBuf(info);
     CrossCoreSetFlag<ConstInfo::FIA_SYNC_MODE2, PIPE_MTE3>(constInfo.syncV1C2);
 }
 
