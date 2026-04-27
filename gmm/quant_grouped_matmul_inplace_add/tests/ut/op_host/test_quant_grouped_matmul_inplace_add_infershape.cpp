@@ -58,20 +58,31 @@ struct QGmmInplaceAddInfershapeCase {
 
     gert::InfershapeContextPara BuildContext() const
     {
-        vector<gert::InputDesc> inputs = {
-            {MakeShape(x1Shape), ops::ut::ParseGeDtype(x1Dtype), ge::FORMAT_ND},
-            {MakeShape(x2Shape), ops::ut::ParseGeDtype(x2Dtype), ge::FORMAT_ND},
-            {MakeShape(scale2Shape), ops::ut::ParseGeDtype(scale2Dtype), ge::FORMAT_ND},
-            {MakeShape(groupListShape), ge::DT_INT64, ge::FORMAT_ND},
-            {MakeShape(yRefShape), ops::ut::ParseGeDtype(yRefDtype), ge::FORMAT_ND},
-        };
         if (hasScale1) {
-            inputs.emplace_back(MakeShape(scale1Shape), ops::ut::ParseGeDtype(scale1Dtype), ge::FORMAT_ND);
+            return gert::InfershapeContextPara(
+                "QuantGroupedMatmulInplaceAdd",
+                {
+                    {MakeShape(x1Shape), ops::ut::ParseGeDtype(x1Dtype), ge::FORMAT_ND},
+                    {MakeShape(x2Shape), ops::ut::ParseGeDtype(x2Dtype), ge::FORMAT_ND},
+                    {MakeShape(scale2Shape), ops::ut::ParseGeDtype(scale2Dtype), ge::FORMAT_ND},
+                    {MakeShape(groupListShape), ge::DT_INT64, ge::FORMAT_ND},
+                    {MakeShape(yRefShape), ops::ut::ParseGeDtype(yRefDtype), ge::FORMAT_ND},
+                    {MakeShape(scale1Shape), ops::ut::ParseGeDtype(scale1Dtype), ge::FORMAT_ND},
+                },
+                {{{{}, {}}, ops::ut::ParseGeDtype(yRefDtype), ge::FORMAT_ND}},
+                {{"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)},
+                 {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupSize)}});
         }
 
         return gert::InfershapeContextPara(
             "QuantGroupedMatmulInplaceAdd",
-            inputs,
+            {
+                {MakeShape(x1Shape), ops::ut::ParseGeDtype(x1Dtype), ge::FORMAT_ND},
+                {MakeShape(x2Shape), ops::ut::ParseGeDtype(x2Dtype), ge::FORMAT_ND},
+                {MakeShape(scale2Shape), ops::ut::ParseGeDtype(scale2Dtype), ge::FORMAT_ND},
+                {MakeShape(groupListShape), ge::DT_INT64, ge::FORMAT_ND},
+                {MakeShape(yRefShape), ops::ut::ParseGeDtype(yRefDtype), ge::FORMAT_ND},
+            },
             {{{{}, {}}, ops::ut::ParseGeDtype(yRefDtype), ge::FORMAT_ND}},
             {{"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)},
              {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupSize)}});
