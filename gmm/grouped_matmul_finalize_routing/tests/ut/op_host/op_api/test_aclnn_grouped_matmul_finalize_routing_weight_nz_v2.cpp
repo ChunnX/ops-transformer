@@ -312,9 +312,7 @@ vector<GroupedMatmulFinalizeRoutingWeightNzV2Case> LoadCases(const string &csvFi
     return cases;
 }
 
-class grouped_matmul_finalize_routing_weight_nz_v2_csv_test : public testing::Test {};
-
-TEST_F(grouped_matmul_finalize_routing_weight_nz_v2_csv_test, run_case)
+void RunAllWeightNzV2Cases()
 {
     const auto cases =
         LoadCases(ops::ut::ResolveCsvPath("test_aclnn_grouped_matmul_finalize_routing_weight_nz_v2.csv",
@@ -323,6 +321,10 @@ TEST_F(grouped_matmul_finalize_routing_weight_nz_v2_csv_test, run_case)
         testCase.Run();
     }
 }
+
+class grouped_matmul_finalize_routing_weight_nz_v2_csv_test : public testing::Test {};
+
+TEST_F(grouped_matmul_finalize_routing_weight_nz_v2_csv_test, run_case) { RunAllWeightNzV2Cases(); }
 
 constexpr size_t kWeightNzV2Mxa8w4CsvColumnCount = 30;
 
@@ -539,9 +541,7 @@ vector<GroupedMatmulFinalizeRoutingWeightNzV2Mxa8w4Case> LoadMxa8w4Cases(const s
     return cases;
 }
 
-class grouped_matmul_finalize_routing_weight_nz_v2_mxa8w4_csv_test : public testing::Test {};
-
-TEST_F(grouped_matmul_finalize_routing_weight_nz_v2_mxa8w4_csv_test, run_case)
+void RunAllMxa8w4Cases()
 {
     const auto cases = LoadMxa8w4Cases(
         ops::ut::ResolveCsvPath("test_aclnn_grouped_matmul_finalize_routing_weight_nz_v2_mxa8w4.csv",
@@ -550,4 +550,8 @@ TEST_F(grouped_matmul_finalize_routing_weight_nz_v2_mxa8w4_csv_test, run_case)
         testCase.Run();
     }
 }
+
+class grouped_matmul_finalize_routing_weight_nz_v2_mxa8w4_csv_test : public testing::Test {};
+
+TEST_F(grouped_matmul_finalize_routing_weight_nz_v2_mxa8w4_csv_test, run_case) { RunAllMxa8w4Cases(); }
 }  // namespace
