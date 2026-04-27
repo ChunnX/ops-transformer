@@ -31,6 +31,11 @@ if (BUILD_OPEN_PROJECT)  # custom
         target_sources(${OPHOST_NAME}_tiling_obj PRIVATE ${ALLTO_ALL_MATMUL_TILING_SRCS})
     endif()
 
+    # Add catlass include path for kernel compilation
+    add_ops_compile_options(
+        OP_NAME AlltoAllMatmul
+        OPTIONS -I${CMAKE_SOURCE_DIR}/3rdparty/catlass/include
+    )
     set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
     if("${CONDITION_UNIT}" STREQUAL "ascend950")
         add_ops_compile_options(

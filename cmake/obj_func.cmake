@@ -373,6 +373,8 @@ function(add_opapi_modules)
       ${OPS_TRANSFORMER_DIR}/mc2/common/op_host/op_tiling
       ${OPS_TRANSFORMER_DIR}/mc2/common/op_kernel
       ${OPS_TRANSFORMER_DIR}/mc2/3rd
+      ${OPS_TRANSFORMER_DIR}/3rdparty/catlass/include
+      ${OPS_TRANSFORMER_DIR}/3rdparty/catlass/include/catlass
     )
     target_compile_definitions(${OPHOST_NAME}_opapi_obj PRIVATE
       _GLIBCXX_USE_CXX11_ABI=0
