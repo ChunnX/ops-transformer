@@ -38,11 +38,14 @@ if (BUILD_OPEN_PROJECT)  # custom
         add_ops_compile_options(
             OP_NAME MatmulReduceScatterV2
             OPTIONS --cce-auto-sync=off
+                    # Add catlass include path for kernel compilation
+                    -I${CMAKE_SOURCE_DIR}/3rdparty/catlass/include
         )
     elseif("${CONDITION_UNIT}" STREQUAL "ascend910b")
         add_ops_compile_options(
             OP_NAME MatmulReduceScatterV2
             OPTIONS --cce-auto-sync=off
+                    -I${CMAKE_SOURCE_DIR}/3rdparty/catlass/include
         )
     endif()
 else() # 回黄host
