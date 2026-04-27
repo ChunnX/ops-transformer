@@ -1194,7 +1194,7 @@ ge::graphStatus DequantChecker::CheckInputKVTypeForAntiquant(const FiaTilingInfo
                     (fiaInfo.inputQType != ge::DT_FLOAT16 || fiaInfo.outputType != ge::DT_FLOAT16)),
                     OP_LOGE(fiaInfo.opName,
                             "When key in per-channel scenario and value in per-token scenario,"
-                            "if inputKvType is int8, inputQType and outputType only must be Float16,"
+                            "if inputKvType is INT8, inputQType and outputType must be FLOAT16,"
                             "but now inputQType is %s, outputType is %s.",
                             DataTypeToSerialString(fiaInfo.inputQType).c_str(),
                             DataTypeToSerialString(fiaInfo.outputType).c_str()),
