@@ -143,6 +143,33 @@ ge::graphStatus MaskChecker::CheckFullQuantIFAMLA(const FiaTilingInfo &fiaInfo)
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus MaskChecker::CheckMXFP8FullQuant(const FiaTilingInfo &fiaInfo)
+{
+    enableMXFP8 = (*fiaInfo.opParamInfo.queryQuantMode == PER_TOKEN_GROUP_MODE &&
+                   *fiaInfo.opParamInfo.keyAntiquantMode == PER_TOKEN_GROUP_MODE &&
+                   *fiaInfo.opParamInfo.valueAntiquantMode == PER_CHANNEL_GROUP_MODE);
+    if (!enableMXFP8) {
+        return ge::GRAPH_SUCCESS;
+    }
+    if (fiaInfo.s1Size == 1U) {
+        OP_CHECK_IF(!(((fiaInfo.sparseMode == SPARSE_MODE_NO_MASK) && (!fiaInfo.attenMaskFlag))),
+                    OP_LOGE(fiaInfo.opName,
+                            "When qs is equal to 1 , only support sparse 0 without mask in MXFP8 fullquant scenario, " 
+                            "now input sparse mode is %d and there has%smask",
+                            fiaInfo.sparseMode, fiaInfo.attenMaskFlag ? " " : " no "),
+                    return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF(!(((fiaInfo.sparseMode == SPARSE_MODE_NO_MASK) && (!fiaInfo.attenMaskFlag)) ||
+                    ((fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) && (fiaInfo.attenMaskFlag))),
+                    OP_LOGE(fiaInfo.opName,
+                            "When qs is greater than 1 , only support sparse 0 without mask or sparse 3 with mask " 
+                            "in MXFP8 fullquant scenario, now input sparse mode is %d and there has%smask",
+                            fiaInfo.sparseMode, fiaInfo.attenMaskFlag ? " " : " no "),
+                    return ge::GRAPH_FAILED);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus MaskChecker::CheckQKVDDifferent(const FiaTilingInfo &fiaInfo)
 {
     // Only support sparse mode 0/2/3 when query and key headdim is not equal to value headdim.
@@ -499,6 +526,9 @@ ge::graphStatus MaskChecker::CheckCrossFeature(const FiaTilingInfo &fiaInfo)
         }
     } else if (enableFullQuant_) {
         if (ge::GRAPH_SUCCESS != CheckFullQuantIFAMLA(fiaInfo)) {
+            return ge::GRAPH_FAILED;
+        }
+        if (ge::GRAPH_SUCCESS != CheckMXFP8FullQuant(fiaInfo)) {
             return ge::GRAPH_FAILED;
         }
     } else if (enableAntiQuant_) {
