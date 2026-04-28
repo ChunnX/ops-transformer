@@ -623,10 +623,13 @@ def kv_pa_preprocessing(input_tensor_dict, fa_param, params):
     block_table = fa_param['block_table']
     layout_kv = fa_param['layout_kv']
 
-    k_dtype_str = params['dtype_input'].get('key', 'bf16')
-    _k_dtype_map = {'bf16': torch.bfloat16, 'bfloat16': torch.bfloat16, 'fp16': torch.float16,
-                    'float16': torch.float16, 'fp32': torch.float32, 'float32': torch.float32}
-    k_dtype = _k_dtype_map.get(k_dtype_str)
+    k_dtype_val = params['dtype_input'].get('key', torch.bfloat16)
+    if isinstance(k_dtype_val, torch.dtype):
+        k_dtype = k_dtype_val
+    else:
+        _k_dtype_map = {'bf16': torch.bfloat16, 'bfloat16': torch.bfloat16, 'fp16': torch.float16,
+                        'float16': torch.float16, 'fp32': torch.float32, 'float32': torch.float32}
+        k_dtype = _k_dtype_map.get(k_dtype_val, torch.bfloat16)
 
     D = fa_param['k_shape_old'][-1]
     rope_head_dim = fa_param['k_rope_shape'][-1]

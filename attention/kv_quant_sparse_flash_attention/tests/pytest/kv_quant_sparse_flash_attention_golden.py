@@ -455,16 +455,18 @@ def kv_concat_nopa_preprocessing(input_tensor_dict, fa_param, params):
     # query_cache: raw query + raw query_rope 拼接后转目标 dtype
     q_raw = fa_param['_raw_query'] if fa_param.get('_raw_query') is not None else fa_param['q_tensor']
     q_rope_raw = fa_param.get('_raw_query_rope')
-    if q_rope_raw is not None:
+if q_rope_raw is not None:
         q_cat = torch.cat((q_raw, q_rope_raw), dim=-1)
     else:
         q_cat = q_raw
-    q_dtype_str = params['dtype_input'].get('query', 'bf16')
-    _q_dtype_map = {'bf16': torch.bfloat16, 'bfloat16': torch.bfloat16, 'fp16': torch.float16,
-                    'float16': torch.float16, 'fp32': torch.float32, 'float32': torch.float32}
-    q_torch_dtype = _q_dtype_map.get(q_dtype_str)
-    q_torch = q_cat.to(q_torch_dtype) if q_torch_dtype is not None else q_cat
-
+    q_dtype = params['dtype_input'].get('query', torch.bfloat16)
+    if isinstance(q_dtype, torch.dtype):
+        q_torch_dtype = q_dtype
+    else:
+        _q_dtype_map = {'bf16': torch.bfloat16, 'bfloat16': torch.bfloat16, 'fp16': torch.float16,
+                        'float16': torch.float16, 'fp32': torch.float32, 'float32': torch.float32}
+        q_torch_dtype = _q_dtype_map.get(q_dtype, torch.bfloat16)
+    q_torch = q_cat.to(q_torch_dtype)
     input_tensor_dict['query_cache'] = q_torch.to('npu')
     input_tensor_dict['key_cache'] = key_concat.to('npu')
     input_tensor_dict['value_cache'] = key_concat.to('npu')
@@ -936,11 +938,14 @@ def kv_concat_pa_preprocessing(input_tensor_dict, fa_param, params):
         q_cat = torch.cat((q_raw, q_rope_raw), dim=-1)
     else:
         q_cat = q_raw
-    q_dtype_str = params['dtype_input'].get('query', 'bf16')
-    _q_dtype_map = {'bf16': torch.bfloat16, 'bfloat16': torch.bfloat16, 'fp16': torch.float16,
-                    'float16': torch.float16, 'fp32': torch.float32, 'float32': torch.float32}
-    q_torch_dtype = _q_dtype_map.get(q_dtype_str)
-    q_torch = q_cat.to(q_torch_dtype) if q_torch_dtype is not None else q_cat
+    q_dtype = params['dtype_input'].get('query', torch.bfloat16)
+    if isinstance(q_dtype, torch.dtype):
+        q_torch_dtype = q_dtype
+    else:
+        _q_dtype_map = {'bf16': torch.bfloat16, 'bfloat16': torch.bfloat16, 'fp16': torch.float16,
+                        'float16': torch.float16, 'fp32': torch.float32, 'float32': torch.float32}
+        q_torch_dtype = _q_dtype_map.get(q_dtype, torch.bfloat16)
+    q_torch = q_cat.to(q_torch_dtype)
     input_tensor_dict['query_cache'] = q_torch.to('npu')
     input_tensor_dict['key_cache'] = k_cache_concat.to('npu')
     input_tensor_dict['value_cache'] = k_cache_concat.to('npu')

@@ -84,16 +84,18 @@ def gen_nonbound_tensor_data(params, data_shape, range_input, torch_dtype, tenso
         min_value, max_value = range_input
         
         if min_value == "-inf" and max_value == "inf":
+            if hash_seed > 0:
+                torch.manual_seed(hash_seed)
+            
             if torch_dtype in (torch.float32, torch.float16, torch.bfloat16):
-                input_data = torch.rand(data_shape, dtype=torch_dtype) * 2 - 1
-                input_data = input_data * torch.finfo(torch_dtype).max
+                dtype_min = torch.finfo(torch_dtype).min
+                dtype_max = torch.finfo(torch_dtype).max
+                input_data = torch.rand(data_shape, dtype=torch_dtype)
+                input_data = input_data * (dtype_max - dtype_min) + dtype_min
             elif torch_dtype in (torch.int8, torch.int32, torch.uint8):
-                input_data = torch.randint(
-                    torch.iinfo(torch_dtype).min,
-                    torch.iinfo(torch_dtype).max + 1,
-                    data_shape,
-                    dtype=torch_dtype
-                )
+                dtype_min = torch.iinfo(torch_dtype).min
+                dtype_max = torch.iinfo(torch_dtype).max
+                input_data = torch.randint(dtype_min, dtype_max + 1, data_shape, dtype=torch_dtype)
             else:
                 input_data = torch.rand(data_shape, dtype=torch_dtype)
             
@@ -104,14 +106,13 @@ def gen_nonbound_tensor_data(params, data_shape, range_input, torch_dtype, tenso
                 return gen_uniform_data(data_shape, 0, 4, torch_dtype, hash_seed)
             
             if hash_seed > 0:
-                torch.manual_seed(hash_seed)
-            num_change = torch.randint(0, min(shape_len, 4), (1,)).item()
-            if hash_seed > 0:
                 torch.manual_seed(hash_seed + 1)
+            num_change = torch.randint(0, min(shape_len, 4), (1,)).item()
             if num_change > 0 and torch_dtype in (torch.float32, torch.float16, torch.bfloat16):
                 inf_index = torch.randperm(shape_len)[:num_change]
+                dtype_min = torch.finfo(torch_dtype).min
                 for idx in inf_index:
-                    input_data.view(-1)[idx] = torch.finfo(torch_dtype).min
+                    input_data.view(-1)[idx] = dtype_min
             
             if hash_seed > 0:
                 torch.manual_seed(hash_seed + 2)
@@ -120,8 +121,9 @@ def gen_nonbound_tensor_data(params, data_shape, range_input, torch_dtype, tenso
                 torch.manual_seed(hash_seed + 3)
             if num_change > 0 and torch_dtype in (torch.float32, torch.float16, torch.bfloat16):
                 inf_index = torch.randperm(shape_len)[:num_change]
+                dtype_max = torch.finfo(torch_dtype).max
                 for idx in inf_index:
-                    input_data.view(-1)[idx] = torch.finfo(torch_dtype).max
+                    input_data.view(-1)[idx] = dtype_max
             return input_data
         elif min_value == "nan":
             return torch.full(data_shape, float('nan'), dtype=torch_dtype)

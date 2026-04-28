@@ -31,11 +31,13 @@ def _load_inputs_to_npu(input_dict):
     return {key: to_npu(value) for key, value in input_dict.items()}
 
 
-def _get_kv_torch_dtype(kv_dtype_str):
-    if kv_dtype_str == "hifloat8":
+def _get_kv_torch_dtype(kv_dtype):
+    if kv_dtype == torch_npu.hifloat8 or str(kv_dtype) == "hifloat8":
         return torch_npu.hifloat8
-    if kv_dtype_str == "float8_e4m3fn":
+    if kv_dtype == torch.float8_e4m3fn or str(kv_dtype) == "float8_e4m3fn":
         return torch.float8_e4m3fn
+    if isinstance(kv_dtype, torch.dtype):
+        return kv_dtype
     return None
 
 
@@ -57,10 +59,15 @@ def call_npu_op(torch_tensor_dict, params):
     k_tensor = torch_tensor_dict['key_cache']
     v_tensor = torch_tensor_dict['value_cache']
 
-    key_dtype_name = params['dtype_input']['key']
-    value_dtype_name = params['dtype_input']['value']
-    key_dtype = torch_npu.hifloat8 if key_dtype_name == "hifloat8" else None 
-    value_dtype = torch_npu.hifloat8 if value_dtype_name == "hifloat8" else None
+    key_dtype = params['dtype_input']['key']
+    value_dtype = params['dtype_input']['value']
+    key_dtype_name = str(key_dtype) if key_dtype else None
+    value_dtype_name = str(value_dtype) if value_dtype else None
+    
+    key_is_hifloat8 = (key_dtype == torch_npu.hifloat8 or key_dtype_name == "hifloat8")
+    value_is_hifloat8 = (value_dtype == torch_npu.hifloat8 or value_dtype_name == "hifloat8")
+    key_dtype_arg = torch_npu.hifloat8 if key_is_hifloat8 else None
+    value_dtype_arg = torch_npu.hifloat8 if value_is_hifloat8 else None
 
     sparse_indices = torch_tensor_dict['sparse_indices']
 
@@ -75,8 +82,8 @@ def call_npu_op(torch_tensor_dict, params):
     key_dequant_scale = None
     value_dequant_scale = None
     kv_dtype_kwargs = {}
-    if key_dtype_name == "hifloat8":
-        kv_dtype_kwargs = {"key_dtype": key_dtype, "value_dtype": value_dtype}
+    if key_is_hifloat8:
+        kv_dtype_kwargs = {"key_dtype": key_dtype_arg, "value_dtype": value_dtype_arg}
     output = torch_npu.npu_kv_quant_sparse_flash_attention(q_tensor,
                                                         k_tensor,
                                                         v_tensor,
@@ -110,8 +117,11 @@ def call_npu(input_tensor_dict, params):
     for key, input_tensor in input_tensor_dict.items():
         if not isinstance(input_tensor, (torch.Tensor, np.ndarray)):
             continue
-        dtype_str = params['dtype_input'].get(key)
-        torch_dtype = get_torch_dtype(dtype_str) if dtype_str else None
+        dtype_input = params['dtype_input'].get(key)
+        if isinstance(dtype_input, torch.dtype):
+            torch_dtype = dtype_input
+        else:
+            torch_dtype = get_torch_dtype(dtype_input) if dtype_input else None
 
         if torch.is_tensor(input_tensor):
             tensor_i = input_tensor
