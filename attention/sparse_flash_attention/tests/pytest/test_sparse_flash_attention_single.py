@@ -42,22 +42,23 @@ def execute_sfa(param_combination):
     }
     if SAVE_PT:
         sparse_flash_attention_golden._save_test_case(test_data, PT_SAVE_PATH)
-    result = utils.sfa_run_npu(test_data, testcase_name=None, device_id=DEVICE_ID, result_path=RESULT_PATH)
+    result, fulfill_percent = utils.sfa_run_npu(test_data, testcase_name=None, device_id=DEVICE_ID, result_path=RESULT_PATH)
     case_id += 1
-    return result, test_data
+    return result, fulfill_percent, test_data
 
 
 @pytest.mark.ci
 @pytest.mark.parametrize("param_combination", PARAM_COMBINATION_SET)
 def test_sparse_flash_attention_single(param_combination):
     test_data = None
+    fulfill_percent = 0.0
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
         futures = executor.submit(execute_sfa, param_combination)
         for future in concurrent.futures.as_completed([futures]):
             try:
-                result, test_data = future.result()
+                result, fulfill_percent, test_data = future.result()
                 if result == "Failed":
-                    pytest.fail(f"测试结果为Failed")
+                    pytest.fail(f"测试结果为Failed, 精度: {fulfill_percent:.4f}%")
             except Exception as e:
                 params = test_data.get("params") if test_data else None
                 if params:

@@ -353,4 +353,4 @@ def sfa_run_npu(test_data, testcase_name=None, device_id=0, result_path=None):
     result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result)
     if result_path:
         save_result(params, result, fulfill_percent, result_path)
-    return result
+    return result, fulfill_percent

@@ -42,21 +42,22 @@ else:
 def execute_qsfa(testcase_files):
     test_data = torch.load(testcase_files, map_location="cpu")
     testcase_name = os.path.basename(testcase_files).replace(".pt", "")
-    result = utils.qsfa_run_npu(test_data, testcase_name=testcase_name, device_id=DEVICE_ID, result_path=RESULT_PATH)
-    return result, test_data
+    result, fulfill_percent = utils.qsfa_run_npu(test_data, testcase_name=testcase_name, device_id=DEVICE_ID, result_path=RESULT_PATH)
+    return result, fulfill_percent, test_data
 
 
 @pytest.mark.ci
 @pytest.mark.parametrize("testcase_files", locals()["testcase_files"])
 def test_kv_quant_sparse_flash_attention(testcase_files):
     test_data = None
+    fulfill_percent = 0.0
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
         futures = executor.submit(execute_qsfa, testcase_files)
         for future in concurrent.futures.as_completed([futures]):
             try:
-                result, test_data = future.result()
+                result, fulfill_percent, test_data = future.result()
                 if result == "Failed":
-                    pytest.fail(f"测试结果为Failed")
+                    pytest.fail(f"测试结果为Failed, 精度: {fulfill_percent:.4f}%")
             except Exception as e:
                 params = test_data.get("params") if test_data else None
                 if params:
