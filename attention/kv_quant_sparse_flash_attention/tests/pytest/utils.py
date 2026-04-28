@@ -255,8 +255,16 @@ def convert_param_combination_to_cs_format(param_combination):
     
     if kv_type is None:
         kv_torch_dtype = torch.float8_e4m3fn
-    else:
+    elif isinstance(kv_type, torch.dtype):
         kv_torch_dtype = kv_type
+    elif str(kv_type) in ("hifloat8", "torch_npu.hifloat8"):
+        kv_torch_dtype = torch.uint8  # hifloat8 底层存储
+    elif str(kv_type) in ("float8_e4m3fn", "torch.float8_e4m3fn"):
+        kv_torch_dtype = torch.float8_e4m3fn
+    elif kv_type == "int8":
+        kv_torch_dtype = torch.int8
+    else:
+        kv_torch_dtype = torch.float8_e4m3fn  # 默认
     if (layout_kv == 'PA_BSND'):
         if (layout_query == 'BSND'):
             shape_input = {
@@ -332,7 +340,7 @@ def convert_param_combination_to_cs_format(param_combination):
         'key_cache': kv_torch_dtype,
         'value_cache': kv_torch_dtype,
         'query_rope': q_type,
-        'key_rope': q_type,
+        'key_rope': kv_torch_dtype,  # 和 key dtype 保持一致
         'dequant_scale': torch.float32,
         'v_dequant_scale': torch.float32,
     }

@@ -64,8 +64,8 @@ def call_npu_op(torch_tensor_dict, params):
     key_dtype_name = str(key_dtype) if key_dtype else None
     value_dtype_name = str(value_dtype) if value_dtype else None
     
-    key_is_hifloat8 = (key_dtype == torch_npu.hifloat8 or key_dtype_name == "hifloat8")
-    value_is_hifloat8 = (value_dtype == torch_npu.hifloat8 or value_dtype_name == "hifloat8")
+    key_is_hifloat8 = (key_dtype == torch_npu.hifloat8 or key_dtype_name in ("hifloat8", "torch_npu.hifloat8"))
+    value_is_hifloat8 = (value_dtype == torch_npu.hifloat8 or value_dtype_name in ("hifloat8", "torch_npu.hifloat8"))
     key_dtype_arg = torch_npu.hifloat8 if key_is_hifloat8 else None
     value_dtype_arg = torch_npu.hifloat8 if value_is_hifloat8 else None
 

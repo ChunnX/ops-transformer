@@ -310,7 +310,7 @@ def convert_param_combination_to_cs_format(param_combination):
         'key_cache': kv_type,
         'value_cache': kv_type,
         'query_rope': q_type,
-        'key_rope': q_type,
+        'key_rope': kv_type,  # 和 key dtype 保持一致
     }
     
     default_range_input = {
