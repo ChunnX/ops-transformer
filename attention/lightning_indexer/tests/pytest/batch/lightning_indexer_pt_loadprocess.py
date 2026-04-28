@@ -41,7 +41,9 @@ def test_li_process(filepath, device_id=0):
     weights =test_data['weights'].npu()
     actual_seq_lengths_query = test_data['actual_seq_lengths_query'].npu()
     actual_seq_lengths_key = test_data['actual_seq_lengths_key'].npu()
-    block_table = test_data['block_table'].npu()
+    block_table = test_data['block_table']
+    if isinstance(block_table, torch.Tensor):
+        block_table = block_table.npu()
     layout_query = test_data['layout_query']
     layout_key = test_data['layout_key']
     sparse_count = test_data['sparse_count']
