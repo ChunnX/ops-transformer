@@ -149,6 +149,16 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
     if (batchSize_ > 0) {
         baseInfo.actualQuerySeqSize.resize(batchSize_, maxSeqlenQ_);
         baseInfo.actualKvSeqSize.resize(batchSize_, maxSeqlenKv_);
+        if (baseInfo.isCumulativeQuerySeq) {
+            for (uint32_t i = 1; i < batchSize_; ++i) {
+                baseInfo.actualQuerySeqSize[i] += baseInfo.actualQuerySeqSize[i - 1];
+            }
+        }
+        if (baseInfo.isCumulativeKvSeq) {
+            for (uint32_t i = 1; i < batchSize_; ++i) {
+                baseInfo.actualKvSeqSize[i] += baseInfo.actualKvSeqSize[i - 1];
+            }
+        }
     }
     if (!baseInfo.isCumulativeQuerySeq && sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr) {
         batchSize_ = sequsedQ_->GetTensorShape()->GetDimSize(0);
