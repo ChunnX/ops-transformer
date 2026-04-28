@@ -237,7 +237,8 @@ def trans_tnd_actseq(list):
 def check_result(expect, result, topk_value, params):
     batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num,\
     qk_dtype, weight_dtype, actual_seq_dtype, act_seq_q, act_seq_k, layout_query,\
-    layout_key, sparse_count, sparse_mode, query_datarange, key_datarange, weights_datarange = params
+    layout_key, sparse_count, sparse_mode, query_datarange, key_datarange, weights_datarange,\
+    return_value = params
     # 处理B+1
     if isinstance(act_seq_q, int):
         act_seq_q = [act_seq_q]
