@@ -1,5 +1,5 @@
 // -----------------------------------------------------------------------------------------------------------
-// Copyright (c) 2025 Huawei Technologies Co., Ltd.
+// Copyright (c) 2026 Huawei Technologies Co., Ltd.
 // This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 // CANN Open Software License Agreement Version 2.0 (the "License").
 // Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -79,8 +79,8 @@ static int32_t GetHcclCommLink(const HcclComm &commHandle, uint32_t netLayerId, 
         return -1;
     }
     if (netLinkNum == 0) {
-        ASCEND_LOGE("The Net Link Is nullptr. srcRankId is %u, dstRankId is %u, layerId is %u", srcRankId,
- 	        dstRankId, netLayerId);
+        ASCEND_LOGE("The Net Link Is nullptr. srcRankId is %u, dstRankId is %u, layerId is %u",
+            srcRankId, dstRankId, netLayerId);
         return -1;
     }
     ASCEND_LOGI("Get HCCL Rank Links Success Links Num is: %u", netLinkNum);
