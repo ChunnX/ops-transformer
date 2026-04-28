@@ -195,11 +195,8 @@ static constexpr ConfigParams ConfigValue[] ={
 
 // QuantModeEnum
 #define AntiquantMode_PER_CHANNEL 0
-#define AntiquantMode_PER_TOKEN 1
 #define AntiquantMode_K_PER_CHANNEL_V_PER_TOKEN 2
-#define AntiquantMode_PER_TOKEN_HEAD 3
-#define AntiquantMode_PER_TOKEN_PAGE_ATTENTION 4
-#define AntiquantMode_PER_TOKEN_HEAD_PAGE_ATTENTION 5
+#define AntiquantMode_K_PER_TOKEN 6 // 表示其他伪量化类型
 #define PerBlock 17
 #define FULLQUANT_MODE_PER_TOKEN_HEAD 18
 #define FullQuantMode 30
