@@ -26,7 +26,7 @@ static const uint64_t INDEX_OUT_3 = 3;
 static const uint64_t INDEX_OUT_4 = 4;
 static const uint64_t INDEX_OUT_5 = 5;
 static const uint64_t INDEX_OUT_6 = 6;
-static const uint64_t INDEX_OUTDTYPE = 11;
+static const uint64_t INDEX_OUTDTYPE = 11; 
 ge::graphStatus InferShape4FlashAttentionScoreGrad(gert::InferShapeContext *context)
 {
     OP_CHECK_NULL_WITH_CONTEXT(context, context);
