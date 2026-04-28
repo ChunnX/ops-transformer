@@ -21,9 +21,13 @@ using namespace MoeReRouting;
 
 #define MOE_RE_ROUTING_RE_WITHOUT_SCALE 200000UL
 #define MOE_RE_ROUTING_RE_WITH_SCALE_FLOAT 200100UL
+// Note: MOE_RE_ROUTING_RE_WITH_SCALE_FLOAT8_E8M0 key covers multiple quantization type combinations:
+// FP8/HIF8/FP4 with float8_e8m0 or float32 scale. All reuse int8_t template since they are 1-byte packed data.
 #define MOE_RE_ROUTING_RE_WITH_SCALE_FLOAT8_E8M0 200200UL
 #define MOE_RE_ROUTING_R_WITHOUT_SCALE 210000UL
 #define MOE_RE_ROUTING_R_WITH_SCALE_FLOAT 210100UL
+// Note: MOE_RE_ROUTING_R_WITH_SCALE_FLOAT8_E8M0 key covers multiple quantization type combinations:
+// FP8/HIF8/FP4 with float8_e8m0 or float32 scale. All reuse int8_t template since they are 1-byte packed data.
 #define MOE_RE_ROUTING_R_WITH_SCALE_FLOAT8_E8M0 210200UL
 
 template <typename OpType>
@@ -50,7 +54,8 @@ extern "C" __global__ __aicore__ void moe_re_routing(GM_ADDR tokens, GM_ADDR exp
         GET_TILING_DATA_WITH_STRUCT(MoeReRoutingReTilingData, tiling_data_in, tiling);
         const MoeReRoutingReTilingData *__restrict tilingData = &tiling_data_in;
         if constexpr (!IsSameType<DTYPE_TOKENS, fp8_e5m2_t>::value && !IsSameType<DTYPE_TOKENS, fp8_e4m3fn_t>::value &&
-                      !IsSameType<DTYPE_TOKENS, hifloat8_t>::value) {
+                      !IsSameType<DTYPE_TOKENS, hifloat8_t>::value && !IsSameType<DTYPE_TOKENS, fp4x2_e2m1_t>::value &&
+                      !IsSameType<DTYPE_TOKENS, fp4x2_e1m2_t>::value) {
             MoeReRoutingReRegbase<DTYPE_TOKENS, DTYPE_EXPERT_TOKEN_NUM_PER_RANK, float, false> op(&pipe, tilingData);
             InitAndProcess(op, tokens, expertTokenNumPerRank, perTokenScales, permuteTokens, permutePerTokenScales,
                            permuteTokenIdx, expertTokenNum);
@@ -63,7 +68,8 @@ extern "C" __global__ __aicore__ void moe_re_routing(GM_ADDR tokens, GM_ADDR exp
         GET_TILING_DATA_WITH_STRUCT(MoeReRoutingReTilingData, tiling_data_in, tiling);
         const MoeReRoutingReTilingData *__restrict tilingData = &tiling_data_in;
         if constexpr (!IsSameType<DTYPE_TOKENS, fp8_e5m2_t>::value && !IsSameType<DTYPE_TOKENS, fp8_e4m3fn_t>::value &&
-                      !IsSameType<DTYPE_TOKENS, hifloat8_t>::value) {
+                      !IsSameType<DTYPE_TOKENS, hifloat8_t>::value && !IsSameType<DTYPE_TOKENS, fp4x2_e2m1_t>::value &&
+                      !IsSameType<DTYPE_TOKENS, fp4x2_e1m2_t>::value) {
             MoeReRoutingReRegbase<DTYPE_TOKENS, DTYPE_EXPERT_TOKEN_NUM_PER_RANK, float, true> op(&pipe, tilingData);
             InitAndProcess(op, tokens, expertTokenNumPerRank, perTokenScales, permuteTokens, permutePerTokenScales,
                            permuteTokenIdx, expertTokenNum);
@@ -79,7 +85,8 @@ extern "C" __global__ __aicore__ void moe_re_routing(GM_ADDR tokens, GM_ADDR exp
         GET_TILING_DATA_WITH_STRUCT(MoeReRoutingRTilingData, tiling_data_in, tiling);
         const MoeReRoutingRTilingData *__restrict tilingData = &tiling_data_in;
         if constexpr (!IsSameType<DTYPE_TOKENS, fp8_e5m2_t>::value && !IsSameType<DTYPE_TOKENS, fp8_e4m3fn_t>::value &&
-                      !IsSameType<DTYPE_TOKENS, hifloat8_t>::value) {
+                      !IsSameType<DTYPE_TOKENS, hifloat8_t>::value && !IsSameType<DTYPE_TOKENS, fp4x2_e2m1_t>::value &&
+                      !IsSameType<DTYPE_TOKENS, fp4x2_e1m2_t>::value) {
             MoeReRoutingRRegbase<DTYPE_TOKENS, DTYPE_EXPERT_TOKEN_NUM_PER_RANK, float, false> op(&pipe, tilingData);
             InitAndProcess(op, tokens, expertTokenNumPerRank, perTokenScales, permuteTokens, permutePerTokenScales,
                            permuteTokenIdx, expertTokenNum);
@@ -92,7 +99,8 @@ extern "C" __global__ __aicore__ void moe_re_routing(GM_ADDR tokens, GM_ADDR exp
         GET_TILING_DATA_WITH_STRUCT(MoeReRoutingRTilingData, tiling_data_in, tiling);
         const MoeReRoutingRTilingData *__restrict tilingData = &tiling_data_in;
         if constexpr (!IsSameType<DTYPE_TOKENS, fp8_e5m2_t>::value && !IsSameType<DTYPE_TOKENS, fp8_e4m3fn_t>::value &&
-                      !IsSameType<DTYPE_TOKENS, hifloat8_t>::value) {
+                      !IsSameType<DTYPE_TOKENS, hifloat8_t>::value && !IsSameType<DTYPE_TOKENS, fp4x2_e2m1_t>::value &&
+                      !IsSameType<DTYPE_TOKENS, fp4x2_e1m2_t>::value) {
             MoeReRoutingRRegbase<DTYPE_TOKENS, DTYPE_EXPERT_TOKEN_NUM_PER_RANK, float, true> op(&pipe, tilingData);
             InitAndProcess(op, tokens, expertTokenNumPerRank, perTokenScales, permuteTokens, permutePerTokenScales,
                            permuteTokenIdx, expertTokenNum);
