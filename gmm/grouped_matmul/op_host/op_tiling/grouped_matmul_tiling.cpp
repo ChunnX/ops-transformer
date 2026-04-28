@@ -1900,11 +1900,36 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
         PrintA8W4HPTiling(context, &tilingDataA8W4.hpTilingData);
         return ge::GRAPH_SUCCESS;
       } else {
-        const uint32_t n = context->GetDynamicInputTensor(SCALE_INDEX, 0)->GetStorageShape().GetDim(TWO);
+        auto wInput = context->GetDynamicInputTensor(WEIGHT_INDEX, 0);
+        auto wDimNum = wInput->GetStorageShape().GetDimNum();
+        constexpr int64_t ND_WEIGHT_DIM_LIMIT = 3;
+        constexpr int64_t NZ_WEIGHT_DIM_LIMIT = 5;
+        int64_t isSingleTensor = (wDimNum == ND_WEIGHT_DIM_LIMIT || wDimNum == NZ_WEIGHT_DIM_LIMIT) ? 1 : 0;
+        uint32_t n = 0;
+        uint32_t groupNum = 0;
+        uint32_t quantGroupNum = 0;
+        if (isSingleTensor == 1) {
+          n = context->GetDynamicInputTensor(SCALE_INDEX, 0)->GetStorageShape().GetDim(TWO);
+          groupNum = context->GetDynamicInputTensor(WEIGHT_INDEX, 0)->GetStorageShape().GetDim(0);
+          quantGroupNum = context->GetDynamicInputTensor(SCALE_INDEX, 0)->GetStorageShape().GetDim(1);
+        } else {
+          n = context->GetDynamicInputTensor(SCALE_INDEX, 0)->GetStorageShape().GetDim(1);
+          quantGroupNum = context->GetDynamicInputTensor(SCALE_INDEX, 0)->GetStorageShape().GetDim(0);
+          groupNum = 0;
+          while (context->GetDynamicInputTensor(WEIGHT_INDEX, groupNum) != nullptr) {
+            groupNum++;
+          }
+          auto groupListTensor = context->GetDynamicInputTensor(GROUPLIST_INDEX, 0);
+          OP_CHECK_NULL_WITH_CONTEXT(context, groupListTensor);
+          uint32_t groupNumCheck = groupListTensor->GetStorageShape().GetDim(0);
+          OP_CHECK_IF(groupNumCheck != groupNum,
+                    OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+                        "groupNum in weight tensors is %u, but groupNum in groupList tensor is %u.",
+                        groupNum, groupNumCheck),
+                    return ge::GRAPH_FAILED);
+        }
         const uint32_t k = context->GetDynamicInputTensor(X_INDEX, 0)->GetStorageShape().GetDim(1);
         const uint32_t m = context->GetDynamicInputTensor(X_INDEX, 0)->GetStorageShape().GetDim(0);
-        const uint32_t groupNum = context->GetDynamicInputTensor(WEIGHT_INDEX, 0)->GetStorageShape().GetDim(0);
-        const uint32_t quantGroupNum = context->GetDynamicInputTensor(SCALE_INDEX, 0)->GetStorageShape().GetDim(1);
         std::array<int64_t, FIVE> mKNList = {groupNum, m, k, n, wNZ}; // 5: input shape info size
 
         auto offset = context->GetDynamicInputTensor(OFFSET_INDEX, 0);
@@ -1912,15 +1937,26 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
         if (offset != nullptr) {
           auto &offsetShape = offset->GetStorageShape();
           const size_t offsetDimNum = offsetShape.GetDimNum();
-          auto offsetDim0 = offsetShape.GetDim(0);
-          auto offsetDim1 = offsetShape.GetDim(1);
-          auto offsetDim2 = offsetShape.GetDim(TWO);
-          if (offsetDimNum == OFFSET_DIM_A8W4 && offsetDim0 == groupNum && offsetDim1 == 1 && offsetDim2 == n) {
-              withOffset = 1U;
-              OP_LOGD(context->GetNodeName(), "GMM A8W4: offset is enable .");
+          if (isSingleTensor == 1) {
+              auto offsetDim0 = offsetShape.GetDim(0);
+              auto offsetDim1 = offsetShape.GetDim(1);
+              auto offsetDim2 = offsetShape.GetDim(TWO);
+              if (offsetDimNum == OFFSET_DIM_A8W4 && offsetDim0 == groupNum && offsetDim1 == 1 && offsetDim2 == n) {
+                  withOffset = 1U;
+                  OP_LOGD(context->GetNodeName(), "GMM A8W4: offset is enable .");
+              } else {
+                  OP_LOGW(context->GetNodeName(), "GMM A8W4: offset's shape is invalid, "
+                      "If you want to enable offset, the expected shape is (%u,1,%u), and the current shape is (%ld,%ld,%ld).",
+                      groupNum, n, offsetDim0, offsetDim1, offsetDim2);
+              }
           } else {
-              OP_LOGW(context->GetNodeName(), "GMM A8W4: offset's shape is invalid, If you want to enable offset, the expected shape is (%u,1,%u), and the current shape is (%ld,%ld,%ld).",
-                  groupNum, n, offsetDim0, offsetDim1, offsetDim2);
+              auto offsetDim0 = offsetShape.GetDim(0);
+              auto offsetDim1 = offsetShape.GetDim(1);
+              if ((offsetDimNum == 2 && offsetDim0 == 1 && offsetDim1 == n) ||
+                  (offsetDimNum == 1 && offsetDim0 == n)) {
+                  withOffset = 1U;
+                  OP_LOGD(context->GetNodeName(), "GMM A8W4: offset is enable (multi-tensor) .");
+              }
           }
         }
         //GEMM Tiling
@@ -1929,7 +1965,7 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
 
         const int is_in_a8w4_white_list = ((tuningConfig !=0 &&tuningConfig <= 64) || (A8W4_PRETILING_WHITE_LIST.count(mKNList)))
               && quantGroupNum != 0 && k / quantGroupNum == 256 && k % quantGroupNum == 0
-              && withOffset == 0 && k%64==0 && n%64==0; // 256: 新方案只支持256 pergroup
+              && withOffset == 0 && k%64==0 && n%64==0 && isSingleTensor == 1; // 256: 新方案只支持256 pergroup
 		uint32_t calc_m = 1U;
         if (groupNum != 0U) {
           calc_m = m / groupNum;
@@ -1952,6 +1988,7 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
         tilingDataA8W4.gmmBaseParams.set_quantGroupNum(quantGroupNum);
         tilingDataA8W4.gmmBaseParams.set_m(m);
         tilingDataA8W4.gmmBaseParams.set_withOffset(withOffset);
+        tilingDataA8W4.gmmBaseParams.set_isSingleTensor(isSingleTensor);
         context->SetBlockDim(aicNum);
 
         if (quantGroupNum == 0U || k % quantGroupNum != 0U) {
@@ -1977,7 +2014,7 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
         const bool isPerchannel = quantGroupNum == 1U;
         auto biasPtr = context->GetDynamicInputTensor(BIAS_INDEX, 0);
         const bool isMSD = (tuningConfig == 0L || avg_m == 0U || n / avg_m > 4U || withOffset == true) &&
-                    !(biasPtr == nullptr || biasPtr->GetStorageShape().GetShapeSize() == 0);
+                    !(biasPtr == nullptr || biasPtr->GetStorageShape().GetShapeSize() == 0) || isSingleTensor == 0;
         if (withOffset && !isMSD) {
             OP_LOGW(context->GetNodeName(), "GMM W4A8: with-offset mode requires "
                 "non-empty bias, but got an empty tensor.");
