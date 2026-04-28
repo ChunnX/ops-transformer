@@ -64,9 +64,9 @@ static std::tuple<int64_t, int64_t, int64_t> GetShapeTupleN(const gert::TilingCo
     OP_CHECK_IF(dimNum != DIM_3,
         OP_LOGE(context->GetNodeName(), "Shape must be 3D, but get %zu.", dimNum),
         return std::make_tuple(0, 0, 0));
-    return std::make_tuple(shapePtr->GetStorageShape().GetDim(0),
-                           shapePtr->GetStorageShape().GetDim(1),
-                           shapePtr->GetStorageShape().GetDim(2));
+    return std::make_tuple(shapePtr->GetStorageShape().GetDim(DIM_INDEX_0),
+                           shapePtr->GetStorageShape().GetDim(DIM_INDEX_1),
+                           shapePtr->GetStorageShape().GetDim(DIM_INDEX_2));
 }
 
 ge::graphStatus MoeReRoutingTilingBase::GetPlatformInfo()
