@@ -221,27 +221,32 @@ __simd_vf__ void ComputeScaleValue_8_VF(__ubuf__ uint16_t * lseSink, __ubuf__ T 
 }
 
 template <typename T, typename SINK_T>
-__aicore__ inline void ComputeScaleValue_8(const LocalTensor<SINK_T>& tmpSinkUb, const LocalTensor<T>& lseMaxUb, const LocalTensor<T>& lseSumUb,
-    const LocalTensor<T>& lseOutputUb, uint32_t dealRowCount, uint32_t actualCombineLoopSize, bool softmaxLseFlag, bool learnableSinkFlag)
+__aicore__ inline void ComputeScaleValue_8(const LocalTensor<SINK_T> &tmpSinkUb, const LocalTensor<T> &lseMaxUb,
+                                           const LocalTensor<T> &lseSumUb, const LocalTensor<T> &lseOutputUb,
+                                           uint32_t dealRowCount, uint32_t actualCombineLoopSize, bool softmaxLseFlag,
+                                           bool learnableSinkFlag)
 {
     uint32_t dealCount = dealRowCount * 8;
     uint16_t i = 0;
 
-    __ubuf__ T * lseMax = (__ubuf__ T *)lseMaxUb.GetPhyAddr();
-    __ubuf__ T * lseMaxTmp = lseMax;
-    __ubuf__ T * lseSum = (__ubuf__ T *)lseSumUb.GetPhyAddr();
-    __ubuf__ T * lseSumTmp = lseSum;
-    __ubuf__ T * lseUb = (__ubuf__ T *)lseOutputUb.GetPhyAddr();
-    __ubuf__ uint16_t * lseSink = (__ubuf__ uint16_t *)tmpSinkUb.GetPhyAddr();
+    __ubuf__ T *lseMax = (__ubuf__ T *)lseMaxUb.GetPhyAddr();
+    __ubuf__ T *lseMaxTmp = lseMax;
+    __ubuf__ T *lseSum = (__ubuf__ T *)lseSumUb.GetPhyAddr();
+    __ubuf__ T *lseSumTmp = lseSum;
+    __ubuf__ T *lseUb = (__ubuf__ T *)lseOutputUb.GetPhyAddr();
+    __ubuf__ uint16_t *lseSink = (__ubuf__ uint16_t *)tmpSinkUb.GetPhyAddr();
 
-    ComputeScaleValue_8_VF<T, SINK_T>(lseSink, lseMax, lseMaxTmp, lseSum, lseSumTmp, lseUb, dealCount, i, dealRowCount, actualCombineLoopSize, softmaxLseFlag, learnableSinkFlag);
+    ComputeScaleValue_8_VF<T, SINK_T>(lseSink, lseMax, lseMaxTmp, lseSum, lseSumTmp, lseUb, dealCount, i, dealRowCount,
+                                      actualCombineLoopSize, softmaxLseFlag, learnableSinkFlag);
 }
 
 // //lseUb作为scale最终输出
 template <typename T, typename SINK_T>
-__simd_vf__ void ComputeScaleValue_8_VF_FD(__ubuf__ T * lseSink, __ubuf__ T * lseMax, __ubuf__ T * lseMaxTmp, __ubuf__ T * lseSum, 
-                                        __ubuf__ T * lseSumTmp, __ubuf__ T * lseOutUb, __ubuf__ T * lseUb, __ubuf__ T * lseMaxReduce, uint32_t dealCount, uint16_t i, 
-                                        uint32_t dealRowCount, uint32_t actualCombineLoopSize, uint16_t softmaxLseFlag, uint16_t learnableSinkFlag)
+__simd_vf__ void ComputeScaleValue_8_VF_FD(__ubuf__ T *lseSink, __ubuf__ T *lseMax, __ubuf__ T *lseMaxTmp,
+                                           __ubuf__ T *lseSum, __ubuf__ T *lseSumTmp, __ubuf__ T *lseOutUb,
+                                           __ubuf__ T *lseUb, __ubuf__ T *lseMaxReduce, uint32_t dealCount, uint16_t i,
+                                           uint32_t dealRowCount, uint32_t actualCombineLoopSize,
+                                           uint16_t softmaxLseFlag, uint16_t learnableSinkFlag)
 {
     MicroAPI::RegTensor<T> vregLseMax;
     MicroAPI::RegTensor<T> vregLseMaxTmp;

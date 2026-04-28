@@ -63,9 +63,9 @@ __aicore__ inline MMParam MakeMMParam(uint32_t singleM, uint32_t singleN, uint32
             .cmatrixInitVal = cmatrixInitVal,
             .isOutKFisrt = isOutKFisrt,
             .unitFlag = unitFlag,
-            .realM = realM};
+            .realM = realM
+            };
 }
-
 
 enum class ABLayout {
     MK = 0,

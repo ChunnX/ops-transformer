@@ -46,10 +46,9 @@ ge::graphStatus TilingFusedInferAttentionScoreV4(gert::TilingContext *context) {
         return ge::GRAPH_FAILED;
     }
 
-
     if (FiaTilingRegistry::GetInstance().DoTilingImpl(context, &fiaInfo) == ge::GRAPH_SUCCESS) {
         return ge::GRAPH_SUCCESS;
-    } else {        // TODOx，老的模板也注册，把else分支和下面的逻辑删掉
+    } else {        // TODO，老的模板也注册，把else分支和下面的逻辑删掉
         OP_LOGD(context, "reconstruct template do not support, routing to old template.");
     }
 

@@ -254,7 +254,7 @@ __aicore__ inline void AttentionmaskCopyInForGsLayout(LocalTensor<T> &attenMaskU
     uint32_t attenMaskS2Stride = Align(info.s2dealNum, 32U) + 32 * info.attenMaskDstStride;
     if (info.gs1dealNum <= info.s1Size) {
         if (s1StartIdx + info.gs1dealNum > info.s1Size) {
-            AttentionmaskDataCopy(attenMaskUb, srcGmAddr, info, s1StartIdx, info.s1Size, isPre);        // TODO，这里检查一下，是否有优化空间
+            AttentionmaskDataCopy(attenMaskUb, srcGmAddr, info, s1StartIdx, info.s1Size, isPre);
             LocalTensor<T> attenMaskSecUb = attenMaskUb[(info.s1Size - s1StartIdx) * attenMaskS2Stride];
             AttentionmaskDataCopy(attenMaskSecUb, srcGmAddr, info, 0, s1EndIdx, isPre);
         } else {

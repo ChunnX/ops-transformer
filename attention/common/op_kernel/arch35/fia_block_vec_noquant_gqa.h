@@ -445,28 +445,30 @@ public:
         if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
             uint32_t prefixBS1 = qActSeqLensParser.GetTBase(runInfo.bIdx);
             uint64_t bN2Offset = prefixBS1 * constInfo.n2Size * constInfo.gSize + runInfo.n2Idx * constInfo.gSize;
-            DataCopySoftmaxLseTNDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize, constInfo);
+            DataCopySoftmaxLseTNDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
+                                                       constInfo);
         } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
             uint32_t prefixBS1 = qActSeqLensParser.GetTBase(runInfo.bIdx);
             uint32_t s1Size = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
             uint64_t bN2Offset = prefixBS1 * constInfo.n2Size * constInfo.gSize + runInfo.n2Idx * constInfo.gSize;
-            DataCopySoftmaxLseNTDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize, constInfo, s1Size);
+            DataCopySoftmaxLseNTDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
+                                                       constInfo, s1Size);
         } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
             uint64_t bN2Offset = runInfo.bIdx * constInfo.n2Size * constInfo.gSize * constInfo.s1Size +
                                  runInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
             uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
             uint64_t s1LeftPaddingSize =
                 constInfo.isQHasLeftPadding ? (constInfo.s1Size - qActSeqLens - constInfo.queryRightPaddingSize) : 0;
-            DataCopySoftmaxLseBSNDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize, constInfo,
-                                   s1LeftPaddingSize);
+            DataCopySoftmaxLseBSNDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
+                                                        constInfo, s1LeftPaddingSize);
         } else { // BNSD
             uint64_t bN2Offset = runInfo.bIdx * constInfo.n2Size * constInfo.gSize * constInfo.s1Size +
                                  runInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
             uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
             uint64_t s1LeftPaddingSize =
                 constInfo.isQHasLeftPadding ? (constInfo.s1Size - qActSeqLens - constInfo.queryRightPaddingSize) : 0;
-            DataCopySoftmaxLseBNSDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize, constInfo, qActSeqLens,
-                                   s1LeftPaddingSize);
+            DataCopySoftmaxLseBNSDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
+                                                        constInfo, qActSeqLens, s1LeftPaddingSize);
         }
 
         softmaxLseQueue.FreeTensor(lseUb);

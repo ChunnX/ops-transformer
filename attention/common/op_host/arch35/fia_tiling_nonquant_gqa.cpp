@@ -59,7 +59,7 @@ bool FiaTilingNonQuantArch35::IsCapable()
     if (fiaInfo_->mlaMode == MlaMode::ROPE_SPLIT_D512 || fiaInfo_->mlaMode == MlaMode::ROPE_SPLIT_D128) {
         return false;
     }
-    // 路由至重构前模板
+    // 以下场景路由至重构前模板
     if (fiaInfo_->sysPrefixFlag ||     // 使能公共前缀
         fiaInfo_->pseShiftFlag ||      // 使能PSE
         fiaInfo_->enableAlibiPse ||    // 使能alibi
@@ -72,7 +72,8 @@ bool FiaTilingNonQuantArch35::IsCapable()
         (fiaInfo_->sparseMode == 0 && fiaInfo_->attenMaskFlag) || // sparse mode=0且传入mask
         (fiaInfo_->qLayout != FiaLayout::BSH && fiaInfo_->qLayout != FiaLayout::BSND &&
          fiaInfo_->qLayout != FiaLayout::BNSD && fiaInfo_->qLayout != FiaLayout::TND) || // layout非 BSH/BSND/BNSD/TND
-        (fiaInfo_->qkHeadDim != 128 && fiaInfo_->mlaMode != MlaMode::ROPE_COMBINE_D128)
+        (fiaInfo_->qkHeadDim != 128 && fiaInfo_->mlaMode != MlaMode::ROPE_COMBINE_D128) || // 非D=128 GQA，且非Prefill MLA
+        CheckS1OutSplit() || // 使能S1外切场景
     ) {
         return false;
     }
@@ -357,7 +358,6 @@ void FiaTilingNonQuantArch35::FixParamWithRowInvalid(int64_t &actualSeqLength, i
 
 bool FiaTilingNonQuantArch35::CheckS1OutSplit()
 {
-    return false;
     if (fiaInfo_->isOutQuantEnable) {
         return false;
     }
@@ -377,7 +377,8 @@ bool FiaTilingNonQuantArch35::CheckS1OutSplit()
     int64_t bnSize = std::min(fiaInfo_->bSize * fiaInfo_->n2Size, platformInfo_.aicNum);
  
     // 当所需的L2cache资源的超过系统配置一半时，开启S1外切分核优化L2cache复用率，乘2是经验值，后续进行优化
-    return bnSize * fiaInfo_->s2Size * (fiaInfo_->qkHeadDim + fiaInfo_->vHeadDim) * dataTypeSize * 2 >=  platformInfo_.l2Size;
+    return bnSize * fiaInfo_->s2Size * (fiaInfo_->qkHeadDim + fiaInfo_->vHeadDim) * dataTypeSize * 2 >=
+           platformInfo_.l2Size;
 }
 
 void FiaTilingNonQuantArch35::SplitOutSeq()
@@ -393,13 +394,16 @@ void FiaTilingNonQuantArch35::SplitOutSeq()
                                preTokensLeftUp, nextTokensLeftUp);
         FixParamWithRowInvalid(actualSeqLengthsTmp, actualSeqLengthsKV_[bIdx] + fiaInfo_->systemPrefixLen,
                                preTokensLeftUp, nextTokensLeftUp);
- 
-        int64_t outerBlockNums = (actualSeqLengthsTmp * fiaInfo_->gSize + static_cast<int64_t>(sOuterSize) - 1) / static_cast<int64_t>(sOuterSize) * fiaInfo_->n2Size;
+
+        int64_t outerBlockNums = (actualSeqLengthsTmp * fiaInfo_->gSize + static_cast<int64_t>(sOuterSize) - 1) /
+                                 static_cast<int64_t>(sOuterSize) * fiaInfo_->n2Size;
         if (actualSeqLengthsTmp == 0 || actualSeqLengthsKV_[bIdx] == 0) {
             outerBlockNums = fiaInfo_->n2Size;
         }
-        printf("bIdx:%d, sOuterSize:%d, sactualSeqLengthsQ_[bIdx]:%d, actualSeqLengthsKV_[bIdx]:%d, actualSeqLengthsTmp:%d, outerBlockNums:%d\n",
-            bIdx, sOuterSize, actualSeqLengthsQ_[bIdx], actualSeqLengthsKV_[bIdx], actualSeqLengthsTmp, outerBlockNums);
+        printf("bIdx:%d, sOuterSize:%d, sactualSeqLengthsQ_[bIdx]:%d, actualSeqLengthsKV_[bIdx]:%d, "
+               "actualSeqLengthsTmp:%d, outerBlockNums:%d\n",
+               bIdx, sOuterSize, actualSeqLengthsQ_[bIdx], actualSeqLengthsKV_[bIdx], actualSeqLengthsTmp,
+               outerBlockNums);
         totalSize += outerBlockNums;
     }
 

@@ -476,19 +476,26 @@ template <typename FIAT> __aicore__ inline void FiaBlockVecNonQuant<FIAT>::Proce
             if constexpr (LAYOUT_T == FIA_LAYOUT::TND) {
                 uint32_t prefixBS1 = info.bIdx == 0U ? 0U : actualSeqLengthsGmQ.GetValue(info.bIdx - 1);
                 uint64_t bN2Offset = prefixBS1 * constInfo.qHeadNum + info.n2Idx * constInfo.gSize;
-                DataCopySoftmaxLseTND<T>(softmaxLseGm, tmpLseResCastTensor, bN2Offset, mOffset, mSplitInfo.vecDealM, constInfo);
+                DataCopySoftmaxLseTND<T>(softmaxLseGm, tmpLseResCastTensor, bN2Offset, mOffset, mSplitInfo.vecDealM,
+                                         constInfo);
             } else if constexpr (LAYOUT_T == FIA_LAYOUT::NTD) {
                 uint32_t prefixBS1 = info.bIdx == 0U ? 0U : actualSeqLengthsGmQ.GetValue(info.bIdx - 1);
-                uint32_t s1Size = info.bIdx == 0U ? 
-                        actualSeqLengthsGmQ.GetValue(0U) : actualSeqLengthsGmQ.GetValue(info.bIdx) - actualSeqLengthsGmQ.GetValue(info.bIdx - 1U);
+                uint32_t s1Size = info.bIdx == 0U ? actualSeqLengthsGmQ.GetValue(0U) :
+                                                    actualSeqLengthsGmQ.GetValue(info.bIdx) -
+                                                        actualSeqLengthsGmQ.GetValue(info.bIdx - 1U);
                 uint64_t bN2Offset = prefixBS1 * constInfo.qHeadNum + info.n2Idx * constInfo.gSize;
-                DataCopySoftmaxLseNTD<T>(softmaxLseGm, tmpLseResCastTensor, bN2Offset, mOffset, mSplitInfo.vecDealM, constInfo, s1Size);
+                DataCopySoftmaxLseNTD<T>(softmaxLseGm, tmpLseResCastTensor, bN2Offset, mOffset, mSplitInfo.vecDealM,
+                                         constInfo, s1Size);
             } else if constexpr (LAYOUT_T == FIA_LAYOUT::BSND || LAYOUT_T == FIA_LAYOUT::BSH) {
-                uint64_t bN2Offset = info.bIdx * constInfo.qHeadNum * constInfo.qSeqSize + info.n2Idx * constInfo.gSize * constInfo.qSeqSize;
-                DataCopySoftmaxLseBSND<T, Q_MODE>(softmaxLseGm, tmpLseResCastTensor, bN2Offset, mOffset, mSplitInfo.vecDealM, constInfo, qActSeqLensParser, info.bIdx);
+                uint64_t bN2Offset = info.bIdx * constInfo.qHeadNum * constInfo.qSeqSize +
+                                     info.n2Idx * constInfo.gSize * constInfo.qSeqSize;
+                DataCopySoftmaxLseBSND<T, Q_MODE>(softmaxLseGm, tmpLseResCastTensor, bN2Offset, mOffset,
+                                                  mSplitInfo.vecDealM, constInfo, qActSeqLensParser, info.bIdx);
             } else { // BNSD
-                uint64_t bN2Offset = info.bIdx * constInfo.qHeadNum * constInfo.qSeqSize + info.n2Idx * constInfo.gSize * constInfo.qSeqSize;
-                DataCopySoftmaxLseBNSD<T, Q_MODE>(softmaxLseGm, tmpLseResCastTensor, bN2Offset, mOffset, mSplitInfo.vecDealM, constInfo, qActSeqLensParser, info.bIdx);
+                uint64_t bN2Offset = info.bIdx * constInfo.qHeadNum * constInfo.qSeqSize +
+                                     info.n2Idx * constInfo.gSize * constInfo.qSeqSize;
+                DataCopySoftmaxLseBNSD<T, Q_MODE>(softmaxLseGm, tmpLseResCastTensor, bN2Offset, mOffset,
+                                                  mSplitInfo.vecDealM, constInfo, qActSeqLensParser, info.bIdx);
             }
             outputQue2.FreeTensor(tmpLseResCastTensor);
         }

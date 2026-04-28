@@ -1258,12 +1258,10 @@ __aicore__ inline constexpr UbInputFormat GeInputUbFormat()
 }
 
 template <LayOutTypeEnum LAYOUT>
-__aicore__ inline constexpr UbInputFormat GeInputUbFormat() 
+__aicore__ inline constexpr UbInputFormat GeInputUbFormat()
 {
-    static_assert((LAYOUT == LayOutTypeEnum::LAYOUT_BSH) ||
-                  (LAYOUT == LayOutTypeEnum::LAYOUT_BNSD) ||
-                  (LAYOUT == LayOutTypeEnum::LAYOUT_TND) ||
-                  (LAYOUT == LayOutTypeEnum::LAYOUT_NTD),
+    static_assert((LAYOUT == LayOutTypeEnum::LAYOUT_BSH) || (LAYOUT == LayOutTypeEnum::LAYOUT_BNSD) ||
+                      (LAYOUT == LayOutTypeEnum::LAYOUT_TND) || (LAYOUT == LayOutTypeEnum::LAYOUT_NTD),
                   "Get Query GmFormat fail, LAYOUT_T is incorrect");
     if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH || LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
         return UbInputFormat::S1G;
@@ -1272,9 +1270,8 @@ __aicore__ inline constexpr UbInputFormat GeInputUbFormat()
     }
 }
 
-template <typename T, UbInputFormat UB_INPUTFORMAT> 
-class InvalidRows 
-{
+template <typename T, UbInputFormat UB_INPUTFORMAT>
+class InvalidRows {
 public:
     __aicore__ inline void operator()(LocalTensor<T> &attenOutUb, InvalidRowParams &params)
     {

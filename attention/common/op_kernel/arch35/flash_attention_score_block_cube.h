@@ -64,7 +64,6 @@ __aicore__ inline constexpr GmFormat GetKVGmFormat() {
     } else { // KvLayoutType_PA_NZ
         return GmFormat::PA_NZ;
     }
- 
 }
 
 /* ============确定Query的L1类型============= */
