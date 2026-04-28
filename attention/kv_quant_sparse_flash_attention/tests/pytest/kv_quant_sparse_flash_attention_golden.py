@@ -339,12 +339,12 @@ def get_param_fus(input_tensor_dict, params):
 
     # >> q info
     fa_param['q_shape'] = params['shape_input']['query']
-    fa_param['q_dtype'] = trans_input_dtype(params['dtype_input']['query'])
+    fa_param['q_dtype'] = params['dtype_input']['query']
     fa_param['q_tensor'] = input_tensor_dict['query']
 
     # >> k info
     fa_param['k_shape'] = params['shape_input']['key']
-    fa_param['k_dtype'] = trans_input_dtype(params['dtype_input']['key'])
+    fa_param['k_dtype'] = params['dtype_input']['key']
     fa_param['k_tensor'] = input_tensor_dict['key']
 
     # >> v info  MLA场景 KV要保持一致
@@ -354,49 +354,49 @@ def get_param_fus(input_tensor_dict, params):
 
     # >> sparse_indices_shape info
     fa_param['sparse_indices_shape'] = params['shape_input']['sparse_indices']
-    fa_param['sparse_indices_dtype'] = trans_input_dtype(params['dtype_input']['sparse_indices'])
+    fa_param['sparse_indices_dtype'] = params['dtype_input']['sparse_indices']
     fa_param['sparse_indices_tensor'] = input_tensor_dict['sparse_indices']
 
     # >> block_table info
     fa_param['bt_shape'] = params['shape_input']['block_table']
-    fa_param['bt_dtype'] = trans_input_dtype(params['dtype_input']['block_table'])
+    fa_param['bt_dtype'] = params['dtype_input']['block_table']
     fa_param['block_table'] = input_tensor_dict['block_table']
 
     # >> q_concat info
     fa_param['q_concat_shape'] = params['shape_input']['query_cache']
-    fa_param['q_concat_dtype'] = trans_input_dtype(params['dtype_input']['query_cache'])
+    fa_param['q_concat_dtype'] = params['dtype_input']['query_cache']
 
     # >> k_concat info
     fa_param['k_concat_shape'] = params['shape_input']['key_cache']
-    fa_param['k_concat_dtype'] = trans_input_dtype(params['dtype_input']['key_cache'])
+    fa_param['k_concat_dtype'] = params['dtype_input']['key_cache']
 
     # >> v_concat info
     fa_param['v_concat_shape'] = params['shape_input']['value_cache']
-    fa_param['v_concat_dtype'] = trans_input_dtype(params['dtype_input']['value_cache'])
+    fa_param['v_concat_dtype'] = params['dtype_input']['value_cache']
 
     # >> q_rope info
     fa_param['q_rope_shape'] = params['shape_input']['query_rope']
-    fa_param['q_rope_dtype'] = trans_input_dtype(params['dtype_input']['query_rope'])
+    fa_param['q_rope_dtype'] = params['dtype_input']['query_rope']
     fa_param['q_rope_tensor'] = input_tensor_dict['query_rope']
 
     # >> k_rope info
     fa_param['k_rope_shape'] = params['shape_input']['key_rope']
-    fa_param['k_rope_dtype'] = trans_input_dtype(params['dtype_input']['key_rope'])
+    fa_param['k_rope_dtype'] = params['dtype_input']['key_rope']
     fa_param['k_rope_tensor'] = input_tensor_dict['key_rope']
 
     # >> k_dequant_scale info
     fa_param['k_dequant_scale_shape'] = params['shape_input']['dequant_scale']
-    fa_param['k_dequant_scale_dtype'] = trans_input_dtype(params['dtype_input']['dequant_scale'])
+    fa_param['k_dequant_scale_dtype'] = params['dtype_input']['dequant_scale']
     fa_param['k_dequant_scale_tensor'] = input_tensor_dict['dequant_scale']
 
     # >> v_dequant_scale info, 和k 一致
     fa_param['v_dequant_scale_shape'] = params['shape_input']['dequant_scale']
-    fa_param['v_dequant_scale_dtype'] = trans_input_dtype(params['dtype_input']['dequant_scale'])
+    fa_param['v_dequant_scale_dtype'] = params['dtype_input']['dequant_scale']
     fa_param['v_dequant_scale_tensor'] = input_tensor_dict['dequant_scale']
 
     # >> out info
     fa_param['out_shape'] = fa_param['q_shape']
-    fa_param['out_dtype'] = trans_input_dtype(params['dtype_output'][0])
+    fa_param['out_dtype'] = params['dtype_output'][0]
 
     # >> batch_size info
     if fa_param['layout_query'] in ["TND"]:
@@ -789,12 +789,8 @@ def _t_increattention_bnsd(fa_param):
     v_bnsd_tensor = fa_param['v_bnsd_tensor'].float()
     v_dequant_scale_bnsd_tensor = fa_param['v_dequant_scale_bnsd_tensor'].float()
     tile_size = 128
-    if fa_param['q_dtype'] == "float16":
-        k_bnsd_tensor[..., :512] = (k_bnsd_tensor[..., :512] * torch.repeat_interleave(k_dequant_scale_bnsd_tensor, tile_size, dim=-1)).to(torch.float16)
-    elif fa_param['q_dtype'] == "bfloat16":
-        k_bnsd_tensor[..., :512] = (k_bnsd_tensor[..., :512] * torch.repeat_interleave(k_dequant_scale_bnsd_tensor, tile_size, dim=-1)).to(torch.bfloat16)
-    elif fa_param['q_dtype'] == "float32":
-        k_bnsd_tensor[..., :512] = (k_bnsd_tensor[..., :512] * torch.repeat_interleave(k_dequant_scale_bnsd_tensor, tile_size, dim=-1)).to(torch.float32)
+    q_dtype = fa_param['q_dtype']
+    k_bnsd_tensor[..., :512] = (k_bnsd_tensor[..., :512] * torch.repeat_interleave(k_dequant_scale_bnsd_tensor, tile_size, dim=-1)).to(q_dtype)
     v_bnsd_tensor = k_bnsd_tensor[..., :512].clone()
     matmul_dtype = torch.float32
     y = torch.zeros(out_shape_bnsd, dtype=torch.float32)
@@ -820,12 +816,8 @@ def _t_increattention_bnsd(fa_param):
                 bmm1Res = torch.matmul(q_curr.float(), k_sparse.float().T)
                 scaleRes = bmm1Res * scaleValue
                 softmax_res = softmax(scaleRes)
-                if fa_param['q_dtype'] == "float16":
-                    bmm2Res = torch.matmul(softmax_res.to(torch.float16).float(), v_sparse.float())
-                elif fa_param['q_dtype'] == "bfloat16":
-                    bmm2Res = torch.matmul(softmax_res.to(torch.bfloat16).float(), v_sparse.float())
-                else:
-                    bmm2Res = torch.matmul(softmax_res.float(), v_sparse.float())
+                q_dtype = fa_param['q_dtype']
+                bmm2Res = torch.matmul(softmax_res.to(q_dtype).float(), v_sparse.float())
                 y[batch, n2Idx * g: (n2Idx + 1) * g, s1Idx, :] = bmm2Res
     return y
 
