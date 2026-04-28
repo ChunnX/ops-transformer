@@ -9,6 +9,8 @@
  */
 
 #include "matmul_all_to_all_transpose_a5_fusion_pass.h"
+
+#if CANN_VERSION_NUM >= GRAPH_FUSION_SUPPORT_VERSION
 #include "es_MatmulAlltoAll.h" // es autogen header
 #include "es_TransposeD.h"     // es autogen header for stub op
 #include "es_math_ops.h"       // math ops stub
@@ -415,3 +417,4 @@ MatmulAllToAllTransposeA5FusionPass::Replacement(const std::unique_ptr<ge::fusio
 REG_FUSION_PASS(MatmulAllToAllTransposeA5FusionPass)
     .Stage(ge::CustomPassStage::kCompatibleInherited); // 兼容性场景下指定stage
 } // namespace ops
+#endif // GRAPH_FUSION_SUPPORT_VERSION

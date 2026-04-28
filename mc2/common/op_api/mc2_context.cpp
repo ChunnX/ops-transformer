@@ -16,6 +16,7 @@
 #include <cstdlib>
 #include <dlfcn.h>
 #include "mc2_context.h"
+#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 
 namespace {
 constexpr uint64_t KOPY_DEFAULT_CTX_OFFSET = 0;
@@ -535,3 +536,4 @@ aclnnStatus Mc2Context::GetMc2ContextTensor(const char *groupEp, const char *opN
 template void *Mc2Context::GetHcclLibFunc<void *>(void *handle, const std::string &funcName);
 
 } // namespace Mc2Aclnn
+#endif // #if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
