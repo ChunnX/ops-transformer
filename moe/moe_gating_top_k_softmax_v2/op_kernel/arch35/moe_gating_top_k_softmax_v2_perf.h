@@ -458,6 +458,16 @@ private:
         }
     }
 
+    __aicore__ inline void PadSoftmaxInput(
+        const LocalTensor<float>& dst, const int32_t curRowsNum,
+        const MoeGatingTopKSoftmaxV2PerfRegbaseTilingData* __restrict tilingData)
+    {
+        if (tilingData->colBytesAlign != tilingData->col) {
+            uint32_t tmp = 0xFF800000; // -inf
+            Duplicate(dst[tilingData->col], *((float*)&tmp), curRowsNum * (tilingData->colBytesAlign - tilingData->col));
+        }
+    }
+
     __aicore__ inline void ComputeRenorm(
         LocalTensor<T>& gatingLocal, const LocalTensor<int32_t>& topKOutsLocal,
         const LocalTensor<float>& tmpTensorLocal, const int32_t curRowsNum,
@@ -518,6 +528,9 @@ private:
             softmaxShapeInfo.oriSrcM = curRowsNum;
 
             if constexpr (IsSameType<T, float>::value) {
+                if (tilingData->col < CONSTANT_EIGHT) {
+                    PadSoftmaxInput(gatingLocal, curRowsNum, tilingData);
+                }
                 SoftMax<float, true, false>(
                     softmaxResultOutLocal, gatingLocal, tilingData->softmaxTilingData, softmaxShapeInfo);
                 gatingQueue.FreeTensor(gatingLocal);
@@ -532,6 +545,7 @@ private:
                     Cast(
                         tmpTensorLocal, gatingLocal, RoundMode::CAST_NONE, tilingData->colBytesAlign, curRowsNum,
                         {1, 1, 1, 1});
+                    PadSoftmaxInput(tmpTensorLocal, curRowsNum, tilingData);
                 } else {
                     Cast(tmpTensorLocal, gatingLocal, RoundMode::CAST_NONE, curRowsNum * tilingData->colBytesAlign);
                 }
