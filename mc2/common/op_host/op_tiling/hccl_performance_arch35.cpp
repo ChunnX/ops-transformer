@@ -16,16 +16,20 @@
 const static string DEFAULT_KEY_FOR_ARCH35 = "0_0_0_0";
 
 const static map<string, HCCLFittingParameters> ARCH35_FITTING_PARAMETER_MAP = {
-    {DEFAULT_KEY_FOR_ARCH35, HCCLFittingParameters{0.032, 1.371, 2.59568, 5.8887, 0, 2.86702,
-                                  5.608, 5.6997, 9.448, 0, 0, 0}},
-    {"4_1_0_4", HCCLFittingParameters{0, 0, 5.841842, 8.590666, 0, 0,  // 950 allGather standard_card 4p
-                                  0, 0, 0, 0, 0, 0}},
-    {"4_4_0_4", HCCLFittingParameters{0, 0, 5.8087, 5.6810, 0, 0,  // 950 reduceScatter(alltoAll) standard_card 4p
-                                  0, 0, 0, 0, 0, 0}},
-    {"4_5_0_4", HCCLFittingParameters{0, 0, 13.3265, 36.1964, 0, 0,  // 950 allreduce(two shot) standard_card 4p
-                                  0, 0, 0, 0, 0, 0}},
-    {"4_4_1_8", HCCLFittingParameters{0, 0, 2.642023, 7.700559, 0, 0,  // 950 RS(A2A) POD/Server 8p
-                                  0, 0, 0, 0, 0, 0}},
+    {DEFAULT_KEY_FOR_ARCH35,
+     HCCLFittingParameters{0.032, 1.371, 2.59568, 5.8887, 0, 2.86702, 5.608, 5.6997, 9.448, 0, 0, 0}},
+    {"4_1_0_4", HCCLFittingParameters{0, 0, 5.841842, 8.590666, 0, 0, // 950 allGather standard_card 4p
+                                      0, 0, 0, 0, 0, 0}},
+    {"4_4_0_4", HCCLFittingParameters{0, 0, 5.8087, 5.6810, 0, 0, // 950 reduceScatter(alltoAll) standard_card 4p
+                                      0, 0, 0, 0, 0, 0}},
+    {"4_5_0_4", HCCLFittingParameters{0, 0, 13.3265, 36.1964, 0, 0, // 950 allreduce(two shot) standard_card 4p
+                                      0, 0, 0, 0, 0, 0}},
+    {"4_4_1_8", HCCLFittingParameters{0, 0, 2.642023, 7.700559, 0, 0, // 950 RS(A2A) POD/Server 8p
+                                      0, 0, 0, 0, 0, 0}},
+    {"4_3_0_4", HCCLFittingParameters{0, 0, 5.8416, 5.8148, 0, 0, // 950 alltoall standard_card 4p
+                                      0, 0, 0, 0, 0, 0}},
+    {"4_3_1_8", HCCLFittingParameters{0, 0, 2.5386, 7.6265, 0, 0, // 950 alltoall pod 8p
+                                      0, 0, 0, 0, 0, 0}},
 };
 
 string HCCLPerformanceArch35::GetCommInfoString(SocVersion socVersion)
