@@ -127,6 +127,11 @@ def save_result(params, result, fulfill_percent, result_path):
         "block_num": params.get("block_num"),
         "actual_seq_q": str(params.get("actual_seq_q")) if params.get("actual_seq_q") is not None else None,
         "actual_seq_kv": str(params.get("actual_seq_kv")) if params.get("actual_seq_kv") is not None else None,
+        "range_query": str(params.get("range_query")) if params.get("range_query") is not None else None,
+        "range_key": str(params.get("range_key")) if params.get("range_key") is not None else None,
+        "range_query_rope": str(params.get("range_query_rope")) if params.get("range_query_rope") is not None else None,
+        "range_key_rope": str(params.get("range_key_rope")) if params.get("range_key_rope") is not None else None,
+        "range_dequant_scale": str(params.get("range_dequant_scale")) if params.get("range_dequant_scale") is not None else None,
         "result": result,
         "fulfill_percent": fulfill_percent,
     }
@@ -141,7 +146,7 @@ def save_result(params, result, fulfill_percent, result_path):
 
 def combin_params(enabled_params, pytest_paramset=True):
     param_combination_set = []
-    param_names = [
+    base_param_names = [
         "Testcase_Prefix", "Testcase_Number",
         "layout_query", "layout_kv", "q_type", "kv_type",
         "B", "T", "T2", "S1", "S2", "N1", "N2", "D", "K",
@@ -150,42 +155,18 @@ def combin_params(enabled_params, pytest_paramset=True):
         "sparse_mode", "attention_mode", "quant_scale_repo_mode",
         "block_size", "block_num", "actual_seq_q", "actual_seq_kv",
     ]
+    range_param_names = [
+        "range_query", "range_key", "range_query_rope", "range_key_rope", "range_dequant_scale",
+    ]
 
     for params in enabled_params:
         current_params = {}
         for key, value in params.items():
-            current_params[key] = value if pytest_paramset else [_parse_excel_cell_value(value)]
-
-        param_values = [
-            current_params.get("Testcase_Prefix", [None]),
-            current_params.get("Testcase_Number", [None]),
-            current_params.get("layout_query"),
-            current_params.get("layout_kv"),
-            current_params.get("q_type"),
-            current_params.get("kv_type"),
-            current_params.get("B"),
-            current_params.get("T", [None]),
-            current_params.get("T2", [None]),
-            current_params.get("S1"),
-            current_params.get("S2"),
-            current_params.get("N1"),
-            current_params.get("N2"),
-            current_params.get("D"),
-            current_params.get("K"),
-            current_params.get("scale_value"),
-            current_params.get("key_quant_mode"),
-            current_params.get("value_quant_mode"),
-            current_params.get("sparse_block_size"),
-            current_params.get("tile_size"),
-            current_params.get("rope_head_dim"),
-            current_params.get("sparse_mode"),
-            current_params.get("attention_mode"),
-            current_params.get("quant_scale_repo_mode"),
-            current_params.get("block_size", [256]),
-            current_params.get("block_num", [None]),
-            current_params.get("actual_seq_q", [None]),
-            current_params.get("actual_seq_kv", [None]),
-        ]
+            if key in base_param_names or key in range_param_names:
+                current_params[key] = value if pytest_paramset else [_parse_excel_cell_value(value)]
+        
+        param_names = base_param_names + range_param_names
+        param_values = [current_params.get(name, [None]) for name in param_names]
 
         print("param_values", param_values)
         for combo in itertools.product(*param_values):
@@ -327,20 +308,26 @@ def convert_param_combination_to_cs_format(param_combination):
         'v_dequant_scale': "fp32",
     }
     
-    range_input = {
+    default_range_input = {
         'query': [2, 10],
         'key': [-100, 100.0],
-        'value': [-100.0, 100.0],
         'sparse_indices': [-10, 10],
         'block_table': [0, 1],
-        'query_cache': [-10, 10],
-        'key_cache': [-10.0, 10.0],
-        'value_cache': [-10.0, 10.0],
         'query_rope': [-1, 1],
         'key_rope': [-10.0, -2],
         'dequant_scale': [0, 1],
         'v_dequant_scale': [0, 1],
     }
+    range_input = {}
+    for key in ['query', 'key', 'query_rope', 'key_rope', 'dequant_scale']:
+        range_key = f"range_{key}"
+        if range_key in param_combination and param_combination[range_key] is not None:
+            range_input[key] = param_combination[range_key]
+        else:
+            range_input[key] = default_range_input[key]
+    range_input['sparse_indices'] = default_range_input['sparse_indices']
+    range_input['block_table'] = default_range_input['block_table']
+    range_input['v_dequant_scale'] = range_input['dequant_scale']
     
     params = {
         "case_name": testcase_name,
@@ -383,6 +370,12 @@ def convert_param_combination_to_cs_format(param_combination):
         "block_num": block_num,
         "actual_seq_q": actual_seq_q,
         "actual_seq_kv": actual_seq_kv,
+        # range 参数，用于结果保存
+        "range_query": param_combination.get("range_query"),
+        "range_key": param_combination.get("range_key"),
+        "range_query_rope": param_combination.get("range_query_rope"),
+        "range_key_rope": param_combination.get("range_key_rope"),
+        "range_dequant_scale": param_combination.get("range_dequant_scale"),
     }
     
     return params

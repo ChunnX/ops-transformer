@@ -458,9 +458,8 @@ def kv_concat_nopa_preprocessing(input_tensor_dict, fa_param, params):
 
 
 def generate_input_tensors(params):
-    tensor_keys = ['query', 'key', 'value', 'sparse_indices', 'block_table',
-                   'query_cache', 'key_cache', 'value_cache',
-                   'query_rope', 'key_rope', 'dequant_scale', 'v_dequant_scale']
+    tensor_keys = ['query', 'key', 'sparse_indices', 'block_table',
+                   'query_rope', 'key_rope', 'dequant_scale']
     raw = {}
     for key in tensor_keys:
         raw[key] = generate_tensor_data.gen_tensor_data(params, key).to('npu')
@@ -468,18 +467,18 @@ def generate_input_tensors(params):
     return {
         "query": raw["query"],
         "key": raw["key"],
-        "value": raw["value"],
+        "value": raw["key"],
         "sparse_indices": raw["sparse_indices"],
-        "query_cache": raw["query_cache"],
-        "key_cache": raw["key_cache"],
-        "value_cache": raw["value_cache"],
+        "query_cache": None,
+        "key_cache": None,
+        "value_cache": None,
         "query_rope": raw["query_rope"],
         "key_rope": raw["key_rope"],
         "block_table": raw["block_table"],
         "dequant_scale": raw["dequant_scale"],
-        "v_dequant_scale": raw["v_dequant_scale"],
+        "v_dequant_scale": raw["dequant_scale"],
         "key_dequant_scale": raw["dequant_scale"],
-        "value_dequant_scale": raw["v_dequant_scale"],
+        "value_dequant_scale": raw["dequant_scale"],
         "scale_value": params["scalevalue"],
         "key_quant_mode": params["key_quant_mode"],
         "value_quant_mode": params["value_quant_mode"],

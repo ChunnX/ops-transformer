@@ -31,6 +31,8 @@ TEST_PARAMS = {
         "return_softmax_lse": [False],
         "actual_seq_q": [[4]],
         "actual_seq_kv": [[4]],
+        "range_query": [[-1.0, 1.0]],
+        "range_key": [[0.0, 10.0]],
     },
     "bsnd_multi_batch": {
         "Testcase_Prefix": ["sfa_bsnd_multi_batch"],
