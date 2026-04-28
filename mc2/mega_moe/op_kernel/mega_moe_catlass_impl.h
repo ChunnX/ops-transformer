@@ -1,20 +1,21 @@
+
 /**
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  */
-#ifndef MOE_DISPATCH_FFN_COMBINE_CATLASS_IMPL_H
-#define MOE_DISPATCH_FFN_COMBINE_CATLASS_IMPL_H
+#ifndef MEGA_MOE_CATLASS_IMPL_H
+#define MEGA_MOE_CATLASS_IMPL_H
 
-#if defined(__DAV_C310__)
-#if ASC_DEVKIT_MAJOR >= 9
-#include "basic_api/kernel_basic_intf.h"
-#else
 #include "kernel_operator.h"
-#endif
 #include "kernel_tiling/kernel_tiling.h"
+//
 #include "catlass/arch/resource.hpp"
+#include "catlass/catlass.hpp"
 #include "catlass/coord.hpp"
 #include "catlass/gemm_coord.hpp"
 #include "catlass/matrix_coord.hpp"
+#include "tla/layout.hpp"
+#include "tla/tensor.hpp"
+
 #include "catlass/gemm/kernel/mx_matmul_tla.hpp"
 #include "catlass/arch/arch.hpp"
 #include "catlass/catlass.hpp"
@@ -25,24 +26,30 @@
 #include "catlass/gemm/gemm_type.hpp"
 #include "catlass/layout/layout.hpp"
 #include "catlass/status.hpp"
+
 #include "kernel_operator_list_tensor_intf.h"
 #include "lib/matmul_intf.h"
-#include "tla/layout.hpp"
-#include "tla/tensor.hpp"
+
 #include "block_epilogue_swiglu_mx_quant.h"
-#include "tile_copy.hpp"
 #include "mega_moe_base.h"
+#include "tile_copy.hpp"
+// #include "tile_copy2.hpp"
+// #include "gmmsq_base.h"
 #include "mega_moe_combine_send.h"
+
 using namespace AscendC;
 using namespace Catlass;
+// using namespace tla;
 
-namespace MoeDispatchFFNCombineCatlassImpl {
+namespace MegaMoeCatlassImpl {
 
 using ArchTag = Arch::Ascend950;
 constexpr static bool enableUnitFlag = true;
 using DispatchPolicy = Gemm::MmadMx<ArchTag, enableUnitFlag>;
+
 using L1TileShape = tla::Shape<tla::Int<128>, tla::Int<256>, tla::Int<256>>;
 using L0TileShape = tla::Shape<tla::Int<128>, tla::Int<256>, tla::Int<128>>;
+
 using BlockScheduler = typename Gemm::Block::GemmIdentityBlockSwizzle<3, 1>;
 constexpr uint32_t ALIGN32 = 32U;
 constexpr uint32_t L1_TILE_M = 128;
@@ -50,18 +57,19 @@ constexpr uint32_t L1_TILE_N = 256;
 constexpr uint32_t L1_TILE_K = 256;
 constexpr uint32_t SWIGLU_N_HALF = 2;
 constexpr uint32_t MAX_SINGLE_MN = 128 * 256;
+constexpr uint32_t BufAlign = 2U * (MAX_SINGLE_MN + 31U) / ALIGN32 * ALIGN32 * sizeof(bfloat16_t);
 constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM = (MAX_SINGLE_MN + 31U) / ALIGN32 * ALIGN32;
 
 // GroupMatmulSwigluQuant - GMM1 + SwiGLU + Quant
 template <typename ElementA, typename ElementB, typename ElementC, 
           typename ElementMxScaleA, typename ElementMxScaleB>
 __aicore__ inline void GroupMatmulSwigluQuant(
-    BlockEpilogueSwigluQuant<L1TileShape, ElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true>& epilogueOp,
+    BlockEpilogueSwigluQuant<L1TileShape, ElementA, float, ElementMxScaleA, ElementMxScaleB, true>& epilogueOp,
     const Params& params,
     const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
     const GMMAddrInfo& gmmAddrInfo,
     uint32_t& startBlockIdx,
-    int32_t& vecSetSyncCom)
+    int32_t& vecSetSyncCom, int32_t rankId)
 {
     uint32_t m = Get<M_VALUE>(problemShape);
     uint32_t n = Get<N_VALUE>(problemShape);
@@ -75,18 +83,17 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     uint32_t dispatchBlockNumPerEP = params.tilingData->blockNumPerEP;
 
     GlobalTensor<int32_t> groupFlagListGm2;
-    groupFlagListGm2.SetGlobalBuffer((__gm__ int32_t*)gmAddrInfo.groupFlagList2);
+    groupFlagListGm2.SetGlobalBuffer((__gm__ int32_t*)gmmAddrInfo.groupFlagList2);
 
     auto scaleK = CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
-    auto layoutA = tla::MakeLayout<ElementA, layout::RowMajor>(m, k);
-    auto layoutB = tla::MakeLayout<ElementB, layout::ColumnMajor>(k, n);
-    auto layoutMxScaleA = tla::MakeMxScaleLayout<ElementMxScaleA, layout::RowMajor, false>(m, scaleK);
-    auto layoutMxScaleB = tla::MakeMxScaleLayout<ElementMxScaleB, layout::ColumnMajor, true>(scaleK, n);
-    auto layoutC = tla::MakeLayout<ElementC, layout::RowMajor>(L1_TILE_M, L1_TILE_N);
+    auto LayoutA = tla::MakeLayout<ElementA, layout::RowMajor>(m, k);
+    auto LayoutB = tla::MakeLayout<ElementB, layout::ColumnMajor>(k, n); //ColumnMajor
+    auto LayoutMxScaleA = tla::MakeMxScaleLayout<ElementMxScaleA, layout::RowMajor, false>(m, scaleK); // bool : is scaleB
+    auto LayoutMxScaleB = tla::MakeMxScaleLayout<ElementMxScaleB, layout::ColumnMajor, true>(scaleK, n); //ColumnMajor
+    auto LayoutC = tla::MakeLayout<float, layout::RowMajor>(L1_TILE_M, L1_TILE_N);
     using TileCopy = Gemm::Tile::PackedMxTileCopyTlaToUB<
-        ArchTag, ElementA, layout::RowMajor, ElementB, layout::RowMajor, ElementMxScaleA, decltype(layoutMxScaleA), ElementMxScaleB,
-        decltype(layoutMxScaleB), ElementC, layout::RowMajor, void>;
-
+        ArchTag, ElementA, layout::RowMajor, ElementB, layout::ColumnMajor, ElementMxScaleA, decltype(LayoutMxScaleA), ElementMxScaleB, 
+        decltype(LayoutMxScaleB), float, layout::RowMajor, void>;
     Arch::Resource<ArchTag> resource;
     using BlockMmad = Gemm::Block::BlockMmadTla<
         DispatchPolicy, L1TileShape, L0TileShape, ElementA, ElementB, ElementC, void, TileCopy>;
@@ -101,18 +108,23 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     GlobalTensor<ElementB> bGlobalTensor;
     GlobalTensor<ElementMxScaleA> aScaleGlobalTensor;
     GlobalTensor<ElementMxScaleB> bScaleGlobalTensor;
+    GlobalTensor<uint8_t> aScaleGlobalTensorInt8;
+    GlobalTensor<uint8_t> bScaleGlobalTensorInt8;
 
     aGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal));
     bGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ElementB*>(gmmAddrInfo.bGlobal));
     aScaleGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMxScaleA*>(gmmAddrInfo.aScaleGlobal));
     bScaleGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMxScaleB*>(gmmAddrInfo.bScaleGlobal));
 
-    auto tensorA = tla::MakeTensor(aGlobalTensor, layoutA, Arch::PositionGM{});
-    auto tensorB = tla::MakeTensor(bGlobalTensor, layoutB, Arch::PositionGM{});
-    auto tensorMxScaleA = tla::MakeTensor(aScaleGlobalTensor, layoutMxScaleA, Arch::PositionGM{});
-    auto tensorMxScaleB = tla::MakeTensor(bScaleGlobalTensor, layoutMxScaleB, Arch::PositionGM{});
-    auto tensorUbFirst = tla::MakeTensor(l0cOutUbFirst, layoutC, Arch::PositionUB{});
-    auto tensorUbSecond = tla::MakeTensor(l0cOutUbSecond, layoutC, Arch::PositionUB{});
+    aScaleGlobalTensorInt8.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(gmmAddrInfo.aScaleGlobal));
+    bScaleGlobalTensorInt8.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(gmmAddrInfo.bScaleGlobal));
+
+    auto tensorA = tla::MakeTensor(aGlobalTensor, LayoutA, Arch::PositionGM{});
+    auto tensorB = tla::MakeTensor(bGlobalTensor, LayoutB, Arch::PositionGM{});
+    auto tensorMxScaleA = tla::MakeTensor(aScaleGlobalTensor, LayoutMxScaleA, Arch::PositionGM{});
+    auto tensorMxScaleB = tla::MakeTensor(bScaleGlobalTensor, LayoutMxScaleB, Arch::PositionGM{});
+    auto tensorUbFirst = tla::MakeTensor(l0cOutUbFirst, LayoutC, Arch::PositionUB{});
+    auto tensorUbSecond = tla::MakeTensor(l0cOutUbSecond, LayoutC, Arch::PositionUB{});
 
     BlockScheduler scheduler({m, outputN, k}, MakeCoord(L1_TILE_M, L1_TILE_N));
     uint32_t coreLoops = scheduler.GetCoreLoops();
@@ -172,7 +184,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
                 0, 0, 0, 0
             };
             WaitForCube();
-            AscendC::SetCtrlSpr<60,60>(0);
+            AscendC::SetCtrlSpr<60, 60>(0);
             epilogueOp(epilogueShape, epilogueOffset);
             NotifyCube();
         }
@@ -184,9 +196,12 @@ __aicore__ inline void GroupMatmulSwigluQuant(
 template <typename ElementA, typename ElementB, typename ElementC, 
           typename ElementMxScaleA, typename ElementMxScaleB>
 __aicore__ inline void GroupMatmul2(
-    const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
-    const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom2, uint32_t groupIdx, 
-    uint16_t& pingpongIdx, int32_t rankId)
+    const Params& params,
+    const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
+    const GMMAddrInfo& gmmAddrInfo,
+    uint32_t& startBlockIdx,
+    int32_t& vecSetSyncCom2,
+    uint32_t groupIdx, uint16_t& pingpongIdx, int32_t rankId)
 {
     constexpr uint32_t GMM2_BLOCK_SIZE = L1_TILE_M * L1_TILE_N;
 
@@ -201,46 +216,56 @@ __aicore__ inline void GroupMatmul2(
     groupFlagListGm.SetGlobalBuffer((__gm__ int32_t*)gmmAddrInfo.groupFlagList);
 
     auto scaleK = CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
-    auto layoutA = tla::MakeLayout<ElementA, layout::RowMajor>(m, k);
-    auto layoutB = tla::MakeLayout<ElementB, layout::ColumnMajor>(k, n);
-    auto layoutMxScaleA = tla::MakeMxScaleLayout<ElementMxScaleA, layout::RowMajor, false>(m, scaleK);
-    auto layoutMxScaleB = tla::MakeMxScaleLayout<ElementMxScaleB, layout::ColumnMajor, true>(scaleK, n);
-    auto layoutC = tla::MakeLayout<ElementC, layout::RowMajor>(L1_TILE_M, L1_TILE_N);
+    auto LayoutA = tla::MakeLayout<ElementA, layout::RowMajor>(m, k);
+    auto LayoutB = tla::MakeLayout<ElementB, layout::ColumnMajor>(k, n);
+    auto LayoutMxScaleA = tla::MakeMxScaleLayout<ElementMxScaleA, layout::RowMajor, false>(m, scaleK);
+    auto LayoutMxScaleB = tla::MakeMxScaleLayout<ElementMxScaleB, layout::ColumnMajor, true>(scaleK, n);
+    auto LayoutC = tla::MakeLayout<ElementC, layout::RowMajor>(m, n);
 
-    using TileCopy = Gemm::Tile::PackedMxTileCopyTlaToUB<
-        ArchTag, ElementA, layout::RowMajor, ElementB, layout::ColumnMajor, ElementMxScaleA, decltype(layoutMxScaleA), ElementMxScaleB,
-        decltype(layoutMxScaleB), ElementC, layout::RowMajor, void>;
-
+    using TileCopy = Gemm::Tile::PackedMxTileCopyTlaToGM<
+        ArchTag, ElementA, layout::RowMajor, ElementB, layout::ColumnMajor, ElementMxScaleA, decltype(LayoutMxScaleA), ElementMxScaleB,
+        decltype(LayoutMxScaleB), ElementC, layout::RowMajor, void>;
     Arch::Resource<ArchTag> resource;
     using BlockMmad = Gemm::Block::BlockMmadTla<
         DispatchPolicy, L1TileShape, L0TileShape, ElementA, ElementB, ElementC, void, TileCopy>;
     BlockMmad blockMmad(resource);
 
     int64_t ubOffset = 0;
-    LocalTensor<ElementC> l0cOutUbGMM2First = resource.ubBuf.template GetBufferByByte<ElementC>(ubOffset);
-    ubOffset += MAX_SINGLE_MN_ALIGN32_NUM * sizeof(ElementC);
-    LocalTensor<ElementC> l0cOutUbGMM2Second = resource.ubBuf.template GetBufferByByte<ElementC>(ubOffset);
+    ubOffset += MAX_SINGLE_MN_ALIGN32_NUM * sizeof(bfloat16_t);
 
     GlobalTensor<ElementA> aGlobalTensor;
     GlobalTensor<ElementB> bGlobalTensor;
     GlobalTensor<ElementMxScaleA> aScaleGlobalTensor;
     GlobalTensor<ElementMxScaleB> bScaleGlobalTensor;
 
+    GlobalTensor<bfloat16_t> gmmOutFirstGlobalTensor;
+    GlobalTensor<bfloat16_t> gmmOutSecondGlobalTensor;
+
     aGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal));
     bGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ElementB*>(gmmAddrInfo.bGlobal));
     aScaleGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMxScaleA*>(gmmAddrInfo.aScaleGlobal));
     bScaleGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMxScaleB*>(gmmAddrInfo.bScaleGlobal));
 
-    auto tensorA = tla::MakeTensor(aGlobalTensor, layoutA, Arch::PositionGM{});
-    auto tensorB = tla::MakeTensor(bGlobalTensor, layoutB, Arch::PositionGM{});
-    auto tensorMxScaleA = tla::MakeTensor(aScaleGlobalTensor, layoutMxScaleA, Arch::PositionGM{});
-    auto tensorMxScaleB = tla::MakeTensor(bScaleGlobalTensor, layoutMxScaleB, Arch::PositionGM{});
-    auto tensorUbFirst = tla::MakeTensor(l0cOutUbGMM2First, layoutC, Arch::PositionUB{});
-    auto tensorUbSecond = tla::MakeTensor(l0cOutUbGMM2Second, layoutC, Arch::PositionUB{});
+
+    gmmOutFirstGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(gmmAddrInfo.gmmOutGlobal));
+    gmmOutSecondGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(gmmAddrInfo.gmmOutGlobal + 768 * 4096 * 2));
+    //768 * 4096 * 2 * 2
+
+
+    auto tensorA = tla::MakeTensor(aGlobalTensor, LayoutA, Arch::PositionGM{});
+    auto tensorB = tla::MakeTensor(bGlobalTensor, LayoutB, Arch::PositionGM{});
+    auto tensorMxScaleA = tla::MakeTensor(aScaleGlobalTensor, LayoutMxScaleA, Arch::PositionGM{});
+    auto tensorMxScaleB = tla::MakeTensor(bScaleGlobalTensor, LayoutMxScaleB, Arch::PositionGM{});
+    // 两块 GM 做 pingpong 输出缓冲
+    auto tensorGmOutFirst  = tla::MakeTensor(gmmOutFirstGlobalTensor,  LayoutC, Arch::PositionGM{});
+    auto tensorGmOutSecond = tla::MakeTensor(gmmOutSecondGlobalTensor, LayoutC, Arch::PositionGM{});
 
     BlockScheduler scheduler({m, n, k}, MakeCoord(L1_TILE_M, L1_TILE_N));
     uint32_t coreLoops = scheduler.GetCoreLoops();
     uint32_t startLoopIdx = (blockIdx < startBlockIdx ? blockIdx + blockNum : blockIdx) - startBlockIdx;
+
+    LocalTensor<ElementC> l0cOutUbFirst = resource.ubBuf.template GetBufferByByte<ElementC>(0);
+    LocalTensor<ElementC> l0cOutUbSecond = resource.ubBuf.template GetBufferByByte<ElementC>(ubOffset);
 
     for (uint32_t loopIdx = startLoopIdx; loopIdx < coreLoops; loopIdx += blockNum) {
         GemmCoord blockCoord = scheduler.GetBlockCoord(loopIdx);
@@ -250,8 +275,12 @@ __aicore__ inline void GroupMatmul2(
         uint32_t nLoc = blockCoord.n() * L1_TILE_N;
         uint32_t kLoc = blockCoord.k() * L1_TILE_K;
 
-        auto tensorUb = pingpongIdx == 0 ? tensorUbFirst : tensorUbSecond;
-        auto l0cOutUbGMM2 = pingpongIdx == 0 ? l0cOutUbGMM2First : l0cOutUbGMM2Second;
+        auto tensorGmOut = pingpongIdx == 0 ? tensorGmOutFirst : tensorGmOutSecond;
+        auto l0cOutUb = pingpongIdx == 0 ? l0cOutUbFirst : l0cOutUbSecond;
+
+        // 输出块直接指向当前 pingpong 的 GM buffer
+
+        auto l0cOutUbGMM2 = pingpongIdx == 0 ? gmmOutFirstGlobalTensor : gmmOutSecondGlobalTensor;
 
         if constexpr(g_coreType == AscendC::AIC) {
             if (loopIdx == startLoopIdx) {
@@ -262,17 +291,19 @@ __aicore__ inline void GroupMatmul2(
                     int64_t st = AscendC::GetSystemCycle();
                     while (AscendC::GetSystemCycle() - st < 100) {}
                 }
-            }
-            if (vecSetSyncCom2 >= 2) {
-                WaitForVector(pingpongIdx);
-            }
+            }            
+            // if (vecSetSyncCom2 >= 2) {
+            //     // WaitForVector(pingpongIdx);
+            // }
             
             auto tensorBlockA = GetTile(tensorA, tla::MakeCoord(mLoc, kLoc),
                 tla::MakeShape(actualShape.m(), actualShape.k()));
             auto tensorBlockMxScaleA = GetTile(tensorMxScaleA,
                 tla::MakeCoord(mLoc, kLoc / MXFP_SCALE_GROUP_NUM),
                 tla::MakeShape(actualShape.m(), CeilDiv(actualShape.k(), MXFP_SCALE_GROUP_NUM)));
-            auto tensorBlockUb = GetTile(tensorUb, tla::MakeCoord(0, 0),
+
+            auto tensorBlockOut = GetTile(tensorGmOut,
+                tla::MakeCoord(mLoc, nLoc),
                 tla::MakeShape(actualShape.m(), actualShape.n()));
             auto tensorBlockB = GetTile(tensorB,
                 tla::MakeCoord(kLoc, nLoc),
@@ -280,7 +311,7 @@ __aicore__ inline void GroupMatmul2(
             auto tensorBlockMxScaleB = GetTile(tensorMxScaleB,
                 tla::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, nLoc),
                 tla::MakeShape(CeilDiv(actualShape.k(), MXFP_SCALE_GROUP_NUM), actualShape.n()));
-            blockMmad(tensorBlockA, tensorBlockB, tensorBlockUb,
+            blockMmad(tensorBlockA, tensorBlockB, tensorBlockOut,
                       actualShape, tensorBlockMxScaleA, tensorBlockMxScaleB);
             NotifyVector(pingpongIdx);
         }
@@ -291,16 +322,17 @@ __aicore__ inline void GroupMatmul2(
             WaitForCube(pingpongIdx);
             AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
-            MoeDispatchFFNCombineCatlassImpl::CombineTokens<ElementC, GemmCoord>(mLoc, nLoc, n, groupIdx, rankId, l0cOutUbGMM2, actualShape, params);
+            MegaMoeCombineImpl::CombineTokens<ElementC, GemmCoord>(mLoc, nLoc, n, groupIdx, rankId, l0cOutUbGMM2, l0cOutUb, actualShape, params);
             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
-            NotifyCube(pingpongIdx);
+            // NotifyCube(pingpongIdx);
         }
         pingpongIdx = 1 - pingpongIdx;
     }
     startBlockIdx = (startBlockIdx + coreLoops) % blockNum;
 }
 
-}  // namespace MoeDispatchFFNCombineCatlassImpl
+}  // namespace MegaMoeImpl
 
 #endif
+
