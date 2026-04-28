@@ -36,7 +36,7 @@ using WeightQuantBatchMatmulV2::Arch35::SCALE_FACTOR_B_BIT;
 using WeightQuantBatchMatmulV2::Arch35::VecAntiQuantConfig;
 using WeightQuantBatchMatmulV2::Arch35::GMMFRWeightQuantVcvBasicBlock;
 using WeightQuantBatchMatmulV2::Arch35::WqmmConfig;
-using WeightQuantBatchMatmulV2::Arch35::ALIGN_64_FACTOR;
+using WeightQuantBatchMatmulV2::Arch35::K_ALIGNMENT64;
 using GMMFRTiling = GMMFinalizeRoutingArch35Tiling::GMMFinalizeRoutingWeightQuantTilingData;
 
 namespace GROUPED_MATMUL_FINALIZE_ROUTING {
@@ -250,7 +250,7 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS::UpdateGmAdd
 {
     xGm_ += mSize * kSize;
     weightGm_ += (nSize * kSize) >> 1;
-    uint64_t kAlignSize = CeilAlign(kSize, ALIGN_64_FACTOR);
+    uint64_t kAlignSize = CeilAlign(kSize, K_ALIGNMENT64);
     antiquantScaleGm_ += nSize * CeilDivide(kAlignSize, static_cast<uint64_t>(tiling_->groupSize));
 
     perTokenScaleGm_ += mSize * CeilDivide(kAlignSize, static_cast<uint64_t>(tiling_->groupSize));
