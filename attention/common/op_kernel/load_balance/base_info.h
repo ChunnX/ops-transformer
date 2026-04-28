@@ -175,7 +175,7 @@ public:
 
     bool GetIsS1G() const override
     {
-        return (layoutKv == Layout::TND || layoutKv == Layout::BSH || layoutKv == Layout::BSND);
+        return (layoutQuery == Layout::TND || layoutQuery == Layout::BSH || layoutQuery == Layout::BSND);
     }
 
     Layout GetQueryLayout() const override

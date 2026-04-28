@@ -194,7 +194,7 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
             maxSeqlenKv_ = std::max(static_cast<int64_t>(maxSeqlenKv_), cuSeqlensKv[i + 1] - cuSeqlensKv[i]);
         }
     }
-        baseInfo.batchSize = batchSize_;
+    baseInfo.batchSize = batchSize_;
     baseInfo.queryHeadNum = numHeadsQ_;
     baseInfo.querySeqSize = maxSeqlenQ_;
     baseInfo.kvHeadNum = numHeadsKv_;
@@ -208,7 +208,6 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
     baseInfo.layoutKv = ConvertToLayout(layoutKv_);
     baseInfo.queryType = load_balance::DataType::FP16; // todo
     baseInfo.kvType = load_balance::DataType::FP16; // todo
-
     // param
     if (numHeadsKv_ == 0) {
         numHeadsKv_ = numHeadsQ_;
