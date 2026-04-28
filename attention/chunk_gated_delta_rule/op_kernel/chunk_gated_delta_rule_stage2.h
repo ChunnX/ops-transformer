@@ -143,7 +143,10 @@ public:
             DataCacheCleanAndInvalid<float,
                                      CacheLine::SINGLE_CACHE_LINE,
                                      DcciDst::CACHELINE_OUT>(gCum[curChunkSize_ - 1]);
-            lastGCum_.SetValue(0, gCum.GetValue(curChunkSize_ - 1));
+            float tmpFloat = gCum.GetValue(curChunkSize_ - 1);
+            lastGCum_.SetValue(0, tmpFloat);
+            SetFlag<HardEvent::S_V>(S_V_EVENT);
+            WaitFlag<HardEvent::S_V>(S_V_EVENT);
             Exp<float, 0, true>(lastGCum_, lastGCum_, 1);
         }
         else {
@@ -156,6 +159,8 @@ public:
         WaitFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
         Cast(tmpBuffer1_, stateIn, RoundMode::CAST_NONE, Dv_ * curDk_);
         float tmpFloat = lastGCum_.GetValue(0);
+        SetFlag<HardEvent::S_V>(S_V_EVENT);
+        WaitFlag<HardEvent::S_V>(S_V_EVENT);
         Muls(tmpBuffer1_, tmpBuffer1_, tmpFloat, Dv_ * curDk_);
         Cast(stateOut, tmpBuffer1_, RoundMode::CAST_RINT, Dv_ * curDk_);
         SetFlag<HardEvent::V_MTE3>(V_MTE3_EVENT);
