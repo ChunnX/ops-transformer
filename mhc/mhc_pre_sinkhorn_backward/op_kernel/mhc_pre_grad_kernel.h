@@ -14,14 +14,9 @@
  */
 #ifndef MHC_PRE_SINKHORN_BACKWARD_OP_KERNEL_MHC_PRE_GRAD_KERNEL_H
 #define MHC_PRE_SINKHORN_BACKWARD_OP_KERNEL_MHC_PRE_GRAD_KERNEL_H
-#if ASC_DEVKIT_MAJOR >= 9
-#include "kernel_basic_intf.h"
-#else
-#include "kernel_operator.h"
-#endif
-#include "lib/matmul_intf.h"
 
-#include <cstdint>
+#include "kernel_operator.h"
+#include "lib/matmul_intf.h"
 
 using namespace AscendC;
 
