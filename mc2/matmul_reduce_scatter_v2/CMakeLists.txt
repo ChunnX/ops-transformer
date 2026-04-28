@@ -18,3 +18,9 @@ foreach(SUBDIR ${SUBDIRECTORIES})
 endforeach()
 
 set(MC2_COMPILE ${SUB_MC2_COMPILE} PARENT_SCOPE)
+
+# Add catlass include path for kernel compilation
+add_ops_compile_options(
+    OP_NAME matmul_reduce_scatter_v2
+    OPTIONS -I${CMAKE_SOURCE_DIR}/3rdparty/catlass/include
+)
