@@ -1,16 +1,16 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file test_aclnn_qbmm_reduce_scatter_add_rms_norm_cast.cpp
- * \brief
+ * \brief qbmm_reduce_scatter_add_rms_norm_cast 算子测试用例
  */
 
 #include <iostream>
@@ -32,14 +32,15 @@
     } while(0)
 
 constexpr int DEV_NUM = 2;
+constexpr int RANK_SIZE = DEV_NUM;
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
 {
-    int64_t shape_size = 1;
+    int64_t shapeSize = 1;
     for (auto i : shape) {
-        shape_size *= i;
+        shapeSize *= i;
     }
-    return shape_size;
+    return shapeSize;
 }
 
 template<typename T>
@@ -53,7 +54,7 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMemcpy failed. ret: %d\n", ret); return ret);
     std::vector<int64_t> strides(shape.size(), 1);
     for (int64_t i = shape.size() - 2; i >= 0; i--) {
-        strides[i] = shape[i +1] * strides[i + 1];
+        strides[i] = shape[i + 1] * strides[i + 1];
     }
     *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
         shape.data(), shape.size(), *deviceAddr);
@@ -65,9 +66,9 @@ struct Args {
     HcclComm hcclComm;
     aclrtStream stream;
     aclrtContext context;
-  };
+};
 
-int LaunchOneThreadAddRmsNormDynamicQuantAllGatherQbmm(Args &args)
+int LaunchOneThreadQbmmReduceScatterAddRmsNormCast(Args &args)
 {
     int ret = aclrtSetCurrentContext(args.context);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetCurrentContext failed. ret = %d\n", ret); return ret);
@@ -76,169 +77,178 @@ int LaunchOneThreadAddRmsNormDynamicQuantAllGatherQbmm(Args &args)
     ret = HcclGetCommName(args.hcclComm, hcomName);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetCommName failed. ret = %d\n", ret); return -1);
     LOG_PRINT("[INFO] rank = %d, hcomName = %s, stream = %p\n", args.rankId, hcomName, args.stream);
-    std::vector<int64_t> x1Shape = {252, 2560};
-    std::vector<int64_t> x2Shape = {160, 160, 16, 32}; //转置后，reshape的
-    std::vector<int64_t> scaleShape = {5120};
-    std::vector<int64_t> biasShape = {520};
-    std::vector<int64_t> gammaShape = {5120};
-    std::vector<int64_t> scaleShape = {252};
-    std::vector<int64_t> smoothScaleShape = {5120};
-    std::vector<int64_t> biasShape = {3072};
-    std::vector<int64_t> outShape = {63 * DEV_NUM, 5120};
-    std::vector<int64_t> zShape = {63, 5120};
+
+    // 定义输入输出shape
+    // MX 量化规则：每32个元素共享一个 scale (fp8_e8m0)
+    // Scale A shape: (M, K/32) - 用于 A 矩阵反量化
+    // Scale B shape: (K/32, N) - 用于 B 矩阵反量化
+    std::vector<int64_t> x1Shape = {128, 256};           // M x K (A矩阵)
+    std::vector<int64_t> x2Shape = {256, 512};           // K x N (B矩阵, ND格式)
+    std::vector<int64_t> yShape = {128, 512};            // residual (BF16)
+    std::vector<int64_t> gammaShape = {512};             // RMS Norm gamma
+    std::vector<int64_t> scaleShape = {8, 512};          // Scale B: (K/32, N) = (256/32, 512)
+    std::vector<int64_t> pertokenScaleShape = {128, 8};  // Scale A: (M, K/32) = (128, 256/32)
+    std::vector<int64_t> y1Shape = {128, 512};           // output float
+    std::vector<int64_t> y2Shape = {128, 512};           // output bf16
+    std::vector<int64_t> xOutShape = {128, 512};         // output bf16
+
     void *x1DeviceAddr = nullptr;
     void *x2DeviceAddr = nullptr;
-    void *residualDeviceAddr = nullptr;
     void *yDeviceAddr = nullptr;
     void *gammaDeviceAddr = nullptr;
     void *scaleDeviceAddr = nullptr;
-    void *smoothScaleDeviceAddr = nullptr;
+    void *pertokenScaleDeviceAddr = nullptr;
     void *biasDeviceAddr = nullptr;
-    void *outputDeviceAddr = nullptr;
-    void *zDeviceAddr = nullptr;
+    void *y1DeviceAddr = nullptr;
+    void *y2DeviceAddr = nullptr;
+    void *xOutDeviceAddr = nullptr;
 
     aclTensor *x1 = nullptr;
     aclTensor *x2 = nullptr;
-    aclTensor *residual = nullptr;
     aclTensor *y = nullptr;
     aclTensor *gamma = nullptr;
     aclTensor *scale = nullptr;
-    aclTensor *smoothScale = nullptr;
+    aclTensor *pertokenScale = nullptr;
     aclTensor *bias = nullptr;
-    aclTensor *output = nullptr;
-    aclTensor *z = nullptr;
+    aclTensor *y1 = nullptr;
+    aclTensor *y2 = nullptr;
+    aclTensor *xOut = nullptr;
 
-    bool transposeX2 = true;
-    uint64_t residualNormMode = 0;
+    // 属性参数
+    bool transposeX2 = false;
+    int64_t dtype = 0;
+    float epsilon = 1e-6f;
 
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     void *workspaceAddr = nullptr;
 
+    // 计算shape size
     long long x1ShapeSize = GetShapeSize(x1Shape);
     long long x2ShapeSize = GetShapeSize(x2Shape);
-    long long residualShapeSize = GetShapeSize(residualShape);
     long long yShapeSize = GetShapeSize(yShape);
     long long gammaShapeSize = GetShapeSize(gammaShape);
     long long scaleShapeSize = GetShapeSize(scaleShape);
-    long long smoothScaleShapeSize = GetShapeSize(smoothScaleShape);
-    long long biasShapeSize = GetShapeSize(bias);
-    long long outputshapeSize = GetShapeSize(outputShape);
-    long long zShapeSize = GetShapeSize(zShape);
+    long long pertokenScaleShapeSize = GetShapeSize(pertokenScaleShape);
+    long long y1ShapeSize = GetShapeSize(y1Shape);
+    long long y2ShapeSize = GetShapeSize(y2Shape);
+    long long xOutShapeSize = GetShapeSize(xOutShape);
 
-    std::vector<int8_t> x1HostData(x1ShapeSize, 0);
-    std::vector<int8_t> x2HostData(x2ShapeSize, 0);
-    std::vector<int8_t> residualHostData(residualShapeSize, 0);
-    std::vector<int32_t> yHostData(yShapeSize, 0);
-    std::vector<int32_t> gammaHostData(gammaShapeSize, 0);
-    std::vector<int32_t> scaleHostData(scaleShapeSize, 0);
-    std::vector<int32_t> smoothScaleHostData(smoothScaleShapeSize, 0);
-    std::vector<int32_t> biasHostData(biasShapeSize, 0);
-    std::vector<int32_t> outputHostData(outputshapeSize, 0);
-    std::vector<int16_t> zHostData(zShapeSize, 0);
-    // 创建tensor
+    // 创建host数据
+    // FP8_E4M3FN: 用 uint8_t 存储（1字节）
+    std::vector<uint8_t> x1HostData(x1ShapeSize, 127);
+    std::vector<uint8_t> x2HostData(x2ShapeSize, 127);
+    // BF16: 用 uint16_t 存储（2字节）
+    std::vector<uint16_t> yHostData(yShapeSize, 0x3f80);  // bf16 的 1.0
+    // FLOAT: 用 float 存储
+    std::vector<float> gammaHostData(gammaShapeSize, 1.0f);
+    // FP8_E8M0 (scale): 用 uint8_t 存储（纯指数格式，1字节）
+    std::vector<uint8_t> scaleHostData(scaleShapeSize, 127);
+    std::vector<uint8_t> pertokenScaleHostData(pertokenScaleShapeSize, 127);
+    // 输出初始化为 0
+    std::vector<float> y1HostData(y1ShapeSize, 0.0f);
+    std::vector<uint16_t> y2HostData(y2ShapeSize, 0);
+    std::vector<uint16_t> xOutHostData(xOutShapeSize, 0);
+
+    // 创建输入tensor
     ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_FLOAT8_E4M3FN, &x1);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(x2HostData, x2Shape, &x2DeviceAddr, aclDataType::ACL_FLOAT8_E4M3FN, &x2);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(residualHostData, residualShape, &residualDeviceAddr, aclDataType::ACL_FLOAT8_E4M3FN, &residual);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(yHostData, yShape, &yDeviceAddr, aclDataType::ACL_FLOAT, &y);
+    ret = CreateAclTensor(yHostData, yShape, &yDeviceAddr, aclDataType::ACL_BF16, &y);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(gammaHostData, gammaShape, &gammaDeviceAddr, aclDataType::ACL_FLOAT, &gamma);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(scaleHostData, scaleShape, &scaleDeviceAddr, aclDataType::ACL_FLOAT16, &scale);
+    ret = CreateAclTensor(scaleHostData, scaleShape, &scaleDeviceAddr, aclDataType::ACL_FLOAT8_E8M0, &scale);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(pertokenScaleHostData, pertokenScaleShape, &pertokenScaleDeviceAddr, 
+                          aclDataType::ACL_FLOAT8_E8M0, &pertokenScale);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-    ret = CreateAclTensor(smoothScaleHostData, smoothScaleShape, &smoothScaleDeviceAddr, aclDataType::ACL_FLOAT16,
-        &smoothScale);
+    // 创建可选输入tensor (bias 可以为 nullptr，pertokenScale 必须有值)
+    bias = nullptr;
+
+    // 创建输出tensor
+    ret = CreateAclTensor(y1HostData, y1Shape, &y1DeviceAddr, aclDataType::ACL_FLOAT, &y1);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(biasHostData, biasShape, &biasDeviceAddr, aclDataType::ACL_FLOAT16, &bias);
+    ret = CreateAclTensor(y2HostData, y2Shape, &y2DeviceAddr, aclDataType::ACL_BF16, &y2);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(outputHostData, outputShape, &outputDeviceAddr, aclDataType::ACL_FLOAT16, &output);
+    ret = CreateAclTensor(xOutHostData, xOutShape, &xOutDeviceAddr, aclDataType::ACL_BF16, &xOut);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(zHostData, zShape, &zDeviceAddr, aclDataType::ACL_FLOAT16, &z);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);
+
+    LOG_PRINT("[INFO] rank = %d, Before aclnnQbmmReduceScatterAddRmsNormCastGetWorkspaceSize\n", args.rankId);
 
     // 调用第一阶段接口
-    ret = aclnnAddRmsNormDynamicQuantAllGatherQbmmGetWorkspaceSize(x1, x2, residual, y, gamma, scale, smoothScale, bias,
-        hcomName, transposeX2, residualNormMode, output, z, workspaceSize, executor);
+    ret = aclnnQbmmReduceScatterAddRmsNormCastGetWorkspaceSize(
+        x1, x2, y, gamma, scale, bias, pertokenScale,
+        hcomName, RANK_SIZE, transposeX2, dtype, epsilon,
+        y1, y2, xOut,
+        &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS,
-        LOG_PRINT("[ERROR] aclnnAddRmsNormDynamicQuantAllGatherQbmmGetWorkspaceSize failed. ret = %d \n", ret); return ret);
+        LOG_PRINT("[ERROR] aclnnQbmmReduceScatterAddRmsNormCastGetWorkspaceSize failed. ret = %d \n", ret); return ret);
+
+    LOG_PRINT("[INFO] rank = %d, workspaceSize = %lu\n", args.rankId, workspaceSize);
+
     // 根据第一阶段接口计算出的workspaceSize申请device内存
     if (workspaceSize > 0) {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc workspace failed. ret = %d \n", ret); return ret);
     }
+
+    LOG_PRINT("[INFO] rank = %d, Before aclnnQbmmReduceScatterAddRmsNormCast\n", args.rankId);
+
     // 调用第二阶段接口
-    ret = aclnnAddRmsNormDynamicQuantAllGatherQbmm(workspaceAddr, workspaceSize, executor, args.stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnAddRmsNormDynamicQuantAllGatherQbmm failed. ret = %d \n", ret); return ret);
-    // （固定写法）同步等待任务执行结束
+    ret = aclnnQbmmReduceScatterAddRmsNormCast(workspaceAddr, workspaceSize, executor, args.stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnQbmmReduceScatterAddRmsNormCast failed. ret = %d \n", ret); return ret);
+
+    // 同步等待任务执行结束
     ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
         return ret);
-    LOG_PRINT("[INFO] device_%d aclnnAddRmsNormDynamicQuantAllGatherQbmm execute successfully.\n", args.rankId);
-    // 释放device资源，需要根据具体API的接口定义修改
+
+    LOG_PRINT("[INFO] rank = %d aclnnQbmmReduceScatterAddRmsNormCast execute successfully.\n", args.rankId);
+
+    // 释放device资源
     if (x1 != nullptr) {
         aclDestroyTensor(x1);
+        aclrtFree(x1DeviceAddr);
     }
     if (x2 != nullptr) {
         aclDestroyTensor(x2);
+        aclrtFree(x2DeviceAddr);
     }
     if (y != nullptr) {
         aclDestroyTensor(y);
-    }
-    if (residual != nullptr) {
-        aclDestroyTensor(residual);
+        aclrtFree(yDeviceAddr);
     }
     if (gamma != nullptr) {
         aclDestroyTensor(gamma);
+        aclrtFree(gammaDeviceAddr);
     }
     if (scale != nullptr) {
         aclDestroyTensor(scale);
-    }
-    if (smoothScale != nullptr) {
-        aclDestroyTensor(smoothScale);
-    }
-    if (bias != nullptr) {
-        aclDestroyTensor(bias);
-    }
-    if (output != nullptr) {
-        aclDestroyTensor(output);
-    }
-    if (z != nullptr) {
-        aclDestroyTensor(z);
-    }
-    if (x1DeviceAddr != nullptr) {
-        aclrtFree(x1DeviceAddr);
-    }
-    if (x2DeviceAddr != nullptr) {
-        aclrtFree(x2DeviceAddr);
-    }
-    if (residualDeviceAddr != nullptr) {
-        aclrtFree(residualDeviceAddr);
-    }
-    if (yDeviceAddr != nullptr) {
-        aclrtFree(yDeviceAddr);
-    }
-    if (gammaDeviceAddr != nullptr) {
-        aclrtFree(gammaDeviceAddr);
-    }
-    if (scaleDeviceAddr != nullptr) {
         aclrtFree(scaleDeviceAddr);
     }
-    if (biasDeviceAddr != nullptr) {
-        aclrtFree(biasDeviceAddr);
+    if (pertokenScale != nullptr) {
+        aclDestroyTensor(pertokenScale);
+        aclrtFree(pertokenScaleDeviceAddr);
     }
-    if (outputDeviceAddr != nullptr) {
-        aclrtFree(outputDeviceAddr);
+    if (y1 != nullptr) {
+        aclDestroyTensor(y1);
+        aclrtFree(y1DeviceAddr);
     }
-    if (zDeviceAddr != nullptr) {
-        aclrtFree(zDeviceAddr);
+    if (y2 != nullptr) {
+        aclDestroyTensor(y2);
+        aclrtFree(y2DeviceAddr);
     }
-    if (workspaceSize > 0) {
+    if (xOut != nullptr) {
+        aclDestroyTensor(xOut);
+        aclrtFree(xOutDeviceAddr);
+    }
+    if (workspaceSize > 0 && workspaceAddr != nullptr) {
         aclrtFree(workspaceAddr);
     }
+
     ret = HcclCommDestroy(args.hcclComm);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclCommDestroy failed. ret = %d \n", ret); return ret);
     ret = aclrtDestroyStream(args.stream);
@@ -247,6 +257,7 @@ int LaunchOneThreadAddRmsNormDynamicQuantAllGatherQbmm(Args &args)
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtResetDevice failed. ret = %d \n", ret); return ret);
     ret = aclrtDestroyContext(args.context);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtDestroyContext failed. ret = %d \n", ret); return ret);
+
     return 0;
 }
 
@@ -254,6 +265,7 @@ int main(int argc, char *argv[])
 {
     int ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d \n", ret); return ret);
+
     aclrtStream stream[DEV_NUM];
     aclrtContext context[DEV_NUM];
     for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
@@ -264,10 +276,12 @@ int main(int argc, char *argv[])
         ret = aclrtCreateStream(&stream[rankId]);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateStream failed. ret = %d \n", ret); return ret);
     }
+
     int32_t devices[DEV_NUM];
     for (int i = 0; i < DEV_NUM; i++) {
         devices[i] = i;
     }
+
     // 初始化集合通信域
     HcclComm comms[DEV_NUM];
     ret = HcclCommInitAll(DEV_NUM, devices, comms);
@@ -281,12 +295,14 @@ int main(int argc, char *argv[])
         args[rankId].hcclComm = comms[rankId];
         args[rankId].context = context[rankId];
         args[rankId].stream = stream[rankId];
-        threads[rankId].reset(new(std::nothrow) std::thread(&LaunchOneThreadAddRmsNormDynamicQuantAllGatherQbmm,
+        threads[rankId].reset(new(std::nothrow) std::thread(&LaunchOneThreadQbmmReduceScatterAddRmsNormCast,
             std::ref(args[rankId])));
     }
+
     for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
         threads[rankId]->join();
     }
+
     aclFinalize();
     return 0;
 }

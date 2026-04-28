@@ -31,10 +31,10 @@ enum class NnopbaseHcclServerType : uint32_t{
     NNOPBASE_HCCL_SERVER_TYPE_END
 };
 
-// check nullptr
+// check nullptr (pertokenScale 必须有值，bias 可以为 nullptr)
 static bool CheckNotNull(const aclTensor* x1, const aclTensor* x2, const aclTensor* y,
-                         const aclTensor* gamma, const aclTensor* scale, const aclTensor* bias, 
-                         const aclTensor* pertokenScale, aclTensor* y1, aclTensor* y2, aclTensor* x)
+                         const aclTensor* gamma, const aclTensor* scale, const aclTensor* pertokenScale,
+                         aclTensor* y1, aclTensor* y2, aclTensor* x)
 {
     OP_LOGD("aclnn_qbmm_reduce_scatter_add_rms_norm_cast CheckNotNull start");
     OP_CHECK_NULL(x1, return false);
@@ -42,8 +42,8 @@ static bool CheckNotNull(const aclTensor* x1, const aclTensor* x2, const aclTens
     OP_CHECK_NULL(y, return false);
     OP_CHECK_NULL(gamma, return false);
     OP_CHECK_NULL(scale, return false);
-    OP_CHECK_NULL(bias, return false);  
-    OP_CHECK_NULL(pertokenScale, return false);
+    // bias 是 OPTIONAL 参数，允许 nullptr，不检查
+    OP_CHECK_NULL(pertokenScale, return false);  // MX量化需要，必须传入
     OP_CHECK_NULL(y1, return false);
     OP_CHECK_NULL(y2, return false);
     OP_CHECK_NULL(x, return false);
@@ -51,13 +51,13 @@ static bool CheckNotNull(const aclTensor* x1, const aclTensor* x2, const aclTens
     return true;
 }
 
-// 入参教验
+// 入参校验
 static aclnnStatus CheckParams(const aclTensor* x1, const aclTensor* x2, const aclTensor* y,
-                               const aclTensor* gamma, const aclTensor* scale, const aclTensor* bias, 
-                               const aclTensor* pertokenScale, aclTensor* y1, aclTensor* y2, aclTensor* x)
+                               const aclTensor* gamma, const aclTensor* scale, const aclTensor* pertokenScale,
+                               aclTensor* y1, aclTensor* y2, aclTensor* x)
 {
     OP_LOGD("aclnn_qbmm_reduce_scatter_add_rms_norm_cast CheckParams start");
-    CHECK_RET(CheckNotNull(x1, x2, y, gamma, scale, bias, pertokenScale, y1, y2, x),
+    CHECK_RET(CheckNotNull(x1, x2, y, gamma, scale, pertokenScale, y1, y2, x),
         ACLNN_ERR_PARAM_NULLPTR);
     return ACLNN_SUCCESS;
 }
@@ -107,7 +107,7 @@ extern "C" aclnnStatus aclnnQbmmReduceScatterAddRmsNormCastGetWorkspaceSize(
     aclTensor* y1, aclTensor* y2, aclTensor* x, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     OP_LOGD("aclnnQbmmReduceScatterAddRmsNormCastGetWorkspaceSize start");
-    aclnnStatus retParam = CheckParams(x1, x2, y, gamma, scale, bias, pertokenScale, y1, y2, x);
+    aclnnStatus retParam = CheckParams(x1, x2, y, gamma, scale, pertokenScale, y1, y2, x);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     // x2 格式变化
     auto tempX2 = x2;

@@ -14,7 +14,7 @@
  */
 
 #include <register/op_def_registry.h>
-#include "tiling/mc2_tiling_utils.h"
+// #include "tiling/mc2_tiling_utils.h"
 #include "util/math_util.h"
 #include "../../op_kernel/qbmm_reduce_scatter_add_rms_norm_cast_tiling_data.h"
 
@@ -128,7 +128,7 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context)
         N = x2Shape->GetStorageShape().GetDim(DIM_ZERO) * x2Shape->GetStorageShape().GetDim(DIM_THREE);
     } 
     
-    workSpaces[0] = SYSTEM_NEED_WORKSPACE + M * N * sizeof(bfloat16_t);
+    workSpaces[0] = SYSTEM_NEED_WORKSPACE + M * N * sizeof(float32_t);
     return ge::GRAPH_SUCCESS;
 }
 

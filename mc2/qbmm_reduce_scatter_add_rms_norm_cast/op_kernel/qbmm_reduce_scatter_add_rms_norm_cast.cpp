@@ -19,7 +19,7 @@
 // #include "qbmm_reduce_scatter_add_rms_norm_cast_mte.h"
 
 using namespace AscendC;
-using namespace QbmmReduceScatterAddRmsNormCastImpl;
+// using namespace QbmmReduceScatterAddRmsNormCastImpl;
 
 __global__ __aicore__ void qbmm_reduce_scatter_add_rms_norm_cast(GM_ADDR x1, GM_ADDR x2, GM_ADDR y, GM_ADDR gamma, 
                                                                  GM_ADDR scale, GM_ADDR bias,  GM_ADDR perTokenScale,
@@ -31,7 +31,7 @@ __global__ __aicore__ void qbmm_reduce_scatter_add_rms_norm_cast(GM_ADDR x1, GM_
     TPipe pipe;
     if (TILING_KEY_IS(0)) {
         KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-        PRINTF("enter kernel!")
+        PRINTF("enter kernel!");
         // QbmmReduceScatterAddRmsNormCastMte<DTYPE_Y, DTYPE_SCALE, DTYPE_Y1, DTYPE_Y2, DTYPE_X, DTYPE_GAMMA, false> op;
         // const QbmmReduceScatterAddRmsNormCastTilingData *qBmmReduceScatterAddRmsNormCastTilingData = &tilingData;
         // op.Init(x1, x2, y, gamma, scale,  bias, perTokenScale, y1, 
@@ -40,7 +40,7 @@ __global__ __aicore__ void qbmm_reduce_scatter_add_rms_norm_cast(GM_ADDR x1, GM_
     }
     if (TILING_KEY_IS(1)) {
         KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-        PRINTF("enter kernel!")
+        PRINTF("enter kernel!");
         // QbmmReduceScatterAddRmsNormCastMte<DTYPE_Y, DTYPE_SCALE, DTYPE_Y1, DTYPE_Y2, DTYPE_X, DTYPE_GAMMA, true> op;
         // const QbmmReduceScatterAddRmsNormCastTilingData *qBmmReduceScatterAddRmsNormCastTilingData = &tilingData;
         // op.Init(x1, x2, y, gamma, scale,  bias, perTokenScale, y1, 
