@@ -83,6 +83,9 @@ static constexpr uint64_t SYNC_AIV_MTE3_AIC_FIX_FLAG = 4;
 static constexpr uint64_t SYNC_MODE4 = 4;
 static constexpr uint64_t FLAG_ID_MAX = 16;
 
+// 参数向上取整数
+static constexpr uint64_t ALIGN_64_FACTOR = 64;
+
 // 函数定义
 template <typename T>
 __aicore__ inline T CeilAlign(T a, T b)
