@@ -14,7 +14,7 @@
 #include "opdev/op_executor.h"
 
 namespace l0op {
-const aclTensor* KvQuantSparseFlashMlaMetadata(
+const aclTensor *KvQuantSparseFlashMlaMetadata(
     const aclTensor *cuSeqLensQOptional, const aclTensor *cuSeqLensOriKvOptional,
     const aclTensor *sequsedQOptional, const aclTensor *sequsedOriKvOptional,
     int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim, int64_t kvQuantMode,

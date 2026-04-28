@@ -23,7 +23,7 @@ namespace optiling {
 // Constants
 constexpr uint32_t AIC_CORE_NUM = 36;
 constexpr uint32_t AIV_CORE_NUM = 72;
-constexpr uint32_t QSMLAA_META_SIZE = 1024;
+constexpr uint32_t QSMLA_META_SIZE = 1024;
 using QSMLA_METADATA_T = int32_t;
 
 constexpr uint32_t FA_METADATA_SIZE = 9;

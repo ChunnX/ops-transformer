@@ -51,7 +51,7 @@ static aclnnStatus ParamsCheck(const aclTensor *cuSeqLensQOptional, const aclTen
         tileSizeOptional, ropeHeadDimOptional, batchSizeOptional, layoutQOptional, layoutKvOptional);
     CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
-    ret = CheckFeatureQsmla()
+    ret = CheckFeatureQsmla();
     CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     return ACLNN_SUCCESS;
@@ -96,7 +96,7 @@ int64_t GetKvBatchSizeQsmla(const aclTensor* cuSeqLensOriKvOptional, const aclTe
         return dimSize;
     }
     // 2. sequsedOriKvOptional 没传，判断Layout
-    if (strcmp(layoutQOptional, "TND") == 0) {
+    if (strcmp(layoutKvOptional, "TND") == 0) {
         ret = aclGetViewShape(cuSeqLensOriKvOptional, &viewDims, &viewDimsNum);
         if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] > 0) {
             int64_t dimSize = viewDims[0];
@@ -248,7 +248,7 @@ aclnnStatus CheckConsistencyQsmla(const aclTensor* cuSeqLensQOptional, const acl
     }
 
     // 校验 seqused_q
-    auto ret = aclGetViewShape(sequsedQOptional, &viewDims, &viewDimsNum);
+    ret = aclGetViewShape(sequsedQOptional, &viewDims, &viewDimsNum);
     if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] > 0) {
         // 校验 seqused_q 维度
         if (viewDimsNum != 1) {
@@ -325,7 +325,7 @@ aclnnStatus aclnnKvQuantSparseFlashMlaMetadataGetWorkspaceSize(
                           numHeadsQ, numHeadsKv, headDim, kvQuantMode,
                           batchSizeOptional, maxSeqlenQOptional, maxSeqlenKvOptional, oriTopKOptional,
                           tileSizeOptional, ropeHeadDimOptional, oriMaskModeOptional, layoutQOptional, 
-                          layoutKvOptional, hasOriKvOptional, socVersion, aicCoreNum, aivCoreNum),
+                          layoutKvOptional, hasOriKvOptional),
                    DFX_OUT(metaData));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -367,7 +367,7 @@ aclnnStatus aclnnKvQuantSparseFlashMlaMetadataGetWorkspaceSize(
 }
 
 aclnnStatus aclnnKvQuantSparseFlashMlaMetadata(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
-    aclrtStream stream);
+    aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnKvQuantSparseFlashMlaMetadata);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);

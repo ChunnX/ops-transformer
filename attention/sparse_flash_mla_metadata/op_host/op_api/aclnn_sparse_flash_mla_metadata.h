@@ -17,33 +17,33 @@
 extern "C" {
 #endif
 
-__attribute__((visibility("default"))) 
+__attribute__((visibility("default")))
 aclnnStatus aclnnSparseFlashMlaMetadataGetWorkspaceSize(
     const aclTensor *cuSeqLensQOptional, const aclTensor *cuSeqLensOriKvOptional,
     const aclTensor *sequsedQOptional, const aclTensor *sequsedOriKvOptional,
     int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim, int64_t batchSizeOptional, int64_t maxSeqlenQOptional,
     int64_t maxSeqlenKvOptional, int64_t oriTopKOptional, int64_t oriMaskModeOptional,
     char *layoutQOptional, char *layoutKvOptional, bool hasOriKvOptional,
-    const aclTensor *metaData, uint64_t *workspaceSize, aclOpExecutor** executor)
+    const aclTensor *metaData, uint64_t *workspaceSize, aclOpExecutor** executor);
 
-__attribute__((visibility("default"))) 
+__attribute__((visibility("default")))
 aclnnStatus CheckSingleParamSmla(int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t maxSeqlenKvOptional,
     int64_t numHeadsQ, int64_t numHeadsKv, int64_t oriTopKOptional, int64_t oriMaskModeOptional,
     char *layoutQOptional, char *layoutKvOptional, bool hasOriKvOptional);
 
-__attribute__((visibility("default"))) 
+__attribute__((visibility("default")))
 aclnnStatus CheckExistenceSmla(const aclTensor *cuSeqLensQOptional, const aclTensor *cuSeqLensOriKvOptional,
     char *layoutQOptional, char *layoutKvOptional, bool hasOriKvOptional);
 
-__attribute__((visibility("default"))) 
+__attribute__((visibility("default")))
 aclnnStatus CheckConsistencySmla(const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensOriKvOptional,
     const aclTensor *sequsedQOptional, const aclTensor *sequsedOriKvOptional, int64_t batchSizeOptional,
     char *layoutQOptional, char *layoutKvOptional);
 
-__attribute__((visibility("default"))) 
+__attribute__((visibility("default")))
 aclnnStatus CheckFeatureSmla();
 
-__attribute__((visibility("default"))) 
+__attribute__((visibility("default")))
 aclnnStatus aclnnSparseFlashMlaMetadata(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, 
     aclrtStream stream);
 

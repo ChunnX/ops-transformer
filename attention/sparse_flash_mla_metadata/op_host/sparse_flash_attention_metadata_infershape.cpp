@@ -22,7 +22,7 @@ static ge::graphStatus InferShapeSparseFlashMlaMetadata(gert::InferShapeContext*
 {
     gert::Shape* oShape = context->GetOutputShape(0);
     oShape->SetDimNum(1);
-    oShape->SetDim(0, optiling::SFA_META_SIZE);
+    oShape->SetDim(0, optiling::SMLA_META_SIZE);
     return GRAPH_SUCCESS;
 }
 

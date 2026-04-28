@@ -22,7 +22,7 @@ static ge::graphStatus InferShapeKvQuantSparseFlashMlaMetadata(gert::InferShapeC
 {
     gert::Shape* oShape = context->GetOutputShape(0);
     oShape->SetDimNum(1);
-    oShape->SetDim(0, optiling::QSFA_META_SIZE);
+    oShape->SetDim(0, optiling::QSMLA_META_SIZE);
     return GRAPH_SUCCESS;
 }
 

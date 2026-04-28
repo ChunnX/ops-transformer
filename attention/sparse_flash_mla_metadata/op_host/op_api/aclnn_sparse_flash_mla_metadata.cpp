@@ -14,7 +14,7 @@
  */
 
 #include "aclnn_sparse_flash_mla_metadata.h"
-#include "l0_sparse_flash_attention_metadata.h"
+#include "l0_sparse_flash_mla_metadata.h"
 #include "aclnn_kernels/contiguous.h"
 #include "aclnn_kernels/reshape.h"
 #include "aclnn/aclnn_base.h"
@@ -38,7 +38,7 @@ static aclnnStatus ParamsCheck(const aclTensor *cuSeqLensQOptional, const aclTen
     int64_t oriMaskModeOptional, char *layoutQOptional, char *layoutKvOptional, bool hasOriKvOptional)
 {
     auto ret = CheckSingleParamSmla(batchSizeOptional, maxSeqlenQOptional, maxSeqlenKvOptional, numHeadsQ, numHeadsKv,
-        oriTopKOptional, oriMaskModeOptional, layoutQOptional, layoutKvOptional, hasOriKvOptional)
+        oriTopKOptional, oriMaskModeOptional, layoutQOptional, layoutKvOptional, hasOriKvOptional);
     CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     ret = CheckExistenceSmla(cuSeqLensQOptional, cuSeqLensOriKvOptional, layoutQOptional, layoutKvOptional,
@@ -94,7 +94,7 @@ int64_t GetKvBatchSizeSmla(const aclTensor* cuSeqLensOriKvOptional, const aclTen
         return dimSize;
     }
     // 2. sequsedOriKvOptional 没传，判断Layout
-    if (strcmp(layoutQOptional, "TND") == 0) {
+    if (strcmp(layoutKvOptional, "TND") == 0) {
         ret = aclGetViewShape(cuSeqLensOriKvOptional, &viewDims, &viewDimsNum);
         if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] > 0) {
             int64_t dimSize = viewDims[0];
@@ -236,7 +236,7 @@ aclnnStatus CheckConsistencySmla(const aclTensor* cuSeqLensQOptional, const aclT
     }
 
     // 校验 seqused_q
-    auto ret = aclGetViewShape(sequsedQOptional, &viewDims, &viewDimsNum);
+    ret = aclGetViewShape(sequsedQOptional, &viewDims, &viewDimsNum);
     if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] > 0) {
         // 校验 seqused_q 维度
         if (viewDimsNum != 1) {
@@ -302,8 +302,7 @@ aclnnStatus aclnnSparseFlashMlaMetadataGetWorkspaceSize(
     L2_DFX_PHASE_1(aclnnSparseFlashMlaMetadata,
                    DFX_IN(cuSeqLensQOptional, cuSeqLensOriKvOptional, sequsedQOptional, sequsedOriKvOptional,
                           numHeadsQ, numHeadsKv, headDim, batchSizeOptional, maxSeqlenQOptional, maxSeqlenKvOptional,
-                          oriTopKOptional, oriMaskModeOptional, layoutQOptional,
-                          layoutKvOptional, hasOriKvOptional, socVersion, aicCoreNum, aivCoreNum),
+                          oriTopKOptional, oriMaskModeOptional, layoutQOptional, layoutKvOptional, hasOriKvOptional),
                    DFX_OUT(metaData));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -344,7 +343,7 @@ aclnnStatus aclnnSparseFlashMlaMetadataGetWorkspaceSize(
 }
 
 aclnnStatus aclnnSparseFlashMlaMetadata(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-    aclrtStream stream);
+    aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnSparseFlashMlaMetadata);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);

@@ -16,7 +16,6 @@
 #include "sparse_flash_mla_metadata_aicpu.h"
 #include <cstdio>
 #include <cmath>
-#include "log.h"
 #include "status.h"
 #include "cust_op/cust_cpu_utils.h"
 
@@ -108,7 +107,7 @@ int32_t SparseFlashMlaMetadataCpuKernel::GetQueryBatchSize()
         }
     }
     // 2. seqUsedQ_ 没传， 判断Layout
-    if (layout == "TND") {
+    if (layoutQuery_ == "TND") {
         if (cuSeqLenQ_ != nullptr && cuSeqLenQ_->GetData() != nullptr) {
             if (cuSeqLenQ_->GetTensorShape() != nullptr) {
                 return cuSeqLenQ_->GetTensorShape()->GetDimSize(0);
