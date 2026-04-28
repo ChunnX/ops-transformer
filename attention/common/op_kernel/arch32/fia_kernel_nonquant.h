@@ -475,7 +475,7 @@ __aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBl
     }
 
     if ASCEND_IS_AIV {
-        // InitOutputSingleCore();
+        InitOutputSingleCore();
     }
 
     InitWorkspace(workspace);
