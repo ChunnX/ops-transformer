@@ -83,7 +83,6 @@ static bool CheckShape(const aclTensor *x, const aclTensor *phi, const aclTensor
 {
     auto xShape = x->GetViewShape();
     auto xDim = xShape.GetDimNum();
-    
     if (xDim != 4) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                 "x dim must be 4 (bs, seq_len, n, c), but got dim = %ld.", xDim);
@@ -246,7 +245,7 @@ static inline aclnnStatus CheckParams(const aclTensor *x, const aclTensor *phi, 
 
 aclnnStatus aclnnMhcPreSinkhornGetWorkspaceSize(
     const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *bias,
-    int64_t hcMult, int64_t numIters, float hcEps, float normEps, bool needBackward,
+    int64_t hcMult, int64_t numIters, double hcEps, double normEps, bool needBackward,
     aclTensor *hin, aclTensor *hPost, aclTensor *hRes,
     aclTensor *hPre, aclTensor *hcBeforeNorm, aclTensor *invRms,
     aclTensor *sumOut, aclTensor *normOut,
