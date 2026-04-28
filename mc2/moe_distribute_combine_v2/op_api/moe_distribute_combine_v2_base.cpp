@@ -21,7 +21,15 @@
 #include "common/op_host/op_api/matmul_util.h"
 #include "moe_distribute_combine_v2_base.h"
 #include "aclnnInner_moe_distribute_combine_v2.h"
+
+#ifdef BUILD_OPEN_PROJECT
+#include "version/hcomm_version.h"
+#define HCCL_CHANNEL_SUPPORT_VERSION 90000000
+#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 #include "common/op_api/mc2_context.h"
+#endif
+#endif
+
 
 using namespace Ops::Transformer;
 using namespace op;
@@ -33,6 +41,7 @@ extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, 
 extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
 extern "C" void *NnopbaseGetUserHandle(void *executor);
 
+#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 extern aclnnStatus aclnnInnerMoeDistributeCombineV3GetWorkspaceSize(
     const aclTensor *context, const aclTensor *expandX, const aclTensor *expertIds,
     const aclTensor *assistInfoForCombine, const aclTensor *epSendCounts, const aclTensor *expertScales,
@@ -48,6 +57,13 @@ extern aclnnStatus aclnnInnerMoeDistributeCombineV3GetWorkspaceSize(
 
 extern aclnnStatus aclnnInnerMoeDistributeCombineV3(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                                     aclrtStream stream);
+ 
+enum class CommType : uint64_t {
+    AIV = 0, // AIV通信设置为0
+    CCU = 1  // ccu通信设置为1
+};
+#endif
+
 
 bool CombineCheckNotNull(const aclTensor *expandX, const aclTensor *expertIds, const aclTensor *assistInfoForCombine,
                          const aclTensor *epSendCounts, const aclTensor *expertScales, const char *groupEp,
@@ -85,13 +101,9 @@ aclnnStatus CombineCheckParams(const aclTensor *expandX, const aclTensor *expert
     return ACLNN_SUCCESS;
 }
 
-enum class CommType : uint64_t {
-    AIV = 0, // AIV通信设置为0
-    CCU = 1  // ccu通信设置为1
-};
-
 static void SetCommArgs(aclOpExecutor **executor, const bool is910B, const bool is950, const char *commAlg)
 {
+#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
     if (is950) {
         CommType type = CommType::AIV;
         if (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0) {
@@ -100,6 +112,8 @@ static void SetCommArgs(aclOpExecutor **executor, const bool is910B, const bool 
         void *args = reinterpret_cast<void *>(static_cast<uint64_t>(type));
         NnopbaseSetUserHandle(executor, args);
     }
+#endif
+
     if (NnopbaseSetHcclServerType) {
         if (is910B) {
             NnopbaseSetHcclServerType(*executor, NNOPBASE_HCCL_SERVER_TYPE_AICPU);
@@ -152,6 +166,7 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
             commQuantMode, groupListType, const_cast<char *>(commAlg), zeroExpertNum, copyExpertNum, constExpertNum,
             xOut, workspaceSize, executor);
     } else {
+#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
         uint64_t hcclBuffSize = 0;
         const char *opName = "moe_distribute_dispatch_combine_v2";
         auto ret = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
@@ -164,6 +179,7 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
             moeExpertNum, hcclBuffSize, tpWorldSize, tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum,
             globalBs, outDtype, commQuantMode, groupListType, const_cast<char *>(commAlg), zeroExpertNum, copyExpertNum,
             constExpertNum, xOut, workspaceSize, executor);
+#endif
     }
     SetCommArgs(executor, is910B, is950, commAlg);
     return getWorkspaceSizesRes;
@@ -173,6 +189,7 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
 aclnnStatus aclnnMoeDistributeCombineBase(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                           aclrtStream stream)
 {
+#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
     const static bool is950 = GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
     if (is950) {
         void *arg = NnopbaseGetUserHandle(executor);
@@ -183,6 +200,7 @@ aclnnStatus aclnnMoeDistributeCombineBase(void *workspace, uint64_t workspaceSiz
             return aclnnInnerMoeDistributeCombineV3(workspace, workspaceSize, executor, stream);
         }
     }
+#endif
     OP_LOGD("aclnn_combine inner v2 start");
     return aclnnInnerMoeDistributeCombineV2(workspace, workspaceSize, executor, stream);
 }
