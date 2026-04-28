@@ -223,12 +223,13 @@ def get_param_fus(input_tensor_dict, params):
     fa_param['sparse_mode'] = params['sparsemode']
     fa_param['sparse_blocksize'] = params['sparse_blocksize']
 
+    # >> q info
     fa_param['q_shape'] = params['shape_input']['query']
-fa_param['q_dtype'] = params['dtype_input']['query']
-    fa_param['q_shape'] = params['shape_input']['query']
+    fa_param['q_dtype'] = params['dtype_input']['query']
     fa_param['q_tensor'] = input_tensor_dict['query']
 
     # >> k info
+    fa_param['k_shape'] = params['shape_input']['key']
     fa_param['k_dtype'] = params['dtype_input']['key']
     fa_param['k_tensor'] = input_tensor_dict['key']
 

@@ -455,7 +455,7 @@ def kv_concat_nopa_preprocessing(input_tensor_dict, fa_param, params):
     # query_cache: raw query + raw query_rope 拼接后转目标 dtype
     q_raw = fa_param['_raw_query'] if fa_param.get('_raw_query') is not None else fa_param['q_tensor']
     q_rope_raw = fa_param.get('_raw_query_rope')
-if q_rope_raw is not None:
+    if q_rope_raw is not None:
         q_cat = torch.cat((q_raw, q_rope_raw), dim=-1)
     else:
         q_cat = q_raw
