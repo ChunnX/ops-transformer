@@ -518,8 +518,12 @@ private:
             softmaxShapeInfo.oriSrcM = curRowsNum;
 
             if constexpr (IsSameType<T, float>::value) {
+                PRINTF("before1 =============");
+                AscendC::DumpTensor(gatingLocal, 1001, curRowsNum * tilingData->col * sizeof(float));
                 SoftMax<float, true, false>(
                     softmaxResultOutLocal, gatingLocal, tilingData->softmaxTilingData, softmaxShapeInfo);
+                PRINTF("after1 =============");
+                AscendC::DumpTensor(softmaxResultOutLocal, 1002, curRowsNum * tilingData->col * sizeof(float));
                 gatingQueue.FreeTensor(gatingLocal);
                 if (this->softmaxFlag == 1) {
                     CopyOutSoftmax(OuterIdx, curRowsNum, softmaxResultOutLocal, tilingData);
@@ -528,6 +532,7 @@ private:
                     topKOutsLocal.ReinterpretCast<float>(), topKOutsLocal[tilingData->bufferElemSize],
                     softmaxResultOutLocal, tmpTensorLocal, curRowsNum, tilingData);
             } else {
+                AscendC::DumpTensor(gatingLocal, 2001, curRowsNum * tilingData->col * sizeof(T));
                 if (tilingData->col < CONSTANT_EIGHT) {
                     Cast(
                         tmpTensorLocal, gatingLocal, RoundMode::CAST_NONE, tilingData->colBytesAlign, curRowsNum,
@@ -536,8 +541,12 @@ private:
                     Cast(tmpTensorLocal, gatingLocal, RoundMode::CAST_NONE, curRowsNum * tilingData->colBytesAlign);
                 }
                 gatingQueue.FreeTensor(gatingLocal);
+                PRINTF("before2 =============");
+                AscendC::DumpTensor(tmpTensorLocal, 2002, curRowsNum * tilingData->col * sizeof(float));
                 SoftMax<float, true, false>(
                     softmaxResultOutLocal, tmpTensorLocal, tilingData->softmaxTilingData, softmaxShapeInfo);
+                PRINTF("after2 =============");
+                AscendC::DumpTensor(softmaxResultOutLocal, 2003, curRowsNum * tilingData->col * sizeof(float));
                 if (this->softmaxFlag == 1) {
                     CopyOutSoftmax(OuterIdx, curRowsNum, softmaxResultOutLocal, tilingData);
                 }
