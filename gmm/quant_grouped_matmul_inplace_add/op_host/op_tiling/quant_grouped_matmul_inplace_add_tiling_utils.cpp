@@ -96,14 +96,14 @@ bool CheckDtypeForInplaceAdd(const GQmmInputInfo &inputParams)
     if (isFp8) {
         OP_CHECK_IF(inputParams.scaleDtype != ge::DT_FLOAT8_E8M0,
                     OP_LOGE(inputParams.opName,
-                            "With DT_FLOAT8_E4M3FN/DT_FLOAT8_E5M2 inputs, scale2 dtype should be DT_FLOAT8_E8M0, "
-                            "actual dtype is %s.",
+                            "With DT_FLOAT8_E4M3FN/DT_FLOAT8_E5M2 inputs, scale2 dtype should be DT_FLOAT8_E8M0, \
+actual dtype is %s.",
                             ge::TypeUtils::DataTypeToSerialString(inputParams.scaleDtype).c_str()),
                     return false);
         OP_CHECK_IF(inputParams.perTokenScaleDtype != ge::DT_FLOAT8_E8M0,
                     OP_LOGE(inputParams.opName,
-                            "With DT_FLOAT8_E4M3FN/DT_FLOAT8_E5M2 inputs, scale1 dtype should be DT_FLOAT8_E8M0, "
-                            "actual dtype is %s.",
+                            "With DT_FLOAT8_E4M3FN/DT_FLOAT8_E5M2 inputs, scale1 dtype should be DT_FLOAT8_E8M0, \
+actual dtype is %s.",
                             ge::TypeUtils::DataTypeToSerialString(inputParams.perTokenScaleDtype).c_str()),
                     return false);
         return true;
@@ -185,9 +185,7 @@ bool CheckShapeForMxQuant(const gert::Shape &x1ScaleShape, const gert::Shape &x2
                 return false);
     auto x1ScaleDimNum = x1ScaleShape.GetDimNum();
     OP_CHECK_IF(x1ScaleDimNum != MXFP_PER_TOKEN_SCALE_DIM_NUM,
-                OP_LOGE(inputParams.opName,
-                        "The dim num of scale1 should be 3 in mx quant mode, but \
-actual is %zu",
+                OP_LOGE(inputParams.opName, "The dim num of scale1 should be 3 in mx quant mode, but actual is %zu",
                         x1ScaleDimNum),
                 return false);
     auto xScaleLastDim = static_cast<uint64_t>(x1ScaleShape.GetDim(x1ScaleDimNum - 1));
@@ -199,17 +197,17 @@ actual is %zu",
     auto expectedKDimValue = inputParams.kSize / MXFP_BASEK_FACTOR + inputParams.groupNum;
     OP_CHECK_IF(
         xScaleLastDim != MXFP_MULTI_BASE_SIZE || xScaleKDim != expectedKDimValue || xScaleMDim != inputParams.mSize,
-        OP_LOGE(inputParams.opName,
-                "In mx quant mode, the expected shape of scale1 is \
-(%lu,%lu,%lu), but the actual is (%lu,%lu,%lu).",
-                expectedKDimValue, inputParams.mSize, MXFP_MULTI_BASE_SIZE, xScaleKDim, xScaleMDim, xScaleLastDim),
+        OP_LOGE(
+            inputParams.opName,
+            "In mx quant mode, the expected shape of scale1 is ( %lu, %lu, %lu ), but the actual is ( %lu, %lu, %lu ).",
+            expectedKDimValue, inputParams.mSize, MXFP_MULTI_BASE_SIZE, xScaleKDim, xScaleMDim, xScaleLastDim),
         return false);
     OP_CHECK_IF(
         wScaleLastDim != MXFP_MULTI_BASE_SIZE || wScaleKDim != expectedKDimValue || wScaleNDim != inputParams.nSize,
-        OP_LOGE(inputParams.opName,
-                "In mx quant mode, the expected shape of scale2 is (%lu,%lu,%lu), \
-but the actual is (%lu,%lu,%lu).",
-                expectedKDimValue, inputParams.nSize, MXFP_MULTI_BASE_SIZE, wScaleKDim, wScaleNDim, wScaleLastDim),
+        OP_LOGE(
+            inputParams.opName,
+            "In mx quant mode, the expected shape of scale2 is ( %lu, %lu, %lu ), but the actual is ( %lu, %lu, %lu ).",
+            expectedKDimValue, inputParams.nSize, MXFP_MULTI_BASE_SIZE, wScaleKDim, wScaleNDim, wScaleLastDim),
         return false);
     return true;
 }
