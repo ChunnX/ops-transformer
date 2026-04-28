@@ -193,7 +193,8 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>输入</td>
     <td>公式中的<code>weight</code>。</td>
     <td>tensorList长度支持[1, 128]或者[1, 1024]。支持昇腾亲和数据排布格式(nz)。</td>
-    <td>FLOAT16、BFLOAT16、INT8、INT4、INT32、FLOAT32、FLOAT4_E2M1、FLOAT8_E4M3FN<sup>2</sup></td>
+    <td>FLOAT16、BFLOAT16、INT8、INT4、INT32、FLOAT32、FLOAT4_E2M1、FLOAT4_E1M2<sup>2</sup>
+    、FLOAT8_E4M3FN<sup>2</sup></td>
     <td>FRACTAL_NZ</td>
     <td>-</td>
     <td>-</td>
