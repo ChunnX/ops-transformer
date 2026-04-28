@@ -5,16 +5,15 @@
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
 |<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|     √      |
-|<term>Atlas A2 训练系列产品</term>|      √     |
-|<term>Atlas A2 推理系列产品</term>|      ×     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|     √     |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|     √     |
+|<term>Atlas 200I/500 A2 推理产品</term>|     ×      |
+|<term>Atlas 推理系列产品</term>|     ×     |
+|<term>Atlas 训练系列产品</term>|     ×     |
 
 ## 功能说明
 
-- 算子功能：训练场景下，FloydAttn相较于传统FA主要是计算qk/pv注意力时会额外将seq作为batch轴从而转换为batchMatmul
+- 算子功能：训练场景下，计算Floyd注意力的反向输出，FloydAttn相较于传统FA主要是计算qk/pv注意力时会额外将seq作为batch轴从而转换为batchMatmul。
 
 - 计算公式：
 
