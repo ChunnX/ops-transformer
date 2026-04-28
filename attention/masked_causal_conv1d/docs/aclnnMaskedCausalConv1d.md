@@ -25,7 +25,7 @@
   y[i,j] = mask[j,i] * \sum_{k=0}^{W-1} x[i-k,j] * weight[W-1-k]
   $$
 
-  其中，无效位置的padding为0填充；当前W仅支持3；当前W仅支持3；H轴为elementwise操作，上述公式不体现。
+  其中，无效位置的padding为0填充；当前W仅支持3；H轴为elementwise操作，上述公式不体现。
 
 ## 函数原型
 
@@ -112,7 +112,7 @@ aclnnStatus aclnnMaskedCausalConv1d(
         <td>表示卷积操作的输出掩码，对应公式中的mask。</td>
         <td>
           <ul>
-            <li>支持空Tensor。</li>
+            <li>不支持空Tensor。</li>
             <li>shape为[B, S]。</li>
             <li>默认值是nullptr。</li>
           </ul>
