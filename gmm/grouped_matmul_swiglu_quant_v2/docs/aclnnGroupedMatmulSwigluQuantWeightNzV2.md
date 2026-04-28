@@ -766,11 +766,11 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
           <tbody>
             <tr>
               <td>MXFP8</td>
-              <td>FLOAT8_E4M3FN、FLOAT8_E5M2</td>
-              <td>FLOAT8_E4M3FN、FLOAT8_E5M2</td>
+              <td>FLOAT8_E4M3FN</td>
+              <td>FLOAT8_E4M3FN</td>
               <td>FLOAT8_E8M0</td>
               <td>FLOAT8_E8M0</td>
-              <td>FLOAT8_E4M3FN、FLOAT8_E5M2</td>
+              <td>FLOAT8_E4M3FN</td>
               <td>FLOAT8_E8M0</td>
             </tr>
           </tbody>
