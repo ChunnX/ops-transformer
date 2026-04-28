@@ -512,6 +512,9 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
 
     expertIdsCnt_ = axisBS_ * axisK_;
     uint32_t hFp32Size = axisH_ * sizeof(float);
+    if constexpr ((QuantMode == PERGROUP_DYNAMIC_QUANT) && IsSmoothScaleExist) {
+        hFp32Size = Align128(axisH_) * sizeof(float);
+    }
     uint32_t expertIdsSize = expertIdsCnt_ * sizeof(int32_t);
     uint32_t xActivateMaskSize = axisBS_ * (Ceil(axisK_ * sizeof(bool), UB_ALIGN) * UB_ALIGN) * sizeof(half);
     uint32_t bsAlign256 = Ceil(axisBS_ * sizeof(half), ALIGNED_LEN_256) * ALIGNED_LEN_256;
@@ -543,7 +546,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
         tpipe_->InitBuffer(receiveDataCastFloatBuf_, maxSize_); // max{28K, BS * K * 4B}
         totalUsedUB_ += maxSize_;
         floatLocalTemp_ = receiveDataCastFloatBuf_.Get<float>();
-        tpipe_->InitBuffer(smoothScalesBuf_, maxSize_); // max{28K, BS * K * 4B}
+        tpipe_->InitBuffer(smoothScalesBuf_, maxSize_); // max{28K, hAlign * 4B}
         totalUsedUB_ += maxSize_;
         smoothScalesTensor_ = smoothScalesBuf_.Get<float>();
         if constexpr (QuantMode == PERTOKEN_DYNAMIC_QUANT) {

@@ -33,6 +33,8 @@ class MoeDistributeDispatchV2Quant{
 public:
     uint32_t axisH_{0};
     uint32_t hOutSizeAlign_{0};
+    uint32_t smoothTailOffset_{0};
+    uint32_t smoothTailCount_{0};
 
     LocalTensor<float> floatLocalTemp_;
     LocalTensor<float> smoothScalesTensor_;
@@ -88,6 +90,12 @@ public:
             hAlignSize_ = Align128(axisH_) * sizeof(XInType); // PERGROUP量化计算scale时每次搬入128个数据
             hOutSizeAlign_ += Ceil128(axisH_) * sizeof(float); 
             scaleOutBytes = Ceil128(axisH_) * sizeof(float); // PERGROUP量化每128个值生成一个scale
+            if constexpr (IsSmoothScaleExist) {
+                smoothTailOffset_ = Ceil(axisH_ * sizeof(float), UB_ALIGN) * UB_ALIGN / sizeof(float);
+                uint32_t inputReadCount = Align128(axisH_);
+                smoothTailCount_ = inputReadCount > smoothTailOffset_ ?
+                    (inputReadCount - smoothTailOffset_) : 0U;
+            }
         }
         #endif
         uint32_t hScaleSizeAlign = Ceil(hOutSizeAlign_, UB_ALIGN) * UB_ALIGN; //保证后面填充三元组的起始地址对齐32
@@ -209,6 +217,11 @@ public:
             if constexpr (IsSmoothScaleExist) { // 平滑系数
                 DataCopyPad(smoothScalesTensor_, scalesGMTensor_[expertIndex * axisH_], scalesInParams_, scalesPadParams_);
                 SyncFunc<AscendC::HardEvent::MTE2_V>();
+                if (smoothTailCount_ > 0U) {
+                    // DataCopyPad只保证smooth拷贝到32B对齐，量化计算仍会按128元素读取，尾段需补0避免读到UB旧值
+                    Duplicate<float>(smoothScalesTensor_[smoothTailOffset_], 0.0f, smoothTailCount_);
+                    PipeBarrier<PIPE_V>();
+                }
             }
 
             __ubuf__ XInType* srcAddr = (__ubuf__ XInType*)inLocal.GetPhyAddr();
