@@ -57,6 +57,7 @@
      uint8_t GetSparseType();
      void CalcleDeterParam();
      virtual void CalcleTNDDeterParam() {};
+     virtual void CalcTNDSwizzleParam() {};
 
      void GetWorkspaceSize4Deter(size_t &workspaceSize);
      void GetIsDeterArr();
