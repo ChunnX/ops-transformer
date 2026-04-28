@@ -220,7 +220,7 @@ public:
         uint64_t singleCoreLastLoopNBurstNum = normalCoreLastLoopNBurstNum; // 普通单核最后一次loop处理多少个D
 
         uint64_t nBurst = singleLoopNBurstNum; // single loop nums
-        uint64_t curS = s1; // tnd 格式需修改
+        uint64_t curS = s1; // tnd场景会在InitIndex中重新赋值
         uint32_t ping = 0;
 
         for (uint64_t i = 0; i < singleCoreLoop; i++) {
@@ -307,19 +307,22 @@ public:
     void InitIndex(uint64_t startIdx, uint64_t& curS, GM_ADDR seqS)
     {
         if constexpr (INPUT_LAYOUT == TND) {
-            int64_t totalLen = 0;
-            for (int64_t bDimIdx = bIdx; bDimIdx < b; bDimIdx++) {
-                totalLen = n1 * ((__gm__ int64_t *)seqS)[bDimIdx] * d;
-                if (totalLen > startIdx) {
+            uint64_t prefixSum = 0;
+            for (int64_t bDimIdx = 0; bDimIdx < b; bDimIdx++) {
+                uint64_t curBatchLen = ((__gm__ int64_t *)seqS)[bDimIdx];
+                uint64_t curBatchElements = curBatchLen * n1 * d;
+
+                if (startIdx < prefixSum + curBatchElements) {
                     bIdx = bDimIdx;
-                    curS = (bIdx == 0) ? ((__gm__ int64_t *)seqS)[bIdx] :
-                                        (((__gm__ int64_t *)seqS)[bIdx] - ((__gm__ int64_t *)seqS)[bIdx - 1]);
-                    int64_t bTail = startIdx - (totalLen - n1 * curS * d);
+                    curS = curBatchLen;
+
+                    uint64_t bTail = startIdx - prefixSum;
                     nIdx = bTail / (curS * d);
-                    int64_t nTail = bTail % (curS * d);
+                    uint64_t nTail = bTail % (curS * d);
                     sIdx = nTail / d;
                     break;
                 }
+                prefixSum += curBatchElements;
             }
         } else {
             bIdx = startIdx / (n1 * s1 * d);
@@ -371,7 +374,11 @@ public:
     {
         uint64_t srcOffset = 0;
         if constexpr (INPUT_LAYOUT == TND) {
-            uint64_t bOffset = bIdx == 0 ? 0 : n1 * ((__gm__ uint64_t *)seqS)[bIdx - 1] * d;
+            uint64_t prefixSum = 0;
+            for (uint64_t b = 0; b < bIdx; b++) {
+                prefixSum += ((__gm__ uint64_t *)seqS)[b];
+            }
+            uint64_t bOffset = prefixSum * n1 * d;
             srcOffset = bOffset + (sIdx * n1 + nIdx) * d;
         } else {
             if constexpr (INPUT_LAYOUT == BNSD) {
