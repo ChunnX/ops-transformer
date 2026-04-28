@@ -64,7 +64,7 @@ inline aclrtGetArgsFromExceptionInfo_t GetAclrtGetArgsFromExceptionInfoFunc()
                 OP_LOGE(OP_NAME, "dlsym aclrtGetArgsFromExceptionInfo failed: %s", dlerror());
             }
         } else {
-            OP_LOGE(OP_NAME, "dlopen failed: %s", dlerror());
+            OP_LOGE(OP_NAME, "dlopen failed: %s", dlerror()); // 注释增加、清晰
         }
     }
     return func;

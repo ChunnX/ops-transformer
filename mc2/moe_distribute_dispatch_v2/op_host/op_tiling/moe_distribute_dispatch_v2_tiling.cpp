@@ -2326,7 +2326,7 @@ __attribute__((constructor)) void RegisterMoeDistributeDispatchV2ExceptionFunc()
     }
 
     IMPL_OP(MoeDistributeDispatchV2)
-        .ExceptionDumpParseFunc(MoeDistributeDispatchV2ExceptionImplWrapper);
+        .ExceptionDumpParseFunc(MoeDistributeDispatchV2ExceptionImplWrapper); // 注释排查
 }
 #endif
 

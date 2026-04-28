@@ -71,10 +71,10 @@ namespace {
         static EsTransposeFunc func = GetEsTransposeFunc();
         auto* builder = ge::es::ResolveBuilder(x, perm);
         OPS_LOG_E(FUSION_PASS_NAME.c_str(), "printf ResolveBuilder func end.");
-        auto* result = func(x.ToTensorHolder(builder).GetCTensorHolder(),
+        auto result = func(x.ToTensorHolder(builder).GetCTensorHolder(),
                             perm.ToTensorHolder(builder).GetCTensorHolder());
         OPS_LOG_E(FUSION_PASS_NAME.c_str(), "printf func func end.");
-        return ge::es::EsTensorHolder(result);
+        return result;
     }
 }
 
