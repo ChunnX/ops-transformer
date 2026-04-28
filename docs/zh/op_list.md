@@ -969,6 +969,16 @@
   </tr>
   <tr>
     <td>posembedding</td>
+    <td><a href="../../posembedding/kv_rms_norm_rope_cache/README.md">kv_rms_norm_rope_cache</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>对输入张量（kv）的尾轴进行切分，拆分出左半边用于RmsNorm计算，右半边用于RoPE计算，再将计算结果分别scatter到两块cache中。</td>
+  </tr>
+  <tr>
+    <td>posembedding</td>
     <td><a href="../../posembedding/qkv_rms_norm_rope_cache/README.md">qkv_rms_norm_rope_cache</a></td>
     <td>✓</td>
     <td>✓</td>
