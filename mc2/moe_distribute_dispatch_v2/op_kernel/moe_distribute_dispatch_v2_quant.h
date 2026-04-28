@@ -36,8 +36,6 @@ public:
 
     LocalTensor<float> floatLocalTemp_;
     LocalTensor<float> smoothScalesTensor_;
-    GlobalTensor<uint8_t> dynamicScalesOutGMTensor_;
-
     TBuf<> smoothScalesBuf_;
 
     DataCopyParams scalesInParams_;
@@ -47,12 +45,11 @@ public:
     __aicore__ inline MoeDistributeDispatchV2Quant() = default;
 
     __aicore__ inline void SetQuantInitParams(LocalTensor<float> floatLocalTemp, LocalTensor<float> smoothScalesTensor, 
-                                              TBuf<> smoothScalesBuf, GlobalTensor<uint8_t> dynamicScalesOutGMTensor) 
+                                              TBuf<> smoothScalesBuf) 
     {
         floatLocalTemp_ = floatLocalTemp;
         smoothScalesBuf_ = smoothScalesBuf;
         smoothScalesTensor_ = smoothScalesTensor;
-        dynamicScalesOutGMTensor_ = dynamicScalesOutGMTensor;
 
         scalesInParams_ = {1U, static_cast<uint16_t>(axisH_ * sizeof(float)), 0U, 0U};
         scalesPadParams_ = {true, 0, 0, 0};
@@ -253,7 +250,7 @@ public:
 
     __aicore__ inline void CopyScalesToOut(uint32_t currentTokenIndex, uint32_t scaleOutBytes,
                                            LocalTensor<XOutType> &quantTok,
-                                           GlobalTensor<uint8_t> dynamicScalesOutGMTensor_,
+                                           GlobalTensor<uint8_t> dynamicScalesOutGMTensor,
                                            DataCopyExtParams &scaleOutParams)
     {
         if constexpr (((QuantMode > UNQUANT) && (QuantMode != STATIC_QUANT)) ||
@@ -275,7 +272,7 @@ public:
                     (Ceil(Ceil(axisH_, FP4_ELEMS_PER_BYTE), UB_ALIGN) * UB_ALIGN)].template ReinterpretCast<uint8_t>();
             }
             #endif
-            DataCopyPad(dynamicScalesOutGMTensor_[currentTokenIndex * scaleOutBytes], scaleLT, scaleOutParams);
+            DataCopyPad(dynamicScalesOutGMTensor[currentTokenIndex * scaleOutBytes], scaleLT, scaleOutParams);
         }
     }
 
