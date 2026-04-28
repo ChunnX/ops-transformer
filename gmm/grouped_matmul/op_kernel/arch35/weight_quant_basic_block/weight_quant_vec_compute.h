@@ -168,6 +168,7 @@ private:
     LocalTensor<biasType> ubBiasTotalBuffer_;
     LocalTensor<biasType> ubBiasOutTotalBuffer_;
     LocalTensor<uint16_t> transIdBuffer_;
+    LocalTensor<uint16_t> transScaleBuffer_;
 
     LocalTensor<uint64_t> ubAntiQuantScaleMaskBuffer_;
 
@@ -200,6 +201,10 @@ private:
     constexpr static VfConfig VF_CONFIG = GetVfConfig<xType, wqmmConfig, vecConfig>();
 
     constexpr static uint64_t ANTIQUANT_Y_STANDARD_N_SIZE = VECTOR_REG_WIDTH / sizeof(int32_t);
+    
+    constexpr static uint64_t TRANS_SCALE_SINGLE_BUF_SIZE = 16 * GetKBUnit<uint16_t>();
+    constexpr static uint16_t GROUP_NUM_DEFAULT_LEN = MX_SCALE_K_L1_SIZE / MX_GROUPSIZE;
+    constexpr static uint16_t MX_SCALE_BANK_CONFLICT_OFFSET = 32;
 };
 
 GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_TEMPLATE_PARAM
@@ -272,17 +277,18 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::InitMx()
     } else if constexpr (IsSameType<xType, fp8_e4m3fn_t>::value) {
         // MxA8W4
         ubWeightInputLowBitTotalBuffer_ = LocalTensor<int8_t>(TPosition::LCM, 0, UB_BUFFER_INFO.weightInputLowbitUbTotalSize); // 16KB * 4 = 64KB
-        ubHighBitTotalBuffer_ = LocalTensor<xType>(TPosition::LCM, 64 * GetKBUnit<int8_t>(), UB_BUFFER_INFO.highBitDataUbTotalSize);  // 32KB * 4 = 128KB
+        ubHighBitTotalBuffer_ = LocalTensor<xType>(TPosition::LCM, 80 * GetKBUnit<int8_t>(), UB_BUFFER_INFO.highBitDataUbTotalSize);  // 32KB * 4 = 128KB
         if (hasBias_) {
-            ubBiasTotalBuffer_ = LocalTensor<biasType>(TPosition::LCM, 192 * GetKBUnit<int8_t>(), UB_BUFFER_INFO.biasUbTotalSize);  // 2KB
-            ubBiasOutTotalBuffer_ = LocalTensor<biasType>(TPosition::LCM, 194 * GetKBUnit<int8_t>(), UB_BUFFER_INFO.biasReducedUbTotalSize); // 2KB
+            ubBiasTotalBuffer_ = LocalTensor<biasType>(TPosition::LCM, 208 * GetKBUnit<int8_t>(), UB_BUFFER_INFO.biasUbTotalSize);  // 2KB
+            ubBiasOutTotalBuffer_ = LocalTensor<biasType>(TPosition::LCM, 210 * GetKBUnit<int8_t>(), UB_BUFFER_INFO.biasReducedUbTotalSize); // 2KB
         }
-        transIdBuffer_ = LocalTensor<uint16_t>(TPosition::LCM, 196 * GetKBUnit<int8_t>(), UB_BUFFER_INFO.biasReducedUbTotalSize); // 1KB
+        transIdBuffer_ = LocalTensor<uint16_t>(TPosition::LCM, 212 * GetKBUnit<int8_t>(), GetKBUnit<uint16_t>()); // 1KB
         for (uint64_t i = 0; i < 8; i++) {
             for(uint64_t j = 0; j < 16; j++){
-                transIdBuffer_.SetValue(i * 16 + j, i + j * 64);
+                transIdBuffer_.SetValue(i * 16 + j, i + j * 80);
             }
         }
+        transScaleBuffer_ = LocalTensor<uint16_t>(TPosition::LCM, 213 * GetKBUnit<int8_t>(), DOUBLE_BUFFER_NUM * TRANS_SCALE_SINGLE_BUF_SIZE); // 32KB
         /*
         transIdBuffer_.template ReinterpretCast<wType>()
         // i=0 时，4 个 uint64_t 的基值（每列对应 j 的 4 个连续值）
@@ -691,13 +697,13 @@ GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_TEMPLATE_PARAM
 __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::CopyWeightMxScaleGmToUb(
     uint64_t nOffset, uint64_t nL1Size, uint64_t kOffset, uint64_t kSize, uint64_t mxGroupNum, uint64_t realGroupNum)
 {
-    static constexpr uint16_t GROUP_NUM_DEFAULT_LEN = MX_SCALE_K_L1_SIZE / MX_GROUPSIZE;
+
     DataCopyPad2D(ubWeightInputLowBitTotalBuffer_[(ubMte2LoopIdx_ % vecConfig.ubMte2BufferNum) *
                                                           UB_BUFFER_INFO.weightInputLowBitUbSingleBufferSize]
                     .template ReinterpretCast<antiQuantScaleType>(),
                     antiQuantScaleGlobal_[nOffset * mxGroupNum + CeilDivide<uint64_t>(kOffset, MX_GROUPSIZE)],
                     nL1Size, realGroupNum,
-                    GROUP_NUM_DEFAULT_LEN, mxGroupNum);
+                    GROUP_NUM_DEFAULT_LEN + MX_SCALE_BANK_CONFLICT_OFFSET, mxGroupNum);
 
     event_t eventIdMTE2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID<HardEvent::MTE2_V>());
     SetFlag<HardEvent::MTE2_V>(eventIdMTE2ToV);
@@ -712,16 +718,14 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::TransWeig
         WaitFlag<HardEvent::MTE3_V>(
             vecEventIdMte3ToV_[ubComputeLoopIdx_ & (UB_BUFFER_INFO.ubWeightOutputHighBitBufferNum - 1)]);
     }
-    static constexpr uint16_t GROUP_NUM_DEFAULT_LEN = MX_SCALE_K_L1_SIZE / MX_GROUPSIZE;
-    static constexpr uint16_t VF_BUF_INNER_STRIDE = VEC_MAX_ELEM_B16 * UB_BUFFER_INFO.ubWeightOutputHighBitBufferNum;
-    AscendC::VF_CALL<TransMxScaleNdToDnVf<(GROUP_NUM_DEFAULT_LEN >> 1), VF_BUF_INNER_STRIDE>>(
+    AscendC::VF_CALL<TransMxScaleNdToDnVf<((GROUP_NUM_DEFAULT_LEN + MX_SCALE_BANK_CONFLICT_OFFSET)>> 1), VEC_MAX_ELEM_B16>>(
         (__ubuf__ uint16_t *)ubWeightInputLowBitTotalBuffer_.GetPhyAddr(
             ((ubMte2LoopIdx_ - 1) & (vecConfig.ubMte2BufferNum - 1)) * UB_BUFFER_INFO.weightInputLowBitUbSingleBufferSize),
-        (__ubuf__ uint16_t *)ubHighBitTotalBuffer_.GetPhyAddr(
-            (ubComputeLoopIdx_ & (UB_BUFFER_INFO.ubWeightOutputHighBitBufferNum - 1)) * VEC_REG_ELEM),
+        (__ubuf__ uint16_t *)transScaleBuffer_.GetPhyAddr(
+            (ubComputeLoopIdx_ & 1) * TRANS_SCALE_SINGLE_BUF_SIZE),
         (__ubuf__ uint16_t *)transIdBuffer_.GetPhyAddr(), CeilDivide<uint64_t>(nSize, BLOCK_CUBE),
-        CeilDivide<uint64_t>(CeilDivide<uint64_t>(kSize, MX_GROUPSIZE), 8),
-        GROUP_NUM_DEFAULT_LEN / 16 * VF_BUF_INNER_STRIDE);
+        CeilDivide<uint64_t>(CeilDivide<uint64_t>(kSize, MX_GROUPSIZE) >> 1, 8),
+        (GROUP_NUM_DEFAULT_LEN * BLOCK_CUBE)>> 1);
 }
 
 GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_TEMPLATE_PARAM
@@ -737,11 +741,11 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::CopyWeigh
     DataCopyParams params;
     params.blockCount = CeilDivide<uint64_t>(nSize, BLOCK_CUBE) * GROUP_NUM_DEFAULT_LEN / 16;
     params.blockLen = VEC_MAX_ELEM_B16 / BLOCK_CUBE;
-    params.srcStride = (UB_BUFFER_INFO.ubWeightOutputHighBitBufferNum - 1) * params.blockLen;
+    params.srcStride = 0;
     params.dstStride = 0;
 
     DataCopy(scaleL1[l1NOffset * GROUP_NUM_DEFAULT_LEN / 2],
-             ubHighBitTotalBuffer_[(ubComputeLoopIdx_ & (UB_BUFFER_INFO.ubWeightOutputHighBitBufferNum - 1)) * VEC_REG_ELEM]
+             transScaleBuffer_[(ubComputeLoopIdx_ & 1) * TRANS_SCALE_SINGLE_BUF_SIZE]
                  .template ReinterpretCast<uint16_t>(),
              params);
 
