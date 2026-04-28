@@ -359,6 +359,8 @@ namespace optiling{
             totalTaskNum += curTaskNum;
         }
         faTilingData.set_totalTaskNum(totalTaskNum);
+        uint32_t needCoreNum = totalTaskNum < blockNum_ ? totalTaskNum : blockNum_;
+        faTilingData.set_needCoreNum(needCoreNum);
     }
 
 
