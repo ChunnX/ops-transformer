@@ -43,19 +43,28 @@ __aicore__ inline constexpr GmFormat GetQueryGmFormat() {
     }
 }
 
-template <LayOutTypeEnum LAYOUT>
+template <LayOutTypeEnum LAYOUT, uint8_t KvLayoutType=0, bool isPa=false>
 __aicore__ inline constexpr GmFormat GetKVGmFormat() {
-    if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH) {
-        return GmFormat::BSND;
-    } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_SBH) {
-        return GmFormat::SBND;
-    } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BNSD) {
-        return GmFormat::BNSD;
-    } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
-        return GmFormat::TND;
-    } else {
-        return GmFormat::NTD;
+    if constexpr (KvLayoutType == 0) { // KvLayoutType_NO_PA
+        if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH) {
+            return GmFormat::BSND;
+        } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_SBH) {
+            return GmFormat::SBND;
+        } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BNSD) {
+            return GmFormat::BNSD;
+        } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
+            return GmFormat::TND;
+        } else {
+            return GmFormat::NTD;
+        }
+    } else if constexpr (KvLayoutType == 1) { // KvLayoutType_PA_BBH
+        return GmFormat::PA_BnBsND;
+    } else if constexpr (KvLayoutType == 2) { // KvLayoutType_PA_BNBD
+        return GmFormat::PA_BnNBsD;
+    } else { // KvLayoutType_PA_NZ
+        return GmFormat::PA_NZ;
     }
+ 
 }
 
 /* ============确定Query的L1类型============= */
@@ -397,6 +406,8 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::InitGmTensor(CVSharedParams<isInfer, isPa> *sharedParams,
     __gm__ int64_t *actualSeqQlenAddr, __gm__ int64_t *actualSeqKvlenAddr)
 {
+    // PRINTF("GmLayoutParams<KV_FORMAT>::CATEGORY is %d \n", GmLayoutParams<KV_FORMAT>::CATEGORY);
+
     if constexpr (GmLayoutParams<Q_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_BNGSD) {
         this->queryGm.offsetCalculator.Init(sharedParams->bSize, sharedParams->n2Size, sharedParams->gSize,
             sharedParams->s1Size, sharedParams->dSize);
