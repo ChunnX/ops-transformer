@@ -16,9 +16,7 @@
 #include <register/op_def_registry.h>
 #include "tiling/mc2_tiling_utils.h"
 #include "util/math_util.h"
-#include "qbmm_reduce_scatter_add_rms_norm_cast_tiling_check.h"
 #include "../../op_kernel/qbmm_reduce_scatter_add_rms_norm_cast_tiling_data.h"
-#include "qbmm_reduce_scatter_add_rms_norm_cast_tiling_check.h"
 
 #include "mc2_log.h"
 using namespace AscendC;
@@ -27,20 +25,31 @@ namespace MC2Tiling {
 constexpr uint32_t OP_TYPE_ALL_TO_ALL = 8;
 constexpr uint32_t AIV_TYPE = 3;
 constexpr uint32_t BUFFER_NUM = 1;
-
-// matmul tiling 切分
-constexpr int32_t SINGLE_CORE_M = 128;
-constexpr int32_t SINGLE_CORE_N = 256;
-constexpr int32_t SINGLE_CORE_K = 2560;
-constexpr int32_t BASE_M = 128;
-constexpr int32_t BASE_N = 256;
-constexpr int32_t BASE_K = 2560;
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024 * 1024;
+
+constexpr size_t X1_INDEX = 0;
+constexpr size_t X2_INDEX = 1;
+constexpr size_t Y_INDEX = 2;
+constexpr size_t GAMMA_INDEX = 3;
+constexpr size_t SCALE_INDEX = 4;
+constexpr size_t BIAS_INDEX = 5;
+constexpr size_t PER_TOKEN_SCALE_INDEX = 6;
+constexpr size_t Y1_INDEX = 0;
+constexpr size_t Y2_INDEX = 1;
+constexpr size_t X_INDEX = 2;
+constexpr size_t OUTPUT_INDEX = 0;
+constexpr size_t GROUP_INDEX = 0;
+constexpr size_t RANK_SIZE_INDEX = 1;
+constexpr size_t TRANSPOSE_X2_INDEX = 2;
+constexpr size_t OUT_PUT_DTYPE_INDEX = 3;
+constexpr size_t EPSILON_INDEX = 4;
+constexpr size_t DIM_ZERO = 0;
+constexpr size_t DIM_ONE = 1;
+constexpr size_t DIM_TWO = 2;
+constexpr size_t DIM_THREE = 3;
 
 using namespace AscendC;
 using namespace ge;
-
-
 
 /**
  * @brief 设置hcomm参数
@@ -83,13 +92,6 @@ static void SetTilingData(gert::TilingContext *context, QbmmReduceScatterAddRmsN
     context->SetBlockDim(aicNum);   // TODO:
     tilingData.qbmmReduceScatterAddRmsNormCastTilingInfo.aicNum = aicNum;
     tilingData.qbmmReduceScatterAddRmsNormCastTilingInfo.aivNum = aivNum;
-    ge::DataType gammaDtype = context->GetInputDesc(GAMMA_INDEX)->GetDataType();
-    if (gammaDtype == ge::DT_FLOAT) {
-        tilingData.qbmmReduceScatterAddRmsNormCastTilingInfo.isGammaBf16 = false;
-    } else if (gammaDtype == ge::DT_BF16) {
-        tilingData.qbmmReduceScatterAddRmsNormCastTilingInfo.isGammaBf16 = true;
-    }
-    OP_LOGD(nodeName, "gamma type is %s\n.", Ops::Base::ToString(gammaDtype).c_str());
 }
 
 /**
@@ -108,15 +110,24 @@ static void SetTilingKey(gert::TilingContext *context)
     }
 }
 
-static ge::graphStatus SetWorkSpace(gert::TilingContext *context, QbmmReduceScatterAddRmsNormCastTilingData *tilingData)
+static ge::graphStatus SetWorkSpace(gert::TilingContext *context)
 {
     const char *nodeName = context->GetNodeName();
 
-    const gert::StorageShape *x1Shape = context -> GetInputShape(0);
+    const gert::StorageShape *x1Shape = context->GetInputShape(X1_INDEX);
+    const gert::StorageShape *x2Shape = context->GetInputShape(X2_INDEX);
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(nodeName, "workSpaces is nullptr."), return ge::GRAPH_FAILED);
-    uint32_t M = tilingData->qbmmReduceScatterAddRmsNormCastTilingInfo.M;
-    uint32_t N = tilingData->qbmmReduceScatterAddRmsNormCastTilingInfo.N;
+    
+    uint32_t M = x1Shape->GetStorageShape().GetDim(DIM_ZERO);
+    uint32_t N;
+    ge::Format x2Format = static_cast<ge::Format>(ge::GetPrimaryFormat(context->GetInputDesc(X2_INDEX)->GetStorageFormat()));
+    if (x2Format == ge::FORMAT_ND) {
+        N = x2Shape->GetStorageShape().GetDim(DIM_ONE);
+    } else if (x2Format == ge::FORMAT_FRACTAL_NZ) {
+        N = x2Shape->GetStorageShape().GetDim(DIM_ZERO) * x2Shape->GetStorageShape().GetDim(DIM_THREE);
+    } 
+    
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + M * N * sizeof(bfloat16_t);
     return ge::GRAPH_SUCCESS;
 }
@@ -124,51 +135,9 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, QbmmReduceScat
 static ge::graphStatus SetTCubeTiling(
     gert::TilingContext *context, QbmmReduceScatterAddRmsNormCastTilingData *tilingData)
 {
-    auto ascendcPlatform = platform_ascendc::PlatformAscendCManager::GetInstance();
-    matmul_tiling::MultiCoreMatmulTiling mmTiling(*ascendcPlatform);
-    const gert::RuntimeAttrs *attrs = context->GetAttrs();
-    const char *nodeName = context->GetNodeName();
-    const gert::StorageShape *x1Shape = context -> GetInputShape(0);
-    const gert::StorageShape *x2Shape = context -> GetInputShape(1);
-    uint32_t M = x1Shape->GetStorageShape().GetDim(0);
-    uint32_t Ka = x1Shape->GetStorageShape().GetDim(1);
-    tilingData->qbmmReduceScatterAddRmsNormCastTilingInfo.M = M;
-    tilingData->qbmmReduceScatterAddRmsNormCastTilingInfo.Ka = Ka;
-    uint32_t N;
-
-    const bool *transposeX2Ptr = attrs->GetAttrPointer<bool>(TRANSPOSE_X2_INDEX);
-    bool isAtrans = false;
-    bool isBtrans = *transposeX2Ptr;
-
-    mmTiling.SetDim(1);
-    mmTiling.SetAType(matmul_tiling::TPosition::GM,
-        matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_INT8, isAtrans);
-    ge::Format x2Format = static_cast<ge::Format>(ge::GetPrimaryFormat(context->GetInputDesc(X2_INDEX)->GetStorageFormat()));
-    if (x2Format == ge::FORMAT_ND) {
-        mmTiling.SetBType(matmul_tiling::TPosition::GM,
-        matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_INT8, isBtrans);
-        N = x2Shape->GetStorageShape().GetDim(1);
-    } else if (x2Format == ge::FORMAT_FRACTAL_NZ) {
-        mmTiling.SetBType(matmul_tiling::TPosition::GM,
-        matmul_tiling::CubeFormat::NZ, matmul_tiling::DataType::DT_INT8, isBtrans);
-        N = x2Shape->GetStorageShape().GetDim(0) * x2Shape->GetStorageShape().GetDim(3);
-    }
-    tilingData->qbmmReduceScatterAddRmsNormCastTilingInfo.N = N;
-    mmTiling.SetCType(matmul_tiling::TPosition::GM,
-        matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_INT32);
-    mmTiling.SetBiasType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,
-        matmul_tiling::DataType::DT_INT32);
-    mmTiling.SetOrgShape(M, N, Ka);
-    mmTiling.SetSingleShape(SINGLE_CORE_M, SINGLE_CORE_N, SINGLE_CORE_K);
-    mmTiling.SetFixSplit(BASE_M, BASE_N, -1);
-    mmTiling.EnableBias(false);
-    mmTiling.SetBufferSpace(-1, -1, -1);    // 默认使用该AI处理器所有空间
-
-    OP_TILING_CHECK(mmTiling.GetTiling(tilingData->qbmmReduceScatterAddRmsNormCastTilingInfo.matmulTiling) == -1,
-                    OP_LOGE(nodeName, "failed to get tiling matmulTiling."),
-                    return ge::GRAPH_FAILED);
-
-    
+    // TODO: 后续添加 matmul tiling 切分逻辑
+    (void)context;
+    (void)tilingData;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -208,7 +177,7 @@ static ge::graphStatus QbmmReduceScatterAddRmsNormCastTilingFunc(gert::TilingCon
     // 调用matmul做tiling切分
     OP_TILING_CHECK(SetTCubeTiling(context, tilingData) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "SetTCubeTiling failed."), return ge::GRAPH_FAILED);
-    SetWorkSpace(context, tilingData);
+    SetWorkSpace(context);
     SetTilingData(context, *tilingData);
     SetTilingKey(context);
     OP_LOGD("QbmmReduceScatterAddRmsNormCast tiling end.");

@@ -21,45 +21,45 @@ public:
     {
         this->Input("x1")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT8_E4M3FN})
-            .Format({ge::FORMAT_ND});
+            .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Input("x2")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT8_E4M3FN})
-            .Format({ge::FORMAT_ND})
+            .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN})
+            .Format({ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ})
             .IgnoreContiguous();
         this->Input("y")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16})
-            .Format({ge::FORMAT_ND});
+            .DataType({ge::DT_BF16, ge::DT_BF16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Input("gamma")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND});
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Input("scale") 
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT8_E8M0})
-            .Format({ge::FORMAT_ND});
+            .DataType({ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Input("bias")
             .ParamType(OPTIONAL)    // TODO:
-            .DataType({ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND});
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Input("pertoken_scale")
             .ParamType(OPTIONAL)    // TODO:
-            .DataType({ge::DT_FLOAT})
-            .Format({ge::DT_FLOAT8_E8M0});
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Output("y1")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND});
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Output("y2")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16})
-            .Format({ge::FORMAT_ND});
+            .DataType({ge::DT_BF16, ge::DT_BF16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Output("x")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16})
-            .Format({ge::FORMAT_ND});
+            .DataType({ge::DT_BF16, ge::DT_BF16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Attr("group").AttrType(REQUIRED).String();
         this->Attr("rank_size").AttrType(OPTIONAL).Int(0);
         this->Attr("transpose_x2").AttrType(OPTIONAL).Bool(false);
