@@ -44,6 +44,16 @@ private:
     __aicore__ inline void CopyInBias();
     __aicore__ inline void CopyInX(int64_t progress);
     __aicore__ inline void ComputeX();
+    __aicore__ inline void PadWithMinFp32(__local_mem__ float *addBiasOutAddr, uint16_t groupCount0,
+                                        uint32_t perGroupExpertCount0, uint32_t perGroupExpertCountAlign0);
+    __aicore__ inline void GenerateIndexAndCopy(__local_mem__ float *addBiasOutAddr,
+                                                __local_mem__ int32_t *indexOutAddr, uint32_t size, uint32_t vfLoopNum);
+    __aicore__ inline void ComputeWithSoftMax(LocalTensor<float> xInLocalTensor, LocalTensor<float> xSigmoidTensor,
+                                              LocalTensor<float> xBiasTensor, LocalTensor<uint32_t> indexTensor);
+    __aicore__ inline void ComputeWithSigmoid(LocalTensor<T> xInLocalTensor, LocalTensor<float> xSigmoidTensor,
+                                              LocalTensor<float> xBiasTensor, LocalTensor<uint32_t> indexTensor);
+    __aicore__ inline void ComputeWithSoftplus(LocalTensor<T> xInLocalTensor, LocalTensor<float> xSigmoidTensor,
+                                               LocalTensor<float> xBiasTensor, LocalTensor<uint32_t> indexTensor);
     __aicore__ inline void CopyOutXNorm(int64_t progress);
     __aicore__ inline void SortInGroup();
     __aicore__ inline void SelectTopKGroupIndex();
@@ -186,116 +196,129 @@ __aicore__ inline void MoeGatingTopKRegbase<T>::CopyInX(int64_t row)
 }
 
 template <typename T>
-__aicore__ inline void MoeGatingTopKRegbase<T>::ComputeX()
+__aicore__ inline void MoeGatingTopKRegbase<T>::PadWithMinFp32(__local_mem__ float *addBiasOutAddr,
+                                                              uint16_t groupCount0,
+                                                              uint32_t perGroupExpertCount0,
+                                                              uint32_t perGroupExpertCountAlign0)
 {
-    LocalTensor<float> xSigmoidTensor = xSigmoidBuf_.Get<float>();
-    LocalTensor<float> xBiasTensor = xBiasBuf_.Get<float>();
-    indexTensor = indexBuffer_.Get<uint32_t>();
+    RegTensor<float> vregPad;
+    MicroAPI::UnalignReg u0;
+    MicroAPI::Duplicate(vregPad, *((float *)&MIN_FP32));
+    for (uint16_t i = 0; i < groupCount0; i++) {
+        auto padUbAddr = addBiasOutAddr + perGroupExpertCount0 + i * perGroupExpertCountAlign0;
+        MicroAPI::DataCopyUnAlign(padUbAddr, vregPad, u0, perGroupExpertCountAlign0 - perGroupExpertCount0);
+        MicroAPI::DataCopyUnAlignPost(padUbAddr, u0, 0);
+    }
+}
 
+template <typename T>
+__aicore__ inline void MoeGatingTopKRegbase<T>::GenerateIndexAndCopy(__local_mem__ float *addBiasOutAddr,
+                                                                      __local_mem__ int32_t *indexOutAddr,
+                                                                      uint32_t size, uint32_t vfLoopNum)
+{
+    RegTensor<int32_t> vregIndex;
+    RegTensor<float> vregSoftmaxResult;
+    MicroAPI::MaskReg preg0 = MicroAPI::CreateMask<float>();
+
+    for (uint16_t i = 0; i < vfLoopNum; i++) {
+        preg0 = MicroAPI::UpdateMask<float>(size);
+        ops::LoadOneTensorForDtypeT<float>(addBiasOutAddr, vregSoftmaxResult, preg0, i * VL_FLOAT_SIZE);
+        MicroAPI::Arange(vregIndex, static_cast<int32_t>(i * VL_FLOAT_SIZE));
+        MicroAPI::DataCopy(addBiasOutAddr + i * VL_FLOAT_SIZE, vregSoftmaxResult, preg0);
+        MicroAPI::DataCopy(indexOutAddr + i * VL_FLOAT_SIZE, vregIndex, preg0);
+    }
+    MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_STORE>();
+}
+
+template <typename T>
+__aicore__ inline void MoeGatingTopKRegbase<T>::ComputeWithSoftMax(LocalTensor<float> xInLocalTensor,
+                                                                    LocalTensor<float> xSigmoidTensor,
+                                                                    LocalTensor<float> xBiasTensor,
+                                                                    LocalTensor<uint32_t> indexTensor)
+{
     uint32_t size = perGroupExpertCountAlign_ * groupCount_;
     uint32_t perGroupExpertCount0 = perGroupExpertCount_;
     uint32_t perGroupExpertCountAlign0 = perGroupExpertCountAlign_;
     uint16_t groupCount0 = groupCount_;
 
-    if (tilingData_->normType == 0) {
-        LocalTensor<float> xInLocalTensor = xInQueue_.DeQue<float>();
-        if constexpr (!IsSameType<T, float>::value) {
-            Cast(xInLocalTensor, xInLocalTensor[expertCountAlign_].template ReinterpretCast<T>(), RoundMode::CAST_NONE,
-                 expertCountAlign_);
-        }
-
-        int64_t duplicateNum = perGroupExpertCount_ % ONE_REPEAT_SORT_NUM;
-        int duplicateIndex = perGroupExpertCount_ - duplicateNum;
-        if (perGroupExpertCount_ != perGroupExpertCountAlign_ && duplicateNum > 0) {
-            uint64_t mask0 = UINT64_MAX;
-            mask0 = mask0 << duplicateNum;
-            mask0 = mask0 & (UINT64_MAX >> ONE_REPEAT_SORT_NUM);
-            uint64_t mask[2] = {mask0, 0};
-            Duplicate(xInLocalTensor.ReinterpretCast<int32_t>()[duplicateIndex], MIN_FP32, mask, groupCount_, 1,
-                      (perGroupExpertCountAlign_ * sizeof(float)) / BLOCK_BYTES);
-        }
-
-        SoftMaxShapeInfo softmaxShapeInfo;
-        softmaxShapeInfo.srcM = 1;
-        softmaxShapeInfo.srcK = groupCount_ * perGroupExpertCountAlign_;
-        softmaxShapeInfo.oriSrcM = 1;
-        softmaxShapeInfo.oriSrcK = groupCount_ * perGroupExpertCountAlign_;
-        SoftMax<float, true, false>(xSigmoidTensor, xInLocalTensor, tilingData_->softmaxTilingData, softmaxShapeInfo);
-
-        __local_mem__ float *sigmoidOutAddr = (__local_mem__ float *)xSigmoidTensor.GetPhyAddr();
-        __local_mem__ int32_t *indexOutAddr = (__local_mem__ int32_t *)indexTensor.GetPhyAddr();
-        __local_mem__ float *addBiasOutAddr = (__local_mem__ float *)xBiasTensor.GetPhyAddr();
-        if (hasBias_) {
-            LocalTensor<T> biasTensor = biasBuf_.Get<T>();
-            __VEC_SCOPE__
-            {
-                RegTensor<float> vregBiasFp32;
-                RegTensor<int32_t> vregIndex;
-                RegTensor<float> vregSoftmaxResult;
-                RegTensor<float> vregBiasResult;
-                MicroAPI::MaskReg preg0 = MicroAPI::CreateMask<float>();
-                uint16_t vfLoopNum = static_cast<uint16_t>(CeilDiv(size, VL_FLOAT_SIZE));
-                __local_mem__ T *biasAddr = (__local_mem__ T *)biasTensor.GetPhyAddr();
-
-                for (uint16_t i = 0; i < vfLoopNum; i++) {
-                    preg0 = MicroAPI::UpdateMask<float>(size);
-                    ops::LoadOneTensorForDtypeT<float>(sigmoidOutAddr, vregSoftmaxResult, preg0, i * VL_FLOAT_SIZE);
-                    ops::LoadOneTensorForDtypeT<T>(biasAddr, vregBiasFp32, preg0, i * VL_FLOAT_SIZE);
-                    // add bias
-                    MicroAPI::Add(vregBiasResult, vregSoftmaxResult, vregBiasFp32, preg0);
-                    // 使用Arange生成排序索引, 起始值为i乘每个循环的veclen
-                    MicroAPI::Arange(vregIndex, static_cast<int32_t>(i * VL_FLOAT_SIZE));
-                    MicroAPI::DataCopy(indexOutAddr + i * VL_FLOAT_SIZE, vregIndex, preg0);
-                    MicroAPI::DataCopy(addBiasOutAddr + i * VL_FLOAT_SIZE, vregBiasResult, preg0);
-                }
-                MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_STORE>();
-
-                // pad min fp32
-                MicroAPI::UnalignReg u0;
-                RegTensor<float> vregPad;
-                MicroAPI::Duplicate(vregPad, *((float *)&MIN_FP32));
-                for (uint16_t i = 0; i < groupCount0; i++) {
-                    auto padUbAddr = i * perGroupExpertCountAlign0 + addBiasOutAddr + perGroupExpertCount0;
-                    MicroAPI::DataCopyUnAlign(padUbAddr, vregPad, u0, perGroupExpertCountAlign0 - perGroupExpertCount0);
-                    MicroAPI::DataCopyUnAlignPost(padUbAddr, u0, 0);
-                }
-            }
-        } else {
-            __VEC_SCOPE__
-            {
-                RegTensor<int32_t> vregIndex;
-                RegTensor<float> vregSoftmaxResult;
-                MicroAPI::MaskReg preg0 = MicroAPI::CreateMask<float>();
-                uint16_t vfLoopNum = static_cast<uint16_t>(CeilDiv(size, VL_FLOAT_SIZE));
-
-                for (uint16_t i = 0; i < vfLoopNum; i++) {
-                    preg0 = MicroAPI::UpdateMask<float>(size);
-                    ops::LoadOneTensorForDtypeT<float>(sigmoidOutAddr, vregSoftmaxResult, preg0, i * VL_FLOAT_SIZE);
-                    // 使用Arange生成排序索引, 起始值为i乘每个循环的veclen
-                    MicroAPI::Arange(vregIndex, static_cast<int32_t>(i * VL_FLOAT_SIZE));
-                    MicroAPI::DataCopy(addBiasOutAddr + i * VL_FLOAT_SIZE, vregSoftmaxResult, preg0);
-                    MicroAPI::DataCopy(indexOutAddr + i * VL_FLOAT_SIZE, vregIndex, preg0);
-                }
-                MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_STORE>();
-
-                // pad min fp32
-                RegTensor<float> vregPad;
-                MicroAPI::Duplicate(vregPad, *((float *)&MIN_FP32));
-                MicroAPI::UnalignReg u0;
-                for (uint16_t i = 0; i < groupCount0; i++) {
-                    auto padUbAddr = perGroupExpertCount0 + addBiasOutAddr + i * perGroupExpertCountAlign0;
-                    MicroAPI::DataCopyUnAlign(padUbAddr, vregPad, u0, perGroupExpertCountAlign0 - perGroupExpertCount0);
-                    MicroAPI::DataCopyUnAlignPost(padUbAddr, u0, 0);
-                }
-            }
-        }
-        xInQueue_.FreeTensor(xInLocalTensor);
-        return;
+    if constexpr (!IsSameType<T, float>::value) {
+        Cast(xInLocalTensor, xInLocalTensor[expertCountAlign_].template ReinterpretCast<T>(), RoundMode::CAST_NONE,
+             expertCountAlign_);
     }
 
-    LocalTensor<T> xInLocalTensor = xInQueue_.DeQue<T>();
+    int64_t duplicateNum = perGroupExpertCount_ % ONE_REPEAT_SORT_NUM;
+    int duplicateIndex = perGroupExpertCount_ - duplicateNum;
+    if (perGroupExpertCount_ != perGroupExpertCountAlign_ && duplicateNum > 0) {
+        uint64_t mask0 = UINT64_MAX;
+        mask0 = mask0 << duplicateNum;
+        mask0 = mask0 & (UINT64_MAX >> ONE_REPEAT_SORT_NUM);
+        uint64_t mask[2] = {mask0, 0};
+        Duplicate(xInLocalTensor.ReinterpretCast<int32_t>()[duplicateIndex], MIN_FP32, mask, groupCount_, 1,
+                  (perGroupExpertCountAlign_ * sizeof(float)) / BLOCK_BYTES);
+    }
+
+    SoftMaxShapeInfo softmaxShapeInfo;
+    softmaxShapeInfo.srcM = 1;
+    softmaxShapeInfo.srcK = groupCount_ * perGroupExpertCountAlign_;
+    softmaxShapeInfo.oriSrcM = 1;
+    softmaxShapeInfo.oriSrcK = groupCount_ * perGroupExpertCountAlign_;
+    SoftMax<float, true, false>(xSigmoidTensor, xInLocalTensor, tilingData_->softmaxTilingData, softmaxShapeInfo);
+
+    __local_mem__ float *sigmoidOutAddr = (__local_mem__ float *)xSigmoidTensor.GetPhyAddr();
+    __local_mem__ int32_t *indexOutAddr = (__local_mem__ int32_t *)indexTensor.GetPhyAddr();
+    __local_mem__ float *addBiasOutAddr = (__local_mem__ float *)xBiasTensor.GetPhyAddr();
+
     if (hasBias_) {
         LocalTensor<T> biasTensor = biasBuf_.Get<T>();
+        __VEC_SCOPE__
+        {
+            RegTensor<float> vregBiasFp32;
+            RegTensor<int32_t> vregIndex;
+            RegTensor<float> vregSoftmaxResult;
+            RegTensor<float> vregBiasResult;
+            MicroAPI::MaskReg preg0 = MicroAPI::CreateMask<float>();
+            uint16_t vfLoopNum = static_cast<uint16_t>(CeilDiv(size, VL_FLOAT_SIZE));
+            __local_mem__ T *biasAddr = (__local_mem__ T *)biasTensor.GetPhyAddr();
+
+            for (uint16_t i = 0; i < vfLoopNum; i++) {
+                preg0 = MicroAPI::UpdateMask<float>(size);
+                ops::LoadOneTensorForDtypeT<float>(sigmoidOutAddr, vregSoftmaxResult, preg0, i * VL_FLOAT_SIZE);
+                ops::LoadOneTensorForDtypeT<T>(biasAddr, vregBiasFp32, preg0, i * VL_FLOAT_SIZE);
+                MicroAPI::Add(vregBiasResult, vregSoftmaxResult, vregBiasFp32, preg0);
+                MicroAPI::Arange(vregIndex, static_cast<int32_t>(i * VL_FLOAT_SIZE));
+                MicroAPI::DataCopy(indexOutAddr + i * VL_FLOAT_SIZE, vregIndex, preg0);
+                MicroAPI::DataCopy(addBiasOutAddr + i * VL_FLOAT_SIZE, vregBiasResult, preg0);
+            }
+            MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_STORE>();
+            PadWithMinFp32(addBiasOutAddr, groupCount0, perGroupExpertCount0, perGroupExpertCountAlign0);
+        }
+    } else {
+        __VEC_SCOPE__
+        {
+            GenerateIndexAndCopy(addBiasOutAddr, indexOutAddr, size, CeilDiv(size, VL_FLOAT_SIZE));
+            PadWithMinFp32(addBiasOutAddr, groupCount0, perGroupExpertCount0, perGroupExpertCountAlign0);
+        }
+    }
+}
+
+template <typename T>
+__aicore__ inline void MoeGatingTopKRegbase<T>::ComputeWithSigmoid(LocalTensor<T> xInLocalTensor,
+                                                                    LocalTensor<float> xSigmoidTensor,
+                                                                    LocalTensor<float> xBiasTensor,
+                                                                    LocalTensor<uint32_t> indexTensor)
+{
+    uint32_t size = perGroupExpertCountAlign_ * groupCount_;
+    uint32_t perGroupExpertCount0 = perGroupExpertCount_;
+    uint32_t perGroupExpertCountAlign0 = perGroupExpertCountAlign_;
+    uint16_t groupCount0 = groupCount_;
+    uint16_t vfLoopNum = static_cast<uint16_t>(CeilDiv(size, VL_FLOAT_SIZE));
+
+    __local_mem__ T *inputAddr = (__local_mem__ T *)xInLocalTensor.GetPhyAddr();
+    __local_mem__ float *sigmoidOutAddr = (__local_mem__ float *)xSigmoidTensor.GetPhyAddr();
+    __local_mem__ int32_t *indexOutAddr = (__local_mem__ int32_t *)indexTensor.GetPhyAddr();
+    __local_mem__ float *addBiasOutAddr = (__local_mem__ float *)xBiasTensor.GetPhyAddr();
+
+    if (hasBias_) {
         __VEC_SCOPE__
         {
             RegTensor<float> vregBiasFp32;
@@ -308,16 +331,11 @@ __aicore__ inline void MoeGatingTopKRegbase<T>::ComputeX()
             RegTensor<float> vreg2;
             RegTensor<float> vreg3;
             MicroAPI::MaskReg preg0 = MicroAPI::CreateMask<float>();
-            uint16_t vfLoopNum = static_cast<uint16_t>(CeilDiv(size, VL_FLOAT_SIZE));
-
-            __local_mem__ T *inputAddr = (__local_mem__ T *)xInLocalTensor.GetPhyAddr();
-            __local_mem__ T *biasAddr = (__local_mem__ T *)biasTensor.GetPhyAddr();
-            __local_mem__ float *sigmoidOutAddr = (__local_mem__ float *)xSigmoidTensor.GetPhyAddr();
-            __local_mem__ int32_t *indexOutAddr = (__local_mem__ int32_t *)indexTensor.GetPhyAddr();
-            __local_mem__ float *addBiasOutAddr = (__local_mem__ float *)xBiasTensor.GetPhyAddr();
-
-            // sigmoid
             MicroAPI::Duplicate<float, MicroAPI::MaskMergeMode::ZEROING, float>(vregOne, static_cast<float>(1), preg0);
+
+            LocalTensor<T> biasTensor = biasBuf_.Get<T>();
+            __local_mem__ T *biasAddr = (__local_mem__ T *)biasTensor.GetPhyAddr();
+
             for (uint16_t i = 0; i < vfLoopNum; i++) {
                 preg0 = MicroAPI::UpdateMask<float>(size);
                 ops::LoadTwoTensorForDtypeT<T>(inputAddr, biasAddr, vregInFp32, vregBiasFp32, preg0, preg0,
@@ -326,30 +344,18 @@ __aicore__ inline void MoeGatingTopKRegbase<T>::ComputeX()
                 MicroAPI::Exp(vreg2, vreg1, preg0);
                 MicroAPI::Adds(vreg3, vreg2, static_cast<float>(1), preg0);
                 MicroAPI::Div<float, &mode>(vregSigmoidResult, vregOne, vreg3, preg0);
-                // add bias
                 MicroAPI::Add(vregBiasResult, vregSigmoidResult, vregBiasFp32, preg0);
-                // 使用Arange生成排序索引, 起始值为i乘每个循环的veclen
                 MicroAPI::Arange(vregIndex, static_cast<int32_t>(i * VL_FLOAT_SIZE));
                 MicroAPI::DataCopy(sigmoidOutAddr + i * VL_FLOAT_SIZE, vregSigmoidResult, preg0);
                 MicroAPI::DataCopy(indexOutAddr + i * VL_FLOAT_SIZE, vregIndex, preg0);
                 MicroAPI::DataCopy(addBiasOutAddr + i * VL_FLOAT_SIZE, vregBiasResult, preg0);
             }
             MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_STORE>();
-
-            // pad min fp32
-            RegTensor<float> vregPad;
-            MicroAPI::UnalignReg u0;
-            MicroAPI::Duplicate(vregPad, *((float *)&MIN_FP32));
-            for (uint16_t i = 0; i < groupCount0; i++) {
-                auto padUbAddr = addBiasOutAddr + perGroupExpertCount0 + i * perGroupExpertCountAlign0;
-                MicroAPI::DataCopyUnAlign(padUbAddr, vregPad, u0, perGroupExpertCountAlign0 - perGroupExpertCount0);
-                MicroAPI::DataCopyUnAlignPost(padUbAddr, u0, 0);
-            }
+            PadWithMinFp32(addBiasOutAddr, groupCount0, perGroupExpertCount0, perGroupExpertCountAlign0);
         }
     } else {
         __VEC_SCOPE__
         {
-            RegTensor<float> vregBiasFp32;
             RegTensor<int32_t> vregIndex;
             RegTensor<float> vregSigmoidResult;
             RegTensor<float> vregOne;
@@ -358,15 +364,8 @@ __aicore__ inline void MoeGatingTopKRegbase<T>::ComputeX()
             RegTensor<float> vreg2;
             RegTensor<float> vreg3;
             MicroAPI::MaskReg preg0 = MicroAPI::CreateMask<float>();
-            uint16_t vfLoopNum = static_cast<uint16_t>(CeilDiv(size, VL_FLOAT_SIZE));
-
-            __local_mem__ T *inputAddr = (__local_mem__ T *)xInLocalTensor.GetPhyAddr();
-            __local_mem__ float *sigmoidOutAddr = (__local_mem__ float *)xSigmoidTensor.GetPhyAddr();
-            __local_mem__ int32_t *indexOutAddr = (__local_mem__ int32_t *)indexTensor.GetPhyAddr();
-            __local_mem__ float *addBiasOutAddr = (__local_mem__ float *)xBiasTensor.GetPhyAddr();
-
-            // sigmoid
             MicroAPI::Duplicate<float, MicroAPI::MaskMergeMode::ZEROING, float>(vregOne, static_cast<float>(1), preg0);
+
             for (uint16_t i = 0; i < vfLoopNum; i++) {
                 preg0 = MicroAPI::UpdateMask<float>(size);
                 ops::LoadOneTensorForDtypeT<T>(inputAddr, vregInFp32, preg0, i * VL_FLOAT_SIZE);
@@ -374,26 +373,119 @@ __aicore__ inline void MoeGatingTopKRegbase<T>::ComputeX()
                 MicroAPI::Exp(vreg2, vreg1, preg0);
                 MicroAPI::Adds(vreg3, vreg2, static_cast<float>(1), preg0);
                 MicroAPI::Div<float, &mode>(vregSigmoidResult, vregOne, vreg3, preg0);
-                // 使用Arange生成排序索引, 起始值为i乘每个循环的veclen
                 MicroAPI::Arange(vregIndex, static_cast<int32_t>(i * VL_FLOAT_SIZE));
-                MicroAPI::DataCopy(i * VL_FLOAT_SIZE + sigmoidOutAddr, vregSigmoidResult, preg0);
-                MicroAPI::DataCopy(i * VL_FLOAT_SIZE + addBiasOutAddr, vregSigmoidResult, preg0);
-                MicroAPI::DataCopy(i * VL_FLOAT_SIZE + indexOutAddr, vregIndex, preg0);
+                MicroAPI::DataCopy(sigmoidOutAddr + i * VL_FLOAT_SIZE, vregSigmoidResult, preg0);
+                MicroAPI::DataCopy(addBiasOutAddr + i * VL_FLOAT_SIZE, vregSigmoidResult, preg0);
+                MicroAPI::DataCopy(indexOutAddr + i * VL_FLOAT_SIZE, vregIndex, preg0);
             }
             MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_STORE>();
-
-            // pad inf
-            RegTensor<float> vregPad;
-            MicroAPI::UnalignReg u0;
-            MicroAPI::Duplicate(vregPad, *((float *)&MIN_FP32));
-            for (uint16_t i = 0; i < groupCount0; i++) {
-                auto padUbAddr = addBiasOutAddr + perGroupExpertCount0 + i * perGroupExpertCountAlign0;
-                MicroAPI::DataCopyUnAlign(padUbAddr, vregPad, u0, perGroupExpertCountAlign0 - perGroupExpertCount0);
-                MicroAPI::DataCopyUnAlignPost(padUbAddr, u0, 0);
-            }
+            PadWithMinFp32(addBiasOutAddr, groupCount0, perGroupExpertCount0, perGroupExpertCountAlign0);
         }
     }
-    xInQueue_.FreeTensor(xInLocalTensor);
+}
+
+template <typename T>
+__aicore__ inline void MoeGatingTopKRegbase<T>::ComputeWithSoftplus(LocalTensor<T> xInLocalTensor,
+                                                                     LocalTensor<float> xSigmoidTensor,
+                                                                     LocalTensor<float> xBiasTensor,
+                                                                     LocalTensor<uint32_t> indexTensor)
+{
+    uint32_t size = perGroupExpertCountAlign_ * groupCount_;
+    uint32_t perGroupExpertCount0 = perGroupExpertCount_;
+    uint32_t perGroupExpertCountAlign0 = perGroupExpertCountAlign_;
+    uint16_t groupCount0 = groupCount_;
+    uint16_t vfLoopNum = static_cast<uint16_t>(CeilDiv(size, VL_FLOAT_SIZE));
+
+    __local_mem__ T *inputAddr = (__local_mem__ T *)xInLocalTensor.GetPhyAddr();
+    __local_mem__ float *softplusOutAddr = (__local_mem__ float *)xSigmoidTensor.GetPhyAddr();
+    __local_mem__ int32_t *indexOutAddr = (__local_mem__ int32_t *)indexTensor.GetPhyAddr();
+    __local_mem__ float *addBiasOutAddr = (__local_mem__ float *)xBiasTensor.GetPhyAddr();
+
+    if (hasBias_) {
+        __VEC_SCOPE__
+        {
+            LocalTensor<T> biasTensor = biasBuf_.Get<T>();
+            __local_mem__ T *biasAddr = (__local_mem__ T *)biasTensor.GetPhyAddr();
+
+            RegTensor<float> vregBiasFp32;
+            RegTensor<int32_t> vregIndex;
+            RegTensor<float> vregSoftplusResult;
+            RegTensor<float> vregBiasResult;
+            RegTensor<float> vregOne;
+            RegTensor<float> vregInFp32;
+            RegTensor<float> vreg1;
+            RegTensor<float> vreg2;
+            RegTensor<float> vreg3;
+            MicroAPI::MaskReg preg0 = MicroAPI::CreateMask<float>();
+            MicroAPI::Duplicate<float, MicroAPI::MaskMergeMode::ZEROING, float>(vregOne, static_cast<float>(1), preg0);
+
+            for (uint16_t i = 0; i < vfLoopNum; i++) {
+                preg0 = MicroAPI::UpdateMask<float>(size);
+                ops::LoadTwoTensorForDtypeT<T>(inputAddr, biasAddr, vregInFp32, vregBiasFp32, preg0, preg0,
+                                               i * VL_FLOAT_SIZE, i * VL_FLOAT_SIZE);
+                MicroAPI::Exp(vreg1, vregInFp32, preg0);
+                MicroAPI::Adds(vreg2, vreg1, static_cast<float>(1), preg0);
+                MicroAPI::Ln(vreg3, vreg2, preg0);
+                MicroAPI::Sqrt(vregSoftplusResult, vreg3, preg0);
+                MicroAPI::Add(vregBiasResult, vregSoftplusResult, vregBiasFp32, preg0);
+                MicroAPI::Arange(vregIndex, static_cast<int32_t>(i * VL_FLOAT_SIZE));
+                MicroAPI::DataCopy(softplusOutAddr + i * VL_FLOAT_SIZE, vregSoftplusResult, preg0);
+                MicroAPI::DataCopy(indexOutAddr + i * VL_FLOAT_SIZE, vregIndex, preg0);
+                MicroAPI::DataCopy(addBiasOutAddr + i * VL_FLOAT_SIZE, vregBiasResult, preg0);
+            }
+            MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_STORE>();
+            PadWithMinFp32(addBiasOutAddr, groupCount0, perGroupExpertCount0, perGroupExpertCountAlign0);
+        }
+    } else {
+        __VEC_SCOPE__
+        {
+            RegTensor<int32_t> vregIndex;
+            RegTensor<float> vregSoftplusResult;
+            RegTensor<float> vregOne;
+            RegTensor<float> vregInFp32;
+            RegTensor<float> vreg1;
+            RegTensor<float> vreg2;
+            RegTensor<float> vreg3;
+            MicroAPI::MaskReg preg0 = MicroAPI::CreateMask<float>();
+            MicroAPI::Duplicate<float, MicroAPI::MaskMergeMode::ZEROING, float>(vregOne, static_cast<float>(1), preg0);
+            for (uint16_t i = 0; i < vfLoopNum; i++) {
+                preg0 = MicroAPI::UpdateMask<float>(size);
+                ops::LoadOneTensorForDtypeT<T>(inputAddr, vregInFp32, preg0, i * VL_FLOAT_SIZE);
+                MicroAPI::Exp(vreg1, vregInFp32, preg0);
+                MicroAPI::Adds(vreg2, vreg1, static_cast<float>(1), preg0);
+                MicroAPI::Ln(vreg3, vreg2, preg0);
+                MicroAPI::Sqrt(vregSoftplusResult, vreg3, preg0);
+                MicroAPI::Arange(vregIndex, static_cast<int32_t>(i * VL_FLOAT_SIZE));
+                MicroAPI::DataCopy(softplusOutAddr + i * VL_FLOAT_SIZE, vregSoftplusResult, preg0);
+                MicroAPI::DataCopy(addBiasOutAddr + i * VL_FLOAT_SIZE, vregSoftplusResult, preg0);
+                MicroAPI::DataCopy(indexOutAddr + i * VL_FLOAT_SIZE, vregIndex, preg0);
+            }
+            MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_STORE>();
+            PadWithMinFp32(addBiasOutAddr, groupCount0, perGroupExpertCount0, perGroupExpertCountAlign0);
+        }
+    }
+}
+
+template <typename T>
+__aicore__ inline void MoeGatingTopKRegbase<T>::ComputeX()
+{
+    LocalTensor<float> xSigmoidTensor = xSigmoidBuf_.Get<float>();
+    LocalTensor<float> xBiasTensor = xBiasBuf_.Get<float>();
+    indexTensor = indexBuffer_.Get<uint32_t>();
+
+    if (tilingData_->normType == 0) {
+        LocalTensor<float> xInLocalTensor = xInQueue_.DeQue<float>();
+        ComputeWithSoftMax(xInLocalTensor, xSigmoidTensor, xBiasTensor, indexTensor);
+        xInQueue_.FreeTensor(xInLocalTensor);
+    } else if (tilingData_->normType == 1) {
+        LocalTensor<T> xInLocalTensor = xInQueue_.DeQue<T>();
+        ComputeWithSigmoid(xInLocalTensor, xSigmoidTensor, xBiasTensor, indexTensor);
+        xInQueue_.FreeTensor(xInLocalTensor);
+    } else {
+        LocalTensor<T> xInLocalTensor = xInQueue_.DeQue<T>();
+        ComputeWithSoftplus(xInLocalTensor, xSigmoidTensor, xBiasTensor, indexTensor);
+        xInQueue_.FreeTensor(xInLocalTensor);
+    }
 }
 
 template <typename T>
