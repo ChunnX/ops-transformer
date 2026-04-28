@@ -74,14 +74,14 @@ def custom_check_precision(row, ref_output, test_output):
 
     dtype_str = str(row.get("dtype", "fp16"))
     if dtype_str == "fp16":
-        max_abs_error = 0.15
-        max_rel_error = 0.15
-    elif dtype_str == "bf16":
-        max_abs_error = 0.15
-        max_rel_error = 0.15
-    else:
         max_abs_error = 0.05
         max_rel_error = 0.05
+    elif dtype_str == "bf16":
+        max_abs_error = 0.05
+        max_rel_error = 0.05
+    else:
+        max_abs_error = 0.005
+        max_rel_error = 0.005
 
     all_abs, all_rel = [], []
     accurate = True
