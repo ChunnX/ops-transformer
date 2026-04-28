@@ -400,12 +400,18 @@ TEMPLATE_INTF
 __aicore__ inline void ComputeS1LoopInfo(RunParamStr<isInfer>& runParam, const ConstInfo<isInfer, hasRope> &constInfo,
     bool lastBN, int64_t nextGs1Idx)
 {
+    static constexpr bool isFp8 = IsSameType<INPUT_T, fp8_e5m2_t>::value ||
+                                  IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
+                                  IsSameType<INPUT_T, hifloat8_t>::value;
+    static constexpr bool isInt8 = IsSameType<INPUT_T, int8_t>::value;
     constexpr int32_t s1BaseSize = static_cast<int32_t>(s1TemplateType);
     int32_t s1LoopTimes;
     if constexpr (hasRope && (dTemplateType == DTemplateType::Aligned576)) {
         s1LoopTimes = CeilDiv(runParam.actualS1Size, s1BaseSize);
-        runParam.s1LoopTimes = s1LoopTimes;
-        return;
+        if constexpr (!isFp8 && !isInt8) {
+            runParam.s1LoopTimes = s1LoopTimes;
+            return;
+        }
     } else {
         if (constInfo.isGqa) {
             s1LoopTimes = CeilDiv(runParam.actualS1Size * constInfo.gSize, s1BaseSize);
