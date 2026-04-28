@@ -48,7 +48,7 @@ def execute_qsfa(testcase_files):
 
 @pytest.mark.ci
 @pytest.mark.parametrize("testcase_files", locals()["testcase_files"])
-def test_kv_quant_sparse_flash_attention(testcase_files, request):
+def test_kv_quant_sparse_flash_attention(testcase_files):
     test_data = None
     fulfill_percent = 0.0
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
@@ -58,10 +58,10 @@ def test_kv_quant_sparse_flash_attention(testcase_files, request):
                 result, fulfill_percent, test_data = future.result()
                 if result == "Failed":
                     case_name = os.path.basename(testcase_files).replace(".pt", "")
-                    request.node.add_report_section("call", "精度信息", f"用例名: {case_name}\n精度: {fulfill_percent:.4f}%")
-                    pytest.fail(f"测试结果为Failed", pytrace=False)
+                    pytest.fail(f"用例名: {case_name}, 精度: {fulfill_percent:.4f}%", pytrace=False)
             except Exception as e:
                 params = test_data.get("params") if test_data else None
+                case_name = os.path.basename(testcase_files).replace(".pt", "")
                 if params:
                     utils.save_result(params, "Failed", "", RESULT_PATH)
-                pytest.fail(f"当前用例线程执行失败")
+                pytest.fail(f"用例名: {case_name}, 当前用例线程执行失败")

@@ -328,11 +328,11 @@ def convert_param_combination_to_cs_format(param_combination):
         "block_num": block_num,
         "actual_seq_q": actual_seq_q,
         "actual_seq_kv": actual_seq_kv,
-        # range 参数，用于结果保存
-        "range_query": param_combination.get("range_query"),
-        "range_key": param_combination.get("range_key"),
-        "range_query_rope": param_combination.get("range_query_rope"),
-        "range_key_rope": param_combination.get("range_key_rope"),
+        # range 参数，保存实际使用的值
+        "range_query": range_input['query'],
+        "range_key": range_input['key'],
+        "range_query_rope": range_input['query_rope'],
+        "range_key_rope": range_input['key_rope'],
     }
     
     return params

@@ -50,7 +50,7 @@ def execute_sfa(testcase_file):
 
 @pytest.mark.ci
 @pytest.mark.parametrize("testcase_file", locals()["testcase_files"])
-def test_sparse_flash_attention_batch(testcase_file, request):
+def test_sparse_flash_attention_batch(testcase_file):
     test_data = None
     fulfill_percent = 0.0
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
@@ -60,10 +60,10 @@ def test_sparse_flash_attention_batch(testcase_file, request):
                 result, fulfill_percent, test_data = completed_future.result()
                 if result == "Failed":
                     case_name = os.path.basename(testcase_file).replace(".pt", "")
-                    request.node.add_report_section("call", "精度信息", f"用例名: {case_name}\n精度: {fulfill_percent:.4f}%")
-                    pytest.fail(f"测试结果为Failed", pytrace=False)
+                    pytest.fail(f"用例名: {case_name}, 精度: {fulfill_percent:.4f}%", pytrace=False)
             except Exception as error:
                 params = test_data.get("params") if test_data else None
+                case_name = os.path.basename(testcase_file).replace(".pt", "")
                 if params:
                     utils.save_result(params, "Failed", "", RESULT_PATH)
-                pytest.fail(f"当前用例线程执行失败: {error}")
+                pytest.fail(f"用例名: {case_name}, 当前用例线程执行失败: {error}")
