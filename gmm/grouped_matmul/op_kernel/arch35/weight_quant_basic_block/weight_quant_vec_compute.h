@@ -740,7 +740,7 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::CopyWeigh
     params.srcStride = (UB_BUFFER_INFO.ubWeightOutputHighBitBufferNum - 1) * params.blockLen;
     params.dstStride = 0;
 
-    DataCopy(scaleL1[l1NOffset * GROUP_NUM_DEFAULT_LEN],
+    DataCopy(scaleL1[l1NOffset * GROUP_NUM_DEFAULT_LEN / 2],
              ubHighBitTotalBuffer_[(ubComputeLoopIdx_ & (UB_BUFFER_INFO.ubWeightOutputHighBitBufferNum - 1)) * VEC_REG_ELEM]
                  .template ReinterpretCast<uint16_t>(),
              params);
