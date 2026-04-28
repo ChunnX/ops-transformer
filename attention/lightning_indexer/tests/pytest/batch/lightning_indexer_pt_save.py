@@ -89,7 +89,7 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
                 row['sparse_mode'],
                 row['query_datarange'],
                 row['key_datarange'],
-                row['weights_datarange']
+                row['weights_datarange'],
             ))
 
         return test_cases
@@ -106,11 +106,26 @@ def li_output_single(data_case):
     batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num, \
     qk_dtype, weight_dtype, actual_seq_dtype, act_seq_q, act_seq_k, layout_query, \
     layout_key, sparse_count, sparse_mode, query_datarange, key_datarange, weights_datarange = params
+    batch_size = int(batch_size)
+    q_seq = int(q_seq)
+    k_seq = int(k_seq)
+    if q_t_size is not None:
+        q_t_size = int(q_t_size)
+    if k_t_size is not None:
+        k_t_size = int(k_t_size)
     if qk_dtype == 'FP16':
         qk_dtype = torch.float16
     elif qk_dtype == 'BF16':
         qk_dtype = torch.bfloat16
-
+    q_head_num = int(q_head_num)
+    k_head_num = int(k_head_num)
+    head_dim = int(head_dim)
+    if block_size is not None:
+        block_size = int(block_size)
+    if block_num is not None:
+        block_num = int(block_num)
+    sparse_count = int(sparse_count)
+    sparse_mode = int(sparse_mode)
     if weight_dtype == 'FP16':
         weight_dtype = torch.float16
     elif weight_dtype == 'BF16':
@@ -135,7 +150,9 @@ def li_output_single(data_case):
         act_seq_k = act_seq_k
     else:
         act_seq_k = [int(x.strip()) for x in act_seq_k.split(',')]
-
+        if layout_key == 'TND':
+            if len(act_seq_k) == batch_size + 1:
+                act_seq_k = act_seq_k[1:]
     query_datarange = [float(x.strip()) for x in query_datarange.split(',')]
     key_datarange = [float(x.strip()) for x in key_datarange.split(',')]
     weights_datarange = [float(x.strip()) for x in weights_datarange.split(',')]
@@ -150,7 +167,7 @@ def li_output_single(data_case):
     elif layout_query == "TND":
         actual_seq_lengths_query = torch.tensor(act_seq_q).to(actual_seq_dtype).npu()
     if layout_key == "BSND":
-        actual_seq_lengths_key = torch.tensor(np.random.uniform(k_seq, k_seq, batch_size)).to(actual_seq_dtype).npu()
+        actual_seq_lengths_key = torch.tensor(act_seq_k).to(actual_seq_dtype).npu()
     elif layout_key == "TND" or layout_key == "PA_BSND":
         actual_seq_lengths_key = torch.tensor(act_seq_k).to(actual_seq_dtype).npu()
 
@@ -225,7 +242,9 @@ def li_output_single(data_case):
         key = key.to(dtype=torch.float16)
 
     output_tensors = {
-        "params":params,
+        "params":(batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num,                                                                                                                                  
+            qk_dtype, weight_dtype, actual_seq_dtype, act_seq_q, act_seq_k, layout_query,                                                                                                                                                           
+            layout_key, sparse_count, sparse_mode, query_datarange, key_datarange, weights_datarange),  
         "cpu_result": cpu_result,
         "topk_value": topk_value,
         "query": query,
@@ -237,7 +256,7 @@ def li_output_single(data_case):
         "layout_query":layout_query,
         "layout_key":layout_key,
         "sparse_count":sparse_count,
-        "sparse_mode":sparse_mode
+        "sparse_mode":sparse_mode,
     }
     return  casename, output_tensors
 
