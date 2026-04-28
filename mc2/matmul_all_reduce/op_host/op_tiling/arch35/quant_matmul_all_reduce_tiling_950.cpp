@@ -797,7 +797,10 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::CheckX1X2()
             x1Type, x2Type),
         return ge::GRAPH_FAILED);
     if ((scenario_ == AllReduceScenario::MXFP4) || (scenario_ == AllReduceScenario::MXFP8)) {
-        OP_TILING_CHECK(args_.isBTrans == false,
+        auto x2FirstDim = mmrCtxInfo_.x2_shape->GetStorageShape().GetDim(x2DimNum - 2);
+        auto x2LastDim = mmrCtxInfo_.x2_shape->GetStorageShape().GetDim(x2DimNum - 1);
+        bool isReshape = (x2FirstDim == 1) || (x2LastDim == 1);
+        OP_TILING_CHECK((args_.isBTrans == false) && (!isReshape),
                         VECTOR_INNER_ERR_REPORT_TILING(context_->GetNodeName(),
                                                         "In the dequant MXfp4/MXfp8 scenario, x2 must be transposed."),
                         return ge::GRAPH_FAILED);
