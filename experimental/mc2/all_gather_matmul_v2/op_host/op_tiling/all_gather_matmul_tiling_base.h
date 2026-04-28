@@ -18,7 +18,7 @@
 #pragma once
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 #include "op_host/op_tiling/mc2_tiling_struct.h"
 #include "op_host/op_tiling/matmul_formulaic_tiling.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
