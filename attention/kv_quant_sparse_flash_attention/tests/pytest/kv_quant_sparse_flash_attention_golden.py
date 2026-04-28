@@ -819,10 +819,14 @@ def kv_concat_pa_preprocessing(input_tensor_dict, fa_param, params):
     layoutQuery = fa_param['layout_query']
     layout_kv = fa_param['layout_kv']
 
-    _k_dtype_map = {"hifloat8": torch.uint8, "float8_e4m3fn": torch.float8_e4m3fn, "int8": torch.int8,
-                    "torch.float8_e4m3fn": torch.float8_e4m3fn, "torch.int8": torch.int8,
-                    "torch_npu.hifloat8": torch.uint8}
-    k_torch_dtype = _k_dtype_map.get(k_dtype_str, torch.uint8)
+    _k_dtype_map = {
+        "torch.float8_e4m3fn": torch.float8_e4m3fn,
+        "torch.uint8": torch.uint8,  # hifloat8 底层存储
+    }
+    k_torch_dtype = _k_dtype_map.get(k_dtype_str)
+    if k_torch_dtype is None:
+        print(f"[ERROR]Unsupported k_dtype: {k_dtype_str}, kv_quant only supports float8_e4m3fn and hifloat8!")
+        return
 
     k_cache_shape = fa_param['k_concat_shape'].copy()
     k_cache_shape[-1] = 512
@@ -899,15 +903,16 @@ def kv_concat_pa_preprocessing(input_tensor_dict, fa_param, params):
         print(f"[ERROR]Wrong input layout_kv: {fa_param['layout_kv']}")
         return
 
-    if k_dtype_str == "torch.int8" or k_dtype_str == "int8":
-        k_cache_concat = torch.cat((k_cache.contiguous(), k_rope_cache.contiguous().view(torch.int8),
-                                    k_dequant_scale_cache.contiguous().view(torch.int8)), dim=-1)
-    elif k_dtype_str == "torch.float8_e4m3fn" or k_dtype_str == "float8_e4m3fn":
+    if k_dtype_str == "torch.float8_e4m3fn":
         k_cache_concat = torch.cat((k_cache.contiguous(), k_rope_cache.contiguous().view(torch.float8_e4m3fn),
                                     k_dequant_scale_cache.contiguous().view(torch.float8_e4m3fn)), dim=-1)
-    elif k_dtype_str == "torch_npu.hifloat8" or k_dtype_str == "hifloat8":
+    elif k_dtype_str == "torch.uint8":
+        # hifloat8 底层存储为 uint8
         k_cache_concat = torch.cat((k_cache.contiguous(), k_rope_cache.contiguous().view(torch.uint8),
                                     k_dequant_scale_cache.contiguous().view(torch.uint8)), dim=-1)
+    else:
+        print(f"[ERROR]Unsupported k_dtype: {k_dtype_str}, kv_quant only supports float8_e4m3fn and hifloat8!")
+        return
 
     q_raw = fa_param['_raw_query'] if fa_param.get('_raw_query') is not None else fa_param['q_tensor']
     q_rope_raw = fa_param.get('_raw_query_rope')
