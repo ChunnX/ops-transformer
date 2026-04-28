@@ -31,5 +31,8 @@ endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)
     add_op_to_compiled_list()
-    add_modules_sources(OPTYPE mhc_post_backward ACLNNTYPE aclnn_exclude)
+    add_modules_sources(
+        OP_API_INDEPENDENT ON
+        OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api
+        OPTYPE mhc_post_backward ACLNNTYPE aclnn_exclude)
 endif()
