@@ -405,6 +405,7 @@ if constexpr (wFormat == CubeFormat::ND) {
     #endif
 #else
     REGISTER_TILING_DEFAULT(GMMNoQuantTilingData);
+    GET_TILING_DATA_WITH_STRUCT(GMMNoQuantTilingData, tilingData, tiling);
     if constexpr (NO_QUANT_B_TRANS == GMM_NO_TRANS && NO_QUANT_A_TRANS == GMM_NO_TRANS) {
         if constexpr (wFormat == CubeFormat::NZ) {
             GmmNoQuantAswt<layout::RowMajor, layout::Nz>(x, weight, bias, groupList, y, tiling);
