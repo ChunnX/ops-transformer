@@ -28,15 +28,6 @@ class IntWrapper:
 class MoeDistributeBuffer:
     def __init__(self, group, ccl_buffer_size: int = 0, comm_alg: int = 0,
                  context_mode: str = "OpRes"):
-        """
-        Args:
-            group: torch.distributed group
-            ccl_buffer_size: CCL buffer size (unused, kept for compatibility)
-            comm_alg: communication algorithm (unused, kept for compatibility)
-            context_mode: context initialization mode
-                "OpRes"     - OpRes IPC mode, for dispatch_v3/combine_v3
-                "Channel" - HCCL Channel mode, for moe_dispatch_ffn_combine
-        """
         self.group = group
         self.rank_id = torch.distributed.get_rank(group)
         self.world_size = torch.distributed.get_world_size(group)
