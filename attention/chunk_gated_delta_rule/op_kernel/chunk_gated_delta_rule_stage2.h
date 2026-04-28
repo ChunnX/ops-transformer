@@ -124,7 +124,7 @@ public:
                     uint64_t mm_offset1 = nvId * Sp_ * Dv_ + length * Dv_;
                     CalVPrime(sTP_->kCumdecay[mm_offset0], curState, sTP_->vInner[mm_offset1]);
                     CalAttnInter(sTP_->qPrime[mm_offset0], curState,
-                                 sTP_->out[nvId * Dv_ + + cId * chunkSize_ * Nv_ * Dv_]);
+                                 sTP_->out[nvId * Dv_ + cId * chunkSize_ * Nv_ * Dv_]);
                     CrossCoreSetFlag<0x2, PIPE_FIX>(0x2);   // 读完之前AIV不能写
                     CrossCoreWaitFlag(0x5);
                     CalStateNew(sTP_->vInner[mm_offset1], sTP_->kg[mm_offset0], finalState);
