@@ -163,7 +163,7 @@ using namespace AscendC;
 #endif
 
 template<uint8_t inOutLayoutType, uint16_t config, uint8_t pseMode, uint8_t quantMode, bool hasAttenMask, bool hasRope, 
-  bool isPa, bool isFd, bool emptyTensor, uint8_t pFAMask, uint8_t pFAMatMulType, bool enableKVPrefix, bool enableS1OutSplit>
+  uint8_t KvLayoutType, bool isFd, bool emptyTensor, uint8_t pFAMask, uint8_t pFAMatMulType, bool enableKVPrefix, bool enableS1OutSplit>
   inline __aicore__ void incre_flash_attention_FIAS_regbase(__gm__ uint8_t *query, __gm__ uint8_t *key,
                                                             __gm__ uint8_t *value, __gm__ uint8_t *pseShift,
                                                             __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengthsQ,
@@ -202,130 +202,130 @@ if constexpr (emptyTensor == true) {
 
 #if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_INT8 && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16)
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-    PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
+    PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
     INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, float16_t, int8_t, float, float16_t, ImplModeEnum::AA_HIGH_PRECISION,
     inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-    static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, isPa, isFd, enableKVPrefix);
+    static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, KvLayoutType, isFd, enableKVPrefix);
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_INT4 && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16) 
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-    PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
+    PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
     INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, float16_t, int4b_t, float, float16_t, ImplModeEnum::AA_HIGH_PRECISION,
     inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-    static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, isPa, isFd, enableKVPrefix);
+    static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, KvLayoutType, isFd, enableKVPrefix);
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_HIFLOAT8 && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16) 
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-    PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
+    PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
     INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, float16_t, hifloat8_t, float, float16_t, ImplModeEnum::AA_HIGH_PRECISION,
     inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-    static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, isPa, isFd, enableKVPrefix);
+    static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, KvLayoutType, isFd, enableKVPrefix);
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16) 
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-    PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
+    PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
     INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, float16_t, fp8_e4m3fn_t, float, float16_t, ImplModeEnum::AA_HIGH_PRECISION,
     inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-    static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, isPa, isFd, enableKVPrefix);
+    static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, KvLayoutType, isFd, enableKVPrefix);
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_FLOAT4_E2M1 && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16)
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-    PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
+    PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
     INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, float16_t, fp4x2_e2m1_t, float, float16_t, ImplModeEnum::AA_HIGH_PRECISION,
     inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-    static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, isPa, isFd, enableKVPrefix);
+    static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, KvLayoutType, isFd, enableKVPrefix);
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_INT8 && ORIG_DTYPE_ATTENTION_OUT == DT_BF16)
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-    PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
+    PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
     INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, bfloat16_t, int8_t, float, bfloat16_t, ImplModeEnum::AA_HIGH_PRECISION,
     inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-    static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, isPa, isFd, enableKVPrefix);
+    static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, KvLayoutType, isFd, enableKVPrefix);
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_INT4 && ORIG_DTYPE_ATTENTION_OUT == DT_BF16) 
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-    PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
+    PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
     INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, bfloat16_t, int4b_t, float, bfloat16_t, ImplModeEnum::AA_HIGH_PRECISION,
     inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-    static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, isPa, isFd, enableKVPrefix);
+    static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, KvLayoutType, isFd, enableKVPrefix);
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_HIFLOAT8 && ORIG_DTYPE_ATTENTION_OUT == DT_BF16) 
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-    PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
+    PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
     INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, bfloat16_t, hifloat8_t, float, bfloat16_t, ImplModeEnum::AA_HIGH_PRECISION,
     inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-    static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, isPa, isFd, enableKVPrefix);
+    static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, KvLayoutType, isFd, enableKVPrefix);
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_ATTENTION_OUT == DT_BF16) 
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-    PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
+    PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
     INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, bfloat16_t, fp8_e4m3fn_t, float, bfloat16_t, ImplModeEnum::AA_HIGH_PRECISION,
     inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-    static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, isPa, isFd, enableKVPrefix);
+    static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, KvLayoutType, isFd, enableKVPrefix);
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_FLOAT4_E2M1 && ORIG_DTYPE_ATTENTION_OUT == DT_BF16)
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-    PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
+    PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
     INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, bfloat16_t, fp4x2_e2m1_t, float, bfloat16_t, ImplModeEnum::AA_HIGH_PRECISION,
     inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-    static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, isPa, isFd, enableKVPrefix);
+    static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, KvLayoutType, isFd, enableKVPrefix);
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_INT8 && ORIG_DTYPE_ATTENTION_OUT == DT_INT8)
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-    PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
+    PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
     INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, bfloat16_t, int8_t, float, int8_t, ImplModeEnum::AA_HIGH_PRECISION,
     inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-    static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, isPa, isFd, enableKVPrefix);
+    static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, KvLayoutType, isFd, enableKVPrefix);
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_INT8 && ORIG_DTYPE_ATTENTION_OUT == DT_INT8)
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-    PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
+    PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
     INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, float16_t, int8_t, float, int8_t, ImplModeEnum::AA_HIGH_PRECISION,
     inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-    static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, isPa, isFd, enableKVPrefix);
+    static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, KvLayoutType, isFd, enableKVPrefix);
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_HIFLOAT8 && ORIG_DTYPE_ATTENTION_OUT == DT_HIFLOAT8) 
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-    PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
+    PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
     INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, bfloat16_t, hifloat8_t, float, hifloat8_t, ImplModeEnum::AA_HIGH_PRECISION,
     inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-    static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, isPa, isFd, enableKVPrefix);
+    static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, KvLayoutType, isFd, enableKVPrefix);
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_HIFLOAT8 && ORIG_DTYPE_ATTENTION_OUT == DT_HIFLOAT8) 
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-    PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
+    PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
     INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, float16_t, hifloat8_t, float, hifloat8_t, ImplModeEnum::AA_HIGH_PRECISION,
     inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-    static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, isPa, isFd, enableKVPrefix);
+    static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, KvLayoutType, isFd, enableKVPrefix);
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT8_E4M3FN) 
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-    PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
+    PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
     INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, bfloat16_t, fp8_e4m3fn_t, float, fp8_e4m3fn_t, ImplModeEnum::AA_HIGH_PRECISION,
     inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-    static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, isPa, isFd, enableKVPrefix);
+    static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, KvLayoutType, isFd, enableKVPrefix);
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT8_E4M3FN) 
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-    PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
+    PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
     INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(BaseApi::FlashAttentionScoreAntiquantKernel, float16_t, fp8_e4m3fn_t, float, fp8_e4m3fn_t, ImplModeEnum::AA_HIGH_PRECISION,
     inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-    static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, isPa, isFd, enableKVPrefix);
+    static_cast<PseTypeEnum>(pseMode), static_cast<AntiquantTypeEnum>(quantMode), hasAttenMask, false, false, true, KvLayoutType, isFd, enableKVPrefix);
 #endif
 
 #endif

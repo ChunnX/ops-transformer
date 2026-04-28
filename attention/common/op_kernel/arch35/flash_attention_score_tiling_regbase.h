@@ -129,7 +129,7 @@ public:
     uint32_t kvSplitPart;
     uint32_t accumOutSize;
     uint32_t logSumExpSize;
-    uint8_t paLayoutType;
+    uint8_t paLayoutType = 0; // 重构前tiling无赋值，需赋默认值
     uint8_t isRowInvalid;
     uint8_t isPostQuantPerChnl;
     uint8_t isPostQuantBF16;
