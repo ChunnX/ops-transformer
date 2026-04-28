@@ -297,7 +297,7 @@ static const aclTensor *TransMmWeightScaleTensor(const aclTensor *mmWeightScale)
 
 bool IsTransposeTwoDims(const aclTensor *tensor, int64_t firstDimIndex, int64_t secondDimIndex)
 {
-    if (tensor->GetViewShape().GetDimNum() < 2 || tensor->GetViewShape().GetDimNum() > 6) {
+    if (tensor == nullptr || tensor->GetViewShape().GetDimNum() < 2) {
         return false;
     }
     int64_t dimNum = tensor->GetViewShape().GetDimNum();
@@ -306,32 +306,14 @@ bool IsTransposeTwoDims(const aclTensor *tensor, int64_t firstDimIndex, int64_t 
     if (dim1 < 0 || dim1 >= dimNum || dim2 < 0 || dim2 >= dimNum || dim1 == dim2) {
         return false;
     }
-    std::vector<int64_t> shape(dimNum);
-    std::vector<int64_t> strides(dimNum);
-    for (int64_t i = 0; i < dimNum; ++i) {
-        shape[i] = tensor->GetViewShape().GetDim(i);
-        strides[i] = tensor->GetViewStrides()[i];
-    }
-    if (shape[dim1] == 1 && shape[dim2] == 1) {
+    int64_t shape1 = tensor->GetViewShape().GetDim(dim1);
+    int64_t shape2 = tensor->GetViewShape().GetDim(dim2);
+    int64_t stride1 = tensor->GetViewStrides()[dim1];
+    int64_t stride2 = tensor->GetViewStrides()[dim2];
+    if (shape1 == 1 && shape2 == 1) {
         return false;
     }
-    if (strides[dimNum - 1] != 1) {
-        return false;
-    }
-    int64_t expected = 1;
-    for (int64_t i = dimNum - 1; i >= 0; --i) {
-        if (i == dim1 && strides[i] == shape[dim2]) {
-            return true;
-        }
-        if (i == dim2 && strides[i] == shape[dim1]) {
-            return true;
-        }
-        if (strides[i] != expected) {
-            return false;
-        }
-        expected *= shape[i];
-    }
-    return false;
+    return (stride2 == 1 && stride1 == shape2);
 }
 
 static aclnnStatus CheckWeightScaleTransposeConsistency(const aclTensor *gmmWeight,
