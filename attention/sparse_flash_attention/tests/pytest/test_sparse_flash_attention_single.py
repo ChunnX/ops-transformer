@@ -58,7 +58,8 @@ def test_sparse_flash_attention_single(param_combination, request):
             try:
                 result, fulfill_percent, test_data = future.result()
                 if result == "Failed":
-                    request.node.add_report_section("call", "精度信息", f"精度: {fulfill_percent:.4f}%")
+                    case_name = test_data.get("Testcase_Name", "unknown")
+                    request.node.add_report_section("call", "精度信息", f"用例名: {case_name}\n精度: {fulfill_percent:.4f}%")
                     pytest.fail(f"测试结果为Failed", pytrace=False)
             except Exception as e:
                 params = test_data.get("params") if test_data else None
