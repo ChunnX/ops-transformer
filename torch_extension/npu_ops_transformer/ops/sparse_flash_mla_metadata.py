@@ -21,15 +21,15 @@ class SparseFlashMlaMetadataOpBuilder(OpBuilder):
 
     def sources(self):
         """Path to C++ source code."""
-        return ['ops/csrc/npu_sparse_flash_mla_metadata.cpp']
+        return ['ops/csrc/sparse_flash_mla_metadata.cpp']
 
     def schema(self) -> str:
         """PyTorch operator signature."""
         return "npu_sparse_flash_mla_metadata(int num_heads_q, int num_heads_kv, int head_dim, *, "         \
                "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_ori_kv=None, Tensor? seqused_q=None, "        \
                "Tensor? seqused_ori_kv=None, int? batch_size=0, int? max_seqlen_q=0, int? max_seqlen_kv=0," \
-               "int? max_seqlen_kv=0, int? ori_topk=0, int? ori_mask_mode=0, "                              \
-               "str? layout_q='BSND', str? layout_kv='BSND', bool? has_ori_kv=True) -> Tensor"
+               "int? ori_topk=0, int? ori_mask_mode=0, str? layout_q='BSND', str? layout_kv='BSND', "       \
+               "bool? has_ori_kv=True) -> Tensor"
 
     def register_meta(self):
         """

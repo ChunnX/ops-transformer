@@ -35,7 +35,7 @@ aclnnStatus CheckSingleParamQsmla(int64_t batchSizeOptional, int64_t maxSeqlenQO
 
 __attribute__((visibility("default")))
 aclnnStatus CheckExistenceQsmla(const aclTensor *cuSeqLensQOptional, const aclTensor *cuSeqLensOriKvOptional,
-    char *layoutQOptional, char *layoutKvOptional, bool hasOriKvOptional);
+    const aclTensor *sequsedOriKvOptional, char *layoutQOptional, char *layoutKvOptional, bool hasOriKvOptional);
 
 __attribute__((visibility("default")))
 aclnnStatus CheckConsistencyQsmla(const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensOriKvOptional,

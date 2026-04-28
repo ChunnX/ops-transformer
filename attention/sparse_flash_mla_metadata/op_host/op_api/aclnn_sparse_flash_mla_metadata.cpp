@@ -15,18 +15,19 @@
 
 #include "aclnn_sparse_flash_mla_metadata.h"
 #include "l0_sparse_flash_mla_metadata.h"
-#include "aclnn_kernels/contiguous.h"
-#include "aclnn_kernels/reshape.h"
 #include "aclnn/aclnn_base.h"
 #include "aclnn_kernels/common/op_error_check.h"
+#include "aclnn_kernels/contiguous.h"
+#include "aclnn_kernels/reshape.h"
 #include "opdev/common_types.h"
 #include "opdev/data_type_utils.h"
 #include "opdev/format_utils.h"
+#include "opdev/make_op_executor.h"
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
 #include "opdev/tensor_view_utils.h"
-#include "opdev/make_op_executor.h"
+#include "opdev/platform.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -41,8 +42,8 @@ static aclnnStatus ParamsCheck(const aclTensor *cuSeqLensQOptional, const aclTen
         oriTopKOptional, oriMaskModeOptional, layoutQOptional, layoutKvOptional, hasOriKvOptional);
     CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
-    ret = CheckExistenceSmla(cuSeqLensQOptional, cuSeqLensOriKvOptional, layoutQOptional, layoutKvOptional,
-        hasOriKvOptional);
+    ret = CheckExistenceSmla(cuSeqLensQOptional, cuSeqLensOriKvOptional, sequsedOriKvOptional, layoutQOptional,
+        layoutKvOptional, hasOriKvOptional);
     CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     ret = CheckConsistencySmla(cuSeqLensQOptional, cuSeqLensOriKvOptional, sequsedQOptional, sequsedOriKvOptional,
@@ -112,22 +113,22 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSizeOptional, int64_t maxSeqlenQOp
     char *layoutQOptional, char *layoutKvOptional, bool hasOriKvOptional)
 {
     // batch_size 非负校验
-    CHECK_COND(batchSizeOptional > 0, ACLNN_ERR_PARAM_INVALID,
+    CHECK_COND(batchSizeOptional >= 0, ACLNN_ERR_PARAM_INVALID,
         "batch_size should not be negative, but got %d", batchSizeOptional);
     // max_seqlen_q 非负校验
-    CHECK_COND(maxSeqlenQOptional > 0, ACLNN_ERR_PARAM_INVALID,
+    CHECK_COND(maxSeqlenQOptional >= 0, ACLNN_ERR_PARAM_INVALID,
         "max_seqlen_q should not be negative, but got %d", maxSeqlenQOptional);
     // max_seqlen_kv 非负校验
-    CHECK_COND(maxSeqlenKvOptional > 0, ACLNN_ERR_PARAM_INVALID,
+    CHECK_COND(maxSeqlenKvOptional >= 0, ACLNN_ERR_PARAM_INVALID,
         "max_seqlen_q should not be negative, but got %d", maxSeqlenKvOptional);
     // num_heads_q 校验
-    CHECK_COND(numHeadsQ > 0, ACLNN_ERR_PARAM_INVALID,
+    CHECK_COND(numHeadsQ >= 0, ACLNN_ERR_PARAM_INVALID,
         "num_heads_q should not be negative, but got %d", numHeadsQ);
     // num_heads_kv 校验
-    CHECK_COND(numHeadsKv > 0, ACLNN_ERR_PARAM_INVALID,
+    CHECK_COND(numHeadsKv >= 0, ACLNN_ERR_PARAM_INVALID,
         "num_heads_kv should not be negative, but got %d", numHeadsKv);
     // ori_topk 校验
-    CHECK_COND(oriTopKOptional > 0, ACLNN_ERR_PARAM_INVALID,
+    CHECK_COND(oriTopKOptional >= 0, ACLNN_ERR_PARAM_INVALID,
         "ori_topk should not be negative, but got %d", oriTopKOptional);
     // ori_mask_mode 校验
     CHECK_COND((oriMaskModeOptional == 0) || (oriMaskModeOptional == 3), ACLNN_ERR_PARAM_INVALID,
@@ -147,7 +148,7 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSizeOptional, int64_t maxSeqlenQOp
 }
 
 aclnnStatus CheckExistenceSmla(const aclTensor *cuSeqLensQOptional, const aclTensor *cuSeqLensOriKvOptional,
-    char *layoutQOptional, char *layoutKvOptional, bool hasOriKvOptional)
+    const aclTensor *sequsedOriKvOptional, char *layoutQOptional, char *layoutKvOptional, bool hasOriKvOptional)
 {
     int64_t *viewDims = nullptr;
     uint64_t viewDimsNum = 0;
@@ -177,10 +178,16 @@ aclnnStatus CheckExistenceSmla(const aclTensor *cuSeqLensQOptional, const aclTen
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
+
     if (hasOriKvOptional) {
         auto ret = aclGetViewShape(cuSeqLensOriKvOptional, &viewDims, &viewDimsNum);
-        if (ret == ACLNN_ERR_PARAM_INVALID || viewDimsNum == 0 || viewDims[0] == 0) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_ori_kv is true, cu_seqlens_ori_kv must be provided!");
+        bool isCuSeqLenOriKvOptionalProvided = (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] > 0);
+        ret = aclGetViewShape(sequsedOriKvOptional, &viewDims, &viewDimsNum);
+        bool isSequsedOriKvOptionalProvided = (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] > 0);
+
+        if (!isCuSeqLenOriKvOptionalProvided && !sequsedOriKvOptional) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "When has_ori_kv is true, at least one of cu_seqlens_ori_kv and seqysed_ori_kv must be provided!");
             delete[] viewDims;
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -286,7 +293,7 @@ aclnnStatus CheckConsistencySmla(const aclTensor* cuSeqLensQOptional, const aclT
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus CheckFeatureSfa()
+aclnnStatus CheckFeatureSmla()
 {
     return ACLNN_SUCCESS;
 }

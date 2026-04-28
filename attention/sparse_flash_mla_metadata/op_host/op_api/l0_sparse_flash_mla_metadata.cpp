@@ -33,7 +33,7 @@ const aclTensor* SparseFlashMlaMetadata(
     int64_t maxSeqlenKvOptional, int64_t oriTopKOptional, int64_t oriMaskModeOptional,
     char *layoutQOptional, char *layoutKvOptional, bool hasOriKvOptional,
     const char *socVersion, int64_t aicCoreNum, int64_t aivCoreNum,
-    const aclTensor* metaData, aclOpExecutor* executor)
+    const aclTensor *metaData, aclOpExecutor *executor)
 {
     L0_DFX(SparseFlashMlaMetadata, 
         cuSeqLensQOptional, cuSeqLensOriKvOptional, sequsedQOptional, sequsedOriKvOptional,
@@ -44,15 +44,17 @@ const aclTensor* SparseFlashMlaMetadata(
     static internal::AicpuTaskSpace space("SparseFlashMlaMetadata");
 
     auto ret = ADD_TO_LAUNCHER_LIST_AICPU(
-    SparseFlashMlaMetadata,
-    OP_ATTR_NAMES({
-        "num_heads_q", "num_heads_kv", "head_dim", "batch_size", "max_seqlen_q", "max_seqlen_kv", "ori_topk",
-        "ori_mask_mode", "layout_q", "layout_kv", "has_ori_kv", "soc_version", "aic_core_num", "aiv_core_num"
-    }),
-    OP_INPUT(cuSeqLensQOptional, cuSeqLensOriKvOptional, sequsedQOptional, sequsedOriKvOptional),
-    OP_ATTR(numHeadsQ, numHeadsKv, headDim, batchSizeOptional, maxSeqlenQOptional, maxSeqlenKvOptional, oriTopKOptional,
-        oriMaskModeOptional, layoutQOptional, layoutKvOptional, hasOriKvOptional, socVersion, aicCoreNum, aivCoreNum),
-    OP_OUTPUT(metaData));
+        SparseFlashMlaMetadata,
+        OP_ATTR_NAMES({
+            "num_heads_q", "num_heads_kv", "head_dim", "batch_size", "max_seqlen_q", "max_seqlen_kv", "ori_topk",
+            "ori_mask_mode", "layout_q", "layout_kv", "has_ori_kv", "soc_version", "aic_core_num", "aiv_core_num"
+        }),
+        OP_INPUT(cuSeqLensQOptional, cuSeqLensOriKvOptional, sequsedQOptional, sequsedOriKvOptional),
+        OP_OUTPUT(metaData),
+        OP_ATTR(numHeadsQ, numHeadsKv, headDim, batchSizeOptional, maxSeqlenQOptional, maxSeqlenKvOptional,
+            oriTopKOptional, oriMaskModeOptional, layoutQOptional, layoutKvOptional, hasOriKvOptional,
+            socVersion, aicCoreNum, aivCoreNum)
+    );
 
     OP_CHECK(ret == ACL_SUCCESS,
             OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "SparseFlashMlaMetadata ADD_TO_LAUNCHER_LIST_AICPU failed."),
