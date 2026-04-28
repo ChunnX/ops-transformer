@@ -128,9 +128,9 @@ public:
                     CrossCoreSetFlag<0x2, PIPE_FIX>(0x2);   // 读完之前AIV不能写
                     CrossCoreWaitFlag(0x5);
                     CalStateNew(sTP_->vInner[mm_offset1], sTP_->kg[mm_offset0], finalState);
-                    CrossCoreSetFlag<0x2, PIPE_FIX>(0x4);
                     SetFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
                     WaitFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
+                    CrossCoreSetFlag<0x2, PIPE_FIX>(0x4);
                 }
             }
         }
@@ -152,13 +152,12 @@ public:
         else {
             lastGCum_.SetValue(0, 1.0f);
         }
-        
+        float tmpFloat = lastGCum_.GetValue(0);
         auto stateIn = inQueue_.DeQue<bfloat16_t>();
         auto stateOut = outQueue_.AllocTensor<bfloat16_t>();
         SetFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
         WaitFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
         Cast(tmpBuffer1_, stateIn, RoundMode::CAST_NONE, Dv_ * curDk_);
-        float tmpFloat = lastGCum_.GetValue(0);
         SetFlag<HardEvent::S_V>(S_V_EVENT);
         WaitFlag<HardEvent::S_V>(S_V_EVENT);
         Muls(tmpBuffer1_, tmpBuffer1_, tmpFloat, Dv_ * curDk_);
