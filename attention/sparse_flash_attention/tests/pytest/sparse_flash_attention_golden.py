@@ -464,14 +464,12 @@ def _generate_block_table_and_cache(input_tensor_dict, fa_param, params, actualS
 
 def compute_golden(input_tensor_dict, params):
     print("cpu执行中...")
-    def _to_cpu_float32_tensor(val):
+    def _to_cpu_keep_dtype(val):
         if torch.is_tensor(val):
-            if val.dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
-                return val.float().cpu()
-            return val.cpu().float()
+            return val.cpu()
         return val
 
-    cpu_input = {key: _to_cpu_float32_tensor(val) for key, val in input_tensor_dict.items()}
+    cpu_input = {key: _to_cpu_keep_dtype(val) for key, val in input_tensor_dict.items() if torch.is_tensor(val)}
     fa_param = _prepare_fa_param(cpu_input, params)
     if not fa_param['normal_flag']:
         return torch.zeros(fa_param['out_shape'])
