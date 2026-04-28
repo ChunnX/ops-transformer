@@ -277,11 +277,9 @@ class PrecisionStage:
             df = pd.read_csv(build.paths.test_cases_path, sep=";")
             df = _preprocess_dataframe(df)
 
-            # Redirect C++ stdout to log file so [TILING] output is captured
-            stdout_redirector = _StdoutRedirector(task.test_paths.precision_log) \
-                if self.config.tiling_dump else None
-            if stdout_redirector:
-                stdout_redirector.start()
+            # Redirect C++ stdout/stderr to log file so kernel output is captured
+            stdout_redirector = _StdoutRedirector(task.test_paths.precision_log)
+            stdout_redirector.start()
 
             try:
                 for i, row in df.iterrows():
@@ -542,23 +540,34 @@ def _log_tensor_details(logger, inputs, ref_output, test_output, abs_diff, rel_d
 
 
 class _StdoutRedirector:
-    """Redirect C++ stdout (fd 1) to a log file so printf output is captured."""
+    """Redirect C++ stdout/stderr (fd 1 and fd 2) to a log file.
+
+    Captures all C-level output (printf, fprintf, AscendC runtime errors)
+    so kernel failures are fully logged.
+    """
 
     def __init__(self, log_path: str):
         self._log_path = log_path
-        self._saved_fd = None
+        self._saved_fd_out = None
+        self._saved_fd_err = None
 
     def start(self):
-        self._saved_fd = os.dup(1)
+        self._saved_fd_out = os.dup(1)
+        self._saved_fd_err = os.dup(2)
         self._log_fd = os.open(self._log_path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
         os.dup2(self._log_fd, 1)
+        os.dup2(self._log_fd, 2)
         os.close(self._log_fd)
 
     def stop(self):
-        if self._saved_fd is not None:
+        if self._saved_fd_out is not None:
             import ctypes
             sys.stdout.flush()
+            sys.stderr.flush()
             ctypes.CDLL(None).fflush(None)
-            os.dup2(self._saved_fd, 1)
-            os.close(self._saved_fd)
-            self._saved_fd = None
+            os.dup2(self._saved_fd_out, 1)
+            os.dup2(self._saved_fd_err, 2)
+            os.close(self._saved_fd_out)
+            os.close(self._saved_fd_err)
+            self._saved_fd_out = None
+            self._saved_fd_err = None
