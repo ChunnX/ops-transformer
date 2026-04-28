@@ -1146,25 +1146,6 @@ bool SparseFlashMlaGradMetadataCpuKernel::BalanceSchedule(SplitResult &splitRes)
     SplitContext splitContext(batchSize_);
     // 1、划分基本块，统计信息
     CalcSplitInfo(splitContext);
-    //// 全空case
-    //if (splitContext.splitInfo.isKvSeqAllZero) {
-    //    splitRes.usedCoreNum = 1U;
-    //    splitRes.bN2End[0] = batchSize_ * kvHeadNum_;
-    //    splitRes.gS1End[0] = 0U;
-    //    splitRes.s2End[0] = 0U;
-    //    return true;
-    //}
-    //CalcCostInfo(splitContext);
-    //// 2、获取每个核的分配方案
-    //splitRes.maxCost = INT64_MAX;
-    //splitRes.usedCoreNum = 1U;
-    
-    //CalcSplitPlan(splitRes.maxCost, splitContext, splitRes);
-    //// 3、存在FD任务，对FD进行负载均衡分配
-    //if (splitRes.numOfFdHead > 0U) {
-    //    SplitFD(splitRes);
-    //}
-    //splitRes.usedCoreNum = std::max(splitRes.usedCoreNum, 1U);  // 至少使用1个core
     return true;
 }
 
