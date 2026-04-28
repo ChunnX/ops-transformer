@@ -44,9 +44,9 @@ aclnnStatus aclnnMaskedCausalConv1dBackwardGetWorkspaceSize(
   const aclTensor   *gradY,
   const aclTensor   *x,
   const aclTensor   *weight,
-  const aclTensor   *mask,
-  aclTensor         *gradX,
-  aclTensor         *gradWeight,
+  const aclTensor   *maskOptional,
+  aclTensor         *gradXOut,
+  aclTensor         *gradWeightOut,
   uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
@@ -132,12 +132,12 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
         <td>√</td>
       </tr>
       <tr>
-        <td>mask（aclTensor*）</td>
+        <td>maskOptional（aclTensor*）</td>
         <td>可选输入</td>
         <td>表示卷积操作的输出掩码，对应公式中的mask。</td>
         <td>
           <ul>
-            <li>支持空Tensor。</li>
+            <li>不支持空Tensor。</li>
             <li>shape为[B, S]。</li>
             <li>默认值是nullptr。</li>
           </ul>
@@ -148,7 +148,7 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
         <td>√</td>
       </tr>
       <tr>
-        <td>gradX（aclTensor*）</td>
+        <td>gradXOut（aclTensor*）</td>
         <td>输出</td>
         <td>表示分组卷积输入x的梯度，对应公式中的gradX。</td>
         <td>
@@ -163,7 +163,7 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
         <td>x</td>
       </tr>
       <tr>
-        <td>gradWeight（aclTensor*）</td>
+        <td>gradWeightOut（aclTensor*）</td>
         <td>输出</td>
         <td>表示分组卷积输入weight的梯度，对应公式中的gradWeight。</td>
         <td>
@@ -289,6 +289,8 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
     - B * S（Batchsize * SeqLength）：取值范围为1~512K。
     - H（hiddenSize）：取值范围384~24576，且是64的整数倍。
     - W：W当前只支持3。
+- 算子入参与中间计算结果，在对应运行数据类型（float16/bfloat16） 下，数值均不会超出该类型值域范围。
+- 算子输入不支持有±inf和nan的情况。
 
 ## 调用示例
 

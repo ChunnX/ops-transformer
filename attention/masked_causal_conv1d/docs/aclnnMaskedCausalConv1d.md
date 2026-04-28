@@ -22,10 +22,10 @@
   假设输入x和输出y的shape是[S, B, H]，卷积权重weight的shape是[W, H]，i和j分别表示S和B轴的索引，那么输出将被表示为：
 
   $$
-  y[i,j] = mask[j,i] * \sum_{k=0}^{W-1} x[i-k,j] * weight[W-1-k]
+  out[i,j] = mask[j,i] * \sum_{k=0}^{W-1} x[i-k,j] * weight[W-1-k]
   $$
 
-  其中，无效位置的padding为0填充；当前W仅支持3；当前W仅支持3；H轴为elementwise操作，上述公式不体现。
+  其中，无效位置的padding为0填充；当前W仅支持3；H轴为elementwise操作，上述公式不体现。
 
 ## 函数原型
 
@@ -35,8 +35,8 @@
 aclnnStatus aclnnMaskedCausalConv1dGetWorkspaceSize(
   const aclTensor   *x,
   const aclTensor   *weight,
-  const aclTensor   *mask,
-  const aclTensor   *y,
+  const aclTensor   *maskOptional,
+  const aclTensor   *out,
   uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
@@ -107,12 +107,12 @@ aclnnStatus aclnnMaskedCausalConv1d(
         <td>√</td>
       </tr>
       <tr>
-        <td>mask（aclTensor*）</td>
+        <td>maskOptional（aclTensor*）</td>
         <td>可选输入</td>
         <td>表示卷积操作的输出掩码，对应公式中的mask。</td>
         <td>
           <ul>
-            <li>支持空Tensor。</li>
+            <li>不支持空Tensor。</li>
             <li>shape为[B, S]。</li>
             <li>默认值是nullptr。</li>
           </ul>
@@ -123,9 +123,9 @@ aclnnStatus aclnnMaskedCausalConv1d(
         <td>√</td>
       </tr>
       <tr>
-        <td>y（aclTensor*）</td>
+        <td>out（aclTensor*）</td>
         <td>输出</td>
-        <td>表示卷积的输出结果，对应公式中的y。</td>
+        <td>表示卷积的输出结果，对应公式中的out。</td>
         <td>
           <ul>
             <li>不支持空Tensor。</li>
@@ -250,6 +250,8 @@ aclnnStatus aclnnMaskedCausalConv1d(
   - B * S：取值范围为1~512K。
   - H（hiddenSize）：取值范围384~24576（64的整数倍）。
   - W：W当前只支持3。
+- 算子入参与中间计算结果，在对应运行数据类型（float16/bfloat16） 下，数值均不会超出该类型值域范围。
+- 算子输入不支持有±inf和nan的情况。
 
 ## 调用示例
 
