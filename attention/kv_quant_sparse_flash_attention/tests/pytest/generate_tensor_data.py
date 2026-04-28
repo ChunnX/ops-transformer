@@ -93,8 +93,9 @@ def gen_nonbound_tensor_data(params, data_shape, range_input, torch_dtype, tenso
             
             # torch_npu.hifloat8 特殊处理
             if torch_npu is not None and torch_dtype == torch_npu.hifloat8:
-                # hifloat8底层存储为uint8，生成uint8数据后转换
-                input_data = torch.randint(0, 256, data_shape, dtype=torch.uint8).to(torch_npu.hifloat8)
+                # hifloat8底层存储为uint8，生成uint8数据（不在此处转换）
+                input_data = torch.randint(0, 256, data_shape, dtype=torch.uint8)
+                # 稍后在generate_input_tensors中移到NPU并转换
             elif torch_dtype in (torch.float32, torch.float16, torch.bfloat16):
                 dtype_min = torch.finfo(torch_dtype).min
                 dtype_max = torch.finfo(torch_dtype).max
@@ -162,15 +163,15 @@ def gen_uniform_data(data_shape, min_value, max_value, torch_dtype, hash_seed):
     
     # torch_npu.hifloat8 特殊处理
     if torch_npu is not None and torch_dtype == torch_npu.hifloat8:
-        # hifloat8底层存储为uint8，生成uint8数据后转换
+        # hifloat8底层存储为uint8，生成uint8数据（不在此处转换，避免NPU设备问题）
         uint8_min = max(0, int(min_value))
         uint8_max = min(255, int(max_value))
         if uint8_min <= uint8_max:
             data_uint8 = torch.randint(uint8_min, uint8_max + 1, data_shape, dtype=torch.uint8)
         else:
             data_uint8 = torch.randint(0, 256, data_shape, dtype=torch.uint8)
-        # 将uint8 tensor转换为torch_npu.hifloat8 dtype
-        return data_uint8.to(torch_npu.hifloat8)
+        # 返回uint8，稍后在generate_input_tensors中移到NPU并转换为hifloat8
+        return data_uint8
     
     if torch_dtype in (torch.float32, torch.float16, torch.bfloat16):
         return torch.rand(data_shape, dtype=torch_dtype) * (max_value - min_value) + min_value

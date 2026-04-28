@@ -478,8 +478,24 @@ def generate_input_tensors(params):
     tensor_keys = ['query', 'key', 'sparse_indices', 'block_table',
                    'query_rope', 'key_rope', 'dequant_scale']
     raw = {}
+    
+    # 检查是否需要hifloat8特殊处理
+    try:
+        import torch_npu
+        hifloat8_dtype = torch_npu.hifloat8
+    except ImportError:
+        hifloat8_dtype = None
+    
     for key in tensor_keys:
-        raw[key] = generate_tensor_data.gen_tensor_data(params, key).to('npu')
+        tensor = generate_tensor_data.gen_tensor_data(params, key)
+        dtype_input = params["dtype_input"].get(key)
+        
+        # hifloat8特殊处理：先移到NPU，再转换dtype
+        if hifloat8_dtype is not None and dtype_input == hifloat8_dtype:
+            # tensor是uint8（CPU生成），需要移到NPU并转换为hifloat8
+            raw[key] = tensor.to('npu').to(hifloat8_dtype)
+        else:
+            raw[key] = tensor.to('npu')
 
     return {
         "query": raw["query"],
