@@ -1190,6 +1190,15 @@ ge::graphStatus DequantChecker::CheckInputKVTypeForAntiquant(const FiaTilingInfo
                             "keyAntiquantMode is per-channel mode and valueAntiquantMode is per-token mode.",
                             DataTypeToSerialString(inputKvType).c_str()),
                     return ge::GRAPH_FAILED);
+        OP_CHECK_IF((fiaInfo.inputKvType == ge::DT_INT8 &&
+                    (fiaInfo.inputQType != ge::DT_FLOAT16 || fiaInfo.outputType != ge::DT_FLOAT16)),
+                    OP_LOGE(fiaInfo.opName,
+                            "When key in per-channel scenario and value in per-token scenario,"
+                            "if inputKvType is INT8, inputQType and outputType must be FLOAT16,"
+                            "but now inputQType is %s, outputType is %s.",
+                            DataTypeToSerialString(fiaInfo.inputQType).c_str(),
+                            DataTypeToSerialString(fiaInfo.outputType).c_str()),
+                    return ge::GRAPH_FAILED);
     }
     if (keyAntiquantMode == PER_TOKEN_GROUP_MODE && valueAntiquantMode == PER_TOKEN_GROUP_MODE) {
         // per-token-group模式，支持key/value的数据类型为FLOAT4_E2M1

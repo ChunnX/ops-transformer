@@ -437,8 +437,11 @@ void SFAMlaTiling::GetWorkspaceSize()
         constexpr uint32_t D_SIZE = 576;
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(sfaInfo_->platformInfo);
         uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
+        if (sfaInfo_->gSize > 64) { // N1大于64时切G，相邻两个cube核处理同一个s2Base
+            aicNum = aicNum >> 1;
+        }
         workspaceSize_ += (S2_BASE_SIZE * D_SIZE * GetTypeSize(sfaInfo_->inputQType) \
-            * TRIPLE_BUFFER_NUM * (aicNum >> 1));
+            * TRIPLE_BUFFER_NUM * aicNum);
     } else {
         uint32_t mmResElemSize = 4;         // 4:fp32
         uint32_t vec1ResElemSize = 2;       // 2:fp16/bf16

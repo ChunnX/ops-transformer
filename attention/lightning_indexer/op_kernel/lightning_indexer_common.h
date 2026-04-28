@@ -84,7 +84,7 @@ struct ConstInfo {
     static constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768;
     // 无效索引
     static constexpr int INVALID_IDX = -1;
-
+    uint16_t INVALID_VAL = 0;
     // CUBE和VEC的核间同步EventID
     uint32_t syncC1V1 = 0U;
     uint32_t syncC1V0 = 2U;

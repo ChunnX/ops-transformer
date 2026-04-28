@@ -195,7 +195,7 @@ ScatterPaKvCacheRopeFullyLoad<T, IndexDtype, InOutMode>::ReduceMeanKey(int64_t i
     DataCopyExtParams outKeyCacheParams{1, static_cast<uint32_t>(tilingData_->kHeadSize * sizeof(T)), 0, 0, 0};
     LocalTensor<IndexDtype> slotMappingLocal = slotMappingBuf_.Get<IndexDtype>();
     int64_t kStartIdx = slotMappingLocal.GetValue(iter) + count_;
-    if (kStartIdx < tilingData_->numBlocks * tilingData_->blockSize) {
+    if (kStartIdx >= 0 && kStartIdx < tilingData_->numBlocks * tilingData_->blockSize) {
         if constexpr (isNeedCast_) {
             if constexpr (IsSameType<T, hifloat8_t>::value) {
                 Cast(inputKeyLocal, tmpLocal, RoundMode::CAST_ROUND, tilingData_->kHeadSize);
@@ -291,7 +291,7 @@ ScatterPaKvCacheRopeFullyLoad<T, IndexDtype, InOutMode>::ReduceMeanValue(int64_t
     DataCopyExtParams outValueCacheParams{1, static_cast<uint32_t>(tilingData_->vHeadSize * sizeof(T)), 0, 0, 0};
     LocalTensor<IndexDtype> slotMappingLocal = slotMappingBuf_.Get<IndexDtype>();
     int64_t vStartIdx = slotMappingLocal.GetValue(iter) + count_;
-    if (vStartIdx < tilingData_->numBlocks * tilingData_->blockSize) {
+    if (vStartIdx >= 0 && vStartIdx < tilingData_->numBlocks * tilingData_->blockSize) {
         if constexpr (isNeedCast_) {
             if constexpr (IsSameType<T, hifloat8_t>::value) {
                 Cast(inputValueLocal, tmpLocal, RoundMode::CAST_ROUND, tilingData_->vHeadSize);
