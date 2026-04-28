@@ -11,32 +11,6 @@
 if(UT_TEST_ALL OR OP_HOST_UT)
     add_modules_ut_sources(UT_NAME ${OP_TILING_MODULE_NAME} MODE PRIVATE DIR ${CMAKE_CURRENT_SOURCE_DIR})
     add_modules_ut_sources(UT_NAME ${OP_INFERSHAPE_MODULE_NAME} MODE PRIVATE DIR ${CMAKE_CURRENT_SOURCE_DIR})
-
-    set(_QGMMIA_GROUPED_TILING_SRCS
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../grouped_matmul/op_host/op_tiling/arch35/grouped_quant_basic_api_matmul_tiling.cpp)
-
-    if(TARGET ${OPHOST_NAME}_tiling_obj)
-        get_target_property(_QGMMIA_EXISTING_TILING_SRCS ${OPHOST_NAME}_tiling_obj SOURCES)
-        if(NOT _QGMMIA_EXISTING_TILING_SRCS)
-            set(_QGMMIA_EXISTING_TILING_SRCS)
-        endif()
-
-        set(_QGMMIA_MISSING_TILING_SRCS)
-        foreach(_SRC IN LISTS _QGMMIA_GROUPED_TILING_SRCS)
-            get_filename_component(_ABS_SRC "${_SRC}" REALPATH)
-            list(FIND _QGMMIA_EXISTING_TILING_SRCS "${_ABS_SRC}" _FOUND_INDEX)
-            if(_FOUND_INDEX EQUAL -1)
-                list(APPEND _QGMMIA_MISSING_TILING_SRCS "${_ABS_SRC}")
-            endif()
-        endforeach()
-
-        if(_QGMMIA_MISSING_TILING_SRCS)
-            target_sources(${OPHOST_NAME}_tiling_obj PRIVATE ${_QGMMIA_MISSING_TILING_SRCS})
-        endif()
-        target_link_libraries(${OPHOST_NAME}_tiling_obj PRIVATE
-            $<$<BOOL:${alog_FOUND}>:$<BUILD_INTERFACE:alog_headers>>)
-    endif()
 endif()
 
 file(GLOB CURRENT_DIRS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/*)
