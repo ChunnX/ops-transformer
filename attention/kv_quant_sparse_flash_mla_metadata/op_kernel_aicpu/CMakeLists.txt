@@ -20,13 +20,13 @@ if (BUILD_WITH_INSTALLED_DEPENDENCY_CANN_PKG)
 
   # aicpu cust kernel
   file(GLOB AICPU_SRC ${CMAKE_CURRENT_SOURCE_DIR}/*_aicpu*.cpp)
-  message(STATUS "[kv_quant_sparse_flash_attention_metadata] Found aicpu sources: ${AICPU_SRC}, ascend dir: ${ASCEND_DIR}, ophsot name: ${OPHOST_NAME}")
+  message(STATUS "[kv_quant_sparse_flash_mla_metadata] Found aicpu sources: ${AICPU_SRC}, ascend dir: ${ASCEND_DIR}, ophsot name: ${OPHOST_NAME}")
 
-  set(OBJ_NAME kv_quant_sparse_flash_attention_metadata_cust_obj)
+  set(OBJ_NAME kv_quant_sparse_flash_mla_metadata_cust_obj)
   add_aicpu_cust_kernel_modules(${OBJ_NAME})
   target_sources(${OBJ_NAME} PRIVATE ${AICPU_SRC})
 endif()
 
 if(UT_TEST_ALL OR OP_KERNEL_AICPU_UT)
-    AddAicpuOpTestCase(kv_quant_sparse_flash_attention_metadata)
+    AddAicpuOpTestCase(kv_quant_sparse_flash_mla_metadata)
 endif()
