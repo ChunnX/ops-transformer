@@ -671,8 +671,16 @@ def compute_golden(input_tensor_dict, params):
     # CPU golden 链路工作在 float32 torch tensor
     def _to_cpu_keep_dtype(val):
         if torch.is_tensor(val):
+            # float8 和 hifloat8 需要转 float32（CPU不支持float8运算）
             if val.dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
                 return val.float().cpu()
+            # torch_npu.hifloat8 也需要转 float32
+            try:
+                import torch_npu
+                if val.dtype == torch_npu.hifloat8:
+                    return val.float().cpu()
+            except ImportError:
+                pass
             return val.cpu()
         return val
 
@@ -826,8 +834,15 @@ def kv_concat_pa_preprocessing(input_tensor_dict, fa_param, params):
 
     _k_dtype_map = {
         "torch.float8_e4m3fn": torch.float8_e4m3fn,
-        "torch.uint8": torch.uint8,  # hifloat8 底层存储
+        "torch.uint8": torch.uint8,  # CPU降级（无torch_npu时）
     }
+    # 添加 torch_npu.hifloat8 支持
+    try:
+        import torch_npu
+        _k_dtype_map["torch_npu.hifloat8"] = torch_npu.hifloat8
+    except ImportError:
+        pass
+    
     k_torch_dtype = _k_dtype_map.get(k_dtype_str)
     if k_torch_dtype is None:
         print(f"[ERROR]Unsupported k_dtype: {k_dtype_str}, kv_quant only supports float8_e4m3fn and hifloat8!")
@@ -912,9 +927,18 @@ def kv_concat_pa_preprocessing(input_tensor_dict, fa_param, params):
         k_cache_concat = torch.cat((k_cache.contiguous(), k_rope_cache.contiguous().view(torch.float8_e4m3fn),
                                     k_dequant_scale_cache.contiguous().view(torch.float8_e4m3fn)), dim=-1)
     elif k_dtype_str == "torch.uint8":
-        # hifloat8 底层存储为 uint8
+        # CPU降级：hifloat8 底层存储为 uint8
         k_cache_concat = torch.cat((k_cache.contiguous(), k_rope_cache.contiguous().view(torch.uint8),
                                     k_dequant_scale_cache.contiguous().view(torch.uint8)), dim=-1)
+    elif k_dtype_str == "torch_npu.hifloat8":
+        # NPU环境：torch_npu.hifloat8
+        try:
+            import torch_npu
+            k_cache_concat = torch.cat((k_cache.contiguous(), k_rope_cache.contiguous().view(torch_npu.hifloat8),
+                                        k_dequant_scale_cache.contiguous().view(torch_npu.hifloat8)), dim=-1)
+        except ImportError:
+            print(f"[ERROR]torch_npu.hifloat8 requires torch_npu module!")
+            return
     else:
         print(f"[ERROR]Unsupported k_dtype: {k_dtype_str}, kv_quant only supports float8_e4m3fn and hifloat8!")
         return

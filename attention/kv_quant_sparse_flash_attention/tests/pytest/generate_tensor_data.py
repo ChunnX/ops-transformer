@@ -7,6 +7,10 @@ import math
 import struct
 import torch
 import copy
+try:
+    import torch_npu
+except ImportError:
+    torch_npu = None  # CPU环境测试时torch_npu不可用
 
 
 INVALID_VALUE = -1
@@ -87,7 +91,11 @@ def gen_nonbound_tensor_data(params, data_shape, range_input, torch_dtype, tenso
             if hash_seed > 0:
                 torch.manual_seed(hash_seed)
             
-            if torch_dtype in (torch.float32, torch.float16, torch.bfloat16):
+            # torch_npu.hifloat8 特殊处理
+            if torch_npu is not None and torch_dtype == torch_npu.hifloat8:
+                # hifloat8底层存储为uint8，生成uint8数据后转换
+                input_data = torch.randint(0, 256, data_shape, dtype=torch.uint8).to(torch_npu.hifloat8)
+            elif torch_dtype in (torch.float32, torch.float16, torch.bfloat16):
                 dtype_min = torch.finfo(torch_dtype).min
                 dtype_max = torch.finfo(torch_dtype).max
                 input_data = torch.rand(data_shape, dtype=torch_dtype)
@@ -152,18 +160,29 @@ def gen_uniform_data(data_shape, min_value, max_value, torch_dtype, hash_seed):
     if hash_seed > 0:
         torch.manual_seed(hash_seed)
     
+    # torch_npu.hifloat8 特殊处理
+    if torch_npu is not None and torch_dtype == torch_npu.hifloat8:
+        # hifloat8底层存储为uint8，生成uint8数据后转换
+        uint8_min = max(0, int(min_value))
+        uint8_max = min(255, int(max_value))
+        if uint8_min <= uint8_max:
+            data_uint8 = torch.randint(uint8_min, uint8_max + 1, data_shape, dtype=torch.uint8)
+        else:
+            data_uint8 = torch.randint(0, 256, data_shape, dtype=torch.uint8)
+        # 将uint8 tensor转换为torch_npu.hifloat8 dtype
+        return data_uint8.to(torch_npu.hifloat8)
+    
     if torch_dtype in (torch.float32, torch.float16, torch.bfloat16):
         return torch.rand(data_shape, dtype=torch_dtype) * (max_value - min_value) + min_value
     elif torch_dtype in (torch.int8, torch.int32):
         return torch.randint(int(min_value), int(max_value) + 1, data_shape, dtype=torch_dtype)
     elif torch_dtype == torch.uint8:
-        # uint8 (hifloat8): 必须在 [0, 255] 范围内
+        # uint8: 必须在 [0, 255] 范围内
         uint8_min = max(0, int(min_value))
         uint8_max = min(255, int(max_value))
         if uint8_min <= uint8_max:
             return torch.randint(uint8_min, uint8_max + 1, data_shape, dtype=torch_dtype)
         else:
-            # 范围无效时，生成 [0, 255] 全范围
             return torch.randint(0, 256, data_shape, dtype=torch_dtype)
     elif torch_dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
         # float8 类型: 先用 float32 生成，再转换

@@ -20,6 +20,10 @@ import numpy as np
 import pandas as pd
 import pytest
 import torch
+try:
+    import torch_npu
+except ImportError:
+    torch_npu = None  # CPU环境测试时torch_npu不可用
 import check_valid_param
 import kv_quant_sparse_flash_attention_golden
 import result_compare_method
@@ -35,6 +39,12 @@ STR_MAP_DICT = {
     "FALSE": False,
     "torch.bfloat16": torch.bfloat16,
     "torch.float16": torch.float16,
+    "torch.float32": torch.float32,
+    "torch.int8": torch.int8,
+    "torch.int32": torch.int32,
+    "torch.uint8": torch.uint8,
+    "torch.float8_e4m3fn": torch.float8_e4m3fn,
+    "torch.float8_e5m2": torch.float8_e5m2,
 }
 
 
@@ -258,7 +268,11 @@ def convert_param_combination_to_cs_format(param_combination):
     elif isinstance(kv_type, torch.dtype):
         kv_torch_dtype = kv_type
     elif str(kv_type) in ("hifloat8", "torch_npu.hifloat8"):
-        kv_torch_dtype = torch.uint8  # hifloat8 底层存储
+        # hifloat8: NPU专用dtype，底层存储为uint8，但必须使用torch_npu.hifloat8传给NPU
+        if torch_npu is not None:
+            kv_torch_dtype = torch_npu.hifloat8
+        else:
+            kv_torch_dtype = torch.uint8  # CPU测试环境降级为uint8
     elif str(kv_type) in ("float8_e4m3fn", "torch.float8_e4m3fn"):
         kv_torch_dtype = torch.float8_e4m3fn
     elif kv_type == "int8":
@@ -477,14 +491,15 @@ def get_str_dtype(type_str):
 
 def get_torch_dtype(type_str):
     type_dict = {
-        'fp32': torch.float32, 'float32': torch.float32,
-        'fp16': torch.float16, 'float16': torch.float16,
-        'bf16': torch.bfloat16, 'bfloat16': torch.bfloat16,
-        'int8': torch.int8,
-        'int32': torch.int32,
-        'uint8': torch.uint8,
-        'float8_e4m3fn': torch.float8_e4m3fn,
-        'hifloat8': None,
+        'fp32': torch.float32, 'float32': torch.float32, 'torch.float32': torch.float32,
+        'fp16': torch.float16, 'float16': torch.float16, 'torch.float16': torch.float16,
+        'bf16': torch.bfloat16, 'bfloat16': torch.bfloat16, 'torch.bfloat16': torch.bfloat16,
+        'int8': torch.int8, 'torch.int8': torch.int8,
+        'int32': torch.int32, 'torch.int32': torch.int32,
+        'uint8': torch.uint8, 'torch.uint8': torch.uint8,
+        'float8_e4m3fn': torch.float8_e4m3fn, 'torch.float8_e4m3fn': torch.float8_e4m3fn,
+        'float8_e5m2': torch.float8_e5m2, 'torch.float8_e5m2': torch.float8_e5m2,
+        'hifloat8': None, 'torch_npu.hifloat8': None,
     }
     return type_dict.get(type_str)
 

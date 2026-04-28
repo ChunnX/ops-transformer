@@ -66,8 +66,17 @@ def call_npu_op(torch_tensor_dict, params):
     
     key_is_hifloat8 = (key_dtype == torch_npu.hifloat8 or key_dtype_name in ("hifloat8", "torch_npu.hifloat8"))
     value_is_hifloat8 = (value_dtype == torch_npu.hifloat8 or value_dtype_name in ("hifloat8", "torch_npu.hifloat8"))
-    key_dtype_arg = torch_npu.hifloat8 if key_is_hifloat8 else None
-    value_dtype_arg = torch_npu.hifloat8 if value_is_hifloat8 else None
+    
+    # hifloat8 和 float8_e4m3fn 都需要传 key_dtype 参数
+    if key_is_hifloat8:
+        key_dtype_arg = torch_npu.hifloat8
+        value_dtype_arg = torch_npu.hifloat8
+    elif key_dtype in (torch.float8_e4m3fn, torch.float8_e5m2) or key_dtype_name in ("torch.float8_e4m3fn", "torch.float8_e5m2"):
+        key_dtype_arg = torch.float8_e4m3fn if key_dtype == torch.float8_e4m3fn or key_dtype_name == "torch.float8_e4m3fn" else torch.float8_e5m2
+        value_dtype_arg = key_dtype_arg
+    else:
+        key_dtype_arg = None
+        value_dtype_arg = None
 
     sparse_indices = torch_tensor_dict['sparse_indices']
 
@@ -82,7 +91,7 @@ def call_npu_op(torch_tensor_dict, params):
     key_dequant_scale = None
     value_dequant_scale = None
     kv_dtype_kwargs = {}
-    if key_is_hifloat8:
+    if key_dtype_arg is not None:
         kv_dtype_kwargs = {"key_dtype": key_dtype_arg, "value_dtype": value_dtype_arg}
     output = torch_npu.npu_kv_quant_sparse_flash_attention(q_tensor,
                                                         k_tensor,
