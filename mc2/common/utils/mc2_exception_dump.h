@@ -47,7 +47,7 @@ typedef aclError (*aclrtGetArgsFromExceptionInfo_t)(aclrtExceptionInfo *info, vo
 // 动态加载函数
 inline aclrtGetArgsFromExceptionInfo_t GetAclrtGetArgsFromExceptionInfoFunc()
 {
-    OP_LOGE(OP_NAME, "printf GetAclrtGetArgsFromExceptionInfoFunc begin.");
+    OP_LOGD(OP_NAME, "printf GetAclrtGetArgsFromExceptionInfoFunc begin.");
     static aclrtGetArgsFromExceptionInfo_t func = nullptr;
     static bool initialized = false;
     
@@ -56,10 +56,10 @@ inline aclrtGetArgsFromExceptionInfo_t GetAclrtGetArgsFromExceptionInfoFunc()
         
         // 直接从 libacl_rt.so 加载符号
         void *handle = dlopen("libacl_rt.so", RTLD_NOLOAD | RTLD_LAZY);
-        OP_LOGE(OP_NAME, "printf get handle ptr successfull.");
+        OP_LOGD(OP_NAME, "printf get handle ptr successfull.");
         if (handle != nullptr) {
             func = (aclrtGetArgsFromExceptionInfo_t)dlsym(handle, "aclrtGetArgsFromExceptionInfo");
-            OP_LOGE(OP_NAME, "printf get func ptr successfull.");
+            OP_LOGD(OP_NAME, "printf get func ptr successfull.");
             if (func == nullptr) {
                 OP_LOGE(OP_NAME, "dlsym aclrtGetArgsFromExceptionInfo failed: %s", dlerror());
             }
@@ -202,7 +202,7 @@ inline int ProcessArgsForA3(uint64_t argsAddr, std::vector<uint8_t> &winBuf)
 
 inline void Mc2ExceptionImpl(aclrtExceptionInfo *args, void *userdata, const char *op)
 {
-    OP_LOGE(OP_NAME, "printf Mc2ExceptionImpl begin.");
+    OP_LOGD(OP_NAME, "printf Mc2ExceptionImpl begin.");
     const char* socName = aclrtGetSocName();
     if((std::strstr(socName, "Ascend950") == nullptr) && (std::strstr(socName, "Ascend910_93") == nullptr)) {
         OP_LOGE(OP_NAME, "The soc version is %s, skip dump process", socName);
