@@ -2491,11 +2491,11 @@ ge::graphStatus DequantChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
             enableIFAMLAFullQuant_ = true;
         } else if (fiaInfo.inputQType == ge::DT_INT8) {
             enablePertensorQuant_ = true;
-        } else if (false) { // 暂时写死
+        } else if (fiaInfo.fullQuantMode == FiaFullQuantMode::PER_BLOCK_FULL_QUANT) { 
             enablePerblockQuant_ = true;
             OP_LOGW(fiaInfo.opName, "Per-block full quantization scenario will be deprecated in future versions. "
                     "It is recommended to use mxfp8 full quantization instead.");
-        } else {
+        } else if (fiaInfo.fullQuantMode == FiaFullQuantMode::MXFP8_FULL_QUANT) {
             enableMxfp8FullQuant_ = true;
         }
 
