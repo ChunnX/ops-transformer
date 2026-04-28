@@ -46,11 +46,13 @@ import pytest
 import torch
 import torch_npu
 import torch_bsa
-from benchmark import create_attention_mask, FrameWidths, BLOCK_SIZE_Q, BLOCK_SIZE_KV
+from benchmark import create_attention_mask, FrameWidths
 
 SEED = 42
 DEVICE = "npu:0"
 INPUT_LAYOUT = "BNSD"
+BLOCK_SIZE_Q = 128
+BLOCK_SIZE_KV = 128
 _SABI_PAD = 65535   # 0xFFFF – padding sentinel in uint16 sabi tensors
 torch.npu.set_device(DEVICE)
 
@@ -122,13 +124,13 @@ DISABLED_LSE_SHAPES = [
 
 # ── Tolerances ────────────────────────────────────────────────────────────────
 LSE_ATOL = {
-    torch.bfloat16: 0.025,
-    torch.float16:  0.025,
+    torch.bfloat16: 1e-4,
+    torch.float16:  1e-4,
     torch.float32:  1e-3,
 }
 # Bfloat16 input vs float32 reference: allow for bfloat16 mantissa error in
 # the attention score accumulation (typically < 0.03, 0.05 gives headroom).
-SPARSE_REF_ATOL = 0.05
+SPARSE_REF_ATOL = 1e-3
 
 
 # ── Mask helper ───────────────────────────────────────────────────────────────

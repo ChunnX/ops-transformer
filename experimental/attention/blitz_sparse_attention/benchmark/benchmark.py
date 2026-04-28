@@ -81,7 +81,11 @@ PRINT_HEIGHT = 128
 PRINT_WIDTH = 8
 
 RUN_REFERENCE = False  # True <--> enables accuracy compariston
-TORCH_REFERENCE = False  # If False, will instead run the torch_npu reference
+# Which reference kernel to compare/benchmark against. One of:
+#   "custom"                          - our pythonic ref_blitz_sparse_attention_fp32
+#   "npu_fusion_attention"            - torch_npu.npu_fusion_attention (PFA)
+#   "npu_fused_infer_attention_score" - torch_npu.npu_fused_infer_attention_score (FIAS)
+TORCH_REFERENCE = "npu_fusion_attention"
 
 torch.set_printoptions(
     threshold=100_000_000,
@@ -93,27 +97,80 @@ torch.set_printoptions(
 
 
 def ref_blitz_sparse_attention_launcher(
-    torch_reference: bool, 
+    torch_reference: str,
     pfa_inputs: Tuple[torch.Tensor, torch.Tensor, torch.Tensor, int, float, torch.Tensor, str],
-    force_dense_sm: bool
-) -> torch.Tensor:
+    force_dense_sm: bool,
+    return_lse: bool = False,
+):
     """
-    runs a reference prompt_flash attention, for correctness comparisons and for baseline time measurements.
-    torch_reference = True - launch our custom pythonic model "ref_blitz_sparse_attention_fp32" 
-                      False -> launch the torch_npu.npu_fusion_attention
-    force_dense_sm - relevant only for torch_interface=False:
-                      True - apply sparse mode 0 (dense) and don't use the provided atten_mask
-                      False - apply sparse mode 1 (sparse token mask) and use the provided atten_mask
-     
+    runs a reference attention kernel, for correctness comparisons and for baseline time measurements.
+
+    torch_reference: which reference to launch
+      "custom"                          - launch our pythonic model `ref_blitz_sparse_attention_fp32`
+      "npu_fusion_attention"            - launch `torch_npu.npu_fusion_attention` (PFA)
+      "npu_fused_infer_attention_score" - launch `torch_npu.npu_fused_infer_attention_score` (FIAS)
+    force_dense_sm - only consulted for the npu_* references:
+      True  - apply sparse_mode=0 (dense) and don't use the provided atten_mask
+      False - apply sparse_mode=1 (sparse token mask) and use the provided atten_mask
+    return_lse - if True, return (attention_out, softmax_lse[B,H,S]).  Only the FIAS
+                 reference natively produces softmax_lse; "custom" and
+                 "npu_fusion_attention" raise ValueError when asked for it.
+                 If False (default), return only attention_out.
     """
     q, k, v, head_num, scale, atten_mask, input_layout = pfa_inputs
-    if torch_reference: # use our custom pythonic model
+    if torch_reference == "custom":
+        if return_lse:
+            raise ValueError("return_lse=True is not supported by the 'custom' reference "
+                             "(ref_blitz_sparse_attention_fp32 does not compute softmax_lse).")
         return ref_blitz_sparse_attention_fp32(q, k, v, scale, atten_mask=atten_mask)
-    else:
-        return torch_npu.npu_fusion_attention(q, k, v, head_num=head_num, input_layout=input_layout, 
-                                              scale=scale, pre_tockens=0, next_tockens=0, 
+    if torch_reference == "npu_fusion_attention":
+        if return_lse:
+            raise ValueError("return_lse=True is not supported by 'npu_fusion_attention'; "
+                             "use 'npu_fused_infer_attention_score' instead.")
+        return torch_npu.npu_fusion_attention(q, k, v, head_num=head_num, input_layout=input_layout,
+                                              scale=scale, pre_tockens=0, next_tockens=0,
                                               atten_mask=atten_mask,
                                               sparse_mode=0 if force_dense_sm else 1)[0]
+    if torch_reference == "npu_fused_infer_attention_score":
+        # FIAS is only supported by this launcher in dense mode (sparse_mode=0).
+        # Reason: FIAS does not accept our atten_mask layout — its sparse_mode=1
+        # path requires a [B, 1, S, S] mask (H broadcast), whereas this launcher's
+        # `pfa_inputs` carries an atten_mask shaped per the caller's needs (often
+        # [B, H, S, S]) and would silently mis-apply or hang the kernel. Callers
+        # that need a sparse FIAS reference must invoke
+        # torch_npu.npu_fused_infer_attention_score(...) directly so they own the
+        # mask-shape constraint at the call site.
+        if not force_dense_sm:
+            raise ValueError(
+                "torch_reference='npu_fused_infer_attention_score' requires "
+                "force_dense_sm=True. FIAS does not support our atten_mask layout "
+                "(sparse_mode=1 needs [B, 1, S, S]); call "
+                "torch_npu.npu_fused_infer_attention_score(...) directly for sparse runs."
+            )
+        # FIAS expects per-batch actual sequence lengths; derive them from q/k shape according to input_layout.
+        if input_layout == "BNSD":
+            B, S_q, S_kv = q.shape[0], q.shape[2], k.shape[2]
+        elif input_layout in ("BSND", "BSH"):
+            B, S_q, S_kv = q.shape[0], q.shape[1], k.shape[1]
+        else:
+            raise ValueError(f"Unsupported input_layout for FIAS reference: {input_layout!r}")
+        actual_seq_q = [S_q] * B
+        actual_seq_kv = [S_kv] * B
+        out, lse = torch_npu.npu_fused_infer_attention_score(
+            q, k, v,
+            num_heads=head_num, scale=scale,
+            input_layout=input_layout, num_key_value_heads=head_num,
+            actual_seq_lengths=actual_seq_q, actual_seq_lengths_kv=actual_seq_kv,
+            softmax_lse_flag=return_lse,
+        )
+        if return_lse:
+            # FIAS emits lse as [B, H, S, 1]; squeeze to [B, H, S].
+            return out, lse.squeeze(-1)
+        return out
+    raise ValueError(
+        f"Unknown torch_reference value: {torch_reference!r}. "
+        f"Expected one of: 'custom', 'npu_fusion_attention', 'npu_fused_infer_attention_score'."
+    )
 
 
 def generate_sparse_blocks_by_row(
@@ -616,6 +673,7 @@ def _make_our_fn(sabi, h, scale, atten_mask, sparsity_params):
             input_layout=INPUT_LAYOUT, scale_value=scale,
             atten_mask=atten_mask, sparse_mode=sm,
             pre_tokens=pre_tok, next_tokens=post_tok,
+            softmax_lse_flag=False, # False = don't comppute the 2nd LSE output
         )
         return out
     return fn
@@ -646,6 +704,7 @@ def benchmark_blitz_sparse_attention():
     logger.info(f"  {DTYPE=}  {INPUT_LAYOUT=}  {ATTENTION_MATRIX=}")
     logger.info(f"  {BLOCK_SIZE_Q=}  {BLOCK_SIZE_KV=}")
     logger.info(f"  {FRAME}")
+    logger.info(f"  {TORCH_REFERENCE=}")
     logger.info("=" * 90)
     logger.info(
         f"{'H':>3} {'B':>3} {'s_q':>6} {'s_kv':>6} {'D':>4} {'sparsity':>9} {'Outputs_equal':>15} "

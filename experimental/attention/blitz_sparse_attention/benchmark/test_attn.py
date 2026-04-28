@@ -34,7 +34,11 @@ BLOCK_SIZE_KV = 128
 torch.npu.set_device(DEVICE)
 
 # Sweeped test parameters
-TORCH_REF_VALS = [False]  # True=our custom reference model; False = torch_npu official kernel
+# Reference kernel under test. One of:
+#   "custom"                          - our pythonic ref_blitz_sparse_attention_fp32
+#   "npu_fusion_attention"            - torch_npu.npu_fusion_attention (PFA)
+#   "npu_fused_infer_attention_score" - torch_npu.npu_fused_infer_attention_score (FIAS)
+TORCH_REF_VALS = ["npu_fusion_attention"]
 B_VALS = [1]
 H_VALS = [1, 2, 3, 4]
 S_VALS = [
@@ -90,7 +94,7 @@ def test_blitz_sparse_attention_correctness(torch_ref, shape, frame, sparsity):
                                                   force_dense_sm=(sparsity == 0))   
     
     # Check correctness with reasonable tolerances (moved to CPU for comparison)
-    if not torch.allclose(out_our.cpu(), out_ref.cpu(), rtol=0.01, atol=0.01):
+    if not torch.allclose(out_our.cpu(), out_ref.cpu(), rtol=0.01, atol=0.001):
         pytest.fail(
             f"Outputs don't match for b={b}, h={h}, s_q={s_q}, s_kv={s_kv}, d={d}, sparsity={sparsity}"
         )
@@ -100,8 +104,8 @@ if __name__ == "__main__":
     import sys
     import logging
     logging.basicConfig(level=logging.INFO, format='%(message)s')
-    test_blitz_sparse_attention_correctness(torch_ref=False,
-                                            shape=(1, 3, 10_000, 128), 
-                                            frame=FrameWidths(left_cols=2, right_cols=1, top_rows=2, bottom_rows=1), 
+    test_blitz_sparse_attention_correctness(torch_ref="npu_fusion_attention",
+                                            shape=(1, 3, 10_000, 128),
+                                            frame=FrameWidths(left_cols=2, right_cols=1, top_rows=2, bottom_rows=1),
                                             sparsity=0.5)
     logging.getLogger(__name__).info("Smoke test passed.")

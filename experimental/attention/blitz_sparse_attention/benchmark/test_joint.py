@@ -31,17 +31,19 @@ import pytest
 import torch
 import torch_npu
 import torch_bsa
-from benchmark import create_attention_mask, FrameWidths, BLOCK_SIZE_Q, BLOCK_SIZE_KV
+from benchmark import create_attention_mask, FrameWidths
 
 SEED = 42
 DEVICE = "npu:0"
 INPUT_LAYOUT = "BNSD"
+BLOCK_SIZE_Q = 128
+BLOCK_SIZE_KV = 128
 torch.npu.set_device(DEVICE)
 
-OUT_ATOL        = 0.01   # dense attention_out vs FIAS
-SPARSE_OUT_ATOL = 0.02   # sparse attention_out vs PFA: slight headroom over 0.01
+OUT_ATOL        = 1e-3   # dense attention_out vs FIAS
+SPARSE_OUT_ATOL = 1e-3   # sparse attention_out vs PFA: slight headroom over 0.01
                          # for block-boundary rounding (BSA skips blocks; PFA masks with -inf)
-LSE_ATOL        = 0.025  # softmax_lse vs FIAS (both dense and sparse)
+LSE_ATOL        = 1e-3  # softmax_lse vs FIAS (both dense and sparse)
 
 NO_FRAME = FrameWidths(0, 0, 0, 0)
 
@@ -193,7 +195,7 @@ def test_joint_sparse(shape, sparsity):
     bsa_out, bsa_lse = _run_bsa(q, k, v, H, scale, S, sabi=sabi)
     # attention_out: compare against npu_fusion_attention (PFA) — same reference
     # as test_attn.py; PFA and BSA share implementation lineage so their outputs
-    # agree within atol=0.01 even at high sparsity.  FIAS uses a different tiling
+    # FIAS uses a different tiling
     # and diverges from BSA when the softmax denominator is small.
     pfa_out           = _run_pfa_sparse(q, k, v, H, scale, pfa_atten_mask)
     # softmax_lse: compare against FIAS — same reference as test_lse.py.
