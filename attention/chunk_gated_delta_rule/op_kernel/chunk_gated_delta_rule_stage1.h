@@ -151,9 +151,7 @@ public:
         buffOffset += chunkSize_ * maxLen_ * sizeof(float);
 
         qUbFloatCon_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(halfChunkSize_ * dkAligned_), buffOffset);
-        buffOffset += halfChunkSize_ * dkAligned_ * sizeof(float);
-
-        kUbFloatCon_ = tmpBuff_.GetWithOffset<float>( static_cast<uint32_t>(halfChunkSize_ * dkAligned_), buffOffset);
+        kUbFloatCon_ = qUbFloatCon_;
         buffOffset += halfChunkSize_ * dkAligned_ * sizeof(float);
 
         inputGatherBuffer_ = tmpBuff_.GetWithOffset<uint32_t>(static_cast<uint32_t>(chunkSize_), buffOffset);
@@ -475,7 +473,8 @@ private:
         DataCopyInFp32(ccOffset_, stageOneMask_[GetBlockIdx() * ccOffset_]);
         auto maskLocal = inQueue_.DeQue<float>();
         Mul(gammaUbFloat, gammaUbFloat, maskLocal, ccOffset_);
-
+        PipeBarrier<PIPE_V>();
+        // exp
         Exp<float, 0, true>(gammaUbFloat, gammaUbFloat, chunkSize_);
         PipeBarrier<PIPE_V>();
         // mask  2
