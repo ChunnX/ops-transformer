@@ -93,7 +93,7 @@
         <td>x</td>
         <td>输入</td>
         <td>MOE的输入，即token特征输入，对应公式中x。仅quantMode=6时支持输入类型为HIFLOAT8。</td>
-        <td>FLOAT32、FLOAT16、BFLOAT16、INT8、HIFLOAT8。</td>
+        <td>FLOAT32、FLOAT16、BFLOAT16、INT8、HIFLOAT8、FLOAT4_E2M1。</td>
         <td>ND</td>
       </tr>
       <tr>
@@ -106,8 +106,8 @@
       <tr>
         <td>scaleOptional</td>
         <td>可选输入</td>
-        <td>表示用于计算quant结果的参数。如果不输入表示计算时不使用scale，对应公式中scale。</td>
-        <td>FLOAT32</td>
+        <td>表示用于计算quant结果的参数。如果不输入表示计算时不使用scale，对应公式中scale，仅quantMode=-1且x的数据类型为FLOAT4_E2M1时scale数据类型支持FLOAT8_E8M0。</td>
+        <td>FLOAT32、FLOAT8_E8M0</td>
         <td>ND</td>
       </tr>
       <tr>
@@ -162,7 +162,7 @@
       <tr>
         <td>quantMode</td>
         <td>属性</td>
-        <td>取值为0、1、-1、2、3、6、7、8。<br>• 0：表示静态quant场景。<br>• 1：表示动态quant场景。<br>• -1：表示不量化场景。<br>• 2：表示MXFP8量化场景，expandedXOut量化到FLOAT8_E5M2。<br>• 3：表示MXFP8量化场景，expandedXOut量化到FLOAT8_E4M3FN。<br>• 6：表示HIF8直转量化场景下，expandedXOut量化到HIFLOAT8。<br>• 7：表示HIF8 PERTENSOR量化场景，expandedXOut量化到HIFLOAT8。<br>• 8：表示HIF8 PERTOKEN量化场景，expandedXOut量化到HIFLOAT8。</td>
+        <td>取值为0、1、-1、2、3、6、7、8、9。<br>• 0：表示静态quant场景。<br>• 1：表示动态quant场景。<br>• -1：表示不量化场景。<br>• 2：表示MXFP8量化场景，expandedXOut量化到FLOAT8_E5M2。<br>• 3：表示MXFP8量化场景，expandedXOut量化到FLOAT8_E4M3FN。<br>• 6：表示HIF8直转量化场景下，expandedXOut量化到HIFLOAT8。<br>• 7：表示HIF8 PERTENSOR量化场景，expandedXOut量化到HIFLOAT8。<br>• 8：表示HIF8 PERTOKEN量化场景，expandedXOut量化到HIFLOAT8。<br>• 9：表示MXFP4量化场景，expandedXOut量化到FLOAT4_E2M1。</td>
         <td>INT</td>
         <td>-</td>
       </tr>
@@ -183,7 +183,7 @@
       <tr>
         <td>expandedXOut</td>
         <td>输出</td>
-        <td>根据expertIdx进行扩展过的特征。非量化场景下数据类型同x，量化场景quantMode为0、1时数据类型支持INT8，quantMode为2、3时数据类型分别支持FLOAT8_E5M2、FLOAT8_E4M3FN，quantMode为6、7、8时数据类型支持HIFLOAT8。</td>
+        <td>根据expertIdx进行扩展过的特征。非量化场景下数据类型同x，量化场景quantMode为0、1时数据类型支持INT8，quantMode为2、3时数据类型分别支持FLOAT8_E5M2、FLOAT8_E4M3FN，quantMode为6、7、8时数据类型支持HIFLOAT8，quantMode为9时数据类型支持FLOAT4_E2M1。</td>
         <td>FLOAT32、FLOAT16、BFLOAT16、INT8、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8</td>
         <td>ND</td>
       </tr>
@@ -204,7 +204,7 @@
       <tr>
         <td>expandedScaleOut</td>
         <td>输出</td>
-        <td>输出量化计算过程中scaleOptional的中间值。quantMode为2、3时数据类型支持FLOAT8_E8M0, 其余场景数据类型支持FLOAT32。</td>
+        <td>输出量化计算过程中scaleOptional的中间值。quantMode为2、3、9时数据类型支持FLOAT8_E8M0, 其余场景数据类型支持FLOAT32。</td>
         <td>FLOAT32、FLOAT8_E8M0</td>
         <td>ND</td>
       </tr>
