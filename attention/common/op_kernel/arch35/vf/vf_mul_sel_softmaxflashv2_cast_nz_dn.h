@@ -1075,11 +1075,11 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
             /* vreg_x_exp_f16_pack会不连续的存储在x_exp上，shape为2*4*64*16， 其中每64*16个的head之间跳129 * 16
                 个数，中间跳的部分就是vreg_x_exp_f16_1_pack的 */
             StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f16_pack, blockStride, repeatStride, preg_136);    
+                ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f16_pack, blockStride, repeatStride, preg_136);
             Add(vreg_x_sum_0, vreg_x_exp_0, vreg_x_sum_0, preg_134);
             Add(vreg_x_sum_2, vreg_x_exp_2, vreg_x_sum_2, preg_134);
             StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_f16_1_pack, blockStride, repeatStride, preg_136);    
+                ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_f16_1_pack, blockStride, repeatStride, preg_136);
             Add(vreg_x_sum_1, vreg_x_exp_1, vreg_x_sum_1, preg_134);
             Add(vreg_x_sum_3, vreg_x_exp_3, vreg_x_sum_3, preg_134);
         }
@@ -1383,11 +1383,11 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
             /* vreg_x_exp_bf16_pack会不连续的存储156在x_exp上，shape为2*4*64*16， 其中每64*16个的head之间跳129 * 16
                 个数，中间跳的部分就是vreg_x_exp_bf16_1_pack的 */
             StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                ((__ubuf__ T2 *&)x_exp), vreg_x_exp_bf16_pack, blockStride, repeatStride, preg_136);     
+                ((__ubuf__ T2 *&)x_exp), vreg_x_exp_bf16_pack, blockStride, repeatStride, preg_136);
             Add(vreg_x_sum_0, vreg_x_exp_0, vreg_x_sum_0, preg_134);
             Add(vreg_x_sum_2, vreg_x_exp_2, vreg_x_sum_2, preg_134);
             StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_bf16_1_pack, blockStride, repeatStride, preg_136); 
+                ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_bf16_1_pack, blockStride, repeatStride, preg_136);
             Add(vreg_x_sum_1, vreg_x_exp_1, vreg_x_sum_1, preg_134);
             Add(vreg_x_sum_3, vreg_x_exp_3, vreg_x_sum_3, preg_134);
         } else if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
@@ -1451,7 +1451,7 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
             /* vreg_x_exp_f16_pack会不连续的存储在x_exp上，shape为2*4*64*16， 其中每64*16个的head之间跳129 * 16
                 个数，中间跳的部分就是vreg_x_exp_f16_1_pack的 */
             StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f16_pack, blockStride, repeatStride, preg_136); 
+                ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f16_pack, blockStride, repeatStride, preg_136);
             Add(vreg_x_sum_0, vreg_x_exp_0, vreg_x_sum_0, preg_134);
             Add(vreg_x_sum_2, vreg_x_exp_2, vreg_x_sum_2, preg_134);
 
