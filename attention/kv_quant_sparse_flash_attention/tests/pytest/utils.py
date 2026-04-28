@@ -83,7 +83,7 @@ def generate_actual_seq(S, B, layout=None):
     返回:
         actual_seq: 生成的实际序列长度列表
     """
-    seq_lengths = [random.randint(1, S) for _ in range(B)]
+    seq_lengths = [random.randint(0, S) for _ in range(B)]
     
     if layout == "TND":
         actual_seq = []
@@ -204,12 +204,10 @@ def combin_params(enabled_params, pytest_paramset=True):
 def convert_param_combination_to_cs_format(param_combination):
     layout_query = param_combination["layout_query"]
     layout_kv = param_combination["layout_kv"]
-    if (layout_query == "TND"):
-        T = param_combination["T"]
+    T = param_combination.get("T")
     B = param_combination["B"]
     S1 = param_combination["S1"]
-    if (layout_kv == "TND"):
-        T2 = param_combination["T2"]
+    T2 = param_combination.get("T2")
     S2 = param_combination["S2"]
     N1 = param_combination["N1"]
     N2 = param_combination["N2"]
@@ -233,11 +231,17 @@ def convert_param_combination_to_cs_format(param_combination):
         actual_seq_q = generate_actual_seq(S1, B, layout_query)
     else:
         actual_seq_q = param_combination.get("actual_seq_q")
-    
+
+    if layout_query == "TND" and T is None:
+        T = actual_seq_q[-1]
+
     if param_combination.get("actual_seq_kv") is None:
         actual_seq_kv = generate_actual_seq(S2, B, layout_kv)
     else:
         actual_seq_kv = param_combination.get("actual_seq_kv")
+
+    if layout_kv == "TND" and T2 is None:
+        T2 = actual_seq_kv[-1]
     
     sparse_blockcount = int(K / sparse_block_size)
     testcase_prefix = param_combination.get("Testcase_Prefix") or "kvQuantSparseFlashAttn"

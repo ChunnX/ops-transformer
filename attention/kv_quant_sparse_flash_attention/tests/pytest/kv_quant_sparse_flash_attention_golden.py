@@ -661,7 +661,6 @@ def _generate_block_table_and_cache(input_tensor_dict, fa_param, params, actualS
         fa_param['block_table'] = block_table
         input_tensor_dict['block_table'] = block_table.to('npu')
         print(f"[PageAtten]Input Kdtype:{params['dtype_input']['key']} Vdtype:{params['dtype_input']['value']}")
-        print('[INFO]:PA + Deepseek！')
         kv_concat_pa_preprocessing(input_tensor_dict, fa_param, params)
     else:
         kv_concat_nopa_preprocessing(input_tensor_dict, fa_param, params)
