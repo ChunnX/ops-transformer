@@ -475,7 +475,7 @@ private:
                 topKOutsLocal.ReinterpretCast<float>(), topKOutsLocal[tilingData->bufferElemSize], gatingLocal,
                 tmpTensorLocal, curRowsNum, tilingData);
             gatingQueue.FreeTensor(gatingLocal);
-            PipeBarrier<PIPE_V>();
+            PipeBarrier<PIPE_ALL>();
             SoftMax<float, true, false>(
                 topKOutsLocal.ReinterpretCast<float>(), topKOutsLocal.ReinterpretCast<float>(),
                 tilingData->softmaxTilingData, softmaxShapeInfo);
@@ -492,7 +492,7 @@ private:
             TopKFP32Perf(
                 topKOutsLocal.ReinterpretCast<float>(), topKOutsLocal[tilingData->bufferElemSize], tmpTensorLocal,
                 tmpTensorLocal[tilingData->bufferElemSize], curRowsNum, tilingData);
-            PipeBarrier<PIPE_V>();
+            PipeBarrier<PIPE_ALL>();
             SoftMax<float, true, false>(
                 topKOutsLocal.ReinterpretCast<float>(), topKOutsLocal.ReinterpretCast<float>(),
                 tilingData->softmaxTilingData, softmaxShapeInfo);
@@ -520,7 +520,7 @@ private:
             softmaxShapeInfo.oriSrcM = curRowsNum;
 
             if constexpr (IsSameType<T, float>::value) {
-                PipeBarrier<PIPE_V>();
+                PipeBarrier<PIPE_ALL>();
                 SoftMax<float, true, false>(
                     softmaxResultOutLocal, gatingLocal, tilingData->softmaxTilingData, softmaxShapeInfo);
                 gatingQueue.FreeTensor(gatingLocal);
@@ -539,7 +539,7 @@ private:
                     Cast(tmpTensorLocal, gatingLocal, RoundMode::CAST_NONE, curRowsNum * tilingData->colBytesAlign);
                 }
                 gatingQueue.FreeTensor(gatingLocal);
-                PipeBarrier<PIPE_V>();
+                PipeBarrier<PIPE_ALL>();
                 SoftMax<float, true, false>(
                     softmaxResultOutLocal, tmpTensorLocal, tilingData->softmaxTilingData, softmaxShapeInfo);
                 if (this->softmaxFlag == 1) {
