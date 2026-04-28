@@ -106,7 +106,6 @@ struct TensorResources {
 };
 
 int InitializeTensors(TensorResources& resources) {
-    // Shapes from QuantLightningIndexer_950_tiling_3
     std::vector<int64_t> queryShape = {2, 64, 16, 128};
     std::vector<int64_t> keyShape = {32, 16, 1, 128};
     std::vector<int64_t> weightsShape = {2, 64, 16};
@@ -125,25 +124,17 @@ int InitializeTensors(TensorResources& resources) {
     int64_t blockTableShapeSize = GetShapeSize(blockTableShape);
     int64_t outShapeSize = GetShapeSize(outShape);
 
-    // query: DT_FLOAT8_E4M3FN -> use int8_t for host data (1 byte per element)
     std::vector<int8_t> queryHostData(queryShapeSize, 1);
-    // key: DT_FLOAT8_E4M3FN -> use int8_t for host data (1 byte per element)
     std::vector<int8_t> keyHostData(keyShapeSize, 1);
-    // weights: DT_BF16 -> use uint16_t for host data
     std::vector<uint16_t> weightsHostData(weightsShapeSize, 0x3F00);
-    // query_dequant_scale: DT_FLOAT -> use float for host data
     std::vector<float> queryDequantScaleHostData(queryDequantScaleShapeSize, 1.0f);
-    // key_dequant_scale: DT_FLOAT -> use float for host data
     std::vector<float> keyDequantScaleHostData(keyDequantScaleShapeSize, 1.0f);
-    // actual_seq_lengths_key: DT_INT32, values = [256, 512]
     std::vector<int32_t> actualSeqLengthsKeyHostData = {256, 512};
-    // block_table: DT_INT32
     std::vector<int32_t> blockTableHostData(blockTableShapeSize, 0);
     for (int32_t i = 0; i < 32; i++) {
         blockTableHostData[i] = i;
         blockTableHostData[32 + i] = i;
     }
-    // out: DT_INT32
     std::vector<int32_t> outHostData(outShapeSize, 0);
 
     int ret = CreateAclTensor(queryHostData, queryShape, &resources.queryDeviceAddr,
