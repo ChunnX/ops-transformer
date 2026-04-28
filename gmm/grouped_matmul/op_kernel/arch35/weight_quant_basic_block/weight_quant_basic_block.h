@@ -99,6 +99,7 @@ protected:
         cubeCompute_;
 
     uint64_t cvLoopIdx_ = 0;
+    uint64_t mxScaleBufIdx_ = 0;
 
     LocalTensor<xType> weightL1_;
     LocalTensor<biasType> biasL1_;
@@ -311,8 +312,10 @@ __aicore__ inline void GMM_WQ_BASIC_BLOCK_CLASS::ComputeBasicBlockAivNdKnNzNk(co
                 vectorCompute_.WaitVToMTE2();
                 vectorCompute_.CopyWeightMxScaleGmToUb(mxScaleOffsetParam, kMte2Offset, mxScaleKSize);
                 vectorCompute_.TransWeightMxScale(mxScaleNSize, mxScaleKSize);
-                vectorCompute_.CopyWeightMxScaleUbToL1(mxScaleBL1_, mxScaleL1NOffset, mxScaleNSize, mxScaleKSize);
+                auto mxScaleBL1Current = mxScaleBL1_[(mxScaleBufIdx_ & 1) * mxScaleBL1DbOffset_];
+                vectorCompute_.CopyWeightMxScaleUbToL1(mxScaleBL1Current, mxScaleL1NOffset, mxScaleNSize, mxScaleKSize);
                 vectorCompute_.SetVToMTE2();
+                mxScaleBufIdx_++;
             }
         }
 
