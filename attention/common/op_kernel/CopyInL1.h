@@ -112,13 +112,13 @@ __aicore__ inline void DataCopyGmScaleNDToL1(LocalTensor<L1Type>& l1Tensor, Glob
 
 template<typename L1Type>
 __aicore__ inline void DataCopyGmScaleDNToL1(LocalTensor<L1Type>& l1Tensor, GlobalTensor<L1Type>& gmTensor,
-                                        uint32_t rowAct, 
+                                        uint32_t rowAct,
                                         uint32_t rowAlign,
                                         uint32_t col,
                                         uint32_t colStride)
 {
     Dn2NzParams dn2nzPara;
-    dn2nzPara.dnNum = 1; 
+    dn2nzPara.dnNum = 1;
     dn2nzPara.nValue = col / 2;
     dn2nzPara.dValue = rowAct; 
     dn2nzPara.srcDValue = colStride / 2; 
