@@ -327,6 +327,13 @@ GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS::IterateNzNkWithKAic(const BasicBlockO
         cubeCompute_.CopyMxScaleGmToL1(curOffsetParam, kbL1Offset);
         cubeCompute_.WaitMTE1ToMTE2(kbL1Offset, curOffsetParam);
         cubeCompute_.CopyAAndBiasGmToL1(curOffsetParam, kbL1Offset, cvLoopIdx_);
+        if (kbL1RealSize % ALIGN_64_FACTOR != 0) {
+            uint64_t nL1AlignSize = CeilAlign(curOffsetParam.nL1Size, static_cast<uint64_t>(BLOCK_CUBE));
+            LocalTensor<uint32_t> fillTensor =
+                weightL1_[(cvLoopIdx_ & 1) * weightL1DbOffset_ + nL1AlignSize * kbL1RealSize]
+                    .template ReinterpretCast<uint32_t>();
+            cubeCompute_.FillL1WithZero(fillTensor, nL1AlignSize);
+        }
         WaitAivToAic<PIPE_MTE1>(SYNC_AIV_AIC_FLAG);
         cubeCompute_.LaunchMatmul(weightL1_[(cvLoopIdx_ & 1) * weightL1DbOffset_], kbL1Offset, kbL1RealSize, cvLoopIdx_,
                                   curOffsetParam); // mte1 mmad fixp流水

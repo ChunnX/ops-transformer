@@ -29,6 +29,7 @@ constexpr uint32_t DIM_NUM_LOGIT = 1;
 constexpr uint32_t DIM_NUM_ROW_INDEX = 1;
 constexpr uint32_t MX_BLOCK_SIZE = 32;
 constexpr uint32_t MX_SCALE_BLOCK_SIZE = 64; // For scale/pertoken_scale K dimension
+constexpr uint32_t ALIGN_SIZE_KN = 32; // K/N alignment requirement for MX-A8W4 weight quant
 constexpr int64_t MX_INNER_DIM = 2;
 constexpr uint32_t DIM_NUM_WEIGHT_NZ = 5; // FRACTAL_NZ format: [E, K/32, N/16, 16, 32]
 
@@ -486,7 +487,23 @@ bool CheckMxA8W4InputShape(gert::TilingContext *contex)
 
     // Validate K consistency between x and w
     OP_CHECK_IF(kSize != kFromW,
-                OP_LOGE(contex->GetNodeName(), "K dimension mismatch: x has K=%ld, w has K=%ld", kSize, kFromW),
+                OP_LOGE(contex->GetNodeName(), "K dimension mismatch: x has K=%lld, w has K=%ld", kSize, kFromW),
+                return false);
+
+    // Validate K and N alignment for MX-A8W4 weight quant
+    OP_CHECK_IF(
+        kSize % ALIGN_SIZE_KN != 0,
+        OP_LOGE(contex->GetNodeName(), "K dimension must be aligned to %u, actual K=%lld", ALIGN_SIZE_KN, kSize),
+        return false);
+    OP_CHECK_IF(
+        nSize % ALIGN_SIZE_KN != 0,
+        OP_LOGE(contex->GetNodeName(), "N dimension must be aligned to %u, actual N=%lld", ALIGN_SIZE_KN, nSize),
+        return false);
+
+    // Validate K and N minimum size for MX-A8W4 weight quant
+    OP_CHECK_IF(kSize < 64, OP_LOGE(contex->GetNodeName(), "K dimension must be >= 64, actual K=%lld", kSize),
+                return false);
+    OP_CHECK_IF(nSize < 32, OP_LOGE(contex->GetNodeName(), "N dimension must be >= 32, actual N=%lld", nSize),
                 return false);
 
     // 3. Validate group_list shape
