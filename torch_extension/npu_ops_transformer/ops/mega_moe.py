@@ -93,7 +93,7 @@ class SymmBuffer:
         dispatch_quant_mode: int = 0,
         dispatch_quant_out_type: int = 28,
         combine_quant_mode: int = 0,
-        comm_alg: str = "",
+        comm_alg: str = ""
     ):
         # Metadata
         self.group = group
@@ -128,7 +128,7 @@ def get_symm_buffer_for_mega_moe(
     dispatch_quant_mode: int = 0,
     dispatch_quant_out_type: int = 28,
     combine_quant_mode: int = 0,
-    comm_alg: str = "",
+    comm_alg: str = ""
 ) -> SymmBuffer:
 
     return SymmBuffer(
@@ -142,7 +142,7 @@ def get_symm_buffer_for_mega_moe(
         dispatch_quant_mode,
         dispatch_quant_out_type,
         combine_quant_mode,
-        comm_alg,
+        comm_alg
     )
 
 
@@ -158,7 +158,7 @@ def mega_moe(
     l2_weights_sf: Optional[List[torch.Tensor]] = None,
     x_active_mask: Optional[torch.Tensor] = None,
     weight1_type: int = 28,
-    weight2_type: int = 28,
+    weight2_type: int = 28
 ):
 
     return _npu_mega_moe(
@@ -182,7 +182,7 @@ def mega_moe(
         sym_buffer.num_max_tokens_per_rank,
         sym_buffer.dispatch_quant_out_type,
         weight1_type,
-        weight2_type,
+        weight2_type
     )
 
 
