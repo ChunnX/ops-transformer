@@ -30,6 +30,9 @@ constexpr int64_t ATTR_IDX_TYPE_INDEX = 1;
 constexpr int64_t DIM_SIZE_TWO = 2;
 constexpr int64_t DIM_SIZE_THREE = 3;
 constexpr int64_t DOUBLE_BUFFER = 2;
+constexpr size_t DIM_INDEX_0 = 0;
+constexpr size_t DIM_INDEX_1 = 1;
+constexpr size_t DIM_INDEX_2 = 2;
 constexpr int64_t DIM_1 = 1;
 constexpr int64_t DIM_2 = 2;
 constexpr int64_t DIM_3 = 3;
@@ -277,14 +280,14 @@ ge::graphStatus MoeReRoutingTilingBase::GetShapeAttrsInfo()
                 return ge::GRAPH_FAILED;
             }
             auto scaleShapeTuple3D = GetShapeTupleN(context_, IN_TOKEN_SCALE_INDEX);
-            auto scaleSum0 = std::get<0>(scaleShapeTuple3D);
-            auto scaleDim1 = std::get<1>(scaleShapeTuple3D);
-            auto scaleDim2 = std::get<2>(scaleShapeTuple3D);
+            auto scaleSum0 = std::get<DIM_INDEX_0>(scaleShapeTuple3D);
+            auto scaleDim1 = std::get<DIM_INDEX_1>(scaleShapeTuple3D);
+            auto scaleDim2 = std::get<DIM_INDEX_2>(scaleShapeTuple3D);
             OP_CHECK_IF(scaleSum0 != tokenSum_,
                 OP_LOGE(context_->GetNodeName(),
                     "scale tokenSum: %ld should equal to tokenSum: %ld.", scaleSum0, tokenSum_),
                 return ge::GRAPH_FAILED);
-            OP_CHECK_IF(scaleDim2 != 2,
+            OP_CHECK_IF(scaleDim2 != DIM_SIZE_TWO,
                 OP_LOGE(context_->GetNodeName(),
                     "3D scale shape dim[2] must be 2, actual %ld.", scaleDim2),
                 return ge::GRAPH_FAILED);
