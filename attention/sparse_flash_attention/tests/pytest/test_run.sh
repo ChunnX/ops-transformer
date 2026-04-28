@@ -109,7 +109,7 @@ show_help() {
     echo ""
     echo "  batch_save    从 Excel 批量生成 pt 文件"
     echo "                选项: -E excel_path (指定 Excel 文件路径，默认: ./excel/example.xlsx)"
-    echo "                      -S sheet (指定 Sheet 页名，默认: decode)"
+    echo "                      -S sheet (指定 Sheet 页名，默认: Sheet1)"
     echo "                      -P pt_path (指定 pt 文件保存路径，默认: ./pt_files/)"
     echo ""
     echo "  gen_excel_from_paramset  从 paramset 生成 Excel 文件"

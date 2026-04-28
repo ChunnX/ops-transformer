@@ -14,6 +14,7 @@ import ast
 import itertools
 import math
 import os
+import random
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -68,6 +69,32 @@ def _parse_excel_cell_value(value):
 def load_paramset(paramset_file):
     module = __import__(paramset_file)
     return module.ENABLED_PARAMS
+
+
+def generate_actual_seq(S, B, layout=None):
+    """
+    根据S和B自动生成actual_seq。
+    
+    参数:
+        S: 序列长度上限（S1或S2）
+        B: batch大小
+        layout: layout类型，TND场景下采用累加和
+    
+    返回:
+        actual_seq: 生成的实际序列长度列表
+    """
+    seq_lengths = [random.randint(1, S) for _ in range(B)]
+    
+    if layout == "TND":
+        actual_seq = []
+        cumsum = 0
+        for length in seq_lengths:
+            cumsum += length
+            actual_seq.append(cumsum)
+    else:
+        actual_seq = seq_lengths
+    
+    return actual_seq
 
 
 def load_excel_test_cases(excel_file_path, sheet_name):
@@ -201,8 +228,17 @@ def convert_param_combination_to_cs_format(param_combination):
     quant_scale_repo_mode = param_combination["quant_scale_repo_mode"]
     block_size = param_combination.get("block_size") or 256
     block_num = param_combination.get("block_num")
-    actual_seq_q = param_combination.get("actual_seq_q") or [S1]
-    actual_seq_kv = param_combination.get("actual_seq_kv") or [S2]
+    
+    if param_combination.get("actual_seq_q") is None:
+        actual_seq_q = generate_actual_seq(S1, B, layout_query)
+    else:
+        actual_seq_q = param_combination.get("actual_seq_q")
+    
+    if param_combination.get("actual_seq_kv") is None:
+        actual_seq_kv = generate_actual_seq(S2, B, layout_kv)
+    else:
+        actual_seq_kv = param_combination.get("actual_seq_kv")
+    
     sparse_blockcount = int(K / sparse_block_size)
     testcase_prefix = param_combination.get("Testcase_Prefix") or "kvQuantSparseFlashAttn"
     testcase_number = param_combination.get("Testcase_Number") or 1

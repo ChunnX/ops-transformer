@@ -98,7 +98,7 @@ bash test_run.sh <模式> [-E excel_path] [-S sheet] [-P path] [-O output_path]
 | 选项 | 说明 | 适用模式 |
 | --- | --- | --- |
 | `-E excel_path` | 指定 Excel 文件路径，默认 `./excel/example.xlsx` | batch_save |
-| `-S sheet` | 指定 Excel Sheet 页名，默认 `decode` | batch_save |
+| `-S sheet` | 指定 Excel Sheet 页名，默认 `Sheet1` | batch_save/gen_excel_from_paramset |
 | `-P path` | 指定路径（不同模式含义不同，详见下表） | single/batch_save/batch_exec/gen_excel_from_paramset |
 
 | 模式 | `-P` 参数含义 | 默认值 |
