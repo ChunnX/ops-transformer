@@ -290,6 +290,19 @@ def trans_bnsd_to_layout(tensor, shape, layout, act_q=None):
  
 
 def trans_input_dtype(input_dtype):
+    if isinstance(input_dtype, torch.dtype):
+        dtype_map = {
+            torch.float16: 'float16',
+            torch.bfloat16: 'bfloat16',
+            torch.float32: 'float32',
+            torch.int8: 'int8',
+            torch.uint8: 'uint8',
+            torch.int32: 'int32',
+            torch.bool: 'bool',
+            torch.float8_e4m3fn: 'float8_e4m3fn',
+        }
+        return dtype_map.get(input_dtype, str(input_dtype))
+    
     if input_dtype == 'fp16':
         return 'float16'
     elif input_dtype == 'int8':

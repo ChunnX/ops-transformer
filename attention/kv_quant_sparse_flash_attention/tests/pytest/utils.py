@@ -243,8 +243,8 @@ def convert_param_combination_to_cs_format(param_combination):
     testcase_prefix = param_combination.get("Testcase_Prefix") or "kvQuantSparseFlashAttn"
     testcase_number = param_combination.get("Testcase_Number") or 1
     
-    q_type_str = "BF16" if q_type == torch.bfloat16 else "FP16"
-    testcase_name = f"{testcase_prefix}_{layout_query}_{layout_kv}_{q_type_str}_{B}_{N1}_{N2}_{S1}_{S2}_{D}_{K}_{testcase_number:06d}"
+    q_dtype_str = "BF16" if q_type == torch.bfloat16 else "FP16"
+    testcase_name = f"{testcase_prefix}_{layout_query}_{layout_kv}_{q_dtype_str}_{B}_{N1}_{N2}_{S1}_{S2}_{D}_{K}_{testcase_number:06d}"
     
     if layout_kv == "PA_BSND":
         block_num_per_batch = math.ceil(S2 / block_size)
@@ -253,17 +253,10 @@ def convert_param_combination_to_cs_format(param_combination):
         for length in actual_seq_kv:
             block_num = block_num + math.ceil(length / block_size)
     
-    if q_type == torch.bfloat16:
-        q_dtype_str = "bf16"
-    elif q_type == torch.float16:
-        q_dtype_str = "fp16"
+    if kv_type is None:
+        kv_torch_dtype = torch.float8_e4m3fn
     else:
-        q_dtype_str = "fp32"
-    
-    if kv_type is None or str(kv_type) == "float8_e4m3fn":
-        kv_dtype_str = "float8_e4m3fn"
-    else:
-        kv_dtype_str = str(kv_type)
+        kv_torch_dtype = kv_type
     if (layout_kv == 'PA_BSND'):
         if (layout_query == 'BSND'):
             shape_input = {
@@ -330,18 +323,18 @@ def convert_param_combination_to_cs_format(param_combination):
     else:
         print("Unsupported layout_kv: ", layout_kv)
     dtype_input = {
-        'query': q_dtype_str,
-        'key': kv_dtype_str,
-        'value': kv_dtype_str,
-        'sparse_indices': "int32",
-        'block_table': "int32",
-        'query_cache': q_dtype_str,
-        'key_cache': kv_dtype_str,
-        'value_cache': kv_dtype_str,
-        'query_rope': q_dtype_str,
-        'key_rope': q_dtype_str,
-        'dequant_scale': "fp32",
-        'v_dequant_scale': "fp32",
+        'query': q_type,
+        'key': kv_torch_dtype,
+        'value': kv_torch_dtype,
+        'sparse_indices': torch.int32,
+        'block_table': torch.int32,
+        'query_cache': q_type,
+        'key_cache': kv_torch_dtype,
+        'value_cache': kv_torch_dtype,
+        'query_rope': q_type,
+        'key_rope': q_type,
+        'dequant_scale': torch.float32,
+        'v_dequant_scale': torch.float32,
     }
     
     default_range_input = {
@@ -377,7 +370,7 @@ def convert_param_combination_to_cs_format(param_combination):
         "shape_input": shape_input,
         "dtype_input": dtype_input,
         "range_input": range_input,
-        "dtype_output": [q_dtype_str],
+        "dtype_output": [q_type],
         "shape_output": [[B, S1, N1, D]],
         "tile_size": tile_size,
         "rope_head_dim": rope_head_dim,

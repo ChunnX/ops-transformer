@@ -301,16 +301,16 @@ def convert_param_combination_to_cs_format(param_combination):
     else:
         print("Unsupported layout_kv: ", layout_kv)
     dtype_input = {
-        'query': q_dtype_str,
-        'key': kv_dtype_str,
-        'value': kv_dtype_str,
-        'sparse_indices': "int32",
-        'block_table': "int32",
-        'query_cache': q_dtype_str,
-        'key_cache': kv_dtype_str,
-        'value_cache': kv_dtype_str,
-        'query_rope': q_dtype_str,
-        'key_rope': q_dtype_str,
+        'query': q_type,
+        'key': kv_type,
+        'value': kv_type,
+        'sparse_indices': torch.int32,
+        'block_table': torch.int32,
+        'query_cache': q_type,
+        'key_cache': kv_type,
+        'value_cache': kv_type,
+        'query_rope': q_type,
+        'key_rope': q_type,
     }
     
     default_range_input = {
