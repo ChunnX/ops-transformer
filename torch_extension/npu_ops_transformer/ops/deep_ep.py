@@ -113,9 +113,9 @@ class MoeDistributeBuffer:
                     lambda: (f"New world size should be the same as orginal world size, "
                             f"but got {new_world_size=}, orginial={self.world_size}"
                             f"{ops_error(ErrCode.VALUE)}."),)
-        if self.context_mode == "kfc":
+        if self.context_mode == "OpRes":
             res = update_context(self.group_name, self.world_size, self.ccl_buffer_size, self.context)
-        elif self.context_mode == "channel":
+        elif self.context_mode == "Channel":
             ep_world_size = IntWrapper()
             update_context_by_hccl_channel(self.group_name, ep_world_size, self.ccl_buffer_size, self.context)
             self.world_size = ep_world_size.value
