@@ -27,6 +27,7 @@
 #else
 #include "../../common/op_kernel/moe_distribute_base.h"
 #endif
+#include "moe_distribute_a2_constant.h"
 namespace MoeDistributeA2Base {
 class MoeDistributeA2Context {
 public:
@@ -142,9 +143,7 @@ protected:
     constexpr static uint32_t B32_PER_BLOCK = UB_32B_ALIGN / sizeof(int32_t); // 8
     constexpr static uint32_t EXTRA_TOKEN_INFO_NUM = 4U; // 专家信息 权重信息 量化Scale 到达标志位
     constexpr static uint64_t IPC_MAGIC_OFFSET = 2 * 1024 * 1024UL - 128 * 32UL; // 理论为2 * 1024 * 1024UL - aivNum * 32UL
-    constexpr static uint64_t IPC_ADUMP_WIN_OFFSET = 1 * 1024 * 1024UL;
-    constexpr static uint64_t IPC_ADUMP_WIN_SIZE = 50 * 1024UL;
-    constexpr static uint64_t IPC_DISPATCH_FLAG_OFFSET = 1 * 1024 * 1024UL + IPC_ADUMP_WIN_SIZE * 2UL + 32UL;
+    constexpr static uint64_t IPC_DISPATCH_FLAG_OFFSET = 1 * 1024 * 1024UL;
     constexpr static uint64_t IPC_COMBINE_FLAG_OFFSET = 0UL;
     constexpr static uint64_t IPC_TOKEN_CNT_OFFSET = 0UL;
     constexpr static uint64_t IPC_HALF_NON_DATA_BYTES = 2 * 1024 * 1024UL;
@@ -178,6 +177,7 @@ public:
         worldSize_ = worldSize;
         serverNum_ = worldSize / SERVER_RANK_SIZE;
         halfWorldSize_ = worldSize / 2U;
+        aDumpAddrStart_ = halfWorldSize_ - Mc2A2Kernel::BUFFER_ADUMP_WIN_SIZE * 2UL;
         uint64_t maxTokenStructBytes =
             axisH * 2UL + EXTRA_TOKEN_INFO_NUM * RoundUp(axisK, B32_PER_BLOCK) * sizeof(uint32_t); // token的数据类型BF16或FP16，都是2B
         serverSizeOnRdmaData_ = RoundUp(maxBs * maxTokenStructBytes + UB_32B_ALIGN, BUFFER_ALIGN);
@@ -265,6 +265,7 @@ protected:
     uint64_t serverSizeOnRdmaData_{0UL};
     uint64_t rankSizeOnIpcData_{0UL};
     uint64_t magicValue_{0UL};
+    uint64_t aDumpAddrStart_{0UL};
 
     uint64_t ipcFlagAddrStart_[2]{0UL};
     uint64_t ipcDataAddrStart_[2]{0UL};
@@ -301,9 +302,8 @@ public:
 
     __aicore__ inline GM_ADDR GetIpcAdumpWinAddr() const
     {
-        return shareAddrs[curRankId_ % SERVER_RANK_SIZE] + ipcFlagAddrStart_[0] + IPC_ADUMP_WIN_OFFSET + aivId_ * BUFFER_ALIGN;
+        return context_.GetWindowsInAddr(curRankId_) + aDumpAddrStart_ + aivId_ * Mc2A2Kernel::BUFFER_ADUMP_WIN_SIZE_PER_AIV;
     }
-
     // ===== Sender =====
     // Dispatch阶段：获取本地发送缓冲区数据地址
     // 待发送的Token数据是累加存放的，不需要区分目标卡
@@ -386,7 +386,8 @@ public:
 
     __aicore__ inline GM_ADDR GetIpcAdumpWinAddr() const
     {
-        return shareAddrs[curRankId_ % SERVER_RANK_SIZE] + ipcFlagAddrStart_[0] + IPC_ADUMP_WIN_OFFSET + IPC_ADUMP_WIN_SIZE + aivId_ * BUFFER_ALIGN;
+        return context_.GetWindowsInAddr(curRankId_) +
+        aDumpAddrStart_ + Mc2A2Kernel::BUFFER_ADUMP_WIN_SIZE + aivId_ * Mc2A2Kernel::BUFFER_ADUMP_WIN_SIZE_PER_AIV;
     }
 
     // ===== Sender =====

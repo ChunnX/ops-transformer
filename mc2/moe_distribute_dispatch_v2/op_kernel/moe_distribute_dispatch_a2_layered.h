@@ -123,6 +123,7 @@ private:
     TBuf<QuePosition::VECCALC> tBuf;
     TBuf<TPosition::VECOUT> rdmaInBuf_;
     TBuf<TPosition::VECOUT> rdmaInBuf2_;
+    TBuf<TPosition::LCM> aDumpBuf_;
 
     __gm__ HcclAiRMAInfo* qp_info_;
     GM_ADDR expandXGM_;
@@ -317,9 +318,11 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
 
     // 每次调用magic++,用来区分不同轮次
     magicVal_ = addrInfo_.GetMagicValue();
+    tpipe_->InitBuffer(aDumpBuf_, RoundUp(Mc2A2Kernel::AIVNUM_POS + 1U, BITS32_PER_BLOCK) * sizeof(uint32_t));
+    LocalTensor<uint8_t> aDumpTensor = aDumpBuf_.Get<uint8_t>();
     GM_ADDR aDumpAddr = addrInfo_.GetIpcAdumpWinAddr();
-    aDump_.InitWinState(aDumpAddr, aivId_, rankId_, worldSize_, rankId_, moeExpertNum_, worldSize_, globalBs_, magicVal_ % 2U,
-        1U, aivNum_);
+    aDump_.InitWinState(aDumpAddr, aivId_, rankId_, worldSize_, rankId_, moeExpertNum_, worldSize_, globalBs_, magicVal_ & 0x1,
+        Mc2A2Kernel::IS_HIERARCHY, aivNum_, aDumpTensor);
     AscendC::PipeBarrier<PIPE_ALL>();
 }
 
@@ -538,7 +541,8 @@ CreateInnerReduceInfo(uint32_t serverIdx)
         uint64_t dstFlagRdmaAddr = (uint64_t)(addrInfo_.GetRemoteRecvBuffInnerFlagAddr(dstServerId));
         // 发送Inner结束符
         AIVRDMAPostSend((GM_ADDR)srcFlagRdmaAddr, (GM_ADDR)dstFlagRdmaAddr, dstRankId, FLAG_SIZE, qp_info_);
-    } 
+    }
+    aDump_.UpdateHierarchyInnerSendOrRecv(dstServerId, Mc2A2Kernel::IS_SEND);
 
     GlobalTensor<uint8_t> readInnerTensor;
     // 等待Id为aivId_的主机发来的Inner
@@ -562,6 +566,7 @@ CreateInnerReduceInfo(uint32_t serverIdx)
     else {
         readInnerTensor.SetGlobalBuffer((__gm__ uint8_t*)(addrInfo_.GetLocalSendBuffInnerDataAddr(serverId_)));
     }
+    aDump_.UpdateHierarchyInnerSendOrRecv(dstServerId, Mc2A2Kernel::IS_RECV);
 
     // 先存储BS信息到Out
     GlobalTensor<int16_t> combineInnerCnt;
@@ -874,19 +879,21 @@ SendDataToServer(uint32_t destServerId)
         tBuf.GetWithOffset<uint64_t>((axisBS_ * FLAG_SIZE)/sizeof(uint64_t), 0);
     DataCopy(sendTokenInfoLocalTensor, tokenAddrFlagStructGlobalU64Tensor_, (axisBS_ * FLAG_SIZE)/sizeof(uint64_t));
     SyncFunc<AscendC::HardEvent::MTE2_S>();
-
+    uint32_t token_num = 0U;
     for (uint32_t tokenIdx = 0; tokenIdx < axisBS_; ++tokenIdx) {
         uint64_t destServerInfo = sendTokenInfoLocalTensor(tokenIdx * FLAG_SIZE / sizeof(uint64_t));
         if ((destServerInfo & destServerMask) != 0) { // 当前有需要发送的token立即发送
             uint64_t srcRdmaAddr = (uint64_t)(srcRdmaAddrBase + (tokenStructLen_ * tokenIdx * 1UL));
             AIVRDMAPostSend((GM_ADDR)srcRdmaAddr, (GM_ADDR)dstRdmaAddr, dstRankId, tokenStructLen_, qp_info_);
             dstRdmaAddr += tokenStructLen_;
+            ++token_num;
         }
     }
 
     uint64_t srcFlagRdmaAddr = (uint64_t)(addrInfo_.GetLocalSendBuffFlagAddr());
     uint64_t dstFlagRdmaAddr = (uint64_t)(addrInfo_.GetRemoteRecvBuffFlagAddr(dstRankId));
     AIVRDMAPostSend((GM_ADDR)srcFlagRdmaAddr, (GM_ADDR)dstFlagRdmaAddr, dstRankId, FLAG_SIZE, qp_info_);
+    aDump_.UpdateHierarchyInterNodeSendOrRecv(destServerId, token_num, Mc2A2Kernel::IS_SEND);
     PipeBarrier<PIPE_ALL>();
 }
 
@@ -1125,6 +1132,7 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
         targetCntIpcGt.SetGlobalBuffer((__gm__ int32_t*)(addrInfo_.GetRemoteIpcTokenCntAddr(targetRankId, targetExpId, fromRankId)));
         DataCopy(targetCntIpcGt, tokenNumPerExp[localExpOffset], EXP_TOKEN_COUNT_FLAG_CNT);
     }
+    aDump_.UpdateHierarchyInterNodeSendOrRecv(fromServerId, tokenIdx, Mc2A2Kernel::IS_RECV);
     PipeBarrier<PIPE_ALL>();
 }
 
@@ -1331,40 +1339,35 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
 {
     if ASCEND_IS_AIV { // 全aiv处理
         ReorderTokens();
+        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_SEND_BEFORE);
         PipeBarrier<PIPE_ALL>();
-        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_REORDER_TOKEN);
         SyncAll<true>();
         if(aivId_ < serverNum){
             if(aivId_ != serverId_){
                 SendDataToServer(aivId_);
-                aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_SEND_DATA_TO_SERVER);
             }
             CreateInnerReduceInfo(aivId_);
-            aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_CREATE_INNER_REDUCE_INFO);
         } else if (aivId_ == serverNum) {
             CreateOuterReduceInfo();
-            aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_CREATE_OUTER_REDUCE_INFO);
         } else {
             Win2Ipc();
-            aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_WIN2IPC);
         }
+        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_INTER_FINISH);
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
         SetIpcFlag(IPC_FLAG_STEP_1);
-        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_SET_IPC_FLAG);
         WaitIpcFlag(IPC_FLAG_STEP_1);
+        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_INTRA_FINISH);
         PipeBarrier<PIPE_ALL>();
-        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_WAIT_IPC_FLAG);
         SyncAll<true>();
         Ipc2Out();
+        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_IPC2OUT);
         PipeBarrier<PIPE_ALL>();
-        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_IPC2OUT);
         CleanUp();
         PipeBarrier<PIPE_ALL>();
-        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_CLEANUP);
         SyncAll<true>();
         CopyPerformanceInfo();
-        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_COPY_PERFORMANCE_INFO);
+        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_FINISH);
         hccl_.Finalize();
     }
 }
