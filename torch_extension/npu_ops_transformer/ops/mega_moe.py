@@ -105,8 +105,8 @@ class SymmBuffer:
         context_tensor_size = ((context_struct_size * 8) + 3) // 4
         self.context = torch.zeros(context_tensor_size, dtype=torch.int32).npu()
         update_context_by_hccl_channel(self.group_name, self.ep_world_size, self.ccl_buffer_size, self.context)
-        self.num_experts = num_experts,
-        self.max_recv_token_num = max_recv_token_num,
+        self.num_experts = num_experts
+        self.max_recv_token_num = max_recv_token_num
         self.num_max_tokens_per_rank = num_max_tokens_per_rank
         self.num_topk = num_topk
         self.hidden = hidden
