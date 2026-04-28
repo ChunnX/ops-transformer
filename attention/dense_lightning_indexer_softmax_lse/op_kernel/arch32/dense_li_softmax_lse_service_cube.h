@@ -6,15 +6,15 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+ */
 
 /*!
- * \file dense_lightning_indexer_softmax_lse_service_cube.h
+ * \file dense_li_softmax_lse_service_cube.h
  * \brief
  */
 
-#ifndef __DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_SERVICE_CUBE_H__
-#define __DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_SERVICE_CUBE_H__
+#ifndef __DENSE_LI_SOFTMAX_LSE_SERVICE_CUBE_H__
+#define __DENSE_LI_SOFTMAX_LSE_SERVICE_CUBE_H__
 
 #include "kernel_operator.h"
 #include "kernel_operator_list_tensor_intf.h"
@@ -27,12 +27,12 @@ namespace DenseLISoftmaxLseKernel {
 using namespace DenseLISoftmaxLseCommon;
 using namespace AscendC;
 template <typename T>
-class DenseLISoftmaxLseMatmul {
+class DenseLISoftmaxLseServiceCube {
 public:
     using Q_T = typename T::queryType;
     using K_T = typename T::keyType;
 
-    __aicore__ inline DenseLISoftmaxLseMatmul(){};
+    __aicore__ inline DenseLISoftmaxLseServiceCube(){};
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void InitMm1GlobalTensor(const GlobalTensor<K_T> &keyGm, const GlobalTensor<Q_T> &queryGm,
                                                const GlobalTensor<float> &mm1ResGm);
@@ -105,13 +105,13 @@ protected:
 };
 
 template <typename T>
-__aicore__ inline void DenseLISoftmaxLseMatmul<T>::InitParams(const ConstInfo &constInfo)
+__aicore__ inline void DenseLISoftmaxLseServiceCube<T>::InitParams(const ConstInfo &constInfo)
 {
     constInfo_ = constInfo;
 }
 
 template <typename T>
-__aicore__ inline void DenseLISoftmaxLseMatmul<T>::InitBuffers(TPipe *pipe)
+__aicore__ inline void DenseLISoftmaxLseServiceCube<T>::InitBuffers(TPipe *pipe)
 {
     pipe->InitBuffer(bufQL1_, QUERY_BUF_NUM * M_BASIC_BLOCK * D_BASIC_BLOCK * sizeof(Q_T)); // 128KB
     queryL1_ = bufQL1_.Get<Q_T>();
@@ -128,7 +128,7 @@ __aicore__ inline void DenseLISoftmaxLseMatmul<T>::InitBuffers(TPipe *pipe)
 }
 
 template <typename T>
-__aicore__ inline void DenseLISoftmaxLseMatmul<T>::InitMm1GlobalTensor(const GlobalTensor<K_T> &keyGm,
+__aicore__ inline void DenseLISoftmaxLseServiceCube<T>::InitMm1GlobalTensor(const GlobalTensor<K_T> &keyGm,
                                                                     const GlobalTensor<Q_T> &queryGm,
                                                                     const GlobalTensor<float> &mm1ResGm)
 {
@@ -138,7 +138,7 @@ __aicore__ inline void DenseLISoftmaxLseMatmul<T>::InitMm1GlobalTensor(const Glo
 }
 
 template <typename T>
-__aicore__ inline void DenseLISoftmaxLseMatmul<T>::ComputeMm1(const DenseLISoftmaxLseCommon::RunInfo &runInfo)
+__aicore__ inline void DenseLISoftmaxLseServiceCube<T>::ComputeMm1(const DenseLISoftmaxLseCommon::RunInfo &runInfo)
 {
     uint64_t s2GmBaseOffset = runInfo.s2Idx * constInfo_.s2BaseSize;
     uint64_t s1gProcessSize = runInfo.actMBaseSize; // s1gProcessSize当前必定不会超过2倍的s1g basic block
@@ -200,7 +200,7 @@ __aicore__ inline void DenseLISoftmaxLseMatmul<T>::ComputeMm1(const DenseLISoftm
 }
 
 template <typename T>
-__aicore__ inline void DenseLISoftmaxLseMatmul<T>::KeyNd2Nz(uint64_t s2L1RealSize, uint64_t s2GmOffset,
+__aicore__ inline void DenseLISoftmaxLseServiceCube<T>::KeyNd2Nz(uint64_t s2L1RealSize, uint64_t s2GmOffset,
                                                          const DenseLISoftmaxLseCommon::RunInfo &runInfo)
 {
     uint64_t s2L1Offset = 0;
@@ -234,7 +234,7 @@ __aicore__ inline void DenseLISoftmaxLseMatmul<T>::KeyNd2Nz(uint64_t s2L1RealSiz
 
 // batch, s1, n2, g, d
 template <typename T>
-__aicore__ inline void DenseLISoftmaxLseMatmul<T>::QueryNd2Nz(uint64_t s1gL1RealSize, uint64_t s1gGmOffset,
+__aicore__ inline void DenseLISoftmaxLseServiceCube<T>::QueryNd2Nz(uint64_t s1gL1RealSize, uint64_t s1gGmOffset,
                                                            const DenseLISoftmaxLseCommon::RunInfo &runInfo)
 {
     Nd2NzParams nd2nzPara;
@@ -252,7 +252,7 @@ __aicore__ inline void DenseLISoftmaxLseMatmul<T>::QueryNd2Nz(uint64_t s1gL1Real
 }
 
 template <typename T>
-__aicore__ inline void DenseLISoftmaxLseMatmul<T>::LoadQueryToL0a(uint64_t s1gL1Offset, uint64_t s1gL1RealSize,
+__aicore__ inline void DenseLISoftmaxLseServiceCube<T>::LoadQueryToL0a(uint64_t s1gL1Offset, uint64_t s1gL1RealSize,
                                                                uint64_t s1gL0RealSize,
                                                                const DenseLISoftmaxLseCommon::RunInfo &runInfo)
 {
@@ -289,7 +289,7 @@ __aicore__ inline void DenseLISoftmaxLseMatmul<T>::LoadQueryToL0a(uint64_t s1gL1
 }
 
 template <typename T>
-__aicore__ inline void DenseLISoftmaxLseMatmul<T>::LoadKeyToL0b(uint64_t s2L1Offset, uint64_t s2L1RealSize,
+__aicore__ inline void DenseLISoftmaxLseServiceCube<T>::LoadKeyToL0b(uint64_t s2L1Offset, uint64_t s2L1RealSize,
                                                              uint64_t s2L0RealSize,
                                                              const DenseLISoftmaxLseCommon::RunInfo &runInfo)
 {
@@ -305,7 +305,7 @@ __aicore__ inline void DenseLISoftmaxLseMatmul<T>::LoadKeyToL0b(uint64_t s2L1Off
 }
 
 template <typename T>
-__aicore__ inline void DenseLISoftmaxLseMatmul<T>::ComuteL0c(uint64_t s1gL0RealSize, uint64_t s2L0RealSize,
+__aicore__ inline void DenseLISoftmaxLseServiceCube<T>::ComuteL0c(uint64_t s1gL0RealSize, uint64_t s2L0RealSize,
                                                           const DenseLISoftmaxLseCommon::RunInfo &runInfo)
 {
     MmadParams mmadParams;
@@ -323,7 +323,7 @@ __aicore__ inline void DenseLISoftmaxLseMatmul<T>::ComuteL0c(uint64_t s1gL0RealS
 }
 
 template <typename T>
-__aicore__ inline void DenseLISoftmaxLseMatmul<T>::Fixp(uint64_t s1gGmOffset, uint64_t s2GmOffset,
+__aicore__ inline void DenseLISoftmaxLseServiceCube<T>::Fixp(uint64_t s1gGmOffset, uint64_t s2GmOffset,
                                                      uint64_t s1gL0RealSize, uint64_t s2L0RealSize,
                                                      const DenseLISoftmaxLseCommon::RunInfo &runInfo)
 {
@@ -344,7 +344,7 @@ __aicore__ inline void DenseLISoftmaxLseMatmul<T>::Fixp(uint64_t s1gGmOffset, ui
 }
 
 template <typename T>
-__aicore__ inline void DenseLISoftmaxLseMatmul<T>::AllocEventID()
+__aicore__ inline void DenseLISoftmaxLseServiceCube<T>::AllocEventID()
 {
     SetMMLayoutTransform(true);
     SetFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + 0);
@@ -359,7 +359,7 @@ __aicore__ inline void DenseLISoftmaxLseMatmul<T>::AllocEventID()
 }
 
 template <typename T>
-__aicore__ inline void DenseLISoftmaxLseMatmul<T>::FreeEventID()
+__aicore__ inline void DenseLISoftmaxLseServiceCube<T>::FreeEventID()
 {
     SetMMLayoutTransform(false);
     WaitFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + 0);
@@ -373,4 +373,4 @@ __aicore__ inline void DenseLISoftmaxLseMatmul<T>::FreeEventID()
     WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 1);
 }
 }
-#endif // DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_SERVICE_CUBE_H
+#endif // DENSE_LI_SOFTMAX_LSE_SERVICE_CUBE_H

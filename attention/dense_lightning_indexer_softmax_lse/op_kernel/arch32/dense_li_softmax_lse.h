@@ -6,15 +6,15 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+ */
 
 /*!
- * \file dense_lightning_indexer_softmax_lse.h
+ * \file dense_li_softmax_lse.h
  * \brief
  */
 
-#ifndef __DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_H__
-#define __DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_H__
+#ifndef __DENSE_LI_SOFTMAX_LSE_H__
+#define __DENSE_LI_SOFTMAX_LSE_H__
 
 #include "kernel_operator.h"
 #include "kernel_operator_list_tensor_intf.h"
@@ -22,8 +22,8 @@
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
 #include "dense_lightning_indexer_softmax_lse_common.h"
-#include "dense_lightning_indexer_softmax_lse_service_cube.h"
-#include "dense_lightning_indexer_softmax_lse_service_vector.h"
+#include "dense_li_softmax_lse_service_cube.h"
+#include "dense_li_softmax_lse_service_vector.h"
 
 namespace DenseLISoftmaxLseKernel {
 using namespace DenseLISoftmaxLseCommon;
@@ -68,8 +68,8 @@ public:
 
     using MM1_OUT_T = float;
 
-    DenseLISoftmaxLseMatmul<T> matmulService;
-    DenseLISoftmaxLseVector<T> vectorService;
+    DenseLISoftmaxLseServiceCube<T> matmulService;
+    DenseLISoftmaxLseServiceVector<T> vectorService;
 
     // 常量区
     static constexpr uint32_t SYNC_C1_V1_FLAG = 4;
@@ -581,4 +581,4 @@ __aicore__ inline void DenseLISoftmaxLse<T>::ResetInvalidOutputZero()
     }
 }
 } // namespace DenseLISoftmaxLseKernel
-#endif // DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_H
+#endif // DENSE_LI_SOFTMAX_LSE_H
