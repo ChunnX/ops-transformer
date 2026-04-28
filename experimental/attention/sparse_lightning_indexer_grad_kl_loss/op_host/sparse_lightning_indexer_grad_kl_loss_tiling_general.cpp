@@ -499,7 +499,7 @@ bool SparseLightningIndexerGradKLLossTilingBase::CrossShapeVerify(const gert::Sh
         OP_CHECK_IF(queryIndexShape[2] != keyIndexShape[2],
                  OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify query-key_index shape D is failed, the value of query_index[2] and key_index[2] are respectively (%ld), (%ld). Their values should be equal.", queryIndexShape[2], keyIndexShape[2]), return false);
         // 验证ROPE是否使能
-        OP_CHECK_IF(hasRope == 0,
+        OP_CHECK_IF(hasRope == 0 && cmpRatio != 4,
                  OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify query or key rope is failed, rope can't be null"), return false);
         if (hasRope) {
             // 验证queryrope
