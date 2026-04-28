@@ -769,9 +769,9 @@ bool GroupedQmmTiling::SetQuantMode(const gert::Shape &wScaleShape, const gert::
         auto &xScaleShape = xScaleStorageShape->GetStorageShape();
         auto xScaleDims = xScaleShape.GetDimNum();
         if (inputParams_.aDtype != ge::DT_INT8 &&
-            ((xScaleDims == 2 && xScaleShape[xScaleDims - 1] == 1) || // 2:（g,1) 2维
+            ((xScaleDims == 2 && xScaleShape[xScaleDims - 1] == 1) ||  // 2:（g,1) 2维
              (xScaleDims == 1 && static_cast<uint64_t>(xScaleShape[0]) == inputParams_.groupNum &&
-              inputParams_.groupNum != inputParams_.mSize))) {
+              (inputParams_.groupType == SPLIT_K || inputParams_.groupNum != inputParams_.mSize)))) {
             inputParams_.aQuantMode = optiling::QuantMode::PERTENSOR_MODE;
         } else {
             inputParams_.aQuantMode = optiling::QuantMode::PERTOKEN_MODE;
