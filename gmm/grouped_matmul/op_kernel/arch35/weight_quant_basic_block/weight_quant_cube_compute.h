@@ -344,17 +344,7 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::CopyMxScaleGmToL1(const BasicBl
 
     DataCopy(f16ScaleALocal, f16ScaleAGlobal, scaleAdn2NzParams);
 
-    // copy mxScaleB
-    Dn2NzParams scaleBdn2NzParams;
-    ConfigScaleDn2NzParams(param.nL1Size, scaleKGmSize, scaleKL1RealSize, scaleKL1RealSize, scaleBdn2NzParams);
 
-    int64_t scaleBGmOffset = param.nOffset * scaleKGmSize + kbL1Offset / MX_GROUPSIZE;
-    GlobalTensor<half> f16ScaleBGlobal;
-    f16ScaleBGlobal.SetGlobalBuffer((__gm__ half *)mxScaleBGlobal_[scaleBGmOffset].GetPhyAddr(),
-                                    (param.nL1Size * scaleKL1RealSize) >> 1);
-    auto f16ScaleBLocal = mxScaleBL1_[(mxScaleBufIdx_ & 1) * mxScaleBL1DbOffset_].template ReinterpretCast<half>();
-
-    DataCopy(f16ScaleBLocal, f16ScaleBGlobal, scaleBdn2NzParams);
 }
 
 WQBMM_CUBE_COMPUTE_TEMPLATE_PARAM

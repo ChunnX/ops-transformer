@@ -280,7 +280,7 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::InitMx()
         transIdBuffer_ = LocalTensor<uint16_t>(TPosition::LCM, 196 * GetKBUnit<int8_t>(), UB_BUFFER_INFO.biasReducedUbTotalSize); // 1KB
         for (uint64_t i = 0; i < 8; i++) {
             for(uint64_t j = 0; j < 16; j++){
-                transIdBuffer_.SetValue(i * 16 + j, i + j * 128);
+                transIdBuffer_.SetValue(i * 16 + j, i + j * 64);
             }
         }
         /*
@@ -738,7 +738,7 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::CopyWeigh
 
     DataCopyParams params;
     params.blockCount = CeilDivide<uint64_t>(nSize, BLOCK_CUBE) * GROUP_NUM_DEFAULT_LEN / 16;
-    params.blockLen = VEC_REG_ELEM / BLOCK_CUBE;
+    params.blockLen = VEC_MAX_ELEM_B16 / BLOCK_CUBE;
     params.srcStride = (UB_BUFFER_INFO.ubWeightOutputHighBitBufferNum - 1) * params.blockLen;
     params.dstStride = 0;
 
