@@ -66,9 +66,9 @@ bool MatmulAllReduceCheckValidEmptyTensor(const aclTensor* x1, const aclTensor* 
     }
     int64_t dim1 = x2->GetViewShape().GetDimNum() - 1;
     int64_t dim2 = x2->GetViewShape().GetDimNum() - 2;
-    uint64_t m = x1->GetViewShape().GetDim(dim1);
-    uint64_t k = x2->GetViewShape().GetDim(dim1);
-    uint64_t n = x2->GetViewShape().GetDim(dim2);
+    int64_t m = x1->GetViewShape().GetDim(dim1);
+    int64_t k = x2->GetViewShape().GetDim(dim1);
+    int64_t n = x2->GetViewShape().GetDim(dim2);
     // 空tensor放行
     if (m == 0 || k == 0 || n == 0) {
         return true;
