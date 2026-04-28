@@ -129,16 +129,28 @@ class GenCoverage:
         cls._gen_cov(param=p)
 
     @classmethod
+    def _run_cmd(cls, cmd, capture_output):
+        try:
+            ret = subprocess.run(cmd, capture_output=capture_output, check=True, encoding='utf-8')
+            ret.check_returncode()
+            return ret
+        except subprocess.CalledProcessError as err:
+            logging.error("[ERROR] Command failed: %s", " ".join(cmd))
+            if err.stdout:
+                logging.error("[ERROR] stdout:\n%s", err.stdout)
+            if err.stderr:
+                logging.error("[ERROR] stderr:\n%s", err.stderr)
+            raise
+
+    @classmethod
     def _chk_env(cls):
         try:
-            ret = subprocess.run('lcov --version'.split(), capture_output=True, check=True, encoding='utf-8')
-            ret.check_returncode()
+            cls._run_cmd('lcov --version'.split(), capture_output=True)
         except FileNotFoundError:
             logging.error("[ERROR] lcov is required to generate coverage data, please install.")
             return False
         try:
-            ret = subprocess.run('genhtml --version'.split(), capture_output=True, check=True, encoding='utf-8')
-            ret.check_returncode()
+            cls._run_cmd('genhtml --version'.split(), capture_output=True)
         except FileNotFoundError:
             logging.error("[ERROR] genhtml is required to generate coverage html report, please install.")
             return False
@@ -159,8 +171,7 @@ class GenCoverage:
         # 生成覆盖率
         cmd = f"lcov -c -d {param.data_dir} -o {param.info_file} {lcov_log_tag}"
         logging.debug("[DEBUG] Generate origin coverage file, cmd=`%s`", cmd)
-        ret = subprocess.run(cmd.split(), capture_output=log_quiet, check=True, encoding='utf-8')
-        ret.check_returncode()
+        cls._run_cmd(cmd.split(), capture_output=log_quiet)
         if param.info_file.stat().st_size == 0:
             logging.critical("No file found in origin coverage file.")
             return
@@ -168,8 +179,7 @@ class GenCoverage:
         # 滤掉某些文件/路径的覆盖率信息
         cmd = f"lcov --remove {param.info_file} {param.filter_str} -o {param.info_file_filtered} {lcov_log_tag}"
         logging.debug("[DEBUG] Generate filtered coverage file, cmd=`%s`", cmd)
-        ret = subprocess.run(cmd.split(), capture_output=log_quiet, check=True, encoding='utf-8')
-        ret.check_returncode()
+        cls._run_cmd(cmd.split(), capture_output=log_quiet)
         logging.debug("[DEBUG] Generated filtered coverage file %s", param.info_file_filtered)
         logging.info("[INFO] Generated coverage result in %s", os.path.dirname(param.info_file))
 
@@ -180,8 +190,7 @@ class GenCoverage:
         sub_cmd_prefix = f"-p {param.source_dir}" if param.source_dir else ""
         cmd = f'genhtml {param.info_file_filtered} {sub_cmd_prefix} -o {param.html_report_dir} {lcov_log_tag}'
         logging.debug("[DEBUG] Generate filtered coverage html report, cmd=`%s`", cmd)
-        ret = subprocess.run(cmd.split(), capture_output=log_quiet, check=True, encoding='utf-8')
-        ret.check_returncode()
+        cls._run_cmd(cmd.split(), capture_output=log_quiet)
         logging.info("[INFO] Generated filtered coverage html report. %s", param.html_report_dir)
         # 输出覆盖率数据到终端
         cmd = f"lcov --list {param.info_file_filtered}"
