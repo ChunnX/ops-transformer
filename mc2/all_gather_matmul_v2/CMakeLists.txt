@@ -27,5 +27,6 @@ set(MC2_COMPILE ${SUB_MC2_COMPILE} PARENT_SCOPE)
 # Add catlass include path for kernel compilation
 add_ops_compile_options(
     OP_NAME all_gather_matmul_v2
+    COMPUTE_UNIT ascend910b
     OPTIONS -I${CMAKE_SOURCE_DIR}/3rdparty/catlass/include
 )
