@@ -16,18 +16,18 @@
 #ifndef CATLASS_GEMM_KERNEL_ALLGATHER_MATMUL_HPP
 #define CATLASS_GEMM_KERNEL_ALLGATHER_MATMUL_HPP
 
-#include "../../../3rdparty/catlass/include/catlass/catlass.hpp"
-#include "../../../3rdparty/catlass/include/catlass/coord.hpp"
-#include "../../../3rdparty/catlass/include/catlass/gemm_coord.hpp"
-#include "../../../3rdparty/catlass/include/catlass/matrix_coord.hpp"
-#include "../../../3rdparty/catlass/include/catlass/arch/resource.hpp"
-#include "../../../3rdparty/catlass/include/catlass/arch/cross_core_sync.hpp"
-#include "../../../3rdparty/catlass/include/catlass/epilogue/tile/copy_gm_to_ub.hpp"
-#include "../../../3rdparty/catlass/include/catlass/epilogue/tile/copy_ub_to_gm.hpp"
-#include "../../../3rdparty/catlass/include/catlass/gemm/kernel/padding_matmul.hpp"
+#include "3rdparty/catlass/include/catlass/catlass.hpp"
+#include "3rdparty/catlass/include/catlass/coord.hpp"
+#include "3rdparty/catlass/include/catlass/gemm_coord.hpp"
+#include "3rdparty/catlass/include/catlass/matrix_coord.hpp"
+#include "3rdparty/catlass/include/catlass/arch/resource.hpp"
+#include "3rdparty/catlass/include/catlass/arch/cross_core_sync.hpp"
+#include "3rdparty/catlass/include/catlass/epilogue/tile/copy_gm_to_ub.hpp"
+#include "3rdparty/catlass/include/catlass/epilogue/tile/copy_ub_to_gm.hpp"
+#include "3rdparty/catlass/include/catlass/gemm/kernel/padding_matmul.hpp"
 #include "block_mmad_preload_fixpipe.h"
-#include "../../../3rdparty/catlass/include/catlass/gemm/tile/tile_copy.hpp"
-#include "../../../3rdparty/catlass/include/catlass/gemm/tile/tile_mmad.hpp"
+#include "3rdparty/catlass/include/catlass/gemm/tile/tile_copy.hpp"
+#include "3rdparty/catlass/include/catlass/gemm/tile/tile_mmad.hpp"
 
 using namespace AscendC;
 
