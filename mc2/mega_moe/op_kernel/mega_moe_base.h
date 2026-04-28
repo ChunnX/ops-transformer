@@ -98,6 +98,8 @@ struct WorkspaceInfo{
     GM_ADDR ptrSumBeforeRank;
     GM_ADDR ptrFlagList;
     GM_ADDR ptrFlagList2;
+    GM_ADDR ptrGmm2RowReady;
+    GM_ADDR gmmOut;
     int64_t workspaceSize;
     HOST_DEVICE WorkspaceInfo() = default;
     HOST_DEVICE WorkspaceInfo(GM_ADDR base, const MegaMoeTilingData *tilingData) {
@@ -120,6 +122,10 @@ struct WorkspaceInfo{
         workspaceSize += tilingData->expertPerRank * INT_CACHELINE * sizeof(int32_t);
         ptrFlagList2 = base + workspaceSize;
         workspaceSize += tilingData->expertPerRank * INT_CACHELINE * sizeof(int32_t);
+        ptrGmm2RowReady = base + workspaceSize;
+        workspaceSize += CeilAlign(tilingData->m * sizeof(int32_t), ALIGN_512);
+        gmmOut = base + workspaceSize;
+        workspaceSize += CeilAlign(tilingData->m * tilingData->n * sizeof(bfloat16_t), ALIGN_512);
         gmCtx = base + workspaceSize;
         // workspaceSize += CeilAlign(sizeof(SchedulerContext), ALIGN_512);
         expandedRowIdxGather = ptrA;    // 复用

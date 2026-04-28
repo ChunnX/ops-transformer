@@ -81,4 +81,57 @@ __aicore__ inline void CombineTokens(
 }
 }  // namespace MegaMoeCombineImpl
 
+namespace MegaMoeCombineImpl {
+
+template <typename ElementMMadOut2>
+__aicore__ inline void CombineTokensByRow(
+    uint32_t row,
+    uint32_t n,
+    uint32_t groupIdx,
+    GlobalTensor<ElementMMadOut2>& gmmOutGm,
+    const Params& params)
+{
+    GlobalTensor<int32_t> tokenPerExpertWin_, preSumBeforeRankWorkSpace_;
+    tokenPerExpertWin_.SetGlobalBuffer((__gm__ int32_t*)params.peermemInfo.ptrTokenPerExpert);
+    preSumBeforeRankWorkSpace_.SetGlobalBuffer((__gm__ int32_t*)params.workspaceInfo.ptrSumBeforeRank);
+
+    int32_t preSumRankInExpert = 0;
+    for (int32_t dstEpIdx = 0; dstEpIdx < params.tilingData->EP; dstEpIdx++) {
+        uint32_t lenRankInExpert = tokenPerExpertWin_(dstEpIdx * CeilAlign(
+            params.tilingData->EP * params.tilingData->expertPerRank, ALIGN_128) + groupIdx);
+        uint32_t dstExpertOffset = preSumBeforeRankWorkSpace_(
+            dstEpIdx * params.tilingData->expertPerRank + groupIdx);
+        uint32_t stRankInExpert = preSumRankInExpert;
+        uint32_t edRankInExpert = stRankInExpert + lenRankInExpert;
+        preSumRankInExpert += lenRankInExpert;
+
+        if (row < stRankInExpert || row >= edRankInExpert) {
+            continue;
+        }
+
+        uint32_t dstOffsetInExpert = row - stRankInExpert;
+
+        AscendC::GlobalTensor<ElementMMadOut2> gmRemoteD;
+        uint64_t gmRemoteOffset = params.peermemInfo.ptrD - winRankAddr_[dstEpIdx];
+        __gm__ void* dstPeermemPtr = GetRankWinAddrWithOffset(dstEpIdx, gmRemoteOffset);
+        gmRemoteD.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMMadOut2*>(dstPeermemPtr));
+
+        uint64_t gmDstOffset = (dstOffsetInExpert + dstExpertOffset) * n;
+        auto gmDstRow = gmRemoteD[gmDstOffset];
+
+        LocalTensor<ElementMMadOut2> ubBuffer;
+        DataCopy(ubBuffer, gmmOutGm[row * n], n);
+        SyncFunc<AscendC::HardEvent::MTE2_V>();
+
+        AscendC::DataCopyExtParams ub2GmParams{1, 0, 0, 0, 0};
+        ub2GmParams.blockLen = n * sizeof(ElementMMadOut2);
+        DataCopyPad(gmDstRow, ubBuffer, ub2GmParams);
+        SyncFunc<AscendC::HardEvent::MTE3_V>();
+
+        break;
+    }
+}
+
+}  // namespace MegaMoeCombineImpl
+
 #endif  // MEGA_MOE_OPS_H

@@ -180,7 +180,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     startBlockIdx = (startBlockIdx + coreLoops) % blockNum;
 }
 
-// GroupMatmul2 - GMM2矩阵乘法 + Combine
+// GroupMatmul2 - GMM2矩阵乘法
 template <typename ElementA, typename ElementB, typename ElementC, 
           typename ElementMxScaleA, typename ElementMxScaleB>
 __aicore__ inline void GroupMatmul2(
@@ -191,8 +191,6 @@ __aicore__ inline void GroupMatmul2(
     int32_t& vecSetSyncCom2,
     uint32_t groupIdx, uint16_t& pingpongIdx, int32_t rankId)
 {
-    constexpr uint32_t GMM2_BLOCK_SIZE = L1_TILE_M * L1_TILE_N;
-
     uint32_t m = Get<M_VALUE>(problemShape);
     uint32_t n = Get<K_VALUE>(problemShape);
     uint32_t k = Get<N_VALUE>(problemShape) / SWIGLU_N_HALF;
@@ -202,6 +200,9 @@ __aicore__ inline void GroupMatmul2(
 
     GlobalTensor<int32_t> groupFlagListGm;
     groupFlagListGm.SetGlobalBuffer((__gm__ int32_t*)gmmAddrInfo.groupFlagList);
+
+    GlobalTensor<int32_t> rowReadyFlags;
+    rowReadyFlags.SetGlobalBuffer((__gm__ int32_t*)params.workspaceInfo.ptrGmm2RowReady);
 
     auto scaleK = CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
     auto LayoutA = tla::MakeLayout<ElementA, layout::RowMajor>(m, k);
@@ -218,42 +219,27 @@ __aicore__ inline void GroupMatmul2(
         DispatchPolicy, L1TileShape, L0TileShape, ElementA, ElementB, ElementC, void, TileCopy>;
     BlockMmad blockMmad(resource);
 
-    int64_t ubOffset = 0;
-    ubOffset += MAX_SINGLE_MN_ALIGN32_NUM * sizeof(bfloat16_t);
-
     GlobalTensor<ElementA> aGlobalTensor;
     GlobalTensor<ElementB> bGlobalTensor;
     GlobalTensor<ElementMxScaleA> aScaleGlobalTensor;
     GlobalTensor<ElementMxScaleB> bScaleGlobalTensor;
-
-    GlobalTensor<bfloat16_t> gmmOutFirstGlobalTensor;
-    GlobalTensor<bfloat16_t> gmmOutSecondGlobalTensor;
+    GlobalTensor<bfloat16_t> gmmOutGlobalTensor;
 
     aGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal));
     bGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ElementB*>(gmmAddrInfo.bGlobal));
     aScaleGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMxScaleA*>(gmmAddrInfo.aScaleGlobal));
     bScaleGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMxScaleB*>(gmmAddrInfo.bScaleGlobal));
-
-
-    gmmOutFirstGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(gmmAddrInfo.gmmOutGlobal));
-    gmmOutSecondGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(gmmAddrInfo.gmmOutGlobal + 768 * 4096 * 2));
-    //768 * 4096 * 2 * 2
-
+    gmmOutGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(gmmAddrInfo.gmmOutGlobal));
 
     auto tensorA = tla::MakeTensor(aGlobalTensor, LayoutA, Arch::PositionGM{});
     auto tensorB = tla::MakeTensor(bGlobalTensor, LayoutB, Arch::PositionGM{});
     auto tensorMxScaleA = tla::MakeTensor(aScaleGlobalTensor, LayoutMxScaleA, Arch::PositionGM{});
     auto tensorMxScaleB = tla::MakeTensor(bScaleGlobalTensor, LayoutMxScaleB, Arch::PositionGM{});
-    // 两块 GM 做 pingpong 输出缓冲
-    auto tensorGmOutFirst  = tla::MakeTensor(gmmOutFirstGlobalTensor,  LayoutC, Arch::PositionGM{});
-    auto tensorGmOutSecond = tla::MakeTensor(gmmOutSecondGlobalTensor, LayoutC, Arch::PositionGM{});
+    auto tensorGmOut = tla::MakeTensor(gmmOutGlobalTensor, LayoutC, Arch::PositionGM{});
 
     BlockScheduler scheduler({m, n, k}, MakeCoord(L1_TILE_M, L1_TILE_N));
     uint32_t coreLoops = scheduler.GetCoreLoops();
     uint32_t startLoopIdx = (blockIdx < startBlockIdx ? blockIdx + blockNum : blockIdx) - startBlockIdx;
-
-    LocalTensor<ElementC> l0cOutUbFirst = resource.ubBuf.template GetBufferByByte<ElementC>(0);
-    LocalTensor<ElementC> l0cOutUbSecond = resource.ubBuf.template GetBufferByByte<ElementC>(ubOffset);
 
     for (uint32_t loopIdx = startLoopIdx; loopIdx < coreLoops; loopIdx += blockNum) {
         GemmCoord blockCoord = scheduler.GetBlockCoord(loopIdx);
@@ -262,13 +248,6 @@ __aicore__ inline void GroupMatmul2(
         uint32_t mLoc = blockCoord.m() * L1_TILE_M;
         uint32_t nLoc = blockCoord.n() * L1_TILE_N;
         uint32_t kLoc = blockCoord.k() * L1_TILE_K;
-
-        auto tensorGmOut = pingpongIdx == 0 ? tensorGmOutFirst : tensorGmOutSecond;
-        auto l0cOutUb = pingpongIdx == 0 ? l0cOutUbFirst : l0cOutUbSecond;
-
-        // 输出块直接指向当前 pingpong 的 GM buffer
-
-        auto l0cOutUbGMM2 = pingpongIdx == 0 ? gmmOutFirstGlobalTensor : gmmOutSecondGlobalTensor;
 
         if constexpr(g_coreType == AscendC::AIC) {
             if (loopIdx == startLoopIdx) {
@@ -279,10 +258,7 @@ __aicore__ inline void GroupMatmul2(
                     int64_t st = AscendC::GetSystemCycle();
                     while (AscendC::GetSystemCycle() - st < 100) {}
                 }
-            }            
-            // if (vecSetSyncCom2 >= 2) {
-            //     // WaitForVector(pingpongIdx);
-            // }
+            }
             
             auto tensorBlockA = GetTile(tensorA, tla::MakeCoord(mLoc, kLoc),
                 tla::MakeShape(actualShape.m(), actualShape.k()));
@@ -301,21 +277,13 @@ __aicore__ inline void GroupMatmul2(
                 tla::MakeShape(CeilDiv(actualShape.k(), MXFP_SCALE_GROUP_NUM), actualShape.n()));
             blockMmad(tensorBlockA, tensorBlockB, tensorBlockOut,
                       actualShape, tensorBlockMxScaleA, tensorBlockMxScaleB);
-            NotifyVector(pingpongIdx);
+            
+            for (uint32_t row = mLoc; row < mLoc + actualShape.m(); row++) {
+                AtomicAdd((__gm__ int32_t*)&rowReadyFlags.GetValue(row), int32_t(1));
+            }
         }
 
         vecSetSyncCom2++;
-
-        if constexpr(g_coreType == AscendC::AIV) {
-            WaitForCube(pingpongIdx);
-            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
-            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
-            MegaMoeCombineImpl::CombineTokens<ElementC, GemmCoord>(mLoc, nLoc, n, groupIdx, rankId, l0cOutUbGMM2, l0cOutUb, actualShape, params);
-            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
-            // NotifyCube(pingpongIdx);
-        }
-        pingpongIdx = 1 - pingpongIdx;
     }
     startBlockIdx = (startBlockIdx + coreLoops) % blockNum;
 }

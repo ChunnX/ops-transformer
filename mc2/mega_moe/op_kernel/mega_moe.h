@@ -67,6 +67,7 @@ private:
     __aicore__ inline void CrossRankSyncInWorldSize();
     __aicore__ inline void CopyGMToGMPerTokenV2(GlobalTensor<QuantOutType> dst, GlobalTensor<QuantScaleOutType> dstScale,
         GlobalTensor<QuantOutType> src, int32_t rows, int32_t hiddenSize, int32_t& pingpongId);
+    __aicore__ inline void ResetGmm2RowReadyFlags();
  
     __aicore__ inline void TilingByCore(int32_t totalLen, int32_t &coreLen, int32_t& coreOffset, int32_t align = 32)
     {
@@ -267,6 +268,23 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetWorkSpaceFlagList(
         Duplicate(initTensor, 0, coreLen);
         SyncFunc<AscendC::HardEvent::V_MTE3>();
         DataCopy(groupFlagListGm_[coreOffset], initTensor, coreLen);
+    }
+}
+ 
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetGmm2RowReadyFlags()
+{
+    if constexpr(g_coreType == AIV) {
+        GlobalTensor<int32_t> rowReadyFlags;
+        rowReadyFlags.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.ptrGmm2RowReady);
+        
+        int32_t coreLen, coreOffset;
+        TilingByCore(m_, coreLen, coreOffset);
+        
+        LocalTensor<int32_t> initTensor = ResetFlagBuf_.Get<int32_t>();
+        Duplicate(initTensor, 0, coreLen);
+        SyncFunc<AscendC::HardEvent::V_MTE3>();
+        DataCopy(rowReadyFlags[coreOffset], initTensor, coreLen);
     }
 }
  
@@ -706,10 +724,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         }
     }
  
-    // 5. for循环按照本卡专家id进行gmm2 & combine，内部gmm2与combine之间按照基本块进行流水
+    // 5. for循环按照本卡专家id进行gmm2 & combine
     preOffset_ = 0;
     vecSetSyncCom_ = 0;
     baseOffset_ = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    ResetGmm2RowReadyFlags();
+    SyncAll<true>();
+
     for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
         if (!UpdateGroupParams(expertIdx)) {
             continue;
@@ -718,9 +739,28 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         if (subBlockIdx_ == 0) {
             MegaMoeCatlassImpl::GroupMatmul2<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
                 params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_, expertIdx, gmm2PingPongIdx_, rankId_);
+        } else if (subBlockIdx_ == 1) {
+            uint32_t m = Get<M_VALUE>(problemShape_);
+            uint32_t n = Get<K_VALUE>(problemShape_);
+            uint32_t tilesPerRow = CeilDiv(n, L1_TILE_N);
+
+            GlobalTensor<int32_t> rowReadyFlags;
+            rowReadyFlags.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.ptrGmm2RowReady);
+
+            GlobalTensor<bfloat16_t> gmmOutGm;
+            gmmOutGm.SetGlobalBuffer((__gm__ bfloat16_t*)params_.workspaceInfo.gmmOut);
+
+            for (uint32_t row = aivCoreIdx_; row < m; row += blockNum_) {
+                while (ReadGmByPassDCache((__gm__ int32_t*)&rowReadyFlags.GetValue(row)) < tilesPerRow) {
+                    int64_t st = GetSystemCycle();
+                    while (GetSystemCycle() - st < 100) {}
+                }
+
+                MegaMoeCombineImpl::CombineTokensByRow<bfloat16_t>(
+                    row, n, expertIdx, gmmOutGm, params_);
+            }
         }
     }
-    // EndGMM2Sync();
     SyncAll<true>();
 
     // 6. unpermute & 清理win区上放置token的位置
