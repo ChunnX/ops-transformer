@@ -620,6 +620,40 @@ protected:
         SetFlag<HardEvent::MTE3_MTE2>(this->bmm1ResCopyOutEvent[ubPingpong]);
     }
 
+    // Out-of-line helper for sub-block mask correction. Marked noinline so the body
+    // does NOT bloat Res1VecCompute's inlined hot path (Session 8 measured a 26 ms
+    // regression at 10% sparsity when an equivalent batched-Duplicate body was inlined
+    // — pure I-cache layout shift, since at low sparsity the body never executes).
+    // Keeping the body out-of-line preserves the inlined caller's instruction layout
+    // while letting partial-chunk paths (mid-sparsity) benefit from batched 2D
+    // Duplicate dispatch (one Duplicate covering all souterSize rows at 64-lane width
+    // instead of one per-row call). Function-call overhead is paid only when the
+    // helper is actually called (≤34% of chunks at 10% sparsity, never at 0%).
+    __aicore__ __attribute__((noinline)) void ApplySubBlockMaskCorrection(
+        int32_t ubPingpong, uint8_t subMask, uint32_t sInnerNow, uint32_t souterSize) {
+        const uint8_t repStride = static_cast<uint8_t>(sInnerNow / 8u);  // 32-B blocks per row
+        for (int32_t sub = 0; sub < 4; ++sub) {
+            if (subMask & (1u << sub)) continue;  // active, skip
+            uint32_t colStart = static_cast<uint32_t>(sub) * 128u;
+            if (colStart >= sInnerNow) break;     // beyond actual KV length (tail chunk)
+            uint32_t subCols = (colStart + 128u <= sInnerNow) ? 128u : (sInnerNow - colStart);
+            // For fp32, one Duplicate repeat = 256 B = 64 lanes. Cover up to 128 cols
+            // with two 64-lane Duplicate calls, each spanning all souterSize rows via
+            // the dstRepStride parameter (instead of one Duplicate per row).
+            uint64_t firstMask = (subCols >= 64u) ? 64u : subCols;
+            Duplicate<computeType, false>(this->mmResUb[ubPingpong][colStart],
+                                          static_cast<computeType>(-10000.0f),
+                                          firstMask, souterSize, 1, repStride);
+            if (subCols > 64u) {
+                Duplicate<computeType, false>(this->mmResUb[ubPingpong][colStart + 64u],
+                                              static_cast<computeType>(-10000.0f),
+                                              static_cast<uint64_t>(subCols - 64u),
+                                              souterSize, 1, repStride);
+            }
+        }
+        PipeBarrier<PIPE_V>();
+    }
+
     __aicore__ inline void Res1VecCompute(PFAComputeParam *params) {
         if (params->fakeMsg) {
             return;
@@ -691,22 +725,13 @@ protected:
             // Sparse sub-block correction: when a 512-wide cube tile contains inactive 128-element
             // KV sub-blocks (sabiSubBlockMask != fullMask), overwrite their columns with -10000
             // so softmax treats them as -inf and they contribute zero weight to the output.
-            // Using Duplicate (pure write) instead of Adds (read-modify-write) avoids one UB read
-            // per lane, which meaningfully cuts vector-pipe work at mid-range sparsities (20–50%)
-            // where a large fraction of chunks need per-row correction.
+            // The body lives in ApplySubBlockMaskCorrection (noinline) to keep this inlined hot
+            // path's I-cache footprint compact — Session 8 inlined a similar batched Duplicate
+            // body and regressed 10% sparsity by 26 ms purely from instruction layout shift.
             if (params->isBlockSparse && params->sabiSubBlockMask != 0xFu) {
-                const uint32_t sInnerNow = params->singleProcessSInnerSizeNow;
-                for (int32_t sub = 0; sub < 4; ++sub) {
-                    if (params->sabiSubBlockMask & (1u << sub)) continue; // active, skip
-                    uint32_t colStart = static_cast<uint32_t>(sub) * 128u;
-                    if (colStart >= sInnerNow) break; // beyond actual KV length
-                    uint32_t subCols = (colStart + 128u <= sInnerNow) ? 128u : (sInnerNow - colStart);
-                    for (uint32_t row = 0u; row < static_cast<uint32_t>(souterSize); ++row) {
-                        Duplicate(this->mmResUb[ubPingpong][row * sInnerNow + colStart],
-                                  static_cast<computeType>(-10000.0f), subCols);
-                    }
-                }
-                PipeBarrier<PIPE_V>();
+                ApplySubBlockMaskCorrection(ubPingpong, params->sabiSubBlockMask,
+                                            params->singleProcessSInnerSizeNow,
+                                            static_cast<uint32_t>(souterSize));
             }
 
             bool firstIter = params->isBlockSparse ? params->isFirstComputedIter : params->isFirstInnerIter;

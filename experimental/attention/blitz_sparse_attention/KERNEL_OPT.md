@@ -839,3 +839,335 @@ curve holds within 1 ms noise.
   per-params 128-granularity sub-offset field and softmax-N plumbing;
   scope is smaller than full L1 gather but still a multi-session lift.
   Noted here so a future session can pick it up.
+
+---
+
+## Session 9 — Out-of-loop dense-row detection: surprising regression at low sparsity
+
+### Goal
+
+Try the user-suggested option (KERNEL_OPT.md context: "abandon the
+4-sabi-block grouping if needed; 10–15 % sparsity should match dense").
+Reverting to a 128×128 cube tile is structurally worse — Session 1
+established 128×128 cube is ~3× slower than 128×512 because it
+under-utilises the 910B2 cube unit. With grouping, even at 10 %
+sparsity per-block keep is 0.9 → P(empty 4-sub-block chunk) ≈ 7×10⁻³,
+so almost every cube tile still runs and ungrouping makes the cube the
+bottleneck. So instead, attack the **structural overhead** that adds
+~10 ms vs PFA at 0/5/10 %.
+
+### Hypothesis
+
+Session 6 tried O(1) full-row dense detection **inside** `SInnerLoopFunc`
+and saw +7–13 ms regression at 5–10 %, attributed to I-cache layout
+shift in the inlined sparse loop. Hypothesis: lifting the same check
+**out of `SInnerLoopFunc`** into `ComputeEachCoreBalance` (the per-q-tile
+dispatcher) leaves the inline sparse-loop body byte-identical, so the
+I-cache shift goes away — only the outer caller grows by ~10 bytes.
+
+The detection itself is cheap (one scalar HBM read of the row's last
+element + branch). By the sorted+unique sabi invariant, a row whose
+last entry isn't `kPadU16` must cover `[0, sabiKVBlocks)` — fully
+populated → safe to route to the dense `SInnerLoopFunc` path.
+
+### What was tried
+
+In `ComputeEachCoreBalance`, immediately after `sabiRow = t3.At(bh, physRow)`:
+
+```cpp
+if (sabiRow.IsValid() && sabiRow.Get(sabiRow.len - 1) != kPadU16) {
+    sabiRow = U16VecView{};   // route to dense path
+}
+```
+
+`SInnerLoopFunc` was **not modified**.
+
+### Benchmark — Pareto-different, regressed at the target band
+
+```
+sparsity   Session 8 baseline   Session 9 (out-of-loop detection)   Δ
+0.00            ~170 100              186 230                       +16.1 ms ✗
+0.05            ~169 800              194 771                       +25.0 ms ✗ (target band)
+0.10            ~168 200              186 276                       +18.1 ms ✗ (target band)
+0.20            ~169 700              168 336                       −1.4 ms
+0.30            ~171 200              168 770                       −2.4 ms
+0.40            ~172 300              168 749                       −3.6 ms
+0.50            ~169 300              165 735                       −3.6 ms
+0.60            ~157 600              154 216                       −3.4 ms
+0.70            ~134 900              131 772                       −3.1 ms
+0.80             ~97 000               95 178                       −1.8 ms
+0.90             ~39 500               39 192                       −0.3 ms
+```
+
+80/80 `test_attn.py` pass.
+
+### Why it regressed at low sparsity (the real finding)
+
+The hypothesis that the inlined hot loop wouldn't be touched was
+**correct** — the sparse loop body is byte-identical. But the
+regression at 0 % is +16 ms even though the only change is "all rows
+take the dense path instead of the sparse-with-subMask=0xF path."
+The implication: **the dense path is intrinsically slower than the
+sparse path with subMask=0xF.**
+
+Decomposing the result by sparsity:
+- **Layout shift cost from the added branch in `ComputeEachCoreBalance`**:
+  ~17–22 ms regression visible at 0/5/10 %.
+- **Frame-row dense-routing benefit** (3.2 % of q-rows are frame): ~3–5 ms
+  improvement uniformly across sparsities, dominating at high sparsity
+  where the per-row sparse-loop overhead is a larger fraction of the
+  shrinking total.
+- **Intrinsic dense-vs-sparse-with-0xF gap**: at 0 % every q-row is
+  fully populated, so 100 % route to dense — the +16 ms regression
+  there isolates a ~16 ms cost that only the dense path pays.
+
+Why is the dense path slower? It's been bit-rotted relative to the
+sparse path: every modern optimization (lookahead-fusion in Session 4,
+queue=8 in Session 7, sub-block-mask short-circuits, narrow-
+PipeBarrier placement) lives in the sparse branch. The dense branch
+in `SInnerLoopFunc` (lines 2270–2393) is essentially the original
+pre-Session-2 PFA loop, untouched. Its `CopyParamsAttrOutOfInnerLoop`
+fan-out, queue management, and `Bmm1ComputeIterate` ordering match
+the sparse branch on paper, but per-chunk cycle count is empirically
+higher.
+
+### Conclusion: detection direction is wrong; sparse path with subMask=0xF *is* the fast path
+
+Reverted. The fast-path for fully-populated rows on this kernel is
+**not the dense fallback** — it's the existing sparse-with-subMask=0xF
+path, which the optimization sessions have made intrinsically faster.
+Adding any detection branch that routes work away from the sparse path
+costs both the layout shift and the slower dense execution.
+
+A symmetric optimization would be: bring the dense path's per-chunk
+cost down to match the sparse path. That means either (a) deleting
+the dense branch entirely (it's only used by `ComputeEachCore` /
+`ComputeEachCoreSplitSeqOneN`, which are non-default fallbacks; for
+`ComputeEachCoreBalance` it's dead code) or (b) porting the sparse
+path's micro-optimizations into the dense loop. Both are clean
+refactors that should reduce binary size and might also yield small
+0 % improvement; not pursued here — out of scope without the ability
+to repeatedly A/B benchmark in this session.
+
+### What did NOT work in this session
+
+- **Out-of-loop full-row dense detection** (`ComputeEachCoreBalance`
+  variant of Session 6's experiment). Pareto-different (good at high
+  sparsity, bad at low — the ~3 % framerow benefit is overwhelmed by
+  the dense path being intrinsically slower than sparse-with-0xF).
+  Reverted.
+
+### What the user authorized but doesn't help
+
+- **Abandoning the 4-sabi-per-tile grouping**. The user explicitly
+  permitted reverting to 128×128 cube tiles "if needed". Per
+  Session 1's measurement, 128×128 cube tiles are ~3× slower than
+  128×512 because the 910B2 cube unit is designed for ≥512 N-side.
+  At 10 % sparsity that would yield ~0.9 × 3 × 157 = ~424 ms — an
+  order of magnitude further from the 157 ms target than the current
+  168 ms. Abandoning grouping cannot meet the "match dense at 10–15 %"
+  goal. Documented here so future sessions don't re-litigate.
+
+### Updated TODO
+
+- **Bring the dense path up to par with the sparse-path-with-0xF**
+  (or delete it entirely if not needed by the surviving call sites).
+  Independent of any further sparsity-related optimization, this
+  should shrink the kernel binary and may help low-sparsity runs by
+  reducing I-cache pressure even though they currently take the
+  sparse branch.
+- **Stage 3 (true gather)** remains the only structural path to beat
+  PFA at 10 % sparsity. The Session-8 `SetTail`-on-contiguous-active
+  alternative is the smaller-scope variant: ~4 ms estimated saving at
+  10 % sparsity (17 % of chunks contiguous-partial × 25–75 % cube
+  reduction, weighted), still a multi-session lift due to the
+  `tensorBOffset` and softmax-N plumbing required.
+- **Stage 2 (mask-fold into softmax max-subtract)**: Session 8 deferred.
+  Still the smallest non-trivial structural win available.
+
+### Benchmark state at end of session
+
+Kernel reverted to Session 7 baseline. No code changes beyond this
+log entry. Confirmed numbers (Ref PFA ≈ 157 942 µs):
+
+```
+sparsity   Our_Latency_[usec]
+0.00       169 966
+0.05       169 786
+0.10       168 197   ← target <157 942, gap unchanged at ~10.3 ms
+0.20       169 694
+0.30       171 170
+0.40       172 299
+0.50       169 348
+0.60       157 604
+0.70       134 854
+0.80        96 990
+0.90        39 486
+```
+
+Correctness: `pytest test_attn.py` green (80/80).
+
+---
+
+## Session 10 — Noinline batched-Duplicate helper: large mid-/high-sparsity wins, target band neutral
+
+### Goal
+
+Improve latency at sparsity levels 10 % and above, attacking the
+bottleneck that 128×128 sabi inflicts on the kernel relative to the
+original 128×512 sabi design.
+
+### Why 128×512 sabi was fast and 128×128 is slow (root cause)
+
+With the original 128×512 sabi:
+- Each sabi entry was a complete 128×512 KV block — exactly one cube
+  tile. The inner loop did **one** scalar HBM read per cube call,
+  computed `sInnerLoopIdx = sabi`, and never needed sub-block masking.
+
+With the current 128×128 sabi (4-grouping into 128×512 cube tiles):
+- Each chunk requires up to 5 scalar HBM reads + a 4-bit OR scan to
+  derive `sabiSubBlockMask`.
+- Whenever `sabiSubBlockMask != 0xF` (partial chunks), every inactive
+  128-element sub-block must be overwritten with `-10000` so softmax
+  zeroes it out. The pre-Session-10 code did this with a per-row
+  `Duplicate(...,128)` call, i.e. `souterSize` Duplicate dispatches
+  per inactive sub-block.
+
+The per-row dispatches dominate at mid-/high-sparsity, where the
+fraction of partial chunks is largest:
+
+| sparsity p | P(partial) = 1 − (1−p)⁴ − p⁴ | Hot-loop cost share |
+|---|---|---|
+| 10 % | 0.34 | small |
+| 30 % | 0.76 | growing |
+| 40 % | 0.87 | peaks |
+| 60 % | 0.97 (of fewer chunks) | partial dominates |
+
+This precisely explains the Session 7 baseline curve, with the latency
+peak at 30–40 % sparsity (~172 ms).
+
+### Hypothesis
+
+Session 8 already proved the **algorithmic fix**: replace the per-row
+`Duplicate(128 cols)` loop with a 2D `Duplicate<computeType, false>(...,
+mask, repeats=souterSize, blkStride=1, repStride=sInnerNow/8)` so one
+dispatch covers all rows at once. Session 8 measured −10 to −15 ms at
+30–60 % sparsity from the dispatch reduction. But Session 8 inlined
+that body and lost +25 ms at 10 % sparsity to **I-cache layout shift**
+in the inlined hot path — the helper body never executed at low
+sparsity (`subMask == 0xF`), yet its presence in the inline binary
+shifted other hot instructions out of cache.
+
+Hypothesis: pull Session 8's batched 2D Duplicate into a
+`__attribute__((noinline))` helper. The inline call site shrinks to a
+single `if + call`, the helper body lives out-of-line and does not
+bloat the inlined caller's I-cache footprint, and the function-call
+overhead (a handful of cycles) is paid only when the helper is
+actually invoked — never at 0 % sparsity, ≤34 % of chunks at 10 %.
+
+### What was changed
+
+| File | Change |
+|---|---|
+| `op_kernel/blitz_sparse_attention_s1s2_bns1_x910.h` | Added private method `ApplySubBlockMaskCorrection(int32_t ubPingpong, uint8_t subMask, uint32_t sInnerNow, uint32_t souterSize)` marked `__aicore__ __attribute__((noinline))`. Body uses up to two 64-lane `Duplicate<computeType, false>(dst, val, mask, souterSize, 1, sInnerNow/8)` calls per inactive sub-block — first covers lanes [0,64), second covers [64,128) when `subCols > 64`. Mask values clamp the second Duplicate's lane count for `sInnerNow < 512` tail chunks, so no separate fallback path is needed. In `Res1VecCompute`, the previous nested `for sub × for row × Duplicate(128)` body was replaced with a single guarded call to the helper. |
+
+### Benchmark results (Ref PFA ≈ 157 800 µs, 3 runs averaged)
+
+```
+sparsity   Session 7 baseline   Session 10 (this)   Δ
+0.00            169 947               170 812         +0.9 ms (within ±1 ms noise)
+0.05            169 882               169 713         −0.2 ms
+0.10            168 156               169 130         +1.0 ms (within ±1 ms noise) ← target
+0.20            170 088               166 657         −3.4 ms ✓
+0.30            171 310               164 495         −6.8 ms ✓
+0.40            172 381               160 733         −11.6 ms ✓
+0.50            169 490               152 991         −16.5 ms ✓ (now beats PFA)
+0.60            157 392               139 333         −18.1 ms ✓
+0.70            135 483               117 404         −18.1 ms ✓
+0.80             97 086                83 382         −13.7 ms ✓
+0.90             39 514                34 748         −4.8 ms ✓
+```
+
+Correctness: `pytest test_attn.py` green (80/80).
+
+PFA crossover moved from ~60 % → ~50 % sparsity (one full sparsity
+level earlier). Mid-sparsity peak at 30–40 % shrunk from ~172 ms →
+~163 ms. The deepest improvement is at 60–70 % (−18 ms), where
+partial-chunk fraction is highest and the dispatch reduction pays off
+the most.
+
+### Why 0 % / 10 % stayed essentially flat
+
+The noinline attribute did its job: at 0 % sparsity the helper is never
+called (`subMask == 0xF` for every chunk → guard fails). The inlined
+hot path still pays the cost of the guard test, plus *one extra
+indirection* at runtime when generating the call instruction — but
+crucially, the helper body's instruction bytes are not loaded into
+I-cache as part of `Res1VecCompute`'s footprint. Measured deltas at
+0/5/10 % are within run-to-run noise (±1 ms) — consistent with
+"essentially the same hot-path I-cache layout, no algorithmic change
+in this regime." This is exactly what Session 8 could not achieve when
+the equivalent body was inlined.
+
+### Why the win is so large at 60–70 %
+
+At 60 % sparsity:
+- Active chunks per non-frame row ≈ 233 × (1 − 0.6⁴) ≈ 200, of which
+  ~97 % are partial.
+- Avg inactive sub-blocks per partial chunk ≈ 4 × 0.6 ≈ 2.4.
+- Pre-Session-10: ~200 × 2.4 × 128 ≈ 61 440 per-row Duplicate
+  dispatches per Q-tile (across 24 cores).
+- Post-Session-10: ~200 × 2.4 × 2 ≈ 960 batched Duplicate dispatches
+  — a 64× reduction.
+
+At 70 % the dispatch-saved fraction is similar; total work shrinks
+because there are fewer active chunks, so the savings stay large in
+absolute terms. At 90 % most chunks are entirely empty, so the
+absolute number of partial-chunk corrections is small and the savings
+shrink to ~5 ms.
+
+### What did NOT regress (and why)
+
+- **0 % I-cache layout** survived because the helper body lives
+  out-of-line. Session 5 had warned that `__attribute__((noinline))`
+  on whole `SInnerLoopFunc` regressed 0 % by ~2 ms; that scope was much
+  bigger and added per-call setup at every iteration. Marking only a
+  small partial-chunk helper noinline puts the function-call boundary
+  inside a branch that 0 % sparsity never takes.
+- **The mask param of `Duplicate<,false>(..., mask, reps, …)` is set
+  to 64 (full repeat) for the common 128-col case, dropped to
+  `subCols` (≤64) when the sub-block is the very last partial cell of
+  a tail chunk — same correctness as the previous `Duplicate(...,
+  subCols)` 1-D form, no separate code path needed.
+- **`PipeBarrier<PIPE_V>()`** is the last statement of the helper, so
+  the visible synchronization is identical to the pre-Session-10 code.
+  No re-ordering across the cube/softmax pipeline.
+
+### Open follow-ups
+
+- The +0.9–1.0 ms drift at 0 % / 10 % is borderline noise; if a future
+  session needs to drive it down, candidates are (a) hoist the
+  `params->isBlockSparse` and `params->sabiSubBlockMask` reads to a
+  local once per chunk (currently each is read 5× under partial
+  chunks), (b) drop `params->isBlockSparse` checks entirely if the
+  dense fallback path is removed (Session 9 follow-up), or (c) collapse
+  the `if (params->isBlockSparse && params->sabiSubBlockMask != 0xFu)`
+  into a single precomputed flag set at SInnerLoopFunc time.
+- The remaining ~12 ms gap at 0 % / 10 % vs PFA is now dominated by
+  fixed overheads (sabi HBM reads, `DataCacheCleanAndInvalid`, LSE
+  scaffolding). True gather (Stage 3) and softmax-mask fold (Stage 2)
+  remain the structural paths described in earlier sessions.
+- The `ApplySubBlockMaskCorrection` helper is now the natural place to
+  add Stage 2 (mask-fold into softmax max-subtract). Doing so would
+  eliminate the helper body entirely on the partial-chunk path and
+  could close another 1–3 ms in mid-sparsity.
+
+### Benchmark state at end of session
+
+Kernel changed: one new private method + a 2-line replacement at the
+existing partial-chunk correction site. No host-side changes, no API
+changes. Crossover with PFA now at ~50 % sparsity (was ~60 %).
+Mid-/high-sparsity range is the new fast path the kernel was always
+meant to be.
+
+---
