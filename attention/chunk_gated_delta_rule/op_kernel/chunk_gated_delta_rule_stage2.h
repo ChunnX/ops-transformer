@@ -79,11 +79,13 @@ public:
         uint64_t outQueueSize = Std::max((uint64_t)chunkSize_ * chunkSize_ * sizeof(bfloat16_t),
                                          (uint64_t)Dv_ * curDk_ * sizeof(bfloat16_t));
         pipe_->InitBuffer(outQueue_, BUFFER_NUM_ONE, outQueueSize);
-        pipe_->InitBuffer(tmpBuff_, (Std::max((uint64_t)chunkSize_, (uint64_t)Dv_) * curDk_ + 8) * sizeof(float));
+        pipe_->InitBuffer(tmpBuff_, (Std::max((uint64_t)chunkSize_, (uint64_t)Dv_) * curDk_ +
+                                     BLOCK_FLOAT_NUM) *sizeof(float));
         uint32_t buffOffset = 0;
         tmpBuffer1_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(Dv_ * curDk_), buffOffset);
         buffOffset += Ceil(Dv_ * curDk_ * sizeof(float), BLOCK_SIZE) * BLOCK_SIZE;
-        lastGCum_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(1), buffOffset);
+        // 暂存所取的最后一位数
+        lastGCum_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(NUM_ONE), buffOffset);
     }
 
     __aicore__ inline void Process()
@@ -147,8 +149,7 @@ public:
             SetFlag<HardEvent::S_V>(S_V_EVENT);
             WaitFlag<HardEvent::S_V>(S_V_EVENT);
             Exp<float, 0, true>(lastGCum_, lastGCum_, 1);
-        }
-        else {
+        } else {
             lastGCum_.SetValue(0, 1.0f);
         }
         float tmpFloat = lastGCum_.GetValue(0);
@@ -197,7 +198,7 @@ public:
                                        GlobalTensor<bfloat16_t> kg,
                                        GlobalTensor<bfloat16_t> state)
     {
-        // state_out = v_new.transpose(0, 1) @ kg 
+        // state_out = v_new.transpose(0, 1) @ kg
         sTP_->mm1->SetOrgShape(Dv_, Dk_, curChunkSize_);    // MNK
         sTP_->mm1->SetSingleShape(Dv_, Dk_, curChunkSize_); // SingleCoreMNK
         sTP_->mm1->SetTensorA(vInner, true);
@@ -211,8 +212,8 @@ public:
     {
         LocalTensor<inType> inLocal = inQueue_.AllocTensor<inType>();
         DataCopyExtParams inParams{static_cast<uint16_t>(row),
-                                   static_cast<uint32_t>(col * sizeof(inType)),                // 非对齐情况需要补0
-                                   static_cast<uint32_t>(0), 
+                                   static_cast<uint32_t>(col * sizeof(inType)), // 非对齐情况需要补0
+                                   static_cast<uint32_t>(0),
                                    0, 0};
         int padding = Ceil(col, BLOCK_SIZE / sizeof(inType)) * (BLOCK_SIZE / sizeof(inType)) - col;
         DataCopyPadExtParams<inType> copyPadParams{true, 0, static_cast<uint8_t>(padding), 0};
