@@ -343,7 +343,7 @@ def convert_param_combination_to_cs_format(param_combination):
         "shape_input": shape_input,
         "dtype_input": dtype_input,
         "range_input": range_input,
-        "dtype_output": [q_dtype_str],
+        "dtype_output": [q_type],
         "shape_output": [[B, S1, N1, D]],
         "rope_head_dim": rope_head_dim,
         "attention_mode": attention_mode,
