@@ -112,7 +112,7 @@ aclnnStatus aclnnMaskedCausalConv1d(
         <td>表示卷积操作的输出掩码，对应公式中的mask。</td>
         <td>
           <ul>
-            <li>支持空Tensor。</li>
+            <li>不支持空Tensor。</li>
             <li>shape为[B, S]。</li>
             <li>默认值是nullptr。</li>
           </ul>
