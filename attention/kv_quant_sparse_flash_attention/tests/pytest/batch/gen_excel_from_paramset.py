@@ -22,7 +22,7 @@ EXCEL_OUTPUT_PATH = os.environ.get("EXCEL_OUTPUT_PATH", "./excel/example.xlsx")
 EXCEL_SHEET = os.environ.get("EXCEL_SHEET", "Sheet1")
 
 ENABLED_PARAMS = utils.load_paramset(PARAMSET_FILE)
-PARAM_COMBINATION_SET = utils.combin_params(ENABLED_PARAMS, pytest_paramset=False)
+PARAM_COMBINATION_SET = utils.combin_params(ENABLED_PARAMS, pytest_paramset=True)
 
 EXCEL_COLUMNS = [
     "Testcase_Prefix", "Testcase_Number",
@@ -40,8 +40,8 @@ def convert_value_for_excel(value):
     if value is None:
         return ""
     if isinstance(value, (list, tuple)):
-        return str(value)
-    return value
+        return str(list(value))
+    return str(value)
 
 
 def gen_excel_from_paramset():
