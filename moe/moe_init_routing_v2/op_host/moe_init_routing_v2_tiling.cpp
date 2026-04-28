@@ -26,6 +26,8 @@ const static int64_t TILING_KEY_DROP_PAD_MODE_HIST_REGBASE_SORT_ONE_CORE = 11011
 const static int64_t TILING_KEY_DROP_PAD_MODE_HIST_REGBASE_SORT_MULTI_CORE = 11012;
 const static int64_t TILING_KEY_HIGH_PERFORMANCE = 20000;
 const static int64_t HIST_REGBASE_MAX_EXPERT_NUM = 256;
+const static int64_t MIN_TRANSFER_SIZE_16KB = 4096;
+const static int64_t ALIGN_512B_ELEMENTS = 64;
 const static int64_t NUM_TWO = 2;
 const static int64_t NUM_THREE = 3;
 const static int64_t NUM_FOUR = 4;
@@ -62,7 +64,7 @@ const static int64_t SIMT_UB_SIZE_BYTE = 40960;
 #define CHECK_FAIL(context, cond, ...)                                                                                 \
     do {                                                                                                               \
         if (cond) {                                                                                                    \
-            OP_LOGE(context->GetNodeName(), ##__VA_ARGS__);                                                          \
+            OP_LOGE(context->GetNodeName(), ##__VA_ARGS__);                                                            \
             return ge::GRAPH_FAILED;                                                                                   \
         }                                                                                                              \
     } while (0)
@@ -90,10 +92,10 @@ ge::graphStatus MoeInitRoutingV2TilingBase::GetPlatformInfo()
 {
     auto platformInfo = context_->GetPlatformInfo();
     OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(context_->GetNodeName(), "fail to get platform info."),
-              return ge::GRAPH_FAILED);
+                return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
 
-    auto compileInfoPtr = reinterpret_cast<const MoeInitRoutingV2CompileInfo*>(context_->GetCompileInfo());
+    auto compileInfoPtr = reinterpret_cast<const MoeInitRoutingV2CompileInfo *>(context_->GetCompileInfo());
     OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_, "compile info is null"), return ge::GRAPH_FAILED);
     aivNum = compileInfoPtr->aivNum;
     aicoreParams_.numBlocks = aivNum;
@@ -114,10 +116,12 @@ ge::graphStatus MoeInitRoutingV2TilingBase::GetPlatformInfo()
 ge::graphStatus MoeInitRoutingV2TilingBase::CheckTokenCount(int64_t num, const char *tag)
 {
     auto expertTokensShapePtr = context_->GetOutputShape(num);
-    OP_CHECK_IF(expertTokensShapePtr == nullptr, OP_LOGE(context_->GetNodeName(), "%s is nullptr!", tag), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(expertTokensShapePtr == nullptr, OP_LOGE(context_->GetNodeName(), "%s is nullptr!", tag),
+                return ge::GRAPH_FAILED);
 
     auto expertTokensDesc = context_->GetOutputDesc(num);
-    OP_CHECK_IF(expertTokensDesc == nullptr, OP_LOGE(context_->GetNodeName(), "%s is nullptr!", tag), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(expertTokensDesc == nullptr, OP_LOGE(context_->GetNodeName(), "%s is nullptr!", tag),
+                return ge::GRAPH_FAILED);
     auto dt = expertTokensDesc->GetDataType();
     CHECK_FAIL(context_, dt != ge::DT_INT32, "The data type of %s should be int32.", tag);
 
@@ -132,13 +136,14 @@ ge::graphStatus MoeInitRoutingV2TilingBase::CheckTokenCount(int64_t num, const c
 ge::graphStatus MoeInitRoutingV2TilingBase::CheckOutShape(bool isRegbase)
 {
     auto expandedXShapePtr = context_->GetOutputShape(OUTOUT_EXPANDED_X); // 获取输出shape
-    OP_CHECK_IF(expandedXShapePtr == nullptr, OP_LOGE(context_->GetNodeName(), "expandedX is nullptr!"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(expandedXShapePtr == nullptr, OP_LOGE(context_->GetNodeName(), "expandedX is nullptr!"),
+                return ge::GRAPH_FAILED);
 
     const gert::Shape expandedXShape = expandedXShapePtr->GetStorageShape();
 
     auto expandedRowIdxShapePtr = context_->GetOutputShape(OUTOUT_EXPANDED_ROW_IDX);
     OP_CHECK_IF(expandedRowIdxShapePtr == nullptr, OP_LOGE(context_->GetNodeName(), "expandedRowIdx is nullptr!"),
-               return ge::GRAPH_FAILED);
+                return ge::GRAPH_FAILED);
     const gert::Shape expandedRowIdxShape = expandedRowIdxShapePtr->GetStorageShape();
 
     size_t expandedXDimNum = expandedXShape.GetDimNum();
@@ -194,7 +199,8 @@ ge::graphStatus MoeInitRoutingV2TilingBase::GetShapeAttrsInfo()
     OP_CHECK_IF(xShapePtr == nullptr, OP_LOGE(context_->GetNodeName(), "x is nullptr!"), return ge::GRAPH_FAILED);
     const gert::Shape xShape = xShapePtr->GetStorageShape();
     auto expertIdxShapePtr = context_->GetInputShape(INDEX_INPUT_EXPERT_IDX);
-    OP_CHECK_IF(expertIdxShapePtr == nullptr, OP_LOGE(context_->GetNodeName(), "expertIdx is nullptr!"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(expertIdxShapePtr == nullptr, OP_LOGE(context_->GetNodeName(), "expertIdx is nullptr!"),
+                return ge::GRAPH_FAILED);
     const gert::Shape expertIdxShape = expertIdxShapePtr->GetStorageShape();
 
     auto attrs = context_->GetAttrs();
@@ -284,74 +290,71 @@ ge::graphStatus MoeInitRoutingV2TilingBase::GetShapeAttrsInfo()
 void MoeInitRoutingV2TilingBase::ShowTilingData()
 {
     OP_LOGI(opName,
-              "moeInitRoutingTilingData is coreNum:%ld, n:%ld, cols:%ld, k:%ld, expertCapacity:%ld, expertNum:%ld, "
-              "dropPadMode:%ld, expertTokensCountOrCumsumFlag:%ld, expertTokensBeforeCapacityFlag:%ld",
-              moeInitRoutingTilingData.get_coreNum(), moeInitRoutingTilingData.get_n(),
-              moeInitRoutingTilingData.get_cols(), moeInitRoutingTilingData.get_k(),
-              moeInitRoutingTilingData.get_expertCapacity(), moeInitRoutingTilingData.get_expertNum(),
-              moeInitRoutingTilingData.get_dropPadMode(), moeInitRoutingTilingData.get_expertTokensCountOrCumsumFlag(),
-              moeInitRoutingTilingData.get_expertTokensBeforeCapacityFlag());
+            "moeInitRoutingTilingData is coreNum:%ld, n:%ld, cols:%ld, k:%ld, expertCapacity:%ld, expertNum:%ld, "
+            "dropPadMode:%ld, expertTokensCountOrCumsumFlag:%ld, expertTokensBeforeCapacityFlag:%ld",
+            moeInitRoutingTilingData.get_coreNum(), moeInitRoutingTilingData.get_n(),
+            moeInitRoutingTilingData.get_cols(), moeInitRoutingTilingData.get_k(),
+            moeInitRoutingTilingData.get_expertCapacity(), moeInitRoutingTilingData.get_expertNum(),
+            moeInitRoutingTilingData.get_dropPadMode(), moeInitRoutingTilingData.get_expertTokensCountOrCumsumFlag(),
+            moeInitRoutingTilingData.get_expertTokensBeforeCapacityFlag());
     OP_LOGI(opName,
-              "MoeV2VBSComputeTilingData is needCoreNum:%ld, perCoreElements:%ld, perCoreLoops:%ld, "
-              "perCorePerLoopElements:%ld, "
-              "perCoreLastLoopElements:%ld, lastCoreElements:%ld, lastCoreLoops:%ld, lastCorePerLoopElements:%ld, "
-              "lastCoreLastLoopElements:%ld, oneLoopMaxElements:%ld",
-              moeInitRoutingTilingData.vbsComputeParamsOp.get_needCoreNum(),
-              moeInitRoutingTilingData.vbsComputeParamsOp.get_perCoreElements(),
-              moeInitRoutingTilingData.vbsComputeParamsOp.get_perCoreLoops(),
-              moeInitRoutingTilingData.vbsComputeParamsOp.get_perCorePerLoopElements(),
-              moeInitRoutingTilingData.vbsComputeParamsOp.get_perCoreLastLoopElements(),
-              moeInitRoutingTilingData.vbsComputeParamsOp.get_lastCoreElements(),
-              moeInitRoutingTilingData.vbsComputeParamsOp.get_lastCoreLoops(),
-              moeInitRoutingTilingData.vbsComputeParamsOp.get_lastCorePerLoopElements(),
-              moeInitRoutingTilingData.vbsComputeParamsOp.get_lastCoreLastLoopElements(),
-              moeInitRoutingTilingData.vbsComputeParamsOp.get_oneLoopMaxElements());
+            "MoeV2VBSComputeTilingData is needCoreNum:%ld, perCoreElements:%ld, perCoreLoops:%ld, "
+            "perCorePerLoopElements:%ld, "
+            "perCoreLastLoopElements:%ld, lastCoreElements:%ld, lastCoreLoops:%ld, lastCorePerLoopElements:%ld, "
+            "lastCoreLastLoopElements:%ld, oneLoopMaxElements:%ld",
+            moeInitRoutingTilingData.vbsComputeParamsOp.get_needCoreNum(),
+            moeInitRoutingTilingData.vbsComputeParamsOp.get_perCoreElements(),
+            moeInitRoutingTilingData.vbsComputeParamsOp.get_perCoreLoops(),
+            moeInitRoutingTilingData.vbsComputeParamsOp.get_perCorePerLoopElements(),
+            moeInitRoutingTilingData.vbsComputeParamsOp.get_perCoreLastLoopElements(),
+            moeInitRoutingTilingData.vbsComputeParamsOp.get_lastCoreElements(),
+            moeInitRoutingTilingData.vbsComputeParamsOp.get_lastCoreLoops(),
+            moeInitRoutingTilingData.vbsComputeParamsOp.get_lastCorePerLoopElements(),
+            moeInitRoutingTilingData.vbsComputeParamsOp.get_lastCoreLastLoopElements(),
+            moeInitRoutingTilingData.vbsComputeParamsOp.get_oneLoopMaxElements());
     OP_LOGI(opName, "VMSMiddleComputeTilingData is needCoreNum:%ld",
-              moeInitRoutingTilingData.vmsMiddleComputeParamsOp.get_needCoreNum());
+            moeInitRoutingTilingData.vmsMiddleComputeParamsOp.get_needCoreNum());
     OP_LOGI(opName, "SortOutComputeTilingData is oneLoopMaxElements:%ld",
-              moeInitRoutingTilingData.sortOutComputeParamsOp.get_oneLoopMaxElements());
-    OP_LOGI(
-        opName,
-        "SrcToDstComputeTilingData is needCoreNum:%ld, activateRows:%ld, perCoreRows:%ld, perCorePerLoopRows:%ld, "
-        "perCoreLastLoopRows:%ld, lastCoreRows:%ld, lastCorePerLoopRows:%ld, lastCoreLastLoopRows:%ld,",
-        moeInitRoutingTilingData.srcToDstComputeParamsOp.get_needCoreNum(),
-        moeInitRoutingTilingData.srcToDstComputeParamsOp.get_activateRows(),
-        moeInitRoutingTilingData.srcToDstComputeParamsOp.get_perCoreRows(),
-        moeInitRoutingTilingData.srcToDstComputeParamsOp.get_perCorePerLoopRows(),
-        moeInitRoutingTilingData.srcToDstComputeParamsOp.get_perCoreLastLoopRows(),
-        moeInitRoutingTilingData.srcToDstComputeParamsOp.get_lastCoreRows(),
-        moeInitRoutingTilingData.srcToDstComputeParamsOp.get_lastCorePerLoopRows(),
-        moeInitRoutingTilingData.srcToDstComputeParamsOp.get_lastCoreLastLoopRows());
+            moeInitRoutingTilingData.sortOutComputeParamsOp.get_oneLoopMaxElements());
     OP_LOGI(opName,
-              "SrcToDstComputeCapacityTilingData is needCoreNum:%ld, perCoreRows:%ld, perCorePerLoopRows:%ld, "
-              "perCoreLastLoopRows:%ld, lastCoreRows:%ld, lastCorePerLoopRows:%ld, lastCoreLastLoopRows:%ld,",
-              moeInitRoutingTilingData.srcToDstCapacityComputeParamsOp.get_needCoreNum(),
-              moeInitRoutingTilingData.srcToDstCapacityComputeParamsOp.get_perCoreRows(),
-              moeInitRoutingTilingData.srcToDstCapacityComputeParamsOp.get_perCorePerLoopRows(),
-              moeInitRoutingTilingData.srcToDstCapacityComputeParamsOp.get_perCoreLastLoopRows(),
-              moeInitRoutingTilingData.srcToDstCapacityComputeParamsOp.get_lastCoreRows(),
-              moeInitRoutingTilingData.srcToDstCapacityComputeParamsOp.get_lastCorePerLoopRows(),
-              moeInitRoutingTilingData.srcToDstCapacityComputeParamsOp.get_lastCoreLastLoopRows());
-    OP_LOGI(
-        opName,
-        "GatherOutComputeTilingData is needCoreNum:%ld, activateRows:%ld, perCoreRows:%ld, perCorePerLoopRows:%ld, "
-        "perCoreLastLoopRows:%ld, lastCoreRows:%ld, lastCorePerLoopRows:%ld, lastCoreLastLoopRows:%ld,",
-        moeInitRoutingTilingData.gatherOutComputeParamsOp.get_needCoreNum(),
-        moeInitRoutingTilingData.gatherOutComputeParamsOp.get_activateRows(),
-        moeInitRoutingTilingData.gatherOutComputeParamsOp.get_perCoreRows(),
-        moeInitRoutingTilingData.gatherOutComputeParamsOp.get_perCorePerLoopRows(),
-        moeInitRoutingTilingData.gatherOutComputeParamsOp.get_perCoreLastLoopRows(),
-        moeInitRoutingTilingData.gatherOutComputeParamsOp.get_lastCoreRows(),
-        moeInitRoutingTilingData.gatherOutComputeParamsOp.get_lastCorePerLoopRows(),
-        moeInitRoutingTilingData.gatherOutComputeParamsOp.get_lastCoreLastLoopRows());
+            "SrcToDstComputeTilingData is needCoreNum:%ld, activateRows:%ld, perCoreRows:%ld, perCorePerLoopRows:%ld, "
+            "perCoreLastLoopRows:%ld, lastCoreRows:%ld, lastCorePerLoopRows:%ld, lastCoreLastLoopRows:%ld,",
+            moeInitRoutingTilingData.srcToDstComputeParamsOp.get_needCoreNum(),
+            moeInitRoutingTilingData.srcToDstComputeParamsOp.get_activateRows(),
+            moeInitRoutingTilingData.srcToDstComputeParamsOp.get_perCoreRows(),
+            moeInitRoutingTilingData.srcToDstComputeParamsOp.get_perCorePerLoopRows(),
+            moeInitRoutingTilingData.srcToDstComputeParamsOp.get_perCoreLastLoopRows(),
+            moeInitRoutingTilingData.srcToDstComputeParamsOp.get_lastCoreRows(),
+            moeInitRoutingTilingData.srcToDstComputeParamsOp.get_lastCorePerLoopRows(),
+            moeInitRoutingTilingData.srcToDstComputeParamsOp.get_lastCoreLastLoopRows());
+    OP_LOGI(opName,
+            "SrcToDstComputeCapacityTilingData is needCoreNum:%ld, perCoreRows:%ld, perCorePerLoopRows:%ld, "
+            "perCoreLastLoopRows:%ld, lastCoreRows:%ld, lastCorePerLoopRows:%ld, lastCoreLastLoopRows:%ld,",
+            moeInitRoutingTilingData.srcToDstCapacityComputeParamsOp.get_needCoreNum(),
+            moeInitRoutingTilingData.srcToDstCapacityComputeParamsOp.get_perCoreRows(),
+            moeInitRoutingTilingData.srcToDstCapacityComputeParamsOp.get_perCorePerLoopRows(),
+            moeInitRoutingTilingData.srcToDstCapacityComputeParamsOp.get_perCoreLastLoopRows(),
+            moeInitRoutingTilingData.srcToDstCapacityComputeParamsOp.get_lastCoreRows(),
+            moeInitRoutingTilingData.srcToDstCapacityComputeParamsOp.get_lastCorePerLoopRows(),
+            moeInitRoutingTilingData.srcToDstCapacityComputeParamsOp.get_lastCoreLastLoopRows());
+    OP_LOGI(opName,
+            "GatherOutComputeTilingData is needCoreNum:%ld, activateRows:%ld, perCoreRows:%ld, perCorePerLoopRows:%ld, "
+            "perCoreLastLoopRows:%ld, lastCoreRows:%ld, lastCorePerLoopRows:%ld, lastCoreLastLoopRows:%ld,",
+            moeInitRoutingTilingData.gatherOutComputeParamsOp.get_needCoreNum(),
+            moeInitRoutingTilingData.gatherOutComputeParamsOp.get_activateRows(),
+            moeInitRoutingTilingData.gatherOutComputeParamsOp.get_perCoreRows(),
+            moeInitRoutingTilingData.gatherOutComputeParamsOp.get_perCorePerLoopRows(),
+            moeInitRoutingTilingData.gatherOutComputeParamsOp.get_perCoreLastLoopRows(),
+            moeInitRoutingTilingData.gatherOutComputeParamsOp.get_lastCoreRows(),
+            moeInitRoutingTilingData.gatherOutComputeParamsOp.get_lastCorePerLoopRows(),
+            moeInitRoutingTilingData.gatherOutComputeParamsOp.get_lastCoreLastLoopRows());
 }
 
 ge::graphStatus MoeInitRoutingV2TilingBase::DoOpTiling()
 {
     if (is310P) {
         CHECK_FAIL(context_, (moeInitRoutingTilingData.get_cols() % ONE_BLOCK_BYTE) != 0,
-                   "The Last dim of x should be divisible by 32,but got %ld.",
-                   moeInitRoutingTilingData.get_cols());
+                   "The Last dim of x should be divisible by 32,but got %ld.", moeInitRoutingTilingData.get_cols());
     }
     if (!regBase) {
         // NUM_TWO sort value and indices
@@ -367,7 +370,8 @@ ge::graphStatus MoeInitRoutingV2TilingBase::DoOpTiling()
         isFullLoad = IsFullLoad();
     } else {
         auto expertIdx = context_->GetInputDesc(INDEX_INPUT_EXPERT_IDX);
-        OP_CHECK_IF(expertIdx == nullptr, OP_LOGE(context_->GetNodeName(), "expertIdx is nullptr!"), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(expertIdx == nullptr, OP_LOGE(context_->GetNodeName(), "expertIdx is nullptr!"),
+                    return ge::GRAPH_FAILED);
         bool isIdxLong = expertIdx->GetDataType() == ge::DataType::DT_INT64;
         sortLoopMaxElement = (aicoreParams_.ubSize) / (sizeof(int32_t) * NUM_TWO * NUM_FOUR + isIdxLong) /
                              SORT32_ALIGN_ELEMENT * SORT32_ALIGN_ELEMENT;
@@ -505,8 +509,8 @@ void MoeInitRoutingV2TilingBase::Tiling4VBSMultiCoreCompute(MoeV2VBSComputeTilin
                                                      tilingData->get_lastCorePerLoopElements());
         perCoreElements -= SORT32_ALIGN_ELEMENT;
     } while (tilingData->get_lastCoreLastLoopElements() <= 0 && perCoreElements > 0);
-    OP_CHECK_IF(
-        tilingData->get_lastCoreLastLoopElements() <= 0, OP_LOGE(context_->GetNodeName(), "vbs tiling failed."), ;);
+    OP_CHECK_IF(tilingData->get_lastCoreLastLoopElements() <= 0, OP_LOGE(context_->GetNodeName(), "vbs tiling failed."),
+                ;);
 }
 
 void MoeInitRoutingV2TilingBase::Tiling4VBSCompute()
@@ -650,6 +654,11 @@ void MoeInitRoutingV2TilingBase::Tiling4GatherOutCompute()
     }
     tilingData->set_needCoreNum(CeilDiv(totalLength, perCoreRows));
     int64_t cols = moeInitRoutingTilingData.get_cols();
+    if (perCoreRows < MIN_TRANSFER_SIZE_16KB) {
+        perCoreRows = CeilDiv(MIN_TRANSFER_SIZE_16KB, aivNum);
+        perCoreRows = Min(perCoreRows, totalLength);
+        tilingData->set_needCoreNum(CeilDiv(totalLength, perCoreRows));
+    }
     tilingData->set_perCoreRows(perCoreRows);
     int64_t lastCoreRows = totalLength - perCoreRows * (tilingData->get_needCoreNum() - 1);
     tilingData->set_lastCoreRows(lastCoreRows);
@@ -678,6 +687,9 @@ void MoeInitRoutingV2TilingBase::Tiling4GatherOutCompute()
             basePerLoopMaxRows = (ubSize - colSize) / sizeof(int32_t) / ONE_BLOCK_BYTE * ONE_BLOCK_BYTE;
         } else if (perCoreRows < basePerLoopMaxRows) {
             baseMaxCols = (ubSize - rowSize) / inuptXDtypeSize_ / ONE_BLOCK_BYTE * ONE_BLOCK_BYTE;
+        }
+        if (basePerLoopMaxRows < MIN_TRANSFER_SIZE_16KB) {
+            basePerLoopMaxRows = Min(MIN_TRANSFER_SIZE_16KB, perCoreRows);
         }
         tilingData->set_perLoopCols(std::min(baseMaxCols, cols));
         tilingData->set_lastLoopCols(GetPerOrLastValue(cols, baseMaxCols));
@@ -725,23 +737,21 @@ ASCENDC_EXTERN_C ge::graphStatus TilingForMoeInitRoutingV2(gert::TilingContext *
 ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForMoeInitRoutingV2(gert::TilingParseContext *context)
 {
     OP_LOGD(context, "TilingPrepareForMoeInitRountingV2 enter.");
-    
+
     auto compileInfo = context->GetCompiledInfo<MoeInitRoutingV2CompileInfo>();
     OP_CHECK_NULL_WITH_CONTEXT(context, compileInfo);
     auto platformInfo = context->GetPlatformInfo();
     OP_CHECK_NULL_WITH_CONTEXT(context, platformInfo);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     compileInfo->aivNum = ascendcPlatform.GetCoreNumAiv();
-    OP_CHECK_IF(
-        (compileInfo->aivNum <= 0),
-        OP_LOGE(context, "TilingPrepareForMoeInitRountingV2 fail to get core num."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF((compileInfo->aivNum <= 0), OP_LOGE(context, "TilingPrepareForMoeInitRountingV2 fail to get core num."),
+                return ge::GRAPH_FAILED);
 
     uint64_t ubSize;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
     compileInfo->ubSize = static_cast<int64_t>(ubSize);
-    OP_CHECK_IF(
-        (compileInfo->ubSize <= 0),
-        OP_LOGE(context, "TilingPrepareForMoeInitRountingV2 fail to get ub size."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF((compileInfo->ubSize <= 0), OP_LOGE(context, "TilingPrepareForMoeInitRountingV2 fail to get ub size."),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
