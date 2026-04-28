@@ -17,11 +17,6 @@ from npu_ops_transformer.op_builder.builder import OpBuilder
 from npu_ops_transformer.op_builder.builder import AS_LIBRARY
 from .update_context_by_hccl_channel import update_context_by_hccl_channel
 
-
-# ---------------------------------------------------------------------------
-# Internal cpp op registration (private, not re-exported from this module)
-# ---------------------------------------------------------------------------
-
 class _MegaMoeOpBuilder(OpBuilder):
     def __init__(self):
         super(_MegaMoeOpBuilder, self).__init__("npu_mega_moe")
@@ -40,11 +35,11 @@ class _MegaMoeOpBuilder(OpBuilder):
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
         def npu_mega_moe_meta(context, x, topk_ids, topk_weights, weight1, weight2,
-                                 moe_expert_num, ep_world_size, ccl_buffer_size,
-                                 weight_scales1=None, weight_scales2=None, x_active_mask=None,
-                                 scales=None, max_recv_token_num=0, dispatch_quant_mode=0,
-                                 combine_quant_mode=0, comm_alg="", global_bs=0,
-                                 dispatch_quant_out_type=28, weight1_type=28, weight2_type=28):
+                              moe_expert_num, ep_world_size, ccl_buffer_size,
+                              weight_scales1=None, weight_scales2=None, x_active_mask=None,
+                              scales=None, max_recv_token_num=0, dispatch_quant_mode=0,
+                              combine_quant_mode=0, comm_alg="", global_bs=0,
+                              dispatch_quant_out_type=28, weight1_type=28, weight2_type=28):
             torch._check(
                 ep_world_size != 0,
                 lambda: (
@@ -66,12 +61,12 @@ _op_module = _mega_moe_op_builder.load()
 
 @impl(AS_LIBRARY, _mega_moe_op_builder.name, "PrivateUse1")
 def _npu_mega_moe(context, x, topk_ids, topk_weights, weight1, weight2,
-                     moe_expert_num, ep_world_size, ccl_buffer_size,
-                     weight_scales1=None, weight_scales2=None,
-                     x_active_mask=None, scales=None, max_recv_token_num=0,
-                     dispatch_quant_mode=0, combine_quant_mode=0,
-                     comm_alg="", global_bs=0,
-                     dispatch_quant_out_type=28, weight1_type=28, weight2_type=28):
+                  moe_expert_num, ep_world_size, ccl_buffer_size,
+                  weight_scales1=None, weight_scales2=None,
+                  x_active_mask=None, scales=None, max_recv_token_num=0,
+                  dispatch_quant_mode=0, combine_quant_mode=0,
+                  comm_alg="", global_bs=0,
+                  dispatch_quant_out_type=28, weight1_type=28, weight2_type=28):
     return _op_module.npu_mega_moe(
         context, x, topk_ids, topk_weights, weight1, weight2, moe_expert_num, ep_world_size,
         ccl_buffer_size, weight_scales1, weight_scales2, x_active_mask, scales, max_recv_token_num,
@@ -87,12 +82,15 @@ class SymmBuffer:
         self,
         group,
         num_experts: int,
+        num_max_tokens_per_rank: int,
+        num_topk: int,
+        hidden: int,
+        intermediate_hidden: int,
         max_recv_token_num: int = 0,
         dispatch_quant_mode: int = 0,
         dispatch_quant_out_type: int = 28,
         combine_quant_mode: int = 0,
         comm_alg: str = "",
-        num_max_tokens_per_rank: int = 0,
     ):
         # Metadata
         self.group = group
@@ -107,6 +105,9 @@ class SymmBuffer:
         self.num_experts = num_experts,
         self.max_recv_token_num = max_recv_token_num,
         self.num_max_tokens_per_rank = num_max_tokens_per_rank
+        self.num_topk = num_topk
+        self.hidden = hidden
+        self.intermediate_hidden = intermediate_hidden
         self.dispatch_quant_mode = dispatch_quant_mode
         self.dispatch_quant_out_type = dispatch_quant_out_type
         self.combine_quant_mode = combine_quant_mode
@@ -116,23 +117,30 @@ class SymmBuffer:
 def get_symm_buffer_for_mega_moe(
     group,
     num_experts: int,
+    num_max_tokens_per_rank: int,
+    num_topk: int,
+    hidden: int,
+    intermediate_hidden: int,
     max_recv_token_num: int = 0,
     dispatch_quant_mode: int = 0,
     dispatch_quant_out_type: int = 28,
     combine_quant_mode: int = 0,
     comm_alg: str = "",
-    num_max_tokens_per_rank: int = 0,
 ) -> SymmBuffer:
 
     return SymmBuffer(
         group,
         num_experts,
+        num_max_tokens_per_rank,
+        num_topk,
+        hidden,
+        intermediate_hidden,
         max_recv_token_num,
         dispatch_quant_mode,
         dispatch_quant_out_type,
         combine_quant_mode,
         comm_alg,
-        num_max_tokens_per_rank,
+        
     )
 
 
@@ -143,10 +151,10 @@ def fp8_fp4_mega_moe(
     l1_weights: List[torch.Tensor],
     l2_weights: List[torch.Tensor],
     sym_buffer: SymmBuffer,
+    scales: Optional[torch.Tensor] = None,
     l1_weights_sf: Optional[List[torch.Tensor]] = None,
     l2_weights_sf: Optional[List[torch.Tensor]] = None,
     x_active_mask: Optional[torch.Tensor] = None,
-    scales: Optional[torch.Tensor] = None,
     weight1_type: int = 28,
     weight2_type: int = 28,
 ):
@@ -169,7 +177,7 @@ def fp8_fp4_mega_moe(
         sym_buffer.dispatch_quant_mode,
         sym_buffer.combine_quant_mode,
         sym_buffer.comm_alg,
-        sym_buffer.global_bs,
+        sym_buffer.num_max_tokens_per_rank,
         sym_buffer.dispatch_quant_out_type,
         weight1_type,
         weight2_type,
