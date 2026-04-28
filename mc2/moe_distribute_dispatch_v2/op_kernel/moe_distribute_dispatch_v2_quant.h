@@ -207,6 +207,9 @@ public:
         if constexpr (Std::IsSame<ExpandXOutType, fp8_e4m3fn_t>::value ||
             Std::IsSame<ExpandXOutType, fp8_e5m2_t>::value) {
             if constexpr (IsSmoothScaleExist) { // 平滑系数
+                uint32_t inputReadCount = Align128(axisH_);
+                Duplicate<float>(smoothScalesTensor_, 0.0f, inputReadCount);
+                SyncFunc<AscendC::HardEvent::V_MTE2>();
                 DataCopyPad(smoothScalesTensor_, scalesGMTensor_[expertIndex * axisH_], scalesInParams_, scalesPadParams_);
                 SyncFunc<AscendC::HardEvent::MTE2_V>();
             }
