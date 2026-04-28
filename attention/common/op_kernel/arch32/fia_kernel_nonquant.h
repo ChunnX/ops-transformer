@@ -1089,7 +1089,8 @@ __aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBl
 
 template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType>
 __aicore__ inline void FiaKernelNonQuant<FIAT, CubeBlockType, VecBlockType, FdBlockType>::Process()
-{
+{   
+    return;
     // usedCoreNum: 使用的总核数
     if (aiCoreIdx < usedCoreNum) {
         if ASCEND_IS_AIC {
