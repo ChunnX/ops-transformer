@@ -163,6 +163,19 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeDtype()
     OP_CHECK_IF(!SetMKN(xShape, wShape), OP_LOGE(inputParams_.opName, "SetMKN failed."), return false);
     OP_CHECK_IF(!SetQuantModeForGMMSwigluQuant(wScaleShape, xScaleShape),
                 OP_LOGE(inputParams_.opName, "SetQuantModeForGMMSwigluQuant failed."), return false);
+    auto weightFormat = wDesc->GetFormat().GetStorageFormat();
+    if (weightFormat == FORMAT_FRACTAL_NZ) {
+        const gert::Shape &wStorageShapeNz = wStorageShape->GetStorageShape();
+        OP_CHECK_IF(wStorageShapeNz.GetDimNum() != 5,
+                    OP_LOGE(context_->GetNodeName(), "NZ weight storage shape must be 5."),
+                    return false);
+
+        OP_CHECK_IF(!(inputParams_.aDtype == ge::DT_FLOAT8_E4M3FN &&
+                    inputParams_.bDtype == ge::DT_FLOAT8_E4M3FN),
+                    OP_LOGE(context_->GetNodeName(),
+                            "NZ weight, x and weight dtype must both be DT_FLOAT8_E4M3FN."),
+                    return false);
+    }
     if (inputParams_.aQuantMode == optiling::QuantMode::PERTOKEN_MODE) {
         return CheckDtypePertoken();
     }

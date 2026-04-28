@@ -40,6 +40,7 @@ constexpr size_t MX_X_SCALE_DIM = 3UL;
 constexpr size_t MXQuantMode = 2UL;
 constexpr uint64_t B4_DATACOPY_MIN_NUM = 2;
 constexpr int32_t SPLIT_M = 0;
+constexpr int32_t FORMAT_FRACTAL_NZ = 27;
 constexpr uint64_t MXFP4_K_MIN_VALUE = 2UL;
 constexpr uint64_t MXFP4_N_MIN_VALUE = 4UL;
 } // namespace GroupedMatmulSwigluQuantParamsV2
