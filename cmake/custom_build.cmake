@@ -151,6 +151,7 @@ if (BUILD_OPEN_PROJECT)
             ${CMAKE_CURRENT_SOURCE_DIR}/mc2/common/op_host/op_tiling
             ${CMAKE_CURRENT_SOURCE_DIR}/mc2/common/op_kernel
             ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/catlass/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/catlass/include/catlass
             $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment>>
     )
     target_compile_options(cust_opmaster PRIVATE

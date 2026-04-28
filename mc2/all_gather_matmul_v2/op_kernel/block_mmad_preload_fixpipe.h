@@ -17,15 +17,15 @@
 
 #include "copy_gm_to_l1.h"
 #include "copy_l0c_to_gm.h"
-#include "../3rdparty/catlass/include/catlass/catlass.hpp"
-#include "../3rdparty/catlass/include/catlass/arch/resource.hpp"
-#include "../3rdparty/catlass/include/catlass/coord.hpp"
-#include "../3rdparty/catlass/include/catlass/gemm_coord.hpp"
-#include "../3rdparty/catlass/include/catlass/gemm/dispatch_policy.hpp"
-#include "../3rdparty/catlass/include/catlass/gemm/helper.hpp"
-#include "../3rdparty/catlass/include/catlass/gemm/tile/tile_copy.hpp"
-#include "../3rdparty/catlass/include/catlass/gemm/tile/tile_mmad.hpp"
-#include "../3rdparty/catlass/include/catlass/gemm/tile/copy_gm_to_l1.hpp"
+#include "catlass/catlass.hpp"
+#include "catlass/arch/resource.hpp"
+#include "catlass/coord.hpp"
+#include "catlass/gemm_coord.hpp"
+#include "catlass/gemm/dispatch_policy.hpp"
+#include "catlass/gemm/helper.hpp"
+#include "catlass/gemm/tile/tile_copy.hpp"
+#include "catlass/gemm/tile/tile_mmad.hpp"
+#include "catlass/gemm/tile/copy_gm_to_l1.hpp"
 
 namespace Catlass::Gemm::Block {
 

@@ -18,9 +18,9 @@
 
 #pragma once
 
-#include "../3rdparty/catlass/include/catlass/arch/resource.hpp"
-#include "../3rdparty/catlass/include/catlass/arch/cross_core_sync.hpp"
-#include "../3rdparty/catlass/include/catlass/gemm/kernel/padding_matmul.hpp"
+#include "catlass/arch/resource.hpp"
+#include "catlass/arch/cross_core_sync.hpp"
+#include "catlass/gemm/kernel/padding_matmul.hpp"
 #include "all_gather_matmul_aiv_mode_util.h"
 
 using namespace AscendC;

@@ -11,9 +11,9 @@
 #ifndef MATMUL_REDUCE_SCATTER_AIV_MODE_PADDING_H
 #define MATMUL_REDUCE_SCATTER_AIV_MODE_PADDING_H
 
-#include "../3rdparty/catlass/include/catlass/arch/resource.hpp"
-#include "../3rdparty/catlass/include/catlass/arch/cross_core_sync.hpp"
-#include "../3rdparty/catlass/include/catlass/gemm/kernel/padding_matmul.hpp"
+#include "catlass/arch/resource.hpp"
+#include "catlass/arch/cross_core_sync.hpp"
+#include "catlass/gemm/kernel/padding_matmul.hpp"
 #include "matmul_reduce_scatter_aiv_mode_util.h"
 
 using namespace AscendC;
