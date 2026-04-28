@@ -225,36 +225,30 @@ def get_param_fus(input_tensor_dict, params):
 
     # >> q info
     fa_param['q_shape'] = params['shape_input']['query']
-    fa_param['q_dtype'] = params['dtype_input']['query']
     fa_param['q_tensor'] = input_tensor_dict['query']
 
     # >> k info
     fa_param['k_shape'] = params['shape_input']['key']
-    fa_param['k_dtype'] = params['dtype_input']['key']
     fa_param['k_tensor'] = input_tensor_dict['key']
 
     fa_param['v_shape'] = fa_param['k_shape']
-    fa_param['v_dtype'] = fa_param['k_dtype']
+    fa_param['v_dtype'] = fa_param['k_tensor'].dtype  # 从 tensor 获取
     fa_param['v_tensor'] = fa_param['k_tensor']
 
     fa_param['sparse_indices_shape'] = params['shape_input']['sparse_indices']
-    fa_param['sparse_indices_dtype'] = params['dtype_input']['sparse_indices']
     fa_param['sparse_indices_tensor'] = input_tensor_dict['sparse_indices']
 
     fa_param['bt_shape'] = params['shape_input']['block_table']
-    fa_param['bt_dtype'] = params['dtype_input']['block_table']
     fa_param['block_table'] = input_tensor_dict['block_table']
 
     fa_param['q_rope_shape'] = params['shape_input']['query_rope']
-    fa_param['q_rope_dtype'] = params['dtype_input']['query_rope']
     fa_param['q_rope_tensor'] = input_tensor_dict['query_rope']
 
     fa_param['k_rope_shape'] = params['shape_input']['key_rope']
-    fa_param['k_rope_dtype'] = params['dtype_input']['key_rope']
     fa_param['k_rope_tensor'] = input_tensor_dict['key_rope']
 
     fa_param['out_shape'] = fa_param['q_shape']
-    fa_param['out_dtype'] = params['dtype_output'][0]
+    fa_param['out_dtype'] = input_tensor_dict['query'].dtype  # 从 tensor 获取
 
     if fa_param['layout_query'] in ["TND"]:
         fa_param['b'] = len(fa_param['actualSeqLengths_q_raw'])
@@ -561,7 +555,9 @@ def _t_increattention_bnsd(fa_param):
     sparse_mode = fa_param['sparse_mode']
     g = numheads // numKeyValueHeads
 
-    q_bnsd_tensor = fa_param['q_bnsd_tensor'].float()
+    q_bnsd_tensor = fa_param['q_bnsd_tensor']
+    q_dtype = q_bnsd_tensor.dtype  # 直接从 tensor 获取原始 dtype
+    q_bnsd_tensor = q_bnsd_tensor.float()
     k_bnsd_tensor = fa_param['k_bnsd_tensor'].float()
     v_bnsd_tensor = k_bnsd_tensor[..., :512].clone()
 
@@ -587,7 +583,6 @@ def _t_increattention_bnsd(fa_param):
                 bmm1Res = torch.matmul(q_curr.float(), k_sparse.float().T)
                 scaleRes = bmm1Res * scaleValue
                 softmax_res = softmax(scaleRes)
-                q_dtype = fa_param['q_dtype']
                 bmm2Res = torch.matmul(softmax_res.to(q_dtype).float(), v_sparse.float())
                 y[batch, n2Idx * g: (n2Idx + 1) * g, s1Idx, :] = bmm2Res
     return y
@@ -621,13 +616,7 @@ def kv_pa_preprocessing(input_tensor_dict, fa_param, params):
     block_table = fa_param['block_table']
     layout_kv = fa_param['layout_kv']
 
-    k_dtype_val = params['dtype_input'].get('key', torch.bfloat16)
-    if isinstance(k_dtype_val, torch.dtype):
-        k_dtype = k_dtype_val
-    else:
-        _k_dtype_map = {'bf16': torch.bfloat16, 'bfloat16': torch.bfloat16, 'fp16': torch.float16,
-                        'float16': torch.float16, 'fp32': torch.float32, 'float32': torch.float32}
-        k_dtype = _k_dtype_map.get(k_dtype_val, torch.bfloat16)
+    k_dtype = fa_param['k_tensor'].dtype  # 直接从 tensor 获取
 
     D = fa_param['k_shape_old'][-1]
     rope_head_dim = fa_param['k_rope_shape'][-1]

@@ -32,9 +32,9 @@ def _load_inputs_to_npu(input_dict):
 
 
 def _get_kv_torch_dtype(kv_dtype):
-    if kv_dtype == torch_npu.hifloat8 or str(kv_dtype) == "hifloat8":
+    if kv_dtype == torch_npu.hifloat8 or str(kv_dtype) in ("hifloat8", "torch_npu.hifloat8"):
         return torch_npu.hifloat8
-    if kv_dtype == torch.float8_e4m3fn or str(kv_dtype) == "float8_e4m3fn":
+    if kv_dtype == torch.float8_e4m3fn or str(kv_dtype) in ("float8_e4m3fn", "torch.float8_e4m3fn"):
         return torch.float8_e4m3fn
     if isinstance(kv_dtype, torch.dtype):
         return kv_dtype
