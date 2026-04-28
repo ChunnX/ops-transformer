@@ -266,10 +266,10 @@ __aicore__ inline void MoeDistributeDispatchA2<TemplateMC2TypeA2Func>::Init(
 
     worldTaskInfo_.SplitCore(worldSize_, aivNum_, aivId_);
     uint32_t aDumpSize = Std::max(RoundUp(Mc2A2Kernel::AIVNUM_POS + 1U, BITS32_PER_BLOCK), BITS32_PER_BLOCK * 2U) * sizeof(uint32_t);
-    uint32_t aDumpAddr = AscendC::TOTAL_UB_SIZE - aDumpSize;
-    aDumpTensor_ = LocalTensor<XType>{TPosition::LCM, aDumpAddr, aDumpSize};
+    uint32_t aDumpUbAddr = AscendC::TOTAL_UB_SIZE - aDumpSize;
+    aDumpTensor_ = LocalTensor<uint8_t>{TPosition::LCM, aDumpUbAddr, aDumpSize};
     GM_ADDR aDumpAddr = hccl_.GetWindowsInAddr(rankId_) + totalSize_ - Mc2A2Kernel::BUFFER_ADUMP_WIN_SIZE * 2UL;
-    aDump_.InitWinState(aDumpAddr, aivId_, rankId_, worldSize_, rankId_, moeExpertNum_, worldSize_,
+    aDump_.Init(aDumpAddr, aivId_, rankId_, worldSize_, rankId_, moeExpertNum_, worldSize_,
         tilingData.moeDistributeDispatchInfo.globalBs, bufferChosen_,
         Mc2A2Kernel::IS_FULLMESH, aivNum_, aDumpTensor_);
     aDump_.UpdateFullmeshRankTaskInfo(worldTaskInfo_.startTaskId, worldTaskInfo_.taskNum, Mc2A2Kernel::IS_SEND);

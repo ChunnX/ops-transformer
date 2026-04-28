@@ -321,7 +321,7 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
     tpipe_->InitBuffer(aDumpBuf_, RoundUp(Mc2A2Kernel::AIVNUM_POS + 1U, BITS32_PER_BLOCK) * sizeof(uint32_t));
     LocalTensor<uint8_t> aDumpTensor = aDumpBuf_.Get<uint8_t>();
     GM_ADDR aDumpAddr = addrInfo_.GetIpcAdumpWinAddr();
-    aDump_.InitWinState(aDumpAddr, aivId_, rankId_, worldSize_, rankId_, moeExpertNum_, worldSize_, globalBs_, magicVal_ & 0x1,
+    aDump_.Init(aDumpAddr, aivId_, rankId_, worldSize_, rankId_, moeExpertNum_, worldSize_, globalBs_, magicVal_ & 0x1,
         Mc2A2Kernel::IS_HIERARCHY, aivNum_, aDumpTensor);
     AscendC::PipeBarrier<PIPE_ALL>();
 }
@@ -1339,7 +1339,7 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
 {
     if ASCEND_IS_AIV { // 全aiv处理
         ReorderTokens();
-        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_SEND_BEFORE);
+        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_DISPATCH_REORDERTOKEN);
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
         if(aivId_ < serverNum){
@@ -1352,22 +1352,22 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
         } else {
             Win2Ipc();
         }
-        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_INTER_FINISH);
+        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_DISPATCH_INTER_FINISH);
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
         SetIpcFlag(IPC_FLAG_STEP_1);
         WaitIpcFlag(IPC_FLAG_STEP_1);
-        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_INTRA_FINISH);
+        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_DISPATCH_INTRA_FINISH);
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
         Ipc2Out();
-        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_IPC2OUT);
+        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_DISPATCH_IPC2OUT);
         PipeBarrier<PIPE_ALL>();
         CleanUp();
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
         CopyPerformanceInfo();
-        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_FINISH);
+        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_DISPATCH_FINISH);
         hccl_.Finalize();
     }
 }

@@ -29,12 +29,13 @@
 #endif
 #if __has_include("../moe_distribute_dispatch_v2/moe_distribute_a2_base.h")
 #include "../moe_distribute_dispatch_v2/moe_distribute_a2_base.h"
+#include "../moe_distribute_dispatch_v2/moe_distribute_a2_adump.h"
+#include "../moe_distribute_dispatch_v2/moe_distribute_a2_constant.h"
 #else
 #include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_a2_base.h"
+#include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_a2_adump.h"
+#include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_a2_constant.h"
 #endif
-
-#include "moe_distribute_a2_adump.h"
-#include "moe_distribute_a2_constant.h"
 
 namespace MoeDistributeCombineA2Impl {
 
@@ -383,7 +384,7 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
     }
     LocalTensor<uint8_t> aDumpTensor = aDumpBuf_.Get<uint8_t>();
     GM_ADDR aDumpAddr = addrInfo_.GetIpcAdumpWinAddr();
-    aDump_.InitWinState(aDumpAddr, coreIdx_, rankId_, worldSize_, rankId_, moeExpertNum_, worldSize_, globalBs_, magicValue_ & 0x1,
+    aDump_.Init(aDumpAddr, coreIdx_, rankId_, worldSize_, rankId_, moeExpertNum_, worldSize_, globalBs_, magicValue_ & 0x1,
         Mc2A2Kernel::IS_HIERARCHY, aivNum_, aDumpTensor);
     PipeBarrier<PIPE_ALL>();
 }
@@ -404,7 +405,7 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
     // 总tBuf
     tpipe_->InitBuffer(tBuf, TBUF_SIZE);
     // aDumpBuf_
-    tpipe_->InitBuffer(aDumpBuf_, RoundUp(Mc2A2Kernel::AIVNUM_POS + 1U, BITS32_PER_BLOCK) * sizeof(uint32_t));
+    tpipe_->InitBuffer(aDumpBuf_, RoundUp(Mc2A2Kernel::AIVNUM_POS + 1U, B32_PER_BLOCK) * sizeof(uint32_t));
 }
 template <TemplateMC2TypeA2layeredClass>
 __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFunc>::SplitCoreCal()
