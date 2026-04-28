@@ -81,12 +81,18 @@ private:
     {
         uint32_t curRankId = epRankIdOriginal_;
         uint64_t winDataSizeOffset = winDataSizeOffsetEp_;
+        if ((rankId ^ 1) == epRankId_) {
+            return (GM_ADDR)mc2Context_->HccsAddr + WIN_ADDR_OFFSET + winDataSizeOffset;
+        }
         return (GM_ADDR)mc2Context_->epHcclBuffer[rankId] + WIN_ADDR_OFFSET + winDataSizeOffset;
     }
 
     __aicore__ inline GM_ADDR GetWindStateAddrByRankId(const int32_t rankId)
     {
         uint32_t curRankId = epRankIdOriginal_;
+        if ((rankId ^ 1) == epRankId_) {
+            return (GM_ADDR)mc2Context_->HccsAddr + dataState_ * WIN_STATE_OFFSET;
+        }
         return (GM_ADDR)mc2Context_->epHcclBuffer[rankId] + dataState_ * WIN_STATE_OFFSET;
     }
 

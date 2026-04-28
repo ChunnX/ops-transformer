@@ -5,11 +5,13 @@
 #include "hccl/hccl_res.h"
 #include "hccl/hccl_mc2.h"
 #include "hccl/hccl_res_expt.h"
+#include "hccl/hccl_rank_graph.h"
 
 struct Mc2ContextStru {
     uint64_t epRankId;
     uint64_t kfcContextAddr;
     uint64_t epHcclBuffer[1024];
+    uint64_t HccsAddr;
 };
 
 
