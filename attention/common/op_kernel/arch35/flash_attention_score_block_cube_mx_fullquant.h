@@ -1146,15 +1146,15 @@ __aicore__ inline void FABlockCubeMxFullquant<TEMPLATE_ARGS>::IterateBmm1MxFp8(
     mm1A.Wait<HardEvent::MTE1_MTE2>();
     LocalTensor<INPUT_T> mm1ATensor = mm1A.GetTensor<INPUT_T>();
     uint32_t dstNzC0StrideKNope = (s2CalcSize + 31) >> 5 << 5;
-    uint32_t offsetKScaleByElement = dstNzC0StrideKNope * constInfo.dSize / dTypeScaleRATIO; 
+    uint32_t offsetKScaleByElement = dstNzC0StrideKNope * constInfo.dSize / dTypeScaleRATIO;
     LocalTensor<QK_SCALE_T> kMxTensor = mm1A.GetTensor<QK_SCALE_T>(offsetKScaleByElement);
     if constexpr (isPa) {
         Position startPos;
         startPos.bIdx = runInfo.boIdx;
         startPos.n2Idx = runInfo.n2oIdx;
         if constexpr (isFd) {
-            startPos.s2Offset = runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize + 
-                        runInfo.s2LoopCount * s2BaseSize; 
+            startPos.s2Offset = runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize +
+                        runInfo.s2LoopCount * s2BaseSize;
         } else {
             startPos.s2Offset = subLoop % 2 == 0 ? runInfo.s2StartIdx + runInfo.s2LoopCount * s2BaseSize : runInfo.s2StartIdx + runInfo.s2LoopCount * s2BaseSize + s2BaseSize / 2;
         }
@@ -1176,7 +1176,7 @@ __aicore__ inline void FABlockCubeMxFullquant<TEMPLATE_ARGS>::IterateBmm1MxFp8(
         GmScaleCopyInToL1PAForDN<QK_SCALE_T>(kMxTensor, this->deScaleKGm.gmTensor, blockTableGm, kvLayout, nopeScaleShape, startPos);
     } else {
         runInfo.keyOffset = this->keyGm.offsetCalculator.GetOffset(coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx,
-            coordInfo[runInfo.taskIdMod3].s2Coord, 0); 
+            coordInfo[runInfo.taskIdMod3].s2Coord, 0);
         int32_t keyOffset = subLoop % 2 == 0 ? runInfo.keyOffset : runInfo.keyOffset + s2BaseSize * dBaseSize / 2 * constInfo.n2Size;
 
         CopyToL1Nd2Nz<INPUT_T>(mm1ATensor, GetKeyGm(runInfo, constInfo)[keyOffset], s2CalcSize,
@@ -1185,13 +1185,13 @@ __aicore__ inline void FABlockCubeMxFullquant<TEMPLATE_ARGS>::IterateBmm1MxFp8(
         s2CalcSize, ((constInfo.mm1Kb + 63) >> 6 << 6)/ MX_FP8_PTG_PCG_SCALE_PARAM);
     }
     
-    mm1A.Set<HardEvent::MTE2_MTE1>(); 
+    mm1A.Set<HardEvent::MTE2_MTE1>();
 
     mm1A.Wait<HardEvent::MTE2_MTE1>();
     mm1B.Wait<HardEvent::MTE2_MTE1>();
 
     Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
-    mm1ResL0C.Wait<HardEvent::FIX_M>(); 
+    mm1ResL0C.Wait<HardEvent::FIX_M>();
     
     MMParam param = {(uint32_t)s2CalcSize,  // singleM
                     (uint32_t)runInfo.s1RealSize,  // singleN
@@ -1216,7 +1216,7 @@ __aicore__ inline void FABlockCubeMxFullquant<TEMPLATE_ARGS>::IterateBmm1MxFp8(
             param);
     }
 
-    if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit && (((runInfo.s2RealSize > 256) && (subLoop % 2 == 1) ) || (runInfo.s2RealSize <= 256)))) {
+    if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit && (((runInfo.s2RealSize > 256) && (subLoop % 2 == 1)) || (runInfo.s2RealSize <= 256)))) {
         mm1B.Set<HardEvent::MTE1_MTE2>();
     }
 
@@ -1503,7 +1503,7 @@ __aicore__ inline void FABlockCubeMxFullquant<TEMPLATE_ARGS>::IterateBmm2MxFp8(m
         param);
 
     if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
-        mm2AScale.Set<HardEvent::MTE1_MTE2>(); 
+        mm2AScale.Set<HardEvent::MTE1_MTE2>();
     }
     mm2B.Set<HardEvent::MTE1_MTE2>();
 
@@ -1531,7 +1531,7 @@ __aicore__ inline void FABlockCubeMxFullquant<TEMPLATE_ARGS>::IterateBmm2MxFp8(m
     fixpipeParams.params.ndNum = 1;
     fixpipeParams.params.srcNdStride = 0;
     fixpipeParams.params.dstNdStride = 0;
-    Fixpipe<T, T, BMM2_FIXPIPE_CONFIG>(outputBuf.template GetTensor<T>(), mm2ResL0C.GetTensor<T>(), fixpipeParams); 
+    Fixpipe<T, T, BMM2_FIXPIPE_CONFIG>(outputBuf.template GetTensor<T>(), mm2ResL0C.GetTensor<T>(), fixpipeParams);
     mm2ResL0C.Set<HardEvent::FIX_M>();
     outputBuf.SetCrossCore();
 }

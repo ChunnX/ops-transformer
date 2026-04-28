@@ -445,7 +445,7 @@ __aicore__ inline void FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::ProcessVec1D
         for (uint32_t i = 0; i < actCopyCount; i++) {
             uint32_t dstOffset = 32 * mxfp8s2BaseSize * i + subLoopOffset;
             if (constInfo.subBlockIdx == 1) {
-                dstOffset += mxfp8s2BaseSize * actVec0Align32; 
+                dstOffset += mxfp8s2BaseSize * actVec0Align32;
             }
             uint32_t srcOffset = i * (65 << 5);
             DataCopy(mm2AL1Tensor[dstOffset], stage1CastTensor[srcOffset], {4, mxfp8s2BaseSize / 4, mxfp8s2BaseSize / 4 + 2, 0});
@@ -453,9 +453,9 @@ __aicore__ inline void FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::ProcessVec1D
     }
 
     this->stage1OutQue[stage1Offset].template FreeTensor(stage1CastTensor);
-    if (((runInfo.s2RealSize > 256) && (subLoop % 2 == 1) )|| (runInfo.s2RealSize <= 256)) {
+    if (((runInfo.s2RealSize > 256) && (subLoop % 2 == 1)) || (runInfo.s2RealSize <= 256)) {
         outputBuf.SetCrossCore();
-    } 
+    }
 
     if constexpr (isFp8 && hasAtten) {
         this->attenMaskInQue[0].template FreeTensor(attenMaskUb);
@@ -1786,11 +1786,11 @@ __aicore__ inline void FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::InitLocalBuf
         } else if constexpr (useNz) {
             tPipe->InitBuffer(commonTBuf, 512);
             tPipe->InitBuffer(stage2OutBuf, 32768);
-        } else if constexpr (isMxfp8FullQuant){
+        } else if constexpr (isMxfp8FullQuant) {
             tPipe->InitBuffer(stage2OutBuf, 64 * dTemplateAlign64 * sizeof(T));
             SoftmaxInitBuffer();
             tPipe->InitBuffer(stage1OutQue[0], 1, 16640);
-            tPipe->InitBuffer(stage1OutQue[1], 1, 16640);                
+            tPipe->InitBuffer(stage1OutQue[1], 1, 16640);
             tPipe->InitBuffer(commonTBuf, 512);
             if constexpr (hasAtten) {
                 tPipe->InitBuffer(attenMaskInQue[0], 1, 16384);
