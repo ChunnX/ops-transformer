@@ -31,6 +31,8 @@
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #endif
+#include "moe_distribute_a2_adump.h"
+#include "moe_distribute_a2_constant.h"
 
 namespace MoeDistributeDispatchA2Impl {
 constexpr static uint8_t BUFFER_NUM = 2;
@@ -139,6 +141,7 @@ private:
     LocalTensor<int32_t> epRecvCountsTempLocal_;
     LocalTensor<int32_t> epRecvCountsOutLocal_;
     LocalTensor<int32_t> performanceInfoI32Tensor_;
+    LocalTensor<uint8_t> aDumpTensor_; 
 
     GM_ADDR expandIdxOutGM_;
     GM_ADDR expertTokenNumsOutGM_;
@@ -180,6 +183,7 @@ private:
     TaskInfo worldTaskInfo_;
     Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;
     __gm__ HcclOpResParam *winContext_{nullptr};
+    Mc2A2Kernel::MoeDistributeA2ADump aDump_;
 };
 
 template <TemplateMC2TypeA2Class>
@@ -261,6 +265,15 @@ __aicore__ inline void MoeDistributeDispatchA2<TemplateMC2TypeA2Func>::Init(
         axisH_ * sizeof(uint16_t) + stateSizeMaxSize) * BUFFER_NUM; // 考虑负载极其不均衡时，HCCL BUFFSIZE需要开的大小
 
     worldTaskInfo_.SplitCore(worldSize_, aivNum_, aivId_);
+    uint32_t aDumpSize = Std::max(RoundUp(Mc2A2Kernel::AIVNUM_POS + 1U, BITS32_PER_BLOCK), BITS32_PER_BLOCK * 2U) * sizeof(uint32_t);
+    uint32_t aDumpAddr = AscendC::TOTAL_UB_SIZE - aDumpSize;
+    aDumpTensor_ = LocalTensor<XType>{TPosition::LCM, aDumpAddr, aDumpSize};
+    GM_ADDR aDumpAddr = hccl_.GetWindowsInAddr(rankId_) + totalSize_ - Mc2A2Kernel::BUFFER_ADUMP_WIN_SIZE * 2UL;
+    aDump_.InitWinState(aDumpAddr, aivId_, rankId_, worldSize_, rankId_, moeExpertNum_, worldSize_,
+        tilingData.moeDistributeDispatchInfo.globalBs, bufferChosen_,
+        Mc2A2Kernel::IS_FULLMESH, aivNum_, aDumpTensor_);
+    aDump_.UpdateFullmeshRankTaskInfo(worldTaskInfo_.startTaskId, worldTaskInfo_.taskNum, Mc2A2Kernel::IS_SEND);
+    aDump_.UpdateFullmeshRankTaskInfo(worldTaskInfo_.startTaskId, worldTaskInfo_.taskNum, Mc2A2Kernel::IS_RECV);
 }
 
 template <TemplateMC2TypeA2Class>
@@ -309,7 +322,7 @@ __aicore__ inline void MoeDistributeDispatchA2<TemplateMC2TypeA2Func>::AllocTens
         performanceInfoI32Tensor_ = LocalTensor<int32_t>{TPosition::LCM, performanceInfoI32Addr, RoundUp(performanceInfoSize_ * static_cast<uint32_t>(sizeof(int64_t)), UB_ALIGN) / sizeof(int32_t)};
     }
 
-    uint32_t validExpIndexAddr = AscendC::TOTAL_UB_SIZE - expertIdsLength;
+    uint32_t validExpIndexAddr = AscendC::TOTAL_UB_SIZE - expertIdsLength - aDumpTensor_.GetSize() * sizeof(uint8_t);
     validExpIndexTensor_ = LocalTensor<int32_t>{TPosition::LCM, validExpIndexAddr, expertIdsSize};
 
     uint32_t xActiveMaskAlignSize = RoundUp(isExpertMaskFlag_ ? expertIdsCnt_ : axisBS_, 128);
@@ -615,6 +628,8 @@ __aicore__ inline void MoeDistributeDispatchA2<TemplateMC2TypeA2Func>::SingleSer
         SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
         DataCopyPad(currRankWindowInGlobal, xOutTensor_[PING_IDX], copySkipOffsetFlagParams);
         SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
+        aDump_.UpdateFullmeshEpRankSendOrRecv(rankIndex, Mc2A2Kernel::IS_SEND);
+        aDump_.UpdateFullmeshTokenSendOrRecv(rankIndex, tokenCount, Mc2A2Kernel::IS_SEND);
     }
     PipeBarrier<PIPE_ALL>(); // 与WaitDispatch的LocalTensor高度重叠
 }
@@ -636,6 +651,8 @@ __aicore__ inline void MoeDistributeDispatchA2<TemplateMC2TypeA2Func>::Construct
         batchWriteU64Tensor_(currentIndex * U64_PER_ITEM + 2) = batchWriteDataSize;
         batchWriteU32Tensor_(currentIndex * U32_PER_ITEM + 6) = batchWriteDataType;
         batchWriteU32Tensor_(currentIndex * U32_PER_ITEM + 7) = rankIndex;
+        aDump_.UpdateFullmeshEpRankSendOrRecv(rankIndex, Mc2A2Kernel::IS_SEND);
+        aDump_.UpdateFullmeshTokenSendOrRecv(rankIndex, tokenCount, Mc2A2Kernel::IS_SEND);
     }
 
     SyncFunc<AscendC::HardEvent::S_MTE3>();
@@ -734,6 +751,8 @@ __aicore__ inline void MoeDistributeDispatchA2<TemplateMC2TypeA2Func>::WaitDispa
                 auto srcRankId = rankId;
                 RecordRankCommDuration(performanceInfoI32Tensor_, srcRankId, startTime);
             }
+            aDump_.UpdateFullmeshEpRankSendOrRecv(rankId, Mc2A2Kernel::IS_RECV);
+            aDump_.UpdateFullmeshTokenSendOrRecv(rankId, tokenCount, Mc2A2Kernel::IS_RECV);
         }
     }
     SyncAll<true>();
@@ -933,6 +952,7 @@ __aicore__ inline void MoeDistributeDispatchA2<TemplateMC2TypeA2Func>::Process()
         CalValidTokenCount();
         IndexSort();
         ReorderTokens();
+        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_FULLMESH_DISPATCH_REORDERTOKEN);
         if (isSingleServer_) {
             SyncAll<true>();
             SingleServerSendToMoeExpert();
@@ -941,12 +961,17 @@ __aicore__ inline void MoeDistributeDispatchA2<TemplateMC2TypeA2Func>::Process()
             SyncAll<true>();
             SendToMoeExpert();
         }
+        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_FULLMESH_DISPATCH_SEND);
         WaitDispatch();
+        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_FULLMESH_DISPATCH_RECV);
         CopyPerformanceInfo(); // 避免performanceInfoI32Tensor_被复用，提前搬出性能打点数据
         GetStatusCumSum();
+        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_FULLMESH_DISPATCH_GET_STATUS_CUM_SUM);
         LocalWindowCopy();
         SyncAll<true>();
+        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_FULLMESH_DISPATCH_LOCAL_WINDOW_COPY);
         CleanUpFlags();
+        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_FULLMESH_DISPATCH_FINISH);
         hccl_.Finalize();
     }
 }

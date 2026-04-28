@@ -29,25 +29,56 @@ constexpr uint32_t HCCL_EPRANKId_POS = 0U;
 constexpr uint32_t HCCL_WORLDSIZE_POS = 1U;
 constexpr uint32_t ISLAYERED_POS = 11U;
 constexpr uint32_t AIVNUM_POS = 12U;
-constexpr uint32_t AIV_TASK_FIRST_EPRANKID_POS = 13U;
-constexpr uint32_t AIV_TASK_EPRANKNUM_POS = 14U;
-constexpr uint32_t AIV_TASK_ARRIVED_EPRANKID_START_POS = 15U;
 constexpr uint64_t WIN_ADDR_ALIGN = 512UL;
-constexpr uint32_t UB_ALIGN = 0U;
+constexpr uint32_t UB_ALIGN = 32U;
+constexpr static uint32_t BITS32_PER_BLOCK = UB_ALIGN / sizeof(int32_t); // 8
 
 constexpr uint32_t RUNPOS_INIT = 1U;
+constexpr uint32_t RUNPOS_END = 2U;
 // A2 Fullmesh
-constexpr uint32_t RUNPOS_REORDER_TOKEN = 2U;
-constexpr uint32_t RUNPOS_SEND_DATA_TO_SERVER = 3U;
-constexpr uint32_t RUNPOS_CREATE_INNER_REDUCE_INFO = 4U;
-constexpr uint32_t RUNPOS_CREATE_OUTER_REDUCE_INFO = 5U;
-constexpr uint32_t RUNPOS_WIN2IPC = 6U;
-constexpr uint32_t RUNPOS_SET_IPC_FLAG = 7U;
-constexpr uint32_t RUNPOS_WAIT_IPC_FLAG = 8U;
-constexpr uint32_t RUNPOS_IPC2OUT = 9U;
-constexpr uint32_t RUNPOS_CLEANUP = 10U;
-constexpr uint32_t RUNPOS_COPY_PERFORMANCE_INFO = 11U;
+constexpr uint32_t FULLMESH_SEND_FIRST_EPRANKID_POS = 13U;
+constexpr uint32_t FULLMESH_RECV_FIRST_EPRANKID_POS = 15U;
+constexpr uint32_t FULLMESH_EPRANKID_POS = 17U;
 
+// Dispatch
+constexpr uint32_t RUNPOS_FULLMESH_DISPATCH_REORDERTOKEN = 3U;
+constexpr uint32_t RUNPOS_FULLMESH_DISPATCH_SEND = 4U;
+constexpr uint32_t RUNPOS_FULLMESH_DISPATCH_RECV = 5U;
+constexpr uint32_t RUNPOS_FULLMESH_DISPATCH_GET_STATUS_CUM_SUM = 6U;
+constexpr uint32_t RUNPOS_FULLMESH_DISPATCH_LOCAL_WINDOW_COPY = 7U;
+constexpr uint32_t RUNPOS_FULLMESH_DISPATCH_FINISH = 8U;
+
+// Combine
+constexpr uint32_t RUNPOS_FULLMESH_COMBINE_SEND = 3U;
+constexpr uint32_t RUNPOS_FULLMESH_COMBINE_RECV = 4U;
+constexpr uint32_t RUNPOS_FULLMESH_COMBINE_FINISH = 5U;
+
+// A2 Hierarchy
+// Dispatch
+constexpr uint32_t RUNPOS_HIERARCHY_DISPATCH_INTER_BEFORE = 3U;
+constexpr uint32_t RUNPOS_HIERARCHY_DISPATCH_INTER_FINISH = 4U;
+constexpr uint32_t RUNPOS_HIERARCHY_DISPATCH_INTRA_FINISH = 5U;
+constexpr uint32_t RUNPOS_HIERARCHY_DISPATCH_IPC2OUT = 6U;
+constexpr uint32_t RUNPOS_HIERARCHY_DISPATCH_FINISH = 7U;
+
+// Combine
+constexpr uint32_t RUNPOS_HIERARCHY_COMBINE_GM2IPC = 3U;
+constexpr uint32_t RUNPOS_HIERARCHY_COMBINE_WAITIPC = 4U;
+constexpr uint32_t RUNPOS_HIERARCHY_COMBINE_INTER_SEND = 5U;
+constexpr uint32_t RUNPOS_HIERARCHY_COMBINE_INTER_RECV = 6U;
+constexpr uint32_t RUNPOS_HIERARCHY_COMBINE_SUMTOSERVER = 7U;
+constexpr uint32_t RUNPOS_HIERARCHY_COMBINE_FINISH = 8U;
+
+constexpr uint32_t HIERARCHY_INTER_NODE_SEND_POS = 13U;
+constexpr uint32_t HIERARCHY_INTER_NODE_RECV_POS = 15U;
+constexpr uint32_t HIERARCHY_INNER_SEND_POS = 17U;
+constexpr uint32_t HIERARCHY_INNER_RECV_POS = 18U;
+constexpr bool IS_SEND = true;
+constexpr bool IS_RECV = false;
+constexpr uint32_t IS_FULLMESH = 0;
+constexpr uint32_t IS_HIERARCHY = 1;
+constexpr static uint64_t BUFFER_ADUMP_WIN_SIZE = 50 * 1024UL;
+constexpr static uint64_t BUFFER_ADUMP_WIN_SIZE_PER_AIV = 512UL;
 }
 
 
