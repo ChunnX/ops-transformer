@@ -305,15 +305,18 @@ __aicore__ inline void GMM_WQ_BASIC_BLOCK_CLASS::ComputeBasicBlockAivNdKnNzNk(co
                 uint64_t mxScaleNOffset = GetSubBlockIdx() * mxScaleNSize0;
                 uint64_t mxScaleL1NOffset = GetSubBlockIdx() * mxScaleNSize0;
 
-                BasicBlockOffsetParam mxScaleOffsetParam = offsetParam;
-                mxScaleOffsetParam.nL1Size = mxScaleNSize;
-                mxScaleOffsetParam.nOffset += mxScaleNOffset;
+                uint64_t mxScaleMxGroupNum = CeilDivide(offsetParam.kSize, MX_GROUPSIZE);
+                uint64_t mxScaleRealGroupNum = CeilDivide(mxScaleKSize, MX_GROUPSIZE);
 
                 vectorCompute_.WaitVToMTE2();
-                vectorCompute_.CopyWeightMxScaleGmToUb(mxScaleOffsetParam, kMte2Offset, mxScaleKSize);
+                vectorCompute_.CopyWeightMxScaleGmToUb(offsetParam.nOffset + mxScaleNOffset, mxScaleNSize,
+                                                       kMte2Offset, mxScaleKSize,
+                                                       mxScaleMxGroupNum, mxScaleRealGroupNum);
                 vectorCompute_.TransWeightMxScale(mxScaleNSize, mxScaleKSize);
                 auto mxScaleBL1Current = mxScaleBL1_[(mxScaleBufIdx_ & 1) * mxScaleBL1DbOffset_];
-                vectorCompute_.CopyWeightMxScaleUbToL1(mxScaleBL1Current, mxScaleL1NOffset, mxScaleNSize, mxScaleKSize);
+                auto mxScaleBL1CurrentU16 = mxScaleBL1Current.template ReinterpretCast<uint16_t>();
+                vectorCompute_.CopyWeightMxScaleUbToL1(mxScaleBL1CurrentU16,
+                                                      mxScaleL1NOffset, mxScaleNSize, mxScaleKSize);
                 vectorCompute_.SetVToMTE2();
                 mxScaleBufIdx_++;
             }

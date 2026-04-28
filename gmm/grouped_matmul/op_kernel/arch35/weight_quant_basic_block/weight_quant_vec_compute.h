@@ -71,9 +71,9 @@ public:
                                    const LocalTensor<xType> &ubHighBitTotalBuffer, uint64_t highBitUbOffset);
     __aicore__ inline void WaitVToMTE2();
     __aicore__ inline void SetVToMTE2();
-    __aicore__ inline void CopyWeightMxScaleGmToUb(const BasicBlockOffsetParam &offsetParam, uint64_t kOffset, uint64_t kSize);
+    __aicore__ inline void CopyWeightMxScaleGmToUb(uint64_t nOffset, uint64_t nL1Size, uint64_t kOffset, uint64_t kSize, uint64_t mxGroupNum, uint64_t realGroupNum);
     __aicore__ inline void TransWeightMxScale(uint64_t nSize, uint64_t kSize);
-    __aicore__ inline void CopyWeightMxScaleUbToL1(LocalTensor<fp8_e8m0_t> &scaleL1, uint64_t l1NOffset, uint64_t nSize, uint64_t kSize);
+    __aicore__ inline void CopyWeightMxScaleUbToL1(LocalTensor<uint16_t> &scaleL1, uint64_t l1NOffset, uint64_t nSize, uint64_t kSize);
     __aicore__ inline void CopyGmToUb(uint64_t ubMte2NSize, uint64_t ubMte2KSize, uint64_t ubMte2NOffset,
                                       uint64_t ubMte2KOffset, const BasicBlockOffsetParam &offsetParam);
     __aicore__ inline void CopyMxBiasGmToUb(uint64_t ubMte2MxBiasNSize, uint64_t ubMte2MxBiasNOffset);
@@ -689,16 +689,14 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::WeightAnt
 
 GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_TEMPLATE_PARAM
 __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::CopyWeightMxScaleGmToUb(
-    const BasicBlockOffsetParam &offsetParam, uint64_t kOffset, uint64_t kSize)
+    uint64_t nOffset, uint64_t nL1Size, uint64_t kOffset, uint64_t kSize, uint64_t mxGroupNum, uint64_t realGroupNum)
 {
     static constexpr uint16_t GROUP_NUM_DEFAULT_LEN = MX_SCALE_K_L1_SIZE / MX_GROUPSIZE;
-    uint64_t mxGroupNum = CeilDivide<uint64_t>(offsetParam.kSize, MX_GROUPSIZE);
-    uint64_t realGroupNum = CeilDivide<uint64_t>(kSize, MX_GROUPSIZE);
     DataCopyPad2D(ubWeightInputLowBitTotalBuffer_[(ubMte2LoopIdx_ % vecConfig.ubMte2BufferNum) *
                                                           UB_BUFFER_INFO.weightInputLowBitUbSingleBufferSize]
                     .template ReinterpretCast<antiQuantScaleType>(),
-                    antiQuantScaleGlobal_[offsetParam.nOffset * mxGroupNum + CeilDivide<uint64_t>(kOffset, MX_GROUPSIZE)],
-                    offsetParam.nL1Size, realGroupNum,
+                    antiQuantScaleGlobal_[nOffset * mxGroupNum + CeilDivide<uint64_t>(kOffset, MX_GROUPSIZE)],
+                    nL1Size, realGroupNum,
                     GROUP_NUM_DEFAULT_LEN, mxGroupNum);
 
     event_t eventIdMTE2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID<HardEvent::MTE2_V>());
@@ -728,7 +726,7 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::TransWeig
 
 GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_TEMPLATE_PARAM
 __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::CopyWeightMxScaleUbToL1(
-    LocalTensor<fp8_e8m0_t> &scaleL1, uint64_t l1NOffset, uint64_t nSize, uint64_t kSize)
+    LocalTensor<uint16_t> &scaleL1, uint64_t l1NOffset, uint64_t nSize, uint64_t kSize)
 {
     static constexpr uint16_t GROUP_NUM_DEFAULT_LEN = MX_SCALE_K_L1_SIZE / MX_GROUPSIZE;
     
@@ -743,7 +741,8 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::CopyWeigh
     params.dstStride = 0;
 
     DataCopy(scaleL1[l1NOffset * GROUP_NUM_DEFAULT_LEN],
-             ubHighBitTotalBuffer_[(ubComputeLoopIdx_ & (UB_BUFFER_INFO.ubWeightOutputHighBitBufferNum - 1)) * VEC_REG_ELEM],
+             ubHighBitTotalBuffer_[(ubComputeLoopIdx_ & (UB_BUFFER_INFO.ubWeightOutputHighBitBufferNum - 1)) * VEC_REG_ELEM]
+                 .template ReinterpretCast<uint16_t>(),
              params);
 
     SetFlag<HardEvent::MTE3_V>(
