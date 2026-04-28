@@ -105,6 +105,10 @@ ascend950:
     - mc2/moe_distribute_combine_v2/op_host
     - mc2/moe_distribute_dispatch/op_host
     - mc2/moe_distribute_dispatch_v2/op_host
+    - mc2/moe_distribute_dispatch_setup/op_host
+    - mc2/moe_distribute_dispatch_teardown/op_host
+    - mc2/moe_distribute_dispatch_setup/tests/ut/op_host
+    - mc2/moe_distribute_dispatch_teardown/tests/ut/op_host
     - mc2/moe_update_expert/op_host
     - mc2/quant_all_reduce/op_host
     - mc2/quant_all_reduce/tests/ut/op_host
