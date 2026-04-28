@@ -29,6 +29,15 @@
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #endif
+
+#if __has_include("../moe_distribute_dispatch_v2/moe_distribute_a2_adump.h")
+#include "../moe_distribute_dispatch_v2/moe_distribute_a2_adump.h"
+#include "../moe_distribute_dispatch_v2/moe_distribute_a2_constant.h"
+#else
+#include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_a2_adump.h"
+#include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_a2_constant.h"
+#endif
+
 namespace MoeDistributeCombineA2Impl {
 constexpr uint8_t BUFFER_NUM = 2;                       // 多buf
 constexpr uint32_t STATE_OFFSET = 512;                  // 状态空间偏移地址
@@ -210,6 +219,7 @@ private:
     TBuf<> performanceInfoBuf_;
     // 二维expertMask
     TBuf<> expertMaskBuf_;
+    TBuf<TPosition::LCM> aDumpBuf_;
 
     TaskInfo taskInfo_;
 
@@ -218,6 +228,7 @@ private:
 
     Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;
     __gm__ HcclOpResParam *winContext_{nullptr};
+    Mc2A2Kernel::MoeDistributeA2ADump aDump_;
 };
 template <TemplateMC2TypeA2Class>
 __aicore__ inline void MoeDistributeCombineA2<TemplateMC2TypeA2Func>::Init(GM_ADDR expandX, GM_ADDR expertIds,
@@ -297,6 +308,11 @@ __aicore__ inline void MoeDistributeCombineA2<TemplateMC2TypeA2Func>::Init(GM_AD
         Duplicate<int32_t>(performanceInfoI32Tensor_, 0, RoundUp(performanceInfoSize_, B64_PER_BLOCK) * sizeof(int64_t) / sizeof(int32_t));
     }
     SplitCoreCal();
+    LocalTensor<uint8_t> aDumpTensor = aDumpBuf_.Get<uint8_t>();
+    GM_ADDR aDumpAddr = hccl_.GetWindowsInAddr(rankId_) + halfWinSize_ - Mc2A2Kernel::BUFFER_ADUMP_WIN_SIZE * 1UL;
+    aDump_.Init(aDumpAddr, coreIdx_, rankId_, worldSize_, rankId_, moeExpertNum_, worldSize_,
+        tilingData->moeDistributeCombineInfo.globalBs, bufferId_,
+        Mc2A2Kernel::IS_FULLMESH, aivNum_, aDumpTensor);
 }
 template <TemplateMC2TypeA2Class>
 __aicore__ inline void MoeDistributeCombineA2<TemplateMC2TypeA2Func>::BuffInit()
@@ -315,6 +331,7 @@ __aicore__ inline void MoeDistributeCombineA2<TemplateMC2TypeA2Func>::BuffInit()
     tpipe_->InitBuffer(sumFloatBuf_, Std::max(axisHFloatSize_, moeExpertNumInt32Size));
     tpipe_->InitBuffer(indexCountsBuf_, Std::max(expertIdsBufSizePerCore, REPEAT_BYTES));
     tpipe_->InitBuffer(batchWriteItemBuf_, Std::max(BATCH_WRITE_ITEM_SIZE * worldSize_, moeExpertNumInt32Size));
+    tpipe_->InitBuffer(aDumpBuf_, Std::max(RoundUp(Mc2A2Kernel::AIVNUM_POS + 1U, B32_PER_BLOCK), B32_PER_BLOCK * 2U) * sizeof(uint32_t));
     batchWriteItemLocalB64 = batchWriteItemBuf_.Get<uint64_t>();
     batchWriteItemLocalB32 = batchWriteItemLocalB64.template ReinterpretCast<uint32_t>();
     // xActivateMask是二维表
@@ -419,6 +436,8 @@ __aicore__ inline void MoeDistributeCombineA2<TemplateMC2TypeA2Func>::SingleServ
             (__gm__ uint32_t *)dstGlobal.GetPhyAddr(rankTokenNum * axisH_ + SKIP_OFFSET / sizeof(ExpandXType)));
         DataCopyExtParams copySkipOffsetFlagParams{1, static_cast<uint32_t>(sizeof(uint32_t)), 0, 0, 0};
         DataCopyPad(flagGlobal_, batchWriteItemLocalB32, copySkipOffsetFlagParams);
+        aDump_.UpdateFullmeshEpRankSendOrRecv(dstRankId, Mc2A2Kernel::IS_SEND);
+        aDump_.UpdateFullmeshTokenSendOrRecv(dstRankId, rankTokenNum, Mc2A2Kernel::IS_SEND);
     }
 }
 
@@ -442,6 +461,8 @@ __aicore__ inline void MoeDistributeCombineA2<TemplateMC2TypeA2Func>::ConstructB
         batchWriteItemLocalB32(rankIdOffset * U32_PER_ITEM + 7) = dstRankId;
         DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(
             flagGlobal_);
+        aDump_.UpdateFullmeshEpRankSendOrRecv(dstRankId, Mc2A2Kernel::IS_SEND);
+        aDump_.UpdateFullmeshTokenSendOrRecv(dstRankId, rankTokenNum, Mc2A2Kernel::IS_SEND);
     }
     SyncFunc<AscendC::HardEvent::S_MTE3>();
     DataCopy(workspaceGlobal_[startRankId_ * U64_PER_ITEM], batchWriteItemLocalB64, sendRankNum_ * U64_PER_ITEM);
@@ -482,6 +503,7 @@ __aicore__ inline void MoeDistributeCombineA2<TemplateMC2TypeA2Func>::MultiServe
 template <TemplateMC2TypeA2Class>
 __aicore__ inline void MoeDistributeCombineA2<TemplateMC2TypeA2Func>::AlltoAllDispatch()
 {
+    aDump_.UpdateFullmeshRankTaskInfo(startRankId_, sendRankNum_, Mc2A2Kernel::IS_SEND);
     if (sendRankNum_ == 0) {
         SyncAll<true>();
         return;
@@ -610,6 +632,7 @@ __aicore__ inline void MoeDistributeCombineA2<TemplateMC2TypeA2Func>::Preload()
 template <TemplateMC2TypeA2Class>
 __aicore__ inline void MoeDistributeCombineA2<TemplateMC2TypeA2Func>::WaitDispatch()
 {
+    aDump_.UpdateFullmeshRankTaskInfo(startRankId_, sendRankNum_, Mc2A2Kernel::IS_RECV);
     if (startRankId_ >= worldSize_) {
         SyncAll<true>();
         return;
@@ -637,6 +660,8 @@ __aicore__ inline void MoeDistributeCombineA2<TemplateMC2TypeA2Func>::WaitDispat
                 auto srcRankId = rankId;
                 RecordRankCommDuration(performanceInfoI32Tensor_, srcRankId, startTime);
             }
+            aDump_.UpdateFullmeshEpRankSendOrRecv(rankId, Mc2A2Kernel::IS_RECV);
+            aDump_.UpdateFullmeshTokenSendOrRecv(rankId, recvCountLocal_(tokenIdx) + expertWindowOffsetLocal_(tokenIdx), Mc2A2Kernel::IS_RECV);
         }
     }
     SyncAll<true>();
@@ -673,10 +698,13 @@ __aicore__ inline void MoeDistributeCombineA2<TemplateMC2TypeA2Func>::Process()
     if ASCEND_IS_AIV {
         CalXActiveMask();
         AlltoAllDispatch();
+        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_FULLMESH_COMBINE_SEND);
         Preload();
         WaitDispatch();
+        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_FULLMESH_COMBINE_RECV);
         LocalWindowCopy();
         CopyPerformanceInfo();
+        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_FULLMESH_COMBINE_FINISH);
         hccl_.Finalize();
     }
 }

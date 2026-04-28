@@ -29,8 +29,12 @@
 #endif
 #if __has_include("../moe_distribute_dispatch_v2/moe_distribute_a2_base.h")
 #include "../moe_distribute_dispatch_v2/moe_distribute_a2_base.h"
+#include "../moe_distribute_dispatch_v2/moe_distribute_a2_adump.h"
+#include "../moe_distribute_dispatch_v2/moe_distribute_a2_constant.h"
 #else
 #include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_a2_base.h"
+#include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_a2_adump.h"
+#include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_a2_constant.h"
 #endif
 
 namespace MoeDistributeCombineA2Impl {
@@ -168,6 +172,7 @@ private:
     TBuf<TPosition::VECOUT> rdmaInBuf2_;
     TBuf<> statusBuf_;
     TBuf<> performanceInfoBuf_; 
+    TBuf<TPosition::LCM> aDumpBuf_;
 
     uint64_t sumTarget_{0};
     uint32_t startBs{0};
@@ -191,6 +196,7 @@ private:
     uint32_t SCALE_GRANU;
 
     MoeDistributeA2Base::MoeDistributeA2CombineAddrInfo addrInfo_;
+    Mc2A2Kernel::MoeDistributeA2ADump aDump_;
 };
 
 template <TemplateMC2TypeA2layeredClass>
@@ -376,6 +382,10 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
         AscendC::SyncFunc<AscendC::HardEvent::S_MTE3>();
         DataCopyPad(readStateGlobal_, tempLocal, copyParam);
     }
+    LocalTensor<uint8_t> aDumpTensor = aDumpBuf_.Get<uint8_t>();
+    GM_ADDR aDumpAddr = addrInfo_.GetIpcAdumpWinAddr();
+    aDump_.Init(aDumpAddr, coreIdx_, rankId_, worldSize_, rankId_, moeExpertNum_, worldSize_, globalBs_, magicValue_ & 0x1,
+        Mc2A2Kernel::IS_HIERARCHY, aivNum_, aDumpTensor);
     PipeBarrier<PIPE_ALL>();
 }
 
@@ -394,6 +404,8 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
 
     // 总tBuf
     tpipe_->InitBuffer(tBuf, TBUF_SIZE);
+    // aDumpBuf_
+    tpipe_->InitBuffer(aDumpBuf_, RoundUp(Mc2A2Kernel::AIVNUM_POS + 1U, B32_PER_BLOCK) * sizeof(uint32_t));
 }
 template <TemplateMC2TypeA2layeredClass>
 __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFunc>::SplitCoreCal()
@@ -725,7 +737,6 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
     rdmaFlagLocal(0) = RDMA_TOKEN_END_FLAG + magicValue_;
     tokenOffset = coreNumPerServer * processTokenNum + coreIdx_ % coreNumPerServer;
     DataCopyPad(shareFlagGlobal_[tokenOffset], rdmaFlagLocal, flagDataCopyParams);
-    SyncAll<true>();
 }
 
 template <TemplateMC2TypeA2layeredClass>
@@ -810,7 +821,7 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
                         (GM_ADDR)((uint64_t)(addrInfo_.GetRemoteRecvBuffFlagAddr(dstRankId))),
                         dstRankId, 32, qp_info_);
     }
-    SyncAll<true>();
+    aDump_.UpdateHierarchyInterNodeSendOrRecv(checkServer, copySum, Mc2A2Kernel::IS_SEND);
 }
 
 template <TemplateMC2TypeA2layeredClass>
@@ -836,6 +847,8 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
         if (unlikely(needPerformanceInfo_)) {
             RecordRankCommDuration(performanceInfoI32Tensor_, srcRankId, startTime);
         }
+        uint32_t dstServerId = coreIdx_;
+        aDump_.UpdateHierarchyInterNodeSendOrRecv(dstServerId, axisBS_, Mc2A2Kernel::IS_RECV);
     }
     PipeBarrier<PIPE_ALL>();
     SyncAll<true>();
@@ -1051,18 +1064,21 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
 {
     if ASCEND_IS_AIV {
         GM2IPC();
+        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_COMBINE_GM2IPC);
         WaitIPC();
+        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_COMBINE_WAITIPC);
         stepCoreNum = IPC_REDUCE_USED_CORE_NUM;
         if (coreIdx_ < stepCoreNum){
             SumToWindow();
         }
         else if (coreIdx_ < (stepCoreNum + serverNum_)) {
             AlltoAllServerDispatch();
-        } else {
-            SyncAll<true>();
         }
+        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_COMBINE_INTER_SEND);
+        SyncAll<true>();
         Preload();
         WaitDispatch();
+        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_COMBINE_INTER_RECV);
         SumToServer();
         CopyPerformanceInfo();
         hccl_.Finalize();
