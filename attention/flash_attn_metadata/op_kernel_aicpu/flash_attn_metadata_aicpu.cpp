@@ -18,6 +18,7 @@
 #include <cstdio>
 #include <cmath>
 #include "flash_attn_metadata_aicpu.h"
+#include "../../flash_attn/op_host/fa_adjust_sinner_souter.h"
 
 #define KERNEL_STATUS_OK 0
 #define KERNEL_STATUS_PARAM_INVALID 1
