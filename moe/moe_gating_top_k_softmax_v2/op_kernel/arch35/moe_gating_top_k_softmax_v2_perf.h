@@ -102,7 +102,7 @@ public:
     }
 
 private:
-__aicore__ inline void CopyIn(
+    __aicore__ inline void CopyIn(
         const int32_t OuterIdx, const int32_t curRowsNum,
         const MoeGatingTopKSoftmaxV2PerfRegbaseTilingData* __restrict tilingData)
     {
@@ -161,33 +161,6 @@ __aicore__ inline void CopyIn(
             Duplicate(
                 dst[tilingData->colAlign - SORT_UNIT], *((float*)&tmp), mask, curRowsNum, 1,
                 tilingData->colAlign / CONSTANT_EIGHT);
-        }
-    }
-
-    template <typename U>
-    __aicore__ inline void VectorDupSoftmax(
-        const LocalTensor<U>& dst, const int32_t curRowsNum,
-        const MoeGatingTopKSoftmaxV2PerfRegbaseTilingData* __restrict tilingData)
-    {
-        if (tilingData->colBytesAlign - tilingData->col != 0) {
-            U scalarValue;
-            if constexpr (IsSameType<U, half>::value) {
-                uint16_t tmp = 0xFC00; // -inf for half
-                scalarValue = *((half*)&tmp);
-            } else if constexpr (IsSameType<U, bfloat16_t>::value) {
-                uint16_t tmp = 0xFF80; // -inf for bfloat16
-                scalarValue = *((bfloat16_t*)&tmp);
-            } else {
-                uint32_t tmp = 0xFF800000; // -inf for float
-                scalarValue = *((float*)&tmp);
-            }
-            uint64_t mask[2] = {
-                (((uint64_t)1 << (tilingData->colBytesAlign - tilingData->col)) - 1)
-                    << (BLOCK_B32_SIZE - (tilingData->colBytesAlign - tilingData->col)),
-                0};
-            Duplicate(
-                dst[tilingData->colBytesAlign - BLOCK_B32_SIZE], scalarValue, mask, curRowsNum, 1,
-                tilingData->colBytesAlign / CONSTANT_EIGHT);
         }
     }
 
@@ -545,7 +518,6 @@ __aicore__ inline void CopyIn(
             softmaxShapeInfo.oriSrcM = curRowsNum;
 
             if constexpr (IsSameType<T, float>::value) {
-                VectorDupSoftmax(gatingLocal, curRowsNum, tilingData);
                 SoftMax<float, true, false>(
                     softmaxResultOutLocal, gatingLocal, tilingData->softmaxTilingData, softmaxShapeInfo);
                 gatingQueue.FreeTensor(gatingLocal);
@@ -564,7 +536,6 @@ __aicore__ inline void CopyIn(
                     Cast(tmpTensorLocal, gatingLocal, RoundMode::CAST_NONE, curRowsNum * tilingData->colBytesAlign);
                 }
                 gatingQueue.FreeTensor(gatingLocal);
-                VectorDupSoftmax(tmpTensorLocal, curRowsNum, tilingData);
                 SoftMax<float, true, false>(
                     softmaxResultOutLocal, tmpTensorLocal, tilingData->softmaxTilingData, softmaxShapeInfo);
                 if (this->softmaxFlag == 1) {
