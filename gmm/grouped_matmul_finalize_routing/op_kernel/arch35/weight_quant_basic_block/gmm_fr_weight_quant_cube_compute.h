@@ -77,7 +77,6 @@ private:
     __aicore__ inline void FillL1WithZero(const LocalTensor<uint32_t> &l1Buf, uint64_t blockCount);
     __aicore__ inline void ConfigScaleDn2NzParams(uint64_t rowNum, uint64_t scaleKGmSize, uint64_t scaleKL1Stride,
                                                   uint64_t scaleKL1RealSize, Dn2NzParams &dn2NzParams);
-
     using L0DataType = typename AscendC::GetL0DataType<xType, true>::Type;
 
     static constexpr uint64_t L0_BUF_NUM = 2;
