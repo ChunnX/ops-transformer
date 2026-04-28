@@ -13,7 +13,6 @@
  * \brief
  */
 
-
 #include "aclnn_common.h"
 #include <torch_npu/csrc/framework/utils/OpAdapter.h>
 #include <dlfcn.h>
