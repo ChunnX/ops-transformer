@@ -45,11 +45,11 @@ const aclTensor* SparseFlashMlaMetadata(
 
     auto ret = ADD_TO_LAUNCHER_LIST_AICPU(
     SparseFlashMlaMetadata,
-    OP_INPUT(cuSeqLensQOptional, cuSeqLensOriKvOptional, sequsedQOptional, sequsedOriKvOptional),
     OP_ATTR_NAMES({
         "num_heads_q", "num_heads_kv", "head_dim", "batch_size", "max_seqlen_q", "max_seqlen_kv", "ori_topk",
         "ori_mask_mode", "layout_q", "layout_kv", "has_ori_kv", "soc_version", "aic_core_num", "aiv_core_num"
     }),
+    OP_INPUT(cuSeqLensQOptional, cuSeqLensOriKvOptional, sequsedQOptional, sequsedOriKvOptional),
     OP_ATTR(numHeadsQ, numHeadsKv, headDim, batchSizeOptional, maxSeqlenQOptional, maxSeqlenKvOptional, oriTopKOptional,
         oriMaskModeOptional, layoutQOptional, layoutKvOptional, hasOriKvOptional, socVersion, aicCoreNum, aivCoreNum),
     OP_OUTPUT(metaData));

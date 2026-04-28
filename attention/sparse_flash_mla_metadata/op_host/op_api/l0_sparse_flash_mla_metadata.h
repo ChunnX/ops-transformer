@@ -14,14 +14,14 @@
 #include "opdev/op_executor.h"
 
 namespace l0op {
-const aclTensor* SparseFlashMlaMetadata(
+const aclTensor *SparseFlashMlaMetadata(
     const aclTensor *cuSeqLensQOptional, const aclTensor *cuSeqLensOriKvOptional,
     const aclTensor *sequsedQOptional, const aclTensor *sequsedOriKvOptional,
     int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim, int64_t batchSizeOptional, int64_t maxSeqlenQOptional,
     int64_t maxSeqlenKvOptional, int64_t oriTopKOptional, int64_t oriMaskModeOptional,
     char *layoutQOptional, char *layoutKvOptional, bool hasOriKvOptional,
     const char *socVersion, int64_t aicCoreNum, int64_t aivCoreNum,
-    const aclTensor* metaData, aclOpExecutor* executor);
+    const aclTensor *metaData, aclOpExecutor *executor);
 } // namespace l0op
 
 #endif
