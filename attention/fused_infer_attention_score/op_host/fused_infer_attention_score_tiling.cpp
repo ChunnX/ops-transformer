@@ -1543,7 +1543,12 @@ static ge::graphStatus TilingProcess4SplitFuse(gert::TilingContext *context)
             context->SetBlockDim(needCoreNum);
         }
     } else {
-        context->SetBlockDim(fai_tiling.GetCoreNum());
+        auto needCoreNum = faiTilingData.get_needCoreNum();
+        if (needCoreNum == 0) {
+            context->SetBlockDim(fai_tiling.GetCoreNum());
+        } else {
+            context->SetBlockDim(needCoreNum);
+        }
     }
     context->SetTilingKey(fai_tiling.GetTilingKey());
     return ge::GRAPH_SUCCESS;
