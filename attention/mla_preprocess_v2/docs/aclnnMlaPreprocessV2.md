@@ -206,7 +206,7 @@ aclnnStatus aclnnMlaPreprocessV2(
       <td>-</td>
       <td>INT8、FLOAT16、BFLOAT16</td>
       <td>NZ</td>
-      <td>[2112,hiddenSize]</td>
+      <td>[qLoraDim + keyTotalDim,hiddenSize]</td>
       <td>-</td>
     </tr>
     <tr>
@@ -216,7 +216,7 @@ aclnnStatus aclnnMlaPreprocessV2(
       <td>input输入dtype为FLOAT16支持INT64，输入BFLOAT16时支持FLOAT。</td>
       <td>INT32、FLOAT</td>
       <td>ND</td>
-      <td>[2112]</td>
+      <td>[qLoraDim + keyTotalDim]</td>
       <td>-</td>
     </tr>
     <tr>
@@ -226,7 +226,7 @@ aclnnStatus aclnnMlaPreprocessV2(
       <td>支持传入空tensor，quantMode为1、3时不传入。</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>[2112]</td>
+      <td>[qLoraDim + keyTotalDim]</td>
       <td>-</td>
     </tr>
     <tr>
@@ -236,7 +236,7 @@ aclnnStatus aclnnMlaPreprocessV2(
       <td>数据类型需要与input满足数据类型推导规则（参见<a href="../../../docs/zh/context/互推导关系.md">互推导关系</a>和<a href="#约束说明">约束说明</a>）。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
-      <td>[1536]</td>
+      <td>[qLoraDim]</td>
       <td>-</td>
     </tr>
     <tr>
@@ -246,7 +246,7 @@ aclnnStatus aclnnMlaPreprocessV2(
       <td>数据类型需要与input满足数据类型推导规则（参见<a href="../../../docs/zh/context/互推导关系.md">互推导关系</a>和<a href="#约束说明">约束说明</a>）。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
-      <td>[1536]</td>
+      <td>[qLoraDim]</td>
       <td>-</td>
     </tr>
     <tr>
@@ -276,7 +276,7 @@ aclnnStatus aclnnMlaPreprocessV2(
       <td>-</td>
       <td>INT8、FLOAT16、BFLOAT16</td>
       <td>NZ</td>
-      <td>[headNum * 192,1536]</td>
+      <td>[headNum * (qNoRopeDim + qRopeDim),qLoraDim]</td>
       <td>-</td>
     </tr>
     <tr>
@@ -286,7 +286,7 @@ aclnnStatus aclnnMlaPreprocessV2(
       <td>input输入dtype为FLOAT16支持INT64，输入BFLOAT16时支持FLOAT。</td>
       <td>INT64、FLOAT</td>
       <td>ND</td>
-      <td>[headNum*192]</td>
+      <td>[headNum * (qNoRopeDim + qRopeDim)]</td>
       <td>-</td>
     </tr>
     <tr>
@@ -296,7 +296,7 @@ aclnnStatus aclnnMlaPreprocessV2(
       <td>quantMode为1、3时不传入。</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>[headNum*192]</td>
+      <td>[headNum * (qNoRopeDim + qRopeDim)]</td>
       <td>-</td>
     </tr>
     <tr>
@@ -332,14 +332,11 @@ aclnnStatus aclnnMlaPreprocessV2(
     <tr>
       <td>wuk</td>
       <td>输入</td>
-      <td>表示计算Key的上采样权重</td>
-      <td><ul>
-      <li>ND格式时的shape为[headNum,128,512]。</li>
-      <li>NZ格式时的shape为[headNum,32,128,16]。</li></ul>
-      </td>
+      <td>表示计算Key的上采样权重。</td>
+      <td>-</td>
       <td>FLOAT16、BFLOAT16</td>
-      <td>ND、NZ</td>
-      <td>[headNum * 192, 1536]</td>
+      <td>ND</td>
+      <td>[headNum,qNoRopeDim,512]</td>
       <td>-</td>
     </tr>
     <tr>
@@ -731,10 +728,14 @@ aclnnStatus aclnnMlaPreprocessV2(
   - aclnnMlaPreprocessV2默认确定性实现。
 - shape格式字段含义及约束
     - tokenNum：tokenNum 表示输入样本批量大小，取值范围：0~256
-    - hiddenSize：hiddenSize 表示隐藏层的大小，取值固定为：2048-10240，为256的倍数
-    - headNum：表示多头数，取值范围：16、32、64、128
+    - hiddenSize：hiddenSize 表示隐藏层的大小，取值固定为：2048~10240，为256的倍数
+    - headNum：表示多头数，取值范围：1~128
     - blockNum：PagedAttention场景下的块数，取值范围：192
     - blockSize：PagedAttention场景下的块大小，取值范围：128
+    - qloraDim：表示Q矩阵的LoRA输入维度，取值范围：32~4096，为32的倍数
+    - keyTotalDim：表示Key部分的总维度，取值固定为：576（512主维度+64 rope维度）
+    - qRopeDim：表示Q矩阵中旋转编码部分的维度，取值固定为：64
+    - qNoRopeDim：表示Q矩阵中无旋转编码部分的维度，取值范围：16~256，为16的倍数
     - 当wdqkv和wuq的数据类型为bfloat16时，输入input也需要为bfloat16，且hiddenSize只支持6144，cacheMode只支持0和1
 
 ## 调用示例
@@ -742,6 +743,21 @@ aclnnStatus aclnnMlaPreprocessV2(
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 ```Cpp
+/**
+ * This program is free software, you can redistribute it and/or modify.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.|Hisilicon Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/*!
+ * \file test_aclnn_mla_preprocess_v2.cpp
+ * \brief
+ */
+
 #include <iostream>
 #include <vector>
 #include <sys/stat.h>
