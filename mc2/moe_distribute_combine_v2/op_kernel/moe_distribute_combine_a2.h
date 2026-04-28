@@ -58,6 +58,8 @@ constexpr uint32_t A2_RANK_NUM_PER_SERVER = 8;       // A2单节点Rank数量
 constexpr uint32_t MAX_NUM_EXPERTS_PER_TILE = 16384; // 统计从各专家发回的token数量时，每轮最多处理的专家索引的数量，超过该数量时需要分多轮统计
 constexpr uint32_t MAX_ROUTED_TOKENS_PER_TILE = 512; // WindowCopy时每轮最多处理的bs * topk的数量，超过该数量时需要分多轮进行WindowCopy
 
+using namespace AscendC;
+
 template <typename T>
 inline __aicore__ T RoundUp(const T val, const T align)
 {
@@ -117,7 +119,6 @@ __aicore__ inline void CopyUb2Gm(const GlobalTensor<T> &dstTensor, const LocalTe
 
 #define TemplateMC2TypeA2Class typename ExpandXType, typename ExpandIdxType
 #define TemplateMC2TypeA2Func ExpandXType, ExpandIdxType
-using namespace AscendC;
 template <TemplateMC2TypeA2Class>
 class MoeDistributeCombineA2 {
 public:
@@ -170,6 +171,7 @@ private:
     LocalTensor<uint32_t> recvCountLocal_;
     LocalTensor<uint32_t> expertWindowOffsetLocal_;
     LocalTensor<float> topkSumFloatLocal_;
+    LocalTensor<ExpandXType> topkSumLocal_;      
     LocalTensor<float> tokenFloatLocal_;
     LocalTensor<ExpandIdxType> expertIdsLocal_;
     LocalTensor<float> topkWeightsLocal_;
@@ -592,7 +594,7 @@ __aicore__ inline void MoeDistributeCombineA2<TemplateMC2TypeA2Func>::AllocTenso
     uint32_t topkSumFloatLocalAddr = tokenFloatLocalAddr + axisH_ * sizeof(float);
     topkSumFloatLocal_ = LocalTensor<float>{TPosition::LCM, topkSumFloatLocalAddr, axisH_};
     uint32_t topkSumLocalAddr = topkSumFloatLocalAddr + axisH_ * sizeof(float);
-    auto topkSumLocal = LocalTensor<ExpandXType>{TPosition::LCM, topkSumLocalAddr, axisH_};
+    topkSumLocal_ = LocalTensor<ExpandXType>{TPosition::LCM, topkSumLocalAddr, axisH_};
     uint32_t expertWindowOffsetLocalAddr = topkSumLocalAddr + axisH_ * sizeof(float);
     uint32_t moeExpertNumAlign = RoundUp(moeExpertNum_, B32_PER_BLOCK);
     expertWindowOffsetLocal_ = LocalTensor<uint32_t>{TPosition::LCM, expertWindowOffsetLocalAddr, moeExpertNumAlign};
@@ -651,10 +653,10 @@ __aicore__ inline void MoeDistributeCombineA2<TemplateMC2TypeA2Func>::LocalWindo
             PipeBarrier<PIPE_V>();
             SetFlag<HardEvent::MTE3_V>(EVENT_ID0);
             WaitFlag<HardEvent::MTE3_V>(EVENT_ID0);
-            Cast(topkSumLocal, topkSumFloatLocal_, AscendC::RoundMode::CAST_RINT, axisH_);
+            Cast(topkSumLocal_, topkSumFloatLocal_, AscendC::RoundMode::CAST_RINT, axisH_);
             SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
             WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
-            DataCopy(expandOutGlobal_[tokenIdx * axisH_], topkSumLocal, axisH_);
+            DataCopy(expandOutGlobal_[tokenIdx * axisH_], topkSumLocal_, axisH_);
         }
         WaitFlag<HardEvent::V_MTE2>(EVENT_ID0);
         WaitFlag<HardEvent::V_MTE2>(EVENT_ID1);
