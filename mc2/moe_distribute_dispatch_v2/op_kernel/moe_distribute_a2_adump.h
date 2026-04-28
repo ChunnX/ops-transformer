@@ -136,7 +136,7 @@ public:
         AscendC::Duplicate<uint32_t>(dataStateLocalTensor_, 0U, dataStateLocalTensor_.GetSize());
         SyncFunc<AscendC::HardEvent::V_MTE3>();
         uint32_t num = 0U;
-        uint32_t blockNum = 1U;
+        uint16_t blockNum = 1U;
         if (isLayered) {
             num = HIERARCHY_INNER_RECV_POS - HIERARCHY_INTER_NODE_SEND_POS + 1U;
         } else {
@@ -146,7 +146,7 @@ public:
         if (blockNum > 1U) {
             num = blockNum * dataStateLocalTensor_.GetSize();
         }
-        auto dataStateParams = DataCopyExtParams{blockNum, num * sizeof(uint32_t), 0U, 0U, 0U};
+        auto dataStateParams = DataCopyExtParams{blockNum, static_cast<uint32_t>(num * sizeof(uint32_t)), 0U, 0U, 0U};
         DataCopyPad(selfDataStatusGMTensor_[AIVNUM_POS + 1U], dataStateLocalTensor_, dataStateParams);
     }
 

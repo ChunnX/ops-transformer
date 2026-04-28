@@ -29,6 +29,7 @@
 #include "version/runtime_version.h"
 #include "version/metadef_version.h"
 #include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_dispatch_tiling.h"
+#include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_a2_constant.h"
 #include "./mc2_hcom_topo_info.h"
 
 #define EXCEPTION_DUMP_SUPPORT_VERSION 90000000
@@ -205,7 +206,7 @@ inline int ProcessArgs910B(void* devArgsPtr, std::vector<uint8_t> &winBuf, uint3
     void *buffer;
     Mc2Hcom::MC2HcomTopology::CommGetHcclBufferByGroup(test->groupName, &buffer, &size);
     OP_LOGE(OP_NAME, "MoeDistributeDispatchA2TilingData. size=%lu. buffer=%p", size, buffer);
-    buffer -= 0x1800000;
+    buffer += size / 2 - Mc2A2Kernel::BUFFER_ADUMP_WIN_SIZE * 2U;
     ret = aclrtMemcpy(winBuf.data(), WIN_SIZE, (const void *)buffer, WIN_SIZE, ACL_MEMCPY_DEVICE_TO_HOST);
     if (!(ret == ACL_SUCCESS)) {
         OP_LOGE(OP_NAME, "aclrtMemcpy win from device to host failed. ret = %d", ret);

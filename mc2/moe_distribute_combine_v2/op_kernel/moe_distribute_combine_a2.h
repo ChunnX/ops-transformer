@@ -29,8 +29,14 @@
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #endif
-#include "moe_distribute_a2_adump.h"
-#include "moe_distribute_a2_constant.h"
+
+#if __has_include("../moe_distribute_dispatch_v2/moe_distribute_a2_adump.h")
+#include "../moe_distribute_dispatch_v2/moe_distribute_a2_adump.h"
+#include "../moe_distribute_dispatch_v2/moe_distribute_a2_constant.h"
+#else
+#include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_a2_adump.h"
+#include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_a2_constant.h"
+#endif
 
 namespace MoeDistributeCombineA2Impl {
 constexpr uint8_t BUFFER_NUM = 2;                       // 多buf
@@ -304,7 +310,7 @@ __aicore__ inline void MoeDistributeCombineA2<TemplateMC2TypeA2Func>::Init(GM_AD
     SplitCoreCal();
     LocalTensor<uint8_t> aDumpTensor = aDumpBuf_.Get<uint8_t>();
     GM_ADDR aDumpAddr = hccl_.GetWindowsInAddr(rankId_) + halfWinSize_ - Mc2A2Kernel::BUFFER_ADUMP_WIN_SIZE * 1UL;
-    aDump_.InitWinState(aDumpAddr, coreIdx_, rankId_, worldSize_, rankId_, moeExpertNum_, worldSize_,
+    aDump_.Init(aDumpAddr, coreIdx_, rankId_, worldSize_, rankId_, moeExpertNum_, worldSize_,
         tilingData->moeDistributeCombineInfo.globalBs, bufferId_,
         Mc2A2Kernel::IS_FULLMESH, aivNum_, aDumpTensor);
 }

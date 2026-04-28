@@ -31,7 +31,7 @@ constexpr uint32_t ISLAYERED_POS = 11U;
 constexpr uint32_t AIVNUM_POS = 12U;
 constexpr uint64_t WIN_ADDR_ALIGN = 512UL;
 constexpr uint32_t UB_ALIGN = 32U;
-constexpr static uint32_t BITS32_PER_BLOCK = UB_ALIGN / sizeof(int32_t); // 8
+constexpr uint32_t BITS32_PER_BLOCK = UB_ALIGN / sizeof(int32_t); // 8
 
 constexpr uint32_t RUNPOS_INIT = 1U;
 constexpr uint32_t RUNPOS_END = 2U;
@@ -55,7 +55,7 @@ constexpr uint32_t RUNPOS_FULLMESH_COMBINE_FINISH = 5U;
 
 // A2 Hierarchy
 // Dispatch
-constexpr uint32_t RUNPOS_HIERARCHY_DISPATCH_INTER_BEFORE = 3U;
+constexpr uint32_t RUNPOS_HIERARCHY_DISPATCH_REORDERTOKEN = 3U;
 constexpr uint32_t RUNPOS_HIERARCHY_DISPATCH_INTER_FINISH = 4U;
 constexpr uint32_t RUNPOS_HIERARCHY_DISPATCH_INTRA_FINISH = 5U;
 constexpr uint32_t RUNPOS_HIERARCHY_DISPATCH_IPC2OUT = 6U;
