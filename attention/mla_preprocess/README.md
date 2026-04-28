@@ -109,43 +109,43 @@
   <tr>
     <td>wdqkv</td>
     <td>输入</td>
-    <td>Device侧的aclTensor，与输入首次做矩阵乘的降维矩阵，shape为[2112,hiddenSize]</td>
+    <td>Device侧的aclTensor，与输入首次做矩阵乘的降维矩阵，shape为[qLoraDim + keyTotalDim,hiddenSize]</td>
     <td>INT8, BFLOAT16</td>
     <td>ND</td>
   </tr>
   <tr>
     <td>deScale0</td>
     <td>输入</td>
-    <td>Device侧的aclTensor，输入首次做矩阵乘的降维矩阵中的系数，shape为[2112]。input输入dtype为FLOAT16支持INT64，输入BFLOAT16时支持FLOAT</td>
+    <td>Device侧的aclTensor，输入首次做矩阵乘的降维矩阵中的系数，shape为[qLoraDim + keyTotalDim]。input输入dtype为FLOAT16支持INT64，输入BFLOAT16时支持FLOAT</td>
     <td>INT64, FLOAT</td>
     <td>ND</td>
   </tr>
   <tr>
     <td>bias0</td>
     <td>输入</td>
-    <td>Device侧的aclTensor，输入首次做矩阵乘的降维矩阵中的系数，shape为[2112]。支持传入空tensor，quantMode为1、3时不传入</td>
+    <td>Device侧的aclTensor，输入首次做矩阵乘的降维矩阵中的系数，shape为[qLoraDim + keyTotalDim]。支持传入空tensor，quantMode为1、3时不传入</td>
     <td>INT32</td>
     <td>ND</td>
   </tr>
   <tr>
     <td>gamma1</td>
     <td>输入</td>
-    <td>Device侧的aclTensor，第二次RmsNorm计算中的γ参数，shape为[1536]</td>
+    <td>Device侧的aclTensor，第二次RmsNorm计算中的γ参数，shape为[qLoraDim]</td>
     <td>FLOAT16, BFLOAT16</td>
     <td>ND</td>
   </tr>
   <tr>
     <td>beta1</td>
     <td>输入</td>
-    <td>Device侧的aclTensor，第二次RmsNorm计算中的β参数，shape为[1536]</td>
+    <td>Device侧的aclTensor，第二次RmsNorm计算中的β参数，shape为[qLoraDim]</td>
     <td>FLOAT16, BFLOAT16</td>
     <td>ND</td>
   </tr>
   <tr>
     <td>quantScale1</td>
     <td>输入</td>
-    <td>Device侧的aclTensor，第二次RmsNorm公式中量化缩放的参数，shape为[1536]。仅在quantMode为0时传入</td>
-    <td>FLOAT16，BFLOAT16</td>
+    <td>Device侧的aclTensor，第二次RmsNorm公式中量化缩放的参数，shape为[1]。仅在quantMode为0时传入</td>
+    <td>FLOAT16, BFLOAT16</td>
     <td>ND</td>
   </tr>
   <tr>
@@ -158,21 +158,21 @@
   <tr>
     <td>wuq</td>
     <td>输入</td>
-    <td>Device侧的aclTensor，权重矩阵，shape为[headNum * 192,1536]</td>
+    <td>Device侧的aclTensor，权重矩阵，shape为[headNum * (qNoRopeDim + qRopeDim),qLoraDim]</td>
     <td>INT8, BFLOAT16</td>
     <td>NZ</td>
   </tr>
   <tr>
     <td>deScale1</td>
     <td>输入</td>
-    <td>Device侧的aclTensor，参与wuq矩阵乘的系数，shape为[headNum*192,1536]。input输入dtype为FLOAT16支持INT64，输入BFLOAT16时支持FLOAT</td>
+    <td>Device侧的aclTensor，参与wuq矩阵乘的系数，shape为[headNum * (qNoRopeDim + qRopeDim),qLoraDim]。input输入dtype为FLOAT16支持INT64，输入BFLOAT16时支持FLOAT</td>
     <td>INT64, FLOAT</td>
     <td>ND</td>
   </tr>
   <tr>
     <td>bias1</td>
     <td>输入</td>
-    <td>Device侧的aclTensor，参与wuq矩阵乘的系数，shape为[[headNum*192]]。quantMode为1、3时不传入</td>
+    <td>Device侧的aclTensor，参与wuq矩阵乘的系数，shape为[headNum * (qNoRopeDim + qRopeDim)]。quantMode为1、3时不传入</td>
     <td>INT32</td>
     <td>NZ</td>
   </tr>
@@ -200,9 +200,9 @@
   <tr>
     <td>wuk</td>
     <td>输入</td>
-    <td>Device侧的aclTensor，表示计算Key的上采样权重，shape为[headNum * 192, 1536]。ND格式时的shape为[headNum,128,512]，NZ格式时的shape为[headNum,32,128,16]</td>
-    <td>FLOAT16，BFLOAT16</td>
-    <td>ND, NZ</td>
+    <td>Device侧的aclTensor，表示计算Key的上采样权重，shape为[headNum * (qNoRopeDim + qRopeDim),qLoraDim]。</td>
+    <td>FLOAT16, BFLOAT16</td>
+    <td>ND</td>
   </tr>
   <tr>
     <td>kvCache</td>
@@ -364,8 +364,14 @@
 
 - shape格式字段含义及约束
     - tokenNum：tokenNum 表示输入样本批量大小，取值范围：0~256
-    - hiddenSize：hiddenSize 表示隐藏层的大小，取值固定为：2048-10240，为256的倍数
-    - headNum：表示多头数，取值范围：16、32、64、128
+    - hiddenSize：hiddenSize 表示隐藏层的大小，取值固定为：2048~10240，为256的倍数
+    - headNum：表示多头数，取值范围：1~128
     - blockNum：PagedAttention场景下的块数，取值范围：192
     - blockSize：PagedAttention场景下的块大小，取值范围：128
-    - 当wdqkv和wuq的数据类型为bfloat16时，输入input也需要为bfloat16，且hiddenSize只支持6144
+    - qloraDim：表示Q矩阵的LoRA输入维度，取值范围：32~4096，为32的倍数
+    - keyTotalDim：表示Key部分的总维度，取值固定为：576（512主维度+64 rope维度）
+    - qRopeDim：表示Q矩阵中旋转编码部分的维度，取值固定为：64
+    - qNoRopeDim：表示Q矩阵中无旋转编码部分的维度，取值范围：16~256，为16的倍数
+    - 当wdqkv和wuq的数据类型为bfloat16时，输入input也需要为bfloat16，且hiddenSize只支持6144，cacheMode只支持0和1
+- rope模式约束
+    - mla_preprocess 算子中的 Rotary Embedding（RoPE）操作采用 half 模式，暂不支持 interleave 模式
