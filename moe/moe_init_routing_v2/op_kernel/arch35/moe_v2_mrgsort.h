@@ -145,18 +145,19 @@ __aicore__ inline void MoeV2Mrgsort::MrgsortCompute()
 __aicore__ inline void MoeV2Mrgsort::UpdateSortInfo()
 {
     curLoopSortedNum = 0;
-    for (int64_t i = 0, j = 0; i < listNum; i++) {
+    int64_t localAllRemainElements = allRemainElements;
+    int64_t j = 0;
+    for (int64_t i = 0; i < listNum; i++) {
         if (lengths[i] > 0) {
-            // update remain size
-            listRemainElements[i] -= listSortedNums[j];
-            allRemainElements -= listSortedNums[j];
-            // update offset
-            offsets[i] += GetSortOffset<float>(listSortedNums[j]);
-            // update current loop sorted nums
-            curLoopSortedNum += listSortedNums[j];
+            uint32_t sortedNum = listSortedNums[j];
+            listRemainElements[i] -= sortedNum;
+            localAllRemainElements -= sortedNum;
+            offsets[i] += GetSortOffset<float>(sortedNum);
+            curLoopSortedNum += sortedNum;
             j += 1;
         }
     }
+    allRemainElements = localAllRemainElements;
 }
 
 __aicore__ inline void MoeV2Mrgsort::CopyOut()

@@ -19,6 +19,8 @@
 #include "kernel_operator.h"
 
 constexpr int64_t BUFFER_NUM = 2;
+constexpr int64_t GATHER_BATCH_SIZE = 8;
+constexpr int64_t ALIGN_512B = 64;
 
 namespace MoeInitRoutingV2 {
 using namespace AscendC;
@@ -145,28 +147,37 @@ __aicore__ inline void MoeV2GatherOutSimt<T>::CopyOut(int64_t progress)
         }
         int64_t currentLoopStartRow = initialRow / this->k;
         int64_t currentLoopLastRow = (initialRow + this->currentLoopRows - 1) / this->k;
-        for (int64_t row = currentLoopStartRow; row <= currentLoopLastRow; row++) {
-            LocalTensor<T> inLocal = inputActivationsCopyInQueue.AllocTensor<T>();
-            // input row position
-            inputOffset = row * this->cols + colsLoop * this->perLoopCols;
-            DataCopyExtParams dataCopyParams{1, static_cast<uint32_t>(this->colsTileLength * sizeof(T)), 0, 0, 0};
-            DataCopyPadExtParams<T> dataCopyPadParams{false, 0, 0, 0};
-            DataCopyPad(inLocal, inputXGm[inputOffset], dataCopyParams, dataCopyPadParams);
-            inputActivationsCopyInQueue.EnQue<T>(inLocal);
-            inLocal = inputActivationsCopyInQueue.DeQue<T>();
-            DataCopyExtParams intriParams{1, static_cast<uint32_t>(this->colsTileLength * sizeof(T)), 0, 0, 0};
-            while (curLoopRow < this->currentLoopRows && initialRow / this->k == row) {
-                int32_t outIndex = indicesLocal.GetValue(curLoopRow);
-                curLoopRow++;
-                initialRow++;
-                if (outIndex == -1 || (this->dropPadMode == DROPLESS_MODE && outIndex >= this->activateRows)) {
-                    continue;
-                }
-                outOffset = outIndex * cols + colsLoop * this->perLoopCols;
-                DataCopyPad(expandedXGm[outOffset], inLocal, intriParams);
+        LocalTensor<T> inLocal = inputActivationsCopyInQueue.AllocTensor<T>();
+        DataCopyExtParams intriParams{1, static_cast<uint32_t>(this->colsTileLength * sizeof(T)), 0, 0, 0};
+        int64_t batchCount = 0;
+        int64_t prevRow = -1;
+        for (int64_t rowIdx = 0; rowIdx < this->currentLoopRows; rowIdx++) {
+            int64_t currentRow = (initialRow + rowIdx) / this->k;
+            int32_t outIndex = indicesLocal.GetValue(rowIdx);
+            if (outIndex == -1 || (this->dropPadMode == DROPLESS_MODE && outIndex >= this->activateRows)) {
+                continue;
             }
-            inputActivationsCopyInQueue.FreeTensor(inLocal);
+            if (currentRow != prevRow) {
+                if (prevRow >= currentLoopStartRow && batchCount > 0) {
+                    event_t eventIdV2Mte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
+                    SetFlag<HardEvent::V_MTE3>(eventIdV2Mte3);
+                    WaitFlag<HardEvent::V_MTE3>(eventIdV2Mte3);
+                }
+                inputOffset = currentRow * this->cols + colsLoop * this->perLoopCols;
+                DataCopyExtParams dataCopyParams{1, static_cast<uint32_t>(this->colsTileLength * sizeof(T)), 0, 0, 0};
+                DataCopyPadExtParams<T> dataCopyPadParams{false, 0, 0, 0};
+                DataCopyPad(inLocal, inputXGm[inputOffset], dataCopyParams, dataCopyPadParams);
+                prevRow = currentRow;
+                batchCount = 0;
+            }
+            outOffset = outIndex * cols + colsLoop * this->perLoopCols;
+            DataCopyPad(expandedXGm[outOffset], inLocal, intriParams);
+            batchCount++;
         }
+        if (batchCount > 0) {
+            SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
+        }
+        inputActivationsCopyInQueue.FreeTensor(inLocal);
     }
     expandedRowIdxIndexCopyInQueue.FreeTensor(indicesLocal);
 }
@@ -215,7 +226,8 @@ __aicore__ inline void MoeV2GatherOutSimt<T>::Init(GM_ADDR inputX, GM_ADDR expan
 
     expandedRowIdxIndexGm_.SetGlobalBuffer((__gm__ int32_t *)workspace +
                                                Align(this->totalLength_, sizeof(int32_t)) * 2 + this->expertNum_ +
-                                               this->blockIdx * this->gatherOutTilingData->perCoreRows, 0);
+                                               this->blockIdx * this->gatherOutTilingData->perCoreRows,
+                                           0);
     if (this->gatherOutTilingData->perLoopCols > this->cols) {
         this->perLoopCols = this->cols;
         this->lastLoopCols = this->cols;

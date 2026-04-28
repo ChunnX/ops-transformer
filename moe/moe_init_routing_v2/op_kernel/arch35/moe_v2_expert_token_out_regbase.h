@@ -213,9 +213,13 @@ __aicore__ inline void MoeV2ExpertTokenOutRegBase::Compute(int64_t progress, Loc
 __aicore__ inline void MoeV2ExpertTokenOutRegBase::CopyOutExpertTokens(GlobalTensor<int32_t> &output)
 {
     DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(expertNum * sizeof(int32_t)), 0, 0, 0};
-    SetAtomicAdd<int32_t>();
+    if (this->srcToDstTilingData->needCoreNum > 1) {
+        SetAtomicAdd<int32_t>();
+    }
     DataCopyPad(output[0], this->expertTokenIdxOutLocal, copyParams);
-    SetAtomicNone();
+    if (this->srcToDstTilingData->needCoreNum > 1) {
+        SetAtomicNone();
+    }
 }
 
 __aicore__ inline void MoeV2ExpertTokenOutRegBase::CopyOutTokenGm()

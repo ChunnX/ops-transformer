@@ -243,47 +243,54 @@ __aicore__ inline void MoeV2SortMultiCore<T>::UBSortProcess(int64_t progress, in
 template <typename T>
 __aicore__ inline void MoeV2SortMultiCore<T>::VBSProcess()
 {
-    if (this->blockIdx < this->vbsTilingData->needCoreNum) {
-        int64_t sortNum = Ceil(sortCoreLoopElements, ONE_REPEAT_SORT_NUM) * ONE_REPEAT_SORT_NUM;
-        for (int64_t loop = 0; loop < sortCoreLoops - 1; loop++) {
+    if (this->blockIdx >= this->vbsTilingData->needCoreNum) {
+        return;
+    }
+    int64_t sortNum = Ceil(sortCoreLoopElements, ONE_REPEAT_SORT_NUM) * ONE_REPEAT_SORT_NUM;
+    int64_t loops = sortCoreLoops;
+    if (loops <= 1) {
+        sortNum = Ceil(sortCoreLastLoopElements, ONE_REPEAT_SORT_NUM) * ONE_REPEAT_SORT_NUM;
+        UBSortProcess(0, sortCoreLastLoopElements, sortNum);
+    } else {
+        for (int64_t loop = 0; loop < loops - 1; loop++) {
             UBSortProcess(loop, sortCoreLoopElements, sortNum);
         }
-
         sortNum = Ceil(sortCoreLastLoopElements, ONE_REPEAT_SORT_NUM) * ONE_REPEAT_SORT_NUM;
-        UBSortProcess(sortCoreLoops - 1, sortCoreLastLoopElements, sortNum);
-
+        UBSortProcess(loops - 1, sortCoreLastLoopElements, sortNum);
         if (sortCoreLoops > 1) {
             OneCoreVMSProcess(sortCoreLoops, sortCoreLoopElements, sortCoreLastLoopElements);
         }
     }
-    SyncAll();
+    if (this->vbsTilingData->needCoreNum > 1) {
+        SyncAll();
+    }
 }
 
 template <typename T>
 __aicore__ inline void MoeV2SortMultiCore<T>::VMSProcess()
 {
     int64_t currentStageNeedCoreNum = this->vmsTilingData->needCoreNum;
+    if (currentStageNeedCoreNum == 0) {
+        return;
+    }
     perListElements = this->vbsTilingData->perCoreElements;
     lastListElements = this->vbsTilingData->lastCoreElements;
     listNum = this->vbsTilingData->needCoreNum;
+    bool needSync = (listNum > MAX_MRGSORT_LIST);
 
     for (; listNum > MAX_MRGSORT_LIST;) {
         currentStageNeedCoreNum = Ceil(listNum, MAX_MRGSORT_LIST);
         int64_t coreOffset = GetSortLen<float>(perListElements * MAX_MRGSORT_LIST);
         int64_t remainListNum = listNum - (currentStageNeedCoreNum - 1) * MAX_MRGSORT_LIST;
 
-        if (this->blockIdx < currentStageNeedCoreNum - 1) {
+        bool isValidCore = (this->blockIdx < currentStageNeedCoreNum);
+        if (isValidCore) {
             mrgsortParam.perListElements = perListElements;
-            mrgsortParam.lastListElements = perListElements;
+            mrgsortParam.lastListElements =
+                (this->blockIdx == currentStageNeedCoreNum - 1) ? lastListElements : perListElements;
             mrgsortParam.oneLoopMaxElements = this->sortOutTilingData->oneLoopMaxElements;
-            InitMoeMrgSort(&mrgsorter, MAX_MRGSORT_LIST, coreOffset, 0);
-            mrgsorter.Init(&mrgsortParam);
-            mrgsorter.Process();
-        } else if (this->blockIdx == currentStageNeedCoreNum - 1) {
-            mrgsortParam.perListElements = perListElements;
-            mrgsortParam.lastListElements = lastListElements;
-            mrgsortParam.oneLoopMaxElements = this->sortOutTilingData->oneLoopMaxElements;
-            InitMoeMrgSort(&mrgsorter, remainListNum, coreOffset, 0);
+            int64_t actualListNum = (this->blockIdx == currentStageNeedCoreNum - 1) ? remainListNum : MAX_MRGSORT_LIST;
+            InitMoeMrgSort(&mrgsorter, actualListNum, coreOffset, 0);
             mrgsorter.Init(&mrgsortParam);
             mrgsorter.Process();
         }
@@ -293,7 +300,9 @@ __aicore__ inline void MoeV2SortMultiCore<T>::VMSProcess()
 
         lastListElements = perListElements * (remainListNum - 1) + lastListElements;
         perListElements = perListElements * MAX_MRGSORT_LIST;
-        SyncAll();
+        if (needSync && isValidCore) {
+            SyncAll();
+        }
     }
 }
 
@@ -310,7 +319,9 @@ __aicore__ inline void MoeV2SortMultiCore<T>::SortOutProcess()
         sorter.Init(&mrgsortParam, pipe);
         sorter.Process();
     }
-    SyncAll();
+    if (this->coreNum > 1) {
+        SyncAll();
+    }
 }
 
 template <typename T>
