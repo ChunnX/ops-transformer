@@ -32,7 +32,7 @@
 
     其中，gsK代表K轴的量化的block size即32，$x1Slice_i$代表$x1_i$第m行长度为gsK的向量，$x2Slice_i$代表$x2_i$第n列长度为gsK的向量，K轴均从$j*gsK$起始切片，j的取值范围[0, kLoops), kLoops=ceil($K_i$ / gsK)，支持最后的切片长度不足gsK。
     - **T-C量化：**
-
+    
     $$
      y_i=(x1_i\times x2_i) * scale2_i * scale1_i + y_i
     $$
@@ -43,23 +43,23 @@
 
 ```cpp
 aclnnStatus aclnnQuantGroupedMatmulInplaceAddGetWorkspaceSize(
-    const aclTensor *x1,
-    const aclTensor *x2,
-    const aclTensor *scale1Optional,
-    const aclTensor *scale2,
-    const aclTensor *groupList,
-    aclTensor       *yRef,
-    int64_t          groupListType,
-    int64_t          groupSize,
-    uint64_t        *workspaceSize,
+    const aclTensor *x1, 
+    const aclTensor *x2, 
+    const aclTensor *scale1Optional, 
+    const aclTensor *scale2, 
+    const aclTensor *groupList, 
+    aclTensor       *yRef, 
+    int64_t          groupListType, 
+    int64_t          groupSize, 
+    uint64_t        *workspaceSize, 
     aclOpExecutor   **executor)
 ```
 
 ```cpp
 aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
-    void          *workspace,
-    uint64_t       workspaceSize,
-    aclOpExecutor *executor,
+    void          *workspace, 
+    uint64_t       workspaceSize, 
+    aclOpExecutor *executor, 
     aclrtStream    stream)
 ```
 
@@ -275,7 +275,7 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAdd(
         |HIFLOAT8  |HIFLOAT8| FLOAT32    | FLOAT32   | FLOAT32 |
 
       - scale1Optional/scale2要满足以下约束（其中g为matmul组数即分组数）：
-
+      
         | 参数 | shape限制 |
         |:---------:| :------ |
         |scale1Optional| 2维tensor或1维tensor，shape为(g, 1)或(g,)|

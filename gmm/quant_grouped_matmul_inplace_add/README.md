@@ -31,7 +31,7 @@
 
     其中，gsK代表K轴的量化的block size即32，$x1Slice_i$代表$x1_i$第m行长度为gsK的向量，$x2Slice_i$代表$x2_i$第n列长度为gsK的向量，K轴均从$j*gsK$起始切片，j的取值范围[0, kLoops), kLoops=ceil($K_i$ / gsK)，支持最后的切片长度不足gsK。
     - **T-C量化：**
-
+    
     $$
      y_i=(x1_i\times x2_i) * scale2_i * scale1_i + y_i
     $$
