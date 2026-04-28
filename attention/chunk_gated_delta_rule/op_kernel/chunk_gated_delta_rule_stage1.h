@@ -475,7 +475,7 @@ private:
         Mul(gammaUbFloat, gammaUbFloat, maskLocal, ccOffset_);
         PipeBarrier<PIPE_V>();
         // exp
-        Exp<float, 0, true>(gammaUbFloat, gammaUbFloat, chunkSize_);
+        Exp<float, 0, true>(gammaUbFloat, gammaUbFloat, ccOffset_);
         PipeBarrier<PIPE_V>();
         // mask  2
         Mul(gammaUbFloat, gammaUbFloat, maskLocal, ccOffset_);
