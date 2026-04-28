@@ -28,14 +28,14 @@
 #include "all_gather_matmul_aiv_mode_padding.h"
 #include "all_gather_matmul_aiv_mode_dequant.h"
 
-#include "catlass/catlass.hpp"
-#include "catlass/arch/arch.hpp"
-#include "catlass/layout/layout.hpp"
-#include "catlass/gemm/block/block_mmad.hpp"
-#include "catlass/gemm/block/block_swizzle.hpp"
-#include "catlass/gemm/dispatch_policy.hpp"
-#include "catlass/gemm/gemm_type.hpp"
-#include "catlass/gemm_coord.hpp"
+#include "../../../3rdparty/catlass/include/catlass/catlass.hpp"
+#include "../../../3rdparty/catlass/include/catlass/arch/arch.hpp"
+#include "../../../3rdparty/catlass/include/catlass/layout/layout.hpp"
+#include "../../../3rdparty/catlass/include/catlass/gemm/block/block_mmad.hpp"
+#include "../../../3rdparty/catlass/include/catlass/gemm/block/block_swizzle.hpp"
+#include "../../../3rdparty/catlass/include/catlass/gemm/dispatch_policy.hpp"
+#include "../../../3rdparty/catlass/include/catlass/gemm/gemm_type.hpp"
+#include "../../../3rdparty/catlass/include/catlass/gemm_coord.hpp"
 
 #include "gather_matmul.hpp"
 

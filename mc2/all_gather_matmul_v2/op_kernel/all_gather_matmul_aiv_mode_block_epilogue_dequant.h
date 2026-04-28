@@ -16,15 +16,15 @@
 #ifndef ALL_GATHER_MATMUL_AIV_MODE_BLOCK_EPILOGUE_DEQUANT_H
 #define ALL_GATHER_MATMUL_AIV_MODE_BLOCK_EPILOGUE_DEQUANT_H
 
-#include "catlass/catlass.hpp"
-#include "catlass/arch/resource.hpp"
-#include "catlass/epilogue/dispatch_policy.hpp"
-#include "catlass/gemm_coord.hpp"
-#include "catlass/gemm/gemm_type.hpp"
-#include "catlass/matrix_coord.hpp"
-#include "catlass/layout/layout.hpp"
-#include "catlass/detail/callback.hpp"
-#include "catlass/epilogue/tile/copy_gm_to_ub.hpp"
+#include "../../../3rdparty/catlass/include/catlass/catlass.hpp"
+#include "../../../3rdparty/catlass/include/catlass/arch/resource.hpp"
+#include "../../../3rdparty/catlass/include/catlass/epilogue/dispatch_policy.hpp"
+#include "../../../3rdparty/catlass/include/catlass/gemm_coord.hpp"
+#include "../../../3rdparty/catlass/include/catlass/gemm/gemm_type.hpp"
+#include "../../../3rdparty/catlass/include/catlass/matrix_coord.hpp"
+#include "../../../3rdparty/catlass/include/catlass/layout/layout.hpp"
+#include "../../../3rdparty/catlass/include/catlass/detail/callback.hpp"
+#include "../../../3rdparty/catlass/include/catlass/epilogue/tile/copy_gm_to_ub.hpp"
 
 namespace Catlass::Epilogue::Block {
 

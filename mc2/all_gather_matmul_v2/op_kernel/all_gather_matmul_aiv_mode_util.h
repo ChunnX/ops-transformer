@@ -17,7 +17,7 @@
 #define __ALL_GATHER_MATMUL_AIV_MODE_UTIL_H__
 
 #pragma once
-#include "catlass/numeric_size.hpp"
+#include "../../../3rdparty/catlass/include/catlass/numeric_size.hpp"
 
 using namespace AscendC;
 
