@@ -282,7 +282,7 @@ ge::graphStatus MoeReRoutingTilingBase::GetShapeAttrsInfo()
             auto scaleDim2 = std::get<2>(scaleShapeTuple3D);
             OP_CHECK_IF(scaleSum0 != tokenSum_,
                 OP_LOGE(context_->GetNodeName(),
-                    "scale tokenSum: %ld should equal to tokenSum: %ld.", scaleSum, tokenSum_),
+                    "scale tokenSum: %ld should equal to tokenSum: %ld.", scaleSum0, tokenSum_),
                 return ge::GRAPH_FAILED);
             OP_CHECK_IF(scaleDim2 != 2,
                 OP_LOGE(context_->GetNodeName(),
