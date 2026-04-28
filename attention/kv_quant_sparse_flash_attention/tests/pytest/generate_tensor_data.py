@@ -96,8 +96,12 @@ def gen_nonbound_tensor_data(params, data_shape, range_input, torch_dtype, tenso
                 dtype_min = torch.iinfo(torch_dtype).min
                 dtype_max = torch.iinfo(torch_dtype).max
                 input_data = torch.randint(dtype_min, dtype_max + 1, data_shape, dtype=torch_dtype)
+            elif torch_dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
+                # float8 类型: 先用 float32 生成，再转换
+                input_data = torch.rand(data_shape, dtype=torch.float32)
+                input_data = input_data.to(torch_dtype)
             else:
-                input_data = torch.rand(data_shape, dtype=torch_dtype)
+                input_data = torch.rand(data_shape, dtype=torch.float32).to(torch_dtype)
             
             if data_shape == []:
                 return gen_uniform_data(data_shape, -1, 1, torch_dtype, hash_seed)
@@ -152,5 +156,8 @@ def gen_uniform_data(data_shape, min_value, max_value, torch_dtype, hash_seed):
         return torch.rand(data_shape, dtype=torch_dtype) * (max_value - min_value) + min_value
     elif torch_dtype in (torch.int8, torch.int32, torch.uint8):
         return torch.randint(int(min_value), int(max_value) + 1, data_shape, dtype=torch_dtype)
+    elif torch_dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
+        # float8 类型: 先用 float32 生成，再转换
+        return (torch.rand(data_shape, dtype=torch.float32) * (max_value - min_value) + min_value).to(torch_dtype)
     
-    return torch.rand(data_shape, dtype=torch_dtype) * (max_value - min_value) + min_value
+    return (torch.rand(data_shape, dtype=torch.float32) * (max_value - min_value) + min_value).to(torch_dtype)
