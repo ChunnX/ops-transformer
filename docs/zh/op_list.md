@@ -49,6 +49,16 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/block_sparse_attention/README.md">block_sparse_attention</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>训练场景下计算注意力的反向输出，即BlockSparseAttention的反向计算。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/block_sparse_attention_grad/README.md">block_sparse_attention_grad</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -336,6 +346,16 @@
     <td>✓</td>
     <td>AI Core</td>
     <td>针对大序列长度推理场景的高效注意力计算模块。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/swin_attention_score_quant/docs/aclnnSwinAttentionScoreQuant.md">swin_attention_score_quant</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>完成swin-transformer场景的Attention计算。</td>
   </tr>
   <tr>
     <td>ffn</td>
