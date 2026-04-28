@@ -478,6 +478,8 @@ function(add_ops_src_copy)
             list(APPEND SYNC_COMMANDS
                 COMMAND ${CMAKE_COMMAND} -E copy_directory "${SRC_COPY_SRC}/op_kernel" "${SRC_COPY_DST}"
                 COMMAND ${CMAKE_COMMAND} -E remove_directory "${SRC_COPY_DST}/op_kernel"
+                COMMAND ${CMAKE_COMMAND} -E make_directory "${SRC_COPY_DST}/3rdparty"
+                COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/3rdparty/catlass" "${SRC_COPY_DST}/3rdparty/catlass"
             )
         endif()
         list(APPEND SYNC_COMMANDS COMMAND ${CMAKE_COMMAND} -E touch ${_BUILD_FLAG})
