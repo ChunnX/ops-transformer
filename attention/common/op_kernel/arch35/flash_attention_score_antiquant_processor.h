@@ -353,7 +353,8 @@ __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQU
     copyInParams.srcStride = 0;
     LocalTensor<ANTIQ_PARAMS_T> antiqScaleTmpUb = antiqScaleInputQue.template AllocTensor<ANTIQ_PARAMS_T>();
     if (taskParam.isPageAttentionAntiquant) {
-        CopyAntiquantParamsPageAttention(antiqScaleTmpUb, antiqScaleGm, blockTableGm, taskParam, copyInParams, copyInPadParams);
+        CopyAntiquantParamsPageAttention(
+            antiqScaleTmpUb, antiqScaleGm, blockTableGm, taskParam, copyInParams, copyInPadParams);
     } else {
         DataCopyPad(antiqScaleTmpUb, antiqScaleGm[scaleOffset], copyInParams, copyInPadParams);
     }
@@ -369,7 +370,8 @@ __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQU
     if (taskParam.isExistOffset) {
         LocalTensor<ANTIQ_PARAMS_T> antiqOffsetTmpUb = antiqOffsetInputQue.template AllocTensor<ANTIQ_PARAMS_T>();
         if (taskParam.isPageAttentionAntiquant) {
-            CopyAntiquantParamsPageAttention(antiqOffsetTmpUb, antiqOffsetGm, blockTableGm, taskParam, copyInParams, copyInPadParams);
+            CopyAntiquantParamsPageAttention(
+                antiqOffsetTmpUb, antiqOffsetGm, blockTableGm, taskParam, copyInParams, copyInPadParams);
         } else {
             DataCopyPad(antiqOffsetTmpUb, antiqOffsetGm[scaleOffset], copyInParams, copyInPadParams);
         }
