@@ -87,7 +87,8 @@ static ge::fusion::PatternUniqPtr MakePatternForTranspose(bool hasBias)
     auto graphBuilder = ge::es::EsGraphBuilder(patternName.c_str());
     auto [x1, x2, bias, x1Scale, x2Scale] = graphBuilder.CreateInputs<5>();
     
-    auto transpose = TransposeDL(x2, ge::es::EsTensorLike(std::vector<int64_t>{1, 0}));
+    // auto transpose = TransposeDL(x2, ge::es::EsTensorLike(std::vector<int64_t>{1, 0}));
+    auto transpose = ge::es::Transpose(x2, ge::es::EsTensorLike(std::vector<int64_t>{1, 0}));
     // 必选attr 设置默认值
     std::string group = std::string("");
     int64_t worldSize = 0;
