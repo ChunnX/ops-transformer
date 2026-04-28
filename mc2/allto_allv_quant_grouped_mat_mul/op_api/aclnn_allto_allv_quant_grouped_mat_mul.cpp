@@ -315,18 +315,23 @@ bool IsTransposeTwoDims(const aclTensor *tensor, int64_t firstDimIndex, int64_t 
     if (shape[dim1] == 1 && shape[dim2] == 1) {
         return false;
     }
-    std::vector<int64_t> swapped_shape = shape;
-    std::swap(swapped_shape[dim1], swapped_shape[dim2]);
-    std::vector<int64_t> swapped_strides = strides;
-    std::swap(swapped_strides[dim1], swapped_strides[dim2]);
-    int64_t expected_stride = 1;
+    if (strides[dimNum - 1] != 1) {
+        return false;
+    }
+    int64_t expected = 1;
     for (int64_t i = dimNum - 1; i >= 0; --i) {
-        if (swapped_strides[i] != expected_stride) {
+        if (i == dim1 && strides[i] == shape[dim2]) {
+            return true;
+        }
+        if (i == dim2 && strides[i] == shape[dim1]) {
+            return true;
+        }
+        if (strides[i] != expected) {
             return false;
         }
-        expected_stride *= swapped_shape[i];
+        expected *= shape[i];
     }
-    return true;
+    return false;
 }
 
 static aclnnStatus CheckWeightScaleTransposeConsistency(const aclTensor *gmmWeight,
