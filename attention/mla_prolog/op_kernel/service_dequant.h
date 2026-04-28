@@ -125,6 +125,65 @@ __aicore__ inline void CastPerTokenQc(const GlobalTensor<O> &outputGm,
     }
 }
 
+template <typename T, typename C, typename O>
+__aicore__ inline void DequantPerTokenQcLocal(const GlobalTensor<O> &outputGm,
+                                              const LocalTensor<T> &inputLocalSrc,
+                                              const GlobalTensor<C> &deqScaleQcQrWGm,
+                                              const LocalTensor<float> deQuantScaleQcQrLocal,
+                                              const LocalTensor<uint8_t> &shareTmpUb,
+                                              Rectangle dequantRowColStrideParams,
+                                              uint32_t oriRow,
+                                              uint32_t srcStride,
+                                              uint32_t dstStride,
+                                              uint32_t scaleOffset)
+{
+    uint32_t col = dequantRowColStrideParams.col;
+    LocalTensor<C> scaleLocal = shareTmpUb.ReinterpretCast<C>();
+    LocalTensor<C> computeLocal = scaleLocal[col + 16].template ReinterpretCast<C>();
+    LocalTensor<O> outputLocal = computeLocal[col + 16].template ReinterpretCast<O>();
+
+    DataCopy(scaleLocal, deqScaleQcQrWGm[scaleOffset], col);
+    SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
+    WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
+
+    Rectangle rectangleParams {1U, col, col};
+    for (uint32_t rowIdx = 0; rowIdx < oriRow; ++rowIdx) {
+        uint32_t inputOffset = rowIdx * srcStride;
+        uint32_t outputOffset = rowIdx * dstStride;
+        Dequant(computeLocal,
+                inputLocalSrc[inputOffset],
+                scaleLocal,
+                deQuantScaleQcQrLocal[rowIdx * FP32_BLOCK_ELEMENT_NUM],
+                rectangleParams);
+        AscendC::PipeBarrier<PIPE_V>();
+        Cast(outputLocal, computeLocal, RoundMode::CAST_RINT, col);
+        SetFlag<HardEvent::V_MTE3>(EVENT_ID2);
+        WaitFlag<HardEvent::V_MTE3>(EVENT_ID2);
+        DataCopy(outputGm[outputOffset], outputLocal, col);
+    }
+}
+
+template <typename T, typename O>
+__aicore__ inline void CastPerTokenQcLocal(const GlobalTensor<O> &outputGm,
+                                           const LocalTensor<T> &inputLocalSrc,
+                                           const LocalTensor<uint8_t> &shareTmpUb,
+                                           Rectangle castRowColStrideParams,
+                                           uint32_t oriRow,
+                                           uint32_t srcStride,
+                                           uint32_t dstStride)
+{
+    uint32_t col = castRowColStrideParams.col;
+    LocalTensor<O> outputLocal = shareTmpUb.ReinterpretCast<O>();
+    for (uint32_t rowIdx = 0; rowIdx < oriRow; ++rowIdx) {
+        uint32_t inputOffset = rowIdx * srcStride;
+        uint32_t outputOffset = rowIdx * dstStride;
+        Cast(outputLocal, inputLocalSrc[inputOffset], RoundMode::CAST_RINT, col);
+        SetFlag<HardEvent::V_MTE3>(EVENT_ID2);
+        WaitFlag<HardEvent::V_MTE3>(EVENT_ID2);
+        DataCopy(outputGm[outputOffset], outputLocal, col);
+    }
+}
+
 /**
    DequantSplitNQc 用于enableGroupComputeOpt场景
    场景特征：半量化，BS = 1, headsize = 8
