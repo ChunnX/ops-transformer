@@ -49,6 +49,9 @@ TILING_DATA_FIELD_DEF(uint64_t, parallNum);            // for A8W4 MSD
 TILING_DATA_FIELD_DEF(uint64_t, quantGroupNum);        // for A8W4 MSD
 TILING_DATA_FIELD_DEF(uint64_t, isPreTiling);
 TILING_DATA_FIELD_DEF(uint32_t, withOffset);
+TILING_DATA_FIELD_DEF(uint32_t, isOutputDisableL2Cache);
+TILING_DATA_FIELD_DEF(uint64_t, isA4W4Optimize);
+TILING_DATA_FIELD_DEF(int64_t, isSingleTensor);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(GMMBaseParamsOp, GMMBaseParams)
 
