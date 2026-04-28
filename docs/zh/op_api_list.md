@@ -30,6 +30,7 @@
 |[aclnnAlltoAllMatmul](../../mc2/allto_all_matmul/docs/aclnnAlltoAllMatmul.md)|完成AlltoAll通信与MatMul计算融合。|默认确定性实现|默认确定性实现|
 |[aclnnAlltoAllQuantMatmul](../../mc2/allto_all_matmul/docs/aclnnAlltoAllQuantMatmul.md)|完成AlltoAll通信、量化计算、MatMul计算和反量化计算的融合。|默认确定性实现|默认确定性实现|
 |[aclnnAlltoAllvGroupedMatMul](../../mc2/allto_allv_grouped_mat_mul/docs/aclnnAlltoAllvGroupedMatMul.md)|完成路由专家AlltoAllv、Permute、GroupedMatMul融合并实现与共享专家MatMul并行融合。|默认确定性实现|默认确定性实现|
+|[aclnnAlltoAllvQuantGroupedMatMul](../../mc2/allto_allv_grouped_mat_mul/docs/aclnnAlltoAllvQuantGroupedMatMul.md)|完成路由专家AlltoAllv、Permute、量化GroupedMatMul融合并实现与共享专家量化MatMul并行融合。|-|默认确定性实现|
 |[aclnnApplyRotaryPosEmb](../../posembedding/apply_rotary_pos_emb/docs/aclnnApplyRotaryPosEmb.md)|将query和key两路算子融合成一路。执行旋转位置编码计算，计算结果执行原地更新。|默认确定性实现|默认确定性实现|
 |[aclnnApplyRotaryPosEmbV2](../../posembedding/apply_rotary_pos_emb/docs/aclnnApplyRotaryPosEmbV2.md)|将query和key两路算子融合成一路。执行旋转位置编码计算，计算结果执行原地更新。|默认确定性实现|默认确定性实现|
 |[aclnnAttentionUpdate](../../attention/attention_update/docs/aclnnAttentionUpdate.md)|将各SP域PA算子的输出的中间结果lse，localOut两个局部变量结果更新成全局结果。|默认确定性实现|默认确定性实现|
