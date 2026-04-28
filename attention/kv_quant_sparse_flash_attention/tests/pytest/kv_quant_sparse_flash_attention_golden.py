@@ -806,7 +806,12 @@ def _t_increattention_bnsd(fa_param):
 
 
 def kv_concat_pa_preprocessing(input_tensor_dict, fa_param, params):
-    k_dtype_str = str(fa_param['k_tensor'].dtype)  # 直接从 tensor 获取
+    # 从原始 tensor 获取 dtype（_to_cpu_keep_dtype 会把 float8 转 float32，所以要用 _raw_key）
+    raw_key = fa_param.get('_raw_key')
+    if raw_key is not None:
+        k_dtype_str = str(raw_key.dtype)
+    else:
+        k_dtype_str = str(fa_param['k_tensor_old'].dtype)
     k_ori_shape_list = fa_param['k_shape_old']
     numKeyValueHeads = fa_param['numKeyValueHeads']
     numHeads = fa_param['numHeads']
