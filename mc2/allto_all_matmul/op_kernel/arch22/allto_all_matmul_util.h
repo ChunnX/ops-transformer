@@ -18,7 +18,7 @@
 
 #include "allto_all_matmul_tiling.h"
 #include "adv_api/hccl/hccl.h"
-#include "../catlass/numeric_size.hpp"
+#include "catlass/numeric_size.hpp"
 #include <cstdint>
 
 #define MC2_NON_QUANT 0

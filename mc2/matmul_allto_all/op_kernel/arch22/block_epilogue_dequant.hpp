@@ -11,15 +11,15 @@
 #ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_DEQUANT_HPP
 #define CATLASS_EPILOGUE_BLOCK_EPILOGUE_DEQUANT_HPP
 
-#include "../catlass/catlass.hpp"
-#include "../catlass/arch/resource.hpp"
-#include "../catlass/epilogue/dispatch_policy.hpp"
-#include "../catlass/gemm_coord.hpp"
-#include "../catlass/gemm/gemm_type.hpp"
-#include "../catlass/matrix_coord.hpp"
-#include "../catlass/layout/layout.hpp"
-#include "../catlass/detail/callback.hpp"
-#include "../catlass/epilogue/block/block_epilogue.hpp"
+#include "catlass/catlass.hpp"
+#include "catlass/arch/resource.hpp"
+#include "catlass/epilogue/dispatch_policy.hpp"
+#include "catlass/gemm_coord.hpp"
+#include "catlass/gemm/gemm_type.hpp"
+#include "catlass/matrix_coord.hpp"
+#include "catlass/layout/layout.hpp"
+#include "catlass/detail/callback.hpp"
+#include "catlass/epilogue/block/block_epilogue.hpp"
 
 namespace Catlass::Epilogue::Block {
 

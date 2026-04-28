@@ -11,7 +11,7 @@
 #ifndef CATLASS_EPILOGUE_TILE_TILE_BROADCAST_ADD_HPP
 #define CATLASS_EPILOGUE_TILE_TILE_BROADCAST_ADD_HPP
 
-#include "../catlass/catlass.hpp"
+#include "catlass/catlass.hpp"
 
 namespace Catlass::Epilogue::Tile {
 

@@ -480,8 +480,6 @@ function(add_ops_src_copy)
                 COMMAND ${CMAKE_COMMAND} -E remove_directory "${SRC_COPY_DST}/op_kernel"
                 COMMAND ${CMAKE_COMMAND} -E make_directory "${SRC_COPY_DST}/3rdparty/catlass/include"
                 COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/3rdparty/catlass/include" "${SRC_COPY_DST}/3rdparty/catlass/include"
-                # Modify catlass header references: #include "catlass/**" -> #include "**"
-                # COMMAND ${HI_PYTHON} ${CMAKE_SOURCE_DIR}/scripts/util/modify_catlass_headers.py ${SRC_COPY_DST}/3rdparty/catlass/include/catlass
             )
         endif()
         list(APPEND SYNC_COMMANDS COMMAND ${CMAKE_COMMAND} -E touch ${_BUILD_FLAG})

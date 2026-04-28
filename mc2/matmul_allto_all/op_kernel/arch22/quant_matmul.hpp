@@ -16,14 +16,14 @@
 #ifndef CATLASS_GEMM_KERNEL_QUANT_MATMUL_HPP
 #define CATLASS_GEMM_KERNEL_QUANT_MATMUL_HPP
 
-#include "../catlass/catlass.hpp"
-#include "../catlass/arch/cross_core_sync.hpp"
-#include "../catlass/arch/resource.hpp"
-#include "../catlass/coord.hpp"
-#include "../catlass/layout/layout.hpp"
-#include "../catlass/detail/callback.hpp"
-#include "../catlass/gemm_coord.hpp"
-#include "../catlass/matrix_coord.hpp"
+#include "catlass/catlass.hpp"
+#include "catlass/arch/cross_core_sync.hpp"
+#include "catlass/arch/resource.hpp"
+#include "catlass/coord.hpp"
+#include "catlass/layout/layout.hpp"
+#include "catlass/detail/callback.hpp"
+#include "catlass/gemm_coord.hpp"
+#include "catlass/matrix_coord.hpp"
 #include "matmul_allto_all_util.h"
 
 namespace Catlass::Gemm::Kernel {
