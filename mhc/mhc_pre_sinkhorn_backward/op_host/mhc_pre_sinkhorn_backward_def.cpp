@@ -9,8 +9,8 @@
  */
 
 /*!
- * \file mhc_pre_sinkhorn_grad_def.cpp
- * \brief
+ * \file mhc_pre_sinkhorn_backward_def.cpp
+ * \brief MhcPreSinkhornBackward operator definition
  */
 #include "register/op_def_registry.h"
 

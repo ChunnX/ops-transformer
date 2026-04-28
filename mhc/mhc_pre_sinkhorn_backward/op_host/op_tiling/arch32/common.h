@@ -1,8 +1,19 @@
-/*
- * Copyright (c) Huawei Technologies Co., Ltd. 2023-2025. All rights reserved.
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
-#ifndef COMMON_H
-#define COMMON_H
+
+/*!
+ * \file common.h
+ * \brief
+ */
+#ifndef MHC_PRE_SINKHORN_BACKWARD_OP_HOST_OP_TILING_ARCH32_COMMON_H
+#define MHC_PRE_SINKHORN_BACKWARD_OP_HOST_OP_TILING_ARCH32_COMMON_H
 
 #include "register/op_def_registry.h"
 #include "tiling/platform/platform_ascendc.h"
@@ -57,4 +68,4 @@ inline T FloorAlign(T a, T b)
     return b == 0 ? 0 : a / b * b;
 }
 
-#endif // COMMON_H
+#endif // MHC_PRE_SINKHORN_BACKWARD_OP_HOST_OP_TILING_ARCH32_COMMON_H
