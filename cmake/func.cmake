@@ -478,8 +478,14 @@ function(add_ops_src_copy)
             list(APPEND SYNC_COMMANDS
                 COMMAND ${CMAKE_COMMAND} -E copy_directory "${SRC_COPY_SRC}/op_kernel" "${SRC_COPY_DST}"
                 COMMAND ${CMAKE_COMMAND} -E remove_directory "${SRC_COPY_DST}/op_kernel"
-                COMMAND ${CMAKE_COMMAND} -E make_directory "${SRC_COPY_DST}/3rdparty/catlass"
-                COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/3rdparty/catlass/include" "${SRC_COPY_DST}/3rdparty/catlass"
+                COMMAND ${CMAKE_COMMAND} -E make_directory "${SRC_COPY_DST}/3rdparty"
+                COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/3rdparty/catlass" "${SRC_COPY_DST}/3rdparty/catlass"
+            )
+            # Add include path for catlass headers
+            get_filename_component(_OP_NAME "${SRC_COPY_DST}" NAME)
+            add_ops_compile_options(
+                OP_NAME ${_OP_NAME}
+                OPTIONS -I${SRC_COPY_DST}/3rdparty/catlass/include
             )
         endif()
         list(APPEND SYNC_COMMANDS COMMAND ${CMAKE_COMMAND} -E touch ${_BUILD_FLAG})
