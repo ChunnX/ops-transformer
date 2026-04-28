@@ -429,10 +429,29 @@ def kv_concat_nopa_preprocessing(input_tensor_dict, fa_param, params):
     k_tensor = fa_param['_raw_key'] if fa_param.get('_raw_key') is not None else fa_param['k_tensor_old']
     k_rope_tensor = fa_param['_raw_key_rope'] if fa_param.get('_raw_key_rope') is not None else fa_param['k_rope_tensor']
     k_dequant_scale_tensor = fa_param['_raw_dequant_scale'] if fa_param.get('_raw_dequant_scale') is not None else fa_param['k_dequant_scale_tensor']
-    k_dtype_str = str(fa_param['k_tensor_old'].dtype)
-    _k_dtype_map = {"hifloat8": torch.uint8, "float8_e4m3fn": torch.float8_e4m3fn, "int8": torch.int8,
-                    "torch.float8_e4m3fn": torch.float8_e4m3fn, "torch.int8": torch.int8}
-    k_torch_dtype = _k_dtype_map.get(k_dtype_str, torch.uint8)
+    
+    # 从原始tensor获取dtype（避免默认值错误）
+    if fa_param.get('_raw_key') is not None:
+        k_dtype_str = str(fa_param['_raw_key'].dtype)
+    else:
+        k_dtype_str = str(fa_param['k_tensor_old'].dtype)
+    
+    _k_dtype_map = {
+        "torch.float8_e4m3fn": torch.float8_e4m3fn,
+        "torch.uint8": torch.uint8,
+        "torch.int8": torch.int8,
+    }
+    # 添加torch_npu.hifloat8支持
+    try:
+        import torch_npu
+        _k_dtype_map["torch_npu.hifloat8"] = torch_npu.hifloat8
+    except ImportError:
+        pass
+    
+    k_torch_dtype = _k_dtype_map.get(k_dtype_str)
+    if k_torch_dtype is None:
+        print(f"[ERROR]Unsupported k_dtype in kv_concat_nopa_preprocessing: {k_dtype_str}")
+        return
 
     # 全程 torch tensor，raw bytes 用 .view(torch.uint8) 重解释后拼接
     t_k = k_tensor.contiguous()                            # uint8 / float8 / int8
