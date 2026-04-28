@@ -152,7 +152,14 @@ def gen_uniform_data(data_shape, min_value, max_value, torch_dtype, hash_seed):
     elif torch_dtype in (torch.int8, torch.int32):
         return torch.randint(int(min_value), int(max_value) + 1, data_shape, dtype=torch_dtype)
     elif torch_dtype == torch.uint8:
-        return torch.randint(int(min_value), int(max_value) + 1, data_shape, dtype=torch_dtype)
+        # uint8 (hifloat8): 必须在 [0, 255] 范围内
+        uint8_min = max(0, int(min_value))
+        uint8_max = min(255, int(max_value))
+        if uint8_min <= uint8_max:
+            return torch.randint(uint8_min, uint8_max + 1, data_shape, dtype=torch_dtype)
+        else:
+            # 范围无效时，生成 [0, 255] 全范围
+            return torch.randint(0, 256, data_shape, dtype=torch_dtype)
     elif torch_dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
         # float8 类型: 先用 float32 生成，再转换
         return (torch.rand(data_shape, dtype=torch.float32) * (max_value - min_value) + min_value).to(torch_dtype)
