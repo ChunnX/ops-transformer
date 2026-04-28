@@ -164,7 +164,7 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeDtype()
     OP_CHECK_IF(!SetQuantModeForGMMSwigluQuant(wScaleShape, xScaleShape),
                 OP_LOGE(inputParams_.opName, "SetQuantModeForGMMSwigluQuant failed."), return false);
     auto weightFormat = wDesc->GetFormat().GetStorageFormat();
-    if (weightFormat == FORMAT_FRACTAL_NZ) {
+    if (weightFormat == ge::FORMAT_FRACTAL_NZ) {
         const gert::Shape &wStorageShapeNz = wStorageShape->GetStorageShape();
         OP_CHECK_IF(wStorageShapeNz.GetDimNum() != 5,
                     OP_LOGE(context_->GetNodeName(), "NZ weight storage shape must be 5."),
