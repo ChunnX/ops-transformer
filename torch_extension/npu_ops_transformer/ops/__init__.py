@@ -15,7 +15,7 @@ from .mega_moe import npu_mega_moe
 from .mega_moe import (
     SymmBuffer,
     get_symm_buffer_for_mega_moe,
-    fp8_fp4_mega_moe,
+    mega_moe,
 )
 from .deep_ep import MoeDistributeBuffer
 from .graph_convert.graph_convert_moe_distribute_dispatch_v3 import converter_moe_distribute_dispatch_v3

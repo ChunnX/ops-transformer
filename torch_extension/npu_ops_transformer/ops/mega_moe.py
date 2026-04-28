@@ -140,11 +140,10 @@ def get_symm_buffer_for_mega_moe(
         dispatch_quant_out_type,
         combine_quant_mode,
         comm_alg,
-        
     )
 
 
-def fp8_fp4_mega_moe(
+def mega_moe(
     x: torch.Tensor,
     topk_ids: torch.Tensor,
     topk_weights: torch.Tensor,
