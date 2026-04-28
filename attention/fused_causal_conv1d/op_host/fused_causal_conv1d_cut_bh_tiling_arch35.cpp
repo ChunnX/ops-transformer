@@ -245,7 +245,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetAttrInfo()
 
     const int64_t *inplacePtr = attrs->GetAttrPointer<int64_t>(ATTR_INPLACE_INDEX);
     if (inplacePtr != nullptr) {
-        inplace_ = (*inplacePtr != 0) ? 1 : 0;
+        inplace_ = (*inplacePtr == 0) ? 1 : 0;
     }
 
     // APC 开启时 blockSize 必须非零
