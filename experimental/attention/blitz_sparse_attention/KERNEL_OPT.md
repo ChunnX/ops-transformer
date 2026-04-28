@@ -1171,3 +1171,323 @@ Mid-/high-sparsity range is the new fast path the kernel was always
 meant to be.
 
 ---
+
+## Session 11 — Cross-core scheduling analysis + iteration-order experiments (reverted)
+
+### Goal
+
+User asked specifically about cross-core load imbalance as a
+suspected cause of the 0–20 % sparsity floor at ~169 ms (PFA dense
+~157 ms). Investigated whether the 24-core ping-pong scheduler
+in `ComputeEachCoreBalance` leaves cores temporally unbalanced
+and whether reordering the per-core iteration helps.
+
+### Cross-core analysis (offline simulation)
+
+Enumerated the ping-pong schedule for the benchmark shape
+(B=1, H=3, S=118 806, sOuterBlockNum=929, blockNum=24, causal via
+pre/next tokens) and totalled cube-chunk counts per core:
+
+```
+total tiles = 2 787 (3 heads × 929 q-tiles)
+total cube chunks (causal) = 325 035
+per-core chunks: min=13 514, max=13 747, spread=1.72 %
+the +233-chunk cores are exactly the 3 that get the TAIL Q-tile
+  (physRow=928), where the cube tile is M-thin (22 of 128 q-rows
+  used, ≈¼ the cost of a normal chunk in cube cycles)
+```
+
+Normalised for the M-thin TAIL, per-core load variance is sub-1 %.
+**Spatial cross-core imbalance is not the bottleneck.** Pair-sum
+invariant of the ping-pong (every core's pair (low, hi) of tilingIdx
+sums to a per-round constant) holds for sNumMulHeadNum=3 with
+blockNum=24 and balances total per-core work to within rounding.
+
+### Hypothesis tested — "temporal" imbalance via pipeline fill
+
+BSA's `ComputeEachCoreBalance` defines `physRow = sOuterBlockNum - 1
+- sOuterLoopIdx`, so physRow grows with tilingIdx. Each core's
+*first* tilingIdx is small (0, 47, 48, …) → first physRows are tiny
+(0, 15, 16, …) → first Q-tiles are 1–4 cube chunks. The 8-deep
+`pfaParamsQueue` (Session 7) cannot saturate until the 8th–9th
+chunk overall, so the cube/vector pipeline is cold for the first
+~7 chunks per core.
+
+PFA's iteration order is the opposite: tilingIdx=0 maps to the
+**heaviest full causal tile** (physical offset 22+927·128, full M,
+~232 cube chunks). PFA's queue saturates within the first Q-tile.
+
+### Two reorderings benchmarked
+
+| Variant | First tile per core | Last tile per core |
+|---|---|---|
+| **Baseline** (Session 10) | physRow=0 (1 chunk, full M) | physRow=928 (TAIL, 233 chunks, M-thin) |
+| **V1** big-first, TAIL first | physRow=928 (TAIL, 233 chunks, M-thin) | physRow=0 (1 chunk, full M) |
+| **V2** big-first, TAIL last | physRow=927 (~232 chunks, full M) | physRow=928 (TAIL, M-thin) |
+
+### V1 (`physRow = sOuterLoopIdx`)
+
+```
+sparsity   Baseline (rebuild)   V1 (TAIL-first)   Δ
+0.00       172 409              175 616           +3.2 ms ✗
+0.05       171 060              173 783           +2.7 ms ✗
+0.10       169 505              172 437           +2.9 ms ✗
+0.20       166 653              167 300           +0.6 ms
+0.30       164 310              163 247           −1.1 ms
+0.40       160 573              158 360           −2.2 ms
+0.50       152 803              150 519           −2.3 ms
+0.60       139 063              137 209           −1.9 ms
+0.70       117 198              115 083           −2.1 ms
+0.80        83 306               82 108           −1.2 ms
+0.90        34 800               35 542           +0.7 ms
+```
+
+Pareto-different: hurts 0–10 % (the user's target), helps 30–80 %.
+The first tile being the M-thin TAIL means the cube does 233 cube
+calls of 32×512×128 (M-thin) before reaching steady state — many
+small cube cycles, many params-queue setups, but no full-M chunks
+for the cube to amortise on. **Reverted.** 80/80 `test_attn.py` pass.
+
+### V2 (`physRow = (sOuterLoopIdx == 0) ? (sOuterBlockNum - 1) : (sOuterLoopIdx - 1)`)
+
+Maps tilingIdx=0 → physRow=927 (heaviest full-M tile), and the
+M-thin TAIL is processed last (when sOuterLoopIdx=0). Rationale: get
+the queue-fill benefit of starting heavy *and* keep the M-thin TAIL
+out of the warmup region.
+
+```
+sparsity   Baseline (rebuild)   V2 (FULL-first, TAIL-last)   Δ
+0.00       172 409              168 134                      −4.3 ms ✓ (target band)
+0.05       171 060              168 387                      −2.7 ms ✓ (target band)
+0.10       169 505              168 460                      −1.0 ms ✓ (target band)
+0.20       166 653              168 096                      +1.4 ms ✗ (target band)
+0.30       164 310              166 612                      +2.3 ms ✗
+0.40       160 573              162 569                      +2.0 ms ✗
+0.50       152 803              154 802                      +2.0 ms ✗
+0.60       139 063              142 561                      +3.5 ms ✗
+0.70       117 198              120 125                      +2.9 ms ✗
+0.80        83 306               85 887                      +2.5 ms ✗
+0.90        34 800               35 958                      +1.2 ms ✗
+```
+
+Confirmed reproducible across reruns (within 1 ms noise). 80/80
+`test_attn.py` pass.
+
+V2 pulls 0/5/10 % below 169 ms (the user-stated floor) for the first
+time since Session 10, but mid-/high-sparsity regresses by 2–4 ms.
+Sum across all sparsities: **+14.7 ms net regression**.
+
+### Why V2 hurts at mid sparsity
+
+In V2, cores 0/2/23 (the three "117-tile" cores that own the TAIL)
+end on the M-thin TAIL while the other 21 cores end on physRow≈0–7
+(1–2 chunks each, finishing early). Wall-time is bounded by the
+TAIL cores. At mid sparsity, partial-chunk Duplicate(-10000) work
+(Session 10's helper) is the dominant overhead; with the TAIL-cores
+ending late on TAIL chunks (which are FRAME-dense, no Duplicates)
+while other cores idle waiting, the core-time spread grows. At 0 %
+sparsity, no Duplicate work fires anywhere, so the spread effect is
+absent and only the queue-fill win remains visible.
+
+### Decision: revert; cross-core scheduling is not the lever
+
+Both reorderings (V1 and V2) were Pareto-different vs the
+Session 10 baseline; neither is a clean improvement once mid-/high-
+sparsity is included. The schedule's pair-sum invariant already
+balances cross-core work to <1 % spread, and reordering the *temporal*
+distribution within a core trades one regime for another. Code
+reverted to Session 10 baseline. Documentation kept here so future
+sessions don't re-litigate.
+
+### What this rules out
+
+- The 0–20 % "stuck at 169 ms" floor is **not** spatial cross-core
+  imbalance, and it is **not** a queue-fill warmup that a simple
+  iteration-order swap can recover (V2's queue-fill win was
+  approximately offset by end-of-iteration core spread).
+- The remaining ~12 ms gap to PFA is structural per-chunk overhead
+  inside the SInnerLoopFunc sparse path: sabi HBM scalar reads,
+  sub-block-mask OR scan (3 extra reads/chunk at full population),
+  `isBlockSparse` branches, and code-size-driven I-cache pressure.
+  Reducing these is the only path forward, and Sessions 4–10 have
+  already shown each individual micro-tweak is layout-sensitive and
+  non-monotonic.
+
+### TODO carried forward (still open)
+
+- **Stage 2 — softmax-mask fold** (Session 4 / 8 plan): replace the
+  noinline `ApplySubBlockMaskCorrection` Duplicate pass with a fused
+  CreateMask/Select inside the softmax max-subtract loop. Multi-
+  session scope (forks the shared `SoftmaxBasicComputeFirstNoTail`).
+- **Stage 3 — true gather** (Sessions 1, 8, 9 plan): explicit L1
+  ping-pong staging for active sub-blocks; cube N reduced via
+  `SetTail` for fully-skipped 4-groups. Multi-session scope.
+- **Bring the dense-fallback path up to par with sparse-with-0xF**
+  (Session 9 follow-up): bit-rotted dense loop in `SInnerLoopFunc`
+  costs ~16 ms vs sparse-with-subMask=0xF when forced (Session 9
+  out-of-loop detection regression). Either delete the dense loop
+  if all callers can use sparse-with-0xF, or port lookahead-fusion
+  into it.
+- **Reduce per-chunk OR-scan reads** when the sabi row is fully
+  populated (causal+sparsity=0 %): one-time check at
+  `SInnerLoopFunc` entry could avoid 3 extra sabi reads per chunk
+  (~2 ms savings at 0 %). Session 6/9 attempts at full-row detection
+  regressed 5–10 % by 6–13 ms via I-cache layout shift; needs to be
+  done as a non-inline helper to avoid the layout shift, similar to
+  Session 10's successful `ApplySubBlockMaskCorrection` extraction.
+
+---
+
+## Session 12 — Profile-driven diagnosis (msprof) + failed scalar-pipe hoist
+
+### What was learned (the actual headline)
+
+User asked to step back and use the `msprof` profiler. I read the existing
+`OPPROF_20260320142322_B1_N24_S118k_D128_dense-vs-sparse0.0-no-sim` dump
+(the team had already run msprof on B=1, N=3-effective-24, S=118 806,
+D=128, BF16, sparsity=0 % — no need to re-run). The op_summary CSV gives
+per-AICore pipe utilisation for both BSA and PFA on the same workload:
+
+| Pipe | BSA | PFA | Δ |
+|---|---|---|---|
+| **AIC scalar** | **0.8815** | 0.7086 | **+1.24× — saturated in BSA** |
+| AIC cube | 0.3387 | 0.4704 | −0.72× — **66 % idle in BSA** |
+| AIC MTE2 (HBM→L1) | 0.5553 | 0.3345 | +1.66× — sabi HBM reads |
+| AIC MTE1 (L1→cube) | 0.2493 | 0.3251 | −0.77× |
+| AIV scalar | 0.5097 | 0.2997 | +1.70× |
+| AIV vector | 0.6388 | 0.5613 | +1.14× |
+| Per-core time | 1316 ms | 990 ms | +33 % per-core |
+
+**The bottleneck is the AICore scalar pipeline, not cube/vector/HBM.** The
+cube has massive headroom (only 34 % busy). Every scalar instruction trimmed
+from the per-chunk hot path translates ≤1:1 into wall-time saved, until the
+cube becomes the new ceiling. Closing the 12 ms gap to PFA at 0 % sparsity
+is structurally an AIC-scalar problem.
+
+### What I tried — Plan-agent's Rank 2: hoist `GetSingleCoreParam` / `GetSparseParam`
+
+`ComputeEachCoreBalance` calls these two functions every outer iteration
+(line 2865–2866). For B=1 (`sNum==1`), `sIdx=0` is invariant, so both calls
+produce identical scalar writes (~30 + 2 stores) every iter. Hoisted them
+once before the loop, gated on `(sNum == 1)`. Their tail-side writes
+propagate through the queue via `CopyParamsAttrOutOfInnerLoop` (which
+already copies `singleProcessSInnerSize`, `*Tail`, `padSize`,
+`unalignSInner`, `maskInnerTailAlign`, `pseShiftInnerTailAlign`,
+`pseShiftPadSize`, `preTokensPerBatch`, `nextTokensPerBatch`,
+`actualSeqLength*PerBatch`).
+
+```
+sparsity   Baseline (rebuild)   Session 12 hoist     Δ
+0.00       170 088              171 602              +1.5 ms ✗
+0.05       169 540              170 213              +0.7 ms ✗
+0.10       168 758              169 124              +0.4 ms
+0.20       166 261              167 699              +1.4 ms ✗
+0.30       164 749              166 095              +1.3 ms ✗
+0.40       161 010              161 975              +1.0 ms ✗
+0.50       153 479              153 805              +0.3 ms
+0.60       138 022              139 468              +1.4 ms ✗
+0.70       117 064              117 794              +0.7 ms ✗
+0.80        82 680               84 800              +2.1 ms ✗
+0.90        34 412               35 404              +1.0 ms ✗
+```
+
+Pareto-negative across the board (~+10 ms net). 80/80 `test_attn.py` pass.
+**Reverted.**
+
+### Why the hoist didn't help — the math
+
+`ComputeEachCoreBalance` runs **once per Q-tile** (~116 outer iters per core).
+The scalar saturation is in the **per-chunk** hot loop (~13 500 iters per
+core). Hoisting saved ~32 stores × 116 iters ≈ 3 700 stores per core ≈
+~12 µs of scalar work per core. **That's well below the run-to-run
+benchmark noise floor of ~1 ms**, and the new `if (sIdxInvariant)` branch
+inside the per-tile loop almost certainly shifted the inlined hot-loop
+binary by enough to lose more than the saved scalar work to I-cache layout
+(the same ±2 ms layout sensitivity Sessions 4–10 documented).
+
+The Plan agent's estimates (5–12 ms savings per Rank 2) were too aggressive
+because they applied the per-chunk scalar reduction to a per-Q-tile change.
+The correct sizing: any Q-tile-scope hoist can save at most ~1 ms wall time;
+to actually move the needle, the change has to delete scalar work from the
+per-chunk path, which is exactly the path that Sessions 4–10 found
+layout-toxic.
+
+### Where future sessions should attack the scalar pipe
+
+The msprof finding is the **load-bearing diagnostic** for everything
+that follows. Concrete per-chunk targets (ranked by deletion potential,
+all in `op_kernel/blitz_sparse_attention_s1s2_bns1_x910.h`):
+
+1. **`CopyParamsAttrOutOfInnerLoop` (947–996, called per chunk).** Copies
+   ~30 fields. Several of those (`isFirstInnerIter`, `isSecondInnerIter`,
+   `isLastInnerIter`, `maskCopyInCol`, `pseShiftCopyInCol`,
+   `sabiSubBlockMask`, `isFirstComputedIter`, `isSecondComputedIter`,
+   `isLastComputedIter`) are unconditionally overwritten in the next
+   iteration's body before the consumer reads them — those copies are
+   structurally dead. **Caveat:** removing copies must not cross a
+   `done` exit path where the inner loop terminates without a final
+   overwrite, otherwise the cube reads a stale field. Each removed copy
+   saves ~1 store/chunk × 13 500 = 13 500 stores/core ≈ ~40 µs per core
+   wall time — roughly noise per field, but **9 fields × 40 µs ≈ 0.4 ms**,
+   borderline.
+
+2. **`(sabiPerTile <= 1) ? fullMask : subMask` ternary at line 2455.**
+   For `sabiPerTile == 1` the subMask is by construction equal to
+   `fullMask` (only one sub-block, mask bit always 0x1). For
+   `sabiPerTile > 1`, picks `subMask`. So the ternary is identity and can
+   be replaced with `params->sabiSubBlockMask = subMask`. Saves 1
+   instruction/chunk; symbolic only.
+
+3. **`attentionMaskType==2||3` branch at 2542 and `attentionMaskType==4`
+   branch at 2550.** Per-chunk runtime checks of a class-member that's a
+   per-kernel constant. Hoisting to a `__aicore__` template or
+   `if constexpr (PFAT::attentionMaskType == X)` if PFAT carries the
+   type can eliminate them. Saves ~5 instructions/chunk; ~0.2 ms wall.
+   Risk: requires plumbing `attentionMaskType` into the PFAT template,
+   non-trivial.
+
+4. **`CheckRowInvalid` (2219–2246, called per chunk).** ~10 scalar
+   instructions, mostly comparing `params->sOuterOffset` to bounds.
+   Branch-predictable but the work is real. Could be hoisted to per-Q-tile
+   for the cases where `sOuterOffset` doesn't change per chunk. Saves
+   ~10 instructions/chunk × 13 500 ≈ ~80 µs per core.
+
+### Lesson for the project
+
+The MSProf data is consistent with Sessions 4–10's "layout sensitivity"
+observation: the per-chunk scalar work IS the bottleneck (msprof confirms),
+but every concrete attempt to delete some of it has run into ±2 ms I-cache
+shifts that erase the savings. The Stage 2 (softmax-mask fold) and Stage 3
+(true gather) plans from earlier sessions remain the only structural
+levers; everything smaller risks being in the noise floor of the layout
+sensitivity. **Any future session targeting per-chunk scalar work should
+benchmark before AND after with `--profile-out=msprof_session_X` and
+compare `aic_scalar_ratio` directly** — wall-time diffs alone don't
+distinguish a real scalar-pipe win from layout-shift noise.
+
+### Reproducible msprof recipe (kept here for future sessions)
+
+```bash
+# Avoid `msprof op` (orders of magnitude slower than the regular form).
+export ASCEND_RT_VISIBLE_DEVICES=5
+cd experimental/attention/blitz_sparse_attention/benchmark
+# Edit benchmark.py: SPARSITY_VALS = [0.0]   N_REPEATS = 3
+msprof --ai-core on --task-time=l1 \
+       --aic-metrics=PipeUtilization,MemoryAccess,L2Cache \
+       --output=./profiling_results/msprof_$(date +%s) \
+       python3 benchmark.py
+```
+
+Output schema: `mindstudio_profiler_output/op_summary_*.csv`, row
+`Op Name = InnerBlitzSparseAttention_*`. Key columns: `aicore_time(us)`,
+`aic_scalar_ratio`, `aic_cube_ratio`, `aic_mte1_ratio`, `aic_mte2_ratio`,
+`aiv_scalar_ratio`, `aiv_vec_ratio`, `cube_utilization`, `Task Duration(us)`.
+
+### Benchmark state at end of Session 12
+
+Code reverted to Session 11 baseline (no kernel changes survive). The
+"good news" of this session is the **diagnostic**: the 12 ms gap to PFA
+is a measured AIC-scalar saturation, not a guess. Future sessions have
+a concrete profiling-driven target instead of the analytic dead-end of
+Sessions 1–11.
+

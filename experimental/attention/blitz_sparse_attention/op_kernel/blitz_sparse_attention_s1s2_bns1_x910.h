@@ -2852,7 +2852,7 @@ __aicore__ inline void BlitzSparseAttentionS1s2Bns1X910<PFAT>::ComputeEachCoreBa
     if (isSabi) {
         const __gm__ uint16_t* base = this->sabiBaseGm.GetPhyAddr();
         t4 = U16T4View{ base, sabiBatchSize, sabiheadNum, sabiQBlocks, sabiKVBlocks, sabiLen };
-        // In this method is should always be bs == 1 
+        // In this method is should always be bs == 1
         t3 = t4.AtBatch(0);
     }
 
