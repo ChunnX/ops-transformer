@@ -494,7 +494,7 @@ __aicore__ inline void MoeDistributeCombineA2<TemplateMC2TypeA2Func>::CalRecvCou
     SyncAll<true>();
     for (uint32_t i = 0u; i < expertTileNum; i++) {
         uint32_t tileEleCount = (i == expertTileNum - 1) ? numExpertsPerTail : MAX_NUM_EXPERTS_PER_TILE;
-        uint64_t EleOffset = taskInfo_.startTaskId + i * MAX_NUM_EXPERTS_PER_TILE;
+        uint64_t EleOffset = taskInfo.startTaskId + i * MAX_NUM_EXPERTS_PER_TILE;
         CopyGm2Ub(expertIdsLocal_, expertIdsGlobal_[EleOffset], tileEleCount);
         if (isInputExpertMaskFlag_) {
             CopyGm2Ub(expertMaskLocal_, xActiveMaskGlobal_[EleOffset], tileEleCount);
