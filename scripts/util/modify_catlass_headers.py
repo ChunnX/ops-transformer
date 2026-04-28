@@ -23,8 +23,8 @@ def modify_catlass_headers(catlass_dir):
             with open(hpp_file, 'r', encoding='utf-8') as f:
                 content = f.read()
             
-            # Replace #include "catlass/xxx" with #include "xxx"
-            new_content = content.replace('#include "catlass/', '#include "')
+            # Replace #include "catlass/xxx" with #include "../catlass/xxx"
+            new_content = content.replace('#include "catlass/', '#include "../catlass/')
             
             if new_content != content:
                 with open(hpp_file, 'w', encoding='utf-8') as f:
