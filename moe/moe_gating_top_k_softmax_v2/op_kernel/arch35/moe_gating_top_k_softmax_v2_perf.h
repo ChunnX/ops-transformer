@@ -518,16 +518,8 @@ private:
             softmaxShapeInfo.oriSrcM = curRowsNum;
 
             if constexpr (IsSameType<T, float>::value) {
-                PRINTF("before1 =============");
-                for (int32_t i = 0; i < tilingData->bufferElemSize; i++) {
-                    PRINTF("gatingLocal val, index: %d, value, %f", i, gatingLocal.GetValue(i));
-                }
                 SoftMax<float, true, false>(
                     softmaxResultOutLocal, gatingLocal, tilingData->softmaxTilingData, softmaxShapeInfo);
-                PRINTF("after1 =============");
-                for (int32_t i = 0; i < tilingData->bufferElemSize; i++) {
-                    PRINTF("gatingLocal val, index: %d, value, %f", i, gatingLocal.GetValue(i));
-                }
                 gatingQueue.FreeTensor(gatingLocal);
                 if (this->softmaxFlag == 1) {
                     CopyOutSoftmax(OuterIdx, curRowsNum, softmaxResultOutLocal, tilingData);
@@ -536,7 +528,6 @@ private:
                     topKOutsLocal.ReinterpretCast<float>(), topKOutsLocal[tilingData->bufferElemSize],
                     softmaxResultOutLocal, tmpTensorLocal, curRowsNum, tilingData);
             } else {
-                AscendC::DumpTensor(gatingLocal, 2001, curRowsNum * tilingData->col * sizeof(T));
                 if (tilingData->col < CONSTANT_EIGHT) {
                     Cast(
                         tmpTensorLocal, gatingLocal, RoundMode::CAST_NONE, tilingData->colBytesAlign, curRowsNum,
@@ -545,16 +536,8 @@ private:
                     Cast(tmpTensorLocal, gatingLocal, RoundMode::CAST_NONE, curRowsNum * tilingData->colBytesAlign);
                 }
                 gatingQueue.FreeTensor(gatingLocal);
-                PRINTF("before2 =============");
-                for (int32_t i = 0; i < tilingData->bufferElemSize; i++) {
-                    PRINTF("gatingLocal val, index: %d, value, %f", i, gatingLocal.GetValue(i));
-                }
                 SoftMax<float, true, false>(
                     softmaxResultOutLocal, tmpTensorLocal, tilingData->softmaxTilingData, softmaxShapeInfo);
-                PRINTF("after2 =============");
-                for (int32_t i = 0; i < tilingData->bufferElemSize; i++) {
-                    PRINTF("gatingLocal val, index: %d, value, %f", i, gatingLocal.GetValue(i));
-                }
                 if (this->softmaxFlag == 1) {
                     CopyOutSoftmax(OuterIdx, curRowsNum, softmaxResultOutLocal, tilingData);
                 }
