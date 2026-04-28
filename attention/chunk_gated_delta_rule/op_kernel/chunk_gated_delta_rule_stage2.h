@@ -79,11 +79,10 @@ public:
         uint64_t outQueueSize = Std::max((uint64_t)chunkSize_ * chunkSize_ * sizeof(bfloat16_t),
                                          (uint64_t)Dv_ * curDk_ * sizeof(bfloat16_t));
         pipe_->InitBuffer(outQueue_, BUFFER_NUM_ONE, outQueueSize);
-        pipe_->InitBuffer(tmpBuff_,
-                          chunkSize_ > Dv_ ? chunkSize_ * curDk_ * sizeof(float) : Dv_ * curDk_ * sizeof(float));
+        pipe_->InitBuffer(tmpBuff_, (Std::max((uint64_t)chunkSize_, (uint64_t)Dv_) * curDk_ + 8) * sizeof(float));
         uint32_t buffOffset = 0;
         tmpBuffer1_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(Dv_ * curDk_), buffOffset);
-        buffOffset += Dv_ * curDk_;
+        buffOffset += Ceil(Dv_ * curDk_ * sizeof(float), BLOCK_SIZE) * BLOCK_SIZE;
         lastGCum_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(1), buffOffset);
     }
 
