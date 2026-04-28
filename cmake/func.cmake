@@ -485,6 +485,7 @@ function(add_ops_src_copy)
             get_filename_component(_OP_NAME "${SRC_COPY_DST}" NAME)
             add_ops_compile_options(
                 OP_NAME ${_OP_NAME}
+                COMPUTE_UNIT ${SRC_COPY_COMPUTE_UNIT}
                 OPTIONS -I${SRC_COPY_DST}/3rdparty/catlass/include
             )
         endif()
