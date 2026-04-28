@@ -1017,43 +1017,43 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
 |                      |     innerPrecise     | ATTR(OPTIONAL) |   int64   |
 |                      |     attentionOut     |     OUTPUT     |   Tensor   |
 |       PSE参数组       |       pseShift       | INPUT(OPTIONAL) |   Tensor   |
-|                      |       qStartIdx       | INPUT(OPTIONAL) |   Tensor   |
-|                      |      kvStartIdx      | INPUT(OPTIONAL) |   Tensor   |
+|                      |   qStartIdxOptional  | INPUT(OPTIONAL) |   Tensor   |
+|                      |   kvStartIdxOptional  | INPUT(OPTIONAL) |   Tensor   |
 |                      |        pseType        | ATTR(OPTIONAL) |   int64   |
-|      Mask参数组      |       attenMask       | INPUT(OPTIONAL) |   Tensor   |
+|      Mask参数组      |   attenMaskOptional   | INPUT(OPTIONAL) |   Tensor   |
 |                      |       preTokens       | ATTR(OPTIONAL) |   int64   |
 |                      |      nextTokens      | ATTR(OPTIONAL) |   int64   |
 |                      |      sparseMode      | ATTR(OPTIONAL) |   int64   |
-|  ActualSeqLens参数组  |   actualSeqLengths   | INPUT(OPTIONAL) |  IntArray  |
-|                      |  actualSeqLengthsKv  | INPUT(OPTIONAL) |  IntArray  |
-|  伪量化&全量化参数组  |       deqScale1       | INPUT(OPTIONAL) |   Tensor   |
-|                      |      quantScale1      | INPUT(OPTIONAL) |   Tensor   |
-|                      |       deqScale2       | INPUT(OPTIONAL) |   Tensor   |
-|                      |    antiquantScale    | INPUT(OPTIONAL) |   Tensor   |
-|                      |    antiquantOffset    | INPUT(OPTIONAL) |   Tensor   |
-|                      |   keyAntiquantScale   | INPUT(OPTIONAL) |   Tensor   |
-|                      |  keyAntiquantOffset  | INPUT(OPTIONAL) |   Tensor   |
-|                      |  valueAntiquantScale  | INPUT(OPTIONAL) |   Tensor   |
-|                      | valueAntiquantOffset | INPUT(OPTIONAL) |   Tensor   |
-|                      |   dequantScaleQuery   | INPUT(OPTIONAL) |   Tensor   |
+|  ActualSeqLens参数组  |actualSeqLengthsOptional| INPUT(OPTIONAL) |  IntArray  |
+|                      |actualSeqLengthsKvOptional| INPUT(OPTIONAL) |  IntArray  |
+|  伪量化&全量化参数组  |  deqScale1Optional | INPUT(OPTIONAL) |   Tensor   |
+|                      |      quantScale1Optional      | INPUT(OPTIONAL) |   Tensor   |
+|                      |       deqScale2Optional       | INPUT(OPTIONAL) |   Tensor   |
+|                      |    antiquantScaleOptional    | INPUT(OPTIONAL) |   Tensor   |
+|                      |    antiquantOffsetOptional    | INPUT(OPTIONAL) |   Tensor   |
+|                      |   keyAntiquantScaleOptional   | INPUT(OPTIONAL) |   Tensor   |
+|                      |  keyAntiquantOffsetOptional  | INPUT(OPTIONAL) |   Tensor   |
+|                      |  valueAntiquantScaleOptional  | INPUT(OPTIONAL) |   Tensor   |
+|                      | valueAntiquantOffsetOptional | INPUT(OPTIONAL) |   Tensor   |
+|                      |   dequantScaleQueryOptional   | INPUT(OPTIONAL) |   Tensor   |
 |                      |     antiquantMode     | ATTR(OPTIONAL) |   int64   |
 |                      |   keyAntiquantMode   | ATTR(OPTIONAL) |   int64   |
 |                      |  valueAntiquantMode  | ATTR(OPTIONAL) |   int64   |
 |                      |    queryQuantMode    | ATTR(OPTIONAL) |   int64   |
-|    PostQuant参数组    |      quantScale2      | INPUT(OPTIONAL) |   Tensor   |
-|                      |     quantOffset2     | INPUT(OPTIONAL) |   Tensor   |
+|    PostQuant参数组    |      quantScale2Optional      | INPUT(OPTIONAL) |   Tensor   |
+|                      |     quantOffset2Optional     | INPUT(OPTIONAL) |   Tensor   |
 |                      |        outType        | ATTR(OPTIONAL) |   int64   |
-| Paged Attention参数组 |      blockTable      | INPUT(OPTIONAL) |   Tensor   |
+| Paged Attention参数组 |      blockTableOptional      | INPUT(OPTIONAL) |   Tensor   |
 |                      |       blockSize       | ATTR(OPTIONAL) |   int64   |
-|   LeftPadding参数组   |   queryPaddingSize   | INPUT(OPTIONAL) |   Tensor   |
-|                      |     kvPaddingSize     | INPUT(OPTIONAL) |   Tensor   |
-|  SystemPrefix参数组  |    keySharedPrefix    | INPUT(OPTIONAL) |   Tensor   |
-|                      |   valueSharedPrefix   | INPUT(OPTIONAL) |   Tensor   |
-|                      | actualSharedPrefixLen | INPUT(OPTIONAL) |   Tensor   |
-|      Rope参数组      |      query_rope      | INPUT(OPTIONAL) |   Tensor   |
-|                      |       key_rope       | INPUT(OPTIONAL) |   Tensor   |
-|                      | keyRopeAntiquantScale | INPUT(OPTIONAL) |   Tensor   |
-|  LearnableSink参数组  |     learnableSink     | INPUT(OPTIONAL) |   Tensor   |
+|   LeftPadding参数组   |   queryPaddingSizeOptional   | INPUT(OPTIONAL) |   Tensor   |
+|                      |     kvPaddingSizeOptional     | INPUT(OPTIONAL) |   Tensor   |
+|  SystemPrefix参数组  |    keySharedPrefixOptional    | INPUT(OPTIONAL) |   Tensor   |
+|                      |   valueSharedPrefixOptional   | INPUT(OPTIONAL) |   Tensor   |
+|                      | actualSharedPrefixLenOptional | INPUT(OPTIONAL) |   Tensor   |
+|      Rope参数组      |      queryRopeOptional      | INPUT(OPTIONAL) |   Tensor   |
+|                      |       keyRopeOptional       | INPUT(OPTIONAL) |   Tensor   |
+|                      | keyRopeAntiquantScaleOptional | INPUT(OPTIONAL) |   Tensor   |
+|  LearnableSink参数组  |     learnableSinkOptional     | INPUT(OPTIONAL) |   Tensor   |
 |   SoftmaxLSE参数组   |    softmaxLseFlag    | ATTR(OPTIONAL) |    bool    |
 |                      |      softmaxLse      |     OUTPUT     |   Tensor   |
 
