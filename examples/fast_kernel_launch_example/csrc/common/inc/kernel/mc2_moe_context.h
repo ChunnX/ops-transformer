@@ -20,6 +20,7 @@ struct Mc2MoeContext {
     uint64_t epRankId;
     uint64_t kfcContextAddr; // host kfc方案中，需要传递通信API所需的地址
     uint64_t epHcclBuffer[1024];
+    uint64_t HccsAddr;
 };
 
 #endif //MC2_MOE_CONTEXT_H

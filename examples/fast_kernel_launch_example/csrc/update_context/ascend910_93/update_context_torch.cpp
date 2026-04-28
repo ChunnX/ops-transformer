@@ -10,8 +10,8 @@
 
 
 /*!
-* \file abs.cpp
-* \brief
+* \file update_context_torch.cpp
+* \brief Update context using channel-based address acquisition
 */
 
 #include "update_context_torch.h"
@@ -19,7 +19,7 @@
 namespace ascend_ops {
 namespace Update_Context {
 
-// constexpr static uint8_t COMM_ENGINE_AIV = 4;
+constexpr uint8_t COMM_ENGINE_AIV = 4;
 constexpr uint32_t OP_TYPE_ALL_TO_ALLV = 8;
 constexpr uint32_t EP_OP_TYPE = OP_TYPE_ALL_TO_ALLV;
 const std::string EP_ALG_CONFIG = "AlltoAll=level0:fullmesh;level1:pairwise";
@@ -33,106 +33,166 @@ TORCH_LIBRARY_FRAGMENT(EXTENSION_MODULE_NAME, m)
     m.def("updateContext(Tensor x, str group_ep, int ep_world_size) -> (Tensor, int)");
 }
 
-static int32_t CreatMc2Context(HcclComm &comm, int64_t worldSize, int64_t &cclBufferSize, Mc2ContextStru *mc2Context)
+static int32_t GetHcclCommLink(const HcclComm& hcclHandle, const uint32_t netLayers,
+                                const uint32_t srcRankId, const uint32_t dstRankId,
+                                CommLink*& links, CommProtocol& protocol)
 {
-    uint32_t ctxIndex =  0;
+    CommLink* linksList = nullptr;
+    uint32_t netLinkNum = 0;
+    auto hcclRet = HcclRankGraphGetLinks(hcclHandle, netLayers, srcRankId, dstRankId,
+                                         &linksList, &netLinkNum);
+    TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get HCCL Communication link failed, ret=", hcclRet);
+    TORCH_CHECK(netLinkNum > 0, "The Net Link Is nullptr.");
 
-    uint32_t rankId;
-    (void)HcclGetRankId(comm, &rankId);
-    mc2Context[ctxIndex].epRankId = rankId;
-
-    for (uint64_t remoteRankId = 0; remoteRankId < worldSize; remoteRankId++) {
-        void *remoteAddr = nullptr;
-        uint64_t commSize = 0; // 出参, HCCL_BUFFER_SIZE=, 校验
-        HcclResult ret;
-        if (rankId == remoteRankId) {
-            ret = static_cast<HcclResult>(HcclGetHcclBuffer(comm, &remoteAddr, &commSize));
-            cclBufferSize = commSize;
-        } else {
-            ret = static_cast<HcclResult>(HcclGetRemoteIpcHcclBuf(comm, remoteRankId, &remoteAddr, &commSize));
-        }
-        TORCH_CHECK((ret == HCCL_SUCCESS), "Get HcclBufferSize failed, ret=", ret);
-        mc2Context[ctxIndex].epHcclBuffer[remoteRankId] = (uint64_t)remoteAddr;
-    }
-
+    links = &linksList[0];
+    protocol = linksList[0].linkAttr.linkProtocol;
     return 0;
 }
 
-
-static int32_t CreateHcclContext(HcclComm &commHandle, void *opArgs, int64_t worldSize,
-                                    const char* groupName, std::string algConfig, uint32_t opType)
+static int32_t GetHcclCommChannel(const HcclComm& hcclHandle, const uint32_t rankDim,
+                                   const uint32_t srcRankId, const CommEngine& engine,
+                                   std::vector<ChannelHandle>& channels)
 {
-    HcclResult ret = static_cast<HcclResult>(HcclKfcOpArgsSetAlgConfig(opArgs, const_cast<char*>(algConfig.c_str())));
-    TORCH_CHECK(ret == 0, "HcclKfcOpArgsSetAlgConfig failed, ret:", ret);
+    uint32_t channelNum = rankDim - 1;
+    std::vector<HcclChannelDesc> channelDesc(channelNum);
+    channels.resize(channelNum);
 
-    ret = static_cast<HcclResult>(HcclCommGetHandleWithName(groupName, &commHandle));
-    TORCH_CHECK(ret == 0, "HcclGetCommHandle failed, ret:", ret);
+    HcclResult hcclRet = HcclChannelDescInit(channelDesc.data(), channelNum);
+    TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Hccl Channel Init failed, ret=", hcclRet);
 
-    void *opsResCtx;
-    ret = static_cast<HcclResult>(HcclCreateOpResCtx(commHandle, opType, opArgs, &opsResCtx)); // 构造Context
-    TORCH_CHECK(ret == 0, "HcclCreateOpResCtx failed, ret:", ret);
+    uint32_t* netLayerList = nullptr;
+    uint32_t netLayerNum = 0;
+    hcclRet = HcclRankGraphGetLayers(hcclHandle, &netLayerList, &netLayerNum);
+    TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get HCCL Rank Graph Layers failed, ret=", hcclRet);
+    uint32_t netLayers = 0;
 
-    // Get Comm world Size and rank
+    for (uint32_t i = 0; i < rankDim; ++i) {
+        if (i == srcRankId) {
+            continue;
+        }
+        uint32_t dstRankId = i;
+        uint32_t channelId = (i > srcRankId) ? (i - 1) : i;
+        CommLink* links = nullptr;
+        CommProtocol protocol;
+        int32_t ret = GetHcclCommLink(hcclHandle, netLayers, srcRankId, dstRankId, links, protocol);
+        TORCH_CHECK(ret == 0, "GetHcclCommLink failed, ret=", ret);
+
+        channelDesc[channelId].channelProtocol = protocol;
+        channelDesc[channelId].remoteRank = dstRankId;
+        channelDesc[channelId].notifyNum = channelNum;
+        channelDesc[channelId].localEndpoint = links->srcEndpointDesc;
+        channelDesc[channelId].remoteEndpoint = links->dstEndpointDesc;
+
+        if ((dstRankId ^ 1) == srcRankId) {
+            channelDesc[srcRankId].channelProtocol = protocol;
+            channelDesc[srcRankId].remoteRank = dstRankId;
+            channelDesc[srcRankId].notifyNum = channelNum;
+            channelDesc[srcRankId].localEndpoint = links->srcEndpointDesc;
+            channelDesc[srcRankId].remoteEndpoint = links->dstEndpointDesc;
+        }
+    }
+
+    hcclRet = HcclChannelAcquire(hcclHandle, engine, channelDesc.data(), channelNum, channels.data());
+    TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Acquire HCCL channel failed, ret=", hcclRet);
+    return 0;
+}
+
+static int32_t GetHcclCommResource(const HcclComm& hcclHandle, const uint32_t rankId,
+                                   const uint32_t epRankSize, const CommEngine& engine,
+                                   Mc2ContextStru* mc2Context, int64_t& cclBufferSize)
+{
+    std::vector<ChannelHandle> channels;
+    int32_t ret = GetHcclCommChannel(hcclHandle, epRankSize, rankId, engine, channels);
+    TORCH_CHECK(ret == 0, "GetHcclCommChannel failed, ret=", ret);
+
+    for (uint32_t i = 0; i < epRankSize; ++i) {
+        void* tempBuffer = nullptr;
+        uint64_t bufSize = 0;
+        HcclResult hcclRet;
+
+        if (i == rankId) {
+            hcclRet = HcclGetHcclBuffer(hcclHandle, &tempBuffer, &bufSize);
+            cclBufferSize = bufSize;
+        } else {
+            uint32_t channelIndex = i;
+            hcclRet = HcclChannelGetHcclBuffer(hcclHandle, channels[channelIndex], &tempBuffer, &bufSize);
+        }
+        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get Hccl Buffer failed, src=", rankId, " dst=", i);
+        mc2Context[0].epHcclBuffer[i] = reinterpret_cast<uint64_t>(tempBuffer);
+    }
+
+    void* tempBuffer = nullptr;
+    uint64_t bufSize = 0;
+    HcclResult hcclRet;
+    hcclRet = HcclChannelGetHcclBuffer(hcclHandle, channels[rankId], &tempBuffer, &bufSize);
+    mc2Context[0].HccsAddr = reinterpret_cast<uint64_t>(tempBuffer);
+    return 0;
+}
+
+static int32_t CreatMc2Context(HcclComm& comm, int64_t worldSize, int64_t& cclBufferSize,
+                                Mc2ContextStru* mc2Context)
+{
+    uint32_t rankId;
+    HcclResult ret = HcclGetRankId(comm, &rankId);
+    TORCH_CHECK(ret == HCCL_SUCCESS, "HcclGetRankId failed, ret=", ret);
+    mc2Context[0].epRankId = rankId;
+
+    CommEngine engine = static_cast<CommEngine>(COMM_ENGINE_AIV);
+
+    int32_t ctxRet = GetHcclCommResource(comm, rankId, static_cast<uint32_t>(worldSize),
+                                          engine, mc2Context, cclBufferSize);
+    TORCH_CHECK(ctxRet == 0, "GetHcclCommResource failed, ret=", ctxRet);
+    return 0;
+}
+
+static int32_t CreateHcclContext(HcclComm& commHandle, int64_t worldSize, const char* groupName)
+{
+    HcclResult ret = HcclCommGetHandleWithName(groupName, &commHandle);
+    TORCH_CHECK(ret == HCCL_SUCCESS, "HcclCommGetHandleWithName failed, ret=", ret);
+
     uint32_t rankId = 0;
     uint32_t worldSizeHccl = 0;
-    ret = static_cast<HcclResult>(HcclGetRankSize(commHandle, &worldSizeHccl));
-    TORCH_CHECK(ret == HCCL_SUCCESS, "HcclGetRankSize failed, ret:", ret);
+    ret = HcclGetRankSize(commHandle, &worldSizeHccl);
+    TORCH_CHECK(ret == HCCL_SUCCESS, "HcclGetRankSize failed, ret=", ret);
 
-    ret = static_cast<HcclResult>(HcclGetRankId(commHandle, &rankId));
-    TORCH_CHECK(ret == HCCL_SUCCESS, "HcclGetRankId failed, ret:", ret);
+    ret = HcclGetRankId(commHandle, &rankId);
+    TORCH_CHECK(ret == HCCL_SUCCESS, "HcclGetRankId failed, ret=", ret);
 
-    if (rankId >= worldSizeHccl || worldSize != worldSizeHccl) {
-        TORCH_CHECK(rankId < worldSizeHccl, "rankId ", ret, "worldSizeHccl ", worldSizeHccl, "worldSize ", worldSize);
-        return -11;
-    }
+    TORCH_CHECK(rankId < worldSizeHccl && worldSize == worldSizeHccl,
+                "rank validation failed: rankId=", rankId, " worldSizeHccl=", worldSizeHccl,
+                " worldSize=", worldSize);
     return 0;
 }
 
-static int32_t GetMc2Context(Mc2ContextStru* mc2ContextHost, int64_t epWorldSize, int64_t &cclBufferSize, const char* groupEpStr)
+static int32_t GetMc2Context(Mc2ContextStru* mc2ContextHost, int64_t epWorldSize,
+                             int64_t& cclBufferSize, const char* groupEpStr)
 {
-    void* opArgs = nullptr;
-    HcclResult ret = static_cast<HcclResult>(HcclKfcAllocOpArgs(&opArgs));
-    TORCH_CHECK(ret == 0, "HcclKfcAllocOpArgs failed, ret:", ret);
-
-    uint8_t commEngine = COMM_ENGINE_AIV; //默认AIV引擎，应该是4
-    ret = static_cast<HcclResult>(HcclKfcOpArgsSetCommEngine(opArgs, (uint8_t)commEngine));
-    TORCH_CHECK(ret == 0, "HcclKfcOpArgsSetCommEngine failed, ret:", ret);
-
     HcclComm epCommHandle;
-    int32_t contextRet = CreateHcclContext(epCommHandle, opArgs, epWorldSize, groupEpStr, EP_ALG_CONFIG, EP_OP_TYPE);
-    TORCH_CHECK(contextRet == 0, "CreateHcclContext failed, ret:", contextRet);\
+    int32_t contextRet = CreateHcclContext(epCommHandle, epWorldSize, groupEpStr);
+    TORCH_CHECK(contextRet == 0, "CreateHcclContext failed, ret=", contextRet);
 
     contextRet = CreatMc2Context(epCommHandle, epWorldSize, cclBufferSize, mc2ContextHost);
-    TORCH_CHECK(contextRet == 0, "CreatMc2Context failed, ret:", contextRet);
-
-    // 释放通信配置对象
-    ret = static_cast<HcclResult>(HcclKfcFreeOpArgs(opArgs));
-    TORCH_CHECK(ret == 0, "getHcclKfcFreeOpArgs failed, ret:", ret);
-
+    TORCH_CHECK(contextRet == 0, "CreatMc2Context failed, ret=", contextRet);
     return 0;
 }
 
-/**
-* @param x Input Tensor (on NPU)
-* @return Result Tensor
-*/
-std::tuple<at::Tensor, int64_t> update_context(const at::Tensor &x, c10::string_view group_ep, int64_t ep_world_size)
+std::tuple<at::Tensor, int64_t> update_context(const at::Tensor &x, c10::string_view group_ep,
+                                                int64_t ep_world_size)
 {
-    bool isSameGroup = false;
     std::string new_group_ep_str = std::string(group_ep);
-    isSameGroup = (new_group_ep_str == last_group_ep_str);
+    bool isSameGroup = (new_group_ep_str == last_group_ep_str);
     if (isInit && isSameGroup) {
         return std::make_tuple(output, bufferSize);
     }
 
-    
     Mc2ContextStru mc2ContextHost[2];
     int32_t ret = GetMc2Context(mc2ContextHost, ep_world_size, bufferSize, new_group_ep_str.c_str());
-    TORCH_CHECK(ret == 0, "GetMc2Context failed, ret", ret);
-    at::Tensor hostContext = at::from_blob(&mc2ContextHost, {sizeof(Mc2ContextStru) * 2 / sizeof(int32_t)}, at::kInt);
+    TORCH_CHECK(ret == 0, "GetMc2Context failed, ret=", ret);
 
-    output = at::empty({sizeof(Mc2ContextStru) * 2 / sizeof(int32_t)}, at::TensorOptions().dtype(at::kInt)
-        .device(c10::DeviceType::PrivateUse1).memory_format(c10::MemoryFormat::Contiguous));
+    at::Tensor hostContext = at::from_blob(&mc2ContextHost, {sizeof(Mc2ContextStru) * 2 / sizeof(int32_t)}, at::kInt);
+    output = at::empty({sizeof(Mc2ContextStru) * 2 / sizeof(int32_t)},
+                       at::TensorOptions().dtype(at::kInt).device(c10::DeviceType::PrivateUse1)
+                       .memory_format(c10::MemoryFormat::Contiguous));
     output.copy_(hostContext);
     last_group_ep_str = new_group_ep_str;
     isInit = true;
@@ -143,5 +203,6 @@ TORCH_LIBRARY_IMPL(EXTENSION_MODULE_NAME, PrivateUse1, m)
 {
     m.impl("updateContext", update_context);
 }
+
 }
 }
