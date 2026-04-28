@@ -432,8 +432,8 @@ extern "C" aclnnStatus aclnnQuantMatmulAlltoAllGetWorkspaceSize(const aclTensor*
 {
     // 处理非连续Tensor，目前只有支持转置的x2涉及该处理
     // === 添加调试日志 ===
-    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "[aclnn->Inner] groupSize=%ld (0x%lx)",
-            groupSize, static_cast<uint64_t>(groupSize));
+    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "[aclnn->Inner] groupSize=%ld",
+            groupSize);
 
     aclnnStatus checkX2Ret = CheckX2Valid(x2);
     CHECK_RET(checkX2Ret == ACLNN_SUCCESS, checkX2Ret); // 先检查x2是否合法，避免非法操作

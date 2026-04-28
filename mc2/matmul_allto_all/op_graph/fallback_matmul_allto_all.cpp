@@ -176,8 +176,8 @@ inline ge::graphStatus GetAttrPara(const gert::OpExecuteContext* host_api_ctx, A
     para.groupSize = (groupSize_ptr != nullptr ? *groupSize_ptr : 0);
 
     // === 添加调试日志 ===
-    OP_LOGE(host_api_ctx->GetNodeName(), "[Fallback] , groupSize=%ld (0x%lx)",
-             para.groupSize, static_cast<uint64_t>(para.groupSize));
+    OP_LOGE(host_api_ctx->GetNodeName(), "[Fallback] , groupSize=%ld",
+             para.groupSize);
 
     return ge::SUCCESS;
 }
@@ -271,8 +271,13 @@ static ge::graphStatus MatmulAlltoAllExecuteFunc(gert::OpExecuteContext* host_ap
             retPara != ge::SUCCESS, OP_LOGE(host_api_ctx->GetNodeName(), "Failed to get quant matmul input paras."),
             return ge::GRAPH_FAILED);
         // === 添加调试日志 ===
-        OP_LOGE(host_api_ctx->GetNodeName(), "[Fallback->EXEC] groupSize=%ld, transposeX1=%d, transposeX2=%d",
-                 attrParas.groupSize, attrParas.transposeX1, attrParas.transposeX2);
+        OP_LOGE(host_api_ctx->GetNodeName(), 
+    "[Fallback->EXEC] groupSize=%ld, transposeX1=%d, transposeX2=%d, x1QM=%ld, x2QM=%ld",
+    attrParas.groupSize, 
+    static_cast<int>(attrParas.transposeX1), 
+    static_cast<int>(attrParas.transposeX2),
+    x1QuantMode, x2QuantMode);
+
         const auto ret = EXEC_OPAPI_CMD(aclnnQuantMatmulAlltoAll, matmulParas.x1Acl, matmulParas.x2Acl, matmulParas.bias, quantMatmulParas.x1ScaleAcl, quantMatmulParas.x2ScaleAcl,
                                         attrParas.commScaleOptional, attrParas.x1OffsetOptional, attrParas.x2OffsetOptional, actSeqArray, attrParas.group,
                                         x1QuantMode, x2QuantMode, attrParas.commQuantMode, attrParas.commQuantDtype, attrParas.groupSize, attrParas.transposeX1, attrParas.transposeX2,
