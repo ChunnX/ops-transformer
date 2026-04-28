@@ -192,42 +192,6 @@ public:
         AscendC::DataCopy(bl1Local, bGlobal, nd2nzParams);
     }
 
-    __aicore__ inline void InitA1(const AscendC::LocalTensor<AType> &al1Local, const TileL1L0Param &tileL1L0Param)
-    {
-        AscendC::LocalTensor<half> al1LocalHalf = al1Local.template ReinterpretCast<half>();
-        AscendC::InitConstValueParams<half> initConstValueParams;
-        uint64_t offset = 0;
-        if constexpr (transA) {
-            if (tileL1L0Param.curPadAKL1 == tileL1L0Param.curGmAKL1) {
-                return;
-            }
-            offset = tileL1L0Param.curGmAKL1 * AscendC::BLOCK_CUBE;
-            initConstValueParams.repeatTimes = Cgmct::Gemm::CeilDiv(tileL1L0Param.curAlignM, C0_SIZE);
-            initConstValueParams.blockNum = tileL1L0Param.curPadAKL1 - tileL1L0Param.curGmAKL1;
-            initConstValueParams.dstGap = tileL1L0Param.curGmAKL1;
-            initConstValueParams.initValue = 0;
-        }
-        AscendC::InitConstValue(al1LocalHalf[offset], initConstValueParams);
-    }
-
-    __aicore__ inline void InitB1(const AscendC::LocalTensor<BType> &bl1Local, const TileL1L0Param &tileL1L0Param)
-    {
-        AscendC::LocalTensor<half> bl1LocalHalf = bl1Local.template ReinterpretCast<half>();
-        AscendC::InitConstValueParams<half> initConstValueParams;
-        uint64_t offset = 0;
-        if constexpr (!transB) {
-            if (tileL1L0Param.curPadBKL1 == tileL1L0Param.curGmBKL1) {
-                return;
-            }
-            offset = tileL1L0Param.curGmBKL1 * AscendC::BLOCK_CUBE;
-            initConstValueParams.repeatTimes = Cgmct::Gemm::CeilDiv(tileL1L0Param.curAlignN, C0_SIZE);
-            initConstValueParams.blockNum = tileL1L0Param.curPadBKL1 - tileL1L0Param.curGmBKL1;
-            initConstValueParams.dstGap = tileL1L0Param.curGmBKL1;
-            initConstValueParams.initValue = 0;
-        }
-        AscendC::InitConstValue(bl1LocalHalf[offset], initConstValueParams);
-    }
-
     __aicore__ inline void CopyInL0A(const AscendC::LocalTensor<AType> &l0aLocal,
                                      const AscendC::LocalTensor<AType> &al1Local, const TileL1L0Param &tileL1L0Param,
                                      uint64_t kL0L1Off)
@@ -336,10 +300,10 @@ public:
         }
     }
 
-    __aicore__ inline void UpdateKL0(TileL1L0Param &tileL1L0Param, uint64_t kL0Offset, uint64_t minPadKL1)
+    __aicore__ inline void UpdateKL0(TileL1L0Param &tileL1L0Param, uint64_t kL0Offset, uint64_t minGmKL1)
     {
-        if (kL0Offset + baseK_ > minPadKL1) {
-            tileL1L0Param.curKL0 = minPadKL1 - kL0Offset;
+        if (kL0Offset + baseK_ > minGmKL1) {
+            tileL1L0Param.curKL0 = minGmKL1 - kL0Offset;
         } else {
             tileL1L0Param.curKL0 = baseK_;
         }
@@ -362,7 +326,6 @@ public:
     __aicore__ inline void CopyAInL1(const AscendC::GlobalTensor<AType> &aGlobal, const TileL1L0Param &tileL1L0Param,
                                      uint64_t l1BufId, uint64_t kL1Offset)
     {
-        InitA1(aL1Local_[l1BufferAOffset_[l1BufId]], tileL1L0Param);
         uint64_t offsetA = transA ? kL1Offset * m_ : kL1Offset;
         CopyInA1(aGlobal[offsetA], aL1Local_[l1BufferAOffset_[l1BufId]], tileL1L0Param);
     }
@@ -370,7 +333,6 @@ public:
     __aicore__ inline void CopyBInL1(const AscendC::GlobalTensor<BType> &bGlobal, const TileL1L0Param &tileL1L0Param,
                                      uint64_t l1BufId, uint64_t kL1Offset)
     {
-        InitB1(bL1Local_[l1BufferBOffset_[l1BufId]], tileL1L0Param);
         uint64_t offsetB = transB ? kL1Offset : kL1Offset * n_;
         CopyInB1(bGlobal[offsetB], bL1Local_[l1BufferBOffset_[l1BufId]], tileL1L0Param);
     }
@@ -379,9 +341,9 @@ public:
                                    uint64_t al1BufId, uint64_t bl1BufId, uint64_t l0cOffset, uint64_t kaL1Offset,
                                    uint64_t kbL1Offset)
     {
-        uint64_t minPadKL1 = Cgmct::Gemm::Min(tileL1L0Param.curPadBKL1, tileL1L0Param.curPadAKL1);
+        uint64_t minGmKL1 = Cgmct::Gemm::Min(tileL1L0Param.curGmBKL1, tileL1L0Param.curGmAKL1);
         for (uint64_t kL0Offset = kL1Offset; kL0Offset < Min(kL1Offset + minKL1_, k_); kL0Offset += baseK_) {
-            UpdateKL0(tileL1L0Param, kL0Offset - kL1Offset, minPadKL1);
+            UpdateKL0(tileL1L0Param, kL0Offset - kL1Offset, minGmKL1);
             uint64_t kL0L1Off = kL0Offset - kL1Offset;
             // Load data to L0 and open DB
             uint64_t l0Offset = HALF_L0_SIZE * (l0PingPong_ & 0x1);
