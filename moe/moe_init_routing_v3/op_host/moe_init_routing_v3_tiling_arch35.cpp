@@ -838,7 +838,7 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetInputs()
 
     n_ = xShape_.GetDim(0);
     k_ = expertIdxShape_.GetDim(1);
-    OP_CHECK_IF(k_ <= 0, OP_LOGE(context_, "Invalid k value: %ld, should be greater than 0.", k_),
+    OP_CHECK_IF(k_ < 0, OP_LOGE(context_, "Invalid k value: %ld, should be greater than or equal to 0.", k_),
                 return ge::GRAPH_FAILED);
     cols_ = xShape_.GetDim(1);
     totalLength_ = n_ * k_;
