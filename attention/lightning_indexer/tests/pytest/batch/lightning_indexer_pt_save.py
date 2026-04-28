@@ -89,7 +89,7 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
                 row['sparse_mode'],
                 row['query_datarange'],
                 row['key_datarange'],
-                row['weights_datarange']
+                row['weights_datarange'],
             ))
 
         return test_cases
@@ -106,6 +106,10 @@ def li_output_single(data_case):
     batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num, \
     qk_dtype, weight_dtype, actual_seq_dtype, act_seq_q, act_seq_k, layout_query, \
     layout_key, sparse_count, sparse_mode, query_datarange, key_datarange, weights_datarange = params
+    if q_t_size is not None:
+        q_t_size = int(q_t_size)
+    if k_t_size is not None:
+        k_t_size = int(k_t_size)
     if qk_dtype == 'FP16':
         qk_dtype = torch.float16
     elif qk_dtype == 'BF16':
@@ -135,7 +139,10 @@ def li_output_single(data_case):
         act_seq_k = act_seq_k
     else:
         act_seq_k = [int(x.strip()) for x in act_seq_k.split(',')]
-
+        if layout_key == 'TND':
+            if len(act_seq_k) == batch_size + 1:
+                act_seq_k = act_seq_k[1:]
+            act_seq_k = [act_seq_k[0]] + [act_seq_k[i] - act_seq_k[i - 1] for i in range(1, len(act_seq_k))]
     query_datarange = [float(x.strip()) for x in query_datarange.split(',')]
     key_datarange = [float(x.strip()) for x in key_datarange.split(',')]
     weights_datarange = [float(x.strip()) for x in weights_datarange.split(',')]
@@ -237,7 +244,7 @@ def li_output_single(data_case):
         "layout_query":layout_query,
         "layout_key":layout_key,
         "sparse_count":sparse_count,
-        "sparse_mode":sparse_mode
+        "sparse_mode":sparse_mode,
     }
     return  casename, output_tensors
 
