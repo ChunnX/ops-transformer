@@ -28,6 +28,9 @@
 #include "torch_npu/csrc/framework/interface/EnvVariables.h"
 #include "torch_npu/csrc/aten/NPUNativeFunctions.h"
 #include "torch_npu/csrc/core/npu/DeviceUtils.h"
+#include "hccl/hccl_res.h"
+#include "hccl/hcomm_res_defs.h"
+#include "hccl/hccl_rank_graph.h"
 #if __has_include("torch_npu/csrc/flopcount/FlopCount.h")
     #include "torch_npu/csrc/flopcount/FlopCount.h"
 #endif
@@ -44,6 +47,27 @@ using _HcclGetRankSize = HcclResult (*)(HcclComm, uint32_t *);                  
 using _HcclGetRankId = HcclResult (*)(HcclComm, uint32_t *);                                // 获取卡号
 using _HcclGetHcclBuffer = HcclResult (*)(HcclComm, void **, uint64_t *);                   // 获取本卡地址
 
+// 通过group名称获取comm handle
+using _HcomGetCommHandleByGroup = HcclResult (*)(const char*, HcclComm*);
+ // 获取rank间通信链路
+using _HcclRankGraphGetLinks = HcclResult (*)(HcclComm, uint32_t, uint32_t, uint32_t, CommLink**, uint32_t*);
+// 获取网络层信息
+using _HcclRankGraphGetLayers = HcclResult (*)(HcclComm, uint32_t**, uint32_t*);
+// 获取每层rank数量
+using _HcclRankGraphGetRankSizeByLayer = HcclResult (*)(HcclComm, uint32_t, uint32_t*);
+// 初始化channel描述符
+using _HcclRankGraphGetRanksByLayer = HcclResult (*)(HcclComm, uint32_t, uint32_t **, uint32_t *);
+// 获取channel句柄
+using _HcclChannelAcquire = HcclResult (*)(HcclComm, CommEngine, HcclChannelDesc*, uint32_t, ChannelHandle*);
+// 通过channel获取buffer
+using _HcclChannelGetHcclBuffer = HcclResult (*)(HcclComm, ChannelHandle, void**, uint64_t*);
+// 创建引擎context
+using _HcclEngineCtxCreate = HcclResult (*)(HcclComm, const char*, CommEngine, uint64_t, void**);
+// 获取引擎context
+using _HcclEngineCtxGet = HcclResult (*)(HcclComm, const char*, CommEngine, void**, uint64_t*);
+// 拷贝context
+using _HcclEngineCtxCopy = HcclResult (*)(HcclComm, CommEngine, const char*, void*, uint64_t, uint64_t);
+
 static _HcclKfcAllocOpArgs HcclKfcAllocOpArgsFunc = nullptr;
 static _HcclKfcOpArgsSetAlgConfig HcclKfcOpArgsSetAlgConfigFunc = nullptr;
 static _HcclKfcOpArgsSetCommEngine HcclKfcOpArgsSetCommEngineFunc = nullptr;
@@ -54,6 +78,18 @@ static _HcclCommGetHandleWithName HcclCommGetHandleWithNameFunc = nullptr;
 static _HcclGetRankSize HcclGetRankSizeFunc = nullptr;
 static _HcclGetRankId HcclGetRankIdFunc = nullptr;
 static _HcclGetHcclBuffer HcclGetHcclBufferFunc = nullptr;
+
+// 新HCCL EngineCtx API函数指针
+static _HcomGetCommHandleByGroup HcomGetCommHandleByGroupFunc = nullptr;
+static _HcclRankGraphGetLinks HcclRankGraphGetLinksFunc = nullptr;
+static _HcclRankGraphGetLayers HcclRankGraphGetLayersFunc = nullptr;
+static _HcclRankGraphGetRankSizeByLayer HcclRankGraphGetRankSizeByLayerFunc = nullptr;
+static _HcclRankGraphGetRanksByLayer HcclRankGraphGetRanksByLayerFunc = nullptr;
+static _HcclChannelAcquire HcclChannelAcquireFunc = nullptr;
+static _HcclChannelGetHcclBuffer HcclChannelGetHcclBufferFunc = nullptr;
+static _HcclEngineCtxCreate HcclEngineCtxCreateFunc = nullptr;
+static _HcclEngineCtxGet HcclEngineCtxGetFunc = nullptr;
+static _HcclEngineCtxCopy HcclEngineCtxCopyFunc = nullptr;
 
 inline const char *GetHcclLibName(void)
 {
@@ -118,5 +154,38 @@ inline void InitHcclFunctions()
     HcclCreateOpResCtxFunc = GetHcclFuncAddr<_HcclCreateOpResCtx>("HcclCreateOpResCtx");  // 创建HcclContext
     TORCH_CHECK(HcclCreateOpResCtxFunc != nullptr, "getFuncHcclCreateOpResCtx failed.");
     HcclGetRankSizeFunc = GetHcclFuncAddr<_HcclGetRankSize>("HcclGetRankSize"); // 获取通信域大小
+    TORCH_CHECK(HcclGetRankSizeFunc != nullptr, "getFuncHcclGetRankSize failed.");
+}
+
+// 初始化新的EngineCtx API (从libhccl_fwk.so加载)
+inline void InitHcclEngineCtxFunctions()
+{
+    HcomGetCommHandleByGroupFunc = GetHcclFwkFuncAddr<_HcomGetCommHandleByGroup>("HcomGetCommHandleByGroup");
+    TORCH_CHECK(HcomGetCommHandleByGroupFunc != nullptr, "getHcomGetCommHandleByGroup failed.");
+    HcclRankGraphGetLinksFunc = GetHcclFwkFuncAddr<_HcclRankGraphGetLinks>("HcclRankGraphGetLinks");
+    TORCH_CHECK(HcclRankGraphGetLinksFunc != nullptr, "getHcclRankGraphGetLinks failed.");
+    HcclRankGraphGetLayersFunc = GetHcclFwkFuncAddr<_HcclRankGraphGetLayers>("HcclRankGraphGetLayers");
+    TORCH_CHECK(HcclRankGraphGetLayersFunc != nullptr, "getHcclRankGraphGetLayers failed.");
+    HcclRankGraphGetRankSizeByLayerFunc = GetHcclFwkFuncAddr<_HcclRankGraphGetRankSizeByLayer>(
+        "HcclRankGraphGetRankSizeByLayer");
+    TORCH_CHECK(HcclRankGraphGetRankSizeByLayerFunc != nullptr, "getHcclRankGraphGetRankSizeByLayer failed.");
+    HcclRankGraphGetRanksByLayerFunc = GetHcclFwkFuncAddr<_HcclRankGraphGetRanksByLayer>(
+        "HcclRankGraphGetRanksByLayer");
+    TORCH_CHECK(HcclRankGraphGetRanksByLayerFunc != nullptr, "getHcclRankGraphGetRanksByLayer failed.");
+    HcclChannelAcquireFunc = GetHcclFwkFuncAddr<_HcclChannelAcquire>("HcclChannelAcquire");
+    TORCH_CHECK(HcclChannelAcquireFunc != nullptr, "getHcclChannelAcquire failed.");
+    HcclChannelGetHcclBufferFunc = GetHcclFwkFuncAddr<_HcclChannelGetHcclBuffer>("HcclChannelGetHcclBuffer");
+    TORCH_CHECK(HcclChannelGetHcclBufferFunc != nullptr, "getHcclChannelGetHcclBuffer failed.");
+    HcclEngineCtxCreateFunc = GetHcclFwkFuncAddr<_HcclEngineCtxCreate>("HcclEngineCtxCreate");
+    TORCH_CHECK(HcclEngineCtxCreateFunc != nullptr, "getHcclEngineCtxCreate failed.");
+    HcclEngineCtxGetFunc = GetHcclFwkFuncAddr<_HcclEngineCtxGet>("HcclEngineCtxGet");
+    TORCH_CHECK(HcclEngineCtxGetFunc != nullptr, "getHcclEngineCtxGet failed.");
+    HcclEngineCtxCopyFunc = GetHcclFwkFuncAddr<_HcclEngineCtxCopy>("HcclEngineCtxCopy");
+    TORCH_CHECK(HcclEngineCtxCopyFunc != nullptr, "getHcclEngineCtxCopy failed.");
+    HcclGetHcclBufferFunc = GetHcclFwkFuncAddr<_HcclGetHcclBuffer>("HcclGetHcclBuffer"); // 获取本卡地址
+    TORCH_CHECK(HcclGetHcclBufferFunc != nullptr, "getFuncHcclGetHcclBuffer failed.");
+    HcclGetRankIdFunc = GetHcclFwkFuncAddr<_HcclGetRankId>("HcclGetRankId"); // 获取本卡卡号
+    TORCH_CHECK(HcclGetRankIdFunc != nullptr, "getFuncHcclGetRankId failed.");
+    HcclGetRankSizeFunc = GetHcclFwkFuncAddr<_HcclGetRankSize>("HcclGetRankSize"); // 获取通信域大小
     TORCH_CHECK(HcclGetRankSizeFunc != nullptr, "getFuncHcclGetRankSize failed.");
 }
