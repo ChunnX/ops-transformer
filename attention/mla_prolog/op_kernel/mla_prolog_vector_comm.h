@@ -49,6 +49,48 @@ struct PerTileQuantParams {
     uint32_t col;
 };
 
+struct SplitKnAccumParams {
+    uint32_t kGroups = 0;                // Number of K groups
+    uint64_t partialStride = 0;          // Stride between K groups (usually nTotal)
+
+    __aicore__ inline bool NeedAccumulate() const {
+        return kGroups > 0;
+    }
+};
+
+__aicore__ inline const SplitKnAccumParams& DefaultSplitKnAccumParams() {
+    static SplitKnAccumParams defaultSplitKnAccumParams = {0, 0};
+    return defaultSplitKnAccumParams;
+}
+
+template<typename AccumType>
+__aicore__ inline void AccumulateKnPartials(
+    const LocalTensor<AccumType> &output,
+    const GlobalTensor<AccumType> &partials,
+    uint32_t mStart,
+    uint32_t mLen,
+    uint32_t nLen,
+    uint32_t kGroups,
+    uint64_t partialStride)
+{
+    if (nLen == 0 || mLen == 0 || kGroups == 0) {
+        return;
+    }
+
+    uint16_t chunkElems = CeilDivT(static_cast<uint32_t>(mLen * nLen), static_cast<uint32_t>(8));
+    uint16_t srcGap = CeilDivT(static_cast<uint32_t>(partialStride - mLen * nLen), static_cast<uint32_t>(8));
+    // Each chunk needs chunkElems * sizeof(AccumType) bytes
+    // // We need 2 chunks: accumulator and temp
+    // LocalTensor<AccumType> temp = buffer.template Get<AccumType>(chunkElems);
+
+    DataCopy(output, partials[mStart * nLen], {static_cast<uint16_t>(kGroups), chunkElems, srcGap, 0});
+    SetWitFlag<HardEvent::MTE2_V>(EVENT_ID0);
+    for (uint32_t k = 1; k < kGroups; k++) {
+        Add(output, output, output[k * mLen * nLen], mLen * nLen);
+        AscendC::PipeBarrier<PIPE_V>();
+    }
+}
+
 /**
  * @brief vec mul by row;  dstUb[i, j] = src0Ub[j] * src1Ub[i, j],
  * @param dstUb 输出tensor [row, columnStride]
@@ -541,6 +583,9 @@ __aicore__ inline void DynamicQuant(const LocalTensor<float> &outputLocal, const
     // x * 1 / scaleOut
     RowMuls(outputLocal, inputLocal, rowMaxBrcb, rectangleParams);
 }
+
+
+
 
 }
 #endif // MLA_PROLOG_VECTOR_COMM_H
