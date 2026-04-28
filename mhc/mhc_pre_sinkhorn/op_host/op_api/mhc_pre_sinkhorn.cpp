@@ -52,8 +52,8 @@ static const aclTensor *MhcPreSinkhornAiCore(const aclTensor *x, const aclTensor
 }
 
 const aclTensor *MhcPreSinkhorn(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha,
-                                const aclTensor *bias, int64_t hcMult, int64_t numIters, float hcEps,
-                                float normEps, bool needBackward,
+                                const aclTensor *bias, int64_t hcMult, int64_t numIters, double hcEps,
+                                double normEps, bool needBackward,
                                 aclTensor *hin, aclTensor *hPost, aclTensor *hRes,
                                 aclTensor *hPre, aclTensor *hcBeforeNorm, aclTensor *invRms,
                                 aclTensor *sumOut, aclTensor *normOut,
