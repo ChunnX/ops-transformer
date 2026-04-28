@@ -354,7 +354,7 @@ def convert_param_combination_to_cs_format(param_combination):
         'key_cache': kv_torch_dtype,
         'value_cache': kv_torch_dtype,
         'query_rope': q_type,
-        'key_rope': kv_torch_dtype,  # 和 key dtype 保持一致
+        'key_rope': torch.bfloat16,  # kv_quant算子要求key_rope保持bfloat16（与sparse_fa不同）
         'dequant_scale': torch.float32,
         'v_dequant_scale': torch.float32,
     }
