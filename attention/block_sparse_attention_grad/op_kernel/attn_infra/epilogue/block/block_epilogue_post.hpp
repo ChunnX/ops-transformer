@@ -199,19 +199,22 @@ public:
     void InitIndex(uint64_t startIdx, uint64_t& curS, GM_ADDR seqS, uint64_t &bIdx, uint64_t &nIdx, uint64_t &sIdx, struct ShapeBnsd shape)
     {
         if constexpr (INPUT_LAYOUT == TND) {
-            uint64_t totalLen = 0;
-            for (uint64_t bDimIdx = bIdx; bDimIdx < shape.b; bDimIdx++) {
-                totalLen = shape.n * ((__gm__ uint64_t *)seqS)[bDimIdx] * shape.d;
-                if (totalLen > startIdx) {
+            uint64_t prefixSum = 0;
+            for (uint64_t bDimIdx = 0; bDimIdx < shape.b; bDimIdx++) {
+                uint64_t curBatchLen = ((__gm__ int64_t *)seqS)[bDimIdx];
+                uint64_t curBatchElements = curBatchLen * shape.n * shape.d;
+
+                if (startIdx < prefixSum + curBatchElements) {
                     bIdx = bDimIdx;
-                    curS = (bIdx == 0) ? ((__gm__ int64_t *)seqS)[bIdx] :
-                                        (((__gm__ int64_t *)seqS)[bIdx] - ((__gm__ int64_t *)seqS)[bIdx - 1]);
-                    uint64_t bTail = startIdx - (totalLen - shape.n * curS * shape.d);
+                    curS = curBatchLen;
+
+                    uint64_t bTail = startIdx - prefixSum;
                     nIdx = bTail / (curS * shape.d);
                     uint64_t nTail = bTail % (curS * shape.d);
                     sIdx = nTail / shape.d;
                     break;
                 }
+                prefixSum += curBatchElements;
             }
         } else {
             bIdx = startIdx / (shape.n * shape.s * shape.d);
@@ -265,6 +268,7 @@ public:
         uint64_t &sIdx =  (qkvFlag  > 0) ? curS1Idx : curS2Idx;
         uint64_t &bIdx =  (qkvFlag  > 0) ? curBatch1 : curBatch2;
   
+        // 要兼容BNSD没有seqList的情况，得从tiling传个参数过来
         uint64_t curS = ((__gm__ uint64_t *)seqS)[bIdx];
         uint64_t count = 0;
 
@@ -321,7 +325,12 @@ public:
         uint64_t bOffset = 0;
         uint64_t outOffset = 0;
         if constexpr (INPUT_LAYOUT == TND) {
-            bOffset = curBatch == 0 ? 0 : n * ((__gm__ uint64_t *)seqLen)[curBatch - 1] * d;
+            // TODO: 这里太耗时了，提到外面，每个batch只算一次
+            uint64_t prefixSum = 0;
+            for (uint64_t b = 0; b < curBatch; b++) {
+                prefixSum += ((__gm__ uint64_t *)seqLen)[b];
+            }
+            bOffset = prefixSum * n * d;
             outOffset = bOffset + (curS * n + nIdx) * d;
         } else {
             outOffset = curBatch * ( n * s * d) + nIdx * (s * d) + curS * d;
