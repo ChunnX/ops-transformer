@@ -17,6 +17,7 @@ from npu_ops_transformer.op_builder.builder import OpBuilder
 from npu_ops_transformer.op_builder.builder import AS_LIBRARY
 from .update_context_by_hccl_channel import update_context_by_hccl_channel
 
+
 class _MegaMoeOpBuilder(OpBuilder):
     def __init__(self):
         super(_MegaMoeOpBuilder, self).__init__("npu_mega_moe")
@@ -77,6 +78,8 @@ def _npu_mega_moe(context, x, topk_ids, topk_weights, weight1, weight2,
 class IntWrapper:
     def __init__(self, value=0):
         self.value = value
+
+
 class SymmBuffer:
     def __init__(
         self,
