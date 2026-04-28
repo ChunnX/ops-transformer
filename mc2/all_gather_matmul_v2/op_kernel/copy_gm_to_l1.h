@@ -16,7 +16,7 @@
 #ifndef CATLASS_GEMM_TILE_COPY_GM_TO_L1_EXPAND_H
 #define CATLASS_GEMM_TILE_COPY_GM_TO_L1_EXPAND_H
 
-#include "../../../3rdparty/catlass/include/catlass/gemm/tile/copy_gm_to_l1.hpp"
+#include "3rdparty/catlass/include/catlass/gemm/tile/copy_gm_to_l1.hpp"
 
 namespace Catlass::Gemm::Tile {
 /// Partial specialization for nZ in and nZ out.
