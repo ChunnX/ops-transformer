@@ -22,11 +22,11 @@
 #include "dense_lightning_indexer_softmax_lse_vector_block.h"
 
 namespace DenseLISoftmaxLseRegbase {
+using T = float;
 
 template <typename CubeBlockType, typename VecBlockType>
 class DenseLISoftmaxLseKernelBase {
 public:
-    ARGS_TRAITS;
     __aicore__ inline DenseLISoftmaxLseKernelBase(){};
     __aicore__ inline void Init(GM_ADDR query, GM_ADDR key, GM_ADDR weights,
                                 GM_ADDR actualSeqLengthsQ, GM_ADDR actualSeqLengths,

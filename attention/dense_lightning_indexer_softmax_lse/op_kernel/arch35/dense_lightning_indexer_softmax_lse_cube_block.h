@@ -150,9 +150,13 @@ __aicore__ inline void DenseLISoftmaxLseCubeBlock<TEMPLATE_ARGS>::ComputeMm1(
     DenseLISoftmaxLseRunInfo &runInfo,
     DenseLISoftmaxLseConstInfo &constInfo)
 {
-    LocalTensor<INPUT_T> queryL1Tensor = queryBuf.GetTensor<INPUT_T>();
-    LocalTensor<INPUT_T> keyL1Tensor = keyBuf.GetTensor<INPUT_T>();
-    LocalTensor<T> mm1L0CTensor = commonL0CBuf.GetTensor<T>();
+    Buffer<BufferType::L1> queryL1Buffer = queryBuf.Get();
+    Buffer<BufferType::L1> keyL1Buffer = keyBuf.Get();
+    Buffer<BufferType::L0C> mm1L0CBuffer = commonL0CBuf.Get();
+    
+    LocalTensor<INPUT_T> queryL1Tensor = queryL1Buffer.GetTensor<INPUT_T>();
+    LocalTensor<INPUT_T> keyL1Tensor = keyL1Buffer.GetTensor<INPUT_T>();
+    LocalTensor<T> mm1L0CTensor = mm1L0CBuffer.GetTensor<T>();
     LocalTensor<T> mm1UbTensor = mm1ResBuf.GetTensor<T>();
 
     CopyInQueryIndexToL1(queryL1Tensor, runInfo, constInfo);
@@ -174,9 +178,8 @@ __aicore__ inline void DenseLISoftmaxLseCubeBlock<TEMPLATE_ARGS>::ComputeMm1(
         queryL1Tensor, keyL1Tensor, l0aBuf, l0bBuf, mm1L0CTensor, mmParam);
 
     FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
-    fixpipeParams.nSize = AlignTo(runInfo.s2RealSize, FP32_ALIGN_NUM);
-    fixpipeParams.mSize = AlignTo(runInfo.nRealSize, FP32_ALIGN_NUM);
-    fixpipeParams.reluMode = 1;
+    fixpipeParams.nSize = AlignTo(static_cast<uint32_t>(runInfo.s2RealSize), FP32_ALIGN_NUM);
+    fixpipeParams.mSize = AlignTo(static_cast<uint32_t>(runInfo.nRealSize), FP32_ALIGN_NUM);
 
     Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(mm1UbTensor, mm1L0CTensor, fixpipeParams);
 }

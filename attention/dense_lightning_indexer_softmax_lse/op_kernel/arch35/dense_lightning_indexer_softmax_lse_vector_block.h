@@ -19,6 +19,7 @@
 #include "dense_lightning_indexer_softmax_lse_regbase_common.h"
 
 namespace DenseLISoftmaxLseRegbase {
+using T = float;
 
 TEMPLATES_DEF
 class DenseLISoftmaxLseVecBlock {
@@ -100,9 +101,12 @@ __aicore__ inline void DenseLISoftmaxLseVecBlock<TEMPLATE_ARGS>::ProcessVec0(
     LocalTensor<INPUT_T> weightUb = weightTbuf.Get<INPUT_T>();
     LocalTensor<T> reduceSumUb = reduceSumOutQue.AllocTensor<T>();
 
-    Max(mm1Ub, mm1Ub, (T)0, runInfo.s2RealSize * runInfo.nRealSize);
+    Maxs(mm1Ub, mm1Ub, (T)0, runInfo.s2RealSize * runInfo.nRealSize);
 
-    Mul(mm1Ub, mm1Ub, weightUb, runInfo.s2RealSize * runInfo.nRealSize);
+    LocalTensor<T> weightUbFloat = reduceSumOutQue.AllocTensor<T>();
+    Cast(weightUbFloat, weightUb, RoundMode::CAST_NONE, constInfo.gSizeQueryIndex);
+    Mul(mm1Ub, mm1Ub, weightUbFloat, runInfo.s2RealSize * runInfo.nRealSize);
+    reduceSumOutQue.FreeTensor(weightUbFloat);
 
     ReduceSum(reduceSumUb, mm1Ub, mm1Ub, runInfo.s2RealSize);
 

@@ -161,15 +161,12 @@ __aicore__ inline T1 Min(T1 a, T2 b)
     return (a > b) ? (b) : (a);
 }
 
-// 模板宏系统
+// 模板宏系统 - T hardcoded as float in cube_block.h
 #define CUBE_BLOCK_TRAITS_TYPE_FIELDS(X)     \
     X(INPUT_T)                                \
-    X(OUT_T)                                  \
-    X(T)
+    X(OUT_T)
 
-#define CUBE_BLOCK_TRAITS_CONST_FIELDS(X)              \
-    X(LAYOUT_Q, DenseLISoftmaxLseLayout, DenseLISoftmaxLseLayout::TND) \
-    X(SPARSE_MODE, DenseLISoftmaxLseSparseMode, DenseLISoftmaxLseSparseMode::RightDown)
+#define CUBE_BLOCK_TRAITS_CONST_FIELDS(X)
 
 #define GEN_TYPE_PARAM(name) typename name,
 #define GEN_CONST_PARAM(name, type, default_val) type(name) = (default_val),
@@ -188,6 +185,8 @@ __aicore__ inline T1 Min(T1 a, T2 b)
     CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARG_NAME)        \
     CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARG_NAME) end
 
+#define GEN_ARGS_TYPE(name) name;
+#define GEN_ARGS_CONST(name, type, default_val) type name = default_val;
 #define ARGS_TRAITS                                    \
     CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARGS_TYPE)       \
     CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARGS_CONST)

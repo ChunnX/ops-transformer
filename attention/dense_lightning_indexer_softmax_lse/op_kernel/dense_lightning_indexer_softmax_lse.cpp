@@ -55,8 +55,8 @@ using namespace DenseLISoftmaxLseRegbase;
             DenseLISoftmaxLseVecBlock<__VA_ARGS__>,                 \
             DenseLISoftmaxLseVecBlockDummy<__VA_ARGS__>>::type;     \
         templateClass<CubeBlockType, VecBlockType> op;              \
-        GET_TILING_DATA_WITH_STRUCT(DenseLISoftmaxLseRegBaseTilingData, tiling_data_in, tiling); \
-        const DenseLISoftmaxLseRegBaseTilingData *__restrict tiling_data = &tiling_data_in; \
+        GET_TILING_DATA_WITH_STRUCT(optiling::DenseLISoftmaxLseRegBaseTilingData, tiling_data_in, tiling); \
+        const optiling::DenseLISoftmaxLseRegBaseTilingData *__restrict tiling_data = &tiling_data_in; \
         op.Init(query, key, weights, actualSeqLengthsQ, actualSeqLengths, \
                 softmaxMax, softmaxSum, user, tiling_data, &tPipe); \
         op.Process();                                               \
@@ -77,8 +77,7 @@ __global__ __aicore__ void dense_lightning_indexer_softmax_lse(__gm__ uint8_t *q
     TPipe tPipe;
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
     DENSE_LI_SOFTMAX_LSE_OP_IMPL_REGBASE(DenseLISoftmaxLseKernelBase,
-        DTYPE_QUERY_INDEX, DTYPE_KEY_INDEX, DTYPE_WEIGHT, DTYPE_SOFTMAX_MAX,
-        DenseLISoftmaxLseLayout(LAYOUT_T), DenseLISoftmaxLseSparseMode::RightDown);
+        DTYPE_QUERY_INDEX, DTYPE_KEY_INDEX);
 #else
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     TPipe tPipe;
