@@ -40,6 +40,68 @@ template <
     class ElementC_,
     class LayoutTagC_,
     class ElementBias = void,
+    // CopyL0CToGMMode CopyMode_ = CopyL0CToGMMode::NO_SPLIT,
+    bool ReluEnable = false,
+    ScaleGranularity DEQUANT_GRANULARITY = ScaleGranularity::NO_QUANT
+>
+struct PackedMxTileCopyTlaToGM : public PackedTileCopyTla<ArchTag, ElementA_, LayoutTagA_, ElementB_, LayoutTagB_,
+    ElementC_, LayoutTagC_, ElementBias> {
+    using ElementMxScaleA = ElementMxScaleA_;
+    using ElementMxScaleB = ElementMxScaleB_;
+
+    using LayoutTagA = LayoutTagA_;
+    using LayoutTagB = LayoutTagB_;
+    using LayoutTagC = LayoutTagC_;
+    using LayoutMxScaleA = LayoutMxScaleA_;
+    using LayoutMxScaleB = LayoutMxScaleB_;
+
+    using LayoutTagL1MxScaleA = layout::zZ;
+    using LayoutTagL1MxScaleB = layout::nN;
+    using LayoutL1MxScaleA = detail::TagToLayout_t<ElementMxScaleA, LayoutTagL1MxScaleA>;
+    using LayoutL1MxScaleB = detail::TagToLayout_t<ElementMxScaleB, LayoutTagL1MxScaleB>;
+
+    using TensorL1MxScaleA = tla::Tensor<AscendC::LocalTensor<ElementMxScaleA>, LayoutL1MxScaleA,
+        tla::Coord<tla::_0, tla::_0>, AscendC::TPosition::A1>;
+    using TensorL1MxScaleB = tla::Tensor<AscendC::LocalTensor<ElementMxScaleB>, LayoutL1MxScaleB,
+        tla::Coord<tla::_0, tla::_0>, AscendC::TPosition::A1>;
+
+    template <class TensorMxScaleA>
+    using CopyGmToL1MxScaleA = Gemm::Tile::TileCopyTla<ArchTag, TensorMxScaleA, TensorL1MxScaleA>;
+
+    template <class TensorMxScaleB>
+    using CopyGmToL1MxScaleB = Gemm::Tile::TileCopyTla<ArchTag, TensorMxScaleB, TensorL1MxScaleB>;
+
+    // static constexpr CopyL0CToUBMode CopyMode = CopyMode_;
+    // 重写 CopyL0CToDst
+    using TensorL0C = typename PackedTileCopyTla<
+        ArchTag,
+        ElementA_,
+        LayoutTagA,
+        ElementB_,
+        LayoutTagB,
+        ElementC_,
+        LayoutTagC,
+        ElementBias>::TensorL0C;
+
+    template <class TensorC>
+    using CopyL0CToDst =
+        Gemm::Tile::CopyL0CToGmTla<ArchTag, TensorL0C, TensorC, DEQUANT_GRANULARITY, ReluEnable>;
+};
+
+template <
+    /// Tag indicating architecture
+    class ArchTag,
+    class ElementA_,
+    class LayoutTagA_,
+    class ElementB_,
+    class LayoutTagB_,
+    class ElementMxScaleA_,
+    class LayoutMxScaleA_,
+    class ElementMxScaleB_,
+    class LayoutMxScaleB_,
+    class ElementC_,
+    class LayoutTagC_,
+    class ElementBias = void,
     CopyL0CToUBMode CopyMode_ = CopyL0CToUBMode::NO_SPLIT,
     bool ReluEnable = false,
     ScaleGranularity DEQUANT_GRANULARITY = ScaleGranularity::NO_QUANT
@@ -87,6 +149,7 @@ struct PackedMxTileCopyTlaToUB : public PackedTileCopyTla<ArchTag, ElementA_, La
     using CopyL0CToDst =
         Gemm::Tile::CopyL0CToUBTla<ArchTag, TensorL0C, TensorC, CopyMode, DEQUANT_GRANULARITY, ReluEnable>;
 };
+
 }
 
 #endif
