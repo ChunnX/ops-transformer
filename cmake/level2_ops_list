@@ -613,6 +613,7 @@ aclnn_quant_grouped_matmul_dequant_weight_nz.h
 aclnn_quant_grouped_matmul_inplace_add.h
 aclnn_quantized_batch_norm.h
 aclnn_quantize.h
+aclnn_quant_lightning_indexer.h
 aclnn_quant_matmul_all_reduce_add_rms_norm.h
 aclnn_quant_matmul_all_reduce.h
 aclnn_quant_matmul_all_reduce_v2.h
