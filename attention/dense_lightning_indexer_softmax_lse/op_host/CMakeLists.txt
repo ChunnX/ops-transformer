@@ -8,6 +8,11 @@
 # ======================================================================================================================
 add_op_to_compiled_list()
 
+set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
+if("${CONDITION_UNIT}" STREQUAL "ascend950")
+    set(dense_lightning_indexer_softmax_lse_depends attention/common CACHE INTERNAL "Dependencies for dense_lightning_indexer_softmax_lse")
+endif()
+
 if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnn PRIVATE
     dense_lightning_indexer_softmax_lse_def.cpp
