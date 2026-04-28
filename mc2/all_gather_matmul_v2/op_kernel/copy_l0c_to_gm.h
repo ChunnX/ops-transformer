@@ -16,7 +16,7 @@
 #ifndef CATLASS_GEMM_TILE_COPY_L0C_TO_GM_EXPAND_H
 #define CATLASS_GEMM_TILE_COPY_L0C_TO_GM_EXPAND_H
 
-#include "3rdparty/catlass/include/catlass/gemm/tile/copy_l0c_to_gm.hpp"
+#include "catlass/gemm/tile/copy_l0c_to_gm.hpp"
 
 namespace Catlass::Gemm::Tile {
 
