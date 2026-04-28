@@ -130,6 +130,7 @@ protected:
     __aicore__ inline void ProcessMain();
     __aicore__ inline void ProcessBaseBlock(DenseLISoftmaxLseCommon::RunInfo &runInfo);
     __aicore__ inline void ProcessSoftmax(DenseLISoftmaxLseCommon::RunInfo &runInfo);
+    __aicore__ inline void ResetInvalidOutputZero();
     // ================================Params Calc=====================================
     __aicore__ inline void CalcGS1LoopParams(uint32_t bN2Idx);
     __aicore__ inline void GetBN2Idx(uint32_t bN2Idx);
@@ -321,10 +322,10 @@ __aicore__ inline void DenseLISoftmaxLse<T>::Init(__gm__ uint8_t *query, __gm__ 
     if ASCEND_IS_AIV {
         vectorService.InitParams(constInfo, tiling);
         softmaxMaxGm.SetGlobalBuffer((__gm__ OUT_T *)softmaxMax,
-            constInfo.isAccumSeqS1 ? actualSeqLengthsGmQ.GetValue(constInfo.batchSize - 1) :
+            constInfo.isAccumSeqS1 ? constInfo.qSeqSize :
             constInfo.batchSize * constInfo.qSeqSize);
         softmaxSumGm.SetGlobalBuffer((__gm__ OUT_T *)softmaxSum,
-            constInfo.isAccumSeqS1 ? actualSeqLengthsGmQ.GetValue(constInfo.batchSize - 1) :
+            constInfo.isAccumSeqS1 ? constInfo.qSeqSize :
             constInfo.batchSize * constInfo.qSeqSize);
         weightsGm.SetGlobalBuffer((__gm__ W_T *)weights,
             constInfo.isAccumSeqS1 ? actualSeqLengthsGmQ.GetValue(constInfo.batchSize - 1) * constInfo.qHeadNum :
@@ -451,6 +452,8 @@ __aicore__ inline void DenseLISoftmaxLse<T>::Process()
         return;
     }
     ProcessMain();
+    SyncAll();
+    ResetInvalidOutputZero();
 }
 
 template <typename T>
@@ -476,6 +479,10 @@ __aicore__ inline void DenseLISoftmaxLse<T>::ProcessMain()
 
     for (uint32_t bN2LoopIdx = splitCoreInfo.bN2Start; bN2LoopIdx <= splitCoreInfo.bN2End; bN2LoopIdx++) {
         CalcGS1LoopParams(bN2LoopIdx);
+        if (tempLoopInfo.curActSeqLenIsZero) {
+            splitCoreInfo.gS1Start = 0;
+            continue;
+        }
         for (uint32_t gS1LoopIdx = splitCoreInfo.gS1Start; gS1LoopIdx <= tempLoopInfo.gS1LoopEnd; gS1LoopIdx++) {
             CalcS2LoopParams(bN2LoopIdx, gS1LoopIdx);
             for (int s2LoopIdx = splitCoreInfo.s2Start; s2LoopIdx <= tempLoopInfo.s2LoopEnd; s2LoopIdx++) {
@@ -530,6 +537,47 @@ __aicore__ inline void DenseLISoftmaxLse<T>::ProcessSoftmax(DenseLISoftmaxLseCom
         runInfo.s1Idx = s1Idx;
         vectorService.ProcessSoftmax(runInfo);
         s1InnerLoop += 1;
+    }
+}
+
+template <typename T>
+__aicore__ inline void DenseLISoftmaxLse<T>::ResetInvalidOutputZero()
+{
+    if (aiCoreIdx >= usedCoreNum) {
+        return;
+    }
+
+    if ASCEND_IS_AIV {
+        if (constInfo.isAccumSeqS1 && constInfo.isAccumSeqS2) {
+            uint64_t lastAccumSeqS1 = actualSeqLengthsGmQ.GetValue(constInfo.batchSize - 1);
+            uint64_t totalDealSize = constInfo.qSeqSize - lastAccumSeqS1;
+            if (totalDealSize <= 0) {
+                return;
+            }
+
+            uint64_t coreDealSize = totalDealSize / usedCoreNum;
+            uint64_t outOffset = lastAccumSeqS1;
+            if (coreDealSize == 0 && aiCoreIdx == 0) {
+                coreDealSize = totalDealSize;
+            }
+
+            uint64_t minDealSize = totalDealSize / usedCoreNum;
+            uint32_t moreOneCoreNum = totalDealSize % usedCoreNum;
+            if (minDealSize > 0) {
+                if (moreOneCoreNum > 0) {
+                    coreDealSize = aiCoreIdx < moreOneCoreNum ? minDealSize + 1 : minDealSize;
+                    outOffset += aiCoreIdx < moreOneCoreNum ? aiCoreIdx * (minDealSize + 1) :
+                                 moreOneCoreNum * (minDealSize + 1) + (aiCoreIdx - moreOneCoreNum) * minDealSize;
+                } else {
+                    coreDealSize = minDealSize;
+                    outOffset += aiCoreIdx * minDealSize;
+                }
+            }
+            if (coreDealSize <= 0) {
+                return;
+            }
+            vectorService.ProcessOutput(outOffset, coreDealSize);
+        }
     }
 }
 } // namespace DenseLISoftmaxLseKernel

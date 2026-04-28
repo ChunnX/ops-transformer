@@ -751,6 +751,10 @@ ge::graphStatus FiaInfoParser::GetBlockSize()
         return ge::GRAPH_FAILED;
     }
     blockSize_ = *(opParamInfo_.blockSize);
+    if (blockSize_ <= 0) {
+        OP_LOGE(opName_, "blockSize is %d, it should be > 0.", blockSize_);
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 

@@ -184,7 +184,7 @@ constexpr uint8_t SYNC_MM2_TO_V1_FLAG[2] = {0, 1};
 constexpr uint8_t SYNC_V6_TO_C3_FLAG = 8;
 constexpr uint8_t SYNC_C3_TO_V7_FLAG[2] = {3, 4};
 
-constexpr uint8_t SYNC_C3_TO_V7_DETER_MTE2_FLAG[2] = {0, 1};
+constexpr uint8_t SYNC_C3_TO_V7_DETER_MTE2_FLAG[2] = {5, 6};
 constexpr uint8_t SYNC_C3_TO_V7_DETER_SA_FLAG = 2;
 
 template <typename T>

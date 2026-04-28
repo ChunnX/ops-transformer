@@ -28,7 +28,7 @@
  
  
 #define INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_REGBASE_IMPL(                                                                 \
-    INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_DROP, IS_TND, IS_ROPE,           \
+    INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_DROP, IS_TND, IS_ROPE, IS_DETER,                                               \
     s2TemplateType, dTemplateType)                                \
     do {                                                                                                               \
         FlashAttentionGradPreRegbase<INPUT_TYPE, float, IS_TND> opPre;  \
@@ -38,11 +38,15 @@
         pipeIn.Destroy();                                                                                              \
         TPipe pipeBase;                                                                                                \
         using CubeBlockType =                                                                                          \
-            typename std::conditional<g_coreType == AscendC::AIC, SfagBaseApi::FAGBlockCube<INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_DROP, IS_TND, IS_ROPE, s2TemplateType, dTemplateType>,               \
-                                      SfagBaseApi::FAGBlockCubeDummy<INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_DROP, IS_TND, IS_ROPE, s2TemplateType, dTemplateType>>::type;                               \
+            typename std::conditional<g_coreType == AscendC::AIC, SfagBaseApi::FAGBlockCube<INPUT_TYPE, CALC_TYPE,     \
+                                        OUTDTYPE, IS_DROP, IS_TND, IS_ROPE, IS_DETER, s2TemplateType, dTemplateType>,  \
+                        SfagBaseApi::FAGBlockCubeDummy<INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_DROP, IS_TND, IS_ROPE,      \
+                                                        IS_DETER, s2TemplateType, dTemplateType>>::type;               \
         using VecBlockType =                                                                                           \
-            typename std::conditional<g_coreType == AscendC::AIC, SfagBaseApi::FAGBlockVecDummy<INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_DROP, IS_TND, IS_ROPE, s2TemplateType, dTemplateType>,           \
-                                      SfagBaseApi::FAGBlockVec<INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_DROP, IS_TND, IS_ROPE, s2TemplateType, dTemplateType>>::type;                                     \
+            typename std::conditional<g_coreType == AscendC::AIC, SfagBaseApi::FAGBlockVecDummy<INPUT_TYPE, CALC_TYPE, \
+                                    OUTDTYPE, IS_DROP, IS_TND, IS_ROPE, IS_DETER, s2TemplateType, dTemplateType>,      \
+                        SfagBaseApi::FAGBlockVec<INPUT_TYPE, CALC_TYPE, OUTDTYPE, IS_DROP, IS_TND, IS_ROPE, IS_DETER,  \
+                        s2TemplateType, dTemplateType>>::type;                                                         \
                                                                                                                        \
         SfagBaseApi::FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType> op;                                     \
         op.Init(query, key, value, sparse_indices, d_out, out, softmax_max, softmax_sum,                          \
@@ -95,13 +99,15 @@ RegbaseSFAG(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
     const optiling::sfag::SparseFlashAttentionGradTilingDataRegbase *__restrict tilingData = &tiling_data_in;
     #if (ORIG_DTYPE_QUERY == DT_FLOAT16)
         INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_REGBASE_IMPL_FP16(
-                    half, float, half, false, isTnd, isRope, S2TemplateType(s2TemplateType), DTemplateType(dTemplateType));
+                    half, float, half, false, isTnd, isRope, deterministic,
+                    S2TemplateType(s2TemplateType), DTemplateType(dTemplateType));
         return;
     #endif
 
     #if (ORIG_DTYPE_QUERY == DT_BF16)
         INVOKE_FAG_GENERAL_S1S2_BN2GS1S2_REGBASE_IMPL_BF16(
-                    bfloat16_t, float, bfloat16_t, false, isTnd, isRope, S2TemplateType(s2TemplateType), DTemplateType(dTemplateType));
+                    bfloat16_t, float, bfloat16_t, false, isTnd, isRope, deterministic,
+                    S2TemplateType(s2TemplateType), DTemplateType(dTemplateType));
             return;
     #endif
 }

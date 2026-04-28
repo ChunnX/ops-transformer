@@ -106,6 +106,7 @@ int64_t GetDtypeSize(const gert::TilingContext* context)
 } // namespace
 
 namespace optiling {
+using namespace Ops::Base;
 static void RopeHalfGradPrintParam(const gert::TilingContext* context)
 {
     OP_LOGD(context->GetNodeName(), "layout = %ld", tiling.ropeHalfGradParams.get_layout());
@@ -162,34 +163,56 @@ static ge::graphStatus RopeHalfGradShapeDimCheck(const gert::TilingContext* cont
         isTndLayout = true;
     }
 
-    if (xDimNum != inputDimNum || cosShape.GetDimNum() != inputDimNum) {
-        OP_LOGE(context->GetNodeName(), "only support 4-d or 3-d input.");
+    if (xDimNum != inputDimNum) {
+        std::string xDimNumStr = std::to_string(xDimNum);
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "dy",
+            xDimNumStr.c_str(), "3D or 4D");
+        return ge::GRAPH_FAILED;
+    }
+    if (cosShape.GetDimNum() != inputDimNum) {
+        std::string dimNumMsg = std::to_string(cosShape.GetDimNum()) + " and " + std::to_string(xDimNum);
+        OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(context->GetNodeName(), "cos and dy",
+            dimNumMsg.c_str(), "The numbers of dimensions of input cos and dy should be the same");
         return ge::GRAPH_FAILED;
     }
     if (cosShape != sinShape) {
-        OP_LOGE(context->GetNodeName(), "cos shape and sin shape are not equal, do not support.");
+        std::string shapeMsg = ToString(cosShape) + " and " + ToString(sinShape);
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "cos and sin", shapeMsg.c_str(),
+            "The shapes of input cos and sin should be the same");
         return ge::GRAPH_FAILED;
     }
     if (xShape.GetDim(xDimNum - 1) != cosShape.GetDim(xDimNum - 1)) {
-        OP_LOGE(context->GetNodeName(), "x and cos shape in dimension D are not equal, do not support.");
+        std::string shapeMsg = ToString(xShape) + " and " + ToString(cosShape);
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "dy and cos", shapeMsg.c_str(),
+            "The D axis of input dy and cos should be the same, where D refers to the last dim");
         return ge::GRAPH_FAILED;
     }
     if (xShape.GetDim(xDimNum - 1) > D_THRESHOLD) {
-        OP_LOGE(context->GetNodeName(), "dimension D should be less than %ld.", D_THRESHOLD);
+        std::string reasonMsg = "The D axis of input dy can not be greater than " +
+            std::to_string(D_THRESHOLD) + ", where D refers to the last dim";
+        std::string xShapeStr = ToString(xShape);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "dy", xShapeStr.c_str(),
+            reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
     if (xShape.GetDim(xDimNum - 1) % CHUNK_SIZE != 0) {
-        OP_LOGE(context->GetNodeName(), "dimension D is not a multiple of 2, do not support.");
+        std::string reasonMsg = "The D axis of input dy should be divisible by " +
+            std::to_string(CHUNK_SIZE) + ", where D refers to the last dim";
+        std::string xShapeStr = ToString(xShape);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "dy", xShapeStr.c_str(),
+            reasonMsg.c_str());
         return ge::GRAPH_FAILED;
     }
     auto xOptionalInput = context->GetOptionalInputDesc(INDEX_X);
     auto xOptionalShape = context->GetOptionalInputShape(INDEX_X);
     if (xOptionalInput != nullptr && xOptionalShape != nullptr) {
         auto xOptionalStorageShape = xOptionalShape->GetStorageShape();
-        OP_CHECK_IF(
-            xOptionalStorageShape != xShape,
-            OP_LOGE(context->GetNodeName(), "The shape of xOptional should be same with dy."),
-            return ge::GRAPH_FAILED);
+        if (xOptionalStorageShape != xShape) {
+            std::string shapeMsg = ToString(xOptionalStorageShape) + " and " + ToString(xShape);
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "x and dy", shapeMsg.c_str(),
+                "The shape of input x should be the same as the shape of input dy");
+            return ge::GRAPH_FAILED;
+        }
     }
 
     return ge::GRAPH_SUCCESS;

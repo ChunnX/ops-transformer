@@ -25,6 +25,14 @@ namespace MoeDistributeCombineSetupUT {
 
 static const std::string OP_NAME = "MoeDistributeCombineSetup";
 
+// SetHCCL_BUFFSIZE
+struct HcclBuffSizeSetter {
+    HcclBuffSizeSetter() {
+        setenv("HCCL_BUFFSIZE", "8000", 1);
+    }
+};
+static HcclBuffSizeSetter hcclBuffSizeSetter;
+
 struct MoeDistributeCombineSetupTestParam {
     std::string caseName;
     // expand_x
@@ -168,7 +176,8 @@ gert::StorageShape make_shape(const std::initializer_list<int64_t> &input_shape)
     return gert::StorageShape{input_shape, input_shape};
 }
 
-static struct MoeDistributeCombineSetupCompileInfo {} compileInfo;
+static struct MoeDistributeCombineSetupCompileInfo {
+} compileInfo;
 
 static gert::TilingContextPara BuildTilingContextPara(const MoeDistributeCombineSetupTestParam &param)
 {

@@ -136,9 +136,9 @@ if(UT_TEST_ALL OR OP_HOST_UT)
       POST_BUILD
       COMMAND
         ${CMAKE_COMMAND} -E env LD_LIBRARY_PATH=$ENV{LD_LIBRARY_PATH}
-        valgrind 
+        valgrind
           --undef-value-errors=no
-          --leak-check=full 
+          --leak-check=full
           --log-file=valgrind_${OP_HOST_UT_EXE}.log
           ./${OP_HOST_UT_EXE}
       COMMENT "Run ops op_host utest by valgrind, output saved to valgrind_${OP_HOST_UT_EXE}.log"

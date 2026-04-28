@@ -15,20 +15,20 @@
 
 namespace AlltoAllMatmulUT {
 
-class InferDataTypeTest : public testing::TestWithParam<AlltoAllMatmulInferDataTypeUtParam> {
+class InferDataTypeAllToAllMatmulTest : public testing::TestWithParam<AlltoAllMatmulInferDataTypeUtParam> {
 protected:
     static void SetUpTestCase()
     {
-        std::cout << "AlltoAllMatmul InferDataTypeTest SetUp" << std::endl;
+        std::cout << "AlltoAllMatmul InferDataTypeAllToAllMatmulTest SetUp" << std::endl;
     }
 
     static void TearDownTestCase()
     {
-        std::cout << "AlltoAllMatmul InferDataTypeTest TearDown" << std::endl;
+        std::cout << "AlltoAllMatmul InferDataTypeAllToAllMatmulTest TearDown" << std::endl;
     }
 };
 
-TEST_P(InferDataTypeTest, param)
+TEST_P(InferDataTypeAllToAllMatmulTest, param)
 {
     auto param = GetParam();
     std::vector<void*> inputDataTypes;
@@ -75,7 +75,7 @@ TEST_P(InferDataTypeTest, param)
 
 INSTANTIATE_TEST_SUITE_P(
     AlltoAllMatmul,
-    InferDataTypeTest,
+    InferDataTypeAllToAllMatmulTest,
     testing::ValuesIn(GetCasesFromCsv<AlltoAllMatmulInferDataTypeUtParam>(ReplaceFileExtension2Csv(__FILE__))),
     PrintCaseInfoString<AlltoAllMatmulInferDataTypeUtParam>
 );

@@ -115,6 +115,7 @@ __attribute__((always_inline)) inline uint64_t GetTilingKey(uint64_t tilingMode,
 } // namespace
 
 namespace optiling {
+using namespace Ops::Base;
 class RotateHalfTiling {
 public:
     explicit RotateHalfTiling(gert::TilingContext *tilingContext) : context(tilingContext) {};
@@ -402,28 +403,53 @@ ge::graphStatus RotateHalfTiling::CheckShapeSupport(const gert::Shape &xShape, c
                                                     const gert::Shape &sinShape, uint64_t dLength)
 {   
     if(isTndLayOut){
-        OP_CHECK_IF(xShape.GetDimNum() != TND_DIM_NUM || cosShape.GetDimNum() != TND_DIM_NUM || sinShape.GetDimNum() != TND_DIM_NUM,
-                OP_LOGE(context, "the input shape must be 3or4-dimensional."), return ge::GRAPH_FAILED);
+        if (xShape.GetDimNum() != TND_DIM_NUM || cosShape.GetDimNum() != TND_DIM_NUM || sinShape.GetDimNum() != TND_DIM_NUM) {
+            std::string dimNumMsg = std::to_string(xShape.GetDimNum()) + ", " +
+                std::to_string(cosShape.GetDimNum()) + " and " + std::to_string(sinShape.GetDimNum());
+            OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(context->GetNodeName(), "x, cos and sin", dimNumMsg.c_str(),
+                "The numbers of dimensions of input x, cos and sin should all be 3D or 4D");
+            return ge::GRAPH_FAILED;
+        }
     } else {
-        OP_CHECK_IF(xShape.GetDimNum() != DIM_NUM || cosShape.GetDimNum() != DIM_NUM || sinShape.GetDimNum() != DIM_NUM,
-                OP_LOGE(context, "the input shape must be 3or4-dimensional."), return ge::GRAPH_FAILED);
+        if (xShape.GetDimNum() != DIM_NUM || cosShape.GetDimNum() != DIM_NUM || sinShape.GetDimNum() != DIM_NUM) {
+            std::string dimNumMsg = std::to_string(xShape.GetDimNum()) + ", " +
+                std::to_string(cosShape.GetDimNum()) + " and " + std::to_string(sinShape.GetDimNum());
+            OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(context->GetNodeName(), "x, cos and sin", dimNumMsg.c_str(),
+                "The numbers of dimensions of input x, cos and sin should all be 3D or 4D");
+            return ge::GRAPH_FAILED;
+        }
     }
-    
-    OP_CHECK_IF(dLength > D_LENGTH_LIMIT,
-                OP_LOGE(context, "input last dim (head_dim) should be less than %lu.", D_LENGTH_LIMIT),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(GetRem(dLength, TWO) != 0, OP_LOGE(context, "input last dim (head_dim) must be an even number."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(cosShape != sinShape, OP_LOGE(context, "cos shape and sin shape should be equal."),
-                return ge::GRAPH_FAILED);
+
+    if (dLength > D_LENGTH_LIMIT) {
+        std::string reasonMsg = "The D axis of input x can not be greater than " + std::to_string(D_LENGTH_LIMIT) +
+            ", where D refers to the last dim";
+        std::string xShapeStr = ToString(xShape);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "x", xShapeStr.c_str(),
+            reasonMsg.c_str());
+        return ge::GRAPH_FAILED;
+    }
+    if (GetRem(dLength, TWO) != 0) {
+        std::string xShapeStr = ToString(xShape);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "x", xShapeStr.c_str(),
+            "The D axis of input x must be an even number, where D refers to the last dim");
+        return ge::GRAPH_FAILED;
+    }
+    if (cosShape != sinShape) {
+        std::string shapeMsg = ToString(cosShape) + " and " + ToString(sinShape);
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "cos and sin", shapeMsg.c_str(),
+            "The shapes of input cos and input sin should be the same");
+        return ge::GRAPH_FAILED;
+    }
     uint64_t cosDLength = static_cast<uint64_t>(cosShape.GetDim(DIM_FOURTH));
     if(isTndLayOut) {
         cosDLength = static_cast<uint64_t>(cosShape.GetDim(DIM_THIRD));
     }
-    OP_CHECK_IF(cosDLength != dLength,
-                OP_LOGE(context, "input last dim (head_dim) should be equal, but get x [%lu] and cos [%lu].", dLength,
-                        cosDLength),
-                return ge::GRAPH_FAILED);
+    if (cosDLength != dLength) {
+        std::string shapeMsg = ToString(xShape) + " and " + ToString(cosShape);
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "x and cos", shapeMsg.c_str(),
+            "The D axes of input x and input cos should be the same, where D refers to the last dim");
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -521,12 +547,20 @@ ge::graphStatus RotateHalfTiling::DoRotateHalfTiling()
     const ge::DataType cosDtype = cosInfoPtr->GetDataType();
     const ge::DataType sinDtype = sinInfoPtr->GetDataType();
 
-    OP_CHECK_IF(inputDtype != cosDtype || inputDtype != sinDtype,
-                OP_LOGE(context, "the dtype of input x, cos and sin must be the same."), return ge::GRAPH_FAILED);
+    if (inputDtype != cosDtype || inputDtype != sinDtype) {
+        std::string dtypeMsg = ToString(inputDtype) + ", " + ToString(cosDtype) + " and " + ToString(sinDtype);
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context->GetNodeName(), "x, cos and sin", dtypeMsg.c_str(),
+            "The dtypes of input x, cos and sin should be the same");
+        return ge::GRAPH_FAILED;
+    }
 
     tilingDtype = GetTilingDtype(inputDtype);
-    OP_CHECK_IF(tilingDtype == TILING_DTYPE_UNKNOWN,
-                OP_LOGE(context, "only supports float, float16 and bfloat16 data type."), return ge::GRAPH_FAILED);
+    if (tilingDtype == TILING_DTYPE_UNKNOWN) {
+        std::string inputDtypeStr = ToString(inputDtype);
+        OP_LOGE_FOR_INVALID_DTYPE(context->GetNodeName(), "x", inputDtypeStr.c_str(),
+            "FLOAT, BF16, FLOAT16");
+        return ge::GRAPH_FAILED;
+    }
 
     // check D/2 aligned
     GetAlignedInfo(inputDtype, dLength);

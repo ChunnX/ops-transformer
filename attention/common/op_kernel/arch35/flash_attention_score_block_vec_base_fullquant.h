@@ -437,7 +437,7 @@ __aicore__ inline void FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::ProcessVec1D
 
     if constexpr (isFp8) {
         int64_t subLoopOffset = mxfp8s2BaseSize * runInfo.s1RealSizeAlign32 * subLoop;
-        uint16_t elementSize = 32;
+        constexpr uint16_t elementSize = 32;
         uint32_t singleProcessSOuterSize = runInfo.s1RealSizeAlign32 >> 1;
         uint32_t actCopyCount = (singleProcessSOuterSize + elementSize - 1) / elementSize;
         uint32_t actVec0Align32 = runInfo.s1RealSizeAlign32 >> 1;
@@ -1706,7 +1706,7 @@ __aicore__ inline void FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::SoftmaxInitB
     tPipe->InitBuffer(softmaxSumBuf[0], 256); // [64, 1]
     tPipe->InitBuffer(softmaxSumBuf[1], 256); // [64, 1]
     tPipe->InitBuffer(softmaxSumBuf[2], 256); // [64, 1]
-    if(isFd){
+    if constexpr (isFd) {
         tPipe->InitBuffer(maxBrdcst, 1, 2048); // [64, 8]
         tPipe->InitBuffer(sumBrdcst, 1, 2048); // [64, 8]
     }

@@ -18,8 +18,8 @@
 #include "kernel_operator.h"
 #endif
 #include "lib/matmul_intf.h"
-#include "arch32/allto_all_matmul_tiling_key.h"
-#include "arch32/allto_all_matmul.h"
+#include "arch22/allto_all_matmul_tiling_key.h"
+#include "arch22/allto_all_matmul.h"
 #include "./arch35/allto_all_matmul_arch35.h" // A3非量化与A5共用流水
 #include "./arch35/allto_all_matmul_pipeline.h"
 

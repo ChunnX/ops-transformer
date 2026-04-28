@@ -23,14 +23,10 @@
 #include <string>
 #include <vector>
 
-#if defined(_WIN32)
-#include <windows.h>
-#else
-#include <unistd.h>
-#endif
-
 #include "infer_shape_case_executor.h"
 #include "infer_shape_context_faker.h"
+#include "infer_datatype_context_faker.h"
+#include "gmm_csv_ge_parse_utils.h"
 #include "base/registry/op_impl_space_registry_v2.h"
 #define private public
 #include "platform/platform_info.h"
@@ -38,122 +34,14 @@
 using namespace std;
 
 namespace {
-string GetExeDirPath()
-{
-#if defined(_WIN32)
-    char path[MAX_PATH] = {0};
-    auto len = GetModuleFileNameA(nullptr, path, MAX_PATH);
-    string exePath(path, len);
-    auto pos = exePath.find_last_of("\\/");
-    return pos == string::npos ? string(".\\") : exePath.substr(0, pos + 1);
-#else
-    char path[4096] = {0};
-    ssize_t len = readlink("/proc/self/exe", path, sizeof(path) - 1);
-    if (len <= 0) {
-        return "./";
-    }
-    path[len] = '\0';
-    string exePath(path);
-    auto pos = exePath.find_last_of('/');
-    return pos == string::npos ? string("./") : exePath.substr(0, pos + 1);
-#endif
-}
 
-void SplitStr2Vec(const string &input, const string &delimiter, vector<string> &output)
-{
-    const auto delimiterLen = delimiter.size();
-    string::size_type currPos = 0;
-    string::size_type nextPos = input.find(delimiter, currPos);
-    while (nextPos != string::npos) {
-        output.emplace_back(input.substr(currPos, nextPos - currPos));
-        currPos = nextPos + delimiterLen;
-        nextPos = input.find(delimiter, currPos);
-    }
-    if (currPos <= input.size()) {
-        output.emplace_back(input.substr(currPos));
-    }
-}
-
-string Trim(string value)
-{
-    auto isNotSpace = [](unsigned char c) { return !std::isspace(c); };
-    value.erase(value.begin(), std::find_if(value.begin(), value.end(), isNotSpace));
-    value.erase(std::find_if(value.rbegin(), value.rend(), isNotSpace).base(), value.end());
-    return value;
-}
-
-bool ParseBool(const string &value)
-{
-    string lower = value;
-    std::transform(lower.begin(), lower.end(), lower.begin(),
-                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return lower == "true" || lower == "1" || lower == "yes";
-}
-
-ge::DataType ParseDtype(const string &dtype)
-{
-    static const std::map<string, ge::DataType> dtypeMap = {
-        {"FLOAT", ge::DT_FLOAT},
-        {"FLOAT16", ge::DT_FLOAT16},
-        {"BF16", ge::DT_BF16},
-        {"INT8", ge::DT_INT8},
-        {"INT32", ge::DT_INT32},
-        {"INT64", ge::DT_INT64},
-        {"UINT64", ge::DT_UINT64},
-        {"FLOAT8_E4M3FN", ge::DT_FLOAT8_E4M3FN},
-        {"FLOAT8_E5M2", ge::DT_FLOAT8_E5M2},
-        {"FLOAT8_E8M0", ge::DT_FLOAT8_E8M0},
-        {"FLOAT4_E2M1", ge::DT_FLOAT4_E2M1},
-        {"INT4", ge::DT_INT4},
-        {"HIFLOAT8", ge::DT_HIFLOAT8},
-        {"UNDEFINED", ge::DT_UNDEFINED},
-    };
-    auto it = dtypeMap.find(dtype);
-    return it == dtypeMap.end() ? ge::DT_UNDEFINED : it->second;
-}
-
-ge::Format ParseFormat(const string &format)
-{
-    static const std::map<string, ge::Format> formatMap = {
-        {"ND", ge::FORMAT_ND},
-        {"NDC1HWC0", ge::FORMAT_NDC1HWC0},
-        {"FRACTAL_NZ", ge::FORMAT_FRACTAL_NZ},
-    };
-    auto it = formatMap.find(format);
-    return it == formatMap.end() ? ge::FORMAT_ND : it->second;
-}
+using ops::ut::ParseBool;
+using ops::ut::SplitStr2Vec;
+using ops::ut::Trim;
 
 vector<int64_t> ParseDims(const string &value)
 {
-    const string trimmed = Trim(value);
-    if (trimmed == "NONE" || trimmed == "ZERO" || trimmed.empty()) {
-        return {0};
-    }
-    vector<string> dimTokens;
-    SplitStr2Vec(trimmed, ":", dimTokens);
-    vector<int64_t> dims;
-    for (const auto &token : dimTokens) {
-        dims.emplace_back(stoll(Trim(token)));
-    }
-    return dims;
-}
-
-gert::Shape BuildShape(const vector<int64_t> &dims)
-{
-    gert::Shape shape;
-    shape.SetDimNum(dims.size());
-    for (size_t i = 0; i < dims.size(); ++i) {
-        shape.SetDim(i, dims[i]);
-    }
-    return shape;
-}
-
-gert::StorageShape MakeStorageShape(const vector<int64_t> &dims)
-{
-    gert::StorageShape shape;
-    shape.MutableOriginShape() = BuildShape(dims);
-    shape.MutableStorageShape() = BuildShape(dims);
-    return shape;
+    return ops::ut::ParseDims(value, {}, true);
 }
 
 void SetupPlatformForCase(const string &socVersion)
@@ -167,39 +55,133 @@ void SetupPlatformForCase(const string &socVersion)
 }
 
 struct GroupedMatmulSwigluQuantV2InfershapeCase {
-    void Run() const
+    bool ShouldRunInferShape() const
+    {
+        return caseType.find("dtype_only") == string::npos;
+    }
+
+    bool ShouldRunInferDtype() const
+    {
+        return caseType.find("dtype_only") != string::npos;
+    }
+
+    vector<gert::InfershapeContextPara::OpAttr> BuildShapeAttrs() const
+    {
+        return {
+            {"dequant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(dequantMode)},
+            {"dequant_dtype", Ops::Transformer::AnyValue::CreateFrom<float>(dequantDtype)},
+            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(quantMode)},
+            {"quant_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(quantDtype)},
+            {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transposeWeight)},
+            {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)},
+        };
+    }
+
+    vector<pair<string, Ops::Transformer::AnyValue>> BuildDtypeAttrs() const
+    {
+        return {
+            {"dequant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(dequantMode)},
+            {"dequant_dtype", Ops::Transformer::AnyValue::CreateFrom<float>(dequantDtype)},
+            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(quantMode)},
+            {"quant_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(quantDtype)},
+            {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transposeWeight)},
+            {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)},
+        };
+    }
+
+    void RunInferShape() const
     {
         SetupPlatformForCase(socVersion);
         gert::InfershapeContextPara infershapeContextPara(
             "GroupedMatmulSwigluQuantV2",
             {
-                {MakeStorageShape(ParseDims(xShape)), ParseDtype(xDtype), ParseFormat(xFormat)},
-                {MakeStorageShape(ParseDims(xScaleShape)), ParseDtype(xScaleDtype), ParseFormat(xScaleFormat)},
-                {MakeStorageShape(ParseDims(groupListShape)), ParseDtype(groupListDtype), ParseFormat(groupListFormat)},
-                {MakeStorageShape(ParseDims(weightShape)), ParseDtype(weightDtype), ParseFormat(weightFormat)},
-                {MakeStorageShape(ParseDims(weightScaleShape)), ParseDtype(weightScaleDtype), ParseFormat(weightScaleFormat)},
-                {MakeStorageShape(ParseDims(biasShape)), ParseDtype(biasDtype), ParseFormat(biasFormat)},
-                {MakeStorageShape(ParseDims(offsetShape)), ParseDtype(offsetDtype), ParseFormat(offsetFormat)},
-                {MakeStorageShape(ParseDims(antiquantOffsetShape)), ParseDtype(antiquantOffsetDtype),
-                 ParseFormat(antiquantOffsetFormat)},
+                {ops::ut::MakeGertStorageShape(ParseDims(xShape)), ops::ut::ParseGeDtype(xDtype),
+                 ops::ut::ParseGeFormat(xFormat)},
+                {ops::ut::MakeGertStorageShape(ParseDims(xScaleShape)), ops::ut::ParseGeDtype(xScaleDtype),
+                 ops::ut::ParseGeFormat(xScaleFormat)},
+                {ops::ut::MakeGertStorageShape(ParseDims(groupListShape)), ops::ut::ParseGeDtype(groupListDtype),
+                 ops::ut::ParseGeFormat(groupListFormat)},
+                {ops::ut::MakeGertStorageShape(ParseDims(weightShape)), ops::ut::ParseGeDtype(weightDtype),
+                 ops::ut::ParseGeFormat(weightFormat)},
+                {ops::ut::MakeGertStorageShape(ParseDims(weightScaleShape)), ops::ut::ParseGeDtype(weightScaleDtype),
+                 ops::ut::ParseGeFormat(weightScaleFormat)},
+                {ops::ut::MakeGertStorageShape(ParseDims(biasShape)), ops::ut::ParseGeDtype(biasDtype),
+                 ops::ut::ParseGeFormat(biasFormat)},
+                {ops::ut::MakeGertStorageShape(ParseDims(offsetShape)), ops::ut::ParseGeDtype(offsetDtype),
+                 ops::ut::ParseGeFormat(offsetFormat)},
+                {ops::ut::MakeGertStorageShape(ParseDims(antiquantOffsetShape)),
+                 ops::ut::ParseGeDtype(antiquantOffsetDtype), ops::ut::ParseGeFormat(antiquantOffsetFormat)},
             },
             {
-                {MakeStorageShape(ParseDims("NONE")), ParseDtype(yDtype), ParseFormat(yFormat)},
-                {MakeStorageShape(ParseDims("NONE")), ParseDtype(yScaleDtype), ParseFormat(yScaleFormat)},
+                {ops::ut::MakeGertStorageShape(ParseDims("NONE")), ops::ut::ParseGeDtype(yDtype),
+                 ops::ut::ParseGeFormat(yFormat)},
+                {ops::ut::MakeGertStorageShape(ParseDims("NONE")), ops::ut::ParseGeDtype(yScaleDtype),
+                 ops::ut::ParseGeFormat(yScaleFormat)},
             },
-            {
-                {"dequant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(dequantMode)},
-                {"dequant_dtype", Ops::Transformer::AnyValue::CreateFrom<float>(dequantDtype)},
-                {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(quantMode)},
-                {"quant_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(quantDtype)},
-                {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transposeWeight)},
-                {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)},
-            });
+            BuildShapeAttrs());
 
         vector<vector<int64_t>> expectShape;
         expectShape.push_back(ParseDims(expectYShape));
         expectShape.push_back(ParseDims(expectYScaleShape));
         ExecuteTestCase(infershapeContextPara, expectSuccess ? ge::GRAPH_SUCCESS : ge::GRAPH_FAILED, expectShape);
+    }
+
+    void RunInferDtype() const
+    {
+        SetupPlatformForCase(socVersion);
+        auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+        ASSERT_NE(spaceRegistry, nullptr);
+        auto opImpl = spaceRegistry->GetOpImpl("GroupedMatmulSwigluQuantV2");
+        ASSERT_NE(opImpl, nullptr);
+        ASSERT_NE(opImpl->infer_datatype, nullptr);
+
+        ge::DataType xDataType = ops::ut::ParseGeDtype(xDtype);
+        ge::DataType xScaleDataType = ops::ut::ParseGeDtype(xScaleDtype);
+        ge::DataType groupListDataType = ops::ut::ParseGeDtype(groupListDtype);
+        ge::DataType weightDataType = ops::ut::ParseGeDtype(weightDtype);
+        ge::DataType weightScaleDataType = ops::ut::ParseGeDtype(weightScaleDtype);
+        ge::DataType biasDataType = ops::ut::ParseGeDtype(biasDtype);
+        ge::DataType offsetDataType = ops::ut::ParseGeDtype(offsetDtype);
+        ge::DataType antiquantOffsetDataType = ops::ut::ParseGeDtype(antiquantOffsetDtype);
+        vector<void *> inputDataTypes = {
+            &xDataType,
+            &xScaleDataType,
+            &groupListDataType,
+            &weightDataType,
+            &weightScaleDataType,
+            &biasDataType,
+            &offsetDataType,
+            &antiquantOffsetDataType,
+        };
+
+        auto contextHolder = gert::InferDataTypeContextFaker()
+                                 .SetOpType("GroupedMatmulSwigluQuantV2")
+                                 .NodeIoNum(8, 2)
+                                 .NodeOutputTd(0, ops::ut::ParseGeFormat(yFormat), ops::ut::ParseGeFormat(yFormat))
+                                 .NodeOutputTd(1, ops::ut::ParseGeFormat(yScaleFormat),
+                                               ops::ut::ParseGeFormat(yScaleFormat))
+                                 .InputDataTypes(inputDataTypes)
+                                 .NodeAttrs(BuildDtypeAttrs())
+                                 .Build();
+        auto context = contextHolder.GetContext<gert::InferDataTypeContext>();
+        ASSERT_NE(context, nullptr);
+        auto inferDtypeRet = opImpl->infer_datatype(context);
+        ASSERT_EQ(inferDtypeRet, expectSuccess ? ge::GRAPH_SUCCESS : ge::GRAPH_FAILED);
+        if (inferDtypeRet != ge::GRAPH_SUCCESS) {
+            return;
+        }
+        EXPECT_EQ(context->GetOutputDataType(0), ops::ut::ParseGeDtype(yDtype));
+        EXPECT_EQ(context->GetOutputDataType(1), ops::ut::ParseGeDtype(yScaleDtype));
+    }
+
+    void Run() const
+    {
+        if (ShouldRunInferShape()) {
+            RunInferShape();
+        }
+        if (ShouldRunInferDtype()) {
+            RunInferDtype();
+        }
     }
 
     string socVersion;
@@ -253,10 +235,8 @@ struct GroupedMatmulSwigluQuantV2InfershapeCase {
 vector<GroupedMatmulSwigluQuantV2InfershapeCase> LoadCases(const string &socVersion)
 {
     vector<GroupedMatmulSwigluQuantV2InfershapeCase> cases;
-    string rootPath(GetExeDirPath() + "../../../../../");
-    string csvPath(rootPath +
-                   "gmm/grouped_matmul_swiglu_quant_v2/tests/ut/op_host/"
-                   "test_grouped_matmul_swiglu_quant_v2_infershape.csv");
+    string csvPath = ops::ut::ResolveCsvPath("test_grouped_matmul_swiglu_quant_v2_infershape.csv",
+                                             "gmm/grouped_matmul_swiglu_quant_v2/tests/ut/op_host", __FILE__);
     ifstream csvData(csvPath, ios::in);
     if (!csvData.is_open()) {
         cout << "cannot open case file " << csvPath << endl;
@@ -264,7 +244,9 @@ vector<GroupedMatmulSwigluQuantV2InfershapeCase> LoadCases(const string &socVers
     }
 
     string line;
+    size_t lineNo = 0U;
     while (getline(csvData, line)) {
+        ++lineNo;
         if (line.empty() || line[0] == '#') {
             continue;
         }
@@ -274,71 +256,73 @@ vector<GroupedMatmulSwigluQuantV2InfershapeCase> LoadCases(const string &socVers
             continue;
         }
 
-        size_t idx = 0;
-        GroupedMatmulSwigluQuantV2InfershapeCase tc;
-        tc.socVersion = Trim(items[idx++]);
-        if (tc.socVersion != socVersion) {
-            continue;
+        const string caseName = items.size() > 1U ? Trim(items[1]) : "";
+        try {
+            size_t idx = 0;
+            GroupedMatmulSwigluQuantV2InfershapeCase tc;
+            tc.socVersion = Trim(items[idx++]);
+            if (tc.socVersion != socVersion) {
+                continue;
+            }
+            tc.caseName = Trim(items[idx++]);
+            tc.enable = ParseBool(Trim(items[idx++]));
+            if (!tc.enable) {
+                continue;
+            }
+            tc.prefix = Trim(items[idx++]);
+            tc.caseType = Trim(items[idx++]);
+            tc.expectSuccess = ParseBool(Trim(items[idx++]));
+            tc.expectYShape = Trim(items[idx++]);
+            tc.expectYScaleShape = Trim(items[idx++]);
+
+            tc.xShape = Trim(items[idx++]);
+            tc.xScaleShape = Trim(items[idx++]);
+            tc.groupListShape = Trim(items[idx++]);
+            tc.weightShape = Trim(items[idx++]);
+            tc.weightScaleShape = Trim(items[idx++]);
+            tc.biasShape = Trim(items[idx++]);
+            tc.offsetShape = Trim(items[idx++]);
+            tc.antiquantOffsetShape = Trim(items[idx++]);
+
+            tc.xDtype = Trim(items[idx++]);
+            tc.xScaleDtype = Trim(items[idx++]);
+            tc.groupListDtype = Trim(items[idx++]);
+            tc.weightDtype = Trim(items[idx++]);
+            tc.weightScaleDtype = Trim(items[idx++]);
+            tc.biasDtype = Trim(items[idx++]);
+            tc.offsetDtype = Trim(items[idx++]);
+            tc.antiquantOffsetDtype = Trim(items[idx++]);
+            tc.yDtype = Trim(items[idx++]);
+            tc.yScaleDtype = Trim(items[idx++]);
+
+            tc.xFormat = Trim(items[idx++]);
+            tc.xScaleFormat = Trim(items[idx++]);
+            tc.groupListFormat = Trim(items[idx++]);
+            tc.weightFormat = Trim(items[idx++]);
+            tc.weightScaleFormat = Trim(items[idx++]);
+            tc.biasFormat = Trim(items[idx++]);
+            tc.offsetFormat = Trim(items[idx++]);
+            tc.antiquantOffsetFormat = Trim(items[idx++]);
+            tc.yFormat = Trim(items[idx++]);
+            tc.yScaleFormat = Trim(items[idx++]);
+
+            tc.dequantMode = stoll(Trim(items[idx++]));
+            tc.dequantDtype = stof(Trim(items[idx++]));
+            tc.quantMode = stoll(Trim(items[idx++]));
+            tc.quantDtype = stoll(Trim(items[idx++]));
+            tc.transposeWeight = ParseBool(Trim(items[idx++]));
+            tc.groupListType = stoll(Trim(items[idx++]));
+            cases.push_back(tc);
+        } catch (const std::exception &error) {
+            ADD_FAILURE() << ops::ut::BuildCsvParseErrorMessage(csvPath, lineNo, caseName, error);
         }
-        tc.caseName = Trim(items[idx++]);
-        tc.enable = ParseBool(Trim(items[idx++]));
-        if (!tc.enable) {
-            continue;
-        }
-        tc.prefix = Trim(items[idx++]);
-        tc.caseType = Trim(items[idx++]);
-        tc.expectSuccess = ParseBool(Trim(items[idx++]));
-        tc.expectYShape = Trim(items[idx++]);
-        tc.expectYScaleShape = Trim(items[idx++]);
-
-        tc.xShape = Trim(items[idx++]);
-        tc.xScaleShape = Trim(items[idx++]);
-        tc.groupListShape = Trim(items[idx++]);
-        tc.weightShape = Trim(items[idx++]);
-        tc.weightScaleShape = Trim(items[idx++]);
-        tc.biasShape = Trim(items[idx++]);
-        tc.offsetShape = Trim(items[idx++]);
-        tc.antiquantOffsetShape = Trim(items[idx++]);
-
-        tc.xDtype = Trim(items[idx++]);
-        tc.xScaleDtype = Trim(items[idx++]);
-        tc.groupListDtype = Trim(items[idx++]);
-        tc.weightDtype = Trim(items[idx++]);
-        tc.weightScaleDtype = Trim(items[idx++]);
-        tc.biasDtype = Trim(items[idx++]);
-        tc.offsetDtype = Trim(items[idx++]);
-        tc.antiquantOffsetDtype = Trim(items[idx++]);
-        tc.yDtype = Trim(items[idx++]);
-        tc.yScaleDtype = Trim(items[idx++]);
-
-        tc.xFormat = Trim(items[idx++]);
-        tc.xScaleFormat = Trim(items[idx++]);
-        tc.groupListFormat = Trim(items[idx++]);
-        tc.weightFormat = Trim(items[idx++]);
-        tc.weightScaleFormat = Trim(items[idx++]);
-        tc.biasFormat = Trim(items[idx++]);
-        tc.offsetFormat = Trim(items[idx++]);
-        tc.antiquantOffsetFormat = Trim(items[idx++]);
-        tc.yFormat = Trim(items[idx++]);
-        tc.yScaleFormat = Trim(items[idx++]);
-
-        tc.dequantMode = stoll(Trim(items[idx++]));
-        tc.dequantDtype = stof(Trim(items[idx++]));
-        tc.quantMode = stoll(Trim(items[idx++]));
-        tc.quantDtype = stoll(Trim(items[idx++]));
-        tc.transposeWeight = ParseBool(Trim(items[idx++]));
-        tc.groupListType = stoll(Trim(items[idx++]));
-        cases.push_back(tc);
     }
     return cases;
 }
 
 string MakeParamName(const testing::TestParamInfo<GroupedMatmulSwigluQuantV2InfershapeCase> &info)
 {
-    string name = info.param.prefix;
-    transform(name.begin(), name.end(), name.begin(),
-              [](unsigned char c) { return isalnum(c) ? static_cast<char>(c) : '_'; });
-    return name;
+    return ops::ut::MakeSafeParamName(info.param.prefix);
 }
 } // namespace
 

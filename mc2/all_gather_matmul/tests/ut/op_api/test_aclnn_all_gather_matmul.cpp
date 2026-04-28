@@ -167,4 +167,34 @@ TEST_F(L2AllGatherMatmulTest, TestAllGatherFirstApiX2NonContiguousWithoutTranspo
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
+TEST_F(L2AllGatherMatmulTest, TestStreamModeInvalid)
+{
+    TensorDesc x1Desc = TensorDesc({16, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc x2Desc = TensorDesc({256, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc outDesc = TensorDesc({16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gatherOutDesc = TensorDesc({16, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto ut = OP_API_UT(aclnnAllGatherMatmul, INPUT(x1Desc, x2Desc, nullptr, "test_all_gather_group", 0, 8, 0),
+                        OUTPUT(outDesc, gatherOutDesc));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST_F(L2AllGatherMatmulTest, TestAscend910A5Platform)
+{
+    op::SetPlatformNpuArch(NpuArch::DAV_3510);
+    TensorDesc x1Desc = TensorDesc({16, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc x2Desc = TensorDesc({256, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc outDesc = TensorDesc({16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc gatherOutDesc = TensorDesc({16, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto ut = OP_API_UT(aclnnAllGatherMatmul, INPUT(x1Desc, x2Desc, nullptr, "test_all_gather_group", 0, 8, 1),
+                        OUTPUT(outDesc, gatherOutDesc));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+    op::SetPlatformNpuArch(NpuArch::DAV_3103);
+}
+
 } // AllGatherMatmulUT
