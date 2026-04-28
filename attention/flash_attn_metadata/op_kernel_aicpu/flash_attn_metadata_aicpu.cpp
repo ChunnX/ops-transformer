@@ -140,6 +140,7 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
     deviceInfo.aivCoreMaxNum = aivCoreNum_;
     deviceInfo.aicCoreMinNum = aicCoreNum_;
     deviceInfo.aivCoreMinNum = aivCoreNum_;
+    deviceInfo.cvRadio = aivCoreNum_ / aicCoreNum_;
     // deviceInfo.socVersion = socVersion_;
 
     // baseInfo
@@ -215,42 +216,19 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
     } else {
         groupSize_ = numHeadsQ_ / numHeadsKv_;
     }
-    bool isTransposeLayout = (layoutQ_ != layoutOut_ || layoutQ_ == "NTD");
-    bool pfaMergeFlag = !(baseInfo.attenMaskFlag || isTransposeLayout);
-    if (baseInfo.headDim <= NUM_128) {
-        bool checkQueryAndValueS = baseInfo.querySeqSize <= NUM_64 && baseInfo.kvSeqSize > NUM_128;
-        uint32_t sparseMode = baseInfo.sparseMode;
-        int32_t preTokens = baseInfo.preToken;
-        int32_t nextTokens = baseInfo.nextToken;
-        if (sparseMode == 0) {
-            preTokens = (preTokens > 0) ? 0 : preTokens;
-        } else if (sparseMode == 4) {
-            nextTokens = (nextTokens > 0) ? 0 : nextTokens;
-        }
-        bool checkSparseMode = (sparseMode != 2 && preTokens + nextTokens > 128);
-        if (checkQueryAndValueS && checkSparseMode) {
-            mBaseSize_ = NUM_32;
-            s2BaseSize_ = NUM_256;
-        } else if (((baseInfo.layoutQuery == Layout::BSH) || (baseInfo.layoutQuery == Layout::BSND) ||
-                    (baseInfo.layoutQuery == Layout::TND)) &&
-                pfaMergeFlag) {
-            mBaseSize_ = NUM_32;
-            s2BaseSize_ = NUM_256;
-        }
-    } else if (baseInfo.headDim > NUM_128 && baseInfo.querySeqSize != 1) {
-        if (((baseInfo.layoutQuery == Layout::BSH) || (baseInfo.layoutQuery == Layout::BSND) ||
-            (baseInfo.layoutQuery == Layout::TND)) &&
-            pfaMergeFlag && baseInfo.headDim <= NUM_256) { // 256 : D size
-            mBaseSize_ = NUM_32;
-            s2BaseSize_ = NUM_256;
-        } else {
-            mBaseSize_ = NUM_64;
-            s2BaseSize_ = NUM_128;
-        }
-    } else if (baseInfo.querySeqSize == 1 && baseInfo.headDim > NUM_128) { // IFA VD > 128
-        mBaseSize_ = NUM_64;
-        s2BaseSize_ = NUM_128;
+        uint32_t qlayout = 1;
+    if (baseInfo.layoutQuery == Layout::BSH || baseInfo.layoutQuery == Layout::BSND) {
+        qlayout = 1;
+    } else if (baseInfo.layoutQuery == Layout::BSND) {
+        qlayout = 4;
+    } else if (baseInfo.layoutQuery == Layout::TND) {
+        qlayout = 7;
     }
+    optiling::fa_tiling_util::AdjustSinnerAndSouter(baseInfo.headDim, baseInfo.querySeqSize, baseInfo.kvSeqSize,
+                                   baseInfo.sparseMode, baseInfo.preToken, baseInfo.nextToken,
+                                   qlayout,
+                                   mBaseSize_, s2BaseSize_);
+    mBaseSize_ = mBaseSize_ * deviceInfo.cvRadio; // CV_Radio
     param.mBaseSize = mBaseSize_;
     param.s2BaseSize = s2BaseSize_;
     return true;
