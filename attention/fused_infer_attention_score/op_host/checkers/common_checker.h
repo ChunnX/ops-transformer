@@ -62,6 +62,7 @@ private:
     // enableNonQuant 相关校验函数
     ge::graphStatus CheckNonQuantDataType(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckAttr(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckDimNum(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckHeadNum(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckInputLayout(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckInnerPrecise(const FiaTilingInfo &fiaInfo);
