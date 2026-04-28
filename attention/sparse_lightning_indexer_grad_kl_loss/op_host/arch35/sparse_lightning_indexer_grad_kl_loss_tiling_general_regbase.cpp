@@ -14,7 +14,7 @@
  */
 
 #include "sparse_lightning_indexer_grad_kl_loss_tiling_general_regbase.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 #include <tiling/tiling_api.h>
 
 using namespace ge;
