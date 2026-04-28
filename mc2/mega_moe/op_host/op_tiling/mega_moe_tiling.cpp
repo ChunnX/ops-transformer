@@ -242,7 +242,7 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData* tilingData, const char *nod
     OP_LOGD(nodeName, "expertPerRank is %u", tilingData->expertPerRank);
     OP_LOGD(nodeName, "groupListType is %u", tilingData->groupListType);
 
-    OP_LOGD(nodeName, "EP is %u", tilingData->epWorldSize);
+    OP_LOGD(nodeName, "epWorldSize is %u", tilingData->epWorldSize);
     OP_LOGD(nodeName, "maxOutputSize is %u", tilingData->maxOutputSize);
 
     OP_LOGD(nodeName, "transX is %s", (tilingData->transX ? "True" : "False"));
@@ -290,8 +290,8 @@ void printPeermemInfo(const MegaMoeTilingData* tilingData, const char *nodeName)
 }
 
 void printAuxiliaryTilingCtx(const MegaMoeAuxTilingContext* ctx,
-    const uint32_t expertPerRank, const uint32_t EP,
-    const std::vector<int64_t>& x_shape, const std::vector<int64_t>& expert_idx_shape,
+    const uint32_t expertPerRank, const uint32_t epWorldSize,
+    const std::vector<int64_t>& expertIdxShape,
     ge::DataType xDtype, const char *nodeName)
 {
     OP_LOGD(nodeName, "========== AuxiliaryTilingCtx ==========");
@@ -299,7 +299,7 @@ void printAuxiliaryTilingCtx(const MegaMoeAuxTilingContext* ctx,
     OP_LOGD(nodeName, "H is %ld", ctx->cols);
     OP_LOGD(nodeName, "topK is %ld", ctx->k);
     OP_LOGD(nodeName, "expertPerRank is %ld", expertPerRank);
-    OP_LOGD(nodeName, "EP is %ld", EP);
+    OP_LOGD(nodeName, "epWorldSize is %ld", epWorldSize);
 
     OP_LOGD(nodeName, "availUbSize is %ld", ctx->availUbSize);
     OP_LOGD(nodeName, "sortLoopMaxElement is %ld", ctx->sortLoopMaxElement);
@@ -316,7 +316,7 @@ void printAuxiliaryTilingCtx(const MegaMoeAuxTilingContext* ctx,
     OP_LOGD(nodeName, "expertTokensNumFlag is %s, quantMode is %ld",
         ctx->expertTokensNumFlag ? "True" : "False", ctx->quantMode);
     
-    OP_LOGD(nodeName, "expertIdxShape is [%ld, %ld]", expert_idx_shape[0], expert_idx_shape[1]);
+    OP_LOGD(nodeName, "expertIdxShape is [%ld, %ld]", expertIdxShape[0], expertIdxShape[1]);
     OP_LOGD(nodeName, "expertRange is [%ld, %ld]", ctx->expertStart, ctx->expertEnd);
     OP_LOGD(nodeName, "rowIdxType is %ld", ctx->rowIdxType);
 }
@@ -752,7 +752,7 @@ static ge::graphStatus GetMoeInitRoutingV3Tiling(MegaMoeTilingData &tilingData,
         OP_LOGE(nodeName, "SetAuxiliaryTilingCtx failed."), return ge::GRAPH_FAILED);
 
     printAuxiliaryTilingCtx(&ctx, tilingData.expertPerRank, tilingData.epWorldSize,
-        {tilingData.m, tilingData.k}, {tilingData.m, tilingData.topK}, xDtype, nodeName);
+        {tilingData.m, tilingData.topK}, xDtype, nodeName);
 
     auto initRoutingTilingData = ComputeMoeInitRoutingV3Tiling(initTilingData, ctx);
 
@@ -823,7 +823,7 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
     OP_CHECK_NULL_WITH_CONTEXT(context, weightOneStorageShape);
 
     int64_t bs = xStorageShape->GetStorageShape().GetDim(0);
-    int64_t topk = topkIdsStorageShape->GetStorageShape().GetDim(1);
+    int64_t topK = topkIdsStorageShape->GetStorageShape().GetDim(1);
     int64_t expertPerRank = weightOneStorageShape->GetStorageShape().GetDim(0);
 
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>((config.attrEpWorldSizeIndex));
@@ -850,10 +850,10 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
 
     auto maxRecvTokenNumPtr = attrs->GetAttrPointer<int64_t>((config.attrMaxRecvTokenNumIndex));
     int64_t maxRecvTokenNum = static_cast<int64_t>(*maxRecvTokenNumPtr);
-    OP_TILING_CHECK(maxRecvTokenNum < 0 || maxRecvTokenNum > bs * epWorldSize * std::min(topk, expertPerRank),
+    OP_TILING_CHECK(maxRecvTokenNum < 0 || maxRecvTokenNum > bs * epWorldSize * std::min(topK, expertPerRank),
         OP_LOGE(nodeName,
-            "maxRecvTokenNum(%ld) should in [0, bs(%ld) * epWorldSize(%ld) * min(topk(%ld), expertPerRank(%ld)].",
-            maxRecvTokenNum, bs, epWorldSize, topk, expertPerRank),
+            "maxRecvTokenNum(%ld) should in [0, bs(%ld) * epWorldSize(%ld) * min(topK(%ld), expertPerRank(%ld)].",
+            maxRecvTokenNum, bs, epWorldSize, topK, expertPerRank),
         return ge::GRAPH_FAILED);
 
     auto dispatchQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantModeIndex));
@@ -916,7 +916,7 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
     auto maxRecvTokenNumPtr = attrs->GetAttrPointer<int64_t>((config.attrMaxRecvTokenNumIndex));
 
     tilingData->epWorldSize = *epWorldSizePtr;
-    tilingData->maxOutputSize = maxRecvTokenNumPtr != nullptr ?
+    tilingData->maxOutputSize = *maxRecvTokenNumPtr != 0 ?
         *maxRecvTokenNumPtr :
         tilingData->m * tilingData->epWorldSize *
         std::min(tilingData->topK, tilingData->expertPerRank);
