@@ -231,7 +231,7 @@ aclnnStatus aclnnFusedCausalConv1d(
       <td>numAcceptedTokens（aclTensor*）</td>
       <td>可选输入</td>
       <td>decode场景下的投机token个数。</td>
-      <td><ul><li>支持空tensor。<br>shape为[batch]。</li></ul></td>
+      <td><ul><li>不支持空tensor。<br>shape为[batch]。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td>1</td>
