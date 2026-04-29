@@ -20,6 +20,8 @@
 #include "flash_attention_score_block_vec_infer_mla_fullquant.h"
 #include "flash_attention_score_block_cube_gqa_fullquant.h"
 #include "flash_attention_score_block_vec_infer_gqa_fullquant.h"
+#include "flash_attention_score_block_cube_mx_fullquant.h"
+#include "flash_attention_score_block_vec_infer_mx_fullquant.h"
 #include "flash_attention_score_common_regbase.h"
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
@@ -105,6 +107,7 @@ public:
     static constexpr uint32_t s1BaseSize = (uint32_t)s1TemplateType;
     static constexpr uint32_t s2BaseSize = (uint32_t)s2TemplateType;
     static constexpr bool isFp8 = CubeBlockType::isFp8;
+    static constexpr bool isMxfp8FullQuant = s1BaseSize == 128 && s2BaseSize == 512;
     /* 是否使能dn的信息; 没有可选输入并且S2切分的时候使用dn，s2比较小的时候nd效果更好 */
     static constexpr bool useDn = CubeBlockType::useDn;
     /* HIFLOAT8场景 softmax计算使用Nz格式计算，vec1ResBuffer可以和bmm1ResBuffer进行复用*/
@@ -332,6 +335,9 @@ __aicore__ inline void FlashAttentionScoreKernelBaseFullquant<ChildClass, CubeBl
         mm1OutDtype = sizeof(half);
     }
     uint32_t mm1ResultSize = s1BaseSize / CV_RATIO * s2BaseSize * mm1OutDtype;
+    if constexpr (isMxfp8FullQuant) {
+        mm1ResultSize /= 2;
+    }
     constexpr uint32_t mm2ResultSize = s1BaseSize / CV_RATIO * dTemplateAlign64 * sizeof(T);
     constexpr uint32_t mm2LeftSize = s1BaseSize * s2BaseSize * sizeof(INPUT_T);
     l1BufferManager.Init(pipe, 524288); // 512 * 1024
@@ -542,12 +548,12 @@ __aicore__ inline void FlashAttentionScoreKernelBaseFullquant<ChildClass, CubeBl
         if constexpr (hasAtten) {
             attenMaskInfo.preTokens = sharedParams.preTokens;
             attenMaskInfo.nextTokens = sharedParams.nextTokens;
-            attenMaskInfo.compressMode = inputParamsRegbase.attenMaskCompressMode;
             attenMaskInfo.attenMaskShapeType = inputParamsRegbase.attenMaskShapeType;
             attenMaskInfo.attenMaskS1Size = inputParamsRegbase.attenMaskS1Size;
             attenMaskInfo.attenMaskS2Size = inputParamsRegbase.attenMaskS2Size;
             attenMaskInfo.bandIndex = inputParamsRegbase.bandIndex;
         }
+        attenMaskInfo.compressMode = inputParamsRegbase.attenMaskCompressMode;
         constInfo.scaleValue = static_cast<float>(inputParamsRegbase.scaleValue);
     }
 
