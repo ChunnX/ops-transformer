@@ -311,7 +311,7 @@ inline int ProcessArgs910B(void* devArgsPtr, std::vector<uint8_t> &winBuf, uint3
     if (std::strcmp(op, "MoeDistributeDispatchV2") == 0) {
         return ProcessArgs910BImpl<MoeDistributeDispatchA2TilingData>(devArgsPtr, winBuf, devArgsLen, 18, true);
     } else if (std::strcmp(op, "MoeDistributeCombineV2") == 0) {
-        return ProcessArgs910BImpl<MoeDistributeCombineA2TilingData>(devArgsPtr, winBuf, devArgsLen, 18, false);
+        return ProcessArgs910BImpl<MoeDistributeCombineA2TilingData>(devArgsPtr, winBuf, devArgsLen, 23, false);
     } else {
         OP_LOGE(OP_NAME, "Unsupported op: %s", op);
         return -1;
