@@ -310,13 +310,9 @@ ge::graphStatus TilingMhcPreSinkhornBackward(gert::TilingContext *context)
                 OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "platformInfoPtr is null!"),
                 return ge::GRAPH_FAILED);
     auto ascendPlatformInfo = platform_ascendc::PlatformAscendC(platformInfoPtr);
-    uint64_t ubSize;
     ascendPlatformInfo.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
     auto aicNum = ascendPlatformInfo.GetCoreNumAic();
     auto aivNum = ascendPlatformInfo.GetCoreNumAiv();
-
-    ubSize = ubSize - 40 * 1024;
-    context->SetDynUBufSize(ubSize);
 
     if (aicNum == 0 || aivNum == 0) {
         OP_LOGE(context, "aicNum=%lu or aivNum=%lu is invalid", aicNum, aivNum);
@@ -349,8 +345,7 @@ ge::graphStatus TilingMhcPreSinkhornBackward(gert::TilingContext *context)
     int64_t c1 = c / c0;
     int64_t cTail = c % c0;
     int64_t cTailunaglin = cTail % 64 + 64 * cTail / (64 + 128);
-    // int64_t tileGradY = 40;
-    // int64_t tileHHat2 = 32;
+
     int64_t tile = 32;
     const auto sumOutPtr = context->GetInputShape(10);
     CHECK_NULLPTR(sumOutPtr);

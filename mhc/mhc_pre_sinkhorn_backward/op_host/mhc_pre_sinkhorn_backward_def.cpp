@@ -111,7 +111,6 @@ public:
         this->AICore().AddConfig("ascend910_93", aicConfig);
 
         this->Attr("hc_eps").AttrType(OPTIONAL).Float(1e-6f);
-
     }
 };
 
