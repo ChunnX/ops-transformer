@@ -58,7 +58,6 @@ __global__ __aicore__ void mla_prolog_v3(
     __gm__ uint8_t *workspace,
     __gm__ uint8_t *tiling) 
 {
-
 #if (__NPU_ARCH__ == 3510)
     int64_t globalOriOverflowMode = AscendC::GetCtrlSpr<GLOBAL_OVERFLOW_MODE_CTRL, GLOBAL_OVERFLOW_MODE_CTRL>();
 #endif
