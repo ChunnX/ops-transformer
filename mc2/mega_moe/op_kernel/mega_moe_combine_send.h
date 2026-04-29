@@ -49,8 +49,8 @@ __aicore__ inline void CombineTokens(
             continue;
         }
 
-        int32_t stData = tla::max(stRankInExpert, stTile);
-        int32_t edData = tla::min(edRankInExpert, edTile);
+        int32_t stData = Blaze::Gemm::Max(stRankInExpert, stTile);
+        int32_t edData = Blaze::Gemm::Min(edRankInExpert, edTile);
         int32_t lenData = edData - stData;
         if (lenData <= 0) {
             continue;
@@ -65,7 +65,7 @@ __aicore__ inline void CombineTokens(
         uint64_t gmRemoteOffset = params.peermemInfo.ptrD - params.peermemInfo.ptrBase;
         __gm__ void* dstPeermemPtr = GetRankWinAddrWithOffset(dstEpIdx, gmRemoteOffset);
         gmRemoteD.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMMadOut2*>(dstPeermemPtr));
-        
+
         // 远端偏移地址
         uint64_t gmDstOffset = (dstOffsetInExpert + dstExpertOffset) * n + nLoc;
         auto gmTileD = gmRemoteD[gmDstOffset];

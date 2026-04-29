@@ -25,8 +25,6 @@ if (BUILD_OPEN_PROJECT)  # custom
     add_ops_compile_options(
         OP_NAME MegaMoe
         OPTIONS --cce-auto-sync=off
-        OPTIONS -DCATLASS_ARCH=3510                                      # TODO: remove
-        OPTIONS -I${CMAKE_CURRENT_SOURCE_DIR}/../../3rd/catlass/include  # TODO: remove
         OPTIONS -I${CMAKE_CURRENT_SOURCE_DIR}/../../3rd/tensor_api
         OPTIONS -I${CMAKE_CURRENT_SOURCE_DIR}/../../3rd
     )
