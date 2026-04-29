@@ -645,7 +645,7 @@ __aicore__ inline bool ComputeParamS1(RunParamStr<isInfer>& runParam, const Cons
 
 TEMPLATE_INTF
 __aicore__ inline bool ComputeLastBN(RunParamStr<isInfer>& runParam, const ConstInfo<isInfer, hasRope> &constInfo,
-    __gm__ int64_t *actualSeqQlenAddr) 
+    __gm__ int64_t *actualSeqQlenAddr)
 {
     if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
         // TND格式下 相邻Batch中当actualSeqQlen相等时则返回true
