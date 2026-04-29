@@ -135,7 +135,7 @@ extern "C" __global__ __aicore__ void block_sparse_attention(
             float8_e4m3_t, half, float, BsaKernelArch35::Format::TND, BsaKernelArch35::Format::TND>(
                 query, key, value, blockSparseMask, mask, blockTable, actualSeqLengths, actualSeqLengthsKv,
                 queryDequantScale, keyDequantScale, valueDequantScale, attentionOut, user, tiling);
-#elif TILING_KEY_VAR == QF8_KVF8_OF16_QBNSD_KVBNSD_NOCACHE_SMF16_REF32_NOMASK_KEY
+    #elif TILING_KEY_VAR == QF8_KVF8_OF16_QBNSD_KVBNSD_NOCACHE_SMF16_REF32_NOMASK_KEY
         BsaInferInterfaceFullQuant<
             float8_e4m3_t, half, float, BsaKernelArch35::Format::BNSD, BsaKernelArch35::Format::BNSD>(
                 query, key, value, blockSparseMask, mask, blockTable, actualSeqLengths, actualSeqLengthsKv,
@@ -150,6 +150,7 @@ extern "C" __global__ __aicore__ void block_sparse_attention(
             float8_e4m3_t, bfloat16_t, float, BsaKernelArch35::Format::BNSD, BsaKernelArch35::Format::BNSD>(
                 query, key, value, blockSparseMask, mask, blockTable, actualSeqLengths, actualSeqLengthsKv,
                 queryDequantScale, keyDequantScale, valueDequantScale, attentionOut, user, tiling);
+    #endif
 #endif
     }
 }
