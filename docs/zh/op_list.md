@@ -599,6 +599,16 @@
   </tr>
   <tr>
     <td>mc2</td>
+    <td><a href="../../mc2/mega_moe/README.md">mega_moe</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>完成dispatch + group_matmul1 + swiglu_quant + group_matmul2 + combine的端到端融合计算。</td>
+  </tr>
+  <tr>
+    <td>mc2</td>
     <td><a href="../../mc2/moe_distribute_combine/README.md">moe_distribute_combine</a></td>
     <td>✓</td>
     <td>✓</td>
