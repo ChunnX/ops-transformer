@@ -1354,13 +1354,18 @@ static ge::graphStatus CheckUBSize(const gert::TilingContext *context, MoeDistri
     ubSize = ubSize + AllToAllBasicUsedBuffer(context, tilingData, quantMode, expertIdsBufSize, hSize, expertIdsCnt, hOutSizeAlign, nodeName);
 
     const gert::StorageShape *xActiveMaskStorageShape = context->GetOptionalInputShape(X_ACTIVE_MASK_INDEX);
+    const gert::StorageShape *scalesStorageShape = context->GetOptionalInputShape(SCALES_INDEX);
     bool isActiveMask = (xActiveMaskStorageShape != nullptr);
+    bool isScales = (scalesStorageShape != nullptr);
     bool needMaskCalFlag = (isActiveMask || tilingData.moeDistributeDispatchV2Info.zeroComputeExpertNum != 0);
     if (needMaskCalFlag) {
         ubSize = ubSize + expertIdsBufSize; //gatherMaskTBuf_
     }
 
     uint32_t hFp32Size = Ceil(hSize * sizeof(float), UB_ALIGN, nodeName);
+    if ((quantMode == static_cast<uint32_t>(QuantModeA5::PERGROUP_DYNAMIC_QUANT)) && isScales) {
+        hFp32Size = Ceil(hSize, PERGROUP_BLOCK_SIZE, nodeName) * sizeof(float);
+    }
     uint32_t bsKAlign256 = Ceil(expertIdsCnt * SIZE_OF_HALF, SIZE_ALIGN_256, nodeName);
     uint32_t expertIdsSize = Ceil(expertIdsCnt * sizeof(int32_t), UB_ALIGN, nodeName);
     uint32_t xActivateMaskSize = bsSize * Ceil(kSize * sizeof(bool), UB_ALIGN, nodeName) * SIZE_OF_HALF;
