@@ -18,7 +18,7 @@
 #include "register/op_def_registry.h"
 #include "moe_init_routing_v3_tiling.h"
 #include "../op_kernel/arch35/moe_init_routing_v3_arch35_tiling_def.h"
-#include "tiling_base/tiling_util.h"
+#include "op_host/tiling_util.h"
 
 #define MIRV3_CHECK_GE_RET(expr)                                                                                       \
     if (ge::graphStatus ret = (expr); ret != ge::GRAPH_SUCCESS) {                                                      \
