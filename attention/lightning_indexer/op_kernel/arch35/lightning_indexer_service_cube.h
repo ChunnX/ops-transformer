@@ -221,7 +221,7 @@ __aicore__ inline void LightningIndexerServiceCube<LIT>::ComputeMm1(const LIComm
 
                     SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + l0BufIdx_ % L0_BUF_NUM);
 
-                    bool lastIter = (s1gL1Offset + l0Stride >= s1gL1SizeAlign2G);
+                    bool lastIter = s1gL1Offset + l0Stride >= s1gL1SizeAlign2G;
                     if (lastIter) {
                         kl0BufIdx_++;
                     }
