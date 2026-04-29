@@ -292,7 +292,7 @@ function(add_ops_info_target)
 
     if (ENABLE_BUILT_IN)
         install(FILES ${OPS_INFO_JSON}
-                DESTINATION ops_transformer/built-in/op_impl/ai_core/tbe/config/${OPINFO_COMPUTE_UNIT} OPTIONAL
+                DESTINATION opp/built-in/op_impl/ai_core/tbe/config/${OPINFO_COMPUTE_UNIT} OPTIONAL
         )
     else()
         install(FILES ${OPS_INFO_JSON}
@@ -507,7 +507,7 @@ function(add_bin_compile_target)
     cmake_parse_arguments(BINARY "" "COMPUTE_UNIT" "OP_INFO" ${ARGN})
 
     if (ENABLE_BUILT_IN)
-        set(_INSTALL_DIR ops_transformer/built-in/op_impl/ai_core/tbe/kernel)
+        set(_INSTALL_DIR opp/built-in/op_impl/ai_core/tbe/kernel)
     else()
         set(_INSTALL_DIR packages/vendors/${VENDOR_NAME}_transformer/op_impl/ai_core/tbe/kernel)
     endif()
@@ -853,7 +853,7 @@ function(pack_tiling_sink)
 
   if(ENABLE_BUILT_IN)
     set(TRANSFORMER_OPMASTER_SO ${BINARY_DIR}/libtiling_device_transformer.so)
-    set(INSTALL_DIR "ops_transformer/built-in/op_impl/ai_core/tbe/op_tiling_device/lib")
+    set(INSTALL_DIR "opp/built-in/op_impl/ai_core/tbe/op_tiling_device/lib")
   else()
     set(TRANSFORMER_OPMASTER_SO ${BINARY_DIR}/libcust_opmaster.so)
     set(INSTALL_DIR "packages/vendors/${VENDOR_NAME}_transformer/op_impl/ai_core/tbe/op_master_device/lib")
