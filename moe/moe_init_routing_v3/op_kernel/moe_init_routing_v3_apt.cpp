@@ -28,6 +28,9 @@
 #include "arch35/moe_v3_gather_out_mxfp8.h"
 #include "arch35/moe_v3_gather_out_mxfp4.h"
 #include "arch35/moe_v3_gather_mxfp4_quant.h"
+#include "arch35/moe_v3_full_load_unquantized.h"
+#include "arch35/moe_v3_full_load_dynamic_quant.h"
+#include "arch35/moe_v3_full_load_static_quant.h"
 
 /*
  * 非量化
@@ -80,7 +83,7 @@
 #define MOE_INIT_ROUTING_V3_SORTMULTICORE_HIF8_PERTENSOR_QUANT_GATHER 1180000
 // 多核排序、HIF8 PENTENSOR量化、SCATTER索引
 #define MOE_INIT_ROUTING_V3_SORTMULTICORE_HIF8_PERTENSOR_QUANT_SCATTER 1181000
-    
+
 /*
  * HIF8 PENTEOKEN量化
  */
@@ -97,6 +100,13 @@
 #define MOE_INIT_ROUTING_V3_SORTONECORE_MXFP4QUANT_SCATTER 9011000   // 单核排序、MXFP4量化、SCATTER索引
 #define MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP4QUANT_GATHER 9110000  // 多核排序、MXFP4量化、GATHER索引
 #define MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP4QUANT_SCATTER 9111000 // 多核排序、MXFP4量化、SCATTER索引
+ 
+/*
+ * 全载模版
+ */
+#define MOE_INIT_ROUTING_V3_FULLLOAD_UNQUANTIZED 200000 // 全载、非量化
+#define MOE_INIT_ROUTING_V3_FULLLOAD_STATIC_QUANT 210000 // 全载、静态量化
+#define MOE_INIT_ROUTING_V3_FULLLOAD_DYNAMIC_QUANT 220000 // 全载、动态量化
 
 using namespace AscendC;
 using namespace MoeInitRoutingV3;
@@ -126,6 +136,53 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
 #endif
 
     auto t = &tilingData;
+
+    if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_FULLLOAD_UNQUANTIZED)) {
+        if constexpr (!IsSameType<DTYPE_EXPANDED_X, fp8_e4m3fn_t>::value &&
+                    !IsSameType<DTYPE_EXPANDED_X, fp8_e5m2_t>::value &&
+                    !IsSameType<DTYPE_X, fp4x2_e2m1_t>::value) {
+            TPipe fullLoadPipe;
+            MoeV3FullLoadUnquantized<DTYPE_X> fullLoadOp;
+            fullLoadOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale,
+                            userWS, t, &fullLoadPipe);
+            fullLoadOp.Process();
+            fullLoadPipe.Destroy();
+        }
+#if (__NPU_ARCH__ == 3510)
+        SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+#endif
+        return;
+    } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_FULLLOAD_DYNAMIC_QUANT)) {
+        if constexpr ((IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
+                    IsSameType<DTYPE_X, float32_t>::value) && IsSameType<DTYPE_EXPANDED_X, int8_t>::value) {
+            TPipe fullLoadPipe;
+            MoeV3FullLoadDynamicQuant<DTYPE_X> fullLoadOp;
+            fullLoadOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale,
+                            userWS, t, &fullLoadPipe);
+            fullLoadOp.Process();
+            fullLoadPipe.Destroy();
+        }
+
+#if (__NPU_ARCH__ == 3510)
+        SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+#endif
+        return;
+    } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_FULLLOAD_STATIC_QUANT)) {
+        if constexpr (IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
+                      IsSameType<DTYPE_X, float>::value) {
+            TPipe fullLoadPipe;
+            MoeV3FullLoadStaticQuant<DTYPE_X> fullLoadOp;
+            fullLoadOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale,
+                            userWS, offset, t, &fullLoadPipe);
+            fullLoadOp.Process();
+            fullLoadPipe.Destroy();
+        }
+
+#if (__NPU_ARCH__ == 3510)
+        SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+#endif
+        return;
+    }
 
     // 1.排序阶段，计算SortedExpertIdx和SortedRowIdx。若rowIdxType=1(Scatter)，则SortedRowIdx直接写到输出expandedRowIdx。
     TPipe sortPipe;
@@ -261,8 +318,9 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP8QUANT_GATHER) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP8QUANT_SCATTER)) {
         // MXFP8量化。由于MXFP8模板用到的指令不支持DTYPE_X为int8_t等类型，因此需要constexpr-if来规避编译
-        if constexpr ((IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value) && 
-            (IsSameType<DTYPE_EXPANDED_X, fp8_e4m3fn_t>::value || IsSameType<DTYPE_EXPANDED_X, fp8_e5m2_t>::value)) {
+        if constexpr ((IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value) &&
+                      (IsSameType<DTYPE_EXPANDED_X, fp8_e4m3fn_t>::value ||
+                       IsSameType<DTYPE_EXPANDED_X, fp8_e5m2_t>::value)) {
             TPipe gatherPipe;
             MoeGatherOutMxfp8Quant<DTYPE_X, DTYPE_EXPANDED_X> gatherMxfp8QuantOp;
             gatherMxfp8QuantOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
@@ -286,7 +344,8 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_HIF8_PERTENSOR_QUANT_GATHER) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_HIF8_PERTENSOR_QUANT_SCATTER)) {
         // HIF8 PERTENSOR量化
-        if constexpr ((IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value) && IsSameType<DTYPE_EXPANDED_X, hifloat8_t>::value) {
+        if constexpr ((IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value) &&
+                      IsSameType<DTYPE_EXPANDED_X, hifloat8_t>::value) {
             TPipe gatherPipe;
             MoeGatherOutHif8PertensorQuant<DTYPE_X> gatherHif8PerTensorQuantOp;
             gatherHif8PerTensorQuantOp.Init(x, scale, userWS, expandedRowIdx, expandedX, t, &gatherPipe);
