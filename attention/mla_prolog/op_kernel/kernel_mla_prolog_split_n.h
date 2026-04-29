@@ -420,7 +420,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmCqParamInit() {
     if (baseParams_->mm1KnKGroupSize != 1) {
         mmCqParam_.n = baseParams_->headSizeCq / baseParams_->mm1KnNGroupSize;
         mmCqParam_.baseK = (sizeof(mmInputType) == ONE_BYTE_TYPE_SIZE) ? 128 : 64; // 128KB / (128 max baseN * 4 stepK * sizeof(type))
-        uint32_t mm1KGroupIdx = bloockIdx_ % baseParams_->mm1KnKGroupSize;
+        uint32_t mm1KGroupIdx = blockIdx_ % baseParams_->mm1KnKGroupSize;
         mmCqParam_.k = (baseParams_->headSizeX / mmCqParam_.baseK) / baseParams_->mm1KnKGroupSize * mmCqParam_.baseK;
         mmCqParam_.kStart = mm1KGroupIdx * mmCqParam_.k;
         if (mm1KGroupIdx < (baseParams_->headSizeX / mmCqParam_.baseK) % baseParams_->mm1KnKGroupSize) {
@@ -462,14 +462,13 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmCkvKrParamInit() {
     if (baseParams_->mm2KnKGroupSize != 1) {
         mmCkvKrParam_.n = (baseParams_->headSizeCkv + baseParams_->headSizeKr) / baseParams_->mm2KnNGroupSize;
         mmCkvKrParam_.baseK = (sizeof(mmInputType) == ONE_BYTE_TYPE_SIZE) ? 128 : 64; // 128KB / (128 max baseN * 4 stepK * sizeof(type))
-        uint32_t mm2KGroupIdx = bloockIdx_ % baseParams_->mm2KnKGroupSize;
+        uint32_t mm2KGroupIdx = blockIdx_ % baseParams_->mm2KnKGroupSize;
         mmCkvKrParam_.k = (baseParams_->headSizeX / mmCkvKrParam_.baseK) / baseParams_->mm2KnKGroupSize * mmCkvKrParam_.baseK;
         mmCkvKrParam_.kStart = mm2KGroupIdx * mmCkvKrParam_.k;
         if (mm2KGroupIdx < (baseParams_->headSizeX / mmCkvKrParam_.baseK) % baseParams_->mm2KnKGroupSize) {
             mmCkvKrParam_.k += mmCkvKrParam_.baseK;
         }
         mmCkvKrParam_.kStart += Std::min(mm2KGroupIdx, (baseParams_->headSizeX / mmCkvKrParam_.baseK) % baseParams_->mm2KnKGroupSize) * mmCkvKrParam_.baseK;
-        mmCkvKrParam_.k = baseParams_->headSizeX / baseParams_->mm2KnKGroupSize;
         mmCkvKrParam_.baseN = 192;
         mmCkvKrParam_.stepKMax = L1_B_SIZE / (mmCkvKrParam_.baseK * mmCkvKrParam_.baseN * sizeof(mmInputType));
     } else {
