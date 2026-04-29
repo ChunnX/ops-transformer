@@ -35,6 +35,11 @@ constexpr uint8_t H_RES_IDX = 2;
 constexpr uint8_t H_OUT_IDX = 3;
 constexpr uint8_t H_POST_IDX = 4;
 
+constexpr uint8_t DIM_INDEX_0 = 0;
+constexpr uint8_t DIM_INDEX_1 = 1;
+constexpr uint8_t DIM_INDEX_2 = 2;
+constexpr uint8_t DIM_INDEX_3 = 3;
+
 constexpr uint8_t X_MIX_GRAD_IDX = 0;
 constexpr uint8_t H_MIX_GRAD_IDX = 1;
 
@@ -172,8 +177,24 @@ ge::graphStatus MhcPostBackwardTilingBaseArch32::DoOpTiling()
         return ge::GRAPH_FAILED);
 
     const auto dFPostResShape = gradYTensor->GetStorageShape();
+    const uint32_t dimNum = dFPostResShape.GetDimNum();
 
-    const uint32_t totalTasks = dFPostResShape.GetDim(0);
+    uint32_t totalTasks = 0;
+    uint32_t n = 0;
+    uint32_t channel = 0;
+
+    if (dimNum == 3) {
+        totalTasks = dFPostResShape.GetDim(DIM_INDEX_0);
+        n = dFPostResShape.GetDim(DIM_INDEX_1);
+        channel = dFPostResShape.GetDim(DIM_INDEX_2);
+    } else if (dimNum == 4) {
+        totalTasks = dFPostResShape.GetDim(DIM_INDEX_0) * dFPostResShape.GetDim(DIM_INDEX_1);
+        n = dFPostResShape.GetDim(DIM_INDEX_2);
+        channel = dFPostResShape.GetDim(DIM_INDEX_3);
+    } else {
+        OP_LOGE(context_->GetNodeName(), "grad_y dim num should be 3 (TND) or 4 (BSND), but got %u.", dimNum);
+        return ge::GRAPH_FAILED;
+    }
 
     uint64_t frontCore = totalTasks % coreNumber != 0 ? static_cast<uint64_t>(totalTasks % coreNumber) : coreNumber;
     uint64_t tailCore = totalTasks <= coreNumber ? 0 : coreNumber - frontCore;
@@ -191,9 +212,7 @@ ge::graphStatus MhcPostBackwardTilingBaseArch32::DoOpTiling()
     uint32_t hOutSize = hOutTensor->GetShapeSize();
     uint32_t hPostSize = hPostTensor->GetShapeSize();
 
-    const uint32_t n = dFPostResShape.GetDim(1);
     const uint32_t alignN = GetCeilInt(n * SIZE_FLOAT, 32) * 32 /SIZE_FLOAT;
-    const uint32_t channel = dFPostResShape.GetDim(2);
     const uint32_t blockChannel = BLOCK_C > channel ? channel : BLOCK_C;
     const uint32_t loopC = channel / blockChannel;
     const uint32_t tailC = channel % blockChannel;
