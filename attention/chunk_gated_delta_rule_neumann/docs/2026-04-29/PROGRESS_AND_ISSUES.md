@@ -274,3 +274,21 @@ python3 run_chunk_gdr_performance_msprof.py --case prefill_b8_s128_d64_h16_hkv4 
 |---|---|---|
 | fork master 推送 | 已完成 | `fork/master` 已更新到 `44eff3448a9a206e3ae1eff22c292eae078aa2d0` |
 | 后续默认上传分支 | 已明确 | 用户要求以后都直接推 `fork/master` |
+
+---
+
+## C16 profiling 开销分析进展
+
+| 项目 | 状态 | 说明 |
+|---|---|---|
+| profiling 分项分析 | 已完成 | AIC MAC 平均仅 `1.52x`，AIC/AIV 总时间约 `4x` 主要来自 scalar/MTE/FixPipe/同步 |
+| Stage2 复杂度核对 | 已完成 | Stage2 总 MAC 约 `3*S*Dv*Dk`，不随 chunk=16 下降到 1/4 |
+| Stage3 复杂度核对 | 已完成 | Stage3 MAC 约降到 1/4，但调用/搬运/同步次数变 4 倍 |
+| 重复计算排查 | 发现小问题 | `InverseCompute()` 对 `attnWsGm_` 写 `I-L` 后立即被 `L@L` 覆盖，属于死写 |
+| 死写修复 | 已完成 | 四个 stage1 CVInverse 变体均删除无效 `attnWsGm_` 初始化 |
+| 构建验证 | 已通过 | Neumann 单算子包构建通过，双算子包重装后精度 smoke 通过 |
+| 关键风险 | 未解决 | `C16_FP16_CVInverse` 实际仍是 FP32 MatmulType/host tiling，名称与实现不一致 |
+
+### 当前结论
+
+C16 当前性能差的主因不是同一 chunk 被重复计算，而是 chunk 数变 4 倍后，小 FP32 matmul 调用、Stage2 state 搬运、AIC/AIV 同步和 MTE/FixPipe 次数被放大。已修复的 `attnWsGm_` 死写只影响少量搬运，不足以解释 4x。

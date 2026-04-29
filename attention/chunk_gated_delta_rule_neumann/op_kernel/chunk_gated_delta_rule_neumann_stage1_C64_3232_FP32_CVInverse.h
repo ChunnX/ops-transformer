@@ -499,20 +499,7 @@ private:
         fp32OutQueue_.EnQue(inverseLocal_);
         DataCopyOutFp32(halfChunkSize_, chunkSize_, chunkSize_, L_powWsGm_[subOffset_ * chunkSize_]);
 
-        // 构造 I - L
-        inverseLocal_ = fp32OutQueue_.AllocTensor<float>();
-        Muls(inverseLocal_, attnUbFloat_, static_cast<float>(-1.0), curVecLen);
-        PipeBarrier<PIPE_V>();
-
-        for (uint32_t i = 0; i < halfChunkSize_; ++i) {
-            inverseLocal_.SetValue(i * chunkSize_ + subOffset_ + i, static_cast<float>(1.0));
-        }
-        PipeBarrier<PIPE_V>();
-
-        // 写 I-L 到 attnWsGm_ 和 INVWsGm_
-        fp32OutQueue_.EnQue(inverseLocal_);
-        DataCopyOutFp32(halfChunkSize_, chunkSize_, chunkSize_, attnWsGm_[subOffset_ * chunkSize_]);
-
+        // 构造 I - L，仅写 INVWsGm_。attnWsGm_ 会在 Round1 被 L@L 覆盖，不需要初始化。
         inverseLocal_ = fp32OutQueue_.AllocTensor<float>();
         Muls(inverseLocal_, attnUbFloat_, static_cast<float>(-1.0), curVecLen);
         PipeBarrier<PIPE_V>();

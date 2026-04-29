@@ -343,3 +343,27 @@ bash test_run.sh compare
 - 已将当前 `chunk-gdr-neumann-20260429-upload` 分支 fast-forward 推送到 `fork/master`。
 - 当前 `fork/master` 最新提交：`44eff3448a9a206e3ae1eff22c292eae078aa2d0`。
 - 后续默认上传目标：`fork master`。
+
+---
+
+## C16 profiling 4x 开销分析与死写修复
+
+**用户问题**: chunk 从 64 减到 16 后，为什么 profiling 中 AIC/AIV 计算和搬运相关时间接近 4 倍，是否存在重复计算。
+
+**分析结论**:
+- profiling 中 AIC/AIV 总时间约 `4x`，但 AIC MAC time 平均仅 `1.52x`，4x 主要来自 scalar/MTE/FixPipe/同步和小 matmul 调用次数放大。
+- Stage2 总 MAC 不随 chunk 从 64 到 16 下降到 1/4；其总量约为 `3*S*Dv*Dk`，基本与 chunkSize 无关。
+- Stage3 MAC 理论上约降到 1/4，但 chunk 数和 matmul 调用次数变 4 倍，搬运/同步开销明显放大。
+- 当前 `stage1_C16_FP16_CVInverse.h` 实际仍使用 `float/float/float` MatmulType，host tiling 也是 `DT_FLOAT`，不是实际 FP16 MM。
+- 当前 C16 Neumann 每 chunk matmul 调用约 14 次，普通 C64 每 chunk约 10 次；考虑 chunk 数 4 倍，matmul 调用次数约 `5.6x`，与 AIC scalar time 约 `5x` 匹配。
+
+**已修复问题**:
+- 删除 Neumann `InverseCompute()` 中对 `attnWsGm_` 写入初始 `I-L` 的死写；该 workspace 在 Round1 会被 `L@L` 立即覆盖。
+- 同步修复四个 stage1 变体：`C16_FP16`、`C16_FP32`、`C64_1616_FP32`、`C64_3232_FP32`。
+
+**验证**:
+- `bash build.sh --pkg --soc=ascend910_93 --ops=chunk_gated_delta_rule_neumann -j16` 通过。
+- 重包安装 `chunk_gated_delta_rule,chunk_gated_delta_rule_neumann` 后，三方精度 smoke `B=1,S=64,nk=4,nv=4,dk=dv=64` 通过。
+- 单 case Neumann profiling smoke 完成；MTE/FixPipe 小幅下降，但总耗时无明显改善，说明主因不是该死写。
+
+**详细记录**: `docs/2026-04-29/PROFILING_C16_OVERHEAD_ANALYSIS.md`

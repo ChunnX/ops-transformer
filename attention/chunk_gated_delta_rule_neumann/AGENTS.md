@@ -353,3 +353,6 @@ export ASCEND_CUSTOM_OPP_PATH=${ASCEND_HOME_PATH}/opp/vendors/custom_transformer
 - 已推送 fork 分支 `chunk-gdr-neumann-20260429-upload`，远端提交 `61d5a61c57502fdc80b1899f68e579bacb364213`；推送前修复本机 `id_ed25519.pub` 与私钥不匹配问题
 - 按用户追加要求上传完整 profiling 原始目录 `tests/pytest/prof_out/`，包含 full 批测和 smoke 的 `PROF_*` 输出；最新 profiling 提交 `c69375e7`
 - 按用户要求将当前版本 fast-forward 推送到 `fork/master`，后续默认上传目标改为 `fork master`
+- 对比 profiling 与代码定位 C16 开销：AIC MAC time 平均仅 `1.52x`，4x 主要来自小 chunk 引入的 matmul 调用/同步/MTE/FixPipe 放大；Stage2 总 MAC 与 chunkSize 基本无关
+- 修复 Neumann `InverseCompute()` 中 `attnWsGm_` 初始 `I-L` 死写，四个 stage1 CVInverse 变体同步删除；构建和三方精度 smoke 通过
+- 确认 `stage1_C16_FP16_CVInverse.h` 当前实际仍是 FP32 MatmulType/host tiling，名称与实现不一致，需后续修正
