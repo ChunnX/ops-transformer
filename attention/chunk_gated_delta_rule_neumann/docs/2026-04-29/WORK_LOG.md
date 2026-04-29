@@ -422,3 +422,33 @@ bash test_run.sh compare
 - `S=16` 时只有一个 C16 chunk，Neumann 额外 inverse 开销存在，但还没触发 chunk 数放大，因此只慢约 `8%~14%`。
 - `S=64` 时当前 Neumann 为 4 个 C16 chunk，而普通 GDR 为 1 个 C64 chunk；chunk 调度、同步、MTE/FixPipe 与 stage2 state 搬运明显放大，因此慢到约 `2.4x`。
 - 这与前面 C16 profiling 分析一致：当前主要瓶颈是 chunk 数和小 matmul 调用次数，不是单个大矩阵 MAC 计算量。
+
+## S=16 Neumann 仍慢的 profiling 拆解
+
+**用户质疑**: `S=16` 时 stage2/stage3 耗时相同甚至更快，stage1 又按预期减少了求逆 MAC，为什么总耗时仍明显慢。
+
+**核对结果**:
+- `S=16` 的 msprof 明细确认 Neumann 的 AIC MAC time 确实低于 normal：
+  - `B=8`: `6.382us -> 4.565us`
+  - `B=16`: `12.759us -> 9.135us`
+  - `B=32`: `25.513us -> 18.252us`
+  - `B=64`: `51.052us -> 36.500us`
+- 但 Neumann 的 AIC scalar time 明显上升：
+  - `B=8`: `113.288us -> 139.257us`，增加 `25.969us`
+  - `B=16`: `223.471us -> 272.425us`，增加 `48.954us`
+  - `B=32`: `436.537us -> 542.528us`，增加 `105.991us`
+  - `B=64`: `856.229us -> 1068.133us`，增加 `211.904us`
+- Neumann 的 AIV vector/scalar 计算下降，但 AIV MTE2 增加，说明收益没有落到关键路径上。
+
+**代码路径对比**:
+- normal stage1 在 `S=16` tail 情况下仍是 `chunkSize=64`，但 `validLen=16`，`subValidRows` 会裁剪并补零；stage1 主要是 6 次 AIC matmul 调用：`K@K`、`Q@K`、2 次 inverse block combine、`attn@k`、`attn@v`。
+- 当前 Neumann stage1 为 `chunkSize=16`，MAC 更少，但 matmul 调用变成 10 次：`K@K`、`Q@K`、3 次 `Lpow`、3 次 `INV@Lpow`、`INV@k`、`INV@v`。
+- 当前 `INV += tmp` 仍在 AIV 做，每轮需要：AIC 产出 tmp → set flag → AIV 读 tmp/INV → AIV add → AIV 写 INV → set flag → AIC 继续下一轮。三轮 Neumann 带来 3 次 AIC/AIV 往返和额外 GM 读写。
+
+**结论**:
+`S=16` 下 Neumann 的算法 FLOPs/MAC 是降低了，但当前实现把一次 AIV 连续求逆换成了 6 个极小 FP32 matmul + 3 轮 AIC/AIV 同步/GM 累加。对 16×16 小矩阵，matmul 固定调度与 scalar 开销、跨核 flag 和 GM 往返比 MAC 更贵，因此总耗时仍慢。
+
+**下一步优化方向**:
+1. 优先把 `NeumannAddCompute()` 从 AIV 搬到 AIC/FixPipe atomic add：`tmp = INV @ Lpow` 搬出时直接累加到 `INVWsGm_`，减少 3 轮 AIV MTE2/MTE3 和 AIC/AIV 往返。
+2. 为 `S<=16` 或 C16 exact chunk 增加直接 AIV 16×16 inverse 特化路径，避免 6 次 tiny matmul 的调度开销；该路径需要重新精度/性能对比。
+3. 真正实现 FP16 A/B matmul 只能降低 MAC 成本，不能解决当前 `S=16` 的主要 scalar/sync 问题，优先级低于减少 matmul 调用和同步次数。

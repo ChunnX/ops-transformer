@@ -324,3 +324,17 @@ python3 run_chunk_gdr_performance_msprof.py --output ./prof_out/chunk_gdr_prefil
 ### 关键判断
 
 `S=16` 只有一个 C16 chunk，Neumann 相对 normal 只慢约 `8%~14%`；`S=64` 时 Neumann 变成 4 个 C16 chunk，对比 normal 的 1 个 C64 chunk，per-chunk 调度、同步、搬运和小 matmul 开销开始主导，因此退化到约 `2.4x`。
+
+## S=16 Neumann 慢因定位
+
+| 项目 | 状态 | 说明 |
+|---|---|---|
+| AIC MAC 核对 | 已确认 | Neumann `S=16` 的 AIC MAC time 低于 normal，计算量确实减少 |
+| AIC scalar 核对 | 已确认 | Neumann AIC scalar time 随 batch 明显增加，是主要慢点 |
+| AIV 开销核对 | 已确认 | AIV vec/scalar 下降，但 AIV MTE2 增加，收益未落到关键路径 |
+| 代码路径核对 | 已确认 | normal 约 6 次 stage1 matmul；Neumann 约 10 次 tiny matmul + 3 轮 AIC/AIV 往返 |
+| 优先优化项 | 待实现 | 将 `INV += tmp` 搬到 AIC/FixPipe atomic add，或增加 `S<=16` AIV inverse 特化 |
+
+### 判断
+
+`S=16` 慢不是因为 Neumann MAC 更多，而是当前 Neumann 实现的固定调度开销更高：6 次 16×16 tiny matmul 的 scalar 调度、3 轮 AIC/AIV flag 同步，以及 `tmp/INV` 的 GM 读写累加压过了 MAC 减少收益。
