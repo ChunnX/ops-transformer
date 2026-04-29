@@ -448,9 +448,17 @@ public:
             }
             abL1LoopCnt_++;
         }
-        // C L0C->GM
-        auto CopyL0C2GM = AscendC::Te::MakeCopy(AscendC::Te::CopyL0C2GM{});
-        AscendC::Te::Copy(CopyL0C2GM, gmC, tensorL0C, AscendC::Te::FixpipeParams{3});
+
+        if constexpr (Std::is_same_v<Te::GetMemLocation<TensorC>, Te::Location::UB>) {
+            // C L0C->UB
+            auto CopyL0C2UB = AscendC::Te::MakeCopy(AscendC::Te::CopyL0C2UB{});
+            AscendC::Te::Copy(CopyL0C2UB, gmC, tensorL0C, AscendC::Te::FixpipeParams{3});
+        } else {
+            // C L0C->GM
+            auto CopyL0C2GM = AscendC::Te::MakeCopy(AscendC::Te::CopyL0C2GM{});
+            AscendC::Te::Copy(CopyL0C2GM, gmC, tensorL0C, AscendC::Te::FixpipeParams{3});
+        }
+
         if (enableL0cPingPong_) {
             l0cPingPong_++;
         }

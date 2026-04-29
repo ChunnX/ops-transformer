@@ -43,9 +43,7 @@
 #include "mega_moe_base.h"
 
 #include "include/tensor_api/tensor.h"
-#include "blaze/block/block_scheduler_policy.h"
 #include "blaze/block/block_mmad_mx.h"
-
 
 #include "tile_copy.hpp"
 #include "mega_moe_combine_send.h"
@@ -77,7 +75,7 @@ using L0TileShape = tla::Shape<tla::Int<L1_TILE_M>, tla::Int<L1_TILE_N>, tla::In
 template <typename ElementA, typename ElementB, typename ElementC,
           typename ElementMxScaleA, typename ElementMxScaleB>
 __aicore__ inline void GroupMatmulSwigluQuant(
-    BlockEpilogueSwigluQuant<L1TileShape, ElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true>& epilogueOp,
+    BlockEpilogueSwigluMxQuant<L1TileShape, ElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true>& epilogueOp,
     const Params& params,
     const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
     const GMMAddrInfo& gmmAddrInfo,
@@ -131,9 +129,9 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     auto layoutC = MakeLayoutC{}(L1_TILE_M, L1_TILE_N);
 
     using BiasType = float;
-    using DispatchPolicy = Blaze::Gemm::MatmulWithScale<>;
+    using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<>;
     using BlockMmad =
-        Blaze::Gemm::Block::BlockMmadMx<DispatchPolicy, ElementA, LayoutA, ElementB, LayoutB, ElementC, LayoutC,
+        Blaze::Gemm::Block::BlockMmad<DispatchPolicy, ElementA, LayoutA, ElementB, LayoutB, ElementC, LayoutC,
             BiasType, LayoutBias, void>;
     BlockMmad blockMmad;
     bool enableL0CPingPong = false;
@@ -176,7 +174,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
 
         if constexpr(g_coreType == AscendC::AIC) {
             if (loopIdx == startLoopIdx) {
-                uint32_t targetValue = params.tilingData->EP * dispatchBlockNumPerEP;
+                uint32_t targetValue = params.tilingData->epWorldSize * dispatchBlockNumPerEP;
                 __gm__ int32_t* flagValueAddr = (__gm__ int32_t*)groupFlagListGm2.GetPhyAddr();
                 while (targetValue != AscendC::ReadGmByPassDCache(flagValueAddr)) {
                     int64_t st = AscendC::GetSystemCycle();
