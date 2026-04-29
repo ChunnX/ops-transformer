@@ -34,7 +34,7 @@ __global__ __aicore__ void matmul_allto_all(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
     REGISTER_TILING_DEFAULT(MatmulAlltoAllTilingData);
     GET_TILING_DATA_WITH_STRUCT(MatmulAlltoAllTilingData, tilingData, tilingGM);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-    if constexpr (MM_ALLTO_ALL_QUANT_BF16) {
+    if constexpr (ORIG_DTYPE_X1 == DT_INT8 && MM_ALLTO_ALL_QUANT_BF16) {
         MatmulAlltoAll<DTYPE_X1, DTYPE_X2, bfloat16_t, DTYPE_X1_SCALE, DTYPE_X2_SCALE, DTYPE_Y, MM_ALLTO_ALL_HAS_BIAS, MM_ALLTO_ALL_TRANS_X2> op;
         op.Init(x1, x2, bias, x1_scale, x2_scale, y, workspaceGM, tilingGM);
         op.Process();
