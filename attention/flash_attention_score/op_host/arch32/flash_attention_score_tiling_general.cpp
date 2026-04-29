@@ -18,9 +18,9 @@
 #include <register/tilingdata_base.h>
 #include <tiling/tiling_api.h>
 #include "log/log.h"
-#include "tiling_base/tiling_base.h"
-#include "tiling_base/tiling_templates_registry.h"
-#include "tiling_base/tiling_type.h"
+#include "op_host/tiling_base.h"
+#include "op_host/tiling_templates_registry.h"
+#include "op_host/tiling_type.h"
 #include "../flash_attention_score_tiling_common.h"
 #include "../../op_kernel/arch32/flash_attention_score_tiling.h"
 #include "../../op_kernel/arch32/flash_attention_score_template_tiling_key.h"

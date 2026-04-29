@@ -13,7 +13,7 @@
  * \brief
  */
 #include "moe_finalize_routing_v2_tiling.h"
-#include "tiling_base/tiling_util.h"
+#include "op_host/tiling_util.h"
 using namespace std;
 using namespace ge;
 
