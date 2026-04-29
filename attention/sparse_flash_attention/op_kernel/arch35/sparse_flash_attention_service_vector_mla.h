@@ -653,6 +653,8 @@ void SFAVectorService<TEMPLATE_ARGS>::CleanOutput(__gm__ uint8_t *attentionOut, 
 {
     if ASCEND_IS_AIV {
         this->attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
+        this->softmaxSumGm.SetGlobalBuffer((__gm__ float *)(softmaxSum));
+        this->softmaxMaxGm.SetGlobalBuffer((__gm__ float *)(softmaxMax));
         if (constInfo.needInit == 1) {
             InitOutputSingleCore(constInfo);
         }
@@ -671,8 +673,6 @@ void SFAVectorService<TEMPLATE_ARGS>::InitGlobalBuffer(__gm__ uint8_t *key, __gm
     }
     sparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
     keyRopeGm.SetGlobalBuffer((__gm__ KV_T *)(keyRope));
-    softmaxSumGm.SetGlobalBuffer((__gm__ float *)(softmaxSum));
-    softmaxMaxGm.SetGlobalBuffer((__gm__ float *)(softmaxMax));
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::SoftmaxInitBuffer()

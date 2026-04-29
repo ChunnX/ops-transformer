@@ -54,7 +54,7 @@ ge::graphStatus AllToAllMatmulTilingBase::GetPlatformInfo()
     fe::PlatFormInfos *platformInfo = context_->GetPlatformInfo();
     OP_TILING_CHECK(platformInfo == nullptr, OP_LOGE(opName_, "Fail to get platform info"), return ge::GRAPH_FAILED);
     platform_ascendc::PlatformAscendC ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    contextInfo.args_.aicCoreNum = ascendcPlatform.GetCoreNumAic();
+    contextInfo_.args_.aicCoreNum = ascendcPlatform.GetCoreNumAic();
     npuArch_ = ascendcPlatform.GetCurNpuArch();
     libApiWorkSpaceSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
     return ge::GRAPH_SUCCESS;
@@ -75,10 +75,11 @@ ge::graphStatus AllToAllMatmulTilingBase::GetWorkspaceSize()
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(opName_, "get workspace failed"), return ge::GRAPH_FAILED);
     SetUserWorkSpace();
-    uint64_t workspaceSize = libApiWorkSpaceSize_ + inferredInfo.commLen + inferredInfo.permuteLen + inferredInfo.biasLen;
+    uint64_t workspaceSize =
+        libApiWorkSpaceSize_ + inferredInfo_.commLen + inferredInfo_.permuteLen + inferredInfo_.biasLen;
     workspaces[0] = workspaceSize;
-    OP_LOGD(opName_, "Workspaces[0] size=%ld, biasLen=%d, commlen=%d", workspaces[0], inferredInfo.biasLen,
-            inferredInfo.commLen);
+    OP_LOGD(opName_, "Workspaces[0] size=%ld, biasLen=%d, commlen=%d", workspaces[0], inferredInfo_.biasLen,
+            inferredInfo_.commLen);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -100,16 +101,16 @@ void AllToAllMatmulTilingBase::SetUserWorkSpace()
 {
     constexpr uint64_t alignAddrLen = 512;
     // AlltoAllMatmul先进行通信，需要有对应的空间先存放结果，假设x1(m,k),假设原始rank上X1的第0维为M，这里的m根据kernel需要取完整的M,
- 	// m已经在前面获取输入参数的时候进行过处理
- 	inferredInfo.commLen = mc2tiling::AlignUp(
- 	    contextInfo.args_.orgMValue * contextInfo.args_.orgKValue * contextInfo.args_.inputDtypeSize, alignAddrLen);
+    // m已经在前面获取输入参数的时候进行过处理
+    inferredInfo_.commLen = mc2tiling::AlignUp(
+        contextInfo_.args_.orgMValue * contextInfo_.args_.orgKValue * contextInfo_.args_.inputDtypeSize, alignAddrLen);
     // 重排空间等于通信结果结果空间,如果存在alltoallout空间的话，不需要申请这块
-    if (!contextInfo.allToAllOutFlag) {
-        inferredInfo.permuteLen = inferredInfo.commLen;
+    if (!contextInfo_.allToAllOutFlag) {
+        inferredInfo_.permuteLen = inferredInfo_.commLen;
     }
-    if (contextInfo.args_.isBias) {
-        inferredInfo.biasLen =
-            mc2tiling::AlignUp(contextInfo.args_.nValue, mc2tiling::SHAPE_ALIGN_SIZE) * sizeof(float);
+    if (contextInfo_.args_.isBias) {
+        inferredInfo_.biasLen =
+            mc2tiling::AlignUp(contextInfo_.args_.nValue, mc2tiling::SHAPE_ALIGN_SIZE) * sizeof(float);
     }
 }
 
@@ -122,24 +123,53 @@ void AllToAllMatmulTilingBase::SetUserWorkSpace()
 ge::graphStatus AllToAllMatmulTilingBase::TileCommAndCompute()
 {
     OP_LOGD(opName_, "Start to find proper tile by formulaic tiling.");
-    SocVersion nowSocVersion = SocVersion::SOC950;
     std::string socVersionStr = mc2tiling::GetSocVersion(context_);
     OP_LOGD(opName_, "Current SocVersion is : %s", socVersionStr.c_str());
-    if (socVersionStr == "Ascend910_93") {
-        nowSocVersion = SocVersion::SOC910_93;
-    }
-    // 最后一个参数true代表AlltoAllMatmul
-    AlltoAllMM alltoallMatmulTileFormulate(contextInfo.args_, contextInfo.args_.rankDim, KernelType::ALL_TO_ALL,
-                                           nowSocVersion, true);
-    alltoallMatmulTileFormulate.GetTiling();
-    CutResult mCutMMAlltoAll = alltoallMatmulTileFormulate.tilingM_.cutRes;
-    inferredInfo.tileM = mCutMMAlltoAll.longTileLen;
-    inferredInfo.tileCnt = mCutMMAlltoAll.numLongTile;
-    inferredInfo.tailM = 0;
-    inferredInfo.tailCnt = 0;
-    if (mCutMMAlltoAll.numShortTile > 0) {
-        inferredInfo.tailM = mCutMMAlltoAll.shortTileLen;
-        inferredInfo.tailCnt = mCutMMAlltoAll.numShortTile;
+
+    constexpr uint32_t COMM_RANKDIM_FOUR = 4;
+    constexpr uint32_t COMM_RANKDIM_EIGHT = 8;
+    if (socVersionStr == "Ascend950" &&
+        (contextInfo_.args_.rankDim == COMM_RANKDIM_FOUR || contextInfo_.args_.rankDim == COMM_RANKDIM_EIGHT)) {
+        TopoType topoType =
+            contextInfo_.args_.rankDim == COMM_RANKDIM_FOUR ? TopoType::STANDARD_CARD : TopoType::EIGHT_P;
+        // 950的4卡和8卡形态使用基于拟合数据的公式化tiling
+        AlltoAllMatmulFitBalanceTiling tiling(matmulQuantType_, contextInfo_.args_, topoType, SocVersion::SOC950);
+        CutResult cutRes = tiling.GetTiling();
+        if (!cutRes.shortTileAtBack && cutRes.numShortTile > 0) {
+            inferredInfo_.tileM = cutRes.shortTileLen;
+            inferredInfo_.tileCnt = cutRes.numShortTile;
+            if (cutRes.numLongTile > 0) {
+                inferredInfo_.tailM = cutRes.longTileLen;
+                inferredInfo_.tailCnt = cutRes.numLongTile;
+            }
+        } else {
+            inferredInfo_.tileM = cutRes.longTileLen;
+            inferredInfo_.tileCnt = cutRes.numLongTile;
+            inferredInfo_.tailM = 0;
+            inferredInfo_.tailCnt = 0;
+            if (cutRes.numShortTile > 0) {
+                inferredInfo_.tailM = cutRes.shortTileLen;
+                inferredInfo_.tailCnt = cutRes.numShortTile;
+            }
+        }
+    } else {
+        // 保持原本的公式化tiling
+        SocVersion nowSocVersion = SocVersion::SOC950;
+        if (socVersionStr == "Ascend910_93") {
+            nowSocVersion = SocVersion::SOC910_93;
+        }
+        AlltoAllMM alltoallMatmulTileFormulate(contextInfo_.args_, contextInfo_.args_.rankDim, KernelType::ALL_TO_ALL,
+                                               nowSocVersion, true);
+        alltoallMatmulTileFormulate.GetTiling();
+        CutResult mCutMMAlltoAll = alltoallMatmulTileFormulate.tilingM_.cutRes;
+        inferredInfo_.tileM = mCutMMAlltoAll.longTileLen;
+        inferredInfo_.tileCnt = mCutMMAlltoAll.numLongTile;
+        inferredInfo_.tailM = 0;
+        inferredInfo_.tailCnt = 0;
+        if (mCutMMAlltoAll.numShortTile > 0) {
+            inferredInfo_.tailM = mCutMMAlltoAll.shortTileLen;
+            inferredInfo_.tailCnt = mCutMMAlltoAll.numShortTile;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -195,9 +225,9 @@ ge::graphStatus AllToAllMatmulTilingBase::CheckAlltoAllOut(const gert::TilingCon
     // 非空校验在CheckAttrsInfo中已经校验过
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     const bool *allToAllOutFlag = attrs->GetAttrPointer<bool>(ALLTOALLMATMUL_ATTR_ALLTO_ALL_OUT_FLAG_INDEX);
-    contextInfo.allToAllOutFlag = (allToAllOutFlag != nullptr) ? *allToAllOutFlag : false;
+    contextInfo_.allToAllOutFlag = (allToAllOutFlag != nullptr) ? *allToAllOutFlag : false;
     // 当alltoAlloutFlag非空时，需要进行校验:数据类型、DIM维度数、shape
-    if (contextInfo.allToAllOutFlag) {
+    if (contextInfo_.allToAllOutFlag) {
         // 数据类型校验, x1的数据类型已经在前面校验过
         auto x1TensorDesc = context->GetInputDesc(INPUT_X1_INDEX);
         ge::DataType x1DType = x1TensorDesc->GetDataType();
@@ -294,7 +324,7 @@ ge::graphStatus AllToAllMatmulTilingBase::SetAlltoAllMatmulShapeInfo(const gert:
     contextInfo.args_.orgMValue = x1Dim0;
     contextInfo.args_.orgNValue = (contextInfo.args_.isBTrans) ? x2Dim0 : x2Dim1;
     contextInfo.args_.orgKValue = x1Dim1;
-    
+
     // 对于AlltoAllMatmul, m要除以rank数，k取完整的k,也就是x2的k维度
     contextInfo.args_.mValue = x1Dim0 / contextInfo.args_.rankDim;
     contextInfo.args_.kValue = (contextInfo.args_.isBTrans) ? x2Dim1 : x2Dim0;
@@ -311,21 +341,22 @@ ge::graphStatus AllToAllMatmulTilingBase::SetAlltoAllMatmulShapeInfo(const gert:
  * @return ge::graphStatus
  */
 ge::graphStatus AllToAllMatmulTilingBase::CheckKcQuantTensorDataType(const gert::TilingContext *context,
-                                                                      const char *opName)
+                                                                     const char *opName)
 {
     // 获取并校验输入张量描述符
     auto x1TensorDesc = context->GetInputDesc(INPUT_X1_INDEX);
     auto x2TensorDesc = context->GetInputDesc(INPUT_X2_INDEX);
-    OP_TILING_CHECK((x1TensorDesc == nullptr), OP_LOGE(opName, "the input x1 tensor is invalid."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((x2TensorDesc == nullptr), OP_LOGE(opName, "the input x2 tensor is invalid."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((x1TensorDesc == nullptr), OP_LOGE(opName, "the input x1 tensor is invalid."),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((x2TensorDesc == nullptr), OP_LOGE(opName, "the input x2 tensor is invalid."),
+                    return ge::GRAPH_FAILED);
     // 获取数据类型并校验一致性与范围
     ge::DataType x1Dtype = x1TensorDesc->GetDataType();
     ge::DataType x2Dtype = x2TensorDesc->GetDataType();
     const std::vector<uint32_t> KC_QUANT_X1_DTYPE_LIST = {ge::DT_FLOAT16, ge::DT_BF16};
     const std::vector<uint32_t> KC_QUANT_X2_DTYPE_LIST = {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2};
     OP_TILING_CHECK(!IsContain(KC_QUANT_X1_DTYPE_LIST, x1Dtype),
-                    OP_LOGE(opName,
-                            "The Input x1 Dtype should be in kc-quant range (float16/bf16), but x1 is %s.",
+                    OP_LOGE(opName, "The Input x1 Dtype should be in kc-quant range (float16/bf16), but x1 is %s.",
                             Ops::Base::ToString(x1Dtype).c_str()),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(!IsContain(KC_QUANT_X2_DTYPE_LIST, x2Dtype),
@@ -337,17 +368,18 @@ ge::graphStatus AllToAllMatmulTilingBase::CheckKcQuantTensorDataType(const gert:
     auto biasTensorDesc = context->GetOptionalInputDesc(INPUT_BIAS_INDEX);
     if (biasTensorDesc != nullptr) {
         ge::DataType biasDtype = biasTensorDesc->GetDataType();
-        OP_TILING_CHECK((biasDtype != ge::DT_FLOAT),
-                        OP_LOGE(opName, "bias Dtype should be float, but bias is %s.",
-                                Ops::Base::ToString(biasDtype).c_str()),
-                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            (biasDtype != ge::DT_FLOAT),
+            OP_LOGE(opName, "bias Dtype should be float, but bias is %s.", Ops::Base::ToString(biasDtype).c_str()),
+            return ge::GRAPH_FAILED);
     }
     auto x2ScaleTensorDesc = context->GetOptionalInputDesc(INPUT_X2_SCALE_INDEX);
     OP_TILING_CHECK((x2ScaleTensorDesc == nullptr),
                     OP_LOGE(opName, "x2scale tensors should not be null in kc quant mode."), return ge::GRAPH_FAILED);
     ge::DataType x2scaleDtype = x2ScaleTensorDesc->GetDataType();
     OP_TILING_CHECK((x2scaleDtype != ge::DT_FLOAT),
-                    OP_LOGE(opName, "x2scale dtype should be DT_FLOAT in kc quant mode, but is %s.", Ops::Base::ToString(x2scaleDtype).c_str()),
+                    OP_LOGE(opName, "x2scale dtype should be DT_FLOAT in kc quant mode, but is %s.",
+                            Ops::Base::ToString(x2scaleDtype).c_str()),
                     return ge::GRAPH_FAILED);
     // 校验输出张量数据类型
     auto yDesc = context->GetOutputDesc(OUTPUT_Y_INDEX);
@@ -360,46 +392,48 @@ ge::graphStatus AllToAllMatmulTilingBase::CheckKcQuantTensorDataType(const gert:
     return ge::GRAPH_SUCCESS;
 }
 
-/** 
-  * @brief 校验量化tiling输入的shape信息 
-  * 
-  * @param context 框架根据input，output，attrs等信息生成tiling需要的context 
-  * @param opName 算子名称 
-  * @param indexSchema 存放输入参数索引差别的结构体 
-  * @return ge::graphStatus 
-  */ 
-ge::graphStatus AllToAllMatmulTilingBase::CheckKcQuantShapeInfo(const gert::TilingContext *context, const char *opName, const OpAttrIndexSchema &indexSchema) 
-{ 
-    OP_TILING_CHECK(MatmulAlltoAllTilingUtil::CheckShapeInfo(context, opName, ALLTOALL_MATMUL_INDEX_SCHEMA) != ge::GRAPH_SUCCESS, 
-                    OP_LOGE(opName, "Tiling common info check shape failed."), return ge::GRAPH_FAILED); 
-    ge::graphStatus status; 
-    const gert::StorageShape *x1Shape = context->GetInputShape(INPUT_X1_INDEX); 
-    const gert::StorageShape *x2Shape = context->GetInputShape(INPUT_X2_INDEX); 
-    const gert::StorageShape *x2ScaleShape = context->GetOptionalInputShape(INPUT_X2_SCALE_INDEX); 
-    OP_TILING_CHECK((x1Shape == nullptr), 
-                    OP_LOGE(opName, "the input x1 shape is invalid"), return ge::GRAPH_FAILED); 
-    OP_TILING_CHECK((x2Shape == nullptr), 
-                    OP_LOGE(opName, "the input x2 shape is invalid"), return ge::GRAPH_FAILED); 
-    OP_TILING_CHECK((x2ScaleShape == nullptr), 
-                    OP_LOGE(opName, "the input x2Scale shape is invalid"), return ge::GRAPH_FAILED); 
-    uint64_t x2Dim0 = x2Shape->GetStorageShape().GetDim(0); 
-    uint64_t x2Dim1 = x2Shape->GetStorageShape().GetDim(1); 
-    uint64_t x2ScaleDimNum = x2ScaleShape->GetStorageShape().GetDimNum(); 
-    OP_TILING_CHECK((x2ScaleDimNum != 1),
-                    OP_LOGE(opName, "In kc quantization, the number of dimensions of input x2 should be two, but actual is:%lu.", x2ScaleDimNum),
+/**
+ * @brief 校验量化tiling输入的shape信息
+ *
+ * @param context 框架根据input，output，attrs等信息生成tiling需要的context
+ * @param opName 算子名称
+ * @param indexSchema 存放输入参数索引差别的结构体
+ * @return ge::graphStatus
+ */
+ge::graphStatus AllToAllMatmulTilingBase::CheckKcQuantShapeInfo(const gert::TilingContext *context, const char *opName,
+                                                                const OpAttrIndexSchema &indexSchema)
+{
+    OP_TILING_CHECK(MatmulAlltoAllTilingUtil::CheckShapeInfo(context, opName, ALLTOALL_MATMUL_INDEX_SCHEMA) !=
+                        ge::GRAPH_SUCCESS,
+                    OP_LOGE(opName, "Tiling common info check shape failed."), return ge::GRAPH_FAILED);
+    ge::graphStatus status;
+    const gert::StorageShape *x1Shape = context->GetInputShape(INPUT_X1_INDEX);
+    const gert::StorageShape *x2Shape = context->GetInputShape(INPUT_X2_INDEX);
+    const gert::StorageShape *x2ScaleShape = context->GetOptionalInputShape(INPUT_X2_SCALE_INDEX);
+    OP_TILING_CHECK((x1Shape == nullptr), OP_LOGE(opName, "the input x1 shape is invalid"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((x2Shape == nullptr), OP_LOGE(opName, "the input x2 shape is invalid"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((x2ScaleShape == nullptr), OP_LOGE(opName, "the input x2Scale shape is invalid"),
                     return ge::GRAPH_FAILED);
-    uint64_t x2ScaleDim0 = x2ScaleShape->GetStorageShape().GetDim(0); 
-    bool x2IsTransFlag = false; 
-    const gert::RuntimeAttrs *attrs = context->GetAttrs(); 
-    const bool *isTransX2 = attrs->GetAttrPointer<bool>(indexSchema.x2Transpose); 
-    if (isTransX2) { 
-        x2IsTransFlag = *isTransX2; 
-    } 
-    uint64_t nAxis = (x2IsTransFlag) ? x2Dim0 : x2Dim1; 
-    OP_TILING_CHECK((x2ScaleDim0 != nAxis), 
-                    OP_LOGE(opName, "The x2scale dimNum0 should be %lu, but actual value is %lu.", nAxis, x2ScaleDim0), 
-                    return ge::GRAPH_FAILED); 
-    return ge::GRAPH_SUCCESS; 
+    uint64_t x2Dim0 = x2Shape->GetStorageShape().GetDim(0);
+    uint64_t x2Dim1 = x2Shape->GetStorageShape().GetDim(1);
+    uint64_t x2ScaleDimNum = x2ScaleShape->GetStorageShape().GetDimNum();
+    OP_TILING_CHECK(
+        (x2ScaleDimNum != 1),
+        OP_LOGE(opName, "In kc quantization, the number of dimensions of input x2 should be two, but actual is:%lu.",
+                x2ScaleDimNum),
+        return ge::GRAPH_FAILED);
+    uint64_t x2ScaleDim0 = x2ScaleShape->GetStorageShape().GetDim(0);
+    bool x2IsTransFlag = false;
+    const gert::RuntimeAttrs *attrs = context->GetAttrs();
+    const bool *isTransX2 = attrs->GetAttrPointer<bool>(indexSchema.x2Transpose);
+    if (isTransX2) {
+        x2IsTransFlag = *isTransX2;
+    }
+    uint64_t nAxis = (x2IsTransFlag) ? x2Dim0 : x2Dim1;
+    OP_TILING_CHECK((x2ScaleDim0 != nAxis),
+                    OP_LOGE(opName, "The x2scale dimNum0 should be %lu, but actual value is %lu.", nAxis, x2ScaleDim0),
+                    return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
 }
 
 } // namespace MC2Tiling

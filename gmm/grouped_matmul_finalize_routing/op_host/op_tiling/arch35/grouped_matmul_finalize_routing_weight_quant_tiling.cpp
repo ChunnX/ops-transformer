@@ -31,8 +31,8 @@ constexpr uint32_t MX_BLOCK_SIZE = 32;
 constexpr uint32_t MX_SCALE_BLOCK_SIZE = 64; // For scale/pertoken_scale K dimension
 constexpr uint32_t ALIGN_SIZE_KN = 32; // K/N alignment requirement for MX-A8W4 weight quant
 constexpr int64_t MX_INNER_DIM = 2;
+constexpr int64_t MIN_KN_SIZE = 32;       // Minimum K or N dimension size for MX-A8W4 weight quant
 constexpr uint32_t DIM_NUM_WEIGHT_NZ = 5; // FRACTAL_NZ format: [E, K/32, N/16, 16, 32]
-
 enum DataSize GetSizeByDataType(ge::DataType dType)
 {
     if (dType == ge::DT_FLOAT4_E2M1 || dType == ge::DT_FLOAT4_E1M2 || dType == ge::DT_INT4) {
@@ -487,23 +487,25 @@ bool CheckMxA8W4InputShape(gert::TilingContext *contex)
 
     // Validate K consistency between x and w
     OP_CHECK_IF(kSize != kFromW,
-                OP_LOGE(contex->GetNodeName(), "K dimension mismatch: x has K=%lld, w has K=%ld", kSize, kFromW),
+                OP_LOGE(contex->GetNodeName(), "K dimension mismatch: x has K=%ld, w has K=%ld", kSize, kFromW),
                 return false);
 
     // Validate K and N alignment for MX-A8W4 weight quant
     OP_CHECK_IF(
         kSize % ALIGN_SIZE_KN != 0,
-        OP_LOGE(contex->GetNodeName(), "K dimension must be aligned to %u, actual K=%lld", ALIGN_SIZE_KN, kSize),
+        OP_LOGE(contex->GetNodeName(), "K dimension must be aligned to %u, actual K=%ld", ALIGN_SIZE_KN, kSize),
         return false);
     OP_CHECK_IF(
         nSize % ALIGN_SIZE_KN != 0,
-        OP_LOGE(contex->GetNodeName(), "N dimension must be aligned to %u, actual N=%lld", ALIGN_SIZE_KN, nSize),
+        OP_LOGE(contex->GetNodeName(), "N dimension must be aligned to %u, actual N=%ld", ALIGN_SIZE_KN, nSize),
         return false);
 
     // Validate K and N minimum size for MX-A8W4 weight quant
-    OP_CHECK_IF(kSize < 64, OP_LOGE(contex->GetNodeName(), "K dimension must be >= 64, actual K=%lld", kSize),
+    OP_CHECK_IF(kSize < MIN_KN_SIZE,
+                OP_LOGE(contex->GetNodeName(), "K dimension must be >= %ld, actual K=%ld", MIN_KN_SIZE, kSize),
                 return false);
-    OP_CHECK_IF(nSize < 32, OP_LOGE(contex->GetNodeName(), "N dimension must be >= 32, actual N=%lld", nSize),
+    OP_CHECK_IF(nSize < MIN_KN_SIZE,
+                OP_LOGE(contex->GetNodeName(), "N dimension must be >= %ld, actual N=%ld", MIN_KN_SIZE, nSize),
                 return false);
 
     // 3. Validate group_list shape

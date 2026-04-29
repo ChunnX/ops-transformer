@@ -257,21 +257,12 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::CleanInvalidOutput(in
 {
     // init -1 and copy to output
     uint64_t dealSize = constInfo_.sparseCount;
-    GlobalTensor<int32_t> output = indiceOutGm[invalidS1Offset];
-    AscendC::InitGlobalMemory(output, dealSize, constInfo_.INVALID_IDX);
-
+    GlobalTensor<int32_t> indexOutput = indiceOutGm[invalidS1Offset];
+    AscendC::InitGlobalMemory(indexOutput, dealSize, constInfo_.INVALID_IDX);
     if (returnValueFlag) {
         SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
         WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-
-        uint16_t negInf = 0;
-        if constexpr (std::is_same_v<K_T, float16_t>) {
-            negInf = 0xFC00;
-        }else {
-            negInf = 0xFF80;
-        }
-        
-        Duplicate(valueOutLocal_.template ReinterpretCast<uint16_t>(), negInf, constInfo_.sparseCount);
+        Duplicate(valueOutLocal_.template ReinterpretCast<uint16_t>(), constInfo_.INVALID_VAL, constInfo_.sparseCount);
 
         SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
         WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
@@ -408,13 +399,7 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessTopK(const LIC
             SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
             if (returnValueFlag) {
                 WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-                uint16_t negInf = 0;
-                if constexpr (std::is_same_v<K_T, float16_t>) {
-                    negInf = 0xFC00;
-                }else {
-                    negInf = 0xFF80;
-                }
-                Duplicate(valueOutLocal_.template ReinterpretCast<uint16_t>(), negInf, topkCount_);
+                Duplicate(valueOutLocal_.template ReinterpretCast<uint16_t>(), constInfo_.INVALID_VAL, topkCount_);
 
                 SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
                 WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
@@ -556,28 +541,19 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessTopK(const LIC
                 Cast(valueOutLocal_, uIntToBfloat16Local_, RoundMode::CAST_RINT, topkCountAlign256_);
             }
 
-            // 无效值刷 -inf
-            uint16_t negInf = 0;
-            if constexpr (std::is_same_v<K_T, float16_t>) {
-                negInf = 0xFC00;
-            }else {
-                negInf = 0xFF80;
-            }
             if (validS2Len < topkCount_) {
                 uint64_t mask[1];
                 mask[0] = ~0;
                 mask[0] = mask[0] << (validS2Len % 16);
                 PipeBarrier<PIPE_V>();
                 Duplicate(valueOutLocal_.template ReinterpretCast<uint16_t>()[validS2Len / 16 * 16],
-                            negInf, mask, 1, 1, 0);
+                            constInfo_.INVALID_VAL, mask, 1, 1, 0);
             }
             if (validS2Len / 16 * 16 + 64 < topkCount_) {
                 PipeBarrier<PIPE_V>();
                 Duplicate(valueOutLocal_.template ReinterpretCast<uint16_t>()[validS2Len / 16 * 16 + 64],
-                            negInf, topkCount_ - (validS2Len / 16 * 16 + 64));
+                            constInfo_.INVALID_VAL, topkCount_ - (validS2Len / 16 * 16 + 64));
             }
-            SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-            WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
             SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
             WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
             AscendC::DataCopyParams copyOutValueParams;

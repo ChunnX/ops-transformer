@@ -70,12 +70,13 @@ public:
     __aicore__ inline void EndSync();
     __aicore__ inline void DoMmadCompute(uint64_t loopId, uint64_t cvLoopIdx,
                                          const L0CopyAndCalcParams &l0CopyAndCalcParams);
-    __aicore__ inline void FillL1WithZero(const LocalTensor<uint32_t> &l1Buf, uint64_t blockCount);
+    __aicore__ inline void PadL1IfNotAlign(const LocalTensor<xType> &l1Buf, uint64_t dbOffset, uint64_t dbIdx,
+                                           uint64_t realSize, uint64_t dimSize);
 
 private:
+    __aicore__ inline void FillL1WithZero(const LocalTensor<uint32_t> &l1Buf, uint64_t blockCount);
     __aicore__ inline void ConfigScaleDn2NzParams(uint64_t rowNum, uint64_t scaleKGmSize, uint64_t scaleKL1Stride,
                                                   uint64_t scaleKL1RealSize, Dn2NzParams &dn2NzParams);
-    
     using L0DataType = typename AscendC::GetL0DataType<xType, true>::Type;
 
     static constexpr uint64_t L0_BUF_NUM = 2;
@@ -229,7 +230,7 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::CopyMxScaleGmToL1
     if (kbL1Offset % MX_SCALE_K_L1_SIZE != 0) {
         return;
     }
-    uint64_t kSizeAligned = CeilAlign(param.kSize, ALIGN_64_FACTOR);
+    uint64_t kSizeAligned = CeilAlign(param.kSize, K_ALIGNMENT64);
     uint64_t scaleKGmSize = kSizeAligned / MX_GROUPSIZE;
     // 当前scaleFactor为1，暂不考虑scaleFactor相关计算
     uint64_t scaleKL1StandardLen = MX_SCALE_K_L1_SIZE / MX_GROUPSIZE;
@@ -285,12 +286,7 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::CopyAAndBiasGmToL
 
     DataCopy(aL1_[(aL1BufIdx_ & 1) * aL1DbOffset_], xGlobal_[kaGmOffset + param.mOffset * param.kSize], nd2nzParams);
 
-    if (kaL1RealSize % ALIGN_64_FACTOR != 0) {
-        uint64_t mL1AlignSize = Ops::Base::CeilAlign(param.mL1Size, static_cast<uint64_t>(BLOCK_CUBE));
-        LocalTensor<uint32_t> fillTensor =
-            aL1_[(aL1BufIdx_ & 1) * aL1DbOffset_ + mL1AlignSize * kaL1RealSize].template ReinterpretCast<uint32_t>();
-        FillL1WithZero(fillTensor, mL1AlignSize);
-    }
+    PadL1IfNotAlign(aL1_, aL1DbOffset_, aL1BufIdx_, kaL1RealSize, param.mL1Size);
 }
 
 GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_TEMPLATE_PARAM
@@ -401,6 +397,19 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::EndSync()
         WaitFlag<HardEvent::MTE1_MTE2>(EVENT_ID_SCALE_MTE1_TO_MTE2 + i);
         WaitFlag<HardEvent::MTE1_MTE2>(EVENT_ID_MTE1_TO_MTE2 + i);
         WaitFlag<HardEvent::M_MTE1>(EVENT_ID_M_TO_MTE1 + i);
+    }
+}
+
+GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_TEMPLATE_PARAM
+__aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::PadL1IfNotAlign(const LocalTensor<xType> &l1Buf,
+                                                                               uint64_t dbOffset, uint64_t dbIdx,
+                                                                               uint64_t realSize, uint64_t dimSize)
+{
+    if (realSize % K_ALIGNMENT64 != 0) {
+        uint64_t alignDimSize = CeilAlign(dimSize, static_cast<uint64_t>(BLOCK_CUBE));
+        LocalTensor<uint32_t> fillTensor =
+            l1Buf[(dbIdx & 1) * dbOffset + alignDimSize * realSize].template ReinterpretCast<uint32_t>();
+        FillL1WithZero(fillTensor, alignDimSize);
     }
 }
 
