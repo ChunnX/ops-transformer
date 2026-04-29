@@ -34,7 +34,7 @@ def call_npu(input_tensor_dict, params):
     torch_tensor_dict = _load_inputs_to_npu(filtered_input_dict)
 
     layout_kv = params.get("layout_kv")
-    npu_result, _, _ = torch_npu.npu_sparse_flash_attention(
+    npu_result = torch_npu.npu_sparse_flash_attention(
         query=torch_tensor_dict.get("query"),
         key=torch_tensor_dict.get("key_cache"),
         value=torch_tensor_dict.get("value_cache"),
