@@ -21,6 +21,7 @@
 namespace Catlass::Gemm::Tile {
 
 // Fixpipe with quant VDEQF16
+namespace MC2 {
 template <class ElementAccumulator_, class ElementDst_, bool ReluEnable_>
 struct CopyL0CToGm<Catlass::Arch::AtlasA2, ElementAccumulator_, Gemm::GemmType<ElementDst_, layout::RowMajor>,
                    ScaleGranularity::PER_CHANNEL, ReluEnable_> {
@@ -55,6 +56,7 @@ struct CopyL0CToGm<Catlass::Arch::AtlasA2, ElementAccumulator_, Gemm::GemmType<E
         AscendC::Fixpipe<ElementDst, ElementSrc, AscendC::CFG_ROW_MAJOR>(dst, src, cbufWorkspace, intriParams);
     }
 };
+} // namespace MC2
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 

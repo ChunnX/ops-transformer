@@ -59,11 +59,11 @@ public:
     using TileCopy = TileCopyOpt;
     using CopyGmToL1A = typename TileCopy::CopyGmToL1A;
     using CopyGmToL1B = typename TileCopy::CopyGmToL1B;
-    using CopyGmToL1S = Gemm::Tile::CopyGmToL1<ArchTag, Gemm::GemmType<ElementScale, layout::VectorLayout>>;
+    using CopyGmToL1S = Gemm::Tile::MC2::CopyGmToL1<ArchTag, Gemm::GemmType<ElementScale, layout::VectorLayout>>;
     using CopyL1ToL0A = typename TileCopy::CopyL1ToL0A;
     using CopyL1ToL0B = typename TileCopy::CopyL1ToL0B;
     using CopyL0CToGm =
-        Gemm::Tile::CopyL0CToGm<ArchTag, ElementAccumulator, CType, Gemm::Tile::ScaleGranularity::PER_CHANNEL>;
+        Gemm::Tile::MC2::CopyL0CToGm<ArchTag, ElementAccumulator, CType, Gemm::Tile::ScaleGranularity::PER_CHANNEL>;
     using LayoutAInL1 = typename CopyL1ToL0A::LayoutSrc;
     using LayoutBInL1 = typename CopyL1ToL0B::LayoutSrc;
     using LayoutAInL0 = typename CopyL1ToL0A::LayoutDst;

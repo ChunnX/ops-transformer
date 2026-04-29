@@ -20,6 +20,7 @@
 
 namespace Catlass::Gemm::Tile {
 /// Partial specialization for nZ in and nZ out.
+namespace MC2 {
 template <class ArchTag, class Element> struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::VectorLayout>> 
 {
     using LayoutDst = layout::VectorLayout;
@@ -48,6 +49,7 @@ template <class ArchTag, class Element> struct CopyGmToL1<ArchTag, Gemm::GemmTyp
         AscendC::DataCopy(dstTensor, srcTensor, repeatParams);
     }
 };
+} // namespace MC2
 } // namespace Catlass::Gemm::Tile
 
 #endif // CATLASS_GEMM_TILE_COPY_GM_TO_L1_EXPAND_HPP
