@@ -21,9 +21,10 @@
 #include "tiling_base/tiling_templates_registry.h"
 #include "mc2/matmul_allto_all/op_host/op_tiling/common/matmul_allto_all_util_tiling.h"
 #include "mc2/matmul_allto_all/op_host/op_tiling/common/allto_all_formulaic_tiling.h"
+#include "./arch35/allto_all_matmul_fit_balance_tiling.h"
 
 namespace MC2Tiling {
-
+using QuantType = MC2Tiling::AlltoAllMatmulFitBalanceTiling::QuantType;
 class AllToAllMatmulTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
     explicit AllToAllMatmulTilingBase(gert::TilingContext *context) : TilingBaseClass(context)
@@ -56,8 +57,9 @@ protected:
     NpuArch npuArch_;
     const char *opName_{nullptr};
     uint32_t libApiWorkSpaceSize_{0};
-    TilingContextInfo contextInfo;
-    TilingInferredInfo inferredInfo;
+    TilingContextInfo contextInfo_;
+    TilingInferredInfo inferredInfo_;
+    QuantType matmulQuantType_;
 
 private:
     // 功能后移，基类的GetShapeAttrsInfo在isCapable之前，当前将校验和参数获取放到子类的DoOptiling中
