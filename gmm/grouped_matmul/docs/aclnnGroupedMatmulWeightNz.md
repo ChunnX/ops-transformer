@@ -183,7 +183,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>输入</td>
     <td>公式中的输入<code>x</code>。</td>
     <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
-    <td>FLOAT16、BFLOAT16、INT8、INT4<sup>1</sup>、INT32<sup>1</sup>、FLOAT8_E4M3FN<sup>2</sup></td>
+    <td>FLOAT16、BFLOAT16、INT8、INT4<sup>1</sup>、INT32<sup>1</sup>、FLOAT8_E4M3FN<sup>2</sup>、FLOAT4_E2M1<sup>2</sup>、FLOAT4_E1M2<sup>2</sup></td>
     <td>ND</td>
     <td>-</td>
     <td>-</td>
@@ -193,7 +193,8 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>输入</td>
     <td>公式中的<code>weight</code>。</td>
     <td>tensorList长度支持[1, 128]或者[1, 1024]。支持昇腾亲和数据排布格式(nz)。</td>
-    <td>FLOAT16、BFLOAT16、INT8、INT4、INT32、FLOAT32、FLOAT4_E2M1<sup>2</sup>、FLOAT8_E4M3FN<sup>2</sup></td>
+    <td>FLOAT16、BFLOAT16、INT8、INT4、INT32、FLOAT32、FLOAT4_E2M1<sup>2</sup>、FLOAT4_E1M2<sup>2</sup>、
+    FLOAT8_E4M3FN<sup>2</sup></td>
     <td>FRACTAL_NZ</td>
     <td>-</td>
     <td>-</td>
@@ -419,7 +420,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
 
     - <term>Ascend 950PR/Ascend 950DT</term>：
       - 上表数据类型列中的角标"1"代表该系列不支持的数据类型。
-      - `weight`支持FRACTAL_NZ格式。当最后两根轴其中一根轴为1（即n=1或k=1）时，不支持私有格式，不能调用该接口。可使用aclnnNpuFormatCast接口完成输入Format从ND到AI处理器亲和数据排布格式（NZ）的转换。如原始weight为转置状态且想使用性能更高的非转置通路计算，可使用aclnnPermute接口转为非转置后再调用aclnnNpuFormatCast接口。当数据类型为FLOAT4_E2M1时，还需要在aclnnNpuFormatCast调用后，调用aclnnCast接口将FLOAT32表示的FLOAT4_E2M1转换为正确的类型。但当为INT4类型时，需要使用aclnnConvertWeightToInt4Pack接口完成数据格式从ND到NZ和数据类型从INT32到INT4的转换。当传入FLOAT32或者INT32时，接口内部每个FLOAT32/INT32识别成8个FLOAT4_E2M1/INT4。
+      - `weight`支持FRACTAL_NZ格式。当最后两根轴其中一根轴为1（即n=1或k=1）时，不支持私有格式，不能调用该接口。可使用aclnnNpuFormatCast接口完成输入Format从ND到AI处理器亲和数据排布格式（NZ）的转换。如原始weight为转置状态且想使用性能更高的非转置通路计算，可使用aclnnPermute接口转为非转置后再调用aclnnNpuFormatCast接口。非全量化场景，当数据类型为FLOAT4_E2M1时，还需要在aclnnNpuFormatCast调用后，调用aclnnCast接口将FLOAT32表示的FLOAT4_E2M1转换为正确的类型。但当为INT4类型时，需要使用aclnnConvertWeightToInt4Pack接口完成数据格式从ND到NZ和数据类型从INT32到INT4的转换。当传入FLOAT32或者INT32时，接口内部每个FLOAT32/INT32识别成8个FLOAT4_E2M1/INT4。
       - `offsetOptional`、`antiquantOffsetOptional`暂不支持。
       - `groupType`支持m轴分组，仅非量化支持不分组。
       - `quantGroupSize`暂不支持。
@@ -667,7 +668,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
         |groupType| x       | weight  | scaleOptional |  perTokenScaleOptional |out     |
         |:-------:|:-------:|:-------:|:-------:| :-------    | :------ |
         |0|FLOAT8_E4M3FN  |FLOAT8_E4M3FN|   FLOAT8_E8M0    | FLOAT8_E8M0    | BFLOAT16/FLOAT16/FLOAT32 |
-
+        |0|FLOAT4_E2M1/FLOAT4_E1M2 |FLOAT4_E2M1/FLOAT4_E1M2 |   FLOAT8_E8M0    | FLOAT8_E8M0    | BFLOAT16/FLOAT16/FLOAT32 |
     - scaleOptional要满足下表（其中g为matmul组数即分组数，g\_i为第i个分组（下标从0开始））：
         |groupType| 使用场景 | shape限制 |
         |:---------:|:---------:| :------ |
