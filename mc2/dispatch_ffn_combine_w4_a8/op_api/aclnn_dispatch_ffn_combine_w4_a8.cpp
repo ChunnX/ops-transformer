@@ -17,6 +17,7 @@
 #include "aclnn_util.h"
 #include "common/op_host/op_api/matmul_util.h"
 #include "aclnn_kernels/common/op_error_check.h"
+#include "aclnnInner_dispatch_ffn_combine_w4_a8.h"
 
 using namespace Ops::Transformer;
 using namespace op;
@@ -24,6 +25,14 @@ using namespace op;
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+// 通信域相关枚举值
+enum class NnopbaseHcclServerType : uint32_t {
+    NNOPBASE_HCCL_SERVER_TYPE_AICPU = 0,
+    NNOPBASE_HCCL_SERVER_TYPE_MTE,
+    NNOPBASE_HCCL_SERVER_TYPE_CCU,
+    NNOPBASE_HCCL_SERVER_TYPE_END
+};
 
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
