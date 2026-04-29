@@ -271,18 +271,21 @@ __aicore__ inline void BoolCopyIn(LocalTensor<uint8_t> &dstTensor, GlobalTensor<
     if (s1Size == 0 || s2Size == 0) {
         return;
     }
-    uint32_t alignedS2Size = CeilDiv(s2Size, blockBytes) * blockBytes;
-    DataCopyParams dataCopyParams;
-    dataCopyParams.blockCount = s1Size;
-    dataCopyParams.blockLen = CeilDiv(s2Size, blockBytes);
-    dataCopyParams.dstStride = CeilDiv(s2BaseSize, blockBytes) - dataCopyParams.blockLen;
+
     if (totalS2Size % blockBytes == 0) {
+        DataCopyParams dataCopyParams;
+        dataCopyParams.blockCount = s1Size;
+        dataCopyParams.blockLen = CeilDiv(s2Size, blockBytes);
+        dataCopyParams.dstStride = CeilDiv(s2BaseSize, blockBytes) - dataCopyParams.blockLen;
         dataCopyParams.srcStride = (totalS2Size - s2Size) / blockBytes;
         DataCopy(dstTensor, srcTensor[srcOffset], dataCopyParams);
     } else {
-        dataCopyParams.blockLen = s2Size;
-        dataCopyParams.srcStride = totalS2Size - s2Size;
-        DataCopyPadParams dataCopyPadParams;
+        DataCopyExtParams dataCopyExtParams;
+        dataCopyExtParams.blockCount = s1Size;
+        dataCopyExtParams.dstStride = CeilDiv(s2BaseSize, blockBytes) - CeilDiv(s2Size, blockBytes);
+        dataCopyExtParams.blockLen = s2Size;
+        dataCopyExtParams.srcStride = totalS2Size - s2Size;
+        DataCopyPadExtParams<uint8_t> dataCopyPadParams;
         DataCopyPad(dstTensor, srcTensor[srcOffset], dataCopyParams, dataCopyPadParams);
     }
 }
