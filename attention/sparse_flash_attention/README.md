@@ -301,7 +301,7 @@
       <td>用于表示是否返回softmax_max和softmax_sum。</td>
       <td>
           <ul>
-                <li>True表示返回，但图模式下不支持，False表示不返回；默认值为False。</li>
+                <li>True表示返回，False表示不返回；默认值为False。</li>
                 <li>该参数仅在训练且layout_kv不为PA_BSND场景支持。</li>
           </ul>
       </td>
