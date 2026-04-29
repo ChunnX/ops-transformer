@@ -496,6 +496,7 @@ aclnnStatus aclnnAlltoAllvQuantGroupedMatMul(
     - 如果满足重新设置条件，当gmmXScale/gmmWeightScale/mmXScale/mmWeightScale输入是2维及以上时，且数据类型都为FLOAT8_E8M0时，[groupSizeM，groupSizeN，groupSizeK]取值组合会推导为[1, 1, 32]，对应groupSize的值为4295032864。
 - 量化参数约束：
   - 当前版本支持pertensor量化、mx量化。
+  - gmmWeight和gmmWeightScale的转置状态必须保持一致：同时转置或同时不转置。mmWeight和mmWeightScale同样需要保持转置状态一致。
 
 ## 调用示例
 
