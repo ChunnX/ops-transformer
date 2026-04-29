@@ -45,6 +45,7 @@ constexpr uint32_t DIM_NUM_5 = 5;
 // PA
 constexpr uint32_t BLOCK_SIZE_MAX = 512;
 constexpr uint32_t BLOCK_SIZE_MAX_FOR_NO_QUANT = 1024;
+constexpr uint32_t BLOCK_SIZE_FOR_MXFP8 = 512;
 constexpr uint32_t BLOCK_SIZE_ALIGN_SIZE_16 = 16;
 constexpr uint32_t BLOCK_SIZE_ALIGN_SIZE_128 = 128;
 
@@ -71,6 +72,7 @@ constexpr uint32_t PER_TOKEN_PA_MODE = 4;
 constexpr uint32_t PER_TOKEN_HEAD_PA_MODE = 5;
 constexpr uint32_t PER_TOKEN_GROUP_MODE = 6;
 constexpr uint32_t PER_BLOCK_MODE = 7;
+constexpr uint32_t PER_CHANNEL_GROUP_MODE = 8;
 
 // ROPE MLA
 constexpr uint32_t MLA_QKD_SIZE = 192;
@@ -101,6 +103,7 @@ constexpr uint32_t SOUTER_128 = 128;
 constexpr uint32_t SINNER_64 = 64;
 constexpr uint32_t SINNER_128 = 128;
 constexpr uint32_t SINNER_256 = 256;
+constexpr uint32_t SINNER_512 = 512;
 constexpr uint32_t DSIZE_64 = 64;
 constexpr uint32_t DSIZE_128 = 128;
 constexpr uint32_t DSIZE_192 = 192;
