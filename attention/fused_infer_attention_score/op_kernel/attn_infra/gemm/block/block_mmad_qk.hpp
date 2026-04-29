@@ -127,12 +127,12 @@ public:
         uint32_t tokenNumPerGroup = rowNum / singleGroupHeads;
         auto layoutSingleANd = layoutA.GetTileLayout(MakeCoord(singleGroupHeads, embed));
         LayoutAInL1 layoutAInL1 = LayoutAInL1::template MakeLayout<ElementA>(rowNum, embed);
-        copyGmToL1A(
-            l1ATensor, gA,
-            layoutAInL1, layoutSingleANd,
-            tokenNumPerGroup, qHeads * embed, tokenNumPerGroup, BLOCK_SIZE, rowNumRound);
-        AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(EVENT_ID3);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(EVENT_ID3);
+        // copyGmToL1A(
+        //     l1ATensor, gA,
+        //     layoutAInL1, layoutSingleANd,
+        //     tokenNumPerGroup, qHeads * embed, tokenNumPerGroup, BLOCK_SIZE, rowNumRound);
+        // AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(EVENT_ID3);
+        // AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(EVENT_ID3);
     }
     
     __aicore__ inline
@@ -239,7 +239,7 @@ public:
                     auto layoutBTile = layoutB.GetTileLayout(MakeCoord(embed, nowLen));
                     MatrixCoord l1BTileCoord{0, kvL1Len};
                     auto l1BTile = l1BTensor[l1KvPingPongFlag][layoutBInL1.GetOffset(l1BTileCoord)];
-                    copyGmToL1B(l1BTile, gB[gBOffset], layoutBInL1, layoutBTile);
+                    // copyGmToL1B(l1BTile, gB[gBOffset], layoutBInL1, layoutBTile);
                     kvL1Len += nowLen;
                     updateBlockOffset(nowLen, curBlockIdx, blockSize);
                 }
@@ -257,7 +257,7 @@ public:
 
                 auto layoutBTile = layoutB.GetTileLayout(MakeCoord(kActual, nActual));
                 AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(l1KvPingPongFlag);
-                copyGmToL1B(l1BTensor[l1KvPingPongFlag], gB[gBOffset], layoutBInL1, layoutBTile);
+                // copyGmToL1B(l1BTensor[l1KvPingPongFlag], gB[gBOffset], layoutBInL1, layoutBTile);
                 AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(l1KvPingPongFlag);
             }
             uint32_t mL0Loop = NpuArch::Detail::Alignment::CeilDiv(mActual, L0TileShape::M);
