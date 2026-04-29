@@ -254,44 +254,70 @@ __aicore__ inline void GroupMatmul2(
     groupFlagListGm.SetGlobalBuffer((__gm__ int32_t*)gmmAddrInfo.groupFlagList);
 
     auto scaleK = CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
-    auto LayoutA = tla::MakeLayout<ElementA, layout::RowMajor>(m, k);
-    auto LayoutB = tla::MakeLayout<ElementB, layout::ColumnMajor>(k, n);
-    auto LayoutMxScaleA = tla::MakeMxScaleLayout<ElementMxScaleA, layout::RowMajor, false>(m, scaleK);
-    auto LayoutMxScaleB = tla::MakeMxScaleLayout<ElementMxScaleB, layout::ColumnMajor, true>(scaleK, n);
-    auto LayoutC = tla::MakeLayout<ElementC, layout::RowMajor>(L1_TILE_M, L1_TILE_N);
 
-    using TileCopy = Gemm::Tile::PackedMxTileCopyTlaToUB<
-        ArchTag, ElementA, layout::RowMajor, ElementB, layout::ColumnMajor, ElementMxScaleA, decltype(LayoutMxScaleA), ElementMxScaleB,
-        decltype(LayoutMxScaleB), ElementC, layout::RowMajor, void>;
+    constexpr bool transA = false;
+    constexpr bool transB = true;  // 后续要改为从模板参数获取转置属性
 
-    Arch::Resource<ArchTag> resource;
-    using BlockMmad = Gemm::Block::BlockMmadTla<
-        DispatchPolicy, L1TileShape, L0TileShape, ElementA, ElementB, ElementC, void, TileCopy>;
-    BlockMmad blockMmad(resource);
+    constexpr uint32_t c0SizeA = AuxGetC0Size<ElementA>();
+    constexpr uint32_t c0SizeB = AuxGetC0Size<ElementB>();
+    constexpr uint32_t c0SizeC = AuxGetC0Size<ElementC>();
+    constexpr uint32_t c0SizeScale = 2U;
+
+    using LayoutA = Std::conditional_t<transA, Te::DNExtLayoutPtn, Te::NDExtLayoutPtn>;
+    using LayoutB = Std::conditional_t<transB, Te::DNExtLayoutPtn, Te::NDExtLayoutPtn>;
+    using LayoutBias = Te::NDExtLayoutPtn;
+    using LayoutC = Te::NDExtLayoutPtn;
+
+    using MakeLayoutA = Te::FrameLayoutFormat<LayoutA, Std::Int<c0SizeA>>;
+    using MakeLayoutB = Te::FrameLayoutFormat<LayoutB, Std::Int<c0SizeB>>;
+    using MakeLayoutScaleA = Std::conditional_t<
+        transA, Te::FrameLayoutFormat<Te::ScaleADNLayoutPtn, Std::Int<c0SizeScale>>,
+        Te::FrameLayoutFormat<Te::ScaleANDLayoutPtn, Std::Int<c0SizeScale>>>;
+    using MakeLayoutScaleB = Std::conditional_t<
+        transB, Te::FrameLayoutFormat<Te::ScaleBDNLayoutPtn, Std::Int<c0SizeScale>>,
+        Te::FrameLayoutFormat<Te::ScaleBNDLayoutPtn, Std::Int<c0SizeScale>>>;
+    using MakeLayoutC = Te::FrameLayoutFormat<LayoutC, Std::Int<c0SizeC>>;
+
+    auto layoutA = MakeLayoutA{}(m, k);
+    auto layoutB = MakeLayoutB{}(k, n);
+    auto layoutScaleA = MakeLayoutScaleA{}(m, scaleK);
+    auto layoutScaleB = MakeLayoutScaleB{}(scaleK, n);
+    auto layoutBias = Te::MakeFrameLayout<LayoutBias>(1u, n);  // block mmad需要传入bias
+    auto layoutC = MakeLayoutC{}(L1_TILE_M, L1_TILE_N);
+
+    using BiasType = float;
+    using DispatchPolicy = Blaze::Gemm::MatmulWithScale<>;
+    using BlockMmad =
+        Blaze::Gemm::Block::BlockMmadMx<DispatchPolicy, ElementA, LayoutA, ElementB, LayoutB, ElementC, LayoutC,
+            BiasType, LayoutBias, void>;
+    BlockMmad blockMmad;
+    bool enableL0CPingPong = false;
+    typename BlockMmad::L1Params l1Params{
+        .kL1 = L1_TILE_K,
+        .scaleKL1 = L1_TILE_K * SCALE_K_L1_RATE,
+        .l1BufNum = 2  // double buffer
+    };
+    typename BlockMmad::BlockShape l0TileShape{L1_TILE_M, L1_TILE_N, L0_TILE_K, 0};
+    typename BlockMmad::TupleShape matmulShape{m, n, k};
+    blockMmad.Init(matmulShape, l0TileShape, l1Params, false, enableL0CPingPong);  // 当前固定无bias
 
     int64_t ubOffset = 0;
-    LocalTensor<ElementC> l0cOutUbGMM2First = resource.ubBuf.template GetBufferByByte<ElementC>(ubOffset);
+    LocalTensor<ElementC> l0cOutUbGMM2First = LocalTensor<ElementC>(TPosition::VECIN, ubOffset, L1_TILE_M * L1_TILE_N);
+    auto l0cOutUbFirst = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffset), layoutC);
+
     ubOffset += MAX_SINGLE_MN_ALIGN32_NUM * sizeof(ElementC);
-    LocalTensor<ElementC> l0cOutUbGMM2Second = resource.ubBuf.template GetBufferByByte<ElementC>(ubOffset);
+    LocalTensor<ElementC> l0cOutUbGMM2Second = LocalTensor<ElementC>(TPosition::VECIN, ubOffset, L1_TILE_M * L1_TILE_N);
+    auto l0cOutUbSecond = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffset), layoutC);
 
-    GlobalTensor<ElementA> aGlobalTensor;
-    GlobalTensor<ElementB> bGlobalTensor;
-    GlobalTensor<ElementMxScaleA> aScaleGlobalTensor;
-    GlobalTensor<ElementMxScaleB> bScaleGlobalTensor;
-
-    aGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal));
-    bGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ElementB*>(gmmAddrInfo.bGlobal));
-    aScaleGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMxScaleA*>(gmmAddrInfo.aScaleGlobal));
-    bScaleGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMxScaleB*>(gmmAddrInfo.bScaleGlobal));
-
-
-
-    auto tensorA = tla::MakeTensor(aGlobalTensor, LayoutA, Arch::PositionGM{});
-    auto tensorB = tla::MakeTensor(bGlobalTensor, LayoutB, Arch::PositionGM{});
-    auto tensorMxScaleA = tla::MakeTensor(aScaleGlobalTensor, LayoutMxScaleA, Arch::PositionGM{});
-    auto tensorMxScaleB = tla::MakeTensor(bScaleGlobalTensor, LayoutMxScaleB, Arch::PositionGM{});
-    auto tensorUbFirst = tla::MakeTensor(l0cOutUbGMM2First, LayoutC, Arch::PositionUB{});
-    auto tensorUbSecond = tla::MakeTensor(l0cOutUbGMM2Second, LayoutC, Arch::PositionUB{});
+    auto gmA = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementA*>(gmmAddrInfo.aGlobal)),
+        layoutA);
+    auto gmB = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementB*>(gmmAddrInfo.bGlobal)),
+        layoutB);
+    auto gmScaleA = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleA*>(gmmAddrInfo.aScaleGlobal)),
+        layoutScaleA);
+    auto gmScaleB = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleB*>(gmmAddrInfo.bScaleGlobal)),
+        layoutScaleB);
+    auto gmBias = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ BiasType*>(0UL)), layoutBias);
 
     BlockScheduler scheduler({m, n, k}, MakeCoord(L1_TILE_M, L1_TILE_N));
     uint32_t coreLoops = scheduler.GetCoreLoops();
@@ -305,7 +331,7 @@ __aicore__ inline void GroupMatmul2(
         uint32_t nLoc = blockCoord.n() * L1_TILE_N;
         uint32_t kLoc = blockCoord.k() * L1_TILE_K;
 
-        auto tensorUb = pingpongIdx == 0 ? tensorUbFirst : tensorUbSecond;
+        auto tensorUb = pingpongIdx == 0 ? l0cOutUbFirst : l0cOutUbSecond;
         auto l0cOutUbGMM2 = pingpongIdx == 0 ? l0cOutUbGMM2First : l0cOutUbGMM2Second;
 
         if constexpr(g_coreType == AscendC::AIC) {
@@ -321,22 +347,22 @@ __aicore__ inline void GroupMatmul2(
             if (vecSetSyncCom2 >= 2) {
                 WaitForVector(pingpongIdx);
             }
+            
+            auto gmBlockA = gmA.Slice(Te::MakeCoord(mLoc, kLoc), Te::MakeShape(actualShape.m(), actualShape.k()));
+            auto gmBlockScaleA = gmScaleA.Slice(
+                Te::MakeCoord(mLoc, kLoc / MXFP_SCALE_GROUP_NUM),
+                Te::MakeShape(actualShape.m(), CeilDiv(actualShape.k(), MXFP_SCALE_GROUP_NUM)));
+            
+            auto tensorBlockUb = tensorUb.Slice(Te::MakeCoord(0, 0), Te::MakeShape(actualShape.m(), actualShape.n()));
 
-            auto tensorBlockA = GetTile(tensorA, tla::MakeCoord(mLoc, kLoc),
-                tla::MakeShape(actualShape.m(), actualShape.k()));
-            auto tensorBlockMxScaleA = GetTile(tensorMxScaleA,
-                tla::MakeCoord(mLoc, kLoc / MXFP_SCALE_GROUP_NUM),
-                tla::MakeShape(actualShape.m(), CeilDiv(actualShape.k(), MXFP_SCALE_GROUP_NUM)));
-            auto tensorBlockUb = GetTile(tensorUb, tla::MakeCoord(0, 0),
-                tla::MakeShape(actualShape.m(), actualShape.n()));
-            auto tensorBlockB = GetTile(tensorB,
-                tla::MakeCoord(kLoc, nLoc),
-                tla::MakeShape(actualShape.k(), actualShape.n()));
-            auto tensorBlockMxScaleB = GetTile(tensorMxScaleB,
-                tla::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, nLoc),
-                tla::MakeShape(CeilDiv(actualShape.k(), MXFP_SCALE_GROUP_NUM), actualShape.n()));
-            blockMmad(tensorBlockA, tensorBlockB, tensorBlockUb,
-                      actualShape, tensorBlockMxScaleA, tensorBlockMxScaleB);
+            auto gmBlockB = gmB.Slice(Te::MakeCoord(kLoc, nLoc), Te::MakeShape(actualShape.k(), actualShape.n()));
+            auto gmBlockScaleB = gmScaleB.Slice(
+                Te::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, nLoc),
+                Te::MakeShape(CeilDiv(actualShape.k(), MXFP_SCALE_GROUP_NUM), actualShape.n()));
+            
+            typename BlockMmad::BlockShape singleShape{actualShape.m(), actualShape.n(), actualShape.k(), 0};
+            blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias, tensorBlockUb, singleShape);
+
             NotifyVector(pingpongIdx);
         }
 
