@@ -37,17 +37,20 @@ class AllGatherMatmulBase
 public:
     __aicore__ inline AllGatherMatmulBase(MC2GmAddrs* addrs, QuantGmAddrs* quantAddrs,
                                           Mc2Tiling::AllGatherMatmulTilingDataFp8* tilingData, GM_ADDR contextGM, TPipe* tPipe)
-        : addrs_(addrs), quantAddrs_(quantAddrs), tPipe_(tPipe)
+        : addrs_(addrs), quantAddrs_(quantAddrs), tilingData_(tilingData), tPipe_(tPipe)
     {
         paramInTiling_ = &tilingData->param;
         dataType_ = static_cast<AscendC::HcclDataType>(tilingData->dataType);
         debugMode_ = tilingData->debugMode;
         context_ = contextGM;
     }
-    __aicore__ inline void Init(__gm__ void* mc2InitTiling, __gm__ void* mc2CcTiling)
+    __aicore__ inline void Init()
     {
-        hccl_.Init(context_, mc2InitTiling);
-        hccl_.SetCcTiling(mc2CcTiling);
+        const void* hcclInitTilingV2 = &(tilingData_->mc2InitTiling);
+        uint64_t hcclCcTilingOffset = offsetof(Mc2Tiling::AllGatherMatmulTilingDataFp8, mc2CcTiling);
+        hccl_.InitV2(context_, hcclInitTilingV2);
+        hccl_.SetCcTilingV2(hcclCcTilingOffset);
+        AscendC::PRINTF("[CCU_TO_AICPU] HCCL initialized with AICPU mode for all_gather_matmul_base.\n");
         rankId_ = ((__gm__ HcclCombinOpParam*)context_)->rankId;
         // 计算scale1的数据个数及地址偏移
         nBlockSizeCnt_ = (tileInfo_.mmTiling->matmulTiling.Ka + PERBLOCK_BLOCK_SIZE - 1) / PERBLOCK_BLOCK_SIZE;
@@ -139,11 +142,12 @@ protected:
 
     MC2GmAddrs* addrs_ = nullptr;
     QuantGmAddrs* quantAddrs_ = nullptr;
+    Mc2Tiling::AllGatherMatmulTilingDataFp8* tilingData_ = nullptr;
     Mc2Tiling::RCSTiling* paramInTiling_ = nullptr;
     Mc2Tiling::MC2TileInfo localInfo_;
     Mc2Tiling::MC2TileInfo tileInfo_;
     Mc2Tiling::MC2TileInfo tailInfo_;
-    Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;
+    Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU> hccl_;
     AscendC::HcclDataType dataType_;
     GM_ADDR context_;
     bool notifyFlag_;

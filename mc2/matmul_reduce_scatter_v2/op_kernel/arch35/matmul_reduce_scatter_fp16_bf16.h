@@ -35,7 +35,7 @@ public:
     __aicore__ inline MatmulReduceScatterFP16BF16() {}
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR contextGM,
                                 GM_ADDR workspaceGM, Mc2Tiling::MatmulReduceScatterV2TilingData* tilingData, 
-                                __gm__ void* mc2InitTiling, __gm__ void* mc2CcTiling, TPipe* tpipe);
+                                TPipe* tpipe);
     __aicore__ inline void Process();
 
 private:
@@ -58,18 +58,21 @@ private:
     uint32_t rankId_;
     AscendC::HcclDataType dataType_;
     uint8_t debugMode_;
-    Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;              // CCU模式
+    Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU> hccl_;              // AICPU模式
     AscendC::HcclHandle handles_[MAX_HANDLE];        // 最大支持64个handleId
 };
 
 template <typename AType, typename BType, typename BiasType, typename CType>
 __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType>::Init(
     GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR contextGM, GM_ADDR workspaceGM,
-    Mc2Tiling::MatmulReduceScatterV2TilingData* tilingData, __gm__ void* mc2InitTiling, __gm__ void* mc2CcTiling, TPipe* tPipe) {
+    Mc2Tiling::MatmulReduceScatterV2TilingData* tilingData, TPipe* tPipe) {
     tilingData_ = tilingData;
     auto&& cfg = tilingData_->param;
-    hccl_.Init(contextGM, mc2InitTiling);
-    hccl_.SetCcTiling(mc2CcTiling);
+    const void* hcclInitTilingV2 = &(tilingData_->mc2InitTiling);
+    uint64_t hcclCcTilingOffset = offsetof(Mc2Tiling::MatmulReduceScatterV2TilingData, mc2CcTiling);
+    hccl_.InitV2(contextGM, hcclInitTilingV2);
+    hccl_.SetCcTilingV2(hcclCcTilingOffset);
+    AscendC::PRINTF("[CCU_TO_AICPU] HCCL initialized with AICPU mode for matmul_reduce_scatter_fp16_bf16.\n");
     context_ = (__gm__ HcclCombinOpParam *)(contextGM);
     tPipe_ = tPipe;
     dataType_ = static_cast<AscendC::HcclDataType>(tilingData_->dataType);

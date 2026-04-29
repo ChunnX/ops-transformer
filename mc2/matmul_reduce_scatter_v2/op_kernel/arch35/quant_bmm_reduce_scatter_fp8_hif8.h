@@ -39,7 +39,7 @@ public:
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR x1ScaleGM, GM_ADDR x2ScaleGM,
                                 GM_ADDR cGM, GM_ADDR contextGM, GM_ADDR workspaceGM,
                                 Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData* tilingData, 
-                                __gm__ void* mc2InitTiling, __gm__ void* mc2CcTiling, TPipe* tpipe);
+                                TPipe* tpipe);
     __aicore__ inline void Process();
 
 private:
@@ -71,7 +71,7 @@ private:
     uint32_t rankId_{0};
     AscendC::HcclDataType dataType_{HCCL_DATA_TYPE_INT8};
     uint8_t debugMode_{0};
-    Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;        // CCU模式
+    Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU> hccl_;        // AICPU模式
     AscendC::HcclHandle handles_[MAX_HANDLE];  // 最大支持64个handleId
     uint64_t preCoreNum_ = 0;
     uint32_t batchWeight_[MAX_HANDLE] = {0};
@@ -80,12 +80,14 @@ private:
 TEMPLATE_CLASS_PARAMS
 __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::Init(
     GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR x1ScaleGM, GM_ADDR x2ScaleGM, GM_ADDR cGM, GM_ADDR contextGM,
-    GM_ADDR workspaceGM, Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData* tilingData, __gm__ void* mc2InitTiling, 
-    __gm__ void* mc2CcTiling, TPipe* tPipe)
+    GM_ADDR workspaceGM, Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData* tilingData, TPipe* tPipe)
 {
     tilingData_ = tilingData;
-    hccl_.Init(contextGM, mc2InitTiling);
-    hccl_.SetCcTiling(mc2CcTiling);
+    const void* hcclInitTilingV2 = &(tilingData_->mc2InitTiling);
+    uint64_t hcclCcTilingOffset = offsetof(Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData, mc2CcTiling);
+    hccl_.InitV2(contextGM, hcclInitTilingV2);
+    hccl_.SetCcTilingV2(hcclCcTilingOffset);
+    AscendC::PRINTF("[CCU_TO_AICPU] HCCL initialized with AICPU mode for quant_bmm_reduce_scatter_fp8_hif8.\n");
     context_ = (__gm__ HcclCombinOpParam *)(contextGM);
     tPipe_ = tPipe;
     debugMode_ = tilingData_->debugMode;
