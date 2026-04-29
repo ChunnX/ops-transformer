@@ -518,7 +518,6 @@ private:
             softmaxShapeInfo.oriSrcM = curRowsNum;
 
             if constexpr (IsSameType<T, float>::value) {
-                PipeBarrier<PIPE_ALL>();
                 SoftMax<float, true, false>(
                     softmaxResultOutLocal, gatingLocal, tilingData->softmaxTilingData, softmaxShapeInfo);
                 PipeBarrier<PIPE_ALL>();
@@ -538,7 +537,6 @@ private:
                     Cast(tmpTensorLocal, gatingLocal, RoundMode::CAST_NONE, curRowsNum * tilingData->colBytesAlign);
                 }
                 gatingQueue.FreeTensor(gatingLocal);
-                PipeBarrier<PIPE_ALL>();
                 SoftMax<float, true, false>(
                     softmaxResultOutLocal, tmpTensorLocal, tilingData->softmaxTilingData, softmaxShapeInfo);
                 PipeBarrier<PIPE_ALL>();
