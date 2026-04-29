@@ -234,7 +234,7 @@ def trans_tnd_actseq(list):
             raise ValueError(f'TND情况下 act_seq_len 为非递减数列 act_seq_len={list}')
     return list_new
 
-def check_result(expect, result, topk_value, params):
+def check_result(expect, result, topk_value, sparse_value, params):
     batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num,\
     qk_dtype, weight_dtype, actual_seq_dtype, act_seq_q, act_seq_k, layout_query,\
     layout_key, sparse_count, sparse_mode, query_datarange, key_datarange, weights_datarange,\
@@ -373,3 +373,45 @@ def check_result(expect, result, topk_value, params):
         display_error_output(real_data, data_compe,
                                 err_idx, err_diff[0:max_error_idx])
     return result, fulfill_percent
+
+    if return_value :
+        print_log('=================== Value Compare (topk_value vs sparse_value) ===================')
+        topk_val_np = topk_value.cpu().numpy().flatten().astype(np.float32)
+        sparse_val_np = sparse_value.cpu().numpy().flatten().astype(np.float32)
+        val_start = 0
+        val_end = topk_val_np.size - 1
+        if val_end < val_start:
+            val_end = val_start
+        val_split_count = int(val_end - val_start + 1) if val_end != val_start else 1
+
+        val_diff_result = np.isclose(topk_val_np, sparse_val_np, rtol=rtol, atol=atol, equal_nan=True)
+        val_err_idx = np.where(val_diff_result != np.array((True,)))[0]
+        val_diff_abs = abs(sparse_val_np - topk_val_np)
+        val_b1 = np.maximum(np.abs(topk_val_np), np.abs(sparse_val_np))
+        val_b2 = float((1.0 / (1 << 14)) / diff_thd)
+        val_b = np.add(np.maximum(val_b1, val_b2), 10e-10)
+        val_err_diff = val_diff_abs / (val_b + eps)
+        val_err_diff = val_err_diff[val_err_idx]
+
+        val_fulfill_percent = float(val_split_count - val_err_idx.size) / float(val_split_count) * 100.0
+        display_output_np_isclose(topk_val_np, sparse_val_np, val_start, val_end)
+        val_result = "Pass" if (val_fulfill_percent >= pct_thd) else "Failed"
+        if len(val_err_diff) > 0:
+            val_max_error = max(val_err_diff[0:max_error_idx])
+            if val_max_error >= max_diff_hd:
+                val_result = "Failed"
+        else:
+            val_max_error = 0
+
+        print_log('---------------------------------------------------------------------------------------')
+        print_log('Value Compare: Rtol \t Atol \t PctThd \t PctRlt \t Result')
+        print_log('---------------------------------------------------------------------------------------')
+        print_log('%.4f \t %.6f \t %.2f%% \t %.6f%% \t %s' %
+                    (rtol, atol, pct_thd, val_fulfill_percent, val_result))
+        if len(val_err_diff) > 0:
+            print_log('Value Max-RelativeError is: %s. Threshold is: %s.' %
+                        (val_max_error, max_diff_hd))
+        if val_result == "Failed":
+            display_error_output(topk_val_np, sparse_val_np,
+                                val_err_idx, val_err_diff[0:max_error_idx])
+            result = "Failed"
