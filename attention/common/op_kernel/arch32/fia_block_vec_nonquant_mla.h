@@ -58,6 +58,7 @@ public:
     using MM2_OUT_T = float;
 
     __aicore__ inline FiaBlockVecNonQuantMla(){};
+    template <bool ENABLE_TREE>
     __aicore__ inline void ProcessVec1L(const AttentionCommon::RunInfo &info);
     __aicore__ inline void ProcessVec2L(const AttentionCommon::RunInfo &info);
     __aicore__ inline void InitBuffers(TPipe *pipe);
@@ -82,9 +83,11 @@ public:
 
 protected:
     // ================================Vector1==========================================
+    template <bool ENABLE_TREE>
     __aicore__ inline void ProcessVec1SingleBuf(const AttentionCommon::RunInfo &info, const MSplitInfo &mSplitInfo);
     __aicore__ inline void CopySoftmaxLseToGmByLayout(const AttentionCommon::RunInfo &info, LocalTensor<T> &lseSrc,
                                                       uint32_t mOffset, const MSplitInfo &mSplitInfo);
+    template <bool ENABLE_TREE>
     __aicore__ inline void DealBmm1ResBaseBlock(const AttentionCommon::RunInfo &info, const MSplitInfo &mSplitInfo, uint32_t startRow,
                                                 uint32_t dealRowCount, uint32_t columnCount,
                                                 uint32_t actualColumnCount);
@@ -95,6 +98,7 @@ protected:
     __aicore__ inline void AmlaVecCompute(const AttentionCommon::RunInfo &info, const MSplitInfo &mSplitInfo, LocalTensor<T> &mmResUb,
                                           LocalTensor<uint8_t> &softmaxTmpUb, uint32_t startRow, uint32_t dealRowCount,
                                           uint32_t columnCount, uint32_t actualColumnCount);
+    template <bool ENABLE_TREE>
     __aicore__ inline void ElewiseCompute(const AttentionCommon::RunInfo &info, const MSplitInfo &mSplitInfo, LocalTensor<T> &mmResUb,
                                           TBuf<> &tmpBuf, uint32_t startRow, uint32_t dealRowCount,
                                           uint32_t columnCount, uint32_t actualColumnCount);
@@ -230,6 +234,7 @@ public:
     using MM2_OUT_T = float;
 
     __aicore__ inline FiaBlockVecNonQuantMlaDummy (){};
+    template <bool ENABLE_TREE>
     __aicore__ inline void ProcessVec1L(const AttentionCommon::RunInfo &info);
     __aicore__ inline void ProcessVec2L(const AttentionCommon::RunInfo &info);
     __aicore__ inline void InitBuffers(TPipe *pipe);
@@ -423,6 +428,7 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ComputeLogSumExpAndCopyToGm
 }
 
 template <typename FIAT>
+template <bool ENABLE_TREE>
 __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ElewiseCompute(
     const AttentionCommon::RunInfo &info, const MSplitInfo &mSplitInfo, LocalTensor<T> &mmResUb, TBuf<> &tmpBuf, uint32_t startRow,
     uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
@@ -460,19 +466,21 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ElewiseCompute(
         // TND场景下mask传入∑s1²，其余场景传入[B,S1,S1]
         LocalTensor<bool> maskUb = inputBuff2.Get<bool>();
         maskUb = maskUb[pingpongFlag * INPUT2_BUFFER_OFFSET / sizeof(bool)];
-        if (maskInfo.sparseMode == fa_base_vector::TREE) {
-            LocalTensor<int16_t> mask16 = maskUb.template ReinterpretCast<int16_t>();
-            AscendC::Duplicate(mask16, static_cast<int16_t>(0), INPUT2_BUFFER_OFFSET / sizeof(int16_t));
-            maskUb = mask16.template ReinterpretCast<bool>();
-            WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_FLAG + pingpongFlag);
-            SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_FLAG + pingpongFlag);
-            // 修改attenMaskStride、attenMaskBatchStride值
-            maskInfo.attenMaskBatchStride = maskInfo.attenMaskBatchStride * maskInfo.batchIdx;
-            if (LAYOUT_T == FIA_LAYOUT::TND || LAYOUT_T == FIA_LAYOUT::NTD) {
-                maskInfo.attenMaskStride = info.actS1Size;
-                maskInfo.attenMaskBatchStride = 0;
-                for (int32_t i = 0; i < maskInfo.batchIdx; i++) {
-                    maskInfo.attenMaskBatchStride += qActSeqLensParser.GetActualSeqLength(i) * qActSeqLensParser.GetActualSeqLength(i);
+        if constexpr (ENABLE_TREE) {
+            if (maskInfo.sparseMode == fa_base_vector::TREE) {
+                LocalTensor<int16_t> mask16 = maskUb.template ReinterpretCast<int16_t>();
+                AscendC::Duplicate(mask16, static_cast<int16_t>(0), INPUT2_BUFFER_OFFSET / sizeof(int16_t));
+                maskUb = mask16.template ReinterpretCast<bool>();
+                WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_FLAG + pingpongFlag);
+                SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_FLAG + pingpongFlag);
+                // 修改attenMaskStride、attenMaskBatchStride值
+                maskInfo.attenMaskBatchStride = maskInfo.attenMaskBatchStride * maskInfo.batchIdx;
+                if constexpr (LAYOUT_T == FIA_LAYOUT::TND || LAYOUT_T == FIA_LAYOUT::NTD) {
+                    maskInfo.attenMaskStride = info.actS1Size;
+                    maskInfo.attenMaskBatchStride = 0;
+                    for (int32_t i = 0; i < maskInfo.batchIdx; i++) {
+                        maskInfo.attenMaskBatchStride += qActSeqLensParser.GetActualSeqLength(i) * qActSeqLensParser.GetActualSeqLength(i);
+                    }
                 }
             }
         }
@@ -480,8 +488,12 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ElewiseCompute(
         LocalTensor<uint8_t> ubWorkSpace = tmpBuf.Get<uint8_t>();
         if (!fa_base_vector::IsSkipAttentionmask<true>(maskInfo)) {
             WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_FLAG + pingpongFlag);
-            if (maskInfo.sparseMode == fa_base_vector::TREE) {
-                fa_base_vector::AttentionmaskCopyIn<bool, bool, true>(maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo);
+            if constexpr (ENABLE_TREE) {
+                if (maskInfo.sparseMode == fa_base_vector::TREE) {
+                    fa_base_vector::AttentionmaskCopyIn<bool, bool, true>(maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo);
+                } else {
+                    fa_base_vector::AttentionmaskCopyIn(maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo);
+                }
             } else {
                 fa_base_vector::AttentionmaskCopyIn(maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo);
             }
@@ -675,6 +687,7 @@ FiaBlockVecNonQuantMla<FIAT>::DealInvalidMaskRows(const AttentionCommon::RunInfo
 
 
 template <typename FIAT>
+template <bool ENABLE_TREE>
 __aicore__ inline void
 FiaBlockVecNonQuantMla<FIAT>::DealBmm1ResBaseBlock(const AttentionCommon::RunInfo &info, const MSplitInfo &mSplitInfo,
                                                            uint32_t startRow, uint32_t dealRowCount,
@@ -691,7 +704,7 @@ FiaBlockVecNonQuantMla<FIAT>::DealBmm1ResBaseBlock(const AttentionCommon::RunInf
     SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_INPUT_BUF1_FLAG);
     WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_INPUT_BUF1_FLAG);
 
-    ElewiseCompute(info, mSplitInfo, mmResUb, tmpBuff1, startRow, dealRowCount, columnCount, actualColumnCount);
+    this->template ElewiseCompute<ENABLE_TREE>(info, mSplitInfo, mmResUb, tmpBuff1, startRow, dealRowCount, columnCount, actualColumnCount);
 
     AscendC::PipeBarrier<PIPE_V>();
     LocalTensor<T> tmpAFloorUb = tmpBuff1.Get<T>();
@@ -778,6 +791,7 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ProcessAmlaNupdate(const At
 }
 
 template <typename FIAT>
+template <bool ENABLE_TREE>
 __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ProcessVec1SingleBuf(const AttentionCommon::RunInfo &info,
                                                                                   const MSplitInfo &mSplitInfo)
 {
@@ -802,7 +816,7 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ProcessVec1SingleBuf(const 
         if (i == (loopCount - 1)) {
             dealSize = tailSplitSize;
         }
-        DealBmm1ResBaseBlock(info, mSplitInfo, i * mSplitSize, dealSize, info.actualSingleProcessSInnerSizeAlign,
+        this->template DealBmm1ResBaseBlock<ENABLE_TREE>(info, mSplitInfo, i * mSplitSize, dealSize, info.actualSingleProcessSInnerSizeAlign,
                              info.actualSingleProcessSInnerSize);
         pingpongFlag ^= 1; // pingpong 0 1切换
     }
@@ -834,6 +848,7 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::CopySoftmaxLseToGmByLayout(
 }
 
 template <typename FIAT>
+template <bool ENABLE_TREE>
 __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ProcessVec1L(const AttentionCommon::RunInfo &info)
 {
     uint32_t nBufferLoopTimes = (info.actMBaseSize + constInfo.nBufferMBaseSize - 1) / constInfo.nBufferMBaseSize;
@@ -856,7 +871,7 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ProcessVec1L(const Attentio
 
         CrossCoreWaitFlag(constInfo.syncC1V1);
         // vec1 compute
-        ProcessVec1SingleBuf(info, mSplitInfo);
+        this->template ProcessVec1SingleBuf<ENABLE_TREE>(info, mSplitInfo);
         CrossCoreSetFlag<AttentionCommon::ConstInfo::FIA_SYNC_MODE2, PIPE_MTE3>(constInfo.syncV1C2);
 
         CrossCoreWaitFlag(constInfo.syncC2V1);

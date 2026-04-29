@@ -598,11 +598,15 @@ __aicore__ inline void FiaKernelNonQuantMla<FIAT, CubeBlockType, VecBlockType, F
     matmulService.ComputeMm2(info);
 }
 
-template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType> 
+template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType>
 __aicore__ inline void FiaKernelNonQuantMla<FIAT, CubeBlockType, VecBlockType, FdBlockType>::
     ComputeVec1(const RunInfo &info)
 {
-    vectorService.ProcessVec1L(info);
+    if (constInfo.sparseMode == fa_base_vector::TREE) {
+        vectorService.template ProcessVec1L<true>(info);
+    } else {
+        vectorService.template ProcessVec1L<false>(info);
+    }
 }
 
 template <typename FIAT, typename CubeBlockType, typename VecBlockType, typename FdBlockType> 
