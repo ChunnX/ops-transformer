@@ -44,23 +44,26 @@ else:
 def execute_sfa(testcase_file):
     test_data = torch.load(testcase_file, map_location="cpu")
     testcase_name = os.path.basename(testcase_file).replace(".pt", "")
-    result = utils.sfa_run_npu(test_data, testcase_name=testcase_name, device_id=DEVICE_ID, result_path=RESULT_PATH)
-    return result, test_data
+    result, fulfill_percent = utils.sfa_run_npu(test_data, testcase_name=testcase_name, device_id=DEVICE_ID, result_path=RESULT_PATH)
+    return result, fulfill_percent, test_data
 
 
 @pytest.mark.ci
 @pytest.mark.parametrize("testcase_file", locals()["testcase_files"])
 def test_sparse_flash_attention_batch(testcase_file):
     test_data = None
+    fulfill_percent = 0.0
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
         future = executor.submit(execute_sfa, testcase_file)
         for completed_future in concurrent.futures.as_completed([future]):
             try:
-                result, test_data = completed_future.result()
+                result, fulfill_percent, test_data = completed_future.result()
                 if result == "Failed":
-                    pytest.fail(f"测试结果为Failed")
+                    case_name = os.path.basename(testcase_file).replace(".pt", "")
+                    pytest.fail(f"用例名: {case_name}, 精度: {fulfill_percent:.4f}%", pytrace=False)
             except Exception as error:
                 params = test_data.get("params") if test_data else None
+                case_name = os.path.basename(testcase_file).replace(".pt", "")
                 if params:
                     utils.save_result(params, "Failed", "", RESULT_PATH)
-                pytest.fail(f"当前用例线程执行失败: {error}")
+                pytest.fail(f"用例名: {case_name}, 当前用例线程执行失败: {error}")

@@ -14,6 +14,7 @@ import ast
 import itertools
 import math
 import os
+import random
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -70,6 +71,32 @@ def load_paramset(paramset_file):
     return module.ENABLED_PARAMS
 
 
+def generate_actual_seq(S, B, layout=None):
+    """
+    根据S和B自动生成actual_seq。
+    
+    参数:
+        S: 序列长度上限（S1或S2）
+        B: batch大小
+        layout: layout类型，TND场景下采用累加和
+    
+    返回:
+        actual_seq: 生成的实际序列长度列表
+    """
+    seq_lengths = [random.randint(0, S) for _ in range(B)]
+    
+    if layout == "TND":
+        actual_seq = []
+        cumsum = 0
+        for length in seq_lengths:
+            cumsum += length
+            actual_seq.append(cumsum)
+    else:
+        actual_seq = seq_lengths
+    
+    return actual_seq
+
+
 def load_excel_test_cases(excel_file_path, sheet_name):
     # batch 模式从 Excel 读取原始参数行，并校验字段完整性。
     if sheet_name is None:
@@ -123,6 +150,10 @@ def save_result(params, result, fulfill_percent, result_path):
         "block_num": params.get("block_num"),
         "actual_seq_q": str(params.get("actual_seq_q")) if params.get("actual_seq_q") is not None else None,
         "actual_seq_kv": str(params.get("actual_seq_kv")) if params.get("actual_seq_kv") is not None else None,
+        "range_query": str(params.get("range_query")) if params.get("range_query") is not None else None,
+        "range_key": str(params.get("range_key")) if params.get("range_key") is not None else None,
+        "range_query_rope": str(params.get("range_query_rope")) if params.get("range_query_rope") is not None else None,
+        "range_key_rope": str(params.get("range_key_rope")) if params.get("range_key_rope") is not None else None,
         "result": result,
         "fulfill_percent": fulfill_percent,
     }
@@ -136,9 +167,8 @@ def save_result(params, result, fulfill_percent, result_path):
 
 
 def combin_params(enabled_params, pytest_paramset=True):
-    # 将参数表展开成 pytest.parametrize 可直接消费的字典列表。
     param_combination_set = []
-    param_names = [
+    base_param_names = [
         "Testcase_Prefix", "Testcase_Number",
         "layout_query", "layout_kv", "q_type", "kv_type",
         "B", "T", "T2", "S1", "S2", "N1", "N2", "D", "K",
@@ -146,39 +176,18 @@ def combin_params(enabled_params, pytest_paramset=True):
         "sparse_mode", "attention_mode", "return_softmax_lse",
         "block_size", "block_num", "actual_seq_q", "actual_seq_kv",
     ]
+    range_param_names = [
+        "range_query", "range_key", "range_query_rope", "range_key_rope",
+    ]
 
     for params in enabled_params:
         current_params = {}
         for key, value in params.items():
-            current_params[key] = value if pytest_paramset else [_parse_excel_cell_value(value)]
-
-        param_values = [
-            current_params.get("Testcase_Prefix", [None]),
-            current_params.get("Testcase_Number", [None]),
-            current_params.get("layout_query"),
-            current_params.get("layout_kv"),
-            current_params.get("q_type"),
-            current_params.get("kv_type"),
-            current_params.get("B"),
-            current_params.get("T", [None]),
-            current_params.get("T2", [None]),
-            current_params.get("S1"),
-            current_params.get("S2"),
-            current_params.get("N1"),
-            current_params.get("N2"),
-            current_params.get("D"),
-            current_params.get("K"),
-            current_params.get("scale_value"),
-            current_params.get("sparse_block_size"),
-            current_params.get("rope_head_dim"),
-            current_params.get("sparse_mode"),
-            current_params.get("attention_mode"),
-            current_params.get("return_softmax_lse", [False]),
-            current_params.get("block_size", [256]),
-            current_params.get("block_num", [None]),
-            current_params.get("actual_seq_q", [None]),
-            current_params.get("actual_seq_kv", [None]),
-        ]
+            if key in base_param_names or key in range_param_names:
+                current_params[key] = value if pytest_paramset else [_parse_excel_cell_value(value)]
+        
+        param_names = base_param_names + range_param_names
+        param_values = [current_params.get(name, [None]) for name in param_names]
 
         for combo in itertools.product(*param_values):
             param_combination_set.append(dict(zip(param_names, combo)))
@@ -188,12 +197,10 @@ def combin_params(enabled_params, pytest_paramset=True):
 def convert_param_combination_to_cs_format(param_combination):
     layout_query = param_combination["layout_query"]
     layout_kv = param_combination["layout_kv"]
-    if (layout_query == "TND"):
-        T = param_combination["T"]
+    T = param_combination.get("T")
     B = param_combination["B"]
     S1 = param_combination["S1"]
-    if (layout_kv == "TND"):
-        T2 = param_combination["T2"]
+    T2 = param_combination.get("T2")
     S2 = param_combination["S2"]
     N1 = param_combination["N1"]
     N2 = param_combination["N2"]
@@ -208,8 +215,23 @@ def convert_param_combination_to_cs_format(param_combination):
     attention_mode = param_combination["attention_mode"]
     block_size = param_combination.get("block_size") or 256
     block_num = param_combination.get("block_num")
-    actual_seq_q = param_combination.get("actual_seq_q") or [S1]
-    actual_seq_kv = param_combination.get("actual_seq_kv") or [S2]
+    
+    if param_combination.get("actual_seq_q") is None:
+        actual_seq_q = generate_actual_seq(S1, B, layout_query)
+    else:
+        actual_seq_q = param_combination.get("actual_seq_q")
+
+    if layout_query == "TND" and T is None:
+        T = actual_seq_q[-1]
+
+    if param_combination.get("actual_seq_kv") is None:
+        actual_seq_kv = generate_actual_seq(S2, B, layout_kv)
+    else:
+        actual_seq_kv = param_combination.get("actual_seq_kv")
+
+    if layout_kv == "TND" and T2 is None:
+        T2 = actual_seq_kv[-1]
+    
     sparse_blockcount = int(K / sparse_block_size)
     testcase_prefix = param_combination.get("Testcase_Prefix") or "sparseFlashAttn"
     testcase_number = param_combination.get("Testcase_Number") or 1
@@ -295,16 +317,23 @@ def convert_param_combination_to_cs_format(param_combination):
         'key_rope': q_dtype_str,
     }
     
-    range_input = {
+    default_range_input = {
         'query': [-10.0, 100.0],
         'key': [5.0, 100.0],
-        'value': [-100.0, 100.0],
         'sparse_indices': [-10, 10],
         'block_table': [0, 1],
-        'value_cache': [-10.0, 10.0],
         'query_rope': [-10.0, 10.0],
         'key_rope': [-10.0, 10.0],
     }
+    range_input = {}
+    for key in ['query', 'key', 'query_rope', 'key_rope']:
+        range_key = f"range_{key}"
+        if range_key in param_combination and param_combination[range_key] is not None:
+            range_input[key] = param_combination[range_key]
+        else:
+            range_input[key] = default_range_input[key]
+    range_input['sparse_indices'] = default_range_input['sparse_indices']
+    range_input['block_table'] = default_range_input['block_table']
     
     params = {
         "case_name": testcase_name,
@@ -339,6 +368,11 @@ def convert_param_combination_to_cs_format(param_combination):
         "block_num": block_num,
         "actual_seq_q": actual_seq_q,
         "actual_seq_kv": actual_seq_kv,
+        # range 参数，保存实际使用的值
+        "range_query": range_input['query'],
+        "range_key": range_input['key'],
+        "range_query_rope": range_input['query_rope'],
+        "range_key_rope": range_input['key_rope'],
     }
     
     return params
@@ -349,8 +383,13 @@ def sfa_run_npu(test_data, testcase_name=None, device_id=0, result_path=None):
     if testcase_name:
         params["Testcase_Prefix"] = testcase_name
     cpu_result = test_data["cpu_output"]
-    npu_result = sparse_flash_attention_process.call_npu(test_data["input"], params)
-    result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result)
+    try:
+        npu_result = sparse_flash_attention_process.call_npu(test_data["input"], params)
+        result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result)
+    except Exception:
+        if result_path:
+            save_result(params, "Failed", "", result_path)
+        raise
     if result_path:
         save_result(params, result, fulfill_percent, result_path)
-    return result
+    return result, fulfill_percent
