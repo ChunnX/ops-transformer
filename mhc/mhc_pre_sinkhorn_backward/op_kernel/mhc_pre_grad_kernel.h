@@ -32,6 +32,7 @@ constexpr uint64_t MASK_POST[] = {0b11110000111100001111000011110000111100001111
 constexpr uint64_t MASK_POST_SCALE[] = {0b0000000000000000000000000000000000000000000000000000000011110000};
 constexpr int32_t PING_PONG_NUM = 2;
 constexpr int32_t PRE_POST_NUM = 2;
+constexpr int32_t DOUBLE_RATIO = 2;
 
 constexpr int32_t INNER_SPILT_NUM = 8;
 
@@ -130,7 +131,7 @@ private:
         batchSize_ = tilingData->batchSize;
         seqLength_ = tilingData->seqLength;
         aivNum_ = tilingData->aivNum;
-        aicNum_ = tilingData->aivNum / 2;
+        aicNum_ = tilingData->aivNum / DOUBLE_RATIO;
         c_ = tilingData->c;
         n_ = tilingData->n;
         c0_ = tilingData->c0;
