@@ -440,50 +440,25 @@ __aicore__ inline void GetTensorC(const outputTensorType<O> &tensorCGm, const Lo
                                   const uint32_t nSize, const uint32_t srcStride, const uint32_t dstStride,
                                   MMBufParams &bufParam)
 {
-    if constexpr (std::is_same<outputTensorType<O>, GlobalTensor<O>>::value) {
-        FixpipeParamsV220 fixParams;
-        fixParams.nSize = nSize;         // 实现切片大小
-        fixParams.mSize = mSize;         // msdIterNum * gSize; // 有效数据不足16行，只需要输出部分行即可
-        fixParams.srcStride = srcStride; // ((fixParams.mSize + 15) / 16) * 16
-        fixParams.dstStride = dstStride;
-        fixParams.ndNum = 1;
-        if constexpr (enUnitFlag) {
-            fixParams.unitFlag = UNIT_FLAG_SET;
-        } else {
-            fixParams.unitFlag = UNIT_FLAG_DISABLE;
-        }
-        if constexpr (std::is_same<O_L0C, float>::value && std::is_same<O, bfloat16_t>::value) {
-            fixParams.quantPre = QuantMode_t::F322BF16;
-        }
-        if constexpr (!enUnitFlag) {
-            SetFlag<HardEvent::M_FIX>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
-            WaitFlag<HardEvent::M_FIX>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
-        }
-        Fixpipe(tensorCGm, cL0, fixParams);
+    FixpipeParamsV220 fixParams;
+    fixParams.nSize = nSize;         // 实现切片大小
+    fixParams.mSize = mSize;         // msdIterNum * gSize; // 有效数据不足16行，只需要输出部分行即可
+    fixParams.srcStride = srcStride; // ((fixParams.mSize + 15) / 16) * 16
+    fixParams.dstStride = dstStride;
+    fixParams.ndNum = 1;
+    if constexpr (enUnitFlag) {
+        fixParams.unitFlag = UNIT_FLAG_SET;
     } else {
-        FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixParams;
-        fixParams.nSize = nSize;         // 实现切片大小
-        fixParams.mSize = mSize;         // msdIterNum * gSize; // 有效数据不足16行，只需要输出部分行即可
-        fixParams.srcStride = srcStride; // ((fixParams.mSize + 15) / 16) * 16
-        fixParams.dstStride = dstStride;
-        fixParams.params.ndNum = 1;
-        fixParams.params.srcNdStride = 0;
-        fixParams.params.dstNdStride = 0;
-        if constexpr (enUnitFlag) {
-            fixParams.unitFlag = UNIT_FLAG_SET;
-        } else {
-            fixParams.unitFlag = UNIT_FLAG_DISABLE;
-        }
-        if constexpr (std::is_same<O_L0C, float>::value && std::is_same<O, bfloat16_t>::value) {
-            fixParams.quantPre = QuantMode_t::F322BF16;
-        }
-        fixParams.dualDstCtl = DUAL_TARGET_MODE_SPLIT_M;
-        if constexpr (!enUnitFlag) {
-            SetFlag<HardEvent::M_FIX>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
-            WaitFlag<HardEvent::M_FIX>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
-        }
-        Fixpipe(tensorCGm, cL0, fixParams);
+        fixParams.unitFlag = UNIT_FLAG_DISABLE;
     }
+    if constexpr (std::is_same<O_L0C, float>::value && std::is_same<O, bfloat16_t>::value) {
+        fixParams.quantPre = QuantMode_t::F322BF16;
+    }
+    if constexpr (!enUnitFlag) {
+        SetFlag<HardEvent::M_FIX>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
+        WaitFlag<HardEvent::M_FIX>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
+    }
+    Fixpipe(tensorCGm, cL0, fixParams);
 }
 
 /**

@@ -274,7 +274,6 @@ private:
     LocalTensor<float> quantScaleCkvLocal_;
     LocalTensor<float> quantScaleCkrLocal_;
     LocalTensor<int64_t> stepActualSeqLocal_;
-    LocalTensor<mmQcQrOutputType> cube2VecLocal_;
 
     struct ActSeqState {
         bool inited = false;        // whether state is initialized for the run
@@ -370,7 +369,6 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::Init(
         dequantScaleWDkvkr, quantScaleCkv, quantScaleCkr, smoothScaleCq, kNopeClipAlpha);
     MmParamInit();
     WorkspaceInit(workspace);
-    ShareBufferInit();
     if ASCEND_IS_AIV {
         VectorBufferInit();
     } else {
@@ -562,22 +560,6 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmQnParamInit() {
     mmQnParam_.stepKMax = mmQnParam_.stepK;
     mmQnParam_.kL1StepSize = mmQnParam_.baseK * mmQnParam_.stepKMax;
     mmQnParam_.kScale = mmQnParam_.k / FP8_E4M3_BLOCK_SIZE;
-}
-
-
-template<typename MLAPT>
-__aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::ShareBufferInit() {
-    usedShareBytes = 0;
-    // if constexpr (MLAPT::enableDequantOpt) {
-    //     uint64_t cvShareBufferSize =
-    //         CeilDivT(baseParams_->stepBatchSize, static_cast<uint32_t>(vectorCoreNum_)) *
-    //         Align(baseParams_->dimHeadSizeQc + baseParams_->dimHeadRope + mmQcQrParam_.baseN, mmQcQrParam_.baseN) *
-    //         sizeof(mmQcQrOutputType);
-    //     pipe_->InitBuffer(cube2VecBuffer_, cvShareBufferSize); // [128, D + Dr + baseN]
-    //     cube2VecLocal_ = cube2VecBuffer_.Get<mmQcQrOutputType>();
-    //     usedShareBytes += cvShareBufferSize;
-    // }
-
 }
 
 
@@ -1278,70 +1260,33 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MatmulQcQr(AicOffset &aicOffs
             subNL1SplitSize = nInput - (nL1loops - 1) * nL1SplitSize;
         }
 
-        // if constexpr (MLAPT::enableDequantOpt) {
-        //     uint32_t dstStride =
-        //         Align(baseParams_->dimHeadSizeQc + baseParams_->dimHeadRope + mmQcQrParam_.baseN, mmQcQrParam_.baseN);
-        //     uint32_t ouputOffsetIdx = nL1 % CeilDivT(dstStride, mmQcQrParam_.baseN);
-            // if constexpr (std::is_same<mmQcQrInputType, FP8E4M3>::value && isFp8E8m0) {
-            //     if (isAFullLoad) {
-            //         MatmulSplitK<rmsNormCqOutputType, mmQcQrOutputType, dequantScaleType, true, true>(
-            //             cube2VecLocal_, rmsNormCqResGm_[aicOffset.rmsNormCqResOffset],
-            //             weightUqQrGm_[aicOffset.weightUqQrOffset], mmQcQrParam_, bufParam_, nL1 * nL1SplitSize,
-            //             subNL1SplitSize, ouputOffsetIdx * nL1SplitSize, dstStride,
-            //             dequantTool_.deQuantScaleCqGm_[aicOffset.dequantScaleCqOffset],
-            //             deqScaleQcQrW_[aicOffset.dequantScaleWuqqrOffset]);
-            //     } else {
-            //         MatmulSplitK<rmsNormCqOutputType, mmQcQrOutputType, dequantScaleType, false, true>(
-            //             cube2VecLocal_, rmsNormCqResGm_[aicOffset.rmsNormCqResOffset],
-            //             weightUqQrGm_[aicOffset.weightUqQrOffset], mmQcQrParam_, bufParam_, nL1 * nL1SplitSize,
-            //             subNL1SplitSize, ouputOffsetIdx * nL1SplitSize, dstStride,
-            //             dequantTool_.deQuantScaleCqGm_[aicOffset.dequantScaleCqOffset],
-            //             deqScaleQcQrW_[aicOffset.dequantScaleWuqqrOffset]);
-            //     }
-            // } else {
-        //         if (isAFullLoad) {
-        //             MatmulSplitK<rmsNormCqOutputType, mmQcQrOutputType, dequantScaleType, true>(
-        //                 cube2VecLocal_, rmsNormCqResGm_[aicOffset.rmsNormCqResOffset],
-        //                 weightUqQrGm_[aicOffset.weightUqQrOffset], mmQcQrParam_, bufParam_, nL1 * nL1SplitSize,
-        //                 subNL1SplitSize, ouputOffsetIdx * nL1SplitSize, dstStride);
-        //         } else {
-        //             MatmulSplitK<rmsNormCqOutputType, mmQcQrOutputType, dequantScaleType>(
-        //                 cube2VecLocal_, rmsNormCqResGm_[aicOffset.rmsNormCqResOffset],
-        //                 weightUqQrGm_[aicOffset.weightUqQrOffset], mmQcQrParam_, bufParam_, nL1 * nL1SplitSize,
-        //                 subNL1SplitSize, ouputOffsetIdx * nL1SplitSize, dstStride);
-        //         }
-        //     }
-        // } else {
-        {
-            if constexpr (std::is_same<mmQcQrInputType, FP8E4M3>::value && isFp8E8m0) {
-                if (isAFullLoad) {
-                    MatmulSplitK<rmsNormCqOutputType, mmQcQrOutputType, dequantScaleType, true, true>(
-                        mmQcQrResGm_[aicOffset.qcQrResOffset], rmsNormCqResGm_[aicOffset.rmsNormCqResOffset],
-                        weightUqQrGm_[aicOffset.weightUqQrOffset], mmQcQrParam_, bufParam_, nL1 * nL1SplitSize,
-                        subNL1SplitSize, nL1 * nL1SplitSize, mmQcQrParam_.orgKc, dequantTool_.deQuantScaleCqGm_[aicOffset.dequantScaleCqOffset],
-                        deqScaleQcQrW_[aicOffset.dequantScaleWuqqrOffset]);
-                } else {
-                    MatmulSplitK<rmsNormCqOutputType, mmQcQrOutputType, dequantScaleType, false, true>(
-                        mmQcQrResGm_[aicOffset.qcQrResOffset], rmsNormCqResGm_[aicOffset.rmsNormCqResOffset],
-                        weightUqQrGm_[aicOffset.weightUqQrOffset], mmQcQrParam_, bufParam_, nL1 * nL1SplitSize,
-                        subNL1SplitSize, nL1 * nL1SplitSize, mmQcQrParam_.orgKc, dequantTool_.deQuantScaleCqGm_[aicOffset.dequantScaleCqOffset],
-                        deqScaleQcQrW_[aicOffset.dequantScaleWuqqrOffset]);
-                }
+        if constexpr (std::is_same<mmQcQrInputType, FP8E4M3>::value && isFp8E8m0) {
+            if (isAFullLoad) {
+                MatmulSplitK<rmsNormCqOutputType, mmQcQrOutputType, dequantScaleType, true, true>(
+                    mmQcQrResGm_[aicOffset.qcQrResOffset], rmsNormCqResGm_[aicOffset.rmsNormCqResOffset],
+                    weightUqQrGm_[aicOffset.weightUqQrOffset], mmQcQrParam_, bufParam_, nL1 * nL1SplitSize,
+                    subNL1SplitSize, nL1 * nL1SplitSize, mmQcQrParam_.orgKc, dequantTool_.deQuantScaleCqGm_[aicOffset.dequantScaleCqOffset],
+                    deqScaleQcQrW_[aicOffset.dequantScaleWuqqrOffset]);
             } else {
-                if (isAFullLoad) {
-                    MatmulSplitK<rmsNormCqOutputType, mmQcQrOutputType, dequantScaleType, true>(
-                        mmQcQrResGm_[aicOffset.qcQrResOffset], rmsNormCqResGm_[aicOffset.rmsNormCqResOffset],
-                        weightUqQrGm_[aicOffset.weightUqQrOffset], mmQcQrParam_, bufParam_,
-                        nL1 * nL1SplitSize, subNL1SplitSize, nL1 * nL1SplitSize, mmQcQrParam_.orgKc);
-                } else {
-                    MatmulSplitK<rmsNormCqOutputType, mmQcQrOutputType, dequantScaleType>(
-                        mmQcQrResGm_[aicOffset.qcQrResOffset], rmsNormCqResGm_[aicOffset.rmsNormCqResOffset],
-                        weightUqQrGm_[aicOffset.weightUqQrOffset], mmQcQrParam_, bufParam_,
-                        nL1 * nL1SplitSize, subNL1SplitSize, nL1 * nL1SplitSize, mmQcQrParam_.orgKc);
-                }
+                MatmulSplitK<rmsNormCqOutputType, mmQcQrOutputType, dequantScaleType, false, true>(
+                    mmQcQrResGm_[aicOffset.qcQrResOffset], rmsNormCqResGm_[aicOffset.rmsNormCqResOffset],
+                    weightUqQrGm_[aicOffset.weightUqQrOffset], mmQcQrParam_, bufParam_, nL1 * nL1SplitSize,
+                    subNL1SplitSize, nL1 * nL1SplitSize, mmQcQrParam_.orgKc, dequantTool_.deQuantScaleCqGm_[aicOffset.dequantScaleCqOffset],
+                    deqScaleQcQrW_[aicOffset.dequantScaleWuqqrOffset]);
+            }
+        } else {
+            if (isAFullLoad) {
+                MatmulSplitK<rmsNormCqOutputType, mmQcQrOutputType, dequantScaleType, true>(
+                    mmQcQrResGm_[aicOffset.qcQrResOffset], rmsNormCqResGm_[aicOffset.rmsNormCqResOffset],
+                    weightUqQrGm_[aicOffset.weightUqQrOffset], mmQcQrParam_, bufParam_,
+                    nL1 * nL1SplitSize, subNL1SplitSize, nL1 * nL1SplitSize, mmQcQrParam_.orgKc);
+            } else {
+                MatmulSplitK<rmsNormCqOutputType, mmQcQrOutputType, dequantScaleType>(
+                    mmQcQrResGm_[aicOffset.qcQrResOffset], rmsNormCqResGm_[aicOffset.rmsNormCqResOffset],
+                    weightUqQrGm_[aicOffset.weightUqQrOffset], mmQcQrParam_, bufParam_,
+                    nL1 * nL1SplitSize, subNL1SplitSize, nL1 * nL1SplitSize, mmQcQrParam_.orgKc);
             }
         }
-        
         if constexpr (MLAPT::enableDequantOpt) {    
             CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_FIX>(FINISH_MM_QCQR_SPLIT_N);
         }
