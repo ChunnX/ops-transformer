@@ -159,7 +159,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
         <td>数据类型与attentionOut的数据类型一致。</td>
         <td>FLOAT16、BFLOAT16、FLOAT32</td>
         <td>ND</td>
-        <td>[B,N,S,S]、[B,N,1,Skv]、[1,N,S,S]</td>
+        <td>[B,N,Sq,Skv]、[B,N,1,Skv]、[1,N,Sq,Skv]、[B,N,1024,Skv]、[1,N,1024,Skv]、[B,N]、[N]</td>
         <td>√</td>
       </tr>
       <tr>
