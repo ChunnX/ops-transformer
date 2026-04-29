@@ -76,10 +76,10 @@ public:
             return;
         }
         uint64_t inQueueSize = static_cast<uint64_t>(chunkSize_) *
-                               AscendC::Std::max((int64_t)chunkSize_, paddedDv_) * sizeof(float);
+                               AscendC::Std::max((int64_t)chunkSize_, paddedDv_) * sizeof(bfloat16_t);
         pipe_->InitBuffer(inQueue_, BUFFER_NUM_ONE, inQueueSize);
         pipe_->InitBuffer(outQueue_, BUFFER_NUM_ONE, chunkSize_ > paddedDv_ ?
-                          chunkSize_ * chunkSize_ * sizeof(float) : chunkSize_ * paddedDv_ * sizeof(float));
+                          chunkSize_ * chunkSize_ * sizeof(float) : chunkSize_ * paddedDv_ * sizeof(bfloat16_t));
         pipe_->InitBuffer(tmpBuff_, (STAGE3_BUFFER_COUNT * chunkSize_ * chunkSize_ * sizeof(float)));
         uint64_t buffOffset = 0;
         uint64_t tmpOffset = chunkSize_ * chunkSize_;

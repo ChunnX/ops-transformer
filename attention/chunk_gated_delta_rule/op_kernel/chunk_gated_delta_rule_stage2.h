@@ -92,7 +92,7 @@ public:
     {
         int64_t coreId = GetBlockIdx();
         if ASCEND_IS_AIV {
-            coreId /= 2;
+            coreId /= AIC_AIV_1_1;
         }
         int64_t nvPerCore = (Nv_ + coreNum_ - 1) / coreNum_;
         int64_t nvStart = coreId * nvPerCore;
