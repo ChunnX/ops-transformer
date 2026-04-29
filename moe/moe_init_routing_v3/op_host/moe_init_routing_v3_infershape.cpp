@@ -328,7 +328,7 @@ static ge::graphStatus CheckInputScaleShape(gert::InferShapeContext *context, co
                         return ge::GRAPH_FAILED);
             OP_CHECK_IF(scaleShape->GetDim(0) > 0 && !isSameDim(scaleShape->GetDim(0), xShape->GetDim(0)),
                         OP_LOGE(context,
-                                "When quant_mode is %ld and use scale in static shape, The shape of scale should be "
+                                "111When quant_mode is %ld and use scale in static shape, The shape of scale should be "
                                 "(%ld), current shape is (%s).",
                                 quantMode, xShape->GetDim(0), Ops::Base::ToString(*scaleShape).c_str()),
                         return ge::GRAPH_FAILED);
@@ -343,22 +343,22 @@ static ge::graphStatus CheckInputScaleShape(gert::InferShapeContext *context, co
                         return ge::GRAPH_FAILED);
             OP_CHECK_IF(scaleShape->GetDim(0) > 0 && !isSameDim(scaleShape->GetDim(0), xShape->GetDim(0)),
                         OP_LOGE(context,
-                                "When quant_mode is %ld and use scale in static shape, The shape of scale should be "
-                                "(%ld), current shape is (%s).",
-                                quantMode, xShape->GetDim(0), Ops::Base::ToString(*scaleShape).c_str()),
+                                "222When quant_mode is %ld and use scale in static shape, The shape of scale should be "
+                                "(%ld), current scale shape is (%s), current x shape is (%s).",
+                                quantMode, xShape->GetDim(0), Ops::Base::ToString(*scaleShape).c_str(), Ops::Base::ToString(*xShape).c_str()),
                         return ge::GRAPH_FAILED);
             OP_CHECK_IF(scaleShape->GetDim(1) > 0 && !isSameDim(scaleShape->GetDim(1),
                             Ops::Base::CeilDiv<int64_t>(xShape->GetDim(1), SCALE_BLOCK_SIZE)),
                         OP_LOGE(context,
-                                "When quant_mode is %ld and use scale in static shape, The shape of scale should be "
-                                "(%ld), current shape is (%s).",
+                                "333When quant_mode is %ld and use scale in static shape, The shape of scale should be "
+                                "(%ld), current scale shape is (%s), current x shape is (%s).",
                                 quantMode, Ops::Base::CeilDiv<int64_t>(xShape->GetDim(1), SCALE_BLOCK_SIZE),
-                                Ops::Base::ToString(*scaleShape).c_str()),
+                                Ops::Base::ToString(*scaleShape).c_str(), Ops::Base::ToString(*xShape).c_str()),
                         return ge::GRAPH_FAILED);
              OP_CHECK_IF(scaleShape->GetDim(DIM_TWO) > 0 && !isSameDim(scaleShape->GetDim(DIM_TWO),
                                                                        SCALE_THIRD_DIM_SIZE),
                         OP_LOGE(context,
-                                "When quant_mode is %ld and use scale in static shape, The shape of scale should be "
+                                "444When quant_mode is %ld and use scale in static shape, The shape of scale should be "
                                 "(%ld), current shape is (%s).",
                                 quantMode, SCALE_THIRD_DIM_SIZE, Ops::Base::ToString(*scaleShape).c_str()),
                         return ge::GRAPH_FAILED);
