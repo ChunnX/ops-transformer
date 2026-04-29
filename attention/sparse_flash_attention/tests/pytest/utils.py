@@ -265,7 +265,7 @@ def convert_param_combination_to_cs_format(param_combination):
             }
             shape_output = {
                 'attn_out': [B, S1, N1, D],
-                'softmax_max': [B, N2, S1, int(N1 / N2)]
+                'softmax_max': [B, N2, S1, int(N1 / N2)],
                 'softmax_sum': [B, N2, S1, int(N1 / N2)]
             }
         elif (layout_query == 'TND'):
@@ -283,7 +283,7 @@ def convert_param_combination_to_cs_format(param_combination):
             }
             shape_output = {
                 'attn_out': [T, N1, D],
-                'softmax_max': [N2, T, int(N1 / N2)]
+                'softmax_max': [N2, T, int(N1 / N2)],
                 'softmax_sum': [N2, T, int(N1 / N2)]
             }
         else:
@@ -303,7 +303,7 @@ def convert_param_combination_to_cs_format(param_combination):
         }
         shape_output = {
             'attn_out': [T, N1, D],
-            'softmax_max': [N2, T, int(N1 / N2)]
+            'softmax_max': [N2, T, int(N1 / N2)],
             'softmax_sum': [N2, T, int(N1 / N2)]
         }
     elif (layout_kv == 'BSND'):
@@ -321,7 +321,7 @@ def convert_param_combination_to_cs_format(param_combination):
         }
         shape_output = {
             'attn_out': [B, S1, N1, D],
-            'softmax_max': [B, N2, S1, int(N1 / N2)]
+            'softmax_max': [B, N2, S1, int(N1 / N2)],
             'softmax_sum': [B, N2, S1, int(N1 / N2)]
         }
     else:
