@@ -36,7 +36,7 @@ public:
     }
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR contextGM,
                                 GM_ADDR workspaceGM, GM_ADDR gatherOut, Mc2Tiling::AllGatherMatmulTilingDataV2* tilingData,
-                                __gm__ void* mc2InitTiling, __gm__ void* mc2CcTiling, TPipe* tPipe);
+                                TPipe* tPipe);
     __aicore__ inline void Process();
 
 private:
@@ -69,7 +69,7 @@ private:
 template <typename AType, typename BType, typename BiasType, typename CType>
 __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::Init(
     GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR contextGM, GM_ADDR workspaceGM, GM_ADDR gatherOut,
-    Mc2Tiling::AllGatherMatmulTilingDataV2* tilingData, __gm__ void* mc2InitTiling, __gm__ void* mc2CcTiling, TPipe* tPipe)
+    Mc2Tiling::AllGatherMatmulTilingDataV2* tilingData, TPipe* tPipe)
 {
     // 获取tilingdata数据
     tilingData_ = tilingData;
@@ -77,8 +77,10 @@ __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::I
     // 获取 context
     context_ = contextGM;
     // 初始化Hccl类
-    hccl_.Init(context_, mc2InitTiling);
-    hccl_.SetCcTiling(mc2CcTiling);
+    const void* hcclInitTilingV2 = &(tilingData_->mc2InitTiling);
+    uint64_t hcclCcTilingOffset = offsetof(Mc2Tiling::AllGatherMatmulTilingDataV2, mc2CcTiling);
+    hccl_.InitV2(context_, hcclInitTilingV2);
+    hccl_.SetCcTilingV2(hcclCcTilingOffset);
     AscendC::PRINTF("[CCU_TO_AICPU] HCCL initialized with AICPU mode for all_gather_matmul_fp16_bf16.\n");
     // 管道初始化
     tPipe_ = tPipe;

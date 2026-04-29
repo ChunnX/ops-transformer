@@ -43,8 +43,7 @@ public:
     __aicore__ inline AllGatherQuantBmm() {}
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR dequantGM1, GM_ADDR dequantGM2, GM_ADDR biasGM,
                                 GM_ADDR scaleGM, GM_ADDR cGM, GM_ADDR gatherOut, GM_ADDR workspaceGM, GM_ADDR contextGM,
-                                Mc2Tiling::AllGatherMatmulTilingDataFp8* tilingData, __gm__ void* mc2InitTiling, 
-                                __gm__ void* mc2CcTiling, TPipe* tPipe);
+                                Mc2Tiling::AllGatherMatmulTilingDataFp8* tilingData, TPipe* tPipe);
     __aicore__ inline void Process();
 private:
     __aicore__ inline void AllGatherCommit();               /* allgather通信 */
@@ -102,13 +101,14 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CT
                                 GM_ADDR aGM, GM_ADDR bGM, GM_ADDR dequantGM1,
                                 GM_ADDR dequantGM2, GM_ADDR biasGM, GM_ADDR scaleGM, GM_ADDR cGM,
                                 GM_ADDR gatherOut, GM_ADDR workspaceGM, GM_ADDR contextGM,
-                                Mc2Tiling::AllGatherMatmulTilingDataFp8* tilingData, __gm__ void* mc2InitTiling, 
-                                __gm__ void* mc2CcTiling, TPipe* tPipe) {
+                                Mc2Tiling::AllGatherMatmulTilingDataFp8* tilingData, TPipe* tPipe) {
     auto &&cfg = tilingData->param;
 
     context_ = contextGM;
-    hcclAllgather_.Init(context_, mc2InitTiling);
-    hcclAllgather_.SetCcTiling(mc2CcTiling);
+    const void* hcclInitTilingV2 = &(tilingData->mc2InitTiling);
+    uint64_t hcclCcTilingOffset = offsetof(Mc2Tiling::AllGatherMatmulTilingDataFp8, mc2CcTiling);
+    hcclAllgather_.InitV2(context_, hcclInitTilingV2);
+    hcclAllgather_.SetCcTilingV2(hcclCcTilingOffset);
     AscendC::PRINTF("[CCU_TO_AICPU] HCCL initialized with AICPU mode for all_gather_quant_bmm.\n");
     tilingData_ = tilingData;
     tPipe_ = tPipe;

@@ -37,39 +37,29 @@ using namespace AllGatherMatmulImpl;
         using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, typename BiasType<BIAS_DTYPE>::type>; \
         using cType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, C_DTYPE>;                                \
         REGISTER_TILING_DEFAULT(Mc2Tiling::AllGatherMatmulTilingDataV2);                                          \
-        auto tiling = (__gm__ Mc2Tiling::AllGatherMatmulTilingDataV2*)tilingGM;                                   \
-        __gm__ void* mc2InitTiling = (__gm__ void*)(&(tiling->mc2InitTiling));                                    \
-        __gm__ void* mc2CcTiling = (__gm__ void*)(&(tiling->mc2CcTiling));                                        \
         GET_TILING_DATA(tilingData, tilingGM);                                                                    \
         templateClass<aType, bType, biasType, cType> op;                                                          \
-        op.Init(aGM, bGM, biasGM, cGM, (__gm__ uint8_t*)context, workspaceGM, gatherOut, &tilingData,             \
-                                        mc2InitTiling, mc2CcTiling, &pipe);                                       \
+        op.Init(aGM, bGM, biasGM, cGM, (__gm__ uint8_t*)context, workspaceGM, gatherOut, &tilingData, &pipe);    \
         op.Process();                                                                                             \
     } while (0)
 
 #define INVOKE_ALL_GATHER_QUANT_BATCHMATMUL_OP_IMPL(templateClass, ...)                                               \
     do {                                                                                                              \
         REGISTER_TILING_DEFAULT(Mc2Tiling::AllGatherMatmulTilingDataFp8);                                             \
-        auto tiling = (__gm__ Mc2Tiling::AllGatherMatmulTilingDataFp8*)tilingGM;                                      \
-        __gm__ void* mc2InitTiling = (__gm__ void*)(&(tiling->mc2InitTiling));                                        \
-        __gm__ void* mc2CcTiling = (__gm__ void*)(&(tiling->mc2CcTiling));                                            \
         GET_TILING_DATA(tilingData, tilingGM);                                                                        \
         templateClass<DTYPE_X1, DTYPE_X2, DTYPE_BIAS, uint64_t, DTYPE_Y, __VA_ARGS__> op;                             \
         op.Init(aGM, bGM, scaleInv1, scaleInv2, biasGM, scale, cGM, gatherOut, workspaceGM, (__gm__ uint8_t*)context, \
-                &tilingData, mc2InitTiling, mc2CcTiling, &pipe);                                                      \
+                &tilingData, &pipe);                                                                                  \
         op.Process();                                                                                                 \
     } while (0)
 
 #define INVOKE_ALL_GATHER_QUANT_BATCHMATMUL_MX_OP_IMPL(templateClass, ...)                                            \
     do {                                                                                                              \
         REGISTER_TILING_DEFAULT(Mc2Tiling::AllGatherMatmulTilingDataFp8);                                             \
-        auto tiling = (__gm__ Mc2Tiling::AllGatherMatmulTilingDataFp8*)tilingGM;                                      \
-        __gm__ void* mc2InitTiling = (__gm__ void*)(&(tiling->mc2InitTiling));                                        \
-        __gm__ void* mc2CcTiling = (__gm__ void*)(&(tiling->mc2CcTiling));                                            \
         GET_TILING_DATA(tilingData, tilingGM);                                                                        \
         templateClass<DTYPE_X1, DTYPE_X2, DTYPE_BIAS, fp8_e8m0_t, DTYPE_Y, __VA_ARGS__> op;                           \
         op.Init(aGM, bGM, scaleInv1, scaleInv2, biasGM, scale, cGM, gatherOut, workspaceGM, (__gm__ uint8_t*)context, \
-                &tilingData, mc2InitTiling, mc2CcTiling, &pipe);                                                      \
+                &tilingData, &pipe);                                                                                  \
         op.Process();                                                                                                 \
     } while (0)
 

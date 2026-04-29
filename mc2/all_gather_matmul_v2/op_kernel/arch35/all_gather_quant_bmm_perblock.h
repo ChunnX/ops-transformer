@@ -34,8 +34,8 @@ class AllGatherQuantPerBlock : public AllGatherMatmulBase<AType, CType, CoreType
 {
 public:
     __aicore__ inline AllGatherQuantPerBlock(MC2GmAddrs* addrs, QuantGmAddrs* quantAddrs,
-                                             Mc2Tiling::AllGatherMatmulTilingDataFp8* tilingData, GM_ADDR contextGM, 
-                                             __gm__ void* mc2InitTiling, __gm__ void* mc2CcTiling, TPipe* tPipe)
+                                             Mc2Tiling::AllGatherMatmulTilingDataFp8* tilingData, GM_ADDR contextGM,
+                                             TPipe* tPipe)
         : AllGatherMatmulBase<AType, CType, CoreType>(addrs, quantAddrs, tilingData, contextGM, tPipe)
     {
         tilingData_ = tilingData;
@@ -157,18 +157,14 @@ __aicore__ inline void AllGatherQuantPerBlock<AType, BType, CType, MmType, CoreT
 #define INVOKE_ALL_GATHER_QUANT_BATCHMATMUL_PERBLOCK_OP_IMPL(templateClass, CoreType, isTransA, isTransB, ...)     \
     do {                                                                                                           \
         REGISTER_TILING_DEFAULT(Mc2Tiling::AllGatherMatmulTilingDataFp8);                                                      \
-        auto tiling = (__gm__ Mc2Tiling::AllGatherMatmulTilingDataFp8*)tilingGM;                                                \
-        __gm__ void* mc2InitTiling = (__gm__ void*)(&(tiling->mc2InitTiling));                                      \
-        __gm__ void* mc2CcTiling = (__gm__ void*)(&(tiling->mc2CcTiling));                                         \
         GET_TILING_DATA(tilingData, tilingGM);                                                                      \
         MC2GmAddrs addrs = {aGM, bGM, biasGM, cGM, gatherOut, workspaceGM};                                        \
         QuantGmAddrs quantAddrs = {scaleInv2, scaleInv1, scale};                                                   \
         using opType = templateClass<DTYPE_X1, DTYPE_X2, DTYPE_BIAS, DTYPE_Y, CubeFormat::ND, CubeFormat::ND,      \
                                      CubeFormat::ND, isTransA, isTransB>;                                          \
         AllGatherQuantPerBlock<DTYPE_X1, DTYPE_X2, DTYPE_Y, opType, CoreType> op(&addrs, &quantAddrs, &tilingData, \
-                                                                                 (__gm__ uint8_t*)context,          \
-                                                                                 mc2InitTiling, mc2CcTiling, &pipe); \
-        op.Init(mc2InitTiling, mc2CcTiling);                                                                         \
+                                                                                 (__gm__ uint8_t*)context, &pipe);   \
+        op.Init();                                                                                                  \
         op.Process();                                                                                              \
     } while (0)
 }  // namespace AllGatherMatmulImpl

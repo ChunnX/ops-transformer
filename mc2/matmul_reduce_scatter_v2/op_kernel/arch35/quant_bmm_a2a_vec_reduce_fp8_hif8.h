@@ -46,7 +46,7 @@ public:
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR x1ScaleGM, GM_ADDR x2ScaleGM,
                                 GM_ADDR cGM, GM_ADDR contextGM, GM_ADDR workspaceGM,
                                 Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData* tilingData, 
-                                __gm__ void* mc2InitTiling, __gm__ void* mc2CcTiling, TPipe* tpipe);
+                                TPipe* tpipe);
     __aicore__ inline void Process();
 
 private:
@@ -102,16 +102,17 @@ private:
 TEMPLATE_CLASS_PARAMS
 __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::Init(
     GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR x1ScaleGM, GM_ADDR x2ScaleGM, GM_ADDR cGM, GM_ADDR contextGM,
-    GM_ADDR workspaceGM, Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData* tilingData, __gm__ void* mc2InitTiling, 
-    __gm__ void* mc2CcTiling, TPipe* tPipe)
+    GM_ADDR workspaceGM, Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData* tilingData, TPipe* tPipe)
 {
     tilingData_ = tilingData;
     auto&& cfg = tilingData_->param;
     auto&& tiling = tilingData_->quantBmmV3TileTiling.matmulTiling;
 
     // 初始化 HCCL
-    hccl_.Init(contextGM, mc2InitTiling);
-    hccl_.SetCcTiling(mc2CcTiling);
+    const void* hcclInitTilingV2 = &(tilingData_->mc2InitTiling);
+    uint64_t hcclCcTilingOffset = offsetof(Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData, mc2CcTiling);
+    hccl_.InitV2(contextGM, hcclInitTilingV2);
+    hccl_.SetCcTilingV2(hcclCcTilingOffset);
     AscendC::PRINTF("[CCU_TO_AICPU] HCCL initialized with AICPU mode for quant_bmm_a2a_vec_reduce_fp8_hif8.\n");
 
     // 读取上下文和配置
