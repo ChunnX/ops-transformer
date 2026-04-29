@@ -128,6 +128,7 @@ def npu_get_mega_moe_ccl_buffer_size(
     # 全卡软同步使用
     peermem_data_offset = 60 * 1024
     y_out_dtype_size = 2
+    mb_conversion = 1024 * 1024
     # dispatchTokenPerExpert = epWorldSize * align128(epWorldSize * expertPerRank) * sizeof(int32)
     dispatch_token_per_expert = ep_world_size * \
         inline_align(ep_world_size * num_max_tokens_per_rank, 128) * 4
@@ -136,6 +137,7 @@ def npu_get_mega_moe_ccl_buffer_size(
     # combineOut = align512(bs * k * sizeof(yOutType))
     combine_out = inline_align(batch_size * num_topk * y_out_dtype_size, 512)
     ccl_buffer_size = peermem_data_offset + dispatch_token_per_expert + quant_token_scales + combine_out
+    ccl_buffer_size = inline_align(inline_align(ccl_buffer_size, mb_conversion) // mb_conversion, 2) // 2
     return ccl_buffer_size
 
 
