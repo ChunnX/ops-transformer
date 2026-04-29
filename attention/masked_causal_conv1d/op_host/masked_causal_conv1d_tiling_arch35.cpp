@@ -25,10 +25,10 @@ constexpr uint64_t INPUT_X_INDEX = 0;
 constexpr uint64_t INPUT_WEIGHT_INDEX = 1;
 constexpr uint64_t INPUT_MASK_INDEX = 2;
 
-constexpr int64_t  H_MIN = 192 * 2;      // min H = 384 (aligned with backward)
-constexpr int64_t  H_MAX = 192 * 128;    // max H = 24576 (aligned with backward)
-constexpr int64_t  BS_MAX = 512 * 1024;  // max B*S = 524288
-constexpr uint64_t CONV_WINDOW_SIZE = 3; // W: causal conv1d kernel size (fixed)
+constexpr int64_t H_MIN = 192 * 2;                          // min H = 384 (aligned with backward)
+constexpr int64_t H_MAX = 192 * 128;                        // max H = 24576 (aligned with backward)
+constexpr int64_t BS_MAX = 512 * 1024;                      // max B*S = 524288
+constexpr uint64_t CONV_WINDOW_SIZE = 3;                    // W: causal conv1d kernel size (fixed)
 constexpr uint64_t PREFIX_ROW_COUNT = CONV_WINDOW_SIZE - 1; // prefix rows in ioQueue slot (W-1)
 constexpr uint64_t MASK_ALIGN_ELEMENTS = 32;                // sUb alignment granularity for mask buffers
 constexpr uint64_t DOUBLE_BUFFER_NUM = 2;                   // ioQueue / weightQueue double buffer
@@ -122,8 +122,8 @@ ge::graphStatus MaskedCausalConv1dTilingArch35::GetInputDtypes()
     OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetInputDesc(INPUT_WEIGHT_INDEX));
     ge::DataType weightType = context_->GetInputDesc(INPUT_WEIGHT_INDEX)->GetDataType();
     if (weightType != xType_) {
-        OP_LOGE(context_->GetNodeName(), "weight dtype must match x dtype, got x=%d weight=%d",
-                static_cast<int>(xType_), static_cast<int>(weightType));
+        OP_LOGE(context_->GetNodeName(), "weight dtype must match x dtype, but got x=%s weight=%s",
+                Ops::Base::ToString(xType_).c_str(), Ops::Base::ToString(weightType).c_str());
         return ge::GRAPH_FAILED;
     }
 
@@ -133,7 +133,8 @@ ge::graphStatus MaskedCausalConv1dTilingArch35::GetInputDtypes()
         if (maskDesc != nullptr) {
             ge::DataType maskType = maskDesc->GetDataType();
             if (maskType != ge::DataType::DT_BOOL) {
-                OP_LOGE(context_->GetNodeName(), "mask dtype must be DT_BOOL, got %d", static_cast<int>(maskType));
+                OP_LOGE(context_->GetNodeName(), "mask dtype must be DT_BOOL, but got %s",
+                        Ops::Base::ToString(maskType).c_str());
                 return ge::GRAPH_FAILED;
             }
         }
