@@ -45,7 +45,7 @@ private:
     __aicore__ inline void MatMulV3Compute(GM_ADDR cGM, Mc2MatMulV3TilingData& tiling, uint32_t count,
                                            GM_ADDR gmToFloat, bool isLast, bool isTail);
     __aicore__ inline void PostProcess();
-    __aicore__ inline void CastBiasBFtoFloat(GM_ADDR dst, GM_ADDR src, int size);
+    __aicore__ inline void CastBiasBf16ToFloat(GM_ADDR dst, GM_ADDR src, int size);
 
 private:
     Mc2Tiling::MatmulReduceScatterV2TilingData* tilingData_;
@@ -85,7 +85,7 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
     GM_ADDR biasToFloatAddr = workspaceGM;
     if constexpr (std::is_same_v<BiasType, bfloat16_t>) {
         if (cfg.biasLen > 0) {
-            CastBiasBFtoFloat(biasToFloatAddr, biasGM, cfg.rankN);
+            CastBiasBf16ToFloat(biasToFloatAddr, biasGM, cfg.rankN);
             biasGM_ = biasToFloatAddr;
             SyncAll<true>();
         }
@@ -189,9 +189,11 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
 }
 
 template <typename AType, typename BType, typename BiasType, typename CType>
-__aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType>::CastBiasBFtoFloat(
+__aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType>::CastBiasBf16ToFloat(
     GM_ADDR dst, GM_ADDR src, int size)
 {
+    constexpr uint32_t BIAS_ALIGN_NUM = 32U;
+    
     if (g_coreType == AIC) {
         CrossCoreWaitFlag(EVENT_ID_5);
         CrossCoreSetFlag<SET_FLAG_MODE_0, PIPE_MTE3>(EVENT_ID_4);
@@ -209,7 +211,7 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
     gmDst.SetGlobalBuffer((__gm__ float*)(dst), size);
 
     LocalTensor<bfloat16_t> bf16Local = biasCastBuf_.Get<bfloat16_t>();
-    LocalTensor<float> floatLocal = bf16Local[Ceil(size, 32) * 32].template ReinterpretCast<float>();
+    LocalTensor<float> floatLocal = bf16Local[Ceil(size, BIAS_ALIGN_NUM) * BIAS_ALIGN_NUM].template ReinterpretCast<float>();
 
     uint32_t cpInLen = size * sizeof(bfloat16_t);
     DataCopyExtParams cpInExtParams{1, cpInLen, 0, 0, 0};
