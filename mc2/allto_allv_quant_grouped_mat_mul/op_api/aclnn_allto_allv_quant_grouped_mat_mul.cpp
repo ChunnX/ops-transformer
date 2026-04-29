@@ -460,6 +460,8 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize(
     }
 
     // 处理非连续Tensor，目前支持转置的mmWeightOptional涉及该处理
+    const aclTensor *originalMmWeightOptional = mmWeightOptional;  // 保存原始指针用于校验
+    const aclTensor *originalMmWeightScaleOptional = mmWeightScaleOptional;  // 保存原始指针用于校验
     if (CheckMmWeightValid(mmWeightOptional)) {
         bool notContiguous = IsTransposeTwoDims(mmWeightOptional, -1, -2);
         auto transMmWeightOptional = mmWeightOptional;
@@ -522,9 +524,9 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize(
         }
     }
     
-    // mmWeightScale需要和mmWeight转置状态一致，这里使用原始状态校验（未转连续前）
+    // mmWeightScale需要和mmWeight转置状态一致，使用原始tensor校验
     aclnnStatus ret_consistency = CheckWeightScaleTransposeConsistency(
-        gmmWeight, gmmWeightScale, mmWeightOptional, mmWeightScaleOptional);
+        gmmWeight, gmmWeightScale, originalMmWeightOptional, originalMmWeightScaleOptional);
     CHECK_RET(ret_consistency == ACLNN_SUCCESS, ret_consistency);
 
     aclnnStatus ret_param = CheckParams(
