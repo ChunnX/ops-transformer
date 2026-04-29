@@ -265,7 +265,8 @@ public:
             auto gmVLayoutTla = tla::MakeLayout<ElementV, LayoutV>(kvBaseTile_, kvShapeCol);
             auto gmVTensorTla = tla::MakeTensor(gV[gmOffsetV], gmVLayoutTla, Arch::PositionGM{});
 
-            uint32_t qDeqScaleOffset = curBatch * qHeads_ * xBlockNumAligned_ + qHeadIdx * xBlockNumAligned_ + xBlockIdx;
+            uint32_t qDeqScaleOffset =
+                curBatch * qHeads_ * xBlockNumAligned_ + qHeadIdx * xBlockNumAligned_ + xBlockIdx;
             float qDeqScaleValue = queryDequantScale.GetValue(qDeqScaleOffset);
 #endif
 #ifdef __DAV_VEC__
@@ -295,7 +296,8 @@ public:
                     Arch::CrossCoreFlag mm1ToSmFlag(Mm1ToSmFlagId);
                     uint32_t yBlockIndexOffset = gmOffsetSparseIdx + gatheredKvSTileIdx;
                     uint32_t yBlockIndex = gSparseIdx.GetValue(yBlockIndexOffset);
-                    uint32_t kvDeqScaleOffset = curBatch * kvHeads_ * yBlockNumAligned_ + kvHeadIdx * yBlockNumAligned_ + yBlockIndex;
+                    uint32_t kvDeqScaleOffset =
+                        curBatch * kvHeads_ * yBlockNumAligned_ + kvHeadIdx * yBlockNumAligned_ + yBlockIndex;
 #ifdef __DAV_CUBE__
                     float kDeqScaleValue = keyDequantScale.GetValue(kvDeqScaleOffset);
                     float combinedDeqScalar = qDeqScaleValue * kDeqScaleValue;

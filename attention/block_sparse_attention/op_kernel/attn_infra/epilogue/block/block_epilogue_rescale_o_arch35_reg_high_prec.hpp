@@ -395,7 +395,6 @@ public:
         }
     }
 
-
     template <class TensorDst>
     __aicore__ inline
     void operator()(TensorDst &gOTensor,

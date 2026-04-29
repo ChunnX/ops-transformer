@@ -244,7 +244,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGetW
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }
-    //去掉了idx ,idxnums
+    // 去掉了idx ,idxnums
     L2_DFX_PHASE_1(aclnnBlockSparseAttention,
                    DFX_IN(query, key, value, blockSparseMask, attenMaskOptional, blockShape, actualSeqLengthsOptional,
                           actualSeqLengthsKvOptional, blockTableOptional, qInputLayout, kvInputLayout, numKeyValueHeads,
@@ -254,7 +254,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGetW
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto *executorImpl = uniqueExecutor.get();
-    //新增blockSparseMaskOptional参数
+    // 新增blockSparseMaskOptional参数
     ret = MakeContiguous(query, key, value, blockSparseMask, attenMaskOptional, blockTableOptional,
                          executorImpl);
     if (ret != ACLNN_SUCCESS) {
@@ -263,7 +263,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGetW
     
     string qInputLayoutStr = ConvertLayoutString(qInputLayout);
     string kvInputLayoutStr = ConvertLayoutString(kvInputLayout);
-    //新增blockSparseMaskOptional参数
+    // 新增blockSparseMaskOptional参数
     auto outputs = l0op::BlockSparseAttention(
         query, key, value, blockSparseMask, attenMaskOptional, blockShape, actualSeqLengthsOptional,
         actualSeqLengthsKvOptional, blockTableOptional, nullptr, nullptr, nullptr, qInputLayoutStr.c_str(),
