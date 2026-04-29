@@ -44,7 +44,8 @@ private:
                                    GM_ADDR gmToFloat, bool isLast, bool isTail);
     __aicore__ inline void MatMulV3Compute(GM_ADDR cGM, Mc2MatMulV3TilingData& tiling, uint32_t count,
                                            GM_ADDR gmToFloat, bool isLast, bool isTail);
-    __aicore__ inline void PostProcess();    // 计算后处理，等待通信结束，并终止hcclserver
+    __aicore__ inline void PostProcess();
+    __aicore__ inline void CastBiasBFtoFloat(GM_ADDR dst, GM_ADDR src, int size);    // 计算后处理，等待通信结束，并终止hcclserver
 
 private:
     Mc2Tiling::MatmulReduceScatterV2TilingData* tilingData_;
@@ -58,8 +59,9 @@ private:
     uint32_t rankId_;
     AscendC::HcclDataType dataType_;
     uint8_t debugMode_;
-    Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;              // CCU模式
-    AscendC::HcclHandle handles_[MAX_HANDLE];        // 最大支持64个handleId
+    Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;
+    AscendC::HcclHandle handles_[MAX_HANDLE];
+    TBuf<TPosition::VECCALC> biasCastBuf_;
 };
 
 template <typename AType, typename BType, typename BiasType, typename CType>
@@ -80,8 +82,16 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
     biasGM_ = biasGM;
     rankId_ = context_->rankId;
 
-    // 划分workspace
-    gmToFloat_ = workspaceGM;
+    GM_ADDR biasToFloatAddr = workspaceGM;
+    if constexpr (std::is_same_v<BiasType, bfloat16_t>) {
+        if (cfg.biasLen > 0) {
+            CastBiasBFtoFloat(biasToFloatAddr, biasGM, cfg.rankN);
+            biasGM_ = biasToFloatAddr;
+            SyncAll<true>();
+        }
+    }
+
+    gmToFloat_ = workspaceGM + cfg.biasLen;
 }
 
 template <typename AType, typename BType, typename BiasType, typename CType>
@@ -176,6 +186,49 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
         recvBuffer += cOffset;
     }
     mmv3.End();
+}
+
+template <typename AType, typename BType, typename BiasType, typename CType>
+__aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType>::CastBiasBFtoFloat(
+    GM_ADDR dst, GM_ADDR src, int size)
+{
+#if __CCE_AICORE__ == 220
+    if (g_coreType == AIC) {
+        CrossCoreWaitFlag(EVENT_ID_5);
+        CrossCoreSetFlag<SET_FLAG_MODE_0, PIPE_MTE3>(EVENT_ID_4);
+        CrossCoreWaitFlag(EVENT_ID_4);
+        return;
+    }
+    if (GetBlockIdx() != 0) {
+        CrossCoreSetFlag<SET_FLAG_MODE_2, PIPE_MTE3>(EVENT_ID_5);
+        return;
+    }
+
+    GlobalTensor<bfloat16_t> gmSrc;
+    GlobalTensor<float> gmDst;
+    gmSrc.SetGlobalBuffer((__gm__ bfloat16_t*)(src), size);
+    gmDst.SetGlobalBuffer((__gm__ float*)(dst), size);
+
+    LocalTensor<bfloat16_t> bf16Local = biasCastBuf_.Get<bfloat16_t>();
+    LocalTensor<float> floatLocal = bf16Local[Ceil(size, 32) * 32].template ReinterpretCast<float>();
+
+    uint32_t cpInLen = size * sizeof(bfloat16_t);
+    DataCopyExtParams cpInExtParams{1, cpInLen, 0, 0, 0};
+    DataCopyPadExtParams<bfloat16_t> padExtParams{false, 0, 0, 0};
+    DataCopyPad(gmSrc, bf16Local, cpInExtParams, padExtParams);
+    PipeBarrier<PIPE_MTE2>();
+
+    Cast(floatLocal, bf16Local, AscendC::RoundMode::CAST_NONE, size);
+    PipeBarrier<PIPE_V>();
+
+    uint32_t cpOutLen = size * sizeof(float);
+    DataCopyExtParams cpOutExtParams{1, cpOutLen, 0, 0, 0};
+    DataCopy(gmDst, floatLocal, cpOutExtParams);
+    PipeBarrier<PIPE_MTE3>();
+
+    CrossCoreSetFlag<SET_FLAG_MODE_2, PIPE_MTE3>(EVENT_ID_5);
+    CrossCoreWaitFlag(EVENT_ID_4);
+#endif
 }
 } // namespace MatmulReduceScatterImpl
 
