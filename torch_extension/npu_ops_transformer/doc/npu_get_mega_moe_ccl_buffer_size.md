@@ -15,18 +15,18 @@
 
     -   计算dispatch阶段存储所有专家接收到整个EP域中的Token数量空间大小：
 
-        $$dispatch\_token\_per\_expert = ep\_world\_size * Align128(ep\_world\_size * num\_max\_token\_per\_rank) * sizeof(int32)$$
+        $$dispatch\_token\_per\_expert = ep\_world\_size * Align128(ep\_world\_size * local\_moe\_expert\_num) * sizeof(int32)$$
 
         其中ep\_world\_size为专家并行通信域大小，num\_max\_token\_per\_rank为每张卡上的token数量
 
     -   计算dispatch量化后输出的token及scales存放需要的空间大小：
 
-        $$quant\_token\_scales = Align512(batch\_size * topK * (hidden + hidden / 32))$$
+        $$quant\_token\_scales = Align512(num\_max\_token\_per\_rank * topK * (hidden + hidden / 32))$$
 
 
     -   计算combine阶段处理发回数据所需空间大小：
 
-        $$combine\_out = Align512(batch\_size * topK * y\_out\_dtype\_size)$$
+        $$combine\_out = Align512(num\_max\_token\_per\_rank * topK * y\_out\_dtype\_size)$$
     
         其中y\_out\_dtype\_size为输出的token类型转为字节数
     -   计算ccl\_buffer\_size大小：
@@ -37,7 +37,7 @@
 ## 函数原型
 
 ```
-npu_get_mega_moe_ccl_buffer_size(ep_world_size: int, moe_expert_num: int, num_max_tokens_per_rank: int, batch_size: int, num_topk: int, hidden: int, dispatch_quant_mode: int = 0, dispatch_quant_out_type: int = 28, combine_quant_mode: int = 0, comm_alg: str = "") -> int:
+npu_get_mega_moe_ccl_buffer_size(ep_world_size: int, moe_expert_num: int, num_max_tokens_per_rank: int, num_topk: int, hidden: int, dispatch_quant_mode: int = 0, dispatch_quant_out_type: int = 28, combine_quant_mode: int = 0, comm_alg: str = "") -> int:
 ```
 
 ## 参数说明
@@ -78,7 +78,7 @@ BS = 256  # token数量
 H = 4096  # 每个token的长度
 topK = 6
 
-buffer_size = npu_get_mega_moe_ccl_buffer_size(world_size, num_experts, bs, topK, h)
+buffer_size = npu_get_mega_moe_ccl_buffer_size(world_size, num_experts, BS, topK, H)
 os.environ['HCCL_BUFFSIZE'] = f'buffer_size'
 print(f"buffer_size is {buffer_size}")
 print("run ccl_buffer_size success.")
