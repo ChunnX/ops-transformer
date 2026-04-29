@@ -75,6 +75,7 @@ protected:
     int64_t c_, n_, c0_, c1_, cTail_, c0RepeatTime_, cTailAlign_, cTailBlockStride_, c1Align_;
     int64_t tileCoreBS_;
     int64_t skIterCount_;
+    int64_t ubSize_;
     int64_t mm1K_, mm1M_, mm1N_;
     int64_t mm2K_, mm2M_, mm2N_;
     int64_t tileRepeatTimes_;
@@ -142,6 +143,7 @@ private:
         cTailAlign_ = AlignUp(cTail_, ELEMENTS_SIZE_PER_BLOCK);
         cTailBlockStride_ = c0_ / ELEMENTS_SIZE_PER_BLOCK - cTailAlign_ / ELEMENTS_SIZE_PER_BLOCK;
         skIterCount_ = tilingData->skIterCount;
+        ubSize_ = tilingData->ubSize;
         eps_ = tilingData->eps;
         tileCoreBS_ = tilingData->tileSize;
 
@@ -219,7 +221,6 @@ private:
     __aicore__ inline void InitGradPreStageBuffer()
     {
         if ASCEND_IS_AIV {
-            auto ubSize = 192 * 1024;
             pipe_->InitBuffer(fusedGradHPre2AndGradHPost2Buf_, tileCoreBS_ * n_ * 2 * sizeof(float));
             pipe_->InitBuffer(gradRsqrtBuf_, tileCoreBS_ * (n_ * n_ + 2 * n_) * sizeof(float) * 2);
             pipe_->InitBuffer(gradBiasBuf_, 2 * tileCoreBS_ * (n_ * n_ + 2 * n_) * sizeof(float));
