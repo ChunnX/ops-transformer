@@ -207,7 +207,22 @@ AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulT
         static_cast<uint64_t>(mc2Tiling_.tileM) * CeilDiv(static_cast<uint64_t>(mc2Tiling_.rankK) * mc2Tiling_.rankDim, MXFP_GROUP_SIZE) *
         NUM_TWO * sizeof(AscendC::fp8_e8m0_t);
     pipeLineContext_.computationContext->additionalData.x2Scale = x2Scale_;
-    pipeLineContext_.computationContext->tilingDataPtr = &(tilingData_->mc2QuantMmTileTilingData);
+    // 填 MX tensor tiling 信息和所有路径（供不同 context 使用）
+    tilingData_->mxTensorTileTilingData.tileM = mc2Tiling_.tileM;
+    tilingData_->mxTensorTileTilingData.fullK = mc2Tiling_.rankK * mc2Tiling_.rankDim;
+    tilingData_->mxTensorTileTilingData.fullN = mc2Tiling_.rankN;
+    tilingData_->mxTensorTailTilingData.tileM = mc2Tiling_.tailM;
+    tilingData_->mxTensorTailTilingData.fullK = mc2Tiling_.rankK * mc2Tiling_.rankDim;
+    tilingData_->mxTensorTailTilingData.fullN = mc2Tiling_.rankN;
+    // 按 context 类型选择 tilingDataPtr：tensor API → mxTensor*，原 MatMulASWKernel → mc2QuantMm*
+    if constexpr (AscendC::Std::is_same_v<typename AscendC::Std::remove_pointer<decltype(pipeLineContext_.computationContext->tilingDataPtr)>::type, TensorMatmulTilingData>) {
+        AscendC::printf("[MX-ARCH35] Tensor API tiling: tileM=%u fullK=%u fullN=%u\n",
+                        mc2Tiling_.tileM, mc2Tiling_.rankK * mc2Tiling_.rankDim, mc2Tiling_.rankN);
+        pipeLineContext_.computationContext->tilingDataPtr = &(tilingData_->mxTensorTileTilingData);
+    } else {
+        AscendC::printf("[MX-ARCH35] Original ASW tiling\n");
+        pipeLineContext_.computationContext->tilingDataPtr = &(tilingData_->mc2QuantMmTileTilingData);
+    }
 
     pipeLine_->Process(taskCnt);
 }
@@ -255,7 +270,11 @@ AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulT
     pipeLineContext_.computationContext->additionalData.x1ScaleOffset =
         static_cast<uint64_t>(mc2Tiling_.tileM) * tempScaleKBytes;
     pipeLineContext_.computationContext->additionalData.x2Scale = x2Scale_;
-    pipeLineContext_.computationContext->tilingDataPtr = &(tilingData_->mc2QuantMmTailTilingData);
+    if constexpr (AscendC::Std::is_same_v<typename AscendC::Std::remove_pointer<decltype(pipeLineContext_.computationContext->tilingDataPtr)>::type, TensorMatmulTilingData>) {
+        pipeLineContext_.computationContext->tilingDataPtr = &(tilingData_->mxTensorTailTilingData);
+    } else {
+        pipeLineContext_.computationContext->tilingDataPtr = &(tilingData_->mc2QuantMmTailTilingData);
+    }
 
     pipeLine_->Process(taskCnt);
 }

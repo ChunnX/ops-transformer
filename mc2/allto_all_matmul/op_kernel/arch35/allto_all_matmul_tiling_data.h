@@ -18,7 +18,7 @@
 #include <cstdint>
 #include "kernel_tiling/kernel_tiling.h"
 #include "../../common/op_kernel/mc2_tiling_struct.h"
-#include "../../3rd/mat_mul_v3/op_kernel/arch35/mat_mul_tiling_data.h"
+#include "tensor_matmul_tiling_data.h"
 #include "../../3rd/quant_batch_matmul_v3/op_kernel/arch35/quant_batch_matmul_v3_tiling_data.h"
 
 struct AlltoAllMatmulTilingInfo {
@@ -44,8 +44,8 @@ struct AlltoAllMatmulTilingData {
     Mc2InitTiling mc2InitTiling; // 初始化通信任务配置
     Mc2CcTiling mc2CcTiling;     // 具体每个通信任务的参数配置
     AlltoAllMatmulTilingInfo alltoAllMatmulTilingInfo;
-    Mc2MatMulV3TilingData mc2MmV3TileTilingData; // 通算切分头块matmul tiling数据
-    Mc2MatMulV3TilingData mc2MmV3TailTilingData; // 通算切分尾块matmul tiling数据
+    TensorMatmulTilingData tensorMatmulTileTilingData; // 通算切分头块matmul tiling数据
+    TensorMatmulTilingData tensorMatmulTailTilingData; // 通算切分尾块matmul tiling数据
 };
 
 // MX量化tiling结构体
@@ -53,8 +53,10 @@ struct AlltoAllQuantMatmulTilingData {
     Mc2InitTiling mc2InitTiling;                                                // 初始化通信任务配置
     Mc2CcTiling mc2CcTiling;                                                    // 具体每个通信任务的参数配置
     AlltoAllMatmulTilingInfo alltoAllQuantMatmulTilingInfo;                     // 传递给kernel的tiling info
-    DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams mc2QuantMmTileTilingData; // 通算切分头块matmul tiling数据
-    DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams mc2QuantMmTailTilingData; // 通算切分尾块matmul tiling数据
+    DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams mc2QuantMmTileTilingData; // KC通算切分头块matmul tiling数据
+    DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams mc2QuantMmTailTilingData; // KC通算切分尾块matmul tiling数据
+    TensorMatmulTilingData mxTensorTileTilingData;                              // MX tensor API 头块tiling
+    TensorMatmulTilingData mxTensorTailTilingData;                              // MX tensor API 尾块tiling
 };
 
 #endif // ALLTO_ALL_MATMUL_TILING_H

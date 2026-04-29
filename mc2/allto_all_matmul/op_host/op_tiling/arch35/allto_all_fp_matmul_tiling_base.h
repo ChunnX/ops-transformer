@@ -19,8 +19,6 @@
 #include "securec.h"
 #include "mc2_matmul_tiling_cfg.h"
 #include "op_host/op_tiling/new_mc2_tiling_utils.h"
-#include "mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_tiling_strategy.h"
-#include "mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_common_advanced.h"
 #include "../allto_all_matmul_tiling_base.h"
 #include "../../../op_kernel/arch35/allto_all_matmul_tiling_data.h"
 #include "../../../op_kernel/arch35/allto_all_matmul_tiling_key.h"
@@ -29,7 +27,6 @@
 namespace MC2Tiling {
 
 using namespace optiling;
-using namespace mc2_matmul_v3_advanced;
 
 class AllToAllFpMatmulTilingBase : public AllToAllMatmulTilingBase {
 public:
@@ -45,19 +42,14 @@ protected:
     ge::graphStatus CheckOpInputInfo();
     ge::graphStatus InitTilingContextParameters();
     ge::graphStatus DoMMTiling();
-    ge::graphStatus DoMatmulV3Tiling(Mc2MatmulHelper::Mc2MatmulTilingCfg &tilingCfg, Mc2MMRegisterCfg &registerCfg,
-                                     Mc2MatMulV3TilingData &tilingData);
     ge::graphStatus SetHcclTiling();
     void SetTilingInfo(AlltoAllMatmulTilingInfo &tilingInfo) const;
 
 private:
     void PrintAlltoAllMatmulTilingData(AlltoAllMatmulTilingData &alltoAllMatmulTilingData);
     void PrintAlltoAllMatmulTilingInfo(const std::string &opName, AlltoAllMatmulTilingInfo &tilingInfo);
-    void PrintMMV3TilingData(const std::string &opName, Mc2MatMulV3TilingData &tiling);
 
     AlltoAllMatmulTilingData localTilingData_;
-    Mc2MatMulV3Args mmV3Args_;
-    Mc2MatmulV3CompileInfo mmV3compileInfo_;
 };
 
 } // namespace MC2Tiling

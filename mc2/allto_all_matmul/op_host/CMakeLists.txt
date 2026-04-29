@@ -31,6 +31,8 @@ if (BUILD_OPEN_PROJECT)  # custom
                     -mllvm
                     -cce-aicore-dcci-before-kernel-end=false
                     -DENABLE_CV_COMM_VIA_SSBUF=true
+                    -I${CMAKE_CURRENT_SOURCE_DIR}/../../3rd/tensor_api/
+                    -I${CMAKE_CURRENT_SOURCE_DIR}/../../3rd/tensor_api/include/
         )
     elseif("${CONDITION_UNIT}" STREQUAL "ascend910_93")
         add_ops_compile_options(

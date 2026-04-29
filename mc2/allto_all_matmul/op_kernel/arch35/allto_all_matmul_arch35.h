@@ -81,10 +81,12 @@ __aicore__ inline void AlltoAllMatmulArch35<SchedulerType, SchedulerContextType,
         ProcessTile(mc2Tiling_.tileCnt);
     }
 
-    // 启动尾块流水
-    if (mc2Tiling_.tailCnt>0) {
-        ProcessTail(mc2Tiling_.tailCnt);
-    }
+    AscendC::printf("********** CHUGUOWEI rm ProcessTail");
+
+    // // 启动尾块流水
+    // if (mc2Tiling_.tailCnt>0) {
+    //     ProcessTail(mc2Tiling_.tailCnt);
+    // }
 
     // 结束流水线
     pipeLine_->End();
@@ -105,7 +107,11 @@ __aicore__ inline void AlltoAllMatmulArch35<SchedulerType, SchedulerContextType,
     pipeLineContext_.computationContext->baseData.aOffset = tileMMultiRankK * (uint64_t)mc2Tiling_.rankDim * sizeof(DTYPE_X1);
     pipeLineContext_.computationContext->baseData.bOffset = (uint64_t)0UL;
     pipeLineContext_.computationContext->baseData.cOffset = (uint64_t)mc2Tiling_.tileM * mc2Tiling_.rankN * sizeof(DTYPE_Y);
-    pipeLineContext_.computationContext->tilingDataPtr = &(tilingData_->mc2MmV3TileTilingData);
+    // 填入 tensor matmul tiling 信息
+    tilingData_->tensorMatmulTileTilingData.tileM = mc2Tiling_.tileM;
+    tilingData_->tensorMatmulTileTilingData.fullK = mc2Tiling_.rankK * mc2Tiling_.rankDim;
+    tilingData_->tensorMatmulTileTilingData.fullN = mc2Tiling_.rankN;
+    pipeLineContext_.computationContext->tilingDataPtr = &(tilingData_->tensorMatmulTileTilingData);
 
     // 转置相关地址和偏移
     pipeLineContext_.transposeContext->transposeSrcAddr = commOutGM_;
@@ -147,7 +153,11 @@ __aicore__ inline void AlltoAllMatmulArch35<SchedulerType, SchedulerContextType,
     pipeLineContext_.computationContext->baseData.aOffset = tailMMultiRankK * (uint64_t)mc2Tiling_.rankDim * sizeof(DTYPE_X1);
     pipeLineContext_.computationContext->baseData.bOffset = (uint64_t)0UL;
     pipeLineContext_.computationContext->baseData.cOffset = (uint64_t)mc2Tiling_.tailM * mc2Tiling_.rankN * sizeof(DTYPE_Y);
-    pipeLineContext_.computationContext->tilingDataPtr = &(tilingData_->mc2MmV3TailTilingData);
+    // 填入 tensor matmul tiling 信息（尾块）
+    tilingData_->tensorMatmulTailTilingData.tileM = mc2Tiling_.tailM;
+    tilingData_->tensorMatmulTailTilingData.fullK = mc2Tiling_.rankK * mc2Tiling_.rankDim;
+    tilingData_->tensorMatmulTailTilingData.fullN = mc2Tiling_.rankN;
+    pipeLineContext_.computationContext->tilingDataPtr = &(tilingData_->tensorMatmulTailTilingData);
 
     pipeLineContext_.transposeContext->transposeSrcAddr = commOutGM_ + tileCntMultitileMMultiRankK * sizeof(DTYPE_X1);
     pipeLineContext_.transposeContext->transposeDstAddr = transOutGM_ + tileCntMultitileMMultiRankK * (uint64_t)mc2Tiling_.rankDim * sizeof(DTYPE_X1);

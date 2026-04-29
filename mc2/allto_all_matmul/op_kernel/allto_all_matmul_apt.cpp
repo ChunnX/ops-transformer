@@ -20,6 +20,8 @@
 #include "./arch35/allto_all_matmul_pipeline.h"
 #include "./arch35/allto_all_matmul_tiling_key.h"
 #include "./arch35/allto_all_matmul_tiling_data.h"
+#include "./arch35/tensor_matmul_stage.h"
+#include "./arch35/tensor_mx_matmul_stage.h"
 #include "./arch35/allto_all_kc_quant_matmul_arch35.h"
 #include "./arch35/allto_all_kc_quant_matmul_pipeline.h"
 #include "./arch35/allto_all_mx_quant_matmul_arch35.h"
@@ -38,8 +40,9 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
         CommunicationType commImplName(&tilingData);                                                                   \
         DEFINE_MC2_TRANSPOSE_FOR_MATH_COMPUTATION(DTYPE_X1, TransposeType);                                            \
         TransposeType transposeImplName(&pipe);                                                                        \
-        DEFINE_MC2_MATMUL_CONTEXT_FOR_MATMUL_COMPUTATION_FP(ComputationContextType);                                   \
-        DEFINE_MC2_MATMUL_FOR_MATMUL_COMPUTATION_FP(false, X2TRANSPOSE, ComputationType);                              \
+        using ComputationContextType = MC2KernelTemplate::MC2MMContext<                                                \
+            MC2KernelTemplate::FpMMAdditionalData, TensorMatmulTilingData>;                                            \
+        using ComputationType = Mc2Kernel::TensorMatmulStage<TensorMatmulTilingData>;                                  \
         ComputationType matmulImplName(&pipe);                                                                         \
         using SchedulerContextType = Mc2Kernel::AlltoAllMmPipelineContext<ComputationContextType>;                     \
         using SchedulerType = Mc2Kernel::AlltoAllMatmulPipeLine<CommunicationType, TransposeType, ComputationType,     \
@@ -92,10 +95,39 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
         using SchedulerContextType = Mc2Kernel::AlltoAllMXQmmPipelineContext<ComputationContextType>;                  \
         using SchedulerType =                                                                                          \
             Mc2Kernel::AlltoAllMXQuantMatmulPipeLine<CommunicationType, TransposeType, ScaleTransposeType,             \
-                                                     ComputationType, SchedulerContextType>;                           \
+                                                      ComputationType, SchedulerContextType>;                           \
         SchedulerType SchedulerImpl(&commImplName, &transposeImplName, &scaleTransposeImplName, &matmulImplName);      \
         Mc2Kernel::AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllQuantMatmulTilingData,     \
-                                               isMxFp4>                                                                \
+                                                isMxFp4>                                                                \
+            op(&SchedulerImpl);                                                                                        \
+        op.Init(x1, x2, bias, y, all2all_out, x1_scale, x2_scale, workspaceGM, &tilingData, &pipe);                    \
+        op.Process();                                                                                                  \
+    } while (0)
+#endif
+
+// MX-FP8 tensor API 版本（仅 fp8_e4m3 / fp8_e5m2）
+#ifndef ALLTO_ALL_MX_TENSOR_MATMUL_IMPL
+#define ALLTO_ALL_MX_TENSOR_MATMUL_IMPL(tilingData, pipe, commDataTypeX1)                                              \
+    do {                                                                                                               \
+        DEFINE_MC2_HCCL_FOR_COMMUNICATION(false, HcclServerType::HCCL_SERVER_TYPE_CCU, MC2AlltoAllContext,             \
+                                          AlltoAllQuantMatmulTilingData, MC2AlltoAllPrimitives, 0, 1,                  \
+                                          CommunicationType);                                                          \
+        CommunicationType commImplName(&tilingData);                                                                   \
+        DEFINE_MC2_TRANSPOSE_FOR_MATH_COMPUTATION(commDataTypeX1, TransposeType);                                      \
+        TransposeType transposeImplName(&pipe);                                                                        \
+        DEFINE_MC2_TRANSPOSE_FOR_MATH_COMPUTATION(AscendC::fp8_e8m0_t, ScaleTransposeType);                            \
+        ScaleTransposeType scaleTransposeImplName(&pipe);                                                              \
+        using ComputationContextType = MC2KernelTemplate::MC2MMContext<                                                \
+            MC2KernelTemplate::MXQuantMMAdditionalData, TensorMatmulTilingData>;                                       \
+        using ComputationType = Mc2Kernel::TensorMXQuantMatmulStage<TensorMatmulTilingData, X2TRANSPOSE>;              \
+        ComputationType matmulImplName(&pipe);                                                                         \
+        using SchedulerContextType = Mc2Kernel::AlltoAllMXQmmPipelineContext<ComputationContextType>;                  \
+        using SchedulerType =                                                                                          \
+            Mc2Kernel::AlltoAllMXQuantMatmulPipeLine<CommunicationType, TransposeType, ScaleTransposeType,             \
+                                                      ComputationType, SchedulerContextType>;                           \
+        SchedulerType SchedulerImpl(&commImplName, &transposeImplName, &scaleTransposeImplName, &matmulImplName);      \
+        Mc2Kernel::AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllQuantMatmulTilingData,     \
+                                                false>                                                                  \
             op(&SchedulerImpl);                                                                                        \
         op.Init(x1, x2, bias, y, all2all_out, x1_scale, x2_scale, workspaceGM, &tilingData, &pipe);                    \
         op.Process();                                                                                                  \
@@ -111,6 +143,10 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
     TPipe pipe;
 
 #if ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && ((ORIG_DTYPE_X1 == DT_FLOAT16) || (ORIG_DTYPE_X1 == DT_BF16)))
+    if (AscendC::GetBlockIdx() == 0) {
+        AscendC::printf("[KERNEL-ENTRY] FP path: ORIG_DTYPE_X1=%d DTYPEBIAS=%d\n",
+                        static_cast<int>(ORIG_DTYPE_X1), static_cast<int>(DTYPEBIAS));
+    }
     REGISTER_TILING_DEFAULT(AlltoAllMatmulTilingData);
     GET_TILING_DATA_WITH_STRUCT(AlltoAllMatmulTilingData, tilingData, tilingGM);
 
@@ -123,14 +159,28 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
     }
 
 #else
+    if (AscendC::GetBlockIdx() == 0) {
+        AscendC::printf("[KERNEL-ENTRY] QUANT path: QUANTMODE=%d X2TRANSPOSE=%d\n",
+                        static_cast<int>(QUANTMODE), static_cast<int>(X2TRANSPOSE));
+    }
     REGISTER_TILING_DEFAULT(AlltoAllQuantMatmulTilingData);
     GET_TILING_DATA_WITH_STRUCT(AlltoAllQuantMatmulTilingData, tilingData, tilingGM);
 #if (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) &&\
      ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2)))
-    ALLTO_ALL_MX_QUANT_MATMUL_IMPL(tilingData, pipe, DTYPE_X1, false);
+    if (AscendC::GetBlockIdx() == 0) {
+        AscendC::printf("[KERNEL-ENTRY] MX-FP8 tensor path\n");
+    }
+    ALLTO_ALL_MX_TENSOR_MATMUL_IMPL(tilingData, pipe, DTYPE_X1);
 #elif ((ORIG_DTYPE_X1 == DT_FLOAT4_E2M1) && (ORIG_DTYPE_X2 == DT_FLOAT4_E2M1))
+    if (AscendC::GetBlockIdx() == 0) {
+        AscendC::printf("[KERNEL-ENTRY] MX-FP4 original path\n");
+    }
     ALLTO_ALL_MX_QUANT_MATMUL_IMPL(tilingData, pipe, uint8_t, true);
 #else
+    if (AscendC::GetBlockIdx() == 0) {
+        AscendC::printf("[KERNEL-ENTRY] KC-QUANT original path: QUANTMODE=%d\n",
+                        static_cast<int>(QUANTMODE));
+    }
     if constexpr (QUANTMODE == KC_QUANT_FP8E5M2_MODE) {
         ALLTO_ALL_KC_QUANT_MATMUL_IMPL(tilingData, pipe, float8_e5m2_t);
     } else if constexpr (QUANTMODE == KC_QUANT_FP8E4M3_MODE) {
