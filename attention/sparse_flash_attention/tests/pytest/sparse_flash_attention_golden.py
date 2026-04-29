@@ -531,7 +531,7 @@ def softmax(x):
     y = torch.exp(x_sub)
     x_sum = y.sum(dim=-1, keepdim=True)
     ans = y / x_sum
-    return ans
+    return ans, x_max, x_sum
 
 
 def _t_increattention_bnsd(fa_param):
@@ -577,7 +577,7 @@ def _t_increattention_bnsd(fa_param):
                     continue
                 bmm1Res = torch.matmul(q_curr.float(), k_sparse.float().T)
                 scaleRes = bmm1Res * scaleValue
-                softmax_res = softmax(scaleRes)
+                softmax_res, x_max, x_sum = softmax(scaleRes)
                 if fa_param['q_dtype'] == "float16":
                     bmm2Res = torch.matmul(softmax_res.to(torch.float16).float(), v_sparse.float())
                 elif fa_param['q_dtype'] == "bfloat16":
