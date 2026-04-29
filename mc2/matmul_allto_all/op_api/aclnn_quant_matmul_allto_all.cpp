@@ -448,6 +448,8 @@ extern "C" aclnnStatus aclnnQuantMatmulAlltoAllGetWorkspaceSize(const aclTensor*
         OP_LOGD("X2 is a non-contiguous tensor. The original dim0 is %ld, and dim1 is %ld. After processing, transX2 dim0 is %ld, and dim1 is %ld.",
             x2->GetViewShape().GetDim(0), x2->GetViewShape().GetDim(1), transX2->GetViewShape().GetDim(0), transX2->GetViewShape().GetDim(1));
     }
+    OP_LOGD("in aclnn, groupSize is: %ld", groupSize);
+
     aclnnStatus retParam = CheckAndHandleParams(x1, transX2, biasOptional, x1Scale, x2Scale, group,
         alltoAllAxesOptional, x1QuantMode, x2QuantMode, transposeX1, transposeX2, output);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
