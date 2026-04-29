@@ -102,6 +102,7 @@ uint64_t AlltoAllMatmulFitBalanceTiling::CalcLongTileLen(uint64_t shortTileLen)
             longTileLen = commPerf_.InverseCommTime(singleRankMatmulTime);
         }
     }
+    longTileLen = longTileLen > ALIGN_M ? longTileLen : static_cast<uint64_t>(ALIGN_M);
     return longTileLen / ALIGN_M * ALIGN_M;
 }
 
@@ -144,7 +145,7 @@ double MC2Tiling::AlltoAllMatmulFitBalanceTiling::CalcMatmulTime(uint64_t tileM)
 double MC2Tiling::AlltoAllMatmulFitBalanceTiling::CalcPermuteTime(uint64_t tileM)
 {
     return permuteKMap.at(GetRank()) * static_cast<double>(tileM) * static_cast<double>(mmInfo_.kValue) *
-               all2allDtypeSizeMap.at(matmulQuantType_) / ONE_MBYTE +
+               all2allDtypeSizeMap.at(matmulQuantType_) / (coreNum_ * TWO * ONE_MBYTE) +
            permuteBMap.at(GetRank());
 }
 
@@ -157,7 +158,7 @@ uint64_t AlltoAllMatmulFitBalanceTiling::CalcMByTime(double time)
     double matmulB = matmulBMap.at(matmulQuantType_);
     double mValue = (time - matmulB) * static_cast<double>(coreNum_) * static_cast<double>(ONE_MBYTE) /
                     (matmulK * static_cast<double>(mmInfo_.kValue) * static_cast<double>(mmInfo_.nValue));
-    return static_cast<uint64_t>(mValue);
+    return mValue > 0 ? static_cast<uint64_t>(mValue) : static_cast<uint64_t>(0);
 }
 
 uint64_t AlltoAllMatmulFitBalanceTiling::CalcMWhenT1EqualT2()
