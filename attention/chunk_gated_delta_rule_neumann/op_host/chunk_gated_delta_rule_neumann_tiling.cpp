@@ -138,6 +138,10 @@ ge::graphStatus ChunkGatedDeltaRuleNeumannTiling::DoOpTiling()
         sizeHigh * c * (STAGE_ONE_TWO * c + STAGE_ONE_THREE * dk + dv) * tilingData_.stageOneParaNum;
     tilingData_.stageWorkspaceSz *= tilingData_.aiCoreNum;
 
+    // Neumann 求逆 workspace: L_pow + tmp + INV (每个 core 各一个 16×16 矩阵)
+    int64_t neumannWsSz = sizeHigh * tilingData_.aiCoreNum * c * c * 3;
+    tilingData_.stageWorkspaceSz += neumannWsSz;
+
     PrintTilingData();
     return ge::GRAPH_SUCCESS;
 }

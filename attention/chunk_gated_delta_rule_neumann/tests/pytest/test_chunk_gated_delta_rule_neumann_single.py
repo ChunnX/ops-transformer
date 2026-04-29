@@ -13,10 +13,10 @@ import torch
 import torch_npu
 
 # ******入参调用
-from test_chunk_gated_delta_rule_paramset import ENABLED_PARAMS
+from test_chunk_gated_delta_rule_neumann_paramset import ENABLED_PARAMS
 
 # ******CPU侧算子逻辑实现获取golden与npu算子直调结果
-import chunk_gated_delta_rule_operator_single
+import chunk_gated_delta_rule_neumann_operator_single as chunk_gated_delta_rule_operator_single
 import pytest
 
 locals()["param_combinations"] = []

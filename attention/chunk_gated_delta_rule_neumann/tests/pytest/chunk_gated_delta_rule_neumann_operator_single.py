@@ -10,8 +10,19 @@
 
 import torch
 import torch_npu
+import sys
+from pathlib import Path
 
-from chunk_gated_delta_rule_golden import run_chunk_gated_delta_rule_eager
+REPO_ROOT = Path(__file__).resolve().parents[4]
+TORCH_EXTENSION_DIR = REPO_ROOT / "torch_extension"
+if TORCH_EXTENSION_DIR.exists():
+    sys.path.insert(0, str(TORCH_EXTENSION_DIR))
+
+from npu_ops_transformer.ops import npu_chunk_gated_delta_rule_neumann
+
+from chunk_gated_delta_rule_neumann_golden import run_chunk_gated_delta_rule_eager
+
+_ = npu_chunk_gated_delta_rule_neumann
 
 
 def run_precision_test(params):

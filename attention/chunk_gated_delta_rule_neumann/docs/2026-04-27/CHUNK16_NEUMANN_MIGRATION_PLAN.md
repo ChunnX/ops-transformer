@@ -104,6 +104,69 @@ for (int i = 1; i < inverseVecLen; ++i) {  // 31 步循环
 
 ## 四、修改方案
 
+### 4.0 正确的 Neumann 架构设计 🔴 关键
+
+**问题发现**: 原 NeumannInverseCompute 在 AIV 分支调用 AICProcess 是错误的！
+
+**正确架构** (利用 Cube L0C 累加能力):
+
+```
+数据流设计:
+  GM(L FP32) → L1 → L0A/L0B → Cube(MMA FP32) → L0C(FP32累加) → GM(FP32)
+                                                         ↓
+                                            GM(FP32) → L1 → L0A → 下次 MMA
+
+核心优化:
+  1. L0C 可以直接累加 (无需 Vector Add)
+  2. 初始 INV₀ = I - L 可以通过 SetBias 实现
+  3. 每次迭代: L0C += INV × L_pow (累加模式)
+  4. FP32 全程在 Cube 流水线
+```
+
+**L0C 累加机制**:
+
+```cpp
+// Ascend C matmul API 支持 L0C bias
+mm.SetOrgShape(M, N, K);
+mm.SetSingleShape(M, N, K);
+mm.SetTensorA(A_gm);      // L0A 输入
+mm.SetTensorB(B_gm);      // L0B 输入
+mm.SetBias(bias_gm);      // ← 关键：L0C 初始值 = bias
+mm.IterateAll(C_gm);      // 输出 = A×B + bias (L0C 累加)
+mm.End();
+```
+
+**Neumann 倍增法正确实现**:
+
+```
+步骤0: INV₀ = I - L
+  - bias = I (单位矩阵，GM buffer)
+  - A = L, B = L (但需要 -L × L = -L²)
+  - 或直接: bias = 0, A = -L, 输出到 INV_Gm_
+
+步骤1-3: INV_k = INV_{k-1} + INV_{k-1} × L_pow_k
+  - bias = INV_{k-1} (L0C 初始值)
+  - A = INV_{k-1}, B = L_pow_k
+  - 输出 = INV × L_pow + INV = INV_k (L0C 累加)
+```
+
+**AIC 分支执行** (必须):
+
+```cpp
+if ASCEND_IS_AIC {
+    // Neumann 求逆在 AIC 分支执行
+    if (INVERSE_SHAPE == chunkSize_) {
+        NeumannMatmulCompute();  // 利用 Cube L0C 累加
+    }
+}
+if ASCEND_IS_AIV {
+    // AIV 仅准备 L 数据，不参与求逆计算
+    // mask/gamma 操作完成后等待 AIC 求逆结果
+}
+```
+
+---
+
 ### 4.1 Stage1 修改项
 
 #### 修改点 1: Tiling 层 chunkSize

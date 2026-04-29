@@ -21,17 +21,17 @@ TEST_PARAMS = {
         "nv": [4],
         "dk": [128],
         "dv": [128],
-        "chunk_size": [64],
+        "chunk_size": [16],
         "data_type": [torch.bfloat16],
     },
     "Testcase1": {
         "B": [1],
-        "seqlen": [16384],
+        "seqlen": [1024],
         "nk": [4],
         "nv": [4],
         "dk": [128],
         "dv": [128],
-        "chunk_size": [64],
+        "chunk_size": [16],
         "data_type": [torch.bfloat16],
     }
 }

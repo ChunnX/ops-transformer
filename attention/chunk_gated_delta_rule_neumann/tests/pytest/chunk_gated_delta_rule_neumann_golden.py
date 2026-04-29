@@ -108,7 +108,7 @@ def chunk_gated_delta_rule_native(
     value,
     g,
     beta,
-    chunk_size=64,
+    chunk_size=16,
     initial_state=None,
     output_final_state=False,
     use_qk_l2norm_in_kernel=False,
@@ -331,7 +331,7 @@ def cgdr_npu(q, k, v, g, beta, scale, initial_state, actual_seq_lengths):
     return o_npu, state_npu
 
 
-def run_chunk_gated_delta_rule_eager(B, seqlen, nk, nv, dk, dv, chunk_size=64,
+def run_chunk_gated_delta_rule_eager(B, seqlen, nk, nv, dk, dv, chunk_size=16,
                                      data_type=torch.bfloat16):
     torch_npu.npu.set_device(int(DEVICE_ID))
     # ======================== gen input data start =============================
