@@ -11,6 +11,7 @@
 #ifndef ACLNN_LIGHTNING_INDEXER_V2_METADATA_AICPU_H
 #define ACLNN_LIGHTNING_INDEXER_V2_METADATA_AICPU_H
 
+#include <string>
 #include "aclnn/aclnn_base.h"
 
 #ifdef __cplusplus
@@ -28,7 +29,8 @@ aclnnLightningIndexerV2MetadataGetWorkspaceSize(
 __attribute__((visibility("default"))) 
 aclnnStatus CheckSingleParamLiV2(int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t maxSeqlenKOptional, 
                                  int64_t numHeadsQ, int64_t numHeadsK, char* layoutQOptional, char* layoutKOptional, 
-                                 int64_t maskModeOptional);
+                                 int64_t maskModeOptional, uint32_t aicCoreNum, uint32_t aivCoreNum,
+                                  const std::string &socVersion);
 
 __attribute__((visibility("default")))
 aclnnStatus CheckExistenceLiV2(char* layoutQOptional, char* layoutKOptional, const aclTensor* cuSeqLensQOptional, 

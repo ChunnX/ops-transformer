@@ -11,6 +11,7 @@
 #ifndef ACLNN_QUANT_LIGHTNING_INDEXER_V2_METADATA_AICPU_H
 #define ACLNN_QUANT_LIGHTNING_INDEXER_V2_METADATA_AICPU_H
 
+#include <string>
 #include "aclnn/aclnn_base.h"
 
 #ifdef __cplusplus
@@ -19,25 +20,26 @@ extern "C" {
 
 __attribute__((visibility("default"))) aclnnStatus
 aclnnQuantLightningIndexerV2MetadataGetWorkspaceSize(
-    const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensKOptional, const aclTensor* sequsedQOptional, 
-    const aclTensor* sequsedKOptional, int64_t numHeadsQ, int64_t numHeadsK, int64_t headDim, int64_t topkOptional, 
-    int64_t qQuantModeOptional, int64_t kQuantModeOptional, int64_t batchSizeOptional, int64_t maxSeqlenQOptional, 
-    int64_t maxSeqlenKOptional, char* layoutQOptional, char* layoutKOptional, int64_t maskModeOptional, 
+    const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensKOptional, const aclTensor* sequsedQOptional,
+    const aclTensor* sequsedKOptional, int64_t numHeadsQ, int64_t numHeadsK, int64_t headDim, int64_t topkOptional,
+    int64_t qQuantModeOptional, int64_t kQuantModeOptional, int64_t batchSizeOptional, int64_t maxSeqlenQOptional,
+    int64_t maxSeqlenKOptional, char* layoutQOptional, char* layoutKOptional, int64_t maskModeOptional,
     const aclTensor* metaData, uint64_t* workspaceSize, aclOpExecutor** executor);
 
 __attribute__((visibility("default"))) 
-aclnnStatus CheckSingleParamQliV2(int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t maxSeqlenKOptional, 
-                                  int64_t numHeadsQ, int64_t numHeadsK, int64_t qQuantModeOptional, 
-                                  int64_t kQuantModeOptional, char* layoutQOptional, char* layoutKOptional, 
-                                  int64_t maskModeOptional);
+aclnnStatus CheckSingleParamQliV2(int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t maxSeqlenKOptional,
+                                  int64_t numHeadsQ, int64_t numHeadsK, int64_t qQuantModeOptional,
+                                  int64_t kQuantModeOptional, char* layoutQOptional, char* layoutKOptional,
+                                  int64_t maskModeOptional, uint32_t aicCoreNum, uint32_t aivCoreNum,
+                                  const std::string &socVersion);
 
 __attribute__((visibility("default")))
-aclnnStatus CheckExistenceQliV2(char* layoutQOptional, char* layoutKOptional, const aclTensor* cuSeqLensQOptional, 
+aclnnStatus CheckExistenceQliV2(char* layoutQOptional, char* layoutKOptional, const aclTensor* cuSeqLensQOptional,
                                 const aclTensor* cuSeqLensKOptional, int64_t maskModeOptional);
 
 __attribute__((visibility("default")))
-aclnnStatus CheckConsistencyQliV2(char* layoutQOptional, char* layoutKOptional, const aclTensor* cuSeqLensQOptional, 
-                                  const aclTensor* cuSeqLensKOptional, const aclTensor* sequsedQOptional, 
+aclnnStatus CheckConsistencyQliV2(char* layoutQOptional, char* layoutKOptional, const aclTensor* cuSeqLensQOptional,
+                                  const aclTensor* cuSeqLensKOptional, const aclTensor* sequsedQOptional,
                                   const aclTensor* sequsedKOptional, int64_t batchSizeOptional);
 
 __attribute__((visibility("default")))

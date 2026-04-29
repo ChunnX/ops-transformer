@@ -11,6 +11,7 @@
 #ifndef ACLNN_SPARSE_FLASH_MLA_METADATA_AICPU_H
 #define ACLNN_SPARSE_FLASH_MLA_METADATA_AICPU_H
 
+#include <string>
 #include "aclnn/aclnn_base.h"
 
 #ifdef __cplusplus
@@ -29,7 +30,8 @@ aclnnStatus aclnnSparseFlashMlaMetadataGetWorkspaceSize(
 __attribute__((visibility("default")))
 aclnnStatus CheckSingleParamSmla(int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t maxSeqlenKvOptional,
     int64_t numHeadsQ, int64_t numHeadsKv, int64_t oriTopKOptional, int64_t oriMaskModeOptional,
-    char *layoutQOptional, char *layoutKvOptional, bool hasOriKvOptional);
+    char *layoutQOptional, char *layoutKvOptional, bool hasOriKvOptional, uint32_t aicCoreNum, uint32_t aivCoreNum,
+    const std::string &socVersion);
 
 __attribute__((visibility("default")))
 aclnnStatus CheckExistenceSmla(const aclTensor *cuSeqLensQOptional, const aclTensor *cuSeqLensOriKvOptional,

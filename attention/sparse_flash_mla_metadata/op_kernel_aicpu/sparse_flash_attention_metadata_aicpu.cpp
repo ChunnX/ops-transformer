@@ -53,9 +53,9 @@ bool SparseFlashMlaMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     bool requiredAttrs = GetAttrValue(ctx, "num_heads_q", queryHeadNum_) &&
                          GetAttrValue(ctx, "num_heads_kv", kvHeadNum_) &&
                          GetAttrValue(ctx, "head_dim", headDim_) &&
-                         GetAttrValueOpt(ctx, "soc_version", socVersion_) &&
-                         GetAttrValueOpt(ctx, "aic_core_num", aicCoreNum_) &&
-                         GetAttrValueOpt(ctx, "aiv_core_num", aivCoreNum_);
+                         GetAttrValue(ctx, "aic_core_num", aicCoreNum_) &&
+                         GetAttrValue(ctx, "aiv_core_num", aivCoreNum_) &&
+                         GetAttrValue(ctx, "soc_version", socVersion_);
     KERNEL_CHECK_FALSE(requiredAttrs, false, "Missing required attrs !!");
 
     // attributes optional

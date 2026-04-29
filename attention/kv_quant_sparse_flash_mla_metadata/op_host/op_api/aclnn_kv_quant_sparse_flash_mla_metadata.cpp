@@ -37,11 +37,12 @@ static aclnnStatus ParamsCheck(const aclTensor *cuSeqLensQOptional, const aclTen
     const aclTensor *sequsedQOptional, const aclTensor *sequsedOriKvOptional, int64_t kvQuantMode,
     int64_t numHeadsQ, int64_t numHeadsKv, int64_t batchSizeOptional, int64_t maxSeqlenQOptional,
     int64_t maxSeqlenKvOptional, int64_t oriTopKOptional, int64_t tileSizeOptional, int64_t ropeHeadDimOptional,
-    int64_t oriMaskModeOptional, char *layoutQOptional, char *layoutKvOptional, bool hasOriKvOptional)
+    int64_t oriMaskModeOptional, char *layoutQOptional, char *layoutKvOptional, bool hasOriKvOptional,
+    uint32_t aicCoreNum, uint32_t aivCoreNum, const std::string &socVersion)
 {
     auto ret = CheckSingleParamQsmla(batchSizeOptional, maxSeqlenQOptional, maxSeqlenKvOptional, kvQuantMode, numHeadsQ,
         numHeadsKv, oriTopKOptional, tileSizeOptional, ropeHeadDimOptional, oriMaskModeOptional, layoutQOptional,
-        layoutKvOptional, hasOriKvOptional);
+        layoutKvOptional, hasOriKvOptional, aicCoreNum, aivCoreNum, socVersion);
     CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     ret = CheckExistenceQsmla(cuSeqLensQOptional, cuSeqLensOriKvOptional, sequsedOriKvOptional, layoutQOptional,
@@ -113,7 +114,7 @@ int64_t GetKvBatchSizeQsmla(const aclTensor* cuSeqLensOriKvOptional, const aclTe
 aclnnStatus CheckSingleParamQsmla(int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t maxSeqlenKvOptional,
     int64_t kvQuantMode, int64_t numHeadsQ, int64_t numHeadsKv, int64_t oriTopKOptional, int64_t tileSizeOptional,
     int64_t ropeHeadDimOptional, int64_t oriMaskModeOptional, char *layoutQOptional, char *layoutKvOptional,
-    bool hasOriKvOptional)
+    bool hasOriKvOptional, uint32_t aicCoreNum, uint32_t aivCoreNum, const std::string &socVersion)
 {
     // batch_size 非负校验
     CHECK_COND(batchSizeOptional >= 0, ACLNN_ERR_PARAM_INVALID,
@@ -155,7 +156,13 @@ aclnnStatus CheckSingleParamQsmla(int64_t batchSizeOptional, int64_t maxSeqlenQO
     // has_ori_kv 校验
     CHECK_COND(hasOriKvOptional == true,
         ACLNN_ERR_PARAM_INVALID, "has_ori_kv must be true, but got %d", hasOriKvOptional);
-
+    // 核心数校验
+    CHECK_COND(aicCoreNum > 0, ACLNN_ERR_PARAM_INVALID,
+        "AIC num should be larger than 0, but got %u", aicCoreNum);
+    CHECK_COND(aivCoreNum > 0, ACLNN_ERR_PARAM_INVALID,
+        "AIV num should be larger than 0, but got %u", aivCoreNum);
+    CHECK_COND(socVersion.find("Ascend950") != std::string::npos, ACLNN_ERR_PARAM_INVALID,
+        "This operator supports [Ascend950], but now is on %s", socVersion.c_str());
     return ACLNN_SUCCESS;
 }
 
@@ -339,19 +346,16 @@ aclnnStatus aclnnKvQuantSparseFlashMlaMetadataGetWorkspaceSize(
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
-    auto ret = ParamsCheck(cuSeqLensQOptional, cuSeqLensOriKvOptional, sequsedQOptional, sequsedOriKvOptional,
-        kvQuantMode, numHeadsQ, numHeadsKv, batchSizeOptional, maxSeqlenQOptional, maxSeqlenKvOptional, oriTopKOptional,
-        tileSizeOptional, ropeHeadDimOptional, oriMaskModeOptional, layoutQOptional, layoutKvOptional,
-        hasOriKvOptional);
-    CHECK_RET(ret == ACLNN_SUCCESS, ret);
-
     const op::PlatformInfo &npuInfo = op::GetCurrentPlatformInfo();
     uint32_t aicCoreNum = npuInfo.GetCubeCoreNum();
     uint32_t aivCoreNum = npuInfo.GetVectorCoreNum();
-    const char *socVersion = npuInfo.GetSocLongVersion().c_str();
-    // 核心数校验
-    CHECK_COND(aicCoreNum != 0 && aivCoreNum != 0, ACLNN_ERR_PARAM_INVALID,
-        "AIC num or AIV num should not be 0, but got %u and %u", aicCoreNum, aivCoreNum);
+    const std::string socVersion = npuInfo.GetSocLongVersion();
+
+    auto ret = ParamsCheck(cuSeqLensQOptional, cuSeqLensOriKvOptional, sequsedQOptional, sequsedOriKvOptional,
+        kvQuantMode, numHeadsQ, numHeadsKv, batchSizeOptional, maxSeqlenQOptional, maxSeqlenKvOptional, oriTopKOptional,
+        tileSizeOptional, ropeHeadDimOptional, oriMaskModeOptional, layoutQOptional, layoutKvOptional,
+        hasOriKvOptional, aicCoreNum, aivCoreNum, socVersion);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     auto cuSeqLensQOptionalContiguous = l0op::Contiguous(cuSeqLensQOptional, uniqueExecutor.get());
     CHECK_RET(cuSeqLensQOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
@@ -366,7 +370,7 @@ aclnnStatus aclnnKvQuantSparseFlashMlaMetadataGetWorkspaceSize(
         sequsedQOptionalContiguous, sequsedOriKvOptionalContiguous,
         numHeadsQ, numHeadsKv, headDim, kvQuantMode, batchSizeOptional, maxSeqlenQOptional, maxSeqlenKvOptional,
         oriTopKOptional, tileSizeOptional, ropeHeadDimOptional, oriMaskModeOptional, layoutQOptional, layoutKvOptional,
-        hasOriKvOptional, socVersion, aicCoreNum, aivCoreNum, metaData, uniqueExecutor.get());
+        hasOriKvOptional, socVersion.c_str(), aicCoreNum, aivCoreNum, metaData, uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = 0;

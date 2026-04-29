@@ -11,6 +11,7 @@
 #ifndef ACLNN_KV_QUANT_SPARSE_FLASH_MLA_METADATA_AICPU_H
 #define ACLNN_KV_QUANT_SPARSE_FLASH_MLA_METADATA_AICPU_H
 
+#include <string>
 #include "aclnn/aclnn_base.h"
 
 #ifdef __cplusplus
@@ -31,7 +32,7 @@ __attribute__((visibility("default")))
 aclnnStatus CheckSingleParamQsmla(int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t maxSeqlenKvOptional,
     int64_t kvQuantMode, int64_t numHeadsQ, int64_t numHeadsKv, int64_t oriTopKOptional, int64_t tileSizeOptional,
     int64_t ropeHeadDimOptional, int64_t oriMaskModeOptional, char *layoutQOptional, char *layoutKvOptional,
-    bool hasOriKvOptional);
+    bool hasOriKvOptional, uint32_t aicCoreNum, uint32_t aivCoreNum, const std::string &socVersion);
 
 __attribute__((visibility("default")))
 aclnnStatus CheckExistenceQsmla(const aclTensor *cuSeqLensQOptional, const aclTensor *cuSeqLensOriKvOptional,
