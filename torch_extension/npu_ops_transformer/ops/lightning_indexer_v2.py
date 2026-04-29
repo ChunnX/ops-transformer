@@ -1,0 +1,71 @@
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+import torch
+import torch_npu
+from torch.library import impl
+from npu_ops_transformer.op_builder.builder import OpBuilder
+from npu_ops_transformer.op_builder.builder import AS_LIBRARY
+
+
+class LightningIndexerV2OpBuilder(OpBuilder):
+    def __init__(self):
+        super(LightningIndexerV2OpBuilder, self).__init__("npu_lightning_indexer_v2")
+
+    def sources(self):
+        """Path to C++ source code."""
+        return ['ops/csrc/lightning_indexer_v2.cpp']
+
+    def schema(self) -> str:
+        """PyTorch operator signature."""
+        return "npu_lightning_indexer_v2(Tensor query, Tensor key, Tensor weights, " \
+            "int topk, *, Tensor? cu_seqlens_q=None, " \
+            "Tensor? cu_seqlens_k=None, Tensor? seqused_q=None, Tensor? seqused_k=None, Tensor? block_table=None, " \
+            "Tensor? metadata=None, str layout_query=\"BSND\", str layout_key=\"BSND\", int mask_mode=0, " \
+            "int return_value=0) -> (Tensor, Tensor)"
+
+    def register_meta(self):
+        """
+        Registers the Meta implementation (Shape/Dtype inference).
+        Essential for Autograd and FakeTensor support.
+        """
+        @impl(AS_LIBRARY, self.name, "Meta")
+        def npu_lightning_indexer_v2_meta(query, key, weights, topk, *, cu_seqlens_q=None, cu_seqlens_k=None,
+                                          seqused_q=None, seqused_k=None, block_table=None, metadata=None, 
+                                          layout_query="BSND", layout_key="BSND", mask_mode=0, return_value=0):
+            keyHeadNum = key.shape[1] if layout_key == "TND" else key.shape[2]
+
+            if layout_query == "BSND":
+                sparse_indices_out = torch.empty([query.shape[0], query.shape[1], keyHeadNum, topk], dtype=torch.int32, device="meta")
+            else:
+                sparse_indices_out = torch.empty([query.shape[0], keyHeadNum, topk], dtype=torch.int32, device="meta")
+            if return_value:
+                if layout_query == "BSND":
+                    sparse_values_out = torch.empty([query.shape[0], query.shape[1], keyHeadNum, topk], dtype=torch.float, device="meta")
+                else:
+                    sparse_values_out = torch.empty([query.shape[0], keyHeadNum, topk], dtype=torch.float, device="meta")
+            else:
+                sparse_values_out = torch.empty([0], dtype=torch.float, device="meta")
+            return (sparse_indices_out, sparse_values_out)
+
+# Instantiate the builder
+npu_lightning_indexer_v2_op_builder = LightningIndexerV2OpBuilder()
+op_module = npu_lightning_indexer_v2_op_builder.load()  # Compiles/loads the .so file
+
+
+@impl(AS_LIBRARY, npu_lightning_indexer_v2_op_builder.name, "PrivateUse1")
+def npu_lightning_indexer_v2(query, key, weights, topk, *, cu_seqlens_q=None, cu_seqlens_k=None,
+                             seqused_q=None, seqused_k=None, block_table=None, metadata=None, 
+                             layout_query="BSND", layout_key="BSND", mask_mode=0, return_value=0):
+    """
+    dispatcher implementation for NPU.zhe
+    'PrivateUse1' is the combine key for custom NPU backends.
+    """
+    return op_module.npu_lightning_indexer_v2(query, key, weights, topk, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, 
+                                              block_table, metadata, layout_query, layout_key, mask_mode, return_value)
