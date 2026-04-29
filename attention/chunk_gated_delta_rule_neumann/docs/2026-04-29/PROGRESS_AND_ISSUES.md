@@ -249,3 +249,8 @@ python3 run_chunk_gdr_performance_msprof.py --case prefill_b8_s128_d64_h16_hkv4 
 - `cube_utilization_y_col_ratio`: 直接来自 `op_summary_*.csv` 的 Y 列 `aic_mac_ratio`。
 - `cube_utilization_y_col_pct`: `aic_mac_ratio * 100`，用于 CSV 中按百分比阅读。
 - `msprof_last_cube_utilization_pct`: 原最后一列，仅用于排查工具字段差异。
+
+**上传结果**:
+- fork 分支已推送：`chunk-gdr-neumann-20260429-upload`。
+- 远端提交：`61d5a61c57502fdc80b1899f68e579bacb364213`。
+- MR 创建入口：`https://gitcode.com/chuqihang/ops-transformer/merge_requests/new?source_branch=chunk-gdr-neumann-20260429-upload`。

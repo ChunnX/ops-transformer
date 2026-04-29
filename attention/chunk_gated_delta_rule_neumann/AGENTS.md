@@ -350,3 +350,4 @@ export ASCEND_CUSTOM_OPP_PATH=${ASCEND_HOME_PATH}/opp/vendors/custom_transformer
 - 新增 C64 两方案实施计划 `docs/2026-04-29/C64_NEUMANN_INVERSE_IMPLEMENTATION_PLAN.md`，规划 `C64_1616_FP32_CVInverse` 与 `C64_3232_FP32_CVInverse` 的实现和验证顺序
 - 修正 `summarize_chunk_gdr_performance_msprof.py` 的 cube 指标读取：按用户 profiling 结论改看 Y 列 `aic_mac_ratio`，CSV 新增 `cube_utilization_y_col_ratio/pct`，最后一列 `cube_utilization(%)` 仅保留审计
 - 基于已有完整 `msprof` 输出重新生成 `performance_compare.csv` 与 `performance_raw.csv`，准备提交到 fork 分支；完整 `PROF_*` 原始目录不纳入代码提交
+- 已推送 fork 分支 `chunk-gdr-neumann-20260429-upload`，远端提交 `61d5a61c57502fdc80b1899f68e579bacb364213`；推送前修复本机 `id_ed25519.pub` 与私钥不匹配问题

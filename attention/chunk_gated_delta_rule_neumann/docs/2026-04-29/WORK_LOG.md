@@ -309,3 +309,9 @@ bash test_run.sh compare
 - 当前准备提交到独立 fork 分支。
 - 提交范围只包含算子代码、torch_npu 注册、pytest/msprof 脚本、文档和小体积 CSV 摘要。
 - 不提交完整 `PROF_*` profiler 原始目录，避免把约 55MB 临时 profiling 产物纳入代码分支。
+
+**上传结果**:
+- 已创建并推送 fork 分支：`chunk-gdr-neumann-20260429-upload`。
+- 本次提交：`61d5a61c Add chunk GDR precision and profiling tooling`。
+- fork MR 地址：`https://gitcode.com/chuqihang/ops-transformer/merge_requests/new?source_branch=chunk-gdr-neumann-20260429-upload`。
+- 推送前修复本机 SSH 公钥文件与私钥不匹配问题，仅重建 `~/.ssh/id_ed25519.pub`，未修改私钥。
