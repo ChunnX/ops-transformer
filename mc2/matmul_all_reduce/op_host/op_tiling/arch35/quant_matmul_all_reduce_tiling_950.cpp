@@ -367,7 +367,7 @@ void QuantMatmulAllReduceTilingA5::PrintExtendMatmulTiling(bool isTail)
     OP_LOGD(opName_, "AdaptiveSlidingWin.nTailTile=%u.", tiling.adaptiveSlidingWin.nTailTile);
 }
 
-ge::graphStatus QuantMatmulAllReduceTilingA5::GetWorkspaceSizeInStandardCard4P(const uint64_t gmcFloat)
+ge::graphStatus QuantMatmulAllReduceTilingA5::GetWorkspaceSizeForA2ARSAG(const uint64_t gmcFloat)
 {
     uint64_t commLen = 0UL;
     uint64_t cgmPadLen = 0UL;
@@ -438,8 +438,8 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::GetWorkspaceSize()
                         static_cast<uint64_t>(args_.outputDtypeSize);
     if (mc2tiling::IsUseA2APath(args_.rankDim, npuArch_) && !MutableRCSTilingData().isInputCommQuantScale) {
         OP_TILING_CHECK(
-            GetWorkspaceSizeInStandardCard4P(gmcFloat) != ge::GRAPH_SUCCESS,
-            OP_LOGE(opName_, "get workspace size By GetWorkspaceSizeInStandardCard4P failed."),
+            GetWorkspaceSizeForA2ARSAG(gmcFloat) != ge::GRAPH_SUCCESS,
+            OP_LOGE(opName_, "get workspace size By GetWorkspaceSizeForA2ARSAG failed."),
             return ge::GRAPH_FAILED);
     } else {
         OP_TILING_CHECK(
@@ -1002,9 +1002,15 @@ CutResult QuantMatmulAllReduceTilingA5::GetTilingResult()
     SetMCutSocVersion(inputSocVersion);
     const gert::StorageShape* commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
     const gert::StorageShape* commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
-    if (mc2tiling::IsUseA2APath(args_.rankDim, npuArch_)) {
+    if (mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_)) {
         MMAllReduceFitBalanceTiling allReduceTilingHccl(args_,
-                                                        KernelType::ALL_REDUCE_VIA_TWO_SHOT, TopoType::STANDARD_CARD);
+                                                        KernelType::ALL_REDUCE_VIA_TWO_SHOT,
+                                                        TopoType::STANDARD_CARD);
+        mCutAllreduce = allReduceTilingHccl.GetTiling();
+    } else if (mc2tiling::Is8P(args_.rankDim, npuArch_)){
+        MMAllReduceFitBalanceTiling allReduceTilingHccl(args_,
+                                                        KernelType::ALL_REDUCE_VIA_TWO_SHOT,
+                                                        TopoType::EIGHT_P);
         mCutAllreduce = allReduceTilingHccl.GetTiling();
     } else {
         MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_);
