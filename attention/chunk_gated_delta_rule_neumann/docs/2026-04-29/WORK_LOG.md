@@ -452,3 +452,34 @@ bash test_run.sh compare
 1. 优先把 `NeumannAddCompute()` 从 AIV 搬到 AIC/FixPipe atomic add：`tmp = INV @ Lpow` 搬出时直接累加到 `INVWsGm_`，减少 3 轮 AIV MTE2/MTE3 和 AIC/AIV 往返。
 2. 为 `S<=16` 或 C16 exact chunk 增加直接 AIV 16×16 inverse 特化路径，避免 6 次 tiny matmul 的调度开销；该路径需要重新精度/性能对比。
 3. 真正实现 FP16 A/B matmul 只能降低 MAC 成本，不能解决当前 `S=16` 的主要 scalar/sync 问题，优先级低于减少 matmul 调用和同步次数。
+
+## profiling 汇总 CSV 字段调整
+
+**用户要求**:
+1. `performance_compare.csv` 不再输出 `normal_prof_dir` 和 `neumann_prof_dir`。
+2. CSV 需要提取 AIC/AIV 关键指标：`aic_mac_time`、`aic_mac_ratio`、`aic_scalar_time`、`aic_mte1_time`、`aic_mte2_time`、`aic_fixpipe_time`、`aic_icache_miss_rate`、`aiv_time`、`aiv_total_cycles`、`aiv_vec_time`、`aiv_vec_ratio`、`aiv_scalar_time`、`aiv_mte2_time`、`aiv_mte3_time`、`aiv_icache_miss_rate`。
+3. 只有 `aic_mac` 和 `aiv_vec` 保留 ratio，其他 ratio 不输出。
+4. 用现有 profiling 结果按新格式重新汇总。
+
+**实现动作**:
+- 修改 `tests/pytest/summarize_chunk_gdr_performance_msprof.py`：
+  - 新增统一 `METRIC_COLUMNS` 指标映射。
+  - `performance_raw.csv` 保留 `prof_dir/summary_path` 用于追溯原始 profiling。
+  - `performance_compare.csv` 移除 `normal_prof_dir/neumann_prof_dir`。
+  - `performance_compare.csv` 展开 normal/neumann 两组指标，字段前缀分别为 `normal_` 和 `neumann_`。
+  - 只保留 `aic_mac_ratio` 与 `aiv_vec_ratio`，不输出 `aic_scalar_ratio/aic_mte*_ratio/aiv_scalar_ratio/aiv_mte*_ratio`。
+
+**重汇总结果**:
+- 已重新生成：
+  - `tests/pytest/prof_out/chunk_gdr_prefill_full/performance_raw.csv`
+  - `tests/pytest/prof_out/chunk_gdr_prefill_full/performance_compare.csv`
+  - `tests/pytest/prof_out/chunk_gdr_prefill_s16_s64/performance_raw.csv`
+  - `tests/pytest/prof_out/chunk_gdr_prefill_s16_s64/performance_compare.csv`
+  - `tests/pytest/prof_out/chunk_gdr_prefill_smoke/performance_raw.csv`
+  - `tests/pytest/prof_out/chunk_gdr_prefill_smoke/performance_compare.csv`
+
+**验证**:
+- `python3 -m py_compile tests/pytest/summarize_chunk_gdr_performance_msprof.py` 通过。
+- 三个已跟踪 profiling 目录重新 summarize 通过。
+- 检查确认所有 `performance_compare.csv` 均不含 `prof_dir` 字段。
+- 检查确认 ratio 字段只包含 `aic_mac_ratio` 和 `aiv_vec_ratio`。

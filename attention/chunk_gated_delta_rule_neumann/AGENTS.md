@@ -359,3 +359,4 @@ export ASCEND_CUSTOM_OPP_PATH=${ASCEND_HOME_PATH}/opp/vendors/custom_transformer
 - 补充性能 prefill 批测短序列 case：在 `compare_chunk_gdr_performance_paramset.py` 中为 `B=8/16/32/64` 新增 `S=16` 和 `S=64`，性能 case 总数从 24 增至 32；`py_compile` 与 `B=8,S=16/64` dry-run 通过。
 - 完成 `S=16/S=64` 新增性能 case 实测：8 个 prefill shape × 2 算子真实 `msprof` 全部通过；结果保存到 `tests/pytest/prof_out/chunk_gdr_prefill_s16_s64/`。`S=16` Neumann 平均为 normal 的 `1.119x` 耗时，`S=64` 为 `2.441x`；8/8 case 普通 `ChunkGDR` 更快。
 - 拆解 `S=16` Neumann 仍慢原因：msprof 显示 AIC MAC time 已下降，但 AIC scalar time 明显上升；代码对比确认 normal stage1 约 6 次 matmul，Neumann stage1 约 10 次 tiny matmul + 3 轮 AIC/AIV `INV += tmp` 往返。当前慢点是固定调度、同步和 GM 累加开销，不是 MAC 计算量。
+- 按用户要求调整 profiling 汇总 CSV：`performance_compare.csv` 删除 `normal_prof_dir/neumann_prof_dir`，展开 normal/neumann AIC/AIV 指标；ratio 字段仅保留 `aic_mac_ratio` 与 `aiv_vec_ratio`。已用现有 `full`、`s16_s64`、`smoke` profiling 目录重新生成汇总 CSV。

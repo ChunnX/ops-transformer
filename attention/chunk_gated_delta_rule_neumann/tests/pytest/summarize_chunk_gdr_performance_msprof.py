@@ -13,9 +13,28 @@ OP_TYPES = {
     "neumann": "ChunkGatedDeltaRuleNeumann",
 }
 
+METRIC_COLUMNS = [
+    ("aic_mac_time_us", "aic_mac_time(us)", True),
+    ("aic_mac_ratio", "aic_mac_ratio", True),
+    ("aic_scalar_time_us", "aic_scalar_time(us)", False),
+    ("aic_mte1_time_us", "aic_mte1_time(us)", False),
+    ("aic_mte2_time_us", "aic_mte2_time(us)", False),
+    ("aic_fixpipe_time_us", "aic_fixpipe_time(us)", False),
+    ("aic_icache_miss_rate", "aic_icache_miss_rate", False),
+    ("aiv_time_us", "aiv_time(us)", False),
+    ("aiv_total_cycles", "aiv_total_cycles", False),
+    ("aiv_vec_time_us", "aiv_vec_time(us)", False),
+    ("aiv_vec_ratio", "aiv_vec_ratio", True),
+    ("aiv_scalar_time_us", "aiv_scalar_time(us)", False),
+    ("aiv_mte2_time_us", "aiv_mte2_time(us)", False),
+    ("aiv_mte3_time_us", "aiv_mte3_time(us)", False),
+    ("aiv_icache_miss_rate", "aiv_icache_miss_rate", False),
+]
+
 
 def to_float(value):
-    return float(str(value).strip())
+    value = str(value).strip()
+    return float(value) if value else 0.0
 
 
 def to_int(value):
@@ -41,24 +60,19 @@ def parse_target_rows(prof_dir, op_type):
         for row in csv.DictReader(csv_file):
             if row.get("OP Type") != op_type:
                 continue
-            rows.append(
-                {
-                    "prof_dir": str(prof_dir),
-                    "summary_path": str(summary_path),
-                    "task_id": to_int(row["Task ID"]),
-                    "op_name": row["Op Name"],
-                    "op_type": row["OP Type"],
-                    "task_duration_us": to_float(row["Task Duration(us)"]),
-                    "task_wait_time_us": to_float(row["Task Wait Time(us)"]),
-                    "aicore_time_us": to_float(row["aicore_time(us)"]),
-                    "aiv_time_us": to_float(row["aiv_time(us)"]),
-                    "aic_icache_miss_rate": to_float(row["aic_icache_miss_rate"]),
-                    "aiv_icache_miss_rate": to_float(row["aiv_icache_miss_rate"]),
-                    "cube_utilization_y_col_ratio": to_float(row["aic_mac_ratio"]),
-                    "cube_utilization_y_col_pct": to_float(row["aic_mac_ratio"]) * 100.0,
-                    "msprof_last_cube_utilization_pct": to_float(row["cube_utilization(%)"]),
-                }
-            )
+            parsed = {
+                "prof_dir": str(prof_dir),
+                "summary_path": str(summary_path),
+                "task_id": to_int(row["Task ID"]),
+                "op_name": row["Op Name"],
+                "op_type": row["OP Type"],
+                "task_duration_us": to_float(row["Task Duration(us)"]),
+                "task_wait_time_us": to_float(row["Task Wait Time(us)"]),
+                "aicore_time_us": to_float(row["aicore_time(us)"]),
+            }
+            for metric_name, msprof_name, _ in METRIC_COLUMNS:
+                parsed[metric_name] = to_float(row.get(msprof_name, "0"))
+            rows.append(parsed)
     rows.sort(key=lambda row: row["task_id"])
     return rows
 
@@ -99,24 +113,28 @@ def summarize(root):
         if "normal" in measurements and "neumann" in measurements:
             normal_us = measurements["normal"]["task_duration_us"]
             neumann_us = measurements["neumann"]["task_duration_us"]
-            compare_rows.append(
-                {
-                    "case_name": case_name,
-                    "B": case["batch_size"],
-                    "S": case["seqlen"],
-                    "D": case["dk"],
-                    "Hq": case["nv"],
-                    "Hkv": case["nk"],
-                    "normal_us": normal_us,
-                    "neumann_us": neumann_us,
-                    "neumann_speedup_vs_normal": normal_us / neumann_us if neumann_us > 0 else "",
-                    "normal_cube_utilization_y_col_pct": measurements["normal"]["cube_utilization_y_col_pct"],
-                    "neumann_cube_utilization_y_col_pct": measurements["neumann"]["cube_utilization_y_col_pct"],
-                    "faster": "neumann" if neumann_us < normal_us else "normal",
-                    "normal_prof_dir": measurements["normal"]["prof_dir"],
-                    "neumann_prof_dir": measurements["neumann"]["prof_dir"],
-                }
-            )
+            compare_row = {
+                "case_name": case_name,
+                "B": case["batch_size"],
+                "S": case["seqlen"],
+                "D": case["dk"],
+                "Hq": case["nv"],
+                "Hkv": case["nk"],
+                "normal_us": normal_us,
+                "neumann_us": neumann_us,
+                "neumann_speedup_vs_normal": normal_us / neumann_us if neumann_us > 0 else "",
+                "neumann_over_normal": neumann_us / normal_us if normal_us > 0 else "",
+                "faster": "neumann" if neumann_us < normal_us else "normal",
+            }
+            for ops in OP_TYPES:
+                measurement = measurements[ops]
+                compare_row[f"{ops}_task_wait_time_us"] = measurement["task_wait_time_us"]
+                compare_row[f"{ops}_aicore_time_us"] = measurement["aicore_time_us"]
+                for metric_name, _, include_ratio in METRIC_COLUMNS:
+                    if metric_name.endswith("_ratio") and not include_ratio:
+                        continue
+                    compare_row[f"{ops}_{metric_name}"] = measurement[metric_name]
+            compare_rows.append(compare_row)
 
     raw_path = root / "performance_raw.csv"
     compare_path = root / "performance_compare.csv"
@@ -131,7 +149,7 @@ def write_csv(path, rows):
         path.write_text("")
         return
     with path.open("w", newline="") as csv_file:
-        writer = csv.DictWriter(csv_file, fieldnames=list(rows[0].keys()))
+        writer = csv.DictWriter(csv_file, fieldnames=list(rows[0].keys()), lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
 

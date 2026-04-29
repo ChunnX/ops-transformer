@@ -338,3 +338,13 @@ python3 run_chunk_gdr_performance_msprof.py --output ./prof_out/chunk_gdr_prefil
 ### 判断
 
 `S=16` 慢不是因为 Neumann MAC 更多，而是当前 Neumann 实现的固定调度开销更高：6 次 16×16 tiny matmul 的 scalar 调度、3 轮 AIC/AIV flag 同步，以及 `tmp/INV` 的 GM 读写累加压过了 MAC 减少收益。
+
+## profiling CSV 字段调整状态
+
+| 项目 | 状态 | 说明 |
+|---|---|---|
+| compare prof_dir 字段 | 已删除 | `performance_compare.csv` 不再包含 `normal_prof_dir/neumann_prof_dir` |
+| AIC/AIV 指标提取 | 已完成 | normal/neumann 两组指标均展开到 compare CSV |
+| ratio 字段收敛 | 已完成 | 仅保留 `aic_mac_ratio` 与 `aiv_vec_ratio` |
+| 现有结果重汇总 | 已完成 | `full`、`s16_s64`、`smoke` 三个已跟踪 profiling 目录均已重生成 CSV |
+| 静态校验 | 已通过 | `py_compile` 与 header 检查通过 |
