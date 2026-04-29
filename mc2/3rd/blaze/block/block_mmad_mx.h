@@ -127,6 +127,8 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(SCALE_BUFFER_FLAG_1);
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(INPUT_BUFFER_FLAG_0);
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(INPUT_BUFFER_FLAG_1);
+        AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(M_MTE1_FLAG_0);
+        AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(M_MTE1_FLAG_1);
         AscendC::SetMMLayoutTransform(true); // true means column first when fixpipe_l0c2out
     }
 
@@ -140,6 +142,8 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SCALE_BUFFER_FLAG_1);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(INPUT_BUFFER_FLAG_0);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(INPUT_BUFFER_FLAG_1);
+        AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(M_MTE1_FLAG_0);
+        AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(M_MTE1_FLAG_1);
         AscendC::SetMMLayoutTransform(false); // false means row first when fixpipe_l0c2out
     }
 
@@ -318,7 +322,8 @@ public:
                               baseK_;
             // Load data to L0 and open DB
             uint64_t l0Offset = HALF_L0_SIZE * (l0PingPong_ & 0x1);
-            AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0PingPong_ & 0x1);
+            uint16_t mte1WaitMFlag = (l0PingPong_ & 0x1) + M_MTE1_FLAG_0;
+            AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(mte1WaitMFlag);
 
             // A, ScaleA L1->L0
             auto layoutAL0 = AscendC::Te::MakeFrameLayout<AscendC::Te::NZLayoutPtn, AscendC::Std::Int<C0_SIZE>>(
@@ -374,7 +379,7 @@ public:
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0PingPong_ & 0x1);
 
             Mmad(tileL1L0Param, iter0, iter1, kL0Iter, curKL0, tensorAL0, tensorBL0, tensorBt);
-            AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0PingPong_ & 0x1);
+            AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(mte1WaitMFlag);
             l0PingPong_++;
         }
     }
@@ -483,6 +488,9 @@ private:
 
     constexpr static uint16_t SCALE_BUFFER_FLAG_0 = 4;
     constexpr static uint16_t SCALE_BUFFER_FLAG_1 = 5;
+    constexpr static uint16_t M_MTE1_FLAG_0 = 4;
+    constexpr static uint16_t M_MTE1_FLAG_1 = 5;
+
     uint16_t biasBufId_ = 0;
     uint64_t biasL1OneBuffer_ = 0UL;
     uint64_t aL1OneBuffer_ = 0UL;

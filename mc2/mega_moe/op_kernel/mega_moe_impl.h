@@ -64,6 +64,7 @@ constexpr uint32_t L1_TILE_M = 128;
 constexpr uint32_t L1_TILE_N = 256;
 constexpr uint32_t L1_TILE_K = 256;
 constexpr uint32_t L0_TILE_K = 128;
+constexpr uint32_t SCALE_K_L1_RATE = 2;
 constexpr uint32_t SWIGLU_N_HALF = 2;
 constexpr uint32_t MAX_SINGLE_MN = 128 * 256;
 constexpr uint32_t BUFALIGN = (MAX_SINGLE_MN + 31U) / ALIGN32 *ALIGN32 * sizeof(bfloat16_t);
@@ -73,7 +74,7 @@ using L1TileShape = tla::Shape<tla::Int<L1_TILE_M>, tla::Int<L1_TILE_N>, tla::In
 using L0TileShape = tla::Shape<tla::Int<L1_TILE_M>, tla::Int<L1_TILE_N>, tla::Int<L0_TILE_K>>;
 
 // GroupMatmulSwigluQuant - GMM1 + SwiGLU + Quant
-template <typename ElementA, typename ElementB, typename ElementC, 
+template <typename ElementA, typename ElementB, typename ElementC,
           typename ElementMxScaleA, typename ElementMxScaleB>
 __aicore__ inline void GroupMatmulSwigluQuant(
     BlockEpilogueSwigluQuant<L1TileShape, ElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true>& epilogueOp,
@@ -115,10 +116,10 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     using MakeLayoutA = Te::FrameLayoutFormat<LayoutA, Std::Int<c0SizeA>>;
     using MakeLayoutB = Te::FrameLayoutFormat<LayoutB, Std::Int<c0SizeB>>;
     using MakeLayoutScaleA = Std::conditional_t<
-        transA, Te::FrameLayoutFormat<Te::ScaleADNLayoutPtn, Std::Int<c0SizeScale>>
+        transA, Te::FrameLayoutFormat<Te::ScaleADNLayoutPtn, Std::Int<c0SizeScale>>,
         Te::FrameLayoutFormat<Te::ScaleANDLayoutPtn, Std::Int<c0SizeScale>>>;
     using MakeLayoutScaleB = Std::conditional_t<
-        transB, Te::FrameLayoutFormat<Te::ScaleBDNLayoutPtn, Std::Int<c0SizeScale>>
+        transB, Te::FrameLayoutFormat<Te::ScaleBDNLayoutPtn, Std::Int<c0SizeScale>>,
         Te::FrameLayoutFormat<Te::ScaleBNDLayoutPtn, Std::Int<c0SizeScale>>>;
     using MakeLayoutC = Te::FrameLayoutFormat<LayoutC, Std::Int<c0SizeC>>;
 
@@ -126,20 +127,20 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     auto layoutB = MakeLayoutB{}(k, n);
     auto layoutScaleA = MakeLayoutScaleA{}(m, scaleK);
     auto layoutScaleB = MakeLayoutScaleB{}(scaleK, n);
-    auto layoutBias = Te::FrameLayoutFormat<LayoutBias>(1u, n);  // block mmad需要传入bias
+    auto layoutBias = Te::MakeFrameLayout<LayoutBias>(1u, n);  // block mmad需要传入bias
     auto layoutC = MakeLayoutC{}(L1_TILE_M, L1_TILE_N);
 
     using BiasType = float;
-    using DiapatchPolicy = Blaze::Gemm::MatmulWithScaleMx<>;
+    using DispatchPolicy = Blaze::Gemm::MatmulWithScale<>;
     using BlockMmad =
-        Blaze::Gemm::Block::BlockMmadMx<DiapatchPolicy, ElementA, LayoutA, ElementB, LayoutB, ElementC, LayoutC,
+        Blaze::Gemm::Block::BlockMmadMx<DispatchPolicy, ElementA, LayoutA, ElementB, LayoutB, ElementC, LayoutC,
             BiasType, LayoutBias, void>;
     BlockMmad blockMmad;
     bool enableL0CPingPong = false;
     typename BlockMmad::L1Params l1Params{
         .kL1 = L1_TILE_K,
-        .scaleKL1 = L1_TILE_K * 2,  // TODO: const
-        .l1BufNum = 2  // double buffer
+        .scaleKL1 = L1_TILE_K * SCALE_K_L1_RATE,
+        .l1BufNum = 2  // 2: double buffer
     };
     typename BlockMmad::BlockShape l0TileShape{L1_TILE_M, L1_TILE_N, L0_TILE_K, 0};
     typename BlockMmad::TupleShape matmulShape{m, n, k};
@@ -155,10 +156,10 @@ __aicore__ inline void GroupMatmulSwigluQuant(
         layoutA);
     auto gmB = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementB*>(gmmAddrInfo.bGlobal)),
         layoutB);
-    auto gmScaleA = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleA*>(gmmAddrInfo.aScaleGlobal)),
-        layoutScaleA);
-    auto gmScaleB = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleB*>(gmmAddrInfo.bScaleGlobal)),
-        layoutScaleB);
+    auto gmScaleA = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(
+        reinterpret_cast<__gm__ ElementMxScaleA*>(gmmAddrInfo.aScaleGlobal)), layoutScaleA);
+    auto gmScaleB = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(
+        reinterpret_cast<__gm__ ElementMxScaleB*>(gmmAddrInfo.bScaleGlobal)), layoutScaleB);
     auto gmBias = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ BiasType*>(0UL)), layoutBias);
 
     BlockScheduler scheduler({m, outputN, k}, MakeCoord(L1_TILE_M, L1_TILE_N));
@@ -190,7 +191,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
             auto gmBlockA = gmA.Slice(Te::MakeCoord(mLoc, kLoc), Te::MakeShape(actualShape.m(), actualShape.k()));
             auto gmBlockScaleA = gmScaleA.Slice(Te::MakeCoord(mLoc, kLoc / MXFP_SCALE_GROUP_NUM),
                 Te::MakeShape(actualShape.m(), CeilDiv(actualShape.k(), MXFP_SCALE_GROUP_NUM)));
-            
+
             auto tensorBlockUbFirst = l0cOutUbFirst.Slice(Te::MakeCoord(0, 0),
                 Te::MakeShape(actualShape.m(), actualShape.n()));
             auto tensorBlockUbSecond = l0cOutUbSecond.Slice(Te::MakeCoord(0, 0),
@@ -198,12 +199,12 @@ __aicore__ inline void GroupMatmulSwigluQuant(
 
             typename BlockMmad::BlockShape singleShape{actualShape.m(), actualShape.n(), actualShape.k(), 0};
             for (uint32_t weightBlock = 0; weightBlock < SWIGLU_N_HALF; ++weightBlock) {
-                auto gmBlockB = gmA.Slice(Te::MakeCoord(kLoc, nLoc + weightBlock * outputN),
+                auto gmBlockB = gmB.Slice(Te::MakeCoord(kLoc, nLoc + weightBlock * outputN),
                     Te::MakeShape(actualShape.k(), actualShape.n()));
                 auto gmBlockScaleB = gmScaleB.Slice(
                     Te::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, nLoc + weightBlock * outputN),
                     Te::MakeShape(CeilDiv(actualShape.k(), MXFP_SCALE_GROUP_NUM), actualShape.n()));
-                blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias
+                blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias,
                     weightBlock == 0 ? tensorBlockUbFirst: tensorBlockUbSecond, singleShape);
             }
 
@@ -211,7 +212,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
         }
 
         vecSetSyncCom = 1;
-        
+
         if constexpr(g_coreType == AscendC::AIV) {
             Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{actualShape.m(), actualShape.n(), 0, 0};
             Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> epilogueOffset{
@@ -226,11 +227,11 @@ __aicore__ inline void GroupMatmulSwigluQuant(
             NotifyCube();
         }
     }
-    startBlockIdx = (startBlockIdx + coreLoops) % blockNum; 
+    startBlockIdx = (startBlockIdx + coreLoops) % blockNum;
 }
 
 // GroupMatmul2 - GMM2矩阵乘法 + Combine
-template <typename ElementA, typename ElementB, typename ElementC, 
+template <typename ElementA, typename ElementB, typename ElementC,
           typename ElementMxScaleA, typename ElementMxScaleB>
 __aicore__ inline void GroupMatmul2(
     const Params& params,
@@ -299,7 +300,7 @@ __aicore__ inline void GroupMatmul2(
     for (uint32_t loopIdx = startLoopIdx; loopIdx < coreLoops; loopIdx += blockNum) {
         GemmCoord blockCoord = scheduler.GetBlockCoord(loopIdx);
         GemmCoord actualShape = scheduler.GetActualBlockShape(blockCoord);
-        
+
         uint32_t mLoc = blockCoord.m() * L1_TILE_M;
         uint32_t nLoc = blockCoord.n() * L1_TILE_N;
         uint32_t kLoc = blockCoord.k() * L1_TILE_K;
@@ -320,7 +321,7 @@ __aicore__ inline void GroupMatmul2(
             if (vecSetSyncCom2 >= 2) {
                 WaitForVector(pingpongIdx);
             }
-            
+
             auto tensorBlockA = GetTile(tensorA, tla::MakeCoord(mLoc, kLoc),
                 tla::MakeShape(actualShape.m(), actualShape.k()));
             auto tensorBlockMxScaleA = GetTile(tensorMxScaleA,
