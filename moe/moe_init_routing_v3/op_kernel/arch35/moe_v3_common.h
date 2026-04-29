@@ -21,6 +21,13 @@
 namespace MoeInitRoutingV3 {
 using namespace AscendC;
 
+// 一个scale块元素数量为64个，即1个scale块对应64个x的元素
+constexpr int64_t SCALE_BLOCK_SIZE = 64LL;
+// scale的第三维度大小
+constexpr int64_t SCALE_THIRD_DIM_SIZE = 2LL;
+// scale与x的对应系数为32
+constexpr int64_t SCALE_FACTOR_WITH_X = 32LL;
+
 constexpr int64_t GATHER_OUT_BUFFER_NUM = 2;
 
 constexpr int64_t SIMT_THREAD_NUM = 2048;
@@ -46,6 +53,42 @@ constexpr int64_t SCATTER = 1;
 
 constexpr uint16_t FLOAT_REG_TENSOR_LENGTH = VECTOR_REG_WIDTH / sizeof(float);
 constexpr float HIFLOAT8_MAX_VALUE = 32768.0f;
+
+// fp32指数位偏移
+constexpr int32_t FP32_BIAS = 127;
+constexpr int32_t FP32_BIAS_NEG = -127;
+
+// MX量化一个块的元素数量为32个，即1个scale对应32个x的元素
+constexpr int64_t MX_BLOCK_SIZE = 32LL;
+// 一个VL放多少fp32->fp8的元素个数，即按fp32算的一个VL能放几个元素
+constexpr int64_t OUT_ELE_NUM_ONE_BLK = 64LL;
+// fp16中指数部分Mask，同时也表示bf16的INF值
+constexpr uint16_t FP16_EMASK_AND_INF_VAL = 0x7c00;
+// bf16中指数部分Mask，同时也表示bf16的INF值
+constexpr uint16_t BF16_EMASK_AND_INF_VAL = 0x7f80;
+// fp32中指数部分Mask，同时也表示fp32的INF值
+constexpr uint32_t FP32_EMASK_AND_INF_VAL = 0x7f800000;
+// bfloat16的nan值（与inf值不同）
+constexpr uint16_t BF16_NAN_VAL = 0x7f81;
+// 对于x的目标类型为e2m1的maxExp来说，最小的maxExp应该是多少
+constexpr uint16_t LOWER_BOUND_OF_MAX_EXP_FOR_E2M1 = 0x0100;
+// 对于x的目标类型为e5m2的maxExp来说，最小的maxExp应该是多少
+constexpr uint16_t LOWER_BOUND_OF_MAX_EXP_FOR_E5M2 = 0x0780;
+// 对于x的目标类型为e4m3的maxExp来说，最小的maxExp应该是多少
+constexpr uint16_t LOWER_BOUND_OF_MAX_EXP_FOR_E4M3 = 0x0400;
+// e8m0的inf/nan值（按定义应该是nan值）
+constexpr uint16_t FP8_E8M0_NAN_VAL = 0x00ff;
+// e8m0的极小值，用于写0
+constexpr uint16_t FP8_E8M0_SPECIAL_MIN = 0x0040;
+// 异常值：负0
+constexpr int32_t NEG_ZERO = 0x80000000;
+// bf16指数位的偏移位数
+constexpr int16_t BF16_EXP_SHR_BITS = 7;
+// fp32指数位的偏移位数
+constexpr int16_t FP32_EXP_SHR_BITS = 23;
+// 用于计算halfScale=BF16_EXP_INVSUB-sharedExp，得到的halfScale就是1/realScale，可以用于量化xQuant=x*halfScale
+constexpr uint16_t BF16_EXP_INVSUB = 0x7f00;
+constexpr uint16_t NEW_MANTISSA = 0x0008;
 
 __aicore__ inline int64_t Ceil(int64_t a, int64_t b)
 {
