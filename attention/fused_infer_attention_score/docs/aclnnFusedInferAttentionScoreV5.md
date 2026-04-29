@@ -1456,8 +1456,8 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       - 入参 queryQuantMode、keyAntiquantMode、valueAntiquantMode 为0
     - MxFP8 全量化
       - 入参 dequantScaleQuery、keyAntiquantScale、valueAntiquantScale 的dtype为FLOAT8_E8M0类型
-      - 入参 queryQuantMode 的shape为（Q_T, Q_N, D/64, 2）、keyAntiquantMode 的shape为（Bn, KV_N, Bs, D/64, 2）、valueAntiquantScale 的shape为（Bn, KV_N, Bs/64, D, 2）
-      - 入参 queryQuantMode、keyAntiquantMode 为6（per-token-group模式），valueAntiquantMode 为8（per-channel-group）
+      - 入参 dequantScaleQuery 的shape为（Q_T, Q_N, D/64, 2）、keyAntiquantScale 的shape为（Bn, KV_N, Bs, D/64, 2）、valueAntiquantScale 的shape为（Bn, KV_N, Bs/64, D, 2）
+      - 入参 queryQuantMode、keyAntiquantMode 为6（per-token-group模式），valueAntiquantMode 为8（per-channel-group模式）
       - 入参 quantScale1 的shape为（1），dtype支持FLOAT32，复用 quantScale1 作为 pScale
 - 存在性约束
   - 伪量化场景
