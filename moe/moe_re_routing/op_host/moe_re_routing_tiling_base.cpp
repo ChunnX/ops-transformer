@@ -38,7 +38,8 @@ constexpr int64_t DIM_2 = 2;
 constexpr int64_t DIM_3 = 3;
 
 static const std::set<ge::DataType> TOKENS_DTYPE = {ge::DT_INT8,          ge::DT_FLOAT16,     ge::DT_BF16,
-                                                    ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2, ge::DT_HIFLOAT8};
+                                                    ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2, ge::DT_HIFLOAT8,
+                                                    ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E1M2};
 static const std::set<ge::DataType> EXPERT_TOKEN_NUM_DTYPE = {ge::DT_INT32, ge::DT_INT64};
 static const std::set<ge::DataType> SCALE_DTYPE = {ge::DT_FLOAT, ge::DT_FLOAT8_E8M0};
 
@@ -110,11 +111,13 @@ ge::graphStatus MoeReRoutingTilingBase::CheckNullptr() const
 
 ge::graphStatus MoeReRoutingTilingBase::CheckDtypeAndAttr() const
 {
-    OP_CHECK_IF(std::find(TOKENS_DTYPE.begin(), TOKENS_DTYPE.end(), tokenDtype_) == TOKENS_DTYPE.end(),
-                OP_LOGE(context_->GetNodeName(),
-                        "tokens support INT8, BF16, F16, FP8_E4M3FN, FP8_E5M2, HIFLOAT8 datatype, actual %s.",
-                        ge::TypeUtils::DataTypeToSerialString(tokenDtype_).c_str()),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        std::find(TOKENS_DTYPE.begin(), TOKENS_DTYPE.end(), tokenDtype_) == TOKENS_DTYPE.end(),
+        OP_LOGE(
+            context_->GetNodeName(),
+            "tokens support INT8, BF16, F16, FP8_E4M3FN, FP8_E5M2, HIFLOAT8, FP4_E2M1, FP4_E1M2 datatype, actual %s.",
+            ge::TypeUtils::DataTypeToSerialString(tokenDtype_).c_str()),
+        return ge::GRAPH_FAILED);
     OP_CHECK_IF(std::find(EXPERT_TOKEN_NUM_DTYPE.begin(), EXPERT_TOKEN_NUM_DTYPE.end(), expertDtype_) ==
                     EXPERT_TOKEN_NUM_DTYPE.end(),
                 OP_LOGE(context_->GetNodeName(), "expert_token_num_per_rank support int32, int64, actual %s.",
@@ -130,6 +133,13 @@ ge::graphStatus MoeReRoutingTilingBase::CheckDtypeAndAttr() const
     if (tokenDtype_ == ge::DT_HIFLOAT8 && hasScale_) {
         OP_CHECK_IF(scaleDtype_ != ge::DT_FLOAT,
                     OP_LOGE(context_->GetNodeName(), "tokens is hif8, scale should be float32, actual %s.",
+                            ge::TypeUtils::DataTypeToSerialString(scaleDtype_).c_str()),
+                    return ge::GRAPH_FAILED);
+    }
+    if (tokenDtype_ == ge::DT_FLOAT4_E2M1 || tokenDtype_ == ge::DT_FLOAT4_E1M2) {
+        OP_CHECK_IF((scaleDtype_ != ge::DT_FLOAT8_E8M0 && scaleDtype_ != ge::DT_FLOAT),
+                    OP_LOGE(context_->GetNodeName(),
+                            "tokens is fp4, scale should be float8_e8m0 or float32, actual %s.",
                             ge::TypeUtils::DataTypeToSerialString(scaleDtype_).c_str()),
                     return ge::GRAPH_FAILED);
     }
