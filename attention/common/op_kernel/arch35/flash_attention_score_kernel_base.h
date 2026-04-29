@@ -639,7 +639,7 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
     runInfo.taskIdMod3 = taskId % 3;
     runInfo.s2LoopLimit = s2LoopLimit;
 
-    if constexpr (isFd) {
+    if (constInfo.isFd) {
         runInfo.flashDecodeS2Idx = this->aicIdx % constInfo.splitKVNum;
     }
     runInfo.actualS1Size = runParam.actualS1Size;

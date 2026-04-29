@@ -430,7 +430,7 @@ __aicore__ inline void FABlockCubeGqaFullquant<TEMPLATE_ARGS>::CalcS2Coord(RunIn
     coordInfo[runInfo.taskIdMod3].curBIdx = runInfo.boIdx;
     if constexpr (isInfer) {
         coordInfo[runInfo.taskIdMod3].s2Coord += runInfo.kvLeftPaddingSize;  // 左padding
-        if constexpr (isFd) {
+        if (constInfo.isFd) {
             coordInfo[runInfo.taskIdMod3].s2Coord += runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize;
         }
         if (constInfo.isKvContinuous == 0) {
@@ -487,7 +487,7 @@ __aicore__ inline void FABlockCubeGqaFullquant<TEMPLATE_ARGS>::IterateBmm2(mm2Re
             Position startPos;
             startPos.bIdx = runInfo.boIdx;
             startPos.n2Idx = runInfo.n2oIdx;
-            if constexpr (isFd) {
+            if (constInfo.isFd) {
                 startPos.s2Offset = runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize +  // FD分片起始
                         runInfo.s2LoopCount * s2BaseSize;  // 核心内循环偏移
             } else {
@@ -976,7 +976,7 @@ __aicore__ inline void FABlockCubeGqaFullquant<TEMPLATE_ARGS>::IterateBmm1Nd(
         Position startPos;
         startPos.bIdx = runInfo.boIdx;
         startPos.n2Idx = runInfo.n2oIdx;
-        if constexpr (isFd) {
+        if (constInfo.isFd) {
             startPos.s2Offset = runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize +  // FD分片起始
                         runInfo.s2LoopCount * s2BaseSize;  // 核心内循环偏移
         } else {
@@ -1111,7 +1111,7 @@ __aicore__ inline void FABlockCubeGqaFullquant<TEMPLATE_ARGS>::IterateBmm1Dn(
         Position startPos;
         startPos.bIdx = runInfo.boIdx;
         startPos.n2Idx = runInfo.n2oIdx;
-        if constexpr (isFd) {
+        if (constInfo.isFd) {
             startPos.s2Offset = runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize +  // FD分片起始
                         runInfo.s2LoopCount * s2BaseSize;  // 核心内循环偏移
         } else {
