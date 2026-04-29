@@ -33,6 +33,10 @@ template <>
 struct BiasType<half> {
     using type = half;
 };
+template <>
+struct BiasType<bfloat16_t> {
+    using type = bfloat16_t;
+};
 __aicore__ inline uint64_t CeilDiv(uint64_t x, uint64_t y)
 {
     return y == 0 ? x : (x + y -1) / y;

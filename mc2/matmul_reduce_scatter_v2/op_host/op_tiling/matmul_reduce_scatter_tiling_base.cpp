@@ -192,7 +192,11 @@ void MatmulReduceScatterTilingBase::SetStorageAWorkSpaceSize(Mc2Tiling::RCSTilin
         OP_LOGD("MatmulReduceScatter", " reduce scatter storage_a size %lu", mmResultLen_);
     }
 
-    rcsCfg.biasLen = 0;
+    int biasLen = 0;
+    if (args_.isBias && args_.geBiasType == ge::DT_BF16) {
+        biasLen = mc2tiling::AlignUp(args_.orgNValue, mc2tiling::SHAPE_ALIGN_SIZE) * sizeof(float);
+    }
+    rcsCfg.biasLen = biasLen;
     return;
 }
 
@@ -468,13 +472,8 @@ void MatmulReduceScatterTilingBase::SetReduceScatterTilingArgsShapeInfo()
     const gert::StorageShape* bShape = context_->GetInputShape(1);
     uint64_t mValue = aShape->GetStorageShape().GetDim(0);
     uint64_t kValue = aShape->GetStorageShape().GetDim(1);
-    uint64_t nValue = bShape->GetStorageShape().GetDim(1);
-    if (aShape->GetStorageShape().GetDim(1) != bShape->GetStorageShape().GetDim(0)) {
-        OP_LOGD(
-            context_->GetNodeName(), "A.shape(1) %lu B.shape(0) %lu, istransB = %d",
-            aShape->GetStorageShape().GetDim(1), bShape->GetStorageShape().GetDim(0), args_.isBTrans);
-        nValue = bShape->GetStorageShape().GetDim(0);
-    }
+    uint64_t nValue = args_.isBTrans ? bShape->GetStorageShape().GetDim(1) : bShape->GetStorageShape().GetDim(0);
+    uint64_t bK = args_.isBTrans ? bShape->GetStorageShape().GetDim(0) : bShape->GetStorageShape().GetDim(1);
     args_.orgMValue = mValue;
     args_.orgNValue = nValue;
     args_.orgKValue = kValue;
@@ -542,7 +541,9 @@ void MatmulReduceScatterTilingBase::SetMsgDataInfo(Mc2Tiling::RCSTiling &rcsCfg,
                                                    ::TCubeTiling &mmTiling, ::TCubeTiling &tailTiling, 
                                                    uint32_t debugMode)
 {
-    // 只通信不计算模式下，如果没有gatherOut且K > N, recvOff和sendCnt需要根据N计算
+    mmTiling.isBias = args_.isBias ? 1 : 0;
+    tailTiling.isBias = args_.isBias ? 1 : 0;
+    
     auto columnNum = args_.orgKValue;
     OP_LOGD(opName_, "Debug mode is %u, gather out flag is %d, K is %lu, N is %lu.", debugMode,
         (rcsCfg.gatherLen == 0), args_.orgKValue, args_.orgNValue);
