@@ -24,7 +24,7 @@ enum class LI_LAYOUT {
     PA_BSND = 2
 };
 
-template <typename Q_T, typename K_T, typename OUT_T, const bool PAGE_ATTENTION = false,
+template <typename Q_T, typename K_T, typename OUT_T, uint32_t OP_VERSION, const bool PAGE_ATTENTION = false,
           LI_LAYOUT LAYOUT_T = LI_LAYOUT::BSND, LI_LAYOUT K_LAYOUT_T = LI_LAYOUT::PA_BSND,
           bool DT_W_FLAG = false, typename... Args>
 struct LIType {
@@ -32,6 +32,7 @@ struct LIType {
     using queryType = Q_T;
     using keyType = K_T;
     using outputType = OUT_T;
+    static constexpr uint32_t opVersion = OP_VERSION;
     static constexpr bool pageAttention = PAGE_ATTENTION;
     static constexpr LI_LAYOUT layout = LAYOUT_T;
     static constexpr LI_LAYOUT keyLayout = K_LAYOUT_T;
@@ -109,6 +110,7 @@ struct ConstInfo {
     uint32_t maxBlockNumPerBatch = 0; // PA场景的最大单batch block number
     LI_LAYOUT outputLayout;           // 输出的格式
     bool attenMaskFlag = false;
+    bool batchSupperFlag = false;      // cu_seqlens_q长度是否为B+1
     int64_t preTokens = INT64_MAX;
     int64_t nextTokens = INT64_MAX;
     bool returnValue = false;

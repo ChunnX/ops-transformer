@@ -50,6 +50,16 @@ constexpr uint32_t WEIGTHS_INDEX = 2;
 constexpr uint32_t ACTUAL_SEQ_Q_INDEX = 3;
 constexpr uint32_t ACTUAL_SEQ_K_INDEX = 4;
 constexpr uint32_t BLOCK_TABLE_INDEX = 5;
+// Inputs Index V2
+constexpr uint32_t QUERY_INDEX_V2 = 0;
+constexpr uint32_t KEY_INDEX_V2 = 1;
+constexpr uint32_t WEIGTHS_INDEX_V2 = 2;
+constexpr uint32_t CU_SEQLENS_Q_INDEX_V2 = 3;
+constexpr uint32_t CU_SEQLENS_K_INDEX_V2 = 4;
+constexpr uint32_t SEQUSED_Q_INDEX_V2 = 5;
+constexpr uint32_t SEQUSED_K_INDEX_V2 = 6;
+constexpr uint32_t BLOCK_TABLE_INDEX_V2 = 7;
+constexpr uint32_t METADATA_INDEX_V2 = 8;
 //Outputs Index
 constexpr uint32_t LIGHTNING_INDEXER = 0;
 constexpr uint32_t LIGHTNING_VALUES = 1;
@@ -61,6 +71,12 @@ constexpr uint32_t ATTR_SPARSE_MODE_INDEX = 3;
 constexpr uint32_t ATTR_PRE_TOKENS_INDEX = 4;
 constexpr uint32_t ATTR_NEXT_TOKENS_INDEX = 5;
 constexpr uint32_t ATTR_RETURN_VALUE_INDEX = 6;
+// Attributes Index V2
+constexpr uint32_t ATTR_TOPK_INDEX_V2 = 0;
+constexpr uint32_t ATTR_QUERY_LAYOUT_INDEX_V2 = 1;
+constexpr uint32_t ATTR_KEY_LAYOUT_INDEX_V2 = 2;
+constexpr uint32_t ATTR_MASK_MODE_INDEX_V2 = 3;
+constexpr uint32_t ATTR_RETURN_VALUE_INDEX_V2 = 4;
 // Dim Index
 constexpr uint32_t DIM_IDX_ONE = 1;
 constexpr uint32_t DIM_IDX_TWO = 2;
@@ -74,6 +90,16 @@ constexpr uint32_t HEAD_DIM_LIMIT = 128;
 constexpr uint32_t SPARSE_LIMIT = 2048;
 constexpr uint32_t SPARSE_MODE_LOWER = 3;
 constexpr uint32_t QUERY_HEAD_NUM_LIMIT = 64;
+constexpr uint32_t METADATA_LIMIT = 1024;
+
+constexpr char V1_OP_NAME[] {"LightningIndexer"};
+constexpr char V2_OP_NAME[] {"LightningIndexerV2"};
+
+constexpr uint32_t V1_OP_VERSION = 1;
+constexpr uint32_t V2_OP_VERSION = 2;;
+
+constexpr uint32_t OP_NAME_LEN =  std::max({sizeof(V1_OP_NAME), 
+                                            sizeof(V2_OP_NAME)});
 
 // -----------算子TilingData定义---------------
 BEGIN_TILING_DATA_DEF(LITilingData)
@@ -90,8 +116,10 @@ TILING_DATA_FIELD_DEF(uint32_t, sparseMode)
 TILING_DATA_FIELD_DEF(int64_t, preTokens)
 TILING_DATA_FIELD_DEF(int64_t, nextTokens)
 TILING_DATA_FIELD_DEF(uint32_t, returnValue)
+TILING_DATA_FIELD_DEF(uint32_t, batchSupperFlag)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(LightningIndexer, LITilingData)
+REGISTER_TILING_DATA_CLASS(LightningIndexerV2, LITilingData)
 
 // -----------算子CompileInfo定义-------------------
 struct LICompileInfo {};
@@ -103,7 +131,12 @@ struct LiParaInfo {
     TilingRequiredParaInfo weights = {nullptr, nullptr};
     TilingOptionalParaInfo actualSeqLengthsQ = {nullptr, nullptr};
     TilingOptionalParaInfo actualSeqLengths = {nullptr, nullptr};
+    TilingOptionalParaInfo cuSeqLensQ = {nullptr, nullptr};
+    TilingOptionalParaInfo cuSeqLensK = {nullptr, nullptr};
+    TilingOptionalParaInfo sequsedQ = {nullptr, nullptr};
+    TilingOptionalParaInfo sequsedK = {nullptr, nullptr};
     TilingOptionalParaInfo blockTable = {nullptr, nullptr};
+    TilingOptionalParaInfo metadata = {nullptr, nullptr};
     TilingRequiredParaInfo attenOut = {nullptr, nullptr};
     TilingRequiredParaInfo valuesOut = {nullptr, nullptr};
 
@@ -115,12 +148,14 @@ struct LiParaInfo {
     const int64_t *preTokens = nullptr;
     const int64_t *nextTokens = nullptr;
     const bool *returnValue = nullptr;
+    const int32_t *batchSupperFlag = nullptr;
 };
 
 // -----------算子Tiling入参信息类---------------
 class LITilingInfo {
 public:
     const char *opName = nullptr;
+    const char *opType = nullptr;
     fe::PlatFormInfos *platformInfo = nullptr;
     LiParaInfo opParamInfo;
     // Base Param
@@ -142,6 +177,7 @@ public:
     uint32_t sparseCount = 0;
     int64_t preTokens = INT64_MAX;
     int64_t nextTokens = INT64_MAX;
+    bool batchSupperFlag = false;
     bool returnValue = false;
     // DType
     ge::DataType inputQType = ge::DT_FLOAT16;
@@ -198,6 +234,7 @@ public:
 public:
     gert::TilingContext *context_ = nullptr;
     const char *opName_;
+    const char *opType_;
     fe::PlatFormInfos *platformInfo_;
     LiParaInfo opParamInfo_;
 
@@ -209,6 +246,7 @@ public:
     uint32_t s1Size_ = 0;
     int64_t s2Size_ = 0;
     uint32_t headDim_ = 0;
+    bool batchSupperFlag_ = false;
     // Layout
     DataLayout qLayout_ = DataLayout::BSND;
     DataLayout kLayout_ = DataLayout::BnBsND;
@@ -235,6 +273,7 @@ private:
     gert::TilingContext *context_ = nullptr;
     LITilingData tilingData_;
 };
-
+ge::graphStatus TilingPrepareForLightningIndexer(gert::TilingParseContext *context);
+ge::graphStatus TilingForLightningIndexer(gert::TilingContext *context);
 } // namespace optiling
 #endif // LIGHTNING_INDEXER_TILING_H_
