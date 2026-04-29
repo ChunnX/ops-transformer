@@ -1491,11 +1491,11 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::LocalWindowCo
             ProcessExpert(tokenIndex, processLen);
 
             if constexpr (HasAddRmsNorm) {
-                LocalTensor<XType> sumBufLocal1 = tokenBuf_.Get<XType>(); // 增加
-                Cast(sumBufLocal1, sumFloatBufLocal_, AscendC::RoundMode::CAST_RINT, processLen); // 增加
-                PipeBarrier<PIPE_V>(); // 增加
-                Cast(sumFloatBufLocal_, sumBufLocal1, AscendC::RoundMode::CAST_NONE, processLen); // 增加
-                PipeBarrier<PIPE_V>(); // 增加
+                // LocalTensor<XType> sumBufLocal1 = tokenBuf_.Get<XType>(); // 增加
+                // Cast(sumBufLocal1, sumFloatBufLocal_, AscendC::RoundMode::CAST_RINT, processLen); // 增加
+                // PipeBarrier<PIPE_V>(); // 增加
+                // Cast(sumFloatBufLocal_, sumBufLocal1, AscendC::RoundMode::CAST_NONE, processLen); // 增加
+                // PipeBarrier<PIPE_V>(); // 增加
                 AddRmsNormAddCompute(tokenIndex, tokenOffset, processLen, sumFloatBufLocal_, rowTmpFloatLocal_, sumFloatBufLocal_,
                                 expandXCopyParams, copyPadXTypeParams);
             }
