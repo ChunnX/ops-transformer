@@ -24,7 +24,19 @@ using namespace op;
 extern "C" {
 #endif
 
+enum class NnopbaseHcclServerType : uint32_t {
+    NNOPBASE_HCCL_SERVER_TYPE_AICPU = 0,
+    NNOPBASE_HCCL_SERVER_TYPE_MTE,
+    NNOPBASE_HCCL_SERVER_TYPE_CCU,
+    NNOPBASE_HCCL_SERVER_TYPE_END
+};
 
+extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
+
+static inline bool IsAscend910A5(void)
+{
+    return op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
+}
 // check nullptr
 static bool CheckNotNull(const aclTensor *x, const aclTensor *weight, const char *groupEp, const char *groupTp,
                          aclTensor* y1Out)
@@ -409,6 +421,9 @@ aclnnStatus aclnnAlltoAllAllGatherBatchMatMulGetWorkspaceSize(const aclTensor *x
 aclnnStatus aclnnAlltoAllAllGatherBatchMatMul(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                               aclrtStream stream)
 {
+    if (NnopbaseSetHcclServerType && IsAscend910A5()) {
+        NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+    }
     aclnnStatus ret = aclnnInnerAlltoAllAllGatherBatchMatMul(workspace, workspaceSize, executor, stream);
     return ret;
 }

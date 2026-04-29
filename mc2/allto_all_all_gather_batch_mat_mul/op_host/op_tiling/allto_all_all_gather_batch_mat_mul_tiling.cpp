@@ -392,11 +392,12 @@ static void CompleteBmmStructs(AlltoAllAllGatherBatchInfo &BMMV3BatchInfo, Allto
 }
 
 static void GetAlltoAllAllGatherFormulateTileCnt(mc2tiling::TilingArgs &formulaicArgs,
-                                                 AlltoAllAllGatherBatchMatMulTilingData *tilingData)
+                                                 AlltoAllAllGatherBatchMatMulTilingData *tilingData,
+                                                 SocVersion inputSocVersion)
 {
     All2AllAllGatherBMM formulaicTiling(formulaicArgs, tilingData->commonTiling.epGroupSize,
                                         tilingData->commonTiling.tpGroupSize,
-                                        tilingData->commonTiling.EOverEp);
+                                        tilingData->commonTiling.EOverEp, inputSocVersion);
     formulaicTiling.GetTiling();
 
     tilingData->commonTiling.localTileE.tileCnt = formulaicTiling.localCutE.numLongTile;
@@ -420,11 +421,12 @@ static void GetAlltoAllAllGatherFormulateTileCnt(mc2tiling::TilingArgs &formulai
 }
 
 static void GetAlltoAllAllGatherFormulateTileCntShardH(mc2tiling::TilingArgs &formulaicArgs,
-                                                       AlltoAllAllGatherBatchMatMulTilingData *tilingData)
+                                                       AlltoAllAllGatherBatchMatMulTilingData *tilingData,
+                                                       SocVersion inputSocVersion)
 {
     All2AllAllGatherBMMShardH formulaicTiling(formulaicArgs, tilingData->commonTiling.epGroupSize,
                                               tilingData->commonTiling.tpGroupSize,
-                                              tilingData->commonTiling.EOverEp);
+                                              tilingData->commonTiling.EOverEp, inputSocVersion);
     formulaicTiling.GetTiling();
     if (formulaicTiling.localCutE.shortTileAtBack) { // local E短块后置
         tilingData->commonTiling.localTileE.tileCnt = formulaicTiling.localCutE.numLongTile;
@@ -570,11 +572,13 @@ static ge::graphStatus SetMatmulTilingAlltoAllAllGatherBatchMatMul(gert::TilingC
                                                                    AlltoAllAllGatherMatmulInfo MMV3ArgsInfo,
                                                                    mc2tiling::TilingArgs &formulaicArgs)
 {
+    SocVersion inputSocVersion =
+        (mc2tiling::GetNpuArch(context) == NpuArch::DAV_3510) ? SocVersion::SOC950 : SocVersion::SOC910_93;
     // 1. 调用公式化tiling接口，获取local和非local块的切分信息并更新commonTiling
     if (tilingData->commonTiling.xShardFlag == 1U) {
-        GetAlltoAllAllGatherFormulateTileCnt(formulaicArgs, tilingData);
+        GetAlltoAllAllGatherFormulateTileCnt(formulaicArgs, tilingData, inputSocVersion);
     } else {
-        GetAlltoAllAllGatherFormulateTileCntShardH(formulaicArgs, tilingData);
+        GetAlltoAllAllGatherFormulateTileCntShardH(formulaicArgs, tilingData, inputSocVersion);
     }
 
     OP_TILING_CHECK(HandleLocalBmmTilingData(context, tilingData, BMMV3BatchInfo, MMV3ArgsInfo) != ge::GRAPH_SUCCESS,
