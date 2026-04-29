@@ -157,7 +157,7 @@ ge::graphStatus ApplyRotaryPosEmbTiling::GetInputParams(gert::TilingContext *con
     if (kDims != params.qDims) {
         std::string dimMsg = std::to_string(kDims) + " and " + std::to_string(params.qDims);
         OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(context->GetNodeName(), "key and query",
-            dimMsg.c_str(), "The shape dims of input key should be the same as input query");
+            dimMsg.c_str(), "The shape dims of input key and input query should be the same");
         return ge::GRAPH_FAILED;
     }
     params.kDim0 = kDims == DIM_4 ? kShape.GetDim(DIM_0) : 1;
@@ -171,7 +171,7 @@ ge::graphStatus ApplyRotaryPosEmbTiling::GetInputParams(gert::TilingContext *con
     if (cosDims != params.qDims) {
         std::string dimMsg = std::to_string(cosDims) + " and " + std::to_string(params.qDims);
         OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(context->GetNodeName(), "cos and query",
-            dimMsg.c_str(), "The shape dims of input cos should be the same as input query");
+            dimMsg.c_str(), "The shape dims of input cos and input query should be the same");
         return ge::GRAPH_FAILED;
     }
     params.cosDim0 = cosDims == DIM_4 ? cosShape.GetDim(DIM_0) : 1;
@@ -191,7 +191,7 @@ ge::graphStatus ApplyRotaryPosEmbTiling::GetInputParams(gert::TilingContext *con
     if (cosShape != sinShape) {
         std::string shapeMsg = ToString(cosShape) + " and " + ToString(sinShape);
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "cos and sin",
-            shapeMsg.c_str(), "The shape of input cos should be the same as input sin");
+            shapeMsg.c_str(), "The shapes of input cos and input sin should be the same");
         return ge::GRAPH_FAILED;
     }
     if (qShape.GetShapeSize() == 0 || kShape.GetShapeSize() == 0 || cosShape.GetShapeSize() == 0 ||
@@ -199,8 +199,8 @@ ge::graphStatus ApplyRotaryPosEmbTiling::GetInputParams(gert::TilingContext *con
         std::string shapeSizeMsg = 
             std::to_string(qShape.GetShapeSize()) + ", " + std::to_string(kShape.GetShapeSize()) + 
             ", " + std::to_string(cosShape.GetShapeSize()) + " and " + std::to_string(sinShape.GetShapeSize());
-        OP_LOGE_FOR_INVALID_SHAPESIZE(context->GetNodeName(), "query, key, cos and sin",
-            shapeSizeMsg.c_str(), "Each input can not be an empty tensor");
+        OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(context->GetNodeName(), "query, key, cos and sin",
+            shapeSizeMsg.c_str(), "All inputs must be non-empty tensors");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -217,7 +217,7 @@ ge::graphStatus ApplyRotaryPosEmbTiling::CheckParams(gert::TilingContext *contex
     ApplyRotaryPosEmbLayout layout = static_cast<ApplyRotaryPosEmbLayout>(*layoutAttr);
     if (layout != ApplyRotaryPosEmbLayout::BSND && layout != ApplyRotaryPosEmbLayout::TND) {
         std::string layoutStr = std::to_string(static_cast<int64_t>(layout));
-        OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "layout",
+        OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "layout",
             layoutStr.c_str(), "1 or 4");
         return ge::GRAPH_FAILED;
     }
@@ -258,8 +258,8 @@ ge::graphStatus ApplyRotaryPosEmbTiling::CheckParams(gert::TilingContext *contex
     if ((params.kDim1 != params.qDim1) || (params.cosDim1 != params.kDim1)) {
         std::string shapeMsg = ToString(qShape) + ", " + ToString(kShape) + " and " + ToString(cosShape);
         std::string reasonMsg =
-            "When the attr layout is 1 (BSND), the 1st dims of input query, key and cos should be equal, "
-            "and when the attr layout is 4 (TND), the 0th dims of input query, key and cos should be equal";
+            "The 1st dims of input query, key and cos should be equal when the attr layout is 1 (BSND), "
+            "and the 0th dims of input query, key and cos should be equal when the attr layout is 4 (TND)";
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "query, key and cos",
             shapeMsg.c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
@@ -285,8 +285,9 @@ ge::graphStatus ApplyRotaryPosEmbTiling::CheckParams(gert::TilingContext *contex
     }
     if (params.coscNum != 1) {
         std::string reasonMsg =
-            "When the attr layout is 1 (BSND), the 2nd dim of input cos should be 1, "
-            "and when the attr layout is 4 (TND), the 1st dim of input cos should be 1";
+            "The N axis of input cos should be 1, "
+            "where N refers to the 2nd dim when the attr layout is 1 (BSND), "
+            "or the 1st dim when the attr layout is 4 (TND)";
         std::string shapeStr = ToString(cosShape);
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "cos",
             shapeStr.c_str(), reasonMsg.c_str());
@@ -309,7 +310,7 @@ ge::graphStatus ApplyRotaryPosEmbTiling::CheckParams(gert::TilingContext *contex
         if (inputDtype != qDtype) {
             std::string paramMsg = inputNames[i] + " and query";
             std::string dtypeMsg = ToString(inputDtype) + " and " + ToString(qDtype);
-            std::string reasonMsg = "The dtype of input " + inputNames[i] + " should be the same as input query";
+            std::string reasonMsg = "The dtypes of input " + inputNames[i] + " and input query should be the same";
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context->GetNodeName(), paramMsg.c_str(),
                 dtypeMsg.c_str(), reasonMsg.c_str());
             return ge::GRAPH_FAILED;
