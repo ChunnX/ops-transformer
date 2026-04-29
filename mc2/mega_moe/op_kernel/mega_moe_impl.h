@@ -20,22 +20,6 @@
 #include "kernel_operator.h"
 
 #include "kernel_tiling/kernel_tiling.h"
-#include "catlass/arch/resource.hpp"
-#include "catlass/catlass.hpp"
-#include "catlass/coord.hpp"
-#include "catlass/gemm_coord.hpp"
-#include "catlass/matrix_coord.hpp"
-#include "tla/layout.hpp"
-#include "tla/tensor.hpp"
-#include "catlass/gemm/kernel/mx_matmul_tla.hpp"
-#include "catlass/arch/arch.hpp"
-#include "catlass/catlass.hpp"
-#include "catlass/gemm/block/block_mmad.hpp"
-#include "catlass/gemm/device/device_gemm.hpp"
-#include "catlass/gemm/dispatch_policy.hpp"
-#include "catlass/gemm/gemm_type.hpp"
-#include "catlass/layout/layout.hpp"
-#include "catlass/status.hpp"
 #include "kernel_operator_list_tensor_intf.h"
 #include "lib/matmul_intf.h"
 #include "block_epilogue_swiglu_mx_quant.h"
@@ -45,17 +29,11 @@
 #include "blaze/block/block_mmad_mx.h"
 #include "blaze/block/block_scheduler_swizzle.h"
 
-#include "tile_copy.hpp"
 #include "mega_moe_combine_send.h"
 
 using namespace AscendC;
-using namespace Catlass;
 
 namespace MegaMoeImpl {
-
-using ArchTag = Arch::Ascend950;
-constexpr static bool enableUnitFlag = true;
-using DispatchPolicy = Gemm::MmadMx<ArchTag, enableUnitFlag>;
 using BlockScheduler = typename Blaze::Gemm::Block::BlockSchedulerSwizzle<3, 1>;
 constexpr uint32_t ALIGN32 = 32U;
 constexpr uint32_t L1_TILE_M = 128;
@@ -68,14 +46,11 @@ constexpr uint32_t MAX_SINGLE_MN = 128 * 256;
 constexpr uint32_t BUFALIGN = (MAX_SINGLE_MN + 31U) / ALIGN32 *ALIGN32 * sizeof(bfloat16_t);
 constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM = (MAX_SINGLE_MN + 31U) / ALIGN32 * ALIGN32;
 
-using L1TileShape = tla::Shape<tla::Int<L1_TILE_M>, tla::Int<L1_TILE_N>, tla::Int<L1_TILE_K>>;
-using L0TileShape = tla::Shape<tla::Int<L1_TILE_M>, tla::Int<L1_TILE_N>, tla::Int<L0_TILE_K>>;
-
 // GroupMatmulSwigluQuant - GMM1 + SwiGLU + Quant
 template <typename ElementA, typename ElementB, typename ElementC,
           typename ElementMxScaleA, typename ElementMxScaleB>
 __aicore__ inline void GroupMatmulSwigluQuant(
-    BlockEpilogueSwigluMxQuant<L1TileShape, ElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true>& epilogueOp,
+    BlockEpilogueSwigluMxQuant<ElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true>& epilogueOp,
     const Params& params,
     const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
     const GMMAddrInfo& gmmAddrInfo,
@@ -189,7 +164,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
             auto gmBlockA = gmA.Slice(Te::MakeCoord(mLoc, kLoc), Te::MakeShape(AscendC::Std::get<0>(actualShape), AscendC::Std::get<2>(actualShape)));
             auto gmBlockScaleA = gmScaleA.Slice(Te::MakeCoord(mLoc, kLoc / MXFP_SCALE_GROUP_NUM),
                 Te::MakeShape(AscendC::Std::get<0>(actualShape), CeilDiv(AscendC::Std::get<2>(actualShape), MXFP_SCALE_GROUP_NUM)));
-            
+
             auto tensorBlockUbFirst = l0cOutUbFirst.Slice(Te::MakeCoord(0, 0),
                 Te::MakeShape(AscendC::Std::get<0>(actualShape), AscendC::Std::get<1>(actualShape)));
             auto tensorBlockUbSecond = l0cOutUbSecond.Slice(Te::MakeCoord(0, 0),
@@ -225,7 +200,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
             NotifyCube();
         }
     }
-    startBlockIdx = (startBlockIdx + tileNum) % blockNum; 
+    startBlockIdx = (startBlockIdx + tileNum) % blockNum;
 }
 
 // GroupMatmul2 - GMM2矩阵乘法 + Combine
@@ -324,7 +299,6 @@ __aicore__ inline void GroupMatmul2(
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += blockNum) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
         auto actualShape = scheduler.GetBlockShape(blockCoord);
-        GemmCoord oldActualShape = GemmCoord(AscendC::Std::get<0>(actualShape), AscendC::Std::get<1>(actualShape), AscendC::Std::get<2>(actualShape));
 
         uint32_t mLoc = AscendC::Std::get<0>(blockCoord);
         uint32_t nLoc = AscendC::Std::get<1>(blockCoord);
@@ -371,7 +345,7 @@ __aicore__ inline void GroupMatmul2(
             WaitForCube(pingpongIdx);
             AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
-            MegaMoeCombineImpl::CombineTokens<ElementC, GemmCoord>(mLoc, nLoc, n, groupIdx, rankId, l0cOutUbGMM2, oldActualShape, params);
+            MegaMoeCombineImpl::CombineTokens<ElementC, decltype(actualShape)>(mLoc, nLoc, n, groupIdx, rankId, l0cOutUbGMM2, actualShape, params);
             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
             NotifyCube(pingpongIdx);

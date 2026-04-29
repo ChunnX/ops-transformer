@@ -160,9 +160,7 @@ private:
     uint64_t preOffset_ = 0;
     uint16_t gmm2PingPongIdx_ = 0;
 
-    using L1TileShape = tla::Shape<tla::Int<128>, tla::Int<256>, tla::Int<256>>;
-    using BlockEpilogue = BlockEpilogueSwigluMxQuant<L1TileShape, QuantOutType, float,
-        QuantScaleOutType, QuantScaleOutType, true>;
+    using BlockEpilogue = BlockEpilogueSwigluMxQuant<QuantOutType, float, QuantScaleOutType, QuantScaleOutType, true>;
     BlockEpilogue epilogueOp_;
 };
 
