@@ -352,3 +352,4 @@ export ASCEND_CUSTOM_OPP_PATH=${ASCEND_HOME_PATH}/opp/vendors/custom_transformer
 - 基于已有完整 `msprof` 输出重新生成 `performance_compare.csv` 与 `performance_raw.csv`，准备提交到 fork 分支；完整 `PROF_*` 原始目录不纳入代码提交
 - 已推送 fork 分支 `chunk-gdr-neumann-20260429-upload`，远端提交 `61d5a61c57502fdc80b1899f68e579bacb364213`；推送前修复本机 `id_ed25519.pub` 与私钥不匹配问题
 - 按用户追加要求上传完整 profiling 原始目录 `tests/pytest/prof_out/`，包含 full 批测和 smoke 的 `PROF_*` 输出；最新 profiling 提交 `c69375e7`
+- 按用户要求将当前版本 fast-forward 推送到 `fork/master`，后续默认上传目标改为 `fork master`

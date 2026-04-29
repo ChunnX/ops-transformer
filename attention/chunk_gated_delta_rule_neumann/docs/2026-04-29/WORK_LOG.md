@@ -332,3 +332,14 @@ bash test_run.sh compare
 **上传结果**:
 - profiling 提交：`c69375e7 Upload chunk GDR profiling artifacts`。
 - 远端分支：`fork/chunk-gdr-neumann-20260429-upload`。
+
+---
+
+## fork master 推送规则更新
+
+**用户要求**: 后续直接推送到 fork 的 `master`，不再只推临时分支。
+
+**执行结果**:
+- 已将当前 `chunk-gdr-neumann-20260429-upload` 分支 fast-forward 推送到 `fork/master`。
+- 当前 `fork/master` 最新提交：`44eff3448a9a206e3ae1eff22c292eae078aa2d0`。
+- 后续默认上传目标：`fork master`。
