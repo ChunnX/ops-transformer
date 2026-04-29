@@ -109,7 +109,7 @@ ge::graphStatus CheckInputShape(gert::TilingContext *context, const gert::Storag
         std::string dimNumMsg = std::to_string(xDimNum) + ", " + std::to_string(cosDimNum) + " and " +
             std::to_string(sinDimNum);
         OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(context->GetNodeName(), "x, cos and sin",
-            dimNumMsg.c_str(), "The numbers of dimensions of input x, cos and sin should be the same");
+            dimNumMsg.c_str(), "The shape dims of input x, cos and sin should be the same");
         return ge::GRAPH_FAILED;
     }
 
@@ -117,7 +117,7 @@ ge::graphStatus CheckInputShape(gert::TilingContext *context, const gert::Storag
         if (cosShape->GetStorageShape().GetDim(i) != sinShape->GetStorageShape().GetDim(i)) {
             std::string shapeMsg = ToString(cosShape->GetStorageShape()) + " and " + ToString(sinShape->GetStorageShape());
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "cos and sin", shapeMsg.c_str(),
-                "The shape of input cos and input sin should be the same");
+                "The shapes of input cos and input sin should be the same");
             return ge::GRAPH_FAILED;
         }
     }
