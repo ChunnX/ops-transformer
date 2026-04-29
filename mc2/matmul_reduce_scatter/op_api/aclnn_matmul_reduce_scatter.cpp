@@ -120,10 +120,7 @@ static aclnnStatus CheckParams(const aclTensor *x1, const aclTensor *x2, const a
   // 1. 检查参数是否为空指针
   CHECK_RET(CheckNotNull(x1, x2, output), ACLNN_ERR_PARAM_NULLPTR);
 
-  if (bias != nullptr) {
-   OP_LOGW("MatmulReducescatter, The current version does not support the scenario where bias is not 0. "
-    "Features and accuracy are not guaranteed if inputting bias with values other than 0s.");
-  }
+  // Ascend 950 supports non-zero bias for fp16/bf16 inputs
 
   // 2. 检查输入的数据类型是否在API支持的数据类型范围之内，需要根据api定义校验
   CHECK_RET(CheckDtypeValid(x1, x2, bias, output), ACLNN_ERR_PARAM_INVALID);
