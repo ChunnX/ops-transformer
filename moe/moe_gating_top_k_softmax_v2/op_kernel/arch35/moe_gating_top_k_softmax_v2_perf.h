@@ -478,6 +478,7 @@ private:
             SoftMax<float, true, false>(
                 topKOutsLocal.ReinterpretCast<float>(), topKOutsLocal.ReinterpretCast<float>(),
                 tilingData->softmaxTilingData, softmaxShapeInfo);
+            PipeBarrier<PIPE_ALL>();
             GatherSoftmaxResult(topKOutsLocal, curRowsNum, tilingData);
         } else {
             if (tilingData->col < CONSTANT_EIGHT) {
@@ -494,6 +495,7 @@ private:
             SoftMax<float, true, false>(
                 topKOutsLocal.ReinterpretCast<float>(), topKOutsLocal.ReinterpretCast<float>(),
                 tilingData->softmaxTilingData, softmaxShapeInfo);
+            PipeBarrier<PIPE_ALL>();
             GatherSoftmaxResult(topKOutsLocal, curRowsNum, tilingData);
             Cast(
                 topKOutsLocal.ReinterpretCast<T>(), topKOutsLocal.ReinterpretCast<float>(), RoundMode::CAST_RINT,
