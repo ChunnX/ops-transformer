@@ -2107,55 +2107,58 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
 }
 
 ASCENDC_EXTERN_C ge::graphStatus TilingGMM(gert::TilingContext* context) {
-  OP_CHECK_NULL_WITH_CONTEXT(context, context);
-  auto xDesc = context->GetDynamicInputDesc(X_INDEX, 0);
-  OP_CHECK_NULL_WITH_CONTEXT(context, xDesc);  // check xDesc is not null
-  ge::DataType xDType = xDesc->GetDataType();
-  auto w0Desc = context->GetDynamicInputDesc(WEIGHT_INDEX, 0);
-  OP_CHECK_NULL_WITH_CONTEXT(context, w0Desc);
-  ge::DataType weightDtype = w0Desc->GetDataType();
-  auto compileInfoPtr = context->GetCompileInfo<GMMCompileInfo>();
-  OP_CHECK_NULL_WITH_CONTEXT(context, compileInfoPtr);
-  if (compileInfoPtr->npuArch == NpuArch::DAV_3510) {
-      // 全量化：双8bits或双4bits(不会有A4W2)
-      bool isQuant = xDType == ge::DT_FLOAT4_E2M1 || xDType == ge::DT_INT4 ||
-                     (ge::GetSizeByDataType(xDType) == 1 && ge::GetSizeByDataType(weightDtype) == 1);
-      if (isQuant) {
-          std::vector<int32_t> registerList = {0, 1};
-          return TilingRegistry::GetInstance().DoTilingImpl(context, registerList);
-      } else if (xDType != weightDtype) {
-          GroupedWeightQuantBatchMatmulTiling groupedWeightQuantTiling;
-          OP_CHECK_IF(!groupedWeightQuantTiling.SetTiling(context),
-                     OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "SetTiling failed."), return ge::GRAPH_FAILED);
-          return ge::GRAPH_SUCCESS;
-      }
-      bool isUnQuant = (xDType == ge::DT_FLOAT16 || xDType == ge::DT_BF16 || xDType == ge::DT_FLOAT) && (xDType == weightDtype);
-      if (isUnQuant) {
-        GroupedNoQuantMatmulTiling groupedNoQuantMatmulTiling;
-        OP_CHECK_IF(!groupedNoQuantMatmulTiling.SetTiling(context),
-                     OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "SetTiling failed."), return ge::GRAPH_FAILED);
-        return ge::GRAPH_SUCCESS;
-      }
-  }
-  GMMTiling tiling;
-  if(xDType == ge::DT_INT8 && weightDtype == ge::DT_INT4) {     // A8W4 Tiling
-    ge::graphStatus A8W4TilingResult = tiling.A8W4Tiling(context, compileInfoPtr);
-    if (A8W4TilingResult != ge::GRAPH_PARAM_INVALID) {
-      return A8W4TilingResult;
+    OP_CHECK_NULL_WITH_CONTEXT(context, context);
+    auto xDesc = context->GetDynamicInputDesc(X_INDEX, 0);
+    OP_CHECK_NULL_WITH_CONTEXT(context, xDesc);  // check xDesc is not null
+    ge::DataType xDType = xDesc->GetDataType();
+    auto w0Desc = context->GetDynamicInputDesc(WEIGHT_INDEX, 0);
+    OP_CHECK_NULL_WITH_CONTEXT(context, w0Desc);
+    ge::DataType weightDtype = w0Desc->GetDataType();
+    auto compileInfoPtr = context->GetCompileInfo<GMMCompileInfo>();
+    OP_CHECK_NULL_WITH_CONTEXT(context, compileInfoPtr);
+    if (compileInfoPtr->npuArch == NpuArch::DAV_3510) {
+        // 全量化：双8bits或双4bits(不会有A4W2)
+        bool isQuant = xDType == ge::DT_FLOAT4_E2M1 || xDType == ge::DT_INT4 || xDType == ge::DT_FLOAT4_E1M2 ||
+                       (ge::GetSizeByDataType(xDType) == 1 && ge::GetSizeByDataType(weightDtype) == 1);
+        if (isQuant) {
+            std::vector<int32_t> registerList = {0, 1};
+            return TilingRegistry::GetInstance().DoTilingImpl(context, registerList);
+        } else if (xDType != weightDtype) {
+            GroupedWeightQuantBatchMatmulTiling groupedWeightQuantTiling;
+            OP_CHECK_IF(!groupedWeightQuantTiling.SetTiling(context),
+                        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "SetTiling failed."),
+                        return ge::GRAPH_FAILED);
+            return ge::GRAPH_SUCCESS;
+        }
+        bool isUnQuant =
+            (xDType == ge::DT_FLOAT16 || xDType == ge::DT_BF16 || xDType == ge::DT_FLOAT) && (xDType == weightDtype);
+        if (isUnQuant) {
+            GroupedNoQuantMatmulTiling groupedNoQuantMatmulTiling;
+            OP_CHECK_IF(!groupedNoQuantMatmulTiling.SetTiling(context),
+                        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "SetTiling failed."),
+                        return ge::GRAPH_FAILED);
+            return ge::GRAPH_SUCCESS;
+        }
     }
-  }
-
-  OP_CHECK_IF(tiling.Init(context) != ge::GRAPH_SUCCESS,
-             OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "GMM tiling init failed"),
-             return ge::GRAPH_FAILED);
-
-  if(xDType == ge::DT_BF16 && weightDtype == ge::DT_INT4) {     // A16W4 Msd Tiling
-    ge::graphStatus A16W4MsdTilingResult = tiling.A16W4MsdTiling(context, compileInfoPtr);
-    if (A16W4MsdTilingResult == ge::GRAPH_SUCCESS) {
-      return A16W4MsdTilingResult;
+    GMMTiling tiling;
+    if (xDType == ge::DT_INT8 && weightDtype == ge::DT_INT4) {  // A8W4 Tiling
+        ge::graphStatus A8W4TilingResult = tiling.A8W4Tiling(context, compileInfoPtr);
+        if (A8W4TilingResult != ge::GRAPH_PARAM_INVALID) {
+            return A8W4TilingResult;
+        }
     }
-  }
-  return tiling.RunFusionKernelTiling(context);
+
+    OP_CHECK_IF(tiling.Init(context) != ge::GRAPH_SUCCESS,
+                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "GMM tiling init failed"),
+                return ge::GRAPH_FAILED);
+
+    if (xDType == ge::DT_BF16 && weightDtype == ge::DT_INT4) {  // A16W4 Msd Tiling
+        ge::graphStatus A16W4MsdTilingResult = tiling.A16W4MsdTiling(context, compileInfoPtr);
+        if (A16W4MsdTilingResult == ge::GRAPH_SUCCESS) {
+            return A16W4MsdTilingResult;
+        }
+    }
+    return tiling.RunFusionKernelTiling(context);
 }
 
 ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForGMM(gert::TilingParseContext* context) {

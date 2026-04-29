@@ -89,9 +89,6 @@ struct CombineV2Config {
     bool isMc2Context = false;
 };
 
-ge::graphStatus MoeDistributeCombineV2TilingFuncNew(gert::TilingContext* context, const CombineV2Config& config);
-
-ge::graphStatus MoeDistributeCombineV2TilingFunc(gert::TilingContext* context);
 class MoeDistributeCombineTilingHelper {
 public:
     static ge::graphStatus TilingCheckMoeDistributeCombine(gert::TilingContext *context, const char *nodeName);

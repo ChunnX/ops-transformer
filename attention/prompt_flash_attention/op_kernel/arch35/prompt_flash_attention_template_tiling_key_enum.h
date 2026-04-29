@@ -154,6 +154,8 @@ static constexpr ConfigParams ConfigValue[] ={
    {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned64, inferDTemplateType::Aligned128}, //24
    {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned128, inferDTemplateType::Aligned64}, //25
    {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned64, inferDTemplateType::Aligned128}, //26
+   {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned512, inferDTemplateType::Aligned64, inferDTemplateType::Aligned64}, //27
+   {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned512, inferDTemplateType::Aligned128, inferDTemplateType::Aligned128}, //28
 };
 
 #define Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned64 0
@@ -183,6 +185,8 @@ static constexpr ConfigParams ConfigValue[] ={
 #define Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned128 24
 #define Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned64 25
 #define Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned128 26
+#define Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64 27
+#define Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128 28
 
 
 //PseMode
@@ -199,6 +203,7 @@ static constexpr ConfigParams ConfigValue[] ={
 #define AntiquantMode_K_PER_TOKEN 6 // 表示其他伪量化类型
 #define PerBlock 17
 #define FULLQUANT_MODE_PER_TOKEN_HEAD 18
+#define FULLQUANT_MODE_MXFP8 19
 #define FullQuantMode 30
 #define NoQuantMode 31
 
