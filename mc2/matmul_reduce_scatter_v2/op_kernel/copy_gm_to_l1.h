@@ -24,7 +24,7 @@ template <
     class ArchTag,
     class Element
 >
-struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::VectorLayout>> {
+struct CopyGmToL1MC2<ArchTag, Gemm::GemmType<Element, layout::VectorLayout>> {
     using LayoutDst = layout::VectorLayout;
     using LayoutSrc = layout::VectorLayout;
 
@@ -33,7 +33,7 @@ struct CopyGmToL1<ArchTag, Gemm::GemmType<Element, layout::VectorLayout>> {
     // Mehtods
 
     CATLASS_DEVICE
-    CopyGmToL1() {};
+    CopyGmToL1MC2() {};
 
     CATLASS_DEVICE
     void operator()(
