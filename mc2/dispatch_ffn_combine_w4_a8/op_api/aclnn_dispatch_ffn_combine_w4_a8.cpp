@@ -36,23 +36,13 @@ enum class NnopbaseHcclServerType : uint32_t {
 
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
-extern aclnnStatus aclnnInnerDispatchFFNCombineW4A8GetWorkspaceSize(const aclTensor* x, const aclTensorList* weight1, const aclTensorList* weight2,
-                                                         const aclTensor* expertId, const aclTensorList* scale1, const aclTensorList* scale2,
-                                                         const aclTensorList* bias1, const aclTensorList * bias2,
-                                                         const aclTensor* probs,
-                                                         const char* group, int64_t maxOutputSize,
-                                                         bool transB, bool weightNz,
-                                                         const aclTensor* out, const aclTensor* expertTokenNums,
-                                                         uint64_t* workspaceSize, aclOpExecutor** executor);
-
-
 extern aclnnStatus aclnnInnerDispatchFFNCombineW4A8(void *workspace, uint64_t workspaceSize,
                                             aclOpExecutor *executor, aclrtStream stream);
 
 aclnnStatus aclnnDispatchFFNCombineW4A8GetWorkspaceSize(const aclTensor* x, const aclTensorList* weight1, const aclTensorList* weight2,
                                                     const aclTensor* expertId, const aclTensorList* scale1, const aclTensorList* scale2,
                                                     const aclTensorList* bias1, const aclTensorList * bias2,
-                                                    const aclTensor* probs, const char* group, int64_t maxOutputSize,
+                                                    const aclTensor* probs, char* group, int64_t maxOutputSize,
                                                     const aclTensor* out, const aclTensor* expertTokenNums,
                                                     uint64_t* workspaceSize, aclOpExecutor** executor)
 {
@@ -70,7 +60,7 @@ aclnnStatus aclnnDispatchFFNCombineW4A8GetWorkspaceSize(const aclTensor* x, cons
 aclnnStatus aclnnDispatchFFNCombineW4A8(void* workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
 {
     if (NnopbaseSetHcclServerType) {
-        NnopbaseSetHcclServerType(executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
+        NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
     }
     aclnnStatus ret = aclnnInnerDispatchFFNCombineW4A8(workspace, workspaceSize, executor, stream);
     return ret;
