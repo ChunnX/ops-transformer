@@ -646,6 +646,10 @@ __aicore__ inline void CompressorVec1SliceIterator<COMP>::IteratorSlice()
             if (sliceInfo_.bSeqUsed < seqLength) {
                 uint32_t nextAlignSIdx = Align(sliceInfo_.bStartPos + sliceInfo_.sIdx, cmpRatio) - sliceInfo_.bStartPos;
                 sliceInfo_.dealedSeqCnt += nextAlignSIdx - sliceInfo_.sIdx;
+                uint32_t tcGap = CeilDivT(seqLength - nextAlignSIdx, cmpRatio);
+                if (sliceInfo_.bSeqUsed == 0 && nextAlignSIdx > sliceInfo_.sIdx) {
+                    tcGap++;
+                }
                 sliceInfo_.sIdx = nextAlignSIdx;
                 uint32_t tcGap = CeilDivT(seqLength - sliceInfo_.sIdx, cmpRatio);
                 if (needDealTcSize_ < tcGap) {
