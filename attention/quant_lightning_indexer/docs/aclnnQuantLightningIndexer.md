@@ -36,24 +36,24 @@ aclnnStatus aclnnQuantLightningIndexerGetWorkspaceSize(
     const aclTensor *actualSeqLengthsQueryOptional,
     const aclTensor *actualSeqLengthsKeyOptional,
     const aclTensor *blockTableOptional,
-    int64_t queryQuantMode,
-    int64_t keyQuantMode,
-    char *layoutQueryOptional,
-    char *layoutKeyOptional,
-    int64_t sparseCount,
-    int64_t sparseMode,
-    int64_t preTokens,
-    int64_t nextTokens,
+    int64_t          queryQuantMode,
+    int64_t          keyQuantMode,
+    char            *layoutQueryOptional,
+    char            *layoutKeyOptional,
+    int64_t          sparseCount,
+    int64_t          sparseMode,
+    int64_t          preTokens,
+    int64_t          nextTokens,
     const aclTensor *out,
-    uint64_t *workspaceSize,
-    aclOpExecutor **executor)
+    uint64_t        *workspaceSize,
+    aclOpExecutor   **executor)
 ```
 
 ```Cpp
 aclnnStatus aclnnQuantLightningIndexer(
-    void *workspace,
-    uint64_t workspaceSize,
-    aclOpExecutor *executor,
+    void             *workspace,
+    uint64_t          workspaceSize,
+    aclOpExecutor    *executor,
     const aclrtStream stream)
 ```
 
@@ -92,7 +92,7 @@ aclnnStatus aclnnQuantLightningIndexer(
     <td>输入</td>
     <td>公式中的输入Q。</td>
     <td>不支持空tensor。</td>
-    <td>int8、float8_e4m3fn、hifloat8。</td>
+    <td>INT8、FLOAT8_E4M3、HIFLOAT8。</td>
     <td>ND</td>
     <td>
         <ul>
@@ -112,7 +112,7 @@ aclnnStatus aclnnQuantLightningIndexer(
                 <li>block_num为PageAttention时block总数，block_size为一个block的token数。</li>
         </ul>
     </td>
-    <td>int8、float8_e4m3fn、hifloat8。</td>
+    <td>INT8、FLOAT8_E4M3、HIFLOAT8。</td>
     <td>ND</td>
     <td>
         <ul>
@@ -128,7 +128,7 @@ aclnnStatus aclnnQuantLightningIndexer(
     <td>输入</td>
     <td>公式中的输入W。</td>
     <td>不支持空tensor。</td>
-    <td>float16、bfloat16</td>
+    <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
     <td>
         <ul>
@@ -143,7 +143,7 @@ aclnnStatus aclnnQuantLightningIndexer(
     <td>输入</td>
     <td>表示Index Query的反量化系数$Scale_Q$。</td>
     <td>不支持空tensor。</td>
-    <td>float、float16</td>
+    <td>FLOAT、FLOAT16</td>
     <td>ND</td>
     <td>
         <ul>
@@ -158,7 +158,7 @@ aclnnStatus aclnnQuantLightningIndexer(
     <td>输入</td>
     <td>表示Index Key的反量化系数$Scale_K^T$。</td>
     <td>不支持空tensor。</td>
-    <td>float、float16</td>
+    <td>FLOAT、FLOAT16</td>
     <td>ND</td>
     <td>
         <ul>
@@ -256,12 +256,7 @@ aclnnStatus aclnnQuantLightningIndexer(
     <td>layoutQueryOptional</td>
     <td>输入</td>
     <td>用于标识输入Query的数据排布格式。</td>
-    <td>
-        <ul>
-                <li>用户不特意指定时可传入默认值"BSND"。</li>
-                <li>当前支持BSND、TND。</li>
-        </ul>
-    </td>
+    <td>当前支持BSND、TND。</td>
     <td>STRING</td>
     <td>-</td>
     <td>-</td>
@@ -271,12 +266,7 @@ aclnnStatus aclnnQuantLightningIndexer(
     <td>layoutKeyOptional</td>
     <td>输入</td>
     <td>用于标识输入Key的数据排布格式。</td>
-    <td>
-        <ul>
-                <li>用户不特意指定时可传入默认值"BSND"。</li>
-                <li>当前支持PA_BSND、BSND、TND。</li>
-        </ul>
-    </td>
+    <td>当前支持PA_BSND、BSND、TND。</td>
     <td>STRING</td>
     <td>-</td>
     <td>-</td>
@@ -286,7 +276,7 @@ aclnnStatus aclnnQuantLightningIndexer(
     <td>sparseCount</td>
     <td>输入</td>
     <td>topK阶段需要保留的block数量。</td>
-    <td>默认值为BSND</td>
+    <td>建议值为2048</td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
@@ -311,7 +301,7 @@ aclnnStatus aclnnQuantLightningIndexer(
     <td>preTokens</td>
     <td>输入</td>
     <td>用于稀疏计算，表示attention需要和前几个Token计算关联。</td>
-    <td>仅支持默认值2^63-1。</td>
+    <td>仅支持建议值2^63-1。</td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
@@ -321,7 +311,7 @@ aclnnStatus aclnnQuantLightningIndexer(
     <td>nextTokens</td>
     <td>输入</td>
     <td>用于稀疏计算，表示attention需要和后几个Token计算关联。</td>
-    <td>仅支持默认值2^63-1。</td>
+    <td>仅支持建议值2^63-1。</td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
@@ -441,6 +431,7 @@ aclnnStatus aclnnQuantLightningIndexer(
 
  ## 约束说明
  	 
+- 确定性说明：aclnnQuantLightningIndexer非确定性实现，不支持通过aclrtCtxSetSysParamOpt开启确定性。
 - 参数query中的N支持小于等于64/32/24/16，key的N支持1。
 - headdim支持128。
 - block_size取值为16的倍数，最大支持1024。
