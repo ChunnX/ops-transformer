@@ -117,6 +117,28 @@ class SymmBuffer:
         self.comm_alg = comm_alg
 
 
+def npu_get_mega_moe_ccl_buffer_size(
+    ep_world_size: int, moe_expert_num: int, num_max_tokens_per_rank: int,
+    batch_size:int, num_topk: int, hidden: int,
+    dispatch_quant_mode: int = 0, dispatch_quant_out_type: int = 28,
+    combine_quant_mode: int = 0, comm_alg: str = ""
+) -> int:
+    def inline_align(val, align):
+        return (val + align - 1) // align * align
+    # 全卡软同步使用
+    peermem_data_offset = 60 * 1024
+    y_out_dtype_size = 2
+    # dispatchTokenPerExpert = epWorldSize * align128(epWorldSize * expertPerRank) * sizeof(int32)
+    dispatch_token_per_expert = ep_world_size * \
+        inline_align(ep_world_size * num_max_tokens_per_rank, 128) * 4
+    # quantTokenScales = align512(bs * k * (h + h / 32) * sizeof(int8))
+    quant_token_scales = inline_align(batch_size * num_topk * (hidden + hidden // 32), 512)
+    # combineOut = align512(bs * k * sizeof(yOutType))
+    combine_out = inline_align(batch_size * num_topk * y_out_dtype_size, 512)
+    ccl_buffer_size = peermem_data_offset + dispatch_token_per_expert + quant_token_scales + combine_out
+    return ccl_buffer_size
+
+
 def get_symm_buffer_for_mega_moe(
     group,
     num_experts: int,
