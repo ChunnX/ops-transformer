@@ -214,6 +214,7 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
     constInfo.s2BaseN2Dv = constInfo.s2BaseN2D;
     constInfo.n2GS1Dv = constInfo.n2GS1D;
     constInfo.layoutType = inputParamsRegbase.layoutType;
+    constInfo.isFd = inputParamsRegbase.isFd;
     if ASCEND_IS_AIV {
         if constexpr (ANTIQUANT) {
             this->vecBlock.antiqSeqSize = inputParamsRegbase.antiquantParaSeqSize;
@@ -349,7 +350,7 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
         constInfo.scaleValue = static_cast<float>(inputParamsRegbase.scaleValue);
         constInfo.isSoftmaxLseEnable = inputParamsRegbase.isSoftMaxLseEnable;
     }
-    if constexpr (isFd) {
+    if (constInfo.isFd) {
         this->constInfo.splitKVNum = inputParamsRegbase.kvSplitPart;
         this->constInfo.sInnerLoopSize = CeilDiv(this->constInfo.s2Size, this->constInfo.splitKVNum);
         if (inputParamsRegbase.antiquantPerTensorFlag) {
@@ -473,12 +474,12 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
     auto &multiCoreParamsRegbase = this->tilingData->multiCoreParamsRegbase;
     auto &inputParamsRegbase = this->tilingData->inputParamsRegbase;
     int32_t actualCoreNums = multiCoreParamsRegbase.coreNum;
-    if constexpr (isFd) {
+    if (constInfo.isFd) {
         actualCoreNums =  inputParamsRegbase.bSize * this->constInfo.n2Size
             * this->constInfo.splitKVNum;
     }
     if ((aicIdx) >= actualCoreNums) {
-        if constexpr (isFd) {
+        if (constInfo.isFd) {
             SyncAll();
         }
         return;
@@ -490,7 +491,7 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
     uint32_t bnEndIdx;
     int64_t s2LoopLimit;
     int64_t nextGs1Idx = multiCoreParamsRegbase.sparseStartIdx[aicIdx + 1];
-    if constexpr (!isFd) {
+    if (!constInfo.isFd) {
         bnStartIdx = multiCoreParamsRegbase.bnStartIdx[aicIdx];
         gS1StartIdx = multiCoreParamsRegbase.sparseStartIdx[aicIdx];
         if (likely((multiCoreParamsRegbase.coreNum - 1) > (aicIdx))) {
@@ -517,7 +518,7 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
     bool isLastBmm1 = false;
     RunInfo<isInfer> runInfo[NUM_4];
     RunParamStr<isInfer> runParam;
-    if constexpr (isFd) {
+    if (constInfo.isFd) {
         runParam.boIdx = (aicIdx) / (this->constInfo.n2Size * this->constInfo.splitKVNum);
         runParam.n2oIdx = ((aicIdx) / this->constInfo.splitKVNum) % this->constInfo.n2Size;
         bnStartIdx = runParam.boIdx * this->constInfo.n2Size + runParam.n2oIdx;
@@ -527,14 +528,14 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
     AscendC::ICachePreLoad(4);
     for (uint32_t bnIdx = bnStartIdx; bnIdx < bnEndIdx; bnIdx++) {
         bool lastBN = (bnIdx == bnEndIdx - 1);
-        if constexpr (!isFd) {
+        if (!constInfo.isFd) {
             runParam.boIdx = bnIdx / (this->constInfo.n2Size * this->constInfo.headNumRatio);
             runParam.n2oIdx = (bnIdx / this->constInfo.headNumRatio) % this->constInfo.n2Size;
         }
         ComputeParamBatch<CHILD_SPEC_TEMPLATE_ARGS, useDn, enableKVPrefix>(runParam, this->constInfo, this->attenMaskInfo,
             this->keyGm, this->actualSeqQlenAddr, this->actualSeqKvlenAddr);
         ComputeS1LoopInfo<CHILD_SPEC_TEMPLATE_ARGS, useDn, enableKVPrefix>(runParam, this->constInfo, lastBN, nextGs1Idx);
-        if constexpr (isFd) {
+        if (constInfo.isFd) {
             if (constInfo.sInnerLoopSize * (aicIdx % constInfo.splitKVNum) > runParam.actualS2Size) {
                 runParam.s2LineEndIdx = 0;
             } else {
@@ -647,7 +648,7 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
         }
         gS1StartIdx = 0;
     }
-    if constexpr (isFd) {
+    if (constInfo.isFd) {
         int64_t s2InCurrentBatch = GetS2CurrentBatch();
         this->vecBlock.FlashDecode(this->constInfo, this->actualSeqQlenAddr, this->actualSeqKvlenAddr, s2InCurrentBatch);
     }
@@ -688,7 +689,7 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
         runInfo.b1SSOffsetAlign = runInfo.boIdx * constInfo.s1Size * Align(constInfo.s2Size);
     }
 
-    if constexpr (isFd) {
+    if (constInfo.isFd) {
         runInfo.flashDecodeS2Idx = this->aicIdx % constInfo.splitKVNum;
     }
     runInfo.actualS1Size = runParam.actualS1Size;
