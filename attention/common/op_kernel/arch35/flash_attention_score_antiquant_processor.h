@@ -67,6 +67,7 @@ struct AntiquantTaskParamBaseAPI {
     uint64_t bIdx;
     uint64_t n2Idx;
     uint64_t s2Idx;
+    bool isFd;
     uint32_t singleSInnerSize;
     uint32_t flashDecodeS2Idx;
     uint32_t sInnerLoopSize;
@@ -89,7 +90,6 @@ class AntiquantProcessorBaseAPI
 {
 public:
     static constexpr bool PAGE_ATTENTION = isPa;
-    static constexpr bool FLASH_DECODE = isFd;
     static constexpr bool KVFP4 = (IsSameType<KV_T, fp4x2_e1m2_t>::value || IsSameType<KV_T, fp4x2_e2m1_t>::value);
     static constexpr bool KVINT4 = IsSameType<KV_T, int4b_t>::value;
     using ANTIQ_PARAMS_T = typename std::conditional<ANTIQUANT_PER_TOKEN, T, Q_T>::type;
@@ -255,7 +255,7 @@ __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQU
         scaleOffset = taskParam.bIdx * taskParam.kvHeadNum * taskParam.seqSize * grpNum +
                     taskParam.n2Idx * taskParam.seqSize * grpNum + taskParam.s2Idx * taskParam.singleSInnerSize * 1 +
                     taskParam.kvPaddingBeginOffset * 1 + subBlockIdx * GetRealDealSize(s2RealSize) * 1;
-        if constexpr (FLASH_DECODE) {
+        if (taskParam.isFd) {
             scaleOffset += taskParam.flashDecodeS2Idx * taskParam.sInnerLoopSize * 1;
         }
 
@@ -287,7 +287,7 @@ __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQU
                     taskParam.n2Idx * taskParam.seqSize * grpNum + taskParam.s2Idx * taskParam.singleSInnerSize * grpNum +
                     taskParam.kvPaddingBeginOffset * grpNum + subBlockIdx * GetRealDealSize(s2RealSize) * grpNum;
         }
-        if constexpr (FLASH_DECODE) {
+        if (taskParam.isFd) {
             scaleOffset += taskParam.flashDecodeS2Idx * taskParam.sInnerLoopSize * grpNum;
         }
 
@@ -341,7 +341,7 @@ __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQU
                       taskParam.kvPaddingBeginOffset + subBlockIdx * GetRealDealSize(s2RealSize);
         }
     }
-    if constexpr (FLASH_DECODE) {
+    if (taskParam.isFd) {
         scaleOffset += taskParam.flashDecodeS2Idx * taskParam.sInnerLoopSize;
     }
 
