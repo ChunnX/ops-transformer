@@ -355,6 +355,7 @@ struct RunInfo<false> {
     int64_t queryRightPaddingSize; \
     int64_t kvRightPaddingSize; \
     /* FD */ \
+    uint8_t isFd;\
     int64_t sInnerLoopSize; /* FD s2总大小 */ \
     int64_t actualCombineLoopSize; /* 实际规约块数 */ \
     int64_t splitKVNum; \
@@ -465,7 +466,8 @@ struct CVSharedParams<true, false> {
     uint32_t needInit : 1;
     uint32_t isPostQuantPerChnl : 1;
     uint32_t isPostQuantBF16 : 1;
-    uint32_t headNumRatio : 20;
+    uint32_t isFd : 1;
+    uint32_t headNumRatio : 19;
 
     uint32_t transposeLayout;
     uint32_t actualSeqLengthsSize;
@@ -500,7 +502,8 @@ struct CVSharedParams<true, true> {
     uint32_t needInit : 1;
     uint32_t isPostQuantPerChnl : 1;
     uint32_t isPostQuantBF16 : 1;
-    uint32_t headNumRatio : 20;
+    uint32_t isFd : 1;
+    uint32_t headNumRatio : 19;
 
     uint32_t transposeLayout;
     uint32_t actualSeqLengthsSize;

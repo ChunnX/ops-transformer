@@ -44,10 +44,9 @@ public:
     /* =====================GM变量========================== */
     GlobalTensor<float> softmaxLseGm;
 
-    using FDGmType = typename std::conditional<isFd, GlobalTensor<float>, int8_t>::type;
-    FDGmType accumOutGm;
-    FDGmType softmaxFDMaxGm;
-    FDGmType softmaxFDSumGm;
+    GlobalTensor<float> accumOutGm;
+    GlobalTensor<float> softmaxFDMaxGm;
+    GlobalTensor<float> softmaxFDSumGm;
 
     using postQuantGmType = typename std::conditional<POST_QUANT, GlobalTensor<float>, int8_t>::type;
     postQuantGmType postQuantScaleGm;
@@ -175,7 +174,7 @@ __aicore__ inline void FABlockVecInfer<TEMPLATE_ARGS>::InitCubeVecSharedParams(
     sharedParams.attenMaskS1Size = inputParamsRegbase.attenMaskS1Size;
     sharedParams.attenMaskS2Size = inputParamsRegbase.attenMaskS2Size;
  
-    if constexpr (isFd) {
+    if (inputParamsRegbase.isFd) {
         sharedParams.splitKVNum = inputParamsRegbase.kvSplitPart;
     }
     if constexpr (POST_QUANT) {
@@ -262,7 +261,7 @@ __aicore__ inline void FABlockVecInfer<TEMPLATE_ARGS>::InitGlobalBuffer(
     ConstInfo<isInfer, hasRope> &constInfo)
 {
     BaseClass::InitCommonGlobalBuffer(pse, deqScaleQ, deqScaleK, deqScaleV, pScale, postQuantScale, prefix, attenMask, learnableSink, workspace, constInfo);
-    if constexpr (isFd) {
+    if (constInfo.isFd) {
         workspace -= singleCoreOffset * preloadTimes * (aicIdx + 1);             // 让当前的workspace地址回到基地址, workspace偏移了totalOffset + mm2Offset * 3 + ve2offset * 3
         auto &inputParamsRegbase = this->tilingData->inputParamsRegbase;
         int32_t actualCoreNums = inputParamsRegbase.bSize * constInfo.n2Size * constInfo.splitKVNum;
@@ -407,7 +406,7 @@ __aicore__ inline void FABlockVecInfer<TEMPLATE_ARGS>::SoftmaxDataCopyOut(
     RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo, LocalTensor<float> &sumUb,
     LocalTensor<float> &maxUb)
 {
-    if constexpr (isFd) {
+    if (constInfo.isFd) {
         ComputeLogSumExpAndCopyToGm(runInfo, constInfo);
         return;
     }
@@ -465,7 +464,7 @@ template <typename VEC2_RES_T>
 __aicore__ inline void FABlockVecInfer<TEMPLATE_ARGS>::CopyOutAttentionOut(
     RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo, LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx, int64_t vec2CalcSize)
 {
-    if constexpr (isFd) {
+    if (constInfo.isFd) {
         Bmm2FDOut(vec2ResUb, runInfo, constInfo, vec2S1Idx, vec2CalcSize);
     } else {
         this->Bmm2DataCopyOut(runInfo, constInfo, vec2ResUb, vec2S1Idx, vec2CalcSize);
