@@ -28,7 +28,7 @@ using bT1 = MatmulType<TPosition::GM, CubeFormat::ND, bfloat16_t>;
 using cT1 = MatmulType<TPosition::GM, CubeFormat::ND, bfloat16_t>;
 using StageOneMT = matmul::MatmulImpl<aT1, bT1, cT1>;
 
-constexpr uint64_t UB_REST_BYTES = 145 * 1024;  // 140KB
+constexpr uint64_t UB_REST_BYTES = 140 * 1024;  // 140KB
 constexpr uint64_t INVERSE_SHAPE = 32;          // 对角块边长
 constexpr uint64_t INVERSE_COUNT = 5;           // 求逆所需空间
 constexpr uint32_t ALIGN_SIZE = 16;
