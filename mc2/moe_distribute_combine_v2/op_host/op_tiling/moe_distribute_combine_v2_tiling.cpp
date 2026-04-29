@@ -357,6 +357,7 @@ static ge::graphStatus CheckARNAttrAndSetTilingData(const gert::TilingContext *c
     auto epsilonPtr = attrs->GetAttrPointer<float>(config.attrNormEpsIndex);
     OP_TILING_CHECK(epsilonPtr == nullptr, OP_LOGE(nodeName, "epsilonPtr is null."), return ge::GRAPH_FAILED);
     tilingData.moeDistributeCombineV2Info.epsilon = *epsilonPtr;
+    OP_TILING_CHECK(*epsilonPtr != 0.000001f, OP_LOGE(nodeName, "epsilon is %f not 1e-6.",*epsilonPtr), return false);
     auto expandXDesc = context->GetInputDesc(config.expandXIndex);
     OP_TILING_CHECK(expandXDesc == nullptr, OP_LOGE(nodeName, "expandxDesc is null."), return false);
 
