@@ -434,6 +434,7 @@ function(add_ops_src_copy)
         "moe_distribute_combine_v2;"
         "moe_distribute_dispatch_v3;"
         "moe_distribute_combine_v3;"
+        "mega_moe;"
         "moe_update_expert;"
         "all_gather_matmul;"
         "all_gather_matmul_v2;"

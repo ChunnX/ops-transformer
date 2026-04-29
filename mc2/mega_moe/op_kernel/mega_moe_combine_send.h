@@ -15,7 +15,7 @@
 
 #ifndef MEGA_MOE_COMBINE_SEND_H
 #define MEGA_MOE_COMBINE_SEND_H
-
+#include "catlass/gemm_coord.hpp"
 #include "kernel_operator.h"
 #include "mega_moe_base.h"
 using namespace AscendC;
