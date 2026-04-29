@@ -420,7 +420,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     rscvStatusNum_ = isShareExpertRankFlag_ ? epWorldSize_ : (epWorldSize_ * moeExpertNumPerRank_);
     totalExpertNum_ = sharedExpertRankNum_ + moeExpertNum_;
     statusCntAlign_ = Ceil(totalExpertNum_, UB_ALIGN_DATA_COUNT) * UB_ALIGN_DATA_COUNT;
-    aivUsedAllToAll_ = aivNum_ / 2;
+    aivUsedAllToAll_ = 2 * aivNum_ / 3;
     
     aivRemainder_ = aivNum_ - aivUsedAllToAll_;
     aivUsedCumSum_ = aivRemainder_;
