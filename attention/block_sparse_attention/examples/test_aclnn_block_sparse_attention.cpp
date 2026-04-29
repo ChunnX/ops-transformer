@@ -356,7 +356,7 @@ int main() {
         numKvHeads,            // numKeyValueHeads
         0,                     // maskType
         scaleValue,            // scaleValue
-        0,                     // innerPrecise (1=fp16 softmax)
+        4,                     // innerPrecise (ascend950 must use 4=LOW_HIGH_MIXED; 910b use 0 or 1)
         0,                     // blockSize
         2147483647,            // preTokens
         2147483647,            // nextTokens
