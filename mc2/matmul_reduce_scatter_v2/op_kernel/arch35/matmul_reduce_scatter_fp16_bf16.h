@@ -45,7 +45,7 @@ private:
     __aicore__ inline void MatMulV3Compute(GM_ADDR cGM, Mc2MatMulV3TilingData& tiling, uint32_t count,
                                            GM_ADDR gmToFloat, bool isLast, bool isTail);
     __aicore__ inline void PostProcess();
-    __aicore__ inline void CastBiasBFtoFloat(GM_ADDR dst, GM_ADDR src, int size);    // 计算后处理，等待通信结束，并终止hcclserver
+    __aicore__ inline void CastBiasBFtoFloat(GM_ADDR dst, GM_ADDR src, int size);
 
 private:
     Mc2Tiling::MatmulReduceScatterV2TilingData* tilingData_;
@@ -192,7 +192,6 @@ template <typename AType, typename BType, typename BiasType, typename CType>
 __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType>::CastBiasBFtoFloat(
     GM_ADDR dst, GM_ADDR src, int size)
 {
-#if __CCE_AICORE__ == 220
     if (g_coreType == AIC) {
         CrossCoreWaitFlag(EVENT_ID_5);
         CrossCoreSetFlag<SET_FLAG_MODE_0, PIPE_MTE3>(EVENT_ID_4);
@@ -228,7 +227,6 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
 
     CrossCoreSetFlag<SET_FLAG_MODE_2, PIPE_MTE3>(EVENT_ID_5);
     CrossCoreWaitFlag(EVENT_ID_4);
-#endif
 }
 } // namespace MatmulReduceScatterImpl
 
