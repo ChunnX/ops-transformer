@@ -1,13 +1,18 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
- 
+
+/*!
+ * \file test_aclnn_mhc_post.cpp
+ * \brief
+ */
+
 #include <iostream>
 #include <vector>
 #include <cmath>
@@ -57,6 +62,7 @@ int Init(int32_t deviceId, aclrtStream *stream)
     return 0;
 }
 
+
 template <typename T>
 int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
                     aclDataType dataType, aclTensor **tensor)
@@ -101,67 +107,60 @@ int main()
         return ret;
     }
 
+    LOG_PRINT("ACL environment initialized successfully!\n");
+
     // 2. To construct input and output, it is necessary to customize the construction according to the API interface.
-    // Shape: TND (T=1024, n=4, D=2560)
-    const int64_t T = 1024;
-    const int64_t n = 4;
-    const int64_t D = 2560;
-
-    std::vector<int64_t> grad_outputShape = {T, n, D};
-    std::vector<int64_t> xShape = {T, n, D};
-    std::vector<int64_t> h_resShape = {T, n, n};
-    std::vector<int64_t> h_outShape = {T, D};
-    std::vector<int64_t> h_postShape = {T, n};
-    std::vector<int64_t> grad_xShape = {T, n, D};
-    std::vector<int64_t> grad_h_resShape = {T, n, n};
-    std::vector<int64_t> grad_h_outShape = {T, D};
-    std::vector<int64_t> grad_h_postShape = {T, n};
-
-    void *grad_outputDeviceAddr = nullptr;
-    void *xDeviceAddr = nullptr;
-    void *h_resDeviceAddr = nullptr;
-    void *h_outDeviceAddr = nullptr;
-    void *h_postDeviceAddr = nullptr;
-    void *grad_xDeviceAddr = nullptr;
-    void *grad_h_resDeviceAddr = nullptr;
-    void *grad_h_outDeviceAddr = nullptr;
-    void *grad_h_postDeviceAddr = nullptr;
-
-    aclTensor *grad_outputTensor = nullptr;
-    aclTensor *xTensor = nullptr;
-    aclTensor *h_resTensor = nullptr;
-    aclTensor *h_outTensor = nullptr;
-    aclTensor *h_postTensor = nullptr;
-    aclTensor *grad_xTensor = nullptr;
-    aclTensor *grad_h_resTensor = nullptr;
-    aclTensor *grad_h_outTensor = nullptr;
-    aclTensor *grad_h_postTensor = nullptr;
-
-    int64_t grad_outputShapeSize = GetShapeSize(grad_outputShape);
-    int64_t xShapeSize = GetShapeSize(xShape);
-    int64_t h_resShapeSize = GetShapeSize(h_resShape);
-    int64_t h_outShapeSize = GetShapeSize(h_outShape);
-    int64_t h_postShapeSize = GetShapeSize(h_postShape);
-    int64_t grad_xShapeSize = GetShapeSize(grad_xShape);
-    int64_t grad_h_resShapeSize = GetShapeSize(grad_h_resShape);
-    int64_t grad_h_outShapeSize = GetShapeSize(grad_h_outShape);
-    int64_t grad_h_postShapeSize = GetShapeSize(grad_h_postShape);
-
-    // Create inpit data with default values
-    std::vector<uinit16_t> grad_outputHostData(grad_outputShapeSize, 1);   // FP16/BF16 data
-    std::vector<uinit16_t> xHostData(xShapeSize, 1);                       // FP16/BF16 data
-    std::vector<float> h_resHostData(h_resShapeSize, 0.25f);               // FP32 data double-stochastistic constrained
-    std::vector<uinit16_t> h_outHostData(h_outShapeSize, 1);               // FP16/BF16 data
-    std::vector<float> h_postHostData(h_postShapeSize, 1.0f);              // FP32 data
+    // Example: BSND format (B, S, n, D)
+    std::vector<int64_t> gradYShape = {1, 1024, 4, 5120};   // BSND
+    std::vector<int64_t> xShape = {1, 1024, 4, 5120};   // BSND
+    std::vector<int64_t> hResShape = {1, 1024, 4, 4};   // BSND
+    std::vector<int64_t> hOutShape = {1, 1024, 5120};   // BSD
+    std::vector<int64_t> hPostShape = {1, 1024, 4};     // BSn
+    std::vector<int64_t> gradXShape = {1, 1024, 4, 5120};   // BSND
+    std::vector<int64_t> gradHresShape = {1, 1024, 4, 4};   // BSND
+    std::vector<int64_t> gradHoutShape = {1, 1024, 5120};   // BSD
+    std::vector<int64_t> gradHpostShape = {1, 1024, 4};     // BSn
     
-    std::vector<uinit16_t> grad_xHostData(grad_xShapeSize, 0);             // FP16/BF16 output
-    std::vector<float> grad_h_resHostData(grad_h_resShapeSize, 0.25f);     // FP32 output
-    std::vector<uinit16_t> grad_h_outHostData(grad_h_outShapeSize, 1);     // FP16/BF16 output
-    std::vector<float> grad_h_postHostData(grad_h_postShapeSize, 1.0f);    // FP32 output
+    void *gradYDeviceAddr = nullptr;
+    void *xDeviceAddr = nullptr;
+    void *hResDeviceAddr = nullptr;
+    void *hOutDeviceAddr = nullptr;
+    void *hPostDeviceAddr = nullptr;
+    void *gradXDeviceAddr = nullptr;
+    void *gradHresDeviceAddr = nullptr;
+    void *gradHoutDeviceAddr = nullptr;
+    void *gradHpostDeviceAddr = nullptr;
 
-    // Create grad_output aclTensor.
-    ret = CreateAclTensor(grad_outputHostData, grad_outputShape, &grad_outputDeviceAddr,
-        aclDataType::ACL_FLOAT16, &grad_outputTensor);
+    aclTensor *gradYTensor = nullptr;
+    aclTensor *xTensor = nullptr;
+    aclTensor *hResTensor = nullptr;
+    aclTensor *hOutTensor = nullptr;
+    aclTensor *hPostTensor = nullptr;
+    aclTensor *gradXTensor = nullptr;
+    aclTensor *gradHresTensor = nullptr;
+    aclTensor *gradHoutTensor = nullptr;
+    aclTensor *gradHpostTensor = nullptr;
+    
+    int64_t gradYShapeSize = GetShapeSize(gradYShape);
+    int64_t xShapeSize = GetShapeSize(xShape);
+    int64_t hResShapeSize = GetShapeSize(hResShape);
+    int64_t hOutShapeSize = GetShapeSize(hOutShape);
+    int64_t hPostShapeSize = GetShapeSize(hPostShape);
+    int64_t gradXShapeSize = GetShapeSize(gradXShape);
+    int64_t gradHresShapeSize = GetShapeSize(gradHresShape);
+    int64_t gradHoutShapeSize = GetShapeSize(gradHoutShape);
+    int64_t gradHpostShapeSize = GetShapeSize(gradHpostShape);
+    std::vector<aclFloat16> gradYHostData(gradYShapeSize, aclFloatToFloat16(1.0f));
+    std::vector<aclFloat16> xHostData(xShapeSize, aclFloatToFloat16(1.0f));
+    std::vector<float> hResHostData(hResShapeSize, 1.0f);
+    std::vector<aclFloat16> hOutHostData(hOutShapeSize, aclFloatToFloat16(1.0f));
+    std::vector<float> hPostHostData(hPostShapeSize, 1.0f);
+    std::vector<aclFloat16> gradXHostData(gradXShapeSize, aclFloatToFloat16(1.0f));
+    std::vector<float> gradHresHostData(gradHresShapeSize, 1.0f);
+    std::vector<aclFloat16> gradHoutHostData(gradHoutShapeSize, aclFloatToFloat16(1.0f));
+    std::vector<float> gradHpostHostData(gradHpostShapeSize, 1.0f);
+    
+    ret = CreateAclTensor(gradYHostData, gradYShape, &gradYDeviceAddr, aclDataType::ACL_FLOAT16, &gradYTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }
@@ -170,42 +169,44 @@ int main()
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }
-    // Create h_res aclTensor.
-    ret = CreateAclTensor(h_resHostData, h_resShape, &h_resDeviceAddr, aclDataType::ACL_FLOAT, &h_resTensor);
+    // Create hRes aclTensor.
+    ret = CreateAclTensor(hResHostData, hResShape, &hResDeviceAddr, aclDataType::ACL_FLOAT, &hResTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }
-    // Create h_out aclTensor.
-    ret = CreateAclTensor(h_outHostData, h_outShape, &h_outDeviceAddr, aclDataType::ACL_FLOAT16, &h_outTensor);
+    // Create hOut aclTensor.
+    ret = CreateAclTensor(hOutHostData, hOutShape, &hOutDeviceAddr, aclDataType::ACL_FLOAT16, &hOutTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }
-    // Create h_post aclTensor.
-    ret = CreateAclTensor(h_postHostData, h_postShape, &h_postDeviceAddr, aclDataType::ACL_FLOAT, &h_postTensor);
+    // Create hPost aclTensor.
+    ret = CreateAclTensor(hPostHostData, hPostShape, &hPostDeviceAddr, aclDataType::ACL_FLOAT,
+        &hPostTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }
 
-    // Create grad_x aclTensor.
-    ret = CreateAclTensor(grad_xHostData, grad_xShape, &grad_xDeviceAddr, aclDataType::ACL_FLOAT16, &grad_xTensor);
+    // Create gradX aclTensor.
+    ret = CreateAclTensor(gradXHostData, gradXShape, &gradXDeviceAddr, aclDataType::ACL_FLOAT16,
+        &gradXTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }
-    // Create grad_h_res aclTensor.
-    ret = CreateAclTensor(grad_h_resHostData, grad_h_resShape, &grad_h_resDeviceAddr,
-        aclDataType::ACL_FLOAT, &grad_h_resTensor);
+    // Create gradHres aclTensor.
+    ret = CreateAclTensor(gradHresHostData, gradHresShape, &gradHresDeviceAddr, aclDataType::ACL_FLOAT,
+        &gradHresTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }
-    // Create grad_h_out aclTensor.
-    ret = CreateAclTensor(grad_h_outHostData, grad_h_outShape, &grad_h_outDeviceAddr,
-        aclDataType::ACL_FLOAT16, &grad_h_outTensor);
+    // Create gradHout aclTensor.
+    ret = CreateAclTensor(gradHoutHostData, gradHoutShape, &gradHoutDeviceAddr, aclDataType::ACL_FLOAT16,
+        &gradHoutTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }
-    // Create grad_h_post aclTensor.
-    ret = CreateAclTensor(grad_h_postHostData, grad_h_postShape, &grad_h_postDeviceAddr,
-        aclDataType::ACL_FLOAT, &grad_h_postTensor);
+    // Create gradHpost aclTensor.
+    ret = CreateAclTensor(gradHpostHostData, gradHpostShape, &gradHpostDeviceAddr, aclDataType::ACL_FLOAT,
+        &gradHpostTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }
@@ -215,9 +216,8 @@ int main()
     aclOpExecutor *executor;
     // Call the first interface.
     ret = aclnnMhcPostBackwardGetWorkspaceSize(
-        grad_outputTensor, xTensor, h_resTensor, h_outTensor, h_postTensor,
-        grad_xTensor, grad_h_resTensor, grad_h_outTensor, grad_h_postTensor,
-        &workspaceSize, &executor);
+        gradYTensor, xTensor, hResTensor, hOutTensor, hPostTensor, gradXTensor, gradHresTensor, gradHoutTensor,
+        gradHpostTensor, &workspaceSize, &executor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         LOG_PRINT("aclnnMhcPostBackwardGetWorkspaceSize failed. ERROR: %d\n", ret);
         return ret;
@@ -244,84 +244,64 @@ int main()
         LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret);
         return ret;
     }
-
-    // 5. Retrieve the output value, copy the result from the device side memory to the host side, and modify it
-    // Retrive grad_x
-    std::vector<uint16_t> grad_xResultData(grad_xShapeSize, 0);
-    ret = aclrtMemcpy(grad_xResultData.data(), grad_xResultData.size() * sizeof(grad_xResultData[0]), grad_xDeviceAddr,
-                      grad_xShapeSize * sizeof(grad_xResultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
+    // 5. Retrieve the output value, copy the gradX from the device side memory to the host side.
+    auto gradXsize = GetShapeSize(gradXShape);
+    std::vector<aclFloat16> gradXData(gradXsize, aclFloatToFloat16(0.0f));
+    ret = aclrtMemcpy(gradXData.data(), gradXData.size() * sizeof(gradXData[0]), gradXDeviceAddr,
+                      gradXsize * sizeof(gradXData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("copy grad_x result from device to host failed. ERROR: %d\n", ret);
+        LOG_PRINT("copy gradX from device to host failed. ERROR: %d\n", ret);
         return ret;
     }
-    for (int64_t i = 0; i < grad_xShapeSize; i++) {
-        LOG_PRINT("result[%ld] is: %f\n", i, resultData[i]);
-    }
-    // Retrive grad_h_res
-    std::vector<uint16_t> grad_h_resResultData(grad_h_resShapeSize, 0);
-    ret = aclrtMemcpy(grad_h_resResultData.data(), grad_h_resResultData.size() * sizeof(grad_h_resResultData[0]),
-        grad_h_resDeviceAddr, grad_h_resShapeSize * sizeof(grad_h_resResultData[0]),
-        ACL_MEMCPY_DEVICE_TO_HOST);
+    auto gradHressize = GetShapeSize(gradHresShape);
+    std::vector<float> gradHresData(gradHressize, 0.0f);
+    ret = aclrtMemcpy(gradHresData.data(), gradHresData.size() * sizeof(gradHresData[0]), gradHresDeviceAddr,
+                      gradHressize * sizeof(gradHresData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("copy grad_h_res result from device to host failed. ERROR: %d\n", ret);
+        LOG_PRINT("copy gradHres from device to host failed. ERROR: %d\n", ret);
         return ret;
     }
-    for (int64_t i = 0; i < grad_h_resShapeSize; i++) {
-        LOG_PRINT("result[%ld] is: %f\n", i, resultData[i]);
-    }
-    // Retrive grad_h_out
-    std::vector<uint16_t> grad_h_outResultData(grad_h_outShapeSize, 0);
-    ret = aclrtMemcpy(grad_h_outResultData.data(), grad_h_outResultData.size() * sizeof(grad_h_outResultData[0]),
-        grad_h_outDeviceAddr, grad_h_outShapeSize * sizeof(grad_h_outResultData[0]),
-        ACL_MEMCPY_DEVICE_TO_HOST);
+    auto gradHoutsize = GetShapeSize(gradHoutShape);
+    std::vector<aclFloat16> gradHoutData(gradHoutsize, aclFloatToFloat16(0.0f));
+    ret = aclrtMemcpy(gradHoutData.data(), gradHoutData.size() * sizeof(gradHoutData[0]), gradHoutDeviceAddr,
+                      gradHoutsize * sizeof(gradHoutData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("copy grad_h_out result from device to host failed. ERROR: %d\n", ret);
+        LOG_PRINT("copy gradHout from device to host failed. ERROR: %d\n", ret);
         return ret;
     }
-    for (int64_t i = 0; i < grad_h_outShapeSize; i++) {
-        LOG_PRINT("result[%ld] is: %f\n", i, resultData[i]);
-    }
-    // Retrive grad_h_post
-    std::vector<uint16_t> grad_h_postResultData(grad_h_postShapeSize, 0);
-    ret = aclrtMemcpy(grad_h_postResultData.data(), grad_h_postResultData.size() * sizeof(grad_h_postResultData[0]),
-        grad_h_postDeviceAddr, grad_h_postShapeSize * sizeof(grad_h_postResultData[0]),
-        ACL_MEMCPY_DEVICE_TO_HOST);
+    auto gradHpostsize = GetShapeSize(gradHpostShape);
+    std::vector<float> gradHpostData(gradHpostsize, 0.0f);
+    ret = aclrtMemcpy(gradHpostData.data(), gradHpostData.size() * sizeof(gradHpostData[0]), gradHpostDeviceAddr,
+                      gradHpostsize * sizeof(gradHpostData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("copy grad_h_post result from device to host failed. ERROR: %d\n", ret);
+        LOG_PRINT("copy gradHpost from device to host failed. ERROR: %d\n", ret);
         return ret;
-    }
-    for (int64_t i = 0; i < grad_h_postShapeSize; i++) {
-        LOG_PRINT("result[%ld] is: %f\n", i, resultData[i]);
     }
 
     // 6. Release resources.
-    aclDestroyTensor(grad_outputTensor);
+    aclDestroyTensor(gradYTensor);
     aclDestroyTensor(xTensor);
-    aclDestroyTensor(h_resTensor);
-    aclDestroyTensor(h_outTensor);
-    aclDestroyTensor(h_postTensor);
-    aclDestroyTensor(grad_xTensor);
-    aclDestroyTensor(grad_h_resTensor);
-    aclDestroyTensor(grad_h_outTensor);
-    aclDestroyTensor(grad_h_postTensor);
-
-    aclrtFree(grad_outputDeviceAddr);
+    aclDestroyTensor(hResTensor);
+    aclDestroyTensor(hOutTensor);
+    aclDestroyTensor(hPostTensor);
+    aclDestroyTensor(gradXTensor);
+    aclDestroyTensor(gradHresTensor);
+    aclDestroyTensor(gradHoutTensor);
+    aclDestroyTensor(gradHpostTensor);
+    aclrtFree(gradYDeviceAddr);
     aclrtFree(xDeviceAddr);
-    aclrtFree(h_resDeviceAddr);
-    aclrtFree(h_outDeviceAddr);
-    aclrtFree(h_postDeviceAddr);
-    aclrtFree(grad_xDeviceAddr);
-    aclrtFree(grad_h_resDeviceAddr);
-    aclrtFree(grad_h_outDeviceAddr);
-    aclrtFree(grad_h_postDeviceAddr);
-    
+    aclrtFree(hResDeviceAddr);
+    aclrtFree(hOutDeviceAddr);
+    aclrtFree(hPostDeviceAddr);
+    aclrtFree(gradXDeviceAddr);
+    aclrtFree(gradHresDeviceAddr);
+    aclrtFree(gradHoutDeviceAddr);
+    aclrtFree(gradHpostDeviceAddr);
     if (workspaceSize > 0U) {
         aclrtFree(workspaceAddr);
     }
-
     aclrtDestroyStream(stream);
     aclrtResetDevice(deviceId);
     aclFinalize();
-    
     return 0;
 }
