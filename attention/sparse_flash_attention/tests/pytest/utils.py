@@ -374,6 +374,7 @@ def convert_param_combination_to_cs_format(param_combination):
         "rope_head_dim": rope_head_dim,
         "attention_mode": attention_mode,
         "block_size": block_size,
+        "return_softmax_lse": return_softmax_lse,
         # 原始参数，用于结果保存（与 example.xlsx 列对齐）
         "Testcase_Prefix": testcase_prefix,
         "q_type": q_type,
