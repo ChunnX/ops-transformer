@@ -445,9 +445,12 @@ extern "C" aclnnStatus aclnnQuantMatmulAlltoAllGetWorkspaceSize(const aclTensor*
         // 把非连续x2转成连续
         transX2 = TransX2Tensor(x2);
         CHECK_RET(transX2 != nullptr, ACLNN_ERR_INNER_NULLPTR);
-        OP_LOGD("X2 is a non-contiguous tensor. The original dim0 is %ld, and dim1 is %ld. After processing, transX2 dim0 is %ld, and dim1 is %ld.",
+        OP_LOGI("X2 is a non-contiguous tensor. The original dim0 is %ld, and dim1 is %ld. After processing, transX2 dim0 is %ld, and dim1 is %ld.",
             x2->GetViewShape().GetDim(0), x2->GetViewShape().GetDim(1), transX2->GetViewShape().GetDim(0), transX2->GetViewShape().GetDim(1));
     }
+    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "[xyf] in aclnn, groupSize is: %ld", groupSize);
+    OP_LOGI("in aclnn, groupSize is: %ld", groupSize);
+
     aclnnStatus retParam = CheckAndHandleParams(x1, transX2, biasOptional, x1Scale, x2Scale, group,
         alltoAllAxesOptional, x1QuantMode, x2QuantMode, transposeX1, transposeX2, output);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
