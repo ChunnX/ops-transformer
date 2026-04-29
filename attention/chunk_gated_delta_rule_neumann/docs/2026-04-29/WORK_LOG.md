@@ -315,3 +315,20 @@ bash test_run.sh compare
 - 本次提交：`61d5a61c Add chunk GDR precision and profiling tooling`。
 - fork MR 地址：`https://gitcode.com/chuqihang/ops-transformer/merge_requests/new?source_branch=chunk-gdr-neumann-20260429-upload`。
 - 推送前修复本机 SSH 公钥文件与私钥不匹配问题，仅重建 `~/.ssh/id_ed25519.pub`，未修改私钥。
+
+---
+
+## profiling 原始目录上传
+
+**用户请求**: 将完整 profiling 也上传到 fork 分支。
+
+**执行动作**:
+- 将 `attention/chunk_gated_delta_rule_neumann/tests/pytest/prof_out/` 下完整 profiling 产物纳入提交。
+- 上传内容包含：
+  - `chunk_gdr_prefill_full/`：24 个 prefill shape × normal/neumann 的完整 `PROF_*` 输出。
+  - `chunk_gdr_prefill_smoke/`：单 case smoke profiling 输出。
+  - 已修正 Y 列指标后的 `performance_compare.csv` 与 `performance_raw.csv`。
+
+**上传结果**:
+- profiling 提交：`c69375e7 Upload chunk GDR profiling artifacts`。
+- 远端分支：`fork/chunk-gdr-neumann-20260429-upload`。

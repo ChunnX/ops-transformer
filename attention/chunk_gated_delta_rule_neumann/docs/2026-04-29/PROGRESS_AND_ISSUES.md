@@ -254,3 +254,14 @@ python3 run_chunk_gdr_performance_msprof.py --case prefill_b8_s128_d64_h16_hkv4 
 - fork 分支已推送：`chunk-gdr-neumann-20260429-upload`。
 - 远端提交：`61d5a61c57502fdc80b1899f68e579bacb364213`。
 - MR 创建入口：`https://gitcode.com/chuqihang/ops-transformer/merge_requests/new?source_branch=chunk-gdr-neumann-20260429-upload`。
+
+---
+
+## profiling 上传完成
+
+| 项目 | 状态 | 说明 |
+|---|---|---|
+| 完整 profiling 原始目录 | 已上传 | `tests/pytest/prof_out/` 已提交并推送到 fork 分支 |
+| full 批测输出 | 已上传 | `chunk_gdr_prefill_full/` 包含 24 个 prefill shape × 2 算子的 `PROF_*` 输出 |
+| smoke 输出 | 已上传 | `chunk_gdr_prefill_smoke/` 一并保留 |
+| 最新远端提交 | 已推送 | `c69375e7 Upload chunk GDR profiling artifacts` |
