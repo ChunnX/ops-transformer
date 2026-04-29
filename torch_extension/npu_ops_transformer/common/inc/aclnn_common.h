@@ -94,16 +94,18 @@ constexpr aclDataType kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(at:
 
 inline aclDataType ScalarTypeToAclDataType(at::ScalarType scalarType)
 {
-    if (scalarType == at::ScalarType::Float8_e5m2) {
-        return ACL_FLOAT8_E5M2;
-    } else if (scalarType == at::ScalarType::Float8_e4m3fn) {
-        return ACL_FLOAT8_E4M3FN;
-    } else if (scalarType == at::ScalarType::Float8_e8m0fnu) {
-        return ACL_FLOAT8_E8M0;
-    } else if (scalarType == at::ScalarType::Float4_e2m1fn_x2) {
-        return ACL_FLOAT4_E2M1;
+    switch (scalarType) {
+        case at::ScalarType::Float8_e5m2:
+            return ACL_FLOAT8_E5M2;
+        case at::ScalarType::Float8_e4m3fn:
+            return ACL_FLOAT8_E4M3FN;
+        case at::ScalarType::Float8_e8m0fnu:
+            return ACL_FLOAT8_E8M0;
+        case at::ScalarType::Float4_e2m1fn_x2:
+            return ACL_FLOAT4_E2M1;
+        default:
+            return kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(scalarType)];
     }
-    return kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(scalarType)];
 }
 
 enum QuantMode {
