@@ -15,8 +15,8 @@
 #ifndef BLOCK_MMAD_PRELOAD_FIXPIPE_H
 #define BLOCK_MMAD_PRELOAD_FIXPIPE_H
 
-#include "copy_gm_to_l1.h"
-#include "copy_l0c_to_gm.h"
+#include "catlass/gemm/tile/copy_gm_to_l1.hpp"
+#include "catlass/gemm/tile/copy_l0c_to_gm.hpp"
 #include "catlass/catlass.hpp"
 #include "catlass/arch/resource.hpp"
 #include "catlass/coord.hpp"
