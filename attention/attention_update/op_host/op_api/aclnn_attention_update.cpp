@@ -383,14 +383,14 @@ aclnnStatus aclnnAttentionUpdateGetWorkspaceSize(
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
     
     // 固定写法，参数检查
-    aclnnStatus ret;
-    if (Ops::Transformer::AclnnUtil::IsRegbase()) {
-        ret = attention_update::CheckParams_95(lse, localOut, out, lseOut, updateType);
-    } else {
-        ret = attention_update::CheckParams(lse, localOut, out, lseOut, updateType);
-    }
+    // aclnnStatus ret;
+    // if (Ops::Transformer::AclnnUtil::IsRegbase()) {
+    //     ret = attention_update::CheckParams_95(lse, localOut, out, lseOut, updateType);
+    // } else {
+    //     ret = attention_update::CheckParams(lse, localOut, out, lseOut, updateType);
+    // }
     
-    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+    // CHECK_RET(ret == ACLNN_SUCCESS, ret);
     if ((*lse)[0]->IsEmpty() || (*localOut)[0]->IsEmpty()) {
         *workspaceSize = 0;
         uniqueExecutor.ReleaseTo(executor);

@@ -245,51 +245,65 @@ ge::graphStatus AttentionUpdateTiling::GetShapeAttrsInfo()
     auto attrs = context_->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
 
-    const int64_t *spPtr = attrs->GetAttrPointer<int64_t>(ATTR_SP_INDEX);
-    OP_CHECK_IF(spPtr == nullptr, OP_LOGE("AttentionUpdate", "spPtr is null"), return ge::GRAPH_FAILED);
-    sp_ = static_cast<uint64_t>(*spPtr);
-
-    uint32_t allTensorCount = context_->GetComputeNodeInputNum();
-    if (allTensorCount != sp_ * NUM_2){
-        std::string tensorCountStr = std::to_string(static_cast<int64_t>(allTensorCount));
-        std::string reasonMsg = 
-            "The number of tensors in input lse and go should be twice the attr sp, where sp is "
-            + std::to_string(sp_);
-        OP_LOGE_FOR_INVALID_TENSORNUMS_WITH_REASON(context_->GetNodeName(), "lse and go",
-                    tensorCountStr.c_str(), reasonMsg.c_str());
-        return ge::GRAPH_FAILED;
-    }
-
-    for (uint64_t i = 0; i < NUM_2 * sp_; i++) {
-        OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetInputShape(i));
-    }
-    goShape_ = context_->GetInputShape(INPUT_GO_INDEX * sp_)->GetOriginShape();
     lseShape_ = context_->GetInputShape(INPUT_LSE_INDEX)->GetOriginShape();
+    int64_t lseDimNum = lseShape_.GetDimNum();
 
-    for (uint64_t i = 0; i < NUM_2 * sp_; i++) {
-        OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetInputDesc(i));
+    std::string reasonMsg = "此时的分支为： lseDimNum = " + std::to_string(lseDimNum) + " 。";
+
+    // 从1到10 的分支
+    if (lseDimNum == 1){
+        // EZ0008
+        OP_LOGE_FOR_INVALID_SHAPE(
+            context_->GetNodeName(), "lse", std::to_string(lseDimNum).c_str(),
+            reasonMsg.c_str());
+    } else if (lseDimNum == 2){
+        // EZ0009
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            context_->GetNodeName(), "lse", std::to_string(lseDimNum).c_str(),
+            reasonMsg.c_str());
+    } else if (lseDimNum == 3){
+        // EZ0010
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+            context_->GetNodeName(), "lse, output", std::to_string(lseDimNum).c_str(),
+            reasonMsg.c_str());
+    } else if (lseDimNum == 4){
+        // EZ0011
+        OP_LOGE_FOR_INVALID_SHAPEDIM(
+            context_->GetNodeName(), "lse", std::to_string(lseDimNum).c_str(),
+            reasonMsg.c_str());
+    } else if (lseDimNum == 5){
+        // EZ0012
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            context_->GetNodeName(), "lse", std::to_string(lseDimNum).c_str(),
+            reasonMsg.c_str());
+    } else if (lseDimNum == 6){
+        // EZ0013
+        OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(
+            context_->GetNodeName(), "lse, output", std::to_string(lseDimNum).c_str(),
+            reasonMsg.c_str());
+    } else if (lseDimNum == 7){
+        // EZ0014
+        OP_LOGE_FOR_INVALID_SHAPESIZE(
+            context_->GetNodeName(), "lse", std::to_string(lseDimNum).c_str(),
+            reasonMsg.c_str());
+    } else if (lseDimNum == 8){
+        // EZ0015
+        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
+            context_->GetNodeName(), "lse", std::to_string(lseDimNum).c_str(),
+            reasonMsg.c_str());
+    } else if (lseDimNum == 9){
+        // EZ0016
+        OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(
+            context_->GetNodeName(), "lse, output", std::to_string(lseDimNum).c_str(),
+            reasonMsg.c_str());
+    } else if (lseDimNum == 10){
+        // EZ0017
+        OP_LOGE_FOR_INVALID_FORMAT(
+            context_->GetNodeName(), "lse", std::to_string(lseDimNum).c_str(),
+            reasonMsg.c_str());
     }
-    goType_ = context_->GetInputDesc(INPUT_GO_INDEX * sp_)->GetDataType();
-    lseType_ = context_->GetInputDesc(INPUT_LSE_INDEX)->GetDataType();
 
-    d_ = goShape_.GetDim(DIM_1);
-    bshSize_ = goShape_.GetDim(DIM_0);
-
-    const int64_t *updateTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_UPDATE_TYPE_INDEX);
-    OP_CHECK_IF(updateTypePtr == nullptr, OP_LOGE("AttentionUpdate", "updateTypePtr is null"), return ge::GRAPH_FAILED);
-    updateType_ = static_cast<int64_t>(*updateTypePtr);
-    goDtypeSize_ = GetSizeByDataType(goType_);
-    if (goDtypeSize_ == 0) {
-        std::string dtypeStr = Ops::Base::ToString(goType_);
-        OP_LOGE(context_->GetNodeName(), "UpdateAttention get go dtype[%s] size is 0.",
-                dtypeStr.c_str());
-        return ge::GRAPH_FAILED;
-    }
-    OP_CHECK_IF(CheckInputParams() != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_->GetNodeName(), "AttentionUpdate CheckInputParams FAILED."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(CheckOutputParams() != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_->GetNodeName(), "AttentionUpdate CheckOutputParams FAILED."), return ge::GRAPH_FAILED);
-    return ge::GRAPH_SUCCESS;
+    return ge::GRAPH_FAILED;
 }
 
 ge::graphStatus AttentionUpdateTiling::DoOpTiling()
