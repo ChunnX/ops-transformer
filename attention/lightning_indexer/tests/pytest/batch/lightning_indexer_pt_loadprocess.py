@@ -50,7 +50,7 @@ def test_li_process(filepath, device_id=0):
     sparse_mode = test_data['sparse_mode']
     return_value = test_data['return_value']
     #调用LI算子
-    npu_result, _ = torch_npu.npu_lightning_indexer(query, key, weights, 
+    npu_result, sparse_value = torch_npu.npu_lightning_indexer(query, key, weights, 
                                                     actual_seq_lengths_query=actual_seq_lengths_query,
                                                     actual_seq_lengths_key=actual_seq_lengths_key,
                                                     block_table=block_table,
@@ -64,6 +64,6 @@ def test_li_process(filepath, device_id=0):
                                                     )
     
     torch.npu.synchronize()
-
-    return cpu_result, npu_result, topk_value, params
+    sparse_value, _ = sparse_value.sort(dim=-1, descending=True)
+    return cpu_result, npu_result, topk_value, sparse_value, params
 
