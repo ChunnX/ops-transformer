@@ -376,6 +376,7 @@ __aicore__ inline void FlashAttentionNoQuantKernelBase<ChildClass, CubeBlockType
     constInfo.dSize = sharedParams.dSize;
     constInfo.dSizeV = sharedParams.dSizeV;
     constInfo.dBasicBlock = Align64Func((uint16_t)constInfo.dSizeV);
+    constInfo.isFd = sharedParams.isFd;
     if constexpr (hasRope) {
         constInfo.dSizeRope = sharedParams.dSizeRope;
     } else {
@@ -672,7 +673,7 @@ __aicore__ inline void FlashAttentionNoQuantKernelBase<ChildClass, CubeBlockType
     runInfo.taskIdMod3 = taskId % 3;
     runInfo.s2LoopLimit = s2LoopLimit;
 
-    if constexpr (isFd) {
+    if (constInfo.isFd) {
         runInfo.flashDecodeS2Idx = this->aicIdx % constInfo.splitKVNum;
     }
     runInfo.actualS1Size = runParam.actualS1Size;
