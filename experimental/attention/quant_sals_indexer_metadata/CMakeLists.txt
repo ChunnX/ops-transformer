@@ -1,0 +1,2 @@
+add_subdirectory(op_host)
+add_subdirectory(op_kernel_aicpu)
