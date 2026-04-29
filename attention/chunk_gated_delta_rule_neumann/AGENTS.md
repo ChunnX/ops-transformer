@@ -356,3 +356,4 @@ export ASCEND_CUSTOM_OPP_PATH=${ASCEND_HOME_PATH}/opp/vendors/custom_transformer
 - 对比 profiling 与代码定位 C16 开销：AIC MAC time 平均仅 `1.52x`，4x 主要来自小 chunk 引入的 matmul 调用/同步/MTE/FixPipe 放大；Stage2 总 MAC 与 chunkSize 基本无关
 - 修复 Neumann `InverseCompute()` 中 `attnWsGm_` 初始 `I-L` 死写，四个 stage1 CVInverse 变体同步删除；构建和三方精度 smoke 通过
 - 确认 `stage1_C16_FP16_CVInverse.h` 当前实际仍是 FP32 MatmulType/host tiling，名称与实现不一致，需后续修正
+- 补充性能 prefill 批测短序列 case：在 `compare_chunk_gdr_performance_paramset.py` 中为 `B=8/16/32/64` 新增 `S=16` 和 `S=64`，性能 case 总数从 24 增至 32；`py_compile` 与 `B=8,S=16/64` dry-run 通过。

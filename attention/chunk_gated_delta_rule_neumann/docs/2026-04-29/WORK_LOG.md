@@ -367,3 +367,24 @@ bash test_run.sh compare
 - 单 case Neumann profiling smoke 完成；MTE/FixPipe 小幅下降，但总耗时无明显改善，说明主因不是该死写。
 
 **详细记录**: `docs/2026-04-29/PROFILING_C16_OVERHEAD_ANALYSIS.md`
+
+## 性能批测补充 S=16/S=64 cases
+
+**用户请求**: 在现有测试中加一组 `seq=16` 和 `seq=64`。
+
+**执行动作**:
+- 更新 `tests/pytest/compare_chunk_gdr_performance_paramset.py`。
+- 在 prefill 性能 shape 网格中为 `B=8/16/32/64` 各补充两档短序列：`S=16` 与 `S=64`。
+- 新增 case 名称：
+  - `prefill_b8_s16_d64_h16_hkv4`、`prefill_b8_s64_d64_h16_hkv4`
+  - `prefill_b16_s16_d64_h16_hkv4`、`prefill_b16_s64_d64_h16_hkv4`
+  - `prefill_b32_s16_d64_h16_hkv4`、`prefill_b32_s64_d64_h16_hkv4`
+  - `prefill_b64_s16_d64_h16_hkv4`、`prefill_b64_s64_d64_h16_hkv4`
+
+**验证**:
+- `PERFORMANCE_CASES` 从 24 个扩展为 32 个。
+- `python3 -m py_compile compare_chunk_gdr_performance_paramset.py run_chunk_gdr_performance_msprof.py compare_chunk_gdr_performance.py` 通过。
+- `run_chunk_gdr_performance_msprof.py --dry-run` 对 `B=8,S=16/64` 的 normal/neumann 命令生成通过。
+
+**说明**:
+- 三方精度 paramset 之前已覆盖 `seqlen=16` 与 `seqlen=64`，本次补的是性能 prefill 批测网格。

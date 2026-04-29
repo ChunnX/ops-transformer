@@ -292,3 +292,21 @@ python3 run_chunk_gdr_performance_msprof.py --case prefill_b8_s128_d64_h16_hkv4 
 ### 当前结论
 
 C16 当前性能差的主因不是同一 chunk 被重复计算，而是 chunk 数变 4 倍后，小 FP32 matmul 调用、Stage2 state 搬运、AIC/AIV 同步和 MTE/FixPipe 次数被放大。已修复的 `attnWsGm_` 死写只影响少量搬运，不足以解释 4x。
+
+## 性能批测 case 补充
+
+| 项目 | 状态 | 说明 |
+|---|---|---|
+| `S=16` 性能 case | 已完成 | 为 `B=8/16/32/64` 补充 `D=64,Hq=16,Hkv=4` |
+| `S=64` 性能 case | 已完成 | 为 `B=8/16/32/64` 补充 `D=64,Hq=16,Hkv=4` |
+| 性能 case 总数 | 已更新 | `PERFORMANCE_CASES` 从 24 扩展为 32 |
+| 静态校验 | 已通过 | `py_compile` 通过；`B=8,S=16/64` dry-run 命令生成通过 |
+
+### 说明
+
+三方精度 case 已有 `seqlen=16` 与 `seqlen=64` 覆盖；本次新增的是 msprof prefill 性能批测 case。完整性能数据需要重新执行：
+
+```bash
+cd tests/pytest
+python3 run_chunk_gdr_performance_msprof.py --output ./prof_out/chunk_gdr_prefill_s16_s64
+```
