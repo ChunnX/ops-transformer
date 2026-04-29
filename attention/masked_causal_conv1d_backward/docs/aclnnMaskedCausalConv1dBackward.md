@@ -224,7 +224,7 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
     <tr>
       <td>ACLNN_ERR_PARAM_INVALID</td>
       <td>161002</td>
-      <td>gradY、x、weight、mask、gradX和gradWeight的数据类型或数据格式不在支持的范围内。</td>
+      <td>gradY、x、weight、maskOptional、gradXOut和gradWeightOut的数据类型或数据格式不在支持的范围内。</td>
     </tr>
     <tr>
       <td>ACLNN_ERR_INNER_TILING_ERROR</td>
@@ -283,7 +283,6 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
 - 确定性计算：
   - aclnnMaskedCausalConv1dBackward默认确定性实现。
 - 输入限制：
-  - gradY、x、weight、gradX和gradWeight的数据类型必须一致。
   - 输入输出的shape数据范围约束如下：
     - B（Batchsize）：取值范围为1~32。
     - B * S（Batchsize * SeqLength）：取值范围为1~512K。

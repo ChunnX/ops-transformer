@@ -185,7 +185,7 @@ aclnnStatus aclnnMaskedCausalConv1d(
       <td>ACLNN_ERR_PARAM_INVALID</td>
       <td>161002</td>
       <td>
-        x、weight、mask、y的数据类型或数据格式不在支持的范围内。
+        x、weight、maskOptional、out的数据类型或数据格式不在支持的范围内。
       </td>
     </tr>
     <tr>
