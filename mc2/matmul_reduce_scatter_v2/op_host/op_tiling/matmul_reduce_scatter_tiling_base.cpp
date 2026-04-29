@@ -542,6 +542,10 @@ void MatmulReduceScatterTilingBase::SetMsgDataInfo(Mc2Tiling::RCSTiling &rcsCfg,
                                                    ::TCubeTiling &mmTiling, ::TCubeTiling &tailTiling, 
                                                    uint32_t debugMode)
 {
+    // 设置bias标识
+    mmTiling.isBias = args_.isBias ? 1 : 0;
+    tailTiling.isBias = args_.isBias ? 1 : 0;
+
     // 只通信不计算模式下，如果没有gatherOut且K > N, recvOff和sendCnt需要根据N计算
     auto columnNum = args_.orgKValue;
     OP_LOGD(opName_, "Debug mode is %u, gather out flag is %d, K is %lu, N is %lu.", debugMode,
