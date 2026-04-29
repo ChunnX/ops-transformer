@@ -388,3 +388,37 @@ bash test_run.sh compare
 
 **说明**:
 - 三方精度 paramset 之前已覆盖 `seqlen=16` 与 `seqlen=64`，本次补的是性能 prefill 批测网格。
+
+## S=16/S=64 性能实测结果
+
+**用户问题**: `S=16`、`S=64` 性能如何。
+
+**执行动作**:
+- 对新增 8 个 prefill shape 执行真实 `msprof`：`B=8/16/32/64` × `S=16/64` × normal/neumann。
+- 输出目录：`tests/pytest/prof_out/chunk_gdr_prefill_s16_s64/`。
+- 汇总文件：
+  - `tests/pytest/prof_out/chunk_gdr_prefill_s16_s64/performance_compare.csv`
+  - `tests/pytest/prof_out/chunk_gdr_prefill_s16_s64/performance_raw.csv`
+
+**核心结果**:
+
+| S | B | normal_us | neumann_us | neumann/normal | faster | normal_cube_Y% | neumann_cube_Y% |
+|---:|---:|---:|---:|---:|---|---:|---:|
+| 16 | 8 | 608.28 | 689.54 | 1.134x | normal | 1.1 | 0.7 |
+| 16 | 16 | 1246.86 | 1394.16 | 1.118x | normal | 1.0 | 0.7 |
+| 16 | 32 | 2387.38 | 2727.76 | 1.143x | normal | 1.1 | 0.7 |
+| 16 | 64 | 4853.34 | 5241.96 | 1.080x | normal | 1.1 | 0.7 |
+| 64 | 8 | 652.94 | 1550.74 | 2.375x | normal | 1.7 | 1.2 |
+| 64 | 16 | 1251.72 | 3131.46 | 2.502x | normal | 1.7 | 1.2 |
+| 64 | 32 | 2498.70 | 6133.46 | 2.455x | normal | 1.7 | 1.2 |
+| 64 | 64 | 5037.96 | 12246.48 | 2.431x | normal | 1.7 | 1.2 |
+
+**聚合结论**:
+- `S=16`：normal 平均 `2273.97 us`，Neumann 平均 `2513.36 us`，Neumann 平均为 normal 的 `1.119x` 耗时。
+- `S=64`：normal 平均 `2360.33 us`，Neumann 平均 `5765.53 us`，Neumann 平均为 normal 的 `2.441x` 耗时。
+- 8/8 case 都是普通 `ChunkGDR` 更快。
+
+**分析**:
+- `S=16` 时只有一个 C16 chunk，Neumann 额外 inverse 开销存在，但还没触发 chunk 数放大，因此只慢约 `8%~14%`。
+- `S=64` 时当前 Neumann 为 4 个 C16 chunk，而普通 GDR 为 1 个 C64 chunk；chunk 调度、同步、MTE/FixPipe 与 stage2 state 搬运明显放大，因此慢到约 `2.4x`。
+- 这与前面 C16 profiling 分析一致：当前主要瓶颈是 chunk 数和小 matmul 调用次数，不是单个大矩阵 MAC 计算量。

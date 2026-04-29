@@ -310,3 +310,17 @@ C16 当前性能差的主因不是同一 chunk 被重复计算，而是 chunk �
 cd tests/pytest
 python3 run_chunk_gdr_performance_msprof.py --output ./prof_out/chunk_gdr_prefill_s16_s64
 ```
+
+## S=16/S=64 性能结果
+
+| 项目 | 状态 | 说明 |
+|---|---|---|
+| `S=16/64` msprof | 已完成 | 8 个 prefill shape × 2 算子均完成 |
+| 结果目录 | 已保存 | `tests/pytest/prof_out/chunk_gdr_prefill_s16_s64/` |
+| `S=16` 结论 | 已确认 | Neumann 平均为 normal 的 `1.119x` 耗时 |
+| `S=64` 结论 | 已确认 | Neumann 平均为 normal 的 `2.441x` 耗时 |
+| 更快算子 | 已确认 | 8/8 case 都是普通 `ChunkGDR` 更快 |
+
+### 关键判断
+
+`S=16` 只有一个 C16 chunk，Neumann 相对 normal 只慢约 `8%~14%`；`S=64` 时 Neumann 变成 4 个 C16 chunk，对比 normal 的 1 个 C64 chunk，per-chunk 调度、同步、搬运和小 matmul 开销开始主导，因此退化到约 `2.4x`。
