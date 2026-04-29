@@ -284,9 +284,9 @@ __aicore__ inline void GroupMatmul2(
     auto layoutC = MakeLayoutC{}(L1_TILE_M, L1_TILE_N);
 
     using BiasType = float;
-    using DispatchPolicy = Blaze::Gemm::MatmulWithScale<>;
+    using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<>;
     using BlockMmad =
-        Blaze::Gemm::Block::BlockMmadMx<DispatchPolicy, ElementA, LayoutA, ElementB, LayoutB, ElementC, LayoutC,
+        Blaze::Gemm::Block::BlockMmad<DispatchPolicy, ElementA, LayoutA, ElementB, LayoutB, ElementC, LayoutC,
             BiasType, LayoutBias, void>;
     BlockMmad blockMmad;
     bool enableL0CPingPong = false;
@@ -345,19 +345,19 @@ __aicore__ inline void GroupMatmul2(
             if (vecSetSyncCom2 >= 2) {
                 WaitForVector(pingpongIdx);
             }
-            
+
             auto gmBlockA = gmA.Slice(Te::MakeCoord(mLoc, kLoc), Te::MakeShape(actualShape.m(), actualShape.k()));
             auto gmBlockScaleA = gmScaleA.Slice(
                 Te::MakeCoord(mLoc, kLoc / MXFP_SCALE_GROUP_NUM),
                 Te::MakeShape(actualShape.m(), CeilDiv(actualShape.k(), MXFP_SCALE_GROUP_NUM)));
-            
+
             auto tensorBlockUb = tensorUb.Slice(Te::MakeCoord(0, 0), Te::MakeShape(actualShape.m(), actualShape.n()));
 
             auto gmBlockB = gmB.Slice(Te::MakeCoord(kLoc, nLoc), Te::MakeShape(actualShape.k(), actualShape.n()));
             auto gmBlockScaleB = gmScaleB.Slice(
                 Te::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, nLoc),
                 Te::MakeShape(CeilDiv(actualShape.k(), MXFP_SCALE_GROUP_NUM), actualShape.n()));
-            
+
             typename BlockMmad::BlockShape singleShape{actualShape.m(), actualShape.n(), actualShape.k(), 0};
             blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias, tensorBlockUb, singleShape);
 
