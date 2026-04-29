@@ -8,12 +8,6 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-function(gen_common_symbol)
-  install(DIRECTORY ${OPS_TRANSFORMER_COMMON_INC_HEADERS}
-    DESTINATION ${COMMON_INC_INSTALL_DIR}
-  )
-endfunction()
-
 # ophost shared
 function(gen_ophost_symbol)
   add_library(${OPHOST_NAME} SHARED
@@ -80,8 +74,18 @@ function(gen_es_transformer_lib_builtin)
     OUTPUT_PATH ${CMAKE_BINARY_DIR}/es_packages
   )
   install(
-    DIRECTORY ${CMAKE_BINARY_DIR}/es_packages
-    DESTINATION ${VERSION_INFO_INSTALL_DIR}
+    FILES ${CMAKE_BINARY_DIR}/es_packages/lib64/libes_transformer.so
+ 	  DESTINATION ${VERSION_INFO_INSTALL_DIR}/lib64
+    OPTIONAL
+  )
+  install(
+ 	  DIRECTORY ${CMAKE_BINARY_DIR}/es_packages/include/es_transformer
+ 	  DESTINATION ${VERSION_INFO_INSTALL_DIR}/include/es
+ 	  OPTIONAL
+ 	)
+  install(
+    DIRECTORY ${CMAKE_BINARY_DIR}/es_packages/whl/
+    DESTINATION ${WHL_INSTALL_DIR}/es_packages/whl
     OPTIONAL
   )
 endfunction()
@@ -380,8 +384,6 @@ function(gen_onnx_plugin_symbol)
 endfunction()
 
 function(gen_norm_symbol)
-  gen_common_symbol()
-
   if (ENABLE_OPS_HOST)
     gen_ophost_symbol()
     gen_opapi_symbol()
