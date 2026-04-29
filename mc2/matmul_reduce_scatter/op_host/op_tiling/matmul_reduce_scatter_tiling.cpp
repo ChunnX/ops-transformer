@@ -574,7 +574,9 @@ static ge::graphStatus CalcMatmulTilingReduceScatter(mc2tiling::TilingArgs& args
     mm1.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, args.bType, args.isBTrans);
     mm1.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, args.cType);
     if (args.isBias) {
-        mm1.SetBiasType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, args.biasType);
+        auto mmBiasType = (args.biasType == matmul_tiling::DataType::DT_BFLOAT16) ?
+                          matmul_tiling::DataType::DT_FLOAT : args.biasType;
+        mm1.SetBiasType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, mmBiasType);
         mm1.SetBias(true);
     }
     else {
