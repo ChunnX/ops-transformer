@@ -43,8 +43,9 @@ const uint32_t MS_PER_S = 1000U;
 const mode_t FILE_MODE = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
 // 函数指针类型定义
 typedef aclError (*aclrtGetArgsFromExceptionInfo_t)(aclrtExceptionInfo *info, void **args, uint32_t *argsSize);
+typedef const char* (*acldumpGetPath_t)(acldumpType dumpType);
 
-// 动态加载函数
+// 动态加载clrtGetArgsFromExceptionInfo函数
 inline aclrtGetArgsFromExceptionInfo_t GetAclrtGetArgsFromExceptionInfoFunc()
 {
     OP_LOGD(OP_NAME, "printf GetAclrtGetArgsFromExceptionInfoFunc begin.");
@@ -69,6 +70,34 @@ inline aclrtGetArgsFromExceptionInfo_t GetAclrtGetArgsFromExceptionInfoFunc()
     }
     return func;
 }
+
+// 动态加载acldumpGetPath函数
+inline acldumpGetPath_t GetAcldumpGetPathFunc()
+{
+    OP_LOGD(OP_NAME, "printf GetAcldumpGetPathFunc begin.");
+    static acldumpGetPath_t func = nullptr;
+    static bool initialized = false;
+    
+    if (!initialized) {
+        initialized = true;
+        
+        // 尝试加载ascend_dump.so
+        void *handle = dlopen("libascend_dump.so", RTLD_NOLOAD | RTLD_LAZY);
+        
+        if (handle != nullptr) {
+            func = (acldumpGetPath_t)dlsym(handle, "acldumpGetPath");
+            if (func == nullptr) {
+                OP_LOGE(OP_NAME, "dlsym acldumpGetPath failed: %s", dlerror());
+            } else {
+                OP_LOGD(OP_NAME, "Successfully loaded acldumpGetPath function");
+            }
+        } else {
+            OP_LOGE(OP_NAME, "dlopen libascend_dump.so failed: %s", dlerror());
+        }
+    }
+    return func;
+}
+
 inline std::string GetTimestampWithMilliseconds()
 {
     auto now = std::chrono::system_clock::now();
@@ -261,8 +290,22 @@ inline void Mc2ExceptionImpl(aclrtExceptionInfo *args, void *userdata, const cha
         }
     }
 
+    // 获取acldumpGetPath函数指针
+    auto acldumpGetPathFunc = GetAcldumpGetPathFunc();
+    if (acldumpGetPathFunc == nullptr) {
+        OP_LOGE(OP_NAME, "Failed to load acldumpGetPath function, skip dump");
+        return;
+    }
+    
+    // 获取dump路径
+    const char* dumpPath = acldumpGetPathFunc(acldumpType::AIC_ERR_BRIEF_DUMP);
+    if (dumpPath == nullptr) {
+        OP_LOGE(OP_NAME, "acldumpGetPath returned NULL");
+        return;
+    }
+
     // Write to bin file
-    if (DumpToFile(std::string(acldumpGetPath(acldumpType::AIC_ERR_BRIEF_DUMP)), GenDumpFileName(args, op), deviceId,
+    if (DumpToFile(std::string(dumpPath), GenDumpFileName(args, op), deviceId,
                    winContent.data()) != 0) {
         OP_LOGE(OP_NAME, "Failed to get win content.");
     }
