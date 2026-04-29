@@ -47,6 +47,8 @@ private:
     __aicore__ inline void InnerProcessLocalMM();
     __aicore__ inline void MatmulKernelComputeGather(GM_ADDR aGM, GM_ADDR cGM, Mc2MatMulV3TilingData& tiling,
                                                      uint32_t count, bool isLast, bool isTail);
+    __aicore__ inline void BiasCast();
+    __aicore__ inline void CastBFtoFloat(GM_ADDR dst, GM_ADDR src, int size, TBuf<TPosition::VECCALC> &totalUbBuf);
 
 private:
     Mc2Tiling::AllGatherMatmulTilingDataV2* tilingData_;
@@ -64,6 +66,7 @@ private:
     bool notifyFlag_{false};
     Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;         // CCU模式
     AscendC::HcclHandle hHandles_[MAX_HANDLE];  // 最大支持16个handleID
+    GM_ADDR biasFloatGM_; 
 };
 
 template <typename AType, typename BType, typename BiasType, typename CType>
@@ -162,9 +165,83 @@ __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::E
 }
 
 template <typename AType, typename BType, typename BiasType, typename CType>
+__aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::CastBFtoFloat(
+    GM_ADDR dst, GM_ADDR src, int size, TBuf<TPosition::VECCALC> &totalUbBuf)
+{
+#if __CCE_AICORE__ == 220
+    if (g_coreType == AIC) { // 先aiv，后aic
+    #ifndef __CCE_KT_TEST__
+        CrossCoreWaitFlag(EVENT_ID_5);
+        CrossCoreSetFlag<SET_FLAG_MODE_0, PIPE_MTE3>(EVENT_ID_4);
+        CrossCoreWaitFlag(EVENT_ID_4);
+        return;
+    #endif
+    }
+    if (GetBlockIdx() != 0) {
+        CrossCoreSetFlag<SET_FLAG_MODE_2, PIPE_MTE3>(EVENT_ID_5);
+        return;
+    }
+
+    // 1. 初始化global tensor
+    GlobalTensor<bfloat16_t> gmSrc;
+    GlobalTensor<float> gmDst;
+    gmSrc.SetGlobalBuffer((__gm__ bfloat16_t*)(src), size);
+    gmDst.SetGlobalBuffer((__gm__ float*)(dst), size);
+
+    // 2. 初始化local tensor
+    LocalTensor<bfloat16_t> fullBf16 = totalUbBuf.Get<bfloat16_t>();
+    LocalTensor<bfloat16_t> xLocal = fullBf16[0];
+    LocalTensor<float> yLocal = fullBf16[Ceil(size, UB_ALIGN_SIZE) * UB_ALIGN_SIZE].template ReinterpretCast<float>();
+
+    // 3. GM数据拷贝至UB
+    uint32_t cpInLen = size * sizeof(bfloat16_t);
+    DataCopyExtParams cpInExtParams{1, cpInLen, 0, 0, 0};
+    DataCopyPadExtParams<bfloat16_t> padExtParams{false, 0, 0, 0}; // 不需要填充数据
+    DataCopyPad(xLocal, gmSrc, cpInExtParams, padExtParams);
+
+    event_t eventIdMTE2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
+    SetFlag<HardEvent::MTE2_V>(eventIdMTE2ToV);
+    WaitFlag<HardEvent::MTE2_V>(eventIdMTE2ToV);
+
+    // 4. 进行cast转换
+    Cast(yLocal, xLocal, RoundMode::CAST_NONE, size);
+    event_t eventIdVToMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
+    SetFlag<HardEvent::V_MTE3>(eventIdVToMTE3);
+    WaitFlag<HardEvent::V_MTE3>(eventIdVToMTE3);
+
+    // 5. UB数据拷贝至GM
+    uint32_t cpOutLen = size * sizeof(float);
+    DataCopyExtParams cpOutExtParams{1, cpOutLen, 0, 0, 0};
+    DataCopyPad(gmDst, yLocal, cpOutExtParams);
+    CrossCoreSetFlag<SET_FLAG_MODE_2, PIPE_MTE3>(EVENT_ID_5);
+#endif
+}
+
+template <typename AType, typename BType, typename BiasType, typename CType>
+__aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::BiasCast()
+{
+    if constexpr (std::is_same_v<BiasType, bfloat16_t>) {
+        // BF16 bias 需要转换为 FP32
+        TBuf<TPosition::VECCALC> totalUbBuf;
+        tPipe_->InitBuffer(totalUbBuf, TOTAL_UB_SIZE);
+        
+        // biasFloatGM_ = workspaceGM_ + biasLen 偏移
+        biasFloatGM_ = workspaceGM_ + tilingData_->param.biasLen;
+        
+        CastBFtoFloat(biasFloatGM_, biasGM_, tilingData_->param.rankN, totalUbBuf);
+        
+        biasGM_ = biasFloatGM_;  // 更新 bias 地址
+        SyncAll<true>();
+    }
+}
+
+template <typename AType, typename BType, typename BiasType, typename CType>
 __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::Process()
 {
     if ASCEND_IS_AIC {
+        // bias转换
+        BiasCast();
+
         // 先发出通信
         StartNotify();
 
