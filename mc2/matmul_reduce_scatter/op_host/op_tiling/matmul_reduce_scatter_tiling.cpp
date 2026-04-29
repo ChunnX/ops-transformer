@@ -659,7 +659,7 @@ static ge::graphStatus MC2SetWorkspaceReduceScatter(gert::TilingContext* context
     }
 
     int biasLen = 0;
-    if (args.isBias && args.bType == matmul_tiling::DataType::DT_BFLOAT16) {
+    if (args.isBias && args.biasType == matmul_tiling::DataType::DT_BFLOAT16) {
 		biasLen = mc2tiling::AlignUp(args.orgNValue, mc2tiling::SHAPE_ALIGN_SIZE) * sizeof(float);
     }
     tilingData.param.biasLen = biasLen;
