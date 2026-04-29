@@ -48,6 +48,7 @@ constexpr uint8_t C_DIM_IDX = 3;
 constexpr uint8_t ITER_COUNT_IDX = 0;
 constexpr int64_t N_SIZE_4 = 4;
 constexpr int64_t ALPHA_SIZE_3 = 3;
+constexpr int64_t C_V_RATIO = 2;
 } // namespace
 
 using namespace ge;
@@ -350,7 +351,7 @@ ge::graphStatus TilingMhcPreSinkhornBackward(gert::TilingContext *context)
     const auto sumOutPtr = context->GetInputShape(10);
     CHECK_NULLPTR(sumOutPtr);
     auto sumOutShape = sumOutPtr->GetStorageShape();
-    int64_t skIterCount = sumOutShape.GetDim(0) / 2;
+    int64_t skIterCount = sumOutShape.GetDim(0) / C_V_RATIO;
 
     int64_t mm1K = n * n + 2 * n;
     int64_t mm1M = tile * 2;
