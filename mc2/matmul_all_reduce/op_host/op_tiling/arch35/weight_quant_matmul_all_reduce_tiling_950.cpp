@@ -271,7 +271,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::GetWorkspaceSize()
             OP_LOGD(opName_, "Empty tensor k is 0, set workspace size=%lu to context.", myWorkSpaceSize_);
         }
     } else {
-        if(mc2tiling::IsUseA2APath(args_.rankDim, npuArch_)){
+        if (mc2tiling::IsUseA2APath(args_.rankDim, npuArch_)) {
             OP_TILING_CHECK(
                 GetWorkspaceSizeForA2ARSAG() != ge::GRAPH_SUCCESS,
                 OP_LOGE(opName_, "get workspace size By GetWorkspaceSizeForA2ARSAG failed."),
@@ -694,7 +694,7 @@ CutResult WeightQuantMatmulAllReduceTilingA5::GetTilingResult()
                                                         KernelType::ALL_REDUCE_VIA_TWO_SHOT,
                                                         TopoType::STANDARD_CARD);
         mCutAllreduce = allReduceTilingHccl.GetTiling();
-    } else if (mc2tiling::Is8P(args_.rankDim, npuArch_)){
+    } else if (mc2tiling::Is8P(args_.rankDim, npuArch_)) {
         MMAllReduceFitBalanceTiling allReduceTilingHccl(args_,
                                                         KernelType::ALL_REDUCE_VIA_TWO_SHOT,
                                                         TopoType::EIGHT_P);

@@ -1007,7 +1007,7 @@ CutResult QuantMatmulAllReduceTilingA5::GetTilingResult()
                                                         KernelType::ALL_REDUCE_VIA_TWO_SHOT,
                                                         TopoType::STANDARD_CARD);
         mCutAllreduce = allReduceTilingHccl.GetTiling();
-    } else if (mc2tiling::Is8P(args_.rankDim, npuArch_)){
+    } else if (mc2tiling::Is8P(args_.rankDim, npuArch_)) {
         MMAllReduceFitBalanceTiling allReduceTilingHccl(args_,
                                                         KernelType::ALL_REDUCE_VIA_TWO_SHOT,
                                                         TopoType::EIGHT_P);
