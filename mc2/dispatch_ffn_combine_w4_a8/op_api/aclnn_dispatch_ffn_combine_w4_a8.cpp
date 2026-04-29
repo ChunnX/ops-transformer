@@ -25,6 +25,8 @@ using namespace op;
 extern "C" {
 #endif
 
+extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
+
 extern aclnnStatus aclnnInnerDispatchFFNCombineW4A8GetWorkspaceSize(const aclTensor* x, const aclTensorList* weight1, const aclTensorList* weight2,
                                                          const aclTensor* expertId, const aclTensorList* scale1, const aclTensorList* scale2,
                                                          const aclTensorList* bias1, const aclTensorList * bias2,
@@ -58,6 +60,9 @@ aclnnStatus aclnnDispatchFFNCombineW4A8GetWorkspaceSize(const aclTensor* x, cons
 
 aclnnStatus aclnnDispatchFFNCombineW4A8(void* workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
 {
+    if (NnopbaseSetHcclServerType) {
+        NnopbaseSetHcclServerType(executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
+    }
     aclnnStatus ret = aclnnInnerDispatchFFNCombineW4A8(workspace, workspaceSize, executor, stream);
     return ret;
 }
