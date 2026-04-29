@@ -1,0 +1,2 @@
+case_name,B,S,D,Hq,Hkv,normal_us,neumann_us,neumann_speedup_vs_normal,faster,normal_prof_dir,neumann_prof_dir
+prefill_b8_s128_d64_h16_hkv4,8,128,64,16,4,919.46,2495.98,0.3683763491694645,normal,prof_out/chunk_gdr_prefill_smoke/prefill_b8_s128_d64_h16_hkv4/normal/PROF_000001_20260429125710606_01045671KMAFACFG,prof_out/chunk_gdr_prefill_smoke/prefill_b8_s128_d64_h16_hkv4/neumann/PROF_000001_20260429125726620_01046094IEMBFCNO
