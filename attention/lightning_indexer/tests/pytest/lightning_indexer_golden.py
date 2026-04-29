@@ -454,7 +454,6 @@ def li_output_single(params):
     # cpu golden生成
     cpu_result, topk_value = test_li.forward(query, key_cpu, weights, actual_seq_lengths_query, actual_seq_lengths_key, block_table)
     cpu_result, _ = torch.sort(cpu_result)
-    topk_value, _ = torch.sort(topk_value)
 
     npu_result, _ = torch_npu.npu_lightning_indexer(query, key, weights,
                                                     actual_seq_lengths_query = actual_seq_lengths_query,
