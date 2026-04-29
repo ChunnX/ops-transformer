@@ -715,7 +715,6 @@ aclnnStatus aclnnMlaPreprocess(
     - keyTotalDim：表示Key部分的总维度，取值固定为：576（512主维度+64 rope维度）
     - qRopeDim：表示Q矩阵中旋转编码部分的维度，取值固定为：64
     - qNoRopeDim：表示Q矩阵中无旋转编码部分的维度，取值范围：16~256，为16的倍数
-    - 当wdqkv和wuq的数据类型为bfloat16时，输入input也需要为bfloat16，且hiddenSize只支持6144，cacheMode只支持0和1
 - rope模式约束
     - mla_preprocess 算子中的 Rotary Embedding（RoPE）操作采用 half 模式，暂不支持 interleave 模式
 
