@@ -644,12 +644,21 @@ __aicore__ inline bool ComputeParamS1(RunParamStr<isInfer>& runParam, const Cons
 }
 
 TEMPLATE_INTF
-__aicore__ inline bool ComputeLastBN(RunParamStr<isInfer>& runParam, __gm__ int64_t *actualSeqQlenAddr) 
+__aicore__ inline bool ComputeLastBN(RunParamStr<isInfer>& runParam, const ConstInfo<isInfer, hasRope> &constInfo,
+    __gm__ int64_t *actualSeqQlenAddr)
 {
     if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
         // TND格式下 相邻Batch中当actualSeqQlen相等时则返回true
         if (runParam.boIdx > 0 && actualSeqQlenAddr[runParam.boIdx] - actualSeqQlenAddr[runParam.boIdx - 1] == 0) {
             return true;
+        }
+    } else {
+        if (!constInfo.isActualLenDimsNull) {
+            if (constInfo.actualSeqLenSize == 1) {
+                return actualSeqQlenAddr[0] == 0;
+            } else {
+                return actualSeqQlenAddr[runParam.boIdx] == 0;
+            }
         }
     }
     return false;
