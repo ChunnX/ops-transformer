@@ -1,5 +1,7 @@
 # aclnnMaskedCausalConv1d
 
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/masked_causal_conv1d)
+
 ## 产品支持情况
 
 |产品      | 是否支持 |
@@ -13,39 +15,39 @@
 
 ## 功能说明
 
-- 算子功能：对hidden层的token之间进行带mask的因果一维分组卷积操作。
+- 接口功能：对hidden层的token之间进行带mask的因果一维分组卷积操作。
 
 - 计算公式：
 
   假设输入x和输出y的shape是[S, B, H]，卷积权重weight的shape是[W, H]，i和j分别表示S和B轴的索引，那么输出将被表示为：
 
   $$
-  y[i,j] = mask[j,i] * \sum_{k=0}^{W-1} x[i-k,j] * weight[W-1-k]
+  out[i,j] = mask[j,i] * \sum_{k=0}^{W-1} x[i-k,j] * weight[W-1-k]
   $$
 
-  其中，无效位置的padding为0填充；当前W仅支持3；当前W仅支持3；H轴为elementwise操作，上述公式不体现。
-
+  其中，无效位置的padding为0填充；当前W仅支持3；H轴为elementwise操作，上述公式不体现。
 
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用`aclnnMaskedCausalConv1dGetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnMaskedCausalConv1d`接口执行计算。
 
-```c++
+```Cpp
 aclnnStatus aclnnMaskedCausalConv1dGetWorkspaceSize(
   const aclTensor   *x,
   const aclTensor   *weight,
-  const aclTensor   *mask,
-  const aclTensor   *y,
+  const aclTensor   *maskOptional,
+  const aclTensor   *out,
   uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
-```c++
+```Cpp
 aclnnStatus aclnnMaskedCausalConv1d(
   void             *workspace,
   uint64_t          workspaceSize,
   aclOpExecutor    *executor,
   const aclrtStream stream)
 ```
+
 ## aclnnMaskedCausalConv1dGetWorkspaceSize
 
 - **参数说明：**
@@ -78,7 +80,12 @@ aclnnStatus aclnnMaskedCausalConv1d(
         <td>x（aclTensor*）</td>
         <td>输入</td>
         <td>表示待计算的数据，对应公式中的x。</td>
-        <td><ul><li>不支持空Tensor。<li>shape为[S, B, H]。</ul></td>
+        <td>
+          <ul>
+            <li>不支持空Tensor。</li>
+            <li>shape为[S, B, H]。</li>
+          </ul>
+        </td>
         <td>BFLOAT16、FLOAT16</td>
         <td>ND</td>
         <td>3</td>
@@ -88,27 +95,43 @@ aclnnStatus aclnnMaskedCausalConv1d(
         <td>weight（aclTensor*）</td>
         <td>输入</td>
         <td>表示卷积权重，对应公式中的weight。</td>
-        <td><ul><li>不支持空Tensor。<li>shape为[W, H]。</ul></td>
+        <td>
+          <ul>
+            <li>不支持空Tensor。</li>
+            <li>shape为[W, H]。</li>
+          </ul>
+        </td>
         <td>数据类型与x一致</td>
         <td>ND</td>
         <td>2</td>
         <td>√</td>
       </tr>
       <tr>
-        <td>mask（aclTensor*）</td>
+        <td>maskOptional（aclTensor*）</td>
         <td>可选输入</td>
         <td>表示卷积操作的输出掩码，对应公式中的mask。</td>
-        <td><ul><li>支持空Tensor。<li>shape为[B, S]。</ul></td>
+        <td>
+          <ul>
+            <li>不支持空Tensor。</li>
+            <li>shape为[B, S]。</li>
+            <li>默认值是nullptr。</li>
+          </ul>
+        </td>
         <td>BOOL</td>
         <td>ND</td>
         <td>2</td>
         <td>√</td>
       </tr>
       <tr>
-        <td>y（aclTensor*）</td>
+        <td>out（aclTensor*）</td>
         <td>输出</td>
-        <td>表示卷积的输出结果，对应公式中的y。</td>
-        <td><ul><li>不支持空Tensor。<li>shape为[S, B, H]。</ul></td>
+        <td>表示卷积的输出结果，对应公式中的out。</td>
+        <td>
+          <ul>
+            <li>不支持空Tensor。</li>
+            <li>shape为[S, B, H]。</li>
+          </ul>
+        </td>
         <td>数据类型与x一致</td>
         <td>ND</td>
         <td>3</td>
@@ -137,14 +160,13 @@ aclnnStatus aclnnMaskedCausalConv1d(
     </tbody>
   </table>
 
-
 - **返回值：**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
   <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
-  <col style="width: 319px">
-  <col style="width: 144px">
-  <col style="width: 671px">
+  <col style="width: 150px">
+  <col style="width: 100px">
+  <col style="width: 250px">
   </colgroup>
   <thead>
     <tr>
@@ -163,8 +185,7 @@ aclnnStatus aclnnMaskedCausalConv1d(
       <td>ACLNN_ERR_PARAM_INVALID</td>
       <td>161002</td>
       <td>
-      x、weight、mask、y的数据类型不在支持的范围内。<br>
-      x、weight、mask、y的数据格式不在支持的范围内。<br>
+        x、weight、maskOptional、out的数据类型或数据格式不在支持的范围内。
       </td>
     </tr>
     <tr>
@@ -176,7 +197,6 @@ aclnnStatus aclnnMaskedCausalConv1d(
     </tr>
   </tbody>
   </table>
-
 
 ## aclnnMaskedCausalConv1d
 
@@ -221,7 +241,6 @@ aclnnStatus aclnnMaskedCausalConv1d(
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-
 ## 约束说明
 
 - 该接口与PyTorch配合使用时，需要保证CANN相关包与PyTorch相关包的版本匹配。
@@ -231,13 +250,14 @@ aclnnStatus aclnnMaskedCausalConv1d(
   - B * S：取值范围为1~512K。
   - H（hiddenSize）：取值范围384~24576（64的整数倍）。
   - W：W当前只支持3。
-
+- 算子入参与中间计算结果，在对应运行数据类型（float16/bfloat16） 下，数值均不会超出该类型值域范围。
+- 算子输入不支持有±inf和nan的情况。
 
 ## 调用示例
 
 通过aclnn单算子调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
-```c++
+```Cpp
 #include <iostream>
 #include <vector>
 #include "acl/acl.h"

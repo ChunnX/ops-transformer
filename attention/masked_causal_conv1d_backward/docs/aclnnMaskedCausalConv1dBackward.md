@@ -1,5 +1,7 @@
 # aclnnMaskedCausalConv1dBackward
 
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/masked_causal_conv1d_backward)
+
 ## 产品支持情况
 
 |产品      | 是否支持 |
@@ -33,29 +35,29 @@
 
   其中，无效位置的padding为0填充；当前W仅支持3；H轴为elementwise操作，上述公式不体现。
 
-
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMaskedCausalConv1dBackwardGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMaskedCausalConv1dBackward”接口执行计算。
 
-```c++
+```Cpp
 aclnnStatus aclnnMaskedCausalConv1dBackwardGetWorkspaceSize(
   const aclTensor   *gradY,
   const aclTensor   *x,
   const aclTensor   *weight,
-  const aclTensor   *mask,
-  aclTensor         *gradX,
-  aclTensor         *gradWeight,
+  const aclTensor   *maskOptional,
+  aclTensor         *gradXOut,
+  aclTensor         *gradWeightOut,
   uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
-```c++
+```Cpp
 aclnnStatus aclnnMaskedCausalConv1dBackward(
   void             *workspace,
   uint64_t          workspaceSize,
   aclOpExecutor    *executor,
   const aclrtStream stream)
 ```
+
 ## aclnnMaskedCausalConv1dBackwardGetWorkspaceSize
 
 - **参数说明：**
@@ -88,7 +90,12 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
         <td>gradY（aclTensor*）</td>
         <td>输入</td>
         <td>表示分组卷积输出y的梯度，对应公式中的gradY。</td>
-        <td><ul><li>不支持空Tensor。<li>shape为[S, B, H]。</ul></td>
+        <td>
+          <ul>
+            <li>不支持空Tensor。</li>
+            <li>shape为[S, B, H]。</li>
+          </ul>
+        </td>
         <td>BFLOAT16、FLOAT16</td>
         <td>ND</td>
         <td>3</td>
@@ -98,7 +105,12 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
         <td>x（aclTensor*）</td>
         <td>输入</td>
         <td>表示分组卷积输入，对应公式中的x。</td>
-        <td><ul><li>不支持空Tensor。<li>shape与gradY一致。</ul></td>
+        <td>
+          <ul>
+            <li>不支持空Tensor。</li>
+            <li>shape与gradY一致。</li>
+          </ul>
+        </td>
         <td>数据类型与gradY一致</td>
         <td>ND</td>
         <td>3</td>
@@ -108,37 +120,58 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
         <td>weight（aclTensor*）</td>
         <td>输入</td>
         <td>表示卷积权重，对应公式中的weight。</td>
-        <td><ul><li>不支持空Tensor。<li>shape为[W, H]。</ul></td>
+        <td>
+          <ul>
+            <li>不支持空Tensor。</li>
+            <li>shape为[W, H]。</li>
+          </ul>
+        </td>
         <td>数据类型与gradY一致</td>
         <td>ND</td>
         <td>2</td>
         <td>√</td>
       </tr>
       <tr>
-        <td>mask（aclTensor*）</td>
-        <td>输入</td>
+        <td>maskOptional（aclTensor*）</td>
+        <td>可选输入</td>
         <td>表示卷积操作的输出掩码，对应公式中的mask。</td>
-        <td><ul><li>shape为[B, S]。<li>可选输入，默认值是None。</ul></td>
+        <td>
+          <ul>
+            <li>不支持空Tensor。</li>
+            <li>shape为[B, S]。</li>
+            <li>默认值是nullptr。</li>
+          </ul>
+        </td>
         <td>BOOL</td>
         <td>ND</td>
         <td>2</td>
         <td>√</td>
       </tr>
       <tr>
-        <td>gradX（aclTensor*）</td>
+        <td>gradXOut（aclTensor*）</td>
         <td>输出</td>
         <td>表示分组卷积输入x的梯度，对应公式中的gradX。</td>
-        <td><ul><li>不支持空Tensor。<li>shape与gradY一致。</ul></td>
+        <td>
+          <ul>
+            <li>不支持空Tensor。</li>
+            <li>shape与gradY一致。</li>
+          </ul>
+        </td>
         <td>数据类型与gradY一致</td>
         <td>ND</td>
         <td>3</td>
         <td>x</td>
       </tr>
       <tr>
-        <td>gradWeight（aclTensor*）</td>
+        <td>gradWeightOut（aclTensor*）</td>
         <td>输出</td>
         <td>表示分组卷积输入weight的梯度，对应公式中的gradWeight。</td>
-        <td><ul><li>不支持空Tensor。<li>shape与weight一致。</ul></td>
+        <td>
+          <ul>
+            <li>不支持空Tensor。</li>
+            <li>shape与weight一致。</li>
+          </ul>
+        </td>
         <td>数据类型与gradY一致</td>
         <td>ND</td>
         <td>2</td>
@@ -167,7 +200,6 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
     </tbody>
   </table>
 
-
 - **返回值：**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -192,7 +224,7 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
     <tr>
       <td>ACLNN_ERR_PARAM_INVALID</td>
       <td>161002</td>
-      <td>gradY、x、weight、mask、gradX和gradWeight的数据类型或数据格式不在支持的范围内。</td>
+      <td>gradY、x、weight、maskOptional、gradXOut和gradWeightOut的数据类型或数据格式不在支持的范围内。</td>
     </tr>
     <tr>
       <td>ACLNN_ERR_INNER_TILING_ERROR</td>
@@ -201,7 +233,6 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
     </tr>
   </tbody>
   </table>
-
 
 ## aclnnMaskedCausalConv1dBackward
 
@@ -246,26 +277,25 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-
 ## 约束说明
 
 - 该接口与PyTorch配合使用时，需要保证CANN相关包与PyTorch相关包的版本匹配。
 - 确定性计算：
   - aclnnMaskedCausalConv1dBackward默认确定性实现。
 - 输入限制：
-  - gradY、x、weight、gradX和gradWeight的数据类型必须一致。
   - 输入输出的shape数据范围约束如下：
     - B（Batchsize）：取值范围为1~32。
     - B * S（Batchsize * SeqLength）：取值范围为1~512K。
     - H（hiddenSize）：取值范围384~24576，且是64的整数倍。
     - W：W当前只支持3。
-
+- 算子入参与中间计算结果，在对应运行数据类型（float16/bfloat16） 下，数值均不会超出该类型值域范围。
+- 算子输入不支持有±inf和nan的情况。
 
 ## 调用示例
 
 通过aclnn单算子调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
-```c++
+```Cpp
 #include <iostream>
 #include <vector>
 #include "acl/acl.h"
