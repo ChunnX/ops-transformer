@@ -1,0 +1,37 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * Licensed under the CANN Open Software License Agreement Version 2.0.
+ */
+
+#ifndef SLIDING_TILE_ATTENTION_TILING_DATA_H
+#define SLIDING_TILE_ATTENTION_TILING_DATA_H
+
+#include <cstdint>
+
+constexpr int64_t SLIDING_TILE_ATTENTION_MAX_HEAD_NUM = 64;
+
+struct SlidingTileAttentionTilingData {
+    int64_t batchSize;
+    int64_t headNum;
+    int64_t seqLen;
+    int64_t headDim;
+    int64_t imageSeqLen;
+    int64_t textLength;
+    int64_t hasText;
+    int64_t seqT;
+    int64_t seqH;
+    int64_t seqW;
+    int64_t tileT;
+    int64_t tileH;
+    int64_t tileW;
+    int64_t tileTokenNum;
+    int64_t tileNumT;
+    int64_t tileNumH;
+    int64_t tileNumW;
+    int64_t totalQueryNum;
+    int64_t windowT[SLIDING_TILE_ATTENTION_MAX_HEAD_NUM];
+    int64_t windowH[SLIDING_TILE_ATTENTION_MAX_HEAD_NUM];
+    int64_t windowW[SLIDING_TILE_ATTENTION_MAX_HEAD_NUM];
+};
+
+#endif // SLIDING_TILE_ATTENTION_TILING_DATA_H

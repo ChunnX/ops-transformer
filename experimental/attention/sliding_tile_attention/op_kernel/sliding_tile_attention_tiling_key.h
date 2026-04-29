@@ -1,0 +1,12 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * Licensed under the CANN Open Software License Agreement Version 2.0.
+ */
+
+#ifndef SLIDING_TILE_ATTENTION_TILING_KEY_H
+#define SLIDING_TILE_ATTENTION_TILING_KEY_H
+
+#define SLIDING_TILE_ATTENTION_FP16_TILING_KEY 1000UL
+#define SLIDING_TILE_ATTENTION_BF16_TILING_KEY 1001UL
+
+#endif // SLIDING_TILE_ATTENTION_TILING_KEY_H
