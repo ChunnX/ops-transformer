@@ -286,6 +286,17 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::Init
         dqWorkSpaceGm.SetGlobalBuffer((__gm__ INPUT_TYPE *)dq);
         dkWorkSpaceGm.SetGlobalBuffer((__gm__ INPUT_TYPE *)dk);
         dvWorkSpaceGm.SetGlobalBuffer((__gm__ INPUT_TYPE *)dv);
+        if constexpr ((DETER_SPARSE_TYPE) == DETER_OLD) {
+            constInfo.deterConstInfo.dqGmBaseAddr = (uint64_t)(dqWorkSpaceGm.GetPhyAddr());
+            constInfo.deterConstInfo.dkGmBaseAddr = (uint64_t)(dkWorkSpaceGm.GetPhyAddr());
+            constInfo.deterConstInfo.dvGmBaseAddr = (uint64_t)(dvWorkSpaceGm.GetPhyAddr());
+            uint64_t dqSizeByte = tilingData->s1s2BNGS1S2BaseParams.qSize * sizeof(CALC_TYPE);
+            uint64_t dkSizeByte = tilingData->s1s2BNGS1S2BaseParams.kSize * sizeof(CALC_TYPE);
+            uint64_t dvSizeByte = tilingData->s1s2BNGS1S2BaseParams.vSize * sizeof(CALC_TYPE);
+            constInfo.deterConstInfo.dqGmLimitOffset = constInfo.deterConstInfo.dqGmBaseAddr + dqSizeByte;
+            constInfo.deterConstInfo.dkGmLimitOffset = constInfo.deterConstInfo.dkGmBaseAddr + dkSizeByte;
+            constInfo.deterConstInfo.dvGmLimitOffset = constInfo.deterConstInfo.dvGmBaseAddr + dvSizeByte;
+        }
     }
 }
  
