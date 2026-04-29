@@ -143,7 +143,7 @@ aclnnStatus aclnnQuantLightningIndexer(
     <td>输入</td>
     <td>表示Index Query的反量化系数$Scale_Q$。</td>
     <td>不支持空tensor。</td>
-    <td>float32、float16</td>
+    <td>float、float16</td>
     <td>ND</td>
     <td>
         <ul>
@@ -158,7 +158,7 @@ aclnnStatus aclnnQuantLightningIndexer(
     <td>输入</td>
     <td>表示Index Key的反量化系数$Scale_K^T$。</td>
     <td>不支持空tensor。</td>
-    <td>float32、float16</td>
+    <td>float、float16</td>
     <td>ND</td>
     <td>
         <ul>

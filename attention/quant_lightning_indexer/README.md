@@ -96,7 +96,7 @@
                 <li>layout_query为BSND时，shape为(B,S1,N1)。layout_query为TND时，shape为(T1,N1)。</li>
           </ul>
       </td>
-      <td>FLOAT32、FLOAT16</td>
+      <td>FLOAT、FLOAT16</td>
       <td>ND</td>
     </tr>
     <tr>
@@ -111,7 +111,7 @@
                 <li>block_num为PageAttention时block总数，block_size为一个block的token数。</li>
           </ul>
       </td>
-      <td>FLOAT32、FLOAT16</td>
+      <td>FLOAT、FLOAT16</td>
       <td>ND</td>
     </tr>
     <tr>
