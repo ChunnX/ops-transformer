@@ -209,9 +209,12 @@ ge::graphStatus InferDataTypeBlockSparseAttention(gert::InferDataTypeContext *co
     if (context == nullptr) {
         return ge::GRAPH_FAILED;
     }
-    auto dtype = context->GetInputDataType(0);
-    context->SetOutputDataType(0, dtype);
-    context->SetOutputDataType(1, DT_FLOAT);
+    auto dtype = context->GetInputDataType(QUERY_INDEX);
+    if (dtype == ge::DT_FLOAT8_E4M3FN) {
+        dtype = context->GetOutputDataType(ATTENTION_OUT_INDEX);
+    }
+    context->SetOutputDataType(ATTENTION_OUT_INDEX, dtype);
+    context->SetOutputDataType(SOFTMAX_LSE_INDEX, DT_FLOAT);
 
     return GRAPH_SUCCESS;
 }

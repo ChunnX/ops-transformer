@@ -210,6 +210,12 @@ public:
         auto l1PTensorTlaTile = GetTile(l1PTensorTla,
                 tla::MakeCoord(subBlockIdx_ * mCopyOffset, 0), tla::MakeShape(m, n));
         WaitCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
+
+        if constexpr (std::is_same_v<ElementOuput, float8_e4m3_t>) {
+            ScaleP(pAddr, m, nLoops, tailN, nRound, 448.0f);
+            CastPToFp8<ElementOutput, half>(pAddr, pAddr, m, nLoops, tailN, nRound);
+        }
+
         CopyPUbToPL1(l1PTensorTlaTile, ubPTensorTlaTile, m);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2);
         // crossCoreSync after PIPE_MTE1 move
@@ -352,6 +358,60 @@ private:
         LoadAlign(nowMaxVreg, nowMaxUb + mLoops * FLOAT_REP_SIZE);
         Max(maxVreg, nowMaxVreg, lastMaxFloatVreg, pregFloatFull);
         StoreAlign<float, StoreDist::DIST_NORM_B32>(nowMaxUb + mLoops * FLOAT_REP_SIZE, maxVreg, pregFloatTailM);
+    }
+
+    template <typename ElementP>
+    __simd_vf__ inline void ScaleP(__ubuf__ ElementP *pUb, uint16_t m, uint16_t nLoopCount, uint32_t tailN,
+                                                uint16 nRound, ElementP staticScale)
+    {
+        using namespace AscendC::MicroAPI;
+
+        RegTensor<ElementP> pVreg;
+        MaskReg pregAll = CreateMask<ElementP, MaskPattern::ALL>();
+        MaskReg pregTailN = UpdateMask<ElementP>(tailN);
+
+        for (uint16_t i = 0; i < m; ++i) {
+            for (uint16_t j = 0; j < nLoopCount; ++j) {
+                LoadAlign(pVreg, pUb + i * nRound + j * HALF_REP_SIZE);
+                Muls(pVreg, pVreg, staticScale, pregAll);
+                StoreAlign<ElementS, StoreDist::DIST_NORM_B8>(pUb + i * nRound + j * HALF_REP_SIZE, pVreg, pregAll);
+            }
+            LoadAlign(pVreg, pUb + i * nRound + nLoopCount * HALF_REP_SIZE);
+            Muls(pVreg, pVreg, staticScale, pregTailN);
+            StoreAlign<ElementP, StoreDist::DIST_NORM_B8>(pUb + i * nRound + nLoopCount * HALF_REP_SIZE, pVreg,
+                                                          pregTailN);
+        }
+    }
+
+    template <typename ElementDst, typename ElementSrc>
+    __simd_vf__ inline void CastPToFp8(__ubuf__ ElementDst *dstUb, __ubuf__ ElementSrc *srcUb, uint16_t m,
+                                      int16_t nLoopCount, uint32_t tailN, uint16_t nRound)
+    {
+        using namespace AscendC::MicroAPI;
+        constexpr static CastTrait castTrait = {
+            RegLayout::ZERO,
+            SatMode::SAT,
+            MaskMergeMode::ZEROING,
+            AscendC::RoundMode::CAST_ROUND,
+        };
+
+        RegTensor<ElementSrc> srcVreg;
+        RegTensor<ElementDst> dstVreg;
+        MaskReg pregAll = CreateMask<ElementDst, MaskPattern::ALL>();
+        MaskReg pregTailN = UpdateMask<ElementDst>(tailN);
+
+        for (uint16_t i = 0; i < m; ++i) {
+            for (uint16_t j = 0; j < nLoopCount; ++j) {
+                LoadAlign(srcVreg, srcUb + i * nRound + j * HALF_REP_SIZE);
+                Cast<ElementDst, ElementSrc, castTrait>(dstVreg, srcVreg, pregAll);
+                StoreAlign<ElementDst, StoreDist::DIST_NORM_B8>(dstUb + i * nRound + j * HALF_REP_SIZE, dstVreg,
+                                                                pregAll);
+            }
+            LoadAlign(srcVreg, srcUb + i * nRound + nLoopCount * HALF_REP_SIZE);
+            Cast<ElementDst, ElementSrc, castTrait>(dstVreg, srcVreg, pregTailN);
+            StoreAlign<ElementDst, StoreDist::DIST_NORM_B8>(dstUb + i * nRound + nLoopCount * HALF_REP_SIZE, dstVreg,
+                                                            pregTailN);
+        }
     }
 
     template <typename ElementP, typename ElementS>
