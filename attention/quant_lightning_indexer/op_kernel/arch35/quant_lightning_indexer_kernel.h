@@ -87,7 +87,7 @@ public:
 
     static constexpr int64_t LD_PREFETCH_LEN = 2;
     // for workspace double
-    static constexpr uint32_t WS_DOBULE = 2;
+    static constexpr uint32_t WS_DOUBLE = 2;
 
 protected:
     TPipe *pipe = nullptr;
