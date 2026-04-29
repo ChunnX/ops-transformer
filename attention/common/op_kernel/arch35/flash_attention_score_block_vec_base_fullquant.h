@@ -168,7 +168,7 @@ protected:
     __aicore__ inline void Bmm2DataCopyOut(RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo,
         LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx, int64_t vec2CalcSize = 0);
 private:
-    __aicore__ inline void SoftmaxInitBuffer();
+    __aicore__ inline void SoftmaxInitBuffer(uint8_t isFdFlag);
     __aicore__ inline void ProcessVec1Dn(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
         Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo<isInfer> &runInfo,
         ConstInfo<isInfer, hasRope> &constInfo);
@@ -675,7 +675,7 @@ __aicore__ inline void FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::MlaAttenMask
 {
     if constexpr (hasAtten && isMlaFullQuant) {
         LocalTensor<uint8_t> attenMaskUb = attenMaskInQue.template AllocTensor<uint8_t>();
-        int64_t maskOffset = ComputeAttenMaskOffset<hasAtten, enableKVPrefix, isFd, hasRope, isInfer, dTemplateType>(runInfo, constInfo, attenMaskInfo);
+        int64_t maskOffset = ComputeAttenMaskOffset<hasAtten, enableKVPrefix, hasRope, isInfer, dTemplateType>(runInfo, constInfo, attenMaskInfo);
         this->MlaBoolCopyInRegbase(attenMaskUb, srcTensor, maskOffset, runInfo.halfS1RealSize, runInfo.s2RealSize,
             attenMaskInfo.attenMaskS2Size, constInfo.s2BaseSize, constInfo, runInfo);
         attenMaskInQue.template EnQue(attenMaskUb);
@@ -796,7 +796,7 @@ __aicore__ inline void FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::ProcessVec1N
             this->MlaAttenMaskCopyIn(this->attenMaskInQue[runInfo.taskIdMod2], this->attenMaskInQue[1 - runInfo.taskIdMod2],
                 this->attenMaskGmInt, runInfo, constInfo, *attenMaskInfoPtr);
         } else {
-            AttenMaskCopyIn<hasAtten, isFd, enableKVPrefix>(this->attenMaskInQue[runInfo.taskIdMod2], this->attenMaskInQue[1 - runInfo.taskIdMod2],
+            AttenMaskCopyIn<hasAtten, enableKVPrefix>(this->attenMaskInQue[runInfo.taskIdMod2], this->attenMaskInQue[1 - runInfo.taskIdMod2],
                 this->attenMaskGmInt, runInfo, constInfo, *attenMaskInfoPtr);
         }
         attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
@@ -1701,12 +1701,12 @@ __aicore__ inline void FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::Bmm2DataCopy
     }
 }
 TEMPLATES_DEF_BASE_NO_DEFAULT
-__aicore__ inline void FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::SoftmaxInitBuffer()
+__aicore__ inline void FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::SoftmaxInitBuffer(uint8_t isFdFlag)
 {
     tPipe->InitBuffer(softmaxSumBuf[0], 256); // [64, 1]
     tPipe->InitBuffer(softmaxSumBuf[1], 256); // [64, 1]
     tPipe->InitBuffer(softmaxSumBuf[2], 256); // [64, 1]
-    if constexpr (isFd) {
+    if (isFdFlag) {
         tPipe->InitBuffer(maxBrdcst, 1, 2048); // [64, 8]
         tPipe->InitBuffer(sumBrdcst, 1, 2048); // [64, 8]
     }
@@ -1732,7 +1732,7 @@ __aicore__ inline void FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::InitLocalBuf
     if constexpr (s2BaseSize == 256) { // s1BaseSize = 128
         if constexpr (s1BaseSize == 128) { // s1BaseSize = 128 s2BaseSize = 256
             tPipe->InitBuffer(stage2OutBuf, 64 * dTemplateAlign64 * sizeof(T));
-            SoftmaxInitBuffer();
+            SoftmaxInitBuffer(constInfo.isFd);
             if constexpr (isFp8 || isInt8) {
                 tPipe->InitBuffer(stage1OutQue[0], 1, 16896);  // (32 + 1) * (256 / 32) * 64
                 tPipe->InitBuffer(stage1OutQue[1], 1, 16896);
@@ -1744,7 +1744,7 @@ __aicore__ inline void FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::InitLocalBuf
                 tPipe->InitBuffer(stage1OutQue[1], 1, 33024);
             }
         } else { // s1BaseSize = 64 s2BaseSize = 256
-            SoftmaxInitBuffer();
+            SoftmaxInitBuffer(constInfo.isFd);
             tPipe->InitBuffer(commonTBuf, 512); // 实际上只需要512Bytes
             tPipe->InitBuffer(stage2OutBuf, 32 * dTemplateAlign64 * sizeof(T));
             tPipe->InitBuffer(stage1OutQue[0], 1, 16896);
@@ -1758,7 +1758,7 @@ __aicore__ inline void FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::InitLocalBuf
             }
         }
     } else { 
-        SoftmaxInitBuffer();
+        SoftmaxInitBuffer(constInfo.isFd);
         if constexpr (isMlaFullQuant) {
             if constexpr (!useDn) {
                 if constexpr (hasPseOuter) {
@@ -1788,7 +1788,7 @@ __aicore__ inline void FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::InitLocalBuf
             tPipe->InitBuffer(stage2OutBuf, 32768);
         } else if constexpr (isMxfp8FullQuant) {
             tPipe->InitBuffer(stage2OutBuf, 64 * dTemplateAlign64 * sizeof(T));
-            SoftmaxInitBuffer();
+            SoftmaxInitBuffer(constInfo.isFd);
             tPipe->InitBuffer(stage1OutQue[0], 1, 16640);
             tPipe->InitBuffer(stage1OutQue[1], 1, 16640);
             tPipe->InitBuffer(commonTBuf, 512);
