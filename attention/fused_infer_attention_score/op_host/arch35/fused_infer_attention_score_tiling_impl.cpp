@@ -1391,7 +1391,6 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::UpdateTilingKeyInfo(const Fi
         UpdateTilingKeyConfig(fiaInfo);
         UpdateTilingKeyPseMode(fiaInfo);
         UpdateTilingKeyQuantMode(fiaInfo);
-        tilingKeyInfo_.isFd = flashDecodeFlag_;
         if (fiaInfo.sysPrefixFlag) {
             tilingKeyInfo_.isFd = false;
         }
@@ -1769,6 +1768,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetFullQuantTilingData(const
     baseParams.set_pseShiftS1Size(fiaInfo.pseShiftS1);
     baseParams.set_pseShiftS2Size(fiaInfo.pseShiftS2);
     baseParams.set_isLayoutSH(0);
+    baseParams.set_isFd(flashDecodeFlag_);
     baseParams.set_isActualSeqLengthsNull(!actualSeqLenQFlag_);
     baseParams.set_isActualSeqLengthsKVNull(!actualSeqLenKVFlag_);
     baseParams.set_actualSeqLengthsSize(fiaInfo.actualLenQDims);
@@ -2213,6 +2213,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetFATilingData(const FiaTil
     inputParams.set_antiquantPerHeadFlag(fiaInfo.keyAntiquantMode == 2 || fiaInfo.keyAntiquantMode == 3 ||
                                          fiaInfo.keyAntiquantMode == 5);
     inputParams.set_antiquantPageAttentionFlag(fiaInfo.keyAntiquantMode == 4 || fiaInfo.keyAntiquantMode == 5);
+    inputParams.set_isFd(flashDecodeFlag_);
     inputParams.set_isActualSeqLengthsNull(!actualSeqLenQFlag_);
     inputParams.set_isActualSeqLengthsKVNull(!actualSeqLenKVFlag_);
     inputParams.set_isActualSharedPrefixLenNull(!actualSharedPrefixLenFlag_);
@@ -2319,6 +2320,7 @@ void FusedInferAttentionScoreTilingImpl::PrintAllTilingData(const FiaTilingInfo 
     OP_LOGD(fiaInfo.opName, "pseAlibiBaseS2:%d", faRunTilingAdapter_.inputParamsRegbase.get_pseAlibiBaseS2());
     OP_LOGD(fiaInfo.opName, "deqScaleFlag:%d", faRunTilingAdapter_.inputParamsRegbase.get_deqScaleFlag());
     OP_LOGD(fiaInfo.opName, "deqScale2Flag:%d", faRunTilingAdapter_.inputParamsRegbase.get_deqScale2Flag());
+    OP_LOGD(fiaInfo.opName, "isFd:%d", faRunTilingAdapter_.inputParamsRegbase.get_isFd());
     OP_LOGD(fiaInfo.opName, "isActualSeqLengthsNull:%d", faRunTilingAdapter_.inputParamsRegbase.get_isActualSeqLengthsNull());
     OP_LOGD(fiaInfo.opName, "isActualSeqLengthsKVNull:%d", faRunTilingAdapter_.inputParamsRegbase.get_isActualSeqLengthsKVNull());
     OP_LOGD(fiaInfo.opName, "actualSeqLengthsSize:%d", faRunTilingAdapter_.inputParamsRegbase.get_actualSeqLengthsSize());
@@ -2346,6 +2348,7 @@ void FusedInferAttentionScoreTilingImpl::PrintAllTilingData(const FiaTilingInfo 
     OP_LOGD(fiaInfo.opName, "isPostQuantPerChnl:%d", faRunTilingAdapter_.inputParamsRegbase.get_isPostQuantPerChnl());
     OP_LOGD(fiaInfo.opName, "isPostQuantBF16:%d", faRunTilingAdapter_.inputParamsRegbase.get_isPostQuantBF16());
     OP_LOGD(fiaInfo.opName, "antiquantPerTensorFlag:%d", faRunTilingAdapter_.inputParamsRegbase.get_antiquantPerTensorFlag());
+    OP_LOGD(fiaInfo.opName, "antiquantPageAttentionFlag:%d", faRunTilingAdapter_.inputParamsRegbase.get_antiquantPageAttentionFlag());
     OP_LOGD(fiaInfo.opName, "antiquantPerHeadFlag:%d", faRunTilingAdapter_.inputParamsRegbase.get_antiquantPerHeadFlag());
     OP_LOGD(fiaInfo.opName, "antiquantParaSeqSize:%d", faRunTilingAdapter_.inputParamsRegbase.get_antiquantParaSeqSize());
 

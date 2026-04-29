@@ -297,6 +297,7 @@ struct RunInfo<false> {
     bool learnableSinkFlag = false; /* attentionsink */ \
     float pScale;\
     float sinkValue = 0.0f;
+    uint8_t isFd;\
 
 
 #define ROPE_INFO \

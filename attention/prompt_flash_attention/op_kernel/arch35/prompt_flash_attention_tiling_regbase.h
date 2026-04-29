@@ -421,6 +421,10 @@ public:
     uint32_t get_isLayoutSH() const { return this->isLayoutSH; }
     void set_isLayoutSH(uint32_t isLayoutSHParam) { this->isLayoutSH = isLayoutSHParam; }
 
+    uint32_t isFd = 0;
+    uint32_t get_isFd() const { return this->isFd; }
+    void set_isFd(uint32_t isFdParam) { this->isFd = isFdParam; }
+
     uint32_t isActualSeqLengthsNull = 0;
     uint32_t get_isActualSeqLengthsNull() const { return this->isActualSeqLengthsNull; }
     void set_isActualSeqLengthsNull(uint32_t isActualSeqLengthsNullParam) { this->isActualSeqLengthsNull = isActualSeqLengthsNullParam; }
