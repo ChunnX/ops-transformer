@@ -137,11 +137,11 @@ ge::graphStatus MoeDistributeCombineTilingA5::MoeDistributeCombineA5TilingFuncIm
 bool MoeDistributeCombineTilingA5::CheckEpWorldSize(const char *nodeName, uint32_t epWorldSize)
 {
     // 检验epWorldSize是否是8的倍数
-    OP_TILING_CHECK(epWorldSize % 8 != 0, OP_LOGE(nodeName,
-        "epWorldSize should be divisible by 8, but got epWorldSize = %u.", epWorldSize), return false);
+    OP_TILING_CHECK(epWorldSize % 2 != 0, OP_LOGE(nodeName, 
+            "epWorldSize should be divisible by 2, but got epWorldSize = %u.", epWorldSize), return false);
 
     OP_TILING_CHECK((256 % epWorldSize != 0) && (epWorldSize % 144 != 0), OP_LOGE(nodeName,
-        "epWorldSize should be in the list[8, 16, 32, 64, 128, 144, 256, 288], but got epWorldSize = %u.",
+        "epWorldSize should be in the list[2, 4, 8, 16, 32, 64, 128, 144, 256, 288], but got epWorldSize = %u.",
         epWorldSize), return false);
 
     return true;
