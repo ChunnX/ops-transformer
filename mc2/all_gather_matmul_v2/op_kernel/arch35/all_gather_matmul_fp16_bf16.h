@@ -22,6 +22,7 @@
 #include "../../3rd/mat_mul_v3/op_kernel/mat_mul_v3_common.h"
 #include "../../3rd/mat_mul_v3/op_kernel/arch35/mat_mul_asw_kernel.h"
 #include "all_gather_matmul_tiling_arch35.h"
+#include "../common/op_kernel/mc2_nd_to_nz.h"
 
 namespace AllGatherMatmulImpl
 {
@@ -64,6 +65,7 @@ private:
     bool notifyFlag_{false};
     Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;         // CCU模式
     AscendC::HcclHandle hHandles_[MAX_HANDLE];  // 最大支持16个handleID
+    GM_ADDR biasFloatGM_; 
 };
 
 template <typename AType, typename BType, typename BiasType, typename CType>
@@ -161,10 +163,32 @@ __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::E
     }
 }
 
+// 新增函数
+template <typename AType, typename BType, typename BiasType, typename CType>
+__aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::BiasCast()
+{
+    if constexpr (std::is_same_v<BiasType, bfloat16_t>) {
+        // BF16 bias 需要转换为 FP32
+        TBuf<TPosition::VECCALC> totalUbBuf;
+        tPipe_->InitBuffer(totalUbBuf, TOTAL_UB_SIZE);
+        
+        // biasFloatGM_ = workspaceGM_ + biasLen 偏移
+        biasFloatGM_ = workspaceGM_ + tilingData_->param.biasLen;
+        
+        CastBFtoFloat(biasFloatGM_, biasGM_, tilingData_->param.rankN, totalUbBuf);
+        
+        biasGM_ = biasFloatGM_;  // 更新 bias 地址
+        SyncAll<true>();
+    }
+}
+
 template <typename AType, typename BType, typename BiasType, typename CType>
 __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::Process()
 {
     if ASCEND_IS_AIC {
+        // bias转换
+        BiasCast();
+
         // 先发出通信
         StartNotify();
 
