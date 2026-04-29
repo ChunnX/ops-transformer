@@ -313,26 +313,12 @@ bool IsTransposeTwoDims(const aclTensor *tensor, int64_t firstDimIndex, int64_t 
     if (shape1 == 1 && shape2 == 1) {
         return false;
     }
-    
-    // dim1是较大索引（更内层维度），dim2是较小索引（更外层维度）
-    // 连续性判断：stride[dim2] == shape[dim1] * stride[dim1]
-    // transpose导致stride与新shape不匹配
-    
-    // 如果stride[dim1] == 1：dim1是最内层维度
-    // 正常连续：stride[dim2] == shape[dim1]
-    // transpose非连续：stride[dim2] != shape[dim1]
     if (stride1 == 1) {
         return (stride2 != shape1);
     }
-    
-    // 如果stride[dim2] == 1：dim2变成最内层，说明这两个维度被转置了
     if (stride2 == 1) {
         return true;
     }
-    
-    // 都不是最内层维度，检查stride关系是否正确
-    // 正常连续：stride2 == shape1 * stride1
-    // transpose：stride2 != shape1 * stride1（stride关系不匹配）
     return (stride2 != shape1 * stride1);
 }
 
@@ -459,7 +445,9 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize(
         CHECK_RET(transposeGmmWeightScale != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
 
-    // 处理非连续Tensor，目前支持转置的mmWeightOptional涉及该处理
+    // 保存原始指针用于一致性校验
+    const aclTensor *originalMmWeightOptional = mmWeightOptional;
+    const aclTensor *originalMmWeightScaleOptional = mmWeightScaleOptional;
     if (CheckMmWeightValid(mmWeightOptional)) {
         bool notContiguous = IsTransposeTwoDims(mmWeightOptional, -1, -2);
         auto transMmWeightOptional = mmWeightOptional;
@@ -522,9 +510,8 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize(
         }
     }
     
-    // mmWeightScale需要和mmWeight转置状态一致，这里使用原始状态校验（未转连续前）
     aclnnStatus ret_consistency = CheckWeightScaleTransposeConsistency(
-        gmmWeight, gmmWeightScale, mmWeightOptional, mmWeightScaleOptional);
+        gmmWeight, gmmWeightScale, originalMmWeightOptional, originalMmWeightScaleOptional);
     CHECK_RET(ret_consistency == ACLNN_SUCCESS, ret_consistency);
 
     aclnnStatus ret_param = CheckParams(
