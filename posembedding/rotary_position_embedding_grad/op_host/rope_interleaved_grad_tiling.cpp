@@ -299,7 +299,7 @@ ge::graphStatus RopeCheckOptInputShape(gert::TilingContext* context)
         if (xOptionalStorageShape != dyStorageShape) {
             std::string shapeMsg = ToString(xOptionalStorageShape) + " and " + ToString(dyStorageShape);
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "x and dy", shapeMsg.c_str(),
-                "The shape of input x should be the same as the shape of input dy");
+                "The shapes of input x and input dy should be the same");
             return ge::GRAPH_FAILED;
         }
     }

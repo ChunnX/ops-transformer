@@ -59,7 +59,7 @@ ge::graphStatus RotaryPosEmbeddingGradMembaseTilingClass::GetShapeAttrsInfo()
     if (!Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_) &&
         (inputMode != MODE_ROTATE_HALF && inputMode != MODE_ROTATE_INTERLEAVED)) {
         std::string modeStr = std::to_string(inputMode);
-        OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "mode",
+        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "mode",
             modeStr.c_str(), "0 or 1");
         return ge::GRAPH_FAILED;
     }
