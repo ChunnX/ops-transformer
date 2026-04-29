@@ -23,6 +23,7 @@
 #include "mega_moe_base.h"
 #include "mega_moe_workspace_info.h"
 #include "block_epilogue_swiglu_mx_quant.h"
+#include "mega_moe_impl.h"
 
 
 using namespace AscendC;
