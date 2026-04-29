@@ -29,7 +29,7 @@
 #include "version/runtime_version.h"
 #include "version/metadef_version.h"
 
-#define EXCEPTION_DUMP_SUPPORT_VERSION 90000000
+#define EXCEPTION_DUMP_SUPPORT_VERSION 89999700
 
 #if RUNTIME_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION && METADEF_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
 namespace Mc2Exception {
