@@ -13531,7 +13531,7 @@ TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_SoftmaxLSE
             {{{4, 4, 962, 128}, {4, 4, 962, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // key-input1
             {{{4, 4, 962, 128}, {4, 4, 962, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}, // value-input2
             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // pse_shift-input3
-            {{{4, 2048, 2048}, {4, 2048, 2048}}, ge::DT_INT8, ge::FORMAT_ND},            // atten_mask-input4
+            {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},                                // atten_mask-input4
             {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},                              // actual_seq_lengths-空
             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},                               // actual_seq_lengths_kv-空
             {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},                             // dequant_scale1-input5
