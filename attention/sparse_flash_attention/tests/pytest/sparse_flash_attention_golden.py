@@ -241,6 +241,8 @@ def get_param_fus(input_tensor_dict, params):
 
     fa_param['out_shape'] = fa_param['q_shape']
     fa_param['out_dtype'] = trans_input_dtype(params['dtype_output'][0])
+    fa_param['softmax_max_shape'] = params['shape_output']['softmax_max']
+    fa_param['softmax_sum_shape'] = params['shape_output']['softmax_sum']
 
     if fa_param['layout_query'] in ["TND"]:
         fa_param['b'] = len(fa_param['actualSeqLengths_q_raw'])
