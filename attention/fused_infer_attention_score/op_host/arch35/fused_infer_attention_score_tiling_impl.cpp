@@ -1391,9 +1391,6 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::UpdateTilingKeyInfo(const Fi
         UpdateTilingKeyConfig(fiaInfo);
         UpdateTilingKeyPseMode(fiaInfo);
         UpdateTilingKeyQuantMode(fiaInfo);
-        if (fiaInfo.sysPrefixFlag) {
-            tilingKeyInfo_.isFd = false;
-        }
         tilingKeyInfo_.hasAttenMask = fiaInfo.attenMaskFlag;
         if (fiaInfo.fullQuantMode == FiaFullQuantMode::PER_TENSOR_FULL_QUANT) {
             tilingKeyInfo_.hasAttenMask = false;
@@ -1768,7 +1765,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetFullQuantTilingData(const
     baseParams.set_pseShiftS1Size(fiaInfo.pseShiftS1);
     baseParams.set_pseShiftS2Size(fiaInfo.pseShiftS2);
     baseParams.set_isLayoutSH(0);
-    baseParams.set_isFd(flashDecodeFlag_);
+    baseParams.set_isFd(flashDecodeFlag_ && !fiaInfo.sysPrefixFlag);
     baseParams.set_isActualSeqLengthsNull(!actualSeqLenQFlag_);
     baseParams.set_isActualSeqLengthsKVNull(!actualSeqLenKVFlag_);
     baseParams.set_actualSeqLengthsSize(fiaInfo.actualLenQDims);
