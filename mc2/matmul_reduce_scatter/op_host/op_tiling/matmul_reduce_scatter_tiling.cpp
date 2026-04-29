@@ -428,15 +428,15 @@ static void SetReduceScatterTilingArgs(const gert::TilingContext* context, mc2ti
 
     const gert::StorageShape* aShape = context->GetInputShape(0);
     const gert::StorageShape* bShape = context->GetInputShape(1);
+    // A矩阵: [M, K], dim[0]=M, dim[1]=K
     uint64_t kValue = aShape->GetStorageShape().GetDim(1);
-    uint64_t nValue = bShape->GetStorageShape().GetDim(1);
     uint64_t mValue = aShape->GetStorageShape().GetDim(0);
-
-	if (aShape->GetStorageShape().GetDim(1) != bShape->GetStorageShape().GetDim(0)) {
-        OP_LOGD(context->GetNodeName(), "A.shape(1) %lu B.shape(0) %lu, istransB = %d",
-                aShape->GetStorageShape().GetDim(1), bShape->GetStorageShape().GetDim(0), args.isBTrans);
-        nValue = bShape->GetStorageShape().GetDim(0);
-    }
+    
+    // B矩阵根据isBTrans有不同格式：
+    // - isBTrans=true: 用户输入B是[K, N]，dim[0]=K, dim[1]=N
+    // - isBTrans=false: 用户输入B是[N, K]，dim[0]=N, dim[1]=K
+    uint64_t nValue = args.isBTrans ? bShape->GetStorageShape().GetDim(1) : bShape->GetStorageShape().GetDim(0);
+    uint64_t bK = args.isBTrans ? bShape->GetStorageShape().GetDim(0) : bShape->GetStorageShape().GetDim(1);
 
     args.orgMValue = mValue;
     args.orgNValue = nValue;
