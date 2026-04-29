@@ -309,6 +309,8 @@ static ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::
     OP_LOGE_IF(mc2Node.GetAttr("all2all_axes", all2allAxes) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
                "Get Attr all2all_axes failed.");
 
+    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "all2allAxes in fusion pass is: [%ld, %ld]", all2allAxes[0], all2allAxes[1]);
+
     int64_t yDType = 28;
     OP_LOGE_IF(mc2Node.GetAttr("y_dtype", yDType) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
                "Get Attr y_dtype failed.");
