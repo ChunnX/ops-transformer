@@ -24,6 +24,7 @@ constexpr uint32_t PARAM_INDEX_1 = 1;
 constexpr uint32_t PARAM_INDEX_2 = 2;
 constexpr uint32_t PARAM_INDEX_3 = 3;
 // Fixpipe with quant VDEQF16
+namespace MC2 {
 template <
     class ElementAccumulator_,
     class ElementDst_,
@@ -65,6 +66,7 @@ struct CopyL0CToGm<Catlass::Arch::AtlasA2,
         AscendC::Fixpipe<ElementDst, ElementSrc, AscendC::CFG_ROW_MAJOR>(dst, src, cbufWorkspace, intriParams);
     }
 };
+} // namespace MC2
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
