@@ -23,7 +23,8 @@
 #include "mega_moe_base.h"
 #include "mega_moe_workspace_info.h"
 #include "block_epilogue_swiglu_mx_quant.h"
-
+#include "tla/layout.hpp"
+#include "mega_moe_catlass_impl.h"
 
 using namespace AscendC;
 
@@ -159,10 +160,10 @@ private:
     uint64_t preOffset_ = 0;
     uint16_t gmm2PingPongIdx_ = 0;
 
-    // using L1TileShape = tla::Shape<tla::Int<128>, tla::Int<256>, tla::Int<256>>;
-    // using BlockEpilogue = BlockEpilogueSwigluQuant<L1TileShape, QuantOutType, float,
-    //     QuantScaleOutType, QuantScaleOutType, true>;
-    // BlockEpilogue epilogueOp_;//GMMswiglu调用
+    using L1TileShape = tla::Shape<tla::Int<128>, tla::Int<256>, tla::Int<256>>;
+    using BlockEpilogue = BlockEpilogueSwigluMxQuant<L1TileShape, QuantOutType, float,
+        QuantScaleOutType, QuantScaleOutType, true>;
+    BlockEpilogue epilogueOp_;//GMMswiglu调用
 };
 
 template <TemplateMegaMoeTypeClass>
@@ -206,8 +207,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     expertTokenNumsOut_.SetGlobalBuffer((__gm__ int32_t*)params_.expertTokenNumsOutGmAddr);
     groupList_ = cumsumInWorkSpace_[(worldSize_ - 1) * expertPerRank_];
     groupFlagListWorkSpace_.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.ptrFlagSwiGluToGmm2);
-    // epilogueOp_.Init({params_.workspaceInfo.ptrA2, params_.workspaceInfo.ptrA2Scale,
-    //     params_.workspaceInfo.ptrFlagSwiGluToGmm2, nullptr, nullptr, nullptr, ALIGN_128, ALIGN_256});
+    epilogueOp_.Init({params_.workspaceInfo.ptrA2, params_.workspaceInfo.ptrA2Scale,
+        params_.workspaceInfo.ptrFlagSwiGluToGmm2, nullptr, nullptr, nullptr, ALIGN_128, ALIGN_256});
     perRankStridesInTokenPerExpert_ = Ops::Base::CeilAlign(
         static_cast<uint32_t>(worldSize_ * expertPerRank_), static_cast<uint32_t>(ALIGN_128));
     tokenPerExpertCurRankAddr_ = params_.peermemInfo.ptrTokenPerExpert +
@@ -560,7 +561,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMA
             AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> vecBaseOffset{
                 Get<IDX_C_OFFSET>(baseOffset_), Get<IDX_C_SCALE_OFFSET>(baseOffset_),
                 Get<IDX_FLAG_OFFSET>(baseOffset_), 0L, 0L, 0L};
-            // epilogueOp_.UpdateGlobalAddr(vecBaseOffset);//GMMSwiglu调用
+            epilogueOp_.UpdateGlobalAddr(vecBaseOffset);//GMMSwiglu调用
         }
     } else if constexpr(g_coreType == AIC) {
         gmmAddrInfo.aGlobal = params_.workspaceInfo.ptrA2 + Get<IDX_C_OFFSET>(baseOffset_) * sizeof(QuantOutType);
@@ -712,7 +713,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                 DispatchTokens(gmmAddrInfo, expertIdx);
             }
         }
-        // GMM1SwigluQuant调用
+        if (subBlockIdx_ == 0) {
+            MegaMoeCatlassImpl::GroupMatmulSwigluQuant<QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType>(
+                epilogueOp_, params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
+        }
     }
     EndSync();
     if constexpr(g_coreType == AscendC::AIV) {
@@ -734,7 +738,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             continue;
         }
         UpdateGlobalBuffer(gmmAddrInfo, 1);
-        // GMM2andCombineSend调用
+        if (subBlockIdx_ == 0) {
+             MegaMoeCatlassImpl::GroupMatmul2<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
+                 params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_, expertIdx, gmm2PingPongIdx_, rankId_);
+        }
     }
     EndGMM2Sync();
     SyncAll<true>();
