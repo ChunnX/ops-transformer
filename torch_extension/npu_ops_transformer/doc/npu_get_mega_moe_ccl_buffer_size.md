@@ -17,13 +17,13 @@
 
         $$dispatch\_token\_per\_expert = ep\_world\_size * Align128(ep\_world\_size * local\_moe\_expert\_num) * sizeof(int32)$$
 
-        其中ep\_world\_size为专家并行通信域大小，num\_max\_token\_per\_rank为每张卡上的token数量
+        其中ep\_world\_size为专家并行通信域大小
 
     -   计算dispatch量化后输出的token及scales存放需要的空间大小：
 
         $$quant\_token\_scales = Align512(num\_max\_token\_per\_rank * topK * (hidden + hidden / 32))$$
 
-
+        其中num\_max\_token\_per\_rank为每张卡上的token数量
     -   计算combine阶段处理发回数据所需空间大小：
 
         $$combine\_out = Align512(num\_max\_token\_per\_rank * topK * y\_out\_dtype\_size)$$
@@ -32,7 +32,7 @@
     -   计算ccl\_buffer\_size大小：
 
         $$ccl\_buffer\_size = Align2(Align1MB(peermem\_data\_offset + dispatch\_token\_per\_expert + quant\_token\_scales + combine\_out) / 1MB) / 2$$
-        其中peermem\_data\_offset为全卡软同步所需大小，为60kB
+        其中peermem\_data\_offset为全卡软同步所需空间大小`60 * 1024B`
 
 ## 函数原型
 

@@ -10,7 +10,7 @@
 
 -   API功能：
 
-    需与[get\_symm\_buffer\_for\_mega\_moe]配套使用，该算子将 `MoE（Mixture of Experts）`以及 `FFN（Feed-Forward Network）`的完整计算流程融合为单个算子，实现 `Dispatch + GroupMatmul1 + SwiGLUQuant + GroupMatmul2 + Combine` 的端到端融合计算。
+    需与[get\_symm\_buffer\_for\_mega\_moe](#get_symm_buffer_for_mega_moe接口说明)配套使用，该算子将 `MoE（Mixture of Experts）`以及 `FFN（Feed-Forward Network）`的完整计算流程融合为单个算子，实现 `Dispatch + GroupMatmul1 + SwiGLUQuant + GroupMatmul2 + Combine` 的端到端融合计算。
 -   计算公式：
 
     MegaMoe 是一个多阶段融合的 MoE 算子，在专家并行场景下依次完成 Token 路由分发与量化、分组矩阵乘法 + SwiGLU 激活、二次分组矩阵乘法与跨 Rank 聚合、以及加权求和，完整计算流程可以分解为以下四个阶段。
@@ -81,11 +81,11 @@ mega_moe(x, topk_idx, topk_weights, l1_weights, l2_weights, sym_buffer, *, scale
 ## 参数说明
 
 -   **x** (`Tensor`)：必选参数，表示计算使用的token数据，需根据`topk_idx`来发送给其他卡。要求为2维张量，shape为(BS, H)，表示有BS个token，数据类型支持`bfloat16`，数据格式为$ND$，支持非连续的Tensor。
--   **topk\_idx** (`Tensor`)：必选参数，表示每个token的topK个专家索引，决定每个token要发给哪些专家。要求为2维张量，shape为(BS, K)，数据类型支持`int32`，数据格式为$ND$，支持非连续的Tensor。张量里value取值范围为\[0, num\_experts\)，且同一行中的K个value不能重复。
--   **topk\_weights** (`Tensor`)：必选参数，表示每个token的topK个专家的权重，要求为2维张量，shape为\(BS, K\)，其中共享专家不需要乘权重系数，直接相加即可。数据类型支持`float`，数据格式为$ND$，支持非连续的Tensor。
--   **l1\_weights** (`TensorList`)：必选参数，`GroupMatmul1`计算的右矩阵，用于计算`SwiGLU`激活前的线性变换，支持3维张量，shape为\(expertPerRank, N, H\)。数据类型支持`float_e5m2`和`float_e4m3fn`，数据格式为$ND$，支持非连续的Tensor。
--   **l2\_weights** (`TensorList`)：必选参数，`GroupMatmul2`计算的右矩阵，用于计算`SwiGLU`激活后的线性变换，支持3维张量，shape为\(expertPerRank, H, N/2\)。数据类型支持`float_e5m2`和`float_e4m3fn`，数据格式为$ND$，支持非连续的Tensor。
--   **sym\_buffer** (`SymmBuffer`)：必选参数，由`get_symm_buffer_for_mega_moe`接口创建的结构体，封装了以下入参：
+-   **topk\_idx** (`Tensor`)：必选参数，表示每个token的topK个专家索引，决定每个token要发给哪些专家。要求为2维张量，shape为(BS, K)，数据类型支持`int32`，数据格式为$ND$，支持非连续的Tensor。张量里value取值范围为[0, num\_experts)，且同一行中的K个value不能重复。
+-   **topk\_weights** (`Tensor`)：必选参数，表示每个token的topK个专家的权重，要求为2维张量，shape为(BS, K)，其中共享专家不需要乘权重系数，直接相加即可。数据类型支持`float`，数据格式为$ND$，支持非连续的Tensor。
+-   **l1\_weights** (`TensorList`)：必选参数，`GroupMatmul1`计算的右矩阵，用于计算`SwiGLU`激活前的线性变换，支持3维张量，shape为(expertPerRank, N, H)。数据类型支持`float_e5m2`和`float_e4m3fn`，数据格式为$ND$，支持非连续的Tensor。
+-   **l2\_weights** (`TensorList`)：必选参数，`GroupMatmul2`计算的右矩阵，用于计算`SwiGLU`激活后的线性变换，支持3维张量，shape为(expertPerRank, H, N/2)。数据类型支持`float_e5m2`和`float_e4m3fn`，数据格式为$ND$，支持非连续的Tensor。
+-   **sym\_buffer** (`SymmBuffer`)：必选参数，由[get\_symm\_buffer\_for\_mega\_moe](#get_symm_buffer_for_mega_moe接口说明)接口创建的结构体，封装了以下入参：
     - `context`：本卡通信域信息，数据数据类型支持`int32`。
     - `ep_world_size`：专家并行通信域大小，数据数据类型支持`int64`。
     - `ccl_buffer_size`：CCL 通信缓冲区大小，数据数据类型支持`int64`。
@@ -98,8 +98,8 @@ mega_moe(x, topk_idx, topk_weights, l1_weights, l2_weights, sym_buffer, *, scale
     - `comm_alg`：暂不支持该参数，使用默认值即可。
 - <strong>*</strong>：必选参数，代表其之前的变量是位置相关的，必须按照顺序输入；之后的变量是可选参数，位置无关，需要使用键值对赋值，不赋值会使用默认值。
 -   **scales** (`Tensor`)：可选参数，表示每个专家的权重。暂不支持该参数，使用默认值即可。
--   **l1\_weights\_sf** (`TensorList`)：可选参数，量化场景需要，`GroupMatmul1`右矩阵反量化参数，当前支持4维张量，shape为\(expertPerRank, N, CeilDiv\(H, 64\), 2\)，其中CeilDiv(H, 64) = (H + 63) / 64。数据类型支持`float8_e8m0`，数据格式为$ND$，支持非连续的Tensor。
--   **l2\_weights\_sf** (`TensorList`)：可选参数，量化场景需要，`GroupMatmul2`右矩阵反量化参数，当前支持4维张量，shape为\(expertPerRank, H, CeilDiv\(N/2, 64\), 2\)，其中CeilDiv(N/2, 64) = (N/2 + 63) / 64。数据类型支持`float8_e8m0`，数据格式为$ND$，支持非连续的Tensor。
+-   **l1\_weights\_sf** (`TensorList`)：可选参数，量化场景需要，`GroupMatmul1`右矩阵反量化参数，当前支持4维张量，shape为(expertPerRank, N, CeilDiv(H, 64), 2)，其中CeilDiv(H, 64) = (H + 63) / 64。数据类型支持`float8_e8m0`，数据格式为$ND$，支持非连续的Tensor。
+-   **l2\_weights\_sf** (`TensorList`)：可选参数，量化场景需要，`GroupMatmul2`右矩阵反量化参数，当前支持4维张量，shape为(expertPerRank, H, CeilDiv(N/2, 64), 2)，其中CeilDiv(N/2, 64) = (N/2 + 63) / 64。数据类型支持`float8_e8m0`，数据格式为$ND$，支持非连续的Tensor。
 -   **x\_active\_mask** (`Tensor`)：可选参数，表示token是否参与通信。暂不支持该参数，使用默认值即可。
 -   **weight1\_type** (`int`)：暂不支持该参数，使用默认值即可。
 -   **weight2\_type** (`int`)：暂不支持该参数，使用默认值即可。
@@ -107,7 +107,7 @@ mega_moe(x, topk_idx, topk_weights, l1_weights, l2_weights, sym_buffer, *, scale
 ## 输出说明
 
 -   **y\_out** (`Tensor`)：表示本卡收到的token数据，要求为2维张量，shape为(BS, H)，当前数据类型支持`bfloat16`。数据格式为$ND$，支持非连续的Tensor。
--   **expert\_token\_nums** (`Tensor`)：本卡每个专家实际收到的token数量，要求为1维张量，shape为\(local\_expert\_num,\)，数据类型`int32`，数据格式支持$ND$，支持非连续的Tensor。
+-   **expert\_token\_nums** (`Tensor`)：本卡每个专家实际收到的token数量，要求为1维张量，shape为(local\_expert\_num,)，数据类型`int32`，数据格式支持$ND$，支持非连续的Tensor。
 
 ## 约束说明
 
