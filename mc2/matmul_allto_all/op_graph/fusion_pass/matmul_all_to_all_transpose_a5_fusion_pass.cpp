@@ -304,44 +304,55 @@ static ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::
     int64_t worldSize = -1;
     OP_LOGE_IF(mc2Node.GetAttr("world_size", worldSize) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
                "Get Attr word_size failed.");
+    OPS_LOG_W(FUSION_PASS_NAME.c_str(), "worldSize in fusion pass is: %ld", worldSize);
 
     std::vector<int64_t> all2allAxes = {-1, -2};
     OP_LOGE_IF(mc2Node.GetAttr("all2all_axes", all2allAxes) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
                "Get Attr all2all_axes failed.");
+    OPS_LOG_W(FUSION_PASS_NAME.c_str(), "all2allAxes in fusion pass is: [%ld, %ld]", all2allAxes[0], all2allAxes[1]);
 
     int64_t yDType = 28;
     OP_LOGE_IF(mc2Node.GetAttr("y_dtype", yDType) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
                "Get Attr y_dtype failed.");
+    OPS_LOG_W(FUSION_PASS_NAME.c_str(), "yDType in fusion pass is: %ld", yDType);
 
     int64_t x1QuantMode = 0;
     OP_LOGE_IF(mc2Node.GetAttr("x1_quant_mode", x1QuantMode) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
                "Get Attr x1_quant_mode failed.");
+    OPS_LOG_W(FUSION_PASS_NAME.c_str(), "x1QuantMode in fusion pass is: %ld", x1QuantMode);
 
     int64_t x2QuantMode = 0;
     OP_LOGE_IF(mc2Node.GetAttr("x2_quant_mode", x2QuantMode) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
                "Get Attr x2_quant_mode failed.");
+    OPS_LOG_W(FUSION_PASS_NAME.c_str(), "x2QuantMode in fusion pass is: %ld", x2QuantMode);
 
     int64_t commQuantMode = 0;
     OP_LOGE_IF(mc2Node.GetAttr("comm_quant_mode", commQuantMode) != ge::GRAPH_SUCCESS, nullptr,
                FUSION_PASS_NAME.c_str(), "Get Attr comm_quant_mode failed.");
+    OPS_LOG_W(FUSION_PASS_NAME.c_str(), "commQuantMode in fusion pass is: %ld", commQuantMode);
 
     int64_t commQuantDType = 28;
     OP_LOGE_IF(mc2Node.GetAttr("comm_quant_dtype", commQuantDType) != ge::GRAPH_SUCCESS, nullptr,
                FUSION_PASS_NAME.c_str(), "Get Attr comm_quant_dtype failed.");
+    OPS_LOG_W(FUSION_PASS_NAME.c_str(), "commQuantDType in fusion pass is: %ld", commQuantDType);
 
     bool transposeX1 = false;
     OP_LOGE_IF(mc2Node.GetAttr("transpose_x1", transposeX1) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
                "Get Attr transpose_x1 failed.");
+    OPS_LOG_W(FUSION_PASS_NAME.c_str(), "transposeX1 in fusion pass is: %ld", transposeX1);
 
     bool transposeX2 = false;
     OP_LOGE_IF(mc2Node.GetAttr("transpose_x2", transposeX2) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
                "Get Attr transpose_x2 failed.");
     // 移除Transpose节点后，transpose x2 attr 置反
     transposeX2 = !transposeX2;
+    OPS_LOG_W(FUSION_PASS_NAME.c_str(), "transposeX2 in fusion pass is: %ld", transposeX2);
 
     int64_t groupSize = 0;
     OP_LOGE_IF(mc2Node.GetAttr("group_size", groupSize) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
                "Get Attr group_size failed.");
+    OPS_LOG_W(FUSION_PASS_NAME.c_str(), "groupSize in fusion pass is: %ld", groupSize);
+
     auto mc2 =
         ge::es::MatmulAlltoAll(inputTensors.rX1, inputTensors.rX2, inputTensors.rBias, inputTensors.rX1Scale,
                                inputTensors.rX2Scale, inputTensors.rCommScale, inputTensors.rX1Offset,
