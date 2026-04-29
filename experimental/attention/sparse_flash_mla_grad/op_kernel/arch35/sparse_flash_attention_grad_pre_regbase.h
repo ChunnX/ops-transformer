@@ -132,9 +132,9 @@ __aicore__ inline void FlashAttentionGradPreRegbase<T1, T2, IS_TND, isOriKVExist
     dcmpkvOffset = ((uint64_t)cBlockIdx) * cmpkvPreBlockFactor;
     dsinkOffset = ((uint64_t)cBlockIdx) * TilingData->baseParams.g;
     initdsinkSize = TilingData->baseParams.g;
-    initorisoftmaxl1Size =  cBlockIdx == orisoftmaxl1PreBlockFactor - 1 ? orisoftmaxl1PreBlockTail : orisoftmaxl1PreBlockFactor;
+    initorisoftmaxl1Size =  cBlockIdx == orisoftmaxl1PreBlockTotal - 1 ? orisoftmaxl1PreBlockTail : orisoftmaxl1PreBlockFactor;
     orisoftmaxl1Offset = ((uint64_t)cBlockIdx) * orisoftmaxl1PreBlockFactor;
-    initcmpsoftmaxl1Size =  cBlockIdx == cmpsoftmaxl1PreBlockFactor - 1 ? cmpsoftmaxl1PreBlockTail : cmpsoftmaxl1PreBlockFactor;
+    initcmpsoftmaxl1Size =  cBlockIdx == cmpsoftmaxl1PreBlockTotal - 1 ? cmpsoftmaxl1PreBlockTail : cmpsoftmaxl1PreBlockFactor;
     cmpsoftmaxl1Offset = ((uint64_t)cBlockIdx) * cmpsoftmaxl1PreBlockFactor;
 }
 
