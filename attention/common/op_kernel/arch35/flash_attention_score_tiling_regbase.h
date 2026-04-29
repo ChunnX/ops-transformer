@@ -106,6 +106,7 @@ public:
     // PFA
     uint8_t deqScaleFlag;  // 0: uint64  1: float32
     uint8_t deqScale2Flag;  // 0: uint64  1: float32
+    uint8_t isFd;
     uint8_t isActualSeqLengthsNull;
     uint8_t isActualSeqLengthsKVNull;
     uint32_t actualSeqLengthsSize;
@@ -228,6 +229,8 @@ public:
     void set_deqScale2Flag(uint8_t deqScale2FlagParam) {this->deqScale2Flag = deqScale2FlagParam;}
     uint8_t get_isActualSeqLengthsNull() const {return isActualSeqLengthsNull;}
     void set_isActualSeqLengthsNull(uint8_t isActualSeqLengthsNullParam) {this->isActualSeqLengthsNull = isActualSeqLengthsNullParam;}
+    uint8_t get_isFd() const {return isFd;}
+    void set_isFd(uint8_t isFdParam) {this->isFd = isFdParam;}
     uint8_t get_isActualSeqLengthsKVNull() const {return isActualSeqLengthsKVNull;}
     void set_isActualSeqLengthsKVNull(uint8_t isActualSeqLengthsKVNullParam) {this->isActualSeqLengthsKVNull = isActualSeqLengthsKVNullParam;}
     uint32_t get_actualSeqLengthsSize() const {return actualSeqLengthsSize;}

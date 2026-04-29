@@ -676,7 +676,7 @@ TEMPLATE_INTF
 __aicore__ inline bool ComputeS2LoopInfo(RunParamStr<isInfer>& runParam, const ConstInfo<isInfer, hasRope> &constInfo)
 {
     constexpr int32_t s2BaseSize = static_cast<int32_t>(s2TemplateType);
-    if constexpr (isFd) {
+    if (constInfo.isFd) {
         runParam.s2LoopEndIdx = (runParam.s2LineEndIdx + s2BaseSize - 1) / s2BaseSize;
         return false;
     }
@@ -738,7 +738,7 @@ __aicore__ inline void ComputeOffset(const RunParamStr<isInfer>& runParam,
             } else {
                 runInfo.pseShiftOffset = ComputePseShiftOffset<TEMPLATE_INTF_ARGS>(runParam, sInnerLoopIdx * static_cast<int32_t>(s2TemplateType));
             }
-            if constexpr (isFd) {
+            if (constInfo.isFd) {
                 runInfo.pseShiftOffset += runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize;
             }
         }
@@ -781,7 +781,7 @@ __aicore__ inline void ComputeOffset(const RunParamStr<isInfer>& runParam,
         } else {
             if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND) {
                 runInfo.valueOffset = runParam.valueCoreOffset + sInnerLoopIdx * constInfo.s2BaseN2Dv;
-                if constexpr (isFd) {
+                if (constInfo.isFd) {
                     runInfo.valueOffset += runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize * constInfo.n2D;
                 }
                 if (unlikely(constInfo.dSize != constInfo.dSizeV)) {
@@ -794,7 +794,7 @@ __aicore__ inline void ComputeOffset(const RunParamStr<isInfer>& runParam,
                 }
             } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
                 runInfo.valueOffset = runParam.valueCoreOffset + sInnerLoopIdx * constInfo.s2BaseDv;
-                if constexpr (isFd) {
+                if (constInfo.isFd) {
                     runInfo.valueOffset += runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize * constInfo.dSizeV;
                 }
                 if (unlikely(constInfo.dSize != constInfo.dSizeV)) {
@@ -807,7 +807,7 @@ __aicore__ inline void ComputeOffset(const RunParamStr<isInfer>& runParam,
                 }
             } else {
                 runInfo.valueOffset = runParam.valueCoreOffset + sInnerLoopIdx * constInfo.s2BaseDv;
-                if constexpr (isFd) {
+                if (constInfo.isFd) {
                     runInfo.valueOffset += runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize * constInfo.dSize;
                 }
                 if (unlikely(constInfo.dSize != constInfo.dSizeV)) {
@@ -853,7 +853,7 @@ __aicore__ inline void ComputeOffsetForAntiquant(const RunParamStr<isInfer>& run
     } else {
         if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND) {
             runInfo.valueOffset = runParam.valueCoreOffset + sInnerLoopIdx * constInfo.s2BaseN2Dv;
-            if constexpr (isFd) {
+            if (constInfo.isFd) {
                 runInfo.valueOffset += runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize * constInfo.n2D;
             }
             runInfo.keyOffset = runInfo.valueOffset;
@@ -862,7 +862,7 @@ __aicore__ inline void ComputeOffsetForAntiquant(const RunParamStr<isInfer>& run
             }
         } else {
             runInfo.valueOffset = runParam.valueCoreOffset + sInnerLoopIdx * constInfo.s2BaseDv;
-            if constexpr (isFd) {
+            if (constInfo.isFd) {
                 runInfo.valueOffset += runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize * constInfo.dSize;
             }
             runInfo.keyOffset = runInfo.valueOffset;

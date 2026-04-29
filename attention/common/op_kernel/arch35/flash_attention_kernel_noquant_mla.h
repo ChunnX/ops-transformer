@@ -364,6 +364,7 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::ComputeC
     constInfo.isKvContinuous = inputParamsRegbase.isKvContinuous;
     constInfo.actualSeqLenSize = inputParamsRegbase.actualSeqLengthsSize;
     constInfo.actualSeqLenKVSize = inputParamsRegbase.actualSeqLengthsKVSize;
+    constInfo.isFd = (inputParamsRegbase.isFd == 1) ? true : false;
     constInfo.isActualLenDimsNull = (inputParamsRegbase.isActualSeqLengthsNull == 1) ? true : false;
     constInfo.isActualLenDimsKVNull = (inputParamsRegbase.isActualSeqLengthsKVNull == 1) ? true : false;
     constInfo.isQHasLeftPadding = (inputParamsRegbase.isQHasLeftPadding == 1) ? true : false;
@@ -408,7 +409,7 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::Process(
     int64_t s2LoopStart = 0;
     int64_t s2LoopLimit = 0;
 
-    if constexpr (!isFd) {
+    if (!constInfo.isFd) {
         bnStartIdx = this->tilingData->multiCoreParamsRegbase.bnStartIdx[aicIdx];
         gS1StartIdx = this->tilingData->multiCoreParamsRegbase.sparseStartIdx[aicIdx];
         if (likely((this->tilingData->multiCoreParamsRegbase.coreNum - 1) > aicIdx)) {
@@ -429,7 +430,7 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::Process(
     int64_t multiCoreInnerIdx = 0;
     for (uint32_t bnIdx = bnStartIdx; bnIdx < bnEndIdx; bnIdx++) {
         bool lastBN = IsLastBN(bnIdx, bnEndIdx);
-        if constexpr (!isFd) {
+        if (!constInfo.isFd) {
             runParam.boIdx = bnIdx / constInfo.n2Size;
             runParam.n2oIdx = bnIdx % constInfo.n2Size;
         }
