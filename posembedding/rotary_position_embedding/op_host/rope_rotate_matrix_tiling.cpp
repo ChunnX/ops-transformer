@@ -216,7 +216,7 @@ ge::graphStatus RotateMatrixTiling::CheckShapeSupport(const gert::Shape &xShape,
     if (xShape.GetDimNum() != DIM_NUM || cosShape.GetDimNum() != DIM_NUM || sinShape.GetDimNum() != DIM_NUM) {
         std::string dimNumMsg = std::to_string(xShape.GetDimNum()) + ", " +
                 std::to_string(cosShape.GetDimNum()) + " and " + std::to_string(sinShape.GetDimNum());
-        std::string reasonMsg = "The numbers of dimensions of input x, cos and sin should be " +
+        std::string reasonMsg = "The shape dims of input x, cos and sin should all be " +
             std::to_string(DIM_NUM);
         OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(context->GetNodeName(), "x, cos and sin",
             dimNumMsg.c_str(), reasonMsg.c_str());

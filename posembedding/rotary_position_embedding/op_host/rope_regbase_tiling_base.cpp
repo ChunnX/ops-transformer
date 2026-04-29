@@ -219,7 +219,7 @@ ge::graphStatus RopeRegBaseTilingClass::CheckDtypeAndAttr()
         auto type = context_->GetInputDesc(i)->GetDataType();
         if (type != dtype_) {
             std::string dtypeMsg = ToString(type) + " and " + ToString(dtype_);
-            std::string reasonMsg = "The dtype of input " + inputNames[i] + " should be the same as the dtype of input x";
+            std::string reasonMsg = "The dtypes of input " + inputNames[i] + " and input x should be the same";
             std::string paramMsg = inputNames[i] + " and x";
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), paramMsg.c_str(),
                 dtypeMsg.c_str(), reasonMsg.c_str());
@@ -230,7 +230,7 @@ ge::graphStatus RopeRegBaseTilingClass::CheckDtypeAndAttr()
     if (outputType != dtype_) {
         std::string dtypeMsg = ToString(outputType) + " and " + ToString(dtype_);
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), "y and x", dtypeMsg.c_str(),
-            "The dtype of output y should be the same as the dtype of input x");
+            "The dtypes of output y and input x should be the same");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -303,7 +303,7 @@ ge::graphStatus RopeRegBaseTilingClass::GetShapeAttrsInfo()
     int32_t modeValue = (mode == nullptr) ? 0 : static_cast<int32_t>(*mode);
     if (IsRotaryPosEmbeddingMode(modeValue) != true) {
         std::string modeValueStr = std::to_string(modeValue);
-        OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "mode",
+        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "mode",
             modeValueStr.c_str(), "0, 1, 2 or 3");
         return ge::GRAPH_FAILED;
     }

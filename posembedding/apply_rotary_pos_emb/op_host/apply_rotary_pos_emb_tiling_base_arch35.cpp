@@ -204,19 +204,19 @@ ge::graphStatus ApplyRotaryPosEmbRegbaseTilingBaseClass::CheckShapeRelation()
     if (cosShape_ != sinShape_) {
         std::string shapeMsg = ToString(cosShape_) + " and " + ToString(sinShape_);
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "cos and sin",
-            shapeMsg.c_str(), "The shape of input cos should be the same as input sin");
+            shapeMsg.c_str(), "The shapes of input cos and input sin should be the same");
         return ge::GRAPH_FAILED;
     }
     if (qShape_ != qOutShape_) {
         std::string shapeMsg = ToString(qShape_) + " and " + ToString(qOutShape_);
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "query(input) and query(output)",
-            shapeMsg.c_str(), "The shape of input query should be the same as output query");
+            shapeMsg.c_str(), "The shapes of input query and output query should be the same");
         return ge::GRAPH_FAILED;
     }
     if (kShape_ != kOutShape_) {
         std::string shapeMsg = ToString(kShape_) + " and " + ToString(kOutShape_);
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "key(input) and key(output)",
-            shapeMsg.c_str(), "The shape of input key should be the same as output key");
+            shapeMsg.c_str(), "The shapes of input key and output key should be the same");
         return ge::GRAPH_FAILED;
     }
     if (cosShape_.GetDim(nIdx) != 1) {
@@ -229,7 +229,7 @@ ge::graphStatus ApplyRotaryPosEmbRegbaseTilingBaseClass::CheckShapeRelation()
     }
     if (!(cosShape_.GetDim(sIdx) == qShape_.GetDim(sIdx) && kShape_.GetDim(sIdx) == qShape_.GetDim(sIdx))) {
         std::string shapeMsg = ToString(cosShape_) + ", " + ToString(kShape_) + " and " + ToString(qShape_);
-        std::string reason = "The S axis of input cos and key should be equal to the S axis of input query, "
+        std::string reason = "The S axes of input query, cos and key should be the same, "
             "where S refers to the " + std::to_string(sIdx) + "th dim when the attr layout is " + layoutMap.at(layout_);
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "cos, key and query",
             shapeMsg.c_str(), reason.c_str());
@@ -237,7 +237,7 @@ ge::graphStatus ApplyRotaryPosEmbRegbaseTilingBaseClass::CheckShapeRelation()
     }
     if (!(cosShape_.GetDim(dIdx) <= qShape_.GetDim(dIdx) && kShape_.GetDim(dIdx) <= qShape_.GetDim(dIdx))) {
         std::string shapeMsg = ToString(cosShape_) + ", " + ToString(kShape_) + " and " + ToString(qShape_);
-        std::string reasonMsg = "The D axis of input cos and key can not be greater than the D axis of input query, "
+        std::string reasonMsg = "The D axes of input cos and key can not be greater than the D axis of input query, "
             "where D refers to the " + std::to_string(dIdx) + "th dim when the attr layout is " + layoutMap.at(layout_);
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(),
             "cos, key and query", shapeMsg.c_str(), reasonMsg.c_str());
@@ -246,7 +246,7 @@ ge::graphStatus ApplyRotaryPosEmbRegbaseTilingBaseClass::CheckShapeRelation()
     if (layout_ != ApplyRotaryPosEmbLayout::TND) {
         if (kShape_.GetDim(bIdx) != qShape_.GetDim(bIdx)) {
             std::string shapeMsg = ToString(kShape_) + " and " + ToString(qShape_);
-            std::string reasonMsg = "The B axis of input key should be equal to the B axis of input query, "
+            std::string reasonMsg = "The B axes of input query and key should be the same, "
                 "where B refers to the " + std::to_string(bIdx) + "th dim when the attr layout is " + layoutMap.at(layout_);
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "key and query",
                 shapeMsg.c_str(), reasonMsg.c_str());
@@ -312,7 +312,7 @@ ge::graphStatus ApplyRotaryPosEmbRegbaseTilingBaseClass::CheckDtypeAndAttr()
 {
     OP_CHECK_IF(
         (rotaryModeStr_ != "half" && rotaryModeStr_ != "interleave" && rotaryModeStr_ != "quarter"),
-        OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "rotary_mode",
+        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "rotary_mode",
             rotaryModeStr_.c_str(), "half, interleave or quarter"),
         return ge::GRAPH_FAILED);
     if (std::find(SUPPORT_DTYPE.begin(), SUPPORT_DTYPE.end(), qDataType_) == SUPPORT_DTYPE.end()) {
@@ -324,31 +324,31 @@ ge::graphStatus ApplyRotaryPosEmbRegbaseTilingBaseClass::CheckDtypeAndAttr()
     if (kDataType_ != qDataType_) {
         std::string dtypesStr = ToString(kDataType_) + " and " + ToString(qDataType_);
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), "key and query",
-            dtypesStr.c_str(), "The dtype of input key should be the same as input query");
+            dtypesStr.c_str(), "The dtypes of input key and input query should be the same");
         return ge::GRAPH_FAILED;
     }
     if (cosDataType_ != qDataType_) {
         std::string dtypesStr = ToString(cosDataType_) + " and " + ToString(qDataType_);
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), "cos and query",
-            dtypesStr.c_str(), "The dtype of input cos should be the same as input query");
+            dtypesStr.c_str(), "The dtypes of input cos and input query should be the same");
         return ge::GRAPH_FAILED;
     }
     if (sinDataType_ != qDataType_) {
         std::string dtypesStr = ToString(sinDataType_) + " and " + ToString(qDataType_);
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), "sin and query",
-            dtypesStr.c_str(), "The dtype of input sin should be the same as input query");
+            dtypesStr.c_str(), "The dtypes of input sin and input query should be the same");
         return ge::GRAPH_FAILED;
     }
     if (qOutDataType_ != qDataType_) {
         std::string dtypesStr = ToString(qOutDataType_) + " and " + ToString(qDataType_);
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), "query(output) and query(input)",
-            dtypesStr.c_str(), "The dtype of output query should be the same as input query");
+            dtypesStr.c_str(), "The dtypes of output query and input query should be the same");
         return ge::GRAPH_FAILED;
     }
     if (kOutDataType_ != qDataType_) {
         std::string dtypesStr = ToString(kOutDataType_) + " and " + ToString(qDataType_);
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), "key(output) and query(input)",
-            dtypesStr.c_str(), "The dtype of output key should be the same as input query");
+            dtypesStr.c_str(), "The dtypes of output key and input query should be the same");
         return ge::GRAPH_FAILED;
     }
 
@@ -431,7 +431,7 @@ ge::graphStatus ApplyRotaryPosEmbRegbaseTilingBaseClass::GetShapeAttrsInfo()
     if (static_cast<int64_t>(layoutValue) < static_cast<int64_t>(ApplyRotaryPosEmbLayout::BSND) ||
         static_cast<int64_t>(layoutValue) > static_cast<int64_t>(ApplyRotaryPosEmbLayout::TND)) {
         std::string layoutValStr = std::to_string(static_cast<int64_t>(layoutValue));
-        OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "layout",
+        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "layout",
             layoutValStr.c_str(), "1, 2, 3 or 4");
         return ge::GRAPH_FAILED;
     }
