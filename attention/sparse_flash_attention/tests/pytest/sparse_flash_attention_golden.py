@@ -274,7 +274,7 @@ def get_param_fus(input_tensor_dict, params):
 
 
 def generate_input_tensors(params):
-    tensor_keys = ['query', 'key', 'value', 'sparse_indices', 'block_table',
+    tensor_keys = ['query', 'key', 'sparse_indices', 'block_table',
                    'query_rope', 'key_rope']
     raw = {}
     for key in tensor_keys:
@@ -283,7 +283,7 @@ def generate_input_tensors(params):
     result = {
         "query": raw["query"],
         "key": raw["key"],
-        "value": raw["value"],
+        "value": raw["key"],
         "sparse_indices": raw["sparse_indices"],
         "block_table": raw["block_table"],
         "query_rope": raw["query_rope"],
@@ -448,7 +448,6 @@ def _generate_block_table_and_cache(input_tensor_dict, fa_param, params, actualS
         fa_param['block_table'] = block_table
         input_tensor_dict['block_table'] = block_table.to('npu')
         print(f"[PageAtten]Input Kdtype:{params['dtype_input']['key']} Vdtype:{params['dtype_input']['value']}")
-        print('[INFO]:PA + Deepseek！')
         kv_pa_preprocessing(input_tensor_dict, fa_param, params)
     else:
         kv_nopa_preprocessing(input_tensor_dict, fa_param)
