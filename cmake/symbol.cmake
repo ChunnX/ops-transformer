@@ -277,20 +277,32 @@ function(gen_cust_proto_symbol)
 endfunction()
 
 function(gen_cust_aicpu_json_symbol)
-  get_property(ALL_AICPU_JSON_FILES GLOBAL PROPERTY AICPU_JSON_FILES)
-  if(NOT ALL_AICPU_JSON_FILES)
-    message(STATUS "No aicpu json files to merge, skipping.")
+  get_property(ALL_AICPU_OP_DEF_FILES GLOBAL PROPERTY AICPU_OP_DEF_FILES)
+  if(NOT ALL_AICPU_OP_DEF_FILES)
+    message(STATUS "No aicpu opdef files to merge, skipping.")
     return()
   endif()
 
+  set(AICPU_PARSER_INI_SCRIPT ${CMAKE_SOURCE_DIR}/scripts/kernel/binary_script/aicpu_parser_ini_to_json.py)
+  if(NOT EXISTS ${AICPU_PARSER_INI_SCRIPT})
+    message(FATAL_ERROR "AICPU parser script not found: ${AICPU_PARSER_INI_SCRIPT}")
+  endif()
+
+  gen_aicpu_ini_from_opdef(
+    OPS_SRC ${ALL_AICPU_OP_DEF_FILES}
+    OUT_DIR ${ASCEND_AUTOGEN_PATH}
+  )
+
+  set(AICPU_INI ${ASCEND_AUTOGEN_PATH}/aicpu_kernel.ini)
   set(MERGED_JSON ${CMAKE_BINARY_DIR}/cust_aicpu_kernel.json)
   add_custom_command(
     OUTPUT ${MERGED_JSON}
-    COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/util/merge_aicpu_info_json.sh ${CMAKE_SOURCE_DIR} ${MERGED_JSON} ${ALL_AICPU_JSON_FILES}
-    DEPENDS ${ALL_AICPU_JSON_FILES}
-    COMMENT "Merging Json files into ${MERGED_JSON}"
+    COMMAND ${ASCEND_PYTHON_EXECUTABLE} ${AICPU_PARSER_INI_SCRIPT} ${AICPU_INI} ${MERGED_JSON}
+    DEPENDS ${ALL_AICPU_OP_DEF_FILES} ${AICPU_INI} ${AICPU_PARSER_INI_SCRIPT}
+    COMMENT "Generating ${MERGED_JSON} from ${AICPU_INI}"
     VERBATIM
   )
+  add_custom_target(gen_aicpu_json_from_opdef DEPENDS ${MERGED_JSON})
   add_custom_target(merge_aicpu_json ALL DEPENDS ${MERGED_JSON})
   install(
     FILES ${MERGED_JSON}
