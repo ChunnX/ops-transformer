@@ -309,6 +309,8 @@ static ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::
     OP_LOGE_IF(mc2Node.GetAttr("all2all_axes", all2allAxes) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
                "Get Attr all2all_axes failed.");
 
+    OPS_LOG_W(FUSION_PASS_NAME.c_str(), "all2allAxes in fusion pass is: [%ld, %ld]", all2allAxes[0], all2allAxes[1]);
+
     int64_t yDType = 28;
     OP_LOGE_IF(mc2Node.GetAttr("y_dtype", yDType) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
                "Get Attr y_dtype failed.");
@@ -342,6 +344,8 @@ static ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::
     int64_t groupSize = 0;
     OP_LOGE_IF(mc2Node.GetAttr("group_size", groupSize) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
                "Get Attr group_size failed.");
+    OPS_LOG_W(FUSION_PASS_NAME.c_str(), "groupSize in fusion pass is: %ld", groupSize);
+
     auto mc2 =
         ge::es::MatmulAlltoAll(inputTensors.rX1, inputTensors.rX2, inputTensors.rBias, inputTensors.rX1Scale,
                                inputTensors.rX2Scale, inputTensors.rCommScale, inputTensors.rX1Offset,
