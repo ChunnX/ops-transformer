@@ -135,10 +135,10 @@ static ge::graphStatus ParseRecvCounts(
  * @param host_api_ctx
  * @param para
  */
-inline ge::graphStatus GetAttrPara(const gert::OpExecuteContext* host_api_ctx, AttrParas& para)
+inline ge::graphStatus GetAttrPara(const gert::OpExecuteContext* host_api_ctx, const gert::RuntimeAttrs* attrs, AttrParas& para)
 {
-    const auto attrs = host_api_ctx->GetAttrs();
-    OPS_CHECK(attrs == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "attrs is null."), return ge::GRAPH_FAILED);
+    // const auto attrs = host_api_ctx->GetAttrs();
+    // OPS_CHECK(attrs == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "attrs is null."), return ge::GRAPH_FAILED);
     para.group = attrs->GetStr(INDEX_ATTR_GROUP);
     OPS_CHECK(para.group == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "group is null."), return ge::GRAPH_FAILED);
 
@@ -172,8 +172,12 @@ inline ge::graphStatus GetAttrPara(const gert::OpExecuteContext* host_api_ctx, A
     const bool* transX1Ptr = attrs->GetBool(INDEX_ATTR_TRANS_X1);
     para.transposeX1 = (transX1Ptr != nullptr ? *transX1Ptr : false);
     para.transposeX2 = (transX2Ptr != nullptr ? *transX2Ptr : false);
+
+    OP_LOGW(host_api_ctx->GetNodeName(), "before groupSize_ptr");
     const int64_t* groupSize_ptr = attrs->GetInt(INDEX_ATTR_GROUP_SIZE);
     para.groupSize = (groupSize_ptr != nullptr ? *groupSize_ptr : 0);
+    OP_LOGW(host_api_ctx->GetNodeName(), "after groupSize_ptr");
+    OP_LOGW(host_api_ctx->GetNodeName(), "after groupSize_ptr, value is: %ld", *groupSize_ptr);
 
     return ge::SUCCESS;
 }
@@ -229,15 +233,17 @@ static ge::graphStatus MatmulAlltoAllExecuteFunc(gert::OpExecuteContext* host_ap
     OPS_CHECK(
         retPara != ge::SUCCESS, OP_LOGE(host_api_ctx->GetNodeName(), "Failed to get common matmul input paras."),
         return ge::GRAPH_FAILED);
-    AttrParas attrParas;
-    OPS_CHECK(GetAttrPara(host_api_ctx, attrParas) != ge::SUCCESS,
-              OP_LOGE(host_api_ctx->GetNodeName(), "Failed to get attr paras."), return ge::GRAPH_FAILED);
 
     const auto output = host_api_ctx->GetOutputTensor(INDEX_OUT);
     OPS_CHECK(output == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "output is null"), return ge::GRAPH_FAILED);
     
-    const auto attrs = host_api_ctx->GetAttrs();
+    const gert::RuntimeAttrs* attrs = host_api_ctx->GetAttrs();
+    // const auto attrs = host_api_ctx->GetAttrs();
     OPS_CHECK(attrs == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "attrs is null"), return ge::GRAPH_FAILED);
+
+    AttrParas attrParas;
+    OPS_CHECK(GetAttrPara(host_api_ctx, attrs, attrParas) != ge::SUCCESS,
+              OP_LOGE(host_api_ctx->GetNodeName(), "Failed to get attr paras."), return ge::GRAPH_FAILED);
 
     const auto alltoAllAxesOptional = attrs->GetListInt(INDEX_ATTR_ALL2ALL_AXES);
     std::vector<int64_t> actSeqArray;
@@ -248,10 +254,28 @@ static ge::graphStatus MatmulAlltoAllExecuteFunc(gert::OpExecuteContext* host_ap
         ParseRecvCounts(alltoAllAxesOptional, actSeqArray);
     }
 
+    const int64_t* worldSizePtr = attrs->GetInt(1);
+    OP_LOGW(host_api_ctx->GetNodeName(), "in fallback, worldSize is: %ld", *worldSizePtr);
+
+    const int64_t* yDtypePtr = attrs->GetInt(3);
+    OP_LOGW(host_api_ctx->GetNodeName(), "in fallback, yDtype is: %ld", *yDtypePtr);
+
     const int64_t* x1QuantModePtr = attrs->GetInt(INDEX_ATTR_X1_QUANT_MODE);
     const int64_t x1QuantMode = (x1QuantModePtr != nullptr ? *x1QuantModePtr : 0);
     const int64_t* x2QuantModePtr = attrs->GetInt(INDEX_ATTR_X2_QUANT_MODE);
     const int64_t x2QuantMode = (x2QuantModePtr != nullptr ? *x2QuantModePtr : 0);
+    OP_LOGW(host_api_ctx->GetNodeName(), "in fallback, x1QuantMode and x2QuantMode are: %ld, %ld", *x1QuantModePtr, *x2QuantModePtr);
+
+    const int64_t* commQuantMode = attrs->GetInt(6);
+    const int64_t* commQuantDtype = attrs->GetInt(7);
+    OP_LOGW(host_api_ctx->GetNodeName(), "in fallback, commQuantMode and commQuantDtype are: %ld, %ld", *commQuantMode, *commQuantDtype);
+
+    const bool* transX1Ptr = attrs->GetBool(INDEX_ATTR_TRANS_X1);
+    const bool* transX2Ptr = attrs->GetBool(INDEX_ATTR_TRANS_X2);
+    OP_LOGW(host_api_ctx->GetNodeName(), "in fallback, transX1 and transX2 are: %d, %d", *transX1Ptr, *transX2Ptr);
+
+    const int64_t* groupSizePtr = attrs->GetInt(10);
+    OP_LOGW(host_api_ctx->GetNodeName(), "in fallback, groupSize is: %ld", *groupSizePtr);
 
     if (x1QuantMode == 0 && x2QuantMode == 0) {
         const auto ret = EXEC_OPAPI_CMD(aclnnMatmulAlltoAll, matmulParas.x1Acl, matmulParas.x2Acl, matmulParas.bias, actSeqArray, attrParas.group, attrParas.transposeX1,
