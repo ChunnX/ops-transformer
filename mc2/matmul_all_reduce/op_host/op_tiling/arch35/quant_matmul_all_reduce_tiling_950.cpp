@@ -128,7 +128,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::SetMc2HcommRSAG(const char* groupN
 
 ge::graphStatus QuantMatmulAllReduceTilingA5::SetMc2Hcomm()
 {
-    bool isStandardCard4P = mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_);
+    bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
     OP_TILING_CHECK(
         mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geCType) == mc2tiling::HcclDataType::HCCL_DATA_TYPE_RESERVED,
         VECTOR_INNER_ERR_REPORT_TILING(
@@ -137,7 +137,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::SetMc2Hcomm()
     OP_TILING_CHECK(context_->GetAttrs() == nullptr, OP_LOGE(opName_, "failed to get attrs."), return ge::GRAPH_FAILED);
     const char* groupName = context_->GetAttrs()->GetAttrPointer<char>(static_cast<int>(0));
     const uint32_t reduceType = HcclReduceOp::HCCL_REDUCE_SUM;
-    if (isStandardCard4P && !MutableRCSTilingData().isInputCommQuantScale) {
+    if (isUseA2APath && !MutableRCSTilingData().isInputCommQuantScale) {
         uint8_t dataType = static_cast<uint8_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geCType));
         OP_TILING_CHECK(
             SetMc2HcommTwoShot(groupName, reduceType, dataType) != ge::GRAPH_SUCCESS,
@@ -296,8 +296,8 @@ uint64_t QuantMatmulAllReduceTilingA5::GetTilingKey() const
         commDtype = COMMDTPYE_FP8; // 适配fp8 通信;
     }
     bool scenarioIsMXFP8 = (scenario_ == AllReduceScenario::MXFP8); // 区分MXFP8 和 FP8HIF8场景
-    bool isStandardCard4P = mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_);
-    bool isA2ARSAG = (isStandardCard4P && (commDtype == COMMDTPYE_DEFAULT));
+    bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
+    bool isA2ARSAG = (isUseA2APath && (commDtype == COMMDTPYE_DEFAULT));
     const uint64_t tilingKey = GET_TPL_TILING_KEY(  \
         MMTYPE_QUANT_MM,                            \
         quantTPlparam_.transB,                      \
@@ -436,7 +436,7 @@ ge::graphStatus QuantMatmulAllReduceTilingA5::GetWorkspaceSize()
     uint64_t gmcFloat = static_cast<uint64_t>(MutableRCSTilingData().rankM) *
                         static_cast<uint64_t>(MutableRCSTilingData().rankN) *
                         static_cast<uint64_t>(args_.outputDtypeSize);
-    if (mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_) && !MutableRCSTilingData().isInputCommQuantScale) {
+    if (mc2tiling::IsUseA2APath(args_.rankDim, npuArch_) && !MutableRCSTilingData().isInputCommQuantScale) {
         OP_TILING_CHECK(
             GetWorkspaceSizeInStandardCard4P(gmcFloat) != ge::GRAPH_SUCCESS,
             OP_LOGE(opName_, "get workspace size By GetWorkspaceSizeInStandardCard4P failed."),
@@ -1002,7 +1002,7 @@ CutResult QuantMatmulAllReduceTilingA5::GetTilingResult()
     SetMCutSocVersion(inputSocVersion);
     const gert::StorageShape* commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
     const gert::StorageShape* commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
-    if (mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_)) {
+    if (mc2tiling::IsUseA2APath(args_.rankDim, npuArch_)) {
         MMAllReduceFitBalanceTiling allReduceTilingHccl(args_,
                                                         KernelType::ALL_REDUCE_VIA_TWO_SHOT, TopoType::STANDARD_CARD);
         mCutAllreduce = allReduceTilingHccl.GetTiling();
