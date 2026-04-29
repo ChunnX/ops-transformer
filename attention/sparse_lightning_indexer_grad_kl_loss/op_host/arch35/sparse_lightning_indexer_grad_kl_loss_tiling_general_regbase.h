@@ -111,7 +111,7 @@ protected:
                        int64_t maxCoreNum);
     void SetSparseParamsRegbase(int64_t maxCoreNum);
     int64_t CalcTotalSize();
-    void SetMultiCoreParamsRegbase(int64_t totalSize, int64_t coreNum);
+    void SetMultiCoreParamsRegbase(int64_t totalSize, int64_t coreNum, uint32_t syKTotalSize, uint32_t pkTotalSize);
     void InitOutputSplit();
 
     // 基础输入参数
