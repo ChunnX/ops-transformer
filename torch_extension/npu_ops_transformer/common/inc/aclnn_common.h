@@ -92,6 +92,20 @@ constexpr aclDataType kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(at:
 #undef DEFINE_ENUM
 };
 
+inline aclDataType ScalarTypeToAclDataType(at::ScalarType scalarType)
+{
+    if (scalarType == at::ScalarType::Float8_e5m2) {
+        return ACL_FLOAT8_E5M2;
+    } else if (scalarType == at::ScalarType::Float8_e4m3fn) {
+        return ACL_FLOAT8_E4M3FN;
+    } else if (scalarType == at::ScalarType::Float8_e8m0fnu) {
+        return ACL_FLOAT8_E8M0;
+    } else if (scalarType == at::ScalarType::Float4_e2m1fn_x2) {
+        return ACL_FLOAT4_E2M1;
+    }
+    return kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(scalarType)];
+}
+
 enum QuantMode {
     QUANT_MODE_NO_QUANT = 0,
     QUANT_MODE_STATIC = 1,
@@ -256,18 +270,7 @@ inline aclTensor *ConvertType(const at::Tensor &at_tensor)
         return nullptr;
     }
     at::ScalarType scalar_data_type = at_tensor.scalar_type();
-    aclDataType acl_data_type;
-    if (scalar_data_type == at::ScalarType::Float8_e5m2) {
-        acl_data_type = ACL_FLOAT8_E5M2;
-    } else if (scalar_data_type == at::ScalarType::Float8_e4m3fn) {
-        acl_data_type = ACL_FLOAT8_E4M3FN;
-    } else if (scalar_data_type == at::ScalarType::Float8_e8m0fnu) {
-        acl_data_type = ACL_FLOAT8_E8M0;
-    } else if (scalar_data_type == at::ScalarType::Float4_e2m1fn_x2) {
-        acl_data_type = ACL_FLOAT4_E2M1;
-    } else {
-        acl_data_type = kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(scalar_data_type)];
-    }
+    aclDataType acl_data_type = ScalarTypeToAclDataType(scalar_data_type);
     TORCH_CHECK(
         acl_data_type != ACL_DT_UNDEFINED, std::string(c10::toString(scalar_data_type)) + " has not been supported")
     c10::SmallVector<int64_t, 5> storageDims;
@@ -437,16 +440,7 @@ inline aclScalar *ConvertType(const c10::optional<at::Scalar> &opt_scalar)
 
 inline aclDataType ConvertType(const at::ScalarType scalarType)
 {
-    if (scalarType == at::ScalarType::Float8_e5m2) {
-        return ACL_FLOAT8_E5M2;
-    } else if (scalarType == at::ScalarType::Float8_e4m3fn) {
-        return ACL_FLOAT8_E4M3FN;
-    } else if (scalarType == at::ScalarType::Float8_e8m0fnu) {
-        return ACL_FLOAT8_E8M0;
-    } else if (scalarType == at::ScalarType::Float4_e2m1fn_x2) {
-        return ACL_FLOAT4_E2M1;
-    }
-    return kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(scalarType)];
+    return ScalarTypeToAclDataType(scalarType);
 }
 
 template <typename T>
