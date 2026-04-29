@@ -1105,6 +1105,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::AddRmsNormRms
     PRINTF("ronghe3\n");
     PipeBarrier<PIPE_V>();
     Adds(sqx, sqx, epsilon_, 1);
+    PRINTF("============epsilon==========:%lu\n",epsilon_);
     PipeBarrier<PIPE_V>();
     DumpTensor(sqx,4,4);
     PRINTF("ronghe4\n");
