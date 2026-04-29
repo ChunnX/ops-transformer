@@ -37,26 +37,18 @@
 #include "../../../moe_distribute_combine_v2/op_kernel/moe_distribute_combine_v2_tiling.h"
 #include "mc2_hcom_topo_info.h"
 #include "../../../moe_distribute_combine_v2/op_host/op_tiling/moe_distribute_combine_tiling_helper.h"
+#include "moe_distribute_combine_add_rms_norm_tiling_base.h"
 
 using namespace AscendC;
 using namespace ge;
 using namespace Mc2Tiling;
 
 namespace optiling {
-static ge::graphStatus MoeDistributeCombineAddRmsNormTilingFunc(gert::TilingContext* context)
+ge::graphStatus MoeDistributeCombineAddRmsNormTilingFuncBase::MoeDistributeCombineAddRmsNormTilingFunc(
+    gert::TilingContext* context)
 {
-    ge::graphStatus ret = optiling::MoeDistributeCombineV2TilingFunc(context);
+    ge::graphStatus ret = MoeDistributeCombineV2TilingFunc(context);
     return ret;
 }
 
-struct MoeDistributeCombineAddRmsNormCompileInfo {};
-ge::graphStatus TilingParseForMoeDistributeCombineAddRmsNorm(gert::TilingParseContext *context)
-{
-    (void)context;
-    return ge::GRAPH_SUCCESS;
-}
-
-IMPL_OP_OPTILING(MoeDistributeCombineAddRmsNorm)
-    .Tiling(MoeDistributeCombineAddRmsNormTilingFunc)
-    .TilingParse<MoeDistributeCombineAddRmsNormCompileInfo>(TilingParseForMoeDistributeCombineAddRmsNorm);
 } // namespace optiling
