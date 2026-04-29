@@ -4,7 +4,7 @@
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
+|<term>Ascend 950PR/Ascend 950DT</term>|     √      |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
@@ -366,7 +366,7 @@
 - block_size为一个block的token数，block_size取值为16的倍数，且最大支持1024。
 - 参数query中的D和key、value的D值相等为512，参数query_rope中的Dr和key_rope的Dr值相等为64。
 - 参数query、key、value的数据类型必须保持一致。
-- 支持sparse_block_size整除block_size。
+- A3支持sparse_block_size整除block_size，A5只支持sparse_block_size为1。
 
 ## 调用示例
 
