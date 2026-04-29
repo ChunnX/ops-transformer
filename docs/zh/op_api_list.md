@@ -83,6 +83,7 @@
 |[aclnnInplaceQuantMatmulAllReduceAddRmsNorm](../../mc2/inplace_matmul_all_reduce_add_rms_norm/docs/aclnnInplaceQuantMatmulAllReduceAddRmsNorm.md)|完成mm + all_reduce + add + rms_norm计算。|默认非确定性实现，支持配置开启|
 |[aclnnInplaceWeightQuantMatmulAllReduceAddRmsNorm](../../mc2/inplace_matmul_all_reduce_add_rms_norm/docs/aclnnInplaceWeightQuantMatmulAllReduceAddRmsNorm.md)|完成mm + all_reduce + add + rms_norm计算。|默认非确定性实现，支持配置开启|
 |[aclnnInterleaveRope](../../posembedding/interleave_rope/docs/aclnnInterleaveRope.md)|针对单输入 x 进行旋转位置编码。|默认确定性实现|
+|[aclnnLightningIndexer](../../attention/lightning_indexer/docs/aclnnLightningIndexer.md)|稀疏attention前处理的计算，目的是选出关键的稀疏token位置。|默认确定性实现|
 |[aclnnLightningIndexerGrad](../../attention/lightning_indexer_grad/docs/aclnnLightningIndexerGrad.md)|训练场景下，实现LightningIndexer反向，其中输入有Query, Key, Weights, Dy, Indices，反向主要利用正向计算的Indices从Key中提取TopK序列从而降低Matmul计算量。|默认非确定性实现，不支持配置开启|
 |[aclnnMatmulAlltoAll](../../mc2/matmul_allto_all/docs/aclnnMatmulAlltoAll.md)|完成MatMul计算与AlltoAll通信融合。|默认确定性实现||
 |[aclnnMatmulAllReduce](../../mc2/matmul_all_reduce/docs/aclnnMatmulAllReduce.md)|完成MatMul计算与AllReduce通信融合。|默认非确定性实现，支持配置开启|
@@ -161,6 +162,7 @@
 |[aclnnRotaryPositionEmbeddingGrad](../../posembedding/rotary_position_embedding_grad/docs/aclnnRotaryPositionEmbeddingGrad.md)|单路旋转位置编码[aclnnRotaryPositionEmbedding](../../posembedding/rotary_position_embedding/docs/aclnnRotaryPositionEmbedding.md)的反向计算。|默认确定性实现|
 |[aclnnScatterPaCache](../../attention/scatter_pa_cache/docs/aclnnScatterPaCache.md)|更新KCache中指定位置的key。|默认确定性实现|
 |[aclnnScatterPaKvCache](../../attention/scatter_pa_kv_cache/docs/aclnnScatterPaKvCache.md)|更新KvCache中指定位置的key和value。|默认确定性实现|
+|[aclnnSparseFlashAttention](../../attention/sparse_flash_attention/docs/aclnnSparseFlashAttention.md)|根据sparse_indices选取重要性较高的key和value进行attention运算，得到attention_out输出。|默认确定性实现|
 |[aclnnSparseFlashAttentionGrad](../../attention/sparse_flash_attention_grad/docs/aclnnSparseFlashAttentionGrad.md)|根据topkIndices对key和value选取大小为selectedBlockSize的数据重排，接着进行训练场景下计算注意力的反向输出。|默认非确定性实现，支持配置开启|
 |[aclnnSparseLightningIndexerGradKLLoss](../../attention/sparse_lightning_indexer_grad_kl_loss/docs/aclnnSparseLightningIndexerGradKLLoss.md)|LightningIndexer的反向算子，再额外融合了Loss计算功能。|默认非确定性实现，不支持配置开启|
 |[aclnnWeightQuantMatmulAllReduce](../../mc2/matmul_all_reduce/docs/aclnnWeightQuantMatmulAllReduce.md)|对入参x2进行伪量化计算后，完成MatMul和AllReduce计算。|默认非确定性实现，支持配置开启|
