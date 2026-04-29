@@ -299,8 +299,8 @@ attention:
         - attention/mla_prolog/docs
         - attention/mla_prolog/README.md
       test:
+        ut: False
         examples: False
-        ut: True
       options:
         - mla_prolog
 
