@@ -463,6 +463,13 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize(
     if (CheckMmWeightValid(mmWeightOptional)) {
         bool notContiguous = IsTransposeTwoDims(mmWeightOptional, -1, -2);
         auto transMmWeightOptional = mmWeightOptional;
+        int64_t mmDim0 = mmWeightOptional->GetViewShape().GetDim(0);
+        int64_t mmDim1 = mmWeightOptional->GetViewShape().GetDim(1);
+        int64_t mmStride0 = mmWeightOptional->GetViewStrides()[0];
+        int64_t mmStride1 = mmWeightOptional->GetViewStrides()[1];
+        OP_LOGE(ACLNN_ERR_INNER, "[LBH] mmWeight shape=[%ld,%ld] stride=[%ld,%ld] notContiguous=%d judge: stride1==1?%d stride0!=mmDim1?%d",
+                mmDim0, mmDim1, mmStride0, mmStride1, notContiguous,
+                mmStride1 == 1, mmStride0 != mmDim1);
         if (notContiguous && transMmWeight) { // 当非连续和转置同时生效时，判断为错误用法，直接报错
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                     "mmWeightOptional not contiguous, and set mmWeightOptional transpose, it is error!");
@@ -470,27 +477,48 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize(
         }
         if (notContiguous && GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
             transMmWeight = !transMmWeight;
-            // 把非连续mmWeightOptional转成连续
+            OP_LOGE(ACLNN_ERR_INNER, "[LBH] mmWeight非连续，开始转连续：原stride=[%ld,%ld]转成正常stride=[%ld,%ld]",
+                    mmStride0, mmStride1, mmDim1, 1);
             transMmWeightOptional = TransMmWeightOptionalTensor(mmWeightOptional);
             CHECK_RET(transMmWeightOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
-            OP_LOGD("mmWeightOptional is a non-contiguous tensor. The original dim0 is %ld, and dim1 is %ld. After "
-                    "processing, transMmWeightOptional dim0 is %ld, and dim1 is %ld.",
-                    mmWeightOptional->GetViewShape().GetDim(0), mmWeightOptional->GetViewShape().GetDim(1),
-                    transMmWeightOptional->GetViewShape().GetDim(0), transMmWeightOptional->GetViewShape().GetDim(1));
+            int64_t transMmStride0 = transMmWeightOptional->GetViewStrides()[0];
+            int64_t transMmStride1 = transMmWeightOptional->GetViewStrides()[1];
+            OP_LOGE(ACLNN_ERR_INNER, "[LBH] mmWeight转连续完成：新shape=[%ld,%ld] stride=[%ld,%ld]",
+                    transMmWeightOptional->GetViewShape().GetDim(0),
+                    transMmWeightOptional->GetViewShape().GetDim(1),
+                    transMmStride0, transMmStride1);
             mmWeightOptional = transMmWeightOptional;
         }
         
     }
     
     auto transMmWeightScaleOptional = mmWeightScaleOptional;
-    // mmWeightScale使用独立判断，不依赖mmWeight的notContiguous变量
     bool mmWeightScaleNotContiguous = false;
     if (mmWeightScaleOptional != nullptr && mmWeightScaleOptional->GetViewShape().GetDimNum() >= 3 &&
         GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        int64_t mmsDim0 = mmWeightScaleOptional->GetViewShape().GetDim(0);
+        int64_t mmsDim1 = mmWeightScaleOptional->GetViewShape().GetDim(1);
+        int64_t mmsDim2 = mmWeightScaleOptional->GetViewShape().GetDim(2);
+        int64_t mmsStride0 = mmWeightScaleOptional->GetViewStrides()[0];
+        int64_t mmsStride1 = mmWeightScaleOptional->GetViewStrides()[1];
+        int64_t mmsStride2 = mmWeightScaleOptional->GetViewStrides()[2];
         mmWeightScaleNotContiguous = IsTransposeTwoDims(mmWeightScaleOptional, -2, -3);
+        OP_LOGE(ACLNN_ERR_INNER, "[LBH] mmWeightScale shape=[%ld,%ld,%ld] stride=[%ld,%ld,%ld] notContiguous=%d judge: dim1stride==1?%d dim0stride!=dim1shape?%d",
+                mmsDim0, mmsDim1, mmsDim2, mmsStride0, mmsStride1, mmsStride2, mmWeightScaleNotContiguous,
+                mmsStride1 == 1, mmsStride0 != mmsDim1);
         if (mmWeightScaleNotContiguous) {
+            OP_LOGE(ACLNN_ERR_INNER, "[LBH] mmWeightScale非连续，开始转连续：原stride=[%ld,%ld,%ld]转成正常stride=[%ld,%ld,%ld]",
+                    mmsStride0, mmsStride1, mmsStride2, mmsDim1, mmsDim0, mmsStride2);
             transMmWeightScaleOptional = TransMmWeightScaleTensor(mmWeightScaleOptional);
             CHECK_RET(transMmWeightScaleOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
+            int64_t transMmsStride0 = transMmWeightScaleOptional->GetViewStrides()[0];
+            int64_t transMmsStride1 = transMmWeightScaleOptional->GetViewStrides()[1];
+            int64_t transMmsStride2 = transMmWeightScaleOptional->GetViewStrides()[2];
+            OP_LOGE(ACLNN_ERR_INNER, "[LBH] mmWeightScale转连续完成：新shape=[%ld,%ld,%ld] stride=[%ld,%ld,%ld]",
+                    transMmWeightScaleOptional->GetViewShape().GetDim(0),
+                    transMmWeightScaleOptional->GetViewShape().GetDim(1),
+                    transMmWeightScaleOptional->GetViewShape().GetDim(2),
+                    transMmsStride0, transMmsStride1, transMmsStride2);
         }
     }
     
