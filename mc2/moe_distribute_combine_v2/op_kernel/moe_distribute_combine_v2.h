@@ -1099,7 +1099,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::AddRmsNormRms
     DumpTensor(sqx,2,4);
     PRINTF("ronghe2\n");
     PipeBarrier<PIPE_V>();
-    RmsNorm::ReduceSumCustom(sqx, sqx, reduceBufLocal, numCol);
+    ReduceSum(sqx, sqx, reduceBufLocal, numCol);
     PipeBarrier<PIPE_V>();
     DumpTensor(sqx,3,4);
     PRINTF("ronghe3\n");
