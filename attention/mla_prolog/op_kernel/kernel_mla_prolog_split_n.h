@@ -420,12 +420,13 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmCqParamInit() {
     if (baseParams_->mm1KnKGroupSize != 1) {
         mmCqParam_.n = baseParams_->headSizeCq / baseParams_->mm1KnNGroupSize;
         mmCqParam_.baseK = (sizeof(mmInputType) == ONE_BYTE_TYPE_SIZE) ? 128 : 64; // 128KB / (128 max baseN * 4 stepK * sizeof(type))
+        uint32_t mm1KGroupIdx = bloockIdx_ % baseParams_->mm1KnKGroupSize;
         mmCqParam_.k = (baseParams_->headSizeX / mmCqParam_.baseK) / baseParams_->mm1KnKGroupSize * mmCqParam_.baseK;
-        mmCqParam_.kStart = (cubeBlockIdx_ / baseParams_->mm1KnKGroupSize) * mmCqParam_.k;
-        if (cubeBlockIdx_ < (baseParams_->headSizeX / mmCqParam_.baseK) % baseParams_->mm1KnKGroupSize) {
+        mmCqParam_.kStart = mm1KGroupIdx * mmCqParam_.k;
+        if (mm1KGroupIdx < (baseParams_->headSizeX / mmCqParam_.baseK) % baseParams_->mm1KnKGroupSize) {
             mmCqParam_.k += mmCqParam_.baseK;
         }
-        mmCqParam_.kStart += Std::min(cubeBlockIdx_, (baseParams_->headSizeX / mmCqParam_.baseK) % baseParams_->mm1KnKGroupSize) * mmCqParam_.baseK;
+        mmCqParam_.kStart += Std::min(mm1KGroupIdx, (baseParams_->headSizeX / mmCqParam_.baseK) % baseParams_->mm1KnKGroupSize) * mmCqParam_.baseK;
         mmCqParam_.baseN = 192;
         mmCqParam_.stepKMax = L1_B_SIZE / (mmCqParam_.baseK * mmCqParam_.baseN * sizeof(mmInputType));
     } else {
@@ -461,12 +462,13 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmCkvKrParamInit() {
     if (baseParams_->mm2KnKGroupSize != 1) {
         mmCkvKrParam_.n = (baseParams_->headSizeCkv + baseParams_->headSizeKr) / baseParams_->mm2KnNGroupSize;
         mmCkvKrParam_.baseK = (sizeof(mmInputType) == ONE_BYTE_TYPE_SIZE) ? 128 : 64; // 128KB / (128 max baseN * 4 stepK * sizeof(type))
+        uint32_t mm2KGroupIdx = bloockIdx_ % baseParams_->mm2KnKGroupSize;
         mmCkvKrParam_.k = (baseParams_->headSizeX / mmCkvKrParam_.baseK) / baseParams_->mm2KnKGroupSize * mmCkvKrParam_.baseK;
-        mmCkvKrParam_.kStart = (cubeBlockIdx_ / baseParams_->mm2KnKGroupSize) * mmCkvKrParam_.k;
-        if (cubeBlockIdx_ < (baseParams_->headSizeX / mmCkvKrParam_.baseK) % baseParams_->mm2KnKGroupSize) {
+        mmCkvKrParam_.kStart = mm2KGroupIdx * mmCkvKrParam_.k;
+        if (mm2KGroupIdx < (baseParams_->headSizeX / mmCkvKrParam_.baseK) % baseParams_->mm2KnKGroupSize) {
             mmCkvKrParam_.k += mmCkvKrParam_.baseK;
         }
-        mmCkvKrParam_.kStart += Std::min(cubeBlockIdx_, (baseParams_->headSizeX / mmCkvKrParam_.baseK) % baseParams_->mm2KnKGroupSize) * mmCkvKrParam_.baseK;
+        mmCkvKrParam_.kStart += Std::min(mm2KGroupIdx, (baseParams_->headSizeX / mmCkvKrParam_.baseK) % baseParams_->mm2KnKGroupSize) * mmCkvKrParam_.baseK;
         mmCkvKrParam_.k = baseParams_->headSizeX / baseParams_->mm2KnKGroupSize;
         mmCkvKrParam_.baseN = 192;
         mmCkvKrParam_.stepKMax = L1_B_SIZE / (mmCkvKrParam_.baseK * mmCkvKrParam_.baseN * sizeof(mmInputType));
@@ -486,10 +488,10 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmCkvKrParamInit() {
         mmCkvKrParam_.stepKMax = mmCkvKrParam_.stepK;
     }
     mmCkvKrParam_.needSetOrgShape = 1;
-    mmCkvKrParam_.orgM = mmCkvKrParam_.m;
-    mmCkvKrParam_.orgN = mmCkvKrParam_.n;
-    mmCkvKrParam_.orgKa = mmCkvKrParam_.k;
-    mmCkvKrParam_.orgKb = mmCkvKrParam_.k;
+    mmCkvKrParam_.orgM = baseParams_->stepBatchSize;
+    mmCkvKrParam_.orgN = baseParams_->headSizeCkv + baseParams_->dimHeadRope;
+    mmCkvKrParam_.orgKa = baseParams_->headSizeX;
+    mmCkvKrParam_.orgKb = baseParams_->headSizeX;
     mmCkvKrParam_.orgKc = (baseParams_->headSizeCkv + baseParams_->dimHeadRope);  // 576
     mmCkvKrParam_.kL1StepSize = mmCkvKrParam_.baseK * mmCkvKrParam_.stepKMax;
     mmCkvKrParam_.kScale = mmCkvKrParam_.k / FP8_E4M3_BLOCK_SIZE;
@@ -923,9 +925,9 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AicProcess(AicOffset &aicOffs
         uint64_t mm1OutputOffset = static_cast<int64_t>(mm1KGroupIdx) * baseParams_->stepBatchSize * baseParams_->headSizeCq + mm1NStartOffset;
 
         // Use existing MatmulSplitN with adjusted params for K-slice
-        int64_t mm1DequantScaleXOffset = dequantScaleXOffset + mmCqParam_.kStart / FP8_E4M3_BLOCK_SIZE;
-        int64_t dequantScaleWDqOffset = mm1NStartOffset * baseParams_->headSizeX / FP8_E4M3_BLOCK_SIZE + mmCqParam_.kStart / FP8_E4M3_BLOCK_SIZE;
         if constexpr (std::is_same<mmInputType, FP8E4M3>::value && isFp8E8m0) {
+            int64_t mm1DequantScaleXOffset = dequantScaleXOffset + mmCqParam_.kStart / FP8_E4M3_BLOCK_SIZE;
+            int64_t dequantScaleWDqOffset = mm1NStartOffset * baseParams_->headSizeX / FP8_E4M3_BLOCK_SIZE + mmCqParam_.kStart / FP8_E4M3_BLOCK_SIZE;
             MatmulSplitN<mmInputType, mmCqAccumType, dequantScaleType>(
                 cqPartialsGm_[mm1OutputOffset],
                 tokenXGm_[tokenXOffset + mm1KStartOffset],  // A: offset to K-slice start column
@@ -968,9 +970,9 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AicProcess(AicOffset &aicOffs
         int64_t mm2OutputOffset = static_cast<int64_t>(mm2KGroupIdx) * baseParams_->stepBatchSize
                             * (baseParams_->headSizeCkv + baseParams_->dimHeadRope) + mm2NStartOffset;
 
-        int64_t mm2DequantScaleXOffset = dequantScaleXOffset + mmCkvKrParam_.kStart / FP8_E4M3_BLOCK_SIZE;
-        int64_t dequantScaleWDkvKrOffset = mm2NStartOffset * baseParams_->headSizeX / FP8_E4M3_BLOCK_SIZE + mmCkvKrParam_.kStart / FP8_E4M3_BLOCK_SIZE;
         if constexpr (std::is_same<mmInputType, FP8E4M3>::value && isFp8E8m0) {
+            int64_t mm2DequantScaleXOffset = dequantScaleXOffset + mmCkvKrParam_.kStart / FP8_E4M3_BLOCK_SIZE;
+            int64_t dequantScaleWDkvKrOffset = mm2NStartOffset * baseParams_->headSizeX / FP8_E4M3_BLOCK_SIZE + mmCkvKrParam_.kStart / FP8_E4M3_BLOCK_SIZE;
             MatmulSplitN<mmInputType, mmCkvKrAccumType, dequantScaleType, true>(
                 ckvKrPartialsGm_[mm2OutputOffset],
                 tokenXGm_[tokenXOffset + mm2KStartOffset],  // A: offset to K-slice start column

@@ -640,8 +640,8 @@ __aicore__ inline void MatmulL1(const LocalTensor<O_L0C> &cL0, const LocalTensor
     uint32_t aOffsetUnit = mSize * para.baseK;
     uint32_t bOffsetUnit = GetC0Num<T>() * para.baseK;
 
-    uint32_t aScaleOffset = kL1 * para.kScale / kL1Loops * BLOCK_CUBE_SIZE;
-    uint32_t bScaleOffset = kL1 * para.kScale / kL1Loops * BLOCK_CUBE_SIZE;
+    uint32_t aScaleOffset = kL1 * para.kL1StepSize * para.kScale / para.k * BLOCK_CUBE_SIZE;
+    uint32_t bScaleOffset = kL1 * para.kL1StepSize * para.kScale / para.k * BLOCK_CUBE_SIZE;
     uint32_t aScaleOffsetUnit = para.baseK / BYTE_BLOCK * BLOCK_CUBE_SIZE;
     uint32_t bScaleOffsetUnit = para.baseK / BYTE_BLOCK * BLOCK_CUBE_SIZE;
     const LocalTensor<T> scaleALocalTensor = localTensors.aL1Tensor[weightSizeL1A];
