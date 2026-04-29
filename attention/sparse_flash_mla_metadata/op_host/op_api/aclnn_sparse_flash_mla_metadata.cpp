@@ -120,7 +120,7 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSizeOptional, int64_t maxSeqlenQOp
         "max_seqlen_q should not be negative, but got %d", maxSeqlenQOptional);
     // max_seqlen_kv 非负校验
     CHECK_COND(maxSeqlenKvOptional >= 0, ACLNN_ERR_PARAM_INVALID,
-        "max_seqlen_q should not be negative, but got %d", maxSeqlenKvOptional);
+        "max_seqlen_kv should not be negative, but got %d", maxSeqlenKvOptional);
     // num_heads_q 校验
     CHECK_COND(numHeadsQ >= 0, ACLNN_ERR_PARAM_INVALID,
         "num_heads_q should not be negative, but got %d", numHeadsQ);
@@ -138,7 +138,7 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSizeOptional, int64_t maxSeqlenQOp
         "layout_q must be TND or BSND, but got %s", layoutQOptional);
     // layout_kv 校验
     CHECK_COND((strcmp(layoutKvOptional, "PA_BNBD") == 0) || (strcmp(layoutKvOptional, "TND") == 0) || \
-        (strcmp(layoutQOptional, "BSND") == 0), 
+        (strcmp(layoutKvOptional, "BSND") == 0), 
         ACLNN_ERR_PARAM_INVALID, "layout_kv must be TND, BSND or PA_BNBD, but got %s", layoutKvOptional);
     // has_ori_kv 校验
     CHECK_COND(hasOriKvOptional == true,

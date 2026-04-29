@@ -51,11 +51,11 @@ bool KvQuantSparseFlashMlaMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     metaData_ = ctx.Output(static_cast<uint32_t>(ParamId::metaData));
 
     bool requiredAttrs = GetAttrValue(ctx, "num_heads_q", queryHeadNum_) &&
-                        GetAttrValue(ctx, "num_heads_kv", kvHeadNum_) &&
-                        GetAttrValue(ctx, "head_dim", headDim_);
-                        GetAttrValueOpt(ctx, "soc_version", socVersion_);
-                        GetAttrValueOpt(ctx, "aic_core_num", aicCoreNum_);
-                        GetAttrValueOpt(ctx, "aiv_core_num", aivCoreNum_);
+                         GetAttrValue(ctx, "num_heads_kv", kvHeadNum_) &&
+                         GetAttrValue(ctx, "head_dim", headDim_) &&
+                         GetAttrValue(ctx, "soc_version", socVersion_) &&
+                         GetAttrValue(ctx, "aic_core_num", aicCoreNum_) &&
+                         GetAttrValue(ctx, "aiv_core_num", aivCoreNum_);
     KERNEL_CHECK_FALSE(requiredAttrs, false, "Missing required attrs !!");
 
     // attributes optional
@@ -93,6 +93,10 @@ bool KvQuantSparseFlashMlaMetadataCpuKernel::CheckTensorData()
     }
     if (isValid(seqUsedOriKv_) && seqUsedOriKv_->GetData() == nullptr) {
         KERNEL_LOG_ERROR("The data of seqused_kv is nullptr!");
+        return false;
+    }
+    if (!isValid(metaData_) || metaData_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("metaData tensor is nullptr!");
         return false;
     }
     return true;
@@ -304,7 +308,7 @@ Range<int64_t> KvQuantSparseFlashMlaMetadataCpuKernel::CalcS2TokenRange(uint32_t
             s1FirstToken = s1GFirstToken % static_cast<int64_t>(batchCache.s1Size);
             s1LastToken = s1GLastToken % static_cast<int64_t>(batchCache.s1Size);
         } else {
-            // start and end locate in tow or more G, but working same as crossing a complete block
+            // start and end locate in two or more G, but working same as crossing a complete block
             s1FirstToken = 0;
             s1LastToken = batchCache.s1Size;
         }

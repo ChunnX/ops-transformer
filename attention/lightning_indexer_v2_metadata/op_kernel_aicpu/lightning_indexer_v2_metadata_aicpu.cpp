@@ -90,6 +90,10 @@ bool LightningIndexerV2MetadataCpuKernel::CheckTensorData()
         KERNEL_LOG_ERROR("The data of seqused_k is nullptr!");
         return false;
     }
+    if (!isValid(metaData_) || metaData_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("metaData tensor is nullptr!");
+        return false;
+    }
     return true;
 }
 
@@ -217,12 +221,10 @@ int64_t LightningIndexerV2MetadataCpuKernel::CalcNextTokenLeftUp(
 int64_t LightningIndexerV2MetadataCpuKernel::CalcCost(
     uint32_t basicM, uint32_t basicS2)
 {
-    uint32_t alignBasicM = basicM / groupSize_;
-    uint32_t alignBasicS2 = 1;
     uint32_t alignCoefM = 16U;	 
     uint32_t alignCoefS2 = 64U;	 
-    alignBasicM = (basicM + alignCoefM - 1U) >> 4U;      // 按alignCoefM对齐，向上取整，4：移位操作实现除16	 
-    alignBasicS2 = (basicS2 + alignCoefS2 - 1U) >> 6U;   // 按alignCoefS2对齐，向上取整，6：移位操作实现除64
+    uint32_t alignBasicM = (basicM + alignCoefM - 1U) >> 4U;      // 按alignCoefM对齐，向上取整，4：移位操作实现除16	 
+    uint32_t alignBasicS2 = (basicS2 + alignCoefS2 - 1U) >> 6U;   // 按alignCoefS2对齐，向上取整，6：移位操作实现除64
     return static_cast<int64_t>(6U * alignBasicM + 10U * alignBasicS2);
 }
 
@@ -259,7 +261,7 @@ Range<int64_t> LightningIndexerV2MetadataCpuKernel::CalcS2TokenRange(
             s1FirstToken = s1GFirstToken % static_cast<int64_t>(batchCache.s1Size);
             s1LastToken = s1GLastToken % static_cast<int64_t>(batchCache.s1Size);
         } else {
-            // start and end locate in tow or more G, but working same as crossing a complete block
+            // start and end locate in two or more G, but working same as crossing a complete block
             s1FirstToken = 0;
             s1LastToken = batchCache.s1Size;
         }

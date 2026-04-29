@@ -123,7 +123,7 @@ aclnnStatus CheckSingleParamQsmla(int64_t batchSizeOptional, int64_t maxSeqlenQO
         "max_seqlen_q should not be negative, but got %d", maxSeqlenQOptional);
     // max_seqlen_kv 非负校验
     CHECK_COND(maxSeqlenKvOptional >= 0, ACLNN_ERR_PARAM_INVALID,
-        "max_seqlen_q should not be negative, but got %d", maxSeqlenKvOptional);
+        "max_seqlen_kv should not be negative, but got %d", maxSeqlenKvOptional);
     // kv_quant_mode 校验
     CHECK_COND(kvQuantMode == 1,
         ACLNN_ERR_PARAM_INVALID, "kv_quant_mode should be 1, but got %d", kvQuantMode);
