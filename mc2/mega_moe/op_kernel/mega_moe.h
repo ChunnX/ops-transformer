@@ -713,7 +713,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                 DispatchTokens(gmmAddrInfo, expertIdx);
             }
         }
-        // GMM1SwigluQuant调用
+
+        if (subBlockIdx_ == 0) {
+            MegaMoeImpl::GroupMatmulSwigluQuant<QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType>(
+                epilogueOp_, params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_, rankId_);
+        }
     }
     EndSync();
     if constexpr(g_coreType == AscendC::AIV) {
@@ -735,7 +739,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             continue;
         }
         UpdateGlobalBuffer(gmmAddrInfo, 1);
-        // GMM2andCombineSend调用
+        if (subBlockIdx_ == 0) {
+            MegaMoeImpl::GroupMatmul2<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
+                params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_, expertIdx, gmm2PingPongIdx_,
+                rankId_);
+        }
     }
     EndGMM2Sync();
     SyncAll<true>();
