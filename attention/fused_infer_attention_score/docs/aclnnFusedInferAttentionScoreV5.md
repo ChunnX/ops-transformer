@@ -1529,7 +1529,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       - Q_N 支持 [1, 256]；KV_N 支持 [1, 256]；G 支持 [1,64]；D 支持 [1,512]
       - inputLayout 支持 BSH、BNSD、BSND、BNSD_BSND
       - 不支持PagedAttention场景、不支持alibi场景、不支持Rope存在、不支持后量化、不支持D不等长场景、不支持公共前缀场景
-    - per-tensor 全量化
+    - MxFP8 全量化
       - query、key、value 的dtype为FLOAT8_E4M3FN
       - attentionOut 的dtype支持FLOAT16、BFLOAT16
       - Q_S、KV_S 仅支持64对齐
