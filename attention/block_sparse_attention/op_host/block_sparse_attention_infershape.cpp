@@ -129,7 +129,7 @@ static ge::graphStatus InferShapeBlockSparseAttention(gert::InferShapeContext *c
     bool isKvBNSD = (kvLayout == "BNSD");
     
     if (isQBNSD != isKvBNSD) {
-        OP_LOGE(context->GetNodeName(), 
+        OP_LOGE(context->GetNodeName(),
                 "Q and KV layouts must match: if one is BNSD, the other must also be BNSD. "
                 "Q layout: %s, KV layout: %s", qLayout.c_str(), kvLayout.c_str());
         return ge::GRAPH_FAILED;

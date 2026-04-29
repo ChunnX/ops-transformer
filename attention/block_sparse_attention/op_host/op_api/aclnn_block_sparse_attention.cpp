@@ -136,7 +136,7 @@ static aclnnStatus ValidateParams(const aclTensor *query,
     bool qIsBNSD = (qLayout == "BNSD");
     bool kvIsBNSD = (kvLayout == "BNSD");
     if (qIsBNSD != kvIsBNSD) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, 
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                 "Q and KV layouts must match: if one is BNSD, the other must also be BNSD. "
                 "Q layout: %s, KV layout: %s", qLayout.c_str(), kvLayout.c_str());
         return ACLNN_ERR_PARAM_INVALID;
@@ -161,17 +161,15 @@ static aclnnStatus MakeContiguous(const aclTensor *&query,
 
     value = l0op::Contiguous(value, executor);
     CHECK_RET(value != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-    //新增blockSparseMaskOptional非空校验且必须为四维
-    if (blockSparseMaskOptional != nullptr) {  
-        blockSparseMaskOptional = l0op::Contiguous(blockSparseMaskOptional, executor);  
-        CHECK_RET(blockSparseMaskOptional != nullptr, ACLNN_ERR_INNER_NULLPTR); 
+    // 新增blockSparseMaskOptional非空校验且必须为四维
+    if (blockSparseMaskOptional != nullptr) {
+        blockSparseMaskOptional = l0op::Contiguous(blockSparseMaskOptional, executor);
+        CHECK_RET(blockSparseMaskOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
         if (blockSparseMaskOptional->GetStorageShape().GetDimNum() != 4) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, 
-                "blockSparseMask must be 4D tensor");
-        return ACLNN_ERR_PARAM_INVALID;
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "blockSparseMask must be 4D tensor");
+            return ACLNN_ERR_PARAM_INVALID;
         }
-       //CHECK_RET(blockSparseMaskOptional->GetStorageShape().GetDim() == 4, "blockSparseMask must be 4D tensor");
-    } 
+    }
 
     if (attenMaskOptional != nullptr) {
         attenMaskOptional = l0op::Contiguous(attenMaskOptional, executor);

@@ -109,12 +109,13 @@ std::unordered_map<ge::DataType, std::string> DataTypeToStringMap = {
     {ge::DT_FLOAT, "DT_FLOAT"}
 };
 
-static inline std::string DataTypeToString(ge::DataType dataType){
+static std::string DataTypeToString(ge::DataType dataType)
+{
     const auto it = DataTypeToStringMap.find(dataType);
-    if (it != DataTypeToStringMap.end()){
+    if (it != DataTypeToStringMap.end()) {
         return it->second;
-    } else{
-        OP_LOGE(bsaContext->GetNodeName(), "Data type %d is not supported", dataType);
+    } else {
+        OP_LOGE("BlockSparseAttention", "Data type %d is not supported", dataType);
         return "UNDEFINED";
     }
 }
@@ -231,7 +232,8 @@ ge::graphStatus BSATiling::CheckQKVDtype(gert::TilingContext *bsaContext)
     auto kDataType = kInputDesc->GetDataType();
     auto vDataType = vInputDesc->GetDataType();
     if (dataType_ != ge::DT_FLOAT16 && dataType_ != ge::DT_BF16 && dataType_ != ge::DT_FLOAT8_E4M3FN) {
-        OP_LOGE(bsaContext->GetNodeName(), "The supported dtype of query/key/value is float16, bfloat16 or float8_e4m3fn.");
+        OP_LOGE(bsaContext->GetNodeName(),
+                "The supported dtype of query/key/value is float16, bfloat16 or float8_e4m3fn.");
         return ge::GRAPH_FAILED;
     }
     if (dataType_ != kDataType || dataType_ != vDataType) {
@@ -334,7 +336,7 @@ ge::graphStatus BSATiling::ParseQKVInBNSD(gert::TilingContext *bsaContext)
 
 ge::graphStatus BSATiling::CheckAttentionOutDtype(gert::TilingContext *bsaContext)
 {
-    if (dataType_ = ge::DT_FLOAT8_E4M3FN) {
+    if (dataType_ == ge::DT_FLOAT8_E4M3FN) {
         attentionOutDataType_ = bsaContext->GetOutputDesc(ATTENTION_OUT_INDEX)->GetDataType();
         if (attentionOutDataType_ != ge::DT_FLOAT16 && attentionOutDataType_ != ge::DT_BF16) {
             OP_LOGE(bsaContext->GetNodeName(),
@@ -533,6 +535,9 @@ ge::graphStatus BSATiling::ValidateGenericDequantScale(gert::TilingContext *bsaC
         case VALUE_DEQUANT_SCALE_INDEX:
             parameterName = "valueDequantScale";
             break;
+        default:
+            parameterName = "UNDEFINED";
+            break;
     }
 
     const auto *dequantScaleTensor = bsaContext->GetOptionalInputTensor(parameterIndex);
@@ -566,8 +571,8 @@ ge::graphStatus BSATiling::ValidateGenericDequantScale(gert::TilingContext *bsaC
         uint32_t specificNumHeads = parameterIndex == QUERY_DEQUANT_SCALE_INDEX ? numHeads_ : kvHeads_;
         uint32_t specificMaxBlockNum = parameterIndex == QUERY_DEQUANT_SCALE_INDEX ? maxQBlockNum_ : maxKvBlockNum_;
         std::string shapeDescription = parameterIndex == QUERY_DEQUANT_SCALE_INDEX ?
-                                           "(totaQToken, numHeads, maxQBlockNum, 1)" :
-                                           "(totaKVToken, numKVHeads, maxKVBlockNum, 1)";
+                                           "(totalQToken, numHeads, maxQBlockNum, 1)" :
+                                           "(totalKVToken, numKVHeads, maxKVBlockNum, 1)";
 
         if (dequantScaleBatch != batch_ || dequantScaleNumHeads != specificNumHeads ||
             dequantScaleBlockNum != specificMaxBlockNum || dequantScaleLastDim != NUM_1) {
@@ -596,12 +601,12 @@ ge::graphStatus BSATiling::ValidateQueryDequantScale(gert::TilingContext *bsaCon
 
 ge::graphStatus BSATiling::ValidateKeyDequantScale(gert::TilingContext *bsaContext)
 {
-    return ValidateGenericDequantScale(bsaContext, KEY_DEQUANT_SCALE_INDEX);   
+    return ValidateGenericDequantScale(bsaContext, KEY_DEQUANT_SCALE_INDEX);
 }
 
 ge::graphStatus BSATiling::ValidateValueDequantScale(gert::TilingContext *bsaContext)
 {
-    return ValidateGenericDequantScale(bsaContext, VALUE_DEQUANT_SCALE_INDEX);   
+    return ValidateGenericDequantScale(bsaContext, VALUE_DEQUANT_SCALE_INDEX);
 }
 
 ge::graphStatus BSATiling::ParseOptionalTensors(gert::TilingContext *bsaContext)
@@ -980,10 +985,11 @@ uint64_t BSATiling::GenerateTilingKey(gert::TilingContext *bsaContext)
     } else if (dataType_ == ge::DT_BF16) {
         tilingKey += 22220ULL;  // 22 for BF16 -> 9000000030000002 + 22220 = 9000000030022222
     } else if (dataType_ == ge::DT_FLOAT8_E4M3FN) {
-        if (attentionOutDataType_ = ge::DT_FLOAT16) {
+        if (attentionOutDataType_ == ge::DT_FLOAT16) {
             tilingKey += 10;
-        } else if (attentionOutDataType_ = ge::DT_BF16) {
+        } else if (attentionOutDataType_ == ge::DT_BF16) {
             tilingKey += 20;
+        }
     }
 
     // [位11-13] KV Layout（十亿位）
@@ -1028,8 +1034,7 @@ uint64_t BSATiling::GenerateTilingKey(gert::TilingContext *bsaContext)
     return tilingKey;
 }
 
-ge::graphStatus BSATiling::GetBsaTiling(gert::TilingContext *bsaContext,
-                                         BlockSparseAttentionTilingData &tilingData)
+ge::graphStatus BSATiling::GetBsaTiling(gert::TilingContext *bsaContext, BlockSparseAttentionTilingData &tilingData)
 {
     tilingData_ = &tilingData;
     ge::graphStatus ret = GetNpuInfo(bsaContext);

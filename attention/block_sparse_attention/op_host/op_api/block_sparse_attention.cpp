@@ -103,17 +103,17 @@ const std::array<const aclTensor *, 2> BlockSparseAttention(
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "BlockSparseAttention infer shape failed, scaleValue: %f.", scaleValue);
         return {nullptr, nullptr};
     }
-    
-    ADD_TO_LAUNCHER_LIST_AICORE(BlockSparseAttention,
-                                OP_INPUT(query, key, value, blockSparseMaskOptional, attenMaskOptional,
-                                         blockShapeOptionalTensor, actualSeqTensor, actualSeqKvTensor, blockTableOptional,
-                                         queryDequantScaleOptional, keyDequantScaleOptional, valueDequantScaleOptional),
-                                OP_OUTPUT(attentionOutTensor, softmaxLseTensor),
-                                OP_ATTR(qInputLayout, safeKvInputLayout, static_cast<int64_t>(numKeyValueHeads),
-                                        static_cast<int64_t>(maskType), static_cast<float>(scaleValue),
-                                        static_cast<int64_t>(innerPrecise), static_cast<int64_t>(blockSize),
-                                        static_cast<int64_t>(preTokens), static_cast<int64_t>(nextTokens),
-                                        static_cast<int64_t>(softmaxLseFlag)));
+
+    ADD_TO_LAUNCHER_LIST_AICORE(
+        BlockSparseAttention,
+        OP_INPUT(query, key, value, blockSparseMaskOptional, attenMaskOptional, blockShapeOptionalTensor,
+                 actualSeqTensor, actualSeqKvTensor, blockTableOptional, queryDequantScaleOptional,
+                 keyDequantScaleOptional, valueDequantScaleOptional),
+        OP_OUTPUT(attentionOutTensor, softmaxLseTensor),
+        OP_ATTR(qInputLayout, safeKvInputLayout, static_cast<int64_t>(numKeyValueHeads), static_cast<int64_t>(maskType),
+                static_cast<float>(scaleValue), static_cast<int64_t>(innerPrecise), static_cast<int64_t>(blockSize),
+                static_cast<int64_t>(preTokens), static_cast<int64_t>(nextTokens),
+                static_cast<int64_t>(softmaxLseFlag)));
 
     return {attentionOutTensor, softmaxLseTensor};
 }
