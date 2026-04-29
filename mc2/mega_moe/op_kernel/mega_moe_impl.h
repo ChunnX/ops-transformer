@@ -31,7 +31,6 @@
 #include "catlass/arch/arch.hpp"
 #include "catlass/catlass.hpp"
 #include "catlass/gemm/block/block_mmad.hpp"
-#include "catlass/gemm/block/block_swizzle.hpp"
 #include "catlass/gemm/device/device_gemm.hpp"
 #include "catlass/gemm/dispatch_policy.hpp"
 #include "catlass/gemm/gemm_type.hpp"
@@ -44,6 +43,7 @@
 
 #include "include/tensor_api/tensor.h"
 #include "blaze/block/block_mmad_mx.h"
+#include "blaze/block/block_scheduler_swizzle.h"
 
 #include "tile_copy.hpp"
 #include "mega_moe_combine_send.h"
@@ -56,7 +56,7 @@ namespace MegaMoeImpl {
 using ArchTag = Arch::Ascend950;
 constexpr static bool enableUnitFlag = true;
 using DispatchPolicy = Gemm::MmadMx<ArchTag, enableUnitFlag>;
-using BlockScheduler = typename Gemm::Block::GemmIdentityBlockSwizzle<3, 1>;
+using BlockScheduler = typename Blaze::Gemm::Block::BlockSchedulerSwizzle<3, 1>;
 constexpr uint32_t ALIGN32 = 32U;
 constexpr uint32_t L1_TILE_M = 128;
 constexpr uint32_t L1_TILE_N = 256;
@@ -160,17 +160,17 @@ __aicore__ inline void GroupMatmulSwigluQuant(
         reinterpret_cast<__gm__ ElementMxScaleB*>(gmmAddrInfo.bScaleGlobal)), layoutScaleB);
     auto gmBias = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ BiasType*>(0UL)), layoutBias);
 
-    BlockScheduler scheduler({m, outputN, k}, MakeCoord(L1_TILE_M, L1_TILE_N));
-    uint32_t coreLoops = scheduler.GetCoreLoops();
+    BlockScheduler scheduler({m, outputN, k}, BlockScheduler::Params{AscendC::Te::MakeCoord(static_cast<int64_t>(L1_TILE_M), static_cast<int64_t>(L1_TILE_N))});
+    uint32_t tileNum = scheduler.GetTileNum();
     uint32_t startLoopIdx = (blockIdx < startBlockIdx ? blockIdx + blockNum: blockIdx) - startBlockIdx;
 
-    for (uint32_t loopIdx = startLoopIdx; loopIdx < coreLoops; loopIdx += blockNum) {
-        GemmCoord blockCoord = scheduler.GetBlockCoord(loopIdx);
-        GemmCoord actualShape = scheduler.GetActualBlockShape(blockCoord);
+    for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += blockNum) {
+        auto blockCoord = scheduler.GetBlockCoord(loopIdx);
+        auto actualShape = scheduler.GetBlockShape(blockCoord);
 
-        uint32_t mLoc = blockCoord.m() * L1_TILE_M;
-        uint32_t nLoc = blockCoord.n() * L1_TILE_N;
-        uint32_t kLoc = blockCoord.k() * L1_TILE_K;
+        uint32_t mLoc = AscendC::Std::get<0>(blockCoord);
+        uint32_t nLoc = AscendC::Std::get<1>(blockCoord);
+        uint32_t kLoc = AscendC::Std::get<2>(blockCoord);
 
         if constexpr(g_coreType == AscendC::AIC) {
             if (loopIdx == startLoopIdx) {
@@ -186,22 +186,22 @@ __aicore__ inline void GroupMatmulSwigluQuant(
                 WaitForVector();
             }
 
-            auto gmBlockA = gmA.Slice(Te::MakeCoord(mLoc, kLoc), Te::MakeShape(actualShape.m(), actualShape.k()));
+            auto gmBlockA = gmA.Slice(Te::MakeCoord(mLoc, kLoc), Te::MakeShape(AscendC::Std::get<0>(actualShape), AscendC::Std::get<2>(actualShape)));
             auto gmBlockScaleA = gmScaleA.Slice(Te::MakeCoord(mLoc, kLoc / MXFP_SCALE_GROUP_NUM),
-                Te::MakeShape(actualShape.m(), CeilDiv(actualShape.k(), MXFP_SCALE_GROUP_NUM)));
-
+                Te::MakeShape(AscendC::Std::get<0>(actualShape), CeilDiv(AscendC::Std::get<2>(actualShape), MXFP_SCALE_GROUP_NUM)));
+            
             auto tensorBlockUbFirst = l0cOutUbFirst.Slice(Te::MakeCoord(0, 0),
-                Te::MakeShape(actualShape.m(), actualShape.n()));
+                Te::MakeShape(AscendC::Std::get<0>(actualShape), AscendC::Std::get<1>(actualShape)));
             auto tensorBlockUbSecond = l0cOutUbSecond.Slice(Te::MakeCoord(0, 0),
-                Te::MakeShape(actualShape.m(), actualShape.n()));
+                Te::MakeShape(AscendC::Std::get<0>(actualShape), AscendC::Std::get<1>(actualShape)));
 
-            typename BlockMmad::BlockShape singleShape{actualShape.m(), actualShape.n(), actualShape.k(), 0};
+            typename BlockMmad::BlockShape singleShape{AscendC::Std::get<0>(actualShape), AscendC::Std::get<1>(actualShape), AscendC::Std::get<2>(actualShape), 0};
             for (uint32_t weightBlock = 0; weightBlock < SWIGLU_N_HALF; ++weightBlock) {
-                auto gmBlockB = gmB.Slice(Te::MakeCoord(kLoc, nLoc + weightBlock * outputN),
-                    Te::MakeShape(actualShape.k(), actualShape.n()));
+                auto gmBlockB = gmA.Slice(Te::MakeCoord(kLoc, nLoc + weightBlock * outputN),
+                    Te::MakeShape(AscendC::Std::get<2>(actualShape), AscendC::Std::get<1>(actualShape)));
                 auto gmBlockScaleB = gmScaleB.Slice(
                     Te::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, nLoc + weightBlock * outputN),
-                    Te::MakeShape(CeilDiv(actualShape.k(), MXFP_SCALE_GROUP_NUM), actualShape.n()));
+                    Te::MakeShape(CeilDiv(AscendC::Std::get<2>(actualShape), MXFP_SCALE_GROUP_NUM), AscendC::Std::get<1>(actualShape)));
                 blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias,
                     weightBlock == 0 ? tensorBlockUbFirst: tensorBlockUbSecond, singleShape);
             }
@@ -212,7 +212,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
         vecSetSyncCom = 1;
 
         if constexpr(g_coreType == AscendC::AIV) {
-            Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{actualShape.m(), actualShape.n(), 0, 0};
+            Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{AscendC::Std::get<0>(actualShape), AscendC::Std::get<1>(actualShape), 0, 0};
             Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> epilogueOffset{
                 mLoc * outputN + nLoc,
                 mLoc * CeilDiv(outputN, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE +
@@ -225,7 +225,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
             NotifyCube();
         }
     }
-    startBlockIdx = (startBlockIdx + coreLoops) % blockNum;
+    startBlockIdx = (startBlockIdx + tileNum) % blockNum; 
 }
 
 // GroupMatmul2 - GMM2矩阵乘法 + Combine
@@ -317,25 +317,26 @@ __aicore__ inline void GroupMatmul2(
         layoutScaleB);
     auto gmBias = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ BiasType*>(0UL)), layoutBias);
 
-    BlockScheduler scheduler({m, n, k}, MakeCoord(L1_TILE_M, L1_TILE_N));
-    uint32_t coreLoops = scheduler.GetCoreLoops();
+    BlockScheduler scheduler({m, n, k}, BlockScheduler::Params{AscendC::Te::MakeCoord(static_cast<int64_t>(L1_TILE_M), static_cast<int64_t>(L1_TILE_N))});
     uint32_t startLoopIdx = (blockIdx < startBlockIdx ? blockIdx + blockNum : blockIdx) - startBlockIdx;
+    uint32_t tileNum = scheduler.GetTileNum();
 
-    for (uint32_t loopIdx = startLoopIdx; loopIdx < coreLoops; loopIdx += blockNum) {
-        GemmCoord blockCoord = scheduler.GetBlockCoord(loopIdx);
-        GemmCoord actualShape = scheduler.GetActualBlockShape(blockCoord);
+    for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += blockNum) {
+        auto blockCoord = scheduler.GetBlockCoord(loopIdx);
+        auto actualShape = scheduler.GetBlockShape(blockCoord);
+        GemmCoord oldActualShape = GemmCoord(AscendC::Std::get<0>(actualShape), AscendC::Std::get<1>(actualShape), AscendC::Std::get<2>(actualShape));
 
-        uint32_t mLoc = blockCoord.m() * L1_TILE_M;
-        uint32_t nLoc = blockCoord.n() * L1_TILE_N;
-        uint32_t kLoc = blockCoord.k() * L1_TILE_K;
+        uint32_t mLoc = AscendC::Std::get<0>(blockCoord);
+        uint32_t nLoc = AscendC::Std::get<1>(blockCoord);
+        uint32_t kLoc = AscendC::Std::get<2>(blockCoord);
 
         auto tensorUb = pingpongIdx == 0 ? l0cOutUbFirst : l0cOutUbSecond;
         auto l0cOutUbGMM2 = pingpongIdx == 0 ? l0cOutUbGMM2First : l0cOutUbGMM2Second;
 
         if constexpr(g_coreType == AscendC::AIC) {
             if (loopIdx == startLoopIdx) {
-                BlockScheduler gmmBlockScheduler({m, k, n}, MakeCoord(L1_TILE_M, L1_TILE_N));
-                uint32_t targetLoops = gmmBlockScheduler.GetCoreLoops();
+                BlockScheduler gmmBlockScheduler({m, k, n}, BlockScheduler::Params{AscendC::Te::MakeCoord(static_cast<int64_t>(L1_TILE_M), static_cast<int64_t>(L1_TILE_N))});
+                uint32_t targetLoops = gmmBlockScheduler.GetTileNum();
                 __gm__ int32_t* flagValueAddr = (__gm__ int32_t*)groupFlagListGm.GetPhyAddr();
                 while(targetLoops != AscendC::ReadGmByPassDCache(flagValueAddr)) {
                     int64_t st = AscendC::GetSystemCycle();
@@ -346,19 +347,19 @@ __aicore__ inline void GroupMatmul2(
                 WaitForVector(pingpongIdx);
             }
 
-            auto gmBlockA = gmA.Slice(Te::MakeCoord(mLoc, kLoc), Te::MakeShape(actualShape.m(), actualShape.k()));
+            auto gmBlockA = gmA.Slice(Te::MakeCoord(mLoc, kLoc), Te::MakeShape(AscendC::Std::get<0>(actualShape), AscendC::Std::get<2>(actualShape)));
             auto gmBlockScaleA = gmScaleA.Slice(
                 Te::MakeCoord(mLoc, kLoc / MXFP_SCALE_GROUP_NUM),
-                Te::MakeShape(actualShape.m(), CeilDiv(actualShape.k(), MXFP_SCALE_GROUP_NUM)));
+                Te::MakeShape(AscendC::Std::get<0>(actualShape), CeilDiv(AscendC::Std::get<2>(actualShape), MXFP_SCALE_GROUP_NUM)));
 
-            auto tensorBlockUb = tensorUb.Slice(Te::MakeCoord(0, 0), Te::MakeShape(actualShape.m(), actualShape.n()));
+            auto tensorBlockUb = tensorUb.Slice(Te::MakeCoord(0, 0), Te::MakeShape(AscendC::Std::get<0>(actualShape), AscendC::Std::get<1>(actualShape)));
 
-            auto gmBlockB = gmB.Slice(Te::MakeCoord(kLoc, nLoc), Te::MakeShape(actualShape.k(), actualShape.n()));
+            auto gmBlockB = gmB.Slice(Te::MakeCoord(kLoc, nLoc), Te::MakeShape(AscendC::Std::get<2>(actualShape), AscendC::Std::get<1>(actualShape)));
             auto gmBlockScaleB = gmScaleB.Slice(
                 Te::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, nLoc),
-                Te::MakeShape(CeilDiv(actualShape.k(), MXFP_SCALE_GROUP_NUM), actualShape.n()));
+                Te::MakeShape(CeilDiv(AscendC::Std::get<2>(actualShape), MXFP_SCALE_GROUP_NUM), AscendC::Std::get<1>(actualShape)));
 
-            typename BlockMmad::BlockShape singleShape{actualShape.m(), actualShape.n(), actualShape.k(), 0};
+            typename BlockMmad::BlockShape singleShape{AscendC::Std::get<0>(actualShape), AscendC::Std::get<1>(actualShape), AscendC::Std::get<2>(actualShape), 0};
             blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias, tensorBlockUb, singleShape);
 
             NotifyVector(pingpongIdx);
@@ -370,14 +371,14 @@ __aicore__ inline void GroupMatmul2(
             WaitForCube(pingpongIdx);
             AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
-            MegaMoeCombineImpl::CombineTokens<ElementC, GemmCoord>(mLoc, nLoc, n, groupIdx, rankId, l0cOutUbGMM2, actualShape, params);
+            MegaMoeCombineImpl::CombineTokens<ElementC, GemmCoord>(mLoc, nLoc, n, groupIdx, rankId, l0cOutUbGMM2, oldActualShape, params);
             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
             NotifyCube(pingpongIdx);
         }
         pingpongIdx = 1 - pingpongIdx;
     }
-    startBlockIdx = (startBlockIdx + coreLoops) % blockNum;
+    startBlockIdx = (startBlockIdx + tileNum) % blockNum;
 }
 
 }  // namespace MegaMoeImpl
