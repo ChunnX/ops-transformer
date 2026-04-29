@@ -14,6 +14,7 @@
  */
 
 #define MLA_PROLOG_VERSION 3
+#define GLOBAL_OVERFLOW_MODE_CTRL 60
 #if __has_include("../../mla_prolog/op_kernel/kernel_mla_prolog_split_n.h")
 #include "../../mla_prolog/op_kernel/kernel_mla_prolog_split_n.h"
 #else
@@ -57,7 +58,6 @@ __global__ __aicore__ void mla_prolog_v3(
     __gm__ uint8_t *workspace,
     __gm__ uint8_t *tiling) 
 {
-#define GLOBAL_OVERFLOW_MODE_CTRL 60
 
 #if (__NPU_ARCH__ == 3510)
     int64_t globalOriOverflowMode = AscendC::GetCtrlSpr<GLOBAL_OVERFLOW_MODE_CTRL, GLOBAL_OVERFLOW_MODE_CTRL>();
