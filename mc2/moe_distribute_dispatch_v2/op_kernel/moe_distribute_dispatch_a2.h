@@ -272,8 +272,8 @@ __aicore__ inline void MoeDistributeDispatchA2<TemplateMC2TypeA2Func>::Init(
     aDump_.Init(aDumpAddr, aivId_, rankId_, worldSize_, rankId_, moeExpertNum_, worldSize_,
         tilingData.moeDistributeDispatchInfo.globalBs, bufferChosen_,
         Mc2A2Kernel::IS_FULLMESH, aivNum_, aDumpTensor_);
-    aDump_.UpdateFullmeshRankTaskInfo(worldTaskInfo_.startTaskId, worldTaskInfo_.taskNum, Mc2A2Kernel::IS_SEND);
-    aDump_.UpdateFullmeshRankTaskInfo(worldTaskInfo_.startTaskId, worldTaskInfo_.taskNum, Mc2A2Kernel::IS_RECV);
+    aDump_.UpdateFullmeshRankTaskInfo(worldTaskInfo_.startTaskId, worldTaskInfo_.endTaskId, Mc2A2Kernel::IS_SEND);
+    aDump_.UpdateFullmeshRankTaskInfo(worldTaskInfo_.startTaskId, worldTaskInfo_.endTaskId, Mc2A2Kernel::IS_RECV);
 }
 
 template <TemplateMC2TypeA2Class>

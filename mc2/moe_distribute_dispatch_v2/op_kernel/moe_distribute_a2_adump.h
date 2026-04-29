@@ -33,12 +33,12 @@ public:
                                 LocalTensor<uint8_t> dataStateLocalTensor)
     {
         selfDataStatusGMTensor_.SetGlobalBuffer((__gm__ uint32_t*)(aDumpWinStartAddr + aivId * WIN_ADDR_ALIGN));
-        selfTokenNumGMTensor_.SetGlobalBuffer((__gm__ uint32_t*)(aDumpWinStartAddr + aivNum * WIN_ADDR_ALIGN));
+        selfTokenNumGMTensor_.SetGlobalBuffer((__gm__ uint32_t*)(aDumpWinStartAddr + (aivNum + 1) * WIN_ADDR_ALIGN));
         aivId_ = aivId;
         uint32_t dataSize = UB_ALIGN * 2U;
         dataStateLocalTensor_ = dataStateLocalTensor.template ReinterpretCast<uint32_t>();
-        auto dataStateLocalTensor64 = dataStateLocalTensor.template ReinterpretCast<uint32_t>();
-        worldSize_ = epRankIdOriginal;
+        auto dataStateLocalTensor64 = dataStateLocalTensor.template ReinterpretCast<uint64_t>();
+        worldSize_ = epWorldSizeHccl;
         CleanUp(isLayered);
         SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
         DataCopy(dataStateLocalTensor_, selfDataStatusGMTensor_, UB_ALIGN / sizeof(uint32_t));

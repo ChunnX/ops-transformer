@@ -384,7 +384,7 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
     }
     LocalTensor<uint8_t> aDumpTensor = aDumpBuf_.Get<uint8_t>();
     GM_ADDR aDumpAddr = addrInfo_.GetIpcAdumpWinAddr();
-    aDump_.Init(aDumpAddr, coreIdx_, rankId_, worldSize_, rankId_, moeExpertNum_, worldSize_, globalBs_, magicValue_ & 0x1,
+    aDump_.Init(aDumpAddr, coreIdx_, rankId_, worldSize_, rankId_, moeExpertNum_, worldSize_, globalBs_, (magicValue_ - 1UL) & 0x1,
         Mc2A2Kernel::IS_HIERARCHY, aivNum_, aDumpTensor);
     PipeBarrier<PIPE_ALL>();
 }
@@ -1081,6 +1081,7 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
         aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_COMBINE_INTER_RECV);
         SumToServer();
         CopyPerformanceInfo();
+        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_COMBINE_FINISH);
         hccl_.Finalize();
     }
 }

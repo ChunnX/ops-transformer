@@ -171,13 +171,14 @@ public:
         // Get Hccl Buffer Size
         auto hcclContext = AscendC::GetHcclContext<AscendC::HCCL_GROUP_ID_0>();
         context_.Init(hcclContext);
+
         auto winSize = ((__gm__ HcclA2CombineOpParam *)hcclContext)->winSize;
         aivId_ = AscendC::GetBlockIdx();
         localMoeExpertNum_ = localMoeExpertNum;
         worldSize_ = worldSize;
         serverNum_ = worldSize / SERVER_RANK_SIZE;
         halfWorldSize_ = worldSize / 2U;
-        aDumpAddrStart_ = halfWorldSize_ - Mc2A2Kernel::BUFFER_ADUMP_WIN_SIZE * 2UL;
+        aDumpAddrStart_ = winSize / 2U - Mc2A2Kernel::BUFFER_ADUMP_WIN_SIZE * 2UL;
         uint64_t maxTokenStructBytes =
             axisH * 2UL + EXTRA_TOKEN_INFO_NUM * RoundUp(axisK, B32_PER_BLOCK) * sizeof(uint32_t); // token的数据类型BF16或FP16，都是2B
         serverSizeOnRdmaData_ = RoundUp(maxBs * maxTokenStructBytes + UB_32B_ALIGN, BUFFER_ALIGN);
@@ -198,7 +199,7 @@ public:
         // rdma addr
         UpdateMagicValue();
         // Get BufferId
-        uint64_t bufferId = magicValue_ & 0x1;
+        uint64_t bufferId = (magicValue_ - 1UL) & 0x1;
         rdmaFlagAddrStart_ = (bufferId & 0x1) ? (winSize / 2UL) : 0UL;
         rdmaDataAddrStart_ = rdmaFlagAddrStart_ + RDMA_STATUS_SIZE;
     }
@@ -302,7 +303,7 @@ public:
 
     __aicore__ inline GM_ADDR GetIpcAdumpWinAddr() const
     {
-        return context_.GetWindowsInAddr(curRankId_) + aDumpAddrStart_ + aivId_ * Mc2A2Kernel::BUFFER_ADUMP_WIN_SIZE_PER_AIV;
+        return context_.GetWindowsInAddr(curRankId_) + aDumpAddrStart_;
     }
     // ===== Sender =====
     // Dispatch阶段：获取本地发送缓冲区数据地址
@@ -386,8 +387,7 @@ public:
 
     __aicore__ inline GM_ADDR GetIpcAdumpWinAddr() const
     {
-        return context_.GetWindowsInAddr(curRankId_) +
-        aDumpAddrStart_ + Mc2A2Kernel::BUFFER_ADUMP_WIN_SIZE + aivId_ * Mc2A2Kernel::BUFFER_ADUMP_WIN_SIZE_PER_AIV;
+        return context_.GetWindowsInAddr(curRankId_) + aDumpAddrStart_ + Mc2A2Kernel::BUFFER_ADUMP_WIN_SIZE;
     }
 
     // ===== Sender =====
