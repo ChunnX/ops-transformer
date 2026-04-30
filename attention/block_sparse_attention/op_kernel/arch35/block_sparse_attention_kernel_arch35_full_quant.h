@@ -59,10 +59,10 @@ public:
 
     // Methods
     __aicore__ inline
-    BsaRegularKernelArch35() {}
+    BsaFullQuantKernelArch35() {}
 
     __aicore__ inline
-    void operator()(BsaKernelParamsArch35 const &params)
+    void operator()(BsaFullQuantKernelParamsArch35 const &params)
     {
         __gm__ BlockSparseAttentionTilingData *bsaTilingData =
             reinterpret_cast<__gm__ BlockSparseAttentionTilingData *>(params.tiling);

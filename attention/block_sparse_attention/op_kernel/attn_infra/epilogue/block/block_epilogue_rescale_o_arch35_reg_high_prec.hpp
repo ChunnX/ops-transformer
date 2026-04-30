@@ -237,7 +237,7 @@ public:
     }
 
     template <typename ElementOTmp>
-    __simd_vf__ inline void ScaleO(__ubuf__ T *goUb, uint32_t row, uint32_t colStride, uint32_t colFullLoop,
+    __simd_vf__ inline void ScaleO(__ubuf__ ElementOTmp *goUb, uint32_t row, uint32_t colStride, uint32_t colFullLoop,
                                    uint32_t colTail, uint32_t vlElemNum, float deqScalar)
     {
         using namespace AscendC::MicroAPI;
@@ -254,7 +254,7 @@ public:
                                                                   pregAll);
             }
             LoadAlign<ElementOTmp, StoreDist::DIST_NORM>(oVreg, goUb + i * colStride + colFullLoop * vlElemNum);
-            Muls(pVreg, pVreg, staticScale, pregTail);
+            Muls(oVreg, oVreg, deqScalar, pregTail);
             StoreAlign<ElementOTmp, StoreDist::DIST_NORM_B32>(goUb + i * colStride + colFullLoop * vlElemNum, oVreg,
                                                               pregTail);
         }

@@ -202,9 +202,9 @@ public:
                 tla::MakeCoord(subBlockIdx_ * mCopyOffset, 0), tla::MakeShape(m, n));
         WaitCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
 
-        if constexpr (std::is_same_v<ElementOuput, float8_e4m3_t>) {
+        if constexpr (std::is_same_v<ElementOutput, float8_e4m3_t>) {
             ScaleP(pAddr, m, nLoops, tailN, nRound, 448.0f);
-            CastPToFp8<ElementOutput, half>(pAddr, pAddr, m, nLoops, tailN, nRound);
+            // CastPToFp8<ElementOutput, half>(pAddr, pAddr, m, nLoops, tailN, nRound);
         }
 
         CopyPUbToPL1(l1PTensorTlaTile, ubPTensorTlaTile, m);
@@ -358,7 +358,8 @@ private:
         RegTensor<ElementS> expSumVreg;
         RegTensor<ElementS> maxVreg;
 
-        RegTensor<ElementP> expDstVreg;
+        RegTensor<ElementS> expDstVreg;
+        RegTensor<ElementP> pVreg;
 
         UnalignReg expSumUreg;
 
@@ -372,18 +373,32 @@ private:
                 Sub(expDstVreg, expVreg, maxVreg, pregFull);
                 Exp(expDstVreg, expDstVreg, pregFull);
                 Add(expSumVreg, expSumVreg, expDstVreg, pregFull);
-                StoreAlign<ElementP, DataCopyMode::DATA_BLOCK_COPY>(
-                    expUb + i * ELE_NUM_PER_C0 + j * blockStride * ELE_NUM_PER_C0 * BLOCK_REP_SIZE,
-                    expDstVreg, blockStride, pregFull);
+                if constexpr (std::is_same_v<ElementOutput, float8_e4m3_t>) {
+                    Cast<ElementP, ElementS, castTraitZero>(pVreg, expDstVreg, pregFull);
+                    StoreAlign<ElementP, DataCopyMode::DATA_BLOCK_COPY>(
+                        expUb + i * ELE_NUM_PER_C0 + j * blockStride * ELE_NUM_PER_C0 * BLOCK_REP_SIZE,
+                        pVreg, blockStride, pregFull);
+                } else {
+                    StoreAlign<ElementP, DataCopyMode::DATA_BLOCK_COPY>(
+                        expUb + i * ELE_NUM_PER_C0 + j * blockStride * ELE_NUM_PER_C0 * BLOCK_REP_SIZE,
+                        expDstVreg, blockStride, pregFull);
+                }
             }
             
             LoadAlign(expVreg, srcUb + i * S2BaseSize + nLoops * HALF_REP_SIZE);
             Sub(expDstVreg, expVreg, maxVreg, pregTailN);
             Exp(expDstVreg, expDstVreg, pregTailN);
             Add<ElementP, MaskMergeMode::MERGING>(expSumVreg, expSumVreg, expDstVreg, pregTailN);
-            StoreAlign<ElementP, DataCopyMode::DATA_BLOCK_COPY>(
-                expUb + i * ELE_NUM_PER_C0 + nLoops * blockStride * ELE_NUM_PER_C0 * BLOCK_REP_SIZE,
-                expDstVreg, blockStride, pregTailN);
+            if constexpr (std::is_same_v<ElementOutput, float8_e4m3_t>) {
+                Cast<ElementP, ElementS, castTraitZero>(pVreg, expDstVreg, pregTailN);
+                StoreAlign<ElementP, DataCopyMode::DATA_BLOCK_COPY>(
+                    expUb + i * ELE_NUM_PER_C0 + nLoops * blockStride * ELE_NUM_PER_C0 * BLOCK_REP_SIZE,
+                    pVreg, blockStride, pregTailN);
+            else {
+                StoreAlign<ElementP, DataCopyMode::DATA_BLOCK_COPY>(
+                    expUb + i * ELE_NUM_PER_C0 + nLoops * blockStride * ELE_NUM_PER_C0 * BLOCK_REP_SIZE,
+                    expDstVreg, blockStride, pregTailN);
+            }
 
             ReduceSum(expSumVreg, expSumVreg, pregFull);
             StoreUnAlign<ElementS, PostLiteral::POST_MODE_UPDATE>(expSumUb, expSumVreg, expSumUreg, 1);

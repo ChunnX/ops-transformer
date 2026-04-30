@@ -211,9 +211,9 @@ public:
                 tla::MakeCoord(subBlockIdx_ * mCopyOffset, 0), tla::MakeShape(m, n));
         WaitCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
 
-        if constexpr (std::is_same_v<ElementOuput, float8_e4m3_t>) {
-            ScaleP(pAddr, m, nLoops, tailN, nRound, 448.0f);
-            CastPToFp8<ElementOutput, half>(pAddr, pAddr, m, nLoops, tailN, nRound);
+        if constexpr (std::is_same_v<ElementOutput, float8_e4m3_t>) {
+            ScaleP(pAddr, m, nLoops, tailN, nRound, 448);
+            // CastPToFp8<ElementOutput, bloat16_t>(pAddr, pAddr, m, nLoops, tailN, nRound);
         }
 
         CopyPUbToPL1(l1PTensorTlaTile, ubPTensorTlaTile, m);
@@ -362,7 +362,7 @@ private:
 
     template <typename ElementP>
     __simd_vf__ inline void ScaleP(__ubuf__ ElementP *pUb, uint16_t m, uint16_t nLoopCount, uint32_t tailN,
-                                                uint16 nRound, ElementP staticScale)
+                                                uint16_t nRound, ElementP staticScale)
     {
         using namespace AscendC::MicroAPI;
 
@@ -374,7 +374,7 @@ private:
             for (uint16_t j = 0; j < nLoopCount; ++j) {
                 LoadAlign(pVreg, pUb + i * nRound + j * HALF_REP_SIZE);
                 Muls(pVreg, pVreg, staticScale, pregAll);
-                StoreAlign<ElementS, StoreDist::DIST_NORM_B8>(pUb + i * nRound + j * HALF_REP_SIZE, pVreg, pregAll);
+                StoreAlign<ElementP, StoreDist::DIST_NORM_B8>(pUb + i * nRound + j * HALF_REP_SIZE, pVreg, pregAll);
             }
             LoadAlign(pVreg, pUb + i * nRound + nLoopCount * HALF_REP_SIZE);
             Muls(pVreg, pVreg, staticScale, pregTailN);
@@ -460,6 +460,7 @@ private:
         RegTensor<ElementS> expDstVreg;
         RegTensor<ElementS> expDstVreg0;
         RegTensor<ElementS> expDstVreg1;
+        RegTensor<ElementP> pVreg;
 
         UnalignReg expSumUreg;
 
@@ -484,9 +485,15 @@ private:
                 Or((RegTensor<uint16_t>&)expDstVreg,
                     (RegTensor<uint16_t>&)expDstVreg0, (RegTensor<uint16_t>&)expDstVreg1,
                     pregFull);
-                StoreAlign<ElementP, DataCopyMode::DATA_BLOCK_COPY>(
-                    expUb + i * ELE_NUM_PER_C0 + j * blockStride * ELE_NUM_PER_C0 * BLOCK_REP_SIZE,
-                    expDstVreg, blockStride, pregFull);
+                if constexpr (std::is_same_v<ElementOutput, float8_e4m3_t>) {
+                    Cast<ElementP, ElementS, castTraitZero>(pVreg, expDstVreg, pregFull);
+                    StoreAlign<ElementP, DataCopyMode::DIST_NORM_B8>(
+                        expUb + i * S2BaseSize + j * HALF_REP_SIZE, pVreg, pregFull);
+                } else {
+                    StoreAlign<ElementP, DataCopyMode::DATA_BLOCK_COPY>(
+                        expUb + i * ELE_NUM_PER_C0 + j * blockStride * ELE_NUM_PER_C0 * BLOCK_REP_SIZE,
+                        expDstVreg, blockStride, pregFull);
+                }
             }
             
             LoadAlign(expVreg, srcUb + i * S2BaseSize + nLoops * HALF_REP_SIZE);
@@ -501,9 +508,16 @@ private:
             Or((RegTensor<uint16_t>&)expDstVreg,
                 (RegTensor<uint16_t>&)expDstVreg0, (RegTensor<uint16_t>&)expDstVreg1,
                 pregFull);
-            StoreAlign<ElementP, DataCopyMode::DATA_BLOCK_COPY>(
-                expUb + i * ELE_NUM_PER_C0 + nLoops * blockStride * ELE_NUM_PER_C0 * BLOCK_REP_SIZE,
-                expDstVreg, blockStride, pregTailN);
+
+            if constexpr (std::is_same_v<ElementOutput, float8_e4m3_t>) {
+                Cast<ElementP, ElementS, castTraitZero>(pVreg, expDstVreg, pregTailN);
+                StoreAlign<ElementP, DataCopyMode::DIST_NORM_B8>(
+                    expUb + i * S2BaseSize + nLoops * HALF_REP_SIZE, pVreg, pregTailN);
+            else {
+                StoreAlign<ElementP, DataCopyMode::DATA_BLOCK_COPY>(
+                    expUb + i * ELE_NUM_PER_C0 + nLoops * blockStride * ELE_NUM_PER_C0 * BLOCK_REP_SIZE, expDstVreg,
+                    blockStride, pregTailN);
+            }
 
             ReduceSum(expSumVreg, expSumVreg, pregFull);
             StoreUnAlign<float, PostLiteral::POST_MODE_UPDATE>(expSumUb, expSumVreg, expSumUreg, 1);
