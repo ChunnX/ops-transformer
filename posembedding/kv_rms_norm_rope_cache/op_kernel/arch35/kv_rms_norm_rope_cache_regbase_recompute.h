@@ -100,7 +100,7 @@ public:
         pipe_->InitBuffer(inQueueCosSin, BUFFER_COUNT_DOUBLE, BUFFER_COUNT_DOUBLE * this->ubFactor * sizeof(T_KV));
         pipe_->InitBuffer(inQueueX, BUFFER_COUNT_DOUBLE, this->ubFactor * sizeof(T_KV));
         pipe_->InitBuffer(outQueue, BUFFER_COUNT_DOUBLE, BUFFER_COUNT_DOUBLE * this->ubFactor * sizeof(T_KV));
-        pipe_->InitBuffer(xPowBuffer, BUFFER_COUNT_DOUBLE * this->ubFactor * sizeof(T_KV));
+        pipe_->InitBuffer(xPowBuffer, BUFFER_COUNT_DOUBLE * this->ubFactor * sizeof(float));
         
         if constexpr (IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
                       IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) {
@@ -135,14 +135,15 @@ public:
                 AscendC::MicroAPI::DataCopy(xFp32Addr, vreg2, mask);
             }
 
-            // 尾VL计算
-            width = regTailWidth;
-            mask = AscendC::MicroAPI::UpdateMask<float>(width);
-            auto xAddr = xPtr + repeatTimesFloor * VL_FP32;
-            auto xFp32Addr = xFp32Ptr + repeatTimesFloor * VL_FP32;
-            LoadDataAndCast2Fp32(vreg1, xAddr, mask);
-            AscendC::MicroAPI::Mul(vreg2, vreg1, vreg1, mask);
-            AscendC::MicroAPI::DataCopy(xFp32Addr, vreg2, mask);
+            if (regTailWidth > 0) {
+                width = regTailWidth;
+                mask = AscendC::MicroAPI::UpdateMask<float>(width);
+                auto xAddr = xPtr + repeatTimesFloor * VL_FP32;
+                auto xFp32Addr = xFp32Ptr + repeatTimesFloor * VL_FP32;
+                LoadDataAndCast2Fp32(vreg1, xAddr, mask);
+                AscendC::MicroAPI::Mul(vreg2, vreg1, vreg1, mask);
+                AscendC::MicroAPI::DataCopy(xFp32Addr, vreg2, mask);
+            }
         }
     }
 
@@ -168,15 +169,16 @@ public:
                 AscendC::MicroAPI::DataCopy(x1Addr, vreg3, mask);
             }
 
-            // 尾VL计算
-            width = regTailWidth;
-            mask = AscendC::MicroAPI::UpdateMask<float>(width);
-            auto x1Addr = x1Ptr + repeatTimesFloor * VL_FP32;
-            auto x2Addr = x2Ptr + repeatTimesFloor * VL_FP32;
-            LoadDataAndCast2Fp32<float>(vreg1, x1Addr, mask);
-            LoadDataAndCast2Fp32<float>(vreg2, x2Addr, mask);
-            AscendC::MicroAPI::Add(vreg3, vreg1, vreg2, mask);
-            AscendC::MicroAPI::DataCopy(x1Addr, vreg3, mask);
+            if (regTailWidth > 0) {
+                width = regTailWidth;
+                mask = AscendC::MicroAPI::UpdateMask<float>(width);
+                auto x1Addr = x1Ptr + repeatTimesFloor * VL_FP32;
+                auto x2Addr = x2Ptr + repeatTimesFloor * VL_FP32;
+                LoadDataAndCast2Fp32<float>(vreg1, x1Addr, mask);
+                LoadDataAndCast2Fp32<float>(vreg2, x2Addr, mask);
+                AscendC::MicroAPI::Add(vreg3, vreg1, vreg2, mask);
+                AscendC::MicroAPI::DataCopy(x1Addr, vreg3, mask);
+            }
         }
     }
 

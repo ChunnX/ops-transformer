@@ -338,7 +338,8 @@ ge::graphStatus KvRmsNormRopeCacheRegbaseRecomputeTiling::DoOpTiling()
     tilingData_.set_cacheMode(currentCacheMode_);
 
     int64_t ubFlexible_ = ubSize_ - UB_RESERVED_BYTE - RECOMPUTE_REDUCE_SUM_BUFFER_BTYES - RECOMPUTE_BINARY_CACHE_BTYES;
-    int64_t ubFactor = FloorDiv(ubFlexible_, CONST_ELEVEN * DOUBLE_BUFFER * kvDtypeSize_);
+    int64_t ubFactor = FloorDiv(
+        ubFlexible_, CONST_ELEVEN * DOUBLE_BUFFER * kvDtypeSize_ + DOUBLE_BUFFER * (FLOAT32_BYTES - kvDtypeSize_));
 
     OP_CHECK_IF(
         (ubFactor <= 0),
