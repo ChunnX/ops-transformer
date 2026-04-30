@@ -61,6 +61,7 @@ TILING_DATA_FIELD_DEF(int64_t, lastCoreLoops);
 TILING_DATA_FIELD_DEF(int64_t, perLoopCols);
 TILING_DATA_FIELD_DEF(int64_t, lastLoopCols);
 TILING_DATA_FIELD_DEF(int64_t, colLoops);
+TILING_DATA_FIELD_DEF(int64_t, gatherMode);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(MoeV2GatherOutComputeTilingDataOp, MoeV2GatherOutComputeTilingData)
 
