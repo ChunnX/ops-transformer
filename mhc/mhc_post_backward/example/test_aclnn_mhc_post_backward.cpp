@@ -181,32 +181,32 @@ int main()
     }
     // Create hPost aclTensor.
     ret = CreateAclTensor(hPostHostData, hPostShape, &hPostDeviceAddr, aclDataType::ACL_FLOAT,
-                            &hPostTensor);
+        &hPostTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }
 
     // Create gradX aclTensor.
     ret = CreateAclTensor(gradXHostData, gradXShape, &gradXDeviceAddr, aclDataType::ACL_FLOAT16,
-                            &gradXTensor);
+        &gradXTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }
     // Create gradHres aclTensor.
     ret = CreateAclTensor(gradHresHostData, gradHresShape, &gradHresDeviceAddr, aclDataType::ACL_FLOAT,
-                            &gradHresTensor);
+        &gradHresTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }
     // Create gradHout aclTensor.
     ret = CreateAclTensor(gradHoutHostData, gradHoutShape, &gradHoutDeviceAddr, aclDataType::ACL_FLOAT16,
-                            &gradHoutTensor);
+        &gradHoutTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }
     // Create gradHpost aclTensor.
     ret = CreateAclTensor(gradHpostHostData, gradHpostShape, &gradHpostDeviceAddr, aclDataType::ACL_FLOAT,
-                            &gradHpostTensor);
+        &gradHpostTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }
@@ -214,7 +214,7 @@ int main()
     // 3. Call CANN operator library API.
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor;
-    // Call the first interface. 
+    // Call the first interface.
     ret = aclnnMhcPostBackwardGetWorkspaceSize(
         gradYTensor, xTensor, hResTensor, hOutTensor, hPostTensor, gradXTensor, gradHresTensor, gradHoutTensor,
         gradHpostTensor, &workspaceSize, &executor);
