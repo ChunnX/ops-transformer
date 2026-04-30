@@ -161,9 +161,10 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
                                                    bool isLast, bool isTail)
 {
     using cDataType = typename CType::T;
+    using Mmv3BiasType = std::conditional_t<std::is_same_v<BiasType, bfloat16_t>, float, BiasType>;
     auto&& cfg = tilingData_->param;
     cfg.rankID = rankId_;
-    MC2MatmulV3::MC2MatmulAswKernelDerive<AType, BType, CType, BiasType, MC2MatmulV3::MC2MatmulAswBlockDerive> mmv3;
+    MC2MatmulV3::MC2MatmulAswKernelDerive<AType, BType, CType, Mmv3BiasType, MC2MatmulV3::MC2MatmulAswBlockDerive> mmv3;
     auto tempGM = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? cGM : gmToFloat_;
     mmv3.Init(aGM_, bGM_, tempGM, biasGM_, nullptr, nullptr, &tiling, GetTPipePtr(), cfg, isTail, false);
     uint64_t sliceM = static_cast<uint64_t>(tiling.tCubeTiling.M) / cfg.rankDim;
