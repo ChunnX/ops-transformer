@@ -1,0 +1,6 @@
+case_id;m;n;k;transpose_x;transpose_weight;antiquant_group_size;has_bias;has_antiquant_offset
+0;256;256;256;0;0;0;1;1
+1;512;256;256;0;0;0;1;1
+2;256;512;256;0;0;0;0;1
+3;1024;1024;1024;0;0;0;1;1
+4;128;256;512;0;0;0;1;1

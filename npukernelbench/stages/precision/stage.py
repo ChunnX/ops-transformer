@@ -6,6 +6,7 @@ import os
 import pickle
 import subprocess
 import sys
+from collections import defaultdict
 from pathlib import Path
 from typing import Optional
 
@@ -54,6 +55,8 @@ class PrecisionStage:
             output_path,
         ]
         env = os.environ.copy()
+        from npukernelbench.stages.compile.verifier import custom_opp_runtime_env
+        env.update(custom_opp_runtime_env(task.build))
         project_root = str(Path(__file__).resolve().parents[3])
         env["PYTHONPATH"] = (
             f"{project_root}{os.pathsep}{env['PYTHONPATH']}"
@@ -118,6 +121,119 @@ class PrecisionStage:
         with open(output_path, "rb") as f:
             task.precision_result = pickle.load(f)
 
+    def execute_group(self, tasks: list[TestHandle], ctx: PipelineContext) -> None:
+        """Run all cases for one compiled sample in a single worker process."""
+        if not tasks:
+            return
+        if len(tasks) == 1:
+            self.execute(tasks[0], ctx)
+            return
+
+        first = tasks[0]
+        first_key = _compiled_artifact_key(first)
+        if any(_compiled_artifact_key(task) != first_key for task in tasks):
+            raise RuntimeError("Precision group contains tasks from different compiled artifacts")
+
+        group_log_dir = os.path.dirname(first.test_paths.precision_log)
+        os.makedirs(group_log_dir, exist_ok=True)
+        input_path = os.path.join(group_log_dir, f"{first.build.short_id}_precision_group.input.pkl")
+        output_path = os.path.join(group_log_dir, f"{first.build.short_id}_precision_group.result.pkl")
+
+        for path in (input_path, output_path):
+            if os.path.exists(path):
+                os.remove(path)
+        for task in tasks:
+            for path in (task.test_paths.precision_log,):
+                if os.path.exists(path):
+                    os.remove(path)
+
+        with open(input_path, "wb") as f:
+            pickle.dump({"tasks": tasks, "config": self.config}, f)
+
+        cmd = [
+            sys.executable,
+            "-m",
+            "npukernelbench.stages.precision.worker",
+            input_path,
+            output_path,
+        ]
+        env = os.environ.copy()
+        from npukernelbench.stages.compile.verifier import custom_opp_runtime_env
+        env.update(custom_opp_runtime_env(first.build))
+        project_root = str(Path(__file__).resolve().parents[3])
+        env["PYTHONPATH"] = (
+            f"{project_root}{os.pathsep}{env['PYTHONPATH']}"
+            if env.get("PYTHONPATH")
+            else project_root
+        )
+
+        try:
+            proc = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                env=env,
+                timeout=self.config.eval.timeout_precision * max(1, len(tasks)),
+            )
+        except subprocess.TimeoutExpired as e:
+            for task in tasks:
+                _append_worker_output(
+                    task.test_paths.precision_log,
+                    f"Precision worker timed out after {self.config.eval.timeout_precision * len(tasks)}s\n",
+                    e.stdout,
+                    e.stderr,
+                )
+                task.precision_result = PrecisionResult(
+                    success=False, n_success=0, n_failed=1, log_file=task.test_paths.precision_log
+                )
+            return
+
+        if proc.returncode != 0:
+            for task in tasks:
+                _append_worker_output(
+                    task.test_paths.precision_log,
+                    f"Precision worker failed with exit code {proc.returncode}\n",
+                    proc.stdout,
+                    proc.stderr,
+                )
+                task.precision_result = PrecisionResult(
+                    success=False, n_success=0, n_failed=1, log_file=task.test_paths.precision_log
+                )
+            return
+
+        if not os.path.exists(output_path):
+            for task in tasks:
+                _append_worker_output(
+                    task.test_paths.precision_log,
+                    "Precision worker finished without writing a result file\n",
+                    proc.stdout,
+                    proc.stderr,
+                )
+                task.precision_result = PrecisionResult(
+                    success=False, n_success=0, n_failed=1, log_file=task.test_paths.precision_log
+                )
+            return
+
+        with open(output_path, "rb") as f:
+            results = pickle.load(f)
+
+        if len(results) != len(tasks):
+            for task in tasks:
+                _append_worker_output(
+                    task.test_paths.precision_log,
+                    f"Precision worker returned {len(results)} results for {len(tasks)} tasks\n",
+                    proc.stdout,
+                    proc.stderr,
+                )
+                task.precision_result = PrecisionResult(
+                    success=False, n_success=0, n_failed=1, log_file=task.test_paths.precision_log
+                )
+            return
+
+        for task, result in zip(tasks, results):
+            task.precision_result = result
+
     def execute_inline(self, task: TestHandle, ctx: PipelineContext) -> None:
         """Run precision in the current process.
 
@@ -161,11 +277,9 @@ class PrecisionStage:
             df = pd.read_csv(build.paths.test_cases_path, sep=";")
             df = _preprocess_dataframe(df)
 
-            # Redirect C++ stdout to log file so [TILING] output is captured
-            stdout_redirector = _StdoutRedirector(task.test_paths.precision_log) \
-                if self.config.tiling_dump else None
-            if stdout_redirector:
-                stdout_redirector.start()
+            # Redirect C++ stdout/stderr to log file so kernel output is captured
+            stdout_redirector = _StdoutRedirector(task.test_paths.precision_log)
+            stdout_redirector.start()
 
             try:
                 for i, row in df.iterrows():
@@ -211,8 +325,11 @@ class PrecisionStage:
             )
 
     def execute_batch(self, tasks: list[TestHandle], ctx: PipelineContext) -> None:
+        groups: dict[tuple[str, str, str, int], list[TestHandle]] = defaultdict(list)
         for task in tasks:
-            self.execute(task, ctx)
+            groups[_compiled_artifact_key(task)].append(task)
+        for group in groups.values():
+            self.execute_group(group, ctx)
 
     def try_restore(self, task: TestHandle) -> bool:
         """Check disk for existing precision log and restore precision_result.
@@ -315,10 +432,21 @@ class PrecisionStage:
 
 
 def _set_custom_opp_path(build: BuildHandle) -> None:
-    from npukernelbench.stages.compile.verifier import _find_custom_lib_path
-    lib_path = _find_custom_lib_path(build.paths.src_dir)
-    if lib_path:
-        os.environ["ASCEND_CUSTOM_OPP_PATH"] = f"{lib_path}/"
+    if os.environ.get("CUST_OPAPI_LIB_PATH") and os.environ.get("CUSTOM_OPTILING_LIB_PATH"):
+        return
+    from npukernelbench.stages.compile.verifier import custom_opp_runtime_env
+    os.environ.update(custom_opp_runtime_env(build))
+
+
+def _compiled_artifact_key(task: TestHandle) -> tuple[str, str, str, int]:
+    """Identify the exact compiled artifact set shared by precision cases."""
+    build = task.build
+    return (
+        os.path.abspath(build.paths.work_dir),
+        os.path.abspath(build.paths.src_dir),
+        os.path.abspath(build.paths.build_dir),
+        build.sample_id,
+    )
 
 
 def _append_worker_output(log_path: str, message: str, stdout=None, stderr=None) -> None:
@@ -412,23 +540,34 @@ def _log_tensor_details(logger, inputs, ref_output, test_output, abs_diff, rel_d
 
 
 class _StdoutRedirector:
-    """Redirect C++ stdout (fd 1) to a log file so printf output is captured."""
+    """Redirect C++ stdout/stderr (fd 1 and fd 2) to a log file.
+
+    Captures all C-level output (printf, fprintf, AscendC runtime errors)
+    so kernel failures are fully logged.
+    """
 
     def __init__(self, log_path: str):
         self._log_path = log_path
-        self._saved_fd = None
+        self._saved_fd_out = None
+        self._saved_fd_err = None
 
     def start(self):
-        self._saved_fd = os.dup(1)
+        self._saved_fd_out = os.dup(1)
+        self._saved_fd_err = os.dup(2)
         self._log_fd = os.open(self._log_path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
         os.dup2(self._log_fd, 1)
+        os.dup2(self._log_fd, 2)
         os.close(self._log_fd)
 
     def stop(self):
-        if self._saved_fd is not None:
+        if self._saved_fd_out is not None:
             import ctypes
             sys.stdout.flush()
+            sys.stderr.flush()
             ctypes.CDLL(None).fflush(None)
-            os.dup2(self._saved_fd, 1)
-            os.close(self._saved_fd)
-            self._saved_fd = None
+            os.dup2(self._saved_fd_out, 1)
+            os.dup2(self._saved_fd_err, 2)
+            os.close(self._saved_fd_out)
+            os.close(self._saved_fd_err)
+            self._saved_fd_out = None
+            self._saved_fd_err = None

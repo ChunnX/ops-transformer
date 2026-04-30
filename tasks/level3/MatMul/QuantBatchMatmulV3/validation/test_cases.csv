@@ -1,0 +1,6 @@
+case_id;shape;dtype;transpose_x1;transpose_x2;has_bias;out_dtype;group_size
+0;[2, 64, 32];int8;false;false;false;0;0
+1;[2, 32, 64];int8;false;false;false;0;0
+2;[1, 128, 128];int8;false;false;false;0;0
+3;[4, 16, 16];int8;false;false;false;0;0
+4;[2, 64, 64];int8;false;false;false;0;0
