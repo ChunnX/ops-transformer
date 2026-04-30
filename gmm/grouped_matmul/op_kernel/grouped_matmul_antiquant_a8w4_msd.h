@@ -361,7 +361,7 @@ __aicore__ inline void GMMA8W4MSDCompute<mmType>::MMCompute(uint32_t groupIdx, M
 #ifndef __CCE_KT_TEST__
             mm.Iterate();
             mm.GetTensorC(mmOutGm[worskspaceOffset], loopK == 0 ? 0 : 1, true);
-            AscendC::DumpTensor(mmOutGm, 10, 8);
+            // AscendC::DumpTensor(mmOutGm, 10, 8);
             printf("mmOutGm[worskspaceOffset]:  0x%lx\n", mmOutGm[worskspaceOffset].GetPhyAddr());
 #endif
             worskspaceOffset += MM_BASE_BLOCK_OFFSET;
@@ -402,7 +402,9 @@ __aicore__ inline void GMMA8W4MSDCompute<mmType>::VectorCompute(uint32_t groupId
             if (taskRation != 0 && vecCount % taskRation != subBlockIdx) { continue; }
             if (unlikely(offsetM + vecBaseM >= curCubeSingleM)) { curVecBaseM = curCubeSingleM - offsetM; }
             LocalTensor<cT::T> mmOutLocal = vecInQueue.AllocTensor<cT::T>();
-            if constexpr (mmType::BT::format == CubeFormat::ND) {
+            printf("mmOutGm: 0x%lx\n", mmOutGm.GetPhyAddr());
+            AscendC::DumpTensor(mmOutGm, 10, 8);
+            if constexpr (mmType::BT::format == CubeFormat::ND) {    
                 DataCopyPad2DA8W4ND(mmOutLocal, mmOutGm[mmOutOffset + offsetM * 2 * curVecBaseN],
                     curVecBaseM, curVecBaseN, curVecBaseN * 2);   // 2: 2 lines int4 to 1 line int8
             } else {
@@ -415,6 +417,7 @@ __aicore__ inline void GMMA8W4MSDCompute<mmType>::VectorCompute(uint32_t groupId
             }
             targetAddr = curVecBaseM * alignBaseN;
             uint64_t lowBitAddr = mmOutOffset + (offsetM * 2 + 1) * curVecBaseN;
+            
             if constexpr (mmType::BT::format == CubeFormat::ND) {
                 DataCopyPad2DA8W4ND(mmOutLocal[targetAddr],
                     mmOutGm[lowBitAddr],

@@ -2103,7 +2103,7 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
           if (is_in_a8w4_white_list) {
             workspaces[0] += static_cast<size_t>((cvParallNum * aicNum * A8W4_MSD_BASE_M * A8W4_MSD_BASE_N * static_cast<uint32_t>(sizeof(short))) * TWO);
           } else {
-            workspaces[0] += static_cast<size_t>((cvParallNum * aicNum * singleN * singleM * static_cast<uint32_t>(sizeof(int32_t)) * EIGHT  ));
+            workspaces[0] += static_cast<size_t>((cvParallNum * aicNum * singleN * singleM * static_cast<uint32_t>(sizeof(int32_t)) * EIGHT * EIGHT  ));
           }
           printf("workspaces[0] = %lld\n", workspaces[0]);
           // --------------计算最小所需空间------------
