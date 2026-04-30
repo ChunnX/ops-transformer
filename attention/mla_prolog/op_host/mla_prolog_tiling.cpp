@@ -319,14 +319,17 @@ ge::graphStatus MlaPrologTiling::SetScenarioInfo()
     } else {
         scenarioInfo_.actualSeqMode_ = ACTUAL_SEQ_MODE::DISABLED;
     }
-
-    // 当前仅BS>8K的MXFP8用例路由到切M模板，其余路由到切N模板
+    uint32_t cvRatio = aivNum_ / aicNum_;
+    // 当前仅在BS>=8K且数据类型为MXFP8时路由到切M模板，其他情况均路由到切N模板
     scenarioInfo_.splitMFlag_ = 0U;
     if ((scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_NO_QUANT ||
         scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR ||
         scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TILE) &&
-        baseShapeInfo_.tSize >= 8192) {
-        scenarioInfo_.splitMFlag_ = 1U;
+        baseShapeInfo_.tSize >= 8192 && cvRatio == 2) {
+        if ((baseShapeInfo_.heSize == 7168 || baseShapeInfo_.heSize == 7680) &&
+            baseShapeInfo_.nSize == 128) { // 后续泛化放开限制
+                scenarioInfo_.splitMFlag_ = 1U;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -598,7 +601,7 @@ ge::graphStatus MlaPrologTiling::CalcWorkSpace()
             scenarioInfo_.quantMode_ == QUANT_MODE::HIF8_FULL_QUANT_KV_QUANT_PER_TENSOR) {
             // 全量化场景mmQnRes输出到workspace, B, S1, N, Hckv, BF16
             workspaceSize_ += static_cast<size_t>(stepBatchSize_) * static_cast<size_t>(baseShapeInfo_.nSize) * 
-                              static_cast<size_t>(baseShapeInfo_.hckvSize) * mm4Mult * static_cast<size_t>(NUM_BYTES_BF16);
+                static_cast<size_t>(baseShapeInfo_.hckvSize) * mm4Mult * static_cast<size_t>(NUM_BYTES_BF16);
         }
     } else {
         workspaceSize_ += static_cast<size_t>(stepBatchSize_) * static_cast<size_t>(baseShapeInfo_.hcqSize) *
