@@ -15,6 +15,7 @@
 #include "grouped_matmul_tiling.h"
 
 #include <climits>
+#include <cstdio>
 #include "register/op_impl_registry.h"
 #include "arch35/grouped_weight_quant_batch_matmul_tiling.h"
 #include "arch35/grouped_no_quant_matmul_tiling.h"
@@ -1780,6 +1781,9 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
       constexpr uint32_t FIVE = 5;
       constexpr uint32_t FOUR = 4;
       constexpr uint32_t ONE = 1;
+      //begin
+      constexpr int64_t TUNING_WS_AUTO = -1;
+      constexpr uint32_t WS_ALIGN_8 = 8;//2m与16对齐
 
       uint32_t singleN = 256;
       uint32_t singleM = 128;
@@ -1856,6 +1860,7 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
         tilingDataA8W4.hpTilingData.set_ori_in1_shape(ori_in1_shape.data());
         tilingDataA8W4.hpTilingData.set_ori_out_shape(ori_out_shape.data());
         uint32_t aic = aicNum;
+        // uint32_t aic = 1;
         uint32_t aiv = compileInfoPtr->aivNum;
         uint64_t szUB = compileInfoPtr->ubSize;
         uint64_t szL0A = compileInfoPtr->l0ASize;
@@ -1894,6 +1899,7 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
         size_t *workspaces = context->GetWorkspaceSizes(1); // get second variable
         workspaces[0] = SYS_WORKSPACE_SIZE;                 // default size
         workspaces[0] += workspaceSize;
+        // workspaces[0] += preProcessWorkspaceSize;                //分配前处理地址
 
         tilingDataA8W4.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
         context->GetRawTilingData()->SetDataSize(tilingDataA8W4.GetDataSize());
@@ -2090,24 +2096,42 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
                                                    GROUPED_MATMUL_A16W8_KERNEL_TEMPLATE_NONE,
                                                    GROUPED_MATMUL_AIV_AIC_RATIO_2, 0));
 		  }
-          tilingDataA8W4.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
-          context->GetRawTilingData()->SetDataSize(tilingDataA8W4.GetDataSize());
-
           size_t* workspaces = context->GetWorkspaceSizes(1);  // get second variable
           OP_CHECK_NULL_WITH_CONTEXT(context, workspaces);  // check workspaces is not null
           workspaces[0] = SYS_WORKSPACE_SIZE;  // default size
+          printf("workspaces[0] = %lld\n", workspaces[0]);
           if (is_in_a8w4_white_list) {
             workspaces[0] += static_cast<size_t>((cvParallNum * aicNum * A8W4_MSD_BASE_M * A8W4_MSD_BASE_N * static_cast<uint32_t>(sizeof(short))) * TWO);
           } else {
-            workspaces[0] += static_cast<size_t>((cvParallNum * aicNum * singleN * singleM * static_cast<uint32_t>(sizeof(int32_t)) * EIGHT));
+            workspaces[0] += static_cast<size_t>((cvParallNum * aicNum * singleN * singleM * static_cast<uint32_t>(sizeof(int32_t)) * EIGHT * EIGHT  ));
           }
-          //begin
-          tilingDataA8W4.gmmBaseParams.set_preProcessWorkspaceOffset(workspaces[0]);
-          workspaces[0] += m * k;
-          workspaces[0] += SYS_WORKSPACE_SIZE;  // default size
+          printf("workspaces[0] = %lld\n", workspaces[0]);
+          // --------------计算最小所需空间------------
+          //矩阵空间
+          uint64_t preProcessWorkspaceSize = (uint64_t)AlignUp(m, WS_ALIGN_8) * k * sizeof(int8_t) ;
+
+          tuningConfigWorkspace_ = (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > TUNING_CONFIG_ALLOW_WORKSPACE_INDEX) ?
+                    (reinterpret_cast<const int64_t *>(tuningConfigPtr->GetData()))[TUNING_CONFIG_ALLOW_WORKSPACE_INDEX] : 0;
+
+          bool isWorkspaceValid = 
+              (static_cast<int64_t>(preProcessWorkspaceSize) + workspaces[0] <= tuningConfigWorkspace_) || 
+              (tuningConfigWorkspace_ == TUNING_WS_AUTO);
+          printf("tuningConfigWorkspace_ = %lld\n", tuningConfigWorkspace_);
+
+          // 空间足够 → 开启前处理 反之走原路径
+          uint32_t isA8W4MSDPreNZ = 0;
+
+          // workspace 合法, k64位对齐 → 开启 ND→NZ 预处理分支并且计算需要额外分配的空间大小
+          if (isWorkspaceValid && k % 64 == 0) {
+              isA8W4MSDPreNZ = 1;
+              workspaces[0] += preProcessWorkspaceSize ;                
+          }
+          printf("workspaces[0] = %lld\n", workspaces[0]);
+          printf("preProcessWorkspaceSize = %lld\n", preProcessWorkspaceSize);
+          tilingDataA8W4.gmmBaseParams.set_isA8W4MSDPreNZ(isA8W4MSDPreNZ);
+          printf("isA8W4MSDPreNZ = %u\n", isA8W4MSDPreNZ);
           tilingDataA8W4.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
           context->GetRawTilingData()->SetDataSize(tilingDataA8W4.GetDataSize());
-          //end
           return ge::GRAPH_SUCCESS;
         }
       }
@@ -2173,8 +2197,11 @@ ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForGMM(gert::TilingParseContext* c
   OP_CHECK_NULL_WITH_CONTEXT(context, compileInfoPtr);
 
   auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
-  compileInfoPtr->aicNum = ascendcPlatform.GetCoreNumAic();
-  compileInfoPtr->aivNum = ascendcPlatform.GetCoreNumAiv();
+
+  // compileInfoPtr->aicNum = ascendcPlatform.GetCoreNumAic();
+  compileInfoPtr->aicNum = 1;
+  // compileInfoPtr->aivNum = ascendcPlatform.GetCoreNumAiv();
+  compileInfoPtr->aivNum = 2;
   compileInfoPtr->socVersion = ascendcPlatform.GetSocVersion();
   compileInfoPtr->npuArch = ascendcPlatform.GetCurNpuArch();
   ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, compileInfoPtr->ubSize);

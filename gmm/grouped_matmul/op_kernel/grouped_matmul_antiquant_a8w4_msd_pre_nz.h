@@ -15,6 +15,7 @@
 
 #ifndef GROUPED_MATMUL_ANTIQUANT_A8W4_MSD_PRE_NZ_H
 #define GROUPED_MATMUL_ANTIQUANT_A8W4_MSD_PRE_NZ_H
+#define ASCENDC_DUMP
 
 #include "kernel_operator.h"
 #include "grouped_matmul_antiquant_a8w4_msd_pre.h"
@@ -36,11 +37,12 @@ constexpr uint32_t A8W4PRE_VECTOR_BASE_M = 16;     //单位为字节数
 constexpr uint32_t A8W4PRE_VECTOR_BASE_K = 512;    //单位为元素个数
 constexpr int32_t MASK = 128;
 constexpr half ONE_SIXTEEN = 0.0625;
+constexpr uint32_t ALIGN_MTE = 32;
 
 class GMMA8W4PreProcessNZ {
 public:
     __aicore__ inline GMMA8W4PreProcessNZ(){};
-    __aicore__ inline void Init(GM_ADDR x, GM_ADDR y, GM_ADDR groupList, GM_ADDR workspace, const GMMBaseParams& tilingData, TPipe *pipe);
+    __aicore__ inline void Init(GM_ADDR x, GM_ADDR x_out, GM_ADDR groupList, GM_ADDR workspace, const GMMBaseParams& tilingData, TPipe *pipe);
     __aicore__ inline void Process();
     __aicore__ inline void copyIn(uint32_t mIdx, uint32_t kIdx, uint32_t curVecBaseM, uint32_t curVecBaseK);
     __aicore__ inline void compute(uint32_t mIdx, uint32_t kIdx, uint32_t curVecBaseM, uint32_t curVecBaseK);
@@ -94,23 +96,21 @@ private:
     uint32_t k{0};
 };
 
-__aicore__ inline void GMMA8W4PreProcessNZ::Init(GM_ADDR x, GM_ADDR y, GM_ADDR groupList, GM_ADDR workspace, const GMMBaseParams& tilingData, TPipe *pipe){
+__aicore__ inline void GMMA8W4PreProcessNZ::Init(GM_ADDR x, GM_ADDR x_out, GM_ADDR groupList, GM_ADDR workspace, const GMMBaseParams& tilingData, TPipe *pipe){
 
     groupListGm.SetGlobalBuffer((__gm__ int64_t *)groupList);
     xGm.SetGlobalBuffer(GetTensorAddr<int8_t>(0, x));
-
-    m = tilingData.m;
-    k = tilingData.k;
-    size_t WorkspaceOffset = m * k;
-    
-    xOutInt4.SetGlobalBuffer((__gm__ int4b_t*)((__gm__ int8_t*)y + WorkspaceOffset));
-    // dbgxOutInt4.SetGlobalBuffer(((__gm__ int8_t*)y + tilingData.preProcessWorkspaceOffset));
+    xOutInt4.SetGlobalBuffer((__gm__ int4b_t*)((__gm__ int8_t*)x_out ));
+    dbgxOutInt4.SetGlobalBuffer((__gm__ int8_t*)((__gm__ int8_t*)x_out ));
+    // xOutInt4.SetGlobalBuffer((__gm__ int4b_t*)workspace);
     groupNum = static_cast<uint32_t>(tilingData.groupNum);
     withOffset = tilingData.withOffset;
-
+    m = tilingData.m;
+    k = tilingData.k;
 
     pipe->InitBuffer(vecInQueueX, BUFFER_NUM_TWO, vectorBaseSize * sizeof(int8_t)); // 16K
-    pipe->InitBuffer(vecOutQueue, BUFFER_NUM_TWO, vectorBaseSize * sizeof(int8_t)); // 16K
+    // pipe->InitBuffer(vecOutQueue, BUFFER_NUM_TWO, vectorBaseSize * sizeof(int8_t)); // 16K
+    pipe->InitBuffer(vecOutQueue, BUFFER_NUM_TWO, vectorBaseSize * sizeof(int4b_t) * 2); 
 
     pipe->InitBuffer(groupListBuff, groupNum * sizeof(int64_t));
     pipe->InitBuffer(groupListFloatBuff, groupNum * sizeof(float));
@@ -135,11 +135,13 @@ __aicore__ inline void GMMA8W4PreProcessNZ::Init(GM_ADDR x, GM_ADDR y, GM_ADDR g
 
 __aicore__ inline void GMMA8W4PreProcessNZ::copyIn(uint32_t mIdx, uint32_t kIdx, uint32_t curVecBaseM, uint32_t curVecBaseK)
 {
-    DataCopyParams dataCopyParams{static_cast<uint16_t>(curVecBaseM), static_cast<uint16_t>(curVecBaseK * sizeof(int8_t)), static_cast<uint16_t>(k - curVecBaseK), 0};
+    // DataCopyParams dataCopyParams{static_cast<uint16_t>(curVecBaseM), static_cast<uint16_t>(curVecBaseK * sizeof(int8_t)), static_cast<uint16_t>(k - curVecBaseK), 0};
+    DataCopyParams dataCopyParams{static_cast<uint16_t>(curVecBaseM), static_cast<uint16_t>(curVecBaseK * sizeof(int8_t)), static_cast<uint16_t>(k - curVecBaseK * sizeof(int8_t)), 0};
     DataCopyPadParams padParams{false, 0, 0, 0};
     auto xTensor = vecInQueueX.AllocTensor<int8_t>();
     DataCopyPad(xTensor, xGm[mIdx * A8W4PRE_VECTOR_BASE_M * k + kIdx * A8W4PRE_VECTOR_BASE_K], dataCopyParams, padParams);
     vecInQueueX.EnQue(xTensor);
+    
 }
 __aicore__ inline void GMMA8W4PreProcessNZ::compute(uint32_t mIdx, uint32_t kIdx, uint32_t curVecBaseM, uint32_t curVecBaseK)
 {
@@ -150,10 +152,17 @@ __aicore__ inline void GMMA8W4PreProcessNZ::compute(uint32_t mIdx, uint32_t kIdx
 
     //高4位tensor取法
     Cast(xHighHalfTensor, xTensor, AscendC::RoundMode::CAST_NONE, totalLen);
+    printf("输入张量");
+    AscendC::DumpTensor(xTensor, 0, 8);
+    AscendC::DumpTensor(xHighHalfTensor, 7, 8);
     PipeBarrier<PIPE_V>();
     Muls(xHighHalfTensor, xHighHalfTensor, ONE_SIXTEEN, totalLen);
     PipeBarrier<PIPE_V>();
     Cast(xHighI4Tensor, xHighHalfTensor, AscendC::RoundMode::CAST_FLOOR, totalLen);
+    printf("高四位");
+    AscendC::DumpTensor(xHighHalfTensor, 1, 8);
+    AscendC::DumpTensor(xHighI4Tensor.ReinterpretCast<int8_t>(), 4, 8);
+    printf("\n");
 
     //低4位tensor取法                     
     And(xLowI16Tensor, xTensor.ReinterpretCast<int16_t>(), maskTensor, LEN_128, LEN_VK, {1,1,1,8,8,0});
@@ -168,28 +177,52 @@ __aicore__ inline void GMMA8W4PreProcessNZ::compute(uint32_t mIdx, uint32_t kIdx
     PipeBarrier<PIPE_V>();
     const half MINUS_EIGHT = static_cast<half>(-8);     // shrink 0~15 to -8~7
     Adds(xLowHalfTensor, xLowHalfTensor, MINUS_EIGHT, totalLen);
+    
     PipeBarrier<PIPE_V>();
     Cast(xLowI4Tensor, xLowHalfTensor, AscendC::RoundMode::CAST_NONE, totalLen);
     PipeBarrier<PIPE_V>();
+    printf("低四位");
+    AscendC::DumpTensor(xLowHalfTensor, 2, 8);
+    AscendC::DumpTensor(xLowI4Tensor.ReinterpretCast<int8_t>(), 5, 8);
+    printf("\n");
     auto tensorOut = vecOutQueue.AllocTensor<int4b_t>();
-
+    
     //高四位低四位tensor交叉拼接
     DataCopyParams dataCopyParams{static_cast<uint16_t>(curVecBaseM), 1, static_cast<uint16_t>(curVecBaseK / 64 - 1), 1};
     auto loopCnt = curVecBaseK / 64;
     for(int i = 0; i < loopCnt; i++) {
         DataCopy(tensorOut[i * curVecBaseM * 2 * 64], xHighI4Tensor[i * 64],dataCopyParams);    //高四位
         DataCopy(tensorOut[64 + i * curVecBaseM * 2 * 64], xLowI4Tensor[i * 64],dataCopyParams);    //低四位，偏移量为64个元素
+        // DataCopy(tensorOut[i * curVecBaseM * 2 * 64], xLowI4Tensor[i * 64],dataCopyParams);    //低四位
+        // DataCopy(tensorOut[64 + i * curVecBaseM * 2 * 64], xHighI4Tensor[i * 64],dataCopyParams);    //低四位，偏移量为64个元素
     }
+    printf("合并");
+    AscendC::DumpTensor(tensorOut.ReinterpretCast<int8_t>(), 3, 16);
+    AscendC::DumpTensor(tensorOut[64].ReinterpretCast<int8_t>(), 3, 16);
+    printf("\n");
 
     vecOutQueue.EnQue(tensorOut);
 }
 __aicore__ inline void GMMA8W4PreProcessNZ::copyOut(uint32_t mIdx, uint32_t kIdx, uint32_t curVecBaseM, uint32_t curVecBaseK)
 {
+    //m需要8位对齐
+    auto m_Align_8 = AlignUp<8>(m);
     auto tensorOut = vecOutQueue.DeQue<int4b_t>();
-    auto baseOffset = mIdx * A8W4PRE_VECTOR_BASE_M * 64 * 2 + kIdx * A8W4PRE_VECTOR_BASE_K * m * 2;
-    DataCopyExtParams dataCopyParams{static_cast<uint16_t>(curVecBaseK / 64), curVecBaseM * 64, 0, (m - curVecBaseM) * 2 * 32, 0};
+    auto baseOffset = mIdx * A8W4PRE_VECTOR_BASE_M * 64 * 2 + kIdx * A8W4PRE_VECTOR_BASE_K * m_Align_8 * 2;
+
+    
+    baseOffset = (baseOffset + ALIGN_MTE - 1) / ALIGN_MTE * ALIGN_MTE;
+    DataCopyExtParams dataCopyParams{static_cast<uint16_t>(curVecBaseK / 64), curVecBaseM * 64, 0, (m_Align_8 - curVecBaseM) * 2 * 32, 0};
+
     DataCopyPadExtParams<int4b_t> padParams{false, 0, 0, 0};
+    
+    //问题
+    printf("baseOffset:%d,GetBlockIdx:%d\n",baseOffset,GetBlockIdx());
+    printf("mIdx:%u,kIdx:%d\n",mIdx,kIdx);
+    printf("curVecBaseM:%u,curVecBaseK:%d\n",curVecBaseM,curVecBaseK);
+
     DataCopyPad(xOutInt4[baseOffset], tensorOut, dataCopyParams);
+    AscendC::DumpTensor(dbgxOutInt4, 15, 65);
     vecOutQueue.FreeTensor(tensorOut);
 }
 
@@ -212,7 +245,9 @@ __aicore__ inline void GMMA8W4PreProcessNZ::Process()
     SetFlag<HardEvent::V_S>(EVENT_ID0);
     WaitFlag<HardEvent::V_S>(EVENT_ID0);
     totalGroup = groupListTensor.GetValue(0);
-
+    
+    //m需要8位对齐
+    uint32_t m_Align_8 = AlignUp<8>(m); 
     //计算有多少个基本块
     uint32_t mDim = Ceil(totalGroup, A8W4PRE_VECTOR_BASE_M);
     uint32_t kDim = Ceil(k, A8W4PRE_VECTOR_BASE_K);
@@ -226,9 +261,13 @@ __aicore__ inline void GMMA8W4PreProcessNZ::Process()
         kIdx = taskIdx % kDim;
         if(mIdx >= mDim - 1) {
             curVecBaseM = totalGroup - mIdx * A8W4PRE_VECTOR_BASE_M;
+            printf("*******taskIdx:%u, mIdx:%u, kIdx:%u, curVecBaseM:%u, curVecBaseK:%u\n",
+       taskIdx, mIdx, kIdx, curVecBaseM, curVecBaseK);
         }
         if(kIdx >= kDim - 1) {
             curVecBaseK = k - kIdx * A8W4PRE_VECTOR_BASE_K;
+            printf("*******taskIdx:%u, mIdx:%u, kIdx:%u, curVecBaseM:%u, curVecBaseK:%u\n",
+       taskIdx, mIdx, kIdx, curVecBaseM, curVecBaseK);
         }
         copyIn(mIdx, kIdx, curVecBaseM, curVecBaseK);
         compute(mIdx, kIdx, curVecBaseM, curVecBaseK);

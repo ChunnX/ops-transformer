@@ -15,6 +15,7 @@
 
 #ifndef ASCENDC_GROUPED_MATMUL_ANTIQUANT_A8W4_MSD_H
 #define ASCENDC_GROUPED_MATMUL_ANTIQUANT_A8W4_MSD_H
+#define ASCENDC_DUMP
 
 #include "grouped_matmul_utils.h"
 #include "grouped_matmul.h"
@@ -69,7 +70,6 @@ __aicore__ inline void DataCopyPad2DA8W4ND(const LocalTensor<T> dst, const Globa
 
     DataCopyPadExtParams<T> padParams{true, 0, 0, 0};
     DataCopyPad(dst, src, params, padParams);
-    return;
 }
 
 template <typename T>
@@ -119,6 +119,7 @@ private:
     GlobalTensor<DTYPE_WEIGHT_DEV_A8W4MSD> weightGm;
     GlobalTensor<DTYPE_BIAS_A8W4MSD> biasGm;  // for 8 * weight
     GlobalTensor<cT::T> mmOutGm;
+    GlobalTensor<int8_t> dbgmmOutGm;
     GlobalTensor<DTYPE_SCALE_DEV_A8W4MSD> scaleGm;
     GlobalTensor<DTYPE_PERTOKEN_SCALE_A8W4MSD> perTokenScaleGm;
     GlobalTensor<DTYPE_OFFSET_A8W4MSD> offsetGm;
@@ -126,6 +127,7 @@ private:
     GlobalTensor<float> logitsGm;
     GlobalTensor<bfloat16_t> residualGm;
     GlobalTensor<int32_t> tokenRanksGm;
+    GlobalTensor<int8_t> dbgx;
     GlobalTensor<DTYPE_OUT> yGm;
     GlobalTensor<float> xRowSumGm;
     // define the que
@@ -150,9 +152,11 @@ private:
     uint32_t quantGroupSize;
     uint32_t cubeCount = 0;
     uint32_t vecCount = 0;
-    uint32_t xRowSumCount;
-    uint32_t withOffset;
+    uint32_t xRowSumCount = 0;
+    uint32_t withOffset = 0;
     uint32_t isA8W4MSDPreNZ = 0;
+    uint32_t A8W4preM = 0;
+    
     TPipe *pipe;
     const GMMBaseParams *tiling;
     const TCubeTiling* mmTilingData;
@@ -166,21 +170,36 @@ __aicore__ inline void GMMA8W4MSDCompute<mmType>::Init(GM_ADDR x, GM_ADDR weight
     tiling = tilingData;
     xRowSumCount = tiling->m;
     withOffset = tiling->withOffset;
-    isA8W4MSDPreNZ = tiling->isA8W4MSDPreNZ; 
-
+    isA8W4MSDPreNZ = tiling->isA8W4MSDPreNZ;
+    A8W4preM = AlignUp<8>(xRowSumCount) * 2;
+     
     xGm.SetGlobalBuffer(GetTensorAddr<DTYPE_X_DEV_A8W4MSD>(0, x));
+    // if ASCEND_IS_AIC {
+    //     SyncAll<false>();
+    // }
+    
+    // dbgx.SetGlobalBuffer(xGm.GetPhyAddr());
+    // dbgx.SetGlobalBuffer(GetTensorAddr<int8_t>(0, x));  GetTensorAddr非法
+    dbgx.SetGlobalBuffer((__gm__ int8_t*)((__gm__ int8_t*)x ));
+    // printf("dbgx: 0x%lx\n", dbgx.GetPhyAddr()); 
+    // AscendC::DumpTensor(dbgx, 18, 65);
+    
+    // return;
     weightGm.SetGlobalBuffer(GetTensorAddr<DTYPE_WEIGHT_DEV_A8W4MSD>(0, weight));
     biasGm.SetGlobalBuffer(GetTensorAddr<DTYPE_BIAS_A8W4MSD>(0, bias));
     scaleGm.SetGlobalBuffer(GetTensorAddr<DTYPE_SCALE_DEV_A8W4MSD>(0, scale));
     perTokenScaleGm.SetGlobalBuffer(reinterpret_cast<__gm__ DTYPE_PERTOKEN_SCALE_A8W4MSD *>(pertoken_scale));
     groupTokensGm.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>(group_tokens));
-    yGm.SetGlobalBuffer(GetTensorAddr<DTYPE_OUT>(0, y));  
+    yGm.SetGlobalBuffer(GetTensorAddr<DTYPE_OUT>(0, y));
     if (withOffset == WITH_OFFSET) {
         xRowSumGm.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(workspace));
         mmOutGm.SetGlobalBuffer(reinterpret_cast<__gm__ cT::T *>(workspace + xRowSumCount * sizeof(float)));
+        printf("mmOutGm1:  0x%lx\n", mmOutGm.GetPhyAddr());
         offsetGm.SetGlobalBuffer(GetTensorAddr<DTYPE_OFFSET_A8W4MSD>(0, offset));
     } else {
         mmOutGm.SetGlobalBuffer(reinterpret_cast<__gm__ cT::T *>(workspace));
+        // dbgmmOutGm.SetGlobalBuffer((__gm__ int8_t*)((__gm__ int8_t*)mmOutGm ));
+        printf("mmOutGm2:  0x%lx\n", mmOutGm.GetPhyAddr());
     }
 
     this->mmTilingData = mmTilingData;
@@ -199,9 +218,12 @@ __aicore__ inline void GMMA8W4MSDCompute<mmType>::Init(GM_ADDR x, GM_ADDR weight
 template <typename mmType>
 __aicore__ inline void GMMA8W4MSDCompute<mmType>::InitUbBuffer()
 {
+    
     if ASCEND_IS_AIC {
         return;
     }
+    // return;
+    
     pipe->InitBuffer(scaleInQueue, BUFFER_NUM, mmTilingData->baseN * sizeof(DTYPE_BIAS_A8W4MSD)); // bias queue
     if (withOffset == WITH_OFFSET) {
         pipe->InitBuffer(offsetInQueue, BUFFER_NUM, mmTilingData->baseN * sizeof(DTYPE_OFFSET_A8W4MSD));
@@ -240,8 +262,10 @@ __aicore__ inline void GMMA8W4MSDCompute<mmType>::Process()
     mnConfig.singleN = mnConfig.baseN;
     mnConfig.blockDimN = Ceil(tiling->n, mnConfig.singleN);
     if ASCEND_IS_AIC {
-        SyncAll<false>();
-    }
+            SyncAll<false>();
+        }
+    
+    AscendC::DumpTensor(dbgx, 19, 65);
     for (uint32_t groupIdx = 0, preCount = 0; groupIdx < tiling->groupNum; ++groupIdx) {
         int32_t m = static_cast<int32_t>(groupTokensGm.GetValue(groupIdx));
         if (m <= 0) {
@@ -252,8 +276,9 @@ __aicore__ inline void GMMA8W4MSDCompute<mmType>::Process()
         mm.SetOrgShape(mnConfig.m, tiling->n, tiling->k);
         uint32_t curCount = preCount + mnConfig.blockDimN * mnConfig.blockDimM;
         uint32_t curBlock = coreIdx >= preCount ? coreIdx : coreIdx + tiling->coreNum;
-
+        
         while (curBlock < curCount) {
+            printf("[WHILE] curBlock=%u, curCount=%u\n", curBlock, curCount);
             mnConfig.mIdx = (curBlock - preCount) / mnConfig.blockDimN;
             mnConfig.nIdx = (curBlock - preCount) % mnConfig.blockDimN;
             MMCompute(groupIdx, mnConfig);
@@ -270,6 +295,7 @@ __aicore__ inline void GMMA8W4MSDCompute<mmType>::Process()
 template <typename mmType>
 __aicore__ inline void GMMA8W4MSDCompute<mmType>::MMCompute(uint32_t groupIdx, MNConfig& mnConfig)
 {
+    
     mnConfig.workSpaceOffset = MM_BASE_BLOCK_OFFSET * \
                                    (coreIdx + (cubeCount % tiling->parallNum) * tiling->coreNum);
     if ASCEND_IS_AIC {
@@ -283,7 +309,12 @@ __aicore__ inline void GMMA8W4MSDCompute<mmType>::MMCompute(uint32_t groupIdx, M
             curSingleM = mnConfig.m - mnConfig.mIdx * mnConfig.singleM;
         }
 
-        uint64_t xOffset = (mnConfig.offsetM + mnConfig.mIdx * mnConfig.singleM) * tiling->k;
+        uint64_t xOffset = 0;
+        if (tiling->isA8W4MSDPreNZ) {
+            xOffset = (mnConfig.offsetM + mnConfig.mIdx * mnConfig.singleM) * 64;
+        }else{
+            xOffset = (mnConfig.offsetM + mnConfig.mIdx * mnConfig.singleM) * tiling->k;
+        }
         uint64_t weightOffset;
         if constexpr (mmType::BT::format == CubeFormat::NZ) {
             weightOffset = static_cast<uint64_t>(groupIdx) * tiling->n * tiling->k + tailN * tiling->k;
@@ -296,18 +327,25 @@ __aicore__ inline void GMMA8W4MSDCompute<mmType>::MMCompute(uint32_t groupIdx, M
         mm.SetSingleShape(curSingleM, curSingleN, quantGroupSize); // 8, 256, 512 --> 514us
         GlobalTensor<DTYPE_WEIGHT_DEV_A8W4MSD> weightSlice;
         for (uint32_t loopK = 0; loopK < tiling->quantGroupNum; loopK++) {
-            // mm.SetTensorA(xGm[xOffset + loopK * quantGroupSize]);
+            //begin
             GlobalTensor<DTYPE_X_DEV_A8W4MSD> xSlice;
+            GlobalTensor<int8_t> dbg;
             if (tiling->isA8W4MSDPreNZ) {
                 // A 矩阵是 NZ 格式
-                uint64_t aOffsetNz = xOffset + loopK * quantGroupSize * 64;
-                xSlice = xGm[aOffsetNz];
+                uint64_t aOffset = xOffset + loopK * quantGroupSize * A8W4preM ;
+                xSlice = xGm[aOffset];
+                dbg = dbgx[aOffset];           
             } else {
                 // A 矩阵是 ND 格式
                 uint64_t aOffset = xOffset + loopK * quantGroupSize;
                 xSlice = xGm[aOffset];
+                dbg = dbgx[aOffset];
             }
             mm.SetTensorA(xSlice);
+            // printf("xSlice: 0x%lx\n", xSlice.GetPhyAddr());
+            // printf("dbg: 0x%lx\n", dbg.GetPhyAddr());
+            AscendC::DumpTensor(dbg, 17, 65);
+            
             if constexpr (mmType::BT::format == CubeFormat::NZ) { 
                 weightSlice = weightGm[weightOffset + loopK * quantGroupSize * 64];
             } else {
@@ -319,9 +357,12 @@ __aicore__ inline void GMMA8W4MSDCompute<mmType>::MMCompute(uint32_t groupIdx, M
             mm.SetTensorB(weightSlice);
             mm.SetQuantVector(scaleGm[groupIdx * tiling->n * tiling->quantGroupNum + loopK * tiling->n + tailN]);
             uint64_t worskspaceOffset = mnConfig.workSpaceOffset;
+            printf("worskspaceOffset:%lu\n", worskspaceOffset);
 #ifndef __CCE_KT_TEST__
             mm.Iterate();
             mm.GetTensorC(mmOutGm[worskspaceOffset], loopK == 0 ? 0 : 1, true);
+            // AscendC::DumpTensor(mmOutGm, 10, 8);
+            printf("mmOutGm[worskspaceOffset]:  0x%lx\n", mmOutGm[worskspaceOffset].GetPhyAddr());
 #endif
             worskspaceOffset += MM_BASE_BLOCK_OFFSET;
         }
@@ -361,7 +402,9 @@ __aicore__ inline void GMMA8W4MSDCompute<mmType>::VectorCompute(uint32_t groupId
             if (taskRation != 0 && vecCount % taskRation != subBlockIdx) { continue; }
             if (unlikely(offsetM + vecBaseM >= curCubeSingleM)) { curVecBaseM = curCubeSingleM - offsetM; }
             LocalTensor<cT::T> mmOutLocal = vecInQueue.AllocTensor<cT::T>();
-            if constexpr (mmType::BT::format == CubeFormat::ND) {
+            printf("mmOutGm: 0x%lx\n", mmOutGm.GetPhyAddr());
+            AscendC::DumpTensor(mmOutGm, 10, 8);
+            if constexpr (mmType::BT::format == CubeFormat::ND) {    
                 DataCopyPad2DA8W4ND(mmOutLocal, mmOutGm[mmOutOffset + offsetM * 2 * curVecBaseN],
                     curVecBaseM, curVecBaseN, curVecBaseN * 2);   // 2: 2 lines int4 to 1 line int8
             } else {
@@ -374,6 +417,7 @@ __aicore__ inline void GMMA8W4MSDCompute<mmType>::VectorCompute(uint32_t groupId
             }
             targetAddr = curVecBaseM * alignBaseN;
             uint64_t lowBitAddr = mmOutOffset + (offsetM * 2 + 1) * curVecBaseN;
+            
             if constexpr (mmType::BT::format == CubeFormat::ND) {
                 DataCopyPad2DA8W4ND(mmOutLocal[targetAddr],
                     mmOutGm[lowBitAddr],
