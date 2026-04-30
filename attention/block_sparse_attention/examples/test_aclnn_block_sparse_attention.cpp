@@ -178,8 +178,8 @@ int main() {
 
     // 2. 设置参数
     int32_t batch = 1;
-    int32_t qSeqlen = 128;
-    int32_t kvSeqlen = 128;
+    int32_t qSeqlen = 128000;
+    int32_t kvSeqlen = 128000;
     int32_t numHeads = 1;
     int32_t numKvHeads = 1;
     int32_t headDim = 128;
