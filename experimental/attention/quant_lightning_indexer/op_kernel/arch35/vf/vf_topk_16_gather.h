@@ -394,6 +394,25 @@ __aicore__ inline void LiTopKVF(const LocalTensor<uint16_t>& tmpIdxLocal,
 }
 
 /**
+    LD:输出最终的Idx
+*/
+__simd_vf__ void FindLDRealIndexVFImpl(__ubuf__ uint32_t* outputIdxBuf, __ubuf__ uint16_t* tmpIdxBuf, __ubuf__ uint32_t* hisIdxBuf, uint16_t vfLoop)
+{
+    MicroAPI::MaskReg pregB32 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
+
+    MicroAPI::RegTensor<uint16_t> tmpIdx;
+    MicroAPI::RegTensor<uint32_t> outputIdx;
+
+    for(uint16_t i = 0; i < (uint16_t)(vfLoop); ++i) {
+        MicroAPI::LoadAlign<uint16_t, MicroAPI::LoadDist::DIST_UNPACK_B16>(tmpIdx, tmpIdxBuf + i * 64);
+
+        MicroAPI::Gather(outputIdx, hisIdxBuf, (MicroAPI::RegTensor<uint32_t>&)tmpIdx, pregB32);
+
+        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(outputIdxBuf + i * 64, outputIdx, pregB32);
+    }
+}
+
+/**
  * @brief 通过idx_tmp gather出实际的TopKIndex，s2SeqLen > 16K才会执行
  * @param outputIdxLocal 输出Idx 有效:topK * 2B
  * @param outputValueLocal 输出Value topK * 2B(以后需要输出实际value使用)
@@ -425,6 +444,26 @@ __aicore__ inline void LiTopKGatherVF(const LocalTensor<uint32_t>& outputIdxLoca
     uint16_t topkLoopNum32 = (topK + repeatSize32 - 1) / repeatSize32;
 
     FindRealIndexVFImpl(outputIdxBuf, tmpIdxBuf, hisIdxBuf, topK, loopBasicIdx, topkLoopNum32);
+}
+
+/**
+    LD:gather最终的Idx
+*/
+__aicore__ inline void LiTopKLDGatherVF(const LocalTensor<uint32_t>& outputIdxLocal, // 输出Idx topK * 2B
+                                        const LocalTensor<uint16_t>& tmpIdxLocal, // 本轮tmpIdx输入 validLen * 2B
+                                        const LocalTensor<uint32_t>& hisIdxLocal, // 上一轮Idx输入 topK * 4B
+                                        uint32_t topK) // topK元素个数
+{
+    __ubuf__ uint32_t* outputIdxBuf = (__ubuf__ uint32_t*)outputIdxLocal.GetPhyAddr();
+    __ubuf__ uint16_t* tmpIdxBuf = (__ubuf__ uint16_t*)tmpIdxLocal.GetPhyAddr();
+    __ubuf__ uint32_t* hisIdxBuf = (__ubuf__ uint32_t*)hisIdxLocal.GetPhyAddr();
+
+    const uint16_t repeatSize32 = 64;
+    const uint16_t repeatSize16 = 128;
+    uint16_t topkLoopNum16 = (topK + repeatSize16 - 1) / repeatSize16;
+    uint16_t topkLoopNum32 = (topK + repeatSize32 - 1) / repeatSize32;
+
+    FindLDRealIndexVFImpl(outputIdxBuf, tmpIdxBuf, hisIdxBuf, topkLoopNum32);
 }
 }
 #endif
