@@ -475,7 +475,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmCkvKrParamInit() {
         } else {
             mmCkvKrParam_.n = baseParams_->mm2SingleCoreN;
         }
-        mmCqParam_.k = baseParams_->headSizeX / baseParams_->mm2KnKGroupSize;
+        mmCkvKrParam_.k = baseParams_->headSizeX / baseParams_->mm2KnKGroupSize;
         mmCkvKrParam_.baseK = 128;//(sizeof(mmInputType) == ONE_BYTE_TYPE_SIZE) ? 256 : 128; // 128KB / (128 max baseN * 4 stepK * sizeof(type))
         mmCkvKrParam_.baseN = 192;
         mmCkvKrParam_.stepK = 4;
