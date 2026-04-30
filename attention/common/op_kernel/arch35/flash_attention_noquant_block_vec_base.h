@@ -840,7 +840,8 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
                 this->attenMaskInQue[runInfo.taskIdMod2].template EnQue(attenMaskUb);
                 this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
                 if (attenMaskInfoPtr->compressMode == static_cast<uint8_t>(AttenMaskCompressMode::BAND_MODE)) {
-                    LocalTensor<uint8_t> preAttenMaskUb = this->attenMaskInQue[1 - runInfo.taskIdMod2].template AllocTensor<uint8_t>();
+                    LocalTensor<uint8_t> preAttenMaskUb;
+                    preAttenMaskUb = this->attenMaskInQue[1 - runInfo.taskIdMod2].template AllocTensor<uint8_t>();
                     AttentionmaskCopyGS1(preAttenMaskUb, this->attenMaskGmInt, maskInfo, true);
                     this->attenMaskInQue[1 - runInfo.taskIdMod2].template EnQue(preAttenMaskUb);
                     this->attenMaskInQue[1 - runInfo.taskIdMod2].template DeQue<uint8_t>();
