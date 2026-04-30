@@ -244,8 +244,19 @@ int main() {
               return ret);
 
     // 5. 创建blockSparseMask tensor ([batch, numHeads, qBlockNum, kvBlockNum])
-    std::vector<int8_t> blockSparseMaskHostData(totalQBlocks * numHeads, 0);
-    blockSparseMaskHostData[0] = static_cast<int8_t>(1);
+    int64_t blockSparseMaskSize = static_cast<int64_t>(batch) * numHeads * qBlockNum * kvBlockNum;
+    std::vector<int8_t> blockSparseMaskHostData(blockSparseMaskSize, 0);
+    for (int32_t b = 0; b < batch; b++) {
+        for (int32_t h = 0; h < numHeads; h++) {
+            for (int32_t i = 0; i < qBlockNum; i++) {
+                int64_t offset = ((int64_t)b * numHeads + h) * qBlockNum * kvBlockNum + (int64_t)i * kvBlockNum;
+                blockSparseMaskHostData[offset + i] = static_cast<int8_t>(1);
+                if (i > 0) {
+                    blockSparseMaskHostData[offset + i - 1] = static_cast<int8_t>(1);
+                }
+            }
+        }
+    }
     std::vector<int64_t> blockSparseMaskShape = {batch, numHeads, qBlockNum, kvBlockNum};
     ret = CreateAclTensor(blockSparseMaskHostData, blockSparseMaskShape, &blockSparseMaskDeviceAddr, aclDataType::ACL_INT8, &blockSparseMaskTensor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Failed to create block sparse mask tensor\n");
