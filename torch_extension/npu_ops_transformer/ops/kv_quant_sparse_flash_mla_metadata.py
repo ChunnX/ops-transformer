@@ -6,12 +6,12 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 
+from typing import Optional
 import torch
 import torchair
 from torch.library import impl
 from npu_ops_transformer.op_builder.builder import OpBuilder
 from npu_ops_transformer.op_builder.builder import AS_LIBRARY
-from typing import Optional
 from torchair.ge._ge_graph import Tensor, TensorSpec, DataType
 
 
@@ -52,6 +52,7 @@ class KvQuantSparseFlashMlaMetadataOpBuilder(OpBuilder):
 kv_quant_sparse_flash_mla_metadata_op_builder = KvQuantSparseFlashMlaMetadataOpBuilder()
 op_module = kv_quant_sparse_flash_mla_metadata_op_builder.load()
 
+
 @impl(AS_LIBRARY, kv_quant_sparse_flash_mla_metadata_op_builder.name, "PrivateUse1")
 def npu_kv_quant_sparse_flash_mla_metadata(
     num_heads_q: int, num_heads_kv: int, head_dim: int, kv_quant_mode: int,
@@ -81,6 +82,7 @@ def npu_kv_quant_sparse_flash_mla_metadata(
         batch_size, max_seqlen_q, max_seqlen_kv, ori_topk, tile_size, rope_head_dim, ori_mask_mode, layout_q, layout_kv,
         has_ori_kv)
 
+
 @torch.library.register_kernel("npu_ops_transformer::npu_kv_quant_sparse_flash_mla_metadata", None)
 def npu_kv_quant_sparse_flash_mla_metadata_fallback(
     num_heads_q: int, num_heads_kv: int, head_dim: int, kv_quant_mode: int,
@@ -93,7 +95,7 @@ def npu_kv_quant_sparse_flash_mla_metadata_fallback(
     # 处理所有 tensor 都为 None 的情况
     # 可以在这里创建一个 NPU tensor 来触发 PrivateUse1 backend
     if all(t is None for t in [cu_seqlens_q, cu_seqlens_ori_kv]):
-             _ = torch.empty(1, dtype=torch.int32, device="npu")
+        _ = torch.empty(1, dtype=torch.int32, device="npu")
     # 调用 NPU 实现
     return npu_kv_quant_sparse_flash_mla_metadata(
         num_heads_q, num_heads_kv, head_dim, kv_quant_mode, cu_seqlens_q, cu_seqlens_ori_kv, seqused_q, seqused_ori_kv,

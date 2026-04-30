@@ -147,15 +147,8 @@ struct FlashDecodeResult {
     std::vector<uint32_t> fdMStart {};          // FD负载均衡阶段，每个vector处理的归约任务的m轴起点
     std::vector<uint32_t> fdMNum {};            // FD负载均衡阶段，每个vector处理的归约任务的m轴行数
 
-    FlashDecodeResult(uint32_t aicNum, uint32_t aivNum) :
-        fdBN2Idx(aicNum),
-        fdMIdx(aicNum),
-        fdWorkspaceIdx(aicNum),
-        fdS2SplitNum(aicNum),
-        fdMSize(aicNum),
-        fdIdx(aivNum),
-        fdMStart(aivNum),
-        fdMNum(aivNum) {}
+    FlashDecodeResult(uint32_t aicNum, uint32_t aivNum) : fdBN2Idx(aicNum), fdMIdx(aicNum), fdWorkspaceIdx(aicNum),
+        fdS2SplitNum(aicNum), fdMSize(aicNum), fdIdx(aivNum), fdMStart(aivNum), fdMNum(aivNum) {}
 };
 
 // 分核功能模块输出：FA阶段的核间分核信息
@@ -171,12 +164,8 @@ struct SplitResult {
     uint32_t maxS2GBaseNum { 0U };
     FlashDecodeResult fdRes { 0U, 0U };     // FD信息
 
-    SplitResult(uint32_t aicNum, uint32_t aivNum) :
-        bN2End(aicNum),
-        gS1End(aicNum),
-        s2End(aicNum),
-        firstFdDataWorkspaceIdx(aicNum),
-        fdRes(aicNum, aivNum) {};
+    SplitResult(uint32_t aicNum, uint32_t aivNum) : bN2End(aicNum), gS1End(aicNum), s2End(aicNum),
+        firstFdDataWorkspaceIdx(aicNum), fdRes(aicNum, aivNum) {};
 };
 
 // 分核功能模块内部使用：记录切分信息
@@ -187,10 +176,7 @@ struct SplitInfo {
     std::vector<uint32_t> s2TailSize {};                   // S2方向，尾块size
     bool isKvSeqAllZero { true };
 
-    explicit SplitInfo(uint32_t batchSize) :
-        s1GBaseNum(batchSize),
-        s2BaseNum(batchSize),
-        s1GTailSize(batchSize),
+    explicit SplitInfo(uint32_t batchSize) : s1GBaseNum(batchSize), s2BaseNum(batchSize), s1GTailSize(batchSize),
         s2TailSize(batchSize) {};
 };
 
@@ -203,9 +189,7 @@ struct CostInfo {
     int64_t totalCost { 0 };
     int64_t maxS1GCost { 0 };  // 记录所有S1G行中的最大开销
 
-    explicit CostInfo(uint32_t batchSize) :
-        bN2CostOfEachBatch(batchSize),
-        bN2BlockOfEachBatch(batchSize),
+    explicit CostInfo(uint32_t batchSize) : bN2CostOfEachBatch(batchSize), bN2BlockOfEachBatch(batchSize),
         bN2LastBlockCostOfEachBatch(batchSize) {}
 };
 
@@ -214,9 +198,7 @@ struct SplitContext {
     SplitInfo splitInfo { 0U };
     CostInfo costInfo { 0U };
 
-    explicit SplitContext(uint32_t batchSize) :
-        splitInfo(batchSize),
-        costInfo(batchSize) {}
+    explicit SplitContext(uint32_t batchSize) : splitInfo(batchSize), costInfo(batchSize) {}
 };
 
 // 分核功能模块内部使用：记录batch相关的临时信息
@@ -298,7 +280,8 @@ private:
     void CalcBatchCache(uint32_t bIdx, const SplitContext &splitContext, BatchCache &batchCache);
     void CalcBlockRange(Range<int64_t> &s2TokenRange, const BatchCache &batchCache, S1GCache &s1GCache);
     void CalcBlockAndCost(S1GCache &s1GCache, const SplitInfo &splitInfo);
-    void CalcS1GCache(uint32_t s1GIdx, const SplitContext &splitContext, const BatchCache &batchCache, S1GCache &s1GCache);
+    void CalcS1GCache(uint32_t s1GIdx, const SplitContext &splitContext, const BatchCache &batchCache, 
+        S1GCache &s1GCache);
 
     // preprocess
     void CalcSplitInfo(SplitContext &splitContext);

@@ -20,7 +20,8 @@ namespace op_api {
 using npu_utils = at_npu::native::NpuUtils;
 constexpr int64_t OUTPUT_SIZE = 1024;
 
-const c10::optional<at::Tensor> qsmla_get_valid_tensor(const c10::optional<at::Tensor> &tensor_opt, at::Device device) {
+const c10::optional<at::Tensor> qsmla_get_valid_tensor(const c10::optional<at::Tensor> &tensor_opt, at::Device device)
+{
     return tensor_opt.has_value() ? tensor_opt : torch::empty({0}, torch::dtype(torch::kInt32).device(device));
 };
 
@@ -65,6 +66,7 @@ at::Tensor npu_kv_quant_sparse_flash_mla_metadata(
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("npu_kv_quant_sparse_flash_mla_metadata", &npu_kv_quant_sparse_flash_mla_metadata, "npu_kv_quant_sparse_flash_mla_metadata");
+    m.def("npu_kv_quant_sparse_flash_mla_metadata", &npu_kv_quant_sparse_flash_mla_metadata,
+        "npu_kv_quant_sparse_flash_mla_metadata");
 }
 } // namespace op_api

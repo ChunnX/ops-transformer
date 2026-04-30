@@ -6,12 +6,12 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 
+from typing import Optional
 import torch
 import torchair
 from torch.library import impl
 from npu_ops_transformer.op_builder.builder import OpBuilder
 from npu_ops_transformer.op_builder.builder import AS_LIBRARY
-from typing import Optional
 from torchair.ge._ge_graph import Tensor, TensorSpec, DataType
 
 
@@ -27,8 +27,8 @@ class QuantLightningIndexerV2MetadataOpBuilder(OpBuilder):
         """PyTorch operator signature."""
         return "npu_quant_lightning_indexer_v2_metadata(int num_heads_q, int num_heads_k, int head_dim, int topk, " \
             "int q_quant_mode, int k_quant_mode, *, Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_k=None, " \
-            "Tensor? seqused_q=None, Tensor? seqused_k=None, int batch_size=0, int max_seqlen_q=0, int max_seqlen_k=0, " \
-            "str layout_q='BSND', str layout_k='BSND', int mask_mode=0) -> Tensor"
+            "Tensor? seqused_q=None, Tensor? seqused_k=None, int batch_size=0, int max_seqlen_q=0, " \
+            "int max_seqlen_k=0, str layout_q='BSND', str layout_k='BSND', int mask_mode=0) -> Tensor"
 
     def register_meta(self):
         """
@@ -47,6 +47,7 @@ class QuantLightningIndexerV2MetadataOpBuilder(OpBuilder):
 # Instantiate the builder
 quant_lightning_indexer_v2_metadata_op_builder = QuantLightningIndexerV2MetadataOpBuilder()
 op_module = quant_lightning_indexer_v2_metadata_op_builder.load()
+
 
 @impl(AS_LIBRARY, quant_lightning_indexer_v2_metadata_op_builder.name, "PrivateUse1")
 def npu_quant_lightning_indexer_v2_metadata(
@@ -70,6 +71,7 @@ def npu_quant_lightning_indexer_v2_metadata(
         num_heads_q, num_heads_k, head_dim, topk, q_quant_mode, k_quant_mode, cu_seqlens_q, cu_seqlens_k, seqused_q, 
         seqused_k, batch_size, max_seqlen_q, max_seqlen_k, layout_q, layout_k, mask_mode)
 
+
 @torch.library.register_kernel("npu_ops_transformer::npu_quant_lightning_indexer_v2_metadata", None)
 def npu_quant_lightning_indexer_v2_metadata_fallback(
     num_heads_q: int, num_heads_k: int, head_dim: int, topk: int, q_quant_mode: int, k_quant_mode: int, 
@@ -80,7 +82,7 @@ def npu_quant_lightning_indexer_v2_metadata_fallback(
     # 处理所有 tensor 都为 None 的情况
     # 可以在这里创建一个 NPU tensor 来触发 PrivateUse1 backend
     if all(t is None for t in [cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k]):
-             _ = torch.empty(1, dtype=torch.int32, device="npu")
+        _ = torch.empty(1, dtype=torch.int32, device="npu")
     # 调用 NPU 实现
     return npu_quant_lightning_indexer_v2_metadata(
         num_heads_q, num_heads_k, head_dim, topk, q_quant_mode, k_quant_mode, cu_seqlens_q, cu_seqlens_k, seqused_q, 

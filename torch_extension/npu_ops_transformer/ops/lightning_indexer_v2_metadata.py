@@ -6,12 +6,12 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 
+from typing import Optional
 import torch
 import torchair
 from torch.library import impl
 from npu_ops_transformer.op_builder.builder import OpBuilder
 from npu_ops_transformer.op_builder.builder import AS_LIBRARY
-from typing import Optional
 from torchair.ge._ge_graph import Tensor, TensorSpec, DataType
 
 
@@ -48,6 +48,7 @@ class LightningIndexerV2MetadataOpBuilder(OpBuilder):
 lightning_indexer_v2_metadata_op_builder = LightningIndexerV2MetadataOpBuilder()
 op_module = lightning_indexer_v2_metadata_op_builder.load()
 
+
 @impl(AS_LIBRARY, lightning_indexer_v2_metadata_op_builder.name, "PrivateUse1")
 def npu_lightning_indexer_v2_metadata(
     num_heads_q: int, num_heads_k: int, head_dim: int, topk: int, cu_seqlens_q: Optional[Tensor] = None, 
@@ -69,6 +70,7 @@ def npu_lightning_indexer_v2_metadata(
         num_heads_q, num_heads_k, head_dim, topk, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, batch_size, 
         max_seqlen_q, max_seqlen_k, layout_q, layout_k, mask_mode)
 
+
 @torch.library.register_kernel("npu_ops_transformer::npu_lightning_indexer_v2_metadata", None)
 def npu_lightning_indexer_v2_metadata_fallback(
     num_heads_q: int, num_heads_k: int, head_dim: int, topk: int, cu_seqlens_q: Optional[Tensor] = None, 
@@ -78,7 +80,7 @@ def npu_lightning_indexer_v2_metadata_fallback(
     # 处理所有 tensor 都为 None 的情况
     # 可以在这里创建一个 NPU tensor 来触发 PrivateUse1 backend
     if all(t is None for t in [cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k]):
-             _ = torch.empty(1, dtype=torch.int32, device="npu")
+        _ = torch.empty(1, dtype=torch.int32, device="npu")
     # 调用 NPU 实现
     return npu_lightning_indexer_v2_metadata(
         num_heads_q, num_heads_k, head_dim, topk, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, batch_size, 

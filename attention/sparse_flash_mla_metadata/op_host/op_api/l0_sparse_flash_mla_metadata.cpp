@@ -35,7 +35,7 @@ const aclTensor* SparseFlashMlaMetadata(
     const char *socVersion, int64_t aicCoreNum, int64_t aivCoreNum,
     const aclTensor *metaData, aclOpExecutor *executor)
 {
-    L0_DFX(SparseFlashMlaMetadata, 
+    L0_DFX(SparseFlashMlaMetadata,
         cuSeqLensQOptional, cuSeqLensOriKvOptional, sequsedQOptional, sequsedOriKvOptional,
         numHeadsQ, numHeadsKv, headDim,
         batchSizeOptional, maxSeqlenQOptional, maxSeqlenKvOptional, oriTopKOptional, oriMaskModeOptional,

@@ -46,7 +46,7 @@ __attribute__((visibility("default")))
 aclnnStatus CheckFeatureSmla();
 
 __attribute__((visibility("default")))
-aclnnStatus aclnnSparseFlashMlaMetadata(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, 
+aclnnStatus aclnnSparseFlashMlaMetadata(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
     aclrtStream stream);
 
 #ifdef __cplusplus

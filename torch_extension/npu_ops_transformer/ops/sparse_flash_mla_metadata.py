@@ -6,12 +6,12 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 
+from typing import Optional
 import torch
 import torchair
 from torch.library import impl
 from npu_ops_transformer.op_builder.builder import OpBuilder
 from npu_ops_transformer.op_builder.builder import AS_LIBRARY
-from typing import Optional
 from torchair.ge._ge_graph import Tensor, TensorSpec, DataType
 
 
@@ -50,6 +50,7 @@ class SparseFlashMlaMetadataOpBuilder(OpBuilder):
 sparse_flash_mla_metadata_op_builder = SparseFlashMlaMetadataOpBuilder()
 op_module = sparse_flash_mla_metadata_op_builder.load()
 
+
 @impl(AS_LIBRARY, sparse_flash_mla_metadata_op_builder.name, "PrivateUse1")
 def npu_sparse_flash_mla_metadata(
     num_heads_q: int, num_heads_kv: int, head_dim: int,
@@ -87,7 +88,7 @@ def npu_sparse_flash_mla_metadata_fallback(
     # 处理所有 tensor 都为 None 的情况
     # 可以在这里创建一个 NPU tensor 来触发 PrivateUse1 backend
     if all(t is None for t in [cu_seqlens_q, cu_seqlens_ori_kv]):
-             _ = torch.empty(1, dtype=torch.int32, device="npu")
+        _ = torch.empty(1, dtype=torch.int32, device="npu")
     # 调用 NPU 实现
     return npu_sparse_flash_mla_metadata(
         num_heads_q, num_heads_kv, head_dim, cu_seqlens_q, cu_seqlens_ori_kv, seqused_q, seqused_ori_kv,

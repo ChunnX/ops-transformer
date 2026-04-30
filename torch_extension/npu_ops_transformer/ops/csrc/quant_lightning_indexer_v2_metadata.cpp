@@ -20,13 +20,14 @@ namespace op_api {
 using npu_utils = at_npu::native::NpuUtils;
 constexpr int64_t OUTPUT_SIZE = 1024;
 
-const c10::optional<at::Tensor> qli_v2_get_valid_tensor(const c10::optional<at::Tensor> &tensor_opt, at::Device device) {
+const c10::optional<at::Tensor> qli_v2_get_valid_tensor(const c10::optional<at::Tensor> &tensor_opt, at::Device device)
+{
     return tensor_opt.has_value() ? tensor_opt : torch::empty({0}, torch::dtype(torch::kInt32).device(device));
 };
 
 at::Tensor npu_quant_lightning_indexer_v2_metadata(
-    int64_t num_heads_q, int64_t num_heads_k, int64_t head_dim, int64_t topk, int64_t q_quant_mode, int64_t k_quant_mode, 
-    const c10::optional<at::Tensor> &cu_seqlens_q, const c10::optional<at::Tensor> &cu_seqlens_k, 
+    int64_t num_heads_q, int64_t num_heads_k, int64_t head_dim, int64_t topk, int64_t q_quant_mode,
+    int64_t k_quant_mode, const c10::optional<at::Tensor> &cu_seqlens_q, const c10::optional<at::Tensor> &cu_seqlens_k,
     const c10::optional<at::Tensor> &seqused_q, const c10::optional<at::Tensor> &seqused_k, int64_t batch_size,
     int64_t max_seqlen_q, int64_t max_seqlen_k, c10::string_view layout_q, c10::string_view layout_k, int64_t mask_mode)
 {
@@ -53,14 +54,15 @@ at::Tensor npu_quant_lightning_indexer_v2_metadata(
     char *layout_q_ptr = const_cast<char *>(layout_q_str.c_str());
     char *layout_k_ptr = const_cast<char *>(layout_k_str.c_str());
 
-    ACLNN_CMD(aclnnQuantLightningIndexerV2Metadata, cu_seqlens_q_val, cu_seqlens_k_val, seqused_q_val, seqused_k_val, 
-              num_heads_q, num_heads_k, head_dim, topk, q_quant_mode, k_quant_mode, batch_size, max_seqlen_q, 
+    ACLNN_CMD(aclnnQuantLightningIndexerV2Metadata, cu_seqlens_q_val, cu_seqlens_k_val, seqused_q_val, seqused_k_val,
+              num_heads_q, num_heads_k, head_dim, topk, q_quant_mode, k_quant_mode, batch_size, max_seqlen_q,
               max_seqlen_k, layout_q_ptr, layout_k_ptr, mask_mode, output);
     return output;
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("npu_quant_lightning_indexer_v2_metadata", &npu_quant_lightning_indexer_v2_metadata, "npu_quant_lightning_indexer_v2_metadata");
+    m.def("npu_quant_lightning_indexer_v2_metadata", &npu_quant_lightning_indexer_v2_metadata, 
+        "npu_quant_lightning_indexer_v2_metadata");
 }
 } // namespace op_api

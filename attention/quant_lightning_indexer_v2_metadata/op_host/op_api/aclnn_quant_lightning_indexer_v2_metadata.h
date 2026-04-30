@@ -26,7 +26,7 @@ aclnnQuantLightningIndexerV2MetadataGetWorkspaceSize(
     int64_t maxSeqlenKOptional, char* layoutQOptional, char* layoutKOptional, int64_t maskModeOptional,
     const aclTensor* metaData, uint64_t* workspaceSize, aclOpExecutor** executor);
 
-__attribute__((visibility("default"))) 
+__attribute__((visibility("default")))
 aclnnStatus CheckSingleParamQliV2(int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t maxSeqlenKOptional,
                                   int64_t numHeadsQ, int64_t numHeadsK, int64_t qQuantModeOptional,
                                   int64_t kQuantModeOptional, char* layoutQOptional, char* layoutKOptional,
@@ -46,7 +46,8 @@ __attribute__((visibility("default")))
 aclnnStatus CheckFeatureQliV2();
 
 __attribute__((visibility("default"))) aclnnStatus
-aclnnQuantLightningIndexerV2Metadata(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream);
+aclnnQuantLightningIndexerV2Metadata(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, 
+    aclrtStream stream);
 
 #ifdef __cplusplus
 }

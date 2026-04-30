@@ -141,7 +141,7 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSizeOptional, int64_t maxSeqlenQOp
         "layout_q must be TND or BSND, but got %s", layoutQOptional);
     // layout_kv 校验
     CHECK_COND((strcmp(layoutKvOptional, "PA_BNBD") == 0) || (strcmp(layoutKvOptional, "TND") == 0) || \
-        (strcmp(layoutKvOptional, "BSND") == 0), 
+        (strcmp(layoutKvOptional, "BSND") == 0),
         ACLNN_ERR_PARAM_INVALID, "layout_kv must be TND, BSND or PA_BNBD, but got %s", layoutKvOptional);
     // has_ori_kv 校验
     CHECK_COND(hasOriKvOptional == true,
@@ -313,7 +313,7 @@ aclnnStatus aclnnSparseFlashMlaMetadataGetWorkspaceSize(
     int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim, int64_t batchSizeOptional, int64_t maxSeqlenQOptional,
     int64_t maxSeqlenKvOptional, int64_t oriTopKOptional, int64_t oriMaskModeOptional,
     char *layoutQOptional, char *layoutKvOptional, bool hasOriKvOptional,
-    const aclTensor *metaData, uint64_t *workspaceSize, aclOpExecutor **executor) 
+    const aclTensor *metaData, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnSparseFlashMlaMetadata,
                    DFX_IN(cuSeqLensQOptional, cuSeqLensOriKvOptional, sequsedQOptional, sequsedOriKvOptional,

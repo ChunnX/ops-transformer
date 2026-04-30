@@ -247,7 +247,7 @@ int64_t SparseFlashMlaMetadataCpuKernel::CalcPreTokenLeftUp(uint32_t s1Size, uin
 
 int64_t SparseFlashMlaMetadataCpuKernel::CalcNextTokenLeftUp(uint32_t s1Size, uint32_t s2Size)
 {
-    switch maskModeEnum_ {
+    switch (maskModeEnum_) {
         case SparseMode::DEFAULT_MASK:
         case SparseMode::ALL_MASK:
         case SparseMode::LEFT_UP_CAUSAL:
