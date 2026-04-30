@@ -281,7 +281,7 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::InitVecBloc
         blocktablePtr = blockTable;
         this->blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
     }
-    if (constInfo.isFd) {
+    if (this->tilingData->inputParamsRegbase.isFd) {
         auto &inputParamsRegbase = this->tilingData->inputParamsRegbase;
         uint64_t accumOutSize = this->tilingData->inputParamsRegbase.accumOutSize;
         uint64_t logSumExpSize = this->tilingData->inputParamsRegbase.logSumExpSize;
@@ -528,6 +528,7 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::setConstAnt
         taskParam.kvStep = taskParam.kvHeadNum * constInfo.dSize;
     }
     taskParam.copySplitS = kvInputSize / sizeof(KV_T) / dTemplateAlign64;
+    taskParam.isFd = constInfo.isFd;
     taskParam.isPageAttentionAntiquant = antiquantPageAttentionFlag;
     taskParam.isPertensor = antiquantPerTensorFlag;
     taskParam.isPerHead = antiquantPerHeadFlag;
