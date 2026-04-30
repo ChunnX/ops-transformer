@@ -94,10 +94,13 @@ uint64_t AlltoAllMatmulFitBalanceTiling::CalcLongTileLen(uint64_t shortTileLen)
         if (matmulQuantType_ != QuantType::KC_QUANT) {
             double singleRankPermuteTime = CalcPermuteTime(shortTileLen);
             uint32_t rank = GetRank();
-            longTileLen = (singleRankPermuteTime + singleRankMatmulTime - all2allBMap.at(rank) - permuteBMap.at(rank)) *
-                          ONE_MBYTE /
-                          ((all2allKMap.at(rank) + permuteKMap.at(rank)) * mmInfo_.kValue *
-                           all2allDtypeSizeMap.at(matmulQuantType_));
+            longTileLen =
+                mmInfo_.kValue == 0 ?
+                    0U :
+                    (singleRankPermuteTime + singleRankMatmulTime - all2allBMap.at(rank) - permuteBMap.at(rank)) *
+                        ONE_MBYTE /
+                        ((all2allKMap.at(rank) + permuteKMap.at(rank)) * mmInfo_.kValue *
+                         all2allDtypeSizeMap.at(matmulQuantType_));
         } else {
             longTileLen = commPerf_.InverseCommTime(singleRankMatmulTime);
         }
@@ -255,6 +258,10 @@ void AlltoAllMatmulFitBalanceTiling::FitTileLengthDiscrete()
             // 不规整的余数，重新切分
             ReTilingByFactor();
         }
+    }
+    if (tilingM_.cutRes.numLongTile + tilingM_.cutRes.numShortTile > MAX_TILE_CNT) {
+        // 切分轮次过多，重新切分
+        ReTilingByFactor();
     }
 }
 
