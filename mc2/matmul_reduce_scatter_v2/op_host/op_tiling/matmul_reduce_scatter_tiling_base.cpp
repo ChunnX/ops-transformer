@@ -249,11 +249,15 @@ uint64_t MatmulReduceScatterTilingBase::GetTilingKey() const
     if ((args_.geAType == ge::DT_BF16) || (args_.geAType == ge::DT_FLOAT16)) {
         inputIsBf16Fp16 = INPUT_TYPE_IS_FP16_BF16;
     }
+    uint8_t outputType = OUTPUT_TYPE_IS_FP16_BF16;
+    if ((args_.geCType == ge::DT_FLOAT8_E4M3FN) || (args_.geCType == ge::DT_FLOAT8_E5M2)) {
+        outputType = OUTPUT_TYPE_IS_FP8;
+    }
     uint8_t commAlg = isA2APath_ ? TPL_CCU_ALL2ALL_VEC_REDUCE : TPL_CCU_REDUCESUM;
     uint64_t tilingKey = GET_TPL_TILING_KEY(    \
-        false, args_.isATrans, args_.isBTrans, inputIsBf16Fp16, OUTPUT_TYPE_IS_FP8, TPL_X1_X2_DTYPE_IS_OTHER, commAlg);
-    OP_LOGD(opName_, "args_.isATrans, args_.isBTrans, inputIsBf16Fp16 is: [%d, %d, %d]", \
-            args_.isATrans, args_.isBTrans, inputIsBf16Fp16);
+        false, args_.isATrans, args_.isBTrans, inputIsBf16Fp16, outputType, TPL_X1_X2_DTYPE_IS_OTHER, commAlg);
+    OP_LOGD(opName_, "args_.isATrans, args_.isBTrans, inputIsBf16Fp16, outputType is: [%d, %d, %d, %d]", \
+            args_.isATrans, args_.isBTrans, inputIsBf16Fp16, outputType);
     return tilingKey;
 }
 

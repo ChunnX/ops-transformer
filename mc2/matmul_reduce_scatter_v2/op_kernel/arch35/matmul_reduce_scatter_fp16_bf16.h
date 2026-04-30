@@ -84,14 +84,13 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
 
     constexpr bool dtypeYIsBf16 = std::is_same_v<DTYPE_Y, bfloat16_t>;
     constexpr bool biasDtypeIsBf16 = std::is_same_v<BIAS_DTYPE, bfloat16_t>;
-    constexpr bool biasTypeIsBf16 = std::is_same_v<BiasType, bfloat16_t>;
-    AscendC::printf("[LBH_DBG] dtypeYIsBf16=%d biasDtypeIsBf16=%d biasTypeIsBf16=%d\n",
-                    dtypeYIsBf16 ? 1 : 0, biasDtypeIsBf16 ? 1 : 0, biasTypeIsBf16 ? 1 : 0);
+    AscendC::printf("[LBH_DBG] dtypeYIsBf16=%d biasDtypeIsBf16=%d\n",
+                    dtypeYIsBf16 ? 1 : 0, biasDtypeIsBf16 ? 1 : 0);
 
     GM_ADDR biasToFloatAddr = workspaceGM;
     AscendC::printf("[LBH_DBG] Init: biasGM=%lx, workspaceGM=%lx, biasLen=%d, rankN=%d\n",
                     biasGM, workspaceGM, cfg.biasLen, cfg.rankN);
-    if constexpr (std::is_same_v<BiasType, bfloat16_t>) {
+    if constexpr (std::is_same_v<BIAS_DTYPE, bfloat16_t>) {
         if (cfg.biasLen > 0) {
             AscendC::printf("[LBH_DBG] CastBias: src=%lx, dst=%lx, size=%d\n", biasGM, biasToFloatAddr, cfg.rankN);
             CastBiasBFtoFloat(biasToFloatAddr, biasGM, cfg.rankN);
