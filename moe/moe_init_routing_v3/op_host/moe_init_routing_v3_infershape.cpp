@@ -20,8 +20,22 @@
 #include "register/op_def_registry.h"
 #include "log/log.h"
 #include "util/math_util.h"
+#include <cstdio>
 
 using namespace ge;
+
+template <typename... Args>
+static std::string FormatLogReason(const char *fmt, Args... args)
+{
+    int len = std::snprintf(nullptr, 0, fmt, args...);
+    if (len <= 0) {
+        return std::string(fmt);
+    }
+    std::vector<char> buffer(static_cast<size_t>(len) + 1U);
+    std::snprintf(buffer.data(), buffer.size(), fmt, args...);
+    return std::string(buffer.data());
+}
+
 namespace ops {
 static constexpr size_t DIM_ONE = 1U;
 static constexpr size_t DIM_TWO = 2U;
@@ -102,7 +116,7 @@ static ge::graphStatus GetAndCheckAttrActiveExpertRange(const gert::RuntimeAttrs
     // Check if active_expert_range size is 2 and if expert_start < expert_end
     auto activeExpertRangePtr = attrs->GetListInt(MOE_INIT_ROUTING_V3_ATTR_ACTIVE_EXPERT_RANGE);
     if (nullptr == activeExpertRangePtr) {
-        OP_LOGE(context, "The active_expert_range should be list int. But it is none.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The active_expert_range should be list int. But it is none.").c_str());
         return ge::GRAPH_FAILED;
     }
     int64_t activeExpertRangeSize = activeExpertRangePtr->GetSize();
@@ -110,16 +124,14 @@ static ge::graphStatus GetAndCheckAttrActiveExpertRange(const gert::RuntimeAttrs
         expertStart = activeExpertRangePtr->GetData()[0];
         expertEnd = activeExpertRangePtr->GetData()[1];
         if (expertStart >= expertEnd || expertStart < 0 || expertEnd > MOE_INIT_ROUTING_V3_EXPERT_END_BOUND) {
-            OP_LOGE(context,
-                    "The active_expert_range should be in [0, %ld), but the active_expert_range is [%ld, %ld).",
-                    MOE_INIT_ROUTING_V3_EXPERT_END_BOUND, expertStart, expertEnd);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The active_expert_range should be in [0, %ld), but the active_expert_range is [%ld, %ld).", MOE_INIT_ROUTING_V3_EXPERT_END_BOUND, expertStart, expertEnd).c_str());
             return ge::GRAPH_FAILED;
         }
     } else if (activeExpertRangePtr->GetSize() == 0) {
         expertStart = 0;
         expertEnd = experNum;
     } else {
-        OP_LOGE(context, "The active_expert_range size should be 2, but its size is %ld.", activeExpertRangeSize);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The active_expert_range size should be 2, but its size is %ld.", activeExpertRangeSize).c_str());
         return ge::GRAPH_FAILED;
     }
 
@@ -133,12 +145,12 @@ static ge::graphStatus GetAndCheckAttrActiveNum(const gert::RuntimeAttrs *attrs,
     OP_LOGD(context, "Begin to do GetAndCheckAttrActiveNum.");
     const int64_t *activeNumPtr = attrs->GetAttrPointer<int64_t>(MOE_INIT_ROUTING_V3_ATTR_ACTIVE_NUM);
     if (nullptr == activeNumPtr) {
-        OP_LOGE(context, "The active_num should not be none.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The active_num should not be none.").c_str());
         return ge::GRAPH_FAILED;
     }
     activeNum = *activeNumPtr;
     if (dropPadMode == DropPadMode::NO_DROP_PAD && activeNum < -1) {
-        OP_LOGE(context, "The active_num should be greater than or equal to 0. But it is %ld.", activeNum);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The active_num should be greater than or equal to 0. But it is %ld.", activeNum).c_str());
         return ge::GRAPH_FAILED;
     }
 
@@ -153,13 +165,12 @@ static ge::graphStatus GetAndCheckAttrExpertCapacity(const gert::RuntimeAttrs *a
     OP_LOGD(context, "Begin to do GetAndCheckAttrExpertCapacity.");
     const int64_t *expertCapacityPtr = attrs->GetAttrPointer<int64_t>(MOE_INIT_ROUTING_V3_ATTR_EXPERT_CAPACITY);
     if (nullptr == expertCapacityPtr) {
-        OP_LOGE(context, "The expert_capacity should not be none.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The expert_capacity should not be none.").c_str());
         return ge::GRAPH_FAILED;
     }
     expertCapacity = *expertCapacityPtr;
     if (dropPadMode == DropPadMode::DROP_PAD && xShape->GetDim(0) > 0 && expertCapacity > xShape->GetDim(0)) {
-        OP_LOGE(context, "The expert_capacity should be between 0 and %d. But it is %ld.", xShape->GetDim(0),
-                expertCapacity);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The expert_capacity should be between 0 and %d. But it is %ld.", xShape->GetDim(0), expertCapacity).c_str());
         return ge::GRAPH_FAILED;
     }
     OP_LOGD(context, "End to do GetAndCheckAttrExpertCapacity.");
@@ -172,12 +183,12 @@ static ge::graphStatus GetAndCheckAttrExpertNum(const gert::RuntimeAttrs *attrs,
     OP_LOGD(context, "Begin to do GetAndCheckexperNum.");
     const int64_t *experNumPtr = attrs->GetAttrPointer<int64_t>(MOE_INIT_ROUTING_V3_ATTR_EXPERT_NUM);
     if (nullptr == experNumPtr) {
-        OP_LOGE(context, "The expert_num should not be none.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The expert_num should not be none.").c_str());
         return ge::GRAPH_FAILED;
     }
     experNum = *experNumPtr;
     if (experNum <= 0 || experNum > MOE_INIT_ROUTING_V3_EXPERT_END_BOUND) {
-        OP_LOGE(context, "The expert_num should be greater than 0. But it is %ld.", experNum);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The expert_num should be greater than 0. But it is %ld.", experNum).c_str());
         return ge::GRAPH_FAILED;
     }
 
@@ -191,14 +202,13 @@ static ge::graphStatus GetAndCheckAttrDropPadMode(const gert::RuntimeAttrs *attr
     OP_LOGD(context, "Begin to do GetAndCheckAttrDropPadMode.");
     const int64_t *dropPadModePtr = attrs->GetAttrPointer<int64_t>(MOE_INIT_ROUTING_V3_ATTR_DROP_PAD_MODE);
     if (nullptr == dropPadModePtr) {
-        OP_LOGE(context, "The RuntimeAttrs for drop_pad_mode is none.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The RuntimeAttrs for drop_pad_mode is none.").c_str());
         return ge::GRAPH_FAILED;
     }
 
     dropPadMode = *dropPadModePtr;
     if (dropPadMode < DropPadMode::NO_DROP_PAD || dropPadMode > DropPadMode::DROP_PAD) {
-        OP_LOGE(context, "The drop_pad_mode should be %d or %d. But it is %ld.", DropPadMode::NO_DROP_PAD,
-                DropPadMode::DROP_PAD, dropPadMode);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The drop_pad_mode should be %d or %d. But it is %ld.", DropPadMode::NO_DROP_PAD, DropPadMode::DROP_PAD, dropPadMode).c_str());
         return ge::GRAPH_FAILED;
     }
 
@@ -213,13 +223,12 @@ static ge::graphStatus GetAndCheckAttrExpertTokenNumType(const gert::RuntimeAttr
     const int64_t *experTokenNumTypePtr =
         attrs->GetAttrPointer<int64_t>(MOE_INIT_ROUTING_V3_ATTR_EXPERT_TOKEN_NUM_TYPE);
     if (nullptr == experTokenNumTypePtr) {
-        OP_LOGE(context, "The expert_token_num_type should not be none.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The expert_token_num_type should not be none.").c_str());
         return ge::GRAPH_FAILED;
     }
     experTokenNumType = *experTokenNumTypePtr;
     if (experTokenNumType < ExpertTokenNumType::CUMSUM || experTokenNumType > ExpertTokenNumType::KEY_VALUE) {
-        OP_LOGE(context, "The expert_token_num_type should be %d, %d or %d. But it is %ld.", ExpertTokenNumType::CUMSUM,
-                ExpertTokenNumType::COUNT, ExpertTokenNumType::KEY_VALUE, experTokenNumType);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The expert_token_num_type should be %d, %d or %d. But it is %ld.", ExpertTokenNumType::CUMSUM, ExpertTokenNumType::COUNT, ExpertTokenNumType::KEY_VALUE, experTokenNumType).c_str());
         return ge::GRAPH_FAILED;
     }
 
@@ -233,7 +242,7 @@ static ge::graphStatus GetAndCheckAttrExpertTokenNumFlag(const gert::RuntimeAttr
     OP_LOGD(context, "Begin to do GetAndCheckexperTokenNumType.");
     const bool *experTokenNumFlagPtr = attrs->GetAttrPointer<bool>(MOE_INIT_ROUTING_V3_ATTR_EXPERT_TOKEN_NUM_FLAG);
     if (nullptr == experTokenNumFlagPtr) {
-        OP_LOGE(context, "The expert_token_num_flag should not be none.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The expert_token_num_flag should not be none.").c_str());
         return ge::GRAPH_FAILED;
     }
     experTokenNumFlag = *experTokenNumFlagPtr;
@@ -246,20 +255,17 @@ static ge::graphStatus GetAndCheckAttrQuantMode(const gert::RuntimeAttrs *attrs,
 {
     OP_LOGD(context, "Begin to do GetAndCheckQuantMode.");
     if (nullptr == attrs) {
-        OP_LOGE(context, "The RuntimeAttrs for quant_mode is none.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The RuntimeAttrs for quant_mode is none.").c_str());
         return ge::GRAPH_FAILED;
     }
     const int64_t *quantModePtr = attrs->GetAttrPointer<int64_t>(MOE_INIT_ROUTING_V3_ATTR_QUANT_MODE);
     if (nullptr == quantModePtr) {
-        OP_LOGE(context, "The quant_mode should not be null.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The quant_mode should not be null.").c_str());
         return ge::GRAPH_FAILED;
     }
     quantMode = *quantModePtr;
     if (validQuantModes.count(quantMode) == 0) {
-        OP_LOGE(context, "The quant_mode should be in [%d, %d], %d, %d, %d or %d. But it is %d.",
-                QuantMode::NON_QUANT, QuantMode::MXQUANT_FP8_E4M3FN, QuantMode::HIF8_CAST,
-                QuantMode::HIF8_PERTENSOR, QuantMode::HIF8_PERTOKEN, QuantMode::MXQUANT_FP4_E2M1,
-                quantMode);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The quant_mode should be in [%d, %d], %d, %d, %d or %d. But it is %d.", QuantMode::NON_QUANT, QuantMode::MXQUANT_FP8_E4M3FN, QuantMode::HIF8_CAST, QuantMode::HIF8_PERTENSOR, QuantMode::HIF8_PERTOKEN, QuantMode::MXQUANT_FP4_E2M1, quantMode).c_str());
         return ge::GRAPH_FAILED;
     }
     OP_LOGD(context, "End to do GetAndCheckQuantMode.");
@@ -271,7 +277,7 @@ static ge::graphStatus GetAndCheckAttrRowIdxType(const gert::RuntimeAttrs *attrs
 {
     OP_LOGD(context, "Begin to do GetAndCheckAttrRowIdxType.");
     if (nullptr == attrs) {
-        OP_LOGE(context, "The RuntimeAttrs for row_Idx_type is none.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The RuntimeAttrs for row_Idx_type is none.").c_str());
         return ge::GRAPH_FAILED;
     }
     const int64_t *dropPadModePtr = attrs->GetAttrPointer<int64_t>(MOE_INIT_ROUTING_V3_ATTR_DROP_PAD_MODE);
@@ -279,17 +285,17 @@ static ge::graphStatus GetAndCheckAttrRowIdxType(const gert::RuntimeAttrs *attrs
 
     const int64_t *rowIdxTypePtr = attrs->GetAttrPointer<int64_t>(MOE_INIT_ROUTING_V3_ATTR_ROW_IDX_TYPE);
     if (nullptr == rowIdxTypePtr) {
-        OP_LOGE(context, "The row_Idx_type should be 0 or 1. But it is none.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The row_Idx_type should be 0 or 1. But it is none.").c_str());
         return ge::GRAPH_FAILED;
     }
     rowIdxType = *rowIdxTypePtr;
     if (dropPadMode == DropPadMode::DROP_PAD && rowIdxType != 0) {
-        OP_LOGE(context, "The row_Idx_type should be 0 when dropPadMode is equal to 1 But it is %ld.", rowIdxType);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The row_Idx_type should be 0 when dropPadMode is equal to 1 But it is %ld.", rowIdxType).c_str());
         return ge::GRAPH_FAILED;
     }
 
     if (rowIdxType < 0 || rowIdxType > 1) {
-        OP_LOGE(context, "The row_Idx_type should be 0 or 1 But it is %ld.", rowIdxType);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The row_Idx_type should be 0 or 1 But it is %ld.", rowIdxType).c_str());
         return ge::GRAPH_FAILED;
     }
 
@@ -303,7 +309,7 @@ static ge::graphStatus CheckInputScaleShape(gert::InferShapeContext *context, co
 {
     // When quant_mode is STATIC_QUANT, scale cannot be none.
     OP_CHECK_IF((nullptr == scaleShape && QuantMode::STATIC_QUANT == quantMode),
-                OP_LOGE(context, "The scale cannot be none when quant_mode is %ld.", quantMode),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The scale cannot be none when quant_mode is %ld.", quantMode).c_str()),
                 return ge::GRAPH_FAILED);
 
     /*
@@ -321,52 +327,36 @@ static ge::graphStatus CheckInputScaleShape(gert::InferShapeContext *context, co
     if (QuantMode::NON_QUANT == quantMode) {
         if (scaleShape->GetDimNum() == DIM_ONE) {
             OP_CHECK_IF(scaleShape->GetDim(0) < 0 && scaleShape->GetDim(0) != NEG_ONE && scaleShape->GetDim(0) != NEG_TWO,
-                        OP_LOGE(context,
-                                "When quant_mode is %ld and use scale in dynamic shape, The shape of scale should be "
-                                "(-1) or (-2), current shape is (%s).",
-                                quantMode, Ops::Base::ToString(*scaleShape).c_str()),
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("When quant_mode is %ld and use scale in dynamic shape, The shape of scale should be "
+                                "(-1) or (-2), current shape is (%s).", quantMode, Ops::Base::ToString(*scaleShape).c_str()).c_str()),
                         return ge::GRAPH_FAILED);
             OP_CHECK_IF(scaleShape->GetDim(0) > 0 && !isSameDim(scaleShape->GetDim(0), xShape->GetDim(0)),
-                        OP_LOGE(context,
-                                "When quant_mode is %ld and use scale in static shape, The shape of scale should be "
-                                "(%ld), current shape is (%s).",
-                                quantMode, xShape->GetDim(0), Ops::Base::ToString(*scaleShape).c_str()),
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("When quant_mode is %ld and use scale in static shape, The shape of scale should be "
+                                "(%ld), current shape is (%s).", quantMode, xShape->GetDim(0), Ops::Base::ToString(*scaleShape).c_str()).c_str()),
                         return ge::GRAPH_FAILED);
         } else if (scaleShape->GetDimNum() == DIM_THREE) {
             OP_CHECK_IF(scaleShape->GetDim(0) < 0 && scaleShape->GetDim(0) != NEG_ONE ||
                         scaleShape->GetDim(1) < 0 && scaleShape->GetDim(1) != NEG_ONE ||
                         scaleShape->GetDim(DIM_TWO) < 0 && scaleShape->GetDim(DIM_TWO) != NEG_ONE,
-                        OP_LOGE(context,
-                                "When quant_mode is %ld and use scale in dynamic shape, each dim shape of scale "
-                                "should be (-1), current shape is (%s).",
-                                quantMode, Ops::Base::ToString(*scaleShape).c_str()),
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("When quant_mode is %ld and use scale in dynamic shape, each dim shape of scale "
+                                "should be (-1), current shape is (%s).", quantMode, Ops::Base::ToString(*scaleShape).c_str()).c_str()),
                         return ge::GRAPH_FAILED);
             OP_CHECK_IF(scaleShape->GetDim(0) > 0 && !isSameDim(scaleShape->GetDim(0), xShape->GetDim(0)),
-                        OP_LOGE(context,
-                                "When quant_mode is %ld and use scale in static shape, The shape of scale should be "
-                                "(%ld), current shape is (%s).",
-                                quantMode, xShape->GetDim(0), Ops::Base::ToString(*scaleShape).c_str()),
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("When quant_mode is %ld and use scale in static shape, The shape of scale should be "
+                                "(%ld), current shape is (%s).", quantMode, xShape->GetDim(0), Ops::Base::ToString(*scaleShape).c_str()).c_str()),
                         return ge::GRAPH_FAILED);
             OP_CHECK_IF(scaleShape->GetDim(1) > 0 && !isSameDim(scaleShape->GetDim(1),
                             Ops::Base::CeilDiv<int64_t>(xShape->GetDim(1), SCALE_BLOCK_SIZE)),
-                        OP_LOGE(context,
-                                "When quant_mode is %ld and use scale in static shape, The shape of scale should be "
-                                "(%ld), current shape is (%s).",
-                                quantMode, Ops::Base::CeilDiv<int64_t>(xShape->GetDim(1), SCALE_BLOCK_SIZE),
-                                Ops::Base::ToString(*scaleShape).c_str()),
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("When quant_mode is %ld and use scale in static shape, The shape of scale should be "
+                                "(%ld), current shape is (%s).", quantMode, Ops::Base::CeilDiv<int64_t>(xShape->GetDim(1), SCALE_BLOCK_SIZE), Ops::Base::ToString(*scaleShape).c_str()).c_str()),
                         return ge::GRAPH_FAILED);
              OP_CHECK_IF(scaleShape->GetDim(DIM_TWO) > 0 && !isSameDim(scaleShape->GetDim(DIM_TWO),
                                                                        SCALE_THIRD_DIM_SIZE),
-                        OP_LOGE(context,
-                                "When quant_mode is %ld and use scale in static shape, The shape of scale should be "
-                                "(%ld), current shape is (%s).",
-                                quantMode, SCALE_THIRD_DIM_SIZE, Ops::Base::ToString(*scaleShape).c_str()),
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("When quant_mode is %ld and use scale in static shape, The shape of scale should be "
+                                "(%ld), current shape is (%s).", quantMode, SCALE_THIRD_DIM_SIZE, Ops::Base::ToString(*scaleShape).c_str()).c_str()),
                         return ge::GRAPH_FAILED);
         } else {
-            OP_LOGE(
-                context,
-                "When quant_mode is %ld, The dimNum of scale should be 1 or 3, current shape is (%ld).",
-                quantMode, scaleShape->GetDimNum());
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("When quant_mode is %ld, The dimNum of scale should be 1 or 3, current shape is (%ld).", quantMode, scaleShape->GetDimNum()).c_str());
             return ge::GRAPH_FAILED;
         }
     } else if (QuantMode::STATIC_QUANT == quantMode) {
@@ -374,76 +364,49 @@ static ge::graphStatus CheckInputScaleShape(gert::InferShapeContext *context, co
             OP_CHECK_IF(
                 scaleShape->GetDim(0) != NEG_ONE && scaleShape->GetDim(0) != NEG_TWO &&
                     !isSameDim(scaleShape->GetDim(0), DIM_ONE),
-                OP_LOGE(
-                    context,
-                    "When quant_mode is %ld, the shape of scale should be (-1) or (-2) or (1,), current shape is (%s).",
-                    quantMode, Ops::Base::ToString(*scaleShape).c_str()),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("When quant_mode is %ld, the shape of scale should be (-1) or (-2) or (1,), current shape is (%s).", quantMode, Ops::Base::ToString(*scaleShape).c_str()).c_str()),
                 return ge::GRAPH_FAILED);
         } else {
-            OP_LOGE(
-                context,
-                "When quant_mode is %ld, the dimNum of scale should be (1,), current shape is (%ld).",
-                quantMode, scaleShape->GetDimNum());
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("When quant_mode is %ld, the dimNum of scale should be (1,), current shape is (%ld).", quantMode, scaleShape->GetDimNum()).c_str());
             return ge::GRAPH_FAILED;
         }
     } else if (QuantMode::DYNAMIC_QUANT == quantMode) {
         int64_t activeExpertRange = expertEnd - expertStart;
         if (scaleShape->GetDimNum() == DIM_ONE) {
             OP_CHECK_IF(scaleShape->GetDim(0) != NEG_TWO,
-                        OP_LOGE(
-                            context,
-                            "When quant_mode is %ld and scale dim is 1 in dynamic shape, the first dim of scale should be -2, but "
-                            "its shape is (%ld).",
-                            quantMode, scaleShape->GetDim(0)),
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("When quant_mode is %ld and scale dim is 1 in dynamic shape, the first dim of scale should be -2, but "
+                            "its shape is (%ld).", quantMode, scaleShape->GetDim(0)).c_str()),
                         return ge::GRAPH_FAILED);
         } else if (scaleShape->GetDimNum() == DIM_TWO) {
             if (scaleShape->GetDim(0) > 0) {
                 OP_CHECK_IF(
                     !isSameDim(scaleShape->GetDim(0), activeExpertRange) && !isSameDim(scaleShape->GetDim(0), DIM_ONE),
-                    OP_LOGE(
-                        context,
-                        "When quant_mode is %ld in static shape, the first dim of scale should be 1 or %ld, but its shape is (%ld).",
-                        quantMode, activeExpertRange, scaleShape->GetDim(0)),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("When quant_mode is %ld in static shape, the first dim of scale should be 1 or %ld, but its shape is (%ld).", quantMode, activeExpertRange, scaleShape->GetDim(0)).c_str()),
                     return ge::GRAPH_FAILED);
                 OP_CHECK_IF(
                     !isSameDim(scaleShape->GetDim(1), xShape->GetDim(1)),
-                    OP_LOGE(
-                        context,
-                        "When quant_mode is %ld in static shape, the second dim of scale should be %ld, but its shape is (%ld).",
-                        quantMode, xShape->GetDim(1), scaleShape->GetDim(1)),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("When quant_mode is %ld in static shape, the second dim of scale should be %ld, but its shape is (%ld).", quantMode, xShape->GetDim(1), scaleShape->GetDim(1)).c_str()),
                     return ge::GRAPH_FAILED);
             } else {
                 OP_CHECK_IF(
                     scaleShape->GetDim(0) != NEG_ONE || (scaleShape->GetDim(1) != NEG_ONE && scaleShape->GetDim(1) != xShape->GetDim(1)),
-                    OP_LOGE(
-                        context,
-                        "When quant_mode is %ld and scale dim is 2 in dynamic shape, the shape of scale should be (-1, -1) or (-1, %d), but its shape is (%s).",
-                        quantMode, xShape->GetDim(1), Ops::Base::ToString(*scaleShape).c_str()),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("When quant_mode is %ld and scale dim is 2 in dynamic shape, the shape of scale should be (-1, -1) or (-1, %d), but its shape is (%s).", quantMode, xShape->GetDim(1), Ops::Base::ToString(*scaleShape).c_str()).c_str()),
                     return ge::GRAPH_FAILED);
             }
         } else {
-            OP_LOGE(
-                context,
-                "When quant_mode is %ld, the dimNum of scale should be 1(dynamic shape) or 2, but its shape is (%ld).",
-                scaleShape->GetDimNum());
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("When quant_mode is %ld, the dimNum of scale should be 1(dynamic shape) or 2, but its shape is (%ld).", quantMode, scaleShape->GetDimNum()).c_str());
             return ge::GRAPH_FAILED;
         }
     } else if (QuantMode::HIF8_PERTENSOR == quantMode) {
         // The dimension of scale must be 1
         if (scaleShape->GetDimNum() != DIM_ONE) {
-            OP_LOGE(
-                context,
-                "When quant_mode is %ld, the dimNum of scale should be 1, current dimNum is (%ld).",
-                quantMode, scaleShape->GetDimNum());
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("When quant_mode is %ld, the dimNum of scale should be 1, current dimNum is (%ld).", quantMode, scaleShape->GetDimNum()).c_str());
             return ge::GRAPH_FAILED;
         }
         // the dimension value of scale must be 1
         OP_CHECK_IF(
             !isSameDim(scaleShape->GetDim(0), DIM_ONE),
-            OP_LOGE(
-                context,
-                "When quant_mode is %ld, the shape of scale should be (1,), current shape is (%s).",
-                quantMode, Ops::Base::ToString(*scaleShape).c_str()),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("When quant_mode is %ld, the shape of scale should be (1,), current shape is (%s).", quantMode, Ops::Base::ToString(*scaleShape).c_str()).c_str()),
             return ge::GRAPH_FAILED);
         }
     return ge::GRAPH_SUCCESS;
@@ -461,13 +424,11 @@ static ge::graphStatus CheckInputOffsetShape(gert::InferShapeContext *context, c
     }
 
     if (offsetShape->GetDimNum() != DIM_ONE) {
-        OP_LOGE(context, "The dimNum of offset should be 1, current shape is (%ld).", offsetShape->GetDimNum());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The dimNum of offset should be 1, current shape is (%ld).", offsetShape->GetDimNum()).c_str());
         return ge::GRAPH_FAILED;
     }
     if (offsetShape->GetDim(0) != NEG_ONE && offsetShape->GetDim(0) != NEG_TWO && !isSameDim(offsetShape->GetDim(0), DIM_ONE)) {
-        OP_LOGE(context,
-                "The shape of offset should be (1,) in static graph or (-2), (-1,) in dynamic graph, current shape is (%s).",
-                Ops::Base::ToString(*offsetShape).c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The shape of offset should be (1,) in static graph or (-2), (-1,) in dynamic graph, current shape is (%s).", Ops::Base::ToString(*offsetShape).c_str()).c_str());
         return ge::GRAPH_FAILED;
     }
 
@@ -482,45 +443,41 @@ static ge::graphStatus CheckInputShape(gert::InferShapeContext *context, const g
     // Check the shape of input_x
     if (xShape->GetDimNum() == DIM_ONE) {
         if (xShape->GetDim(0) != ge::UNKNOWN_DIM_NUM) {
-            OP_LOGE(context, "The dynamic dim of x should be -2, current shape is %s.",
-                    Ops::Base::ToString(*xShape).c_str());
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The dynamic dim of x should be -2, current shape is %s.", Ops::Base::ToString(*xShape).c_str()).c_str());
             return ge::GRAPH_FAILED;
         }
     } else if (xShape->GetDimNum() != DIM_TWO) {
-        OP_LOGE(context, "The dim of x should be 2 or dynamic, current shape is %s.",
-                Ops::Base::ToString(*xShape).c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The dim of x should be 2 or dynamic, current shape is %s.", Ops::Base::ToString(*xShape).c_str()).c_str());
         return ge::GRAPH_FAILED;
     }
 
     int64_t x_n = xShape->GetDimNum() == DIM_ONE ? NEG_ONE : xShape->GetDim(0);
     int64_t cols = xShape->GetDimNum() == DIM_ONE ? NEG_ONE : xShape->GetDim(1);
     if (x_n < NEG_ONE || cols < NEG_ONE) {
-        OP_LOGE(context, "Invalid x shape, shape is %s.", Ops::Base::ToString(*xShape).c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("Invalid x shape, shape is %s.", Ops::Base::ToString(*xShape).c_str()).c_str());
         return ge::GRAPH_FAILED;
     }
 
     // Check the shape of expert_idx
     if (expertIdxShape->GetDimNum() == DIM_ONE) {
         if (expertIdxShape->GetDim(0) != ge::UNKNOWN_DIM_NUM) {
-            OP_LOGE(context, "The dynamic dim of expert_idx should be -2, current shape is %s.",
-                    Ops::Base::ToString(*expertIdxShape).c_str());
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The dynamic dim of expert_idx should be -2, current shape is %s.", Ops::Base::ToString(*expertIdxShape).c_str()).c_str());
             return ge::GRAPH_FAILED;
         }
     } else if (expertIdxShape->GetDimNum() != DIM_TWO) {
-        OP_LOGE(context, "The dim of expert_idx should be 2 or dynamic, current shape is %s.",
-                Ops::Base::ToString(*expertIdxShape).c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The dim of expert_idx should be 2 or dynamic, current shape is %s.", Ops::Base::ToString(*expertIdxShape).c_str()).c_str());
         return ge::GRAPH_FAILED;
     }
 
     int64_t expert_idx_n = expertIdxShape->GetDimNum() == DIM_ONE ? NEG_ONE : expertIdxShape->GetDim(0);
     int64_t expert_idx_k = expertIdxShape->GetDimNum() == DIM_ONE ? NEG_ONE : expertIdxShape->GetDim(1);
     if (expert_idx_n < NEG_ONE || expert_idx_k < NEG_ONE) {
-        OP_LOGE(context, "Invalid expert_idx shape, shape is %s.", Ops::Base::ToString(*expertIdxShape).c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("Invalid expert_idx shape, shape is %s.", Ops::Base::ToString(*expertIdxShape).c_str()).c_str());
         return ge::GRAPH_FAILED;
     }
 
     if (!isSameDim(x_n, expert_idx_n)) {
-        OP_LOGE(context, "The first dim of x and expert_idx should be same.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The first dim of x and expert_idx should be same.").c_str());
         return ge::GRAPH_FAILED;
     }
     // Check the shape of scale
@@ -614,7 +571,7 @@ static ge::graphStatus InferShape4MoeInitRoutingV3(gert::InferShapeContext *cont
     }
 
     if (nullptr == attrs) {
-        OP_LOGE(context, "The attrs is none.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The attrs is none.").c_str());
         return ge::GRAPH_FAILED;
     }
 
@@ -769,9 +726,7 @@ static ge::graphStatus InferDataType4MoeInitRoutingV3(gert::InferDataTypeContext
     int64_t quantMode = static_cast<int64_t>(-1);
     const int64_t *quantModePtr = attrs->GetAttrPointer<int64_t>(MOE_INIT_ROUTING_V3_ATTR_QUANT_MODE);
     if (nullptr == quantModePtr) {
-        OP_LOGE(context, "The quant_mode should be in range [%d, %d], %d, %d, %d or %d. But it is none.",
-            QuantMode::NON_QUANT, QuantMode::MXQUANT_FP8_E4M3FN, QuantMode::HIF8_CAST, QuantMode::HIF8_PERTENSOR,
-                QuantMode::HIF8_PERTOKEN, QuantMode::MXQUANT_FP4_E2M1);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The quant_mode should be in range [%d, %d], %d, %d, %d or %d. But it is none.", QuantMode::NON_QUANT, QuantMode::MXQUANT_FP8_E4M3FN, QuantMode::HIF8_CAST, QuantMode::HIF8_PERTENSOR, QuantMode::HIF8_PERTOKEN, QuantMode::MXQUANT_FP4_E2M1).c_str());
         return ge::GRAPH_FAILED;
     }
     quantMode = *quantModePtr;
@@ -784,25 +739,19 @@ static ge::graphStatus InferDataType4MoeInitRoutingV3(gert::InferDataTypeContext
     }
     if (QuantMode::STATIC_QUANT == quantMode || QuantMode::DYNAMIC_QUANT == quantMode) {
         if (ge::DT_INT8 == xDtype) {
-            OP_LOGE(context, "When quant_mode=%ld, xDtype cannot be int_8.", quantMode);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("When quant_mode=%ld, xDtype cannot be int_8.", quantMode).c_str());
             return ge::GRAPH_FAILED;
         }
     } else if (QuantMode::MXQUANT_FP8_E5M2 == quantMode || QuantMode::MXQUANT_FP8_E4M3FN == quantMode
         || QuantMode::HIF8_CAST == quantMode || QuantMode::HIF8_PERTOKEN == quantMode
         || QuantMode::HIF8_PERTENSOR == quantMode) {
         if (xDtype != ge::DT_FLOAT16 && xDtype != ge::DT_BF16) {
-            OP_LOGE(
-                context,
-                "When quant_mode=%ld, xDtype should be DT_FLOAT16 or DT_BF16. Current got unexpected dtype id of %d.",
-                quantMode, xDtype);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("When quant_mode=%ld, xDtype should be DT_FLOAT16 or DT_BF16. Current got unexpected dtype id of %d.", quantMode, xDtype).c_str());
             return ge::GRAPH_FAILED;
         }
     } else if (QuantMode::MXQUANT_FP4_E2M1 == quantMode) {
         if (xDtype != ge::DT_FLOAT16 && xDtype != ge::DT_BF16) {
-            OP_LOGE(
-                context,
-                "When quant_mode=%ld, xDtype should be DT_FLOAT16 or DT_BF16. Current got unexpected dtype id of %d.",
-                quantMode, xDtype);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("When quant_mode=%ld, xDtype should be DT_FLOAT16 or DT_BF16. Current got unexpected dtype id of %d.", quantMode, xDtype).c_str());
             return ge::GRAPH_FAILED;
         }
     }

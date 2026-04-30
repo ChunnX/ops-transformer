@@ -19,6 +19,8 @@
 #include "moe_init_routing_v3_tiling.h"
 #include "../op_kernel/arch35/moe_init_routing_v3_arch35_tiling_def.h"
 #include "op_host/tiling_util.h"
+#include <cstdio>
+#include <vector>
 
 #define MIRV3_CHECK_GE_RET(expr)                                                                                       \
     if (ge::graphStatus ret = (expr); ret != ge::GRAPH_SUCCESS) {                                                      \
@@ -27,6 +29,18 @@
 
 using Ops::Transformer::OpTiling::TilingBaseClass;
 
+
+template <typename... Args>
+static std::string FormatLogReason(const char *fmt, Args... args)
+{
+    int len = std::snprintf(nullptr, 0, fmt, args...);
+    if (len <= 0) {
+        return std::string(fmt);
+    }
+    std::vector<char> buffer(static_cast<size_t>(len) + 1U);
+    std::snprintf(buffer.data(), buffer.size(), fmt, args...);
+    return std::string(buffer.data());
+}
 namespace optiling {
 const static int64_t SIMT_DCACHE_SIZE = 64 * 1024LL; // UB要给SIMT预留64k的DCache空间，然后要用SetLocalMemSize()
 const static int64_t SORT_API_MAX_ELEM = 32 * 255LL; // AscendC::Sort全排序模式最多支持一次排序(32*255rep)个元素
@@ -362,7 +376,7 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::GetPlatformInfo()
     OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::GetPlatformInfo()");
 
     const auto *compileInfoPtr = reinterpret_cast<const MoeInitRoutingV3CompileInfo *>(context_->GetCompileInfo());
-    OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_, "Failed to get compileInfo from tiling context."),
+    OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("Failed to get compileInfo from tiling context.").c_str()),
                 return ge::GRAPH_FAILED);
     aivCoreNum_ = static_cast<int64_t>(compileInfoPtr->aivNum);
     totalUbSize_ = static_cast<int64_t>(compileInfoPtr->ubSize);
@@ -376,16 +390,14 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetPlatformInfo()
     OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::CheckSetPlatformInfo()");
 
     // check aivCoreNum
-    OP_CHECK_IF(aivCoreNum_ <= 0, OP_LOGE(context_, "Failed to get valid aivCoreNum, current is %ld.", aivCoreNum_),
+    OP_CHECK_IF(aivCoreNum_ <= 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("Failed to get valid aivCoreNum, current is %ld.", aivCoreNum_).c_str()),
                 return ge::GRAPH_FAILED);
     tilingDataPtr_->coreNum = aivCoreNum_;
     // check availUbSize
     availUbSize_ = totalUbSize_ - SIMT_DCACHE_SIZE;
     OP_CHECK_IF(
         totalUbSize_ <= 0 || availUbSize_ <= 0,
-        OP_LOGE(context_,
-                "Got invalid totalUbSize = %ld bytes or availUbSize = %ld bytes (SIMT_DCACHE_SIZE = %ld bytes).",
-                totalUbSize_, availUbSize_, SIMT_DCACHE_SIZE),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("Got invalid totalUbSize = %ld bytes or availUbSize = %ld bytes (SIMT_DCACHE_SIZE = %ld bytes).", totalUbSize_, availUbSize_, SIMT_DCACHE_SIZE).c_str()),
         return ge::GRAPH_FAILED);
     // log info
     OP_LOGD(context_,
@@ -511,12 +523,12 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::PostTiling()
     // 设置UB可用大小（必须是减除SIMT用的DCACHE大小后的）
     auto ret = context_->SetLocalMemorySize(availUbSize_);
     OP_CHECK_IF(ret != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_, "Failed to set local memory sizeof %ld bytes", availUbSize_),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("Failed to set local memory sizeof %ld bytes", availUbSize_).c_str()),
                 return ge::GRAPH_FAILED);
     // 涉及核间同步的算子必须设置schedule_mode为1，独占全核
     ret = context_->SetScheduleMode(1);
     OP_CHECK_IF(ret != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_, "Failed to set schedule mode to 1 for kernel that needs sync cores."),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("Failed to set schedule mode to 1 for kernel that needs sync cores.").c_str()),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -586,7 +598,7 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::GetInputAttrsInfo()
     OP_CHECK_NULL_WITH_CONTEXT(context_, aerPtr);
     int64_t aerLen = aerPtr->GetSize();
     OP_CHECK_IF(aerLen != 2,
-                OP_LOGE(context_, "The list length of active_expert_range should be 2, current is %ld.", aerLen),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The list length of active_expert_range should be 2, current is %ld.", aerLen).c_str()),
                 return ge::GRAPH_FAILED);
     const int64_t *aerList = reinterpret_cast<const int64_t *>(aerPtr->GetData());
     expertStart_ = aerList[0];
@@ -606,9 +618,7 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetAttrs()
     OP_CHECK_IF((expertTokensNumType_ != EXPERT_TOKENS_TYPE_CUMSUM) &&
                     (expertTokensNumType_ != EXPERT_TOKENS_TYPE_COUNT) &&
                     (expertTokensNumType_ != EXPERT_TOKENS_TYPE_KEY_VALUE),
-                OP_LOGE(context_, "Attr expert_tokens_num_type currently supports: %ld, %ld or %ld, but got %ld.",
-                        EXPERT_TOKENS_TYPE_CUMSUM, EXPERT_TOKENS_TYPE_COUNT, EXPERT_TOKENS_TYPE_KEY_VALUE,
-                        expertTokensNumType_),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("Attr expert_tokens_num_type currently supports: %ld, %ld or %ld, but got %ld.", EXPERT_TOKENS_TYPE_CUMSUM, EXPERT_TOKENS_TYPE_COUNT, EXPERT_TOKENS_TYPE_KEY_VALUE, expertTokensNumType_).c_str()),
                 return ge::GRAPH_FAILED);
     tilingDataPtr_->expertTokensNumType = expertTokensNumType_;
     // expertNum
@@ -616,18 +626,16 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetAttrs()
         (expertTokensNumType_ == EXPERT_TOKENS_TYPE_KEY_VALUE) ? KV_MODE_EXPERT_IDX_MAX : EXPERT_IDX_MAX;
     OP_CHECK_IF(
         expertNum_ <= 0 || expertNum_ > maxExpertNum,
-        OP_LOGE(context_, "Attr expert_num should be in range [1, %ld], current is %ld.", maxExpertNum, expertNum_),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("Attr expert_num should be in range [1, %ld], current is %ld.", maxExpertNum, expertNum_).c_str()),
         return ge::GRAPH_FAILED);
     tilingDataPtr_->expertNum = expertNum_;
     // drop_pad_mode 暂不使用，只校验
     OP_CHECK_IF(dropPadMode_ != DROP_PAD_MODE_DROPLESS,
-                OP_LOGE(context_, "Attr drop_pad_mode currently supports %ld, but got %ld.", DROP_PAD_MODE_DROPLESS,
-                        dropPadMode_),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("Attr drop_pad_mode currently supports %ld, but got %ld.", DROP_PAD_MODE_DROPLESS, dropPadMode_).c_str()),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(expertTokensNumFlag_ != true,
-                OP_LOGE(context_, "Attr expert_tokens_num_flag currently supports True, but got %s",
-                        (expertTokensNumFlag_ ? "True" : "False")),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("Attr expert_tokens_num_flag currently supports True, but got %s", (expertTokensNumFlag_ ? "True" : "False")).c_str()),
                 return ge::GRAPH_FAILED);
     tilingDataPtr_->expertTokensNumFlag = expertTokensNumFlag_;
     // quantMode
@@ -636,17 +644,12 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetAttrs()
                     quantMode_ != QUANT_MODE_MXFP8_E4M3FN && quantMode_ != QUANT_MODE_HIF8_CAST &&
                     quantMode_ != QUANT_MODE_HIF8_PERTENSOR && quantMode_ != QUANT_MODE_HIF8_PERTOKEN &&
                     quantMode_ != QUANT_MODE_MXFP4_E2M1,
-                OP_LOGE(context_,
-                        "Attr quant_mode currently supports (%ld, %ld, %ld, %ld, %ld, %ld, %ld, %ld, %ld), but got %ld",
-                        QUANT_MODE_UNQUANT, QUANT_MODE_STATIC, QUANT_MODE_DYNAMIC, QUANT_MODE_MXFP8_E5M2,
-                        QUANT_MODE_MXFP8_E4M3FN, QUANT_MODE_HIF8_CAST, QUANT_MODE_HIF8_PERTENSOR,
-                        QUANT_MODE_HIF8_PERTOKEN, QUANT_MODE_MXFP4_E2M1, quantMode_),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("Attr quant_mode currently supports (%ld, %ld, %ld, %ld, %ld, %ld, %ld, %ld, %ld), but got %ld", QUANT_MODE_UNQUANT, QUANT_MODE_STATIC, QUANT_MODE_DYNAMIC, QUANT_MODE_MXFP8_E5M2, QUANT_MODE_MXFP8_E4M3FN, QUANT_MODE_HIF8_CAST, QUANT_MODE_HIF8_PERTENSOR, QUANT_MODE_HIF8_PERTOKEN, QUANT_MODE_MXFP4_E2M1, quantMode_).c_str()),
                 return ge::GRAPH_FAILED);
     tilingDataPtr_->quantMode = quantMode_;
     // rowIdxType
     OP_CHECK_IF(rowIdxType_ != ROW_IDX_SCATTER && rowIdxType_ != ROW_IDX_GATHER,
-                OP_LOGE(context_, "row_idx_type currently supports %ld or %ld, but got %ld.", ROW_IDX_SCATTER,
-                        ROW_IDX_GATHER, rowIdxType_),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("row_idx_type currently supports %ld or %ld, but got %ld.", ROW_IDX_SCATTER, ROW_IDX_GATHER, rowIdxType_).c_str()),
                 return ge::GRAPH_FAILED);
     tilingDataPtr_->rowIdxType = rowIdxType_;
 
@@ -659,19 +662,14 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetListAttrs()
 
     // expertStart, expertEnd
     OP_CHECK_IF(expertStart_ < 0,
-                OP_LOGE(context_, "Extracted attr expert_start should be equal or greater than 0, current is %ld.",
-                        expertStart_),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("Extracted attr expert_start should be equal or greater than 0, current is %ld.", expertStart_).c_str()),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(expertStart_ >= expertEnd_,
-                OP_LOGE(context_,
-                        "Extracted attr expert_start should be less than expert_end, current [expert_start, "
-                        "expert_end) is [%ld, %ld).",
-                        expertStart_, expertEnd_),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("Extracted attr expert_start should be less than expert_end, current [expert_start, "
+                        "expert_end) is [%ld, %ld).", expertStart_, expertEnd_).c_str()),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(expertEnd_ > expertNum_,
-                OP_LOGE(context_,
-                        "Extracted attr expert_end should be equal or less than expert_num(%ld), current is %ld.",
-                        expertNum_, expertEnd_),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("Extracted attr expert_end should be equal or less than expert_num(%ld), current is %ld.", expertNum_, expertEnd_).c_str()),
                 return ge::GRAPH_FAILED);
     tilingDataPtr_->expertStart = expertStart_;
     tilingDataPtr_->expertEnd = expertEnd_;
@@ -686,7 +684,7 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckInputX()
 
     // rank
     auto rank = static_cast<int64_t>(xShape_.GetDimNum());
-    OP_CHECK_IF(rank != 2, OP_LOGE(context_, "The rank of input x should be 2, current is %ld.", rank),
+    OP_CHECK_IF(rank != 2, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The rank of input x should be 2, current is %ld.", rank).c_str()),
                 return ge::GRAPH_FAILED);
     // dtype
     using ge::DataType;
@@ -720,7 +718,7 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckInputX()
         supportedDtypes = DYNAMIC_QUANT_SUPPORTED_DTYPES;
     }
     OP_CHECK_IF(supportedDtypes.count(xDtype_) == 0,
-                OP_LOGE(context_, "Unsupported dtype of input x: %d under quant_mode: %ld.", xDtype_, quantMode_),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("Unsupported dtype of input x: %d under quant_mode: %ld.", xDtype_, quantMode_).c_str()),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -731,13 +729,12 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckInputExpertIdx()
     OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::CheckInputExpertIdx()");
 
     auto rank = static_cast<int64_t>(expertIdxShape_.GetDimNum());
-    OP_CHECK_IF(rank != 2, OP_LOGE(context_, "The rank of input expert_idx should be 2, current is %ld.", rank),
+    OP_CHECK_IF(rank != 2, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The rank of input expert_idx should be 2, current is %ld.", rank).c_str()),
                 return ge::GRAPH_FAILED);
     int64_t expertIdxDim0 = expertIdxShape_.GetDim(0);
     int64_t xDim0 = xShape_.GetDim(0);
     OP_CHECK_IF(expertIdxDim0 != xDim0,
-                OP_LOGE(context_, "Unsupported dim0 of input expert_idx: %ld, should be equal to dim0 of x: %ld",
-                        expertIdxDim0, xDim0),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("Unsupported dim0 of input expert_idx: %ld, should be equal to dim0 of x: %ld", expertIdxDim0, xDim0).c_str()),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -750,22 +747,19 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckInputScale()
     // 静态量化模式：scale必须输入，shape为[1]，dtype为FLOAT
     if (quantMode_ == QUANT_MODE_STATIC) {
         OP_CHECK_IF(isInputScale_ == 0,
-                    OP_LOGE(context_, "Input scale is required when quant_mode = 0 (static quantization)"),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("Input scale is required when quant_mode = 0 (static quantization)").c_str()),
                     return ge::GRAPH_FAILED);
         auto rankScale = static_cast<int64_t>(scaleShape_.GetDimNum());
         OP_CHECK_IF(rankScale != RANK_ONE,
-                    OP_LOGE(context_, "The rank of input scale should be 1 under static quantization, current is %ld",
-                            rankScale),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The rank of input scale should be 1 under static quantization, current is %ld", rankScale).c_str()),
                     return ge::GRAPH_FAILED);
         auto dim0 = scaleShape_.GetDim(0);
         OP_CHECK_IF(
             dim0 != 1,
-            OP_LOGE(context_, "The dim0 of input scale should be 1 under static quantization, current is %ld", dim0),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The dim0 of input scale should be 1 under static quantization, current is %ld", dim0).c_str()),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(scaleDtype_ != ge::DataType::DT_FLOAT,
-                    OP_LOGE(context_,
-                            "Unsupported dtype of input scale: %d under static quantization, should be DT_FLOAT",
-                            scaleDtype_),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("Unsupported dtype of input scale: %d under static quantization, should be DT_FLOAT", scaleDtype_).c_str()),
                     return ge::GRAPH_FAILED);
         return ge::GRAPH_SUCCESS;
     }
@@ -795,41 +789,35 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckInputScale()
     if (expectedRankScale != -1) {
         auto rankScale = static_cast<int64_t>(scaleShape_.GetDimNum());
         OP_CHECK_IF(rankScale != expectedRankScale,
-                    OP_LOGE(context_, "The rank of input scale should be %ld under quant_mode %ld, current is %ld",
-                            expectedRankScale, quantMode_, rankScale),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The rank of input scale should be %ld under quant_mode %ld, current is %ld", expectedRankScale, quantMode_, rankScale).c_str()),
                     return ge::GRAPH_FAILED);
     }
     if (expectedDim0 != -1) {
         auto dim0 = scaleShape_.GetDim(0);
         OP_CHECK_IF(dim0 != expectedDim0,
-                    OP_LOGE(context_, "The dim0 of input scale should be %ld under quant_mode %ld, current is %ld",
-                            expectedDim0, quantMode_, dim0),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The dim0 of input scale should be %ld under quant_mode %ld, current is %ld", expectedDim0, quantMode_, dim0).c_str()),
                     return ge::GRAPH_FAILED);
     }
     if (expectedDim1 != -1) {
         auto dim1 = scaleShape_.GetDim(1);
         OP_CHECK_IF(dim1 != expectedDim1,
-                    OP_LOGE(context_, "The dim1 of input scale should be %ld under quant_mode %ld, current is %ld",
-                            expectedDim1, quantMode_, dim1),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The dim1 of input scale should be %ld under quant_mode %ld, current is %ld", expectedDim1, quantMode_, dim1).c_str()),
                     return ge::GRAPH_FAILED);
     }
     if (expectedDim2 != -1) {
         auto dim2 = scaleShape_.GetDim(2);
         OP_CHECK_IF(dim2 != expectedDim2,
-                    OP_LOGE(context_, "The dim2 of input scale should be %ld under quant_mode %ld, current is %ld",
-                            expectedDim2, quantMode_, dim2),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The dim2 of input scale should be %ld under quant_mode %ld, current is %ld", expectedDim2, quantMode_, dim2).c_str()),
                     return ge::GRAPH_FAILED);
     }
     if (isMXFPXNoQuantCase(quantMode_, xDtype_)) {
         OP_CHECK_IF(scaleDtype_ != ge::DataType::DT_FLOAT8_E8M0,
-            OP_LOGE(context_, "Unsupported dtype of input %d and input scale: %d in quant mode %ld, "
-                    "should be: DT_FLOAT8_E8M0 (%d).", xDtype_, scaleDtype_, QUANT_MODE_UNQUANT,
-                    ge::DataType::DT_FLOAT8_E8M0),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("Unsupported dtype of input %d and input scale: %d in quant mode %ld, "
+                    "should be: DT_FLOAT8_E8M0 (%d).", xDtype_, scaleDtype_, QUANT_MODE_UNQUANT, ge::DataType::DT_FLOAT8_E8M0).c_str()),
             return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(scaleDtype_ != ge::DataType::DT_FLOAT,
-            OP_LOGE(context_, "Unsupported dtype of input scale: %d, should be: DT_FLOAT(%d).", scaleDtype_,
-                    ge::DataType::DT_FLOAT),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("Unsupported dtype of input scale: %d, should be: DT_FLOAT(%d).", scaleDtype_, ge::DataType::DT_FLOAT).c_str()),
             return ge::GRAPH_FAILED);
     }
 
@@ -843,22 +831,19 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckInputOffset()
     // 静态量化模式：offset必须输入，shape为[1]，dtype为FLOAT
     if (quantMode_ == QUANT_MODE_STATIC) {
         OP_CHECK_IF(isInputOffset_ == 0,
-                    OP_LOGE(context_, "Input offset is required when quant_mode = 0 (static quantization)"),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("Input offset is required when quant_mode = 0 (static quantization)").c_str()),
                     return ge::GRAPH_FAILED);
         auto rankOffset = static_cast<int64_t>(offsetShape_.GetDimNum());
         OP_CHECK_IF(rankOffset != RANK_ONE,
-                    OP_LOGE(context_, "The rank of input offset should be 1 under static quantization, current is %ld",
-                            rankOffset),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The rank of input offset should be 1 under static quantization, current is %ld", rankOffset).c_str()),
                     return ge::GRAPH_FAILED);
         auto dim0 = offsetShape_.GetDim(0);
         OP_CHECK_IF(
             dim0 != 1,
-            OP_LOGE(context_, "The dim0 of input offset should be 1 under static quantization, current is %ld", dim0),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The dim0 of input offset should be 1 under static quantization, current is %ld", dim0).c_str()),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(offsetDtype_ != ge::DataType::DT_FLOAT,
-                    OP_LOGE(context_,
-                            "Unsupported dtype of input offset: %d under static quantization, should be DT_FLOAT",
-                            offsetDtype_),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("Unsupported dtype of input offset: %d under static quantization, should be DT_FLOAT", offsetDtype_).c_str()),
                     return ge::GRAPH_FAILED);
     }
 
@@ -876,7 +861,7 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetInputs()
 
     n_ = xShape_.GetDim(0);
     k_ = expertIdxShape_.GetDim(1);
-    OP_CHECK_IF(k_ < 0, OP_LOGE(context_, "Invalid k value: %ld, should be greater than or equal to 0.", k_),
+    OP_CHECK_IF(k_ < 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("Invalid k value: %ld, should be greater than or equal to 0.", k_).c_str()),
                 return ge::GRAPH_FAILED);
     cols_ = xShape_.GetDim(1);
     totalLength_ = n_ * k_;
@@ -888,7 +873,7 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetInputs()
         //! 出于历史调用的兼容性，保留校验activeNum=n*k，但实际上不使用该属性
         OP_CHECK_IF(
             activeNum_ != totalLength_,
-            OP_LOGE(context_, "Attr active_num should equal to bs*k(%ld), current is %ld.", totalLength_, activeNum_),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("Attr active_num should equal to bs*k(%ld), current is %ld.", totalLength_, activeNum_).c_str()),
             return ge::GRAPH_FAILED);
     }
 
@@ -902,24 +887,22 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckOutputExpandedX()
     OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::CheckOutputExpandedX()");
 
     auto rank = static_cast<int64_t>(expandedXShape_.GetDimNum());
-    OP_CHECK_IF(rank != RANK_TWO, OP_LOGE(context_, "The rank of output expanded_x should be 2, current is %ld.", rank),
+    OP_CHECK_IF(rank != RANK_TWO, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The rank of output expanded_x should be 2, current is %ld.", rank).c_str()),
                 return ge::GRAPH_FAILED);
     int64_t dim0 = expandedXShape_.GetDim(0);
     OP_CHECK_IF(dim0 != totalLength_,
-                OP_LOGE(context_, "The dim0 of output expanded_x should be %ld, current is %ld.", totalLength_, dim0),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The dim0 of output expanded_x should be %ld, current is %ld.", totalLength_, dim0).c_str()),
                 return ge::GRAPH_FAILED);
     int64_t dim1 = expandedXShape_.GetDim(1);
     OP_CHECK_IF(dim1 != cols_,
-                OP_LOGE(context_, "The dim1 of output expanded_x should be %ld, current is %ld.", cols_, dim1),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The dim1 of output expanded_x should be %ld, current is %ld.", cols_, dim1).c_str()),
                 return ge::GRAPH_FAILED);
 
     // 静态量化场景下，输出expandedX的dtype必须为INT8
     if (quantMode_ == QUANT_MODE_STATIC) {
         OP_CHECK_IF(
             expandedXDtype_ != ge::DataType::DT_INT8,
-            OP_LOGE(context_,
-                    "The dtype of output expanded_x should be DT_INT8 under static quantization, current is %d.",
-                    expandedXDtype_),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The dtype of output expanded_x should be DT_INT8 under static quantization, current is %d.", expandedXDtype_).c_str()),
             return ge::GRAPH_FAILED);
     }
 
@@ -932,12 +915,12 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckOutputExpandedRowIdx()
 
     auto rank = static_cast<int64_t>(expandedRowIdxShape_.GetDimNum());
     OP_CHECK_IF(rank != RANK_ONE,
-                OP_LOGE(context_, "The rank of output expanded_row_idx should be 1, current is %ld.", rank),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The rank of output expanded_row_idx should be 1, current is %ld.", rank).c_str()),
                 return ge::GRAPH_FAILED);
     int64_t dim0 = expandedRowIdxShape_.GetDim(0);
     OP_CHECK_IF(
         dim0 != totalLength_,
-        OP_LOGE(context_, "The dim0 of output expanded_row_idx should be %ld, current is %ld.", totalLength_, dim0),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The dim0 of output expanded_row_idx should be %ld, current is %ld.", totalLength_, dim0).c_str()),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -961,28 +944,22 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckOutputExpertTokensCountO
     if (expectedRank != -1) {
         OP_CHECK_IF(
             rank != expectedRank,
-            OP_LOGE(context_,
-                    "The rank of output expert_tokens_count_or_cumsum should be %ld under expert_tokens_num_type "
-                    "%ld, current is %ld.",
-                    expectedRank, expertTokensNumType_, rank),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The rank of output expert_tokens_count_or_cumsum should be %ld under expert_tokens_num_type "
+                    "%ld, current is %ld.", expectedRank, expertTokensNumType_, rank).c_str()),
             return ge::GRAPH_FAILED);
     }
     if (expectedDim0 != -1) {
         int64_t dim0 = expertTokensCountOrCumsumShape_.GetDim(0);
         OP_CHECK_IF(dim0 != expectedDim0,
-                    OP_LOGE(context_,
-                            "The dim0 of output expert_tokens_count_or_cumsum should be %ld under "
-                            "expert_tokens_num_type %ld, current is %ld.",
-                            expectedDim0, expertTokensNumType_, dim0),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The dim0 of output expert_tokens_count_or_cumsum should be %ld under "
+                            "expert_tokens_num_type %ld, current is %ld.", expectedDim0, expertTokensNumType_, dim0).c_str()),
                     return ge::GRAPH_FAILED);
     }
     if (expectedDim1 != -1) {
         int64_t dim1 = expertTokensCountOrCumsumShape_.GetDim(1);
         OP_CHECK_IF(dim1 != expectedDim1,
-                    OP_LOGE(context_,
-                            "The dim1 of output expert_tokens_count_or_cumsum should be %ld under "
-                            "expert_tokens_num_type %ld,, current is %ld.",
-                            expectedDim1, expertTokensNumType_, dim1),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The dim1 of output expert_tokens_count_or_cumsum should be %ld under "
+                            "expert_tokens_num_type %ld,, current is %ld.", expectedDim1, expertTokensNumType_, dim1).c_str()),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -1029,37 +1006,29 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckOutputExpandedScale()
     auto rank = static_cast<int64_t>(expandedScaleShape_.GetDimNum());
     if (expectedRank != -1) {
         OP_CHECK_IF(rank != expectedRank,
-                    OP_LOGE(context_,
-                            "The rank of output expanded_scale should be %ld under quant_mode "
-                            "%ld, current is %ld.",
-                            expectedRank, quantMode_, rank),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The rank of output expanded_scale should be %ld under quant_mode "
+                            "%ld, current is %ld.", expectedRank, quantMode_, rank).c_str()),
                     return ge::GRAPH_FAILED);
     }
     if (expectedDim0 != -1) {
         int64_t dim0 = expandedScaleShape_.GetDim(0);
         OP_CHECK_IF(dim0 != expectedDim0,
-                    OP_LOGE(context_,
-                            "The dim0 of output expanded_scale should be %ld under "
-                            "quant_mode %ld, current is %ld.",
-                            expectedDim0, quantMode_, dim0),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The dim0 of output expanded_scale should be %ld under "
+                            "quant_mode %ld, current is %ld.", expectedDim0, quantMode_, dim0).c_str()),
                     return ge::GRAPH_FAILED);
     }
     if (expectedDim1 != -1) {
         int64_t dim1 = expandedScaleShape_.GetDim(1);
         OP_CHECK_IF(dim1 != expectedDim1,
-                    OP_LOGE(context_,
-                            "The dim1 of output expanded_scale should be %ld under "
-                            "quant_mode %ld, current is %ld.",
-                            expectedDim1, quantMode_, dim1),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The dim1 of output expanded_scale should be %ld under "
+                            "quant_mode %ld, current is %ld.", expectedDim1, quantMode_, dim1).c_str()),
                     return ge::GRAPH_FAILED);
     }
     if (expectedDim2 != -1) {
         int64_t dim2 = expandedScaleShape_.GetDim(2);
         OP_CHECK_IF(dim2 != expectedDim2,
-                    OP_LOGE(context_,
-                            "The dim2 of output expanded_scale should be %ld under "
-                            "quant_mode %ld, current is %ld.",
-                            expectedDim2, quantMode_, dim2),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("The dim2 of output expanded_scale should be %ld under "
+                            "quant_mode %ld, current is %ld.", expectedDim2, quantMode_, dim2).c_str()),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -1200,7 +1169,7 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4VBSMultiCoreCompute(MoeV3Arch35VB
     needCoreNum = static_cast<int64_t>(std::pow(4, CeilLog4(needCoreNum)));      // 用到多核时，核数最多是4^x
     needCoreNum = std::min(needCoreNum, aivCoreNum_);                            // 不能超过物理核数
 
-    OP_CHECK_IF(needCoreNum == 0, OP_LOGE(opName, "Variale needCoreNum cannot be 0."), return;);
+    OP_CHECK_IF(needCoreNum == 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "MoeInitRoutingV3", "invalid", FormatLogReason("Variale needCoreNum cannot be 0.").c_str()), return;);
     int64_t perCoreElements = (needCoreNum == 0) ? 0 : (totalLength_ / needCoreNum);
     int64_t alineFloorPerCoreElements = perCoreElements - perCoreElements % SORT32_ALIGN_ELEMENT;
     int64_t lastCoreElement = totalLength_ - (needCoreNum - 1) * alineFloorPerCoreElements;
@@ -1233,7 +1202,7 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4VBSMultiCoreCompute(MoeV3Arch35VB
             vbsTiling->lastCoreElements - (vbsTiling->lastCoreLoops - 1) * vbsTiling->lastCorePerLoopElements;
         perCoreElements -= SORT32_ALIGN_ELEMENT;
     } while (vbsTiling->lastCoreLastLoopElements <= 0 && perCoreElements > 0);
-    OP_CHECK_IF(vbsTiling->lastCoreLastLoopElements <= 0, OP_LOGE(opName, "vbs tiling failed"), ;);
+    OP_CHECK_IF(vbsTiling->lastCoreLastLoopElements <= 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "MoeInitRoutingV3", "invalid", FormatLogReason("vbs tiling failed").c_str()), ;);
 }
 
 void MoeInitRoutingV3Arch35TilingClass::Tiling4VBSCompute()
@@ -1494,8 +1463,7 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutMxQuant()
     }
     // 如果已经减到MX_QUANT_BLOCK_SIZE仍不满足条件，返回错误
     if (perLoopMaxIndicesElements <= 0) {
-        OP_LOGE(context_, "UB space insufficient for MX quantization. availUbSize=%ld, cols=%ld", availUbSize_,
-                tilingDataPtr_->cols);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "MoeInitRoutingV3", "invalid", FormatLogReason("UB space insufficient for MX quantization. availUbSize=%ld, cols=%ld", availUbSize_, tilingDataPtr_->cols).c_str());
         return;
     }
     int64_t colsLoops = Ops::Base::CeilDiv(tilingDataPtr_->cols, perLoopCols);
