@@ -16,7 +16,8 @@ using NodeProto = ge::onnx::NodeProto;
 static Status ParseParamsMoeFinalizeRoutingV2(const Message *op_src, ge::Operator &op_dest) {
   const NodeProto *node = dynamic_cast<const NodeProto *>(op_src);
   if (node == nullptr) {
-    OP_LOGE(GetOpName(op_dest).c_str(), "Dynamic op_src to NodeProto failed.");
+    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetOpName(op_dest).c_str(), "op_src", "not NodeProto",
+        "Dynamic op_src to NodeProto failed.");
     return FAILED;
   }
 
