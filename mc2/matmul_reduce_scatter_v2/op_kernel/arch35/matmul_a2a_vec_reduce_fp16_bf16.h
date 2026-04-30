@@ -61,8 +61,10 @@ private:
                                                         const uint32_t count, const bool isTail);
     __aicore__ inline void CubeNotifyVector();
     __aicore__ inline void VecWaitCube();
+    __aicore__ inline void CastBiasBFtoFloat(GM_ADDR dst, GM_ADDR src, int size);
 
 private:
+    TBuf<TPosition::VECCALC> biasCastBuf_;
     ReduceSumForAlltoAll<C_DTYPE> reduceSum_; // AIV ReduceSum 相关实现
 
     Mc2Tiling::MatmulReduceScatterV2TilingData* tilingData_;
@@ -114,6 +116,16 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Init(
     fullMN_ = static_cast<uint64_t>(cfg.rankM) * static_cast<uint64_t>(cfg.rankN);  // M * N
     sendBuf_ = workspaceGM;                                                         // [0, fullMN)
     recvBuf_ = sendBuf_ + fullMN_ * sizeof(C_DTYPE);                                // [fullMN, 2*fullMN)
+
+    // BF16 bias转换为float
+    GM_ADDR biasToFloatAddr = recvBuf_ + fullMN_ * sizeof(C_DTYPE);
+    if constexpr (std::is_same_v<BiasType, bfloat16_t>) {
+        if (cfg.biasLen > 0) {
+            CastBiasBFtoFloat(biasToFloatAddr, biasGM, cfg.rankN);
+            biasGM_ = biasToFloatAddr;
+            SyncAll<true>();
+        }
+    }
 }
 
 TEMPLATE_CLASS_PARAMS
@@ -174,11 +186,11 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Execute
     const bool isLast,
     const bool isTail) 
 {
+    using Mmv3BiasType = std::conditional_t<std::is_same_v<BiasType, bfloat16_t>, float, BiasType>;
     auto&& cfg = tilingData_->param;
     cfg.rankID = rankId_;
     
-    // 初始化Matmul
-    MC2MatmulV3::MC2MatmulAswKernelDerive<AType, BType, CType, BiasType, MC2MatmulV3::MC2MatmulAswBlockDerive> mmv3;
+    MC2MatmulV3::MC2MatmulAswKernelDerive<AType, BType, CType, Mmv3BiasType, MC2MatmulV3::MC2MatmulAswBlockDerive> mmv3;
     mmv3.Init(aGM_, bGM_, sendBuf_, biasGM_, nullptr, nullptr, &tiling, GetTPipePtr(), cfg, isTail, false);
 
     for (uint32_t i = 0; i < count; i++) {
@@ -317,7 +329,52 @@ TEMPLATE_CLASS_PARAMS
 __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::VecWaitCube()
 {
     // 等待 AIC 完成
-    CrossCoreWaitFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_AIC_AIV_DET_FLAG);
+    CrossCoreWaitFlag(SYNC_MODE2, PIPE_MTE2>(SYNC_AIC_AIV_DET_FLAG);
+}
+
+TEMPLATE_CLASS_PARAMS
+__aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::CastBiasBFtoFloat(
+    GM_ADDR dst, GM_ADDR src, int size)
+{
+    static constexpr uint16_t SYNC_AIV_DONE_FLAG = 8;
+    static constexpr uint16_t SYNC_AIC_ACK_FLAG = 10;
+    static constexpr uint64_t SYNC_MODE0 = 0;
+    static constexpr uint64_t SYNC_MODE2 = 2;
+
+    if (g_coreType == AIC) {
+        CrossCoreWaitFlag(SYNC_AIV_DONE_FLAG);
+        CrossCoreSetFlag<SYNC_MODE0, PIPE_MTE3>(SYNC_AIC_ACK_FLAG);
+        CrossCoreWaitFlag(SYNC_AIC_ACK_FLAG);
+        return;
+    }
+    if (GetBlockIdx() != 0) {
+        CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE3>(SYNC_AIV_DONE_FLAG);
+        return;
+    }
+
+    GlobalTensor<bfloat16_t> gmSrc;
+    GlobalTensor<float> gmDst;
+    gmSrc.SetGlobalBuffer((__gm__ bfloat16_t*)(src), size);
+    gmDst.SetGlobalBuffer((__gm__ float*)(dst), size);
+
+    LocalTensor<bfloat16_t> bf16Local = biasCastBuf_.Get<bfloat16_t>();
+    LocalTensor<float> floatLocal = bf16Local[Ceil(size, 32) * 32].template ReinterpretCast<float>();
+
+    uint32_t cpInLen = size * sizeof(bfloat16_t);
+    DataCopyExtParams cpInExtParams{1, cpInLen, 0, 0, 0};
+    DataCopyPadExtParams<bfloat16_t> padExtParams{false, 0, 0, 0};
+    DataCopyPad(bf16Local, gmSrc, cpInExtParams, padExtParams);
+    PipeBarrier<PIPE_MTE2>();
+
+    Cast(floatLocal, bf16Local, AscendC::RoundMode::CAST_NONE, size);
+    PipeBarrier<PIPE_V>();
+
+    uint32_t cpOutLen = size * sizeof(float);
+    DataCopyExtParams cpOutExtParams{1, cpOutLen, 0, 0, 0};
+    DataCopyPad(gmDst, floatLocal, cpOutExtParams);
+    PipeBarrier<PIPE_MTE3>();
+
+    CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE3>(SYNC_AIV_DONE_FLAG);
 }
 
 } // namespace MatmulReduceScatterV2Impl
