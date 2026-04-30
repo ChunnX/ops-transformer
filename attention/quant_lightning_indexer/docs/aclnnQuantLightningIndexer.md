@@ -141,7 +141,7 @@ aclnnStatus aclnnQuantLightningIndexer(
     <tr>
     <td>queryDequantScale</td>
     <td>输入</td>
-    <td>表示Index Query的反量化系数$Scale_Q$。</td>
+    <td>表示Index Query的反量化系数Scale_Q。</td>
     <td>不支持空tensor。</td>
     <td>FLOAT、FLOAT16</td>
     <td>ND</td>
@@ -156,7 +156,7 @@ aclnnStatus aclnnQuantLightningIndexer(
     <tr>
     <td>keyDequantScale</td>
     <td>输入</td>
-    <td>表示Index Key的反量化系数$Scale_K^T$。</td>
+    <td>表示Index Key的反量化系数Scale_K。</td>
     <td>不支持空tensor。</td>
     <td>FLOAT、FLOAT16</td>
     <td>ND</td>
@@ -276,7 +276,7 @@ aclnnStatus aclnnQuantLightningIndexer(
     <td>sparseCount</td>
     <td>输入</td>
     <td>topK阶段需要保留的block数量。</td>
-    <td>建议值为2048</td>
+    <td>当前支持[1, 2048]。</td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
@@ -301,7 +301,7 @@ aclnnStatus aclnnQuantLightningIndexer(
     <td>preTokens</td>
     <td>输入</td>
     <td>用于稀疏计算，表示attention需要和前几个Token计算关联。</td>
-    <td>仅支持建议值2^63-1。</td>
+    <td>建议值2^63-1。</td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
@@ -311,7 +311,7 @@ aclnnStatus aclnnQuantLightningIndexer(
     <td>nextTokens</td>
     <td>输入</td>
     <td>用于稀疏计算，表示attention需要和后几个Token计算关联。</td>
-    <td>仅支持建议值2^63-1。</td>
+    <td>建议值2^63-1。</td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
