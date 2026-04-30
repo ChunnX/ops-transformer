@@ -31,7 +31,7 @@ __simd_vf__ void QuantChannelVFImpl(__ubuf__ O* yAddr, __ubuf__ T* xAddr, __ubuf
     AscendC::MicroAPI::MaskReg tailMask;
     tailMask = AscendC::MicroAPI::UpdateMask<float>(dTail);
     constexpr static AscendC::MicroAPI::CastTrait castTraitPack2 = {
-        AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::NO_SAT,
+        AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::SAT,
         AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
     constexpr static AscendC::MicroAPI::CastTrait castTraitF32ToHalf = {
         AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::NO_SAT,

@@ -14,6 +14,7 @@
  */
 
 #define MLA_PROLOG_VERSION 3
+#define GLOBAL_OVERFLOW_MODE_CTRL 60
 #if __has_include("../../mla_prolog/op_kernel/kernel_mla_prolog_split_n.h")
 #include "../../mla_prolog/op_kernel/kernel_mla_prolog_split_n.h"
 #else
@@ -57,6 +58,10 @@ __global__ __aicore__ void mla_prolog_v3(
     __gm__ uint8_t *workspace,
     __gm__ uint8_t *tiling) 
 {
+#if (__NPU_ARCH__ == 3510)
+    int64_t globalOriOverflowMode = AscendC::GetCtrlSpr<GLOBAL_OVERFLOW_MODE_CTRL, GLOBAL_OVERFLOW_MODE_CTRL>();
+#endif
+
     REGISTER_TILING_DEFAULT(optiling::MlaPrologTilingData);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 
@@ -74,6 +79,9 @@ __global__ __aicore__ void mla_prolog_v3(
     const optiling::MlaPrologBaseParams *__restrict tilingDataBaseParams = &tilingDataIn.baseParams;
 
     TPipe pipe;
+#if (__NPU_ARCH__ == 3510)
+    AscendC::SetCtrlSpr<GLOBAL_OVERFLOW_MODE_CTRL, GLOBAL_OVERFLOW_MODE_CTRL>(0);
+#endif
     if constexpr (static_cast<SCENARIO>(Scenario) == SCENARIO::NO_QUANT) {
         MlaPrologVecS1CubS2<MLAPType<bfloat16_t, bfloat16_t, bfloat16_t, float, cacheMode,
             EnableDequantOpt, EnableGroupComputeOpt, 
@@ -240,4 +248,7 @@ __global__ __aicore__ void mla_prolog_v3(
                 queryOut, queryRopeOut, dequantScaleQNopeOut, queryNormOut, dequantScaleQNormOut, workspace);
         op.Process();
     }
+#if (__NPU_ARCH__ == 3510)
+    AscendC::SetCtrlSpr<GLOBAL_OVERFLOW_MODE_CTRL, GLOBAL_OVERFLOW_MODE_CTRL>(globalOriOverflowMode);
+#endif
 }
