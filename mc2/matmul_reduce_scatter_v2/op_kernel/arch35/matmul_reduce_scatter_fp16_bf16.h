@@ -192,17 +192,25 @@ template <typename AType, typename BType, typename BiasType, typename CType>
 __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType>::CastBiasBFtoFloat(
     GM_ADDR dst, GM_ADDR src, int size)
 {
+    static constexpr uint16_t SYNC_AIV_DONE_FLAG = 8;  // AIV完成flag
+    static constexpr uint16_t SYNC_AIC_ACK_FLAG = 10;  // AIC应答flag
+    static constexpr uint64_t SYNC_MODE0 = 0;
+    static constexpr uint64_t SYNC_MODE2 = 2;
+
+    // AIC核流程：先等待AIV完成，应答后等待AIV返回
     if (g_coreType == AIC) {
-        CrossCoreWaitFlag(EVENT_ID_5);
-        CrossCoreSetFlag<SET_FLAG_MODE_0, PIPE_MTE3>(EVENT_ID_4);
-        CrossCoreWaitFlag(EVENT_ID_4);
+        CrossCoreWaitFlag(SYNC_AIV_DONE_FLAG);  // 等待AIV核0完成Cast并设置flag
+        CrossCoreSetFlag<SYNC_MODE0, PIPE_MTE3>(SYNC_AIC_ACK_FLAG);  // 告知AIV核0可以返回
+        CrossCoreWaitFlag(SYNC_AIC_ACK_FLAG);  // 等待AIV核0返回信号
         return;
     }
+    // AIV非0核：帮助同步设置flag
     if (GetBlockIdx() != 0) {
-        CrossCoreSetFlag<SET_FLAG_MODE_2, PIPE_MTE3>(EVENT_ID_5);
+        CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE3>(SYNC_AIV_DONE_FLAG);
         return;
     }
 
+    // AIV核0执行Cast转换
     GlobalTensor<bfloat16_t> gmSrc;
     GlobalTensor<float> gmDst;
     gmSrc.SetGlobalBuffer((__gm__ bfloat16_t*)(src), size);
@@ -214,7 +222,7 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
     uint32_t cpInLen = size * sizeof(bfloat16_t);
     DataCopyExtParams cpInExtParams{1, cpInLen, 0, 0, 0};
     DataCopyPadExtParams<bfloat16_t> padExtParams{false, 0, 0, 0};
-    DataCopyPad(gmSrc, bf16Local, cpInExtParams, padExtParams);
+    DataCopyPad(bf16Local, gmSrc, cpInExtParams, padExtParams);
     PipeBarrier<PIPE_MTE2>();
 
     Cast(floatLocal, bf16Local, AscendC::RoundMode::CAST_NONE, size);
@@ -222,11 +230,12 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
 
     uint32_t cpOutLen = size * sizeof(float);
     DataCopyExtParams cpOutExtParams{1, cpOutLen, 0, 0, 0};
-    DataCopy(gmDst, floatLocal, cpOutExtParams);
+    DataCopyPad(gmDst, floatLocal, cpOutExtParams);
     PipeBarrier<PIPE_MTE3>();
 
-    CrossCoreSetFlag<SET_FLAG_MODE_2, PIPE_MTE3>(EVENT_ID_5);
-    CrossCoreWaitFlag(EVENT_ID_4);
+    // 完成后设置flag告诉AIC，然后等待AIC应答
+    CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE3>(SYNC_AIV_DONE_FLAG);
+    CrossCoreWaitFlag(SYNC_AIC_ACK_FLAG);
 }
 } // namespace MatmulReduceScatterImpl
 
