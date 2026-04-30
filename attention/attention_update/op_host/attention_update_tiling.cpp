@@ -246,60 +246,60 @@ ge::graphStatus AttentionUpdateTiling::GetShapeAttrsInfo()
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
 
     lseShape_ = context_->GetInputShape(INPUT_LSE_INDEX)->GetOriginShape();
-    int64_t lseDimNum = lseShape_.GetDimNum();
+    int64_t lseSizeNum = lseShape_.GetShapeSize();
 
-    std::string reasonMsg = "此时的分支为： lseDimNum = " + std::to_string(lseDimNum) + " 。";
+    std::string reasonMsg = "此时的分支为： lseSizeNum = " + std::to_string(lseSizeNum) + " 。";
 
     // 从1到10 的分支
-    if (lseDimNum == 1){
+    if (lseSizeNum == 1){
         // EZ0008
         OP_LOGE_FOR_INVALID_SHAPE(
-            context_->GetNodeName(), "lse", std::to_string(lseDimNum).c_str(),
+            context_->GetNodeName(), "lse", std::to_string(lseSizeNum).c_str(),
             reasonMsg.c_str());
-    } else if (lseDimNum == 2){
+    } else if (lseSizeNum == 2){
         // EZ0009
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-            context_->GetNodeName(), "lse", std::to_string(lseDimNum).c_str(),
+            context_->GetNodeName(), "lse", std::to_string(lseSizeNum).c_str(),
             reasonMsg.c_str());
-    } else if (lseDimNum == 3){
+    } else if (lseSizeNum == 3){
         // EZ0010
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-            context_->GetNodeName(), "lse, output", std::to_string(lseDimNum).c_str(),
+            context_->GetNodeName(), "lse, output", std::to_string(lseSizeNum).c_str(),
             reasonMsg.c_str());
-    } else if (lseDimNum == 4){
+    } else if (lseSizeNum == 4){
         // EZ0011
         OP_LOGE_FOR_INVALID_SHAPEDIM(
-            context_->GetNodeName(), "lse", std::to_string(lseDimNum).c_str(),
+            context_->GetNodeName(), "lse", std::to_string(lseSizeNum).c_str(),
             reasonMsg.c_str());
-    } else if (lseDimNum == 5){
+    } else if (lseSizeNum == 5){
         // EZ0012
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-            context_->GetNodeName(), "lse", std::to_string(lseDimNum).c_str(),
+            context_->GetNodeName(), "lse", std::to_string(lseSizeNum).c_str(),
             reasonMsg.c_str());
-    } else if (lseDimNum == 6){
+    } else if (lseSizeNum == 6){
         // EZ0013
         OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(
-            context_->GetNodeName(), "lse, output", std::to_string(lseDimNum).c_str(),
+            context_->GetNodeName(), "lse, output", std::to_string(lseSizeNum).c_str(),
             reasonMsg.c_str());
-    } else if (lseDimNum == 7){
+    } else if (lseSizeNum == 7){
         // EZ0014
         OP_LOGE_FOR_INVALID_SHAPESIZE(
-            context_->GetNodeName(), "lse", std::to_string(lseDimNum).c_str(),
+            context_->GetNodeName(), "lse", std::to_string(lseSizeNum).c_str(),
             reasonMsg.c_str());
-    } else if (lseDimNum == 8){
+    } else if (lseSizeNum == 8){
         // EZ0015
         OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
-            context_->GetNodeName(), "lse", std::to_string(lseDimNum).c_str(),
+            context_->GetNodeName(), "lse", std::to_string(lseSizeNum).c_str(),
             reasonMsg.c_str());
-    } else if (lseDimNum == 9){
+    } else if (lseSizeNum == 9){
         // EZ0016
         OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(
-            context_->GetNodeName(), "lse, output", std::to_string(lseDimNum).c_str(),
+            context_->GetNodeName(), "lse, output", std::to_string(lseSizeNum).c_str(),
             reasonMsg.c_str());
-    } else if (lseDimNum == 10){
+    } else if (lseSizeNum == 10){
         // EZ0017
         OP_LOGE_FOR_INVALID_FORMAT(
-            context_->GetNodeName(), "lse", std::to_string(lseDimNum).c_str(),
+            context_->GetNodeName(), "lse", std::to_string(lseSizeNum).c_str(),
             reasonMsg.c_str());
     }
 
