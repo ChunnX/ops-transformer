@@ -153,7 +153,7 @@ __global__ __aicore__ void mla_prolog_v3(
                          static_cast<QUANT_MODE>(QuantMode) == QUANT_MODE::MXFP8_FULL_QUANT_KV_NO_QUANT) {
         if constexpr (splitMMode == SPLIT_M_MODE::ENABLED) {
             MlaPrologV3SplitM<MLAPType<FP8E4M3, FP8E4M3, bfloat16_t, FP8E8M0, cacheMode,
-                EnableDequantOpt, EnableGroupComputeOpt, 
+                EnableDequantOpt, EnableGroupComputeOpt,
                 emptyMode, actualSeqLenMode, false, cvRatio>> op(&pipe, tilingData, tilingDataBaseParams);
             op.Init(tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin,
                     ropeCos, cacheIndex, kvCacheOut, krCacheOut, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
@@ -162,7 +162,7 @@ __global__ __aicore__ void mla_prolog_v3(
             op.Process();
         } else {
             MlaPrologVecS1CubS2<MLAPType<FP8E4M3, FP8E4M3, bfloat16_t, FP8E8M0, cacheMode,
-                EnableDequantOpt, EnableGroupComputeOpt, 
+                EnableDequantOpt, EnableGroupComputeOpt,
                 emptyMode, actualSeqLenMode, false, cvRatio>> op(&pipe, tilingData, tilingDataBaseParams);
             op.Init(tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin,
                     ropeCos, cacheIndex, kvCacheOut, krCacheOut, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
@@ -174,7 +174,7 @@ __global__ __aicore__ void mla_prolog_v3(
                          static_cast<QUANT_MODE>(QuantMode) == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR) {
         if constexpr (splitMMode == SPLIT_M_MODE::ENABLED) {
             MlaPrologV3SplitM<MLAPType<FP8E4M3, FP8E4M3, FP8E4M3, FP8E8M0, cacheMode,
-                EnableDequantOpt, EnableGroupComputeOpt, 
+                EnableDequantOpt, EnableGroupComputeOpt,
                 emptyMode, actualSeqLenMode, false, cvRatio>> op(&pipe, tilingData, tilingDataBaseParams);
             op.Init(tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin,
                     ropeCos, cacheIndex, kvCacheOut, krCacheOut, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
@@ -183,7 +183,7 @@ __global__ __aicore__ void mla_prolog_v3(
             op.Process();
         } else {
             MlaPrologVecS1CubS2<MLAPType<FP8E4M3, FP8E4M3, FP8E4M3, FP8E8M0, cacheMode,
-                EnableDequantOpt, EnableGroupComputeOpt, 
+                EnableDequantOpt, EnableGroupComputeOpt,
                 emptyMode, actualSeqLenMode, false, cvRatio>> op(&pipe, tilingData, tilingDataBaseParams);
             op.Init(tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin,
                     ropeCos, cacheIndex, kvCacheOut, krCacheOut, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
@@ -195,7 +195,7 @@ __global__ __aicore__ void mla_prolog_v3(
                          static_cast<QUANT_MODE>(QuantMode) == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TILE) {
         if constexpr (splitMMode == SPLIT_M_MODE::ENABLED) {
             MlaPrologV3SplitM<MLAPType<FP8E4M3, FP8E4M3, FP8E4M3, FP8E8M0, cacheMode,
-                EnableDequantOpt, EnableGroupComputeOpt, 
+                EnableDequantOpt, EnableGroupComputeOpt,
                 emptyMode, actualSeqLenMode, true, cvRatio>> op(&pipe, tilingData, tilingDataBaseParams);
             op.Init(tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin,
                     ropeCos, cacheIndex, kvCacheOut, krCacheOut, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
@@ -204,7 +204,7 @@ __global__ __aicore__ void mla_prolog_v3(
             op.Process();
         } else {
             MlaPrologVecS1CubS2<MLAPType<FP8E4M3, FP8E4M3, FP8E4M3, FP8E8M0, cacheMode,
-                EnableDequantOpt, EnableGroupComputeOpt, 
+                EnableDequantOpt, EnableGroupComputeOpt,
                 emptyMode, actualSeqLenMode, true, cvRatio>> op(&pipe, tilingData, tilingDataBaseParams);
             op.Init(tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin,
                     ropeCos, cacheIndex, kvCacheOut, krCacheOut, dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,
