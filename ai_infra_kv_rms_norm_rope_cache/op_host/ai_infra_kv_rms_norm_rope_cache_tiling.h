@@ -1,0 +1,253 @@
+/**
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/*!
+ * \file ai_infra_kv_rms_norm_rope_cache_tiling.h
+ * \brief
+ */
+
+#ifndef OPS_BUILT_IN_OP_TILING_RUNTIME_AI_INFRA_KV_RMS_NORM_ROPE_CACHE_H_
+#define OPS_BUILT_IN_OP_TILING_RUNTIME_AI_INFRA_KV_RMS_NORM_ROPE_CACHE_H_
+
+#include "register/tilingdata_base.h"
+#include "../../../common/include/tiling_base/tiling_base.h"
+#include "../../../common/include/tiling_base/tiling_templates_registry.h"
+
+namespace optiling {
+// DS
+BEGIN_TILING_DATA_DEF(AiInfraKvRmsNormRopeCacheTilingData)
+TILING_DATA_FIELD_DEF(int64_t, numBlocks);
+TILING_DATA_FIELD_DEF(int64_t, rowsPerBlock);
+TILING_DATA_FIELD_DEF(int64_t, cacheLength);
+TILING_DATA_FIELD_DEF(int64_t, batchSize);
+TILING_DATA_FIELD_DEF(int64_t, numHead);
+TILING_DATA_FIELD_DEF(int64_t, seqLength);
+TILING_DATA_FIELD_DEF(int64_t, blockSize);
+TILING_DATA_FIELD_DEF(int64_t, blockFactor);
+TILING_DATA_FIELD_DEF(int64_t, ubFactor);
+TILING_DATA_FIELD_DEF(float, epsilon);
+TILING_DATA_FIELD_DEF(float, reciprocal);
+TILING_DATA_FIELD_DEF(int8_t, isOutputKv);
+TILING_DATA_FIELD_DEF(int8_t, isKQuant);
+TILING_DATA_FIELD_DEF(int8_t, isVQuant);
+TILING_DATA_FIELD_DEF(int64_t, methodMode);
+TILING_DATA_FIELD_DEF(int64_t, cacheLayOut);
+TILING_DATA_FIELD_DEF(int64_t, kStride);
+TILING_DATA_FIELD_DEF(int64_t, vStride);
+TILING_DATA_FIELD_DEF(int64_t, rotaryMode);
+TILING_DATA_FIELD_DEF(int64_t, quantClass);
+TILING_DATA_FIELD_DEF(int64_t, pertileSize);    // tilesize in Dynamic quant
+END_TILING_DATA_DEF;
+
+REGISTER_TILING_DATA_CLASS(AiInfraKvRmsNormRopeCache, AiInfraKvRmsNormRopeCacheTilingData)
+
+
+constexpr int32_t TEMPLATE_DS_PRIORITY = 1000;
+constexpr int32_t TEMPLATE_D_FULL_LOAD_PRIORITY = 2000;
+constexpr int32_t TEMPLATE_D_RECOMPUTE_PRIORITY = 3000;
+
+struct AiInfraKvRmsNormRopeCacheCompileInfo {
+    int64_t coreNum = 0;
+    int64_t ubSize = 0;
+};
+
+enum CacheMode
+{
+    Norm = 0,
+    PA = 1,
+    PA_NZ = 2,
+    PA_BLK_BNSD = 3,
+    PA_BLK_NZ = 4
+};
+
+enum QuantClass 
+{
+    None = 0,       // no quant terms used in neither k nor v component, explicit value nullifies ALL quant tensors
+    Static = 1,     // using input terms quantscale and quantoffset within either k or v component
+    Pertile_128 = 2 // Dynamic pertile 128 (c8)
+};
+
+enum RotaryMode
+{
+    INTER_HALF = 0, // interleave-half
+    HALF = 1   // half
+};
+
+// Inner tiling label marks cache layout for kernel branching
+enum CacheLayout{
+    CONTIGUOUS = 0, // DEFAULT cache arrangement where pages are contiguous
+    SWA = 1,        // Data is aligned to hDim of single component, but inter-page stride is larger than 0
+    SFA_NO_QUANT = 2,   // Data is aligned to (Dk+Dv) in a merged cache
+    SFA_C8 = 3          // SFA layout with nope_scale appended to hDim 
+};
+
+constexpr int64_t DOUBLE_BUFFER = 2;
+constexpr int64_t ONE_BUFFER = 1;
+constexpr int64_t DIM_NUM_ONE = 1;
+constexpr int64_t KV_INDEX = 0;
+constexpr int64_t GAMMA_INDEX = 1;
+constexpr int64_t COS_INDEX = 2;
+constexpr int64_t SIN_INDEX = 3;
+constexpr int64_t INDEX_INDEX = 4;
+constexpr int64_t K_CACHE_INDEX = 5;
+constexpr int64_t V_CACHE_INDEX = 6;
+constexpr int64_t K_ROPE_SCALE_IDX = 7;
+constexpr int64_t C_KV_SCALE_IDX = 8;
+constexpr int64_t K_ROPE_OFFSET_IDX = 9;
+constexpr int64_t C_KV_OFFSET_IDX = 10;
+constexpr int64_t V_IDX = 11;
+constexpr int64_t CACHE_MODE_IDX = 1;
+constexpr int64_t ROTARY_MODE_IDX = 2;
+constexpr int64_t INPUT_QUANT_MODE_IDX = 3;
+constexpr int64_t IS_OUTPUT_KV_IDX = 4;
+constexpr int64_t SHAPE_IDX_B = 0;
+constexpr int64_t SHAPE_IDX_N = 1;
+constexpr int64_t SHAPE_IDX_S = 2;
+constexpr int64_t SHAPE_IDX_D = 3;
+constexpr int64_t SHAPE_IDX_BLOCK_NUM = 0;
+constexpr int64_t SHAPE_IDX_BLOCK_SIZE = 1;
+
+constexpr int64_t FLOAT32_BYTES = 4;
+constexpr int64_t FLOAT16_BYTES = 2;
+constexpr int64_t FP32_BLOCK_ALIGN_NUM = 8;
+constexpr int64_t FP16_BLOCK_ALIGN_NUM = 16;
+constexpr int64_t INT8_BLOCK_ALIGN_NUM = 32;
+
+constexpr int64_t DIM_SIZE = 4;
+constexpr int64_t DIM_ONE = 1;
+constexpr int64_t DIM_TWO = 2;
+constexpr int64_t DIM_THREE = 3;
+constexpr int64_t NUM_DECEM = 10;
+constexpr int64_t DEFAULT_WORKSPACE_SIZE = 32;
+constexpr int64_t BATCHES_FOR_EACH_CORE = 4;
+
+// Quant mode classification
+constexpr int64_t NON_QUANT_MODE = 0;   // Shared None Quant Index
+constexpr int64_t QUANT_MODE = 1;       // Static Symmetric Quant
+constexpr int64_t ASYM_QUANT_MODE = 2;  // Static Asymmetric Quant
+
+// Submode choices of static quant
+constexpr int64_t STATIC_QUANT_SCALE = 1;
+constexpr int64_t STATIC_QUANT_OFFSET = 2;
+
+static constexpr int64_t UB_RESERVED_BYTE = 1024;
+static constexpr int64_t FULL_LOAD_BASE_TILING_KEY = 10000;
+static constexpr int64_t NON_FULL_LOAD_BASE_TILING_KEY = 20000;
+
+class AiInfraKvRmsNormRopeCacheTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
+public:
+    explicit AiInfraKvRmsNormRopeCacheTilingBase(gert::TilingContext* tillingContext) : TilingBaseClass(tillingContext)
+    {}
+    ~AiInfraKvRmsNormRopeCacheTilingBase() override
+    {}
+
+    uint64_t coreNum_ = 0;
+    uint64_t ubSize_ = 0;
+    int64_t vlFp32_ = 0;
+    int64_t vlFp16_ = 0;
+    bool isRegbase_{false};
+
+    int64_t kv_{DIM_NUM_ONE};
+    int64_t dv_{DIM_NUM_ONE};
+    int64_t dk_{DIM_NUM_ONE};
+    int64_t vlen_{DIM_NUM_ONE};
+    int64_t cacheLength_ = 0;
+    int64_t blockSize_ = 0;
+    int64_t ubBlockSize_ = 0;
+    float epsilon_ = 0.0;
+    float reciprocal_ = 0.0;
+    bool isOutputKv_ = true;
+    int64_t cosSinNeedBrc_ = 0;
+    bool isPagedAttention_ = false;
+    bool isMTP_ = false;
+    bool isB1SD_ = false;    // current inputs match Skv = Srope > 1
+    bool isCutT_ = false;   // apply cutting token * head_num as inter-core tiling
+
+    CacheMode currentCacheMode_ = CacheMode::Norm;
+    int64_t quantMode_ = 0;
+    int64_t methodMode_ = 0;
+
+    RotaryMode rotaryMode_ = RotaryMode::INTER_HALF;
+    QuantClass inputQuantMode_ = QuantClass::Static;
+
+    ge::DataType kvDtype_{ge::DataType::DT_FLOAT};
+    int64_t kvDtypeSize_{0};
+    int64_t ropeSeqLength{0};
+
+    // Static quant mode of components are originally supported and necessary in V2, JUST keep them
+    int64_t kStaticQuantMode{0};
+    int64_t vStaticQuantMode{0};
+
+protected:
+    bool IsCapable() override;
+    ge::graphStatus DoOpTiling() override;
+    ge::graphStatus DoLibApiTiling() override;
+    uint64_t GetTilingKey() const override;
+    ge::graphStatus GetPlatformInfo() override;
+    ge::graphStatus GetShapeAttrsInfo() override;
+    ge::graphStatus GetWorkspaceSize() override;
+    ge::graphStatus PostTiling() override;
+
+
+protected:
+    std::tuple<int64_t, int64_t, int64_t, int64_t> GetShapeTuple(
+        const gert::TilingContext* context, const int64_t index = 0);
+    std::tuple<int64_t, int64_t, int64_t, int64_t> GetOptionalShapeTuple(
+        const gert::TilingContext* context, const int64_t index = 0);
+    bool IsB1SD(const gert::TilingContext* context);
+    void GetMethodeMode(const gert::TilingContext* context);
+    bool CheckKvValid(
+        const gert::TilingContext* context, int64_t batchSize, int64_t numHead, int64_t seqLen, int64_t headSize);
+    bool CheckVValid(
+        const gert::TilingContext* context, int64_t batchSize, int64_t numHead, int64_t seqLen, int64_t headSize);
+    bool CheckCosSinValid(
+        const gert::TilingContext* context, int64_t batchSize, int64_t numHead, int64_t seqLen, int64_t headSize);
+    bool CheckGammaValid(const gert::TilingContext* context, int64_t headSize);
+    bool CheckIndexValid(
+        const gert::TilingContext* context, int64_t batchSize, int64_t seqLen, int64_t pageSize, CacheMode mode);
+    int64_t GetQuantMode(const gert::TilingContext* context);
+    int64_t GetComponentStaticQuantMode(const gert::TilingContext* context, int64_t qScaleIdx, int64_t qOffsetIdx);
+};
+
+class AiInfraKvRmsNormRopeCacheTilingDs : virtual public AiInfraKvRmsNormRopeCacheTilingBase {
+public:
+    explicit AiInfraKvRmsNormRopeCacheTilingDs(gert::TilingContext* tillingContext) : AiInfraKvRmsNormRopeCacheTilingBase(tillingContext)
+    {}
+    ~AiInfraKvRmsNormRopeCacheTilingDs() override
+    {}
+
+protected:
+    bool IsCapable() override;
+    ge::graphStatus DoOpTiling() override;
+    ge::graphStatus PostTiling() override;
+    ge::graphStatus GetShapeAttrsInfo() override;
+
+protected:
+    void DoOpTilingPaBlkNz();
+
+    bool IsB1SD(const gert::TilingContext* context);
+    ge::graphStatus SetupRotaryMode(const gert::TilingContext* context);
+    ge::graphStatus SetupQuantClass(const gert::TilingContext* context);
+    ge::graphStatus SetupCacheLayout(const gert::TilingContext* context);
+    
+    uint64_t TilingKeyAttachQuantStat(uint64_t tilingBase, QuantClass quantClass);
+
+    // Static Quant mode suite
+    ge::graphStatus ValidateStaticQuantMode(const gert::TilingContext* context);
+    bool CheckScaleValid(const gert::TilingContext* context);
+    bool CheckOffsetValid(const gert::TilingContext* context);
+
+private:
+    AiInfraKvRmsNormRopeCacheTilingData tilingData_;
+};
+
+} // namespace optiling
+
+#endif // OPS_BUILT_IN_OP_TILING_RUNTIME_AI_INFRA_KV_RMS_NORM_ROPE_CACHE_H_
