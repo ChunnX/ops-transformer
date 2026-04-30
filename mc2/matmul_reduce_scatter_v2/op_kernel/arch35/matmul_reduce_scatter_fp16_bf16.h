@@ -83,9 +83,13 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
     rankId_ = context_->rankId;
 
     GM_ADDR biasToFloatAddr = workspaceGM;
+    AscendC::printf("[LBH_DBG] Init: biasGM=%lx, workspaceGM=%lx, biasLen=%d, rankN=%d, BiasType_is_bf16=%d\n",
+                    biasGM, workspaceGM, cfg.biasLen, cfg.rankN, std::is_same_v<BiasType, bfloat16_t>);
     if constexpr (std::is_same_v<BiasType, bfloat16_t>) {
         if (cfg.biasLen > 0) {
+            AscendC::printf("[LBH_DBG] Before CastBias: src=%lx, dst=%lx, size=%d\n", biasGM, biasToFloatAddr, cfg.rankN);
             CastBiasBFtoFloat(biasToFloatAddr, biasGM, cfg.rankN);
+            AscendC::printf("[LBH_DBG] After CastBias: biasGM_=%lx\n", biasToFloatAddr);
             biasGM_ = biasToFloatAddr;
             SyncAll<true>();
             gmToFloat_ = workspaceGM + cfg.biasLen;
@@ -95,6 +99,7 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
     } else {
         gmToFloat_ = workspaceGM;
     }
+    AscendC::printf("[LBH_DBG] Init done: biasGM_=%lx, gmToFloat_=%lx\n", biasGM_, gmToFloat_);
 }
 
 template <typename AType, typename BType, typename BiasType, typename CType>
@@ -165,6 +170,8 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
 {
     using cDataType = typename CType::T;
     using Mmv3BiasType = std::conditional_t<std::is_same_v<BiasType, bfloat16_t>, float, BiasType>;
+    AscendC::printf("[LBH_DBG] MatMulV3Compute: biasGM_=%lx, Mmv3BiasType_is_float=%d, is_bf16=%d\n",
+                    biasGM_, std::is_same_v<Mmv3BiasType, float>, std::is_same_v<BiasType, bfloat16_t>);
     auto&& cfg = tilingData_->param;
     cfg.rankID = rankId_;
     MC2MatmulV3::MC2MatmulAswKernelDerive<AType, BType, CType, Mmv3BiasType, MC2MatmulV3::MC2MatmulAswBlockDerive> mmv3;
@@ -201,17 +208,23 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
     static constexpr uint64_t SYNC_MODE0 = 0;
     static constexpr uint64_t SYNC_MODE2 = 2;
 
+    AscendC::printf("[LBH_DBG] CastBias: g_coreType=%d, blockIdx=%d, src=%lx, dst=%lx, size=%d\n",
+                    g_coreType, GetBlockIdx(), src, dst, size);
+
     if (g_coreType == AIC) {
+        AscendC::printf("[LBH_DBG] CastBias AIC wait\n");
         CrossCoreWaitFlag(SYNC_AIV_DONE_FLAG);
         CrossCoreSetFlag<SYNC_MODE0, PIPE_MTE3>(SYNC_AIC_ACK_FLAG);
         CrossCoreWaitFlag(SYNC_AIC_ACK_FLAG);
         return;
     }
     if (GetBlockIdx() != 0) {
+        AscendC::printf("[LBH_DBG] CastBias AIV non-zero blockIdx set flag\n");
         CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE3>(SYNC_AIV_DONE_FLAG);
         return;
     }
 
+    AscendC::printf("[LBH_DBG] CastBias AIV blockIdx=0 start cast\n");
     GlobalTensor<bfloat16_t> gmSrc;
     GlobalTensor<float> gmDst;
     gmSrc.SetGlobalBuffer((__gm__ bfloat16_t*)(src), size);
@@ -226,13 +239,20 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
     DataCopyPad(bf16Local, gmSrc, cpInExtParams, padExtParams);
     PipeBarrier<PIPE_MTE2>();
 
+    AscendC::DumpTensor("bias_bf16_before_cast", bf16Local, size);
+
     Cast(floatLocal, bf16Local, AscendC::RoundMode::CAST_NONE, size);
     PipeBarrier<PIPE_V>();
+
+    AscendC::DumpTensor("bias_float_after_cast", floatLocal, size);
 
     uint32_t cpOutLen = size * sizeof(float);
     DataCopyExtParams cpOutExtParams{1, cpOutLen, 0, 0, 0};
     DataCopyPad(gmDst, floatLocal, cpOutExtParams);
     PipeBarrier<PIPE_MTE3>();
+
+    AscendC::printf("[LBH_DBG] CastBias done, dump GM dst\n");
+    AscendC::DumpTensor("bias_float_gm_dst", gmDst, size);
 
     CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE3>(SYNC_AIV_DONE_FLAG);
 }
