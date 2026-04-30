@@ -9,17 +9,16 @@
  */
 
 /*!
- * \file flash_attention_noquant_block_cube.h
+ * \file flash_attention_score_block_cube.h
  * \brief
  */
-#ifndef FLASH_ATTENTION_NOQUANT_BLOCK_CUBE_H_
-#define FLASH_ATTENTION_NOQUANT_BLOCK_CUBE_H_
+#ifndef FLASH_ATTENTION_SCORE_BLOCK_CUBE_H_
+#define FLASH_ATTENTION_SCORE_BLOCK_CUBE_H_
 #include "util_regbase.h"
 #include "../offset_calculator.h"
 #include "../matmul.h"
 #include "../FixpipeOut.h"
 #include "../CopyInL1.h"
-#include "../memcopy/copy_gm_to_l1.h"
 
 #include "infer_flash_attention_comm.h"
 #include "flash_attention_score_common_regbase.h"
@@ -28,9 +27,7 @@ using namespace AscendC;
 using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
 using namespace fa_base_matmul;
-
-namespace NoQuantCube {
-
+namespace BaseApi {
 template <LayOutTypeEnum LAYOUT>
 __aicore__ inline constexpr GmFormat GetQueryGmFormat() {
     if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH) {
@@ -46,18 +43,26 @@ __aicore__ inline constexpr GmFormat GetQueryGmFormat() {
     }
 }
 
-template <LayOutTypeEnum LAYOUT>
+template <LayOutTypeEnum LAYOUT, uint8_t KvLayoutType=0, bool isPa=false>
 __aicore__ inline constexpr GmFormat GetKVGmFormat() {
-    if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH) {
-        return GmFormat::BSND;
-    } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_SBH) {
-        return GmFormat::SBND;
-    } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BNSD) {
-        return GmFormat::BNSD;
-    } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
-        return GmFormat::TND;
-    } else {
-        return GmFormat::NTD;
+    if constexpr (KvLayoutType == 0) { // KvLayoutType_NO_PA
+        if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH) {
+            return GmFormat::BSND;
+        } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_SBH) {
+            return GmFormat::SBND;
+        } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BNSD) {
+            return GmFormat::BNSD;
+        } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
+            return GmFormat::TND;
+        } else {
+            return GmFormat::NTD;
+        }
+    } else if constexpr (KvLayoutType == 1) { // KvLayoutType_PA_BBH
+        return GmFormat::PA_BnBsND;
+    } else if constexpr (KvLayoutType == 2) { // KvLayoutType_PA_BNBD
+        return GmFormat::PA_BnNBsD;
+    } else { // KvLayoutType_PA_NZ
+        return GmFormat::PA_NZ;
     }
 }
 
@@ -127,12 +132,8 @@ struct Bmm2ResBuffSel {
         BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>>;
 };
 
-}
-
-namespace BaseApi {
-
 TEMPLATES_DEF
-class FANoQuantBlockCube {
+class FABlockCube {
 public:
     /* =================编译期常量的基本块信息================= */
     static constexpr uint32_t s1BaseSize = (uint32_t)s1TemplateType;
@@ -158,7 +159,7 @@ public:
     using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
         Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
 
-    __aicore__ inline FANoQuantBlockCube() {};
+    __aicore__ inline FABlockCube() {};
     __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> *l1BufferManagerPtr,
         __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *blockTable, 
         __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope);
@@ -220,8 +221,8 @@ private:
     __gm__ uint8_t *currentValue; // pageattention需要
     __gm__ uint8_t *blocktablePtr; // pageattention需要
     GlobalTensor<int32_t> blockTableGm; // pageattention需要
-    static constexpr GmFormat Q_FORMAT = NoQuantCube::GetQueryGmFormat<layout>();
-    static constexpr GmFormat KV_FORMAT = NoQuantCube::GetKVGmFormat<layout>();
+    static constexpr GmFormat Q_FORMAT = GetQueryGmFormat<layout>();
+    static constexpr GmFormat KV_FORMAT = GetKVGmFormat<layout>();
     FaGmTensor<INPUT_T, Q_FORMAT> queryGm;
     FaGmTensor<INPUT_T, KV_FORMAT> keyGm;
     FaGmTensor<INPUT_T, KV_FORMAT> valueGm;
@@ -229,7 +230,6 @@ private:
     FaGmTensor<INPUT_T, KV_FORMAT> valueSharedPrefixGm;
     FaGmTensor<ROPE_T, Q_FORMAT> queryRopeGm;
     FaGmTensor<ROPE_T, KV_FORMAT> keyRopeGm;
-    CopyQueryGmToL1<INPUT_T, Q_FORMAT> copyQueryGmToL1;
     GlobalTensor<float> deScaleQGm;
     GlobalTensor<float> deScaleKGm;
     GlobalTensor<float> deScaleVGm;
@@ -248,25 +248,25 @@ private:
     BufferManager<BufferType::L0C> l0cBufferManager;
 
     // D小于等于256 mm1左矩阵Q，GS1循环内左矩阵复用, GS1循环间开pingpong；D大于256使用单块Buffer，S1循环间驻留；fp32场景单块不驻留
-    typename NoQuantCube::QL1BuffSel<INPUT_T, dBaseSize>::Type l1QBuffers;
+    typename QL1BuffSel<INPUT_T, dBaseSize>::Type l1QBuffers;
     // mm1右矩阵K
-    typename NoQuantCube::KVL1BuffSel<INPUT_T, s2BaseSize, dBaseSize>::Type l1KBuffers;
+    typename KVL1BuffSel<INPUT_T, s2BaseSize, dBaseSize>::Type l1KBuffers;
 
     // mm2右矩阵V
-    typename NoQuantCube::KVL1BuffSel<INPUT_T, s2BaseSize, dBaseSize>::Type l1VBuffers;
+    typename KVL1BuffSel<INPUT_T, s2BaseSize, dBaseSize>::Type l1VBuffers;
     // L0A
-    using L0AType = typename NoQuantCube::L0ABuffSel<INPUT_T>::Type;
+    using L0AType = typename L0ABuffSel<INPUT_T>::Type;
     L0AType mmL0ABuffers;
     // L0B
-    using L0BType = typename NoQuantCube::L0BBuffSel<INPUT_T, s2BaseSize, dBaseSize>::Type;
+    using L0BType = typename L0BBuffSel<INPUT_T, s2BaseSize, dBaseSize>::Type;
     L0BType mmL0BBuffers;
     // L0C
-    using L0CType = typename NoQuantCube::L0CBuffSel<INPUT_T, s1BaseSize, s2BaseSize, dVBaseSize>::Type;
+    using L0CType = typename L0CBuffSel<INPUT_T, s1BaseSize, s2BaseSize, dVBaseSize>::Type;
     L0CType mmL0CBuffers;
 };
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::InitCubeBlock(
+__aicore__ inline void FABlockCube<TEMPLATE_ARGS>::InitCubeBlock(
     TPipe *pipe, BufferManager<BufferType::L1> *l1BuffMgr, __gm__ uint8_t *query,
     __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *blockTable, 
     __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope)
@@ -291,7 +291,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::InitCubeBlock(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::InitCubeInput(
+__aicore__ inline void FABlockCube<TEMPLATE_ARGS>::InitCubeInput(
     __gm__ uint8_t *key, __gm__ uint8_t *value, CVSharedParams<isInfer, isPa> *sharedParams,
     AttenMaskInfo *attenMaskInfo, __gm__ int64_t *actualSeqQlenAddr, __gm__ int64_t *actualSeqKvlenAddr,
     __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix, __gm__ uint8_t *actualSharedPrefixLen)
@@ -339,7 +339,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::InitCubeInput(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::InitLocalBuffer() {
+__aicore__ inline void FABlockCube<TEMPLATE_ARGS>::InitLocalBuffer() {
     if constexpr (isMlaFullQuant) {
         constexpr uint32_t dRopeBaseSize = dBaseSize - dVBaseSize;
         constexpr uint32_t mm1QSize = s1BaseSize * dVBaseSize * sizeof(INPUT_T);
@@ -402,17 +402,14 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::InitLocalBuffer() {
 
 /* 初始化GmTensor,设置shape信息并计算strides */
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::InitGmTensor(CVSharedParams<isInfer, isPa> *sharedParams,
+__aicore__ inline void FABlockCube<TEMPLATE_ARGS>::InitGmTensor(CVSharedParams<isInfer, isPa> *sharedParams,
     __gm__ int64_t *actualSeqQlenAddr, __gm__ int64_t *actualSeqKvlenAddr)
 {
+    // PRINTF("GmLayoutParams<KV_FORMAT>::CATEGORY is %d \n", GmLayoutParams<KV_FORMAT>::CATEGORY);
+
     if constexpr (GmLayoutParams<Q_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_BNGSD) {
         this->queryGm.offsetCalculator.Init(sharedParams->bSize, sharedParams->n2Size, sharedParams->gSize,
             sharedParams->s1Size, sharedParams->dSize);
-        if constexpr(isInfer) {
-            GlobalTensor<uint64_t> actualSeqQLen;
-            actualSeqQLen.SetGlobalBuffer((__gm__ uint64_t *)actualSeqQlenAddr);
-            this->queryGm.offsetCalculator.actualSeqLensQParser.Init(actualSeqQLen, sharedParams->actualSeqLengthsSize, 0);
-        }
         if constexpr (hasRope) {
             this->queryRopeGm.offsetCalculator.Init(sharedParams->bSize, sharedParams->n2Size, sharedParams->gSize,
                 sharedParams->s1Size, sharedParams->dSizeRope);
@@ -441,12 +438,6 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::InitGmTensor(CVSharedP
             sharedParams->dSize);
         this->valueGm.offsetCalculator.Init(sharedParams->bSize, sharedParams->n2Size, sharedParams->s2Size,
             sharedParams->dSizeV);
-        if constexpr(isInfer) {
-            GlobalTensor<uint64_t> actualSeqKVLen;
-            actualSeqKVLen.SetGlobalBuffer((__gm__ uint64_t *)actualSeqKvlenAddr);
-            this->keyGm.offsetCalculator.actualSeqLensKVParser.Init(actualSeqKVLen, sharedParams->actualSeqLengthsKVSize, 0);
-            this->valueGm.offsetCalculator.actualSeqLensKVParser.Init(actualSeqKVLen, sharedParams->actualSeqLengthsKVSize, 0);
-        }
         if constexpr (enableKVPrefix) {
             this->keySharedPrefixGm.offsetCalculator.Init(1, sharedParams->n2Size, sharedParams->kvPrefixSize, sharedParams->dSize);
             this->valueSharedPrefixGm.offsetCalculator.Init(1, sharedParams->n2Size, sharedParams->kvPrefixSize, sharedParams->dSizeV);
@@ -481,15 +472,12 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::InitGmTensor(CVSharedP
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::CalcS1Coord(RunInfo<isInfer> &runInfo,
+__aicore__ inline void FABlockCube<TEMPLATE_ARGS>::CalcS1Coord(RunInfo<isInfer> &runInfo,
     ConstInfo<isInfer, hasRope> &constInfo)
 {
     // 计算s1方向偏移
     coordInfo[runInfo.taskIdMod3].s1Coord = runInfo.s1oIdx * s1BaseSize;
     if constexpr (isInfer) {
-        if (constInfo.isGqa) {
-            coordInfo[runInfo.taskIdMod3].s1Coord = runInfo.s1oIdx;
-        }
         coordInfo[runInfo.taskIdMod3].s1Coord += runInfo.queryLeftPaddingSize;  // 左padding
         // 推理无效行场景，s1方向起始跳过无效行
         coordInfo[runInfo.taskIdMod3].s1Coord += (runInfo.nextTokensPerBatch < 0) ? -runInfo.nextTokensPerBatch : 0;
@@ -497,7 +485,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::CalcS1Coord(RunInfo<is
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::CalcS2Coord(RunInfo<isInfer> &runInfo,
+__aicore__ inline void FABlockCube<TEMPLATE_ARGS>::CalcS2Coord(RunInfo<isInfer> &runInfo,
     ConstInfo<isInfer, hasRope> &constInfo)
 {
     coordInfo[runInfo.taskIdMod3].s2Coord = runInfo.s2StartIdx + runInfo.s2LoopCount * s2BaseSize;
@@ -522,7 +510,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::CalcS2Coord(RunInfo<is
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1(
+__aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, RunInfo<isInfer> &runInfo,
     ConstInfo<isInfer, hasRope> &constInfo)
 {
@@ -567,7 +555,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2L1SplitN(mm2ResPos &outputBuf,
+__aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm2L1SplitN(mm2ResPos &outputBuf,
     BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf, RunInfo<isInfer> &runInfo,
     ConstInfo<isInfer, hasRope> &constInfo) 
 {
@@ -693,7 +681,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2L1SplitN(mm
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2(mm2ResPos &outputBuf,
+__aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm2(mm2ResPos &outputBuf,
     BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf, RunInfo<isInfer> &runInfo,
     ConstInfo<isInfer, hasRope> &constInfo)
 {
@@ -859,7 +847,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2(mm2ResPos 
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::InitDequantParams(
+__aicore__ inline void FABlockCube<TEMPLATE_ARGS>::InitDequantParams(
     __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV)
 {
     if constexpr (isFp8) {
@@ -870,7 +858,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::InitDequantParams(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::GetKvByTensorList(RunInfo<isInfer>& runInfo, 
+__aicore__ inline void FABlockCube<TEMPLATE_ARGS>::GetKvByTensorList(RunInfo<isInfer>& runInfo, 
     const ConstInfo<isInfer, hasRope> &constInfo,
     GlobalTensor<INPUT_T>& keyValueGm, GlobalTensor<INPUT_T>& tempKeyValueGm)
 {
@@ -885,7 +873,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::GetKvByTensorList(RunI
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline GlobalTensor<INPUT_T>
-FANoQuantBlockCube<TEMPLATE_ARGS>::GetKeyGm(RunInfo<isInfer> &runInfo, 
+FABlockCube<TEMPLATE_ARGS>::GetKeyGm(RunInfo<isInfer> &runInfo, 
     ConstInfo<isInfer, hasRope> &constInfo)
 {
     if constexpr (isInfer) {
@@ -899,7 +887,7 @@ FANoQuantBlockCube<TEMPLATE_ARGS>::GetKeyGm(RunInfo<isInfer> &runInfo,
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline GlobalTensor<INPUT_T>
-FANoQuantBlockCube<TEMPLATE_ARGS>::GetValueGm(RunInfo<isInfer> &runInfo,
+FABlockCube<TEMPLATE_ARGS>::GetValueGm(RunInfo<isInfer> &runInfo,
     ConstInfo<isInfer, hasRope> &constInfo)
 {
     if constexpr (isInfer) {
@@ -913,7 +901,7 @@ FANoQuantBlockCube<TEMPLATE_ARGS>::GetValueGm(RunInfo<isInfer> &runInfo,
 
 /* 针对S1Base=128, S2Base = 128, D > 128场景，L1全载，左矩阵驻留 + L0切D + L0Db*/
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1NdL0Split(
+__aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1NdL0Split(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, RunInfo<isInfer> &runInfo,
     ConstInfo<isInfer, hasRope> &constInfo)
 {
@@ -928,32 +916,9 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1NdL0Split(
 
         if constexpr (isInfer){
             if (IsGS1Merge(constInfo)) {
-                int32_t subMSizeAlign;
-                if constexpr (IsSameType<INPUT_T, fp8_e5m2_t>::value || IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
-                    IsSameType<INPUT_T, hifloat8_t>::value) {
-                    subMSizeAlign = (runInfo.s1RealSize + 31) >> 5 << 5; // NZ矩阵相邻Block起始地址之间的偏移，单位为Block个数，32对齐
-                } else {
-                    subMSizeAlign = (runInfo.s1RealSize + 15) >> 4 << 4; // NZ矩阵相邻Block起始地址之间的偏移，单位为Block个数，16对齐
-                }
-
-                FaL1Tensor<INPUT_T, L1Format::NZ> dstTensor {
-                    .tensor = mm1ATensor,
-                    .rowCount = static_cast<uint32_t>(subMSizeAlign)
-                };
-                GmCoord gmCoord {
-                    .bIdx = static_cast<uint32_t>(runInfo.boIdx),
-                    .n2Idx = static_cast<uint32_t>(runInfo.n2oIdx),
-                    .gS1Idx = static_cast<uint32_t>(runInfo.gS1Idx),
-                    .dIdx = 0,
-                    .gS1DealSize = static_cast<uint32_t>(runInfo.s1RealSize),
-                    .dDealSize = static_cast<uint32_t>(constInfo.dSize)
-                };
-                copyQueryGmToL1(dstTensor, this->queryGm, gmCoord);
-                if constexpr (hasRope) {
-                    dstTensor.tensor = mm1ATensor[subMSizeAlign * constInfo.dSize];
-                    gmCoord.dDealSize = (uint32_t)constInfo.dSizeRope;
-                    copyQueryGmToL1(dstTensor, this->queryRopeGm, gmCoord);
-                }
+                uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, 0, 0, 0); // PFA GS1合轴下，g s1 d idx为0
+                CopyToL1Nd2NzGS1Merge<INPUT_T>(mm1ATensor, this->queryGm.gmTensor[gmOffset], constInfo.s1Size, constInfo.gSize, constInfo.dSize,
+                    constInfo.n2Size * constInfo.gSize * constInfo.dSize, constInfo.dSize, runInfo.s1RealSize);
             } else {
                 if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {	 
                     uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx, 
@@ -1125,7 +1090,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1NdL0Split(
 
 /* 针对useDn=true, S1Base=128, S2Base = 128, 128 < D <= 256场景，L1全载，左矩阵驻留 + L0切D + L0Db*/
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1DnSplitK(
+__aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1DnSplitK(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, RunInfo<isInfer> &runInfo,
     ConstInfo<isInfer, hasRope> &constInfo)
 {
@@ -1137,43 +1102,17 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1DnSplitK(
         mm1B = l1QBuffers.Get();
         mm1B.Wait<HardEvent::MTE1_MTE2>(); // 占用
         LocalTensor<INPUT_T> mm1BTensor = mm1B.GetTensor<INPUT_T>();
-        if constexpr (isInfer) {
-            if (IsGS1Merge(constInfo)) {
-                int32_t subMSizeAlign;
-                if constexpr (IsSameType<INPUT_T, fp8_e5m2_t>::value || IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
-                    IsSameType<INPUT_T, hifloat8_t>::value) {
-                    subMSizeAlign = (runInfo.s1RealSize + 31) >> 5 << 5; // NZ矩阵相邻Block起始地址之间的偏移，单位为Block个数，32对齐
-                } else {
-                    subMSizeAlign = (runInfo.s1RealSize + 15) >> 4 << 4; // NZ矩阵相邻Block起始地址之间的偏移，单位为Block个数，16对齐
-                }
-
-                FaL1Tensor<INPUT_T, L1Format::NZ> dstTensor {
-                    .tensor = mm1BTensor,
-                    .rowCount = static_cast<uint32_t>(subMSizeAlign)
-                };
-                GmCoord gmCoord {
-                    .bIdx = static_cast<uint32_t>(runInfo.boIdx),
-                    .n2Idx = static_cast<uint32_t>(runInfo.n2oIdx),
-                    .gS1Idx = static_cast<uint32_t>(runInfo.gS1Idx),
-                    .dIdx = 0,
-                    .gS1DealSize = static_cast<uint32_t>(runInfo.s1RealSize),
-                    .dDealSize = static_cast<uint32_t>(constInfo.dSize)
-                };
-                copyQueryGmToL1(dstTensor, this->queryGm, gmCoord);
-            } else {
-                uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx,
-                    coordInfo[runInfo.taskIdMod3].s1Coord, 0);
-                if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {	  
-                    CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, this->queryGm.gmTensor[gmOffset], runInfo.s1RealSize, constInfo.dSize,	 
-                        constInfo.mm1Ka);	 
-                } else { 
-                    CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, this->queryGm.gmTensor[runInfo.queryOffset], runInfo.s1RealSize, constInfo.dSize, 
-                    constInfo.mm1Ka); 
-                }
+        uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx,
+            coordInfo[runInfo.taskIdMod3].s1Coord, 0);
+        if constexpr(isInfer) {
+            if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {	  
+                CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, this->queryGm.gmTensor[gmOffset], runInfo.s1RealSize, constInfo.dSize,	 
+                    constInfo.mm1Ka);	 
+            } else { 
+                CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, this->queryGm.gmTensor[runInfo.queryOffset], runInfo.s1RealSize, constInfo.dSize, 
+                 constInfo.mm1Ka); 
             }
         } else {
-            uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx,
-                coordInfo[runInfo.taskIdMod3].s1Coord, 0);
             CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, this->queryGm.gmTensor[gmOffset], runInfo.s1RealSize, constInfo.dSize,
                 constInfo.mm1Ka);
         }
@@ -1262,7 +1201,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1DnSplitK(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1Nz(
+__aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1Nz(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, RunInfo<isInfer> &runInfo,
     ConstInfo<isInfer, hasRope> &constInfo)
 {
@@ -1418,7 +1357,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1Nz(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2Nz(mm2ResPos &outputBuf,
+__aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm2Nz(mm2ResPos &outputBuf,
     BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf, RunInfo<isInfer> &runInfo,
     ConstInfo<isInfer, hasRope> &constInfo)
 {
@@ -1507,7 +1446,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2Nz(mm2ResPo
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
+__aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, RunInfo<isInfer> &runInfo,
     ConstInfo<isInfer, hasRope> &constInfo)
 {
@@ -1523,27 +1462,9 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
 
         if constexpr (isInfer) {
             if (IsGS1Merge(constInfo)) {
-                int32_t subMSizeAlign;
-                if constexpr (IsSameType<INPUT_T, fp8_e5m2_t>::value || IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
-                    IsSameType<INPUT_T, hifloat8_t>::value) {
-                    subMSizeAlign = (runInfo.s1RealSize + 31) >> 5 << 5; // NZ矩阵相邻Block起始地址之间的偏移，单位为Block个数，32对齐
-                } else {
-                    subMSizeAlign = (runInfo.s1RealSize + 15) >> 4 << 4; // NZ矩阵相邻Block起始地址之间的偏移，单位为Block个数，16对齐
-                }
-
-                FaL1Tensor<INPUT_T, L1Format::NZ> dstTensor = {
-                    .tensor = mm1ATensor,
-                    .rowCount = static_cast<uint32_t>(subMSizeAlign)
-                };
-                GmCoord gmCoord {
-                    .bIdx = static_cast<uint32_t>(runInfo.boIdx),
-                    .n2Idx = static_cast<uint32_t>(runInfo.n2oIdx),
-                    .gS1Idx = static_cast<uint32_t>(runInfo.gS1Idx),
-                    .dIdx = 0,
-                    .gS1DealSize = static_cast<uint32_t>(runInfo.s1RealSize),
-                    .dDealSize = static_cast<uint32_t>(constInfo.dSize)
-                };
-                copyQueryGmToL1(dstTensor, this->queryGm, gmCoord);
+                uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, 0, 0, 0); // PFA GS1合轴下，g s1 d idx为0
+                CopyToL1Nd2NzGS1Merge<INPUT_T>(mm1ATensor, this->queryGm.gmTensor[gmOffset], constInfo.s1Size, constInfo.gSize, constInfo.dSize,
+                    constInfo.n2Size * constInfo.gSize * constInfo.dSize, constInfo.dSize, runInfo.s1RealSize);
             } else {
                 if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {	 
                      uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx, 
@@ -1672,7 +1593,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
 
 /* 针对S1Base=128, S2Base = 128, D > 256场景，L1层面切K，且左矩阵单Buffer+驻留，右矩阵每次重新搬运。*/
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1NdL1SplitK(
+__aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1NdL1SplitK(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, RunInfo<isInfer> &runInfo,
     ConstInfo<isInfer, hasRope> &constInfo) 
 {
@@ -1702,15 +1623,6 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1NdL1SplitK(
         runInfo.keyOffset = this->keyGm.offsetCalculator.GetOffset(
             coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx, coordInfo[runInfo.taskIdMod3].s2Coord, 0);
     }
-    int32_t subMSizeAlign;
-    if constexpr (isInfer) {
-        if constexpr (IsSameType<INPUT_T, fp8_e5m2_t>::value || IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
-            IsSameType<INPUT_T, hifloat8_t>::value) {
-            subMSizeAlign = (runInfo.s1RealSize + 31) >> 5 << 5; // NZ矩阵相邻Block起始地址之间的偏移，单位为Block个数，32对齐
-        } else {
-            subMSizeAlign = (runInfo.s1RealSize + 15) >> 4 << 4; // NZ矩阵相邻Block起始地址之间的偏移，单位为Block个数，16对齐
-        }
-    }
     for (uint32_t k = 0; k < kLoops; k++) {
         Buffer<BufferType::L1> mm1B;
         // 左矩阵复用, 但是每次只加载realK列
@@ -1727,19 +1639,9 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1NdL1SplitK(
             
             if constexpr (isInfer) {
                 if (IsGS1Merge(constInfo)) { // PFA
-                    FaL1Tensor<INPUT_T, L1Format::NZ> dstTensor {
-                        .tensor = mm1ATensor[k * l1BaseKOffset],
-                        .rowCount = static_cast<uint32_t>(subMSizeAlign)
-                    };
-                    GmCoord gmCoord {
-                        .bIdx = static_cast<uint32_t>(runInfo.boIdx),
-                        .n2Idx = static_cast<uint32_t>(runInfo.n2oIdx),
-                        .gS1Idx = static_cast<uint32_t>(runInfo.gS1Idx),
-                        .dIdx = static_cast<uint32_t>(k * baseK),
-                        .gS1DealSize = static_cast<uint32_t>(runInfo.s1RealSize),
-                        .dDealSize = static_cast<uint32_t>(realK)
-                    };
-                    copyQueryGmToL1(dstTensor, this->queryGm, gmCoord);
+                    gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, 0, 0, 0); // PFA GS1合轴下，g s1 d idx为0
+                    CopyToL1Nd2NzGS1Merge<INPUT_T>(mm1ATensor[k * l1BaseKOffset], this->queryGm.gmTensor[gmOffset + gmKOffset], constInfo.s1Size, constInfo.gSize, realK,
+                        constInfo.n2Size * constInfo.gSize * constInfo.dSize, constInfo.dSize, runInfo.s1RealSize);
                 } else {
                     if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {	 
                         CopyToL1Nd2Nz<INPUT_T>(mm1ATensor[k * l1BaseKOffset], this->queryGm.gmTensor[gmOffset + gmKOffset], runInfo.s1RealSize, realK,	 
@@ -1853,7 +1755,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1NdL1SplitK(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
+__aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, RunInfo<isInfer> &runInfo,
     ConstInfo<isInfer, hasRope> &constInfo)
 {
@@ -1866,37 +1768,14 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
         mm1B.Wait<HardEvent::MTE1_MTE2>(); // 占用L1A
         LocalTensor<INPUT_T> mm1BTensor = mm1B.GetTensor<INPUT_T>();
         uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx, 
-                    coordInfo[runInfo.taskIdMod3].s1Coord, 0);
+                    coordInfo[runInfo.taskIdMod3].s1Coord, 0);	
         if constexpr(isInfer) {
-            if (IsGS1Merge(constInfo)) {
-                int32_t subMSizeAlign;
-                if constexpr (IsSameType<INPUT_T, fp8_e5m2_t>::value || IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
-                    IsSameType<INPUT_T, hifloat8_t>::value) {
-                    subMSizeAlign = (runInfo.s1RealSize + 31) >> 5 << 5; // NZ矩阵相邻Block起始地址之间的偏移，单位为Block个数，32对齐
-                } else {
-                    subMSizeAlign = (runInfo.s1RealSize + 15) >> 4 << 4; // NZ矩阵相邻Block起始地址之间的偏移，单位为Block个数，16对齐
-                }
-                FaL1Tensor<INPUT_T, L1Format::NZ> dstTensor = {
-                    .tensor = mm1BTensor,
-                    .rowCount = static_cast<uint32_t>(subMSizeAlign)
-                };
-                GmCoord gmCoord {
-                    .bIdx = static_cast<uint32_t>(runInfo.boIdx),
-                    .n2Idx = static_cast<uint32_t>(runInfo.n2oIdx),
-                    .gS1Idx = static_cast<uint32_t>(runInfo.gS1Idx),
-                    .dIdx = 0,
-                    .gS1DealSize = static_cast<uint32_t>(runInfo.s1RealSize),
-                    .dDealSize = static_cast<uint32_t>(constInfo.dSize)
-                };
-                copyQueryGmToL1(dstTensor, this->queryGm, gmCoord);
-            } else {
-                if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {  
-                    CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, this->queryGm.gmTensor[gmOffset], runInfo.s1RealSize, constInfo.dSize,	 
-                        constInfo.mm1Ka);
-                } else {
-                    CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, this->queryGm.gmTensor[runInfo.queryOffset], runInfo.s1RealSize, constInfo.dSize, 
-                    constInfo.mm1Ka);
-                }
+            if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {	  
+                CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, this->queryGm.gmTensor[gmOffset], runInfo.s1RealSize, constInfo.dSize,	 
+                    constInfo.mm1Ka);	 
+            } else { 
+                CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, this->queryGm.gmTensor[runInfo.queryOffset], runInfo.s1RealSize, constInfo.dSize, 
+                 constInfo.mm1Ka); 
             }
         } else {
             CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, this->queryGm.gmTensor[gmOffset], runInfo.s1RealSize, constInfo.dSize,
@@ -1990,7 +1869,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
 
 /* 针对MLA的bmm1*/
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1MLAFullQuant(
+__aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1MLAFullQuant(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, RunInfo<isInfer> &runInfo,
     ConstInfo<isInfer, hasRope> &constInfo)
 {
@@ -2126,7 +2005,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1MLAFullQuan
 
 //MLA全量化新增的bmm2,L1上切N
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2MLAFullQuant(mm2ResPos &outputBuf,
+__aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm2MLAFullQuant(mm2ResPos &outputBuf,
     BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf, RunInfo<isInfer> &runInfo,
     ConstInfo<isInfer, hasRope> &constInfo) 
 {
@@ -2181,22 +2060,22 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2MLAFullQuan
 
 // 判断是否GS1合轴
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline bool FANoQuantBlockCube<TEMPLATE_ARGS>::IsGS1Merge(ConstInfo<isInfer, hasRope> &constInfo)
+__aicore__ inline bool FABlockCube<TEMPLATE_ARGS>::IsGS1Merge(ConstInfo<isInfer, hasRope> &constInfo)
 {
-    return (Q_FORMAT == GmFormat::BSNGD || Q_FORMAT == GmFormat::TNGD || Q_FORMAT == GmFormat::BNGSD) && constInfo.isPfaGS1Merge;
+    return (Q_FORMAT == GmFormat::BSNGD || Q_FORMAT == GmFormat::TNGD) && constInfo.isPfaGS1Merge;
 }
 
 
 TEMPLATES_DEF
-class FANoQuantBlockCubeDummy {
+class FABlockCubeDummy {
 public:
-    static constexpr bool isFp8 = FANoQuantBlockCube<TEMPLATE_ARGS>::isFp8;
-    static constexpr bool splitD = FANoQuantBlockCube<TEMPLATE_ARGS>::splitD;
-    static constexpr bool useDn = FANoQuantBlockCube<TEMPLATE_ARGS>::useDn;
-    static constexpr bool useNz = FANoQuantBlockCube<TEMPLATE_ARGS>::useNz;
-    static constexpr TPosition bmm2OutPos = FANoQuantBlockCube<TEMPLATE_ARGS>::bmm2OutPos;
-    static constexpr bool bmm2Write2Ub = FANoQuantBlockCube<TEMPLATE_ARGS>::bmm2Write2Ub;
-    __aicore__ inline FANoQuantBlockCubeDummy() {};
+    static constexpr bool isFp8 = FABlockCube<TEMPLATE_ARGS>::isFp8;
+    static constexpr bool splitD = FABlockCube<TEMPLATE_ARGS>::splitD;
+    static constexpr bool useDn = FABlockCube<TEMPLATE_ARGS>::useDn;
+    static constexpr bool useNz = FABlockCube<TEMPLATE_ARGS>::useNz;
+    static constexpr TPosition bmm2OutPos = FABlockCube<TEMPLATE_ARGS>::bmm2OutPos;
+    static constexpr bool bmm2Write2Ub = FABlockCube<TEMPLATE_ARGS>::bmm2Write2Ub;
+    __aicore__ inline FABlockCubeDummy() {};
     __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> *l1BufferManagerPtr,
         __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *blockTable, 
         __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope) {}
@@ -2236,8 +2115,8 @@ struct CubeBlockTraits;  // 声明
         CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TRAIT_CONST) \
     };
 
-DEFINE_CUBE_BLOCK_TRAITS(FANoQuantBlockCube);
-DEFINE_CUBE_BLOCK_TRAITS(FANoQuantBlockCubeDummy);
+DEFINE_CUBE_BLOCK_TRAITS(FABlockCube);
+DEFINE_CUBE_BLOCK_TRAITS(FABlockCubeDummy);
 
 // /* 生成Arg Traits, kernel中只需要调用ARGS_TRAITS就可以获取所有CubeBlock中的模板参数 */
 #define GEN_ARGS_TYPE(name, ...) using name = typename CubeBlockTraits<CubeBlockType>::name##_TRAITS;
@@ -2246,4 +2125,4 @@ DEFINE_CUBE_BLOCK_TRAITS(FANoQuantBlockCubeDummy);
     CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARGS_TYPE)\
     CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARGS_CONST)
 }
-#endif // FLASH_ATTENTION_NOQUANT_BLOCK_CUBE_H_
+#endif // FLASH_ATTENTION_SCORE_BLOCK_CUBE_H_
