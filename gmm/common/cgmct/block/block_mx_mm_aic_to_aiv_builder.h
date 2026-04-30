@@ -72,7 +72,8 @@ public:
     using AMatmulType =
         matmul::MatmulTypeWithScale<AscendC::TPosition::GM, AscendC::TPosition::GM, formatA, AType, transA>;
     using BMatmulType =
-        matmul::MatmulTypeWithScale<AscendC::TPosition::GM, AscendC::TPosition::GM, formatB, BType, transB>;
+        matmul::MatmulTypeWithScale<AscendC::TPosition::GM, AscendC::TPosition::GM, formatB, BType, transB,
+                                    AscendC::TPosition::GM, CubeFormat::ND, transB, AscendC::TPosition::GM>;
     using CMatmulType = AscendC::MatmulType<AscendC::TPosition::VECIN, formatC, CType>;
     using BiasMatmulType = AscendC::MatmulType<AscendC::TPosition::GM, CubeFormat::ND, BiasType>;
 
