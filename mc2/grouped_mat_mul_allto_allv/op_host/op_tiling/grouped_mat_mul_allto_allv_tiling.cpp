@@ -17,7 +17,7 @@
 #include <numeric>
 #include <vector>
 #include "grouped_mat_mul_allto_allv_tiling_base.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 #include "op_host/op_tiling/mc2_tiling_common_var.h"
 #include "mc2_hcom_topo_info.h"
 #include "mc2_log.h"
