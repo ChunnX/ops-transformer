@@ -171,7 +171,7 @@ def judge_value_by_isclose(real_data, data_compe):
     result = True if (fulfill_percent >= pct_thd) else False
     return result
 
-def compare_topk_valid(cur_cpu, cur_npu, topk_value, bsn, diff_npu, diff_cpu,
+def compare_topk_valid(cur_npu, cur_cpu, topk_value, bsn, diff_npu, diff_cpu,
                        cur_npu_output_value=None, cur_cpu_output_value=None, thres=0.0001, return_value_flag=False):
     b_idx, s1_idx, n2_idx = bsn
     max_re = 0.0
@@ -234,7 +234,7 @@ def trans_tnd_actseq(list):
             raise ValueError(f'TND情况下 act_seq_len 为非递减数列 act_seq_len={list}')
     return list_new
 
-def check_result(expect, result, topk_value, params):
+def check_result(expect, result, topk_value, sparse_value, params):
     batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num,\
     qk_dtype, weight_dtype, actual_seq_dtype, act_seq_q, act_seq_k, layout_query,\
     layout_key, sparse_count, sparse_mode, query_datarange, key_datarange, weights_datarange,\
@@ -319,7 +319,7 @@ def check_result(expect, result, topk_value, params):
         npu_pass_t = True
         max_re_t = 0
         valid_len = valid_lens[t_id]
-        npu_pass_t, max_re_t = compare_topk_valid(cpu_reshape[t_id, :valid_len], npu_reshape[t_id, :valid_len],
+        npu_pass_t, max_re_t = compare_topk_valid(npu_reshape[t_id, :valid_len], cpu_reshape[t_id, :valid_len],
                                                     topk_value, bsn, diff_npu, diff_cpu,
                                                     cur_npu_output_value,
                                                     cur_cpu_output_value, thres,
@@ -372,4 +372,72 @@ def check_result(expect, result, topk_value, params):
     if result == "Failed":
         display_error_output(real_data, data_compe,
                                 err_idx, err_diff[0:max_error_idx])
+    
+    if return_value :
+        print_log('=================== Value Compare (topk_value vs sparse_value) ===================')
+        # topk_value: BNSD [B, N2, S1, max(S2)], float32 — golden的完整注意力分数                                                                                                                                                                         
+        # sparse_value: 输出layout (BSND/TND), qk_dtype — NPU输出的top-k值，已降序排列                                                                                                                                                                    
+        # Step 1: 对topk_value降序排序并取前sparse_count个值                                                                                                                                                                                              
+        topk_sorted, _ = topk_value.sort(dim=-1, descending=True)        
+        # 当max(act_seq_k) < sparse_count时，topk_value最后一维不足，需要用-inf填充
+        if topk_sorted.shape[-1] < sparse_count:
+            pad_size = sparse_count - topk_sorted.shape[-1]
+            pad_tensor = torch.full((*topk_sorted.shape[:-1], pad_size), -float('inf'), dtype=topk_sorted.dtype)
+            topk_sorted = torch.cat([topk_sorted, pad_tensor], dim=-1)                                                                                                                                                                                         
+        topk_selected = topk_sorted[..., :sparse_count]  # [B, N2, S1, sparse_count]                                                                                                                                                                      
+        # Step 2: 将BNSD转换为输出layout，与sparse_value对齐                                                                                                                                                                                              
+        if layout_query == "BSND":                                                                                                                                                                                                                        
+            topk_selected = topk_selected.permute(0, 2, 1, 3)  # [B, S1, N2, sparse_count]                                                                                                                                                                
+        elif layout_query == "TND":                                                                                                                                                                                                                       
+            topk_selected = topk_selected.permute(0, 2, 1, 3)  # [B, S1, N2, sparse_count]                                                                                                                                                                
+            tnd_list = []                                                                                                                                                                                                                                 
+            for b_idx in range(batch_size):                                                                                                                                                                                                               
+                seq_len = int(act_seq_q[b_idx]) - (int(act_seq_q[b_idx - 1]) if b_idx > 0 else 0)                                                                                                                                                                                                           
+                tnd_list.append(topk_selected[b_idx, :seq_len, :, :])                                                                                                                                                                                     
+            topk_selected = torch.cat(tnd_list, dim=0)  # [T, N2, sparse_count]                                                                                                                                                                           
+        # Step 3: 转换为float numpy进行精度比较    
+        if qk_dtype == torch.bfloat16:
+            topk_val_np = topk_selected.cpu().to(torch.bfloat16).float().numpy().flatten()
+        elif qk_dtype == torch.float16:
+            topk_val_np = topk_selected.cpu().to(torch.float16).float().numpy().flatten()
+        else:                                                                                                                                                                                                       
+        topk_val_np = topk_selected.cpu().float().numpy().flatten() 
+        sparse_val_np = sparse_value.cpu().float().numpy().flatten() 
+        val_start = 0
+        val_end = topk_val_np.size - 1
+        if val_end < val_start:
+            val_end = val_start
+        val_split_count = int(val_end - val_start + 1) if val_end != val_start else 1
+
+        val_diff_result = np.isclose(topk_val_np, sparse_val_np, rtol=rtol, atol=atol, equal_nan=True)
+        val_err_idx = np.where(val_diff_result != np.array((True,)))[0]
+        val_diff_abs = abs(sparse_val_np - topk_val_np)
+        val_b1 = np.maximum(np.abs(topk_val_np), np.abs(sparse_val_np))
+        val_b2 = float((1.0 / (1 << 14)) / diff_thd)
+        val_b = np.add(np.maximum(val_b1, val_b2), 10e-10)
+        val_err_diff = val_diff_abs / (val_b + eps)
+        val_err_diff = val_err_diff[val_err_idx]
+
+        val_fulfill_percent = float(val_split_count - val_err_idx.size) / float(val_split_count) * 100.0
+        display_output_np_isclose(topk_val_np, sparse_val_np, val_start, val_end)
+        val_result = "Pass" if (val_fulfill_percent >= pct_thd) else "Failed"
+        if len(val_err_diff) > 0:
+            val_max_error = max(val_err_diff[0:max_error_idx])
+            if val_max_error >= max_diff_hd:
+                val_result = "Failed"
+        else:
+            val_max_error = 0
+
+        print_log('---------------------------------------------------------------------------------------')
+        print_log('Value Compare: Rtol \t Atol \t PctThd \t PctRlt \t Result')
+        print_log('---------------------------------------------------------------------------------------')
+        print_log('%.4f \t %.6f \t %.2f%% \t %.6f%% \t %s' %
+                    (rtol, atol, pct_thd, val_fulfill_percent, val_result))
+        if len(val_err_diff) > 0:
+            print_log('Value Max-RelativeError is: %s. Threshold is: %s.' %
+                        (val_max_error, max_diff_hd))
+        if val_result == "Failed":
+            display_error_output(topk_val_np, sparse_val_np,
+                                val_err_idx, val_err_diff[0:max_error_idx])
+            result = "Failed"
     return result, fulfill_percent
