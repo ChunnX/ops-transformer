@@ -36,7 +36,7 @@ const aclTensor* KvQuantSparseFlashMlaMetadata(
     const char *socVersion, int64_t aicCoreNum, int64_t aivCoreNum,
     const aclTensor *metaData, aclOpExecutor *executor)
 {
-    L0_DFX(KvQuantSparseFlashMlaMetadata, 
+    L0_DFX(KvQuantSparseFlashMlaMetadata,
         cuSeqLensQOptional, cuSeqLensOriKvOptional, sequsedQOptional, sequsedOriKvOptional,
         numHeadsQ, numHeadsKv, headDim, kvQuantMode, batchSizeOptional, maxSeqlenQOptional, maxSeqlenKvOptional,
         oriTopKOptional, tileSizeOptional, ropeHeadDimOptional, oriMaskModeOptional, layoutQOptional, layoutKvOptional,
@@ -45,18 +45,18 @@ const aclTensor* KvQuantSparseFlashMlaMetadata(
     static internal::AicpuTaskSpace space("KvQuantSparseFlashMlaMetadata");
 
     auto ret = ADD_TO_LAUNCHER_LIST_AICPU(
-    KvQuantSparseFlashMlaMetadata,
-    OP_ATTR_NAMES({
-        "num_heads_q", "num_heads_kv", "head_dim", "kv_quant_mode", "batch_size", "max_seqlen_q", 
-        "max_seqlen_kv", "ori_topk", "tile_size", "rope_head_dim",
-        "ori_mask_mode", "layout_q", "layout_kv", "has_ori_kv",
-        "soc_version", "aic_core_num", "aiv_core_num"
-    }),
-    OP_INPUT(cuSeqLensQOptional, cuSeqLensOriKvOptional, sequsedQOptional, sequsedOriKvOptional), 
-    OP_ATTR(numHeadsQ, numHeadsKv, headDim, kvQuantMode, batchSizeOptional, maxSeqlenQOptional,
-            maxSeqlenKvOptional, oriTopKOptional, tileSizeOptional, ropeHeadDimOptional, oriMaskModeOptional,
-            layoutQOptional, layoutKvOptional, hasOriKvOptional, socVersion, aicCoreNum, aivCoreNum),
-    OP_OUTPUT(metaData));
+        KvQuantSparseFlashMlaMetadata,
+        OP_ATTR_NAMES({
+            "num_heads_q", "num_heads_kv", "head_dim", "kv_quant_mode", "batch_size", "max_seqlen_q",
+            "max_seqlen_kv", "ori_topk", "tile_size", "rope_head_dim",
+            "ori_mask_mode", "layout_q", "layout_kv", "has_ori_kv",
+            "soc_version", "aic_core_num", "aiv_core_num"
+        }),
+        OP_INPUT(cuSeqLensQOptional, cuSeqLensOriKvOptional, sequsedQOptional, sequsedOriKvOptional),
+        OP_ATTR(numHeadsQ, numHeadsKv, headDim, kvQuantMode, batchSizeOptional, maxSeqlenQOptional,
+                maxSeqlenKvOptional, oriTopKOptional, tileSizeOptional, ropeHeadDimOptional, oriMaskModeOptional,
+                layoutQOptional, layoutKvOptional, hasOriKvOptional, socVersion, aicCoreNum, aivCoreNum),
+        OP_OUTPUT(metaData));
 
     OP_CHECK(ret == ACL_SUCCESS,
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "KvQuantSparseFlashMlaMetadata ADD_TO_LAUNCHER_LIST_AICPU failed."),

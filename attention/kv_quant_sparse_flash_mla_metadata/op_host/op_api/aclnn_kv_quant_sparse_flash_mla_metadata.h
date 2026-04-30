@@ -47,7 +47,7 @@ __attribute__((visibility("default")))
 aclnnStatus CheckFeatureQsmla();
 
 __attribute__((visibility("default")))
-aclnnStatus aclnnKvQuantSparseFlashMlaMetadata(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, 
+aclnnStatus aclnnKvQuantSparseFlashMlaMetadata(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
     aclrtStream stream);
 
 #ifdef __cplusplus

@@ -148,8 +148,8 @@ struct FlashDecodeResult {
     std::vector<uint32_t> fdMStart {};          // FD负载均衡阶段，每个vector处理的归约任务的m轴起点
     std::vector<uint32_t> fdMNum {};            // FD负载均衡阶段，每个vector处理的归约任务的m轴行数
 
-    FlashDecodeResult(uint32_t aicNum, uint32_t aivNum) :
-        fdBN2Idx(aicNum),
+    FlashDecodeResult(uint32_t aicNum, uint32_t aivNum)
+        : fdBN2Idx(aicNum),
         fdMIdx(aicNum),
         fdWorkspaceIdx(aicNum),
         fdS2SplitNum(aicNum),
@@ -171,8 +171,8 @@ struct SplitResult {
     uint32_t maxS2SplitNum { 0U };      // 单个归约任务最大分核数量
     FlashDecodeResult fdRes { 0U, 0U };     // FD信息
 
-    SplitResult(uint32_t aicNum, uint32_t aivNum) :
-        bN2End(aicNum),
+    SplitResult(uint32_t aicNum, uint32_t aivNum)
+        : bN2End(aicNum),
         gS1End(aicNum),
         s2End(aicNum),
         firstFdDataWorkspaceIdx(aicNum),
@@ -187,8 +187,8 @@ struct SplitInfo {
     std::vector<uint32_t> s2TailSize {};                   // S2方向，尾块size
     bool isKvSeqAllZero { true };
 
-    explicit SplitInfo(uint32_t batchSize) :
-        s1GBaseNum(batchSize),
+    explicit SplitInfo(uint32_t batchSize)
+        : s1GBaseNum(batchSize),
         s2BaseNum(batchSize),
         s1GTailSize(batchSize),
         s2TailSize(batchSize) {}
@@ -201,10 +201,10 @@ struct CostInfo {
     std::vector<int64_t> bN2LastBlockCostOfEachBatch {};  // batch最后一块的开销
     uint32_t totalBlockNum { 0U };
     int64_t totalCost { 0 };
-    uint64_t maxS1GCost { 0 }; //新增
+    uint64_t maxS1GCost { 0 }; // 新增
 
-    explicit CostInfo(uint32_t batchSize) :
-        bN2CostOfEachBatch(batchSize),
+    explicit CostInfo(uint32_t batchSize)
+        : bN2CostOfEachBatch(batchSize),
         bN2BlockOfEachBatch(batchSize),
         bN2LastBlockCostOfEachBatch(batchSize) {}
 };
@@ -214,8 +214,8 @@ struct SplitContext {
     SplitInfo splitInfo { 0U };
     CostInfo costInfo { 0U };
 
-    explicit SplitContext(uint32_t batchSize) :
-        splitInfo(batchSize),
+    explicit SplitContext(uint32_t batchSize)
+        : splitInfo(batchSize),
         costInfo(batchSize) {}
 };
 
@@ -266,6 +266,7 @@ struct AssignContext {
     S1GCache s1GCache {};
     CoreCache coreCache {};
 };
+
 class LightningIndexerV2MetadataCpuKernel : public CpuKernel {
 public:
     LightningIndexerV2MetadataCpuKernel() = default;
@@ -282,7 +283,7 @@ private:
     bool GenMetaData(SplitResult &splitRes);
     ValidSocVersion ProcessSocVersion();
 
-  // util
+    // util
     uint32_t GetS1SeqSize(uint32_t bIdx);
     uint32_t GetS2SeqSize(uint32_t bIdx);
     uint32_t GetSparseSeqSize(uint32_t bIdx);
@@ -295,7 +296,8 @@ private:
 
     // cache calculation
     void CalcBatchCache(uint32_t bIdx, const SplitContext &splitContext, BatchCache &batchCache);
-    void CalcS1GCache(uint32_t s1GIdx, const SplitContext &splitContext, const BatchCache &batchCache, S1GCache &s1GCache);
+    void CalcS1GCache(uint32_t s1GIdx, const SplitContext &splitContext, const BatchCache &batchCache,
+        S1GCache &s1GCache);
 
     // preprocess
     void CalcSplitInfo(SplitContext &splitContext);
@@ -308,7 +310,8 @@ private:
     void AssignByRow(const SplitContext &splitContext, AssignContext &assignContext);
     void AssignByBlock(const SplitContext &splitContext, AssignContext &assignContext);
     void ForceAssign(const SplitContext &splitContext, AssignContext &assignContext);
-    void AssignBlockToCore(uint32_t coreNum, const SplitContext &splitContext, AssignContext &assignContext, SplitResult &result);
+    void AssignBlockToCore(uint32_t coreNum, const SplitContext &splitContext, AssignContext &assignContext,
+        SplitResult &result);
                                                                
     // FD
     bool IsNeedRecordFDInfo(const AssignContext &assignContext, const SplitResult &splitRes);
@@ -317,7 +320,6 @@ private:
     // main
     void SplitFD(SplitResult &splitRes);
     void CalcSplitPlan(uint32_t coreNum, int64_t costLimit, const SplitContext &splitContext, SplitResult &result);
-
 
 private:
     CpuKernelContext* context_ = nullptr;

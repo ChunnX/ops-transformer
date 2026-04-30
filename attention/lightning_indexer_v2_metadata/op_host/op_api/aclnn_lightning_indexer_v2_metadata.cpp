@@ -34,11 +34,10 @@ extern "C" {
 #endif
 
 static aclnnStatus ParamsCheck(const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensKOptional,
-                               const aclTensor* sequsedQOptional, const aclTensor* sequsedKOptional, int64_t numHeadsQ,
-                               int64_t numHeadsK, int64_t batchSizeOptional, int64_t maxSeqlenQOptional,
-                               int64_t maxSeqlenKOptional, char* layoutQOptional, char* layoutKOptional,
-                               int64_t maskModeOptional, uint32_t aicCoreNum, uint32_t aivCoreNum,
-                               const std::string &socVersion)
+    const aclTensor* sequsedQOptional, const aclTensor* sequsedKOptional, int64_t numHeadsQ, int64_t numHeadsK,
+    int64_t batchSizeOptional, int64_t maxSeqlenQOptional,int64_t maxSeqlenKOptional, char* layoutQOptional,
+    char* layoutKOptional, int64_t maskModeOptional, uint32_t aicCoreNum, uint32_t aivCoreNum,
+    const std::string &socVersion)
 {
     if (CheckSingleParamLiV2(batchSizeOptional, maxSeqlenQOptional, maxSeqlenKOptional, numHeadsQ, numHeadsK,
                              layoutQOptional, layoutKOptional, maskModeOptional, aicCoreNum, aivCoreNum,
@@ -46,7 +45,7 @@ static aclnnStatus ParamsCheck(const aclTensor* cuSeqLensQOptional, const aclTen
         CheckExistenceLiV2(layoutQOptional, layoutKOptional, cuSeqLensQOptional, cuSeqLensKOptional,
                            maskModeOptional) == ACLNN_SUCCESS &&
         CheckConsistencyLiV2(layoutQOptional, layoutKOptional, cuSeqLensQOptional, cuSeqLensKOptional, sequsedQOptional,
-                             sequsedKOptional, batchSizeOptional) == ACLNN_SUCCESS && 
+                             sequsedKOptional, batchSizeOptional) == ACLNN_SUCCESS &&
         CheckFeatureLiV2() == ACLNN_SUCCESS) {
         return ACLNN_SUCCESS;
     } else {
@@ -54,10 +53,9 @@ static aclnnStatus ParamsCheck(const aclTensor* cuSeqLensQOptional, const aclTen
     }
 }
 
-aclnnStatus CheckSingleParamLiV2(int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t maxSeqlenKOptional, 
-                                 int64_t numHeadsQ, int64_t numHeadsK, char* layoutQOptional, char* layoutKOptional, 
-                                 int64_t maskModeOptional, uint32_t aicCoreNum, uint32_t aivCoreNum,
-                                 const std::string &socVersion)
+aclnnStatus CheckSingleParamLiV2(int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t maxSeqlenKOptional,
+    int64_t numHeadsQ, int64_t numHeadsK, char* layoutQOptional, char* layoutKOptional, int64_t maskModeOptional,
+    uint32_t aicCoreNum, uint32_t aivCoreNum, const std::string &socVersion)
 {
     // batch_size 非负校验
     if (batchSizeOptional < 0) {
@@ -90,8 +88,9 @@ aclnnStatus CheckSingleParamLiV2(int64_t batchSizeOptional, int64_t maxSeqlenQOp
         return ACLNN_ERR_PARAM_INVALID;
     }
     // layout_k 校验
-    if (strcmp(layoutKOptional, "TND") != 0 && strcmp(layoutKOptional, "BSND") != 0 && strcmp(layoutKOptional, "PA_BBND") != 0) {
-    	OP_LOGE(ACLNN_ERR_PARAM_INVALID, "For layout_k, layout must be TND/BSND/PA_BBND!");
+    if (strcmp(layoutKOptional, "TND") != 0 && strcmp(layoutKOptional, "BSND") != 0 &&
+        strcmp(layoutKOptional, "PA_BBND") != 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "For layout_k, layout must be TND/BSND/PA_BBND!");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (strcmp(layoutKOptional, "PA_BBND") != 0 && strcmp(layoutQOptional, layoutKOptional) != 0) {
@@ -113,8 +112,8 @@ aclnnStatus CheckSingleParamLiV2(int64_t batchSizeOptional, int64_t maxSeqlenQOp
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus CheckExistenceLiV2(char* layoutQOptional, char* layoutKOptional, const aclTensor* cuSeqLensQOptional, 
-                               const aclTensor* cuSeqLensKOptional, int64_t maskModeOptional)
+aclnnStatus CheckExistenceLiV2(char* layoutQOptional, char* layoutKOptional, const aclTensor* cuSeqLensQOptional,
+    const aclTensor* cuSeqLensKOptional, int64_t maskModeOptional)
 {
     int64_t *viewDims = nullptr;
     uint64_t viewDimsNum = 0;
@@ -138,8 +137,8 @@ aclnnStatus CheckExistenceLiV2(char* layoutQOptional, char* layoutKOptional, con
     return ACLNN_SUCCESS;
 }
 
-int64_t GetQueryBatchSizeLiV2(const aclTensor* cuSeqLensQOptional, const aclTensor* sequsedQOptional, 
-                              char* layoutQOptional, int64_t batchSizeOptional)
+int64_t GetQueryBatchSizeLiV2(const aclTensor* cuSeqLensQOptional, const aclTensor* sequsedQOptional,
+    char* layoutQOptional, int64_t batchSizeOptional)
 {
     // 1. 如果sequsedQOptional 传了，使用sequsedQOptional获取BatchSize
     int64_t *viewDims = nullptr;
@@ -165,8 +164,8 @@ int64_t GetQueryBatchSizeLiV2(const aclTensor* cuSeqLensQOptional, const aclTens
     return batchSizeOptional;
 }
 
-int64_t GetKeyBatchSizeLiV2(const aclTensor* cuSeqLensKOptional, const aclTensor* sequsedKOptional, 
-                           char* layoutKOptional, int64_t batchSizeOptional)
+int64_t GetKeyBatchSizeLiV2(const aclTensor* cuSeqLensKOptional, const aclTensor* sequsedKOptional,
+    char* layoutKOptional, int64_t batchSizeOptional)
 {
     // 1. 如果sequsedKvOptional传了，使用sequsedKvOptional获取BatchSize
     int64_t *viewDims = nullptr;
@@ -192,9 +191,9 @@ int64_t GetKeyBatchSizeLiV2(const aclTensor* cuSeqLensKOptional, const aclTensor
     return batchSizeOptional;
 }
 
-aclnnStatus CheckConsistencyLiV2(char* layoutQOptional, char* layoutKOptional, const aclTensor* cuSeqLensQOptional, 
-                                 const aclTensor* cuSeqLensKOptional, const aclTensor* sequsedQOptional, 
-                                 const aclTensor* sequsedKOptional, int64_t batchSizeOptional)
+aclnnStatus CheckConsistencyLiV2(char* layoutQOptional, char* layoutKOptional, const aclTensor* cuSeqLensQOptional,
+    const aclTensor* cuSeqLensKOptional, const aclTensor* sequsedQOptional, const aclTensor* sequsedKOptional,
+    int64_t batchSizeOptional)
 {
     int64_t *viewDims = nullptr;
     uint64_t viewDimsNum = 0;
@@ -211,7 +210,7 @@ aclnnStatus CheckConsistencyLiV2(char* layoutQOptional, char* layoutKOptional, c
         // 校验 cu_seqlens_q 数据类型
         ret = aclGetDataType(cuSeqLensQOptional, &dataType);
         if (ret != ACLNN_ERR_PARAM_INVALID && dataType != aclDataType::ACL_INT32) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of cu_seqlens_q must be int32, but got %d", 
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of cu_seqlens_q must be int32, but got %d",
                 static_cast<int32_t>(dataType));
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -264,9 +263,10 @@ aclnnStatus CheckConsistencyLiV2(char* layoutQOptional, char* layoutKOptional, c
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
-    int64_t queryBatchSize = GetQueryBatchSizeLiV2(cuSeqLensQOptional, sequsedQOptional, layoutQOptional, 
-                                                   batchSizeOptional);
-    int64_t keyBatchSize = GetKeyBatchSizeLiV2(cuSeqLensKOptional, sequsedKOptional, layoutKOptional, batchSizeOptional);
+    int64_t queryBatchSize = GetQueryBatchSizeLiV2(cuSeqLensQOptional, sequsedQOptional, layoutQOptional,
+        batchSizeOptional);
+    int64_t keyBatchSize = GetKeyBatchSizeLiV2(cuSeqLensKOptional, sequsedKOptional, layoutKOptional,
+        batchSizeOptional);
     if (queryBatchSize != keyBatchSize) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The batch_size obtained from q Tensor should be the same as "
                 "that obtained from k tensor, but got %ld and %ld", queryBatchSize, keyBatchSize);
@@ -281,11 +281,11 @@ aclnnStatus CheckFeatureLiV2()
 }
 
 aclnnStatus aclnnLightningIndexerV2MetadataGetWorkspaceSize(
-    const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensKOptional, const aclTensor* sequsedQOptional, 
-    const aclTensor* sequsedKOptional, int64_t numHeadsQ, int64_t numHeadsK, int64_t headDim, int64_t topkOptional, 
-    int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t maxSeqlenKOptional, char* layoutQOptional, 
-    char* layoutKOptional, int64_t maskModeOptional, const aclTensor* metaData, uint64_t* workspaceSize, 
-    aclOpExecutor** executor) 
+    const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensKOptional, const aclTensor* sequsedQOptional,
+    const aclTensor* sequsedKOptional, int64_t numHeadsQ, int64_t numHeadsK, int64_t headDim, int64_t topkOptional,
+    int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t maxSeqlenKOptional, char* layoutQOptional,
+    char* layoutKOptional, int64_t maskModeOptional, const aclTensor* metaData, uint64_t* workspaceSize,
+    aclOpExecutor** executor)
 {
     L2_DFX_PHASE_1(aclnnLightningIndexerV2Metadata,
                    DFX_IN(cuSeqLensQOptional, cuSeqLensKOptional, sequsedQOptional, sequsedKOptional, numHeadsQ,
@@ -315,7 +315,7 @@ aclnnStatus aclnnLightningIndexerV2MetadataGetWorkspaceSize(
     auto sequsedKOptionalContiguous = l0op::Contiguous(sequsedKOptional, uniqueExecutor.get());
     CHECK_RET(sequsedKOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto output = l0op::LightningIndexerV2Metadata(
-        cuSeqLensQOptionalContiguous, cuSeqLensKOptionalContiguous, sequsedQOptionalContiguous, 
+        cuSeqLensQOptionalContiguous, cuSeqLensKOptionalContiguous, sequsedQOptionalContiguous,
         sequsedKOptionalContiguous, aicCoreNum, aivCoreNum, socVersion.c_str(), numHeadsQ, numHeadsK, headDim,
         topkOptional, batchSizeOptional, maxSeqlenQOptional, maxSeqlenKOptional, layoutQOptional, layoutKOptional,
         maskModeOptional, metaData, uniqueExecutor.get());
@@ -327,7 +327,7 @@ aclnnStatus aclnnLightningIndexerV2MetadataGetWorkspaceSize(
 }
 
 aclnnStatus aclnnLightningIndexerV2Metadata(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
-    aclrtStream stream) 
+    aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnLightningIndexerV2Metadata);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);

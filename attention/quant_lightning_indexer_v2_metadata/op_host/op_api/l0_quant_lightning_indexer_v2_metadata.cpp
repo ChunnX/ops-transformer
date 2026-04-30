@@ -28,20 +28,22 @@ OP_TYPE_REGISTER(QuantLightningIndexerV2Metadata);
 
 const aclTensor* QuantLightningIndexerV2Metadata(
     const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensKOptional, const aclTensor* sequsedQOptional,
-    const aclTensor* sequsedKOptional, int64_t aicCoreNum, int64_t aivCoreNum, const char* socVersion, int64_t numHeadsQ, 
-    int64_t numHeadsK, int64_t headDim, int64_t topkOptional, int64_t qQuantModeOptional, int64_t kQuantModeOptional, 
-    int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t maxSeqlenKOptional, char* layoutQOptional, 
-    char* layoutKOptional, int64_t maskModeOptional, const aclTensor* metaData, aclOpExecutor* executor) {
-    L0_DFX(QuantLightningIndexerV2Metadata, cuSeqLensQOptional, cuSeqLensKOptional, sequsedQOptional, sequsedKOptional, 
-         aicCoreNum, aivCoreNum, socVersion, numHeadsQ, numHeadsK, headDim, topkOptional, qQuantModeOptional, 
-         kQuantModeOptional, batchSizeOptional, maxSeqlenQOptional, maxSeqlenKOptional, layoutQOptional, layoutKOptional, 
-         maskModeOptional, metaData);
+    const aclTensor* sequsedKOptional, int64_t aicCoreNum, int64_t aivCoreNum, const char* socVersion,
+    int64_t numHeadsQ, int64_t numHeadsK, int64_t headDim, int64_t topkOptional, int64_t qQuantModeOptional,
+    int64_t kQuantModeOptional, int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t maxSeqlenKOptional,
+    char* layoutQOptional, char* layoutKOptional, int64_t maskModeOptional, const aclTensor* metaData,
+    aclOpExecutor* executor)
+{
+    L0_DFX(QuantLightningIndexerV2Metadata, cuSeqLensQOptional, cuSeqLensKOptional, sequsedQOptional, sequsedKOptional,
+        aicCoreNum, aivCoreNum, socVersion, numHeadsQ, numHeadsK, headDim, topkOptional, qQuantModeOptional,
+        kQuantModeOptional, batchSizeOptional, maxSeqlenQOptional, maxSeqlenKOptional, layoutQOptional, layoutKOptional,
+        maskModeOptional, metaData);
 
     static internal::AicpuTaskSpace space("QuantLightningIndexerV2Metadata");
 
     auto ret = ADD_TO_LAUNCHER_LIST_AICPU(
         QuantLightningIndexerV2Metadata,
-        OP_ATTR_NAMES({"aic_core_num", "aiv_core_num", "soc_version", "num_heads_q", "num_heads_k", "head_dim", "topk", 
+        OP_ATTR_NAMES({"aic_core_num", "aiv_core_num", "soc_version", "num_heads_q", "num_heads_k", "head_dim", "topk",
                         "q_quant_mode", "k_quant_mode", "batch_size", "max_seqlen_q", "max_seqlen_k", "layout_q", 
                         "layout_k", "mask_mode"}),
         OP_INPUT(cuSeqLensQOptional, cuSeqLensKOptional, sequsedQOptional, sequsedKOptional), OP_OUTPUT(metaData),
@@ -53,6 +55,6 @@ const aclTensor* QuantLightningIndexerV2Metadata(
                      "QuantLightningIndexerV2Metadata"
                      " ADD_TO_LAUNCHER_LIST_AICPU failed."),
              return nullptr);
-  return metaData;
+    return metaData;
 }
 }  // namespace l0op

@@ -28,28 +28,29 @@ OP_TYPE_REGISTER(LightningIndexerV2Metadata);
 
 const aclTensor* LightningIndexerV2Metadata(
     const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensKOptional, const aclTensor* sequsedQOptional,
-    const aclTensor* sequsedKOptional, int64_t aicCoreNum, int64_t aivCoreNum, const char* socVersion, int64_t numHeadsQ, 
-    int64_t numHeadsK, int64_t headDim, int64_t topkOptional, int64_t batchSizeOptional, int64_t maxSeqlenQOptional, 
-    int64_t maxSeqlenKOptional, char* layoutQOptional, char* layoutKOptional, int64_t maskModeOptional, 
-    const aclTensor* metaData, aclOpExecutor* executor) {
-  L0_DFX(LightningIndexerV2Metadata, cuSeqLensQOptional, cuSeqLensKOptional, sequsedQOptional, sequsedKOptional, 
-         aicCoreNum, aivCoreNum, socVersion, numHeadsQ, numHeadsK, headDim, topkOptional, batchSizeOptional, 
-         maxSeqlenQOptional, maxSeqlenKOptional, layoutQOptional, layoutKOptional, maskModeOptional, metaData);
+    const aclTensor* sequsedKOptional, int64_t aicCoreNum, int64_t aivCoreNum, const char* socVersion,
+    int64_t numHeadsQ, int64_t numHeadsK, int64_t headDim, int64_t topkOptional, int64_t batchSizeOptional,
+    int64_t maxSeqlenQOptional, int64_t maxSeqlenKOptional, char* layoutQOptional, char* layoutKOptional,
+    int64_t maskModeOptional, const aclTensor* metaData, aclOpExecutor* executor)
+{
+    L0_DFX(LightningIndexerV2Metadata, cuSeqLensQOptional, cuSeqLensKOptional, sequsedQOptional, sequsedKOptional,
+            aicCoreNum, aivCoreNum, socVersion, numHeadsQ, numHeadsK, headDim, topkOptional, batchSizeOptional,
+            maxSeqlenQOptional, maxSeqlenKOptional, layoutQOptional, layoutKOptional, maskModeOptional, metaData);
 
-  static internal::AicpuTaskSpace space("LightningIndexerV2Metadata");
+    static internal::AicpuTaskSpace space("LightningIndexerV2Metadata");
 
-  auto ret = ADD_TO_LAUNCHER_LIST_AICPU(
-      LightningIndexerV2Metadata,
-      OP_ATTR_NAMES({"aic_core_num", "aiv_core_num", "soc_version", "num_heads_q", "num_heads_k", "head_dim", "topk", 
-                     "batch_size", "max_seqlen_q", "max_seqlen_k", "layout_q", "layout_k", "mask_mode"}),
-      OP_INPUT(cuSeqLensQOptional, cuSeqLensKOptional, sequsedQOptional, sequsedKOptional), OP_OUTPUT(metaData),
-      OP_ATTR(aicCoreNum, aivCoreNum, socVersion, numHeadsQ, numHeadsK, headDim, topkOptional, batchSizeOptional, 
-              maxSeqlenQOptional, maxSeqlenKOptional, layoutQOptional, layoutKOptional, maskModeOptional));
-  OP_CHECK(ret == ACL_SUCCESS,
-           OP_LOGE(ACLNN_ERR_INNER_NULLPTR,
-                   "LightningIndexerV2Metadata"
-                   " ADD_TO_LAUNCHER_LIST_AICPU failed."),
-           return nullptr);
-  return metaData;
+    auto ret = ADD_TO_LAUNCHER_LIST_AICPU(
+        LightningIndexerV2Metadata,
+        OP_ATTR_NAMES({"aic_core_num", "aiv_core_num", "soc_version", "num_heads_q", "num_heads_k", "head_dim", "topk",
+                        "batch_size", "max_seqlen_q", "max_seqlen_k", "layout_q", "layout_k", "mask_mode"}),
+        OP_INPUT(cuSeqLensQOptional, cuSeqLensKOptional, sequsedQOptional, sequsedKOptional), OP_OUTPUT(metaData),
+        OP_ATTR(aicCoreNum, aivCoreNum, socVersion, numHeadsQ, numHeadsK, headDim, topkOptional, batchSizeOptional,
+                maxSeqlenQOptional, maxSeqlenKOptional, layoutQOptional, layoutKOptional, maskModeOptional));
+    OP_CHECK(ret == ACL_SUCCESS,
+            OP_LOGE(ACLNN_ERR_INNER_NULLPTR,
+                    "LightningIndexerV2Metadata"
+                    " ADD_TO_LAUNCHER_LIST_AICPU failed."),
+            return nullptr);
+    return metaData;
 }
 }  // namespace l0op
