@@ -12,9 +12,9 @@ from .moe_distribute_combine_v2 import npu_moe_distribute_combine_v2
 from .moe_distribute_dispatch_v3 import npu_moe_distribute_dispatch_v3
 from .moe_distribute_combine_v3 import npu_moe_distribute_combine_v3
 from .mega_moe import (
-    SymmBuffer,
     get_symm_buffer_for_mega_moe,
     mega_moe,
+    npu_get_mega_moe_ccl_buffer_size
 )
 from .deep_ep import MoeDistributeBuffer
 from .graph_convert.graph_convert_moe_distribute_dispatch_v3 import converter_moe_distribute_dispatch_v3
