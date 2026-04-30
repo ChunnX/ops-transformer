@@ -52,6 +52,8 @@ struct RunInfo {
     uint32_t n2Idx = 0;
     uint32_t gS1Idx;
     uint32_t s2Idx;
+    uint32_t s2Start;
+    uint32_t s2LoopEnd;
 
     uint32_t actS1Size = 1;
     uint32_t actS2Size = 1;
@@ -70,6 +72,8 @@ struct RunInfo {
     bool isLastS2InnerLoop;
     bool isAllLoopEnd = false;
     bool isValid = false;
+    bool isNeedLD = false;
+ 	uint32_t saveWorkSpaceIdx = 0;
 };
 
 struct ConstInfo {
@@ -116,15 +120,27 @@ struct ConstInfo {
     LI_LAYOUT outputLayout;            // 输出的格式
     bool attenMaskFlag = false;
     uint32_t cmpRatio = 1;
-    bool batchSupperFlag = false;      // actual_seq长度是否为B+1
-    uint32_t keyStride0 = 0;
-    uint32_t keyDequantScaleStride0 = 0;
+    bool batchSupperFlag = false;      // Qactual_se长度是否为B+1
 
     uint32_t actualLenQDims = 0U;  // query的actualSeqLength 的维度
     uint32_t actualLenDims = 0U;   // KV 的actualSeqLength 的维度
     bool isAccumSeqS1 = false;     // 是否累加模式
     bool isAccumSeqS2 = false;     // 是否累加模式
     bool isLDOpen = false;
+};
+
+struct LdSplitCoreInfo {
+    bool isLdCoreEnable = false;     // 当前核是否参与规约任务
+    uint32_t saveWorkSpaceIdx = 0U;  // 存放LD参数的地址
+    uint32_t bn2Idx = 0U;            // 归约任务
+    uint32_t bIdx = 0U;
+    uint32_t n2Idx = 0U;
+    uint32_t mIdx = 0U; 
+    uint32_t workspaceIdx = 0U;      // 当前AIV核上规约任务的索引
+    uint32_t workspaceNum = 0U;      // 当前AIV核上规约任务的S2切分数量
+    uint32_t mStart = 0U;            
+    uint32_t mNum = 0U;
+    uint64_t indiceOutCoreOffset = 0U;  // 最终输出索引搬出Topk的初始偏移地址
 };
 
 struct SplitCoreInfo {
