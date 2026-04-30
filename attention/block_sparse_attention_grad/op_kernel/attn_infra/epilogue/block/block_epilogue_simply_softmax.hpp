@@ -158,12 +158,6 @@ public:
     __aicore__ inline
     SimpltSoftmax()
     {
-        if constexpr(INPUT_LAYOUT == TND) {
-            transpseStride = (n1 * 1 - 1) * sizeof(float);
-        } else if constexpr(INPUT_LAYOUT == BNSD){
-            transpseStride = 0;
-        }
-
         // baseM =  128;
         // 分核 一个core 最大 128 * 128 一个vec 64 * 128
         uint64_t sBufferLen = baseM * 128 * sizeof(float); // max
@@ -249,6 +243,10 @@ public:
         row = params.actualRow;
         if (row <= 0) {
             return;
+        }
+
+        if constexpr(INPUT_LAYOUT == TND) {
+            transpseStride = (n1 * 1 - 1) * sizeof(float);
         }
 
         // 初始化 GM
