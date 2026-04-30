@@ -23,6 +23,7 @@
 #include "mega_moe_base.h"
 #include "mega_moe_workspace_info.h"
 #include "block_epilogue_swiglu_mx_quant.h"
+#include "moe_dispatch_ffn_combine_catlass_impl.h"
 
 
 using namespace AscendC;
@@ -159,10 +160,10 @@ private:
     uint64_t preOffset_ = 0;
     uint16_t gmm2PingPongIdx_ = 0;
 
-    // using L1TileShape = tla::Shape<tla::Int<128>, tla::Int<256>, tla::Int<256>>;
-    // using BlockEpilogue = BlockEpilogueSwigluQuant<L1TileShape, QuantOutType, float,
-    //     QuantScaleOutType, QuantScaleOutType, true>;
-    // BlockEpilogue epilogueOp_;//GMMswiglu调用
+    using L1TileShape = tla::Shape<tla::Int<128>, tla::Int<256>, tla::Int<256>>;
+    using BlockEpilogue = BlockEpilogueSwigluQuant<L1TileShape, QuantOutType, float,
+        QuantScaleOutType, QuantScaleOutType, true>;
+    BlockEpilogue epilogueOp_;//GMMswiglu调用
 };
 
 template <TemplateMegaMoeTypeClass>
@@ -206,8 +207,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     expertTokenNumsOut_.SetGlobalBuffer((__gm__ int32_t*)params_.expertTokenNumsOutGmAddr);
     groupList_ = cumsumInWorkSpace_[(worldSize_ - 1) * expertPerRank_];
     groupFlagListWorkSpace_.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.ptrFlagSwiGluToGmm2);
-    // epilogueOp_.Init({params_.workspaceInfo.ptrA2, params_.workspaceInfo.ptrA2Scale,
-    //     params_.workspaceInfo.ptrFlagSwiGluToGmm2, nullptr, nullptr, nullptr, ALIGN_128, ALIGN_256});
+    epilogueOp_.Init({params_.workspaceInfo.ptrA2, params_.workspaceInfo.ptrA2Scale,
+        params_.workspaceInfo.ptrFlagSwiGluToGmm2, nullptr, nullptr, nullptr, ALIGN_128, ALIGN_256});
     perRankStridesInTokenPerExpert_ = Ops::Base::CeilAlign(
         static_cast<uint32_t>(worldSize_ * expertPerRank_), static_cast<uint32_t>(ALIGN_128));
     tokenPerExpertCurRankAddr_ = params_.peermemInfo.ptrTokenPerExpert +
@@ -560,7 +561,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMA
             AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> vecBaseOffset{
                 Get<IDX_C_OFFSET>(baseOffset_), Get<IDX_C_SCALE_OFFSET>(baseOffset_),
                 Get<IDX_FLAG_OFFSET>(baseOffset_), 0L, 0L, 0L};
-            // epilogueOp_.UpdateGlobalAddr(vecBaseOffset);//GMMSwiglu调用
+            epilogueOp_.UpdateGlobalAddr(vecBaseOffset);//GMMSwiglu调用
         }
     } else if constexpr(g_coreType == AIC) {
         gmmAddrInfo.aGlobal = params_.workspaceInfo.ptrA2 + Get<IDX_C_OFFSET>(baseOffset_) * sizeof(QuantOutType);
@@ -700,21 +701,55 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     }
     SyncAll<false>();
 
-    // 4. for循环按照本卡专家id进行Dispatch，内部gmm1SwigluQuant按照基本块进行流水
+    // 4. 单循环：每个专家依次完成 Dispatch + GMM1 + GMM2 + Combine
     GMMAddrInfo gmmAddrInfo;
     for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
         if (!UpdateGroupParams(expertIdx)) {
             continue;
         }
+
+        // Phase 1: Dispatch + GMM1 + SwiGLU + Quant
+        vecSetSyncCom_ = 0;  // 每个专家重置，避免上一轮 GMM2 的残留值导致死锁
         UpdateGlobalBuffer(gmmAddrInfo, 0);
         if constexpr(g_coreType == AscendC::AIV) {
             if (subBlockIdx_ == 1) {
                 DispatchTokens(gmmAddrInfo, expertIdx);
             }
         }
-        // GMM1SwigluQuant调用
+        if (subBlockIdx_ == 0) {
+            MegaMoeCatlassImpl::GroupMatmulSwigluQuant<QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType>(
+                epilogueOp_, params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
+        }
+
+        // GMM1→GMM2 跨核同步：消费 GMM1 最后一个 tile 的 AIV→AIC flag
+        if (vecSetSyncCom_ != 0) {
+            if constexpr(g_coreType == AIC) {
+                WaitForVector();
+            }
+        }
+
+        // Phase 2: GMM2 + Combine
+        vecSetSyncCom_ = 0;  // 重置，GMM2 内部有自己的 pingpong 计数器
+        UpdateGlobalBuffer(gmmAddrInfo, 1);
+        if (subBlockIdx_ == 0) {
+            MegaMoeCatlassImpl::GroupMatmul2<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
+                params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_, expertIdx, gmm2PingPongIdx_, rankId_);
+        }
+
+        // GMM2→下一轮 GMM1 跨核同步：消费 GMM2 的 AIV→AIC pingpong flags
+        if (vecSetSyncCom_ > 0) {
+            if constexpr(g_coreType == AIC) {
+                if (vecSetSyncCom_ == 1) {
+                    WaitForVector(0);  // 最后一个 tile 用的 pingpong = 1 - 当前值
+                } else {
+                    WaitForVector(gmm2PingPongIdx_);
+                    WaitForVector(1 - gmm2PingPongIdx_);
+                }
+            }
+        }
     }
-    EndSync();
+
+    // 清理：ExpertTokenNumCopyOut 和 firstPipe.Destroy（从原两循环之间移到此处）
     if constexpr(g_coreType == AscendC::AIV) {
         if (aivCoreIdx_ == 1) {
             ExpertTokenNumCopyOut();
@@ -724,19 +759,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             firstPipe.Destroy();
         }
     }
-
-    // 5. for循环按照本卡专家id进行gmm2 & combine，内部gmm2与combine之间按照基本块进行流水
-    preOffset_ = 0;
-    vecSetSyncCom_ = 0;
-    baseOffset_ = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-    for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
-        if (!UpdateGroupParams(expertIdx)) {
-            continue;
-        }
-        UpdateGlobalBuffer(gmmAddrInfo, 1);
-        // GMM2andCombineSend调用
-    }
-    EndGMM2Sync();
     SyncAll<true>();
     // 6. unpermute & 清理win区上放置token的位置
     if constexpr(g_coreType == AIV) {
