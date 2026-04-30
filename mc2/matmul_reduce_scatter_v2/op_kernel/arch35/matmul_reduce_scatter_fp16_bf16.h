@@ -170,7 +170,7 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
 {
     using cDataType = typename CType::T;
     using Mmv3BiasType = std::conditional_t<std::is_same_v<BiasType, bfloat16_t>, float, BiasType>;
-                    biasGM_, std::is_same_v<Mmv3BiasType, float>, std::is_same_v<BiasType, bfloat16_t>);
+    AscendC::printf("[LBH_DBG] MatMulV3Compute: biasGM_=%lx\n", biasGM_);
     auto&& cfg = tilingData_->param;
     cfg.rankID = rankId_;
     MC2MatmulV3::MC2MatmulAswKernelDerive<AType, BType, CType, Mmv3BiasType, MC2MatmulV3::MC2MatmulAswBlockDerive> mmv3;
@@ -207,6 +207,7 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
     static constexpr uint64_t SYNC_MODE0 = 0;
     static constexpr uint64_t SYNC_MODE2 = 2;
 
+    AscendC::printf("[LBH_DBG] CastBias: g_coreType=%d, blockIdx=%d, src=%lx, dst=%lx, size=%d\n",
                     g_coreType, GetBlockIdx(), src, dst, size);
 
     if (g_coreType == AIC) {
