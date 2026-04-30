@@ -668,12 +668,22 @@ void MoeInitRoutingV2TilingBase::Tiling4GatherOutCompute()
 
     if (useGatherMode) {
         tilingData->set_gatherMode(1);
-        tilingData->set_perCorePerLoopRows(perCoreRows);
-        tilingData->set_perCoreLastLoopRows(perCoreRows);
-        tilingData->set_lastCorePerLoopRows(lastCoreRows);
-        tilingData->set_lastCoreLastLoopRows(lastCoreRows);
-        tilingData->set_perCoreLoops(1);
-        tilingData->set_lastCoreLoops(1);
+
+        int64_t outputBufferSizePerBuffer =
+            (ubRows * cols * inuptXDtypeSize_ + ONE_BLOCK_BYTE - 1) / ONE_BLOCK_BYTE * ONE_BLOCK_BYTE;
+        int64_t totalOutputBufferSize = outputBufferSizePerBuffer * NUM_TWO;
+
+        int64_t remainingUbSize = ubSize - totalOutputBufferSize;
+        int64_t indicesBufferSizePerBuffer = remainingUbSize / NUM_TWO;
+        int64_t maxRowsPerLoop = indicesBufferSizePerBuffer / sizeof(int32_t);
+        maxRowsPerLoop = maxRowsPerLoop > 0 ? maxRowsPerLoop : ubRows;
+
+        tilingData->set_perCorePerLoopRows(std::min(perCoreRows, maxRowsPerLoop));
+        tilingData->set_perCoreLastLoopRows(GetPerOrLastValue(perCoreRows, maxRowsPerLoop));
+        tilingData->set_lastCorePerLoopRows(std::min(lastCoreRows, maxRowsPerLoop));
+        tilingData->set_lastCoreLastLoopRows(GetPerOrLastValue(lastCoreRows, maxRowsPerLoop));
+        tilingData->set_perCoreLoops(CeilDiv(perCoreRows, maxRowsPerLoop));
+        tilingData->set_lastCoreLoops(CeilDiv(lastCoreRows, maxRowsPerLoop));
         tilingData->set_perLoopCols(ubRows);
         tilingData->set_lastLoopCols(ubRows);
         tilingData->set_colLoops(1);
