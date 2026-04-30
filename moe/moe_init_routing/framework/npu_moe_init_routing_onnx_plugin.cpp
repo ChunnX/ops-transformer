@@ -21,7 +21,8 @@ static const int REQ_ATTR_NUM = 1;
 static Status ParseParamsNpuMoeInitRouting(const Message* op_src, ge::Operator& op_dest) {
     const NodeProto *node = dynamic_cast<const NodeProto *>(op_src);
     if (node == nullptr) {
-      OP_LOGE(GetOpName(op_dest).c_str(), "Dynamic cast op_src to NodeProto failed.");
+      OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+          GetOpName(op_dest).c_str(), "op_src", "not NodeProto", "Dynamic cast op_src to NodeProto failed");
       return FAILED;
     }
     // The initialization of required attributes count
@@ -35,7 +36,7 @@ static Status ParseParamsNpuMoeInitRouting(const Message* op_src, ge::Operator& 
     }
     // Node must have required attribute active_num
     if (req_attr_count != REQ_ATTR_NUM) {
-      OP_LOGE(GetOpName(op_dest).c_str(), "Node must have attr active_num.");
+      OP_LOGE_WITH_INVALID_ATTR(GetOpName(op_dest).c_str(), "active_num", "not found", "required attr active_num");
       return FAILED;
     }
     return SUCCESS;
