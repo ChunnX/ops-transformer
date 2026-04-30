@@ -239,20 +239,30 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
     DataCopyPad(bf16Local, gmSrc, cpInExtParams, padExtParams);
     PipeBarrier<PIPE_MTE2>();
 
-    AscendC::DumpTensor("bias_bf16_before_cast", bf16Local, size);
+    AscendC::printf("[LBH_DBG] CastBias bf16Local first 8 values:\n");
+    for (int i = 0; i < 8 && i < size; i++) {
+        AscendC::printf("  [%d]=%hx\n", i, bf16Local[i].GetValue());
+    }
 
     Cast(floatLocal, bf16Local, AscendC::RoundMode::CAST_NONE, size);
     PipeBarrier<PIPE_V>();
 
-    AscendC::DumpTensor("bias_float_after_cast", floatLocal, size);
+    AscendC::printf("[LBH_DBG] CastBias floatLocal first 8 values:\n");
+    for (int i = 0; i < 8 && i < size; i++) {
+        AscendC::printf("  [%d]=%f\n", i, floatLocal[i].GetValue());
+    }
 
     uint32_t cpOutLen = size * sizeof(float);
     DataCopyExtParams cpOutExtParams{1, cpOutLen, 0, 0, 0};
     DataCopyPad(gmDst, floatLocal, cpOutExtParams);
     PipeBarrier<PIPE_MTE3>();
 
-    AscendC::printf("[LBH_DBG] CastBias done, dump GM dst\n");
-    AscendC::DumpTensor("bias_float_gm_dst", gmDst, size);
+    AscendC::printf("[LBH_DBG] CastBias done, gmDst first 8 values:\n");
+    GlobalTensor<float> gmDstRead;
+    gmDstRead.SetGlobalBuffer((__gm__ float*)(dst), size);
+    for (int i = 0; i < 8 && i < size; i++) {
+        AscendC::printf("  [%d]=%f\n", i, gmDstRead.GetValue(i));
+    }
 
     CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE3>(SYNC_AIV_DONE_FLAG);
 }
