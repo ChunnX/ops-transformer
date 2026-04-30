@@ -39,6 +39,11 @@ public:
             return false;
         }
 
+        auto pseShape = context_->GetOptionalInputShape(PSE_SHIFT);
+        if (pseShape != nullptr) {
+            return true;
+        }
+
         auto actualSeqQLenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_Q_LEN);
         auto actualSeqKVLenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_KV_LEN);
         bool isTND = actualSeqQLenTensor != nullptr && actualSeqQLenTensor->GetShapeSize() > 0 &&
