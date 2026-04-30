@@ -54,14 +54,11 @@ private:
     GM_ADDR bGM_;
     GM_ADDR cGM_;
     GM_ADDR biasGM_;
-    GM_ADDR gmToFloat_;
     __gm__ HcclCombinOpParam* context_;
-    uint32_t rankId_;
     AscendC::HcclDataType dataType_;
     uint8_t debugMode_;
     Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;
     AscendC::HcclHandle handles_[MAX_HANDLE];
-    TBuf<TPosition::VECCALC> biasCastBuf_;
 };
 
 template <typename AType, typename BType, typename BiasType, typename CType>
