@@ -32,6 +32,8 @@ if (BUILD_OPEN_PROJECT)  # custom
                     -DENABLE_CV_COMM_VIA_SSBUF=true
                     -I${CMAKE_CURRENT_SOURCE_DIR}/../../3rd/tensor_api/
                     -I${CMAKE_CURRENT_SOURCE_DIR}/../../3rd/tensor_api/include/
+                    -I${CMAKE_CURRENT_SOURCE_DIR}/../op_kernel/matmul_recipes/include/
+                    -I${CMAKE_CURRENT_SOURCE_DIR}/../op_kernel/matmul_recipes/common/
         )
     elseif("${CONDITION_UNIT}" STREQUAL "ascend910_93")
         add_ops_compile_options(
