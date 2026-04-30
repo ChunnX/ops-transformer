@@ -106,22 +106,38 @@ __global__ __aicore__ void matmul_reduce_scatter_v2(GM_ADDR aGM, GM_ADDR bGM, GM
     TPipe pipe;
     auto context = GetHcclContext<0>();
     GET_TILING_DATA(tilingData, tilingGM); 
+    
+    AscendC::printf("[APT_DBG] Template params: TPL_INPUT=%d, TPL_OUTPUTDTYPE=%d, TPL_SCALETYPE=%d, TPL_COMMALG=%d\n",
+                    TPL_INPUT, TPL_OUTPUTDTYPE, TPL_SCALETYPE, TPL_COMMALG);
+    AscendC::printf("[APT_DBG] TPL_ISPERBLOCK=%d, TPL_TRANSA=%d, TPL_TRANSB=%d\n",
+                    TPL_ISPERBLOCK, TPL_TRANSA, TPL_TRANSB);
+    AscendC::printf("[APT_DBG] DTYPE: X1=%d, X2=%d, Y=%d, BIAS=%d\n",
+                    ORIG_DTYPE_X1, ORIG_DTYPE_X2, DTYPE_Y, DTYPE_BIAS);
+    AscendC::printf("[APT_DBG] Constants: DT_BF16=%d, DT_FLOAT16=%d, INPUT_TYPE_IS_FP16_BF16=%d, OUTPUT_TYPE_IS_FP8=%d\n",
+                    DT_BF16, DT_FLOAT16, INPUT_TYPE_IS_FP16_BF16, OUTPUT_TYPE_IS_FP8);
+    
 #if ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && ((ORIG_DTYPE_X1 == DT_FLOAT16) || (ORIG_DTYPE_X1 == DT_BF16)))
-    // bf16/fp16 场景
+    AscendC::printf("[APT_DBG] Enter BF16/FP16 branch: ORIG_DTYPE_X1=%d\n", ORIG_DTYPE_X1);
     using BiasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, typename MatmulReduceScatterV2Impl::BiasType<BIAS_DTYPE>::type>;
+    AscendC::printf("[APT_DBG] BIAS_DTYPE=%d, BiasType_is_bf16=%d\n", 
+                    BIAS_DTYPE, std::is_same_v<typename MatmulReduceScatterV2Impl::BiasType<BIAS_DTYPE>::type, bfloat16_t>);
     if constexpr (!TPL_ISPERBLOCK && TPL_INPUT == INPUT_TYPE_IS_FP16_BF16 && \
                 TPL_OUTPUTDTYPE == OUTPUT_TYPE_IS_FP8 && TPL_SCALETYPE == TPL_X1_X2_DTYPE_IS_OTHER) {
+        AscendC::printf("[APT_DBG] Enter MatmulReduceScatterFP16BF16 kernel\n");
         using BType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, B_DTYPE, TPL_TRANSB>;
         if constexpr (TPL_COMMALG == TPL_CCU_ALL2ALL_VEC_REDUCE) {
             INVOKE_MMREDUCESCATTER_FP16_BF16_OP_IMPL(MatmulA2AVecReduceFP16BF16);
         } else {
             INVOKE_MMREDUCESCATTER_FP16_BF16_OP_IMPL(MatmulReduceScatterFP16BF16);
         }
+    } else {
+        AscendC::printf("[APT_DBG] NOT enter MatmulReduceScatterFP16BF16 kernel, conditions: ISPERBLOCK=%d, INPUT=%d==%d?, OUTPUT=%d==%d?, SCALE=%d==%d?\n",
+                        TPL_ISPERBLOCK, TPL_INPUT, INPUT_TYPE_IS_FP16_BF16, TPL_OUTPUTDTYPE, OUTPUT_TYPE_IS_FP8, TPL_SCALETYPE, TPL_X1_X2_DTYPE_IS_OTHER);
     }
 #elif (((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && ((ORIG_DTYPE_X1 == DT_HIFLOAT8))) ||        \
        (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) && \
         ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2))))
-    // float8/hif8
+    AscendC::printf("[APT_DBG] Enter FP8/HiF8 branch\n");
     #if (ORIG_DTYPE_X1 != DT_HIFLOAT8)
         if constexpr (TPL_SCALETYPE == TPL_X1_X2_DTYPE_IS_FP8E8M0) {
             if constexpr (TPL_COMMALG == TPL_CCU_ALL2ALL_VEC_REDUCE) {
