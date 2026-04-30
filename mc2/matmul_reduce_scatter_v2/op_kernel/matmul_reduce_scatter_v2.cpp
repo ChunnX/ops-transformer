@@ -27,6 +27,7 @@ using namespace matmulReduceScatterV2_aivmode_tiling;
 
 using namespace AscendC;
 using namespace MatmulReduceScatterV2Impl;
+using namespace Mc2Tiling;
 
 template<bool TPL_ISBIAS, bool TPL_IS_TRANSPOSE_A, bool TPL_IS_TRANSPOSE_B, bool TPL_IS_SMALLM>
 __global__ __aicore__ void matmul_reduce_scatter_v2(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM,
@@ -34,9 +35,8 @@ __global__ __aicore__ void matmul_reduce_scatter_v2(GM_ADDR aGM, GM_ADDR bGM, GM
                                                                GM_ADDR quantScaleGM, GM_ADDR cGM, GM_ADDR amaxOutGM,
                                                                GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
-//aiv算子模板
-
-    #define INVOKE_MMREDUCESCATTER_AIV_MODE_OP_IMPL(templateClass, ...)                                         \
+// AIV模式算子模板宏：获取tiling数据、实例化算子类并执行Init+Process
+#define INVOKE_MMREDUCESCATTER_AIV_MODE_OP_IMPL(templateClass, ...)                                         \
         do {                                                                                                    \
             GET_TILING_DATA_WITH_STRUCT(MatmulReduceScatterV2AivModeTilingData, tilingData, tilingGM);          \
             templateClass<DTYPE_X1, DTYPE_X2, DTYPE_BIAS, DTYPE_X2_SCALE, DTYPE_Y, __VA_ARGS__> op;             \
@@ -47,9 +47,11 @@ __global__ __aicore__ void matmul_reduce_scatter_v2(GM_ADDR aGM, GM_ADDR bGM, GM
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     REGISTER_TILING_DEFAULT(MatmulReduceScatterV2AivModeTilingData);
     if constexpr (!TPL_IS_SMALLM) {
+        // 大M场景：使用标准MatmulReduceScatterAivMode类
         INVOKE_MMREDUCESCATTER_AIV_MODE_OP_IMPL( \
             MatmulReduceScatterAivMode, FORMAT_X2 == FORMAT_FRACTAL_NZ, false, TPL_IS_TRANSPOSE_B, void);
     } else if constexpr (TPL_IS_SMALLM) {
+        // 小M场景（M<=2048且N>512）：使用优化版MatmulReduceScatterAivModeSmallM类
         INVOKE_MMREDUCESCATTER_AIV_MODE_OP_IMPL( \
             MatmulReduceScatterAivModeSmallM, FORMAT_X2 == FORMAT_FRACTAL_NZ, false, TPL_IS_TRANSPOSE_B);
     }

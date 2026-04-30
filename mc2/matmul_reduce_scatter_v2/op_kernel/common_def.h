@@ -17,21 +17,21 @@
  #define COMMON_DEF_H
 
 namespace MatmulReduceScatterV2Impl {
-using A_DTYPE = DTYPE_X1;
-using B_DTYPE = DTYPE_X1;
-using C_DTYPE = DTYPE_Y;
-using BIAS_DTYPE = DTYPE_Y;
-constexpr uint8_t MAX_HANDLE = 64;          // 最大handle数
-constexpr uint8_t MC2_DEBUG_ONLY_CUBE = 1;  // 只计算不通信
-constexpr uint8_t MC2_DEBUG_ONLY_AICPU = 4; // 只通信不计算
-constexpr uint64_t BLOCK_SIZE = 128;
+using A_DTYPE = DTYPE_X1;                       // A矩阵数据类型（与x1输入一致）
+using B_DTYPE = DTYPE_X1;                       // B矩阵数据类型（与x1输入一致）
+using C_DTYPE = DTYPE_Y;                        // C矩阵（输出）数据类型
+using BIAS_DTYPE = DTYPE_Y;                     // Bias数据类型（与输出一致）
+constexpr uint8_t MAX_HANDLE = 64;              // 最大handle数（通信句柄上限）
+constexpr uint8_t MC2_DEBUG_ONLY_CUBE = 1;      // 调试模式：只计算Matmul不通信
+constexpr uint8_t MC2_DEBUG_ONLY_AICPU = 4;     // 调试模式：只通信不计算Matmul
+constexpr uint64_t BLOCK_SIZE = 128;            // 块大小常量，用于对齐计算
 template <class T>
 struct BiasType {
-    using type = float;
+    using type = float;                         // 默认bias类型为float
 };
 template <>
 struct BiasType<half> {
-    using type = half;
+    using type = half;                          // half类型的bias特化
 };
 __aicore__ inline uint64_t CeilDiv(uint64_t x, uint64_t y)
 {

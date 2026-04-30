@@ -19,25 +19,25 @@
 #include "ascendc/host_api/tiling/template_argument.h"
 
 namespace Mc2Tiling{
-// 模板参数
+// 模板参数声明：4个布尔模板参数控制算子变体
 ASCENDC_TPL_ARGS_DECL(
     Mc2MatmulReduceScatterV2, // 算子OpType
-    ASCENDC_TPL_BOOL_DECL(TPL_ISBIAS, 0, 1),
-    ASCENDC_TPL_BOOL_DECL(TPL_IS_TRANSPOSE_A, 0, 1),
-    ASCENDC_TPL_BOOL_DECL(TPL_IS_TRANSPOSE_B, 0, 1),
-    ASCENDC_TPL_BOOL_DECL(TPL_IS_SMALLM, 0, 1),
+    ASCENDC_TPL_BOOL_DECL(TPL_ISBIAS, 0, 1),          // 是否有bias输入
+    ASCENDC_TPL_BOOL_DECL(TPL_IS_TRANSPOSE_A, 0, 1),  // A矩阵是否转置（当前仅支持0）
+    ASCENDC_TPL_BOOL_DECL(TPL_IS_TRANSPOSE_B, 0, 1),  // B矩阵是否转置
+    ASCENDC_TPL_BOOL_DECL(TPL_IS_SMALLM, 0, 1),       // 是否为小M优化场景
 );
 
-// 模板参数组合
-// 用于调用GET_TPL_TILING_KEY获取TilingKey时，接口内部校验TilingKey是否合法
+// 模板参数组合：用于调用GET_TPL_TILING_KEY获取TilingKey时，接口内部校验TilingKey是否合法
+// 当前支持的组合：
+//   isBias=0, isTransposeA=0, isTransposeB=0/1, isSmallM=0/1
 ASCENDC_TPL_SEL(
-    // aiv_mode_tiling
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_BOOL_SEL(TPL_ISBIAS, 0),
         ASCENDC_TPL_BOOL_SEL(TPL_IS_TRANSPOSE_A, 0),
         ASCENDC_TPL_BOOL_SEL(TPL_IS_TRANSPOSE_B, 0, 1),
         ASCENDC_TPL_BOOL_SEL(TPL_IS_SMALLM, 0, 1)),
 );
-} // matmul_reduce_scatter_v2_tiling_key
+}
 
 #endif // __OP_KERNEL_MATMUL_REDUCE_SCATTER_V2_TILING_KEY_H__

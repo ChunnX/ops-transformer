@@ -10,7 +10,18 @@
 
 /*!
  * \file matmul_reduce_scatter_aiv_mode_smallM.h
- * \brief
+ * \brief MatmulReduceScatterV2算子的AIV模式实现（小M场景优化）
+ *
+ * 本文件是MatmulReduceScatterAivMode的子类，针对小M场景（M ≤ 2048且N > 512）进行优化：
+ *   - 采用双AIV核心分工模式：aiv_idx==0负责远端数据读取与累加，aiv_idx==1负责通知与确认
+ *   - 优化通信调度策略：使用CommColumnSplitter按列分块，适应小M大N的矩阵形状
+ *   - 输出矩阵C预初始化为0，避免重复清零操作
+ *   - 反量化逻辑内联到通信循环中，减少peermem写入次数
+ *
+ * 与大M场景的主要区别：
+ *   1. 通信模式不同：小M场景使用"通知-确认"模式替代大M场景的"同步屏障"模式
+ *   2. 数据搬运策略不同：小M场景按部分行（partial row）搬运，大M场景按m0×n0分块搬运
+ *   3. 反量化集成方式不同：小M场景Dequant在NotifyRemoteDataCopy/CompleteRemoteDataCopy中调用
  */
 
 #ifndef MATMUL_REDUCE_SCATTER_AIV_MODE_SMALL_M_H
@@ -53,6 +64,12 @@ namespace MatmulReduceScatterV2Impl {
 using Index = Catlass::layout::VectorLayout::Index;
 using ArchTag = Arch::AtlasA2;
 
+// MatmulReduceScatterAivModeSmallM: 小M场景的Matmul+ReduceScatter融合算子实现
+// 继承自MatmulReduceScatterAivMode，通过CRTP模式覆写关键方法
+// 小M场景（M ≤ 2048且N > 512）的优化策略：
+//   - 双AIV核心分工：aiv_idx==0负责数据搬运与累加，aiv_idx==1负责信号通知与确认
+//   - 按列分块通信（CommColumnSplitter），减少跨rank数据交换量
+//   - 输出矩阵预初始化为0，为原子累加做准备
 template <TemplateMMReduceScatterV2Class>
 class MatmulReduceScatterAivModeSmallM
     : public MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
@@ -158,26 +175,37 @@ public:
                                      MatmulReduceScatterAivModeSmallM<TemplateMMReduceScatterV2Func>>::Process;
 
 public:
-    int32_t m_per_rank;
+    int32_t m_per_rank;  // 每个rank负责的M维度行数 = M / rank_size
 
-    constexpr static int32_t L1TileShapeK = quantFlag ? TILE_SHAPE_512 : TILE_SHAPE_256;
-    constexpr static int32_t L0TileShapeK = quantFlag ? TILE_SHAPE_128 : TILE_SHAPE_64;
+    constexpr static int32_t L1TileShapeK = quantFlag ? TILE_SHAPE_512 : TILE_SHAPE_256;  // L1分块K维度大小
+    constexpr static int32_t L0TileShapeK = quantFlag ? TILE_SHAPE_128 : TILE_SHAPE_64;   // L0分块K维度大小
 
+    // 将输出矩阵C初始化为0，为后续ReduceScatter的原子累加做准备
     __aicore__ inline void InitOutputMatrixCToZero();
+    // AIC矩阵乘法：使用Catlass库执行分块Matmul，量化场景结果写入gm_accum，非量化场景写入peermem
     __aicore__ inline void CatlassMatmul();
+    // AIV通信主循环：协调Padding→Dequant→NotifyRemoteDataCopy/CompleteRemoteDataCopy的完整流水线
     __aicore__ inline void AIVComm();
+    // 通知远端rank本rank的数据已准备好可被读取（aiv_idx==1执行）
     __aicore__ inline void NotifyRemoteDataCopy(const CommColumnSplitter &taskSplit, bool needDequant,
                                                 bool needPerChannel, bool needPerToken);
+    // 从远端rank读取数据并累加到本地输出GM（aiv_idx==0执行）
     __aicore__ inline void CompleteRemoteDataCopy(const CommColumnSplitter &taskSplit, bool needDequant,
                                                   bool needPerChannel, bool needPerToken);
+    // 通知远端rank本rank已完成所有数据读取，可以安全退出
     __aicore__ inline void SendCopyCompleteSignal();
+    // 确认远端rank已完成对本rankpeermem的读取，可以安全退出
     __aicore__ inline void ComfirmRemoteCopyDone();
+    // 反量化：对int32累加结果做per-channel和/或per-token反量化，支持按列范围指定
     __aicore__ inline void Dequant(Arch::Resource<ArchTag> &resource, int32_t calIdx, int32_t n_st, int32_t n_ed,
                                    int32_t n_nxt_ed, int32_t n_comm_block, bool needPerChannel, bool needPerToken);
 
+    // 根据loop偏移量获取分块的M/N坐标索引（使用Swizzle调度）
     inline __aicore__ GemmCoord GetBlockIdCoord(int32_t loopOffset, int32_t mLoop, int32_t nLoop, int32_t swizzlDirect,
                                                 int32_t swizzlCount);
+    // 根据分块索引计算分块在矩阵中的起始位置坐标
     inline __aicore__ GemmCoord GetBlockLocCoord(GemmCoord blockIdxCoord);
+    // 根据分块索引和位置计算分块的实际大小（最后一个分块可能不满）
     inline __aicore__ GemmCoord GetBlockSizeCoord(GemmCoord blockIdxCoord, GemmCoord blockLocCoord, int32_t mLoop,
                                                   int32_t mSize, int32_t nLoop, int32_t nSize, int32_t kSize);
 
@@ -189,6 +217,7 @@ template <TemplateMMReduceScatterV2Class>
 inline __aicore__ GemmCoord MatmulReduceScatterAivModeSmallM<TemplateMMReduceScatterV2Func>::GetBlockIdCoord(
     int32_t loopOffset, int32_t mLoop, int32_t nLoop, int32_t swizzlDirect, int32_t swizzlCount)
 {
+    // 将线性loop索引通过Swizzle映射转换为2D的M/N分块坐标，改善Cache命中率
     uint32_t kIdx = 0;
     int64_t mIdx, nIdx;
     GetSwizzledBlockIdx(loopOffset, mLoop, nLoop, swizzlDirect, swizzlCount, mIdx, nIdx);
@@ -199,6 +228,7 @@ template <TemplateMMReduceScatterV2Class>
 inline __aicore__ GemmCoord
 MatmulReduceScatterAivModeSmallM<TemplateMMReduceScatterV2Func>::GetBlockLocCoord(GemmCoord blockIdxCoord)
 {
+    // 将分块索引乘以分块大小，得到分块在矩阵中的起始行列坐标
     return GemmCoord{blockIdxCoord.m() * m0, blockIdxCoord.n() * n0, blockIdxCoord.k() * L1TileShapeK};
 }
 
@@ -207,6 +237,7 @@ inline __aicore__ GemmCoord MatmulReduceScatterAivModeSmallM<TemplateMMReduceSca
     GemmCoord blockIdxCoord, GemmCoord blockLocCoord, int32_t mLoop, int32_t mSize, int32_t nLoop, int32_t nSize,
     int32_t kSize)
 {
+    // 计算分块的实际大小：最后一个分块可能不满m0或n0，需要用矩阵总大小减去起始位置
     uint32_t mActual = (blockIdxCoord.m() == (mLoop - 1)) ? (mSize - blockLocCoord.m()) : m0;
     uint32_t nActual = (blockIdxCoord.n() == (nLoop - 1)) ? (nSize - blockLocCoord.n()) : n0;
     uint32_t kActual = kSize;
@@ -218,6 +249,8 @@ __aicore__ inline void MatmulReduceScatterAivModeSmallM<TemplateMMReduceScatterV
     Arch::Resource<ArchTag> &resource, int32_t calIdx, int32_t n_st, int32_t n_ed, int32_t n_nxt_ed,
     int32_t n_comm_block, bool needPerChannel, bool needPerToken)
 {
+    // 小M场景的反量化：遍历当前通信轮次的分块，对int32累加结果做per-channel/per-token反量化
+    // n_st/n_ed指定当前通信轮次负责的列块范围，支持按列分块通信
     using CType = Gemm::GemmType<int32_t, layout::RowMajor>;
     using ScaleType = Gemm::GemmType<float, layout::VectorLayout>;
     using PerTokenScaleType = Gemm::GemmType<float, layout::VectorLayout>;
@@ -304,6 +337,8 @@ __aicore__ inline void MatmulReduceScatterAivModeSmallM<TemplateMMReduceScatterV
 template <TemplateMMReduceScatterV2Class>
 __aicore__ inline void MatmulReduceScatterAivModeSmallM<TemplateMMReduceScatterV2Func>::CatlassMatmul()
 {
+    // 小M场景的AIC矩阵乘法：与大M场景类似，但输出地址选择不同
+    // 量化场景且非fixpipe时，结果写入gm_accum（int32 workspace）；否则写入peermem
     if ASCEND_IS_AIC {
         bool need_fixpipe = quantFlag && isX2ScaleTypeInt64 && std::is_same<cType, half>::value;
         using ArchTag = Arch::AtlasA2;
@@ -404,6 +439,8 @@ __aicore__ inline void MatmulReduceScatterAivModeSmallM<TemplateMMReduceScatterV
 template <TemplateMMReduceScatterV2Class>
 __aicore__ inline void MatmulReduceScatterAivModeSmallM<TemplateMMReduceScatterV2Func>::InitOutputMatrixCToZero()
 {
+    // 将输出矩阵C的全部元素初始化为0，为后续ReduceScatter的原子累加做准备
+    // 采用多AIV核心并行初始化，将总数据量按AIV核心数均分
     uint64_t totalLength = static_cast<uint64_t>(m) * static_cast<uint64_t>(n) / rank_size;
     constexpr uint32_t BLOCK_SIZE = 32;
     constexpr uint32_t UB_BLOCK_NUM = 20;
@@ -496,6 +533,8 @@ template <TemplateMMReduceScatterV2Class>
 __aicore__ inline void MatmulReduceScatterAivModeSmallM<TemplateMMReduceScatterV2Func>::NotifyRemoteDataCopy(
     const CommColumnSplitter &taskSplit, bool needDequant, bool needPerChannel, bool needPerToken)
 {
+    // aiv_idx==1执行：逐轮通知远端rank本rank的数据已准备好
+    // 每轮先等待AIC完成Matmul，然后执行反量化（如需），最后设置flag通知远端
     Arch::Resource<ArchTag> resource;
     for (int32_t cal_idx = 0; cal_idx < cal_count; ++cal_idx) {
         uint64_t flag_idx = cal_idx % MAX_BLOCK_COUNT_SM;
@@ -523,6 +562,7 @@ template <TemplateMMReduceScatterV2Class>
 __aicore__ inline void MatmulReduceScatterAivModeSmallM<TemplateMMReduceScatterV2Func>::ComfirmRemoteCopyDone()
 {
     // 收到远端卡读写完成信号，并复位信号，然后退出kernel。
+    // 等待所有远端rank完成对本rank peermem的读取后，复位flag
     if (core_idx < rank_size) {
         CheckBuffFlag((__gm__ int32_t *)buff[rank] + FLAG_OFFSET + core_idx, cal_count + 1);
         SetBuffFlag((__gm__ int32_t *)buff[rank] + FLAG_OFFSET + core_idx, -1);
@@ -533,6 +573,8 @@ template <TemplateMMReduceScatterV2Class>
 __aicore__ inline void MatmulReduceScatterAivModeSmallM<TemplateMMReduceScatterV2Func>::CompleteRemoteDataCopy(
     const CommColumnSplitter &taskSplit, bool needDequant, bool needPerChannel, bool needPerToken)
 {
+    // aiv_idx==0执行：从远端rank的peermem读取数据并原子累加到本地输出GM
+    // 每轮通信：等待AIC完成 → 反量化（如需）→ 设置原子加模式 → 按部分行读取远端数据并累加
     Arch::Resource<ArchTag> resource;
 
     for (int32_t cal_idx = 0; cal_idx < cal_count; ++cal_idx) {
@@ -610,7 +652,7 @@ __aicore__ inline void MatmulReduceScatterAivModeSmallM<TemplateMMReduceScatterV
 template <TemplateMMReduceScatterV2Class>
 __aicore__ inline void MatmulReduceScatterAivModeSmallM<TemplateMMReduceScatterV2Func>::SendCopyCompleteSignal()
 {
-    // 通知远端卡整个读取过程完成，可以退出。
+    // 通知远端rank本rank已完成所有数据读取，远端rank可以安全退出
     if (core_idx < rank_size) {
         SetBuffFlag((__gm__ int32_t *)buff[core_idx] + FLAG_OFFSET + rank, cal_count + 1);
     }
@@ -619,6 +661,10 @@ __aicore__ inline void MatmulReduceScatterAivModeSmallM<TemplateMMReduceScatterV
 template <TemplateMMReduceScatterV2Class>
 __aicore__ inline void MatmulReduceScatterAivModeSmallM<TemplateMMReduceScatterV2Func>::AIVComm()
 {
+    // 小M场景的AIV通信主循环，与大M场景的AIVComm不同：
+    //   1. Padding后预初始化输出矩阵C为0
+    //   2. 双AIV核心分工：aiv_idx==1负责通知远端（NotifyRemoteDataCopy），aiv_idx==0负责数据搬运（CompleteRemoteDataCopy）
+    //   3. 使用CommColumnSplitter按列分块调度通信任务
     if ASCEND_IS_AIV {
         Padding();
         ResetIpcFlags(rank_size);
