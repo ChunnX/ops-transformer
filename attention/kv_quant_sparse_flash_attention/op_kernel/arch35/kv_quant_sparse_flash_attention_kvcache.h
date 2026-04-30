@@ -95,7 +95,9 @@ __aicore__ inline void ComputeS1LoopInfo(RunParamStr& runParam, const ConstInfo 
     runParam.qSNumInOneBlock = 1; // 不切G轴, 计算每个基本块可以拷贝多少行s
     runParam.gs1LoopStartIdx = gS1StartIdx;
     if (runParam.nextTokensPerBatch < 0) {
-        int64_t gs1LoopStartIdx = runParam.nextTokensPerBatch * (-1) / runParam.qSNumInOneBlock * runParam.qSNumInOneBlock;
+        uint64_t invalidTokenCount = static_cast<uint64_t>(-(runParam.nextTokensPerBatch + 1)) + 1ULL;
+        int64_t gs1LoopStartIdx =
+            invalidTokenCount / runParam.qSNumInOneBlock * runParam.qSNumInOneBlock;
         if (gs1LoopStartIdx > gS1StartIdx) {
             runParam.gs1LoopStartIdx = gs1LoopStartIdx;
         }
@@ -181,7 +183,9 @@ __aicore__ inline bool ComputeParamS1(RunParamStr& runParam, const ConstInfo &co
     uint32_t sOuterLoopIdx, __gm__ int32_t *cuSeqlensQAddr)
 {
     if (runParam.nextTokensPerBatch < 0) {
-        if (runParam.s1oIdx < (runParam.nextTokensPerBatch * (-1)) / runParam.qSNumInOneBlock * runParam.qSNumInOneBlock) {
+        uint64_t invalidTokenCount = static_cast<uint64_t>(-(runParam.nextTokensPerBatch + 1)) + 1ULL;
+        if (runParam.s1oIdx <
+            invalidTokenCount / runParam.qSNumInOneBlock * runParam.qSNumInOneBlock) {
             return true;
         }
     }

@@ -13,9 +13,9 @@ if (BUILD_OPEN_PROJECT)  # custom
         mega_moe_def.cpp
     )
     add_modules_sources(
-        OP_API_INDEPENDENT ON 
-        OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api 
-        OP_MC2_ENABLE ON 
+        OP_API_INDEPENDENT ON
+        OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api
+        OP_MC2_ENABLE ON
         OPTYPE mega_moe ACLNNTYPE aclnn_inner)
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
     set(MC2_OPT ON PARENT_SCOPE)
@@ -25,9 +25,11 @@ if (BUILD_OPEN_PROJECT)  # custom
     add_ops_compile_options(
         OP_NAME MegaMoe
         OPTIONS --cce-auto-sync=off
+        OPTIONS -I${CMAKE_CURRENT_SOURCE_DIR}/../../3rd/tensor_api
+        OPTIONS -I${CMAKE_CURRENT_SOURCE_DIR}/../../3rd
     )
 
 else() # host
     add_mc2_modules_sources(OPTYPE mega_moe ACLNNTYPE aclnn_inner)
-    set(SUB_MC2_COMPILE TRUE PARENT_SCOPE) 
+    set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
 endif()

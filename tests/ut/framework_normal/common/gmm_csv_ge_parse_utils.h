@@ -86,6 +86,11 @@ inline gert::StorageShape MakeGertStorageShape(const std::vector<int64_t> &dims)
     return MakeGertStorageShape(dims, dims);
 }
 
+inline gert::StorageShape MakeGertStorageShape(const std::string &dims)
+{
+    return MakeGertStorageShape(ParseDims(dims));
+}
+
 } // namespace ops::ut
 
 #endif // TESTS_UT_FRAMEWORK_NORMAL_COMMON_GMM_CSV_GE_PARSE_UTILS_H

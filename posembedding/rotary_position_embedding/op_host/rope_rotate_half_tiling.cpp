@@ -407,7 +407,7 @@ ge::graphStatus RotateHalfTiling::CheckShapeSupport(const gert::Shape &xShape, c
             std::string dimNumMsg = std::to_string(xShape.GetDimNum()) + ", " +
                 std::to_string(cosShape.GetDimNum()) + " and " + std::to_string(sinShape.GetDimNum());
             OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(context->GetNodeName(), "x, cos and sin", dimNumMsg.c_str(),
-                "The numbers of dimensions of input x, cos and sin should all be 3D or 4D");
+                "The shape dims of input x, cos and sin should all be 3D or 4D");
             return ge::GRAPH_FAILED;
         }
     } else {
@@ -415,7 +415,7 @@ ge::graphStatus RotateHalfTiling::CheckShapeSupport(const gert::Shape &xShape, c
             std::string dimNumMsg = std::to_string(xShape.GetDimNum()) + ", " +
                 std::to_string(cosShape.GetDimNum()) + " and " + std::to_string(sinShape.GetDimNum());
             OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(context->GetNodeName(), "x, cos and sin", dimNumMsg.c_str(),
-                "The numbers of dimensions of input x, cos and sin should all be 3D or 4D");
+                "The shape dims of input x, cos and sin should all be 3D or 4D");
             return ge::GRAPH_FAILED;
         }
     }

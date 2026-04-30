@@ -168,7 +168,6 @@ protected:
     bool isIFAFlag_ = false;
     bool needInit_ = false;
     bool enableS1OutSplit = false;
-    // bool enablePerblockQuantOpt = false;
 };
 
 }  // namespace optiling

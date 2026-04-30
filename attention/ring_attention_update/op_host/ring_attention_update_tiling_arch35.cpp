@@ -285,8 +285,7 @@ static ge::graphStatus RingAttentionUpdateRegbaseSBHCheckShape(const gert::Tilin
       curSoftmaxMaxShape.GetDim(CONST_TWO) != curSoftmaxSumShape.GetDim(CONST_TWO)) {
     std::string shapeMsg = ToString(curSoftmaxSumShape) + " and " + ToString(curSoftmaxMaxShape);
     std::string reasonMsg =
-        "The shape of input cur_softmax_sum should be the same as "
-        "the shape of input cur_softmax_max";
+        "The first three dimensions of input cur_softmax_sum and cur_softmax_max should be the same";
     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "cur_softmax_sum and cur_softmax_max",
         shapeMsg.c_str(), reasonMsg.c_str());
     return ge::GRAPH_FAILED;
@@ -296,8 +295,7 @@ static ge::graphStatus RingAttentionUpdateRegbaseSBHCheckShape(const gert::Tilin
       prevSoftmaxMaxShape.GetDim(CONST_TWO) != curSoftmaxMaxShape.GetDim(CONST_TWO)) {
     std::string shapeMsg = ToString(prevSoftmaxMaxShape) + " and " + ToString(curSoftmaxMaxShape);
     std::string reasonMsg =
-        "The shape of input prev_softmax_max should be the same as "
-        "the shape of input cur_softmax_max";
+        "The first three dimensions of input prev_softmax_max and cur_softmax_max should be the same";
     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "prev_softmax_max and cur_softmax_max",
         shapeMsg.c_str(), reasonMsg.c_str());
     return ge::GRAPH_FAILED;
@@ -415,8 +413,7 @@ static ge::graphStatus RingAttentionUpdateRegbaseTNDCheckShape(const gert::Tilin
       prevAttnShape.GetDim(CONST_ONE) != prevSoftmaxMaxShape.GetDim(CONST_ONE)) {
     std::string shapeMsg = ToString(prevAttnShape) + " and " + ToString(prevSoftmaxMaxShape);
     std::string reasonMsg =
-        "The 0th and 1st dims of input prev_attn_out should be equal to "
-        "the 0th and 1st dims of input prev_softmax_max respectively";
+        "The first two dimensions of input prev_attn_out and prev_softmax_max should be the same";
     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "prev_attn_out and prev_softmax_max",
         shapeMsg.c_str(), reasonMsg.c_str());
     return ge::GRAPH_FAILED;
@@ -426,8 +423,7 @@ static ge::graphStatus RingAttentionUpdateRegbaseTNDCheckShape(const gert::Tilin
       prevSoftmaxMaxShape.GetDim(CONST_ONE) != prevSoftmaxSumShape.GetDim(CONST_ONE)) {
     std::string shapeMsg = ToString(prevSoftmaxSumShape) + " and " + ToString(prevSoftmaxMaxShape);
     std::string reasonMsg =
-        "The 0th and 1st dims of input prev_softmax_sum should be equal to "
-        "the 0th and 1st dims of input prev_softmax_max respectively";
+        "The first two dimensions of input prev_softmax_sum and prev_softmax_max should be the same";
     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "prev_softmax_sum and prev_softmax_max",
         shapeMsg.c_str(), reasonMsg.c_str());
     return ge::GRAPH_FAILED;
@@ -437,8 +433,7 @@ static ge::graphStatus RingAttentionUpdateRegbaseTNDCheckShape(const gert::Tilin
       curAttnShape.GetDim(CONST_ONE) != curSoftmaxMaxShape.GetDim(CONST_ONE)) {
     std::string shapeMsg = ToString(curAttnShape) + " and " + ToString(curSoftmaxMaxShape);
     std::string reasonMsg =
-        "The 0th and 1st dims of input cur_attn_out should be equal to "
-        "the 0th and 1st dims of input cur_softmax_max respectively";
+        "The first two dimensions of input cur_attn_out and cur_softmax_max should be the same";
     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "cur_attn_out and cur_softmax_max",
         shapeMsg.c_str(), reasonMsg.c_str());
     return ge::GRAPH_FAILED;
@@ -448,8 +443,7 @@ static ge::graphStatus RingAttentionUpdateRegbaseTNDCheckShape(const gert::Tilin
       curSoftmaxMaxShape.GetDim(CONST_ONE) != curSoftmaxSumShape.GetDim(CONST_ONE)) {
     std::string shapeMsg = ToString(curSoftmaxSumShape) + " and " + ToString(curSoftmaxMaxShape);
     std::string reasonMsg =
-        "The 0th and 1st dims of input cur_softmax_sum should be equal to "
-        "the 0th and 1st dims of input cur_softmax_max respectively";
+        "The first two dimensions of input cur_softmax_sum and cur_softmax_max should be the same";
     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "cur_softmax_sum and cur_softmax_max",
         shapeMsg.c_str(), reasonMsg.c_str());
     return ge::GRAPH_FAILED;
@@ -459,8 +453,7 @@ static ge::graphStatus RingAttentionUpdateRegbaseTNDCheckShape(const gert::Tilin
       prevSoftmaxMaxShape.GetDim(CONST_ONE) != curSoftmaxMaxShape.GetDim(CONST_ONE)) {
     std::string shapeMsg = ToString(prevSoftmaxMaxShape) + " and " + ToString(curSoftmaxMaxShape);
     std::string reasonMsg =
-        "The 0th and 1st dims of input prev_softmax_max should be equal to "
-        "the 0th and 1st dims of input cur_softmax_max respectively";
+        "The first two dimensions of input prev_softmax_max and cur_softmax_max should be the same";
     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "prev_softmax_max and cur_softmax_max",
         shapeMsg.c_str(), reasonMsg.c_str());
     return ge::GRAPH_FAILED;
@@ -630,7 +623,8 @@ static ge::graphStatus Tiling4RingAttentionUpdateRegbaseSoftmaxTND(const gert::T
     std::string actualSeqQlenShapeStr = ToString(actualSeqQlenShape);
     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "actual_seq_qlen",
         actualSeqQlenShapeStr.c_str(),
-        "The 0th dimension of input actual_seq_qlen should be greater than 1");
+        "The batch of input actual_seq_qlen should be greater than 1, "
+        "where batch refers to the 0th dim");
     return ge::GRAPH_FAILED;
   }
 
@@ -762,7 +756,8 @@ static ge::graphStatus Tiling4RingAttentionUpdateRegbaseTND(const gert::TilingCo
     std::string actualSeqQlenShapeStr = ToString(actualSeqQlenShape);
     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "actual_seq_qlen",
         actualSeqQlenShapeStr.c_str(),
-        "The 0th dimension of input actual_seq_qlen should be greater than 1");
+        "The batch of input actual_seq_qlen should be greater than 1, "
+        "where batch refers to the 0th dim");
     return ge::GRAPH_FAILED;
   }
 

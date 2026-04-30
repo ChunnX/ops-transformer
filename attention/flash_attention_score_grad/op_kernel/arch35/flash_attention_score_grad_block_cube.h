@@ -134,7 +134,8 @@ public:
  
     constexpr static uint32_t DQ_L0_SPLIT_K = GET_DQ_L0_SPLIT_K<INPUT_TYPE, CUBE_BASEM, HEAD_DIM_ALIGN>();
     constexpr static uint32_t DKV_L0_SPLIT_K = GET_DKV_L0_SPLIT_K<INPUT_TYPE, CUBE_BASEN, HEAD_DIM_ALIGN>();
- 
+    constexpr static bool ENABLE_UNITFLAG =
+        HEAD_DIM_ALIGN <= static_cast<uint16_t>(DTemplateType::Aligned768) && !IS_DETER_OLD(DETER_SPARSE_TYPE);
     // input global mmemory
     GlobalTensor<INPUT_TYPE> queryGm, keyGm, valueGm, queryRopeGm, keyRopeGm;
     GlobalTensor<OUTDTYPE> dyGm;
@@ -396,8 +397,7 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmDyV(LocalTensor<CAL
 
     constexpr uint32_t baseN = (IS_FP32_INPUT && HEAD_DIM_ALIGN > 512) ? CUBE_BASEN / 2 : CUBE_BASEN;
     uint32_t nLoops = (runInfo.commonRunInfo.s2RealSize + baseN - 1) / baseN; // 若为FP32,且Dtemplate>512，需要切分循环两次
-    // uint32_t nLoops = (CUBE_BASEN + baseN - 1) / baseN;
-    uint32_t realN = baseN;//这里切N，其实就是切S2的时候，单次循环的最大S2
+    uint32_t realN = baseN; // 这里切N，其实就是切S2的时候，单次循环的最大S2
     for (uint32_t n = 0; n < nLoops; ++n) {
         if(n == nLoops - 1){
             uint32_t tailSize = runInfo.commonRunInfo.s2RealSize % baseN;
@@ -481,7 +481,9 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmDyV(LocalTensor<CAL
             }
         }
         // load l1 to l0ab + mmad
-        mm1L0CBuffer.Wait<HardEvent::FIX_M>(); // 反向同步
+        if constexpr (!ENABLE_UNITFLAG) {
+            mm1L0CBuffer.Wait<HardEvent::FIX_M>(); // 反向同步
+        }
         MMParam param = {
             (uint32_t)runInfo.commonRunInfo.s1RealSize, // singleM
             (uint32_t)realN, // singleN
@@ -491,7 +493,7 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmDyV(LocalTensor<CAL
             true,                                       // isRightTranspose
             true,
             true,
-            UNITFLAG_ENABLE
+            ENABLE_UNITFLAG ? UNITFLAG_EN_OUTER_LAST : UNITFLAG_DISABLE
         };
 
         if constexpr (IS_L1_PRELOAD) {
@@ -510,8 +512,10 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmDyV(LocalTensor<CAL
             AscendC::Mutex::Unlock<PIPE_MTE1>(vL1BufMutexId);
         }
 
-        mm1L0CBuffer.Set<HardEvent::M_FIX>();
-        mm1L0CBuffer.Wait<HardEvent::M_FIX>();
+        if constexpr (!ENABLE_UNITFLAG) {
+            mm1L0CBuffer.Set<HardEvent::M_FIX>();
+            mm1L0CBuffer.Wait<HardEvent::M_FIX>();
+        }
 
         // fixp2ub
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
@@ -521,11 +525,14 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmDyV(LocalTensor<CAL
         fixpipeParams.dstStride = CUBE_BASEN;
         fixpipeParams.dualDstCtl = 1;
         fixpipeParams.params.ndNum = 1;
+        fixpipeParams.unitFlag = ENABLE_UNITFLAG ? UNITFLAG_EN_OUTER_LAST : UNITFLAG_DISABLE;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
         Fixpipe<CALC_TYPE, CALC_TYPE, PFA_CFG_ROW_MAJOR_UB>(mm1ResTensor[ubOffset], mm1L0CBuffer.GetTensor<CALC_TYPE>(),
                                                             fixpipeParams); // 将matmul结果从L0C搬运到UB
-        mm1L0CBuffer.Set<HardEvent::FIX_M>();                               // 反向同步
+        if constexpr (!ENABLE_UNITFLAG) {
+            mm1L0CBuffer.Set<HardEvent::FIX_M>();                               // 反向同步
+        }
     }
 }
 
@@ -740,7 +747,6 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmQK(LocalTensor<CALC
     qL1Buffer.Wait<HardEvent::MTE2_MTE1>();
     constexpr uint32_t baseN = (IS_FP32_INPUT && HEAD_DIM_ALIGN > 512) ? CUBE_BASEN / 2 : CUBE_BASEN;
     uint32_t nLoops = (runInfo.commonRunInfo.s2RealSize + baseN - 1) / baseN; // 若为FP32，需要切分循环两次
-    // uint32_t nLoops = (CUBE_BASEN + baseN - 1) / baseN; // 若为FP32，需要切分循环两次
     uint32_t realN = baseN;
     for (uint32_t n = 0; n < nLoops; ++n) {
         if(n == nLoops - 1){
@@ -789,7 +795,6 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmQK(LocalTensor<CALC
                 nd2NzParams.srcNdMatrixStride = 0;
                 nd2NzParams.srcDValue = constInfo.mm2Kb;
                 if constexpr (IS_FP8_INPUT) {
-                    // nd2NzParams.dstNzC0Stride = (runInfo.commonRunInfo.s2RealSize + 32 - 1) >> 5 << 5;
                     nd2NzParams.dstNzC0Stride = AlignTo32(runInfo.commonRunInfo.s2RealSize);
                 } else {
                     nd2NzParams.dstNzC0Stride = AlignTo16(realN);
@@ -846,7 +851,9 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmQK(LocalTensor<CALC
             }
         }
         // load l1 to l0ab + mmad
-        mm2L0CBuffer.Wait<HardEvent::FIX_M>(); // 反向同步
+        if constexpr (!ENABLE_UNITFLAG) {
+            mm2L0CBuffer.Wait<HardEvent::FIX_M>(); // 反向同步
+        }
         MMParam param = {
             (uint32_t)runInfo.commonRunInfo.s1RealSize, // singleM
             (uint32_t)realN, // singleN
@@ -855,7 +862,7 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmQK(LocalTensor<CALC
             true,                                       // isRightTranspose
             true,
             true,
-            UNITFLAG_ENABLE
+            ENABLE_UNITFLAG ? UNITFLAG_EN_OUTER_LAST : UNITFLAG_DISABLE
         };
         MatmulBase<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, baseN,
                 L0_SINGLE_BUFFER_SIZE / baseN / sizeof(INPUT_TYPE), ABLayout::MK, ABLayout::KN>(
@@ -868,8 +875,11 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmQK(LocalTensor<CALC
         if  (!IS_L1_REUSE && !IS_L1_PRELOAD) {  // qL1不需要二次datacopy
             kL1Buffer.Set<HardEvent::MTE1_MTE2>(); // 反向同步
         }
-        mm2L0CBuffer.Set<HardEvent::M_FIX>();
-        mm2L0CBuffer.Wait<HardEvent::M_FIX>();
+
+        if constexpr (!ENABLE_UNITFLAG) {
+            mm2L0CBuffer.Set<HardEvent::M_FIX>();
+            mm2L0CBuffer.Wait<HardEvent::M_FIX>();
+        }
     
         // fixp2ub
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
@@ -884,12 +894,15 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmQK(LocalTensor<CALC
         fixpipeParams.dstStride = CUBE_BASEN;
         // 双目标模式，按M维度拆分，M / 2 * N写入每个UB, M必须为2的倍数
         fixpipeParams.dualDstCtl = 1;
+        fixpipeParams.unitFlag = ENABLE_UNITFLAG ? UNITFLAG_EN_OUTER_LAST : UNITFLAG_DISABLE;
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
         Fixpipe<CALC_TYPE, CALC_TYPE, PFA_CFG_ROW_MAJOR_UB>(mm2ResTensor[ubOffset], mm2L0CBuffer.GetTensor<CALC_TYPE>(),
                                                             fixpipeParams); // 将matmul结果从L0C搬运到UB
-        mm2L0CBuffer.Set<HardEvent::FIX_M>();
+        if constexpr (!ENABLE_UNITFLAG) {
+            mm2L0CBuffer.Set<HardEvent::FIX_M>();
+        }
     }
 }
 
@@ -914,6 +927,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsKFixpout(typename DqkvResPos<T, IS_WRITE
         fixpipeParams.dstStride = AlignTo16(constInfo.commonConstInfo.dSize);
         // 双目标模式，按M维度拆分，M / 2 * N写入每个UB, M必须为2的倍数
         fixpipeParams.dualDstCtl = 1;
+        fixpipeParams.unitFlag = ENABLE_UNITFLAG ? UNITFLAG_EN_OUTER_LAST : UNITFLAG_DISABLE;
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
@@ -944,6 +958,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsKFixpout(typename DqkvResPos<T, IS_WRITE
             uint64_t ans = static_cast<uint64_t>(*reinterpret_cast<int32_t*>(&tmp));
             fixpipeParams.deqScalar = ans;
         }
+        fixpipeParams.unitFlag = ENABLE_UNITFLAG ? UNITFLAG_EN_OUTER_LAST : UNITFLAG_DISABLE;
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
@@ -1035,7 +1050,9 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsK(typename DqkvResPos<T, IS_WRITE_UB>::P
             }
         }
         // load l1 to l0ab + mmad
-        mm3L0CBuffer.Wait<HardEvent::FIX_M>(); // 反向同步
+        if constexpr (!ENABLE_UNITFLAG) {
+            mm3L0CBuffer.Wait<HardEvent::FIX_M>(); // 反向同步
+        }
         MMParam param = {
             (uint32_t)runInfo.commonRunInfo.s1RealSize, // singleM
             realN,  // singleN
@@ -1044,7 +1061,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsK(typename DqkvResPos<T, IS_WRITE_UB>::P
             false,                                      // isRightTranspose
             true,
             true,
-            UNITFLAG_ENABLE
+            ENABLE_UNITFLAG ? UNITFLAG_EN_OUTER_LAST : UNITFLAG_DISABLE
         };
         if constexpr (IS_FP8_INPUT) {
             MatmulBase<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, DQ_L0_SPLIT_K, CUBE_BASEN, ABLayout::MK, ABLayout::KN>(
@@ -1060,12 +1077,15 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsK(typename DqkvResPos<T, IS_WRITE_UB>::P
         if (isCopyRight) {
             kL1Buffer.Set<HardEvent::MTE1_MTE2>(); // 反向同步
         }
- 
-        mm3L0CBuffer.Set<HardEvent::M_FIX>();
-        mm3L0CBuffer.Wait<HardEvent::M_FIX>();
- 
+        
+        if constexpr (!ENABLE_UNITFLAG) {
+            mm3L0CBuffer.Set<HardEvent::M_FIX>();
+            mm3L0CBuffer.Wait<HardEvent::M_FIX>();
+        }
         IterateMmDsKFixpout<T, IS_WRITE_UB>(outTensor, mm3L0CBuffer, constInfo, runInfo, realN, gmNOffset);
-        mm3L0CBuffer.Set<HardEvent::FIX_M>();
+        if constexpr (!ENABLE_UNITFLAG) {
+            mm3L0CBuffer.Set<HardEvent::FIX_M>();
+        }
     }
 }
 
@@ -1138,8 +1158,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsKOlderDeter(GlobalTensor<CALC_TYPE> outT
             false,                                      // isLeftTranspose
             false,                                      // isRightTranspose
             true,
-            true,
-            UNITFLAG_ENABLE
+            true
         };
         MatmulBase<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, CUBE_BASEN, DQ_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(	
             dSL1Buffer.GetTensor<INPUT_TYPE>(), kL1Tensor, l0aBuf, l0bBuf, mm3L0CBuffer.GetTensor<CALC_TYPE>(), param);
@@ -1188,17 +1207,18 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQFixpout(typename DqkvResPos<T, IS_WRITE
 {
     if constexpr (IS_WRITE_UB) {
         // fixp2ub
-        FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
-        fixpipeParams.nSize = (realN + 7) >> 3 << 3;
-        fixpipeParams.mSize = (runInfo.commonRunInfo.s2RealSize + 1) >> 1 << 1;
-        fixpipeParams.srcStride = AlignTo16(fixpipeParams.mSize);
-        fixpipeParams.dstStride = AlignTo16(constInfo.commonConstInfo.dSize);
-        fixpipeParams.dualDstCtl = 1;
-        fixpipeParams.params.ndNum = 1;
-        fixpipeParams.params.srcNdStride = 0;
-        fixpipeParams.params.dstNdStride = 0;
-        constexpr static FixpipeConfig DK_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, IS_WRITE_UB};
         if (isFixpOut) {
+            FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
+            fixpipeParams.nSize = (realN + 7) >> 3 << 3;
+            fixpipeParams.mSize = (runInfo.commonRunInfo.s2RealSize + 1) >> 1 << 1;
+            fixpipeParams.srcStride = AlignTo16(fixpipeParams.mSize);
+            fixpipeParams.dstStride = AlignTo16(constInfo.commonConstInfo.dSize);
+            fixpipeParams.dualDstCtl = 1;
+            fixpipeParams.unitFlag = ENABLE_UNITFLAG ? UNITFLAG_EN_OUTER_LAST : UNITFLAG_DISABLE;
+            fixpipeParams.params.ndNum = 1;
+            fixpipeParams.params.srcNdStride = 0;
+            fixpipeParams.params.dstNdStride = 0;
+            constexpr static FixpipeConfig DK_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, IS_WRITE_UB};
             Fixpipe<T, CALC_TYPE, DK_FIXPIPE_CONFIG>(outTensor[gmNOffset], dkL0CBuffer.GetTensor<CALC_TYPE>(), fixpipeParams);
         }
     } else {
@@ -1222,6 +1242,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQFixpout(typename DqkvResPos<T, IS_WRITE
                 uint64_t ans = static_cast<uint64_t>(*reinterpret_cast<int32_t*>(&tmp));
                 fixpipeParams.deqScalar = ans;
             }
+            fixpipeParams.unitFlag = ENABLE_UNITFLAG ? UNITFLAG_EN_OUTER_LAST : UNITFLAG_DISABLE;
             fixpipeParams.params.ndNum = 1;
             fixpipeParams.params.srcNdStride = 0;
             fixpipeParams.params.dstNdStride = 0;
@@ -1323,7 +1344,9 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQ(typename DqkvResPos<T, IS_WRITE_UB>::P
             }
         }
         // load l1 to l0ab + mmad
-        dkL0CBuffer.Wait<HardEvent::FIX_M>(); // 反向同步
+        if constexpr (!ENABLE_UNITFLAG) {
+            dkL0CBuffer.Wait<HardEvent::FIX_M>(); // 反向同步
+        }
         bool enPartialSum = false; // control l0c accumulate sum
         bool isFixpOut = true;
 
@@ -1345,7 +1368,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQ(typename DqkvResPos<T, IS_WRITE_UB>::P
             false,                                       // isRightTranspose
             true,
             !enPartialSum,
-            !IS_DKV_RESIDENT_L0C && !isDkvL0CResidentForD192Dv128 && HEAD_DIM_ALIGN <= 512 ? UNITFLAG_ENABLE : UNITFLAG_DISABLE
+            !ENABLE_UNITFLAG ? UNITFLAG_DISABLE : (isFixpOut ? UNITFLAG_EN_OUTER_LAST : UNITFLAG_ENABLE)
         };
         if constexpr (IS_FP8_INPUT) {
             MatmulBase<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEN, DKV_L0_SPLIT_K, CUBE_BASEM, ABLayout::MK, ABLayout::KN>(
@@ -1356,11 +1379,14 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQ(typename DqkvResPos<T, IS_WRITE_UB>::P
         }
         qL1Buffer.Set<HardEvent::MTE1_MTE2>(); // 反向同步
 
-        dkL0CBuffer.Set<HardEvent::M_FIX>();
-        dkL0CBuffer.Wait<HardEvent::M_FIX>();
- 
+        if constexpr (!ENABLE_UNITFLAG) {
+            dkL0CBuffer.Set<HardEvent::M_FIX>();
+            dkL0CBuffer.Wait<HardEvent::M_FIX>();
+        }
         IterateMmDsQFixpout<T, IS_WRITE_UB>(outTensor, dkL0CBuffer, constInfo, runInfo, realN, gmNOffset, isFixpOut);
-        dkL0CBuffer.Set<HardEvent::FIX_M>();
+        if constexpr (!ENABLE_UNITFLAG) {
+            dkL0CBuffer.Set<HardEvent::FIX_M>();
+        }
     }
 }
 
@@ -1432,8 +1458,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQOlderDeter(GlobalTensor<CALC_TYPE> outT
             true,                                       // isLeftTranspose
             false,                                       // isRightTranspose
             true,
-            true,
-            !IS_DKV_RESIDENT_L0C && !isDkvL0CResidentForD192Dv128 && HEAD_DIM_ALIGN <= 512 ? UNITFLAG_ENABLE : UNITFLAG_DISABLE
+            true
         };
         MatmulBase<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(	
             dsL1Tensor, qL1Tensor, l0aBuf, l0bBuf, dkL0CBuffer.GetTensor<CALC_TYPE>(), param);
@@ -1477,6 +1502,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDyFixpout(typename DqkvResPos<T, IS_WRITE
     fixpipeParams.srcStride = AlignTo16(fixpipeParams.mSize);
     fixpipeParams.dstStride = (SPLIT_AXIS == BN2S2 || IS_BN2_MULTIBLK) ? AlignTo16(constInfo.commonConstInfo.dSizeV) : constInfo.commonConstInfo.mm1Kb;
     fixpipeParams.dualDstCtl = 1;
+    fixpipeParams.unitFlag = ENABLE_UNITFLAG ? UNITFLAG_EN_OUTER_LAST : UNITFLAG_DISABLE;
     fixpipeParams.params.ndNum = 1;
     fixpipeParams.params.srcNdStride = 0;
     fixpipeParams.params.dstNdStride = 0;
@@ -1593,7 +1619,9 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDy(typename DqkvResPos<T, IS_WRITE_UB>::P
             }
         }
         // load l1 to l0ab + mmad
-        dvL0CBuffer.Wait<HardEvent::FIX_M>(); // 反向同步
+        if constexpr (!ENABLE_UNITFLAG) {
+            dvL0CBuffer.Wait<HardEvent::FIX_M>(); // 反向同步
+        }
         bool enPartialSum = false; // control l0c accumulate sum
         bool isFixpOut = true;
         if constexpr (!IS_DETER_OLD(DETER_SPARSE_TYPE)) {
@@ -1615,7 +1643,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDy(typename DqkvResPos<T, IS_WRITE_UB>::P
             false,                                      // isRightTranspose
             true,
             !enPartialSum,
-            !IS_DKV_RESIDENT_L0C && !isDkvL0CResidentForD192Dv128 && HEAD_DIM_ALIGN <= 512 ? UNITFLAG_ENABLE : UNITFLAG_DISABLE
+            !ENABLE_UNITFLAG ? UNITFLAG_DISABLE : (isFixpOut ? UNITFLAG_EN_OUTER_LAST : UNITFLAG_ENABLE)
         };
         if constexpr (IS_FP8_INPUT) {
             MatmulBase<OUTDTYPE, OUTDTYPE, CALC_TYPE, CUBE_BASEN, DKV_L0_SPLIT_K, CUBE_BASEM, ABLayout::MK, ABLayout::KN>(
@@ -1626,11 +1654,14 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDy(typename DqkvResPos<T, IS_WRITE_UB>::P
         }
         dYL1Buffer.Set<HardEvent::MTE1_MTE2>(); // 反向同步
 
-        dvL0CBuffer.Set<HardEvent::M_FIX>();
-        dvL0CBuffer.Wait<HardEvent::M_FIX>();
- 
+        if constexpr (!ENABLE_UNITFLAG) {
+            dvL0CBuffer.Set<HardEvent::M_FIX>();
+            dvL0CBuffer.Wait<HardEvent::M_FIX>();
+        }
         IterateMmPDyFixpout<T, IS_WRITE_UB>(outTensor, dvL0CBuffer, constInfo, runInfo, realN, gmNOffset, isFixpOut);
-        dvL0CBuffer.Set<HardEvent::FIX_M>();
+        if constexpr (!ENABLE_UNITFLAG) {
+            dvL0CBuffer.Set<HardEvent::FIX_M>();
+        }
     }
 }
 
@@ -1699,8 +1730,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDyOlderDeter(GlobalTensor<CALC_TYPE> outT
             true,                                       // isLeftTranspose
             false,                                      // isRightTranspose
             true,
-            true,
-            !IS_DKV_RESIDENT_L0C && !isDkvL0CResidentForD192Dv128 && HEAD_DIM_ALIGN <= 512 ? UNITFLAG_ENABLE : UNITFLAG_DISABLE
+            true
         };
         MatmulBase<INPUT_TYPE, INPUT_TYPE, CALC_TYPE, CUBE_BASEM, CUBE_BASEN, DKV_L0_SPLIT_K, ABLayout::MK, ABLayout::KN>(	
             pL1Buffer.GetTensor<INPUT_TYPE>(), dYL1Tensor, l0aBuf, l0bBuf, dvL0CBuffer.GetTensor<CALC_TYPE>(), param);
@@ -1790,7 +1820,6 @@ DEFINE_CUBE_BLOCK_TRAITS(FAGBlockCubeDummy);
 #define ARGS_TRAITS                                                                                                    \
     CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARGS_TYPE)                                                                       \
     CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARGS_CONST)
- 
- 
+
 } // namespace FagBaseApi
 #endif
