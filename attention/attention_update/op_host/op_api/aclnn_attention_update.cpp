@@ -44,7 +44,7 @@ static const int64_t LSE_DIM_NUM = 1;
 static const int64_t GO_DIM_NUM = 2;
 static const int64_t HD_MULTIPLE = 8;
 static const int64_t HD_MAX = 512;
-static const int64_t SP_MAX = 16;
+static const int64_t SP_MAX = 128;
 
 static const std::initializer_list<op::DataType> ATTENTION_UPDATE_DTYPE_SUPPORT_LIST = {
                                 DataType::DT_FLOAT};
