@@ -20,7 +20,8 @@ using NodeProto = ge::onnx::NodeProto;
 static Status  ParseParamsMoeGatingTopKSoftmax(const Message* op_src, ge::Operator& op_dest) {
   const NodeProto* node = dynamic_cast<const NodeProto*>(op_src);
   if (node == nullptr) {
-    OP_LOGE("MoeGatingTopKSoftmax", "Dynamic cast op_src to NodeProto failed.");
+    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("MoeGatingTopKSoftmax", "op_src", "not NodeProto",
+                                          "Dynamic cast op_src to NodeProto failed.");
     return FAILED;
   }
 

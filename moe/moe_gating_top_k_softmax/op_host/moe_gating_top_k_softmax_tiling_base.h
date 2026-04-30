@@ -132,7 +132,7 @@ public:
 protected:
     ge::graphStatus GetPlatformInfo() override;
     ge::graphStatus GetShapeAttrsInfo() override;
-    ge::graphStatus CheckOutShape(const gert::Shape&, gert::Shape&);
+    ge::graphStatus CheckOutShape(const gert::Shape&, gert::Shape&, const char*);
 
 protected:
     int coreNum;
