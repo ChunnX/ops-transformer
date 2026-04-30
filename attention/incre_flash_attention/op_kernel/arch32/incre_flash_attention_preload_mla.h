@@ -1968,7 +1968,7 @@ IncreFlashAttentionAttenPreloadMla<IFAT>::AttenMaskCopyNoFull(LocalTensor<bool> 
         s1Offset = (static_cast<uint64_t>(info.s1Idx) * s1SizeSub + s1StartIdx) * attenMaskStride;
     } else {
         bOffset = static_cast<uint64_t>(info.bIdx) * static_cast<uint64_t>(attenMaskBatchStride);
-        s1Offset = (s1StartIdx % actualSeqQ) * attenMaskStride;
+        s1Offset = ((info.s1Idx * s1SizeSub + s1StartIdx) % actualSeqQ) * attenMaskStride;
     }
     uint64_t s2Offset = curS2StartPos > treeMaskStart ? curS2StartPos - treeMaskStart : 0;
 
