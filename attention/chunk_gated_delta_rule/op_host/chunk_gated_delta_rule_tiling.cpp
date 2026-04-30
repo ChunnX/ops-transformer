@@ -56,6 +56,7 @@ constexpr uint32_t MATMUL_BASE_N = 128;
 
 constexpr uint32_t STAGE_ONE_TWO = 2;
 constexpr uint32_t STAGE_ONE_THREE = 3;
+constexpr uint32_t STAGE_ONE_PARA_NUM = 4;
 constexpr uint32_t MASK_NUM = 4;
 constexpr int64_t P_NUM = 2;
 
@@ -114,7 +115,7 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoOpTiling()
     int64_t p = P_NUM; // 一个 chunk 组中，单核最大处理 chunk 数
     tilingData_.chunkSize = c;
     tilingData_.maxGroupLength = p * tilingData_.aiCoreNum * tilingData_.chunkSize;
-    tilingData_.stageOneParaNum = STAGE_ONE_TWO; // stage1 并行数
+    tilingData_.stageOneParaNum = STAGE_ONE_PARA_NUM; // stage1 并行数
 
     tilingData_.interWorkspaceSz = 0;
     int64_t sizeHigh = ge::GetSizeByDataType(ge::DT_FLOAT);
@@ -159,9 +160,12 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::DoMatmulTiling()
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, l1Size);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, l0CSize);
     mm_.SetBufferSpace(l1Size, l0CSize, ubSize);
-    mm_.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT, true);
-    mm_.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT, true);
-    mm_.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT);
+    mm_.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,
+                 matmul_tiling::DataType::DT_BFLOAT16, true);
+    mm_.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,
+                 matmul_tiling::DataType::DT_BFLOAT16, true);
+    mm_.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND,
+                 matmul_tiling::DataType::DT_BFLOAT16);
     mm_.SetBias(false);
     mm_.SetDim(1);
     mm_.SetShape(baseM, baseN, baseK);
@@ -214,7 +218,7 @@ ge::graphStatus ChunkGatedDeltaRuleTiling::SetScheduleConfig()
 {
     constexpr uint32_t batchMode = 1U;
     auto ret = context_->SetScheduleMode(batchMode);
-    OP_CHECK_IF(ret != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "SetScheduleMode failed, ret=%d", ret),
+    OP_CHECK_IF(ret != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "SetScheduleMode failed, ret=%u", ret),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
