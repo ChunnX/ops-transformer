@@ -193,10 +193,14 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
     GM_ADDR dst, GM_ADDR src, int size)
 {
     static constexpr uint16_t SYNC_AIV_DONE_FLAG = 8;
+    static constexpr uint16_t SYNC_AIC_ACK_FLAG = 10;
+    static constexpr uint64_t SYNC_MODE0 = 0;
     static constexpr uint64_t SYNC_MODE2 = 2;
 
     if (g_coreType == AIC) {
         CrossCoreWaitFlag(SYNC_AIV_DONE_FLAG);
+        CrossCoreSetFlag<SYNC_MODE0, PIPE_MTE3>(SYNC_AIC_ACK_FLAG);
+        CrossCoreWaitFlag(SYNC_AIC_ACK_FLAG);
         return;
     }
     if (GetBlockIdx() != 0) {
