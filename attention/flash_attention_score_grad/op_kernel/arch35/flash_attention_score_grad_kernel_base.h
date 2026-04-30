@@ -1652,7 +1652,8 @@ __aicore__ inline int64_t FlashAttentionScoreGradKernelBase<ChildClass, CubeBloc
         if (isEnd) {
             return -1;
         }
-        if (s1Idx >= s1Outer || s2Idx >= s2Outer || s1Idx - s2Idx >= preTokenBlock || s2Idx - s1Idx >= nextTokenBlock) {
+        if (s1Idx < 0 || s2Idx < 0 || s1Idx >= s1Outer || s2Idx >= s2Outer || s1Idx - s2Idx >= preTokenBlock ||
+            s2Idx - s1Idx >= nextTokenBlock) {
             continue;
         } else {
             break;
