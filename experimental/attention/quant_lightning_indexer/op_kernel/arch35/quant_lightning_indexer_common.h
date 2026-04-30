@@ -120,8 +120,8 @@ struct ConstInfo {
     LI_LAYOUT outputLayout;            // 输出的格式
     bool attenMaskFlag = false;
     uint32_t cmpRatio = 1;
-    bool batchSupperFlag = false;      // actual_seq长度是否为B+1	 
-    uint32_t keyStride0 = 0; 
+    bool batchSupperFlag = false;      // actual_seq长度是否为B+1
+    uint32_t keyStride0 = 0;
     uint32_t keyDequantScaleStride0 = 0;
 
     uint32_t actualLenQDims = 0U;  // query的actualSeqLength 的维度
