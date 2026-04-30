@@ -28,6 +28,10 @@
 #include "../../../common/op_kernel/arch35/flash_attention_score_kernel_infer_mx_fullquant.h"
 #include "../../../common/op_kernel/arch35/flash_attention_kernel_noquant_mla.h"
 #include "../../../common/op_kernel/arch35/fia_kernel_noquant_gqa.h"
+<<<<<<< HEAD
+=======
+#include "../../../common/op_kernel/arch35/fia_kernel_fullquant_mx.h"
+>>>>>>> be1e0ec2a... [FIA][FULLQUANT] MXfp8 decode
 #include "../../../common/op_kernel/arch35/fia_template_dispatcher.h"
 #else
 #include "../../common/arch35/flash_attention_score_kernel_infer.h"
@@ -36,6 +40,10 @@
 #include "../../common/arch35/flash_attention_score_kernel_infer_mx_fullquant.h"
 #include "../../common/arch35/flash_attention_kernel_noquant_mla.h"
 #include "../../common/arch35/fia_kernel_noquant_gqa.h"
+<<<<<<< HEAD
+=======
+#include "../../common/arch35/fia_kernel_fullquant_mx.h"
+>>>>>>> be1e0ec2a... [FIA][FULLQUANT] MXfp8 decode
 #endif
 
 
@@ -353,11 +361,21 @@ inline __aicore__ void prompt_flash_attention_FIAS_regbase(__gm__ uint8_t* query
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     REGISTER_TILING_DEFAULT(PFAFullQuantTilingData);
     REGISTER_TILING_FOR_TILINGKEY(
+<<<<<<< HEAD
         "((TILING_KEY_VAR >> 22) & 0x1f) != 30 && ((TILING_KEY_VAR >> 28) & 0x1) == 1 && ((TILING_KEY_VAR >> 8) & 0x12) == 9",
         FlashAttentionScoreSimplifiedTilingData);
     REGISTER_TILING_FOR_TILINGKEY(
         "((TILING_KEY_VAR >> 22) & 0x1f) != 30 && ((TILING_KEY_VAR >> 8) & 0x12) != 9",
         FusedInferAttentionScoreTilingData);
+=======
+        "(((TILING_KEY_VAR >> 22) & 0x1f) != 30 && ((TILING_KEY_VAR >> 22) & 0x1f) != 19) && ((TILING_KEY_VAR >> 28) & 0x1) == 1 && ((TILING_KEY_VAR >> 8) & 0x12) == 9",
+        FlashAttentionScoreSimplifiedTilingData);
+    REGISTER_TILING_FOR_TILINGKEY(
+        "((TILING_KEY_VAR >> 22) & 0x1f) != 30 && ((TILING_KEY_VAR >> 22) & 0x1f) != 19 && ((TILING_KEY_VAR >> 8) & 0x12) != 9",
+        FusedInferAttentionScoreTilingData);
+    REGISTER_TILING_FOR_TILINGKEY("((TILING_KEY_VAR >> 22) & 0x1f) == 19", FusedInferAttentionScoreFullQuantTilingData);
+    REGISTER_TILING_FOR_TILINGKEY("((TILING_KEY_VAR >> 22) & 0x1f) == 30", PFAFullQuantTilingData);
+>>>>>>> be1e0ec2a... [FIA][FULLQUANT] MXfp8 decode
     if constexpr (emptyTensor == true) {
         # if (ORIG_DTYPE_ATTENTION_OUT != DT_FLOAT16 && ORIG_DTYPE_ATTENTION_OUT != DT_BF16)
             INVOKE_PFA_ZERO_OP_IMPL_V2(fp8_e4m3fn_t);
@@ -436,7 +454,10 @@ inline __aicore__ void prompt_flash_attention_FIAS_regbase(__gm__ uint8_t* query
                     static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope, true, isPa, isFd, enableKVPrefix, enableS1OutSplit);
             }    
         }
+<<<<<<< HEAD
 
+=======
+>>>>>>> be1e0ec2a... [FIA][FULLQUANT] MXfp8 decode
     #endif
 
     #if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_FLOAT16 && ORIG_DTYPE_ATTENTION_OUT == DT_INT8)
@@ -586,7 +607,7 @@ inline __aicore__ void prompt_flash_attention_FIAS_regbase(__gm__ uint8_t* query
 #endif
 
     #if (ORIG_DTYPE_QUERY == DT_INT8 && ORIG_DTYPE_KEY == DT_INT8 && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16)
-        PARSE_PARAMS_FullQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType);
+        PARSE_PARAMS_FullQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType, isFd, emptyTensor, pFAMatMulType);
         constexpr PFAPse pFaPse = (pseMode == PSE_MODE_PSE_NONE_TYPE) ? PFAPse::DISABLE_PSE : PFAPse::ENABLE_PSE;
         INVOKE_PFA_INT8_OP_IMPL_V2(PromptFlashAttentionNormalBNS1Preload, PFAType<static_cast<PFALayout>(inputLayoutType), int8_t, uint8_t, half, int8_t,
                                     static_cast<PFAMask>(pFAMask), pFaPse, RunMode::HighPrecision, SplitCoreMode::SPLIT_NBS_CUBE,
@@ -594,20 +615,35 @@ inline __aicore__ void prompt_flash_attention_FIAS_regbase(__gm__ uint8_t* query
     #endif
 
     #if (ORIG_DTYPE_QUERY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_KEY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16)
-        PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix, enableS1OutSplit);
-        constexpr uint64_t vec1ResultSize = static_cast<uint64_t>(s1TemplateType) * static_cast<uint64_t>(s2TemplateType) * 2;
-        if constexpr (quantMode == FULLQUANT_MODE_MXFP8) {
-            constexpr uint64_t qkvSizeRsv2 = MAX(MAX(static_cast<uint64_t>(s1TemplateType), static_cast<uint64_t>(s2TemplateType)) * (static_cast<uint64_t>(dTemplateType) >> 1),
-                static_cast<uint64_t>(s2TemplateType) * (static_cast<uint64_t>(dTemplateType) >> 1)) * 2;
-            INVOKE_MX_FULLQUANT_GENERAL_OP_IMPL_ASCEND950_FA_BASEAPI(BaseApi::FlashAttentionScoreKernelInferMxFullquant, vec1ResultSize, qkvSizeRsv2, fp8_e4m3fn_t, float, half,
-                ImplModeEnum::AA_HIGH_PRECISION, inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-                static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope, true, isPa, isFd, enableKVPrefix);
+        if constexpr (isReconstructTemp == true) {
+            run_fia_fullquant_mx_kernel<fp8_e4m3fn_t, half, inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType,
+                                    isFd, emptyTensor, pFAMask, pFAMatMulType, enableKVPrefix, enableS1OutSplit>(
+                query, key, value, pseShift, attenMask, actualSeqLengths, actualSeqLengthsKV, blocktable, dequantScaleQuery,
+                key_antiquant_scale, value_antiquant_scale, quant_scale1, queryRope, keyRope, attentionOut, softmaxLse, user, tiling);
         } else {
+<<<<<<< HEAD
             constexpr uint64_t qkvSizeRsv2 = MAX(MAX(static_cast<uint64_t>(s1TemplateType), static_cast<uint64_t>(s2TemplateType)) * static_cast<uint64_t>(dTemplateType),
                 static_cast<uint64_t>(s2TemplateType) * static_cast<uint64_t>(dTemplateType)) * 2;
             INVOKE_GQA_FULLQUANT_GENERAL_OP_IMPL_ASCEND950_FA_BASEAPI(BaseApi::FlashAttentionScoreKernelInferGqaFullquant, vec1ResultSize, qkvSizeRsv2, fp8_e4m3fn_t, float, half,
                 ImplModeEnum::AA_HIGH_PRECISION, inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
                 static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope, true, isPa, isFd, enableKVPrefix, enableS1OutSplit);
+=======
+            PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix, enableS1OutSplit);
+            constexpr uint64_t vec1ResultSize = static_cast<uint64_t>(s1TemplateType) * static_cast<uint64_t>(s2TemplateType) * 2;
+            if constexpr (quantMode == FULLQUANT_MODE_MXFP8) {
+                constexpr uint64_t qkvSizeRsv2 = MAX(MAX(static_cast<uint64_t>(s1TemplateType), static_cast<uint64_t>(s2TemplateType)) * (static_cast<uint64_t>(dTemplateType) >> 1),
+                    static_cast<uint64_t>(s2TemplateType) * (static_cast<uint64_t>(dTemplateType) >> 1)) * 2;
+                INVOKE_MX_FULLQUANT_GENERAL_OP_IMPL_ASCEND950_FA_BASEAPI(BaseApi::FlashAttentionScoreKernelInferMxFullquant, vec1ResultSize, qkvSizeRsv2, fp8_e4m3fn_t, float, half,
+                    ImplModeEnum::AA_HIGH_PRECISION, inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+                    static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope, true, isPa, isFd, enableKVPrefix);
+            } else {
+                constexpr uint64_t qkvSizeRsv2 = MAX(MAX(static_cast<uint64_t>(s1TemplateType), static_cast<uint64_t>(s2TemplateType)) * static_cast<uint64_t>(dTemplateType),
+                    static_cast<uint64_t>(s2TemplateType) * static_cast<uint64_t>(dTemplateType)) * 2;
+                INVOKE_GQA_FULLQUANT_GENERAL_OP_IMPL_ASCEND950_FA_BASEAPI(BaseApi::FlashAttentionScoreKernelInferGqaFullquant, vec1ResultSize, qkvSizeRsv2, fp8_e4m3fn_t, float, half,
+                    ImplModeEnum::AA_HIGH_PRECISION, inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+                    static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope, true, isPa, isFd, enableKVPrefix, enableS1OutSplit);
+            }
+>>>>>>> be1e0ec2a... [FIA][FULLQUANT] MXfp8 decode
         }
     #endif
 
@@ -640,28 +676,36 @@ inline __aicore__ void prompt_flash_attention_FIAS_regbase(__gm__ uint8_t* query
     #endif
 
     #if (ORIG_DTYPE_QUERY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_KEY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_ATTENTION_OUT == DT_BF16)
-        PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
-        constexpr uint64_t vec1ResultSize = static_cast<uint64_t>(s1TemplateType) * static_cast<uint64_t>(s2TemplateType) * 2;
-        if constexpr (quantMode == FULLQUANT_MODE_PER_TOKEN_HEAD) { // mla fullquant
-            constexpr uint64_t qkvSizeRsv2 = MAX(MAX(static_cast<uint64_t>(s1TemplateType), static_cast<uint64_t>(s2TemplateType)) * (static_cast<uint64_t>(dVTemplateType) >> 1),
-                static_cast<uint64_t>(s2TemplateType) * (static_cast<uint64_t>(dVTemplateType) >> 1)) * 2;
-            INVOKE_MLA_FULLQUANT_GENERAL_OP_IMPL_ASCEND950_FA_BASEAPI(BaseApi::FlashAttentionScoreKernelInferMlaFullquant, vec1ResultSize, qkvSizeRsv2, fp8_e4m3fn_t, float, bfloat16_t,
-                ImplModeEnum::AA_HIGH_PRECISION, inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-                static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope, true, isPa, isFd, enableKVPrefix);
-        } else if constexpr (quantMode == FULLQUANT_MODE_MXFP8) {
-            constexpr uint64_t qkvSizeRsv2 = MAX(MAX(static_cast<uint64_t>(s1TemplateType), static_cast<uint64_t>(s2TemplateType)) * static_cast<uint64_t>(dTemplateType),
-                static_cast<uint64_t>(s2TemplateType) * static_cast<uint64_t>(dTemplateType)) * 2;
-            INVOKE_MX_FULLQUANT_GENERAL_OP_IMPL_ASCEND950_FA_BASEAPI(BaseApi::FlashAttentionScoreKernelInferMxFullquant, vec1ResultSize, qkvSizeRsv2, fp8_e4m3fn_t, float, bfloat16_t,
-                ImplModeEnum::AA_HIGH_PRECISION, inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-                static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope, true, isPa, isFd, enableKVPrefix);
+        if constexpr (isReconstructTemp == true) {
+            run_fia_fullquant_mx_kernel<fp8_e4m3fn_t, bfloat16_t, inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType,
+                                    isFd, emptyTensor, pFAMask, pFAMatMulType, enableKVPrefix, enableS1OutSplit>(
+                query, key, value, pseShift, attenMask, actualSeqLengths, actualSeqLengthsKV, blocktable, dequantScaleQuery,
+                key_antiquant_scale, value_antiquant_scale, quant_scale1, queryRope, keyRope, attentionOut, softmaxLse, user, tiling);
         } else {
-            constexpr uint64_t qkvSizeRsv2 = MAX(MAX(static_cast<uint64_t>(s1TemplateType), static_cast<uint64_t>(s2TemplateType)) * static_cast<uint64_t>(dTemplateType),
-                static_cast<uint64_t>(s2TemplateType) * static_cast<uint64_t>(dTemplateType)) * 2;
-            INVOKE_GQA_FULLQUANT_GENERAL_OP_IMPL_ASCEND950_FA_BASEAPI(BaseApi::FlashAttentionScoreKernelInferGqaFullquant, vec1ResultSize, qkvSizeRsv2, fp8_e4m3fn_t, float, bfloat16_t,
-                ImplModeEnum::AA_HIGH_PRECISION, inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-                static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope, true, isPa, isFd, enableKVPrefix);
+            PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
+            constexpr uint64_t vec1ResultSize = static_cast<uint64_t>(s1TemplateType) * static_cast<uint64_t>(s2TemplateType) * 2;
+            if constexpr (quantMode == FULLQUANT_MODE_PER_TOKEN_HEAD) { // mla fullquant
+                constexpr uint64_t qkvSizeRsv2 = MAX(MAX(static_cast<uint64_t>(s1TemplateType), static_cast<uint64_t>(s2TemplateType)) * (static_cast<uint64_t>(dVTemplateType) >> 1),
+                    static_cast<uint64_t>(s2TemplateType) * (static_cast<uint64_t>(dVTemplateType) >> 1)) * 2;
+                INVOKE_MLA_FULLQUANT_GENERAL_OP_IMPL_ASCEND950_FA_BASEAPI(BaseApi::FlashAttentionScoreKernelInferMlaFullquant, vec1ResultSize, qkvSizeRsv2, fp8_e4m3fn_t, float, bfloat16_t,
+                    ImplModeEnum::AA_HIGH_PRECISION, inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+                    static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope, true, isPa, isFd, enableKVPrefix);
+            } else if constexpr (quantMode == FULLQUANT_MODE_MXFP8) {
+                constexpr uint64_t qkvSizeRsv2 = MAX(MAX(static_cast<uint64_t>(s1TemplateType), static_cast<uint64_t>(s2TemplateType)) * static_cast<uint64_t>(dTemplateType),
+                    static_cast<uint64_t>(s2TemplateType) * static_cast<uint64_t>(dTemplateType)) * 2;
+                INVOKE_MX_FULLQUANT_GENERAL_OP_IMPL_ASCEND950_FA_BASEAPI(BaseApi::FlashAttentionScoreKernelInferMxFullquant, vec1ResultSize, qkvSizeRsv2, fp8_e4m3fn_t, float, bfloat16_t,
+                    ImplModeEnum::AA_HIGH_PRECISION, inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+                    static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope, true, isPa, isFd, enableKVPrefix);
+            } else {
+                constexpr uint64_t qkvSizeRsv2 = MAX(MAX(static_cast<uint64_t>(s1TemplateType), static_cast<uint64_t>(s2TemplateType)) * static_cast<uint64_t>(dTemplateType),
+                    static_cast<uint64_t>(s2TemplateType) * static_cast<uint64_t>(dTemplateType)) * 2;
+                INVOKE_GQA_FULLQUANT_GENERAL_OP_IMPL_ASCEND950_FA_BASEAPI(BaseApi::FlashAttentionScoreKernelInferGqaFullquant, vec1ResultSize, qkvSizeRsv2, fp8_e4m3fn_t, float, bfloat16_t,
+                    ImplModeEnum::AA_HIGH_PRECISION, inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+                    static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope, true, isPa, isFd, enableKVPrefix);
+            }
         }
     #endif
+
     #if (ORIG_DTYPE_QUERY == DT_INT8 && ORIG_DTYPE_KEY == DT_INT8 && ORIG_DTYPE_ATTENTION_OUT == DT_BF16)
         PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
         constexpr uint64_t vec1ResultSize = static_cast<uint64_t>(s1TemplateType) * static_cast<uint64_t>(s2TemplateType) * 2;

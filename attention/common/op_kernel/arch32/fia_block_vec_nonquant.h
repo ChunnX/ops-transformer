@@ -171,7 +171,7 @@ protected:
     static constexpr uint32_t SOFTMAX_TMP_BUFFER_SIZE = ConstInfo::BUFFER_SIZE_BYTE_2K;
     static constexpr uint32_t LSE_TMP_BUFFER_SIZE = ConstInfo::BUFFER_SIZE_BYTE_8K;
     static constexpr uint32_t DATA_BLOCK_NUM = 8;
-    static constexpr uint16_t brcbNum = (AttentionCommon::BYTE_BLOCK / sizeof(COMPUTE_T));
+    static constexpr uint16_t brcbNum = (FA_BYTE_BLOCK / sizeof(COMPUTE_T));
 
     static constexpr bool POST_QUANT = IsSameType<OUT_T, int8_t>::value;
     T scale2Value = 0;
@@ -405,7 +405,7 @@ template <typename FIAT> __aicore__ inline void FiaBlockVecNonQuant<FIAT>::Proce
     }
     uint32_t mSplitSize = BASE_BLOCK_MAX_ELEMENT_NUM / info.actualSingleProcessSInnerSizeAlign;
     if constexpr (!SOFTMAX_WITH_BRC) {
-        uint32_t alignVal = AttentionCommon::BYTE_BLOCK / sizeof(COMPUTE_T);
+        uint32_t alignVal = FA_BYTE_BLOCK / sizeof(COMPUTE_T);
         // 向下8/16对齐是因为UB操作起始地址需32B对齐
         mSplitSize = mSplitSize / alignVal * alignVal;
     }
@@ -689,7 +689,7 @@ template <typename FIAT> __aicore__ inline void FiaBlockVecNonQuant<FIAT>::Proce
         mSplitSize = fa_base_vector::MAX_REPEAT_TIMES;
     }
     if constexpr (!SOFTMAX_WITH_BRC) {
-        uint32_t alignVal = AttentionCommon::BYTE_BLOCK / sizeof(COMPUTE_T);
+        uint32_t alignVal = FA_BYTE_BLOCK / sizeof(COMPUTE_T);
         // 向下8/16对齐是因为UB操作起始地址需32B对齐
         mSplitSize = mSplitSize / alignVal * alignVal;
     }
@@ -817,7 +817,7 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::Bmm2FDDataCopyOut(const RunInf
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = dealRowCount;
     dataCopyParams.blockLen = actualColumnCount * sizeof(T);
-    dataCopyParams.srcStride = (columnCount - actualColumnCount) / (AttentionCommon::BYTE_BLOCK / sizeof(T));
+    dataCopyParams.srcStride = (columnCount - actualColumnCount) / (FA_BYTE_BLOCK / sizeof(T));
     dataCopyParams.dstStride = 0;      
     DataCopyPad(dst, tmp, dataCopyParams);
     outputQue1.FreeTensor(tmp);
@@ -835,7 +835,7 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::DealInvalidMaskRows(const RunI
     }
     uint32_t baseOffset = mSplitInfo.nBufferStartM / 2 + startRow;
     if constexpr (SOFTMAX_WITH_BRC) {
-        baseOffset = baseOffset * (AttentionCommon::BYTE_BLOCK / sizeof(T));
+        baseOffset = baseOffset * (FA_BYTE_BLOCK / sizeof(T));
     }
 
     uint32_t outIdx = info.loop % constInfo.preLoadNum;
@@ -961,8 +961,8 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::ComputeLogSumExpAndCopyToGm(co
     if (mSplitInfo.vecDealM == 0) {
         return;
     }
-    //  src-Shape  { gsizeV, S1, AttentionCommon::FP32_BLOCK_ELEMENT_NUM }
-    //  dst-Shape  { B  N2, splitKV s1, G, AttentionCommon::FP32_BLOCK_ELEMENT_NUM}
+    //  src-Shape  { gsizeV, S1, fa_base_vector::FP32_REPEAT_ELEMENT_NUM }
+    //  dst-Shape  { B  N2, splitKV s1, G, fa_base_vector::FP32_REPEAT_ELEMENT_NUM}
     uint64_t baseOffset = mSplitInfo.nBufferStartM / 2;
     size_t size = mSplitInfo.vecDealM * brcbNum;
     uint64_t offset = (info.accumTmpOutNum * constInfo.mBaseSize +              // taskoffset
@@ -1018,17 +1018,10 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::DealInvalidRows(const RunInfo 
 template <typename FIAT>
 __aicore__ inline void FiaBlockVecNonQuant<FIAT>::SinkCopyIn(const RunInfo &info, LocalTensor<COMPUTE_T> &sinkBuf)
 {
+    uint32_t copySize = constInfo.gSize + 16; //DataCopy函数搬运量要求是32字节整数倍，不对齐时，将向下取整，因此该处多搬运16*sizeof(bf16)占位
     uint64_t sinkGmOffset = info.n2Idx * constInfo.gSize;
     LocalTensor<SINK_T> sinkCopyInBuf = inputQue1.AllocTensor<SINK_T>();
-    DataCopyExtParams sinkCopyParams;
-    sinkCopyParams.blockCount = 1;
-    sinkCopyParams.blockLen = constInfo.gSize * sizeof(SINK_T);
-    sinkCopyParams.srcStride = 0;
-    sinkCopyParams.dstStride = 0;
-    DataCopyPadExtParams<SINK_T> sinkPadParams;
-    sinkPadParams.isPad = true;
-    sinkPadParams.paddingValue = static_cast<SINK_T>(0);
-    DataCopyPad(sinkCopyInBuf, sinkGm[sinkGmOffset], sinkCopyParams, sinkPadParams);
+    DataCopy(sinkCopyInBuf, sinkGm[sinkGmOffset], copySize);
     inputQue1.EnQue(sinkCopyInBuf);
     inputQue1.DeQue<SINK_T>();
 

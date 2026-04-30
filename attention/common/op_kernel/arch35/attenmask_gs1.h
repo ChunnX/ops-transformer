@@ -13,6 +13,8 @@
  * \brief
  */
 
+// TODO，与A3的合并策略待定
+
 #ifndef ATTENMASK_GS1_H
 #define ATTENMASK_GS1_H
 
@@ -226,6 +228,7 @@ __aicore__ inline void AttentionmaskDataCopy(LocalTensor<T> &attenMaskUb, Global
     DataCopyPad(attenMaskUb, srcGmAddr[maskOffset], dataCopyParams, padParams);
 }
 
+
 template <typename T>
 __aicore__ inline void AttentionmaskCopyInForGsLayout(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr,
                                                       MaskInfo &info, bool isPre = false)
@@ -235,7 +238,7 @@ __aicore__ inline void AttentionmaskCopyInForGsLayout(LocalTensor<T> &attenMaskU
     uint32_t attenMaskS2Stride = Align(info.s2dealNum, 32U) + 32 * info.attenMaskDstStride;
     if (info.gs1dealNum <= info.s1Size) {
         if (s1StartIdx + info.gs1dealNum > info.s1Size) {
-            AttentionmaskDataCopy(attenMaskUb, srcGmAddr, info, s1StartIdx, info.s1Size, isPre);
+            AttentionmaskDataCopy(attenMaskUb, srcGmAddr, info, s1StartIdx, info.s1Size, isPre);        // TODO，这里检查一下，是否有优化空间
             LocalTensor<T> attenMaskSecUb = attenMaskUb[(info.s1Size - s1StartIdx) * attenMaskS2Stride];
             AttentionmaskDataCopy(attenMaskSecUb, srcGmAddr, info, 0, s1EndIdx, isPre);
         } else {
