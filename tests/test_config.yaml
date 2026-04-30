@@ -270,7 +270,6 @@ attention:
       - attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_arch38.cpp
     test:
       examples: False
-      ut: False
     options:
       - fused_infer_attention_score
       - prompt_flash_attention
@@ -337,7 +336,7 @@ attention:
         - attention/mla_prolog_v3/op_host/fallback_mla_prolog_v3.cpp
       test:
         examples: False
-        ut: False
+        ut: True
       options:
         - mla_prolog_v2
 
@@ -370,7 +369,7 @@ attention:
         - attention/mla_prolog_v3/op_host/fallback_mla_prolog_v3.cpp
       test:
         examples: False
-        ut: False
+        ut: True
       options:
         - mla_prolog_v3
 
@@ -386,7 +385,6 @@ attention:
       - attention/lightning_indexer/tests
     test:
       examples: False
-      ut: False
     options:
       - lightning_indexer
 
@@ -402,7 +400,6 @@ attention:
       - attention/sparse_flash_attention/tests
     test:
       examples: False
-      ut: False
     options:
       - sparse_flash_attention
 
@@ -416,7 +413,6 @@ attention:
       - attention/quant_lightning_indexer/tests
     test:
       examples: False
-      ut: False
     options:
       - quant_lightning_indexer
 
@@ -430,7 +426,6 @@ attention:
       - attention/kv_quant_sparse_flash_attention/tests
     test:
       examples: False
-      ut: False
     options:
       - kv_quant_sparse_flash_attention
 
