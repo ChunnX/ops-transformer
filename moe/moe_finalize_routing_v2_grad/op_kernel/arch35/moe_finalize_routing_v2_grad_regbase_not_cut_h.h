@@ -51,18 +51,18 @@ private:
     __aicore__ inline void ComputeOneRowWithInvalidRowIdx(int64_t batchIdx, int64_t hidden);
     __aicore__ inline void CopyOutGradExpandedX(T2 rowIdx, int64_t hidden);
     // 计算过程使用的VF函数（Todo：替换为基类函数）
-    __aicore__ inline void CalcGradExpandedXVF(
+    __simd_vf__ inline void CalcGradExpandedXVF(
         __local_mem__ T1* gradExpandedXUb, __local_mem__ T1* gradYUb, T3 scale, uint32_t count);
-    __aicore__ inline void CalcGradScaleVF(
+    __simd_vf__ inline void CalcGradScaleVF(
         __local_mem__ T3* gradScaleUb, __local_mem__ T1* gradYUb, __local_mem__ T1* expandedXUb,
         __local_mem__ T1* biasUb, uint32_t count);
-    __aicore__ inline void CalcGradScaleWithoutExpandedXVF(
+    __simd_vf__ inline void CalcGradScaleWithoutExpandedXVF(
         __local_mem__ T3* gradScaleUb, __local_mem__ T1* gradYUb, __local_mem__ T1* biasUb,
         uint32_t count); // 针对expandedRowIdx无效的情况
-    __aicore__ inline void CalcGradScaleForSmallHVF(
+    __simd_vf__ inline void CalcGradScaleForSmallHVF(
         __local_mem__ T3* gradScaleUb, __local_mem__ T1* gradYUb, __local_mem__ T1* expandedXUb,
         __local_mem__ T1* biasUb, uint32_t count);
-    __aicore__ inline void CalcGradScaleForSmallHWithoutExpandedXVF(
+    __simd_vf__ inline void CalcGradScaleForSmallHWithoutExpandedXVF(
         __local_mem__ T3* gradScaleUb, __local_mem__ T1* gradYUb, __local_mem__ T1* biasUb,
         uint32_t count); // 针对expandedRowIdx无效的情况
     __aicore__ inline void BinaryAddVF(
@@ -303,32 +303,30 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBias
 }
 
 template <typename T1, typename T2, typename T3, bool IsBiasExist>
-__aicore__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBiasExist>::CalcGradExpandedXVF(
+__simd_vf__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBiasExist>::CalcGradExpandedXVF(
     __local_mem__ T1* gradExpandedXUb, __local_mem__ T1* gradYUb, T3 scale, uint32_t count)
 {
     uint16_t loopCount = (count + VL_FLOAT32_SIZE - 1) / VL_FLOAT32_SIZE;
-    __VEC_SCOPE__
-    {
-        RegTensor<float> gradYReg;
-        MaskReg pregLoop;
-        for (uint16_t i = 0; i < loopCount; i++) {
-            pregLoop = UpdateMask<float>(count);
-            // 拷贝到RegBase内
-            ops::LoadOneTensorForDtypeT<T1>(gradYUb, gradYReg, pregLoop, i * VL_FLOAT32_SIZE);
-            // 计算
-            if constexpr (IsSameType<T3, bfloat16_t>::value) {
-                Muls(gradYReg, gradYReg, ToFloat(scale), pregLoop);
-            } else {
-                Muls(gradYReg, gradYReg, (float)scale, pregLoop);
-            }
-            // 拷贝回UB
-            ops::StoreOneTensorForDtypeT<T1>(gradExpandedXUb, gradYReg, pregLoop, i * VL_FLOAT32_SIZE);
+
+    RegTensor<float> gradYReg;
+    MaskReg pregLoop;
+    for (uint16_t i = 0; i < loopCount; i++) {
+        pregLoop = UpdateMask<float>(count);
+        // 拷贝到RegBase内
+        ops::LoadOneTensorForDtypeT<T1>(gradYUb, gradYReg, pregLoop, i * VL_FLOAT32_SIZE);
+        // 计算
+        if constexpr (IsSameType<T3, bfloat16_t>::value) {
+            Muls(gradYReg, gradYReg, ToFloat(scale), pregLoop);
+        } else {
+            Muls(gradYReg, gradYReg, (float)scale, pregLoop);
         }
+        // 拷贝回UB
+        ops::StoreOneTensorForDtypeT<T1>(gradExpandedXUb, gradYReg, pregLoop, i * VL_FLOAT32_SIZE);
     }
 }
 
 template <typename T1, typename T2, typename T3, bool IsBiasExist>
-__aicore__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBiasExist>::CalcGradScaleVF(
+__simd_vf__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBiasExist>::CalcGradScaleVF(
     __local_mem__ T3* gradScaleUb, __local_mem__ T1* gradYUb, __local_mem__ T1* expandedXUb, __local_mem__ T1* biasUb,
     uint32_t count)
 {
@@ -338,77 +336,76 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBias
         return;
     }
     __local_mem__ float* binaryAddUb = (__local_mem__ float*)this->binaryAddSumBuf_.template Get<float>().GetPhyAddr();
-    __VEC_SCOPE__
-    {
-        RegTensor<float> gradYReg;
-        RegTensor<float> expandedXReg;
-        RegTensor<float> biasReg;
-        RegTensor<float> gradYTailReg;
-        RegTensor<float> expandedXTailReg;
-        RegTensor<float> biasTailReg;
-        RegTensor<float> sumReg;
 
-        MaskReg pregOne = CreateMask<float, MaskPattern::VL1>();
-        MaskReg pregAll = CreateMask<float, MaskPattern::ALL>();
+    RegTensor<float> gradYReg;
+    RegTensor<float> expandedXReg;
+    RegTensor<float> biasReg;
+    RegTensor<float> gradYTailReg;
+    RegTensor<float> expandedXTailReg;
+    RegTensor<float> biasTailReg;
+    RegTensor<float> sumReg;
 
-        uint32_t mainCount = (uint32_t)binAddParams_->binaryAddQuotient;
-        uint32_t tailCount = count - mainCount;
-        MaskReg pregLoop;
-        MaskReg pregLoopTail;
+    MaskReg pregOne = CreateMask<float, MaskPattern::VL1>();
+    MaskReg pregAll = CreateMask<float, MaskPattern::ALL>();
 
-        uint16_t tailLoopNum = loopCount - binaryAddBufSize_;
-        // 前tailLoopNum次循环，同时处理当前块和对应尾块，然后累加再拷出
-        for (uint16_t i = 0; i < tailLoopNum; i++) {
-            pregLoop = UpdateMask<float>(mainCount);
-            pregLoopTail = UpdateMask<float>(tailCount);
-            // 拷贝输入到RegBase内
-            ops::LoadOneTensorForDtypeT<T1>(gradYUb, gradYReg, pregLoop, i * VL_FLOAT32_SIZE);
-            ops::LoadOneTensorForDtypeT<T1>(expandedXUb, expandedXReg, pregLoop, i * VL_FLOAT32_SIZE);
+    uint32_t mainCount = (uint32_t)binAddParams_->binaryAddQuotient;
+    uint32_t tailCount = count - mainCount;
+    MaskReg pregLoop;
+    MaskReg pregLoopTail;
+
+    uint16_t tailLoopNum = loopCount - binaryAddBufSize_;
+    // 前tailLoopNum次循环，同时处理当前块和对应尾块，然后累加再拷出
+    for (uint16_t i = 0; i < tailLoopNum; i++) {
+        pregLoop = UpdateMask<float>(mainCount);
+        pregLoopTail = UpdateMask<float>(tailCount);
+        // 拷贝输入到RegBase内
+        ops::LoadOneTensorForDtypeT<T1>(gradYUb, gradYReg, pregLoop, i * VL_FLOAT32_SIZE);
+        ops::LoadOneTensorForDtypeT<T1>(expandedXUb, expandedXReg, pregLoop, i * VL_FLOAT32_SIZE);
+        ops::LoadOneTensorForDtypeT<T1>(
+            gradYUb, gradYTailReg, pregLoopTail, (i + binaryAddBufSize_) * VL_FLOAT32_SIZE);
+        ops::LoadOneTensorForDtypeT<T1>(
+            expandedXUb, expandedXTailReg, pregLoopTail, (i + binaryAddBufSize_) * VL_FLOAT32_SIZE);
+        if constexpr (IsBiasExist) {
+            ops::LoadOneTensorForDtypeT<T1>(biasUb, biasReg, pregLoop, i * VL_FLOAT32_SIZE);
+            Add(expandedXReg, biasReg, expandedXReg, pregLoop);
             ops::LoadOneTensorForDtypeT<T1>(
-                gradYUb, gradYTailReg, pregLoopTail, (i + binaryAddBufSize_) * VL_FLOAT32_SIZE);
-            ops::LoadOneTensorForDtypeT<T1>(
-                expandedXUb, expandedXTailReg, pregLoopTail, (i + binaryAddBufSize_) * VL_FLOAT32_SIZE);
-            if constexpr (IsBiasExist) {
-                ops::LoadOneTensorForDtypeT<T1>(biasUb, biasReg, pregLoop, i * VL_FLOAT32_SIZE);
-                Add(expandedXReg, biasReg, expandedXReg, pregLoop);
-                ops::LoadOneTensorForDtypeT<T1>(
-                    biasUb, biasTailReg, pregLoopTail, (i + binaryAddBufSize_) * VL_FLOAT32_SIZE);
-                Add(expandedXTailReg, biasTailReg, expandedXTailReg, pregLoopTail);
-            }
-            // 计算
-            Mul(gradYReg, expandedXReg, gradYReg, pregLoop);
-            Mul(gradYTailReg, expandedXTailReg, gradYTailReg, pregLoopTail);
-            Add(gradYReg, gradYReg, gradYTailReg, pregAll);
-            ReduceSum(sumReg, gradYReg, pregAll);
-            DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(binaryAddUb + i, sumReg, pregOne);
+                biasUb, biasTailReg, pregLoopTail, (i + binaryAddBufSize_) * VL_FLOAT32_SIZE);
+            Add(expandedXTailReg, biasTailReg, expandedXTailReg, pregLoopTail);
         }
-        // 处理剩余循环
-        for (uint16_t i = tailLoopNum; i < loopCount; i++) {
-            pregLoop = UpdateMask<float>(mainCount);
-            // 拷贝输入到RegBase内
-            ops::LoadOneTensorForDtypeT<T1>(gradYUb, gradYReg, pregLoop, i * VL_FLOAT32_SIZE);
-            ops::LoadOneTensorForDtypeT<T1>(expandedXUb, expandedXReg, pregLoop, i * VL_FLOAT32_SIZE);
-            if constexpr (IsBiasExist) {
-                ops::LoadOneTensorForDtypeT<T1>(biasUb, biasReg, pregLoop, i * VL_FLOAT32_SIZE);
-                Add(expandedXReg, biasReg, expandedXReg, pregLoop);
-            }
-            // 计算
-            Mul(gradYReg, expandedXReg, gradYReg, pregLoop);
-            ReduceSum(sumReg, gradYReg, pregLoop);
-            DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(binaryAddUb + i, sumReg, pregOne);
-        }
-        LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
-        // 计算最终结果并拷贝
-        count = (uint32_t)binAddParams_->binaryAddLastNum;
-        pregLoop = UpdateMask<float>(count);
-        BinaryAddVF(
-            gradScaleUb, binaryAddUb, sumReg, gradYReg, binAddParams_->binaryAddk, binaryAddBufSize_ / VL_FLOAT32_SIZE,
-            pregAll, pregLoop, pregOne);
+        // 计算
+        Mul(gradYReg, expandedXReg, gradYReg, pregLoop);
+        Mul(gradYTailReg, expandedXTailReg, gradYTailReg, pregLoopTail);
+        Add(gradYReg, gradYReg, gradYTailReg, pregAll);
+        ReduceSum(sumReg, gradYReg, pregAll);
+        DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(binaryAddUb + i, sumReg, pregOne);
     }
+    // 处理剩余循环
+    for (uint16_t i = tailLoopNum; i < loopCount; i++) {
+        pregLoop = UpdateMask<float>(mainCount);
+        // 拷贝输入到RegBase内
+        ops::LoadOneTensorForDtypeT<T1>(gradYUb, gradYReg, pregLoop, i * VL_FLOAT32_SIZE);
+        ops::LoadOneTensorForDtypeT<T1>(expandedXUb, expandedXReg, pregLoop, i * VL_FLOAT32_SIZE);
+        if constexpr (IsBiasExist) {
+            ops::LoadOneTensorForDtypeT<T1>(biasUb, biasReg, pregLoop, i * VL_FLOAT32_SIZE);
+            Add(expandedXReg, biasReg, expandedXReg, pregLoop);
+        }
+        // 计算
+        Mul(gradYReg, expandedXReg, gradYReg, pregLoop);
+        ReduceSum(sumReg, gradYReg, pregLoop);
+        DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(binaryAddUb + i, sumReg, pregOne);
+    }
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+    // 计算最终结果并拷贝
+    count = (uint32_t)binAddParams_->binaryAddLastNum;
+    pregLoop = UpdateMask<float>(count);
+    BinaryAddVF(
+        gradScaleUb, binaryAddUb, sumReg, gradYReg, binAddParams_->binaryAddk, binaryAddBufSize_ / VL_FLOAT32_SIZE,
+        pregAll, pregLoop, pregOne);
 }
 
 template <typename T1, typename T2, typename T3, bool IsBiasExist>
-__aicore__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBiasExist>::CalcGradScaleWithoutExpandedXVF(
+__simd_vf__ inline void
+MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBiasExist>::CalcGradScaleWithoutExpandedXVF(
     __local_mem__ T3* gradScaleUb, __local_mem__ T1* gradYUb, __local_mem__ T1* biasUb, uint32_t count)
 {
     uint16_t loopCount = (count + VL_FLOAT32_SIZE - 1) / VL_FLOAT32_SIZE;
@@ -417,115 +414,107 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBias
         return;
     }
     __local_mem__ float* binaryAddUb = (__local_mem__ float*)this->binaryAddSumBuf_.template Get<float>().GetPhyAddr();
-    __VEC_SCOPE__
-    {
-        RegTensor<float> gradYReg;
-        RegTensor<float> biasReg;
-        RegTensor<float> gradYTailReg;
-        RegTensor<float> biasTailReg;
-        RegTensor<float> sumReg;
 
-        MaskReg pregOne = CreateMask<float, MaskPattern::VL1>();
-        MaskReg pregAll = CreateMask<float, MaskPattern::ALL>();
+    RegTensor<float> gradYReg;
+    RegTensor<float> biasReg;
+    RegTensor<float> gradYTailReg;
+    RegTensor<float> biasTailReg;
+    RegTensor<float> sumReg;
 
-        uint32_t mainCount = (uint32_t)binAddParams_->binaryAddQuotient;
-        uint32_t tailCount = count - mainCount;
-        MaskReg pregLoop;
-        MaskReg pregLoopTail;
+    MaskReg pregOne = CreateMask<float, MaskPattern::VL1>();
+    MaskReg pregAll = CreateMask<float, MaskPattern::ALL>();
 
-        uint16_t tailLoopNum = loopCount - binaryAddBufSize_;
-        // 前tailLoopNum次循环，同时处理当前块和对应尾块，然后累加再拷出
-        for (uint16_t i = 0; i < tailLoopNum; i++) {
-            pregLoop = UpdateMask<float>(mainCount);
-            pregLoopTail = UpdateMask<float>(tailCount);
-            // 拷贝输入到RegBase内
-            ops::LoadOneTensorForDtypeT<T1>(gradYUb, gradYReg, pregLoop, i * VL_FLOAT32_SIZE);
-            ops::LoadOneTensorForDtypeT<T1>(
-                gradYUb, gradYTailReg, pregLoopTail, (i + binaryAddBufSize_) * VL_FLOAT32_SIZE);
-            ops::LoadOneTensorForDtypeT<T1>(biasUb, biasReg, pregLoop, i * VL_FLOAT32_SIZE);
-            ops::LoadOneTensorForDtypeT<T1>(
-                biasUb, biasTailReg, pregLoopTail, (i + binaryAddBufSize_) * VL_FLOAT32_SIZE);
-            // 计算
-            Mul(gradYReg, biasReg, gradYReg, pregLoop);
-            Mul(gradYTailReg, biasTailReg, gradYTailReg, pregLoopTail);
-            Add(gradYReg, gradYReg, gradYTailReg, pregAll);
-            ReduceSum(sumReg, gradYReg, pregAll);
-            DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(binaryAddUb + i, sumReg, pregOne);
-        }
-        // 处理剩余循环
-        for (uint16_t i = tailLoopNum; i < loopCount; i++) {
-            pregLoop = UpdateMask<float>(mainCount);
-            // 拷贝输入到RegBase内
-            ops::LoadOneTensorForDtypeT<T1>(gradYUb, gradYReg, pregLoop, i * VL_FLOAT32_SIZE);
-            ops::LoadOneTensorForDtypeT<T1>(biasUb, biasReg, pregLoop, i * VL_FLOAT32_SIZE);
-            // 计算
-            Mul(gradYReg, biasReg, gradYReg, pregLoop);
-            ReduceSum(sumReg, gradYReg, pregLoop);
-            DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(binaryAddUb + i, sumReg, pregOne);
-        }
-        LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
-        // 计算最终结果并拷贝
-        count = (uint32_t)binAddParams_->binaryAddLastNum;
-        pregLoop = UpdateMask<float>(count);
-        BinaryAddVF(
-            gradScaleUb, binaryAddUb, sumReg, gradYReg, binAddParams_->binaryAddk, binaryAddBufSize_ / VL_FLOAT32_SIZE,
-            pregAll, pregLoop, pregOne);
+    uint32_t mainCount = (uint32_t)binAddParams_->binaryAddQuotient;
+    uint32_t tailCount = count - mainCount;
+    MaskReg pregLoop;
+    MaskReg pregLoopTail;
+
+    uint16_t tailLoopNum = loopCount - binaryAddBufSize_;
+    // 前tailLoopNum次循环，同时处理当前块和对应尾块，然后累加再拷出
+    for (uint16_t i = 0; i < tailLoopNum; i++) {
+        pregLoop = UpdateMask<float>(mainCount);
+        pregLoopTail = UpdateMask<float>(tailCount);
+        // 拷贝输入到RegBase内
+        ops::LoadOneTensorForDtypeT<T1>(gradYUb, gradYReg, pregLoop, i * VL_FLOAT32_SIZE);
+        ops::LoadOneTensorForDtypeT<T1>(
+            gradYUb, gradYTailReg, pregLoopTail, (i + binaryAddBufSize_) * VL_FLOAT32_SIZE);
+        ops::LoadOneTensorForDtypeT<T1>(biasUb, biasReg, pregLoop, i * VL_FLOAT32_SIZE);
+        ops::LoadOneTensorForDtypeT<T1>(
+            biasUb, biasTailReg, pregLoopTail, (i + binaryAddBufSize_) * VL_FLOAT32_SIZE);
+        // 计算
+        Mul(gradYReg, biasReg, gradYReg, pregLoop);
+        Mul(gradYTailReg, biasTailReg, gradYTailReg, pregLoopTail);
+        Add(gradYReg, gradYReg, gradYTailReg, pregAll);
+        ReduceSum(sumReg, gradYReg, pregAll);
+        DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(binaryAddUb + i, sumReg, pregOne);
     }
-}
-
-template <typename T1, typename T2, typename T3, bool IsBiasExist>
-__aicore__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBiasExist>::CalcGradScaleForSmallHVF(
-    __local_mem__ T3* gradScaleUb, __local_mem__ T1* gradYUb, __local_mem__ T1* expandedXUb, __local_mem__ T1* biasUb,
-    uint32_t count)
-{
-    __VEC_SCOPE__
-    {
-        RegTensor<float> gradYReg;
-        RegTensor<float> expandedXReg;
-        RegTensor<float> biasReg;
-        RegTensor<float> sumReg;
-        MaskReg pregLoop;
-        MaskReg pregOne = CreateMask<float, MaskPattern::VL1>();
-        {
-            pregLoop = UpdateMask<float>(count);
-            // 拷贝到RegBase内
-            ops::LoadOneTensorForDtypeT<T1>(gradYUb, gradYReg, pregLoop, 0);
-            ops::LoadOneTensorForDtypeT<T1>(expandedXUb, expandedXReg, pregLoop, 0);
-            if constexpr (IsBiasExist) {
-                ops::LoadOneTensorForDtypeT<T1>(biasUb, biasReg, pregLoop, 0);
-                Add(expandedXReg, biasReg, expandedXReg, pregLoop);
-            }
-            // 计算
-            Mul(gradYReg, expandedXReg, gradYReg, pregLoop);
-            ReduceSum(sumReg, gradYReg, pregLoop);
-            ops::StoreOneTensorForDtypeT<T3>(gradScaleUb, sumReg, pregOne, 0);
-        }
-    }
-}
-
-template <typename T1, typename T2, typename T3, bool IsBiasExist>
-__aicore__ inline void
-MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBiasExist>::CalcGradScaleForSmallHWithoutExpandedXVF(
-    __local_mem__ T3* gradScaleUb, __local_mem__ T1* gradYUb, __local_mem__ T1* biasUb, uint32_t count)
-{
-    __VEC_SCOPE__
-    {
-        RegTensor<float> gradYReg;
-        RegTensor<float> biasReg;
-        RegTensor<float> sumReg;
-        MaskReg pregLoop;
-        MaskReg pregAll = CreateMask<float, MaskPattern::ALL>();
-        MaskReg pregOne = CreateMask<float, MaskPattern::VL1>();
-        pregLoop = UpdateMask<float>(count);
-        // 拷贝到RegBase内
-        ops::LoadOneTensorForDtypeT<T1>(gradYUb, gradYReg, pregLoop, 0);
-        ops::LoadOneTensorForDtypeT<T1>(biasUb, biasReg, pregLoop, 0);
+    // 处理剩余循环
+    for (uint16_t i = tailLoopNum; i < loopCount; i++) {
+        pregLoop = UpdateMask<float>(mainCount);
+        // 拷贝输入到RegBase内
+        ops::LoadOneTensorForDtypeT<T1>(gradYUb, gradYReg, pregLoop, i * VL_FLOAT32_SIZE);
+        ops::LoadOneTensorForDtypeT<T1>(biasUb, biasReg, pregLoop, i * VL_FLOAT32_SIZE);
         // 计算
         Mul(gradYReg, biasReg, gradYReg, pregLoop);
         ReduceSum(sumReg, gradYReg, pregLoop);
-        // 拷贝出结果
+        DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(binaryAddUb + i, sumReg, pregOne);
+    }
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
+    // 计算最终结果并拷贝
+    count = (uint32_t)binAddParams_->binaryAddLastNum;
+    pregLoop = UpdateMask<float>(count);
+    BinaryAddVF(
+        gradScaleUb, binaryAddUb, sumReg, gradYReg, binAddParams_->binaryAddk, binaryAddBufSize_ / VL_FLOAT32_SIZE,
+        pregAll, pregLoop, pregOne);
+}
+
+template <typename T1, typename T2, typename T3, bool IsBiasExist>
+__simd_vf__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBiasExist>::CalcGradScaleForSmallHVF(
+    __local_mem__ T3* gradScaleUb, __local_mem__ T1* gradYUb, __local_mem__ T1* expandedXUb, __local_mem__ T1* biasUb,
+    uint32_t count)
+{
+    RegTensor<float> gradYReg;
+    RegTensor<float> expandedXReg;
+    RegTensor<float> biasReg;
+    RegTensor<float> sumReg;
+    MaskReg pregLoop;
+    MaskReg pregOne = CreateMask<float, MaskPattern::VL1>();
+    {
+        pregLoop = UpdateMask<float>(count);
+        // 拷贝到RegBase内
+        ops::LoadOneTensorForDtypeT<T1>(gradYUb, gradYReg, pregLoop, 0);
+        ops::LoadOneTensorForDtypeT<T1>(expandedXUb, expandedXReg, pregLoop, 0);
+        if constexpr (IsBiasExist) {
+            ops::LoadOneTensorForDtypeT<T1>(biasUb, biasReg, pregLoop, 0);
+            Add(expandedXReg, biasReg, expandedXReg, pregLoop);
+        }
+        // 计算
+        Mul(gradYReg, expandedXReg, gradYReg, pregLoop);
+        ReduceSum(sumReg, gradYReg, pregLoop);
         ops::StoreOneTensorForDtypeT<T3>(gradScaleUb, sumReg, pregOne, 0);
     }
+}
+
+template <typename T1, typename T2, typename T3, bool IsBiasExist>
+__simd_vf__ inline void
+MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBiasExist>::CalcGradScaleForSmallHWithoutExpandedXVF(
+    __local_mem__ T3* gradScaleUb, __local_mem__ T1* gradYUb, __local_mem__ T1* biasUb, uint32_t count)
+{
+    RegTensor<float> gradYReg;
+    RegTensor<float> biasReg;
+    RegTensor<float> sumReg;
+    MaskReg pregLoop;
+    MaskReg pregAll = CreateMask<float, MaskPattern::ALL>();
+    MaskReg pregOne = CreateMask<float, MaskPattern::VL1>();
+    pregLoop = UpdateMask<float>(count);
+    // 拷贝到RegBase内
+    ops::LoadOneTensorForDtypeT<T1>(gradYUb, gradYReg, pregLoop, 0);
+    ops::LoadOneTensorForDtypeT<T1>(biasUb, biasReg, pregLoop, 0);
+    // 计算
+    Mul(gradYReg, biasReg, gradYReg, pregLoop);
+    ReduceSum(sumReg, gradYReg, pregLoop);
+    // 拷贝出结果
+    ops::StoreOneTensorForDtypeT<T3>(gradScaleUb, sumReg, pregOne, 0);
 }
 
 template <typename T1, typename T2, typename T3, bool IsBiasExist>

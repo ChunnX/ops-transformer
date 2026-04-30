@@ -79,10 +79,16 @@ public:
 protected:
     __aicore__ inline void InitCommon(TPipe* pipe);
     __aicore__ inline void CopyOutGradScales(int64_t batchIdx);
-    __aicore__ inline void VfCalGradScale(
+    __aicore__ inline void CalGradScale(
         const LocalTensor<T1>& biasUb, const LocalTensor<T1>& gradYUb, const BinAddParams& binAddParams,
         const int64_t reduceNum, const LocalTensor<float>& binaryAddCache, const int64_t pos);
 
+    __simd_vf__ inline void CalGradScaleVF(__local_mem__ T1* ubBias, __local_mem__ T1* ubGradY,
+                                            __local_mem__ float* ubbinaryAddCache, __local_mem__ float* ubAddSum,
+                                            int64_t binaryAddQuotient, int64_t binaryAddKLoop, int64_t binaryAddLastNum,
+                                            uint32_t binaryAddRemainder, uint16_t remainderLoop,
+                                            uint16_t remainderGeneral, uint16_t quotientLoop, uint16_t binaryAddLoop,
+                                            const int64_t pos);
 protected:
     GlobalTensor<T1> gradYGm_;
     GlobalTensor<T2> expandedRowIdxGm_;
@@ -128,7 +134,71 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegbase<T1, T2, T3, IsBiasExist>:
 }
 
 template <typename T1, typename T2, typename T3, bool IsBiasExist>
-__aicore__ inline void MoeFinalizeRoutingV2GradRegbase<T1, T2, T3, IsBiasExist>::VfCalGradScale(
+__simd_vf__ inline void MoeFinalizeRoutingV2GradRegbase<T1, T2, T3, IsBiasExist>::CalGradScaleVF(
+    __local_mem__ T1* ubBias, __local_mem__ T1* ubGradY, __local_mem__ float* ubbinaryAddCache,
+     __local_mem__ float* ubAddSum, int64_t binaryAddQuotient, int64_t binaryAddKLoop, int64_t binaryAddLastNum,
+     uint32_t binaryAddRemainder, uint16_t remainderLoop, uint16_t remainderGeneral, uint16_t quotientLoop,
+     uint16_t binaryAddLoop, const int64_t pos)
+{
+    MicroAPI::RegTensor<float> vregBias;
+    MicroAPI::RegTensor<float> tempBias;
+    MicroAPI::RegTensor<float> vregBiasQ;
+    MicroAPI::RegTensor<float> vregBiasR;
+    MicroAPI::RegTensor<float> vregGradY;
+    MicroAPI::RegTensor<float> vregGradYQ;
+    MicroAPI::RegTensor<float> vregGradYR;
+    MicroAPI::RegTensor<float> vregSumBias;
+    MicroAPI::MaskReg pregMain = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
+    MicroAPI::MaskReg pregMerge = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::VL1>();
+    MicroAPI::MaskReg pregLoop;
+    uint32_t sreg0 = binaryAddRemainder;
+    // step1: the first helf reduce to 64, this part always 64 align
+    for (uint16_t i = 0; i < remainderGeneral; i++) {
+        pregLoop = MicroAPI::UpdateMask<float>(sreg0);
+        ops::LoadTwoTensorForDtypeT<T1>(
+            ubBias, ubBias, vregBiasQ, vregBiasR, pregMain, pregLoop, i * VL_FLOAT32_SIZE,
+            i * VL_FLOAT32_SIZE + binaryAddQuotient);
+        ops::LoadTwoTensorForDtypeT<T1>(
+            ubGradY, ubGradY, vregGradYQ, vregGradYR, pregMain, pregLoop, i * VL_FLOAT32_SIZE,
+            i * VL_FLOAT32_SIZE + binaryAddQuotient);
+        Mul(vregBiasQ, vregBiasQ, vregGradYQ, pregMain);
+        Mul(vregBiasR, vregBiasR, vregGradYR, pregLoop);
+        Add(vregBiasQ, vregBiasQ, vregBiasR, pregLoop);
+        ReduceSum(vregSumBias, vregBiasQ, pregLoop);
+        DataCopy<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(ubAddSum + i, vregSumBias, pregMerge);
+    }
+    // step2: the tail (last 64 or less than 64) blocks reduce to 1.
+    {
+        pregLoop = MicroAPI::UpdateMask<float>(sreg0);
+        ops::LoadTwoTensorForDtypeT<T1>(
+            ubBias, ubBias, vregBiasQ, vregBiasR, pregMain, pregLoop, remainderGeneral * VL_FLOAT32_SIZE,
+            remainderGeneral * VL_FLOAT32_SIZE + binaryAddQuotient);
+        ops::LoadTwoTensorForDtypeT<T1>(
+            ubGradY, ubGradY, vregGradYQ, vregGradYR, pregMain, pregLoop, remainderGeneral * VL_FLOAT32_SIZE,
+            remainderGeneral * VL_FLOAT32_SIZE + binaryAddQuotient);
+        Mul(vregBiasQ, vregBiasQ, vregGradYQ, pregMain);
+        Mul(vregBiasR, vregBiasR, vregGradYR, pregLoop);
+        Add(tempBias, vregBiasQ, vregBiasR, pregLoop);
+        Copy<float, MicroAPI::MaskMergeMode::MERGING>(vregBiasQ, tempBias, pregLoop);
+        ReduceSum(vregSumBias, vregBiasQ, pregMain);
+        DataCopy<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(
+            ubAddSum + remainderGeneral, vregSumBias, pregMerge);
+    }
+    // step3: non-overlapping portions of the first half reduce by 64, this part always 64 align
+    for (uint16_t i = 0; i < static_cast<uint16_t>(quotientLoop - remainderLoop); i++) {
+        ops::LoadOneTensorForDtypeT<T1>(ubBias, vregBias, pregMain, (i + remainderLoop) * VL_FLOAT32_SIZE);
+        ops::LoadOneTensorForDtypeT<T1>(ubGradY, vregGradY, pregMain, (i + remainderLoop) * VL_FLOAT32_SIZE);
+        Mul(vregBias, vregBias, vregGradY, pregMain);
+        ReduceSum(vregSumBias, vregBias, pregMain);
+        DataCopy<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(
+            ubAddSum + remainderLoop + i, vregSumBias, pregMerge);
+    }
+    MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
+    BinaryAddVF(ubbinaryAddCache, ubAddSum, binaryAddKLoop, binaryAddLoop, binaryAddLastNum, pos);
+}
+
+template <typename T1, typename T2, typename T3, bool IsBiasExist>
+__aicore__ inline void MoeFinalizeRoutingV2GradRegbase<T1, T2, T3, IsBiasExist>::CalGradScale(
     const LocalTensor<T1>& biasUb, const LocalTensor<T1>& gradYUb, const BinAddParams& binAddParams,
     const int64_t reduceNum, const LocalTensor<float>& binaryAddCache, const int64_t pos)
 {
@@ -147,64 +217,9 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegbase<T1, T2, T3, IsBiasExist>:
     uint16_t quotientLoop = Ops::Base::CeilDiv(binaryAddQuotient, static_cast<int64_t>(VL_FLOAT32_SIZE));
     uint16_t binaryAddLoop = ((binaryAddQuotient / VL_FLOAT32_SIZE) / VL_FLOAT32_SIZE);
 
-    __VEC_SCOPE__
-    {
-        MicroAPI::RegTensor<float> vregBias;
-        MicroAPI::RegTensor<float> tempBias;
-        MicroAPI::RegTensor<float> vregBiasQ;
-        MicroAPI::RegTensor<float> vregBiasR;
-        MicroAPI::RegTensor<float> vregGradY;
-        MicroAPI::RegTensor<float> vregGradYQ;
-        MicroAPI::RegTensor<float> vregGradYR;
-        MicroAPI::RegTensor<float> vregSumBias;
-        MicroAPI::MaskReg pregMain = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
-        MicroAPI::MaskReg pregMerge = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::VL1>();
-        MicroAPI::MaskReg pregLoop;
-        uint32_t sreg0 = binaryAddRemainder;
-        // step1: the first helf reduce to 64, this part always 64 align
-        for (uint16_t i = 0; i < remainderGeneral; i++) {
-            pregLoop = MicroAPI::UpdateMask<float>(sreg0);
-            ops::LoadTwoTensorForDtypeT<T1>(
-                ubBias, ubBias, vregBiasQ, vregBiasR, pregMain, pregLoop, i * VL_FLOAT32_SIZE,
-                i * VL_FLOAT32_SIZE + binaryAddQuotient);
-            ops::LoadTwoTensorForDtypeT<T1>(
-                ubGradY, ubGradY, vregGradYQ, vregGradYR, pregMain, pregLoop, i * VL_FLOAT32_SIZE,
-                i * VL_FLOAT32_SIZE + binaryAddQuotient);
-            Mul(vregBiasQ, vregBiasQ, vregGradYQ, pregMain);
-            Mul(vregBiasR, vregBiasR, vregGradYR, pregLoop);
-            Add(vregBiasQ, vregBiasQ, vregBiasR, pregLoop);
-            ReduceSum(vregSumBias, vregBiasQ, pregLoop);
-            DataCopy<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(ubAddSum + i, vregSumBias, pregMerge);
-        }
-        // step2: the tail (last 64 or less than 64) blocks reduce to 1.
-        {
-            pregLoop = MicroAPI::UpdateMask<float>(sreg0);
-            ops::LoadTwoTensorForDtypeT<T1>(
-                ubBias, ubBias, vregBiasQ, vregBiasR, pregMain, pregLoop, remainderGeneral * VL_FLOAT32_SIZE,
-                remainderGeneral * VL_FLOAT32_SIZE + binaryAddQuotient);
-            ops::LoadTwoTensorForDtypeT<T1>(
-                ubGradY, ubGradY, vregGradYQ, vregGradYR, pregMain, pregLoop, remainderGeneral * VL_FLOAT32_SIZE,
-                remainderGeneral * VL_FLOAT32_SIZE + binaryAddQuotient);
-            Mul(vregBiasQ, vregBiasQ, vregGradYQ, pregMain);
-            Mul(vregBiasR, vregBiasR, vregGradYR, pregLoop);
-            Add(tempBias, vregBiasQ, vregBiasR, pregLoop);
-            Copy<float, MicroAPI::MaskMergeMode::MERGING>(vregBiasQ, tempBias, pregLoop);
-            ReduceSum(vregSumBias, vregBiasQ, pregMain);
-            DataCopy<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(
-                ubAddSum + remainderGeneral, vregSumBias, pregMerge);
-        }
-        // step3: non-overlapping portions of the first half reduce by 64, this part always 64 align
-        for (uint16_t i = 0; i < static_cast<uint16_t>(quotientLoop - remainderLoop); i++) {
-            ops::LoadOneTensorForDtypeT<T1>(ubBias, vregBias, pregMain, (i + remainderLoop) * VL_FLOAT32_SIZE);
-            ops::LoadOneTensorForDtypeT<T1>(ubGradY, vregGradY, pregMain, (i + remainderLoop) * VL_FLOAT32_SIZE);
-            Mul(vregBias, vregBias, vregGradY, pregMain);
-            ReduceSum(vregSumBias, vregBias, pregMain);
-            DataCopy<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(
-                ubAddSum + remainderLoop + i, vregSumBias, pregMerge);
-        }
-        MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_LOAD>();
-        BinaryAddVF(ubbinaryAddCache, ubAddSum, binaryAddKLoop, binaryAddLoop, binaryAddLastNum, pos);
-    } // end VF
+    CalGradScaleVF(ubBias, ubGradY, ubbinaryAddCache, ubAddSum, binaryAddQuotient,
+                                                    binaryAddKLoop, binaryAddLastNum, binaryAddRemainder, remainderLoop,
+                                                    remainderGeneral, quotientLoop, binaryAddLoop, pos);
 }
 
 } // namespace MoeFinalizeRoutingV2Grad

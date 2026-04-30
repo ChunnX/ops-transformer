@@ -49,6 +49,12 @@ private:
         const LocalTensor<float>& dstTensor, const LocalTensor<float>& srcTensor, const uint32_t idx);
     __aicore__ inline void ProcessGradScales(int64_t batchIdx);
 
+    __simd_vf__ inline void ProcessGradExpandedXVF(__local_mem__ T1* gradExpandedXMem, __local_mem__ T1* gradYMem,
+                                                    uint32_t count, uint16_t loopCount);
+    __simd_vf__ inline void CacheReduceSumVF(__local_mem__ float* dst, __local_mem__ float* src);
+
+    __simd_vf__ inline void ProcessGradScalesVF(__local_mem__ float* srcAddr, __local_mem__ T3* dstAddr)
+
 private:
     const MoeFinalizeRoutingV2GradSplitHTilingData* tilingData_;
     TBuf<TPosition::VECCALC> bianryAddCacheBuf_;
@@ -222,13 +228,13 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExi
                 biasUb = this->biasInQueue_.template DeQue<T1>();
                 Add(expandedXUb, expandedXUb, biasUb, mainFactor_);
             }
-            this->VfCalGradScale(expandedXUb, gradYUb, binAddParams, mainFactor_, binaryAddCache, this->cacheIdx_);
+            this->CalGradScale(expandedXUb, gradYUb, binAddParams, mainFactor_, binaryAddCache, this->cacheIdx_);
             this->expandedXInQueue_.FreeTensor(expandedXUb);
         } else {
             if constexpr (IsBiasExist) {
                 this->biasInQueue_.template EnQue<T1>(biasUb);
                 biasUb = this->biasInQueue_.template DeQue<T1>();
-                this->VfCalGradScale(biasUb, gradYUb, binAddParams, mainFactor_, binaryAddCache, this->cacheIdx_);
+                this->CalGradScale(biasUb, gradYUb, binAddParams, mainFactor_, binaryAddCache, this->cacheIdx_);
             }
         }
         if constexpr (IsBiasExist) {
@@ -304,14 +310,14 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExi
                 biasUb = this->biasInQueue_.template DeQue<T1>();
                 Add(expandedXUb, expandedXUb, biasUb, foldFactor_ + foldTailFactor);
             }
-            this->VfCalGradScale(
+            this->CalGradScale(
                 expandedXUb, gradYUb, binAddParams, foldFactor_ + foldTailFactor, binaryAddCache, this->cacheIdx_);
             this->expandedXInQueue_.FreeTensor(expandedXUb);
         } else {
             if constexpr (IsBiasExist) {
                 this->biasInQueue_.template EnQue<T1>(biasUb);
                 biasUb = this->biasInQueue_.template DeQue<T1>();
-                this->VfCalGradScale(
+                this->CalGradScale(
                     biasUb, gradYUb, binAddParams, foldFactor_ + foldTailFactor, binaryAddCache, this->cacheIdx_);
             }
         }
@@ -372,14 +378,14 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExi
             biasUb = this->biasInQueue_.template DeQue<T1>();
             Add(expandedXUb, expandedXUb, biasUb, foldFactor_ + foldTailFactor);
         }
-        this->VfCalGradScale(
+        this->CalGradScale(
             expandedXUb, gradYUb, binAddParams, foldFactor_ + foldTailFactor, binaryAddCache, this->cacheIdx_);
         this->expandedXInQueue_.FreeTensor(expandedXUb);
     } else {
         if constexpr (IsBiasExist) {
             this->biasInQueue_.template EnQue<T1>(biasUb);
             biasUb = this->biasInQueue_.template DeQue<T1>();
-            this->VfCalGradScale(
+            this->CalGradScale(
                 biasUb, gradYUb, binAddParams, foldFactor_ + foldTailFactor, binaryAddCache, this->cacheIdx_);
         }
     }
@@ -416,13 +422,13 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExi
             biasUb = this->biasInQueue_.template DeQue<T1>();
             Add(expandedXUb, expandedXUb, biasUb, foldFactor_);
         }
-        this->VfCalGradScale(expandedXUb, gradYUb, binAddParams, foldFactor_, binaryAddCache, this->cacheIdx_);
+        this->CalGradScale(expandedXUb, gradYUb, binAddParams, foldFactor_, binaryAddCache, this->cacheIdx_);
         this->expandedXInQueue_.FreeTensor(expandedXUb);
     } else {
         if constexpr (IsBiasExist) {
             this->biasInQueue_.template EnQue<T1>(biasUb);
             biasUb = this->biasInQueue_.template DeQue<T1>();
-            this->VfCalGradScale(biasUb, gradYUb, binAddParams, foldFactor_, binaryAddCache, this->cacheIdx_);
+            this->CalGradScale(biasUb, gradYUb, binAddParams, foldFactor_, binaryAddCache, this->cacheIdx_);
         }
     }
     if constexpr (IsBiasExist) {
@@ -467,13 +473,13 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExi
                 biasUb = this->biasInQueue_.template DeQue<T1>();
                 Add(expandedXUb, expandedXUb, biasUb, mainFactor_);
             }
-            this->VfCalGradScale(expandedXUb, gradYUb, binAddParams, mainFactor_, binaryAddCache, this->cacheIdx_);
+            this->CalGradScale(expandedXUb, gradYUb, binAddParams, mainFactor_, binaryAddCache, this->cacheIdx_);
             this->expandedXInQueue_.FreeTensor(expandedXUb);
         } else {
             if constexpr (IsBiasExist) {
                 this->biasInQueue_.template EnQue<T1>(biasUb);
                 biasUb = this->biasInQueue_.template DeQue<T1>();
-                this->VfCalGradScale(biasUb, gradYUb, binAddParams, mainFactor_, binaryAddCache, this->cacheIdx_);
+                this->CalGradScale(biasUb, gradYUb, binAddParams, mainFactor_, binaryAddCache, this->cacheIdx_);
             }
         }
         if constexpr (IsBiasExist) {
@@ -486,6 +492,27 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExi
 }
 
 template <typename T1, typename T2, typename T3, bool IsBiasExist>
+__simd_vf__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExist>::ProcessGradExpandedXVF(
+    __local_mem__ T1* gradExpandedXMem, __local_mem__ T1* gradYMem, uint32_t count, uint16_t loopCount)
+{
+    MicroAPI::RegTensor<float> gradYReg;
+    MicroAPI::MaskReg pregLoop;
+    for (uint16_t i = 0; i < loopCount; i++) {
+        pregLoop = MicroAPI::UpdateMask<float>(count);
+        // 拷贝到RegBase内
+        ops::LoadOneTensorForDtypeT<T1>(gradYMem, gradYReg, pregLoop, i * VL_FLOAT32_SIZE);
+        // 计算
+        if constexpr (IsSameType<T3, bfloat16_t>::value) {
+            Muls(gradYReg, gradYReg, ToFloat(this->scale_), pregLoop);
+        } else {
+            Muls(gradYReg, gradYReg, (float)this->scale_, pregLoop);
+        }
+        // 拷贝回UB
+        ops::StoreOneTensorForDtypeT<T1>(gradExpandedXMem, gradYReg, pregLoop, i * VL_FLOAT32_SIZE);
+    }
+}
+
+template <typename T1, typename T2, typename T3, bool IsBiasExist>
 __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExist>::ProcessGradExpandedX(
     const LocalTensor<T1>& gradYUb, int64_t mainLen, int64_t foldLen, int64_t mainOutOffset, int64_t foldOutOffset)
 {
@@ -494,24 +521,9 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExi
     __local_mem__ T1* gradYMem = (__local_mem__ T1*)gradYUb.GetPhyAddr();
     uint32_t count = mainLen + foldLen;
     uint16_t loopCount = (count + VL_FLOAT32_SIZE - 1) / VL_FLOAT32_SIZE;
-    __VEC_SCOPE__
-    {
-        MicroAPI::RegTensor<float> gradYReg;
-        MicroAPI::MaskReg pregLoop;
-        for (uint16_t i = 0; i < loopCount; i++) {
-            pregLoop = MicroAPI::UpdateMask<float>(count);
-            // 拷贝到RegBase内
-            ops::LoadOneTensorForDtypeT<T1>(gradYMem, gradYReg, pregLoop, i * VL_FLOAT32_SIZE);
-            // 计算
-            if constexpr (IsSameType<T3, bfloat16_t>::value) {
-                Muls(gradYReg, gradYReg, ToFloat(this->scale_), pregLoop);
-            } else {
-                Muls(gradYReg, gradYReg, (float)this->scale_, pregLoop);
-            }
-            // 拷贝回UB
-            ops::StoreOneTensorForDtypeT<T1>(gradExpandedXMem, gradYReg, pregLoop, i * VL_FLOAT32_SIZE);
-        }
-    }
+
+    ProcessGradExpandedXVF(gradExpandedXMem, gradYMem, count, loopCount);
+
     this->gradExpandedXOutQueue_.template EnQue<T1>(gradExpandedXUb);
     gradExpandedXUb = this->gradExpandedXOutQueue_.template DeQue<T1>();
     DataCopyExtParams copyExtParams{1, static_cast<uint16_t>(mainLen * sizeof(T1)), 0, 0, 0};
@@ -550,34 +562,54 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExi
 }
 
 template <typename T1, typename T2, typename T3, bool IsBiasExist>
+__simd_vf__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExist>::CacheReduceSumVF(
+    __local_mem__ float* dst, __local_mem__ float* src)
+{
+    MicroAPI::RegTensor<float> x1;
+    MicroAPI::RegTensor<float> x2;
+    MicroAPI::RegTensor<float> x3;
+    MicroAPI::RegTensor<float> x4;
+    MicroAPI::RegTensor<float> sum1;
+    MicroAPI::RegTensor<float> sum2;
+    MicroAPI::RegTensor<float> sum12;
+    MicroAPI::RegTensor<float> vlSum;
+
+    MicroAPI::MaskReg pregAll = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
+    DataCopy(x1, src + 0 * VL_FLOAT32_SIZE);
+    DataCopy(x2, src + 1 * VL_FLOAT32_SIZE);
+    DataCopy(x3, src + 2 * VL_FLOAT32_SIZE);
+    DataCopy(x4, src + 3 * VL_FLOAT32_SIZE);
+    Add(sum1, x1, x3, pregAll);
+    Add(sum2, x2, x4, pregAll);
+    Add(sum12, sum1, sum2, pregAll);
+    ReduceSum(vlSum, sum12, pregAll);
+    MicroAPI::MaskReg pregMerge = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::VL1>();
+    DataCopy<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(dst + idx, vlSum, pregMerge);
+}
+
+
+template <typename T1, typename T2, typename T3, bool IsBiasExist>
 __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExist>::CacheReduceSum(
     const LocalTensor<float>& dstTensor, const LocalTensor<float>& srcTensor, const uint32_t idx)
 {
     __local_mem__ float* dst = (__local_mem__ float*)dstTensor.GetPhyAddr();
     __local_mem__ float* src = (__local_mem__ float*)srcTensor.GetPhyAddr();
 
-    __VEC_SCOPE__
-    {
-        MicroAPI::RegTensor<float> x1;
-        MicroAPI::RegTensor<float> x2;
-        MicroAPI::RegTensor<float> x3;
-        MicroAPI::RegTensor<float> x4;
-        MicroAPI::RegTensor<float> sum1;
-        MicroAPI::RegTensor<float> sum2;
-        MicroAPI::RegTensor<float> sum12;
-        MicroAPI::RegTensor<float> vlSum;
+    CacheReduceSumVF(dst, src);
+}
 
-        MicroAPI::MaskReg pregAll = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
-        DataCopy(x1, src + 0 * VL_FLOAT32_SIZE);
-        DataCopy(x2, src + 1 * VL_FLOAT32_SIZE);
-        DataCopy(x3, src + 2 * VL_FLOAT32_SIZE);
-        DataCopy(x4, src + 3 * VL_FLOAT32_SIZE);
-        Add(sum1, x1, x3, pregAll);
-        Add(sum2, x2, x4, pregAll);
-        Add(sum12, sum1, sum2, pregAll);
-        ReduceSum(vlSum, sum12, pregAll);
-        MicroAPI::MaskReg pregMerge = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::VL1>();
-        DataCopy<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(dst + idx, vlSum, pregMerge);
+template <typename T1, typename T2, typename T3, bool IsBiasExist>
+__simd_vf__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExist>::ProcessGradScalesVF(
+    __local_mem__ float* srcAddr, __local_mem__ T3* dstAddr)
+{
+    uint32_t sregMask = (uint32_t)1;
+    MicroAPI::MaskReg preg = MicroAPI::UpdateMask<float>(sregMask);
+    if constexpr (!IsSameType<T3, float>::value) {
+        MicroAPI::RegTensor<T3> vregB16;
+        MicroAPI::RegTensor<float> vregF32;
+        DataCopy(vregF32, srcAddr);
+        Cast<T3, float, castTraitB322B16>(vregB16, vregF32, preg);
+        DataCopy<T3, MicroAPI::StoreDist::DIST_PACK_B32>(dstAddr, vregB16, preg);
     }
 }
 
@@ -589,19 +621,8 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExi
     __local_mem__ float* srcAddr = (__local_mem__ float*)gradScalesUb.GetPhyAddr();
     __local_mem__ T3* dstAddr = (__local_mem__ T3*)tempBuf.GetPhyAddr();
 
-    __VEC_SCOPE__
-    {
-        uint32_t sregMask = (uint32_t)1;
-        MicroAPI::MaskReg preg = MicroAPI::UpdateMask<float>(sregMask);
-        ;
-        if constexpr (!IsSameType<T3, float>::value) {
-            MicroAPI::RegTensor<T3> vregB16;
-            MicroAPI::RegTensor<float> vregF32;
-            DataCopy(vregF32, srcAddr);
-            Cast<T3, float, castTraitB322B16>(vregB16, vregF32, preg);
-            DataCopy<T3, MicroAPI::StoreDist::DIST_PACK_B32>(dstAddr, vregB16, preg);
-        }
-    }
+    ProcessGradScalesVF(srcAddr, dstAddr);
+
     DataCopyExtParams copyExtParams{1, 1, 0, 0, 0};
     copyExtParams.blockLen = sizeof(T3);
     if constexpr (IsSameType<T3, float>::value) {
