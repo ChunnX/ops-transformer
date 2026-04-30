@@ -28,11 +28,11 @@ __simd_vf__ void QuantPerTensorVFImpl(__ubuf__ T * inputBuf, __ubuf__ T * quantS
     static constexpr MicroAPI::CastTrait CAST_TRAITF322FP8E4M3 = {MicroAPI::RegLayout::ZERO,
                 MicroAPI::SatMode::SAT, MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
     static constexpr MicroAPI::CastTrait CAST_TRAIT = {MicroAPI::RegLayout::ZERO,
-                MicroAPI::SatMode::NO_SAT, MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+                MicroAPI::SatMode::SAT, MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
     static constexpr MicroAPI::CastTrait CAST_TRAITB162F32 = {MicroAPI::RegLayout::ZERO,
                 MicroAPI::SatMode::UNKNOWN, MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
     static constexpr MicroAPI::CastTrait CAST_TRAITF322HIF8 = {MicroAPI::RegLayout::ZERO,
-                MicroAPI::SatMode::NO_SAT, MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
+                MicroAPI::SatMode::SAT, MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
     static constexpr MicroAPI::CastTrait castTraitF32ToHalf = { MicroAPI::RegLayout::ZERO,
                 MicroAPI::SatMode::NO_SAT, MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_ODD};
     MicroAPI::RegTensor<T> vregSrc;
