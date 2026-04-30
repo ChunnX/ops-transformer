@@ -111,17 +111,17 @@ enum QuantMode {
     TORCH_CHECK(ret == 0, "memcpy_s failed, error:", ret);                               \
     g_hashOffset += size_expression;
 
-inline const char *GetOpApiLibName(void)
+inline const char *GetOpApiLibName1111111111(void)
 {
     return "libopapi.so";
 }
 
-inline const char *GetCustOpApiLibName(void)
+inline const char *GetCustOpApiLibName2222222222(void)
 {
     return "libcust_opapi.so";
 }
 
-inline void *GetOpApiFuncAddrInLib(void *handler, const char *libName, const char *apiName)
+inline void *GetOpApiFuncAddrInLib3333333333333(void *handler, const char *libName, const char *apiName)
 {
     auto funcAddr = dlsym(handler, apiName);
     if (funcAddr == nullptr) {
