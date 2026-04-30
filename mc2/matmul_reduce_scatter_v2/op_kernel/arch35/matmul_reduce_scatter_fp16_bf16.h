@@ -61,6 +61,7 @@ private:
     uint32_t rankId_;
     Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;
     AscendC::HcclHandle handles_[MAX_HANDLE];
+    TBuf<TPosition::VECCALC> biasCastBuf_;
 };
 
 template <typename AType, typename BType, typename BiasType, typename CType>
@@ -229,8 +230,8 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
     gmSrc.SetGlobalBuffer((__gm__ bfloat16_t*)(src), size);
     gmDst.SetGlobalBuffer((__gm__ float*)(dst), size);
 
-    auto bf16Local = tPipe_->AllocBuffer(Ceil(size, 32) * 32 * sizeof(bfloat16_t));
-    auto floatLocal = bf16Local.template ReinterpretCast<float>();
+    LocalTensor<bfloat16_t> bf16Local = biasCastBuf_.Get<bfloat16_t>();
+    LocalTensor<float> floatLocal = bf16Local[Ceil(size, 32) * 32].template ReinterpretCast<float>();
 
     uint32_t cpInLen = size * sizeof(bfloat16_t);
     DataCopyExtParams cpInExtParams{1, cpInLen, 0, 0, 0};

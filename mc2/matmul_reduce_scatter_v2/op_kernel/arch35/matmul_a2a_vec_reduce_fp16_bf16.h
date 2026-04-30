@@ -64,6 +64,7 @@ private:
     __aicore__ inline void CastBiasBFtoFloat(GM_ADDR dst, GM_ADDR src, int size);
 
 private:
+    TBuf<TPosition::VECCALC> biasCastBuf_;
     ReduceSumForAlltoAll<C_DTYPE> reduceSum_; // AIV ReduceSum 相关实现
 
     Mc2Tiling::MatmulReduceScatterV2TilingData* tilingData_;
@@ -355,8 +356,8 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::CastBia
     gmSrc.SetGlobalBuffer((__gm__ bfloat16_t*)(src), size);
     gmDst.SetGlobalBuffer((__gm__ float*)(dst), size);
 
-    auto bf16Local = tPipe_->AllocBuffer(Ceil(size, 32) * 32 * sizeof(bfloat16_t));
-    auto floatLocal = bf16Local.template ReinterpretCast<float>();
+    LocalTensor<bfloat16_t> bf16Local = biasCastBuf_.Get<bfloat16_t>();
+    LocalTensor<float> floatLocal = bf16Local[Ceil(size, 32) * 32].template ReinterpretCast<float>();
 
     uint32_t cpInLen = size * sizeof(bfloat16_t);
     DataCopyExtParams cpInExtParams{1, cpInLen, 0, 0, 0};
