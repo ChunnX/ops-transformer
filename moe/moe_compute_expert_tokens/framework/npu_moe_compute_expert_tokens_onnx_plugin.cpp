@@ -32,7 +32,7 @@ static Status  ParseParamsMoeComputeExpertTokens(const ge::Operator& op_src, ge:
     }
 
     if (attrCount != REQ_ATTR_NNUM) {
-        OP_LOGE(GetOpName(op_dest).c_str(), "Node must have attr num_experts.");
+        OP_LOGE_WITH_INVALID_ATTR(GetOpName(op_dest).c_str(), "num_experts", "missing", "required");
         return FAILED;
     }
 
