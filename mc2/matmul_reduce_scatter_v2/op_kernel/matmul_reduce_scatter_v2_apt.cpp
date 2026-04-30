@@ -106,33 +106,22 @@ __global__ __aicore__ void matmul_reduce_scatter_v2(GM_ADDR aGM, GM_ADDR bGM, GM
     TPipe pipe;
     auto context = GetHcclContext<0>();
     GET_TILING_DATA(tilingData, tilingGM); 
-    
-    AscendC::printf("[APT_DBG] TPL_INPUT=%d TPL_OUTPUTDTYPE=%d TPL_SCALETYPE=%d TPL_COMMALG=%d\n",
-                    (int)TPL_INPUT, (int)TPL_OUTPUTDTYPE, (int)TPL_SCALETYPE, (int)TPL_COMMALG);
-    AscendC::printf("[APT_DBG] TPL_ISPERBLOCK=%d TPL_TRANSA=%d TPL_TRANSB=%d\n",
-                    (int)TPL_ISPERBLOCK, (int)TPL_TRANSA, (int)TPL_TRANSB);
-    
 #if ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && ((ORIG_DTYPE_X1 == DT_FLOAT16) || (ORIG_DTYPE_X1 == DT_BF16)))
-    AscendC::printf("[APT_DBG] Enter BF16FP16 branch\n");
+    // bf16/fp16 场景
     using BiasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, typename MatmulReduceScatterV2Impl::BiasType<BIAS_DTYPE>::type>;
-    constexpr bool biasIsBf16 = std::is_same_v<typename MatmulReduceScatterV2Impl::BiasType<BIAS_DTYPE>::type, bfloat16_t>;
-    AscendC::printf("[APT_DBG] BiasType_is_bf16=%d\n", biasIsBf16 ? 1 : 0);
     if constexpr (!TPL_ISPERBLOCK && TPL_INPUT == INPUT_TYPE_IS_FP16_BF16 && \
                 TPL_OUTPUTDTYPE == OUTPUT_TYPE_IS_FP8 && TPL_SCALETYPE == TPL_X1_X2_DTYPE_IS_OTHER) {
-        AscendC::printf("[APT_DBG] Enter MatmulReduceScatterFP16BF16 kernel\n");
         using BType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, B_DTYPE, TPL_TRANSB>;
         if constexpr (TPL_COMMALG == TPL_CCU_ALL2ALL_VEC_REDUCE) {
             INVOKE_MMREDUCESCATTER_FP16_BF16_OP_IMPL(MatmulA2AVecReduceFP16BF16);
         } else {
             INVOKE_MMREDUCESCATTER_FP16_BF16_OP_IMPL(MatmulReduceScatterFP16BF16);
         }
-    } else {
-        AscendC::printf("[APT_DBG] NOT enter kernel\n");
     }
 #elif (((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && ((ORIG_DTYPE_X1 == DT_HIFLOAT8))) ||        \
        (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) && \
         ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2))))
-    AscendC::printf("[APT_DBG] Enter FP8HiF8 branch\n");
+    // float8/hif8
     #if (ORIG_DTYPE_X1 != DT_HIFLOAT8)
         if constexpr (TPL_SCALETYPE == TPL_X1_X2_DTYPE_IS_FP8E8M0) {
             if constexpr (TPL_COMMALG == TPL_CCU_ALL2ALL_VEC_REDUCE) {

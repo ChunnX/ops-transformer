@@ -119,13 +119,18 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Init(
 
     // BF16 bias转换为float
     GM_ADDR biasToFloatAddr = recvBuf_ + fullMN_ * sizeof(C_DTYPE);
+    AscendC::printf("[LBH_DBG] Init: biasGM=%lx, workspaceGM=%lx, biasLen=%d, rankN=%d\n",
+                    biasGM, workspaceGM, cfg.biasLen, cfg.rankN);
     if constexpr (std::is_same_v<BiasType, bfloat16_t>) {
         if (cfg.biasLen > 0) {
+            AscendC::printf("[LBH_DBG] CastBias: src=%lx, dst=%lx, size=%d\n", biasGM, biasToFloatAddr, cfg.rankN);
             CastBiasBFtoFloat(biasToFloatAddr, biasGM, cfg.rankN);
+            AscendC::printf("[LBH_DBG] CastBias done: biasGM_=%lx\n", biasToFloatAddr);
             biasGM_ = biasToFloatAddr;
             SyncAll<true>();
         }
     }
+    AscendC::printf("[LBH_DBG] Init done: biasGM_=%lx\n", biasGM_);
 }
 
 TEMPLATE_CLASS_PARAMS
