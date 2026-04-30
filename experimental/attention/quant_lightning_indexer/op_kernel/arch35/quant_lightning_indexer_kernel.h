@@ -340,7 +340,7 @@ __aicore__ inline void QLIPreload<QLIT>::SplitCoreByAICPU(uint32_t cubeCoreIdx, 
             splitCoreInfo.s2End = s2BaseNum - 1;
         }
     }
-    uint32_t ldFirstWorkSpaceIndex = GetAttrAbsIndex(cubeCoreIdx, LI_FIRST_LD_DATA_WORKSPACE_IDX_INDEX, false);
+    uint32_t ldFirstWorkSpaceIndex = GetAttrAbsIndex(cubeCoreIdx, LI_FIRST_LD_DATA_WORKSPACE_IDX_INDEX, false); // LD 第一个workspace的索引
     ldInfo.saveWorkSpaceIdx = metadataGm.GetValue(ldFirstWorkSpaceIndex);
     if ASCEND_IS_AIV {
         uint32_t ldCoreEnableIndex = GetAttrAbsIndex(vecCoreIdx, LD_CORE_ENABLE_INDEX, true);
@@ -350,30 +350,31 @@ __aicore__ inline void QLIPreload<QLIT>::SplitCoreByAICPU(uint32_t cubeCoreIdx, 
             return;
         }
 
-    uint32_t ldBn2IdxIndex = GetAttrAbsIndex(vecCoreIdx, LD_BN2_IDX_INDEX, true);
-    uint32_t ldMIdxIndex = GetAttrAbsIndex(vecCoreIdx, LD_M_IDX_INDEX, true);
-    uint32_t ldWorkspaceIdxIndex = GetAttrAbsIndex(vecCoreIdx, LD_WORKSPACE_IDX_INDEX, true);
-    uint32_t ldWorkspaceNumINDEX = GetAttrAbsIndex(vecCoreIdx, LD_WORKSPACE_NUM_INDEX, true);
-    uint32_t ldMstartIndex = GetAttrAbsIndex(vecCoreIdx, LD_M_START_INDEX, true);
-    uint32_t ldMNumIndex = GetAttrAbsIndex(vecCoreIdx, LD_M_NUM_INDEX, true);
+        // LD 参数信息
+        uint32_t ldBn2IdxIndex = GetAttrAbsIndex(vecCoreIdx, LD_BN2_IDX_INDEX, true);
+        uint32_t ldMIdxIndex = GetAttrAbsIndex(vecCoreIdx, LD_M_IDX_INDEX, true);
+        uint32_t ldWorkspaceIdxIndex = GetAttrAbsIndex(vecCoreIdx, LD_WORKSPACE_IDX_INDEX, true);
+        uint32_t ldWorkspaceNumINDEX = GetAttrAbsIndex(vecCoreIdx, LD_WORKSPACE_NUM_INDEX, true);
+        uint32_t ldMstartIndex = GetAttrAbsIndex(vecCoreIdx, LD_M_START_INDEX, true);
+        uint32_t ldMNumIndex = GetAttrAbsIndex(vecCoreIdx, LD_M_NUM_INDEX, true);
 
-    ldInfo.bn2Idx = metadataGm.GetValue(ldBn2IdxIndex);
-    ldInfo.bIdx = ldInfo.bn2Idx / constInfo.kHeadNum;
-    ldInfo.n2Idx = ldInfo.bn2Idx % constInfo.kHeadNum;
-    ldInfo.mIdx = metadataGm.GetValue(ldMIdxIndex);
-    ldInfo.workspaceIdx = metadataGm.GetValue(ldWorkspaceIdxIndex);
-    ldInfo.workspaceNum = metadataGm.GetValue(ldWorkspaceNumINDEX);
-    ldInfo.mStart = metadataGm.GetValue(ldMstartIndex);
-    ldInfo.mNum = metadataGm.GetValue(ldMNumIndex);
-    uint64_t actualSeqQPrefixSum = 0;
-    if constexpr (Q_LAYOUT_T == LI_LAYOUT::TND) {
-        actualSeqQPrefixSum = (ldInfo.bIdx <= 0) ? 0 : actualSeqLengthsGmQ.GetValue(ldInfo.bIdx - 1);
-    } else { // BSND
-        actualSeqQPrefixSum = (ldInfo.bIdx <= 0) ? 0 : ldInfo.bIdx * constInfo.qSeqSize;
-    }
-    ldInfo.indiceOutCoreOffset = actualSeqQPrefixSum * constInfo.kHeadNum * constInfo.sparseCount + ldInfo.n2Idx * constInfo.sparseCount +
-                                ldInfo.mIdx * constInfo.s1BaseSize * constInfo.kHeadNum * constInfo.sparseCount;  // 搬出Topk的初始偏移地址
-    }
+        ldInfo.bn2Idx = metadataGm.GetValue(ldBn2IdxIndex);
+        ldInfo.bIdx = ldInfo.bn2Idx / constInfo.kHeadNum;
+        ldInfo.n2Idx = ldInfo.bn2Idx % constInfo.kHeadNum;
+        ldInfo.mIdx = metadataGm.GetValue(ldMIdxIndex);
+        ldInfo.workspaceIdx = metadataGm.GetValue(ldWorkspaceIdxIndex);
+        ldInfo.workspaceNum = metadataGm.GetValue(ldWorkspaceNumINDEX);
+        ldInfo.mStart = metadataGm.GetValue(ldMstartIndex);
+        ldInfo.mNum = metadataGm.GetValue(ldMNumIndex);
+        uint64_t actualSeqQPrefixSum = 0;
+        if constexpr (Q_LAYOUT_T == LI_LAYOUT::TND) {
+            actualSeqQPrefixSum = (ldInfo.bIdx <= 0) ? 0 : actualSeqLengthsGmQ.GetValue(ldInfo.bIdx - 1);
+        } else { // BSND
+            actualSeqQPrefixSum = (ldInfo.bIdx <= 0) ? 0 : ldInfo.bIdx * constInfo.qSeqSize;
+        }
+        ldInfo.indiceOutCoreOffset = actualSeqQPrefixSum * constInfo.kHeadNum * constInfo.sparseCount + ldInfo.n2Idx * constInfo.sparseCount +
+                                    ldInfo.mIdx * constInfo.s1BaseSize * constInfo.kHeadNum * constInfo.sparseCount;  // 搬出Topk的初始偏移地址
+        }
 }
 
 template <typename QLIT>
@@ -582,6 +583,7 @@ __aicore__ inline void QLIPreload<QLIT>::CalcRunInfo(uint32_t loop, uint32_t s2L
     uint64_t actualSeqKPrefixSum;
     if constexpr (K_LAYOUT_T == LI_LAYOUT::TND) { // T N2 D
         actualSeqKPrefixSum = (runInfo.bIdx <= 0) ? 0 : actualSeqLengthsGm.GetValue(runInfo.bIdx - 1);
+        actualSeqKPrefixSum = actualSeqKPrefixSum / constInfo.cmpRatio;
     } else {
         actualSeqKPrefixSum = (runInfo.bIdx <= 0) ? 0 : runInfo.bIdx * constInfo.kSeqSize;
     }
