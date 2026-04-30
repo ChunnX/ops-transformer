@@ -73,6 +73,7 @@ public:
     __aicore__ inline void CheckS1RangeInBn2(int64_t taskId);
     template <const bool IS_DENSE = false>
     __aicore__ inline bool GetLocalS1S2Idx(int64_t loppIdx, int64_t m, int64_t n, int64_t &localS1Idx, int64_t &localS2Idx);
+    __aicore__ inline void UpdateMNPQ(int64_t &m, int64_t &n, int64_t &p, int64_t &q, int64_t &mGap, int64_t &nGap);
     __aicore__ inline ChildClass *GetDerived()
     {
         return static_cast<ChildClass *>(this);
@@ -141,7 +142,6 @@ protected:
     int64_t lastS2oCvDimIdx = -1; // 上一次的s2方向基本块idx
     int64_t lastBdimIdx = -1;     // 上一次的b方向基本块idx
     int64_t lastN2dimIdx = -1;    // 上一次的n2方向基本块idx
-    uint8_t kvPingPong = 1;
     bool isLastLoop = false;
     int64_t s2CvBegin = 0;
     int64_t s2CvEnd = 0;
@@ -372,96 +372,131 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::SetSwizzleConstInfo()
 {
-    if (!tilingData->s1s2BNGS1S2BaseParams.isSplitByBlockIdx) {
-        return;
-    }
-    // swizzle
-    enableDenseSwizzle =
-        (!IS_ATTEN_MASK || tilingData->s1s2BNGS1S2BaseParams.sparseType == static_cast<uint8_t>(SparseType::DENSE)) &&
-        constInfo.commonConstInfo.s1Size > M_SWIZZLE_SIZE && constInfo.commonConstInfo.s2Size > N_SWIZZLE_SIZE;
-    enableCasualSwizzle = IS_ATTEN_MASK &&
-                          tilingData->s1s2BNGS1S2BaseParams.sparseType == static_cast<uint8_t>(SparseType::CASUAL) &&
-                          constInfo.commonConstInfo.s1Size == constInfo.commonConstInfo.s2Size &&
-                          constInfo.commonConstInfo.s1Size > M_SWIZZLE_SIZE;
-    uint32_t maxContinuousBlockNum = constInfo.commonConstInfo.s1Size < MIN_SWIZZLE_S1 ?
-                                         MAX_CONTINUOUS_BLOCK_NUM :
-                                         (constInfo.commonConstInfo.s1Size / MIN_SWIZZLE_S1) * BASE_SWIZZLE_BLOCK_NUM;
-    if (enableDenseSwizzle || enableCasualSwizzle) {
-        maxContinuousBlockNum = SWIZZLE_CONTINUOUS_BLOCK_NUM;
-    }
-    constInfo.continuousBlockNum = tilingData->s1s2BNGS1S2SplitCoreParams.maxValidBBLen > maxContinuousBlockNum ?
-                                       maxContinuousBlockNum :
-                                       tilingData->s1s2BNGS1S2SplitCoreParams.maxValidBBLen;
-    constInfo.mSwizzleBlockNum = constInfo.s1Outer / M_SWIZZLE_BLOCK_SIZE;     // m1
-    constInfo.mSwizzleBlockNumTail = constInfo.s1Outer % M_SWIZZLE_BLOCK_SIZE; // m2
-    uint64_t allCoreOnceBlockNum = constInfo.aicCoreNum * constInfo.continuousBlockNum;
-    if (enableDenseSwizzle) {
-        constInfo.nSwizzleBlockNum = constInfo.s2Outer / N_SWIZZLE_BLOCK_SIZE;     // n1
-        constInfo.nSwizzleBlockNumTail = constInfo.s2Outer % N_SWIZZLE_BLOCK_SIZE; // n2
-        // swizzle block指经过第一次大块切分后的单个块
-        // 计算单个核左上单个swizzle block内整块基本块总轮数
-        uint64_t c1Tmp = (M_SWIZZLE_BLOCK_SIZE * N_SWIZZLE_BLOCK_SIZE) % allCoreOnceBlockNum;
-        uint64_t c1 = c1Tmp < constInfo.continuousBlockNum ? c1Tmp : constInfo.continuousBlockNum;
-        constInfo.leftUpTotalRound =
-            ((M_SWIZZLE_BLOCK_SIZE * N_SWIZZLE_BLOCK_SIZE) / allCoreOnceBlockNum) * constInfo.continuousBlockNum + c1;
+    if constexpr (!IS_TND && DETER_SPARSE_TYPE == NO_DETER) {
+        if (!tilingData->s1s2BNGS1S2BaseParams.isSplitByBlockIdx) {
+            return;
+        }
+        // swizzle
+        enableDenseSwizzle = (!IS_ATTEN_MASK || tilingData->s1s2BNGS1S2BaseParams.sparseType ==
+                                                    static_cast<uint8_t>(SparseType::DENSE)) &&
+                             constInfo.commonConstInfo.s1Size > M_SWIZZLE_SIZE &&
+                             constInfo.commonConstInfo.s2Size > N_SWIZZLE_SIZE;
+        enableCasualSwizzle =
+            IS_ATTEN_MASK && tilingData->s1s2BNGS1S2BaseParams.sparseType == static_cast<uint8_t>(SparseType::CASUAL) &&
+            constInfo.commonConstInfo.s1Size == constInfo.commonConstInfo.s2Size &&
+            constInfo.commonConstInfo.s1Size > M_SWIZZLE_SIZE;
+        uint32_t maxContinuousBlockNum =
+            constInfo.commonConstInfo.s1Size < MIN_SWIZZLE_S1 ?
+                MAX_CONTINUOUS_BLOCK_NUM :
+                (constInfo.commonConstInfo.s1Size / MIN_SWIZZLE_S1) * BASE_SWIZZLE_BLOCK_NUM;
+        if (enableDenseSwizzle || enableCasualSwizzle) {
+            maxContinuousBlockNum = SWIZZLE_CONTINUOUS_BLOCK_NUM;
+        }
+        constInfo.continuousBlockNum = tilingData->s1s2BNGS1S2SplitCoreParams.maxValidBBLen > maxContinuousBlockNum ?
+                                        maxContinuousBlockNum :
+                                        tilingData->s1s2BNGS1S2SplitCoreParams.maxValidBBLen;
+        constInfo.mSwizzleBlockNum = constInfo.s1Outer / M_SWIZZLE_BLOCK_SIZE;     // m1
+        constInfo.mSwizzleBlockNumTail = constInfo.s1Outer % M_SWIZZLE_BLOCK_SIZE; // m2
+        uint64_t allCoreOnceBlockNum = constInfo.aicCoreNum * constInfo.continuousBlockNum;
+        if (enableDenseSwizzle) {
+            constInfo.nSwizzleBlockNum = constInfo.s2Outer / N_SWIZZLE_BLOCK_SIZE;     // n1
+            constInfo.nSwizzleBlockNumTail = constInfo.s2Outer % N_SWIZZLE_BLOCK_SIZE; // n2
+            // swizzle block指经过第一次大块切分后的单个块
+            // 计算单个核左上单个swizzle block内整块基本块总轮数
+            uint64_t c1Tmp = (M_SWIZZLE_BLOCK_SIZE * N_SWIZZLE_BLOCK_SIZE) % allCoreOnceBlockNum;
+            uint64_t c1 = c1Tmp < constInfo.continuousBlockNum ? c1Tmp : constInfo.continuousBlockNum;
+            constInfo.leftUpTotalRound =
+                ((M_SWIZZLE_BLOCK_SIZE * N_SWIZZLE_BLOCK_SIZE) / allCoreOnceBlockNum) * constInfo.continuousBlockNum +
+                c1;
 
-        // 计算单个核左下（s1方向可能存在尾块）单个swizzle block内基本块总轮数
-        uint64_t c2Tmp = (constInfo.mSwizzleBlockNumTail * N_SWIZZLE_BLOCK_SIZE) % allCoreOnceBlockNum;
-        uint64_t c2 = c2Tmp < constInfo.continuousBlockNum ? c2Tmp : constInfo.continuousBlockNum;
-        constInfo.leftDownTotalRound = ((constInfo.mSwizzleBlockNumTail * N_SWIZZLE_BLOCK_SIZE) / allCoreOnceBlockNum) *
-                                           constInfo.continuousBlockNum +
-                                       c2;
+            // 计算单个核左下（s1方向可能存在尾块）单个swizzle block内基本块总轮数
+            uint64_t c2Tmp = (constInfo.mSwizzleBlockNumTail * N_SWIZZLE_BLOCK_SIZE) % allCoreOnceBlockNum;
+            uint64_t c2 = c2Tmp < constInfo.continuousBlockNum ? c2Tmp : constInfo.continuousBlockNum;
+            constInfo.leftDownTotalRound =
+                ((constInfo.mSwizzleBlockNumTail * N_SWIZZLE_BLOCK_SIZE) / allCoreOnceBlockNum) *
+                    constInfo.continuousBlockNum +
+                c2;
 
-        // 计算单个核右上（s2方向可能存在尾块）单个swizzle block内（可能存在尾块）基本块总轮数
-        uint64_t c3Tmp = (M_SWIZZLE_BLOCK_SIZE * constInfo.nSwizzleBlockNumTail) % allCoreOnceBlockNum;
-        uint64_t c3 = c3Tmp < constInfo.continuousBlockNum ? c3Tmp : constInfo.continuousBlockNum;
-        constInfo.rightUpTotalRound = ((M_SWIZZLE_BLOCK_SIZE * constInfo.nSwizzleBlockNumTail) / allCoreOnceBlockNum) *
-                                          constInfo.continuousBlockNum +
-                                      c3;
+            // 计算单个核右上（s2方向可能存在尾块）单个swizzle block内（可能存在尾块）基本块总轮数
+            uint64_t c3Tmp = (M_SWIZZLE_BLOCK_SIZE * constInfo.nSwizzleBlockNumTail) % allCoreOnceBlockNum;
+            uint64_t c3 = c3Tmp < constInfo.continuousBlockNum ? c3Tmp : constInfo.continuousBlockNum;
+            constInfo.rightUpTotalRound =
+                ((M_SWIZZLE_BLOCK_SIZE * constInfo.nSwizzleBlockNumTail) / allCoreOnceBlockNum) *
+                    constInfo.continuousBlockNum +
+                c3;
 
-        // 计算单个核右下（s1s2方向都可能存在尾块）单个swizzle block内（可能存在尾块）基本块总轮数
-        uint64_t c4Tmp = (constInfo.mSwizzleBlockNumTail * constInfo.nSwizzleBlockNumTail) % allCoreOnceBlockNum;
-        uint64_t c4 = c4Tmp < constInfo.continuousBlockNum ? c4Tmp : constInfo.continuousBlockNum;
-        constInfo.rightDownTotalRound =
-            ((constInfo.mSwizzleBlockNumTail * constInfo.nSwizzleBlockNumTail) / allCoreOnceBlockNum) *
-                constInfo.continuousBlockNum +
-            c4;
+            // 计算单个核右下（s1s2方向都可能存在尾块）单个swizzle block内（可能存在尾块）基本块总轮数
+            uint64_t c4Tmp = (constInfo.mSwizzleBlockNumTail * constInfo.nSwizzleBlockNumTail) % allCoreOnceBlockNum;
+            uint64_t c4 = c4Tmp < constInfo.continuousBlockNum ? c4Tmp : constInfo.continuousBlockNum;
+            constInfo.rightDownTotalRound =
+                ((constInfo.mSwizzleBlockNumTail * constInfo.nSwizzleBlockNumTail) / allCoreOnceBlockNum) *
+                    constInfo.continuousBlockNum +
+                c4;
 
-        // 左半部分单个核列swizzle block内总基本块个数
-        constInfo.leftSingleColTotalRound =
-            constInfo.leftUpTotalRound * constInfo.mSwizzleBlockNum + constInfo.leftDownTotalRound;
-        // 左半部分单个核所有列swizzle block内总基本块个数
-        constInfo.leftTotalRound = constInfo.leftSingleColTotalRound * constInfo.nSwizzleBlockNum;
-        // s1s2内总轮数
-        constInfo.batchTotalRound = constInfo.leftTotalRound +
-                                    constInfo.rightUpTotalRound * constInfo.mSwizzleBlockNum +
-                                    constInfo.rightDownTotalRound;
-    } else if (enableCasualSwizzle) {
-        uint64_t triangleBlockNum = M_SWIZZLE_BLOCK_SIZE * (M_SWIZZLE_BLOCK_SIZE + 1) >> 1;
-        uint64_t c1Tmp = triangleBlockNum % allCoreOnceBlockNum;
-        uint64_t c1 = c1Tmp < constInfo.continuousBlockNum ? c1Tmp : constInfo.continuousBlockNum;
-        constInfo.leftUpTotalRound = triangleBlockNum / allCoreOnceBlockNum * constInfo.continuousBlockNum + c1;
+            // 左半部分单个核列swizzle block内总基本块个数
+            constInfo.leftSingleColTotalRound =
+                constInfo.leftUpTotalRound * constInfo.mSwizzleBlockNum + constInfo.leftDownTotalRound;
+            // 左半部分单个核所有列swizzle block内总基本块个数
+            constInfo.leftTotalRound = constInfo.leftSingleColTotalRound * constInfo.nSwizzleBlockNum;
+            // s1s2内总轮数
+            constInfo.batchTotalRound = constInfo.leftTotalRound +
+                                        constInfo.rightUpTotalRound * constInfo.mSwizzleBlockNum +
+                                        constInfo.rightDownTotalRound;
+        } else if (enableCasualSwizzle) {
+            uint64_t triangleBlockNum = M_SWIZZLE_BLOCK_SIZE * (M_SWIZZLE_BLOCK_SIZE + 1) >> 1;
+            uint64_t c1Tmp = triangleBlockNum % allCoreOnceBlockNum;
+            uint64_t c1 = c1Tmp < constInfo.continuousBlockNum ? c1Tmp : constInfo.continuousBlockNum;
+            constInfo.leftUpTotalRound = triangleBlockNum / allCoreOnceBlockNum * constInfo.continuousBlockNum + c1;
 
-        uint64_t c2Tmp = (M_SWIZZLE_BLOCK_SIZE * M_SWIZZLE_BLOCK_SIZE) % allCoreOnceBlockNum;
-        uint64_t c2 = c2Tmp < constInfo.continuousBlockNum ? c2Tmp : constInfo.continuousBlockNum;
-        constInfo.leftDownTotalRound =
-            ((M_SWIZZLE_BLOCK_SIZE * M_SWIZZLE_BLOCK_SIZE) / allCoreOnceBlockNum) * constInfo.continuousBlockNum + c2;
+            uint64_t c2Tmp = (M_SWIZZLE_BLOCK_SIZE * M_SWIZZLE_BLOCK_SIZE) % allCoreOnceBlockNum;
+            uint64_t c2 = c2Tmp < constInfo.continuousBlockNum ? c2Tmp : constInfo.continuousBlockNum;
+            constInfo.leftDownTotalRound =
+                ((M_SWIZZLE_BLOCK_SIZE * M_SWIZZLE_BLOCK_SIZE) / allCoreOnceBlockNum) * constInfo.continuousBlockNum +
+                c2;
 
-        uint64_t c3Tmp = (constInfo.mSwizzleBlockNumTail * M_SWIZZLE_BLOCK_SIZE) % allCoreOnceBlockNum;
-        uint64_t c3 = c3Tmp < constInfo.continuousBlockNum ? c3Tmp : constInfo.continuousBlockNum;
-        constInfo.rightUpTotalRound = ((constInfo.mSwizzleBlockNumTail * M_SWIZZLE_BLOCK_SIZE) / allCoreOnceBlockNum) *
-                                          constInfo.continuousBlockNum +
-                                      c3;
+            uint64_t c3Tmp = (constInfo.mSwizzleBlockNumTail * M_SWIZZLE_BLOCK_SIZE) % allCoreOnceBlockNum;
+            uint64_t c3 = c3Tmp < constInfo.continuousBlockNum ? c3Tmp : constInfo.continuousBlockNum;
+            constInfo.rightUpTotalRound =
+                ((constInfo.mSwizzleBlockNumTail * M_SWIZZLE_BLOCK_SIZE) / allCoreOnceBlockNum) *
+                    constInfo.continuousBlockNum +
+                c3;
 
-        triangleBlockNum = (constInfo.mSwizzleBlockNumTail + 1) * constInfo.mSwizzleBlockNumTail >> 1;
-        uint64_t c4Tmp = triangleBlockNum % allCoreOnceBlockNum;
-        uint64_t c4 = c4Tmp < constInfo.continuousBlockNum ? c4Tmp : constInfo.continuousBlockNum;
-        constInfo.rightDownTotalRound = (triangleBlockNum / allCoreOnceBlockNum) * constInfo.continuousBlockNum + c4;
+            triangleBlockNum = (constInfo.mSwizzleBlockNumTail + 1) * constInfo.mSwizzleBlockNumTail >> 1;
+            uint64_t c4Tmp = triangleBlockNum % allCoreOnceBlockNum;
+            uint64_t c4 = c4Tmp < constInfo.continuousBlockNum ? c4Tmp : constInfo.continuousBlockNum;
+            constInfo.rightDownTotalRound =
+                (triangleBlockNum / allCoreOnceBlockNum) * constInfo.continuousBlockNum + c4;
 
-        constInfo.leftTotalRound =
-            (constInfo.leftUpTotalRound + constInfo.rightUpTotalRound) * constInfo.mSwizzleBlockNum +
-            ((constInfo.mSwizzleBlockNum - 1) * constInfo.mSwizzleBlockNum >> 1) * constInfo.leftDownTotalRound;
-        constInfo.batchTotalRound = constInfo.leftTotalRound + constInfo.rightDownTotalRound;
+            constInfo.leftTotalRound =
+                (constInfo.leftUpTotalRound + constInfo.rightUpTotalRound) * constInfo.mSwizzleBlockNum +
+                ((constInfo.mSwizzleBlockNum - 1) * constInfo.mSwizzleBlockNum >> 1) * constInfo.leftDownTotalRound;
+            constInfo.batchTotalRound = constInfo.leftTotalRound + constInfo.rightDownTotalRound;
+        } else if (tilingData->s1s2BNGS1S2BaseParams.sparseType == static_cast<uint8_t>(SparseType::BAND)) {
+            int64_t m = 0;
+            int64_t n = 0;
+            int64_t p = 0;    // 第一列有效基本块的数量
+            int64_t q = 0;    // 第一行有效基本块的数量
+            int64_t mGap = 0; // 无效行数
+            int64_t nGap = 0; // 无效列数
+            UpdateMNPQ(m, n, p, q, mGap, nGap);
+            constInfo.actualS1Outer = m;
+            constInfo.actualS2Outer = n;
+            constInfo.firstValidColBlockNum = p;
+            constInfo.firstValidRowBlockNum = q;
+            constInfo.mGap = mGap;
+            constInfo.nGap = nGap;
+            if (p + q > m) {
+                constInfo.s2FirstWidth = m - p;
+                constInfo.s2SecondWidth = p + q - m - 1;
+                constInfo.s2FirstBlockNum = (p + m - 1) * constInfo.s2FirstWidth >> 1; // 梯形
+                constInfo.s2SecondBlockNum = m * constInfo.s2SecondWidth;              // 长方形
+            } else {
+                constInfo.s2FirstWidth = q - 1;
+                constInfo.s2SecondWidth = Min(n - q + 1, m + NUM_TWO - p - q);
+                constInfo.s2FirstBlockNum = (((p - 1) << 1) + q) * (q - 1) >> 1;
+                constInfo.s2SecondBlockNum = (p + q - 1) * constInfo.s2SecondWidth;
+            }
+        }
     }
 }
 
@@ -679,7 +714,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
     }
     constInfo.commonConstInfo.subBlockIdx = vSubBlockIdx;
     constInfo.aicCoreNum = tilingData->s1s2BNGS1S2BaseParams.coreNum >> 1;
- 
+    constInfo.enablePreSfmg = ((uint32_t)dTemplateType > 128) && tilingData->s1s2BNGS1S2BaseParams.enablePreSfmg;
     uint32_t tmp = 0xFF7FFFFF;
     if ASCEND_IS_AIV {
         constInfo.attenMaskMinValue = *((float *)&tmp);
@@ -1378,8 +1413,12 @@ __aicore__ inline int64_t FlashAttentionScoreGradKernelBase<ChildClass, CubeBloc
             }
             return nextValidBlockInnerIdx;
         } else {
-            nextValidBlockInnerIdx = GetNextValidIdxForSwizzle(runInfo, curLoopIdx);
-            return nextValidBlockInnerIdx;
+            if constexpr (!IS_TND && DETER_SPARSE_TYPE == NO_DETER) {
+                nextValidBlockInnerIdx = GetNextValidIdxForSwizzle(runInfo, curLoopIdx);
+                return nextValidBlockInnerIdx;
+            } else {
+                return -1;
+            }
         }
     }
 }
@@ -1849,27 +1888,54 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetN
                     s1Idx = gDimTail - ((((constInfo.s1Outer << 1) - 1 - s2Idx) * s2Idx) >> 1);
                 }
             } else {
-                int64_t cum = 0;
-                int64_t p = Ceil<int64_t>(constInfo.s1Token, CUBE_BASEM);
-                int64_t q = Ceil<int64_t>(constInfo.s2Token, CUBE_BASEN);
-                // Band分支，需要靠for循环去获取s1Idx与s2Idx
-                for (int64_t s2oIdx = 0; s2oIdx < constInfo.s2Outer; s2oIdx++) {
-                    int64_t xMin = (s2oIdx - q) > 0 ? (s2oIdx - q) : 0;
-                    int64_t xMax = (constInfo.s1Outer - 1) > (s2oIdx + p) ? (s2oIdx + p) : (constInfo.s1Outer - 1);
-                    int64_t length = xMax - xMin + 1;
-                    if (length < 0) {
-                        continue;
+                int64_t tmp = 0;
+                if (constInfo.firstValidColBlockNum + constInfo.firstValidRowBlockNum > constInfo.actualS1Outer) {
+                    if (gDimTail < constInfo.s2FirstBlockNum) {
+                        tmp = (constInfo.firstValidColBlockNum << 1) - 1;
+                        s2Idx = (sqrt(tmp * tmp + (gDimTail << 3)) - tmp) >> 1;
+                        s1Idx = gDimTail - ((tmp + s2Idx) * s2Idx >> 1);
+                    } else if (constInfo.s2FirstBlockNum <= gDimTail &&
+                               gDimTail < constInfo.s2FirstBlockNum + constInfo.s2SecondBlockNum) {
+                        gDimTail = gDimTail - constInfo.s2FirstBlockNum;
+                        s2Idx = gDimTail / constInfo.actualS1Outer + constInfo.s2FirstWidth;
+                        s1Idx = gDimTail % constInfo.actualS1Outer;
+                    } else {
+                        gDimTail = gDimTail - constInfo.s2FirstBlockNum - constInfo.s2SecondBlockNum;
+                        tmp = (constInfo.actualS1Outer << 1) - 1;
+                        s2Idx = Ceil<int64_t>((tmp - sqrt(tmp * tmp + ((constInfo.actualS1Outer - 1 - gDimTail) << 3))),
+                                              NUM_TWO);
+                        s1Idx = gDimTail - ((tmp - s2Idx) * s2Idx >> 1);
+                        s2Idx = s2Idx + constInfo.firstValidRowBlockNum - 1;
                     }
-                    if (cum + length > gDimTail) {
-                        s1Idx = xMin + (gDimTail - cum);
-                        s2Idx = s2oIdx;
-                        break;
+                } else {
+                    if (gDimTail < constInfo.s2FirstBlockNum) {
+                        tmp = (constInfo.firstValidColBlockNum << 1) - 1;
+                        s2Idx = (sqrt(tmp * tmp + (gDimTail << 3)) - tmp) >> 1;
+                        s1Idx = gDimTail - ((tmp + s2Idx) * s2Idx >> 1);
+                    } else if (constInfo.s2FirstBlockNum <= gDimTail &&
+                               gDimTail < constInfo.s2FirstBlockNum + constInfo.s2SecondBlockNum) {
+                        gDimTail = gDimTail - constInfo.s2FirstBlockNum;
+                        s2Idx = gDimTail / (constInfo.firstValidColBlockNum + constInfo.firstValidRowBlockNum - 1);
+                        s1Idx =
+                            gDimTail % (constInfo.firstValidColBlockNum + constInfo.firstValidRowBlockNum - 1) + s2Idx;
+                        s2Idx = s2Idx + constInfo.s2FirstWidth;
+                    } else {
+                        gDimTail = gDimTail - constInfo.s2FirstBlockNum - constInfo.s2SecondBlockNum;
+                        int64_t s1OuterTmp =
+                            constInfo.firstValidColBlockNum + constInfo.firstValidRowBlockNum - NUM_TWO;
+                        tmp = (s1OuterTmp << 1) - 1;
+                        s2Idx = Ceil<int64_t>((tmp - sqrt(tmp * tmp + ((s1OuterTmp - 1 - gDimTail) << 3))), NUM_TWO);
+                        s1Idx = gDimTail - ((tmp - s2Idx) * s2Idx >> 1) + constInfo.s2SecondWidth;
+                        s2Idx = s2Idx + constInfo.s2FirstWidth + constInfo.s2SecondWidth;
                     }
-                    cum += length;
+                }
+                s1Idx += constInfo.mGap;
+                s2Idx += constInfo.nGap;
+                if (s1Idx >= constInfo.s1Outer || s2Idx >= constInfo.s2Outer) {
+                    return -1;
                 }
             }
         }
-
         runInfo.s2CvBegin = s2Idx * CUBE_BASEN;
         runInfo.s2CvEnd = runInfo.s2CvBegin + CUBE_BASEN; // 非尾块s2按照+CUBE_BASEN处理
         if (s2Idx == constInfo.s2Outer - 1) {             // 默认s2 cv tail相等
@@ -1902,7 +1968,10 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetQ
     int64_t gS1D = constInfo.commonConstInfo.gS1D;
     int64_t s1D = constInfo.commonConstInfo.s1D;
     int64_t bN2GD = constInfo.commonConstInfo.bN2GD;
-    int64_t bOffsetTmp = runInfo.lastBatchTotalS1BOffset;
+    int64_t bOffsetTmp = 0;
+    if constexpr (IS_TND) {
+        bOffsetTmp = runInfo.lastBatchTotalS1BOffset;
+    }
     if constexpr (IS_ROPE) {
         if constexpr (IS_MM1_MM2) {
             n2GD = (constInfo.commonConstInfo.n2GD / ROPE_D_RATIO) << 1;
@@ -2032,7 +2101,10 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetK
     int64_t s2D = constInfo.commonConstInfo.s2D;
     int64_t s1D = constInfo.commonConstInfo.s1D;
     int64_t bN2GD = constInfo.commonConstInfo.bN2GD;
-    int64_t bOffsetTmp = runInfo.lastBatchTotalS2BOffset;
+    int64_t bOffsetTmp = 0;
+    if constexpr (IS_TND) {
+        bOffsetTmp = runInfo.lastBatchTotalS2BOffset;
+    }
     if constexpr (IS_ROPE) {
         if (IS_MM1_MM2) {
             n2D = (constInfo.commonConstInfo.n2D / ROPE_D_RATIO) << 1;
@@ -2394,6 +2466,47 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::Chec
         isFirstS1Outer[taskId & 1] = (multiBlkInfo.s2oDimIdx == 0);
     }
     return;
+}
+
+template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
+__aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::UpdateMNPQ(
+    int64_t &m, int64_t &n, int64_t &p, int64_t &q, int64_t &mGap, int64_t &nGap)
+{
+    // 注意：与tiling中GetTotalPerBatchNum函数的有效块计算逻辑要保持一致
+    m = constInfo.s1Outer;
+    n = constInfo.s2Outer;
+    p = Ceil<int64_t>(constInfo.s1Token, CUBE_BASEM) + 1;
+    q = Ceil<int64_t>(constInfo.s2Token, CUBE_BASEN) + 1;
+    p = p > constInfo.s1Outer ? constInfo.s1Outer : p;
+    q = q > constInfo.s2Outer ? constInfo.s2Outer : q;
+ 
+    int64_t actualM, actualN, actualP, actualQ;
+    if (p < 0) {
+        actualM = m;
+        actualN = n + p - 1;
+        actualP = 1;
+        actualQ = p + q - 1;
+        mGap = 0;
+        nGap = -p + 1;
+    } else if (q < 0) {
+        actualM = m + q - 1;
+        actualN = n;
+        actualP = p + q - 1;
+        actualQ = 1;
+        mGap = -q + 1;
+        nGap = 0;
+    } else {
+        actualM = m;
+        actualN = n;
+        actualP = p;
+        actualQ = q;
+        mGap = 0;
+        nGap = 0;
+    }
+    m = actualM;
+    n = actualN;
+    p = actualP;
+    q = actualQ;
 }
 
 } // namespace FagBaseApi
