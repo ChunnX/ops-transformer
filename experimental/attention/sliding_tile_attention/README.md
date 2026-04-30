@@ -26,3 +26,28 @@ The first implementation is a correctness-oriented scalar Ascend C path:
 4. Compute stable softmax with a max pass, denominator pass, and value accumulation pass.
 
 This gives a functional baseline for integration and golden comparison. Performance work should replace the scalar per-query loops with UB-resident score blocks, vectorized dot/exp/reduce, and double-buffered V accumulation.
+
+## Tests
+
+The pytest reference test always validates the CPU golden implementation. On a machine with `torch_npu` and a registered Python entry for this operator, it also runs the NPU operator and compares it with the CPU result:
+
+```bash
+python3 -m pytest -rA -s experimental/attention/sliding_tile_attention/tests/test_sliding_tile_attention_reference.py
+```
+
+If the Python binding uses a non-default name, set `SLIDING_TILE_ATTENTION_NPU_OP` to a dotted callable path, for example:
+
+```bash
+SLIDING_TILE_ATTENTION_NPU_OP=torch.ops.npu_ops_transformer_ext.sliding_tile_attention python3 -m pytest -rA -s experimental/attention/sliding_tile_attention/tests/test_sliding_tile_attention_reference.py -m npu
+```
+
+For a direct CANN ACLNN launch, build and install the custom operator package, source the generated custom OPP environment, then run the eager example:
+
+```bash
+bash build.sh --pkg --experimental --soc=ascend910b --ops=sliding_tile_attention
+./build_out/cann-ops-transformer-*linux*.run --install-path=${install_path}
+source ${install_path}/vendors/custom_transformer/bin/set_env.bash
+bash build.sh --run_example sliding_tile_attention eager cust --soc=ascend910b --vendor_name=custom
+```
+
+The ACLNN example calls `aclnnSlidingTileAttentionGetWorkspaceSize` and `aclnnSlidingTileAttention`, copies the NPU output back to host, and checks it against an in-process CPU golden.
