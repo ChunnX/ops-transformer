@@ -21,13 +21,24 @@ if (BUILD_OPEN_PROJECT)  # custom
     set(MC2_OPT ON PARENT_SCOPE)
     set(qbmm_reduce_scatter_add_rms_norm_cast_depends mc2/common mc2/3rd PARENT_SCOPE)
 
-    # --cce-auto-sync=off：指定CCE编译器是否自动执行线程间或模块间的同步操作
     set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
-    if("${CONDITION_UNIT}" STREQUAL "ascend910_93")
+    if("${CONDITION_UNIT}" STREQUAL "ascend950")
+        add_ops_compile_options(
+            OP_NAME QbmmReduceScatterAddRmsNormCast
+            COMPUTE_UNIT Ascend950PR_9599
+            OPTIONS --cce-auto-sync=off
+                    -mllvm
+                    -cce-aicore-dcci-before-kernel-end=false
+                    -DENABLE_CV_COMM_VIA_SSBUF=true
+                    -I${CMAKE_CURRENT_SOURCE_DIR}/../../3rd/tensor_api/
+                    -I${CMAKE_CURRENT_SOURCE_DIR}/../../3rd/tensor_api/include/
+        )
+    elseif("${CONDITION_UNIT}" STREQUAL "ascend910_93")
         add_ops_compile_options(
             OP_NAME QbmmReduceScatterAddRmsNormCast
             OPTIONS --cce-auto-sync=off
-        )
+                    -DAICORE_EXCEPTION_RESTART
+    )
     endif()
 else() # 回黄host
     add_mc2_modules_sources(OPTYPE qbmm_reduce_scatter_add_rms_norm_cast qbmm_reduce_scatter_add_rms_norm_cast ACLNNTYPE aclnn aclnn_inner)

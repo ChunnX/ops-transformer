@@ -16,6 +16,7 @@
 #include "basic_api/kernel_basic_intf.h"
 #include "lib/matmul_intf.h"
 #include "qbmm_reduce_scatter_add_rms_norm_cast_tiling_data.h"
+#include "tensor.h"
 // #include "qbmm_reduce_scatter_add_rms_norm_cast_mte.h"
 
 using namespace AscendC;
