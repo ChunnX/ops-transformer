@@ -90,6 +90,7 @@ struct PAShape {
     uint32_t blockSize;
     uint32_t headNum;             // 一般为kv的head num，对应n2
     uint32_t headDim;             // 512 对应d
+    uint32_t kvStride;
     uint32_t maxblockNumPerBatch; // block table 每一行的最大个数
     uint32_t actHeadDim;          // 实际拷贝col大小,考虑到N切块   s*d, 对应d
     uint32_t copyRowNum;          // 总共要拷贝的行数
@@ -132,7 +133,7 @@ __aicore__ inline void DataCopyGmNDToL1(LocalTensor<T> &l1Tensor, GlobalTensor<T
     BSH\BSND\TND 为BBH
     shape.copyRowNumAlign 需要16字节对齐，如拷贝k矩阵，一次拷贝128*512，遇到尾块 10*512 需对齐到16*512
 */
-template <typename T, SAS_LAYOUT SRC_LAYOUT>
+template <typename T, SAS_LAYOUT SRC_LAYOUT = SAS_LAYOUT::PA_ND>
 __aicore__ inline void DataCopyPA(LocalTensor<T> &dstTensor,  // l1
                                   GlobalTensor<T> &srcTensor, // gm
                                   GlobalTensor<int32_t> &blockTableGm,
@@ -152,8 +153,8 @@ __aicore__ inline void DataCopyPA(LocalTensor<T> &dstTensor,  // l1
         if (copyFinishRowCnt + copyRowCnt > shape.copyRowNum) {
             copyRowCnt = shape.copyRowNum - copyFinishRowCnt; // 一个block未拷满
         }
-        uint64_t offset = idInBlockTable * shape.blockSize * shape.headNum * shape.headDim; // PA的偏移
-
+        // uint64_t offset = idInBlockTable * shape.blockSize * shape.headNum * shape.headDim; // PA的偏移
+        uint64_t offset = idInBlockTable * shape.kvStride; // PA的偏移
         uint64_t dStride = shape.headDim;
         if constexpr (SRC_LAYOUT == SAS_LAYOUT::BSND || SRC_LAYOUT == SAS_LAYOUT::TND) {
             offset += (uint64_t)(startPos.n2Idx * shape.headDim) + reaminRowCnt * shape.headDim * shape.headNum +
@@ -182,11 +183,13 @@ struct RunInfo {
     uint32_t gIdx = 0;
     uint32_t s1Idx = 0;
     uint32_t s2Idx = 0;
+    uint32_t n2IdxReal = 0;
     uint32_t relativeS2Idx = 0;
     uint32_t bn2IdxInCurCore = 0;
     uint32_t curSInnerLoopTimes = 0;
     uint64_t tndBIdxOffsetForQ = 0;
     uint64_t tndBIdxOffsetForKV = 0;
+    uint64_t tensorCmpBOffset = 0;
     uint64_t tensorAOffset = 0;
     uint64_t tensorBOffset = 0;
     uint64_t attenOutOffset = 0;
@@ -274,6 +277,8 @@ struct ConstInfo {
     SAS_LAYOUT outputLayout;  // 输出的Transpose格式
     uint32_t oriMaskMode = 0;
     uint32_t cmpMaskMode = 0;
+    uint64_t oriKvStride0 = 0;
+    uint64_t cmpKvStride0 = 0;
     bool needInit = false;
     uint32_t templateMode = 0;
 
@@ -310,6 +315,8 @@ struct ConstInfo {
     // win
     int32_t oriWinRight = 0;
     int32_t oriWinLeft = 128;
+
+    bool returnSoftmaxLse = false;
 };
 
 struct MSplitInfo {

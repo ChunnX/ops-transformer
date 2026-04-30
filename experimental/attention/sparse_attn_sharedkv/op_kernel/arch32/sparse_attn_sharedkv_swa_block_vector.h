@@ -46,7 +46,8 @@ public:
                                       const SparseAttnSharedkvTilingData *__restrict tilingData);
     __aicore__ inline void InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<KV_T> vec1ResGm,
                                                 GlobalTensor<int32_t> actualSeqLengthsQGm,
-                                                GlobalTensor<int32_t> actualSeqLengthsKVGm, GlobalTensor<T> sinksGm);
+                                                GlobalTensor<int32_t> actualSeqLengthsKVGm,
+                                                GlobalTensor<T> sinksGm, GlobalTensor<T> softmaxLseGm);
     __aicore__ inline void InitVec2GlobalTensor(GlobalTensor<T> accumOutGm, GlobalTensor<UPDATE_T> vec2ResGm,
                                                 GlobalTensor<MM2_OUT_T> mm2ResGm, GlobalTensor<OUT_T> attentionOutGm);
     __aicore__ inline void AllocEventID();
@@ -69,6 +70,7 @@ public:
                                                  uint32_t actualColumnCount);
     __aicore__ inline void ElewiseCompute(const RunInfo &info, const LocalTensor<T> &mmResUb, uint32_t dealRowCount,
                                           uint32_t columnCount);
+    __aicore__ inline void ProcessLse(const RunInfo &info, const MSplitInfo &mSplitInfo);
     // ================================Vecotr2==========================================
     __aicore__ inline void ProcessVec2SingleBuf(const RunInfo &info, const MSplitInfo &mSplitInfo);
     __aicore__ inline void DealBmm2ResBaseBlock(const RunInfo &info, const MSplitInfo &mSplitInfo, uint32_t startRow,
@@ -141,6 +143,7 @@ private:
     GlobalTensor<KV_T> cmpKvGm_;
     GlobalTensor<int32_t> oriBlockTableGm_;
     GlobalTensor<int32_t> cmpBlockTableGm_;
+    GlobalTensor<T> softmaxLseGm;
 
     // ================================Local Buffer区====================================
     TBuf<> inputBuff1;  // 32K
@@ -218,13 +221,15 @@ template <typename SAST>
 __aicore__ inline void
 SWAVectorBlock<SAST>::InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<KV_T> vec1ResGm,
                                            GlobalTensor<int32_t> actualSeqLengthsQGm,
-                                           GlobalTensor<int32_t> actualSeqLengthsKVGm, GlobalTensor<SINKS_T> sinksGm)
+                                           GlobalTensor<int32_t> actualSeqLengthsKVGm,
+                                           GlobalTensor<SINKS_T> sinksGm, GlobalTensor<T> softmaxLseGm)
 {
     this->mm1ResGm = mm1ResGm;
     this->vec1ResGm = vec1ResGm;
     this->actualSeqLengthsQGm = actualSeqLengthsQGm;
     this->actualSeqLengthsKVGm = actualSeqLengthsKVGm;
     this->sinksGm = sinksGm;
+    this->softmaxLseGm = softmaxLseGm;
 }
 
 template <typename SAST>
@@ -357,6 +362,47 @@ SWAVectorBlock<SAST>::SoftmaxFlashV2Compute(const RunInfo &info, const MSplitInf
 }
 
 template <typename SAST>
+__aicore__ inline void SWAVectorBlock<SAST>::ProcessLse(const RunInfo &info, const MSplitInfo &mSplitInfo)
+{
+    if (mSplitInfo.vecDealM == 0) {
+        return;
+    }
+    uint64_t lseOffset;
+    if (constInfo.outputLayout == SAS_LAYOUT::TND) {
+        uint32_t tBase = actualSeqLengthsQGm.GetValue(info.bIdx);
+        lseOffset = (tBase + info.s1Idx) * constInfo.gSize +
+                    info.n2IdxReal * constInfo.qSeqSize * constInfo.gSize;
+    } else if (constInfo.outputLayout == SAS_LAYOUT::BSND) {
+        lseOffset = info.bIdx * constInfo.qSeqSize * constInfo.kvHeadNum * constInfo.gSize +
+                    info.n2IdxReal * constInfo.qSeqSize * constInfo.gSize +
+                    info.s1Idx * constInfo.gSize;
+    }
+    lseOffset = lseOffset + mSplitInfo.nBufferStartM + mSplitInfo.vecStartM;
+    uint32_t baseOffset = mSplitInfo.nBufferStartM / 2;
+    uint32_t outIdx = info.loop % (constInfo.preLoadNum);
+    uint32_t softmaxOffset = outIdx * SOFTMAX_TMP_BUFFER_OFFSET / sizeof(T) + baseOffset;
+    auto sumTensor = softmaxSumUb[softmaxOffset];
+    auto maxTensor = softmaxMaxUb[softmaxOffset];
+    auto outLSETensor = outputBuff2.Get<T>();
+    DataCopyExtParams dataCopyParams;
+    dataCopyParams.blockCount = 1;
+    dataCopyParams.blockLen = mSplitInfo.vecDealM * sizeof(T);
+    dataCopyParams.srcStride = 0;
+    dataCopyParams.dstStride = 0;
+
+    WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF2_FLAG);
+    PipeBarrier<PIPE_V>();
+    Log(outLSETensor, sumTensor, mSplitInfo.vecDealM);
+    PipeBarrier<PIPE_V>();
+    Add(outLSETensor, outLSETensor, maxTensor, mSplitInfo.vecDealM);
+    SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF2_FLAG);
+    WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF2_FLAG);
+
+    DataCopyPad(softmaxLseGm[lseOffset], outLSETensor, dataCopyParams);
+    SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF2_FLAG);
+}
+
+template <typename SAST>
 __aicore__ inline void SWAVectorBlock<SAST>::DealBmm1ResBaseBlock(const RunInfo &info, const MSplitInfo &mSplitInfo,
                                                                   uint32_t startRow, uint32_t dealRowCount,
                                                                   uint32_t columnCount, uint32_t loopId)
@@ -451,10 +497,8 @@ __aicore__ inline void SWAVectorBlock<SAST>::ProcessVec1L(const RunInfo &info)
         CrossCoreSetFlag<ConstInfo::SAS_SYNC_MODE2, PIPE_MTE3>(constInfo.syncV1C2);
 
         // move lse for flash decode or FA
-        if (info.s2Idx == info.curSInnerLoopTimes - 1 && (info.tndIsS2SplitCore)) {
-            uint32_t outIdx = info.loop % (constInfo.preLoadNum);
-            auto sumTensor = softmaxSumUb[outIdx * SOFTMAX_TMP_BUFFER_OFFSET / sizeof(T)];
-            auto maxTensor = softmaxMaxUb[outIdx * SOFTMAX_TMP_BUFFER_OFFSET / sizeof(T)];
+        if (constInfo.returnSoftmaxLse && info.s2Idx == info.curSInnerLoopTimes - 1) {
+            ProcessLse(info, mSplitInfo);
         }
     }
 }
