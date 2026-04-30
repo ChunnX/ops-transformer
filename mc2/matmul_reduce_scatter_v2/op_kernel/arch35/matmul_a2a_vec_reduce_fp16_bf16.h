@@ -355,10 +355,8 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::CastBia
     gmSrc.SetGlobalBuffer((__gm__ bfloat16_t*)(src), size);
     gmDst.SetGlobalBuffer((__gm__ float*)(dst), size);
 
-    TBuf<TPosition::VECCALC> tmpBuf;
-    tmpBuf.Init(Ceil(size * 2, 32) * 32 * sizeof(float));
-    LocalTensor<bfloat16_t> bf16Local = tmpBuf.Get<bfloat16_t>();
-    LocalTensor<float> floatLocal = bf16Local[Ceil(size, 32) * 32].template ReinterpretCast<float>();
+    auto bf16Local = tPipe_->AllocBuffer(Ceil(size, 32) * 32 * sizeof(bfloat16_t));
+    auto floatLocal = bf16Local.template ReinterpretCast<float>();
 
     uint32_t cpInLen = size * sizeof(bfloat16_t);
     DataCopyExtParams cpInExtParams{1, cpInLen, 0, 0, 0};
