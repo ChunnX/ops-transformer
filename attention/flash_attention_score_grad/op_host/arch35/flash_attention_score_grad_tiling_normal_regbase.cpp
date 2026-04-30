@@ -1620,6 +1620,9 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::SaveToTilingData()
     s1s2BNGS1S2BaseParams_->set_sinkOptional(fBaseParams.sinkOptional);
     s1s2BNGS1S2BaseParams_->set_s1SinkOuter(fBaseParams.s1SinkOuter);
     s1s2BNGS1S2BaseParams_->set_s2SinkOuter(fBaseParams.s2SinkOuter);
+    s1s2BNGS1S2BaseParams_->set_qSize(fBaseParams.qSize);
+    s1s2BNGS1S2BaseParams_->set_kSize(fBaseParams.kSize);
+    s1s2BNGS1S2BaseParams_->set_vSize(fBaseParams.vSize);
 
     bool isSplitByBlockIdx =
         fBaseParams.enableSwizzle && (fBaseParams.layoutType != INPUT_FORMAT_TND) &&
