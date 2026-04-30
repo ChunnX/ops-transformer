@@ -76,8 +76,7 @@ bool SparseFlashMlaMetadataCpuKernel::ParamsCheck()
 
 bool SparseFlashMlaMetadataCpuKernel::CheckTensorData()
 {
-    auto isValid = [](Tensor* t)
-    {
+    auto isValid = [](Tensor* t) {
         return t != nullptr && t->GetTensorShape() != nullptr && t->GetTensorShape()->GetDimSize(0) != 0;
     };
     if (isValid(cuSeqLenQ_) && cuSeqLenQ_->GetData() == nullptr) {
@@ -463,7 +462,8 @@ void SparseFlashMlaMetadataCpuKernel::CalcCostInfo(SplitContext &splitContext)
     }
 }
 
-void SparseFlashMlaMetadataCpuKernel::UpdateCursor(const SplitContext &splitContext, AssignContext &assignContext) {
+void SparseFlashMlaMetadataCpuKernel::UpdateCursor(const SplitContext &splitContext, AssignContext &assignContext)
+{
     const SplitInfo &splitInfo = splitContext.splitInfo;
     const CostInfo &costInfo = splitContext.costInfo;
 
@@ -565,7 +565,7 @@ void SparseFlashMlaMetadataCpuKernel::AssignByRow(const SplitContext &splitConte
         do {
             assignContext.curS1GIdx++;
             CalcS1GCache(assignContext.curS1GIdx, splitContext, assignContext.batchCache, assignContext.s1GCache);
-        } while(assignContext.s1GCache.s1GBlock == 0);
+        } while (assignContext.s1GCache.s1GBlock == 0);
         assignContext.curS2Idx = assignContext.s1GCache.s2Start;
     }
 }
@@ -604,7 +604,8 @@ void SparseFlashMlaMetadataCpuKernel::AssignByBlock(const SplitContext &splitCon
     }
 }
 
-void SparseFlashMlaMetadataCpuKernel::ForceAssign(const SplitContext &splitContext, AssignContext &assignContext) {
+void SparseFlashMlaMetadataCpuKernel::ForceAssign(const SplitContext &splitContext, AssignContext &assignContext)
+{
     if (assignContext.isFinished) {
         return;
     }
@@ -830,9 +831,9 @@ bool SparseFlashMlaMetadataCpuKernel::GenMetaData(SplitResult &splitRes)
             metaDataPtr->faMetadata[2 * i + 1][FA_BN2_END_INDEX] = splitRes.bN2End[i];
             metaDataPtr->faMetadata[2 * i + 1][FA_M_END_INDEX] = splitRes.gS1End[i];
             metaDataPtr->faMetadata[2 * i + 1][FA_S2_END_INDEX] = splitRes.s2End[i];
-            //
             metaDataPtr->faMetadata[2 * i][FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX] = splitRes.firstFdDataWorkspaceIdx[i];
-            metaDataPtr->faMetadata[2 * i + 1][FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX] = splitRes.firstFdDataWorkspaceIdx[i];
+            metaDataPtr->faMetadata[2 * i + 1][FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX] =
+                splitRes.firstFdDataWorkspaceIdx[i];
             // 单核s2基本块最大数量
             metaDataPtr->faMetadata[2 * i][FA_S2_MAX_NUM] = splitRes.maxS2GBaseNum;
             metaDataPtr->faMetadata[2 * i + 1][FA_S2_MAX_NUM] = splitRes.maxS2GBaseNum;

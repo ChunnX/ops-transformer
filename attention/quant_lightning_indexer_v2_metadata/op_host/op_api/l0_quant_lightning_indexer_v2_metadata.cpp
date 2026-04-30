@@ -44,11 +44,11 @@ const aclTensor* QuantLightningIndexerV2Metadata(
     auto ret = ADD_TO_LAUNCHER_LIST_AICPU(
         QuantLightningIndexerV2Metadata,
         OP_ATTR_NAMES({"aic_core_num", "aiv_core_num", "soc_version", "num_heads_q", "num_heads_k", "head_dim", "topk",
-                        "q_quant_mode", "k_quant_mode", "batch_size", "max_seqlen_q", "max_seqlen_k", "layout_q", 
+                        "q_quant_mode", "k_quant_mode", "batch_size", "max_seqlen_q", "max_seqlen_k", "layout_q",
                         "layout_k", "mask_mode"}),
         OP_INPUT(cuSeqLensQOptional, cuSeqLensKOptional, sequsedQOptional, sequsedKOptional), OP_OUTPUT(metaData),
-        OP_ATTR(aicCoreNum, aivCoreNum, socVersion, numHeadsQ, numHeadsK, headDim, topkOptional, qQuantModeOptional, 
-                kQuantModeOptional, batchSizeOptional, maxSeqlenQOptional, maxSeqlenKOptional, layoutQOptional, 
+        OP_ATTR(aicCoreNum, aivCoreNum, socVersion, numHeadsQ, numHeadsK, headDim, topkOptional, qQuantModeOptional,
+                kQuantModeOptional, batchSizeOptional, maxSeqlenQOptional, maxSeqlenKOptional, layoutQOptional,
                 layoutKOptional, maskModeOptional));
     OP_CHECK(ret == ACL_SUCCESS,
              OP_LOGE(ACLNN_ERR_INNER_NULLPTR,

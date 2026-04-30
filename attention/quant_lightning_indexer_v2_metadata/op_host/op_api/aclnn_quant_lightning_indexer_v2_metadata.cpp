@@ -40,12 +40,12 @@ static aclnnStatus ParamsCheck(const aclTensor* cuSeqLensQOptional, const aclTen
     uint32_t aicCoreNum, uint32_t aivCoreNum, const std::string &socVersion)
 {
     if (CheckSingleParamQliV2(batchSizeOptional, maxSeqlenQOptional, maxSeqlenKOptional, numHeadsQ, numHeadsK,
-                              qQuantModeOptional, kQuantModeOptional, layoutQOptional, layoutKOptional,
-                              maskModeOptional, aicCoreNum, aivCoreNum, socVersion) == ACLNN_SUCCESS &&
+            qQuantModeOptional, kQuantModeOptional, layoutQOptional, layoutKOptional, maskModeOptional, aicCoreNum,
+            aivCoreNum, socVersion) == ACLNN_SUCCESS &&
         CheckExistenceQliV2(layoutQOptional, layoutKOptional, cuSeqLensQOptional, cuSeqLensKOptional,
-                            maskModeOptional) == ACLNN_SUCCESS &&
-        CheckConsistencyQliV2(layoutQOptional, layoutKOptional, cuSeqLensQOptional, cuSeqLensKOptional, sequsedQOptional,
-                              sequsedKOptional, batchSizeOptional) == ACLNN_SUCCESS &&
+            maskModeOptional) == ACLNN_SUCCESS &&
+        CheckConsistencyQliV2(layoutQOptional, layoutKOptional, cuSeqLensQOptional, cuSeqLensKOptional,
+            sequsedQOptional, sequsedKOptional, batchSizeOptional) == ACLNN_SUCCESS &&
         CheckFeatureQliV2() == ACLNN_SUCCESS) {
         return ACLNN_SUCCESS;
     } else {
@@ -55,7 +55,7 @@ static aclnnStatus ParamsCheck(const aclTensor* cuSeqLensQOptional, const aclTen
 
 aclnnStatus CheckSingleParamQliV2(int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t maxSeqlenKOptional,
     int64_t numHeadsQ, int64_t numHeadsK, int64_t qQuantModeOptional, int64_t kQuantModeOptional, char* layoutQOptional,
-    char* layoutKOptional, int64_t maskModeOptional, uint32_t aicCoreNum, uint32_t aivCoreNum, 
+    char* layoutKOptional, int64_t maskModeOptional, uint32_t aicCoreNum, uint32_t aivCoreNum,
     const std::string &socVersion)
 {
     // q_quant_mode 非负校验

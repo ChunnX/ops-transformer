@@ -70,8 +70,7 @@ bool QuantLightningIndexerV2MetadataCpuKernel::ParamsCheck()
 
 bool QuantLightningIndexerV2MetadataCpuKernel::CheckTensorData()
 {
-    auto isValid = [](Tensor* t)
-    {
+    auto isValid = [](Tensor* t) {
         return t != nullptr && t->GetTensorShape() != nullptr && t->GetTensorShape()->GetDimSize(0) != 0;
     };
     if (isValid(actSeqLenQ_) && actSeqLenQ_->GetData() == nullptr) {
@@ -380,7 +379,7 @@ void QuantLightningIndexerV2MetadataCpuKernel::CalcBatchCost(
             costInfo.maxS1GCost = s1GCache.s1GCost;
         }
 
-        if (s1GCache.s1GBlock > 0){
+        if (s1GCache.s1GBlock > 0) {
             costInfo.bN2LastBlockCostOfEachBatch[bIdx] = s1GCache.s1GLastBlockCost;
         }
     }
@@ -512,7 +511,7 @@ void QuantLightningIndexerV2MetadataCpuKernel::AssignByRow(const SplitContext &s
         do {
             assignContext.curS1GIdx++;
             CalcS1GCache(assignContext.curS1GIdx, splitContext, assignContext.batchCache, assignContext.s1GCache);
-        } while(assignContext.s1GCache.s1GBlock == 0);
+        } while (assignContext.s1GCache.s1GBlock == 0);
         assignContext.curS2Idx = assignContext.s1GCache.s2Start;
     }
 }
@@ -692,7 +691,7 @@ void QuantLightningIndexerV2MetadataCpuKernel::SplitFD(SplitResult &splitRes)
         totalFDLoad += splitRes.fdRes.fdS2SplitNum[i] * splitRes.fdRes.fdMSize[i];
     }
     // 计算每个核处理的load
-    //向上取整，避免核负载为0
+    // 向上取整，避免核负载为0
     uint64_t averageLoad = (totalFDLoad + aivCoreNum_ - 1U) / aivCoreNum_;
     uint32_t curCoreIndex = 0;
     for (uint32_t i = 0; i < splitRes.numOfFdHead; i++) {
@@ -756,8 +755,8 @@ bool QuantLightningIndexerV2MetadataCpuKernel::GenMetaData(SplitResult &splitRes
         metaDataPtr->qliV2Metadata[i][QLI_V2_BN2_END_INDEX] = splitRes.bN2End[i];
         metaDataPtr->qliV2Metadata[i][QLI_V2_M_END_INDEX] = splitRes.gS1End[i];
         metaDataPtr->qliV2Metadata[i][QLI_V2_S2_END_INDEX] = splitRes.s2End[i];
-        //
-        metaDataPtr->qliV2Metadata[i][QLI_V2_FIRST_QLD_V2_DATA_WORKSPACE_IDX_INDEX] = splitRes.firstFdDataWorkspaceIdx[i];
+        metaDataPtr->qliV2Metadata[i][QLI_V2_FIRST_QLD_V2_DATA_WORKSPACE_IDX_INDEX] =
+            splitRes.firstFdDataWorkspaceIdx[i];
     }
 
     // LD Metadata Generate

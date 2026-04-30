@@ -62,7 +62,7 @@ at::Tensor npu_quant_lightning_indexer_v2_metadata(
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("npu_quant_lightning_indexer_v2_metadata", &npu_quant_lightning_indexer_v2_metadata, 
+    m.def("npu_quant_lightning_indexer_v2_metadata", &npu_quant_lightning_indexer_v2_metadata,
         "npu_quant_lightning_indexer_v2_metadata");
 }
 } // namespace op_api

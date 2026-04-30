@@ -34,8 +34,8 @@ const aclTensor* LightningIndexerV2Metadata(
     int64_t maskModeOptional, const aclTensor* metaData, aclOpExecutor* executor)
 {
     L0_DFX(LightningIndexerV2Metadata, cuSeqLensQOptional, cuSeqLensKOptional, sequsedQOptional, sequsedKOptional,
-            aicCoreNum, aivCoreNum, socVersion, numHeadsQ, numHeadsK, headDim, topkOptional, batchSizeOptional,
-            maxSeqlenQOptional, maxSeqlenKOptional, layoutQOptional, layoutKOptional, maskModeOptional, metaData);
+        aicCoreNum, aivCoreNum, socVersion, numHeadsQ, numHeadsK, headDim, topkOptional, batchSizeOptional,
+        maxSeqlenQOptional, maxSeqlenKOptional, layoutQOptional, layoutKOptional, maskModeOptional, metaData);
 
     static internal::AicpuTaskSpace space("LightningIndexerV2Metadata");
 

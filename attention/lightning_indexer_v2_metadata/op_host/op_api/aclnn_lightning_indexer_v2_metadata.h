@@ -26,7 +26,7 @@ aclnnLightningIndexerV2MetadataGetWorkspaceSize(
     char* layoutKOptional, int64_t maskModeOptional, const aclTensor* metaData, uint64_t* workspaceSize,
     aclOpExecutor** executor);
 
-__attribute__((visibility("default"))) 
+__attribute__((visibility("default")))
 aclnnStatus CheckSingleParamLiV2(int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t maxSeqlenKOptional,
     int64_t numHeadsQ, int64_t numHeadsK, char* layoutQOptional, char* layoutKOptional, int64_t maskModeOptional,
     uint32_t aicCoreNum, uint32_t aivCoreNum, const std::string &socVersion);

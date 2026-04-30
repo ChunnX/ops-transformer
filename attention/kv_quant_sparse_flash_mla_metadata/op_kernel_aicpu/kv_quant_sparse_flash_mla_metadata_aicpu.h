@@ -280,7 +280,7 @@ private:
     void CalcBatchCache(uint32_t bIdx, const SplitContext &splitContext, BatchCache &batchCache);
     void CalcBlockRange(Range<int64_t> &s2TokenRange, const BatchCache &batchCache, S1GCache &s1GCache);
     void CalcBlockAndCost(S1GCache &s1GCache, const SplitInfo &splitInfo);
-    void CalcS1GCache(uint32_t s1GIdx, const SplitContext &splitContext, const BatchCache &batchCache, 
+    void CalcS1GCache(uint32_t s1GIdx, const SplitContext &splitContext, const BatchCache &batchCache,
         S1GCache &s1GCache);
 
     // preprocess

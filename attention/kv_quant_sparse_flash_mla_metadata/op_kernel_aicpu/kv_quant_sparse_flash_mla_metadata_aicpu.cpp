@@ -76,8 +76,7 @@ bool KvQuantSparseFlashMlaMetadataCpuKernel::ParamsCheck()
 
 bool KvQuantSparseFlashMlaMetadataCpuKernel::CheckTensorData()
 {
-    auto isValid = [](Tensor* t)
-    {
+    auto isValid = [](Tensor* t) {
         return t != nullptr && t->GetTensorShape() != nullptr && t->GetTensorShape()->GetDimSize(0) != 0;
     };
 
@@ -441,7 +440,7 @@ void KvQuantSparseFlashMlaMetadataCpuKernel::CalcBatchCost(uint32_t bIdx, const 
         if (s1GCache.s1GCost > costInfo.maxS1GCost) {
             costInfo.maxS1GCost = s1GCache.s1GCost;
         }
-        if (s1GCache.s1GBlock > 0){
+        if (s1GCache.s1GBlock > 0) {
             costInfo.bN2LastBlockCostOfEachBatch[bIdx] = s1GCache.s1GLastBlockCost;
         }
     }
@@ -467,7 +466,8 @@ void KvQuantSparseFlashMlaMetadataCpuKernel::CalcCostInfo(SplitContext &splitCon
 }
 
 void KvQuantSparseFlashMlaMetadataCpuKernel::UpdateCursor(const SplitContext &splitContext,
-    AssignContext &assignContext) {
+    AssignContext &assignContext)
+{
     const SplitInfo &splitInfo = splitContext.splitInfo;
     const CostInfo &costInfo = splitContext.costInfo;
 
@@ -571,7 +571,7 @@ void KvQuantSparseFlashMlaMetadataCpuKernel::AssignByRow(const SplitContext &spl
         do {
             assignContext.curS1GIdx++;
             CalcS1GCache(assignContext.curS1GIdx, splitContext, assignContext.batchCache, assignContext.s1GCache);
-        } while(assignContext.s1GCache.s1GBlock == 0);
+        } while (assignContext.s1GCache.s1GBlock == 0);
         assignContext.curS2Idx = assignContext.s1GCache.s2Start;
     }
 }
@@ -612,7 +612,8 @@ void KvQuantSparseFlashMlaMetadataCpuKernel::AssignByBlock(const SplitContext &s
 }
 
 void KvQuantSparseFlashMlaMetadataCpuKernel::ForceAssign(const SplitContext &splitContext,
-    AssignContext &assignContext) {
+    AssignContext &assignContext)
+{
     if (assignContext.isFinished) {
         return;
     }

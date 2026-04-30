@@ -70,11 +70,9 @@ bool LightningIndexerV2MetadataCpuKernel::ParamsCheck()
 
 bool LightningIndexerV2MetadataCpuKernel::CheckTensorData()
 {
-    auto isValid = [](Tensor* t) 
-    {
-        return t != nullptr && t->GetTensorShape() != nullptr && t->GetTensorShape()->GetDimSize(0) != 0; 
+    auto isValid = [](Tensor* t) {
+        return t != nullptr && t->GetTensorShape() != nullptr && t->GetTensorShape()->GetDimSize(0) != 0;
     };
-
     if (isValid(actSeqLenQ_) && actSeqLenQ_->GetData() == nullptr) {
         KERNEL_LOG_ERROR("The data of cu_seqlens_q is nullptr!");
         return false;
@@ -380,7 +378,7 @@ void LightningIndexerV2MetadataCpuKernel::CalcBatchCost(
             costInfo.maxS1GCost = s1GCache.s1GCost;
         }
 
-        if (s1GCache.s1GBlock > 0){
+        if (s1GCache.s1GBlock > 0) {
             costInfo.bN2LastBlockCostOfEachBatch[bIdx] = s1GCache.s1GLastBlockCost;
         }
     }
@@ -509,7 +507,7 @@ void LightningIndexerV2MetadataCpuKernel::AssignByRow(const SplitContext &splitC
         do {
             assignContext.curS1GIdx++;
             CalcS1GCache(assignContext.curS1GIdx, splitContext, assignContext.batchCache, assignContext.s1GCache);
-        } while(assignContext.s1GCache.s1GBlock == 0);
+        } while (assignContext.s1GCache.s1GBlock == 0);
         assignContext.curS2Idx = assignContext.s1GCache.s2Start;
     }
 }
@@ -606,8 +604,8 @@ void LightningIndexerV2MetadataCpuKernel::RecordFDInfo(const SplitContext &split
     result.numOfFdHead++;
 }
 
-void LightningIndexerV2MetadataCpuKernel::AssignBlockToCore(uint32_t coreNum, const SplitContext &splitContext, 
-                                                               AssignContext &assignContext, SplitResult &result)
+void LightningIndexerV2MetadataCpuKernel::AssignBlockToCore(uint32_t coreNum, const SplitContext &splitContext,
+    AssignContext &assignContext, SplitResult &result)
 {
     const CostInfo &costInfo = splitContext.costInfo;
     result.firstFdDataWorkspaceIdx[assignContext.curCoreIdx] = assignContext.preFdDataNum +

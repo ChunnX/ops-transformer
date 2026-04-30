@@ -46,7 +46,7 @@ __attribute__((visibility("default")))
 aclnnStatus CheckFeatureQliV2();
 
 __attribute__((visibility("default"))) aclnnStatus
-aclnnQuantLightningIndexerV2Metadata(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, 
+aclnnQuantLightningIndexerV2Metadata(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
     aclrtStream stream);
 
 #ifdef __cplusplus

@@ -35,17 +35,16 @@ extern "C" {
 
 static aclnnStatus ParamsCheck(const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensKOptional,
     const aclTensor* sequsedQOptional, const aclTensor* sequsedKOptional, int64_t numHeadsQ, int64_t numHeadsK,
-    int64_t batchSizeOptional, int64_t maxSeqlenQOptional,int64_t maxSeqlenKOptional, char* layoutQOptional,
+    int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t maxSeqlenKOptional, char* layoutQOptional,
     char* layoutKOptional, int64_t maskModeOptional, uint32_t aicCoreNum, uint32_t aivCoreNum,
     const std::string &socVersion)
 {
     if (CheckSingleParamLiV2(batchSizeOptional, maxSeqlenQOptional, maxSeqlenKOptional, numHeadsQ, numHeadsK,
-                             layoutQOptional, layoutKOptional, maskModeOptional, aicCoreNum, aivCoreNum,
-                             socVersion) == ACLNN_SUCCESS &&
+            layoutQOptional, layoutKOptional, maskModeOptional, aicCoreNum, aivCoreNum, socVersion) == ACLNN_SUCCESS &&
         CheckExistenceLiV2(layoutQOptional, layoutKOptional, cuSeqLensQOptional, cuSeqLensKOptional,
-                           maskModeOptional) == ACLNN_SUCCESS &&
-        CheckConsistencyLiV2(layoutQOptional, layoutKOptional, cuSeqLensQOptional, cuSeqLensKOptional, sequsedQOptional,
-                             sequsedKOptional, batchSizeOptional) == ACLNN_SUCCESS &&
+            maskModeOptional) == ACLNN_SUCCESS &&
+        CheckConsistencyLiV2(layoutQOptional, layoutKOptional, cuSeqLensQOptional, cuSeqLensKOptional,
+            sequsedQOptional, sequsedKOptional, batchSizeOptional) == ACLNN_SUCCESS &&
         CheckFeatureLiV2() == ACLNN_SUCCESS) {
         return ACLNN_SUCCESS;
     } else {
