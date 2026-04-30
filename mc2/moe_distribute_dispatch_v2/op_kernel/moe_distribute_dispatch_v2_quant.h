@@ -45,7 +45,7 @@ public:
     __aicore__ inline MoeDistributeDispatchV2Quant() = default;
 
     __aicore__ inline void SetQuantInitParams(LocalTensor<float> floatLocalTemp, LocalTensor<float> smoothScalesTensor, 
-                                              TBuf<> smoothScalesBuf) 
+                                              TBuf<> smoothScalesBuf)
     {
         floatLocalTemp_ = floatLocalTemp;
         smoothScalesBuf_ = smoothScalesBuf;
