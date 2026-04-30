@@ -360,6 +360,13 @@ struct DeterConstInfo {
     uint32_t deterDkVecCoreS2Offset;
     uint32_t deterDvVecCoreS2Offset;
     bool noNeedDeter;
+    // fp32 old deter
+    uint64_t dqGmBaseAddr = 0;
+    uint64_t dkGmBaseAddr = 0;
+    uint64_t dvGmBaseAddr = 0;
+    uint64_t dqGmLimitOffset = 0;
+    uint64_t dkGmLimitOffset = 0;
+    uint64_t dvGmLimitOffset = 0;
     // event_id
     event_t eventIDScalarToMte2;
     event_t eventIDMte2ToScalar;
