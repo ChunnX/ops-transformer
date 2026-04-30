@@ -1796,53 +1796,6 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
       auto attr = context->GetAttrs();
       const auto tuningConfigPtr = attr != nullptr ? (attr->GetAttrPointer<gert::ContinuousVector>(ATTR_INDEX_TUNING_CONFIG)) : nullptr;
 
-      // --------------计算最小所需空间-------------
-      // uint32_t m = context->GetDynamicInputTensor(X_INDEX, 0)->GetStorageShape().GetDim(0);
-      // uint32_t k = context->GetDynamicInputTensor(X_INDEX, 0)->GetStorageShape().GetDim(1);
-      
-      // //矩阵
-      // uint64_t leftMatrixWs = (uint64_t)AlignUp()m * k * sizeof(int8_t) ;
-      // leftMatrixWs = (leftMatrixWs + WS_ALIGN - 1) / WS_ALIGN * WS_ALIGN;//和32对齐，向上取整
-
-      // //CV同步空间
-      // uint64_t cvSyncWs = (cvParallNum * aicNum * singleN * singleM * static_cast<uint32_t>(sizeof(int32_t)) * EIGHT);
-      // cvSyncWs = (cvSyncWs + WS_ALIGN - 1) / WS_ALIGN * WS_ALIGN;//和32对齐，向上取整
-
-      // uint64_t FixedAxisMoveWorkspace_ = leftMatrixWs + cvSyncWs;
-      // printf("FixedAxisMoveWorkspace_ = %lld\n", FixedAxisMoveWorkspace_);
-      // // ----------------------------------------
-
-      // tuningConfigWorkspace_ = (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > TUNING_CONFIG_ALLOW_WORKSPACE_INDEX) ?
-      //           (reinterpret_cast<const int64_t *>(tuningConfigPtr->GetData()))[TUNING_CONFIG_ALLOW_WORKSPACE_INDEX] : 0;
-      // // 手动加到1024*1024*1024
-      // // tuningConfigWorkspace_ = 1024*1024*1024;
-      
-      // printf("tuningConfigWorkspace_");
-      // printf("tuningConfigWorkspace_ = %lld\n", tuningConfigWorkspace_);
-
-
-      // bool isWorkspaceValid = 
-      //     (static_cast<int64_t>(FixedAxisMoveWorkspace_) <= tuningConfigWorkspace_) || 
-      //     (tuningConfigWorkspace_ == TUNING_WS_AUTO);
-
-      // // 空间足够 → 开启前处理 反之走原路径
-      // uint32_t isA8W4MSDPreNZ = 0;
-      // uint64_t preProcessWorkspaceSize = 0;
-
-      // // workspace 合法足够 → 开启 ND→NZ 预处理分支并且计算需要额外分配的空间大小
-      // if (isWorkspaceValid) {
-      //     isA8W4MSDPreNZ = 1;
-      //     preProcessWorkspaceSize = FixedAxisMoveWorkspace_;                
-      // }
-
-      // tilingDataA8W4.gmmBaseParams.set_isA8W4MSDPreNZ(isA8W4MSDPreNZ);
-
-      // size_t *workspaces = context->GetWorkspaceSizes(1); // get second variable
-      // workspaces[0] = SYS_WORKSPACE_SIZE;                 // default size
-      // printf("workspaces[0] = %lld\n", workspaces[0]);
-      // workspaces[0] += preProcessWorkspaceSize;
-      // printf("workspaces[0] = %lld\n", workspaces[0]);
-
       bool useHighPerf = (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > TUNING_CONFIG_A8W4_SPEC_SCENARIO_INDEX) ?
                     ((reinterpret_cast<const int64_t *>(tuningConfigPtr->GetData()))[TUNING_CONFIG_A8W4_SPEC_SCENARIO_INDEX] == 1) : false;
       if (useHighPerf) {
@@ -1907,6 +1860,7 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
         tilingDataA8W4.hpTilingData.set_ori_in1_shape(ori_in1_shape.data());
         tilingDataA8W4.hpTilingData.set_ori_out_shape(ori_out_shape.data());
         uint32_t aic = aicNum;
+        // uint32_t aic = 1;
         uint32_t aiv = compileInfoPtr->aivNum;
         uint64_t szUB = compileInfoPtr->ubSize;
         uint64_t szL0A = compileInfoPtr->l0ASize;
@@ -2142,16 +2096,14 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
                                                    GROUPED_MATMUL_A16W8_KERNEL_TEMPLATE_NONE,
                                                    GROUPED_MATMUL_AIV_AIC_RATIO_2, 0));
 		  }
-          tilingDataA8W4.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
-          context->GetRawTilingData()->SetDataSize(tilingDataA8W4.GetDataSize());
-
           size_t* workspaces = context->GetWorkspaceSizes(1);  // get second variable
           OP_CHECK_NULL_WITH_CONTEXT(context, workspaces);  // check workspaces is not null
           workspaces[0] = SYS_WORKSPACE_SIZE;  // default size
+          printf("workspaces[0] = %lld\n", workspaces[0]);
           if (is_in_a8w4_white_list) {
             workspaces[0] += static_cast<size_t>((cvParallNum * aicNum * A8W4_MSD_BASE_M * A8W4_MSD_BASE_N * static_cast<uint32_t>(sizeof(short))) * TWO);
           } else {
-            workspaces[0] += static_cast<size_t>((cvParallNum * aicNum * singleN * singleM * static_cast<uint32_t>(sizeof(int32_t)) * EIGHT));
+            workspaces[0] += static_cast<size_t>((cvParallNum * aicNum * singleN * singleM * static_cast<uint32_t>(sizeof(int32_t)) * EIGHT  ));
           }
           printf("workspaces[0] = %lld\n", workspaces[0]);
           // --------------计算最小所需空间------------
@@ -2162,7 +2114,7 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
                     (reinterpret_cast<const int64_t *>(tuningConfigPtr->GetData()))[TUNING_CONFIG_ALLOW_WORKSPACE_INDEX] : 0;
 
           bool isWorkspaceValid = 
-              (static_cast<int64_t>(FixedAxisMoveWorkspace_) <= tuningConfigWorkspace_) || 
+              (static_cast<int64_t>(preProcessWorkspaceSize) + workspaces[0] <= tuningConfigWorkspace_) || 
               (tuningConfigWorkspace_ == TUNING_WS_AUTO);
           printf("tuningConfigWorkspace_ = %lld\n", tuningConfigWorkspace_);
 
@@ -2172,11 +2124,14 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
           // workspace 合法, k64位对齐 → 开启 ND→NZ 预处理分支并且计算需要额外分配的空间大小
           if (isWorkspaceValid && k % 64 == 0) {
               isA8W4MSDPreNZ = 1;
-              workspaces[0] += preProcessWorkspaceSize;                
+              workspaces[0] += preProcessWorkspaceSize ;                
           }
           printf("workspaces[0] = %lld\n", workspaces[0]);
           printf("preProcessWorkspaceSize = %lld\n", preProcessWorkspaceSize);
           tilingDataA8W4.gmmBaseParams.set_isA8W4MSDPreNZ(isA8W4MSDPreNZ);
+          printf("isA8W4MSDPreNZ = %u\n", isA8W4MSDPreNZ);
+          tilingDataA8W4.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
+          context->GetRawTilingData()->SetDataSize(tilingDataA8W4.GetDataSize());
           return ge::GRAPH_SUCCESS;
         }
       }
@@ -2242,8 +2197,11 @@ ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForGMM(gert::TilingParseContext* c
   OP_CHECK_NULL_WITH_CONTEXT(context, compileInfoPtr);
 
   auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
-  compileInfoPtr->aicNum = ascendcPlatform.GetCoreNumAic();
-  compileInfoPtr->aivNum = ascendcPlatform.GetCoreNumAiv();
+
+  // compileInfoPtr->aicNum = ascendcPlatform.GetCoreNumAic();
+  compileInfoPtr->aicNum = 1;
+  // compileInfoPtr->aivNum = ascendcPlatform.GetCoreNumAiv();
+  compileInfoPtr->aivNum = 2;
   compileInfoPtr->socVersion = ascendcPlatform.GetSocVersion();
   compileInfoPtr->npuArch = ascendcPlatform.GetCurNpuArch();
   ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, compileInfoPtr->ubSize);

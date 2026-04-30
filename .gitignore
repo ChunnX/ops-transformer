@@ -40,4 +40,4 @@ third_party/
 
 # ai
 .agents/
-.opencode/
+.opencode/testA8W4/extra-info/data-dump/**/*

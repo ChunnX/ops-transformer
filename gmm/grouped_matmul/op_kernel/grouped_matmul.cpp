@@ -43,6 +43,7 @@ using namespace AscendC;
 using namespace matmul;
 using namespace GROUPED_MATMUL;
 
+
 #ifndef FORMAT_FRACTAL_NZ
     #define FORMAT_FRACTAL_NZ
 #endif
@@ -236,7 +237,7 @@ namespace {
 #define GMM_A4W4_IMP(computeClass, transA, transB, cfg, aType, bType, cType)                                       \
     do {                                                                                                           \
         using matmulType = MMImplType<aType<transA>, bType<transB>, cType, biasType, cfg>;                         \
-        matmulType::MT mm;                                                                                         \
+        matmulType::MT mm;                               \
         GET_TILING_DATA_MEMBER(GMMTilingData, gmmBaseParams, gmmBaseParams_, tiling);                              \
         GET_TILING_DATA_MEMBER(GMMTilingData, mmTilingData, mmTilingData_, tiling);                                \
         GET_TILING_DATA_MEMBER_ADDR(GMMTilingData, gmmArray, gmmArrayAddr_, tiling);                               \
@@ -247,22 +248,25 @@ namespace {
         computeClass<matmulType> computeOp(mm);                                                                    \
         computeOp.Init(x, weight, scale, groupList, perTokenScale,                                                 \
                     y, user1, &gmmBaseParams_, &mmTilingData_, &tPipe);                                            \
-        computeOp.Process();                                                                                       \
+        computeOp.Process();                             \
+                                                                                               \
     } while (0)
 
 #define GMM_CV_SPLIT_IMP_A8W4_MSD(computeClass, cfg)                                                               \
     do {                                                                                                           \
         GET_TILING_DATA_MEMBER(GMMTilingData, gmmBaseParams, gmmBaseParams_, tiling);                              \
         if ASCEND_IS_AIV {                                                                                         \
+            printf("gmmBaseParams_.isA8W4MSDPreNZ == 1 = %d\n", gmmBaseParams_.isA8W4MSDPreNZ == 1);               \
+            printf("Global Memory addr1: 0x%lx\n", (uint64_t)user1);                                                  \
             if (gmmBaseParams_.isA8W4MSDPreNZ == 1) {                                                              \
                 GMMA8W4PreProcessNZ op1;                                                                           \
-                printf("GMMA8W4PreProcessNZ");                                                                                        \
-                op1.Init(x, x, groupList, user1, gmmBaseParams_, &tPipe);                                          \
-                op1.Process();                                                                                     \
+                printf("GMMA8W4PreProcessNZ\n");                                                                   \
+                op1.Init(x, user1, groupList, user1, gmmBaseParams_, &tPipe);                                      \
+                op1.Process();                                            \
             }                                                                                                      \
             else{                                                                                                  \
                 GMMA8W4PreProcess op1;                                                                             \
-                printf("GMMA8W4PreProcess");                                                                                        \
+                printf("GMMA8W4PreProcess\n");                                                                     \
                 op1.Init(x, x, groupList, user1, gmmBaseParams_, &tPipe);                                          \
                 op1.Process();                                                                                     \
             }                                                                                                      \
@@ -284,8 +288,12 @@ namespace {
                 mm.Init(&mmTilingData_, &tPipe);                                                                       \
             }                                                                                                          \
             computeClass<matmulType> op(mm);                                                                           \
-            op.Init(x, weight, bias, groupList, scale, perTokenScale, offset, nullptr, nullptr, nullptr,               \
-                    y, user1, &gmmBaseParams_, &mmTilingData_, &tPipe);                                                \
+            printf("gmmBaseParams_.m%lx\n", gmmBaseParams_.m);                                                         \
+            printf("gmmBaseParams_.k%lx\n", gmmBaseParams_.k);                                                  \
+            auto userCV = user1 + AlignUp<8>(gmmBaseParams_.m) * gmmBaseParams_.k ;                                \
+            printf("Global Memory addr3: 0x%lx\n", (uint64_t)userCV);                                                  \
+            op.Init(user1, weight, bias, groupList, scale, perTokenScale, offset, nullptr, nullptr, nullptr,           \
+                    y, userCV, &gmmBaseParams_, &mmTilingData_, &tPipe);                                               \
             op.Process();                                                                                              \
         }                                                                                                              \
         else {                                                                                                         \
@@ -302,6 +310,7 @@ namespace {
                 mm.Init(&mmTilingData_, &tPipe);                                                                       \
             }                                                                                                          \
             computeClass<matmulType> op(mm);                                                                           \
+            printf("初始化1");    \
             op.Init(x, weight, bias, groupList, scale, perTokenScale, offset, nullptr, nullptr, nullptr,               \
                     y, user1, &gmmBaseParams_, &mmTilingData_, &tPipe);                                                \
             op.Process();                                                                                              \
