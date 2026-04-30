@@ -1,0 +1,6 @@
+case_id;shape;dtype;compute_type;transpose_x1;transpose_x2;group_size
+0;[256, 512, 256];0;0;false;true;549764202624
+1;[512, 512, 256];0;0;false;true;549764202624
+2;[64, 1024, 256];0;0;false;true;549764202624
+3;[256, 1024, 256];0;0;false;true;549764202624
+4;[512, 1024, 256];0;0;false;true;549764202624

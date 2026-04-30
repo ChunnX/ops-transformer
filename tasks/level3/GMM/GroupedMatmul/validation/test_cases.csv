@@ -1,0 +1,7 @@
+case_id;M;K;N;dtype;split_item;group_type;group_list_type;act_type;tuning_config;has_bias
+0;16;64;32;float16;0;-1;0;0;0;false
+1;32;128;64;float16;0;-1;0;0;0;false
+2;64;256;128;float16;0;-1;0;0;0;false
+3;16;64;32;bfloat16;0;-1;0;0;0;false
+4;32;128;64;bfloat16;0;-1;0;0;0;false
+5;16;64;32;float16;0;-1;0;0;0;true
