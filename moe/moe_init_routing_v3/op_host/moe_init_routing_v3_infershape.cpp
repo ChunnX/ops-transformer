@@ -333,28 +333,28 @@ static ge::graphStatus CheckInputScaleShape(gert::InferShapeContext *context, co
                                 quantMode, xShape->GetDim(0), Ops::Base::ToString(*scaleShape).c_str()),
                         return ge::GRAPH_FAILED);
         } else if (scaleShape->GetDimNum() == DIM_THREE) {
-            OP_CHECK_IF(scaleShape->GetDim(0) < 0 && scaleShape->GetDim(0) != NEG_ONE ||
-                        scaleShape->GetDim(1) < 0 && scaleShape->GetDim(1) != NEG_ONE ||
-                        scaleShape->GetDim(DIM_TWO) < 0 && scaleShape->GetDim(DIM_TWO) != NEG_ONE,
-                        OP_LOGE(context,
-                                "When quant_mode is %ld and use scale in dynamic shape, each dim shape of scale "
-                                "should be (-1), current shape is (%s).",
-                                quantMode, Ops::Base::ToString(*scaleShape).c_str()),
-                        return ge::GRAPH_FAILED);
-            OP_CHECK_IF(scaleShape->GetDim(0) > 0 && !isSameDim(scaleShape->GetDim(0), xShape->GetDim(0)),
-                        OP_LOGE(context,
-                                "222When quant_mode is %ld and use scale in static shape, The shape of scale should be "
-                                "(%ld), current scale shape is (%s), current x shape is (%s).",
-                                quantMode, xShape->GetDim(0), Ops::Base::ToString(*scaleShape).c_str(), Ops::Base::ToString(*xShape).c_str()),
-                        return ge::GRAPH_FAILED);
-            OP_CHECK_IF(scaleShape->GetDim(1) > 0 && !isSameDim(scaleShape->GetDim(1),
-                            Ops::Base::CeilDiv<int64_t>(xShape->GetDim(1), SCALE_BLOCK_SIZE)),
-                        OP_LOGE(context,
-                                "333When quant_mode is %ld and use scale in static shape, The shape of scale should be "
-                                "(%ld), current scale shape is (%s), current x shape is (%s).",
-                                quantMode, Ops::Base::CeilDiv<int64_t>(xShape->GetDim(1), SCALE_BLOCK_SIZE),
-                                Ops::Base::ToString(*scaleShape).c_str(), Ops::Base::ToString(*xShape).c_str()),
-                        return ge::GRAPH_FAILED);
+            // OP_CHECK_IF(scaleShape->GetDim(0) < 0 && scaleShape->GetDim(0) != NEG_ONE ||
+            //             scaleShape->GetDim(1) < 0 && scaleShape->GetDim(1) != NEG_ONE ||
+            //             scaleShape->GetDim(DIM_TWO) < 0 && scaleShape->GetDim(DIM_TWO) != NEG_ONE,
+            //             OP_LOGE(context,
+            //                     "When quant_mode is %ld and use scale in dynamic shape, each dim shape of scale "
+            //                     "should be (-1), current shape is (%s).",
+            //                     quantMode, Ops::Base::ToString(*scaleShape).c_str()),
+            //             return ge::GRAPH_FAILED);
+            // OP_CHECK_IF(scaleShape->GetDim(0) > 0 && !isSameDim(scaleShape->GetDim(0), xShape->GetDim(0)),
+            //             OP_LOGE(context,
+            //                     "222When quant_mode is %ld and use scale in static shape, The shape of scale should be "
+            //                     "(%ld), current scale shape is (%s), current x shape is (%s).",
+            //                     quantMode, xShape->GetDim(0), Ops::Base::ToString(*scaleShape).c_str(), Ops::Base::ToString(*xShape).c_str()),
+            //             return ge::GRAPH_FAILED);
+            // OP_CHECK_IF(scaleShape->GetDim(1) > 0 && !isSameDim(scaleShape->GetDim(1),
+            //                 Ops::Base::CeilDiv<int64_t>(xShape->GetDim(1), SCALE_BLOCK_SIZE)),
+            //             OP_LOGE(context,
+            //                     "333When quant_mode is %ld and use scale in static shape, The shape of scale should be "
+            //                     "(%ld), current scale shape is (%s), current x shape is (%s).",
+            //                     quantMode, Ops::Base::CeilDiv<int64_t>(xShape->GetDim(1), SCALE_BLOCK_SIZE),
+            //                     Ops::Base::ToString(*scaleShape).c_str(), Ops::Base::ToString(*xShape).c_str()),
+            //             return ge::GRAPH_FAILED);
              OP_CHECK_IF(scaleShape->GetDim(DIM_TWO) > 0 && !isSameDim(scaleShape->GetDim(DIM_TWO),
                                                                        SCALE_THIRD_DIM_SIZE),
                         OP_LOGE(context,
