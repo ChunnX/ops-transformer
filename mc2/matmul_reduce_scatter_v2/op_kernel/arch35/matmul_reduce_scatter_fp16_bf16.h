@@ -88,10 +88,13 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
             CastBiasBFtoFloat(biasToFloatAddr, biasGM, cfg.rankN);
             biasGM_ = biasToFloatAddr;
             SyncAll<true>();
+            gmToFloat_ = workspaceGM + cfg.biasLen;
+        } else {
+            gmToFloat_ = workspaceGM;
         }
+    } else {
+        gmToFloat_ = workspaceGM;
     }
-
-    gmToFloat_ = workspaceGM + cfg.biasLen;
 }
 
 template <typename AType, typename BType, typename BiasType, typename CType>
