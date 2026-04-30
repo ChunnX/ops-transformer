@@ -113,7 +113,7 @@ int32_t KvQuantSparseFlashMlaMetadataCpuKernel::GetQueryBatchSize()
     if (layoutQuery_ == "TND") {
         if (cuSeqLenQ_ != nullptr && cuSeqLenQ_->GetData() != nullptr) {
             if (cuSeqLenQ_->GetTensorShape() != nullptr) {
-                return cuSeqLenQ_->GetTensorShape()->GetDimSize(0);
+                return cuSeqLenQ_->GetTensorShape()->GetDimSize(0) - 1;
             }
         }
     }
