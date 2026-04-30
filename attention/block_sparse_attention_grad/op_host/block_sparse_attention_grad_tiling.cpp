@@ -420,7 +420,7 @@ ge::graphStatus BSAGradTiling::CalculateWorkSpace(gert::TilingContext *context)
     dPOutSize_ = blockDim_ * WORKSPACE_BLOCK_SIZE_DB * sizeof(float);
     if (layout_ == InputLayout::TND) {
         dQOutSize_ = totalTokensT_ * numHeads_ * headDim_ * sizeof(float);
-        dKOutSize_ = totalTokensT_ * kvHeads_ * headDim_ * sizeof(float);
+        dKOutSize_ = kvTotalSeqlen_ * kvHeads_ * headDim_ * sizeof(float);
         dVOutSize_ = dKOutSize_;
         gradSize_ = totalTokensT_ * numHeads_  * ONEBLOCK_FLOAT_NUM * sizeof(float);
     } else {
