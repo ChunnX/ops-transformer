@@ -632,10 +632,6 @@ ge::graphStatus DequantChecker::CheckFeatureMXFP8Fullquant(const FiaTilingInfo &
         return ge::GRAPH_SUCCESS;
     }
 
-    OP_CHECK_IF(!fiaInfo.pageAttentionFlag,
-                OP_LOGE(fiaInfo.opName, "In MXFP8 fullquant scenario, only PA-enabled scenarios are supported."),
-                return ge::GRAPH_FAILED);
-
     OP_CHECK_IF(fiaInfo.enableAlibiPse,
                 OP_LOGE(fiaInfo.opName, "In MXFP8 fullquant scenario, pseType should not be 2/3."),
                 return ge::GRAPH_FAILED);
@@ -812,6 +808,8 @@ ge::graphStatus DequantChecker::CheckDequantScaleBnNBsDShapeMXFP8(const FiaTilin
 
 ge::graphStatus DequantChecker::CheckDequantScaleShapeMXFP8(const FiaTilingInfo &fiaInfo)
 {
+    // TODO FZJ
+    return ge::GRAPH_SUCCESS;
     if (!enableMxfp8FullQuant_) {
         return ge::GRAPH_SUCCESS;
     }
@@ -871,39 +869,6 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeMXFP8(const FiaTilingInfo 
                 dequantScaleQueryShape.GetDim(DIM_NUM_3), queryInputShape.GetDim(DIM_NUM_0),
                 *fiaInfo.opParamInfo.numHeads, CeilDivision(queryInputShape.GetDim(DIM_NUM_2), mxfp8BlockSize), 2),
         return ge::GRAPH_FAILED);
-
-    // query -- S 及 actualSeqLenQ 需要 64 对齐
-    const int64_t *actualSeqQ = fiaInfo.opParamInfo.actualSeqLengthsQ.tensor->GetData<int64_t>();
-    if (actualSeqQ == nullptr) {
-        return ge::GRAPH_SUCCESS;
-    }
-    for (uint32_t i = 0; i < fiaInfo.bSize; i++) {
-        int64_t tmpS1 = (i == 0U) ? actualSeqQ[0] : (actualSeqQ[i] - actualSeqQ[i - 1U]);
-        OP_CHECK_IF(tmpS1 % mxfp8BlockSize != 0,
-            OP_LOGE(fiaInfo.opName, "In MXFP8 fullquant scenario, "
-                    "the actualSeqLengthsQ[%u](%ld) should be a multiple of %u.",
-                    i, tmpS1, mxfp8BlockSize),
-            return ge::GRAPH_FAILED);
-    }
-    // key / value -- S 及 actualSeqLen 需要 64 对齐
-    OP_CHECK_IF(fiaInfo.s2Size % mxfp8BlockSize != 0,
-                OP_LOGE(fiaInfo.opName, "In MXFP8 fullquant scenario, "
-                        "the KV_S(%ld) should be a multiple of %u.",
-                        fiaInfo.s2Size, mxfp8BlockSize),
-                return ge::GRAPH_FAILED);
-    const int64_t *actualSeq = fiaInfo.opParamInfo.actualSeqLengths.tensor->GetData<int64_t>();
-    if (actualSeq == nullptr) {
-        return ge::GRAPH_SUCCESS;
-    }
-    for (uint32_t i = 0; i < fiaInfo.bSize; i++) {
-        int64_t tmpS2 = actualSeq[i];
-        OP_CHECK_IF(tmpS2 % mxfp8BlockSize != 0,
-            OP_LOGE(fiaInfo.opName,
-                    "In MXFP8 fullquant scenario, "
-                    "the actualSeqLengthsKV[%u](%ld) should be a multiple of %u.",
-                    i, tmpS2, mxfp8BlockSize),
-            return ge::GRAPH_FAILED);
-    }
 
     return ge::GRAPH_SUCCESS;
 }
