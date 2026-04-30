@@ -22,19 +22,20 @@ namespace ge {
 * @brief Rearrange tokens from rank order to expert order
 * @par Inputs:
 * @li tokens: A 2D tensor, represents tokens in rank-order. Type is BFloat16, Float16, DT_FLOAT8_E5M2,
-      DT_FLOAT8_E4M3FN or Int8. Shape supports (A, H). Format supports ND.
+      DT_FLOAT8_E4M3FN, Int8, DT_HIFLOAT8, DT_FLOAT4_E2M1 or DT_FLOAT4_E1M2. Shape supports (A, H). Format supports ND.
 * @li expert_token_num_per_rank: A 2D tensor, represents numbers of tokens belong to an expert on specific rank.
       Type is Int32 or Int64. Shape supports (N, E). Format supports ND.
 * @li per_token_scales: A 1D, 2D or 3D tensor, optional, represents tokens scale in rank-order.
-      Type is Float32, DT_FLOAT8_E8M0.
+      Type is Float32, DT_FLOAT8_E8M0. 
       Shape supports (A), (A,S) or (A,K/64,2). Format supports ND. If tokens is FLOAT8,
       per_token_scales must be DT_FLOAT8_E8M0. \n
   The Atlas A2 Training Series Product/Atlas 800I A2 Inference Product/A200I A2 Box Heterogeneous Component support 1D. \n
   The Atlas A3 Training Series Product/Atlas A3 Inference Series Product support 1D. \n
   Ascend 950 support 1D, 2D or 3D (3D only for FP8 tokens). \n
 * @par Outputs:
-* @li permute_tokens: A 2D tensor, represents tokens in expert-order. Type is BFloat16, Float16 or
-      Int8. Shape supports (A, H). Format supports ND.
+* @li permute_tokens: A 2D tensor, represents tokens in expert-order. Type is BFloat16, Float16,
+      Int8, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_HIFLOAT8, DT_FLOAT4_E2M1 or DT_FLOAT4_E1M2. Shape supports (A, H). 
+  Format supports ND.
 * @li permute_per_token_scales: A 1D, 2D or 3D tensor, represents tokens scale in expert-order.
       Type is Float32, DT_FLOAT8_E8M0. Shape supports (A), (A,S) or (A,K/64,2). Format supports ND.
   The Atlas A2 Training Series Product/Atlas 800I A2 Inference Product/A200I A2 Box Heterogeneous Component support 1D. \n
@@ -51,10 +52,12 @@ namespace ge {
       supports 0-gather idx or 1-scatter idx. Ascend 950PR/Ascend 950DT supports "0" or "1". The others only support "0".
 */
 REG_OP(MoeReRouting)
-    .INPUT(tokens, TensorType({DT_FLOAT16, DT_BF16, DT_INT8, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN}))
+    .INPUT(tokens, TensorType({DT_FLOAT16, DT_BF16, DT_INT8, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_HIFLOAT8,
+                               DT_FLOAT4_E2M1, DT_FLOAT4_E1M2}))
     .INPUT(expert_token_num_per_rank, TensorType({DT_INT32, DT_INT64}))
     .OPTIONAL_INPUT(per_token_scales, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))
-    .OUTPUT(permute_tokens, TensorType({DT_FLOAT16, DT_BF16, DT_INT8, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN}))
+    .OUTPUT(permute_tokens, TensorType({DT_FLOAT16, DT_BF16, DT_INT8, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_HIFLOAT8,
+                                        DT_FLOAT4_E2M1, DT_FLOAT4_E1M2}))
     .OUTPUT(permute_per_token_scales, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))
     .OUTPUT(permute_token_idx, TensorType({DT_INT32}))
     .OUTPUT(expert_token_num, TensorType({DT_INT32, DT_INT64}))
