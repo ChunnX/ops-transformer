@@ -17,7 +17,6 @@
 #include <cstdio>
 #include <cmath>
 #include "status.h"
-#include "cust_op/cust_cpu_utils.h"
 
 using namespace optiling;
 

@@ -8,12 +8,10 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "log.h"
-#include "status.h"
-#include "cust_op/cust_cpu_utils.h"
+#include "lightning_indexer_v2_metadata_aicpu.h"
 #include <cstdio>
 #include <cmath>
-#include "lightning_indexer_v2_metadata_aicpu.h"
+#include "status.h"
 
 using namespace optiling;
 
