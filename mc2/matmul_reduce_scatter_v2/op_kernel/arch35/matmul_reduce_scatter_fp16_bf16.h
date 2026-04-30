@@ -192,25 +192,22 @@ template <typename AType, typename BType, typename BiasType, typename CType>
 __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType>::CastBiasBFtoFloat(
     GM_ADDR dst, GM_ADDR src, int size)
 {
-    static constexpr uint16_t SYNC_AIV_DONE_FLAG = 8;  // AIV完成flag
-    static constexpr uint16_t SYNC_AIC_ACK_FLAG = 10;  // AIC应答flag
+    static constexpr uint16_t SYNC_AIV_DONE_FLAG = 8;
+    static constexpr uint16_t SYNC_AIC_ACK_FLAG = 10;
     static constexpr uint64_t SYNC_MODE0 = 0;
     static constexpr uint64_t SYNC_MODE2 = 2;
 
-    // AIC核流程：先等待AIV完成，应答后等待AIV返回
     if (g_coreType == AIC) {
-        CrossCoreWaitFlag(SYNC_AIV_DONE_FLAG);  // 等待AIV核0完成Cast并设置flag
-        CrossCoreSetFlag<SYNC_MODE0, PIPE_MTE3>(SYNC_AIC_ACK_FLAG);  // 告知AIV核0可以返回
-        CrossCoreWaitFlag(SYNC_AIC_ACK_FLAG);  // 等待AIV核0返回信号
+        CrossCoreWaitFlag(SYNC_AIV_DONE_FLAG);
+        CrossCoreSetFlag<SYNC_MODE0, PIPE_MTE3>(SYNC_AIC_ACK_FLAG);
+        CrossCoreWaitFlag(SYNC_AIC_ACK_FLAG);
         return;
     }
-    // AIV非0核：帮助同步设置flag
     if (GetBlockIdx() != 0) {
         CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE3>(SYNC_AIV_DONE_FLAG);
         return;
     }
 
-    // AIV核0执行Cast转换
     GlobalTensor<bfloat16_t> gmSrc;
     GlobalTensor<float> gmDst;
     gmSrc.SetGlobalBuffer((__gm__ bfloat16_t*)(src), size);
@@ -233,9 +230,7 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
     DataCopyPad(gmDst, floatLocal, cpOutExtParams);
     PipeBarrier<PIPE_MTE3>();
 
-    // 完成后设置flag告诉AIC，然后等待AIC应答
     CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE3>(SYNC_AIV_DONE_FLAG);
-    CrossCoreWaitFlag(SYNC_AIC_ACK_FLAG);
 }
 } // namespace MatmulReduceScatterImpl
 
