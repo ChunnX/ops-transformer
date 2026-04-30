@@ -21,6 +21,8 @@
 #include "../../../common/include/tiling_base/tiling_math_util.h"
 
 namespace optiling {
+constexpr uint64_t VREG_SIZE =  256U;
+constexpr uint64_t UB_BLOCK_SIZE =  32U;
 std::tuple<int64_t, int64_t, int64_t, int64_t> AiInfraKvRmsNormRopeCacheTilingBase::GetShapeTuple(
     const gert::TilingContext* context, const int64_t index)
 {
@@ -171,15 +173,16 @@ bool AiInfraKvRmsNormRopeCacheTilingBase::CheckIndexValid(
     return isValid;
 }
 
-int64_t AiInfraKvRmsNormRopeCacheTilingBase::GetComponentStaticQuantMode(const gert::TilingContext* context, int64_t qScaleIdx, int64_t qOffsetIdx){
+int64_t AiInfraKvRmsNormRopeCacheTilingBase::GetComponentStaticQuantMode(const gert::TilingContext* context, int64_t qScaleIdx, int64_t qOffsetIdx)
+{
     auto scaleShape = context->GetOptionalInputShape(qScaleIdx);
-    if (scaleShape == nullptr){
+    if (scaleShape == nullptr) {
         return NON_QUANT_MODE;  // NONE Quant
-    }else{
-        if(this->methodMode_ == DIM_ONE){
+    }else {
+        if (this->methodMode_ == DIM_ONE) {
             // V2 Expansion: support Asymmetric Quant
             auto offsetShape = context->GetOptionalInputShape(qOffsetIdx);
-            if(offsetShape){
+            if (offsetShape) {
                 return ASYM_QUANT_MODE; // STATIC Asymmetric
             }
         }        
@@ -188,7 +191,7 @@ int64_t AiInfraKvRmsNormRopeCacheTilingBase::GetComponentStaticQuantMode(const g
 }
 
 int64_t AiInfraKvRmsNormRopeCacheTilingBase::GetQuantMode(const gert::TilingContext* context)
-{   
+{
     this->kStaticQuantMode = GetComponentStaticQuantMode(context, K_ROPE_SCALE_IDX, K_ROPE_OFFSET_IDX);
     this->vStaticQuantMode = GetComponentStaticQuantMode(context, C_KV_SCALE_IDX, C_KV_OFFSET_IDX);
 
@@ -198,6 +201,9 @@ int64_t AiInfraKvRmsNormRopeCacheTilingBase::GetQuantMode(const gert::TilingCont
 
 ge::graphStatus AiInfraKvRmsNormRopeCacheTilingBase::GetPlatformInfo()
 {
+    vlFp32_ = VREG_SIZE / FLOAT32_BYTES;
+    vlFp16_ = VREG_SIZE / FLOAT16_BYTES;
+    ubBlockSize_ = UB_BLOCK_SIZE;
 
     auto platformInfo = context_->GetPlatformInfo();
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
@@ -225,6 +231,16 @@ ge::graphStatus AiInfraKvRmsNormRopeCacheTilingBase::GetShapeAttrsInfo()
         context_ == nullptr, OP_LOGE(context_->GetNodeName(), "context_ can not be nullptr."), return ge::GRAPH_FAILED);
     // isRegbase_ = Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_);
     isRegbase_ = 0;
+    
+    auto compileInfo = context_->GetCompileInfo<AiInfraKvRmsNormRopeCacheCompileInfo>();
+    OP_CHECK_NULL_WITH_CONTEXT(context_, compileInfo);
+    auto platformInfo = context_->GetPlatformInfo();
+    OP_CHECK_NULL_WITH_CONTEXT(context_, platformInfo);
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+    auto socVersion = ascendcPlatform.GetSocVersion();
+    if (socVersion == platform_ascendc::SocVersion::ASCEND950) {
+        isRegbase_ = 1;
+    }
 
     GetMethodeMode(context_);
     // GetQuantMode
@@ -258,7 +274,6 @@ ge::graphStatus AiInfraKvRmsNormRopeCacheTilingBase::GetShapeAttrsInfo()
     isMTP_ = (seqLen > 1);
     OP_CHECK_IF(batchSize < 1, OP_LOGE(context_->GetNodeName(), "batchSize should >= 1."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(seqLen < 1, OP_LOGE(context_->GetNodeName(), "seqLen should >= 1."), return ge::GRAPH_FAILED);
-
     if (methodMode_ == 0) {
         OP_CHECK_IF(numHead != 1, OP_LOGE(context_->GetNodeName(), "numHead should == 1."), return ge::GRAPH_FAILED);
     }

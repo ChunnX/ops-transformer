@@ -249,6 +249,102 @@ public:
         this->AICore().AddConfig("ascend910b");
         this->AICore().AddConfig("ascend910_93");
 
+        OpAICoreConfig config_950;
+        config_950.Input("kv")
+            .ParamType(REQUIRED)
+            .DataType(kvDataTypeRegbase)
+            .Format(formatRegbase)
+            .UnknownShapeFormat(formatRegbase)
+            .AutoContiguous();
+        config_950.Input("gamma")
+            .ParamType(REQUIRED)
+            .DataType(kvDataTypeRegbase)
+            .Format(formatRegbase)
+            .UnknownShapeFormat(formatRegbase)
+            .AutoContiguous();
+        config_950.Input("cos")
+            .ParamType(REQUIRED)
+            .DataType(kvDataTypeRegbase)
+            .Format(formatRegbase)
+            .UnknownShapeFormat(formatRegbase)
+            .AutoContiguous();
+        config_950.Input("sin")
+            .ParamType(REQUIRED)
+            .DataType(kvDataTypeRegbase)
+            .Format(formatRegbase)
+            .UnknownShapeFormat(formatRegbase)
+            .AutoContiguous();
+        config_950.Input("index")
+            .ParamType(REQUIRED)
+            .DataType(indexDataTypeRegbase)
+            .Format(formatRegbase)
+            .UnknownShapeFormat(formatRegbase)
+            .AutoContiguous();
+        config_950.Input("k_cache")
+            .ParamType(REQUIRED)
+            .DataType(kCacheDataTypeRegbase)
+            .Format(formatRegbase)
+            .UnknownShapeFormat(formatRegbase);
+            // .AutoContiguous();
+        config_950.Input("ckv_cache")
+            .ParamType(REQUIRED)
+            .DataType(ckvCacheDataTypeRegbase)
+            .Format(formatRegbase)
+            .UnknownShapeFormat(formatRegbase);
+            // .AutoContiguous();
+        config_950.Input("k_rope_scale")
+            .ParamType(OPTIONAL)
+            .DataType(scaleDataTypeRegbase)
+            .Format(formatRegbase)
+            .UnknownShapeFormat(formatRegbase)
+            .AutoContiguous();
+        config_950.Input("c_kv_scale")
+            .ParamType(OPTIONAL)
+            .DataType(scaleDataTypeRegbase)
+            .Format(formatRegbase)
+            .UnknownShapeFormat(formatRegbase)
+            .AutoContiguous();
+        config_950.Input("k_rope_offset")
+            .ParamType(OPTIONAL)
+            .DataType(scaleDataTypeRegbase)
+            .Format(formatRegbase)
+            .UnknownShapeFormat(formatRegbase)
+            .AutoContiguous();
+        config_950.Input("c_kv_offset")
+            .ParamType(OPTIONAL)
+            .DataType(scaleDataTypeRegbase)
+            .Format(formatRegbase)
+            .UnknownShapeFormat(formatRegbase)
+            .AutoContiguous();
+        config_950.Input("v")
+            .ParamType(OPTIONAL)
+            .Version(AI_INFRA_KV_RMS_NORM_ROPE_CACHE_VERSION_TWO)
+            .DataType(kvDataTypeRegbase)
+            .Format(formatRegbase)
+            .UnknownShapeFormat(formatRegbase)
+            .AutoContiguous();
+        config_950.Output("k_cache")
+            .ParamType(REQUIRED)
+            .DataType(kCacheDataTypeRegbase)
+            .Format(formatRegbase)
+            .UnknownShapeFormat(formatRegbase);
+        config_950.Output("ckv_cache")
+            .ParamType(REQUIRED)
+            .DataType(ckvCacheDataTypeRegbase)
+            .Format(formatRegbase)
+            .UnknownShapeFormat(formatRegbase);
+        config_950.Output("k_rope")
+            .ParamType(REQUIRED)
+            .DataType(kvDataTypeRegbase)
+            .Format(formatRegbase)
+            .UnknownShapeFormat(formatRegbase);
+        config_950.Output("c_kv")
+            .ParamType(REQUIRED)
+            .DataType(kvDataTypeRegbase)
+            .Format(formatRegbase)
+            .UnknownShapeFormat(formatRegbase);
+        this->AICore().AddConfig("ascend950", config_950);
+
         OpAICoreConfig config_kirin = GetKirinCoreConfig();
         this->AICore().AddConfig("kirinx90", config_kirin);
         this->AICore().AddConfig("kirin9030", config_kirin);

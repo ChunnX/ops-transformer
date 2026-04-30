@@ -109,7 +109,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> npu_ai_infra_kv_rmsno
     c10::string_view cache_mode,
     c10::string_view rotary_mode,
     c10::string_view quant_mode,
-    bool is_output_kv)
+    bool is_output_kv,
+    c10::optional<int64_t> ckv_cache_dtype)
 {
     // 1. 构建输出张量
     auto outputs = custom::construct_output_tensor_v1(kv, gamma, k_cache, ckv_cache, is_output_kv);
@@ -126,12 +127,23 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> npu_ai_infra_kv_rmsno
     std::string quant_mode_str = std::string(quant_mode);
     char *quant_mode_ptr = const_cast<char *>(quant_mode_str.c_str());
 
+    bool is_hifloat8_kv = ckv_cache_dtype.has_value() && static_cast<aclDataType>(static_cast<int32_t>(ckv_cache_dtype.value()) - c10_npu::g_toAclOffset) == aclDataType::ACL_HIFLOAT8;
     // 3. 调用 ACLNN API
-    EXEC_NPU_CMD_V1(aclnnAiInfraKvRmsNormRopeCache, 
-        kv, gamma, cos, sin, index, k_cache, ckv_cache,
-        k_rope_scale, c_kv_scale, k_rope_offset, c_kv_offset, v,
-        epsilon, cache_mode_ptr, rotary_mode_ptr, quant_mode_ptr, is_output_kv,
-        k_rope_out, c_kv_out);
+    if (is_hifloat8_kv) {
+        aclDataType hf8_acltype = aclDataType::ACL_HIFLOAT8;
+        TensorWrapper ckv_cache_wrapper = {ckv_cache, hf8_acltype};
+        EXEC_NPU_CMD_V1(aclnnAiInfraKvRmsNormRopeCache, 
+            kv, gamma, cos, sin, index, k_cache, ckv_cache_wrapper,
+            k_rope_scale, c_kv_scale, k_rope_offset, c_kv_offset, v,
+            epsilon, cache_mode_ptr, rotary_mode_ptr, quant_mode_ptr, is_output_kv,
+            k_rope_out, c_kv_out);
+    } else {
+        EXEC_NPU_CMD_V1(aclnnAiInfraKvRmsNormRopeCache, 
+            kv, gamma, cos, sin, index, k_cache, ckv_cache,
+            k_rope_scale, c_kv_scale, k_rope_offset, c_kv_offset, v,
+            epsilon, cache_mode_ptr, rotary_mode_ptr, quant_mode_ptr, is_output_kv,
+            k_rope_out, c_kv_out);
+    }
 
     return std::make_tuple(k_cache, ckv_cache, k_rope_out, c_kv_out);
 }
@@ -154,7 +166,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> npu_ai_infra_kv_rmsno
     c10::string_view cache_mode,
     c10::string_view rotary_mode,
     c10::string_view quant_mode,
-    bool is_output_kv)
+    bool is_output_kv,
+    c10::optional<int64_t> ckv_cache_dtype)
 {
     auto outputs = custom::construct_output_tensor_v1(kv, gamma, k_cache, ckv_cache, is_output_kv);
     return outputs;
@@ -178,7 +191,8 @@ std::tuple<at::Tensor, at::Tensor> npu_ai_infra_kv_rmsnorm_rope_cache_v2_npu(
     c10::string_view cache_mode,
     c10::string_view rotary_mode,
     c10::string_view quant_mode,
-    bool is_output_kv)
+    bool is_output_kv,
+    c10::optional<int64_t> ckv_cache_dtype)
 {
     // extract optional tensors
     const at::Tensor &v_tsr_opt = v.value_or(at::Tensor());
@@ -197,11 +211,22 @@ std::tuple<at::Tensor, at::Tensor> npu_ai_infra_kv_rmsnorm_rope_cache_v2_npu(
     char *quant_mode_ptr = const_cast<char *>(quant_mode_str.c_str());
 
     // 3. 调用 ACLNN API
-    EXEC_NPU_CMD_V1(aclnnAiInfraKvRmsNormRopeCache, 
-        kv, gamma, cos, sin, index, k_cache, ckv_cache,
-        k_rope_scale, c_kv_scale, k_rope_offset, c_kv_offset, v,
-        epsilon, cache_mode_ptr, rotary_mode_ptr, quant_mode_ptr, is_output_kv,
-        k_rope_out, c_kv_out);
+    bool is_hifloat8_kv = ckv_cache_dtype.has_value() && static_cast<aclDataType>(static_cast<int32_t>(ckv_cache_dtype.value()) - c10_npu::g_toAclOffset) == aclDataType::ACL_HIFLOAT8;
+    if (is_hifloat8_kv) {
+        aclDataType hf8_acltype = aclDataType::ACL_HIFLOAT8;
+        TensorWrapper ckv_cache_wrapper = {ckv_cache, hf8_acltype};
+        EXEC_NPU_CMD_V1(aclnnAiInfraKvRmsNormRopeCache, 
+            kv, gamma, cos, sin, index, k_cache, ckv_cache_wrapper,
+            k_rope_scale, c_kv_scale, k_rope_offset, c_kv_offset, v,
+            epsilon, cache_mode_ptr, rotary_mode_ptr, quant_mode_ptr, is_output_kv,
+            k_rope_out, c_kv_out);
+    } else {
+        EXEC_NPU_CMD_V1(aclnnAiInfraKvRmsNormRopeCache, 
+            kv, gamma, cos, sin, index, k_cache, ckv_cache,
+            k_rope_scale, c_kv_scale, k_rope_offset, c_kv_offset, v,
+            epsilon, cache_mode_ptr, rotary_mode_ptr, quant_mode_ptr, is_output_kv,
+            k_rope_out, c_kv_out);
+    }
 
     return std::make_tuple(k_rope_out, c_kv_out);
 }
@@ -224,7 +249,8 @@ std::tuple<at::Tensor, at::Tensor> npu_ai_infra_kv_rmsnorm_rope_cache_v2_meta(
     c10::string_view cache_mode,
     c10::string_view rotary_mode,
     c10::string_view quant_mode,
-    bool is_output_kv)
+    bool is_output_kv,
+    c10::optional<int64_t> ckv_cache_dtype)
 {
     // extract optional tensors
     const at::Tensor &v_tsr_opt = v.value_or(at::Tensor());

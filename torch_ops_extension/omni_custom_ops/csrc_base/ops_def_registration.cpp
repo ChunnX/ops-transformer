@@ -73,12 +73,12 @@ TORCH_LIBRARY_FRAGMENT(custom, m) {
         " Tensor k_cache, Tensor ckv_cache,"
         " *, Tensor? k_rope_scale=None, Tensor? c_kv_scale=None,"
         " Tensor? k_rope_offset=None, Tensor? c_kv_offset=None, Tensor? v=None,"
-        " float epsilon=1e-5, str cache_mode='Norm', str rotary_mode='interleave-half', str quant_mode='static', bool is_output_kv=False) -> (Tensor, Tensor, Tensor, Tensor)");
+        " float epsilon=1e-5, str cache_mode='Norm', str rotary_mode='interleave-half', str quant_mode='static', bool is_output_kv=False, int? ckv_cache_dtype=None) -> (Tensor, Tensor, Tensor, Tensor)");
     m.def("npu_ai_infra_kv_rmsnorm_rope_cache_v2(Tensor kv, Tensor gamma, Tensor cos, Tensor sin, Tensor index,"
         " Tensor(a!) k_cache, Tensor(b!) ckv_cache,"
         " *, Tensor? k_rope_scale=None, Tensor? c_kv_scale=None,"
         " Tensor? k_rope_offset=None, Tensor? c_kv_offset=None, Tensor? v=None,"
-        " float epsilon=1e-5, str cache_mode='Norm', str rotary_mode='interleave-half', str quant_mode='static', bool is_output_kv=False) -> (Tensor, Tensor)");
+        " float epsilon=1e-5, str cache_mode='Norm', str rotary_mode='interleave-half', str quant_mode='static', bool is_output_kv=False, int? ckv_cache_dtype=None) -> (Tensor, Tensor)");
     m.def("npu_ai_infra_sparse_flash_attention_pioneer(Tensor query, Tensor key, Tensor value, Tensor sparse_indices, float scale_value, *,"
         "Tensor? block_table=None, Tensor? actual_seq_lengths_query=None, "
         "Tensor? actual_seq_lengths_kv=None, Tensor? query_rope=None, Tensor? key_rope=None, "
