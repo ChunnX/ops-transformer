@@ -699,26 +699,45 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     }
     SyncAll<false>();
 
-    // 4. for循环按照本卡专家id进行Dispatch，内部gmm1SwigluQuant按照基本块进行流水
+    // 4. subBlockIdx_ == 1的AIV核心一次性完成所有专家的dispatch
     GMMAddrInfo gmmAddrInfo;
+    if constexpr(g_coreType == AscendC::AIV) {
+        if (subBlockIdx_ == 1) {
+            for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
+                if (!UpdateGroupParams(expertIdx)) {
+                    continue;
+                }
+                UpdateGlobalBuffer(gmmAddrInfo, 0);
+                DispatchTokens(gmmAddrInfo, expertIdx);
+            }
+        }
+    }
+    
+    // 5. subBlockIdx_ == 0的核心执行gmm1 → gmm2 → combine
+    preOffset_ = 0;
+    baseOffset_ = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
         if (!UpdateGroupParams(expertIdx)) {
             continue;
         }
+        
         UpdateGlobalBuffer(gmmAddrInfo, 0);
-        if constexpr(g_coreType == AscendC::AIV) {
-            if (subBlockIdx_ == 1) {
-                DispatchTokens(gmmAddrInfo, expertIdx);
-            }
-        }
-
         if (subBlockIdx_ == 0) {
             MegaMoeImpl::GroupMatmulSwigluQuant<
                 QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType>(
                 epilogueOp_, params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
         }
+        EndSync();
+        
+        UpdateGlobalBuffer(gmmAddrInfo, 1);
+        if (subBlockIdx_ == 0) {
+            MegaMoeImpl::GroupMatmul2<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
+                params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_, expertIdx, gmm2PingPongIdx_,
+                rankId_);
+        }
+        EndGMM2Sync();
+        vecSetSyncCom_ = 0;
     }
-    EndSync();
     if constexpr(g_coreType == AscendC::AIV) {
         if (aivCoreIdx_ == 1) {
             ExpertTokenNumCopyOut();
@@ -728,23 +747,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             firstPipe.Destroy();
         }
     }
-
-    // 5. for循环按照本卡专家id进行gmm2 & combine，内部gmm2与combine之间按照基本块进行流水
-    preOffset_ = 0;
-    vecSetSyncCom_ = 0;
-    baseOffset_ = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-    for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
-        if (!UpdateGroupParams(expertIdx)) {
-            continue;
-        }
-        UpdateGlobalBuffer(gmmAddrInfo, 1);
-        if (subBlockIdx_ == 0) {
-            MegaMoeImpl::GroupMatmul2<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
-                params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_, expertIdx, gmm2PingPongIdx_,
-                rankId_);
-        }
-    }
-    EndGMM2Sync();
     SyncAll<true>();
     // 6. unpermute & 清理win区上放置token的位置
     if constexpr(g_coreType == AIV) {
