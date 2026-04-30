@@ -15,7 +15,7 @@
 #include "mc2_log.h"
 #include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 #include "platform/platform_infos_def.h"
 #include "matmul_reduce_scatter_v2_tiling_common.h"
 

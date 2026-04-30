@@ -17,9 +17,9 @@
 #include "moe_gating_top_k_tiling.h"
 #include "register/op_def_registry.h"
 #include "platform/platform_info.h"
-#include "tiling_base/tiling_util.h"
-#include "tiling_base/tiling_base.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_util.h"
+#include "op_host/tiling_base.h"
+#include "op_host/tiling_templates_registry.h"
 
 namespace optiling {
 const static uint64_t MOE_GATING_TOP_K_REGBASE_TILING_KEY = 10000;

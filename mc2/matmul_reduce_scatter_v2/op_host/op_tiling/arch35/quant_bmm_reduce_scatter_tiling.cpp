@@ -20,7 +20,7 @@
 #include "common/utils/op_mc2.h"
 #include "mc2_log.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 #include "../../../op_kernel/matmul_reduce_scatter_v2_apt_tiling_key.h"
 #include "reduce_scatter_fit_balance_tiling.h"
 #include "../reduce_scatter_formulaic_tiling.h"

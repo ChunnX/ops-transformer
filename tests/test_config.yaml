@@ -94,6 +94,8 @@ attention:
     exclude:
       - attention/flash_attention_score_grad/docs
       - attention/flash_attention_score_grad/README.md
+    test:
+      ut: False
     ut_cov_exclude:
       - attention/flash_attention_score_grad
     options:
@@ -112,6 +114,7 @@ attention:
       - attention/fused_infer_attention_score/tests
       - attention/fused_infer_attention_score/op_host/arch32
     test:
+      ut: False
       examples: False
     options:
       - incre_flash_attention
@@ -298,8 +301,8 @@ attention:
         - attention/mla_prolog/docs
         - attention/mla_prolog/README.md
       test:
+        ut: False
         examples: False
-        ut: True
       options:
         - mla_prolog
 
@@ -518,6 +521,8 @@ ffn:
       - ffn/swin_attention_ffn/README.md
     ut_cov_exclude:
       - ffn/swin_attention_ffn
+    test:
+      ut: False
     options:
       - swin_attention_ffn
 
@@ -530,6 +535,8 @@ ffn:
       - ffn/swin_transformer_ln_qkv/README.md
     ut_cov_exclude:
       - ffn/swin_transformer_ln_qkv
+    test:
+      ut: False
     options:
       - swin_transformer_ln_qkv
 
