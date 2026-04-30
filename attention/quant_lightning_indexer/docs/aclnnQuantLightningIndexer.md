@@ -431,7 +431,7 @@ aclnnStatus aclnnQuantLightningIndexer(
 
  ## 约束说明
  	 
-- 确定性说明：aclnnQuantLightningIndexer非确定性实现，不支持通过aclrtCtxSetSysParamOpt开启确定性。
+- 确定性说明：aclnnQuantLightningIndexer默认确定性实现。
 - 参数query中的N支持小于等于64/32/24/16，key的N支持1。
 - headdim支持128。
 - block_size取值为16的倍数，最大支持1024。
