@@ -1419,8 +1419,19 @@ ge::graphStatus ProcessPseNormal(gert::TilingContext *context_, FuzzyBaseInfoPar
     } else if (isAlibiBNHS) {
         fBaseParams.pseShapeType = static_cast<uint32_t>(PseShapeType::PSE_SHAPE_TYPE_BNHS);
     } else {
-        OP_LOGE(context_, "The shape of pse[%ld,%ld,%ld,%ld] is invalid or tocken[%ld,%ld] not casual", dim0, dim1,
-                  dim2, dim3, fBaseParams.s1Token, fBaseParams.s2Token);
+        if (isTnd) {
+            OP_LOGE(context_, "The shape of pse[%ld,%ld,%ld,%ld] is invalid or tocken[%ld,%ld] not casual, support shape of pse[1,%ld,1024,%ld] or [%ld,%ld,1024,%ld]",
+                  dim0, dim1, dim2, dim3, fBaseParams.s1Token, fBaseParams.s2Token, fBaseParams.n1, fBaseParams.s2,
+                  fBaseParams.b, fBaseParams.n1, fBaseParams.s2);
+        } else {
+            OP_LOGE(context_, "The shape of pse[%ld,%ld,%ld,%ld] is invalid or tocken[%ld,%ld] not casual, support shape of pse[1,%ld,1024,%ld] or [%ld,%ld,1024,%ld] or [%ld,%ld,1,%ld] or [%ld,%ld,%ld,%ld] or [1,%ld,%ld,%ld]",
+                  dim0, dim1, dim2, dim3, fBaseParams.s1Token, fBaseParams.s2Token, fBaseParams.n1,
+                  fBaseParams.s2, fBaseParams.b, fBaseParams.n1, fBaseParams.s2, fBaseParams.b, fBaseParams.n1,
+                  fBaseParams.s2, fBaseParams.b, fBaseParams.n1, fBaseParams.s1, fBaseParams.s2, fBaseParams.n1,
+                  fBaseParams.s1, fBaseParams.s2);
+        }
+        // OP_LOGE(context_, "The shape of pse[%ld,%ld,%ld,%ld] is invalid or tocken[%ld,%ld] not casual", dim0, dim1,
+        //           dim2, dim3, fBaseParams.s1Token, fBaseParams.s2Token);
         return ge::GRAPH_PARAM_INVALID;
     }
     return ge::GRAPH_SUCCESS;
