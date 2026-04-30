@@ -169,12 +169,64 @@ void FreeResource(aclTensor *query, aclTensor *key, aclTensor *value, aclTensor 
     aclFinalize();
 }
 
+enum SparsityMode {
+    SPARSITY_HIGH = 1,    // ~99.8% 稀疏度：仅对角线+次对角线
+    SPARSITY_MEDIUM = 2,  // ~50% 稀疏度：下三角 causal mask
+    SPARSITY_LOW = 3      // ~25% 稀疏度：75% blocks 激活
+};
+
+void FillBlockSparseMask(std::vector<int8_t>& mask, int32_t batch, int32_t numHeads,
+                         int32_t qBlockNum, int32_t kvBlockNum, SparsityMode mode) {
+    std::fill(mask.begin(), mask.end(), 0);
+    for (int32_t b = 0; b < batch; b++) {
+        for (int32_t h = 0; h < numHeads; h++) {
+            int64_t baseOffset = ((int64_t)b * numHeads + h) * qBlockNum * kvBlockNum;
+            switch (mode) {
+            case SPARSITY_HIGH:
+                for (int32_t i = 0; i < qBlockNum; i++) {
+                    int64_t rowOffset = baseOffset + (int64_t)i * kvBlockNum;
+                    mask[rowOffset + i] = 1;
+                    if (i > 0) {
+                        mask[rowOffset + i - 1] = 1;
+                    }
+                }
+                break;
+            case SPARSITY_MEDIUM:
+                for (int32_t i = 0; i < qBlockNum; i++) {
+                    int64_t rowOffset = baseOffset + (int64_t)i * kvBlockNum;
+                    for (int32_t j = 0; j <= i && j < kvBlockNum; j++) {
+                        mask[rowOffset + j] = 1;
+                    }
+                }
+                break;
+            case SPARSITY_LOW:
+                for (int32_t i = 0; i < qBlockNum; i++) {
+                    int64_t rowOffset = baseOffset + (int64_t)i * kvBlockNum;
+                    for (int32_t j = 0; j < kvBlockNum; j++) {
+                        if (j <= i || (j % 4 != 3)) {
+                            mask[rowOffset + j] = 1;
+                        }
+                    }
+                }
+                break;
+            }
+        }
+    }
+}
+
 int main() {
     // 1. （固定写法）device/stream初始化
     int32_t deviceId = 0;
     aclrtStream stream;
     auto ret = Init(deviceId, &stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
+
+    // ===================== 稀疏度模式开关 =====================
+    // SPARSITY_HIGH   (1): ~99.8% 稀疏度，仅对角线+次对角线激活
+    // SPARSITY_MEDIUM (2): ~50% 稀疏度，下三角 causal mask
+    // SPARSITY_LOW    (3): ~25% 稀疏度，75% blocks 激活
+    SparsityMode sparsityMode = SPARSITY_MEDIUM;
+    // =========================================================
 
     // 2. 设置参数
     int32_t batch = 1;
@@ -246,17 +298,13 @@ int main() {
     // 5. 创建blockSparseMask tensor ([batch, numHeads, qBlockNum, kvBlockNum])
     int64_t blockSparseMaskSize = static_cast<int64_t>(batch) * numHeads * qBlockNum * kvBlockNum;
     std::vector<int8_t> blockSparseMaskHostData(blockSparseMaskSize, 0);
-    for (int32_t b = 0; b < batch; b++) {
-        for (int32_t h = 0; h < numHeads; h++) {
-            for (int32_t i = 0; i < qBlockNum; i++) {
-                int64_t offset = ((int64_t)b * numHeads + h) * qBlockNum * kvBlockNum + (int64_t)i * kvBlockNum;
-                blockSparseMaskHostData[offset + i] = static_cast<int8_t>(1);
-                if (i > 0) {
-                    blockSparseMaskHostData[offset + i - 1] = static_cast<int8_t>(1);
-                }
-            }
-        }
-    }
+    FillBlockSparseMask(blockSparseMaskHostData, batch, numHeads, qBlockNum, kvBlockNum, sparsityMode);
+    
+    int64_t activeBlocks = 0;
+    for (auto v : blockSparseMaskHostData) { if (v) activeBlocks++; }
+    double density = static_cast<double>(activeBlocks) / blockSparseMaskSize * 100.0;
+    LOG_PRINT("Sparsity mode: %d, mask size: %ld, active blocks: %ld, density: %.2f%%, sparsity: %.2f%%\n",
+              static_cast<int>(sparsityMode), blockSparseMaskSize, activeBlocks, density, 100.0 - density);
     std::vector<int64_t> blockSparseMaskShape = {batch, numHeads, qBlockNum, kvBlockNum};
     ret = CreateAclTensor(blockSparseMaskHostData, blockSparseMaskShape, &blockSparseMaskDeviceAddr, aclDataType::ACL_INT8, &blockSparseMaskTensor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Failed to create block sparse mask tensor\n");
