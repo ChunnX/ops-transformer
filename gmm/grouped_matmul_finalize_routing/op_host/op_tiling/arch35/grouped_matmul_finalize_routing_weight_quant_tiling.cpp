@@ -14,7 +14,7 @@
  */
 #include "grouped_matmul_finalize_routing_weight_quant_tiling.h"
 #include "../../../op_kernel/arch35/weight_quant_basic_block/gmm_fr_weight_quant_tiling_key.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 using namespace Ops::Transformer::OpTiling;
 using namespace optiling::GroupedMatmulFinalizeRoutingArch35WeightQuantTiling;
 using namespace GMMFinalizeRoutingArch35Tiling;

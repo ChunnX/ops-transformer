@@ -18,8 +18,8 @@
 #include "register/tilingdata_base.h"
 #include "register/op_impl_registry.h"
 #include "log/log.h"
-#include "tiling_base/tiling_base.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_base.h"
+#include "op_host/tiling_templates_registry.h"
 namespace optiling {
 BEGIN_TILING_DATA_DEF(PermuteVBSComputeRMTilingData)
 TILING_DATA_FIELD_DEF(int64_t, needCoreNum);
