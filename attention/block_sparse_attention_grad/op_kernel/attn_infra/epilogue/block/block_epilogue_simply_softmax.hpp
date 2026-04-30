@@ -463,7 +463,7 @@ public:
             uint64_t bOffset = n1 * prefixSum;
             startOffset = bOffset + curS1Idx * n1 + curCoreN1Idx;
             // 对于TND 格式来说， 会进行类似 (s n) -> (n s) 的transpose转换
-            DataCopyPad(lseFp32Brc,
+            DataCopyPad(lse,
                 LseGm[startOffset],
                 {static_cast<uint16_t>(count),
                     static_cast<uint32_t>(1 * sizeof(float)),
