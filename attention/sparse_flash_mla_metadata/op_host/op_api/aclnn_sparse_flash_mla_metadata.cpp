@@ -329,12 +329,10 @@ aclnnStatus aclnnSparseFlashMlaMetadataGetWorkspaceSize(
     uint32_t aivCoreNum = npuInfo.GetVectorCoreNum();
     const std::string socVersion = npuInfo.GetSocLongVersion();
 
-    printf("[WCJ] ParamsCheck Start\n");
     auto ret = ParamsCheck(cuSeqLensQOptional, cuSeqLensOriKvOptional, sequsedQOptional, sequsedOriKvOptional,
         numHeadsQ, numHeadsKv, batchSizeOptional, maxSeqlenQOptional, maxSeqlenKvOptional, oriTopKOptional,
         oriMaskModeOptional, layoutQOptional, layoutKvOptional, hasOriKvOptional, aicCoreNum, aivCoreNum, socVersion);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
-    printf("[WCJ] ParamsCheck End\n");
 
     auto cuSeqLensQOptionalContiguous = l0op::Contiguous(cuSeqLensQOptional, uniqueExecutor.get());
     CHECK_RET(cuSeqLensQOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
@@ -344,7 +342,6 @@ aclnnStatus aclnnSparseFlashMlaMetadataGetWorkspaceSize(
     CHECK_RET(sequsedQOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto sequsedOriKvOptionalContiguous = l0op::Contiguous(sequsedOriKvOptional, uniqueExecutor.get());
     CHECK_RET(sequsedOriKvOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    printf("[WCJ] l0op::SparseFlashMlaMetadata Start\n");
     auto output = l0op::SparseFlashMlaMetadata(
         cuSeqLensQOptionalContiguous, cuSeqLensOriKvOptionalContiguous,
         sequsedQOptionalContiguous, sequsedOriKvOptionalContiguous,
@@ -352,7 +349,6 @@ aclnnStatus aclnnSparseFlashMlaMetadataGetWorkspaceSize(
         oriTopKOptional, oriMaskModeOptional, layoutQOptional, layoutKvOptional,
         hasOriKvOptional, socVersion.c_str(), aicCoreNum, aivCoreNum, metaData, uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    printf("[WCJ] l0op::SparseFlashMlaMetadata End\n");
 
     *workspaceSize = 0;
     uniqueExecutor.ReleaseTo(executor);
@@ -362,7 +358,6 @@ aclnnStatus aclnnSparseFlashMlaMetadataGetWorkspaceSize(
 aclnnStatus aclnnSparseFlashMlaMetadata(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
     aclrtStream stream)
 {
-    printf("[WCJ] aclnnSparseFlashMlaMetadata Start\n");
     L2_DFX_PHASE_2(aclnnSparseFlashMlaMetadata);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }

@@ -27,20 +27,14 @@ using namespace optiling;
 namespace aicpu {
 uint32_t SparseFlashMlaMetadataCpuKernel::Compute(CpuKernelContext &ctx)
 {
-    KERNEL_LOG_ERROR("[WCJ] Prepare Start");
     bool success = Prepare(ctx);
     KERNEL_CHECK_FALSE(success, KERNEL_STATUS_PARAM_INVALID, "Invalid Param !");
-    KERNEL_LOG_ERROR("[WCJ] Prepare End");
     SplitResult splitRes {aicCoreNum_, aivCoreNum_};
-    KERNEL_LOG_ERROR("[WCJ] BalanceSchedule Start");
     success = BalanceSchedule(splitRes);
     KERNEL_CHECK_FALSE(success, KERNEL_PROCESS_FAILED, "Balance failed !");
-    KERNEL_LOG_ERROR("[WCJ] BalanceSchedule End");
 
-    KERNEL_LOG_ERROR("[WCJ] GenMetaData Start");
     success = GenMetaData(splitRes);
     KERNEL_CHECK_FALSE(success, KERNEL_PROCESS_FAILED, "GenOutput failed !");
-    KERNEL_LOG_ERROR("[WCJ] GenMetaData End");
 
     return KERNEL_STATUS_OK;
 }
