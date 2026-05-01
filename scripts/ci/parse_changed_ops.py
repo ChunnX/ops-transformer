@@ -75,19 +75,23 @@ def _should_return_default(domain, operator_name, path_parts, is_experimental):
     if operator_name in BlackList:
         return True
 
-    # 检查是否是 common 或 experimental 路径不存在
-    exp_path = f'experimental/{domain}/{operator_name}'
-    if operator_name == "common" or not os.path.exists(exp_path):
+    # 检查是否是 common
+    if operator_name == "common":
         return True
 
     # 实验分支额外检查 op_host 目录
     if is_experimental == "TRUE":
+        exp_path = f'experimental/{domain}/{operator_name}'
+        if not os.path.exists(exp_path):
+            return True
         # 构造 parent 路径（原代码用 Path(*path_parts[:3])）
         if len(path_parts) >= 3:
             parent = Path(*path_parts[:3])
             target = parent / "op_host"
             if not (target.exists() and target.is_dir()):
                 return True
+    elif domain in NEW_OPS_PATH and not os.path.isdir(os.path.join(domain, operator_name)):
+        return True
     return False
 
 
