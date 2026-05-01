@@ -104,6 +104,7 @@ private:
     static constexpr uint32_t PRELOAD_NUM = 2;
     static constexpr uint32_t N_BUFFER_M_BASIC_SIZE = 256;
     static constexpr uint32_t SAS_PRELOAD_TASK_CACHE_SIZE = 3;
+    static constexpr uint32_t MERGE_CACHE_GM_BUF_NUM = 3;
 
     static constexpr uint32_t SYNC_V0_C1_FLAG = 6;
     static constexpr uint32_t SYNC_C1_V1_FLAG = 7;
@@ -468,11 +469,11 @@ __aicore__ inline void SparseAttnSharedkvScfa<SAST>::Init(
         (__gm__ T *)(workspace + offset + aiCoreIdx * dbWorkspaceRatio * constInfo.bmm2ResUbSize * sizeof(T)));
     offset += GetBlockNum() * dbWorkspaceRatio * constInfo.bmm2ResUbSize * sizeof(T);
 
-    kvMergeGm_.SetGlobalBuffer((__gm__ KV_T *)(workspace + offset + aiCoreIdx * 512 * 512 * 4 * sizeof(KV_T)));
+    kvMergeGm_.SetGlobalBuffer((__gm__ KV_T *)(workspace + offset + aiCoreIdx * 512 * 512 * MERGE_CACHE_GM_BUF_NUM * sizeof(KV_T)));
     offset += GetBlockNum() * 512 * 512 * 4 * sizeof(KV_T);
 
     kvValidSizeGm_.SetGlobalBuffer(
-        (__gm__ int32_t *)(workspace + offset + (aiCoreIdx * 2) * 128 * 4 * sizeof(int32_t)));
+        (__gm__ int32_t *)(workspace + offset + (aiCoreIdx * 2) * 128 * MERGE_CACHE_GM_BUF_NUM * sizeof(int32_t)));
 
     if ASCEND_IS_AIV {
         vectorBlock.InitParams(constInfo, tilingData);
