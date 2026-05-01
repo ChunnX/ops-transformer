@@ -122,7 +122,7 @@ private:
     static constexpr SAS_LAYOUT LAYOUT_T = SAST::layout;
     static constexpr SAS_LAYOUT KV_LAYOUT_T = SAST::kvLayout;
 
-    static constexpr uint64_t MERGE_CACHE_GM_BUF_NUM = 4;
+    static constexpr uint64_t MERGE_CACHE_GM_BUF_NUM = 3;
     static constexpr uint64_t SYNC_INPUT_BUF1_FLAG = 2;
     static constexpr uint64_t SYNC_INPUT_BUF1_PONG_FLAG = 3;
     static constexpr uint64_t SYNC_INPUT_BUF2_FLAG = 4;
@@ -659,7 +659,7 @@ __aicore__ inline void SASVectorBlock<SAST>::CopyOutMrgeResult(int64_t mte2Size,
     dataCopyParams.srcStride = 0;
     dataCopyParams.dstStride = 0;
 
-    DataCopyPad(kvMergeGm_[runInfo.cmpLoop % 4 * 512 * 512 +
+    DataCopyPad(kvMergeGm_[runInfo.cmpLoop % MERGE_CACHE_GM_BUF_NUM * 512 * 512 +
                            (s2GmStartOffset + mte3Size) * constInfo.headDim],
                 kvMergUb_[mergeMte3Idx % 2 * INPUT2_BUFFER_OFFSET / sizeof(KV_T)], dataCopyParams);
 }
