@@ -430,8 +430,7 @@ __aicore__ inline void SWACubeBlock<SAST>::ComputeMm1(const RunInfo &info, const
                         nd2nzPara.dstNzNStride = 1;
                         nd2nzPara.srcNdMatrixStride = 0;
                         nd2nzPara.dstNzMatrixStride = 0;
-                        DataCopy(bL1Tensor, oriKvGm[info.tensorBOffset + curS2Offset * constInfo.headDim +
-                                nL1 * N_SPLIT_SIZE * constInfo.headDim], nd2nzPara);
+                        DataCopy(bL1Tensor, oriKvGm[info.tensorBOffset + curS2Offset * constInfo.headDim], nd2nzPara);
                     } else {
                         Nd2NzParams nd2nzPara;
                         nd2nzPara.ndNum = 1;
@@ -443,9 +442,8 @@ __aicore__ inline void SWACubeBlock<SAST>::ComputeMm1(const RunInfo &info, const
                         nd2nzPara.srcNdMatrixStride = 0;
                         nd2nzPara.dstNzMatrixStride = 0;
                         DataCopy(bL1Tensor,
-                                    oriKvGm[info.tensorBOffset + curS2Offset * constInfo.headDim + (constInfo.headDim >> 1) +
-                                        nL1 * N_SPLIT_SIZE * constInfo.headDim],
-                                    nd2nzPara);
+                                 oriKvGm[info.tensorBOffset + curS2Offset * constInfo.headDim + (constInfo.headDim >> 1)],
+                                 nd2nzPara);
                     }
                 }
             } else {
@@ -564,7 +562,9 @@ __aicore__ inline void SWACubeBlock<SAST>::ComputeMm1(const RunInfo &info, const
                     LocalTensor<KV_T> aL0Tensor = aL0TensorPingPong[(abL0BufIter % 2) * (L0A_PP_SIZE / sizeof(KV_T))];
                     LoadDataMm1A(aL0Tensor, aL1Tensor, kL0, kL0Size, mL1SizeAlign, kL0Size);
                     LocalTensor<KV_T> bL0Tensor = bL0TensorPingPong[(abL0BufIter % 2) * (L0B_PP_SIZE / sizeof(KV_T))];
-                    LoadDataMm1B(bL0Tensor, bL1Tensor, kL0, kL0Size, kL0Size, nL1SizeAlign);
+                    if (mL1 == 0) {
+                        LoadDataMm1B(bL0Tensor, bL1Tensor, kL0, kL0Size, kL0Size, nL1SizeAlign);
+                    }
                     SetFlag<HardEvent::MTE1_M>(Mte1MmABEventId(abL0BufIter % 2));
                     WaitFlag<HardEvent::MTE1_M>(Mte1MmABEventId(abL0BufIter % 2));
 
