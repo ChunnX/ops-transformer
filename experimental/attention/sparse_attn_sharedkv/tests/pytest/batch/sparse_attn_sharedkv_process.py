@@ -84,6 +84,18 @@ def call_npu(input_data):
     else:
         cu_seqlens_q = torch.tensor([])
     cu_seqlens_q = cu_seqlens_q.npu()
+
+    if 'cu_seqlens_ori_kv' in tensor_input and tensor_input['cu_seqlens_ori_kv'] is not None:
+        cu_seqlens_ori_kv = tensor_input['cu_seqlens_ori_kv']
+    else:
+        cu_seqlens_ori_kv = torch.tensor([])
+    cu_seqlens_ori_kv = cu_seqlens_ori_kv.npu()
+    if 'cu_seqlens_cmp_kv' in tensor_input and tensor_input['cu_seqlens_cmp_kv'] is not None:
+        cu_seqlens_cmp_kv = tensor_input['cu_seqlens_cmp_kv']
+    else:
+        cu_seqlens_cmp_kv = torch.tensor([])
+    cu_seqlens_cmp_kv = cu_seqlens_cmp_kv.npu()
+
     used_seqused_q_flag = False
     if 'seqused_q' in tensor_input and tensor_input['seqused_q'] is not None:
         seqused_q = tensor_input['seqused_q']
@@ -149,8 +161,8 @@ def call_npu(input_data):
             num_heads_kv=N2,
             head_dim=D,
             cu_seqlens_q=cu_seqlens_q,
-            cu_seqlens_ori_kv=torch.tensor([]).npu(),
-            cu_seqlens_cmp_kv=torch.tensor([]).npu(),
+            cu_seqlens_ori_kv=cu_seqlens_ori_kv,
+            cu_seqlens_cmp_kv=cu_seqlens_cmp_kv,
             seqused_q=seqused_q,
             seqused_kv=seqused_kv,
             batch_size=B,
@@ -184,8 +196,8 @@ def call_npu(input_data):
             num_heads_kv=N2,
             head_dim=D,
             cu_seqlens_q=cu_seqlens_q,
-            cu_seqlens_ori_kv=torch.tensor([]).npu(),
-            cu_seqlens_cmp_kv=torch.tensor([]).npu(),
+            cu_seqlens_ori_kv=cu_seqlens_ori_kv,
+            cu_seqlens_cmp_kv=cu_seqlens_cmp_kv,
             seqused_q=seqused_q,
             seqused_kv=seqused_kv,
             batch_size=B,
@@ -225,8 +237,8 @@ def call_npu(input_data):
             num_heads_kv=N2,
             head_dim=D,
             cu_seqlens_q=cu_seqlens_q,
-            cu_seqlens_ori_kv=torch.tensor([]).npu(),
-            cu_seqlens_cmp_kv=torch.tensor([]).npu(),
+            cu_seqlens_ori_kv=cu_seqlens_ori_kv,
+            cu_seqlens_cmp_kv=cu_seqlens_cmp_kv,
             seqused_q=seqused_q,
             seqused_kv=seqused_kv,
             batch_size=B,
