@@ -18,7 +18,6 @@ constexpr float EXP_LOWER_BOUND = -80.0F;
 constexpr float EXP_UPPER_BOUND = 80.0F;
 constexpr float LN2 = 0.6931471805599453F;
 constexpr float INV_LN2 = 1.4426950408889634F;
-constexpr int64_t SCALAR_CAST_LEN = 16;
 
 __aicore__ inline int64_t MaxInt64(int64_t a, int64_t b)
 {
@@ -173,7 +172,72 @@ __aicore__ inline uint16_t FloatToBf16Bits(float value)
     return sign | static_cast<uint16_t>((exponentBits << 7) | mantissa);
 }
 
-template <typename T>
+__aicore__ inline float HalfBitsToFloat(uint16_t value)
+{
+    const int64_t sign = (value >> 15) & 1;
+    const int64_t exponent = (value >> 10) & 0x1F;
+    const int64_t mantissa = value & 0x3FF;
+    if (exponent == 0 && mantissa == 0) {
+        return sign == 0 ? 0.0F : -0.0F;
+    }
+    if (exponent == 0x1F) {
+        return sign == 0 ? 65504.0F : -65504.0F;
+    }
+
+    float magnitude = 0.0F;
+    if (exponent == 0) {
+        magnitude = (static_cast<float>(mantissa) / 1024.0F) * Pow2Int(-14);
+    } else {
+        magnitude = (1.0F + static_cast<float>(mantissa) / 1024.0F) * Pow2Int(exponent - 15);
+    }
+    return sign == 0 ? magnitude : -magnitude;
+}
+
+__aicore__ inline uint16_t FloatToHalfBits(float value)
+{
+    if (value == 0.0F) {
+        return 0;
+    }
+
+    uint16_t sign = 0;
+    float magnitude = value;
+    if (magnitude < 0.0F) {
+        sign = 0x8000;
+        magnitude = -magnitude;
+    }
+    if (magnitude >= 65504.0F) {
+        return sign | 0x7BFF;
+    }
+
+    int64_t exponent = 0;
+    while (magnitude >= 2.0F) {
+        magnitude *= 0.5F;
+        ++exponent;
+    }
+    while (magnitude < 1.0F && exponent > -14) {
+        magnitude *= 2.0F;
+        --exponent;
+    }
+
+    if (exponent <= -14 && magnitude < 1.0F) {
+        const int64_t subnormalMantissa = static_cast<int64_t>(magnitude * 1024.0F + 0.5F);
+        return sign | static_cast<uint16_t>(subnormalMantissa > 0x3FF ? 0x3FF : subnormalMantissa);
+    }
+
+    int64_t exponentBits = exponent + 15;
+    int64_t mantissa = static_cast<int64_t>((magnitude - 1.0F) * 1024.0F + 0.5F);
+    if (mantissa >= 1024) {
+        mantissa = 0;
+        ++exponentBits;
+    }
+    if (exponentBits >= 0x1F) {
+        exponentBits = 0x1E;
+        mantissa = 0x3FF;
+    }
+    return sign | static_cast<uint16_t>((exponentBits << 10) | mantissa);
+}
+
+template <bool IS_BF16>
 class SlidingTileAttention {
 public:
     __aicore__ inline SlidingTileAttention() = default;
@@ -182,19 +246,11 @@ public:
     {
         tiling_ = tilingData;
         const int64_t total = tiling_->batchSize * tiling_->headNum * tiling_->seqLen * tiling_->headDim;
-        qGm_.SetGlobalBuffer((__gm__ T *)q, total);
-        kGm_.SetGlobalBuffer((__gm__ T *)k, total);
-        vGm_.SetGlobalBuffer((__gm__ T *)v, total);
-        yGm_.SetGlobalBuffer((__gm__ T *)y, total);
-        if constexpr (AscendC::IsSameType<T, bfloat16_t>::value) {
-            qRawGm_.SetGlobalBuffer((__gm__ uint16_t *)q, total);
-            kRawGm_.SetGlobalBuffer((__gm__ uint16_t *)k, total);
-            vRawGm_.SetGlobalBuffer((__gm__ uint16_t *)v, total);
-            yRawGm_.SetGlobalBuffer((__gm__ uint16_t *)y, total);
-        }
+        qGm_.SetGlobalBuffer((__gm__ uint16_t *)q, total);
+        kGm_.SetGlobalBuffer((__gm__ uint16_t *)k, total);
+        vGm_.SetGlobalBuffer((__gm__ uint16_t *)v, total);
+        yGm_.SetGlobalBuffer((__gm__ uint16_t *)y, total);
         scale_ = InvSqrtApprox(static_cast<float>(tiling_->headDim));
-        pipe_.InitBuffer(outFloatBuf_, SCALAR_CAST_LEN * sizeof(float));
-        pipe_.InitBuffer(outCastBuf_, SCALAR_CAST_LEN * sizeof(T));
     }
 
     __aicore__ inline void Process()
@@ -207,28 +263,22 @@ public:
     }
 
 private:
-    __aicore__ inline float LoadGmValueAsFloat(GlobalTensor<T> &gm, GlobalTensor<uint16_t> &rawGm, int64_t offset)
+    __aicore__ inline float LoadGmValueAsFloat(GlobalTensor<uint16_t> &gm, int64_t offset)
     {
-        if constexpr (AscendC::IsSameType<T, bfloat16_t>::value) {
-            return Bf16BitsToFloat(rawGm.GetValue(offset));
+        if constexpr (IS_BF16) {
+            return Bf16BitsToFloat(gm.GetValue(offset));
         } else {
-            return AscendC::ToFloat(gm.GetValue(offset));
+            return HalfBitsToFloat(gm.GetValue(offset));
         }
     }
 
     __aicore__ inline void SetOutputValue(int64_t offset, float value)
     {
-        if constexpr (AscendC::IsSameType<T, bfloat16_t>::value) {
-            yRawGm_.SetValue(offset, FloatToBf16Bits(value));
-            return;
+        if constexpr (IS_BF16) {
+            yGm_.SetValue(offset, FloatToBf16Bits(value));
+        } else {
+            yGm_.SetValue(offset, FloatToHalfBits(value));
         }
-        LocalTensor<float> outFloat = outFloatBuf_.Get<float>();
-        LocalTensor<T> outCast = outCastBuf_.Get<T>();
-        Duplicate(outFloat, value, SCALAR_CAST_LEN);
-        Cast(outCast, outFloat, RoundMode::CAST_NONE, SCALAR_CAST_LEN);
-        PipeBarrier<PIPE_V>();
-        DataCopyExtParams copyParams{1, static_cast<uint32_t>(sizeof(T)), 0, 0, 0};
-        DataCopyPad(yGm_[offset], outCast, copyParams);
     }
 
     __aicore__ inline int64_t TensorOffset(int64_t batch, int64_t head, int64_t seq, int64_t dim) const
@@ -240,8 +290,7 @@ private:
     {
         float score = 0.0F;
         for (int64_t dim = 0; dim < tiling_->headDim; ++dim) {
-            score += LoadGmValueAsFloat(qGm_, qRawGm_, qBase + dim) *
-                     LoadGmValueAsFloat(kGm_, kRawGm_, kvBase + dim);
+            score += LoadGmValueAsFloat(qGm_, qBase + dim) * LoadGmValueAsFloat(kGm_, kvBase + dim);
         }
         return score * scale_;
     }
@@ -348,7 +397,7 @@ private:
                         if (kvSeq < tiling_->imageSeqLen) {
                             const int64_t kvBase = TensorOffset(batch, head, kvSeq, 0);
                             const float weight = ExpApprox(DotScore(qBase, kvBase) - maxScore);
-                            acc += weight * LoadGmValueAsFloat(vGm_, vRawGm_, kvBase + dim);
+                            acc += weight * LoadGmValueAsFloat(vGm_, kvBase + dim);
                         }
                     }
                 }
@@ -406,7 +455,7 @@ private:
             for (int64_t kvSeq = 0; kvSeq < tiling_->imageSeqLen + tiling_->textLength; ++kvSeq) {
                 const int64_t kvBase = TensorOffset(batch, head, kvSeq, 0);
                 const float weight = ExpApprox(DotScore(qBase, kvBase) - maxScore);
-                acc += weight * LoadGmValueAsFloat(vGm_, vRawGm_, kvBase + dim);
+                acc += weight * LoadGmValueAsFloat(vGm_, kvBase + dim);
             }
         } else {
             acc = ReduceImageWindowValue(qBase, batch, head, seq, dim, maxScore);
@@ -415,7 +464,7 @@ private:
                     const int64_t kvSeq = tiling_->imageSeqLen + i;
                     const int64_t kvBase = TensorOffset(batch, head, kvSeq, 0);
                     const float weight = ExpApprox(DotScore(qBase, kvBase) - maxScore);
-                    acc += weight * LoadGmValueAsFloat(vGm_, vRawGm_, kvBase + dim);
+                    acc += weight * LoadGmValueAsFloat(vGm_, kvBase + dim);
                 }
             }
         }
@@ -450,17 +499,10 @@ private:
     }
 
 private:
-    TPipe pipe_;
-    TBuf<TPosition::VECCALC> outFloatBuf_;
-    TBuf<TPosition::VECCALC> outCastBuf_;
-    GlobalTensor<T> qGm_;
-    GlobalTensor<T> kGm_;
-    GlobalTensor<T> vGm_;
-    GlobalTensor<T> yGm_;
-    GlobalTensor<uint16_t> qRawGm_;
-    GlobalTensor<uint16_t> kRawGm_;
-    GlobalTensor<uint16_t> vRawGm_;
-    GlobalTensor<uint16_t> yRawGm_;
+    GlobalTensor<uint16_t> qGm_;
+    GlobalTensor<uint16_t> kGm_;
+    GlobalTensor<uint16_t> vGm_;
+    GlobalTensor<uint16_t> yGm_;
     const SlidingTileAttentionTilingData *tiling_ = nullptr;
     float scale_ = 0.0F;
 };

@@ -13,11 +13,11 @@ extern "C" __global__ __aicore__ void sliding_tile_attention(GM_ADDR q, GM_ADDR 
     REGISTER_TILING_DEFAULT(SlidingTileAttentionTilingData);
     GET_TILING_DATA_WITH_STRUCT(SlidingTileAttentionTilingData, tilingData, tiling);
     if (TILING_KEY_IS(SLIDING_TILE_ATTENTION_FP16_TILING_KEY)) {
-        SlidingTileAttentionKernel::SlidingTileAttention<half> op;
+        SlidingTileAttentionKernel::SlidingTileAttention<false> op;
         op.Init(q, k, v, y, &tilingData);
         op.Process();
     } else if (TILING_KEY_IS(SLIDING_TILE_ATTENTION_BF16_TILING_KEY)) {
-        SlidingTileAttentionKernel::SlidingTileAttention<bfloat16_t> op;
+        SlidingTileAttentionKernel::SlidingTileAttention<true> op;
         op.Init(q, k, v, y, &tilingData);
         op.Process();
     }
