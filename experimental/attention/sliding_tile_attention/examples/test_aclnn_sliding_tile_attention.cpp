@@ -34,12 +34,46 @@ constexpr int64_t SEQ_W = 8;
 constexpr int64_t TILE_T = 6;
 constexpr int64_t TILE_H = 8;
 constexpr int64_t TILE_W = 8;
-constexpr int64_t IMAGE_SEQ_LEN = SEQ_T * SEQ_H * SEQ_W;
 constexpr int64_t TEXT_LENGTH = 2;
-constexpr int64_t SEQ_LEN = IMAGE_SEQ_LEN + TEXT_LENGTH;
 constexpr int64_t HEAD_DIM = 8;
 constexpr float ATOL = 5e-2F;
 constexpr float RTOL = 5e-2F;
+
+struct TestCase {
+    std::string name;
+    int64_t batch;
+    int64_t headNum;
+    int64_t seqT;
+    int64_t seqH;
+    int64_t seqW;
+    int64_t textLength;
+    bool hasText;
+    int64_t headDim;
+    std::vector<int64_t> windowSize;
+    bool checkGolden;
+    std::string targetPerformance;
+};
+
+int64_t ImageSeqLen(const TestCase &testCase)
+{
+    return testCase.seqT * testCase.seqH * testCase.seqW;
+}
+
+int64_t RealTextLength(const TestCase &testCase)
+{
+    return testCase.hasText ? testCase.textLength : 0;
+}
+
+int64_t SeqLen(const TestCase &testCase)
+{
+    return ImageSeqLen(testCase) + RealTextLength(testCase);
+}
+
+std::string SeqShapeString(const TestCase &testCase)
+{
+    return std::to_string(testCase.seqT) + "x" + std::to_string(testCase.seqH) + "x" +
+           std::to_string(testCase.seqW);
+}
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
 {
@@ -85,9 +119,9 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
     return ACL_SUCCESS;
 }
 
-int64_t TensorOffset(int64_t batch, int64_t head, int64_t seq, int64_t dim)
+int64_t TensorOffset(const TestCase &testCase, int64_t batch, int64_t head, int64_t seq, int64_t dim)
 {
-    return (((batch * HEAD_NUM + head) * SEQ_LEN + seq) * HEAD_DIM + dim);
+    return (((batch * testCase.headNum + head) * SeqLen(testCase) + seq) * testCase.headDim + dim);
 }
 
 int64_t ClampStart(int64_t center, int64_t window, int64_t limit)
@@ -109,20 +143,23 @@ int64_t HeadWindow(const std::vector<int64_t> &windowSize, int64_t head, int64_t
 }
 
 template <typename Func>
-void VisitKvSeq(int64_t head, int64_t querySeq, const std::vector<int64_t> &windowSize, Func func)
+void VisitKvSeq(const TestCase &testCase, int64_t head, int64_t querySeq, const std::vector<int64_t> &windowSize,
+                Func func)
 {
-    const bool isTextQuery = querySeq >= IMAGE_SEQ_LEN && querySeq < SEQ_LEN;
+    const int64_t imageSeqLen = ImageSeqLen(testCase);
+    const int64_t seqLen = SeqLen(testCase);
+    const bool isTextQuery = testCase.hasText && querySeq >= imageSeqLen && querySeq < seqLen;
     if (isTextQuery) {
-        for (int64_t kvSeq = 0; kvSeq < SEQ_LEN; ++kvSeq) {
+        for (int64_t kvSeq = 0; kvSeq < seqLen; ++kvSeq) {
             func(kvSeq);
         }
         return;
     }
 
     const int64_t tileTokenNum = TILE_T * TILE_H * TILE_W;
-    const int64_t tileNumT = SEQ_T / TILE_T;
-    const int64_t tileNumH = SEQ_H / TILE_H;
-    const int64_t tileNumW = SEQ_W / TILE_W;
+    const int64_t tileNumT = testCase.seqT / TILE_T;
+    const int64_t tileNumH = testCase.seqH / TILE_H;
+    const int64_t tileNumW = testCase.seqW / TILE_W;
     const int64_t tileId = querySeq / tileTokenNum;
     const int64_t tileT = tileId / (tileNumH * tileNumW);
     const int64_t rem = tileId - tileT * tileNumH * tileNumW;
@@ -145,52 +182,54 @@ void VisitKvSeq(int64_t head, int64_t querySeq, const std::vector<int64_t> &wind
                 const int64_t base = ((tt * tileNumH + hh) * tileNumW + ww) * tileTokenNum;
                 for (int64_t offset = 0; offset < tileTokenNum; ++offset) {
                     const int64_t kvSeq = base + offset;
-                    if (kvSeq < IMAGE_SEQ_LEN) {
+                    if (kvSeq < imageSeqLen) {
                         func(kvSeq);
                     }
                 }
             }
         }
     }
-    for (int64_t i = 0; i < TEXT_LENGTH; ++i) {
-        func(IMAGE_SEQ_LEN + i);
+    for (int64_t i = 0; i < RealTextLength(testCase); ++i) {
+        func(imageSeqLen + i);
     }
 }
 
-float DotScore(const std::vector<aclFloat16> &q, const std::vector<aclFloat16> &k, int64_t qBase, int64_t kvBase)
+float DotScore(const TestCase &testCase, const std::vector<aclFloat16> &q, const std::vector<aclFloat16> &k,
+               int64_t qBase, int64_t kvBase)
 {
     float score = 0.0F;
-    for (int64_t dim = 0; dim < HEAD_DIM; ++dim) {
+    for (int64_t dim = 0; dim < testCase.headDim; ++dim) {
         score += aclFloat16ToFloat(q[qBase + dim]) * aclFloat16ToFloat(k[kvBase + dim]);
     }
-    return score / std::sqrt(static_cast<float>(HEAD_DIM));
+    return score / std::sqrt(static_cast<float>(testCase.headDim));
 }
 
-std::vector<float> ComputeCpuGolden(const std::vector<aclFloat16> &q, const std::vector<aclFloat16> &k,
-                                    const std::vector<aclFloat16> &v, const std::vector<int64_t> &windowSize)
+std::vector<float> ComputeCpuGolden(const TestCase &testCase, const std::vector<aclFloat16> &q,
+                                    const std::vector<aclFloat16> &k, const std::vector<aclFloat16> &v,
+                                    const std::vector<int64_t> &windowSize)
 {
-    std::vector<float> y(BATCH * HEAD_NUM * SEQ_LEN * HEAD_DIM, 0.0F);
-    for (int64_t b = 0; b < BATCH; ++b) {
-        for (int64_t h = 0; h < HEAD_NUM; ++h) {
-            for (int64_t s = 0; s < SEQ_LEN; ++s) {
-                const int64_t qBase = TensorOffset(b, h, s, 0);
+    std::vector<float> y(testCase.batch * testCase.headNum * SeqLen(testCase) * testCase.headDim, 0.0F);
+    for (int64_t b = 0; b < testCase.batch; ++b) {
+        for (int64_t h = 0; h < testCase.headNum; ++h) {
+            for (int64_t s = 0; s < SeqLen(testCase); ++s) {
+                const int64_t qBase = TensorOffset(testCase, b, h, s, 0);
                 float maxScore = -std::numeric_limits<float>::infinity();
-                VisitKvSeq(h, s, windowSize, [&](int64_t kvSeq) {
-                    const int64_t kvBase = TensorOffset(b, h, kvSeq, 0);
-                    maxScore = std::max(maxScore, DotScore(q, k, qBase, kvBase));
+                VisitKvSeq(testCase, h, s, windowSize, [&](int64_t kvSeq) {
+                    const int64_t kvBase = TensorOffset(testCase, b, h, kvSeq, 0);
+                    maxScore = std::max(maxScore, DotScore(testCase, q, k, qBase, kvBase));
                 });
 
                 float denom = 0.0F;
-                VisitKvSeq(h, s, windowSize, [&](int64_t kvSeq) {
-                    const int64_t kvBase = TensorOffset(b, h, kvSeq, 0);
-                    denom += std::exp(DotScore(q, k, qBase, kvBase) - maxScore);
+                VisitKvSeq(testCase, h, s, windowSize, [&](int64_t kvSeq) {
+                    const int64_t kvBase = TensorOffset(testCase, b, h, kvSeq, 0);
+                    denom += std::exp(DotScore(testCase, q, k, qBase, kvBase) - maxScore);
                 });
 
-                for (int64_t dim = 0; dim < HEAD_DIM; ++dim) {
+                for (int64_t dim = 0; dim < testCase.headDim; ++dim) {
                     float acc = 0.0F;
-                    VisitKvSeq(h, s, windowSize, [&](int64_t kvSeq) {
-                        const int64_t kvBase = TensorOffset(b, h, kvSeq, 0);
-                        const float weight = std::exp(DotScore(q, k, qBase, kvBase) - maxScore);
+                    VisitKvSeq(testCase, h, s, windowSize, [&](int64_t kvSeq) {
+                        const int64_t kvBase = TensorOffset(testCase, b, h, kvSeq, 0);
+                        const float weight = std::exp(DotScore(testCase, q, k, qBase, kvBase) - maxScore);
                         acc += weight * aclFloat16ToFloat(v[kvBase + dim]);
                     });
                     y[qBase + dim] = denom > 0.0F ? acc / denom : 0.0F;
@@ -206,6 +245,14 @@ void FillInput(std::vector<aclFloat16> &data, float phase)
     for (size_t i = 0; i < data.size(); ++i) {
         const float value = 0.2F * std::sin(static_cast<float>(i) * 0.013F + phase) +
                             0.1F * std::cos(static_cast<float>(i) * 0.007F + phase * 0.5F);
+        data[i] = aclFloatToFloat16(value);
+    }
+}
+
+void FillPerfInput(std::vector<aclFloat16> &data, float phase)
+{
+    for (size_t i = 0; i < data.size(); ++i) {
+        const float value = (static_cast<float>(i % 251U) - 125.0F) * 0.001F + phase * 0.01F;
         data[i] = aclFloatToFloat16(value);
     }
 }
@@ -230,39 +277,91 @@ int CompareResult(const std::vector<float> &expected, const std::vector<aclFloat
     LOG_PRINT("SlidingTileAttention max_abs_diff=%f mismatch_count=%ld\n", maxAbsDiff, mismatchCount);
     return mismatchCount == 0 ? ACL_SUCCESS : 1;
 }
-} // namespace
 
-int main()
+std::vector<TestCase> BuildTestCases()
 {
-    int32_t deviceId = 0;
-    aclrtContext context = nullptr;
-    aclrtStream stream = nullptr;
-    auto ret = Init(deviceId, &context, &stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
+    return {
+        {"golden_text_and_per_head_windows",
+         BATCH,
+         HEAD_NUM,
+         SEQ_T,
+         SEQ_H,
+         SEQ_W,
+         TEXT_LENGTH,
+         true,
+         HEAD_DIM,
+         {1, 1, 1, 1, 2, 1},
+         true,
+         ""},
+        {"perf_a100_b1_h8_d64_img_30x48x80_text_128_mixed_windows",
+         1,
+         8,
+         30,
+         48,
+         80,
+         128,
+         true,
+         64,
+         {1, 1, 1, 3, 3, 3, 3, 5, 5, 5, 5, 5, 1, 3, 3, 3, 3, 5, 5, 5, 7, 7, 7, 7},
+         false,
+         "GPU A100: 12510 calls, total 6.565 s, avg 524.79 us"},
+        {"perf_a100_b1_h8_d64_img_36x48x48_no_text_window_3x3x3",
+         1,
+         8,
+         36,
+         48,
+         48,
+         0,
+         false,
+         64,
+         {3, 3, 3},
+         false,
+         "GPU A100: 2204 calls, total 10.177 s, avg 4618 us"},
+    };
+}
 
-    const std::vector<int64_t> qkvShape = {BATCH, HEAD_NUM, SEQ_LEN, HEAD_DIM};
+int RunTestCase(const TestCase &testCase, aclrtStream stream)
+{
+    LOG_PRINT("Running %s: B=%ld H=%ld D=%ld ImgSeq=%ld TextLen=%ld WindowSize=%zu SeqShape=%s\n",
+              testCase.name.c_str(), testCase.batch, testCase.headNum, testCase.headDim, ImageSeqLen(testCase),
+              RealTextLength(testCase), testCase.windowSize.size(), SeqShapeString(testCase).c_str());
+    if (!testCase.targetPerformance.empty()) {
+        LOG_PRINT("Target performance reference: %s\n", testCase.targetPerformance.c_str());
+    }
+
+    const std::vector<int64_t> qkvShape = {testCase.batch, testCase.headNum, SeqLen(testCase), testCase.headDim};
     const int64_t tensorSize = GetShapeSize(qkvShape);
     std::vector<aclFloat16> qHostData(tensorSize);
     std::vector<aclFloat16> kHostData(tensorSize);
     std::vector<aclFloat16> vHostData(tensorSize);
     std::vector<aclFloat16> yHostData(tensorSize, aclFloatToFloat16(0.0F));
-    FillInput(qHostData, 0.1F);
-    FillInput(kHostData, 0.7F);
-    FillInput(vHostData, 1.3F);
+    if (testCase.checkGolden) {
+        FillInput(qHostData, 0.1F);
+        FillInput(kHostData, 0.7F);
+        FillInput(vHostData, 1.3F);
+    } else {
+        FillPerfInput(qHostData, 0.1F);
+        FillPerfInput(kHostData, 0.7F);
+        FillPerfInput(vHostData, 1.3F);
+    }
 
-    const std::vector<int64_t> windowHostData = {1, 1, 1, 1, 2, 1};
-    std::vector<float> expected = ComputeCpuGolden(qHostData, kHostData, vHostData, windowHostData);
+    std::vector<float> expected;
+    if (testCase.checkGolden) {
+        expected = ComputeCpuGolden(testCase, qHostData, kHostData, vHostData, testCase.windowSize);
+    }
 
     void *qDeviceAddr = nullptr;
     void *kDeviceAddr = nullptr;
     void *vDeviceAddr = nullptr;
     void *yDeviceAddr = nullptr;
+    void *workspaceAddr = nullptr;
     aclTensor *q = nullptr;
     aclTensor *k = nullptr;
     aclTensor *v = nullptr;
     aclTensor *y = nullptr;
+    aclIntArray *windowSize = nullptr;
 
-    ret = CreateAclTensor(qHostData, qkvShape, &qDeviceAddr, aclDataType::ACL_FLOAT16, &q);
+    int ret = CreateAclTensor(qHostData, qkvShape, &qDeviceAddr, aclDataType::ACL_FLOAT16, &q);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(kHostData, qkvShape, &kDeviceAddr, aclDataType::ACL_FLOAT16, &k);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -271,18 +370,17 @@ int main()
     ret = CreateAclTensor(yHostData, qkvShape, &yDeviceAddr, aclDataType::ACL_FLOAT16, &y);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-    aclIntArray *windowSize = aclCreateIntArray(windowHostData.data(), windowHostData.size());
-    char seqShape[] = "6x16x8";
-    bool hasText = true;
+    windowSize = aclCreateIntArray(testCase.windowSize.data(), testCase.windowSize.size());
+    std::string seqShape = SeqShapeString(testCase);
 
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
-    ret = aclnnSlidingTileAttentionGetWorkspaceSize(q, k, v, windowSize, TEXT_LENGTH, hasText, seqShape, y,
-                                                    &workspaceSize, &executor);
+    ret = aclnnSlidingTileAttentionGetWorkspaceSize(q, k, v, windowSize, testCase.textLength, testCase.hasText,
+                                                    const_cast<char *>(seqShape.c_str()), y, &workspaceSize,
+                                                    &executor);
     CHECK_RET(ret == ACL_SUCCESS,
               LOG_PRINT("aclnnSlidingTileAttentionGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 
-    void *workspaceAddr = nullptr;
     if (workspaceSize > 0) {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
@@ -294,14 +392,17 @@ int main()
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
-    std::vector<aclFloat16> actual(tensorSize, aclFloatToFloat16(0.0F));
-    ret = aclrtMemcpy(actual.data(), tensorSize * static_cast<int64_t>(sizeof(actual[0])), yDeviceAddr,
-                      tensorSize * static_cast<int64_t>(sizeof(actual[0])), ACL_MEMCPY_DEVICE_TO_HOST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
+    if (testCase.checkGolden) {
+        std::vector<aclFloat16> actual(tensorSize, aclFloatToFloat16(0.0F));
+        ret = aclrtMemcpy(actual.data(), tensorSize * static_cast<int64_t>(sizeof(actual[0])), yDeviceAddr,
+                          tensorSize * static_cast<int64_t>(sizeof(actual[0])), ACL_MEMCPY_DEVICE_TO_HOST);
+        CHECK_RET(ret == ACL_SUCCESS,
+                  LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
 
-    ret = CompareResult(expected, actual);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("SlidingTileAttention golden compare failed.\n"); return ret);
-    LOG_PRINT("SlidingTileAttention aclnn execute and golden compare successfully.\n");
+        ret = CompareResult(expected, actual);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("%s golden compare failed.\n", testCase.name.c_str()); return ret);
+    }
+    LOG_PRINT("%s executed successfully.\n", testCase.name.c_str());
 
     aclDestroyIntArray(windowSize);
     aclDestroyTensor(q);
@@ -315,6 +416,25 @@ int main()
     if (workspaceSize > 0) {
         aclrtFree(workspaceAddr);
     }
+    return ACL_SUCCESS;
+}
+} // namespace
+
+int main()
+{
+    int32_t deviceId = 0;
+    aclrtContext context = nullptr;
+    aclrtStream stream = nullptr;
+    auto ret = Init(deviceId, &context, &stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
+
+    for (const auto &testCase : BuildTestCases()) {
+        ret = RunTestCase(testCase, stream);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("SlidingTileAttention case %s failed.\n", testCase.name.c_str());
+                  return ret);
+    }
+    LOG_PRINT("SlidingTileAttention aclnn tests executed successfully.\n");
+
     aclrtDestroyStream(stream);
     aclrtDestroyContext(context);
     aclrtResetDevice(deviceId);
