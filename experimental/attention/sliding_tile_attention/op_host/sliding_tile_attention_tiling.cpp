@@ -25,6 +25,7 @@ constexpr size_t BNSD_RANK = 4U;
 constexpr int64_t DEFAULT_TILE_T = 6;
 constexpr int64_t DEFAULT_TILE_H = 8;
 constexpr int64_t DEFAULT_TILE_W = 8;
+constexpr int64_t VECTOR_HEAD_DIM_LIMIT = 128;
 constexpr uint32_t WS_SYS_SIZE = 16U * 1024U * 1024U;
 
 struct SlidingTileAttentionCompileInfo {
@@ -110,6 +111,10 @@ static ge::graphStatus SlidingTileAttentionTilingFunc(gert::TilingContext *conte
     OP_CHECK_IF(batch <= 0 || headNum <= 0 || seqLen <= 0 || headDim <= 0,
                 OP_LOGE(context, "Static positive BNSD shape is required, got [%ld,%ld,%ld,%ld].", batch, headNum,
                         seqLen, headDim),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(headDim > VECTOR_HEAD_DIM_LIMIT,
+                OP_LOGE(context, "SlidingTileAttention vector path only supports head_dim <= %ld, got %ld.",
+                        VECTOR_HEAD_DIM_LIMIT, headDim),
                 return ge::GRAPH_FAILED);
 
     int64_t seqT = 0;
