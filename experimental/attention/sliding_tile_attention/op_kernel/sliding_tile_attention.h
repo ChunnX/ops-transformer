@@ -809,6 +809,45 @@ private:
         }
     }
 
+    __aicore__ inline void ProcessVisibleKvRange(int64_t batch, int64_t head, int64_t seq, int64_t qCount,
+                                                 int64_t kvBegin, int64_t kvEnd, int64_t &tileLoop,
+                                                 LocalTensor<float> &maxLocal, LocalTensor<float> &denomLocal)
+    {
+        for (int64_t kvSeq = kvBegin; kvSeq < kvEnd; kvSeq += tiling_->kvBlock) {
+            const int64_t kvCount = MinInt64(tiling_->kvBlock, kvEnd - kvSeq);
+            const uint32_t bufferIdx = static_cast<uint32_t>(tileLoop % BUFFER_NUM);
+            CrossCoreWaitFlag(AicToAivSyncFlag(bufferIdx));
+            for (int64_t row = GetSubBlockIdxValue(); row < qCount; row += GetTaskRatioValue()) {
+                const int64_t querySeq = seq + row;
+                if (querySeq >= tiling_->imageSeqLen + tiling_->textLength) {
+                    continue;
+                }
+                const bool isTextQuery = (tiling_->hasText != 0) && (querySeq >= tiling_->imageSeqLen) &&
+                                         (querySeq < tiling_->imageSeqLen + tiling_->textLength);
+                const bool isFullVisible = IsKvBlockFullyVisible(head, querySeq, kvSeq, kvCount, isTextQuery);
+                LocalTensor<float> accRow = GetAccTileRow(static_cast<uint32_t>(row));
+                float maxScore = maxLocal.GetValue(row);
+                float denom = denomLocal.GetValue(row);
+                AccumulateAicScoreBlock(accRow, batch, head, querySeq, kvSeq, kvCount, static_cast<uint32_t>(row),
+                                        maxScore, denom, isTextQuery, isFullVisible, bufferIdx);
+                maxLocal.SetValue(row, maxScore);
+                denomLocal.SetValue(row, denom);
+            }
+            CrossCoreSetFlag<2, PIPE_MTE3>(AivProbToAicSyncFlag(bufferIdx));
+            CrossCoreWaitFlag(AicOutToAivSyncFlag(bufferIdx));
+            for (int64_t row = GetSubBlockIdxValue(); row < qCount; row += GetTaskRatioValue()) {
+                const int64_t querySeq = seq + row;
+                if (querySeq >= tiling_->imageSeqLen + tiling_->textLength) {
+                    continue;
+                }
+                LocalTensor<float> accRow = GetAccTileRow(static_cast<uint32_t>(row));
+                AddPvOutRowToAcc(accRow, static_cast<uint32_t>(row), bufferIdx);
+            }
+            CrossCoreSetFlag<2, PIPE_MTE2>(AivToAicSyncFlag(bufferIdx));
+            ++tileLoop;
+        }
+    }
+
     __aicore__ inline void ProcessImageKvTiles(int64_t batch, int64_t head, int64_t seq, int64_t qCount,
                                                int64_t &tileLoop, LocalTensor<float> &maxLocal,
                                                LocalTensor<float> &denomLocal)
@@ -822,7 +861,7 @@ private:
             }
             const int64_t kvBegin = kvTileId * tiling_->tileTokenNum;
             const int64_t kvEnd = MinInt64(kvBegin + tiling_->tileTokenNum, tiling_->imageSeqLen);
-            ProcessKvRange(batch, head, seq, qCount, kvBegin, kvEnd, tileLoop, maxLocal, denomLocal);
+            ProcessVisibleKvRange(batch, head, seq, qCount, kvBegin, kvEnd, tileLoop, maxLocal, denomLocal);
         }
     }
 
@@ -1331,6 +1370,24 @@ private:
         }
     }
 
+    __aicore__ inline void ProcessVisibleKvRange(int64_t taskIdx, int64_t head, int64_t seq, int64_t qCount,
+                                                 int64_t kvBegin, int64_t kvEnd, int64_t &tileLoop)
+    {
+        for (int64_t kvSeq = kvBegin; kvSeq < kvEnd; kvSeq += tiling_->kvBlock) {
+            const int64_t kvCount = MinInt64(tiling_->kvBlock, kvEnd - kvSeq);
+            const uint32_t bufferIdx = static_cast<uint32_t>(tileLoop % BUFFER_NUM);
+            if (tileLoop >= BUFFER_NUM) {
+                CrossCoreWaitFlag(AivToAicSyncFlag(bufferIdx));
+            }
+            ComputeScoreTileTask(taskIdx, kvSeq, kvCount, bufferIdx);
+            CrossCoreSetFlag<2, PIPE_FIX>(AicToAivSyncFlag(bufferIdx));
+            CrossCoreWaitFlag(AivProbToAicSyncFlag(bufferIdx));
+            ComputeValueTileTask(taskIdx, kvSeq, kvCount, bufferIdx);
+            CrossCoreSetFlag<2, PIPE_FIX>(AicOutToAivSyncFlag(bufferIdx));
+            ++tileLoop;
+        }
+    }
+
     __aicore__ inline void ProcessImageKvTiles(int64_t taskIdx, int64_t head, int64_t seq, int64_t qCount,
                                                int64_t &tileLoop)
     {
@@ -1343,7 +1400,7 @@ private:
             }
             const int64_t kvBegin = kvTileId * tiling_->tileTokenNum;
             const int64_t kvEnd = MinInt64(kvBegin + tiling_->tileTokenNum, tiling_->imageSeqLen);
-            ProcessKvRange(taskIdx, head, seq, qCount, kvBegin, kvEnd, tileLoop);
+            ProcessVisibleKvRange(taskIdx, head, seq, qCount, kvBegin, kvEnd, tileLoop);
         }
     }
 
