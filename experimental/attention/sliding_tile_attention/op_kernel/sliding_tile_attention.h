@@ -427,6 +427,56 @@ private:
         return false;
     }
 
+    __aicore__ inline bool IsImageKvRangeInWindow(int64_t head, int64_t querySeq, int64_t kvImageBegin,
+                                                  int64_t kvImageEnd) const
+    {
+        if (kvImageBegin >= kvImageEnd) {
+            return true;
+        }
+
+        int64_t tBegin = 0;
+        int64_t tEnd = 0;
+        int64_t hBegin = 0;
+        int64_t hEnd = 0;
+        int64_t wBegin = 0;
+        int64_t wEnd = 0;
+        GetImageWindowRange(head, querySeq, tBegin, tEnd, hBegin, hEnd, wBegin, wEnd);
+
+        const int64_t kvTileBegin = kvImageBegin / tiling_->tileTokenNum;
+        const int64_t kvTileEnd = (kvImageEnd - 1) / tiling_->tileTokenNum;
+        for (int64_t kvTileId = kvTileBegin; kvTileId <= kvTileEnd; ++kvTileId) {
+            int64_t kvTileT = 0;
+            int64_t kvTileH = 0;
+            int64_t kvTileW = 0;
+            DecodeTileCoord(kvTileId, kvTileT, kvTileH, kvTileW);
+            if (kvTileT < tBegin || kvTileT >= tEnd || kvTileH < hBegin || kvTileH >= hEnd ||
+                kvTileW < wBegin || kvTileW >= wEnd) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    __aicore__ inline bool IsKvBlockFullyVisible(int64_t head, int64_t querySeq, int64_t kvSeqBegin,
+                                                 int64_t kvCount, bool isTextQuery) const
+    {
+        const int64_t validSeqLen = tiling_->imageSeqLen + tiling_->textLength;
+        const int64_t kvSeqEnd = MinInt64(kvSeqBegin + kvCount, validSeqLen);
+        if (kvSeqBegin >= kvSeqEnd) {
+            return false;
+        }
+        if (isTextQuery) {
+            return true;
+        }
+        if (kvSeqBegin >= tiling_->imageSeqLen) {
+            return tiling_->hasText != 0;
+        }
+        if (kvSeqEnd > tiling_->imageSeqLen && tiling_->hasText == 0) {
+            return false;
+        }
+        return IsImageKvRangeInWindow(head, querySeq, kvSeqBegin, MinInt64(kvSeqEnd, tiling_->imageSeqLen));
+    }
+
     __aicore__ inline void CopyScoreRowToLocal(LocalTensor<float> &scoreLocal, uint32_t rowInBlock,
                                                int64_t kvCount, uint32_t bufferIdx)
     {
@@ -527,16 +577,21 @@ private:
             scoreLocal.SetValue(i, NEG_INF);
         }
 
-        float blockMaxScore = NEG_INF;
-        for (int64_t i = 0; i < kvCount; ++i) {
-            float score = scoreLocal.GetValue(i);
-            if (!IsKvVisible(head, querySeq, kvSeqStart + i, isTextQuery)) {
-                score = NEG_INF;
-                scoreLocal.SetValue(i, score);
+        if (!IsKvBlockFullyVisible(head, querySeq, kvSeqStart, kvCount, isTextQuery)) {
+            for (int64_t i = 0; i < kvCount; ++i) {
+                if (!IsKvVisible(head, querySeq, kvSeqStart + i, isTextQuery)) {
+                    scoreLocal.SetValue(i, NEG_INF);
+                }
             }
-            blockMaxScore = score > blockMaxScore ? score : blockMaxScore;
         }
         PipeBarrier<PIPE_V>();
+
+        LocalTensor<float> reduceLocal = GetBufferSlice<float>(reduceFloatBuf_, bufferIdx);
+        LocalTensor<float> reduceWorkLocal = GetBufferSlice<float>(reduceWorkBuf_, bufferIdx);
+        ReduceMax(reduceLocal, scoreLocal, reduceWorkLocal, calcCount, false);
+        SetFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
+        WaitFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
+        const float blockMaxScore = reduceLocal.GetValue(0);
         if (blockMaxScore == NEG_INF) {
             LocalTensor<float> weightLocal = GetKvBlockSlice<float>(weightFloatBuf_, bufferIdx);
             Duplicate(weightLocal, 0.0F, calcCount);
@@ -564,8 +619,6 @@ private:
         PipeBarrier<PIPE_V>();
         StoreProbRow(rowInBlock, weightLocal, bufferIdx);
 
-        LocalTensor<float> reduceLocal = GetBufferSlice<float>(reduceFloatBuf_, bufferIdx);
-        LocalTensor<float> reduceWorkLocal = GetBufferSlice<float>(reduceWorkBuf_, bufferIdx);
         ReduceSum(reduceLocal, weightLocal, reduceWorkLocal, calcCount);
         SetFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
         WaitFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
