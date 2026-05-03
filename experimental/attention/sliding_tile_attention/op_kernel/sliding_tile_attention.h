@@ -20,6 +20,7 @@ constexpr float LN2 = 0.6931471805599453F;
 constexpr float INV_LN2 = 1.4426950408889634F;
 constexpr int64_t VECTOR_HEAD_DIM_LIMIT = 128;
 constexpr int64_t VECTOR_ALIGN_ELEMS = 16;
+constexpr int64_t IMAGE_QUERY_GROUP_SIZE = 4;
 
 template <bool IS_BF16>
 struct DataTypeSelector {
@@ -280,6 +281,9 @@ public:
         pipe_.InitBuffer(vDataBuf_, VECTOR_HEAD_DIM_LIMIT * sizeof(DataType));
         pipe_.InitBuffer(yDataBuf_, VECTOR_HEAD_DIM_LIMIT * sizeof(DataType));
         pipe_.InitBuffer(qFloatBuf_, VECTOR_HEAD_DIM_LIMIT * sizeof(float));
+        pipe_.InitBuffer(qGroupFloatBuf_, IMAGE_QUERY_GROUP_SIZE * VECTOR_HEAD_DIM_LIMIT * sizeof(float));
+        pipe_.InitBuffer(accGroupFloatBuf_, IMAGE_QUERY_GROUP_SIZE * VECTOR_HEAD_DIM_LIMIT * sizeof(float));
+        pipe_.InitBuffer(tmpGroupFloatBuf_, IMAGE_QUERY_GROUP_SIZE * VECTOR_HEAD_DIM_LIMIT * sizeof(float));
         pipe_.InitBuffer(kFloatBuf_, VECTOR_HEAD_DIM_LIMIT * sizeof(float));
         pipe_.InitBuffer(vFloatBuf_, VECTOR_HEAD_DIM_LIMIT * sizeof(float));
         pipe_.InitBuffer(tmpFloatBuf_, VECTOR_HEAD_DIM_LIMIT * sizeof(float));
@@ -540,6 +544,50 @@ private:
         denom += weight;
     }
 
+    __aicore__ inline void AccumulateOnlineValueVectorGroup(LocalTensor<float> &qGroupLocal,
+                                                            LocalTensor<float> &accGroupLocal, int64_t groupSize,
+                                                            int64_t kvBase, float *maxScores, float *denoms)
+    {
+        const uint32_t alignedHeadDim = AlignedHeadDim();
+        LocalTensor<float> kLocal = kFloatBuf_.Get<float>();
+        CopyDataRowToFloat(kDataGm_, kDataBuf_, kLocal, kvBase);
+
+        LocalTensor<float> tmpGroupLocal = tmpGroupFloatBuf_.Get<float>();
+        LocalTensor<float> reduceLocal = reduceFloatBuf_.Get<float>();
+        LocalTensor<float> reduceWorkLocal = reduceWorkBuf_.Get<float>();
+        for (int64_t lane = 0; lane < groupSize; ++lane) {
+            const int64_t laneOffset = lane * VECTOR_HEAD_DIM_LIMIT;
+            Mul(tmpGroupLocal[laneOffset], qGroupLocal[laneOffset], kLocal, alignedHeadDim);
+            PipeBarrier<PIPE_V>();
+            ReduceSum(reduceLocal, tmpGroupLocal[laneOffset], reduceWorkLocal, alignedHeadDim);
+            SetFlag<HardEvent::V_S>(EVENT_ID1);
+            WaitFlag<HardEvent::V_S>(EVENT_ID1);
+
+            const float score = reduceLocal.GetValue(0) * scale_;
+            if (score > maxScores[lane]) {
+                const float oldScale = ExpApprox(maxScores[lane] - score);
+                Muls(accGroupLocal[laneOffset], accGroupLocal[laneOffset], oldScale, alignedHeadDim);
+                PipeBarrier<PIPE_V>();
+                denoms[lane] *= oldScale;
+                maxScores[lane] = score;
+            }
+            const float weight = ExpApprox(score - maxScores[lane]);
+            denoms[lane] += weight;
+            tmpGroupLocal.SetValue(laneOffset, weight);
+        }
+
+        LocalTensor<float> vLocal = vFloatBuf_.Get<float>();
+        CopyDataRowToFloat(vDataGm_, vDataBuf_, vLocal, kvBase);
+        for (int64_t lane = 0; lane < groupSize; ++lane) {
+            const int64_t laneOffset = lane * VECTOR_HEAD_DIM_LIMIT;
+            const float weight = tmpGroupLocal.GetValue(laneOffset);
+            Muls(tmpGroupLocal[laneOffset], vLocal, weight, alignedHeadDim);
+            PipeBarrier<PIPE_V>();
+            Add(accGroupLocal[laneOffset], accGroupLocal[laneOffset], tmpGroupLocal[laneOffset], alignedHeadDim);
+            PipeBarrier<PIPE_V>();
+        }
+    }
+
     __aicore__ inline void AccumulateImageWindowOnlineVector(LocalTensor<float> &qLocal, LocalTensor<float> &accLocal,
                                                             int64_t batch, int64_t head, int64_t seq, float &maxScore,
                                                             float &denom)
@@ -561,6 +609,35 @@ private:
                         if (kvSeq < tiling_->imageSeqLen) {
                             AccumulateOnlineValueVector(qLocal, accLocal, TensorOffset(batch, head, kvSeq, 0),
                                                         maxScore, denom);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    __aicore__ inline void AccumulateImageWindowOnlineVectorGroup(LocalTensor<float> &qGroupLocal,
+                                                                 LocalTensor<float> &accGroupLocal, int64_t groupSize,
+                                                                 int64_t batch, int64_t head, int64_t seq,
+                                                                 float *maxScores, float *denoms)
+    {
+        int64_t tBegin = 0;
+        int64_t tEnd = 0;
+        int64_t hBegin = 0;
+        int64_t hEnd = 0;
+        int64_t wBegin = 0;
+        int64_t wEnd = 0;
+        GetImageWindowRange(head, seq, tBegin, tEnd, hBegin, hEnd, wBegin, wEnd);
+        for (int64_t tt = tBegin; tt < tEnd; ++tt) {
+            for (int64_t hh = hBegin; hh < hEnd; ++hh) {
+                for (int64_t ww = wBegin; ww < wEnd; ++ww) {
+                    const int64_t baseTile = ((tt * tiling_->tileNumH + hh) * tiling_->tileNumW + ww) *
+                                             tiling_->tileTokenNum;
+                    for (int64_t offset = 0; offset < tiling_->tileTokenNum; ++offset) {
+                        const int64_t kvSeq = baseTile + offset;
+                        if (kvSeq < tiling_->imageSeqLen) {
+                            AccumulateOnlineValueVectorGroup(qGroupLocal, accGroupLocal, groupSize,
+                                                             TensorOffset(batch, head, kvSeq, 0), maxScores, denoms);
                         }
                     }
                 }
@@ -675,6 +752,14 @@ private:
             return;
         }
 
+        if (!isTextQuery && CanUseImageQueryGroup(seq)) {
+            ProcessImageQueryGroupVector(batch, head, seq, qBase);
+            return;
+        }
+        if (!isTextQuery && IsCoveredByImageQueryGroup(seq)) {
+            return;
+        }
+
         LocalTensor<float> qLocal = qFloatBuf_.Get<float>();
         CopyDataRowToFloat(qDataGm_, qDataBuf_, qLocal, qBase);
 
@@ -688,6 +773,65 @@ private:
             PipeBarrier<PIPE_V>();
         }
         StoreFloatRow(qBase, accLocal);
+    }
+
+    __aicore__ inline bool CanUseImageQueryGroup(int64_t seq) const
+    {
+        if (seq < 0 || seq >= tiling_->imageSeqLen || (seq % IMAGE_QUERY_GROUP_SIZE) != 0) {
+            return false;
+        }
+        const int64_t lastSeq = seq + IMAGE_QUERY_GROUP_SIZE - 1;
+        return lastSeq < tiling_->imageSeqLen && (seq / tiling_->tileTokenNum) == (lastSeq / tiling_->tileTokenNum);
+    }
+
+    __aicore__ inline bool IsCoveredByImageQueryGroup(int64_t seq) const
+    {
+        if (seq < 0 || seq >= tiling_->imageSeqLen || (seq % IMAGE_QUERY_GROUP_SIZE) == 0) {
+            return false;
+        }
+        const int64_t groupStart = seq - (seq % IMAGE_QUERY_GROUP_SIZE);
+        return CanUseImageQueryGroup(groupStart);
+    }
+
+    __aicore__ inline void ProcessImageQueryGroupVector(int64_t batch, int64_t head, int64_t seq, int64_t qBase)
+    {
+        const uint32_t alignedHeadDim = AlignedHeadDim();
+        LocalTensor<float> qGroupLocal = qGroupFloatBuf_.Get<float>();
+        LocalTensor<float> accGroupLocal = accGroupFloatBuf_.Get<float>();
+        float maxScores[IMAGE_QUERY_GROUP_SIZE];
+        float denoms[IMAGE_QUERY_GROUP_SIZE];
+
+        for (int64_t lane = 0; lane < IMAGE_QUERY_GROUP_SIZE; ++lane) {
+            const int64_t laneOffset = lane * VECTOR_HEAD_DIM_LIMIT;
+            LocalTensor<float> qLaneLocal = qGroupLocal[laneOffset];
+            CopyDataRowToFloat(qDataGm_, qDataBuf_, qLaneLocal, TensorOffset(batch, head, seq + lane, 0));
+            Duplicate(accGroupLocal[laneOffset], 0.0F, alignedHeadDim);
+            maxScores[lane] = NEG_INF;
+            denoms[lane] = 0.0F;
+        }
+        PipeBarrier<PIPE_V>();
+
+        AccumulateImageWindowOnlineVectorGroup(qGroupLocal, accGroupLocal, IMAGE_QUERY_GROUP_SIZE, batch, head, seq,
+                                               maxScores, denoms);
+        if (tiling_->hasText != 0) {
+            for (int64_t i = 0; i < tiling_->textLength; ++i) {
+                const int64_t kvSeq = tiling_->imageSeqLen + i;
+                AccumulateOnlineValueVectorGroup(qGroupLocal, accGroupLocal, IMAGE_QUERY_GROUP_SIZE,
+                                                 TensorOffset(batch, head, kvSeq, 0), maxScores, denoms);
+            }
+        }
+
+        for (int64_t lane = 0; lane < IMAGE_QUERY_GROUP_SIZE; ++lane) {
+            const int64_t laneOffset = lane * VECTOR_HEAD_DIM_LIMIT;
+            if (denoms[lane] > 0.0F) {
+                Muls(accGroupLocal[laneOffset], accGroupLocal[laneOffset], 1.0F / denoms[lane], alignedHeadDim);
+            } else {
+                Duplicate(accGroupLocal[laneOffset], 0.0F, alignedHeadDim);
+            }
+            PipeBarrier<PIPE_V>();
+            LocalTensor<float> accLaneLocal = accGroupLocal[laneOffset];
+            StoreFloatRow(qBase + lane * tiling_->headDim, accLaneLocal);
+        }
     }
 
     __aicore__ inline void ProcessQuery(int64_t queryLinear)
@@ -737,6 +881,9 @@ private:
     TBuf<QuePosition::VECCALC> vDataBuf_;
     TBuf<QuePosition::VECCALC> yDataBuf_;
     TBuf<QuePosition::VECCALC> qFloatBuf_;
+    TBuf<QuePosition::VECCALC> qGroupFloatBuf_;
+    TBuf<QuePosition::VECCALC> accGroupFloatBuf_;
+    TBuf<QuePosition::VECCALC> tmpGroupFloatBuf_;
     TBuf<QuePosition::VECCALC> kFloatBuf_;
     TBuf<QuePosition::VECCALC> vFloatBuf_;
     TBuf<QuePosition::VECCALC> tmpFloatBuf_;
