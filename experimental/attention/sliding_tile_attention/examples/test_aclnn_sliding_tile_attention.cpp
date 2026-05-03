@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <limits>
 #include <string>
 #include <vector>
@@ -39,8 +40,14 @@ constexpr int64_t HEAD_DIM = 8;
 constexpr float ATOL = 5e-2F;
 constexpr float RTOL = 5e-2F;
 
+enum class TensorDtype {
+    FP16,
+    BF16,
+};
+
 struct TestCase {
     std::string name;
+    TensorDtype dtype;
     int64_t batch;
     int64_t headNum;
     int64_t seqT;
@@ -53,6 +60,55 @@ struct TestCase {
     bool checkGolden;
     std::string targetPerformance;
 };
+
+template <TensorDtype DTYPE>
+struct TensorDtypeTraits;
+
+template <>
+struct TensorDtypeTraits<TensorDtype::FP16> {
+    using Storage = aclFloat16;
+    static constexpr aclDataType ACL_DTYPE = aclDataType::ACL_FLOAT16;
+    static constexpr const char *NAME = "fp16";
+
+    static Storage FromFloat(float value)
+    {
+        return aclFloatToFloat16(value);
+    }
+
+    static float ToFloat(Storage value)
+    {
+        return aclFloat16ToFloat(value);
+    }
+};
+
+template <>
+struct TensorDtypeTraits<TensorDtype::BF16> {
+    using Storage = uint16_t;
+    static constexpr aclDataType ACL_DTYPE = aclDataType::ACL_BF16;
+    static constexpr const char *NAME = "bf16";
+
+    static Storage FromFloat(float value)
+    {
+        uint32_t bits = 0;
+        std::memcpy(&bits, &value, sizeof(bits));
+        const uint32_t roundingBias = 0x7FFFU + ((bits >> 16U) & 1U);
+        return static_cast<Storage>((bits + roundingBias) >> 16U);
+    }
+
+    static float ToFloat(Storage value)
+    {
+        const uint32_t bits = static_cast<uint32_t>(value) << 16U;
+        float result = 0.0F;
+        std::memcpy(&result, &bits, sizeof(result));
+        return result;
+    }
+};
+
+const char *DtypeName(TensorDtype dtype)
+{
+    return dtype == TensorDtype::BF16 ? TensorDtypeTraits<TensorDtype::BF16>::NAME
+                                      : TensorDtypeTraits<TensorDtype::FP16>::NAME;
+}
 
 int64_t ImageSeqLen(const TestCase &testCase)
 {
@@ -194,18 +250,22 @@ void VisitKvSeq(const TestCase &testCase, int64_t head, int64_t querySeq, const 
     }
 }
 
-float DotScore(const TestCase &testCase, const std::vector<aclFloat16> &q, const std::vector<aclFloat16> &k,
-               int64_t qBase, int64_t kvBase)
+template <TensorDtype DTYPE>
+float DotScore(const TestCase &testCase, const std::vector<typename TensorDtypeTraits<DTYPE>::Storage> &q,
+               const std::vector<typename TensorDtypeTraits<DTYPE>::Storage> &k, int64_t qBase, int64_t kvBase)
 {
     float score = 0.0F;
     for (int64_t dim = 0; dim < testCase.headDim; ++dim) {
-        score += aclFloat16ToFloat(q[qBase + dim]) * aclFloat16ToFloat(k[kvBase + dim]);
+        score += TensorDtypeTraits<DTYPE>::ToFloat(q[qBase + dim]) * TensorDtypeTraits<DTYPE>::ToFloat(k[kvBase + dim]);
     }
     return score / std::sqrt(static_cast<float>(testCase.headDim));
 }
 
-std::vector<float> ComputeCpuGolden(const TestCase &testCase, const std::vector<aclFloat16> &q,
-                                    const std::vector<aclFloat16> &k, const std::vector<aclFloat16> &v,
+template <TensorDtype DTYPE>
+std::vector<float> ComputeCpuGolden(const TestCase &testCase,
+                                    const std::vector<typename TensorDtypeTraits<DTYPE>::Storage> &q,
+                                    const std::vector<typename TensorDtypeTraits<DTYPE>::Storage> &k,
+                                    const std::vector<typename TensorDtypeTraits<DTYPE>::Storage> &v,
                                     const std::vector<int64_t> &windowSize)
 {
     std::vector<float> y(testCase.batch * testCase.headNum * SeqLen(testCase) * testCase.headDim, 0.0F);
@@ -216,21 +276,21 @@ std::vector<float> ComputeCpuGolden(const TestCase &testCase, const std::vector<
                 float maxScore = -std::numeric_limits<float>::infinity();
                 VisitKvSeq(testCase, h, s, windowSize, [&](int64_t kvSeq) {
                     const int64_t kvBase = TensorOffset(testCase, b, h, kvSeq, 0);
-                    maxScore = std::max(maxScore, DotScore(testCase, q, k, qBase, kvBase));
+                    maxScore = std::max(maxScore, DotScore<DTYPE>(testCase, q, k, qBase, kvBase));
                 });
 
                 float denom = 0.0F;
                 VisitKvSeq(testCase, h, s, windowSize, [&](int64_t kvSeq) {
                     const int64_t kvBase = TensorOffset(testCase, b, h, kvSeq, 0);
-                    denom += std::exp(DotScore(testCase, q, k, qBase, kvBase) - maxScore);
+                    denom += std::exp(DotScore<DTYPE>(testCase, q, k, qBase, kvBase) - maxScore);
                 });
 
                 for (int64_t dim = 0; dim < testCase.headDim; ++dim) {
                     float acc = 0.0F;
                     VisitKvSeq(testCase, h, s, windowSize, [&](int64_t kvSeq) {
                         const int64_t kvBase = TensorOffset(testCase, b, h, kvSeq, 0);
-                        const float weight = std::exp(DotScore(testCase, q, k, qBase, kvBase) - maxScore);
-                        acc += weight * aclFloat16ToFloat(v[kvBase + dim]);
+                        const float weight = std::exp(DotScore<DTYPE>(testCase, q, k, qBase, kvBase) - maxScore);
+                        acc += weight * TensorDtypeTraits<DTYPE>::ToFloat(v[kvBase + dim]);
                     });
                     y[qBase + dim] = denom > 0.0F ? acc / denom : 0.0F;
                 }
@@ -240,29 +300,33 @@ std::vector<float> ComputeCpuGolden(const TestCase &testCase, const std::vector<
     return y;
 }
 
-void FillInput(std::vector<aclFloat16> &data, float phase)
+template <TensorDtype DTYPE>
+void FillInput(std::vector<typename TensorDtypeTraits<DTYPE>::Storage> &data, float phase)
 {
     for (size_t i = 0; i < data.size(); ++i) {
         const float value = 0.2F * std::sin(static_cast<float>(i) * 0.013F + phase) +
                             0.1F * std::cos(static_cast<float>(i) * 0.007F + phase * 0.5F);
-        data[i] = aclFloatToFloat16(value);
+        data[i] = TensorDtypeTraits<DTYPE>::FromFloat(value);
     }
 }
 
-void FillPerfInput(std::vector<aclFloat16> &data, float phase)
+template <TensorDtype DTYPE>
+void FillPerfInput(std::vector<typename TensorDtypeTraits<DTYPE>::Storage> &data, float phase)
 {
     for (size_t i = 0; i < data.size(); ++i) {
         const float value = (static_cast<float>(i % 251U) - 125.0F) * 0.001F + phase * 0.01F;
-        data[i] = aclFloatToFloat16(value);
+        data[i] = TensorDtypeTraits<DTYPE>::FromFloat(value);
     }
 }
 
-int CompareResult(const std::vector<float> &expected, const std::vector<aclFloat16> &actual)
+template <TensorDtype DTYPE>
+int CompareResult(const std::vector<float> &expected,
+                  const std::vector<typename TensorDtypeTraits<DTYPE>::Storage> &actual)
 {
     float maxAbsDiff = 0.0F;
     int64_t mismatchCount = 0;
     for (size_t i = 0; i < expected.size(); ++i) {
-        const float actualVal = aclFloat16ToFloat(actual[i]);
+        const float actualVal = TensorDtypeTraits<DTYPE>::ToFloat(actual[i]);
         const float diff = std::fabs(expected[i] - actualVal);
         const float tolerance = ATOL + RTOL * std::fabs(expected[i]);
         maxAbsDiff = std::max(maxAbsDiff, diff);
@@ -282,6 +346,20 @@ std::vector<TestCase> BuildTestCases()
 {
     return {
         {"golden_text_and_per_head_windows",
+         TensorDtype::FP16,
+         BATCH,
+         HEAD_NUM,
+         SEQ_T,
+         SEQ_H,
+         SEQ_W,
+         TEXT_LENGTH,
+         true,
+         HEAD_DIM,
+         {1, 1, 1, 1, 2, 1},
+         true,
+         ""},
+        {"golden_bf16_text_and_per_head_windows",
+         TensorDtype::BF16,
          BATCH,
          HEAD_NUM,
          SEQ_T,
@@ -294,6 +372,7 @@ std::vector<TestCase> BuildTestCases()
          true,
          ""},
         {"perf_a100_b1_h8_d64_img_30x48x80_text_128_mixed_windows",
+         TensorDtype::FP16,
          1,
          8,
          30,
@@ -306,6 +385,7 @@ std::vector<TestCase> BuildTestCases()
          false,
          "GPU A100: 12510 calls, total 6.565 s, avg 524.79 us"},
         {"perf_a100_b1_h8_d64_img_36x48x48_no_text_window_3x3x3",
+         TensorDtype::FP16,
          1,
          8,
          36,
@@ -320,34 +400,39 @@ std::vector<TestCase> BuildTestCases()
     };
 }
 
-int RunTestCase(const TestCase &testCase, aclrtStream stream)
+template <TensorDtype DTYPE>
+int RunTestCaseWithDtype(const TestCase &testCase, aclrtStream stream)
 {
-    LOG_PRINT("Running %s: B=%ld H=%ld D=%ld ImgSeq=%ld TextLen=%ld WindowSize=%zu SeqShape=%s\n",
-              testCase.name.c_str(), testCase.batch, testCase.headNum, testCase.headDim, ImageSeqLen(testCase),
-              RealTextLength(testCase), testCase.windowSize.size(), SeqShapeString(testCase).c_str());
+    using Traits = TensorDtypeTraits<DTYPE>;
+    using Storage = typename Traits::Storage;
+
+    LOG_PRINT("Running %s: Dtype=%s B=%ld H=%ld D=%ld ImgSeq=%ld TextLen=%ld WindowSize=%zu SeqShape=%s\n",
+              testCase.name.c_str(), Traits::NAME, testCase.batch, testCase.headNum, testCase.headDim,
+              ImageSeqLen(testCase), RealTextLength(testCase), testCase.windowSize.size(),
+              SeqShapeString(testCase).c_str());
     if (!testCase.targetPerformance.empty()) {
         LOG_PRINT("Target performance reference: %s\n", testCase.targetPerformance.c_str());
     }
 
     const std::vector<int64_t> qkvShape = {testCase.batch, testCase.headNum, SeqLen(testCase), testCase.headDim};
     const int64_t tensorSize = GetShapeSize(qkvShape);
-    std::vector<aclFloat16> qHostData(tensorSize);
-    std::vector<aclFloat16> kHostData(tensorSize);
-    std::vector<aclFloat16> vHostData(tensorSize);
-    std::vector<aclFloat16> yHostData(tensorSize, aclFloatToFloat16(0.0F));
+    std::vector<Storage> qHostData(tensorSize);
+    std::vector<Storage> kHostData(tensorSize);
+    std::vector<Storage> vHostData(tensorSize);
+    std::vector<Storage> yHostData(tensorSize, Traits::FromFloat(0.0F));
     if (testCase.checkGolden) {
-        FillInput(qHostData, 0.1F);
-        FillInput(kHostData, 0.7F);
-        FillInput(vHostData, 1.3F);
+        FillInput<DTYPE>(qHostData, 0.1F);
+        FillInput<DTYPE>(kHostData, 0.7F);
+        FillInput<DTYPE>(vHostData, 1.3F);
     } else {
-        FillPerfInput(qHostData, 0.1F);
-        FillPerfInput(kHostData, 0.7F);
-        FillPerfInput(vHostData, 1.3F);
+        FillPerfInput<DTYPE>(qHostData, 0.1F);
+        FillPerfInput<DTYPE>(kHostData, 0.7F);
+        FillPerfInput<DTYPE>(vHostData, 1.3F);
     }
 
     std::vector<float> expected;
     if (testCase.checkGolden) {
-        expected = ComputeCpuGolden(testCase, qHostData, kHostData, vHostData, testCase.windowSize);
+        expected = ComputeCpuGolden<DTYPE>(testCase, qHostData, kHostData, vHostData, testCase.windowSize);
     }
 
     void *qDeviceAddr = nullptr;
@@ -361,13 +446,13 @@ int RunTestCase(const TestCase &testCase, aclrtStream stream)
     aclTensor *y = nullptr;
     aclIntArray *windowSize = nullptr;
 
-    int ret = CreateAclTensor(qHostData, qkvShape, &qDeviceAddr, aclDataType::ACL_FLOAT16, &q);
+    int ret = CreateAclTensor(qHostData, qkvShape, &qDeviceAddr, Traits::ACL_DTYPE, &q);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(kHostData, qkvShape, &kDeviceAddr, aclDataType::ACL_FLOAT16, &k);
+    ret = CreateAclTensor(kHostData, qkvShape, &kDeviceAddr, Traits::ACL_DTYPE, &k);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(vHostData, qkvShape, &vDeviceAddr, aclDataType::ACL_FLOAT16, &v);
+    ret = CreateAclTensor(vHostData, qkvShape, &vDeviceAddr, Traits::ACL_DTYPE, &v);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(yHostData, qkvShape, &yDeviceAddr, aclDataType::ACL_FLOAT16, &y);
+    ret = CreateAclTensor(yHostData, qkvShape, &yDeviceAddr, Traits::ACL_DTYPE, &y);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     windowSize = aclCreateIntArray(testCase.windowSize.data(), testCase.windowSize.size());
@@ -393,13 +478,13 @@ int RunTestCase(const TestCase &testCase, aclrtStream stream)
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
     if (testCase.checkGolden) {
-        std::vector<aclFloat16> actual(tensorSize, aclFloatToFloat16(0.0F));
+        std::vector<Storage> actual(tensorSize, Traits::FromFloat(0.0F));
         ret = aclrtMemcpy(actual.data(), tensorSize * static_cast<int64_t>(sizeof(actual[0])), yDeviceAddr,
                           tensorSize * static_cast<int64_t>(sizeof(actual[0])), ACL_MEMCPY_DEVICE_TO_HOST);
         CHECK_RET(ret == ACL_SUCCESS,
                   LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
 
-        ret = CompareResult(expected, actual);
+        ret = CompareResult<DTYPE>(expected, actual);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("%s golden compare failed.\n", testCase.name.c_str()); return ret);
     }
     LOG_PRINT("%s executed successfully.\n", testCase.name.c_str());
@@ -417,6 +502,19 @@ int RunTestCase(const TestCase &testCase, aclrtStream stream)
         aclrtFree(workspaceAddr);
     }
     return ACL_SUCCESS;
+}
+
+int RunTestCase(const TestCase &testCase, aclrtStream stream)
+{
+    switch (testCase.dtype) {
+        case TensorDtype::FP16:
+            return RunTestCaseWithDtype<TensorDtype::FP16>(testCase, stream);
+        case TensorDtype::BF16:
+            return RunTestCaseWithDtype<TensorDtype::BF16>(testCase, stream);
+        default:
+            LOG_PRINT("Unsupported dtype %s.\n", DtypeName(testCase.dtype));
+            return 1;
+    }
 }
 } // namespace
 
