@@ -27,6 +27,9 @@ constexpr int64_t DEFAULT_TILE_T = 6;
 constexpr int64_t DEFAULT_TILE_H = 8;
 constexpr int64_t DEFAULT_TILE_W = 8;
 constexpr int64_t VECTOR_HEAD_DIM_LIMIT = 128;
+constexpr int64_t CUBE_Q_BLOCK = 16;
+constexpr int64_t CUBE_KV_BLOCK = 128;
+constexpr int64_t CUBE_WORKSPACE_DOUBLE_BUFFER = 2;
 constexpr uint32_t WS_SYS_SIZE = 16U * 1024U * 1024U;
 
 struct SlidingTileAttentionCompileInfo {
@@ -42,14 +45,20 @@ static bool ParseSeqShape(const char *shapeStr, int64_t &seqT, int64_t &seqH, in
     return !ss.fail() && seqT > 0 && seqH > 0 && seqW > 0;
 }
 
-static ge::graphStatus GetPlatformInfo(gert::TilingContext *context, int64_t &coreNum)
+static ge::graphStatus GetPlatformInfo(gert::TilingContext *context, int64_t &aivCoreNum, int64_t &aicCoreNum,
+                                       uint32_t &blockDim)
 {
     fe::PlatFormInfos *platformInfoPtr = context->GetPlatformInfo();
     OP_CHECK_NULL_WITH_CONTEXT(context, platformInfoPtr);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
-    coreNum = ascendcPlatform.GetCoreNumAiv();
-    OP_CHECK_IF(coreNum <= 0, OP_LOGE(context, "GetCoreNumAiv failed, coreNum=%ld.", coreNum),
+    aivCoreNum = ascendcPlatform.GetCoreNumAiv();
+    aicCoreNum = ascendcPlatform.GetCoreNumAic();
+    OP_CHECK_IF(aivCoreNum <= 0 || aicCoreNum <= 0,
+                OP_LOGE(context, "GetCoreNum failed, aivCoreNum=%ld, aicCoreNum=%ld.", aivCoreNum, aicCoreNum),
                 return ge::GRAPH_FAILED);
+    blockDim = ascendcPlatform.CalcTschBlockDim(static_cast<uint32_t>(aivCoreNum),
+                                                static_cast<uint32_t>(aicCoreNum),
+                                                static_cast<uint32_t>(aivCoreNum));
     return ge::GRAPH_SUCCESS;
 }
 
@@ -90,8 +99,10 @@ static ge::graphStatus FillWindow(const gert::RuntimeAttrs *attrs, gert::TilingC
 
 static ge::graphStatus SlidingTileAttentionTilingFunc(gert::TilingContext *context)
 {
-    int64_t coreNum = 0;
-    OP_CHECK_IF(GetPlatformInfo(context, coreNum) != ge::GRAPH_SUCCESS,
+    int64_t aivCoreNum = 0;
+    int64_t aicCoreNum = 0;
+    uint32_t taskBlockDim = 0;
+    OP_CHECK_IF(GetPlatformInfo(context, aivCoreNum, aicCoreNum, taskBlockDim) != ge::GRAPH_SUCCESS,
                 OP_LOGE(context, "GetPlatformInfo failed."), return ge::GRAPH_FAILED);
 
     auto qShapeHolder = context->GetInputShape(INPUT_Q);
@@ -152,6 +163,14 @@ static ge::graphStatus SlidingTileAttentionTilingFunc(gert::TilingContext *conte
     tiling->seqLen = seqLen;
     tiling->headDim = headDim;
     tiling->scale = 1.0F / std::sqrt(static_cast<float>(headDim));
+    tiling->qBlock = CUBE_Q_BLOCK;
+    tiling->kvBlock = CUBE_KV_BLOCK;
+    tiling->headDimAlign = ((headDim + 15) / 16) * 16;
+    tiling->cubeTaskNum = (batch * headNum * seqLen + CUBE_Q_BLOCK - 1) / CUBE_Q_BLOCK;
+    const int64_t scoreBlockElems = CUBE_Q_BLOCK * CUBE_KV_BLOCK;
+    const int64_t outBlockElems = CUBE_Q_BLOCK * tiling->headDimAlign;
+    tiling->cubeWorkspacePerCore =
+        CUBE_WORKSPACE_DOUBLE_BUFFER * (scoreBlockElems * 2 + outBlockElems) * static_cast<int64_t>(sizeof(float));
     tiling->imageSeqLen = imageSeqLen;
     tiling->textLength = textLength;
     tiling->hasText = hasText ? 1 : 0;
@@ -172,10 +191,9 @@ static ge::graphStatus SlidingTileAttentionTilingFunc(gert::TilingContext *conte
 
     size_t *workspace = context->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context, workspace);
-    workspace[0] = WS_SYS_SIZE;
+    workspace[0] = WS_SYS_SIZE + static_cast<size_t>(aicCoreNum * tiling->cubeWorkspacePerCore);
 
-    const int64_t blockDim = std::max<int64_t>(1, std::min<int64_t>(coreNum, tiling->totalQueryNum));
-    context->SetBlockDim(static_cast<uint32_t>(blockDim));
+    context->SetBlockDim(taskBlockDim);
 
     auto inputDesc = context->GetInputDesc(INPUT_Q);
     OP_CHECK_NULL_WITH_CONTEXT(context, inputDesc);

@@ -8,10 +8,13 @@
 
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
+#include "lib/matmul_intf.h"
+#include "lib/matrix/matmul/tiling.h"
 #include "sliding_tile_attention_tiling_data.h"
 
 namespace SlidingTileAttentionKernel {
 using namespace AscendC;
+using namespace matmul;
 
 constexpr float NEG_INF = -3.4028234663852886e+38F;
 constexpr float EXP_LOWER_BOUND = -80.0F;
@@ -430,6 +433,122 @@ private:
     TBuf<QuePosition::VECCALC> weightFloatBuf_;
     const SlidingTileAttentionTilingData *tiling_ = nullptr;
     float scale_ = 0.0F;
+};
+
+template <bool IS_BF16>
+class SlidingTileAttentionCube {
+public:
+    using DataType = typename DataTypeSelector<IS_BF16>::Type;
+    using AType = MatmulType<TPosition::GM, CubeFormat::ND, DataType>;
+    using BTypeTrans = MatmulType<TPosition::GM, CubeFormat::ND, DataType, true>;
+    using BType = MatmulType<TPosition::GM, CubeFormat::ND, DataType>;
+    using CFloatType = MatmulType<TPosition::GM, CubeFormat::ND, float>;
+    using BiasType = MatmulType<TPosition::GM, CubeFormat::ND, float>;
+    static constexpr MatmulConfig MM_CFG = GetNormalConfig(true);
+
+    __aicore__ inline SlidingTileAttentionCube() = default;
+
+    __aicore__ inline void Init(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR y, GM_ADDR workspace,
+                                const SlidingTileAttentionTilingData *tilingData)
+    {
+        (void)y;
+        tiling_ = tilingData;
+        const int64_t total = tiling_->batchSize * tiling_->headNum * tiling_->seqLen * tiling_->headDim;
+        qDataGm_.SetGlobalBuffer((__gm__ DataType *)q, total);
+        kDataGm_.SetGlobalBuffer((__gm__ DataType *)k, total);
+        vDataGm_.SetGlobalBuffer((__gm__ DataType *)v, total);
+
+        const int64_t coreOffset = static_cast<int64_t>(GetBlockIdx()) * tiling_->cubeWorkspacePerCore;
+        const int64_t scoreElems = tiling_->qBlock * tiling_->kvBlock;
+        const int64_t outElems = tiling_->qBlock * tiling_->headDimAlign;
+        __gm__ uint8_t *base = (__gm__ uint8_t *)workspace + coreOffset;
+        scoreGm_.SetGlobalBuffer((__gm__ float *)base, scoreElems * BUFFER_NUM);
+        probGm_.SetGlobalBuffer((__gm__ float *)(base + scoreElems * BUFFER_NUM * sizeof(float)),
+                                scoreElems * BUFFER_NUM);
+        outGm_.SetGlobalBuffer((__gm__ float *)(base + scoreElems * BUFFER_NUM * 2 * sizeof(float)),
+                               outElems * BUFFER_NUM);
+    }
+
+    __aicore__ inline void Process()
+    {
+        // The AIC path is wired as the cube-matmul producer for future STA block scheduling.
+        // AIV still owns correctness in this revision while softmax/window stitching is being migrated.
+        const int64_t blockNum = GetBlockNum();
+        const int64_t blockIdx = GetBlockIdx();
+        int64_t loopIdx = 0;
+        for (int64_t taskIdx = blockIdx; taskIdx < tiling_->cubeTaskNum; taskIdx += blockNum) {
+            const uint32_t bufferIdx = static_cast<uint32_t>(loopIdx % BUFFER_NUM);
+            ComputeDenseProbeTask(taskIdx, bufferIdx);
+            ++loopIdx;
+        }
+    }
+
+private:
+    __aicore__ inline int64_t TensorOffset(int64_t batch, int64_t head, int64_t seq, int64_t dim) const
+    {
+        return (((batch * tiling_->headNum + head) * tiling_->seqLen + seq) * tiling_->headDim + dim);
+    }
+
+    __aicore__ inline void DecodeQueryLinear(int64_t queryLinear, int64_t &batch, int64_t &head, int64_t &seq) const
+    {
+        seq = queryLinear % tiling_->seqLen;
+        const int64_t tmp = queryLinear / tiling_->seqLen;
+        head = tmp % tiling_->headNum;
+        batch = tmp / tiling_->headNum;
+    }
+
+    __aicore__ inline void ComputeDenseProbeTask(int64_t taskIdx, uint32_t bufferIdx)
+    {
+        const int64_t qBegin = taskIdx * tiling_->qBlock;
+        if (qBegin >= tiling_->totalQueryNum) {
+            return;
+        }
+
+        int64_t batch = 0;
+        int64_t head = 0;
+        int64_t seq = 0;
+        DecodeQueryLinear(qBegin, batch, head, seq);
+        const int64_t qRemainInHead = tiling_->seqLen - seq;
+        const int64_t qCount = MinInt64(tiling_->qBlock, MinInt64(tiling_->totalQueryNum - qBegin, qRemainInHead));
+        const int64_t kvBegin = 0;
+        const int64_t kvCount = MinInt64(tiling_->kvBlock, tiling_->imageSeqLen + tiling_->textLength);
+        if (qCount <= 0 || kvCount <= 0) {
+            return;
+        }
+
+        const int64_t qBase = TensorOffset(batch, head, seq, 0);
+        const int64_t kvBase = TensorOffset(batch, head, kvBegin, 0);
+        const int64_t scoreOffset = static_cast<int64_t>(bufferIdx) * tiling_->qBlock * tiling_->kvBlock;
+        const int64_t outOffset = static_cast<int64_t>(bufferIdx) * tiling_->qBlock * tiling_->headDimAlign;
+
+        qkMatmul_.SetOrgShape(qCount, kvCount, tiling_->headDim, tiling_->headDim, tiling_->kvBlock);
+        qkMatmul_.SetTail(qCount, kvCount, tiling_->headDim);
+        qkMatmul_.SetTensorA(qDataGm_[qBase]);
+        qkMatmul_.SetTensorB(kDataGm_[kvBase], true);
+        qkMatmul_.template IterateAll<false>(scoreGm_[scoreOffset], false, false, true);
+        qkMatmul_.WaitIterateAll();
+        qkMatmul_.End();
+
+        // Placeholder PV call uses probGm_ as A. AIV softmax producer will fill it in the next step.
+        pvMatmul_.SetOrgShape(qCount, tiling_->headDim, tiling_->kvBlock);
+        pvMatmul_.SetTail(qCount, tiling_->headDim, kvCount);
+        pvMatmul_.SetTensorA(probGm_[scoreOffset]);
+        pvMatmul_.SetTensorB(vDataGm_[kvBase]);
+        pvMatmul_.template IterateAll<false>(outGm_[outOffset], false, false, true);
+        pvMatmul_.WaitIterateAll();
+        pvMatmul_.End();
+    }
+
+private:
+    GlobalTensor<DataType> qDataGm_;
+    GlobalTensor<DataType> kDataGm_;
+    GlobalTensor<DataType> vDataGm_;
+    GlobalTensor<float> scoreGm_;
+    GlobalTensor<float> probGm_;
+    GlobalTensor<float> outGm_;
+    Matmul<AType, BTypeTrans, CFloatType, BiasType, MM_CFG> qkMatmul_;
+    Matmul<CFloatType, BType, CFloatType, BiasType, MM_CFG> pvMatmul_;
+    const SlidingTileAttentionTilingData *tiling_ = nullptr;
 };
 } // namespace SlidingTileAttentionKernel
 
