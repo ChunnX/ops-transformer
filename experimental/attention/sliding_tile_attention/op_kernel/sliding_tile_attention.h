@@ -375,6 +375,58 @@ private:
                kvTileW >= wBegin && kvTileW < wEnd;
     }
 
+    __aicore__ inline bool IsKvBlockRelevant(int64_t head, int64_t querySeqBegin, int64_t qCount,
+                                             int64_t kvSeqBegin, int64_t kvCount) const
+    {
+        const int64_t validSeqLen = tiling_->imageSeqLen + tiling_->textLength;
+        const int64_t kvSeqEnd = MinInt64(kvSeqBegin + kvCount, validSeqLen);
+        if (qCount <= 0 || kvSeqBegin >= kvSeqEnd) {
+            return false;
+        }
+
+        for (int64_t row = 0; row < qCount; ++row) {
+            const int64_t querySeq = querySeqBegin + row;
+            if (querySeq >= validSeqLen) {
+                continue;
+            }
+            const bool isTextQuery = (tiling_->hasText != 0) && (querySeq >= tiling_->imageSeqLen);
+            if (isTextQuery) {
+                return true;
+            }
+            if (tiling_->hasText != 0 && kvSeqEnd > tiling_->imageSeqLen) {
+                return true;
+            }
+
+            const int64_t kvImageBegin = kvSeqBegin;
+            const int64_t kvImageEnd = MinInt64(kvSeqEnd, tiling_->imageSeqLen);
+            if (kvImageBegin >= kvImageEnd) {
+                continue;
+            }
+
+            int64_t tBegin = 0;
+            int64_t tEnd = 0;
+            int64_t hBegin = 0;
+            int64_t hEnd = 0;
+            int64_t wBegin = 0;
+            int64_t wEnd = 0;
+            GetImageWindowRange(head, querySeq, tBegin, tEnd, hBegin, hEnd, wBegin, wEnd);
+
+            const int64_t kvTileBegin = kvImageBegin / tiling_->tileTokenNum;
+            const int64_t kvTileEnd = (kvImageEnd - 1) / tiling_->tileTokenNum;
+            for (int64_t kvTileId = kvTileBegin; kvTileId <= kvTileEnd; ++kvTileId) {
+                int64_t kvTileT = 0;
+                int64_t kvTileH = 0;
+                int64_t kvTileW = 0;
+                DecodeTileCoord(kvTileId, kvTileT, kvTileH, kvTileW);
+                if (kvTileT >= tBegin && kvTileT < tEnd && kvTileH >= hBegin && kvTileH < hEnd &&
+                    kvTileW >= wBegin && kvTileW < wEnd) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     __aicore__ inline void CopyScoreRowToLocal(LocalTensor<float> &scoreLocal, uint32_t rowInBlock,
                                                int64_t kvCount, uint32_t bufferIdx)
     {
@@ -551,8 +603,11 @@ private:
 
         int64_t tileLoop = 0;
         for (int64_t kvSeq = 0; kvSeq < validSeqLen; kvSeq += tiling_->kvBlock) {
-            const uint32_t bufferIdx = static_cast<uint32_t>(tileLoop % BUFFER_NUM);
             const int64_t kvCount = MinInt64(tiling_->kvBlock, validSeqLen - kvSeq);
+            if (!IsKvBlockRelevant(head, seq, qCount, kvSeq, kvCount)) {
+                continue;
+            }
+            const uint32_t bufferIdx = static_cast<uint32_t>(tileLoop % BUFFER_NUM);
             CrossCoreWaitFlag(AicToAivSyncFlag(bufferIdx));
             for (int64_t row = GetSubBlockIdxValue(); row < qCount; row += GetTaskRatioValue()) {
                 const int64_t querySeq = seq + row;
@@ -822,8 +877,17 @@ public:
         const int64_t blockIdx = GetBlockIdx();
         for (int64_t taskIdx = blockIdx; taskIdx < tiling_->cubeTaskNum; taskIdx += blockNum) {
             const int64_t validSeqLen = tiling_->imageSeqLen + tiling_->textLength;
+            int64_t batch = 0;
+            int64_t head = 0;
+            int64_t seq = 0;
+            DecodeCubeTask(taskIdx, batch, head, seq);
+            const int64_t qCount = MinInt64(tiling_->qBlock, tiling_->seqLen - seq);
             int64_t tileLoop = 0;
             for (int64_t kvBegin = 0; kvBegin < validSeqLen; kvBegin += tiling_->kvBlock) {
+                const int64_t kvCount = MinInt64(tiling_->kvBlock, validSeqLen - kvBegin);
+                if (!IsKvBlockRelevant(head, seq, qCount, kvBegin, kvCount)) {
+                    continue;
+                }
                 const uint32_t bufferIdx = static_cast<uint32_t>(tileLoop % BUFFER_NUM);
                 if (tileLoop >= BUFFER_NUM) {
                     CrossCoreWaitFlag(AivToAicSyncFlag(bufferIdx));
@@ -864,6 +928,83 @@ private:
         head = tmp % tiling_->headNum;
         batch = tmp / tiling_->headNum;
         seq = seqBlock * tiling_->qBlock;
+    }
+
+    __aicore__ inline void DecodeTileCoord(int64_t tileId, int64_t &tileT, int64_t &tileH, int64_t &tileW) const
+    {
+        const int64_t tilesHW = tiling_->tileNumH * tiling_->tileNumW;
+        tileT = tileId / tilesHW;
+        const int64_t rem = tileId - tileT * tilesHW;
+        tileH = rem / tiling_->tileNumW;
+        tileW = rem - tileH * tiling_->tileNumW;
+    }
+
+    __aicore__ inline void GetImageWindowRange(int64_t head, int64_t querySeq, int64_t &tBegin, int64_t &tEnd,
+                                               int64_t &hBegin, int64_t &hEnd, int64_t &wBegin, int64_t &wEnd) const
+    {
+        const int64_t tileId = querySeq / tiling_->tileTokenNum;
+        int64_t qTileT = 0;
+        int64_t qTileH = 0;
+        int64_t qTileW = 0;
+        DecodeTileCoord(tileId, qTileT, qTileH, qTileW);
+        tBegin = ClampStart(qTileT, tiling_->windowT[head], tiling_->tileNumT);
+        hBegin = ClampStart(qTileH, tiling_->windowH[head], tiling_->tileNumH);
+        wBegin = ClampStart(qTileW, tiling_->windowW[head], tiling_->tileNumW);
+        tEnd = MinInt64(tBegin + tiling_->windowT[head], tiling_->tileNumT);
+        hEnd = MinInt64(hBegin + tiling_->windowH[head], tiling_->tileNumH);
+        wEnd = MinInt64(wBegin + tiling_->windowW[head], tiling_->tileNumW);
+    }
+
+    __aicore__ inline bool IsKvBlockRelevant(int64_t head, int64_t querySeqBegin, int64_t qCount,
+                                             int64_t kvSeqBegin, int64_t kvCount) const
+    {
+        const int64_t validSeqLen = tiling_->imageSeqLen + tiling_->textLength;
+        const int64_t kvSeqEnd = MinInt64(kvSeqBegin + kvCount, validSeqLen);
+        if (qCount <= 0 || kvSeqBegin >= kvSeqEnd) {
+            return false;
+        }
+
+        for (int64_t row = 0; row < qCount; ++row) {
+            const int64_t querySeq = querySeqBegin + row;
+            if (querySeq >= validSeqLen) {
+                continue;
+            }
+            const bool isTextQuery = (tiling_->hasText != 0) && (querySeq >= tiling_->imageSeqLen);
+            if (isTextQuery) {
+                return true;
+            }
+            if (tiling_->hasText != 0 && kvSeqEnd > tiling_->imageSeqLen) {
+                return true;
+            }
+
+            const int64_t kvImageBegin = kvSeqBegin;
+            const int64_t kvImageEnd = MinInt64(kvSeqEnd, tiling_->imageSeqLen);
+            if (kvImageBegin >= kvImageEnd) {
+                continue;
+            }
+
+            int64_t tBegin = 0;
+            int64_t tEnd = 0;
+            int64_t hBegin = 0;
+            int64_t hEnd = 0;
+            int64_t wBegin = 0;
+            int64_t wEnd = 0;
+            GetImageWindowRange(head, querySeq, tBegin, tEnd, hBegin, hEnd, wBegin, wEnd);
+
+            const int64_t kvTileBegin = kvImageBegin / tiling_->tileTokenNum;
+            const int64_t kvTileEnd = (kvImageEnd - 1) / tiling_->tileTokenNum;
+            for (int64_t kvTileId = kvTileBegin; kvTileId <= kvTileEnd; ++kvTileId) {
+                int64_t kvTileT = 0;
+                int64_t kvTileH = 0;
+                int64_t kvTileW = 0;
+                DecodeTileCoord(kvTileId, kvTileT, kvTileH, kvTileW);
+                if (kvTileT >= tBegin && kvTileT < tEnd && kvTileH >= hBegin && kvTileH < hEnd &&
+                    kvTileW >= wBegin && kvTileW < wEnd) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     __aicore__ inline LocalTensor<float> GetScoreHandoffTensor(uint32_t bufferIdx) const
