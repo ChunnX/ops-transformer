@@ -20,6 +20,7 @@ constexpr float LN2 = 0.6931471805599453F;
 constexpr float INV_LN2 = 1.4426950408889634F;
 constexpr int64_t VECTOR_HEAD_DIM_LIMIT = 128;
 constexpr int64_t VECTOR_ALIGN_ELEMS = 16;
+constexpr int64_t BUFFER_NUM = 2;
 
 template <bool IS_BF16>
 struct DataTypeSelector {
@@ -121,25 +122,27 @@ public:
         yDataGm_.SetGlobalBuffer((__gm__ DataType *)y, total);
         scale_ = tiling_->scale;
 
-        pipe_.InitBuffer(qDataBuf_, VECTOR_HEAD_DIM_LIMIT * sizeof(DataType));
-        pipe_.InitBuffer(kDataBuf_, VECTOR_HEAD_DIM_LIMIT * sizeof(DataType));
-        pipe_.InitBuffer(vDataBuf_, VECTOR_HEAD_DIM_LIMIT * sizeof(DataType));
-        pipe_.InitBuffer(yDataBuf_, VECTOR_HEAD_DIM_LIMIT * sizeof(DataType));
-        pipe_.InitBuffer(qFloatBuf_, VECTOR_HEAD_DIM_LIMIT * sizeof(float));
-        pipe_.InitBuffer(kFloatBuf_, VECTOR_HEAD_DIM_LIMIT * sizeof(float));
-        pipe_.InitBuffer(vFloatBuf_, VECTOR_HEAD_DIM_LIMIT * sizeof(float));
-        pipe_.InitBuffer(tmpFloatBuf_, VECTOR_HEAD_DIM_LIMIT * sizeof(float));
-        pipe_.InitBuffer(accFloatBuf_, VECTOR_HEAD_DIM_LIMIT * sizeof(float));
-        pipe_.InitBuffer(reduceFloatBuf_, VECTOR_HEAD_DIM_LIMIT * sizeof(float));
-        pipe_.InitBuffer(reduceWorkBuf_, VECTOR_HEAD_DIM_LIMIT * sizeof(float));
+        pipe_.InitBuffer(qDataBuf_, BUFFER_NUM * VECTOR_HEAD_DIM_LIMIT * sizeof(DataType));
+        pipe_.InitBuffer(kDataBuf_, BUFFER_NUM * VECTOR_HEAD_DIM_LIMIT * sizeof(DataType));
+        pipe_.InitBuffer(vDataBuf_, BUFFER_NUM * VECTOR_HEAD_DIM_LIMIT * sizeof(DataType));
+        pipe_.InitBuffer(yDataBuf_, BUFFER_NUM * VECTOR_HEAD_DIM_LIMIT * sizeof(DataType));
+        pipe_.InitBuffer(qFloatBuf_, BUFFER_NUM * VECTOR_HEAD_DIM_LIMIT * sizeof(float));
+        pipe_.InitBuffer(kFloatBuf_, BUFFER_NUM * VECTOR_HEAD_DIM_LIMIT * sizeof(float));
+        pipe_.InitBuffer(vFloatBuf_, BUFFER_NUM * VECTOR_HEAD_DIM_LIMIT * sizeof(float));
+        pipe_.InitBuffer(tmpFloatBuf_, BUFFER_NUM * VECTOR_HEAD_DIM_LIMIT * sizeof(float));
+        pipe_.InitBuffer(accFloatBuf_, BUFFER_NUM * VECTOR_HEAD_DIM_LIMIT * sizeof(float));
+        pipe_.InitBuffer(reduceFloatBuf_, BUFFER_NUM * VECTOR_HEAD_DIM_LIMIT * sizeof(float));
+        pipe_.InitBuffer(reduceWorkBuf_, BUFFER_NUM * VECTOR_HEAD_DIM_LIMIT * sizeof(float));
     }
 
     __aicore__ inline void Process()
     {
         const int64_t blockNum = AscendC::GetBlockNum();
         const int64_t blockIdx = AscendC::GetBlockIdx();
+        int64_t loopIdx = 0;
         for (int64_t queryLinear = blockIdx; queryLinear < tiling_->totalQueryNum; queryLinear += blockNum) {
-            ProcessQuery(queryLinear);
+            ProcessQuery(queryLinear, static_cast<uint32_t>(loopIdx % BUFFER_NUM));
+            ++loopIdx;
         }
     }
 
@@ -154,8 +157,15 @@ private:
         return (((batch * tiling_->headNum + head) * tiling_->seqLen + seq) * tiling_->headDim + dim);
     }
 
+    template <typename T>
+    __aicore__ inline LocalTensor<T> GetBufferSlice(TBuf<QuePosition::VECCALC> &buf, uint32_t bufferIdx)
+    {
+        LocalTensor<T> local = buf.Get<T>();
+        return local[bufferIdx * VECTOR_HEAD_DIM_LIMIT];
+    }
+
     __aicore__ inline void CopyDataRowToLocal(GlobalTensor<DataType> &gm, LocalTensor<DataType> &local,
-                                              int64_t offset)
+                                              int64_t offset, uint32_t bufferIdx)
     {
         const uint32_t headDim = static_cast<uint32_t>(tiling_->headDim);
         const uint32_t alignedHeadDim = AlignedHeadDim();
@@ -163,59 +173,59 @@ private:
         DataCopyPadExtParams<DataType> padParams{true, 0, static_cast<uint8_t>(alignedHeadDim - headDim),
                                                  DataType(0)};
         DataCopyPad(local, gm[offset], copyParams, padParams);
-        SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
-        WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
+        SetFlag<HardEvent::MTE2_V>(EVENT_ID0 + bufferIdx);
+        WaitFlag<HardEvent::MTE2_V>(EVENT_ID0 + bufferIdx);
     }
 
     __aicore__ inline void CopyDataRowToFloat(GlobalTensor<DataType> &gm, TBuf<QuePosition::VECCALC> &dataBuf,
-                                             LocalTensor<float> &floatLocal, int64_t offset)
+                                             LocalTensor<float> &floatLocal, int64_t offset, uint32_t bufferIdx)
     {
-        LocalTensor<DataType> dataLocal = dataBuf.Get<DataType>();
-        CopyDataRowToLocal(gm, dataLocal, offset);
+        LocalTensor<DataType> dataLocal = GetBufferSlice<DataType>(dataBuf, bufferIdx);
+        CopyDataRowToLocal(gm, dataLocal, offset, bufferIdx);
         Cast(floatLocal, dataLocal, RoundMode::CAST_NONE, AlignedHeadDim());
         PipeBarrier<PIPE_V>();
     }
 
-    __aicore__ inline void StoreFloatRow(int64_t offset, LocalTensor<float> &floatLocal)
+    __aicore__ inline void StoreFloatRow(int64_t offset, LocalTensor<float> &floatLocal, uint32_t bufferIdx)
     {
-        LocalTensor<DataType> dataLocal = yDataBuf_.Get<DataType>();
+        LocalTensor<DataType> dataLocal = GetBufferSlice<DataType>(yDataBuf_, bufferIdx);
         if constexpr (IS_BF16) {
             Cast(dataLocal, floatLocal, RoundMode::CAST_RINT, AlignedHeadDim());
         } else {
             Cast(dataLocal, floatLocal, RoundMode::CAST_ROUND, AlignedHeadDim());
         }
         PipeBarrier<PIPE_V>();
-        SetFlag<HardEvent::V_MTE3>(EVENT_ID2);
-        WaitFlag<HardEvent::V_MTE3>(EVENT_ID2);
+        SetFlag<HardEvent::V_MTE3>(EVENT_ID2 + bufferIdx);
+        WaitFlag<HardEvent::V_MTE3>(EVENT_ID2 + bufferIdx);
 
         DataCopyExtParams copyParams{1, static_cast<uint32_t>(tiling_->headDim * sizeof(DataType)), 0, 0, 0};
         DataCopyPad(yDataGm_[offset], dataLocal, copyParams);
-        SetFlag<HardEvent::MTE3_V>(EVENT_ID2);
-        WaitFlag<HardEvent::MTE3_V>(EVENT_ID2);
+        SetFlag<HardEvent::MTE3_V>(EVENT_ID2 + bufferIdx);
+        WaitFlag<HardEvent::MTE3_V>(EVENT_ID2 + bufferIdx);
     }
 
-    __aicore__ inline void StoreZeroRow(int64_t offset)
+    __aicore__ inline void StoreZeroRow(int64_t offset, uint32_t bufferIdx)
     {
-        LocalTensor<float> accLocal = accFloatBuf_.Get<float>();
+        LocalTensor<float> accLocal = GetBufferSlice<float>(accFloatBuf_, bufferIdx);
         Duplicate(accLocal, 0.0F, AlignedHeadDim());
         PipeBarrier<PIPE_V>();
-        StoreFloatRow(offset, accLocal);
+        StoreFloatRow(offset, accLocal, bufferIdx);
     }
 
-    __aicore__ inline float DotScoreVector(LocalTensor<float> &qLocal, int64_t kvBase)
+    __aicore__ inline float DotScoreVector(LocalTensor<float> &qLocal, int64_t kvBase, uint32_t bufferIdx)
     {
-        LocalTensor<float> kLocal = kFloatBuf_.Get<float>();
-        CopyDataRowToFloat(kDataGm_, kDataBuf_, kLocal, kvBase);
+        LocalTensor<float> kLocal = GetBufferSlice<float>(kFloatBuf_, bufferIdx);
+        CopyDataRowToFloat(kDataGm_, kDataBuf_, kLocal, kvBase, bufferIdx);
 
-        LocalTensor<float> tmpLocal = tmpFloatBuf_.Get<float>();
+        LocalTensor<float> tmpLocal = GetBufferSlice<float>(tmpFloatBuf_, bufferIdx);
         Mul(tmpLocal, qLocal, kLocal, AlignedHeadDim());
         PipeBarrier<PIPE_V>();
 
-        LocalTensor<float> reduceLocal = reduceFloatBuf_.Get<float>();
-        LocalTensor<float> reduceWorkLocal = reduceWorkBuf_.Get<float>();
+        LocalTensor<float> reduceLocal = GetBufferSlice<float>(reduceFloatBuf_, bufferIdx);
+        LocalTensor<float> reduceWorkLocal = GetBufferSlice<float>(reduceWorkBuf_, bufferIdx);
         ReduceSum(reduceLocal, tmpLocal, reduceWorkLocal, AlignedHeadDim());
-        SetFlag<HardEvent::V_S>(EVENT_ID1);
-        WaitFlag<HardEvent::V_S>(EVENT_ID1);
+        SetFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
+        WaitFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
         return reduceLocal.GetValue(0) * scale_;
     }
 
@@ -245,9 +255,10 @@ private:
     }
 
     __aicore__ inline void AccumulateOnlineValueVector(LocalTensor<float> &qLocal, LocalTensor<float> &accLocal,
-                                                       int64_t kvBase, float &maxScore, float &denom)
+                                                       int64_t kvBase, float &maxScore, float &denom,
+                                                       uint32_t bufferIdx)
     {
-        const float score = DotScoreVector(qLocal, kvBase);
+        const float score = DotScoreVector(qLocal, kvBase, bufferIdx);
         if (score > maxScore) {
             const float oldScale = ExpApprox(maxScore - score);
             Muls(accLocal, accLocal, oldScale, AlignedHeadDim());
@@ -257,10 +268,10 @@ private:
         }
 
         const float weight = ExpApprox(score - maxScore);
-        LocalTensor<float> vLocal = vFloatBuf_.Get<float>();
-        CopyDataRowToFloat(vDataGm_, vDataBuf_, vLocal, kvBase);
+        LocalTensor<float> vLocal = GetBufferSlice<float>(vFloatBuf_, bufferIdx);
+        CopyDataRowToFloat(vDataGm_, vDataBuf_, vLocal, kvBase, bufferIdx);
 
-        LocalTensor<float> tmpLocal = tmpFloatBuf_.Get<float>();
+        LocalTensor<float> tmpLocal = GetBufferSlice<float>(tmpFloatBuf_, bufferIdx);
         Muls(tmpLocal, vLocal, weight, AlignedHeadDim());
         PipeBarrier<PIPE_V>();
         Add(accLocal, accLocal, tmpLocal, AlignedHeadDim());
@@ -270,7 +281,7 @@ private:
 
     __aicore__ inline void AccumulateImageWindowOnlineVector(LocalTensor<float> &qLocal, LocalTensor<float> &accLocal,
                                                             int64_t batch, int64_t head, int64_t seq, float &maxScore,
-                                                            float &denom)
+                                                            float &denom, uint32_t bufferIdx)
     {
         int64_t tBegin = 0;
         int64_t tEnd = 0;
@@ -288,7 +299,7 @@ private:
                         const int64_t kvSeq = baseTile + offset;
                         if (kvSeq < tiling_->imageSeqLen) {
                             AccumulateOnlineValueVector(qLocal, accLocal, TensorOffset(batch, head, kvSeq, 0),
-                                                        maxScore, denom);
+                                                        maxScore, denom, bufferIdx);
                         }
                     }
                 }
@@ -297,7 +308,8 @@ private:
     }
 
     __aicore__ inline float ComputeOnlineValueVector(LocalTensor<float> &qLocal, LocalTensor<float> &accLocal,
-                                                     int64_t batch, int64_t head, int64_t seq, bool isTextQuery)
+                                                     int64_t batch, int64_t head, int64_t seq, bool isTextQuery,
+                                                     uint32_t bufferIdx)
     {
         // Online softmax avoids separate max, denom, and value passes over the same KV window.
         float maxScore = NEG_INF;
@@ -307,22 +319,23 @@ private:
 
         if (isTextQuery) {
             for (int64_t kvSeq = 0; kvSeq < tiling_->imageSeqLen + tiling_->textLength; ++kvSeq) {
-                AccumulateOnlineValueVector(qLocal, accLocal, TensorOffset(batch, head, kvSeq, 0), maxScore, denom);
+                AccumulateOnlineValueVector(qLocal, accLocal, TensorOffset(batch, head, kvSeq, 0), maxScore, denom,
+                                            bufferIdx);
             }
         } else {
-            AccumulateImageWindowOnlineVector(qLocal, accLocal, batch, head, seq, maxScore, denom);
+            AccumulateImageWindowOnlineVector(qLocal, accLocal, batch, head, seq, maxScore, denom, bufferIdx);
             if (tiling_->hasText != 0) {
                 for (int64_t i = 0; i < tiling_->textLength; ++i) {
                     const int64_t kvSeq = tiling_->imageSeqLen + i;
                     AccumulateOnlineValueVector(qLocal, accLocal, TensorOffset(batch, head, kvSeq, 0), maxScore,
-                                                denom);
+                                                denom, bufferIdx);
                 }
             }
         }
         return denom;
     }
 
-    __aicore__ inline void ProcessQueryVector(int64_t queryLinear)
+    __aicore__ inline void ProcessQueryVector(int64_t queryLinear, uint32_t bufferIdx)
     {
         const int64_t seq = queryLinear % tiling_->seqLen;
         const int64_t tmp0 = queryLinear / tiling_->seqLen;
@@ -334,15 +347,15 @@ private:
         const int64_t qBase = TensorOffset(batch, head, seq, 0);
 
         if (isIgnoredPad) {
-            StoreZeroRow(qBase);
+            StoreZeroRow(qBase, bufferIdx);
             return;
         }
 
-        LocalTensor<float> qLocal = qFloatBuf_.Get<float>();
-        CopyDataRowToFloat(qDataGm_, qDataBuf_, qLocal, qBase);
+        LocalTensor<float> qLocal = GetBufferSlice<float>(qFloatBuf_, bufferIdx);
+        CopyDataRowToFloat(qDataGm_, qDataBuf_, qLocal, qBase, bufferIdx);
 
-        LocalTensor<float> accLocal = accFloatBuf_.Get<float>();
-        const float denom = ComputeOnlineValueVector(qLocal, accLocal, batch, head, seq, isTextQuery);
+        LocalTensor<float> accLocal = GetBufferSlice<float>(accFloatBuf_, bufferIdx);
+        const float denom = ComputeOnlineValueVector(qLocal, accLocal, batch, head, seq, isTextQuery, bufferIdx);
         if (denom > 0.0F) {
             Muls(accLocal, accLocal, 1.0F / denom, AlignedHeadDim());
             PipeBarrier<PIPE_V>();
@@ -350,12 +363,12 @@ private:
             Duplicate(accLocal, 0.0F, AlignedHeadDim());
             PipeBarrier<PIPE_V>();
         }
-        StoreFloatRow(qBase, accLocal);
+        StoreFloatRow(qBase, accLocal, bufferIdx);
     }
 
-    __aicore__ inline void ProcessQuery(int64_t queryLinear)
+    __aicore__ inline void ProcessQuery(int64_t queryLinear, uint32_t bufferIdx)
     {
-        ProcessQueryVector(queryLinear);
+        ProcessQueryVector(queryLinear, bufferIdx);
     }
 
 private:
