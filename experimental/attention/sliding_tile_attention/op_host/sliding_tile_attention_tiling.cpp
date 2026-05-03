@@ -166,7 +166,9 @@ static ge::graphStatus SlidingTileAttentionTilingFunc(gert::TilingContext *conte
     tiling->qBlock = CUBE_Q_BLOCK;
     tiling->kvBlock = CUBE_KV_BLOCK;
     tiling->headDimAlign = ((headDim + 15) / 16) * 16;
-    tiling->cubeTaskNum = (batch * headNum * seqLen + CUBE_Q_BLOCK - 1) / CUBE_Q_BLOCK;
+    tiling->cubeTaskNum = batch * headNum * ((seqLen + CUBE_Q_BLOCK - 1) / CUBE_Q_BLOCK);
+    tiling->aicCoreNum = aicCoreNum;
+    tiling->aivCoreNum = aivCoreNum;
     const int64_t scoreBlockElems = CUBE_Q_BLOCK * CUBE_KV_BLOCK;
     const int64_t outBlockElems = CUBE_Q_BLOCK * tiling->headDimAlign;
     tiling->cubeWorkspacePerCore =

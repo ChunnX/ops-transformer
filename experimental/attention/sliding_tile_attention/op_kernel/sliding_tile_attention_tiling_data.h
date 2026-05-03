@@ -21,6 +21,8 @@ struct SlidingTileAttentionTilingData {
     int64_t headDimAlign;
     int64_t cubeTaskNum;
     int64_t cubeWorkspacePerCore;
+    int64_t aicCoreNum;
+    int64_t aivCoreNum;
     int64_t imageSeqLen;
     int64_t textLength;
     int64_t hasText;

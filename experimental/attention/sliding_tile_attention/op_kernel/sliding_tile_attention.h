@@ -24,7 +24,9 @@ constexpr float INV_LN2 = 1.4426950408889634F;
 constexpr int64_t VECTOR_HEAD_DIM_LIMIT = 128;
 constexpr int64_t VECTOR_ALIGN_ELEMS = 16;
 constexpr int64_t BUFFER_NUM = 2;
-constexpr int64_t KV_BLOCK_NUM = 16;
+constexpr int64_t KV_BLOCK_NUM = 128;
+constexpr uint64_t SYNC_AIV_TO_AIC = 3;
+constexpr uint64_t SYNC_AIC_TO_AIV = 5;
 
 template <bool IS_BF16>
 struct DataTypeSelector {
@@ -115,7 +117,7 @@ public:
     using DataType = typename DataTypeSelector<IS_BF16>::Type;
 
     __aicore__ inline SlidingTileAttention() = default;
-    __aicore__ inline void Init(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR y,
+    __aicore__ inline void Init(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR y, GM_ADDR workspace,
                                 const SlidingTileAttentionTilingData *tilingData)
     {
         tiling_ = tilingData;
@@ -126,6 +128,11 @@ public:
         yDataGm_.SetGlobalBuffer((__gm__ DataType *)y, total);
         scale_ = tiling_->scale;
 
+        const int64_t cubeCoreIdx = GetCubeCoreIdx();
+        const int64_t scoreElems = tiling_->qBlock * tiling_->kvBlock;
+        __gm__ uint8_t *base = (__gm__ uint8_t *)workspace + cubeCoreIdx * tiling_->cubeWorkspacePerCore;
+        scoreGm_.SetGlobalBuffer((__gm__ float *)base, scoreElems * BUFFER_NUM);
+
         pipe_.InitBuffer(qDataBuf_, BUFFER_NUM * VECTOR_HEAD_DIM_LIMIT * sizeof(DataType));
         pipe_.InitBuffer(kDataBuf_, BUFFER_NUM * VECTOR_HEAD_DIM_LIMIT * sizeof(DataType));
         pipe_.InitBuffer(vDataBuf_, BUFFER_NUM * VECTOR_HEAD_DIM_LIMIT * sizeof(DataType));
@@ -135,24 +142,41 @@ public:
         pipe_.InitBuffer(vFloatBuf_, BUFFER_NUM * VECTOR_HEAD_DIM_LIMIT * sizeof(float));
         pipe_.InitBuffer(tmpFloatBuf_, BUFFER_NUM * VECTOR_HEAD_DIM_LIMIT * sizeof(float));
         pipe_.InitBuffer(accFloatBuf_, BUFFER_NUM * VECTOR_HEAD_DIM_LIMIT * sizeof(float));
+        pipe_.InitBuffer(accTileFloatBuf_, tiling_->qBlock * VECTOR_HEAD_DIM_LIMIT * sizeof(float));
         pipe_.InitBuffer(reduceFloatBuf_, BUFFER_NUM * VECTOR_HEAD_DIM_LIMIT * sizeof(float));
         pipe_.InitBuffer(reduceWorkBuf_, BUFFER_NUM * VECTOR_HEAD_DIM_LIMIT * sizeof(float));
         pipe_.InitBuffer(scoreFloatBuf_, BUFFER_NUM * KV_BLOCK_NUM * sizeof(float));
         pipe_.InitBuffer(weightFloatBuf_, BUFFER_NUM * KV_BLOCK_NUM * sizeof(float));
+        pipe_.InitBuffer(maxFloatBuf_, tiling_->qBlock * sizeof(float));
+        pipe_.InitBuffer(denomFloatBuf_, tiling_->qBlock * sizeof(float));
     }
 
     __aicore__ inline void Process()
     {
-        const int64_t blockNum = AscendC::GetBlockNum();
-        const int64_t blockIdx = AscendC::GetBlockIdx();
-        int64_t loopIdx = 0;
-        for (int64_t queryLinear = blockIdx; queryLinear < tiling_->totalQueryNum; queryLinear += blockNum) {
-            ProcessQuery(queryLinear, static_cast<uint32_t>(loopIdx % BUFFER_NUM));
-            ++loopIdx;
+        const int64_t cubeCoreIdx = GetCubeCoreIdx();
+        const int64_t cubeCoreNum = tiling_->aicCoreNum > 0 ? tiling_->aicCoreNum : GetBlockNum();
+        for (int64_t taskIdx = cubeCoreIdx; taskIdx < tiling_->cubeTaskNum; taskIdx += cubeCoreNum) {
+            ProcessScoreTileTask(taskIdx);
         }
     }
 
 private:
+    __aicore__ inline int64_t GetTaskRatioValue() const
+    {
+        const int64_t ratio = static_cast<int64_t>(GetTaskRation());
+        return ratio > 0 ? ratio : 1;
+    }
+
+    __aicore__ inline int64_t GetCubeCoreIdx() const
+    {
+        return static_cast<int64_t>(GetBlockIdx()) / GetTaskRatioValue();
+    }
+
+    __aicore__ inline int64_t GetSubBlockIdxValue() const
+    {
+        return static_cast<int64_t>(GetSubBlockIdx());
+    }
+
     __aicore__ inline uint32_t AlignedHeadDim() const
     {
         return static_cast<uint32_t>(AlignUpInt64(tiling_->headDim, VECTOR_ALIGN_ELEMS));
@@ -161,6 +185,24 @@ private:
     __aicore__ inline int64_t TensorOffset(int64_t batch, int64_t head, int64_t seq, int64_t dim) const
     {
         return (((batch * tiling_->headNum + head) * tiling_->seqLen + seq) * tiling_->headDim + dim);
+    }
+
+    __aicore__ inline void DecodeQueryLinear(int64_t queryLinear, int64_t &batch, int64_t &head, int64_t &seq) const
+    {
+        seq = queryLinear % tiling_->seqLen;
+        const int64_t tmp = queryLinear / tiling_->seqLen;
+        head = tmp % tiling_->headNum;
+        batch = tmp / tiling_->headNum;
+    }
+
+    __aicore__ inline void DecodeCubeTask(int64_t taskIdx, int64_t &batch, int64_t &head, int64_t &seq) const
+    {
+        const int64_t seqBlockNum = (tiling_->seqLen + tiling_->qBlock - 1) / tiling_->qBlock;
+        const int64_t seqBlock = taskIdx % seqBlockNum;
+        const int64_t tmp = taskIdx / seqBlockNum;
+        head = tmp % tiling_->headNum;
+        batch = tmp / tiling_->headNum;
+        seq = seqBlock * tiling_->qBlock;
     }
 
     template <typename T>
@@ -265,6 +307,187 @@ private:
         tEnd = MinInt64(tBegin + tiling_->windowT[head], tiling_->tileNumT);
         hEnd = MinInt64(hBegin + tiling_->windowH[head], tiling_->tileNumH);
         wEnd = MinInt64(wBegin + tiling_->windowW[head], tiling_->tileNumW);
+    }
+
+    __aicore__ inline bool IsKvVisible(int64_t head, int64_t querySeq, int64_t kvSeq, bool isTextQuery) const
+    {
+        const int64_t validSeqLen = tiling_->imageSeqLen + tiling_->textLength;
+        if (kvSeq < 0 || kvSeq >= validSeqLen) {
+            return false;
+        }
+        if (isTextQuery) {
+            return true;
+        }
+        if (kvSeq >= tiling_->imageSeqLen) {
+            return tiling_->hasText != 0;
+        }
+
+        int64_t tBegin = 0;
+        int64_t tEnd = 0;
+        int64_t hBegin = 0;
+        int64_t hEnd = 0;
+        int64_t wBegin = 0;
+        int64_t wEnd = 0;
+        GetImageWindowRange(head, querySeq, tBegin, tEnd, hBegin, hEnd, wBegin, wEnd);
+        const int64_t kvTileId = kvSeq / tiling_->tileTokenNum;
+        int64_t kvTileT = 0;
+        int64_t kvTileH = 0;
+        int64_t kvTileW = 0;
+        DecodeTileCoord(kvTileId, kvTileT, kvTileH, kvTileW);
+        return kvTileT >= tBegin && kvTileT < tEnd && kvTileH >= hBegin && kvTileH < hEnd &&
+               kvTileW >= wBegin && kvTileW < wEnd;
+    }
+
+    __aicore__ inline void CopyScoreRowToLocal(LocalTensor<float> &scoreLocal, uint32_t rowInBlock,
+                                               int64_t kvCount, uint32_t bufferIdx)
+    {
+        const int64_t scoreOffset = static_cast<int64_t>(bufferIdx) * tiling_->qBlock * tiling_->kvBlock +
+                                    static_cast<int64_t>(rowInBlock) * tiling_->kvBlock;
+        DataCopyExtParams copyParams{1, static_cast<uint32_t>(kvCount * sizeof(float)), 0, 0, 0};
+        DataCopyPadExtParams<float> padParams{true, 0, static_cast<uint8_t>(tiling_->kvBlock - kvCount), 0.0F};
+        DataCopyPad(scoreLocal, scoreGm_[scoreOffset], copyParams, padParams);
+        SetFlag<HardEvent::MTE2_V>(EVENT_ID0 + bufferIdx);
+        WaitFlag<HardEvent::MTE2_V>(EVENT_ID0 + bufferIdx);
+    }
+
+    __aicore__ inline LocalTensor<float> GetAccTileRow(uint32_t rowInBlock)
+    {
+        LocalTensor<float> accTile = accTileFloatBuf_.Get<float>();
+        return accTile[static_cast<int64_t>(rowInBlock) * VECTOR_HEAD_DIM_LIMIT];
+    }
+
+    __aicore__ inline void AccumulateAicScoreBlock(LocalTensor<float> &accLocal, int64_t batch, int64_t head,
+                                                   int64_t querySeq, int64_t kvSeqStart, int64_t kvCount,
+                                                   uint32_t rowInBlock, float &maxScore, float &denom,
+                                                   bool isTextQuery, uint32_t bufferIdx)
+    {
+        const uint32_t kvCountU32 = static_cast<uint32_t>(kvCount);
+        LocalTensor<float> scoreLocal = GetKvBlockSlice<float>(scoreFloatBuf_, bufferIdx);
+        CopyScoreRowToLocal(scoreLocal, rowInBlock, kvCount, bufferIdx);
+        Muls(scoreLocal, scoreLocal, scale_, kvCountU32);
+        PipeBarrier<PIPE_V>();
+
+        float blockMaxScore = NEG_INF;
+        for (int64_t i = 0; i < kvCount; ++i) {
+            float score = scoreLocal.GetValue(i);
+            if (!IsKvVisible(head, querySeq, kvSeqStart + i, isTextQuery)) {
+                score = NEG_INF;
+                scoreLocal.SetValue(i, score);
+            }
+            blockMaxScore = score > blockMaxScore ? score : blockMaxScore;
+        }
+        PipeBarrier<PIPE_V>();
+        if (blockMaxScore == NEG_INF) {
+            return;
+        }
+
+        if (blockMaxScore > maxScore) {
+            const float oldScale = ExpApprox(maxScore - blockMaxScore);
+            Muls(accLocal, accLocal, oldScale, AlignedHeadDim());
+            PipeBarrier<PIPE_V>();
+            denom *= oldScale;
+            maxScore = blockMaxScore;
+        }
+
+        LocalTensor<float> weightLocal = GetKvBlockSlice<float>(weightFloatBuf_, bufferIdx);
+        Adds(weightLocal, scoreLocal, -maxScore, kvCountU32);
+        PipeBarrier<PIPE_V>();
+        Exp(weightLocal, weightLocal, kvCountU32);
+        PipeBarrier<PIPE_V>();
+
+        LocalTensor<float> reduceLocal = GetBufferSlice<float>(reduceFloatBuf_, bufferIdx);
+        LocalTensor<float> reduceWorkLocal = GetBufferSlice<float>(reduceWorkBuf_, bufferIdx);
+        ReduceSum(reduceLocal, weightLocal, reduceWorkLocal, kvCountU32);
+        SetFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
+        WaitFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
+
+        for (int64_t i = 0; i < kvCount; ++i) {
+            if (!IsKvVisible(head, querySeq, kvSeqStart + i, isTextQuery)) {
+                continue;
+            }
+            const int64_t kvBase = TensorOffset(batch, head, kvSeqStart + i, 0);
+            const float weight = weightLocal.GetValue(i);
+            LocalTensor<float> vLocal = GetBufferSlice<float>(vFloatBuf_, bufferIdx);
+            CopyDataRowToFloat(vDataGm_, vDataBuf_, vLocal, kvBase, bufferIdx);
+
+            LocalTensor<float> tmpLocal = GetBufferSlice<float>(tmpFloatBuf_, bufferIdx);
+            Muls(tmpLocal, vLocal, weight, AlignedHeadDim());
+            PipeBarrier<PIPE_V>();
+            Add(accLocal, accLocal, tmpLocal, AlignedHeadDim());
+            PipeBarrier<PIPE_V>();
+        }
+        denom += reduceLocal.GetValue(0);
+    }
+
+    __aicore__ inline void ProcessScoreTileTask(int64_t taskIdx)
+    {
+        int64_t batch = 0;
+        int64_t head = 0;
+        int64_t seq = 0;
+        DecodeCubeTask(taskIdx, batch, head, seq);
+        const int64_t qCount = MinInt64(tiling_->qBlock, tiling_->seqLen - seq);
+        const int64_t validSeqLen = tiling_->imageSeqLen + tiling_->textLength;
+        if (qCount <= 0 || validSeqLen <= 0) {
+            return;
+        }
+
+        LocalTensor<float> maxLocal = maxFloatBuf_.Get<float>();
+        LocalTensor<float> denomLocal = denomFloatBuf_.Get<float>();
+        for (int64_t row = GetSubBlockIdxValue(); row < qCount; row += GetTaskRatioValue()) {
+            const int64_t querySeq = seq + row;
+            const int64_t qBase = TensorOffset(batch, head, querySeq, 0);
+            LocalTensor<float> accRow = GetAccTileRow(static_cast<uint32_t>(row));
+            if (querySeq >= validSeqLen) {
+                StoreZeroRow(qBase, static_cast<uint32_t>(row % BUFFER_NUM));
+                continue;
+            }
+            Duplicate(accRow, 0.0F, AlignedHeadDim());
+            maxLocal.SetValue(row, NEG_INF);
+            denomLocal.SetValue(row, 0.0F);
+        }
+        PipeBarrier<PIPE_V>();
+
+        int64_t tileLoop = 0;
+        for (int64_t kvSeq = 0; kvSeq < validSeqLen; kvSeq += tiling_->kvBlock) {
+            const uint32_t bufferIdx = static_cast<uint32_t>(tileLoop % BUFFER_NUM);
+            const int64_t kvCount = MinInt64(tiling_->kvBlock, validSeqLen - kvSeq);
+            CrossCoreWaitFlag(SYNC_AIC_TO_AIV + bufferIdx);
+            for (int64_t row = GetSubBlockIdxValue(); row < qCount; row += GetTaskRatioValue()) {
+                const int64_t querySeq = seq + row;
+                if (querySeq >= validSeqLen) {
+                    continue;
+                }
+                const bool isTextQuery = (tiling_->hasText != 0) && (querySeq >= tiling_->imageSeqLen) &&
+                                         (querySeq < validSeqLen);
+                LocalTensor<float> accRow = GetAccTileRow(static_cast<uint32_t>(row));
+                float maxScore = maxLocal.GetValue(row);
+                float denom = denomLocal.GetValue(row);
+                AccumulateAicScoreBlock(accRow, batch, head, querySeq, kvSeq, kvCount, static_cast<uint32_t>(row),
+                                        maxScore, denom, isTextQuery, bufferIdx);
+                maxLocal.SetValue(row, maxScore);
+                denomLocal.SetValue(row, denom);
+            }
+            CrossCoreSetFlag<2, PIPE_MTE2>(SYNC_AIV_TO_AIC + bufferIdx);
+            ++tileLoop;
+        }
+
+        for (int64_t row = GetSubBlockIdxValue(); row < qCount; row += GetTaskRatioValue()) {
+            const int64_t querySeq = seq + row;
+            if (querySeq >= validSeqLen) {
+                continue;
+            }
+            const int64_t qBase = TensorOffset(batch, head, querySeq, 0);
+            LocalTensor<float> accRow = GetAccTileRow(static_cast<uint32_t>(row));
+            const float denom = denomLocal.GetValue(row);
+            if (denom > 0.0F) {
+                Muls(accRow, accRow, 1.0F / denom, AlignedHeadDim());
+                PipeBarrier<PIPE_V>();
+            } else {
+                Duplicate(accRow, 0.0F, AlignedHeadDim());
+                PipeBarrier<PIPE_V>();
+            }
+            StoreFloatRow(qBase, accRow, static_cast<uint32_t>(row % BUFFER_NUM));
+        }
     }
 
     __aicore__ inline void AccumulateOnlineValueBlock(LocalTensor<float> &qLocal, LocalTensor<float> &accLocal,
@@ -417,6 +640,7 @@ private:
     GlobalTensor<DataType> kDataGm_;
     GlobalTensor<DataType> vDataGm_;
     GlobalTensor<DataType> yDataGm_;
+    GlobalTensor<float> scoreGm_;
     TPipe pipe_;
     TBuf<QuePosition::VECCALC> qDataBuf_;
     TBuf<QuePosition::VECCALC> kDataBuf_;
@@ -427,10 +651,13 @@ private:
     TBuf<QuePosition::VECCALC> vFloatBuf_;
     TBuf<QuePosition::VECCALC> tmpFloatBuf_;
     TBuf<QuePosition::VECCALC> accFloatBuf_;
+    TBuf<QuePosition::VECCALC> accTileFloatBuf_;
     TBuf<QuePosition::VECCALC> reduceFloatBuf_;
     TBuf<QuePosition::VECCALC> reduceWorkBuf_;
     TBuf<QuePosition::VECCALC> scoreFloatBuf_;
     TBuf<QuePosition::VECCALC> weightFloatBuf_;
+    TBuf<QuePosition::VECCALC> maxFloatBuf_;
+    TBuf<QuePosition::VECCALC> denomFloatBuf_;
     const SlidingTileAttentionTilingData *tiling_ = nullptr;
     float scale_ = 0.0F;
 };
@@ -471,15 +698,20 @@ public:
 
     __aicore__ inline void Process()
     {
-        // The AIC path is wired as the cube-matmul producer for future STA block scheduling.
-        // AIV still owns correctness in this revision while softmax/window stitching is being migrated.
         const int64_t blockNum = GetBlockNum();
         const int64_t blockIdx = GetBlockIdx();
         int64_t loopIdx = 0;
         for (int64_t taskIdx = blockIdx; taskIdx < tiling_->cubeTaskNum; taskIdx += blockNum) {
-            const uint32_t bufferIdx = static_cast<uint32_t>(loopIdx % BUFFER_NUM);
-            ComputeDenseProbeTask(taskIdx, bufferIdx);
-            ++loopIdx;
+            const int64_t validSeqLen = tiling_->imageSeqLen + tiling_->textLength;
+            for (int64_t kvBegin = 0; kvBegin < validSeqLen; kvBegin += tiling_->kvBlock) {
+                const uint32_t bufferIdx = static_cast<uint32_t>(loopIdx % BUFFER_NUM);
+                if (loopIdx >= BUFFER_NUM) {
+                    CrossCoreWaitFlag(SYNC_AIV_TO_AIC + bufferIdx);
+                }
+                ComputeScoreTileTask(taskIdx, kvBegin, bufferIdx);
+                CrossCoreSetFlag<2, PIPE_FIX>(SYNC_AIC_TO_AIV + bufferIdx);
+                ++loopIdx;
+            }
         }
     }
 
@@ -497,21 +729,24 @@ private:
         batch = tmp / tiling_->headNum;
     }
 
-    __aicore__ inline void ComputeDenseProbeTask(int64_t taskIdx, uint32_t bufferIdx)
+    __aicore__ inline void DecodeCubeTask(int64_t taskIdx, int64_t &batch, int64_t &head, int64_t &seq) const
     {
-        const int64_t qBegin = taskIdx * tiling_->qBlock;
-        if (qBegin >= tiling_->totalQueryNum) {
-            return;
-        }
+        const int64_t seqBlockNum = (tiling_->seqLen + tiling_->qBlock - 1) / tiling_->qBlock;
+        const int64_t seqBlock = taskIdx % seqBlockNum;
+        const int64_t tmp = taskIdx / seqBlockNum;
+        head = tmp % tiling_->headNum;
+        batch = tmp / tiling_->headNum;
+        seq = seqBlock * tiling_->qBlock;
+    }
 
+    __aicore__ inline void ComputeScoreTileTask(int64_t taskIdx, int64_t kvBegin, uint32_t bufferIdx)
+    {
         int64_t batch = 0;
         int64_t head = 0;
         int64_t seq = 0;
-        DecodeQueryLinear(qBegin, batch, head, seq);
-        const int64_t qRemainInHead = tiling_->seqLen - seq;
-        const int64_t qCount = MinInt64(tiling_->qBlock, MinInt64(tiling_->totalQueryNum - qBegin, qRemainInHead));
-        const int64_t kvBegin = 0;
-        const int64_t kvCount = MinInt64(tiling_->kvBlock, tiling_->imageSeqLen + tiling_->textLength);
+        DecodeCubeTask(taskIdx, batch, head, seq);
+        const int64_t qCount = MinInt64(tiling_->qBlock, tiling_->seqLen - seq);
+        const int64_t kvCount = MinInt64(tiling_->kvBlock, tiling_->imageSeqLen + tiling_->textLength - kvBegin);
         if (qCount <= 0 || kvCount <= 0) {
             return;
         }
@@ -528,15 +763,7 @@ private:
         qkMatmul_.template IterateAll<false>(scoreGm_[scoreOffset], false, false, true);
         qkMatmul_.WaitIterateAll();
         qkMatmul_.End();
-
-        // Placeholder PV call uses probGm_ as A. AIV softmax producer will fill it in the next step.
-        pvMatmul_.SetOrgShape(qCount, tiling_->headDim, tiling_->kvBlock);
-        pvMatmul_.SetTail(qCount, tiling_->headDim, kvCount);
-        pvMatmul_.SetTensorA(probGm_[scoreOffset]);
-        pvMatmul_.SetTensorB(vDataGm_[kvBase]);
-        pvMatmul_.template IterateAll<false>(outGm_[outOffset], false, false, true);
-        pvMatmul_.WaitIterateAll();
-        pvMatmul_.End();
+        (void)outOffset;
     }
 
 private:

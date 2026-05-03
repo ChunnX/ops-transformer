@@ -20,7 +20,7 @@ extern "C" __global__ __aicore__ void sliding_tile_attention(GM_ADDR q, GM_ADDR 
             op.Process();
         } else {
             SlidingTileAttentionKernel::SlidingTileAttention<false> op;
-            op.Init(q, k, v, y, &tilingData);
+            op.Init(q, k, v, y, userWorkspace, &tilingData);
             op.Process();
         }
     } else if (TILING_KEY_IS(SLIDING_TILE_ATTENTION_BF16_TILING_KEY)) {
@@ -30,7 +30,7 @@ extern "C" __global__ __aicore__ void sliding_tile_attention(GM_ADDR q, GM_ADDR 
             op.Process();
         } else {
             SlidingTileAttentionKernel::SlidingTileAttention<true> op;
-            op.Init(q, k, v, y, &tilingData);
+            op.Init(q, k, v, y, userWorkspace, &tilingData);
             op.Process();
         }
     }
