@@ -475,7 +475,9 @@ int RunTestCaseWithDtype(const TestCase &testCase, aclrtStream stream)
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnSlidingTileAttention failed. ERROR: %d\n", ret); return ret);
 
     ret = aclrtSynchronizeStream(stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
+    CHECK_RET(ret == ACL_SUCCESS,
+              LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n[ERROR msg]%s\n", ret, aclGetRecentErrMsg());
+              return ret);
 
     if (testCase.checkGolden) {
         std::vector<Storage> actual(tensorSize, Traits::FromFloat(0.0F));

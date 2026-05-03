@@ -25,8 +25,20 @@ constexpr int64_t VECTOR_HEAD_DIM_LIMIT = 128;
 constexpr int64_t VECTOR_ALIGN_ELEMS = 16;
 constexpr int64_t BUFFER_NUM = 2;
 constexpr int64_t KV_BLOCK_NUM = 128;
-constexpr uint64_t SYNC_AIV_TO_AIC = 3;
-constexpr uint64_t SYNC_AIC_TO_AIV = 5;
+constexpr uint64_t SYNC_AIV_TO_AIC_0 = 3;
+constexpr uint64_t SYNC_AIV_TO_AIC_1 = 7;
+constexpr uint64_t SYNC_AIC_TO_AIV_0 = 5;
+constexpr uint64_t SYNC_AIC_TO_AIV_1 = 9;
+
+__aicore__ inline uint64_t AivToAicSyncFlag(uint32_t bufferIdx)
+{
+    return bufferIdx == 0 ? SYNC_AIV_TO_AIC_0 : SYNC_AIV_TO_AIC_1;
+}
+
+__aicore__ inline uint64_t AicToAivSyncFlag(uint32_t bufferIdx)
+{
+    return bufferIdx == 0 ? SYNC_AIC_TO_AIV_0 : SYNC_AIC_TO_AIV_1;
+}
 
 template <bool IS_BF16>
 struct DataTypeSelector {
@@ -451,7 +463,7 @@ private:
         for (int64_t kvSeq = 0; kvSeq < validSeqLen; kvSeq += tiling_->kvBlock) {
             const uint32_t bufferIdx = static_cast<uint32_t>(tileLoop % BUFFER_NUM);
             const int64_t kvCount = MinInt64(tiling_->kvBlock, validSeqLen - kvSeq);
-            CrossCoreWaitFlag(SYNC_AIC_TO_AIV + bufferIdx);
+            CrossCoreWaitFlag(AicToAivSyncFlag(bufferIdx));
             for (int64_t row = GetSubBlockIdxValue(); row < qCount; row += GetTaskRatioValue()) {
                 const int64_t querySeq = seq + row;
                 if (querySeq >= validSeqLen) {
@@ -467,7 +479,7 @@ private:
                 maxLocal.SetValue(row, maxScore);
                 denomLocal.SetValue(row, denom);
             }
-            CrossCoreSetFlag<2, PIPE_MTE2>(SYNC_AIV_TO_AIC + bufferIdx);
+            CrossCoreSetFlag<2, PIPE_MTE2>(AivToAicSyncFlag(bufferIdx));
             ++tileLoop;
         }
 
@@ -700,17 +712,21 @@ public:
     {
         const int64_t blockNum = GetBlockNum();
         const int64_t blockIdx = GetBlockIdx();
-        int64_t loopIdx = 0;
         for (int64_t taskIdx = blockIdx; taskIdx < tiling_->cubeTaskNum; taskIdx += blockNum) {
             const int64_t validSeqLen = tiling_->imageSeqLen + tiling_->textLength;
+            int64_t tileLoop = 0;
             for (int64_t kvBegin = 0; kvBegin < validSeqLen; kvBegin += tiling_->kvBlock) {
-                const uint32_t bufferIdx = static_cast<uint32_t>(loopIdx % BUFFER_NUM);
-                if (loopIdx >= BUFFER_NUM) {
-                    CrossCoreWaitFlag(SYNC_AIV_TO_AIC + bufferIdx);
+                const uint32_t bufferIdx = static_cast<uint32_t>(tileLoop % BUFFER_NUM);
+                if (tileLoop >= BUFFER_NUM) {
+                    CrossCoreWaitFlag(AivToAicSyncFlag(bufferIdx));
                 }
                 ComputeScoreTileTask(taskIdx, kvBegin, bufferIdx);
-                CrossCoreSetFlag<2, PIPE_FIX>(SYNC_AIC_TO_AIV + bufferIdx);
-                ++loopIdx;
+                CrossCoreSetFlag<2, PIPE_FIX>(AicToAivSyncFlag(bufferIdx));
+                ++tileLoop;
+            }
+            const int64_t drainBegin = tileLoop > BUFFER_NUM ? tileLoop - BUFFER_NUM : 0;
+            for (int64_t drainLoop = drainBegin; drainLoop < tileLoop; ++drainLoop) {
+                CrossCoreWaitFlag(AivToAicSyncFlag(static_cast<uint32_t>(drainLoop % BUFFER_NUM)));
             }
         }
     }
