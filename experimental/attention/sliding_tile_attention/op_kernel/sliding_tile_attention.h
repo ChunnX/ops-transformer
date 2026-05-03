@@ -356,7 +356,7 @@ private:
         const int64_t scoreOffset = static_cast<int64_t>(bufferIdx) * tiling_->qBlock * tiling_->kvBlock +
                                     static_cast<int64_t>(rowInBlock) * tiling_->kvBlock;
         DataCopyExtParams copyParams{1, static_cast<uint32_t>(kvCount * sizeof(float)), 0, 0, 0};
-        DataCopyPadExtParams<float> padParams{true, 0, static_cast<uint8_t>(tiling_->kvBlock - kvCount), 0.0F};
+        DataCopyPadExtParams<float> padParams{false, 0, 0, 0.0F};
         DataCopyPad(scoreLocal, scoreGm_[scoreOffset], copyParams, padParams);
         SetFlag<HardEvent::MTE2_V>(EVENT_ID0 + bufferIdx);
         WaitFlag<HardEvent::MTE2_V>(EVENT_ID0 + bufferIdx);
