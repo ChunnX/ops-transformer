@@ -57,20 +57,6 @@ __aicore__ inline int64_t ClampStart(int64_t center, int64_t window, int64_t lim
     return start;
 }
 
-__aicore__ inline float SqrtApprox(float value)
-{
-    if (value <= 0.0F) {
-        return 0.0F;
-    }
-
-    float result = value > 1.0F ? value : 1.0F;
-    constexpr int64_t iterationNum = 8;
-    for (int64_t i = 0; i < iterationNum; ++i) {
-        result = 0.5F * (result + value / result);
-    }
-    return result;
-}
-
 __aicore__ inline float Pow2Int(int64_t exponent)
 {
     float result = 1.0F;
@@ -118,12 +104,6 @@ __aicore__ inline float ExpApprox(float value)
     return Pow2Int(exponent) * expReduced;
 }
 
-__aicore__ inline float InvSqrtApprox(float value)
-{
-    const float sqrtValue = SqrtApprox(value);
-    return sqrtValue > 0.0F ? 1.0F / sqrtValue : 0.0F;
-}
-
 template <bool IS_BF16>
 class SlidingTileAttention {
 public:
@@ -139,7 +119,7 @@ public:
         kDataGm_.SetGlobalBuffer((__gm__ DataType *)k, total);
         vDataGm_.SetGlobalBuffer((__gm__ DataType *)v, total);
         yDataGm_.SetGlobalBuffer((__gm__ DataType *)y, total);
-        scale_ = InvSqrtApprox(static_cast<float>(tiling_->headDim));
+        scale_ = tiling_->scale;
 
         pipe_.InitBuffer(qDataBuf_, VECTOR_HEAD_DIM_LIMIT * sizeof(DataType));
         pipe_.InitBuffer(kDataBuf_, VECTOR_HEAD_DIM_LIMIT * sizeof(DataType));

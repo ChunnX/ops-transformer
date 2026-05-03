@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cmath>
 #include <sstream>
 #include <string>
 #include <securec.h>
@@ -150,6 +151,7 @@ static ge::graphStatus SlidingTileAttentionTilingFunc(gert::TilingContext *conte
     tiling->headNum = headNum;
     tiling->seqLen = seqLen;
     tiling->headDim = headDim;
+    tiling->scale = 1.0F / std::sqrt(static_cast<float>(headDim));
     tiling->imageSeqLen = imageSeqLen;
     tiling->textLength = textLength;
     tiling->hasText = hasText ? 1 : 0;

@@ -15,6 +15,7 @@ struct SlidingTileAttentionTilingData {
     int64_t headNum;
     int64_t seqLen;
     int64_t headDim;
+    float scale;
     int64_t imageSeqLen;
     int64_t textLength;
     int64_t hasText;
