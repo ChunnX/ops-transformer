@@ -21,6 +21,7 @@ constexpr float INV_LN2 = 1.4426950408889634F;
 constexpr int64_t VECTOR_HEAD_DIM_LIMIT = 128;
 constexpr int64_t VECTOR_ALIGN_ELEMS = 16;
 constexpr int64_t BUFFER_NUM = 2;
+constexpr int64_t KV_BLOCK_NUM = 16;
 
 template <bool IS_BF16>
 struct DataTypeSelector {
@@ -133,6 +134,8 @@ public:
         pipe_.InitBuffer(accFloatBuf_, BUFFER_NUM * VECTOR_HEAD_DIM_LIMIT * sizeof(float));
         pipe_.InitBuffer(reduceFloatBuf_, BUFFER_NUM * VECTOR_HEAD_DIM_LIMIT * sizeof(float));
         pipe_.InitBuffer(reduceWorkBuf_, BUFFER_NUM * VECTOR_HEAD_DIM_LIMIT * sizeof(float));
+        pipe_.InitBuffer(scoreFloatBuf_, BUFFER_NUM * KV_BLOCK_NUM * sizeof(float));
+        pipe_.InitBuffer(weightFloatBuf_, BUFFER_NUM * KV_BLOCK_NUM * sizeof(float));
     }
 
     __aicore__ inline void Process()
@@ -162,6 +165,13 @@ private:
     {
         LocalTensor<T> local = buf.Get<T>();
         return local[bufferIdx * VECTOR_HEAD_DIM_LIMIT];
+    }
+
+    template <typename T>
+    __aicore__ inline LocalTensor<T> GetKvBlockSlice(TBuf<QuePosition::VECCALC> &buf, uint32_t bufferIdx)
+    {
+        LocalTensor<T> local = buf.Get<T>();
+        return local[bufferIdx * KV_BLOCK_NUM];
     }
 
     __aicore__ inline void CopyDataRowToLocal(GlobalTensor<DataType> &gm, LocalTensor<DataType> &local,
@@ -254,29 +264,65 @@ private:
         wEnd = MinInt64(wBegin + tiling_->windowW[head], tiling_->tileNumW);
     }
 
-    __aicore__ inline void AccumulateOnlineValueVector(LocalTensor<float> &qLocal, LocalTensor<float> &accLocal,
-                                                       int64_t kvBase, float &maxScore, float &denom,
-                                                       uint32_t bufferIdx)
+    __aicore__ inline void AccumulateOnlineValueBlock(LocalTensor<float> &qLocal, LocalTensor<float> &accLocal,
+                                                      int64_t batch, int64_t head, int64_t kvSeqStart,
+                                                      int64_t kvCount, float &maxScore, float &denom,
+                                                      uint32_t bufferIdx)
     {
-        const float score = DotScoreVector(qLocal, kvBase, bufferIdx);
-        if (score > maxScore) {
-            const float oldScale = ExpApprox(maxScore - score);
+        const uint32_t kvCountU32 = static_cast<uint32_t>(kvCount);
+        LocalTensor<float> scoreLocal = GetKvBlockSlice<float>(scoreFloatBuf_, bufferIdx);
+        float blockMaxScore = NEG_INF;
+        for (int64_t i = 0; i < kvCount; ++i) {
+            const int64_t kvBase = TensorOffset(batch, head, kvSeqStart + i, 0);
+            const float score = DotScoreVector(qLocal, kvBase, bufferIdx);
+            scoreLocal.SetValue(i, score);
+            blockMaxScore = score > blockMaxScore ? score : blockMaxScore;
+        }
+
+        if (blockMaxScore > maxScore) {
+            const float oldScale = ExpApprox(maxScore - blockMaxScore);
             Muls(accLocal, accLocal, oldScale, AlignedHeadDim());
             PipeBarrier<PIPE_V>();
             denom *= oldScale;
-            maxScore = score;
+            maxScore = blockMaxScore;
         }
 
-        const float weight = ExpApprox(score - maxScore);
-        LocalTensor<float> vLocal = GetBufferSlice<float>(vFloatBuf_, bufferIdx);
-        CopyDataRowToFloat(vDataGm_, vDataBuf_, vLocal, kvBase, bufferIdx);
+        LocalTensor<float> weightLocal = GetKvBlockSlice<float>(weightFloatBuf_, bufferIdx);
+        Adds(weightLocal, scoreLocal, -maxScore, kvCountU32);
+        PipeBarrier<PIPE_V>();
+        Exp(weightLocal, weightLocal, kvCountU32);
+        PipeBarrier<PIPE_V>();
 
-        LocalTensor<float> tmpLocal = GetBufferSlice<float>(tmpFloatBuf_, bufferIdx);
-        Muls(tmpLocal, vLocal, weight, AlignedHeadDim());
-        PipeBarrier<PIPE_V>();
-        Add(accLocal, accLocal, tmpLocal, AlignedHeadDim());
-        PipeBarrier<PIPE_V>();
-        denom += weight;
+        LocalTensor<float> reduceLocal = GetBufferSlice<float>(reduceFloatBuf_, bufferIdx);
+        LocalTensor<float> reduceWorkLocal = GetBufferSlice<float>(reduceWorkBuf_, bufferIdx);
+        ReduceSum(reduceLocal, weightLocal, reduceWorkLocal, kvCountU32);
+        SetFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
+        WaitFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
+
+        for (int64_t i = 0; i < kvCount; ++i) {
+            const int64_t kvBase = TensorOffset(batch, head, kvSeqStart + i, 0);
+            const float weight = weightLocal.GetValue(i);
+            LocalTensor<float> vLocal = GetBufferSlice<float>(vFloatBuf_, bufferIdx);
+            CopyDataRowToFloat(vDataGm_, vDataBuf_, vLocal, kvBase, bufferIdx);
+
+            LocalTensor<float> tmpLocal = GetBufferSlice<float>(tmpFloatBuf_, bufferIdx);
+            Muls(tmpLocal, vLocal, weight, AlignedHeadDim());
+            PipeBarrier<PIPE_V>();
+            Add(accLocal, accLocal, tmpLocal, AlignedHeadDim());
+            PipeBarrier<PIPE_V>();
+        }
+        denom += reduceLocal.GetValue(0);
+    }
+
+    __aicore__ inline void AccumulateKvSeqRangeOnlineBlock(LocalTensor<float> &qLocal, LocalTensor<float> &accLocal,
+                                                           int64_t batch, int64_t head, int64_t kvSeqBegin,
+                                                           int64_t kvSeqEnd, float &maxScore, float &denom,
+                                                           uint32_t bufferIdx)
+    {
+        for (int64_t kvSeq = kvSeqBegin; kvSeq < kvSeqEnd; kvSeq += KV_BLOCK_NUM) {
+            const int64_t kvCount = MinInt64(KV_BLOCK_NUM, kvSeqEnd - kvSeq);
+            AccumulateOnlineValueBlock(qLocal, accLocal, batch, head, kvSeq, kvCount, maxScore, denom, bufferIdx);
+        }
     }
 
     __aicore__ inline void AccumulateImageWindowOnlineVector(LocalTensor<float> &qLocal, LocalTensor<float> &accLocal,
@@ -295,13 +341,9 @@ private:
                 for (int64_t ww = wBegin; ww < wEnd; ++ww) {
                     const int64_t baseTile = ((tt * tiling_->tileNumH + hh) * tiling_->tileNumW + ww) *
                                              tiling_->tileTokenNum;
-                    for (int64_t offset = 0; offset < tiling_->tileTokenNum; ++offset) {
-                        const int64_t kvSeq = baseTile + offset;
-                        if (kvSeq < tiling_->imageSeqLen) {
-                            AccumulateOnlineValueVector(qLocal, accLocal, TensorOffset(batch, head, kvSeq, 0),
-                                                        maxScore, denom, bufferIdx);
-                        }
-                    }
+                    const int64_t kvSeqEnd = MinInt64(baseTile + tiling_->tileTokenNum, tiling_->imageSeqLen);
+                    AccumulateKvSeqRangeOnlineBlock(qLocal, accLocal, batch, head, baseTile, kvSeqEnd, maxScore, denom,
+                                                    bufferIdx);
                 }
             }
         }
@@ -318,18 +360,14 @@ private:
         PipeBarrier<PIPE_V>();
 
         if (isTextQuery) {
-            for (int64_t kvSeq = 0; kvSeq < tiling_->imageSeqLen + tiling_->textLength; ++kvSeq) {
-                AccumulateOnlineValueVector(qLocal, accLocal, TensorOffset(batch, head, kvSeq, 0), maxScore, denom,
-                                            bufferIdx);
-            }
+            AccumulateKvSeqRangeOnlineBlock(qLocal, accLocal, batch, head, 0,
+                                            tiling_->imageSeqLen + tiling_->textLength, maxScore, denom, bufferIdx);
         } else {
             AccumulateImageWindowOnlineVector(qLocal, accLocal, batch, head, seq, maxScore, denom, bufferIdx);
             if (tiling_->hasText != 0) {
-                for (int64_t i = 0; i < tiling_->textLength; ++i) {
-                    const int64_t kvSeq = tiling_->imageSeqLen + i;
-                    AccumulateOnlineValueVector(qLocal, accLocal, TensorOffset(batch, head, kvSeq, 0), maxScore,
-                                                denom, bufferIdx);
-                }
+                AccumulateKvSeqRangeOnlineBlock(qLocal, accLocal, batch, head, tiling_->imageSeqLen,
+                                                tiling_->imageSeqLen + tiling_->textLength, maxScore, denom,
+                                                bufferIdx);
             }
         }
         return denom;
@@ -388,6 +426,8 @@ private:
     TBuf<QuePosition::VECCALC> accFloatBuf_;
     TBuf<QuePosition::VECCALC> reduceFloatBuf_;
     TBuf<QuePosition::VECCALC> reduceWorkBuf_;
+    TBuf<QuePosition::VECCALC> scoreFloatBuf_;
+    TBuf<QuePosition::VECCALC> weightFloatBuf_;
     const SlidingTileAttentionTilingData *tiling_ = nullptr;
     float scale_ = 0.0F;
 };
