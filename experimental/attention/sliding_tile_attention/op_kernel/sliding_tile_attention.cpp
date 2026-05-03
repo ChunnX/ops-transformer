@@ -10,7 +10,7 @@ extern "C" __global__ __aicore__ void sliding_tile_attention(GM_ADDR q, GM_ADDR 
                                                                GM_ADDR workspace, GM_ADDR tiling)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-    GM_ADDR userWorkspace = GetUserWorkspace(workspace);
+    GM_ADDR userWorkspace = AscendC::GetUserWorkspace(workspace);
     REGISTER_TILING_DEFAULT(SlidingTileAttentionTilingData);
     GET_TILING_DATA_WITH_STRUCT(SlidingTileAttentionTilingData, tilingData, tiling);
     if (TILING_KEY_IS(SLIDING_TILE_ATTENTION_FP16_TILING_KEY)) {
