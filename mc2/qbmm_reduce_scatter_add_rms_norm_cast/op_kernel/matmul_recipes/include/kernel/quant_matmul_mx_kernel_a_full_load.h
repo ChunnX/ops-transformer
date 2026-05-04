@@ -29,6 +29,8 @@
 #include "../block/quant_matmul_mx_block_mmad_a_full_load.h"
 #include "../block/quant_matmul_mx_block_scheduler_a_full_load.h"
 #include "../utils/quant_matmul_constant.h"
+#include "adv_api/hccl/hccl.h"
+#include "../../common/op_kernel/moe_distribute_base.h"
 
 namespace Kernel {
 // Keep the class template parameter list in one place so the declaration and
@@ -37,6 +39,16 @@ namespace Kernel {
 #define QBMM_MX_KERNEL_A_FULL_LOAD_FUN_TEM_PARAMS ProblemShape, BlockMmad, BlockScheduler
 
 using namespace AscendC;
+
+// HCCL window layout constants: data zone layout inside the 0/1 ping-pong
+// windows. These match the values used by the host-side HCCL configuration.
+constexpr static uint64_t WIN_DATA_INNER_OFFSET = 30UL * 1024UL * 1024UL;
+constexpr static uint64_t SINGLE_ZERONE_DATA_ZONE_SIZE = 100UL * 1024UL * 1024UL;
+constexpr static uint64_t UB_ALIGN_BYTES = 32UL;
+
+// Sub-tile M dimension for AIV UB processing. Each scheduler tile is split
+// into sub-tiles of this many rows; V0 and V1 alternate sub-tile indices.
+constexpr static int64_t AIV_UB_TILE_M = 32;
 
 QBMM_MX_KERNEL_A_FULL_LOAD_CLASS_TEM_PARAMS
 class QuantMatmulMxKernelAFullLoad {
@@ -78,6 +90,14 @@ public:
         uint8_t dbL0C;
     };
 
+    // Communication parameters for AIV alltoall path.
+    struct CommParams {
+        // Size of one TP domain = m / tpWorldSize.
+        int64_t tpSizeM;
+        // Number of TP ranks participating in the alltoall.
+        int32_t tpWorldSize;
+    };
+
     struct Params {
         // Translate the serialized tiling payload once at the launcher
         // boundary, then keep the kernel, scheduler, and block MMAD layers on
@@ -87,11 +107,12 @@ public:
         L1Params l1Params;
         BlockSchedulerParams schParams;
         QBMMTiling qbmmParams;
+        CommParams commParams;
     };
 
 public:
     // Launch one SWAT kernel instance on the current AIC block.
-    __aicore__ inline void operator()(const Params& params);
+    __aicore__ inline void operator()(const Params& params, TPipe* pipe = nullptr);
 
 private:
     // Bind raw GM addresses to typed kernel pointers once per launch.
@@ -108,6 +129,13 @@ private:
         return {problemShape.m, problemShape.n, problemShape.k};
     }
 
+    // AIV: read bf16 workspace and write to remote HCCL windows (alltoall).
+    __aicore__ inline void CommProcess(
+        int64_t mPos, int64_t nPos, const BlockShape& singleShape, const Params& params);
+
+    // HCCL window helpers.
+    __aicore__ inline GM_ADDR GetWindAddrByRankId(const int32_t rankId);
+
 private:
     BlockMmad mmadOp_;
     __gm__ AType* aGmAddr_;
@@ -115,28 +143,57 @@ private:
     __gm__ CType* cGmAddr_;
     __gm__ fp8_e8m0_t* scaleAGmAddr_;
     __gm__ fp8_e8m0_t* scaleBGmAddr_;
+    __gm__ HcclOpResParam *winContext_{nullptr};
+    TPipe *tpipe_{nullptr};
+    uint32_t rankId_{0};
+    uint32_t coreVid_{0};
+    // VECIN queue for DataCopyPad GM→VECIN→GM (handles stride and non-aligned tail)
+    TQue<QuePosition::VECIN, 1> inQueue_;
 };
 
 QBMM_MX_KERNEL_A_FULL_LOAD_CLASS_TEM_PARAMS
 __aicore__ inline void QuantMatmulMxKernelAFullLoad<QBMM_MX_KERNEL_A_FULL_LOAD_FUN_TEM_PARAMS>::operator()(
-    const Params& params)
+    const Params& params, TPipe* pipe)
 {
-    // The quantized matmul compute path runs on AIC only. AIV blocks exit
-    // immediately so mixed-core launches remain valid.
-    if ASCEND_IS_AIV {
-        PRINTF("hello aiv!\n");
+    if ASCEND_IS_AIC {
+        ResetGmAddr(params);
+        BlockSchedulerOp bs(params.problemShape, params.schParams);
+        TupleShape problemShape_ = ToShapeTuple(params.problemShape);
+        BlockShape l0TileShape{params.qbmmParams.baseM, params.qbmmParams.baseN, params.qbmmParams.baseK, 0};
+        bool enableL0cPingPong = (params.qbmmParams.dbL0C > 1);
+        mmadOp_.Init(problemShape_, l0TileShape, params.l1Params, enableL0cPingPong);
+        Process(params, bs);
         return;
     }
 
-    ResetGmAddr(params);
-    BlockSchedulerOp bs(params.problemShape, params.schParams);
-    TupleShape problemShape_ = ToShapeTuple(params.problemShape);
-    // The kernel layer only builds the scheduling and tensor wrappers; the
-    // heavy data movement and MMAD sequence lives in `BlockMmad`.
-    BlockShape l0TileShape{params.qbmmParams.baseM, params.qbmmParams.baseN, params.qbmmParams.baseK, 0};
-    bool enableL0cPingPong = (params.qbmmParams.dbL0C > 1);
-    mmadOp_.Init(problemShape_, l0TileShape, params.l1Params, enableL0cPingPong);
-    Process(params, bs);
+    if ASCEND_IS_AIV {
+        tpipe_ = pipe;
+        if (tpipe_ != nullptr) {
+            uint32_t paddedRowBytes = ::CeilDiv(
+                static_cast<uint64_t>(params.qbmmParams.baseN) * sizeof(bfloat16_t),
+                UB_ALIGN_BYTES) * UB_ALIGN_BYTES;
+            tpipe_->InitBuffer(inQueue_, 1, AIV_UB_TILE_M * paddedRowBytes);
+        }
+        winContext_ = (__gm__ HcclOpResParam*)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
+        rankId_ = winContext_->localUsrRankId;
+        coreVid_ = AscendC::GetBlockIdx();
+        // V核使用与AIC相同的调度器,blockIdx_在MIX_AIC_1_2模式下
+        // 通过GetTaskRation归一化,使得同组AIC+AIV的blockIdx_相同,
+        // 从而产出相同的(mPos,nPos)序列。
+        BlockSchedulerOp bs(params.problemShape, params.schParams);
+        BlockCoord blockIdx;
+        while (bs.GetTileIdx(blockIdx)) {
+            int64_t mPos = Get<MNK_M>(blockIdx);
+            int64_t nPos = Get<MNK_N>(blockIdx);
+            BlockShape singleShape = bs.GetBlockShape(blockIdx);
+            if (Get<MNK_M>(singleShape) <= 0 || Get<MNK_N>(singleShape) <= 0) {
+                return;
+            }
+            CrossCoreWaitFlag(9);
+            CommProcess(mPos, nPos, singleShape, params);
+        }
+        return;
+    }
 }
 
 QBMM_MX_KERNEL_A_FULL_LOAD_CLASS_TEM_PARAMS
@@ -174,6 +231,7 @@ __aicore__ inline void QuantMatmulMxKernelAFullLoad<QBMM_MX_KERNEL_A_FULL_LOAD_F
 
     BlockCoord blockIdx;
     constexpr int64_t kPos = 0L;
+
     bool isBMatrixOnlyNeedLoadOnce = params.problemShape.m <= params.qbmmParams.baseM && (params.problemShape.k & 0xff) == 0;
     if (isBMatrixOnlyNeedLoadOnce) {
         gmB.SetL2CacheHint(AscendC::Te::CacheMode::CACHE_MODE_DISABLE);
@@ -210,6 +268,118 @@ __aicore__ inline void QuantMatmulMxKernelAFullLoad<QBMM_MX_KERNEL_A_FULL_LOAD_F
         // The block MMAD layer owns all data movement below GM granularity and
         // performs the actual accumulation for this scheduled tile.
         mmadOp_(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBlockC, singleShape);
+        CrossCoreSetFlag<0x2, PIPE_FIX>(9);
+    }
+}
+
+QBMM_MX_KERNEL_A_FULL_LOAD_CLASS_TEM_PARAMS
+__aicore__ inline GM_ADDR QuantMatmulMxKernelAFullLoad<QBMM_MX_KERNEL_A_FULL_LOAD_FUN_TEM_PARAMS>::GetWindAddrByRankId(const int32_t rankId)
+{
+    if (rankId == rankId_) {
+        return (GM_ADDR)(winContext_->localWindowsIn);
+    }
+    return (GM_ADDR)(((HcclRankRelationResV2*)(winContext_->remoteRes[rankId].nextDevicePtr))->windowsIn);   // 先找到某个rank的首地址，然后再偏移到具体的处理data的地方
+}
+
+QBMM_MX_KERNEL_A_FULL_LOAD_CLASS_TEM_PARAMS
+__aicore__ inline void
+QuantMatmulMxKernelAFullLoad<QBMM_MX_KERNEL_A_FULL_LOAD_FUN_TEM_PARAMS>::CommProcess(
+    int64_t mPos, int64_t nPos, const BlockShape& singleShape, const Params& params)
+{
+    int64_t singleM = Get<MNK_M>(singleShape);
+    int64_t singleN = Get<MNK_N>(singleShape);
+    if (singleM <= 0 || singleN <= 0) {
+        return;
+    }
+
+    int64_t m = params.problemShape.m;
+    int64_t n = params.problemShape.n;
+    int64_t tpSizeM = params.commParams.tpSizeM;
+    int32_t tpWorldSize = params.commParams.tpWorldSize;
+
+    // AIV pair index within a MIX_AIC_1_2 group: coreVid_=1,4,7... → 1 (odd),
+    // coreVid_=2,5,8... → 0 (even). Either way each sub-tile is covered
+    // exactly once by the alternating assignment below.
+    int64_t aivIdx = coreVid_ % 2;
+
+    // Split the scheduler tile into sub-tiles of AIV_UB_TILE_M rows in M
+    // direction. The two V cores alternate assignment by sub-tile index:
+    //   V0 (aivIdx=0): sub-tiles 0, 2, 4, ...
+    //   V1 (aivIdx=1): sub-tiles 1, 3, 5, ...
+    // This also handles tail tiles (singleM not multiple of AIV_UB_TILE_M).
+    int64_t subTileCnt = ::CeilDiv(singleM, AIV_UB_TILE_M);
+
+    __gm__ CType* workspaceAddr =
+        reinterpret_cast<__gm__ CType*>(params.mmadParams.cGmAddr);
+    GlobalTensor<bfloat16_t> workspaceGm;
+    workspaceGm.SetGlobalBuffer(workspaceAddr);
+
+    // DataCopyPad uses byte-level blockLen/stride, handling both aligned and
+    // non-aligned tail tiles seamlessly (32B-padding in VECIN auto-discarded).
+    uint32_t blkLenBytes = static_cast<uint32_t>(singleN * sizeof(bfloat16_t));
+    uint32_t rowPadding32B = ::CeilDiv(blkLenBytes, UB_ALIGN_BYTES);
+    // VECIN row stride for sub-LocalTensor indexing (padded to 32B boundary).
+    uint32_t rowInVECINElems = rowPadding32B * (UB_ALIGN_BYTES / sizeof(bfloat16_t));
+
+    // Split the scheduler tile into sub-tiles; the two V cores alternate
+    // by index so each row is processed exactly once.
+    for (int64_t st = aivIdx; st < subTileCnt; st += 2) {
+        int64_t subTileM = Min(AIV_UB_TILE_M, singleM - st * AIV_UB_TILE_M);
+        if (subTileM <= 0) {
+            continue;
+        }
+        int64_t globalBaseM = mPos + st * AIV_UB_TILE_M;
+
+        // Process rows grouped by destination TP domain in batches.
+        // Each batch is contiguous in both source workspace and target
+        // remote window, so a single DataCopyPad per direction suffices.
+        int64_t processed = 0;
+        while (processed < subTileM) {
+            int64_t globalRow = globalBaseM + processed;
+            int32_t dstRankId = static_cast<int32_t>(globalRow / tpSizeM);
+            if (dstRankId >= tpWorldSize) {
+                break;
+            }
+            int64_t tpBoundary = (dstRankId + 1) * tpSizeM;
+            int64_t rowsInBatch = Min(subTileM - processed, tpBoundary - globalRow);
+            if (rowsInBatch <= 0) {
+                break;
+            }
+
+            // --- GM (workspace) -> VECIN (batch read) ---
+            DataCopyExtParams readParams{
+                static_cast<uint16_t>(rowsInBatch),
+                blkLenBytes,
+                static_cast<uint32_t>((n - singleN) * sizeof(bfloat16_t)),
+                0,   // dstStride: contiguous in VECIN (32B-padded)
+                0
+            };
+            DataCopyPadExtParams<bfloat16_t> padParams{false, 0, 0, 0};
+
+            LocalTensor<bfloat16_t> batchLocal = inQueue_.AllocTensor<bfloat16_t>();
+            DataCopyPad(batchLocal, workspaceGm[globalRow * n + nPos], readParams, padParams);
+            inQueue_.EnQue(batchLocal);
+            batchLocal = inQueue_.DeQue<bfloat16_t>();
+
+            // --- VECIN -> GM (remote window, batch write) ---
+            GM_ADDR remoteWinAddr = GetWindAddrByRankId(dstRankId);
+            GlobalTensor<bfloat16_t> remoteGm;
+            remoteGm.SetGlobalBuffer((__gm__ bfloat16_t*)remoteWinAddr);
+            uint64_t dstBaseOffset = static_cast<uint64_t>(rankId_) * tpSizeM * n +
+                                     (globalRow % tpSizeM) * n + nPos;
+
+            DataCopyExtParams writeParams{
+                static_cast<uint16_t>(rowsInBatch),
+                blkLenBytes,
+                0,   // srcStride: VECIN contiguous (32B-padded rows)
+                static_cast<uint32_t>((n - singleN) * sizeof(bfloat16_t)),
+                0
+            };
+            DataCopyPad(remoteGm[dstBaseOffset], batchLocal, writeParams);
+
+            inQueue_.FreeTensor(batchLocal);
+            processed += rowsInBatch;
+        }
     }
 }
 
@@ -217,4 +387,3 @@ __aicore__ inline void QuantMatmulMxKernelAFullLoad<QBMM_MX_KERNEL_A_FULL_LOAD_F
 
 #undef QBMM_MX_KERNEL_A_FULL_LOAD_CLASS_TEM_PARAMS
 #undef QBMM_MX_KERNEL_A_FULL_LOAD_FUN_TEM_PARAMS
-

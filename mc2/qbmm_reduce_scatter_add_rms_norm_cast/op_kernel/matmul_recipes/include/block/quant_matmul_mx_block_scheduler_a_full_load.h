@@ -82,7 +82,7 @@ public:
         endBlockIdx_ = (totalCnt_ - 1) % blockNum_;
         round_ = CeilDiv(totalCnt_, blockNum_);
         if (blockIdx_ > endBlockIdx_) {
-            round_ -= 1;
+            round_ -= 1;    // 分核逻辑，在余数内的才享有round+1
         }
         // Apply host-selected tail splitting during construction so the
         // scheduler is fully initialized before the first tile query.
@@ -142,7 +142,7 @@ public:
         int64_t singleCoreNSplit = CeilDiv(singleCoreN, nTailTile_);
         int64_t mSplitIdx = (blockIdx_ % totalTailTile_) % mTailTile_;
         int64_t nSplitIdx = blockIdx_ / mCnt_ % nTailTile_;
-        int64_t mSplitAddrOffset = mSplitIdx * singleCoreMSplit;
+        int64_t mSplitAddrOffset = mSplitIdx * singleCoreMSplit;    // TODO:不是很理解
         int64_t nSplitAddrOffset = nSplitIdx * singleCoreNSplit;
         if (mSplitAddrOffset >= singleCoreM || nSplitAddrOffset >= singleCoreN) {
             // Some synthetic tail slices may fall outside the valid range when

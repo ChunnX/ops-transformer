@@ -58,6 +58,7 @@ __global__ __aicore__ void qbmm_reduce_scatter_add_rms_norm_cast(GM_ADDR x1, GM_
     using L1Params = typename QuantMatmulKernelImpl::L1Params;
     using BlockSchedulerParams = typename QuantMatmulKernelImpl::BlockSchedulerParams;
     using QBMMTiling = typename QuantMatmulKernelImpl::QBMMTiling;
+    using CommParams = typename QuantMatmulKernelImpl::CommParams;
 
     ProblemShape problemShape{tilingData.qbmmTilingdata.m, tilingData.qbmmTilingdata.n, tilingData.qbmmTilingdata.k, 1UL};
     BlockMmadParams mmadParams{x1, x2, workspaceGM, dScaleA, dScaleB};
@@ -78,7 +79,18 @@ __global__ __aicore__ void qbmm_reduce_scatter_add_rms_norm_cast(GM_ADDR x1, GM_
         tilingData.qbmmTilingdata.baseN,
         tilingData.qbmmTilingdata.baseK,
         tilingData.qbmmTilingdata.dbL0c};
-    Params params{problemShape, mmadParams, l1Params, schedulerParams, qbmmParams};
+
+    CommParams commParams{
+        problemShape.m / tilingData.qbmmReduceScatterAddRmsNormCastTilingInfo.rankSize,
+        static_cast<int32_t>(tilingData.qbmmReduceScatterAddRmsNormCastTilingInfo.rankSize)};
+
+    TPipe *pipePtr = nullptr;
+    if ASCEND_IS_AIV {
+        TPipe pipe;
+        pipePtr = &pipe;
+    }
+
+    Params params{problemShape, mmadParams, l1Params, schedulerParams, qbmmParams, commParams};
     QuantMatmulKernelImpl quantMatmulKernelImpl;
     
     
@@ -86,12 +98,7 @@ __global__ __aicore__ void qbmm_reduce_scatter_add_rms_norm_cast(GM_ADDR x1, GM_
         KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
         PRINTF("enter kernel!");
 
-        // TPipe *pipePtr = nullptr;
-        // if ASCEND_IS_AIV {
-        //     TPipe pipe;
-        //     pipePtr = &pipe;
-        // }
-        quantMatmulKernelImpl(params);
+        quantMatmulKernelImpl(params, pipePtr);
 
         // QbmmReduceScatterAddRmsNormCastMte<fp8_e4m3fn_t, fp8_e8m0_t> impl;
         // impl.Init(x1, x2, y, gamma, scale,  bias, perTokenScale, y1, 
