@@ -54,6 +54,7 @@ private:
     __aicore__ inline void FirstBuffInit(TPipe *tPipe);
     __aicore__ inline void SecondBuffInit(TPipe *tPipe);
     __aicore__ inline void ResetWorkSpaceFlagList();
+    __aicore__ inline void ResetGmm2RowReadyFlags();
     __aicore__ inline void GetCumsumForMMAIV();
     __aicore__ inline void CrossRankSyncCntPerExpert();
     __aicore__ inline void ExpertTokenNumCopyOut();
@@ -281,6 +282,26 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetWorkSpaceFlagList(
             Duplicate(initTensor, 0, coreLen);
             SyncFunc<AscendC::HardEvent::V_MTE3>();
             DataCopy(groupFlagListGm_[coreOffset], initTensor, coreLen);
+        }
+    }
+}
+
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetGmm2RowReadyFlags()
+{
+    if constexpr(g_coreType == AIV) {
+        GlobalTensor<int32_t> rowReadyFlags;
+        rowReadyFlags.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.ptrGmm2RowReady);
+
+        // 按核心数清零
+        int32_t coreLen, coreOffset;
+        TilingByCore(blockNum_, coreLen, coreOffset);
+
+        LocalTensor<int32_t> initTensor = ResetFlagBuf_.Get<int32_t>();
+        if (coreLen != 0) {
+            Duplicate(initTensor, 0, coreLen);
+            SyncFunc<AscendC::HardEvent::V_MTE3>();
+            DataCopy(rowReadyFlags[coreOffset], initTensor, coreLen);
         }
     }
 }
@@ -566,13 +587,17 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMA
         gmmAddrInfo.aScaleGlobal = params_.workspaceInfo.ptrA2Scale + Get<IDX_C_SCALE_OFFSET>(baseOffset_) *
                                     sizeof(QuantScaleOutType);
         gmmAddrInfo.bGlobal = params_.b2GmAddr + Get<IDX_B2_OFFSET>(baseOffset_) * sizeof(QuantOutType);
-        gmmAddrInfo.bScaleGlobal = params_.b2ScaleGmAddr + Get<IDX_B2_SCALE_OFFSET>(baseOffset_) *
+        gmmAddrInfo.bScaleGlobal = params_.bScaleGmAddr + Get<IDX_B2_SCALE_OFFSET>(baseOffset_) *
                                     sizeof(QuantScaleOutType);
     }
     gmmAddrInfo.groupFlagList = (__gm__ int32_t*)params_.workspaceInfo.ptrFlagSwiGluToGmm2 +
                                 Get<IDX_FLAG_OFFSET>(baseOffset_) * INT_CACHELINE;
     gmmAddrInfo.groupFlagList2 = (__gm__ int32_t*)params_.workspaceInfo.ptrFlagDispatchToGmm1 +
                                 Get<IDX_FLAG_OFFSET>(baseOffset_) * INT_CACHELINE;
+    if (gmmIndex == 1) {
+        gmmAddrInfo.gmm2OutGlobal = params_.workspaceInfo.ptrGmmOut +
+                                    Get<IDX_Y2_OFFSET>(baseOffset_) * sizeof(bfloat16_t);
+    }
     groupFlagListGm_.SetGlobalBuffer(gmmAddrInfo.groupFlagList);
     groupFlagListGm2_.SetGlobalBuffer(gmmAddrInfo.groupFlagList2);
 }
@@ -690,6 +715,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     TPipe firstPipe;
     FirstBuffInit(&firstPipe);
     ResetWorkSpaceFlagList();
+    ResetGmm2RowReadyFlags();
 
     // 3. cnt值全ep域内的发送以及本端接收整理
     CrossRankSyncCntPerExpert();
@@ -719,6 +745,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         }
     }
     EndSync();
+
     if constexpr(g_coreType == AscendC::AIV) {
         if (aivCoreIdx_ == 1) {
             ExpertTokenNumCopyOut();
