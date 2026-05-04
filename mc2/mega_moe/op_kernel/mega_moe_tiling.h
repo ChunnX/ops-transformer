@@ -33,6 +33,7 @@ struct MegaMoeTilingData {
     uint32_t maxOutputSize;
     uint32_t rankId;
     uint32_t topK;
+    uint32_t blockNum;
     int32_t dispatchRows;
     uint8_t groupListType;
     bool transX;
