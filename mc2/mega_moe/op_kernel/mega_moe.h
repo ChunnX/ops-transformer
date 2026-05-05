@@ -96,6 +96,35 @@ using BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t,
 #define TemplateMegaMoeTypeClass typename XType, typename OutputType, typename TopkWeightsType, int32_t QuantMode
 #define TemplateMegaMoeTypeFunc XType, OutputType, TopkWeightsType, QuantMode
 
+__aicore__ inline void RecordTimestamp(GlobalTensor<uint64_t> &output, int pointIndex) {
+    constexpr int AIC_REPRESENTATIVE_COUNT = 4;
+    constexpr int AIV_REPRESENTATIVE_COUNT = 8;
+    constexpr int POINTS_PER_CORE = 8;
+    constexpr uint64_t CYCLES_PER_US = 1000;
+    
+    int coreIdx = GetBlockIdx();
+    int globalCoreIdx = -1;
+    
+    if constexpr (g_coreType == AIC) {
+        if (coreIdx < AIC_REPRESENTATIVE_COUNT) {
+            globalCoreIdx = coreIdx;
+        }
+    } else {
+        if (coreIdx < AIV_REPRESENTATIVE_COUNT) {
+            globalCoreIdx = AIC_REPRESENTATIVE_COUNT + coreIdx;
+        }
+    }
+    
+    if (globalCoreIdx == -1) {
+        return;
+    }
+    
+    // PipeBarrier<PIPE_ALL>();
+    uint64_t timestamp = static_cast<uint64_t>(AscendC::GetSystemCycle()) / CYCLES_PER_US;
+    output.SetValue(globalCoreIdx * POINTS_PER_CORE + pointIndex, timestamp);
+    // PipeBarrier<PIPE_ALL>();
+}
+
 template <TemplateMegaMoeTypeClass>
 class MegaMoe {
 public:
@@ -128,6 +157,8 @@ private:
     __aicore__ inline void CopyGMToGMPerTokenV2(GlobalTensor<QuantOutType> dst,
                 GlobalTensor<QuantScaleOutType> dstScale, GlobalTensor<QuantOutType> src,
                 int32_t rows, int32_t hiddenSize, int32_t& pingpongId);
+
+    __aicore__ inline void RecordTimestamp(GlobalTensor<uint64_t> &output, int pointIndex);
 
     __aicore__ inline void TilingByCore(int32_t totalLen, int32_t &coreLen,
         int32_t& coreOffset, int32_t align = ALIGN_32)
@@ -737,6 +768,14 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 {
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
+    
+    // 初始化时间戳输出
+    GlobalTensor<uint64_t> timestampOutput;
+    timestampOutput.SetGlobalBuffer((__gm__ uint64_t*)params_.y2GmAddr);
+    
+    // 打点0: routing开始
+    RecordTimestamp(timestampOutput, 0);
+    
     // 1. moe_init_routing_v3 + 量化
     moe_init_routing_v3<bfloat16_t, QuantOutType>(params_.aGmAddr, params_.expertIdxGmAddr, nullptr, nullptr,
             params_.peermemInfo.ptrA0, params_.workspaceInfo.expandedRowIdx, tokenPerExpertCurRankAddr_, nullptr,
@@ -744,6 +783,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             params_.tilingData->moeInitRoutingTilingData.tilingKey);
     PipeBarrier<PIPE_ALL>();
     SyncAll<true>();
+    
+    // 打点1: routing结束
+    RecordTimestamp(timestampOutput, 1);
 
     // 2. buffer申请 & workspace Init
     TPipe firstPipe;
@@ -758,6 +800,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     }
     SyncAll<false>();
 
+    // 打点2: dispatch开始
+    RecordTimestamp(timestampOutput, 2);
+    
     // 4. subBlockIdx_ == 1的AIV核心一次性完成所有专家的dispatch
     GMMAddrInfo gmmAddrInfo;
     if constexpr(g_coreType == AscendC::AIV) {
@@ -771,6 +816,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             }
         }
     }
+    
+    // 打点3: dispatch结束
+    RecordTimestamp(timestampOutput, 3);
+    
+    // 打点4: gmm1+gmm2循环开始
+    RecordTimestamp(timestampOutput, 4);
     
     // 5. subBlockIdx_ == 0的核心执行gmm1 → gmm2 → combine
     preOffset_ = 0;
@@ -798,6 +849,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         EndGMM2Sync();
         vecSetSyncCom_ = 0;
     }
+    
+    // 打点5: gmm1+gmm2循环结束
+    RecordTimestamp(timestampOutput, 5);
+    
     if constexpr(g_coreType == AscendC::AIV) {
         if (aivCoreIdx_ == 1) {
             ExpertTokenNumCopyOut();
@@ -808,6 +863,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         }
     }
     SyncAll<true>();
+    
+    // 打点6: combine开始
+    RecordTimestamp(timestampOutput, 6);
+    
     // 6. unpermute & 清理win区上放置token的位置
     if constexpr(g_coreType == AIV) {
         TPipe secondPipe;
@@ -819,6 +878,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         PipeBarrier<PIPE_ALL>();
         secondPipe.Destroy();
     }
+    
+    // 打点7: combine结束
+    RecordTimestamp(timestampOutput, 7);
+    
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
 }
 
