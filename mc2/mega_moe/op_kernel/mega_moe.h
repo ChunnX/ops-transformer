@@ -74,18 +74,6 @@
 //         }
 
 
-// def calc_latency(core_idx, expert_idx=0):
-//     ts = y_timestamps[core_idx]
-//     return {
-//         'routing': ts[1] - ts[0],
-//         'dispatch': ts[2 + 2*expert_idx + 1] - ts[2 + 2*expert_idx],
-//         'gmm1': ts[34 + 2*expert_idx + 1] - ts[34 + 2*expert_idx],
-//         'gmm2': ts[66 + 2*expert_idx + 1] - ts[66 + 2*expert_idx],
-//         'combine': ts[99] - ts[98],
-//     }
-// for core_idx in range(12):
-//     core_type = "AIC" if core_idx < 4 else "AIV"
-//     print(f"{core_type} Core {core_idx}: {calc_latency(core_idx)}")
 #ifndef MEGA_MOE_H
 #define MEGA_MOE_H
 
