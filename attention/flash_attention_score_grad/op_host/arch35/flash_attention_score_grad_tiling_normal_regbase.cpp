@@ -938,10 +938,10 @@ void FlashAttentionScoreGradTilingNormalRegbase::DoPreTiling()
     uint64_t maskUsedCoreNum = 0;
     fBaseParams.enablePreSfmg =
         (fBaseParams.queryType == ge::DT_HIFLOAT8) ||
-        ((fBaseParams.queryType == ge::DT_BF16 || fBaseParams.queryType == ge::DT_FLOAT16) && fBaseParams.d >= 192 &&
+        ((fBaseParams.queryType == ge::DT_BF16 || fBaseParams.queryType == ge::DT_FLOAT16) && fBaseParams.d > 128 &&
          fBaseParams.d <= 768 && fBaseParams.splitAxis == SplitAxisEnum::BN2GS1S2 && !fBaseParams.isDeterministic &&
-         fBaseParams.sinkOptional != NORMAL_TENSOR && fBaseParams.layoutType != INPUT_FORMAT_TND &&
-         fBaseParams.dropoutIsDivisibleBy8 && !fBaseParams.sValueZeroUnderTND);
+         fBaseParams.sinkOptional != NORMAL_TENSOR && fBaseParams.dropoutIsDivisibleBy8 &&
+         !fBaseParams.sValueZeroUnderTND);
     if (fBaseParams.enablePreSfmg) {
         maskUsedCoreNum = static_cast<uint64_t>(DoPreSfmgTiling());
     } else {
