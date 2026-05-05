@@ -84,7 +84,7 @@ constexpr uint32_t SYS_WORKSPACE_SIZE = 16 * 1024 * 1024;
 constexpr uint32_t MAX_TURN_NUM = 24;
 constexpr int32_t MAX_BASE_K = 128;
 constexpr uint64_t COMM_TILE = 8; // 每卡数据分配几次计算
-constexpr uint64_t COMMMODE_INDEX = 11;
+constexpr int COMMMODE_INDEX = 11;
 
 const char* A_INNER_DEBUG = "AlltoAllvGroupedMatMulV2 Tiling";
 
@@ -796,7 +796,7 @@ ge::graphStatus AlltoAllvGmmTiling::SetHcclTiling(const gert::TilingContext* con
     OP_TILING_CHECK(hcclCcTilingConfig.GetTiling(tilingData->alltoAllvCcTiling) != 0,
         OP_LOGE(A_INNER_DEBUG, "mc2CcTilingConfig mc2tiling GetTiling alltoAllvCcTiling failed"), return ge::GRAPH_FAILED);
 
-    auto commMode = context_->GetAttrs()->GetAttrPointer<char>(COMMMODE_INDEX);
+    auto commMode = context_->GetAttrs()->GetAttrPointer<char>(static_cast<int>(COMMMODE_INDEX));
     if (strcmp(commMode, "aicpu") == 0) {
         hcclCcTilingConfig.SetCommEngine(mc2tiling::AICPU_ENGINE);
     }
