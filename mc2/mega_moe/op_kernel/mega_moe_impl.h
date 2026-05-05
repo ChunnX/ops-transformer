@@ -50,7 +50,8 @@ template <typename ElementA, typename ElementB, typename ElementC, typename Elem
 __aicore__ inline void GroupMatmulSwigluQuant(
     BlockEpilogueSwigluMxQuant<ElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true>& epilogueOp,
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
-    const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom)
+    const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom,
+    GlobalTensor<uint64_t> *timestampOutput = nullptr, uint32_t expertIdx = 0)
 {
     uint32_t m = Get<M_VALUE>(problemShape);
     uint32_t n = Get<N_VALUE>(problemShape);
@@ -154,6 +155,11 @@ __aicore__ inline void GroupMatmulSwigluQuant(
                     while (AscendC::GetSystemCycle() - st < 100) {
                     }
                 }
+                // 打点: dispatch真正完成（AIC核等待dispatch结束）
+                if (timestampOutput != nullptr) {
+                    constexpr int DISPATCH_BASE = 2;
+                    RecordTimestamp(*timestampOutput, DISPATCH_BASE + 2 * expertIdx + 1);
+                }
             }
 
             if (vecSetSyncCom) {
@@ -212,7 +218,8 @@ template <typename ElementA, typename ElementB, typename ElementC, typename Elem
 __aicore__ inline void GroupMatmul2(
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
     const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom2, uint32_t groupIdx,
-    uint16_t& pingpongIdx, int32_t rankId)
+    uint16_t& pingpongIdx, int32_t rankId,
+    GlobalTensor<uint64_t> *timestampOutput = nullptr)
 {
     constexpr uint32_t GMM2_BLOCK_SIZE = L1_TILE_M * L1_TILE_N;
 
@@ -323,6 +330,7 @@ __aicore__ inline void GroupMatmul2(
                     while (AscendC::GetSystemCycle() - st < 100) {
                     }
                 }
+                // gmm结束由AIV核在WaitForCube后记录
             }
             if (vecSetSyncCom2 >= 2) {
                 WaitForVector(pingpongIdx);
@@ -354,6 +362,12 @@ __aicore__ inline void GroupMatmul2(
 
         if constexpr (g_coreType == AscendC::AIV) {
             WaitForCube(pingpongIdx);
+            // 打点: gmm1真正完成（AIV核等待AIC核的gmm结束）
+            if (timestampOutput != nullptr) {
+                constexpr int MAX_EXPERT_PER_RANK = 16;
+                constexpr int GMM_BASE = 2 + 2 * MAX_EXPERT_PER_RANK;
+                RecordTimestamp(*timestampOutput, GMM_BASE + 2 * groupIdx + 1);
+            }
             AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
             MegaMoeCombineImpl::CombineTokens<ElementC, decltype(actualShape)>(
