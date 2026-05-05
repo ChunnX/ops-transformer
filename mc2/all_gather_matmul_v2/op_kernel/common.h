@@ -52,6 +52,10 @@ template <>
 struct BiasType<half> {
     using type = half;
 };
+template <>
+struct BiasType<bfloat16_t> {
+    using type = bfloat16_t;
+};
 
 struct HcclCombinOpParam {
     uint64_t WorkSpace;
