@@ -796,7 +796,7 @@ ge::graphStatus AlltoAllvGmmTiling::SetHcclTiling(const gert::TilingContext* con
     OP_TILING_CHECK(hcclCcTilingConfig.GetTiling(tilingData->alltoAllvCcTiling) != 0,
         OP_LOGE(A_INNER_DEBUG, "mc2CcTilingConfig mc2tiling GetTiling alltoAllvCcTiling failed"), return ge::GRAPH_FAILED);
 
-    auto commMode = context_->GetAttrs()->GetAttrPointer<char>(static_cast<int>(COMMMODE_INDEX));
+    auto commMode = context->GetAttrs()->GetAttrPointer<char>(static_cast<int>(COMMMODE_INDEX));
     if (strcmp(commMode, "aicpu") == 0) {
         hcclCcTilingConfig.SetCommEngine(mc2tiling::AICPU_ENGINE);
     }
