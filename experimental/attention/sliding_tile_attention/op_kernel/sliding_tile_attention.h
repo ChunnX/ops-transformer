@@ -20,32 +20,6 @@
 #define STA_USE_VECIN_PROB_OUT_HANDOFF 0
 #endif
 
-#define STA_ENABLE_TRACE 1
-
-#ifndef STA_ENABLE_TRACE
-#define STA_ENABLE_TRACE 0
-#endif
-
-#ifndef STA_TRACE_BATCH
-#define STA_TRACE_BATCH 0
-#endif
-
-#ifndef STA_TRACE_HEAD
-#define STA_TRACE_HEAD 0
-#endif
-
-#ifndef STA_TRACE_SEQ
-#define STA_TRACE_SEQ 0
-#endif
-
-#ifndef STA_TRACE_TASK_LIMIT
-#define STA_TRACE_TASK_LIMIT 1
-#endif
-
-#ifndef STA_TRACE_TILE_LOOP_LIMIT
-#define STA_TRACE_TILE_LOOP_LIMIT 4
-#endif
-
 namespace SlidingTileAttentionKernel {
 using namespace AscendC;
 using namespace matmul;
@@ -69,24 +43,6 @@ constexpr uint64_t SYNC_AIV_PROB_TO_AIC_0 = 11;
 constexpr uint64_t SYNC_AIV_PROB_TO_AIC_1 = 13;
 constexpr uint64_t SYNC_AIC_OUT_TO_AIV_0 = 15;
 constexpr uint64_t SYNC_AIC_OUT_TO_AIV_1 = 17;
-
-#if STA_ENABLE_TRACE
-__aicore__ inline uint64_t StaTraceClock()
-{
-    return static_cast<uint64_t>(GetSystemCycle());
-}
-
-__aicore__ inline bool StaTraceAivTask(int64_t batch, int64_t head, int64_t seq, int64_t tileLoop)
-{
-    return GetSubBlockIdx() == 0 && batch == STA_TRACE_BATCH && head == STA_TRACE_HEAD && seq == STA_TRACE_SEQ &&
-           tileLoop < STA_TRACE_TILE_LOOP_LIMIT;
-}
-
-__aicore__ inline bool StaTraceAicTask(int64_t taskIdx, int64_t tileLoop)
-{
-    return taskIdx < STA_TRACE_TASK_LIMIT && tileLoop < STA_TRACE_TILE_LOOP_LIMIT;
-}
-#endif
 
 __aicore__ inline uint64_t AivToAicSyncFlag(uint32_t bufferIdx)
 {
@@ -821,25 +777,7 @@ private:
                 continue;
             }
             const uint32_t bufferIdx = static_cast<uint32_t>(tileLoop % BUFFER_NUM);
-#if STA_ENABLE_TRACE
-            const bool trace = StaTraceAivTask(batch, head, seq, tileLoop);
-            if (trace) {
-                AscendC::printf("[STA][AIV][%llu] wait_score begin b=%ld h=%ld seq=%ld loop=%ld buf=%u kv=%ld cnt=%ld\n",
-                                static_cast<unsigned long long>(StaTraceClock()), batch, head, seq, tileLoop,
-                                bufferIdx, kvSeq, kvCount);
-            }
-#endif
             CrossCoreWaitFlag(AicToAivSyncFlag(bufferIdx));
-#if STA_ENABLE_TRACE
-            if (trace) {
-                AscendC::printf("[STA][AIV][%llu] wait_score end b=%ld h=%ld seq=%ld loop=%ld buf=%u\n",
-                                static_cast<unsigned long long>(StaTraceClock()), batch, head, seq, tileLoop,
-                                bufferIdx);
-                AscendC::printf("[STA][AIV][%llu] softmax begin b=%ld h=%ld seq=%ld loop=%ld buf=%u\n",
-                                static_cast<unsigned long long>(StaTraceClock()), batch, head, seq, tileLoop,
-                                bufferIdx);
-            }
-#endif
             for (int64_t row = GetSubBlockIdxValue(); row < qCount; row += GetTaskRatioValue()) {
                 const int64_t querySeq = seq + row;
                 if (querySeq >= tiling_->imageSeqLen + tiling_->textLength) {
@@ -856,35 +794,8 @@ private:
                 maxLocal.SetValue(row, maxScore);
                 denomLocal.SetValue(row, denom);
             }
-#if STA_ENABLE_TRACE
-            if (trace) {
-                AscendC::printf("[STA][AIV][%llu] softmax end b=%ld h=%ld seq=%ld loop=%ld buf=%u\n",
-                                static_cast<unsigned long long>(StaTraceClock()), batch, head, seq, tileLoop,
-                                bufferIdx);
-                AscendC::printf("[STA][AIV][%llu] set_prob_ready b=%ld h=%ld seq=%ld loop=%ld buf=%u\n",
-                                static_cast<unsigned long long>(StaTraceClock()), batch, head, seq, tileLoop,
-                                bufferIdx);
-            }
-#endif
             CrossCoreSetFlag<2, PIPE_MTE3>(AivProbToAicSyncFlag(bufferIdx));
-#if STA_ENABLE_TRACE
-            if (trace) {
-                AscendC::printf("[STA][AIV][%llu] wait_out begin b=%ld h=%ld seq=%ld loop=%ld buf=%u\n",
-                                static_cast<unsigned long long>(StaTraceClock()), batch, head, seq, tileLoop,
-                                bufferIdx);
-            }
-#endif
             CrossCoreWaitFlag(AicOutToAivSyncFlag(bufferIdx));
-#if STA_ENABLE_TRACE
-            if (trace) {
-                AscendC::printf("[STA][AIV][%llu] wait_out end b=%ld h=%ld seq=%ld loop=%ld buf=%u\n",
-                                static_cast<unsigned long long>(StaTraceClock()), batch, head, seq, tileLoop,
-                                bufferIdx);
-                AscendC::printf("[STA][AIV][%llu] acc begin b=%ld h=%ld seq=%ld loop=%ld buf=%u\n",
-                                static_cast<unsigned long long>(StaTraceClock()), batch, head, seq, tileLoop,
-                                bufferIdx);
-            }
-#endif
             for (int64_t row = GetSubBlockIdxValue(); row < qCount; row += GetTaskRatioValue()) {
                 const int64_t querySeq = seq + row;
                 if (querySeq >= tiling_->imageSeqLen + tiling_->textLength) {
@@ -893,16 +804,6 @@ private:
                 LocalTensor<float> accRow = GetAccTileRow(static_cast<uint32_t>(row));
                 AddPvOutRowToAcc(accRow, static_cast<uint32_t>(row), bufferIdx);
             }
-#if STA_ENABLE_TRACE
-            if (trace) {
-                AscendC::printf("[STA][AIV][%llu] acc end b=%ld h=%ld seq=%ld loop=%ld buf=%u\n",
-                                static_cast<unsigned long long>(StaTraceClock()), batch, head, seq, tileLoop,
-                                bufferIdx);
-                AscendC::printf("[STA][AIV][%llu] release_buf b=%ld h=%ld seq=%ld loop=%ld buf=%u\n",
-                                static_cast<unsigned long long>(StaTraceClock()), batch, head, seq, tileLoop,
-                                bufferIdx);
-            }
-#endif
             CrossCoreSetFlag<2, PIPE_MTE2>(AivToAicSyncFlag(bufferIdx));
             ++tileLoop;
         }
@@ -915,25 +816,7 @@ private:
         for (int64_t kvSeq = kvBegin; kvSeq < kvEnd; kvSeq += tiling_->kvBlock) {
             const int64_t kvCount = MinInt64(tiling_->kvBlock, kvEnd - kvSeq);
             const uint32_t bufferIdx = static_cast<uint32_t>(tileLoop % BUFFER_NUM);
-#if STA_ENABLE_TRACE
-            const bool trace = StaTraceAivTask(batch, head, seq, tileLoop);
-            if (trace) {
-                AscendC::printf("[STA][AIV][%llu] wait_score begin visible b=%ld h=%ld seq=%ld loop=%ld buf=%u kv=%ld cnt=%ld\n",
-                                static_cast<unsigned long long>(StaTraceClock()), batch, head, seq, tileLoop,
-                                bufferIdx, kvSeq, kvCount);
-            }
-#endif
             CrossCoreWaitFlag(AicToAivSyncFlag(bufferIdx));
-#if STA_ENABLE_TRACE
-            if (trace) {
-                AscendC::printf("[STA][AIV][%llu] wait_score end visible b=%ld h=%ld seq=%ld loop=%ld buf=%u\n",
-                                static_cast<unsigned long long>(StaTraceClock()), batch, head, seq, tileLoop,
-                                bufferIdx);
-                AscendC::printf("[STA][AIV][%llu] softmax begin visible b=%ld h=%ld seq=%ld loop=%ld buf=%u\n",
-                                static_cast<unsigned long long>(StaTraceClock()), batch, head, seq, tileLoop,
-                                bufferIdx);
-            }
-#endif
             for (int64_t row = GetSubBlockIdxValue(); row < qCount; row += GetTaskRatioValue()) {
                 const int64_t querySeq = seq + row;
                 if (querySeq >= tiling_->imageSeqLen + tiling_->textLength) {
@@ -950,35 +833,8 @@ private:
                 maxLocal.SetValue(row, maxScore);
                 denomLocal.SetValue(row, denom);
             }
-#if STA_ENABLE_TRACE
-            if (trace) {
-                AscendC::printf("[STA][AIV][%llu] softmax end visible b=%ld h=%ld seq=%ld loop=%ld buf=%u\n",
-                                static_cast<unsigned long long>(StaTraceClock()), batch, head, seq, tileLoop,
-                                bufferIdx);
-                AscendC::printf("[STA][AIV][%llu] set_prob_ready visible b=%ld h=%ld seq=%ld loop=%ld buf=%u\n",
-                                static_cast<unsigned long long>(StaTraceClock()), batch, head, seq, tileLoop,
-                                bufferIdx);
-            }
-#endif
             CrossCoreSetFlag<2, PIPE_MTE3>(AivProbToAicSyncFlag(bufferIdx));
-#if STA_ENABLE_TRACE
-            if (trace) {
-                AscendC::printf("[STA][AIV][%llu] wait_out begin visible b=%ld h=%ld seq=%ld loop=%ld buf=%u\n",
-                                static_cast<unsigned long long>(StaTraceClock()), batch, head, seq, tileLoop,
-                                bufferIdx);
-            }
-#endif
             CrossCoreWaitFlag(AicOutToAivSyncFlag(bufferIdx));
-#if STA_ENABLE_TRACE
-            if (trace) {
-                AscendC::printf("[STA][AIV][%llu] wait_out end visible b=%ld h=%ld seq=%ld loop=%ld buf=%u\n",
-                                static_cast<unsigned long long>(StaTraceClock()), batch, head, seq, tileLoop,
-                                bufferIdx);
-                AscendC::printf("[STA][AIV][%llu] acc begin visible b=%ld h=%ld seq=%ld loop=%ld buf=%u\n",
-                                static_cast<unsigned long long>(StaTraceClock()), batch, head, seq, tileLoop,
-                                bufferIdx);
-            }
-#endif
             for (int64_t row = GetSubBlockIdxValue(); row < qCount; row += GetTaskRatioValue()) {
                 const int64_t querySeq = seq + row;
                 if (querySeq >= tiling_->imageSeqLen + tiling_->textLength) {
@@ -987,16 +843,6 @@ private:
                 LocalTensor<float> accRow = GetAccTileRow(static_cast<uint32_t>(row));
                 AddPvOutRowToAcc(accRow, static_cast<uint32_t>(row), bufferIdx);
             }
-#if STA_ENABLE_TRACE
-            if (trace) {
-                AscendC::printf("[STA][AIV][%llu] acc end visible b=%ld h=%ld seq=%ld loop=%ld buf=%u\n",
-                                static_cast<unsigned long long>(StaTraceClock()), batch, head, seq, tileLoop,
-                                bufferIdx);
-                AscendC::printf("[STA][AIV][%llu] release_buf visible b=%ld h=%ld seq=%ld loop=%ld buf=%u\n",
-                                static_cast<unsigned long long>(StaTraceClock()), batch, head, seq, tileLoop,
-                                bufferIdx);
-            }
-#endif
             CrossCoreSetFlag<2, PIPE_MTE2>(AivToAicSyncFlag(bufferIdx));
             ++tileLoop;
         }
@@ -1030,12 +876,6 @@ private:
         if (qCount <= 0 || validSeqLen <= 0) {
             return;
         }
-#if STA_ENABLE_TRACE
-        if (batch == STA_TRACE_BATCH && head == STA_TRACE_HEAD && seq == STA_TRACE_SEQ) {
-            AscendC::printf("[STA][AIV][%llu] qblock begin task=%ld b=%ld h=%ld seq=%ld q=%ld\n",
-                            static_cast<unsigned long long>(StaTraceClock()), taskIdx, batch, head, seq, qCount);
-        }
-#endif
 
         LocalTensor<float> maxLocal = maxFloatBuf_.Get<float>();
         LocalTensor<float> denomLocal = denomFloatBuf_.Get<float>();
@@ -1078,12 +918,6 @@ private:
             }
             StoreFloatRow(qBase, accRow, static_cast<uint32_t>(row % BUFFER_NUM));
         }
-#if STA_ENABLE_TRACE
-        if (batch == STA_TRACE_BATCH && head == STA_TRACE_HEAD && seq == STA_TRACE_SEQ) {
-            AscendC::printf("[STA][AIV][%llu] qblock end task=%ld b=%ld h=%ld seq=%ld tileLoops=%ld\n",
-                            static_cast<unsigned long long>(StaTraceClock()), taskIdx, batch, head, seq, tileLoop);
-        }
-#endif
     }
 
     __aicore__ inline void AccumulateOnlineValueBlock(LocalTensor<float> &qLocal, LocalTensor<float> &accLocal,
@@ -1524,69 +1358,13 @@ private:
                 continue;
             }
             const uint32_t bufferIdx = static_cast<uint32_t>(tileLoop % BUFFER_NUM);
-#if STA_ENABLE_TRACE
-            const bool trace = StaTraceAicTask(taskIdx, tileLoop);
-            if (trace) {
-                AscendC::printf("[STA][AIC][%llu] kv begin task=%ld seq=%ld loop=%ld buf=%u kv=%ld cnt=%ld\n",
-                                static_cast<unsigned long long>(StaTraceClock()), taskIdx, seq, tileLoop, bufferIdx,
-                                kvSeq, kvCount);
-            }
-#endif
             if (tileLoop >= BUFFER_NUM) {
-#if STA_ENABLE_TRACE
-                if (trace) {
-                    AscendC::printf("[STA][AIC][%llu] wait_release begin task=%ld loop=%ld buf=%u\n",
-                                    static_cast<unsigned long long>(StaTraceClock()), taskIdx, tileLoop, bufferIdx);
-                }
-#endif
                 CrossCoreWaitFlag(AivToAicSyncFlag(bufferIdx));
-#if STA_ENABLE_TRACE
-                if (trace) {
-                    AscendC::printf("[STA][AIC][%llu] wait_release end task=%ld loop=%ld buf=%u\n",
-                                    static_cast<unsigned long long>(StaTraceClock()), taskIdx, tileLoop, bufferIdx);
-                }
-#endif
             }
-#if STA_ENABLE_TRACE
-            if (trace) {
-                AscendC::printf("[STA][AIC][%llu] qk begin task=%ld loop=%ld buf=%u\n",
-                                static_cast<unsigned long long>(StaTraceClock()), taskIdx, tileLoop, bufferIdx);
-            }
-#endif
             ComputeScoreTileTask(taskIdx, kvSeq, kvCount, bufferIdx);
-#if STA_ENABLE_TRACE
-            if (trace) {
-                AscendC::printf("[STA][AIC][%llu] qk end task=%ld loop=%ld buf=%u\n",
-                                static_cast<unsigned long long>(StaTraceClock()), taskIdx, tileLoop, bufferIdx);
-                AscendC::printf("[STA][AIC][%llu] set_score_ready task=%ld loop=%ld buf=%u\n",
-                                static_cast<unsigned long long>(StaTraceClock()), taskIdx, tileLoop, bufferIdx);
-            }
-#endif
             CrossCoreSetFlag<2, PIPE_FIX>(AicToAivSyncFlag(bufferIdx));
-#if STA_ENABLE_TRACE
-            if (trace) {
-                AscendC::printf("[STA][AIC][%llu] wait_prob begin task=%ld loop=%ld buf=%u\n",
-                                static_cast<unsigned long long>(StaTraceClock()), taskIdx, tileLoop, bufferIdx);
-            }
-#endif
             CrossCoreWaitFlag(AivProbToAicSyncFlag(bufferIdx));
-#if STA_ENABLE_TRACE
-            if (trace) {
-                AscendC::printf("[STA][AIC][%llu] wait_prob end task=%ld loop=%ld buf=%u\n",
-                                static_cast<unsigned long long>(StaTraceClock()), taskIdx, tileLoop, bufferIdx);
-                AscendC::printf("[STA][AIC][%llu] pv begin task=%ld loop=%ld buf=%u\n",
-                                static_cast<unsigned long long>(StaTraceClock()), taskIdx, tileLoop, bufferIdx);
-            }
-#endif
             ComputeValueTileTask(taskIdx, kvSeq, kvCount, bufferIdx);
-#if STA_ENABLE_TRACE
-            if (trace) {
-                AscendC::printf("[STA][AIC][%llu] pv end task=%ld loop=%ld buf=%u\n",
-                                static_cast<unsigned long long>(StaTraceClock()), taskIdx, tileLoop, bufferIdx);
-                AscendC::printf("[STA][AIC][%llu] set_out_ready task=%ld loop=%ld buf=%u\n",
-                                static_cast<unsigned long long>(StaTraceClock()), taskIdx, tileLoop, bufferIdx);
-            }
-#endif
             CrossCoreSetFlag<2, PIPE_FIX>(AicOutToAivSyncFlag(bufferIdx));
             ++tileLoop;
         }
@@ -1598,69 +1376,13 @@ private:
         for (int64_t kvSeq = kvBegin; kvSeq < kvEnd; kvSeq += tiling_->kvBlock) {
             const int64_t kvCount = MinInt64(tiling_->kvBlock, kvEnd - kvSeq);
             const uint32_t bufferIdx = static_cast<uint32_t>(tileLoop % BUFFER_NUM);
-#if STA_ENABLE_TRACE
-            const bool trace = StaTraceAicTask(taskIdx, tileLoop);
-            if (trace) {
-                AscendC::printf("[STA][AIC][%llu] kv begin visible task=%ld seq=%ld loop=%ld buf=%u kv=%ld cnt=%ld\n",
-                                static_cast<unsigned long long>(StaTraceClock()), taskIdx, seq, tileLoop, bufferIdx,
-                                kvSeq, kvCount);
-            }
-#endif
             if (tileLoop >= BUFFER_NUM) {
-#if STA_ENABLE_TRACE
-                if (trace) {
-                    AscendC::printf("[STA][AIC][%llu] wait_release begin visible task=%ld loop=%ld buf=%u\n",
-                                    static_cast<unsigned long long>(StaTraceClock()), taskIdx, tileLoop, bufferIdx);
-                }
-#endif
                 CrossCoreWaitFlag(AivToAicSyncFlag(bufferIdx));
-#if STA_ENABLE_TRACE
-                if (trace) {
-                    AscendC::printf("[STA][AIC][%llu] wait_release end visible task=%ld loop=%ld buf=%u\n",
-                                    static_cast<unsigned long long>(StaTraceClock()), taskIdx, tileLoop, bufferIdx);
-                }
-#endif
             }
-#if STA_ENABLE_TRACE
-            if (trace) {
-                AscendC::printf("[STA][AIC][%llu] qk begin visible task=%ld loop=%ld buf=%u\n",
-                                static_cast<unsigned long long>(StaTraceClock()), taskIdx, tileLoop, bufferIdx);
-            }
-#endif
             ComputeScoreTileTask(taskIdx, kvSeq, kvCount, bufferIdx);
-#if STA_ENABLE_TRACE
-            if (trace) {
-                AscendC::printf("[STA][AIC][%llu] qk end visible task=%ld loop=%ld buf=%u\n",
-                                static_cast<unsigned long long>(StaTraceClock()), taskIdx, tileLoop, bufferIdx);
-                AscendC::printf("[STA][AIC][%llu] set_score_ready visible task=%ld loop=%ld buf=%u\n",
-                                static_cast<unsigned long long>(StaTraceClock()), taskIdx, tileLoop, bufferIdx);
-            }
-#endif
             CrossCoreSetFlag<2, PIPE_FIX>(AicToAivSyncFlag(bufferIdx));
-#if STA_ENABLE_TRACE
-            if (trace) {
-                AscendC::printf("[STA][AIC][%llu] wait_prob begin visible task=%ld loop=%ld buf=%u\n",
-                                static_cast<unsigned long long>(StaTraceClock()), taskIdx, tileLoop, bufferIdx);
-            }
-#endif
             CrossCoreWaitFlag(AivProbToAicSyncFlag(bufferIdx));
-#if STA_ENABLE_TRACE
-            if (trace) {
-                AscendC::printf("[STA][AIC][%llu] wait_prob end visible task=%ld loop=%ld buf=%u\n",
-                                static_cast<unsigned long long>(StaTraceClock()), taskIdx, tileLoop, bufferIdx);
-                AscendC::printf("[STA][AIC][%llu] pv begin visible task=%ld loop=%ld buf=%u\n",
-                                static_cast<unsigned long long>(StaTraceClock()), taskIdx, tileLoop, bufferIdx);
-            }
-#endif
             ComputeValueTileTask(taskIdx, kvSeq, kvCount, bufferIdx);
-#if STA_ENABLE_TRACE
-            if (trace) {
-                AscendC::printf("[STA][AIC][%llu] pv end visible task=%ld loop=%ld buf=%u\n",
-                                static_cast<unsigned long long>(StaTraceClock()), taskIdx, tileLoop, bufferIdx);
-                AscendC::printf("[STA][AIC][%llu] set_out_ready visible task=%ld loop=%ld buf=%u\n",
-                                static_cast<unsigned long long>(StaTraceClock()), taskIdx, tileLoop, bufferIdx);
-            }
-#endif
             CrossCoreSetFlag<2, PIPE_FIX>(AicOutToAivSyncFlag(bufferIdx));
             ++tileLoop;
         }
