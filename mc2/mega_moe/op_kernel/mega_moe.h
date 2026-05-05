@@ -13,6 +13,65 @@
  * \brief
  */
 
+// uint64_t startTime = 0;
+//         constexpr uint64_t CYCLES_PER_US = 1000;
+
+
+//         AscendC::GlobalTensor<uint64_t> outputx;
+//         outputx.SetGlobalBuffer((__gm__ uint64_t*)params.y2GmAddr);
+
+
+//         // 记录起始时间
+//         if constexpr(g_coreType == AscendC::AIV) {
+//             if (aivCoreIdx == 0) {
+//                 AscendC::PipeBarrier<PIPE_ALL>();
+//                 startTime = static_cast<uint64_t>(AscendC::GetSystemCycle());
+//                 // 打点1: moe_init_routing_v3
+//                 if constexpr(g_coreType == AscendC::AIV) {
+//                     if (aivCoreIdx == 0) {
+//                         AscendC::PipeBarrier<PIPE_ALL>();
+//                         outputx.SetValue(0, 0);
+//                         AscendC::PipeBarrier<PIPE_ALL>();
+//                     }
+//                 }
+//                 AscendC::PipeBarrier<PIPE_ALL>();
+//             }
+//         }
+
+
+
+        
+//         // InitRouting
+//         moe_init_routing_v3<bfloat16_t, fp8_e4m3fn_t>(params.aGmAddr, params.expertIdxGmAddr, nullptr, nullptr,
+//                 params.peermemInfo.ptrA0, params.workspaceInfo.expandedRowIdx,
+//                 tokenPerExpertCurRank, nullptr,
+//                 params.workspaceInfo.ptrA, &params.tilingData->moeInitRoutingTilingData, params.tilingData->moeInitRoutingTilingData.tilingKey);
+
+
+//         // 打点1: moe_init_routing_v3
+//         if constexpr(g_coreType == AscendC::AIV) {
+//             if (aivCoreIdx == 0) {
+//                 AscendC::PipeBarrier<PIPE_ALL>();
+//                 outputx.SetValue(1, static_cast<uint64_t>((AscendC::GetSystemCycle() - startTime) / CYCLES_PER_US));
+//                 AscendC::PipeBarrier<PIPE_ALL>();
+//             }
+//         }
+
+
+
+
+//         AscendC::SyncAll<true>();
+//         // Get TokenPerExpert prevsum cumsum
+//         CrossRankSyncAndlocalTokenPerExpertAllGatherAndGetSumPreRankV2(params, tokenPerExpertCurRank);
+
+//         // 打点2: AivSyncAllForAic
+//         if constexpr(g_coreType == AscendC::AIV) {
+//             if (aivCoreIdx == 0) {
+//                 AscendC::PipeBarrier<PIPE_ALL>();
+//                 outputx.SetValue(2, static_cast<uint64_t>((AscendC::GetSystemCycle() - startTime) / CYCLES_PER_US));
+//                 AscendC::PipeBarrier<PIPE_ALL>();
+//             }
+//         }
 #ifndef MEGA_MOE_H
 #define MEGA_MOE_H
 
