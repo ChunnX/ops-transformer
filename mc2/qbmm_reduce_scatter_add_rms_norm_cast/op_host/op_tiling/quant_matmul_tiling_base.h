@@ -18,7 +18,7 @@
 #include <cstdint>
 #include <cstdio>
 
-#include "host_utils/common_utils.h"
+#include "common_utils.h"
 #include "quant_matmul_tiling_common.h"
 #include "../../op_kernel/quant_matmul_tiling_data.h"
 
