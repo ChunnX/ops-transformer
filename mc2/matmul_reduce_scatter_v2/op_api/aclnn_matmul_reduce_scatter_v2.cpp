@@ -439,6 +439,11 @@ aclnnStatus aclnnMatmulReduceScatterV2GetWorkspaceSize(const aclTensor* x1, cons
 {
     aclnnStatus ret = ACLNN_SUCCESS;
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        if (commMode != nullptr && std::strcmp(commMode, "ccu") != 0) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "DAV_3510 only supports commMode='ccu', but got '%s'.", commMode);
+            return ACLNN_ERR_PARAM_INVALID;
+        }
         ret = matmulReduceScatterV2GetWorkSpaceSizeCcuMode(x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, group, reduceOp, commTurn,
                                                        streamMode, groupSize, commMode, output, amaxOutOptional, workspaceSize, executor);
     } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
