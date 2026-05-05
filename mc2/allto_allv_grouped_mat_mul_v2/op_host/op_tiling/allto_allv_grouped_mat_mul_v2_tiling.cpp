@@ -239,7 +239,7 @@ static void PrintCommonTilingInfo(AlltoAllvGmmCommonTilingInfo &commonTilingInfo
 class AlltoAllvGmmV2Tiling
 {
 public:
-    AlltoAllvGmmV2TilingData* tilingData;
+    AlltoAllvGmmTilingData* tilingData;
 
     ge::graphStatus Init(gert::TilingContext* context);
     ge::graphStatus RunFusionKernelTiling(gert::TilingContext* context);
@@ -858,7 +858,7 @@ ge::graphStatus AlltoAllvGmmV2Tiling::CheckDType(const gert::TilingContext* cont
 
 ge::graphStatus AlltoAllvGmmV2Tiling::Init(gert::TilingContext* context)
 {
-    tilingData = context->GetTilingData<AlltoAllvGmmV2TilingData>();
+    tilingData = context->GetTilingData<AlltoAllvGmmTilingData>();
     OP_TILING_CHECK(
         GetContextAttr(context) != ge::GRAPH_SUCCESS, OP_LOGE(A_INNER_DEBUG, "Get context attr failed!"),
         return ge::GRAPH_FAILED);
