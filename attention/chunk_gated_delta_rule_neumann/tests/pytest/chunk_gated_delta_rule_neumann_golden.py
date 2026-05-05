@@ -108,11 +108,13 @@ def chunk_gated_delta_rule_native(
     value,
     g,
     beta,
-    chunk_size=16,
+    chunk_size=None,
     initial_state=None,
     output_final_state=False,
     use_qk_l2norm_in_kernel=False,
 ):
+    if chunk_size is None:
+        chunk_size = int(os.getenv("CGDR_GOLDEN_CHUNK_SIZE", "64"))
     initial_dtype = query.dtype
     query, key, value, beta, g = [
         x.transpose(1, 2).contiguous().to(torch.float32)

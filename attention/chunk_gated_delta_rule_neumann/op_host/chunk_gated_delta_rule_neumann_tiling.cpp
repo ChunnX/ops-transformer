@@ -20,6 +20,7 @@
 #include "err/ops_err.h"
 #include "log/log.h"
 #include "tiling/platform/platform_ascendc.h"
+#include "../op_kernel/selected/stage1_selected_config.h"
 
 namespace optiling {
 REGISTER_OPS_TILING_TEMPLATE(ChunkGatedDeltaRuleNeumann, ChunkGatedDeltaRuleNeumannTiling, 0);
@@ -53,6 +54,9 @@ constexpr int64_t SYS_WORKSPACE_SIZE = 16777216;
 constexpr uint32_t MATMUL_BASE_M = 128;
 constexpr uint32_t MATMUL_BASE_K = 128;
 constexpr uint32_t MATMUL_BASE_N = 128;
+constexpr uint32_t MATMUL_MICRO_C16 = 16;
+constexpr uint32_t MATMUL_MICRO_C32 = 32;
+constexpr uint32_t MATMUL_MICRO_C64 = 64;
 
 constexpr uint32_t STAGE_ONE_TWO = 2;
 constexpr uint32_t STAGE_ONE_THREE = 3;
@@ -110,7 +114,7 @@ ge::graphStatus ChunkGatedDeltaRuleNeumannTiling::GetShapeAttrsInfo()
 
 ge::graphStatus ChunkGatedDeltaRuleNeumannTiling::DoOpTiling()
 {
-    int64_t c = 16;
+    int64_t c = CGDR_NEUMANN_SELECTED_CHUNK_SIZE;
     int64_t p = P_NUM; // 一个 chunk 组中，单核最大处理 chunk 数
     tilingData_.chunkSize = c;
     tilingData_.maxGroupLength = p * tilingData_.aiCoreNum * tilingData_.chunkSize;
@@ -138,9 +142,15 @@ ge::graphStatus ChunkGatedDeltaRuleNeumannTiling::DoOpTiling()
         sizeHigh * c * (STAGE_ONE_TWO * c + STAGE_ONE_THREE * dk + dv) * tilingData_.stageOneParaNum;
     tilingData_.stageWorkspaceSz *= tilingData_.aiCoreNum;
 
-    // Neumann 求逆 workspace: L_pow + tmp + INV (每个 core 各一个 16×16 矩阵)
+    // Neumann 求逆 workspace: L_pow + tmp + INV (每个 core 各一份)
     int64_t neumannWsSz = sizeHigh * tilingData_.aiCoreNum * c * c * 3;
     tilingData_.stageWorkspaceSz += neumannWsSz;
+
+    // Raw MMAD scratch is reused by inverse accumulation and final-output probes.
+    int64_t rhsMax = dk > dv ? dk : dv;
+    int64_t rawScratchCols = rhsMax > c ? rhsMax : c;
+    int64_t rawFinalScratchSz = sizeHigh * tilingData_.aiCoreNum * c * rawScratchCols;
+    tilingData_.stageWorkspaceSz += rawFinalScratchSz;
 
     PrintTilingData();
     return ge::GRAPH_SUCCESS;
@@ -148,13 +158,6 @@ ge::graphStatus ChunkGatedDeltaRuleNeumannTiling::DoOpTiling()
 
 ge::graphStatus ChunkGatedDeltaRuleNeumannTiling::DoMatmulTiling()
 {
-    // 计算 baseM、baseN、baseK
-    uint32_t baseM = MATMUL_BASE_M;
-    uint32_t baseK = MATMUL_BASE_K;
-    uint32_t baseN = MATMUL_BASE_N;
-
-    // ========== MT_FP32: FP32 -> FP32 ==========
-    matmul_tiling::MultiCoreMatmulTiling mm_;
     const auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
     uint64_t ubSize;
     uint64_t l1Size;
@@ -162,27 +165,117 @@ ge::graphStatus ChunkGatedDeltaRuleNeumannTiling::DoMatmulTiling()
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, l1Size);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, l0CSize);
-    mm_.SetBufferSpace(l1Size, l0CSize, ubSize);
-    mm_.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT, true);
-    mm_.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT, true);
-    mm_.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT);
-    mm_.SetBias(false);
-    mm_.SetDim(1);
-    mm_.SetShape(baseM, baseN, baseK);
-    mm_.SetOrgShape(baseM, baseN, baseK);
-    mm_.SetFixSplit(baseM, baseN, baseK);
-    if (mm_.GetTiling(tilingData_.matmulTilingFp32) == -1) {
-        OP_LOGE(context_->GetNodeName(), "CGDR: Get Tiling Failed!");
+
+    auto getTiling = [&](uint32_t baseM, uint32_t baseN, uint32_t baseK,
+                         matmul_tiling::DataType aType,
+                         matmul_tiling::DataType bType,
+                         matmul_tiling::DataType cType,
+                         bool transA,
+                         bool transB,
+                         AscendC::tiling::TCubeTiling &tiling,
+                         matmul_tiling::TPosition aPos = matmul_tiling::TPosition::GM,
+                         matmul_tiling::TPosition bPos = matmul_tiling::TPosition::GM,
+                         matmul_tiling::TPosition cPos = matmul_tiling::TPosition::GM,
+                         matmul_tiling::CubeFormat aFormat = matmul_tiling::CubeFormat::ND,
+                         matmul_tiling::CubeFormat bFormat = matmul_tiling::CubeFormat::ND,
+                         matmul_tiling::CubeFormat cFormat = matmul_tiling::CubeFormat::ND) -> ge::graphStatus {
+        matmul_tiling::MultiCoreMatmulTiling mm_;
+        mm_.SetBufferSpace(l1Size, l0CSize, ubSize);
+        mm_.SetAType(aPos, aFormat, aType, transA);
+        mm_.SetBType(bPos, bFormat, bType, transB);
+        mm_.SetCType(cPos, cFormat, cType);
+        mm_.SetBias(false);
+        mm_.SetDim(1);
+        mm_.SetShape(baseM, baseN, baseK);
+        mm_.SetOrgShape(baseM, baseN, baseK);
+        mm_.SetFixSplit(baseM, baseN, baseK);
+        if (mm_.GetTiling(tiling) == -1) {
+            OP_LOGE(context_->GetNodeName(), "CGDR: Get Tiling Failed!");
+            return ge::GRAPH_FAILED;
+        }
+        OP_LOGD(context_->GetNodeName(), "CGDR: baseM is %d, baseK is %d, baseN is %d.", baseM, baseK, baseN);
+        tiling.dbL0C = 1;
+        tiling.stepKa = 1;
+        tiling.stepKb = 1;
+        tiling.depthA1 = 1;
+        tiling.depthB1 = 1;
+        tiling.stepM = 1;
+        tiling.stepN = 1;
+        return ge::GRAPH_SUCCESS;
+    };
+
+    if (getTiling(MATMUL_BASE_M, MATMUL_BASE_N, MATMUL_BASE_K,
+                  matmul_tiling::DataType::DT_FLOAT, matmul_tiling::DataType::DT_FLOAT,
+                  matmul_tiling::DataType::DT_FLOAT, true, true,
+                  tilingData_.matmulTilingFp32) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    OP_LOGD(context_->GetNodeName(), "CGDR: baseM is %d, baseK is %d, baseN is %d.", baseM, baseK, baseN);
-    tilingData_.matmulTilingFp32.dbL0C = 1;
-    tilingData_.matmulTilingFp32.stepKa = 1;
-    tilingData_.matmulTilingFp32.stepKb = 1;
-    tilingData_.matmulTilingFp32.depthA1 = 1;
-    tilingData_.matmulTilingFp32.depthB1 = 1;
-    tilingData_.matmulTilingFp32.stepM = 1;
-    tilingData_.matmulTilingFp32.stepN = 1;
+    if (getTiling(MATMUL_MICRO_C16, MATMUL_MICRO_C16, MATMUL_MICRO_C16,
+                  matmul_tiling::DataType::DT_FLOAT, matmul_tiling::DataType::DT_FLOAT,
+                  matmul_tiling::DataType::DT_FLOAT, true, true,
+                  tilingData_.matmulTilingFp32C16) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (getTiling(MATMUL_MICRO_C32, MATMUL_MICRO_C32, MATMUL_MICRO_C32,
+                  matmul_tiling::DataType::DT_FLOAT, matmul_tiling::DataType::DT_FLOAT,
+                  matmul_tiling::DataType::DT_FLOAT, true, true,
+                  tilingData_.matmulTilingFp32C32) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (getTiling(MATMUL_MICRO_C64, MATMUL_MICRO_C64, MATMUL_MICRO_C64,
+                  matmul_tiling::DataType::DT_FLOAT, matmul_tiling::DataType::DT_FLOAT,
+                  matmul_tiling::DataType::DT_FLOAT, true, true,
+                  tilingData_.matmulTilingFp32C64) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (getTiling(MATMUL_BASE_M, MATMUL_BASE_N, MATMUL_BASE_K,
+                  matmul_tiling::DataType::DT_FLOAT16, matmul_tiling::DataType::DT_FLOAT16,
+                  matmul_tiling::DataType::DT_FLOAT, false, false,
+                  tilingData_.matmulTilingFp16Out) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (getTiling(MATMUL_BASE_M, MATMUL_BASE_N, MATMUL_BASE_K,
+                  matmul_tiling::DataType::DT_FLOAT16, matmul_tiling::DataType::DT_FLOAT16,
+                  matmul_tiling::DataType::DT_FLOAT, false, false,
+                  tilingData_.matmulTilingFp16L1Out,
+                  matmul_tiling::TPosition::TSCM, matmul_tiling::TPosition::GM,
+                  matmul_tiling::TPosition::GM,
+                  matmul_tiling::CubeFormat::NZ, matmul_tiling::CubeFormat::ND,
+                  matmul_tiling::CubeFormat::ND) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (getTiling(MATMUL_MICRO_C16, MATMUL_MICRO_C16, MATMUL_MICRO_C16,
+                  matmul_tiling::DataType::DT_FLOAT16, matmul_tiling::DataType::DT_FLOAT16,
+                  matmul_tiling::DataType::DT_FLOAT16, false, false,
+                  tilingData_.matmulTilingFp16C16) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (getTiling(MATMUL_MICRO_C32, MATMUL_MICRO_C32, MATMUL_MICRO_C32,
+                  matmul_tiling::DataType::DT_FLOAT16, matmul_tiling::DataType::DT_FLOAT16,
+                  matmul_tiling::DataType::DT_FLOAT16, false, false,
+                  tilingData_.matmulTilingFp16C32) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (getTiling(MATMUL_MICRO_C16, MATMUL_MICRO_C16, MATMUL_MICRO_C16,
+                  matmul_tiling::DataType::DT_FLOAT16, matmul_tiling::DataType::DT_FLOAT16,
+                  matmul_tiling::DataType::DT_FLOAT16, false, false,
+                  tilingData_.matmulTilingFp16C16L1,
+                  matmul_tiling::TPosition::TSCM, matmul_tiling::TPosition::TSCM,
+                  matmul_tiling::TPosition::TSCM,
+                  matmul_tiling::CubeFormat::NZ, matmul_tiling::CubeFormat::NZ,
+                  matmul_tiling::CubeFormat::NZ) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (getTiling(MATMUL_MICRO_C32, MATMUL_MICRO_C32, MATMUL_MICRO_C32,
+                  matmul_tiling::DataType::DT_FLOAT16, matmul_tiling::DataType::DT_FLOAT16,
+                  matmul_tiling::DataType::DT_FLOAT16, false, false,
+                  tilingData_.matmulTilingFp16C32L1,
+                  matmul_tiling::TPosition::TSCM, matmul_tiling::TPosition::TSCM,
+                  matmul_tiling::TPosition::TSCM,
+                  matmul_tiling::CubeFormat::NZ, matmul_tiling::CubeFormat::NZ,
+                  matmul_tiling::CubeFormat::NZ) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 

@@ -31,6 +31,13 @@ METRIC_COLUMNS = [
     ("aiv_icache_miss_rate", "aiv_icache_miss_rate", False),
 ]
 
+COMPARE_VALUE_COLUMNS = [
+    "task_duration_us",
+    "task_wait_time_us",
+    "aicore_time_us",
+    *[metric_name for metric_name, _, _ in METRIC_COLUMNS],
+]
+
 
 def to_float(value):
     value = str(value).strip()
@@ -49,6 +56,20 @@ def latest_prof_dir(op_dir):
 def find_op_summary(prof_dir):
     files = sorted((prof_dir / "mindstudio_profiler_output").glob("op_summary_*.csv"))
     return files[-1] if files else None
+
+
+def as_root_list(root):
+    if isinstance(root, (str, Path)):
+        return [Path(root)]
+    return [Path(item) for item in root]
+
+
+def find_prof_dir(roots, case_name, ops):
+    for root in roots:
+        prof_dir = latest_prof_dir(root / case_name / ops)
+        if prof_dir is not None:
+            return prof_dir
+    return None
 
 
 def parse_target_rows(prof_dir, op_type):
@@ -77,17 +98,58 @@ def parse_target_rows(prof_dir, op_type):
     return rows
 
 
-def summarize(root):
-    root = Path(root)
+def ratio_value(numerator, denominator):
+    return numerator / denominator if denominator else ""
+
+
+def make_compare_op_row(case_name, case, ops, measurement, faster):
+    row = {
+        "case_name": case_name,
+        "B": case["batch_size"],
+        "S": case["seqlen"],
+        "D": case["dk"],
+        "Hq": case["nv"],
+        "Hkv": case["nk"],
+        "row_type": "measurement",
+        "ops": ops,
+        "faster": faster,
+    }
+    for column in COMPARE_VALUE_COLUMNS:
+        row[column] = measurement[column]
+    return row
+
+
+def make_compare_ratio_row(case_name, case, normal, neumann, faster):
+    row = {
+        "case_name": case_name,
+        "B": case["batch_size"],
+        "S": case["seqlen"],
+        "D": case["dk"],
+        "Hq": case["nv"],
+        "Hkv": case["nk"],
+        "row_type": "ratio_neumann_over_normal",
+        "ops": "neumann/normal",
+        "faster": faster,
+    }
+    for column in COMPARE_VALUE_COLUMNS:
+        row[column] = ratio_value(neumann[column], normal[column])
+    return row
+
+
+def summarize(root, extra_roots=None, output_root=None):
+    roots = as_root_list(root)
+    if extra_roots:
+        roots.extend(as_root_list(extra_roots))
+    output_root = Path(output_root) if output_root else roots[0]
     cases_by_name = {case_id(case): case for case in PERFORMANCE_CASES}
     raw_rows = []
     compare_rows = []
 
-    for case_name in sorted(cases_by_name):
-        case = cases_by_name[case_name]
+    for case in PERFORMANCE_CASES:
+        case_name = case_id(case)
         measurements = {}
         for ops, op_type in OP_TYPES.items():
-            prof_dir = latest_prof_dir(root / case_name / ops)
+            prof_dir = find_prof_dir(roots, case_name, ops)
             if prof_dir is None:
                 continue
             target_rows = parse_target_rows(prof_dir, op_type)
@@ -113,31 +175,15 @@ def summarize(root):
         if "normal" in measurements and "neumann" in measurements:
             normal_us = measurements["normal"]["task_duration_us"]
             neumann_us = measurements["neumann"]["task_duration_us"]
-            compare_row = {
-                "case_name": case_name,
-                "B": case["batch_size"],
-                "S": case["seqlen"],
-                "D": case["dk"],
-                "Hq": case["nv"],
-                "Hkv": case["nk"],
-                "normal_us": normal_us,
-                "neumann_us": neumann_us,
-                "neumann_speedup_vs_normal": normal_us / neumann_us if neumann_us > 0 else "",
-                "neumann_over_normal": neumann_us / normal_us if normal_us > 0 else "",
-                "faster": "neumann" if neumann_us < normal_us else "normal",
-            }
-            for ops in OP_TYPES:
-                measurement = measurements[ops]
-                compare_row[f"{ops}_task_wait_time_us"] = measurement["task_wait_time_us"]
-                compare_row[f"{ops}_aicore_time_us"] = measurement["aicore_time_us"]
-                for metric_name, _, include_ratio in METRIC_COLUMNS:
-                    if metric_name.endswith("_ratio") and not include_ratio:
-                        continue
-                    compare_row[f"{ops}_{metric_name}"] = measurement[metric_name]
-            compare_rows.append(compare_row)
+            faster = "neumann" if neumann_us < normal_us else "normal"
+            compare_rows.append(make_compare_op_row(case_name, case, "normal", measurements["normal"], faster))
+            compare_rows.append(make_compare_op_row(case_name, case, "neumann", measurements["neumann"], faster))
+            compare_rows.append(
+                make_compare_ratio_row(case_name, case, measurements["normal"], measurements["neumann"], faster)
+            )
 
-    raw_path = root / "performance_raw.csv"
-    compare_path = root / "performance_compare.csv"
+    raw_path = output_root / "performance_raw.csv"
+    compare_path = output_root / "performance_compare.csv"
     write_csv(raw_path, raw_rows)
     write_csv(compare_path, compare_rows)
     return raw_path, compare_path, raw_rows, compare_rows
@@ -157,8 +203,19 @@ def write_csv(path, rows):
 def main():
     parser = argparse.ArgumentParser(description="Summarize ChunkGDR msprof outputs.")
     parser.add_argument("--root", required=True, help="msprof output root created by run_chunk_gdr_performance_msprof.py")
+    parser.add_argument(
+        "--extra-root",
+        action="append",
+        default=[],
+        help="Additional msprof output root used to fill cases missing from --root. Can be repeated.",
+    )
+    parser.add_argument(
+        "--output-root",
+        default=None,
+        help="Directory for generated performance_raw.csv and performance_compare.csv. Defaults to --root.",
+    )
     args = parser.parse_args()
-    raw_path, compare_path, raw_rows, compare_rows = summarize(args.root)
+    raw_path, compare_path, raw_rows, compare_rows = summarize(args.root, args.extra_root, args.output_root)
     print(f"[SUMMARY] raw rows={len(raw_rows)} -> {raw_path}")
     print(f"[SUMMARY] compare rows={len(compare_rows)} -> {compare_path}")
     return 0

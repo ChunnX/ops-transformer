@@ -1,0 +1,6 @@
+#ifndef CHUNK_GATED_DELTA_RULE_NEUMANN_STAGE1_SELECTED_H
+#define CHUNK_GATED_DELTA_RULE_NEUMANN_STAGE1_SELECTED_H
+
+#include "../halflocal/chunk_gated_delta_rule_neumann_stage1_C64_3232_FP32_halflocal.h"
+
+#endif  // CHUNK_GATED_DELTA_RULE_NEUMANN_STAGE1_SELECTED_H

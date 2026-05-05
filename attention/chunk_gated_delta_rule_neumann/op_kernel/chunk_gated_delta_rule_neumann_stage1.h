@@ -15,8 +15,6 @@
 #ifndef CHUNK_GATED_DELTA_RULE_NEUMANN_STAGE1_SELECTOR_H
 #define CHUNK_GATED_DELTA_RULE_NEUMANN_STAGE1_SELECTOR_H
 
-// Switch Stage1 implementation here when comparing Neumann CVInverse precision.
-// #include "chunk_gated_delta_rule_neumann_stage1_C16_FP32_CVInverse.h"
-#include "chunk_gated_delta_rule_neumann_stage1_C16_FP16_CVInverse.h"
+#include "selected/stage1_selected.h"
 
 #endif  // CHUNK_GATED_DELTA_RULE_NEUMANN_STAGE1_SELECTOR_H

@@ -93,7 +93,8 @@ template <typename lowType, typename highType>
 class CGDR {
 public:
     __aicore__ inline CGDR(TPipe *pipe, const ChunkGatedDeltaRuleNeumannTilingData *tilingData)
-        : stageOneOp_(stage1MT_)
+        : stageOneOp_(stage1MT_, stage1MT_C16_, stage1MT_C32_, stage1MT_C64_, stage1MT_Fp16Out_, stage1MT_Fp16C16_,
+                      stage1MT_Fp16C32_, stage1MT_Fp16L1Out_, stage1MT_Fp16C16L1_, stage1MT_Fp16C32L1_)
     {
         pipe_ = pipe;
         tiling_ = tilingData;
@@ -104,6 +105,15 @@ public:
         if ASCEND_IS_AIC {
             // 使用 tiling 中的 matmul tiling 数据初始化
             stage1MT_.Init(&tiling_->matmulTilingFp32, pipe_);
+            stage1MT_C16_.Init(&tiling_->matmulTilingFp32C16, pipe_);
+            stage1MT_C32_.Init(&tiling_->matmulTilingFp32C32, pipe_);
+            stage1MT_C64_.Init(&tiling_->matmulTilingFp32C64, pipe_);
+            stage1MT_Fp16Out_.Init(&tiling_->matmulTilingFp16Out, pipe_);
+            stage1MT_Fp16C16_.Init(&tiling_->matmulTilingFp16C16, pipe_);
+            stage1MT_Fp16C32_.Init(&tiling_->matmulTilingFp16C32, pipe_);
+            stage1MT_Fp16L1Out_.Init(&tiling_->matmulTilingFp16L1Out, pipe_);
+            stage1MT_Fp16C16L1_.Init(&tiling_->matmulTilingFp16C16L1, pipe_);
+            stage1MT_Fp16C32L1_.Init(&tiling_->matmulTilingFp16C32L1, pipe_);
             stage2MT_.Init(&tiling_->matmulTilingFp32, pipe_);
             stage3MT_.Init(&tiling_->matmulTilingFp32, pipe_);
         }
@@ -320,6 +330,15 @@ private:
 
     // Matmul objects
     StageOneMT stage1MT_;
+    StageOneMT stage1MT_C16_;
+    StageOneMT stage1MT_C32_;
+    StageOneMT stage1MT_C64_;
+    StageOneFp16OutMT stage1MT_Fp16Out_;
+    StageOneFp16MT stage1MT_Fp16C16_;
+    StageOneFp16MT stage1MT_Fp16C32_;
+    StageOneFp16L1GmOutMT stage1MT_Fp16L1Out_;
+    StageOneFp16L1MT stage1MT_Fp16C16L1_;
+    StageOneFp16L1MT stage1MT_Fp16C32L1_;
     StageTwoMT stage2MT_;
     StageThreeMT stage3MT_;
 

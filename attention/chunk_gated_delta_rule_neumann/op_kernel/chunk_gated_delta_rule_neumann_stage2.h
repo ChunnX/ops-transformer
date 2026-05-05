@@ -27,6 +27,7 @@ using aT2 = MatmulType<TPosition::GM, CubeFormat::ND, float, true>;
 using bT2 = MatmulType<TPosition::GM, CubeFormat::ND, float, true>;
 using cT2 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
 using StageTwoMT = matmul::MatmulImpl<aT2, bT2, cT2>;
+constexpr bool STAGE2_DEBUG_ZERO_ATTN_INTER = false;
 
 struct StageTwoParams {
     GlobalTensor<float> qPrime;    // (Nv, Sp, Dk)
@@ -149,12 +150,38 @@ public:
                                         GlobalTensor<float> attnInter)
     {
         // q_prime @ state.transpose(0, 1)
+        RestoreCubeState();
         sTP_->mm1->SetOrgShape(curChunkSize_, Dv_, Dk_);    // MNK
         sTP_->mm1->SetSingleShape(curChunkSize_, Dv_, Dk_); // SingleCoreMNK
         sTP_->mm1->SetTensorA(qPrime, false);
         sTP_->mm1->SetTensorB(state, true);
         sTP_->mm1->IterateAll(attnInter);
         sTP_->mm1->End();
+        if constexpr (STAGE2_DEBUG_ZERO_ATTN_INTER) {
+            ClearGm(attnInter, curChunkSize_, Dv_);
+        }
+        SetAtomicNone();
+    }
+
+    __aicore__ inline void ClearGm(GlobalTensor<float> gm, int32_t rows, int32_t cols)
+    {
+        if ASCEND_IS_AIC {
+            for (int32_t row = 0; row < rows; ++row) {
+                for (int32_t col = 0; col < cols; ++col) {
+                    gm.SetValue(row * cols + col, static_cast<float>(0.0f));
+                }
+            }
+            int32_t eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::S_MTE2));
+            SetFlag<HardEvent::S_MTE2>(eventID);
+            WaitFlag<HardEvent::S_MTE2>(eventID);
+            for (int32_t row = 0; row < rows; ++row) {
+                for (int32_t col = 0; col < cols; col += BLOCK_SIZE / static_cast<int32_t>(sizeof(float))) {
+                    DataCacheCleanAndInvalid<float, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
+                        gm[row * cols + col]);
+                }
+            }
+            Barrier();
+        }
     }
 
     __aicore__ inline void CalVPrime(GlobalTensor<float> kCumdecay,
@@ -162,12 +189,14 @@ public:
                                      GlobalTensor<float> vPrime)
     {
         // v_inner += k_cumdecay @ state.transpose(0, 1)
+        RestoreCubeState();
         sTP_->mm1->SetOrgShape(curChunkSize_, Dv_, Dk_);    // MNK
         sTP_->mm1->SetSingleShape(curChunkSize_, Dv_, Dk_); // SingleCoreMNK
         sTP_->mm1->SetTensorA(kCumdecay, false);
         sTP_->mm1->SetTensorB(state, true);
         sTP_->mm1->IterateAll(vPrime, 1);
         sTP_->mm1->End();
+        SetAtomicNone();
     }
 
     __aicore__ inline void CalStateNew(GlobalTensor<float> vInner,
@@ -175,12 +204,24 @@ public:
                                        GlobalTensor<float> state)
     {
         // state_out = v_new.transpose(0, 1) @ kg
+        RestoreCubeState();
         sTP_->mm1->SetOrgShape(Dv_, Dk_, curChunkSize_);    // MNK
         sTP_->mm1->SetSingleShape(Dv_, Dk_, curChunkSize_); // SingleCoreMNK
         sTP_->mm1->SetTensorA(vInner, true);
         sTP_->mm1->SetTensorB(kg, false);
         sTP_->mm1->IterateAll(state, 1);
         sTP_->mm1->End();
+        SetAtomicNone();
+    }
+
+    __aicore__ inline void RestoreCubeState()
+    {
+        SetAtomicNone();
+        SetLoadDataPaddingValue<uint64_t>(0);
+        SetNdParaImpl(0x1);
+        SetHF32Mode(HF32Mode::DISABLE);
+        SetHF32TransMode(HF32TransMode::NEAREST_EVEN);
+        SetMMLayoutTransform(false);
     }
 
     template <typename inType>

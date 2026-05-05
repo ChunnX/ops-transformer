@@ -9,15 +9,15 @@
  */
 
 /*!
- * \file chunk_gated_delta_rule_neumann_stage1_C16_FP16_CVInverse.h
+ * \file chunk_gated_delta_rule_neumann_stage1_C16_FP32_baseline.h
  * \brief
  */
-#ifndef CHUNK_GATED_DELTA_RULE_NEUMANN_STAGE1_C16_FP16_CVINVERSE_H
-#define CHUNK_GATED_DELTA_RULE_NEUMANN_STAGE1_C16_FP16_CVINVERSE_H
+#ifndef CHUNK_GATED_DELTA_RULE_NEUMANN_STAGE1_C16_FP32_BASELINE_H
+#define CHUNK_GATED_DELTA_RULE_NEUMANN_STAGE1_C16_FP32_BASELINE_H
 
 #include "kernel_tiling/kernel_tiling.h"
-#include "chunk_gated_delta_rule_neumann_utils.h"
-#include "chunk_gated_delta_rule_neumann_tiling_data.h"
+#include "../chunk_gated_delta_rule_neumann_utils.h"
+#include "../chunk_gated_delta_rule_neumann_tiling_data.h"
 
 namespace ChunkGatedDeltaRuleNeumann {
 using namespace AscendC;
@@ -27,6 +27,17 @@ using aT1 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
 using bT1 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
 using cT1 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
 using StageOneMT = matmul::MatmulImpl<aT1, bT1, cT1>;
+using aFp16T1 = MatmulType<TPosition::GM, CubeFormat::ND, half>;
+using bFp16T1 = MatmulType<TPosition::GM, CubeFormat::ND, half>;
+using cFp16T1 = MatmulType<TPosition::GM, CubeFormat::ND, half>;
+using cFp16OutT1 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
+using aFp16L1T1 = MatmulType<TPosition::TSCM, CubeFormat::NZ, half>;
+using bFp16L1T1 = MatmulType<TPosition::TSCM, CubeFormat::NZ, half>;
+using cFp16L1T1 = MatmulType<TPosition::TSCM, CubeFormat::NZ, half>;
+using StageOneFp16MT = matmul::MatmulImpl<aFp16T1, bFp16T1, cFp16T1>;
+using StageOneFp16OutMT = matmul::MatmulImpl<aFp16T1, bFp16T1, cFp16OutT1>;
+using StageOneFp16L1MT = matmul::MatmulImpl<aFp16L1T1, bFp16L1T1, cFp16L1T1>;
+using StageOneFp16L1GmOutMT = matmul::MatmulImpl<aFp16L1T1, bFp16T1, cFp16OutT1>;
 
 constexpr uint64_t UB_REST_BYTES = 100 * 1024;  // 100KB
 constexpr uint64_t INVERSE_SHAPE = 16;          // 对角块边长 (Neumann migration)
@@ -66,6 +77,10 @@ struct GDRStageOneInitParams {
 
 class Stage1 {
 public:
+    __aicore__ inline Stage1(StageOneMT &mmFp32, StageOneMT &, StageOneMT &, StageOneMT &,
+                             StageOneFp16OutMT &, StageOneFp16MT &, StageOneFp16MT &,
+                             StageOneFp16L1GmOutMT &, StageOneFp16L1MT &, StageOneFp16L1MT &)
+        : Stage1(mmFp32) {}
     __aicore__ inline Stage1(StageOneMT &mmFp32) : mmFp32(mmFp32) {}
     __aicore__ inline void SetGlobalTensors(const GDRStageOneInitParams &initParams)
     {
@@ -135,7 +150,7 @@ public:
         betaUbBfloat16_ = tmpBuff_.GetWithOffset<bfloat16_t>(static_cast<uint32_t>(halfChunkSize_), buffOffset);
         buffOffset += halfChunkSize_ * sizeof(bfloat16_t);
         buffOffset = (buffOffset + BLOCK_SIZE - 1) / BLOCK_SIZE * BLOCK_SIZE;
-        
+
         gCumUbFloat_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(chunkSize_), buffOffset);
         buffOffset += chunkSize_ * sizeof(float);
 
@@ -154,7 +169,7 @@ public:
         valueUbFloat_ = gBroadUbFloat_;
         qUbFloat_ = gBroadUbFloat_;
         buffOffset += chunkSize_ * maxLen  * sizeof(float);
-        
+
         gTransBroadUbFloat_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(chunkSize_ * maxLen), buffOffset);
         attnUbFloat_ = gTransBroadUbFloat_;
         gCumExpBroadUbFloat_ = gTransBroadUbFloat_;
@@ -313,23 +328,21 @@ private:
             AscendC::CrossCoreWaitFlag(0x7);  // 同步2：等待 AIV InverseCompute 完成
 
             // Neumann 三步倍增：(I+L)^{-1}
-            // Round 1: L² = L@L, tmp = INV@L², INV = INV + tmp
+            // Round 1: L² = L@L, INV += INV@L²
             NeumannLpowCompute(L_powWsGm_, attnWsGm_);
-            NeumannMmulCompute(attnWsGm_);
-            AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(0x1);  // 通知 AIV tmp 就绪
-            AscendC::CrossCoreWaitFlag(0x2);                 // 等待 AIV 完成 INV += tmp
+            SyncFixToMte2();
+            NeumannMmulAddCompute(attnWsGm_);
 
-            // Round 2: L⁴ = L²@L², tmp = INV@L⁴, INV = INV + tmp
+            // Round 2: L⁴ = L²@L², INV += INV@L⁴
             NeumannLpowCompute(attnWsGm_, L_powWsGm_);
-            NeumannMmulCompute(L_powWsGm_);
-            AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(0x3);  // 通知 AIV tmp 就绪
-            AscendC::CrossCoreWaitFlag(0x4);                 // 等待 AIV 完成 INV += tmp
+            SyncFixToMte2();
+            NeumannMmulAddCompute(L_powWsGm_);
 
-            // Round 3: L⁸ = L⁴@L⁴, tmp = INV@L⁸, INV = INV + tmp
+            // Round 3: L⁸ = L⁴@L⁴, INV += INV@L⁸
             NeumannLpowCompute(L_powWsGm_, attnWsGm_);
-            NeumannMmulCompute(attnWsGm_);
-            AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(0xa);  // 通知 AIV tmp 就绪
-            AscendC::CrossCoreWaitFlag(0xb);                 // 等待 AIV 完成 INV += tmp
+            SyncFixToMte2();
+            NeumannMmulAddCompute(attnWsGm_);
+            SyncFixToMte2();
 
             AscendC::CrossCoreWaitFlag(0x6);  // 同步3：等待 AIV GBKCompute
             // INV @ k_cumdecay
@@ -357,21 +370,6 @@ private:
             // 构造 I-L，写入 attnWsGm_ / L_powWsGm_ / INVWsGm_
             InverseCompute();
             AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0x7);  // 同步2：通知 AIC InverseCompute 完成
-
-            // Neumann Round 1：等待 AIC tmp 就绪，执行 INV += tmp
-            AscendC::CrossCoreWaitFlag(0x1);
-            NeumannAddCompute();
-            AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0x2);
-
-            // Neumann Round 2
-            AscendC::CrossCoreWaitFlag(0x3);
-            NeumannAddCompute();
-            AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0x4);
-
-            // Neumann Round 3
-            AscendC::CrossCoreWaitFlag(0xa);
-            NeumannAddCompute();
-            AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0xb);
 
             GBKCompute();
             AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0x6);  // 同步3
@@ -556,7 +554,7 @@ private:
         Duplicate(ei, static_cast<float>(0.0), inverseVecLen);
         Duplicate(yLocal, static_cast<float>(0.0), inverseVecLen * inverseVecLen); // yLocal清零
         inverseLocal_.SetValue(offset, static_cast<float>(1.0));
-        
+
         uint32_t srcShape[2] = {1, inverseVecLen};
         int32_t eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::S_V));
         SetFlag<HardEvent::S_V>(eventID);
@@ -790,14 +788,22 @@ private:
     }
 
     __aicore__ inline void AICProcess(GlobalTensor<float> x, GlobalTensor<float> y, GlobalTensor<float> z,
-                                      const MatmulShapeParams &shape, bool transB = false)
+                                      const MatmulShapeParams &shape, bool transB = false,
+                                      bool enableAtomicAdd = false)
     {
         mmFp32.SetOrgShape(shape.m, shape.n, shape.k);
         mmFp32.SetSingleShape(shape.sm, shape.sn, shape.sk);
         mmFp32.SetTensorA(x);
         mmFp32.SetTensorB(y, transB);
-        mmFp32.IterateAll(z);
+        mmFp32.IterateAll(z, enableAtomicAdd ? 1 : 0);
         mmFp32.End();
+    }
+
+    __aicore__ inline void SyncFixToMte2()
+    {
+        int32_t eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::FIX_MTE2));
+        SetFlag<HardEvent::FIX_MTE2>(eventID);
+        WaitFlag<HardEvent::FIX_MTE2>(eventID);
     }
 
     __aicore__ inline void NeumannLpowCompute(GlobalTensor<float> src, GlobalTensor<float> dst)
@@ -811,7 +817,13 @@ private:
         MatmulShapeParams shape = {chunkSize_, chunkSize_, chunkSize_, chunkSize_, chunkSize_, chunkSize_};
         AICProcess(INVWsGm_, power, tmpWsGm_, shape);
     }
-    
+
+    __aicore__ inline void NeumannMmulAddCompute(GlobalTensor<float> power)
+    {
+        MatmulShapeParams shape = {chunkSize_, chunkSize_, chunkSize_, chunkSize_, chunkSize_, chunkSize_};
+        AICProcess(INVWsGm_, power, INVWsGm_, shape, false, true);
+    }
+
     TPipe *pipe_;
     StageOneMT &mmFp32;
     const ChunkGatedDeltaRuleNeumannTilingData *tiling_;
@@ -908,10 +920,10 @@ private:
     LocalTensor<float> gLocal_;
     LocalTensor<float> gBKLocal_;
     LocalTensor<float> kgLocal_;
-    
+
     LocalTensor<bfloat16_t> bf16InLocal_;
     LocalTensor<float> fp32InLocal_;
     LocalTensor<float> fp32OutLocal_;
 };
 } // namespace ChunkGatedDeltaRuleNeumann
-#endif // CHUNK_GATED_DELTA_RULE_NEUMANN_STAGE1_C16_FP16_CVINVERSE_H
+#endif // CHUNK_GATED_DELTA_RULE_NEUMANN_STAGE1_C16_FP32_BASELINE_H

@@ -23,6 +23,9 @@ namespace ChunkGatedDeltaRuleNeumann {
 using namespace AscendC;
 using namespace matmul;
 
+constexpr bool STAGE3_DEBUG_ZERO_MASKED_QKT = false;
+constexpr bool STAGE3_DEBUG_ZERO_OUTPUT = false;
+
 using aT3 = MatmulType<TPosition::GM, CubeFormat::ND, float, true>;
 using bT3 = MatmulType<TPosition::GM, CubeFormat::ND, float, true>;
 using cT3 = MatmulType<TPosition::GM, CubeFormat::ND, float>;
@@ -153,18 +156,41 @@ public:
             Duplicate(tmpBuffer1_, static_cast<float>(1.0f), curChunkSize_ * chunkSize_);
             PipeBarrier<PIPE_V>();
         }
+        ClearTailColumns(tmpBuffer1_, static_cast<uint32_t>(curChunkSize_), static_cast<uint32_t>(curChunkSize_));
  
         // qkt
         AlignedCopyIn(sTP_->qkt[nvId * Sp_ * chunkSize_ + chunkPos * chunkSize_], curChunkSize_, curChunkSize_);
         auto qkt = inQueue_.DeQue<float>();
+        ClearTailColumns(qkt, static_cast<uint32_t>(curChunkSize_), static_cast<uint32_t>(curChunkSize_));
         auto scale_qkt = outQueue_.AllocTensor<float>();
         Muls(scale_qkt, qkt, sTP_->scale, curChunkSize_ * chunkSize_);
         Mul(scale_qkt, scale_qkt, tmpBuffer1_, curChunkSize_ * chunkSize_);
         inQueue_.FreeTensor(qkt);
         // mask
         Mul(scale_qkt, scale_qkt, maskBuffer_, curChunkSize_ * chunkSize_);
+        if constexpr (STAGE3_DEBUG_ZERO_MASKED_QKT) {
+            Duplicate(scale_qkt, static_cast<float>(0.0f), curChunkSize_ * chunkSize_);
+            PipeBarrier<PIPE_V>();
+        }
+        PipeBarrier<PIPE_V>();
         outQueue_.EnQue(scale_qkt);
         AlignedCopyOut(outGM, curChunkSize_, curChunkSize_);
+        SyncMte3ToMte2();
+    }
+
+    __aicore__ inline void ClearTailColumns(LocalTensor<float> tensor, uint32_t rows, uint32_t validCols)
+    {
+        if (validCols >= static_cast<uint32_t>(chunkSize_)) {
+            return;
+        }
+        for (uint32_t row = 0; row < rows; ++row) {
+            for (uint32_t col = validCols; col < static_cast<uint32_t>(chunkSize_); ++col) {
+                tensor.SetValue(row * chunkSize_ + col, static_cast<float>(0.0f));
+            }
+        }
+        int32_t eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::S_V));
+        SetFlag<HardEvent::S_V>(eventID);
+        WaitFlag<HardEvent::S_V>(eventID);
     }
 
     __aicore__ inline void CalAttnOut(GlobalTensor<float> inTensor, GlobalTensor<bfloat16_t> outTensor)
@@ -184,6 +210,10 @@ public:
         DataCopyPad(inLocal, inTensor, inParams, copyPadParams);
         inQueue_.EnQue(inLocal);
         auto fp32AttnIn = inQueue_.DeQue<float>();
+        if constexpr (STAGE3_DEBUG_ZERO_OUTPUT) {
+            Duplicate(fp32AttnIn, static_cast<float>(0.0f), curChunkSize_ * paddedDv_);
+            PipeBarrier<PIPE_V>();
+        }
         auto attnOut = outQueue_.AllocTensor<bfloat16_t>();
         Cast(attnOut, fp32AttnIn, RoundMode::CAST_RINT, curChunkSize_ * paddedDv_);
         inQueue_.FreeTensor(fp32AttnIn);  // Cast 完成后立即释放
@@ -203,12 +233,24 @@ public:
                                       GlobalTensor<float>attnInter)
     {
         // masked_qkt @ v_inner
+        RestoreCubeState();
         sTP_->mm3->SetOrgShape(curChunkSize_, Dv_, curChunkSize_);    // MNK
         sTP_->mm3->SetSingleShape(curChunkSize_, Dv_, curChunkSize_); // SingleCoreMNK
         sTP_->mm3->SetTensorA(tmpGM);
         sTP_->mm3->SetTensorB(vInner);
         sTP_->mm3->IterateAll(attnInter, 1);
         sTP_->mm3->End();
+        SetAtomicNone();
+    }
+
+    __aicore__ inline void RestoreCubeState()
+    {
+        SetAtomicNone();
+        SetLoadDataPaddingValue<uint64_t>(0);
+        SetNdParaImpl(0x1);
+        SetHF32Mode(HF32Mode::DISABLE);
+        SetHF32TransMode(HF32TransMode::NEAREST_EVEN);
+        SetMMLayoutTransform(false);
     }
 
     template <typename inType>
@@ -220,7 +262,7 @@ public:
         DataCopyExtParams inParams{static_cast<uint16_t>(row),
                                    static_cast<uint32_t>(col * sizeof(inType)),
                                    static_cast<uint32_t>(0),
-                                   static_cast<uint32_t>((chunkSize_ - paddingCol) * sizeof(float) / BLOCK_SIZE), 0};
+                                   static_cast<uint32_t>((chunkSize_ - paddingCol) * sizeof(inType) / BLOCK_SIZE), 0};
         DataCopyPadExtParams<inType> copyPadParams{false, 0, 0, 0};
         DataCopyPad(inLocal, tmpGM, inParams, copyPadParams);
         inQueue_.EnQue(inLocal);
@@ -238,6 +280,13 @@ public:
         copyParams.dstStride = static_cast<uint32_t>((0) * sizeof(outType));
         DataCopyPad(tmpGM, outLocal, copyParams);
         outQueue_.FreeTensor(outLocal);
+    }
+
+    __aicore__ inline void SyncMte3ToMte2()
+    {
+        int32_t eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::MTE3_MTE2));
+        SetFlag<HardEvent::MTE3_MTE2>(eventID);
+        WaitFlag<HardEvent::MTE3_MTE2>(eventID);
     }
 
 private:

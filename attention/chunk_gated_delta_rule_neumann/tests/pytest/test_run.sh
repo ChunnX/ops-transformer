@@ -1,5 +1,8 @@
 #!/bin/bash
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR" || exit 1
+
 # 脚本路径
 TEST_CHUNK_GATED_DELTA_RULE_NEUMANN_SINGLE_SCRIPT="test_chunk_gated_delta_rule_neumann_single.py"
 TEST_CHUNK_GATED_DELTA_RULE_THREE_WAY_SCRIPT="compare_chunk_gdr_three_way.py"
@@ -49,15 +52,19 @@ fi
 case "$1" in
     single)
         run_single
+        exit $?
         ;;
     compare)
         run_compare
+        exit $?
         ;;
     performance)
         run_performance
+        exit $?
         ;;
     help)
         show_help
+        exit 0
         ;;
     *)
         echo "错误：未知参数 '$1'，仅支持 single/compare/performance/help"
@@ -65,5 +72,3 @@ case "$1" in
         exit 1
         ;;
 esac
-
-exit 0

@@ -15,7 +15,11 @@ SKILL/
 ├── aclnn-single-op-test/     # aclnn 单算子测试开发指南
 ├── operator-clone/            # 算子克隆与重命名流程
 ├── precision-debugging/       # 精度调试经验（数据类型匹配问题）
-└── kernel-debugging/          # Kernel挂起问题调试经验
+├── kernel-debugging/          # Kernel挂起问题调试经验
+├── neumann-scheme-summary/    # Neumann 三方案总结与性能口径
+├── performance-profiling-msprof/ # msprof 性能批测与汇总流程
+├── matmul-tiling-performance/ # tiny MatMul/tiling 性能分析
+└── workspace-tiling-checklist/ # workspace 与 tiling 一致性检查
 ```
 
 ---
@@ -80,27 +84,30 @@ docs/
 
 ---
 
-## Current Plan: AIC生成初始矩阵
+## Current Summary: 三种最终方案口径
 
-**方案**: 将(I-L)初始矩阵生成从AIV移至AIC，实现纯Cube MMA Neumann求逆
+后续总结、汇报、表格只按三种最终方案归类；中间优化过程只作为实现演进记录，不再作为最终方案单独列出。
 
-**问题背景**:
-- 当前InverseCompute(AIV)只处理16×8半块（TASK_RATIO=2导致）
-- NeumannLpowCompute(AIC)需要完整16×16矩阵
-- workspace布局冲突：两个subBlock试图拼成完整矩阵
+| 方案编号 | 最终方案名 | 主 chunk | 求逆结构 | 当前最终实现/数据口径 |
+|---------|------------|----------|----------|----------------------|
+| 1 | `C16_1616_Neumann` | `C=16` | 直接对 16×16 做 Neumann 求逆 | 对应 `stage1_C16_FP32_CVInverse.h` 的 AIC/FixPipe atomic-add 优化版；历史 host tiling 已切 `chunkSize=16` |
+| 2 | `C64_1616_NeumannCompose` | `C=64` | 64×64 拆 16×16 Neumann 子块，再通过 block compose 得到 64×64 inverse | 最终性能口径使用 `chunk_gdr_c64_1616_sync_reduced_all_shapes`，中间 `tail_specialized/cacheline/current` 不作为最终方案 |
+| 3 | `C64_3232_NeumannCompose` | `C=64` | 64×64 拆 32×32 Neumann 子块，再通过 block compose 得到 64×64 inverse；短尾可走 16×16 shortcut | 最终性能口径使用 `chunk_gdr_c64_3232_hybrid_all_shapes` |
 
-**解决方案**:
-```
-原流程:
-  AIV InverseCompute -> 写INVWsGm_(16×8半块) ❌
-  AIC NeumannLpowCompute -> 读完整16×16
+### 重要口径
 
-新流程:
-  AIC InitInverseMatrix -> 写完整INVWsGm_(16×16) ✓
-  AIC NeumannLpowCompute -> 读完整16×16
-```
+- `C=16` 主方案必须 host tiling `chunkSize=16`；当前工作区若是 `chunkSize=64`，是为了 C64 子块方案。
+- `C64_1616` / `C64_3232` 的 `1616/3232` 指内部求逆子块大小，不代表 host 主 chunk。host 主 chunk 保持 `64`。
+- `sync_reduced`、`tail_specialized`、`hybrid` 等名字是优化过程或实现细节；最终汇报只映射到上面三种方案。
+- C16 方案当前只是将 `INV += INV@Lpow` 从 AIV 搬到 AIC/FixPipe atomic add，仍有 GM workspace 往返，不是真正 L0/L1/register resident 的 fused inverse。
+- 当前性能结论：`C64_3232_NeumannCompose` 明显优于 `C64_1616_NeumannCompose`，但整体仍慢于 normal；瓶颈是 `MatmulImpl + GM workspace + FIX/MTE2` 串 tiny MatMul 固定开销。
 
-**详细方案文档**: `docs/2026-04-28/AIC_INVERSE_GENERATION_PLAN.md`
+### 最终性能表
+
+- C64 最终表：`docs/2026-04-30/C64_FINAL_PERFORMANCE_TABLE.md`
+- C64 总表 CSV：`docs/2026-04-30/C64_FINAL_SCHEME_SUMMARY.csv`
+- C64 按 S CSV：`docs/2026-04-30/C64_FINAL_BY_S.csv`
+- C64 逐 case CSV：`docs/2026-04-30/C64_FINAL_CASE_DETAIL.csv`
 
 ---
 
@@ -125,6 +132,17 @@ chunk_gated_delta_rule_neumann/
     ├── pytest/           # PyTorch API tests (torch_npu)
     └── ut/               # C++ unit tests
 ```
+
+### op_kernel Stage1 版本放置规矩
+
+`op_kernel` 下的 stage1 方案文件按实现成熟度和验证状态分目录管理：
+
+- `op_kernel/baseline/`：只放已经精度通过的 baseline 版本。baseline 口径为 AIV 只构造初始 `L` / `I-L`，后续 Neumann 轮次使用 AIC Matmul/Fixpipe atomic add 完成 `INV += INV@P`。
+- `op_kernel/halflocal/`：只放已经精度通过的 halflocal 版本。halflocal 口径为 `old_INV + INV@P` 在 L0C/CMatrix 内完成，但 updated `INV` 仍写回 GM，下一轮再从 GM 读回。
+- `op_kernel/fulllocal/`：只保留当前正在单点突破的 fulllocal 文件；未构建或未通过精度的候选不长期堆放。单点精度通过后，再按需要扩展到其它 `3*2` variant。
+- `op_kernel/selected/`：唯一 stage1 selector 入口，切换实现必须通过 `stage1_selected.h` 和 `stage1_selected_config.h`，不得在主 `chunk_gated_delta_rule_neumann_stage1.h` 中直接 include 具体方案文件。
+
+未通过精度的实验文件不能放入 `baseline/` 或 `halflocal/`；`fulllocal/` 未单点通过前不得扩成完整 `3*2` 矩阵。
 
 ---
 
@@ -161,7 +179,7 @@ chunk_gated_delta_rule_neumann/
 
 ---
 
-## CHUNK=16 Migration Status
+## Historical CHUNK=16 Migration Notes
 
 ### Confirmed Decisions
 
@@ -208,7 +226,7 @@ chunk_gated_delta_rule_neumann/
 
 Uses `lib/matmul_intf.h` for matmul operations. Each stage requires `SyncAll<false>()` between stages.
 
-**Stage1 Neumann流程** (待实现):
+**Stage1 Neumann历史流程**:
 ```
 AIC分支:
   1. key @ key.T -> kkWsGm_ (下三角L矩阵)
@@ -360,3 +378,203 @@ export ASCEND_CUSTOM_OPP_PATH=${ASCEND_HOME_PATH}/opp/vendors/custom_transformer
 - 完成 `S=16/S=64` 新增性能 case 实测：8 个 prefill shape × 2 算子真实 `msprof` 全部通过；结果保存到 `tests/pytest/prof_out/chunk_gdr_prefill_s16_s64/`。`S=16` Neumann 平均为 normal 的 `1.119x` 耗时，`S=64` 为 `2.441x`；8/8 case 普通 `ChunkGDR` 更快。
 - 拆解 `S=16` Neumann 仍慢原因：msprof 显示 AIC MAC time 已下降，但 AIC scalar time 明显上升；代码对比确认 normal stage1 约 6 次 matmul，Neumann stage1 约 10 次 tiny matmul + 3 轮 AIC/AIV `INV += tmp` 往返。当前慢点是固定调度、同步和 GM 累加开销，不是 MAC 计算量。
 - 按用户要求调整 profiling 汇总 CSV：`performance_compare.csv` 删除 `normal_prof_dir/neumann_prof_dir`，展开 normal/neumann AIC/AIV 指标；ratio 字段仅保留 `aic_mac_ratio` 与 `aiv_vec_ratio`。已用现有 `full`、`s16_s64`、`smoke` profiling 目录重新生成汇总 CSV。
+- 用户明确新协作规则：后续除非用户明确要求，不再自行 `git push`；`S=16/S=64` 后续随 full prefill 性能 shape 一起测试。
+- 按用户要求将 profiling `performance_compare.csv` 改为每 case 三行 long format：normal、neumann、`neumann/normal` ratio；新增 `chunk_gdr_prefill_all_shapes/performance_compare.csv` 汇总 32 个 shape（含 `S=16/S=64`）。本次仅本地修改，未推送。
+- 按用户要求清空 `tests/pytest/prof_out/*`，保留空目录；未推送。后续准备讨论算子修改方向：AIC/FixPipe atomic add、`S<=16` AIV inverse 特化、C64 Neumann 方案。
+- 方案A C16 FP32 Neumann 累加迁入 AIC：保存 `stage1_C16_FP32_CVInverse_AIVAddBaseline_20260429.h`，修改 `stage1_C16_FP32_CVInverse.h` 用 matmul atomic add 完成 `INV += INV@L_pow`，移除主流程三轮 AIC/AIV add 同步；临时切 selector 构建双算子包并完成三方精度 smoke PASS。
+
+- 方案A正式切到默认 selector 后完成全量三方精度验证：`bash test_run.sh compare` 20 case 全 PASS；按用户要求删除 `stage1_C16_FP32_CVInverse_AIVAddBaseline_20260429.h` 基线副本，后续重点转向 32 shape msprof 性能验证。
+- 分析 C16 当前方案剩余性能收益点：低风险项是删除方案A后不再使用的 `tmpWsGm_`/`NeumannAddCompute()`/workspace 第三块；中高收益项是减少 `query/key` BF16→FP32 连续化 GM 往返、推进 C64 分块求逆或 BF16/half 输入 AIC；Stage3 `qkt -> masked tmpGM -> AIC` 也有重复搬运但改动风险更高。
+- 完成 `S=64` MAC 展开分析：求逆子项 Neumann 是 normal 的 `1.5x`，但 Stage1 总理论 MAC 为 `0.324x`、全算子理论 MAC 为 `0.561x`；profiling 中 `aic_mac_time_us≈1.724x` 是 C16 tiny matmul 调用次数从每 `B,Nv` 约 `10` 次增至 `56` 次且 `16×16×16` Cube 利用率低导致。
+- 完成方案A 32-shape msprof 性能批测：结果保存到 `tests/pytest/prof_out/chunk_gdr_prefill_all_shapes_aic_accum/`，32 case 中 3 个 `S=16` case Neumann 更快，其余 normal 更快。
+- 方案A性能结论：`S=16` Neumann/normal 平均从旧结果 `1.119x` 慢改善为 `0.994x` 基本持平/略优；`S=64` 仍为 `2.130x` 慢，全量平均 `3.015x` 慢。
+- profiling 指标显示 AIV vec 明显下降，但 `S>=64` 的 AIC scalar/FixPipe/MTE 仍随 C16 chunk 数放大；下一步应减少 tiny matmul 调度次数或转向 C64 分块求逆方案。
+- 只读分析 32x32 Neumann 方案：确认 `C64_3232` 文件仍是旧版整 64 Neumann + AIV add，建议基于当前 `C64_1616` 全 AIC inverse 结构改造成两个 32x32 对角 Neumann + 一次 64-from-32 compose
+### 2026-04-30
+- 继续 C64 Neumann 求逆方案：当前 selector 指向 `chunk_gated_delta_rule_neumann_stage1_C64_3232_FP32_CVInverse.h`。
+- 完成 `C64_3232_FP32_CVInverse`：32x32 对角块 AIC 内 4 轮 Neumann 倍增，64 block compose。
+- 增加 hybrid tail shortcut：`validLen <= 16` 时走 16x16 Neumann，避免短序列使用 32x32 额外调度。
+- 构建安装通过，`CGDR_GOLDEN_CHUNK_SIZE=64 bash test_run.sh compare` 全量 20 cases PASS。
+- 性能已测纯 32x32 S16/S64；hybrid smoke 被中断，缺 S64 neumann 数据，待补测。
+- 形成 FlashKDA 对比分析：C=16 快的原因是 warp-level fused inverse、K1/K2 拆分、FP16 inverse、shared/register 复用，不是单纯 chunk=16；文档写入 `/mnt/workspace/gitCode/reference/FlashKDA/FLASHKDA_VS_CANN_CGDR_NEUMANN_ANALYSIS_20260430.md`。
+- 完成 `C64_3232_hybrid` 32 shape 全量 msprof 批测，结果保存到 `tests/pytest/prof_out/chunk_gdr_c64_3232_hybrid_all_shapes/`。
+- 汇总多方案性能：当前最佳 `C64_3232_hybrid` 平均为 normal 的 `1.778x`，`S=16` 平均 `0.994x`，`S=64` 平均 `1.391x`；仍未整体超过 normal。
+- 确认 tiling 未随 tiny MatMul 拆分：normal/Neumann host 都是 `chunkSize=64`、`P_NUM=2`，Neumann 仍共用一套 FP32 `matmulTilingFp32`，未为 `16x16/32x32` 生成专用 tiling。
+- 形成性能与 tiling 分析文档：`docs/2026-04-30/PERFORMANCE_AND_TILING_ANALYSIS.md`，并生成 `PERFORMANCE_SCHEME_SUMMARY.csv`、`PERFORMANCE_SCHEME_BY_S.csv` 和各方案按 S 汇总表。
+- 优化方向明确为减少 `MatmulImpl + GM workspace + FIX/MTE2` 串 tiny MatMul 的固定开销，单纯减少理论 MAC 不足以取得性能收益。
+- 复核主 `C=16` 历史方案：当时 host tiling 已切到 `chunkSize=16`；当前工作区切回 `chunkSize=64` 是为了 C64 1616/3232 子块求逆方案。
+- 澄清 C16 fused 状态：已实现 AIC/FixPipe atomic add 累加，但仍通过 GM workspace 串联多次 MatmulImpl，不是真正 L0/L1/register resident 的 fused inverse。
+- 生成 C64 最终性能表：`docs/2026-04-30/C64_FINAL_PERFORMANCE_TABLE.md`；`chunk_gdr_c64_1616_sync_reduced_all_shapes` 对应 C64 16x16 子块方案，`chunk_gdr_c64_3232_hybrid_all_shapes` 对应 C64 32x32 hybrid 方案。
+- 固化后续总结口径：最终只按三种方案归类，分别是 `C16_1616_Neumann`、`C64_1616_NeumannCompose`、`C64_3232_NeumannCompose`；中间优化过程不再单列为最终方案。
+- 新增 `SKILL/neumann-scheme-summary/SKILL.md`，记录三方案定义、命名规则、profiling 目录和 CSV 对应关系，后续方案总结必须优先遵循该 skill。
+- 清理 profiling/docs：仅保留三种最终方案对应 profiling 目录和 `C64_FINAL_*` 最终性能表；删除 smoke/cacheline/tail_specialized/current 等中间结果，避免后续总结混淆。
+- 新增三个技能文档：`performance-profiling-msprof`、`matmul-tiling-performance`、`workspace-tiling-checklist`，分别覆盖 msprof 性能流程、tiny MatMul 性能分析、workspace/tiling 一致性检查。
+- 明确 fused kernel 状态：三种最终方案均未完成真正 fused AIC inverse；当前仍依赖 `MatmulImpl + GM workspace + FIX/MTE2` 串联，C16 只完成 AIC/FixPipe atomic add 层面的局部优化。
+- 新增三方案 fused AIC inverse 计划：`docs/2026-04-30/FUSED_AIC_INVERSE_THREE_SCHEMES_PLAN.md`。推荐先做 `C64_3232_NeumannCompose` 的 micro tiling/同步/GM 减少，再用 `C16_1616_Neumann` 做片上 fused primitive PoC，最后视收益决定是否深挖 `C64_1616_NeumannCompose`。
+- 用户明确 fused 优化阶段暂不修改 Stage2/Stage3；当前计划只覆盖 Stage1 Neumann inverse 路径。
+- 按用户要求优先实现 `C16_1616_Neumann` 与 `C64_1616_NeumannCompose` 的 Stage1 micro tiling，不修改 Stage2/Stage3。
+- 新增 host/kernel micro tiling：`matmulTilingFp32C16/C32/C64`、`stage1MT_C16_`、`stage1MT_C32_`；Stage2/Stage3 继续使用原 `matmulTilingFp32`。
+- `C16` 使用 `matmulTilingFp32C16` 跑 Neumann 轮次并保持 AIC/FixPipe atomic add；临时切 `chunkSize=16` 后构建安装通过，`CGDR_GOLDEN_CHUNK_SIZE=16 bash test_run.sh compare` 20/20 PASS。
+- `C64_1616` 使用 `matmulTilingFp32C16` 做 16x16 子块 Neumann、`matmulTilingFp32C32` 做 32x32 compose；默认切回 `chunkSize=64` 和 `C64_1616` selector 后构建安装通过，`CGDR_GOLDEN_CHUNK_SIZE=64 bash test_run.sh compare` 20/20 PASS。
+- 当前默认实现为 `chunk_gated_delta_rule_neumann_stage1_C64_1616_FP32_CVInverse.h`；仍是 `MatmulImpl + GM workspace + FIX/MTE2`，不是完整 fused kernel。
+- 完成 `C64_1616` micro tiling 32 shape msprof 批测：`tests/pytest/prof_out/chunk_gdr_c64_1616_micro_tiling_all_shapes/performance_compare.csv`，Neumann/normal 平均 `2.4697x`，`S=16` 平均 `1.0747x`，`S=64` 平均 `1.9157x`。
+- 完成 `C16` micro tiling 32 shape msprof 批测：`tests/pytest/prof_out/chunk_gdr_c16_micro_tiling_all_shapes/performance_compare.csv`，Neumann/normal 平均 `3.1128x`，`S=16` 平均 `1.0232x`，`S=64` 平均 `2.1566x`。
+- 横向判断：C16 micro tiling 只在 `S=16` 比 C64_1616 更接近 normal，`S>=64` 因 chunk 数增加导致 AIC scalar/MTE2/FixPipe 固定开销更差；后续若继续 Stage1-only 优化，应优先基于 C64 方案减少 GM workspace 和 MatmulImpl 调用。
+- 新增 `docs/2026-04-30/FUSED_MM_L0C_REUSE_FP16_ANALYSIS.md`：确认 L0C 不能跨 Neumann round 直接作为下一次 Matmul A/B，真正可行路径是 `L0C -> Fixpipe -> VECCALC/TSCM/L1 -> LoadData -> L0A/L0B`。
+- 明确下一步 fusedMM 优先优化：将 `INV += INV@P` 改写为 `INV@(I+P)`，用 ping-pong buffer 删除 atomic add 与 `tmpWsGm_` add 语义；最终 `INV` 优先留 local 直接喂 `INV@gBK` 和 `INV@vBeta`。
+- FP16 Neumann 路线落地边界：`C16_FP16_CVInverse` 先做真实 half/bf16 输入链路验证；若 final `INV` 为 half，则 `gBK/vBeta` 也需 half/bf16 副本或将 `INV` cast 回 FP32，否则后续 Matmul dtype 不匹配。
+- 新增 `docs/2026-04-30/FUSED_FP16_STAGED_EXECUTION_PLAN.md`：执行顺序固化为三方案 fusedMM、三方案 FP16 `3×2` 对比、最后尝试 `INV@(I+P)`；FP16 和后续实验精度门槛按用户最新要求恢复为 `atol=0.08`、`rtol=0.08`。
+- 将三方精度脚本 `tests/pytest/compare_chunk_gdr_three_way.py` 默认阈值恢复为 `0.08/0.08`，后续每阶段必须全量三方精度通过后再跑 seq 遍历性能。
+- 完成方案A 32-shape msprof 性能批测：结果保存到 `tests/pytest/prof_out/chunk_gdr_prefill_all_shapes_aic_accum/`，32 case 中 3 个 `S=16` case Neumann 更快，其余 normal 更快。
+- 方案A性能结论：`S=16` Neumann/normal 平均从旧结果 `1.119x` 慢改善为 `0.994x` 基本持平/略优；`S=64` 仍为 `2.130x` 慢，全量平均 `3.015x` 慢。
+- profiling 指标显示 AIV vec 明显下降，但 `S>=64` 的 AIC scalar/FixPipe/MTE 仍随 C16 chunk 数放大；下一步应减少 tiny matmul 调度次数或转向 C64 分块求逆方案。
+- 进入 FP16 方案2：默认 selector 切到 `C64_1616_FP16_CVInverse`，实现 half workspace、`half×half->half` Neumann 与 `half×half->float` final `INV@rhs`。
+- 重新按当前设备 `ascend910_93` 构建并安装双算子包；确认 `ascend910b` 包会导致当前设备普通算子 binary 缺失。
+- `CGDR_GOLDEN_CHUNK_SIZE=64 bash test_run.sh compare` 全量三方精度 20/20 PASS，默认阈值 `atol=rtol=0.08`。
+- 完成 FP16 方案2 B=8 seq-only msprof sweep，CSV 位于 `tests/pytest/prof_out/chunk_gdr_phase2_c64_1616_fp16_seq_sweep/performance_compare.csv`；平均 `neumann/normal=2.494x`，8/8 case normal 更快。
+- 阶段结论：FP16 dtype 本身没有解决 `MatmulImpl + GM workspace + FIX/MTE2` 串 tiny MatMul 固定开销，下一步更适合验证 `C64_3232_FP16` 或 local fused。
+- 澄清 CO1/L0C 累加语义：`Iterate(enPartialSum)` 支持同一 Matmul 内 K 分块 partial-sum 累加到 CO1，但不能把上一轮 Neumann 输出直接留在 L0C 作为下一轮 Matmul 的 A/B；跨 round 仍需经 `Fixpipe -> L1/TSCM/VECCALC/GM -> LoadData`。
+- 修正 CO1/L0C 判断：raw `Mmad(dst, a, b, bias, params)` 支持 bias tensor 位于 `CO1/L0C`，可将上一轮 L0C 矩阵作为下一次 MMAD 的 C 初值实现 `C=A@B+C_l0c`；但 bias 只能作为 C 初值，不能作为下一轮 A/B 输入。
+- 新增 raw MMAD fused 交接文档：`docs/2026-04-30/RAW_MMAD_FUSED_HANDOFF.md`。
+- 当前默认 selector 为 `C64_1616_FP32_CVInverse`，`RawMmadInvAdd16()` 临时 no-op；kernel 可返回但精度不正确，真实 raw MMAD 链路仍是阻塞点。
+- 用户指定可参考 `attention/common/op_kernel/arch32/fia_block_cube_nonquant_gqa.h` 的底层 MMAD 写法，下一步按 `GM->L1->L0A/B->Mmad->Fixpipe` 分段二分。
+### 2026-05-01
+- 核对当前默认 selector 仍为 `C64_1616_FP32_CVInverse`，raw MMAD fallback 已关闭：`RAW_MMAD_USE_MATMULIMPL_FALLBACK = false`。
+- 确认最新 raw 路径代码中已有 `SetNdParaImpl(0x1)` 与 `LoadDataWithTranspose(...)` 调整，构建产物 `build_out/cann-ops-transformer-custom_linux-aarch64.run` 已生成。
+- 本轮安装最新 `.run` 包的审批被拒绝，因此尚未安装、尚未运行最小 precision smoke；最新代码状态为“已构建、未验证”。
+- 当前上一个可信实测仍是 raw 路径精度失败且接近 no-op；下一步需安装后运行最小 smoke，若失败则给 `RawMmadInvAdd16()` 增加 debug 输出，对比 raw `INV @ P` 与 MatmulImpl fallback。
+- 安装 17:37 包后尝试最小 smoke：`TORCH_EXTENSIONS_DIR=/tmp` 可解决 extension cache 写入问题，但 NPU 初始化失败 `507899 / drvGetDevNum failed`；沙箱外运行审批被拒绝，未取得 precision 结果。
+- 对照 CANN template_linear_algebra 修正 raw MMAD 输入 L1 布局：A 侧拆为 RowMajor -> `zN`，B 侧拆为 RowMajor -> `zZ`，关键修正 `CopyGmMatrixToL1B()` 的 `dstNzC0Stride = BLOCK_CUBE`。
+- 重新构建双算子包通过，最新产物 `build_out/cann-ops-transformer-custom_linux-aarch64.run` 时间为 2026-05-01 18:18；安装 18:18 修正版包的审批被拒绝，精度仍待设备验证。
+- 当前进度总结：默认 selector 为 `C64_1616_FP32_CVInverse`，raw MMAD fallback 关闭，最新 A/B L1 布局修正已 build-pass；真实状态仍是“已构建、未安装、未精度验证”，下一步必须安装 18:18 包并运行最小 smoke。
+- 本次任务状态核对确认：当前分支本地领先远端 4 个提交，工作区仍有未提交改动；默认实现仍是 `C64_1616_FP32_CVInverse` raw MMAD 路线，host `chunkSize=64`，18:18 构建包存在但没有新增设备侧精度结果。
+- 晚间恢复设备验证：`.run --quiet` 安装成功，最小三方 smoke 可运行；normal baseline PASS，out/state `max_abs=8.133054e-04/4.790872e-04`。
+- raw const L0A/L0B MMAD 写 `outQkGm_` 后结果明显变化，证明 selector、安装、raw Fixpipe 写 GM 链路不是 no-op。
+- raw const MMAD 写 `tmpWsGm_` 后再用 `MatmulImpl(tmpWsGm_, powerGm -> outQkGm_)`，out 变化为 `max_abs=4.229003e-01`，证明 `MatmulImpl` 能读到 raw 写过的 stage workspace。
+- raw const MMAD 写 `tmpWsGm_` 再 readback 到 `INVWsGm_` 后仍回到 no-op 失败特征：out/state `max_abs=7.104934e-01/5.422900e-01`。
+- 将 16x16 子块 readback 和 `AICBlockProcess` 改用 `mmFp32C16/mmFp32C32` micro tiling 后，最小 smoke 结果不变，排除通用 64x64 tiling 误用为主因。
+- 当前判断：问题收敛到 raw MMAD/Fixpipe 写出的矩阵数值或布局与后续 `INVWsGm_` row-major 消费不一致；下一步应直接验证 raw 输出布局/数值，而不是继续从安装、cache 可见性或 Matmul tiling 方向排查。
+- 修复 final `INVWsGm_` 消费链路：新增 `stage1MT_C64_` 并将 final `INV@gBK`、`INV@vBeta` 两个 `64 x D` matmul 切到 `matmulTilingFp32C64`。
+- 使用 `RAW_MMAD_DEBUG_FINAL_USE_KK=true` 探针确认 final A 侧切换已真实生效，前面“换 A 不生效/像 no-op”的直接原因是 final matmul 仍使用通用 `mmFp32` tiling。
+- raw full path 恢复为 `RAW_MMAD_DEBUG_STEP=0`、`RAW_MMAD_DEBUG_OVERWRITE_PRODUCT=false`、`RAW_MMAD_DEBUG_FINAL_USE_KK=false` 后，最小 deterministic smoke PASS：`B=1,S=16,nk=1,nv=1,dk=16,dv=16,seed=123,CGDR_GOLDEN_CHUNK_SIZE=64,atol=rtol=0.08`。
+- 扩展小范围 smoke：`S=16,dk=dv=32` raw full path PASS；`S=17,dk=dv=16` raw full path FAIL，out `max_abs=1.203164e-01`、state PASS。
+- 同一 `S=17,dk=dv=16` 切 `RAW_MMAD_USE_MATMULIMPL_FALLBACK=true` 后 PASS，说明 final C64 matmul、16x16 compose 与 MatmulImpl 串联语义不是当前根因。
+- raw atomic 写回后补 `FlushInvBlockCacheLines()`、禁用 HF32 均未改善 S17；尝试把 L0B 加载改为 N 方向 C0 循环触发 `507015 ADDR_MISALIGN`，已撤回。
+- 当前疑点收敛到 raw `GM->L1->L0B->Mmad->Fixpipe atomic add` 的 B 侧布局、raw 输出布局或 atomic add 语义；后续继续用最小 S17 case 做二分，不进入 Stage2/Stage3 或性能 profiling。
+- S17 对角块 fallback 二分：仅 `base=16` fallback 失败不变；仅 `base=0` fallback 后 PASS。结论是第一个 16x16 raw inverse 的误差在 `Compose32From16()` 中被放大，下一步直接比较 base0 raw product/atomic add 与 MatmulImpl fallback。
+- 验证 `RAW_MMAD_DEBUG_SCALAR_ADD_PRODUCT=true` 探针：raw product 非 atomic 写 `tmpWsGm_` 后由 AIC 标量累加仍 FAIL，排除 `Fixpipe atomic add` 为主因。
+- 对齐仓库通用 raw FP32 helper，将 `CopyL1MatrixToL0A/B()` 改为 `LoadData3DParamsV2<float>`；A 侧 `enTranspose=0`，B 侧 `enTranspose=1`，修复 raw FP32 L1->L0 布局。
+- 关闭临时标量累加探针，当前 raw full path 配置为 `RAW_MMAD_DEBUG_STEP=0`、`RAW_MMAD_USE_MATMULIMPL_FALLBACK=false`、`RAW_MMAD_DEBUG_SCALAR_ADD_PRODUCT=false`。
+- 构建安装通过；小范围 smoke `S=16/17/33/49/64,dk=dv=16` 与 `S=16,dk=dv=32` 均 PASS。S17 从修复前 out `max_abs=1.203164e-01` FAIL 改为 `6.067441e-02` PASS。
+- 当前结论：S17 根因确认是 raw FP32 `L1->L0A/L0B` 布局参数不匹配，不是 final `INV@rhs`、compose 或 atomic add；尚未运行 full compare/perf。
+### 2026-05-02
+- 复核当前默认 selector 仍为 `C64_1616_FP32_CVInverse`，host `chunkSize=64`，目标继续是 C64 16x16 子块 raw MMAD fused inverse。
+- 澄清当前源码不是“全部 fused 已通过”状态：为定位大 case，`RAW_MMAD_USE_MATMULIMPL_FALLBACK`、power fallback、compose fallback、`kcum` final fallback 被临时打开，`vinner` final raw 仍在调试。
+- 最新关键失败 case 为 `B=2,S=160,nk=8,nv=32,dk=dv=64,seed=40,CGDR_GOLDEN_CHUNK_SIZE=64,atol=rtol=0.08`：normal PASS，Neumann `state` PASS，但 `out` FAIL。
+- 已知 `Partial=2/Final=3` unit flag 与 HF32 enable 都未修复 raw final；HF32 enable 反而使误差变大，后续应回退到 `HF32Mode::DISABLE`。
+- 当前判断失败集中在 raw final `INV @ v_beta -> outVInnerGm_`，或 raw final 写 GM 对 Stage3 workspace/缓存造成副作用；`tmpWsGm_`/`INVWsGm_` 不能作为干净 scratch。
+- 新增 `docs/2026-05-02/WORK_LOG.md` 与 `docs/2026-05-02/PROGRESS_AND_ISSUES.md`，记录当日状态、阻塞项和下一步。
+- 回退 raw MMAD 路径中临时 `SetHF32Mode(HF32Mode::ENABLE)` 为 `DISABLE`；重新构建安装后复测关键 case，Neumann `out` 仍 FAIL，`max_abs=1.037243e-01`，`state` PASS 且与 normal 几乎完全一致。
+- 换窗口交接结论：当前已有 Stage1 `C64_1616` raw MMAD fused inverse/final 实现骨架，但不是所有阶段都 fused；Stage2/Stage3 未改，Stage1 仍有多处临时 MatmulImpl fallback，当前阻塞点是 raw `INV @ v_beta -> outVInnerGm_`。
+- 本轮重新复现关键 case：`B=2,S=160,nk=8,nv=32,dk=dv=64,seed=40,CGDR_GOLDEN_CHUNK_SIZE=64`，raw `vinner final` 下 `CPU vs ChunkGDRNeumann out` FAIL，`max_abs=1.584216e-01`，state PASS。
+- 小切片显示 B=1/multi-head 在阈值内，B=2 multi-head/multi-chunk 更容易触发，继续判断问题集中在 raw `INV @ v_beta -> outVInnerGm_` 写回/状态污染或 Stage3 消费链路。
+- 精度优先修复已落地到源码：将 `RAW_MMAD_USE_MATMULIMPL_VINNER_FINAL_FALLBACK` 改为 `true`，`INV @ v_beta -> outVInnerGm_` 暂回 `MatmulImpl`；这不是 raw final fused 完成。
+- 重新构建安装双算子包成功：`bash ../../build.sh --pkg --soc=ascend910_93 --ops=chunk_gated_delta_rule,chunk_gated_delta_rule_neumann -j16`，再安装到 `/home/developer/Ascend/cann-9.0.0/opp`。
+- 修复后关键 case PASS：`CPU vs ChunkGDRNeumann out/state max_abs=9.762645e-04/4.881620e-04`，`ChunkGDR vs ChunkGDRNeumann out max_abs=0`。
+- 全量三方精度恢复：`CGDR_GOLDEN_CHUNK_SIZE=64 bash tests/pytest/test_run.sh compare` 从算子根目录运行 `20 passed in 6.18s`。
+- 修复 `tests/pytest/test_run.sh`：自动切到脚本目录并透传 `single/compare/performance` 退出码，避免 pytest 找不到脚本但 shell 仍 `exit 0` 的假通过。
+### 2026-05-03
+- 继续精度收口：默认 selector 保持 `C64_1616_FP32_CVInverse`，host 主 chunk 保持 `64`。
+- 关闭 raw final 调试探针 `RAW_MMAD_DEBUG_RAW_FINAL_TO_ATTN_THEN_FALLBACK`，避免 raw final 写 `attnWsGm_` 后再 fallback 仍污染后续链路。
+- 将 final 两路统一回退到 `MatmulImpl`：`RAW_MMAD_USE_MATMULIMPL_FINAL_FALLBACK=true`、`RAW_MMAD_USE_MATMULIMPL_KCUM_FINAL_FALLBACK=true`、`RAW_MMAD_USE_MATMULIMPL_VINNER_FINAL_FALLBACK=true`。
+- 重新构建双算子包通过：`bash ../../build.sh --pkg --soc=ascend910_93 --ops=chunk_gated_delta_rule,chunk_gated_delta_rule_neumann -j16`。
+- 重新安装 custom OPP 到 `/home/developer/Ascend/cann-9.0.0/opp` 成功。
+- 关键失败 case `B=2,S=160,nk=8,nv=32,dk=dv=64,seed=40,CGDR_GOLDEN_CHUNK_SIZE=64` 恢复 PASS：Neumann out/state `max_abs=9.762645e-04/4.881620e-04`，Neumann 与 normal out `max_abs=0`。
+- 全量三方精度验证通过：`CGDR_GOLDEN_CHUNK_SIZE=64 bash tests/pytest/test_run.sh compare` 结果 `20 passed in 6.19s`。
+- 当前真实状态：精度已通过，但 raw `INV @ v_beta -> outVInnerGm_` final fused 仍未完成；当前 PASS 依赖 final MatmulImpl fallback，后续追 fused 性能需新增安全 scratch 后单独定位 raw final。
+- 继续 raw final 二分：新增 host `rawFinalScratchSz` 与 Stage1 `rawFinalScratchGm_`，让 raw final 先写安全 scratch 后再 fallback 覆盖真实 `outVInnerGm_`；关键 case 仍 FAIL，排除 `tmpWsGm_` / `attnWsGm_` 真实输出复用污染。
+- 增加 Stage2/Stage3 `RestoreCubeState()` 探针，显式恢复 atomic、padding、ND、HF32 和 layout transform；关键 case 仍 FAIL，说明常规 cube 状态恢复不能修复 raw final 副作用。
+- 将 raw final 多 K 分段 unitFlag 从 `0/0` 调为 `2/3` 对齐仓库通用写法，关键 case 仍 FAIL，排除单纯 unitFlag 未更新。
+- 设置 `RAW_MMAD_DEBUG_SKIP_RAW_FINAL=true` 跳过 raw final 执行但保留 fallback 覆盖链路，关键 case PASS；结论收敛为 `RawMmad64ByN()` 执行本身触发 out 偏差。
+- 最终回到精度交付开关：`RAW_MMAD_USE_MATMULIMPL_FINAL_FALLBACK=true`、`RAW_MMAD_USE_MATMULIMPL_KCUM_FINAL_FALLBACK=true`、`RAW_MMAD_USE_MATMULIMPL_VINNER_FINAL_FALLBACK=true`、关闭 safe scratch/skip 探针；重新构建安装后全量三方精度 `20 passed in 6.24s`。
+- 按用户要求再次运行全量三方精度：`CGDR_GOLDEN_CHUNK_SIZE=64 bash tests/pytest/test_run.sh compare`，最新复跑结果 `20 passed in 6.22s`；当前精度状态确认通过。
+### 2026-05-04
+- 状态核对：当前默认 selector 仍为 `C64_1616_FP32_CVInverse`，host 主 chunk 为 `64`。
+- 当前源码处于精度交付配置：`RAW_MMAD_USE_MATMULIMPL_FALLBACK=true`，final/kcum/vinner final fallback 均为 `true`，raw final skip/safe scratch/attn/tmp/inv 调试探针均为 `false`。
+- 最新可信精度结果沿用 2026-05-03 复跑：`CGDR_GOLDEN_CHUNK_SIZE=64 bash tests/pytest/test_run.sh compare`，`20 passed in 6.22s`。
+- 当前真实状态：精度已通过，但 raw `RawMmad64ByN(INVWsGm_, vBetaWsGm_, outVInnerGm_, dv_)` final fused 仍未完成；后续若追性能需从 `RawMmadAccumulateL0C()` / `StoreAccumulatedL0C()` 继续二分。
+- 澄清 state 侧口径：关键失败定位中 `state` 不是当前 blocker，但当前 `INV @ k_cumdecay` final 仍有 `RAW_MMAD_USE_MATMULIMPL_KCUM_FINAL_FALLBACK=true`，不能宣称 state final 已完整 raw MMAD fused；当前最明确的最后 debug 点是 raw `INV @ v_beta -> outVInnerGm_`。
+- fused inverse 实现口径：当前默认 `C64_1616_FP32_CVInverse` 是 AIV 生成 `L` 和 `I-L`，AIC 按 16x16 子块执行三轮 Neumann 倍增，再用 `Compose32From16()` / `Compose64From32()` 组合 64x64 inverse；raw 目标路径为 `GM->L1->L0A/B->Mmad->L0C->Fixpipe->GM`，但当前精度配置仍打开 inverse/power/compose/final 的 `MatmulImpl` fallback。
+- 验证关闭 inverse fallback：仅将 `RAW_MMAD_USE_MATMULIMPL_FALLBACK=false`，保留 power/compose/final/kcum/vinner fallback，构建安装成功；关键 case `B=2,S=160,nk=8,nv=32,dk=dv=64,seed=40` 中 `CPU vs ChunkGDRNeumann state` PASS `max_abs=4.881620e-04`，`ChunkGDR vs ChunkGDRNeumann state` PASS `max_abs=9.313226e-10`，但 out 仍 FAIL `max_abs=1.037243e-01`；结论是关闭 inverse fallback 后 state 能通过，剩余 blocker 仍是 out/vinner。实验后已将源码开关恢复为 `RAW_MMAD_USE_MATMULIMPL_FALLBACK=true`，重新构建安装，并复跑同一关键 case 恢复 PASS。
+- L0C 累加口径：raw inverse add 的 `INV += INV@Lpow` 不是跨 round 全程 L0C resident，而是 `Mmad` 结果在 L0C 后通过 Fixpipe atomic add 写回 GM，下一轮再从 GM 读；raw final/blocked 多 K 分段设计可以在 L0C 做 partial sum，但 raw final 当前仍是 blocker，精度交付配置未启用该路径。
+- 修正 L0C resident 口径：底层 `Mmad` 可以控制 L0C 作为累加矩阵来源/C 初值，实现 `C=A@B+C_l0c`，这正是应替代当前 Fixpipe atomic add 的方向；当前代码尚未把 Neumann `INV += INV@P` 改成 L0C accumulator 结构，仍是 `Mmad->L0C->Fixpipe atomic add->GM`。剩余难点是更新后的 `INV` 下一轮还要作为 A 输入，仍需搬到可 `LoadData` 的位置，或进一步用 `INV@(I+P)` / ping-pong 合并输入与累加。
+- 主目标纠偏：后续开发必须围绕 Neumann inverse 展开中的 `INV += INV @ P` 做 L0C accumulator fused inverse。具体目标是在 `InvAdd16()` raw 分支中把旧 `INV` 作为 L0C C 初值/累加矩阵来源，用底层 `Mmad` 得到 `INV @ P + old_INV` 后写回 updated `INV`。Fixpipe atomic add 只算过渡方案，不是最终目标；raw final `INV @ v_beta` debug 暂时降级为后续事项，不能抢占 inverse 主线。验证顺序固定为：保留 power/compose/final fallback，仅关闭 inverse fallback，先跑关键 state case，再跑全量 compare。
+- 主目标纠偏：后续开发必须围绕 Neumann inverse 展开中的 `INV += INV @ P` 做 L0C accumulator fused inverse。具体目标是在 `InvAdd16()` raw 分支中把旧 `INV` 作为 L0C C 初值/累加矩阵来源，用底层 `Mmad` 得到 `INV @ P + old_INV` 后写回 updated `INV`。Fixpipe atomic add 只算过渡方案，不是最终目标；raw final `INV @ v_beta` debug 暂时降级为后续事项，不能抢占 inverse 主线。验证顺序固定为：保留 power/compose/final fallback，仅关闭 inverse fallback，先跑关键 state case，再跑全量 compare。
+- 按用户要求复用/开启子代理审计 raw MMAD 路径；新子代理指出 raw Fixpipe 写 GM 后、S 发 DCCI 前需要补 `SyncFixToS()`，并确认当前 16x16/32x32 compose 的 `CopyGmMatrixToL1B()`、`RawMmadBlocked32()`、`Compose32From16()`/`Compose64From32()` 未发现明显布局或公式错误。
+- 完成 Neumann inverse 矩阵生成 raw MMAD 化：`RAW_MMAD_USE_MATMULIMPL_FALLBACK=false`、`RAW_MMAD_USE_MATMULIMPL_POWER_FALLBACK=false`、`RAW_MMAD_USE_MATMULIMPL_COMPOSE_FALLBACK=false`，`RAW_MMAD_DEBUG_BASE0_FALLBACK=false`、`RAW_MMAD_DEBUG_BASE16_FALLBACK=false`、`RAW_MMAD_DEBUG_SCALAR_ADD_PRODUCT=false`。
+- `InvAdd16()` 当前走 `RawMmadInvAdd16()`：先 `INV @ I` 初始化 L0C，再以 `initC=false` 执行 `INV @ P`，在同一 L0C accumulator 内得到 `updated_INV = old_INV + INV @ P`，最后普通 Fixpipe 写回 `INVWsGm_`；不再依赖 Fixpipe atomic add、AIV add 或 GM 标量加法完成该累加。
+- `PowerMmadSquare()` 当前走 `RawMmadSquare()`，覆盖 `L2/L4/L8`；`ComposeMmadSquare()` 当前走 `RawMmadSquare()` / `RawMmadBlocked32()`，覆盖 `Compose32From16()` 和 `Compose64From32()`。
+- raw 写回可见性修复：`RawMmadInvAdd16()`、`RawMmadMatrix()`、`StoreAccumulatedL0C()` 在 Fixpipe 写 GM 后补 `SyncFixToS()`，再执行 `FlushMatrixCacheLines()`。
+- 构建安装通过：`bash ../../build.sh --pkg --soc=ascend910_93 --ops=chunk_gated_delta_rule,chunk_gated_delta_rule_neumann -j16`，随后安装 `../../build_out/cann-ops-transformer-custom_linux-aarch64.run --quiet --install-path=/home/developer/Ascend/cann-9.0.0/opp` 成功。
+- 分段 smoke 覆盖 `S=16/17/33/49` 全部 PASS，分别覆盖单 16x16、`Compose32From16()`、64 分块下半单 16 block、完整 4 个 16 block + `Compose64From32()`。
+- 关键 case `B=2,S=160,nk=8,nv=32,dk=dv=64,seed=40,CGDR_GOLDEN_CHUNK_SIZE=64` PASS：Neumann out/state `max_abs=7.336114e-03/4.881620e-04`，Neumann vs normal state `max_abs=9.313226e-10`。
+- 最终全量三方精度通过：`CGDR_GOLDEN_CHUNK_SIZE=64 bash tests/pytest/test_run.sh compare`，结果 `20 passed in 6.33s`。
+- 本轮完成范围是 Neumann inverse 矩阵生成相关乘法；final RHS 乘法 `INV @ k_cumdecay` / `INV @ v_beta` 仍保持 `MatmulImpl` fallback，后续若要求 final 也 raw，需要继续定位 `RawMmad64ByN()`，不能混同为本轮 Neumann 矩阵生成验收范围。
+- 本轮继续 local/TSCM PoC：`C64_3232_FP16_LocalTscm_CVInverse` 构造函数补齐一个忽略的 `StageOneMT &stage1MT_C64_` 参数后，主 kernel 10 参数构造路径可编译。
+- PoC 构建安装通过，但全量三方精度未通过：`CGDR_GOLDEN_CHUNK_SIZE=64 bash tests/pytest/test_run.sh compare` 结果 `17 failed, 3 passed in 6.30s`，不能进入 msprof 性能 probe。
+- 失败集中在 `C=64` 主路径，短尾/小块 case 部分可过；初步怀疑 64x64 NZ 大矩阵中的 32x32 子块 offset 与 local Matmul compact TSCM/NZ tile 布局不匹配。
+- 已将 selector 回退到稳定 `C64_3232_FP32_CVInverse`，重新构建安装后全量三方精度恢复：`20 passed in 6.33s`。
+- `C64_3232_FP16_LocalTscm_CVInverse` 文件保留为独立 PoC，后续继续前应先验证 compact 32x32/16x16 TSCM tile 搬运和子块读取，不应作为默认 selector。
+- 用户追问当前情况：确认最新状态仍为稳定默认线 `C64_3232_FP32_CVInverse` 可交付，local/TSCM PoC 精度未过；后续继续前先做 TSCM/NZ compact 子块布局验证。
+- 用户追问 local/TSCM 累加位置：当前 PoC 的 local Matmul 在 `AICBlockProcessFp16L1()`，但 `INV += INV@Lpow` 的实际累加由 `AddLocalMatrix()` 通过 AIC 标量循环完成，不是依赖 `mm.IterateAll(..., enableAtomicAdd=1)`。
+- 用户确认是否“靠标量累加而不是 Matmul 结果矩阵累加”：答案是是的；当前 `AICBlockProcessFp16L1()` 只生成乘积矩阵，`AddLocalMatrix()` 逐元素加回 `inv`，后续应考虑 `INV@(I+P)` 或验证 local Matmul C 输出累加能力。
+- 用户明确阶段策略：先用标量循环实现一版 local/TSCM 精度正确版本并对比性能，要求中间结果尽量不出 cube/local；最终仍要用底层 `MmadParams(..., cmatrixSource, cmatrixInitVal)` 的 C 矩阵累加能力，当前 raw helper 中 `initC` 对应 `cmatrixInitVal`，`initC=false` 表示继续在 L0C accumulator 上累加，`cmatrixSource=true` 可从额外 C/bias tensor 作为 C 初值来源。
+- 用户追问既然之前做过类似 L0C accumulator 思路为什么还没做好：原因是既有 raw MMAD 只验证了局部 `old_INV + INV@P` 累加，结果仍写回 GM 后下一轮再读，final RHS 仍有 `MatmulImpl` fallback 且 raw final 曾导致 out 精度失败；`C64_1616` 子块调用数多导致性能 probe 极慢，`C64_3232_FP16_LocalTscm` 又有 compact TSCM/NZ 布局阻塞。后续应先打通 local/TSCM compact tile 正确性，再替换 `AddLocalMatrix()` 为底层 C 初值/累加。
+- 回答 L1/TSCM 承接问题：累加完可以搬到 L1/TSCM，不必须到 GM；当前 GM 是 `MatmulImpl` 串接和精度二分路径，最终目标仍是 `L0C accumulator -> Fixpipe -> L1/TSCM -> LoadData`，难点是 compact NZ/stride/layout 正确性。
+- 按用户要求先实现标量正确基线：selector 切到稳定 `C64_3232_FP32_CVInverse`，新增 `DEBUG_SCALAR_FORWARD_GM_INVERSE=true` 和 `C64InverseByScalarForwardGm()`，用 AIC 标量前代递推从 `L_powWsGm_` 生成 `INVWsGm_`，final 仍走 FP32 GM `MatmulImpl`。
+- 标量前代精度验证通过：Neumann-only smoke 覆盖 `S=16/S=17/S=64` PASS；双算子重新打包安装后 `CGDR_GOLDEN_CHUNK_SIZE=64 bash tests/pytest/test_run.sh compare` 全量 `20 passed in 6.16s`。
+- 标量前代性能 smoke 使用 `msprof --application ... --task-time=on` 完成，结果保存到 `tests/pytest/prof_out/chunk_gdr_c64_3232_scalar_forward_gm_smoke/`；`B=8,S=16` Neumann/normal `2.573x`，`B=8,S=64` `23.856x`，主耗时是 AIC scalar time，证明标量循环只能作为正确性基线。
+- 新增方案文档 `docs/2026-05-04/C64_3232_SCALAR_FORWARD_BASELINE_PLAN.md`；后续方向更新为先打通 local/TSCM resident 和 compact tile layout，再把标量累加替换为 `MmadParams(..., cmatrixSource, cmatrixInitVal)` / `initC=false` 的底层 C 矩阵累加。
+- 按用户明确要求完成当前默认 `C64_3232_FP32_CVInverse` 的 CMatrix/MMAD 累加主线：`RawMmadInvAddOutputTile()` 先用 `INV @ I` + `initC=true` 初始化 L0C，再用 `INV @ P` + `initC=false` 在同一 L0C/CMatrix 内累加，`StoreRawMmadInvAddRow()` 行级写回避免覆盖旧 `INV`。
+- 清理当前默认文件中的标量前代残留和未用 scratch：移除 `DEBUG_SCALAR_FORWARD_GM_INVERSE`、`C64InverseByScalarForwardGm()`、`rawInvAddScratchGm_`、`RAW_LOAD3DV2_NO_FMATRIX_CONFIG`、`CeilDivLocal()`；保留 host `rawFinalScratchSz` 以免影响其它变体。
+- 重新构建安装双算子包通过：`bash ../../build.sh --pkg --soc=ascend910_93 --ops=chunk_gated_delta_rule,chunk_gated_delta_rule_neumann -j16`，安装到 `/home/developer/Ascend/cann-9.0.0/opp` 成功。
+- 全量三方精度通过：`CGDR_GOLDEN_CHUNK_SIZE=64 bash tests/pytest/test_run.sh compare`，结果 `20 passed in 6.22s`；本轮未重新运行 msprof，完成范围是 Neumann inverse 矩阵生成中的 CMatrix/MMAD 累加正确性。
+- 固化 CMatrix/MMAD 默认策略：保留 `RawMmadLowerTriangularBlock()` 计算 power 并显式清零上三角；full-tile power 与 `INV@P` k-range 裁剪均已回退，原因是部分 case 出现 `1e-2` 级 out 漂移。
+- 语义化 raw helper：新增 `RAW_MMAD_CMATRIX_SOURCE_L0C=false`、`RAW_MMAD_INIT_C=true`、`RAW_MMAD_ACCUMULATE_C=false`，并将 `initC` 改名为 `initCMatrix`，明确对应 `MmadParams(..., cmatrixSource, cmatrixInitVal)` 的 CMatrix 控制参数。
+- 最新验证：重新构建双算子包并安装到 `/home/developer/Ascend/cann-9.0.0/opp` 后，`CGDR_GOLDEN_CHUNK_SIZE=64 bash tests/pytest/test_run.sh compare` 全量三方精度 `20 passed in 6.14s`。
+### 2026-05-05
+- 当前求逆实现口径：默认 selector 为 `C64_3232_FP32_CVInverse`；AIV 生成 `L_powWsGm_=L` 和 `INVWsGm_=I-L`，AIC 在 `C64InverseBy32x32Neumann()` 中按 C64 拆 32x32、32x32 再拆 16x16 对角块做 Neumann inverse 和 compose。
+- `INV += INV@P` 继续使用 CMatrix/MMAD 累加：`INV@I` 用 `cmatrixInitVal=true` 初始化 L0C，`INV@P` 用 `cmatrixInitVal=false` 累加到同一 CMatrix，Fixpipe 只负责写回。
+- 当前主要耗时判断：latest lower-triangular power smoke 中 S16 Neumann/normal `1.323x`、S64 `1.664x`；主要放大项是 AIC scalar、MTE1/MTE2、Fixpipe、同步和 GM workspace 往返，不是单纯理论 MAC。
+- 记录到 `docs/2026-05-05/WORK_LOG.md` 和 `docs/2026-05-05/PROGRESS_AND_ISSUES.md`；本轮未改代码、未重新跑 msprof。
+- 纯 cube 核内口径澄清：当前还不是全程 L0/L1/TSCM resident 的纯 cube 融合求逆；已完成的是 `INV += INV@P` 的 L0C/CMatrix 累加，但每轮仍有 `L0C -> Fixpipe -> GM -> LoadData -> L0A/B` 往返，final RHS 仍为 FP32 GM `MatmulImpl`。
+- CMatrix 累加与 GM atomic add 区别：旧路线是 `tmp=INV@P` 后由 Fixpipe/Matmul atomic add 写 GM 完成 `INVWsGm += tmp`；当前路线是在 L0C 里先 `INV@I` 再用 `cmatrixInitVal=false` 累加 `INV@P`，Fixpipe 只普通写回 updated `INV`。
+- 下一步方向确认：应把 L0C 中 updated `INV` 通过 Fixpipe 写到 L1/TSCM 片上 buffer，再由下一轮 `LoadData` 读入 L0A/B；关键阻塞是 Fixpipe 到 L1/TSCM 的 layout/stride 以及 16x16/32x32 子块 compact NZ offset，不是 Neumann 公式本身。
+- 后台任务检查：无仍在运行的 `build.sh`、`pytest`、`msprof`、`opc`、`ninja/gmake/cmake` 或安装任务，`jobs -l` 为空。
+- 新增今日完成计划 `docs/2026-05-05/L0C_TO_L1_TSCM_INVERSE_COMPLETION_PLAN.md`：先做 16x16 `L0C -> Fixpipe -> L1/TSCM -> LoadData` 数值探针，再扩到 32x32 compose，全量 compare 通过后才跑 S16/S64 性能 smoke。
+- 用户明确 final RHS 可以先不用改；今日实现范围收窄为 Neumann inverse 矩阵生成 resident 链路，`INV @ k_cumdecay` / `INV @ v_beta` 保持 FP32 GM `MatmulImpl` 稳定消费端。
+- 按用户要求使用子代理执行 5.05 计划审计：子代理确认仓库没有 `float L0C -> float L1/TSCM -> LoadData<float>` 端到端样例，只有 `int32_t -> half` L0C->L1 iterator 参考；`C64_3232_FP16_LocalTscm` PoC 是 half local Matmul + 标量 add，不能直接作为默认 FP32 RHS 稳定线。
+- 尝试在默认 `C64_3232_FP32_CVInverse` 中实现 FP32 resident inverse：增加 `aicL1Inv_`、`CopyL0CMatrixToL1Nz()`、`LoadInvGmToL1Resident()`、`RawMmadInvAddBlockResident()` 等 helper。
+- 构建确认硬限制：`ascend910_93` / DAV2201 的 CANN Fixpipe L0C->L1 不支持 `float -> float`，`Fixpipe<float, float, CFG_NZ>(LocalTensor<float>, L0C)` 编译失败；当前只支持 float L0C 到 half/bfloat16/int8/uint8 等目标类型。
+- 收敛默认线：移除不可编译的 FP32 L1 resident cache 和相关 helper，`Neumann16InverseBlock()` / `Neumann32InverseBlock()` 恢复使用已验证的 `RawMmadInvAddBlock()`，即 L0C/CMatrix 完成 `old_INV + INV@P` 后普通 Fixpipe 写回 GM。
+- 验证通过：单算子包构建通过，双算子包构建通过，安装到 `/home/developer/Ascend/cann-9.0.0/opp` 成功；`CGDR_GOLDEN_CHUNK_SIZE=64 bash tests/pytest/test_run.sh compare` 全量三方精度 `20 passed in 6.22s`。
+- 今日结论：默认算子保持可交付 `C64_3232_FP32_CVInverse` GM 中转基线；5.05 FP32 `L0C -> L1/TSCM` resident 闭环在当前架构上不可落地，后续只能转 half/bfloat16 resident PoC 或等待支持 FP32 L1 写回的架构。
+- 用户纠正 `0C` 可搬到 L1：结论收窄为 `L0C -> L1` 支持，但 DAV2201 不支持 `float L0C -> float L1/TSCM`；可验证方向是 `float L0C -> half/bfloat16_t L1 NZ`。
+- 布局口径补正：`Fixpipe CFG_NZ` 写到 L1 后是 C/output 的 NZ layout，不等于原样保留 L0C 内部物理排布；后续作为 A/B 输入时必须分别用 L0A/L0B 侧 `LoadData` 参数解释，不能共用同一套 transpose/stride。
+- 状态复核：默认 selector 仍为 `C64_3232_FP32_CVInverse`，`FP16_L1_RESIDENT_INVERSE` 及相关 probe 开关均为 `false`，当前默认算子仍是稳定 FP32 GM 中转基线。
+- 子代理补充确认：CANN 头文件未发现 `CFG_ZN`，`L0C -> half/bfloat16 L1/TSCM` 应使用 `CFG_NZ`；该 NZ 输出作为 A/B 输入时，L0A/L0B 的 `LoadData` transpose/stride 语义需要拆开验证。
+- 当前下一步：先做隔离 16x16 `L0C -> Fixpipe CFG_NZ -> L1/TSCM -> LoadData -> MMAD` 数值探针，探针通过前不把 resident 分支切入默认 selector。
+- 按用户纠正重新定义 baseline：不是旧远端 GM+AIV-add，而是 AIV 仅构造初始 `L/I-L`，后续 Neumann 轮次用 AIC Matmul/Fixpipe atomic add 的最早精度通过版本。
+- 拆分 `op_kernel/baseline`、`op_kernel/halflocal`、`op_kernel/fulllocal`，并通过 `op_kernel/selected` selector 控制当前 stage1 版本；stage1 新文件名已去除 `CVInverse/cvinverse`。
+- 修复 C16 halflocal/fulllocal 文件中从 C64_3232 复制残留的 compose 逻辑和重复 `C16InverseBy16x16Neumann()`，保留单 16x16 raw/L0C 累加路径。
+- baseline `3*2` 全部构建、安装、三方精度通过：`C16_FP32/FP16`、`C64_1616_FP32/FP16`、`C64_3232_FP32/FP16` 均 `20 passed`。
+- halflocal `3*2` 全部构建、安装、三方精度通过：`C16_FP32/FP16`、`C64_1616_FP32/FP16`、`C64_3232_FP32/FP16` 均 `20 passed`。
+- 完成指定 `S=16/64/125/2048` 的 baseline/halflocal/original normal msprof 对比，汇总到 `docs/2026-05-05/BASELINE_HALFLOCAL_PERFORMANCE_SUMMARY.md` 和 `tests/pytest/prof_out/stage1_baseline_halflocal_s_selected_summary_20260505.csv`；当前最佳为 `halflocal/C64_3232_FP32`，ratio 为 `1.305x/1.651x/1.873x/2.332x`，normal 仍全点更快。
+- `halflocal/C16_FP16/S=2048` 首次 msprof warmup 触发一次 `507015 L0A read/write conflict`，retry 成功并已合入最终性能表。
+- 当前 selector 复核为 `halflocal/C64_3232_FP32`，`stage1_selected.h` include `../halflocal/chunk_gated_delta_rule_neumann_stage1_C64_3232_FP32_halflocal.h`；无仍在运行的 build/pytest/msprof/opc 任务。
+- 新增 fulllocal 单点突破计划：`docs/2026-05-05/FULLLOCAL_SINGLE_POINT_BREAKTHROUGH_PLAN.md`；首选 `fulllocal/C64_3232_FP16`，先做 16x16 `L0C -> Fixpipe CFG_NZ -> half/bfloat16 L1/TSCM -> LoadData -> MMAD` 布局探针，再接入 32x32/C64 path。
+- 解释 `C64_1616` 性能异常：`halflocal/C64_1616_FP32` 四点 ratio 为 `5.240x/31.341x/43.869x/133.229x`，但 AIC MAC ratio 仅 `1.087x/1.609x/1.609x/1.224x`；慢点来自 16x16 子块数量、power/compose MatmulImpl fallback、同步/cache flush/GM workspace 往返和 AIV 等待放大，不是理论 MAC 主导。
+- 复核 FP16/FP32 性能口径：`halflocal/C64_3232_FP16` 与 `halflocal/C64_3232_FP32` stage1 除文件名/header guard 外无实际逻辑差异，`FP16_L1_RESIDENT_INVERSE=false`，核心求逆和 final RHS 仍是 FP32 路线；四点中 FP16 仅 `S=16` 较慢，`S=64/125/2048` 基本持平或略快，因此当前不能解释为真实 FP16 计算慢于 FP32。
+- 已尝试仅打开 `FP16_L1_RESIDENT_INVERSE` 的最小 FP16 resident 实验：构建与安装通过，但 `compare` 20/20 case 全失败；实验后开关恢复为 `false`。结论是单开关不足以形成可用 FP16 搬运/累加版本，后续必须补齐 resident layout/LoadData 链路。
+- 按用户确认删除其它 fulllocal 候选，仅保留 `op_kernel/fulllocal/chunk_gated_delta_rule_neumann_stage1_C64_3232_FP16_fulllocal.h` 作为单点突破文件；selector 恢复为 `halflocal/C64_3232_FP32`。
+- 稳定线重新构建、安装并复跑全量三方精度：`CGDR_GOLDEN_CHUNK_SIZE=64 TORCH_EXTENSIONS_DIR=/tmp/cgdr_torch_ext bash tests/pytest/test_run.sh compare`，结果 `20 passed in 6.15s`。
