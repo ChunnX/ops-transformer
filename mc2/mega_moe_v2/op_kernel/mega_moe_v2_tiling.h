@@ -38,6 +38,7 @@ struct MegaMoeV2TilingData {
     bool     transW2;
 
     // ---- V2 wave / ring / arrival ----
+    uint32_t maxTokensPerExpert;   // upper bound recv per local expert across all ranks (for ring sizing)
     uint32_t kExpertsPerWave;      // experts handled per wave
     uint32_t kNumWaves;            // = ceilDiv(expertPerRank, kExpertsPerWave)
     uint32_t chunkDepth;           // ring buffer depth (slots concurrently alive)
