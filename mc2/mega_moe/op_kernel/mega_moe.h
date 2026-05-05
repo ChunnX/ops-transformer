@@ -82,10 +82,44 @@
 #include "mega_moe_base.h"
 #include "mega_moe_workspace_info.h"
 #include "block_epilogue_swiglu_mx_quant.h"
-#include "mega_moe_impl.h"
-
 
 using namespace AscendC;
+
+namespace MegaMoeImpl {
+
+// 打点函数：记录时间戳到输出tensor
+// 打点布局: routing(2) + dispatch(2*MAX_EXPERT) + gmm1(2*MAX_EXPERT) + gmm2(2*MAX_EXPERT) + combine(2)
+__aicore__ inline void RecordTimestamp(GlobalTensor<uint64_t> &output, int pointIndex) {
+    constexpr int AIC_REPRESENTATIVE_COUNT = 4;
+    constexpr int AIV_REPRESENTATIVE_COUNT = 8;
+    constexpr int MAX_EXPERT_PER_RANK = 16;  // 最大支持expertPerRank_
+    constexpr int POINTS_PER_CORE = 2 + 2 * MAX_EXPERT_PER_RANK + 2 * MAX_EXPERT_PER_RANK + 2 * MAX_EXPERT_PER_RANK + 2;
+    constexpr uint64_t CYCLES_PER_US = 1000;
+    
+    int coreIdx = GetBlockIdx();
+    int globalCoreIdx = -1;
+    
+    if constexpr (g_coreType == AIC) {
+        if (coreIdx < AIC_REPRESENTATIVE_COUNT) {
+            globalCoreIdx = coreIdx;
+        }
+    } else {
+        if (coreIdx < AIV_REPRESENTATIVE_COUNT) {
+            globalCoreIdx = AIC_REPRESENTATIVE_COUNT + coreIdx;
+        }
+    }
+    
+    if (globalCoreIdx == -1) {
+        return;
+    }
+    
+    uint64_t timestamp = static_cast<uint64_t>(AscendC::GetSystemCycle()) / CYCLES_PER_US;
+    output.SetValue(globalCoreIdx * POINTS_PER_CORE + pointIndex, timestamp);
+}
+
+} // namespace MegaMoeImpl
+
+#include "mega_moe_impl.h"
 
 namespace MegaMoeImpl {
 using TupleShape = Shape<int64_t, int64_t, int64_t, int64_t>;
@@ -800,33 +834,42 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     }
     SyncAll<false>();
 
-    // 打点2: dispatch开始
-    RecordTimestamp(timestampOutput, 2);
+    // 打点: dispatch循环（每个专家独立打点）
+    // 打点布局: [2, 2+2*expertPerRank_) 用于dispatch
+    constexpr int MAX_EXPERT_PER_RANK = 16;
+    constexpr int DISPATCH_BASE = 2;
     
-    // 4. subBlockIdx_ == 1的AIV核心一次性完成所有专家的dispatch
     GMMAddrInfo gmmAddrInfo;
     if constexpr(g_coreType == AscendC::AIV) {
         if (subBlockIdx_ == 1) {
             for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
+                // 打点: 第expertIdx个专家的dispatch开始
+                RecordTimestamp(timestampOutput, DISPATCH_BASE + 2 * expertIdx);
+                
                 if (!UpdateGroupParams(expertIdx)) {
                     continue;
                 }
                 UpdateGlobalBuffer(gmmAddrInfo, 0);
                 DispatchTokens(gmmAddrInfo, expertIdx);
+                // dispatch结束由AIC核在GroupMatmulSwigluQuant中记录
             }
         }
     }
     
-    // 打点3: dispatch结束
-    RecordTimestamp(timestampOutput, 3);
-    
-    // 打点4: gmm1+gmm2循环开始
-    RecordTimestamp(timestampOutput, 4);
+    // 打点: gmm1+gmm2循环（每个专家独立打点）
+    // 打点布局: [34, 66) 用于gmm1, [66, 98) 用于gmm2
+    constexpr int GMM1_BASE = 2 + 2 * MAX_EXPERT_PER_RANK;
+    constexpr int GMM2_BASE = 2 + 2 * MAX_EXPERT_PER_RANK + 2 * MAX_EXPERT_PER_RANK;
     
     // 5. subBlockIdx_ == 0的核心执行gmm1 → gmm2 → combine
     preOffset_ = 0;
     baseOffset_ = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
+        // 打点: 第expertIdx个专家的gmm1开始（只有AIC核记录）
+        if constexpr (g_coreType == AscendC::AIC) {
+            RecordTimestamp(timestampOutput, GMM1_BASE + 2 * expertIdx);
+        }
+        
         if (!UpdateGroupParams(expertIdx)) {
             continue;
         }
@@ -835,23 +878,35 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         if (subBlockIdx_ == 0) {
             MegaMoeImpl::GroupMatmulSwigluQuant<
                 QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType>(
-                epilogueOp_, params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
+                epilogueOp_, params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_, &timestampOutput, expertIdx);
         }
         EndSync();
         vecSetSyncCom_ = 0;
+        
+        // 打点: 第expertIdx个专家的gmm1结束（只有AIV核记录，此时AIV核已等待gmm1完成）
+        if constexpr (g_coreType == AscendC::AIV) {
+            RecordTimestamp(timestampOutput, GMM1_BASE + 2 * expertIdx + 1);
+        }
+        
+        // 打点: 第expertIdx个专家的gmm2开始（只有AIC核记录）
+        if constexpr (g_coreType == AscendC::AIC) {
+            RecordTimestamp(timestampOutput, GMM2_BASE + 2 * expertIdx);
+        }
         
         UpdateGlobalBuffer(gmmAddrInfo, 1);
         if (subBlockIdx_ == 0) {
             MegaMoeImpl::GroupMatmul2<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
                 params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_, expertIdx, gmm2PingPongIdx_,
-                rankId_);
+                rankId_, &timestampOutput);
         }
         EndGMM2Sync();
         vecSetSyncCom_ = 0;
+        
+        // 打点: 第expertIdx个专家的gmm2结束（只有AIV核记录）
+        if constexpr (g_coreType == AscendC::AIV) {
+            RecordTimestamp(timestampOutput, GMM2_BASE + 2 * expertIdx + 1);
+        }
     }
-    
-    // 打点5: gmm1+gmm2循环结束
-    RecordTimestamp(timestampOutput, 5);
     
     if constexpr(g_coreType == AscendC::AIV) {
         if (aivCoreIdx_ == 1) {
@@ -864,8 +919,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     }
     SyncAll<true>();
     
-    // 打点6: combine开始
-    RecordTimestamp(timestampOutput, 6);
+    // 打点: combine开始
+    constexpr int COMBINE_BASE = 2 + 4 * MAX_EXPERT_PER_RANK + 2 * MAX_EXPERT_PER_RANK;
+    RecordTimestamp(timestampOutput, COMBINE_BASE);
     
     // 6. unpermute & 清理win区上放置token的位置
     if constexpr(g_coreType == AIV) {
@@ -879,8 +935,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         secondPipe.Destroy();
     }
     
-    // 打点7: combine结束
-    RecordTimestamp(timestampOutput, 7);
+    // 打点: combine结束
+    RecordTimestamp(timestampOutput, COMBINE_BASE + 1);
     
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
 }
