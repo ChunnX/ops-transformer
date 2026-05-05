@@ -74,18 +74,6 @@
 //         }
 
 
-// def calc_latency(core_idx, expert_idx=0):
-//     ts = y_timestamps[core_idx]
-//     return {
-//         'routing': ts[1] - ts[0],
-//         'dispatch': ts[2 + 2*expert_idx + 1] - ts[2 + 2*expert_idx],
-//         'gmm1': ts[34 + 2*expert_idx + 1] - ts[34 + 2*expert_idx],
-//         'gmm2': ts[66 + 2*expert_idx + 1] - ts[66 + 2*expert_idx],
-//         'combine': ts[99] - ts[98],
-//     }
-// for core_idx in range(12):
-//     core_type = "AIC" if core_idx < 4 else "AIV"
-//     print(f"{core_type} Core {core_idx}: {calc_latency(core_idx)}")
 #ifndef MEGA_MOE_H
 #define MEGA_MOE_H
 
@@ -103,23 +91,24 @@ namespace MegaMoeImpl {
 
 // 打点函数：记录时间戳到输出tensor
 // 打点布局: routing(2) + dispatch(2*MAX_EXPERT) + gmm1(2*MAX_EXPERT) + gmm2(2*MAX_EXPERT) + combine(2)
+// 只记录第一组核心：AIC core 0, AIV core 0 (sub0), AIV core 1 (sub1)
 __aicore__ inline void RecordTimestamp(GlobalTensor<uint64_t> &output, int pointIndex) {
-    constexpr int AIC_REPRESENTATIVE_COUNT = 4;
-    constexpr int AIV_REPRESENTATIVE_COUNT = 8;
-    constexpr int MAX_EXPERT_PER_RANK = 16;  // 最大支持expertPerRank_
-    constexpr int POINTS_PER_CORE = 2 + 2 * MAX_EXPERT_PER_RANK + 2 * MAX_EXPERT_PER_RANK + 2 * MAX_EXPERT_PER_RANK + 2;
+    constexpr int POINTS_PER_CORE = 100;
     constexpr uint64_t CYCLES_PER_US = 1000;
     
     int coreIdx = GetBlockIdx();
     int globalCoreIdx = -1;
     
+    // 只记录第一组：AIC core 0, AIV core 0 (sub0), AIV core 1 (sub1)
     if constexpr (g_coreType == AIC) {
-        if (coreIdx < AIC_REPRESENTATIVE_COUNT) {
-            globalCoreIdx = coreIdx;
+        if (coreIdx == 0) {
+            globalCoreIdx = 0;  // AIC core 0
         }
     } else {
-        if (coreIdx < AIV_REPRESENTATIVE_COUNT) {
-            globalCoreIdx = AIC_REPRESENTATIVE_COUNT + coreIdx;
+        if (coreIdx == 0) {
+            globalCoreIdx = 1;  // AIV sub0
+        } else if (coreIdx == 1) {
+            globalCoreIdx = 2;  // AIV sub1
         }
     }
     
