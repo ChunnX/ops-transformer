@@ -188,6 +188,28 @@ static ge::graphStatus InferShapeMatmulAlltoAll(gert::InferShapeContext* context
               CUBE_INNER_ERR_REPORT(context->GetNodeName(), "Failed to check allto_all axes for matmul allto all"),
               return ge::GRAPH_FAILED);
 
+    const char* groupPtr = attrs->GetAttrPointer<char>(INDEX_ATTR_GROUP);
+    std::string groupStr = std::string(groupPtr);
+    OP_LOGD(INNER_DEBUG, "In infershape, group value is: %s", groupStr.c_str());
+
+    const int64_t* worldSizePtr = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_WORLD_SIZE);
+    OP_LOGD(INNER_DEBUG, "In infershape, worldSize value is: %ld", *worldSizePtr);
+
+    const auto alltoAllAxesPtr = attrs->GetAttrPointer<gert::ContinuousVector>(INDEX_ATTR_ALLTO_ALL_AXES);
+    const auto alltoAllAxes = static_cast<const int64_t*>(alltoAllAxesPtr->GetData());
+    OP_LOGD(INNER_DEBUG, "In infershape, alltoAllAxes value is: [%ld, %ld]", alltoAllAxes[0], alltoAllAxes[1]);
+
+    const int64_t* yDtypePtr = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_Y_DTYPE);
+    OP_LOGD(INNER_DEBUG, "In infershape, yDtype value is: %ld", *yDtypePtr);
+
+    const int64_t* x1QuantMode = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_X1_QUANT_MODE);
+    const int64_t* x2QuantMode = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_X2_QUANT_MODE);
+    OP_LOGD(INNER_DEBUG, "In infershape, x1QuantMode and x2QuantMode value are: %ld, %ld", *x1QuantMode, *x2QuantMode);
+
+    const bool* transX1 = attrs->GetAttrPointer<bool>(INDEX_ATTR_TRANS_X1);
+    const bool* transX2 = attrs->GetAttrPointer<bool>(INDEX_ATTR_TRANS_X2);
+    OP_LOGD(INNER_DEBUG, "In infershape, transX1 and transX2 value are: %d, %d", *transX1, *transX2);
+
     auto shapeOut = context->GetOutputShape(INDEX_OUT);
     OPS_CHECK_NULL_WITH_CONTEXT(context, shapeOut);
     shapeOut->SetDimNum(OUTPUT_INFER_SHAPE);
