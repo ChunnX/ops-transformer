@@ -86,6 +86,42 @@
 // for core_idx in range(12):
 //     core_type = "AIC" if core_idx < 4 else "AIV"
 //     print(f"{core_type} Core {core_idx}: {calc_latency(core_idx)}")
+
+
+// # 读取时间戳
+// y_timestamps = y.cpu().view(torch.uint64).flatten()[:1200].reshape(12, 100)
+// # 打点布局常量
+// MAX_EXPERT = 16
+// DISPATCH_BASE = 2
+// GMM1_BASE = 2 + 2 * MAX_EXPERT
+// GMM2_BASE = 2 + 2 * MAX_EXPERT + 2 * MAX_EXPERT
+// COMBINE_BASE = 2 + 4 * MAX_EXPERT + 2 * MAX_EXPERT
+// def calc_all_latencies(core_idx, num_experts=4):
+//     ts = y_timestamps[core_idx]
+//     result = {
+//         'routing': ts[1] - ts[0],
+//         'combine': ts[COMBINE_BASE + 1] - ts[COMBINE_BASE],
+//     }
+    
+//     # 每个专家的耗时
+//     for i in range(num_experts):
+//         result[f'dispatch_{i}'] = ts[DISPATCH_BASE + 2*i + 1] - ts[DISPATCH_BASE + 2*i]
+//         result[f'gmm1_{i}'] = ts[GMM1_BASE + 2*i + 1] - ts[GMM1_BASE + 2*i]
+//         result[f'gmm2_{i}'] = ts[GMM2_BASE + 2*i + 1] - ts[GMM2_BASE + 2*i]
+    
+//     # 汇总统计
+//     result['dispatch_total'] = sum(result[f'dispatch_{i}'] for i in range(num_experts))
+//     result['gmm1_total'] = sum(result[f'gmm1_{i}'] for i in range(num_experts))
+//     result['gmm2_total'] = sum(result[f'gmm2_{i}'] for i in range(num_experts))
+    
+//     return result
+// # 打印所有核心的结果
+// for core_idx in range(12):
+//     core_type = "AIC" if core_idx < 4 else "AIV"
+//     print(f"\n{core_type} Core {core_idx}:")
+//     latencies = calc_all_latencies(core_idx, num_experts=4)
+//     for name, val in latencies.items():
+//         print(f"  {name}: {val} us")
 #ifndef MEGA_MOE_H
 #define MEGA_MOE_H
 
