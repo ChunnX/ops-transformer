@@ -1,0 +1,18 @@
+{
+    "case_name": "test_npu_mock",
+    "op_name": "AlltoAllvQuantGroupedMatMul",
+    "soc": "ascend910b",
+    "input_tensor_shape": [
+        [1024, 4096],
+        [8, 4096, 2048]
+    ],
+    "input_tensor_dtype": ["float16", "float16"],
+    "attr": {
+        "ep_world_size": 4,
+        "send_counts": [256, 256, 256, 256],
+        "recv_counts": [256, 256, 256, 256],
+        "gmm_x_quant_mode": 1,
+        "gmm_weight_quant_mode": 1,
+        "permute_out_flag": false
+    }
+}

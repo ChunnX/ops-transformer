@@ -31,31 +31,29 @@ template <typename CommOpType, typename ComputeOpType, typename LocalComputeOpTy
           typename GmmTilingDataType, typename GmmArrayAddrType, bool IsNeedMM>
 class A2avGmmScheduler {
 public:
-    __aicore__ inline void Init(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR mmxOptionalGM, GM_ADDR mmweightOptionalGM,
-                                GM_ADDR gmmxScaleGM, GM_ADDR gmmWeightScaleGM, GM_ADDR mmxScaleGM,
-                                GM_ADDR mmWeightScaleGM, GM_ADDR gmmyGM, GM_ADDR mmyOptionalGM,
-                                GM_ADDR permuteOutOptionalGM, GM_ADDR workspaceGM, GM_ADDR tilingGM,
-                                GmmArrayAddrType *gmmArrayAddrIn, GmmArrayAddrType *mmArrayAddrIn, TPipe *tPipe,
-                                bool isA2avGmmFlag)
+__aicore__ inline void Init(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR mmxOptionalGM, GM_ADDR mmweightOptionalGM,
+        GM_ADDR gmmxScaleGM, GM_ADDR gmmWeightScaleGM, GM_ADDR mmxScaleGM, GM_ADDR mmWeightScaleGM, GM_ADDR gmmyGM,
+        GM_ADDR mmyOptionalGM, GM_ADDR permuteOutOptionalGM, GM_ADDR workspaceGM, GM_ADDR tilingGM,
+        GmmArrayAddrType *gmmArrayAddrIn, GmmArrayAddrType *mmArrayAddrIn, TPipe *tPipe, bool isA2avGmmFlag)
     {
-        // init member variables
         GET_TILING_DATA(tilingData, tilingGM);
         tilingData_ = &tilingData;
         e_ = tilingData_->taskTilingInfo.e;
-        gmmxScaleGm_ = gmmxScaleGM;
-        isScaleBatchMode_ = e_ >= SCALE_COMM_BATCH_THRESHOLD;
-        // workspace偏移
-        uint64_t workspaceOffset = 0;
-        // x通信输出区域：isPermuteOut=true时不占用workspace
-        if (!tilingData_->isPermuteOut) {
-            uint64_t commOutLen =
-                Align(CeilDiv((tilingData_->taskTilingInfo.A) * (tilingData_->taskTilingInfo.H1), PACK_FACTOR),
-                      TENSOR_LIST_SIZE);
-            commOutGm_ = workspaceGM + workspaceOffset;
-            workspaceOffset += commOutLen;
-        } else {
-            commOutGm_ = permuteOutOptionalGM;
+        
+        const void *hcclInitTiling = &(tilingData_->hcclA2avTilingInfo.hcclInitTiling);
+        uint64_t hcclCcTilingOffset = offsetof(TilingDataType,  hcclA2avTilingInfo) +
+                        offsetof(MC2KernelTemplate::HcclA2avTilingInfo, a2avCcTiling);
+        commOutGm = tilingData_->isPermuteOut ? permuteOutOptionalGM : workspaceGM;
+        
+        commOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData_->taskTilingInfo, gmmxGM, commOutGm);
+        
+        if (IsNeedMM) {
+            localComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmxScaleGM, mmWeightScaleGM, mmyOptionalGM,
+                workspaceGM, tilingData_, &tilingData_->mmQuantTilingData, mmArrayAddrIn, tPipe, isA2avGmmFlag);
         }
+        computeOp.Init(commOutGm, gmmweightGM, gmmxScaleGM, gmmWeightScaleGM, gmmyGM, workspaceGM, tilingData_,
+            &tilingData_->gmmQuantTilingData, gmmArrayAddrIn, tPipe, isA2avGmmFlag);
+    }
         computeScaleGm_ = gmmxScaleGm_;
         // gmmX comm init
         const void *hcclInitTiling = &(tilingData_->hcclA2avTilingInfo.hcclInitTiling);
