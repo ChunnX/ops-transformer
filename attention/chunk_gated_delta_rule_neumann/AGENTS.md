@@ -578,3 +578,5 @@ export ASCEND_CUSTOM_OPP_PATH=${ASCEND_HOME_PATH}/opp/vendors/custom_transformer
 - 已尝试仅打开 `FP16_L1_RESIDENT_INVERSE` 的最小 FP16 resident 实验：构建与安装通过，但 `compare` 20/20 case 全失败；实验后开关恢复为 `false`。结论是单开关不足以形成可用 FP16 搬运/累加版本，后续必须补齐 resident layout/LoadData 链路。
 - 按用户确认删除其它 fulllocal 候选，仅保留 `op_kernel/fulllocal/chunk_gated_delta_rule_neumann_stage1_C64_3232_FP16_fulllocal.h` 作为单点突破文件；selector 恢复为 `halflocal/C64_3232_FP32`。
 - 稳定线重新构建、安装并复跑全量三方精度：`CGDR_GOLDEN_CHUNK_SIZE=64 TORCH_EXTENSIONS_DIR=/tmp/cgdr_torch_ext bash tests/pytest/test_run.sh compare`，结果 `20 passed in 6.15s`。
+- 按用户追加要求提交历史 `tests/pytest/prof_out` tracked 删除；仅纳入已跟踪原始 profiling 输出删除，不纳入当前未跟踪的新 profiling 目录。
+- 澄清 selector 回退口径：`halflocal/C64_3232_FP32` 是编译期固定回退点，切换 `op_kernel/selected/stage1_selected.h` 和 `stage1_selected_config.h` 后必须重新 build/install/compare；不是运行时开关，也不修改 baseline/halflocal 实现文件。

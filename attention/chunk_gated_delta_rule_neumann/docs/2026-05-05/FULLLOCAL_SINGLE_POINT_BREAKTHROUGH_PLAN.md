@@ -103,4 +103,4 @@
 - `float L0C -> half/bfloat16 L1` 会引入量化误差，必须用精度结果决定是否可接受。
 - `CFG_NZ` 是 C/output 侧 layout，作为 A/B 输入时需要分别验证 L0A/L0B load 参数。
 - `C64_3232_FP16_LocalTscm` 历史 PoC 曾出现 `17 failed, 3 passed`，不能直接视为可用实现。
-- 回退方式固定为 selector 切回 `halflocal/C64_3232_FP32`。
+- 回退方式固定为 selector 切回 `halflocal/C64_3232_FP32`。这里的 selector 是编译期入口，即 `op_kernel/selected/stage1_selected.h` 和 `stage1_selected_config.h`；回退后必须重新 build/install/compare，不是运行时动态切换。

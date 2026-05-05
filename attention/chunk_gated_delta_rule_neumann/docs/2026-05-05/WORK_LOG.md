@@ -256,3 +256,16 @@
 - 重新构建双算子包通过：`bash ../../build.sh --pkg --soc=ascend910_93 --ops=chunk_gated_delta_rule,chunk_gated_delta_rule_neumann -j16`。
 - 重新安装 custom OPP 到 `/home/developer/Ascend/cann-9.0.0/opp` 成功。
 - 稳定线全量三方精度复跑通过：`CGDR_GOLDEN_CHUNK_SIZE=64 TORCH_EXTENSIONS_DIR=/tmp/cgdr_torch_ext bash tests/pytest/test_run.sh compare`，结果 `20 passed in 6.15s`。
+
+## 历史 profiling 输出清理
+
+- 按用户追加要求，将历史 tracked `tests/pytest/prof_out` profiling 原始输出删除纳入单独提交。
+- 本次只 stage `git add -u tests/pytest/prof_out` 捕获的已跟踪删除，不纳入当前本地未跟踪的新 profiling 目录。
+- 目的：远端仓库不再携带早期 `PROF_*` 原始采样目录和旧 `performance_compare.csv/performance_raw.csv`，后续保留精简汇总 CSV 和文档口径。
+
+## selector 回退口径澄清
+
+- 用户询问“回退固定为 selector 切回 `halflocal/C64_3232_FP32`”的含义。
+- 已澄清：selector 是编译期入口，具体由 `op_kernel/selected/stage1_selected.h` 和 `stage1_selected_config.h` 控制。
+- fulllocal 实验失败时，只切 selector 到 `halflocal/C64_3232_FP32`，再重新 build/install/compare；不是运行时动态切换，也不是修改 baseline/halflocal 文件内容。
+- 选择该版本作为固定回退点的原因：它是当前 baseline/halflocal 中综合最好的精度通过稳定版本，S=16/64/125/2048 ratio 为 `1.305x / 1.651x / 1.873x / 2.332x`。

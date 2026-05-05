@@ -206,3 +206,15 @@
 - 当前 selector 已恢复为 `halflocal/C64_3232_FP32`，作为 baseline/halflocal 性能表中的最佳稳定回退点。
 - 双算子包构建通过，custom OPP 安装通过。
 - 稳定线全量三方精度复跑通过：`CGDR_GOLDEN_CHUNK_SIZE=64 TORCH_EXTENSIONS_DIR=/tmp/cgdr_torch_ext bash tests/pytest/test_run.sh compare`，结果 `20 passed in 6.15s`。
+
+### profiling 输出清理
+
+- 按用户要求准备提交历史 `tests/pytest/prof_out` tracked 删除。
+- 本次只删除已跟踪的历史原始 profiling 输出；本地未跟踪 profiling 目录不纳入提交。
+- 后续性能对比以 `docs/2026-05-05/BASELINE_HALFLOCAL_PERFORMANCE_SUMMARY.md` 和 `stage1_baseline_halflocal_s_selected_summary_20260505.csv` 等精简结果为准。
+
+### selector 回退说明
+
+- `halflocal/C64_3232_FP32` 是当前固定回退点。
+- 回退动作是改 `op_kernel/selected/stage1_selected.h` 和 `stage1_selected_config.h`，然后重新 build/install/compare。
+- 该动作不修改 `baseline/` 或 `halflocal/` 目录内实现文件，fulllocal 调试失败时可快速恢复到已验证稳定线。
