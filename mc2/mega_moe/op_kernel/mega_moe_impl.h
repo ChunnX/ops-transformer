@@ -151,13 +151,13 @@ __aicore__ inline void GroupMatmulSwigluQuant(
                 uint32_t targetValue = params.tilingData->epWorldSize * dispatchBlockNumPerEP;
                 __gm__ int32_t* flagValueAddr = (__gm__ int32_t*)groupFlagListGm2.GetPhyAddr();
                 while (targetValue != AscendC::ReadGmByPassDCache(flagValueAddr)) {
-                    __asm__ volatile("NOP");
-                    __asm__ volatile("NOP");
-                    __asm__ volatile("NOP");
-                    __asm__ volatile("NOP");
-                    // int64_t st = AscendC::GetSystemCycle();
-                    // while (AscendC::GetSystemCycle() - st < 100) {
-                    // }
+                    // __asm__ volatile("NOP");
+                    // __asm__ volatile("NOP");
+                    // __asm__ volatile("NOP");
+                    // __asm__ volatile("NOP");
+                    int64_t st = AscendC::GetSystemCycle();
+                    while (AscendC::GetSystemCycle() - st < 100) {
+                    }
                 }
                 // 打点: dispatch真正完成（AIC核等待dispatch结束）
                 if (timestampOutput != nullptr) {
@@ -330,15 +330,15 @@ __aicore__ inline void GroupMatmul2(
                 uint32_t targetLoops = gmmBlockScheduler.GetTileNum();
                 __gm__ int32_t* flagValueAddr = (__gm__ int32_t*)groupFlagListGm.GetPhyAddr();
                 while (targetLoops != AscendC::ReadGmByPassDCache(flagValueAddr)) {
-                    // int64_t st = AscendC::GetSystemCycle();
-                    // while (AscendC::GetSystemCycle() - st < 100) {
-                    // }
-                    __asm__ volatile("NOP");
-                    __asm__ volatile("NOP");
-                    __asm__ volatile("NOP");
-                    __asm__ volatile("NOP");
+                    int64_t st = AscendC::GetSystemCycle();
+                    while (AscendC::GetSystemCycle() - st < 100) {
+                    }
                 }
-                // gmm结束由AIV核在WaitForCube后记录
+                // gmm2真正开始时间（while循环结束后）
+                if (timestampOutput != nullptr) {
+                    constexpr int GMM2_BASE = 2 + 2 * MAX_EXPERT_PER_RANK;
+                    RecordTimestamp(*timestampOutput, GMM2_BASE + 2 * groupIdx);
+                }
             }
             if (vecSetSyncCom2 >= 2) {
                 WaitForVector(pingpongIdx);
