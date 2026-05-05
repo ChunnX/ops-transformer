@@ -369,6 +369,16 @@
   </tr>
   <tr>
     <td>ffn</td>
+    <td><a href="../../ffn/ffn_worker_batching/README.md">ffn_worker_batching</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>Attention和FFN分离场景下，FFN侧数据扫描及token重排。</td>
+  </tr>
+  <tr>
+    <td>ffn</td>
     <td><a href="../../ffn/swin_transformer_ln_qkv/README.md">swin_transformer_ln_qkv</a></td>
     <td>✓</td>
     <td>✓</td>
