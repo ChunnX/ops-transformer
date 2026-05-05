@@ -93,9 +93,9 @@ constexpr uint64_t NO_QUANT_MODE = 0;
 constexpr uint64_t PERTENSOR_QUANT_MODE = 1;
 constexpr uint64_t MX_QUANT_MODE = 6;
 
-class AlltoAllvQuantGmmTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
+class AlltoAllvQuantGmmV2TilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit AlltoAllvQuantGmmTilingBase(gert::TilingContext *context)
+    explicit AlltoAllvQuantGmmV2TilingBase(gert::TilingContext *context)
         : Ops::Transformer::OpTiling::TilingBaseClass(context){};
 
 protected:

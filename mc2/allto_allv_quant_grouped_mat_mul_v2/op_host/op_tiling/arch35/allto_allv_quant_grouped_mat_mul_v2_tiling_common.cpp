@@ -22,7 +22,7 @@ using namespace Ops::Transformer::OpTiling;
 namespace optiling {
 constexpr int COMMMODE_INDEX = 11;
 
-ge::graphStatus AlltoAllvQuantGmmTilingCommon::GetPlatformInfo()
+ge::graphStatus AlltoAllvQuantGmmV2TilingCommon::GetPlatformInfo()
 {
     OP_LOGD(context_->GetNodeName(), "start quant GetPlatformInfo.");
     if (GetCommonPlatformInfo() != ge::GRAPH_SUCCESS) {
@@ -35,7 +35,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::GetPlatformInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvQuantGmmTilingCommon::GetShapeAttrsInfo()
+ge::graphStatus AlltoAllvQuantGmmV2TilingCommon::GetShapeAttrsInfo()
 {
     OP_LOGD(context_->GetNodeName(), "start GetShapeAttrsInfo.");
     if (GetCommonShapeAttrsInfo() != ge::GRAPH_SUCCESS) {
@@ -45,7 +45,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::GetShapeAttrsInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvQuantGmmTilingCommon::DoOpTiling()
+ge::graphStatus AlltoAllvQuantGmmV2TilingCommon::DoOpTiling()
 {
     OP_LOGD(context_->GetNodeName(), "start DoOpTiling.");
     if (CheckInputNotNull() != ge::GRAPH_SUCCESS) {
@@ -76,7 +76,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvQuantGmmTilingCommon::DoLibApiTiling()
+ge::graphStatus AlltoAllvQuantGmmV2TilingCommon::DoLibApiTiling()
 {
     OP_LOGD(context_->GetNodeName(), "start DoLibApiTiling.");
     uint64_t maxMSize = 0;
@@ -93,7 +93,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::DoLibApiTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvQuantGmmTilingCommon::GetWorkspaceSize()
+ge::graphStatus AlltoAllvQuantGmmV2TilingCommon::GetWorkspaceSize()
 {
     OP_LOGD(context_->GetNodeName(), "start GetWorkspaceSize.");
     size_t *workspaces = context_->GetWorkspaceSizes(1);
@@ -107,7 +107,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::GetWorkspaceSize()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvQuantGmmTilingCommon::CheckInputNotNull() const
+ge::graphStatus AlltoAllvQuantGmmV2TilingCommon::CheckInputNotNull() const
 {
     OP_LOGD(context_->GetNodeName(), "start CheckInputNotNull.");
     // gmmX gmmWeight
@@ -143,7 +143,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::CheckInputNotNull() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvQuantGmmTilingCommon::PostTiling()
+ge::graphStatus AlltoAllvQuantGmmV2TilingCommon::PostTiling()
 {
     OP_LOGD(context_->GetNodeName(), "start PostTiling.");
     tilingData->taskTilingInfo.BSK = bsk_;
@@ -168,7 +168,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-void AlltoAllvQuantGmmTilingCommon::PrintGMMQuantTilingData(const Mc2GroupedMatmulTilingData::GMMQuantTilingData &data) const
+void AlltoAllvQuantGmmV2TilingCommon::PrintGMMQuantTilingData(const Mc2GroupedMatmulTilingData::GMMQuantTilingData &data) const
 {
     const auto &mm = data.mmTilingData;
     const auto &quantParams = data.gmmQuantParams;
@@ -210,10 +210,10 @@ void AlltoAllvQuantGmmTilingCommon::PrintGMMQuantTilingData(const Mc2GroupedMatm
     finalSs << " | Array: mList[0]=" << gmmArray.mList[0]
             << ", kList[0]=" << gmmArray.kList[0]
             << ", nList[0]=" << gmmArray.nList[0];
-    OP_LOGI(context_->GetNodeName(), "AlltoAllvQuantGmmTilingCommon MmTilingParams:\n%s", finalSs.str().c_str());
+    OP_LOGI(context_->GetNodeName(), "AlltoAllvQuantGmmV2TilingCommon MmTilingParams:\n%s", finalSs.str().c_str());
 }
 
-void AlltoAllvQuantGmmTilingCommon::PrintTaskTilingInfo(const MC2KernelTemplate::TaskTilingInfo &taskTilingInfo) const
+void AlltoAllvQuantGmmV2TilingCommon::PrintTaskTilingInfo(const MC2KernelTemplate::TaskTilingInfo &taskTilingInfo) const
 {
     std::stringstream ss;
     ss << "TaskTilingInfo: ";
@@ -249,7 +249,7 @@ void AlltoAllvQuantGmmTilingCommon::PrintTaskTilingInfo(const MC2KernelTemplate:
     OP_LOGI(context_->GetNodeName(), "%s", ss.str().c_str());
 }
 
-ge::graphStatus AlltoAllvQuantGmmTilingCommon::SetHcclTiling() const
+ge::graphStatus AlltoAllvQuantGmmV2TilingCommon::SetHcclTiling() const
 {
     uint32_t alltoAllvCmd = 8U;
     std::string alltoAllvConfig = "AlltoAll=level0:fullmesh;level1:pairwise";

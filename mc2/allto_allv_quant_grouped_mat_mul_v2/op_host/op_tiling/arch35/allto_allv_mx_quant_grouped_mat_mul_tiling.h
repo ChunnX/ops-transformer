@@ -19,10 +19,10 @@
 #include "../../../../3rd/grouped_matmul/op_tiling/gmm_qbmm_tiling.h"
 
 namespace optiling {
-class AlltoAllvMXQuantGmmTiling : public AlltoAllvQuantGmmTilingCommon {
-    friend class AlltoAllvMXQuantGmmTilingHelper;
+class AlltoAllvMXQuantGmmV2Tiling : public AlltoAllvQuantGmmV2TilingCommon {
+    friend class AlltoAllvMXQuantGmmV2TilingHelper;
 public:
-    explicit AlltoAllvMXQuantGmmTiling(gert::TilingContext *context) : AlltoAllvQuantGmmTilingCommon(context){};
+    explicit AlltoAllvMXQuantGmmV2Tiling(gert::TilingContext *context) : AlltoAllvQuantGmmV2TilingCommon(context){};
 
 protected:
     // tiling base
@@ -48,10 +48,10 @@ private:
     ge::graphStatus CheckMmScaleShape() const;
 };
 
-class AlltoAllvMXQuantGmmTilingHelper : public Mc2GroupedMatmulTiling::Mc2GroupedQbmmTiling {
+class AlltoAllvMXQuantGmmV2TilingHelper : public Mc2GroupedMatmulTiling::Mc2GroupedQbmmTiling {
 public:
-    AlltoAllvMXQuantGmmTilingHelper(
-        AlltoAllvMXQuantGmmTiling& AlltoAllvMXQuantGmmTiling) : Mc2GroupedQbmmTiling(AlltoAllvMXQuantGmmTiling.context_) {}
+    AlltoAllvMXQuantGmmV2TilingHelper(
+        AlltoAllvMXQuantGmmV2Tiling& AlltoAllvMXQuantGmmV2Tiling) : Mc2GroupedQbmmTiling(AlltoAllvMXQuantGmmV2Tiling.context_) {}
     const Mc2GroupedMatmulTilingData::GMMQuantTilingData& GetAlltoAllvQuantHelperData() const {return tilingData_; }
     bool AnalyzeAttrs() override {return true; }
     bool AnalyzeDtype() override {return true; }

@@ -55,9 +55,9 @@ constexpr uint32_t SCALE_BATCH_THRESHOLD = 32;
 // quant mode offset
 const std::vector<uint32_t> QUANT_MODE_MAP = {0, 0, 1, 2, 4, 5, 3};
 
-class AlltoAllvQuantGmmTilingCommon : public AlltoAllvQuantGmmTilingBase {
+class AlltoAllvQuantGmmV2TilingCommon : public AlltoAllvQuantGmmV2TilingBase {
 public:
-    explicit AlltoAllvQuantGmmTilingCommon(gert::TilingContext *context) : AlltoAllvQuantGmmTilingBase(context){
+    explicit AlltoAllvQuantGmmV2TilingCommon(gert::TilingContext *context) : AlltoAllvQuantGmmV2TilingBase(context){
         tilingData = context->GetTilingData<QuantAlltoAllvGroupedMatmulTilingData>();
     };
     QuantAlltoAllvGroupedMatmulTilingData *tilingData;
