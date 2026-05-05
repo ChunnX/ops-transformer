@@ -56,3 +56,7 @@ constexpr int32_t MXFP_DIVISOR_SIZE = 64;
 constexpr int32_t MXFP_MULTI_BASE_SIZE = 2;
 constexpr int64_t DOUBLE_BUFFER_COUNT = 2LL;
 
+// AIV communication constants
+constexpr int64_t AIV_UB_TILE_M = 128LL;
+constexpr uint32_t UB_ALIGN_BYTES = 32U;
+

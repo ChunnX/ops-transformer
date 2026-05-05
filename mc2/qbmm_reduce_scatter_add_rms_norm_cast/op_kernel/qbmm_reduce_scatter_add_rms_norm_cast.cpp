@@ -25,8 +25,8 @@
 #include "kernel_utils/common_utils.h"
 
 #include "block/block_scheduler_policy.h"
-#include "block/quant_matmul_mx_block_mmad_a_full_load.h"
-#include "kernel/quant_matmul_mx_kernel_a_full_load.h"
+#include "block/quant_matmul_mx_block_mmad_swat.h"
+#include "kernel/quant_matmul_mx_kernel_swat.h"
 
 using namespace AscendC;
 // using namespace QbmmReduceScatterAddRmsNormCastImpl;
@@ -47,12 +47,12 @@ __global__ __aicore__ void qbmm_reduce_scatter_add_rms_norm_cast(GM_ADDR x1, GM_
     using layoutB = layout::RowMajor;
     using layoutC = layout::RowMajor;
 
-    using BlockScheduler = QuantMatmulMxSwatScheduler<A_FULL_LOAD_MODE>;
-    using DispatchPolicy = QuantMatmulMxMultiBlockWithSwat<A_FULL_LOAD_MODE, Stages>;
+    using BlockScheduler = QuantMatmulMxSwatScheduler<NO_FULL_LOAD_MODE>;
+    using DispatchPolicy = QuantMatmulMxMultiBlockWithSwat<NO_FULL_LOAD_MODE, Stages>;
     using ProblemShape = MatmulShape;
 
     using BlockMmad = Block::BlockMmad<DispatchPolicy, AType, layoutA, BType, layoutB, CType, layoutC>;
-    using QuantMatmulKernelImpl = Kernel::QuantMatmulMxKernelAFullLoad<ProblemShape, BlockMmad, BlockScheduler>;
+    using QuantMatmulKernelImpl = Kernel::QuantMatmulMxKernelSwat<ProblemShape, BlockMmad, BlockScheduler>;
     using Params = typename QuantMatmulKernelImpl::Params;
     using BlockMmadParams = typename BlockMmad::Params;
     using L1Params = typename QuantMatmulKernelImpl::L1Params;

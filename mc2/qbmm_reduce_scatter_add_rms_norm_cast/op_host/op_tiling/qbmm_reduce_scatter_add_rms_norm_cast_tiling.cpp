@@ -16,7 +16,7 @@
 #include <register/op_def_registry.h>
 #include "util/math_util.h"
 #include "../../op_kernel/qbmm_reduce_scatter_add_rms_norm_cast_tiling_data.h"
-#include "quant_matmul_mx_tiling_a_full_load.h"  // 新增：tiling engine
+#include "quant_matmul_mx_tiling_swat.h"  // 使用 SWAT tiling engine
 
 #include "mc2_log.h"
 using namespace AscendC;
@@ -161,8 +161,8 @@ static ge::graphStatus SetTilingData(
     
     OP_LOGD(nodeName, "Input shape: M=%lu, K=%lu, N=%lu", M, K, N);
     
-    // 3. 使用 tiling engine 计算 matmul tiling 参数（关键修改）
-    QuantMatmulTilingAFullLoad<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingEngine;
+    // 3. 使用 SWAT tiling engine 计算 matmul tiling 参数
+    QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingEngine;
     tilingEngine.GetTilingData(M, N, K, tilingData->qbmmTilingdata);
     
     // 注意：GetTilingData 会自动填充 qbmmTilingdata 的所有字段，包括：
@@ -174,7 +174,7 @@ static ge::graphStatus SetTilingData(
     // - mTailMain, nTailMain
     // - usedCoreNum, nBufferNum, dbL0c
     
-    OP_LOGD(nodeName, "QuantMatmulTilingAFullLoad computed tiling data successfully");
+    OP_LOGD(nodeName, "QuantMatmulTilingSwat computed tiling data successfully");
     OP_LOGD(nodeName, "  qbmmTilingdata.m=%u, n=%u, k=%u", 
             tilingData->qbmmTilingdata.m, tilingData->qbmmTilingdata.n, tilingData->qbmmTilingdata.k);
     OP_LOGD(nodeName, "  qbmmTilingdata.baseM=%u, baseN=%u, baseK=%u", 
