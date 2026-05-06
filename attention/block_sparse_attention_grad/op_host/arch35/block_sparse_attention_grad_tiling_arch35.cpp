@@ -55,6 +55,7 @@ protected:
             }
             batch_num = queryShape->GetStorageShape().GetDim(0);
             q_seq_len = queryShape->GetStorageShape().GetDim(1);
+            kv_seq_len = keyShape->GetStorageShape().GetDim(1);
             int32_t q_hidden_state = queryShape->GetStorageShape().GetDim(2);
             int32_t kv_hidden_state = keyShape->GetStorageShape().GetDim(2);
             head_dim = kv_hidden_state / kv_head_num;
