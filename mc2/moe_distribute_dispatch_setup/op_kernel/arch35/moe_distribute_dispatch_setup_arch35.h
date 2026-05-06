@@ -936,10 +936,6 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::CurRankC
     uint32_t calCnt = expertStartOffset;
     for (uint32_t expertIdx = curRankStartExpertIdx_; expertIdx < curRankEndExpertIdx_; expertIdx++) {
         uint64_t sendBytes = static_cast<uint64_t>(statusTensor_((preExpertNum + expertIdx) * 8 + 1)) * hAlignWinSize_;
-        
-        if (sendBytes == 0) {
-            continue;
-        }
 
         DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(remain_ub_space), 0U, 0U, 0U};
         DataCopyPadExtParams<uint8_t> copyPadExtParams{false, 0U, 0U, 0U};
