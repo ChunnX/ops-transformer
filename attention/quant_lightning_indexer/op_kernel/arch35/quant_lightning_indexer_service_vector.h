@@ -135,7 +135,7 @@ private:
     uint32_t topkCount_ = 0;
     uint32_t topkCountAlign256_ = 0; // topkCount对齐到256(直方图需要)，支持topk泛化
     uint32_t trunkLen_ = 0;
-
+    uint32_t qwloop =0;
     struct QLICommon::ConstInfo constInfo_;
     topk::LITopk<uint16_t> topkOp_;
 };
@@ -331,26 +331,34 @@ __aicore__ inline void QLIVector<QLIT>::ProcessVec1(const QLICommon::RunInfo &in
         return;
     }
     WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + pingpong);
-    //weightsGm --> weightUB_ 
-    int64_t weightGmOffset = info.tensorWeightsOffset + curAivS1Idx * kHeadNum_ * gSize_;
-    DataCopyPadExtParams<W_T> padWeightsParams{false, 0, 0, 0};
-    DataCopyExtParams wDataCopyExtParams;
-    wDataCopyExtParams.blockCount = curAivS1ProcNum;
-    wDataCopyExtParams.blockLen = gSize_ * sizeof(W_T);
-    wDataCopyExtParams.srcStride = 0;
-    wDataCopyExtParams.dstStride = (UB_BANK_DEPTH_STRIDE - wDataCopyExtParams.blockLen) / 32;
-    DataCopyPad(weightUB_[pingpong * (UB_BANK_STRIDE / sizeof(W_T))], 
-                weightsGm[weightGmOffset], wDataCopyExtParams, padWeightsParams);
- 
-    //qScaleGm  -->  qScaleUB_
-    DataCopyPadExtParams<SCALE_T> padQScaleParams{false, 0, 0, 0};
-    DataCopyExtParams qDataCopyExtParams;
-    qDataCopyExtParams.blockCount = curAivS1ProcNum;
-    qDataCopyExtParams.blockLen = gSize_ * sizeof(SCALE_T);
-    qDataCopyExtParams.srcStride = 0;
-    qDataCopyExtParams.dstStride = (UB_BANK_DEPTH_STRIDE - qDataCopyExtParams.blockLen) / 32;
-    DataCopyPad(qScaleUB_[pingpong * (UB_BANK_STRIDE / sizeof(SCALE_T))],
-                qScaleGm[weightGmOffset], qDataCopyExtParams, padQScaleParams);
+    if (info.isFirstS2InnerLoop) {
+        qwloop++;
+        WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + qwloop);
+        //weightsGm --> weightUB_ 
+        int64_t weightGmOffset = info.tensorWeightsOffset + curAivS1Idx * kHeadNum_ * gSize_;
+        DataCopyPadExtParams<W_T> padWeightsParams{false, 0, 0, 0};
+        DataCopyExtParams wDataCopyExtParams;
+        wDataCopyExtParams.blockCount = curAivS1ProcNum;
+        wDataCopyExtParams.blockLen = gSize_ * sizeof(W_T);
+        wDataCopyExtParams.srcStride = 0;
+        wDataCopyExtParams.dstStride = (UB_BANK_DEPTH_STRIDE - wDataCopyExtParams.blockLen) / 32;
+        DataCopyPad(weightUB_[pingpong * (UB_BANK_STRIDE / sizeof(W_T))],
+                    weightsGm[weightGmOffset], wDataCopyExtParams, padWeightsParams);
+    
+        //qScaleGm  -->  qScaleUB_
+        DataCopyPadExtParams<SCALE_T> padQScaleParams{false, 0, 0, 0};
+        DataCopyExtParams qDataCopyExtParams;
+        qDataCopyExtParams.blockCount = curAivS1ProcNum;
+        qDataCopyExtParams.blockLen = gSize_ * sizeof(SCALE_T);
+        qDataCopyExtParams.srcStride = 0;
+        qDataCopyExtParams.dstStride = (UB_BANK_DEPTH_STRIDE - qDataCopyExtParams.blockLen) / 32;
+        DataCopyPad(qScaleUB_[pingpong * (UB_BANK_STRIDE / sizeof(SCALE_T))],
+                    qScaleGm[weightGmOffset], qDataCopyExtParams, padQScaleParams);  
+        SetFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + qwloop);  
+        WaitFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + qwloop);
+        SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + qwloop);    
+    }
+
 
     //kScaleGm  -->  kScaleUB_
     GetKeyScale(info, kScaleUB_, info.bIdx, curS2Idx, info.actualSingleProcessSInnerSize);
