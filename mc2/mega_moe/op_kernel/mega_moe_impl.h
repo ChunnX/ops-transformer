@@ -382,6 +382,8 @@ __aicore__ inline void GroupMatmul2(
         }
         pingpongIdx = 1 - pingpongIdx;
     }
+    // gmm2结束时间在Process()中EndGMM2Sync()后记录
+    
     startBlockIdx = (startBlockIdx + tileNum) % blockNum;
 }
 

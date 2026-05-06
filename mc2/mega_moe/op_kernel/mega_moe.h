@@ -863,12 +863,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         EndSync();
         vecSetSyncCom_ = 0;
         
-        // AIV sub0: gmm1结束（EndSync后）
-        if constexpr (g_coreType == AscendC::AIV) {
-            if (subBlockIdx_ == 0) {
-                RecordTimestamp(timestampOutput, GMM1_BASE + 2 * expertIdx);
-            }
-        }
+        // gmm1结束时间无法在AIV核上准确记录（EndSync对AIV不等待）
+        // gmm1的结束时间 = AIC核的gmm2开始时间（GroupMatmul2的while循环后）
         
         // AIC: gmm2开始在GroupMatmul2的while循环后记录
         
@@ -881,11 +877,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         EndGMM2Sync();
         vecSetSyncCom_ = 0;
         
-        // AIV sub0: gmm2结束（EndGMM2Sync后）
-        if constexpr (g_coreType == AscendC::AIV) {
-            if (subBlockIdx_ == 0) {
-                RecordTimestamp(timestampOutput, GMM2_BASE + 2 * expertIdx);
-            }
+        // AIC: gmm2结束（EndGMM2Sync后，等待所有tile完成）
+        if constexpr (g_coreType == AscendC::AIC) {
+            RecordTimestamp(timestampOutput, GMM2_BASE + 2 * expertIdx + 1);
         }
     }
     
