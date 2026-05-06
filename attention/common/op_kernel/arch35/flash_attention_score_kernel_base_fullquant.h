@@ -395,6 +395,7 @@ __aicore__ inline void FlashAttentionScoreKernelBaseFullquant<ChildClass, CubeBl
     constInfo.dSize = sharedParams.dSize;
     constInfo.dSizeV = sharedParams.dSizeV;
     constInfo.dBasicBlock = Align64Func((uint16_t)constInfo.dSizeV);
+    constInfo.isFd = sharedParams.isFd;
     if constexpr (hasRope) {
         constInfo.dSizeRope = sharedParams.dSizeRope;
     } else {

@@ -44,10 +44,9 @@ public:
     /* =====================GM变量========================== */
     GlobalTensor<float> softmaxLseGm;
 
-    using FDGmType = typename std::conditional<isFd, GlobalTensor<float>, int8_t>::type;
-    FDGmType accumOutGm;
-    FDGmType softmaxFDMaxGm;
-    FDGmType softmaxFDSumGm;
+    GlobalTensor<float> accumOutGm;
+    GlobalTensor<float> softmaxFDMaxGm;
+    GlobalTensor<float> softmaxFDSumGm;
 
     using postQuantGmType = typename std::conditional<POST_QUANT, GlobalTensor<float>, int8_t>::type;
     postQuantGmType postQuantScaleGm;
@@ -175,7 +174,7 @@ __aicore__ inline void FABlockVecInferGqaFullquant<TEMPLATE_ARGS>::InitCubeVecSh
     sharedParams.attenMaskS1Size = inputParamsRegbase.attenMaskS1Size;
     sharedParams.attenMaskS2Size = inputParamsRegbase.attenMaskS2Size;
  
-    if (constInfo.isFd) {
+    if (inputParamsRegbase.isFd) {
         sharedParams.splitKVNum = inputParamsRegbase.kvSplitPart;
     }
     if constexpr (POST_QUANT) {

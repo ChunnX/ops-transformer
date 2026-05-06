@@ -44,10 +44,9 @@ public:
     /* =====================GM变量========================== */
     GlobalTensor<float> softmaxLseGm;
 
-    using FDGmType = typename std::conditional<isFd, GlobalTensor<float>, int8_t>::type;
-    FDGmType accumOutGm;
-    FDGmType softmaxFDMaxGm;
-    FDGmType softmaxFDSumGm;
+    GlobalTensor<float> accumOutGm;
+    GlobalTensor<float> softmaxFDMaxGm;
+    GlobalTensor<float> softmaxFDSumGm;
 
     using postQuantGmType = typename std::conditional<POST_QUANT, GlobalTensor<float>, int8_t>::type;
     postQuantGmType postQuantScaleGm;
