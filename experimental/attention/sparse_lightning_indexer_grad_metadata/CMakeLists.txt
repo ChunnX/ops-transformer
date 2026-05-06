@@ -8,4 +8,4 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-add_modules_sources_aicpu(OPTYPE quant_lightning_indexer ACLNNTYPE aclnn)
+add_modules_sources_aicpu(OPTYPE sparse_lightning_indexer_grad ACLNNTYPE aclnn)
