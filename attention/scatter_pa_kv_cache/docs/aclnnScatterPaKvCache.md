@@ -86,7 +86,7 @@
     scatter_mode:"Rope"/"Omni"
     ```
 
-    - 场景六：
+  - 场景六：
 
     ```
     key:[batch * seq_len, num_head, k_head_size]
@@ -98,8 +98,20 @@
     scatter_mode:"None"/"Nct"
     ```
 
+  - 场景七：
+
+    ```
+    key:[num_tokens, num_head, k_head_size]
+    value:[num_tokens, num_head, v_head_size]
+    keyCache:[num_blocks, num_head, block_size, k_head_size]
+    valueCache:[num_blocks, num_head, block_size, v_head_size]
+    slotMapping:[num_tokens]
+    cacheMode:"Norm"
+    scatter_mode:"NHSD"
+    ```
+
 - 上述场景根据构造的参数来区别，符合第一种入参构造走场景一，符合第二种构造走场景二，符合第三种构造走场景三，符合第四种构造走场景四，符合第五种构造走场景五，符合第六种构造走场景六。场景一、场景二、场景六没有compressLensOptional、seqLensOptional、compressSeqOffsetOptional这三个可选参数。场景四没有compressSeqOffsetOptional可选参数。
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：仅支持场景一、二、四、五、六。
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：仅支持场景一、二、四、五、六、七。
 
 ## 函数原型
 
@@ -135,15 +147,15 @@ aclnnStatus aclnnScatterPaKvCache(
 
 - **参数说明**
 
-  <table class="tg" style="undefined;table-layout: fixed; width: 1548px"><colgroup>
-  <col style="width: 265px">
-  <col style="width: 86px">
-  <col style="width: 269px">
-  <col style="width: 462px">
-  <col style="width: 172px">
-  <col style="width: 111px">
-  <col style="width: 87px">
-  <col style="width: 96px">
+  <table class="tg" style="undefined;table-layout: fixed; width: 1535px"><colgroup>
+  <col style="width: 230px">
+  <col style="width: 120px">
+  <col style="width: 270px">
+  <col style="width: 350px">
+  <col style="width: 170px">
+  <col style="width: 115px">
+  <col style="width: 135px">
+  <col style="width: 145px">
   </colgroup>
   <thead>
     <tr>
@@ -392,17 +404,21 @@ aclnnStatus aclnnScatterPaKvCache(
 
 - 确定性计算：
     - aclnnScatterPaKvCache默认确定性实现。
+- 约束说明：
     - key、value、keyCacheRef、valueCacheRef的数据类型必须一致；
     - slotMapping、compressLensOptional、compressSeqOffsetOptional、seqLensOptional的数据类型必须一致；
     - slotMapping的取值范围[0,num_blocks*block_size-1]，且slotMapping内的元素值保证不重复，重复时不保证正确性；
     - 当key和value都是3维，则key和value的前两维shape必须相同；
     - 当key和value都是4维，则key和value的前三维shape必须相同，且keyCacheRef和valueCacheRef的第三维必须是1；
     - 当key和value是4维时，compressLensOptional、seqLensOptional为必选参数；当key和value是3维时，compressLensOptional、compressSeqOffsetOptional、seqLensOptional为可选参数；
-    - 当key和value都是4维时，slotMapping是二维，且slotMapping的第一维值等于key的第一维为batch，slotMapping的第二维值等于key的第三维为num_head(对应场景三)；
-    - 当key和value都是4维时，seqLensOptional是一维，且seqLensOptional的值等于key的第一维为batch(对应场景三)；
-    - 当key和value是3维且存在seqLensOptional时，seqLensOptional中所有值的和等于key的第一维为num_blocks(对应场景四、五)；
-    - seqLensOptional和compressLensOptional里面的每个元素值必须满足公式：reduceSum(seqLensOptional[i] - compressLensOptional[i]) <= num_blocks * block_size (对应场景三、四、五)。
-    - 当cacheModeOptional为“PA_NZ”时，keyCacheRef和valueCacheRef的倒数第二维必须小于UINT16_MAX(对应场景一)。
+    - 当key和value都是4维时，slotMapping是二维，且slotMapping的第一维值等于key的第一维为batch，slotMapping的第二维值等于key的第三维为num_head（对应场景三）；
+    - 当key和value都是4维时，seqLensOptional是一维，且seqLensOptional的值等于key的第一维为batch（对应场景三）；
+    - 当key和value是3维且存在seqLensOptional时，seqLensOptional中所有值的和等于key的第一维为num_blocks（对应场景四、五）；
+    - seqLensOptional和compressLensOptional里面的每个元素值必须满足公式：reduceSum(seqLensOptional[i] - compressLensOptional[i]) <= num_blocks * block_size （对应场景三、四、五）。
+    - 当cacheModeOptional为“PA_NZ”时，keyCacheRef和valueCacheRef的倒数第二维必须小于UINT16_MAX（对应场景一）。
+    - k_head_size和v_head_size必须32字节对齐（对应场景七）。
+    - num_head必须小于4095（对应场景七）。
+    - block_size * k_head_size和block_size * v_head_size必须小于UINT32_MAX（对应场景七）。
 
 ## 调用示例
 
