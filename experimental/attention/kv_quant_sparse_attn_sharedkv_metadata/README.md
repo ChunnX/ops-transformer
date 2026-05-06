@@ -19,7 +19,7 @@
 |num_heads_q|属性|query对应的多头数，目前支持64/128。|INT32|-|
 |num_heads_kv|属性|key和value对应的多头数，目前仅支持1。|INT32|-|
 |head_dim|属性|注意力头的维度。|INT32|-|
-|kv_quant_mode|属性|K、V nope的量化模式，仅支持1，表示K、V nope为per_tile量化，量化后的KV数据类型为FLOAT8_E4M3FN。|INT32|-|。
+|kv_quant_mode|属性|K、V nope的量化模式，仅支持1，表示K、V nope为per_tile量化，量化后的KV数据类型为FLOAT8_E4M3FN或HIFLOAT8。|INT32|-|。
 |cu_seqlens_q|可选输入|表示不同Batch中q的有效token数，维度为B+1。|INT32|ND|
 |cu_seqlens_ori_kv|可选输入|预留参数，当前不生效，表示不同Batch中ori_kv的有效token数，维度为B+1。|INT32|ND|
 |cu_seqlens_cmp_kv|可选输入|预留参数，当前不生效，表示不同Batch中cmp_kv的有效token数，维度为B+1。|INT32|ND|
