@@ -1500,7 +1500,7 @@ public:
             uint32_t kOutOffset2 = this->dk / CONST_TWO + kOutOffset1;
 
             uint32_t cosSinLen = tmpFactor / CONST_TWO;
-            uint32_t alignOffset = ops::CeilDiv(cosSinLen, 32) * 32;
+            uint32_t alignOffset = this->ubFactor / CONST_TWO;
             LocalTensor<T_KV> cosLocalPart2 = cosLocalPart1[alignOffset];
             LocalTensor<T_KV> sinLocalPart1 = cosLocalPart2[alignOffset];
             LocalTensor<T_KV> sinLocalPart2 = sinLocalPart1[alignOffset];
@@ -1721,7 +1721,7 @@ public:
             uint32_t kOffset2 = this->dk / CONST_TWO + kOffset1;
 
             uint32_t cosSinLen = tmpFactor / CONST_TWO;
-            uint32_t alignOffset = ops::CeilDiv(cosSinLen, 32) * 32;
+            uint32_t alignOffset = this->ubFactor / CONST_TWO;
             LocalTensor<T_KV> cosLocalPart2 = cosLocalPart1[alignOffset];
             LocalTensor<T_KV> sinLocalPart1 = cosLocalPart2[alignOffset];
             LocalTensor<T_KV> sinLocalPart2 = sinLocalPart1[alignOffset];
@@ -1945,7 +1945,7 @@ public:
             uint32_t kScaleOffset2 = this->dk / CONST_TWO + kScaleOffset1;
 
             uint32_t cosSinLen = tmpFactor / CONST_TWO;
-            uint32_t alignOffset = ops::CeilDiv(cosSinLen, 32) * 32;
+            uint32_t alignOffset = this->ubFactor / CONST_TWO;
             LocalTensor<T_KV> cosLocalPart2 = cosLocalPart1[alignOffset];
             LocalTensor<T_KV> sinLocalPart1 = cosLocalPart2[alignOffset];
             LocalTensor<T_KV> sinLocalPart2 = sinLocalPart1[alignOffset];
@@ -2032,8 +2032,7 @@ public:
             int64_t kOutOffset1 = rowIdx * this->dk + this->ubFactor * ubIdx / CONST_TWO;
             int64_t kOutOffset2 = this->dk / CONST_TWO + kOutOffset1;
 
-            int64_t cosSinLen = tmpFactor / CONST_TWO;
-            int64_t alignOffset = ops::CeilDiv(cosSinLen, 32) * 32;
+            int64_t alignOffset = this->ubFactor / CONST_TWO;
             LocalTensor<T_KV> cosLocalPart2 = cosLocalPart1[alignOffset];
             LocalTensor<T_KV> sinLocalPart1 = cosLocalPart2[alignOffset];
             LocalTensor<T_KV> sinLocalPart2 = sinLocalPart1[alignOffset];
@@ -2248,7 +2247,7 @@ public:
             uint32_t kOutOffset2 = this->dk / CONST_TWO + kOutOffset1;
 
             uint32_t cosSinLen = tmpFactor / CONST_TWO;
-            uint32_t alignOffset = ops::CeilDiv(cosSinLen, 32) * 32;
+            uint32_t alignOffset = this->ubFactor / CONST_TWO;
             LocalTensor<T_KV> cosLocalPart2 = cosLocalPart1[alignOffset];
             LocalTensor<T_KV> sinLocalPart1 = cosLocalPart2[alignOffset];
             LocalTensor<T_KV> sinLocalPart2 = sinLocalPart1[alignOffset];
