@@ -52,26 +52,6 @@ static constexpr size_t TWO_DIMS = 2U;
 static constexpr size_t THREE_DIMS = 3U;
 
 extern "C" aclnnStatus aclnnInnerAlltoAllvQuantGroupedMatMulGetWorkspaceSize(
-                               const aclTensor *gmmWeightScale, const aclTensor *sendCountsTensorOptional,
-                               const aclTensor *recvCountsTensorOptional, const aclTensor *mmXOptional,
-                               const aclTensor *mmWeightOptional, const aclTensor *mmXScaleOptional,
-                               const aclTensor *mmWeightScaleOptional, int64_t gmmXQuantMode,
-                               int64_t gmmWeightQuantMode, int64_t mmXQuantMode, int64_t mmWeightQuantMode,
-                               const char *group, int64_t epWorldSize, bool permuteOutFlag, const aclTensor *gmmY,
-                               const aclTensor *mmYOptional, const aclTensor *permuteOutOptional)
-{
-    // 检查空状态
-    CHECK_RET(CheckNullStatus(sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional, mmWeightOptional,
-                              mmXScaleOptional, mmWeightScaleOptional, permuteOutFlag, mmYOptional, permuteOutOptional),
-              ACLNN_ERR_PARAM_INVALID);
-    // 检查参数是否为空
-    CHECK_RET(CheckNotNull(gmmX, gmmWeight, gmmY, gmmXScale, gmmWeightScale, gmmXQuantMode, gmmWeightQuantMode),
-              ACLNN_ERR_PARAM_INVALID);
-    OP_LOGD("AlltoAllvQuantGroupedMatmul checkParams success");
-    return ACLNN_SUCCESS;
-}
-
-extern "C" aclnnStatus aclnnInnerAlltoAllvQuantGroupedMatMulGetWorkspaceSize(
     const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *gmmXScale, const aclTensor *gmmWeightScale,
     const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional, const aclTensor *mmXOptional,
     const aclTensor *mmWeightOptional, const aclTensor *mmXScaleOptional, const aclTensor *mmWeightScaleOptional,

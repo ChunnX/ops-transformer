@@ -17,6 +17,16 @@
 
 namespace A2AVQuantGmmHelper {
 
+enum class QuantModeType : int64_t {
+    NO_QUANT = 0,
+    PERTENSOR_QUANT = 1,
+    PERCHANNEL_QUANT = 2,
+    PERTOKEN_QUANT = 3,
+    PERGROUP_QUANT = 4,
+    PERBLOCK_QUANT = 5,
+    MX_QUANT = 6,
+};
+
 constexpr int64_t TWO_DIMS = 2;
 constexpr int64_t FOUR_DIMS = 4;
 
@@ -37,7 +47,8 @@ static bool CheckNullStatus(const aclTensor *sendCountsTensorOptional, const acl
 }
 
 static bool CheckNotNull(const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *gmmY,
-                         const aclTensor *gmmXScale, const aclTensor *gmmWeightScale, int64_t gmmXQuantMode)
+                         const aclTensor *gmmXScale, const aclTensor *gmmWeightScale, int64_t gmmXQuantMode,
+                         int64_t gmmWeightQuantMode)
 {
     if (gmmX == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Input gmmX should not be null.");
@@ -57,6 +68,12 @@ static bool CheckNotNull(const aclTensor *gmmX, const aclTensor *gmmWeight, cons
     }
     if (gmmWeightScale == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GmmWeightScale should not be null.");
+        return false;
+    }
+    if ((gmmXQuantMode != static_cast<int64_t>(QuantModeType::PERTENSOR_QUANT)) &&
+        (gmmXQuantMode != static_cast<int64_t>(QuantModeType::MX_QUANT))) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GmmXQuantMode should be 1(pertensor quant) or 6(mx quant), "
+            "but actual is %ld.", gmmXQuantMode);
         return false;
     }
     return true;
