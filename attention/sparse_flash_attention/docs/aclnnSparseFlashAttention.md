@@ -498,7 +498,7 @@ aclnnStatus aclnnSparseFlashAttention(
 
 - 该接口支持推理场景下使用。
 - 该接口支持图模式。
-- N1支持1/2/4/8/16/32/64/128。
+- N1支持1~64/128。
 - block_size为一个block的token数，block_size取值为16的倍数，且最大支持1024。
 - 参数query中的D和key、value的D值相等为512，参数query_rope中的Dr和key_rope的Dr值相等为64。
 - 参数query、key、value的数据类型必须保持一致。
