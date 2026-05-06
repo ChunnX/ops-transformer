@@ -27,9 +27,6 @@
 namespace AscendC {
 using namespace ALLTO_ALLV_GMM;
 
-constexpr int TILINGKEY_TPL_CCU = 0;
-constexpr int TILINGKEY_TPL_AICPU = 1;
-
 template<int commMode>
 struct HcclTypeSelector {
     using type = Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU>;
@@ -214,7 +211,7 @@ __aicore__ inline void AlltoAllvGmmCoarseGrained<DataType, IsNeedMM, IsTranGmmW,
                     alltoAllvRecvOffsetLastSum += alltoAllvRecvCnt[i];
                 }
             }
-            alltoAllvHandleId_[e] = hccl_.AlltoAllV<true>(
+            alltoAllvHandleId_[e] = hccl_.template AlltoAllV<true>(
                 (__gm__ uint8_t*)this->gmmxGMTensor_.GetPhyAddr(), alltoAllvSendCnt, alltoAllvSendOffset, hcclDataType_,
                 (__gm__ uint8_t*)this->permutedGMTensor_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset,
                 hcclDataType_);
