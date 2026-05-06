@@ -70,7 +70,7 @@ namespace {
     const static int64_t MIN_EXPERT_PER_RANK = 1LL;
     const static int64_t MAX_EXPERT_PER_RANK = 16LL;
     const static int64_t H_BASE = 1024LL;
-    const static int64_t N_BASE = 1024LL;
+    const static int64_t HIDDEN_DIM_BASE = 1024LL;
     const static int64_t MIN_EP_WORLD_SIZE = 2LL;
     const static int64_t MAX_EP_WORLD_SIZE = 768LL;
     const static int64_t MAX_MOE_EXPERT_NUM = 1024LL;
@@ -234,9 +234,9 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData* tilingData, const char *nod
     
     PrintMoeInitRoutingV3Arch35TilingData(tilingData->moeInitRoutingTilingData, nodeName);
 
-    OP_LOGD(nodeName, "BS is %u", tilingData->m);
-    OP_LOGD(nodeName, "H is %u", tilingData->k);
-    OP_LOGD(nodeName, "N is %u", tilingData->n);
+    OP_LOGD(nodeName, "BS is %u", tilingData->bs);
+    OP_LOGD(nodeName, "H is %u", tilingData->h);
+    OP_LOGD(nodeName, "N is %u", tilingData->hiddenDim);
 
     OP_LOGD(nodeName, "topK is %u", tilingData->topK);
     OP_LOGD(nodeName, "expertPerRank is %u", tilingData->expertPerRank);
@@ -268,17 +268,17 @@ void printPeermemInfo(const MegaMoeTilingData* tilingData, const char *nodeName)
 {
     OP_LOGD(nodeName, "========== PeermemInfo ==========");
 
-    int64_t peermemSize = static_cast<int64_t>(tilingData->m) * tilingData->topK *
-            (tilingData->k + tilingData->k / MXFP_SCALE_GROUP_NUM) * sizeof(int8_t) + 60 * 1024 +
+    int64_t peermemSize = static_cast<int64_t>(tilingData->bs) * tilingData->topK *
+            (tilingData->h + tilingData->h / MXFP_SCALE_GROUP_NUM) * sizeof(int8_t) + 60 * 1024 +
             static_cast<int64_t>(tilingData->epWorldSize) * 128 * sizeof(int32_t) +
-            static_cast<int64_t>(tilingData->m) * tilingData->topK * tilingData->k * sizeof(int16_t);
+            static_cast<int64_t>(tilingData->bs) * tilingData->topK * tilingData->h * sizeof(int16_t);
     OP_LOGD(nodeName, "peermemSize: {%ld}\n", peermemSize);
 
     int64_t offset = PEERMEM_DATA_OFFSET;
     OP_LOGD(nodeName, "ptrA0: {%ld}\n", PEERMEM_DATA_OFFSET);
-    offset += static_cast<int64_t>(tilingData->m) *
+    offset += static_cast<int64_t>(tilingData->bs) *
         tilingData->topK *
-        (tilingData->k + tilingData->k / MXFP_SCALE_GROUP_NUM) *
+        (tilingData->h + tilingData->h / MXFP_SCALE_GROUP_NUM) *
         sizeof(int8_t);
     OP_LOGD(nodeName, "ptrTokenPerExpert: {%ld}\n", offset);
     offset += static_cast<int64_t>(tilingData->epWorldSize) *
@@ -446,8 +446,8 @@ static ge::graphStatus CheckAndSetInitTilingData(
     const uint32_t aivNum, const int64_t opQuantMode, const char *nodeName)
 {
     // Get Param
-    auto bs = tilingData.m;
-    auto h = tilingData.k;
+    auto bs = tilingData.bs;
+    auto h = tilingData.h;
     auto topK = tilingData.topK;
     auto expertPerRank = tilingData.expertPerRank;
     auto epWorldSize = tilingData.epWorldSize;
@@ -751,7 +751,7 @@ static ge::graphStatus GetMoeInitRoutingV3Tiling(MegaMoeTilingData &tilingData,
         OP_LOGE(nodeName, "SetAuxiliaryTilingCtx failed."), return ge::GRAPH_FAILED);
 
     printAuxiliaryTilingCtx(&ctx, tilingData.expertPerRank, tilingData.epWorldSize,
-        {tilingData.m, tilingData.topK}, xDtype, nodeName);
+        {tilingData.bs, tilingData.topK}, xDtype, nodeName);
 
     auto initRoutingTilingData = ComputeMoeInitRoutingV3Tiling(initTilingData, ctx);
 
@@ -816,14 +816,21 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
     const gert::StorageShape *xStorageShape = context->GetInputShape(config.xIndex);
     const gert::StorageShape *topkIdsStorageShape = context->GetInputShape(config.topkIdsIndex);
     auto weightOneStorageShape = context->GetDynamicInputShape(config.weightOneIndex, 0);
+    auto yDesc = context->GetOutputDesc(config.yIndex);
     
     OP_CHECK_NULL_WITH_CONTEXT(context, xStorageShape);
     OP_CHECK_NULL_WITH_CONTEXT(context, topkIdsStorageShape);
     OP_CHECK_NULL_WITH_CONTEXT(context, weightOneStorageShape);
+    OP_CHECK_NULL_WITH_CONTEXT(context, yDesc);
 
     int64_t bs = xStorageShape->GetStorageShape().GetDim(0);
+    int64_t h = xStorageShape->GetStorageShape().GetDim(1);
     int64_t topK = topkIdsStorageShape->GetStorageShape().GetDim(1);
     int64_t expertPerRank = weightOneStorageShape->GetStorageShape().GetDim(0);
+    int64_t n = weightOneStorageShape->GetStorageShape().GetDim(1);
+    
+    ge::DataType yDtype = yDesc->GetDataType();
+    int64_t yDtypeSize = ge::GetSizeByDataType(yDtype);
 
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>((config.attrEpWorldSizeIndex));
     int64_t epWorldSize = static_cast<int64_t>(*epWorldSizePtr);
@@ -846,6 +853,18 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
             "moeExpertNum(%ld) should be equal to expertPerRank(%ld) * epWorldSize(%ld) = %ld.",
             moeExpertNum, expertPerRank, epWorldSize, expertPerRank * epWorldSize),
         return ge::GRAPH_FAILED);
+
+    auto cclBufferSizePtr = attrs->GetAttrPointer<int64_t>((config.attrCclBufferSizeIndex));
+    int64_t cclBufferSize = static_cast<int64_t>(*cclBufferSizePtr);
+    int64_t leastCclBufferSize = (60 * 1024) +
+        (epWorldSize * ops::CeilAlign(epWorldSize * expertPerRank, ALIGN_128) * sizeof(int32_t)) +
+        (ops::CeilAlign(bs * topK * (h + h / 32), ALIGN_512) * sizeof(int8_t)) +
+        (ops::CeilAlign(bs * topK * yDtypeSize, ALIGN_512));
+    OP_TILING_CHECK(cclBufferSize < leastCclBufferSize,
+        OP_LOGE(nodeName, "cclBufferSize(%ld) should equal or larger than leastCclBufferSize(%ld).",
+            cclBufferSize, leastCclBufferSize),
+        return ge::GRAPH_FAILED);
+    OP_LOGD(nodeName, "cclBufferSize is %ld, leastCclBufferSize is %ld", cclBufferSize, leastCclBufferSize);
 
     auto maxRecvTokenNumPtr = attrs->GetAttrPointer<int64_t>((config.attrMaxRecvTokenNumIndex));
     int64_t maxRecvTokenNum = static_cast<int64_t>(*maxRecvTokenNumPtr);
@@ -917,7 +936,7 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
     tilingData->epWorldSize = *epWorldSizePtr;
     tilingData->maxOutputSize = *maxRecvTokenNumPtr != 0 ?
         *maxRecvTokenNumPtr :
-        tilingData->m * tilingData->epWorldSize *
+        tilingData->bs * tilingData->epWorldSize *
         std::min(tilingData->topK, tilingData->expertPerRank);
     tilingData->blockNumPerEP = std::max(static_cast<uint32_t>(1), aicNum / tilingData->epWorldSize);
     tilingData->dispatchRows = 2;
@@ -978,6 +997,9 @@ static ge::graphStatus CheckTensorPtrNullptr(const gert::TilingContext *context,
     auto weightScalesOneDesc = context->GetDynamicInputDesc(config.weightScalesOneIndex, 0);
     auto weightScalesTwoDesc = context->GetDynamicInputDesc(config.weightScalesTwoIndex, 0);
 
+    auto yDesc = context->GetOutputDesc(config.yIndex);
+    auto expertTokenNumsDesc = context->GetOutputDesc(config.expertTokenNumsIndex);
+
     OP_CHECK_NULL_WITH_CONTEXT(context, contextDesc);
     OP_CHECK_NULL_WITH_CONTEXT(context, xDesc);
     OP_CHECK_NULL_WITH_CONTEXT(context, topkIdsDesc);
@@ -986,6 +1008,8 @@ static ge::graphStatus CheckTensorPtrNullptr(const gert::TilingContext *context,
     OP_CHECK_NULL_WITH_CONTEXT(context, weightTwoDesc);
     OP_CHECK_NULL_WITH_CONTEXT(context, weightScalesOneDesc);
     OP_CHECK_NULL_WITH_CONTEXT(context, weightScalesTwoDesc);
+    OP_CHECK_NULL_WITH_CONTEXT(context, yDesc);
+    OP_CHECK_NULL_WITH_CONTEXT(context, expertTokenNumsDesc);
 
     auto xActiveMaskDesc = context->GetOptionalInputDesc(config.xActiveMaskIndex);
     auto scalesDesc = context->GetOptionalInputDesc(config.scalesIndex);
@@ -1038,6 +1062,47 @@ static ge::graphStatus CheckWeightTensorDim(const gert::TilingContext *context,
     OP_TILING_CHECK(weightOneDim1 != weightTwoDim2 * NUM_TWO,
         OP_LOGE(nodeName, "weightOneDim1(%ld) should be equal to weightTwoDim2(%ld) * 2.",
             weightOneDim1, weightTwoDim2),
+        return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckOutputTensorDim(const gert::TilingContext *context,
+    MegaMoeConfig &config, const char *nodeName)
+{
+    const gert::StorageShape *xStorageShape = context->GetInputShape(config.xIndex);
+    auto weightOneStorageShape = context->GetDynamicInputShape(config.weightOneIndex, 0);
+
+    int64_t bs = xStorageShape->GetStorageShape().GetDim(0);
+    int64_t h = xStorageShape->GetStorageShape().GetDim(1);
+    int64_t expertPerRank = weightOneStorageShape->GetStorageShape().GetDim(0);
+
+    auto yStorageShape = context->GetOutputShape(config.yIndex);
+    OP_CHECK_NULL_WITH_CONTEXT(context, yStorageShape);
+    OP_TILING_CHECK(yStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
+        OP_LOGE(nodeName, "yStorageShape dims must be 2, but current dim num is %zu.",
+        yStorageShape->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
+    const int64_t yDim0 = yStorageShape->GetStorageShape().GetDim(0);
+    const int64_t yDim1 = yStorageShape->GetStorageShape().GetDim(1);
+    OP_LOGD(nodeName, "y dim0 = %ld", yDim0);
+    OP_LOGD(nodeName, "y dim1 = %ld", yDim1);
+
+    OP_TILING_CHECK(yDim0 != bs || yDim1 != h,
+        OP_LOGE(nodeName, "(yDim0(%ld), yDim1(%ld)) should be equal to (bs(%ld), h(%ld)).",
+            yDim0, yDim1, bs, h),
+        return ge::GRAPH_FAILED);
+
+    auto expertTokenNumsStorageShape = context->GetOutputShape(config.expertTokenNumsIndex);
+    OP_CHECK_NULL_WITH_CONTEXT(context, expertTokenNumsStorageShape);
+    OP_TILING_CHECK(expertTokenNumsStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
+        OP_LOGE(nodeName, "expertTokenNumsStorageShape dims must be 1, but current dim num is %zu.",
+        expertTokenNumsStorageShape->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
+    const int64_t expertTokenNumsDim0 = expertTokenNumsStorageShape->GetStorageShape().GetDim(0);
+    OP_LOGD(nodeName, "expertTokenNums dim0 = %ld", expertTokenNumsDim0);
+
+    OP_TILING_CHECK(expertTokenNumsDim0 != expertPerRank,
+        OP_LOGE(nodeName, "expertTokenNumsDim0(%ld) should be equal to expertPerRank(%ld).",
+            expertTokenNumsDim0, expertPerRank),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -1167,6 +1232,9 @@ static ge::graphStatus CheckTensorDim(const gert::TilingContext *context, MegaMo
     OP_TILING_CHECK(CheckWeightScalesTensorDim(context, config, nodeName) == ge::GRAPH_FAILED,
         OP_LOGE(nodeName, "optional params shape is invalid."), return ge::GRAPH_FAILED);
 
+    OP_TILING_CHECK(CheckOutputTensorDim(context, config, nodeName) == ge::GRAPH_FAILED,
+        OP_LOGE(nodeName, "output params shape is invalid."), return ge::GRAPH_FAILED);
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1182,6 +1250,9 @@ static ge::graphStatus CheckTensorDataType(const gert::TilingContext *context,
     auto weightTwoDesc = context->GetDynamicInputDesc(config.weightTwoIndex, 0);
     auto weightScalesOneDesc = context->GetDynamicInputDesc(config.weightScalesOneIndex, 0);
     auto weightScalesTwoDesc = context->GetDynamicInputDesc(config.weightScalesTwoIndex, 0);
+
+    auto yDesc = context->GetOutputDesc(config.yIndex);
+    auto expertTokenNumsDesc = context->GetOutputDesc(config.expertTokenNumsIndex);
 
     OP_TILING_CHECK(contextDesc->GetDataType() != ge::DT_INT32,
         OP_LOGE(nodeName, "context dataType is invalid, dataType should be DT_INT32, but is %s.",
@@ -1231,7 +1302,15 @@ static ge::graphStatus CheckTensorDataType(const gert::TilingContext *context,
         OP_LOGE(nodeName,
             "weightScalesTwo dataType is invalid, dataType should be DT_FLOAT8_E8M0, but is %s.",
         Ops::Base::ToString(weightScalesTwoDesc->GetDataType()).c_str()), return ge::GRAPH_FAILED);
+
+    OP_TILING_CHECK(yDesc->GetDataType() != ge::DT_BF16,
+        OP_LOGE(nodeName, "y dataType is invalid, dataType should be DT_BF16, but is %s.",
+        Ops::Base::ToString(yDesc->GetDataType()).c_str()), return ge::GRAPH_FAILED);
     
+    OP_TILING_CHECK(expertTokenNumsDesc->GetDataType() != ge::DT_INT32,
+        OP_LOGE(nodeName, "x dataType is invalid, dataType should be DT_BF16, but is %s.",
+        Ops::Base::ToString(xDesc->GetDataType()).c_str()), return ge::GRAPH_FAILED);
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1246,6 +1325,9 @@ static ge::graphStatus CheckTensorFormat(const gert::TilingContext *context,
     auto weightTwoDesc = context->GetDynamicInputDesc(config.weightTwoIndex, 0);
     auto weightScalesOneDesc = context->GetDynamicInputDesc(config.weightScalesOneIndex, 0);
     auto weightScalesTwoDesc = context->GetDynamicInputDesc(config.weightScalesTwoIndex, 0);
+
+    auto yDesc = context->GetOutputDesc(config.yIndex);
+    auto expertTokenNumsDesc = context->GetOutputDesc(config.expertTokenNumsIndex);
 
     OP_TILING_CHECK(
         static_cast<ge::Format>(ge::GetPrimaryFormat(xDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
@@ -1284,6 +1366,16 @@ static ge::graphStatus CheckTensorFormat(const gert::TilingContext *context,
             ge::FORMAT_FRACTAL_NZ,
         OP_LOGE(nodeName,
             "weightScalesTwo format is invalid."), return ge::GRAPH_FAILED);
+
+    OP_TILING_CHECK(
+        static_cast<ge::Format>(ge::GetPrimaryFormat(yDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
+        OP_LOGE(nodeName,
+            "y format is invalid."), return ge::GRAPH_FAILED);
+    
+    OP_TILING_CHECK(
+        static_cast<ge::Format>(ge::GetPrimaryFormat(expertTokenNumsDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
+        OP_LOGE(nodeName,
+            "expertTokenNums format is invalid."), return ge::GRAPH_FAILED);
     
     return ge::GRAPH_SUCCESS;
 }
@@ -1336,8 +1428,9 @@ static ge::graphStatus CheckInputParam(const gert::TilingContext *context, MegaM
         return ge::GRAPH_FAILED);
 
     int64_t weightOneDim1 = weightOneStorageShape->GetStorageShape().GetDim(1);
-    OP_TILING_CHECK(weightOneDim1 != 1LL * N_BASE && weightOneDim1 != 2LL * N_BASE && weightOneDim1 != 3LL * N_BASE &&
-                    weightOneDim1 != 4LL * N_BASE && weightOneDim1 != 7LL * N_BASE,
+    OP_TILING_CHECK(weightOneDim1 != 1LL * HIDDEN_DIM_BASE && weightOneDim1 != 2LL * HIDDEN_DIM_BASE &&
+                    weightOneDim1 != 3LL * HIDDEN_DIM_BASE && weightOneDim1 != 4LL * HIDDEN_DIM_BASE &&
+                    weightOneDim1 != 7LL * HIDDEN_DIM_BASE,
         OP_LOGE(nodeName, "N only support 1k/2k/3k/4k/7k, but now N is %ld.", weightOneDim1),
         return ge::GRAPH_FAILED);
     
@@ -1348,8 +1441,8 @@ static ge::graphStatus SetInputParam(const gert::TilingContext *context,
     MegaMoeTilingData *tilingData, MegaMoeConfig &config)
 {
     const gert::StorageShape *xStorageShape = context->GetInputShape(config.xIndex);
-    int64_t BS = xStorageShape->GetStorageShape().GetDim(0);
-    int64_t H = xStorageShape->GetStorageShape().GetDim(1);
+    int64_t bs = xStorageShape->GetStorageShape().GetDim(0);
+    int64_t h = xStorageShape->GetStorageShape().GetDim(1);
 
     const gert::StorageShape *topkIdsStorageShape = context->GetInputShape(config.topkIdsIndex);
     int64_t topK = topkIdsStorageShape->GetStorageShape().GetDim(1);
@@ -1357,11 +1450,11 @@ static ge::graphStatus SetInputParam(const gert::TilingContext *context,
     auto weightOneStorageShape = context->GetDynamicInputShape(config.weightOneIndex, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context, weightOneStorageShape);
     int64_t expertPerRank = weightOneStorageShape->GetStorageShape().GetDim(0);
-    int64_t N = weightOneStorageShape->GetStorageShape().GetDim(1);
+    int64_t hiddenDim = weightOneStorageShape->GetStorageShape().GetDim(1);
 
-    tilingData->m = static_cast<uint32_t>(BS);
-    tilingData->k = static_cast<uint32_t>(H);
-    tilingData->n = static_cast<uint32_t>(N);
+    tilingData->bs = static_cast<uint32_t>(bs);
+    tilingData->h = static_cast<uint32_t>(h);
+    tilingData->hiddenDim = static_cast<uint32_t>(hiddenDim);
     tilingData->topK = static_cast<uint32_t>(topK);
     tilingData->expertPerRank = static_cast<uint32_t>(expertPerRank);
     tilingData->groupListType = 1;
