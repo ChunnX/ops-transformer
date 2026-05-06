@@ -1706,7 +1706,7 @@ __aicore__ inline void FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::SoftmaxInitB
     tPipe->InitBuffer(softmaxSumBuf[0], 256); // [64, 1]
     tPipe->InitBuffer(softmaxSumBuf[1], 256); // [64, 1]
     tPipe->InitBuffer(softmaxSumBuf[2], 256); // [64, 1]
-    if constexpr (isFd) {
+    if (constInfo.isFd) {
         tPipe->InitBuffer(maxBrdcst, 1, 2048); // [64, 8]
         tPipe->InitBuffer(sumBrdcst, 1, 2048); // [64, 8]
     }

@@ -211,7 +211,7 @@ __aicore__ inline void FlashAttentionNoQuantKernelInfer<CubeBlockType, VecBlockT
             this->keyGm, this->actualSeqQlenAddr, this->actualSeqKvlenAddr);
         ComputeS1LoopInfo<CHILD_SPEC_TEMPLATE_ARGS, BaseClass::useDn, BaseClass::enableKVPrefix>(runParam, this->constInfo, lastBN,
                                                                       nextGs1Idx);
-        if this->constInfo.isFd) {
+        if (this->constInfo.isFd) {
             if (this->constInfo.sInnerLoopSize * (this->aicIdx % this->constInfo.splitKVNum) >
                 runParam.actualS2Size) {
                 runParam.s2LineEndIdx = 0;
