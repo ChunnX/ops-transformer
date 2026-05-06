@@ -39,7 +39,9 @@ bool AlltoAllvMXQuantGmmV2Tiling::IsCapable()
 
 uint64_t AlltoAllvMXQuantGmmV2Tiling::GetTilingKey() const
 {
-    uint64_t tilingKey = GET_TPL_TILING_KEY(ADD_TPL_FP8_FP4, hasSharedExpertFlag_, transGmmWeight_, transMmWeight_);
+    auto commMode = context_->GetAttrs()->GetAttrPointer<char>(static_cast<int>(COMMMODE_INDEX));
+    uint8_t commModeKey = (strcmp(commMode, "aicpu") == 0) ? TILINGKEY_TPL_AICPU : TILINGKEY_TPL_CCU;
+    uint64_t tilingKey = GET_TPL_TILING_KEY(ADD_TPL_FP8_FP4, hasSharedExpertFlag_, transGmmWeight_, transMmWeight_, commModeKey);
     return tilingKey;
 }
 

@@ -932,8 +932,10 @@ uint64_t AlltoAllvGmmV2Tiling::GetTilingKey(const gert::TilingContext* context) 
     } else {
         tilingekyMmTrans = false;
     }
+    auto commMode = context->GetAttrs()->GetAttrPointer<char>(static_cast<int>(COMMMODE_INDEX));
+    uint8_t commModeKey = (strcmp(commMode, "aicpu") == 0) ? TILINGKEY_TPL_AICPU : TILINGKEY_TPL_CCU;
     uint64_t tilingKey = GET_TPL_TILING_KEY(templateMmDType, tilingkeyMm,
-                                    tilingekyGmmTrans, tilingekyMmTrans);
+                                    tilingekyGmmTrans, tilingekyMmTrans, commModeKey);
 
     PrintCommonTilingInfo(tilingData->commonTilingInfo);
     OP_LOGD(A_INNER_DEBUG, "end RunFusionKernelTiling, tilingKey is %lu", tilingKey);
