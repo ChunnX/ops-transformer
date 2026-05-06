@@ -44,13 +44,15 @@ extern "C" __global__ __aicore__ void block_sparse_attention_grad(__gm__ uint8_t
     __gm__ uint8_t *user = AscendC::GetUserWorkspace(workspace);
 
 #if __CCE_AICORE__ == 310
-    __gm__ BlockSparseAttentionGradTilingDataArch35 *tilingDataPtrArch35 = 
-        reinterpret_cast<__gm__ BlockSparseAttentionGradTilingDataArch35 *>(tiling);
+    GET_TILING_DATA_WITH_STRUCT(BlockSparseAttentionGradTilingDataArch35, tiling_data_in, tiling);  
+    const BlockSparseAttentionGradTilingDataArch35 *__restrict tilingDataPtrArch35 = &tiling_data_in;    
+      
     if (TILING_KEY_IS(1000)) {
-        BSA::BlockSparseAttentionGradArch35 op;
-        op.Process(
-            dout, query, key, value, out, softmaxLse, blockSparseMask, blockShape, attentionMask,
-            actualSeqLengths, actualSeqLengthsKv, dq, dk, dv, user, tiling);
+        BSA_ARC35::BlockSparseAttentionGradArch35<
+                BSA_ARC35::BSA_TYPE<half, BlockSparseAttentionGradTilingDataArch35, true>
+            > op;
+        op.Process(dout, query, key, value, out, softmaxLse, blockSparseMask, blockShape, attentionMask,
+                   actualSeqLengths, actualSeqLengthsKv, dq, dk, dv, user, tilingDataPtrArch35);
     } 
 
 #else
