@@ -158,27 +158,28 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_NO_FULL_LOAD_FUN_T
     }
 
     if ASCEND_IS_AIV {
-        tpipe_ = pipe;
-        if (tpipe_ != nullptr) {
-            uint32_t paddedRowBytes = ::CeilDiv(
-                static_cast<uint64_t>(params.qbmmParams.baseN) * sizeof(bfloat16_t),
-                UB_ALIGN_BYTES) * UB_ALIGN_BYTES;
-            tpipe_->InitBuffer(inQueue_, 1, AIV_UB_TILE_M * paddedRowBytes);
-        }
-        winContext_ = (__gm__ HcclOpResParam*)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
-        rankId_ = winContext_->localUsrRankId;
-        coreVid_ = AscendC::GetBlockIdx();
-        BlockCoord blockIdx;
-        while (bs.GetTileIdx(blockIdx)) {
-            int64_t mPos = Get<MNK_M>(blockIdx);
-            int64_t nPos = Get<MNK_N>(blockIdx);
-            BlockShape singleShape = bs.GetBlockShape(blockIdx);
-            if (Get<MNK_M>(singleShape) <= 0 || Get<MNK_N>(singleShape) <= 0) {
-                break;
-            }
-            CrossCoreWaitFlag(9);
-            CommProcess(mPos, nPos, singleShape, params);
-        }
+        // tpipe_ = pipe;
+        // if (tpipe_ != nullptr) {
+        //     uint32_t paddedRowBytes = ::CeilDiv(
+        //         static_cast<uint64_t>(params.qbmmParams.baseN) * sizeof(bfloat16_t),
+        //         UB_ALIGN_BYTES) * UB_ALIGN_BYTES;
+        //     tpipe_->InitBuffer(inQueue_, 1, AIV_UB_TILE_M * paddedRowBytes);
+        // }
+        // winContext_ = (__gm__ HcclOpResParam*)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
+        // rankId_ = winContext_->localUsrRankId;
+        // coreVid_ = AscendC::GetBlockIdx();
+        // BlockCoord blockIdx;
+        // while (bs.GetTileIdx(blockIdx)) {
+        //     int64_t mPos = Get<MNK_M>(blockIdx);
+        //     int64_t nPos = Get<MNK_N>(blockIdx);
+        //     BlockShape singleShape = bs.GetBlockShape(blockIdx);
+        //     if (Get<MNK_M>(singleShape) <= 0 || Get<MNK_N>(singleShape) <= 0) {
+        //         break;
+        //     }
+        //     CrossCoreWaitFlag(9);
+        //     CommProcess(mPos, nPos, singleShape, params);
+        // }
+
         // // debug
         // SyncAll<true>();
         // GlobalTensor<CType> workspaceGm;
@@ -269,7 +270,9 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_NO_FULL_LOAD_FUN_T
         // if (AscendC::GetBlockIdx() == 0) {
         //     DumpTensor(workspaceGm[mPos * 512 + nPos], 111, 3);
         // }
-        CrossCoreSetFlag<0x2, PIPE_FIX>(9);
+
+        
+        // CrossCoreSetFlag<0x2, PIPE_FIX>(9);
     }
 }
 

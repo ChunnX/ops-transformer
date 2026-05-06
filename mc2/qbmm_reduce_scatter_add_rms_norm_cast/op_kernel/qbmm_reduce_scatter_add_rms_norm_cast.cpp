@@ -61,7 +61,9 @@ __global__ __aicore__ void qbmm_reduce_scatter_add_rms_norm_cast(GM_ADDR x1, GM_
     using CommParams = typename QuantMatmulKernelImpl::CommParams;
 
     ProblemShape problemShape{tilingData.qbmmTilingdata.m, tilingData.qbmmTilingdata.n, tilingData.qbmmTilingdata.k, 1UL};
-    BlockMmadParams mmadParams{x1, x2, workspaceGM, dScaleA, dScaleB};
+    
+    // 精度测试：quantmatmul 输出直接写入 x（xOut），跳过通信流程
+    BlockMmadParams mmadParams{x1, x2, x, dScaleA, dScaleB};  // 输出到 xOut 用于精度验证
     L1Params l1Params{
         static_cast<uint64_t>(tilingData.qbmmTilingdata.stepK) * tilingData.qbmmTilingdata.baseK,
         tilingData.qbmmTilingdata.scaleKL1};

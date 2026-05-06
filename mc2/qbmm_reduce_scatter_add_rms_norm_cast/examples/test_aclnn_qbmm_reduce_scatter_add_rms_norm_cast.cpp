@@ -44,20 +44,49 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
 }
 
 template<typename T>
-int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
-    aclDataType dataType, aclTensor **tensor)
-{
-    auto size = GetShapeSize(shape) * sizeof(T);
-    auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc failed. ret: %d\n", ret); return ret);
-    ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMemcpy failed. ret: %d\n", ret); return ret);
-    std::vector<int64_t> strides(shape.size(), 1);
-    for (int64_t i = shape.size() - 2; i >= 0; i--) {
-        strides[i] = shape[i + 1] * strides[i + 1];
+int LoadBinFile(const std::string &filename, std::vector<T> &hostData) {
+    FILE* fp = fopen(filename.c_str(), "rb");
+    if (!fp) {
+        LOG_PRINT("[ERROR] Failed to open %s\n", filename.c_str());
+        return -1;
     }
-    *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
-        shape.data(), shape.size(), *deviceAddr);
+    
+    fseek(fp, 0, SEEK_END);
+    long fileSize = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+    
+    size_t elemCount = fileSize / sizeof(T);
+    hostData.resize(elemCount);
+    
+    size_t readCount = fread(hostData.data(), sizeof(T), elemCount, fp);
+    fclose(fp);
+    
+    if (readCount != elemCount) {
+        LOG_PRINT("[ERROR] Read failed: expected %zu, got %zu\n", elemCount, readCount);
+        return -1;
+    }
+    
+    LOG_PRINT("[INFO] Loaded %s: %zu elements (%ld bytes)\n", filename.c_str(), elemCount, fileSize);
+    return 0;
+}
+
+template<typename T>
+int SaveBinFile(const std::string &filename, const std::vector<T> &hostData) {
+    FILE* fp = fopen(filename.c_str(), "wb");
+    if (!fp) {
+        LOG_PRINT("[ERROR] Failed to open %s for writing\n", filename.c_str());
+        return -1;
+    }
+    
+    size_t writeCount = fwrite(hostData.data(), sizeof(T), hostData.size(), fp);
+    fclose(fp);
+    
+    if (writeCount != hostData.size()) {
+        LOG_PRINT("[ERROR] Write failed: expected %zu, got %zu\n", hostData.size(), writeCount);
+        return -1;
+    }
+    
+    LOG_PRINT("[INFO] Saved %s: %zu elements (%zu bytes)\n", filename.c_str(), hostData.size(), hostData.size() * sizeof(T));
     return 0;
 }
 
@@ -123,29 +152,38 @@ int LaunchOneThreadQbmmReduceScatterAddRmsNormCast(Args &args)
     aclOpExecutor *executor = nullptr;
     void *workspaceAddr = nullptr;
 
-    // 计算shape size
+// 计算shape size
     long long x1ShapeSize = GetShapeSize(x1Shape);
     long long x2ShapeSize = GetShapeSize(x2Shape);
     long long yShapeSize = GetShapeSize(yShape);
     long long gammaShapeSize = GetShapeSize(gammaShape);
-    long long scaleShapeSize = GetShapeSize(scaleShape);
-    long long pertokenScaleShapeSize = GetShapeSize(pertokenScaleShape);
+    long long scaleShapeSize = 4 * 2 * 512;  // = 4096 (ceil(K/64), 2, N)
+    long long pertokenScaleShapeSize = 128 * 4 * 2;  // = 1024 (M, ceil(K/64), 2)
     long long y1ShapeSize = GetShapeSize(y1Shape);
     long long y2ShapeSize = GetShapeSize(y2Shape);
     long long xOutShapeSize = GetShapeSize(xOutShape);
-
-    // 创建host数据
-    // FP8_E4M3FN: 用 uint8_t 存储（1字节）
-    std::vector<uint8_t> x1HostData(x1ShapeSize, 56);
-    std::vector<uint8_t> x2HostData(x2ShapeSize, 56);
-    // BF16: 用 uint16_t 存储（2字节）
-    std::vector<uint16_t> yHostData(yShapeSize, 0x3f80);  // bf16 的 1.0
-    // FLOAT: 用 float 存储
+    
+    // 精度测试：从bin文件加载输入数据（而不是硬编码）
+    std::string inputDir = "../input";
+    std::vector<uint8_t> x1HostData;
+    std::vector<uint8_t> x2HostData;
+    std::vector<uint8_t> scaleHostData;
+    std::vector<uint8_t> pertokenScaleHostData;
+    
+    ret = LoadBinFile(inputDir + "/input_a_fp8.bin", x1HostData);
+    CHECK_RET(ret == 0, return ret);
+    ret = LoadBinFile(inputDir + "/input_b_fp8.bin", x2HostData);
+    CHECK_RET(ret == 0, return ret);
+    ret = LoadBinFile(inputDir + "/input_scaleA.bin", pertokenScaleHostData);
+    CHECK_RET(ret == 0, return ret);
+    ret = LoadBinFile(inputDir + "/input_scaleB.bin", scaleHostData);
+    CHECK_RET(ret == 0, return ret);
+    
+    // 其他输入用默认值（精度测试不需要）
+    std::vector<uint16_t> yHostData(yShapeSize, 0x3f80);  // bf16 1.0
     std::vector<float> gammaHostData(gammaShapeSize, 1.0f);
-    // FP8_E8M0 (scale): 用 uint8_t 存储（纯指数格式，1字节）
-    std::vector<uint8_t> scaleHostData(scaleShapeSize, 127);
-    std::vector<uint8_t> pertokenScaleHostData(pertokenScaleShapeSize, 127);
-    // 输出初始化为 0
+    
+    // 输出初始化为0
     std::vector<float> y1HostData(y1ShapeSize, 0.0f);
     std::vector<uint16_t> y2HostData(y2ShapeSize, 0);
     std::vector<uint16_t> xOutHostData(xOutShapeSize, 0);
@@ -206,7 +244,25 @@ int LaunchOneThreadQbmmReduceScatterAddRmsNormCast(Args &args)
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
         return ret);
 
-    LOG_PRINT("[INFO] rank = %d aclnnQbmmReduceScatterAddRmsNormCast execute successfully.\n", args.rankId);
+LOG_PRINT("[INFO] rank = %d aclnnQbmmReduceScatterAddRmsNormCast execute successfully.\n", args.rankId);
+
+    // === 精度测试：保存输出到bin文件 ===
+    std::vector<uint16_t> xOutResult(xOutShapeSize);
+    ret = aclrtMemcpy(xOutResult.data(), xOutShapeSize * sizeof(uint16_t), 
+                      xOutDeviceAddr, xOutShapeSize * sizeof(uint16_t), 
+                      ACL_MEMCPY_DEVICE_TO_HOST);
+    CHECK_RET(ret == ACL_SUCCESS, 
+        LOG_PRINT("[ERROR] aclrtMemcpy xOut failed. ret = %d\n", ret); return ret);
+
+    std::string outputFile = "../output/npu_output_rank" + std::to_string(args.rankId) + ".bin";
+    ret = SaveBinFile(outputFile, xOutResult);
+    CHECK_RET(ret == 0, return ret);
+    
+    // 打印前10个值验证
+    LOG_PRINT("[INFO] rank=%d, xOut first 10 values (bf16 hex):\n", args.rankId);
+    for (int i = 0; i < 10 && i < xOutShapeSize; i++) {
+        LOG_PRINT("  [%d] 0x%04x\n", i, xOutResult[i]);
+    }
 
     // 释放device资源
     if (x1 != nullptr) {
