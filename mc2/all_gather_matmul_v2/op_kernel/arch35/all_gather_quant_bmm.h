@@ -107,8 +107,8 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CT
     auto &&cfg = tilingData->param;
 
     context_ = contextGM;
-    hcclAllgather_.Init(context_, mc2InitTiling);
-    hcclAllgather_.SetCcTiling(mc2CcTiling);
+    hcclAllgather_.InitV2(context_, tilingData);
+    hcclAllgather_.SetCcTilingV2(offsetof(Mc2Tiling::AllGatherMatmulTilingDataFp8, mc2CcTiling));
     tilingData_ = tilingData;
     tPipe_ = tPipe;
     aGM_ = aGM;
@@ -122,7 +122,7 @@ __aicore__ inline void AllGatherQuantBmm<AType, BType, BiasType, X2ScaleType, CT
     workspaceGM_ = workspaceGM;
     debugMode_ = tilingData_->debugMode;
     dataType_ = static_cast<AscendC::HcclDataType>(tilingData_->dataType);
-    rankId_ = ((__gm__ HcclCombinOpParam*)context_)->rankId;
+    rankId_ = hcclAllgather_.GetRankId();
     // 若有指定gatherout地址则用指定地址，若未指定gatherOut地址则为workspace空间
     if ((cfg.gatherLen != 0) || (!gatherOut)) {
         gatherOut_ = workspaceGM_;
