@@ -121,14 +121,14 @@ private:
             return false;
         }
 
-        if (n1Idx_ < dimN1 - 1) {
+        if (n1Idx_ < q_head_num_ - 1) {
             s1Idx_ = 0;
             s2Idx_ = 0;
             n1Idx_++;
             return false;
         }
 
-        if (bIdx_ < dimB - 1) {
+        if (bIdx_ < batch_num_ - 1) {
             s1Idx_ = 0;
             s2Idx_ = 0;
             n1Idx_ = 0;
