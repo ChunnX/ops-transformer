@@ -269,9 +269,18 @@ bool SparseLightningIndexerGradKLLossTilingBase::AnalyzeDimLayout(const gert::Sh
             dSizeQuery = queryShape.GetDim(2);
             dSizeQueryIndex = queryIndexShape.GetDim(2);
             kSize = topKShape.GetDim(2);
-            OP_CHECK_IF(kSize > BUFFER_SIZE_BYTE_8K || kSize % BUFFER_SIZE_BYTE_1K > 0,
-                OP_LOGE(opName, "topK(%d) should be small than 8192, and should be an integer multiple of 1024.", kSize),
-                return false);
+            if (cmpRatio != 4) {
+                OP_CHECK_IF(kSize > BUFFER_SIZE_BYTE_8K || kSize % BUFFER_SIZE_BYTE_1K > 0,
+                    OP_LOGE(opName, "topK(%d) should be small than 8192, and should be an integer multiple of 1024.", kSize),
+                    return false);
+            } else {
+                OP_CHECK_IF(kSize > BUFFER_SIZE_BYTE_8K || (kSize % BUFFER_SIZE_BYTE_1K > 0 && kSize != 512),
+                    OP_LOGE(opName, "topK(%d) should be small than 8192, and should be an integer multiple of 1024 or 512.", kSize),
+                    return false);
+                OP_CHECK_IF(kSize == 512 && hasRope,
+                    OP_LOGE(opName, "topK(512) is only supported when hasRope is false."),
+                    return false);
+            }
             topkSize = (TopKRange) kSize;
             if (hasRope) {
                 dQueryRopeSize = queryRopeShape.GetDim(2);
