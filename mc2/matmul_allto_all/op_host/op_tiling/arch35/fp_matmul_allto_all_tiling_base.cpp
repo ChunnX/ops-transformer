@@ -13,6 +13,7 @@
  * \brief
  */
 #include "fp_matmul_allto_all_tiling_base.h"
+#include "matmul_allto_all_fit_balance_tiling.h"
 #include "common/utils/op_mc2.h"
 #include "mc2_log.h"
 
@@ -322,6 +323,17 @@ void FpMatmulAllToAllTilingBase::SetTilingInfo(MatmulAlltoAllTilingInfo &tilingI
     tilingInfo.rankDim = contextInfo.args_.rankDim;
     tilingInfo.hcclDataType =
         (static_cast<uint64_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, contextInfo.args_.geAType))); // hccl数据类型
+}
+
+/**
+ * @brief 获取tiling切分结果（arch35覆盖）
+ *
+ * @return CutResult
+ */
+CutResult FpMatmulAllToAllTilingBase::GetTilingResult()
+{
+    return GetArch35TilingResult(contextInfo.args_, KernelType::ALL_TO_ALL, SocVersion::SOC950, npuArch_,
+                                 contextInfo.quantMode);
 }
 
 /**
