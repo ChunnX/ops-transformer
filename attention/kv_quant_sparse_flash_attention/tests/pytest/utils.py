@@ -84,19 +84,34 @@ def generate_actual_seq(S, B, layout=None, T=None):
     返回:
         actual_seq: 生成的实际序列长度列表
     """
-    seq_lengths = [random.randint(0, S) for _ in range(B)]
-    
     if layout == "TND":
-        actual_seq = []
-        cumsum = 0
-        for length in seq_lengths:
-            cumsum += length
-            actual_seq.append(cumsum)
+        if T is not None:
+            seq_lengths = []
+            remaining = T
+            for i in range(B - 1):
+                max_len = min(S, remaining)
+                if max_len <= 0:
+                    seq_lengths.append(0)
+                else:
+                    length = random.randint(0, max_len)
+                    seq_lengths.append(length)
+                    remaining -= length
+            seq_lengths.append(max(0, remaining))
+            actual_seq = []
+            cumsum = 0
+            for length in seq_lengths:
+                cumsum += length
+                actual_seq.append(cumsum)
+        else:
+            seq_lengths = [random.randint(0, S) for _ in range(B)]
+            actual_seq = []
+            cumsum = 0
+            for length in seq_lengths:
+                cumsum += length
+                actual_seq.append(cumsum)
     else:
+        seq_lengths = [random.randint(0, S) for _ in range(B)]
         actual_seq = seq_lengths
-    
-    if T is not None:
-        actual_seq[-1] = T
     
     return actual_seq
 
