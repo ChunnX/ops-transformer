@@ -446,6 +446,7 @@ __aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::Ini
     GM_ADDR oriX, GM_ADDR constExpertAlpha1, GM_ADDR constExpertAlpha2, GM_ADDR constExpertV, GM_ADDR XOut,
     GM_ADDR workspaceGM, TPipe *pipe, const MoeDistributeCombineV2TilingData *tilingData)
 {
+    AscendC::printf("printf Init enter!");
     tpipe_ = pipe;
     coreIdx_ = GetBlockIdx();
     workspaceGM_ = workspaceGM;
