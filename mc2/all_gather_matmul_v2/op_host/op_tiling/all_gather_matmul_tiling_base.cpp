@@ -721,10 +721,11 @@ ge::graphStatus AllGatherMatmulTilingBase::GetWorkspaceSize()
 uint64_t AllGatherMatmulTilingBase::GetTilingKey() const
 {
     uint8_t outputType = (outputIsFp8_) ? static_cast<uint8_t>(1) : static_cast<uint8_t>(0);
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
     const uint64_t tilingKey = GET_TPL_TILING_KEY(
-        inputIsBf16Fp16_, args_.isBTrans, outputType, TPL_DEFAULT_MODE, SCALE_TYPE_NOT_IS_MX);
-    OP_LOGD(opName_, "AllGatherMatmulV2, inputIsBf16Fp16_, args_.isBTrans, outputType: [%d,%d,%u]",   \
-        inputIsBf16Fp16_, args_.isBTrans, outputType);
+        inputIsBf16Fp16_, args_.isBTrans, outputType, TPL_DEFAULT_MODE, SCALE_TYPE_NOT_IS_MX, commMode);
+    OP_LOGD(opName_, "AllGatherMatmulV2, inputIsBf16Fp16_, args_.isBTrans, outputType, commMode: [%d,%d,%u,%d]",   \
+        inputIsBf16Fp16_, args_.isBTrans, outputType, commMode);
     OP_LOGD(opName_, "tilingKey=%lu", tilingKey);
     return tilingKey;
 }

@@ -24,6 +24,7 @@
 #include "common/utils/hccl_util.h"
 #include "common/op_api/mc2_aclnn_util.h"
 #include "aclnnInner_all_gather_matmul_v2.h"
+#include "mc2_comm_utils.h"
 
 using namespace op;
 using namespace Ops::Transformer;
@@ -543,7 +544,14 @@ aclnnStatus aclnnAllGatherMatmulV2(void* workspace, uint64_t workspaceSize, aclO
 
   if (NnopbaseSetHcclServerType) {
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-      NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+      uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+      if (commMode == Mc2Comm::COMM_MODE_CCU) {
+        OP_LOGD("aclnnAllGatherMatmulV2: ENV_MC2_COMM_MODE_AICPU not set, use CCU mode");
+                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+      } else {
+        OP_LOGD("aclnnAllGatherMatmulV2: ENV_MC2_COMM_MODE_AICPU set, use AICPU mode");
+                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+      }
     } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
       NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
     }
