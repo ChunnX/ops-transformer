@@ -96,7 +96,6 @@ public:
         this->AICore().AddConfig("ascend910_93", aicore_config);
         this->AICore().AddConfig("ascend950", aicore_config);
         this->MC2().HcclGroup({"group"});
-        this->MC2().HcclServerType(HcclServerType::AICPU);
     }
 };
 

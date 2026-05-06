@@ -167,7 +167,6 @@ public:
             .ExtendCfgInfo("opFile.value", "allto_allv_quant_grouped_mat_mul_v2_apt");
         this->AICore().AddConfig("ascend950", aicore_config_950);
         this->MC2().HcclGroup({"group"});
-        this->MC2().HcclServerType(HcclServerType::AICPU);
     }
 };
 
