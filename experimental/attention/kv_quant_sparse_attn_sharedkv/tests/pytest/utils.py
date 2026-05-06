@@ -43,9 +43,10 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
 
         # 定义必需的列名
         required_columns = [
-            "Testcase_Name", "layout_q", "layout_kv", "q_type", "ori_kv_type", "cmp_kv_type", "B", "S1", "S2", "N1", "N2", "D", "K",
-            "block_size1", "block_size2", "softmax_scale", "cmp_ratio",
-            "ori_mask_mode", "cmp_mask_mode", "ori_win_left", "ori_win_right", "kv_quant_mode", "tile_size", "rope_head_dim", "template_run_mode", "actlen_mode", "S1EQS2"
+            "Testcase_Name", "layout_q", "layout_kv", "q_type", "ori_kv_type", "cmp_kv_type", "B", "S1", "S2", "N1",
+            "N2", "D", "K", "block_size1", "block_size2", "softmax_scale", "cmp_ratio",
+            "ori_mask_mode", "cmp_mask_mode", "ori_win_left", "ori_win_right", "kv_quant_mode", "tile_size",
+            "rope_head_dim", "ori_kv_scale", "cmp_kv_scale", "template_run_mode", "actlen_mode", "S1EQS2",
         ]
         # 检查是否缺少必要列
         missing_cols = [col for col in required_columns if col not in df.columns]
@@ -99,6 +100,8 @@ def save_result(params, result, fulfill_percent, result_path):
         "kv_quant_mode": params[25],
         "tile_size": params[26],
         "rope_head_dim": params[27],
+        "ori_kv_scale": params[28],
+        "cmp_kv_scale": params[29],
         "result": result,
         "fulfill_percent": fulfill_percent,
     }
