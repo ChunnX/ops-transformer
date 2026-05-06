@@ -83,7 +83,6 @@ namespace optiling{
     TILING_DATA_FIELD_DEF(uint32_t, tailStartBatch)
     TILING_DATA_FIELD_DEF(uint32_t, tailStartN2)
     TILING_DATA_FIELD_DEF(uint32_t, tailKvNBlockTile)
-    // 新增tilingdata
     TILING_DATA_FIELD_DEF(uint32_t, blockStride)
     TILING_DATA_FIELD_DEF_STRUCT(coreNode, coreInfo)
     TILING_DATA_FIELD_DEF_STRUCT(splitNode, splitInfo)
@@ -251,8 +250,6 @@ namespace optiling{
         faTilingData.set_nextToken(static_cast<int64_t>(faInfo_.nextToken));
         faTilingData.set_pseQ(faInfo_.pseQ);
         faTilingData.set_pseKv(faInfo_.pseKv);
-
-        // 设置blockstride
         faTilingData.set_blockStride(faInfo_.blockStride);
     }
 
