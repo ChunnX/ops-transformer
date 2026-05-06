@@ -79,17 +79,13 @@ def generate_actual_seq(S, B, layout=None, T=None):
         S: 序列长度上限（S1或S2）
         B: batch大小
         layout: layout类型，TND场景下采用累加和
-        T: 当不为None时，将actual_seq最后一个数改为T
+        T: 当不为None时，将actual_seq最后一个数改为T（可传入T1或T2）
     
     返回:
         actual_seq: 生成的实际序列长度列表
     """
     if layout == "TND":
         if T is not None:
-            if T > B * S:
-                print(f"[WARNING] generate_actual_seq: T={T} exceeds B*S={B*S}, truncating to {B*S} (loss={T - B*S} tokens)")
-                T = B * S
-            
             seq_lengths = []
             remaining = T
             for i in range(B - 1):
@@ -156,7 +152,7 @@ def save_result(params, result, fulfill_percent, result_path):
         "q_type": str(params.get("q_type")),
         "kv_type": str(params.get("kv_type")) if params.get("kv_type") is not None else None,
         "B": params.get("B"),
-        "T": params.get("T"),
+        "T1": params.get("T1"),
         "T2": params.get("T2"),
         "S1": params.get("S1"),
         "S2": params.get("S2"),
@@ -199,7 +195,7 @@ def combin_params(enabled_params, pytest_paramset=True):
     base_param_names = [
         "Testcase_Prefix", "Testcase_Number",
         "layout_query", "layout_kv", "q_type", "kv_type",
-        "B", "T", "T2", "S1", "S2", "N1", "N2", "D", "K",
+        "B", "T1", "T2", "S1", "S2", "N1", "N2", "D", "K",
         "scale_value", "key_quant_mode", "value_quant_mode",
         "sparse_block_size", "tile_size", "rope_head_dim",
         "sparse_mode", "attention_mode", "quant_scale_repo_mode",
@@ -227,7 +223,7 @@ def combin_params(enabled_params, pytest_paramset=True):
 def convert_param_combination_to_cs_format(param_combination):
     layout_query = param_combination["layout_query"]
     layout_kv = param_combination["layout_kv"]
-    T = param_combination.get("T")
+    T1 = param_combination.get("T1")
     B = param_combination["B"]
     S1 = param_combination["S1"]
     T2 = param_combination.get("T2")
@@ -250,13 +246,22 @@ def convert_param_combination_to_cs_format(param_combination):
     block_size = param_combination.get("block_size") or 256
     block_num = param_combination.get("block_num")
     
+    # 参数校验：TND layout 下 T 不能超过 B*S
+    if layout_query == "TND" and T1 is not None:
+        if T1 > B * S1:
+            raise ValueError(f"Invalid parameter: T1={T1} exceeds B*S1={B*S1}")
+    
+    if layout_kv == "TND" and T2 is not None:
+        if T2 > B * S2:
+            raise ValueError(f"Invalid parameter: T2={T2} exceeds B*S2={B*S2}")
+    
     if param_combination.get("actual_seq_q") is None:
-        actual_seq_q = generate_actual_seq(S1, B, layout_query, T)
+        actual_seq_q = generate_actual_seq(S1, B, layout_query, T1)
     else:
         actual_seq_q = param_combination.get("actual_seq_q")
 
     if layout_query == "TND":
-        T = actual_seq_q[-1]
+        T1 = actual_seq_q[-1]
 
     if param_combination.get("actual_seq_kv") is None:
         actual_seq_kv = generate_actual_seq(S2, B, layout_kv, T2)
@@ -309,15 +314,15 @@ def convert_param_combination_to_cs_format(param_combination):
             }
         elif (layout_query == "TND"):
             shape_input = {
-                "query": [T, N1, D],
+                "query": [T1, N1, D],
                 "key": [B, S2, N2, D],
                 "value": [B, S2, N2, D],
-                "sparse_indices": [T, N2, sparse_blockcount],
+                "sparse_indices": [T1, N2, sparse_blockcount],
                 "block_table": [B, block_num_per_batch],
-                "query_cache": [T, N1, D + rope_head_dim],
+                "query_cache": [T1, N1, D + rope_head_dim],
                 "key_cache": [block_num, block_size, N2, D + rope_head_dim * 2 + D // tile_size * 4],
                 "value_cache": [block_num, block_size, N2, D + rope_head_dim * 2 + D // tile_size * 4],
-                "query_rope": [T, N1, rope_head_dim],
+                "query_rope": [T1, N1, rope_head_dim],
                 "key_rope": [B, S2, N2, rope_head_dim],
                 "dequant_scale": [B, S2, N2, D // tile_size],
                 "v_dequant_scale": [B, S2, N2, D // tile_size],
@@ -326,15 +331,15 @@ def convert_param_combination_to_cs_format(param_combination):
             print("Unsupported layout_query: ", layout_query)
     elif (layout_kv == "TND"):
         shape_input = {
-            "query": [T, N1, D],
+            "query": [T1, N1, D],
             "key": [T2, N2, D],
             "value": [T2, N2, D],
-            "sparse_indices": [T, N2, sparse_blockcount],
+            "sparse_indices": [T1, N2, sparse_blockcount],
             "block_table": [B],
-            "query_cache": [T, N1, D + rope_head_dim],
+            "query_cache": [T1, N1, D + rope_head_dim],
             "key_cache": [T2, N2, D + rope_head_dim * 2 + D // tile_size * 4],
             "value_cache": [T2, N2, D + rope_head_dim * 2 + D // tile_size * 4],
-            "query_rope": [T, N1, rope_head_dim],
+            "query_rope": [T1, N1, rope_head_dim],
             "key_rope": [T2, N2, rope_head_dim],
             "dequant_scale": [T2, N2, D // tile_size],
             "v_dequant_scale": [T2, N2, D // tile_size],
@@ -422,7 +427,7 @@ def convert_param_combination_to_cs_format(param_combination):
         "q_type": q_type,
         "kv_type": kv_type,
         "B": B,
-        "T": T,
+        "T1": T1,
         "T2": T2,
         "S1": S1,
         "S2": S2,

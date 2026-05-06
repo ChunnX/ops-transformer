@@ -27,7 +27,7 @@ PARAM_COMBINATION_SET = utils.combin_params(ENABLED_PARAMS, pytest_paramset=True
 EXCEL_COLUMNS = [
     "Testcase_Prefix", "Testcase_Number",
     "layout_query", "layout_kv", "q_type", "kv_type",
-    "B", "T", "T2", "S1", "S2", "N1", "N2", "D", "K",
+    "B", "T1", "T2", "S1", "S2", "N1", "N2", "D", "K",
     "scale_value", "sparse_block_size", "rope_head_dim",
     "sparse_mode", "attention_mode", "return_softmax_lse",
     "block_size", "block_num", "actual_seq_q", "actual_seq_kv",
