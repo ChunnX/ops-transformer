@@ -25,6 +25,7 @@ namespace {
 constexpr char DEUBG_MODE_ENV[] = "ASCEND_MC2_DEBUG_MODE";
 constexpr char DEUBG_COMM_ALG_ENV[] = "ASCEND_MC2_DEBUG_COMM_ALG";
 constexpr char DEUBG_STEP_SIZE_ENV[] = "ASCEND_MC2_DEBUG_STEP_SIZE";
+constexpr char COMM_MODE_ENV[] = "ENV_MC2_COMM_MODE_AICPU";
 constexpr char HCCL_BUFFSIZE[] = "HCCL_BUFFSIZE";
 }  // namespace
 uint8_t Mc2TilingUtils::GetDebugMode() {
@@ -48,6 +49,16 @@ uint8_t Mc2TilingUtils::GetDebugCommAlg() {
 }
 
 uint8_t Mc2TilingUtils::GetDebugStepSize() {
+  auto debugStepSizeEnv = getenv(DEUBG_STEP_SIZE_ENV);
+  uint8_t debugStepSize = 0;
+  if (debugStepSizeEnv != nullptr) {
+    debugStepSize = static_cast<uint8_t>(std::atoi(debugStepSizeEnv));
+  }
+  OP_LOGI("", "Get ASCEND_MC2_DEBUG_STEP_SIZE is %u", debugStepSize);
+  return debugStepSize;
+}
+
+uint8_t Mc2TilingUtils::GetCommModeFromEnv() {
   auto debugStepSizeEnv = getenv(DEUBG_STEP_SIZE_ENV);
   uint8_t debugStepSize = 0;
   if (debugStepSizeEnv != nullptr) {
