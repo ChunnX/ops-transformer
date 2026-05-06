@@ -6,6 +6,7 @@
 
 | 产品                                                         | 是否支持 |
 | ------------------------------------------------------------ | :------: |
+|<term>Ascend 950PR/Ascend 950DT</term>|     √      |
 |<term>Atlas A2 推理系列产品</term>   | √  |
 |<term>Atlas A3 推理系列产品</term>   | √  |
 
@@ -64,10 +65,10 @@ aclnnStatus aclnnSparseFlashAttention(
 
 - **参数说明：**
 
-> [!NOTE]  
->
->- query、key、value参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、H（Head Size）表示hidden层的大小、N（Head Num）表示多头数、D（Head Dim）表示hidden层最小的单元尺寸，且满足D=H/N、T表示所有Batch输入样本序列长度的累加和。
->- Q\_S和S1表示query shape中的S，KV\_S和S2表示key shape中的S，Q\_N和N1表示num\_query\_heads，KV\_N和N2表示num\_key\_value\_heads，T1表示query shape中的T，T2表示key shape中的输入样本序列长度的累加和。
+  > [!NOTE]  
+  >
+  >- query、key、value参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、H（Head Size）表示hidden层的大小、N（Head Num）表示多头数、D（Head Dim）表示hidden层最小的单元尺寸，且满足D=H/N、T表示所有Batch输入样本序列长度的累加和。
+  >- Q\_S和S1表示query shape中的S，KV\_S和S2表示key shape中的S，Q\_N和N1表示num\_query\_heads，KV\_N和N2表示num\_key\_value\_heads，T1表示query shape中的T，T2表示key shape中的输入样本序列长度的累加和。
 
   <table style="undefined;table-layout: fixed; width: 1494px"><colgroup>
   <col style="width: 146px">
@@ -503,6 +504,10 @@ aclnnStatus aclnnSparseFlashAttention(
 - 参数query中的D和key、value的D值相等为512，参数query_rope中的Dr和key_rope的Dr值相等为64。
 - 参数query、key、value的数据类型必须保持一致。
 - 支持sparse_block_size整除block_size。
+  - <term>Ascend 950PR/Ascend 950DT</term>：
+    - Ascend 950系列目前只支持sparse_block_size为1。
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+    - 支持[1,128]，且要求是2的幂次方，在PageAttention场景下要求sparse_block_size整除block_size
 
 ## 调用示例
 
