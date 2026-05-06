@@ -42,6 +42,12 @@ public:
     __aicore__ inline void Init(const void *hcclInitTiling, uint64_t hcclCcTilingOffset,
                                 const TaskTilingInfo *taskTilingInfo, GM_ADDR sendBuffer, GM_ADDR recvBuffer)
     {
+        // 打印commMode确认hccl实例类型
+        if ASCEND_IS_AIV {
+            if (GetBlockIdx() == 0) {
+                AscendC::printf("[HCCL_A2AV_V2] commMode=%d (0=AICPU, 1=CCU)\n", commMode);
+            }
+        }
         // init member var
         taskTilingInfo_ = taskTilingInfo;
         GM_ADDR hcclContextGm = GetHcclContext<HCCL_GROUP_ID_0>();
