@@ -26,7 +26,7 @@ struct Mc2AdaptiveSlidingWinow {
     uint64_t baseK = 0;
     uint64_t mBlockCnt = 0;        // m方向基本块数量
     uint64_t nBlockCnt = 0;        // n方向基本块数量
-    uint64_t tatolBlockCnt = 0;    // 基本块总数
+    uint64_t totalBlockCnt = 0;    // 基本块总数
     uint64_t mTail = 0;            // m方向尾块的有效行数
     uint64_t nTail = 0;            // n方向尾块的有效列数
     uint64_t singleWinM = 0;       // 主窗口的m边长
