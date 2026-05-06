@@ -134,7 +134,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulV2GetWorkspaceSize(const aclTensor* gmmX,
         if (commModePtr != nullptr) {
             strcpy(commModePtr, commMode);
             NnopbaseSetUserHandle(*executor, commModePtr);
-            OP_LOGE("[A2AV_GMM_V2] GetWorkspaceSize set commMode=%s", commMode);
+            OP_LOGD("[A2AV_GMM_V2] GetWorkspaceSize set commMode=%s", commMode);
         }
     }
     return ret;
@@ -145,7 +145,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulV2(void *workspace, uint64_t workspaceSiz
 {
     char* commModePtr = reinterpret_cast<char*>(NnopbaseGetUserHandle(executor));
     if (commModePtr != nullptr) {
-        OP_LOGE("[A2AV_GMM_V2] Execute commMode=%s", commModePtr);
+        OP_LOGD("[A2AV_GMM_V2] Execute commMode=%s", commModePtr);
         if (NnopbaseSetHcclServerType) {
             if (strcmp(commModePtr, "aicpu") == 0) {
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
