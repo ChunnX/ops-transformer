@@ -48,6 +48,7 @@ struct TempLoopInfo {
     uint32_t actMBaseSize = 0U;            // m轴(gS1)方向实际大小
     uint32_t mBasicSizeTail = 0U;          // gS1方向循环的尾基本块大小
     uint32_t s2BasicSizeTail = 0U;         // S2方向循环的尾基本块大小
+    uint32_t validS2Len = 0U;
 };
 
 template <typename QLIT>
@@ -132,7 +133,7 @@ protected:
     // ================================Process functions================================
     __aicore__ inline void ProcessMain();
     __aicore__ inline void ProcessBaseBlock(uint32_t loop, uint64_t s2LoopIdx,
-                                            QLICommon::RunInfo runInfo);
+                                            QLICommon::RunInfo runInfo, uint32_t qScaleLoop, uint32_t kScaleLoop);
     __aicore__ inline void ProcessInvalid();
     // ================================Params Calc=====================================
     __aicore__ inline void CalcGS1LoopParams(uint32_t bN2Idx);
@@ -141,7 +142,8 @@ protected:
                                                GlobalTensor<uint32_t> &actualSeqLengthsGm, uint32_t defaultSeqLen);
     __aicore__ inline void GetS1S2ActualSeqLen(uint32_t bIdx, uint32_t &actS1Size, uint32_t &actS2Size, uint32_t &actS2SizeOrig);
     __aicore__ inline void CalcS2LoopParams(uint32_t bN2LoopIdx, uint32_t gS1LoopIdx);
-    __aicore__ inline void CalcRunInfo(uint32_t loop, uint32_t s2LoopIdx, QLICommon::RunInfo &runInfo);
+    __aicore__ inline void CalcRunInfo(uint32_t loop, uint32_t s2LoopIdx, QLICommon::RunInfo &runInfo,
+                                               uint32_t qScaleLoop, uint32_t kScaleLoop);
     __aicore__ inline void DealActSeqLenIsZero(uint32_t bIdx, uint32_t n2Idx, uint32_t s1Start);
 };
 
@@ -239,6 +241,7 @@ __aicore__ inline uint32_t QLIPreload<QLIT>::GetS2BaseBlockNumOnMask(uint32_t s1
     int32_t validS2Len = (static_cast<int32_t>(s1Offset) + validS2LenBase + static_cast<int32_t>(constInfo.s1BaseSize));  
     validS2Len = Min(validS2Len, static_cast<int32_t>(actS2SizeOrig));
     validS2Len = Max(validS2Len, 1);
+    tempLoopInfo.validS2Len = validS2Len;
     return (validS2Len + constInfo.s2BaseSize - 1) / constInfo.s2BaseSize;
 }
 
@@ -456,6 +459,7 @@ __aicore__ inline void QLIPreload<QLIT>::CalcS2LoopParams(uint32_t bN2LoopIdx, u
     if (constInfo.attenMaskFlag) {
         s2BlockNum = GetS2BaseBlockNumOnMask(gS1LoopIdx, tempLoopInfo.actS1Size, tempLoopInfo.actS2SizeOrig);
     } else {
+        tempLoopInfo.validS2Len = tempLoopInfo.actS2Size;
         s2BlockNum = (tempLoopInfo.actS2Size + constInfo.s2BaseSize - 1) / constInfo.s2BaseSize;
     }
     tempLoopInfo.s2LoopEnd = isEnd ? splitCoreInfo.s2End : s2BlockNum - 1;
@@ -488,15 +492,20 @@ __aicore__ inline void QLIPreload<QLIT>::CalcGS1LoopParams(uint32_t bN2LoopIdx)
 }
 
 template <typename QLIT>
-__aicore__ inline void QLIPreload<QLIT>::CalcRunInfo(uint32_t loop, uint32_t s2LoopIdx, QLICommon::RunInfo &runInfo)
+__aicore__ inline void QLIPreload<QLIT>::CalcRunInfo(uint32_t loop, uint32_t s2LoopIdx,
+                                                     QLICommon::RunInfo &runInfo, uint32_t qScaleLoop,
+                                                     uint32_t kScaleLoop)
 {
     runInfo.loop = loop;
     runInfo.bIdx = tempLoopInfo.bIdx;
     runInfo.gS1Idx = tempLoopInfo.gS1Idx;
     runInfo.s2Idx = s2LoopIdx;
+    runInfo.s2Start = splitCoreInfo.s2Start;
     runInfo.bN2Idx = tempLoopInfo.bN2Idx;
     runInfo.isValid = s2LoopIdx <= tempLoopInfo.s2LoopEnd;
-
+    runInfo.validS2Len = tempLoopInfo.validS2Len;
+    runInfo.qScaleLoop = qScaleLoop;
+    runInfo.kScaleLoop = kScaleLoop;
     if (!runInfo.isValid) {
         return; 
     }
@@ -599,6 +608,7 @@ __aicore__ inline void QLIPreload<QLIT>::ProcessMain()
 
     QLICommon::RunInfo runInfo;
     uint32_t gloop = 0;
+    uint32_t qScaleLoop = 0;
     for (uint32_t bN2LoopIdx = splitCoreInfo.bN2Start; bN2LoopIdx <= splitCoreInfo.bN2End; bN2LoopIdx++) {
         CalcGS1LoopParams(bN2LoopIdx);
         if (tempLoopInfo.curActSeqLenIsZero) {
@@ -607,10 +617,15 @@ __aicore__ inline void QLIPreload<QLIT>::ProcessMain()
         }
         for (uint32_t gS1LoopIdx = splitCoreInfo.gS1Start; gS1LoopIdx <= tempLoopInfo.gS1LoopEnd; gS1LoopIdx++) {
             CalcS2LoopParams(bN2LoopIdx, gS1LoopIdx);
+            uint32_t kScaleLoop = 0;
             for (int s2LoopIdx = splitCoreInfo.s2Start; s2LoopIdx <= tempLoopInfo.s2LoopEnd; s2LoopIdx++) {
-                ProcessBaseBlock(gloop, s2LoopIdx, runInfo);
+                if ((s2LoopIdx - splitCoreInfo.s2Start) % 16 == 0) {
+                    ++kScaleLoop;
+                }
+                ProcessBaseBlock(gloop, s2LoopIdx, runInfo, qScaleLoop, kScaleLoop);
                 ++gloop;
             }
+            ++qScaleLoop;
             splitCoreInfo.s2Start = 0;
         }
         if (tempLoopInfo.needDealActS1LessThanS1) {
@@ -629,9 +644,11 @@ __aicore__ inline void QLIPreload<QLIT>::ProcessMain()
 }
 
 template <typename QLIT>
-__aicore__ inline void QLIPreload<QLIT>::ProcessBaseBlock(uint32_t loop, uint64_t s2LoopIdx, QLICommon::RunInfo runInfo)
+__aicore__ inline void QLIPreload<QLIT>::ProcessBaseBlock(uint32_t loop, uint64_t s2LoopIdx,
+                                                          QLICommon::RunInfo runInfo, uint32_t qScaleLoop,
+                                                          uint32_t kScaleLoop)
 {
-    CalcRunInfo(loop, s2LoopIdx, runInfo);
+    CalcRunInfo(loop, s2LoopIdx, runInfo, qScaleLoop, kScaleLoop);
     if ASCEND_IS_AIC {
         matmulService.ComputeMm1(runInfo);
     } else {
