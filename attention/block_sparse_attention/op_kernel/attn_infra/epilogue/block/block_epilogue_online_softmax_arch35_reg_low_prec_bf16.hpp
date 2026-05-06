@@ -200,8 +200,6 @@ public:
             ComputeScaleAndMax<KvBaseTileRegSplitStagesBf16::TWO>(
                 sAddr, nowMaxFloatAddr, m, tailN, nPadding, scaleValue, nRound);
         }
-        // ComputeScaleAndMax<ElementInput>(
-        //     sAddr, nowMaxFloatAddr, m, nLoops, tailN, nPadding, scaleValue, nRound);
 
         if (!isFirstKvSTile) {
             UpdateMax(nowMaxFloatAddr, lastMaxAddr, mLoops, tailM);
@@ -217,8 +215,6 @@ public:
             ComputeExpSubSum16<KvBaseTileRegSplitStagesBf16::TWO>(
                 pAddr, sAddr, nowMaxFloatAddr, nowSumAddr, m, tailN, blockStride, nRound, tailNOdd, tailNEven);
         }
-        // ComputeExpSubSum16<KvBaseTileRegSplitStagesBf16::TWO>(
-        //         pAddr, sAddr, nowMaxFloatAddr, nowSumAddr, m, nLoops, tailN, blockStride, nRound, tailNOdd, tailNEven);
 
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(ubSBufId);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(ubSBufId);
@@ -304,21 +300,6 @@ private:
         Duplicate(minVreg, MIN_VALUE);
         Duplicate(scaleVreg, dScale);
         for (uint16_t i = 0; i < m; ++i) {
-            // Duplicate(maxSrcVreg, MIN_VALUE);
-            // for (uint16_t j = 0; j < nLoops; ++j) {
-            //     LoadAlign(srcVreg, srcUb + i * S2BaseSize + j * HALF_REP_SIZE);
-            //     Mul(srcVreg, srcVreg, scaleVreg, pregFull);
-            //     StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
-            //         srcUb + i * S2BaseSize + j * HALF_REP_SIZE, srcVreg, pregFull);
-            //     Max(maxSrcVreg, maxSrcVreg, srcVreg, pregFull);
-            // }
-            // LoadAlign(srcVreg, srcUb + i * S2BaseSize + nLoops * HALF_REP_SIZE);
-            // Mul(srcVreg, srcVreg, scaleVreg, pregFull);
-            // Select(srcVreg, srcVreg, minVreg, pregTailN);
-            // StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
-            //     srcUb + i * S2BaseSize + nLoops * HALF_REP_SIZE, srcVreg, pregTailN);
-            // Max(maxSrcVreg, maxSrcVreg, srcVreg, pregFull);
-
             LoadAlign(srcVreg, srcUb + i * S2BaseSize);
             Mul(srcVreg, srcVreg, scaleVreg, pregFull);
             Select(srcVreg, srcVreg, minVreg, pregTailN);
@@ -376,21 +357,6 @@ private:
         Duplicate(minVreg, MIN_VALUE);
         Duplicate(scaleVreg, dScale);
         for (uint16_t i = 0; i < m; ++i) {
-            // Duplicate(maxSrcVreg, MIN_VALUE);
-            // for (uint16_t j = 0; j < nLoops; ++j) {
-            //     LoadAlign(srcVreg, srcUb + i * S2BaseSize + j * HALF_REP_SIZE);
-            //     Mul(srcVreg, srcVreg, scaleVreg, pregFull);
-            //     StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
-            //         srcUb + i * S2BaseSize + j * HALF_REP_SIZE, srcVreg, pregFull);
-            //     Max(maxSrcVreg, maxSrcVreg, srcVreg, pregFull);
-            // }
-            // LoadAlign(srcVreg, srcUb + i * S2BaseSize + nLoops * HALF_REP_SIZE);
-            // Mul(srcVreg, srcVreg, scaleVreg, pregFull);
-            // Select(srcVreg, srcVreg, minVreg, pregTailN);
-            // StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
-            //     srcUb + i * S2BaseSize + nLoops * HALF_REP_SIZE, srcVreg, pregTailN);
-            // Max(maxSrcVreg, maxSrcVreg, srcVreg, pregFull);
-
             LoadAlign(srcVreg0, srcUb + i * S2BaseSize);
             LoadAlign(srcVreg1, srcUb + i * S2BaseSize + HALF_REP_SIZE);
             Mul(srcVreg0, srcVreg0, scaleVreg, pregFull);
@@ -532,40 +498,6 @@ private:
         for (uint16_t i = 0; i < m; ++i) {
             LoadAlign<float, LoadDist::DIST_BRC_B32>(maxVreg, nowMaxUb + i);
             Duplicate(expSumVreg, 0);
-            // for (uint16_t j = 0; j < nLoops; ++j) {
-            //     LoadAlign(expVreg, srcUb + i * S2BaseSize + j * HALF_REP_SIZE);
-            //     Cast<float, ElementInput, castTraitZero>(expFloatVreg0, expVreg, pregFull);
-            //     Cast<float, ElementInput, castTraitOne>(expFloatVreg1, expVreg, pregFull);
-            //     FusedExpSub(expDstFloatVreg0, expFloatVreg0, maxVreg, pregFloatFull);
-            //     FusedExpSub(expDstFloatVreg1, expFloatVreg1, maxVreg, pregFloatFull);
-            //     Add(expSumVreg, expSumVreg, expDstFloatVreg0, pregFloatFull);
-            //     Add(expSumVreg, expSumVreg, expDstFloatVreg1, pregFloatFull);
-            //     Cast<ElementInput, float, castTraitZeroDown>(expDstVreg0, expDstFloatVreg0, pregFloatFull);
-            //     Cast<ElementInput, float, castTraitOneDown>(expDstVreg1, expDstFloatVreg1, pregFloatFull);
-            //     Or((RegTensor<uint16_t>&)expDstVreg,
-            //         (RegTensor<uint16_t>&)expDstVreg0, (RegTensor<uint16_t>&)expDstVreg1,
-            //         pregFull);
-            //     StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(
-            //         expUb + i * ELE_NUM_PER_C0 + j * blockStride * ELE_NUM_PER_C0 * BLOCK_REP_SIZE,
-            //         expDstVreg, blockStride, pregFull);
-            // }
-            
-            // LoadAlign(expVreg, srcUb + i * S2BaseSize + nLoops * HALF_REP_SIZE);
-            // Cast<float, ElementInput, castTraitZero>(expFloatVreg0, expVreg, pregFull);
-            // Cast<float, ElementInput, castTraitOne>(expFloatVreg1, expVreg, pregFull);
-            // FusedExpSub(expDstFloatVreg0, expFloatVreg0, maxVreg, pregtailNEven);
-            // FusedExpSub(expDstFloatVreg1, expFloatVreg1, maxVreg, pregtailNOdd);
-            // Add<float, MaskMergeMode::MERGING>(expSumVreg, expSumVreg, expDstFloatVreg0, pregtailNEven);
-            // Add<float, MaskMergeMode::MERGING>(expSumVreg, expSumVreg, expDstFloatVreg1, pregtailNOdd);
-            // Cast<ElementInput, float, castTraitZeroDown>(expDstVreg0, expDstFloatVreg0, pregFloatFull);
-            // Cast<ElementInput, float, castTraitOneDown>(expDstVreg1, expDstFloatVreg1, pregFloatFull);
-            // Or((RegTensor<uint16_t>&)expDstVreg,
-            //     (RegTensor<uint16_t>&)expDstVreg0, (RegTensor<uint16_t>&)expDstVreg1,
-            //     pregFull);
-            // StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(
-            //     expUb + i * ELE_NUM_PER_C0 + nLoops * blockStride * ELE_NUM_PER_C0 * BLOCK_REP_SIZE,
-            //     expDstVreg, blockStride, pregTailN);
-
             LoadAlign(expVreg, srcUb + i * S2BaseSize);
             Cast<float, ElementInput, castTraitZero>(expFloatVreg0, expVreg, pregFull);
             Cast<float, ElementInput, castTraitOne>(expFloatVreg1, expVreg, pregFull);
@@ -652,40 +584,6 @@ private:
         for (uint16_t i = 0; i < m; ++i) {
             LoadAlign<float, LoadDist::DIST_BRC_B32>(maxVreg, nowMaxUb + i);
             Duplicate(expSumVreg, 0);
-            // for (uint16_t j = 0; j < nLoops; ++j) {
-            //     LoadAlign(expVreg, srcUb + i * S2BaseSize + j * HALF_REP_SIZE);
-            //     Cast<float, ElementInput, castTraitZero>(expFloatVreg0, expVreg, pregFull);
-            //     Cast<float, ElementInput, castTraitOne>(expFloatVreg1, expVreg, pregFull);
-            //     FusedExpSub(expDstFloatVreg0, expFloatVreg0, maxVreg, pregFloatFull);
-            //     FusedExpSub(expDstFloatVreg1, expFloatVreg1, maxVreg, pregFloatFull);
-            //     Add(expSumVreg, expSumVreg, expDstFloatVreg0, pregFloatFull);
-            //     Add(expSumVreg, expSumVreg, expDstFloatVreg1, pregFloatFull);
-            //     Cast<ElementInput, float, castTraitZeroDown>(expDstVreg0, expDstFloatVreg0, pregFloatFull);
-            //     Cast<ElementInput, float, castTraitOneDown>(expDstVreg1, expDstFloatVreg1, pregFloatFull);
-            //     Or((RegTensor<uint16_t>&)expDstVreg,
-            //         (RegTensor<uint16_t>&)expDstVreg0, (RegTensor<uint16_t>&)expDstVreg1,
-            //         pregFull);
-            //     StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(
-            //         expUb + i * ELE_NUM_PER_C0 + j * blockStride * ELE_NUM_PER_C0 * BLOCK_REP_SIZE,
-            //         expDstVreg, blockStride, pregFull);
-            // }
-            
-            // LoadAlign(expVreg, srcUb + i * S2BaseSize + nLoops * HALF_REP_SIZE);
-            // Cast<float, ElementInput, castTraitZero>(expFloatVreg0, expVreg, pregFull);
-            // Cast<float, ElementInput, castTraitOne>(expFloatVreg1, expVreg, pregFull);
-            // FusedExpSub(expDstFloatVreg0, expFloatVreg0, maxVreg, pregtailNEven);
-            // FusedExpSub(expDstFloatVreg1, expFloatVreg1, maxVreg, pregtailNOdd);
-            // Add<float, MaskMergeMode::MERGING>(expSumVreg, expSumVreg, expDstFloatVreg0, pregtailNEven);
-            // Add<float, MaskMergeMode::MERGING>(expSumVreg, expSumVreg, expDstFloatVreg1, pregtailNOdd);
-            // Cast<ElementInput, float, castTraitZeroDown>(expDstVreg0, expDstFloatVreg0, pregFloatFull);
-            // Cast<ElementInput, float, castTraitOneDown>(expDstVreg1, expDstFloatVreg1, pregFloatFull);
-            // Or((RegTensor<uint16_t>&)expDstVreg,
-            //     (RegTensor<uint16_t>&)expDstVreg0, (RegTensor<uint16_t>&)expDstVreg1,
-            //     pregFull);
-            // StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(
-            //     expUb + i * ELE_NUM_PER_C0 + nLoops * blockStride * ELE_NUM_PER_C0 * BLOCK_REP_SIZE,
-            //     expDstVreg, blockStride, pregTailN);
-
             LoadAlign(expVreg0, srcUb + i * S2BaseSize);
             LoadAlign(expVreg1, srcUb + i * S2BaseSize + HALF_REP_SIZE);
             Cast<float, ElementInput, castTraitZero>(expFloatVreg0, expVreg0, pregFull);

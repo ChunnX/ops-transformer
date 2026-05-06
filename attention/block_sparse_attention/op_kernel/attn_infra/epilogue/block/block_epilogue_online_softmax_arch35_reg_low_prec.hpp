@@ -68,7 +68,6 @@ public:
     static constexpr uint32_t SPLIT_COL_IDX_2 = 2;
     static constexpr uint32_t SPLIT_COL_IDX_3 = 3;
     static constexpr ElementInput MIN_VALUE = -65504.0f;
-    // static constexpr uint32_t ELE_NUM_PER_C0 = 32 / sizeof(ElementInput);
     static constexpr uint32_t HALF_REP_SIZE = 128;
     static constexpr uint32_t FLOAT_REP_SIZE = 64;
     static constexpr uint32_t BLOCK_REP_SIZE = 8;
@@ -260,7 +259,6 @@ private:
         using namespace AscendC::MicroAPI;
         RegTensor<ElementInput> minVreg;
         RegTensor<ElementInput> srcVreg;
-        // RegTensor<ElementInput> maxSrcVreg;
         RegTensor<ElementInput> maxTmpVreg;
         UnalignReg maxUreg;
         MaskReg pregCompare;
@@ -269,15 +267,11 @@ private:
 
         Duplicate(minVreg, MIN_VALUE);
         for (uint16_t i = 0; i < m; ++i) {
-            // Duplicate(maxSrcVreg, MIN_VALUE);
-
             LoadAlign(srcVreg, srcUb + i * S2BaseSize);
             Muls(srcVreg, srcVreg, dScale, pregFull);
             Select(srcVreg, srcVreg, minVreg, pregTailN);
             StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
                 srcUb + i * S2BaseSize, srcVreg, pregTailN);
-            // Max(maxSrcVreg, maxSrcVreg, srcVreg, pregFull);
-
             ReduceMax(maxTmpVreg, srcVreg, pregFull);
             StoreUnAlign<ElementInput, PostLiteral::POST_MODE_UPDATE>(newMaxUb, maxTmpVreg, maxUreg, 1);
         }
@@ -293,7 +287,6 @@ private:
         RegTensor<ElementInput> minVreg;
         RegTensor<ElementInput> srcVreg0;
         RegTensor<ElementInput> srcVreg1;
-        // RegTensor<ElementInput> maxSrcVreg;
         RegTensor<ElementInput> maxTmpVreg;
         UnalignReg maxUreg;
         MaskReg pregCompare;
@@ -302,21 +295,16 @@ private:
 
         Duplicate(minVreg, MIN_VALUE);
         for (uint16_t i = 0; i < m; ++i) {
-            // Duplicate(maxSrcVreg, MIN_VALUE);
-            // manual instruction double launch in col loop
             LoadAlign(srcVreg0, srcUb + i * S2BaseSize);
             LoadAlign(srcVreg1, srcUb + i * S2BaseSize + HALF_REP_SIZE);
             Muls(srcVreg0, srcVreg0, dScale, pregFull);
             Muls(srcVreg1, srcVreg1, dScale, pregFull);
-            // Select(srcVreg1, srcVreg1, minVreg, pregTailN);
             StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
                 srcUb + i * S2BaseSize, srcVreg0, pregFull);
             StoreAlign<ElementInput, StoreDist::DIST_NORM_B16>(
                 srcUb + i * S2BaseSize + HALF_REP_SIZE, srcVreg1, pregTailN);
-            // Max(maxSrcVreg, srcVreg0, srcVreg1, pregFull);
             Max<ElementInput, MaskMergeMode::MERGING>(srcVreg0, srcVreg0, srcVreg1, pregTailN);
             ReduceMax(maxTmpVreg, srcVreg0, pregFull);
-            // ReduceMax(maxTmpVreg, maxSrcVreg, pregFull);
             StoreUnAlign<ElementInput, PostLiteral::POST_MODE_UPDATE>(newMaxUb, maxTmpVreg, maxUreg, 1);
         }
         vstas(maxUreg, newMaxUb, 0, POST_UPDATE);
@@ -406,15 +394,12 @@ private:
 
         UnalignReg expSumUreg;
 
-        // MaskReg pregFull = CreateMask<ElementInput, MaskPattern::ALL>();
         MaskReg pregTailN = UpdateMask<ElementInput>(tailN);
         for (uint16_t i = 0; i < m; ++i) {
             LoadAlign<ElementInput, LoadDist::DIST_BRC_B16>(maxVreg, nowMaxUb + i);
-            // Duplicate(expSumVreg, 0);
             LoadAlign(expVreg, srcUb + i * S2BaseSize);
             Sub(expDstVreg, expVreg, maxVreg, pregTailN);
             Exp(expDstVreg, expDstVreg, pregTailN);
-            // Add<ElementOutput, MaskMergeMode::MERGING>(expSumVreg, expSumVreg, expDstVreg, pregTailN);
             StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(
                 expUb + i * ELE_NUM_PER_C0,
                 expDstVreg, blockStride, pregTailN);
@@ -459,23 +444,6 @@ private:
                 expUb + i * ELE_NUM_PER_C0 + blockStride * ELE_NUM_PER_C0 * BLOCK_REP_SIZE,
                 expDstVreg1, blockStride, pregTailN);
             Add<ElementOutput, MaskMergeMode::MERGING>(expDstVreg0, expDstVreg1, expDstVreg0, pregTailN);
-            // for (uint16_t j = 0; j < nLoops; ++j) {
-            //     LoadAlign(expVreg, srcUb + i * S2BaseSize + j * HALF_REP_SIZE);
-            //     Sub(expDstVreg, expVreg, maxVreg, pregFull);
-            //     Exp(expDstVreg, expDstVreg, pregFull);
-            //     Add(expSumVreg, expSumVreg, expDstVreg, pregFull);
-            //     StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(
-            //         expUb + i * ELE_NUM_PER_C0 + j * blockStride * ELE_NUM_PER_C0 * BLOCK_REP_SIZE,
-            //         expDstVreg, blockStride, pregFull);
-            // }
-            
-            // LoadAlign(expVreg, srcUb + i * S2BaseSize + nLoops * HALF_REP_SIZE);
-            // Sub(expDstVreg, expVreg, maxVreg, pregTailN);
-            // Exp(expDstVreg, expDstVreg, pregTailN);
-            // Add<ElementOutput, MaskMergeMode::MERGING>(expSumVreg, expSumVreg, expDstVreg, pregTailN);
-            // StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(
-            //     expUb + i * ELE_NUM_PER_C0 + nLoops * blockStride * ELE_NUM_PER_C0 * BLOCK_REP_SIZE,
-            //     expDstVreg, blockStride, pregTailN);
 
             ReduceSum(expSumVreg, expDstVreg0, pregFull);
             StoreUnAlign<ElementInput, PostLiteral::POST_MODE_UPDATE>(expSumUb, expSumVreg, expSumUreg, 1);
