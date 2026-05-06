@@ -268,6 +268,14 @@ ge::graphStatus AlltoAllvQuantGmmV2TilingCommon::SetHcclTiling() const
 
     Mc2CcTilingConfig hcclCcTilingConfig(group_, alltoAllvCmd, alltoAllvConfig, alltoAllvReduceType, alltoAllvDataType,
         alltoAllvDataType);
+    auto commMode = context_->GetAttrs()->GetAttrPointer<char>(static_cast<int>(COMMMODE_INDEX));
+    OP_LOGD(context_->GetNodeName(), "SetHcclTiling: COMMMODE_INDEX=%d, commMode=%s", COMMMODE_INDEX, commMode);
+    if (strcmp(commMode, "aicpu") == 0) {
+        hcclCcTilingConfig.SetCommEngine(mc2tiling::AICPU_ENGINE);
+        OP_LOGD(context_->GetNodeName(), "SetHcclTiling: SetCommEngine=AICPU_ENGINE before GetTiling");
+    } else {
+        OP_LOGD(context_->GetNodeName(), "SetHcclTiling: commMode=%s, use default engine", commMode);
+    }
     OP_TILING_CHECK(hcclCcTilingConfig.GetTiling(tilingData->hcclA2avTilingInfo.hcclInitTiling) != 0,
         OP_LOGE(context_->GetNodeName(),
         "mc2CcTilingConfig mc2tiling GetTiling hcclA2avTilingInfo.hcclInitTiling failed"),
@@ -276,14 +284,6 @@ ge::graphStatus AlltoAllvQuantGmmV2TilingCommon::SetHcclTiling() const
         OP_LOGE(context_->GetNodeName(),
         "mc2CcTilingConfig mc2tiling GetTiling hcclA2avTilingInfo.a2avCcTiling failed"),
         return ge::GRAPH_FAILED);
-    auto commMode = context_->GetAttrs()->GetAttrPointer<char>(static_cast<int>(COMMMODE_INDEX));
-    OP_LOGD(context_->GetNodeName(), "SetHcclTiling: COMMMODE_INDEX=%d, commMode=%s", COMMMODE_INDEX, commMode);
-    if (strcmp(commMode, "aicpu") == 0) {
-        hcclCcTilingConfig.SetCommEngine(mc2tiling::AICPU_ENGINE);
-        OP_LOGD(context_->GetNodeName(), "SetHcclTiling: SetCommEngine=AICPU_ENGINE");
-    } else {
-        OP_LOGD(context_->GetNodeName(), "SetHcclTiling: commMode=%s, use default engine", commMode);
-    }
     return ge::GRAPH_SUCCESS;
 }
 } // namespace optiling
