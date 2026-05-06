@@ -43,6 +43,8 @@ TEST_PARAMS = {
         "kv_quant_mode": [1],
         "tile_size": [64],
         "rope_head_dim": [64],
+        "ori_kv_scale": [1.0],
+        "cmp_kv_scale": [1.0],
         "template_run_mode": ["SWA"], # SWA SCFA CFA
         "actlen_mode":["full"],       # random full
         "S1EQS2":[False]
@@ -77,6 +79,8 @@ TEST_PARAMS = {
         "kv_quant_mode": [1],
         "tile_size": [64],
         "rope_head_dim": [64],
+        "ori_kv_scale": [1.0],
+        "cmp_kv_scale": [1.0],
         "template_run_mode": ["SWA"], # SWA SCFA CFA
         "actlen_mode":["full"],       # random full
         "S1EQS2":[False]

@@ -208,6 +208,8 @@ struct RunInfo {
     float softmaxScale; \
     uint32_t oriKvStride; \
     uint32_t cmpKvStride; \
+    float oriKvScale; \
+    float cmpKvScale; \
 
 #define CV_SHARED_PARAMS \
     /* base params */ \
