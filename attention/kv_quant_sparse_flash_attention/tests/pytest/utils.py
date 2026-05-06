@@ -89,6 +89,7 @@ def generate_actual_seq(S, B, layout=None, T=None):
             avg = T // B
             remainder = T % B
             if T > B * S:
+                print(f"[WARNING] generate_actual_seq: T={T} exceeds B*S={B*S}, truncating to {B*S} (loss={T - B*S} tokens)")
                 avg = S
                 remainder = 0
             seq_lengths = [avg + 1 if i < remainder else avg for i in range(B)]
