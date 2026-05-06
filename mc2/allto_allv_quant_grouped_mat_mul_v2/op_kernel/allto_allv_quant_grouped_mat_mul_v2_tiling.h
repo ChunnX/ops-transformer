@@ -23,7 +23,7 @@
 #elif __has_include("../../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/common/a2av_common_tiling.h")
 #include "../../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/common/a2av_common_tiling.h"
 #else
-#include "../../../../allto_allv_quant_grouped_mat_mul_apt/op_kernel/mc2_templates/common/a2av_common_tiling.h"
+#include "../../allto_allv_quant_grouped_mat_mul_apt/op_kernel/mc2_templates/common/a2av_common_tiling.h"
 #endif
 
 #pragma pack(push, 8)
