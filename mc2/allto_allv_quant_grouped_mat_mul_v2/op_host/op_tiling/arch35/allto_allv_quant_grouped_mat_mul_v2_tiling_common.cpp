@@ -20,7 +20,7 @@ using namespace AscendC;
 using namespace Ops::Transformer::OpTiling;
 
 namespace optiling {
-constexpr int COMMMODE_INDEX = 11;
+constexpr int COMMMODE_INDEX = 14;
 
 ge::graphStatus AlltoAllvQuantGmmV2TilingCommon::GetPlatformInfo()
 {
