@@ -2031,10 +2031,11 @@ public:
             int64_t kOutOffset2 = this->dk / CONST_TWO + kOutOffset1;
 
             int64_t cosSinLen = tmpFactor / CONST_TWO;
-            LocalTensor<T_KV> cosLocalPart2 = cosLocalPart1[cosSinLen];
-            LocalTensor<T_KV> sinLocalPart1 = cosLocalPart2[cosSinLen];
-            LocalTensor<T_KV> sinLocalPart2 = sinLocalPart1[cosSinLen];
-            kOutLocal1 = kOutLocal[cosSinLen];
+            int64_t alignOffset = ops::CeilDiv(cosSinLen, 32) * 32;
+            LocalTensor<T_KV> cosLocalPart2 = cosLocalPart1[alignOffset];
+            LocalTensor<T_KV> sinLocalPart1 = cosLocalPart2[alignOffset];
+            LocalTensor<T_KV> sinLocalPart2 = sinLocalPart1[alignOffset];
+            kOutLocal1 = kOutLocal[alignOffset];
 
             __local_mem__ T_KV* ropePtr = (__local_mem__ T_KV*)ropeLocal.GetPhyAddr();
             __local_mem__ T_KV* cosPtr1 = (__local_mem__ T_KV*)cosLocalPart1.GetPhyAddr();
