@@ -50,8 +50,8 @@ def call_npu_eager(torch_tensor_dict, params):
 
 def call_npu(input_tensor_dict, params):
     torch_npu.npu.set_device(0)
-    tensor_keys = ['query', 'key_cache', 'value_cache', 'sparse_indices', 'block_table',
-                   'query_rope', 'key_rope_cache']
+    tensor_keys = ["query", "key_cache", "value_cache", "sparse_indices", "block_table",
+                   "query_rope", "key_rope_cache"]
     filtered_input_dict = {k: input_tensor_dict.get(k) for k in tensor_keys if input_tensor_dict.get(k) is not None}
     torch_tensor_dict = _load_inputs_to_npu(filtered_input_dict)
     npu_result = call_npu_eager(torch_tensor_dict, params)

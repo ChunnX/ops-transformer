@@ -291,106 +291,106 @@ def convert_param_combination_to_cs_format(param_combination):
         kv_dtype_str = "float8_e4m3fn"
     else:
         kv_dtype_str = str(kv_type)
-    if (layout_kv == 'PA_BSND'):
-        if (layout_query == 'BSND'):
+    if (layout_kv == "PA_BSND"):
+        if (layout_query == "BSND"):
             shape_input = {
-                'query': [B, S1, N1, D],
-                'key': [B, S2, N2, D],
-                'value': [B, S2, N2, D],
-                'sparse_indices': [B, S1, N2, sparse_blockcount],
-                'block_table': [B, block_num_per_batch],
-                'query_cache': [B, S1, N1, D + rope_head_dim],
-                'key_cache': [block_num, block_size, N2, D + rope_head_dim * 2 + D // tile_size * 4],
-                'value_cache': [block_num, block_size, N2, D + rope_head_dim * 2 + D // tile_size * 4],
-                'query_rope': [B, S1, N1, rope_head_dim],
-                'key_rope': [B, S2, N2, rope_head_dim],
-                'dequant_scale': [B, S2, N2, D // tile_size],
-                'v_dequant_scale': [B, S2, N2, D // tile_size],
+                "query": [B, S1, N1, D],
+                "key": [B, S2, N2, D],
+                "value": [B, S2, N2, D],
+                "sparse_indices": [B, S1, N2, sparse_blockcount],
+                "block_table": [B, block_num_per_batch],
+                "query_cache": [B, S1, N1, D + rope_head_dim],
+                "key_cache": [block_num, block_size, N2, D + rope_head_dim * 2 + D // tile_size * 4],
+                "value_cache": [block_num, block_size, N2, D + rope_head_dim * 2 + D // tile_size * 4],
+                "query_rope": [B, S1, N1, rope_head_dim],
+                "key_rope": [B, S2, N2, rope_head_dim],
+                "dequant_scale": [B, S2, N2, D // tile_size],
+                "v_dequant_scale": [B, S2, N2, D // tile_size],
             }
-        elif (layout_query == 'TND'):
+        elif (layout_query == "TND"):
             shape_input = {
-                'query': [T, N1, D],
-                'key': [B, S2, N2, D],
-                'value': [B, S2, N2, D],
-                'sparse_indices': [T, N2, sparse_blockcount],
-                'block_table': [B, block_num_per_batch],
-                'query_cache': [T, N1, D + rope_head_dim],
-                'key_cache': [block_num, block_size, N2, D + rope_head_dim * 2 + D // tile_size * 4],
-                'value_cache': [block_num, block_size, N2, D + rope_head_dim * 2 + D // tile_size * 4],
-                'query_rope': [T, N1, rope_head_dim],
-                'key_rope': [B, S2, N2, rope_head_dim],
-                'dequant_scale': [B, S2, N2, D // tile_size],
-                'v_dequant_scale': [B, S2, N2, D // tile_size],
+                "query": [T, N1, D],
+                "key": [B, S2, N2, D],
+                "value": [B, S2, N2, D],
+                "sparse_indices": [T, N2, sparse_blockcount],
+                "block_table": [B, block_num_per_batch],
+                "query_cache": [T, N1, D + rope_head_dim],
+                "key_cache": [block_num, block_size, N2, D + rope_head_dim * 2 + D // tile_size * 4],
+                "value_cache": [block_num, block_size, N2, D + rope_head_dim * 2 + D // tile_size * 4],
+                "query_rope": [T, N1, rope_head_dim],
+                "key_rope": [B, S2, N2, rope_head_dim],
+                "dequant_scale": [B, S2, N2, D // tile_size],
+                "v_dequant_scale": [B, S2, N2, D // tile_size],
             }
         else:
             print("Unsupported layout_query: ", layout_query)
-    elif (layout_kv == 'TND'):
+    elif (layout_kv == "TND"):
         shape_input = {
-            'query': [T, N1, D],
-            'key': [T2, N2, D],
-            'value': [T2, N2, D],
-            'sparse_indices': [T, N2, sparse_blockcount],
-            'block_table': [B],
-            'query_cache': [T, N1, D + rope_head_dim],
-            'key_cache': [T2, N2, D + rope_head_dim * 2 + D // tile_size * 4],
-            'value_cache': [T2, N2, D + rope_head_dim * 2 + D // tile_size * 4],
-            'query_rope': [T, N1, rope_head_dim],
-            'key_rope': [T2, N2, rope_head_dim],
-            'dequant_scale': [T2, N2, D // tile_size],
-            'v_dequant_scale': [T2, N2, D // tile_size],
+            "query": [T, N1, D],
+            "key": [T2, N2, D],
+            "value": [T2, N2, D],
+            "sparse_indices": [T, N2, sparse_blockcount],
+            "block_table": [B],
+            "query_cache": [T, N1, D + rope_head_dim],
+            "key_cache": [T2, N2, D + rope_head_dim * 2 + D // tile_size * 4],
+            "value_cache": [T2, N2, D + rope_head_dim * 2 + D // tile_size * 4],
+            "query_rope": [T, N1, rope_head_dim],
+            "key_rope": [T2, N2, rope_head_dim],
+            "dequant_scale": [T2, N2, D // tile_size],
+            "v_dequant_scale": [T2, N2, D // tile_size],
         }
-    elif (layout_kv == 'BSND'):
+    elif (layout_kv == "BSND"):
         shape_input = {
-            'query': [B, S1, N1, D],
-            'key': [B, S2, N2, D],
-            'value': [B, S2, N2, D],
-            'sparse_indices': [B, S1, N2, sparse_blockcount],
-            'block_table': [B],
-            'query_cache': [B, S1, N1, D + rope_head_dim],
-            'key_cache': [B, S2, N2, D + rope_head_dim * 2 + D // tile_size * 4],
-            'value_cache': [B, S2, N2, D + rope_head_dim * 2 + D // tile_size * 4],
-            'query_rope': [B, S1, N1, rope_head_dim],
-            'key_rope': [B, S2, N2, rope_head_dim],
-            'dequant_scale': [B, S2, N2, D // tile_size],
-            'v_dequant_scale': [B, S2, N2, D // tile_size],
+            "query": [B, S1, N1, D],
+            "key": [B, S2, N2, D],
+            "value": [B, S2, N2, D],
+            "sparse_indices": [B, S1, N2, sparse_blockcount],
+            "block_table": [B],
+            "query_cache": [B, S1, N1, D + rope_head_dim],
+            "key_cache": [B, S2, N2, D + rope_head_dim * 2 + D // tile_size * 4],
+            "value_cache": [B, S2, N2, D + rope_head_dim * 2 + D // tile_size * 4],
+            "query_rope": [B, S1, N1, rope_head_dim],
+            "key_rope": [B, S2, N2, rope_head_dim],
+            "dequant_scale": [B, S2, N2, D // tile_size],
+            "v_dequant_scale": [B, S2, N2, D // tile_size],
         }
     else:
         print("Unsupported layout_kv: ", layout_kv)
     dtype_input = {
-        'query': q_dtype_str,
-        'key': kv_dtype_str,
-        'value': kv_dtype_str,
-        'sparse_indices': "int32",
-        'block_table': "int32",
-        'query_cache': q_dtype_str,
-        'key_cache': kv_dtype_str,
-        'value_cache': kv_dtype_str,
-        'query_rope': q_dtype_str,
-        'key_rope': q_dtype_str,
-        'dequant_scale': "fp32",
-        'v_dequant_scale': "fp32",
+        "query": q_dtype_str,
+        "key": kv_dtype_str,
+        "value": kv_dtype_str,
+        "sparse_indices": "int32",
+        "block_table": "int32",
+        "query_cache": q_dtype_str,
+        "key_cache": kv_dtype_str,
+        "value_cache": kv_dtype_str,
+        "query_rope": q_dtype_str,
+        "key_rope": q_dtype_str,
+        "dequant_scale": "fp32",
+        "v_dequant_scale": "fp32",
     }
     
     default_range_input = {
-        'query': [2, 10],
-        'key': [-100, 100.0],
-        'sparse_indices': [-10, 10],
-        'block_table': [0, 1],
-        'query_rope': [-1, 1],
-        'key_rope': [-10.0, -2],
-        'dequant_scale': [0, 1],
-        'v_dequant_scale': [0, 1],
+        "query": [2, 10],
+        "key": [-100, 100.0],
+        "sparse_indices": [-10, 10],
+        "block_table": [0, 1],
+        "query_rope": [-1, 1],
+        "key_rope": [-10.0, -2],
+        "dequant_scale": [0, 1],
+        "v_dequant_scale": [0, 1],
     }
     range_input = {}
-    for key in ['query', 'key', 'query_rope', 'key_rope', 'dequant_scale']:
+    for key in ["query", "key", "query_rope", "key_rope", "dequant_scale"]:
         range_key = f"range_{key}"
         if range_key in param_combination and param_combination[range_key] is not None:
             range_input[key] = param_combination[range_key]
         else:
             range_input[key] = default_range_input[key]
-    range_input['sparse_indices'] = default_range_input['sparse_indices']
-    range_input['block_table'] = default_range_input['block_table']
-    range_input['v_dequant_scale'] = range_input['dequant_scale']
+    range_input["sparse_indices"] = default_range_input["sparse_indices"]
+    range_input["block_table"] = default_range_input["block_table"]
+    range_input["v_dequant_scale"] = range_input["dequant_scale"]
     
     params = {
         "case_name": testcase_name,
@@ -434,11 +434,11 @@ def convert_param_combination_to_cs_format(param_combination):
         "actual_seq_q": actual_seq_q,
         "actual_seq_kv": actual_seq_kv,
         # range 参数，保存实际使用的值
-        "range_query": range_input['query'],
-        "range_key": range_input['key'],
-        "range_query_rope": range_input['query_rope'],
-        "range_key_rope": range_input['key_rope'],
-        "range_dequant_scale": range_input['dequant_scale'],
+        "range_query": range_input["query"],
+        "range_key": range_input["key"],
+        "range_query_rope": range_input["query_rope"],
+        "range_key_rope": range_input["key_rope"],
+        "range_dequant_scale": range_input["dequant_scale"],
     }
     
     return params
@@ -446,14 +446,14 @@ def convert_param_combination_to_cs_format(param_combination):
 
 def get_np_dtype(type_str):
     type_dict = {
-        'fp32': np.float32, 'fp16': np.float16,
-        'int32': np.int32, 'int8': np.int8,
-        'uint8': np.uint8,
-        'bf16': tf.bfloat16.as_numpy_dtype,
-        'bfloat16': tf.bfloat16.as_numpy_dtype,
-        'float32': np.float32,
-        'float16': np.float16,
-        'hifloat8': np.uint8,
+        "fp32": np.float32, "fp16": np.float16,
+        "int32": np.int32, "int8": np.int8,
+        "uint8": np.uint8,
+        "bf16": tf.bfloat16.as_numpy_dtype,
+        "bfloat16": tf.bfloat16.as_numpy_dtype,
+        "float32": np.float32,
+        "float16": np.float16,
+        "hifloat8": np.uint8,
     }
     if type_str == "float8_e4m3fn":
         from ml_dtypes import float8_e4m3fn
@@ -464,9 +464,9 @@ def get_np_dtype(type_str):
 
 def convert_tensor_data(data_pool, data_path, type_str, params=None):
     KNOW_NP_DTYPES = [
-        'fp32', 'fp16', 'int32', 'int8', 'uint8',
-        'bf16', 'bfloat16',
-        'float32', 'float16',
+        "fp32", "fp16", "int32", "int8", "uint8",
+        "bf16", "bfloat16",
+        "float32", "float16",
     ]
 
     np_type = data_pool.dtype
@@ -476,7 +476,7 @@ def convert_tensor_data(data_pool, data_path, type_str, params=None):
     elif type_str.lower() in KNOW_NP_DTYPES:
         np_dtype = get_np_dtype(type_str.lower())
         dump_np_data = np.array(data_pool).astype(np_dtype)
-    elif type_str.lower() in ['float8_e4m3fn', 'hifloat8']:
+    elif type_str.lower() in ["float8_e4m3fn", "hifloat8"]:
         dump_np_data = np.array(data_pool)
     else:
         dump_np_data = np.array(data_pool)
@@ -494,23 +494,23 @@ def convert_tensor_data(data_pool, data_path, type_str, params=None):
 
 def get_str_dtype(type_str):
     type_dict = {
-        torch.float32: 'fp32', torch.float16: 'fp16',
-        torch.int8: 'int8', torch.int32: 'int32',
-        torch.uint8: 'uint8', torch.bfloat16: 'bf16'
+        torch.float32: "fp32", torch.float16: "fp16",
+        torch.int8: "int8", torch.int32: "int32",
+        torch.uint8: "uint8", torch.bfloat16: "bf16"
     }
     return type_dict[type_str]
 
 
 def get_torch_dtype(type_str):
     type_dict = {
-        'fp32': torch.float32, 'float32': torch.float32,
-        'fp16': torch.float16, 'float16': torch.float16,
-        'bf16': torch.bfloat16, 'bfloat16': torch.bfloat16,
-        'int8': torch.int8,
-        'int32': torch.int32,
-        'uint8': torch.uint8,
-        'float8_e4m3fn': torch.float8_e4m3fn,
-        'hifloat8': None,
+        "fp32": torch.float32, "float32": torch.float32,
+        "fp16": torch.float16, "float16": torch.float16,
+        "bf16": torch.bfloat16, "bfloat16": torch.bfloat16,
+        "int8": torch.int8,
+        "int32": torch.int32,
+        "uint8": torch.uint8,
+        "float8_e4m3fn": torch.float8_e4m3fn,
+        "hifloat8": None,
     }
     return type_dict.get(type_str)
 

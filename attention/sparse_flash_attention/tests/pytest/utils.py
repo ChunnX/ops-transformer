@@ -272,113 +272,113 @@ def convert_param_combination_to_cs_format(param_combination):
     q_dtype_str = "bf16" if q_type == torch.bfloat16 else "fp16"
     testcase_name = f"{testcase_prefix}_{layout_query}_{layout_kv}_{q_dtype_str}_{B}_{N1}_{N2}_{S1}_{S2}_{D}_{K}_{testcase_number:06d}"
     kv_dtype_str = "bf16" if kv_type == torch.bfloat16 else "fp16"
-    if (layout_kv == 'PA_BSND'):
-        if (layout_query == 'BSND'):
+    if (layout_kv == "PA_BSND"):
+        if (layout_query == "BSND"):
             shape_input = {
-                'query': [B, S1, N1, D],
-                'key': [B, S2, N2, D],
-                'value': [B, S2, N2, D],
-                'sparse_indices': [B, S1, N2, sparse_blockcount],
-                'block_table': [B, block_num_per_batch],
-                'query_cache': [B, S1, N1, D + rope_head_dim],
-                'key_cache': [block_num, block_size, N2, D + rope_head_dim],
-                'value_cache': [block_num, block_size, N2, D + rope_head_dim],
-                'query_rope': [B, S1, N1, rope_head_dim],
-                'key_rope': [B, S2, N2, rope_head_dim],
+                "query": [B, S1, N1, D],
+                "key": [B, S2, N2, D],
+                "value": [B, S2, N2, D],
+                "sparse_indices": [B, S1, N2, sparse_blockcount],
+                "block_table": [B, block_num_per_batch],
+                "query_cache": [B, S1, N1, D + rope_head_dim],
+                "key_cache": [block_num, block_size, N2, D + rope_head_dim],
+                "value_cache": [block_num, block_size, N2, D + rope_head_dim],
+                "query_rope": [B, S1, N1, rope_head_dim],
+                "key_rope": [B, S2, N2, rope_head_dim],
             }
             shape_output = {
-                'attn_out': [B, S1, N1, D],
-                'softmax_max': [B, N2, S1, int(N1 / N2)],
-                'softmax_sum': [B, N2, S1, int(N1 / N2)]
+                "attn_out": [B, S1, N1, D],
+                "softmax_max": [B, N2, S1, int(N1 / N2)],
+                "softmax_sum": [B, N2, S1, int(N1 / N2)]
             }
-        elif (layout_query == 'TND'):
+        elif (layout_query == "TND"):
             shape_input = {
-                'query': [T, N1, D],
-                'key': [B, S2, N2, D],
-                'value': [B, S2, N2, D],
-                'sparse_indices': [T, N2, sparse_blockcount],
-                'block_table': [B, block_num_per_batch],
-                'query_cache': [T, N1, D + rope_head_dim],
-                'key_cache': [block_num, block_size, N2, D + rope_head_dim],
-                'value_cache': [block_num, block_size, N2, D + rope_head_dim],
-                'query_rope': [T, N1, rope_head_dim],
-                'key_rope': [B, S2, N2, rope_head_dim],
+                "query": [T, N1, D],
+                "key": [B, S2, N2, D],
+                "value": [B, S2, N2, D],
+                "sparse_indices": [T, N2, sparse_blockcount],
+                "block_table": [B, block_num_per_batch],
+                "query_cache": [T, N1, D + rope_head_dim],
+                "key_cache": [block_num, block_size, N2, D + rope_head_dim],
+                "value_cache": [block_num, block_size, N2, D + rope_head_dim],
+                "query_rope": [T, N1, rope_head_dim],
+                "key_rope": [B, S2, N2, rope_head_dim],
             }
             shape_output = {
-                'attn_out': [T, N1, D],
-                'softmax_max': [N2, T, int(N1 / N2)],
-                'softmax_sum': [N2, T, int(N1 / N2)]
+                "attn_out": [T, N1, D],
+                "softmax_max": [N2, T, int(N1 / N2)],
+                "softmax_sum": [N2, T, int(N1 / N2)]
             }
         else:
             print("Unsupported layout_query: ", layout_query)
-    elif (layout_kv == 'TND'):
+    elif (layout_kv == "TND"):
         shape_input = {
-            'query': [T, N1, D],
-            'key': [T2, N2, D],
-            'value': [T2, N2, D],
-            'sparse_indices': [T, N2, sparse_blockcount],
-            'block_table': [B],
-            'query_cache': [T, N1, D + rope_head_dim],
-            'key_cache': [T2, N2, D + rope_head_dim],
-            'value_cache': [T2, N2, D + rope_head_dim],
-            'query_rope': [T, N1, rope_head_dim],
-            'key_rope': [T2, N2, rope_head_dim],
+            "query": [T, N1, D],
+            "key": [T2, N2, D],
+            "value": [T2, N2, D],
+            "sparse_indices": [T, N2, sparse_blockcount],
+            "block_table": [B],
+            "query_cache": [T, N1, D + rope_head_dim],
+            "key_cache": [T2, N2, D + rope_head_dim],
+            "value_cache": [T2, N2, D + rope_head_dim],
+            "query_rope": [T, N1, rope_head_dim],
+            "key_rope": [T2, N2, rope_head_dim],
         }
         shape_output = {
-            'attn_out': [T, N1, D],
-            'softmax_max': [N2, T, int(N1 / N2)],
-            'softmax_sum': [N2, T, int(N1 / N2)]
+            "attn_out": [T, N1, D],
+            "softmax_max": [N2, T, int(N1 / N2)],
+            "softmax_sum": [N2, T, int(N1 / N2)]
         }
-    elif (layout_kv == 'BSND'):
+    elif (layout_kv == "BSND"):
         shape_input = {
-            'query': [B, S1, N1, D],
-            'key': [B, S2, N2, D],
-            'value': [B, S2, N2, D],
-            'sparse_indices': [B, S1, N2, sparse_blockcount],
-            'block_table': [B],
-            'query_cache': [B, S1, N1, D + rope_head_dim],
-            'key_cache': [B, S2, N2, D + rope_head_dim],
-            'value_cache': [B, S2, N2, D + rope_head_dim],
-            'query_rope': [B, S1, N1, rope_head_dim],
-            'key_rope': [B, S2, N2, rope_head_dim],
+            "query": [B, S1, N1, D],
+            "key": [B, S2, N2, D],
+            "value": [B, S2, N2, D],
+            "sparse_indices": [B, S1, N2, sparse_blockcount],
+            "block_table": [B],
+            "query_cache": [B, S1, N1, D + rope_head_dim],
+            "key_cache": [B, S2, N2, D + rope_head_dim],
+            "value_cache": [B, S2, N2, D + rope_head_dim],
+            "query_rope": [B, S1, N1, rope_head_dim],
+            "key_rope": [B, S2, N2, rope_head_dim],
         }
         shape_output = {
-            'attn_out': [B, S1, N1, D],
-            'softmax_max': [B, N2, S1, int(N1 / N2)],
-            'softmax_sum': [B, N2, S1, int(N1 / N2)]
+            "attn_out": [B, S1, N1, D],
+            "softmax_max": [B, N2, S1, int(N1 / N2)],
+            "softmax_sum": [B, N2, S1, int(N1 / N2)]
         }
     else:
         print("Unsupported layout_kv: ", layout_kv)
     dtype_input = {
-        'query': q_dtype_str,
-        'key': kv_dtype_str,
-        'value': kv_dtype_str,
-        'sparse_indices': "int32",
-        'block_table': "int32",
-        'query_cache': q_dtype_str,
-        'key_cache': kv_dtype_str,
-        'value_cache': kv_dtype_str,
-        'query_rope': q_dtype_str,
-        'key_rope': q_dtype_str,
+        "query": q_dtype_str,
+        "key": kv_dtype_str,
+        "value": kv_dtype_str,
+        "sparse_indices": "int32",
+        "block_table": "int32",
+        "query_cache": q_dtype_str,
+        "key_cache": kv_dtype_str,
+        "value_cache": kv_dtype_str,
+        "query_rope": q_dtype_str,
+        "key_rope": q_dtype_str,
     }
     
     default_range_input = {
-        'query': [-10.0, 100.0],
-        'key': [5.0, 100.0],
-        'sparse_indices': [-10, 10],
-        'block_table': [0, 1],
-        'query_rope': [-10.0, 10.0],
-        'key_rope': [-10.0, 10.0],
+        "query": [-10.0, 100.0],
+        "key": [5.0, 100.0],
+        "sparse_indices": [-10, 10],
+        "block_table": [0, 1],
+        "query_rope": [-10.0, 10.0],
+        "key_rope": [-10.0, 10.0],
     }
     range_input = {}
-    for key in ['query', 'key', 'query_rope', 'key_rope']:
+    for key in ["query", "key", "query_rope", "key_rope"]:
         range_key = f"range_{key}"
         if range_key in param_combination and param_combination[range_key] is not None:
             range_input[key] = param_combination[range_key]
         else:
             range_input[key] = default_range_input[key]
-    range_input['sparse_indices'] = default_range_input['sparse_indices']
-    range_input['block_table'] = default_range_input['block_table']
+    range_input["sparse_indices"] = default_range_input["sparse_indices"]
+    range_input["block_table"] = default_range_input["block_table"]
     
     params = {
         "case_name": testcase_name,
@@ -415,10 +415,10 @@ def convert_param_combination_to_cs_format(param_combination):
         "actual_seq_q": actual_seq_q,
         "actual_seq_kv": actual_seq_kv,
         # range 参数，保存实际使用的值
-        "range_query": range_input['query'],
-        "range_key": range_input['key'],
-        "range_query_rope": range_input['query_rope'],
-        "range_key_rope": range_input['key_rope'],
+        "range_query": range_input["query"],
+        "range_key": range_input["key"],
+        "range_query_rope": range_input["query_rope"],
+        "range_key_rope": range_input["key_rope"],
     }
     
     return params
@@ -439,7 +439,7 @@ def sfa_run_npu(test_data, testcase_name=None, device_id=0, result_path=None):
         compare_results["attn_out"] = {"result": result_attn_out, "fulfill_percent": fulfill_percent_attn}
         overall_result = result_attn_out
         overall_fulfill_percent = fulfill_percent_attn
-        if test_data['input']['return_softmax_lse']:
+        if test_data["input"]["return_softmax_lse"]:
             print("[compare] comparing softmax_max ...")
             result_softmax_max, fulfill_percent_max = result_compare_method.check_result(cpu_result[1], npu_result[1])
             print("[compare] comparing softmax_sum ...")
