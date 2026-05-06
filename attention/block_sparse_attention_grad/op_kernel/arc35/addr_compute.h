@@ -93,7 +93,7 @@ private:
             cur_q_seq_len_ = getSeqLen(bIdx_, actualQseqlen_);
             cur_kv_seq_len_ = getSeqLen(bIdx_, actualKvseqlen_);
         }
-        if (bIdx > 0) {
+        if (bIdx_ > 0) {
             last_q_seq_sum_ = getTotalLen(bIdx_ - 1, actualQseqlen_);
             last_kv_seq_sum_ = getTotalLen(bIdx_ - 1, actualKvseqlen_);
         }
