@@ -326,6 +326,7 @@ gmm@ops-transformer:
         release:
             huawei_style: 
                 - ops/ops-transformer/gmm/grouped_matmul
+                - ops/ops-transformer/gmm/grouped_matmul_finalize_routing
                 - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant_v2
                 - ops/ops-transformer/gmm/quant_grouped_matmul_inplace_add
             opensource_style: null 
@@ -334,6 +335,8 @@ gmm@ops-transformer:
             test_code: 
                 - ops/ops-transformer/gmm/grouped_matmul/tests
                 - ops/ops-transformer/gmm/grouped_matmul/examples
+                - ops/ops-transformer/gmm/grouped_matmul_finalize_routing/tests
+                - ops/ops-transformer/gmm/grouped_matmul_finalize_routing/examples
                 - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant/tests
                 - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant/examples
                 - ops/ops-transformer/gmm/quant_grouped_matmul_inplace_add/tests
@@ -838,4 +841,21 @@ GMMSwigluQuant@ops-transformer:
         unrelease:
             test_code: null 
             non_delivery: null  
+            open_source: null
+
+GMMFR@ops-transformer:
+    src:
+        release:
+            huawei_style:
+                - ops/ops-transformer/gmm/grouped_matmul_finalize_routing
+                - ops/ops-transformer/gmm/grouped_matmul/op_api/grouped_matmul_950_checker.h
+                - ops/ops-transformer/gmm/grouped_matmul/op_api/grouped_matmul_util.h
+                - ops/ops-transformer/gmm/grouped_matmul/op_host/grouped_matmul_host_util.h
+                - ops/ops-transformer/gmm/grouped_matmul/op_host/op_tiling/grouped_matmul_tiling.h
+                - ops/ops-transformer/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.h
+            opensource_style: null
+            kernel_style: null
+        unrelease:
+            test_code: null
+            non_delivery: null
             open_source: null
