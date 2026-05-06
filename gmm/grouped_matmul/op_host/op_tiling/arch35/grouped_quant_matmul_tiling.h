@@ -64,10 +64,9 @@ constexpr size_t WEIGHTNZ_THIRD_DIM = 2;
 constexpr size_t WEIGHTNZ_FORTH_DIM = 3;
 constexpr size_t WEIGHTNZ_FIFTH_DIM = 4;
 
-constexpr uint32_t WEIGHTNZ_K0_16 = 16U;
-constexpr uint32_t WEIGHTNZ_N0_16 = 16U;
-constexpr uint32_t WEIGHTNZ_K0_32 = 32U;
-constexpr uint32_t WEIGHTNZ_N0_32 = 32U;
+constexpr uint32_t WEIGHTNZ_16 = 16U;
+constexpr uint32_t WEIGHTNZ_32 = 32U;
+constexpr uint32_t WEIGHTNZ_64 = 64U;
 constexpr uint8_t BF16_VALUE = 27;
 constexpr uint32_t BF16_WORKSIZE = 2;
 constexpr uint32_t FP32_WORKSIZE = 4;
@@ -86,14 +85,14 @@ enum class QuantMode : uint32_t {
     PERBLOCK_MODE = 0x1U << 5,
 };
 
-typedef enum {
+enum class GMMActType {
     GMM_ACT_TYPE_NONE = 0L,
     GMM_ACT_TYPE_RELU = 1L,
     GMM_ACT_TYPE_GELU_TANH = 2L,
     GMM_ACT_TYPE_GELU_ERR_FUNC = 3L,
     GMM_ACT_TYPE_FAST_GELU = 4L,
     GMM_ACT_TYPE_SILU = 5L,
-} GMMActType;
+};
 
 struct GQmmBasicTiling {
     uint32_t usedCoreNum = 1;

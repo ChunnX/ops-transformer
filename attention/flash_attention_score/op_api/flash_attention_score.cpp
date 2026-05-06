@@ -13,6 +13,26 @@
 
 using namespace op;
 
+namespace {
+    bool FakeArray(const aclIntArray *inArray, aclTensor *&outTensor)
+    {
+        OP_LOGD("start fake tensor");
+        if (inArray != nullptr) {
+            OP_LOGD("input array is not nullptr");
+            int64_t size = static_cast<int64_t>(inArray->Size());
+            std::vector<int64_t> shape = {size};
+            outTensor = aclCreateTensor(shape.data(), shape.size(), aclDataType::ACL_INT64, nullptr,
+                                        0, ACL_FORMAT_ND, shape.data(), shape.size(), nullptr);
+            if (outTensor == nullptr) {
+                OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try alloc tensor failed");
+                return false;
+            }
+        }
+        OP_LOGD("end fake tensor");
+        return true;
+    }
+}
+
 namespace l0op {
 
 OP_TYPE_REGISTER(FlashAttentionScore);
@@ -27,7 +47,7 @@ const std::array<const aclTensor *, 4> FlashAttentionScore(
     const aclTensor *keyRopeOptional, double scaleValue, double keepProb, int64_t preTockens,
     int64_t nextTockens, int64_t headNum, const char *inputLayout, int64_t innerPrecise,
     int64_t sparseMode, int64_t pseType, int64_t seed, int64_t offset, int64_t outDtype, const char *softmaxOutLayout,
-    aclOpExecutor *executor)
+    aclOpExecutor *executor, bool isMaxWorkspace = false)
 {
     L0_DFX(FlashAttentionScore, query, key, value, realShiftOptional, dropMaskOptional, paddingMaskOptional,
            attenMaskOptional, sinkOptional, prefixOptional, actualSeqQLenOptional, actualSeqKvLenOptional, qStartIdxOptional,
@@ -72,20 +92,28 @@ const std::array<const aclTensor *, 4> FlashAttentionScore(
 
     const aclTensor *actualSeqQLen = nullptr;
     if (actualSeqQLenOptional) {
-        actualSeqQLen = executor->ConvertToTensor(actualSeqQLenOptional, DataType::DT_INT64);
-        const_cast<aclTensor *>(actualSeqQLen)->SetStorageFormat(Format::FORMAT_ND);
-        const_cast<aclTensor *>(actualSeqQLen)->SetViewFormat(Format::FORMAT_ND);
-        const_cast<aclTensor *>(actualSeqQLen)->SetOriginalFormat(Format::FORMAT_ND);
+        if (!isMaxWorkspace) {
+            actualSeqQLen = executor->ConvertToTensor(actualSeqQLenOptional, DataType::DT_INT64);
+            const_cast<aclTensor *>(actualSeqQLen)->SetStorageFormat(Format::FORMAT_ND);
+            const_cast<aclTensor *>(actualSeqQLen)->SetViewFormat(Format::FORMAT_ND);
+            const_cast<aclTensor *>(actualSeqQLen)->SetOriginalFormat(Format::FORMAT_ND);
+        } else {
+            FakeArray(actualSeqQLenOptional, const_cast<aclTensor *&>(actualSeqQLen));
+        }
     } else {
         actualSeqQLen = executor->AllocTensor(DataType::DT_INT64, Format::FORMAT_ND, Format::FORMAT_ND);
     }
 
     const aclTensor *actualSeqKvLen = nullptr;
     if (actualSeqKvLenOptional) {
-        actualSeqKvLen = executor->ConvertToTensor(actualSeqKvLenOptional, DataType::DT_INT64);
-        const_cast<aclTensor *>(actualSeqKvLen)->SetStorageFormat(Format::FORMAT_ND);
-        const_cast<aclTensor *>(actualSeqKvLen)->SetViewFormat(Format::FORMAT_ND);
-        const_cast<aclTensor *>(actualSeqKvLen)->SetOriginalFormat(Format::FORMAT_ND);
+        if (!isMaxWorkspace) {
+            actualSeqKvLen = executor->ConvertToTensor(actualSeqKvLenOptional, DataType::DT_INT64);
+            const_cast<aclTensor *>(actualSeqKvLen)->SetStorageFormat(Format::FORMAT_ND);
+            const_cast<aclTensor *>(actualSeqKvLen)->SetViewFormat(Format::FORMAT_ND);
+            const_cast<aclTensor *>(actualSeqKvLen)->SetOriginalFormat(Format::FORMAT_ND);
+        } else {
+            FakeArray(actualSeqKvLenOptional, const_cast<aclTensor *&>(actualSeqKvLen));
+        }
     } else {
         actualSeqKvLen = executor->AllocTensor(DataType::DT_INT64, Format::FORMAT_ND, Format::FORMAT_ND);
     }
@@ -149,6 +177,12 @@ const std::array<const aclTensor *, 4> FlashAttentionScore(
         OP_ATTR(static_cast<float>(scaleValue), static_cast<float>(keepProb), preTockens,
                 nextTockens, headNum, inputLayout, innerPrecise, sparseMode, pseType,
                 seed, offset, outDtype, softmaxOutLayout));
+    if (actualSeqKvLenOptional && isMaxWorkspace) {
+        aclDestroyTensor(actualSeqKvLen);
+    }
+    if (actualSeqQLenOptional && isMaxWorkspace) {
+        aclDestroyTensor(actualSeqQLen);
+    }
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "FlashAttentionScore launch kernel failed.");
         return {nullptr, nullptr, nullptr, nullptr};

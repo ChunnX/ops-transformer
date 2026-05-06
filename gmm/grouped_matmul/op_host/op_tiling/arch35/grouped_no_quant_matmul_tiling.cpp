@@ -243,7 +243,7 @@ bool GroupedNoQuantMatmulTiling::Init(const gert::TilingContext *context)
     return false;
 }
 
-bool GroupedNoQuantMatmulTiling::CheckWeightNZShape(const gert::TilingContext *context, int64_t numInOneBlk)
+bool GroupedNoQuantMatmulTiling::CheckWeightNZShape(const gert::TilingContext *context, int64_t numInOneBlk) const
 {
     OP_CHECK_IF(numInOneBlk <= 0, OP_LOGE(context->GetNodeName(), "the value of numInOneBlk is invalid, %ld", numInOneBlk), return false);
     uint32_t i = 0;
@@ -430,8 +430,8 @@ bool GroupedNoQuantMatmulTiling::GMMGetTensorShapeSplitM(const gert::TilingConte
 bool GroupedNoQuantMatmulTiling::GMMGetTensorShapeSplitK(const gert::TilingContext *context, const gert::Shape xShape,
                                                          const gert::Shape wShape)
 {
-    if (isSingleX_ && !isSingleWeight_ && !isSingleY_) {  // splitK, s-m-m
-      return SplitKSingleXSeparatedWeight(context, xShape, wShape);
+    if (isSingleX_ && !isSingleWeight_ && !isSingleY_) { // splitK, s-m-m
+        return SplitKSingleXSeparatedWeight(context, xShape);
     }
     if (!isSingleX_ && isSingleWeight_) {  // splitK, m-s-m/m-s-s
       return SeparatedXSingleWeight(context, wShape);
@@ -559,7 +559,7 @@ bool GroupedNoQuantMatmulTiling::SplitKSingleXSingleWeightSingleY(const gert::Ti
 /** @brief split K single-multi-multi(s-m-m)
  */
 bool GroupedNoQuantMatmulTiling::SplitKSingleXSeparatedWeight(const gert::TilingContext *context,
-                                                              const gert::Shape xShape, const gert::Shape wShape)
+                                                              const gert::Shape xShape)
 {
     int64_t m = xShape.GetDim(1);
     int64_t k = xShape.GetDim(xKDim_);

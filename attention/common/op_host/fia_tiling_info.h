@@ -174,6 +174,7 @@ enum class FiaFullQuantMode : uint32_t{
     NO_FULL_QUANT = 0,
     PER_TENSOR_FULL_QUANT = 1,
     PER_BLOCK_FULL_QUANT = 2,
+    MXFP8_FULL_QUANT = 3,
 };
 
 std::string LayoutToSerialString(FiaLayout layout);
@@ -285,6 +286,7 @@ public:
     uint32_t blockTypeSize = 0; // 计算中间量大小
     uint32_t maxBlockNumPerBatch = 0;
     uint32_t totalBlockNum = 0;
+    uint32_t kvLayoutType = 0;
 
     // antiquant
     bool antiQuantFlag = false;

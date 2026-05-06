@@ -136,6 +136,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
 ## aclnnFlashAttentionScoreGradV4GetWorkspaceSize
 
 - **参数说明：**
+  
   <table style="undefined;table-layout: fixed; width: 1565px">
   <colgroup>
     <col style="width: 146px">
@@ -224,7 +225,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>dropMaskOptional</td>
       <td>可选输入</td>
       <td>公式中的Dropout。</td>
-      <td>-</td>
+      <td>支持[B,N,S,S]</td>
       <td>UINT8</td>
       <td>ND</td>
       <td>0、1</td>
@@ -279,7 +280,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>softmaxMaxOptional</td>
       <td>可选输入</td>
       <td>注意力正向计算的中间输出。</td>
-      <td>shape=[B,N,Sq,8],[N,T,8]。</td>
+      <td>shape=[B,N,Sq,8],[N,T,8],[T,N,8]。</td>
       <td>FLOAT</td>
       <td>ND</td>
       <td>0、4</td>
@@ -289,7 +290,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>softmaxSumOptional</td>
       <td>可选输入</td>
       <td>注意力正向计算的中间输出。</td>
-      <td>shape=[B,N,Sq,8],[N,T,8]。</td>
+      <td>shape=[B,N,Sq,8],[N,T,8],[T,N,8]。</td>
       <td>FLOAT</td>
       <td>ND</td>
       <td>0、4</td>
@@ -459,7 +460,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>inputLayout</td>
       <td>输入</td>
       <td>query/key/value的数据排布格式。</td>
-      <td>支持BSH、SBH、BSND、BNSD。</td>
+      <td>支持BSH、SBH、BSND、BNSD、TND。</td>
       <td>String</td>
       <td>-</td>
       <td>-</td>
@@ -469,7 +470,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>softmaxInLayout</td>
       <td>输入</td>
       <td>控制softmaxMax、softmaxSum的实际数据排布。</td>
-      <td>TND时传"same_as_input"，NTD时传""</td>
+      <td>shape为TND，实际数据排布需要NTD时传"same_as_input"，TND时传""</td>
       <td>String</td>
       <td>-</td>
       <td>-</td>
@@ -627,7 +628,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
     </tr>
   </tbody>
   </table>
-
+  
 - **返回值：**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -706,7 +707,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
 ## 约束说明<a name="1"></a>
 
 - 确定性计算：
-  - aclnnFlashAttentionScoreGradVX默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
+  - aclnnFlashAttentionScoreGradV4默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
 - 输入query、key、value、dy的约束如下：
   - B：batchsize必须相等。
   - inputLayout必须一致。
@@ -963,7 +964,7 @@ int main() {
   int64_t outDtype = 1;
   int64_t seed = 0;
   int64_t offset = 0;
-  char inputlayOut[5] = {'S', 'B', 'H', 0};
+  char inputLayOut[5] = {'S', 'B', 'H', 0};
   char softmaxInLayoutArr[] = "";
 
   // 3. 调用CANN算子库API，需要修改为具体的Api名称
@@ -974,7 +975,7 @@ int main() {
   ret = aclnnFlashAttentionScoreGradV4GetWorkspaceSize(q, k, v, dx, pse, dropMask, padding,
             attenmask, softmaxMax, softmaxSum, softmaxIn, attentionIn, sinkInOptional, queryRope, keyRope, dScaleQ, dScaleK, dScaleV, 
             dScaleDy, dScaleO, nullptr, nullptr, nullptr, nullptr, nullptr, scaleValue, keepProb,
-            preTokens, nextTokens, headNum, inputlayOut, softmaxInLayoutArr, innerPrecise, sparseMode,outDtype, pseType, seed, offset,
+            preTokens, nextTokens, headNum, inputLayOut, softmaxInLayoutArr, innerPrecise, sparseMode,outDtype, pseType, seed, offset,
             dq,dk,dv,dqRope,dkRope,dpse, dsink, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFlashAttentionScoreGradV4GetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 

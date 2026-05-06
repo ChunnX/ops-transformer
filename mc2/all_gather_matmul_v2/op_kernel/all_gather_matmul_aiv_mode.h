@@ -835,9 +835,9 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Process()
 
                 for (int32_t cycle_idx = 0; cycle_idx < cycle_num; ++cycle_idx) {
                     int32_t s2_other_rank = blockIdx - core_count + cycle_idx * other_core_num;
-                    int32_t other_rank_offset =
+                    uint64_t other_rank_offset =
                         s2_flag_idx * gm_a_pingpong_size + s2_other_rank * pValue * m0 * k_align;
-                    int64_t dst_offset = s2_other_rank * static_cast<int64_t>(m) * k + (cal_idx - 1) * pValue * m0 * k;
+                    uint64_t dst_offset = s2_other_rank * static_cast<int64_t>(m) * k + (cal_idx - 1) * pValue * m0 * k;
                     if (s2_other_rank >= worldSize) {
                         break;
                     }

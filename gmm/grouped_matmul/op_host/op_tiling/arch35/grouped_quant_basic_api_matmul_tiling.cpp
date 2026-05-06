@@ -26,9 +26,15 @@ GroupedQmmBasicApiTiling::GroupedQmmBasicApiTiling(gert::TilingContext *context)
 
 bool GroupedQmmBasicApiTiling::IsCapable()
 {
-    // mxfp8
-    return IsMicroScaling() &&
-           (inputParams_.aDtype == ge::DT_FLOAT8_E4M3FN || inputParams_.aDtype == ge::DT_FLOAT8_E5M2);
+    // MX 量化：scale 为 FLOAT8_E8M0（IsMicroScaling）；支持 mxfp8 与 mxfp4
+    if (!IsMicroScaling()) {
+        return false;
+    }
+    const bool isMxFp8 =
+        inputParams_.aDtype == ge::DT_FLOAT8_E4M3FN || inputParams_.aDtype == ge::DT_FLOAT8_E5M2;
+    const bool isMxFp4 =
+        inputParams_.aDtype == ge::DT_FLOAT4_E2M1 || inputParams_.aDtype == ge::DT_FLOAT4_E1M2;
+    return isMxFp8 || isMxFp4;
 }
 
 void GroupedQmmBasicApiTiling::Reset()

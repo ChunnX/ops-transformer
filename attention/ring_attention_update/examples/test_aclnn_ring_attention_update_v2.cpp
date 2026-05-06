@@ -87,7 +87,7 @@ int main() {
   std::vector<int64_t> curAttnOutShape = {seqSize, batchNum, headSize};
   std::vector<int64_t> curSoftmaxMaxShape = {batchNum * seqSize, headNum, 8};
   std::vector<int64_t> curSoftmaxSumShape = {batchNum * seqSize, headNum, 8};
-  std::vector<int64_t> actualSeqQlenOptionalShape = {batchNum, headNum};
+  std::vector<int64_t> actualSeqQlenOptionalShape = {seqSize};
 
   std::vector<int64_t> attnOutShape = {seqSize, batchNum, headSize};
   std::vector<int64_t> softmaxMaxShape = {batchNum * seqSize, headNum, 8};
@@ -123,7 +123,7 @@ int main() {
   std::vector<float> curAttnOutHostData(seqSize * batchNum * headSize, 1);
   std::vector<float> curSoftmaxMaxHostData(batchNum * headNum * seqSize * 8, 1);
   std::vector<float> curSoftmaxSumHostData(batchNum * headNum * seqSize * 8, 1);
-  std::vector<float> actualSeqQlenOptionalHostData(batchNum * headNum, 1);
+  std::vector<int64_t> actualSeqQlenOptionalHostData = {0, seqSize};
 
   std::vector<float> attnOutHostData(seqSize * batchNum * headSize, 1);
   std::vector<float> softmaxMaxHostData(batchNum * headNum * seqSize * 8, 1);

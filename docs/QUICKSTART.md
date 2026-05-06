@@ -22,27 +22,24 @@
 
 ### 1. 进入项目源码
 
-1. 检查源码版本。
-
-    根据[release仓库](https://gitcode.com/cann/release-management)CANN版本配套关系检查源码版本是否配套，若不配套请参考下述命令重新下载，\$\{tag\_version\}替换为目标分支标签。
-
-    > 说明：对于WebIDE环境，**已默认提供最新商发版CANN配套的项目源码**。
+- WebIDE环境：
+   
+   默认提供最新商发版CANN包配套的项目源码，进入源码目录，\$\{gitCode\_id\}替换为开发者个人gitCode账号。
+   
+   ```
+   cd /mnt/workspace/gitCode/${gitCode_id}/ops-transformer
+   ```
+- 非WebIDE环境：
+  
+  根据[release仓库](https://gitcode.com/cann/release-management)源码与CANN版本配套关系，执行如下命令下载源码，\$\{tag\_version\}替换为目标分支标签，例如9.0.0。
     
-    ```bash
-    git clone -b ${tag_version} https://gitcode.com/cann/ops-transformer.git
-    ```
+  ```bash
+  git clone -b ${tag_version} https://gitcode.com/cann/ops-transformer.git && cd ops-transformer
+  ```
 
-    若出现提示信息`fatal: destination path 'ops-transformer' already exists and is not an empty directory.`，说明项目源码已存在。
-    
-2. 进入源码目录。
-    - Docker或手动安装场景下源码位于：
-      ```bash
-      cd ops-transformer
-      ```
-    - WebIDE场景下源码位于：
-      ```bash
-      cd /mnt/workspace/ops-transformer
-      ```
+> 说明：如需切换源码分支版本，请参考如下指导。
+> 1. 在源码目录执行`git branch`，查询当前源码版本。
+> 2. 在源码目录执行`git checkout ${tag_version}`，切换到目标分支源码，注意满足源码与CANN版本配套关系。若源码已存在，执行`git pull`拉取最新源码。
 
 ### 2. 编译AddExample算子
 
@@ -51,13 +48,22 @@
 以AddExample算子为例，编译命令如下：
 
 ```bash
-bash build.sh --pkg --soc=ascend910b --ops=add_example -j16
+bash build.sh --pkg --soc=${soc_version} --ops=add_example -j16
 ```
+\$\{soc\_version\}设置方法如下：
+
+访问[CANN下载中心](https://www.hiascend.com/cann/download)，根据页面提示复制硬件查询命令，在当前环境中执行，返回芯片ID信息，再回填到官网按Enter键获取产品名，产品名对应的${soc_version}取值如下，请按实际场景传参。
+
+- Atlas A2 训练系列产品/Atlas A2 推理系列产品：取值为ascend910b
+- Atlas A3 训练系列产品/Atlas A3 推理系列产品：取值为ascend910_93
+- Atlas 350 加速卡：取值为ascend950
+
+<img src="./zh/figures/socInfo.png" alt="芯片版本" width="800px" height="160px">
 
 若提示如下信息，说明编译成功。
 
 ```bash
-Self-extractable archive "cann-ops-transformer-custom-linux.${arch}.run" successfully created.
+Self-extractable archive "cann-ops-transformer-custom_linux.${arch}.run" successfully created.
 ```
 
 编译成功后，run包存放于项目根目录的build_out目录下。
@@ -131,11 +137,11 @@ __aicore__ inline void AddExample<T>::Compute(int32_t progress)
 
 1. **重新编译**：
     先回到项目根目录，编译命令如下：
-    
+
     ```bash
     bash build.sh --pkg --soc=ascend910b --ops=add_example -j16
     ```
-    
+
 2. **重新安装**：
 
     ```bash
@@ -175,7 +181,7 @@ __aicore__ inline void AddExample<T>::Compute(int32_t progress)
 * **printf**
 
   该接口支持打印Scalar类型数据，如整数、字符型、布尔型等，详细介绍请参见[《Ascend C API》](https://hiascend.com/document/redirect/CannCommunityAscendCApi)中“Ascend C算子开发接口 > SIMD API > 基础API > 调试接口 > 上板打印 > printf”。
-  
+
   ```c++
   blockLength_ = (tilingData->totalLength + AscendC::GetBlockNum() - 1) / AscendC::GetBlockNum();
   tileNum_ = tilingData->tileNum;
@@ -230,7 +236,7 @@ __aicore__ inline void AddExample<T>::Compute(int32_t progress)
 ```c++
 int main() {
     // ... 初始化代码 ...
-    
+
     // === ① 修改selfX的输入 ===
     // 修改前：shape = {32, 4, 4, 4}, 数值全为1
     // 修改后：将输入shape改为 {8, 8, 8, 8}，并填充不同的测试数据
@@ -241,7 +247,7 @@ int main() {
         selfXHostData[i] = static_cast<float>(i % 10); // 填充0-9的循环值
     }
     // === ② 参考selfX，同理修改selfY、selfZ的输入 ===
-    
+
     // ... 后续执行代码 ...
 }
 ```

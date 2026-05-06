@@ -21,7 +21,7 @@
 namespace ScatterPaKvCache {
 using namespace AscendC;
 
-template <typename T, typename IndexDtype, int64_t InOutMode>
+template <typename T, typename IndexDtype, int64_t InOutMode, bool NCT = false>
 class ScatterPaKvCacheNormalNotFullyLoad {
 public:
     __aicore__ inline ScatterPaKvCacheNormalNotFullyLoad(TPipe *pipe,
@@ -53,45 +53,45 @@ private:
 
     int64_t blockIdx_{0};
     int64_t maxTokens_ = 0;
+    int64_t blockFactorOffset_ = 0;
 };
 
-template <typename T, typename IndexDtype, int64_t InOutMode>
-__aicore__ inline void ScatterPaKvCacheNormalNotFullyLoad<T, IndexDtype, InOutMode>::Init(
+template <typename T, typename IndexDtype, int64_t InOutMode, bool NCT>
+__aicore__ inline void ScatterPaKvCacheNormalNotFullyLoad<T, IndexDtype, InOutMode, NCT>::Init(
     GM_ADDR key, GM_ADDR key_cache_in, GM_ADDR slot_mapping, GM_ADDR value, GM_ADDR value_cache_in,
     GM_ADDR compress_lens, GM_ADDR compress_seq_offset, GM_ADDR seq_lens, GM_ADDR key_cache_out,
     GM_ADDR value_cache_out)
 {
     blockIdx_ = GetBlockIdx();
-    int64_t keyBlockOffset = GetBlockIdx() * tilingData_->blockFactor * tilingData_->kHandleNumPerCore;
-    keyGm_.SetGlobalBuffer((__gm__ T *)(key) + keyBlockOffset);
+    blockFactorOffset_ = blockIdx_ * tilingData_->blockFactor;
+    keyGm_.SetGlobalBuffer((__gm__ T *)(key));
     slotMappingGm_.SetGlobalBuffer((__gm__ IndexDtype *)(slot_mapping) + GetBlockIdx() * tilingData_->blockFactor);
     keyCacheOutGm_.SetGlobalBuffer((__gm__ T *)(key_cache_out));
-    int64_t kMaxHandleNumPerLoop = tilingData_->kHandleNumPerLoop > tilingData_->vTailHandleNum ?
+    int64_t kMaxHandleNumPerLoop = tilingData_->kHandleNumPerLoop > tilingData_->kTailHandleNum ?
                                        tilingData_->kHandleNumPerLoop :
-                                       tilingData_->vTailHandleNum;
+                                       tilingData_->kTailHandleNum;
     pipe_->InitBuffer(keyQueue_, 1, RoundUp(kMaxHandleNumPerLoop) * sizeof(T));
 
     if constexpr (InOutMode == DUAL_IN_OUT) {
-        int64_t valueBlockOffset = GetBlockIdx() * tilingData_->blockFactor * tilingData_->vHandleNumPerCore;
-        valueGm_.SetGlobalBuffer((__gm__ T *)(value) + valueBlockOffset);
+        valueGm_.SetGlobalBuffer((__gm__ T *)(value));
         valueCacheOutGm_.SetGlobalBuffer((__gm__ T *)(value_cache_out));
-        int64_t vMaxHandleNumPerLoop = tilingData_->vHandleNumPerLoop > tilingData_->kTailHandleNum ?
+        int64_t vMaxHandleNumPerLoop = tilingData_->vHandleNumPerLoop > tilingData_->vTailHandleNum ?
                                            tilingData_->vHandleNumPerLoop :
-                                           tilingData_->kTailHandleNum;
+                                           tilingData_->vTailHandleNum;
         pipe_->InitBuffer(valueQueue_, 1, RoundUp(vMaxHandleNumPerLoop) * sizeof(T));
     }
     maxTokens_ = tilingData_->numBlocks * tilingData_->blockSize;
 }
 
-template <typename T, typename IndexDtype, int64_t InOutMode>
-__aicore__ inline int64_t ScatterPaKvCacheNormalNotFullyLoad<T, IndexDtype, InOutMode>::RoundUp(int64_t x)
+template <typename T, typename IndexDtype, int64_t InOutMode, bool NCT>
+__aicore__ inline int64_t ScatterPaKvCacheNormalNotFullyLoad<T, IndexDtype, InOutMode, NCT>::RoundUp(int64_t x)
 {
     int64_t elemNum = ONE_BLK_SIZE / sizeof(T);
     return (x + elemNum - 1) / elemNum * elemNum;
 }
 
-template <typename T, typename IndexDtype, int64_t InOutMode>
-__aicore__ inline void ScatterPaKvCacheNormalNotFullyLoad<T, IndexDtype, InOutMode>::CopyInKey(int64_t iter,
+template <typename T, typename IndexDtype, int64_t InOutMode, bool NCT>
+__aicore__ inline void ScatterPaKvCacheNormalNotFullyLoad<T, IndexDtype, InOutMode, NCT>::CopyInKey(int64_t iter,
                                                                                                int64_t blockOffset,
                                                                                                int64_t handleNumPerLoop)
 {
@@ -106,9 +106,9 @@ __aicore__ inline void ScatterPaKvCacheNormalNotFullyLoad<T, IndexDtype, InOutMo
     keyQueue_.EnQue(inputKeyLocal);
 }
 
-template <typename T, typename IndexDtype, int64_t InOutMode>
+template <typename T, typename IndexDtype, int64_t InOutMode, bool NCT>
 __aicore__ inline void
-ScatterPaKvCacheNormalNotFullyLoad<T, IndexDtype, InOutMode>::CopyOutKey(int64_t iter, int64_t kStartIdx,
+ScatterPaKvCacheNormalNotFullyLoad<T, IndexDtype, InOutMode, NCT>::CopyOutKey(int64_t iter, int64_t kStartIdx,
                                                                          int64_t handleNumPerLoop)
 {
     LocalTensor<T> inputKeyLocal = keyQueue_.DeQue<T>();
@@ -126,9 +126,9 @@ ScatterPaKvCacheNormalNotFullyLoad<T, IndexDtype, InOutMode>::CopyOutKey(int64_t
     keyQueue_.FreeTensor(inputKeyLocal);
 }
 
-template <typename T, typename IndexDtype, int64_t InOutMode>
+template <typename T, typename IndexDtype, int64_t InOutMode, bool NCT>
 __aicore__ inline void
-ScatterPaKvCacheNormalNotFullyLoad<T, IndexDtype, InOutMode>::CopyInValue(int64_t iter, int64_t blockOffset,
+ScatterPaKvCacheNormalNotFullyLoad<T, IndexDtype, InOutMode, NCT>::CopyInValue(int64_t iter, int64_t blockOffset,
                                                                           int64_t handleNumPerLoop)
 {
     LocalTensor<T> inputValueLocal = valueQueue_.AllocTensor<T>();
@@ -141,9 +141,9 @@ ScatterPaKvCacheNormalNotFullyLoad<T, IndexDtype, InOutMode>::CopyInValue(int64_
     valueQueue_.EnQue(inputValueLocal);
 }
 
-template <typename T, typename IndexDtype, int64_t InOutMode>
+template <typename T, typename IndexDtype, int64_t InOutMode, bool NCT>
 __aicore__ inline void
-ScatterPaKvCacheNormalNotFullyLoad<T, IndexDtype, InOutMode>::CopyOutValue(int64_t iter, int64_t vStartIdx,
+ScatterPaKvCacheNormalNotFullyLoad<T, IndexDtype, InOutMode, NCT>::CopyOutValue(int64_t iter, int64_t vStartIdx,
                                                                            int64_t handleNumPerLoop)
 {
     LocalTensor<T> inputValueLocal = valueQueue_.DeQue<T>();
@@ -162,8 +162,8 @@ ScatterPaKvCacheNormalNotFullyLoad<T, IndexDtype, InOutMode>::CopyOutValue(int64
     valueQueue_.FreeTensor(inputValueLocal);
 }
 
-template <typename T, typename IndexDtype, int64_t InOutMode>
-__aicore__ inline void ScatterPaKvCacheNormalNotFullyLoad<T, IndexDtype, InOutMode>::Process()
+template <typename T, typename IndexDtype, int64_t InOutMode, bool NCT>
+__aicore__ inline void ScatterPaKvCacheNormalNotFullyLoad<T, IndexDtype, InOutMode, NCT>::Process()
 {
     if (blockIdx_ >= tilingData_->usedCoreNum) {
         return;
@@ -172,7 +172,13 @@ __aicore__ inline void ScatterPaKvCacheNormalNotFullyLoad<T, IndexDtype, InOutMo
         (blockIdx_ == tilingData_->usedCoreNum - 1) ? tilingData_->tailBlockFactor : tilingData_->blockFactor;
 
     for (int64_t idx = 0; idx < curBlockFactor; idx++) {
-        int64_t kblockOffset = idx * tilingData_->kHandleNumPerCore;
+        int64_t kOffsetIn = (blockFactorOffset_ + idx) * tilingData_->kHandleNumPerCore;
+        if constexpr (NCT) {
+            kOffsetIn = (blockFactorOffset_ + idx) * tilingData_->kStride + tilingData_->kOffset;
+            if (kOffsetIn < 0) {
+                continue;
+            }
+        }
         int64_t startIdx = slotMappingGm_.GetValue(idx);
         if (startIdx < 0 || startIdx >= maxTokens_) {
             continue;
@@ -180,23 +186,29 @@ __aicore__ inline void ScatterPaKvCacheNormalNotFullyLoad<T, IndexDtype, InOutMo
         int64_t kStartIdx = startIdx * tilingData_->kHandleNumPerCore;
         // key main loop
         for (int64_t i = 0; i < tilingData_->kLoopNum; i++) {
-            CopyInKey(i, kblockOffset, tilingData_->kHandleNumPerLoop);
+            CopyInKey(i, kOffsetIn, tilingData_->kHandleNumPerLoop);
             CopyOutKey(i, kStartIdx, tilingData_->kHandleNumPerLoop);
         }
         // tail
-        CopyInKey(tilingData_->kLoopNum, kblockOffset, tilingData_->kTailHandleNum);
+        CopyInKey(tilingData_->kLoopNum, kOffsetIn, tilingData_->kTailHandleNum);
         CopyOutKey(tilingData_->kLoopNum, kStartIdx, tilingData_->kTailHandleNum);
 
         if constexpr (InOutMode == DUAL_IN_OUT) {
-            int64_t vblockOffset = idx * tilingData_->vHandleNumPerCore;
+            int64_t vOffsetIn = (blockFactorOffset_ + idx) * tilingData_->vHandleNumPerCore;
+            if constexpr (NCT) {
+                vOffsetIn = (blockFactorOffset_ + idx) * tilingData_->vStride + tilingData_->vOffset;
+                if (vOffsetIn < 0) {
+                    continue;
+                }
+            }
             int64_t vStartIdx = startIdx * tilingData_->vHandleNumPerCore;
             // value main loop
             for (int64_t i = 0; i < tilingData_->vLoopNum; i++) {
-                CopyInValue(i, vblockOffset, tilingData_->vHandleNumPerLoop);
+                CopyInValue(i, vOffsetIn, tilingData_->vHandleNumPerLoop);
                 CopyOutValue(i, vStartIdx, tilingData_->vHandleNumPerLoop);
             }
             // tail
-            CopyInValue(tilingData_->vLoopNum, vblockOffset, tilingData_->vTailHandleNum);
+            CopyInValue(tilingData_->vLoopNum, vOffsetIn, tilingData_->vTailHandleNum);
             CopyOutValue(tilingData_->vLoopNum, vStartIdx, tilingData_->vTailHandleNum);
         }
     }

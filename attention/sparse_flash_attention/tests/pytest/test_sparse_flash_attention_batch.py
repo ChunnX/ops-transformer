@@ -20,13 +20,15 @@ import torch
 import utils
 
 
-TESTCASE_PATH = "./pt_files/"
+TESTCASE_PATH = os.environ.get("PT_FILES_PATH", "./pt_files/")
 RESULT_PATH = Path("result.xlsx")
 DEVICE_ID = 0
 
-
 locals()["testcase_files"] = []
-if os.path.isdir(TESTCASE_PATH):
+if os.path.isfile(TESTCASE_PATH) and TESTCASE_PATH.endswith('.pt'):
+    locals()["testcase_files"] = [TESTCASE_PATH]
+    print(f"指定单个 pt 文件: {TESTCASE_PATH}")
+elif os.path.isdir(TESTCASE_PATH):
     pt_files = [f for f in os.listdir(TESTCASE_PATH) if f.endswith('.pt')]
     if not pt_files:
         print(f"错误: 目录中没有找到.pt文件: {TESTCASE_PATH}")
@@ -40,19 +42,25 @@ else:
 
 
 def execute_sfa(testcase_file):
-    # 从 pt 文件加载已生成好的输入
     test_data = torch.load(testcase_file, map_location="cpu")
-    utils.sfa_run_npu(test_data, device_id=DEVICE_ID, result_path=RESULT_PATH)
+    testcase_name = os.path.basename(testcase_file).replace(".pt", "")
+    result = utils.sfa_run_npu(test_data, testcase_name=testcase_name, device_id=DEVICE_ID, result_path=RESULT_PATH)
+    return result, test_data
 
 
 @pytest.mark.ci
 @pytest.mark.parametrize("testcase_file", locals()["testcase_files"])
 def test_sparse_flash_attention_batch(testcase_file):
-    # batch 模式逐个消费 pt 用例文件。
+    test_data = None
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
         future = executor.submit(execute_sfa, testcase_file)
         for completed_future in concurrent.futures.as_completed([future]):
             try:
-                completed_future.result()
+                result, test_data = completed_future.result()
+                if result == "Failed":
+                    pytest.fail(f"测试结果为Failed")
             except Exception as error:
+                params = test_data.get("params") if test_data else None
+                if params:
+                    utils.save_result(params, "Failed", "", RESULT_PATH)
                 pytest.fail(f"当前用例线程执行失败: {error}")

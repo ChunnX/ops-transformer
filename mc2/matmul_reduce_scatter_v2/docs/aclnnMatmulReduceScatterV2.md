@@ -420,7 +420,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
     #include <vector>
     #include <thread>
     #include "hccl/hccl.h"
-    
+    #include "aclnn/opdev/fp16_t.h"
     #include "aclnnop/aclnn_matmul_reduce_scatter_v2.h"
 
     #define CHECK_RET(cond, return_expr) \
@@ -483,8 +483,8 @@ aclnnStatus aclnnMatmulReduceScatterV2(
         std::vector<int64_t> x1Shape = {1024, 256};
         std::vector<int64_t> x2Shape = {256, 512};
         std::vector<int64_t> biasShape = {512};
-        std::vector<int64_t> x1ScaleShape = {1};
-        std::vector<int64_t> x2ScaleShape = {1};
+        std::vector<int64_t> x1ScaleShape = {1024};
+        std::vector<int64_t> x2ScaleShape = {512};
         std::vector<int64_t> outShape = {1024 / DEV_NUM, 512};
         void *x1DeviceAddr = nullptr;
         void *x2DeviceAddr = nullptr;

@@ -48,6 +48,7 @@ private:
     ge::graphStatus CheckAxis(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckQueryOutConsistency(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckKeyValueConsistency(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckValueOutDConsistency(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckQueryShape(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckKeyNHVaild(const FiaTilingInfo &fiaInfo, const gert::Shape &keyShape);
     ge::graphStatus CheckKeyDVaild(const FiaTilingInfo &fiaInfo, const gert::Shape &keyShape);
@@ -61,6 +62,7 @@ private:
     // enableNonQuant 相关校验函数
     ge::graphStatus CheckNonQuantDataType(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckAttr(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckDimNum(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckHeadNum(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckInputLayout(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckInnerPrecise(const FiaTilingInfo &fiaInfo);

@@ -212,6 +212,13 @@ ge::graphStatus LeftPaddingChecker::CheckCrossFeature(const FiaTilingInfo &fiaIn
             return ge::GRAPH_FAILED;
         }
     }
+    if (fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag) {
+        OP_CHECK_IF(
+            fiaInfo.isQKVDDifferent && fiaInfo.ropeMode == RopeMode::NO_ROPE,
+            OP_LOGE(fiaInfo.opName,
+                "In GQA scenario, not support leftpadding when query and key headdim is not equal to value headdim."),
+                return ge::GRAPH_FAILED);
+    }
     return ge::GRAPH_SUCCESS;
 }
 

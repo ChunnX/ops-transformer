@@ -361,6 +361,12 @@ def run_recurrent_gated_delta_rule_eager(B, mtp, nk, nv, dk, dv, actual_seq_leng
     act_seq_len = torch.tensor(actual_seq_lengths, dtype=torch.int32)
     ssm_state_indices = torch.tensor(ssm_state_indices, dtype=torch.int32)
 
+    # 对于query和key数据范围大于[-1, 1]的情况加入归一化处理，避免数据过大导致计算结果全为inf或者nan的情况
+    if query_datarange[0] < -1 or query_datarange[1] > 1:
+        query = torch.nn.functional.normalize(query, p=2, dim=-1)
+    if key_datarange[0] < -1 or key_datarange[1] > 1:
+        key = torch.nn.functional.normalize(key, p=2, dim=-1)
+
     # ======================== gen input data finish =============================
 
     # ======================== execute cpu start =================================

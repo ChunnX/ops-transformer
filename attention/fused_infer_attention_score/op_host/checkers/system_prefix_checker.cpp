@@ -224,15 +224,24 @@ ge::graphStatus SystemPrefixChecker::CheckActualSharedPrefixLenData(const FiaTil
     }
     uint32_t keySharedPrefixS = 0;
     uint32_t valueSharedPrefixS = 0;
-    if (fiaInfo.kvLayout == FiaLayout::BNSD) {
+    const std::vector<std::string> layoutSupportList = {
+        "BSND", "BNSD", "BSH", "BNSD_BSND"
+    };
+    std::string layout(fiaInfo.opParamInfo.layOut);
+    if (std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) == layoutSupportList.end()) {
+        OP_LOGE(fiaInfo.opName,
+            "When system prefix exists, input_layout only supports BSH, BSND, BNSD, and BNSD_BSND, but got %s.",
+            layout.c_str());
+        return ge::GRAPH_FAILED;
+    }
+
+    if (layout == "BNSD" || layout == "BNSD_BSND") {
         keySharedPrefixS = keySharedPrefixTensor->GetStorageShape().GetDim(DIM_NUM_2);
         valueSharedPrefixS = valueSharedPrefixTensor->GetStorageShape().GetDim(DIM_NUM_2);
-    }
-    if (fiaInfo.kvLayout == FiaLayout::BSND) {
+    } else if (layout == "BSND") {
         keySharedPrefixS = keySharedPrefixTensor->GetStorageShape().GetDim(DIM_NUM_1);
         valueSharedPrefixS = valueSharedPrefixTensor->GetStorageShape().GetDim(DIM_NUM_1);
-    }
-    if (fiaInfo.kvLayout == FiaLayout::BSH) {
+    } else if (layout == "BSH") {
         keySharedPrefixS = keySharedPrefixTensor->GetStorageShape().GetDim(DIM_NUM_1);
         valueSharedPrefixS = valueSharedPrefixTensor->GetStorageShape().GetDim(DIM_NUM_1);
     }
@@ -247,10 +256,10 @@ ge::graphStatus SystemPrefixChecker::CheckActualSharedPrefixLenData(const FiaTil
             "actualSharedPrefixLen(%lld) can not be greater than "
             "valueSharedPrefixS(%u).", actualSharedPrefixLenData, valueSharedPrefixS),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!(actualSharedPrefixLenData > 0),
+    OP_CHECK_IF((actualSharedPrefixLenData < 0),
         OP_LOGE(fiaInfo.opName,
                 "actualSharedPrefixLen(%lld) can not be "
-                "less than or equal to 0.", actualSharedPrefixLenData),
+                "less than 0.", actualSharedPrefixLenData),
             return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

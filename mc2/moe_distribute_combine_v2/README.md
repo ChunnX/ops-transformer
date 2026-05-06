@@ -329,6 +329,9 @@
     
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     * 当`commAlg` = "hierarchy"，必须传入`expandScalesOptional`。
+    * commAlg 支持""，"fullmesh_v1"，"fullmesh_v2", "hierarchy"三种输入方式。""：默认值，不使能fullmesh_v2模板；"fullmesh_v1"：不使能fullmesh_v2模板；"fullmesh_v2"：使能fullmesh_v2模板，该模板仅支持tpWorldSize为1场景；"hierarchy": 使能跨超模板，该模板仅支持tpWorldSize为1、共享专家为0的场景，且不支持可变BS、二维mask、特殊专家、performanceInfo场景。
+    * epWorldSize 取值范围[2, 768]；当commAlg="hierarchy"场景时，取值范围为[16, 256]，且为16的整数倍。
+    * moeExpertNum 取值范围(0, 1024]；当commAlg="hierarchy"场景时，取值范围为(0, 512]。
 
 - <term>Ascend 950PR/Ascend 950DT</term>：
     * 不支持`expandScalesOptional`。

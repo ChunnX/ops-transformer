@@ -609,7 +609,7 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::ElewiseCompute(
                     maskInfo.attenMaskBatchStride += qActSeqLensParser.GetActualSeqLength(i) * qActSeqLensParser.GetActualSeqLength(i);
                 }
             }
-            if (!fa_base_vector::IsSkipAttentionmask(maskInfo)) {
+            if (!fa_base_vector::IsSkipAttentionmask<true>(maskInfo)) {
                 fa_base_vector::AttentionmaskCopyIn<bool, bool, true>(maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo);
                 AscendC::PipeBarrier<PIPE_V>();
                 fa_base_vector::AttentionMaskCompute<MM1_OUT_T>(mmResUb, mmResUb, maskUb, ubWorkSpace, maskInfo);
@@ -1011,10 +1011,17 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::DealInvalidRows(const RunInfo 
 template <typename FIAT>
 __aicore__ inline void FiaBlockVecNonQuant<FIAT>::SinkCopyIn(const RunInfo &info, LocalTensor<COMPUTE_T> &sinkBuf)
 {
-    uint32_t copySize = constInfo.gSize + 16; //DataCopy函数搬运量要求是32字节整数倍，不对齐时，将向下取整，因此该处多搬运16*sizeof(bf16)占位
     uint64_t sinkGmOffset = info.n2Idx * constInfo.gSize;
     LocalTensor<SINK_T> sinkCopyInBuf = inputQue1.AllocTensor<SINK_T>();
-    DataCopy(sinkCopyInBuf, sinkGm[sinkGmOffset], copySize);
+    DataCopyExtParams sinkCopyParams;
+    sinkCopyParams.blockCount = 1;
+    sinkCopyParams.blockLen = constInfo.gSize * sizeof(SINK_T);
+    sinkCopyParams.srcStride = 0;
+    sinkCopyParams.dstStride = 0;
+    DataCopyPadExtParams<SINK_T> sinkPadParams;
+    sinkPadParams.isPad = true;
+    sinkPadParams.paddingValue = static_cast<SINK_T>(0);
+    DataCopyPad(sinkCopyInBuf, sinkGm[sinkGmOffset], sinkCopyParams, sinkPadParams);
     inputQue1.EnQue(sinkCopyInBuf);
     inputQue1.DeQue<SINK_T>();
 

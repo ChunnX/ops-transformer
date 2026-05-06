@@ -107,9 +107,11 @@ protected:
     bool IsShapeCapable();
     bool IsDropMskCapable();
     bool IsAttenMskCapable();
+    ge::graphStatus GetMaxWorkspaceFlag();
 
 private:
     BasicDetBaseInfoParams fBaseParams;
+    bool isMaxWorkspace_ = false;
 };
 
 } // namespace optiling
