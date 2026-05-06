@@ -30,8 +30,8 @@ static constexpr uint32_t DIM_3 = 3;
 
 const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
     {QUERY_NAME,                     {ge::DT_BF16}},
-    {ORI_KV_NAME,                    {ge::DT_INT8, ge::DT_FLOAT8_E4M3FN}},
-    {CMP_KV_NAME,                    {ge::DT_INT8, ge::DT_FLOAT8_E4M3FN}},
+    {ORI_KV_NAME,                    {ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8}},
+    {CMP_KV_NAME,                    {ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8}},
     {ATTEN_OUT_NAME,                 {ge::DT_FLOAT16, ge::DT_BF16}},
     {CMP_SPARSE_INDICES_NAME,        {ge::DT_INT32}},
     {ORI_BLOCK_TABLE_NAME,           {ge::DT_INT32}},
@@ -204,10 +204,6 @@ ge::graphStatus KvQuantSASTilingCheck::CheckSingleParaKey() const
     OP_CHECK_IF(oriBlockSize_ % 16 > 0,
         OP_LOGE(opName_, "when page attention is enabled, ori_block_size(%u) should be 16-aligned.",
         oriBlockSize_), return ge::GRAPH_FAILED);
-
-    OP_CHECK_IF(dSizeOriKvInput_ != 640,
-        OP_LOGE(opName_, "Dimension of OriKv only support 640, but got %u", dSizeOriKvInput_),
-        return ge::GRAPH_FAILED);
     
     if (opParamInfo_.cmpKv.tensor != nullptr) {
         OP_CHECK_IF(opParamInfo_.cmpKv.tensor->GetShapeSize() == 0,
@@ -220,10 +216,6 @@ ge::graphStatus KvQuantSASTilingCheck::CheckSingleParaKey() const
             ge::GRAPH_SUCCESS != CheckDimNumInLayoutSupport(kvLayout_, &opParamInfo_.cmpKv.tensor->GetShape(), CMP_KV_NAME)) {
             return ge::GRAPH_FAILED;
         }
-
-        OP_CHECK_IF(dSizeCmpKvInput_ != 640,
-            OP_LOGE(opName_, "Dimension of CmpKv only support 640, but got %u", dSizeCmpKvInput_),
-            return ge::GRAPH_FAILED);
 
         uint32_t cmpKvN2Size_ = GetAxisNum(opParamInfo_.cmpKv.tensor->GetStorageShape(), SASAxis::N, kvLayout_);
         OP_CHECK_IF(cmpKvN2Size_ != n2Size_, 
