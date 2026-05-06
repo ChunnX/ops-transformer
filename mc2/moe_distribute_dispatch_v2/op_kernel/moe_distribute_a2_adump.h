@@ -30,7 +30,7 @@ public:
                                 uint32_t aivId, uint32_t epRankIdHccl, uint32_t epWorldSizeHccl, uint32_t epRankIdOriginal,
                                 uint32_t moeExpertNum, uint32_t epWorldSizeOriginal, uint32_t globalBs,
                                 uint32_t bufferId, uint32_t isLayered, uint32_t aivNum,
-                                LocalTensor<uint8_t> dataStateLocalTensor)
+                                LocalTensor<uint8_t> dataStateLocalTensor, uint32_t axisH)
     {
         selfDataStatusGMTensor_.SetGlobalBuffer((__gm__ uint32_t*)(aDumpWinStartAddr + aivId * WIN_ADDR_ALIGN));
         selfTokenNumGMTensor_.SetGlobalBuffer((__gm__ uint32_t*)(aDumpWinStartAddr + (aivNum + 1) * WIN_ADDR_ALIGN));
@@ -49,6 +49,7 @@ public:
         dataStateLocalTensor_.SetValue(MOE_NUM_POS, moeExpertNum);
         dataStateLocalTensor_.SetValue(TILING_WORLDSIZE_POS, epWorldSizeOriginal);
         dataStateLocalTensor_.SetValue(GLOBALBS_POS, globalBs);
+        dataStateLocalTensor_.SetValue(H_POS, axisH);
         if ((epRankIdOriginal != epRankIdHccl) || (epWorldSizeOriginal != epWorldSizeHccl)) {
             dataStateLocalTensor_.SetValue(HCCL_DFX_POS + HCCL_EPRANKId_POS, epRankIdHccl);
             dataStateLocalTensor_.SetValue(HCCL_DFX_POS + HCCL_WORLDSIZE_POS, epWorldSizeHccl);
@@ -59,7 +60,7 @@ public:
         opCnt = opCnt + 1UL;
         dataStateLocalTensor64.SetValue(OP_CNT_POSUL, opCnt);
         SyncFunc<AscendC::HardEvent::S_MTE3>();
-        auto dataStateParams = DataCopyExtParams{1U, (AIVNUM_POS + 1) * sizeof(uint32_t), 0U, 0U, 0U};
+        auto dataStateParams = DataCopyExtParams{1U, (H_POS + 1) * sizeof(uint32_t), 0U, 0U, 0U};
         DataCopyPad(selfDataStatusGMTensor_, dataStateLocalTensor_, dataStateParams);
         SyncFunc<AscendC::HardEvent::MTE3_S>();
     }
@@ -148,6 +149,11 @@ public:
         }
         auto dataStateParams = DataCopyExtParams{blockNum, static_cast<uint32_t>(num * sizeof(uint32_t)), 0U, 0U, 0U};
         DataCopyPad(selfDataStatusGMTensor_[AIVNUM_POS + 1U], dataStateLocalTensor_, dataStateParams);
+    }
+
+    __aicore__ inline void Exception() {
+        AscendC::DataCopy(dataStateLocalTensor_[1], selfDataStatusGMTensor_, 1); // 从全局地址复制数据到本地地址
+        AscendC::PipeBarrier<PIPE_ALL>();
     }
 
 private:

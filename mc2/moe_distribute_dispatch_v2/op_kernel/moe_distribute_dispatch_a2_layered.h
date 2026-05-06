@@ -318,11 +318,11 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
 
     // 每次调用magic++,用来区分不同轮次
     magicVal_ = addrInfo_.GetMagicValue();
-    tpipe_->InitBuffer(aDumpBuf_, RoundUp(Mc2A2Kernel::AIVNUM_POS + 1U, BITS32_PER_BLOCK) * sizeof(uint32_t));
+    tpipe_->InitBuffer(aDumpBuf_, Std::max(RoundUp(Mc2A2Kernel::H_POS + 1U, BITS32_PER_BLOCK), BITS32_PER_BLOCK * 2U) * sizeof(uint32_t));
     LocalTensor<uint8_t> aDumpTensor = aDumpBuf_.Get<uint8_t>();
     GM_ADDR aDumpAddr = addrInfo_.GetIpcAdumpWinAddr();
     aDump_.Init(aDumpAddr, aivId_, rankId_, worldSize_, rankId_, moeExpertNum_, worldSize_, globalBs_, (magicVal_ - 1UL) & 0x1,
-        Mc2A2Kernel::IS_HIERARCHY, aivNum_, aDumpTensor);
+        Mc2A2Kernel::IS_HIERARCHY, aivNum_, aDumpTensor, axisH_);
     AscendC::PipeBarrier<PIPE_ALL>();
 }
 
@@ -1367,7 +1367,7 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
         CopyPerformanceInfo();
-        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_DISPATCH_FINISH);
+        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_END);
         hccl_.Finalize();
     }
 }

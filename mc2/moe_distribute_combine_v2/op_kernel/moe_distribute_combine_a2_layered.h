@@ -385,7 +385,7 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
     LocalTensor<uint8_t> aDumpTensor = aDumpBuf_.Get<uint8_t>();
     GM_ADDR aDumpAddr = addrInfo_.GetIpcAdumpWinAddr();
     aDump_.Init(aDumpAddr, coreIdx_, rankId_, worldSize_, rankId_, moeExpertNum_, worldSize_, globalBs_, (magicValue_ - 1UL) & 0x1,
-        Mc2A2Kernel::IS_HIERARCHY, aivNum_, aDumpTensor);
+        Mc2A2Kernel::IS_HIERARCHY, aivNum_, aDumpTensor, axisH_);
     PipeBarrier<PIPE_ALL>();
 }
 
@@ -405,7 +405,7 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
     // 总tBuf
     tpipe_->InitBuffer(tBuf, TBUF_SIZE);
     // aDumpBuf_
-    tpipe_->InitBuffer(aDumpBuf_, RoundUp(Mc2A2Kernel::AIVNUM_POS + 1U, B32_PER_BLOCK) * sizeof(uint32_t));
+    tpipe_->InitBuffer(aDumpBuf_, Std::max(RoundUp(Mc2A2Kernel::H_POS + 1U, B32_PER_BLOCK), B32_PER_BLOCK * 2U) * sizeof(uint32_t));
 }
 template <TemplateMC2TypeA2layeredClass>
 __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFunc>::SplitCoreCal()
@@ -1081,7 +1081,7 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
         aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_COMBINE_INTER_RECV);
         SumToServer();
         CopyPerformanceInfo();
-        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_COMBINE_FINISH);
+        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_END);
         hccl_.Finalize();
     }
 }

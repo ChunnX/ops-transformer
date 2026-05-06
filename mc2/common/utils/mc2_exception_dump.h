@@ -221,13 +221,16 @@ int ProcessArgs910BImpl(void* devArgsPtr, std::vector<uint8_t> &winBuf, uint32_t
         return -1;
     }
     std::vector<uint32_t> singleAiv(Mc2A2Kernel::BUFFER_ADUMP_WIN_SIZE_PER_AIV / sizeof(uint32_t), 0);
-    std::memcpy(singleAiv.data(), winBuf.data() + Mc2A2Kernel::BUFFER_ADUMP_WIN_ADDR_START, singleAiv.size());
+    uint32_t offsetForValidDump = isDispatch ? 0U : Mc2A2Kernel::BUFFER_ADUMP_WIN_SIZE;
+    std::memcpy(singleAiv.data(), winBuf.data() + Mc2A2Kernel::BUFFER_ADUMP_WIN_ADDR_START + offsetForValidDump, singleAiv.size());
     OP_LOGE(OP_NAME, "IsLayered=%d", singleAiv[Mc2A2Kernel::ISLAYERED_POS]);
     uint32_t bufferId = singleAiv[Mc2A2Kernel::BUFFERID_POS];
+    uint32_t axisH = singleAiv[Mc2A2Kernel::H_POS];
     if (!isDispatch) {
         bufferId = 1 - bufferId;
     }
     void *statusBuffer = buffer;
+    
     if (singleAiv[Mc2A2Kernel::ISLAYERED_POS] == 1) {
         constexpr static uint64_t STATE_OFFSET = 512UL;
         constexpr static uint32_t SERVER_RANK_SIZE = 8;
@@ -267,6 +270,8 @@ int ProcessArgs910BImpl(void* devArgsPtr, std::vector<uint8_t> &winBuf, uint32_t
     } else if (singleAiv[Mc2A2Kernel::ISLAYERED_POS] == 0) {
         uint32_t worldSize = singleAiv[Mc2A2Kernel::TILING_WORLDSIZE_POS];
         uint32_t moeExpertNum = singleAiv[Mc2A2Kernel::MOE_NUM_POS];
+        OP_LOGE(OP_NAME, "worldSize=%d, moeExpertNum=%d, axisH=%d", worldSize, moeExpertNum, axisH);
+
         uint64_t dataSizePerRank_ = (size / 4 - 1 * 1024 * 1024) / worldSize / Mc2A2Kernel::UB_ALIGN * Mc2A2Kernel::UB_ALIGN;
         uint32_t localMoeExpertNum = moeExpertNum / worldSize;
         uint32_t statusEntryCount = ((localMoeExpertNum + 1) * sizeof(uint32_t) + Mc2A2Kernel::UB_ALIGN - 1) / Mc2A2Kernel::UB_ALIGN * Mc2A2Kernel::UB_ALIGN;
@@ -281,6 +286,7 @@ int ProcessArgs910BImpl(void* devArgsPtr, std::vector<uint8_t> &winBuf, uint32_t
             }
         }
         // Combine
+        OP_LOGE(OP_NAME, "dataSizePerRank_=%d", dataSizePerRank_);
         for (uint32_t rank = 0; rank < worldSize; ++rank) {
             uint32_t srcOffset = rank * dataSizePerRank_ + size / 4 * (1 - bufferId);
             uint32_t dstOffset = rank * Mc2A2Kernel::UB_ALIGN * 2 + Mc2A2Kernel::BUFFER_ADUMP_WIN_DISPATCH_SIZE;
@@ -291,7 +297,8 @@ int ProcessArgs910BImpl(void* devArgsPtr, std::vector<uint8_t> &winBuf, uint32_t
             }
             uint32_t tokenNum = 0;
             std::memcpy(&tokenNum, winBuf.data() + dstOffset, sizeof(uint32_t));
-            srcOffset += Mc2A2Kernel::UB_ALIGN * 2 + tokenNum * sizeof(uint16_t);
+            OP_LOGE(OP_NAME, "rank=%d, tokenNum=%d", rank, tokenNum);
+            srcOffset += Mc2A2Kernel::UB_ALIGN * 2 + tokenNum * axisH * sizeof(uint16_t);
             dstOffset += Mc2A2Kernel::UB_ALIGN;
             ret = aclrtMemcpy(winBuf.data() + dstOffset, Mc2A2Kernel::BUFFER_ADUMP_WIN_COMBINE_SIZE, (const void *)statusBuffer + srcOffset, Mc2A2Kernel::UB_ALIGN, ACL_MEMCPY_DEVICE_TO_HOST);
             if (!(ret == ACL_SUCCESS)) {
