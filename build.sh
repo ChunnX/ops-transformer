@@ -1025,10 +1025,10 @@ parse_changed_files() {
     echo "changed files is" $PR_CHANGED_FILES
     echo $dotted_line
     cat $PR_CHANGED_FILES
-    ops_names=$(python3 scripts/ci/parse_changed_ops.py $PR_CHANGED_FILES "$ENABLE_EXPERIMENTAL")
+    ops_names=$(python3 scripts/ci/parse_changed_ops.py $PR_CHANGED_FILES "$ENABLE_EXPERIMENTAL" "$ASCEND_SOC_UNITS")
+    exit 1
     if [[ -z $ops_names ]]; then
-            ops_names='all_gather_matmul_v2'
-            ascend_compute_unit="ascend950"
+            ops_names='nsa_compress_attention_infer'
         echo "NO ops changed found,set op $ops_names as default."
     fi
 }
