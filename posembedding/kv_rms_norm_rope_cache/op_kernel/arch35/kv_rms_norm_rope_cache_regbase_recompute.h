@@ -1149,9 +1149,11 @@ public:
         }
     }
 
-     __aicore__ inline void RopeVF(__local_mem__ T_KV*& outPtr, __local_mem__ T_KV*& ropePtr, __local_mem__ T_KV*& cosPtr1,
-                                   __local_mem__ T_KV*& cosPtr2, __local_mem__ T_KV*& sinPtr1, __local_mem__ T_KV*& sinPtr2,
-                                   __local_mem__ float*& tmpBufferPtr, uint32_t ubFactor)
+     __aicore__ inline void RopeVF(__local_mem__ T_KV*& outPtr1, __local_mem__ T_KV*& outPtr2,
+                                   __local_mem__ T_KV*& ropePtr, __local_mem__ T_KV*& cosPtr1,
+                                   __local_mem__ T_KV*& cosPtr2, __local_mem__ T_KV*& sinPtr1,
+                                   __local_mem__ T_KV*& sinPtr2, __local_mem__ float*& tmpBufferPtr,
+                                   uint32_t ubFactor)
     {
         uint32_t vlStride = VL_FP32 * CONST_TWO;
         uint16_t repeatTimesFloor = ops::FloorDiv(ubFactor, vlStride);
@@ -1168,7 +1170,8 @@ public:
             for (uint16_t j = 0; j < repeatTimesFloor; j++) {
                 auto ropeAddr1 = ropePtr + j * VL_FP32 * CONST_TWO;
                 auto ropeAddr2 = ropePtr + (j * CONST_TWO + CONST_ONE) * VL_FP32;
-                auto outAddr = outPtr + j * VL_FP32;
+                auto outAddr1 = outPtr1 + j * VL_FP32;
+                auto outAddr2 = outPtr2 + j * VL_FP32;
                 auto cosAddr1 = cosPtr1 + j * VL_FP32;
                 auto cosAddr2 = cosPtr2 + j * VL_FP32;
                 auto sinAddr1 = sinPtr1 + j * VL_FP32;
@@ -1194,15 +1197,15 @@ public:
                 AscendC::MicroAPI::Add(vregCos1Fp32, vregCos1Fp32, vregSin1Fp32, mask);
                 AscendC::MicroAPI::Add(vregCos2Fp32, vregCos2Fp32, vregSin2Fp32, mask);
 
-                StoreDataAndCastFromFp32(outAddr, vregCos1Fp32, uReg, mask, width);
-                auto outAddrTmp = outAddr + ubFactor / CONST_TWO;
-                StoreDataAndCastFromFp32(outAddrTmp, vregCos2Fp32, uReg, mask, width);
+                StoreDataAndCastFromFp32(outAddr1, vregCos1Fp32, uReg, mask, width);
+                StoreDataAndCastFromFp32(outAddr2, vregCos2Fp32, uReg, mask, width);
             }
 
             // 尾VL计算范式
             auto ropeAddr1 = ropePtr + repeatTimesFloor * VL_FP32 * CONST_TWO;
             auto ropeAddr2 = ropePtr + (repeatTimesFloor * CONST_TWO + CONST_ONE) * VL_FP32;
-            auto outAddr = outPtr + repeatTimesFloor * VL_FP32;
+            auto outAddr1 = outPtr1 + repeatTimesFloor * VL_FP32;
+            auto outAddr2 = outPtr2 + repeatTimesFloor * VL_FP32;
             auto cosAddr1 = cosPtr1 + repeatTimesFloor * VL_FP32;
             auto cosAddr2 = cosPtr2 + repeatTimesFloor * VL_FP32;
             auto sinAddr1 = sinPtr1 + repeatTimesFloor * VL_FP32;
@@ -1230,9 +1233,8 @@ public:
 
             width = regTailWidth;
             mask = AscendC::MicroAPI::UpdateMask<float>(width);
-            StoreDataAndCastFromFp32(outAddr, vregCos1Fp32, uReg, mask, width);
-            auto outAddrTmp = outAddr + ubFactor / CONST_TWO;
-            StoreDataAndCastFromFp32(outAddrTmp, vregCos2Fp32, uReg, mask, width);
+            StoreDataAndCastFromFp32(outAddr1, vregCos1Fp32, uReg, mask, width);
+            StoreDataAndCastFromFp32(outAddr2, vregCos2Fp32, uReg, mask, width);
         }
     }
 
@@ -2042,7 +2044,8 @@ public:
             __local_mem__ T_KV* cosPtr2 = (__local_mem__ T_KV*)cosLocalPart2.GetPhyAddr();
             __local_mem__ T_KV* sinPtr1 = (__local_mem__ T_KV*)sinLocalPart1.GetPhyAddr();
             __local_mem__ T_KV* sinPtr2 = (__local_mem__ T_KV*)sinLocalPart2.GetPhyAddr();
-            __local_mem__ T_KV* outPtr = (__local_mem__ T_KV*)kOutLocal.GetPhyAddr();
+            __local_mem__ T_KV* outPtr1 = (__local_mem__ T_KV*)kOutLocal.GetPhyAddr();
+            __local_mem__ T_KV* outPtr2 = (__local_mem__ T_KV*)kOutLocal1.GetPhyAddr();
             LocalTensor<float> tmpLocal = xPowBuffer.Get<float>();
             __local_mem__ float* tmpBufferPtr = (__local_mem__ float*)tmpLocal.GetPhyAddr();
 
@@ -2059,7 +2062,7 @@ public:
             inQueueCosSin.EnQue<T_KV>(cosLocalPart1);
             cosLocalPart1 = inQueueCosSin.DeQue<T_KV>();
 
-            RopeVF(outPtr, ropePtr, cosPtr1, cosPtr2, sinPtr1, sinPtr2, tmpBufferPtr, tmpFactor);
+            RopeVF(outPtr1, outPtr2, ropePtr, cosPtr1, cosPtr2, sinPtr1, sinPtr2, tmpBufferPtr, tmpFactor);
             
             outQueue.EnQue<T_KV>(kOutLocal);
             kOutLocal = outQueue.DeQue<T_KV>();
