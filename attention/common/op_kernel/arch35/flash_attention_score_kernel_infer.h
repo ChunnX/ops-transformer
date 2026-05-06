@@ -44,7 +44,7 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void
 FlashAttentionScoreKernelInfer<CubeBlockType, VecBlockType>::InitUniqueConstInfo()
 {
-    if constexpr (isFd) {
+    if (this->constInfo.isFd) {
         this->constInfo.splitKVNum = this->sharedParams.splitKVNum;
         this->constInfo.sInnerLoopSize = CeilDiv(this->constInfo.s2Size, this->constInfo.splitKVNum);
     }
@@ -100,7 +100,7 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreKernelInfer<CubeBlockType, VecBlockType>::ProcessMainLoop()
 {
     int32_t actualCoreNums = this->sharedParams.coreNum;
-    if constexpr (isFd) {
+    if (this->constInfo.isFd) {
         actualCoreNums = this->sharedParams.bSize * this->constInfo.n2Size *
                          this->constInfo.splitKVNum; // b * n2 * splitkv
     }
@@ -113,7 +113,7 @@ __aicore__ inline void FlashAttentionScoreKernelInfer<CubeBlockType, VecBlockTyp
     uint32_t bnEndIdx;
     int64_t s2LoopLimit;
     int64_t nextGs1Idx = this->sharedParams.multiCoreInnerLimit;
-    if (!constInfo.isFd) {
+    if (!this->constInfo.isFd) {
         bnStartIdx = this->sharedParams.bnStartIdx;
         gS1StartIdx = this->sharedParams.multiCoreInnerOffset;
         if (likely((this->sharedParams.coreNum - 1) > this->aicIdx)) {
@@ -138,7 +138,7 @@ __aicore__ inline void FlashAttentionScoreKernelInfer<CubeBlockType, VecBlockTyp
     RunInfo<isInfer> runInfo[4];
     RunParamStr<isInfer> runParam;
 
-    if constexpr (isFd) {
+    if (this->constInfo.isFd) {
         runParam.boIdx = this->aicIdx / (this->constInfo.n2Size * this->constInfo.splitKVNum);
         runParam.n2oIdx = (this->aicIdx / this->constInfo.splitKVNum) % this->constInfo.n2Size;
         bnStartIdx = runParam.boIdx * this->constInfo.n2Size + runParam.n2oIdx;
@@ -149,7 +149,7 @@ __aicore__ inline void FlashAttentionScoreKernelInfer<CubeBlockType, VecBlockTyp
     int64_t multiCoreInnerIdx = 1;
     for (uint32_t bnIdx = bnStartIdx; bnIdx < bnEndIdx; ++bnIdx) {
         bool lastBN = (bnIdx == bnEndIdx - 1);
-        if (!constInfo.isFd) {
+        if (!this->constInfo.isFd) {
             runParam.boIdx = bnIdx / (this->constInfo.n2Size * this->constInfo.headNumRatio);
             runParam.n2oIdx = (bnIdx / this->constInfo.headNumRatio) % this->constInfo.n2Size;
         }
@@ -157,7 +157,7 @@ __aicore__ inline void FlashAttentionScoreKernelInfer<CubeBlockType, VecBlockTyp
             this->keyGm, this->actualSeqQlenAddr, this->actualSeqKvlenAddr);
         ComputeS1LoopInfo<CHILD_SPEC_TEMPLATE_ARGS, BaseClass::useDn, BaseClass::enableKVPrefix>(runParam, this->constInfo, lastBN,
                                                                       nextGs1Idx);
-        if constexpr (isFd) {
+        if (this->constInfo.isFd) {
             if (this->constInfo.sInnerLoopSize * (this->aicIdx % this->constInfo.splitKVNum) >
                 runParam.actualS2Size) {
                 runParam.s2LineEndIdx = 0;
@@ -265,7 +265,7 @@ __aicore__ inline void FlashAttentionScoreKernelInfer<CubeBlockType, VecBlockTyp
         SyncAll<false>();
     }
     ProcessMainLoop();
-    if constexpr (isFd) {
+    if (this->constInfo.isFd) {
         if ASCEND_IS_AIV {
             SyncAll();
             this->vecBlock.InitFDBuffers(this->constInfo);
