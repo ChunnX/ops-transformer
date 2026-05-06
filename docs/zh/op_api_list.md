@@ -30,10 +30,12 @@
 |[aclnnAlltoAllMatmul](../../mc2/allto_all_matmul/docs/aclnnAlltoAllMatmul.md)|完成AlltoAll通信与MatMul计算融合。|默认确定性实现|默认确定性实现|
 |[aclnnAlltoAllQuantMatmul](../../mc2/allto_all_matmul/docs/aclnnAlltoAllQuantMatmul.md)|完成AlltoAll通信、量化计算、MatMul计算和反量化计算的融合。|默认确定性实现|默认确定性实现|
 |[aclnnAlltoAllvGroupedMatMul](../../mc2/allto_allv_grouped_mat_mul/docs/aclnnAlltoAllvGroupedMatMul.md)|完成路由专家AlltoAllv、Permute、GroupedMatMul融合并实现与共享专家MatMul并行融合。|默认确定性实现|默认确定性实现|
+|[aclnnAlltoAllvQuantGroupedMatMul](../../mc2/allto_allv_grouped_mat_mul/docs/aclnnAlltoAllvQuantGroupedMatMul.md)|完成路由专家AlltoAllv、Permute、量化GroupedMatMul融合并实现与共享专家量化MatMul并行融合。|-|默认确定性实现|
 |[aclnnApplyRotaryPosEmb](../../posembedding/apply_rotary_pos_emb/docs/aclnnApplyRotaryPosEmb.md)|将query和key两路算子融合成一路。执行旋转位置编码计算，计算结果执行原地更新。|默认确定性实现|默认确定性实现|
 |[aclnnApplyRotaryPosEmbV2](../../posembedding/apply_rotary_pos_emb/docs/aclnnApplyRotaryPosEmbV2.md)|将query和key两路算子融合成一路。执行旋转位置编码计算，计算结果执行原地更新。|默认确定性实现|默认确定性实现|
 |[aclnnAttentionUpdate](../../attention/attention_update/docs/aclnnAttentionUpdate.md)|将各SP域PA算子的输出的中间结果lse，localOut两个局部变量结果更新成全局结果。|默认确定性实现|默认确定性实现|
 |[aclnnBatchMatMulReduceScatterAlltoAll](../../mc2/batch_mat_mul_reduce_scatter_allto_all/docs/aclnnBatchMatMulReduceScatterAlltoAll.md)|BatchMatMulReduceScatterAllToAll是通算融合算子，实现BatchMatMul计算与ReduceScatter、AllToAll集合通信并行的算子。|默认确定性实现|-|
+|[aclnnBlockSparseAttention](../../attention/block_sparse_attention/docs/aclnnBlockSparseAttention.md)|BlockSparseAttention通过BlockSparseMask指定每个Q块选择的KV块，实现高效的稀疏注意力计算。|默认确定性实现|默认确定性实现|
 |[aclnnBlockSparseAttentionGrad](../../attention/block_sparse_attention_grad/docs/aclnnBlockSparseAttentionGrad.md)|BlockSparseAttentionGrad通过BlockSparseMask指定每个Q块选择的KV块，实现高效的稀疏注意力计算。|默认确定性实现|-|
 |[aclnnAttentionToFFN](../../mc2/attention_to_ffn/docs/aclnnAttentionToFFN.md)|将Attention节点上数据发往FFN节点。|默认确定性实现|-|
 |[aclnnFFNToAttention](../../mc2/ffn_to_attention/docs/aclnnFFNToAttention.md)|将FFN节点上的token数据发往Attention节点。|默认非确定性实现|-|
@@ -67,6 +69,7 @@
 |[aclnnGatherPaKvCache](../../attention/gather_pa_kv_cache/docs/aclnnGatherPaKvCache.md)|根据blockTables中的blockId值、seqLens中key/value的seqLen从keyCache/valueCache中将内存不连续的token搬运、拼接成连续的key/value序列。|默认确定性实现|默认确定性实现|
 |[aclnnGroupedMatmulV5](../../gmm/grouped_matmul/docs/aclnnGroupedMatmulV5.md)|实现分组矩阵乘计算，每组矩阵乘的维度大小可以不同。|默认确定性实现|默认确定性实现|
 |[aclnnGroupedMatmulAdd](../../gmm/grouped_matmul_add/docs/aclnnGroupedMatmulAdd.md)|实现分组矩阵乘计算，每组矩阵乘的维度大小可以不同。|默认确定性实现|默认确定性实现|
+|[aclnnGroupedMatmulAddV2](../../gmm/grouped_matmul_add/docs/aclnnGroupedMatmulAddV2.md)|实现分组矩阵乘计算后原地累加，每组矩阵乘的维度大小可以不同。|默认确定性实现|
 |[aclnnGroupedMatMulAlltoAllv](../../mc2/grouped_mat_mul_allto_allv/docs/aclnnGroupedMatMulAlltoAllv.md)|完成路由专家GroupedMatMul、Unpermute、AlltoAllv融合并实现与共享专家MatMul并行融合。|默认确定性实现|默认确定性实现|
 |[aclnnGroupedMatmulFinalizeRouting](../../gmm/grouped_matmul_finalize_routing/docs/aclnnGroupedMatmulFinalizeRouting.md)|GroupedMatMul和MoeFinalizeRouting的融合算子。|默认非确定性实现，支持配置开启|-|
 |[aclnnGroupedMatmulFinalizeRoutingV2](../../gmm/grouped_matmul_finalize_routing/docs/aclnnGroupedMatmulFinalizeRoutingV2.md)|GroupedMatmul和MoeFinalizeRouting的融合算子，GroupedMatmul计算后的输出按照索引做combine动作。|默认非确定性实现，支持配置开启|-|
@@ -76,11 +79,13 @@
 |[aclnnGroupedMatmulSwigluQuant](../../gmm/grouped_matmul_swiglu_quant/docs/aclnnGroupedMatmulSwigluQuant.md)|融合GroupedMatMul、Dequant、Swiglu和Quant。|默认确定性实现|-|
 |[aclnnGroupedMatmulSwigluQuantV2](../../gmm/grouped_matmul_swiglu_quant_v2/docs/aclnnGroupedMatmulSwigluQuantV2.md)|融合GroupedMatmul 、dequant、swiglu和quant。|默认确定性实现|默认确定性实现|
 |[aclnnGroupedMatmulSwigluQuantWeightNZ](../../gmm/grouped_matmul_swiglu_quant/docs/aclnnGroupedMatmulSwigluQuantWeightNZ.md)|融合GroupedMatMul、Dequant、Swiglu和Quant，输入权重Weight会被强制视为NZ格式。|默认确定性实现|-|
+|[aclnnGroupedMatmulSwigluQuantWeightNzV2](../../gmm/grouped_matmul_swiglu_quant_v2/docs/aclnnGroupedMatmulSwigluQuantWeightNzV2.md)|融合GroupedMatMul、Dequant、Swiglu和Quant，输入权重Weight会被强制视为NZ格式。|默认确定性实现| 默认确定性实现 |
 |[aclnnGroupedMatmulWeightNz](../../gmm/grouped_matmul/docs/aclnnGroupedMatmulWeightNz.md)|实现分组矩阵乘计算，每组矩阵乘的维度大小可以不同，输入权重Weight会被强制视为NZ格式。|默认确定性实现|默认确定性实现|
 |[aclnnIncreFlashAttentionV4](../../attention/incre_flash_attention/docs/aclnnIncreFlashAttentionV4.md)|在全量推理场景的FlashAttention算子的基础上实现增量推理。|默认确定性实现|-|
 |[aclnnInplaceAttentionWorkerScheduler](../../attention/attention_worker_scheduler/docs/aclnnInplaceAttentionWorkerScheduler.md)|Attention和FFN分离部署场景下，Attention侧数据扫描算子。该算子接收来自FFNToAttention算子的输出数据，并对数据进行逐步扫描，确保数据准备就绪。|默认确定性实现|默认确定性实现|
 |[aclnnInplaceFfnWorkerScheduler](../../ffn/ffn_worker_scheduler/docs/aclnnInplaceFfnWorkerScheduler.md)|Attention和FFN分离场景下，FFN侧数据扫描算子。该算子接收AttentionToFFN算子发送的数据，进行扫描并完成数据整理。|默认确定性实现|默认确定性实现|
 |[aclnnInterleaveRope](../../posembedding/interleave_rope/docs/aclnnInterleaveRope.md)|针对单输入 x 进行旋转位置编码。|默认确定性实现|默认确定性实现|
+|[aclnnLightningIndexer](../../attention/lightning_indexer/docs/aclnnLightningIndexer.md)|稀疏attention前处理的计算，目的是选出关键的稀疏token位置。|默认确定性实现| - |
 |[aclnnLightningIndexerGrad](../../attention/lightning_indexer_grad/docs/aclnnLightningIndexerGrad.md)|训练场景下，实现LightningIndexer反向，其中输入有Query, Key, Weights, Dy, Indices，反向主要利用正向计算的Indices从Key中提取TopK序列从而降低Matmul计算量。|默认非确定性实现，不支持配置开启|-|
 |[aclnnMatmulAlltoAll](../../mc2/matmul_allto_all/docs/aclnnMatmulAlltoAll.md)|完成MatMul计算与AlltoAll通信融合。|默认确定性实现|默认确定性实现|
 |[aclnnMatmulAllReduce](../../mc2/matmul_all_reduce/docs/aclnnMatmulAllReduce.md)|完成MatMul计算与AllReduce通信融合。|默认非确定性实现，支持配置开启|默认确定性实现|
@@ -141,11 +146,14 @@
 |[aclnnNsaSelectedAttentionInfer](../../attention/nsa_selected_attention_infer/docs/aclnnNsaSelectedAttentionInfer.md)|Native Sparse Attention推理过程中，Selected Attention的计算。|默认确定性实现|-|
 |[aclnnPromptFlashAttentionV3](../../attention/prompt_flash_attention/docs/aclnnPromptFlashAttentionV3.md)|全量推理场景的FlashAttention算子。|默认确定性实现|-|
 |[aclnnQkvRmsNormRopeCache](../../posembedding/qkv_rms_norm_rope_cache/docs/aclnnQkvRmsNormRopeCache.md)|输入qkv融合张量，通过SplitVD拆分q、k、v张量，执行RmsNorm、ApplyRotaryPosEmb、Quant、Scatter融合操作，输出qOut、kCache、vCache、qBeforeQuant(可选)、kBeforeQuant(可选)、vBeforeQuant(可选)。|默认确定性实现|-|
+|[aclnnQuantAllReduce](../../mc2/quant_all_reduce/docs/aclnnQuantAllReduce.md)|实现quant + allReduce融合计算。|默认确定性实现| 默认确定性实现 |
+|[aclnnQuantGroupedMatmulInplaceAdd](../../gmm/quant_grouped_matmul_inplace_add/docs/aclnnQuantGroupedMatmulInplaceAdd.md)|实现分组矩阵乘计算和加法计算，基本功能为矩阵乘和加法的组合。| - | 默认确定性实现 |
 |[aclnnQuantMatmulAllReduce](../../mc2/matmul_all_reduce/docs/aclnnQuantMatmulAllReduce.md)|对量化后的入参x1、x2进行MatMul计算后，接着进行Dequant计算，接着与x3进行Add操作，最后做AllReduce计算。|默认非确定性实现，支持配置开启|默认确定性实现|
 |[aclnnQuantMatmulAllReduceV2](../../mc2/matmul_all_reduce/docs/aclnnQuantMatmulAllReduceV2.md)|aclnnQuantMatmulAllReduceV2接口是对[aclnnQuantMatmulAllReduce](../../mc2/matmul_all_reduce/docs/aclnnQuantMatmulAllReduce.md)接口的功能扩展。|默认非确定性实现，支持配置开启|默认确定性实现|
 |[aclnnQuantMatmulAllReduceV3](../../mc2/matmul_all_reduce/docs/aclnnQuantMatmulAllReduceV3.md)|aclnnQuantMatmulAllReduceV3接口是对[aclnnQuantMatmulAllReduceV2](../../mc2/matmul_all_reduce/docs/aclnnQuantMatmulAllReduceV2.md)接口的功能扩展。|默认非确定性实现，支持配置开启|默认确定性实现|
 |[aclnnQuantMatmulAllReduceV4](../../mc2/matmul_all_reduce/docs/aclnnQuantMatmulAllReduceV4.md)|兼容[aclnnQuantMatmulAllReduceV3](../../mc2/matmul_all_reduce/docs/aclnnQuantMatmulAllReduceV3.md)支持的功能，在此基础上新增perblock量化方式的支持。|默认非确定性实现，支持配置开启|默认确定性实现|
 |[aclnnQuantMatmulAlltoAll](../../mc2/matmul_allto_all/docs/aclnnQuantMatmulAlltoAll.md)|对量化后的入参x1、x2进行MatMul计算后，接着进行Dequant计算，最后做AlltoAll通信。|默认确定性实现|默认确定性实现|
+|[aclnnQuantGroupedMatmulDequant](../../gmm/quant_grouped_matmul_dequant/docs/aclnnQuantGroupedMatmulDequant.md)|对输入x进行量化，分组矩阵乘以及反量化。|默认确定性实现|默认确定性实现|
 |[aclnnQuantReduceScatter](../../mc2/quant_reduce_scatter/docs/aclnnQuantReduceScatter.md)|实现quant + reduceScatter融合计算。|默认确定性实现|默认确定性实现|
 |[aclnnRainFusionAttention](../../attention/rain_fusion_attention/docs/aclnnRainFusionAttention.md)|RainFusionAttention稀疏注意力计算，支持灵活的块级稀疏模式，通过selectIdx指定每个Q块选择的KV块，实现高效的稀疏注意力计算。|默认确定性实现|-|
 |[aclnnRecurrentGatedDeltaRule](../../attention/recurrent_gated_delta_rule/docs/aclnnRecurrentGatedDeltaRule.md)|完成变步长的Recurrent Gated Delta Rule计算。|默认确定性实现|-|
@@ -157,8 +165,11 @@
 |[aclnnRotaryPositionEmbeddingGrad](../../posembedding/rotary_position_embedding_grad/docs/aclnnRotaryPositionEmbeddingGrad.md)|单路旋转位置编码[aclnnRotaryPositionEmbedding](../../posembedding/rotary_position_embedding/docs/aclnnRotaryPositionEmbedding.md)的反向计算。|默认确定性实现|默认确定性实现|
 |[aclnnScatterPaCache](../../attention/scatter_pa_cache/docs/aclnnScatterPaCache.md)|更新KCache中指定位置的key。|默认确定性实现|默认确定性实现|
 |[aclnnScatterPaKvCache](../../attention/scatter_pa_kv_cache/docs/aclnnScatterPaKvCache.md)|更新KvCache中指定位置的key和value。|默认确定性实现|默认确定性实现|
+|[aclnnSparseFlashAttention](../../attention/sparse_flash_attention/docs/aclnnSparseFlashAttention.md)|根据sparse_indices选取重要性较高的key和value进行attention运算，得到attention_out输出。|默认确定性实现| - |
 |[aclnnSparseFlashAttentionGrad](../../attention/sparse_flash_attention_grad/docs/aclnnSparseFlashAttentionGrad.md)|根据topkIndices对key和value选取大小为selectedBlockSize的数据重排，接着进行训练场景下计算注意力的反向输出。|默认非确定性实现，支持配置开启|默认非确定性实现，支持配置开启|
 |[aclnnSparseLightningIndexerGradKLLoss](../../attention/sparse_lightning_indexer_grad_kl_loss/docs/aclnnSparseLightningIndexerGradKLLoss.md)|LightningIndexer的反向算子，再额外融合了Loss计算功能。|默认非确定性实现，不支持配置开启|默认非确定性实现，不支持配置开启|
+|[aclnnSwinAttentionScoreQuant](../../attention/swin_attention_score_quant/docs/aclnnSwinAttentionScoreQuant.md)|完成swin-transformer场景的Attention计算。|默认确定性实现| - |
+|[aclnnSwinTransformerLnQkvQuant](../../ffn/swin_transformer_ln_qkv_quant/docs/aclnnSwinTransformerLnQkvQuant.md)|Swin Transformer网络模型完成 Q、K、V 的计算。| - | - |
 |[aclnnWeightQuantMatmulAllReduce](../../mc2/matmul_all_reduce/docs/aclnnWeightQuantMatmulAllReduce.md)|对入参x2进行伪量化计算后，完成MatMul和AllReduce计算。|默认非确定性实现，支持配置开启|默认确定性实现|
 |[aclnnKvRmsNormRopeCache](../../posembedding/kv_rms_norm_rope_cache/docs/aclnnKvRmsNormRopeCache.md)|对输入张量（kv）的尾轴，拆分出左半边用于rms_norm计算，右半边用于RoPE计算，再将计算结果分别scatter到两块cache中。|默认确定性实现|默认确定性实现|
 
