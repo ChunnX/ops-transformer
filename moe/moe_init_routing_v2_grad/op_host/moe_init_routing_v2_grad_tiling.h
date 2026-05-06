@@ -135,6 +135,8 @@ protected:
 };
 
 struct MoeInitRoutingV2GradCompileInfo {
+    int32_t aivNum = 0;
+    uint64_t ubSize = 0;
 };
 } // namespace optiling
 #endif // AIR_CXX_RUNTIME_V2_OP_IMPL_MOE_INIT_ROUTING_GRAD_H

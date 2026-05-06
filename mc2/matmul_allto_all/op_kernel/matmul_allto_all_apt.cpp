@@ -23,8 +23,8 @@
 #include "./arch35/matmul_allto_all_arch35.h"
 #include "./arch35/matmul_allto_all_pipeline.h"
 #if defined(__NPU_ARCH__) && __NPU_ARCH__ == 2201
-#include "./arch32/matmul_allto_all_tiling_data_910_93.h"
-#include "./arch32/matmul_allto_all_tiling_key_910_93.h"
+#include "./arch22/matmul_allto_all_tiling_data_910_93.h"
+#include "./arch22/matmul_allto_all_tiling_key_910_93.h"
 #endif
 #if defined(__NPU_ARCH__) && __NPU_ARCH__ == 3510
 #include "./arch35/matmul_allto_all_tiling_key.h"
@@ -44,7 +44,7 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
 #define MATMUL_ALLTO_ALL_A3_FP_IMPL(tilingData, pipe)                                                                  \
     do {                                                                                                               \
         DEFINE_MC2_MATMUL_CONTEXT_FOR_MATMUL_COMPUTATION_A3_FP(ComputationContextType);                                \
-        DEFINE_MC2_MATMUL_FOR_MATMUL_COMPUTATION_A3_FP(ComputationType);                                               \
+        DEFINE_MC2_MATMUL_FOR_MATMUL_COMPUTATION_A3_FP(false, X2TRANSPOSE, ComputationType);                           \
         ComputationType matmulImplName(&pipe);                                                                         \
         DEFINE_MC2_TRANSPOSE_FOR_MATH_COMPUTATION(DTYPE_Y, TransposeType);                                             \
         TransposeType transposeImplName(&pipe);                                                                        \
@@ -66,7 +66,7 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
 #define MATMUL_ALLTO_ALL_APT_FP_IMPL(tilingData, pipe)                                                                 \
     do {                                                                                                               \
         DEFINE_MC2_MATMUL_CONTEXT_FOR_MATMUL_COMPUTATION_FP(ComputationContextType);                                   \
-        DEFINE_MC2_MATMUL_FOR_MATMUL_COMPUTATION_FP(ComputationType);                                                  \
+        DEFINE_MC2_MATMUL_FOR_MATMUL_COMPUTATION_FP(false, X2TRANSPOSE, ComputationType);                              \
         ComputationType matmulImplName(&pipe);                                                                         \
         DEFINE_MC2_TRANSPOSE_FOR_MATH_COMPUTATION(DTYPE_Y, TransposeType);                                             \
         TransposeType transposeImplName(&pipe);                                                                        \

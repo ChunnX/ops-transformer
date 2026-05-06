@@ -28,12 +28,12 @@ namespace optiling {
 // input
 constexpr uint32_t GMM_X_INDEX = 0U;
 constexpr uint32_t GMM_WEIGHT_INDEX = 1U;
-constexpr uint32_t SEND_COUNTS_TENSOR_INDEX = 2U;
-constexpr uint32_t RECV_COUNTS_TENSOR_INDEX = 3U;
-constexpr uint32_t MM_X_INDEX = 4U;
-constexpr uint32_t MM_WEIGHT_INDEX = 5U;
-constexpr uint32_t GMM_X_SCALE_INDEX = 6U;
-constexpr uint32_t GMM_WEIGHT_SCALE_INDEX = 7U;
+constexpr uint32_t GMM_X_SCALE_INDEX = 2U;
+constexpr uint32_t GMM_WEIGHT_SCALE_INDEX = 3U;
+constexpr uint32_t SEND_COUNTS_TENSOR_INDEX = 4U;
+constexpr uint32_t RECV_COUNTS_TENSOR_INDEX = 5U;
+constexpr uint32_t MM_X_INDEX = 6U;
+constexpr uint32_t MM_WEIGHT_INDEX = 7U;
 constexpr uint32_t MM_X_SCALE_INDEX = 8U;
 constexpr uint32_t MM_WEIGHT_SCALE_INDEX = 9U;
 // output
@@ -45,11 +45,11 @@ constexpr uint32_t ATTR_GROUP_INDEX = 0;
 constexpr uint32_t ATTR_EP_WORLD_SIZE_INDEX = 1;
 constexpr uint32_t ATTR_SEND_COUNTS_INDEX = 2;
 constexpr uint32_t ATTR_RECV_COUNTS_INDEX = 3;
-constexpr uint32_t ATTR_TRANS_GMM_WEIGHT_INDEX = 4;
-constexpr uint32_t ATTR_TRANS_MM_WEIGHT_INDEX = 5;
-constexpr uint32_t ATTR_PERMUTE_OUT_FLAG_INDEX = 6;
-constexpr uint32_t ATTR_GMM_X_QUANT_MODE_INDEX = 7;
-constexpr uint32_t ATTR_GMM_WEIGHT_QUANT_MODE_INDEX = 8;
+constexpr uint32_t ATTR_GMM_X_QUANT_MODE_INDEX = 4;
+constexpr uint32_t ATTR_GMM_WEIGHT_QUANT_MODE_INDEX = 5;
+constexpr uint32_t ATTR_TRANS_GMM_WEIGHT_INDEX = 6;
+constexpr uint32_t ATTR_TRANS_MM_WEIGHT_INDEX = 7;
+constexpr uint32_t ATTR_PERMUTE_OUT_FLAG_INDEX = 8;
 constexpr uint32_t ATTR_MM_X_QUANT_MODE_INDEX = 9;
 constexpr uint32_t ATTR_MM_WEIGHT_QUANT_MODE_INDEX = 10;
 constexpr uint32_t ATTR_GROUP_SIZE_INDEX = 11;

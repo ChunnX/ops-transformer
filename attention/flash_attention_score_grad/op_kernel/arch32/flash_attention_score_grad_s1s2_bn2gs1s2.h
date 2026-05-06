@@ -1589,8 +1589,6 @@ FlashAttentionScoreGradS1s2Bn2gs1s2<T1, T2, IS_ATTEN_MASK, IS_PSE, IS_DROP, MM_O
     LocalTensor<T1> pseUbT1 = ubBuffer.GetWithOffset<T1>(16 * 1024 / sizeof(T1), ubBufferOffset + T1Begin);
     LocalTensor<half> pseUb = pseUbT1.template ReinterpretCast<half>();
     if constexpr (IS_PSE == ENABLE) {
-        pseInfo.bSSOffset = bDimIdx * s1 * s2;
-        pseInfo.s2SizeAcc = bDimIdx * s2;
         pseInfo.boIdx = bDimIdx;
         pseInfo.n2oIdx = n2DimIdx;
         pseInfo.goIdx = gDimIdx;

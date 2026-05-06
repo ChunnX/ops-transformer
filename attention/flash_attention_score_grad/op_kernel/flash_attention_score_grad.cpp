@@ -300,7 +300,7 @@ constexpr static uint32_t NZ = 1;
         FlashAttentionScoreGradS1s2Bn2<INPUT_TYPE, float, MM_CONFIG, CUBE_FORMAT, PSE_CFG, ATTEN_MASK_CFG,             \
                                        DROPOUT_CFG, INPUT_LAYOUT, MM2_OUT_FORMAT, false, false>                        \
             op;                                                                                                        \
-        REGIST_MATMUL_OBJ(&pipeOp, GetSysWorkSpacePtr(), op.mm1, bmm1tiling, op.mm4, bmm4tiling, op.mm3_1,             \
+        REGIST_MATMUL_OBJ(&pipeOp, GetSysWorkSpacePtr(), op.mm_12, bmm1tiling, op.mm_dkv, bmm4tiling, op.mm_dq,        \
                           bmm31tiling);                                                                                \
         op.Init(query, key, value, dy, pse_shift, drop_mask, padding_mask, atten_mask, softmax_max, softmax_sum,       \
                 prefix, softmax_in, actual_seq_qlen, actual_seq_kvlen, attention_in, dq, dk, dv, dpse, user,           \
@@ -311,7 +311,7 @@ constexpr static uint32_t NZ = 1;
         constexpr static uint32_t input_format = (MM2_OUT_FORMAT == MM_NZ_OUT_FORMAT) ? NZ : ND;                       \
         FlashAttentionScoreGradPost<INPUT_TYPE, FlashAttentionScoreGradTilingDataS1s2Bn2, true, INPUT_LAYOUT,          \
         input_format> opCast;                                                                                          \
-        opCast.Init(dq, dqRope, dk, dkRope, dv, actual_seq_qlen, actual_seq_kvlen, dsink, user, tilingData, &pipeCast);       \
+        opCast.Init(dq, dqRope, dk, dkRope, dv, actual_seq_qlen, actual_seq_kvlen, dsink, user, tilingData, &pipeCast);\
         opCast.Process();                                                                                              \
     } while (0)
 
@@ -326,7 +326,7 @@ constexpr static uint32_t NZ = 1;
         FlashAttentionScoreGradS1s2Bn2<INPUT_TYPE, float, MM_CONFIG, CUBE_FORMAT, PSE_CFG, ATTEN_MASK_CFG,             \
                                        DROPOUT_CFG, INPUT_LAYOUT, MM2_OUT_FORMAT, false, false>                        \
             op;                                                                                                        \
-        REGIST_MATMUL_OBJ(&pipeIn, GetSysWorkSpacePtr(), op.mm1, bmm1tiling, op.mm4, bmm4tiling, op.mm3_1,             \
+        REGIST_MATMUL_OBJ(&pipeIn, GetSysWorkSpacePtr(), op.mm_12, bmm1tiling, op.mm_dkv, bmm4tiling, op.mm_dq,        \
                           bmm31tiling);                                                                                \
         op.Init(query, key, value, dy, pse_shift, drop_mask, padding_mask, atten_mask, softmax_max, softmax_sum,       \
                 prefix, softmax_in, actual_seq_qlen, actual_seq_kvlen, attention_in, dq, dk, dv, dpse, user,           \
@@ -337,7 +337,7 @@ constexpr static uint32_t NZ = 1;
         constexpr static uint32_t input_format = (MM2_OUT_FORMAT == MM_NZ_OUT_FORMAT) ? NZ : ND;                       \
         FlashAttentionScoreGradPost<INPUT_TYPE, FlashAttentionScoreGradTilingDataS1s2Bn2, true, INPUT_LAYOUT,          \
         input_format> opCast;                                                                                          \
-        opCast.Init(dq, dqRope, dk, dkRope, dv, actual_seq_qlen, actual_seq_kvlen, dsink, user, tilingData, &pipeCast);       \
+        opCast.Init(dq, dqRope, dk, dkRope, dv, actual_seq_qlen, actual_seq_kvlen, dsink, user, tilingData, &pipeCast);\
         opCast.Process();                                                                                              \
     } while (0)
 
@@ -358,7 +358,7 @@ constexpr static uint32_t NZ = 1;
         FlashAttentionScoreGradS1s2Bn2<INPUT_TYPE, float, MM_CONFIG, CUBE_FORMAT, PSE_CFG, ATTEN_MASK_CFG,             \
                                        DROPOUT_CFG, INPUT_LAYOUT, MM2_OUT_FORMAT, true, false>                         \
             op;                                                                                                        \
-        REGIST_MATMUL_OBJ(&pipeOp, GetSysWorkSpacePtr(), op.mm1, bmm1tiling, op.mm4, bmm4tiling, op.mm3_1,             \
+        REGIST_MATMUL_OBJ(&pipeOp, GetSysWorkSpacePtr(), op.mm_12, bmm1tiling, op.mm_dkv, bmm4tiling, op.mm_dq,        \
                           bmm31tiling);                                                                                \
         op.Init(query, key, value, dy, pse_shift, drop_mask, padding_mask, atten_mask, softmax_max, softmax_sum,       \
                 prefix, softmax_in, actual_seq_qlen, actual_seq_kvlen, attention_in, dq, dk, dv, dpse, user,           \
@@ -378,7 +378,7 @@ constexpr static uint32_t NZ = 1;
         FlashAttentionScoreGradS1s2Bn2<INPUT_TYPE, float, MM_CONFIG, CUBE_FORMAT, PSE_CFG, ATTEN_MASK_CFG,             \
                                        DROPOUT_CFG, INPUT_LAYOUT, MM2_OUT_FORMAT, true, false>                         \
             op;                                                                                                        \
-        REGIST_MATMUL_OBJ(&pipeIn, GetSysWorkSpacePtr(), op.mm1, bmm1tiling, op.mm4, bmm4tiling, op.mm3_1,             \
+        REGIST_MATMUL_OBJ(&pipeIn, GetSysWorkSpacePtr(), op.mm_12, bmm1tiling, op.mm_dkv, bmm4tiling, op.mm_dq,        \
                           bmm31tiling);                                                                                \
         op.Init(query, key, value, dy, pse_shift, drop_mask, padding_mask, atten_mask, softmax_max, softmax_sum,       \
                 prefix, softmax_in, actual_seq_qlen, actual_seq_kvlen, attention_in, dq, dk, dv, dpse, user,           \
@@ -395,9 +395,6 @@ constexpr static uint32_t NZ = 1;
         FlashAttentionScoreGradS1s2Bn2<INPUT_TYPE, float, MM_CONFIG, CUBE_FORMAT, PSE_CFG, ATTEN_MASK_CFG,             \
                                        DROPOUT_CFG, INPUT_LAYOUT, MM2_OUT_FORMAT, true, L1_CUSTOM>                     \
             op;                                                                                                        \
-        FagTscm::FagTscmArray tscmArray[TSCM_BUF_NUMS];                                                                \
-        FagTscm::TscmGlobal = tscmArray;                                                                               \
-        FagTscm::InitTscmBuffer(&pipeIn, FagTscm::TscmGlobal, tilingData);                                             \
         op.Init(query, key, value, dy, pse_shift, drop_mask, padding_mask, atten_mask, softmax_max, softmax_sum,       \
                 prefix, softmax_in, actual_seq_qlen, actual_seq_kvlen, attention_in, dq, dk, dv, dpse, user,           \
                 tilingData, &pipeIn);                                                                                  \

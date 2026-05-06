@@ -6,6 +6,7 @@
 
 | 产品                                                         | 是否支持 |
 | ------------------------------------------------------------ | :------: |
+|<term>Ascend 950PR/Ascend 950DT</term>|     √      |
 |<term>Atlas A2 推理系列产品</term>   | √  |
 |<term>Atlas A3 推理系列产品</term>   | √  |
 
@@ -64,10 +65,10 @@ aclnnStatus aclnnSparseFlashAttention(
 
 - **参数说明：**
 
-> [!NOTE]  
->
->- query、key、value参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、H（Head Size）表示hidden层的大小、N（Head Num）表示多头数、D（Head Dim）表示hidden层最小的单元尺寸，且满足D=H/N、T表示所有Batch输入样本序列长度的累加和。
->- Q\_S和S1表示query shape中的S，KV\_S和S2表示key shape中的S，Q\_N和N1表示num\_query\_heads，KV\_N和N2表示num\_key\_value\_heads，T1表示query shape中的T，T2表示key shape中的输入样本序列长度的累加和。
+  > [!NOTE]  
+  >
+  >- query、key、value参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、H（Head Size）表示hidden层的大小、N（Head Num）表示多头数、D（Head Dim）表示hidden层最小的单元尺寸，且满足D=H/N、T表示所有Batch输入样本序列长度的累加和。
+  >- Q\_S和S1表示query shape中的S，KV\_S和S2表示key shape中的S，Q\_N和N1表示num\_query\_heads，KV\_N和N2表示num\_key\_value\_heads，T1表示query shape中的T，T2表示key shape中的输入样本序列长度的累加和。
 
   <table style="undefined;table-layout: fixed; width: 1494px"><colgroup>
   <col style="width: 146px">
@@ -92,7 +93,7 @@ aclnnStatus aclnnSparseFlashAttention(
     </tr></thead>
   <tbody>
     <tr>
-      <td>query</td>
+      <td>query（aclTensor）</td>
       <td>输入</td>
       <td>attention结构的Query输入。</td>
       <td>不支持空tensor。</td>
@@ -107,7 +108,7 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>x</td>
     </tr>
     <tr>
-      <td>key</td>
+      <td>key（aclTensor）</td>
       <td>输入</td>
       <td>attention结构的Key输入</td>
       <td>
@@ -128,7 +129,7 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>x</td>
     </tr>
     <tr>
-      <td>value</td>
+      <td>value（aclTensor）</td>
       <td>输入</td>
       <td>attention结构的Value输入。</td>
       <td>不支持空tensor。</td>
@@ -138,7 +139,7 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>x</td>
     </tr>
     <tr>
-      <td>sparseIndices</td>
+      <td>sparseIndices（aclTensor）</td>
       <td>输入</td>
       <td>离散取kvCache的索引。</td>
       <td>
@@ -158,7 +159,7 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>x</td>
     </tr>
     <tr>
-      <td>blockTable</td>
+      <td>blockTable（aclTensor）</td>
       <td>输入</td>
       <td>表示PageAttention中kvCache存储使用的block映射表。</td>
       <td>
@@ -173,7 +174,7 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>x</td>
     </tr>
     <tr>
-      <td>actualSeqLengthsQuery</td>
+      <td>actualSeqLengthsQuery（aclTensor）</td>
       <td>输入</td>
       <td>表示不同Batch中query的有效token数。</td>
       <td>
@@ -190,7 +191,7 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>x</td>
     </tr>
     <tr>
-      <td>actualSeqLengthsKv</td>
+      <td>actualSeqLengthsKv（aclTensor）</td>
       <td>输入</td>
       <td>表示不同Batch中key和value的有效token数。</td>
       <td>
@@ -208,7 +209,7 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>x</td>
     </tr>
     <tr>
-      <td>queryRope</td>
+      <td>queryRope（aclTensor）</td>
       <td>输入</td>
       <td>表示MLA结构中的query的rope信息。</td>
       <td>不支持空tensor。</td>
@@ -223,7 +224,7 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>x</td>
     </tr>
     <tr>
-      <td>keyRope</td>
+      <td>keyRope（aclTensor）</td>
       <td>输入</td>
       <td>表示MLA结构中的key的rope信息。</td>
       <td>不支持空tensor。</td>
@@ -239,7 +240,7 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>x</td>
     </tr>
     <tr>
-      <td>scaleValue</td>
+      <td>scaleValue（double）</td>
       <td>输入</td>
       <td>代表缩放系数。</td>
       <td>-</td>
@@ -249,7 +250,7 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>-</td>
     </tr>
     <tr>
-      <td>sparseBlockSize</td>
+      <td>sparseBlockSize（int64_t）</td>
       <td>输入</td>
       <td>代表sparse阶段的block大小。</td>
       <td>
@@ -264,7 +265,7 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>-</td>
     </tr>
     <tr>
-      <td>layoutQuery</td>
+      <td>layoutQuery（char）</td>
       <td>输入</td>
       <td>标识输入query的数据排布格式。</td>
       <td>
@@ -279,7 +280,7 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>-</td>
     </tr>
     <tr>
-      <td>layoutKv</td>
+      <td>layoutKv（char）</td>
       <td>输入</td>
       <td>标识输入key的数据排布格式。</td>
       <td>
@@ -294,7 +295,7 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>-</td>
     </tr>
     <tr>
-      <td>sparseMode</td>
+      <td>sparseMode（int64_t）</td>
       <td>输入</td>
       <td>表示sparse的模式。</td>
       <td>
@@ -309,7 +310,7 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>-</td>
     </tr>
     <tr>
-      <td>preTokens</td>
+      <td>preTokens（int64_t）</td>
       <td>输入</td>
       <td>用于稀疏计算，表示attention需要和前几个Token计算关联。</td>
       <td>仅支持默认值2^63-1。</td>
@@ -319,7 +320,7 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>-</td>
     </tr>
     <tr>
-      <td>nextTokens</td>
+      <td>nextTokens（int64_t）</td>
       <td>输入</td>
       <td>用于稀疏计算，表示attention需要和后几个Token计算关联。</td>
       <td>仅支持默认值2^63-1。</td>
@@ -329,7 +330,7 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>-</td>
     </tr>
     <tr>
-      <td>attentionMode</td>
+      <td>attentionMode（int64_t）</td>
       <td>输入</td>
       <td>-</td>
       <td>仅支持传入2，表示MLA-absorb模式。</td>
@@ -339,7 +340,7 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>-</td>
     </tr>
     <tr>
-      <td>returnSoftmaxLse</td>
+      <td>returnSoftmaxLse（bool）</td>
       <td>输入</td>
       <td>用于表示是否返回softmax_max和softmax_sum。</td>
       <td>
@@ -354,7 +355,7 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>-</td>
     </tr>
     <tr>
-      <td>attentionOut</td>
+      <td>attentionOut（aclTensor）</td>
       <td>输出</td>
       <td>公式中的输出。</td>
       <td>不支持空tensor。</td>
@@ -369,7 +370,7 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>x</td>
     </tr>
     <tr>
-      <td>softmaxMaxOut</td>
+      <td>softmaxMaxOut（aclTensor）</td>
       <td>输出</td>
       <td>Attention算法对query乘key的结果，取max得到softmax_max。</td>
       <td>不支持空tensor。</td>
@@ -384,7 +385,7 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>x</td>
     </tr>
    <tr>
-      <td>softmaxSumOut</td>
+      <td>softmaxSumOut（aclTensor）</td>
       <td>输出</td>
       <td>Attention算法query乘key的结果减去softmax_max, 再取exp，接着求sum，得到softmax_sum。</td>
       <td>不支持空tensor。</td>
@@ -399,7 +400,7 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>x</td>
     </tr>
     <tr>
-      <td>workspaceSize</td>
+      <td>workspaceSize（uint64_t*）</td>
       <td>输出</td>
       <td>返回需要在Device侧申请的workspace大小。</td>
       <td>-</td>
@@ -409,7 +410,7 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>-</td>
     </tr>
     <tr>
-      <td>executor</td>
+      <td>executor（aclOpExecutor）</td>
       <td>输出</td>
       <td>返回op执行器，包含了算子计算流程。</td>
       <td>-</td>
@@ -496,13 +497,17 @@ aclnnStatus aclnnSparseFlashAttention(
 
 ## 约束说明
 
+- 确定性计算：aclnnSparseFlashAttention默认确定性实现。
 - 该接口支持推理场景下使用。
-- 该接口支持图模式。
 - N1支持1/2/4/8/16/32/64/128。
 - block_size为一个block的token数，block_size取值为16的倍数，且最大支持1024。
 - 参数query中的D和key、value的D值相等为512，参数query_rope中的Dr和key_rope的Dr值相等为64。
 - 参数query、key、value的数据类型必须保持一致。
 - 支持sparse_block_size整除block_size。
+  - <term>Ascend 950PR/Ascend 950DT</term>：
+    - 只支持sparse_block_size为1。
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+    - 支持[1,128]，且要求是2的幂次方，在PageAttention场景下要求sparse_block_size整除block_size
 
 ## 调用示例
 

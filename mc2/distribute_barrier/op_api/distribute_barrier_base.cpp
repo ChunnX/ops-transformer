@@ -20,19 +20,12 @@
 #include "opdev/common_types.h"
 #include "opdev/op_log.h"
 #include "distribute_barrier_base.h"
+#include "aclnnInner_distribute_barrier.h"
 using namespace op;
 #ifdef __cplusplus
 extern "C" {
 #endif
-extern aclnnStatus aclnnInnerDistributeBarrier(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
-                                               aclrtStream stream);
-
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void* executor, NnopbaseHcclServerType sType);
-
-extern aclnnStatus aclnnInnerDistributeBarrierGetWorkspaceSize(const aclTensor* xRef, const aclTensor* timeOut,
-                                                               const aclTensor* elasticInfo, const char* group,
-                                                               int64_t worldSize, uint64_t* workspaceSize,
-                                                               aclOpExecutor** executor);
 
 // check nullptr
 bool BarrierCheckNullStatus(const aclTensor* xRef, const char* group)
@@ -66,8 +59,8 @@ aclnnStatus aclnnDistributeBarrierGetWorkspaceSizeBase(const aclTensor* xRef, co
 {
     auto retParam = BarrierCheckParams(xRef, group);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
-    return aclnnInnerDistributeBarrierGetWorkspaceSize(xRef, timeOut, elasticInfo,
-                                                       group, worldSize, workspaceSize, executor);
+    return aclnnInnerDistributeBarrierGetWorkspaceSize(const_cast<aclTensor*>(xRef), timeOut, elasticInfo,
+                                                       const_cast<char*>(group), worldSize, workspaceSize, executor);
 }
 
 aclnnStatus aclnnDistributeBarrierBase(void* workspace, uint64_t workspaceSize,

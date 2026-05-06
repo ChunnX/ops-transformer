@@ -593,14 +593,19 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeGeneralPseOptionalInput(PseShapeTy
     } else if (pseDim1Size == n1Size && pseDim2Size == static_cast<int64_t>(PSE_ALIBI_S_SIZE) &&
                pseDim3Size == s2Size) {
         if (s1Size < pseDim2Size) {
-            OP_LOGE(opName, "get unsupported pse shape, the shape is [%ld, %ld, %ld, %ld]", pseBSize, pseDim1Size,
-                        pseDim2Size, pseDim3Size);
+            OP_LOGE(opName, "get unsupported pse shape, the shape is [%ld, %ld, %ld, %ld], "
+                    "expected Sq[%ld] should be greater than %ld",
+                    pseBSize, pseDim1Size, pseDim2Size, pseDim3Size, s1Size, pseDim2Size);
             return false;
         }
         pseShapeType = PseShapeType::PSE_B_N2_G_S1_S2;
     } else {
-        OP_LOGE(opName, "get unsupported pse shape, the shape is [%ld, %ld, %ld, %ld]", pseBSize, pseDim1Size,
-                    pseDim2Size, pseDim3Size);
+        OP_LOGE(opName, "unsupported pse shape[%ld, %ld, %ld, %ld], expected [%ld, %ld, %ld, %ld] or "
+            "[%ld, %ld, 1, %ld] or [%ld, %ld, %ld, %ld]",
+            pseBSize, pseDim1Size, pseDim2Size, pseDim3Size,
+            pseBSize, n1Size, s1Size, s2Size,
+            pseBSize, n1Size, s2Size,
+            pseBSize, n1Size, static_cast<int64_t>(PSE_ALIBI_S_SIZE), s2Size);
         return false;
     }
     return true;
@@ -863,6 +868,24 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeFp8OptionalInput()
                     OPS_REPORT_VECTOR_INNER_ERR(opName, "invalid dScaleV dimNum [%ld][%ld][%ld][%ld], only support [B, N2, ceil(S2/512), 1]",
                     dimValue0, dimValue1, dimValue2, dimValue3),
                     return false);
+    }
+
+    auto pScaleShape = context_->GetOptionalInputShape(P_SCALE_INDEX);
+    auto pScaleInput = context_->GetOptionalInputDesc(P_SCALE_INDEX);
+    if (pScaleInput != nullptr && pScaleShape != nullptr && pScaleShape->GetStorageShape().GetDimNum() != 0) {
+        auto pScaleDtype = pScaleInput->GetDataType();
+        OP_CHECK_IF(pScaleDtype != ge::DT_FLOAT,
+                OPS_REPORT_VECTOR_INNER_ERR(opName, "invalid pScale dtype[%s], only support float32.",
+                                               ge::TypeUtils::DataTypeToSerialString(pScaleDtype).c_str()),
+                return false);
+        int64_t dimNum = pScaleShape->GetStorageShape().GetDimNum();
+        OP_CHECK_IF(dimNum != D_SCALE_DIM_NUM_1,
+                OPS_REPORT_VECTOR_INNER_ERR(opName, "invalid pScale dimNum [%ld], only support 1 dim.", dimNum),
+                return false);
+        int64_t dimValue0 = pScaleShape->GetStorageShape().GetDim(D_SCALE_DIM_NUM_0);
+        OP_CHECK_IF(dimValue0 != D_SCALE_DIM_NUM_1,
+                OPS_REPORT_VECTOR_INNER_ERR(opName, "invalid pScale shape[0] [%ld], only support [1].", dimValue0),
+                return false);
     }
     return true;
 }

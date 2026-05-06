@@ -26,7 +26,6 @@
 #include "mc2_log.h"
 #include "common/utils/op_mc2.h"
 #include "all_reduce_formulaic_tiling.h"
-#include "arch35/all_reduce_fit_balance_tiling.h"
 #include "util/math_util.h"
 
 #include "tiling_base/tiling_type.h"
@@ -150,7 +149,8 @@ void MatmulAllReduceTilingBase::DoAllReduceTiling(bool useHcclApi)
     args.tailRecvCnt = MutableTCubeTailTilingData().M * columnNum;
 
     // 总共发送的次数
-    args.totalCnt = MutableRCSTilingData().rankM * MutableRCSTilingData().rankN;
+    args.totalCnt = static_cast<uint64_t>(MutableRCSTilingData().rankM) * \
+                    static_cast<uint64_t>(MutableRCSTilingData().rankN);
     args.turnNum = MutableRCSTilingData().tileCnt + MutableRCSTilingData().tailCnt; // 总轮次
     args.tailNum = MutableRCSTilingData().tailCnt;                                        // 尾块的轮次
     args.stride = 0;                                                                            // 跳写间隔
@@ -295,25 +295,21 @@ void MatmulAllReduceTilingBase::SetMCutSocVersion(SocVersion& inputSocVersion)
 
 CutResult MatmulAllReduceTilingBase::GetTilingResult()
 {
-    CutResult mCutAllreduce;
     SocVersion inputSocVersion = SocVersion::SOC910_B;
-    SetMCutSocVersion(inputSocVersion);
+    SetMCutSocVersion(inputSocVersion); // 判断是否是310P或者910B4
+    MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_);
+    allReduceTilingHccl.GetTiling();
+    CutResult mCutAllreduce = allReduceTilingHccl.tilingM_.cutRes;
     const gert::StorageShape* commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
     const gert::StorageShape* commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
-    if ((commQuantScaleShape1 != nullptr) && (commQuantScaleShape2 != nullptr)) { // low-bit comm
+    if ((commQuantScaleShape1 != nullptr) && (commQuantScaleShape2 != nullptr)) { // 低bit通信
         OP_LOGD(opName_, "TileCnt enter comm quant.");
         MMPlusQuantAllReduce quantAllReduceTilingHccl(
             args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion);
         quantAllReduceTilingHccl.GetTiling();
         mCutAllreduce = quantAllReduceTilingHccl.tilingM_.cutRes;
-    } else if (mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_)) {
-        MMAllReduceFitBalanceTiling allReduceTilingHccl(args_, KernelType::ALL_REDUCE_VIA_TWO_SHOT, TopoType::STANDARD_CARD);
-        mCutAllreduce = allReduceTilingHccl.GetTiling();
-    } else {
-        MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_);
-        allReduceTilingHccl.GetTiling();
-        mCutAllreduce = allReduceTilingHccl.tilingM_.cutRes;
     }
+
     return mCutAllreduce;
 }
 
@@ -502,10 +498,12 @@ ge::graphStatus MatmulAllReduceTilingBase::GetWorkspaceSize()
     }
     // end __NPU_ARCH__ == 3510
 
-    uint32_t mmOutInt32Len = 0;
+    uint64_t mmOutInt32Len = 0;
     if (isUbQuant_) {
         uint32_t maxM = std::max(tilingData_.matmulTiling.M, tilingData_.tailTiling.M);
-        mmOutInt32Len = (maxM * tilingData_.matmulTiling.N) * sizeof(int32_t);
+        mmOutInt32Len = static_cast<uint64_t>(maxM) * \
+                        static_cast<uint64_t>(tilingData_.matmulTiling.N) * \
+                        sizeof(int32_t);
     }
     uint32_t softSyncSize = mc2tiling::AC_MAX_AIV * 32; // aiv_cnt * 32bytes
     workspaces[0] = libApiWorkSpaceSize_ + biasLen + softSyncSize + mmOutInt32Len + gmcFloat;
@@ -849,7 +847,7 @@ ge::graphStatus MatmulAllReduceTilingBase::CheckQuantEmptyTensor()
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         (mmrCtxInfo_.comm_quant_scale_1_shape != nullptr) &&
-            (mmrCtxInfo_.comm_quant_scale_2_shape->GetStorageShape().GetShapeSize() == 0),
+            (mmrCtxInfo_.comm_quant_scale_1_shape->GetStorageShape().GetShapeSize() == 0),
         VECTOR_INNER_ERR_REPORT_TILING(context_->GetNodeName(), "Input commQuantScale1 is empty tensor."),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(

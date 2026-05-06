@@ -13,6 +13,7 @@
  * \brief
  */
 
+#include <set>
 #include "sparse_flash_attention_grad_tiling_bs1_regbase.h"
 #include "tiling_base/tiling_templates_registry.h"
 #include "tiling_base/tiling_type.h"
@@ -213,6 +214,7 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::DoBlockTiling()
     int64_t remainCoreNum = formerCoreProcessNNums * aicNum - nNums;
 
     // 使用总核数
+    baseParams_->set_totalSize(nNums);
     baseParams_->set_usedCoreNum(usedCoreNum);
     baseParams_->set_formerCoreNum(aicNum - remainCoreNum);
     baseParams_->set_formerCoreProcessNNum(formerCoreProcessNNums);
@@ -386,6 +388,7 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
     const gert::Shape &dqShape = context_->GetOutputShape(static_cast<size_t>(OutputIndex::DQ))->GetStorageShape();
     const gert::Shape &dkShape = context_->GetOutputShape(static_cast<size_t>(OutputIndex::DK))->GetStorageShape();
     const gert::Shape &dvShape = context_->GetOutputShape(static_cast<size_t>(OutputIndex::DV))->GetStorageShape();
+    tmpData.deterministic = (context_->GetDeterministic() == 1);
     uint32_t dimSize = queryShape.GetDimNum();
     int64_t dimDq = queryShape.GetDim(dimSize - 1);
     int64_t dimDk = keyShape.GetDim(dimSize - 1);
@@ -403,10 +406,9 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
     if (selected_block_size != 1) {
         OP_LOGE(context_, "SparseFlashAttentionGrad only support sparse_block_size [1] now, but got sparse_block_size=%ld.", selected_block_size);
         return ge::GRAPH_FAILED;
-    }        
+    }
+       
     auto sparse_mode = *context_->GetAttrs()->GetAttrPointer<int>(static_cast<size_t>(AttrIndex::SPARSE_MODE));
-    tmpData.deterministic = *context_->GetAttrs()->GetAttrPointer<int>(static_cast<size_t>(AttrIndex::DETERMINISTIC));
-    
     if (sparse_mode == 3) {
         OP_LOGI(context_, "SparseFlashAttentionGrad AttenMask enable.");
         tmpData.attenEnable = true;
@@ -508,8 +510,9 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
     }
    
     int64_t n1 = tmpData.n2 * tmpData.g;
-    if (tmpData.n2 != 1 || n1 > 128 || (n1 & (n1 - 1)) != 0) {
-        OP_LOGE(context_, "SparseFlashAttentionGrad only support n2=1 and n1=1/2/4/8/16/32/64/128, but got n2=%ld n1=%ld.", tmpData.n2, n1);
+    std::set<uint32_t> gSizeSupportList = {1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 128};
+    if (tmpData.n2 != 1 || n1 > 128 || !gSizeSupportList.count(n1)) {
+        OP_LOGE(context_, "SparseFlashAttentionGrad only support n2=1 and n1=1/2/3/4/6/8/12/16/24/32/48/64/128, but got n2=%ld n1=%ld.", tmpData.n2, n1);
         return ge::GRAPH_FAILED;
     }
 

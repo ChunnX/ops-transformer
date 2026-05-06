@@ -25,12 +25,12 @@ namespace Mc2Tiling {
 enum GmmA2AvInputTensorIndex : uint32_t {
     GMM_X_INDEX = 0,
     GMM_WEIGHT_INDEX,
-    SEND_COUNTS_TENSOR_OPTIONAL_INDEX,
-    RECV_COUNTS_TENSOR_OPTIONAL_INDEX,
-    MM_X_OPTIONAL_INDEX,
-    MM_WEIGHT_OPTIONAL_INDEX = 5,
     GMM_X_SCALE_INDEX,
     GMM_WEIGHT_SCALE_INDEX,
+    SEND_COUNTS_TENSOR_OPTIONAL_INDEX,
+    RECV_COUNTS_TENSOR_OPTIONAL_INDEX = 5,
+    MM_X_OPTIONAL_INDEX,
+    MM_WEIGHT_OPTIONAL_INDEX,
     MM_X_SCALE_OPTIONAL_INDEX,
     MM_WEIGHT_SCALE_OPTIONAL_INDEX,
     COMM_QUANT_SCALE_OPTIONAL_INDEX
@@ -46,17 +46,17 @@ enum GmmA2AvAttrIndex : uint32_t {
     ATTR_EP_WORLD_SIZE_INDEX,
     ATTR_SEND_COUNTS_INDEX,
     ATTR_RECV_COUNTS_INDEX,
-    ATTR_TRANS_GMM_WEIGHT_INDEX,
-    ATTR_TRANS_MM_WEIGHT_INDEX = 5,
     ATTR_GMM_X_QUANT_MODE_INDEX,
-    ATTR_GMM_WEIGHT_QUANT_MODE_INDEX,
+    ATTR_GMM_WEIGHT_QUANT_MODE_INDEX = 5,
+    ATTR_TRANS_GMM_WEIGHT_INDEX,
+    ATTR_TRANS_MM_WEIGHT_INDEX,
     ATTR_MM_X_QUANT_MODE_INDEX,
     ATTR_MM_WEIGHT_QUANT_MODE_INDEX,
     ATTR_COMM_QUANT_MODE_INDEX = 10,
     ATTR_GROUP_SIZE_OPTIONAL_INDEX,
-    ATTR_COMM_QUANT_DTYPE_INDEX,
     ATTR_Y_DTYPE,
-    ATTR_MM_Y_DTYPE
+    ATTR_MM_Y_DTYPE,
+    ATTR_COMM_QUANT_DTYPE_INDEX
 };
 
 enum QuantizationMode {
@@ -132,10 +132,11 @@ constexpr uint32_t MAX_SHARED_H_SHAPE_SIZE = 12288;
 constexpr int64_t MAX_BSK_VALUE = 52428800;
 constexpr int64_t RECV_SEND_MIN = static_cast<int64_t>((2 * 1024 * 1024) / 2);         // 2M / sizeof(gmmX)
 
-class QuantGmmAlltoAllvTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass
+class QuantGroupedMatmulAllToAllvTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass
 {
 public:
-    explicit QuantGmmAlltoAllvTilingBase(gert::TilingContext* context) : Ops::Transformer::OpTiling::TilingBaseClass(context){};
+    explicit QuantGroupedMatmulAllToAllvTilingBase(gert::TilingContext* context)
+        : Ops::Transformer::OpTiling::TilingBaseClass(context){};
 
 protected:
     ge::graphStatus GetShapeAttrsInfo() override;

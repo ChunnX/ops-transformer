@@ -109,7 +109,7 @@ aclnnStatus aclnnAlltoAllvQuantGroupedMatMul(
         <td>输入</td>
         <td>该输入进行AlltoAllv通信后结果作为GroupedMatMul计算的左矩阵。</td>
         <td>当前版本仅支持2维输入，shape为(BSK, H1)，且仅支持不转置场景。</td>
-        <td>HIFLOAT8</td>
+        <td>HIFLOAT8、FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1</td>
         <td>ND</td>
         <td>2</td>
         <td>x</td>
@@ -118,8 +118,8 @@ aclnnStatus aclnnAlltoAllvQuantGroupedMatMul(
         <td>gmmWeight</td>
         <td>输入</td>
         <td>GroupedMatMul计算的右矩阵。</td>
-        <td>当前版本仅支持3维输入，shape为(e, H1, N1)，支持转置/不转置场景。</td>
-        <td>HIFLOAT8</td>
+        <td>当前版本仅支持3维输入，不转置shape为(e, H1, N1)，转置shape为(e, N1, H1)。</td>
+        <td>HIFLOAT8、FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1</td>
         <td>ND</td>
         <td>3</td>
         <td>√（仅适用转置场景）</td>
@@ -128,20 +128,24 @@ aclnnStatus aclnnAlltoAllvQuantGroupedMatMul(
         <td>gmmXScale</td>
         <td>输入</td>
         <td>gmmX的量化系数。</td>
-        <td>pertensor量化场景支持一维，shape为(1)。</td>
-        <td>FLOAT32</td>
+        <td><ul><li>pertensor量化场景支持1维，shape为(1)。
+            </li><li>mx量化场景支持3维，shape为(BSK, ceildiv(H1, 64), 2)。
+            </li></ul></td>
+        <td>FLOAT32、FLOAT8_E8M0</td>
         <td>ND</td>
-        <td>1</td>
+        <td>1、3</td>
         <td>x</td>
     </tr>
     <tr>
         <td>gmmWeightScale</td>
         <td>输入</td>
         <td>gmmWeight的量化系数。</td>
-        <td>pertensor量化场景支持一维，shape为(1)。</td>
-        <td>FLOAT32</td>
+        <td><ul><li>pertensor量化场景支持1维，shape为(1)。
+            </li><li>mx量化场景支持4维，不转置shape为(e, ceildiv(H1, 64), N1, 2)，转置shape为(e, N1, ceildiv(H1, 64), 2)。
+            </li></ul></td>
+        <td>FLOAT32、FLOAT8_E8M0</td>
         <td>ND</td>
-        <td>1</td>
+        <td>1、4</td>
         <td>√（仅适用转置场景）</td>
     </tr>
     <tr>
@@ -168,7 +172,9 @@ aclnnStatus aclnnAlltoAllvQuantGroupedMatMul(
         <td>mmXOptional</td>
         <td>输入</td>
         <td>可选输入，共享专家MatMul计算中的左矩阵。</td>
-        <td><ul><li>支持2维，shape为(BS, H2)。</li><li>需与mmWeightOptional同时传入或同为nullptr。</li></ul></td>
+        <td><ul><li>支持2维，shape为(BS, H2)。
+            </li><li>需与mmWeightOptional同时传入或同为nullptr。
+            </li></ul></td>
         <td>与gmmX保持一致</td>
         <td>ND</td>
         <td>2</td>
@@ -178,7 +184,9 @@ aclnnStatus aclnnAlltoAllvQuantGroupedMatMul(
         <td>mmWeightOptional</td>
         <td>输入</td>
         <td>可选输入，共享专家MatMul计算中的右矩阵。</td>
-        <td><ul><li>支持2维，shape为(H2, N2)。</li><li>需与mmXOptional同时传入或同为nullptr。</li></ul></td>
+        <td><ul><li>支持2维，不转置shape为(H2, N2)，转置shape为(N2, H2)。
+            </li><li>需与mmXOptional同时传入或同为nullptr。
+            </li></ul></td>
         <td>与gmmWeight保持一致</td>
         <td>ND</td>
         <td>2</td>
@@ -188,27 +196,33 @@ aclnnStatus aclnnAlltoAllvQuantGroupedMatMul(
         <td>mmXScaleOptional</td>
         <td>输入</td>
         <td>可选输入，mmX的量化系数。</td>
-        <td><ul><li>pertensor量化场景支持1维，shape为(1)。</li><li>需与mmXOptional同时传入或同为nullptr。</li></ul></td>
-        <td>FLOAT32</td>
+        <td><ul><li>pertensor量化场景支持1维，shape为(1)。
+            </li><li>mx量化场景支持3维，shape为(BS, ceildiv(H2, 64), 2)。
+            </li><li>需与mmXOptional同时传入或同为nullptr。
+            </li></ul></td>
+        <td>FLOAT32、FLOAT8_E8M0</td>
         <td>ND</td>
-        <td>1</td>
+        <td>1、3</td>
         <td>x</td>
     </tr>
     <tr>
         <td>mmWeightScaleOptional</td>
         <td>输入</td>
         <td>可选输入，mmWeight的量化系数。</td>
-        <td><ul><li>pertensor量化场景支持1维，shape为(1)。</li><li>需与mmXOptional同时传入或同为nullptr。</li></ul></td>
-        <td>FLOAT32</td>
+        <td><ul><li>pertensor量化场景支持1维，shape为(1)。
+            </li><li>mx量化场景支持3维，不转置shape为(ceildiv(H2, 64), N2, 2)，转置shape为(N2, ceildiv(H2, 64), 2)。
+            </li><li>需与mmXOptional同时传入或同为nullptr。
+            </li></ul></td>
+        <td>FLOAT32、FLOAT8_E8M0</td>
         <td>ND</td>
-        <td>1</td>
+        <td>1、3</td>
         <td>√（仅适用转置场景）</td>
     </tr>
     <tr>
         <td>gmmXQuantMode</td>
         <td>输入</td>
         <td>gmmX的量化模式。</td>
-        <td>当前版本仅支持1(pertensor场景)。</td>
+        <td>当前版本支持1(pertensor量化场景)、6(mx量化场景)。</td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -218,7 +232,7 @@ aclnnStatus aclnnAlltoAllvQuantGroupedMatMul(
         <td>gmmWeightQuantMode</td>
         <td>输入</td>
         <td>gmmWeight的量化模式。</td>
-        <td>当前版本仅支持1(pertensor场景)。</td>
+        <td>当前版本支持1(pertensor量化场景)、6(mx量化场景)。</td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -228,7 +242,7 @@ aclnnStatus aclnnAlltoAllvQuantGroupedMatMul(
         <td>mmXQuantMode</td>
         <td>输入</td>
         <td>mmX的量化模式。</td>
-        <td>当前版本仅支持1(pertensor场景)。</td>
+        <td>当前版本支持1(pertensor量化场景)、6(mx量化场景)。</td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -238,7 +252,7 @@ aclnnStatus aclnnAlltoAllvQuantGroupedMatMul(
         <td>mmWeightQuantMode</td>
         <td>输入</td>
         <td>mmWeight的量化模式。</td>
-        <td>当前版本仅支持1(pertensor场景)。</td>
+        <td>当前版本支持1(pertensor量化场景)、6(mx量化场景)。</td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -472,15 +486,17 @@ aclnnStatus aclnnAlltoAllvQuantGroupedMatMul(
   - K：表示选取TopK个专家，K的范围[2, 8]。
   - A：本卡收到的token数，是recvCounts参数累加之和。
   - ep通信域内所有卡的 A 参数的累加和等于所有卡上的 BSK 参数的累加和。
+  - mx量化且gmmX与gmmWeight为FLOAT4_E2M1时，H1和H2必须为偶数且不能为2，同时transGmmWeight和transMmWeight为false情况下，N1和N2必须为偶数。
   - groupSize: 
     - 仅当gmmXScale/gmmWeightScale/mmXScale/mmWeightScale输入都是2维及以上数据时，groupSize取值有效，其他场景需传入0。
     - groupSize值支持公式推导：传入的groupSize内部会按如下公式分解得到groupSizeM、groupSizeN、groupSizeK，当其中有1个或多个为0，会根据gmmX/gmmWeight/mmX/mmWeight/gmmXScale/gmmWeightScale/mmXScale/mmWeightScale输入shape重新设置groupSizeM、groupSizeN、groupSizeK用于计算。设置原理：如果groupSizeM=0，表示m方向量化分组值由接口推导，推导公式为groupSizeM = m / scaleM（需保证m能被scaleM整除），其中m与gmmX/mmX shape中的m一致，scaleM与gmmXScale/mmXScale shape中的m一致；如果groupSizeK=0，表示k方向量化分组值由接口推导，推导公式为groupSizeK = k / scaleK（需保证k能被scaleK整除），其中k与gmmX/mmX shape中的k一致，scaleK与gmmXScale/mmXScale shape中的k一致；如果groupSizeN=0，表示n方向量化分组值由接口推导，推导公式为groupSizeN = n / scaleN（需保证n能被scaleN整除），其中n与gmmWeight/mmWeight shape中的n一致，scaleN与gmmWeightScale/mmWeightScale shape中的n一致。
     $$
     groupSize = groupSizeK | groupSizeN << 16 | groupSizeM << 32
     $$
-    - 如果满足重新设置条件，当gmmXScale/gmmWeightScale/mmXScale/mmWeightScale输入都是3维，且数据类型都为FLOAT8_E8M0时，[groupSizeM，groupSizeN，groupSizeK]取值组合会推导为[1, 1, 32]，对应groupSize的值为4295032864。
+    - 如果满足重新设置条件，当gmmXScale/gmmWeightScale/mmXScale/mmWeightScale输入是2维及以上时，且数据类型都为FLOAT8_E8M0时，[groupSizeM，groupSizeN，groupSizeK]取值组合会推导为[1, 1, 32]，对应groupSize的值为4295032864。
 - 量化参数约束：
-  - 当前版本仅支持pertensor量化。
+  - 当前版本支持pertensor量化、mx量化。
+  - gmmWeight和gmmWeightScale的转置状态必须保持一致：同时转置或同时不转置。mmWeight和mmWeightScale同样需要保持转置状态一致。
 
 ## 调用示例
 

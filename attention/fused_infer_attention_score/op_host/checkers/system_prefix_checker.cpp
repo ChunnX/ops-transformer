@@ -53,11 +53,11 @@ ge::graphStatus SystemPrefixChecker::CheckSharedPrefixDataType(const FiaTilingIn
 {
     // 校验keySharedPrefix和valueSharedPrefix的数据类型
     auto &keySharedPrefixDesc = fiaInfo.opParamInfo.keySharedPrefix.desc;
-    auto &valueSharedPredixDesc = fiaInfo.opParamInfo.valueSharedPrefix.desc;
-    if (keySharedPrefixDesc != nullptr && valueSharedPredixDesc != nullptr) {
+    auto &valueSharedPrefixDesc = fiaInfo.opParamInfo.valueSharedPrefix.desc;
+    if (keySharedPrefixDesc != nullptr && valueSharedPrefixDesc != nullptr) {
         // keySharedPrefix和valueSharedPrefix的数据类型与key/value相同
         auto keySharedPrefixType = keySharedPrefixDesc->GetDataType();
-        auto valueSharedPredixType = valueSharedPredixDesc->GetDataType();
+        auto valueSharedPrefixType = valueSharedPrefixDesc->GetDataType();
         OP_CHECK_IF((keySharedPrefixType != fiaInfo.inputKvType),
             OP_LOGE(fiaInfo.opName,
                 "The datatype of keySharedPrefix(%s) and key/value(%s) are different. The datatype of keySharedPrefix "
@@ -65,12 +65,12 @@ ge::graphStatus SystemPrefixChecker::CheckSharedPrefixDataType(const FiaTilingIn
                 DataTypeToSerialString(keySharedPrefixType).c_str(),
                 DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
             return ge::GRAPH_FAILED);
-        OP_CHECK_IF((keySharedPrefixType != valueSharedPredixType),
+        OP_CHECK_IF((keySharedPrefixType != valueSharedPrefixType),
             OP_LOGE(fiaInfo.opName,
                 "The datatype of keySharedPrefix(%s) and valueSharedPrefix(%s) are different. The datatype "
                 "of keySharedPrefix and valueSharedPrefix must be the same.",
                 DataTypeToSerialString(keySharedPrefixType).c_str(),
-                DataTypeToSerialString(fiaInfo.inputKvType).c_str()),
+                DataTypeToSerialString(valueSharedPrefixType).c_str()),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -88,11 +88,11 @@ ge::graphStatus SystemPrefixChecker::CheckSharedPrefixShape(const FiaTilingInfo 
         // 第一维batch必须为1
         OP_CHECK_IF((keySharedPrefixShape.GetDim(DIM_NUM_0) != 1),
             OP_LOGE(fiaInfo.opName,
-                "The first dim(%ld) of keySharedPredix is not 1.", keySharedPrefixShape.GetDim(DIM_NUM_0)),
+                "The first dim(%ld) of keySharedPrefix is not 1.", keySharedPrefixShape.GetDim(DIM_NUM_0)),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF((valueSharedPrefixShape.GetDim(DIM_NUM_0) != 1),
             OP_LOGE(fiaInfo.opName,
-                "The first dim(%ld) of valueSharedPredix is not 1.", valueSharedPrefixShape.GetDim(DIM_NUM_0)),
+                "The first dim(%ld) of valueSharedPrefix is not 1.", valueSharedPrefixShape.GetDim(DIM_NUM_0)),
             return ge::GRAPH_FAILED);
         // layout为BNSD和BSND情况下，N、D轴与key一致
         if (fiaInfo.kvLayout == FiaLayout::BNSD) {
@@ -224,29 +224,43 @@ ge::graphStatus SystemPrefixChecker::CheckActualSharedPrefixLenData(const FiaTil
     }
     uint32_t keySharedPrefixS = 0;
     uint32_t valueSharedPrefixS = 0;
-    if (fiaInfo.kvLayout == FiaLayout::BNSD) {
+    const std::vector<std::string> layoutSupportList = {
+        "BSND", "BNSD", "BSH", "BNSD_BSND"
+    };
+    std::string layout(fiaInfo.opParamInfo.layOut);
+    if (std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) == layoutSupportList.end()) {
+        OP_LOGE(fiaInfo.opName,
+            "When system prefix exists, input_layout only supports BSH, BSND, BNSD, and BNSD_BSND, but got %s.",
+            layout.c_str());
+        return ge::GRAPH_FAILED;
+    }
+
+    if (layout == "BNSD" || layout == "BNSD_BSND") {
         keySharedPrefixS = keySharedPrefixTensor->GetStorageShape().GetDim(DIM_NUM_2);
         valueSharedPrefixS = valueSharedPrefixTensor->GetStorageShape().GetDim(DIM_NUM_2);
-    }
-    if (fiaInfo.kvLayout == FiaLayout::BSND) {
+    } else if (layout == "BSND") {
+        keySharedPrefixS = keySharedPrefixTensor->GetStorageShape().GetDim(DIM_NUM_1);
+        valueSharedPrefixS = valueSharedPrefixTensor->GetStorageShape().GetDim(DIM_NUM_1);
+    } else if (layout == "BSH") {
         keySharedPrefixS = keySharedPrefixTensor->GetStorageShape().GetDim(DIM_NUM_1);
         valueSharedPrefixS = valueSharedPrefixTensor->GetStorageShape().GetDim(DIM_NUM_1);
     }
-    if (fiaInfo.kvLayout == FiaLayout::BSH) {
-        keySharedPrefixS = keySharedPrefixTensor->GetStorageShape().GetDim(DIM_NUM_1);
-        valueSharedPrefixS = valueSharedPrefixTensor->GetStorageShape().GetDim(DIM_NUM_1);
-    }
-    uint32_t actualSharedPrefixLenData = actualSharedPrefixLenTensor->GetData<int64_t>()[0];
+    int64_t actualSharedPrefixLenData = actualSharedPrefixLenTensor->GetData<int64_t>()[0];
     OP_CHECK_IF((actualSharedPrefixLenData > keySharedPrefixS),
         OP_LOGE(fiaInfo.opName,
-            "actualSharedPrefixLen(%u) can not be greater than "
+            "actualSharedPrefixLen(%lld) can not be greater than "
             "keySharedPrefixS(%u).", actualSharedPrefixLenData, keySharedPrefixS),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF((actualSharedPrefixLenData > valueSharedPrefixS),
         OP_LOGE(fiaInfo.opName,
-            "actualSharedPrefixLen(%u) can not be greater than "
+            "actualSharedPrefixLen(%lld) can not be greater than "
             "valueSharedPrefixS(%u).", actualSharedPrefixLenData, valueSharedPrefixS),
         return ge::GRAPH_FAILED);
+    OP_CHECK_IF((actualSharedPrefixLenData < 0),
+        OP_LOGE(fiaInfo.opName,
+                "actualSharedPrefixLen(%lld) can not be "
+                "less than 0.", actualSharedPrefixLenData),
+            return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -289,10 +303,13 @@ ge::graphStatus SystemPrefixChecker::CheckUnSupportFeature(const FiaTilingInfo &
             "prefix is not supported when page attention is enabled."),
         return ge::GRAPH_FAILED);
     // 不支持tensorlist
-    OP_CHECK_IF((fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST),
-        OP_LOGE(fiaInfo.opName,
-            "prefix is not supported when tensorlist is enabled."),
-        return ge::GRAPH_FAILED);
+    if ((fiaInfo.s1Size > 1U && fiaInfo.socVersion == platform_ascendc::SocVersion::ASCEND910B) ||
+        fiaInfo.npuArch == NpuArch::DAV_3510) {
+        OP_CHECK_IF((fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST),
+            OP_LOGE(fiaInfo.opName,
+                "prefix is not supported when tensorlist is enabled."),
+            return ge::GRAPH_FAILED);
+    }
     // 不支持左padding场景
     OP_CHECK_IF((fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag),
         OP_LOGE(fiaInfo.opName,

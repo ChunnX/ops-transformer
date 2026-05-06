@@ -27,6 +27,7 @@
 #include "../fia_public_define.h"
 #include "../memory_copy.h"
 #include "../post_quant.h"
+#include "../const_def.h"
 
 using namespace AttentionCommon;
 using AscendC::CrossCoreSetFlag;
@@ -170,7 +171,7 @@ protected:
     static constexpr uint32_t SOFTMAX_TMP_BUFFER_SIZE = ConstInfo::BUFFER_SIZE_BYTE_2K;
     static constexpr uint32_t LSE_TMP_BUFFER_SIZE = ConstInfo::BUFFER_SIZE_BYTE_8K;
     static constexpr uint32_t DATA_BLOCK_NUM = 8;
-    static constexpr uint16_t brcbNum = (fa_base_vector::BYTE_BLOCK / sizeof(COMPUTE_T));
+    static constexpr uint16_t brcbNum = (AttentionCommon::BYTE_BLOCK / sizeof(COMPUTE_T));
 
     static constexpr bool POST_QUANT = IsSameType<OUT_T, int8_t>::value;
     T scale2Value = 0;
@@ -404,7 +405,7 @@ template <typename FIAT> __aicore__ inline void FiaBlockVecNonQuant<FIAT>::Proce
     }
     uint32_t mSplitSize = BASE_BLOCK_MAX_ELEMENT_NUM / info.actualSingleProcessSInnerSizeAlign;
     if constexpr (!SOFTMAX_WITH_BRC) {
-        uint32_t alignVal = fa_base_vector::BYTE_BLOCK / sizeof(COMPUTE_T);
+        uint32_t alignVal = AttentionCommon::BYTE_BLOCK / sizeof(COMPUTE_T);
         // 向下8/16对齐是因为UB操作起始地址需32B对齐
         mSplitSize = mSplitSize / alignVal * alignVal;
     }
@@ -608,7 +609,7 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::ElewiseCompute(
                     maskInfo.attenMaskBatchStride += qActSeqLensParser.GetActualSeqLength(i) * qActSeqLensParser.GetActualSeqLength(i);
                 }
             }
-            if (!fa_base_vector::IsSkipAttentionmask(maskInfo)) {
+            if (!fa_base_vector::IsSkipAttentionmask<true>(maskInfo)) {
                 fa_base_vector::AttentionmaskCopyIn<bool, bool, true>(maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo);
                 AscendC::PipeBarrier<PIPE_V>();
                 fa_base_vector::AttentionMaskCompute<MM1_OUT_T>(mmResUb, mmResUb, maskUb, ubWorkSpace, maskInfo);
@@ -676,11 +677,12 @@ template <typename FIAT> __aicore__ inline void FiaBlockVecNonQuant<FIAT>::Proce
         return;
     }
     uint32_t mSplitSize = BASE_BLOCK_MAX_ELEMENT_NUM / constInfo.headDimAlign;
+    // 为防止后续处理函数溢出或异常，将 mSplitSize 的最大值限制在255
     if (mSplitSize > fa_base_vector::MAX_REPEAT_TIMES) {
         mSplitSize = fa_base_vector::MAX_REPEAT_TIMES;
     }
     if constexpr (!SOFTMAX_WITH_BRC) {
-        uint32_t alignVal = fa_base_vector::BYTE_BLOCK / sizeof(COMPUTE_T);
+        uint32_t alignVal = AttentionCommon::BYTE_BLOCK / sizeof(COMPUTE_T);
         // 向下8/16对齐是因为UB操作起始地址需32B对齐
         mSplitSize = mSplitSize / alignVal * alignVal;
     }
@@ -808,7 +810,7 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::Bmm2FDDataCopyOut(const RunInf
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = dealRowCount;
     dataCopyParams.blockLen = actualColumnCount * sizeof(T);
-    dataCopyParams.srcStride = (columnCount - actualColumnCount) / (fa_base_vector::BYTE_BLOCK / sizeof(T));
+    dataCopyParams.srcStride = (columnCount - actualColumnCount) / (AttentionCommon::BYTE_BLOCK / sizeof(T));
     dataCopyParams.dstStride = 0;      
     DataCopyPad(dst, tmp, dataCopyParams);
     outputQue1.FreeTensor(tmp);
@@ -826,7 +828,7 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::DealInvalidMaskRows(const RunI
     }
     uint32_t baseOffset = mSplitInfo.nBufferStartM / 2 + startRow;
     if constexpr (SOFTMAX_WITH_BRC) {
-        baseOffset = baseOffset * (fa_base_vector::BYTE_BLOCK / sizeof(T));
+        baseOffset = baseOffset * (AttentionCommon::BYTE_BLOCK / sizeof(T));
     }
 
     uint32_t outIdx = info.loop % constInfo.preLoadNum;
@@ -952,14 +954,14 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::ComputeLogSumExpAndCopyToGm(co
     if (mSplitInfo.vecDealM == 0) {
         return;
     }
-    //  src-Shape  { gsizeV, S1, fa_base_vector::FP32_BLOCK_ELEMENT_NUM }
-    //  dst-Shape  { B  N2, splitKV s1, G, fa_base_vector::FP32_BLOCK_ELEMENT_NUM}
+    //  src-Shape  { gsizeV, S1, AttentionCommon::FP32_BLOCK_ELEMENT_NUM }
+    //  dst-Shape  { B  N2, splitKV s1, G, AttentionCommon::FP32_BLOCK_ELEMENT_NUM}
     uint64_t baseOffset = mSplitInfo.nBufferStartM / 2;
     size_t size = mSplitInfo.vecDealM * brcbNum;
     uint64_t offset = (info.accumTmpOutNum * constInfo.mBaseSize +              // taskoffset
                        info.tndCoreStartKVSplitPos * constInfo.mBaseSize + // 份数offset
                        mSplitInfo.nBufferStartM + mSplitInfo.vecStartM) *
-                      fa_base_vector::FP32_BLOCK_ELEMENT_NUM; // m轴offset
+                      AttentionCommon::FP32_BLOCK_ELEMENT_NUM; // m轴offset
     if constexpr (SOFTMAX_WITH_BRC) {              
         DataCopy(lseSumFdGm[offset], softmaxSumUb[baseOffset], size);
         DataCopy(lseMaxFdGm[offset], softmaxMaxUb[baseOffset], size);       
@@ -1009,10 +1011,17 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::DealInvalidRows(const RunInfo 
 template <typename FIAT>
 __aicore__ inline void FiaBlockVecNonQuant<FIAT>::SinkCopyIn(const RunInfo &info, LocalTensor<COMPUTE_T> &sinkBuf)
 {
-    uint32_t copySize = constInfo.gSize + 16; //DataCopy函数搬运量要求是32字节整数倍，不对齐时，将向下取整，因此该处多搬运16*sizeof(bf16)占位
     uint64_t sinkGmOffset = info.n2Idx * constInfo.gSize;
     LocalTensor<SINK_T> sinkCopyInBuf = inputQue1.AllocTensor<SINK_T>();
-    DataCopy(sinkCopyInBuf, sinkGm[sinkGmOffset], copySize);
+    DataCopyExtParams sinkCopyParams;
+    sinkCopyParams.blockCount = 1;
+    sinkCopyParams.blockLen = constInfo.gSize * sizeof(SINK_T);
+    sinkCopyParams.srcStride = 0;
+    sinkCopyParams.dstStride = 0;
+    DataCopyPadExtParams<SINK_T> sinkPadParams;
+    sinkPadParams.isPad = true;
+    sinkPadParams.paddingValue = static_cast<SINK_T>(0);
+    DataCopyPad(sinkCopyInBuf, sinkGm[sinkGmOffset], sinkCopyParams, sinkPadParams);
     inputQue1.EnQue(sinkCopyInBuf);
     inputQue1.DeQue<SINK_T>();
 
@@ -1039,7 +1048,7 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::SinkInvalidRow(const RunInfo &
         }
     }
 
-    if (constInfo.sparseMode == RIGHT_DOWN_CAUSAL) { // sparse = 3时，不存在下方行无效，直接返回
+    if (constInfo.sparseMode == fa_base_vector::RIGHT_DOWN_CAUSAL) { // sparse = 3时，不存在下方行无效，直接返回
         return;
     }
 

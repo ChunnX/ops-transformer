@@ -72,6 +72,46 @@ __aicore__ inline uint64_t ComputeAttenMaskOffsetNoCompress(MaskInfo &info, uint
     return bOffset + s1Offset + s2Offset;
 }
 
+__simd_vf__ inline void MergeBand(const uint64_t maskPreUb, const uint64_t maskNextUb, const uint16_t loopCount)
+{
+    RegTensor<uint32_t> vreg_pre;
+    RegTensor<uint32_t> vreg_next;
+    RegTensor<uint32_t> vreg_xor;
+    RegTensor<uint32_t> vreg_not;
+    RegTensor<uint32_t> vreg_or;
+    MaskReg preg_all = CreateMask<uint32_t, MaskPattern::ALL>();
+    Duplicate(vreg_xor, 0x1010101);
+
+    for (uint16_t i = 0; i < loopCount; ++i) {
+        LoadAlign(vreg_pre, (__ubuf__ uint32_t *&)maskPreUb + i * 64);
+        LoadAlign(vreg_next, (__ubuf__ uint32_t *&)maskNextUb + i * 64);
+        Xor(vreg_not, vreg_pre, vreg_xor, preg_all);
+        Or(vreg_or, vreg_not, vreg_next, preg_all);
+        StoreAlign((__ubuf__ uint32_t *&)maskNextUb + i * 64, vreg_or, preg_all);
+    }
+}
+
+template <typename T>
+__aicore__ inline void MergeMask(LocalTensor<T> &maskPre, LocalTensor<T> &maskNext, uint32_t &halfS1RealSize,
+                                 int64_t s2BaseSize)
+{
+    uint64_t maskPreUb = maskPre.GetPhyAddr();
+    uint64_t maskNextUb = maskNext.GetPhyAddr();
+    uint16_t rowNumEachLoop;
+    uint64_t rowNumTimesEachLoop;
+    if (s2BaseSize > regBytes) {
+        rowNumEachLoop = 1;
+        rowNumTimesEachLoop = static_cast<uint16_t>(s2BaseSize) / regBytes;
+    } else {
+        rowNumEachLoop = regBytes / static_cast<uint16_t>(s2BaseSize);
+        rowNumTimesEachLoop = 1;
+    }
+    uint16_t halfS1RealSizeLoop = static_cast<uint16_t>(halfS1RealSize) + 1;
+    uint16_t loopCount = (halfS1RealSizeLoop / rowNumEachLoop) * rowNumTimesEachLoop;
+
+    MergeBand(maskPreUb, maskNextUb, loopCount);
+}
+
 __aicore__ inline uint64_t ComputeAttenMaskOffsetCompress(MaskInfo &info, uint32_t s1StartIdx)
 {
     int64_t nextToken = 0; // sparse2 本身原点就是左上角
@@ -201,11 +241,11 @@ __aicore__ inline void AttentionmaskCopyInForGsLayout(LocalTensor<T> &attenMaskU
     }
     int32_t s1StartIdx = info.gs1StartIdx % info.s1Size;
     int32_t s1EndIdx = (info.gs1StartIdx + info.gs1dealNum - 1) % info.s1Size + 1;
-    uint32_t attenMaskSizeAlign = Align(info.s2dealNum, 32U);
+    uint32_t attenMaskS2Stride = Align(info.s2dealNum, 32U) + 32 * info.attenMaskDstStride;
     if (info.gs1dealNum <= info.s1Size) {
         if (s1StartIdx + info.gs1dealNum > info.s1Size) {
             AttentionmaskDataCopy(attenMaskUb, srcGmAddr, info, s1StartIdx, info.s1Size, isPre);
-            LocalTensor<T> attenMaskSecUb = attenMaskUb[(info.s1Size - s1StartIdx) * attenMaskSizeAlign];
+            LocalTensor<T> attenMaskSecUb = attenMaskUb[(info.s1Size - s1StartIdx) * attenMaskS2Stride];
             AttentionmaskDataCopy(attenMaskSecUb, srcGmAddr, info, 0, s1EndIdx, isPre);
         } else {
             AttentionmaskDataCopy(attenMaskUb, srcGmAddr, info, s1StartIdx, s1EndIdx, isPre);
@@ -220,23 +260,23 @@ __aicore__ inline void AttentionmaskCopyInForGsLayout(LocalTensor<T> &attenMaskU
         uint32_t tailS1Size = remainRowCount % info.s1Size;
 
         // 第一块完整的mask
-        LocalTensor<T> attenMaskSecUb = attenMaskUb[headS1Count * attenMaskSizeAlign];
+        LocalTensor<T> attenMaskSecUb = attenMaskUb[headS1Count * attenMaskS2Stride];
         AttentionmaskDataCopy(attenMaskSecUb, srcGmAddr, info, 0, info.s1Size, isPre);
         event_t enQueEvtID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
         SetFlag<HardEvent::MTE2_V>(enQueEvtID);
         WaitFlag<HardEvent::MTE2_V>(enQueEvtID);
 
         // head
-        DataCopy(attenMaskUb, attenMaskUb[info.s1Size * attenMaskSizeAlign], headS1Count * attenMaskSizeAlign);
+        DataCopy(attenMaskUb, attenMaskUb[info.s1Size * attenMaskS2Stride], headS1Count * attenMaskS2Stride);
         // mid
         for (uint32_t i = 1; i < midGCount; i++) {
-            DataCopy(attenMaskUb[(headS1Count + i * info.s1Size) * attenMaskSizeAlign],
-                    attenMaskUb[headS1Count * attenMaskSizeAlign], info.s1Size * attenMaskSizeAlign);
+            DataCopy(attenMaskUb[(headS1Count + i * info.s1Size) * attenMaskS2Stride],
+                     attenMaskSecUb, info.s1Size * attenMaskS2Stride);
         }
         // tail
         if (tailS1Size > 0) {
-            DataCopy(attenMaskUb[(headS1Count + midGCount * info.s1Size) * attenMaskSizeAlign],
-                    attenMaskUb[headS1Count * attenMaskSizeAlign], tailS1Size * attenMaskSizeAlign);
+            DataCopy(attenMaskUb[(headS1Count + midGCount * info.s1Size) * attenMaskS2Stride],
+                     attenMaskSecUb, tailS1Size * attenMaskS2Stride);
         }
     }
     PipeBarrier<PIPE_V>();
@@ -259,7 +299,7 @@ __aicore__ inline void AttentionmaskCopyInForSgLayout(LocalTensor<T> &attenMaskU
     uint32_t attenMaskS2Stride = attenMaskSizeAlign + 32 * info.attenMaskDstStride;
 
     // ub-head
-    AttentionmaskDataCopy(attenMaskUb, srcGmAddr, info, s1StartIdx, info.s1Size, isPre);
+    AttentionmaskDataCopy(attenMaskUb, srcGmAddr, info, s1StartIdx, s1StartIdx + 1, isPre);
 
     // ub-remain
     if (remainRowCount > 0) {
@@ -269,6 +309,7 @@ __aicore__ inline void AttentionmaskCopyInForSgLayout(LocalTensor<T> &attenMaskU
         dataCopyParams.blockLen = info.s2dealNum;
         dataCopyParams.srcStride = info.attenMaskS1Stride - info.s2dealNum;
         dataCopyParams.dstStride = (info.gSize - 1) * attenMaskS2Stride / 32 + info.attenMaskDstStride;
+        // blockLen + padParams.len + dstStride = gSize * s2Size
         DataCopyPadExtParams<T> padParams{true, 0, static_cast<uint8_t>(attenMaskSizeAlign - info.s2dealNum), 1U};
         DataCopyPad(attenMaskUb[headGCount * attenMaskS2Stride], srcGmAddr[maskOffset], dataCopyParams, padParams);
     }
@@ -279,28 +320,28 @@ __aicore__ inline void AttentionmaskCopyInForSgLayout(LocalTensor<T> &attenMaskU
 
     LocalTensor<int16_t> attenMaskUbDst = attenMaskUb.template ReinterpretCast<int16_t>();
     LocalTensor<int16_t> mask16 = attenMaskUb.template ReinterpretCast<int16_t>();
-    uint32_t dstMaskOffset = 0;
+    uint32_t dstMaskOffset = attenMaskS2Stride / sizeof(int16_t);
     uint32_t srcMaskBaseOffset = 0;
 
     // head
     SetMaskCount();
     SetVectorMask<int16_t, MaskMode::COUNTER>(attenMaskSizeAlign / 2);
     Copy<int16_t, false>(attenMaskUbDst[dstMaskOffset], mask16[srcMaskBaseOffset], AscendC::MASK_PLACEHOLDER,
-                        headGCount, {1, 1, static_cast<uint16_t>(info.attenMaskDstStride + attenMaskSizeAlign / 32), 0});
+        headGCount - 1, {1, 1, static_cast<uint16_t>(attenMaskS2Stride / 32), 0});
     dstMaskOffset += headGCount * attenMaskS2Stride / sizeof(int16_t);
     srcMaskBaseOffset += headGCount * attenMaskS2Stride / sizeof(int16_t);
 
     // mid
     for (uint32_t midIdx = 0; midIdx < midS1Count; midIdx++) {
         Copy<int16_t, false>(attenMaskUbDst[dstMaskOffset], mask16[srcMaskBaseOffset], AscendC::MASK_PLACEHOLDER,
-                            info.gSize, {1, 1, static_cast<uint16_t>(info.attenMaskDstStride + attenMaskSizeAlign / 32), 0});
+            info.gSize - 1, {1, 1, static_cast<uint16_t>(attenMaskS2Stride / 32), 0});
         dstMaskOffset += info.gSize * attenMaskS2Stride / sizeof(int16_t);
         srcMaskBaseOffset += info.gSize * attenMaskS2Stride / sizeof(int16_t);
     }
     // tail
     if (tailGSize > 0) {
         Copy<int16_t, false>(attenMaskUbDst[dstMaskOffset], mask16[srcMaskBaseOffset], AscendC::MASK_PLACEHOLDER,
-                            tailGSize, {1, 1, static_cast<uint16_t>(info.attenMaskDstStride + attenMaskSizeAlign / 32), 0});
+            tailGSize - 1, {1, 1, static_cast<uint16_t>(attenMaskS2Stride / 32), 0});
     }
     SetMaskNorm();
     ResetMask();
@@ -317,4 +358,37 @@ __aicore__ inline void AttentionmaskCopyGS1(LocalTensor<T> &attenMaskUb, GlobalT
         AttentionmaskCopyInForSgLayout(attenMaskUb, srcGmAddr, info, isPre);
     }
 }
+
+template <typename T>
+__aicore__ inline void AttentionmaskCopyIn(LocalTensor<T> &attenMaskUb, LocalTensor<T> &attenMaskUbPre,
+                                           GlobalTensor<T> &srcGmAddr, MaskInfo &info, bool isPre = false)
+{
+    if (info.layout == GS) {
+        AttentionmaskCopyInForGsLayout<T>(attenMaskUb, attenMaskUbPre, srcGmAddr, info, isPre);
+    } else if (info.layout == SG) { // sg
+        AttentionmaskCopyInForSgLayout<T>(attenMaskUb, attenMaskUbPre, srcGmAddr, info, isPre);
+    } else if (info.layout == S1_EQUAL1) {
+        uint32_t treeMaskStart = 0;
+
+        // 非 TREE：全量拷贝
+        uint64_t maskOffset = ComputeAttenMaskOffset(info, 0, isPre);
+        uint32_t attenMaskSizeAlign = Align(info.s2dealNum, 32U);
+        DataCopyExtParams dataCopyParams;
+        dataCopyParams.blockCount = 1;
+        dataCopyParams.blockLen = info.s2dealNum;
+        dataCopyParams.srcStride = info.attenMaskS1Stride - info.s2dealNum;
+        dataCopyParams.dstStride = 0;
+        DataCopyPadExtParams<T> padParams{true, 0, static_cast<uint8_t>(attenMaskSizeAlign - info.s2dealNum), 0};
+        DataCopyPad(attenMaskUb, srcGmAddr[maskOffset], dataCopyParams, padParams);
+
+        event_t enQueEvtID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
+        SetFlag<HardEvent::MTE2_V>(enQueEvtID);
+        WaitFlag<HardEvent::MTE2_V>(enQueEvtID);
+        for (uint32_t i = 1; i < info.gs1dealNum; i++) {
+            uint32_t offset = i * Align(info.s2dealNum, 32U);
+            DataCopy(attenMaskUb[offset], attenMaskUb, Align(info.s2dealNum, 32U));
+        }
+    }
+}
+
 #endif

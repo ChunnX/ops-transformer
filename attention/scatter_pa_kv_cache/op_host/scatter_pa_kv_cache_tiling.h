@@ -93,12 +93,16 @@ protected:
     ge::graphStatus TemplateNormal();
     ge::graphStatus TemplateRope();
     ge::graphStatus TemplateAlibi();
+    ge::graphStatus TemplateOmni();
+    ge::graphStatus TemplateNZ();
     ge::graphStatus GetIndexDtype();
     ge::graphStatus GetInputDtype();
     ge::graphStatus CheckDimValid();
     ge::graphStatus CheckNormal();
     ge::graphStatus CheckRope();
     ge::graphStatus CheckAlibi();
+    ge::graphStatus CheckNz();
+    ge::graphStatus GetTemplateType(int64_t inputKeyDimNum);
     void SetInputPos();
     void GetCommonTilingInfo();
     ge::graphStatus CheckSlotMappingShape(int64_t requiredDimNum);
@@ -122,6 +126,7 @@ private:
     int64_t vTailHandleNum_ = 0;
     int64_t numTokens_ = 0;
     int64_t dtypeByteSize_ = 0;
+    int64_t valueDtypeByteSize_ = 0;
     int64_t keyStride0_;
     int64_t keyStride1_;
     int64_t keyStride2_;
@@ -148,6 +153,10 @@ private:
     int64_t inputCompressLens_;
     int64_t inputCompressSeqOffset_;
     int64_t inputSeqLens_;
+    int64_t kStride_ = 0;
+    int64_t vStride_ = 0;
+    int64_t kOffset_ = 0;
+    int64_t vOffset_ = 0;
 
     gert::Shape inputKeyShape_;
     gert::Shape inputKeyCacheInShape_;
@@ -159,6 +168,7 @@ private:
     gert::Shape seqLensShape_;
 
     ge::DataType inputDtype_;
+    ge::DataType valueDtype_;
     ScatterPaKvCacheTilingData tilingData_;
 };
 

@@ -33,6 +33,7 @@
 
 namespace mc2tiling {
 constexpr uint32_t STANDARD_CARD_4P = 4;
+constexpr uint32_t EIGHT_P_8P = 8;  // 8P场景（POD8P/Server8P）
 constexpr uint32_t COMM_MESH = 0b1U;
 constexpr uint32_t COMM_SWITCH = (COMM_MESH << 1U);
 constexpr uint32_t COMM_RING = (COMM_MESH << 2U);
@@ -257,7 +258,8 @@ inline ge::graphStatus GetEpWinSize(const gert::TilingContext *context, const ch
     auto attrs = context->GetAttrs();
     if (mc2tiling::GetNpuArch(context) == NpuArch::DAV_3510) {
         // A5 暂不支持 Hccl CommGetBufSizeCfg 接口，此处暂作规避
-        hcclBufferSizeEp = mc2tiling::Mc2TilingUtils::GetMaxWindowSize();
+        // A5 实际物理分配为 HCCL_BUFFSIZE 的 2 倍
+        hcclBufferSizeEp = mc2tiling::Mc2TilingUtils::GetMaxWindowSize() * 2UL;
         // A5 上前 1MB 作为状态区，剩余空间用作数据区
         maxWindowSizeEp = hcclBufferSizeEp - MTE_STATE_ZONE_SIZE;
     } else {
@@ -277,6 +279,19 @@ inline ge::graphStatus GetEpWinSize(const gert::TilingContext *context, const ch
 // 临时判断是否为标卡4p形态(4卡，950)
 inline bool IsStandardCard4P(const uint32_t rankDim, const NpuArch npuArch) {
     return ((rankDim == STANDARD_CARD_4P) && (npuArch == NpuArch::DAV_3510));
+}
+
+// 判断是否为8P形态(8卡，950)
+inline bool Is8P(const uint32_t rankDim, const NpuArch npuArch)
+{
+    return ((rankDim == EIGHT_P_8P) && (npuArch == NpuArch::DAV_3510));
+}
+
+// 判断是否使用 All2All + Vec Reduce 通路（StandardCard 4P 或 8P）
+inline bool IsUseA2APath(const uint32_t rankDim, const NpuArch npuArch)
+{
+    return ((npuArch == NpuArch::DAV_3510) &&
+            (rankDim == STANDARD_CARD_4P || rankDim == EIGHT_P_8P));
 }
 }  // namespace mc2tiling
 

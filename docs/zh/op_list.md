@@ -127,6 +127,26 @@
     <td>AI Core</td>
     <td>基于一系列操作得到每一个token对应的Top-k个位置。</td>
   </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/masked_causal_conv1d/README.md">masked_causal_conv1d</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>对hidden层的token之间进行带mask的因果一维分组卷积操作。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/masked_causal_conv1d_backward/README.md">masked_causal_conv1d_backward</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>对hidden层的token之间进行一维分组卷积操作的反向梯度计算。</td>
+  </tr>
     <tr>
     <td>attention</td>
     <td><a href="../../attention/mla_preprocess/README.md">mla_preprocess</a></td>
@@ -579,6 +599,16 @@
   </tr>
   <tr>
     <td>mc2</td>
+    <td><a href="../../mc2/mega_moe/README.md">mega_moe</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>完成dispatch + group_matmul1 + swiglu_quant + group_matmul2 + combine的端到端融合计算。</td>
+  </tr>
+  <tr>
+    <td>mc2</td>
     <td><a href="../../mc2/moe_distribute_combine/README.md">moe_distribute_combine</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -919,6 +949,16 @@
   </tr>
   <tr>
     <td>mhc</td>
+    <td><a href="../../mhc/mhc_sinkhorn_backward/README.md">mhc_sinkhorn_backward</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>mhc_sinkhorn的反向算子</td>
+  </tr>
+  <tr>
+    <td>mhc</td>
     <td><a href="../../mhc/mhc_post/README.md">mhc_post</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -926,6 +966,16 @@
     <td>✓</td>
     <td>AI Core</td>
     <td>基于一系列计算对mHC架构中上一层输出进行Post Mapping，对上一层的输入进行Res Mapping，然后对二者进行残差连接，得到下一层的输入</td>
+  </tr>
+   <tr>
+    <td>mhc</td>
+    <td><a href="../../mhc/mhc_post_backward/README.md">mhc_post_backward</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>mhc_post基于一系列计算对mHC架构中上一层输出进行Post Mapping，对上一层的输入进行Res Mapping，然后对二者进行残差连接，得到下一层的输入。该算子实现前述过程的反向</td>
   </tr>
   <tr>
     <td>mhc</td>
@@ -936,6 +986,16 @@
     <td>✓</td>
     <td>AI Core</td>
     <td>基于一系列计算得到MHC架构中hidden层的$H^{res}$和$H^{post}$投影矩阵以及Attention或MLP层的输入矩阵$h^{in}$。</td>
+  </tr>
+  <tr>
+    <td>mhc</td>
+    <td><a href="../../mhc/mhc_pre_backward/README.md">mhc_pre_backward</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>mhc_pre算子的反向传播，基于一系列计算得到MHC架构中hidden层的梯度。</td>
   </tr>
   <tr>
     <td>posembedding</td>
@@ -1016,6 +1076,16 @@
     <td>✓</td>
     <td>AI Core</td>
     <td>执行单路旋转位置编码的反向计算。</td>
+  </tr>
+  <tr>
+    <td>posembedding</td>
+    <td><a href="../../posembedding/kv_rms_norm_rope_cache/README.md">kv_rms_norm_rope_cache</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>对输入张量(kv)的尾轴，拆分出左半边用于rms_norm计算，右半边用于rope计算，再将计算结果分别scatter到两块cache中。</td>
   </tr>
 </tbody>
 </table>

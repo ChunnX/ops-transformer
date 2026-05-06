@@ -21,15 +21,9 @@
 #else
 #include "kernel_operator.h"
 #endif
-#include "common.h"
-
+#include "flash_attention_score_grad_common.h"
 
 namespace commondef {
-constexpr uint32_t NUM_TWO = 2;
-constexpr uint32_t NUM_THREE = 3;
-constexpr uint32_t NUM_FOUR = 4;
-constexpr uint32_t NUM_EIGHT = 8;
-
 constexpr int64_t DETER_PREFIX_NUM = 132;
 constexpr int64_t DETER_PREFIX_THRESHOLD = 128;
 constexpr int64_t M_BASE_64 = 64;
@@ -2139,7 +2133,7 @@ __aicore__ inline void CalGQABandIndex(const BandInfo &bandInfo, int64_t j, int6
         int64_t R1 = bandInfo.R1;
         int64_t R2 = bandInfo.R2;
         // 对称性好的情况特殊处理
-        if (NUM_TWO * b2 == k && L1 == L3) {
+        if (NUM_TWO * b2 == k && L1 == L3 && m > 1) {
             b_id = (j + 1) / NUM_TWO;
             if (L2 % NUM_TWO == 1) {
                 int64_t R0 = Max(NUM_TWO * p, m);

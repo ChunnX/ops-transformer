@@ -31,7 +31,7 @@ set(_FLOYD_OpKernelSourcesExt
 )
 
 set(_FLOYD_OpKernelPrivateIncludesExt
-        ${OPS_TRANSFORMER_DIR}/common/include/kernel
+        ${OPS_TRANSFORMER_DIR}/common/include/op_kernel
 )
 
 set(_FLOYD_OpKernelPrivateCompileDefinitionsExt

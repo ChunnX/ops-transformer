@@ -22,6 +22,8 @@
   负载均衡对于expert_ids中的第i个值，即第i个token：
 
     ```python
+    place_num = 8
+    F = 2
     new_expert_id = eplb_table[table_offset + 1]
     expert_id = expert_ids[i]
     table_offset = expert_id * F
@@ -29,7 +31,7 @@
         new_expert_id = eplb_table[table_offset + 1]
     else:
         if (balance_mode == 0):
-            mode_value = ceil(world_size, eplb_table[table_offset])
+            mode_value = ceil(world_size / eplb_table[table_offset])
             place_idx = local_rank_id / mode_value + 1
         else:
             place_idx = i % place_num
@@ -153,7 +155,7 @@ aclnnStatus aclnnMoeUpdateExpert(
     <td>×</td>
     </tr>
     <tr>
-    <td>localRankId(int64_t)</td>
+    <td>localRankId（int64_t）</td>
     <td>输入</td>
     <td>本卡Id。</td>
     <td><ul><li>balanceMode=0时取值范围[0, worldSize)。</li><li>同一个通信域中各卡的localRankId不重复。</li></ul></td>
@@ -163,7 +165,7 @@ aclnnStatus aclnnMoeUpdateExpert(
     <td>-</td>
     </tr>
     <tr>
-    <td>worldSize(int64_t)</td>
+    <td>worldSize（int64_t）</td>
     <td>输入</td>
     <td>通信域大小。</td>
     <td>balanceMode=0时取值范围[2, 768]。</td>
@@ -173,7 +175,7 @@ aclnnStatus aclnnMoeUpdateExpert(
     <td>-</td>
     </tr>
     <tr>
-    <td>balanceMode(int64_t)</td>
+    <td>balanceMode（int64_t）</td>
     <td>输入</td>
     <td>均衡规则，默认值为0。</td>
     <td><ul><li>0：按rank分发。</li><li>1：按token分发。</li><li>取值范围[0, 1]。</li></ul></td>
@@ -203,7 +205,7 @@ aclnnStatus aclnnMoeUpdateExpert(
     <td>×</td>
     </tr>
     <tr>
-    <td>workspaceSize(uint64_t*)</td>
+    <td>workspaceSize（uint64_t*）</td>
     <td>输出</td>
     <td>返回需要在Device侧申请的workspace大小。</td>
     <td>-</td>
@@ -337,9 +339,9 @@ aclnnStatus aclnnMoeUpdateExpert(
 
 ## 调用示例
 
-以<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>以及<term>Ascend 950PR/Ascend 950DT</term>为例，调起MoeUpdateExpert，MoeDistributeDispatchV2和MoeDistributeCombineAddRmsNorm算子。
+以<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>以及<term>Ascend 950PR/Ascend 950DT</term>为例，调用MoeUpdateExpert，MoeDistributeDispatchV2和MoeDistributeCombineAddRmsNorm算子。
 
-- 示例代码如下，仅供参考
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
     ```Cpp
     #include <thread>

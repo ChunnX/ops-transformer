@@ -8,12 +8,6 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-function(gen_common_symbol)
-  install(DIRECTORY ${OPS_TRANSFORMER_COMMON_INC_HEADERS}
-    DESTINATION ${COMMON_INC_INSTALL_DIR}
-  )
-endfunction()
-
 # ophost shared
 function(gen_ophost_symbol)
   add_library(${OPHOST_NAME} SHARED
@@ -80,8 +74,18 @@ function(gen_es_transformer_lib_builtin)
     OUTPUT_PATH ${CMAKE_BINARY_DIR}/es_packages
   )
   install(
-    DIRECTORY ${CMAKE_BINARY_DIR}/es_packages
-    DESTINATION ${VERSION_INFO_INSTALL_DIR}
+    FILES ${CMAKE_BINARY_DIR}/es_packages/lib64/libes_transformer.so
+ 	  DESTINATION ${VERSION_INFO_INSTALL_DIR}/lib64
+    OPTIONAL
+  )
+  install(
+ 	  DIRECTORY ${CMAKE_BINARY_DIR}/es_packages/include/es_transformer
+ 	  DESTINATION ${VERSION_INFO_INSTALL_DIR}/include/es
+ 	  OPTIONAL
+ 	)
+  install(
+    DIRECTORY ${CMAKE_BINARY_DIR}/es_packages/whl/
+    DESTINATION ${WHL_INSTALL_DIR}/es_packages/whl
     OPTIONAL
   )
 endfunction()
@@ -94,6 +98,8 @@ function(gen_opgraph_symbol)
 
   add_library(
     ${OPGRAPH_NAME} SHARED
+    $<$<TARGET_EXISTS:${COMMON_NAME}_fallback_obj>:$<TARGET_OBJECTS:${COMMON_NAME}_fallback_obj>>
+    $<$<TARGET_EXISTS:${OPGRAPH_NAME}_fallback_obj>:$<TARGET_OBJECTS:${OPGRAPH_NAME}_fallback_obj>>
     $<$<TARGET_EXISTS:${GRAPH_PLUGIN_NAME}_obj>:$<TARGET_OBJECTS:${GRAPH_PLUGIN_NAME}_obj>>
     $<$<TARGET_EXISTS:${OPGRAPH_NAME}_gentask_obj>:$<TARGET_OBJECTS:${OPGRAPH_NAME}_gentask_obj>>
     $<$<TARGET_EXISTS:opbase_util_objs>:$<TARGET_OBJECTS:opbase_util_objs>>
@@ -116,7 +122,7 @@ function(gen_opgraph_symbol)
             rt2_registry_static
             -Wl,--no-whole-archive
             -Wl,-Bsymbolic
-            # ge_compiler
+            ge_compiler
   )
   target_link_directories(${OPGRAPH_NAME}
     PRIVATE
@@ -130,13 +136,22 @@ function(gen_opgraph_symbol)
     get_target_property(GRAPH_SOURCE ${GRAPH_PLUGIN_NAME}_obj SOURCES)
     if(GRAPH_SOURCE)
       add_dependencies(${GRAPH_PLUGIN_NAME}_obj
+        build_es_math
         build_es_transformer
       )
       target_link_libraries(${GRAPH_PLUGIN_NAME}_obj
         PRIVATE
+        es_math
         es_transformer
       )
     endif()
+    target_link_libraries(${OPGRAPH_NAME}
+      PRIVATE
+      -Wl,--no-as-needed
+      es_math
+      es_transformer
+      -Wl,--as-needed
+    )
   endif()
   set_target_properties(${OPGRAPH_NAME} PROPERTIES OUTPUT_NAME "opgraph_transformer")
   install(TARGETS ${OPGRAPH_NAME}
@@ -369,8 +384,6 @@ function(gen_onnx_plugin_symbol)
 endfunction()
 
 function(gen_norm_symbol)
-  gen_common_symbol()
-
   if (ENABLE_OPS_HOST)
     gen_ophost_symbol()
     gen_opapi_symbol()

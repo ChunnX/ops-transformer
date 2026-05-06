@@ -468,14 +468,18 @@ ge::graphStatus CommonChecker::CheckAxis(const FiaTilingInfo &fiaInfo)
                 return ge::GRAPH_FAILED);
     if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) {
         OP_CHECK_IF(fiaInfo.s1Size < 1,
-                OP_LOGE(fiaInfo.opName, "input query's sequence length is %u, it should be "
-                    ">=1 when enable ifa mla", fiaInfo.s1Size),
+                OP_LOGE(fiaInfo.opName, "In %s %s situation, when query|key|value headDim=512, "
+                    "input query's sequence length is %u, it should be >=1",
+                    QuantModeToSerialString(fiaInfo.quantMode).c_str(),
+                    SituationToSerialString(fiaInfo.ropeMode).c_str(), fiaInfo.s1Size),
                 return ge::GRAPH_FAILED);
         static const std::set<uint32_t> SUPPORT_G_IN_IFAMLA = {1U, 2U, 4U, 8U, 16U, 32U, 64U, 128U}; // ifa mla场景g轴支持范围
         OP_CHECK_IF((SUPPORT_G_IN_IFAMLA.find(fiaInfo.gSize) == SUPPORT_G_IN_IFAMLA.end()),
-            OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName, "The asix G should be in range of "
-                "{1, 2, 4, 8, 16, 32, 64, 128} when enable ifa mla, the current is %u.",
-                fiaInfo.n1Size / fiaInfo.n2Size),
+            OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName, "In %s %s situation, when query|key|value headDim=512, "
+                "the asix G should be in range of "
+                "{1, 2, 4, 8, 16, 32, 64, 128}, the current is %u.",
+                QuantModeToSerialString(fiaInfo.quantMode).c_str(),
+                SituationToSerialString(fiaInfo.ropeMode).c_str(), fiaInfo.n1Size / fiaInfo.n2Size),
             return ge::GRAPH_FAILED);
     }
     OP_LOGI(fiaInfo.opName, "The axis B(%u), qkD(%u), vD(%u), G(%u), qT(%u), kT(%u).",
@@ -561,14 +565,14 @@ ge::graphStatus CommonChecker::CheckQueryOutConsistency(const FiaTilingInfo &fia
         GetQueryDimAndOutDim(queryShape, attentionOutShape, layoutStr, tmpQueryDim, tmpOutDim, queryDimIdx);
         OP_CHECK_IF(!fiaInfo.isQKVDDifferent && (tmpQueryDim != tmpOutDim),
             OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName,
-                "tensor query shape (%ld) do not equal to tensor output shape(%ld) in dim %u for %s.",
-                tmpQueryDim, tmpOutDim, queryDimIdx, layoutStr.c_str()),
+                "tensor query shape in dim %u (%ld) do not equal to tensor output shape(%ld) for %s.",
+                queryDimIdx, tmpQueryDim, tmpOutDim, layoutStr.c_str()),
             return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(fiaInfo.isQKVDDifferent && (queryDimIdx != dimNumQ - 1) && (tmpQueryDim != tmpOutDim),
             OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName,
-                "tensor query shape (%ld) do not equal to tensor output shape(%ld) in dim %u for %s.",
-                tmpQueryDim, tmpOutDim, queryDimIdx, layoutStr.c_str()),
+                "tensor query shape in dim %u (%ld) do not equal to tensor output shape(%ld) for %s.",
+                queryDimIdx, tmpQueryDim, tmpOutDim, layoutStr.c_str()),
             return ge::GRAPH_FAILED);
     }
 
@@ -621,12 +625,41 @@ ge::graphStatus CommonChecker::CheckKeyValueConsistency(const FiaTilingInfo &fia
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus CommonChecker::CheckValueOutDConsistency(const FiaTilingInfo &fiaInfo)
+{
+    if (fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION || fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST) {
+        return ge::GRAPH_SUCCESS;
+    }
+    const gert::StorageShape *valueShape = fiaInfo.opParamInfo.value.shape;
+    const gert::StorageShape *attentionOutShape = fiaInfo.opParamInfo.attenOut.shape;
+    size_t dimNumValue = valueShape->GetStorageShape().GetDimNum();
+    size_t dimNumOut = attentionOutShape->GetStorageShape().GetDimNum();
+    int64_t valueHeadDim;
+    int64_t outHeadDim;
+    if (fiaInfo.kvLayout != FiaLayout::BSH) {
+        valueHeadDim = valueShape->GetStorageShape().GetDim(dimNumValue -1);
+    } else {
+        valueHeadDim = valueShape->GetStorageShape().GetDim(dimNumValue - 1) / fiaInfo.n2Size;
+    }
+    if (fiaInfo.outLayout != FiaLayout::BSH) {
+        outHeadDim = attentionOutShape->GetStorageShape().GetDim(dimNumOut -1);
+    } else {
+        outHeadDim = attentionOutShape->GetStorageShape().GetDim(dimNumOut - 1) / fiaInfo.n1Size;
+    }
+    OP_CHECK_IF(valueHeadDim != outHeadDim,
+        OP_LOGE(fiaInfo.opName,
+                "The dim num of value should be consistent with the dim num of out,"
+                "but current dim num of value is %zu, dim num of out is %zu.",
+                valueHeadDim, outHeadDim),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus CommonChecker::CheckQueryShape(const FiaTilingInfo &fiaInfo)
 {
     uint32_t attrN = fiaInfo.n1Size;
     const gert::StorageShape *queryShape = fiaInfo.opParamInfo.query.shape;
     uint32_t queryShapeHeadNum = attrN;
-    size_t queryDim = queryShape->GetStorageShape().GetDimNum();
     int64_t queryH = 0;
 
     if (fiaInfo.qLayout == FiaLayout::BNSD || fiaInfo.qLayout == FiaLayout::TND) {
@@ -647,21 +680,12 @@ ge::graphStatus CommonChecker::CheckQueryShape(const FiaTilingInfo &fiaInfo)
                                         "but current H is %ld numHeads is %u.",
                         queryH, attrN),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF((fiaInfo.qLayout == FiaLayout::BNSD || fiaInfo.qLayout == FiaLayout::BSND) && queryDim != 4U,
-                OP_LOGE(fiaInfo.opName, "When layout is %s, query dim num is  %u, it should be 4.",
-                        fiaInfo.opParamInfo.layOut, queryDim),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF((fiaInfo.qLayout == FiaLayout::BSH || fiaInfo.qLayout == FiaLayout::TND) && queryDim != 3U,
-                OP_LOGE(fiaInfo.opName, "When layout is %s, query dim num is  %u, it should be 3.",
-                        fiaInfo.opParamInfo.layOut, queryDim),
-                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus CommonChecker::CheckKeyNHVaild(const FiaTilingInfo &fiaInfo, const gert::Shape &keyShape)
 {
     uint32_t attrKvN = fiaInfo.n2Size;
-    size_t keyDim = keyShape.GetDimNum();
     uint32_t keyShapeHeadNum = attrKvN;
     int64_t keyH = 0;
 
@@ -669,6 +693,8 @@ ge::graphStatus CommonChecker::CheckKeyNHVaild(const FiaTilingInfo &fiaInfo, con
         keyShapeHeadNum = keyShape.GetDim(1);
     } else if (fiaInfo.kvLayout == FiaLayout::BSND) {
         keyShapeHeadNum = keyShape.GetDim(2);
+    } else if (fiaInfo.kvLayout == FiaLayout::NTD) {
+        keyShapeHeadNum = keyShape.GetDim(0);
     } else if (fiaInfo.kvLayout == FiaLayout::BSH) {
         keyH = keyShape.GetDim(2);
     }
@@ -683,14 +709,6 @@ ge::graphStatus CommonChecker::CheckKeyNHVaild(const FiaTilingInfo &fiaInfo, con
                                         "but current H is %ld numKeyValueHeads is %u.",
                         keyH, attrKvN),
                  return ge::GRAPH_FAILED);
-    OP_CHECK_IF((fiaInfo.kvLayout == FiaLayout::BNSD || fiaInfo.kvLayout == FiaLayout::BSND) && keyDim != 4U,
-                OP_LOGE(fiaInfo.opName, "When layout is %s, key dim num is  %u, it should be 4.",
-                        fiaInfo.opParamInfo.layOut, keyDim),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF((fiaInfo.kvLayout == FiaLayout::BSH || fiaInfo.kvLayout == FiaLayout::TND) && keyDim != 3U,
-                OP_LOGE(fiaInfo.opName, "When layout is %s, key dim num is  %u, it should be 3.",
-                        fiaInfo.opParamInfo.layOut, keyDim),
-                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -774,9 +792,11 @@ ge::graphStatus CommonChecker::CheckQueryKeyConsistency(const FiaTilingInfo &fia
 
 ge::graphStatus CommonChecker::CheckMultiAttr(const FiaTilingInfo &fiaInfo)
 {
-    OP_CHECK_IF(fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION && fiaInfo.isQKVDDifferent,
-        OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName, "Not support PA when query and key headdim is not equal to value headdim."),
-        return ge::GRAPH_FAILED);
+    if (fiaInfo.npuArch == NpuArch::DAV_3510) {
+        OP_CHECK_IF(fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION && fiaInfo.isQKVDDifferent,
+            OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName, "Not support PA when query and key headdim is not equal to value headdim."),
+            return ge::GRAPH_FAILED);
+    }
     OP_CHECK_IF(fiaInfo.pseShiftFlag && fiaInfo.isQKVDDifferent,
         OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName, "Not support pse shift when query and key headdim is not equal to value headdim."),
         return false);
@@ -825,6 +845,31 @@ ge::graphStatus CommonChecker::CheckAttr(const FiaTilingInfo &fiaInfo)
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus CommonChecker::CheckDimNum(const FiaTilingInfo &fiaInfo)
+{
+    size_t queryDim = fiaInfo.opParamInfo.query.shape->GetStorageShape().GetDimNum();
+    size_t keyDim = fiaInfo.opParamInfo.key.shape->GetStorageShape().GetDimNum();
+    OP_CHECK_IF((fiaInfo.qLayout == FiaLayout::BNSD || fiaInfo.qLayout == FiaLayout::BSND) && queryDim != 4U,
+                OP_LOGE(fiaInfo.opName, "When layout is %s, query dim num should be 4, it is  %u.",
+                        fiaInfo.opParamInfo.layOut, queryDim),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF((fiaInfo.qLayout == FiaLayout::BSH || fiaInfo.qLayout == FiaLayout::TND ||
+                 fiaInfo.qLayout == FiaLayout::NTD) && queryDim != 3U,
+                OP_LOGE(fiaInfo.opName, "When layout is %s, query dim num should be 3, it is  %u.",
+                        fiaInfo.opParamInfo.layOut, queryDim),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF((fiaInfo.kvLayout == FiaLayout::BNSD || fiaInfo.kvLayout == FiaLayout::BSND) && keyDim != 4U,
+                OP_LOGE(fiaInfo.opName, "When layout is %s, key dim num should be 4, it is  %u.",
+                        fiaInfo.opParamInfo.layOut, keyDim),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF((fiaInfo.kvLayout == FiaLayout::BSH || fiaInfo.kvLayout == FiaLayout::TND ||
+                 fiaInfo.kvLayout == FiaLayout::NTD) && keyDim != 3U,
+                OP_LOGE(fiaInfo.opName, "When layout is %s, key dim num should be 3, it is  %u.",
+                        fiaInfo.opParamInfo.layOut, keyDim),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus CommonChecker::CheckHeadNum(const FiaTilingInfo &fiaInfo)
 {
     if ((fiaInfo.n1Size < 0) || (fiaInfo.n2Size < 0)) {
@@ -835,12 +880,15 @@ ge::graphStatus CommonChecker::CheckHeadNum(const FiaTilingInfo &fiaInfo)
     if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) { // ifamla
         static const std::set<uint32_t> SUPPORT_NUM_HEAD_IN_IFAMLA = {1U, 2U, 4U, 8U, 16U, 32U, 64U, 128U}; // ifa mla场景qN支持范围
         OP_CHECK_IF((SUPPORT_NUM_HEAD_IN_IFAMLA.find(fiaInfo.n1Size) == SUPPORT_NUM_HEAD_IN_IFAMLA.end()),
-            OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName, "Input query's heads num is %u, it should be in range of "
-                "{1, 2, 4, 8, 16, 32, 64, 128} when enable ifa mla", fiaInfo.n1Size),
+            OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName, "In %s %s situation, when query|key|value headDim=512, "
+                "input query's heads num is %u, it should be in range of "
+                "{1, 2, 4, 8, 16, 32, 64, 128}", QuantModeToSerialString(fiaInfo.quantMode).c_str(),
+                SituationToSerialString(fiaInfo.ropeMode).c_str(), fiaInfo.n1Size),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF((fiaInfo.n2Size != 1U),
-            OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName, "Input key/value's heads num is %u, it should be 1 when enable "
-                "ifa mla", fiaInfo.n2Size),
+            OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName, "In %s %s situation, when query|key|value headDim=512, "
+                "input key/value's heads num is %u, it should be 1", QuantModeToSerialString(fiaInfo.quantMode).c_str(),
+                SituationToSerialString(fiaInfo.ropeMode).c_str(), fiaInfo.n2Size),
             return ge::GRAPH_FAILED);
     }
 
@@ -865,12 +913,11 @@ ge::graphStatus CommonChecker::CheckInputLayout(const FiaTilingInfo &fiaInfo)
             }
         } else {
             const std::vector<std::string> INPUT_LAYOUT_LIST = {
-                "BSH", "BSND", "BNSD", "TND", "NTD", "BSH_NBSD", "BSND_NBSD", "BNSD_NBSD", "TND_NTD", "NTD_TND",
-                "BSH_BNSD", "BSND_BNSD", "BNSD_BSND"
+                "BSH", "BSND", "BNSD", "TND", "NTD", "NTD_TND", "BSH_BNSD", "BSND_BNSD", "BNSD_BSND"
             };
             OP_CHECK_IF(std::find(INPUT_LAYOUT_LIST.begin(), INPUT_LAYOUT_LIST.end(), inputLayout) == INPUT_LAYOUT_LIST.end(),
                 OP_LOGE(fiaInfo.opName, "When gqa noquant scenario is applied, layout only supports BSH, BSND, BNSD, TND, "
-                    "NTD, BSH_NBSD, BSND_NBSD, BNSD_NBSD, TND_NTD, NTD_TND, BSH_BNSD, BSND_BNSD, BNSD_BSND, but got %s",
+                    "NTD, NTD_TND, BSH_BNSD, BSND_BNSD, BNSD_BSND, but got %s",
                     inputLayout.c_str()),
                 return ge::GRAPH_FAILED);
             const std::vector<std::string> noRopeLayoutSupportListA = {"BSH", "BSND", "BNSD"};
@@ -953,6 +1000,18 @@ ge::graphStatus CommonChecker::CheckInputLayout(const FiaTilingInfo &fiaInfo)
             OP_LOGE(fiaInfo.opName, "When prefill mla scenario is applied, the attr inputLayout only supports BSH, "
                 "BSND, BNSD, TND, NTD, BSND_BNSD, BSH_BNSD, NTD_TND, BNSD_BSND, but got %s", inputLayout.c_str());
             return ge::GRAPH_FAILED;
+        } else {
+            OP_CHECK_IF(fiaInfo.ropeMode == RopeMode::ROPE_COMBINE &&
+                (fiaInfo.qkHeadDim != NUM_192 || fiaInfo.vHeadDim != NUM_128),
+            OP_LOGE(fiaInfo.opName,
+                "In %s %s situation, when input_layout is BSH, BSND, BNSD, BNSD_BSND, TND, NTD, "
+                "BSH_BNSD, BSND_BNSD, NTD_TND, "
+                "and the headDim shared by query and key is not equal to that of value, "
+                "only query|key headDim = 192, value headDim = 128 are supported, "
+                "but got query|key headDim: %u, value headDim: %u",
+                QuantModeToSerialString(fiaInfo.quantMode).c_str(),
+                SituationToSerialString(fiaInfo.ropeMode).c_str(), fiaInfo.qkHeadDim, fiaInfo.vHeadDim),
+            return ge::GRAPH_FAILED);
         }
     }
     return ge::GRAPH_SUCCESS;
@@ -1070,7 +1129,8 @@ ge::graphStatus CommonChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
         }
     }
     if (CheckInputFormat(fiaInfo) != ge::GRAPH_SUCCESS ||
-        CheckAttr(fiaInfo) != ge::GRAPH_SUCCESS) {
+        CheckAttr(fiaInfo) != ge::GRAPH_SUCCESS ||
+        CheckDimNum(fiaInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -1095,9 +1155,9 @@ ge::graphStatus CommonChecker::CheckMultiParaConsistency(const FiaTilingInfo &fi
         if (!CheckTNDLayoutCrossover(fiaInfo) || !CheckNTDLayoutCrossover(fiaInfo) || !CheckTransposeLayoutCrossover(fiaInfo)) {
             return ge::GRAPH_FAILED;
         }
-        if (CheckMultiDtype(fiaInfo) != ge::GRAPH_SUCCESS) {
-            return ge::GRAPH_FAILED;
-        }
+    }
+    if (CheckMultiDtype(fiaInfo) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
     }
     if (fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION) {
         if (CheckPAKeyValue(fiaInfo) != ge::GRAPH_SUCCESS) { // PA场景
@@ -1120,6 +1180,7 @@ ge::graphStatus CommonChecker::CheckMultiParaConsistency(const FiaTilingInfo &fi
     if (CheckAxis(fiaInfo) != ge::GRAPH_SUCCESS ||
         CheckQueryOutConsistency(fiaInfo) != ge::GRAPH_SUCCESS ||
         CheckKeyValueConsistency(fiaInfo) != ge::GRAPH_SUCCESS ||
+        CheckValueOutDConsistency(fiaInfo) != ge::GRAPH_SUCCESS ||
         CheckQueryShape(fiaInfo) != ge::GRAPH_SUCCESS ||
         CheckKeyShape(fiaInfo) != ge::GRAPH_SUCCESS ||
         CheckQueryKeyConsistency(fiaInfo) != ge::GRAPH_SUCCESS ||

@@ -22,12 +22,14 @@ using npu_utils = at_npu::native::NpuUtils;
 constexpr static uint8_t COMM_ENGINE_AIV = 4;
 constexpr uint32_t OP_TYPE_ALL_TO_ALLV = 8;
 constexpr uint32_t EP_OP_TYPE = OP_TYPE_ALL_TO_ALLV;
+constexpr uint32_t HCCL_MAX_RANK_SIZE = 1024;
 const std::string EP_ALG_CONFIG = "AlltoAll=level0:fullmesh;level1:pairwise";
 
 struct CommContext {
-    uint64_t epRankId = 0;
-    uint64_t kfcContextAddr = 0;
-    uint64_t epHcclBuffer_[1024];
+    uint32_t epRankId;
+    uint32_t rankSizePerServer;
+    uint64_t kfcContextAddr; // host kfc方案中，需要传递通信API所需的地址
+    uint64_t epHcclBuffer_[HCCL_MAX_RANK_SIZE];
 };
 
 static int32_t CreatMc2Context(HcclComm &comm, int64_t worldSize, int64_t &cclBufferSize, CommContext &mc2Context)

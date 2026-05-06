@@ -517,7 +517,6 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmQnParamInit() {
 
 template<typename MLAPT>
 __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::VectorBufferInit() {
-
     // 暂存已分配UB大小，其余为shareBuffer
     uint64_t usedBytes = 0;
     if constexpr (std::is_same<mmInputType, int8_t>::value || std::is_same<mmInputType, HIF8>::value ||
@@ -531,7 +530,6 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::VectorBufferInit() {
         pipe_->InitBuffer(dequantScaleWDkvKrBuffer_, dequantScaleWDkvKrSize); // [1, 512 + 64]
         dequantScaleWDkvKrLocal_ = dequantScaleWDkvKrBuffer_.Get<float>();
         usedBytes += dequantScaleWDkvKrSize;
-
     }
     uint64_t rmsnormGammaCqSize = baseParams_->headSizeCq * sizeof(rmsNormGammaType);
     pipe_->InitBuffer(rmsnormGammaCqBuffer_, rmsnormGammaCqSize); // [1, 1536] bf16
@@ -565,11 +563,10 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::VectorBufferInit() {
         std::is_same<rmsNormCkvOutputType, HIF8>::value) {
         uint64_t quantScaleCkvSize = 0;
         if constexpr (std::is_same<mmCkvKrOutputType, int32_t>::value ||
-            (std::is_same<mmCkvKrOutputType, float>::value &&
-            !isFp8E8m0)) {
+            std::is_same<mmCkvKrOutputType, float>::value) {
             quantScaleCkvSize = ALIGN_BLOCK_SIZE;
             pipe_->InitBuffer(quantScaleCkvBuffer_, quantScaleCkvSize);
-        } else {
+        } else { // per_channel量化场景走else分支
             quantScaleCkvSize = baseParams_->headSizeCkv * sizeof(float);
             pipe_->InitBuffer(quantScaleCkvBuffer_, quantScaleCkvSize); // [1, 512]
         }
@@ -615,6 +612,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::VectorBufferInit() {
     // 由于shareBuffer属于各个vector操作临时申请内存的区域内存使用不固定，建议shareBuffer始终放在最后
     // 防止写入shareBuffer越界导致前面固定申请的UB内存被踩。
     pipe_->InitBuffer(shareBuffer_, MAX_UB_SIZE - usedBytes);
+    CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE3>(FINISH_VEC_CKVKR);
 }
 
 template<typename MLAPT>
@@ -820,6 +818,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::Process() {
         WaitFlag<HardEvent::FIX_M>(L0C_EVENT1);
 
         WaitFlag<HardEvent::MTE1_MTE2>(SCALE_EVENT);
+        CrossCoreWaitFlag(FINISH_VEC_CKVKR);
     }
 }
 
@@ -841,6 +840,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AicProcess(AicOffset &aicOffs
     // MatmulCkvKr ──> RmsNorm(Ckv)
     //            └──> Rope(Kr)
     // [32, 7168] * [7168, 512+64] = [32, 576]
+    CrossCoreWaitFlag(FINISH_VEC_CKVKR);
     if constexpr (std::is_same<mmInputType, FP8E4M3>::value && isFp8E8m0) {
         MatmulSplitN<mmInputType, mmCkvKrOutputType, dequantScaleType, true>(mmCkvKrResGm_[aicOffset.ckvKrResOffset],
             tokenXGm_[tokenXOffset], weightDkvKrGm_[aicOffset.weightDkvKrOffset], mmCkvKrParam_,
@@ -911,6 +911,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AivProcess(AivOffset &aivOffs
     CrossCoreWaitFlag(FINISH_MM_CKVKR);
     WaitAllCore<SYNC_MODE_ALL_VEC, PIPE_MTE3>(FINISH_VEC_ALL);
     RmsNormRopeScatterCkvKr(tokenIndex, aivOffset.rmsNormCkvOffset, aivOffset.ropeKrOffset, aivOffset.curVecToken);
+    CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE3>(FINISH_VEC_CKVKR);
 
     // 根据不同分支条件处理
     if constexpr (MLAPT::enableGroupComputeOpt) {
@@ -1330,11 +1331,11 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::CopyGlobalParams() {
         std::is_same<rmsNormCkvOutputType, FP8E4M3>::value ||
         std::is_same<rmsNormCkvOutputType, HIF8>::value) && !isPertile) {
         if constexpr (std::is_same<mmCkvKrOutputType, int32_t>::value ||
-            (std::is_same<mmCkvKrOutputType, float>::value && !isFp8E8m0)) {
+            std::is_same<mmCkvKrOutputType, float>::value) {
             DataCopyExtParams quantCopyParams{1, sizeof(float), 0, 0, 0};
             DataCopyPadExtParams<float> quantPadParams{false, 0, 0, 0};
             DataCopyPad(quantScaleCkvLocal_, quantScaleCkvGm_, quantCopyParams, quantPadParams); 
-        } else {
+        } else { // per_channel量化场景走else分支
             DataCopy(quantScaleCkvLocal_, quantScaleCkvGm_, baseParams_->headSizeCkv);
         }
     }

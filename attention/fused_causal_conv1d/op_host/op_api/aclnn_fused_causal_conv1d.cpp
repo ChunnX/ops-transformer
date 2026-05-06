@@ -42,36 +42,36 @@ aclnnStatus FusedCausalConv1dCommonProcess(const aclTensor *x, const aclTensor *
     // For contiguous tensors, view shape == storage shape, so this is a no-op.
     const aclTensor *xFinal =
         uniqueExecutor->CreateView(x, x->GetViewShape(), x->GetStorageShape(), x->GetViewStrides(), x->GetViewOffset());
-    CHECK_COND(xFinal != nullptr, ACLNN_ERR_INNER_NULLPTR, "CreateView for x failed.");
+    CHECK_COND(xFinal != nullptr, ACLNN_ERR_PARAM_NULLPTR, "CreateView for x failed.");
 
     aclTensor *convStatesFinal =
         uniqueExecutor->CreateView(convStates, convStates->GetViewShape(), convStates->GetStorageShape(),
                                    convStates->GetViewStrides(), convStates->GetViewOffset());
-    CHECK_COND(convStatesFinal != nullptr, ACLNN_ERR_INNER_NULLPTR, "CreateView for convStatesFinal failed.");
+    CHECK_COND(convStatesFinal != nullptr, ACLNN_ERR_PARAM_NULLPTR, "CreateView for convStatesFinal failed.");
 
     weight = l0op::Contiguous(weight, uniqueExecutor.get());
-    CHECK_COND(weight != nullptr, ACLNN_ERR_INNER_NULLPTR, "Contiguous weight failed.");
+    CHECK_COND(weight != nullptr, ACLNN_ERR_PARAM_NULLPTR, "Contiguous weight failed.");
 
     if (cacheIndices != nullptr) {
         cacheIndices = l0op::Contiguous(cacheIndices, uniqueExecutor.get());
-        CHECK_COND(cacheIndices != nullptr, ACLNN_ERR_INNER_NULLPTR, "Contiguous cacheIndices failed.");
+        CHECK_COND(cacheIndices != nullptr, ACLNN_ERR_PARAM_NULLPTR, "Contiguous cacheIndices failed.");
     }
 
     if (queryStartLoc != nullptr) {
         queryStartLoc = l0op::Contiguous(queryStartLoc, uniqueExecutor.get());
-        CHECK_COND(queryStartLoc != nullptr, ACLNN_ERR_INNER_NULLPTR, "Contiguous queryStartLoc failed.");
+        CHECK_COND(queryStartLoc != nullptr, ACLNN_ERR_PARAM_NULLPTR, "Contiguous queryStartLoc failed.");
     }
     if (initialStateMode != nullptr) {
         initialStateMode = l0op::Contiguous(initialStateMode, uniqueExecutor.get());
-        CHECK_COND(initialStateMode != nullptr, ACLNN_ERR_INNER_NULLPTR, "Contiguous initialStateMode failed.");
+        CHECK_COND(initialStateMode != nullptr, ACLNN_ERR_PARAM_NULLPTR, "Contiguous initialStateMode failed.");
     }
     if (bias != nullptr) {
         bias = l0op::Contiguous(bias, uniqueExecutor.get());
-        CHECK_COND(bias != nullptr, ACLNN_ERR_INNER_NULLPTR, "Contiguous bias failed.");
+        CHECK_COND(bias != nullptr, ACLNN_ERR_PARAM_NULLPTR, "Contiguous bias failed.");
     }
     if (numAcceptedTokens != nullptr) {
         numAcceptedTokens = l0op::Contiguous(numAcceptedTokens, uniqueExecutor.get());
-        CHECK_COND(numAcceptedTokens != nullptr, ACLNN_ERR_INNER_NULLPTR, "Contiguous numAcceptedTokens failed.");
+        CHECK_COND(numAcceptedTokens != nullptr, ACLNN_ERR_PARAM_NULLPTR, "Contiguous numAcceptedTokens failed.");
     }
 
     // convStates is an in-place update: the same tensor serves as both input and
@@ -79,7 +79,7 @@ aclnnStatus FusedCausalConv1dCommonProcess(const aclTensor *x, const aclTensor *
     bool ok = l0op::FusedCausalConv1d(xFinal, weight, convStatesFinal, queryStartLoc, cacheIndices, initialStateMode, bias,
                                  numAcceptedTokens, activationMode, padSlotId, runMode, residualConnection, y,
                                  uniqueExecutor.get());
-    CHECK_RET(ok, ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(ok, ACLNN_ERR_INNER_TILING_ERROR);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
     uniqueExecutor.ReleaseTo(executor);

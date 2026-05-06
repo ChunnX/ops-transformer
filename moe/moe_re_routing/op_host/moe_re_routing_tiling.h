@@ -40,17 +40,18 @@ END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(MoeReRouting, MoeReRoutingTilingData);
 
 BEGIN_TILING_DATA_DEF(MoeReRoutingReTilingData)
-TILING_DATA_FIELD_DEF(int64_t, tokenSize);     // token大小
-TILING_DATA_FIELD_DEF(int64_t, scaleSize);     // scale大小
-TILING_DATA_FIELD_DEF(int64_t, rankNum);       // rank总数
-TILING_DATA_FIELD_DEF(int64_t, expertNum);     // expert总数
-TILING_DATA_FIELD_DEF(int64_t, coreNum);       // 使用了多少个核
-TILING_DATA_FIELD_DEF(int64_t, blockNumR);     // rank分核个数
-TILING_DATA_FIELD_DEF(int64_t, blockFactorR);  // 每个核处理的rank数
-TILING_DATA_FIELD_DEF(int64_t, blockNumE);     // expert分核个数
-TILING_DATA_FIELD_DEF(int64_t, blockFactorE);  // 每个核处理的expert数
-TILING_DATA_FIELD_DEF(int64_t, ubFactor);      // 可用Ub大小
-TILING_DATA_FIELD_DEF(int64_t, idxType);       // 属性idxType
+TILING_DATA_FIELD_DEF(int64_t, tokenSize);       // token大小
+TILING_DATA_FIELD_DEF(int64_t, scaleSize);       // scale大小
+TILING_DATA_FIELD_DEF(int64_t, rankNum);         // rank总数
+TILING_DATA_FIELD_DEF(int64_t, expertNum);       // expert总数
+TILING_DATA_FIELD_DEF(int64_t, coreNum);         // 使用了多少个核
+TILING_DATA_FIELD_DEF(int64_t, blockNumR);       // rank分核个数
+TILING_DATA_FIELD_DEF(int64_t, blockFactorR);    // 每个核处理的rank数
+TILING_DATA_FIELD_DEF(int64_t, blockNumE);       // expert分核个数
+TILING_DATA_FIELD_DEF(int64_t, blockFactorE);    // 每个核处理的expert数
+TILING_DATA_FIELD_DEF(int64_t, ubFactor);        // 可用Ub大小
+TILING_DATA_FIELD_DEF(int64_t, idxType);         // 属性idxType
+TILING_DATA_FIELD_DEF(int64_t, tokenSizeOrigin); // FP4原始token大小
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(MoeReRouting_200000, MoeReRoutingReTilingData);
@@ -58,14 +59,15 @@ REGISTER_TILING_DATA_CLASS(MoeReRouting_200100, MoeReRoutingReTilingData);
 REGISTER_TILING_DATA_CLASS(MoeReRouting_200200, MoeReRoutingReTilingData);
 
 BEGIN_TILING_DATA_DEF(MoeReRoutingRTilingData)
-TILING_DATA_FIELD_DEF(int64_t, tokenSize);    // token大小
-TILING_DATA_FIELD_DEF(int64_t, scaleSize);    // scale大小
-TILING_DATA_FIELD_DEF(int64_t, rankNum);      // rank总数
-TILING_DATA_FIELD_DEF(int64_t, expertNum);    // expert总数
-TILING_DATA_FIELD_DEF(int64_t, coreNum);      // 使用了多少个核
-TILING_DATA_FIELD_DEF(int64_t, blockFactor);  // 每个核处理的rank数
-TILING_DATA_FIELD_DEF(int64_t, ubFactor);     // 可用Ub大小
-TILING_DATA_FIELD_DEF(int64_t, idxType);      // 属性idxType
+TILING_DATA_FIELD_DEF(int64_t, tokenSize);       // token大小
+TILING_DATA_FIELD_DEF(int64_t, scaleSize);       // scale大小
+TILING_DATA_FIELD_DEF(int64_t, rankNum);         // rank总数
+TILING_DATA_FIELD_DEF(int64_t, expertNum);       // expert总数
+TILING_DATA_FIELD_DEF(int64_t, coreNum);         // 使用了多少个核
+TILING_DATA_FIELD_DEF(int64_t, blockFactor);     // 每个核处理的rank数
+TILING_DATA_FIELD_DEF(int64_t, ubFactor);        // 可用Ub大小
+TILING_DATA_FIELD_DEF(int64_t, idxType);         // 属性idxType
+TILING_DATA_FIELD_DEF(int64_t, tokenSizeOrigin); // FP4原始token大小
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(MoeReRouting_210000, MoeReRoutingRTilingData);
@@ -86,6 +88,6 @@ struct MoeReRoutingCompileInfo {
     platform_ascendc::SocVersion socVersion;
 };
 
-}  // namespace optiling
+} // namespace optiling
 
-#endif  // OPS_BUILT_IN_OP_TILING_RUNTIME_MOE_RE_ROUTING_H_
+#endif // OPS_BUILT_IN_OP_TILING_RUNTIME_MOE_RE_ROUTING_H_

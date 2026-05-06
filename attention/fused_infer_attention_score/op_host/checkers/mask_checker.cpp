@@ -51,7 +51,7 @@ ge::graphStatus MaskChecker::CheckSparseMode(const FiaTilingInfo &fiaInfo)
     const std::vector<int32_t> sparseModeList = {SPARSE_MODE_NO_MASK, SPARSE_MODE_ALL_MASK, SPARSE_MODE_LEFT_UP,
                                                  SPARSE_MODE_RIGHT_DOWN, SPARSE_MODE_BAND, SPARSE_MODE_TREE};
     OP_CHECK_IF(ge::GRAPH_SUCCESS != CheckValueSupport(fiaInfo.sparseMode, sparseModeList),
-                OP_LOGE(fiaInfo.opName, "SparseMode only supports 0/1/2/3/4/9, but got %u", fiaInfo.sparseMode),
+                OP_LOGE(fiaInfo.opName, "SparseMode only supports 0/1/2/3/4/9, but got %d", fiaInfo.sparseMode),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -87,33 +87,85 @@ ge::graphStatus MaskChecker::CheckFullQuantIFAMLA(const FiaTilingInfo &fiaInfo)
     // and sparse 3 with mask or sparse 0 without mask is supported only when sequence length > 1.
     enableIFAMLA = (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512);
     if (enableIFAMLA) {
-        if (fiaInfo.s1Size == 1U) {
-            OP_CHECK_IF(!((fiaInfo.sparseMode == SPARSE_MODE_NO_MASK) && (!fiaInfo.attenMaskFlag)),
+        // 先整体对所有全量化进行一次sparsemode的校验
+        OP_CHECK_IF((fiaInfo.inputQType == ge::DT_FLOAT8_E4M3FN || fiaInfo.inputQType == ge::DT_HIFLOAT8 || fiaInfo.inputQType == ge::DT_INT8) &&
+                    !(((fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) && (fiaInfo.attenMaskFlag)) ||
+                    ((fiaInfo.sparseMode == SPARSE_MODE_NO_MASK) && (!fiaInfo.attenMaskFlag))),
+                    OP_LOGE(fiaInfo.opName,
+                            "Only support sparse 3 with mask, or sparse 0 without mask when ifa mla and " 
+                            "input datatype is FLOAT8_E4M3/HIFLOAT8/INT8, input sparse mode is %d and there has%smask",
+                            fiaInfo.sparseMode, fiaInfo.attenMaskFlag ? " " : " no "),
+                    return ge::GRAPH_FAILED);
+        // 对于Int8场景下，进行以下拦截限制：
+        const std::vector<std::string> layoutSupportList = {
+            "TND", "TND_NTD",
+        };
+        std::string layoutStr(fiaInfo.opParamInfo.layOut);
+        std::string layout = layoutStr;
+        // "TND", "TND_NTD"场景下，不需要对qs进行区分
+        if (std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) != layoutSupportList.end()) {
+            // int8场景TND/TND_NTD时仅支持：sparsemode=0不传mask或sparsemode=3传入mask
+            OP_CHECK_IF(fiaInfo.inputQType == ge::DT_INT8 &&
+                        !(((fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) && (fiaInfo.attenMaskFlag)) ||
+                        ((fiaInfo.sparseMode == SPARSE_MODE_NO_MASK) && (!fiaInfo.attenMaskFlag))),
                         OP_LOGE(fiaInfo.opName,
-                                "Only support sparse 0 without mask when ifa mla and query's sequence length is 1, "
+                                "Only support sparse 3 with mask, or sparse 0 without mask when ifa mla and " 
+                                "input datatype is INT8 and layout is TND or TND_NTD and "
                                 "input sparse mode is %d and there has%smask",
                                 fiaInfo.sparseMode, fiaInfo.attenMaskFlag ? " " : " no "),
                         return ge::GRAPH_FAILED);
         } else {
-            OP_CHECK_IF(fiaInfo.inputQType == ge::DT_FLOAT8_E4M3FN &&
-                        !(((fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) && (fiaInfo.attenMaskFlag)) ||
-                          ((fiaInfo.sparseMode == SPARSE_MODE_NO_MASK) && (!fiaInfo.attenMaskFlag))),
-                        OP_LOGE(fiaInfo.opName,
-                                "Only support sparse 3 with mask, or sparse 0 without mask when ifa mla and "
-                                "query's sequence length is > 1, and input datatype is FLOAT8_E4M3, "
-                                "input sparse mode is %d and there has%smask",
-                                fiaInfo.sparseMode, fiaInfo.attenMaskFlag ? " " : " no "),
-                        return ge::GRAPH_FAILED);
-            
-            OP_CHECK_IF(fiaInfo.inputQType == ge::DT_INT8 &&
-                        !((fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) && (fiaInfo.attenMaskFlag)),
-                        OP_LOGE(fiaInfo.opName,
-                                "Only support sparse 3 with mask and "
-                                "query's sequence length is > 1, and input datatype is INT8, "
-                                "input sparse mode is %d and there has%smask",
-                                fiaInfo.sparseMode, fiaInfo.attenMaskFlag ? " " : " no "),
-                        return ge::GRAPH_FAILED);
+            // 非TND/TND_NTD场景下，int8场景需要对qs进行区分
+            // qs = 1时，仅支持传入sparsemode=0，且不传mask
+            if (fiaInfo.s1Size == 1U) {
+                OP_CHECK_IF(fiaInfo.inputQType == ge::DT_INT8 &&
+                            !((fiaInfo.sparseMode == SPARSE_MODE_NO_MASK) && (!fiaInfo.attenMaskFlag)),
+                            OP_LOGE(fiaInfo.opName,
+                                    "Sparse 0 without mask is only supported when using IFA MLA full quantization and "
+                                    "input datatype is INT8 and layout is not TND or TND_NTD and query_length is 1"
+                                    "input sparse mode is %d and there has%smask",
+                                    fiaInfo.sparseMode, fiaInfo.attenMaskFlag ? " " : " no "),
+                            return ge::GRAPH_FAILED);
+            } else {
+                // 当qs大于1时，仅支持传入sparsemode=3，且传入mask
+                OP_CHECK_IF(fiaInfo.inputQType == ge::DT_INT8 &&
+                            !((fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) && (fiaInfo.attenMaskFlag)),
+                            OP_LOGE(fiaInfo.opName,
+                                    "Sparse 3 without mask is only supported when using IFA MLA full quantization and "
+                                    "input datatype is INT8 and layout is not TND or TND_NTD and "
+                                    "query_length is greater than 1 and "
+                                    "input sparse mode is %d and there has%smask",
+                                    fiaInfo.sparseMode, fiaInfo.attenMaskFlag ? " " : " no "),
+                            return ge::GRAPH_FAILED);
+            }
         }
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MaskChecker::CheckMXFP8FullQuant(const FiaTilingInfo &fiaInfo)
+{
+    enableMXFP8 = (*fiaInfo.opParamInfo.queryQuantMode == PER_TOKEN_GROUP_MODE &&
+                   *fiaInfo.opParamInfo.keyAntiquantMode == PER_TOKEN_GROUP_MODE &&
+                   *fiaInfo.opParamInfo.valueAntiquantMode == PER_CHANNEL_GROUP_MODE);
+    if (!enableMXFP8) {
+        return ge::GRAPH_SUCCESS;
+    }
+    if (fiaInfo.s1Size == 1U) {
+        OP_CHECK_IF(!(((fiaInfo.sparseMode == SPARSE_MODE_NO_MASK) && (!fiaInfo.attenMaskFlag))),
+                    OP_LOGE(fiaInfo.opName,
+                            "When qs is equal to 1 , only support sparse 0 without mask in MXFP8 fullquant scenario, " 
+                            "now input sparse mode is %d and there has%smask",
+                            fiaInfo.sparseMode, fiaInfo.attenMaskFlag ? " " : " no "),
+                    return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF(!(((fiaInfo.sparseMode == SPARSE_MODE_NO_MASK) && (!fiaInfo.attenMaskFlag)) ||
+                    ((fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) && (fiaInfo.attenMaskFlag))),
+                    OP_LOGE(fiaInfo.opName,
+                            "When qs is greater than 1 , only support sparse 0 without mask or sparse 3 with mask " 
+                            "in MXFP8 fullquant scenario, now input sparse mode is %d and there has%smask",
+                            fiaInfo.sparseMode, fiaInfo.attenMaskFlag ? " " : " no "),
+                    return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -223,9 +275,9 @@ ge::graphStatus MaskChecker::CheckIFADimAndShape(const FiaTilingInfo &fiaInfo)
     uint32_t attenMaskBatch = maskShape->GetStorageShape().GetDim(DIM_NUM_0);
     uint32_t attenMaskSize = maskShape->GetStorageShape().GetDim(maskShape->GetStorageShape().GetDimNum() - 1);
     if (fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION) {
-        minAttenMaskSize = fiaInfo.s2Size;
+        minAttenMaskSize = fiaInfo.s2Size + fiaInfo.systemPrefixLen;
     } else {
-        minAttenMaskSize = fiaInfo.maxActualseq;
+        minAttenMaskSize = fiaInfo.maxActualseq + fiaInfo.systemPrefixLen;
     }
     if (attenMaskDim == MASK_DIM_SS) {
         if (fiaInfo.socVersion == platform_ascendc::SocVersion::ASCEND910B && (fiaInfo.sparseMode == SPARSE_MODE_NO_MASK || fiaInfo.sparseMode == SPARSE_MODE_ALL_MASK)) {
@@ -250,15 +302,39 @@ ge::graphStatus MaskChecker::CheckIFADimAndShape(const FiaTilingInfo &fiaInfo)
                 "Please use 3D mask \[B,QS,KVS\]\/\[1,QS,KVS\] or 4D mask \[B,1,QS,KVS\]\/\[1,1,QS,KVS\].");
             return ge::GRAPH_FAILED;
         }
+    } else if (attenMaskDim == MASK_DIM_BSS &&
+                (fiaInfo.sparseMode == SPARSE_MODE_NO_MASK || fiaInfo.sparseMode == SPARSE_MODE_ALL_MASK)) {
+        // attenMask的shape应为(B, >=Q_S, >=KV_S + systemPrefixLen)或(1, >=Q_S, >=KV_S + systemPrefixLen)
+        OP_CHECK_IF(((maskShape->GetStorageShape().GetDim(DIM_NUM_0) != fiaInfo.bSize &&
+                    maskShape->GetStorageShape().GetDim(DIM_NUM_0) != 1) ||
+                    maskShape->GetStorageShape().GetDim(DIM_NUM_1) < fiaInfo.s1Size ||
+                    maskShape->GetStorageShape().GetDim(DIM_NUM_2) < minAttenMaskSize),
+                OP_LOGE(fiaInfo.opName, "Shape of attenMask should be "
+                    "[B(%u) or 1, >=Q_S(%u), >=KV_S + systemPrefixLen(%u)], "
+                    "but got [%u, %u, %u]", fiaInfo.bSize, fiaInfo.s1Size, minAttenMaskSize,
+                    maskShape->GetStorageShape().GetDim(DIM_NUM_0),
+                    maskShape->GetStorageShape().GetDim(DIM_NUM_1),
+                    maskShape->GetStorageShape().GetDim(DIM_NUM_2)),
+                return ge::GRAPH_FAILED);
+    } else if (attenMaskDim == MASK_DIM_B1SS &&
+                (fiaInfo.sparseMode == SPARSE_MODE_NO_MASK || fiaInfo.sparseMode == SPARSE_MODE_ALL_MASK)) {
+        // attenMask的shape应为(B, 1, >=Q_S, >=KV_S + systemPrefixLen)或(1, 1, >=Q_S, >=KV_S + systemPrefixLen)
+        OP_CHECK_IF(((maskShape->GetStorageShape().GetDim(DIM_NUM_0) != fiaInfo.bSize &&
+                    maskShape->GetStorageShape().GetDim(DIM_NUM_0) != 1) ||
+                    maskShape->GetStorageShape().GetDim(DIM_NUM_1) != 1 ||
+                    maskShape->GetStorageShape().GetDim(DIM_NUM_2) < fiaInfo.s1Size ||
+                    maskShape->GetStorageShape().GetDim(DIM_NUM_3) < minAttenMaskSize),
+                OP_LOGE(fiaInfo.opName, "Shape of attenMask should be "
+                    "[B(%u) or 1, 1, >=Q_S(%u), >=KV_S + systemPrefixLen(%u)], "
+                    "but got [%u, %u, %u, %u]", fiaInfo.bSize, fiaInfo.s1Size, minAttenMaskSize,
+                    maskShape->GetStorageShape().GetDim(DIM_NUM_0),
+                    maskShape->GetStorageShape().GetDim(DIM_NUM_1),
+                    maskShape->GetStorageShape().GetDim(DIM_NUM_2),
+                    maskShape->GetStorageShape().GetDim(DIM_NUM_3)),
+                return ge::GRAPH_FAILED);
     } else {
-        bool checkMask = (attenMaskSize >= minAttenMaskSize) &&
-                    ((attenMaskBatch == fiaInfo.bSize) || (attenMaskBatch == DIM_NUM_1));
-        OP_CHECK_IF(!checkMask,
-                    OP_LOGE(fiaInfo.opName,
-                            "AttenMask batch(%u) must be %u or 1, attenMask KV_S(%u) must be larger than or equal to"
-                            "the second dimension of blockTable * blockSize(%u), please check",
-                            attenMaskBatch, fiaInfo.bSize, attenMaskSize, minAttenMaskSize),
-                    return ge::GRAPH_FAILED);
+        OP_LOGE(fiaInfo.opName, "AttenMask dim(%zu) must be 2 or 3 or 4!", attenMaskDim);
+        return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -379,8 +455,15 @@ ge::graphStatus MaskChecker::CheckDimAndShape(const FiaTilingInfo &fiaInfo)
         return ge::GRAPH_FAILED;
     }
     bool checkMask = false;
+    uint32_t minAttenMaskSize = 0;
+    if (fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION) {
+        minAttenMaskSize = fiaInfo.s2Size + fiaInfo.systemPrefixLen;
+    } else {
+        minAttenMaskSize = fiaInfo.maxActualseq + fiaInfo.systemPrefixLen;
+    }
     if (fiaInfo.sparseMode == SPARSE_MODE_NO_MASK || fiaInfo.sparseMode == SPARSE_MODE_ALL_MASK) {
-        checkMask = (maskInfo.attenMaskQSize >= fiaInfo.s1Size) && (maskInfo.attenMaskSize >= fiaInfo.s2Size) &&
+        checkMask = (maskInfo.attenMaskQSize >= fiaInfo.s1Size) &&
+                    (maskInfo.attenMaskSize >= minAttenMaskSize) &&
                     (maskInfo.attenMaskBatch == NUM1 || maskInfo.attenMaskBatch == fiaInfo.bSize) &&
                     (static_cast<uint32_t>(maskInfo.attenMaskN) == NUM1);
     } else if ((fiaInfo.sparseMode == SPARSE_MODE_LEFT_UP) || (fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) ||
@@ -394,10 +477,11 @@ ge::graphStatus MaskChecker::CheckDimAndShape(const FiaTilingInfo &fiaInfo)
         OP_CHECK_IF(
             !checkMask,
             OP_LOGE(fiaInfo.opName,
-                    "attenMask batch(%u) must be 1 or %u, attenMask Q_S(%u) must be larger than or equal to sQ(%u),"
-                    "attenMask KV_S(%u) must be larger than or equal to sK(%u), please check",
+                    "attenMask batch(%u) must be 1 or %u, "
+                    "attenMask Q_S(%u) must be larger than or equal to Q_S(%u),"
+                    "attenMask KV_S(%u) must be larger than or equal to KV_S + systemPrefixLen(%u), please check",
                     maskInfo.attenMaskBatch, fiaInfo.bSize, maskInfo.attenMaskQSize, fiaInfo.s1Size,
-                    maskInfo.attenMaskSize, fiaInfo.s2Size),
+                    maskInfo.attenMaskSize, fiaInfo.s2Size + fiaInfo.systemPrefixLen),
             return ge::GRAPH_FAILED);
     }
     if (((fiaInfo.sparseMode == SPARSE_MODE_LEFT_UP) || (fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) ||
@@ -442,6 +526,9 @@ ge::graphStatus MaskChecker::CheckCrossFeature(const FiaTilingInfo &fiaInfo)
         }
     } else if (enableFullQuant_) {
         if (ge::GRAPH_SUCCESS != CheckFullQuantIFAMLA(fiaInfo)) {
+            return ge::GRAPH_FAILED;
+        }
+        if (ge::GRAPH_SUCCESS != CheckMXFP8FullQuant(fiaInfo)) {
             return ge::GRAPH_FAILED;
         }
     } else if (enableAntiQuant_) {

@@ -15,9 +15,9 @@
 
 ## 功能说明
 
-- **接口功能**：完成AllToAll、AllGather集合通信与BatchMatMul计算融合、并行。
+- 接口功能：完成AllToAll、AllGather集合通信与BatchMatMul计算融合、并行。
 
-- **计算公式**：
+- 计算公式：
 
     计算逻辑如下，其中y1、y2、y3为输出
 
@@ -144,7 +144,7 @@ aclnnStatus aclnnAlltoAllAllGatherBatchMatMul(
     <td>-</td>
     </tr>
     <tr>
-    <td>epWorldSize(int64_t)</td>
+    <td>epWorldSize（int64_t）</td>
     <td>输入</td>
     <td>ep通信域size。</td>
     <td>支持2/4/8/16/32。</td>
@@ -154,7 +154,7 @@ aclnnStatus aclnnAlltoAllAllGatherBatchMatMul(
     <td>-</td>
     </tr>
     <tr>
-    <td>tpWorldSize(int64_t)</td>
+    <td>tpWorldSize（int64_t）</td>
     <td>输入</td>
     <td>tp通信域size。</td>
     <td>支持2/4/8/16/32。</td>
@@ -164,7 +164,7 @@ aclnnStatus aclnnAlltoAllAllGatherBatchMatMul(
     <td>-</td>
     </tr>
     <tr>
-    <td>xShardType(int64_t)</td>
+    <td>xShardType（int64_t）</td>
     <td>输入</td>
     <td>表示在tp域上allgather的维度</td>
     <td><ul><li>0表示在H维度（即x的第2维，x为3维，分别为第0维、第1维、第2维）按tp域进行allgather。</li><li>1表示在C维度（即x的第1维）上按tp域进行allgather。</li></ul></td>
@@ -174,7 +174,7 @@ aclnnStatus aclnnAlltoAllAllGatherBatchMatMul(
     <td>-</td>
     </tr>
     <tr>
-    <td>actType(int64_t)</td>
+    <td>actType（int64_t）</td>
     <td>输入</td>
     <td>激活函数类型。</td>
     <td>支持0/1/2/3/4的输入，0表示无激活函数，对应关系为[0：None，1：GELU，2：Silu，3：Relu，4：FastGELU]。</td>
@@ -214,7 +214,7 @@ aclnnStatus aclnnAlltoAllAllGatherBatchMatMul(
     <td>×</td>
     </tr>
     <tr>
-    <td>workspaceSize(uint64_t*)</td>
+    <td>workspaceSize（uint64_t*）</td>
     <td>输出</td>
     <td>workspace大小。</td>
     <td>返回需要在Device侧申请的workspace大小。</td>
@@ -363,7 +363,7 @@ aclnnStatus aclnnAlltoAllAllGatherBatchMatMul(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
 

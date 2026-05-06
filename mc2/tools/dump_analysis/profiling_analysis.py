@@ -17,8 +17,6 @@ import sys
 import csv
 import ast
 import logging
-from collections import Counter
-from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
@@ -33,27 +31,35 @@ logging.basicConfig(
 def find_device_and_csv_by_num(profiling_path_func, card_num_func):
     csv_filename = "kernel_details.csv"
     csv_path_list_func = [None] * card_num_func
-    device_pattern = re.compile(r'^device_(\d+)$')
-    csv_search_root_mapping = {}
-    for root, dirs, _ in os.walk(profiling_path_func):
-        for dir_name in dirs:
-            match = device_pattern.match(dir_name) # 匹配device_*文件
-            if not match:
-                continue
-            device_num = int(match.group(1)) # 获取该文件是来自第几张卡的信息
-            if 0 <= device_num < card_num_func:
-                device_full_path = os.path.join(root, dir_name)
-                device_direct_path = os.path.dirname(device_full_path)
-                csv_search_root = os.path.dirname(device_direct_path)
-                csv_search_root_mapping[device_num] = csv_search_root # 获取csv表的搜寻目录
-    for device_num, csv_search_root in csv_search_root_mapping.items():
+
+    # 1. 只在传入路径第一层找包含 ascend_pt 的文件夹（不递归）
+    ascend_pt_dirs = []
+    try:
+        for entry in os.listdir(profiling_path_func):
+            dir_full_path = os.path.join(profiling_path_func, entry)
+            # 是文件夹 + 名称包含 ascend_pt
+            if os.path.isdir(dir_full_path) and "ascend_pt" in entry:
+                ascend_pt_dirs.append(dir_full_path)
+    except PermissionError:
+        logging.error("访问路径{%s}权限不足，无法读取目录", profiling_path_func)
+    except Exception as e:
+        logging.error("读取目录 {%s} 失败，异常信息:{%s}", profiling_path_func, str(e))
+
+    # 2. 按卡数量取前 N 个
+    target_dirs = ascend_pt_dirs[:card_num_func]
+
+    # 3. 在每个 ascend_pt 文件夹内查找csv 文件
+    for idx, ascend_dir in enumerate(target_dirs):
         csv_path = None
-        for sub_root, _, sub_files in os.walk(csv_search_root):
-            if sub_root != csv_search_root and csv_filename in sub_files:
+        # 递归遍历目录找 csv
+        for sub_root, _, sub_files in os.walk(ascend_dir):
+            if csv_filename in sub_files:
                 csv_path = os.path.join(sub_root, csv_filename)
-                break
-        logging.info("%d卡 profiling数据:%s", device_num, csv_path)
-        csv_path_list_func[device_num] = csv_path
+                break  # 找到第一个就停止
+
+        csv_path_list_func[idx] = csv_path
+        logging.info("%s卡 profiling数据:%s", idx, csv_path)
+
     return csv_path_list_func
 
 
@@ -72,15 +78,15 @@ def is_numeric(value_func):
 def get_card_data_by_cprofiling(csv_path_list_func):
     card_num_func = len(csv_path_list_func)
     if csv_path_list_func[0] is None or not os.path.exists(csv_path_list_func[0]):
-        logging.warning("0 卡文件不存在，无法建立基准")
+        logging.error("0 卡文件不存在，无法建立基准")
         return {}
     try:
         df_0 = pd.read_csv(csv_path_list_func[0])
         for col in ['Type', 'Duration(us)']:
             if col not in df_0.columns:
-                logging.warning("0卡文件缺少列%s", col)
+                logging.error("0卡文件缺少列%s", col)
     except Exception as e:
-        logging.warning("读取0 卡文件失败:%s", e)
+        logging.error("读取0 卡文件失败:%s", e)
         return {}
     base_mapping = {} # 核心基准 {(type, 次数)：0卡duration}
     type_count = {} # 统计每个type的出现次数
@@ -96,16 +102,16 @@ def get_card_data_by_cprofiling(csv_path_list_func):
     for card_num in range(1, card_num_func):
         card_path = csv_path_list_func[card_num]
         if card_path is None or not os.path.exists(card_path):
-            logging.warning("%d卡的profiling数据文件不存在,对应数据用NA替代,跳过该卡的分析", card_num)
+            logging.error("%d卡的profiling数据文件不存在,对应数据用NA替代,跳过该卡的分析", card_num)
             continue
         try:
             df_card = pd.read_csv(card_path)
         except Exception:
-            logging.warning("%d卡的profiling数据文件读取失败,对应数据用NA替代,跳过该卡的分析", card_num)
+            logging.error("%d卡的profiling数据文件读取失败,对应数据用NA替代,跳过该卡的分析", card_num)
             continue
         for col in ['Type', 'Duration(us)']:
             if col not in df_card.columns:
-                logging.warning("%d卡的profiling数据文件缺少列%s,对应数据用NA替代,跳过该卡的分析", card_num, col)
+                logging.error("%d卡的profiling数据文件缺少列%s,对应数据用NA替代,跳过该卡的分析", card_num, col)
         current_type_count = {}
         card_map = {}
         for _, row in df_card.iterrows():
@@ -211,15 +217,15 @@ def check_aiv_num(csv_path_list_func):
     logging.info("跳过第0层进行检测")
     for card_id, csv_path in enumerate(csv_path_list_func):
         if csv_path_list_func[card_id] is None or not os.path.exists(csv_path_list_func[card_id]):
-            logging.warning("%d 卡profiling数据不存在,跳过分析该卡数据", card_id)
+            logging.error("%d 卡profiling数据不存在,跳过分析该卡数据", card_id)
             continue
         df = pd.read_csv(csv_path)
         if "Type" not in df.columns:
-            logging.warning("%d 卡profiling数据没有Type列,跳过该卡数据", card_id)
+            logging.error("%d 卡profiling数据没有Type列,跳过该卡数据", card_id)
             continue
         df = df[df["Type"].isin(target_types)].copy()
         if df.empty:
-            logging.warning("%d 卡profiling数据中没有%s类型,跳过该卡数据", card_id, target_types)
+            logging.error("%d 卡profiling数据中没有%s类型,跳过该卡数据", card_id, target_types)
             continue
         df["第几次出现"] = df.groupby("Type").cumcount()
         type_avg = {}
@@ -237,7 +243,7 @@ def calc_type_avg(df, aiv_cols, card_id, type_avg):
             valid_vals = vaild_series[(vaild_series > 0)]
             type_avg[typ][col] = round(valid_vals.mean(), 6) if not valid_vals.empty else "NA"
             if valid_vals.empty: 
-                logging.warning("%d 卡| Type=%s| 列名=%s| 无有效数据,平均值计算得到为NA", card_id, typ, col)
+                logging.error("%d 卡| Type=%s| 列名=%s| 无有效数据,平均值计算得到为NA", card_id, typ, col)
     return type_avg
 
 
@@ -251,14 +257,14 @@ def check_data_range(df, aiv_cols, card_id, type_avg):
             continue
         for col in aiv_cols:
             if col not in df.columns:
-                logging.warning("%d 卡数据中未找到%s列,跳过该列分析", card_id, col)
+                logging.error("%d 卡数据中未找到%s列,跳过该列分析", card_id, col)
                 continue
             value = row[col]
             if pd.isna(value):
-                logging.warning("%d 卡| Type=%s| 第%d次出现| 列名=%s| 值=NA", card_id, current_type, seq_num, col)
+                logging.error("%d 卡| Type=%s| 第%d次出现| 列名=%s| 值=NA", card_id, current_type, seq_num, col)
                 continue
             if not isinstance(value, (int, float)) or value <= 0:
-                logging.warning("%d 卡| Type=%s| 第%d次出现| 列名=%s| 值=%s | 非正数", card_id, current_type, seq_num,
+                logging.error("%d 卡| Type=%s| 第%d次出现| 列名=%s| 值=%s | 非正数", card_id, current_type, seq_num,
                                 col, str(value))
                 continue
             if current_type not in type_avg or col not in type_avg[current_type]:
@@ -268,7 +274,7 @@ def check_data_range(df, aiv_cols, card_id, type_avg):
                 continue
             lower, upper = avg_val * 0.5, avg_val * 1.5
             if not (lower <= value <= upper):
-                logging.warning("%d 卡| Type=%s| 第%d次出现| 列名=%s| 值=%.2f| "
+                logging.error("%d 卡| Type=%s| 第%d次出现| 列名=%s| 值=%.2f| "
                                 "平均值=%.2f| 超出范围 %.2f - %.2f(平均值的±50%%)",
                                 card_id, current_type, seq_num, col, value, avg_val, lower, upper)
 

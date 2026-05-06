@@ -50,6 +50,7 @@ constexpr uint64_t INDEX_INPUT = 0;
 constexpr uint64_t INDEX_WDQKV = 5;
 constexpr uint64_t INDEX_WUQ = 12;
 constexpr uint64_t INDEX_WUK = 18;
+constexpr uint64_t INDEX_DEQBIAS = 7;
 
 constexpr uint64_t DIM_0 = 0;
 constexpr uint64_t DIM_1 = 1;
@@ -332,14 +333,15 @@ void PpMatmulTilingApi::Swizzle()
     }
 }
 
-void MlaPreprocessTiling::RmsNormQuantTiling(const uint64_t numTokens, const uint64_t numVectorCore, const uint64_t hiddtenState)
+void MlaPreprocessTiling::RmsNormQuantTiling(const uint64_t numTokens, const uint64_t numVectorCore,
+                                             const uint64_t hiddtenState, const uint64_t hiddenStateMm)
 {
     mlaTilingData.set_rmsNumCore1(numVectorCore);
     mlaTilingData.set_rmsNumCol1(hiddtenState);
     mlaTilingData.set_rmsNumRow1(numTokens);
     mlaTilingData.set_rmsQuantMin1(-CONST_128);
     mlaTilingData.set_rmsNumCore2(numVectorCore);
-    mlaTilingData.set_rmsNumCol2(HIDDEN_STRATE_MM);
+    mlaTilingData.set_rmsNumCol2(hiddenStateMm);
     mlaTilingData.set_rmsNumRow2(numTokens);
     mlaTilingData.set_rmsQuantMin2(-CONST_128);
 }
@@ -480,10 +482,10 @@ void MlaPreprocessTiling::SetMlapoWorkSpace(const ge::DataType inDtype, const Op
                                                      hiddtenState * sizeof(int8_t));
     uint64_t workSizeS1 = static_cast<uint64_t>(mlaTilingData.get_n()) * s1wsFactor;
     uint64_t workSizeS2 =
-        static_cast<uint64_t>(mlaTilingData.get_n()) * param.headNum * HIDDEN_STRATE_ROPE * sizeof(uint16_t);
-    uint64_t workSizeS3 = static_cast<uint64_t>(mlaTilingData.get_n()) * HIDDEN_STRATE_MM * sizeof(uint16_t);
+        static_cast<uint64_t>(mlaTilingData.get_n()) * param.headNum * param.headDimMm2 * sizeof(uint16_t);
+    uint64_t workSizeS3 = static_cast<uint64_t>(mlaTilingData.get_n()) * param.hiddenStateMm * sizeof(uint16_t);
     uint64_t workSizeS4 = static_cast<uint64_t>(mlaTilingData.get_n()) *
-                          std::max(param.headNum * HIDDEN_STRATE_ROPE, HIDDEN_STRATE_MM) * sizeof(uint64_t);
+                          std::max(param.headNum * param.headDimMm2, param.hiddenStateMm) * sizeof(uint64_t);
     uint64_t pertokenWorkspace = static_cast<uint64_t>(mlaTilingData.get_n()) * sizeof(float) * 2;
 
     uint64_t maxWorkspaceSize = 0;
@@ -608,6 +610,21 @@ ge::graphStatus MlaPreprocessTiling::Init(gert::TilingContext *context)
 {
     OpParam::MlaPreprocessParam param = MlaPreprocessTiling::GetParam(context);
 
+    // headNum 限制：范围 1~128
+    OP_CHECK_IF(param.headNum <= 0 || param.headNum > 128,
+                OP_LOGE(context, "headNum must be in range [1, 128]"),
+                return ge::GRAPH_FAILED);
+
+    // qLoraRank (qlora) 限制：范围 32~4096，必须 32 对齐
+    OP_CHECK_IF(param.qLoraRank < 32 || param.qLoraRank > 4096 || (param.qLoraRank % 32) != 0,
+                OP_LOGE(context, "qLoraRank must be in range [32, 4096] and aligned to 32"),
+                return ge::GRAPH_FAILED);
+
+    // nopeDim (nope) 限制：范围 16~256，必须 16 对齐
+    OP_CHECK_IF(param.nopeDim < 16 || param.nopeDim > 256 || (param.nopeDim % 16) != 0,
+                OP_LOGE(context, "nopeDim must be in range [16, 256] and aligned to 16"),
+                return ge::GRAPH_FAILED);
+
     bool doRmsNorm = *(context->GetAttrs()->GetAttrPointer<bool>(ATTR_DO_RMS_NORM_IDX));
     mlaTilingData.set_doRmsNorm(doRmsNorm);
     mlaTilingData.set_qDownOutFlag(false);
@@ -644,7 +661,7 @@ ge::graphStatus MlaPreprocessTiling::Init(gert::TilingContext *context)
         deqOnTheFly = true;
     }
 
-    RmsNormQuantTiling(param.N, aivNum, hiddtenState);
+    RmsNormQuantTiling(param.N, aivNum, hiddtenState, param.hiddenStateMm);
     RopeConcatTiling(param, aicNum);
     EinSumQuantTiling(param, aicNum, inDtype, doRmsNormQuant);
     auto tilingParamMm1 = &mlaTilingData.mm1;
@@ -652,12 +669,14 @@ ge::graphStatus MlaPreprocessTiling::Init(gert::TilingContext *context)
     auto tilingParamMm3 = &mlaTilingData.mm3;
 
     bool enDequant = doRmsNormQuant;
-    // numBatch,m,k,n,transA,transB,enDequant
-    PpMatmulTilingApi mm1TilingApi(1,param.N,hiddtenState,HIDDEN_STRATE_MM,false,true,enDequant,deqOnTheFly, aicNum, l0CSizePlatForm, l2SizePlatForm);
+    PpMatmulTilingApi mm1TilingApi(1, param.N, hiddtenState, param.hiddenStateMm, false, true,
+                                   enDequant, deqOnTheFly, aicNum, l0CSizePlatForm, l2SizePlatForm);
     mm1TilingApi.GetTilingData(tilingParamMm1);
-    PpMatmulTilingApi mm2TilingApi(1,param.N,HIDDEN_STRATE_RMS,param.headNum * HIDDEN_STRATE_ROPE,false,true,enDequant,deqOnTheFly, aicNum, l0CSizePlatForm, l2SizePlatForm);
+    PpMatmulTilingApi mm2TilingApi(1, param.N, param.qLoraRank, param.headNum * param.headDimMm2, false, true,
+                                   enDequant, deqOnTheFly, aicNum, l0CSizePlatForm, l2SizePlatForm);
     mm2TilingApi.GetTilingData(tilingParamMm2);
-    PpMatmulTilingApi mm3TilingApi(param.headNum,param.N,CONST_128,CONCAT_SIZE,false,false,false,deqOnTheFly, aicNum, l0CSizePlatForm, l2SizePlatForm);
+    PpMatmulTilingApi mm3TilingApi(param.headNum, param.N, param.nopeDim, CONCAT_SIZE,
+                                   false, false, false, deqOnTheFly, aicNum, l0CSizePlatForm, l2SizePlatForm);
     mm3TilingApi.GetTilingData(tilingParamMm3);
 
     SetMlapoWorkSpace(inDtype, param, sysWorkSpaceSize, context);
@@ -682,6 +701,18 @@ OpParam::MlaPreprocessParam MlaPreprocessTiling::GetParam(gert::TilingContext *c
 
     auto quantModePtr = attrPtr->GetAttrPointer<QuantMode>(ATTR_QUANT_MODE_IDX);
     param.quantMode = *quantModePtr;
+
+    auto deqBiasShape = context->GetInputShape(INDEX_DEQBIAS)->GetStorageShape();
+    param.hiddenStateMm = static_cast<uint64_t>(deqBiasShape.GetDim(DIM_0));
+
+    constexpr uint64_t CONCAT_SIZE_PLUS_HEAD_DIM = 576;  // concatSize(512) + headDim(64)
+    param.qLoraRank = param.hiddenStateMm - CONCAT_SIZE_PLUS_HEAD_DIM;
+
+    auto wukShape = context->GetInputShape(INDEX_WUK)->GetStorageShape();
+    param.nopeDim = static_cast<uint64_t>(wukShape.GetDim(DIM_1));
+
+    param.headDimMm2 = param.nopeDim + HEADDIM;
+
     return param;
 }
 

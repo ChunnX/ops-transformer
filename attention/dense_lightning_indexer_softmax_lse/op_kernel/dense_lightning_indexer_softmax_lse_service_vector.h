@@ -45,6 +45,7 @@ public:
     __aicore__ inline void ProcessSoftmax(const DenseLISoftmaxLseCommon::RunInfo &info);
     __aicore__ inline void ProcessReduceMax(uint32_t pingPongFlag);
     __aicore__ inline void ProcessReduceSum(uint32_t pingPongFlag);
+    __aicore__ inline void ProcessOutput(uint64_t outOffset, uint64_t coreDealSize);
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void InitParams(const struct DenseLISoftmaxLseCommon::ConstInfo &constInfo,
                                       const DenseLISoftmaxLseTilingData *__restrict tilingData);
@@ -66,6 +67,7 @@ private:
     constexpr static uint32_t REDUCE_BANK_CONFLICT_OFFSETS = 256;
     constexpr static uint32_t REDUCE_BANK_CONFLICT_NUM = REDUCE_BANK_CONFLICT_OFFSETS / sizeof(float);
     constexpr static uint32_t REDUCE_BASE_BLOCK_SIZE = 64;
+    constexpr static uint32_t REST_ZERO_BASE_BLOCK_SIZE = 64;
     constexpr static uint32_t AIV_RATIO = 2;
 
     TQue<TPosition::VECIN, 1> scaleBuf_;
@@ -75,6 +77,8 @@ private:
 
     TQue<TPosition::VECIN, 1> reduceMaxSrc0Queue_;
     TQue<TPosition::VECIN, 1> reduceSumSrc0Queue_;
+
+    TQue<TPosition::VECIN, 1> resetZeroQueue_;
 
     int32_t blockId_ = -1;
     int32_t groupInner_ = 0;
@@ -112,6 +116,9 @@ __aicore__ inline void DenseLISoftmaxLseVector<T>::InitBuffers(TPipe *pipe)
 
     pipe->InitBuffer(reduceMaxSrc0Queue_, DOUBLE_NUM, 4 * REDUCE_BASE_BLOCK_SIZE * sizeof(float));
     pipe->InitBuffer(reduceSumSrc0Queue_, DOUBLE_NUM, 5 * REDUCE_BASE_BLOCK_SIZE * sizeof(float));
+    
+    // TND reset output zero
+    pipe->InitBuffer(resetZeroQueue_, DOUBLE_NUM, REST_ZERO_BASE_BLOCK_SIZE * sizeof(float));
 }
 
 template <typename T>
@@ -393,5 +400,33 @@ __aicore__ inline void DenseLISoftmaxLseVector<T>::ProcessReduceSum(uint32_t pin
     reduceSumSrc0Queue_.FreeTensor(reduceSumSrc0);
 }
 
+template <typename T>
+__aicore__ inline void DenseLISoftmaxLseVector<T>::ProcessOutput(uint64_t outOffset, uint64_t coreDealSize)
+{
+    uint64_t aivCoreDealSize = coreDealSize / AIV_RATIO == 0 ? coreDealSize : coreDealSize / AIV_RATIO;
+    uint64_t aivOutOffset = outOffset;
+    if (blockId_ % AIV_RATIO == 1) {
+        aivOutOffset += aivCoreDealSize;
+        aivCoreDealSize = coreDealSize - aivCoreDealSize;
+    }
+    if (aivCoreDealSize <= 0) {
+        return;
+    }
+    uint32_t blockNum = DenseLISoftmaxLseCommon::CeilDiv(aivCoreDealSize, (uint64_t)REST_ZERO_BASE_BLOCK_SIZE);
+    for (uint32_t blockIdx = 0; blockIdx <= blockNum - 1; blockIdx++) {
+        LocalTensor<float> resetZeroTensor = resetZeroQueue_.AllocTensor<float>();
+        uint32_t curBlockSize = blockIdx != blockNum - 1 ? REST_ZERO_BASE_BLOCK_SIZE :
+                                aivCoreDealSize - REST_ZERO_BASE_BLOCK_SIZE * blockIdx;
+        Duplicate(resetZeroTensor, 0.0f, REST_ZERO_BASE_BLOCK_SIZE);
+        resetZeroQueue_.EnQue<float>(resetZeroTensor);
+        resetZeroTensor = resetZeroQueue_.DeQue<float>();
+        DataCopyExtParams copyOutParams{1, static_cast<uint32_t>(curBlockSize * sizeof(float)), 0, 0, 0};
+        AscendC::DataCopyPad(softmaxMaxGm[aivOutOffset + REST_ZERO_BASE_BLOCK_SIZE * blockIdx],
+                             resetZeroTensor, copyOutParams);
+        AscendC::DataCopyPad(softmaxSumGm[aivOutOffset + REST_ZERO_BASE_BLOCK_SIZE * blockIdx],
+                             resetZeroTensor, copyOutParams);
+        resetZeroQueue_.FreeTensor(resetZeroTensor);
+    }
+}
 }
 #endif // DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_SERVICE_VECTOR_H
