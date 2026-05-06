@@ -27,7 +27,7 @@
   o_t := S_t (q_t \cdot scale)
   $$
 
-  其中，$S_{t-1},S_t \in R^{D_v \times D_k}$，$q_t, k_t \in R^{D_k}$，$v_t \in R^{D_v}$，$\alpha_t \in R$，$\beta_t \in R$，$o \in R^{D_v}$。
+  其中，$S_{t-1},S_t \in \mathbb{R}^{D_v \times D_k}$，$q_t, k_t \in \mathbb{R}^{D_k}$，$v_t \in \mathbb{R}^{D_v}$，$\alpha_t \in \mathbb{R}$，$\beta_t \in \mathbb{R}$，$o_t \in \mathbb{R}^{D_v}$。
   
   Chunked Gated Delta Rule (CGDR)是GDR的chunk版实现([参考论文](https://arxiv.org/abs/2412.06464))，它通过将输入序列切块，实现了一定的并行效果，在长上下文场景其计算效率相对Recurrent Gated Delta Rule更高，适用于prefill阶段。输入一个长度为L的序列，CGDR算子可以计算出每一步的输出 $o_t, t \in \{1, .., L\}$ 以及最终的状态矩阵 $S_L$。
 
@@ -200,7 +200,7 @@ aclnnStatus aclnnChunkGatedDeltaRule(
   </tbody>
   </table>
   
-  其中 $B$ 表示batch size，令 $L_i$ 表示第i个序列的长度，则 $T=\sum_i^B L_i$ 表示累积序列长度。$N_k$ 表示key的头数，$N_v$ 表示value的头数，$D_k$ 表示key的hidden size，$D_v$ 表示value的hidden size。
+  其中 $B$ 表示batch size，令 $L_i$ 表示第i个序列的长度，则 $T=\sum_i^B L_i$ 表示累积序列长度。$N_k$ 表示key的头数，$N_v$ 表示value的头数，$D_k$ 表示key的隐藏层维度，$D_v$ 表示value的隐藏层维度。
 
 - 返回值
 
@@ -288,15 +288,15 @@ aclnnStatus aclnnChunkGatedDeltaRule(
 
 - 确定性计算：
   - aclnnChunkGatedDeltaRule默认确定性实现。
-- 输入shape大小需满足约束：
-  - $0 \lt Nv \le 64$，$0 \lt Nk \le 64$，且Nv是Nk的整数倍。
-  - $0 \lt Dv \le 128$, $0 \lt Dk \le 128$。
-  - $B \gt 0$, $T \gt 0$。
+- 维度约束：
+  - $0 \lt Nv \le 64，0 \lt Nk \le 64$，且 $Nv \bmod Nk = 0$
+  - $0 \lt Dv \le 128$, $0 \lt Dk \le 128$
+  - $B \gt 0$, $T \gt 0$
 - 由于算法特性，用户需保障以下数值约束，否则计算结果可能出现溢出：
-  - $0 < query < 1$。
-  - $0 < key < 1$。
-  - $g < 0$。
-  - $0 < beta < 1$。
+  - $0 < query < 1$
+  - $0 < key < 1$
+  - $g < 0$
+  - $0 < beta < 1$
 
 
 ## 调用示例
