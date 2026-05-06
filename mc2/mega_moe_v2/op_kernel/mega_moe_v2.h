@@ -17,6 +17,21 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #include "kernel_operator_list_tensor_intf.h"
+#include "lib/matmul_intf.h"               // AscendC::GetL0DataType for blaze
+#include "lib/std/tuple.h"                  // AscendC::Std for blaze
+
+// tensor_api / blaze MUST come before V2 own headers (which do file-scope
+// `using namespace AscendC`). Otherwise c_api/sync.h's unqualified
+// SYNC_MODE_SHIFT_VALUE becomes ambiguous against AscendC::SYNC_MODE_SHIFT_VALUE.
+// tensor_api declares AscendC::Te; we add namespace aliases for Te/Std at the
+// global scope so blaze's unqualified references resolve, without the broad
+// `using namespace AscendC` that re-introduces the ambiguity.
+#include "include/tensor_api/tensor.h"
+namespace Std = AscendC::Std;
+namespace Te = AscendC::Te;
+#include "blaze/block/block_mmad_mx.h"
+#include "blaze/block/block_scheduler_swizzle.h"
+
 #include "mega_moe_v2_base.h"
 #include "mega_moe_v2_workspace_info.h"
 #include "mega_moe_v2_block_epilogue_swiglu_mx_quant.h"

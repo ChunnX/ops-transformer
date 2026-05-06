@@ -18,14 +18,20 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "lib/matmul_intf.h"
-#include "mega_moe_v2_block_epilogue_swiglu_mx_quant.h"
-#include "mega_moe_v2_base.h"
-#include "mega_moe_v2_wave_scheduler.h"
 
+// tensor_api / blaze MUST come before V2 own headers. V2 headers do
+// file-scope `using namespace AscendC`, which leaks AscendC::SYNC_MODE_SHIFT_VALUE
+// into global; tensor_api transitively pulls c_api/sync/sync.h which has its
+// own global SYNC_MODE_SHIFT_VALUE — both visible at the same scope =
+// "ambiguous" compile error in --pkg builds. Including tensor_api before V2
+// headers means c_api/sync's lookup happens before AscendC is brought in.
 #include "include/tensor_api/tensor.h"
 #include "blaze/block/block_mmad_mx.h"
 #include "blaze/block/block_scheduler_swizzle.h"
 
+#include "mega_moe_v2_block_epilogue_swiglu_mx_quant.h"
+#include "mega_moe_v2_base.h"
+#include "mega_moe_v2_wave_scheduler.h"
 #include "mega_moe_v2_combine_send.h"
 
 using namespace AscendC;
