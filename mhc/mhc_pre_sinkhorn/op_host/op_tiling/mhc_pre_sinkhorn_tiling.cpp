@@ -15,6 +15,7 @@
 
 #include <sstream>
 #include "mhc_pre_sinkhorn_tiling.h"
+#include "mhc_pre_sinkhorn_tiling_arch35.cpp"
 
 using namespace ge;
 namespace optiling {
@@ -624,6 +625,13 @@ ge::graphStatus TilingForMhcPreSinkhorn(gert::TilingContext *context)
     OP_CHECK_IF(platformInfo == nullptr, OP_LOGE("TilingForMhcPreSinkhorn", "Tiling platformInfo is null"),
                return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+
+    auto socVersion = ascendcPlatform.GetSocVersion();
+    if (socVersion == platform_ascendc::SocVersion::ASCEND950) {
+        OP_LOGD(context->GetNodeName(), "Using arch35 tiling for ASCEND950");
+        MhcPreSinkhornTilingRegbase::MhcPreSinkhornTilingRegbase mhcPreSinkhornTiling(context);
+        return mhcPreSinkhornTiling.DoOpTiling();
+    }
 
     MhcPreSinkhornTiling mhcPreSinkhornTiling(context);
     return mhcPreSinkhornTiling.DoOpTiling();
