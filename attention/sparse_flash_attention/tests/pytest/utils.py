@@ -86,17 +86,13 @@ def generate_actual_seq(S, B, layout=None, T=None):
     """
     if layout == "TND":
         if T is not None:
-            seq_lengths = []
-            remaining = T
-            for i in range(B - 1):
-                max_len = min(S, remaining)
-                if max_len <= 0:
-                    seq_lengths.append(0)
-                else:
-                    length = random.randint(0, max_len)
-                    seq_lengths.append(length)
-                    remaining -= length
-            seq_lengths.append(max(0, remaining))
+            avg = T // B
+            remainder = T % B
+            if T > B * S:
+                avg = S
+                remainder = 0
+            seq_lengths = [avg + 1 if i < remainder else avg for i in range(B)]
+            random.shuffle(seq_lengths)
             actual_seq = []
             cumsum = 0
             for length in seq_lengths:
