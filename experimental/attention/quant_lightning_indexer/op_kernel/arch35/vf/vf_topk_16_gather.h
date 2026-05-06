@@ -269,7 +269,7 @@ __simd_vf__ void FindIdxEQOutputVFImpl(__ubuf__ uint16_t* outputIdxBuf, __ubuf__
     MicroAPI::RegTensor<int16_t> idxC;
     MicroAPI::RegTensor<uint16_t> sqzIdxOut;
 
-    for(uint16_t i = 0; i < (uint16_t)(vfLoop); ++i) {
+    for (uint16_t i = 0; i < (uint16_t)(vfLoop); ++i) {
         MicroAPI::Arange(idxC, beginIdx + i * 128);
 
         MicroAPI::LoadAlign<uint16_t, MicroAPI::LoadDist::DIST_NORM>(vregInput, inputValueBuf + i * 128);
@@ -292,7 +292,7 @@ __simd_vf__ void FindValueOutputVFImpl(__ubuf__ uint16_t* outputValueBuf, __ubuf
     MicroAPI::RegTensor<uint16_t> tmpIdx;
     MicroAPI::RegTensor<uint16_t> outputValue;
 
-    for(uint16_t i = 0; i < (uint16_t)(vfLoop); ++i) {
+    for (uint16_t i = 0; i < (uint16_t)(vfLoop); ++i) {
         MicroAPI::LoadAlign<uint16_t, MicroAPI::LoadDist::DIST_NORM>(tmpIdx, tmpIdxBuf + i * 128);
 
         MicroAPI::Gather(outputValue, inputValueBuf, tmpIdx, pregB16);
@@ -315,7 +315,7 @@ __simd_vf__ void FindRealIndexVFImpl(__ubuf__ uint32_t* outputIdxBuf, __ubuf__ u
     MicroAPI::RegTensor<uint32_t> outputGatherIdx;
     MicroAPI::RegTensor<uint32_t> outputAddsIdx;
 
-    for(uint16_t i = 0; i < (uint16_t)(vfLoop); ++i) {
+    for (uint16_t i = 0; i < (uint16_t)(vfLoop); ++i) {
         MicroAPI::LoadAlign<uint16_t, MicroAPI::LoadDist::DIST_UNPACK_B16>(tmpIdx, tmpIdxBuf + i * 64);
 
         MicroAPI::Compares<uint32_t, CMPMODE::GT>(pregNow, (MicroAPI::RegTensor<uint32_t>&)tmpIdx, topK - 1, pregB32);
@@ -404,7 +404,7 @@ __simd_vf__ void FindLDRealIndexVFImpl(__ubuf__ uint32_t* outputIdxBuf, __ubuf__
     MicroAPI::RegTensor<uint16_t> tmpIdx;
     MicroAPI::RegTensor<uint32_t> outputIdx;
 
-    for(uint16_t i = 0; i < (uint16_t)(vfLoop); ++i) {
+    for (uint16_t i = 0; i < (uint16_t)(vfLoop); ++i) {
         MicroAPI::LoadAlign<uint16_t, MicroAPI::LoadDist::DIST_UNPACK_B16>(tmpIdx, tmpIdxBuf + i * 64);
 
         MicroAPI::Gather(outputIdx, hisIdxBuf, (MicroAPI::RegTensor<uint32_t>&)tmpIdx, pregB32);
