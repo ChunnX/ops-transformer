@@ -161,7 +161,7 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize(
     aclnnStatus ret_param = CheckParams(
         gmmX, transposeGmmWeight, gmmXScale, transposeGmmWeightScale,
         sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional, mmWeightOptional, mmXScaleOptional,
-        mmWeightScaleOptional, gmmXQuantMode, gmmWeightQuantMode,
+        transMmWeightScaleOptional, gmmXQuantMode, gmmWeightQuantMode,
         mmXQuantMode, mmWeightQuantMode, group, epWorldSize, permuteOutFlag, gmmY, mmYOptional, permuteOutOptional);
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
 
