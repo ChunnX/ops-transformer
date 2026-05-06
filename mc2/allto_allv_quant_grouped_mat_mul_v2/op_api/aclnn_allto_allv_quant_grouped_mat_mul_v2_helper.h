@@ -85,7 +85,6 @@ static bool CheckGmmWeightValid(const aclTensor *gmmWeight)
     if (gmmWeight == nullptr) {
         return false;
     }
-    OP_CHECK_WRONG_DIMENSION(gmmWeight, FOUR_DIMS, return false);
     return true;
 }
 
