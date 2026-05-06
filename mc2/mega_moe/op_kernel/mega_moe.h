@@ -119,6 +119,7 @@ __aicore__ inline void RecordTimestamp(GlobalTensor<uint64_t> &output, int point
     uint64_t timestamp = static_cast<uint64_t>(AscendC::GetSystemCycle()) / CYCLES_PER_US;
     PipeBarrier<PIPE_ALL>();
     output.SetValue(globalCoreIdx * POINTS_PER_CORE + pointIndex, timestamp);
+    PipeBarrier<PIPE_ALL>();
 }
 
 } // namespace MegaMoeImpl
