@@ -79,156 +79,120 @@ __attribute__((always_inline)) __aicore__ __inline__ void moe_distribute_dispatc
     return;
 }
 
+template<int32_t tilingKey>
 __aicore__ inline void moe_dispatch_switch(
-    int32_t tilingKey,
     GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR expertScales,
     GM_ADDR performanceInfo, GM_ADDR expandXOut, GM_ADDR dynamicScalesOut,
     GM_ADDR assistInfoOut, GM_ADDR expertTokenNumsOut, GM_ADDR epSendCountsOut,
     GM_ADDR expandScalesOut, GM_ADDR workspaceGM, GM_ADDR mc2Context,
     MoeDistributeDispatchV2Info tilingData)
 {
-    switch (tilingKey) {
-
-    case 10000:
+    if constexpr (tilingKey == 10000) {
         moe_distribute_dispatch_v2<float16_t, float16_t, MoeDistributeDispatchV2Impl::UNQUANT, false>(
             x, expertIds, scales, xActiveMask, expertScales, performanceInfo,
             expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut,
             epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData);
-        break;
-
-    case 10002:
+    } else if constexpr (tilingKey == 10002) {
         moe_distribute_dispatch_v2<float16_t, int8_t, MoeDistributeDispatchV2Impl::PERTOKEN_DYNAMIC_QUANT, false>(
             x, expertIds, scales, xActiveMask, expertScales, performanceInfo,
             expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut,
             epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData);
-        break;
-
-    case 10010:
+    } else if constexpr (tilingKey == 10010) {
         moe_distribute_dispatch_v2<bfloat16_t, bfloat16_t, MoeDistributeDispatchV2Impl::UNQUANT, false>(
             x, expertIds, scales, xActiveMask, expertScales, performanceInfo,
             expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut,
             epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData);
-        break;
-
-    case 10012:
+    } else if constexpr (tilingKey == 10012) {
         moe_distribute_dispatch_v2<bfloat16_t, int8_t, MoeDistributeDispatchV2Impl::PERTOKEN_DYNAMIC_QUANT, false>(
             x, expertIds, scales, xActiveMask, expertScales, performanceInfo,
             expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut,
             epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData);
-        break;
-
-    case 10100:
+    } else if constexpr (tilingKey == 10100) {
         moe_distribute_dispatch_v2<float16_t, float16_t, MoeDistributeDispatchV2Impl::UNQUANT, true>(
             x, expertIds, scales, xActiveMask, expertScales, performanceInfo,
             expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut,
             epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData);
-        break;
-
-    case 10102:
+    } else if constexpr (tilingKey == 10102) {
         moe_distribute_dispatch_v2<float16_t, int8_t, MoeDistributeDispatchV2Impl::PERTOKEN_DYNAMIC_QUANT, true>(
             x, expertIds, scales, xActiveMask, expertScales, performanceInfo,
             expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut,
             epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData);
-        break;
-
-    case 10110:
+    } else if constexpr (tilingKey == 10110) {
         moe_distribute_dispatch_v2<bfloat16_t, bfloat16_t, MoeDistributeDispatchV2Impl::UNQUANT, true>(
             x, expertIds, scales, xActiveMask, expertScales, performanceInfo,
             expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut,
             epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData);
-        break;
-
-    case 10112:
+    } else if constexpr (tilingKey == 10112) {
         moe_distribute_dispatch_v2<bfloat16_t, int8_t, MoeDistributeDispatchV2Impl::PERTOKEN_DYNAMIC_QUANT, true>(
             x, expertIds, scales, xActiveMask, expertScales, performanceInfo,
             expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut,
             epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData);
-        break;
 
     /* ---------- FullMesh ---------- */
 
-    case 11000:
+    } else if constexpr (tilingKey == 11000) {
         moe_distribute_dispatch_v2_full_mesh<float16_t, float16_t, MoeDistributeDispatchV2Impl::UNQUANT, false>(
             x, expertIds, scales, xActiveMask, expertScales, performanceInfo,
             expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut,
             epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData);
-        break;
-
-    case 11002:
+    } else if constexpr (tilingKey == 11002) {
         moe_distribute_dispatch_v2_full_mesh<float16_t, int8_t, MoeDistributeDispatchV2Impl::PERTOKEN_DYNAMIC_QUANT, false>(
             x, expertIds, scales, xActiveMask, expertScales, performanceInfo,
             expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut,
             epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData);
-        break;
-
-    case 11010:
+    } else if constexpr (tilingKey == 11010) {
         moe_distribute_dispatch_v2_full_mesh<bfloat16_t, bfloat16_t, MoeDistributeDispatchV2Impl::UNQUANT, false>(
             x, expertIds, scales, xActiveMask, expertScales, performanceInfo,
             expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut,
             epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData);
-        break;
-
-    case 11012:
+    } else if constexpr (tilingKey == 11012) {
         moe_distribute_dispatch_v2_full_mesh<bfloat16_t, int8_t, MoeDistributeDispatchV2Impl::PERTOKEN_DYNAMIC_QUANT, false>(
             x, expertIds, scales, xActiveMask, expertScales, performanceInfo,
             expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut,
             epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData);
-        break;
-
-    case 11100:
+    } else if constexpr (tilingKey == 11100) {
         moe_distribute_dispatch_v2_full_mesh<float16_t, float16_t, MoeDistributeDispatchV2Impl::UNQUANT, true>(
             x, expertIds, scales, xActiveMask, expertScales, performanceInfo,
             expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut,
             epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData);
-        break;
-
-    case 11102:
+    } else if constexpr (tilingKey == 11102) {
         moe_distribute_dispatch_v2_full_mesh<float16_t, int8_t, MoeDistributeDispatchV2Impl::PERTOKEN_DYNAMIC_QUANT, true>(
             x, expertIds, scales, xActiveMask, expertScales, performanceInfo,
             expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut,
             epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData);
-        break;
-
-    case 11110:
+    } else if constexpr (tilingKey == 11110) {
         moe_distribute_dispatch_v2_full_mesh<bfloat16_t, bfloat16_t, MoeDistributeDispatchV2Impl::UNQUANT, true>(
             x, expertIds, scales, xActiveMask, expertScales, performanceInfo,
             expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut,
             epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData);
-        break;
-
-    case 11112:
+    } else if constexpr (tilingKey == 11112) {
         moe_distribute_dispatch_v2_full_mesh<bfloat16_t, int8_t, MoeDistributeDispatchV2Impl::PERTOKEN_DYNAMIC_QUANT, true>(
             x, expertIds, scales, xActiveMask, expertScales, performanceInfo,
             expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut,
             epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData);
-        break;
-
-    default:
+    } else {
         AscendC::PRINTF("moe_distribute_dispatch_v2 Error: invalid tilingKey = %d\n", tilingKey);
-        break;
     }
 }
 
-extern "C" __global__ __aicore__ void moe_distribute_dispatch_v2_generic(
-    int32_t tilingKey,
+template<int32_t tilingKey>
+__global__ __aicore__ void moe_distribute_dispatch_v2_generic(
     GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR expertScales, 
     GM_ADDR performanceInfo, GM_ADDR expandXOut, GM_ADDR dynamicScalesOut, 
     GM_ADDR assistInfoOut, GM_ADDR expertTokenNumsOut, GM_ADDR epSendCountsOut, 
     GM_ADDR expandScalesOut, GM_ADDR workspaceGM, GM_ADDR mc2Context, MoeDistributeDispatchV2Info tilingData)
 {
     // 根据不同的数据类型调用不同的模板
-    moe_dispatch_switch(
-        tilingKey,
+    moe_dispatch_switch<tilingKey>(
         x, expertIds, scales, xActiveMask, expertScales,
         performanceInfo, expandXOut, dynamicScalesOut,
         assistInfoOut, expertTokenNumsOut, epSendCountsOut,
         expandScalesOut, workspaceGM, mc2Context, tilingData);
 }
 
-template <int32_t split_num>
+template <int32_t split_num, int32_t tilingKey>
 __sk__ __vector__ void moe_distribute_dispatch_v2_generic_sk(MoeDistributeDispatchV2SkArgs *args)
 {
-    int32_t tilingKey = args->tilingKey;
     GM_ADDR x = args->x;
     GM_ADDR expertIds = args->expertIds;
     GM_ADDR scales = args->scales;
@@ -246,17 +210,29 @@ __sk__ __vector__ void moe_distribute_dispatch_v2_generic_sk(MoeDistributeDispat
     MoeDistributeDispatchV2Info tilingData = args->tilingData;
 
     // 根据不同的数据类型调用不同的模板
-    moe_dispatch_switch(
-        tilingKey,
+    moe_dispatch_switch<tilingKey>(
         x, expertIds, scales, xActiveMask, expertScales,
         performanceInfo, expandXOut, dynamicScalesOut,
         assistInfoOut, expertTokenNumsOut, epSendCountsOut,
         expandScalesOut, workspaceGM, mc2Context, tilingData);
 }
 
-SK_BIND(moe_distribute_dispatch_v2_generic, 4, moe_distribute_dispatch_v2_generic_sk<0>,
-    moe_distribute_dispatch_v2_generic_sk<1>, moe_distribute_dispatch_v2_generic_sk<2>, 
-    moe_distribute_dispatch_v2_generic_sk<3>);
+SK_BIND((moe_distribute_dispatch_v2_generic<10000>), 4, moe_distribute_dispatch_v2_generic_sk<0, 10000>, moe_distribute_dispatch_v2_generic_sk<1, 10000>, moe_distribute_dispatch_v2_generic_sk<2, 10000>, moe_distribute_dispatch_v2_generic_sk<3, 10000>);
+SK_BIND((moe_distribute_dispatch_v2_generic<10002>), 4, moe_distribute_dispatch_v2_generic_sk<0, 10002>, moe_distribute_dispatch_v2_generic_sk<1, 10002>, moe_distribute_dispatch_v2_generic_sk<2, 10002>, moe_distribute_dispatch_v2_generic_sk<3, 10002>);
+SK_BIND((moe_distribute_dispatch_v2_generic<10010>), 4, moe_distribute_dispatch_v2_generic_sk<0, 10010>, moe_distribute_dispatch_v2_generic_sk<1, 10010>, moe_distribute_dispatch_v2_generic_sk<2, 10010>, moe_distribute_dispatch_v2_generic_sk<3, 10010>);
+SK_BIND((moe_distribute_dispatch_v2_generic<10012>), 4, moe_distribute_dispatch_v2_generic_sk<0, 10012>, moe_distribute_dispatch_v2_generic_sk<1, 10012>, moe_distribute_dispatch_v2_generic_sk<2, 10012>, moe_distribute_dispatch_v2_generic_sk<3, 10012>);
+SK_BIND((moe_distribute_dispatch_v2_generic<10100>), 4, moe_distribute_dispatch_v2_generic_sk<0, 10100>, moe_distribute_dispatch_v2_generic_sk<1, 10100>, moe_distribute_dispatch_v2_generic_sk<2, 10100>, moe_distribute_dispatch_v2_generic_sk<3, 10100>);
+SK_BIND((moe_distribute_dispatch_v2_generic<10102>), 4, moe_distribute_dispatch_v2_generic_sk<0, 10102>, moe_distribute_dispatch_v2_generic_sk<1, 10102>, moe_distribute_dispatch_v2_generic_sk<2, 10102>, moe_distribute_dispatch_v2_generic_sk<3, 10102>);
+SK_BIND((moe_distribute_dispatch_v2_generic<10110>), 4, moe_distribute_dispatch_v2_generic_sk<0, 10110>, moe_distribute_dispatch_v2_generic_sk<1, 10110>, moe_distribute_dispatch_v2_generic_sk<2, 10110>, moe_distribute_dispatch_v2_generic_sk<3, 10110>);
+SK_BIND((moe_distribute_dispatch_v2_generic<10112>), 4, moe_distribute_dispatch_v2_generic_sk<0, 10112>, moe_distribute_dispatch_v2_generic_sk<1, 10112>, moe_distribute_dispatch_v2_generic_sk<2, 10112>, moe_distribute_dispatch_v2_generic_sk<3, 10112>);
+SK_BIND((moe_distribute_dispatch_v2_generic<11000>), 4, moe_distribute_dispatch_v2_generic_sk<0, 11000>, moe_distribute_dispatch_v2_generic_sk<1, 11000>, moe_distribute_dispatch_v2_generic_sk<2, 11000>, moe_distribute_dispatch_v2_generic_sk<3, 11000>);
+SK_BIND((moe_distribute_dispatch_v2_generic<11002>), 4, moe_distribute_dispatch_v2_generic_sk<0, 11002>, moe_distribute_dispatch_v2_generic_sk<1, 11002>, moe_distribute_dispatch_v2_generic_sk<2, 11002>, moe_distribute_dispatch_v2_generic_sk<3, 11002>);
+SK_BIND((moe_distribute_dispatch_v2_generic<11010>), 4, moe_distribute_dispatch_v2_generic_sk<0, 11010>, moe_distribute_dispatch_v2_generic_sk<1, 11010>, moe_distribute_dispatch_v2_generic_sk<2, 11010>, moe_distribute_dispatch_v2_generic_sk<3, 11010>);
+SK_BIND((moe_distribute_dispatch_v2_generic<11012>), 4, moe_distribute_dispatch_v2_generic_sk<0, 11012>, moe_distribute_dispatch_v2_generic_sk<1, 11012>, moe_distribute_dispatch_v2_generic_sk<2, 11012>, moe_distribute_dispatch_v2_generic_sk<3, 11012>);
+SK_BIND((moe_distribute_dispatch_v2_generic<11100>), 4, moe_distribute_dispatch_v2_generic_sk<0, 11100>, moe_distribute_dispatch_v2_generic_sk<1, 11100>, moe_distribute_dispatch_v2_generic_sk<2, 11100>, moe_distribute_dispatch_v2_generic_sk<3, 11100>);
+SK_BIND((moe_distribute_dispatch_v2_generic<11102>), 4, moe_distribute_dispatch_v2_generic_sk<0, 11102>, moe_distribute_dispatch_v2_generic_sk<1, 11102>, moe_distribute_dispatch_v2_generic_sk<2, 11102>, moe_distribute_dispatch_v2_generic_sk<3, 11102>);
+SK_BIND((moe_distribute_dispatch_v2_generic<11110>), 4, moe_distribute_dispatch_v2_generic_sk<0, 11110>, moe_distribute_dispatch_v2_generic_sk<1, 11110>, moe_distribute_dispatch_v2_generic_sk<2, 11110>, moe_distribute_dispatch_v2_generic_sk<3, 11110>);
+SK_BIND((moe_distribute_dispatch_v2_generic<11112>), 4, moe_distribute_dispatch_v2_generic_sk<0, 11112>, moe_distribute_dispatch_v2_generic_sk<1, 11112>, moe_distribute_dispatch_v2_generic_sk<2, 11112>, moe_distribute_dispatch_v2_generic_sk<3, 11112>);
 
 // <<<>>>调用函数
 void moe_distribute_dispatch_v2_entry(int32_t tilingKey, uint32_t blockDim, void* stream, GM_ADDR x, GM_ADDR expertIds,
@@ -265,9 +241,23 @@ void moe_distribute_dispatch_v2_entry(int32_t tilingKey, uint32_t blockDim, void
     GM_ADDR expandScalesOut, GM_ADDR workspaceGM, GM_ADDR mc2Context,
     MoeDistributeDispatchV2Info tilingData)
 {
-    moe_distribute_dispatch_v2_generic<<<blockDim, nullptr, stream>>>(
-        tilingKey, x, expertIds, scales, xActiveMask, expertScales, performanceInfo, expandXOut, dynamicScalesOut,
-        assistInfoOut, expertTokenNumsOut, epSendCountsOut, expandScalesOut, workspaceGM,
-        mc2Context, tilingData
-    );
+    switch (tilingKey) {
+    case 10000: moe_distribute_dispatch_v2_generic<10000><<<blockDim, nullptr, stream>>>(x, expertIds, scales, xActiveMask, expertScales, performanceInfo, expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut, epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData); break;
+    case 10002: moe_distribute_dispatch_v2_generic<10002><<<blockDim, nullptr, stream>>>(x, expertIds, scales, xActiveMask, expertScales, performanceInfo, expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut, epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData); break;
+    case 10010: moe_distribute_dispatch_v2_generic<10010><<<blockDim, nullptr, stream>>>(x, expertIds, scales, xActiveMask, expertScales, performanceInfo, expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut, epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData); break;
+    case 10012: moe_distribute_dispatch_v2_generic<10012><<<blockDim, nullptr, stream>>>(x, expertIds, scales, xActiveMask, expertScales, performanceInfo, expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut, epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData); break;
+    case 10100: moe_distribute_dispatch_v2_generic<10100><<<blockDim, nullptr, stream>>>(x, expertIds, scales, xActiveMask, expertScales, performanceInfo, expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut, epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData); break;
+    case 10102: moe_distribute_dispatch_v2_generic<10102><<<blockDim, nullptr, stream>>>(x, expertIds, scales, xActiveMask, expertScales, performanceInfo, expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut, epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData); break;
+    case 10110: moe_distribute_dispatch_v2_generic<10110><<<blockDim, nullptr, stream>>>(x, expertIds, scales, xActiveMask, expertScales, performanceInfo, expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut, epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData); break;
+    case 10112: moe_distribute_dispatch_v2_generic<10112><<<blockDim, nullptr, stream>>>(x, expertIds, scales, xActiveMask, expertScales, performanceInfo, expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut, epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData); break;
+    case 11000: moe_distribute_dispatch_v2_generic<11000><<<blockDim, nullptr, stream>>>(x, expertIds, scales, xActiveMask, expertScales, performanceInfo, expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut, epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData); break;
+    case 11002: moe_distribute_dispatch_v2_generic<11002><<<blockDim, nullptr, stream>>>(x, expertIds, scales, xActiveMask, expertScales, performanceInfo, expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut, epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData); break;
+    case 11010: moe_distribute_dispatch_v2_generic<11010><<<blockDim, nullptr, stream>>>(x, expertIds, scales, xActiveMask, expertScales, performanceInfo, expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut, epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData); break;
+    case 11012: moe_distribute_dispatch_v2_generic<11012><<<blockDim, nullptr, stream>>>(x, expertIds, scales, xActiveMask, expertScales, performanceInfo, expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut, epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData); break;
+    case 11100: moe_distribute_dispatch_v2_generic<11100><<<blockDim, nullptr, stream>>>(x, expertIds, scales, xActiveMask, expertScales, performanceInfo, expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut, epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData); break;
+    case 11102: moe_distribute_dispatch_v2_generic<11102><<<blockDim, nullptr, stream>>>(x, expertIds, scales, xActiveMask, expertScales, performanceInfo, expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut, epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData); break;
+    case 11110: moe_distribute_dispatch_v2_generic<11110><<<blockDim, nullptr, stream>>>(x, expertIds, scales, xActiveMask, expertScales, performanceInfo, expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut, epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData); break;
+    case 11112: moe_distribute_dispatch_v2_generic<11112><<<blockDim, nullptr, stream>>>(x, expertIds, scales, xActiveMask, expertScales, performanceInfo, expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut, epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData); break;
+    default: AscendC::PRINTF("moe_distribute_dispatch_v2 Error: invalid tilingKey = %d\n", tilingKey); break;
+    }
 }
