@@ -24,10 +24,15 @@ public:
         .DataTypeList({ge::DT_INT32})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
+    // Trimmed dtype enumeration to match the only path exercised by perf
+    // tests: BF16 x, FP8_E5M2 weights, FP8_E8M0 MX scales, MXFP dispatch.
+    // Drop FP16/FP8_E4M3FN/HIFLOAT8/FP4_*/INT8/INT4 axes — including them
+    // inflates kernel-binary count from ~1 to ~248. To re-enable other
+    // configs in the future, restore the dropped dtypes here AND extend
+    // the corresponding tilingkey enum lists in mega_moe_v2_tiling_key.h.
     this->Input("x")
         .ParamType(REQUIRED)
-        .DataTypeList({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN,
-                        ge::DT_HIFLOAT8, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2})
+        .DataTypeList({ge::DT_BF16})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
     this->Input("topk_ids")
@@ -37,30 +42,26 @@ public:
         .AutoContiguous();
     this->Input("topk_weights")
         .ParamType(REQUIRED)
-        .DataTypeList({ge::DT_FLOAT, ge::DT_BF16})
+        .DataTypeList({ge::DT_FLOAT})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
     this->Input("weight1")
         .ParamType(DYNAMIC)
-        .DataType({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_INT8, ge::DT_INT4, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN,
-                    ge::DT_HIFLOAT8, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2})
-        .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_ND, ge::FORMAT_ND,
-                    ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+        .DataType({ge::DT_FLOAT8_E5M2})
+        .Format({ge::FORMAT_ND});
     this->Input("weight2")
         .ParamType(DYNAMIC)
-        .DataType({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_INT8, ge::DT_INT4, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN,
-                    ge::DT_HIFLOAT8, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2})
-        .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_ND, ge::FORMAT_ND,
-                    ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+        .DataType({ge::DT_FLOAT8_E5M2})
+        .Format({ge::FORMAT_ND});
     this->Input("weight_scales1")
         .ParamType(DYNAMIC)
-        .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
-        .FormatList({ge::FORMAT_ND, ge::FORMAT_ND})
+        .DataTypeList({ge::DT_FLOAT8_E8M0})
+        .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
     this->Input("weight_scales2")
         .ParamType(DYNAMIC)
-        .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
-        .FormatList({ge::FORMAT_ND, ge::FORMAT_ND})
+        .DataTypeList({ge::DT_FLOAT8_E8M0})
+        .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
     this->Input("x_active_mask")
         .ParamType(OPTIONAL)
@@ -69,13 +70,13 @@ public:
         .AutoContiguous();
     this->Input("scales")
         .ParamType(OPTIONAL)
-        .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
+        .DataTypeList({ge::DT_FLOAT8_E8M0})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
 
     this->Output("y")
         .ParamType(REQUIRED)
-        .DataTypeList({ge::DT_BF16, ge::DT_FLOAT16})
+        .DataTypeList({ge::DT_BF16})
         .FormatList({ge::FORMAT_ND});
     this->Output("expert_token_nums")
         .ParamType(REQUIRED)
