@@ -78,6 +78,7 @@ namespace optiling{
     TILING_DATA_FIELD_DEF(uint32_t, tailStartBatch)
     TILING_DATA_FIELD_DEF(uint32_t, tailStartN2)
     TILING_DATA_FIELD_DEF(uint32_t, tailKvNBlockTile)
+    TILING_DATA_FIELD_DEF(uint32_t, blockStride)
     TILING_DATA_FIELD_DEF_STRUCT(coreNode, coreInfo)
     TILING_DATA_FIELD_DEF_STRUCT(splitNode, splitInfo)
     END_TILING_DATA_DEF
@@ -147,6 +148,7 @@ namespace optiling{
         bool flashDecodeFlag = false;
         bool decodingFlag = false;
         string layout;
+        int32_t blockStride = 0;
     };
 
     class FAInferTiling {
@@ -242,6 +244,7 @@ namespace optiling{
         faTilingData.set_nextToken(static_cast<int64_t>(faInfo_.nextToken));
         faTilingData.set_pseQ(faInfo_.pseQ);
         faTilingData.set_pseKv(faInfo_.pseKv);
+        faTilingData.set_blockStride(faInfo_.blockStride);
     }
 
     uint64_t FAInferTiling::GetTilingKey() 

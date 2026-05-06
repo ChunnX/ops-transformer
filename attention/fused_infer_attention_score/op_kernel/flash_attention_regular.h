@@ -114,6 +114,7 @@ namespace SplitFuse {
             nextToken = fATilingData->nextToken;
             pseQ = fATilingData->pseQ;
             pseKv = fATilingData->pseKv;
+            blockStride = fATilingData->blockStride;
             uint64_t Lsesize = 0;
             uint64_t Losize = 0;
             if constexpr (IS_FD) {
@@ -650,7 +651,8 @@ namespace SplitFuse {
                                 kvSIdx, 
                                 kvSLoopNumTotal, 
                                 pagedBlockSize, 
-                                strideK);
+                                strideK,
+                                blockStride);
                         } else {
                             blockMmadQK(
                                 gQ[gmOffsetQ], 
@@ -664,7 +666,8 @@ namespace SplitFuse {
                                 kvSIdx, 
                                 kvSLoopNumTotal, 
                                 pagedBlockSize, 
-                                strideK);
+                                strideK,
+                                blockStride);
                         }
                         Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(qkReady);
 #endif
@@ -925,7 +928,8 @@ namespace SplitFuse {
                             noSkipKvS, 
                             strideV, 
                             blockStackNum, 
-                            softmaxReady);
+                            softmaxReady,
+                            blockStride);
                         } else {
                             blockMmadPV(
                             gP[gmOffsetP], 
@@ -942,7 +946,8 @@ namespace SplitFuse {
                             noSkipKvS, 
                             strideV, 
                             blockStackNum, 
-                            softmaxReady);
+                            softmaxReady,
+                            blockStride);
                         }
                         Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(pvReady);
 #endif
@@ -1042,6 +1047,7 @@ namespace SplitFuse {
         uint32_t embedRound;
         uint32_t embedRoundV;
         uint32_t groupSize;
+        uint32_t blockStride;
 
         Arch::Resource<ArchTag> resource;
         Arch::CrossCoreFlag qkReady{QK_READY_ID};
