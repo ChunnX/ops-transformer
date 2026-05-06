@@ -62,7 +62,7 @@ private:
     AscendC::HcclDataType dataType_;
     uint8_t debugMode_;
     bool notifyFlag_{false};
-    Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;         // CCU模式
+    Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU> hccl_;         // CCU模式
     AscendC::HcclHandle hHandles_[MAX_HANDLE];  // 最大支持16个handleID
 };
 
@@ -77,8 +77,8 @@ __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::I
     // 获取 context
     context_ = contextGM;
     // 初始化Hccl类
-    hccl_.Init(context_, mc2InitTiling);
-    hccl_.SetCcTiling(mc2CcTiling);
+    hccl_.InitV2(context_, tilingData_);
+    hccl_.SetCcTilingV2(offsetof(Mc2Tiling::AllGatherMatmulTilingDataV2, mc2CcTiling));
     // 管道初始化
     tPipe_ = tPipe;
 
@@ -89,7 +89,7 @@ __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::I
     bGM_ = bGM;
     cGM_ = cGM;
     biasGM_ = biasGM;
-    rankId_ = ((__gm__ HcclCombinOpParam*)context_)->rankId;
+    rankId_ = hccl_.GetRankId();
     workspaceGM_ = workspaceGM;
     gatherAddr_ = gatherOut;
 
