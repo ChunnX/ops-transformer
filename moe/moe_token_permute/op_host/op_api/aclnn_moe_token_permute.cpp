@@ -14,6 +14,7 @@
 #include "opdev/op_executor.h"
 #include "common/op_api_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
+#include "aclnnInner_moe_token_permute.h"  // 该文件为自动生成，在build/autogen/inner路径下
 #include "external/aclnn_kernels/aclnn_platform.h"
 #include "aclnn_kernels/contiguous.h"
 #include "opdev/tensor_view_utils.h"
@@ -25,13 +26,6 @@ using namespace op;
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-extern aclnnStatus aclnnInnerMoeTokenPermuteGetWorkspaceSize(
-    const aclTensor* tokens, const aclTensor* indices, int64_t numOutTokens, bool paddedMode,
-    const aclTensor* permuteTokensOut, const aclTensor* sortedIndicesOut, uint64_t* workspaceSize,
-    aclOpExecutor** executor);
-extern aclnnStatus aclnnInnerMoeTokenPermute(
-    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream);
 
 aclnnStatus aclnnMoeTokenPermuteGetWorkspaceSize(
     const aclTensor* tokens, const aclTensor* indices, int64_t numOutTokens, bool paddedMode,
