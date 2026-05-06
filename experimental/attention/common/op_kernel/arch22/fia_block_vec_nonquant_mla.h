@@ -961,7 +961,8 @@ FiaBlockVecNonQuantMla<FIAT>::DealBmm2ResBaseBlock(const AttentionCommon::RunInf
     LocalTensor<uint8_t> cmpMaskUb = absBmm2ResUb.template ReinterpretCast<uint8_t>();
     CompareScalar(cmpMaskUb, absBmm2ResUb, (T)1e10, CMPMODE::LE, vec2ComputeSize);
     AscendC::PipeBarrier<PIPE_V>();
-    Select(tmpBmm2ResUb, cmpMaskUb, tmpBmm2ResUb, ConstInfo::FLOAT_ZERO, SELMODE::VSEL_TENSOR_SCALAR_MODE, vec2ComputeSize);
+    Select(tmpBmm2ResUb, cmpMaskUb, tmpBmm2ResUb, ConstInfo::FLOAT_ZERO, SELMODE::VSEL_TENSOR_SCALAR_MODE,
+        vec2ComputeSize);
     AscendC::PipeBarrier<PIPE_V>();
 
     uint32_t baseOffset = mSplitInfo.nBufferStartM / 2 + startRow;

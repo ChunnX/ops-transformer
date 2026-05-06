@@ -100,7 +100,7 @@ public:
 
     bool needInit_ = false;
 
-    bool isLegacyIfa_ = false;      
+    bool isLegacyIfa_ = false;
 
     uint32_t actualLenQDims_ = 0;
     uint32_t actualLenDims_ = 0;
