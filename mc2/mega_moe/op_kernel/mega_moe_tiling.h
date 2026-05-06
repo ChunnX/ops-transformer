@@ -25,9 +25,9 @@ using namespace AscendC;
 struct MegaMoeTilingData {
     MoeInitRoutingV3Arch35TilingData moeInitRoutingTilingData;
     uint32_t expertPerRank;
-    uint32_t m;
-    uint32_t k;
-    uint32_t n;
+    uint32_t bs;
+    uint32_t h;
+    uint32_t hiddenDim;
     uint32_t epWorldSize;
     uint32_t blockNumPerEP; // if blockNumPerEP < dispatchRows, then dispatchRows is invalid
     uint32_t maxOutputSize;
