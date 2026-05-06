@@ -17,6 +17,7 @@
 #define MHC_POST_BACKWARD_H
 
 #include "kernel_operator.h"
+#include "mhc_post_backward_tiling_data_arch32.h"
 using namespace AscendC;
 
 constexpr float ZERO = 0;
@@ -30,7 +31,7 @@ public:
     __aicore__ inline void Init(
         GM_ADDR grad_y, GM_ADDR x, GM_ADDR h_res, GM_ADDR h_out, GM_ADDR h_post,
         GM_ADDR grad_x, GM_ADDR grad_h_res, GM_ADDR grad_h_out, GM_ADDR grad_h_post,
-        const MhcPostBackwardTilingData& tilingData, TPipe* pipe);
+        const MhcPostBackwardTilingDataArch32& tilingData, TPipe* pipe);
     __aicore__ inline void Process();
 
 protected:
@@ -70,12 +71,12 @@ protected:
     uint64_t frontCore = 0;
     uint64_t tailCore = 0;
 
-    int32_t blockChannel = 0;
-    int32_t channel = 0;
-    int32_t n = 0;
-    int32_t alignN = 0;
-    int32_t loopC = 0;
-    int32_t tailC = 0;
+    uint64_t blockChannel = 0;
+    uint64_t channel = 0;
+    uint64_t n = 0;
+    uint64_t alignN = 0;
+    uint64_t loopC = 0;
+    uint64_t tailC = 0;
 
     uint64_t dFPostResSize = 0;
     uint64_t xSize = 0;
@@ -90,7 +91,7 @@ template <typename T>
 __aicore__ inline void KernelMhcPostBackward<T>::Init(
     GM_ADDR grad_y, GM_ADDR x, GM_ADDR h_res, GM_ADDR h_out, GM_ADDR h_post,
     GM_ADDR grad_x, GM_ADDR grad_h_res, GM_ADDR grad_h_out, GM_ADDR grad_h_post,
-    const MhcPostBackwardTilingData& tilingData, TPipe* pipe
+    const MhcPostBackwardTilingDataArch32& tilingData, TPipe* pipe
 )
 {
     this->coreUsed = tilingData.coreUsed;
