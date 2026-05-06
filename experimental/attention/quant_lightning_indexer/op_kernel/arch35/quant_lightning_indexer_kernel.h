@@ -270,7 +270,7 @@ __aicore__ inline uint32_t QLIPreload<QLIT>::GetS2BaseBlockNumOnMask(uint32_t s1
 template <typename QLIT>
 __aicore__ inline void QLIPreload<QLIT>::SplitCoreByAICPU(uint32_t cubeCoreIdx, uint32_t vecCoreIdx, GlobalTensor<uint32_t> &metadataGm)
 {
-    uint32_t liCoreEnableIndex = GetAttrAbsIndex(cubeCoreIdx, LI_CORE_ENABLE_INDEX);    
+    uint32_t liCoreEnableIndex = GetAttrAbsIndex(cubeCoreIdx, LI_CORE_ENABLE_INDEX);
     uint32_t bN2StartIndex = GetAttrAbsIndex(cubeCoreIdx, LI_BN2_START_INDEX);
     uint32_t mStartIndex = GetAttrAbsIndex(cubeCoreIdx, LI_M_START_INDEX);
     uint32_t s2StartIndex = GetAttrAbsIndex(cubeCoreIdx, LI_S2_START_INDEX);
@@ -433,16 +433,16 @@ __aicore__ inline void QLIPreload<QLIT>::Init(__gm__ uint8_t *query, __gm__ uint
 
     uint64_t offset = 0;
     uint32_t topkCountAlign16_ = QLICommon::Align(constInfo.sparseCount, (uint64_t)16); // topkCount对齐到16
-    //vec 把整个s2的score存储在GM，大小为s1BaseSize * 16K * 4
-    GlobalTensor<SCORE_T> scoreGm; //存放vec核写出的score
+    // vec 把整个s2的score存储在GM，大小为s1BaseSize * 16K * 4
+    GlobalTensor<SCORE_T> scoreGm; // 存放vec核写出的score
     uint64_t singleCoreScoreSize = constInfo.s1BaseSize * QLICommon::Align((uint64_t)constInfo.kSeqSize, (uint64_t)constInfo.s2BaseSize)  * sizeof(SCORE_T);
     scoreGm.SetGlobalBuffer((__gm__ SCORE_T *)(workspace + aiCoreIdx * singleCoreScoreSize));
     offset += GetBlockNum() * singleCoreScoreSize;
-    //vec 存储需要LD的s1对应的s2的score与index，大小为s1BaseSize * sparseCount * 2，一个核内最多有两个s1BaseSize需要LD
-    GlobalTensor<SCORE_T> LDScoreGm; //存放进行LD的s2 score
+    // vec 存储需要LD的s1对应的s2的score与index，大小为s1BaseSize * sparseCount * 2，一个核内最多有两个s1BaseSize需要LD
+    GlobalTensor<SCORE_T> LDScoreGm; // 存放进行LD的s2 score
     LDScoreGm.SetGlobalBuffer((__gm__ SCORE_T *)(workspace + offset));
     offset += GetBlockNum() * constInfo.s1BaseSize * topkCountAlign16_ * 2 * sizeof(SCORE_T);
-    GlobalTensor<int32_t> LDIndexGm; //存放进行LD的s2 Index
+    GlobalTensor<int32_t> LDIndexGm; // 存放进行LD的s2 Index
     LDIndexGm.SetGlobalBuffer((__gm__ int32_t *)(workspace + offset));
     offset += GetBlockNum() * constInfo.s1BaseSize * topkCountAlign16_ * 2 * sizeof(int32_t);
 
