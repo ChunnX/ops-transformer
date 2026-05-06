@@ -39,6 +39,7 @@ public:
                                           Mc2Tiling::AllGatherMatmulTilingDataFp8* tilingData, GM_ADDR contextGM, TPipe* tPipe)
         : addrs_(addrs), quantAddrs_(quantAddrs), tPipe_(tPipe)
     {
+        tilingData_ = tilingData;
         paramInTiling_ = &tilingData->param;
         dataType_ = static_cast<AscendC::HcclDataType>(tilingData->dataType);
         debugMode_ = tilingData->debugMode;
@@ -46,9 +47,9 @@ public:
     }
     __aicore__ inline void Init(__gm__ void* mc2InitTiling, __gm__ void* mc2CcTiling)
     {
-        hccl_.Init(context_, mc2InitTiling);
-        hccl_.SetCcTiling(mc2CcTiling);
-        rankId_ = ((__gm__ HcclCombinOpParam*)context_)->rankId;
+        hccl_.InitV2(context_, tilingData_);
+        hccl_.SetCcTilingV2(offsetof(Mc2Tiling::AllGatherMatmulTilingDataFp8, mc2CcTiling));
+        rankId_ = hccl_.GetRankId();
         // 计算scale1的数据个数及地址偏移
         nBlockSizeCnt_ = (tileInfo_.mmTiling->matmulTiling.Ka + PERBLOCK_BLOCK_SIZE - 1) / PERBLOCK_BLOCK_SIZE;
         oneCommBlockSizeOffset_ = static_cast<uint64_t>(tileInfo_.mmTiling->matmulTiling.M / PERBLOCK_BLOCK_SIZE) * 
@@ -159,6 +160,7 @@ protected:
     GM_ADDR gatherScaleAddr_;
     AscendC::HcclHandle hcclHandleIdList[MAX_HANDLE_WITH_SCALE1]; /* hccl handle */
     uint32_t batchWeight_[MAX_RANK_DIM] = {0};
+    Mc2Tiling::AllGatherMatmulTilingDataFp8* tilingData_;
 
 private:
     __aicore__ inline void UpdateNotifyFlag()
