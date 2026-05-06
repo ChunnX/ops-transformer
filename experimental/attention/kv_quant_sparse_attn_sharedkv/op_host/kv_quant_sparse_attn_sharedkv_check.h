@@ -129,6 +129,9 @@ constexpr uint32_t ATTR_LAYOUT_Q_INDEX = 9;
 constexpr uint32_t ATTR_LAYOUT_KV_INDEX = 10;
 constexpr uint32_t ATTR_ORIKV_STRIDE_INDEX = 11;
 constexpr uint32_t ATTR_CMPKV_STRIDE_INDEX = 12;
+constexpr uint32_t ATTR_RETURN_SOFTMAX_LSE_INDEX = 13;
+constexpr uint32_t ATTR_ORI_KV_SCALE_INDEX = 14;
+constexpr uint32_t ATTR_CMP_KV_SCALE_INDEX = 15;
 
 // Dim Index
 constexpr uint32_t DIM_IDX_ONE = 1;
@@ -187,7 +190,9 @@ const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {
     {ge::DT_INT4, "DT_INT4"},                     // dt_variant type
     {ge::DT_UINT1, "DT_UINT1"},                   // dt_variant type
     {ge::DT_INT2, "DT_INT2"},                     // dt_variant type
-    {ge::DT_UINT2, "DT_UINT2"}                    // dt_variant type
+    {ge::DT_UINT2, "DT_UINT2"},                   // dt_variant type
+    {ge::DT_FLOAT8_E4M3FN, "DT_FLOAT8_E4M3FN"},                   // dt_variant type
+    {ge::DT_HIFLOAT8, "DT_HIFLOAT8"},                   // dt_variant type
 };
 
 const std::map<SASLayout, std::vector<SASAxis>> SAS_LAYOUT_AXIS_MAP = {
@@ -229,6 +234,8 @@ struct KvQuantSASParaInfo {
     const int64_t *tileSize = nullptr;
     const int64_t *ropeHeadDim = nullptr;
     const float *softmaxScale = nullptr;
+    const float *oriKvScale = nullptr;
+    const float *cmpKvScale = nullptr;
     const int64_t *oriKvStride = nullptr;
     const int64_t *cmpKvStride = nullptr;
     const int64_t *cmpRatio = nullptr;
@@ -272,6 +279,8 @@ public:
     uint32_t dSizeV = 0;
     uint32_t dSizeVInput = 0;
     float softmaxScale = 0;
+    float oriKvScale = 0;
+    float cmpKvScale = 0;
     int64_t oriKvStride = 0;
     int64_t cmpKvStride = 0;
     int64_t cmpRatio = 0;
