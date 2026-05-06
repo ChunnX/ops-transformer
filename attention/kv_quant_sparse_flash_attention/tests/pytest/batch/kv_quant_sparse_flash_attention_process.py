@@ -34,12 +34,10 @@ def _load_inputs_to_npu(input_dict):
 def _get_kv_torch_dtype(kv_dtype_str):
     if kv_dtype_str == "hifloat8":
         return torch_npu.hifloat8
-    if kv_dtype_str == "float8_e4m3fn":
-        return torch.float8_e4m3fn
     return None
 
 
-def call_npu_op(torch_tensor_dict, params):
+def call_npu_eager(torch_tensor_dict, params):
     npu_result = torch_npu.npu_kv_quant_sparse_flash_attention(
         torch_tensor_dict['query_cache'],
         torch_tensor_dict['key_cache'],
@@ -66,11 +64,10 @@ def call_npu_op(torch_tensor_dict, params):
         key_dtype=_get_kv_torch_dtype(params['dtype_input']['key']),
         value_dtype=_get_kv_torch_dtype(params['dtype_input']['value'])
     )
-    torch.npu.synchronize()
-    return npu_result
 
 
 def call_npu(input_tensor_dict, params):
+    torch_npu.npu.set_device(0)
     torch_tensor_dict = {}
     for key, input_tensor in input_tensor_dict.items():
         if not isinstance(input_tensor, (torch.Tensor, np.ndarray)):
@@ -91,7 +88,11 @@ def call_npu(input_tensor_dict, params):
 
         torch_tensor_dict[key] = tensor_i.to('npu')
 
-    return call_npu_op(torch_tensor_dict, params)
+    npu_result = call_npu_eager(torch_tensor_dict, params)
+    # 路径3
+    # npu_result = call_npu_graph(torch_tensor_dict, params)
+    torch.npu.synchronize()
+    return npu_result
 
 
 class Network(torch.nn.Module):
@@ -131,9 +132,7 @@ class Network(torch.nn.Module):
         )
 
 
-def test_qsfa_process_graph(torch_tensor_dict, params):
-    torch_npu.npu.set_device(0)
-
+def call_npu_graph(torch_tensor_dict, params):
     torch._dynamo.reset()
     npu_model = Network().npu()
     config = CompilerConfig()
@@ -147,7 +146,7 @@ def test_qsfa_process_graph(torch_tensor_dict, params):
     npu_model = torch.compile(npu_model, fullgraph=True, backend=npu_backend, dynamic=False)
 
     print("npu_kv_quant_sparse_flash_attention (graph mode) ...")
-    npu_result = npu_model(
+    return npu_model(
         torch_tensor_dict['query_cache'],
         torch_tensor_dict['key_cache'],
         torch_tensor_dict['value_cache'],
@@ -173,5 +172,3 @@ def test_qsfa_process_graph(torch_tensor_dict, params):
         key_dtype=_get_kv_torch_dtype(params['dtype_input']['key']),
         value_dtype=_get_kv_torch_dtype(params['dtype_input']['value']),
     )
-    torch.npu.synchronize()
-    return npu_result

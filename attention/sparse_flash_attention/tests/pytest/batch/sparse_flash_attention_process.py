@@ -26,14 +26,8 @@ def _load_inputs_to_npu(input_dict):
     return {key: to_npu(value) for key, value in input_dict.items()}
 
 
-def call_npu(input_tensor_dict, params):
-    torch_npu.npu.set_device(0)
-    tensor_keys = ['query', 'key_cache', 'value_cache', 'sparse_indices', 'block_table',
-                   'query_rope', 'key_rope_cache']
-    filtered_input_dict = {k: input_tensor_dict.get(k) for k in tensor_keys if input_tensor_dict.get(k) is not None}
-    torch_tensor_dict = _load_inputs_to_npu(filtered_input_dict)
-
-    npu_result = torch_npu.npu_sparse_flash_attention(
+def call_npu_eager(torch_tensor_dict, params):
+    return torch_npu.npu_sparse_flash_attention(
         query=torch_tensor_dict.get("query"),
         key=torch_tensor_dict.get("key_cache"),
         value=torch_tensor_dict.get("value_cache"),
@@ -53,6 +47,16 @@ def call_npu(input_tensor_dict, params):
         attention_mode=params.get("attention_mode", 2),
         return_softmax_lse=params.get("return_softmax_lse", False),
     )
+
+def call_npu(input_tensor_dict, params):
+    torch_npu.npu.set_device(0)
+    tensor_keys = ['query', 'key_cache', 'value_cache', 'sparse_indices', 'block_table',
+                   'query_rope', 'key_rope_cache']
+    filtered_input_dict = {k: input_tensor_dict.get(k) for k in tensor_keys if input_tensor_dict.get(k) is not None}
+    torch_tensor_dict = _load_inputs_to_npu(filtered_input_dict)
+    npu_result = call_npu_eager(torch_tensor_dict, params)
+    # 路径3:
+    # npu_result = call_npu_graph(torch_tensor_dict, params)
     torch.npu.synchronize()
     return npu_result
 
@@ -85,13 +89,7 @@ class Network(torch.nn.Module):
         )
 
 
-def test_sfa_process_graph(input_tensor_dict, params):
-    torch_npu.npu.set_device(0)
-    tensor_keys = ['query', 'key_cache', 'value_cache', 'sparse_indices', 'block_table',
-                   'query_rope', 'key_rope_cache']
-    filtered_input_dict = {k: input_tensor_dict.get(k) for k in tensor_keys if input_tensor_dict.get(k) is not None}
-    torch_tensor_dict = _load_inputs_to_npu(filtered_input_dict)
-
+def call_npu_graph(torch_tensor_dict, params):
     torch._dynamo.reset()
     npu_model = Network().npu()
     config = CompilerConfig()
@@ -105,7 +103,7 @@ def test_sfa_process_graph(input_tensor_dict, params):
     npu_model = torch.compile(npu_model, fullgraph=True, backend=npu_backend, dynamic=False)
 
     print("npu_sparse_flash_attention (graph mode) ...")
-    npu_result = npu_model(
+    return npu_model(
         query=torch_tensor_dict.get("query"),
         key=torch_tensor_dict.get("key_cache"),
         value=torch_tensor_dict.get("value_cache"),
@@ -125,5 +123,3 @@ def test_sfa_process_graph(input_tensor_dict, params):
         attention_mode=params.get("attention_mode", 2),
         return_softmax_lse=params.get("return_softmax_lse", False),
     )
-    torch.npu.synchronize()
-    return npu_result, test_data["cpu_output"]
