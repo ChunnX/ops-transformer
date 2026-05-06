@@ -79,21 +79,21 @@ struct WorkspaceInfo {
     {
         workspaceSize = 0;
         ptrA = base;
-        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->k, ALIGN_512);
+        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->h, ALIGN_512);
         ptrAScale = base + workspaceSize;
-        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->k /
+        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->h /
             MXFP_SCALE_GROUP_NUM, ALIGN_512);
         ptrA2 = base + workspaceSize;
         workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize *
-            tilingData->n / SWIGLU_N_HALF, ALIGN_512);
+            tilingData->hiddenDim / SWIGLU_N_HALF, ALIGN_512);
         ptrA2Scale = base + workspaceSize;
-        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->n /
+        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->hiddenDim /
             SWIGLU_N_HALF / MXFP_SCALE_GROUP_NUM, ALIGN_512);
         ptrcumsumMM = base + workspaceSize;
         workspaceSize += Ops::Base::CeilAlign(SIZE_INT_32 * tilingData->epWorldSize *
             tilingData->expertPerRank, ALIGN_512);
         expandedRowIdx = base + workspaceSize;
-        workspaceSize += SIZE_INT_32 * Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->m), ALIGN_256) *
+        workspaceSize += SIZE_INT_32 * Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->bs), ALIGN_256) *
             tilingData->topK;
         ptrSumBeforeRank = base + workspaceSize;
         workspaceSize += SIZE_INT_32 * Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->epWorldSize) *
