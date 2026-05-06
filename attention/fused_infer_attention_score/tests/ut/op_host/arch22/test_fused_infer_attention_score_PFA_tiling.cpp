@@ -45,13 +45,13 @@ class FusedInferAttentionScorePfaTiling : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
-        std::cout << "FusedInferAttentionScorePfa Arch32 TilingTest SetUp" << std::endl;
+        std::cout << "FusedInferAttentionScorePfa Arch22 TilingTest SetUp" << std::endl;
         SoftmaxTilingMocker::GetInstance().SetSocVersion("Ascend910B");
     }
 
     static void TearDownTestCase()
     {
-        std::cout << "FusedInferAttentionScorePfa Arch32 TilingTest TearDown" << std::endl;
+        std::cout << "FusedInferAttentionScorePfa Arch22 TilingTest TearDown" << std::endl;
         SoftmaxTilingMocker::GetInstance().Reset();
     }
 };
