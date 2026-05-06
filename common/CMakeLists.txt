@@ -49,10 +49,10 @@ if (BUILD_OPEN_PROJECT)
             OPS_UTILS_LOG_PACKAGE_TYPE=$<IF:$<BOOL:${BUILD_OPEN_PROJECT}>,"[Custom]","">
     )
 
+    # common obj
     add_library(${COMMON_NAME}_obj OBJECT)
 
-    file(GLOB CPP_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/tiling_base/*.cpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
+    file(GLOB CPP_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/tiling_base/*.cpp")
 
     target_sources(${COMMON_NAME}_obj PRIVATE ${CPP_SOURCES})
 
@@ -77,6 +77,31 @@ if (BUILD_OPEN_PROJECT)
       PRIVATE
       $<BUILD_INTERFACE:intf_pub_cxx17>
       tiling_api
+      dlog
+    )
+
+    # common fallback obj
+    add_library(${COMMON_NAME}_fallback_obj OBJECT)
+
+    file(GLOB COMMON_FALLBACK_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/fallback/*.cpp")
+
+    target_sources(${COMMON_NAME}_fallback_obj PRIVATE ${COMMON_FALLBACK_SOURCES})
+
+    target_include_directories(${COMMON_NAME}_fallback_obj
+      PRIVATE
+      ${OPS_TRANSFORMER_DIR}/common/include
+      ${ASCEND_CANN_PACKAGE_PATH}/include/experiment/runtime
+      ${ASCEND_CANN_PACKAGE_PATH}/include/experiment/msprof
+      ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/runtime
+      ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc
+      ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/op_common
+      ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include
+      ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/profiling
+    )
+
+    target_link_libraries(${COMMON_NAME}_fallback_obj
+      PRIVATE
+      $<BUILD_INTERFACE:intf_pub_cxx17>
       dlog
     )
 

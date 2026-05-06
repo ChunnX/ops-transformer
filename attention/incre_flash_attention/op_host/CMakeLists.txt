@@ -10,20 +10,10 @@
 add_op_to_compiled_list()
 
 if (BUILD_OPEN_PROJECT)
-    set(incre_flash_attention_apt_depends attention/prompt_flash_attention attention/common CACHE INTERNAL "Dependencies for incre_flash_attention_apt")
-    set(incre_flash_attention_depends attention/prompt_flash_attention CACHE INTERNAL "Dependencies for incre_flash_attention")
+    set(incre_flash_attention_depends attention/prompt_flash_attention attention/common CACHE INTERNAL "Dependencies for incre_flash_attention")
     target_sources(op_host_aclnnInner PRIVATE
         incre_flash_attention_def.cpp
     )
-endif()
-
-set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
-if("${CONDITION_UNIT}" STREQUAL "ascend950")
-        add_ops_compile_options(
-            OP_NAME IncreFlashAttention
-            COMPUTE_UNIT Ascend950PR_9599
-            OPTIONS -DENABLE_CV_COMM_VIA_SSBUF=true
-        )
 endif()
 
 add_ops_compile_options(
@@ -33,11 +23,10 @@ add_ops_compile_options(
             -mllvm -cce-vf-remove-membar=false
             -Werror
 )
-if(NOT BUILD_OPS_RTY_KERNEL)
-    add_modules_sources_with_soc(
-        # 该变量用于判断op_api目录是否从op_host移出
-        OP_API_INDEPENDENT ON
-        # op_api新的地址
-        OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api
-        OPTYPE incre_flash_attention ACLNNTYPE aclnn_inner)
-endif()
+
+add_modules_sources_with_soc(
+    # 该变量用于判断op_api目录是否从op_host移出
+    OP_API_INDEPENDENT ON
+    # op_api新的地址
+    OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api
+    OPTYPE incre_flash_attention ACLNNTYPE aclnn_inner)

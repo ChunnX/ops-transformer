@@ -38,7 +38,7 @@ set(_NCWC_OpKernelTilingDataDefH
 set(_NCWC_OpKernelSourcesExt)
 
 set(_NCWC_OpKernelPrivateIncludesExt
-        ${OPS_TRANSFORMER_DIR}/common/include/kernel
+        ${OPS_TRANSFORMER_DIR}/common/include/op_kernel
 )
 
 set(_NCWC_OpKernelPrivateCompileDefinitionsExt

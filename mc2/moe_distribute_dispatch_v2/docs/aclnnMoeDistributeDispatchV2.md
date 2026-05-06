@@ -63,8 +63,8 @@
     \end{cases} \\
     dynamicScalesOut =
     \begin{cases}
-    AllGatherV(allToAllDynamicScalesOut), & 无TP通信域 \\
-    allToAllDynamicScalesOut, & 有TP通信域 \\
+    allToAllDynamicScalesOut, & 无TP通信域 \\
+    AllGatherV(allToAllDynamicScalesOut), & 有TP通信域 \\
     \end{cases}
     $$
 
@@ -83,12 +83,12 @@
     \end{cases} \\
     dynamicScalesOut =
     \begin{cases}
-    AllGatherV(allToAllDynamicScalesOut), & 无TP通信域 \\
-    allToAllDynamicScalesOut, & 有TP通信域 \\
+    allToAllDynamicScalesOut, & 无TP通信域 \\
+    AllGatherV(allToAllDynamicScalesOut), & 有TP通信域 \\
     \end{cases}
     $$
 
-    - 情形5：如果quantMode=4（mxfp8量化场景）：
+    - 情形5：如果quantMode=4（mx量化场景）：
 
     $$
     sharedExp = Floor(log_2(max(x))) - emax \\
@@ -103,8 +103,8 @@
     \end{cases} \\
     dynamicScalesOut =
     \begin{cases}
-    AllGatherV(allToAllDynamicScalesOut), & 无TP通信域 \\
-    allToAllDynamicScalesOut, & 有TP通信域 \\
+    allToAllDynamicScalesOut, & 无TP通信域 \\
+    AllGatherV(allToAllDynamicScalesOut), & 有TP通信域 \\
     \end{cases}
     $$
 
@@ -192,7 +192,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
     <td>输入</td>
     <td>本卡发送的token数据。</td>
     <td>要求2D Tensor。</td>
-    <td>FLOAT16、BFLOAT16</td>
+    <td>FLOAT16、BFLOAT16、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8、FLOAT4_E2M1、FLOAT4_E1M2</td>
     <td>ND</td>
     <td><code>(BS, H)</code>（BS=batch size，H=hidden size）</td>
     <td>-</td>
@@ -212,7 +212,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
     <td>输入</td>
     <td>每个专家的量化平滑参数。</td>
     <td>-</td>
-    <td>FLOAT32</td>
+    <td>FLOAT32、FLOAT8_E8M0</td>
     <td>ND</td>
     <td>-</td>
     <td>√</td>
@@ -382,7 +382,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
     <td>输出</td>
     <td>根据<code>expertIds</code>扩展过的token特征。</td>
     <td>要求为2D Tensor。</td>
-    <td>FLOAT16、BFLOAT16、INT8、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8</td>
+    <td>FLOAT16、BFLOAT16、INT8、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、FLOAT4_E2M1、FLOAT4_E1M2</td>
     <td>ND</td>
     <td><code>(max(tpWorldSize, 1) * A, H)</code></td>
     <td>√</td>
@@ -391,7 +391,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
     <td>dynamicScalesOut</td>
     <td>输出</td>
     <td>动态量化场景的缩放参数。</td>
-    <td>要求为1D 或2D Tensor。仅quantMode取值为2、3、4时有输出。</td>
+    <td>要求为1D 或2D Tensor。quantMode取值为2、3、4时有输出；quantMode取值为0且`x`的数据类型为`HIFLOAT8`、`FLOAT8_E5M2`、`FLOAT8_E4M3FN`、`FLOAT4_E2M1`、`FLOAT4_E1M2`时也有输出。</td>
     <td>FLOAT32、FLOAT8_E8M0</td>
     <td>-</td>
     <td>-</td>
@@ -471,6 +471,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
     </table>
 
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+        - `dynamicScalesOut`仅quantMode取值为2时有输出。
         - `commAlg` 支持nullptr、""、"fullmesh"、"hierarchy"；推荐配置"hierarchy"并搭配≥25.0.RC1.1版本驱动；nullptr和""依HCCL环境变量选择算法（不推荐）；"fullmesh"通过RDMA直传token；"hierarchy"经跨机、机内两次发送优化通信。
         - `commAlg`为"hierarchy"或HCCL_INTRA_PCIE_ENABLE=1且HCCL_INTRA_ROCE_ENABLE=0时，scalesOptional 需传nullptr。
         - `xActiveMaskOptional` 依commAlg取值，"fullmesh"要求为1D Tensor，shape为(BS, )；true需排在false前（例：{true, false, true}非法）；"hierarchy"当前版本不支持，传空指针即可。
@@ -485,6 +486,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
         - `quantMode`支持0（非量化）、2（动态量化）。
 
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+        - `dynamicScalesOut`仅quantMode取值为2时有输出。
         - `commAlg`当前版本不支持，传空指针即可。
         - `xActiveMaskOptional`要求为1D或2D Tensor（1D时shape为(BS, )，2D时shape为(BS, K)）；1D时true需排在false前，2D时token对应K个值全为false则不参与通信。
         - `expertScalesOptional`当前版本不支持，传空指针即可。
@@ -502,6 +504,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
         - `quantMode`支持0（非量化）、2（动态量化）。
 
     - <term>Ascend 950PR/Ascend 950DT</term>：
+        - `dynamicScalesOut`quantMode取值为2、3、4时有输出；quantMode取值为0且`x`的数据类型为`HIFLOAT8`、`FLOAT8_E5M2`、`FLOAT8_E4M3FN`、`FLOAT4_E2M1`、`FLOAT4_E1M2`时也有输出。
         - `commAlg`当前版本不支持，传空指针即可。
         - `xActiveMaskOptional`要求为1D或2D Tensor（1D时shape为(BS, )，2D时shape为(BS, K)）；1D时true需排在false前（例：{true, false, true}非法），2D时token对应K个值全为false则不参与通信。
         - `expertScalesOptional`当前版本不支持，传空指针即可。
@@ -516,7 +519,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
         - `epRecvCountsOut`的shape为(epWorldSize * max(tpWorldSize, 1) * localExpertNum,)。
         - `tpRecvCountsOut`当前版本不支持该输出。
         - `expandScalesOut`当前版本不支持该输出。
-        - `quantMode`支持0（非量化）、1（静态量化）、2（pertoken动态量化）、3（pergroup动态量化）、4（mxfp8动态量化）。
+        - `quantMode`支持0（非量化）、1（静态量化）、2（pertoken动态量化）、3（pergroup动态量化）、4（mx动态量化）。
 
 - **返回值**
 
@@ -632,20 +635,26 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
 
 - **quantMode相关约束**：
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-      - `quantMode`取值为0时，表示非量化场景，输入`scalesOptional`传空指针。
+      - `quantMode`取值为0时，表示非量化场景，输入`scalesOptional`传空指针，`expandX`的数据类型支持`FLOAT16`、`BFLOAT16`。
       - `quantMode`取值为2时，表示pertoken动态量化场景，`expandX`的数据类型支持`INT8`。
           - 输入`scalesOptional`可传入空指针。
           - 若输入`scalesOptional`传入有效数据时，其shape为 (`moeExpertNum`, `H`)。
           - 输出`dynamicScalesOut`shape为 `(A, )`
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
-      - `quantMode`取值为0时，表示非量化场景，输入`scalesOptional`传空指针。
+      - `quantMode`取值为0时，表示非量化场景，输入`scalesOptional`传空指针，`expandX`的数据类型支持`FLOAT16`、`BFLOAT16`。
       - `quantMode`取值为2时，表示pertoken动态量化场景，`expandX`的数据类型支持`INT8`。
           - 输入`scalesOptional`可传入空指针。
           - 若输入`scalesOptional`传入有效数据且存在共享专家卡时，其shape为 (`sharedExpertNum` + `moeExpertNum`, `H`)。
           - 若输入`scalesOptional`传入有效数据且不存在共享专家卡时，其shape为 (`moeExpertNum`, `H`)。
           - 输出`dynamicScalesOut`shape为 `(A, )`
   - <term>Ascend 950PR/Ascend 950DT</term>：
-      - `quantMode`取值为0时，表示非量化场景，`expandX`的数据类型支持`FLOAT16`、`BFLOAT16`，输入`scalesOptional`必须传入空指针。
+      - `quantMode`取值为0时，表示非量化场景。
+          - 当`x`的数据类型为`FLOAT16`或`BFLOAT16`时，`expandX`的数据类型可与`x`一致，也可为`HIFLOAT8`，输入`scalesOptional`必须传空指针。
+          - 当`x`的数据类型为`HIFLOAT8`、`FLOAT8_E5M2`、`FLOAT8_E4M3FN`、`FLOAT4_E2M1`、`FLOAT4_E1M2`时，输入`scalesOptional`必须传入有效数据，`expandX`的数据类型与`x`一致。
+              - `x`的数据类型为`HIFLOAT8`时，`scalesOptional`的数据类型为`FLOAT`。
+              - `x`的数据类型为`FLOAT8_E5M2`或`FLOAT8_E4M3FN`时，`scalesOptional`的数据类型为`FLOAT`或`FLOAT8_E8M0`。
+              - `x`的数据类型为`FLOAT4_E2M1`或`FLOAT4_E1M2`时，`scalesOptional`的数据类型为`FLOAT8_E8M0`，且H必须为偶数。
+              - `scalesOptional`的shape为 (`BS`, `dim1`)，其中`dim1`需满足小于等于`H`。
       - `quantMode`取值为1时，表示静态量化场景，`expandX`的数据类型支持`INT8`、`HIFLOAT8`。
           - `expandX`的数据类型为`INT8`时有如下场景：
               - 输入的`scalesOptional`代表量化系数，shape为 (1, )；
@@ -662,7 +671,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
           - 若输入`scalesOptional`传入有效数据且存在共享专家卡时，其shape为 (`sharedExpertNum` + `moeExpertNum`, `H`)。
           - 若输入`scalesOptional`传入有效数据且不存在共享专家卡时，其shape为 (`moeExpertNum`, `H`)。
           - 输出`dynamicScalesOut`shape为 `(A, Ceil(H, 128))`，其中`Ceil(H, 128) = (H + 128 - 1) / 128`
-      - `quantMode`取值为4时，表示mxfp8量化场景，`expandX`的数据类型支持`FLOAT8_E4M3FN`、`FLOAT8_E5M2`，输入`scalesOptional`必须传入空指针。输出`dynamicScalesOut`shape为 `(A, Ceil(H, 64))`且，其中`Ceil(H, 64) = (H + 64 - 1) / 64`
+      - `quantMode`取值为4时，表示mx量化场景，`expandX`的数据类型支持`FLOAT8_E4M3FN`、`FLOAT8_E5M2`、`FLOAT4_E2M1`、`FLOAT4_E1M2`，输入`scalesOptional`必须传入空指针。输出`dynamicScalesOut`shape为 `(A, Ceil(H, 64))`，其中`Ceil(H, 64) = (H + 64 - 1) / 64`。当`expandX`的数据类型为`FLOAT4_E2M1`或`FLOAT4_E1M2`时，H必须为偶数。
 
 - **环境变量约束**：
   - **HCCL_BUFFSIZE**：
@@ -693,30 +702,10 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
 
 ## 调用示例
 
-- 文件准备：
-
-    1. 按照下方指导创建rank_table_m2.json文件并修改。
-    
-    2. 将项目拷贝到两台服务器中，并根据机器的device ip配置rank_table_m2.json文件内容。注意两机rank_table_m2.json文件保持一致。
-    
-    3. 安装cann包，并根据[算子调用](../../../docs/zh/invocation/quick_op_invocation.md)编译运行。
-
-- 关于rankTable:
-
-    1. 开发者可以通过ranktable文件配置参与集合通信的NPU资源信息，详细配置请参考[《集合通信用户指南》](https://hiascend.com/document/redirect/CannCommercialHcclUg)中“通信功能开发>集群信息配置>ranktable文件配置资源信息”。
-
-    2. 使用`cat /etc/hccn.conf` 或者`for i in seq 0 7; do echo "===================> dev$i, NPU$((i+1))"; hccn_tool -i $i -ip -g; done`查询机器的device ip。然后参考集合通信文档填写json文件。
-
-    > 注意：两机16卡场景中，两机器的device_id都是0~7，其中一台机器的rank_id为0~7，另一台机器的rank_id为8~15。单机16卡场景中，device_id和rank_id都是0~15。
-
 - 环境变量配置：
 
     ```bash
-    # 运行前需设置三个环境变量
-    ## FIRST_RANK_ID说明：以两机16卡为例，其中一机器设置为0，另一机器设置为8
-    ## 如export FIRST_RANK_ID=0
-    export RANK_TABLE_FILE=/home/path/to/rank_table_m2.json
-    export FIRST_RANK_ID=<设备的起始rank_id>
+    # 运行前需设置一个环境变量
     ## ENV_DEV_NUM说明：根据当前机器的卡数设置该变量，以两机16卡为例，将两台机器设置为16
     export ENV_DEV_NUM=16
 
@@ -744,9 +733,9 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
     ```bash
     bash build.sh --run_example --ops=moe_distribute_dispatch_v2 eager cust
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
     
-    无需配置ranktable文件以及环境变量RANK_TABLE_FILE、FIRST_RANK_ID。     
+    无需配置ranktable文件以及环境变量RANK_TABLE_FILE、FIRST_RANK_ID。 
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
@@ -791,15 +780,14 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
     };
 
     const uint32_t MACHINE_NUM = 1;
-    const char* rank_table_file = std::getenv("RANK_TABLE_FILE");
-    const char* first_rank_id = std::getenv("FIRST_RANK_ID");
     const char* env_dev_num = std::getenv("ENV_DEV_NUM");
 
-    const uint32_t EP_WORLD_SIZE = (!first_rank_id) ? 2 : 16;
-    const uint32_t TP_WORLD_SIZE = (!first_rank_id) ? 1 : 0;
-    const uint32_t DEV_NUM = (!first_rank_id) ? EP_WORLD_SIZE * TP_WORLD_SIZE : EP_WORLD_SIZE;
+    const uint32_t EP_WORLD_SIZE = 2;
+    const uint32_t TP_WORLD_SIZE = 1;
+    const uint32_t DEV_NUM = EP_WORLD_SIZE * TP_WORLD_SIZE;
 
     const bool IS_TEST_A2 = false;
+    const bool IS_TEST_A3A5 = true;
     const uint32_t EP_WORLD_SIZE_A2 = 8;
     const uint32_t TP_WORLD_SIZE_A2 = 1;
     const uint32_t DEV_NUM_A2 = EP_WORLD_SIZE_A2 * TP_WORLD_SIZE_A2;
@@ -854,10 +842,6 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
         ret = HcclGetCommName(args.hcclEpComm, hcomEpName);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetEpCommName failed. ret: %d\n", ret); return -1);
         char hcomTpName[128] = {0};
-        if (!rank_table_file && !first_rank_id) {
-            ret = HcclGetCommName(args.hcclTpComm, hcomTpName);
-            CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetTpCommName failed. ret: %d\n", ret); return -1);
-        }
         LOG_PRINT(
             "[INFO] rank = %d, hcomEpName = %s, hcomTpName = %s, dispatchV2Stream = %p, combineV2Stream = %p, context = %p\n",
             args.rankId, hcomEpName, hcomTpName, args.dispatchV2Stream, args.combineV2Stream, args.context
@@ -870,10 +854,6 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
         int64_t expertShardType = 0;
         int64_t sharedExpertNum = 0;
         int64_t sharedExpertRankNum = 0;
-        if (!rank_table_file && !first_rank_id) {
-            sharedExpertNum = 1;
-            sharedExpertRankNum = 1;
-        } 
         int64_t moeExpertNum = EP_WORLD_SIZE - sharedExpertRankNum;
         int64_t quantMode = 0;
         int64_t globalBS = BS * EP_WORLD_SIZE;
@@ -1501,12 +1481,6 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
 
     int main(int argc, char *argv[])
     {
-        const char* env_var_name = "RANK_TABLE_FILE and FIRST_RANK_ID";
-        if (IS_TEST_A2) {
-            LOG_PRINT("[INFO] %s are not identified and example on <Atlas A2> will be executed!\n", env_var_name);
-            int ret = run_example_on_A2();
-            return 0;
-        }
         if (!env_dev_num) {
             LOG_PRINT("[WARNING] Please check whether environment variable ENV_DEV_NUM is set correctly.\n");
             return 0;
@@ -1516,16 +1490,13 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
             LOG_PRINT("[INFO] ENV_DEV_NUM = %d is less than %d, currently not supported\n", actual_env_dev_num, DEV_NUM);
             return 0;
         }
-        if (!rank_table_file && !first_rank_id) {
-            LOG_PRINT("[INFO] %s are not identified and example on <Atlas A3> will be executed!\n", env_var_name);
-            int ret = run_example_on_A3A5();
+        if (IS_TEST_A2) {
+            LOG_PRINT("Example on <Atlas A2> will be executed!\n");
+            int ret = run_example_on_A2();
         }
-        else if (rank_table_file && !first_rank_id) {
-            LOG_PRINT("[INFO] %s are not identified and example on <Atlas A5> will be executed!\n", env_var_name);
+        else if (IS_TEST_A3A5) {
+            LOG_PRINT("Example on <Atlas A3> or <Atlas A5> will be executed!\n");
             int ret = run_example_on_A3A5();
-        }
-        else {
-            LOG_PRINT("[WARNING] Please check whether %s are set correctly.\n", env_var_name);
         }
 
         return 0;

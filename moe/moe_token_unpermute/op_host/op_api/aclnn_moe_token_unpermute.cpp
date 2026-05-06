@@ -90,6 +90,8 @@ aclnnStatus aclnnMoeTokenUnpermute(void* workspace, uint64_t workspaceSize, aclO
     if (!useMoeFinalizeRoutingV2) {
         return aclnnInnerMoeTokenUnpermute(workspace, workspaceSize, executor, stream);
     }
+
+    L2_DFX_PHASE_2(aclnnMoeTokenUnpermute);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }
 

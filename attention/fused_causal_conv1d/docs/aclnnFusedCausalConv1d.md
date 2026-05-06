@@ -221,7 +221,7 @@ aclnnStatus aclnnFusedCausalConv1d(
       <td>bias（aclTensor*）</td>
       <td>可选输入</td>
       <td>卷积的偏置</td>
-      <td><ul><li>支持空tensor。</li><li>shape为[dim]。</li></ul></td>
+      <td><ul><li>不支持空tensor。</li><li>shape为[dim]。</li></ul></td>
       <td>数据类型与x一致</td>
       <td>ND</td>
       <td>1</td>
@@ -231,7 +231,7 @@ aclnnStatus aclnnFusedCausalConv1d(
       <td>numAcceptedTokens（aclTensor*）</td>
       <td>可选输入</td>
       <td>decode场景下的投机token个数。</td>
-      <td><ul><li>支持空tensor。<br>shape为[batch]。</li></ul></td>
+      <td><ul><li>不支持空tensor。<br>shape为[batch]。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td>1</td>
@@ -334,14 +334,12 @@ aclnnStatus aclnnFusedCausalConv1d(
       <td>传入的x、weight、convStates、y是空指针。</td>
     </tr>
     <tr>
-      <td>ACLNN_ERR_PARAM_INVALID</td>
-      <td>161002</td>
-      <td>输入和输出的数据类型不在支持的范围内。<br>x、weight、convStates、bias、y的数据类型不一致。<br>queryStartLoc、cacheIndices、initialStateMode、numAcceptedTokens的数据类型不一致。</td>
-    </tr>
-    <tr>
       <td>ACLNN_ERR_INNER_TILING_ERROR</td>
       <td>561002</td>
       <td>
+      输入和输出的数据类型不在支持的范围内。<br>
+      x、weight、convStates、bias、y的数据类型不一致。<br>
+      queryStartLoc、cacheIndices、initialStateMode、numAcceptedTokens的数据类型不一致。<br>
       输入、输出Tensor的shape不在支持的范围内。<br>
       输入的属性不在支持的范围内。<br>
       dim不在指定的取值范围内。<br>

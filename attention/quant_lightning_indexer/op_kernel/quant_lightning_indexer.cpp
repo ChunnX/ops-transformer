@@ -51,14 +51,21 @@ __global__ __aicore__ void quant_lightning_indexer(__gm__ uint8_t *query, __gm__
     if (ORIG_DTYPE_QUERY == DT_FLOAT8_E4M3FN) {
         if (ORIG_DTYPE_WEIGHTS == DT_FLOAT16) {
             INVOKE_LI_NO_KFC_OP_IMPL(QLIPreload, fp8_e4m3fn_t, fp8_e4m3fn_t, int32_t,
-                PAGE_ATTENTION, LI_LAYOUT(Q_LAYOUT_T), LI_LAYOUT(K_LAYOUT_T), half, half);
+                PAGE_ATTENTION, LI_LAYOUT(Q_LAYOUT_T), LI_LAYOUT(K_LAYOUT_T),
+                half, half, float32_t);
         } else {
             INVOKE_LI_NO_KFC_OP_IMPL(QLIPreload, fp8_e4m3fn_t, fp8_e4m3fn_t, int32_t,
-                PAGE_ATTENTION, LI_LAYOUT(Q_LAYOUT_T), LI_LAYOUT(K_LAYOUT_T), bfloat16_t, float32_t);
+                PAGE_ATTENTION, LI_LAYOUT(Q_LAYOUT_T), LI_LAYOUT(K_LAYOUT_T),
+                bfloat16_t, float32_t, float32_t);
         }
-    } else {
+    } else if (ORIG_DTYPE_QUERY == DT_HIFLOAT8) {
         INVOKE_LI_NO_KFC_OP_IMPL(QLIPreload, hifloat8, hifloat8, int32_t,
-                                PAGE_ATTENTION, LI_LAYOUT(Q_LAYOUT_T), LI_LAYOUT(K_LAYOUT_T), bfloat16_t, float32_t);  
+                                PAGE_ATTENTION, LI_LAYOUT(Q_LAYOUT_T), LI_LAYOUT(K_LAYOUT_T),
+                                bfloat16_t, float32_t, float32_t);
+    } else {
+        INVOKE_LI_NO_KFC_OP_IMPL(QLIPreload, int8_t, int8_t, int32_t,
+                                PAGE_ATTENTION, LI_LAYOUT(Q_LAYOUT_T), LI_LAYOUT(K_LAYOUT_T),
+                                half, half, int32_t);
     }
 #else
     INVOKE_LI_NO_KFC_OP_IMPL(QLIPreload, int8_t, int8_t, int32_t,

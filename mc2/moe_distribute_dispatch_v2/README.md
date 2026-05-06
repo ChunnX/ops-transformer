@@ -54,8 +54,8 @@ AllGatherV(allToAllXOut), & 有TP通信域 \\
 \end{cases} \\
 dynamicScalesOut =
 \begin{cases}
-AllGatherV(allToAllDynamicScalesOut), & 无TP通信域 \\
-allToAllDynamicScalesOut, & 有TP通信域 \\
+allToAllDynamicScalesOut, & 无TP通信域 \\
+AllGatherV(allToAllDynamicScalesOut), & 有TP通信域 \\
 \end{cases}
 $$
 
@@ -74,12 +74,12 @@ AllGatherV(allToAllXOut), & 有TP通信域 \\
 \end{cases} \\
 dynamicScalesOut =
 \begin{cases}
-AllGatherV(allToAllDynamicScalesOut), & 无TP通信域 \\
-allToAllDynamicScalesOut, & 有TP通信域 \\
+allToAllDynamicScalesOut, & 无TP通信域 \\
+AllGatherV(allToAllDynamicScalesOut), & 有TP通信域 \\
 \end{cases}
 $$
 
-- 情形5：如果quantMode=4（mxfp8量化场景）：
+- 情形5：如果quantMode=4（mx量化场景）：
 
 $$
 sharedExp = Floor(log_2(max(x))) - emax \\
@@ -94,8 +94,8 @@ AllGatherV(allToAllXOut), & 有TP通信域 \\
 \end{cases} \\
 dynamicScalesOut =
 \begin{cases}
-AllGatherV(allToAllDynamicScalesOut), & 无TP通信域 \\
-allToAllDynamicScalesOut, & 有TP通信域 \\
+allToAllDynamicScalesOut, & 无TP通信域 \\
+AllGatherV(allToAllDynamicScalesOut), & 有TP通信域 \\
 \end{cases}
 $$
 
@@ -133,26 +133,26 @@ $$
  </thead>
  <tbody>
   <tr>
-   <td>x</td>
-   <td>输入</td>
-   <td>本卡发送的token数据。</td>
-   <td>FLOAT16、BFLOAT16</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>expertIds</td>
+<td>x</td>
+    <td>输入</td>
+    <td>本卡发送的token数据。</td>
+    <td>FLOAT16、BFLOAT16、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8、FLOAT4_E2M1、FLOAT4_E1M2</td>
+    <td>ND</td>
+   </tr>
+   <tr>
+    <td>expertIds</td>
    <td>输入</td>
    <td>每个token的topK个专家索引。</td>
    <td>INT32</td>
    <td>ND</td>
   </tr>
   <tr>
-   <td>scalesOptional</td>
-   <td>可选输入</td>
-   <td>每个专家的量化平滑参数，非量化场景传空指针，动态量化可传有效数据或空指针。</td>
-   <td>FLOAT32</td>
-   <td>ND</td>
-  </tr>
+<td>scalesOptional</td>
+    <td>可选输入</td>
+    <td>每个专家的量化平滑参数。</td>
+    <td>FLOAT32、FLOAT8_E8M0</td>
+    <td>ND</td>
+   </tr>
   <tr>
    <td>xActiveMaskOptional</td>
    <td>可选输入</td>
@@ -301,19 +301,19 @@ $$
    <td>ND</td>
   </tr>
   <tr>
-   <td>expandXOut</td>
-   <td>输出</td>
-   <td>根据expertIds进行扩展过的token特征。</td>
-   <td>FLOAT16、BFLOAT16、INT8</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>dynamicScalesOut</td>
-   <td>输出</td>
-   <td>量化场景下，表示本卡输出Token的量化系数。</td>
-   <td>FLOAT32</td>
-   <td>ND</td>
-  </tr>
+    <td>expandXOut</td>
+    <td>输出</td>
+    <td>根据expertIds进行扩展过的token特征。</td>
+    <td>FLOAT16、BFLOAT16、INT8、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、FLOAT4_E2M1、FLOAT4_E1M2</td>
+    <td>ND</td>
+   </tr>
+   <tr>
+    <td>dynamicScalesOut</td>
+    <td>输出</td>
+    <td>量化场景下，表示本卡输出Token的量化系数。</td>
+    <td>FLOAT32、FLOAT8_E8M0</td>
+    <td>ND</td>
+   </tr>
   <tr>
    <td>assistInfoForCombineOut</td>
    <td>输出</td>
@@ -359,7 +359,11 @@ $$
     * 当`commAlg` = "hierarchy"，`expandScalesOut`内容有效。
     * 不支持常量专家场景，不支持`constExpertNum`，使用默认值即可。
 * <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
-    * 当`commAlg` = "hierarchy"，`expandScalesOut`内容有效。
+    * commAlg 支持""，"fullmesh_v1"，"fullmesh_v2", "hierarchy"三种输入方式。""：默认值，不使能fullmesh_v2模板；"fullmesh_v1"：不使能fullmesh_v2模板；"fullmesh_v2"：使能fullmesh_v2模板，该模板仅支持tpWorldSize为1场景；"hierarchy": 使能跨超模板，该模板仅支持tpWorldSize为1、共享专家为0的场景，且不支持可变BS、二维mask、特殊专家、performanceInfo场景。
+    * expertScalesOptional 当commAlg="hierarchy"场景时，要求为2D Tensor，shape为(BS, K)；当commAlg=""，"fullmesh_v1"，
+    * epWorldSize 取值范围[2, 768]；当commAlg="hierarchy"场景时，取值范围为[16, 256]，且为16的整数倍。
+    * moeExpertNum 取值范围(0, 1024]；当commAlg="hierarchy"场景时，取值范围为(0, 512]。
+    * expandScalesOut 当commAlg="hierarchy"场景时，要求为1D Tensor，shape为(A,)；当commAlg=""，"fullmesh_v1"，"fullmesh_v2"场景时，暂不支持该输出。
 * <term>Ascend 950PR/Ascend 950DT</term>：
     * 仅支持EP域，无TP域，不支持`groupTp`、`tpWorldSize`、`tpRankId`属性，且`tpRecvCounts`输出无有效内容。
     * 不支持`expandScalesOut`。

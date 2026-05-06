@@ -52,7 +52,9 @@ TEST_F(QuantLightningIndexerTilingArch35, QuantLightningIndexer_950_tiling_0)
             {"sparse_count", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1024)},
             {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
             {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
-            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)}
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+            {"key_stride0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
+            {"key_dequant_scale_stride0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)}
         },
         &compileInfo, "Ascend950", 64, 262144, 16384);
 
@@ -91,7 +93,9 @@ TEST_F(QuantLightningIndexerTilingArch35, QuantLightningIndexer_950_tiling_1)
             {"sparse_count", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2048)},
             {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
             {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
-            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)}
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+            {"key_stride0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
+            {"key_dequant_scale_stride0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)}
         },
         &compileInfo, "Ascend950", 64, 262144, 16384);
 
@@ -130,7 +134,86 @@ TEST_F(QuantLightningIndexerTilingArch35, QuantLightningIndexer_950_tiling_2)
             {"sparse_count", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1024)},
             {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
             {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
-            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)}
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+            {"key_stride0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
+            {"key_dequant_scale_stride0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)}
+        },
+        &compileInfo, "Ascend950", 64, 262144, 16384);
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+// 3
+TEST_F(QuantLightningIndexerTilingArch35, QuantLightningIndexer_950_tiling_3)
+{
+    struct QuantLightningIndexerCompileInfo {} compileInfo;
+    int64_t actualSeqKey[] = {256, 512};
+    gert::TilingContextPara tilingContextPara(
+        "QuantLightningIndexer",
+        {
+            {{{2, 64, 16, 128}, {2, 64, 16, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+            {{{32, 16, 1, 128}, {32, 16, 1, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+            {{{2, 64, 16}, {2, 64, 16}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{2, 64, 16}, {2, 64, 16}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{32, 16, 1}, {32, 16, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqKey},
+            {{{2, 32}, {2, 32}}, ge::DT_INT32, ge::FORMAT_ND}
+        },
+        {
+            {{{2, 64, 1, 2048}, {2, 64, 1, 2048}}, ge::DT_INT32, ge::FORMAT_ND}
+        },
+        {
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"key_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"layout_query", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+            {"layout_key", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
+            {"sparse_count", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2048)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+            {"key_stride0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4096)},
+            {"key_dequant_scale_stride0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(32)}
+        },
+        &compileInfo, "Ascend950", 64, 262144, 16384);
+
+    int64_t expectTilingKey = 1090724900;
+    std::string expectTilingData = "";
+    std::vector<size_t> expectWorkspaces = {17039360};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
+}
+
+// 4
+TEST_F(QuantLightningIndexerTilingArch35, QuantLightningIndexer_950_tiling_4)
+{
+    struct QuantLightningIndexerCompileInfo {} compileInfo;
+    int64_t actualSeqKey[] = {256, 512};
+    gert::TilingContextPara tilingContextPara(
+        "QuantLightningIndexer",
+        {
+            {{{2, 64, 16, 128}, {2, 64, 16, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+            {{{32, 16, 1, 128}, {32, 16, 1, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+            {{{2, 64, 16}, {2, 64, 16}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{2, 64, 16}, {2, 64, 16}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{32, 16, 1}, {32, 16, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqKey},
+            {{{2, 32}, {2, 32}}, ge::DT_INT32, ge::FORMAT_ND}
+        },
+        {
+            {{{2, 64, 1, 2048}, {2, 64, 1, 2048}}, ge::DT_INT32, ge::FORMAT_ND}
+        },
+        {
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"key_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"layout_query", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+            {"layout_key", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
+            {"sparse_count", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2048)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+            {"key_stride0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-2)},
+            {"key_dequant_scale_stride0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)}
         },
         &compileInfo, "Ascend950", 64, 262144, 16384);
 

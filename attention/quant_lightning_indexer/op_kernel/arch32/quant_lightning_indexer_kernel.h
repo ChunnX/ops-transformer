@@ -87,7 +87,7 @@ public:
 
     static constexpr int64_t LD_PREFETCH_LEN = 2;
     // for workspace double
-    static constexpr uint32_t WS_DOBULE = 2;
+    static constexpr uint32_t WS_DOUBLE = 2;
 
 protected:
     TPipe *pipe = nullptr;
@@ -399,7 +399,7 @@ __aicore__ inline void QLIPreload<QLIT>::Init(__gm__ uint8_t *query, __gm__ uint
 
     // mm1开DoubleBuffer
     GlobalTensor<MM1_OUT_T> mm1ResGm;  // 存放S
-    uint64_t singleCoreMm1ResSize = WS_DOBULE * constInfo.s1BaseSize * constInfo.s2BaseSize * sizeof(MM1_OUT_T);
+    uint64_t singleCoreMm1ResSize = WS_DOUBLE * constInfo.s1BaseSize * constInfo.s2BaseSize * sizeof(MM1_OUT_T);
     mm1ResGm.SetGlobalBuffer((__gm__ MM1_OUT_T *)(workspace + aiCoreIdx * singleCoreMm1ResSize));
     offset += GetBlockNum() * singleCoreMm1ResSize;
 
@@ -408,16 +408,16 @@ __aicore__ inline void QLIPreload<QLIT>::Init(__gm__ uint8_t *query, __gm__ uint
     // (aic, s1_cube, 头尾, idx/value, K)
     GlobalTensor<float> vec1ResGm;  // 存放TopK计算中间结果
     vec1ResGm.SetGlobalBuffer((__gm__ float *)(workspace + offset));
-    offset += GetBlockNum() * constInfo.s1BaseSize * WS_DOBULE * WS_DOBULE * BASE_TOPK * sizeof(float);
+    offset += GetBlockNum() * constInfo.s1BaseSize * WS_DOUBLE * WS_DOUBLE * BASE_TOPK * sizeof(float);
 
     // (aic, 8, 2, 16)
     // (aic, s1_cube, 头尾，16ele)
     GlobalTensor<int64_t> vec1ParamGm;  // 存放LD参数信息
     vec1ParamGm.SetGlobalBuffer((__gm__ int64_t *)(workspace + offset));
-    offset += GetBlockNum() * constInfo.s1BaseSize * WS_DOBULE * LD_PARAM_NUM * sizeof(int64_t);
+    offset += GetBlockNum() * constInfo.s1BaseSize * WS_DOUBLE * LD_PARAM_NUM * sizeof(int64_t);
 
     GlobalTensor<half> weightWorkspaceGm;  // v1阶段处理w*scale后的结果
-    uint64_t weightMemSize = BLOCK_CUBE * constInfo.mBaseSize * WS_DOBULE * sizeof(half);
+    uint64_t weightMemSize = BLOCK_CUBE * constInfo.mBaseSize * WS_DOUBLE * sizeof(half);
     weightWorkspaceGm.SetGlobalBuffer((__gm__ half *)(workspace + offset + aiCoreIdx * weightMemSize));
     offset += GetBlockNum() * weightMemSize;
 

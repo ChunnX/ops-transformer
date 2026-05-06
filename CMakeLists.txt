@@ -86,7 +86,7 @@ foreach(SOC_VERSION ${ASCEND_COMPUTE_UNIT})
   endif()
 endforeach()
 
-list(FIND ARCH_DIRECTORY "arch32" INDXE)
+list(FIND ARCH_DIRECTORY "arch32" INDEX)
 if(NOT INDEX EQUAL -1)
     list(APPEND ARCH_DIRECTORY "arch22")
 endif()
@@ -341,11 +341,6 @@ foreach (OP_DEPEND_DIR ${OP_DEPEND_DIR_LIST})
         add_subdirectory(${OP_DEPEND_DIR})
     endif()
 endforeach ()
-
-install(DIRECTORY ${OPS_CGMCT}/
-        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common/cgmct
-)
-
 
 if (BUILD_OPS_RTY_KERNEL)
     get_target_property(base_aclnn_srcs op_host_aclnn SOURCES)

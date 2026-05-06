@@ -95,6 +95,8 @@ aclnnStatus aclnnMoeTokenPermute(void* workspace, uint64_t workspaceSize, aclOpE
     if (!useMoeInitRoutingV2) {
         return aclnnInnerMoeTokenPermute(workspace, workspaceSize, executor, stream);
     }
+    
+    L2_DFX_PHASE_2(aclnnMoeTokenPermute);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }
 

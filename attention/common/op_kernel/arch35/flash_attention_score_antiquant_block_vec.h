@@ -71,14 +71,8 @@ public:
     static constexpr bool KVFP4 = (IsSameType<KV_T, fp4x2_e1m2_t>::value || IsSameType<KV_T, fp4x2_e2m1_t>::value);
     static constexpr bool ANTIQUANT_PER_GROUP = (IsSameType<KV_T, fp4x2_e1m2_t>::value
         || IsSameType<KV_T, fp4x2_e2m1_t>::value);
-    static constexpr bool PAGE_ATTENTION_ANTIQUANT = (antiquantMode == AntiquantTypeEnum::PER_TOKEN_PAGE_ATTENTION ||
-        antiquantMode == AntiquantTypeEnum::PER_TOKEN_HEAD_PAGE_ATTENTION);
-    static constexpr bool KEY_ANTIQUANT_PER_TOKEN = (antiquantMode == AntiquantTypeEnum::PER_TOKEN
-        || antiquantMode == AntiquantTypeEnum::PER_TOKEN_PAGE_ATTENTION 
-        || antiquantMode == AntiquantTypeEnum::PER_TOKEN_HEAD_PAGE_ATTENTION);
-    static constexpr bool VALUE_ANTIQUANT_PER_TOKEN = (antiquantMode == AntiquantTypeEnum::PER_TOKEN 
-        || antiquantMode == AntiquantTypeEnum::PER_TOKEN_PAGE_ATTENTION
-        || antiquantMode == AntiquantTypeEnum::PER_TOKEN_HEAD_PAGE_ATTENTION 
+    static constexpr bool KEY_ANTIQUANT_PER_TOKEN = (antiquantMode == AntiquantTypeEnum::K_PER_TOKEN);
+    static constexpr bool VALUE_ANTIQUANT_PER_TOKEN = (antiquantMode == AntiquantTypeEnum::K_PER_TOKEN
         || antiquantMode == AntiquantTypeEnum::K_PER_CHANNEL_V_PER_TOKEN);
     using KEY_ANTIQ_PARAMS_T = typename std::conditional<KEY_ANTIQUANT_PER_TOKEN, T, Q_T>::type;
     using VALUE_ANTIQ_PARAMS_T = typename std::conditional<VALUE_ANTIQUANT_PER_TOKEN, T, Q_T>::type;
@@ -168,6 +162,7 @@ public:
     __aicore__ inline void InvalidLineProcess(RunInfo<isInfer> &runInfo, LocalTensor<T> &sumUb, LocalTensor<T> &maxUb,
         ConstInfo<isInfer, hasRope> &constInfo);
     __aicore__ inline bool SoftmaxInvalidLineCheck(LocalTensor<T> &maxUb, uint32_t negativeIntScalar, SoftMaxShapeInfo &softmaxShapeInfo);
+    bool antiquantPageAttentionFlag;
     bool antiquantPerTensorFlag;
     bool antiquantPerHeadFlag;
     uint32_t antiqSeqSize;
@@ -534,6 +529,7 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::setConstAnt
         taskParam.kvStep = taskParam.kvHeadNum * constInfo.dSize;
     }
     taskParam.copySplitS = kvInputSize / sizeof(KV_T) / dTemplateAlign64;
+    taskParam.isPageAttentionAntiquant = antiquantPageAttentionFlag;
     taskParam.isPertensor = antiquantPerTensorFlag;
     taskParam.isPerHead = antiquantPerHeadFlag;
     taskParam.kvCacheBlockSize = constInfo.blockSize;

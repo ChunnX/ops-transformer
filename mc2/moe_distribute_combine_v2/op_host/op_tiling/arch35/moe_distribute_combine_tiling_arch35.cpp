@@ -35,9 +35,11 @@
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "../../../op_kernel/moe_distribute_combine_v2_tiling.h"
 #include "../../../op_kernel/moe_distribute_combine_v2_tiling_key.h"
+#include "moe_distribute_combine_tiling_arch35.h"
 using namespace Mc2Tiling;
 
 namespace {
+constexpr uint32_t OP_VERSION_2 = 2;
 constexpr uint32_t ATTRS_GROUP_EP_INDEX = 0;
 constexpr uint32_t ATTRS_EP_WORLD_SIZE_INDEX = 1;
 constexpr uint32_t ATTRS_EP_RANK_ID_INDEX = 2;
@@ -685,7 +687,8 @@ static void SetHcclTiling(const gert::TilingContext *context, MoeDistributeCombi
 inline ge::graphStatus CheckCommAttrs(const char *nodeName, const MoeDistributeCombineV2TilingData &tilingData,
                                       uint32_t localMoeExpertNum)
 {
-    uint64_t maxWindowSize = mc2tiling::Mc2TilingUtils::GetMaxWindowSize();
+    // A5 实际物理分配为 HCCL_BUFFSIZE 的 2 倍
+    uint64_t maxWindowSize = mc2tiling::Mc2TilingUtils::GetMaxWindowSize() * 2UL;
     uint64_t h = static_cast<uint64_t>(tilingData.moeDistributeCombineV2Info.h);
     uint64_t aivNum = tilingData.moeDistributeCombineV2Info.aivNum;
     uint64_t epWorldSize = static_cast<uint64_t>(tilingData.moeDistributeCombineV2Info.epWorldSize);
@@ -765,7 +768,8 @@ ge::graphStatus MoeDistributeCombineTilingImpl(gert::TilingContext *context, con
     // Comm
     OP_TILING_CHECK(CheckCommAttrs(nodeName, *tilingData, localMoeExpertNum) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "CheckCommAttrs failed."), return ge::GRAPH_FAILED);
-    tilingData->moeDistributeCombineV2Info.totalWinSizeEp = mc2tiling::Mc2TilingUtils::GetMaxWindowSize();
+    // A5 实际物理分配为 HCCL_BUFFSIZE 的 2 倍
+    tilingData->moeDistributeCombineV2Info.totalWinSizeEp = mc2tiling::Mc2TilingUtils::GetMaxWindowSize() * 2UL;
     OP_TILING_CHECK(SetWorkSpace(context, *tilingData, localMoeExpertNum) != ge::GRAPH_SUCCESS,
                     VECTOR_INNER_ERR_REPORT_TILING(nodeName, "Tiling set workspace Failed"), return ge::GRAPH_FAILED);
     SetHcclTiling(context, *tilingData, groupEp, groupTp);
@@ -801,5 +805,43 @@ bool MoeDistributeCombineTilingA5::IsCapable()
     }
     return false;
 }
+
+ge::graphStatus MoeDistributeCombineV2TilingFuncA5::MoeDistributeCombineTilingFuncImpl(
+    gert::TilingContext* context, const CombineV2Config& config)
+{
+    auto attrs = context->GetAttrs();
+    const char *nodeName = context->GetNodeName();
+    auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int>((config.attrCommAlgIndex)));
+    // 检查 commAlg 参数合法性校验
+    bool isNullOrEmpty = (commAlgPtr == nullptr) || (std::strlen(commAlgPtr) == 0);
+    bool isCcu = std::strcmp(commAlgPtr, "ccu") == 0;
+    OP_TILING_CHECK(!(isNullOrEmpty || isCcu),
+        OP_LOGE(nodeName, "Invalid parameter: 'commAlg'='%s'."
+            "'commAlg' is not supported on this SoC version. Nullptr (or empty char*) is acceptable.", commAlgPtr),
+        return ge::GRAPH_FAILED);
+    if (isCcu) {
+        // CCU 调用 A5 tiling 实现
+        return MoeDistributeCombineTilingImpl(context, OP_VERSION_2);
+    }
+    // 默认空指针和空字符走 MTE 方式，MTE 调用 A3 tiling 实现
+    return MoeDistributeCombineA3TilingFuncImpl(context, config);
+}
+
+struct MoeDistributeCombineCompileInfo {};
+static ge::graphStatus TilingParseForMoeDistributeCombineV2(gert::TilingParseContext *context)
+{
+    (void)context;
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus MoeDistributeCombineV2TilingFuncImplA5(gert::TilingContext* context)
+{
+    MoeDistributeCombineV2TilingFuncA5 impl;
+    return impl.MoeDistributeCombineV2TilingFunc(context);
+}
+
+IMPL_OP_OPTILING(MoeDistributeCombineV2)
+    .Tiling(MoeDistributeCombineV2TilingFuncImplA5)
+    .TilingParse<MoeDistributeCombineCompileInfo>(TilingParseForMoeDistributeCombineV2);
 
 } // namespace optiling

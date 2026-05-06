@@ -983,7 +983,7 @@ int64_t SparseLightningIndexerGradKLLossTilingBaseRegbase::CalcTotalSize() {
 
 void SparseLightningIndexerGradKLLossTilingBaseRegbase::SetMultiCoreParamsRegbase(int64_t totalSize, int64_t coreNum)
 {
-    int64_t actualUsedCoreNum = std::min(totalSize, static_cast<int64_t>(coreNum));
+    int64_t actualUsedCoreNum = deterministic ? coreNum : std::min(totalSize, static_cast<int64_t>(coreNum));
     sliGradkllossMultiCoreParams_->set_coreNum(static_cast<int32_t>(actualUsedCoreNum));
     sliGradkllossMultiCoreParams_->set_totalSize(totalSize);
     sliGradkllossMultiCoreParams_->set_splitFactorSize(CeilDivision(totalSize, actualUsedCoreNum));
@@ -1060,11 +1060,20 @@ ge::graphStatus SparseLightningIndexerGradKLLossTilingBaseRegbase::GetWorkspaceS
     } else {
         scatterAddOutSize = bSize * s2Size * dSizeQueryIndex * sizeof(float); //batch
     }
+    int64_t lossSize = sizeof(float) * SIZE_128; // 为了512Byte对齐
+    int64_t bmm3Size = kSize * dSizeQueryIndex * sizeof(float) * PING_PONG_VALUE; // 确定性计算场景开pingpong
 
+    int64_t usedCoreNum = static_cast<int64_t>(sliGradkllossMultiCoreParams_->get_coreNum());
     int64_t singlecoreTotalSize = PING_PONG_VALUE * reduceSumOffset + reluOffset + gatherSYOffset;
-    int64_t multicoreTotalsize = singlecoreTotalSize * static_cast<int64_t>(sliGradkllossMultiCoreParams_->get_coreNum()) + scatterAddOutSize;
+    int64_t multicoreTotalsize = 0;
+    if (deterministic) {
+        multicoreTotalsize = singlecoreTotalSize *
+            usedCoreNum + scatterAddOutSize * 2 + lossSize + bmm3Size * usedCoreNum;
+    } else {
+        multicoreTotalsize = singlecoreTotalSize *
+            usedCoreNum + scatterAddOutSize;
+    }
     workspaces[0] = static_cast<size_t>(multicoreTotalsize) + WORK_SPACE_RESERVE_SIZE; // 预留16M空间必须加;
-    OP_LOGW(context_, "workspace size:[%ld], multicoreTotalsize:[%ld]", workspaces[0], multicoreTotalsize);
     return ge::GRAPH_SUCCESS;
 }
 

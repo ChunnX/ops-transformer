@@ -107,16 +107,20 @@ macro(add_modules_sources)
 
   file(GLOB_RECURSE SUB_OPTILING_SRC ${SOURCE_DIR}/op_tiling/*.cpp)
   file(GLOB OPTILING_SRCS 
-      ${SOURCE_DIR}/*fallback*.cpp
       ${SOURCE_DIR}/*_tiling*.cpp
-      ${SOURCE_DIR}/op_tiling/arch35/*.cpp
-      ${SOURCE_DIR}/../op_graph/fallback_*.cpp
-      ${SOURCE_DIR}/../graph_plugin/fallback_*.cpp)
+      ${SOURCE_DIR}/op_tiling/arch35/*.cpp)
   if (OPTILING_SRCS OR SUB_OPTILING_SRC)
     # tiling
     add_tiling_modules()
     target_sources(${OPHOST_NAME}_tiling_obj PRIVATE ${OPTILING_SRCS} ${SUB_OPTILING_SRC})
     # target_include_directories(${OPHOST_NAME}_tiling_obj PRIVATE ${SOURCE_DIR}/../../ ${SOURCE_DIR})
+  endif()
+
+  file(GLOB FALLBACK_SRCS ${SOURCE_DIR}/../op_graph/*fallback*.cpp)
+  if (FALLBACK_SRCS)
+    # fallback
+    add_fallback_modules()
+    target_sources(${OPGRAPH_NAME}_fallback_obj PRIVATE ${FALLBACK_SRCS})
   endif()
 
   if (MODULE_OP_MC2_ENABLE)
@@ -228,11 +232,7 @@ macro(add_modules_sources_with_soc)
       message(WARNING "failed to extract OPS_NAME, SOURCE_DIR: ${SOURCE_DIR}")
       return()
   endif()
-  if("${OPS_NAME}" STREQUAL "moe_distribute_dispatch_v2" OR 
-    "${OPS_NAME}" STREQUAL "moe_distribute_combine_v2")
-      list(APPEND ARCH_DIRECTORY arch35)
-      message(STATUS "${OPS_NAME} appended ARCH_DIRECTORY: arch35")
-  endif()
+
   foreach(COMPUTE_UNIT IN LISTS ASCEND_COMPUTE_UNIT)
       if("${COMPUTE_UNIT}" STREQUAL "ascend310p" AND MODULE_OP_MC2_ENABLE)
           list(APPEND ARCH_DIRECTORY arch31)
@@ -275,17 +275,21 @@ macro(add_modules_sources_with_soc)
   list(APPEND SUB_OPTILING_SRC ${files})
   endforeach()
   file(GLOB OPTILING_SRCS
-      ${SOURCE_DIR}/*fallback*.cpp
       ${SOURCE_DIR}/op_tiling/*.cpp
       ${SOURCE_DIR}/*_tiling*.cpp
-      ${SOURCE_DIR}/op_tiling/common/*.cpp
-      ${SOURCE_DIR}/../op_graph/fallback_*.cpp
-      ${SOURCE_DIR}/../graph_plugin/fallback_*.cpp)
+      ${SOURCE_DIR}/op_tiling/common/*.cpp)
   if (OPTILING_SRCS OR SUB_OPTILING_SRC)
     # tiling
     add_tiling_modules()
     target_sources(${OPHOST_NAME}_tiling_obj PRIVATE ${OPTILING_SRCS} ${SUB_OPTILING_SRC})
     # target_include_directories(${OPHOST_NAME}_tiling_obj PRIVATE ${SOURCE_DIR}/../../ ${SOURCE_DIR})
+  endif()
+
+  file(GLOB FALLBACK_SRCS ${SOURCE_DIR}/../op_graph/*fallback*.cpp)
+  if (FALLBACK_SRCS)
+    # fallback
+    add_fallback_modules()
+    target_sources(${OPGRAPH_NAME}_fallback_obj PRIVATE ${FALLBACK_SRCS})
   endif()
 
   if (MODULE_OP_MC2_ENABLE)
@@ -354,6 +358,7 @@ function(add_opapi_modules)
       $<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/aclnn>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/metadef/common/util>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc>>
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/op_common>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/op_common/op_host>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include/op_common>>
@@ -588,6 +593,7 @@ function(add_graph_plugin_modules)
     add_library(${GRAPH_PLUGIN_NAME}_obj OBJECT)
     target_include_directories(${GRAPH_PLUGIN_NAME}_obj PRIVATE 
       ${OP_PROTO_INCLUDE}
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include>>
     )
     target_compile_definitions(${GRAPH_PLUGIN_NAME}_obj PRIVATE OPS_UTILS_LOG_SUB_MOD_NAME="GRAPH_PLUGIN" LOG_CPP)
     target_compile_options(
@@ -642,6 +648,49 @@ function(add_gentask_modules)
   endif()
 endfunction()
 
+# 添加fallback object
+function(add_fallback_modules)
+  message(STATUS "add_fallback_modules start")
+  if (NOT TARGET ${OPGRAPH_NAME}_fallback_obj)
+    add_library(${OPGRAPH_NAME}_fallback_obj OBJECT)
+    add_dependencies(${OPGRAPH_NAME}_fallback_obj json)
+
+    target_include_directories(${OPGRAPH_NAME}_fallback_obj
+      PRIVATE
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include>>
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc>>
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/op_common>>
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/runtime>>
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/msprof>>
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/runtime>>
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/profiling>>
+      ${OPS_TRANSFORMER_DIR}/mc2
+      ${OPS_TRANSFORMER_DIR}/mc2/common/utils
+      ${OPS_TRANSFORMER_DIR}/common/include
+    )
+    target_compile_definitions(${OPGRAPH_NAME}_fallback_obj
+      PRIVATE
+      LOG_CPP
+    )
+    target_compile_options(${OPGRAPH_NAME}_fallback_obj
+      PRIVATE
+      $<$<NOT:$<BOOL:${ENABLE_TEST}>>:-DDISABLE_COMPILE_V1>
+      -Dgoogle=ascend_private
+      -fvisibility=hidden
+      -fno-strict-aliasing
+    )
+
+    target_link_libraries(${OPGRAPH_NAME}_fallback_obj
+      PRIVATE
+      $<BUILD_INTERFACE:intf_pub_cxx17>
+      $<$<BOOL:${alog_FOUND}>:$<BUILD_INTERFACE:alog_headers>>
+      $<$<BOOL:${dlog_FOUND}>:$<BUILD_INTERFACE:dlog_headers>>
+      graph
+      graph_base
+      exe_graph
+    )
+  endif()
+endfunction()
 
 # useage: add_graph_plugin_sources()
 macro(add_graph_plugin_sources)

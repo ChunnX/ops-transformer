@@ -751,6 +751,10 @@ ge::graphStatus FiaInfoParser::GetBlockSize()
         return ge::GRAPH_FAILED;
     }
     blockSize_ = *(opParamInfo_.blockSize);
+    if (blockSize_ <= 0) {
+        OP_LOGE(opName_, "blockSize is %d, it should be > 0.", blockSize_);
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -807,8 +811,11 @@ ge::graphStatus FiaInfoParser::GetValueHeadDim()
 
 ge::graphStatus FiaInfoParser::GetRopeMode()
 {
-    bool existSplitRopeTensor =
+    bool existQuerySplitRopeTensor =
         ((opParamInfo_.queryRope.tensor != nullptr) && (opParamInfo_.queryRope.desc != nullptr));
+    bool existKeySplitRopeTensor =
+        ((opParamInfo_.keyRope.tensor != nullptr) && (opParamInfo_.keyRope.desc != nullptr));
+    bool existSplitRopeTensor = existQuerySplitRopeTensor && existKeySplitRopeTensor;
     if (npuArch_ == NpuArch::DAV_3510) {
         if (existSplitRopeTensor) {
             ropeMode_ = RopeMode::ROPE_SPLIT;
@@ -872,7 +879,18 @@ ge::graphStatus FiaInfoParser::GetRopeHeadDim()
         if (queryRopeShape_->CheckHasShapeD(__func__) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
-        ropeHeadDim_ = static_cast<uint32_t>(queryRopeShape_->GetShapeD());
+        keyRopeShape_ = std::make_shared<FiaTilingShape>(opParamInfo_.keyRope.tensor->GetStorageShape(), kvLayout_,
+                                                         KEY_ROPE_NAME, opName_, n2Size_);
+        if (keyRopeShape_->CheckHasShapeD(__func__) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+        uint32_t queryRopeHeadDim = static_cast<uint32_t>(queryRopeShape_->GetShapeD());
+        uint32_t keyRopeHeadDim = static_cast<uint32_t>(keyRopeShape_->GetShapeD());
+        OP_CHECK_IF(queryRopeHeadDim != keyRopeHeadDim, OPS_REPORT_VECTOR_INNER_ERR(opName_,
+            "the query Rope Head Dim is (%u) and the key Rope Head Dim is (%u), they should be equal.",
+            queryRopeHeadDim, keyRopeHeadDim),
+            return GRAPH_FAILED);
+        ropeHeadDim_ = queryRopeHeadDim;
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -1174,6 +1192,7 @@ ge::graphStatus FiaInfoParser::GetActualSeqInfo()
             const int64_t *actualLenData = opParamInfo_.actualSeqLengths.tensor->GetData<int64_t>();
             uint32_t loop = ((actualLenDims_ == 1) && (kvListSeqLens_.size() == 1)) ? 1 : bSize_;
             loop = std::min(loop, actualLenDims_);
+            int64_t preActualLen = 0;
             for (uint32_t i = 0; i < loop; i++) {
                 int64_t actLen = actualLenData[i];
                 if (antiQuantFlag_) {
@@ -1181,10 +1200,14 @@ ge::graphStatus FiaInfoParser::GetActualSeqInfo()
                         actLen -= actualLenData[i - 1];
                     }
                     if (s1Size_ == 1) {
-                        needInit_ = (actLen == 0);
+                        needInit_ = needInit_ || (actLen == 0);
                     }
                 } else {
-                    needInit_ = (actLen == 0);
+                    if (qLayout_ == FiaLayout::TND || qLayout_ == FiaLayout::NTD) {
+                        actLen -= preActualLen;
+                        preActualLen = actualLenData[i];
+                    }
+                    needInit_ = needInit_ || (actLen == 0);
                     if (qLayout_ == FiaLayout::TND || qLayout_ == FiaLayout::NTD) {
                         continue;
                     }
@@ -1195,7 +1218,6 @@ ge::graphStatus FiaInfoParser::GetActualSeqInfo()
                 maxActualseq_ = maxActualseq_ < actLen ? actLen : maxActualseq_;
                 if (actualLenData[i] != actualLenData[0]) {
                     isSameActualseq_ = false;
-                    break;
                 }
             }
         }
@@ -1210,9 +1232,16 @@ ge::graphStatus FiaInfoParser::GetActualSeqInfo()
             isAccumQSeq_ = true;
         }
         if (opParamInfo_.actualSeqLengthsQ.tensor->GetData<int64_t>() != nullptr) {
+            // TND格式needInit_不需要置为1，用else if隔开
             uint32_t loop = std::min(bSize_, actualLenQDims_);
+            int64_t preActualLen = 0;
             for (uint32_t i = 0; i < loop; i++) {
-                if (actualLenQData[i] != static_cast<int64_t>(s1Size_)) {
+                int64_t actLen = actualLenQData[i];
+                if (qLayout_ == FiaLayout::TND || qLayout_ == FiaLayout::NTD) {
+                    actLen -= preActualLen;
+                    preActualLen = actualLenQData[i];
+                }
+                if (actLen != static_cast<int64_t>(s1Size_)) {
                     needInit_ = true;
                     break;
                 }
@@ -1246,6 +1275,9 @@ ge::graphStatus FiaInfoParser::GetFullQuantMode()
     if (quantMode_ == FiaQuantMode::FULL_QUANT) {
         if (opParamInfo_.deqScale1.tensor != nullptr && opParamInfo_.deqScale1.desc != nullptr) {
             fullQuantMode_ = FiaFullQuantMode::PER_TENSOR_FULL_QUANT;
+        } else if (*opParamInfo_.queryQuantMode == 6 && *opParamInfo_.keyAntiquantMode == 6 &&
+                   *opParamInfo_.valueAntiquantMode == 8) {
+            fullQuantMode_ = FiaFullQuantMode::MXFP8_FULL_QUANT;
         } else {
             fullQuantMode_ = FiaFullQuantMode::PER_BLOCK_FULL_QUANT;
         }
