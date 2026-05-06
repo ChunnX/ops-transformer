@@ -146,9 +146,9 @@ QBMM_MX_KERNEL_NO_FULL_LOAD_CLASS_TEM_PARAMS
 __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_NO_FULL_LOAD_FUN_TEM_PARAMS>::operator()(
     const Params& params, TPipe* pipe)
 {
+    ResetGmAddr(params);
+    BlockSchedulerOp bs(params.problemShape, params.schParams);
     if ASCEND_IS_AIC {
-        ResetGmAddr(params);
-        BlockSchedulerOp bs(params.problemShape, params.schParams);
         TupleShape problemShape_ = ToShapeTuple(params.problemShape);
         BlockShape l0TileShape{params.qbmmParams.baseM, params.qbmmParams.baseN, params.qbmmParams.baseK, 0};
         bool enableL0cPingPong = (params.qbmmParams.dbL0C > 1);
@@ -168,18 +168,24 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_NO_FULL_LOAD_FUN_T
         winContext_ = (__gm__ HcclOpResParam*)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
         rankId_ = winContext_->localUsrRankId;
         coreVid_ = AscendC::GetBlockIdx();
-        BlockSchedulerOp bs(params.problemShape, params.schParams);
         BlockCoord blockIdx;
         while (bs.GetTileIdx(blockIdx)) {
             int64_t mPos = Get<MNK_M>(blockIdx);
             int64_t nPos = Get<MNK_N>(blockIdx);
             BlockShape singleShape = bs.GetBlockShape(blockIdx);
             if (Get<MNK_M>(singleShape) <= 0 || Get<MNK_N>(singleShape) <= 0) {
-                return;
+                break;
             }
             CrossCoreWaitFlag(9);
             CommProcess(mPos, nPos, singleShape, params);
         }
+        // // debug
+        // SyncAll<true>();
+        // GlobalTensor<CType> workspaceGm;
+        // workspaceGm.SetGlobalBuffer(cGmAddr_);
+        // if (AscendC::GetBlockIdx() == 0) {
+        //     DumpTensor(workspaceGm, 111, 128 * 512 + 1);
+        // }
         return;
     }
 }
@@ -227,6 +233,10 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_NO_FULL_LOAD_FUN_T
         gmB.SetL2CacheHint(AscendC::Te::CacheMode::CACHE_MODE_NORMAL);
         gmScaleB.SetL2CacheHint(AscendC::Te::CacheMode::CACHE_MODE_NORMAL);
     }
+    // debug
+    GlobalTensor<bfloat16_t> workspaceGm;
+    workspaceGm.SetGlobalBuffer(cGmAddr_);
+
     while (bs.GetTileIdx(blockIdx)) {
         // The scheduler packs GM origin into M/N and retains logical tile
         // indices in K/B so shape reconstruction still works.
@@ -255,6 +265,10 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_NO_FULL_LOAD_FUN_T
         // The block MMAD layer owns all data movement below GM granularity and
         // performs the actual accumulation for this scheduled tile.
         mmadOp_(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBlockC, singleShape);
+
+        // if (AscendC::GetBlockIdx() == 0) {
+        //     DumpTensor(workspaceGm[mPos * 512 + nPos], 111, 3);
+        // }
         CrossCoreSetFlag<0x2, PIPE_FIX>(9);
     }
 }

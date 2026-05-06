@@ -38,7 +38,7 @@ __global__ __aicore__ void qbmm_reduce_scatter_add_rms_norm_cast(GM_ADDR x1, GM_
 {
     REGISTER_TILING_DEFAULT(QbmmReduceScatterAddRmsNormCastTilingData);
     GET_TILING_DATA_WITH_STRUCT(QbmmReduceScatterAddRmsNormCastTilingData, tilingData, tilingGM);
-    static constexpr uint64_t Stages = 1;
+    static constexpr uint64_t Stages = 4;
     using AType = fp8_e4m3fn_t;
     using BType = fp8_e4m3fn_t;
     using CType = bfloat16_t;

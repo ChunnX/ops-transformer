@@ -136,8 +136,8 @@ int LaunchOneThreadQbmmReduceScatterAddRmsNormCast(Args &args)
 
     // 创建host数据
     // FP8_E4M3FN: 用 uint8_t 存储（1字节）
-    std::vector<uint8_t> x1HostData(x1ShapeSize, 127);
-    std::vector<uint8_t> x2HostData(x2ShapeSize, 127);
+    std::vector<uint8_t> x1HostData(x1ShapeSize, 56);
+    std::vector<uint8_t> x2HostData(x2ShapeSize, 56);
     // BF16: 用 uint16_t 存储（2字节）
     std::vector<uint16_t> yHostData(yShapeSize, 0x3f80);  // bf16 的 1.0
     // FLOAT: 用 float 存储
