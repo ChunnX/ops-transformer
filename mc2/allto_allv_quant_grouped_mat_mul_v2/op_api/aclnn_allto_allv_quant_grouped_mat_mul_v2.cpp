@@ -234,6 +234,7 @@ extern "C" aclnnStatus aclnnInnerAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize(
     const char *group, int64_t epWorldSize, const aclIntArray *sendCounts, const aclIntArray *recvCounts,
     int64_t gmmXQuantMode, int64_t gmmWeightQuantMode, bool transGmmWeight, bool transMmWeight, bool permuteOutFlag,
     int64_t mmXQuantMode, int64_t mmWeightQuantMode, int64_t groupSize, int64_t yDtype, int64_t mmDtype,
+    const char* commMode,
     aclTensor *gmmY, aclTensor *mmYOptional, aclTensor *permuteOutOptional, uint64_t *workspaceSize,
     aclOpExecutor **executor);
 
@@ -257,8 +258,8 @@ extern "C" aclnnStatus InnerAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize(
         gmmX, gmmWeight, gmmXScale, gmmWeightScale, sendCountsTensorOptional, recvCountsTensorOptional,
         mmXOptional, mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, group, epWorldSize, sendCounts,
         recvCounts, gmmXQuantMode, gmmWeightQuantMode, transGmmWeight, transMmWeight, permuteOutFlag,
-        mmXQuantMode, mmWeightQuantMode, groupSize, yDtype, mmDtype, gmmY, mmYOptional, permuteOutOptional,
-        workspaceSize, executor);
+        mmXQuantMode, mmWeightQuantMode, groupSize, yDtype, mmDtype, "aicpu",
+        gmmY, mmYOptional, permuteOutOptional, workspaceSize, executor);
     OP_LOGD("AlltoAllvQuantGroupedMatmul, aclnnnInnerGetWorkspaceSize ret %d.", ret);
     return ret;
 }
