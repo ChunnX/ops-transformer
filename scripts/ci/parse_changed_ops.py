@@ -239,9 +239,13 @@ def get_change_ops_list(changed_file_info_from_ci, is_experimental, soc):
         soc
     )
     
-    if soc == "ascend950" and not filtered_operators:
-        filtered_operators = ["all_gather_matmul_v2"]
-        logging.info("[INFO] No operators found for ascend950, using default: all_gather_matmul_v2")
+    if not filtered_operators:
+        if soc == "ascend950":
+            filtered_operators = ["all_gather_matmul_v2"]
+            logging.info("[INFO] No operators found for ascend950, using default: all_gather_matmul_v2")
+        elif soc == "ascend910b":
+            filtered_operators = ["nsa_compress_attention_infer"]
+            logging.info("[INFO] No operators found for ascend910b, using default: nsa_compress_attention_infer")
     
     return ";".join(filtered_operators)
 
