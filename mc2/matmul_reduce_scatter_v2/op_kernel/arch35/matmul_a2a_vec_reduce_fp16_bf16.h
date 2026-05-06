@@ -74,7 +74,7 @@ private:
     __gm__ HcclCombinOpParam* context_;
     AscendC::HcclDataType dataType_;
     uint8_t debugMode_;
-    Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;  // CCU模式
+    Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU> hccl_;  // AICPU模式
     AscendC::HcclHandle handles_[MAX_HANDLE];          // 最大支持64个handleId
     GM_ADDR sendBuf_;    // 存放 MatMul 输出（All2All send buffer）
     GM_ADDR recvBuf_;    // 存放 All2All 接收的 slices（内容为 [slice_r_from_rank0][slice_r_from_rank1]...[slice_r_from_rankR-1]）
