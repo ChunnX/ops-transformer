@@ -17,8 +17,8 @@
 #else
 #include "kernel_operator.h"
 #endif
-#include "allto_allv_grouped_mat_mul_v2_coarse_grained.h"
 #include "allto_allv_grouped_mat_mul_v2_tiling_key.h"
+#include "allto_allv_grouped_mat_mul_v2_coarse_grained.h"
 
 using namespace AscendC;
 
