@@ -440,7 +440,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
 ## 约束说明
 
 - 确定性计算：
-  - aclnnSparseLightningIndexerGradKLLoss默认非确定性实现，不支持通过aclrtCtxSetSysParamOpt开启确定性。
+  - aclnnSparseLightningIndexerGradKLLoss默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
 - 公共约束
     - 参数query、key、queryIndex、keyIndex的数据类型应保持一致。
     - 参数weights不为float32时，参数query、key、queryIndex、keyIndex、weights的数据类型应保持一致。
@@ -526,14 +526,12 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>deterministic</td>
             <td>bool</td>
             <td>
-            <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持确定性计算<br>
-            <term>Ascend 950PR/Ascend 950DT</term>支持确定性计算
+            支持确定性计算
             </td>
         </tr>
         <tr>
             <td>B</td>
-            <td><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持1~256<br>
-                <term>Ascend 950PR/Ascend 950DT</term>支持1~128</td>
+            <td>支持1~256</td>
             <td>-</td>
         </tr>
         <tr>
@@ -549,8 +547,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         <tr>
             <td>Nidx1</td>
             <td>
-            <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持8、16、32、64<br>
-            <term>Ascend 950PR/Ascend 950DT</term>支持32、64
+            8、16、32、64
             </td>
             <td>SparseFA为MQA。</td>
         </tr>
@@ -586,6 +583,8 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         </tr>
         </tbody>
     </table>
+- Ascend 950PR/Ascend 950DT支持B的规格: 1~128。
+- Ascend 950PR/Ascend 950DT支持Nidx1的规格: 32、64。
 
 - 典型值
     <table style="undefined;table-layout: fixed; width: 942px"><colgroup>
