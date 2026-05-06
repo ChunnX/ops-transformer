@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file incre_flash_attention_arch32.h
+ * \file incre_flash_attention_arch22.h
  * \brief
  */
 #include "incre_flash_attention_tilingkey.h"
@@ -18,16 +18,16 @@
 #include "./arch20/incre_flash_attention_cube_310P_kvquant.h"
 #endif
 #if (__CCE_AICORE__ > 200)
-#include "./arch32/incre_flash_attention_split_Bbn2s2_Us2.h"
-#include "./arch32/incre_flash_attention_preload.h"
-#include "./arch32/incre_flash_attention_preload_dd.h"
-#include "./arch32/paged_attention_antiquantkv.h"
+#include "./arch22/incre_flash_attention_split_Bbn2s2_Us2.h"
+#include "./arch22/incre_flash_attention_preload.h"
+#include "./arch22/incre_flash_attention_preload_dd.h"
+#include "./arch22/paged_attention_antiquantkv.h"
 
 #ifdef FIA_ENABLE_MLA
 // mla模板使用私有tiling结构，框架编译时根据一组DType预编译获取keylist，根据keylist找到对应的tiling结构
 // 在这组DType中，若没有mla模板的key，包含mla模板编译会报错：unknown type name 'IncreFlashAttentionTilingDataMla'
 #if ((ORIG_DTYPE_QUERY == DT_INT8) && (ORIG_DTYPE_ATTENTION_OUT == DT_BF16) && (ORIG_DTYPE_KEY == DT_INT8))
-#include "./arch32/incre_flash_attention_preload_mla.h"
+#include "./arch22/incre_flash_attention_preload_mla.h"
 #endif
 #endif // FIA_ENABLE_MLA
 
@@ -200,7 +200,7 @@
 #endif
 #endif
 
-inline __aicore__ void incre_flash_attention_FIAS_arch32(
+inline __aicore__ void incre_flash_attention_FIAS_arch22(
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
     __gm__ uint8_t *pseShift, __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengthsQ,
     __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *deqScale1, __gm__ uint8_t *quantScale1,
