@@ -23,10 +23,14 @@
 
 using namespace AscendC;
 
-namespace MC2KernelTemplate {
+#ifndef TILINGKEY_TPL_CCU
+#define TILINGKEY_TPL_CCU 0
+#endif
+#ifndef TILINGKEY_TPL_AICPU
+#define TILINGKEY_TPL_AICPU 1
+#endif
 
-constexpr int TILINGKEY_TPL_CCU = 0;
-constexpr int TILINGKEY_TPL_AICPU = 1;
+namespace MC2KernelTemplate {
 
 template<int commMode>
 struct HcclTypeSelector {
@@ -221,7 +225,7 @@ public:
             }
         }
 
-        alltoAllvScaleHandleId_[startExpertIdx] = hccl_.AlltoAllV<true>(
+        alltoAllvScaleHandleId_[startExpertIdx] = hccl_.template AlltoAllV<true>(
             (__gm__ uint8_t *)sendScaleGlobalBuffer_.GetPhyAddr(), alltoAllvScaleSendCnt, alltoAllvScaleSendOffset,
             HCCL_DATA_TYPE_FP8E8M0, (__gm__ uint8_t *)recvScaleGlobalBuffer_.GetPhyAddr(), alltoAllvScaleRecvCnt,
             alltoAllvScaleRecvOffset, HCCL_DATA_TYPE_FP8E8M0);
@@ -310,7 +314,7 @@ private:
                 alltoAllvRecvOffsetLastSum += alltoAllvRecvCnt[i];
             }
         }
-        alltoAllvHandleId_[startExpertIdx] = hccl_.AlltoAllV<true>(
+        alltoAllvHandleId_[startExpertIdx] = hccl_.template AlltoAllV<true>(
             (__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), alltoAllvSendCnt, alltoAllvSendOffset, hcclDataType_,
             (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset, hcclDataType_);
     }
@@ -350,7 +354,7 @@ private:
                 alltoAllvRecvOffset[i] += static_cast<uint64_t>(recvCounts_[startExpertIdx + (i - 1) * e_ + j]) * N1_;
             }
         }
-        alltoAllvHandleId_[startExpertIdx] = hccl_.AlltoAllV<true>(
+        alltoAllvHandleId_[startExpertIdx] = hccl_.template AlltoAllV<true>(
             (__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), alltoAllvSendCnt, alltoAllvSendOffset, hcclDataType_,
             (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset, hcclDataType_);
     }
