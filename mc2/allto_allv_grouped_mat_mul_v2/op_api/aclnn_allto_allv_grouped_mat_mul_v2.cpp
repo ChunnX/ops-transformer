@@ -130,6 +130,8 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulV2GetWorkspaceSize(const aclTensor* gmmX,
 
     if (NnopbaseSetHcclServerType && ret == ACLNN_SUCCESS) {
         if (strcmp(commMode, "aicpu") == 0) {
+            void *arg = reinterpret_cast<void *>(static_cast<uintptr_t>(0));
+            NnopbaseSetUserHandle(*executor, arg);
             NnopbaseSetHcclServerType(*executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
         } else {
             void *arg = reinterpret_cast<void *>(static_cast<uintptr_t>(1));
