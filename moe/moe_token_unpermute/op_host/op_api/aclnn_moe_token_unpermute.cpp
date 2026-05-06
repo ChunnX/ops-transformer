@@ -20,6 +20,7 @@
 #include "aclnn_kernels/common/op_error_check.h"
 #include "external/aclnn_kernels/aclnn_platform.h"
 #include "aclnn_kernels/contiguous.h"
+#include "aclnnInner_moe_token_unpermute.h" // 该文件为自动生成，在build/autogen/inner路径下
 #include "opdev/tensor_view_utils.h"
 #include "opdev/op_log.h"
 #include "moe/moe_finalize_routing_v2/op_host/op_api/moe_finalize_routing_v2.h"
@@ -31,12 +32,6 @@ extern "C" {
 #endif
 
 constexpr int64_t READ_INDEX_BY_ROW = 2;
-
-extern aclnnStatus aclnnInnerMoeTokenUnpermuteGetWorkspaceSize(
-    const aclTensor* permutedTokens, const aclTensor* sortedIndices, const aclTensor* probsOptional, bool paddedMode,
-    const aclIntArray* restoreShapeOptional, aclTensor* out, uint64_t* workspaceSize, aclOpExecutor** executor);
-extern aclnnStatus aclnnInnerMoeTokenUnpermute(
-    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream);
 
 aclnnStatus aclnnMoeTokenUnpermuteGetWorkspaceSize(
     const aclTensor* permutedTokens, const aclTensor* sortedIndices, const aclTensor* probsOptional, bool paddedMode,
