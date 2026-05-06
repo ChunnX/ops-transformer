@@ -16,8 +16,8 @@
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #include "sparse_attn_sharedkv_grad_template_tiling_key.h"
-#include "arch32/sfag_basic.h"
-#include "arch32/sasg_basic.h"
+#include "arch22/sfag_basic.h"
+#include "arch22/sasg_basic.h"
 using namespace AscendC;
 
 #define INVOKE_SASG_BASIC_IMPL(templateClass, ...)                                                  \

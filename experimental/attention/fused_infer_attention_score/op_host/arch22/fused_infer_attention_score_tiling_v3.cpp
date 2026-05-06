@@ -15,8 +15,8 @@
 #include "tiling/tiling_api.h"
 #include "fused_infer_attention_score_tiling_v3.h"
 #include "../fused_infer_attention_score_tiling_info_parser.h"
-#include "../../../common/op_host/arch32/fia_tiling_nonquant_mla.h"
-#include "../../../common/op_host/arch32/fia_tiling_nonquant.h"
+#include "../../../common/op_host/arch22/fia_tiling_nonquant_mla.h"
+#include "../../../common/op_host/arch22/fia_tiling_nonquant.h"
 #include "../../../common/op_host/fia_tiling_templates_registry.h"
 #include "../fused_infer_attention_score_const.h"
 using namespace AscendC;
