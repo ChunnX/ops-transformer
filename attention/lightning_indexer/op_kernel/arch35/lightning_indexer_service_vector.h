@@ -167,7 +167,7 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::InitBuffers(TPipe *pi
     mrgValueLocal_ = mrgValueBuf_.Get<uint16_t>();
     // returnvalue
     if (topkCount_ <= 2048) {
-        pipe->InitBuffer(uIntToBfloat16Buf_, topkCountAlign256_ * sizeof(bfloat16_t)); 
+        pipe->InitBuffer(uIntToBfloat16Buf_, topkCountAlign256_ * sizeof(bfloat16_t));
         uIntToBfloat16Local_ = uIntToBfloat16Buf_.Get<bfloat16_t>();
         pipe->InitBuffer(valueOutBuf_, topkCountAlign256_ * sizeof(K_T));
         valueOutLocal_ = valueOutBuf_.Get<K_T>();
