@@ -113,7 +113,7 @@ __aicore__ inline void FlashAttentionScoreKernelInferGqaFullquant<CubeBlockType,
     uint32_t bnEndIdx;
     int64_t s2LoopLimit;
     int64_t nextGs1Idx = this->sharedParams.multiCoreInnerLimit;
-    if constexpr (!isFd) {
+    if (!constInfo.isFd) {
         bnStartIdx = this->sharedParams.bnStartIdx;
         gS1StartIdx = this->sharedParams.multiCoreInnerOffset;
         if (likely((this->sharedParams.coreNum - 1) > this->aicIdx)) {
@@ -149,7 +149,7 @@ __aicore__ inline void FlashAttentionScoreKernelInferGqaFullquant<CubeBlockType,
     int64_t multiCoreInnerIdx = 1;
     for (uint32_t bnIdx = bnStartIdx; bnIdx < bnEndIdx; ++bnIdx) {
         bool lastBN = (bnIdx == bnEndIdx - 1);
-        if constexpr (!isFd) {
+        if (!constInfo.isFd) {
             runParam.boIdx = bnIdx / (this->constInfo.n2Size * this->constInfo.headNumRatio);
             runParam.n2oIdx = (bnIdx / this->constInfo.headNumRatio) % this->constInfo.n2Size;
         }
