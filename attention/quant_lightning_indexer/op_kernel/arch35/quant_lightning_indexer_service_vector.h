@@ -60,11 +60,12 @@ protected:
     GlobalTensor<int32_t> indiceOutGm;
     GlobalTensor<int32_t> blockTableGm;
     // =================================常量区=================================
-    static constexpr uint32_t VEC1_V_MTE2_EVENT = EVENT_ID0;
-    static constexpr uint32_t VEC1_MTE2_V_EVENT = EVENT_ID1;
+    static constexpr uint32_t VEC1_V_MTE2_EVENT_KSCALE = EVENT_ID0;
+    static constexpr uint32_t VEC1_MTE2_V_EVENT_KSCALE = EVENT_ID1;
     static constexpr uint32_t VEC1_V_MTE3_EVENT = EVENT_ID2;
     static constexpr uint32_t VEC1_MTE3_V_EVENT = EVENT_ID3;
-
+    static constexpr uint32_t VEC1_V_MTE2_EVENT_QSCALE = EVENT_ID6;
+    static constexpr uint32_t VEC1_MTE2_V_EVENT_QSCALE = EVENT_ID3;
     static constexpr uint32_t TOPK_V_MTE2_EVENT = EVENT_ID4;
     static constexpr uint32_t TOPK_MTE2_V_EVENT = EVENT_ID5;
     static constexpr uint32_t TOPK_V_MTE3_EVENT = EVENT_ID6;
@@ -116,7 +117,6 @@ private:
     TBuf<TPosition::VECCALC> topkSharedTmpBuf_;
     LocalTensor<uint32_t> topkSharedTmpLocal_;
 
-    TBuf<TPosition::VECCALC> outInvalidBuf_;
     LocalTensor<int32_t> outInvalidLocal_;
 
     int32_t blockId_ = -1;
@@ -135,7 +135,6 @@ private:
     uint32_t topkCount_ = 0;
     uint32_t topkCountAlign256_ = 0; // topkCount对齐到256(直方图需要)，支持topk泛化
     uint32_t trunkLen_ = 0;
-
     struct QLICommon::ConstInfo constInfo_;
     topk::LITopk<uint16_t> topkOp_;
 };
@@ -149,7 +148,7 @@ __aicore__ inline void QLIVector<QLIT>::InitBuffers(TPipe *pipe)
     weightUB_ = weightBuf_.Get<W_T>();
     pipe->InitBuffer(weightFloatBuf_, 2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE);
     weightFloatUB_ = weightFloatBuf_.Get<float>();
-    pipe->InitBuffer(kScaleBuf_, 2 * s2BaseSize_ * sizeof(SCALE_T));
+    pipe->InitBuffer(kScaleBuf_, 2 * s2BaseSize_ * 16 * sizeof(SCALE_T));
     kScaleUB_ = kScaleBuf_.Get<SCALE_T>();
     pipe->InitBuffer(qScaleBuf_, 2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE);
     qScaleUB_ = qScaleBuf_.Get<SCALE_T>();
@@ -160,7 +159,8 @@ __aicore__ inline void QLIVector<QLIT>::InitBuffers(TPipe *pipe)
     // Topk
     pipe->InitBuffer(mrgValueBuf_, (topkCountAlign256_ + trunkLen_) * sizeof(uint16_t));     // 大小：(topkCountAlign256_ + 每次排序长度) * sizeof(uint16_t)
     mrgValueLocal_ = mrgValueBuf_.Get<uint16_t>();
-    
+    outInvalidLocal_ = mrgValueBuf_.Get<int32_t>();
+
     pipe->InitBuffer(indicesOutBuf_, (topkCountAlign256_ + 64) * sizeof(uint32_t));         // 大小：(topkCountAlign256_ + 64) * 4  64:duplicate刷-1需要额外空间
     indicesOutLocal_ = indicesOutBuf_.Get<uint32_t>();
 
@@ -173,9 +173,7 @@ __aicore__ inline void QLIVector<QLIT>::InitBuffers(TPipe *pipe)
     topkOp_.InitBuffers(topkSharedTmpLocal_);
 
     //刷-1
-    pipe->InitBuffer(outInvalidBuf_, topkCount_ * sizeof(int32_t));
-    outInvalidLocal_ = outInvalidBuf_.Get<int32_t>();
-    Duplicate(kScaleUB_, static_cast<SCALE_T>(0), 2 * s2BaseSize_);
+    Duplicate(kScaleUB_, static_cast<SCALE_T>(0), 2 * s2BaseSize_ * 16);
 }
 
 template <typename QLIT>
@@ -223,10 +221,12 @@ __aicore__ inline void QLIVector<QLIT>::InitVecWorkspaceTensor(GlobalTensor<uint
 template <typename QLIT>
 __aicore__ inline void QLIVector<QLIT>::AllocEventID()
 {
-    SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + 0);
-    SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + 1);
+    SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_KSCALE + 0);
+    SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_KSCALE + 1);
     SetFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + 0);
     SetFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + 1);
+    SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_QSCALE + 0);
+    SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_QSCALE + 1);
 
     SetFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
     SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
@@ -236,10 +236,12 @@ __aicore__ inline void QLIVector<QLIT>::AllocEventID()
 template <typename QLIT>
 __aicore__ inline void QLIVector<QLIT>::FreeEventID()
 {
-    WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + 0);
-    WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + 1);
+    WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_KSCALE + 0);
+    WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_KSCALE + 1);
     WaitFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + 0);
     WaitFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + 1);
+    WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_QSCALE + 0);
+    WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_QSCALE + 1);
 
     WaitFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
     WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
@@ -286,7 +288,7 @@ __aicore__ inline void QLIVector<QLIT>::GetKeyScale(const QLICommon::RunInfo &ru
             int32_t blockId = blockTableGm.GetValue(blockTableBatchOffset + startBlockTableIdx);
             SetFlag<HardEvent::S_MTE2>(KSCALE_S_MTE2_EVENT);
             WaitFlag<HardEvent::S_MTE2>(KSCALE_S_MTE2_EVENT);
-            AscendC::DataCopyPad(kScaleUB[(runInfo.loop % 2) * s2BaseSize_], kScaleGm[blockId *
+            AscendC::DataCopyPad(kScaleUB[(runInfo.kScaleLoop % 2) * s2BaseSize_], kScaleGm[blockId *
                                 constInfo_.keyDequantScaleStride0 + startBlockTableOffset], copyInParams, padParams);
             startBlockTableIdx++;
             getLen = getLen - firstPartLen;
@@ -301,7 +303,7 @@ __aicore__ inline void QLIVector<QLIT>::GetKeyScale(const QLICommon::RunInfo &ru
             int32_t blockId = blockTableGm.GetValue(blockTableBatchOffset + startBlockTableIdx + i);
             SetFlag<HardEvent::S_MTE2>(KSCALE_S_MTE2_EVENT);
             WaitFlag<HardEvent::S_MTE2>(KSCALE_S_MTE2_EVENT);
-            AscendC::DataCopyPad(kScaleUB[(runInfo.loop % 2) * s2BaseSize_ + resUbBaseOffset + i * kCacheBlockSize_], 
+            AscendC::DataCopyPad(kScaleUB[(runInfo.kScaleLoop % 2) * s2BaseSize_ + resUbBaseOffset + i * kCacheBlockSize_], 
                                  kScaleGm[blockId * constInfo_.keyDequantScaleStride0],
                                  copyInParams, padParams);
         }
@@ -319,6 +321,8 @@ template <typename QLIT>
 __aicore__ inline void QLIVector<QLIT>::ProcessVec1(const QLICommon::RunInfo &info)
 {
     auto pingpong = (info.loop % 2);
+    auto qScalepingpong = (info.qScaleLoop % 2);
+    auto kScalepingpong = (info.kScaleLoop % 2);
     auto s1BaseSizePerAIV = CeilDiv(s1BaseSize_, 2);
     int64_t curS1Idx = info.gS1Idx * s1BaseSize_;	 
     int64_t curS2Idx = info.s2Idx * s2BaseSize_;	 
@@ -330,32 +334,42 @@ __aicore__ inline void QLIVector<QLIT>::ProcessVec1(const QLICommon::RunInfo &in
         CrossCoreSetFlag<QLICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(QLICommon::ConstInfo::CROSS_VC_EVENT + pingpong);   // V核处理完，通知C核可以把mm1Res搬运到UB
         return;
     }
-    WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + pingpong);
-    //weightsGm --> weightUB_ 
-    int64_t weightGmOffset = info.tensorWeightsOffset + curAivS1Idx * kHeadNum_ * gSize_;
-    DataCopyPadExtParams<W_T> padWeightsParams{false, 0, 0, 0};
-    DataCopyExtParams wDataCopyExtParams;
-    wDataCopyExtParams.blockCount = curAivS1ProcNum;
-    wDataCopyExtParams.blockLen = gSize_ * sizeof(W_T);
-    wDataCopyExtParams.srcStride = 0;
-    wDataCopyExtParams.dstStride = (UB_BANK_DEPTH_STRIDE - wDataCopyExtParams.blockLen) / 32;
-    DataCopyPad(weightUB_[pingpong * (UB_BANK_STRIDE / sizeof(W_T))], 
-                weightsGm[weightGmOffset], wDataCopyExtParams, padWeightsParams);
- 
-    //qScaleGm  -->  qScaleUB_
-    DataCopyPadExtParams<SCALE_T> padQScaleParams{false, 0, 0, 0};
-    DataCopyExtParams qDataCopyExtParams;
-    qDataCopyExtParams.blockCount = curAivS1ProcNum;
-    qDataCopyExtParams.blockLen = gSize_ * sizeof(SCALE_T);
-    qDataCopyExtParams.srcStride = 0;
-    qDataCopyExtParams.dstStride = (UB_BANK_DEPTH_STRIDE - qDataCopyExtParams.blockLen) / 32;
-    DataCopyPad(qScaleUB_[pingpong * (UB_BANK_STRIDE / sizeof(SCALE_T))],
-                qScaleGm[weightGmOffset], qDataCopyExtParams, padQScaleParams);
+    
+    if (info.isFirstS2InnerLoop) {
+        WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_QSCALE + qScalepingpong);
+        //weightsGm --> weightUB_ 
+        int64_t weightGmOffset = info.tensorWeightsOffset + curAivS1Idx * kHeadNum_ * gSize_;
+        DataCopyPadExtParams<W_T> padWeightsParams{false, 0, 0, 0};
+        DataCopyExtParams wDataCopyExtParams;
+        wDataCopyExtParams.blockCount = curAivS1ProcNum;
+        wDataCopyExtParams.blockLen = gSize_ * sizeof(W_T);
+        wDataCopyExtParams.srcStride = 0;
+        wDataCopyExtParams.dstStride = (UB_BANK_DEPTH_STRIDE - wDataCopyExtParams.blockLen) / 32;
+        DataCopyPad(weightUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(W_T))],
+                    weightsGm[weightGmOffset], wDataCopyExtParams, padWeightsParams);
+    
+        //qScaleGm  -->  qScaleUB_
+        DataCopyPadExtParams<SCALE_T> padQScaleParams{false, 0, 0, 0};
+        DataCopyExtParams qDataCopyExtParams;
+        qDataCopyExtParams.blockCount = curAivS1ProcNum;
+        qDataCopyExtParams.blockLen = gSize_ * sizeof(SCALE_T);
+        qDataCopyExtParams.srcStride = 0;
+        qDataCopyExtParams.dstStride = (UB_BANK_DEPTH_STRIDE - qDataCopyExtParams.blockLen) / 32;
+        DataCopyPad(qScaleUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(SCALE_T))],
+                    qScaleGm[weightGmOffset], qDataCopyExtParams, padQScaleParams);
+        SetFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT_QSCALE + qScalepingpong);
+        WaitFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT_QSCALE + qScalepingpong);
+        
+    }
 
-    //kScaleGm  -->  kScaleUB_
-    GetKeyScale(info, kScaleUB_, info.bIdx, curS2Idx, info.actualSingleProcessSInnerSize);
-    SetFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + pingpong);
-    WaitFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + pingpong);
+    if ((info.s2Idx - info.s2Start) % 16 == 0) { 
+        WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_KSCALE + kScalepingpong);
+        uint32_t getLen = 16 * s2BaseSize_ > (info.validS2Len - info.s2Idx * s2BaseSize_) ? info.validS2Len - info.s2Idx * s2BaseSize_ : 16 * s2BaseSize_;
+        //kScaleGm  -->  kScaleUB_
+        GetKeyScale(info, kScaleUB_, info.bIdx, curS2Idx, getLen);
+        SetFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT_KSCALE + kScalepingpong);
+        WaitFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT_KSCALE + kScalepingpong);
+    }
     WaitFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + pingpong);
 
     //CV同步
@@ -363,10 +377,10 @@ __aicore__ inline void QLIVector<QLIT>::ProcessVec1(const QLICommon::RunInfo &in
 
     static_assert(std::is_same_v<uint16_t, uint16_t>);
     auto outBase = vec1OutUB_[pingpong * (UB_BANK_STRIDE / sizeof(uint16_t))];
-    auto weightBase = weightUB_[pingpong * (UB_BANK_STRIDE / sizeof(W_T))];
-    auto weightFloatBase = weightFloatUB_[pingpong * (UB_BANK_STRIDE / sizeof(float))];
-    auto qScaleBase = qScaleUB_[pingpong * (UB_BANK_STRIDE / sizeof(SCALE_T))];
-    auto kScaleBase = kScaleUB_[pingpong * s2BaseSize_];
+    auto weightBase = weightUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(W_T))];
+    auto weightFloatBase = weightFloatUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))];
+    auto qScaleBase = qScaleUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(SCALE_T))];
+    auto kScaleBase = kScaleUB_[kScalepingpong * ((info.s2Idx - info.s2Start) % 16)];
     auto qkBase = resMm1UB_[pingpong * (UB_BANK_STRIDE / sizeof(float))];
     auto qkVLstride = (UB_BANK_DEPTH_STRIDE / sizeof(float)) / 2 * constInfo_.mBaseSize;
 
@@ -376,7 +390,12 @@ __aicore__ inline void QLIVector<QLIT>::ProcessVec1(const QLICommon::RunInfo &in
                                         kScaleBase, (uint32_t)0,
                                         qScaleBase, UB_BANK_DEPTH_STRIDE / sizeof(SCALE_T),
                                         gSize_, curAivS1ProcNum);
-    SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + pingpong);
+    if(info.isFirstS2InnerLoop){
+        SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_QSCALE + qScalepingpong);
+    }
+    if ((info.s2Idx - info.s2Start) % 16 == 0) { 
+        SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_KSCALE + kScalepingpong);
+    }
     SetFlag<HardEvent::V_MTE3>(VEC1_V_MTE3_EVENT + pingpong);
     WaitFlag<HardEvent::V_MTE3>(VEC1_V_MTE3_EVENT + pingpong);
     //outUB_ --->  scoreGm
