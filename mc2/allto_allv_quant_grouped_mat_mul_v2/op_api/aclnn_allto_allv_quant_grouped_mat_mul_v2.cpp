@@ -242,6 +242,7 @@ extern "C" aclnnStatus aclnnInnerAlltoAllvQuantGroupedMatMulV2(void *workspace, 
                                                         aclOpExecutor *executor, aclrtStream stream);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
+extern "C" void *NnopbaseGetUserHandle(void *executor);
 
 extern "C" aclnnStatus InnerAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize(
     const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *gmmXScale, const aclTensor *gmmWeightScale,
@@ -326,14 +327,15 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize(
         recvCounts, gmmXQuantMode, gmmWeightQuantMode, transGmmWeight, transMmWeight, permuteOutFlag, mmXQuantMode,
         mmWeightQuantMode, groupSize, gmmY, mmYOptional, permuteOutOptional, workspaceSize, executor);
 
-    if (NnopbaseSetHcclServerType && ret == ACLNN_SUCCESS) {
+    if (NnopbaseSetHcclServerType && ret == ACLNN_SUCCESS && *executor != nullptr) {
+        char* commModePtr = new char[strlen(commMode) + 1];
+        if (commModePtr != nullptr) {
+            strcpy(commModePtr, commMode);
+            NnopbaseSetUserHandle(*executor, commModePtr);
+        }
         if (strcmp(commMode, "aicpu") == 0) {
-            void *arg = reinterpret_cast<void *>(static_cast<uintptr_t>(0));
-            NnopbaseSetUserHandle(*executor, arg);
             NnopbaseSetHcclServerType(*executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
         } else {
-            void *arg = reinterpret_cast<void *>(static_cast<uintptr_t>(1));
-            NnopbaseSetUserHandle(*executor, arg);
             NnopbaseSetHcclServerType(*executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
         }
     }
@@ -343,6 +345,10 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize(
 extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulV2(void *workspace, uint64_t workspaceSize,
                                                         aclOpExecutor *executor, aclrtStream stream)
 {
+    char* commModePtr = reinterpret_cast<char*>(NnopbaseGetUserHandle(executor));
+    if (commModePtr != nullptr) {
+        delete[] commModePtr;
+    }
     aclnnStatus ret = aclnnInnerAlltoAllvQuantGroupedMatMulV2(workspace, workspaceSize, executor, stream);
     return ret;
 }
