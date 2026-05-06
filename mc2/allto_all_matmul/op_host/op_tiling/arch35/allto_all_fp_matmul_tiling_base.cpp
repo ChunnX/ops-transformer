@@ -174,7 +174,7 @@ ge::graphStatus AllToAllFpMatmulTilingBase::SetHcclTiling()
 
     // reducetype接口附带的数据类型优先于调用通信接口传入的数据类型，因此这里需要设置
     AscendC::Mc2CcTilingConfig allToAllTilingConfig =
-        allToAllBuilder.withCommEngine(mc2tiling::A5_CCU_ENGINE)
+        allToAllBuilder.withCommEngine(2)
             .withReduceType(opName_, AscendC::HcclReduceOp::HCCL_REDUCE_SUM, contextInfo_.args_.geAType,
                             contextInfo_.args_.geAType)
             .build();
@@ -201,6 +201,7 @@ uint64_t AllToAllFpMatmulTilingBase::GetTilingKey() const
         biasDType = DTYPE_BIAS_FP32;
     }
     bool x2TransposeFlag = contextInfo_.args_.isBTrans ? true : false;
+    
     const uint64_t tilingKey = GET_TPL_TILING_KEY(NON_QUANT_MODE, x2TransposeFlag, biasDType, false);
     OP_LOGD(opName_, "QUANTMODE,X2TRANSPOSE,DTYPEBIAS,ISSMALLK is: [%d,%d,%d,0], and tilingKey is [%lu].",
             NON_QUANT_MODE, x2TransposeFlag, biasDType, tilingKey);

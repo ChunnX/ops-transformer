@@ -54,9 +54,10 @@ constexpr char HCCL_DETERMINISTIC[] = "HCCL_DETERMINISTIC";
 3：AIV 4：AIV_ONLY（A2/3支持 A5不支持） 5：CCU_MS（A2/3支持 A5不支持）
 6：CCU_SCHED（A2/3支持 A5不支持） 7：AICPU_UB/ROCE（A5不支持）
 **/
+constexpr uint8_t AICPU_ENGINE = 2;
 constexpr uint8_t AIV_ENGINE = 3;
 constexpr uint8_t A5_CCU_ENGINE = 5;
-constexpr uint8_t Y_INDEX = 3;
+constexpr uint8_t Y_INDEX = 3;  
 constexpr uint8_t COMM_ALG_DEFAULT = 0;
 constexpr uint8_t COMM_ALG_FULL_MESH = 1;
 constexpr uint8_t COMM_ALG_DOUBLE_RING = 2;
@@ -173,6 +174,7 @@ class Mc2TilingUtils {
   static uint8_t GetDebugMode();
   static uint8_t GetDebugCommAlg();
   static uint8_t GetDebugStepSize();
+  static uint8_t GetCommModeFromEnv();
   static uint32_t GetCommSets(const char *group);
   static ge::graphStatus CommonParamCheck(const gert::TilingContext *context);
   static mc2tiling::HcclDataType GetDataType(ge::DataType type);
