@@ -45,7 +45,7 @@ public:
         // 打印commMode确认hccl实例类型
         if ASCEND_IS_AIV {
             if (GetBlockIdx() == 0) {
-                AscendC::printf("[HCCL_A2AV_V2] commMode=%d (0=AICPU, 1=CCU)\n", commMode);
+                AscendC::printf("[HCCL_A2AV_V2] commMode=%d (0=CCU, 1=AICPU)\n", commMode);
             }
         }
         // init member var
