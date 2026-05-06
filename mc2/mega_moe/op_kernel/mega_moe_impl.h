@@ -336,7 +336,7 @@ __aicore__ inline void GroupMatmul2(
                 }
                 // gmm2真正开始时间（while循环结束后）
                 if (timestampOutput != nullptr) {
-                    constexpr int MAX_EXPERT_PER_RANK = 16;
+                    constexpr int MAX_EXPERT_PER_RANK = 4;
                     constexpr int GMM2_BASE = 2 + 2 * MAX_EXPERT_PER_RANK;
                     RecordTimestamp(*timestampOutput, GMM2_BASE + 2 * groupIdx);
                 }

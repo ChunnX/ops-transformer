@@ -90,32 +90,49 @@ using namespace AscendC;
 namespace MegaMoeImpl {
 
 // 打点函数：每个核心独立记录自己的时间戳
-// AIC core 0: routing(2) + gmm1(32) + gmm2(32)
-// AIV sub0: routing(2) + gmm1结束(32) + gmm2结束(32) + combine(2)
-// AIV sub1: dispatch(32)
+// 前10组group：AIC core 0-9, AIV core 0-19
+// globalCoreIdx: AIC 0-9, AIV 10-29
+//
+// 打点布局（40个槽位，MAX_EXPERT_PER_RANK=4）：
+// AIC 核：
+//   0: routing 开始
+//   1: routing 结束
+//   2+2*i: gmm1 开始 (i=0-3 → 2,4,6,8)
+//   3+2*i: dispatch 结束（GroupMatmulSwigluQuant 的 while 循环后）
+//   10+2*i: gmm2 开始（GroupMatmul2 的 while 循环后）
+//   10+2*i+1: gmm2 结束（EndGMM2Sync 后）
+// AIV sub0（偶数core）：
+//   0: routing 开始
+//   1: routing 结束
+//   18: combine 开始
+//   19: combine 结束
+// AIV sub1（奇数core）：
+//   2*i: dispatch 开始
+//   2*i+1: dispatch 结束
 __aicore__ inline void RecordTimestamp(GlobalTensor<uint64_t> &output, int pointIndex) {
-    constexpr int POINTS_PER_CORE = 100;
+    constexpr int POINTS_PER_CORE = 40;
     constexpr uint64_t CYCLES_PER_US = 1000;
+    constexpr int NUM_AIC_GROUPS = 10;
+    constexpr int NUM_AIV_PER_GROUP = 2;
+    constexpr int AIV_OFFSET = NUM_AIC_GROUPS;  // AIV 的 globalCoreIdx 从 10 开始
     
     int coreIdx = GetBlockIdx();
     int globalCoreIdx = -1;
     
     if constexpr (g_coreType == AIC) {
-        if (coreIdx == 0) {
-            globalCoreIdx = 0;  // AIC core 0
+        if (coreIdx < NUM_AIC_GROUPS) {
+            globalCoreIdx = coreIdx;  // AIC core 0-9 → globalCoreIdx 0-9
         }
     } else {
-        if (coreIdx == 0) {
-            globalCoreIdx = 1;  // AIV sub0
-        } else if (coreIdx == 1) {
-            globalCoreIdx = 2;  // AIV sub1
+        if (coreIdx < NUM_AIC_GROUPS * NUM_AIV_PER_GROUP) {
+            globalCoreIdx = AIV_OFFSET + coreIdx;  // AIV core 0-19 → globalCoreIdx 10-29
         }
     }
     
     if (globalCoreIdx == -1) {
         return;
     }
-    
+    PipeBarrier<PIPE_ALL>();
     uint64_t timestamp = static_cast<uint64_t>(AscendC::GetSystemCycle()) / CYCLES_PER_US;
     PipeBarrier<PIPE_ALL>();
     output.SetValue(globalCoreIdx * POINTS_PER_CORE + pointIndex, timestamp);
@@ -813,7 +830,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 
     // 打点: dispatch循环（AIV sub1独立记录开始/结束）
     // 打点布局: [0, 2*expertPerRank_) 用于dispatch
-    constexpr int MAX_EXPERT_PER_RANK = 16;
+    constexpr int MAX_EXPERT_PER_RANK = 4;
     
     GMMAddrInfo gmmAddrInfo;
     if constexpr(g_coreType == AscendC::AIV) {
@@ -834,13 +851,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         }
     }
     
-    // 打点布局（每个核心独立）
-    // AIC: routing(0-1) + gmm1(2+2*i, 3+2*i) + gmm2(34+2*i, 35+2*i)
-    // AIV sub0: routing(0-1) + gmm1结束(2+2*i) + gmm2结束(34+2*i) + combine(66-67)
-    // AIV sub1: dispatch(2*i, 2*i+1)
+    // 打点布局常量（MAX_EXPERT_PER_RANK=4）
+    // AIC: routing(0-1) + gmm1开始(2,4,6,8) + dispatch结束(3,5,7,9) + gmm2(10-17)
+    // AIV sub0: routing(0-1) + combine(18-19)
+    // AIV sub1: dispatch(0-7)
     constexpr int GMM1_BASE = 2;
-    constexpr int GMM2_BASE = 2 + 2 * MAX_EXPERT_PER_RANK;
-    constexpr int COMBINE_BASE = 2 + 4 * MAX_EXPERT_PER_RANK;
+    constexpr int GMM2_BASE = 2 + 2 * MAX_EXPERT_PER_RANK;  // = 10
+    constexpr int COMBINE_BASE = 2 + 4 * MAX_EXPERT_PER_RANK;  // = 18
     
     // 5. subBlockIdx_ == 0的核心执行gmm1 → gmm2 → combine
     preOffset_ = 0;
