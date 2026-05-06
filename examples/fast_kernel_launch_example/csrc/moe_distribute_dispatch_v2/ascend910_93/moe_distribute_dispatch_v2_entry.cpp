@@ -41,14 +41,14 @@ using namespace AscendC;
 * 第5位（万位）：无实际含义
 */
 
-template<typename XType, typename ExpandxType, int32_t QuantMode, bool IsSmoothScaleExist>
-__attribute__((always_inline)) __aicore__ __inline__ void moe_distribute_dispatch_v2(
+template<typename XType, typename ExpandxType, int32_t QuantMode, bool IsSmoothScaleExist, int32_t split>
+__aicore__ void moe_distribute_dispatch_v2(
     GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR expertScales, 
     GM_ADDR performanceInfo, GM_ADDR expandXOut, GM_ADDR dynamicScalesOut, 
     GM_ADDR assistInfoOut, GM_ADDR expertTokenNumsOut, GM_ADDR epSendCountsOut, 
     GM_ADDR expandScalesOut, GM_ADDR workspaceGM, GM_ADDR mc2Context, MoeDistributeDispatchV2Info tilingData)
 {
-
+    ICachePreLoad(4);
     TPipe pipe;
     MoeDistributeDispatchV2<XType, ExpandxType, QuantMode, IsSmoothScaleExist> op;
     op.Init(mc2Context, x, expertIds, scales, xActiveMask, performanceInfo, expandXOut, dynamicScalesOut,
@@ -60,14 +60,14 @@ __attribute__((always_inline)) __aicore__ __inline__ void moe_distribute_dispatc
     return;
 }
 
-template<typename XType, typename ExpandxType, int32_t QuantMode, bool IsSmoothScaleExist>
-__attribute__((always_inline)) __aicore__ __inline__ void moe_distribute_dispatch_v2_full_mesh(
+template<typename XType, typename ExpandxType, int32_t QuantMode, bool IsSmoothScaleExist, int32_t split>
+__aicore__ void moe_distribute_dispatch_v2_full_mesh(
     GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR expertScales, 
     GM_ADDR performanceInfo, GM_ADDR expandXOut, GM_ADDR dynamicScalesOut, 
     GM_ADDR assistInfoOut, GM_ADDR expertTokenNumsOut, GM_ADDR epSendCountsOut, 
     GM_ADDR expandScalesOut, GM_ADDR workspaceGM, GM_ADDR mc2Context, MoeDistributeDispatchV2Info tilingData)
 {
-
+    ICachePreLoad(4);
     TPipe pipe;
     MoeDistributeDispatchV2FullMesh<XType, ExpandxType, QuantMode, IsSmoothScaleExist> op;
     op.Init(x, expertIds, scales, xActiveMask, performanceInfo, expandXOut, dynamicScalesOut,
@@ -79,6 +79,7 @@ __attribute__((always_inline)) __aicore__ __inline__ void moe_distribute_dispatc
     return;
 }
 
+template<int32_t split=0>
 __aicore__ inline void moe_dispatch_switch(
     int32_t tilingKey,
     GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR expertScales,
@@ -90,56 +91,56 @@ __aicore__ inline void moe_dispatch_switch(
     switch (tilingKey) {
 
     case 10000:
-        moe_distribute_dispatch_v2<float16_t, float16_t, MoeDistributeDispatchV2Impl::UNQUANT, false>(
+        moe_distribute_dispatch_v2<float16_t, float16_t, MoeDistributeDispatchV2Impl::UNQUANT, false, split>(
             x, expertIds, scales, xActiveMask, expertScales, performanceInfo,
             expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut,
             epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData);
         break;
 
     case 10002:
-        moe_distribute_dispatch_v2<float16_t, int8_t, MoeDistributeDispatchV2Impl::PERTOKEN_DYNAMIC_QUANT, false>(
+        moe_distribute_dispatch_v2<float16_t, int8_t, MoeDistributeDispatchV2Impl::PERTOKEN_DYNAMIC_QUANT, false, split>(
             x, expertIds, scales, xActiveMask, expertScales, performanceInfo,
             expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut,
             epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData);
         break;
 
     case 10010:
-        moe_distribute_dispatch_v2<bfloat16_t, bfloat16_t, MoeDistributeDispatchV2Impl::UNQUANT, false>(
+        moe_distribute_dispatch_v2<bfloat16_t, bfloat16_t, MoeDistributeDispatchV2Impl::UNQUANT, false, split>(
             x, expertIds, scales, xActiveMask, expertScales, performanceInfo,
             expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut,
             epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData);
         break;
 
     case 10012:
-        moe_distribute_dispatch_v2<bfloat16_t, int8_t, MoeDistributeDispatchV2Impl::PERTOKEN_DYNAMIC_QUANT, false>(
+        moe_distribute_dispatch_v2<bfloat16_t, int8_t, MoeDistributeDispatchV2Impl::PERTOKEN_DYNAMIC_QUANT, false, split>(
             x, expertIds, scales, xActiveMask, expertScales, performanceInfo,
             expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut,
             epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData);
         break;
 
     case 10100:
-        moe_distribute_dispatch_v2<float16_t, float16_t, MoeDistributeDispatchV2Impl::UNQUANT, true>(
+        moe_distribute_dispatch_v2<float16_t, float16_t, MoeDistributeDispatchV2Impl::UNQUANT, true, split>(
             x, expertIds, scales, xActiveMask, expertScales, performanceInfo,
             expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut,
             epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData);
         break;
 
     case 10102:
-        moe_distribute_dispatch_v2<float16_t, int8_t, MoeDistributeDispatchV2Impl::PERTOKEN_DYNAMIC_QUANT, true>(
+        moe_distribute_dispatch_v2<float16_t, int8_t, MoeDistributeDispatchV2Impl::PERTOKEN_DYNAMIC_QUANT, true, split>(
             x, expertIds, scales, xActiveMask, expertScales, performanceInfo,
             expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut,
             epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData);
         break;
 
     case 10110:
-        moe_distribute_dispatch_v2<bfloat16_t, bfloat16_t, MoeDistributeDispatchV2Impl::UNQUANT, true>(
+        moe_distribute_dispatch_v2<bfloat16_t, bfloat16_t, MoeDistributeDispatchV2Impl::UNQUANT, true, split>(
             x, expertIds, scales, xActiveMask, expertScales, performanceInfo,
             expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut,
             epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData);
         break;
 
     case 10112:
-        moe_distribute_dispatch_v2<bfloat16_t, int8_t, MoeDistributeDispatchV2Impl::PERTOKEN_DYNAMIC_QUANT, true>(
+        moe_distribute_dispatch_v2<bfloat16_t, int8_t, MoeDistributeDispatchV2Impl::PERTOKEN_DYNAMIC_QUANT, true, split>(
             x, expertIds, scales, xActiveMask, expertScales, performanceInfo,
             expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut,
             epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData);
@@ -148,56 +149,56 @@ __aicore__ inline void moe_dispatch_switch(
     /* ---------- FullMesh ---------- */
 
     case 11000:
-        moe_distribute_dispatch_v2_full_mesh<float16_t, float16_t, MoeDistributeDispatchV2Impl::UNQUANT, false>(
+        moe_distribute_dispatch_v2_full_mesh<float16_t, float16_t, MoeDistributeDispatchV2Impl::UNQUANT, false, split>(
             x, expertIds, scales, xActiveMask, expertScales, performanceInfo,
             expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut,
             epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData);
         break;
 
     case 11002:
-        moe_distribute_dispatch_v2_full_mesh<float16_t, int8_t, MoeDistributeDispatchV2Impl::PERTOKEN_DYNAMIC_QUANT, false>(
+        moe_distribute_dispatch_v2_full_mesh<float16_t, int8_t, MoeDistributeDispatchV2Impl::PERTOKEN_DYNAMIC_QUANT, false, split>(
             x, expertIds, scales, xActiveMask, expertScales, performanceInfo,
             expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut,
             epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData);
         break;
 
     case 11010:
-        moe_distribute_dispatch_v2_full_mesh<bfloat16_t, bfloat16_t, MoeDistributeDispatchV2Impl::UNQUANT, false>(
+        moe_distribute_dispatch_v2_full_mesh<bfloat16_t, bfloat16_t, MoeDistributeDispatchV2Impl::UNQUANT, false, split>(
             x, expertIds, scales, xActiveMask, expertScales, performanceInfo,
             expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut,
             epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData);
         break;
 
     case 11012:
-        moe_distribute_dispatch_v2_full_mesh<bfloat16_t, int8_t, MoeDistributeDispatchV2Impl::PERTOKEN_DYNAMIC_QUANT, false>(
+        moe_distribute_dispatch_v2_full_mesh<bfloat16_t, int8_t, MoeDistributeDispatchV2Impl::PERTOKEN_DYNAMIC_QUANT, false, split>(
             x, expertIds, scales, xActiveMask, expertScales, performanceInfo,
             expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut,
             epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData);
         break;
 
     case 11100:
-        moe_distribute_dispatch_v2_full_mesh<float16_t, float16_t, MoeDistributeDispatchV2Impl::UNQUANT, true>(
+        moe_distribute_dispatch_v2_full_mesh<float16_t, float16_t, MoeDistributeDispatchV2Impl::UNQUANT, true, split>(
             x, expertIds, scales, xActiveMask, expertScales, performanceInfo,
             expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut,
             epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData);
         break;
 
     case 11102:
-        moe_distribute_dispatch_v2_full_mesh<float16_t, int8_t, MoeDistributeDispatchV2Impl::PERTOKEN_DYNAMIC_QUANT, true>(
+        moe_distribute_dispatch_v2_full_mesh<float16_t, int8_t, MoeDistributeDispatchV2Impl::PERTOKEN_DYNAMIC_QUANT, true, split>(
             x, expertIds, scales, xActiveMask, expertScales, performanceInfo,
             expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut,
             epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData);
         break;
 
     case 11110:
-        moe_distribute_dispatch_v2_full_mesh<bfloat16_t, bfloat16_t, MoeDistributeDispatchV2Impl::UNQUANT, true>(
+        moe_distribute_dispatch_v2_full_mesh<bfloat16_t, bfloat16_t, MoeDistributeDispatchV2Impl::UNQUANT, true, split>(
             x, expertIds, scales, xActiveMask, expertScales, performanceInfo,
             expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut,
             epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData);
         break;
 
     case 11112:
-        moe_distribute_dispatch_v2_full_mesh<bfloat16_t, int8_t, MoeDistributeDispatchV2Impl::PERTOKEN_DYNAMIC_QUANT, true>(
+        moe_distribute_dispatch_v2_full_mesh<bfloat16_t, int8_t, MoeDistributeDispatchV2Impl::PERTOKEN_DYNAMIC_QUANT, true, split>(
             x, expertIds, scales, xActiveMask, expertScales, performanceInfo,
             expandXOut, dynamicScalesOut, assistInfoOut, expertTokenNumsOut,
             epSendCountsOut, expandScalesOut, workspaceGM, mc2Context, tilingData);
@@ -246,7 +247,7 @@ __sk__ __vector__ void moe_distribute_dispatch_v2_generic_sk(MoeDistributeDispat
     MoeDistributeDispatchV2Info tilingData = args->tilingData;
 
     // 根据不同的数据类型调用不同的模板
-    moe_dispatch_switch(
+    moe_dispatch_switch<split_num>(
         tilingKey,
         x, expertIds, scales, xActiveMask, expertScales,
         performanceInfo, expandXOut, dynamicScalesOut,
