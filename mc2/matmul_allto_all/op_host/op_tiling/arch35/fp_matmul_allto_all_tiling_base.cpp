@@ -325,6 +325,17 @@ void FpMatmulAllToAllTilingBase::SetTilingInfo(MatmulAlltoAllTilingInfo &tilingI
 }
 
 /**
+ * @brief 获取tiling切分结果（arch35覆盖）
+ *
+ * @return CutResult
+ */
+CutResult FpMatmulAllToAllTilingBase::GetTilingResult()
+{
+    return GetArch35TilingResult(contextInfo.args_, KernelType::ALL_TO_ALL, socVersion_, npuArch_,
+                                 contextInfo.quantMode);
+}
+
+/**
  * @brief 构造函数，创建一个FpMatmulAllToAllTilingBase对象
  *
  * @param context

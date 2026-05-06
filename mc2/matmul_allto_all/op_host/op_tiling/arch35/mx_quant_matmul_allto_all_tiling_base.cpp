@@ -935,6 +935,17 @@ uint64_t MxQuantMatmulAllToAllTilingBase::GetTilingKey() const
 }
 
 /**
+ * @brief 获取tiling切分结果（arch35覆盖）
+ *
+ * @return CutResult
+ */
+CutResult MxQuantMatmulAllToAllTilingBase::GetTilingResult()
+{
+    return GetArch35TilingResult(contextInfo.args_, KernelType::ALL_TO_ALL, socVersion_, npuArch_,
+                                 QuantMode::MX_QUANT);
+}
+
+/**
  * @brief 构造函数，创建一个MxQuantMatmulAllToAllTilingBase对象
  *
  * @param context
