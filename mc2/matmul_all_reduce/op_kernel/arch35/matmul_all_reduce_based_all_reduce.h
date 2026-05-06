@@ -148,7 +148,7 @@ protected:
     MC2TileInfo tileInfo_, tailInfo_;
     MC2TilingHeader* tilingData_;
     TPipe* tPipe_;
-    Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;
+    Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU> hccl_;
     bool notifyFlag_;
     bool addFlag_;
     bool tailFlag_;

@@ -73,7 +73,7 @@ private:
     GM_ADDR reduceScatterOutGM_;
     GM_ADDR allGatherInGM_;
     GM_ADDR allGatherOutGM_;
-    Hccl<HCCL_SERVER_TYPE_CCU> hccl_;
+    Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;
     GM_ADDR outGM_;
     uint32_t tilePadM_ = 0U;
     uint32_t tailPadM_ = 0U;
