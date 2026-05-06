@@ -71,7 +71,7 @@ def load_paramset(paramset_file):
     return module.ENABLED_PARAMS
 
 
-def generate_actual_seq(S, B, layout=None):
+def generate_actual_seq(S, B, layout=None, T=None):
     """
     根据S和B自动生成actual_seq。
     
@@ -79,6 +79,7 @@ def generate_actual_seq(S, B, layout=None):
         S: 序列长度上限（S1或S2）
         B: batch大小
         layout: layout类型，TND场景下采用累加和
+        T: 当不为None时，将actual_seq最后一个数改为T
     
     返回:
         actual_seq: 生成的实际序列长度列表
@@ -93,6 +94,9 @@ def generate_actual_seq(S, B, layout=None):
             actual_seq.append(cumsum)
     else:
         actual_seq = seq_lengths
+    
+    if T is not None:
+        actual_seq[-1] = T
     
     return actual_seq
 
@@ -219,7 +223,7 @@ def convert_param_combination_to_cs_format(param_combination):
     block_num = param_combination.get("block_num")
     
     if param_combination.get("actual_seq_q") is None:
-        actual_seq_q = generate_actual_seq(S1, B, layout_query)
+        actual_seq_q = generate_actual_seq(S1, B, layout_query, T)
     else:
         actual_seq_q = param_combination.get("actual_seq_q")
 
@@ -227,7 +231,7 @@ def convert_param_combination_to_cs_format(param_combination):
         T = actual_seq_q[-1]
 
     if param_combination.get("actual_seq_kv") is None:
-        actual_seq_kv = generate_actual_seq(S2, B, layout_kv)
+        actual_seq_kv = generate_actual_seq(S2, B, layout_kv, T2)
     else:
         actual_seq_kv = param_combination.get("actual_seq_kv")
 
