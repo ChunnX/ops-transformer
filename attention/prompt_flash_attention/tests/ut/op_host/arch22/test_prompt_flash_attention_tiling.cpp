@@ -959,7 +959,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_21)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 2000000000004001012);
 }
 
-// BSND BF16, sparse_mode=20 -> current arch32 host path still rejects this Base API layout combination
+// BSND BF16, sparse_mode=20 -> current arch22 host path still rejects this Base API layout combination
 TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_22)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
@@ -1000,7 +1000,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_22)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-// BNSD BF16, sparse_mode=20 -> current arch32 host path still rejects this Base API layout combination
+// BNSD BF16, sparse_mode=20 -> current arch22 host path still rejects this Base API layout combination
 TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_23)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
