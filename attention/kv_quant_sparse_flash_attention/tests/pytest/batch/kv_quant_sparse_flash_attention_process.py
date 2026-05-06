@@ -28,6 +28,7 @@ def _load_inputs_to_npu(input_dict):
         if isinstance(value, torch.Tensor):
             return value.npu()
         return value
+
     return {key: to_npu(value) for key, value in input_dict.items()}
 
 
@@ -38,7 +39,7 @@ def _get_kv_torch_dtype(kv_dtype_str):
 
 
 def call_npu_eager(torch_tensor_dict, params):
-    npu_result = torch_npu.npu_kv_quant_sparse_flash_attention(
+    return torch_npu.npu_kv_quant_sparse_flash_attention(
         torch_tensor_dict['query_cache'],
         torch_tensor_dict['key_cache'],
         torch_tensor_dict['value_cache'],
@@ -66,28 +67,9 @@ def call_npu_eager(torch_tensor_dict, params):
     )
 
 
-def call_npu(input_tensor_dict, params):
+def call_npu(input_tensor_dict, params):    
     torch_npu.npu.set_device(0)
-    torch_tensor_dict = {}
-    for key, input_tensor in input_tensor_dict.items():
-        if not isinstance(input_tensor, (torch.Tensor, np.ndarray)):
-            continue
-        dtype_str = params['dtype_input'].get(key)
-        torch_dtype = get_torch_dtype(dtype_str) if dtype_str else None
-
-        if torch.is_tensor(input_tensor):
-            tensor_i = input_tensor
-        elif torch_dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
-            tensor_i = torch.from_numpy(np.array(input_tensor).astype(np.float32)).to(torch_dtype)
-        elif torch_dtype == torch.bfloat16:
-            tensor_i = torch.from_numpy(np.array(input_tensor).astype(np.float32)).to(torch.bfloat16)
-        elif torch_dtype is not None:
-            tensor_i = torch.from_numpy(np.array(input_tensor)).to(torch_dtype)
-        else:
-            tensor_i = torch.from_numpy(np.array(input_tensor))
-
-        torch_tensor_dict[key] = tensor_i.to('npu')
-
+    torch_tensor_dict = _load_inputs_to_npu(input_tensor_dict, params)
     npu_result = call_npu_eager(torch_tensor_dict, params)
     # 路径3
     # npu_result = call_npu_graph(torch_tensor_dict, params)
