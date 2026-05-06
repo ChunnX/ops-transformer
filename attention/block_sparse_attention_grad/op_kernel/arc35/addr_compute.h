@@ -28,8 +28,8 @@ private:
     int32_t kv_head_num_;
     int32_t head_dim_;
     int32_t bIdx_{0};            // 当前batch计算到的位置
-    int32_t s1Idx_;              // 当前s1方向计算到的位置
-    int32_t s2Idx_;              // 当前s2方向计算到的位置
+    int32_t s1Idx_{0};           // 当前s1方向计算到的位置
+    int32_t s2Idx_{0};           // 当前s2方向计算到的位置
     int32_t n1Idx_{0};           // 当前n1方向计算到的位置
     int32_t s1Len_{0};           // 当前s1方向计算的长度
     int32_t s2Len_{0};           // 当前s2方向计算的长度
@@ -58,6 +58,7 @@ public:
         this->actualKvseqlen_ = actualKvseqlen;
         this->single_s1_len_ = 512;
         this->single_s2_len_ = 512;
+        UpdateSeqLen();
 
         if ASCEND_IS_AIC {
             this->cube_core_idx_ = GetBlockIdx();
@@ -80,6 +81,7 @@ public:
             }
 
             RunTimeInfoRecord(runTimeInfo);
+            break;
         }
     }
 
