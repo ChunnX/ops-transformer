@@ -17,45 +17,44 @@
 
 - 计算公式：
    用于取Top-k的value的计算公式可以表示为：
-
    $$
    I_{t,:}=W_{t,:}@ReLU(q_{t,:}@(K_{:t,:})^T)
    $$
-
+   
    其中，$W$是第$t$个token对应的weights，$q$是第$t$个token对应的$G$个query头合轴后的矩阵，$K$为$t$行$K$矩阵。
-
+   
    LightningIndexer会单独训练，对应的loss function为：
-
+   
    $$
    L(I){=}\sum_tD_{KL}(p_{t,:}||Softmax(I_{t,:}))
    $$
-
+   
    其中，$p$是target distribution，通过对main attention score 进行所有的head的求和，然后把求和结果沿着上下文方向进行L1正则化得到。$D_{KL}$为KL散度，其表达式为：
    
    $$
    D_{KL}(a||b){=}\sum_ia_i\mathrm{log}{\left(\frac{a_i}{b_i}\right)}
    $$
-
+   
    通过求导可得Loss的梯度表达式：
    
    $$
    dI\mathop{{}}\nolimits_{{t,:}}=Softmax \left( I\mathop{{}}\nolimits_{{t,:}} \left) -p\mathop{{}}\nolimits_{{t,:}}\right. \right. 
    $$
-
+   
    利用链式法则可以进行weights，query和key矩阵的梯度计算：
    
    $$
    dW\mathop{{}}\nolimits_{{t,:}}=dI\mathop{{}}\nolimits_{{t,:}}\text{@} \left( ReLU \left( S\mathop{{}}\nolimits_{{t,:}} \left)  \left) \mathop{{}}\nolimits^{{T}}\right. \right. \right. \right. 
    $$
-
+   
    $$
    d\mathop{{q}}\nolimits_{{t,:}}=dS\mathop{{}}\nolimits_{{t,:}}@K\mathop{{}}\nolimits_{{:t,:}}
    $$
-
+   
    $$
    dK\mathop{{}}\nolimits_{{:t,:}}= \left( dS\mathop{{}}\nolimits_{{t,:}} \left) \mathop{{}}\nolimits^{{T}}@q\mathop{{}}\nolimits_{{:t,:}}\right. \right. 
    $$
-
+   
    其中，S为QK矩阵softmax的结果。
 
 <!-- - **说明**：
@@ -440,7 +439,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
 ## 约束说明
 
 - 确定性计算：
-  - aclnnSparseLightningIndexerGradKLLoss默认非确定性实现，不支持通过aclrtCtxSetSysParamOpt开启确定性。
+  - aclnnSparseLightningIndexerGradKLLoss默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
 - 公共约束
     - 参数query、key、queryIndex、keyIndex的数据类型应保持一致。
     - 参数weights不为float32时，参数query、key、queryIndex、keyIndex、weights的数据类型应保持一致。
@@ -526,14 +525,12 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>deterministic</td>
             <td>bool</td>
             <td>
-            <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持确定性计算<br>
-            <term>Ascend 950PR/Ascend 950DT</term>支持确定性计算
+            支持确定性计算
             </td>
         </tr>
         <tr>
             <td>B</td>
-            <td><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持1~256<br>
-                <term>Ascend 950PR/Ascend 950DT</term>支持1~128</td>
+            <td>支持1~256</td>
             <td>-</td>
         </tr>
         <tr>
@@ -549,8 +546,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         <tr>
             <td>Nidx1</td>
             <td>
-            <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持8、16、32、64<br>
-            <term>Ascend 950PR/Ascend 950DT</term>支持32、64
+            8、16、32、64
             </td>
             <td>SparseFA为MQA。</td>
         </tr>
@@ -586,6 +582,8 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         </tr>
         </tbody>
     </table>
+- Ascend 950PR/Ascend 950DT支持B的规格: 1~128。
+- Ascend 950PR/Ascend 950DT支持Nidx1的规格: 32、64。
 
 - 典型值
     <table style="undefined;table-layout: fixed; width: 942px"><colgroup>
