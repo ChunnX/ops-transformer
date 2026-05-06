@@ -342,16 +342,19 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulV2(void *workspace, uint6
                                                         aclOpExecutor *executor, aclrtStream stream)
 {
     char* commModePtr = reinterpret_cast<char*>(NnopbaseGetUserHandle(executor));
-    if (commModePtr != nullptr) {
-        OP_LOGD("[A2AV_GMM_V2] Execute commMode=%s", commModePtr);
-        if (NnopbaseSetHcclServerType) {
+    if (NnopbaseSetHcclServerType) {
+        if (commModePtr != nullptr) {
+            OP_LOGD("[A2AV_GMM_V2] Execute commMode=%s", commModePtr);
             if (strcmp(commModePtr, "aicpu") == 0) {
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
             } else {
                 NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
             }
+            delete[] commModePtr;
+        } else {
+            // fallback: V2只支持950，默认设置CCU
+            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
         }
-        delete[] commModePtr;
     }
     aclnnStatus ret = aclnnInnerAlltoAllvQuantGroupedMatMulV2(workspace, workspaceSize, executor, stream);
     return ret;
