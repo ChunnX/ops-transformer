@@ -18,14 +18,18 @@
 
 #include <cstdint>
 #include "kernel_tiling/kernel_tiling.h"
+#include "moe_init_routing_v3/arch35/moe_init_routing_v3_arch35_tiling_def.h"
+
+using namespace AscendC;
 
 struct MegaMoeTilingData {
+    MoeInitRoutingV3Arch35TilingData moeInitRoutingTilingData;
     uint32_t expertPerRank;
     uint32_t m;
     uint32_t k;
     uint32_t n;
     uint32_t epWorldSize;
-    uint32_t blockNumPerEP; // 和dispatchRows相关，如果每个EP搬运的row小于dispatchRows，则dispatchRows失效
+    uint32_t blockNumPerEP; // if blockNumPerEP < dispatchRows, then dispatchRows is invalid
     uint32_t maxOutputSize;
     uint32_t rankId;
     uint32_t topK;

@@ -39,7 +39,7 @@ set(_NSA_COMPRESS_ATTENTION_CompileDefintions
         ORIG_DTYPE_QUERY=DT_FLOAT16
 )
 set(_NSA_COMPRESS_ATTENTION_OpKernelPrivateIncludesExt
-        ${OPS_TRANSFORMER_DIR}/common/include/kernel
+        ${OPS_TRANSFORMER_DIR}/common/include/op_kernel
 )
 
 aux_source_directory(${CMAKE_SOURCE_DIR}/attention/nsa_compress_attention/op_kernel _NSA_COMPRESS_ATTENTION_KernelSourcesExt)

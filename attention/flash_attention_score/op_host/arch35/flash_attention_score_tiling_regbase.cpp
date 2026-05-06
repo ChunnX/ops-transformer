@@ -593,14 +593,19 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeGeneralPseOptionalInput(PseShapeTy
     } else if (pseDim1Size == n1Size && pseDim2Size == static_cast<int64_t>(PSE_ALIBI_S_SIZE) &&
                pseDim3Size == s2Size) {
         if (s1Size < pseDim2Size) {
-            OP_LOGE(opName, "get unsupported pse shape, the shape is [%ld, %ld, %ld, %ld]", pseBSize, pseDim1Size,
-                        pseDim2Size, pseDim3Size);
+            OP_LOGE(opName, "get unsupported pse shape, the shape is [%ld, %ld, %ld, %ld], "
+                    "expected Sq[%ld] should be greater than %ld",
+                    pseBSize, pseDim1Size, pseDim2Size, pseDim3Size, s1Size, pseDim2Size);
             return false;
         }
         pseShapeType = PseShapeType::PSE_B_N2_G_S1_S2;
     } else {
-        OP_LOGE(opName, "get unsupported pse shape, the shape is [%ld, %ld, %ld, %ld]", pseBSize, pseDim1Size,
-                    pseDim2Size, pseDim3Size);
+        OP_LOGE(opName, "unsupported pse shape[%ld, %ld, %ld, %ld], expected [%ld, %ld, %ld, %ld] or "
+            "[%ld, %ld, 1, %ld] or [%ld, %ld, %ld, %ld]",
+            pseBSize, pseDim1Size, pseDim2Size, pseDim3Size,
+            pseBSize, n1Size, s1Size, s2Size,
+            pseBSize, n1Size, s2Size,
+            pseBSize, n1Size, static_cast<int64_t>(PSE_ALIBI_S_SIZE), s2Size);
         return false;
     }
     return true;

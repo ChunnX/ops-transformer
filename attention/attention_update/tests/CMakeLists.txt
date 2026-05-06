@@ -38,7 +38,7 @@ set(_AttentionUpdate_OpKernelTilingDataDefH
 set(_AttentionUpdate_OpKernelSourcesExt)
 
 set(_AttentionUpdate_OpKernelPrivateIncludesExt
-        ${OPS_TRANSFORMER_DIR}/common/include/kernel
+        ${OPS_TRANSFORMER_DIR}/common/include/op_kernel
 )
 
 #set(_AttentionUpdate_OpKernelPrivateCompileDefinitionsExt

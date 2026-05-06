@@ -19,3 +19,5 @@ Ascend950,mxfp8e5m2_weight_nz_notrans,true,mxfp8e5m2_weight_nz_notrans,,256,1024
 
 Ascend950,mxfp8_basic_api_invalid_group_type,true,mxfp8_basic_api_invalid_group_type,,256,1024,512,2,false,false,3,ND,FLOAT8-E4M3,FLOAT8-E4M3,FLOAT8-E8M0,FLOAT8-E8M0,FLOAT,BF16,false,false,0,0,
 Ascend950,mxfp8_basic_api_groupnum_zero,true,mxfp8_basic_api_groupnum_zero,,256,1024,512,0,false,false,0,ND,FLOAT8-E4M3,FLOAT8-E4M3,FLOAT8-E8M0,FLOAT8-E8M0,FLOAT,BF16,false,false,0,0,
+Ascend950,fp4e1m2_weight_nd_error,true,fp4e1m2_weight_nd_error,,64,256,128,2,false,false,0,ND,FLOAT4_E2M1,FLOAT4_E1M2,FLOAT8-E8M0,FLOAT8-E8M0,FLOAT,BF16,false,false,0,0,
+Ascend950,fp4e1m2_weight_nz_success,true,fp4e1m2_weight_nz_success,,64,256,128,2,false,false,0,NZ,FLOAT4_E2M1,FLOAT4_E1M2,FLOAT8-E8M0,FLOAT8-E8M0,FLOAT,BF16,false,true,0,0,

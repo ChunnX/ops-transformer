@@ -446,7 +446,7 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::Process(
                 gS1Index, actualSeqQlenAddr, this->pseInfo);
             bool s2NoNeedCalc = ComputeS2LoopInfo<CHILD_SPEC_TEMPLATE_ARGS, useDn, enableKVPrefix>(runParam, constInfo);
             bool lastLoopThisCore = lastBN && (gS1Index == runParam.s1LoopTimes - 1);
-            bool lastBnNoNeedCalc = ComputeLastBN<CHILD_SPEC_TEMPLATE_ARGS, useDn, enableKVPrefix>(runParam,
+            bool lastBnNoNeedCalc = ComputeLastBN<CHILD_SPEC_TEMPLATE_ARGS, useDn, enableKVPrefix>(runParam, constInfo,
                 actualSeqQlenAddr);
             if (((s1NoNeedCalc || s2NoNeedCalc) && !lastLoopThisCore) || lastBnNoNeedCalc) {
                 continue;

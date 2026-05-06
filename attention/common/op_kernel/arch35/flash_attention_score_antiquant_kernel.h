@@ -69,8 +69,6 @@ public:
     static constexpr uint32_t kvAntiquantResSize = s2BaseSize * dTemplateAlign64 * sizeof(Q_T);
     static constexpr uint32_t mm1ResultSize = s1BaseSize / CV_RATIO * s2BaseSize * sizeof(T);
     static constexpr uint32_t mm2ResultSize = s1BaseSize / CV_RATIO * dTemplateAlign64 * sizeof(T);
-    static constexpr bool PAGE_ATTENTION_ANTIQUANT = (antiquantMode == AntiquantTypeEnum::PER_TOKEN_PAGE_ATTENTION ||
-        antiquantMode == AntiquantTypeEnum::PER_TOKEN_HEAD_PAGE_ATTENTION);
     static constexpr bool ANTIQUANT = !IsSameType<Q_T, KV_T>::value;
     static constexpr bool useDn = false;
     __aicore__ inline FlashAttentionScoreAntiquantKernel() {};
@@ -219,6 +217,7 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
     if ASCEND_IS_AIV {
         if constexpr (ANTIQUANT) {
             this->vecBlock.antiqSeqSize = inputParamsRegbase.antiquantParaSeqSize;
+            this->vecBlock.antiquantPageAttentionFlag = inputParamsRegbase.antiquantPageAttentionFlag;
             this->vecBlock.antiquantPerTensorFlag = inputParamsRegbase.antiquantPerTensorFlag;
             this->vecBlock.antiquantPerHeadFlag = inputParamsRegbase.antiquantPerHeadFlag;
         }
@@ -353,7 +352,7 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
     if constexpr (isFd) {
         this->constInfo.splitKVNum = inputParamsRegbase.kvSplitPart;
         this->constInfo.sInnerLoopSize = CeilDiv(this->constInfo.s2Size, this->constInfo.splitKVNum);
-        if constexpr (PAGE_ATTENTION_ANTIQUANT) {
+        if (inputParamsRegbase.antiquantPerTensorFlag) {
             this->constInfo.sInnerLoopSize = AlignUp32(static_cast<uint64_t>(this->constInfo.sInnerLoopSize));
         }
         if constexpr (isPa) {

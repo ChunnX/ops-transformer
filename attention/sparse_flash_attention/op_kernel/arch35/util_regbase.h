@@ -182,6 +182,7 @@ struct RunInfo {
     int64_t s1BaseBN2GDv; \
     int32_t s1BaseDv; \
     int32_t s2BaseDv; \
+    bool returnSoftmaxLse; \
     /* matmul跳读参数 */ \
     int64_t mm1Ka; \
     /* dq 或者attentionOut的Stride */ \
@@ -247,8 +248,8 @@ struct RunInfo {
     uint32_t cmpBlockSize : 12; \
     uint32_t oriMaxBlockNumPerBatch; \
     uint32_t cmpMaxBlockNumPerBatch; \
-    uint32_t usedCoreNum
-
+    uint32_t usedCoreNum; \
+    bool returnSoftmaxLse
 
 struct ConstInfo {
     COMMON_CONST_INFO;

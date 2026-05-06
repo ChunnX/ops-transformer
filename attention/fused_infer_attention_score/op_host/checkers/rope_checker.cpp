@@ -236,22 +236,47 @@ ge::graphStatus RopeChecker::CheckTensorlistKeyAndKeyRopeShapeConsistency(const 
     // k_s = krope_s
     const std::string inputLayout = fiaInfo.opParamInfo.layOut;
     int64_t keyRopeS = 0;
+    int64_t keyRopeN = 0;
     if (inputLayout == "BNSD" || inputLayout == "BNSD_BSND") {
         keyRopeS = keyRopeShape.GetDim(DIM_NUM_2);
+        keyRopeN = keyRopeShape.GetDim(DIM_NUM_1);
         for (uint32_t i = 0; i < fiaInfo.kCache.size(); i++) {
             const gert::Shape keyShape = fiaInfo.kCache[i]->GetStorageShape();
             OP_CHECK_IF(keyShape.GetDim(DIM_NUM_2) != keyRopeS,
                 OP_LOGE(fiaInfo.opName, "The axis S of keyRope(%ld) should be equal to key(%ld).",
                     keyRopeS, keyShape.GetDim(DIM_NUM_2)),
                 return ge::GRAPH_FAILED);
+            OP_CHECK_IF(keyShape.GetDim(DIM_NUM_1) != keyRopeN,
+                OP_LOGE(fiaInfo.opName, "The axis N of keyRope(%ld) should be equal to key(%ld).",
+                    keyRopeN, keyShape.GetDim(DIM_NUM_1)),
+                return ge::GRAPH_FAILED);
         }
-    } else {
+    } else if (inputLayout == "BSH") {
         keyRopeS = keyRopeShape.GetDim(DIM_NUM_1);
+        keyRopeN = keyRopeShape.GetDim(DIM_NUM_2) / fiaInfo.ropeHeadDim;
         for (uint32_t i = 0; i < fiaInfo.kCache.size(); i++) {
             const gert::Shape keyShape = fiaInfo.kCache[i]->GetStorageShape();
             OP_CHECK_IF(keyShape.GetDim(DIM_NUM_1) != keyRopeS,
                 OP_LOGE(fiaInfo.opName, "The axis S of keyRope(%ld) should be equal to key(%ld).",
                     keyRopeS, keyShape.GetDim(DIM_NUM_1)),
+                return ge::GRAPH_FAILED);
+            OP_CHECK_IF(keyShape.GetDim(DIM_NUM_2) / fiaInfo.qkHeadDim != keyRopeN,
+                OP_LOGE(fiaInfo.opName, "The axis N of keyRope(%ld) should be equal to key(%ld).",
+                    keyRopeN, keyShape.GetDim(DIM_NUM_2) / fiaInfo.qkHeadDim),
+                return ge::GRAPH_FAILED);
+        }
+    } else {
+        keyRopeS = keyRopeShape.GetDim(DIM_NUM_1);
+        keyRopeN = keyRopeShape.GetDim(DIM_NUM_2);
+        for (uint32_t i = 0; i < fiaInfo.kCache.size(); i++) {
+            const gert::Shape keyShape = fiaInfo.kCache[i]->GetStorageShape();
+            OP_CHECK_IF(keyShape.GetDim(DIM_NUM_1) != keyRopeS,
+                OP_LOGE(fiaInfo.opName, "The axis S of keyRope(%ld) should be equal to key(%ld).",
+                    keyRopeS, keyShape.GetDim(DIM_NUM_1)),
+                return ge::GRAPH_FAILED);
+            OP_CHECK_IF(keyShape.GetDim(DIM_NUM_2) != keyRopeN,
+                OP_LOGE(fiaInfo.opName, "The axis N of keyRope(%ld) should be equal to key(%ld).",
+                    keyRopeN, keyShape.GetDim(DIM_NUM_2)),
                 return ge::GRAPH_FAILED);
         }
     }

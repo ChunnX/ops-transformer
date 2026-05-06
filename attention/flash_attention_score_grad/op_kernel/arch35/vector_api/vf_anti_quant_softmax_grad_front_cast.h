@@ -14,6 +14,7 @@
 #ifndef MY_ANTI_QUANT_SOFTMAX_GRAD_CAST_INTERFACE_H_
 #define MY_ANTI_QUANT_SOFTMAX_GRAD_CAST_INTERFACE_H_
 #include "kernel_tensor.h"
+#include "vf_common_utils.h"
  
 namespace AscendC {
 #ifndef __CCE_KT_TEST__
@@ -792,5 +793,5 @@ __aicore__ inline void MyAntiQuantSoftmaxGradFrontCast(const LocalTensor<T> &dst
 }
 #endif
 } // namespace AscendC
- 
+
 #endif // _MY_ANTI_QUANT_SOFTMAX_GRAD_CAST_INTERFACE_H_

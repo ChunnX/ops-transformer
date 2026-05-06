@@ -21,7 +21,14 @@
 #include "aclnn_kernels/common/op_error_check.h"
 #include "moe_distribute_dispatch_v2_base.h"
 #include "aclnnInner_moe_distribute_dispatch_v2.h"
+
+#ifdef BUILD_OPEN_PROJECT
+#include "version/hcomm_version.h"
+#define HCCL_CHANNEL_SUPPORT_VERSION 90000000
+#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 #include "common/op_api/mc2_context.h"
+#endif
+#endif
 
 using namespace Ops::Transformer;
 using namespace op;
@@ -35,6 +42,7 @@ extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
 
 extern "C" void *NnopbaseGetUserHandle(void *executor);
 
+#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 extern aclnnStatus aclnnInnerMoeDistributeDispatchV3GetWorkspaceSize(
     const aclTensor *context, const aclTensor *x, const aclTensor *expertIds, const aclTensor *scales,
     const aclTensor *xActiveMask, const aclTensor *expertScales, const aclTensor *elasticInfo,
@@ -52,6 +60,7 @@ enum class CommType : uint64_t {
     AIV = 0, // AIV通信设置为0
     CCU = 1  // ccu通信设置为1
 };
+#endif
 
 bool DispatchCheckNotNull(const aclTensor *x, const aclTensor *expertIds, const char *groupEp,
                           [[maybe_unused]] const char *groupTp, aclTensor *expandX,
@@ -98,6 +107,7 @@ aclnnStatus DispatchCheckParams(const aclTensor *x, const aclTensor *expertIds, 
 
 static void SetCommArgs(const bool is950, const bool is910B, const char *commAlg, aclOpExecutor **executor)
 {
+#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
     if (is950) {
         void *arg = reinterpret_cast<void *>(static_cast<uintptr_t>(CommType::AIV)); // 默认MTE为0
         if (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0) {
@@ -105,6 +115,7 @@ static void SetCommArgs(const bool is950, const bool is910B, const char *commAlg
         }
         NnopbaseSetUserHandle(*executor, arg);
     }
+#endif
 
     if (NnopbaseSetHcclServerType) { // 给ACLnn框架指定通讯方式。
         if (is910B) {
@@ -155,6 +166,7 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
             copyExpertNum, constExpertNum, ydtype, expandXOut, dynamicScalesOut, assistInfoForCombineOut,
             expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut, expandScalesOut, workspaceSize, executor);
     } else {
+#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
         uint64_t hcclBuffSize = 0;
         const char *opName = "moe_distribute_dispatch_combine_v2";
         auto ret = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
@@ -166,6 +178,7 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
             const_cast<char *>(commAlg), zeroExpertNum, copyExpertNum, constExpertNum, ydtype, expandXOut,
             dynamicScalesOut, assistInfoForCombineOut, expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut,
             expandScalesOut, workspaceSize, executor);
+#endif
     }
     SetCommArgs(is950, is910B, commAlg, executor);
     return getWorkspaceSizesRes;
@@ -174,6 +187,7 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
 aclnnStatus aclnnMoeDistributeDispatchBase(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                            aclrtStream stream)
 {
+#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
     const static bool is950 = GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
     if (is950) {
         void *arg = NnopbaseGetUserHandle(executor);
@@ -184,6 +198,7 @@ aclnnStatus aclnnMoeDistributeDispatchBase(void *workspace, uint64_t workspaceSi
             return aclnnInnerMoeDistributeDispatchV3(workspace, workspaceSize, executor, stream); // mte走新模版
         }
     }
+#endif
     return aclnnInnerMoeDistributeDispatchV2(workspace, workspaceSize, executor, stream);
 }
 

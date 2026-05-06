@@ -292,7 +292,7 @@ function(add_ops_info_target)
 
     if (ENABLE_BUILT_IN)
         install(FILES ${OPS_INFO_JSON}
-                DESTINATION ops_transformer/built-in/op_impl/ai_core/tbe/config/${OPINFO_COMPUTE_UNIT} OPTIONAL
+                DESTINATION opp/built-in/op_impl/ai_core/tbe/config/${OPINFO_COMPUTE_UNIT} OPTIONAL
         )
     else()
         install(FILES ${OPS_INFO_JSON}
@@ -507,7 +507,7 @@ function(add_bin_compile_target)
     cmake_parse_arguments(BINARY "" "COMPUTE_UNIT" "OP_INFO" ${ARGN})
 
     if (ENABLE_BUILT_IN)
-        set(_INSTALL_DIR ops_transformer/built-in/op_impl/ai_core/tbe/kernel)
+        set(_INSTALL_DIR opp/built-in/op_impl/ai_core/tbe/kernel)
     else()
         set(_INSTALL_DIR packages/vendors/${VENDOR_NAME}_transformer/op_impl/ai_core/tbe/kernel)
     endif()
@@ -576,6 +576,9 @@ function(add_bin_compile_target)
  	                endif()
                     get_filename_component(_depend_op_name "${depend_info}" NAME)
                     set(_depend_op_target ${_depend_op_name}_${BINARY_COMPUTE_UNIT}_src_copy)
+                    if("${_depend_op_name}" STREQUAL "common")
+                        continue()
+                    endif()
                     add_ops_src_copy(
                             TARGET_NAME
                             ${_depend_op_target}
@@ -702,6 +705,9 @@ function(add_bin_compile_target)
             endif ()
             add_dependencies(${OP_TARGET_NAME}_${op_index} ${OP_TARGET_NAME}_src_copy ${OP_TARGET_NAME}_py_copy ${OP_TARGET_NAME}_mkdir)
             add_dependencies(${OP_TARGET_NAME}_${op_index} generate_compile_cmd)
+            if(TARGET common_src_copy)
+                add_dependencies(${OP_TARGET_NAME}_${op_index} common_src_copy)
+            endif()
             add_dependencies(${OP_TARGET_NAME} ${OP_TARGET_NAME}_${op_index})
         endif ()
     endforeach()
@@ -847,7 +853,7 @@ function(pack_tiling_sink)
 
   if(ENABLE_BUILT_IN)
     set(TRANSFORMER_OPMASTER_SO ${BINARY_DIR}/libtiling_device_transformer.so)
-    set(INSTALL_DIR "ops_transformer/built-in/op_impl/ai_core/tbe/op_tiling_device/lib")
+    set(INSTALL_DIR "opp/built-in/op_impl/ai_core/tbe/op_tiling_device/lib")
   else()
     set(TRANSFORMER_OPMASTER_SO ${BINARY_DIR}/libcust_opmaster.so)
     set(INSTALL_DIR "packages/vendors/${VENDOR_NAME}_transformer/op_impl/ai_core/tbe/op_master_device/lib")

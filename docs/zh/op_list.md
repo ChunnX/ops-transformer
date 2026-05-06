@@ -599,6 +599,16 @@
   </tr>
   <tr>
     <td>mc2</td>
+    <td><a href="../../mc2/mega_moe/README.md">mega_moe</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>完成dispatch + group_matmul1 + swiglu_quant + group_matmul2 + combine的端到端融合计算。</td>
+  </tr>
+  <tr>
+    <td>mc2</td>
     <td><a href="../../mc2/moe_distribute_combine/README.md">moe_distribute_combine</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -956,6 +966,16 @@
     <td>✓</td>
     <td>AI Core</td>
     <td>基于一系列计算对mHC架构中上一层输出进行Post Mapping，对上一层的输入进行Res Mapping，然后对二者进行残差连接，得到下一层的输入</td>
+  </tr>
+   <tr>
+    <td>mhc</td>
+    <td><a href="../../mhc/mhc_post_backward/README.md">mhc_post_backward</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>mhc_post基于一系列计算对mHC架构中上一层输出进行Post Mapping，对上一层的输入进行Res Mapping，然后对二者进行残差连接，得到下一层的输入。该算子实现前述过程的反向</td>
   </tr>
   <tr>
     <td>mhc</td>

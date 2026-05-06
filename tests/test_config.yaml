@@ -145,6 +145,8 @@ attention:
       - attention/nsa_compress
     options:
       - nsa_compress
+    test:
+      ut: False
 
   nsa_compress_attention:
     module: True
@@ -186,7 +188,7 @@ attention:
     options:
       - nsa_compress_grad
     test:
-        ut: False
+      ut: False
 
   nsa_compress_with_cache:
     module: True
@@ -242,6 +244,8 @@ attention:
       - attention/nsa_selected_attention_infer
     options:
       - nsa_selected_attention_infer
+    test:
+      ut: False
 
   prompt_flash_attention:
     module: True
@@ -1316,7 +1320,9 @@ mc2:
       options:
         - distribute_barrier
         - moe_distribute_dispatch_v2
+        - moe_distribute_dispatch_v3
         - moe_distribute_combine_v2
+        - moe_distribute_combine_v3
 
     elastic_receivable_info_collect:
       module: True
@@ -1414,6 +1420,9 @@ mc2:
       options:
         - moe_distribute_combine_add_rms_norm
         - moe_distribute_dispatch_v2
+        - moe_distribute_dispatch_v3
+        - moe_distribute_combine_v2
+        - moe_distribute_combine_v3
 
     moe_distribute_combine_setup:
       module: True
@@ -1450,6 +1459,48 @@ mc2:
         examples: False
       options:
         - moe_distribute_combine_teardown
+    
+    moe_distribute_dispatch_setup:
+      module: True
+      src:
+        - mc2/moe_distribute_dispatch_setup
+        - mc2/common
+        - mc2/3rd
+      exclude:
+        - mc2/moe_distribute_dispatch_setup/docs
+        - mc2/moe_distribute_dispatch_setup/README.md
+      ut_cov_exclude:
+        - mc2/moe_distribute_dispatch_setup/op_api
+        - mc2/moe_distribute_dispatch_setup/op_graph
+        - mc2/moe_distribute_dispatch_setup/op_kernel
+      test:
+        examples: False
+      options:
+        - moe_distribute_dispatch_setup
+        - moe_distribute_dispatch_teardown
+        - moe_distribute_dispatch_v2
+        - moe_distribute_dispatch_v3
+
+    moe_distribute_dispatch_teardown:
+      module: True
+      src:
+        - mc2/moe_distribute_dispatch_teardown
+        - mc2/common
+        - mc2/3rd
+      exclude:
+        - mc2/moe_distribute_dispatch_teardown/docs
+        - mc2/moe_distribute_dispatch_teardown/README.md
+      ut_cov_exclude:
+        - mc2/moe_distribute_dispatch_teardown/op_api
+        - mc2/moe_distribute_dispatch_teardown/op_graph
+        - mc2/moe_distribute_dispatch_teardown/op_kernel
+      test:
+        examples: False
+      options:
+        - moe_distribute_dispatch_setup
+        - moe_distribute_dispatch_teardown
+        - moe_distribute_dispatch_v2
+        - moe_distribute_dispatch_v3
 
     moe_distribute_combine_v2:
       module: True
@@ -1590,6 +1641,9 @@ mc2:
       options:
         - moe_update_expert
         - moe_distribute_dispatch_v2
+        - moe_distribute_dispatch_v3
+        - moe_distribute_combine_v2
+        - moe_distribute_combine_v3
         - moe_distribute_combine_add_rms_norm
 
     attention_to_ffn:
@@ -1669,6 +1723,19 @@ mhc:
     ut_cov_exclude:
       - mhc/mhc_pre_backward/examples
       - mhc/mhc_pre_backward/tests
+    test:
+      examples: False
+      ut: True
+  mhc_post_backward:
+    module: True
+    src:
+      - mhc/mhc_post_backward
+    exclude:
+      - mhc/mhc_post_backward/docs
+      - mhc/mhc_post_backward/README.md
+    ut_cov_exclude:
+      - mhc/mhc_post_backward/examples
+      - mhc/mhc_post_backward/tests
     test:
       examples: False
       ut: True
