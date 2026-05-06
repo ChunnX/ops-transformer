@@ -19,12 +19,8 @@
 #include "mla_prolog_comm.h"
 #include "mla_prolog_vector_comm.h"
 
-#if __CCE_AICORE__ == 310
-#include "arch35/vf/vf_rms_norm.h"
-#include "arch35/vf/vf_dynamic_quant.h"
-#else
-#include "arch32/rms_norm.h"
-#endif
+#include "vf/vf_rms_norm.h"
+#include "vf/vf_dynamic_quant.h"
 
 namespace MlaProlog {
 
@@ -97,18 +93,10 @@ __aicore__ inline void RmsNormNormal(const LocalTensor<O>& outputLocal, const Gl
     WaitFlag<HardEvent::MTE3_V>(EVENT_ID1);
 
     if constexpr (std::is_same<C, O>::value) {
-        #if __CCE_AICORE__ == 310
         RmsNormVF<C, GammaType, C, C>(outputLocal, xFp32Local, gammaLocal, rmsNormParams);
-        #else
-        RmsNorm(outputLocal, xFp32Local ,gammaLocal, rmsnormShareUB.template ReinterpretCast<uint8_t>(), rmsNormParams);
-        #endif
         AscendC::PipeBarrier<PIPE_V>();
     } else {
-        #if __CCE_AICORE__ == 310
         RmsNormVF<C, GammaType, C, C>(xFp32Local, xFp32Local, gammaLocal, rmsNormParams);
-        #else
-        RmsNorm(xFp32Local, xFp32Local ,gammaLocal, rmsnormShareUB.template ReinterpretCast<uint8_t>(), rmsNormParams);
-        #endif
         // Cast xFp32 to outputLocal
         AscendC::PipeBarrier<PIPE_V>();
         Cast(outputLocal, xFp32Local, RoundMode::CAST_RINT, cnt);
@@ -144,7 +132,6 @@ __aicore__ inline void RmsNormDynamicQuant(const LocalTensor<O>& outputLocal, co
     LocalTensor<C> xFp32Local = shareTmpUb.ReinterpretCast<C>();
     RmsNormNormal<T, GammaType, C, C, U>(xFp32Local, inputGm, gammaLocal, dequantScaleWDqLocal, dequantScaleXLocal, shareTmpUb[rmsNormParams.col * sizeof(C)], rmsNormParams);
     AscendC::PipeBarrier<PIPE_V>();
-#if __CCE_AICORE__ == 310
     if constexpr (std::is_same<O, fp8_e4m3fn_t>::value && std::is_same<U, fp8_e8m0_t>::value) {
         LocalTensor<bfloat16_t> xBf16Local = xFp32Local[cnt].template ReinterpretCast<bfloat16_t>();
         Cast(xBf16Local, xFp32Local, RoundMode::CAST_ROUND, cnt);
@@ -163,20 +150,6 @@ __aicore__ inline void RmsNormDynamicQuant(const LocalTensor<O>& outputLocal, co
         DynamicQuantPerTokenVf(outputLocal, outputScales, xFp32Local, rmsNormParams.row, rmsNormParams.col);
         AscendC::PipeBarrier<PIPE_V>();
     }
-#else
-    if (enableSmoothScalesCq) {
-        Mul(xFp32Local, xFp32Local, smoothLocal, cnt);
-    }
-    AscendC::PipeBarrier<PIPE_V>();
-    LocalTensor<C> maxInt8Tensor = shareTmpUb.ReinterpretCast<C>()[cnt];
-    int64_t rowAlign = Align(rmsNormParams.row, FP32_BLOCK_ELEMENT_NUM);
-    Duplicate<C>(maxInt8Tensor, static_cast<C>(127.0), rowAlign);
-    AscendC::PipeBarrier<PIPE_V>();
-    DynamicQuant(xFp32Local, outputScales, xFp32Local, maxInt8Tensor, shareTmpUb[(cnt + rowAlign) * sizeof(C)], rmsNormParams.row, rmsNormParams.col);
-    AscendC::PipeBarrier<PIPE_V>();
-    CastFP32ToINT8(outputLocal, xFp32Local, shareTmpUb, cnt);
-    AscendC::PipeBarrier<PIPE_V>();
-#endif
 }
 
 } // namespace MlaProlog

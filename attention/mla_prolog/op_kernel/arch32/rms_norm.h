@@ -16,7 +16,7 @@
 #ifndef RMS_NORM_H
 #define RMS_NORM_H
 
-#include "../mla_prolog_comm.h"
+#include "mla_prolog_comm.h"
 namespace MlaProlog {
 /**
  * @brief RmsNorm 对一行进行rmsnorm

@@ -18,10 +18,8 @@
 
 #include "mla_prolog_comm.h"
 #include "mla_prolog_vector_comm.h"
-#if __CCE_AICORE__ == 310
-#include "arch35/vf/vf_mul_qr.h"
-#include "arch35/vf/vf_dynamic_quant.h"
-#endif
+#include "vf/vf_mul_qr.h"
+#include "vf/vf_dynamic_quant.h"
 
 namespace MlaProlog {
 
@@ -56,7 +54,6 @@ __aicore__ inline void DynamicQuantMultiRow(const GlobalTensor<O>& outputGm, con
         SetFlag<HardEvent::MTE2_V>(DYNAMIC_QUANT_INPUT_READY);
         WaitFlag<HardEvent::MTE2_V>(DYNAMIC_QUANT_INPUT_READY); // 搬运是否已经完成可以计算
 
-#if __CCE_AICORE__ == 310
         LocalTensor<O> output = outputLocal.template ReinterpretCast<O>();
         WaitFlag<HardEvent::MTE3_V>(DYNAMIC_QUANT_OUTPUT_READY);
         AscendC::PipeBarrier<PIPE_V>();
@@ -69,28 +66,6 @@ __aicore__ inline void DynamicQuantMultiRow(const GlobalTensor<O>& outputGm, con
         SetFlag<HardEvent::MTE3_V>(DYNAMIC_QUANT_OUTPUT_READY);
         inputGmOffset += subRow * queryOutStride;
         scaleOffset += subRow;
-#else
-        Cast(inputLocal, inputHalf, RoundMode::CAST_NONE, computeSize);
-        SetFlag<HardEvent::V_MTE2>(DYNAMIC_QUANT_INPUT_READY);
-        AscendC::PipeBarrier<PIPE_V>();
-        DynamicQuant(inputLocal, scaleOutputLocal[scaleOffset], inputLocal, maxInt8Tensor, shareTmpUb, subRow, col);
-        AscendC::PipeBarrier<PIPE_V>();
-        // float -> half -> int
-        WaitFlag<HardEvent::MTE3_V>(DYNAMIC_QUANT_OUTPUT_READY); // 搬运是否已经完成可以计算
-        LocalTensor<half> tmpf16Ub = outputLocal.template ReinterpretCast<half>();
-        Cast(tmpf16Ub, inputLocal, AscendC::RoundMode::CAST_ROUND, computeSize);
-        AscendC::PipeBarrier<PIPE_V>();
-        // Calc: out = round(x / scaleOut)
-        LocalTensor<O> tmpMMResCastTensor = outputLocal.template ReinterpretCast<O>();
-        Cast(tmpMMResCastTensor, tmpf16Ub, AscendC::RoundMode::CAST_ROUND, computeSize);
-        SetFlag<HardEvent::V_MTE3>(DYNAMIC_QUANT_OUTPUT_READY);
-        WaitFlag<HardEvent::V_MTE3>(DYNAMIC_QUANT_OUTPUT_READY); // 计算是否已经完成可以搬运
-
-        DataCopy(outputGm[inputGmOffset], tmpMMResCastTensor,  outParams);
-        SetFlag<HardEvent::MTE3_V>(DYNAMIC_QUANT_OUTPUT_READY);
-        inputGmOffset += subRow * queryOutStride;
-        scaleOffset += subRow;
-#endif
     }
 }
 
@@ -132,18 +107,7 @@ __aicore__ inline void MulQr(const GlobalTensor<T>& outputGmRope, const GlobalTe
 
         Cast(qrFp32Local, qrInputLocal[inputLocalRopeOffset], RoundMode::CAST_NONE, computeSizeRope);
         AscendC::PipeBarrier<PIPE_V>();
-#if __CCE_AICORE__ == 310
         MulQrVF(qrFp32Local, qrFp32Local, dequantScaleBrcbLocal, quantScaleCkvRope, computeSizeRope, computeBlockAlign);
-#else
-        Duplicate(reciprocalLocal, quantScaleCkvRope, subRowRope * computeBlockAlign);
-        AscendC::PipeBarrier<PIPE_V>();
-        // cal: quantScaleCkv / dequantScaleQn
-        Div(reciprocalLocal, reciprocalLocal, dequantScaleBrcbLocal[dequantScaleOffset], subRowRope * computeBlockAlign);
-        AscendC::PipeBarrier<PIPE_V>();
-        // cal: x * quantScaleCkv / dequantScaleQn
-        RowMuls(qrFp32Local, qrFp32Local, reciprocalLocal, Rectangle{(uint32_t)subRowRope, (uint32_t)colRope, (uint32_t)colRope});
-        AscendC::PipeBarrier<PIPE_V>();
-#endif
         Cast(outputLocalRope, qrFp32Local, RoundMode::CAST_RINT, computeSizeRope);
         AscendC::PipeBarrier<PIPE_V>();
 

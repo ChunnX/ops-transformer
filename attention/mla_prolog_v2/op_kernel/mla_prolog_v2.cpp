@@ -14,13 +14,20 @@
  */
 
 #define MLA_PROLOG_VERSION 2
-#if __has_include("../../mla_prolog/op_kernel/kernel_mla_prolog_split_n.h")
-#include "../../mla_prolog/op_kernel/kernel_mla_prolog_split_n.h"
-#else
-#include "../mla_prolog/kernel_mla_prolog_split_n.h"
-#endif
 
-using namespace MlaProlog;
+#if __CCE_AICORE__ == 310
+#if __has_include("../../mla_prolog/op_kernel/arch35/kernel_mla_prolog_split_n.h")
+#include "../../mla_prolog/op_kernel/arch35/kernel_mla_prolog_split_n.h"
+#else
+#include "../mla_prolog/arch35/kernel_mla_prolog_split_n.h"
+#endif
+#else
+#if __has_include("../../mla_prolog/op_kernel/arch32/kernel_mla_prolog_split_n.h")
+#include "../../mla_prolog/op_kernel/arch32/kernel_mla_prolog_split_n.h"
+#else
+#include "../mla_prolog/arch32/kernel_mla_prolog_split_n.h"
+#endif
+#endif
 
 template<uint8_t CacheMode, uint8_t Scenario, uint8_t QuantMode,
          bool EnableDequantOpt, bool EnableGroupComputeOpt, uint8_t EmptyTensorMode,
