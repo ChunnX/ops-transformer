@@ -28,7 +28,8 @@ class Network(torch.nn.Module):
 
     def forward(self, q, ori_kv, cmp_kv, cmp_sparse_indices, ori_block_table, 
         cmp_block_table, cu_seqlens_q, seqused_kv, sinks, metadata, kv_quant_mode, tile_size, rope_head_dim, 
-        softmax_scale, cmp_ratio, ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, layout_q, layout_kv):
+        softmax_scale, cmp_ratio, ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, layout_q, layout_kv,
+        ori_kv_scale, cmp_kv_scale):
         npu_result, _ = torch_npu.npu_kv_quant_sparse_attn_sharedkv(
                                             q=q,
                                             ori_kv=ori_kv,
@@ -50,7 +51,9 @@ class Network(torch.nn.Module):
                                             ori_win_left=ori_win_left,
                                             ori_win_right=ori_win_right,
                                             layout_q=layout_q,
-                                            layout_kv=layout_kv)
+                                            layout_kv=layout_kv,
+                                            ori_kv_scale=ori_kv_scale,
+                                            cmp_kv_scale=cmp_kv_scale)
         return npu_result
 
 def test_sas_quant_process_graph(test_data, device_id=0):
@@ -124,7 +127,9 @@ def test_sas_quant_process_graph(test_data, device_id=0):
                             ori_win_left=input['ori_win_left'],
                             ori_win_right=input['ori_win_right'],
                             layout_q=input['layout_q'],
-                            layout_kv=input['layout_kv'])
+                            layout_kv=input['layout_kv'],
+                            ori_kv_scale=input['ori_kv_scale'],
+                            cmp_kv_scale=input['cmp_kv_scale'])
 
     torch.npu.synchronize()
     print("npu_kv_quant_sparse_attn_sharedkv...")
@@ -149,7 +154,9 @@ def test_sas_quant_process_graph(test_data, device_id=0):
                             ori_win_left=input['ori_win_left'],
                             ori_win_right=input['ori_win_right'],
                             layout_q=input['layout_q'],
-                            layout_kv=input['layout_kv'])  
+                            layout_kv=input['layout_kv'],
+                            ori_kv_scale=input['ori_kv_scale'],
+                            cmp_kv_scale=input['cmp_kv_scale'])  
     return npu_result, cpu_output
 
 def test_sas_quant_process_ci(test_data, device_id=0):
@@ -210,7 +217,9 @@ def test_sas_quant_process_ci(test_data, device_id=0):
                                                         ori_win_left=input['ori_win_left'],
                                                         ori_win_right=input['ori_win_right'],
                                                         layout_q=input['layout_q'],
-                                                        layout_kv=input['layout_kv'])
+                                                        layout_kv=input['layout_kv'],
+                                                        ori_kv_scale=input['ori_kv_scale'],
+                                                        cmp_kv_scale=input['cmp_kv_scale'])
 
     torch.npu.synchronize()
 

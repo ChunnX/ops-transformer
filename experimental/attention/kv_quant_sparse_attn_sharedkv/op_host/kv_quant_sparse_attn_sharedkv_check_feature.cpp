@@ -102,8 +102,9 @@ ge::graphStatus KvQuantSASTilingCheck::CheckFeatureAntiquantDtype() const
 
 ge::graphStatus KvQuantSASTilingCheck::CheckFeatureAntiquantAttr() const
 {
-    OP_CHECK_IF(*opParamInfo_.kvQuantMode != 1,
-        OP_LOGE(opName_, "kv_quant_mode_ only support 1, but got %ld",
+    // 1 for fp8_e4m3fn per-tile and 10 for hif8 per-tensor
+    OP_CHECK_IF(*opParamInfo_.kvQuantMode != 1 && *opParamInfo_.kvQuantMode != 10,
+        OP_LOGE(opName_, "kv_quant_mode_ only support 1 and 10, but got %ld",
         *opParamInfo_.kvQuantMode),
         return ge::GRAPH_FAILED);
 
