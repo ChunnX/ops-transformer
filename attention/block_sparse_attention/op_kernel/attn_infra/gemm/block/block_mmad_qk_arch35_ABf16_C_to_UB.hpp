@@ -325,7 +325,8 @@ public:
                         tla::MakeCoord(mL0Itr * L0_TILE_M, 0), tla::MakeShape(l0TileMAct, l0TileNAct));
                     for (uint32_t kL0Itr = 0; kL0Itr < kL0LoopNum; kL0Itr++) {
                         uint32_t l0ALoopCounter = prefixSumL0AStages + GetCurLoopCounter(mL0Itr, kL0LoopNum, kL0Itr);
-                        uint32_t l0BLoopCounter = prefixSumL0BStages + GetCurLoopCounter(lNLoopCounterL0, kL0LoopNum, kL0Itr);
+                        uint32_t l0BLoopCounter =
+                            prefixSumL0BStages + GetCurLoopCounter(lNLoopCounterL0, kL0LoopNum, kL0Itr);
                         uint32_t l0TileKAct = (kL0Itr == kL0LoopNum - 1) ?
                             (embed - kL0Itr * L0_TILE_K) : L0_TILE_K;
                         uint32_t l0ABufId = l0ALoopCounter % L0_STAGES;
@@ -334,8 +335,8 @@ public:
                         uint32_t l0BEventId = l0BBufId + 2;
                         // when L0B buffers wouldn't be reused across the k loop
                         // redundant L0B load caused by m loop can be avoided
-                        auto l1BTensorTlaTile = GetTile(l1BTensorTla,
-                            tla::MakeCoord(kL0Itr * L0_TILE_K, nL0Itr * L0_TILE_N), tla::MakeShape(l0TileKAct, l0TileNAct));
+                        auto l1BTensorTlaTile = GetTile(l1BTensorTla, tla::MakeCoord(kL0Itr * L0_TILE_K,
+                            nL0Itr * L0_TILE_N), tla::MakeShape(l0TileKAct, l0TileNAct));
                         auto l0BLayoutTla = tla::MakeLayout<ElementB, LayoutTagL0B>(l0TileKAct, l0TileNAct);
                         auto l0BTensorTla = tla::MakeTensor(l0BTensor[l0BBufId], l0BLayoutTla, Arch::PositionL0B{});
                         
@@ -346,8 +347,8 @@ public:
                             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(l1BEventId);
                         }
 
-                        auto l1ATensorTlaTile = GetTile(l1ATensorTla,
-                            tla::MakeCoord(mL0Itr * L0_TILE_M, kL0Itr * L0_TILE_K), tla::MakeShape(l0TileMAct, l0TileKAct));
+                        auto l1ATensorTlaTile = GetTile(l1ATensorTla, tla::MakeCoord(mL0Itr * L0_TILE_M,
+                            kL0Itr * L0_TILE_K), tla::MakeShape(l0TileMAct, l0TileKAct));
                         auto l0ALayoutTla = tla::MakeLayout<ElementA, LayoutTagL0A>(l0TileMAct, l0TileKAct);
                         auto l0ATensorTla = tla::MakeTensor(l0ATensor[l0ABufId], l0ALayoutTla, Arch::PositionL0A{});
                         bool l1ToL0ANoRepeatFlag = (mL0LoopNum == 1) && (kL0LoopNum <= L0_STAGES);
