@@ -29,7 +29,7 @@
 
   其中，$S_{t-1},S_t \in \mathbb{R}^{D_v \times D_k}$，$q_t, k_t \in \mathbb{R}^{D_k}$，$v_t \in \mathbb{R}^{D_v}$，$\alpha_t \in \mathbb{R}$，$\beta_t \in \mathbb{R}$，$o_t \in \mathbb{R}^{D_v}$。
   
-  Chunked Gated Delta Rule (CGDR)是GDR的chunk版实现([参考论文](https://arxiv.org/abs/2412.06464))，它通过将输入序列切块，实现了一定的并行效果，在长上下文场景其计算效率相对Recurrent Gated Delta Rule更高，适用于prefill阶段。输入一个长度为L的序列，CGDR算子可以计算出每一步的输出 $o_t, t \in \{1, .., L\}$ 以及最终的状态矩阵 $S_L$。
+  Chunked Gated Delta Rule是GDR的chunk版实现([参考论文](https://arxiv.org/abs/2412.06464))，它通过将输入序列切块，实现了一定的并行效果，在长上下文场景其计算效率相对Recurrent Gated Delta Rule更高，适用于prefill阶段。输入一个长度为L的序列，CGDR算子可以计算出每一步的输出 $o_t, t \in \{1, .., L\}$ 以及最终的状态矩阵 $S_L$。
 
 
 ## 函数原型
@@ -91,7 +91,7 @@ aclnnStatus aclnnChunkGatedDeltaRule(
       <td>query</td>
       <td>输入</td>
       <td>公式中的q。</td>
-      <td><ul><li>不支持空Tensor。</li></td>
+      <td>不支持空Tensor。</td>
       <td>BFLOAT16</td>
       <td>ND</td>
       <td>(T, Nk, Dk)</td>
@@ -101,7 +101,7 @@ aclnnStatus aclnnChunkGatedDeltaRule(
       <td>key</td>
       <td>输入</td>
       <td>公式中的k。</td>
-      <td><ul><li>不支持空Tensor。</li></td>
+      <td>不支持空Tensor。</td>
       <td>BFLOAT16</td>
       <td>ND</td>
       <td>(T, Nk, Dk)</td>
@@ -111,7 +111,7 @@ aclnnStatus aclnnChunkGatedDeltaRule(
       <td>value</td>
       <td>输入</td>
       <td>公式中的v。</td>
-      <td><ul><li>不支持空Tensor。</li></td>
+      <td>不支持空Tensor。</td>
       <td>BFLOAT16</td>
       <td>ND</td>
       <td>(T, Nv, Dv)</td>
@@ -121,7 +121,7 @@ aclnnStatus aclnnChunkGatedDeltaRule(
       <td>beta</td>
       <td>输入</td>
       <td>公式中的β。</td>
-      <td><ul><li>不支持空Tensor。</li></td>
+      <td>不支持空Tensor。</td>
       <td>BFLOAT16</td>
       <td>ND</td>
       <td>(T, Nv)</td>
@@ -131,7 +131,7 @@ aclnnStatus aclnnChunkGatedDeltaRule(
       <td>initialState</td>
       <td>输入</td>
       <td>初始状态矩阵S_0。</td>
-      <td><ul><li>不支持空Tensor。</li></td>
+      <td>不支持空Tensor。</td>
       <td>BFLOAT16</td>
       <td>ND</td>
       <td>(B, Nv, Dv, Dk)</td>
@@ -141,7 +141,7 @@ aclnnStatus aclnnChunkGatedDeltaRule(
       <td>actualSeqLengths</td>
       <td>输入</td>
       <td>不同batch的有效序列长度。</td>
-      <td><ul><li>不支持空Tensor。</li></td>
+      <td>不支持空Tensor。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B,)</td>
@@ -151,7 +151,7 @@ aclnnStatus aclnnChunkGatedDeltaRule(
       <td>gOptional</td>
       <td>输入</td>
       <td>衰减系数的指数，公式中的α=e^g。</td>
-      <td><ul><li>不支持空Tensor。</li><li>如果传入nullptr，则表示全0的tensor。</li></td>
+      <td>可选输入。<ul><li>不支持空Tensor。</li><li>如果传入nullptr，则表示全0的tensor。</li></ul></td>
       <td>FLOAT32</td>
       <td>ND</td>
       <td>(T, Nv)</td>
