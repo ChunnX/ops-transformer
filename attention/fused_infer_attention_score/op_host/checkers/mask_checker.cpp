@@ -199,7 +199,7 @@ ge::graphStatus MaskChecker::CheckFeatureSparseMode(const FiaTilingInfo &fiaInfo
                     "In %s situation, when sparse is %d, query_padding_size or kv_padding_size should be not exist.",
                     QuantModeToSerialString(fiaInfo.quantMode).c_str(), sparseMode),
             return ge::GRAPH_FAILED);
-
+        // 不支持PSE
         OP_CHECK_IF(fiaInfo.pseShiftFlag,
             OP_LOGE(fiaInfo.opName,
                     "In %s situation, when sparse is %d, pse_shift should be not exist.",
@@ -218,7 +218,6 @@ ge::graphStatus MaskChecker::CheckFeatureSparseMode(const FiaTilingInfo &fiaInfo
                     QuantModeToSerialString(fiaInfo.quantMode).c_str(), sparseMode,
                     static_cast<int32_t>(fiaInfo.outputType)),
             return ge::GRAPH_FAILED);
-
         // s2 >= s1拦截
         // tiling下沉场景 由于actualSeqlen得不到，所以不进行校验
         if (fiaInfo.isMaxWorkspace) {
