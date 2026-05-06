@@ -250,7 +250,8 @@ extern "C" aclnnStatus InnerAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize(
     const aclTensor *mmWeightOptional, const aclTensor *mmXScaleOptional, const aclTensor *mmWeightScaleOptional,
     const char *group, int64_t epWorldSize, const aclIntArray *sendCounts, const aclIntArray *recvCounts,
     int64_t gmmXQuantMode, int64_t gmmWeightQuantMode, bool transGmmWeight, bool transMmWeight, bool permuteOutFlag,
-    int64_t mmXQuantMode, int64_t mmWeightQuantMode, int64_t groupSize, aclTensor *gmmY, aclTensor *mmYOptional,
+    int64_t mmXQuantMode, int64_t mmWeightQuantMode, int64_t groupSize, const char* commMode,
+    aclTensor *gmmY, aclTensor *mmYOptional,
     aclTensor *permuteOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     int64_t yDtype = gmmY->GetDataType();
@@ -260,7 +261,7 @@ extern "C" aclnnStatus InnerAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize(
         gmmX, gmmWeight, gmmXScale, gmmWeightScale, sendCountsTensorOptional, recvCountsTensorOptional,
         mmXOptional, mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, group, epWorldSize, sendCounts,
         recvCounts, gmmXQuantMode, gmmWeightQuantMode, transGmmWeight, transMmWeight, permuteOutFlag,
-        mmXQuantMode, mmWeightQuantMode, groupSize, yDtype, mmDtype, "aicpu",
+        mmXQuantMode, mmWeightQuantMode, groupSize, yDtype, mmDtype, commMode,
         gmmY, mmYOptional, permuteOutOptional, workspaceSize, executor);
     OP_LOGD("AlltoAllvQuantGroupedMatmul, aclnnnInnerGetWorkspaceSize ret %d.", ret);
     return ret;
@@ -325,7 +326,7 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize(
         gmmX, transposeGmmWeight, gmmXScale, gmmWeightScale, sendCountsTensorOptional, recvCountsTensorOptional,
         mmXOptional, mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, group, epWorldSize, sendCounts,
         recvCounts, gmmXQuantMode, gmmWeightQuantMode, transGmmWeight, transMmWeight, permuteOutFlag, mmXQuantMode,
-        mmWeightQuantMode, groupSize, gmmY, mmYOptional, permuteOutOptional, workspaceSize, executor);
+        mmWeightQuantMode, groupSize, commMode, gmmY, mmYOptional, permuteOutOptional, workspaceSize, executor);
 
     if (ret == ACLNN_SUCCESS && *executor != nullptr) {
         char* commModePtr = new char[strlen(commMode) + 1];
