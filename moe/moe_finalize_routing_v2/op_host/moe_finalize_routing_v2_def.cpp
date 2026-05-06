@@ -62,39 +62,15 @@ public:
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("x")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_BF16, ge::DT_BF16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("a1")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_BF16, ge::DT_BF16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("a2")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_BF16, ge::DT_BF16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("v")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_BF16, ge::DT_BF16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
         this->Output("y")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_BF16, ge::DT_BF16})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
         this->Attr("drop_pad_mode").AttrType(OPTIONAL).Int(0);
-        this->Attr("zero_expert_range").AttrType(OPTIONAL).ListInt({});
-        this->Attr("copy_expert_range").AttrType(OPTIONAL).ListInt({});
-        this->Attr("constant_expert_range").AttrType(OPTIONAL).ListInt({});
+        this->Attr("zero_expert_range").AttrType(OPTIONAL).ListInt({-1, -1});
+        this->Attr("copy_expert_range").AttrType(OPTIONAL).ListInt({-1, -1});
+        this->Attr("constant_expert_range").AttrType(OPTIONAL).ListInt({-1, -1});
         OpAICoreConfig membaseCfg;
         membaseCfg.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
@@ -325,42 +301,6 @@ public:
             .UnknownShapeFormat(
                 {ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        config310p.Input("x")
-            .ParamType(REQUIRED)
-            .DataType(
-                {ge::DT_FLOAT16, ge::DT_FLOAT})
-            .Format(
-                {ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat(
-                {ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
-        config310p.Input("a1")
-            .ParamType(REQUIRED)
-            .DataType(
-                {ge::DT_FLOAT16, ge::DT_FLOAT})
-            .Format(
-                {ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat(
-                {ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
-        config310p.Input("a2")
-            .ParamType(REQUIRED)
-            .DataType(
-                {ge::DT_FLOAT16, ge::DT_FLOAT})
-            .Format(
-                {ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat(
-                {ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
-        config310p.Input("v")
-            .ParamType(REQUIRED)
-            .DataType(
-                {ge::DT_FLOAT16, ge::DT_FLOAT})
-            .Format(
-                {ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat(
-                {ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
         config310p.Output("y")
             .ParamType(REQUIRED)
             .DataType(
@@ -434,30 +374,6 @@ private:
         config_kirin.Input("expert_idx")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_INT32, ge::DT_INT32})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
-        config_kirin.Input("x")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
-        config_kirin.Input("a1")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
-        config_kirin.Input("a2")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
-            .AutoContiguous();
-        config_kirin.Input("v")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_FLOAT})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();

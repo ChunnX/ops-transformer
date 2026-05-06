@@ -37,8 +37,8 @@ aclnnStatus aclnnMoeFinalizeRoutingV3GetWorkspaceSize(
     const aclTensor *scalesOptional,
     const aclTensor *expertIdxOptional,
     const aclTensor* xOptional,
-    const aclTensor* a1Optional,
-    const aclTensor* a2Optional,
+    const aclTensor* alpha1Optional,
+    const aclTensor* alpha2Optional,
     const aclTensor* vOptional,
     int64_t           dropPadMode,
     const aclIntArray* zeroExpertRange,
@@ -164,7 +164,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV3(
     <td>√</td>
   </tr>
   <tr>
-    <td>a1Optional</td>
+    <td>alpha1Optional</td>
     <td>输入</td>
     <td>公式中的a1。</td>
     <td>-</td>
@@ -174,7 +174,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV3(
     <td>√</td>
   </tr>
   <tr>
-    <td>a2Optional</td>
+    <td>alpha2Optional</td>
     <td>输入</td>
     <td>公式中的a2。</td>
     <td>-</td>

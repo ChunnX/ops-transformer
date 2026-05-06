@@ -1,6 +1,6 @@
 # 环境部署
 
-在学习[QuickStart](../../QUICKSTART.md)或各类[学习教程](../../../README.md#学习教程)操作之前，请您先参考下面步骤完成基础环境搭建和源码下载，确保已安装NPU驱动、固件和CANN软件（`Ascend-cann-toolkit`和`Ascend-cann-ops`）等。
+在学习各类[学习教程](../../../README.md#学习教程)操作之前，请您先参考下面步骤完成基础环境搭建和源码下载，确保已安装NPU驱动、固件和CANN软件（`Ascend-cann-toolkit`和`Ascend-cann-ops`）等。
 
 ## 环境安装
 
@@ -15,19 +15,21 @@
 | ----- | ------ | ------ |
 |  WebIDE  | 一站式开发平台，提供在线直接运行的昇腾环境，无需手动安装。<br>当前可提供单机算力，**默认安装最新商发版CANN包**。 | 适用于没有昇腾设备的开发者。|
 |  Docker  | Docker镜像是一种高效部署方式，已预集成CANN包和必备依赖。<br>当前仅适用于Atlas A2系列产品，OS仅支持Ubuntu操作系统。**默认安装最新商发版CANN包**。 |适用有昇腾设备，需要快速搭建环境的开发者。|
-|  手动安装  | - |适用有昇腾设备，想体验手动安装CANN包或体验最新master分支能力的开发者。|
+|  手动安装  | 手动安装CANN包和基础依赖，灵活性高。 |适用有昇腾设备，想体验手动安装CANN包或体验最新master分支能力的开发者。|
 
 ### 方式1：WebIDE环境
 
-对于无昇腾设备的开发者，可直接使用WebIDE开发平台，即“**算子一站式开发平台**”，该平台为您提供在线可直接运行的昇腾环境，环境中已安装必备的驱动固件、软件包和依赖，无需手动安装。
+对于无昇腾设备的开发者，可直接使用WebIDE开发平台，即“**一站式开发平台**”，该平台为您提供在线可直接运行的昇腾环境，环境中已安装必备的驱动固件、软件包和依赖，无需手动安装。
 
-> **说明**：环境默认安装最新商发版CANN包，源码下载时注意与软件配套。更多关于开发平台的介绍请参考[LINK](https://gitcode.com/org/cann/discussions/54)。
+> **说明**：环境默认安装最新商发版CANN包，源码下载时注意与软件配套。更多关于开发平台的介绍请参考[WebIDE指导](https://gitcode.com/org/cann/discussions/54)。
 
 1. 进入开源项目，单击“`云开发`”按钮，使用已认证过的华为云账号登录。若未注册或认证，请根据页面提示进行注册和认证。
 
    <img src="../figures/cloudIDE.png" alt="云平台"  width="750px" height="90px">
 
-2. 根据页面提示创建并启动云开发环境，单击“`连接 > WebIDE`”进入算子一站式开发平台，开源项目的源码资源默认在`/mnt/workspace`目录下。
+2. 根据页面提示创建NPU环境并配置规格，启动云开发环境后，单击“`连接 > WebIDE`”进入一站式开发平台。
+
+    当前开源项目资源默认在`/mnt/workspace/gitCode/${gitCode_id}`目录下，\$\{gitCode\_id\}表示开发者个人gitCode账号。
 
    <img src="../figures/webIDE.png" alt="云平台"  width="1000px" height="150px">
 
@@ -84,6 +86,8 @@ docker run --name cann_container --device /dev/davinci0 --device /dev/davinci_ma
 
 对于有昇腾设备的开发者，若您想手动搭建昇腾环境，请参考下述步骤。
 
+#### 安装软件
+
 - **场景1：体验master版本能力或基于master版本进行开发**
 
     1. **安装驱动与固件（运行态依赖）**
@@ -122,6 +126,44 @@ docker run --name cann_container --device /dev/davinci0 --device /dev/davinci_ma
 - **场景2：体验已发布版本能力或基于已发布版本进行开发**
 
     请访问[CANN官网下载中心](https://www.hiascend.com/cann/download)，选择发布版本（仅支持CANN 8.5.0及后续版本），并根据产品型号和环境架构下载对应包，最后参考网页提供的命令完成安装。
+
+#### 安装基础依赖
+
+本项目基础依赖如下，注意满足版本号要求。
+
+- python >= 3.7.0（建议版本 <= 3.10）
+- gcc >= 7.3.0
+- cmake >= 3.16.0
+- pigz（可选，安装后可提升打包速度，建议版本 >= 2.4）
+- dos2unix
+- gawk
+- make
+- patch
+- googletest（仅执行UT时依赖，建议版本 [release-1.11.0](https://github.com/google/googletest/releases/tag/release-1.11.0)）
+
+上述依赖可通过项目脚本一键安装，操作步骤如下：
+
+1. 下载源码。
+
+    下载与CANN版本配套的分支源码，命令如下，\$\{tag\_version\}替换为分支标签名。
+   
+    ```bash
+    git clone -b ${tag_version} https://gitcode.com/cann/ops-transformer.git
+    ```
+    
+2. 安装依赖。
+
+    先通过项目根目录install\_deps.sh一键安装上述依赖，命令如下，若遇到不支持系统，请参考该文件自行适配。
+
+    ```bash
+    bash install_deps.sh
+    ```
+    
+    安装完后，再通过项目根目录requirements.txt继续安装python三方库依赖，命令如下。
+
+    ```bash
+    pip3 install -r requirements.txt
+    ```
 
 ## 环境验证
 

@@ -133,6 +133,7 @@ public:
     uint8_t isRowInvalid;
     uint8_t isPostQuantPerChnl;
     uint8_t isPostQuantBF16;
+    uint8_t antiquantPageAttentionFlag;        // antiquantMode == 4 or 5
     uint16_t antiquantPerTensorFlag;
     uint16_t antiquantPerHeadFlag;
     uint32_t antiquantParaSeqSize;
@@ -283,6 +284,11 @@ public:
     void set_antiquantPerTensorFlag(uint16_t antiquantPerTensorFlagParam) {this->antiquantPerTensorFlag = antiquantPerTensorFlagParam;}
     uint16_t get_antiquantPerHeadFlag() const {return antiquantPerHeadFlag;}
     void set_antiquantPerHeadFlag(uint16_t antiquantPerHeadFlagParam) {this->antiquantPerHeadFlag = antiquantPerHeadFlagParam;}
+    uint8_t get_antiquantPageAttentionFlag() const {return antiquantPageAttentionFlag;}
+    void set_antiquantPageAttentionFlag(uint8_t antiquantPageAttentionFlag)
+    {
+        this->antiquantPageAttentionFlag = antiquantPageAttentionFlag;
+    }
     uint32_t get_antiquantParaSeqSize() const {return antiquantParaSeqSize;}
     void set_antiquantParaSeqSize(uint32_t antiquantParaSeqSizeParam) {this->antiquantParaSeqSize = antiquantParaSeqSizeParam;}
     uint8_t get_tndSoftmaxOut() const {return tndSoftmaxOut;}

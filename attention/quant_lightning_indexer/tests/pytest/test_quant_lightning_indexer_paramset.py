@@ -42,7 +42,6 @@ TEST_PARAMS = {
         "weights_datarange":[[-130,130]],
         "q_scale_datarange":[[0,255]],
         "k_scale_datarange":[[0,65504]],
-        "cmp_ratio":[1] #1/2/4/8/16/32/64/128
     },
 }
 

@@ -172,11 +172,10 @@ __aicore__ inline void AdjustActualS1Size(RunParamStr<isInfer>& runParam,
                     runParam.actualS2Size + runParam.preTokensPerBatch :
                     runParam.actualS1Size;
             }
-
-            // 计算S1的尾块大小，非对齐
-            if (runParam.nextTokensPerBatch < 0) {
-                runParam.actualS1Size = runParam.actualS1Size + runParam.nextTokensPerBatch;
-            }
+        }
+        // 计算S1的尾块大小，非对齐
+        if (runParam.nextTokensPerBatch < 0) {
+            runParam.actualS1Size = runParam.actualS1Size + runParam.nextTokensPerBatch;
         }
     }
 
@@ -401,12 +400,18 @@ TEMPLATE_INTF
 __aicore__ inline void ComputeS1LoopInfo(RunParamStr<isInfer>& runParam, const ConstInfo<isInfer, hasRope> &constInfo,
     bool lastBN, int64_t nextGs1Idx)
 {
+    static constexpr bool isFp8 = IsSameType<INPUT_T, fp8_e5m2_t>::value ||
+                                  IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
+                                  IsSameType<INPUT_T, hifloat8_t>::value;
+    static constexpr bool isInt8 = IsSameType<INPUT_T, int8_t>::value;
     constexpr int32_t s1BaseSize = static_cast<int32_t>(s1TemplateType);
     int32_t s1LoopTimes;
     if constexpr (hasRope && (dTemplateType == DTemplateType::Aligned576)) {
         s1LoopTimes = CeilDiv(runParam.actualS1Size, s1BaseSize);
-        runParam.s1LoopTimes = s1LoopTimes;
-        return;
+        if constexpr (!isFp8 && !isInt8) {
+            runParam.s1LoopTimes = s1LoopTimes;
+            return;
+        }
     } else {
         if (constInfo.isGqa) {
             s1LoopTimes = CeilDiv(runParam.actualS1Size * constInfo.gSize, s1BaseSize);
@@ -639,12 +644,21 @@ __aicore__ inline bool ComputeParamS1(RunParamStr<isInfer>& runParam, const Cons
 }
 
 TEMPLATE_INTF
-__aicore__ inline bool ComputeLastBN(RunParamStr<isInfer>& runParam, __gm__ int64_t *actualSeqQlenAddr) 
+__aicore__ inline bool ComputeLastBN(RunParamStr<isInfer>& runParam, const ConstInfo<isInfer, hasRope> &constInfo,
+    __gm__ int64_t *actualSeqQlenAddr)
 {
     if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
         // TND格式下 相邻Batch中当actualSeqQlen相等时则返回true
         if (runParam.boIdx > 0 && actualSeqQlenAddr[runParam.boIdx] - actualSeqQlenAddr[runParam.boIdx - 1] == 0) {
             return true;
+        }
+    } else {
+        if (!constInfo.isActualLenDimsNull) {
+            if (constInfo.actualSeqLenSize == 1) {
+                return actualSeqQlenAddr[0] == 0;
+            } else {
+                return actualSeqQlenAddr[runParam.boIdx] == 0;
+            }
         }
     }
     return false;

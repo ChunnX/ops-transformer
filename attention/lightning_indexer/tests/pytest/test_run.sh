@@ -16,17 +16,17 @@ PATH1="./excel/*"
 PATH2="./pt_path"
 
 # 脚本路径
-QLI_PT_SAVE_SCRIPT="./batch/lightning_indexer_pt_save.py"
-TEST_QLI_BATCH_SCRIPT="test_lightning_indexer_batch.py"
+LI_PT_SAVE_SCRIPT="./batch/lightning_indexer_pt_save.py"
+TEST_LI_BATCH_SCRIPT="test_lightning_indexer_batch.py"
 REPLACE_PATH_SCRIPT="./batch/replace_path.py"
-TEST_QLI_SINGLE_SCRIPT="test_lightning_indexer_single.py"
+TEST_LI_SINGLE_SCRIPT="test_lightning_indexer_single.py"
 
 # ====================== 执行区======================
 
 # 单用例算子调测
 run_single() {
     echo "===== 执行单用例算子调测 ====="
-    python3 -m pytest -rA -s $TEST_QLI_SINGLE_SCRIPT -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning
+    python3 -m pytest -rA -s $TEST_LI_SINGLE_SCRIPT -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning
 }
 
 # 用例批量生成调试
@@ -34,21 +34,21 @@ run_batch() {
     echo "===== 执行用例批量生成测试 ====="
 
     echo -e "\n===== 第一步：执行lightning_indexer_pt_save.py ====="
-    python3 $QLI_PT_SAVE_SCRIPT $PATH1 $PATH2
+    python3 $LI_PT_SAVE_SCRIPT $PATH1 $PATH2
     if [ $? -ne 0 ]; then
         echo "lightning_indexer_pt_save.py 执行失败，退出"
         exit 1
     fi
 
     echo -e "\n===== 第二步：替换test_lightning_indexer_batch.py中的路径 ====="
-    python3 $REPLACE_PATH_SCRIPT $TEST_QLI_BATCH_SCRIPT $PATH2
+    python3 $REPLACE_PATH_SCRIPT $TEST_LI_BATCH_SCRIPT $PATH2
     if [ $? -ne 0 ]; then
         echo "替换路径失败，退出"
         exit 1
     fi
 
     echo -e "\n===== 第三步：执行pytest命令 ====="
-    python3 -m pytest -rA -s $TEST_QLI_BATCH_SCRIPT -v -m ci
+    python3 -m pytest -rA -s $TEST_LI_BATCH_SCRIPT -v -m ci
     if [ $? -ne 0 ]; then
         echo "pytest执行失败"
         exit 1

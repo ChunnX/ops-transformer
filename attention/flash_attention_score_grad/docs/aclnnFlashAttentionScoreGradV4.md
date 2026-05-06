@@ -136,6 +136,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
 ## aclnnFlashAttentionScoreGradV4GetWorkspaceSize
 
 - **参数说明：**
+  
   <table style="undefined;table-layout: fixed; width: 1565px">
   <colgroup>
     <col style="width: 146px">
@@ -224,7 +225,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>dropMaskOptional</td>
       <td>可选输入</td>
       <td>公式中的Dropout。</td>
-      <td>-</td>
+      <td>支持[B,N,S,S]</td>
       <td>UINT8</td>
       <td>ND</td>
       <td>0、1</td>
@@ -279,7 +280,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>softmaxMaxOptional</td>
       <td>可选输入</td>
       <td>注意力正向计算的中间输出。</td>
-      <td>shape=[B,N,Sq,8],[N,T,8]。</td>
+      <td>shape=[B,N,Sq,8],[N,T,8],[T,N,8]。</td>
       <td>FLOAT</td>
       <td>ND</td>
       <td>0、4</td>
@@ -289,7 +290,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>softmaxSumOptional</td>
       <td>可选输入</td>
       <td>注意力正向计算的中间输出。</td>
-      <td>shape=[B,N,Sq,8],[N,T,8]。</td>
+      <td>shape=[B,N,Sq,8],[N,T,8],[T,N,8]。</td>
       <td>FLOAT</td>
       <td>ND</td>
       <td>0、4</td>
@@ -459,7 +460,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>inputLayout</td>
       <td>输入</td>
       <td>query/key/value的数据排布格式。</td>
-      <td>支持BSH、SBH、BSND、BNSD。</td>
+      <td>支持BSH、SBH、BSND、BNSD、TND。</td>
       <td>String</td>
       <td>-</td>
       <td>-</td>
@@ -627,7 +628,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
     </tr>
   </tbody>
   </table>
-
+  
 - **返回值：**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。

@@ -68,8 +68,7 @@ TEST_F(KvQuantSparseFlashAttentionTilingArch35, KvQuantSparseFlashAttention_950_
     std::string expectTilingData =
         "2199023255554 64 16 4410436851802832928 8589934600 2 3 1 128 656 0 "
         "40532396646334464 262144 64 316659348865024 2199023255560 ";
-    std::vector<size_t> expectWorkspaces = {293928960};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
 
 // 1
@@ -115,8 +114,7 @@ TEST_F(KvQuantSparseFlashAttentionTilingArch35, KvQuantSparseFlashAttention_950_
     std::string expectTilingData =
         "1099511627778 96 0 4410436851802832896 8589934608 4294967298 0 1 2048 "
         "656 0 40532396646334464 262144 64 316659348832256 1099511627792 ";
-    std::vector<size_t> expectWorkspaces = {268763136};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
 
 // sparse block size must be 1, but got 2

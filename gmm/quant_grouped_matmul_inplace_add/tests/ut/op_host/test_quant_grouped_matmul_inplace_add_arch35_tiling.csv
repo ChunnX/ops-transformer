@@ -1,0 +1,9 @@
+socVersion,caseName,enable,prefix,groupNum,m,k,n,xDtype,wDtype,scale2Dtype,scale1Dtype,yDtype,groupListType,result,tilingKey,scale2Shape,scale1Shape
+Ascend950,mxfp8_basic_valid,true,mxfp8_basic_valid,4,96,512,128,FLOAT8-E5M2,FLOAT8-E5M2,FLOAT8-E8M0,FLOAT8-E8M0,FLOAT,0,true,NONE,12:128:2,12:96:2
+Ascend950,mxfp8_scale2_shape_invalid,true,mxfp8_scale2_shape_invalid,4,96,512,128,FLOAT8-E5M2,FLOAT8-E5M2,FLOAT8-E8M0,FLOAT8-E8M0,FLOAT,0,false,NONE,12:52:2,12:96:2
+Ascend950,hif8_tc_valid,true,hif8_tc_valid,4,96,512,128,HIFLOAT8,HIFLOAT8,FLOAT,FLOAT,FLOAT,0,true,NONE,4:128,4
+Ascend950,hif8_tc_scale1_invalid,true,hif8_tc_scale1_invalid,4,96,512,128,HIFLOAT8,HIFLOAT8,FLOAT,FLOAT,FLOAT,0,false,NONE,4:128,5
+Ascend950,hif8_tc_scale2_invalid,true,hif8_tc_scale2_invalid,4,96,512,128,HIFLOAT8,HIFLOAT8,FLOAT,FLOAT,FLOAT,0,false,NONE,4:52,4
+Ascend950,y_dtype_invalid,true,y_dtype_invalid,4,96,512,128,HIFLOAT8,HIFLOAT8,FLOAT,FLOAT,FLOAT16,0,false,NONE,4:128,4
+Ascend950,unsupported_dtype_combo,true,unsupported_dtype_combo,4,96,512,128,FLOAT8-E5M2,HIFLOAT8,FLOAT,FLOAT,FLOAT,0,false,NONE,4:128,4
+Ascend950,group_num_over_limit,true,group_num_over_limit,1025,96,512,128,HIFLOAT8,HIFLOAT8,FLOAT,FLOAT,FLOAT,0,false,NONE,1025:128,1025

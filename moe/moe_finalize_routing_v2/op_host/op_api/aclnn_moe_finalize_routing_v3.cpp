@@ -27,15 +27,15 @@ extern "C" {
 ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV3GetWorkspaceSize(
     const aclTensor* expandedX, const aclTensor* expandedRowIdx, const aclTensor* x1Optional,
     const aclTensor* x2Optional, const aclTensor* biasOptional, const aclTensor* scalesOptional,
-    const aclTensor* expertIdxOptional, const aclTensor* xOptional, const aclTensor* a1Optional,
-    const aclTensor* a2Optional, const aclTensor* vOptional, int64_t dropPadMode, const aclIntArray* zeroExpertRange,
-    const aclIntArray* copyExpertRange, const aclIntArray* constantExpertRange, const aclTensor* out,
-    uint64_t* workspaceSize, aclOpExecutor** executor)
+    const aclTensor* expertIdxOptional, const aclTensor* xOptional, const aclTensor* alpha1Optional,
+    const aclTensor* alpha2Optional, const aclTensor* vOptional, int64_t dropPadMode,
+    const aclIntArray* zeroExpertRange, const aclIntArray* copyExpertRange, const aclIntArray* constantExpertRange,
+    const aclTensor* out, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     L2_DFX_PHASE_1(aclnnMoeFinalizeRoutingV3,
         DFX_IN(expandedX, expandedRowIdx, x1Optional, x2Optional, biasOptional,
-               scalesOptional, expertIdxOptional, xOptional, a1Optional,
-               a2Optional, vOptional, dropPadMode, zeroExpertRange,
+               scalesOptional, expertIdxOptional, xOptional, alpha1Optional,
+               alpha2Optional, vOptional, dropPadMode, zeroExpertRange,
                copyExpertRange, constantExpertRange),
         DFX_OUT(out));
 
@@ -90,14 +90,14 @@ ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV3GetWorkspaceSize(
     }
 
     const aclTensor* a1Contiguous = nullptr;
-    if (a1Optional != nullptr) {
-        a1Contiguous = l0op::Contiguous(a1Optional, uniqueExecutor.get());
+    if (alpha1Optional != nullptr) {
+        a1Contiguous = l0op::Contiguous(alpha1Optional, uniqueExecutor.get());
         CHECK_RET(a1Contiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
 
     const aclTensor* a2Contiguous = nullptr;
-    if (a2Optional != nullptr) {
-        a2Contiguous = l0op::Contiguous(a2Optional, uniqueExecutor.get());
+    if (alpha2Optional != nullptr) {
+        a2Contiguous = l0op::Contiguous(alpha2Optional, uniqueExecutor.get());
         CHECK_RET(a2Contiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
 

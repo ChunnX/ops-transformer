@@ -16,15 +16,15 @@
 - 接口功能：训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。**跟[aclnnFlashAttentionScoreV2](./aclnnFlashAttentionScoreV2.md)的区别是该接口支持可变长S的计算，即可以一次传入多个长度不相等的sequence。使用此接口时，query，key和value使用TND的格式传入数据，其中T意为total number，表示其所有sequence的length总和，同时使用actualSeqQLenOptional与actualSeqKvLenOptional传入每个sequence依次的累积长度以区分不同sequence。每个sequence单独计算其注意力结果**。
 - 计算公式：
 
-   注意力的正向计算公式如下：
+  注意力的正向计算公式如下：
 
-   - psetype=1时，与[aclnnFlashAttentionVarLenScore](./aclnnFlashAttentionVarLenScore.md)计算公式相同。
+  - psetype=1时，与[aclnnFlashAttentionVarLenScore](./aclnnFlashAttentionVarLenScore.md)计算公式相同。
 
-   - psetype=其他取值时，公式如下：
+  - psetype=其他取值时，公式如下：
 
-     $$
-     attention\_out=Dropout(Softmax(Mask(scale*(query*key^T) + pse),atten\_mask),keep\_prob)*value
-     $$
+    $$
+    attention\_out=Dropout(Softmax(Mask(scale*(query*key^T) + pse),atten\_mask),keep\_prob)*value
+    $$
 
 ## 函数原型
 
@@ -132,7 +132,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2(
         <td>数据类型与query的数据类型一致，该参数需要与pseType配套使用。</td>
         <td>FLOAT16、BFLOAT16、FLOAT32</td>
         <td>ND</td>
-        <td>[B,N,1024,Skv]、[1,N,1024,Skv]、[B,N]、[N]</td>
+        <td>[B,N,1024,Skv]、[1,N,1024,Skv]、[pseTotalLen]、[B,N]、[N]</td>
         <td>√</td>
       </tr>
       <tr>
@@ -461,6 +461,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV2(
 - realShiftOptional：如果Sq大于1024且每个batch的Sq与Skv等长且是sparseMode为0、2、3的下三角掩码场景，可使能alibi位置编码压缩，此时只需要输入原始PSE最后1024行，实现内存优化，即alibi_compress = ori_pse[:, :, -1024:, :]，具体如下：
   - 参数每个batch不相同时，shape为BNHSkv(H=1024)。
   - 每个batch相同时，shape为1NHSkv(H=1024)。
+  - TND场景下，每个batch段内部仍按[N, Sq_i, Skv_i]生成，但存储与传参时统一flatten。若第i个batch段的真实query长度为Sq_i、真实key/value长度为Skv_i，则该段PSE元素个数为N * Sq_i * Skv_i，整段PSE总长度pseTotalLen为sum_i(N * Sq_i * Skv_i)。
   - 如果pseType为2或3的时候，数据类型需为FLOAT32, 对应shape支持范围是[B,N]或[N]。
   - 如果不使能该参数，realShiftOptional需要传入nullptr，pseType需要传入1。
 - pseType各个取值含义

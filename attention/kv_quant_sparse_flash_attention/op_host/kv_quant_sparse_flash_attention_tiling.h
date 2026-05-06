@@ -311,7 +311,7 @@ struct QSFATilingInfo {
 class QSFAMlaTiling {
 public:
     explicit QSFAMlaTiling(gert::TilingContext *context) : context_(context) {}
-    ge::graphStatus DoOpTiling(QSFATilingInfo *sfaaInfo);
+    ge::graphStatus DoOpTiling(QSFATilingInfo *qsfaInfo);
 
 private:
     ge::graphStatus SetBlockDim(uint32_t blockDim) const;
@@ -351,6 +351,8 @@ private:
 
     void CalcBlockDim();
 
+    uint32_t GetTypeSize(ge::DataType dtype) const;
+
     bool balanceModeFlag_ = false;
     bool splitKVFlag_ = false;
 
@@ -383,13 +385,13 @@ private:
     uint32_t mBaseSize_ = 128;
     uint32_t mFdBaseSize_ = 8;
 
-    QSFATilingInfo *sfaaInfo_ = nullptr;
+    QSFATilingInfo *qsfaInfo_ = nullptr;
 };
 
 // -----------算子Tiling入参信息解析及Check类---------------
 class QSFATilingCheck {
 public:
-    explicit QSFATilingCheck(const QSFATilingInfo &sfaaInfo) : sfaaInfo_(sfaaInfo) {};
+    explicit QSFATilingCheck(const QSFATilingInfo &qsfaInfo) : qsfaInfo_(qsfaInfo) {};
     ~QSFATilingCheck() = default;
     ge::graphStatus Process();
 private:
@@ -437,7 +439,6 @@ private:
     void SetQSFAShapeCompare();
     ge::graphStatus CheckKVDType();
     ge::graphStatus CheckKVShapeForBatchContinuous();
-    uint32_t GetTypeSize(ge::DataType dtype) const;
     ge::graphStatus CheckKVShapeForPageAttention();
     ge::graphStatus CheckKVShape();
     ge::graphStatus CheckKV();
@@ -470,7 +471,7 @@ private:
     const char *opName_;
     fe::PlatFormInfos *platformInfo_;
     QSFAParaInfo opParamInfo_;
-    const QSFATilingInfo &sfaaInfo_;
+    const QSFATilingInfo &qsfaInfo_;
 
     uint32_t bSize_ = 0;
     uint32_t n1Size_ = 0;
@@ -566,8 +567,8 @@ public:
     ge::graphStatus GetGSize();
     ge::graphStatus GetSparseBlockCount();
     ge::graphStatus GetActualseqInfo();
-    void GenerateInfo(QSFATilingInfo &sfaaInfo);
-    ge::graphStatus Parse(QSFATilingInfo &sfaaInfo);
+    void GenerateInfo(QSFATilingInfo &qsfaInfo);
+    ge::graphStatus Parse(QSFATilingInfo &qsfaInfo);
 
 public:
     bool HasAxis(const QSFAAxis &axis, const QSFALayout &layout, const gert::Shape &shape) const;

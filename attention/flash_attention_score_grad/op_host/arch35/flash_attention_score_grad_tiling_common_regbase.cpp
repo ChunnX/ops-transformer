@@ -667,13 +667,15 @@ void CalcleBandDeterParam(FuzzyBaseInfoParamsRegbase& fBaseParams)
 {
     int64_t m{fBaseParams.s1Outer}, n{fBaseParams.s2Outer}, k{static_cast<int64_t>(fBaseParams.aicNum)}, b{fBaseParams.b * fBaseParams.n2};
     int64_t actualCalcS1Token{fBaseParams.s1Token}, actualCalcS2Token{fBaseParams.s2Token};
-    if (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL) ||
-        fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::BAND)) {
-        actualCalcS1Token = actualCalcS1Token + fBaseParams.s1 - fBaseParams.s2;
-        actualCalcS2Token = actualCalcS2Token - fBaseParams.s1 + fBaseParams.s2;
-    }
     int64_t p = CeilDivideBy(actualCalcS1Token, fBaseParams.s1Inner * fBaseParams.s1CvRatio) + 1;
     int64_t q = CeilDivideBy(actualCalcS2Token, fBaseParams.s2Inner * fBaseParams.s2CvRatio) + 1;
+    // band场景若是全计算，走dense分核
+    if (m - p < 2 && n - q < 2) {
+        OP_LOGD("CalcleBandDeterParam", "Change to DETER_DENSE.");
+        fBaseParams.deterSparseType = static_cast<uint32_t>(DeterSparseType::DETER_DENSE);
+        return;
+    }
+
     q = q > n ? n : q;
     p = p > m ? m : p;
 
@@ -723,8 +725,8 @@ void CalcleCausalDeterParam(FuzzyBaseInfoParamsRegbase& fBaseParams)
     if (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL) && m > n) {
         int64_t skipM = (fBaseParams.s1 - fBaseParams.s2) / (fBaseParams.s1Inner * fBaseParams.s1CvRatio);
         m -= skipM;
-    } else if (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::NO_MASK) ||
-               (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::LEFT_UP_CAUSAL) && n > m)) {
+    } else if ((fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::NO_MASK) ||
+               fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::LEFT_UP_CAUSAL)) && n > m) {
         n = m;
     } else if (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL) && m < n) {
         fBaseParams.deterSparseType = static_cast<uint32_t>(DeterSparseType::DETER_BAND);
@@ -1269,11 +1271,13 @@ ge::graphStatus ProcessSparseModeInfo(const gert::TilingContext *context_, Fuzzy
 
     auto attenMask = context_->GetOptionalInputDesc(INPUT_IDX_ATTEN_MASK);
     if (attenMask != nullptr) {
-        if (attenMask->GetDataType() == fBaseParams.queryType) {
-            fBaseParams.attenMaskDtype = static_cast<uint32_t>(AttenDataType::ATTEN_MASK_TYPE_SAME);
-        } else {
-            fBaseParams.attenMaskDtype = static_cast<uint32_t>(AttenDataType::ATTEN_MASK_TYPE_U8_BOOL);
-        }
+        auto attenMaskType = attenMask->GetDataType();
+        OP_CHECK_IF(attenMaskType != ge::DT_BOOL && attenMaskType != ge::DT_UINT8,
+                    OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(),
+                                                "invalid attenMask dtype[%s], only support bool or uint8.",
+                                                ge::TypeUtils::DataTypeToSerialString(attenMaskType).c_str()),
+                    return ge::GRAPH_FAILED);
+        fBaseParams.attenMaskDtype = static_cast<uint32_t>(AttenDataType::ATTEN_MASK_TYPE_U8_BOOL);
     }
 
     fBaseParams.bandIdx = FindBandIdx(fBaseParams);

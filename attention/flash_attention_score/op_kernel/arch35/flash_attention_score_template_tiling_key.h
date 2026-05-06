@@ -511,7 +511,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(HasRope, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(OutDtype, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(Regbase, ASCENDC_TPL_UI_LIST, 1),
-        ASCENDC_TPL_TILING_STRUCT_SEL(optiling::FlashAttentionScoreSimplifiedTilingData)
+        ASCENDC_TPL_TILING_STRUCT_SEL(optiling::FlashAttentionScoreEmptyInputTilingDataRegbase)
     ),
 );
 #endif

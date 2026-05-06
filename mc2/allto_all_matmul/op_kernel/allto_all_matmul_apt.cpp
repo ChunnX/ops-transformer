@@ -53,13 +53,13 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
 #endif
 
 #ifndef ALLTO_ALL_KC_QUANT_MATMUL_IMPL
-#define ALLTO_ALL_KC_QUANT_MATMUL_IMPL(tilingData, pipe, MMDataTypeX1)                                                 \
+#define ALLTO_ALL_KC_QUANT_MATMUL_IMPL(tilingData, pipe, MMDataTypeX1, isSmallK)                                       \
     do {                                                                                                               \
         DEFINE_MC2_HCCL_FOR_COMMUNICATION(false, HcclServerType::HCCL_SERVER_TYPE_CCU, MC2AlltoAllContext,             \
                                           AlltoAllQuantMatmulTilingData, MC2AlltoAllPrimitives, 0, 1,                  \
                                           CommunicationType);                                                          \
         CommunicationType commImplName(&tilingData);                                                                   \
-        DEFINE_MC2_FP8_DYNAMIC_QUANT_PERTOKEN(DTYPE_X1, MMDataTypeX1, TransAndDynamicQuantType);                       \
+        DEFINE_MC2_FP8_DYNAMIC_QUANT_PERTOKEN(DTYPE_X1, MMDataTypeX1, TransAndDynamicQuantType, isSmallK);             \
         TransAndDynamicQuantType dynamicQuantImplName(&pipe);                                                          \
         DEFINE_MC2_MATMUL_CONTEXT_FOR_MATMUL_COMPUTATION_QUANT(ComputationContextType);                                \
         DEFINE_MC2_MATMUL_FOR_MATMUL_COMPUTATION_QUANT(ComputationType, MMDataTypeX1, DTYPE_X2);                       \
@@ -102,7 +102,7 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
     } while (0)
 #endif
 
-template <uint32_t QUANTMODE, bool X2TRANSPOSE, uint32_t DTYPEBIAS>
+template <uint32_t QUANTMODE, bool X2TRANSPOSE, uint32_t DTYPEBIAS, bool ISSMALLK = false>
 __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR x1_scale, GM_ADDR x2_scale,
                                             GM_ADDR comm_scale, GM_ADDR x1_offset, GM_ADDR x2_offset, GM_ADDR y,
                                             GM_ADDR all2all_out, GM_ADDR workspaceGM, GM_ADDR tilingGM)
@@ -132,9 +132,9 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
     ALLTO_ALL_MX_QUANT_MATMUL_IMPL(tilingData, pipe, uint8_t, true);
 #else
     if constexpr (QUANTMODE == KC_QUANT_FP8E5M2_MODE) {
-        ALLTO_ALL_KC_QUANT_MATMUL_IMPL(tilingData, pipe, float8_e5m2_t);
+        ALLTO_ALL_KC_QUANT_MATMUL_IMPL(tilingData, pipe, float8_e5m2_t, ISSMALLK);
     } else if constexpr (QUANTMODE == KC_QUANT_FP8E4M3_MODE) {
-        ALLTO_ALL_KC_QUANT_MATMUL_IMPL(tilingData, pipe, float8_e4m3_t);
+        ALLTO_ALL_KC_QUANT_MATMUL_IMPL(tilingData, pipe, float8_e4m3_t, ISSMALLK);
     }
 #endif
 #endif

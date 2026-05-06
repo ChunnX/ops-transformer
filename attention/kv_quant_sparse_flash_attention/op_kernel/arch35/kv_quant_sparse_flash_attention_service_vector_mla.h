@@ -183,7 +183,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
         token0Idx = SparseIndicesGm.GetValue(topkBS1Idx + topkKIdx) + runInfo.s2StartIdx;
     }
     topkKIdx += 1;
-    if (unlikely(topkKIdx >= constInfo.sparseBlockCount)) {
+    if (unlikely((topkKIdx >= constInfo.sparseBlockCount) || (s2IdxInBase + 1 >= sparseS2End))) {
         token1Idx = -1;
     } else {
         token1Idx = SparseIndicesGm.GetValue(topkBS1Idx + topkKIdx) + runInfo.s2StartIdx;
@@ -289,6 +289,12 @@ static constexpr MicroAPI::CastTrait castTraitFp8_3 = {MicroAPI::RegLayout::ZERO
 // fp32->fp16
 static constexpr MicroAPI::CastTrait castTraitFp8_4 = {MicroAPI::RegLayout::ONE, MicroAPI::SatMode::NO_SAT,
                                                        MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+// int8->half
+static constexpr MicroAPI::CastTrait castTraitint8_1 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
+                                                        MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+// half->fp32
+static constexpr MicroAPI::CastTrait castTraithalf_1 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
+                                                        MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 
 template <typename Q_T, typename KV_T>
 __simd_vf__ void AntiquantVFImplFp8D448(__ubuf__ int8_t* ubSrcAddr, __ubuf__ Q_T* ubDstAddr, // output first
@@ -299,6 +305,8 @@ __simd_vf__ void AntiquantVFImplFp8D448(__ubuf__ int8_t* ubSrcAddr, __ubuf__ Q_T
     MicroAPI::RegTensor<KV_T> vKvData1;
     MicroAPI::RegTensor<half> vKvDataHalf0;
     MicroAPI::RegTensor<half> vKvDataHalf1;
+    MicroAPI::RegTensor<half> vCastHalfRes0;
+    MicroAPI::RegTensor<half> vCastHalfRes1;
     MicroAPI::RegTensor<float> vCastFp32Res0;
     MicroAPI::RegTensor<float> vCastFp32Res1;
     MicroAPI::RegTensor<float> vMulRes0;
@@ -312,14 +320,15 @@ __simd_vf__ void AntiquantVFImplFp8D448(__ubuf__ int8_t* ubSrcAddr, __ubuf__ Q_T
 
     MicroAPI::MaskReg kvTypeMaskAll = MicroAPI::CreateMask<KV_T, MicroAPI::MaskPattern::ALL>();
     MicroAPI::MaskReg kvRopeTypeMaskAll = MicroAPI::CreateMask<Q_T, MicroAPI::MaskPattern::ALL>();
+    MicroAPI::MaskReg int8MaskAll = MicroAPI::CreateMask<half, MicroAPI::MaskPattern::ALL>();
     MicroAPI::MaskReg fp32MaskAll = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
     uint32_t blockStride = 17; // +1 to solve bank confict
     uint32_t repeatStride = 1;
-    const uint32_t nopeDim = 512;  // 448->512
+    const uint32_t nopeDim = 512;  // 448->512 64
     const uint32_t kvNumPerLoop = 128;
     const uint32_t scaleNumPerLoop = 1;
     const uint32_t tileSize = 128;
-    
+    static constexpr bool isKvInt8 = (IsSameType<KV_T, int8_t>::value);
     // tilesize is 128, deal 128 b8 kv, deal 1 fp32 scale
     for (uint16_t j = 0; j < (nopeDim / kvNumPerLoop); j++) {
         __ubuf__ int8_t* ubSrcTemp = ubSrcAddr + j * kvNumPerLoop;
@@ -335,8 +344,17 @@ __simd_vf__ void AntiquantVFImplFp8D448(__ubuf__ int8_t* ubSrcAddr, __ubuf__ Q_T
             MicroAPI::LoadAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_BRC_B32>(
                 (MicroAPI::RegTensor<float>&)vScale0, ubScaleSrcAddrTemp, combineDim / 4);
 
-            MicroAPI::Cast<float, KV_T, castTraitFp8_1>(vCastFp32Res0, vKvData0, fp32MaskAll);
-            MicroAPI::Cast<float, KV_T, castTraitFp8_1>(vCastFp32Res1, vKvData1, fp32MaskAll);
+            if constexpr (isKvInt8) {
+                // int8 -> half
+                MicroAPI::Cast<half, KV_T, castTraitint8_1>(vCastHalfRes0, vKvData0, int8MaskAll);
+                MicroAPI::Cast<half, KV_T, castTraitint8_1>(vCastHalfRes1, vKvData1, int8MaskAll);
+                // half -> float
+                MicroAPI::Cast<float, half, castTraithalf_1>(vCastFp32Res0, vCastHalfRes0, fp32MaskAll);
+                MicroAPI::Cast<float, half, castTraithalf_1>(vCastFp32Res1, vCastHalfRes1, fp32MaskAll);
+            } else {
+                MicroAPI::Cast<float, KV_T, castTraitFp8_1>(vCastFp32Res0, vKvData0, fp32MaskAll);
+                MicroAPI::Cast<float, KV_T, castTraitFp8_1>(vCastFp32Res1, vKvData1, fp32MaskAll);
+            }
 
             MicroAPI::Mul<float, MicroAPI::MaskMergeMode::ZEROING>(vMulRes0, vCastFp32Res0, vScale0, fp32MaskAll);
             MicroAPI::Mul<float, MicroAPI::MaskMergeMode::ZEROING>(vMulRes1, vCastFp32Res1, vScale0, fp32MaskAll);
@@ -420,7 +438,6 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CalSparseCalSize(const 
         uint32_t aicIdx = constInfo.aivIdx >> 1U;
         uint32_t v0S2SizeFirstCore = CeilDiv(runInfo.s2RealSize, 2);
         uint32_t v0S2SizeSecondCore = runInfo.s2RealSize - v0S2SizeFirstCore;
-        int32_t vecCnt = (aicIdx % 2U == 0) ? (GetSubBlockIdx() == 0 ? 0 : 1) : (GetSubBlockIdx() == 0 ? 2 : 3);
         if (aicIdx % 2U == 0) {
             if (GetSubBlockIdx() == 0) {
                 sparseCalSize = CeilDiv(v0S2SizeFirstCore, 2);
@@ -463,8 +480,8 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec0(
     ProcessSparseKv(outputL1, v0ResGm, runInfo, constInfo);
 
     if constexpr (IS_SPLIT_G) {
-        CrossCoreSetFlag<0, PIPE_MTE3>(15);
-        CrossCoreWaitFlag<0, PIPE_MTE3>(15);
+        CrossCoreSetFlag<QSFA_SYNC_MODE0, PIPE_MTE3>(15);
+        CrossCoreWaitFlag<QSFA_SYNC_MODE0, PIPE_MTE3>(15);
     }
 
     outputL1.SetCrossCore(); // 核间同步
@@ -495,7 +512,7 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessSparseKv(
         int64_t dealRow = 0;
         // 1、copy kv in, gm ->ub
         LocalTensor<KV_T> kvInUb = stage0InQue.AllocTensor<KV_T>();
-        while (dealRow < 16) { // 拷贝满16行或者遇到-1
+        while (dealRow < Min(16, sparseCalSize) && s2<sparseS2End) { // 拷贝满16行或者遇到-1
             GetRealCmpS2Idx(token0Idx, token1Idx, s2, runInfo, constInfo);
             s2 += 2; // 每次搬运2行
             if (token0Idx== -1 && token1Idx == -1) {
@@ -804,7 +821,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
                 s1Size = cuSeqlensQGm.GetValue(bIdx);
             }
         }
-        if (s1Size > s2Size) {
+        if (s1Size > s2Size || (LAYOUT_T == QSFA_LAYOUT::BSND && s1Size < sharedParams.s1Size)) {
             sharedParams.needInit = 1;
             break;
         }
