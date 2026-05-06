@@ -174,7 +174,7 @@ __aicore__ inline void FABlockVecInferMxFullquant<TEMPLATE_ARGS>::InitCubeVecSha
     sharedParams.attenMaskS1Size = inputParamsRegbase.attenMaskS1Size;
     sharedParams.attenMaskS2Size = inputParamsRegbase.attenMaskS2Size;
  
-    if (constInfo.isFd) {
+    if (inputParamsRegbase.isFd) {
         sharedParams.splitKVNum = inputParamsRegbase.kvSplitPart;
     }
     if constexpr (POST_QUANT) {
