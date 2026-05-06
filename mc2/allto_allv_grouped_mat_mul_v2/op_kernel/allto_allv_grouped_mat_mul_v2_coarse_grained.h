@@ -24,6 +24,7 @@
 #include "allto_allv_gmm.h"
 #include "lib/matmul_intf.h"
 #include "allto_allv_grouped_mat_mul_v2_tiling.h"
+#include "allto_allv_grouped_mat_mul_v2_tiling_key.h"
 namespace AscendC {
 using namespace ALLTO_ALLV_GMM;
 

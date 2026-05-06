@@ -20,6 +20,7 @@
 #endif
 #include "lib/hccl/hccl.h"
 #include "../common/a2av_common_tiling.h"
+#include "../../allto_allv_quant_grouped_mat_mul_v2_tiling_key.h"
 
 using namespace AscendC;
 
