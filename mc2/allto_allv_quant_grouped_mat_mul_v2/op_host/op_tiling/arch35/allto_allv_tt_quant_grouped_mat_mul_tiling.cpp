@@ -15,6 +15,8 @@
 
 #include "allto_allv_tt_quant_grouped_mat_mul_tiling.h"
 
+constexpr int COMMMODE_INDEX = 14; // comm_mode is the 15th attr (index 14)
+
 using namespace ge;
 using namespace AscendC;
 using namespace Ops::Transformer::OpTiling;
