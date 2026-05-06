@@ -86,13 +86,32 @@ def generate_actual_seq(S, B, layout=None, T=None):
     """
     if layout == "TND":
         if T is not None:
-            avg = T // B
-            remainder = T % B
+            max_zeros = max(0, B - math.ceil(T / S)) if T > 0 else B - 1
             if T > B * S:
                 print(f"[WARNING] generate_actual_seq: T={T} exceeds B*S={B*S}, truncating to {B*S} (loss={T - B*S} tokens)")
-                avg = S
-                remainder = 0
-            seq_lengths = [avg + 1 if i < remainder else avg for i in range(B)]
+                T = B * S
+                max_zeros = 0
+            
+            num_zeros = random.randint(0, max_zeros) if max_zeros > 0 else 0
+            zero_indices = set(random.sample(range(B), num_zeros))
+            
+            remaining_batches = B - num_zeros
+            if remaining_batches == 0:
+                seq_lengths = [0] * B
+            else:
+                avg = T // remaining_batches
+                remainder = T % remaining_batches
+                
+                seq_lengths = []
+                non_zero_count = 0
+                for i in range(B):
+                    if i in zero_indices:
+                        seq_lengths.append(0)
+                    else:
+                        length = avg + 1 if non_zero_count < remainder else avg
+                        non_zero_count += 1
+                        seq_lengths.append(length)
+            
             random.shuffle(seq_lengths)
             actual_seq = []
             cumsum = 0
