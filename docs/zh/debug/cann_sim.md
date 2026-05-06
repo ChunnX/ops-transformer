@@ -51,11 +51,8 @@ bash build.sh --pkg --soc=Ascend950 --vendor_name=custom --ops=add_example
 cannsim record ./test_aclnn_add_example -s Ascend950 --gen-report
 ```
 
-仿真工具执行日志文件在examples/add_example/examples/build/bin/cannsim_*目录，执行日志文件为
+仿真工具执行日志文件在examples/add_example/examples/build/bin/cannsim_*目录，执行日志文件为 cannsim.log。
 
-```bash
-cannsim.log
-```
 
 从仿真工具日志文件可以看到示例中的打印信息：
 
@@ -117,10 +114,10 @@ cannsim record [options] user_app
 
 3. 命令完成后，会在默认路径或指定的“output”目录下生成以“cannsim_{timestamp}_${user_app}”命名的文件夹，结构示例如下：
 
-    ```bash
-    ├─cannsim_{timestamp}_${user_app}
-    ├── cannsim.log
-    ```
+```bash
+├─cannsim_{timestamp}_${user_app}
+├── cannsim.log
+```
 
 4. 用户可以获取算子执行结果，并进行精度的对比，结果展示在cannsim.log，示例如下
 
@@ -161,12 +158,12 @@ cannsim report [options]
 1. 参考仿真执行执行算子仿真，对比输出示例，确保对应的结果执行正确。
 2. 执行仿真结果解析命令，可参考以下执行用例。
 
-    ```
+    ```bash
     在当前目录下生成性能分析报告（默认仅分析核0）
     cannsim report -e /path/to/cannsim_{timestamp}_${user_app} 
 
     在指定目录下生成核0、核1、核11、核12的性能分析报告
-    cannsim report -e /path/to/cannsim_{timestamp}_${user_app} -o /path/to/report -n ‘0-1, 11-12’
+    cannsim report -e /path/to/cannsim_{timestamp}_${user_app} -o /path/to/report -n '0-1, 11-12'
     ```
 
 3. 命令执行完后，会在output配置的目录下生成对应的流水文件，文件格式为json格式，输出结果示例如下：
@@ -178,7 +175,7 @@ cannsim report [options]
     ```
 
 4. 仿真结果查看
-    在Chrome浏览器中输入“chrome://tracing”地址，并将通过生成指令流水图文件（trace.json）拖到空白处打开，键盘上输入快捷键（W：放大，S：缩小，A：左移，D：右移）可进行查看。
+    在Chrome浏览器中输入“chrome://tracing”地址，并将生成的指令流水图文件（trace.json）拖到空白处打开，键盘上输入快捷键（W：放大，S：缩小，A：左移，D：右移）可进行查看。
     ![指令流水图](../figures/指令流水图.png)
 
     表2 关键字段说明
@@ -215,12 +212,12 @@ cannsim --help
 cannsim record --help
 ```
   
-查询工具 report 子命令的帮助信息： 
-  
+查询工具 report 子命令的帮助信息：
+
  ```bash
  cannsim report --help 
- ``` 
- 
+ ```
+
 ## 参数说明
 
 无
