@@ -33,7 +33,6 @@ BlackList = {
         "moe_distribute_combine_shmem",
         "moe_distribute_dispatch_shmem",
         "rope_matrix",
-        "all_gather_matmul_v2",
         "quant_sals_indexer",
         "quant_sals_indexer_metadata",
         "sparse_flash_attention_antiquant",
@@ -132,7 +131,6 @@ def get_operator_info_from_ci(changed_file_info_from_ci, is_experimental):
 
         for line in lines:
             process_line(line, changed_operators, operator_file_map)
-    print(changed_operators)
 
     return OperatorChangeInfo(changed_operators=list(changed_operators), operator_file_map=operator_file_map)
 
@@ -228,7 +226,7 @@ def get_change_ops_list(changed_file_info_from_ci, is_experimental, soc):
     ops_change_info = get_operator_info_from_ci(changed_file_info_from_ci, is_experimental)
     if not ops_change_info:
         logging.info("[INFO] not found ops change info, run all c++.")
-        return None, None
+        return None
 
     op_to_def_files = find_def_cpp_files(ops_change_info.changed_operators,
                                          ops_change_info.operator_file_map,
@@ -240,15 +238,18 @@ def get_change_ops_list(changed_file_info_from_ci, is_experimental, soc):
         soc
     )
     
-    return ";".join(filtered_operators), valid_def_files
+    if not filtered_operators:
+        if soc == "ascend950":
+            filtered_operators = ["all_gather_matmul_v2"]
+            logging.info("[INFO] No operators found for ascend950, using default: all_gather_matmul_v2")
+        elif soc == "ascend910b":
+            filtered_operators = ["nsa_compress_attention_infer"]
+            logging.info("[INFO] No operators found for ascend910b, using default: nsa_compress_attention_infer")
+    
+    return ";".join(filtered_operators)
 
 
 if __name__ == '__main__':
     soc = sys.argv[3] if len(sys.argv) > 3 else ''
-    ops_str, def_cpp_files = get_change_ops_list(sys.argv[1], sys.argv[2], soc)
-    if ops_str:
-        print("def.cpp files:")
-        for f in def_cpp_files:
-            print(f)
-        print("\nchanged_operators:")
-        print(ops_str)
+    ops_str = get_change_ops_list(sys.argv[1], sys.argv[2], soc)
+    print(ops_str)
