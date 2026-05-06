@@ -21,21 +21,21 @@ file(GLOB_RECURSE ARCH35_CHECKER_SRC_FILES
     ${ATTENTION_SRC}/fused_infer_attention_score/op_host/checkers/*checker*.cpp)
 set(src_files
   ${ATTENTION_SRC}/common/op_host/fia_tiling_info.cpp
-  ${ATTENTION_SRC}/common/op_host/arch32/fia_tiling_nonquant_mla.cpp
-  ${ATTENTION_SRC}/common/op_host/arch32/fia_tiling_nonquant.cpp
-  ${ATTENTION_SRC}/common/op_host/arch32/fia_tiling_empty_tensor.cpp
+  ${ATTENTION_SRC}/common/op_host/arch22/fia_tiling_nonquant_mla.cpp
+  ${ATTENTION_SRC}/common/op_host/arch22/fia_tiling_nonquant.cpp
+  ${ATTENTION_SRC}/common/op_host/arch22/fia_tiling_empty_tensor.cpp
   ${ATTENTION_SRC}/common/op_host/arch35/fia_tiling_nonquant_gqa.cpp
   ${ATTENTION_SRC}/common/op_host/fia_tiling_shape.cpp
   ${ATTENTION_SRC}/common/op_host/split_core.cpp
   ${ATTENTION_SRC}/common/op_host/split_core_v2.cpp
   ${ATTENTION_SRC}/fused_infer_attention_score/op_host/fused_infer_attention_score_tiling.cpp
   ${ATTENTION_SRC}/fused_infer_attention_score/op_host/fused_infer_attention_score_tiling_info_parser.cpp
-  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch32/fused_infer_attention_score_tiling_check.cpp
-  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch32/fused_infer_attention_score_tiling_check_single_para.cpp
-  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch32/fused_infer_attention_score_tiling_check_existence.cpp
-  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch32/fused_infer_attention_score_tiling_check_feature.cpp
-  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch32/fused_infer_attention_score_tiling_check_consistency.cpp
-  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch32/fused_infer_attention_score_tiling_v3.cpp
+  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch22/fused_infer_attention_score_tiling_check.cpp
+  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch22/fused_infer_attention_score_tiling_check_single_para.cpp
+  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch22/fused_infer_attention_score_tiling_check_existence.cpp
+  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch22/fused_infer_attention_score_tiling_check_feature.cpp
+  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch22/fused_infer_attention_score_tiling_check_consistency.cpp
+  ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch22/fused_infer_attention_score_tiling_v3.cpp
   ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch35/fused_infer_attention_score_tiling_v4.cpp
   ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch35/fused_infer_attention_score_tiling_impl.cpp
   ${ARCH35_CHECKER_SRC_FILES}
@@ -50,7 +50,7 @@ set(src_files
 
 foreach(f ${src_files})
   if(NOT EXISTS ${f})
-    message(WARNING "File not found: ${f}")
+    message(ERROR "File not found: ${f}")
     return()
   endif()
 endforeach()

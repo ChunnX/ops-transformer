@@ -223,7 +223,8 @@ ge::graphStatus FiaInfoParser::GetValueHeadDim()
 
 ge::graphStatus FiaInfoParser::GetRopeMode()
 {
-    bool existSplitRopeTensor = ((opParamInfo_.queryRope.tensor != nullptr) && (opParamInfo_.queryRope.desc != nullptr));
+    bool existSplitRopeTensor = ((opParamInfo_.queryRope.tensor != nullptr) &&
+        (opParamInfo_.queryRope.desc != nullptr));
     if (qkHeadDim_ < vHeadDim_) {
         OP_LOGE(opName_, "the query's head dim(%u) should be greater than or equal to the value's head dim(%u)",
             qkHeadDim_, vHeadDim_);
@@ -314,7 +315,7 @@ ge::graphStatus FiaInfoParser::GetGSize()
 {
     // 获取G基准值
     if (n1Size_ % n2Size_ != 0U) {
-        OP_LOGE(opName_, "%s(%u) should be a multiple of %s(%u).", 
+        OP_LOGE(opName_, "%s(%u) should be a multiple of %s(%u).",
             QUERY_HEADS_NUM_NAME.c_str(), n1Size_,
             KV_HEADS_NUM_NAME.c_str(), n2Size_);
         return ge::GRAPH_FAILED;

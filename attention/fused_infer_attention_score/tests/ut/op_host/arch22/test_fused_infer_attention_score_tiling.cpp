@@ -14,20 +14,20 @@
 
 namespace FusedInferAttentionScoreUT {
 
-class FusedInferAttentionScoreArch32TilingTest : public testing::TestWithParam<FusedInferAttentionTilingUtParam> {
+class FusedInferAttentionScoreArch22TilingTest : public testing::TestWithParam<FusedInferAttentionTilingUtParam> {
 protected:
     static void SetUpTestCase()
     {
-        std::cout << "FusedInferAttentionScore Arch32 TilingTest SetUp" << std::endl;
+        std::cout << "FusedInferAttentionScore Arch22 TilingTest SetUp" << std::endl;
     }
 
     static void TearDownTestCase()
     {
-        std::cout << "FusedInferAttentionScore Arch32 TilingTest TearDown" << std::endl;
+        std::cout << "FusedInferAttentionScore Arch22 TilingTest TearDown" << std::endl;
     }
 };
 
-TEST_P(FusedInferAttentionScoreArch32TilingTest, param)
+TEST_P(FusedInferAttentionScoreArch22TilingTest, param)
 {
     auto param = GetParam();
     struct EmptyCompileInfo {} compileInfo;
@@ -119,7 +119,7 @@ TEST_P(FusedInferAttentionScoreArch32TilingTest, param)
 
 INSTANTIATE_TEST_SUITE_P(
     FusedInferAttentionScore,
-    FusedInferAttentionScoreArch32TilingTest,
+    FusedInferAttentionScoreArch22TilingTest,
     testing::ValuesIn(GetCasesFromCsv<FusedInferAttentionTilingUtParam>(ReplaceFileExtension2Csv(__FILE__))),
     PrintCaseInfoString<FusedInferAttentionTilingUtParam>
 );

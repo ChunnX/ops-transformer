@@ -9,27 +9,27 @@
  */
 
 /*!
- * \file prompt_flash_attention_arch32.h
+ * \file prompt_flash_attention_arch22.h
  * \brief
  */
 
 #include "prompt_flash_attention_tilingkey.h"
 #if (__CCE_AICORE__ > 200)
-#include "./arch32/prompt_flash_attention_base.h"
-#include "./arch32/prompt_flash_attention_bnstilling_n_s_no_tail.h"
-#include "./arch32/prompt_flash_attention_bnstilling_n_s_tail.h"
-#include "./arch32/prompt_flash_attention_bnstilling_n_s_no_tailWBNSD.h"
-#include "./arch32/prompt_flash_attention_bnstilling_n_s_tailWBNSD.h"
-#include "./arch32/prompt_flash_attention_s1s2_bns1_x910.h"
-#include "./arch32/prompt_flash_attention_base_api.h"
-#include "./arch32/prompt_flash_attention_base_api_high_precision_no_mask.h"
-#include "./arch32/prompt_flash_attention_base_mla.h"
-#include "./arch32/prompt_flash_attention_base_mla_high_precision.h"
-#include "./arch32/prompt_flash_attention_s1s2_bns1_mla.h"
-#include "./arch32/prompt_flash_attention_var_len_score_sab.h"
-#include "./arch32/prompt_flash_attention_s1s2_bns1_mla_baseapi.h"
-#include "./arch32/prompt_flash_attention_var_len_score_sab_baseapi.h"
-#include "./arch32/prompt_flash_attention_empty_tensor.h"
+#include "./arch22/prompt_flash_attention_base.h"
+#include "./arch22/prompt_flash_attention_bnstilling_n_s_no_tail.h"
+#include "./arch22/prompt_flash_attention_bnstilling_n_s_tail.h"
+#include "./arch22/prompt_flash_attention_bnstilling_n_s_no_tailWBNSD.h"
+#include "./arch22/prompt_flash_attention_bnstilling_n_s_tailWBNSD.h"
+#include "./arch22/prompt_flash_attention_s1s2_bns1_x910.h"
+#include "./arch22/prompt_flash_attention_base_api.h"
+#include "./arch22/prompt_flash_attention_base_api_high_precision_no_mask.h"
+#include "./arch22/prompt_flash_attention_base_mla.h"
+#include "./arch22/prompt_flash_attention_base_mla_high_precision.h"
+#include "./arch22/prompt_flash_attention_s1s2_bns1_mla.h"
+#include "./arch22/prompt_flash_attention_var_len_score_sab.h"
+#include "./arch22/prompt_flash_attention_s1s2_bns1_mla_baseapi.h"
+#include "./arch22/prompt_flash_attention_var_len_score_sab_baseapi.h"
+#include "./arch22/prompt_flash_attention_empty_tensor.h"
 #else
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_vec_intf.h"
@@ -182,7 +182,7 @@ constexpr uint32_t INT8BYTENUM = 32;
         op.Process();                                                                                                  \
     } while (0)
 
-inline __aicore__ void prompt_flash_attention_FIAS_arch32(__gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value,
+inline __aicore__ void prompt_flash_attention_FIAS_arch22(__gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value,
                                                         __gm__ uint8_t* pseShift, __gm__ uint8_t* attenMask,
                                                         __gm__ uint8_t* actualSeqLengths, __gm__ uint8_t* actualSeqLengthsKV,
                                                         __gm__ uint8_t* deq_scale1, __gm__ uint8_t* quant_scale1,
