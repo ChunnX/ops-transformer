@@ -291,8 +291,10 @@ extern "C" aclnnStatus aclnnAlltoAllMatmulGetWorkspaceSize(const aclTensor *x1, 
             // 把非连续x2转成连续
             transX2 = TransX2Tensor(x2);
             CHECK_RET(transX2 != nullptr, ACLNN_ERR_INNER_NULLPTR);
-            OP_LOGD("X2 is a non-contiguous tensor. The original dim0 is %ld, and dim1 is %ld. After processing, transX2 dim0 is %ld, and dim1 is %ld.",
-                x2->GetViewShape().GetDim(0), x2->GetViewShape().GetDim(1), transX2->GetViewShape().GetDim(0), transX2->GetViewShape().GetDim(1));
+            OP_LOGD("X2 is a non-contiguous tensor. The original dim0 is %ld, and dim1 is %ld. "
+                    "After processing, transX2 dim0 is %ld, and dim1 is %ld.",
+                    x2->GetViewShape().GetDim(0), x2->GetViewShape().GetDim(1),
+                    transX2->GetViewShape().GetDim(0), transX2->GetViewShape().GetDim(1));
         }
     } else {
         // 对于 A2 和 A3，非连续则报错
