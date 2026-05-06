@@ -104,7 +104,7 @@ private:
         return sIdx + single_size < sLen ? single_size : (sLen - sIdx);
     }
 
-    __aicore__ inline void InitStartIdx()
+    __aicore__ inline bool InitStartIdx()
     {
         // 遍历顺序 s2->s1->n1->batch
         int32_t recoderS1 = GetRecoderS(s1Idx_, cur_q_seq_len_, single_s1_len_);
