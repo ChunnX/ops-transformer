@@ -102,7 +102,7 @@ __aicore__ inline void MoeV2GatherOutBatchRow<T>::GatherOutOneBlock(int64_t outP
 
     SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
 
-    DataCopyExtParams copyOutParams{static_cast<uint32_t>(outPosRows), static_cast<uint32_t>(this->cols * sizeof(T)), 0,
+    DataCopyExtParams copyOutParams{static_cast<uint16_t>(outPosRows), static_cast<uint32_t>(this->cols * sizeof(T)), 0,
                                     0, 0};
     DataCopyPad(expandedXGm[outPosStart * this->cols], outRowsLocal, copyOutParams);
 
@@ -194,8 +194,9 @@ __aicore__ inline void MoeV2GatherOutBatchRow<T>::Init(GM_ADDR inputX, GM_ADDR e
 
     this->ubRowsPerLoop = this->gatherOutTilingData->perLoopCols;
 
-    int64_t maxPerLoopRows =
-        std::max(this->gatherOutTilingData->perCorePerLoopRows, this->gatherOutTilingData->lastCorePerLoopRows);
+    int64_t maxPerLoopRows = this->gatherOutTilingData->perCorePerLoopRows > this->gatherOutTilingData->lastCorePerLoopRows 
+        ? this->gatherOutTilingData->perCorePerLoopRows 
+        : this->gatherOutTilingData->lastCorePerLoopRows;
 
     inputXGm.SetGlobalBuffer((__gm__ T *)inputX, this->n * this->cols);
     expandedXGm.SetGlobalBuffer((__gm__ T *)expandedX, this->totalLength * this->cols);
