@@ -36,7 +36,7 @@ CANN Simulator集成在CANN toolkit包里，参考[环境部署](../install/quic
 
 * 参考[算子调用](../invocation/quick_op_invocation.md)完成add_example的算子编译和安装
 
-```
+```bash
 # 说明：进入项目根目录，执行如下编译命令，命令仅供参考，详细可以查看算子调用的说明。
 bash build.sh --pkg --soc=Ascend950 --vendor_name=custom --ops=add_example
 # 安装自定义算子包
@@ -47,19 +47,19 @@ bash build.sh --pkg --soc=Ascend950 --vendor_name=custom --ops=add_example
 
 ## 执行仿真命令
 
-```
+```bash
 cannsim record ./test_aclnn_add_example -s Ascend950 --gen-report
 ```
 
 仿真工具执行日志文件在examples/add_example/examples/build/bin/cannsim_*目录，执行日志文件为
 
-```
+```bash
 cannsim.log
 ```
 
 从仿真工具日志文件可以看到示例中的打印信息：
 
-```
+```bash
 add_example first input[0] is: 1.000000, second input[0] is: 1.000000, result[0] is: 2.000000
 add_example first input[1] is: 1.000000, second input[1] is: 1.000000, result[1] is: 2.000000
 add_example first input[2] is: 1.000000, second input[2] is: 1.000000, result[2] is: 2.000000
@@ -73,7 +73,7 @@ add_example first input[6] is: 1.000000, second input[6] is: 1.000000, result[6]
 
 仿真性能流水文件在本项目`examples/add_example/examples/build/bin/cannsim_*/report目录，流水相关文件为：
 
-```
+```bash
 trace_core0.json
 ```
 
@@ -99,7 +99,6 @@ cannsim record [options] user_app
 |-o 或 --output | 可选 | 生成文件所在路径，可配置为绝对路径或者相对路径，并且执行工具的用户需要具有读写权限。如果未指定路径，则默认在当前目录下保存数据。|
 |-g 或 --gen-report | 可选 | 启用仿真完成后是否进行自动解析，并生成分析报告。默认不自动解析。|
 |-u 或 --user-option | 可选 | 用户自定义算子参数，以命令行选项形式传递给算子程序。|
-|-f 或 --object-file | 可选 | 用于生成报告的设备对象文件路径。|
 |-n 或 --core-id | 可选 | 仿真期间启用日志的AI Core，格式同 report -n：'all'、'0-2,12-14'、'5'。默认全开；配合 -g 且未指定时回退到 core 0。|
 |user_app|必选|待运行的算子程序或命令（如 ./app, python train.py, bash run.sh）。|
 
@@ -108,7 +107,7 @@ cannsim record [options] user_app
 1. 完成算子开发和编译。
 2. 执行仿真命令，可参考以下使用示例
 
-    ```
+    ```bash
     方式一： 启用仿真，并将输出保存至 ./output 目录，/path/to/app 为算子程序
     $ cannsim record /path/to/app -o ./output -s Ascend950
 
@@ -118,7 +117,7 @@ cannsim record [options] user_app
 
 3. 命令完成后，会在默认路径或指定的“output”目录下生成以“cannsim_{timestamp}_${user_app}”命名的文件夹，结构示例如下：
 
-    ```
+    ```bash
     ├─cannsim_{timestamp}_${user_app}
     ├── cannsim.log
     ```
@@ -127,7 +126,7 @@ cannsim record [options] user_app
 
     以下输出仅为Ascend C单算子直调精度比较结果举例，因版本不同略有差异，请以实际输出为准。
 
-    ```
+    ```bash
     INFO:root:[INFO] compare data case[ case001]
     INFO:root:---------------RESULT---------------
     INFO:root:['case_name', 'wrong_num', 'total_num', 'result', 'task_duration']
@@ -172,7 +171,7 @@ cannsim report [options]
 
 3. 命令执行完后，会在output配置的目录下生成对应的流水文件，文件格式为json格式，输出结果示例如下：
 
-    ```
+    ```bash
     trace_core0.json
     trace_core1.json
     ...
@@ -206,19 +205,19 @@ cannsim report [options]
 
 查询工具帮助信息：
 
-```
+```bash
 cannsim --help
 ```
 
 查询工具 record 子命令的帮助信息：
 
-```
+```bash
 cannsim record --help
 ```
   
 查询工具 report 子命令的帮助信息： 
   
- ``` 
+ ```bash
  cannsim report --help 
  ``` 
  
@@ -231,13 +230,13 @@ cannsim record --help
 1. 登录Host侧服务器。
 2. 执行以下命令。
 
-    ```
+    ```bash
     cannsim --help
     ```
 
 ## 输出说明
 
-```
+```bash
 usage: cannsim [-h] {record,report} ...
 
 Command-line tool for performance simulation analysis on Ascend hardware.
