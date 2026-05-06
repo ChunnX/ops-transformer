@@ -29,14 +29,15 @@ namespace AllGatherMatmulImpl
 {
 using namespace AscendC;
 
-template <typename AType, typename BType, typename CType, class MmType, Mc2CoreType CoreType>
+template <typename AType, typename BType, typename CType, class MmType, Mc2CoreType CoreType,
+          HcclServerType ServerType = HcclServerType::HCCL_SERVER_TYPE_CCU>
 class AllGatherQuantPerBlock : public AllGatherMatmulBase<AType, CType, CoreType>
 {
 public:
     __aicore__ inline AllGatherQuantPerBlock(MC2GmAddrs* addrs, QuantGmAddrs* quantAddrs,
                                              Mc2Tiling::AllGatherMatmulTilingDataFp8* tilingData, GM_ADDR contextGM, 
                                              __gm__ void* mc2InitTiling, __gm__ void* mc2CcTiling, TPipe* tPipe)
-        : AllGatherMatmulBase<AType, CType, CoreType>(addrs, quantAddrs, tilingData, contextGM, tPipe)
+        : AllGatherMatmulBase<AType, CType, CoreType, ServerType>(addrs, quantAddrs, tilingData, contextGM, tPipe)
     {
         tilingData_ = tilingData;
         this->localInfo_.mmTiling = &tilingData_->quantBmmv3LocalTiling;
@@ -154,7 +155,7 @@ __aicore__ inline void AllGatherQuantPerBlock<AType, BType, CType, MmType, CoreT
     }
 }
 
-#define INVOKE_ALL_GATHER_QUANT_BATCHMATMUL_PERBLOCK_OP_IMPL(templateClass, CoreType, isTransA, isTransB, ...)     \
+#define INVOKE_ALL_GATHER_QUANT_BATCHMATMUL_PERBLOCK_OP_IMPL(templateClass, CoreType, hcclServerType, isTransA, isTransB, ...)     \
     do {                                                                                                           \
         REGISTER_TILING_DEFAULT(Mc2Tiling::AllGatherMatmulTilingDataFp8);                                                      \
         auto tiling = (__gm__ Mc2Tiling::AllGatherMatmulTilingDataFp8*)tilingGM;                                                \
@@ -165,7 +166,7 @@ __aicore__ inline void AllGatherQuantPerBlock<AType, BType, CType, MmType, CoreT
         QuantGmAddrs quantAddrs = {scaleInv2, scaleInv1, scale};                                                   \
         using opType = templateClass<DTYPE_X1, DTYPE_X2, DTYPE_BIAS, DTYPE_Y, CubeFormat::ND, CubeFormat::ND,      \
                                      CubeFormat::ND, isTransA, isTransB>;                                          \
-        AllGatherQuantPerBlock<DTYPE_X1, DTYPE_X2, DTYPE_Y, opType, CoreType> op(&addrs, &quantAddrs, &tilingData, \
+        AllGatherQuantPerBlock<DTYPE_X1, DTYPE_X2, DTYPE_Y, opType, CoreType, hcclServerType> op(&addrs, &quantAddrs, &tilingData, \
                                                                                  (__gm__ uint8_t*)context,          \
                                                                                  mc2InitTiling, mc2CcTiling, &pipe); \
         op.Init(mc2InitTiling, mc2CcTiling);                                                                         \
