@@ -30,13 +30,13 @@ def get_np_dtype(type_str):
 
 
 SHAPE_KEY_TO_INDEX = {
-    'query': 0,
-    'key': 1,
-    'value': 2,
-    'sparse_indices': 3,
-    'block_table': 4,
-    'query_rope': 5,
-    'key_rope': 6,
+    "query": 0,
+    "key": 1,
+    "value": 2,
+    "sparse_indices": 3,
+    "block_table": 4,
+    "query_rope": 5,
+    "key_rope": 6,
 }
 
 
