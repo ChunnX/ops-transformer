@@ -18,8 +18,6 @@
 #include "../../prompt_flash_attention/op_host/prompt_flash_attention_tiling.h"
 #include "log/log.h"
 #include "log/error_code.h"
-#include "acl/acl.h"
-#include "aclnn/acl_meta.h"
 #include "err/ops_err.h"
 #include "tiling/tiling_api.h"
 #include "platform/platform_info.h"
