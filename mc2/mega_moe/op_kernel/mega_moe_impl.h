@@ -50,7 +50,8 @@ template <typename ElementA, typename ElementB, typename ElementC, typename Elem
 __aicore__ inline void GroupMatmulSwigluQuant(
     BlockEpilogueSwigluMxQuant<ElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true>& epilogueOp,
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
-    const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom)
+    const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom,
+    GlobalTensor<uint64_t> *timestampOutput = nullptr, uint32_t expertIdx = 0)
 {
     uint32_t m = Get<M_VALUE>(problemShape);
     uint32_t n = Get<N_VALUE>(problemShape);
@@ -150,9 +151,18 @@ __aicore__ inline void GroupMatmulSwigluQuant(
                 uint32_t targetValue = params.tilingData->epWorldSize * dispatchBlockNumPerEP;
                 __gm__ int32_t* flagValueAddr = (__gm__ int32_t*)groupFlagListGm2.GetPhyAddr();
                 while (targetValue != AscendC::ReadGmByPassDCache(flagValueAddr)) {
+                    // __asm__ volatile("NOP");
+                    // __asm__ volatile("NOP");
+                    // __asm__ volatile("NOP");
+                    // __asm__ volatile("NOP");
                     int64_t st = AscendC::GetSystemCycle();
                     while (AscendC::GetSystemCycle() - st < 100) {
                     }
+                }
+                // 打点: dispatch真正完成（AIC核等待dispatch结束）
+                if (timestampOutput != nullptr) {
+                    constexpr int DISPATCH_BASE = 2;
+                    RecordTimestamp(*timestampOutput, DISPATCH_BASE + 2 * expertIdx + 1);
                 }
             }
 
@@ -212,7 +222,8 @@ template <typename ElementA, typename ElementB, typename ElementC, typename Elem
 __aicore__ inline void GroupMatmul2(
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
     const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom2, uint32_t groupIdx,
-    uint16_t& pingpongIdx, int32_t rankId)
+    uint16_t& pingpongIdx, int32_t rankId,
+    GlobalTensor<uint64_t> *timestampOutput = nullptr)
 {
     constexpr uint32_t GMM2_BLOCK_SIZE = L1_TILE_M * L1_TILE_N;
 
@@ -323,6 +334,12 @@ __aicore__ inline void GroupMatmul2(
                     while (AscendC::GetSystemCycle() - st < 100) {
                     }
                 }
+                // gmm2真正开始时间（while循环结束后）
+                if (timestampOutput != nullptr) {
+                    constexpr int MAX_EXPERT_PER_RANK = 4;
+                    constexpr int GMM2_BASE = 2 + 2 * MAX_EXPERT_PER_RANK;
+                    RecordTimestamp(*timestampOutput, GMM2_BASE + 2 * groupIdx);
+                }
             }
             if (vecSetSyncCom2 >= 2) {
                 WaitForVector(pingpongIdx);
@@ -354,6 +371,7 @@ __aicore__ inline void GroupMatmul2(
 
         if constexpr (g_coreType == AscendC::AIV) {
             WaitForCube(pingpongIdx);
+            // gmm2结束由Process()中的EndGMM2Sync()后记录
             AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
             MegaMoeCombineImpl::CombineTokens<ElementC, decltype(actualShape)>(
@@ -364,6 +382,8 @@ __aicore__ inline void GroupMatmul2(
         }
         pingpongIdx = 1 - pingpongIdx;
     }
+    // gmm2结束时间在Process()中EndGMM2Sync()后记录
+    
     startBlockIdx = (startBlockIdx + tileNum) % blockNum;
 }
 
