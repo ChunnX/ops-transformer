@@ -89,6 +89,13 @@ public:
             
         this->AICore().AddConfig("ascend910b");
         this->AICore().AddConfig("ascend910_93");
+
+        OpAICoreConfig regbaseCfg;
+        regbaseCfg.DynamicCompileStaticFlag(true)
+            .DynamicRankSupportFlag(true)
+            .DynamicShapeSupportFlag(true)
+            .ExtendCfgInfo("opFile.value", "mhc_pre_sinkhorn_apt");
+        this->AICore().AddConfig("ascend950", regbaseCfg);
     }
 };
 
