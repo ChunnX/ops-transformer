@@ -76,7 +76,7 @@ private:
     GM_ADDR reduceScatterOutGM_;
     GM_ADDR allGatherInGM_;
     GM_ADDR allGatherOutGM_;
-    Hccl<HCCL_SERVER_TYPE_CCU> hccl_;
+    Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;
     bool notifyFlag_{false};
 
     // 仅在0核上使用

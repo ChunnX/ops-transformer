@@ -84,7 +84,7 @@ private:
     GM_ADDR allGatherInGM_;
     GM_ADDR allGatherOutGM_;
     bool notifyFlag_{false};
-    Hccl<HCCL_SERVER_TYPE_CCU> hccl_;
+    Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;
     AscendC::HcclDataType hcclType_ = AscendC::HCCL_DATA_TYPE_RESERVED;
 
     // 仅在0核上使用
