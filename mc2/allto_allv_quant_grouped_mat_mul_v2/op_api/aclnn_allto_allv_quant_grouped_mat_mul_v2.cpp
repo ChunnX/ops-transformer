@@ -241,6 +241,7 @@ extern "C" aclnnStatus aclnnInnerAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize(
 extern "C" aclnnStatus aclnnInnerAlltoAllvQuantGroupedMatMulV2(void *workspace, uint64_t workspaceSize,
                                                         aclOpExecutor *executor, aclrtStream stream);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
+extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
 
 extern "C" aclnnStatus InnerAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize(
     const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *gmmXScale, const aclTensor *gmmWeightScale,
@@ -329,6 +330,8 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize(
         if (strcmp(commMode, "aicpu") == 0) {
             NnopbaseSetHcclServerType(*executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
         } else {
+            void *arg = reinterpret_cast<void *>(static_cast<uintptr_t>(1));
+            NnopbaseSetUserHandle(*executor, arg);
             NnopbaseSetHcclServerType(*executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
         }
     }

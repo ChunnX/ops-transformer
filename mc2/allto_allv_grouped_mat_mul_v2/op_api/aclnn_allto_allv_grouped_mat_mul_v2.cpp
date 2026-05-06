@@ -30,6 +30,7 @@ enum class NnopbaseHcclServerType : uint32_t {
 };
 
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
+extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
 
 // check nullptr
 static bool CheckNullStatus(const aclTensor* gmmX, const aclTensor* gmmWeight, const aclTensor* sendCountsTensorOptional,
@@ -131,6 +132,8 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulV2GetWorkspaceSize(const aclTensor* gmmX,
         if (strcmp(commMode, "aicpu") == 0) {
             NnopbaseSetHcclServerType(*executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
         } else {
+            void *arg = reinterpret_cast<void *>(static_cast<uintptr_t>(1));
+            NnopbaseSetUserHandle(*executor, arg);
             NnopbaseSetHcclServerType(*executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
         }
     }
