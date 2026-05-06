@@ -16,6 +16,7 @@ from .mega_moe import (
     mega_moe,
     npu_get_mega_moe_ccl_buffer_size
 )
+from .mega_moe_v2 import mega_moe_v2
 from .deep_ep import MoeDistributeBuffer
 from .graph_convert.graph_convert_moe_distribute_dispatch_v3 import converter_moe_distribute_dispatch_v3
 from .graph_convert.graph_convert_moe_distribute_combine_v3 import convert_npu_moe_distribute_combine_v3
