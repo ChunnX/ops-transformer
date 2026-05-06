@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef MEMORY_COPY_ARCH32_H
-#define MEMORY_COPY_ARCH32_H
+#ifndef MEMORY_COPY_ARCH35_H
+#define MEMORY_COPY_ARCH35_H
 
 #include "vector_common.h"
 #include "memory_copy.h"
