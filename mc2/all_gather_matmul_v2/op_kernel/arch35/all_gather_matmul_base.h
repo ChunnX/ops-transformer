@@ -44,11 +44,11 @@ public:
         debugMode_ = tilingData->debugMode;
         context_ = contextGM;
     }
-    __aicore__ inline void Init(__gm__ void* mc2InitTiling, __gm__ void* mc2CcTiling)
+    __aicore__ inline void Init(__gm__ void* mc2InitTiling, __gm__ void* mc2CcTiling, Mc2Tiling::AllGatherMatmulTilingDataFp8* tilingData)
     {
-        hccl_.Init(context_, mc2InitTiling);
-        hccl_.SetCcTiling(mc2CcTiling);
-        rankId_ = ((__gm__ HcclCombinOpParam*)context_)->rankId;
+        hccl_.InitV2(context_, tilingData);
+        hccl_.SetCcTilingV2(offsetof(Mc2Tiling::AllGatherMatmulTilingDataFp8, mc2CcTiling));
+        rankId_ = hccl_.GetRankId();
         // 计算scale1的数据个数及地址偏移
         nBlockSizeCnt_ = (tileInfo_.mmTiling->matmulTiling.Ka + PERBLOCK_BLOCK_SIZE - 1) / PERBLOCK_BLOCK_SIZE;
         oneCommBlockSizeOffset_ = static_cast<uint64_t>(tileInfo_.mmTiling->matmulTiling.M / PERBLOCK_BLOCK_SIZE) * 
