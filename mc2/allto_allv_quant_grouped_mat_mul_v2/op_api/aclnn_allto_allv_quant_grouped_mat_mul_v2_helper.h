@@ -172,24 +172,6 @@ static const aclTensor *TransMmWeightOptionalTensor(const aclTensor *mmWeightOpt
                            storageShapeDimNum, mmWeightOptional->GetTensor()->GetAddr());
 }
 
-// 检查tensor是否连续
-inline bool IsTransposeLastTwoDims(const aclTensor *tensor) {
-    // 当输入tensor的shape小于2或者大于6的时候，返回错误
-    if (tensor->GetViewShape().GetDimNum() < 2 || tensor->GetViewShape().GetDimNum() > 6) {
-        return false;
-    }
-    int64_t dim1 = tensor->GetViewShape().GetDimNum() - 1;
-    int64_t dim2 = tensor->GetViewShape().GetDimNum() - 2;
-    // 根据stride步长判断tensor是否连续取值的
-    if (tensor->GetViewStrides()[dim2] == 1 && tensor->GetViewStrides()[dim1] == tensor->GetViewShape().GetDim(dim2)) {
-        if (tensor->GetViewShape().GetDim(dim1) == 1 && tensor->GetViewShape().GetDim(dim2) == 1) {
-            return false;
-        }
-        return true;
-    }
-    return false;
-}
-
 static aclnnStatus CheckParams(const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *gmmXScale,
                                const aclTensor *gmmWeightScale, const aclTensor *sendCountsTensorOptional,
                                const aclTensor *recvCountsTensorOptional, const aclTensor *mmXOptional,

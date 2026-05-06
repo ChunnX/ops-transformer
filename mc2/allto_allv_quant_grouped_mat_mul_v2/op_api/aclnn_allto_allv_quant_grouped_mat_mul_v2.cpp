@@ -101,7 +101,7 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize(
 {
     using namespace A2AVQuantGmmHelper;
     CHECK_RET(CheckGmmWeightValid(gmmWeight), ACLNN_ERR_PARAM_NULLPTR);
-    bool notContiguous = IsTransposeLastTwoDims(gmmWeight);
+    bool notContiguous = IsTransposeTwoDims(gmmWeight, -1, -2);
     auto transposeGmmWeight = gmmWeight;
     if (notContiguous && transGmmWeight) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gmmWeight not contiguous, and set gmmWeight transpose, it is error!");
@@ -124,7 +124,7 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize(
     const aclTensor *originalMmWeightOptional = mmWeightOptional;
     const aclTensor *originalMmWeightScaleOptional = mmWeightScaleOptional;
     if (CheckMmWeightValid(mmWeightOptional)) {
-        bool notContiguous = IsTransposeLastTwoDims(mmWeightOptional);
+        bool notContiguous = IsTransposeTwoDims(mmWeightOptional, -1, -2);
         auto transMmWeightOptional = mmWeightOptional;
         if (notContiguous && transMmWeight) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "mmWeightOptional not contiguous, and set mmWeightOptional transpose, it is error!");
