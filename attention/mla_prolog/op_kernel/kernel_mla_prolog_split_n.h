@@ -201,6 +201,7 @@ private:
     uint32_t curStepVecBackToken_;
     uint32_t curVecTokenMax_;
     bool enableSmoothScalesCq_;
+    bool splitKN = false;
     static constexpr uint32_t cvMode = MLAPT::cvRatio; // 编译态，默认cv1:2
     static constexpr bool isFp8E8m0 = std::is_same<dequantScaleType, FP8E8M0>::value;
     uint32_t cvRatio_ = 2U; // 默认cv 1:2
@@ -374,6 +375,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::Init(
     } else {
         CubeBufferInit();
     }
+    splitKN = baseParams_->mm1KnKGroupSize > 1;
 }
 
 template<typename MLAPT>
@@ -1080,7 +1082,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AivProcess(AivOffset &aivOffs
             // 非切N场景，需要等待全部rope的结果做完并搬到GM
             WaitAllCore<SYNC_MODE_ALL_VEC, PIPE_MTE3>(FINISH_VEC_ALL);
         }
-        if constexpr (needQnDynamicQuant) {
+        if constexpr (needQnDynamicQuant && !splitKN) {
             DynamicQuantQnAndMulQrSyncMMQn(batchOffset, curStepBatchSize, numHeadOffset, mmQnLoops);
         }
         aivOffset.ropeQrResOffset += static_cast<int64_t>(baseParams_->stepBatchSize) * static_cast<int64_t>(baseParams_->headSizeQr);
@@ -2353,6 +2355,99 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantAndRopeSplitNSyncMMQcQ
         }
     }
 }
+
+
+template <typename MLAPT>
+__aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::V3AndV4(
+    int64_t mmQnPreDequantOffset, int64_t mmQnPreDequantResOffset, int64_t ropeQrOffset, int64_t ropeQrResOffset)
+{
+    if (cubeBlockIdx_ >= baseParams_->mm3BlockNum) {
+        return;
+    }
+    // mmQcQr一个C核算stepBatchSize * singleN，每两个V核做对应C核输出的Qc部分的dequant
+    // singleN一定整除(dimHeadSizeQc + dimHeadSizeQc)，保证dequant能找到dimHeadSizeQc部分的起始位置
+    uint32_t subBlockIdx_ = blockIdx_ % cvRatio_;
+    uint32_t colCube = mmQcQrParam_.baseN;
+    uint32_t colQc = baseParams_->dimHeadSizeQc;
+    uint32_t colQr = baseParams_->dimHeadRope;
+    uint32_t oriCol = mmQcQrParam_.n;
+    uint32_t colOffsetCube = 0;
+
+    //  
+    uint32_t srcStride = baseParams_->headSizeQc + baseParams_->headSizeQr - baseParams_->dimHeadSizeQc / cvRatio_;
+    uint32_t dstStride = baseParams_->headSizeQc - baseParams_->dimHeadSizeQc / cvRatio_;
+    uint32_t colQcSingle = colQc / cvRatio_;
+    uint32_t colOffsetVec = 0;
+    uint32_t inputOffset = subBlockIdx_ * colQcSingle;
+    uint32_t outputOffset = inputOffset;
+
+    // RopeQrSplitN参数
+    uint32_t ropeDstStride = baseParams_->headSizeQr - colQr;
+    // CV1:2和1:1，M轴方向切成2块处理
+    uint32_t ropeCntDown= mmQcQrParam_.m / 2;
+    uint32_t ropeCnt = (mmQcQrParam_.m + subBlockIdx_) / cvRatio_;
+    int64_t ropeStride = static_cast<int64_t>(baseParams_->numHeadSize) * static_cast<int64_t>(colQc + colQr);
+    uint32_t inputOffsetRope = ropeCntDown * subBlockIdx_ * ropeStride;
+    uint32_t outputOffsetRope = ropeCntDown * subBlockIdx_ * baseParams_->headSizeQr;
+    uint32_t deqScaleOffset = 0;
+    uint32_t colOffsetRope = 0;
+    uint32_t deQuantScaleCqOffset = ropeCntDown * subBlockIdx_ * FP32_BLOCK_ELEMENT_NUM;
+    // cube一次处理row*colCube，对应的两个vec一次处理row*colQc，两vec之间切colQc
+    // 等cube生产足够数据了以后，vec开始消费
+    uint32_t dequantLoopCount = 0;
+    uint32_t totalDequantLoops = CeilDiv(oriCol, (colQc + colQr));
+    bool needSparseSync = totalDequantLoops > MAX_SYNC_FLAG_COUNT;
+    // uint32_t loopIdx = 0;
+    while (colOffsetCube < oriCol) {    // 循环CeilDiv(oriCol, colCube)次
+        colOffsetCube += colCube;
+        if (colOffsetCube > oriCol) {   // 当oriCol不被colCube整除时，mm最后一个base块需要刷新col end
+            colOffsetCube = oriCol;
+        }
+        CrossCoreWaitFlag(FINISH_MM_QCQR_SPLIT_N);
+        // loopIdx++;
+        // DequantSplitN
+        while (colOffsetVec + colQc <= colOffsetCube) {   // 循环singleNumHeadSize次
+            if constexpr (std::is_same<mmQcQrInputType, int8_t>::value || std::is_same<mmQcQrInputType, HIF8>::value ||
+                (std::is_same<mmQcQrInputType, FP8E4M3>::value && !isFp8E8m0)) {
+                DequantQcQrSplitN(DequantQcQrSplitNParams{mmQnPreDequantOffset, mmQnPreDequantResOffset, 
+                                  inputOffset, outputOffset, srcStride, dstStride});
+            } else if constexpr (std::is_same<mmQcQrInputType, FP8E4M3>::value && isFp8E8m0) {
+                CastQcQrSplitN(CastQcQrSplitNParams{mmQnPreDequantOffset, mmQnPreDequantResOffset, 
+                               inputOffset, outputOffset, srcStride, dstStride});
+            }
+            if (!needSparseSync || dequantLoopCount % 2 == 0 || dequantLoopCount == totalDequantLoops -1) {
+                CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE3>(FINISH_VEC_DEQUANT_QC_SPLIT_N);
+            }
+            dequantLoopCount++;
+            colOffsetVec += (colQc + colQr);
+            inputOffset += (colQc + colQr);
+            // inputOffset %= Align(baseParams_->dimHeadSizeQc + baseParams_->dimHeadRope + mmQcQrParam_.baseN, mmQcQrParam_.baseN);
+            outputOffset += colQc;
+        }
+        // RopeQrSplitN
+        while ((colOffsetRope + colQc + colQr) <= colOffsetCube) {
+            // cv1:1时，为了防止UB内存溢出，每次处理一半的数量
+            if (cvRatio_ == 1) {
+                ropeCnt = ropeCntDown;
+            }
+            RopeQrSplitN(RopeQrSplitNParams{ropeQrOffset, ropeQrResOffset, 
+                        inputOffsetRope, deqScaleOffset, outputOffsetRope, ropeStride, ropeDstStride, deQuantScaleCqOffset, 0, ropeCnt});
+            // cv1:1时，还需处理第二次，第二次在第一次的基础上计算偏移等
+            if (cvRatio_ == 1) {
+                RopeQrSplitN(RopeQrSplitNParams{ropeQrOffset, ropeQrResOffset,
+                        static_cast<uint32_t>(inputOffsetRope + ropeCntDown * ropeStride), deqScaleOffset, 
+                        static_cast<uint32_t>(outputOffsetRope + ropeCntDown * baseParams_->headSizeQr), 
+                        ropeStride, ropeDstStride, ropeCntDown * FP32_BLOCK_ELEMENT_NUM, ropeCntDown * baseParams_->dimHeadRope, (mmQcQrParam_.m + 1) / 2});
+            }
+
+            colOffsetRope += (colQc + colQr);
+            inputOffsetRope += (colQc + colQr);
+            deqScaleOffset += (colQc + colQr);
+            outputOffsetRope += colQr;
+        }
+    }
+}
+
 
 // 用于算力切分dequant切N场景
 template <typename MLAPT>
