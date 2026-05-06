@@ -42,7 +42,7 @@ public:
     {
         printf("BlockSparseAttentionGrad LAUNCHED!\n");
 
-        addr_.Init(tilingData);
+        addr_.Init(tilingData, actualQseqlen, actualKvseqlen);
 
         if ASCEND_IS_AIC {
             CubeProcess(dout, q, k, v, out, softmaxLse, blockSparseMask, blockShape, attentionMask, actualQseqlen,

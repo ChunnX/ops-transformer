@@ -20,6 +20,7 @@
 namespace optiling {
 
 BEGIN_TILING_DATA_DEF(BlockSparseAttentionGradTilingDataArch35)
+TILING_DATA_FIELD_DEF(uint32_t, cubeCoreNum);
 TILING_DATA_FIELD_DEF(uint32_t, batchNum);
 TILING_DATA_FIELD_DEF(uint32_t, qSeqLen);
 TILING_DATA_FIELD_DEF(uint32_t, kvSeqLen);

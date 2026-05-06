@@ -125,9 +125,11 @@ protected:
 
     ge::graphStatus DoOpTiling() override
     {
+        uint32_t cube_core_num = 1;
+        tilingData_.set_cubeCoreNum(cube_core_num);
         tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
         context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
-        context_->SetBlockDim(1);
+        context_->SetBlockDim(cube_core_num);
         context_->SetScheduleMode(1);
         return ge::GRAPH_SUCCESS;
     }

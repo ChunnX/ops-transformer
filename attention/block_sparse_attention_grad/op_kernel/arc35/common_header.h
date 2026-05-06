@@ -17,4 +17,23 @@ struct RunTimeInfo {
     int32_t s1Len{0}; // 需要计算S1方向的长度
     int32_t s2Len{0}; // 需要计算S2方向的长度
 };
+
+
+__aicore__ inline int64_t getSeqLen(int32_t i, __gm__ uint8_t *seq_Len)
+{
+    int64_t actualSeqlen;
+    if (i == 0) {
+        actualSeqlen = ((__gm__ int64_t *)seq_Len)[0];
+    } else {
+        actualSeqlen = ((__gm__ int64_t *)seq_Len)[i] - ((__gm__ int64_t *)seq_Len)[i - 1];
+    }
+    return actualSeqlen;
+}
+
+__aicore__ inline int64_t getTotalLen(int32_t i, __gm__ uint8_t *seq_Len)
+{
+    int64_t actualTotalSeqlen = ((__gm__ int64_t *)seq_Len)[i];
+    return actualTotalSeqlen;
+}
+
 } // namespace BSA_ARC35
