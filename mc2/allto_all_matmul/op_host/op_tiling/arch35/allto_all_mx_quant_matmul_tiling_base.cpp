@@ -13,6 +13,7 @@
  * \brief
  */
 #include "common/utils/op_mc2.h"
+#include "common/utils/mc2_comm_utils.h"
 #include "mc2_log.h"
 #include "mc2/matmul_allto_all/op_host/op_tiling/common/matmul_allto_all_util_tiling.h"
 #include "../allto_all_matmul_tiling_base.h"
@@ -790,10 +791,11 @@ uint64_t AllToAllMxQuantMatmulTilingBase::GetTilingKey() const
 {
     // 按照量化组合模式，是否转置，bias数据类型进行展开
     bool x2TransposeFlag = contextInfo_.args_.isBTrans ? true : false;
-    uint32_t biasDType = DTYPE_BIAS_FP32;
-    const uint64_t tilingKey = GET_TPL_TILING_KEY(MX_QUANT_MODE, x2TransposeFlag, biasDType, false);
-    OP_LOGD(opName_, "MXQUANTMODE,X2TRANSPOSE,DTYPEBIAS,ISSMALLK: [%d,%d,%d,0], TilingKey is [%lu].", MX_QUANT_MODE,
-            x2TransposeFlag, biasDType, tilingKey);
+    uint8_t biasDType = DTYPE_BIAS_FP32;
+    uint8_t hcclServerType = Mc2Comm::GetCommModeFromEnv();
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(MX_QUANT_MODE, x2TransposeFlag, biasDType, false, hcclServerType);
+    OP_LOGD(opName_, "MXQUANTMODE,X2TRANSPOSE,DTYPEBIAS,ISSMALLK: [%d,%d,%d,0,%d], TilingKey is [%lu].", MX_QUANT_MODE,
+            x2TransposeFlag, biasDType, hcclServerType, tilingKey);
     return tilingKey;
 }
 
