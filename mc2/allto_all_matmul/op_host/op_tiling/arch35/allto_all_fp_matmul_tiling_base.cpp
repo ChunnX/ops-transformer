@@ -216,6 +216,7 @@ uint64_t AllToAllFpMatmulTilingBase::GetTilingKey() const
         biasDType = DTYPE_BIAS_FP32;
     }
     bool x2TransposeFlag = contextInfo_.args_.isBTrans ? true : false;
+    
     const uint64_t tilingKey = GET_TPL_TILING_KEY(NON_QUANT_MODE, x2TransposeFlag, biasDType, false);
     OP_LOGD(opName_, "QUANTMODE,X2TRANSPOSE,DTYPEBIAS,ISSMALLK is: [%d,%d,%d,0], and tilingKey is [%lu].",
             NON_QUANT_MODE, x2TransposeFlag, biasDType, tilingKey);
