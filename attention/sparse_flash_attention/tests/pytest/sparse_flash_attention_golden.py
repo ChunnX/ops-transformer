@@ -241,6 +241,9 @@ def get_param_fus(input_tensor_dict, params):
 
     fa_param['out_shape'] = fa_param['q_shape']
     fa_param['out_dtype'] = trans_input_dtype(params['dtype_output'][0])
+    fa_param['softmax_max_shape'] = params['shape_output']['softmax_max']
+    fa_param['softmax_sum_shape'] = params['shape_output']['softmax_sum']
+    fa_param['return_softmax_lse'] = params['return_softmax_lse']
 
     if fa_param['layout_query'] in ["TND"]:
         fa_param['b'] = len(fa_param['actualSeqLengths_q_raw'])
@@ -274,7 +277,7 @@ def get_param_fus(input_tensor_dict, params):
 
 
 def generate_input_tensors(params):
-    tensor_keys = ['query', 'key', 'value', 'sparse_indices', 'block_table',
+    tensor_keys = ['query', 'key', 'sparse_indices', 'block_table',
                    'query_rope', 'key_rope']
     raw = {}
     for key in tensor_keys:
@@ -283,7 +286,7 @@ def generate_input_tensors(params):
     result = {
         "query": raw["query"],
         "key": raw["key"],
-        "value": raw["value"],
+        "value": raw["key"],
         "sparse_indices": raw["sparse_indices"],
         "block_table": raw["block_table"],
         "query_rope": raw["query_rope"],
@@ -448,7 +451,6 @@ def _generate_block_table_and_cache(input_tensor_dict, fa_param, params, actualS
         fa_param['block_table'] = block_table
         input_tensor_dict['block_table'] = block_table.to('npu')
         print(f"[PageAtten]Input Kdtype:{params['dtype_input']['key']} Vdtype:{params['dtype_input']['value']}")
-        print('[INFO]:PA + Deepseek！')
         kv_pa_preprocessing(input_tensor_dict, fa_param, params)
     else:
         kv_nopa_preprocessing(input_tensor_dict, fa_param)
@@ -484,9 +486,9 @@ def compute_golden(input_tensor_dict, params):
     _generate_sparse_indices(input_tensor_dict, fa_param, params, out_shape, layoutQuery)
     _generate_block_table_and_cache(input_tensor_dict, fa_param, params, actualSeqLengths_kv, out_shape)
 
-    y_all = _t_increattention_bnsd(fa_param)
+    y_all, softmax_max, softmax_sum = _t_increattention_bnsd(fa_param)
     y_all = trans_bnsd_to_layout(y_all, out_shape, layoutQuery, fa_param['actualSeqLengths_q'])
-    return y_all
+    return y_all, softmax_max, softmax_sum
 
 
 def gatherKV(k_tensor, v_tensor, sparse_indices_Indices, sparse_blocksize, sparse_blockcount, batch, n2Idx, s1Idx,
@@ -529,7 +531,7 @@ def softmax(x):
     y = torch.exp(x_sub)
     x_sum = y.sum(dim=-1, keepdim=True)
     ans = y / x_sum
-    return ans
+    return ans, x_max, x_sum
 
 
 def _t_increattention_bnsd(fa_param):
@@ -553,10 +555,13 @@ def _t_increattention_bnsd(fa_param):
 
     matmul_dtype = torch.float32
     y = torch.zeros(out_shape_bnsd, dtype=torch.float32)
+    softmax_max = torch.zeros(fa_param['softmax_max_shape'], dtype=torch.float32)
+    softmax_sum = torch.zeros(fa_param['softmax_sum_shape'], dtype=torch.float32)
 
     for batch in range(batch_size):
         curr_actualSeq_q = actualSeqLengths_q[batch]
         curr_actualSeq = actualSeqLengths_kv[batch]
+        qLastPrefill = 0 if batch == 0 else sum(actualSeqLengths_q[0 : batch])
         for n2Idx in range(numKeyValueHeads):
             for s1Idx in range(curr_actualSeq_q):
                 if s1Idx < curr_actualSeq_q - curr_actualSeq and sparse_mode != 0:
@@ -572,7 +577,7 @@ def _t_increattention_bnsd(fa_param):
                     continue
                 bmm1Res = torch.matmul(q_curr.float(), k_sparse.float().T)
                 scaleRes = bmm1Res * scaleValue
-                softmax_res = softmax(scaleRes)
+                softmax_res, x_max, x_sum = softmax(scaleRes)
                 if fa_param['q_dtype'] == "float16":
                     bmm2Res = torch.matmul(softmax_res.to(torch.float16).float(), v_sparse.float())
                 elif fa_param['q_dtype'] == "bfloat16":
@@ -580,7 +585,14 @@ def _t_increattention_bnsd(fa_param):
                 else:
                     bmm2Res = torch.matmul(softmax_res.float(), v_sparse.float())
                 y[batch, n2Idx * g: (n2Idx + 1) * g, s1Idx, :] = bmm2Res
-    return y
+                if fa_param['return_softmax_lse']:
+                    if fa_param['layout_query'] == 'BSND':
+                        softmax_max[batch, n2Idx, s1Idx, :] = x_max[:, 0]
+                        softmax_sum[batch, n2Idx, s1Idx, :] = x_sum[:, 0]
+                    else:
+                        softmax_max[n2Idx, qLastPrefill + s1Idx, :] = x_max[:, 0]
+                        softmax_sum[n2Idx, qLastPrefill + s1Idx, :] = x_sum[:, 0]
+    return y, softmax_max, softmax_sum
 
 
 def tensor_to_pa(tensor, block_table, blockTableShape, B, blockNum, blockSize, N, D, tensor_dtype):
