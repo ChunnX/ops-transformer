@@ -98,7 +98,7 @@ typename HcclTypeSelector<commMode>::type hccl_;
     typename mmType::MT mm_;
 };
 
-template <typename DataType, bool IsNeedMM, bool IsTranGmmW, bool IsTranMmW>
+template <typename DataType, bool IsNeedMM, bool IsTranGmmW, bool IsTranMmW, int commMode>
 __aicore__ inline void AlltoAllvGmmCoarseGrained<DataType, IsNeedMM, IsTranGmmW, IsTranMmW, commMode>::Init(
     GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR sendCountsTensorOptionalGM, GM_ADDR recvCountsTensorOptionalGM,
     GM_ADDR mmxOptionalGM, GM_ADDR mmweightOptionalGM, GM_ADDR gmmyGM, GM_ADDR mmyOptionalGM,
@@ -137,7 +137,7 @@ __aicore__ inline void AlltoAllvGmmCoarseGrained<DataType, IsNeedMM, IsTranGmmW,
     permutedGMTensor_.SetGlobalBuffer((__gm__ DataType*)this->permuteOutGM_);
 }
 
-template <typename DataType, bool IsNeedMM, bool IsTranGmmW, bool IsTranMmW>
+template <typename DataType, bool IsNeedMM, bool IsTranGmmW, bool IsTranMmW, int commMode>
 __aicore__ inline void AlltoAllvGmmCoarseGrained<DataType, IsNeedMM, IsTranGmmW, IsTranMmW, commMode>::Process()
 {
     HcclAlltoAllvPrepare();
@@ -150,7 +150,7 @@ __aicore__ inline void AlltoAllvGmmCoarseGrained<DataType, IsNeedMM, IsTranGmmW,
     HcclFinalize();
 }
 
-template <typename DataType, bool IsNeedMM, bool IsTranGmmW, bool IsTranMmW>
+template <typename DataType, bool IsNeedMM, bool IsTranGmmW, bool IsTranMmW, int commMode>
 __aicore__ inline void AlltoAllvGmmCoarseGrained<DataType, IsNeedMM, IsTranGmmW, IsTranMmW, commMode>::CalcMatmul()
 {
     mm_.Init(&(tilingData_->mmTilingData));
@@ -171,7 +171,7 @@ __aicore__ inline void AlltoAllvGmmCoarseGrained<DataType, IsNeedMM, IsTranGmmW,
     }
 }
 
-template <typename DataType, bool IsNeedMM, bool IsTranGmmW, bool IsTranMmW>
+template <typename DataType, bool IsNeedMM, bool IsTranGmmW, bool IsTranMmW, int commMode>
 __aicore__ inline void AlltoAllvGmmCoarseGrained<DataType, IsNeedMM, IsTranGmmW, IsTranMmW, commMode>::HcclAlltoAllvPrepare()
 {
     if ASCEND_IS_AIV {
@@ -222,7 +222,7 @@ __aicore__ inline void AlltoAllvGmmCoarseGrained<DataType, IsNeedMM, IsTranGmmW,
     }
 }
 
-template <typename DataType, bool IsNeedMM, bool IsTranGmmW, bool IsTranMmW>
+template <typename DataType, bool IsNeedMM, bool IsTranGmmW, bool IsTranMmW, int commMode>
 __aicore__ inline void AlltoAllvGmmCoarseGrained<DataType, IsNeedMM, IsTranGmmW, IsTranMmW, commMode>::HcclAlltoAllvExec()
 {
     gmm_.Init(&(tilingData_->gmmTilingData));
@@ -274,7 +274,7 @@ __aicore__ inline void AlltoAllvGmmCoarseGrained<DataType, IsNeedMM, IsTranGmmW,
     }
 }
 
-template <typename DataType, bool IsNeedMM, bool IsTranGmmW, bool IsTranMmW>
+template <typename DataType, bool IsNeedMM, bool IsTranGmmW, bool IsTranMmW, int commMode>
 __aicore__ inline void AlltoAllvGmmCoarseGrained<DataType, IsNeedMM, IsTranGmmW, IsTranMmW, commMode>::HcclFinalize()
 {
     if ASCEND_IS_AIV {
