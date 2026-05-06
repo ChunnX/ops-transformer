@@ -15,6 +15,17 @@
 #ifndef ALLTO_ALLV_QUANT_GROUPED_MATMUL_TILING_COMMON_H
 #define ALLTO_ALLV_QUANT_GROUPED_MATMUL_TILING_COMMON_H
 
+#include <string>
+#include <numeric>
+#include <climits>
+#include "mc2_hcom_topo_info.h"
+#include "mc2_log.h"
+#include "context_util.h"
+#include "op_host/op_tiling/hccl_formulaic_tiling.h"
+#include "graph/utils/type_utils.h"
+#include "register/op_def_registry.h"
+#include "register/op_impl_registry.h"
+#include "tiling_base/tiling_templates_registry.h"
 #include "mc2/allto_allv_quant_grouped_mat_mul_v2/op_host/op_tiling/arch35/allto_allv_quant_grouped_mat_mul_v2_tiling_common.h"
 #include "mc2/allto_allv_quant_grouped_mat_mul_v2/op_kernel/allto_allv_quant_grouped_mat_mul_v2_tiling.h"
 
