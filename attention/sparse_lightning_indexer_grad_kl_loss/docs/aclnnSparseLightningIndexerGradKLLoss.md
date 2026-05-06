@@ -543,14 +543,17 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         </tr>
         <tr>
             <td>N1</td>
-            <td>32、64、128</td>
+            <td>
+            <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持32、64、128<br>
+            <term>Ascend 950PR/Ascend 950DT</term>支持32、48、64、128
+            </td>
             <td>SparseFA为MQA。</td>
         </tr>
         <tr>
             <td>Nidx1</td>
             <td>
             <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持8、16、32、64<br>
-            <term>Ascend 950PR/Ascend 950DT</term>支持32、64
+            <term>Ascend 950PR/Ascend 950DT</term>支持16、24、32、64
             </td>
             <td>SparseFA为MQA。</td>
         </tr>
@@ -601,13 +604,16 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         <tbody>
         <tr>
             <td>query</td>
-            <td>N1=128/64; D =512</td>
+            <td>
+            <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持N1 = 128/64/32; D = 512<br>
+            <term>Ascend 950PR/Ascend 950DT</term>支持N1 = 128/64/48/32; D = 512
+            </td>
         </tr>
         <tr>
             <td>queryIndex</td>
             <td>
             <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持N1 = 64/32/16/8;  D = 128 ; S1 = 64k/128k<br>
-            <term>Ascend 950PR/Ascend 950DT</term>支持N1 = 64/32;  D = 128 ; S1 = 64k/128k
+            <term>Ascend 950PR/Ascend 950DT</term>支持N1 = 64/32/24/16;  D = 128 ; S1 = 64k/128k
             </td>
         </tr>
         <tr>
