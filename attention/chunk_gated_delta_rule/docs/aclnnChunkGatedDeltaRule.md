@@ -1,6 +1,6 @@
 # aclnnChunkGatedDeltaRule
 
-[📄 查看源码]()
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/chunk_gated_delta_rule)
 
 ## 产品支持情况
 
@@ -224,17 +224,17 @@ aclnnStatus aclnnChunkGatedDeltaRule(
     <tr>
       <td>ACLNN_ERR_PARAM_NULLPTR</td>
       <td>161001</td>
-      <td>query, key, value, beta, initialState, actualSeqLengths, out, finalState存在空指针。</td>
+      <td>query、key、value、beta、initialState、actualSeqLengths、out、finalState存在空指针。</td>
     </tr>
     <tr>
       <td>ACLNN_ERR_PARAM_INVALID</td>
       <td>161002</td>
-      <td>传入的query, key, value, beta, initialState, actualSeqLengths, out, finalState的数据类型和格式不在支持的范围内。</td>
+      <td>传入的query、key、value、beta、initialState、actualSeqLengths、out、finalState的数据类型和格式不在支持的范围内。</td>
     </tr>
     <tr>
       <td>ACLNN_ERR_INNER_TILING_ERROR</td>
       <td>561002</td>
-      <td>传入的query, key, value, beta, initialState, actualSeqLengths, out, finalState的shape不匹配。</td>
+      <td>传入的query、key、value、beta、initialState、actualSeqLengths、out、finalState的shape不匹配。</td>
     </tr>
   </tbody>
   </table>

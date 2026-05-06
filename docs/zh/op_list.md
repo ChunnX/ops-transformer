@@ -59,6 +59,16 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/chunk_gated_delta_rule/README.md">chunk_gated_delta_rule</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>推理场景下线性注意力Gated Delta Rule的chunk版本，用于prefill节点。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/flash_attention_score/README.md">flash_attention_score</a></td>
     <td>✓</td>
     <td>✓</td>
