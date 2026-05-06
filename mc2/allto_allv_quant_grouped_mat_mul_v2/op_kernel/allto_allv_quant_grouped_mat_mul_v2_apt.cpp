@@ -20,8 +20,11 @@
 #include "allto_allv_quant_grouped_mat_mul_v2_tiling_key.h"
 #include "allto_allv_quant_grouped_mat_mul_v2_tiling.h"
 
-#include "../allto_allv_quant_grouped_mat_mul_apt/op_kernel/mc2_templates/mc2_templates.h"
-
+#if __has_include("../../allto_allv_quant_grouped_mat_mul/mc2_templates/mc2_templates.h")
+#include "../../allto_allv_quant_grouped_mat_mul/mc2_templates/mc2_templates.h"
+#else
+#include "../../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/mc2_templates.h"
+#endif
 
 using namespace AscendC;
 using namespace MC2KernelTemplate;
