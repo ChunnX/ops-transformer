@@ -70,7 +70,7 @@ namespace {
     const static int64_t MIN_EXPERT_PER_RANK = 1LL;
     const static int64_t MAX_EXPERT_PER_RANK = 16LL;
     const static int64_t H_BASE = 1024LL;
-    const static int64_t N_BASE = 1024LL;
+    const static int64_t HIDDEN_DIM_BASE = 1024LL;
     const static int64_t MIN_EP_WORLD_SIZE = 2LL;
     const static int64_t MAX_EP_WORLD_SIZE = 768LL;
     const static int64_t MAX_MOE_EXPERT_NUM = 1024LL;
@@ -234,9 +234,9 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData* tilingData, const char *nod
     
     PrintMoeInitRoutingV3Arch35TilingData(tilingData->moeInitRoutingTilingData, nodeName);
 
-    OP_LOGD(nodeName, "BS is %u", tilingData->m);
-    OP_LOGD(nodeName, "H is %u", tilingData->k);
-    OP_LOGD(nodeName, "N is %u", tilingData->n);
+    OP_LOGD(nodeName, "BS is %u", tilingData->bs);
+    OP_LOGD(nodeName, "H is %u", tilingData->h);
+    OP_LOGD(nodeName, "N is %u", tilingData->hiddenDim);
 
     OP_LOGD(nodeName, "topK is %u", tilingData->topK);
     OP_LOGD(nodeName, "expertPerRank is %u", tilingData->expertPerRank);
@@ -268,17 +268,17 @@ void printPeermemInfo(const MegaMoeTilingData* tilingData, const char *nodeName)
 {
     OP_LOGD(nodeName, "========== PeermemInfo ==========");
 
-    int64_t peermemSize = static_cast<int64_t>(tilingData->m) * tilingData->topK *
-            (tilingData->k + tilingData->k / MXFP_SCALE_GROUP_NUM) * sizeof(int8_t) + 60 * 1024 +
+    int64_t peermemSize = static_cast<int64_t>(tilingData->bs) * tilingData->topK *
+            (tilingData->h + tilingData->h / MXFP_SCALE_GROUP_NUM) * sizeof(int8_t) + 60 * 1024 +
             static_cast<int64_t>(tilingData->epWorldSize) * 128 * sizeof(int32_t) +
-            static_cast<int64_t>(tilingData->m) * tilingData->topK * tilingData->k * sizeof(int16_t);
+            static_cast<int64_t>(tilingData->bs) * tilingData->topK * tilingData->h * sizeof(int16_t);
     OP_LOGD(nodeName, "peermemSize: {%ld}\n", peermemSize);
 
     int64_t offset = PEERMEM_DATA_OFFSET;
     OP_LOGD(nodeName, "ptrA0: {%ld}\n", PEERMEM_DATA_OFFSET);
-    offset += static_cast<int64_t>(tilingData->m) *
+    offset += static_cast<int64_t>(tilingData->bs) *
         tilingData->topK *
-        (tilingData->k + tilingData->k / MXFP_SCALE_GROUP_NUM) *
+        (tilingData->h + tilingData->h / MXFP_SCALE_GROUP_NUM) *
         sizeof(int8_t);
     OP_LOGD(nodeName, "ptrTokenPerExpert: {%ld}\n", offset);
     offset += static_cast<int64_t>(tilingData->epWorldSize) *
@@ -446,8 +446,8 @@ static ge::graphStatus CheckAndSetInitTilingData(
     const uint32_t aivNum, const int64_t opQuantMode, const char *nodeName)
 {
     // Get Param
-    auto bs = tilingData.m;
-    auto h = tilingData.k;
+    auto bs = tilingData.bs;
+    auto h = tilingData.h;
     auto topK = tilingData.topK;
     auto expertPerRank = tilingData.expertPerRank;
     auto epWorldSize = tilingData.epWorldSize;
@@ -751,7 +751,7 @@ static ge::graphStatus GetMoeInitRoutingV3Tiling(MegaMoeTilingData &tilingData,
         OP_LOGE(nodeName, "SetAuxiliaryTilingCtx failed."), return ge::GRAPH_FAILED);
 
     printAuxiliaryTilingCtx(&ctx, tilingData.expertPerRank, tilingData.epWorldSize,
-        {tilingData.m, tilingData.topK}, xDtype, nodeName);
+        {tilingData.bs, tilingData.topK}, xDtype, nodeName);
 
     auto initRoutingTilingData = ComputeMoeInitRoutingV3Tiling(initTilingData, ctx);
 
@@ -917,7 +917,7 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
     tilingData->epWorldSize = *epWorldSizePtr;
     tilingData->maxOutputSize = *maxRecvTokenNumPtr != 0 ?
         *maxRecvTokenNumPtr :
-        tilingData->m * tilingData->epWorldSize *
+        tilingData->bs * tilingData->epWorldSize *
         std::min(tilingData->topK, tilingData->expertPerRank);
     tilingData->blockNumPerEP = std::max(static_cast<uint32_t>(1), aicNum / tilingData->epWorldSize);
     tilingData->dispatchRows = 2;
@@ -1336,8 +1336,9 @@ static ge::graphStatus CheckInputParam(const gert::TilingContext *context, MegaM
         return ge::GRAPH_FAILED);
 
     int64_t weightOneDim1 = weightOneStorageShape->GetStorageShape().GetDim(1);
-    OP_TILING_CHECK(weightOneDim1 != 1LL * N_BASE && weightOneDim1 != 2LL * N_BASE && weightOneDim1 != 3LL * N_BASE &&
-                    weightOneDim1 != 4LL * N_BASE && weightOneDim1 != 7LL * N_BASE,
+    OP_TILING_CHECK(weightOneDim1 != 1LL * HIDDEN_DIM_BASE && weightOneDim1 != 2LL * HIDDEN_DIM_BASE &&
+                    weightOneDim1 != 3LL * HIDDEN_DIM_BASE && weightOneDim1 != 4LL * HIDDEN_DIM_BASE &&
+                    weightOneDim1 != 7LL * HIDDEN_DIM_BASE,
         OP_LOGE(nodeName, "N only support 1k/2k/3k/4k/7k, but now N is %ld.", weightOneDim1),
         return ge::GRAPH_FAILED);
     
@@ -1348,8 +1349,8 @@ static ge::graphStatus SetInputParam(const gert::TilingContext *context,
     MegaMoeTilingData *tilingData, MegaMoeConfig &config)
 {
     const gert::StorageShape *xStorageShape = context->GetInputShape(config.xIndex);
-    int64_t BS = xStorageShape->GetStorageShape().GetDim(0);
-    int64_t H = xStorageShape->GetStorageShape().GetDim(1);
+    int64_t bs = xStorageShape->GetStorageShape().GetDim(0);
+    int64_t h = xStorageShape->GetStorageShape().GetDim(1);
 
     const gert::StorageShape *topkIdsStorageShape = context->GetInputShape(config.topkIdsIndex);
     int64_t topK = topkIdsStorageShape->GetStorageShape().GetDim(1);
@@ -1357,11 +1358,11 @@ static ge::graphStatus SetInputParam(const gert::TilingContext *context,
     auto weightOneStorageShape = context->GetDynamicInputShape(config.weightOneIndex, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context, weightOneStorageShape);
     int64_t expertPerRank = weightOneStorageShape->GetStorageShape().GetDim(0);
-    int64_t N = weightOneStorageShape->GetStorageShape().GetDim(1);
+    int64_t hiddenDim = weightOneStorageShape->GetStorageShape().GetDim(1);
 
-    tilingData->m = static_cast<uint32_t>(BS);
-    tilingData->k = static_cast<uint32_t>(H);
-    tilingData->n = static_cast<uint32_t>(N);
+    tilingData->bs = static_cast<uint32_t>(bs);
+    tilingData->h = static_cast<uint32_t>(h);
+    tilingData->hiddenDim = static_cast<uint32_t>(hiddenDim);
     tilingData->topK = static_cast<uint32_t>(topK);
     tilingData->expertPerRank = static_cast<uint32_t>(expertPerRank);
     tilingData->groupListType = 1;
