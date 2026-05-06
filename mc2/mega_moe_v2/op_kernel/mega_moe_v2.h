@@ -119,11 +119,11 @@ private:
     int32_t  prevSum_{0};
     int32_t  perRankStridesInTokenPerExpert_{0};
 
-    uint32_t blockNum_{GetBlockNum()};
-    uint32_t blockAivNum_{GetBlockNum() * 2};
-    uint32_t blockIdx_{GetBlockIdx() / GetTaskRation()};
-    uint32_t aivCoreIdx_{GetBlockIdx()};
-    uint32_t subBlockIdx_{GetSubBlockIdx()};
+    uint32_t blockNum_{static_cast<uint32_t>(GetBlockNum())};
+    uint32_t blockAivNum_{static_cast<uint32_t>(GetBlockNum() * 2)};
+    uint32_t blockIdx_{static_cast<uint32_t>(GetBlockIdx() / GetTaskRation())};
+    uint32_t aivCoreIdx_{static_cast<uint32_t>(GetBlockIdx())};
+    uint32_t subBlockIdx_{static_cast<uint32_t>(GetSubBlockIdx())};
 
     BlockEpilogue epilogueOp_;
     WaveScheduler scheduler_;
@@ -316,80 +316,90 @@ __aicore__ inline void MegaMoeV2<TemplateMegaMoeV2TypeFunc>::ScheduleWaveLoop()
         if (!scheduler_.BeginWave(waveIdx)) break;
 
         // ---- Linear1 phase ----
-        scheduler_.ForEachBlock(BlockPhase::Linear1, [&](const WaveBlock& wb) {
-            uint32_t expertM = scheduler_.GetExpertTokenCount(wb.expertIdx);
-            uint32_t expertN_l1 = intermediate;
-            uint32_t expertK_l1 = hidden;
-            uint32_t mLoc = wb.mBlockIdx * L1_TILE_M;
-            uint32_t nLoc = wb.nBlockIdx * L1_TILE_N;
-            uint32_t actualM = (mLoc + L1_TILE_M <= expertM) ? L1_TILE_M : (expertM - mLoc);
-            uint32_t actualN = (nLoc + L1_TILE_N <= expertN_l1) ? L1_TILE_N : (expertN_l1 - nLoc);
-            uint32_t actualK = expertK_l1;
+        {
+            WaveBlockIter it1;
+            scheduler_.BeginIter(BlockPhase::Linear1, it1);
+            WaveBlock wb;
+            while (scheduler_.NextBlock(it1, wb)) {
+                uint32_t expertM = scheduler_.GetExpertTokenCount(wb.expertIdx);
+                uint32_t expertN_l1 = intermediate;
+                uint32_t expertK_l1 = hidden;
+                uint32_t mLoc = wb.mBlockIdx * L1_TILE_M;
+                uint32_t nLoc = wb.nBlockIdx * L1_TILE_N;
+                uint32_t actualM = (mLoc + L1_TILE_M <= expertM) ? L1_TILE_M : (expertM - mLoc);
+                uint32_t actualN = (nLoc + L1_TILE_N <= expertN_l1) ? L1_TILE_N : (expertN_l1 - nLoc);
+                uint32_t actualK = expertK_l1;
 
-            // GM offsets into ring buffer for this expert/chunk
-            uint32_t chunkId = scheduler_.GetChunkId(waveIdx, wb.poolBlockOffset);
-            uint32_t mBlockGlobal = scheduler_.GetGlobalMBlockId(waveIdx, wb.poolBlockOffset);
-            uint32_t ringSlot = chunkId % chunkDepth_;
-            uint64_t aRingOff = (uint64_t)ringSlot * chunkM_ * hidden;
-            uint64_t aScaleRingOff = (uint64_t)ringSlot * chunkM_ * (hidden / MXFP_SCALE_GROUP_NUM);
-            uint64_t bExpertOff = (uint64_t)wb.expertIdx * intermediate * hidden;          // SWIGLU_N_HALF folded into outer loop
-            uint64_t bScaleExpertOff = (uint64_t)wb.expertIdx * intermediate *
-                                       Ops::Base::CeilDiv(hidden, (uint32_t)MXFP_DIVISOR_SIZE) *
-                                       MXFP_MULTI_BASE_SIZE;
-            gmmInfo1.aGlobal = params_.workspaceInfo.ptrA + aRingOff * sizeof(QuantOutType);
-            gmmInfo1.aScaleGlobal = params_.workspaceInfo.ptrAScale + aScaleRingOff * sizeof(QuantScaleOutType);
-            gmmInfo1.bGlobal = params_.bGmAddr + bExpertOff * sizeof(QuantOutType) * SWIGLU_N_HALF;
-            gmmInfo1.bScaleGlobal = params_.bScaleGmAddr + bScaleExpertOff * sizeof(QuantScaleOutType) * SWIGLU_N_HALF;
-            gmmInfo1.groupFlagList = (__gm__ int32_t*)params_.workspaceInfo.ptrL2ArrivalMask + mBlockGlobal;
-            gmmInfo1.groupFlagList2 = dispArrAddr + chunkId;
+                // GM offsets into ring buffer for this expert/chunk
+                uint32_t chunkId = scheduler_.GetChunkId(waveIdx, wb.poolBlockOffset);
+                uint32_t mBlockGlobal = scheduler_.GetGlobalMBlockId(waveIdx, wb.poolBlockOffset);
+                uint32_t ringSlot = chunkId % chunkDepth_;
+                uint64_t aRingOff = (uint64_t)ringSlot * chunkM_ * hidden;
+                uint64_t aScaleRingOff = (uint64_t)ringSlot * chunkM_ * (hidden / MXFP_SCALE_GROUP_NUM);
+                uint64_t bExpertOff = (uint64_t)wb.expertIdx * intermediate * hidden;          // SWIGLU_N_HALF folded into outer loop
+                uint64_t bScaleExpertOff = (uint64_t)wb.expertIdx * intermediate *
+                                           Ops::Base::CeilDiv(hidden, (uint32_t)MXFP_DIVISOR_SIZE) *
+                                           MXFP_MULTI_BASE_SIZE;
+                gmmInfo1.aGlobal = params_.workspaceInfo.ptrA + aRingOff * sizeof(QuantOutType);
+                gmmInfo1.aScaleGlobal = params_.workspaceInfo.ptrAScale + aScaleRingOff * sizeof(QuantScaleOutType);
+                gmmInfo1.bGlobal = params_.bGmAddr + bExpertOff * sizeof(QuantOutType) * SWIGLU_N_HALF;
+                gmmInfo1.bScaleGlobal = params_.bScaleGmAddr + bScaleExpertOff * sizeof(QuantScaleOutType) * SWIGLU_N_HALF;
+                gmmInfo1.groupFlagList = (__gm__ int32_t*)params_.workspaceInfo.ptrL2ArrivalMask + mBlockGlobal;
+                gmmInfo1.groupFlagList2 = dispArrAddr + chunkId;
 
-            uint16_t pingpongSlot = static_cast<uint16_t>(wb.poolBlockOffset % WAVE_PINGPONG_DEPTH);
-            DoLinear1Block<QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType>(
-                epilogueOp_, params_, gmmInfo1,
-                expertM, expertN_l1, expertK_l1,
-                mLoc, nLoc, actualM, actualN, actualK,
-                chunkId, mBlockGlobal,
-                dispArrAddr, l2MaskAddr,
-                targetDispatchCount, pingpongSlot);
-        });
+                uint16_t pingpongSlot = static_cast<uint16_t>(wb.poolBlockOffset % WAVE_PINGPONG_DEPTH);
+                DoLinear1Block<QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType>(
+                    epilogueOp_, params_, gmmInfo1,
+                    expertM, expertN_l1, expertK_l1,
+                    mLoc, nLoc, actualM, actualN, actualK,
+                    chunkId, mBlockGlobal,
+                    dispArrAddr, l2MaskAddr,
+                    targetDispatchCount, pingpongSlot);
+            }
+        }
 
         // ---- Linear2 phase ----
         uint32_t numNBlocksL1 = scheduler_.GetNumNBlocks(BlockPhase::Linear1);
-        scheduler_.ForEachBlock(BlockPhase::Linear2, [&](const WaveBlock& wb) {
-            uint32_t expertM = scheduler_.GetExpertTokenCount(wb.expertIdx);
-            uint32_t expertN_l2 = hidden;
-            uint32_t expertK_l2 = intermediate;
-            uint32_t mLoc = wb.mBlockIdx * L1_TILE_M;
-            uint32_t nLoc = wb.nBlockIdx * L1_TILE_N;
-            uint32_t actualM = (mLoc + L1_TILE_M <= expertM) ? L1_TILE_M : (expertM - mLoc);
-            uint32_t actualN = (nLoc + L1_TILE_N <= expertN_l2) ? L1_TILE_N : (expertN_l2 - nLoc);
-            uint32_t actualK = expertK_l2;
+        {
+            WaveBlockIter it2;
+            scheduler_.BeginIter(BlockPhase::Linear2, it2);
+            WaveBlock wb;
+            while (scheduler_.NextBlock(it2, wb)) {
+                uint32_t expertM = scheduler_.GetExpertTokenCount(wb.expertIdx);
+                uint32_t expertN_l2 = hidden;
+                uint32_t expertK_l2 = intermediate;
+                uint32_t mLoc = wb.mBlockIdx * L1_TILE_M;
+                uint32_t nLoc = wb.nBlockIdx * L1_TILE_N;
+                uint32_t actualM = (mLoc + L1_TILE_M <= expertM) ? L1_TILE_M : (expertM - mLoc);
+                uint32_t actualN = (nLoc + L1_TILE_N <= expertN_l2) ? L1_TILE_N : (expertN_l2 - nLoc);
+                uint32_t actualK = expertK_l2;
 
-            uint32_t chunkId = scheduler_.GetChunkId(waveIdx, wb.poolBlockOffset);
-            uint32_t mBlockGlobal = scheduler_.GetGlobalMBlockId(waveIdx, wb.poolBlockOffset);
-            uint32_t ringSlot = chunkId % chunkDepth_;
-            uint64_t a2Off = (uint64_t)ringSlot * chunkM_ * intermediate;
-            uint64_t a2ScaleOff = (uint64_t)ringSlot * chunkM_ * (intermediate / MXFP_SCALE_GROUP_NUM);
-            uint64_t b2ExpertOff = (uint64_t)wb.expertIdx * hidden * intermediate;
-            uint64_t b2ScaleExpertOff = (uint64_t)wb.expertIdx * hidden *
-                                        Ops::Base::CeilDiv(intermediate, (uint32_t)MXFP_DIVISOR_SIZE) *
-                                        MXFP_MULTI_BASE_SIZE;
-            gmmInfo2.aGlobal = params_.workspaceInfo.ptrA2 + a2Off * sizeof(QuantOutType);
-            gmmInfo2.aScaleGlobal = params_.workspaceInfo.ptrA2Scale + a2ScaleOff * sizeof(QuantScaleOutType);
-            gmmInfo2.bGlobal = params_.b2GmAddr + b2ExpertOff * sizeof(QuantOutType);
-            gmmInfo2.bScaleGlobal = params_.b2ScaleGmAddr + b2ScaleExpertOff * sizeof(QuantScaleOutType);
-            gmmInfo2.groupFlagList = gmm2CombAddr + chunkId;
-            gmmInfo2.groupFlagList2 = (__gm__ int32_t*)params_.workspaceInfo.ptrL2ArrivalMask + mBlockGlobal;
+                uint32_t chunkId = scheduler_.GetChunkId(waveIdx, wb.poolBlockOffset);
+                uint32_t mBlockGlobal = scheduler_.GetGlobalMBlockId(waveIdx, wb.poolBlockOffset);
+                uint32_t ringSlot = chunkId % chunkDepth_;
+                uint64_t a2Off = (uint64_t)ringSlot * chunkM_ * intermediate;
+                uint64_t a2ScaleOff = (uint64_t)ringSlot * chunkM_ * (intermediate / MXFP_SCALE_GROUP_NUM);
+                uint64_t b2ExpertOff = (uint64_t)wb.expertIdx * hidden * intermediate;
+                uint64_t b2ScaleExpertOff = (uint64_t)wb.expertIdx * hidden *
+                                            Ops::Base::CeilDiv(intermediate, (uint32_t)MXFP_DIVISOR_SIZE) *
+                                            MXFP_MULTI_BASE_SIZE;
+                gmmInfo2.aGlobal = params_.workspaceInfo.ptrA2 + a2Off * sizeof(QuantOutType);
+                gmmInfo2.aScaleGlobal = params_.workspaceInfo.ptrA2Scale + a2ScaleOff * sizeof(QuantScaleOutType);
+                gmmInfo2.bGlobal = params_.b2GmAddr + b2ExpertOff * sizeof(QuantOutType);
+                gmmInfo2.bScaleGlobal = params_.b2ScaleGmAddr + b2ScaleExpertOff * sizeof(QuantScaleOutType);
+                gmmInfo2.groupFlagList = gmm2CombAddr + chunkId;
+                gmmInfo2.groupFlagList2 = (__gm__ int32_t*)params_.workspaceInfo.ptrL2ArrivalMask + mBlockGlobal;
 
-            uint16_t pingpongSlot = static_cast<uint16_t>(wb.poolBlockOffset % WAVE_PINGPONG_DEPTH);
-            DoLinear2Block<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
-                params_, gmmInfo2,
-                expertM, expertN_l2, expertK_l2,
-                mLoc, nLoc, actualM, actualN, actualK,
-                chunkId, mBlockGlobal, numNBlocksL1,
-                l2MaskAddr, gmm2CombAddr,
-                wb.expertIdx, rankId_, pingpongSlot);
-        });
+                uint16_t pingpongSlot = static_cast<uint16_t>(wb.poolBlockOffset % WAVE_PINGPONG_DEPTH);
+                DoLinear2Block<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
+                    params_, gmmInfo2,
+                    expertM, expertN_l2, expertK_l2,
+                    mLoc, nLoc, actualM, actualN, actualK,
+                    chunkId, mBlockGlobal, numNBlocksL1,
+                    l2MaskAddr, gmm2CombAddr,
+                    wb.expertIdx, rankId_, pingpongSlot);
+            }
+        }
     }
 }
 
@@ -411,57 +421,67 @@ __aicore__ inline void MegaMoeV2<TemplateMegaMoeV2TypeFunc>::EpilogueWaveLoop()
         if (!scheduler_.BeginWave(waveIdx)) break;
 
         // Linear1 epilogue
-        scheduler_.ForEachBlock(BlockPhase::Linear1, [&](const WaveBlock& wb) {
-            uint32_t expertM = scheduler_.GetExpertTokenCount(wb.expertIdx);
-            uint32_t expertN_l1 = intermediate;
-            uint32_t mLoc = wb.mBlockIdx * L1_TILE_M;
-            uint32_t nLoc = wb.nBlockIdx * L1_TILE_N;
-            uint32_t actualM = (mLoc + L1_TILE_M <= expertM) ? L1_TILE_M : (expertM - mLoc);
-            uint32_t actualN = (nLoc + L1_TILE_N <= expertN_l1) ? L1_TILE_N : (expertN_l1 - nLoc);
+        {
+            WaveBlockIter it1;
+            scheduler_.BeginIter(BlockPhase::Linear1, it1);
+            WaveBlock wb;
+            while (scheduler_.NextBlock(it1, wb)) {
+                uint32_t expertM = scheduler_.GetExpertTokenCount(wb.expertIdx);
+                uint32_t expertN_l1 = intermediate;
+                uint32_t mLoc = wb.mBlockIdx * L1_TILE_M;
+                uint32_t nLoc = wb.nBlockIdx * L1_TILE_N;
+                uint32_t actualM = (mLoc + L1_TILE_M <= expertM) ? L1_TILE_M : (expertM - mLoc);
+                uint32_t actualN = (nLoc + L1_TILE_N <= expertN_l1) ? L1_TILE_N : (expertN_l1 - nLoc);
 
-            uint32_t chunkId = scheduler_.GetChunkId(waveIdx, wb.poolBlockOffset);
-            uint32_t mBlockGlobal = scheduler_.GetGlobalMBlockId(waveIdx, wb.poolBlockOffset);
-            uint32_t ringSlot = chunkId % chunkDepth_;
-            uint64_t a2Off = (uint64_t)ringSlot * chunkM_ * intermediate;
-            uint64_t a2ScaleOff = (uint64_t)ringSlot * chunkM_ * (intermediate / MXFP_SCALE_GROUP_NUM);
+                uint32_t chunkId = scheduler_.GetChunkId(waveIdx, wb.poolBlockOffset);
+                uint32_t mBlockGlobal = scheduler_.GetGlobalMBlockId(waveIdx, wb.poolBlockOffset);
+                uint32_t ringSlot = chunkId % chunkDepth_;
+                uint64_t a2Off = (uint64_t)ringSlot * chunkM_ * intermediate;
+                uint64_t a2ScaleOff = (uint64_t)ringSlot * chunkM_ * (intermediate / MXFP_SCALE_GROUP_NUM);
 
-            // refresh epilogue's GM addresses for this chunk slot
-            AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> vecBaseOffset{
-                (int64_t)a2Off, (int64_t)a2ScaleOff, (int64_t)mBlockGlobal, 0L, 0L, 0L};
-            epilogueOp_.UpdateGlobalAddr(vecBaseOffset);
-            epilogueOp_.UpdateNextProblem({(int64_t)expertM, (int64_t)expertN_l1, (int64_t)hidden, 0L});
+                // refresh epilogue's GM addresses for this chunk slot
+                AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> vecBaseOffset{
+                    (int64_t)a2Off, (int64_t)a2ScaleOff, (int64_t)mBlockGlobal, 0L, 0L, 0L};
+                epilogueOp_.UpdateGlobalAddr(vecBaseOffset);
+                epilogueOp_.UpdateNextProblem({(int64_t)expertM, (int64_t)expertN_l1, (int64_t)hidden, 0L});
 
-            uint16_t pingpongSlot = static_cast<uint16_t>(wb.poolBlockOffset % WAVE_PINGPONG_DEPTH);
-            DoLinear1Block<QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType>(
-                epilogueOp_, params_, gmmInfo1,
-                expertM, expertN_l1, hidden,
-                mLoc, nLoc, actualM, actualN, hidden,
-                chunkId, mBlockGlobal,
-                dispArrAddr, l2MaskAddr,
-                targetDispatchCount, pingpongSlot);
-        });
+                uint16_t pingpongSlot = static_cast<uint16_t>(wb.poolBlockOffset % WAVE_PINGPONG_DEPTH);
+                DoLinear1Block<QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType>(
+                    epilogueOp_, params_, gmmInfo1,
+                    expertM, expertN_l1, hidden,
+                    mLoc, nLoc, actualM, actualN, hidden,
+                    chunkId, mBlockGlobal,
+                    dispArrAddr, l2MaskAddr,
+                    targetDispatchCount, pingpongSlot);
+            }
+        }
 
         // Linear2 epilogue (BF16 cast + combine)
         uint32_t numNBlocksL1 = scheduler_.GetNumNBlocks(BlockPhase::Linear1);
-        scheduler_.ForEachBlock(BlockPhase::Linear2, [&](const WaveBlock& wb) {
-            uint32_t expertM = scheduler_.GetExpertTokenCount(wb.expertIdx);
-            uint32_t expertN_l2 = hidden;
-            uint32_t mLoc = wb.mBlockIdx * L1_TILE_M;
-            uint32_t nLoc = wb.nBlockIdx * L1_TILE_N;
-            uint32_t actualM = (mLoc + L1_TILE_M <= expertM) ? L1_TILE_M : (expertM - mLoc);
-            uint32_t actualN = (nLoc + L1_TILE_N <= expertN_l2) ? L1_TILE_N : (expertN_l2 - nLoc);
+        {
+            WaveBlockIter it2;
+            scheduler_.BeginIter(BlockPhase::Linear2, it2);
+            WaveBlock wb;
+            while (scheduler_.NextBlock(it2, wb)) {
+                uint32_t expertM = scheduler_.GetExpertTokenCount(wb.expertIdx);
+                uint32_t expertN_l2 = hidden;
+                uint32_t mLoc = wb.mBlockIdx * L1_TILE_M;
+                uint32_t nLoc = wb.nBlockIdx * L1_TILE_N;
+                uint32_t actualM = (mLoc + L1_TILE_M <= expertM) ? L1_TILE_M : (expertM - mLoc);
+                uint32_t actualN = (nLoc + L1_TILE_N <= expertN_l2) ? L1_TILE_N : (expertN_l2 - nLoc);
 
-            uint32_t chunkId = scheduler_.GetChunkId(waveIdx, wb.poolBlockOffset);
-            uint32_t mBlockGlobal = scheduler_.GetGlobalMBlockId(waveIdx, wb.poolBlockOffset);
-            uint16_t pingpongSlot = static_cast<uint16_t>(wb.poolBlockOffset % WAVE_PINGPONG_DEPTH);
-            DoLinear2Block<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
-                params_, gmmInfo2,
-                expertM, expertN_l2, intermediate,
-                mLoc, nLoc, actualM, actualN, intermediate,
-                chunkId, mBlockGlobal, numNBlocksL1,
-                l2MaskAddr, gmm2CombAddr,
-                wb.expertIdx, rankId_, pingpongSlot);
-        });
+                uint32_t chunkId = scheduler_.GetChunkId(waveIdx, wb.poolBlockOffset);
+                uint32_t mBlockGlobal = scheduler_.GetGlobalMBlockId(waveIdx, wb.poolBlockOffset);
+                uint16_t pingpongSlot = static_cast<uint16_t>(wb.poolBlockOffset % WAVE_PINGPONG_DEPTH);
+                DoLinear2Block<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
+                    params_, gmmInfo2,
+                    expertM, expertN_l2, intermediate,
+                    mLoc, nLoc, actualM, actualN, intermediate,
+                    chunkId, mBlockGlobal, numNBlocksL1,
+                    l2MaskAddr, gmm2CombAddr,
+                    wb.expertIdx, rankId_, pingpongSlot);
+            }
+        }
     }
 }
 

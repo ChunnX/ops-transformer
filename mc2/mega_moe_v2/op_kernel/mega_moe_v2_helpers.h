@@ -173,18 +173,14 @@ __aicore__ inline void CrossRankSyncCntPerExpert(
     }
 
     int32_t intPer512 = ALIGN_512 / sizeof(int);
-    auto gmSignalWait = [](__gm__ int32_t* sigAddr, int32_t cmpVal) {
-        do {
-            if (ReadGmByPassDCache(sigAddr) != cmpVal) return;
-        } while (true);
-    };
     for (int32_t dstRankIdx = aivCoreIdx; dstRankIdx < (int32_t)worldSize; dstRankIdx += blockNum) {
         if (dstRankIdx != (int32_t)rankId) {
             for (int32_t checkIdx = 0; checkIdx < (int32_t)numPerCore; checkIdx += intPer512) {
                 __gm__ int32_t* syncCheck = reinterpret_cast<__gm__ int32_t*>(peermemBase) +
                     PEERMEM_DATA_OFFSET / sizeof(int32_t) +
                     dstRankIdx * perRankStridesInTokenPerExpert + checkIdx;
-                gmSignalWait(syncCheck, 0);
+                // gmSignalWait inlined: spin until value becomes non-zero
+                while (ReadGmByPassDCache(syncCheck) == 0) {}
             }
             DataCopy(tmpBuffer, tokenPerExpertWin[dstRankIdx * perRankStridesInTokenPerExpert], numPerCore);
             SyncFunc<AscendC::HardEvent::MTE2_V>();

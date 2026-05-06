@@ -38,6 +38,17 @@ struct WaveBlock {
     bool       valid;
 };
 
+// Stateful iterator over current-wave blocks for a given phase.
+// Replaces template-callback ForEachBlock — AscendC lambdas resolve to __host__ callables,
+// which can't dispatch from __aicore__ context.
+struct WaveBlockIter {
+    BlockPhase phase;
+    uint32_t numNBlocks;
+    uint32_t expertsInWave;
+    uint32_t totalBlocks;
+    uint32_t step;
+};
+
 class WaveScheduler {
 public:
     __aicore__ inline void Init(const MegaMoeV2TilingData *tiling, GM_ADDR cumsumGmAddr)
@@ -118,56 +129,59 @@ public:
     // Constraint (DeepGEMM scheduler:148-181): all m_blocks of an expert must complete Linear1
     // before any m_block of that expert starts Linear2 -- enforced by caller running phase=Linear1
     // for entire wave first, then phase=Linear2.
-    template <typename Callback>
-    __aicore__ inline void ForEachBlock(BlockPhase phase, Callback&& cb)
+    //
+    // Caller pattern:
+    //   WaveBlockIter it; scheduler_.BeginIter(phase, it);
+    //   WaveBlock wb;
+    //   while (scheduler_.NextBlock(it, wb)) { ... }
+    __aicore__ inline void BeginIter(BlockPhase phase, WaveBlockIter& it) const
     {
-        const uint32_t numNBlocks = GetNumNBlocks(phase);
-        const uint32_t expertsInWave =
+        it.phase = phase;
+        it.numNBlocks = GetNumNBlocks(phase);
+        it.expertsInWave =
             (currentWaveBase_ + kExpertsPerWave_ <= expertPerRank_)
                 ? kExpertsPerWave_
                 : (expertPerRank_ - currentWaveBase_);
-
-        // Build flat index space: sum over experts of (numMBlocks(e) * numNBlocks)
-        uint32_t totalBlocks = 0;
-        for (uint32_t e = 0; e < expertsInWave; ++e) {
-            totalBlocks += GetNumMBlocks(currentWaveBase_ + e) * numNBlocks;
+        it.totalBlocks = 0;
+        for (uint32_t e = 0; e < it.expertsInWave; ++e) {
+            it.totalBlocks += GetNumMBlocks(currentWaveBase_ + e) * it.numNBlocks;
         }
-        if (totalBlocks == 0) {
-            return;
-        }
+        it.step = smIdx_;
+    }
 
-        // Persistent: each SM strides by totalSms_
-        for (uint32_t step = smIdx_; step < totalBlocks; step += totalSms_) {
-            // map step -> (expert_in_wave, mBlock, nBlock)
-            uint32_t remaining = step;
-            uint32_t eOffset = 0;
-            uint32_t mBlock = 0;
-            uint32_t nBlock = 0;
-            uint32_t poolBase = 0;
-            for (uint32_t e = 0; e < expertsInWave; ++e) {
-                uint32_t mBlocks = GetNumMBlocks(currentWaveBase_ + e);
-                uint32_t expertBlocks = mBlocks * numNBlocks;
-                if (remaining < expertBlocks) {
-                    eOffset = e;
-                    mBlock = remaining / numNBlocks;
-                    nBlock = remaining % numNBlocks;
-                    break;
-                }
-                remaining -= expertBlocks;
-                poolBase += mBlocks;
+    __aicore__ inline bool NextBlock(WaveBlockIter& it, WaveBlock& wb) const
+    {
+        if (it.step >= it.totalBlocks) {
+            return false;
+        }
+        uint32_t remaining = it.step;
+        uint32_t eOffset = 0;
+        uint32_t mBlock = 0;
+        uint32_t nBlock = 0;
+        uint32_t poolBase = 0;
+        for (uint32_t e = 0; e < it.expertsInWave; ++e) {
+            uint32_t mBlocks = GetNumMBlocks(currentWaveBase_ + e);
+            uint32_t expertBlocks = mBlocks * it.numNBlocks;
+            if (remaining < expertBlocks) {
+                eOffset = e;
+                mBlock = remaining / it.numNBlocks;
+                nBlock = remaining % it.numNBlocks;
+                break;
             }
-            WaveBlock wb;
-            wb.waveIdx = currentWaveIdx_;
-            wb.expertIdx = currentWaveBase_ + eOffset;
-            wb.mBlockIdx = mBlock;
-            wb.nBlockIdx = nBlock;
-            wb.numMBlocks = GetNumMBlocks(wb.expertIdx);
-            wb.numNBlocks = numNBlocks;
-            wb.poolBlockOffset = poolBase + mBlock;
-            wb.phase = phase;
-            wb.valid = true;
-            cb(wb);
+            remaining -= expertBlocks;
+            poolBase += mBlocks;
         }
+        wb.waveIdx = currentWaveIdx_;
+        wb.expertIdx = currentWaveBase_ + eOffset;
+        wb.mBlockIdx = mBlock;
+        wb.nBlockIdx = nBlock;
+        wb.numMBlocks = GetNumMBlocks(wb.expertIdx);
+        wb.numNBlocks = it.numNBlocks;
+        wb.poolBlockOffset = poolBase + mBlock;
+        wb.phase = it.phase;
+        wb.valid = true;
+        it.step += totalSms_;
+        return true;
     }
 
     __aicore__ inline uint32_t GetCurrentWaveBaseExpert() const { return currentWaveBase_; }
