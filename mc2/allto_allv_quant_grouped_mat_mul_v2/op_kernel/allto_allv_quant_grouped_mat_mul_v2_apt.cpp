@@ -19,7 +19,7 @@
 #endif
 #include "allto_allv_quant_grouped_mat_mul_v2_tiling_key.h"
 #include "allto_allv_quant_grouped_mat_mul_v2_tiling.h"
-#include "../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/mc2_templates.h"
+#include "mc2_templates/mc2_templates.h"
 
 
 using namespace AscendC;

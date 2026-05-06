@@ -17,7 +17,7 @@
 
 #include <cstdint>
 #include "kernel_tiling/kernel_tiling.h"
-#include "../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/common/a2av_common_tiling.h"
+#include "mc2_templates/common/a2av_common_tiling.h"
 
 #pragma pack(push, 8)
 struct QuantAlltoAllvGroupedMatmulTilingData {
