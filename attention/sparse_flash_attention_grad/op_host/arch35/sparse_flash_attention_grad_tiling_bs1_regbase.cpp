@@ -13,6 +13,7 @@
  * \brief
  */
 
+#include <set>
 #include "sparse_flash_attention_grad_tiling_bs1_regbase.h"
 #include "tiling_base/tiling_templates_registry.h"
 #include "tiling_base/tiling_type.h"
@@ -509,8 +510,9 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
     }
    
     int64_t n1 = tmpData.n2 * tmpData.g;
-    if (tmpData.n2 != 1 || n1 > 128 || (n1 & (n1 - 1)) != 0) {
-        OP_LOGE(context_, "SparseFlashAttentionGrad only support n2=1 and n1=1/2/4/8/16/32/64/128, but got n2=%ld n1=%ld.", tmpData.n2, n1);
+    std::set<uint32_t> gSizeSupportList = {1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 128};
+    if (tmpData.n2 != 1 || n1 > 128 || !gSizeSupportList.count(n1)) {
+        OP_LOGE(context_, "SparseFlashAttentionGrad only support n2=1 and n1=1/2/3/4/6/8/12/16/24/32/48/64/128, but got n2=%ld n1=%ld.", tmpData.n2, n1);
         return ge::GRAPH_FAILED;
     }
 
