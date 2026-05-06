@@ -70,7 +70,7 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
         ComputationType matmulImplName(&pipe);                                                                         \
         DEFINE_MC2_TRANSPOSE_FOR_MATH_COMPUTATION(DTYPE_Y, TransposeType);                                             \
         TransposeType transposeImplName(&pipe);                                                                        \
-        DEFINE_MC2_HCCL_FOR_COMMUNICATION(false, HcclServerType::HCCL_SERVER_TYPE_CCU, MC2AlltoAllContext,             \
+        DEFINE_MC2_HCCL_FOR_COMMUNICATION(false, HcclServerType::HCCL_SERVER_TYPE_AICPU, MC2AlltoAllContext,             \
                                           MatmulAlltoAllTilingData, MC2AlltoAllPrimitives, 1, 0, CommunicationType);   \
         CommunicationType commImplName(&tilingData);                                                                   \
         using SchedulerContextType = MatmulAlltoAllPipelineContext<ComputationContextType>;                            \
@@ -92,7 +92,7 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
         KcComputationType matmulImplName(&pipe);                                                                       \
         DEFINE_MC2_TRANSPOSE_FOR_MATH_COMPUTATION(DTYPE_Y, KcTransposeType);                                           \
         KcTransposeType transposeImplName(&pipe);                                                                      \
-        DEFINE_MC2_HCCL_FOR_COMMUNICATION(false, HcclServerType::HCCL_SERVER_TYPE_CCU, MC2AlltoAllContext,             \
+        DEFINE_MC2_HCCL_FOR_COMMUNICATION(false, HcclServerType::HCCL_SERVER_TYPE_AICPU, MC2AlltoAllContext,             \
                                           QuantMatmulAlltoAllTilingData, MC2AlltoAllPrimitives, 1, 0,                  \
                                           CommunicationType);                                                          \
         CommunicationType commImplName(&tilingData);                                                                   \
@@ -115,7 +115,7 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
         MxComputationType matmulImplName(&pipe);                                                                       \
         DEFINE_MC2_TRANSPOSE_FOR_MATH_COMPUTATION(DTYPE_Y, TransposeType);                                             \
         TransposeType transposeImplName(&pipe);                                                                        \
-        DEFINE_MC2_HCCL_FOR_COMMUNICATION(false, HcclServerType::HCCL_SERVER_TYPE_CCU, MC2AlltoAllContext,             \
+        DEFINE_MC2_HCCL_FOR_COMMUNICATION(false, HcclServerType::HCCL_SERVER_TYPE_AICPU, MC2AlltoAllContext,             \
                                           QuantMatmulAlltoAllTilingData, MC2AlltoAllPrimitives, 1, 0,                  \
                                           CommunicationType);                                                          \
         CommunicationType commImplName(&tilingData);                                                                   \
