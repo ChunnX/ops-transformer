@@ -46,7 +46,7 @@ constexpr uint32_t SWIGLU_N_HALF = 2U;
 constexpr int32_t MXFP_DIVISOR_SIZE = 64;
 constexpr int32_t MXFP_SCALE_GROUP_NUM = 32;
 constexpr int32_t MXFP_MULTI_BASE_SIZE = 2;
-constexpr int32_t PEERMEM_DATA_OFFSET = 1024 * 60;
+constexpr int64_t PEERMEM_DATA_OFFSET = 1024 * 60LL;
 constexpr int64_t SIMT_THREAD_NUM = 2048;
 constexpr int64_t ALIGN_32 = 32LL;
 constexpr int64_t ALIGN_128 = 128LL;
@@ -79,21 +79,21 @@ struct WorkspaceInfo {
     {
         workspaceSize = 0;
         ptrA = base;
-        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->k, ALIGN_512);
+        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->h, ALIGN_512);
         ptrAScale = base + workspaceSize;
-        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->k /
+        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->h /
             MXFP_SCALE_GROUP_NUM, ALIGN_512);
         ptrA2 = base + workspaceSize;
         workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize *
-            tilingData->n / SWIGLU_N_HALF, ALIGN_512);
+            tilingData->hiddenDim / SWIGLU_N_HALF, ALIGN_512);
         ptrA2Scale = base + workspaceSize;
-        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->n /
+        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->hiddenDim /
             SWIGLU_N_HALF / MXFP_SCALE_GROUP_NUM, ALIGN_512);
         ptrcumsumMM = base + workspaceSize;
         workspaceSize += Ops::Base::CeilAlign(SIZE_INT_32 * tilingData->epWorldSize *
             tilingData->expertPerRank, ALIGN_512);
         expandedRowIdx = base + workspaceSize;
-        workspaceSize += SIZE_INT_32 * Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->m), ALIGN_256) *
+        workspaceSize += SIZE_INT_32 * Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->bs), ALIGN_256) *
             tilingData->topK;
         ptrSumBeforeRank = base + workspaceSize;
         workspaceSize += SIZE_INT_32 * Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->epWorldSize) *
