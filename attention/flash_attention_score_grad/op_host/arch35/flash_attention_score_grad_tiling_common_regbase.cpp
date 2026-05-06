@@ -27,6 +27,7 @@ ge::graphStatus CheckSoftmaxMaxShape(gert::TilingContext *context, int64_t b, in
         return ge::GRAPH_SUCCESS;
     }
     auto softmaxMaxShapeDim = softmaxMaxShape->GetStorageShape().GetDimNum();
+    
     if (softmaxMaxShapeDim != 4) { // softmaxMax only support 4 dimensions
         OP_LOGE(context, "The shape of softmaxMax is invalid, got %lu dimensions", softmaxMaxShapeDim);
         return ge::GRAPH_FAILED;
