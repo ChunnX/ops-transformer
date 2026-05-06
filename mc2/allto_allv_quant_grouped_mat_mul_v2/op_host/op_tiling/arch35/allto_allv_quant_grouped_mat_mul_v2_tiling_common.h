@@ -26,8 +26,8 @@
 #include "register/op_def_registry.h"
 #include "register/op_impl_registry.h"
 #include "tiling_base/tiling_templates_registry.h"
-#include "../../../op_kernel/allto_allv_quant_grouped_mat_mul_v2_tiling.h"
-#include "../allto_allv_quant_grouped_mat_mul_v2_tiling_base.h"
+#include "mc2/allto_allv_quant_grouped_mat_mul_v2/op_kernel/allto_allv_quant_grouped_mat_mul_v2_tiling.h"
+#include "mc2/allto_allv_quant_grouped_mat_mul_v2/op_host/op_tiling/allto_allv_quant_grouped_mat_mul_v2_tiling_base.h"
 
 namespace optiling {
 constexpr uint32_t DATA_SIZE_L0C = 4;
@@ -78,7 +78,7 @@ protected:
     virtual ge::graphStatus DoGmmTiling(uint64_t gmmMSize) {return ge::GRAPH_SUCCESS;};
     virtual void GetPermuteOutSize() {};
     ge::graphStatus CheckInputNotNull() const;
-    ge::graphStatus SetHcclTiling() const;
+    virtual ge::graphStatus SetHcclTiling() const;
     void PrintGMMQuantTilingData(const Mc2GroupedMatmulTilingData::GMMQuantTilingData &data) const;
     void PrintTaskTilingInfo(const MC2KernelTemplate::TaskTilingInfo &taskTilingInfo) const;
     uint64_t permuteScaleOutSize_{0};

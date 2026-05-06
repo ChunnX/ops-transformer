@@ -21,8 +21,8 @@
 #include "op_host/op_tiling/matmul_formulaic_tiling.h"
 #include "mat_mul_v3/op_host/op_tiling/matmul_v3_tiling.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
-#include "../../op_kernel/allto_allv_quant_grouped_mat_mul_v2_tiling.h"
-#include "../../op_kernel/allto_allv_quant_grouped_mat_mul_v2_tiling_key.h"
+#include "mc2/allto_allv_quant_grouped_mat_mul_v2/op_kernel/allto_allv_quant_grouped_mat_mul_v2_tiling.h"
+#include "mc2/allto_allv_quant_grouped_mat_mul_v2/op_kernel/allto_allv_quant_grouped_mat_mul_v2_tiling_key.h"
 
 namespace optiling {
 // input

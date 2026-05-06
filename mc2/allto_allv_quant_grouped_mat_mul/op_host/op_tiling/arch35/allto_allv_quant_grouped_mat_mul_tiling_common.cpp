@@ -14,6 +14,7 @@
  */
 
 #include "allto_allv_quant_grouped_mat_mul_tiling_common.h"
+#include "mc2/allto_allv_quant_grouped_mat_mul_v2/op_host/op_tiling/arch35/allto_allv_quant_grouped_mat_mul_v2_tiling_common.h"
 
 using namespace ge;
 using namespace AscendC;

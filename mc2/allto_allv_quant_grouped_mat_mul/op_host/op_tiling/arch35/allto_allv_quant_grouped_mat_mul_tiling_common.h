@@ -12,8 +12,8 @@
  * \file allto_allv_quant_grouped_mat_mul_tiling_common.h
  * \brief V1 inherits V2, fixed to use CCU mode
  */
-#ifndef ALLTO_ALLV_QUANT_GROUPED_MATMUL_TILING_COMMON_H
-#define ALLTO_ALLV_QUANT_GROUPED_MATMUL_TILING_COMMON_H
+#ifndef ALLTO_ALLV_QUANT_GROUPED_MATMUL_V1_TILING_COMMON_H
+#define ALLTO_ALLV_QUANT_GROUPED_MATMUL_V1_TILING_COMMON_H
 
 #include <string>
 #include <numeric>
@@ -26,8 +26,8 @@
 #include "register/op_def_registry.h"
 #include "register/op_impl_registry.h"
 #include "tiling_base/tiling_templates_registry.h"
-#include "mc2/allto_allv_quant_grouped_mat_mul_v2/op_host/op_tiling/arch35/allto_allv_quant_grouped_mat_mul_v2_tiling_common.h"
 #include "mc2/allto_allv_quant_grouped_mat_mul_v2/op_kernel/allto_allv_quant_grouped_mat_mul_v2_tiling.h"
+#include "mc2/allto_allv_quant_grouped_mat_mul_v2/op_host/op_tiling/arch35/allto_allv_quant_grouped_mat_mul_v2_tiling_common.h"
 
 namespace optiling {
 
@@ -42,4 +42,4 @@ protected:
 };
 
 }  // namespace optiling
-#endif  // ALLTO_ALLV_QUANT_GROUPED_MATMUL_TILING_COMMON_H
+#endif  // ALLTO_ALLV_QUANT_GROUPED_MATMUL_V1_TILING_COMMON_H
