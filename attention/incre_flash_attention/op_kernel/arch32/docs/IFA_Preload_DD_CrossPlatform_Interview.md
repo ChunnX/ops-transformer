@@ -1,6 +1,6 @@
 # Preload-DD FlashAttention 深度优化：跨平台面试盘问
 
-> **场景**：面试官是 CUDA 生态出身的推理优化专家，对 Transformer 结构、Flash Attention 算法、GPU 内存层次、Pipeline 优化非常熟悉，但对昇腾 Ascend NPU 的 L1/L0/UB/Cube/Vector 等硬件概念不熟。候选人需要在面试中清晰地用跨平台可对照的语言解释这些优化。
+> **场景**：面试官是 CUDA 生态出身的推理优化专家，对 Transformer 结构、Flash Attention 算法、GPU 内存层次、Pipeline 优化非常熟悉，但对升腾 Ascend NPU 的 L1/L0/UB/Cube/Vector 等硬件概念不熟。候选人需要在面试中清晰地用跨平台可对照的语言解释这些优化。
 
 ---
 
@@ -282,7 +282,7 @@ MTE2 搬运 K0 → L1 与 MTE1 搬运 L1_KP[1] → L0B 完全是不同的硬件�
 - MTE1：K0 → L0B（读 L1_KP[0]）
 - Cube：Mmad(L0A, L0B_1)（用 L0B_1）
 
-三重覆盖通过 `WaitFlag/SetFlag` 的 Producer-Consumer 模型保证不会读写冲突。CUDA 的等价做法是 `cp.async` + `cp.async.commit_group` + `cp.async.wait_group` 的异步拷贝管线。
+三重复盖通过 `WaitFlag/SetFlag` 的 Producer-Consumer 模型保证不会读写冲突。CUDA 的等价做法是 `cp.async` + `cp.async.commit_group` + `cp.async.wait_group` 的异步拷贝管线。
 
 **关键改进**：Preload 使用 `EnQue/DeQue` 的自动同步，一个 Queue 同一时刻只能做一项操作（读或写，不能同时）。DD 改为多块独立 TBuf + 手动 Event，每个 Buffer 有自己的 flag，可以多块同时读写。
 
