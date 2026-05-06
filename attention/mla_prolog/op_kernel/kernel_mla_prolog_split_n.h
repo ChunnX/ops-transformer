@@ -415,7 +415,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmParamInit() {
 template<typename MLAPT>
 __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmCqParamInit() {
     mmCqParam_.m = baseParams_->stepBatchSize; // 32
-    if (baseParams_->mm1KnKGroupSize != 1) {
+    if (baseParams_->mm1KnKGroupSize > 1) {
         mmCqParam_.n = baseParams_->headSizeCq / baseParams_->mm1KnNGroupSize;
         mmCqParam_.baseK = (sizeof(mmInputType) == ONE_BYTE_TYPE_SIZE) ? 128 : 64; // 128KB / (128 max baseN * 4 stepK * sizeof(type))
         uint32_t mm1KGroupIdx = blockIdx_ % baseParams_->mm1KnKGroupSize;
@@ -457,7 +457,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmCqParamInit() {
 template<typename MLAPT>
 __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmCkvKrParamInit() {
     mmCkvKrParam_.m = baseParams_->stepBatchSize; // 32
-    if (baseParams_->mm2KnKGroupSize != 1) {
+    if (baseParams_->mm2KnKGroupSize > 1) {
         mmCkvKrParam_.n = (baseParams_->headSizeCkv + baseParams_->headSizeKr) / baseParams_->mm2KnNGroupSize;
         mmCkvKrParam_.baseK = (sizeof(mmInputType) == ONE_BYTE_TYPE_SIZE) ? 128 : 64; // 128KB / (128 max baseN * 4 stepK * sizeof(type))
         uint32_t mm2KGroupIdx = blockIdx_ % baseParams_->mm2KnKGroupSize;

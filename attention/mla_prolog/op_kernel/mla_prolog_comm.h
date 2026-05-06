@@ -112,7 +112,11 @@ constexpr uint32_t REPEAT_STRIDE_UP_BOUND = 256;  // repeat stride 不能超过2
 constexpr uint32_t FP32_BLOCK_ELEMENT_NUM = ALIGN_BLOCK_SIZE / sizeof(float);
 constexpr uint32_t FP16_BLOCK_ELEMENT_NUM = ALIGN_BLOCK_SIZE / sizeof(half);
 constexpr uint32_t FP32_REPEAT_ELEMENT_NUM = REPEAT_BLOCK_BYTE / sizeof(float);
-constexpr uint32_t MAX_UB_SIZE = 248 * 1024; // A5最大的UB大小
+#if __CCE_AICORE__ == 310
+constexpr uint32_t MAX_UB_SIZE = 248 * 1024; // A5最大的UB大小(需要预留8KB)
+#else
+constexpr uint32_t MAX_UB_SIZE = 192 * 1024; // A3最大的UB大小
+#endif
 constexpr uint32_t DIM_HEAD_SIZE_QCQR = 192;  // 算力分组方案D + Dr = 192
 constexpr uint32_t QC_CORE_NUM = 8; // 算力分组方案QC占用8核
 constexpr uint32_t QR_CORE_NUM = 4; // 算力分组方案QR占用4核
@@ -199,7 +203,12 @@ constexpr uint32_t L1_A_SIZE = 128 * 1024; // 512 / 4
 constexpr uint32_t L1_B_SIZE = 128 * 1024; // 512 / 4
 constexpr uint32_t L0A_PP_SIZE = 32 * 1024;
 constexpr uint32_t L0B_PP_SIZE = 32 * 1024;
+#if __CCE_AICORE__ == 310
+constexpr uint32_t L0C_PP_SIZE = 128 * 1024;
+#else
 constexpr uint32_t L0C_PP_SIZE = 64 * 1024;
+#endif
+
 
 
 /*

@@ -408,7 +408,7 @@ ge::graphStatus MlaPrologTiling::FillMatmul2Tiling()
                                                    BLOCK_SIZE / DTYPE_TO_SIZE.at(dataType));
         mm2BlockNum_ = CeilDiv(baseShapeInfo_.hckvSize + baseShapeInfo_.drSize, singlecoreHeadSizeCkvKr_);
     }
-    if (GetCurNpuArch() == NpuArch::DAV_3510 && aicNum_ >= 21 && !enableGroupComputeOpt_) {
+    if (GetCurNpuArch() == NpuArch::DAV_3510 && aicNum_ >= 24 && !enableGroupComputeOpt_) {
         mm2KnNGroupSize_ = 3;
         mm2KnKGroupSize_ = aicNum_ / mm2KnNGroupSize_;
     } else {
@@ -627,6 +627,8 @@ ge::graphStatus MlaPrologTiling::CalcWorkSpace()
         // MM1 Cq partials: k_groups × stepBS × Hcq × sizeof(float)
         workspaceSize_ += static_cast<uint64_t>(baseParams_->mm1KnKGroupSize)
                         * stepBatchSize_ * baseShapeInfo_.hcqSize * sizeof(float);
+    }
+    if (GetCurNpuArch() == NpuArch::DAV_3510 && baseParams_->mm2KnKGroupSize > 0) {
         // MM2 CkvKr partials: k_groups × stepBS × (Hckv+Dr) × sizeof(float)
         workspaceSize_ += static_cast<uint64_t>(baseParams_->mm2KnKGroupSize)
                         * stepBatchSize_
