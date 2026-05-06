@@ -18,10 +18,10 @@
 #include <cstdint>
 #include "kernel_tiling/kernel_tiling.h"
 
-#if __has_include("../../../3rd/grouped_matmul/op_kernel/grouped_matmul_tiling_data_apt.h")
-#include "../../../3rd/grouped_matmul/op_kernel/grouped_matmul_tiling_data_apt.h"
+#if __has_include("../../3rd/grouped_matmul/op_kernel/grouped_matmul_tiling_data_apt.h")
+#include "../../3rd/grouped_matmul/op_kernel/grouped_matmul_tiling_data_apt.h"
 #else
-#include "../../../../3rd/grouped_matmul/op_kernel/grouped_matmul_tiling_data_apt.h"
+#include "../../../3rd/grouped_matmul/op_kernel/grouped_matmul_tiling_data_apt.h"
 #endif
 
 namespace MC2KernelTemplate {
