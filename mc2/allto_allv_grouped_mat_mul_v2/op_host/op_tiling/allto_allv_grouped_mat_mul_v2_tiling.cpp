@@ -84,7 +84,7 @@ constexpr uint32_t SYS_WORKSPACE_SIZE = 16 * 1024 * 1024;
 constexpr uint32_t MAX_TURN_NUM = 24;
 constexpr int32_t MAX_BASE_K = 128;
 constexpr uint64_t COMM_TILE = 8; // 每卡数据分配几次计算
-constexpr int COMMMODE_INDEX = 11;
+constexpr int COMMMODE_INDEX = 14;
 
 const char* A_INNER_DEBUG = "AlltoAllvGroupedMatMulV2 Tiling";
 
