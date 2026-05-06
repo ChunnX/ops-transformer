@@ -128,7 +128,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_v2(GM_ADDR x, GM_ADDR exp
     }
 
     TPipe gatherPipe;
-    if (t->gatherOutComputeParamsOp.get_gatherMode() == 1) {
+    if (t->gatherOutComputeParamsOp.gatherMode == 1) {
         MoeV2GatherOutBatchRow<DTYPE_X> gatherOpSimt;
         gatherOpSimt.Init(x, expandedRowIdx, expandedX, userWS, t, &gatherPipe);
         gatherOpSimt.Process();
