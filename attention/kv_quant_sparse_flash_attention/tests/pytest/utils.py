@@ -255,7 +255,7 @@ def convert_param_combination_to_cs_format(param_combination):
     else:
         actual_seq_q = param_combination.get("actual_seq_q")
 
-    if layout_query == "TND" and T is None:
+    if layout_query == "TND":
         T = actual_seq_q[-1]
 
     if param_combination.get("actual_seq_kv") is None:
@@ -263,7 +263,7 @@ def convert_param_combination_to_cs_format(param_combination):
     else:
         actual_seq_kv = param_combination.get("actual_seq_kv")
 
-    if layout_kv == "TND" and T2 is None:
+    if layout_kv == "TND":
         T2 = actual_seq_kv[-1]
     
     sparse_blockcount = int(K / sparse_block_size)
