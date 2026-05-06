@@ -31,27 +31,35 @@ logging.basicConfig(
 def find_device_and_csv_by_num(profiling_path_func, card_num_func):
     csv_filename = "kernel_details.csv"
     csv_path_list_func = [None] * card_num_func
-    device_pattern = re.compile(r'^device_(\d+)$')
-    csv_search_root_mapping = {}
-    for root, dirs, _ in os.walk(profiling_path_func):
-        for dir_name in dirs:
-            match = device_pattern.match(dir_name) # 匹配device_*文件
-            if not match:
-                continue
-            device_num = int(match.group(1)) # 获取该文件是来自第几张卡的信息
-            if 0 <= device_num < card_num_func:
-                device_full_path = os.path.join(root, dir_name)
-                device_direct_path = os.path.dirname(device_full_path)
-                csv_search_root = os.path.dirname(device_direct_path)
-                csv_search_root_mapping[device_num] = csv_search_root # 获取csv表的搜寻目录
-    for device_num, csv_search_root in csv_search_root_mapping.items():
+
+    # 1. 只在传入路径第一层找包含 ascend_pt 的文件夹（不递归）
+    ascend_pt_dirs = []
+    try:
+        for entry in os.listdir(profiling_path_func):
+            dir_full_path = os.path.join(profiling_path_func, entry)
+            # 是文件夹 + 名称包含 ascend_pt
+            if os.path.isdir(dir_full_path) and "ascend_pt" in entry:
+                ascend_pt_dirs.append(dir_full_path)
+    except PermissionError:
+        logging.error("访问路径{%s}权限不足，无法读取目录", profiling_path_func)
+    except Exception as e:
+        logging.error("读取目录 {%s} 失败，异常信息:{%s}", profiling_path_func, str(e))
+
+    # 2. 按卡数量取前 N 个
+    target_dirs = ascend_pt_dirs[:card_num_func]
+
+    # 3. 在每个 ascend_pt 文件夹内查找csv 文件
+    for idx, ascend_dir in enumerate(target_dirs):
         csv_path = None
-        for sub_root, _, sub_files in os.walk(csv_search_root):
-            if sub_root != csv_search_root and csv_filename in sub_files:
+        # 递归遍历目录找 csv
+        for sub_root, _, sub_files in os.walk(ascend_dir):
+            if csv_filename in sub_files:
                 csv_path = os.path.join(sub_root, csv_filename)
-                break
-        logging.info("%d卡 profiling数据:%s", device_num, csv_path)
-        csv_path_list_func[device_num] = csv_path
+                break  # 找到第一个就停止
+
+        csv_path_list_func[idx] = csv_path
+        logging.info("%s卡 profiling数据:%s", idx, csv_path)
+
     return csv_path_list_func
 
 

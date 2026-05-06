@@ -78,7 +78,7 @@ for arg in "$@"; do
         GRAPH_PATH="${arg#*=}"
     fi
     if ! [[ "$arg" =~ ^(-h|-help|TARGET_DIR=|TOOL_PATH=|SP_MOE_NUM=|TP_WORLDSIZE=|SOC_VERSION=|SHARE_EXPERT_CARD_COUNT=|SHARE_EXPERT_NUM=|PROFILING_PATH=|PLOG_PATH=|GRAPH_PATH=) ]]; then
-        echo "warning: 未知参数 $arg ,使用 -h or -help 查看帮助"
+        echo "warning:未知参数 $arg ,使用 -h or -help 查看帮助"
     fi
 done
 #判断入参
@@ -86,24 +86,26 @@ judge=0
 #判断TARGET_DIR
 if [ ! -n "$TARGET_DIR" ]; then
     echo "warning:TARGET_DIR undefind,不进行dump数据解析"
-fi
-if [ ! -d "$TARGET_DIR" ]; then
-    echo "warning: unfind TARGET_DIR:$TARGET_DIR,不进行dump数据解析"
+else
+    if [ ! -d "$TARGET_DIR" ]; then 
+        echo "warning:unfind TARGET_DIR:$TARGET_DIR,不进行dump数据解析"
+    fi
 fi
 #判断TOOL_PATH
 if [ ! -n "$TOOL_PATH" ]; then
     echo "warning:TOOL_PATH undefind"
-fi
-if [ ! -e "$TOOL_PATH/tools/msaicerr/msaicerr.py" ]; then
-    echo "warning: unfind TOOL_PATH:$TOOL_PATH/tools/msaicerr/msaicerr.py"
+else
+    if [ ! -e "$TOOL_PATH/tools/msaicerr/msaicerr.py" ]; then
+        echo "warning:unfind TOOL_PATH:$TOOL_PATH/tools/msaicerr/msaicerr.py"
+    fi
 fi
 #判断SOC_VERSION
 if [ ! -n "$SOC_VERSION" ]; then
     echo "warning:SOC_VERSION undefind,不进行dump数据解析"
-fi
-
-if [ "$SOC_VERSION" != "$SOC_VERSION_910_93" ] && [ "$SOC_VERSION" != "$SOC_VERSION_950" ]; then
-    echo "warning:SOC_VERSION:$SOC_VERSION 为非法输入"
+else
+    if [ "$SOC_VERSION" != "$SOC_VERSION_910_93" ] && [ "$SOC_VERSION" != "$SOC_VERSION_950" ]; then
+        echo "warning:SOC_VERSION:$SOC_VERSION 为非法输入"
+    fi
 fi
 #判断SP_MOE_NUM,TP_WORLDSIZE
 if [ ! -n "$SP_MOE_NUM" ]; then
@@ -116,10 +118,10 @@ if [ "$SP_MOE_NUM" -lt 0 ]; then
 fi
 if [ ! -n "$TP_WORLDSIZE" ]; then
     TP_WORLDSIZE=1
-    echo "warning:TP_WORLDSIZE undefind,使用默认值 TP_WORLDSIZE  = 0"
+    echo "warning:TP_WORLDSIZE undefind,使用默认值 TP_WORLDSIZE  = 1"
 fi
 if [ "$TP_WORLDSIZE" -lt 1 ]; then
-    echo "error:TP_WORLDSIZE:$TP_WORLDSIZE should > 1"
+    echo "error:TP_WORLDSIZE:$TP_WORLDSIZE should >= 1"
     judge=1
 fi
 #判断共享专家卡数,共享专家数
@@ -147,16 +149,18 @@ fi
 #PLOG_PATH
 if [ ! -n "$PLOG_PATH" ]; then
     echo "warning:PLOG_PATH undefind,不进行plog日志分析"
-fi
-if [ ! -d "$PLOG_PATH" ]; then
-    echo "warning: unfind PLOG_PATH:$PLOG_PATH,不进行plog日志分析"
+else
+    if [ ! -d "$PLOG_PATH" ]; then
+        echo "warning:unfind PLOG_PATH:$PLOG_PATH,不进行plog日志分析"
+    fi
 fi
 #判断GRAPH_PATH
 if [ ! -n "$GRAPH_PATH" ]; then
     echo "warning:GRAPH_PATH undefind,不进行graph图文件分析"
-fi
-if [ ! -d "$GRAPH_PATH" ]; then
-    echo "warning: unfind GRAPH_PATH:$GRAPH_PATH,不进行graph图文件分析"
+else
+    if [ ! -d "$GRAPH_PATH" ]; then
+        echo "warning:unfind GRAPH_PATH:$GRAPH_PATH,不进行graph图文件分析"
+    fi
 fi
 if [ "$judge" = "1" ]; then
     help
@@ -168,7 +172,7 @@ echo "dump_path = $TARGET_DIR"
 echo "tool_path = $TOOL_PATH/tools/msaicerr/msaicerr.py"
 echo "SOC_VERSION = $SOC_VERSION"
 echo "SP_MOE_NUM = $SP_MOE_NUM"
-echo "TP_WORLDSIZE = $TPWORLDSIZE"
+echo "TP_WORLDSIZE = $TP_WORLDSIZE"
 echo "SHARE_EXPERT_CARD_COUNT = $SHARE_EXPERT_CARD_COUNT"
 echo "SHARE_EXPERT_NUM = $SHARE_EXPERT_NUM"
 echo "PROFILING_PATH = $PROFILING_PATH"
@@ -336,31 +340,28 @@ fi
 
 #profiling_path判断
 if [ ! -d "$PROFILING_PATH" ]; then
-    echo "warning: profiling数据指定的路径 $PROFILING_PATH 不存在"
-    echo "warning:不进行profiling数据解析"
+    echo "warning:profiling数据指定的路径 $PROFILING_PATH 不存在,不进行profiling数据解析"
 else
-    floder_count=$(find "$PROFILING_PATH" -type d -name "ma-job*" | wc -l)
-    if [ "$floder_count" -eq 0 ]; then
-        echo "warning: profiling数据指定的路径 $PROFILING_PATH 下未找到profiling文件"
-        echo "warning:不进行profiling数据解析"
+    folder_count=$(find "$PROFILING_PATH" -maxdepth 1 -type d -regex ".*/.*ascend_pt.*" | wc -l)
+    if [ "$folder_count" -eq 0 ]; then
+        echo "warning:profiling数据指定的路径 $PROFILING_PATH 下未找到profiling文件,不进行profiling数据解析"
     else
-        echo "在指定的路径 $PROFILING_PATH 下找到 $floder_count 张卡的profiling数据"
-        python3 profiling_analysis.py $PROFILING_PATH $floder_count
+        echo "在指定的路径 $PROFILING_PATH 下找到 $folder_count 张卡的profiling数据"
+        python3 profiling_analysis.py $PROFILING_PATH $folder_count
     fi
 fi
 
 
-#gprah文件转换
-echo
+#graph文件转换
 if [[ -z "$GRAPH_PATH" ]]; then
-    echo "warning: graph图文件路径未指定,不进行graph图文件转换"
+    echo "warning:graph图文件路径未指定,不进行graph图文件转换"
     if [ -d "$PLOG_PATH" ]; then
         echo "========== 开始在 $PLOG_PATH 及其子目录中查找所有包含 .om 的文件的信息 =========="
         result=$(grep -r -I "\.om" "$PLOG_PATH")
         if [ -n "$result" ]; then
             echo "$result"
         else
-            echo "warning: $PLOG_PATH下未找到.om文件的信息"
+            echo "warning:$PLOG_PATH下未找到.om文件的信息"
         fi
     fi
 else
@@ -387,7 +388,7 @@ else
                 echo
                 echo "开始转换卡$rank_num 的graph图文件:$om_file"
                 atc --mode=1 --om="$om_file" --json="$json_file"
-                echo "转换后的文件为: $json_file"
+                echo "转换后的文件为:$json_file"
                 echo
             fi
         done
@@ -404,7 +405,7 @@ else
             echo
             echo "开始转换卡$rank_num 的graph图文件:$root_om"
             atc --mode=1 --om="$root_om" --json="$json_file"
-            echo "转换后的文件为: $json_file"
+            echo "转换后的文件为:$json_file"
             echo
         fi
     fi

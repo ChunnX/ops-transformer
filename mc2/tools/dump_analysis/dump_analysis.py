@@ -23,6 +23,7 @@ import pandas as pd
 
 SOC_VERSION_950 = "950"
 SOC_VERSION_910_93 = "910_93"
+csv.field_size_limit(sys.maxsize)
 
 logging.basicConfig(
     level=logging.NOTSET,
@@ -66,7 +67,31 @@ def check_mask(mask, moe_num_func: int, expert_ids_reshape):
         for r, c in zip(row_func, col_func):
             logging.error('1.3 expertids中下标[%d,%d]的值:%d超范围', r, c, expert_ids_reshape[r][c])
     else:
-        logging.info('1.3 未检测到expertids中有异常输入')
+        logging.info('1.3 未检测到expertids中有超范围的异常输入')
+
+
+def check_duplicate_per_row(expert_ids_reshape_func):
+    has_duplicate = False
+    batch_size, topk = expert_ids_reshape_func.shape
+
+    for row_idx in range(batch_size):
+        per_experids = expert_ids_reshape_func[row_idx]
+        # 检查这一行是否有重复数字
+        if len(np.unique(per_experids)) == len(per_experids):
+            continue  # 无重复，直接跳过
+
+        # 有重复
+        has_duplicate = True
+        seen = set()
+        duplicates = set()
+        for num in per_experids:
+            if num in seen:
+                duplicates.add(num)
+            seen.add(num)
+        logging.error("1.3 第[%s]行出现重复expert_id: %s, 重复的值=%s", row_idx, list(per_experids), list(duplicates))
+    
+    if not has_duplicate:
+        logging.info('1.3 所有行均无重复expert_id')
 
 
 #判断topk是否超范围(<0 or >moe专家数)
@@ -81,6 +106,7 @@ def check_topk(target_path: str, moe_num_func: int, bs_func: int, sp_moe_num_fun
             logging.info('1.3 该卡的输入expertids为%s\n', expert_ids_reshape)
             mask = (expert_ids_reshape < 0) | (expert_ids_reshape >= (moe_num_func + sp_moe_num_func))
             check_mask(mask, moe_num_func, expert_ids_reshape)
+            check_duplicate_per_row(expert_ids_reshape)
             return k_func, expert_ids_reshape
     logging.warning('1.3 该卡未发现输入expertids对应的input.1.bin文件, 无法分析输入expertids')
     return k_func, np.array([])
@@ -191,7 +217,7 @@ def get_dump_expandidx(target_path: str):
     return expandidx
 
 
-# 识别使用了多少个核,通过查看没512B的前9*4B的位置是否全为0来判断
+# 识别使用了多少个核,通过查看每512B的前9*4B的位置是否全为0来判断
 def analysis_core_num(arr_func: np.ndarray) -> int:
     per_core = 128 # 512B转为int32
     judge_arr = [0, 0, 0, 0, 0, 0, 0, 0, 0] # 标识区内全为0,识别是否走到最后一个核
