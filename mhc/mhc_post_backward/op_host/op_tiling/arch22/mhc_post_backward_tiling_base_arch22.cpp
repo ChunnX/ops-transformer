@@ -21,8 +21,8 @@
 #include "op_host/tiling_base.h"
 #include "op_host/tiling_templates_registry.h"
 #include "tiling/platform/platform_ascendc.h"
-#include "../../../op_kernel/arch32/mhc_post_backward_tiling_data_arch32.h"
-#include "../../../op_kernel/arch32/mhc_post_backward_tiling_key_arch32.h"
+#include "../../../op_kernel/arch22/mhc_post_backward_tiling_data_arch22.h"
+#include "../../../op_kernel/arch22/mhc_post_backward_tiling_key_arch22.h"
 
 using namespace ge;
 using namespace std;
@@ -59,13 +59,13 @@ static int32_t GetCeilInt(int32_t value1, int32_t value2)
 namespace optiling {
 const uint32_t BLOCK_C = 1024;
 
-class MhcPostBackwardTilingBaseArch32 : public Ops::Transformer::OpTiling::TilingBaseClass {
+class MhcPostBackwardTilingBaseArch22 : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit MhcPostBackwardTilingBaseArch32(gert::TilingContext *context)
+    explicit MhcPostBackwardTilingBaseArch22(gert::TilingContext *context)
         : Ops::Transformer::OpTiling::TilingBaseClass(context)
     {
     }
-    ~MhcPostBackwardTilingBaseArch32() override = default;
+    ~MhcPostBackwardTilingBaseArch22() override = default;
 
 protected:
     bool IsCapable() override
@@ -116,7 +116,7 @@ private:
     size_t workspaceSize_ = 0;
 };
 
-ge::graphStatus MhcPostBackwardTilingBaseArch32::DoOpTiling()
+ge::graphStatus MhcPostBackwardTilingBaseArch22::DoOpTiling()
 {
     if (context_ == nullptr) {
         return ge::GRAPH_FAILED;
@@ -217,7 +217,7 @@ ge::graphStatus MhcPostBackwardTilingBaseArch32::DoOpTiling()
     const uint32_t loopC = channel / blockChannel;
     const uint32_t tailC = channel % blockChannel;
 
-    MhcPostBackwardTilingDataArch32 *tiling = context_->GetTilingData<MhcPostBackwardTilingDataArch32>();
+    MhcPostBackwardTilingDataArch22 *tiling = context_->GetTilingData<MhcPostBackwardTilingDataArch22>();
     tiling->singleCoreBS = singleCoreBS;
     tiling->tailBS = tailBS;
     tiling->coreUsed = blockDim_;
@@ -243,7 +243,7 @@ ge::graphStatus MhcPostBackwardTilingBaseArch32::DoOpTiling()
 
 REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(
     MhcPostBackward,
-    MhcPostBackwardTilingBaseArch32,
+    MhcPostBackwardTilingBaseArch22,
     std::vector<int32_t>({
         static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910B),
         static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910_93)}),
