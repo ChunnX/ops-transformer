@@ -73,7 +73,7 @@ struct RunInfo {
     bool isAllLoopEnd = false;
     bool isValid = false;
     bool isNeedLD = false;
- 	uint32_t saveWorkSpaceIdx = 0;
+    uint32_t saveWorkSpaceIdx = 0;
 };
 
 struct ConstInfo {
@@ -137,10 +137,10 @@ struct LdSplitCoreInfo {
     uint32_t bn2Idx = 0U;            // 归约任务
     uint32_t bIdx = 0U;
     uint32_t n2Idx = 0U;
-    uint32_t mIdx = 0U; 
+    uint32_t mIdx = 0U;
     uint32_t workspaceIdx = 0U;      // 当前AIV核上规约任务的索引
     uint32_t workspaceNum = 0U;      // 当前AIV核上规约任务的S2切分数量
-    uint32_t mStart = 0U;            
+    uint32_t mStart = 0U;
     uint32_t mNum = 0U;
     uint64_t indiceOutCoreOffset = 0U;  // 最终输出索引搬出Topk的初始偏移地址
 };

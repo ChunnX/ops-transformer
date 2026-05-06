@@ -468,13 +468,14 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &in
         if (constInfo_.attenMaskFlag) {
             validAllS2Len = ((int32_t)i + cuRealAcSeq) / static_cast<int32_t>(constInfo_.cmpRatio);
         }
-        int32_t validS2Len = validAllS2Len; // 非PA
+        int32_t validS2Len = validAllS2Len;
         if (info.isNeedLD) {
+            // 当前核处理的s2长度validS2Len
             validS2Len = Min((info.s2LoopEnd + 1) * s2BaseSize_, validAllS2Len) - curS2StartIdx;
         }
         
         uint64_t offset = info.saveWorkSpaceIdx * s1BaseSize_ * topkCountAlign16_ + rowIdx * topkCountAlign16_;
-        if (validS2Len <= 0 && !info.isNeedLD) { // && !info.isNeedLD
+        if (validS2Len <= 0 && !info.isNeedLD) {
             WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
             Duplicate(indicesOutLocal_.ReinterpretCast<int32_t>(), neg, topkCount_);
             SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
@@ -484,7 +485,6 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &in
             continue;
         } else if (validS2Len <= 0 && info.isNeedLD) {
             WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-            // SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
             Duplicate(indicesOutLocal_.ReinterpretCast<int32_t>(), neg, topkCountAlign16_);
             Duplicate(scoreOutLocal_, zero, topkCountAlign16_);
             SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
@@ -575,10 +575,10 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &in
                 PipeBarrier<PIPE_V>();
                 // repeatTime  每次读取连续的8个datablock（每个block32Bytes，共256Bytes）
                 // dstBlockStride 单次迭代内，矢量目的操作数不同datablock间地址步长。
-                Duplicate(indicesOutLocal_.ReinterpretCast<int32_t>()[validS2Len / 8 * 8], neg, mask, 1, 1, 0); 
+                Duplicate(indicesOutLocal_.ReinterpretCast<int32_t>()[validS2Len / 8 * 8], neg, mask, 1, 1, 0);
             }
             
-            if (validS2Len / 8 * 8 + 64 < topkCount_) { 
+            if (validS2Len / 8 * 8 + 64 < topkCount_) {
                 PipeBarrier<PIPE_V>();
                 Duplicate(indicesOutLocal_.ReinterpretCast<int32_t>()[validS2Len / 8 * 8 + 64], neg, topkCount_ - (validS2Len / 8 * 8 + 64));
             }
@@ -648,7 +648,6 @@ __aicore__ inline void QLIVector<QLIT>::ProcessLD()
         return;
     }
     uint64_t mrgValueLen = trunkLen_ + topkCountAlign256_;
-    // uint32_t ldWorkspaceNum = (ldProcessLen > mrgValueLen) ? CeilDiv(trunkLen_, topkCountAlign16_) : ldInfo_.workspaceNum;
     uint32_t ldWorkspaceNum = (ldProcessLen > mrgValueLen) ? (trunkLen_ / topkCountAlign16_) : ldInfo_.workspaceNum;
     uint32_t ldProcessNum = CeilDiv(ldInfo_.workspaceNum, ldWorkspaceNum);   // 搬运次数 一次搬运ldworkspaceNum块
     uint32_t ldProcessOffset = 0;
@@ -661,15 +660,16 @@ __aicore__ inline void QLIVector<QLIT>::ProcessLD()
     SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
     for (uint32_t j = 0; j < ldInfo_.mNum; j++) {
         WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-        for(uint32_t i = 0; i < ldProcessNum; i++){
+        for (uint32_t i = 0; i < ldProcessNum; i++) {
             // 读取数据段过长
             if (ldProcessNum > 1) {
                 ldProWorkspaceNum = (i == ldProcessNum - 1) ? ldInfo_.workspaceNum - i * ldWorkspaceNum : ldWorkspaceNum; // 当前搬运块数
             }
             ldProcessOffset = (i != 0) ? topkCountAlign256_ : 0;
             PipeBarrier<PIPE_V>();
-            Duplicate(mrgValueLocal_[ldProcessOffset], zero, topkCountAlign256_ + trunkLen_ - ldProcessOffset); // 全部刷0
-            Duplicate(ldIndexLocal_.ReinterpretCast<int32_t>()[ldProcessOffset], neg, topkCountAlign256_ + trunkLen_ - ldProcessOffset); // 全部刷-1
+            // 索引全部刷-1 value全部刷0
+            Duplicate(mrgValueLocal_[ldProcessOffset], zero, topkCountAlign256_ + trunkLen_ - ldProcessOffset);
+            Duplicate(ldIndexLocal_.ReinterpretCast<int32_t>()[ldProcessOffset], neg, topkCountAlign256_ + trunkLen_ - ldProcessOffset);
 
             AscendC::DataCopyPadExtParams<SCORE_T> scorePadParams{true, 0, 0, 0};
             AscendC::DataCopyExtParams ldScoreParams;
@@ -687,11 +687,12 @@ __aicore__ inline void QLIVector<QLIT>::ProcessLD()
 
             int32_t s2Len = topkCountAlign16_ * ldProWorkspaceNum + ldProcessOffset;
             uint32_t s2LenAlign = QLICommon::Align(s2Len, (int32_t)256); // 寄存器需要256对齐
-            uint64_t LDGmOffset = ldInfo_.workspaceIdx * s1BaseSize_ * topkCountAlign16_ + topkCountAlign16_ * (ldInfo_.mStart + j) + i * ldWorkspaceNum * s1BaseSize_ * topkCountAlign16_; // 加入i偏移 
+            uint64_t LDGmOffset = ldInfo_.workspaceIdx * s1BaseSize_ * topkCountAlign16_ +
+                                  topkCountAlign16_ * (ldInfo_.mStart + j) + i * ldWorkspaceNum * s1BaseSize_ * topkCountAlign16_; // 加入LD处理偏移
             SetFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
             WaitFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
-            AscendC::DataCopyPad(mrgValueLocal_[ldProcessOffset], LDScoreGm[LDGmOffset], ldScoreParams, scorePadParams); // GM todo
-            AscendC::DataCopyPad(ldIndexLocal_[ldProcessOffset], LDIndexGm[LDGmOffset].ReinterpretCast<uint32_t>(), ldIndexParams, indexPadParams); // GM todo
+            AscendC::DataCopyPad(mrgValueLocal_[ldProcessOffset], LDScoreGm[LDGmOffset], ldScoreParams, scorePadParams);
+            AscendC::DataCopyPad(ldIndexLocal_[ldProcessOffset], LDIndexGm[LDGmOffset].ReinterpretCast<uint32_t>(), ldIndexParams, indexPadParams);
             
             SetFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
             WaitFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
@@ -737,7 +738,6 @@ __aicore__ inline void QLIVector<QLIT>::ProcessLD()
             uint32_t copyBytes = topkCountAlign256_; // 32B对齐 topkCountAlign256_
             AscendC::DataCopy(ldIndexLocal_, indicesOutLocal_, copyBytes);
             AscendC::DataCopy(mrgValueLocal_, scoreOutLocal_, copyBytes);
-            
         }
         SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
         WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
