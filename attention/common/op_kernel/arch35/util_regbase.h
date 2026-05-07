@@ -466,7 +466,8 @@ struct CVSharedParams<true, false> {
     uint32_t needInit : 1;
     uint32_t isPostQuantPerChnl : 1;
     uint32_t isPostQuantBF16 : 1;
-    uint32_t headNumRatio : 20;
+    uint32_t isFd : 1;
+    uint32_t headNumRatio : 19;
 
     uint32_t transposeLayout;
     uint32_t actualSeqLengthsSize;

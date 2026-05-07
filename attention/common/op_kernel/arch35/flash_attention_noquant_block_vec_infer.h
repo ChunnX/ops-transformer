@@ -174,9 +174,8 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::InitCubeVecSharedP
     sharedParams.compressMode = inputParamsRegbase.attenMaskCompressMode;
     sharedParams.attenMaskS1Size = inputParamsRegbase.attenMaskS1Size;
     sharedParams.attenMaskS2Size = inputParamsRegbase.attenMaskS2Size;
-    sharedParams.isFd = inputParamsRegbase.isFd;
  
-    if (sharedParams.isFd) {
+    if (inputParamsRegbase.isFd) {
         sharedParams.splitKVNum = inputParamsRegbase.kvSplitPart;
     }
     if constexpr (POST_QUANT) {
@@ -196,6 +195,7 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::InitCubeVecSharedP
     sharedParams.isActualSeqLengthsKVNull = inputParamsRegbase.isActualSeqLengthsKVNull;
     sharedParams.isQHasLeftPadding = inputParamsRegbase.isQHasLeftPadding;
     sharedParams.isKVHasLeftPadding = inputParamsRegbase.isKVHasLeftPadding;
+    sharedParams.isFd = inputParamsRegbase.isFd;
     // pageAttention
     if constexpr (isPa) {
         sharedParams.blockTableDim2 = inputParamsRegbase.blockTableDim2;
