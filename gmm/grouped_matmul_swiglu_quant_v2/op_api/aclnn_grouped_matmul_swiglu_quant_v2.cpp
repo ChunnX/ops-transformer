@@ -59,15 +59,16 @@ static aclnnStatus aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(const cha
     return ACLNN_ERR_PARAM_INVALID;
 }
 
-static aclnnStatus CheckMxfp4WeightNzStorageShape(const aclTensor *weight, const op::Shape &storageShape)
+static aclnnStatus CheckMxfp4WeightNzViewShape(const aclTensor *weight, const op::Shape &viewShape)
 {
     if (weight->GetDataType() != DataType::DT_FLOAT4_E2M1) {
         return ACLNN_SUCCESS;
     }
-    constexpr size_t nzLastSecondDimIndex = 3UL;
-    constexpr size_t nzLastDimIndex = 4UL;
-    int64_t lastSecondDim = storageShape.GetDim(nzLastSecondDimIndex);
-    int64_t lastDim = storageShape.GetDim(nzLastDimIndex);
+    CHECK_COND((viewShape.GetDimNum() == WEIGHT_ND_DIM_LIMIT), ACLNN_ERR_PARAM_INVALID,
+               "When weight dtype is DT_FLOAT4_E2M1, the dimnum of weight viewShape should be 3, but got %lu.",
+               viewShape.GetDimNum());
+    int64_t lastSecondDim = viewShape.GetDim(1);
+    int64_t lastDim = viewShape.GetDim(2);
     CHECK_COND((lastSecondDim != 1 && lastDim != 1), ACLNN_ERR_PARAM_INVALID,
                "When weight dtype is DT_FLOAT4_E2M1, the last two dimensions of weight should not be 1, but got "
                "%ld and %ld.",
@@ -138,22 +139,12 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize(const aclTen
                    "aclnnGroupedMatmulSwigluQuantWeightNzV2, The dimnum of storageShape for second input (weight)"
                  "must be 5. \n But StorageShape got %s , and dimNum is %lu.",
                    op::ToString(storgeShape).GetString(), storgeShape.GetDimNum());
-        CHECK_RET(CheckMxfp4WeightNzStorageShape(w, storgeShape) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+        CHECK_RET(CheckMxfp4WeightNzViewShape(w, viewShape) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
         // weight的StorageFormat无条件视为NZ
         weightNZ->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
         if (viewShape.GetDimNum() == WEIGHT_NZ_DIM_LIMIT) {
             // 若weight的viewShape为5维则视为NZ
             weightNZ->SetViewFormat(op::Format::FORMAT_FRACTAL_NZ);
-            if (w->GetDataType() == DataType::DT_FLOAT4_E2M1) {
-                int64_t e = storgeShape.GetDim(0);
-                int64_t k = storgeShape.GetDim(2) * storgeShape.GetDim(3);
-                int64_t n = storgeShape.GetDim(1) * storgeShape.GetDim(4);
-                op::Shape logicalViewShape = {e, k, n};
-                op::Strides logicalStrides = {k * n, n, 1};
-                weightNZ->SetViewShape(logicalViewShape);
-                weightNZ->SetViewStrides(logicalStrides);
-                weightNZ->SetViewFormat(op::Format::FORMAT_ND);
-            }
         } else if (viewShape.GetDimNum() == WEIGHT_ND_DIM_LIMIT) {
             // 若weight的viewShape为3维则视为ND
             weightNZ->SetViewFormat(op::Format::FORMAT_ND);

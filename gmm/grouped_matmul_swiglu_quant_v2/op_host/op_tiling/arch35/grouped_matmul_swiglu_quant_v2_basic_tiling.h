@@ -70,6 +70,7 @@ private:
     bool IsFp4Input() const;
     bool IsFp8Input();
     bool IsMxFp4WeightNz() const;
+    bool CheckMxFp4WeightNzShape(const gert::Shape &xShape, const gert::Shape &wShape) const;
     ge::graphStatus CalMxFp4WeightNzL1Tiling();
     ge::graphStatus CalMxFp4WeightNzL1Depth(uint64_t leftL1Size);
     uint64_t GetMxFp4WeightNzDepthWithHighBW(uint64_t mnL1) const;

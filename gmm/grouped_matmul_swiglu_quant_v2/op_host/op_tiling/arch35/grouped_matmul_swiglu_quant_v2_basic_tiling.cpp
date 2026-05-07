@@ -178,6 +178,9 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeDtype()
                     OP_LOGE(context_->GetNodeName(),
                             "NZ weight, x and weight dtype must both be DT_FLOAT8_E4M3FN or DT_FLOAT4_E2M1."),
                     return false);
+        if (IsMxFp4WeightNz() && !CheckMxFp4WeightNzShape(xShape, wShape)) {
+            return false;
+        }
     }
     if (inputParams_.aQuantMode == optiling::QuantMode::PERTOKEN_MODE) {
         return CheckDtypePertoken();
@@ -203,6 +206,42 @@ bool GroupedMatmulSwigluQuantV2Tiling950::IsFp4Input() const
 bool GroupedMatmulSwigluQuantV2Tiling950::IsMxFp4WeightNz() const
 {
     return IsFp4Input() && inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ;
+}
+
+bool GroupedMatmulSwigluQuantV2Tiling950::CheckMxFp4WeightNzShape(const gert::Shape &xShape,
+                                                                  const gert::Shape &wShape) const
+{
+    constexpr int64_t mxfp4KMin = 2;
+    constexpr int64_t mxfp4Align = 2;
+    constexpr int64_t invalidWeightDim = 1;
+    constexpr size_t xShapeDim = 2;
+    constexpr size_t wShapeDim = 3;
+    OP_CHECK_IF(xShape.GetDimNum() < xShapeDim || wShape.GetDimNum() < wShapeDim,
+                OP_LOGE(context_->GetNodeName(),
+                        "MXFP4 weight NZ requires x dim at least 2 and weight origin dim at least 3."),
+                return false);
+
+    int64_t xInner = xShape.GetDim(1);
+    int64_t wInner = inputParams_.transB ? wShape.GetDim(2) : wShape.GetDim(1);
+    OP_CHECK_IF(inputParams_.kSize <= mxfp4KMin,
+                OP_LOGE(context_->GetNodeName(),
+                        "MXFP4 weight NZ requires K greater than 2, but actual K is %lu.", inputParams_.kSize),
+                return false);
+    OP_CHECK_IF(xInner % mxfp4Align != 0 || wInner % mxfp4Align != 0,
+                OP_LOGE(context_->GetNodeName(),
+                        "MXFP4 weight NZ requires x and weight inner axes to be even, but got %ld and %ld.",
+                        xInner, wInner),
+                return false);
+
+    int64_t weightLastSecondDim = wShape.GetDim(wShape.GetDimNum() - 2);
+    int64_t weightLastDim = wShape.GetDim(wShape.GetDimNum() - 1);
+    OP_CHECK_IF(weightLastSecondDim == invalidWeightDim || weightLastDim == invalidWeightDim,
+                OP_LOGE(context_->GetNodeName(),
+                        "MXFP4 weight NZ requires the last two dimensions of weight origin shape not to be 1, "
+                        "but got %ld and %ld.",
+                        weightLastSecondDim, weightLastDim),
+                return false);
+    return true;
 }
 
 bool GroupedMatmulSwigluQuantV2Tiling950::IsFp8Input()
