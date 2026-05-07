@@ -294,7 +294,7 @@ public:
                     ubSLayoutTla, Arch::PositionUB{});
                     uint32_t Mm1ToSmFlagId = ubSBufId;
                     Arch::CrossCoreFlag mm1ToSmFlag(Mm1ToSmFlagId);
-                    uint32_t yBlockIndexOffset = gmOffsetSparseIdx + gatheredKvSTileIdx;
+                    uint32_t yBlockIndexOffset = (gatheredKvSTileIdx * kvBaseTile_) / blockShapeY_;
                     uint32_t yBlockIndex = gSparseIdx.GetValue(yBlockIndexOffset);
                     uint32_t kvDeqScaleOffset =
                         curBatch * kvHeads_ * yBlockNumAligned_ + kvHeadIdx * yBlockNumAligned_ + yBlockIndex;

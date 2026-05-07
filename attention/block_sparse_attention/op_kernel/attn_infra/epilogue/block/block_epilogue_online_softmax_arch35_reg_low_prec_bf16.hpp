@@ -51,6 +51,7 @@ public:
     static constexpr uint32_t MAX_UB_S_ELEM_NUM = 16384;
     static constexpr uint32_t DM_UB_GLOBAL_ELEM_NUM = 64;
     static constexpr uint32_t ELE_NUM_PER_C0 = 16;
+    static constexpr uint32_t ELE_NUM_PER_C0_FLOAT8 = 32;
     static constexpr uint32_t C0_NUM_PER_FRACTAL = 16;
 
     static constexpr uint32_t REDUCE_UB_SIZE = 1024;
@@ -63,6 +64,7 @@ public:
 
     static constexpr uint32_t SPLIT_COL_IDX_2 = 2;
     static constexpr uint32_t SPLIT_COL_IDX_3 = 3;
+    static constexpr uint32_t FLOAT8_REP_SIZE = 256;
     static constexpr uint32_t HALF_REP_SIZE = 128;
     static constexpr uint32_t FLOAT_REP_SIZE = 64;
     static constexpr uint32_t BLOCK_REP_SIZE = 8;
@@ -372,13 +374,13 @@ private:
 
         for (uint16_t i = 0; i < m; ++i) {
             for (uint16_t j = 0; j < nLoopCount; ++j) {
-                LoadAlign(pVreg, pUb + i * nRound + j * HALF_REP_SIZE);
+                LoadAlign(pVreg, pUb + i * nRound + j * FLOAT8_REP_SIZE);
                 Muls(pVreg, pVreg, staticScale, pregAll);
-                StoreAlign<ElementP, StoreDist::DIST_NORM_B8>(pUb + i * nRound + j * HALF_REP_SIZE, pVreg, pregAll);
+                StoreAlign<ElementP, StoreDist::DIST_NORM_B8>(pUb + i * nRound + j * FLOAT8_REP_SIZE, pVreg, pregAll);
             }
-            LoadAlign(pVreg, pUb + i * nRound + nLoopCount * HALF_REP_SIZE);
+            LoadAlign(pVreg, pUb + i * nRound + nLoopCount * FLOAT8_REP_SIZE);
             Muls(pVreg, pVreg, staticScale, pregTailN);
-            StoreAlign<ElementP, StoreDist::DIST_NORM_B8>(pUb + i * nRound + nLoopCount * HALF_REP_SIZE, pVreg,
+            StoreAlign<ElementP, StoreDist::DIST_NORM_B8>(pUb + i * nRound + nLoopCount * FLOAT8_REP_SIZE, pVreg,
                                                           pregTailN);
         }
     }
@@ -402,14 +404,14 @@ private:
 
         for (uint16_t i = 0; i < m; ++i) {
             for (uint16_t j = 0; j < nLoopCount; ++j) {
-                LoadAlign(srcVreg, srcUb + i * nRound + j * HALF_REP_SIZE);
+                LoadAlign(srcVreg, srcUb + i * nRound + j * FLOAT8_REP_SIZE);
                 Cast<ElementDst, ElementSrc, castTrait>(dstVreg, srcVreg, pregAll);
-                StoreAlign<ElementDst, StoreDist::DIST_NORM_B8>(dstUb + i * nRound + j * HALF_REP_SIZE, dstVreg,
+                StoreAlign<ElementDst, StoreDist::DIST_NORM_B8>(dstUb + i * nRound + j * FLOAT8_REP_SIZE, dstVreg,
                                                                 pregAll);
             }
-            LoadAlign(srcVreg, srcUb + i * nRound + nLoopCount * HALF_REP_SIZE);
+            LoadAlign(srcVreg, srcUb + i * nRound + nLoopCount * FLOAT8_REP_SIZE);
             Cast<ElementDst, ElementSrc, castTrait>(dstVreg, srcVreg, pregTailN);
-            StoreAlign<ElementDst, StoreDist::DIST_NORM_B8>(dstUb + i * nRound + nLoopCount * HALF_REP_SIZE, dstVreg,
+            StoreAlign<ElementDst, StoreDist::DIST_NORM_B8>(dstUb + i * nRound + nLoopCount * FLOAT8_REP_SIZE, dstVreg,
                                                             pregTailN);
         }
     }
@@ -487,8 +489,9 @@ private:
                     pregFull);
                 if constexpr (std::is_same_v<ElementOutput, float8_e4m3_t>) {
                     Cast<ElementP, ElementS, castTraitZero>(pVreg, expDstVreg, pregFull);
-                    StoreAlign<ElementP, DataCopyMode::DIST_NORM_B8>(
-                        expUb + i * S2BaseSize + j * HALF_REP_SIZE, pVreg, pregFull);
+                    StoreAlign<ElementP, DataCopyMode::DATA_BLOCK_COPY>(
+                        expUb + i * ELE_NUM_PER_C0_FLOAT8 + j * blockStride * ELE_NUM_PER_C0_FLOAT8 * BLOCK_REP_SIZE,
+                        pVreg, blockStride, pregFull);
                 } else {
                     StoreAlign<ElementP, DataCopyMode::DATA_BLOCK_COPY>(
                         expUb + i * ELE_NUM_PER_C0 + j * blockStride * ELE_NUM_PER_C0 * BLOCK_REP_SIZE,
@@ -511,9 +514,10 @@ private:
 
             if constexpr (std::is_same_v<ElementOutput, float8_e4m3_t>) {
                 Cast<ElementP, ElementS, castTraitZero>(pVreg, expDstVreg, pregTailN);
-                StoreAlign<ElementP, DataCopyMode::DIST_NORM_B8>(
-                    expUb + i * S2BaseSize + nLoops * HALF_REP_SIZE, pVreg, pregTailN);
-            else {
+                StoreAlign<ElementP, DataCopyMode::DATA_BLOCK_COPY>(
+                    expUb + i * ELE_NUM_PER_C0_FLOAT8 + nLoops * blockStride * ELE_NUM_PER_C0_FLOAT8 * BLOCK_REP_SIZE,
+                    pVreg, blockStride, pregTailN);
+            } else {
                 StoreAlign<ElementP, DataCopyMode::DATA_BLOCK_COPY>(
                     expUb + i * ELE_NUM_PER_C0 + nLoops * blockStride * ELE_NUM_PER_C0 * BLOCK_REP_SIZE, expDstVreg,
                     blockStride, pregTailN);
