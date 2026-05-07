@@ -244,10 +244,6 @@ public:
                                             const AscendC::LocalTensor<BType> &bl1Local,
                                             const TileL1L0Param &tileL1L0Param)
     {
-        AscendC::GlobalTensor<uint8_t> bGlobalUInt8;
-        bGlobalUInt8.SetGlobalBuffer((__gm__ uint8_t *)bGlobal.GetPhyAddr());
-        auto bl1LocalUint8 = bl1Local.template ReinterpretCast<uint8_t>();
-
         AscendC::DataCopyExtParams dataCopyParams;
         AscendC::DataCopyPadExtParams<uint8_t> padParams;
         if constexpr (transB) {
@@ -275,7 +271,7 @@ public:
             }
             dataCopyParams.dstStride = tileL1L0Param.curPadBKL1 - curGmBKL1NZ;
         }
-        AscendC::DataCopyPad(bl1LocalUint8, bGlobalUInt8, dataCopyParams, padParams);
+        AscendC::DataCopyPad(bl1Local.template ReinterpretCast<uint8_t>(), bGlobal.template ReinterpretCast<uint8_t>(), dataCopyParams, padParams);
     }
 
     __aicore__ inline void InitA1(const AscendC::LocalTensor<AType> &al1Local, const TileL1L0Param &tileL1L0Param)
@@ -652,7 +648,7 @@ public:
         }
         if constexpr (formatB == CubeFormat::NZ) {
             uint64_t offsetB =
-                transB ? kL1Offset * Cgmct::Gemm::CeilAlign(n_, AscendC::BLOCK_CUBE) : kL1Offset * C0_SIZE;
+                transB ? kL1Offset * ((n_ + AscendC::BLOCK_CUBE - 1) & (~(AscendC::BLOCK_CUBE - 1))) : kL1Offset * C0_SIZE;
             CopyInB1WeightNz(bGlobal[offsetB], bL1Local_[l1BufferBOffset_[l1BufId]], tileL1L0Param);
         } else {
             uint64_t offsetB = transB ? kL1Offset : kL1Offset * n_;
