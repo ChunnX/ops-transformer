@@ -162,6 +162,17 @@ constexpr int FINISH_MM_CKVKR_KN = 0x4;
 #define DO_DUMP_DATA(srcTensor, id, len)
 #endif
 
+constexpr uint8_t UNIT_FLAG_DISABLE = 0;  // 0: disable: 不配置unitFlag
+constexpr uint8_t UNIT_FLAG_CHECK = 0b10; // 2: enable: 将mmadParams.unitFlag设置为 0b10
+constexpr uint8_t UNIT_FLAG_SET = 0b11;   // 3: enable: 在k的最后一轮循环，会将mmadParams.unitFlag设置为 0b11
+constexpr uint8_t SINGL_TARGET_MODE = 0;  // 
+constexpr uint8_t DUAL_TARGET_MODE_SPLIT_M = 0b01;
+constexpr uint8_t DUAL_TARGET_MODE_SPLIT_N = 0b10;
+
+constexpr FixpipeConfig PFA_CFG_ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR, true}; // ROW_MAJOR: 使能NZ2ND，输出数据格式为ND格式; true: 用于用户指定目的地址的位置是否是UB
+constexpr FixpipeConfig PFA_CFG_ROW_MAJOR_GM = {CO2Layout::ROW_MAJOR, false}; // ROW_MAJOR: 使能NZ2ND，输出数据格式为ND格式; true: 用于用户指定目的地址的位置是否是UB
+constexpr FixpipeConfig FA_CFG_NZ_UB = {CO2Layout::NZ, true}; // 不使能NZ2ND，输出数据格式为NZ格式; true: 用于用户指定目的地址的位置是否是UB
+
 class NoneType {};
 
 #if __CCE_AICORE__ == 310
