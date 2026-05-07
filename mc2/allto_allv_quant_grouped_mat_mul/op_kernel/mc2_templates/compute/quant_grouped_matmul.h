@@ -75,8 +75,13 @@ public:
         wGlobalBuffer_.SetGlobalBuffer((__gm__ wType *)this->wGM_);
         yGlobalBuffer_.SetGlobalBuffer((__gm__ yType *)this->yGM_);
         groupListGlobalBuffer_.SetGlobalBuffer((__gm__ int64_t *)groupListGm_);
-        xScaleGlobalBuffer_.SetGlobalBuffer((__gm__ scaleType *)xScaleGM);
-        wScaleGlobalBuffer_.SetGlobalBuffer((__gm__ scaleType *)weightScaleGM);
+        // 支持nullptr（非量化场景）
+        if (xScaleGM != nullptr) {
+            xScaleGlobalBuffer_.SetGlobalBuffer((__gm__ scaleType *)xScaleGM);
+        }
+        if (weightScaleGM != nullptr) {
+            wScaleGlobalBuffer_.SetGlobalBuffer((__gm__ scaleType *)weightScaleGM);
+        }
 
         const auto *opCnt = isA2avGmmFlag ? &tilingData_->taskTilingInfo.recvCnt[0] : &tilingData_->taskTilingInfo.sendCnt[0];
         for (uint32_t e = 0U; e < expertNumInOneRank_; e++) {
@@ -103,7 +108,9 @@ public:
         GM_ADDR xPtr = BuildPtrTable(reinterpret_cast<GM_ADDR>(xAddr), 0);
         GM_ADDR wPtr = BuildPtrTable(reinterpret_cast<GM_ADDR>(wAddr), 1);
         // weightScaleGM_ → kernel scale (weight scale B), xScaleGM_ → kernel perTokenScale (activation scale A)
-        GM_ADDR scaleBPtr = BuildPtrTable(weightScaleGM_, 2);
+        // 支持nullptr（非量化场景）
+        GM_ADDR scaleBPtr = (weightScaleGM_ != nullptr) ? BuildPtrTable(weightScaleGM_, 2) : nullptr;
+        GM_ADDR perTokenScalePtr = (xScaleGM_ != nullptr) ? BuildPtrTable(xScaleGM_, 4) : nullptr;
         GM_ADDR yPtr = BuildPtrTable(reinterpret_cast<GM_ADDR>(yAddr), 3);
 
         uint64_t groupListToken = isLocal ? bs_ : expertTokenNum_[expertIdx];
@@ -112,7 +119,8 @@ public:
             AscendC::DcciDst::CACHELINE_OUT>(groupListGlobalBuffer_);
         Mc2GroupedMatmul::Mc2GmmASWKernel<xType, wType, biasType, scaleType, yType, wFormat, aTrans, bTrans> gmmASWKernel;
         tPipe_->Reset();
-        gmmASWKernel.Init(xPtr, wPtr, nullptr, scaleBPtr, groupListGm_, xScaleGM_, yPtr, workspaceGM_,
+        // 支持nullptr（非量化场景）：scaleBPtr和perTokenScalePtr可以是nullptr
+        gmmASWKernel.Init(xPtr, wPtr, nullptr, scaleBPtr, groupListGm_, perTokenScalePtr, yPtr, workspaceGM_,
             &gmmTilingData_->gmmQuantParams, &gmmTilingData_->mmTilingData, gmmArrayAddrIn_, tPipe_);
         gmmASWKernel.Process();
     }
