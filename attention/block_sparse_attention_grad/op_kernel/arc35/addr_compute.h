@@ -27,22 +27,22 @@ private:
     int32_t q_head_num_;
     int32_t kv_head_num_;
     int32_t head_dim_;
-    int32_t bIdx_{0};            // 当前batch计算到的位置
-    int32_t s1Idx_{0};           // 当前s1方向计算到的位置
-    int32_t s2Idx_{0};           // 当前s2方向计算到的位置
-    int32_t n1Idx_{0};           // 当前n1方向计算到的位置
-    int32_t s1Len_{0};           // 当前s1方向计算的长度
-    int32_t s2Len_{0};           // 当前s2方向计算的长度
-    int32_t cur_q_seq_len_{0};   // 当前batch的q_seq_len
-    int32_t cur_kv_seq_len_{0};  // 当前batch的kv_seq_len
-    int32_t last_q_seq_sum_{0};  // 上一个batch的q_seq_len的累加和
-    int32_t last_kv_seq_sum_{0}; // 上一个batch的kv_seq_len的累加和
-    int32_t cube_core_idx_{0};   // 实际cube核的Idx
-    int32_t cube_core_num_{0};   // cube核的数量
-    int32_t single_s1_len_{0};   // 每个cube核计算的s1方向的长度
-    int32_t single_s2_len_{0};   // 每个cube核计算的s2方向的长度
-    int32_t current_loop{0};     // 当前循环次数(包括sparse跳过的计算)
-    int32_t current_cube_idx{0}; // 当前cube计算到的位置
+    int32_t bIdx_{0};             // 当前batch计算到的位置
+    int32_t s1Idx_{0};            // 当前s1方向计算到的位置
+    int32_t s2Idx_{0};            // 当前s2方向计算到的位置
+    int32_t n1Idx_{0};            // 当前n1方向计算到的位置
+    int32_t s1Len_{0};            // 当前s1方向计算的长度
+    int32_t s2Len_{0};            // 当前s2方向计算的长度
+    int32_t cur_q_seq_len_{0};    // 当前batch的q_seq_len
+    int32_t cur_kv_seq_len_{0};   // 当前batch的kv_seq_len
+    int32_t last_q_seq_sum_{0};   // 上一个batch的q_seq_len的累加和
+    int32_t last_kv_seq_sum_{0};  // 上一个batch的kv_seq_len的累加和
+    int32_t cube_core_idx_{0};    // 实际cube核的Idx
+    int32_t cube_core_num_{0};    // cube核的数量
+    int32_t single_s1_len_{0};    // 每个cube核计算的s1方向的长度
+    int32_t single_s2_len_{0};    // 每个cube核计算的s2方向的长度
+    int32_t current_loop_{0};     // 当前循环次数(包括sparse跳过的计算)
+    int32_t current_cube_idx_{0}; // 当前cube计算到的位置
 public:
     __aicore__ inline void Init(const TILING_CLASS *tilingData, GM_ADDR actualQseqlen, GM_ADDR actualKvseqlen)
     {
@@ -81,8 +81,11 @@ public:
             }
 
             RunTimeInfoRecord(runTimeInfo);
-            current_loop++;
-            break;
+            current_loop_++;
+
+            if (current_cube_idx_ && current_cube_idx_ % cube_core_num_ == 0) {
+                break;
+            }
         }
     }
 
@@ -113,7 +116,7 @@ private:
         int32_t recoderS1 = GetRecoderS(s1Idx_, cur_q_seq_len_, single_s1_len_);
         int32_t recoderS2 = GetRecoderS(s2Idx_, cur_kv_seq_len_, single_s2_len_);
 
-        if (unlikely(current_loop == 0)) {
+        if (unlikely(current_loop_ == 0)) {
             return false;
         }
 
@@ -147,8 +150,8 @@ private:
 
     __aicore__ inline void RunTimeInfoRecord(RunTimeInfo *runTimeInfo)
     {
-        if (current_cube_idx % cube_core_num_ != cube_core_idx_) {
-            current_cube_idx++;
+        if (current_cube_idx_ % cube_core_num_ != cube_core_idx_) {
+            current_cube_idx_++;
             return;
         }
         s1Len_ = GetRecoderS(s1Idx_, cur_q_seq_len_, single_s1_len_);
@@ -159,7 +162,7 @@ private:
         runTimeInfo->n1Idx = n1Idx_;
         runTimeInfo->s1Len = s1Len_;
         runTimeInfo->s2Len = s2Len_;
-        current_cube_idx++;
+        current_cube_idx_++;
 
         printf("cube_core_idx: %d, bIdx: %d, s1Idx: %d, s2Idx: %d, s1Len: %d, s2Len: %d\n", cube_core_idx_, bIdx_,
                s1Idx_, s2Idx_, s1Len_, s2Len_);
