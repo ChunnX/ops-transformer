@@ -842,7 +842,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
         - MX量化场景下，需满足N为128对齐。
         - MXFP4场景下，K需大于2。
         - MXFP4场景下，左右矩阵内轴均需为偶数。
-        - MXFP4场景下，weight为5维NZ存储shape时，后两轴均不能为1。
+        - MXFP4场景下，weight后两轴均不能为1。
 
 ## 调用示例
 

@@ -69,8 +69,8 @@ static aclnnStatus CheckMxfp4WeightNzStorageShape(const aclTensor *weight, const
     int64_t lastSecondDim = storageShape.GetDim(nzLastSecondDimIndex);
     int64_t lastDim = storageShape.GetDim(nzLastDimIndex);
     CHECK_COND((lastSecondDim != 1 && lastDim != 1), ACLNN_ERR_PARAM_INVALID,
-               "When weight dtype is DT_FLOAT4_E2M1 and weight storage shape is 5D NZ, the last two dimensions of "
-               "weight should not be 1, but got %ld and %ld.",
+               "When weight dtype is DT_FLOAT4_E2M1, the last two dimensions of weight should not be 1, but got "
+               "%ld and %ld.",
                lastSecondDim, lastDim);
     return ACLNN_SUCCESS;
 }
