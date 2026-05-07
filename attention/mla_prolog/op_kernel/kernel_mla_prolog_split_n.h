@@ -2473,12 +2473,12 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::M3AndM4()
         uint32_t mm4AL1BufIter = isAFullLoad ? bufParam.aL1BufIter + 1 : bufParam.aL1BufIter;
         if constexpr (std::is_same<mmQcQrInputType, int8_t>::value || std::is_same<mmQcQrInputType, HIF8>::value ||
                       (std::is_same<mmQcQrInputType, FP8E4M3>::value && !isFp8E8m0)) {
-            GetTensorC(mm3ResLocal_, bufParam_.cL0, mmQcQrParam_.m, baseParams_->dSize, Align(mmQcQrParam_.m, BLOCK_CUBE_SIZE),
+            GetTensorCToUb(mm3ResLocal_, bufParam_.cL0, mmQcQrParam_.m, baseParams_->dSize, Align(mmQcQrParam_.m, BLOCK_CUBE_SIZE),
                     mmQcQrParam_.orgKc, bufParam_);
             CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_FIX>(FINISH_MM_QCQR_SPLIT_N);
             mm3ResOffset += mmQcQrParam_.m * baseParams_->dSize;
         } else {
-            GetTensorC(localTensors.aL1Tensor[(mm4AL1BufIter & 1u) * aL1Offset], bufParam_.cL0, mmQcQrParam_.m, baseParams_->dSize, Align(mmQcQrParam_.m, BLOCK_CUBE_SIZE),
+            GetTensorCToL1(localTensors.aL1Tensor[(mm4AL1BufIter & 1u) * aL1Offset], bufParam_.cL0, mmQcQrParam_.m, baseParams_->dSize, Align(mmQcQrParam_.m, BLOCK_CUBE_SIZE),
                     mmQcQrParam_.orgKc, bufParam_);
             SetFlag<HardEvent::FIX_MTE1>(L0A_EVENT0 + (bufParam.aL0BufIter & 1u));  
         }

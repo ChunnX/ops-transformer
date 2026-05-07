@@ -434,58 +434,88 @@ __aicore__ inline void MatmulL0(MMBufParams &bufParam, const LocalTensor<T> &aL1
     bufParam.aL0BufIter++;
 }
 
-template <typename T, typename O, typename O_L0C, bool enUnitFlag = false,
-          template <typename...> class outputTensorType = GlobalTensor>
-__aicore__ inline void GetTensorC(const outputTensorType<O> &tensorCGm, const LocalTensor<O_L0C> &cL0, const uint32_t mSize,
+template <typename T, typename O, typename O_L0C, bool enUnitFlag = false>
+__aicore__ inline void GetTensorC(const GlobalTensor<O> &tensorCGm, const LocalTensor<O_L0C> &cL0, const uint32_t mSize,
                                   const uint32_t nSize, const uint32_t srcStride, const uint32_t dstStride,
                                   MMBufParams &bufParam)
 {
-    if constexpr (std::is_same<outputTensorType<O>, GlobalTensor<O>>::value) {
-        FixpipeParamsV220 fixParams;
-        fixParams.nSize = nSize;         // 实现切片大小
-        fixParams.mSize = mSize;         // msdIterNum * gSize; // 有效数据不足16行，只需要输出部分行即可
-        fixParams.srcStride = srcStride; // ((fixParams.mSize + 15) / 16) * 16
-        fixParams.dstStride = dstStride;
-        fixParams.ndNum = 1;
-        if constexpr (enUnitFlag) {
-            fixParams.unitFlag = UNIT_FLAG_SET;
-        } else {
-            fixParams.unitFlag = UNIT_FLAG_DISABLE;
-        }
-        if constexpr (std::is_same<O_L0C, float>::value && std::is_same<O, bfloat16_t>::value) {
-            fixParams.quantPre = QuantMode_t::F322BF16;
-        }
-        if constexpr (!enUnitFlag) {
-            SetFlag<HardEvent::M_FIX>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
-            WaitFlag<HardEvent::M_FIX>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
-        }
-        Fixpipe(tensorCGm, cL0, fixParams);
+    FixpipeParamsV220 fixParams;
+    fixParams.nSize = nSize;         // 实现切片大小
+    fixParams.mSize = mSize;         // msdIterNum * gSize; // 有效数据不足16行，只需要输出部分行即可
+    fixParams.srcStride = srcStride; // ((fixParams.mSize + 15) / 16) * 16
+    fixParams.dstStride = dstStride;
+    fixParams.ndNum = 1;
+    if constexpr (enUnitFlag) {
+        fixParams.unitFlag = UNIT_FLAG_SET;
     } else {
-        FixpipeParamsArch3510<CO2Layout::ROW_MAJOR> fixParams;
-        fixParams.nSize = nSize;         // 实现切片大小
-        fixParams.mSize = Align(mSize, 2U);         // msdIterNum * gSize; // 有效数据不足16行，只需要输出部分行即可
-        fixParams.srcStride = srcStride; // ((fixParams.mSize + 15) / 16) * 16
-        fixParams.dstStride = dstStride;
-        fixParams.params.ndNum = 1;
-        fixParams.params.srcNdStride = 0;
-        fixParams.params.dstNdStride = 0;
-        if constexpr (enUnitFlag) {
-            fixParams.unitFlag = UNIT_FLAG_SET;
-        } else {
-            fixParams.unitFlag = UNIT_FLAG_DISABLE;
-        }
-        if constexpr (std::is_same<O_L0C, float>::value && std::is_same<O, bfloat16_t>::value) {
-            fixParams.quantPre = QuantMode_t::F322BF16;
-        }
-        fixParams.dualDstCtl = DUAL_TARGET_MODE_SPLIT_M;
-        if constexpr (!enUnitFlag) {
-            SetFlag<HardEvent::M_FIX>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
-            WaitFlag<HardEvent::M_FIX>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
-        }
-        Fixpipe<O, O_L0C, PFA_CFG_ROW_MAJOR_UB>(tensorCGm, cL0, fixParams);
+        fixParams.unitFlag = UNIT_FLAG_DISABLE;
     }
+    if constexpr (std::is_same<O_L0C, float>::value && std::is_same<O, bfloat16_t>::value) {
+        fixParams.quantPre = QuantMode_t::F322BF16;
+    }
+    if constexpr (!enUnitFlag) {
+        SetFlag<HardEvent::M_FIX>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
+        WaitFlag<HardEvent::M_FIX>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
+    }
+    Fixpipe(tensorCGm, cL0, fixParams);
 }
 
+template <typename T, typename O, typename O_L0C, bool enUnitFlag = false>
+__aicore__ inline void GetTensorCToUb(const LocalTensor<O> &tensorCGm, const LocalTensor<O_L0C> &cL0, const uint32_t mSize,
+                                  const uint32_t nSize, const uint32_t srcStride, const uint32_t dstStride,
+                                  MMBufParams &bufParam)
+{
+    FixpipeParamsArch3510<CO2Layout::ROW_MAJOR> fixParams;
+    fixParams.nSize = nSize;         // 实现切片大小
+    fixParams.mSize = Align(mSize, 2U);         // msdIterNum * gSize; // 有效数据不足16行，只需要输出部分行即可
+    fixParams.srcStride = srcStride; // ((fixParams.mSize + 15) / 16) * 16
+    fixParams.dstStride = dstStride;
+    fixParams.params.ndNum = 1;
+    fixParams.params.srcNdStride = 0;
+    fixParams.params.dstNdStride = 0;
+    if constexpr (enUnitFlag) {
+        fixParams.unitFlag = UNIT_FLAG_SET;
+    } else {
+        fixParams.unitFlag = UNIT_FLAG_DISABLE;
+    }
+    if constexpr (std::is_same<O_L0C, float>::value && std::is_same<O, bfloat16_t>::value) {
+        fixParams.quantPre = QuantMode_t::F322BF16;
+    }
+    fixParams.dualDstCtl = DUAL_TARGET_MODE_SPLIT_M;
+    if constexpr (!enUnitFlag) {
+        SetFlag<HardEvent::M_FIX>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
+        WaitFlag<HardEvent::M_FIX>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
+    }
+    Fixpipe<O, O_L0C, PFA_CFG_ROW_MAJOR_UB>(tensorCGm, cL0, fixParams);
+}
+
+template <typename T, typename O, typename O_L0C, bool enUnitFlag = false>
+__aicore__ inline void GetTensorCToL1(const LocalTensor<O> &tensorCGm, const LocalTensor<O_L0C> &cL0, const uint32_t mSize,
+                                  const uint32_t nSize, const uint32_t srcStride, const uint32_t dstStride,
+                                  MMBufParams &bufParam)
+{
+    FixpipeParamsArch3510<CO2Layout::ROW_MAJOR> fixParams;
+    fixParams.nSize = nSize;         // 实现切片大小
+    fixParams.mSize = Align(mSize, 2U);         // msdIterNum * gSize; // 有效数据不足16行，只需要输出部分行即可
+    fixParams.srcStride = srcStride; // ((fixParams.mSize + 15) / 16) * 16
+    fixParams.dstStride = dstStride;
+    fixParams.params.ndNum = 1;
+    fixParams.params.srcNdStride = 0;
+    fixParams.params.dstNdStride = 0;
+    if constexpr (enUnitFlag) {
+        fixParams.unitFlag = UNIT_FLAG_SET;
+    } else {
+        fixParams.unitFlag = UNIT_FLAG_DISABLE;
+    }
+    if constexpr (std::is_same<O_L0C, float>::value && std::is_same<O, bfloat16_t>::value) {
+        fixParams.quantPre = QuantMode_t::F322BF16;
+    }
+    if constexpr (!enUnitFlag) {
+        SetFlag<HardEvent::M_FIX>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
+        WaitFlag<HardEvent::M_FIX>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
+    }
+    Fixpipe<O, O_L0C, PFA_CFG_ROW_MAJOR_GM>(tensorCGm, cL0, fixParams);
+}
 /**
  * @brief 将AB矩阵从GM加载到L1缓存以进行矩阵乘法运算
  * @tparam T 张量的数据类型
