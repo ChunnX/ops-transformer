@@ -20,9 +20,11 @@ from typing import List
 import json
 import opdesc_parser
 import const_var
+from pathlib import Path
 
 
 PYF_PATH = os.path.dirname(os.path.realpath(__file__))
+COMPUTE_UNIT = None
 
 if const_var.CHECK_ASC_DEVKIT_VERSION:
     IMPORT_HEADER = '''
@@ -638,7 +640,25 @@ class AdpBuilder(opdesc_parser.OpDesc):
             kern_name = self.kern_name
         else:
             kern_name = self.op_intf
-        src = self.op_file + '.cpp'
+        
+        search_dir = Path.cwd().parent
+        target_file = None
+        for file_path in search_dir.rglob(self.op_file + '.cpp'):
+            if "build" in file_path.parts:
+                continue
+            target_file = file_path
+            break
+        if target_file and "mc2" in target_file.parts and len(COMPUTE_UNIT) > 0:
+                path_str = str(target_file)
+                new_path = path_str.split("op_kernel", 1)[1]
+                if new_path.startswith("/") or new_path.startswith("\\"):
+                    new_path = new_path[1:]
+                src = Path(new_path)
+                print(f"src文件：{src}")
+        else:
+            src = self.op_file + '.cpp'
+        
+    
         virt_exprs = self._build_virtual()
         fd.write(IMPL_API.format(self.op_type, pchk, \
                                  self.op_intf, argsdef, kern_name, self.impl_mode, virt_exprs, argsval,\
@@ -715,6 +735,7 @@ def parse_args(argv):
     parser = argparse.ArgumentParser()
     parser.add_argument('argv', nargs='+')
     parser.add_argument('--opsinfo-dir', nargs='*', default=None)
+    parser.add_argument('--compute-unit', nargs='*', default=['ascend910b'])
     return parser.parse_args(argv)
 
 
@@ -740,6 +761,7 @@ if __name__ == '__main__':
             raise OpFileNotExistsError(args.opsinfo_dir)
     else:
         ops_infos.append(args.argv[1])
-
+    COMPUTE_UNIT = args.compute_unit
+    print("COMPUTE_UNIT = ", COMPUTE_UNIT)
     for ops_info in ops_infos:
         write_scripts(cfgfile=ops_info, cfgs=rep_cfg, dirs=cfg_dir)
