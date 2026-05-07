@@ -19,8 +19,8 @@
 #else
 #include "kernel_operator.h"
 #endif
-#include "grouped_mat_mul_all_reduce_utils.h"
-#include "grouped_mat_mul_all_reduce.h"
+#include "../grouped_mat_mul_all_reduce_utils.h"
+#include "../grouped_mat_mul_all_reduce.h"
 
 using namespace AscendC;
 using namespace matmul;
