@@ -14,7 +14,7 @@
  */
 #ifndef BLITZ_SPARSE_ATTENTION_TILING_CONTEXT_H
 #define BLITZ_SPARSE_ATTENTION_TILING_CONTEXT_H
-#include "tiling_base/data_copy_transpose_tiling_def.h"
+#include "op_host/data_copy_transpose_tiling_def.h"
 #include "register/tilingdata_base.h"
 #include "register/op_def_registry.h"
 
