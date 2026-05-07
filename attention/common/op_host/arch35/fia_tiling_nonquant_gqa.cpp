@@ -39,6 +39,8 @@ void FiaTilingNonQuantArch35::InitTilingInfo(TilingInfo *tilingInfo)
 
 bool FiaTilingNonQuantArch35::IsCapable()
 {
+    return false;
+
     if (fiaInfo_ == nullptr) {
         return false;
     }
