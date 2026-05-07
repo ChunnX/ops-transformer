@@ -19,8 +19,7 @@ if (BUILD_OPEN_PROJECT)  # custom
         OPTYPE moe_distribute_combine_add_rms_norm moe_distribute_combine_add_rms_norm ACLNNTYPE aclnn aclnn_inner)
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
     set(MC2_OPT ON PARENT_SCOPE)
-    set(moe_distribute_combine_add_rms_norm_depends mc2/common mc2/3rd mc2/moe_distribute_dispatch mc2/moe_distribute_combine mc2/moe_distribute_dispatch_v2
-        mc2/moe_distribute_combine_v2 mc2/moe_distribute_combine_v3 mc2/moe_distribute_dispatch_v3 PARENT_SCOPE)
+    set(moe_distribute_combine_add_rms_norm_depends mc2/common mc2/3rd mc2/moe_distribute_dispatch_v2 mc2/moe_distribute_combine_v2 PARENT_SCOPE)
     install(
         DIRECTORY
         ${OPS_ADV_DIR}/mc2/3rd/rms_norm
