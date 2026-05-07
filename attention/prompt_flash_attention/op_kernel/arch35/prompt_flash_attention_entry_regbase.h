@@ -674,6 +674,5 @@ inline __aicore__ void prompt_flash_attention_FIAS_regbase(__gm__ uint8_t* query
         }
     #endif
 #endif
-
 }
 #endif // end of PROMPT_FLASH_ATTENTION_ENTRY_310_H_

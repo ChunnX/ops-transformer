@@ -1403,7 +1403,6 @@ public:
         } else {
             maskInfo.layout = GS;
         }
-
         maskInfo.attenMaskType = MASK_BOOL; // compatible with int8/uint8
 
         bool IsSkipMask = IsSkipAttentionmask(maskInfo);

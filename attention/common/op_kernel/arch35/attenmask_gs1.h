@@ -13,8 +13,6 @@
  * \brief
  */
 
-// TODO，与A3的合并策略待定
-
 #ifndef ATTENMASK_GS1_H
 #define ATTENMASK_GS1_H
 
