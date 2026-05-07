@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef L0_QUANT_LIGHTNING_INDEXER_V2_METADATA_AICPU_H
-#define L0_QUANT_LIGHTNING_INDEXER_V2_METADATA_AICPU_H
+#ifndef L0_QUANT_LIGHTNING_INDEXER_V2_METADATA_H
+#define L0_QUANT_LIGHTNING_INDEXER_V2_METADATA_H
 
 #include "opdev/op_executor.h"
 
@@ -24,4 +24,3 @@ const aclTensor* QuantLightningIndexerV2Metadata(
 } // namespace l0op
 
 #endif
-    

@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef ACLNN_QUANT_LIGHTNING_INDEXER_V2_METADATA_AICPU_H
-#define ACLNN_QUANT_LIGHTNING_INDEXER_V2_METADATA_AICPU_H
+#ifndef ACLNN_QUANT_LIGHTNING_INDEXER_V2_METADATA_H
+#define ACLNN_QUANT_LIGHTNING_INDEXER_V2_METADATA_H
 
 #include <string>
 #include "aclnn/aclnn_base.h"

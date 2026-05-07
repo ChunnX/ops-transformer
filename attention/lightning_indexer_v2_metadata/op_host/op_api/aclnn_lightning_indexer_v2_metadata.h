@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef ACLNN_LIGHTNING_INDEXER_V2_METADATA_AICPU_H
-#define ACLNN_LIGHTNING_INDEXER_V2_METADATA_AICPU_H
+#ifndef ACLNN_LIGHTNING_INDEXER_V2_METADATA_H
+#define ACLNN_LIGHTNING_INDEXER_V2_METADATA_H
 
 #include <string>
 #include "aclnn/aclnn_base.h"
@@ -50,4 +50,4 @@ aclnnLightningIndexerV2Metadata(void* workspace, uint64_t workspaceSize, aclOpEx
 }
 #endif
 
-#endif  // ACLNN_LIGHTNING_INDEXER_V2_METADATA_AICPU_H
+#endif  // ACLNN_LIGHTNING_INDEXER_V2_METADATA_H

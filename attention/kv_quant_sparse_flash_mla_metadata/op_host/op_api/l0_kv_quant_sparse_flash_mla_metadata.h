@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef L0_KV_QUANT_SPARSE_FLASH_MLA_METADATA_AICPU_H
-#define L0_KV_QUANT_SPARSE_FLASH_MLA_METADATA_AICPU_H
+#ifndef L0_KV_QUANT_SPARSE_FLASH_MLA_METADATA_H
+#define L0_KV_QUANT_SPARSE_FLASH_MLA_METADATA_H
 
 #include "opdev/op_executor.h"
 
