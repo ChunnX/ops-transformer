@@ -187,9 +187,9 @@ private:
                                                             int64_t ropeQrOffset, int64_t ropeQrResOffset);
     __aicore__ inline void DynamicQuantQnAndMulQrSyncMMQn(int64_t batchOffset, int64_t curStepBatchSize, int64_t numHeadOffset, int64_t mmQnLoops);
     template<bool needQnDynamicQuant>
-    __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::M3AndM4();
+    __aicore__ inline void M3AndM4();
     template<bool needQnDynamicQuant>
-    __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::V3AndV4();
+    __aicore__ inline void V3AndV4();
 
     TPipe* pipe_;
     const optiling::MlaPrologTilingData* __restrict tilingData_;
@@ -522,8 +522,8 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmQcQrParamInit() {
     mmQcQrParam_.orgN = mmQcQrParam_.n;
     mmQcQrParam_.orgKa = mmQcQrParam_.k;
     mmQcQrParam_.orgKb = mmQcQrParam_.k;
-    if (splitKN) 
-        mmQcQrParam_.orgKc = (baseParams_->dSize + baseParams_->drSize); // (128 * 32 + 64 * 32)
+    if (splitKN) {
+        mmQcQrParam_.orgKc = (baseParams_->dimHeadSizeQc + baseParams_->dimHeadRope); // (128 * 32 + 64 * 32)
     } else {
         mmQcQrParam_.orgKc = (baseParams_->headSizeQc + baseParams_->headSizeQr); // (128 * 32 + 64 * 32)
     }
@@ -2473,17 +2473,17 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::M3AndM4()
         uint32_t mm4AL1BufIter = isAFullLoad ? bufParam.aL1BufIter + 1 : bufParam.aL1BufIter;
         if constexpr (std::is_same<mmQcQrInputType, int8_t>::value || std::is_same<mmQcQrInputType, HIF8>::value ||
                       (std::is_same<mmQcQrInputType, FP8E4M3>::value && !isFp8E8m0)) {
-            GetTensorCToUb(mm3ResLocal_, bufParam_.cL0, mmQcQrParam_.m, baseParams_->dSize, Align(mmQcQrParam_.m, BLOCK_CUBE_SIZE),
+            GetTensorCToUb(mm3ResLocal_, bufParam_.cL0, mmQcQrParam_.m, baseParams_->dimHeadSizeQc, Align(mmQcQrParam_.m, BLOCK_CUBE_SIZE),
                     mmQcQrParam_.orgKc, bufParam_);
             CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_FIX>(FINISH_MM_QCQR_SPLIT_N);
-            mm3ResOffset += mmQcQrParam_.m * baseParams_->dSize;
+            mm3ResOffset += mmQcQrParam_.m * baseParams_->dimHeadSizeQc;
         } else {
-            GetTensorCToL1(localTensors.aL1Tensor[(mm4AL1BufIter & 1u) * aL1Offset], bufParam_.cL0, mmQcQrParam_.m, baseParams_->dSize, Align(mmQcQrParam_.m, BLOCK_CUBE_SIZE),
+            GetTensorCToL1(localTensors.aL1Tensor[(mm4AL1BufIter & 1u) * aL1Offset], bufParam_.cL0, mmQcQrParam_.m, baseParams_->dimHeadSizeQc, Align(mmQcQrParam_.m, BLOCK_CUBE_SIZE),
                     mmQcQrParam_.orgKc, bufParam_);
             SetFlag<HardEvent::FIX_MTE1>(L0A_EVENT0 + (bufParam.aL0BufIter & 1u));  
         }
 
-        GetTensorC(mm3ResLocal_[mm3ResOffset], bufParam_.cL0[baseParams_->dSize], mmQcQrParam_.m, baseParams_->drSize, Align(mmQcQrParam_.m, BLOCK_CUBE_SIZE),
+        GetTensorC(mm3ResLocal_[mm3ResOffset], bufParam_.cL0[baseParams_->dimHeadSizeQc], mmQcQrParam_.m, baseParams_->dimHeadRope, Align(mmQcQrParam_.m, BLOCK_CUBE_SIZE),
                 mmQcQrParam_.orgKc, bufParam_);
         SetFlag<HardEvent::FIX_M>(L0C_EVENT0 + (bufParam_.cL0BufIter & 1u));
 
