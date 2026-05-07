@@ -30,7 +30,7 @@ static const uint32_t MAX_INT32 = 2147483647;
 ge::graphStatus MoeGatingTopKSoftmaxV2BaseTiling::GetPlatformInfo()
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
-    coreNum = ascendcPlatform.GetCoreNum();
+    coreNum = ascendcPlatform.GetCoreNumAiv();
     socVersion = ascendcPlatform.GetSocVersion();
     uint64_t ubSizePlatForm;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);
