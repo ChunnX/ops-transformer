@@ -77,6 +77,7 @@ public:
     {
         while (true) {
             if (InitStartIdx()) {
+                runTimeInfo->loop_finish = 1;
                 break;
             }
 
@@ -84,6 +85,7 @@ public:
             current_loop_++;
 
             if (current_cube_idx_ && current_cube_idx_ % cube_core_num_ == 0) {
+                // 所有cube核分配到任务，暂时跳出循环，等下次分配
                 break;
             }
         }
@@ -146,6 +148,8 @@ private:
             UpdateSeqLen();
             return false;
         }
+
+        return true;
     }
 
     __aicore__ inline void RunTimeInfoRecord(RunTimeInfo *runTimeInfo)

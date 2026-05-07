@@ -12,12 +12,13 @@ namespace BSA_ARC35 {
 
 struct RunTimeInfo {
     int32_t taskId{0};
-    int32_t bIdx{0};  // 当前计算的batch id
-    int32_t n1Idx{0}; // 当前计算的q head id
-    int32_t s1Idx{0}; // 需要计算的左上角顶点s1Idx
-    int32_t s2Idx{0}; // 需要计算的左上角顶点s2Idx
-    int32_t s1Len{0}; // 需要计算S1方向的长度
-    int32_t s2Len{0}; // 需要计算S2方向的长度
+    int32_t bIdx{0};        // 当前计算的batch id
+    int32_t n1Idx{0};       // 当前计算的q head id
+    int32_t s1Idx{0};       // 需要计算的左上角顶点s1Idx
+    int32_t s2Idx{0};       // 需要计算的左上角顶点s2Idx
+    int32_t s1Len{0};       // 需要计算S1方向的长度
+    int32_t s2Len{0};       // 需要计算S2方向的长度
+    int32_t loop_finish{0}; // 是否遍历完所有任务
 };
 
 

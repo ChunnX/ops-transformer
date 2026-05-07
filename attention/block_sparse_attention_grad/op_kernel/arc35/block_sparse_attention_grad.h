@@ -64,7 +64,10 @@ public:
         uint32_t taskId = 0;
         while (true) {
             addr_.GetRunTimeInfo(&runTimeInfo_);
-            break;
+
+            if (runTimeInfo_.loop_finish) {
+                break;
+            }
         }
     }
 
@@ -76,7 +79,10 @@ public:
         uint32_t taskId = 0;
         while (true) {
             addr_.GetRunTimeInfo(&runTimeInfo_);
-            break;
+
+            if (runTimeInfo_.loop_finish) {
+                break;
+            }
         }
     }
 };
