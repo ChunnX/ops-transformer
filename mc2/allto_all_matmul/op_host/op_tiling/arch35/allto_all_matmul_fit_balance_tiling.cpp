@@ -94,10 +94,13 @@ uint64_t AlltoAllMatmulFitBalanceTiling::CalcLongTileLen(uint64_t shortTileLen)
         if (matmulQuantType_ != QuantType::KC_QUANT) {
             double singleRankPermuteTime = CalcPermuteTime(shortTileLen);
             uint32_t rank = GetRank();
-            longTileLen = (singleRankPermuteTime + singleRankMatmulTime - all2allBMap.at(rank) - permuteBMap.at(rank)) *
-                          ONE_MBYTE /
-                          ((all2allKMap.at(rank) + permuteKMap.at(rank)) * mmInfo_.kValue *
-                           all2allDtypeSizeMap.at(matmulQuantType_));
+            longTileLen =
+                mmInfo_.kValue == 0 ?
+                    0U :
+                    (singleRankPermuteTime + singleRankMatmulTime - all2allBMap.at(rank) - permuteBMap.at(rank)) *
+                        ONE_MBYTE /
+                        ((all2allKMap.at(rank) + permuteKMap.at(rank)) * mmInfo_.kValue *
+                         all2allDtypeSizeMap.at(matmulQuantType_));
         } else {
             longTileLen = commPerf_.InverseCommTime(singleRankMatmulTime);
         }
@@ -169,7 +172,7 @@ uint64_t AlltoAllMatmulFitBalanceTiling::CalcMWhenT1EqualT2()
     double all2allB = all2allBMap.at(GetRank());
     double dtypeSize = all2allDtypeSizeMap.at(matmulQuantType_);
     double denominator = all2allK * static_cast<double>(coreNum_) * dtypeSize - matmulK * mmInfo_.nValue;
-    if (denominator == 0.0) {
+    if (denominator == 0.0 || mmInfo_.kValue == 0) {
         return static_cast<uint64_t>(0);
     }
     double mValue = (matmulB - all2allB) * static_cast<double>(ONE_MBYTE) * static_cast<double>(coreNum_) /
@@ -247,7 +250,7 @@ void AlltoAllMatmulFitBalanceTiling::FitTileLengthDiscrete()
         if (remainder == 0) {
             // 切分完没有余数
             tilingM_.cutRes.numLongTile = tempLongNum;
-        } else if (remainder % tilingM_.cutRes.shortTileLen == 0) {
+        } else if (tilingM_.cutRes.shortTileLen != 0 && remainder % tilingM_.cutRes.shortTileLen == 0) {
             // 切分完余数为短块的倍数
             tilingM_.cutRes.numLongTile = tempLongNum;
             tilingM_.cutRes.numShortTile += remainder / tilingM_.cutRes.shortTileLen;
@@ -255,6 +258,10 @@ void AlltoAllMatmulFitBalanceTiling::FitTileLengthDiscrete()
             // 不规整的余数，重新切分
             ReTilingByFactor();
         }
+    }
+    if (tilingM_.cutRes.numLongTile + tilingM_.cutRes.numShortTile > MAX_TILE_CNT) {
+        // 切分轮次过多，重新切分
+        ReTilingByFactor();
     }
 }
 

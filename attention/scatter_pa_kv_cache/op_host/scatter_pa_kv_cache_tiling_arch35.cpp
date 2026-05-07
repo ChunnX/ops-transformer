@@ -772,6 +772,12 @@ ge::graphStatus ScatterPaKvCacheTiling::GetShapeAttrsInfo()
         OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
         auto strides = attrs->GetListInt(INPUT_STRIDES_INDEX);
         auto offsets = attrs->GetListInt(INPUT_OFFSET_INDEX);
+        OP_CHECK_NULL_WITH_CONTEXT(context_, strides);
+        OP_CHECK_NULL_WITH_CONTEXT(context_, offsets);
+        OP_CHECK_IF(strides->GetSize() < DIM2,
+                    OP_LOGE(context_, "strides size should be at least 2."), return ge::GRAPH_FAILED;);
+        OP_CHECK_IF(offsets->GetSize() < DIM2,
+                    OP_LOGE(context_, "offsets size should be at least 2."), return ge::GRAPH_FAILED;);
         kStride_ = strides->GetData()[0];
         vStride_ = strides->GetData()[1];
         kOffset_ = offsets->GetData()[0];

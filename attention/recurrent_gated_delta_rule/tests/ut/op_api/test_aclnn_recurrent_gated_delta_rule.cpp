@@ -14,7 +14,7 @@
 #include <vector>
 #include <array>
 #include "gtest/gtest.h"
-#include "../../../../op_host/op_api/aclnn_recurrent_gated_delta_rule.h"
+#include "../../../op_api/aclnn_recurrent_gated_delta_rule.h"
 #include "op_api_ut_common/tensor_desc.h"
 #include "op_api_ut_common/scalar_desc.h"
 #include "op_api_ut_common/op_api_ut.h"
@@ -56,7 +56,6 @@ public:
     TensorDesc ssmStaId;
     TensorDesc numAccTok;
     TensorDesc out;
-
     void RGDRTestCase(int validIdx, int nullIdx)
     {
         state = TensorDesc({t, nv, dv, dk}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 1);
@@ -93,7 +92,7 @@ public:
         }
         aclnnStatus aclRet = utTest(nullIdx);
         bool pass = false;
-        if ((nullIdx == 0 || nullIdx == 10 || nullIdx == 8) && validIdx == 0) {
+        if ((nullIdx == 0 || nullIdx == 10 || nullIdx == 8 || nullIdx == 9) && validIdx == 0) {
             pass = (ACLNN_SUCCESS == aclRet);
         } else {
             pass = (ACLNN_ERR_PARAM_INVALID == aclRet);
