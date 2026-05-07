@@ -106,7 +106,7 @@ public:
                 LocalTensor<INPUT_TYPE> l0_a_tensor = ping_pong_flag_inner ? l0_a_tensor_ping_ : l0_a_tensor_pong_;
 
                 load_data_gm_2_l0<true, false>(l0_a_tensor, l1_a_tensor, leftGm, mProcess, head_dim_, mProcessAlign,
-                                               head_dim_align_, head_dim_);
+                                               head_dim_align_, head_dim_, true);
 
 
                 ping_pong_flag_inner = 1 - ping_pong_flag_inner;
