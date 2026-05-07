@@ -1,0 +1,132 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * 基于 matmul_story 参考 MX BlockMmad + MX BlockScheduler 的 MX-FP8 矩阵乘计算阶段
+ * 替换 MC2MXQuantMatmul，提供 Init / GetContextPtr / Process / End 接口
+ */
+
+#ifndef TENSOR_MX_MATMUL_STAGE_H
+#define TENSOR_MX_MATMUL_STAGE_H
+
+#include "kernel_operator.h"
+#include "lib/matmul_intf.h"
+#include "matmul_base.h"
+#include "mc2_mx_quant_matmul.h"
+#include "../../../../../allto_all_matmul_apt/op_kernel/arch35/tensor_matmul_tiling_data.h"
+#include "tensor.h"
+#include "../../../../matmul_ref/mx_block_mmad_swat.h"
+#include "../../../../matmul_ref/block/matmul_block_scheduler.h"
+#include "../../../../matmul_ref/block/quant_matmul_mx_block_scheduler_swat.h"
+
+namespace Mc2Kernel {
+
+template <typename TilingType, bool X2TRANSPOSE>
+class TensorMXQuantMatmulStage {
+public:
+    using AType = DTYPE_X1;
+    using BType = DTYPE_X2;
+    using ScaleAType = AscendC::fp8_e8m0_t;
+    using ScaleBType = AscendC::fp8_e8m0_t;
+    using CType = DTYPE_Y;
+
+    using LayoutA = AscendC::Te::NDLayoutFormat<AType>;
+    using LayoutSA = AscendC::Te::ScaleANDLayoutFormat<ScaleAType>;
+    using LayoutB = AscendC::Te::NDLayoutFormat<BType>;
+    using LayoutSB = AscendC::Te::ScaleBDNLayoutFormat<ScaleBType>;
+
+    using DispatchPolicy = QuantMatmulMxMultiBlockWithSwat<NO_FULL_LOAD_MODE, 2>;
+    using BlockOp = Block::BlockMmad<
+        DispatchPolicy,
+        AscendC::Std::tuple<AType, ScaleAType>, AscendC::Std::tuple<LayoutA, LayoutSA>,
+        AscendC::Std::tuple<BType, ScaleBType>, AscendC::Std::tuple<LayoutB, LayoutSB>,
+        CType, AscendC::Te::NDLayoutFormat<CType>>;
+    using ProblemShape = MatmulShape;
+    using BlockScheduler = QuantMatmulMxSwatScheduler<NO_FULL_LOAD_MODE>;
+    using SchedulerOp = typename Block::BlockSchedulerSelector<ProblemShape, BlockScheduler, false, false>::SchedulerOp;
+
+    static constexpr uint32_t BASE_M = 128;
+    static constexpr uint32_t BASE_N = 128;
+    static constexpr uint32_t BASE_K = 128;
+
+    __aicore__ inline TensorMXQuantMatmulStage(AscendC::TPipe *tPipe) : tPipePtr_(tPipe) {}
+    __aicore__ inline void Init() {}
+    __aicore__ inline MC2KernelTemplate::MC2MMContext<
+        MC2KernelTemplate::MXQuantMMAdditionalData, TilingType> *GetContextPtr() { return &MMcontext_; }
+    __aicore__ inline void Process(uint32_t taskIndex);
+    __aicore__ inline void End() {}
+
+private:
+    MC2KernelTemplate::MC2MMContext<
+        MC2KernelTemplate::MXQuantMMAdditionalData, TilingType> MMcontext_;
+    AscendC::TPipe *tPipePtr_;
+    BlockOp mxMmadOp_;
+};
+
+
+template <typename TilingType, bool X2TRANSPOSE>
+__aicore__ inline void TensorMXQuantMatmulStage<TilingType, X2TRANSPOSE>::Process(uint32_t taskIndex)
+{
+    if ASCEND_IS_AIV { return; }
+
+    auto& base = MMcontext_.baseData;
+    auto& add  = MMcontext_.additionalData;
+    GM_ADDR aGM = base.aGM + taskIndex * base.aOffset;
+    GM_ADDR bGM = base.bGM + taskIndex * base.bOffset;
+    GM_ADDR cGM = base.cGM + taskIndex * base.cOffset;
+    GM_ADDR x1ScaleGM = add.x1Scale + taskIndex * add.x1ScaleOffset;
+    GM_ADDR x2ScaleGM = add.x2Scale;
+
+    tPipePtr_->Reset();
+
+    auto* tiling = MMcontext_.tilingDataPtr;
+    uint32_t m_ = tiling->tileM;
+    uint32_t k_ = tiling->fullK;
+    uint32_t n_ = tiling->fullN;
+    
+    typename BlockOp::L1Params l1Params{BASE_K, BASE_K};
+    typename BlockOp::TupleShape problemShape{static_cast<int64_t>(m_), static_cast<int64_t>(n_), static_cast<int64_t>(k_)};
+    typename BlockOp::BlockShape l0TileShape{static_cast<int64_t>(BASE_M), static_cast<int64_t>(BASE_N), static_cast<int64_t>(BASE_K), 0};
+    mxMmadOp_.Init(problemShape, l0TileShape, l1Params, true);
+
+    uint32_t kScaleGrp = (k_ + 32 - 1) / 32;
+    auto layoutA = AscendC::Te::MakeNDLayout<AType>(m_, k_);
+    auto layoutB = AscendC::Te::MakeNDLayout<BType>(k_, n_);
+    auto layoutC = AscendC::Te::MakeNDLayout<CType>(m_, n_);
+    auto layoutSA = AscendC::Te::MakeScaleANDLayout<ScaleAType>(m_, kScaleGrp);
+    auto layoutSB = AscendC::Te::MakeScaleBDNLayout<ScaleBType>(kScaleGrp, n_);
+
+    auto gmA = AscendC::Te::MakeTensor(AscendC::Te::MakeGMmemPtr(reinterpret_cast<__gm__ AType*>(aGM)), layoutA);
+    auto gmB = AscendC::Te::MakeTensor(AscendC::Te::MakeGMmemPtr(reinterpret_cast<__gm__ BType*>(bGM)), layoutB);
+    auto gmC = AscendC::Te::MakeTensor(AscendC::Te::MakeGMmemPtr(reinterpret_cast<__gm__ CType*>(cGM)), layoutC);
+    auto gmScaleA = AscendC::Te::MakeTensor(AscendC::Te::MakeGMmemPtr(reinterpret_cast<__gm__ ScaleAType*>(x1ScaleGM)), layoutSA);
+    auto gmScaleB = AscendC::Te::MakeTensor(AscendC::Te::MakeGMmemPtr(reinterpret_cast<__gm__ ScaleBType*>(x2ScaleGM)), layoutSB);
+
+    ProblemShape problem{m_, n_, k_, 1L};
+    using SchParams = typename SchedulerOp::Params;
+    SchParams schParams{BASE_M, BASE_N, 0, 0, 0, 0, 0, 0};
+    SchedulerOp bs(problem, schParams);
+
+    using BlockCoord = AscendC::Coord<int64_t, int64_t, int64_t, int64_t>;
+    BlockCoord blockIdx;
+    constexpr int64_t kPos = 0L;
+    while (bs.GetTileIdx(blockIdx)) {
+        int64_t mPos = AscendC::Std::get<MNK_M>(blockIdx);
+        int64_t nPos = AscendC::Std::get<MNK_N>(blockIdx);
+        auto singleShape = bs.GetBlockShape(blockIdx);
+
+        if (Get<MNK_M>(singleShape) <= 0 || Get<MNK_N>(singleShape) <= 0) {
+            break;
+        }
+
+        auto gmBlockA = gmA(AscendC::Te::MakeCoord(mPos, kPos), AscendC::Te::MakeShape(Get<MNK_M>(singleShape), k_));
+        auto gmBlockB = gmB(AscendC::Te::MakeCoord(kPos, nPos), AscendC::Te::MakeShape(k_, Get<MNK_N>(singleShape)));
+        auto gmBlockC = gmC(AscendC::Te::MakeCoord(mPos, nPos), AscendC::Te::MakeShape(Get<MNK_M>(singleShape), Get<MNK_N>(singleShape)));
+        auto gmBlockScaleA = gmScaleA(AscendC::Te::MakeCoord(mPos, kPos), AscendC::Te::MakeShape(Get<MNK_M>(singleShape), kScaleGrp));
+        auto gmBlockScaleB = gmScaleB(AscendC::Te::MakeCoord(kPos, nPos), AscendC::Te::MakeShape(kScaleGrp, Get<MNK_N>(singleShape)));
+
+        mxMmadOp_(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBlockC, singleShape);
+    }
+}
+
+} // namespace Mc2Kernel
+
+#endif
