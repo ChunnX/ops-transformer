@@ -487,7 +487,7 @@ private:
                 Or((RegTensor<uint16_t>&)expDstVreg,
                     (RegTensor<uint16_t>&)expDstVreg0, (RegTensor<uint16_t>&)expDstVreg1,
                     pregFull);
-                if constexpr (std::is_same_v<ElementOutput, float8_e4m3_t>) {
+                if constexpr (std::is_same_v<ElementP, float8_e4m3_t>) {
                     Cast<ElementP, ElementS, castTraitZero>(pVreg, expDstVreg, pregFull);
                     StoreAlign<ElementP, DataCopyMode::DATA_BLOCK_COPY>(
                         expUb + i * ELE_NUM_PER_C0_FLOAT8 + j * blockStride * ELE_NUM_PER_C0_FLOAT8 * BLOCK_REP_SIZE,
@@ -512,7 +512,7 @@ private:
                 (RegTensor<uint16_t>&)expDstVreg0, (RegTensor<uint16_t>&)expDstVreg1,
                 pregFull);
 
-            if constexpr (std::is_same_v<ElementOutput, float8_e4m3_t>) {
+            if constexpr (std::is_same_v<ElementP, float8_e4m3_t>) {
                 Cast<ElementP, ElementS, castTraitZero>(pVreg, expDstVreg, pregTailN);
                 StoreAlign<ElementP, DataCopyMode::DATA_BLOCK_COPY>(
                     expUb + i * ELE_NUM_PER_C0_FLOAT8 + nLoops * blockStride * ELE_NUM_PER_C0_FLOAT8 * BLOCK_REP_SIZE,
