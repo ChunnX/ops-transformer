@@ -106,6 +106,15 @@ public:
                 LocalTensor<INPUT_TYPE> l0_a_tensor = ping_pong_flag_inner ? l0_a_tensor_ping_ : l0_a_tensor_pong_;
 
                 DataCopy(l1_a_tensor, leftGm, 128);
+                SET_FLAG(MTE2, MTE1, EVENT_ID0);
+                WAIT_FLAG(MTE2, MTE1, EVENT_ID0);
+
+                AscendC::LoadData2dParams loadData2dParams;
+                loadData2dParams.repeatTimes = head_dim_align_ / 16;
+                loadData2dParams.srcStride = nProcessAlign / 16;
+                loadData2dParams.ifTranspose = false;
+                AscendC::LoadData(dstL0Tensor, dstL1Tensor, loadData2dParams);
+
                 // load_data_gm_2_l0<true, false>(l0_a_tensor, l1_a_tensor, leftGm, mProcess, head_dim_, mProcessAlign,
                 //                                head_dim_align_, head_dim_, true);
 
