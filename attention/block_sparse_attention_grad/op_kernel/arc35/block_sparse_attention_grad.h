@@ -72,7 +72,9 @@ public:
 
         while (true) {
             addr_.GetRunTimeInfo(&runTimeInfo_);
-            cubeOp.ComputeMM12(query_gm_, key_gm_, &runTimeInfo_);
+            if (!runTimeInfo_.loop_finish) {
+                cubeOp.ComputeMM12(query_gm_, key_gm_, &runTimeInfo_);
+            }
 
             if (runTimeInfo_.loop_finish) {
                 break;
