@@ -54,6 +54,16 @@ struct FusedCausalConv1dCutBSHTilingData {
     uint64_t cacheStride0;       // convStates 的 stride[0]
     uint64_t cacheStride1;       // convStates 的 stride[1]
     uint64_t residualConnection;// 是否做残差连接
+
+    // ===== v2.0 新增字段 =====
+    uint64_t apcEnabled;         // APC 是否启用（0/1），等价于 cache_indices 是否为 2D
+    uint64_t blockSize;          // APC block 大小（0 表示未启用）
+    uint64_t maxNumBlocks;       // cache_indices 第二维大小（APC 模式下 > 0）
+    uint64_t convMode;           // 0=Qwen3-Next, 1=Pangu v2 输出零填充
+    uint64_t inplace;            // 是否原地更新（y 复用 x 的 GM）
+    uint64_t hasAcceptTokenNum;  // 是否提供 num_accepted_tokens（MTP）
+    uint64_t hasNumComputedTokens; // 是否提供 num_computed_tokens（cache 零初始化判断）
+    uint64_t hasCacheIndices;    // 是否提供 cache_indices（为0时用 batch_idx 作为 cache line）
 };
 
 #endif

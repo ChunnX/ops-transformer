@@ -25,15 +25,28 @@ constexpr uint64_t INPUT_WEIGHT_INDEX = 1;
 constexpr uint64_t INPUT_CACHE_STATES_INDEX = 2;
 constexpr uint64_t INPUT_QUERY_START_LOC_INDEX = 3;
 constexpr uint64_t INPUT_CACHE_INDICES_INDEX = 4;
-constexpr uint64_t INPUT_INITIAL_STATE_MODE_INDEX = 5;
+constexpr uint64_t INPUT_INITIAL_STATE_MODE_INDEX = 5;  // v2.0: 接口保留，不再使用
+constexpr uint64_t INPUT_BIAS_INDEX = 6;
+constexpr uint64_t INPUT_NUM_ACCEPTED_TOKEN_INDEX = 7;
+constexpr uint64_t INPUT_NUM_COMPUTED_TOKENS_INDEX = 8;          // v2.0 新增
+constexpr uint64_t INPUT_BLOCK_IDX_FIRST_INDEX = 9;              // v2.0 新增
+constexpr uint64_t INPUT_BLOCK_IDX_LAST_INDEX = 10;              // v2.0 新增
+constexpr uint64_t INPUT_INITIAL_STATE_IDX_INDEX = 11;           // v2.0 新增
 
 constexpr int32_t ATTR_ACTIVATION_MODE_INDEX = 0;
 constexpr int32_t ATTR_PAD_SLOT_ID_INDEX = 1;
-constexpr int32_t ATTR_RUN_MODE_INDEX = 2;
-constexpr int32_t ATTR_RESIDUAL_CONNECTION_INDEX = 3;
+constexpr int32_t ATTR_RUN_MODE_INDEX = 2;             // v2.0: 接口保留，不再使用
+constexpr int32_t ATTR_MAX_QUERY_LEN_INDEX = 3;        // v2.0 新增（路由参考值）
+constexpr int32_t ATTR_RESIDUAL_CONNECTION_INDEX = 4;
+constexpr int32_t ATTR_BLOCK_SIZE_INDEX = 5;           // v2.0 新增
+constexpr int32_t ATTR_CONV_MODE_INDEX = 6;            // v2.0 新增
+constexpr int32_t ATTR_INPLACE_INDEX = 7;              // v2.0 新增
 
-constexpr uint64_t OUTPUT_Y_INDEX = 0;
-constexpr uint64_t OUTPUT_CACHE_STATES_INDEX = 1;
+constexpr uint64_t OUTPUT_CONV_STATES_INDEX = 0;
+constexpr uint64_t OUTPUT_Y_INDEX = 1;
+
+// v2.0 路由阈值
+constexpr int64_t BH_MAX_QUERY_LEN_THRESHOLD = 8;
 
 constexpr uint64_t X_DIM_NUM = 2;
 constexpr uint64_t WEIGHT_DIM_NUM = 2;
@@ -58,6 +71,32 @@ constexpr uint64_t SYS_WORKSPACE_SIZE = static_cast<uint64_t>(16 * 1024 * 1024);
 
 bool FusedCausalConv1dCutBSHTiling::IsCapable()
 {
+    // v2.0 路由判定：BSH 仅接管 2D 输入 + (max_query_len > 8 或 == -1)
+    // 注：顶层 tiling.cpp 已直接 dispatch，此处保留虚函数判定以备将来接入 RegisterTilingTemplate 链
+    if (context_ == nullptr) {
+        return false;
+    }
+    auto xShape = context_->GetInputShape(INPUT_X_INDEX);
+    if (xShape == nullptr) {
+        return false;
+    }
+    size_t xDimNum = xShape->GetOriginShape().GetDimNum();
+    if (xDimNum != X_DIM_NUM) {
+        // BSH 模板仅支持 2D 输入
+        return false;
+    }
+    int64_t maxQueryLen = -1;
+    auto attrs = context_->GetAttrs();
+    if (attrs != nullptr) {
+        const int64_t* p = attrs->GetAttrPointer<int64_t>(ATTR_MAX_QUERY_LEN_INDEX);
+        if (p != nullptr) {
+            maxQueryLen = *p;
+        }
+    }
+    // 短序列 (1..8) → BH；其他 (>8 或 -1 未知) → BSH
+    if (maxQueryLen >= 1 && maxQueryLen <= BH_MAX_QUERY_LEN_THRESHOLD) {
+        return false;
+    }
     return true;
 }
 
@@ -188,8 +227,8 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckCacheStatesDim()
                 OP_LOGE(context_->GetNodeName(), "CacheStates dim must be 3, but got: %lu", cacheStatesDimNum),
                 return ge::GRAPH_FAILED);
     uint64_t cacheStatesDim1 = cacheStatesShape_.GetDim(DIM_1);
-    OP_CHECK_IF(cacheStatesDim1 != (kernelWidth_ - 1),
-                OP_LOGE(context_->GetNodeName(), "CacheStates dim[1] must equal to K-1=%lu, but got: %lu",
+    OP_CHECK_IF(cacheStatesDim1 < (kernelWidth_ - 1),
+                OP_LOGE(context_->GetNodeName(), "CacheStates dim[1] must be >= K-1=%lu, but got: %lu",
                         kernelWidth_ - 1, cacheStatesDim1),
                 return ge::GRAPH_FAILED);
     uint64_t cacheStatesDim2 = cacheStatesShape_.GetDim(DIM_2);
@@ -207,9 +246,7 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckIndexDims()
                 OP_LOGE(context_->GetNodeName(), "QueryStartLoc must be provided"),
                 return ge::GRAPH_FAILED);
     auto cacheIndicesShape = context_->GetOptionalInputShape(INPUT_CACHE_INDICES_INDEX);
-    OP_CHECK_IF(cacheIndicesShape == nullptr,
-                OP_LOGE(context_->GetNodeName(), "CacheIndices must be provided"),
-                return ge::GRAPH_FAILED);
+    // cache_indices 可选：为空时 kernel 使用 batch_idx 作为 cache line
     auto seqStartIndexShape = seqStartIndexStorageShape->GetOriginShape();
     uint64_t seqStartIndexDimNum = seqStartIndexShape.GetDimNum();
     OP_CHECK_IF(seqStartIndexDimNum != SEQ_START_INDEX_DIM_NUM,
@@ -258,7 +295,7 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::CheckOutputParams()
                         Ops::Base::ToString(xType_).c_str(), Ops::Base::ToString(outputYType).c_str()),
                 return ge::GRAPH_FAILED);
 
-    auto outputCacheStatesDesc = context_->GetOutputDesc(OUTPUT_CACHE_STATES_INDEX);
+    auto outputCacheStatesDesc = context_->GetOutputDesc(OUTPUT_CONV_STATES_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, outputCacheStatesDesc);
     auto outputCacheStatesType = outputCacheStatesDesc->GetDataType();
     OP_CHECK_IF(xType_ != outputCacheStatesType,
@@ -337,7 +374,7 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::GetInputStrides()
         cacheStride0_ = cacheStride->GetStride(DIM_0);
         cacheStride1_ = cacheStride->GetStride(DIM_1);
     } else {
-        cacheStride0_ = (kernelWidth_ - 1) * dim_;
+        cacheStride0_ = cacheStatesShape_.GetDim(DIM_1) * dim_;
         cacheStride1_ = dim_;
     }
     return ge::GRAPH_SUCCESS;
@@ -357,6 +394,57 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::GetShapeAttrsInfo()
     residualConnection_ = 0;
     if (context_->GetAttrs() != nullptr && context_->GetAttrs()->GetInt(ATTR_RESIDUAL_CONNECTION_INDEX) != nullptr) {
         residualConnection_ = *(context_->GetAttrs()->GetInt(ATTR_RESIDUAL_CONNECTION_INDEX));
+    }
+
+    // ===== v2.0 新增属性解析 =====
+    auto attrs = context_->GetAttrs();
+    if (attrs != nullptr) {
+        const int64_t* p;
+        if ((p = attrs->GetAttrPointer<int64_t>(ATTR_BLOCK_SIZE_INDEX)) != nullptr) {
+            blockSize_ = static_cast<uint64_t>(*p);
+        }
+        if ((p = attrs->GetAttrPointer<int64_t>(ATTR_CONV_MODE_INDEX)) != nullptr) {
+            convMode_ = static_cast<uint64_t>(*p);
+        }
+        const bool* pBool = attrs->GetAttrPointer<bool>(ATTR_INPLACE_INDEX);
+        if (pBool != nullptr) {
+            inplace_ = (*pBool) ? 1UL : 0UL;
+        }
+        if ((p = attrs->GetAttrPointer<int64_t>(ATTR_MAX_QUERY_LEN_INDEX)) != nullptr) {
+            maxQueryLen_ = *p;
+        }
+    }
+
+    // ===== v2.0 新增：APC 模式判定（cache_indices 是 2D），MTP 判定（num_accepted_tokens 是否提供）=====
+    apcEnabled_ = 0;
+    maxNumBlocks_ = 0;
+    hasCacheIndices_ = 0;
+    auto cacheIndicesStorage = context_->GetOptionalInputShape(INPUT_CACHE_INDICES_INDEX);
+    if (cacheIndicesStorage != nullptr) {
+        hasCacheIndices_ = 1;
+        auto cacheIndicesShape = cacheIndicesStorage->GetOriginShape();
+        size_t cacheIndicesDimNum = cacheIndicesShape.GetDimNum();
+        if (cacheIndicesDimNum == 2) {
+            apcEnabled_ = 1;
+            maxNumBlocks_ = static_cast<uint64_t>(cacheIndicesShape.GetDim(DIM_1));
+        }
+    }
+    if (apcEnabled_ == 1) {
+        OP_CHECK_IF(blockSize_ == 0,
+                    OP_LOGE(context_->GetNodeName(),
+                            "FusedCausalConv1dCutBSH apcEnabled but blockSize attr is 0"),
+                    return ge::GRAPH_FAILED);
+    }
+    hasAcceptTokenNum_ = (context_->GetOptionalInputShape(INPUT_NUM_ACCEPTED_TOKEN_INDEX) != nullptr) ? 1UL : 0UL;
+    hasNumComputedTokens_ = (context_->GetOptionalInputShape(INPUT_NUM_COMPUTED_TOKENS_INDEX) != nullptr) ? 1UL : 0UL;
+
+    // v2.0 校验：convMode!=0 或 apcEnabled 时，必须提供 num_computed_tokens
+    if (convMode_ != 0 || apcEnabled_ == 1) {
+        OP_CHECK_IF(hasNumComputedTokens_ == 0,
+                    OP_LOGE(context_->GetNodeName(),
+                            "FusedCausalConv1dCutBSH conv_mode=%lu apcEnabled=%lu requires num_computed_tokens",
+                            convMode_, apcEnabled_),
+                    return ge::GRAPH_FAILED);
     }
 
     if (GetInputStrides() != ge::GRAPH_SUCCESS) return ge::GRAPH_FAILED;
@@ -406,6 +494,10 @@ FusedCausalConv1dCutBSHTiling::CuSeqLenSplitInfo FusedCausalConv1dCutBSHTiling::
 }
 
 // 计算二维切分时的tiling（支持不均匀切分 + dim循环）
+// v2.0 公式（与详设 §4.1.3.1 对齐）：
+//   per_dim = K×2×sizeof(T) + (K-1)×2×sizeof(T) + coreBS×sizeof(T)×2(x双Buffer) + coreBS×sizeof(T)×2(y双Buffer)
+//           = (2K + 2(K-1)) × sizeof(T) + coreBS × sizeof(T) × 4
+//   注：weightCacheCoeffPerDim 由调用方按 (K×2 + (K-1)×2) × sizeof(T) 传入（weight 和 cache 均双 buffer）
 ge::graphStatus FusedCausalConv1dCutBSHTiling::CalcCoreUbTiling(
     uint64_t coreDim, uint64_t coreBS, uint64_t bsBlockFactor,
     int64_t availableUbSize, uint64_t weightCacheCoeffPerDim, uint64_t bsOverlap,
@@ -413,8 +505,10 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::CalcCoreUbTiling(
     uint64_t& loopNumBS, uint64_t& ubTailFactorBS,
     uint64_t& loopNumDim, uint64_t& ubTailFactorDim)
 {
+    // v2.0 关键修复：x 与 y 各占一份双 Buffer，系数从 2 升为 4
+    constexpr uint64_t XY_BUFFER_FACTOR = 2 * DOUBLE_BUFFER_NUM;  // 2(x双) + 2(y双) = 4
     int64_t maxUbDim = availableUbSize /
-        (weightCacheCoeffPerDim + coreBS * xDtypeSize_ * DOUBLE_BUFFER_NUM);
+        (weightCacheCoeffPerDim + coreBS * xDtypeSize_ * XY_BUFFER_FACTOR);
     maxUbDim = (maxUbDim / DIM_ALIGN_ELEMENTS) * DIM_ALIGN_ELEMENTS;
 
     if (maxUbDim >= static_cast<int64_t>(DIM_ALIGN_ELEMENTS)) {
@@ -424,8 +518,8 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::CalcCoreUbTiling(
         if (ubFactorDim == 0) ubFactorDim = DIM_ALIGN_ELEMENTS;
     } else {
         ubFactorDim = DIM_ALIGN_ELEMENTS;
-        int64_t availableForX = availableUbSize - weightCacheCoeffPerDim * ubFactorDim;
-        int64_t maxBS = availableForX / (ubFactorDim * xDtypeSize_ * DOUBLE_BUFFER_NUM);
+        int64_t availableForXY = availableUbSize - static_cast<int64_t>(weightCacheCoeffPerDim * ubFactorDim);
+        int64_t maxBS = availableForXY / static_cast<int64_t>(ubFactorDim * xDtypeSize_ * XY_BUFFER_FACTOR);
         ubFactorBS = static_cast<uint64_t>(std::min(std::max(maxBS, static_cast<int64_t>(1)),
                                                     static_cast<int64_t>(coreBS)));
         if (ubFactorBS == 0) {
@@ -452,9 +546,43 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::CalcCoreUbTiling(
 ge::graphStatus FusedCausalConv1dCutBSHTiling::Calculate2DTiling()
 {
     uint64_t bsOverlap = kernelWidth_ - 1;
-    uint64_t fixedUbSize = (2 * batch_ + 1 + batch_) * sizeof(int32_t);
-    uint64_t weightCacheCoeffPerDim = (kernelWidth_ + kernelWidth_ - 1) * xDtypeSize_;
-    int64_t availableUbSize = static_cast<int64_t>(ubSize_) - fixedUbSize;
+
+    // v2.0 fixedUbSize 重写（按 APC/MTP/conv_mode 条件累加 TBuf 元数据预留）
+    // 基础元数据 Queue：weightQueue (K*dim*sizeof(T)) 由 ubFactorDim 内体现，此处仅纳入元数据 TBuf 与 startLoc/cacheIdx
+    //   - startLoc:        (batch+1) × 4
+    //   - 1D cacheIndices (非 APC):  AlignUp(batch × 4, 32)
+    //   - num_computed_tokens (当提供时): AlignUp(batch × 4, 32)
+    //   - num_accepted_tokens (MTP):  AlignUp(batch × 4, 32)
+    //   - APC 相关 (apcEnabled): blockIdxFirst/blockIdxLast/initialStateIdx 各 AlignUp(batch × 4, 32)
+    auto alignUp = [](uint64_t x, uint64_t a) -> uint64_t { return ((x + a - 1) / a) * a; };
+    constexpr uint64_t META_ALIGN = 32UL;
+    uint64_t metaInt32Bytes = batch_ * sizeof(int32_t);
+    uint64_t metaTBufBytes = alignUp((batch_ + 1) * sizeof(int32_t), META_ALIGN);  // startLoc
+    if (hasCacheIndices_ == 1 && apcEnabled_ == 0) {
+        metaTBufBytes += alignUp(metaInt32Bytes, META_ALIGN);  // 1D cacheIdx
+    }
+    if (hasNumComputedTokens_ == 1) {
+        metaTBufBytes += alignUp(metaInt32Bytes, META_ALIGN);  // num_computed_tokens
+    }
+    if (hasAcceptTokenNum_ == 1) {
+        metaTBufBytes += alignUp(metaInt32Bytes, META_ALIGN);  // num_accepted_tokens
+    }
+    if (apcEnabled_ == 1) {
+        metaTBufBytes += alignUp(metaInt32Bytes, META_ALIGN) * 3;  // blockIdxFirst/Last + initialStateIdx
+    }
+    uint64_t fixedUbSize = metaTBufBytes;
+
+    // weight 双 buffer + cache 双 buffer：(K×2 + stateLen×2) × sizeof(T)
+    // 注：cache UB 按 stateLen_ × maxUbDim × sizeof(T) 分配（正向加载，cachedStateLen 最大为 stateLen_）
+    uint64_t cacheStatesDim1 = cacheStatesShape_.GetDim(DIM_1);  // stateLen
+    uint64_t weightCacheCoeffPerDim = (kernelWidth_ * DOUBLE_BUFFER_NUM +
+                                       cacheStatesDim1 * DOUBLE_BUFFER_NUM) * xDtypeSize_;
+    int64_t availableUbSize = static_cast<int64_t>(ubSize_) - static_cast<int64_t>(fixedUbSize);
+    OP_CHECK_IF(availableUbSize <= 0,
+                OP_LOGE(context_->GetNodeName(),
+                        "FusedCausalConv1dCutBSH availableUbSize <= 0 (ubSize_=%lu fixedUbSize=%lu)",
+                        ubSize_, fixedUbSize),
+                return ge::GRAPH_FAILED);
 
     if (CalcCoreUbTiling(dimBlockFactor_, bsBlockFactor_, bsBlockFactor_,
                          availableUbSize, weightCacheCoeffPerDim, bsOverlap,
@@ -478,7 +606,11 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::Calculate2DTiling()
 ge::graphStatus FusedCausalConv1dCutBSHTiling::SearchBestCoreSplit(
     uint64_t N, uint64_t bsOverlap, uint64_t& bestDimCores, CuSeqLenSplitInfo& bestBSSplitInfo)
 {
+    // v2.0 P0 修复：在搜索过程中优先选择 BS 均分方案（remainder == 0）。
+    // 选优顺序：① remainder==0 优于 remainder>0；② 同样均分性下，usedCores 更大者优先；
+    //          ③ usedCores 相同时，dimCores 更大者优先（dim 切得更细）。
     uint64_t bestUsed = 0;
+    bool bestIsBalanced = false;  // 当前最佳是否 BS 均分
     for (uint64_t dc = N; dc >= 1; --dc) {
         uint64_t base = N / dc;
         if (base == 0) continue;
@@ -489,15 +621,34 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::SearchBestCoreSplit(
         uint64_t maxAllowedBSBySeqLen = (cuSeqLen_ > bsOverlap) ? (cuSeqLen_ - bsOverlap) : 1;
         uint64_t maxAllowedBS = std::min(maxAllowedBSByCore, maxAllowedBSBySeqLen);
 
-        auto splitInfo = CalculateCuSeqLenSplitInfo(cuSeqLen_, bsOverlap, maxAllowedBS);
-        uint64_t usedCores = dc * splitInfo.realCoreNum;
+        // 尝试一组候选 coreNum：从 maxAllowedBS 起递减，至少检查均分点
+        // 简化：只检查 maxAllowedBS 与最近的均分候选（找一个能整除 effectiveTotal 的）
+        for (uint64_t bsCore = maxAllowedBS; bsCore >= 1; --bsCore) {
+            auto splitInfo = CalculateCuSeqLenSplitInfo(cuSeqLen_, bsOverlap, bsCore);
+            uint64_t usedCores = dc * splitInfo.realCoreNum;
+            bool isBalanced = (splitInfo.remainder == 0);
 
-        if (usedCores > bestUsed || (usedCores == bestUsed && dc > bestDimCores)) {
-            bestDimCores = dc;
-            bestUsed = usedCores;
-            bestBSSplitInfo = splitInfo;
+            // 选优条件
+            bool better = false;
+            if (!bestIsBalanced && isBalanced) {
+                better = true;  // 不均分→均分 升级
+            } else if (bestIsBalanced == isBalanced) {
+                if (usedCores > bestUsed) better = true;
+                else if (usedCores == bestUsed && dc > bestDimCores) better = true;
+            }
+            if (better) {
+                bestDimCores = dc;
+                bestUsed = usedCores;
+                bestIsBalanced = isBalanced;
+                bestBSSplitInfo = splitInfo;
+            }
+
+            // 内层：只要找到当前 dc 下的均分方案即可跳出（更小 bsCore 不会更优）
+            if (isBalanced) break;
+            // 非均分：只评估最大 bsCore 一种（避免 O(N²) 全枚举）
+            if (bsCore == maxAllowedBS) break;
         }
-        if (bestUsed == totalCoreNum_) break;
+        if (bestUsed == totalCoreNum_ && bestIsBalanced) break;
     }
 
     if (bestUsed == 0) {
@@ -619,6 +770,16 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::PostTiling()
     tilingData_.cacheStride1 = cacheStride1_;
     tilingData_.residualConnection = residualConnection_;
 
+    // ===== v2.0 新增字段写入 =====
+    tilingData_.apcEnabled = apcEnabled_;
+    tilingData_.blockSize = blockSize_;
+    tilingData_.maxNumBlocks = maxNumBlocks_;
+    tilingData_.convMode = convMode_;
+    tilingData_.inplace = inplace_;
+    tilingData_.hasAcceptTokenNum = hasAcceptTokenNum_;
+    tilingData_.hasNumComputedTokens = hasNumComputedTokens_;
+    tilingData_.hasCacheIndices = hasCacheIndices_;
+
     // Save tiling data to buffer
     auto tilingDataSize = sizeof(FusedCausalConv1dCutBSHTilingData);
     errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(),
@@ -674,6 +835,17 @@ void FusedCausalConv1dCutBSHTiling::DumpTilingInfo()
     info << "xStride: " << xStride_ << std::endl;
     info << "cacheStride0: " << cacheStride0_ << std::endl;
     info << "cacheStride1: " << cacheStride1_ << std::endl;
+
+    // ===== v2.0 新增字段 =====
+    info << "apcEnabled: " << apcEnabled_ << std::endl;
+    info << "blockSize: " << blockSize_ << std::endl;
+    info << "maxNumBlocks: " << maxNumBlocks_ << std::endl;
+    info << "convMode: " << convMode_ << std::endl;
+    info << "inplace: " << inplace_ << std::endl;
+    info << "hasAcceptTokenNum: " << hasAcceptTokenNum_ << std::endl;
+    info << "hasNumComputedTokens: " << hasNumComputedTokens_ << std::endl;
+    info << "hasCacheIndices: " << hasCacheIndices_ << std::endl;
+    info << "maxQueryLen: " << maxQueryLen_ << std::endl;
 
     OP_LOGI(context_->GetNodeName(), "%s", info.str().c_str());
 }
