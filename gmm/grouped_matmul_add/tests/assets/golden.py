@@ -18,8 +18,9 @@ __golden__ = {
         }
 }
 
-import numpy as np
+import ml_dtypes
 import torch
+import numpy as np
 
 
 def grouped_matmul_add_golden(x, weight, group_list, y, transpose_x: bool = True, transpose_weight: bool = False,
@@ -58,6 +59,10 @@ def grouped_matmul_add_golden(x, weight, group_list, y, transpose_x: bool = True
 
 def torch_grouped_matmul_add_golden(self_ref, x, weight, group_list, transpose_x=None, transpose_weight=None,
                                     group_type=None, group_list_type=None, **kwargs):
+    self_ref = torch_to_numpy(self_ref)
+    x = torch_to_numpy(x)
+    weight = torch_to_numpy(weight)
+    group_list = torch_to_numpy(group_list)
     param_group_list = group_list
     x_dtype = x.dtype
     weight_dtype = weight.dtype
@@ -222,7 +227,6 @@ def gmm_non_quant_golden_calculate(x, weight, bias=None, has_bias=0):
     output = [None] * len(x)
     for i in range(len(x)):
         output[i] = np.matmul(x[i], weight[i])
-        output[i] = torch.from_numpy(output[i])
         if has_bias == 1:
             output[i] = torch.add(output[i], torch.from_numpy(bias[i]))
     return output
@@ -262,3 +266,16 @@ def golden_output_process(output, param_split_item, group_type, activation_featu
     else:
         golden = output
     return golden
+
+
+def torch_to_numpy(x):
+    if isinstance(x, torch.Tensor):
+        if x.dtype == torch.float8_e5m2:
+            x = x.to(torch.float32).numpy().astype(ml_dtypes.float8_e5m2)
+        elif x.dtype == torch.float8_e4m3fn:
+            x = x.to(torch.float32).numpy().astype(ml_dtypes.float8_e4m3fn)
+        elif x.dtype == torch.bfloat16:
+            x = x.to(torch.float32).numpy().astype(ml_dtypes.bfloat16)
+        else:
+            x = x.numpy()
+    return x
