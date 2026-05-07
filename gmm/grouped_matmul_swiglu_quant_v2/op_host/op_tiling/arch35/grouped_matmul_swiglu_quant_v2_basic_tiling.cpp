@@ -199,6 +199,11 @@ bool GroupedMatmulSwigluQuantV2Tiling950::IsFp4Input() const
     return IsFp4(inputParams_.aDtype) && IsFp4(inputParams_.bDtype);
 }
 
+bool GroupedMatmulSwigluQuantV2Tiling950::IsMxFp4WeightNz() const
+{
+    return IsFp4Input() && inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ;
+}
+
 bool GroupedMatmulSwigluQuantV2Tiling950::IsFp8Input()
 {
     return IsFp8(inputParams_.aDtype) && IsFp8(inputParams_.bDtype);
@@ -384,7 +389,8 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::DoLibApiTiling()
     CalBasicBlock();
     auto baseM_modified = std::min(basicTiling_.baseM, static_cast<uint64_t>(128));
     basicTiling_.baseM = GroupedMatmul::CeilAlign(baseM_modified, GmmConstant::CUBE_BLOCK);
-    OP_CHECK_IF(CalL1Tiling() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed"),
+    ge::graphStatus l1TilingStatus = IsMxFp4WeightNz() ? CalMxFp4WeightNzL1Tiling() : CalL1Tiling();
+    OP_CHECK_IF(l1TilingStatus != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed"),
                 return ge::GRAPH_FAILED);
     tilingData_.mmTilingData.set_M(inputParams_.mSize);
     tilingData_.mmTilingData.set_N(inputParams_.nSize);
@@ -421,6 +427,147 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::DoLibApiTiling()
         }
     }
 
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::CalMxFp4WeightNzL1Tiling()
+{
+    InitCommonL1TilingFields();
+    if (inputParams_.kSize == 0) {
+        return ge::GRAPH_SUCCESS;
+    }
+    uint64_t leftL1Size = 0;
+    OP_CHECK_IF(CalcLeftL1Size(leftL1Size) != ge::GRAPH_SUCCESS,
+                OP_LOGE(context_->GetNodeName(), "CalcLeftL1Size failed"), return ge::GRAPH_FAILED);
+    return CalMxFp4WeightNzL1Depth(leftL1Size);
+}
+
+ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::CalMxFp4WeightNzL1Depth(uint64_t leftL1Size)
+{
+    uint64_t baseASize = GetSizeWithDataType(basicTiling_.baseM * basicTiling_.baseK, inputParams_.aDtype);
+    uint64_t baseBSize = GetSizeWithDataType(basicTiling_.baseN * basicTiling_.baseK, inputParams_.bDtype);
+    uint64_t baseScaleASize = 0;
+    uint64_t baseScaleBSize = 0;
+    CalcAlignedMxBaseScaleSize(baseScaleASize, baseScaleBSize);
+    uint64_t baseL1Size = baseASize + baseBSize + baseScaleASize + baseScaleBSize;
+    OP_CHECK_IF(leftL1Size < baseL1Size,
+                OP_LOGE(context_->GetNodeName(), "L1 space overflow. Free L1Size : %lu, used space: %lu", leftL1Size,
+                        baseL1Size),
+                return ge::GRAPH_FAILED);
+
+    uint64_t depthInit = GetDepthA1B1(leftL1Size, baseL1Size, 1UL);
+    basicTiling_.depthA1 = GetMxFp4WeightNzDepthWithHighBW(std::min(inputParams_.mSize, basicTiling_.baseM));
+    basicTiling_.depthB1 = GetMxFp4WeightNzDepthWithHighBW(std::min(inputParams_.nSize, basicTiling_.baseN));
+    if (basicTiling_.depthA1 * baseASize + basicTiling_.depthB1 * baseBSize +
+            std::max(basicTiling_.depthA1, basicTiling_.depthB1) * (baseScaleASize + baseScaleBSize) >
+        leftL1Size) {
+        basicTiling_.depthA1 = depthInit;
+        basicTiling_.depthB1 = depthInit;
+    }
+    ModifyMxFp4WeightNzDepthForUnalign(leftL1Size, baseASize, baseBSize, baseScaleASize + baseScaleBSize);
+    CalStepKs();
+    return CalMxFp4WeightNzScaleFactors();
+}
+
+uint64_t GroupedMatmulSwigluQuantV2Tiling950::GetMxFp4WeightNzDepthWithHighBW(uint64_t mnL1) const
+{
+    uint64_t baseKSize = GetSizeWithDataType(basicTiling_.baseK, inputParams_.aDtype);
+    uint64_t depth = GroupedMatmul::CeilAlign(GroupedMatmul::CeilDiv(MTE2_MIN_LOAD_SIZE_V120, mnL1),
+                                              static_cast<uint64_t>(GmmConstant::BASIC_BLOCK_SIZE_256)) /
+                     baseKSize * DB_SIZE;
+    uint64_t pow2Depth = POWER_OF_TWO;
+    while (pow2Depth < depth) {
+        pow2Depth *= POWER_OF_TWO;
+    }
+    return std::min(pow2Depth, GroupedMatmul::CeilDiv(inputParams_.kSize, basicTiling_.baseK) * DB_SIZE);
+}
+
+void GroupedMatmulSwigluQuantV2Tiling950::ModifyMxFp4WeightNzDepthForUnalign(uint64_t leftL1Size,
+                                                                             uint64_t baseASize,
+                                                                             uint64_t baseBSize,
+                                                                             uint64_t baseScaleABSize)
+{
+    if (inputParams_.kSize % GmmConstant::BASIC_BLOCK_SIZE_128 == 0) {
+        return;
+    }
+    if (inputParams_.transA && (!inputParams_.transB || inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ)) {
+        return;
+    }
+    if (!inputParams_.transA) {
+        if (basicTiling_.depthA1 <= basicTiling_.depthB1) {
+            uint64_t leftASize = leftL1Size - basicTiling_.depthB1 * baseBSize - basicTiling_.depthB1 * baseScaleABSize;
+            while (basicTiling_.depthA1 * POWER_OF_TWO * baseASize <= leftASize) {
+                basicTiling_.depthA1 *= POWER_OF_TWO;
+            }
+            if (basicTiling_.depthA1 * baseASize + basicTiling_.depthB1 * baseBSize +
+                    std::max(basicTiling_.depthA1, basicTiling_.depthB1) * baseScaleABSize >
+                leftL1Size) {
+                basicTiling_.depthA1 = basicTiling_.depthB1;
+            }
+        } else if (inputParams_.transB && inputParams_.bFormat == ge::FORMAT_ND) {
+            uint64_t leftBSize = leftL1Size - basicTiling_.depthA1 * baseASize - basicTiling_.depthA1 * baseScaleABSize;
+            while (basicTiling_.depthB1 * POWER_OF_TWO * baseBSize <= leftBSize) {
+                basicTiling_.depthB1 *= POWER_OF_TWO;
+            }
+            if (basicTiling_.depthA1 * baseASize + basicTiling_.depthB1 * baseBSize +
+                    std::max(basicTiling_.depthA1, basicTiling_.depthB1) * baseScaleABSize >
+                leftL1Size) {
+                basicTiling_.depthB1 = basicTiling_.depthA1;
+            }
+        }
+    } else {
+        while ((basicTiling_.depthA1 * baseASize -
+                std::max(basicTiling_.depthA1, basicTiling_.depthB1 * POWER_OF_TWO) * baseScaleABSize) < leftL1Size) {
+            basicTiling_.depthB1 *= POWER_OF_TWO;
+        }
+    }
+}
+
+ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::CalMxFp4WeightNzScaleFactors()
+{
+    uint64_t baseASize = GetSizeWithDataType(basicTiling_.baseM * basicTiling_.baseK, inputParams_.aDtype);
+    uint64_t baseBSize = GetSizeWithDataType(basicTiling_.baseN * basicTiling_.baseK, inputParams_.bDtype);
+    uint64_t baseScaleASize = GetSizeWithDataType(GroupedMatmul::CeilDiv(basicTiling_.baseK, MX_GROUP_SIZE) *
+                                                      basicTiling_.baseM,
+                                                  inputParams_.perTokenScaleDtype);
+    uint64_t baseScaleBSize = GetSizeWithDataType(GroupedMatmul::CeilDiv(basicTiling_.baseK, MX_GROUP_SIZE) *
+                                                      basicTiling_.baseN,
+                                                  inputParams_.scaleDtype);
+    uint64_t biasDtypeSize = ge::GetSizeByDataType(inputParams_.biasDtype);
+    uint64_t baseBiasSize = inputParams_.hasBias ? basicTiling_.baseN * biasDtypeSize : 0;
+    uint64_t leftL1Size =
+        aicoreParams_.l1Size - (basicTiling_.depthA1 * baseASize + basicTiling_.depthB1 * baseBSize + baseBiasSize);
+    uint32_t scaleInit = static_cast<uint32_t>(
+        leftL1Size / (std::max(basicTiling_.depthA1, basicTiling_.depthB1) * (baseScaleASize + baseScaleBSize)));
+    OP_CHECK_IF(
+        scaleInit == 0,
+        OP_LOGE(context_->GetNodeName(),
+                "When m(%lu)/n(%lu)/k(%lu)/groupNum(%lu) in mx quant mode, scaleFactor should not be equal to 0.",
+                inputParams_.mSize, inputParams_.nSize, inputParams_.kSize, inputParams_.groupNum),
+        return ge::GRAPH_FAILED);
+
+    uint32_t scaleFactorAMax =
+        std::min(static_cast<uint32_t>(MTE2_MIN_LOAD_SIZE_V120 / baseScaleASize), SCALER_FACTOR_MAX);
+    uint32_t scaleFactorBMax =
+        std::min(static_cast<uint32_t>(MTE2_MIN_LOAD_SIZE_V120 / baseScaleBSize), SCALER_FACTOR_MAX);
+    uint32_t scaleFactorA =
+        static_cast<uint32_t>(GroupedMatmul::CeilDiv(inputParams_.kSize, basicTiling_.stepKa * basicTiling_.baseK));
+    uint32_t scaleFactorB =
+        static_cast<uint32_t>(GroupedMatmul::CeilDiv(inputParams_.kSize, basicTiling_.stepKb * basicTiling_.baseK));
+    basicTiling_.scaleFactorA = std::max(SCALER_FACTOR_MIN, scaleFactorA);
+    basicTiling_.scaleFactorB = std::max(SCALER_FACTOR_MIN, scaleFactorB);
+    basicTiling_.scaleFactorA = std::min(scaleFactorAMax, basicTiling_.scaleFactorA);
+    basicTiling_.scaleFactorB = std::min(scaleFactorBMax, basicTiling_.scaleFactorB);
+
+    if (basicTiling_.scaleFactorA > scaleInit && basicTiling_.scaleFactorB > scaleInit) {
+        if (basicTiling_.depthA1 >= basicTiling_.depthB1) {
+            basicTiling_.scaleFactorA = scaleInit;
+            basicTiling_.scaleFactorB = scaleInit * basicTiling_.depthA1 / basicTiling_.depthB1;
+        } else {
+            basicTiling_.scaleFactorA = scaleInit * basicTiling_.depthB1 / basicTiling_.depthA1;
+            basicTiling_.scaleFactorB = scaleInit;
+        }
+    }
     return ge::GRAPH_SUCCESS;
 }
 
