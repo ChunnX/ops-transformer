@@ -81,8 +81,8 @@ static ge::graphStatus GetInputs(gert::OpExecuteContext* host_api_ctx, AlltoAllv
 {
     inputs.gmmX = host_api_ctx->GetInputTensor(INPUT_K_GMM_X);
     inputs.gmmWeight = host_api_ctx->GetInputTensor(INPUT_K_GMM_WEIGHT);
-    inputs.gmmXScale = host_api_ctx->GetOptionalInputTensor(INPUT_K_GMM_X_SCALE);
-    inputs.gmmWeightScale = host_api_ctx->GetOptionalInputTensor(INPUT_K_GMM_WEIGHT_SCALE);
+    inputs.gmmXScale = host_api_ctx->GetRequiredInputTensor(INPUT_K_GMM_X_SCALE);
+    inputs.gmmWeightScale = host_api_ctx->GetRequiredInputTensor(INPUT_K_GMM_WEIGHT_SCALE);
     inputs.sendCountsTensor = host_api_ctx->GetOptionalInputTensor(INPUT_K_SEND_COUNTS_TENSOR);
     inputs.recvCountsTensor = host_api_ctx->GetOptionalInputTensor(INPUT_K_RECV_COUNTS_TENSOR);
     inputs.mmX = host_api_ctx->GetOptionalInputTensor(INPUT_K_MM_X);
@@ -261,7 +261,8 @@ static ge::graphStatus AlltoAllvQuantGroupedMatMulExecuteFunc(gert::OpExecuteCon
     if (ret != ge::GRAPH_SUCCESS) {
         return ret;
     }
-
+    OPS_LOG_D("AlltoAllvQuantGroupedMatMulFallback", "end AlltoAllvQuantGroupedMatMulFallback to aclnn.");
+    std::cout << "Fallback permuteOut:" << permuteOut << std::endl;
     return ExecuteAlltoAllvQuantGroupedMatMul(host_api_ctx, inputs, attrsData, actSendCountsSeqArray, actRecvCountsSeqArray,
                                               gmmY, mmY, permuteOut);
 }

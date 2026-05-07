@@ -595,6 +595,8 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckPermuteOutShapeInfo()
             context_->GetOutputShape(OUTPUT_PERMUTE_OUT_INDEX)->GetStorageShape().GetDimNum());
         return ge::GRAPH_FAILED;
     }
+    std::cout << "tiling permute_out dim 1:" << context_->GetOutputShape(OUTPUT_PERMUTE_OUT_INDEX)->GetStorageShape().GetDim(0) << std::endl;
+    std::cout << "tiling permute_out dim 2:" << context_->GetOutputShape(OUTPUT_PERMUTE_OUT_INDEX)->GetStorageShape().GetDim(1) << std::endl;
     OP_LOGD(context_->GetNodeName(), "end CheckPermuteOutShapeInfo.");
     return ge::GRAPH_SUCCESS;
 }
