@@ -19,9 +19,9 @@
 
 namespace optiling {
 
-class AlltoAllvTTQuantGmmV2Tiling : public AlltoAllvQuantGmmTilingCommon {
+class AlltoAllvTTQuantGmmV2Tiling : public AlltoAllvQuantGmmV2TilingCommon {
 public:
-    explicit AlltoAllvTTQuantGmmV2Tiling(gert::TilingContext *context) : AlltoAllvQuantGmmTilingCommon(context){};
+    explicit AlltoAllvTTQuantGmmV2Tiling(gert::TilingContext *context) : AlltoAllvQuantGmmV2TilingCommon(context){};
 
 protected:
     // Tiling base

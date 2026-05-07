@@ -84,7 +84,7 @@ constexpr uint32_t SYS_WORKSPACE_SIZE = 16 * 1024 * 1024;
 constexpr uint32_t MAX_TURN_NUM = 24;
 constexpr int32_t MAX_BASE_K = 128;
 constexpr uint64_t COMM_TILE = 8; // 每卡数据分配几次计算
-constexpr uint64_t COMMMODE_INDEX = 11;
+constexpr int COMMMODE_INDEX = 14;
 
 const char* A_INNER_DEBUG = "AlltoAllvGroupedMatMulV2 Tiling";
 
@@ -236,7 +236,7 @@ static void PrintCommonTilingInfo(AlltoAllvGmmCommonTilingInfo &commonTilingInfo
     OP_LOGD(A_INNER_DEBUG, " commonTilingInfo.isNeedMM %d.", commonTilingInfo.isNeedMM);
 }
 
-class AlltoAllvGmmTiling
+class AlltoAllvGmmV2Tiling
 {
 public:
     AlltoAllvGmmTilingData* tilingData;
@@ -289,7 +289,7 @@ private:
 };
 
 // 获取入参参数
-ge::graphStatus AlltoAllvGmmTiling::GetContextAttr(const gert::TilingContext* context)
+ge::graphStatus AlltoAllvGmmV2Tiling::GetContextAttr(const gert::TilingContext* context)
 {
     auto attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE(A_INNER_DEBUG, "GetAttrs returned nullptr!"), return ge::GRAPH_FAILED);
@@ -341,7 +341,7 @@ ge::graphStatus AlltoAllvGmmTiling::GetContextAttr(const gert::TilingContext* co
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvGmmTiling::GetShapeAndFormat(const gert::TilingContext* context)
+ge::graphStatus AlltoAllvGmmV2Tiling::GetShapeAndFormat(const gert::TilingContext* context)
 {
     OP_TILING_CHECK(
         (context->GetInputShape(GMM_X_INDEX) == nullptr) || (context->GetInputShape(GMM_WEIGHT_INDEX) == nullptr),
@@ -399,7 +399,7 @@ ge::graphStatus AlltoAllvGmmTiling::GetShapeAndFormat(const gert::TilingContext*
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvGmmTiling::CheckMKN(const gert::TilingContext* context)
+ge::graphStatus AlltoAllvGmmV2Tiling::CheckMKN(const gert::TilingContext* context)
 {
     (void)context; // Unused
     OP_TILING_CHECK(
@@ -423,7 +423,7 @@ ge::graphStatus AlltoAllvGmmTiling::CheckMKN(const gert::TilingContext* context)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvGmmTiling::CheckSendRecvDataVolumn(const gert::TilingContext* context) const
+ge::graphStatus AlltoAllvGmmV2Tiling::CheckSendRecvDataVolumn(const gert::TilingContext* context) const
 {
     // 单卡之间通信数据 [2M,100M]
     uint64_t eExpert = tilingData->commonTilingInfo.E_ep;
@@ -468,7 +468,7 @@ ge::graphStatus AlltoAllvGmmTiling::CheckSendRecvDataVolumn(const gert::TilingCo
 }
 
 // 检查入参 shape size
-ge::graphStatus AlltoAllvGmmTiling::CheckShapeSize(const gert::TilingContext* context) const
+ge::graphStatus AlltoAllvGmmV2Tiling::CheckShapeSize(const gert::TilingContext* context) const
 {
     OP_TILING_CHECK(
         (context->GetInputShape(GMM_X_INDEX) == nullptr) || (context->GetInputShape(GMM_WEIGHT_INDEX) == nullptr),
@@ -522,7 +522,7 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeSize(const gert::TilingContext* co
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvGmmTiling::CheckAttrsShapeSize(const gert::TilingContext* context) const
+ge::graphStatus AlltoAllvGmmV2Tiling::CheckAttrsShapeSize(const gert::TilingContext* context) const
 {
     uint64_t E_ep = tilingData->commonTilingInfo.E_ep;
     if (E_ep <= NUM_ZERO || E_ep > E_MAX_VALUE) {
@@ -575,7 +575,7 @@ ge::graphStatus AlltoAllvGmmTiling::CheckAttrsShapeSize(const gert::TilingContex
 }
 
 // 检查sendcounts recvcounts shape 之间的关系
-ge::graphStatus AlltoAllvGmmTiling::CheckAttrsShapeRelation(const gert::TilingContext* context) const
+ge::graphStatus AlltoAllvGmmV2Tiling::CheckAttrsShapeRelation(const gert::TilingContext* context) const
 {
     auto attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE(A_INNER_DEBUG, "GetAttrs returned null."), return ge::GRAPH_FAILED);
@@ -626,7 +626,7 @@ ge::graphStatus AlltoAllvGmmTiling::CheckAttrsShapeRelation(const gert::TilingCo
 }
 
 // 检查入参 shape 之间的关系
-ge::graphStatus AlltoAllvGmmTiling::CheckShapeRelation(const gert::TilingContext* context) const
+ge::graphStatus AlltoAllvGmmV2Tiling::CheckShapeRelation(const gert::TilingContext* context) const
 {
     OP_TILING_CHECK((context->GetInputShape(GMM_WEIGHT_INDEX) == nullptr) || (context->GetInputShape(GMM_X_INDEX) == nullptr),
                      OP_LOGE(A_INNER_DEBUG, "GetInputShape gmmX or gmmWeight returned nullptr."), return ge::GRAPH_FAILED);
@@ -674,7 +674,7 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeRelation(const gert::TilingContext
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvGmmTiling::CheckMmShapeDims(const gert::TilingContext* context) const
+ge::graphStatus AlltoAllvGmmV2Tiling::CheckMmShapeDims(const gert::TilingContext* context) const
 {
     if (tilingData->commonTilingInfo.isNeedMM) {
         if (context->GetOptionalInputShape(MM_X_INDEX)->GetStorageShape().GetDimNum() != NUM_TWO) {
@@ -710,7 +710,7 @@ ge::graphStatus AlltoAllvGmmTiling::CheckMmShapeDims(const gert::TilingContext* 
 }
 
 // 检查入参 shape 维度
-ge::graphStatus AlltoAllvGmmTiling::CheckShapeDims(const gert::TilingContext* context)
+ge::graphStatus AlltoAllvGmmV2Tiling::CheckShapeDims(const gert::TilingContext* context)
 {
     OP_TILING_CHECK(
         (context->GetInputShape(GMM_X_INDEX) == nullptr) || (context->GetInputShape(GMM_WEIGHT_INDEX) == nullptr),
@@ -766,7 +766,7 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeDims(const gert::TilingContext* co
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvGmmTiling::SetHcclTiling(const gert::TilingContext* context) const
+ge::graphStatus AlltoAllvGmmV2Tiling::SetHcclTiling(const gert::TilingContext* context) const
 {
     (void)context; // Unused
     OP_TILING_CHECK(tilingData == nullptr, OP_LOGE(A_INNER_DEBUG, "Tiling Data is null!"), return ge::GRAPH_FAILED);
@@ -796,7 +796,7 @@ ge::graphStatus AlltoAllvGmmTiling::SetHcclTiling(const gert::TilingContext* con
     OP_TILING_CHECK(hcclCcTilingConfig.GetTiling(tilingData->alltoAllvCcTiling) != 0,
         OP_LOGE(A_INNER_DEBUG, "mc2CcTilingConfig mc2tiling GetTiling alltoAllvCcTiling failed"), return ge::GRAPH_FAILED);
 
-    auto commMode = context_->GetAttrs()->GetAttrPointer<char>(COMMMODE_INDEX);
+    auto commMode = context->GetAttrs()->GetAttrPointer<char>(static_cast<int>(COMMMODE_INDEX));
     if (strcmp(commMode, "aicpu") == 0) {
         hcclCcTilingConfig.SetCommEngine(mc2tiling::AICPU_ENGINE);
     }
@@ -804,7 +804,7 @@ ge::graphStatus AlltoAllvGmmTiling::SetHcclTiling(const gert::TilingContext* con
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvGmmTiling::CheckDType(const gert::TilingContext* context) const
+ge::graphStatus AlltoAllvGmmV2Tiling::CheckDType(const gert::TilingContext* context) const
 {
     OP_TILING_CHECK(
         (context->GetInputDesc(GMM_X_INDEX) == nullptr) || (context->GetInputDesc(GMM_WEIGHT_INDEX) == nullptr),
@@ -856,7 +856,7 @@ ge::graphStatus AlltoAllvGmmTiling::CheckDType(const gert::TilingContext* contex
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvGmmTiling::Init(gert::TilingContext* context)
+ge::graphStatus AlltoAllvGmmV2Tiling::Init(gert::TilingContext* context)
 {
     tilingData = context->GetTilingData<AlltoAllvGmmTilingData>();
     OP_TILING_CHECK(
@@ -900,13 +900,13 @@ ge::graphStatus AlltoAllvGmmTiling::Init(gert::TilingContext* context)
         return ge::GRAPH_FAILED);
     OP_LOGI(
         A_INNER_DEBUG,
-        "AlltoAllvGmmTiling: maxM_ is %d, maxK_ is %d, maxN_ is %d, maxMForMM_ is %d, maxKForMM_ is %d, maxNForMM_ "
+        "AlltoAllvGmmV2Tiling: maxM_ is %d, maxK_ is %d, maxN_ is %d, maxMForMM_ is %d, maxKForMM_ is %d, maxNForMM_ "
         "is %d.",
         maxM_, maxK_, maxN_, maxMForMM_, maxKForMM_, maxNForMM_);
     return ge::GRAPH_SUCCESS;
 }
 
-uint64_t AlltoAllvGmmTiling::GetTilingKey(const gert::TilingContext* context) const
+uint64_t AlltoAllvGmmV2Tiling::GetTilingKey(const gert::TilingContext* context) const
 {
     uint32_t templateMmDType = ADD_TPL_FP16;
     bool tilingkeyMm = false;
@@ -932,15 +932,17 @@ uint64_t AlltoAllvGmmTiling::GetTilingKey(const gert::TilingContext* context) co
     } else {
         tilingekyMmTrans = false;
     }
+    auto commMode = context->GetAttrs()->GetAttrPointer<char>(static_cast<int>(COMMMODE_INDEX));
+    uint8_t commModeKey = (strcmp(commMode, "aicpu") == 0) ? TILINGKEY_TPL_AICPU : TILINGKEY_TPL_CCU;
     uint64_t tilingKey = GET_TPL_TILING_KEY(templateMmDType, tilingkeyMm,
-                                    tilingekyGmmTrans, tilingekyMmTrans);
+                                    tilingekyGmmTrans, tilingekyMmTrans, commModeKey);
 
     PrintCommonTilingInfo(tilingData->commonTilingInfo);
     OP_LOGD(A_INNER_DEBUG, "end RunFusionKernelTiling, tilingKey is %lu", tilingKey);
     return tilingKey;
 }
 
-ge::graphStatus AlltoAllvGmmTiling::setNumBlocks(gert::TilingContext* context){
+ge::graphStatus AlltoAllvGmmV2Tiling::setNumBlocks(gert::TilingContext* context){
     auto platformInfo = context->GetPlatformInfo();
     OPS_CHECK_NULL_WITH_CONTEXT(context, platformInfo);
 
@@ -968,7 +970,7 @@ ge::graphStatus AlltoAllvGmmTiling::setNumBlocks(gert::TilingContext* context){
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvGmmTiling::RunFusionKernelTiling(gert::TilingContext* context)
+ge::graphStatus AlltoAllvGmmV2Tiling::RunFusionKernelTiling(gert::TilingContext* context)
 {
     OP_LOGD(A_INNER_DEBUG, "begin RunFusionKernelTiling.");
 
@@ -1002,7 +1004,7 @@ ge::graphStatus AlltoAllvGmmTiling::RunFusionKernelTiling(gert::TilingContext* c
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvGmmTiling::DoAiCoreTiling(const gert::TilingContext* context)
+ge::graphStatus AlltoAllvGmmV2Tiling::DoAiCoreTiling(const gert::TilingContext* context)
 {
     OP_LOGD(A_INNER_DEBUG, "begin DoAiCoreTiling.");
     auto dTypeForMM = matmul_tiling::DataType::DT_FLOAT16;
@@ -1038,7 +1040,7 @@ ge::graphStatus AlltoAllvGmmTiling::DoAiCoreTiling(const gert::TilingContext* co
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvGmmTiling::CalMMTiling(const gert::TilingContext* context, MMTilingParams& params) const
+ge::graphStatus AlltoAllvGmmV2Tiling::CalMMTiling(const gert::TilingContext* context, MMTilingParams& params) const
 {
     OP_LOGD(A_INNER_DEBUG, "begin CalMMTlingData.");
 
@@ -1088,7 +1090,7 @@ ge::graphStatus AlltoAllvGmmTiling::CalMMTiling(const gert::TilingContext* conte
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvGmmTiling::SetMMTiling(const gert::TilingContext* context, SetMMTilingParams& params) const
+ge::graphStatus AlltoAllvGmmV2Tiling::SetMMTiling(const gert::TilingContext* context, SetMMTilingParams& params) const
 {
     OP_LOGD(A_INNER_DEBUG, "Begin SetMMTiling.");
 
@@ -1118,33 +1120,33 @@ ge::graphStatus AlltoAllvGmmTiling::SetMMTiling(const gert::TilingContext* conte
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus AlltoAllvGmmTilingFuncA3(gert::TilingContext* context)
+static ge::graphStatus AlltoAllvGmmV2TilingFuncA3(gert::TilingContext* context)
 {
-    AlltoAllvGmmTiling tiling;
+    AlltoAllvGmmV2Tiling tiling;
     OP_TILING_CHECK(
         tiling.Init(context) != ge::GRAPH_SUCCESS, OP_LOGE(A_INNER_DEBUG, "GMM tiling init failed."),
         return ge::GRAPH_FAILED);
     return tiling.RunFusionKernelTiling(context);
 }
 
-bool AlltoAllvGmmTilingStruct::IsCapable()
+bool AlltoAllvGmmV2TilingStruct::IsCapable()
 {
     return true;
 }
 
-ge::graphStatus AlltoAllvGmmTilingStruct::DoOpTiling()
+ge::graphStatus AlltoAllvGmmV2TilingStruct::DoOpTiling()
 {
-    return AlltoAllvGmmTilingFuncA3(context_);
+    return AlltoAllvGmmV2TilingFuncA3(context_);
 }
 
-uint64_t AlltoAllvGmmTilingStruct::GetTilingKey() const
+uint64_t AlltoAllvGmmV2TilingStruct::GetTilingKey() const
 {
     const uint64_t tilingKey = context_->GetTilingKey();
-    OP_LOGD(A_INNER_DEBUG, "AlltoAllvGmmTiling get tiling key %lu", tilingKey);
+    OP_LOGD(A_INNER_DEBUG, "AlltoAllvGmmV2Tiling get tiling key %lu", tilingKey);
     return tilingKey;
 }
 
-ge::graphStatus AlltoAllvGmmTilingBase::GetPlatformInfo()
+ge::graphStatus AlltoAllvGmmV2TilingBase::GetPlatformInfo()
 {
     auto platformInfo = context_->GetPlatformInfo();
     OP_TILING_CHECK(
@@ -1157,29 +1159,29 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetPlatformInfo()
 }
 
 // Every thing is done by DoOptiling.
-ge::graphStatus AlltoAllvGmmTilingBase::GetShapeAttrsInfo()
+ge::graphStatus AlltoAllvGmmV2TilingBase::GetShapeAttrsInfo()
 {
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvGmmTilingBase::DoLibApiTiling()
+ge::graphStatus AlltoAllvGmmV2TilingBase::DoLibApiTiling()
 {
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvGmmTilingBase::GetWorkspaceSize()
+ge::graphStatus AlltoAllvGmmV2TilingBase::GetWorkspaceSize()
 {
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AlltoAllvGmmTilingBase::PostTiling()
+ge::graphStatus AlltoAllvGmmV2TilingBase::PostTiling()
 {
     return ge::GRAPH_SUCCESS;
 }
 
-REGISTER_OPS_TILING_TEMPLATE(AlltoAllvGroupedMatMulV2, AlltoAllvGmmTilingStruct, 0);
+REGISTER_OPS_TILING_TEMPLATE(AlltoAllvGroupedMatMulV2, AlltoAllvGmmV2TilingStruct, 0);
 
-static ge::graphStatus AlltoAllvGmmTilingFunc(gert::TilingContext* context)
+static ge::graphStatus AlltoAllvGmmV2TilingFunc(gert::TilingContext* context)
 {
     return TilingRegistry::GetInstance().DoTilingImpl(context);
 }
@@ -1194,6 +1196,6 @@ static ge::graphStatus TilingParseForAlltoAllvGmm(gert::TilingParseContext* cont
 }
 
 IMPL_OP_OPTILING(AlltoAllvGroupedMatMulV2)
-    .Tiling(AlltoAllvGmmTilingFunc)
+    .Tiling(AlltoAllvGmmV2TilingFunc)
     .TilingParse<AlltoAllvGmmCompileInfo>(TilingParseForAlltoAllvGmm); // 向框架注册入口函数
 } // namespace optiling

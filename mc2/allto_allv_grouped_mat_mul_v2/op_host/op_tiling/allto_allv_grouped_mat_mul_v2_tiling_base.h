@@ -25,10 +25,10 @@
 
 namespace optiling {
 
-class AlltoAllvGmmTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass
+class AlltoAllvGmmV2TilingBase : public Ops::Transformer::OpTiling::TilingBaseClass
 {
 public:
-    explicit AlltoAllvGmmTilingBase(gert::TilingContext* context) : Ops::Transformer::OpTiling::TilingBaseClass(context){};
+    explicit AlltoAllvGmmV2TilingBase(gert::TilingContext* context) : Ops::Transformer::OpTiling::TilingBaseClass(context){};
 
 protected:
     ge::graphStatus GetShapeAttrsInfo() override;

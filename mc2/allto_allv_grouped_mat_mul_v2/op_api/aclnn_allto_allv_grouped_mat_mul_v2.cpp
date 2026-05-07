@@ -30,6 +30,8 @@ enum class NnopbaseHcclServerType : uint32_t {
 };
 
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
+extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
+extern "C" void *NnopbaseGetUserHandle(void *executor);
 
 // check nullptr
 static bool CheckNullStatus(const aclTensor* gmmX, const aclTensor* gmmWeight, const aclTensor* sendCountsTensorOptional,
@@ -126,14 +128,33 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulV2GetWorkspaceSize(const aclTensor* gmmX,
         recvCountsTensorOptional, mmXOptional, mmWeightOptional, const_cast<char *>(group), epWorldSize, sendCounts,
         recvCounts, transGmmWeight, transMmWeight, permuteOutFlag, const_cast<char *>(commMode),
         gmmY, mmYOptional, permuteOutOptional, workspaceSize, executor);
+
+    if (ret == ACLNN_SUCCESS && *executor != nullptr) {
+        char* commModePtr = new char[strlen(commMode) + 1];
+        if (commModePtr != nullptr) {
+            strcpy(commModePtr, commMode);
+            NnopbaseSetUserHandle(*executor, commModePtr);
+            OP_LOGD("[A2AV_GMM_V2] GetWorkspaceSize set commMode=%s", commMode);
+        }
+    }
     return ret;
 }
 
 aclnnStatus aclnnAlltoAllvGroupedMatMulV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                        aclrtStream stream)
+                                         aclrtStream stream)
 {
+    char* commModePtr = reinterpret_cast<char*>(NnopbaseGetUserHandle(executor));
     if (NnopbaseSetHcclServerType) {
-        if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        if (commModePtr != nullptr) {
+            OP_LOGD("[A2AV_GMM_V2] Execute commMode=%s", commModePtr);
+            if (strcmp(commModePtr, "aicpu") == 0) {
+                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+            } else {
+                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+            }
+            delete[] commModePtr;
+        } else {
+            // fallback: V2只支持950，默认设置CCU
             NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
         }
     }

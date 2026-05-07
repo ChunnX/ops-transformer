@@ -35,7 +35,7 @@ TEST_P(AlltoAllvQuantGroupedMatMulV2TilingTest, param)
     AlltoAllvQuantGroupedMatMulV2CompileInfo compileInfo;
     uint64_t coreNum = 36;
     uint64_t ubSize = 256 * 1024;
-    size_t tilingDataSize = sizeof(QuantAlltoAllvGroupedMatmulTilingData);
+    size_t tilingDataSize = sizeof(QuantAlltoAllvGroupedMatmulV2TilingData);
 
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvQuantGroupedMatMulV2",

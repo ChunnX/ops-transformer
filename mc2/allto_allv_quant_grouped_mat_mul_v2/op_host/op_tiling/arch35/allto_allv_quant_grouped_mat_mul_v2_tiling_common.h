@@ -26,8 +26,8 @@
 #include "register/op_def_registry.h"
 #include "register/op_impl_registry.h"
 #include "tiling_base/tiling_templates_registry.h"
-#include "../../../op_kernel/allto_allv_quant_grouped_mat_mul_v2_tiling.h"
-#include "../allto_allv_quant_grouped_mat_mul_v2_tiling_base.h"
+#include "mc2/allto_allv_quant_grouped_mat_mul_v2/op_kernel/allto_allv_quant_grouped_mat_mul_v2_tiling.h"
+#include "mc2/allto_allv_quant_grouped_mat_mul_v2/op_host/op_tiling/allto_allv_quant_grouped_mat_mul_v2_tiling_base.h"
 
 namespace optiling {
 constexpr uint32_t DATA_SIZE_L0C = 4;
@@ -55,12 +55,12 @@ constexpr uint32_t SCALE_BATCH_THRESHOLD = 32;
 // quant mode offset
 const std::vector<uint32_t> QUANT_MODE_MAP = {0, 0, 1, 2, 4, 5, 3};
 
-class AlltoAllvQuantGmmTilingCommon : public AlltoAllvQuantGmmTilingBase {
+class AlltoAllvQuantGmmV2TilingCommon : public AlltoAllvQuantGmmV2TilingBase {
 public:
-    explicit AlltoAllvQuantGmmTilingCommon(gert::TilingContext *context) : AlltoAllvQuantGmmTilingBase(context){
-        tilingData = context->GetTilingData<QuantAlltoAllvGroupedMatmulTilingData>();
+    explicit AlltoAllvQuantGmmV2TilingCommon(gert::TilingContext *context) : AlltoAllvQuantGmmV2TilingBase(context){
+        tilingData = context->GetTilingData<QuantAlltoAllvGroupedMatmulV2TilingData>();
     };
-    QuantAlltoAllvGroupedMatmulTilingData *tilingData;
+    QuantAlltoAllvGroupedMatmulV2TilingData *tilingData;
 
 protected:
     // Tiling base
@@ -78,7 +78,7 @@ protected:
     virtual ge::graphStatus DoGmmTiling(uint64_t gmmMSize) {return ge::GRAPH_SUCCESS;};
     virtual void GetPermuteOutSize() {};
     ge::graphStatus CheckInputNotNull() const;
-    ge::graphStatus SetHcclTiling() const;
+    virtual ge::graphStatus SetHcclTiling() const;
     void PrintGMMQuantTilingData(const Mc2GroupedMatmulTilingData::GMMQuantTilingData &data) const;
     void PrintTaskTilingInfo(const MC2KernelTemplate::TaskTilingInfo &taskTilingInfo) const;
     uint64_t permuteScaleOutSize_{0};

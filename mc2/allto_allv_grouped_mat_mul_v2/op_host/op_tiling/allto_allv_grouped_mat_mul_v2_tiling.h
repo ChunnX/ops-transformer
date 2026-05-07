@@ -18,10 +18,10 @@
 #include "allto_allv_grouped_mat_mul_v2_tiling_base.h"
 
 namespace optiling {
-class AlltoAllvGmmTilingStruct : public AlltoAllvGmmTilingBase
+class AlltoAllvGmmV2TilingStruct : public AlltoAllvGmmV2TilingBase
 {
 public:
-    explicit AlltoAllvGmmTilingStruct(gert::TilingContext* context) : AlltoAllvGmmTilingBase(context){};
+    explicit AlltoAllvGmmV2TilingStruct(gert::TilingContext* context) : AlltoAllvGmmV2TilingBase(context){};
 
 protected:
     ge::graphStatus DoOpTiling() override;
