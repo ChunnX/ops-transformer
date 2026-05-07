@@ -76,15 +76,14 @@ public:
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND});
-        this->Attr("activation_mode").AttrType(OPTIONAL).Int(0);        // 0: None  1: silu  2: swish
-        this->Attr("pad_slot_id").AttrType(REQUIRED).Int(-1);            // skip invalid batch
-        this->Attr("run_mode").AttrType(OPTIONAL).Int(0);               // 0: prefill   1: decode
+        this->Attr("activation_mode").AttrType(REQUIRED).Int();        // 0: None  1: silu  2: swish
+        this->Attr("pad_slot_id").AttrType(REQUIRED).Int();            // skip invalid batch
+        this->Attr("run_mode").AttrType(REQUIRED).Int();               // 0: prefill   1: decode
         this->Attr("max_query_len").AttrType(REQUIRED).Int();
         this->Attr("residual_connection").AttrType(REQUIRED).Int();    // 0: no residual  1: with residual
-        this->Attr("block_size").AttrType(OPTIONAL).Int(0);             // when APC enabled, it can not be set to 0
+        this->Attr("block_size").AttrType(REQUIRED).Int();             // when APC enabled, it can not be set to 0
         this->Attr("conv_mode").AttrType(REQUIRED).Int();              // 0: for Qwen and Pangu7B  1: for Pangu
         this->Attr("inplace").AttrType(REQUIRED).Bool();               // false: non_inplace  true: inplace
-
         OpAICoreConfig config_950;
         config_950.DynamicCompileStaticFlag(true)
 			.DynamicFormatFlag(false)

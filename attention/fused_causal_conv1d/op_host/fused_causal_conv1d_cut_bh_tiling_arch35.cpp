@@ -664,7 +664,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::CheckInputParams()
 ge::graphStatus FusedCausalConv1dCutBHTiling::DoOpTiling()
 {
     if (dim_ >= COARSE_GRAIN_THRESHOLD) {
-        // Coarse-grain tiling for large dim (>= 4096)
+        // Coarse-grain tiling for large dim (>= 1024)
         OP_CHECK_IF(ComputeInterCoreSplitCoarse() != ge::GRAPH_SUCCESS,
             OP_LOGE(context_->GetNodeName(), "ComputeInterCoreSplitCoarse failed"),
             return ge::GRAPH_FAILED);
@@ -673,7 +673,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::DoOpTiling()
             OP_LOGE(context_->GetNodeName(), "ComputeIntraCoreUbTilingCoarse failed"),
             return ge::GRAPH_FAILED);
     } else {
-        // Fine-grain tiling for small dim (< 4096)
+        // Fine-grain tiling for small dim (< 1024)
         OP_CHECK_IF(ComputeInterCoreSplit() != ge::GRAPH_SUCCESS,
             OP_LOGE(context_->GetNodeName(), "ComputeInterCoreSplit failed"),
             return ge::GRAPH_FAILED);
@@ -695,11 +695,11 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeInterCoreSplit()
         return ge::GRAPH_FAILED;
     }
 
-    // Compute max available cores considering data-size limit
+    // Compute max available cores considering data-size limit（128）
     limitedCoreNum_ = CalculateLimitedCoreNum();
     int64_t maxCoresAvailable = std::min<int64_t>(totalCoreNum_, limitedCoreNum_);
 
-    // Greedy search best (dimCores, bsCores), prioritize more dim splits
+    // 贪心搜索让batch和dim方向核数相乘最多的解法
     int64_t bestDimCores = 1;
     int64_t bestBSCores = 1;
     int64_t bestUsed = 1;  // dc=1 initially
@@ -772,12 +772,13 @@ void FusedCausalConv1dCutBHTiling::ComputeUbFor(int64_t coreDimElems, int64_t co
     if (xInputMode_ == X_INPUT_2D) {
         seqLen_ = maxQueryLen_;
     }
-    // int64_t weightConvStatesCoeffPerDim = (BUFFER_NUM * kernelSize_ + 2 * BUFFER_NUM * stateLen_ * 2) * DTYPE_SIZE;
+    //计算每个dim所需的内存
     int64_t weightConvStatesCoeffPerDim = (BUFFER_NUM * kernelSize_ + BUFFER_NUM * (kernelSize_ - 1) * 2) * DTYPE_SIZE;
     int64_t xCoeffPerDimFullBS = BUFFER_NUM * coreBS * seqLen_ * DTYPE_SIZE * 2;
     int64_t totalCoeffPerDim = weightConvStatesCoeffPerDim + xCoeffPerDimFullBS;
     int64_t maxUbDim = (totalCoeffPerDim > 0) ? (availableUbSize / totalCoeffPerDim) : 0;
     maxUbDim = (maxUbDim / DIM_ALIGN_ELEMENT) * DIM_ALIGN_ELEMENT;
+    //至少能放一个dim块
     if (maxUbDim >= DIM_ALIGN_ELEMENT) {
         outUbBS = coreBS;
         outUbDim = std::min(maxUbDim, coreDimElems);

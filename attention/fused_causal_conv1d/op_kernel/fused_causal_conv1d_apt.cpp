@@ -63,12 +63,14 @@ extern "C" __global__ __aicore__ void fused_causal_conv1d(
                 y, &tilingData);
         op.Process();
     }
-
+    
     if (TILING_KEY_IS(TILING_KEY_BSH_BF16)) {
         GET_TILING_DATA_WITH_STRUCT(FusedCausalConv1dCutBSHTilingData, tilingData, tiling);
         FusedCausalConv1dCutBSH<bfloat16_t> op;
         op.Init(x, weight, convStates, queryStartLoc, cacheIndices,
-                initialStateMode, y, workspace, &tilingData);
+                numAcceptedToken, numComputedTokens,
+                blockIdxFirstScheduledToken, blockIdxLastScheduledToken,
+                initialStateIdx, y, workspace, &tilingData);
         op.Process();
     }
 
@@ -76,7 +78,10 @@ extern "C" __global__ __aicore__ void fused_causal_conv1d(
         GET_TILING_DATA_WITH_STRUCT(FusedCausalConv1dCutBSHTilingData, tilingData, tiling);
         FusedCausalConv1dCutBSH<half> op;
         op.Init(x, weight, convStates, queryStartLoc, cacheIndices,
-                initialStateMode, y, workspace, &tilingData);
+                numAcceptedToken, numComputedTokens,
+                blockIdxFirstScheduledToken, blockIdxLastScheduledToken,
+                initialStateIdx, y, workspace, &tilingData);
         op.Process();
     }
+
 }
