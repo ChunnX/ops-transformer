@@ -2524,7 +2524,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::M3AndM4(AicOffset &aicOffset)
             GetTensorC(mm4ResLocal_, cL0, mmQnParam_.m, nL1SplitSize, mSize, mmQnParam_.orgKc,
                                                 bufParam_);
         } else {
-            GetTensorC(tensorCGm[nL1SplitSize], cL0, mmQnParam_.m, nL1SplitSize, mSize, mmQnParam_.orgKc,
+            GetTensorC(mmQnResGm_[nL1SplitSize], cL0, mmQnParam_.m, nL1SplitSize, mSize, mmQnParam_.orgKc,
                                                 bufParam_);
         }
         SetFlag<HardEvent::FIX_M>(L0C_EVENT0 + (bufParam_.cL0BufIter & 1u));
