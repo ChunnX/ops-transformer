@@ -84,7 +84,7 @@ public:
                 int32_t mProcessAlign = RoundUp(mProcess, 16);
                 LocalTensor<INPUT_TYPE> l1_a_tensor = ping_pong_flag_inner ? l1_a_tensor_ping_ : l1_a_tensor_pong_;
 
-                load_data_gm_2_l1(l1_a_tensor, leftGm, mProcess, head_dim_, mProcessAlign, head_dim_align_, head_dim_);
+                // load_data_gm_2_l1(l1_a_tensor, leftGm, mProcess, head_dim_, mProcessAlign, head_dim_align_, head_dim_);
                 ping_pong_flag_inner = 1 - ping_pong_flag_inner;
             }
 
