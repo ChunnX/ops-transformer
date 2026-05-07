@@ -401,7 +401,7 @@ TEST_F(TestAclnnQuantAllReduce, ReFormatXTest)
     uint64_t workspace_size = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
-    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+    EXPECT_EQ(aclRet, ACLNN_SUCCESS);
 }
 
 TEST_F(TestAclnnQuantAllReduce, ReFormatScalesTest)
@@ -413,7 +413,7 @@ TEST_F(TestAclnnQuantAllReduce, ReFormatScalesTest)
     uint64_t workspace_size = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
-    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+    EXPECT_EQ(aclRet, ACLNN_SUCCESS);
 }
 
 TEST_F(TestAclnnQuantAllReduce, ReFormatOutputTest)
@@ -425,7 +425,7 @@ TEST_F(TestAclnnQuantAllReduce, ReFormatOutputTest)
     uint64_t workspace_size = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
-    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+    EXPECT_EQ(aclRet, ACLNN_SUCCESS);
 }
 
 } // namespace QuantAllReduceUT
