@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file inplace_matmul_all_reduce_add_rms_norm.cpp
+ * \file matmul_all_reduce_add_rms_norm.cpp
  * \brief
  */
 
@@ -19,41 +19,20 @@
 #include "kernel_operator.h"
 #endif
 #include "lib/matmul_intf.h"
-
-#if defined(__CCE_KT_TEST__)
-#define DTYPE_RESIDUAL half
-#endif
-using DTYPE_Y = DTYPE_RESIDUAL;
-
-#if __has_include("../../matmul_all_reduce/op_kernel/common.h")
-#include "../../matmul_all_reduce/op_kernel/common.h"
+#if __has_include("../../../matmul_all_reduce/op_kernel/common.h")
+#include "../../../matmul_all_reduce/op_kernel/common.h"
 #else
-#include "../matmul_all_reduce/common.h"
+#include "../../matmul_all_reduce/common.h"
 #endif
+
+#include "../matmul_all_reduce_add_rms_norm_tiling_data.h"
+
 #if defined(MC2_QUANT)
-    #if __has_include("../../matmul_all_reduce_add_rms_norm/op_kernel/mm_allreduce_add_rms_norm_quant.h")
-    #include "../../matmul_all_reduce_add_rms_norm/op_kernel/matmul_all_reduce_add_rms_norm_tiling_data.h"
-    #include "../../matmul_all_reduce_add_rms_norm/op_kernel/mm_allreduce_add_rms_norm_quant.h"
-    #else
-    #include "../matmul_all_reduce_add_rms_norm/matmul_all_reduce_add_rms_norm_tiling_data.h"
-    #include "../matmul_all_reduce_add_rms_norm/mm_allreduce_add_rms_norm_quant.h"
-    #endif
+#include "../mm_allreduce_add_rms_norm_quant.h"
 #elif defined(MC2_WEIGHT_QUANT)
-    #if __has_include("../../matmul_all_reduce_add_rms_norm/op_kernel/mm_allreduce_add_rms_norm_weight_quant.h")
-    #include "../../matmul_all_reduce_add_rms_norm/op_kernel/matmul_all_reduce_add_rms_norm_tiling_data.h"
-    #include "../../matmul_all_reduce_add_rms_norm/op_kernel/mm_allreduce_add_rms_norm_weight_quant.h"
-    #else
-    #include "../matmul_all_reduce_add_rms_norm/matmul_all_reduce_add_rms_norm_tiling_data.h"
-    #include "../matmul_all_reduce_add_rms_norm/mm_allreduce_add_rms_norm_weight_quant.h"
-    #endif
+#include "../mm_allreduce_add_rms_norm_weight_quant.h"
 #else
-    #if __has_include("../../matmul_all_reduce_add_rms_norm/op_kernel/mm_allreduce_add_rms_norm_910_general.h")
-    #include "../../matmul_all_reduce_add_rms_norm/op_kernel/matmul_all_reduce_add_rms_norm_tiling_data.h"
-    #include "../../matmul_all_reduce_add_rms_norm/op_kernel/mm_allreduce_add_rms_norm_910_general.h"
-    #else
-    #include "../matmul_all_reduce_add_rms_norm/matmul_all_reduce_add_rms_norm_tiling_data.h"
-    #include "../matmul_all_reduce_add_rms_norm/mm_allreduce_add_rms_norm_910_general.h"
-    #endif
+#include "../mm_allreduce_add_rms_norm_910_general.h"
 #endif
 
 namespace MatmulAllReduceAddRmsNormImpl {}
@@ -61,7 +40,7 @@ namespace MatmulAllReduceAddRmsNormImpl {}
 using namespace AscendC;
 using namespace MatmulAllReduceAddRmsNormImpl;
 
-extern "C" __global__ __aicore__ void inplace_matmul_all_reduce_add_rms_norm(
+extern "C" __global__ __aicore__ void matmul_all_reduce_add_rms_norm(
     GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR residualGM, GM_ADDR gammaGM, GM_ADDR antiquantScaleGM,
     GM_ADDR antiquantOffsetGM, GM_ADDR dequantGM, GM_ADDR yGM, GM_ADDR normOutGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
