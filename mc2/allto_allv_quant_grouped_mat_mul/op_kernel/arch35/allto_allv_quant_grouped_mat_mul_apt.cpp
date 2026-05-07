@@ -17,9 +17,9 @@
 #else
 #include "kernel_operator.h"
 #endif
-#include "allto_allv_quant_grouped_mat_mul_tiling_key.h"
-#include "allto_allv_quant_grouped_mat_mul_tiling.h"
-#include "mc2_templates/mc2_templates.h"
+#include "../allto_allv_quant_grouped_mat_mul_tiling_key.h"
+#include "../allto_allv_quant_grouped_mat_mul_tiling.h"
+#include "../mc2_templates/mc2_templates.h"
 
 
 using namespace AscendC;
