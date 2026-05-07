@@ -265,15 +265,15 @@ __aicore__ inline void MoeDistributeDispatchA2<TemplateMC2TypeA2Func>::Init(
         axisH_ * sizeof(uint16_t) + stateSizeMaxSize) * BUFFER_NUM; // 考虑负载极其不均衡时，HCCL BUFFSIZE需要开的大小
 
     worldTaskInfo_.SplitCore(worldSize_, aivNum_, aivId_);
-    uint32_t aDumpSize = Std::max(RoundUp(Mc2A2Kernel::AIVNUM_POS + 1U, BITS32_PER_BLOCK), BITS32_PER_BLOCK * 2U) * sizeof(uint32_t);
+    uint32_t aDumpSize = Std::max(RoundUp(Mc2A2Kernel::H_POS + 1U, BITS32_PER_BLOCK), BITS32_PER_BLOCK * 2U) * sizeof(uint32_t);
     uint32_t aDumpUbAddr = AscendC::TOTAL_UB_SIZE - aDumpSize;
     aDumpTensor_ = LocalTensor<uint8_t>{TPosition::LCM, aDumpUbAddr, aDumpSize};
     GM_ADDR aDumpAddr = hccl_.GetWindowsInAddr(rankId_) + totalSize_ - Mc2A2Kernel::BUFFER_ADUMP_WIN_SIZE * 2UL;
     aDump_.Init(aDumpAddr, aivId_, rankId_, worldSize_, rankId_, moeExpertNum_, worldSize_,
         tilingData.moeDistributeDispatchInfo.globalBs, bufferChosen_,
-        Mc2A2Kernel::IS_FULLMESH, aivNum_, aDumpTensor_);
-    aDump_.UpdateFullmeshRankTaskInfo(worldTaskInfo_.startTaskId, worldTaskInfo_.taskNum, Mc2A2Kernel::IS_SEND);
-    aDump_.UpdateFullmeshRankTaskInfo(worldTaskInfo_.startTaskId, worldTaskInfo_.taskNum, Mc2A2Kernel::IS_RECV);
+        Mc2A2Kernel::IS_FULLMESH, aivNum_, aDumpTensor_, axisH_);
+    aDump_.UpdateFullmeshRankTaskInfo(worldTaskInfo_.startTaskId, worldTaskInfo_.endTaskId, Mc2A2Kernel::IS_SEND);
+    aDump_.UpdateFullmeshRankTaskInfo(worldTaskInfo_.startTaskId, worldTaskInfo_.endTaskId, Mc2A2Kernel::IS_RECV);
 }
 
 template <TemplateMC2TypeA2Class>
@@ -971,7 +971,7 @@ __aicore__ inline void MoeDistributeDispatchA2<TemplateMC2TypeA2Func>::Process()
         SyncAll<true>();
         aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_FULLMESH_DISPATCH_LOCAL_WINDOW_COPY);
         CleanUpFlags();
-        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_FULLMESH_DISPATCH_FINISH);
+        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_END);
         hccl_.Finalize();
     }
 }

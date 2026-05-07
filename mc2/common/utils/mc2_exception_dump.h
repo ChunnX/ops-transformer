@@ -29,6 +29,7 @@
 #include "version/runtime_version.h"
 #include "version/metadef_version.h"
 #include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_dispatch_tiling.h"
+#include "../../moe_distribute_combine_v2/op_kernel/moe_distribute_combine_tiling.h"
 #include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_a2_constant.h"
 #include "./mc2_hcom_topo_info.h"
 
@@ -182,7 +183,8 @@ struct TestStruct {
     uint8_t res1[136];
 };
 
-inline int ProcessArgs910B(void* devArgsPtr, std::vector<uint8_t> &winBuf, uint32_t devArgsLen)
+template <typename TilingData>
+int ProcessArgs910BImpl(void* devArgsPtr, std::vector<uint8_t> &winBuf, uint32_t devArgsLen, uint32_t tilingDataOffset, bool isDispatch)
 {
     uint64_t argsAddr = 0;
     auto maxArgNum = devArgsLen / sizeof(uint64_t);
@@ -195,26 +197,134 @@ inline int ProcessArgs910B(void* devArgsPtr, std::vector<uint8_t> &winBuf, uint3
         return -1;
     }
 
-    // argsAddr = devArgsVector64[1]; // The loc of mc2 ctx.
-    std::vector<uint8_t> rawTilingData(sizeof(MoeDistributeDispatchA2TilingData), 0);
-    argsAddr = devArgsVector64[18]; // The loc of tiling data.
-    ret = aclrtMemcpy(rawTilingData.data(), sizeof(MoeDistributeDispatchA2TilingData), (void *)argsAddr, sizeof(MoeDistributeDispatchA2TilingData),
-                           ACL_MEMCPY_DEVICE_TO_HOST);
-    MoeDistributeDispatchA2TilingData* tilingData = reinterpret_cast<MoeDistributeDispatchA2TilingData*>(rawTilingData.data());
+    std::vector<uint8_t> rawTilingData(sizeof(TilingData), 0);
+    argsAddr = devArgsVector64[tilingDataOffset]; // The loc of tiling data.
+    ret = aclrtMemcpy(rawTilingData.data(), sizeof(TilingData), (void *)argsAddr, sizeof(TilingData), ACL_MEMCPY_DEVICE_TO_HOST);
+    TilingData* tilingData = reinterpret_cast<TilingData*>(rawTilingData.data());
     Mc2CcTiling mc2CcTiling = tilingData->mc2CcTiling;
     TestStruct* test = reinterpret_cast<TestStruct*>(&mc2CcTiling);
-    OP_LOGE(OP_NAME, "MoeDistributeDispatchA2TilingData. groupName=%s", test->groupName);
+    OP_LOGE(OP_NAME, "GroupName=%s", test->groupName);
     uint64_t size;
     void *buffer;
     Mc2Hcom::MC2HcomTopology::CommGetHcclBufferByGroup(test->groupName, &buffer, &size);
-    OP_LOGE(OP_NAME, "MoeDistributeDispatchA2TilingData. size=%lu. buffer=%p", size, buffer);
-    buffer += size / 2 - Mc2A2Kernel::BUFFER_ADUMP_WIN_SIZE * 2U;
-    ret = aclrtMemcpy(winBuf.data(), WIN_SIZE, (const void *)buffer, WIN_SIZE, ACL_MEMCPY_DEVICE_TO_HOST);
+    OP_LOGE(OP_NAME, "HCCL BUFFER SIZE=%luMB. WindowInAddr=%p.", size / (1 * 1024 * 1024) / 2, buffer);
+    void *aDumpBuffer;
+    aDumpBuffer = buffer + size / 4 - Mc2A2Kernel::BUFFER_ADUMP_WIN_SIZE * 2U;
+    OP_LOGE(OP_NAME, "ADumpBuffer=%p", aDumpBuffer);
+
+    if (winBuf.size() < Mc2A2Kernel::BUFFER_ADUMP_WIN_ADDR_START + Mc2A2Kernel::BUFFER_ADUMP_WIN_SIZE * 2U) {
+        OP_LOGE(OP_NAME, "winBuf size is too small.");
+        return -1;
+    }
+
+    ret = aclrtMemcpy(winBuf.data() + Mc2A2Kernel::BUFFER_ADUMP_WIN_ADDR_START, Mc2A2Kernel::BUFFER_ADUMP_WIN_SIZE * 2U, (const void *)aDumpBuffer, Mc2A2Kernel::BUFFER_ADUMP_WIN_SIZE * 2U, ACL_MEMCPY_DEVICE_TO_HOST);
     if (!(ret == ACL_SUCCESS)) {
         OP_LOGE(OP_NAME, "aclrtMemcpy win from device to host failed. ret = %d", ret);
         return -1;
     }
+    std::vector<uint32_t> singleAiv(Mc2A2Kernel::BUFFER_ADUMP_WIN_SIZE_PER_AIV / sizeof(uint32_t), 0);
+    uint32_t offsetForValidDump = isDispatch ? 0U : Mc2A2Kernel::BUFFER_ADUMP_WIN_SIZE;
+    std::memcpy(singleAiv.data(), winBuf.data() + Mc2A2Kernel::BUFFER_ADUMP_WIN_ADDR_START + offsetForValidDump, singleAiv.size());
+    OP_LOGE(OP_NAME, "IsLayered=%d", singleAiv[Mc2A2Kernel::ISLAYERED_POS]);
+    uint32_t bufferId = singleAiv[Mc2A2Kernel::BUFFERID_POS];
+    uint32_t axisH = singleAiv[Mc2A2Kernel::H_POS];
+    if (!isDispatch) {
+        bufferId = 1 - bufferId;
+    }
+    void *statusBuffer = buffer;
+    
+    if (singleAiv[Mc2A2Kernel::ISLAYERED_POS] == 1) {
+        constexpr static uint64_t STATE_OFFSET = 512UL;
+        constexpr static uint32_t SERVER_RANK_SIZE = 8;
+        // Dispatch
+        uint64_t offset = 0;
+        uint32_t serverNum = singleAiv[Mc2A2Kernel::TILING_WORLDSIZE_POS] / SERVER_RANK_SIZE;
+        uint32_t statusBytes = (serverNum + 1) * 2U * STATE_OFFSET;
+        // arrive status
+        ret = aclrtMemcpy(winBuf.data() + offset, Mc2A2Kernel::BUFFER_ADUMP_WIN_DISPATCH_SIZE, (const void *)statusBuffer + size / 4 * bufferId, statusBytes, ACL_MEMCPY_DEVICE_TO_HOST);
+        if (!(ret == ACL_SUCCESS)) {
+            OP_LOGE(OP_NAME, "aclrtMemcpy win from device to host failed. ret = %d", ret);
+            return -1;
+        }
+        // Dispatch IpcSync
+        offset = statusBytes;
+        ret = aclrtMemcpy(winBuf.data() + offset, Mc2A2Kernel::BUFFER_ADUMP_WIN_DISPATCH_SIZE, (const void *)statusBuffer + size / 4 - 1 * 1024 * 1024, SERVER_RANK_SIZE * Mc2A2Kernel::UB_ALIGN, ACL_MEMCPY_DEVICE_TO_HOST);
+        if (!(ret == ACL_SUCCESS)) {
+            OP_LOGE(OP_NAME, "aclrtMemcpy win from device to host failed. ret = %d", ret);
+            return -1;
+        }
+        // Combine
+        statusBytes = (serverNum + 1) * STATE_OFFSET;
+        // arrive status
+        offset = Mc2A2Kernel::BUFFER_ADUMP_WIN_DISPATCH_SIZE;
+        ret = aclrtMemcpy(winBuf.data() + offset, Mc2A2Kernel::BUFFER_ADUMP_WIN_COMBINE_SIZE, (const void *)statusBuffer + size / 4 * (1 - bufferId), statusBytes, ACL_MEMCPY_DEVICE_TO_HOST);
+        if (!(ret == ACL_SUCCESS)) {
+            OP_LOGE(OP_NAME, "aclrtMemcpy win from device to host failed. ret = %d", ret);
+            return -1;
+        }
+        // Combine IpcSync
+        offset = Mc2A2Kernel::BUFFER_ADUMP_WIN_DISPATCH_SIZE + statusBytes;
+        ret = aclrtMemcpy(winBuf.data() + offset, Mc2A2Kernel::BUFFER_ADUMP_WIN_COMBINE_SIZE, (const void *)statusBuffer + size / 4 - 2 * 1024 * 1024, SERVER_RANK_SIZE * Mc2A2Kernel::UB_ALIGN, ACL_MEMCPY_DEVICE_TO_HOST);
+        if (!(ret == ACL_SUCCESS)) {
+            OP_LOGE(OP_NAME, "aclrtMemcpy win from device to host failed. ret = %d", ret);
+            return -1;
+        }
+    } else if (singleAiv[Mc2A2Kernel::ISLAYERED_POS] == 0) {
+        uint32_t worldSize = singleAiv[Mc2A2Kernel::TILING_WORLDSIZE_POS];
+        uint32_t moeExpertNum = singleAiv[Mc2A2Kernel::MOE_NUM_POS];
+        OP_LOGE(OP_NAME, "worldSize=%d, moeExpertNum=%d, axisH=%d", worldSize, moeExpertNum, axisH);
+
+        uint64_t dataSizePerRank_ = (size / 4 - 1 * 1024 * 1024) / worldSize / Mc2A2Kernel::UB_ALIGN * Mc2A2Kernel::UB_ALIGN;
+        uint32_t localMoeExpertNum = moeExpertNum / worldSize;
+        uint32_t statusEntryCount = ((localMoeExpertNum + 1) * sizeof(uint32_t) + Mc2A2Kernel::UB_ALIGN - 1) / Mc2A2Kernel::UB_ALIGN * Mc2A2Kernel::UB_ALIGN;
+        // Dispatch
+        for (uint32_t rank = 0; rank < worldSize; ++rank) {
+            uint32_t srcOffset = rank * dataSizePerRank_ + size / 4 * bufferId;
+            uint32_t dstOffset = rank * statusEntryCount;
+            ret = aclrtMemcpy(winBuf.data() + dstOffset, Mc2A2Kernel::BUFFER_ADUMP_WIN_DISPATCH_SIZE, (const void *)statusBuffer + srcOffset, statusEntryCount, ACL_MEMCPY_DEVICE_TO_HOST);
+            if (!(ret == ACL_SUCCESS)) {
+                OP_LOGE(OP_NAME, "aclrtMemcpy win from device to host failed. ret = %d", ret);
+                return -1;
+            }
+        }
+        // Combine
+        OP_LOGE(OP_NAME, "dataSizePerRank_=%d", dataSizePerRank_);
+        for (uint32_t rank = 0; rank < worldSize; ++rank) {
+            uint32_t srcOffset = rank * dataSizePerRank_ + size / 4 * (1 - bufferId);
+            uint32_t dstOffset = rank * Mc2A2Kernel::UB_ALIGN * 2 + Mc2A2Kernel::BUFFER_ADUMP_WIN_DISPATCH_SIZE;
+            ret = aclrtMemcpy(winBuf.data() + dstOffset, Mc2A2Kernel::BUFFER_ADUMP_WIN_COMBINE_SIZE, (const void *)statusBuffer + srcOffset, Mc2A2Kernel::UB_ALIGN, ACL_MEMCPY_DEVICE_TO_HOST);
+            if (!(ret == ACL_SUCCESS)) {
+                OP_LOGE(OP_NAME, "aclrtMemcpy win from device to host failed. ret = %d", ret);
+                return -1;
+            }
+            uint32_t tokenNum = 0;
+            std::memcpy(&tokenNum, winBuf.data() + dstOffset, sizeof(uint32_t));
+            OP_LOGE(OP_NAME, "rank=%d, tokenNum=%d", rank, tokenNum);
+            srcOffset += Mc2A2Kernel::UB_ALIGN * 2 + tokenNum * axisH * sizeof(uint16_t);
+            dstOffset += Mc2A2Kernel::UB_ALIGN;
+            ret = aclrtMemcpy(winBuf.data() + dstOffset, Mc2A2Kernel::BUFFER_ADUMP_WIN_COMBINE_SIZE, (const void *)statusBuffer + srcOffset, Mc2A2Kernel::UB_ALIGN, ACL_MEMCPY_DEVICE_TO_HOST);
+            if (!(ret == ACL_SUCCESS)) {
+                OP_LOGE(OP_NAME, "aclrtMemcpy win from device to host failed. ret = %d", ret);
+                return -1;
+            }
+        }
+
+    } else {
+        OP_LOGE(OP_NAME, "Unsupported isLayered: %d", singleAiv[Mc2A2Kernel::ISLAYERED_POS]);
+    }
     return 0;
+}
+
+inline int ProcessArgs910B(void* devArgsPtr, std::vector<uint8_t> &winBuf, uint32_t devArgsLen, const char *op)
+{
+    if (std::strcmp(op, "MoeDistributeDispatchV2") == 0) {
+        return ProcessArgs910BImpl<MoeDistributeDispatchA2TilingData>(devArgsPtr, winBuf, devArgsLen, 18, true);
+    } else if (std::strcmp(op, "MoeDistributeCombineV2") == 0) {
+        return ProcessArgs910BImpl<MoeDistributeCombineA2TilingData>(devArgsPtr, winBuf, devArgsLen, 23, false);
+    } else {
+        OP_LOGE(OP_NAME, "Unsupported op: %s", op);
+        return -1;
+    }
 }
 
 inline void Mc2ExceptionImpl(aclrtExceptionInfo *args, void *userdata, const char *op)
@@ -264,7 +374,7 @@ inline void Mc2ExceptionImpl(aclrtExceptionInfo *args, void *userdata, const cha
             return;
         }
     } else if (std::strstr(socName, "Ascend910B") != nullptr) {
-        if (ProcessArgs910B(devArgsPtr, winContent, devArgsLen) != 0) {
+        if (ProcessArgs910B(devArgsPtr, winContent, devArgsLen, op) != 0) {
             OP_LOGE(OP_NAME, "Failed to get win content.");
             return;
         }
