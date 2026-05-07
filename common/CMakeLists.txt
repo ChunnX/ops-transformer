@@ -61,7 +61,7 @@ if (BUILD_OPEN_PROJECT)
       ${C_SEC_INCLUDE}
       ${TILINGAPI_INC_DIRS}
       ${METADEF_INCLUDE_DIRS}
-      ${OPS_TRANSFORMER_DIR}/common/include
+      ${OPS_TRANSFORMER_DIR}/common/inc
       ${ASCEND_CANN_PACKAGE_PATH}/include/experiment/runtime
       ${ASCEND_CANN_PACKAGE_PATH}/include/experiment/msprof
       ${ASCEND_CANN_PACKAGE_PATH}/include/op_common
@@ -89,7 +89,7 @@ if (BUILD_OPEN_PROJECT)
 
     target_include_directories(${COMMON_NAME}_fallback_obj
       PRIVATE
-      ${OPS_TRANSFORMER_DIR}/common/include
+      ${OPS_TRANSFORMER_DIR}/common/inc
       ${ASCEND_CANN_PACKAGE_PATH}/include/experiment/runtime
       ${ASCEND_CANN_PACKAGE_PATH}/include/experiment/msprof
       ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/runtime
@@ -119,7 +119,7 @@ else()
       ${NPURUNTIME_INCLUDE_DIRS}
       ${TILINGAPI_INC_DIRS}
       ${METADEF_INCLUDE_DIRS}
-      ${OPS_TRANSFORMER_DIR}/common/include
+      ${OPS_TRANSFORMER_DIR}/common/inc
       ${OPS_TRANSFORMER_DIR}/common/inc
     )
 

@@ -47,7 +47,7 @@ set(_FFN_KernelPrivateCompileDefinitionsExt
 set(_FFN_TargetPrivateIncludeExt
         ${OPS_TRANSFORMER_DIR}/ffn/ffn/op_host
         ${CMAKE_SOURCE_DIR}/ffn/ffn/op_host/op_api
-        ${CMAKE_SOURCE_DIR}/common/include
+        ${CMAKE_SOURCE_DIR}/common/inc
         ${OPBASE_INC_DIRS}
 )
 
