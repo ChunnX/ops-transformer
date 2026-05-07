@@ -56,7 +56,8 @@ public:
     __aicore__ inline LIPreload(){};
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *weights,
                                 __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
-                                __gm__ uint8_t *blockTable, __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseValues,
+                                __gm__ uint8_t *blockTable, __gm__ uint8_t *initTensor, __gm__ uint8_t *localTensor, 
+                                __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseValues, 
                                 __gm__ uint8_t *workspace, const LITilingData *__restrict tiling, TPipe *tPipe);
     __aicore__ inline void Process();
 
@@ -101,6 +102,7 @@ protected:
     uint64_t keyCoreOffset = 0ULL;
     uint64_t weightsCoreOffset = 0ULL;
     uint64_t indiceOutCoreOffset = 0ULL;
+    bool isInitTensorValid = false;
 
     // ================================Global Buffer区=================================
     GlobalTensor<Q_T> queryGm;
@@ -110,6 +112,8 @@ protected:
     GlobalTensor<int32_t> indiceOutGm;
     GlobalTensor<K_T> valueOutGm;
     GlobalTensor<int32_t> blockTableGm;
+    GlobalTensor<int32_t> initTensorGm;
+    GlobalTensor<int32_t> localTensorGm;
 
     GlobalTensor<uint32_t> actualSeqLengthsGmQ;
     GlobalTensor<uint32_t> actualSeqLengthsGm;
@@ -386,7 +390,8 @@ __aicore__ inline void LIPreload<LIT>::DealActSeqLenIsZero(uint32_t bIdx, uint32
 template <typename LIT>
 __aicore__ inline void LIPreload<LIT>::Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *weights,
                                             __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
-                                            __gm__ uint8_t *blockTable, __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseValues,
+                                            __gm__ uint8_t *blockTable, __gm__ uint8_t *initTensor, __gm__ uint8_t *localTensor, 
+                                            __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseValues,
                                             __gm__ uint8_t *workspace, const LITilingData *__restrict tiling,
                                             TPipe *tPipe)
 {
@@ -431,7 +436,12 @@ __aicore__ inline void LIPreload<LIT>::Init(__gm__ uint8_t *query, __gm__ uint8_
         indiceOutGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
         valueOutGm.SetGlobalBuffer((__gm__ K_T *)sparseValues);
         weightsGm.SetGlobalBuffer((__gm__ W_T *)weights);
-        vectorService.InitVec1GlobalTensor(mm1ResGm, vec1ResGm, vec1ParamGm, weightsGm, indiceOutGm, valueOutGm);
+        initTensorGm.SetGlobalBuffer((__gm__ int32_t *)initTensor);
+        localTensorGm.SetGlobalBuffer((__gm__ int32_t *)localTensor);
+        if (initTensor != nullptr) {
+            isInitTensorValid = true;
+        }
+        vectorService.InitVec1GlobalTensor(mm1ResGm, vec1ResGm, vec1ParamGm, weightsGm, indiceOutGm, valueOutGm, initTensorGm, localTensorGm);
     } else {
         matmulService.InitParams(constInfo);
         queryGm.SetGlobalBuffer((__gm__ Q_T *)query);
@@ -509,6 +519,7 @@ __aicore__ inline void LIPreload<LIT>::CalcRunInfo(uint32_t loop, uint32_t s2Loo
 
     runInfo.actS1Size = tempLoopInfo.actS1Size;
     runInfo.actS2Size = tempLoopInfo.actS2Size;
+    runInfo.isInitTensorValid = isInitTensorValid;
     // 计算实际基本块size
     runInfo.actMBaseSize = tempLoopInfo.actMBaseSize;
     runInfo.actualSingleProcessSInnerSize = constInfo.s2BaseSize;

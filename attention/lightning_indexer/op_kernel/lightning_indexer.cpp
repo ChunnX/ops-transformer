@@ -25,7 +25,7 @@ using namespace LIKernel;
         templateClass<LIType<__VA_ARGS__>> op;                                                                         \
         GET_TILING_DATA_WITH_STRUCT(LITilingData, tiling_data_in, tiling);                                             \
         const LITilingData *__restrict tiling_data = &tiling_data_in;                                                  \
-        op.Init(query, key, weights, actualSeqLengthsQ, actualSeqLengths, blocktable, sparseIndices, sparseValues, user,             \
+        op.Init(query, key, weights, actualSeqLengthsQ, actualSeqLengths, blocktable, initTensor, localTensor, sparseIndices, sparseValues, user,             \
                 tiling_data, &tPipe);                                                                                  \
         op.Process();                                                                                                  \
     } while (0)
@@ -33,8 +33,8 @@ using namespace LIKernel;
 template <int DT_Q, int DT_K, int DT_OUT, int PAGE_ATTENTION, int LAYOUT_T, int K_LAYOUT_T, int DT_W_FLAG>
 __global__ __aicore__ void lightning_indexer(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *weights,
                                              __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
-                                             __gm__ uint8_t *blocktable, __gm__ uint8_t *sparseIndices,
-                                             __gm__ uint8_t *sparseValues, __gm__ uint8_t *workspace,
+                                             __gm__ uint8_t *blocktable, __gm__ uint8_t *initTensor, __gm__ uint8_t *localTensor, 
+                                             __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseValues, __gm__ uint8_t *workspace,
                                              __gm__ uint8_t *tiling)
 {
 #if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__) || (__CCE_AICORE__ == 200)

@@ -117,6 +117,10 @@ void LIInfoParser::GetOptionalInputParaInfo()
     opParamInfo_.actualSeqLengths.desc = context_->GetOptionalInputDesc(ACTUAL_SEQ_K_INDEX);
     opParamInfo_.blockTable.tensor = context_->GetOptionalInputTensor(BLOCK_TABLE_INDEX);
     opParamInfo_.blockTable.desc = context_->GetOptionalInputDesc(BLOCK_TABLE_INDEX);
+    opParamInfo_.initTensor.tensor = context_->GetOptionalInputTensor(INIT_TENSOR_INDEX);
+    opParamInfo_.initTensor.desc = context_->GetOptionalInputDesc(INIT_TENSOR_INDEX);
+    opParamInfo_.localTensor.tensor = context_->GetOptionalInputTensor(LOCAL_TENSOR_INDEX);
+    opParamInfo_.localTensor.desc = context_->GetOptionalInputDesc(LOCAL_TENSOR_INDEX);
 }
 
 void LIInfoParser::GetInputParaInfo()
