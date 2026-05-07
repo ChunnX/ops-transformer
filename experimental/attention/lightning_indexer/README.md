@@ -16,12 +16,6 @@
      $$
      对于某个token对应的Index Query $Q_{index}\in\R^{g\times d}$，给定上下文Index Key $K_{index}\in\R^{S_{k}\times d},W\in\R^{g\times 1}$，其中$g$为GQA对应的group size，$d$为每一个头的维度，$S_{k}$是上下文的长度。
 
-## 函数原型
-
-```
-torch_npu.npu_lightning_indexer(query, key, weights, *, actual_seq_lengths_query=None, actual_seq_lengths_key=None, block_table=None, layout_query="BSND", layout_key="BSND", sparse_count=2048, sparse_mode=3, pre_tokens=2^63-1, next_tokens=2^63-1, cmp_ratio=1，return_value=False) -> (Tensor, Tensor)
-```
-
 ## 参数说明
 
 >**说明：**<br> 
@@ -77,44 +71,3 @@ torch_npu.npu_lightning_indexer(query, key, weights, *, actual_seq_lengths_query
 -   参数query中的N支持64，key中的N支持1。
 -   参数query中的D和参数key中的D值相等为128。
 -   参数query、key、weights的数据类型应保持一致。
-
-## 调用示例
-
--   单算子模式调用
-
-    ```python
-    import torch
-    import torch_npu
-    import math
-    import numpy as np
-    # 生成随机数据, 并发送到npu
-    layout_query = 'BSND'
-    layout_key = 'PA_BSND'
-    sparse_count = 2048
-    sparse_mode = 3
-    cmp_ratio = 4
-
-    b = 1
-    s1 = 1
-    s2 = 8192 / cmp_ratio
-    n1 = 64
-    n2 = 1
-    d = 128
-    block_size = 256
-    query = torch.tensor(np.random.uniform(-10, 10, (b, s1, n1, d))).to(torch.bfloat16).npu()
-    key = torch.tensor(np.random.uniform(-10, 10, (b*(s2//block_size), block_size, n2, d))).to(torch.bfloat16).npu()
-    weights = torch.tensor(np.random.uniform(-1, 1, (b, s1, n1))).to(torch.bfloat16).npu()
-    actual_seq_lengths_query = torch.tensor(np.random.uniform(s1, s1, (b))).to(torch.int32).npu()
-    actual_seq_lengths_key = torch.tensor(np.random.uniform(s2, s2, (b))).to(torch.int32).npu()
-    block_table = torch.tensor([range(b*s2//block_size)], dtype=torch.int32).reshape(b, -1).npu()
-
-    # 调用lightning_indexer算子
-    sparse_indices, sparse_values = torch_npu.npu_lightning_indexer(
-            query, key, weights, actual_seq_lengths_query=actual_seq_lengths_query, 
-            actual_seq_lengths_key=actual_seq_lengths_key, block_table=block_table, layout_query=layout_query, 
-            layout_key=layout_key, sparse_count=sparse_count, sparse_mode=sparse_mode, cmp_ratio=cmp_ratio)
-
-    # 执行上述代码的输出sparse_indices类似如下
-    tensor([[[[4488, 3926, 1154, ..., 3535, 8031, 8180]]]],
-            device='npu:0', dtype=torch.int32)
-    ```

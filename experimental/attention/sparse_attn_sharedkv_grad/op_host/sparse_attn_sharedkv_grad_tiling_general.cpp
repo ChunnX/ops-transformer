@@ -367,7 +367,7 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetBaseShapeInfo()
     const int64_t *oriWinRightPtr = context_->GetAttrs()->GetAttrPointer<int64_t>(static_cast<size_t>(AttrIndex::ORI_WIN_RIGHT));
 
     // -------------------------------------
-    if (dimDq != dimDq) {
+    if (dimDq != dimOriKv) {
         OP_LOGE(context_, "The headDim of query, ori_kv should be the same. But got dimDq=%ld, dimOriKv=%ld",
                 dimDq, dimOriKv);
         return ge::GRAPH_FAILED;
