@@ -419,7 +419,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
 
   - 输入和输出支持以下数据类型组合
 
-    | x1    | x2    | scale   | bias    | offsetOptional  | antiquantScaleOptional | antiquantOffsetOptional | pertokenScaleOptional| groupList | sharedInput | logit   |   rowIndex | out   | tuningConfigOptional |
+    | x1    | x2    | scale   | bias    | offsetOptional  | antiquantScaleOptional | antiquantOffsetOptional | pertokenScaleOptional | groupList | sharedInput | logit   |   rowIndex | out   | tuningConfigOptional |
     |------|------|---------|---------|---------|----------------|-----------------|---------------|-----------|-------------|---------|----------|-------| ----------------------|
     | INT8 | INT8 | FLOAT32 | null    | null    | null           | null            | FLOAT32       | INT64     | BFLOAT16    | FLOAT32 | INT64    | FLOAT |   IntArray             |
     | INT8 | INT8 | FLOAT32 | null    | null    | null           | null            | FLOAT32       | INT64     | BFLOAT16    | FLOAT32 | INT64    | FLOAT |   IntArray             |
@@ -437,40 +437,30 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
     - sharedInput的bsdp必须小于等于outputBS，n和x2的n一致。
     - sharedInputOffset + sharedInput的bsdp <= outputBS。
 
-  - 非量化场景（x1、x2为INT8）支持的数据类型为：
+  - 全量化场景支持的数据类型为：
 
-    | x1    | x2    | scale   | bias    | pertokenScaleOptional | rowIndex | out   |
-    |------|------|---------|---------|---------|----------|-------|
-    | INT8 | INT8 | FLOAT32/BF16 | BFLOAT16/null | FLOAT32/null | INT64/INT32 | FLOAT |
-    | INT8 | INT8 | FLOAT32/BF16 | FLOAT32/null | FLOAT32/null | INT64/INT32 | FLOAT |
-
-    - x2支持转置属性为true或者false，非转置下维度为(e, k, n)，转置下维度为(e, n, k)。
-
-  - MX量化场景（Pertoken-perchannel和静态pertensor-perchannel）支持的数据类型为：
-
-    | x1    | x2    | scale   | bias    | pertokenScaleOptional | rowIndex | out   |
-    |------|------|---------|---------|---------|----------|-------|
-    | FLOAT8_E4M3FN | FLOAT8_E4M3FN | FLOAT32/BF16 | BFLOAT16/null | FLOAT32/null | INT64 | FLOAT |
-    | HIFLOAT8 | HIFLOAT8 | FLOAT32/BF16 | BFLOAT16/null | FLOAT32/null | INT64 | FLOAT |
+    | x1    | x2    | scale   | bias    | offsetOptional | antiquantScaleOptional | antiquantOffsetOptional | pertokenScaleOptional | groupList | sharedInput | logit | rowIndex | out   | tuningConfigOptional |
+    |------|------|---------|---------|---------|----------|-------|------|------|------|-------|--------|-------|------|
+    | INT8 | INT8 | FLOAT32/BFLOAT16 | BFLOAT16/null | null | null | null | FLOAT32/null | INT64 | BFLOAT16 | FLOAT32 | INT64/INT32 | FLOAT | null |
+    | FLOAT8_E4M3FN | FLOAT8_E4M3FN | FLOAT32/BFLOAT16 | BFLOAT16/null | null | null | null | FLOAT32/null | INT64 | BFLOAT16 | FLOAT32 | INT64 | FLOAT | null |
+    | HIFLOAT8 | HIFLOAT8 | FLOAT32/BFLOAT16 | BFLOAT16/null | null | null | null | FLOAT32/null | INT64 | BFLOAT16 | FLOAT32 | INT64 | FLOAT | null |
 
     - x2支持转置属性为true或者false，非转置下维度为(e, k, n)，转置下维度为(e, n, k)。
     - scale的shape为(e, 1, n)，e、n和x2的e、n一致。
     - pertokenScaleOptional的shape为(m)，m和x1的m一致。
 
-  - MxA8W4量化场景支持的数据类型为：
+  - 伪量化场景支持的数据类型为：
 
-    | x1    | x2    | scale   | bias    | pertokenScaleOptional | rowIndex | out   |
-    |------|------|---------|---------|---------|----------|-------|
-    | FLOAT8_E4M3FN | FLOAT4_E2M1 | FLOAT8_E8M0 | BFLOAT16/null | FLOAT8_E8M0 | INT64 | FLOAT |
+    | x1    | x2    | scale   | bias    | offsetOptional | antiquantScaleOptional | antiquantOffsetOptional | pertokenScaleOptional | groupList | sharedInput | logit | rowIndex | out   | tuningConfigOptional |
+    |------|------|---------|---------|---------|----------|-------|------|------|------|-------|--------|-------|------|
+    | FLOAT8_E4M3FN | FLOAT4_E2M1 | FLOAT8_E8M0 | BFLOAT16/null | null | null | null | FLOAT8_E8M0 | INT64 | BFLOAT16 | FLOAT32 | INT64 | FLOAT | null |
 
     - x2的format为NZ_C0_32，shape为(e, n, k)，对应NZ格式的shape为(e, ceil(k/32), ceil(n/16), 16, 32)。
     - transposeX2固定为true。
-    - offsetOptional必须为nullptr。
     - pertokenScaleOptional为必选参数，shape为(m, ceil(k/64), 2)。
     - scale的shape为(e, n, ceil(k/64), 2)。
     - k必须满足k % 32 == 0。
     - n必须满足n % 32 == 0。
-    - e必须满足e <= 1024。
 
 </details>
 
