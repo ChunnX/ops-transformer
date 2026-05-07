@@ -11,6 +11,7 @@
 #include "kernel_operator.h"
 #include "common_header.h"
 #include "addr_compute.h"
+#include "cube_op.h"
 using namespace AscendC;
 
 namespace BSA_ARC35 {
