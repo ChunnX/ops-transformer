@@ -392,7 +392,8 @@ ge::graphStatus MlaPrologTiling::FillMatmul1Tiling()
             CalcSingleCoreN(baseShapeInfo_.hcqSize, aicNum_, BLOCK_SIZE / DTYPE_TO_SIZE.at(dataType));
         singlecoreHeadSizeCq_ = std::max(singlecoreHeadSizeCq_, 64U); // 64：最大使用24核
         mm1BlockNum_ = CeilDiv(baseShapeInfo_.hcqSize, singlecoreHeadSizeCq_);
-        if (GetCurNpuArch() == NpuArch::DAV_3510 && aicNum_ >= 24 && !enableGroupComputeOpt_) {
+        if (GetCurNpuArch() == NpuArch::DAV_3510 && aicNum_ >= 24 && !enableGroupComputeOpt_ &&
+            aivNum_ == 2 * aicNum_ && baseShapeInfo_.dSize == 128 && baseShapeInfo_.hcqSize == 1536) {
             mm1KnNGroupSize_ = 8;
             mm1KnKGroupSize_ = aicNum_ / mm1KnNGroupSize_;
         } else {
@@ -428,7 +429,8 @@ ge::graphStatus MlaPrologTiling::FillMatmul2Tiling()
                                                        BLOCK_SIZE / DTYPE_TO_SIZE.at(dataType));
             mm2BlockNum_ = CeilDiv(baseShapeInfo_.hckvSize + baseShapeInfo_.drSize, singlecoreHeadSizeCkvKr_);
         }
-        if (GetCurNpuArch() == NpuArch::DAV_3510 && aicNum_ >= 24 && !enableGroupComputeOpt_) {
+        if (GetCurNpuArch() == NpuArch::DAV_3510 && aicNum_ >= 24 && !enableGroupComputeOpt_ &&
+            aivNum_ == 2 * aicNum_ && baseShapeInfo_.dSize == 128 && baseShapeInfo_.hcqSize == 1536) {
             mm2KnNGroupSize_ = 3;
             mm2KnKGroupSize_ = aicNum_ / mm2KnNGroupSize_;
         } else {
