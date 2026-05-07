@@ -29,17 +29,23 @@ private:
     int32_t head_dim_align_;
     int32_t ping_pong_flag_inner{0};
     int32_t ping_pong_flag_outer{0};
-    TBuf<TPosition::A1> l1_buffer_;
-    TBuf<TPosition::A2> l0_a_buffer_;
-    TBuf<TPosition::B2> l0_b_buffer_;
-    TBuf<TPosition::C2> l0_c_buffer_;
+    // l1_tensor
     LocalTensor<INPUT_TYPE> query_l1_tensor_;
     LocalTensor<INPUT_TYPE> key_l1_tensor_;
     LocalTensor<INPUT_TYPE> l1_a_tensor_ping_;
     LocalTensor<INPUT_TYPE> l1_a_tensor_pong_;
     LocalTensor<INPUT_TYPE> l1_b_tensor_ping_;
     LocalTensor<INPUT_TYPE> l1_b_tensor_pong_;
+    // l0_tensor
+    LocalTensor<INPUT_TYPE> l0_a_tensor_ping_;
+    LocalTensor<INPUT_TYPE> l0_a_tensor_pong_;
+    LocalTensor<INPUT_TYPE> l0_b_tensor_ping_;
+    LocalTensor<INPUT_TYPE> l0_b_tensor_pong_;
+    LocalTensor<INPUT_TYPE> l0_c_tensor_ping_;
+    LocalTensor<INPUT_TYPE> l0_c_tensor_pong_;
+
     static constexpr int32_t L1_SIZE = 512 * 1024;
+    static constexpr int32_t L0_AB_SIZE = 64 * 1024;
     static constexpr int32_t BASE_BLOCK_SIZE = 128 * 128;
 
 public:
@@ -54,7 +60,13 @@ public:
         this->kv_head_num_ = tilingData->kvHeadNum;
         this->head_dim_ = tilingData->headDim;
         this->head_dim_align_ = RoundUp(head_dim_, 16);
+        TBuf<TPosition::A1> l1_buffer_;
+        TBuf<TPosition::A2> l0_a_buffer_;
+        TBuf<TPosition::B2> l0_b_buffer_;
+        TBuf<TPosition::C2> l0_c_buffer_;
         tPipe->InitBuffer(l1_buffer_, L1_SIZE);
+        tPipe->InitBuffer(l0_a_buffer_, L0_AB_SIZE);
+        tPipe->InitBuffer(l0_b_buffer_, L0_AB_SIZE);
 
         uint32_t l1_offset = 0;
         l1_a_tensor_ping_ = l1_buffer_.GetWithOffset<INPUT_TYPE>(128 * 1024 / sizeof(INPUT_TYPE), l1_offset);
@@ -65,6 +77,13 @@ public:
         l1_offset += 128 * 1024;
         l1_b_tensor_pong_ = l1_buffer_.GetWithOffset<INPUT_TYPE>(128 * 1024 / sizeof(INPUT_TYPE), l1_offset);
         l1_offset += 128 * 1024;
+
+        l0_a_tensor_ping_ = l0_a_buffer_.GetWithOffset<INPUT_TYPE>(32 * 1024 / sizeof(INPUT_TYPE), 0);
+        l0_a_tensor_pong_ = l0_a_buffer_.GetWithOffset<INPUT_TYPE>(32 * 1024 / sizeof(INPUT_TYPE), 32 * 1024);
+        l0_b_tensor_ping_ = l0_b_buffer_.GetWithOffset<INPUT_TYPE>(32 * 1024 / sizeof(INPUT_TYPE), 0);
+        l0_b_tensor_pong_ = l0_b_buffer_.GetWithOffset<INPUT_TYPE>(32 * 1024 / sizeof(INPUT_TYPE), 32 * 1024);
+        l0_c_tensor_ping_ = l0_c_buffer_.GetWithOffset<INPUT_TYPE>(64 * 1024 / sizeof(INPUT_TYPE), 0);
+        l0_c_tensor_pong_ = l0_c_buffer_.GetWithOffset<INPUT_TYPE>(64 * 1024 / sizeof(INPUT_TYPE), 64 * 1024);
     }
 
     __aicore__ inline void ComputeMM12(GlobalTensor<INPUT_TYPE> leftGm, GlobalTensor<INPUT_TYPE> rightGm,
@@ -78,13 +97,18 @@ public:
         for (int32_t nIdx = 0; nIdx < nLoop; nIdx++) {
             int32_t nProcess = (nIdx == nLoop - 1) ? nTail : 128;
             int32_t nProcessAlign = RoundUp(nProcess, 16);
+            LocalTensor<INPUT_TYPE> l0_b_tensor = ping_pong_flag_outer ? l0_b_tensor_ping_ : l0_b_tensor_pong_;
 
             for (int32_t mIdx = 0; mIdx < mLoop; mIdx++) {
                 int32_t mProcess = (mIdx == mLoop - 1) ? mTail : 128;
                 int32_t mProcessAlign = RoundUp(mProcess, 16);
                 LocalTensor<INPUT_TYPE> l1_a_tensor = ping_pong_flag_inner ? l1_a_tensor_ping_ : l1_a_tensor_pong_;
+                LocalTensor<INPUT_TYPE> l0_a_tensor = ping_pong_flag_inner ? l0_a_tensor_ping_ : l0_a_tensor_pong_;
 
-                // load_data_gm_2_l1(l1_a_tensor, leftGm, mProcess, head_dim_, mProcessAlign, head_dim_align_, head_dim_);
+                load_data_gm_2_l0<true, false>(l0_a_tensor, l1_a_tensor, leftGm, mProcess, head_dim_, mProcessAlign,
+                                               head_dim_align_, head_dim_);
+
+
                 ping_pong_flag_inner = 1 - ping_pong_flag_inner;
             }
 
