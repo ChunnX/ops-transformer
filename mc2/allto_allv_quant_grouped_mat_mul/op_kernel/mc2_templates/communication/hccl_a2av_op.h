@@ -342,7 +342,7 @@ private:
     }
 
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-    Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;
+    Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU> hccl_;
 #else
     Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU> hccl_;
 #endif

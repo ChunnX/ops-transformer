@@ -807,6 +807,7 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::SetHcclTiling()
 
     Mc2CcTilingConfig hcclCcTilingConfig(groupEpPtr, alltoAllvCmd, alltoAllvConfig, alltoAllvReduceType,
                                          alltoAllvDstDataType, alltoAllvSrcDataType);
+    hcclCcTilingConfig.SetCommEngine(mc2tiling::AICPU_ENGINE);
     OP_TILING_CHECK(hcclCcTilingConfig.GetTiling(localTilingData_.hcclA2avTiling.hcclInitTiling) != 0,
                     OP_LOGE(opName_, "mc2CcTilingConfig mc2tiling GetTiling hcclInitTiling failed"),
                     return ge::GRAPH_FAILED);
