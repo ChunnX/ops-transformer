@@ -117,12 +117,12 @@ private:
             return false;
         }
 
-        if (s2Idx_ < cur_kv_seq_len_) {
+        if (s2Idx_ < cur_kv_seq_len_ - recoderS2) {
             s2Idx_ += recoderS2;
             return false;
         }
 
-        if (s1Idx_ < cur_q_seq_len_) {
+        if (s1Idx_ < cur_q_seq_len_ - recoderS1) {
             s1Idx_ += recoderS1;
             s2Idx_ = 0;
             return false;
