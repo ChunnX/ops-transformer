@@ -141,7 +141,7 @@ protected:
         std::cout << "l0_b_size is " << l0_b_size << std::endl;
         std::cout << "l0_c_size is " << l0_c_size << std::endl;
 
-        uint32_t cube_core_num = 2;
+        uint32_t cube_core_num = 1;
         tilingData_.set_cubeCoreNum(cube_core_num);
         tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
         context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
