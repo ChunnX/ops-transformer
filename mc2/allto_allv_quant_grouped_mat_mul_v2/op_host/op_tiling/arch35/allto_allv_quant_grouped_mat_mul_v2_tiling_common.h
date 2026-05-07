@@ -58,9 +58,9 @@ const std::vector<uint32_t> QUANT_MODE_MAP = {0, 0, 1, 2, 4, 5, 3};
 class AlltoAllvQuantGmmV2TilingCommon : public AlltoAllvQuantGmmV2TilingBase {
 public:
     explicit AlltoAllvQuantGmmV2TilingCommon(gert::TilingContext *context) : AlltoAllvQuantGmmV2TilingBase(context){
-        tilingData = context->GetTilingData<QuantAlltoAllvGroupedMatmulTilingData>();
+        tilingData = context->GetTilingData<QuantAlltoAllvGroupedMatmulV2TilingData>();
     };
-    QuantAlltoAllvGroupedMatmulTilingData *tilingData;
+    QuantAlltoAllvGroupedMatmulV2TilingData *tilingData;
 
 protected:
     // Tiling base

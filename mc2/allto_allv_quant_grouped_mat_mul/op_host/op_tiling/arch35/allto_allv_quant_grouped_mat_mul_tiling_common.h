@@ -26,7 +26,7 @@
 #include "register/op_def_registry.h"
 #include "register/op_impl_registry.h"
 #include "tiling_base/tiling_templates_registry.h"
-#include "mc2/allto_allv_quant_grouped_mat_mul_v2/op_kernel/allto_allv_quant_grouped_mat_mul_v2_tiling.h"
+#include "mc2/allto_allv_quant_grouped_mat_mul/op_kernel/allto_allv_quant_grouped_mat_mul_tiling.h"
 #include "mc2/allto_allv_quant_grouped_mat_mul_v2/op_host/op_tiling/arch35/allto_allv_quant_grouped_mat_mul_v2_tiling_common.h"
 
 namespace optiling {
