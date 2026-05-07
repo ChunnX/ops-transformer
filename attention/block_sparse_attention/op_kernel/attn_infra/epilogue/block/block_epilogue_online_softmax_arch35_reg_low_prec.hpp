@@ -56,6 +56,7 @@ public:
     static constexpr uint32_t MAX_UB_S_ELEM_NUM = 16384;
     static constexpr uint32_t DM_UB_GLOBAL_ELEM_NUM = 64;
     static constexpr uint32_t ELE_NUM_PER_C0 = 16;
+    static constexpr uint32_t ELE_NUM_PER_C0_FLOAT8 = 32;
 
     static constexpr uint32_t REDUCE_UB_SIZE = 1024;
     static constexpr uint32_t ROW_OPS_SPEC_MASK_32 = 32;
@@ -217,6 +218,11 @@ public:
         auto l1PTensorTlaTile = GetTile(l1PTensorTla,
                 tla::MakeCoord(subBlockIdx_ * mCopyOffset, 0), tla::MakeShape(m, n));
         WaitCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
+
+        if constexpr (std::is_same_v<ElementOutput, float8_e4m3_t>) {
+            ScaleP<ElementOutput>(pAddr, m, nLoops, tailN, nRound, 448.0f);
+            // CastPToFp8<ElementOutput, half>(pAddr, pAddr, m, nLoops, tailN, nRound);
+        }
 
         CopyPUbToPL1(l1PTensorTlaTile, ubPTensorTlaTile, m);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2);

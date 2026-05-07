@@ -434,6 +434,52 @@ public:
             Arch::CrossCoreSetFlag<4, PIPE_V>(mm2ToReFlag);
         }
     }
+
+    template <class TensorDst>
+    __aicore__ inline
+    void operator()(TensorDst &gOTensor,
+                    GemmCoord actualOriShape,
+                    uint32_t curTileMod,
+                    uint32_t gatheredKvSTileIdx,
+                    bool isFirstKvSTile,
+                    bool isLastKvSTile,
+                    Arch::CrossCoreFlag mm2ToReFlag,
+                    float deqScalar)
+    {
+        uint32_t rowNumOri = actualOriShape[0];
+        uint32_t colNumOri = actualOriShape[1];
+        uint32_t subBlockIdx = AscendC::GetSubBlockIdx();
+        uint32_t subBlockNum = AscendC::GetSubBlockNum();
+
+        uint32_t rowNumOriAligned8 = RoundUp(rowNumOri, 8);
+        uint32_t colNumOriAligned8 = RoundUp(colNumOri, 8);
+
+        uint32_t rowNumSplit = rowNumOriAligned8 / subBlockNum;
+        rowNumSplit = (rowNumOri < rowNumSplit) ? rowNumOri : rowNumSplit;
+        uint32_t rowNumCurSubCore = (subBlockIdx == 0) ? rowNumSplit : (rowNumOri - rowNumSplit);
+        uint32_t rowOffsetCurSubCore = rowNumSplit * subBlockIdx;
+        uint32_t colNumCurSubCore = colNumOri;
+        uint32_t colStrideCurSubCore = colNumOriAligned8;
+
+        auto gOTensorTlaTile = GetTile(gOTensor,
+            tla::MakeCoord(rowOffsetCurSubCore, 0), tla::MakeShape(rowNumCurSubCore, colNumCurSubCore));
+        uint32_t ubOTmpBufId = gatheredKvSTileIdx % UB_OTMP_BUF_STAGES;
+
+        if (rowNumCurSubCore > 0) {
+            SubCoreCompute(
+                gOTensorTlaTile,
+                curTileMod,
+                ubOTmpBufId,
+                isFirstKvSTile,
+                isLastKvSTile,
+                colStrideCurSubCore,
+                mm2ToReFlag,
+                deqScalar);
+        } else {
+            Arch::CrossCoreWaitFlag<4, PIPE_V>(mm2ToReFlag);
+            Arch::CrossCoreSetFlag<4, PIPE_V>(mm2ToReFlag);
+        }
+    }
 private:
     AscendC::LocalTensor<ElementOTmp> loUbTensor[UB_OTMP_BUF_STAGES];
     AscendC::LocalTensor<SMDtype> dmUbTensor16;
