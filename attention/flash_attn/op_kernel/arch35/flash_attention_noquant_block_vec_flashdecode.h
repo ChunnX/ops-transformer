@@ -29,7 +29,7 @@
 #include "../../../common/op_kernel/memory_copy_arch35.h"
 #include "../../../common/op_kernel/memory_copy.h"
 
-#include "../../../common/op_kernel/arch35/vf/vf_post_quant_gs1_v2.h"
+#include "../../../common/op_kernel/arch35/vf/vf_post_quant_gs1.h"
 
 
 namespace BaseApi {
@@ -40,9 +40,8 @@ struct TaskInfo {
     uint32_t actualCombineLoopSize;
 };
 
-template <typename INPUT_T, typename T, typename OUTPUT_T,
-          LayOutTypeEnum layout = LayOutTypeEnum::None, LayOutTypeEnum outLayout = LayOutTypeEnum::None,
-          S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
+template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
+          LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
           S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
           DTemplateType dTemplateType = DTemplateType::Aligned128,
           DTemplateType dVTemplateType = DTemplateType::Aligned128, PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE,
@@ -73,14 +72,14 @@ private:
     static constexpr uint64_t SYNC_SINK_BUF1_FLAG = 12;
     static constexpr uint64_t SYNC_SINK_BUF2_FLAG = 13;
 
-    static constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32; 
-    static constexpr uint32_t BUFFER_SIZE_BYTE_64B = 64; 
-    static constexpr uint32_t BUFFER_SIZE_BYTE_256B = 256; 
-    static constexpr uint32_t BUFFER_SIZE_BYTE_512B = 512; 
-    static constexpr uint32_t BUFFER_SIZE_BYTE_1K = 1024; 
-    static constexpr uint32_t BUFFER_SIZE_BYTE_2K = 2048; 
-    static constexpr uint32_t BUFFER_SIZE_BYTE_4K = 4096; 
-    static constexpr uint32_t BUFFER_SIZE_BYTE_8K = 8192; 
+    static constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32;
+    static constexpr uint32_t BUFFER_SIZE_BYTE_64B = 64;
+    static constexpr uint32_t BUFFER_SIZE_BYTE_256B = 256;
+    static constexpr uint32_t BUFFER_SIZE_BYTE_512B = 512;
+    static constexpr uint32_t BUFFER_SIZE_BYTE_1K = 1024;
+    static constexpr uint32_t BUFFER_SIZE_BYTE_2K = 2048;
+    static constexpr uint32_t BUFFER_SIZE_BYTE_4K = 4096;
+    static constexpr uint32_t BUFFER_SIZE_BYTE_8K = 8192;
     static constexpr uint32_t BUFFER_SIZE_BYTE_16K = 16384;
 
     static constexpr uint32_t BLOCK_ELEMENT_NUM = BYTE_BLOCK / sizeof(T); // 32/4=8
@@ -92,7 +91,7 @@ private:
     uint32_t dSizeV_Align;
     static constexpr bool attenMaskFlag = hasAtten;
     using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
-    //基本块大小
+    // 基本块大小
     static constexpr uint32_t s1BaseSize = (uint32_t)s1TemplateType;
 
 protected:
@@ -104,7 +103,6 @@ protected:
     GlobalTensor<uint64_t> actualSeqLengthsGm;
     GlobalTensor<float> softmaxLseGm;
     GlobalTensor<SINK_T> sinkGm;
-    
 
     // postquant
     FaGmTensor<T, PostQuant_FORMAT> quantScale2GmTensor;
@@ -142,7 +140,7 @@ protected:
     // ================================类成员变量====================================
     // aic、aiv核信息
     uint32_t blockIdx = 0U;
-    ConstInfoX constInfo{};
+    const ConstInfoX &constInfo;
     TaskInfo taskInfo{};
 
 private:
@@ -200,7 +198,7 @@ public:
     {
         return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd) * (rnd)));
     }
-    
+
     __aicore__ inline void InitGlobalTensor(GlobalTensor<float> lseMaxFdGm, GlobalTensor<float> lseSumFdGm,
                                             GlobalTensor<float> accumOutGm, GlobalTensor<OUTPUT_T> attentionOutGm,
                                             GlobalTensor<uint64_t> actualSeqLengthsGmQ,
@@ -209,8 +207,6 @@ public:
     {
         this->lseMaxFdGm = lseMaxFdGm;
         this->lseSumFdGm = lseSumFdGm;
-        // AscendC::DumpTensor(this->lseMaxFdGm,__LINE__,512);
-        // AscendC::DumpTensor(this->lseSumFdGm,__LINE__,512);
         this->accumOutGm = accumOutGm;
         this->attentionOutGm = attentionOutGm;
         this->actualSeqLengthsGmQ = actualSeqLengthsGmQ;
@@ -235,9 +231,8 @@ public:
         learnableSinkFlag = true;
         this->sinkGm = learnableSink;
     }
-    __aicore__ inline void InitParams(const ConstInfoX &constInfo)
+    __aicore__ inline void InitParams()
     {
-        this->constInfo = constInfo;
         this->dSizeV_Align = this->Align(constInfo.dSizeV, FP32_REPEAT_ELEMENT_NUM);
     }
     __aicore__ inline void InitDecodeParams()
@@ -314,7 +309,7 @@ protected:
         copyInPadParams.leftPadding = 0;
         copyInPadParams.rightPadding = (this->dSizeV_Align - constInfo.dSizeV) % BLOCK_ELEMENT_NUM;
         copyInPadParams.paddingValue = 0;
-        uint64_t combineAccumOutOffset = startRow * constInfo.dSizeV + // taskoffset + g轴offset
+        uint64_t combineAccumOutOffset = startRow * constInfo.dSizeV +                 // taskoffset + g轴offset
                                          splitKVIndex * s1BaseSize * constInfo.dSizeV; // 份数offset
 
         DataCopyPad(accumOutLocal, accumOutGm[combineAccumOutOffset], copyInParams, copyInPadParams);
@@ -336,7 +331,7 @@ protected:
                      dealRowCountAlign);
         }
     }
-    __aicore__ inline void ComputeScaleValue(LocalTensor<T> &lseExp, ConstInfoX &constInfo, uint32_t dealRowCount,
+    __aicore__ inline void ComputeScaleValue(LocalTensor<T> &lseExp, uint32_t dealRowCount,
                                              uint32_t actualCombineLoopSize, uint32_t cntM, uint32_t startRow)
     {
         LocalTensor<T> lseSum = cntM % 2 == 0 ? fdSumBuf1 : fdSumBuf2;
@@ -344,26 +339,14 @@ protected:
         if (unlikely(learnableSinkFlag)) {
             SinkMax(startRow, dealRowCount);
         }
-        LocalTensor<T> sinkExpBuf;
         LocalTensor<T> lseMaxUb = cntM % 2 == 0 ? fdLseMaxUbBuf1 : fdLseMaxUbBuf2;
-        if (unlikely(learnableSinkFlag)){
-            sinkExpBuf = fdSinkExpBuf;
-        }
-        // LocalTensor<T> sinkExpBuf = fdSinkExpBuf;
+
+        LocalTensor<T> sinkExpBuf = fdSinkExpBuf;
         LocalTensor<T> maxLseUb = fdLseUbBuf;
         ComputeScaleValue_VF_FD(sinkExpBuf, lseMax, lseSum, lseExp, maxLseUb,lseMaxUb,dealRowCount, actualCombineLoopSize,
                                 constInfo.isSoftmaxLseEnable, learnableSinkFlag);
     }
 
-    // __aicore__ inline void ComputeScaleValue(LocalTensor<T> &lseExp, ConstInfoX &constInfo, uint32_t dealRowCount,
-    //                                          uint32_t actualCombineLoopSize, uint32_t cntM, uint32_t startRow)
-    // {
-
-    //     LocalTensor<T> lseSum = cntM % 2 == 0 ? fdSumBuf1 : fdSumBuf2;
-    //     LocalTensor<T> lseMax = cntM % 2 == 0 ? fdMaxBuf1 : fdMaxBuf2;
-    //     ComputeScaleValue_VF_FD(lseMax, lseSum, lseExp, dealRowCount , actualCombineLoopSize); //不支持lse拷出功能，
-
-    // }
     __aicore__ inline void Bmm2DataCopyOutTrans(LocalTensor<OUTPUT_T> &attenOutUb, uint32_t startRow,
                                                 uint32_t dealRowCount, uint32_t columnCount)
     {
@@ -395,14 +378,6 @@ protected:
             outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
                                               constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize,
                                               constInfo.isQHasLeftPadding, constInfo.queryRightPaddingSize);
-            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
-            copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
-        } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_NBSD) {
-            constexpr GmFormat OUT_FORMAT = GmFormat::NGBSD;
-            FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
-            outGmTensor.gmTensor = attentionOutGm;
-            outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                              constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_TND) {
@@ -496,7 +471,8 @@ protected:
     {
         // LocalTensor<SINK_T> sinkCopyInBuf =
         //     fdSinkCopyInBuf.GetWithOffset<SINK_T>(BUFFER_SIZE_BYTE_1K, (cntM % 2) * BUFFER_SIZE_BYTE_1K);
-        // uint32_t copySize = constInfo.gSize + 16; // DataCopy函数搬运量要求是32字节整数倍，不对齐时，将向下取整，因此该处多搬运16*sizeof(bf16)占位
+        // uint32_t copySize = Align(constInfo.gSize, static_cast<uint32_t>(BYTE_BLOCK / sizeof(SINK_T))); // DataCopy函数搬运量要求是32字节整数倍，不对齐时，将向下取整，因此该处32
+        //                                                                                                 // byte对齐
         // uint64_t sinkGmOffset = taskInfo.n2Idx * constInfo.gSize;
 
         // WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_SINK_BUF1_FLAG + cntM % 2);
@@ -504,13 +480,13 @@ protected:
         // SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_SINK_BUF1_FLAG + cntM % 2);
         // WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_SINK_BUF1_FLAG + cntM % 2);
 
-        // LocalTensor<T> tmpSinkCastBuf = fdSinkTmpBuf;
+        // LocalTensor<T> tmpSinkCastBuf = fdSinkTmpBuf.Get<T>();
         // Cast(tmpSinkCastBuf, sinkCopyInBuf, AscendC::RoundMode::CAST_NONE, constInfo.gSize);
         // AscendC::PipeBarrier<PIPE_V>();
 
         // SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_SINK_BUF1_FLAG + cntM % 2);
 
-        // LocalTensor<T> sinkBrcbBuf = fdSinkValueBuf;
+        // LocalTensor<T> sinkBrcbBuf = fdSinkValueBuf.Get<T>();
         // Brcb(sinkBrcbBuf, tmpSinkCastBuf, (constInfo.gSize + BLOCK_ELEMENT_NUM - 1) / BLOCK_ELEMENT_NUM,
         //      {1, BLOCK_ELEMENT_NUM});
         // AscendC::PipeBarrier<PIPE_V>();
@@ -534,7 +510,7 @@ protected:
         AscendC::PipeBarrier<PIPE_V>();
     }
 
-    template<typename UBOUT_T>
+    template <typename UBOUT_T>
     __aicore__ inline void DealInvalidRows(LocalTensor<UBOUT_T> &attenOutUb, uint32_t startRow, uint32_t dealRowCount,
                                            uint32_t columnCount)
     {
@@ -560,11 +536,11 @@ protected:
         invalidRows(attenOutUb, params);
     }
 
-    template<typename UBOUT_T>
-    __aicore__ inline void DealInvalidMaskRows(LocalTensor<UBOUT_T> &attenOutUb, uint32_t startRow, uint32_t dealRowCount,
-                                               uint32_t columnCount, uint32_t cntM)
+    template <typename UBOUT_T>
+    __aicore__ inline void DealInvalidMaskRows(LocalTensor<UBOUT_T> &attenOutUb, uint32_t startRow,
+                                               uint32_t dealRowCount, uint32_t columnCount, uint32_t cntM)
     {
-        if (!constInfo.isRowInvalid || !attenMaskFlag) {
+        if (!constInfo.isRowInvalidOpen || !attenMaskFlag) {
             return;
         }
         if (constInfo.sparseMode != DEFAULT_MASK && constInfo.sparseMode != ALL_MASK) {
@@ -577,7 +553,7 @@ protected:
         // 同时，这里的lseMaxUb是经过brcb后的，所以填写true
 
         fa_base_vector::InvalidMaskRows<UBOUT_T, T, true>(0, dealRowCount, columnCount, lseMaxUb, negativeIntScalar,
-                                                    attenOutUb);
+                                                          attenOutUb);
     }
 
     __aicore__ inline void InitPostQuant(__gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset)
@@ -725,20 +701,14 @@ protected:
 public:
     __aicore__ inline void FlashDecode(FDparamsX &fd)
     {
-        // printf("fd.fdCoreEnable:%u\n",fd.fdCoreEnable);
         if (!fd.fdCoreEnable) {
             return;
         }
-        // printf("fd.fdBN2Idx:%u\n",fd.fdBN2Idx);
-        // printf("fd.fdMIdx:%u\n",fd.fdMIdx);
-        // printf("fd.fdS2SplitNum:%u\n",fd.fdS2SplitNum);
-        // printf("fd.mStart:%u\n",fd.mStart);
-        // printf("fd.mLen:%u\n",fd.mLen);
-        // printf("fd.fdWorkspaceIdx:%u\n",fd.fdWorkspaceIdx);
 
         uint32_t fdBalanceMBaseSize = 8U;
         uint32_t fdBalanceMSplitNum = (fd.mLen + fdBalanceMBaseSize - 1) / fdBalanceMBaseSize;
-        uint32_t fdBalanceMTailSize = (fd.mLen % fdBalanceMBaseSize == 0) ? fdBalanceMBaseSize : fd.mLen % fdBalanceMBaseSize;
+        uint32_t fdBalanceMTailSize =
+            (fd.mLen % fdBalanceMBaseSize == 0) ? fdBalanceMBaseSize : fd.mLen % fdBalanceMBaseSize;
 
         uint32_t reduceGlobaLoop = 0;
         uint32_t reduceMLoop = 0;
@@ -751,10 +721,7 @@ public:
         taskInfo.actualCombineLoopSize = fd.fdS2SplitNum; // 当前规约任务kv方向有几份
         uint64_t combineTaskPrefixSum = fd.fdWorkspaceIdx;
         uint64_t taskOffset = combineTaskPrefixSum * s1BaseSize;
-        // printf("tmpFdS1gOuterMStart:%u\n",tmpFdS1gOuterMStart);
-        // printf("tmpFdS1gOuterMEnd:%u\n",tmpFdS1gOuterMEnd);
-        // printf("s1BaseSize:%u\n",s1BaseSize);
-        // printf("taskInfo.actualCombineLoopSize:%u\n",taskInfo.actualCombineLoopSize);
+
         for (uint32_t fdS1gOuterMIdx = tmpFdS1gOuterMStart; fdS1gOuterMIdx <= tmpFdS1gOuterMEnd;
              fdS1gOuterMIdx++) { // 左闭右闭
             uint32_t actualGSplitSize = fdBalanceMBaseSize;
@@ -778,8 +745,7 @@ public:
                 CopyAccumOutIn(mm2Res, preLoadIdx, taskOffset + startRow, actualGSplitSize);
                 SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + (reduceGlobaLoop + preLoadIdx) % 2);
             }
-            ComputeScaleValue(lseExp, constInfo, actualGSplitSize, taskInfo.actualCombineLoopSize, reduceMLoop,
-                              startRow);         
+            ComputeScaleValue(lseExp, actualGSplitSize, taskInfo.actualCombineLoopSize, reduceMLoop, startRow);
             CalcPreNextTokens();
             if (constInfo.isSoftmaxLseEnable) {
                 // lse行无效在ComputeScaleValue的VF计算时已经进行了赋值inf处理
@@ -804,34 +770,39 @@ public:
                 WaitFlag<HardEvent::V_MTE3>(SYNC_LSEOUTPUT_BUF_FLAG);
                 uint32_t mOffset = taskInfo.gS1Idx + startRow;
                 if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
-                    uint32_t prefixBS1 = taskInfo.bIdx == 0U ? 0U : actualSeqLengthsGmQ.GetValue(taskInfo.bIdx - 1);
+                    uint32_t prefixBS1 = qActSeqLensParser.GetTBase(taskInfo.bIdx);
                     uint64_t bN2Offset =
                         prefixBS1 * constInfo.gSize * constInfo.n2Size + taskInfo.n2Idx * constInfo.gSize;
-                    DataCopySoftmaxLseTND(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize, constInfo);
+                    DataCopySoftmaxLseTNDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize, constInfo);
                 } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
-                    uint32_t prefixBS1 = taskInfo.bIdx == 0U ? 0U : actualSeqLengthsGmQ.GetValue(taskInfo.bIdx - 1);
-                    uint32_t s1Size = taskInfo.bIdx == 0U ? actualSeqLengthsGmQ.GetValue(0U) :
-                                                            actualSeqLengthsGmQ.GetValue(taskInfo.bIdx) -
-                                                                actualSeqLengthsGmQ.GetValue(taskInfo.bIdx - 1U);
+                    uint32_t prefixBS1 = qActSeqLensParser.GetTBase(taskInfo.bIdx);
+                    uint32_t s1Size = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
                     uint64_t bN2Offset =
                         prefixBS1 * constInfo.gSize * constInfo.n2Size + taskInfo.n2Idx * constInfo.gSize;
-                    DataCopySoftmaxLseNTD(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize, constInfo,
+                    DataCopySoftmaxLseNTDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize, constInfo,
                                           s1Size);
                 } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
                     uint64_t bN2Offset = taskInfo.bIdx * constInfo.gSize * constInfo.n2Size * constInfo.s1Size +
                                          taskInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
                     uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
-                    uint64_t s1LeftPaddingSize = constInfo.isQHasLeftPadding ? (constInfo.s1Size - qActSeqLens - constInfo.queryRightPaddingSize) : 0;
-                    DataCopySoftmaxLseBSND<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize, constInfo,
-                                           qActSeqLens, taskInfo.bIdx, s1LeftPaddingSize);
+                    uint64_t s1LeftPaddingSize =
+                        constInfo.isQHasLeftPadding ?
+                            (constInfo.s1Size - qActSeqLens - constInfo.queryRightPaddingSize) :
+                            0;
+                    DataCopySoftmaxLseBSNDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
+                                                          constInfo, s1LeftPaddingSize);
                 } else { // BNSD
                     uint64_t bN2Offset = taskInfo.bIdx * constInfo.gSize * constInfo.n2Size * constInfo.s1Size +
                                          taskInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
                     uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
-                     //s1LeftPaddingSize = constInfo.qSeqSize - constInfo.qLeftPaddingSize - qActSeqLensParser.GetActualSeqLength(bIdx)
-                    uint64_t s1LeftPaddingSize = constInfo.isQHasLeftPadding ? (constInfo.s1Size - qActSeqLens - constInfo.queryRightPaddingSize) : 0; 
-                    DataCopySoftmaxLseBNSD<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
-                                                      constInfo, qActSeqLens, taskInfo.bIdx, s1LeftPaddingSize);
+                    // s1LeftPaddingSize = constInfo.qSeqSize - constInfo.qLeftPaddingSize -
+                    // qActSeqLensParser.GetActualSeqLength(bIdx)
+                    uint64_t s1LeftPaddingSize =
+                        constInfo.isQHasLeftPadding ?
+                            (constInfo.s1Size - qActSeqLens - constInfo.queryRightPaddingSize) :
+                            0;
+                    DataCopySoftmaxLseBNSDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
+                                                          constInfo, qActSeqLens, s1LeftPaddingSize);
                 }
                 // SetFlag<HardEvent::MTE3_V>(SYNC_LSEOUTPUT_BUF_FLAG);
             }
@@ -856,9 +827,8 @@ public:
 };
 
 // TODO，Dummy后续确认是否可以删除
-template <typename INPUT_T, typename T, typename OUTPUT_T,
-          LayOutTypeEnum layout = LayOutTypeEnum::None, LayOutTypeEnum outLayout = LayOutTypeEnum::None,
-          S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
+template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
+          LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
           S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
           DTemplateType dTemplateType = DTemplateType::Aligned128,
           DTemplateType dVTemplateType = DTemplateType::Aligned128, PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE,
@@ -875,7 +845,7 @@ public:
                                             GlobalTensor<float> accumOutGm, GlobalTensor<OUTPUT_T> attentionOutGm,
                                             GlobalTensor<uint64_t> actualSeqLengthsGmQ,
                                             GlobalTensor<uint64_t> actualSeqLengthsGm){};
-    __aicore__ inline void InitParams(const ConstInfoX &constInfo){};
+    __aicore__ inline void InitParams(){};
     __aicore__ inline void InitSoftmaxLseGm(GlobalTensor<float> softmaxLseGm){};
     __aicore__ inline void InitLearnableSinkGm(GlobalTensor<SINK_T> learnableSink){};
     __aicore__ inline void InitDecodeParams(){};
@@ -889,7 +859,7 @@ protected:
     __aicore__ inline void CopyAccumOutIn(LocalTensor<T> &accumOutLocal, uint32_t splitKVIndex, uint32_t startRow,
                                           uint32_t dealRowCount){};
     __aicore__ inline void CopyLseIn(uint32_t startRow, uint32_t dealRowCount, uint64_t baseOffset, uint32_t cntM){};
-    __aicore__ inline void ComputeScaleValue(LocalTensor<T> &lseExp, ConstInfoX &constInfo, uint32_t dealRowCount,
+    __aicore__ inline void ComputeScaleValue(LocalTensor<T> &lseExp, uint32_t dealRowCount,
                                              uint32_t actualCombineLoopSize, uint32_t cntM);
     __aicore__ inline void Bmm2DataCopyOutTrans(LocalTensor<OUTPUT_T> &attenOutUb, uint32_t startRow,
                                                 uint32_t dealRowCount, uint32_t columnCount){};
@@ -905,10 +875,10 @@ protected:
                                                uint32_t columnCount, uint32_t cntM);
 
     __aicore__ inline void InitPostQuant(__gm__ uint8_t *quantScale2, __gm__ uint8_t *quantOffset2);
-    __aicore__ inline void DealPostQuantOutPerChn(LocalTensor<T> &bmm2ResUb, uint32_t startRow,
-                                                    uint32_t dealRowCount, uint32_t columnCount, uint32_t cntM);
+    __aicore__ inline void DealPostQuantOutPerChn(LocalTensor<T> &bmm2ResUb, uint32_t startRow, uint32_t dealRowCount,
+                                                  uint32_t columnCount, uint32_t cntM);
     __aicore__ inline void DealPostQuantOutPerTensor(LocalTensor<T> &bmm2ResUb, uint32_t startRow,
-                                                    uint32_t dealRowCount, uint32_t columnCount);
+                                                     uint32_t dealRowCount, uint32_t columnCount);
 };
 
 } // namespace BaseApi

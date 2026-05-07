@@ -16,7 +16,7 @@
 #include "flash_attn_tiling_reg.h"
 #include "flash_attn_tiling_impl.h"
 #include "../flash_attn_tiling_info_parser.h"
-// #include "../checkers/fa_checker.h"
+#include "../checkers/fa_checker.h"
 
 #include "log/log.h"
 #include "log/error_code.h"
@@ -39,9 +39,9 @@ ge::graphStatus TilingFlashAttnReg(gert::TilingContext *context)
         return ge::GRAPH_FAILED;
     }
 
-    // FAChecker faChecker;
-    // faChecker.Init(faInfo);
-    // // Check函数只做校验，不能修改faInfo中的信息
+    FAChecker faChecker;
+    faChecker.Init(faInfo);
+    // Check函数只做校验，不能修改faInfo中的信息
     // if (faChecker.Process(faInfo) != ge::GRAPH_SUCCESS) {
     //     return ge::GRAPH_FAILED;
     // }

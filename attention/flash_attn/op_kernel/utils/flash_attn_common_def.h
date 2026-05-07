@@ -25,8 +25,9 @@
 
 // 提供flash_attn算子tiling和kernel共用的相关定义
 
-constexpr float FLOAT_ZERO = 0;
-// // // BUFFER的字节数
+// CUBE与VEC核间同步的模式
+static constexpr uint32_t FIA_SYNC_MODE2 = 2;
+// BUFFER的字节数
 static constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32;
 static constexpr uint32_t BUFFER_SIZE_BYTE_64B = 64;
 static constexpr uint32_t BUFFER_SIZE_BYTE_256B = 256;
@@ -37,6 +38,10 @@ static constexpr uint32_t BUFFER_SIZE_BYTE_4K = 4096;
 static constexpr uint32_t BUFFER_SIZE_BYTE_8K = 8192;
 static constexpr uint32_t BUFFER_SIZE_BYTE_16K = 16384;
 static constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768;
+// FP32的0值和极大值
+static constexpr float FLOAT_ZERO = 0;
+static constexpr float FLOAT_MAX = 3.402823466e+38F;
+static constexpr float FLOAT_INF = 3e+99;
 
 #define ASCENDC_TPL_5_BW 5
 #define ASCENDC_TPL_10_BW 10
@@ -304,22 +309,22 @@ struct CommonConstInfo {
     uint64_t actualSeqLenKVSize; /* 用户输入的actualseq_kv的长度 */
 
     /* FA kernel meta */
-    // uint32_t bN2Start;
-    // uint32_t bN2End;
-    // uint32_t gS1OStart;
-    // uint32_t gS1OEnd;
-    // uint32_t s2OStart;
-    // uint32_t s2OEnd;
-    // uint32_t coreFirstTmpOutWsPos;
+    uint32_t bN2Start;
+    uint32_t bN2End;
+    uint32_t gS1OStart;
+    uint32_t gS1OEnd;
+    uint32_t s2OStart;
+    uint32_t s2OEnd;
+    uint32_t coreFirstTmpOutWsPos;
 
-    /* mask */
     uint32_t sparseMode; // sparse
-    // uint32_t attenMaskShapeType;
+    uint32_t attenMaskBatch;
     uint32_t attenMaskS1Size;
     uint32_t attenMaskS2Size;
     int64_t preTokens;
     int64_t nextTokens;
-    bool isRowInvalid;
+    bool isRowInvalidOpen;
+    bool isExistRowInvalid;
     float scaleValue;
 
     /* 核信息 */

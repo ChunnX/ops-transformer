@@ -72,9 +72,11 @@ struct FlashAttnAttenMaskParams {
     uint8_t sparseMode;
     int32_t winLefts;
     int32_t winRights;
+    uint32_t attenMaskBatch = 0;
     uint32_t attenMaskS1Size;
     uint32_t attenMaskS2Size;
-    uint8_t isRowInvalid;
+    uint8_t isRowInvalidOpen = 0;
+    uint8_t isExistRowInvalid = 0;
 };
 
 struct FlashAttnPseParams {
@@ -113,9 +115,8 @@ struct FlashAttnWorkspaceParams {
 };
 
 struct FlashAttnS1OuterSplitCoreParams {
+    bool enableS1OutSplit = 0;
     uint64_t totalSize;
-    uint64_t splitFactorSize;
-    uint64_t splitFactorTailSize;
 };
 
 struct FlashAttnEmptyTensorParams {

@@ -284,9 +284,9 @@ void FlashAttnTilingImpl::SplitOutSeq()
     int64_t cuUsedCoreNum = std::min(totalSize, static_cast<int64_t>(curCoreNum));
     // tilingData_.baseTiling.flashAttnS1OuterSplitCoreParams.coreNum = static_cast<int32_t>(cuUsedCoreNum);
     tilingData_.baseTiling.flashAttnS1OuterSplitCoreParams.totalSize = totalSize;
-    tilingData_.baseTiling.flashAttnS1OuterSplitCoreParams.splitFactorSize = CeilDivision(totalSize, cuUsedCoreNum);
-    tilingData_.baseTiling.flashAttnS1OuterSplitCoreParams.splitFactorTailSize = CalcTailSize(
-        totalSize, static_cast<int64_t>(tilingData_.baseTiling.flashAttnS1OuterSplitCoreParams.splitFactorSize));
+    // tilingData_.baseTiling.flashAttnS1OuterSplitCoreParams.splitFactorSize = CeilDivision(totalSize, cuUsedCoreNum);
+    // tilingData_.baseTiling.flashAttnS1OuterSplitCoreParams.splitFactorTailSize = CalcTailSize(
+    //     totalSize, static_cast<int64_t>(tilingData_.baseTiling.flashAttnS1OuterSplitCoreParams.splitFactorSize));
 }
 
 void FlashAttnTilingImpl::CreateSplitInput(fa_split_core_v2::BaseInfo &baseInfo, fa_split_core_v2::SplitParam &splitParam)
@@ -803,8 +803,8 @@ void FlashAttnTilingImpl::PrintAllTilingData()
     OP_LOGD(faInfo_->opName, "logSumExpSize:%d", flashAttnWorkspaceParams.logSumExpSize);
 
     OP_LOGD(faInfo_->opName, "totalSize:%d", flashAttnS1OuterSplitCoreParams.totalSize);
-    OP_LOGD(faInfo_->opName, "splitFactorSize:%d", flashAttnS1OuterSplitCoreParams.splitFactorSize);
-    OP_LOGD(faInfo_->opName, "splitFactorTailSize:%d", flashAttnS1OuterSplitCoreParams.splitFactorTailSize);
+    // OP_LOGD(faInfo_->opName, "splitFactorSize:%d", flashAttnS1OuterSplitCoreParams.splitFactorSize);
+    // OP_LOGD(faInfo_->opName, "splitFactorTailSize:%d", flashAttnS1OuterSplitCoreParams.splitFactorTailSize);
 
     OP_LOGD(faInfo_->opName, "singleCoreSize:%d", flashAttnEmptyTensorParams.singleCoreSize);
     OP_LOGD(faInfo_->opName, "needInit:%d", flashAttnEmptyTensorParams.needInit);
