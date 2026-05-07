@@ -20,7 +20,7 @@ template <LayOutTypeEnum LAYOUT>
 __aicore__ inline constexpr ActualSeqLensMode GetQActSeqMode()
 {
     if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND || LAYOUT == LayOutTypeEnum::LAYOUT_NTD) {
-        return ActualSeqLensMode::ACCUM;
+        return ActualSeqLensMode::TND;
     } else {
         return ActualSeqLensMode::BY_BATCH;
     }
@@ -33,7 +33,7 @@ __aicore__ inline constexpr ActualSeqLensMode GetKvActSeqMode()
         return ActualSeqLensMode::BY_BATCH;
     }
     if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND || LAYOUT == LayOutTypeEnum::LAYOUT_NTD) {
-        return ActualSeqLensMode::ACCUM;
+        return ActualSeqLensMode::TND;
     } else {
         return ActualSeqLensMode::BY_BATCH;
     }

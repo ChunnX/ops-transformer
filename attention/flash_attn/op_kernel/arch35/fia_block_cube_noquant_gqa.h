@@ -304,10 +304,10 @@ public:
                                          __gm__ uint8_t *actualSharedPrefixLen)
     {
         if (constInfo.actualSeqLenSize != 0) {
-            actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint64_t *)actualSeqQlenAddr, constInfo.actualSeqLenSize);
+            actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint64_t *)actualSeqQlenAddr, constInfo.actualSeqLenSize + 1);
         }
         if (constInfo.actualSeqLenKVSize != 0) {
-            actualSeqLengthsGm.SetGlobalBuffer((__gm__ uint64_t *)actualSeqKvlenAddr, constInfo.actualSeqLenKVSize);
+            actualSeqLengthsGm.SetGlobalBuffer((__gm__ uint64_t *)actualSeqKvlenAddr, constInfo.actualSeqLenKVSize + 1);
         }
         if constexpr (isPa) {
             blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);

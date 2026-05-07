@@ -32,7 +32,7 @@
 template <FIA_LAYOUT LAYOUT_T>
 __aicore__ inline constexpr ActualSeqLensMode GetQActSeqMode() {
     if constexpr (LAYOUT_T == FIA_LAYOUT::TND || LAYOUT_T == FIA_LAYOUT::NTD) {
-        return ActualSeqLensMode::ACCUM;
+        return ActualSeqLensMode::TND;
     } else {
         return ActualSeqLensMode::BY_BATCH;
     }
@@ -43,7 +43,7 @@ __aicore__ inline constexpr ActualSeqLensMode GetKvActSeqMode() {
         return ActualSeqLensMode::BY_BATCH;
     }
     if constexpr (LAYOUT_T == FIA_LAYOUT::TND || LAYOUT_T == FIA_LAYOUT::NTD) {
-        return ActualSeqLensMode::ACCUM;
+        return ActualSeqLensMode::TND;
     } else {
         return ActualSeqLensMode::BY_BATCH;
     }
