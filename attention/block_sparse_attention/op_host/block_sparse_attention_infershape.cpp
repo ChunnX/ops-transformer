@@ -129,7 +129,7 @@ static ge::graphStatus InferShapeBlockSparseAttention(gert::InferShapeContext *c
     bool isKvBNSD = (kvLayout == "BNSD");
     
     if (isQBNSD != isKvBNSD) {
-        OP_LOGE(context->GetNodeName(), 
+        OP_LOGE(context->GetNodeName(),
                 "Q and KV layouts must match: if one is BNSD, the other must also be BNSD. "
                 "Q layout: %s, KV layout: %s", qLayout.c_str(), kvLayout.c_str());
         return ge::GRAPH_FAILED;
@@ -209,9 +209,12 @@ ge::graphStatus InferDataTypeBlockSparseAttention(gert::InferDataTypeContext *co
     if (context == nullptr) {
         return ge::GRAPH_FAILED;
     }
-    auto dtype = context->GetInputDataType(0);
-    context->SetOutputDataType(0, dtype);
-    context->SetOutputDataType(1, DT_FLOAT);
+    auto dtype = context->GetInputDataType(QUERY_INDEX);
+    if (dtype == ge::DT_FLOAT8_E4M3FN) {
+        dtype = context->GetOutputDataType(ATTENTION_OUT_INDEX);
+    }
+    context->SetOutputDataType(ATTENTION_OUT_INDEX, dtype);
+    context->SetOutputDataType(SOFTMAX_LSE_INDEX, DT_FLOAT);
 
     return GRAPH_SUCCESS;
 }
