@@ -168,14 +168,6 @@ int main() {
     CreateAclTensor(lseData, lseShape, &lseAddr, aclDataType::ACL_FLOAT, &lseTensor);     // 严格使用 FP32
     CreateAclTensor(maskData, maskShape, &maskAddr, aclDataType::ACL_UINT8, &maskTensor); // 严格使用 UINT8
 
-    //构造seqlen
-    std::vector<int64_t> seq_len_shape = {1};
-    std::vector<int64_t> seq_len_data{qSeqlen};
-    void *q_seq_len_addr = nullptr, *kv_seq_len_addr = nullptr;
-    aclTensor *q_seq_len = nullptr, *kv_seq_len = nullptr;
-    CreateAclTensor(seq_len_data, seq_len_shape, &q_seq_len_addr, aclDataType::ACL_INT64, &q_seq_len_tensor);
-    CreateAclTensor(seq_len_data, seq_len_shape, &kv_seq_len_addr, aclDataType::ACL_INT64, &kv_seq_len_tensor);
-
     // 5. 创建反向输出梯度 (dq, dk, dv)
     std::vector<op::fp16_t> dqData(qSize, 0.0f);
     std::vector<op::fp16_t> dkData(kvSize, 0.0f);
@@ -192,6 +184,10 @@ int main() {
     std::vector<int64_t> blockShapeVec = {blockShapeX, blockShapeY};
     aclIntArray *blockShapeArr = aclCreateIntArray(blockShapeVec.data(), blockShapeVec.size());
     
+    std::vector<int64_t> qSeqLenVec(batch, static_cast<int64_t>(qSeqlen));
+    std::vector<int64_t> kvSeqLenVec(batch, static_cast<int64_t>(kvSeqlen));
+    aclIntArray *qSeqLenArr = aclCreateIntArray(qSeqLenVec.data(), batch);
+    aclIntArray *kvSeqLenArr = aclCreateIntArray(kvSeqLenVec.data(), batch);
 
     // 7. 标量与字符串参数配置
     char qLayoutBuffer[16] = "TND";
@@ -217,8 +213,8 @@ int main() {
         maskTensor,                 // blockSparseMaskOptional
         nullptr,                    // attenMaskOptional 必须为空
         blockShapeArr, 
-        q_seq_len_tensor, 
-        kv_seq_len_tensor, 
+        qSeqLenArr, 
+        kvSeqLenArr, 
         qLayoutBuffer, 
         kvLayoutBuffer, 
         static_cast<int64_t>(numKvHeads), 
