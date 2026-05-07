@@ -20,9 +20,11 @@ from typing import List
 import json
 import opdesc_parser
 import const_var
+from pathlib import Path
 
 
 PYF_PATH = os.path.dirname(os.path.realpath(__file__))
+COMPUTE_UNIT = None
 
 if const_var.CHECK_ASC_DEVKIT_VERSION:
     IMPORT_HEADER = '''
@@ -638,7 +640,46 @@ class AdpBuilder(opdesc_parser.OpDesc):
             kern_name = self.kern_name
         else:
             kern_name = self.op_intf
-        src = self.op_file + '.cpp'
+        
+        search_dir = Path.cwd().parent
+        if "build" in search_dir.parts:
+            search_dir = search_dir.parent
+        mc2_path = search_dir.joinpath("mc2")
+        target_files = []
+        for file_path in mc2_path.rglob(self.op_file + '.cpp'):
+            target_files.append(str(file_path))
+        target_file = None
+        if len(target_files) == 1:
+            target_file = target_files[0]
+        elif len(target_files) > 1:
+            compute_unit = COMPUTE_UNIT[0] if COMPUTE_UNIT else ""
+            arch_version = ""
+            if compute_unit == "ascend310p":
+                arch_version = "arch31"
+            elif compute_unit == "ascend950":
+                arch_version = "arch35"
+            else:
+                arch_version = "arch22"
+            
+            # 查找包含 arch_version 的文件路径
+            for file_path in target_files:
+                if arch_version in file_path:
+                    target_file = file_path
+                    break
+        if target_file:
+            target_file_path = Path(target_file)
+            # 查找 op_kernel 在路径中的位置
+            parts = list(target_file_path.parts)
+            if "op_kernel" in parts:
+                op_kernel_index = parts.index("op_kernel")
+                # 取 op_kernel 之后的部分
+                new_parts = parts[op_kernel_index + 1:]
+                src = str(Path(*new_parts))
+            else:
+                src = self.op_file + '.cpp'
+        else:
+            src = self.op_file + '.cpp'
+    
         virt_exprs = self._build_virtual()
         fd.write(IMPL_API.format(self.op_type, pchk, \
                                  self.op_intf, argsdef, kern_name, self.impl_mode, virt_exprs, argsval,\
@@ -715,6 +756,7 @@ def parse_args(argv):
     parser = argparse.ArgumentParser()
     parser.add_argument('argv', nargs='+')
     parser.add_argument('--opsinfo-dir', nargs='*', default=None)
+    parser.add_argument('--compute-unit', nargs='*', default=['ascend910b'])
     return parser.parse_args(argv)
 
 
@@ -740,6 +782,6 @@ if __name__ == '__main__':
             raise OpFileNotExistsError(args.opsinfo_dir)
     else:
         ops_infos.append(args.argv[1])
-
+    COMPUTE_UNIT = args.compute_unit
     for ops_info in ops_infos:
         write_scripts(cfgfile=ops_info, cfgs=rep_cfg, dirs=cfg_dir)
