@@ -341,11 +341,8 @@ private:
             (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset, hcclDataType_);
     }
 
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-    Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;
-#else
+// AICPU only: 只支持AICPU通信模式
     Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU> hccl_;
-#endif
 
     const TaskTilingInfo *taskTilingInfo_;
 

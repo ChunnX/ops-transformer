@@ -71,11 +71,8 @@ private:
 
     // alltoall 流程数据结构
     static constexpr uint64_t MAX_HANDLE_ID_NUM = 64U;
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-    Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;
-#else
-    Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;
-#endif
+// AICPU only: 只支持AICPU通信模式
+    Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU> hccl_;
     HcclDataType hcclDataType_ = HCCL_DATA_TYPE_FP16;
     HcclHandle alltoAllvHandleId_[MAX_HANDLE_ID_NUM] = {INVALID_HANDLE_ID};
 
