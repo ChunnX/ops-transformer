@@ -47,6 +47,7 @@ struct WaveBlockIter {
     uint32_t expertsInWave;
     uint32_t totalBlocks;
     uint32_t step;
+    uint32_t increment;     // BeginIter: totalSms_; BeginIterSerial: 1
 };
 
 class WaveScheduler {
@@ -147,6 +148,16 @@ public:
             it.totalBlocks += GetNumMBlocks(currentWaveBase_ + e) * it.numNBlocks;
         }
         it.step = smIdx_;
+        it.increment = totalSms_;
+    }
+
+    // Serial single-core iteration — used by V2 debug baseline. One AIC + one vec0 (pair 0)
+    // walks the entire wave in lockstep, slot=0 throughout. Eliminates cross-pair sync.
+    __aicore__ inline void BeginIterSerial(BlockPhase phase, WaveBlockIter& it) const
+    {
+        BeginIter(phase, it);
+        it.step = 0;
+        it.increment = 1;
     }
 
     __aicore__ inline bool NextBlock(WaveBlockIter& it, WaveBlock& wb) const
@@ -180,7 +191,7 @@ public:
         wb.poolBlockOffset = poolBase + mBlock;
         wb.phase = it.phase;
         wb.valid = true;
-        it.step += totalSms_;
+        it.step += it.increment;
         return true;
     }
 

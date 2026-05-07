@@ -310,10 +310,14 @@ __aicore__ inline void MegaMoeV2<TemplateMegaMoeV2TypeFunc>::DispatchPullLoop()
 }
 
 // AIC: persistent wave loop. For each wave: drain Linear1 (all blocks), then drain Linear2.
+// SERIAL DEBUG BASELINE: only AIC pair 0 executes; other AIC cores idle. Slot=0 always.
+// Goal: validate algorithm correctness without cross-pair sync hazards. Restore parallelism
+// once V2 produces correct output.
 template <TemplateMegaMoeV2TypeClass>
 __aicore__ inline void MegaMoeV2<TemplateMegaMoeV2TypeFunc>::ScheduleWaveLoop()
 {
     if constexpr(g_coreType != AIC) return;
+    if (blockIdx_ != 0) return;   // SERIAL: only pair 0 schedules
     uint32_t intermediate = params_.tilingData->n / SWIGLU_N_HALF;
     uint32_t hidden = k_;
 
@@ -333,7 +337,7 @@ __aicore__ inline void MegaMoeV2<TemplateMegaMoeV2TypeFunc>::ScheduleWaveLoop()
         // ---- Linear1 phase ----
         {
             WaveBlockIter it1;
-            scheduler_.BeginIter(BlockPhase::Linear1, it1);
+            scheduler_.BeginIterSerial(BlockPhase::Linear1, it1);
             WaveBlock wb;
             while (scheduler_.NextBlock(it1, wb)) {
                 uint32_t expertM = scheduler_.GetExpertTokenCount(wb.expertIdx);
@@ -362,7 +366,7 @@ __aicore__ inline void MegaMoeV2<TemplateMegaMoeV2TypeFunc>::ScheduleWaveLoop()
                 gmmInfo1.groupFlagList = (__gm__ int32_t*)params_.workspaceInfo.ptrL2ArrivalMask + mBlockGlobal;
                 gmmInfo1.groupFlagList2 = dispArrAddr + chunkId;
 
-                uint16_t pingpongSlot = static_cast<uint16_t>(wb.poolBlockOffset % WAVE_PINGPONG_DEPTH);
+                uint16_t pingpongSlot = 0;   // SERIAL: single slot
                 DoLinear1Block<QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType>(
                     epilogueOp_, params_, gmmInfo1,
                     expertM, expertN_l1, expertK_l1,
@@ -377,7 +381,7 @@ __aicore__ inline void MegaMoeV2<TemplateMegaMoeV2TypeFunc>::ScheduleWaveLoop()
         uint32_t numNBlocksL1 = scheduler_.GetNumNBlocks(BlockPhase::Linear1);
         {
             WaveBlockIter it2;
-            scheduler_.BeginIter(BlockPhase::Linear2, it2);
+            scheduler_.BeginIterSerial(BlockPhase::Linear2, it2);
             WaveBlock wb;
             while (scheduler_.NextBlock(it2, wb)) {
                 uint32_t expertM = scheduler_.GetExpertTokenCount(wb.expertIdx);
@@ -405,7 +409,7 @@ __aicore__ inline void MegaMoeV2<TemplateMegaMoeV2TypeFunc>::ScheduleWaveLoop()
                 gmmInfo2.groupFlagList = gmm2CombAddr + chunkId;
                 gmmInfo2.groupFlagList2 = (__gm__ int32_t*)params_.workspaceInfo.ptrL2ArrivalMask + mBlockGlobal;
 
-                uint16_t pingpongSlot = static_cast<uint16_t>(wb.poolBlockOffset % WAVE_PINGPONG_DEPTH);
+                uint16_t pingpongSlot = 0;   // SERIAL: single slot
                 DoLinear2Block<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
                     params_, gmmInfo2,
                     expertM, expertN_l2, expertK_l2,
@@ -419,11 +423,21 @@ __aicore__ inline void MegaMoeV2<TemplateMegaMoeV2TypeFunc>::ScheduleWaveLoop()
 }
 
 // vec0: epilogue side mirrors AIC scheduler — same iteration order, same sync slots.
+// SERIAL DEBUG BASELINE: only vec0 of pair 0 executes; primes cube↔vec sync flags
+// before entering loop so AIC's first WaitForVector(slot) does not deadlock.
 template <TemplateMegaMoeV2TypeClass>
 __aicore__ inline void MegaMoeV2<TemplateMegaMoeV2TypeFunc>::EpilogueWaveLoop()
 {
     if constexpr(g_coreType != AIV) return;
     if (subBlockIdx_ != 0) return;
+    if (blockIdx_ != 0) return;   // SERIAL: only pair 0's vec0 epilogues
+
+    // Prime cube<->vec ping-pong: AIC's DoLinear1Block waits WaitForVector(slot=0) BEFORE
+    // its first GMM, but vec0 only ever NotifyCube AFTER its first epilogue — circular wait
+    // at iter 0. Issue NotifyCube() once for both Linear1 (slot 0) and Linear2
+    // (slot GMM2_WAVE_FLAG_OFFSET) so AIC's first wait passes immediately.
+    NotifyCube(0);
+    NotifyCube(GMM2_WAVE_FLAG_OFFSET);
     uint32_t intermediate = params_.tilingData->n / SWIGLU_N_HALF;
     uint32_t hidden = k_;
     GMMAddrInfo gmmInfo1{}, gmmInfo2{};
@@ -438,7 +452,7 @@ __aicore__ inline void MegaMoeV2<TemplateMegaMoeV2TypeFunc>::EpilogueWaveLoop()
         // Linear1 epilogue
         {
             WaveBlockIter it1;
-            scheduler_.BeginIter(BlockPhase::Linear1, it1);
+            scheduler_.BeginIterSerial(BlockPhase::Linear1, it1);
             WaveBlock wb;
             while (scheduler_.NextBlock(it1, wb)) {
                 uint32_t expertM = scheduler_.GetExpertTokenCount(wb.expertIdx);
@@ -460,7 +474,7 @@ __aicore__ inline void MegaMoeV2<TemplateMegaMoeV2TypeFunc>::EpilogueWaveLoop()
                 epilogueOp_.UpdateGlobalAddr(vecBaseOffset);
                 epilogueOp_.UpdateNextProblem({(int64_t)expertM, (int64_t)expertN_l1, (int64_t)hidden, 0L});
 
-                uint16_t pingpongSlot = static_cast<uint16_t>(wb.poolBlockOffset % WAVE_PINGPONG_DEPTH);
+                uint16_t pingpongSlot = 0;   // SERIAL: single slot
                 DoLinear1Block<QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType>(
                     epilogueOp_, params_, gmmInfo1,
                     expertM, expertN_l1, hidden,
@@ -475,7 +489,7 @@ __aicore__ inline void MegaMoeV2<TemplateMegaMoeV2TypeFunc>::EpilogueWaveLoop()
         uint32_t numNBlocksL1 = scheduler_.GetNumNBlocks(BlockPhase::Linear1);
         {
             WaveBlockIter it2;
-            scheduler_.BeginIter(BlockPhase::Linear2, it2);
+            scheduler_.BeginIterSerial(BlockPhase::Linear2, it2);
             WaveBlock wb;
             while (scheduler_.NextBlock(it2, wb)) {
                 uint32_t expertM = scheduler_.GetExpertTokenCount(wb.expertIdx);
@@ -487,7 +501,7 @@ __aicore__ inline void MegaMoeV2<TemplateMegaMoeV2TypeFunc>::EpilogueWaveLoop()
 
                 uint32_t chunkId = scheduler_.GetChunkId(waveIdx, wb.poolBlockOffset);
                 uint32_t mBlockGlobal = scheduler_.GetGlobalMBlockId(waveIdx, wb.poolBlockOffset);
-                uint16_t pingpongSlot = static_cast<uint16_t>(wb.poolBlockOffset % WAVE_PINGPONG_DEPTH);
+                uint16_t pingpongSlot = 0;   // SERIAL: single slot
                 DoLinear2Block<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
                     params_, gmmInfo2,
                     expertM, expertN_l2, intermediate,
