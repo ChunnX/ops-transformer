@@ -76,13 +76,13 @@ sparse_lightning_indexer_grad_kl_loss(__gm__ uint8_t *query, __gm__ uint8_t *key
 
     if constexpr (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_FLOAT16) {
         SLI_OP_IMPL(SparseLightningIndexerGradKLLossKernelBase,
-                    optiling::SparseLightningIndexerGradKLLossRegBaseTilingData, half, half, float,
+                    optiling::SparseLightningIndexerGradKLLossRegBaseTilingData, half, half, DTYPE_WEIGHT, float,
                     static_cast<SLILayout>(LayoutT_QT), static_cast<SLILayout>(LayoutT_KT), SLISparseMode::RightDown,
                     HasRope, Deterministic);
     }
     if constexpr (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_BF16) {
         SLI_OP_IMPL(SparseLightningIndexerGradKLLossKernelBase,
-                    optiling::SparseLightningIndexerGradKLLossRegBaseTilingData, bfloat16_t, bfloat16_t, float,
+                    optiling::SparseLightningIndexerGradKLLossRegBaseTilingData, bfloat16_t, bfloat16_t, DTYPE_WEIGHT, float,
                     static_cast<SLILayout>(LayoutT_QT), static_cast<SLILayout>(LayoutT_KT), SLISparseMode::RightDown,
                     HasRope, Deterministic);
     }
