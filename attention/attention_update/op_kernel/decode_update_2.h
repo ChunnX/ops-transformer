@@ -182,6 +182,7 @@ private:
 
         // 后续轮：将上一轮Compute的acc结果填入position 0，作为本轮effectiveSp中的第0路参与计算
         // lse acc复用lseexpsumBuffer，out acc复用lseexpBroadcastBuffer（与Compute中使用时机互斥）
+        // 下面就是搬运acc的过程
         if (spLoopIdx > 0) {
             LocalTensor<float> lseAccLocal = lseexpsumBuffer.Get<float>();
             LocalTensor<float> outAccLocal = lseexpBroadcastBuffer.Get<float>();
@@ -205,6 +206,7 @@ private:
                 lseGm.SetGlobalBuffer(reinterpret_cast<__gm__ lseType*>(*(lsePtr + gmSpIdx)), totalLength);
                 inGm.SetGlobalBuffer(reinterpret_cast<__gm__ outType*>(*(inPtr + gmSpIdx)), totalLength * hDim);
                 // lse: [effectiveSp, curLengthPad]，第(posOffset+i)路存入lseLocal对应位置
+                 // 当前场景curLength是8对齐的，和curLengthPad是一样的
                 DataCopy(lseLocal[(posOffset + i) * curLengthPad], lseGm[progress * tileLength + gmStartOffset], curLength);
                 if constexpr (std::is_same<outType, float>::value) {
                     // fp32: 直接搬入inLocal
@@ -213,6 +215,7 @@ private:
                          curLength * hDim);
                 } else {
                     // fp16/bf16: 先搬入inLocalFp16暂存区，循环结束后统一Cast
+                    // hdim是8对齐的，所以不需要对齐。
                     DataCopy(inLocalFp16[(posOffset + i) * curLength * hDim],
                          inGm[progress * tileLength * hDim + gmStartOffset * hDim],
                          curLength * hDim);
