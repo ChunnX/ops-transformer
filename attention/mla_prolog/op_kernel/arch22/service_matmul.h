@@ -436,12 +436,7 @@ __aicore__ inline void MatmulSplitK(const GlobalTensor<O> &tensorCGm, const Glob
 
     for (uint32_t kL1 = 0; kL1 < kL1Loops; kL1++) {
         // Load data from global memory to L1 cache
-        if constexpr (std::is_same<T, FP8E4M3>::value && std::is_same<S, fp8_e8m0_t>::value) {
-            LoadL1ABAndScale<T, S, hasL1ALoaded, scaleSrcPadFlag>(tensorAGm, tensorBGm, tensorAScaleGm, tensorBScaleGm,
-                kL1, kL1Loops, para, nL1Offset, nL1Size, kOffesetUnit, bufParam);
-        } else {
-            LoadL1AB<T, hasL1ALoaded, bLoadFormat>(tensorAGm, tensorBGm, kL1, kL1Loops, para, nL1Offset, nL1Size, kOffesetUnit, bufParam);
-        }
+        LoadL1AB<T, hasL1ALoaded, bLoadFormat>(tensorAGm, tensorBGm, kL1, kL1Loops, para, nL1Offset, nL1Size, kOffesetUnit, bufParam);
 
         WaitFlag<HardEvent::MTE2_MTE1>(B_EVENT0 + (bufParam.bL1BufIter & 1u));
         bL1 = localTensors.bL1Tensor[(bufParam.bL1BufIter & 1u) * L1_B_SIZE / sizeof(T)];
