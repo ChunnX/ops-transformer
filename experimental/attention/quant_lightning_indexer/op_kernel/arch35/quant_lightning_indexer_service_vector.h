@@ -47,8 +47,8 @@ public:
                                       const struct QLICommon::LdSplitCoreInfo &ldInfo,
                                       const QLITilingData *__restrict tilingData);
     __aicore__ inline void InitVecWorkspaceTensor(GlobalTensor<SCORE_T> scoreGm,
-                                                    GlobalTensor<SCORE_T> LDScoreGm,
-                                                    GlobalTensor<int32_t> LDIndexGm);
+                                                    GlobalTensor<SCORE_T> ldScoreGm,
+                                                    GlobalTensor<int32_t> ldIndexGm);
     __aicore__ inline void InitVecInputTensor(GlobalTensor<float> weightsGm, GlobalTensor<float> qScaleGm,
                                               GlobalTensor<float> kScaleGm, GlobalTensor<int32_t> indiceOutGm,
                                               GlobalTensor<int32_t> blockTableGm);
@@ -60,8 +60,8 @@ public:
 protected:
     GlobalTensor<SCORE_T> scoreGm;
     GlobalTensor<float> weightsGm;
-    GlobalTensor<SCORE_T> LDScoreGm;
-    GlobalTensor<int32_t> LDIndexGm;
+    GlobalTensor<SCORE_T> ldScoreGm;
+    GlobalTensor<int32_t> ldIndexGm;
     GlobalTensor<float> qScaleGm;
     GlobalTensor<float> kScaleGm;
     GlobalTensor<int32_t> indiceOutGm;
@@ -149,7 +149,6 @@ private:
     uint32_t topkCountAlign256_ = 0; // topkCount对齐到256(直方图需要)，支持topk泛化
     uint32_t topkCountAlign16_ = 0; // LD读取到UB，需要满足32B对齐
     uint32_t trunkLen_ = 0;
-    uint32_t scoreAlign = 16; // score类型对应对齐长度
 
     struct QLICommon::ConstInfo constInfo_;
     struct QLICommon::LdSplitCoreInfo ldInfo_;
@@ -238,12 +237,12 @@ __aicore__ inline void QLIVector<QLIT>::InitVecInputTensor(GlobalTensor<float> w
 
 template <typename QLIT>
 __aicore__ inline void QLIVector<QLIT>::InitVecWorkspaceTensor(GlobalTensor<SCORE_T> scoreGm,
-                                                            GlobalTensor<SCORE_T> LDScoreGm,
-                                                            GlobalTensor<int32_t> LDIndexGm)
+                                                            GlobalTensor<SCORE_T> ldScoreGm,
+                                                            GlobalTensor<int32_t> ldIndexGm)
 {
     this->scoreGm = scoreGm;//resucesum*k
-    this->LDScoreGm = LDScoreGm;
-    this->LDIndexGm = LDIndexGm;
+    this->ldScoreGm = ldScoreGm;
+    this->ldIndexGm = ldIndexGm;
 }
 
 template <typename QLIT>
@@ -464,7 +463,7 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &in
         
         SCORE_T zero = 0;
         int32_t neg = -1;
-        uint32_t scoreAlign = sizeof(SCORE_T) == 32 ? 8 : 16; // int32对应UB对齐数为8，int16需要16
+        uint32_t scoreAlign = sizeof(SCORE_T) == 4 ? 8 : 16; // int32对应UB对齐数为8，int16需要16
         if (constInfo_.attenMaskFlag) {
             validAllS2Len = ((int32_t)i + cuRealAcSeq) / static_cast<int32_t>(constInfo_.cmpRatio);
         }
@@ -489,8 +488,9 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &in
             Duplicate(scoreOutLocal_, zero, topkCountAlign16_);
             SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
             WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-            AscendC::DataCopyPad(LDScoreGm[offset], scoreOutLocal_, ldCopyScoreOutParams);     // 将每一行S1的Topk结果存放在LDScoreGm和LDIndexGm中
-            AscendC::DataCopyPad(LDIndexGm[offset], indicesOutLocal_.ReinterpretCast<int32_t>(), ldCopyOutParams);
+            // 将每一行S1的Topk结果存放在ldScoreGm和ldIndexGm中
+            AscendC::DataCopyPad(ldScoreGm[offset], scoreOutLocal_, ldCopyScoreOutParams);
+            AscendC::DataCopyPad(ldIndexGm[offset], indicesOutLocal_.ReinterpretCast<int32_t>(), ldCopyOutParams);
             SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
             continue;
         }
@@ -627,8 +627,9 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &in
             SetFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
             SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
             WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-            AscendC::DataCopyPad(LDScoreGm[offset], scoreOutLocal_, ldCopyScoreOutParams);     // 将每一行S1的Topk结果存放在LDScoreGm和LDIndexGm中
-            AscendC::DataCopyPad(LDIndexGm[offset], indicesOutLocal_.ReinterpretCast<int32_t>(), ldCopyOutParams);
+            // 将每一行S1的Topk结果存放在ldScoreGm和ldIndexGm中
+            AscendC::DataCopyPad(ldScoreGm[offset], scoreOutLocal_, ldCopyScoreOutParams);
+            AscendC::DataCopyPad(ldIndexGm[offset], indicesOutLocal_.ReinterpretCast<int32_t>(), ldCopyOutParams);
             SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
         } 
     }
@@ -655,7 +656,7 @@ __aicore__ inline void QLIVector<QLIT>::ProcessLD()
     SCORE_T zero = 0;
     int32_t neg = -1;
     uint32_t zero32 = 0;
-    uint32_t scoreAlign = sizeof(SCORE_T) == 32 ? 8 : 16; // int32对应UB对齐数为8，int16需要16
+    uint32_t scoreAlign = sizeof(SCORE_T) == 4 ? 8 : 16; // int32对应UB对齐数为8，int16需要16
     uint32_t ldProWorkspaceNum = ldInfo_.workspaceNum;
     SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
     for (uint32_t j = 0; j < ldInfo_.mNum; j++) {
@@ -691,8 +692,9 @@ __aicore__ inline void QLIVector<QLIT>::ProcessLD()
                                   topkCountAlign16_ * (ldInfo_.mStart + j) + i * ldWorkspaceNum * s1BaseSize_ * topkCountAlign16_; // 加入LD处理偏移
             SetFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
             WaitFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
-            AscendC::DataCopyPad(mrgValueLocal_[ldProcessOffset], LDScoreGm[LDGmOffset], ldScoreParams, scorePadParams);
-            AscendC::DataCopyPad(ldIndexLocal_[ldProcessOffset], LDIndexGm[LDGmOffset].ReinterpretCast<uint32_t>(), ldIndexParams, indexPadParams);
+            AscendC::DataCopyPad(mrgValueLocal_[ldProcessOffset], ldScoreGm[LDGmOffset], ldScoreParams, scorePadParams);
+            AscendC::DataCopyPad(ldIndexLocal_[ldProcessOffset], ldIndexGm[LDGmOffset].ReinterpretCast<uint32_t>(),
+                                 ldIndexParams, indexPadParams);
             
             SetFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
             WaitFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
