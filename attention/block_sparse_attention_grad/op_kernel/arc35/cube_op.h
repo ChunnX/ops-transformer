@@ -63,7 +63,7 @@ public:
         TBuf<TPosition::A1> l1_buffer_;
         TBuf<TPosition::A2> l0_a_buffer_;
         TBuf<TPosition::B2> l0_b_buffer_;
-        TBuf<TPosition::C2> l0_c_buffer_;
+        TBuf<TPosition::CO1> l0_c_buffer_;
         tPipe->InitBuffer(l1_buffer_, L1_SIZE);
         tPipe->InitBuffer(l0_a_buffer_, L0_AB_SIZE);
         tPipe->InitBuffer(l0_b_buffer_, L0_AB_SIZE);

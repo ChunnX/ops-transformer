@@ -44,6 +44,7 @@ extern "C" __global__ __aicore__ void block_sparse_attention_grad(__gm__ uint8_t
     __gm__ uint8_t *user = AscendC::GetUserWorkspace(workspace);
 
 #if __CCE_AICORE__ == 310
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     GET_TILING_DATA_WITH_STRUCT(BlockSparseAttentionGradTilingDataArch35, tiling_data_in, tiling);  
     const BlockSparseAttentionGradTilingDataArch35 *__restrict tilingDataPtrArch35 = &tiling_data_in;    
     TPipe tPipe;
