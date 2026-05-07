@@ -331,15 +331,15 @@ static ge::graphStatus ConvertAttrsPFA(gert::TilingContext &context, ContextPara
     contextKeyParams.numKeyValueHeads = attrs->GetAttrPointer<int64_t>(ATTR_NUM_KV_HEADS_INDEX);
     contextKeyParams.blockSize = attrs->GetAttrPointer<int32_t>(ATTR_BLOCK_SIZE_INDEX);
     contextKeyParams.isBSNDOut = (string(contextKeyParams.layout) == "BNSD_BSND") ? 1U : 0U;
-    contextKeyParams.softmaxLseFlag = attrs->GetAttrPointer<bool>(SOFTMAX_LSE_FLAG_INDEX);
+    contextKeyParams.softmaxLseFlag = attrs->GetAttrPointer<bool>(ATTR_SOFTMAX_LSE_FLAG_INDEX);
     contextKeyParams.isSoftMaxLseEnable =
         (contextKeyParams.softmaxLseFlag == nullptr) ? false : *contextKeyParams.softmaxLseFlag;
-    contextKeyParams.keyAntiquantMode = attrs->GetAttrPointer<int64_t>(KEY_ANTIQUANT_MODE_INDEX);
-    contextKeyParams.valueAntiquantMode = attrs->GetAttrPointer<int64_t>(VALUE_ANTIQUANT_MODE_INDEX);
+    contextKeyParams.keyAntiquantMode = attrs->GetAttrPointer<int64_t>(ATTR_KEY_ANTIQUANT_MODE_INDEX);
+    contextKeyParams.valueAntiquantMode = attrs->GetAttrPointer<int64_t>(ATTR_VALUE_ANTIQUANT_MODE_INDEX);
 
     OP_CHECK_IF(context.GetOptionalInputTensor(DEQUANT_SCALE_QUERY_INDEX) != nullptr ||
-        (attrs->GetAttrPointer<int64_t>(QUERY_QUANT_MODE_INDEX) != nullptr &&
-        *attrs->GetAttrPointer<int64_t>(QUERY_QUANT_MODE_INDEX) != 0),
+        (attrs->GetAttrPointer<int64_t>(ATTR_QUERY_QUANT_MODE_INDEX) != nullptr &&
+        *attrs->GetAttrPointer<int64_t>(ATTR_QUERY_QUANT_MODE_INDEX) != 0),
         OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "PFA not support query dequant now"),
         return ge::GRAPH_FAILED);
 
@@ -716,13 +716,13 @@ static ge::graphStatus ConvertAttrsIFA(gert::TilingContext &context, IncreFlashA
     ifaContext.layOut = attrs->GetStr(ATTR_INPUT_LAYOUT_INDEX);
     ifaContext.kvHeadNums = attrs->GetAttrPointer<uint32_t>(ATTR_NUM_KV_HEADS_INDEX);
     ifaContext.blockSize = attrs->GetAttrPointer<uint32_t>(ATTR_BLOCK_SIZE_INDEX);
-    ifaContext.antiquantMode = attrs->GetAttrPointer<int64_t>(ANTIQUANT_MODE_INDEX);
-    ifaContext.softmaxLseFlag = attrs->GetAttrPointer<bool>(SOFTMAX_LSE_FLAG_INDEX);
-    ifaContext.keyAntiquantMode = attrs->GetAttrPointer<int64_t>(KEY_ANTIQUANT_MODE_INDEX);
-    ifaContext.valueAntiquantMode = attrs->GetAttrPointer<int64_t>(VALUE_ANTIQUANT_MODE_INDEX);
+    ifaContext.antiquantMode = attrs->GetAttrPointer<int64_t>(ATTR_ANTIQUANT_MODE_INDEX);
+    ifaContext.softmaxLseFlag = attrs->GetAttrPointer<bool>(ATTR_SOFTMAX_LSE_FLAG_INDEX);
+    ifaContext.keyAntiquantMode = attrs->GetAttrPointer<int64_t>(ATTR_KEY_ANTIQUANT_MODE_INDEX);
+    ifaContext.valueAntiquantMode = attrs->GetAttrPointer<int64_t>(ATTR_VALUE_ANTIQUANT_MODE_INDEX);
     ifaContext.innerPrecise = attrs->GetAttrPointer<uint32_t>(ATTR_INNER_PRECISE_INDEX);
     ifaContext.sparseMode = attrs->GetAttrPointer<uint32_t>(ATTR_SPARSE_MODE_INDEX);
-    ifaContext.queryQuantMode = attrs->GetAttrPointer<int64_t>(QUERY_QUANT_MODE_INDEX);
+    ifaContext.queryQuantMode = attrs->GetAttrPointer<int64_t>(ATTR_QUERY_QUANT_MODE_INDEX);
     ifaContext.windowSize = attrs->GetAttrPointer<int64_t>(ATTR_PRE_TOKEN_INDEX);
 
     return ge::GRAPH_SUCCESS;
@@ -778,8 +778,8 @@ static ge::graphStatus ConvertContextToParamsIFA(gert::TilingContext &context, I
 
 static ge::graphStatus CheckDequantParams(gert::TilingContext &context, const int64_t s)
 {
-    OP_CHECK_IF((context.GetAttrs()->GetAttrPointer<int64_t>(ANTIQUANT_MODE_INDEX) != nullptr) &&
-        (*context.GetAttrs()->GetAttrPointer<int64_t>(ANTIQUANT_MODE_INDEX) != 0),
+    OP_CHECK_IF((context.GetAttrs()->GetAttrPointer<int64_t>(ATTR_ANTIQUANT_MODE_INDEX) != nullptr) &&
+        (*context.GetAttrs()->GetAttrPointer<int64_t>(ATTR_ANTIQUANT_MODE_INDEX) != 0),
         OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "antiquant_mode is not supported!"),
         return ge::GRAPH_FAILED);
 
@@ -900,7 +900,7 @@ static ge::graphStatus TilingProcess4PFA(gert::TilingContext *context, const uin
         return ret;
     }
 
-    bool lseFlag = *context->GetAttrs()->GetAttrPointer<bool>(SOFTMAX_LSE_FLAG_INDEX);
+    bool lseFlag = *context->GetAttrs()->GetAttrPointer<bool>(ATTR_SOFTMAX_LSE_FLAG_INDEX);
     if (lseFlag != false) {
         if (pfa_tiling.CheckNonEmptyShapeExceptions(contextParamsForPFATiling,
                                                   contextParamsForPFATiling.lseoutputShape, "softmaxLse")) {
@@ -1300,7 +1300,7 @@ ge::graphStatus CheckFAIMask(gert::TilingContext *context)
 
 static ge::graphStatus CheckFAILseOutput(const gert::TilingContext *context)
 {
-    bool lseFlag = *(context->GetAttrs()->GetAttrPointer<bool>(SOFTMAX_LSE_FLAG_INDEX));
+    bool lseFlag = *(context->GetAttrs()->GetAttrPointer<bool>(ATTR_SOFTMAX_LSE_FLAG_INDEX));
     auto lseShape = context->GetOutputShape(SOFTMAX_LSE_INDEX);
     auto queryShape = context->GetInputShape(QUERY_INDEX);
     OP_CHECK_IF(((lseFlag != false) && (lseShape->GetStorageShape().GetDimNum() != 3U)),
@@ -1373,7 +1373,7 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
         faInfo.nextToken = nextToken;
     }
     string inputLayoutStr = string(attrs->GetAttrPointer<char>(ATTR_INPUT_LAYOUT_INDEX));
-    bool lseFlag = *(attrs->GetAttrPointer<bool>(SOFTMAX_LSE_FLAG_INDEX));
+    bool lseFlag = *(attrs->GetAttrPointer<bool>(ATTR_SOFTMAX_LSE_FLAG_INDEX));
     bool learnableSinkFlag = context->GetOptionalInputTensor(LEARNABLE_SINK_INDEX) != nullptr ? true : false;
     int32_t innerPrecise = static_cast<int32_t>(*(attrs->GetAttrPointer<int64_t>(ATTR_INNER_PRECISE_INDEX)));
     faInfo.numBlocks = tempK->GetStorageShape().GetDim(DIM_0);
