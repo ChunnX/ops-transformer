@@ -95,7 +95,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       <td>INT8、FLOAT8_E4M3FN<sup>1</sup>、HIFLOAT8<sup>1</sup></td>
       <td>ND</td>
       <td>(m, k)</td>
-      <td>-</td>
+      <td>✗</td>
     </tr>
     <tr>
       <td>x2</td>
@@ -105,7 +105,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       <td>INT8、INT4<sup>2</sup>、INT32<sup>2</sup>、FLOAT8_E4M3FN<sup>1</sup>、HIFLOAT8<sup>1</sup>、FLOAT4_E2M1<sup>1</sup></td>
       <td>NZ</td>
       <td>支持三维</td>
-      <td>-</td>
+      <td>仅转置场景支持非连续</td>
     </tr>
     <tr>
       <td>scale</td>
@@ -115,7 +115,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       <td>FLOAT、BF16、INT64<sup>2</sup>、FLOAT8_E8M0<sup>1</sup></td>
       <td>ND</td>
       <td>shape支持3-4维</td>
-      <td>-</td>
+      <td>✗</td>
     </tr>
     <tr>
       <td>bias</td>
@@ -125,7 +125,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       <td>BF16、FLOAT</td>
       <td>ND</td>
       <td>shape支持二维，维度为(e, n)，e、n和x2的e、n一致</td>
-      <td>-</td>
+      <td>✗</td>
     </tr>
     <tr>
       <td>offsetOptional</td>
@@ -135,7 +135,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       <td>FLOAT</td>
       <td>ND</td>
       <td>-</td>
-      <td>-</td>
+      <td>✗</td>
     </tr>
     <tr>
       <td>antiquantScaleOptional</td>
@@ -145,7 +145,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       <td>FLOAT</td>
       <td>ND</td>
       <td>-</td>
-      <td>-</td>
+      <td>✗</td>
     </tr>
     <tr>
       <td>antiquantOffsetOptional</td>
@@ -155,7 +155,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       <td>FLOAT</td>
       <td>ND</td>
       <td>-</td>
-      <td>-</td>
+      <td>✗</td>
     </tr>
     <tr>
       <td>pertokenScaleOptional</td>
@@ -165,7 +165,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       <td>FLOAT、FLOAT8_E8M0<sup>1</sup></td>
       <td>ND</td>
       <td>shape支持1维和3维，维度为(m)，m和x1的m一致；MxA8W4场景为三维(m, ceil(k/64), 2)</td>
-      <td>-</td>
+      <td>✗</td>
     </tr>
     <tr>
       <td>groupList</td>
@@ -175,7 +175,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       <td>INT64</td>
       <td>ND</td>
       <td>shape支持一维，维度为(e)，e和x2的e一致</td>
-      <td>-</td>
+      <td>✗</td>
     </tr>
     <tr>
       <td>sharedInput</td>
@@ -185,7 +185,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       <td>BF16</td>
       <td>ND</td>
       <td>支持二维，维度为(bsdp, n)，bsdp必须小于等于batchSize/e，n和x2的n一致。</td>
-      <td>-</td>
+      <td>✗</td>
     </tr>
     <tr>
       <td>logit</td>
@@ -195,7 +195,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       <td>FLOAT</td>
       <td>ND</td>
       <td>shape支持一维，维度为(m)，m和x1的m一致</td>
-      <td>-</td>
+      <td>✗</td>
     </tr>
     <tr>
       <td>rowIndex</td>
@@ -205,7 +205,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       <td>INT64、INT32</td>
       <td>ND</td>
       <td>shape支持一维，维度为(m)，m和x1的m一致</td>
-      <td>-</td>
+      <td>✗</td>
     </tr>
     <tr>
       <td>dtype</td>
@@ -285,7 +285,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       <td>FLOAT</td>
       <td>ND</td>
       <td>(batch, n)</td>
-      <td>-</td>
+      <td>✗</td>
     </tr>
     <tr>
       <td>workspaceSize</td>
