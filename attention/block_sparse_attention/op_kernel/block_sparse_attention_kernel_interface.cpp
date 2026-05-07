@@ -232,9 +232,9 @@ __global__ __aicore__ void BsaInferInterfaceFullQuant(
     using L0TileShapeQK = Shape<Int<128>, Int<128>, Int<128>>;
     // mmad qk
     using DispatchPolicyQK = Gemm::MmadAtlasA5BsaQK;
-    using TileCopyQK =
-        Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementQ, LayoutQ, ElementK, LayoutK, ElementS, LayoutS, void,
-                                          Gemm::Tile::CopyL0CToUBMode::NO_SPLIT, false, ScaleGranularity::PER_TENSOR>;
+    using TileCopyQK = Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementQ, LayoutQ, ElementK, LayoutK, ElementS,
+                                                         LayoutS, void, Gemm::Tile::CopyL0CToUBMode::NO_SPLIT, false,
+                                                         Gemm::Tile::ScaleGranularity::PER_TENSOR>;
     using BlockMmadQK = Gemm::Block::BlockMmadTla<DispatchPolicyQK, L1TileShapeQK, L0TileShapeQK, ElementQ, ElementK,
                                                   ElementS, void, TileCopyQK>;
     // online softmax

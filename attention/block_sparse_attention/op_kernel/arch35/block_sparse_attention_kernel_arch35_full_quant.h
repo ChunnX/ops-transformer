@@ -88,7 +88,7 @@ public:
         AscendC::GlobalTensor<float> gValueDequantScale;
         gValueDequantScale.SetGlobalBuffer((__gm__ float *)params.valueDequantScale);
         AscendC::GlobalTensor<ElementO> gO;
-        gO.SetGlobalBuffer((__gm__ ElementO *)params.o);
+        gO.SetGlobalBuffer((__gm__ ElementO *)params.attentionOut);
         AscendC::GlobalTensor<ElementSparseIdx> gSparseIdx;
         gSparseIdx.SetGlobalBuffer((__gm__ ElementSparseIdx *)params.workSpace);
         AscendC::GlobalTensor<ElementSparseCount> gSparseCount;
@@ -280,6 +280,10 @@ public:
             auto gmOTensorTla = tla::MakeTensor(gO[gmOffsetO], gmOLayoutTla, Arch::PositionGM{});
 #endif
             for (uint32_t gatheredKvSTileIdx = 0; gatheredKvSTileIdx < kvSLoopNum + PRE_LAUNCH; gatheredKvSTileIdx++) {
+                uint32_t yBlockIndexOffset = (gatheredKvSTileIdx * kvBaseTile_) / blockShapeY_;
+                uint32_t yBlockIndex = gSparseIdx.GetValue(yBlockIndexOffset);
+                uint32_t kvDeqScaleOffset =
+                    curBatch * kvHeads_ * yBlockNumAligned_ + kvHeadIdx * yBlockNumAligned_ + yBlockIndex;
                 if (gatheredKvSTileIdx < kvSLoopNum) {
                     if (gatheredKvSTileIdx == kvSLoopNum - 1) {
                         kvSTileSizeAct = gatheredKvSeqlen - gatheredKvSTileIdx * kvBaseTile_;
@@ -294,10 +298,6 @@ public:
                     ubSLayoutTla, Arch::PositionUB{});
                     uint32_t Mm1ToSmFlagId = ubSBufId;
                     Arch::CrossCoreFlag mm1ToSmFlag(Mm1ToSmFlagId);
-                    uint32_t yBlockIndexOffset = (gatheredKvSTileIdx * kvBaseTile_) / blockShapeY_;
-                    uint32_t yBlockIndex = gSparseIdx.GetValue(yBlockIndexOffset);
-                    uint32_t kvDeqScaleOffset =
-                        curBatch * kvHeads_ * yBlockNumAligned_ + kvHeadIdx * yBlockNumAligned_ + yBlockIndex;
 #ifdef __DAV_CUBE__
                     float kDeqScaleValue = gKeyDequantScale.GetValue(kvDeqScaleOffset);
                     float combinedDeqScalar = qDeqScaleValue * kDeqScaleValue;

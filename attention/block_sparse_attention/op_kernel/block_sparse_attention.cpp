@@ -132,22 +132,22 @@ extern "C" __global__ __aicore__ void block_sparse_attention(
     // 全量化FP8场景
     #elif TILING_KEY_VAR == QF8_KVF8_OF16_QTND_KVTND_NOCACHE_SMF16_REF32_NOMASK_KEY
         BsaInferInterfaceFullQuant<
-            float8_e4m3_t, half, float, BsaKernelArch35::Format::TND, BsaKernelArch35::Format::TND>(
+            fp8_e4m3fn_t, half, float, BsaKernelArch35::Format::TND, BsaKernelArch35::Format::TND>(
                 query, key, value, blockSparseMask, mask, blockTable, actualSeqLengths, actualSeqLengthsKv,
                 queryDequantScale, keyDequantScale, valueDequantScale, attentionOut, user, tiling);
     #elif TILING_KEY_VAR == QF8_KVF8_OF16_QBNSD_KVBNSD_NOCACHE_SMF16_REF32_NOMASK_KEY
         BsaInferInterfaceFullQuant<
-            float8_e4m3_t, half, float, BsaKernelArch35::Format::BNSD, BsaKernelArch35::Format::BNSD>(
+            fp8_e4m3fn_t, half, float, BsaKernelArch35::Format::BNSD, BsaKernelArch35::Format::BNSD>(
                 query, key, value, blockSparseMask, mask, blockTable, actualSeqLengths, actualSeqLengthsKv,
                 queryDequantScale, keyDequantScale, valueDequantScale, attentionOut, user, tiling);
     #elif TILING_KEY_VAR == QF8_KVF8_OBF16_QTND_KVTND_NOCACHE_SMF16_REF32_NOMASK_KEY
         BsaInferInterfaceFullQuant<
-            float8_e4m3_t, bfloat16_t, float, BsaKernelArch35::Format::TND, BsaKernelArch35::Format::TND>(
+            fp8_e4m3fn_t, bfloat16_t, float, BsaKernelArch35::Format::TND, BsaKernelArch35::Format::TND>(
                 query, key, value, blockSparseMask, mask, blockTable, actualSeqLengths, actualSeqLengthsKv,
                 queryDequantScale, keyDequantScale, valueDequantScale, attentionOut, user, tiling);
     #elif TILING_KEY_VAR == QF8_KVF8_OBF16_QBNSD_KVBNSD_NOCACHE_SMF16_REF32_NOMASK_KEY
         BsaInferInterfaceFullQuant<
-            float8_e4m3_t, bfloat16_t, float, BsaKernelArch35::Format::BNSD, BsaKernelArch35::Format::BNSD>(
+            fp8_e4m3fn_t, bfloat16_t, float, BsaKernelArch35::Format::BNSD, BsaKernelArch35::Format::BNSD>(
                 query, key, value, blockSparseMask, mask, blockTable, actualSeqLengths, actualSeqLengthsKv,
                 queryDequantScale, keyDequantScale, valueDequantScale, attentionOut, user, tiling);
     #endif
