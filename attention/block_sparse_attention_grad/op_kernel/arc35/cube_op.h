@@ -113,7 +113,7 @@ public:
                 loadData2dParams.repeatTimes = head_dim_align_ / 16;
                 loadData2dParams.srcStride = nProcessAlign / 16;
                 loadData2dParams.ifTranspose = false;
-                AscendC::LoadData(dstL0Tensor, dstL1Tensor, loadData2dParams);
+                AscendC::LoadData(l0_a_tensor, l1_a_tensor, loadData2dParams);
 
                 // load_data_gm_2_l0<true, false>(l0_a_tensor, l1_a_tensor, leftGm, mProcess, head_dim_, mProcessAlign,
                 //                                head_dim_align_, head_dim_, true);
