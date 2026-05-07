@@ -69,6 +69,7 @@ TEST_P(AlltoAllvQuantGroupedMatMulV2TilingTest, param)
             {"mm_x_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.mm_x_quant_mode)},
             {"mm_weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.mm_weight_quant_mode)},
             {"groupSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.group_size)},
+            {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.comm_mode)},
             {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"mm_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },

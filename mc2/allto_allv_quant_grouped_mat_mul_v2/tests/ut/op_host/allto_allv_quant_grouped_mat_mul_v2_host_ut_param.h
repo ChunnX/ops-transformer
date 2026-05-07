@@ -32,6 +32,7 @@ struct AlltoAllvQuantGroupedMatMulV2TilingUTParamBase {
     int64_t ep_world_size;
     int64_t graph_type;
     int64_t group_size;
+    std::string comm_mode;  // V2特有参数
     // Expected tiling key
     uint64_t expectTilingKey;
     // Expected result
@@ -52,6 +53,7 @@ struct AlltoAllvQuantGroupedMatMulV2TilingUTParamBase {
         this->ep_world_size = stoll(ReadMap(csvMap, "ep_world_size"));
         this->graph_type = stoll(ReadMap(csvMap, "graph_type"));
         this->group_size = stoll(ReadMap(csvMap, "group_size"));
+        this->comm_mode = ReadMap(csvMap, "comm_mode");
         this->expectTilingKey = stoull(ReadMap(csvMap, "expectTilingKey"));
         this->expectedStatus = Str2StatusGE(ReadMap(csvMap, "expectedStatus"));
         auto sendCountsShape = GetShapeArr(ReadMap(csvMap, "send_counts"));
