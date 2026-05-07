@@ -45,13 +45,13 @@ public:
         if ASCEND_IS_AIC {
             printf("=====================cubeIdx=%d=====================\n", GetBlockIdx());
             CubeProcess(dout, q, k, v, out, softmaxLse, blockSparseMask, blockShape, attentionMask, actualQseqlen,
-                        actualKvseqlen, dq, dk, dv, workspace, tilingData);
+                        actualKvseqlen, dq, dk, dv, workspace, tilingData, tPipe);
             printf("====================================================\n");
         }
         if ASCEND_IS_AIV {
             printf("=====================vectorIdx=%d=====================\n", GetBlockIdx());
             VectorProcess(dout, q, k, v, out, softmaxLse, blockSparseMask, blockShape, attentionMask, actualQseqlen,
-                          actualKvseqlen, dq, dk, dv, workspace, tilingData);
+                          actualKvseqlen, dq, dk, dv, workspace, tilingData, tPipe);
             printf("====================================================\n");
         }
     }
