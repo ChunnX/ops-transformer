@@ -187,7 +187,7 @@ private:
                                                             int64_t ropeQrOffset, int64_t ropeQrResOffset);
     __aicore__ inline void DynamicQuantQnAndMulQrSyncMMQn(int64_t batchOffset, int64_t curStepBatchSize, int64_t numHeadOffset, int64_t mmQnLoops);
     template<bool needQnDynamicQuant>
-    __aicore__ inline void M3AndM4();
+    __aicore__ inline void M3AndM4(AicOffset &aicOffset);
     template<bool needQnDynamicQuant>
     __aicore__ inline void V3AndV4();
 
@@ -280,7 +280,8 @@ private:
     LocalTensor<float> quantScaleCkvLocal_;
     LocalTensor<float> quantScaleCkrLocal_;
     LocalTensor<int64_t> stepActualSeqLocal_;
-
+    LocalTensor<float> mm3ResLocal_;
+    LocalTensor<float> mm4ResLocal_;
     struct ActSeqState {
         bool inited = false;        // whether state is initialized for the run
         int64_t curBatch = 0;       // current batch index for the running token index
@@ -695,7 +696,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::VectorBufferInit() {
     // 由于shareBuffer属于各个vector操作临时申请内存的区域内存使用不固定，建议shareBuffer始终放在最后
     // 防止写入shareBuffer越界导致前面固定申请的UB内存被踩。
     if (splitKN) {
-        pipe_->InitBuffer(shareBuffer_2, MAX_UB_SIZE - usedBytes);
+        pipe_->InitBuffer(shareBuffer2_, MAX_UB_SIZE - usedBytes);
     } else {
         pipe_->InitBuffer(shareBuffer_, MAX_UB_SIZE - usedBytes);
     }
@@ -1023,7 +1024,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AicProcess(AicOffset &aicOffs
     CrossCoreWaitFlag(FINISH_VEC_RMSNORM_CQ);
 
     if (splitKN) {
-        M3AndM4<needQnDynamicQuant>();
+        M3AndM4<needQnDynamicQuant>(aicOffset);
     } else {
         if constexpr (std::is_same<mmInputType, FP8E4M3>::value && isFp8E8m0) {
             MatmulQcQr(aicOffset);
@@ -2401,7 +2402,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantAndRopeSplitNSyncMMQcQ
 
 template <typename MLAPT>
 template<bool needQnDynamicQuant>
-__aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::M3AndM4()
+__aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::M3AndM4(AicOffset &aicOffset)
 {
     // MatmulQcQr(aicOffset);
     if (blockIdx_ >= baseParams_->mm3BlockNum) {
@@ -2419,12 +2420,12 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::M3AndM4()
     uint32_t nInput = mmQcQrParam_.n;
     uint32_t nL1SplitSize = mmQcQrParam_.baseN;
     uint32_t nL1loops = CeilDivT(nInput, nL1SplitSize);
-    uint32_t mSize = Align(para.m, BLOCK_CUBE_SIZE);
+    uint32_t mSize = Align(mmQcQrParam_.m, BLOCK_CUBE_SIZE);
     if (isAFullLoad) {
         if constexpr (std::is_same<mmQcQrInputType, FP8E4M3>::value && isFp8E8m0) {
             uint64_t offsetL1A = L1_A_SIZE / 2 / sizeof(T); // 2表示scale起始地址固定从L1A上ping的64k开始
             LoadL1AAndScale<rmsNormCqOutputType, dequantScaleType, false, true>(
-                rmsNormCqResGm_[aicOffset.rmsNormCqResOffset],
+                rmsNormCqResGm_[mmQcQrParam_.rmsNormCqResOffset],
                 dequantTool_.deQuantScaleCqGm_[aicOffset.dequantScaleCqOffset], mmQcQrParam_.m, mmQcQrParam_.k,
                 mmQcQrParam_.k, mmQcQrParam_.kScale, mmQcQrParam_.kScale, offsetL1A, bufParam_);
         } else {
