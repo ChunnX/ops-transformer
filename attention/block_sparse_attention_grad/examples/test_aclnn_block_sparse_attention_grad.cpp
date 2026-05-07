@@ -117,8 +117,8 @@ int main() {
     int32_t batch = 1;
     int32_t numHeads = 1;
     int32_t numKvHeads = 1;
-    int32_t qSeqlen = 512;
-    int32_t kvSeqlen = 512;
+    int32_t qSeqlen = 128;
+    int32_t kvSeqlen = 128;
     int32_t headDim = 128;
     int32_t blockShapeX = 64;
     int32_t blockShapeY = 64;
@@ -190,8 +190,8 @@ int main() {
     aclIntArray *kvSeqLenArr = aclCreateIntArray(kvSeqLenVec.data(), batch);
 
     // 7. 标量与字符串参数配置
-    char qLayoutBuffer[16] = "TND";
-    char kvLayoutBuffer[16] = "TND";
+    char qLayoutBuffer[16] = "BNSD";
+    char kvLayoutBuffer[16] = "BNSD";
     int64_t maskType = 0;
     double scaleValue = 1.0 / std::sqrt(static_cast<double>(headDim));
     // 强制规定滑动窗口极大值
@@ -253,6 +253,13 @@ int main() {
     ret = aclrtMemcpy(dqData.data(), qSize * sizeof(op::fp16_t), dqAddr, qSize * sizeof(op::fp16_t), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed.\n"); return ret);
 
+    // LOG_PRINT("Execution Success! Output results (first 10 elements of dQ):\n");
+    // for (uint64_t i = 0; i < 10 && i < dqData.size(); i++) {
+    //     LOG_PRINT("  dQ index %lu: %f\n", i, static_cast<float>(dqData[i]));
+    // }
+
+    // // 13. 释放所有资源
+    // LOG_PRINT("Cleaning up resources...\n");
     if (workspaceAddr) aclrtFree(workspaceAddr);
     
     aclrtFree(qAddr); aclrtFree(kAddr); aclrtFree(vAddr);
