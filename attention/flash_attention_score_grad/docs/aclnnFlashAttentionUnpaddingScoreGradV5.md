@@ -52,23 +52,23 @@
   K=\frac{((dS)^T*Q)}{\sqrt{d}}
   $$
 
-其中增加**sink**之后计算逻辑见下，主要修改相关softmax_max和softmax_sum逻辑计算部分
+  其中增加**sink**之后计算逻辑见下，主要修改相关softmax_max和softmax_sum逻辑计算部分
 
-$$
-S = Q @ K^{T}
-$$
+  $$
+  S = Q @ K^{T}
+  $$
 
-$$
-m = max(sink, max(S))
-$$
+  $$
+  m = max(sink, max(S))
+  $$
 
-$$
-Attention = \frac{e^{S - m} @ V}{\sum e^{S-m} + e^{sink - m}}
-$$
+  $$
+  Attention = \frac{e^{S - m} @ V}{\sum e^{S-m} + e^{sink - m}}
+  $$
 
-$$
-dSink = reduce(-P * dP * SimpleSoftmax(sink, x\_max, x\_sum))
-$$
+  $$
+  dSink = reduce(-P * dP * SimpleSoftmax(sink, x\_max, x\_sum))
+  $$
 
 ## 函数原型
 

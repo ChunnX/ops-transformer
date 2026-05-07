@@ -22,7 +22,7 @@
 
 ## 函数原型
 
-每个算子分为两段式接口，必须先调用 “aclnnMoeDistributeDispatchSetupGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeDistributeDispatchSetup”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用 “aclnnMoeDistributeDispatchSetupGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeDistributeDispatchSetup”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnMoeDistributeDispatchSetupGetWorkspaceSize(
@@ -466,9 +466,11 @@ aclnnStatus aclnnMoeDistributeDispatchSetup(
 - 机器数量设置：
 
     两机16卡场景中，需将参数MACHINE_NUM设置为2，即
+
     ```Cpp
     const uint32_t MACHINE_NUM = 2;
     ```
+
     单机16卡场景则无需修改。
 
 - <term>Ascend 950PR/Ascend 950DT</term>：

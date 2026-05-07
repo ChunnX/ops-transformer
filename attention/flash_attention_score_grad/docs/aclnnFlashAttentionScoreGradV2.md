@@ -510,7 +510,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV2(
     - N：取值范围为1\~256。
     - S：取值范围为1\~1M。
     - D：取值范围为1\~768。
-    - KeepProb: 取值范围为(0, 1].
+    - KeepProb: 取值范围为(0, 1]。
 - query、key、value数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸，且满足D=H/N。
 - pseShiftOptional：如果Sq大于1024且每个batch的Sq与Skv等长且是sparseMode为0、2、3的下三角掩码场景，可使能alibi位置编码压缩，此时只需要输入原始PSE最后1024行，实现内存优化，即alibi_compress = ori_pse[:, :, -1024:, :]，具体如下：
   - 参数每个batch不相同时，shape为BNHSkv(H=1024)。

@@ -19,9 +19,9 @@
 
   1. Top-k value的计算公式：
 
-  $$
-  I_{t,:}=W_{t,:}@ReLU(\tilde{q}_{t,:}@\tilde{K}_{:t,:}^\top)
-  $$
+    $$
+    I_{t,:}=W_{t,:}@ReLU(\tilde{q}_{t,:}@\tilde{K}_{:t,:}^\top)
+    $$
 
     - $W_{t,:}$是第$t$个token对应的$weights$；
     - $\tilde{q}_{t,:}$是$\tilde{q}$矩阵第$t$个token对应的$G$个query头合轴后的结果；
@@ -29,9 +29,9 @@
 
   2. 正向的Softmax对应公式：
 
-  $$
-  p_{t,:} = \text{Softmax}(q_{t,:} @ K_{:t,:}^\top/\sqrt{d})
-  $$
+    $$
+    p_{t,:} = \text{Softmax}(q_{t,:} @ K_{:t,:}^\top/\sqrt{d})
+    $$
 
     - $p_{t,:}$是第$t$个token对应的Softmax结果；
     - $q_{t,:}$是$q$矩阵第$t$个token对应的$G$个query头合轴后的结果；
@@ -39,37 +39,37 @@
 
   3. npu_lightning_indexer会单独训练，对应的loss function为：
 
-  $$
-  Loss{=}\sum_tD_{KL}(p_{t,:}||Softmax(I_{t,:}))
-  $$
+    $$
+    Loss{=}\sum_tD_{KL}(p_{t,:}||Softmax(I_{t,:}))
+    $$
 
-  其中，$p_{t,:}$是target distribution，通过对main attention score 进行所有的head的求和，然后把求和结果沿着上下文方向进行L1正则化得到。$D_{KL}$为KL散度，其表达式为：
+    其中，$p_{t,:}$是target distribution，通过对main attention score 进行所有的head的求和，然后把求和结果沿着上下文方向进行L1正则化得到。$D_{KL}$为KL散度，其表达式为：
 
-  $$
-  D_{KL}(a||b){=}\sum_ia_i\mathrm{log}{\left(\frac{a_i}{b_i}\right)}
-  $$
+    $$
+    D_{KL}(a||b){=}\sum_ia_i\mathrm{log}{\left(\frac{a_i}{b_i}\right)}
+    $$
 
   4. 通过求导可得Loss的梯度表达式：
 
-  $$
-  dI\mathop{{}}\nolimits_{{t,:}}=Softmax \left( I\mathop{{}}\nolimits_{{t,:}} \left) -p\mathop{{}}\nolimits_{{t,:}}\right. \right.
-  $$
+    $$
+    dI\mathop{{}}\nolimits_{{t,:}}=Softmax \left( I\mathop{{}}\nolimits_{{t,:}} \left) -p\mathop{{}}\nolimits_{{t,:}}\right. \right.
+    $$
 
-  利用链式法则可以进行weights，query和key矩阵的梯度计算：
-  
-  $$
-  dW\mathop{{}}\nolimits_{{t,:}}=dI\mathop{{}}\nolimits_{{t,:}}\text{@} \left( ReLU \left( S\mathop{{}}\nolimits_{{t,:}} \left) \left) \mathop{{}}\nolimits^{\top}\right. \right. \right. \right.
-  $$
+    利用链式法则可以进行weights，query和key矩阵的梯度计算：
+    
+    $$
+    dW\mathop{{}}\nolimits_{{t,:}}=dI\mathop{{}}\nolimits_{{t,:}}\text{@} \left( ReLU \left( S\mathop{{}}\nolimits_{{t,:}} \left) \left) \mathop{{}}\nolimits^{\top}\right. \right. \right. \right.
+    $$
 
-  $$
-  d\mathop{{\tilde{q}}}\nolimits_{{t,:}}=dS\mathop{{}}\nolimits_{{t,:}}@\tilde{K}\mathop{{}}\nolimits_{{:t,:}}
-  $$
+    $$
+    d\mathop{{\tilde{q}}}\nolimits_{{t,:}}=dS\mathop{{}}\nolimits_{{t,:}}@\tilde{K}\mathop{{}}\nolimits_{{:t,:}}
+    $$
 
-  $$
-  d\tilde{K}\mathop{{}}\nolimits_{{:t,:}}=\left(dS\mathop{{}}\nolimits_{{t,:}} \left) \mathop{{}}\nolimits^{\top}@\tilde{q}\mathop{{}}\nolimits_{{:t, :}}\right. \right.
-  $$
+    $$
+    d\tilde{K}\mathop{{}}\nolimits_{{:t,:}}=\left(dS\mathop{{}}\nolimits_{{t,:}} \left) \mathop{{}}\nolimits^{\top}@\tilde{q}\mathop{{}}\nolimits_{{:t, :}}\right. \right.
+    $$
 
-  其中，$S$为$\tilde{q}$和$K$矩阵乘的结果。
+    其中，$S$为$\tilde{q}$和$K$矩阵乘的结果。
 
 <!-- - **说明**：
 
@@ -197,7 +197,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
       <tr>
        <td>softmaxMax（aclTensor*）</td>
        <td>输入</td>
-       <td>Device侧的aclTensor，注意力正向计算的中间输出</td>
+       <td>注意力正向计算的中间输出。</td>
        <td><ul><li>B: 支持泛化与query的B保持一致。</li><li>N2: 等于N1。</li><li>S1: 支持泛化且与query的S1保持一致。</li><li>G: N1/N2。</li><li>T1: 多个Batch的S1累加。</li></ul></td>
        <td>FLOAT32</td>
        <td>ND</td>
@@ -207,7 +207,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
       <tr>
        <td>softmaxSum（aclTensor*）</td>
        <td>输入</td>
-       <td>Device侧的aclTensor，注意力正向计算的中间输出</td>
+       <td>注意力正向计算的中间输出。</td>
        <td><ul><li>B: 支持泛化与query的B保持一致。</li><li>N2: 等于N1。</li><li>S1: 支持泛化且与query的S1保持一致。</li><li>G: N1/N2。</li><li>T1: 多个Batch的S1累加。</li></ul></td>
        <td>FLOAT32</td>
        <td>ND</td>
@@ -217,7 +217,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
       <tr>
        <td>softmaxMaxIndex（aclTensor*）</td>
        <td>输入</td>
-       <td>Device侧的aclTensor，注意力正向计算的中间输出</td>
+       <td>注意力正向计算的中间输出。</td>
        <td><ul><li>B: 支持泛化与query的B保持一致。</li><li>Nidx2: 1。</li><li>S1: 支持泛化且与query的S1保持一致。</li><li>T1: 多个Batch的S1累加。</li></ul></td>
        <td>FLOAT32</td>
        <td>ND</td>
@@ -227,7 +227,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
       <tr>
        <td>softmaxSumIndex（aclTensor*）</td>
        <td>输入</td>
-       <td>Device侧的aclTensor，注意力正向计算的中间输出</td>
+       <td>注意力正向计算的中间输出。</td>
        <td><ul><li>B: 支持泛化与query的B保持一致。</li><li>Nidx2: 1。</li><li>S1: 支持泛化且与query的S1保持一致。</li><li>T1: 多个Batch的S1累加。</li></ul></td>
        <td>FLOAT32</td>
        <td>ND</td>
@@ -248,7 +248,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
       <tr>
        <td>keyRope（aclTensor*）</td>
        <td>输入</td>
-       <td>MLA rope部分：Key位置编码的输出</td>
+       <td>MLA rope部分：Key位置编码的输出。</td>
        <td><ul><li>与key的layout维度保持一致。</li><li>B: 支持泛化与query的B保持一致。</li><li>S2: 支持泛化且与key的S1保持一致。</li><li>N2: 等于N1。</li><li>Dr: 64。</li><li>T2: 多个Batch的S2累加。</li></ul></td>
        <td>FLOAT16、BFLOAT16</td>
        <td>ND</td>
@@ -258,7 +258,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
       <tr>
        <td>actualSeqLengthsQuery（aclIntArray*）</td>
        <td>输入</td>
-       <td>每个Batch中，Query的有效token数</td>
+       <td>每个Batch中，Query的有效token数。</td>
        <td><ul><li>值依赖。</li><li>长度与B保持一致。</li><li>累加和与T1保持一致。</li></ul></td>
        <td>INT64</td>
        <td>ND</td>
@@ -268,7 +268,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
       <tr>
        <td>actualSeqLengthsKey（aclIntArray*）</td>
        <td>输入</td>
-       <td>每个Batch中，Key的有效token数</td>
+       <td>每个Batch中，Key的有效token数。</td>
        <td><ul><li>值依赖。</li><li>长度与B保持一致。</li><li>累加和T2保持一致。</li></ul></td>
        <td>INT64</td>
        <td>ND</td>
@@ -278,7 +278,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
       <tr>
        <td>scaleValue（double）</td>
        <td>输入</td>
-       <td>缩放系数</td>
+       <td>缩放系数。</td>
        <td><ul><li>建议值：公式中d开根号的倒数。</li></ul></td>
        <td>-</td>
        <td>-</td>
@@ -288,7 +288,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
       <tr>
        <td>layout（char*）</td>
        <td>输入</td>
-       <td>layout格式</td>
+       <td>layout格式。</td>
        <td>仅支持BSND和TND格式。</td>
        <td>-</td>
        <td>-</td>
@@ -298,7 +298,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
       <tr>
        <td>sparseMode（int64_t）</td>
        <td>输入</td>
-       <td>sparse的模式</td>
+       <td>sparse的模式。</td>
        <td><ul><li>表示sparse的模式。sparse不同模式的详细说明请参见<a href="#约束说明">约束说明</a>。</li><li>仅支持模式3。</li></ul></td>
        <td>-</td>
        <td>-</td>
@@ -318,7 +318,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
       <tr>
        <td>nextTokens（int64_t）</td>
        <td>输入</td>
-       <td>用于稀疏计算，表示Attention需要和后几个token计算关联</td>
+       <td>用于稀疏计算，表示Attention需要和后几个token计算关联。</td>
        <td>和Attention中的nextTokens定义相同，在sparseMode = 0和4的时候生效，默认值2^63-1。</td>
        <td>-</td>
        <td>-</td>
@@ -328,7 +328,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
       <tr>
        <td>dQueryIndex（aclTensor*）</td>
        <td>输出</td>
-       <td>QueryIndex的梯度</td>
+       <td>QueryIndex的梯度。</td>
        <td><ul><li>B: 支持泛化与query的B保持一致。</li><li>S1:支持泛化，且与query的S1保持一致。</li><li>Nidx1: 64、32、16、8。</li><li>D: 128。</li><li>T1: 多个Batch的S1累加。</li></ul></td>
        <td>FLOAT16、BFLOAT16</td>
        <td>ND</td>
@@ -338,7 +338,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
       <tr>
        <td>dKeyIndex（aclTensor*）</td>
        <td>输出</td>
-       <td>KeyIndex的梯度</td>
+       <td>KeyIndex的梯度。</td>
        <td><ul><li>B: 支持泛化与query的B保持一致。</li><li>S2: 支持泛化，且与key的S2保持一致。</li><li>Nidx2: 1。</li><li>D: 128。</li><li>T2: 多个Batch的S2累加。</li></ul></td>
        <td>FLOAT16、BFLOAT16</td>
        <td>ND</td>
@@ -348,7 +348,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
       <tr>
        <td>dWeights（aclTensor*）</td>
        <td>输出</td>
-       <td>Weights的梯度</td>
+       <td>Weights的梯度。</td>
        <td><ul><li>B: 支持泛化。</li><li>S1: 支持泛化，不能为Matmul的M轴。</li><li>Nidx1: 64、32、16、8。</li><li>T1: 多个Batch的S1累加。</li></ul></td>
        <td>FLOAT16、BFLOAT16、FLOAT32</td>
        <td>ND</td>
@@ -358,7 +358,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
       <tr>
        <td>loss（aclTensor*）</td>
        <td>输出</td>
-       <td>损失函数值</td>
+       <td>损失函数值。</td>
        <td>-</td>
        <td>FLOAT32</td>
        <td>ND</td>

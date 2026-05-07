@@ -110,7 +110,7 @@
 
         其中antiquant\_scale_i为weight矩阵pergroup量化参数，scale_i为weight矩阵perchannel量化参数，per\_token\_scale_i为
         pertoken量化参数。
-        
+
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnGroupedMatmulWeightNzGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnGroupedMatmulWeightNz”接口执行计算。
@@ -665,16 +665,20 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
   - 动态量化（mx量化）场景支持的输入类型与shape为：
     - 以下入参为空：offsetOptional、biasOptional、antiquantScaleOptional、antiquantOffsetOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional、activationFeatureOutOptional
     - 不为空的参数支持的数据类型组合要满足下表：
+
         |groupType| x       | weight  | scaleOptional |  perTokenScaleOptional |out     |
         |:-------:|:-------:|:-------:|:-------:| :-------    | :------ |
         |0|FLOAT8_E4M3FN  |FLOAT8_E4M3FN|   FLOAT8_E8M0    | FLOAT8_E8M0    | BFLOAT16/FLOAT16/FLOAT32 |
         |0|FLOAT4_E2M1/FLOAT4_E1M2 |FLOAT4_E2M1/FLOAT4_E1M2 |   FLOAT8_E8M0    | FLOAT8_E8M0    | BFLOAT16/FLOAT16/FLOAT32 |
+
     - scaleOptional要满足下表（其中g为matmul组数即分组数，g\_i为第i个分组（下标从0开始））：
+
         |groupType| 使用场景 | shape限制 |
         |:---------:|:---------:| :------ |
         |0|weight单tensor|每个tensor 4维，当weight转置时，shape为(g, N, ceil(K / 64), 2)；当weight不转置时，shape为(g, ceil(K / 64), N, 2)|
 
     - perTokenScaleOptional要满足下表：
+    
         |groupType| 使用场景 | shape限制 |
         |:---------:|:---------:| :------ |
         |0|x单tensor|每个tensor 3维，shape为（M, ceil(K / 64), 2）|

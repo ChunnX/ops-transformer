@@ -13,11 +13,11 @@
 ## 功能说明
 
 - **接口功能**：推理场景，Multi-Head Latent Attention前处理的计算。主要计算过程分为五路；
-    - 首先对输入$x$乘以$W^{DQ}$进行下采样和RmsNorm后分为两路，第一路乘以$W^{UQ}$和$W^{UK}$经过两次上采样后得到$q^N$；第二路乘以$W^{QR}$后经过旋转位置编码（ROPE）得到$q^R$。
-    - 第三路是输入$x$乘以$W^{DKV}$进行下采样和RmsNorm后传入Cache中得到$k^C$；
-    - 第四路是输入$x$乘以$W^{KR}$后经过旋转位置编码后传入另一个Cache中得到$k^R$；
-    - 第五路是输出$q^N$经过DynamicQuant后得到的量化参数。
-    - 权重参数WeightDq、WeightUqQr和WeightDkvKr需要以NZ格式传入
+  - 首先对输入$x$乘以$W^{DQ}$进行下采样和RmsNorm后分为两路，第一路乘以$W^{UQ}$和$W^{UK}$经过两次上采样后得到$q^N$；第二路乘以$W^{QR}$后经过旋转位置编码（ROPE）得到$q^R$。
+  - 第三路是输入$x$乘以$W^{DKV}$进行下采样和RmsNorm后传入Cache中得到$k^C$；
+  - 第四路是输入$x$乘以$W^{KR}$后经过旋转位置编码后传入另一个Cache中得到$k^R$；
+  - 第五路是输出$q^N$经过DynamicQuant后得到的量化参数。
+  - 权重参数WeightDq、WeightUqQr和WeightDkvKr需要以NZ格式传入
 
 - **计算公式**：
 
@@ -177,7 +177,7 @@ aclnnStatus aclnnMlaPrologV2WeightNz(
   | workspaceSize | uint64_t         | 在Device侧申请的workspace大小，由第一段接口aclnnMlaPrologV2WeightNzGetWorkspaceSize获取。 |
   | executor      | aclOpExecutor\*  | op执行器，包含了算子计算流程。                                       |
   | stream        | aclrtStream      | 指定执行任务的Stream。                                   |
-      
+
 - **返回值**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -206,23 +206,23 @@ aclnnStatus aclnnMlaPrologV2WeightNz(
 
 - weight_dq，weight_uq_qr，weight_dkv_kr在不转置的情况下各个维度的表示：（k，n）。
 - shape约束：
-    - 若tokenX的维度采用BS合轴，即(T, He)
-        - ropeSin和ropeCos的shape为(T, Dr)
-        - cacheIndex的shape为(T)
-        - dequantScaleXOptional的shape为(T, 1)
-        - queryOut的shape为(T, N, Hckv)
-        - queryRopeOut的shape为(T, N, Dr)
-        - int8全量化场景下，dequantScaleQNopeOutOptional的shape为(T, N, 1)，其他场景下为(1)
-    - 若tokenX的维度不采用BS合轴，即(B, S, He)
-        - ropeSin和ropeCos的shape为(B, S, Dr)
-        - cacheIndex的shape为(B, S)
-        - dequantScaleXOptional的shape为(B*S, 1)
-        - queryOut的shape为(B, S, N, Hckv)
-        - queryRopeOut的shape为(B, S, N, Dr)
-        - int8全量化场景下，dequantScaleQNopeOutOptional的shape为(B*S, N, 1)，其他场景下为(1)
-    - B、S、T、Skv值允许一个或多个取0，即Shape与B、S、T、Skv值相关的入参允许传入空Tensor，其余入参不支持传入空Tensor。
-        - 如果B、S、T取值为0，则queryOut、queryRopeOut输出空Tensor，kvCacheRef、krCacheRef不做更新。
-        - 如果Skv取值为0，则queryOut、queryRopeOut、dequantScaleQNopeOutOptional正常计算，kvCacheRef、krCacheRef不做更新，即输出空Tensor。
+  - 若tokenX的维度采用BS合轴，即(T, He)
+    - ropeSin和ropeCos的shape为(T, Dr)
+    - cacheIndex的shape为(T)
+    - dequantScaleXOptional的shape为(T, 1)
+    - queryOut的shape为(T, N, Hckv)
+    - queryRopeOut的shape为(T, N, Dr)
+    - int8全量化场景下，dequantScaleQNopeOutOptional的shape为(T, N, 1)，其他场景下为(1)
+  - 若tokenX的维度不采用BS合轴，即(B, S, He)
+    - ropeSin和ropeCos的shape为(B, S, Dr)
+    - cacheIndex的shape为(B, S)
+    - dequantScaleXOptional的shape为(B*S, 1)
+    - queryOut的shape为(B, S, N, Hckv)
+    - queryRopeOut的shape为(B, S, N, Dr)
+    - int8全量化场景下，dequantScaleQNopeOutOptional的shape为(B*S, N, 1)，其他场景下为(1)
+  - B、S、T、Skv值允许一个或多个取0，即Shape与B、S、T、Skv值相关的入参允许传入空Tensor，其余入参不支持传入空Tensor。
+    - 如果B、S、T取值为0，则queryOut、queryRopeOut输出空Tensor，kvCacheRef、krCacheRef不做更新。
+    - 如果Skv取值为0，则queryOut、queryRopeOut、dequantScaleQNopeOutOptional正常计算，kvCacheRef、krCacheRef不做更新，即输出空Tensor。
 - aclnnMlaPrologV2WeightNz接口支持场景：<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持以下所有场景，<term>Ascend 950PR/Ascend 950DT</term>当前仅支持非量化场景
 
   <table style="table-layout: auto;" border="1">
