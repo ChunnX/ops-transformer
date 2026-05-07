@@ -413,7 +413,6 @@ public:
         uint32_t bN2Cur = bN2Start_;
         uint32_t gS1Cur = gS1OStart_;
         uint32_t s2Cur = s2OStart_;
-        uint32_t i = 0;
         prevBN2Idx = bN2Cur;
         prevGS1Idx = gS1Cur;
 
@@ -421,7 +420,6 @@ public:
         bool shouldExecuteTask = false;
         while (shouldDispatchTask || shouldExecuteTask) {
             // 分发任务
-            AscendC::printf("----------shouldDispatchTask:%d, shouldExecuteTask:%d", shouldDispatchTask, shouldExecuteTask);
             shouldDispatchTask = ShouldDispatchTask(bN2Cur, gS1Cur, s2Cur);
             if (shouldDispatchTask) {
                 TASK_DEAL_MODE taskDealMode = GetTaskDealMode(bN2Cur, gS1Cur, s2Cur);
@@ -447,8 +445,6 @@ public:
                 ExecuteTask(executedTaskCount, taskRunInfo);
                 executedTaskCount++;
             }
-            AscendC::printf("----------i = %d", i);
-            i++;
         }
     }
 
@@ -857,7 +853,6 @@ public:
                 cubeBlock.AllocEventID();
             }
         }
-        PRINTF("sectionNum is %d\n", sectionNum_);
         for (uint32_t sectionIdx = 0; sectionIdx < sectionNum_; sectionIdx++) {
             if (constInfo.aicIdx < constInfo.coreNum) {
                 FlashAttention(sectionIdx);

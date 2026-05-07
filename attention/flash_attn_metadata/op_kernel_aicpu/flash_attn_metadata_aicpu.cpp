@@ -236,7 +236,7 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
     mBaseSize_ = mBaseSize_ * deviceInfo.cvRadio; // CV_Radio
     param.mBaseSize = mBaseSize_;
     param.s2BaseSize = s2BaseSize_;
-    // param.l2Byte = 0U;
+    param.l2Byte = 0U;
     return true;
 }
 
