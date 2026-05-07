@@ -174,10 +174,12 @@ public:
         keyPtr = key;
         valuePtr = value;
 
-        actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint64_t *)actualSeqLengths, constInfo.actualSeqLenSize);
+        constexpr uint32_t qSeqOffset = (Q_MODE == ActualSeqLensMode::ACCUM) ? sizeof(uint64_t) : 0;
+        constexpr uint32_t kvSeqOffset = (KV_MODE == ActualSeqLensMode::ACCUM) ? sizeof(uint64_t) : 0;
+        actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint64_t *)(actualSeqLengths + qSeqOffset), constInfo.actualSeqLenSize);
         qActSeqLensParser.Init(actualSeqLengthsGmQ, constInfo.actualSeqLenSize, constInfo.s1Size);
 
-        actualSeqLengthsGm.SetGlobalBuffer((__gm__ uint64_t *)actualSeqLengthsKv, constInfo.actualSeqLenKVSize);
+        actualSeqLengthsGm.SetGlobalBuffer((__gm__ uint64_t *)(actualSeqLengthsKv + kvSeqOffset), constInfo.actualSeqLenKVSize);
         kvActSeqLensParser.Init(actualSeqLengthsGm, constInfo.actualSeqLenKVSize, constInfo.s2Size);
 
         InitMMResBuf(workspace);

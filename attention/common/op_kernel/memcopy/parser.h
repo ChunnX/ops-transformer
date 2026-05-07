@@ -60,7 +60,7 @@ public:
         if (bIdx == 0) {
             return actualSeqLengthsGm.GetValue(0);
         }
-        return (actualSeqLengthsGm.GetValue(bIdx) - actualSeqLengthsGm.GetValue(bIdx - 1));
+        return (actualSeqLengthsGm.GetValue(bIdx + 1) - actualSeqLengthsGm.GetValue(bIdx));
     }
 
     __aicore__ inline uint64_t GetTSize() const

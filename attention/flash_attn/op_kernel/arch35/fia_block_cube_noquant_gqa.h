@@ -303,11 +303,17 @@ public:
                                          __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
                                          __gm__ uint8_t *actualSharedPrefixLen)
     {
+        static constexpr bool PAGE_ATTENTION = (KvLayoutType == 1);
+    static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<layout>();
+    static constexpr ActualSeqLensMode KV_MODE = GetKvActSeqMode<layout, PAGE_ATTENTION>();
+
+    constexpr uint32_t qSeqOffset = (Q_MODE == ActualSeqLensMode::ACCUM) ? sizeof(uint64_t) : 0;
+        constexpr uint32_t kvSeqOffset = (KV_MODE == ActualSeqLensMode::ACCUM) ? sizeof(uint64_t) : 0;
         if (constInfo.actualSeqLenSize != 0) {
-            actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint64_t *)actualSeqQlenAddr, constInfo.actualSeqLenSize);
+            actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint64_t *)(actualSeqQlenAddr + qSeqOffset), constInfo.actualSeqLenSize);
         }
         if (constInfo.actualSeqLenKVSize != 0) {
-            actualSeqLengthsGm.SetGlobalBuffer((__gm__ uint64_t *)actualSeqKvlenAddr, constInfo.actualSeqLenKVSize);
+            actualSeqLengthsGm.SetGlobalBuffer((__gm__ uint64_t *)(actualSeqKvlenAddr + kvSeqOffset), constInfo.actualSeqLenKVSize);
         }
         if constexpr (isPa) {
             blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);

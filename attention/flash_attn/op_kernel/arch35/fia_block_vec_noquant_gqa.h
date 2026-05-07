@@ -201,7 +201,8 @@ public:
             softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
         }
 
-        actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint64_t *)actualSeqQlenAddr, constInfo.actualSeqLenSize);
+        constexpr uint32_t qSeqOffset = (Q_MODE == ActualSeqLensMode::ACCUM) ? sizeof(uint64_t) : 0;
+        actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint64_t *)(actualSeqQlenAddr + qSeqOffset), constInfo.actualSeqLenSize);
         qActSeqLensParser.Init(actualSeqLengthsGmQ, constInfo.actualSeqLenSize, constInfo.s1Size);
 
         if constexpr (hasPse) {

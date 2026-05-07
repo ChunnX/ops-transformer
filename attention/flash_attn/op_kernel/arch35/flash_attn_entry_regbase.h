@@ -160,18 +160,7 @@ constexpr uint8_t implMode = 0;  // AA_HIGH_PRECISION
 //     }
 // }
 
-if (actualSeqLengthsQ != nullptr) {
-    auto *sq64 = (__gm__ uint64_t *)actualSeqLengthsQ;
-    if (sq64[0] == 0) {
-        actualSeqLengthsQ += sizeof(uint64_t);
-    }
-}
-if (actualSeqLengthsKv != nullptr) {
-    auto *sk64 = (__gm__ uint64_t *)actualSeqLengthsKv;
-    if (sk64[0] == 0) {
-        actualSeqLengthsKv += sizeof(uint64_t);
-    }
-}
+
 #if (ORIG_DTYPE_Q == DT_BF16)
 run_fia_noquant_gqa_kernel<bfloat16_t, bfloat16_t, inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType,
                             isFd, emptyTensor, PFAMask, pFAMatMulType, enableKVPrefix, enableS1OutSplit>(
