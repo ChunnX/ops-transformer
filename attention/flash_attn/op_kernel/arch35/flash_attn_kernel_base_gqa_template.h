@@ -164,9 +164,10 @@ public:
         sectionNum_ = ((__gm__ uint32_t *)fiaMetaData)[0];
 
         faMetaDataGm.SetGlobalBuffer((__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET),
-            FA_AIC_CORE_NUM * 16U);
+            FA_AIC_CORE_NUM * 16U * sectionNum_);
         fdMetaDataGm.SetGlobalBuffer((__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET +
-            FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM * sectionNum_ * sizeof(uint32_t)), FA_AIV_CORE_NUM * 16U);
+            FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM * sectionNum_ * sizeof(uint32_t)),
+            FA_AIV_CORE_NUM * 16U * sectionNum_);
 
         InitConstInfo(queryPaddingSize, kvPaddingSize, actualSharedPrefixLen);
         
@@ -408,7 +409,15 @@ public:
         }
 
         GetFASectionInfo(sectionIdx);
-        RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE];
+        RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE] = {};
+
+        // Reset pipeline state for each section to avoid cross-section deadlock
+        createdTaskCount = 0;
+        executedTaskCount = 0;
+        mloop = 0;
+        accGS1Loops = 0;
+        headS2Split = false;
+        tailS2Split = false;
 
         uint32_t bN2Cur = bN2Start_;
         uint32_t gS1Cur = gS1OStart_;
