@@ -73,6 +73,15 @@ static inline bool IsAscend950(void)
     return op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
 }
 
+// 临时环境变量判断：是否使用 AICPU 通信模式
+// 有设置时执行 AICPU，无设置时执行 CCU
+// 待通信引擎参数接口适配完成后移除
+static inline bool IsUseAicpuCommMode()
+{
+    const char* env = std::getenv("ENV_MC2_COMM_MODE_AICPU");
+    return (env != nullptr && (env[0] == '1' || env[0] == 'y' || env[0] == 'Y'));
+}
+
 static void SetNnopbaseHcclServerTypeByArch(aclOpExecutor *executor)
 {
     if ((executor == nullptr) || (NnopbaseSetHcclServerType == nullptr)) {
@@ -82,8 +91,15 @@ static void SetNnopbaseHcclServerTypeByArch(aclOpExecutor *executor)
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
         NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
     } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        OP_LOGD("[CCU_TO_AICPU] Set HcclServerType to AICPU for DAV_3510 architecture.");
-        NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+        // 临时环境变量控制：ENV_MC2_COMM_MODE_AICPU 有设置时使用 AICPU，无设置时使用 CCU
+        NnopbaseHcclServerType serverType = IsUseAicpuCommMode()
+            ? NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU
+            : NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU;
+        OP_LOGD("[COMM_MODE] Set HcclServerType to %d (AICPU=%d, CCU=%d) for DAV_3510 architecture.",
+                static_cast<uint32_t>(serverType),
+                static_cast<uint32_t>(NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU),
+                static_cast<uint32_t>(NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU));
+        NnopbaseSetHcclServerType(executor, serverType);
     }
 }
 

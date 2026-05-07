@@ -48,6 +48,16 @@ constexpr size_t RES_LEN = 64;
 constexpr size_t MAX_MSG_NUM = 16;
 constexpr uint8_t MC2_DEBUG_ONLY_AICPU = 4;  // 只通信不计算
 constexpr char HCCL_DETERMINISTIC[] = "HCCL_DETERMINISTIC";
+constexpr char ENV_MC2_COMM_MODE_AICPU[] = "ENV_MC2_COMM_MODE_AICPU";
+
+// 临时环境变量判断：是否使用 AICPU 通信模式
+// 有设置时执行 AICPU，无设置时执行 CCU
+// 待通信引擎参数接口适配完成后移除
+inline bool IsUseAicpuCommMode() {
+    const char* env = std::getenv(ENV_MC2_COMM_MODE_AICPU);
+    return (env != nullptr && (env[0] == '1' || env[0] == 'y' || env[0] == 'Y'));
+}
+
 /**
 当前通信API未提供枚举，后续会提供
 0：默认值 1：HOST_TS（A2/3支持 A5不支持）2：AICPU_TS（A2/3支持 A5不支持）

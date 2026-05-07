@@ -21,55 +21,42 @@
 | `op_kernel/arch35/quant_bmm_reduce_scatter_fp8_hif8.h` | 使用 V2 接口 `InitV2/SetCcTilingV2`，删除参数 |
 | `op_kernel/arch35/quant_bmm_a2a_vec_reduce_fp8_hif8.h` | 使用 V2 接口 `InitV2/SetCcTilingV2`，删除参数 |
 | `op_kernel/matmul_reduce_scatter_v2_apt.cpp` | 删除宏中的 `mc2InitTiling/mc2CcTiling` 参数 |
+| `mc2/common/op_host/op_tiling/mc2_tiling_utils.h` | 添加 `AICPU_ENGINE=2` 常量 + `IsUseAicpuCommMode()` 函数 |
 
-## 待解决问题
+## 环境变量控制说明
 
-### 1. 环境变量动态切换通信引擎
+**环境变量**：`ENV_MC2_COMM_MODE_AICPU`
 
-**需求**：通过环境变量 `ENV_MC2_COMM_MODE_AICPU` 控制 CCU/AICPU 模式切换。
+**控制逻辑**：
+- 有设置时（值为 `1`/`y`/`Y`）：使用 AICPU 通信模式
+- 无设置时：使用 CCU 通信模式
 
-**问题**：Kernel 层 HCCL 模板参数是编译时确定的，无法通过环境变量动态切换：
+**影响范围**：
 
-```cpp
-// 模板参数在编译时确定
-Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU> hccl_;  // AICPU 模式
-Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;    // CCU 模式
+| 层级 | 文件 | 控制方式 |
+|------|------|---------|
+| Tiling | `matmul_reduce_scatter_v2_tiling.cpp` | `SetCommEngine(AICPU_ENGINE/CCU_ENGINE)` |
+| Tiling | `quant_bmm_reduce_scatter_tiling.cpp` | `SetCommEngine(AICPU_ENGINE/CCU_ENGINE)` |
+| ACLNN | `aclnn_matmul_reduce_scatter_v2.cpp` | `SetHcclServerType(AICPU/CCU)` |
+| Kernel | `*.h` headers | 模板参数固定为 AICPU（不受环境变量影响） |
+
+**使用方法**：
+```bash
+# 使用 AICPU 模式
+export ENV_MC2_COMM_MODE_AICPU=1
+python test_script.py
+
+# 使用 CCU 模式（默认）
+unset ENV_MC2_COMM_MODE_AICPU
+python test_script.py
 ```
 
-**可选方案**：
+**注意事项**：
+- Kernel 层 HCCL 模板参数为编译时确定，固定为 `HCCL_SERVER_TYPE_AICPU`
+- 环境变量只影响 Tiling 和 ACLNN 层的运行时配置
+- 待通信引擎参数接口适配完成后，移除环境变量控制
 
-| 方案 | 说明 | 优点 | 缺点 |
-|------|------|------|------|
-| A. 编译两套 Kernel | 在 apt.cpp 中根据 tiling key 选择不同 kernel | 真正支持动态切换 | 代码量增加，需要两套模板 |
-| B. 只保持 AICPU | Kernel 保持 AICPU 模板，环境变量只影响 Tiling/ACLNN 层 | 改动最小 | 实际通信引擎由模板参数决定，环境变量不完全生效 |
-| C. 等接口适配完成 | 保持当前状态，等通信引擎参数接口适配后再修改 | 最稳妥 | 无法立即测试 CCU 模式 |
-
-**建议**：当前采用方案 B（只保持 AICPU），待通信引擎参数接口适配完成后统一修改。
-
-**环境变量影响范围（方案 B）**：
-
-```cpp
-// Tiling 层 - 可以动态切换
-uint8_t commEngine = mc2tiling::IsUseAicpuCommMode() ? mc2tiling::AICPU_ENGINE : mc2tiling::A5_CCU_ENGINE;
-mc2CcTilingConfig.SetCommEngine(commEngine);
-
-// ACLNN 层 - 可以动态切换  
-if (IsUseAicpuCommMode()) {
-    NnopbaseSetHcclServerType(executor, NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-} else {
-    NnopbaseSetHcclServerType(executor, NNOPBASE_HCCL_SERVER_TYPE_CCU);
-}
-
-// Kernel 层 - 无法动态切换（模板参数）
-Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU> hccl_;  // 固定 AICPU
-```
-
-## 下一步工作
-
-1. [ ] 确认环境变量方案选择（方案 A/B/C）
-2. [ ] 添加环境变量判断逻辑到 Tiling 和 ACLNN 层
-3. [ ] 等通信引擎参数接口适配完成后，移除环境变量控制
-4. [ ] 跑通功能验证测试
+## 已完成修改
 
 ## 参考
 
