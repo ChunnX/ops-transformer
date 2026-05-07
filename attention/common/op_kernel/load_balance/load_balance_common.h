@@ -10,7 +10,7 @@
 
 /*!
  * \file stream_k.h
- * \brief 
+ * \brief
  */
 
 #ifndef LOAD_BALANCE_COMMON_H
@@ -22,10 +22,6 @@
 #include <unordered_map>
 
 namespace load_balance {
-
-/******************************** ERROR CODE ********************************/
-#define LOAD_BALANCE_SUCCESS                0
-#define LOAD_BALANCE_ERROR_INVALID_INPUT    1
 
 /******************************** CLASS DEF  ********************************/
 
@@ -46,17 +42,16 @@ struct DeviceInfo {
     uint32_t aicCoreMinNum { 0U };      // At least amount of aic core would be turned on, this is not final used number
     uint32_t aivCoreMaxNum { 0U };      // At most amount of aiv core would be turned on, this is not final used number
     uint32_t aivCoreMinNum { 0U };      // At least amount of aiv core would be turned on, this is not final used number
-    uint32_t cvRadio;
     SocVersion version { SocVersion::BUTT };
 };
 
 struct GeneralBalanceParam {
     uint32_t mBaseSize { 1U };              // At least one
     uint32_t s2BaseSize { 1U };             // At least one
-    int64_t faToleranceRatio { 2U };        // The larger the value, the smaller the tolerance is
-    bool fdOn { true };                     // Turn on to activate fd
-    int64_t fdTolerance { 0U };             // no fd + tolerance < fd, then choose no fd
-    CostFunc costFunc { nullptr };          // Customize cost func. Set to nullptr to use default cost func 
+    int64_t faToleranceRatio { 2U };        // Larger the value, the smaller the tolerance is
+    bool fdOn { true };                     // Turn on to activate FD
+    int64_t fdTolerance { 0U };             // if no fd + tolerance <= fd, then choose no fd
+    CostFunc costFunc { nullptr };          // Customize cost func. Set nullptr to use default cost func
 };
 
 enum class SparseMode : uint8_t {
@@ -184,9 +179,7 @@ static Layout ConvertToLayout(const std::string &layoutStr)
         { "NBSD",  Layout::NBSD },
         { "TND",   Layout::TND },
         { "NTD",   Layout::NTD },
-        { "PA_NZ", Layout::PA_NZ },
-        { "PA_BBND", Layout::PA_BBND },
-        { "PA_BNBD", Layout::PA_BNBD }
+        { "PA_NZ", Layout::PA_NZ }
     };
     if (layoutTable.find(layoutStr) != layoutTable.end()) {
         return layoutTable[layoutStr];

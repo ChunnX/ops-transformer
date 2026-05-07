@@ -32,8 +32,16 @@ public:
 inline uint32_t SectionStreamK::Compute(const DeviceInfo &deviceInfo, const IBaseInfo &baseInfo,
     const SectionStreamKParam &param, SectionStreamKResult &result)
 {
-    static SectionStreamKImpl impl {};
-    impl.SetParam(param);
+    SectionStreamKImpl impl {};
+    auto ret = impl.SetParam(param);
+    if (ret != SECTION_STREAM_K_SUCCESS) {
+        return ret;
+    }
+
+    if (deviceInfo.aivCoreMaxNum < deviceInfo.aicCoreMaxNum) {
+        return SECTION_STREAM_K_ERROR_AIV_LESS_THAN_AIC;
+    }
+
     auto implResult = impl.Compute(deviceInfo, baseInfo);
 
     result.sectionNum = implResult.size();
@@ -58,7 +66,7 @@ inline uint32_t SectionStreamK::Compute(const DeviceInfo &deviceInfo, const IBas
         result.sectionFdResult.emplace_back(tmpFd);
     }
 
-    return LOAD_BALANCE_SUCCESS;
+    return SECTION_STREAM_K_SUCCESS;
 }
 
 }

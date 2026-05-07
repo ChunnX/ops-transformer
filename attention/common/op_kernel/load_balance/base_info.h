@@ -10,7 +10,7 @@
 
 /*!
  * \file base_info.h
- * \brief 
+ * \brief
  */
 
 #ifndef BASE_INFO_H
@@ -32,23 +32,23 @@ public:
     IBaseInfo() = default;
     virtual ~IBaseInfo() = default;
 
-    virtual uint32_t GetBatchSize() const = 0;
-    virtual uint32_t GetGroupSize() const = 0;
-    virtual uint32_t GetQueryHeadNum() const = 0;
-    virtual uint32_t GetKvHeadNum() const = 0;
-    virtual uint32_t GetHeadDim() const = 0;
-    virtual uint32_t GetQuerySeqSize() const = 0;
-    virtual uint32_t GetQuerySeqSize(uint32_t batchIdx) const = 0;
-    virtual uint32_t GetKvSeqSize() const = 0;
-    virtual uint32_t GetKvSeqSize(uint32_t batchIdx) const = 0;
-    virtual SparseMode GetSparseMode() const = 0;
-    virtual int64_t GetPreTokenLeftUp(uint32_t s1Size, uint32_t s2Size) const = 0;
-    virtual int64_t GetNextTokenLeftUp(uint32_t s1Size, uint32_t s2Size) const = 0;
-    virtual bool GetIsS1G() const = 0;
-    virtual Layout GetQueryLayout() const = 0;
-    virtual Layout GetKvLayout() const = 0;
-    virtual DataType GetQueryDataType() const = 0;
-    virtual DataType GetKvDataType() const = 0;
+    [[nodiscard]] virtual uint32_t GetBatchSize() const = 0;
+    [[nodiscard]] virtual uint32_t GetGroupSize() const = 0;
+    [[nodiscard]] virtual uint32_t GetQueryHeadNum() const = 0;
+    [[nodiscard]] virtual uint32_t GetKvHeadNum() const = 0;
+    [[nodiscard]] virtual uint32_t GetHeadDim() const = 0;
+    [[nodiscard]] virtual uint32_t GetQuerySeqSize() const = 0;
+    [[nodiscard]] virtual uint32_t GetQuerySeqSize(uint32_t batchIdx) const = 0;
+    [[nodiscard]] virtual uint32_t GetKvSeqSize() const = 0;
+    [[nodiscard]] virtual uint32_t GetKvSeqSize(uint32_t batchIdx) const = 0;
+    [[nodiscard]] virtual SparseMode GetSparseMode() const = 0;
+    [[nodiscard]] virtual int64_t GetPreTokenLeftUp(uint32_t querySeq, uint32_t kvSeq) const = 0;
+    [[nodiscard]] virtual int64_t GetNextTokenLeftUp(uint32_t querySeq, uint32_t kvSeq) const = 0;
+    [[nodiscard]] virtual bool GetIsS1G() const = 0;
+    [[nodiscard]] virtual Layout GetQueryLayout() const = 0;
+    [[nodiscard]] virtual Layout GetKvLayout() const = 0;
+    [[nodiscard]] virtual DataType GetQueryDataType() const = 0;
+    [[nodiscard]] virtual DataType GetKvDataType() const = 0;
 };
 
 /**
@@ -59,40 +59,37 @@ public:
     BaseInfo() = default;
     ~BaseInfo() override = default;
 
-    uint32_t GetBatchSize() const override
+    [[nodiscard]] uint32_t GetBatchSize() const override
     {
         return batchSize;
     }
 
-    uint32_t GetGroupSize() const override
+    [[nodiscard]] uint32_t GetGroupSize() const override
     {
-        if (kvHeadNum == 0) {                                                                                                                                                        
-            return 1;                                                                                                                                                                
-        }
-        return queryHeadNum / kvHeadNum;
+        return SafeFloorDiv(queryHeadNum, kvHeadNum, 1U);
     };
 
-    uint32_t GetQueryHeadNum() const override
+    [[nodiscard]] uint32_t GetQueryHeadNum() const override
     {
         return queryHeadNum;
     }
 
-    uint32_t GetKvHeadNum() const override
+    [[nodiscard]] uint32_t GetKvHeadNum() const override
     {
         return kvHeadNum;
     }
 
-    uint32_t GetHeadDim() const override
+    [[nodiscard]] uint32_t GetHeadDim() const override
     {
         return headDim;
     }
 
-    uint32_t GetQuerySeqSize() const override
+    [[nodiscard]] uint32_t GetQuerySeqSize() const override
     {
         return querySeqSize;
     }
 
-    uint32_t GetQuerySeqSize(uint32_t batchIdx) const override
+    [[nodiscard]] uint32_t GetQuerySeqSize(uint32_t batchIdx) const override
     {
         if (actualQuerySeqSize.empty()) {
             return querySeqSize;
@@ -110,12 +107,12 @@ public:
                static_cast<uint32_t>(actualQuerySeqSize[batchIdx] - actualQuerySeqSize[batchIdx - 1U]);
     }
 
-    uint32_t GetKvSeqSize() const override
+    [[nodiscard]] uint32_t GetKvSeqSize() const override
     {
         return kvSeqSize;
     }
 
-    uint32_t GetKvSeqSize(uint32_t batchIdx) const override
+    [[nodiscard]] uint32_t GetKvSeqSize(uint32_t batchIdx) const override
     {
         if (actualKvSeqSize.empty()) {
             return kvSeqSize;
@@ -133,7 +130,7 @@ public:
                static_cast<uint32_t>(actualKvSeqSize[batchIdx] - actualKvSeqSize[batchIdx - 1U]);
     }
 
-    SparseMode GetSparseMode() const override
+    [[nodiscard]] SparseMode GetSparseMode() const override
     {
         if (!attenMaskFlag) {
             return SparseMode::BUTT;
@@ -145,18 +142,18 @@ public:
         return static_cast<SparseMode>(sparseMode);
     }
 
-    int64_t GetPreTokenLeftUp(uint32_t s1Size, uint32_t s2Size) const override
+    [[nodiscard]] int64_t GetPreTokenLeftUp(uint32_t querySeq, uint32_t kvSeq) const override
     {
         auto mode = GetSparseMode();
         switch (mode) {
             case SparseMode::BAND:
-                return static_cast<int64_t>(s1Size) - static_cast<int64_t>(s2Size) + preToken;
+                return static_cast<int64_t>(querySeq) - static_cast<int64_t>(kvSeq) + preToken;
             default:
                 return preToken;
         }
     }
 
-    int64_t GetNextTokenLeftUp(uint32_t s1Size, uint32_t s2Size) const override
+    [[nodiscard]] int64_t GetNextTokenLeftUp(uint32_t querySeq, uint32_t kvSeq) const override
     {
         auto mode = GetSparseMode();
         switch (mode) {
@@ -165,38 +162,39 @@ public:
             case SparseMode::LEFT_UP_CAUSAL:
                 return nextToken;
             case SparseMode::RIGHT_DOWN_CAUSAL:
-                return static_cast<int64_t>(s2Size) - static_cast<int64_t>(s1Size);
+                return static_cast<int64_t>(querySeq) - static_cast<int64_t>(kvSeq);
             case SparseMode::BAND:
-                return static_cast<int64_t>(s2Size) - static_cast<int64_t>(s1Size) + nextToken;
+                return static_cast<int64_t>(querySeq) - static_cast<int64_t>(kvSeq) + nextToken;
             default:
                 return nextToken;
         }
     }
 
-    bool GetIsS1G() const override
+    [[nodiscard]] bool GetIsS1G() const override
     {
         return (layoutQuery == Layout::TND || layoutQuery == Layout::BSH || layoutQuery == Layout::BSND);
     }
 
-    Layout GetQueryLayout() const override
+    [[nodiscard]] Layout GetQueryLayout() const override
     {
         return layoutQuery;
     }
 
-    Layout GetKvLayout() const override
+    [[nodiscard]] Layout GetKvLayout() const override
     {
         return layoutKv;
     }
 
-    DataType GetQueryDataType() const override
+    [[nodiscard]] DataType GetQueryDataType() const override
     {
         return queryType;
     }
 
-    DataType GetKvDataType() const override
+    [[nodiscard]] DataType GetKvDataType() const override
     {
         return kvType;
     }
+
 public:
     uint32_t batchSize { 0U };
     uint32_t queryHeadNum { 0U };
