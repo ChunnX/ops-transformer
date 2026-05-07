@@ -36,7 +36,7 @@
 
 ## 函数原型
 
-每个算子分为两段式接口，必须先调用 `aclnnMoeDistributeCombineGetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnMoeDistributeCombine`接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用 `aclnnMoeDistributeCombineGetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnMoeDistributeCombine`接口执行计算。
 
 ```cpp
 aclnnStatus aclnnMoeDistributeCombineGetWorkspaceSize(
@@ -602,6 +602,7 @@ aclnnStatus aclnnMoeDistributeCombine(
         ```
     
     - 机器数量设置：
+
         两机16卡场景中，需将参数MACHINE_NUM设置为2，即
 
         ```Cpp
@@ -611,12 +612,15 @@ aclnnStatus aclnnMoeDistributeCombine(
         单机16卡场景则无需修改。
 
     - 算子编译执行：
+
         在所有机器上编译算子，算子编译命令如下，moe_distribute_dispatch和moe_distribute_combine算子都需要编译，这两个算子需要成对执行：
+
         ```bash
         bash build.sh --pkg --soc=ascend910b --ops=moe_distribute_dispatch,moe_distribute_combine
         ```
 
         在所有机器上执行算子示例（两机场景中，需要同时在终端执行算子），执行命令如下：
+
         ```bash
         bash build.sh --run_example --ops=moe_distribute_combine eager cust
 
@@ -629,10 +633,11 @@ aclnnStatus aclnnMoeDistributeCombine(
         ## ENV_DEV_NUM说明：根据当前机器的卡数设置该变量，以单机16卡为例，将单台机器设置为16
         export ENV_DEV_NUM=16
         ```
-       
+
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
+
     ```Cpp
     #include <thread>
     #include <iostream>

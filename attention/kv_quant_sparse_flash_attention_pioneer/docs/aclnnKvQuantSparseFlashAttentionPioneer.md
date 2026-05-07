@@ -86,6 +86,7 @@ aclnnStatus aclnnKvQuantSparseFlashAttentionPioneer(
     aclOpExecutor *executor,
     aclrtStream stream)
 ```
+
 ## aclnnKvQuantSparseFlashAttentionPioneerGetWorkspaceSize
 
 - **参数说明：**

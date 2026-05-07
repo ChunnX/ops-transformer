@@ -165,7 +165,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
     <td>epWorldSize（int64_t）</td>
     <td>输入</td>
     <td>ep通信域size。</td>
-    <td><ul><li><term>Atlas A3系列产品</term>支持8、16、32、64、128。</li><li><term>Ascend 950PR/Ascend 950DT</term>支持2、4、8、16、32、64。</li></ul></td>
+    <td><ul><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持8、16、32、64、128。</li><li><term>Ascend 950PR/Ascend 950DT</term>支持2、4、8、16、32、64。</li></ul></td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>

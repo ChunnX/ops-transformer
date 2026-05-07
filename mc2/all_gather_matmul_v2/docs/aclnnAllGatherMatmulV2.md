@@ -31,23 +31,23 @@
 
     - 情形1：如果x1和x2数据类型为FLOAT16/BFLOAT16时，入参x1进行AllGather后，对x1、x2进行MatMul计算。
 
-    $$
-    output=AllGather(x1)@x2 + bias
-    $$
+        $$
+        output=AllGather(x1)@x2 + bias
+        $$
 
-    $$
-    gatherOut=AllGather(x1)
-    $$
+        $$
+        gatherOut=AllGather(x1)
+        $$
 
     - 情形2：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的pertensor场景，或者x1和x2数据类型为INT8/INT4的perchannel、pertoken场景，且不输出amaxOut，入参x1进行AllGather后，对x1、x2进行MatMul计算，然后进行dequant操作。
 
-    $$
-    output=(x1Scale*x2Scale)*(AllGather(x1)@x2 + bias)
-    $$
+        $$
+        output=(x1Scale*x2Scale)*(AllGather(x1)@x2 + bias)
+        $$
 
-    $$
-    gatherOut=AllGather(x1)
-    $$
+        $$
+        gatherOut=AllGather(x1)
+        $$
 
     -   情形3：如果x1和x2数据类型为FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的perblock场景，且不输出amaxOut, 当x1为(m, k)、x2为(k, n)时， x1Scale为(ceilDiv(m, 128)， ceilDiv(k, 128))、x2Scale为(ceilDiv(k, 128), ceilDiv(n, 128))时，入参x1和x1Scale进行AllGather后，对x1、x2进行perblock量化MatMul计算，然后进行dequant操作。
 
@@ -71,7 +71,7 @@
 
 ## 函数原型
 
-每个算子分为两段式接口，必须先调用`aclnnAllGatherMatmulV2GetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnAllGatherMatmulV2`接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用`aclnnAllGatherMatmulV2GetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnAllGatherMatmulV2`接口执行计算。
 
 ```cpp
 aclnnStatus aclnnAllGatherMatmulV2GetWorkspaceSize(
@@ -438,11 +438,12 @@ aclnnStatus aclnnAllGatherMatmulV2(
 
 ## 调用示例
 
-说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy, 请参考[ <<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
+说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy, 请参考[<<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>
+
     ```c++
     #include <iostream>
     #include <vector>

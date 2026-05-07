@@ -68,6 +68,7 @@ aclnnStatus aclnnMhcSinkhornBackward(
 ## aclnnMhcSinkhornBackwardGetWorkspaceSize
 
 - **参数说明：**
+
   | 参数名 | 输入/输出 | 描述 | 使用说明 | 数据类型 | 数据格式 | 维度(shape) | 非连续Tensor |
   |:--- |:--- |:--- |:--- |:--- |:--- |:--- |:--- |
   | gradOutput | 输入 | 表示Sinkhorn变换输出的初始梯度 | 不支持空Tensor | FLOAT32 | ND | (B,S,n,n)、(T,n,n) | √ |
