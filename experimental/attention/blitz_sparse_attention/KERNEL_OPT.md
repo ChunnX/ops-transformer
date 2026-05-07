@@ -3054,16 +3054,336 @@ tuning entirely going forward.
 
 ### How to continue in a new session
 
-> Continue BSA optimisation on branch `blitz-sparse-attention-128x128`.
-> Read `KERNEL_OPT.md` Session 17 — `baseN` 128→256 was a clean negative;
-> reverted. Diagnosis: cube at sparsity 0 is HBM-bandwidth bound, not
-> issue-overhead bound. Next lever: Tier 3 (sabi padding trim). At
-> sparsity 0–10% the inner-loop sub-block scan reads ~930 sabi entries per
-> row; rows are padded to 929 entries regardless of sparsity. Trim per-row
-> pad to actual_kept + small_headroom; strictly orthogonal to cube path.
-> Constraints: B=1, ASCEND_RT_VISIBLE_DEVICES=5. Golden rules in CLAUDE.md:
-> never narrow whole-cache DCCI, never commit/reset/push without explicit
-> user authorisation. msprof CLI accepts `--aic-metrics=PipeUtilization`
-> single-value only on this CANN version (8.5.0-beta.1).
+Superseded by the Plan below. Sessions 18+ pursue true sub-tile gather, not
+Tier 3 / sabi padding trim. The padding-trim lever was retired after re-reading
+the kernel scan — `FirstGreaterEqual` and the inner sub-block walker both
+already early-exit on `kPadU16`, so trimming the padded row length yields
+nothing.
+
+---
+
+## Plan — Sessions 18–22: True sub-tile gather (recover 128×512 perf scaling)
+
+### Why this is now the only remaining cube lever
+
+The user's `README.md:51-72` snapshot of the **128×512 main branch** versus
+this branch (128×128) at the same configuration (B=1, H=3, S=118 806, D=128
+BF16, BSA `blocks_optimized_batched`) makes the gap unambiguous:
+
+```
+sparsity  128×512 main (us)   128×128 this branch (us)   ratio
+0.00      169 537             176 811                     1.04
+0.50       84 900             149 205                     1.76
+0.70       53 176             113 063                     2.13
+0.90       21 708              33 645                     1.55
+```
+
+The 128×512 branch shows textbook linear scaling: every skipped sabi entry
+is a full cube tile literally not executed (no MTE2, no MAC, no vec). The
+128×128 branch shows almost-flat scaling because the cube tile is still
+512 wide and the kernel masks inactive sub-blocks **after** the matmul via
+`Adds(-10000)` in `ApplySubBlockMaskCorrection`. A cube tile is only skipped
+when **all 4** of its sub-blocks are inactive — probability `p⁴` at
+random-uniform sparsity `p`, vs `p` for 128×512.
+
+The model `(1−p⁴)/(1−p)` predicts the ratio:
+
+| sparsity | predicted (1−p⁴)/(1−p) | actual (this branch / main) |
+|---|---|---|
+| 0.5 | 1.88 | 1.76 |
+| 0.7 | 2.50 | 2.13 |
+| 0.9 | 3.40 | 1.55 (frame-dampened) |
+
+The migration to 128×128 sabi delivered the indexing granularity but the
+kernel never honoured it on the cube side. This is the single biggest miss
+in the branch's history. Session 17 ruled out cube-side issue-count levers
+(HBM-bandwidth bound). The only remaining lever is **cutting HBM bytes
+proportional to sparsity**, which means actually skipping inactive sub-blocks
+at the cube level — true gather.
+
+### Target structural change
+
+Replace today's "iterate cube tiles, mask inactive sub-blocks" with
+"walk kept sabi entries 4 at a time; each batch becomes one cube tile."
+Cube tile width becomes `min(4, remaining) × 128`. For 103 kept entries:
+25 batches of 4 + 1 tail batch of 3 → 26 packed cube tiles instead of
+~233 today at sparsity 0 (or ~219 at p=0.5 with frame).
+
+`ApplySubBlockMaskCorrection` and `sabiSubBlockMask` disappear entirely —
+every score-buffer column is a kept K position by construction.
+
+### Implementation choice for the gather
+
+The matmul library issues one contiguous MTE2 per `IterateAll`. Three
+candidate paths to feed it 4 non-contiguous K-tiles per packed cube tile:
+
+| Option | Per-batch cost | Pros | Cons |
+|---|---|---|---|
+| **A. 4 narrow matmuls** (each `IterateAll` is `N=128`) writing to offsets `0, 128, 256, 384` of `bmm1ResGmDb[gmPingpong]` | 4× setup overhead; 4 separate MTE2 streams | Reuses matmul library exactly; result-buffer layout unchanged; no double HBM | Per-call CV-channel sync |
+| **B. Pre-gather to staging GM** then 1 matmul of `N=batch×128` | 4 DataCopy(HBM→GM) + 1 matmul; **doubles** K HBM bytes | One matmul per packed tile | Doubles HBM traffic — defeats the goal |
+| **C. Custom L1-resident gather + custom matmul** | 4 DataCopy(HBM→L1) + custom MAC | Optimal HBM bytes | Big rewrite, abandons library |
+
+**Pick A.** Only path that does not double HBM and does not rewrite the
+matmul library. 4× setup overhead is sub-µs per packed tile (CV-channel
+sync ~100 ns each); MAC + MTE2 dominate.
+
+### File-by-file changes
+
+#### 1. `op_kernel/blitz_sparse_attention_s1s2_bns1_x910.h` — `SInnerLoopFunc` (line ~2402–2567)
+
+Replace the sparse-path while-loop with a 4-batch packer:
+
+```cpp
+constexpr int32_t kPackSize = 4;          // sabiPerTile, one cube tile worth
+int32_t firstSabiIdx = FirstGreaterEqual(rowSabi, ...);
+if (firstSabiIdx < 0) return;
+
+int32_t chunkIdx = firstSabiIdx;
+int32_t computedBlocks = 0;
+while (chunkIdx < (int32_t)rowSabi.len) {
+    uint16_t batch[kPackSize];
+    int32_t batchCount = 0;
+    while (batchCount < kPackSize && chunkIdx < (int32_t)rowSabi.len) {
+        uint16_t s = rowSabi.Get(chunkIdx);
+        if (s == kPadU16) break;
+        if (s / kPackSize >= endIndex) { chunkIdx = rowSabi.len; break; }
+        batch[batchCount++] = s;
+        ++chunkIdx;
+    }
+    if (batchCount == 0) break;
+
+    for (int i = 0; i < batchCount; ++i) params->packedSabi[i] = batch[i];
+    params->packedCount        = batchCount;
+    params->mm1SingleCoreN     = batchCount * 128;
+    params->isFirstComputedIter= (computedBlocks == 0);
+    // peek-ahead one entry to decide isLastComputedIter, same trick as today
+    EnqueueParam();
+    ++computedBlocks;
+}
+```
+
+~165 lines → ~25. The `sabiSubBlockMask` machinery is gone.
+
+#### 2. `PFAComputeParam` struct (in `..._x910_base.h`)
+
+Add `uint16_t packedSabi[4]` and `uint8_t packedCount`. Remove
+`sabiSubBlockMask`. Update `CopyParamsAttrOutOfInnerLoop` to copy these.
+
+#### 3. `Bmm1ComputeIterate` (line ~497)
+
+Replace the single `IterateAll` with a `packedCount`-loop:
+
+```cpp
+for (int i = 0; i < params->packedCount; ++i) {
+    int64_t kvOffset = (int64_t)params->packedSabi[i] * 128 * MultiHeadKV;
+    mm.SetTail(souter, 128);
+    mm.SetTensorB(this->keyGm[kvOffset], true);
+    mm.template IterateAll<false>(
+        this->bmm1ResGmDb[params->gmPingpong][i * 128 * souter],
+        false, false, true, ...);
+}
+```
+
+Each iteration writes its 128-col slice into the right offset of the
+result GM. After `packedCount` iterations the result GM holds a
+`souter × packedCount*128` packed score tile, exactly the layout the rest
+of the pipeline expects.
+
+#### 4. `Bmm2ComputeIterate` mirror
+
+Same `packedCount`-loop for V. Each call reads
+`valueGm[packedSabi[i] * 128 * MultiHeadKV]` and contributes to the bmm2
+accumulator at offset `i * 128 * souter` of the bmm2 input view, then
+the existing flash-update logic merges into `bmm2ResGmDb`.
+
+#### 5. `Bmm1ResDoVecBmm2Compute` / `Res1VecCompute`
+
+Delete the `if (params->isBlockSparse && params->sabiSubBlockMask != 0xFu)
+ApplySubBlockMaskCorrection(...)` call site at line ~728. Score buffer is
+densely valid up to `packedCount * 128` cols. `mm1SingleCoreN` already drives
+softmax column extent — no other vec change.
+
+#### 6. External `atten_mask` handling — separate concern
+
+The atten_mask is indexed by absolute (Q, K) position. With packing,
+score column `j` corresponds to K position
+`packedSabi[j/128] * 128 + (j % 128)`. Two paths:
+
+- **For benchmark configs with `sparse_mode=0` and no atten_mask** (BSA's
+  `blocks_optimized_batched` benchmark): nothing to do. The sabi *is* the
+  mask; gather honours it implicitly.
+- **For configs with token-granular atten_mask**: gather the per-batch slice
+  of atten_mask the same way (4 stride-list reads) into a contiguous UB
+  before the existing `useMask` Select. ~30 lines in `Res1VecCompute`.
+
+For the first cut, support only the no-atten-mask path. Token-mask support
+stacks on top.
+
+#### 7. Causal / pre-tokens / next-tokens — separate concern
+
+`CheckRowInvalid` uses `params->sInnerLoopOffset` (single K position).
+With packing, kept K positions span multiple sub-blocks; row-invalid logic
+becomes per-sub-block. For the BSA benchmark
+(`pre_tokens=2147483647, next_tokens=0`, no causal effects), this can be
+deferred. Document as a known restriction in the first cut.
+
+### Three-stage validation
+
+The change is invasive enough that the first build will produce wrong
+output. Each stage is independently testable and revertable.
+
+#### Stage A — plumbing only (`packedCount` forced to 1)
+
+Force the new loop to emit one sabi entry per batch, even when more would
+fit. Each cube tile becomes a single 128-wide narrow matmul.
+
+- Pytest gate: `test_attn.py` 80/80.
+- Benchmark expectation: ~4× slower than baseline (4× the matmul calls per
+  row). This is **expected and acceptable** at this stage; we are proving
+  the plumbing.
+- Confirms: `SetTail(souter, 128)` is accepted; result-offset writes land
+  correctly; the queue / pingpong logic still works with narrow cube tiles.
+
+If A fails, the whole gather plan is suspect — fix at this stage before B.
+
+#### Stage B — same-tile packing (`packedCount` up to 4 only when contiguous in cube tile)
+
+Pack a batch only when all 4 sabi entries map to the *same*
+`sInnerLoopIdx` (today's coarse-tile case). Otherwise `packedCount=1`.
+
+- Pytest gate: `test_attn.py` 80/80.
+- Benchmark expectation: should match Session 16 baseline (we are doing
+  what the kernel does today, just structured differently).
+- Confirms: the `packedCount > 1` matmul-loop and result-offset wiring
+  produce arithmetically-equivalent results to today's full-512 matmul +
+  mask path.
+
+If B fails, bug is in the `packedCount > 1` plumbing — isolated cleanly
+from gather.
+
+#### Stage C — full packing (any 4 kept entries from any sabi positions)
+
+Drop the contiguity restriction. Sabi entries may belong to different
+`sInnerLoopIdx` values; the packed matmul gathers from non-contiguous
+HBM offsets via the 4 narrow `IterateAll` calls.
+
+- Pytest gate: `test_attn.py` 80/80.
+- Benchmark expectation:
+  - Sparsity 0.0: roughly unchanged from B (no skips → no win).
+  - Sparsity 0.5: target ≤ 95 ms (within ~10 ms of 128×512 main's 85 ms).
+  - Sparsity 0.7: target ≤ 60 ms.
+  - Sparsity 0.9: target ≤ 25 ms.
+- msprof: `aic_mte2_ratio` should drop substantially at sparsity 0.5
+  (fewer cube tiles → less HBM traffic → less time in MTE2).
+
+This is where the win cashes in.
+
+### Workspace / tiling implications
+
+`bmm1ResGmDb` allocation unchanged (still `souter × 512` per buffer).
+`mm1ResSize` unchanged. No host-tiling adjustment needed.
+
+Bmm2 result buffer (`bmm2ResGmDb`) unchanged — bmm2 output is the
+flash-attention accumulator over kept K positions, written at fixed
+offsets.
+
+### Risks and unknowns
+
+1. **Matmul library may reject `SetTail(souter, 128)` after
+   `SetOrgShape(M, 512, ...)`.** Some libraries require `N_tail ≤ N_org`
+   with alignment constraints. If rejected at host config time, the build
+   itself succeeds but the kernel returns wrong tiling at runtime
+   (likely AIC exception — what we saw in Session 17 baseN=256). Mitigation:
+   call `SetOrgShape` per matmul too (more CV-channel sync, still fine).
+2. **`bmm1CopyB1` PA callback** ([base.h:244](experimental/attention/blitz_sparse_attention/op_kernel/blitz_sparse_attention_s1s2_bns1_x910_base.h#L244))
+   only fires for `MM_TYPE == MM_PA`. BSA isn't PA — dead path.
+3. **`enablePrefix` interaction**: each packed sabi entry could in
+   principle straddle the prefix-vs-non-prefix boundary. BSA's tests do
+   not exercise prefix; defer until a prefix test exists.
+4. **`computedBlocks` first/second/last semantics drive
+   `Bmm2ComputeIterate` scheduling** (`firstIter` selects the bmm2 update
+   path). With packing, "first computed block" still means the first
+   packed batch — semantics preserved, no logic change required.
+5. **Performance of `SetTensorB` re-issues**: 4× per packed tile is the
+   first-order cost. If it dominates at sparsity 0, may need to detect
+   contiguous batches (4 sabi entries that happen to be sequential in K
+   space) and fall back to one 512-wide matmul. Optimization for later.
+
+### Session map
+
+| Session | Goal | Pytest gate | Benchmark gate |
+|---|---|---|---|
+| **18** | Stage A: emit `packedCount=1` queue entries; `Bmm1ComputeIterate` issues 1 narrow matmul; rewire `Bmm1ResDoVecBmm2Compute` to consume narrow result | `test_attn.py` 80/80 | ~4× slower at sparsity 0 (acceptable) |
+| **19** | Stage B: `packedCount` up to 4 when same `sInnerLoopIdx`; matmul-loop in `Bmm1ComputeIterate`; bmm2 mirror | `test_attn.py` 80/80 | Matches Session 16 baseline |
+| **20** | Stage C: full packing across non-contiguous sabi; no contiguity check | `test_attn.py` 80/80 | sparsity 0.5/0.7/0.9 approach 128×512 main |
+| **21** *(optional)* | Fall back to 1×512 matmul when batch is contiguous in HBM (peephole optimisation) | `test_attn.py` 80/80 | Sparsity 0 wall back to ~170 ms (or below) |
+| **22** *(deferred)* | External atten_mask gather + causal/pre-token correctness | `test_lse.py`, `test_joint.py` 100% | No regression vs Stage C/D |
+
+Sessions 21 and 22 are conditional on Sessions 18–20 producing a kept
+result. Stop after 20 if benchmark targets are not met.
+
+### Hard rules that stay in force across all sessions
+
+- Whole-cache DCCI in `Process()` is **not** to be touched (golden rule).
+- No `git commit` / `git reset` / `git push` without explicit user
+  authorisation in the current conversation (golden rule).
+- B=1 only; ASCEND_RT_VISIBLE_DEVICES=5.
+- msprof CLI on this CANN version (8.5.0-beta.1) accepts
+  `--aic-metrics=PipeUtilization` only (single value); the comma-separated
+  form is rejected. Use `msprof --ai-core=on --task-time=l1
+  --aic-metrics=PipeUtilization --output=...` form.
+- Build cycle:
+  ```bash
+  bash build.sh --make_clean --experimental -j96 --pkg --soc=ascend910b --ops=blitz_sparse_attention
+  ./build/cann-ops-transformer-custom_linux-"$(uname -i)".run
+  (cd experimental/attention/blitz_sparse_attention/torch_interface && bash build.sh custom)
+  ```
+
+### Kickoff prompt for the next session
+
+```
+Continue BSA optimisation on branch `blitz-sparse-attention-128x128`.
+Read `experimental/attention/blitz_sparse_attention/KERNEL_OPT.md`
+"Plan — Sessions 18–22: True sub-tile gather" first; that is the
+load-bearing context.
+
+The diagnosis is settled. Today the 128×128 sabi grants indexing
+granularity but the kernel never honours it on the cube side: cube tiles
+are still 512 wide, inactive sub-blocks are masked post-matmul via
+Adds(-10000), and a cube tile is skipped only when all 4 sub-blocks are
+inactive. README.md:51-72 has the perf gap to the 128×512 main branch
+(at sparsity 0.5: 149 ms vs 85 ms; at 0.9: 34 ms vs 22 ms). Session 17
+proved the cube is HBM-bandwidth bound (baseN widening is dead), so the
+only remaining lever is cutting HBM bytes — true sub-tile gather.
+
+Execute Session 18 only this turn: Stage A of the plan. Force
+`packedCount = 1` (one sabi entry per queue entry); rewrite
+`SInnerLoopFunc`'s sparse-path while-loop as a 4-batch packer with the
+batch size capped at 1 for now; replace `Bmm1ComputeIterate`'s single
+matmul with a `packedCount`-loop that issues one narrow `IterateAll`
+(N=128) per kept sabi entry, writing to offset `i * 128 * souter` of
+`bmm1ResGmDb[gmPingpong]`; mirror in `Bmm2ComputeIterate`; delete the
+`ApplySubBlockMaskCorrection` call site.
+
+Stage A success criteria:
+- `pytest test_attn.py` 80/80 (correctness preserved).
+- Benchmark sparsity 0 ~4× slower than today's ~177 ms baseline
+  (expected — we issue 4× as many matmul calls per row). This is the
+  plumbing-shakeout stage; perf wins arrive in Sessions 19–20.
+
+Constraints (all enforced):
+- B=1 only; ASCEND_RT_VISIBLE_DEVICES=5.
+- Do **not** touch the whole-cache DCCI in `Process()` (golden rule).
+- Do **not** `git commit` / `reset` / `push` without explicit user
+  authorisation (golden rule).
+- Build with the canonical 3-step recipe in KERNEL_OPT.md plan section.
+- msprof CLI uses `--aic-metrics=PipeUtilization` (single value only) on
+  this CANN 8.5.0-beta.1.
+
+When Stage A passes, **stop and report**. Do not proceed to Stage B in
+the same session — the user owns the gating decision between stages.
+Update auto-memory with the Stage A outcome (pass/fail + reason) and
+write a Session 18 entry to KERNEL_OPT.md before stopping.
+```
 
 
