@@ -63,6 +63,14 @@ BLOCK_SIZE_Q = 128
 BLOCK_SIZE_KV = 128
 BLOCK_MASK_SEED = 1234
 
+# When True, each sabi row is generated with kept block indices sorted ascending
+# (followed by pad_value). When False, the kept indices are shuffled within the row
+# (padding still at the end). The kernel's sparse-loop assumes sorted sabi
+# (`FirstGreaterEqual` linear scan + chunkIdx forward-walk), so setting this to
+# False breaks correctness — use only for layout/perf experiments where the kernel
+# has been adapted accordingly.
+SABI_SORTED = True
+
 # Force a frame of blocks to be alwasy selected (still requires to be in the sparsity budget)
 # cols are in the number of kv_block lengths (e.g. 512 tokens) rows are in terms of q-block length (e.g. 128 tokens)
 # FRAME = FrameWidths(left_cols=8, right_cols=1, top_rows=29, bottom_rows=1) # kv-512 set to zeroes to disable the frame forcing
@@ -182,6 +190,7 @@ def generate_sparse_blocks_by_row(
     seed: int,
     frame: FrameWidths,
     pad_value: int = -1,
+    sort_within_row: bool = True,
 ) -> list[list[int]]:
     """
     Builds the sabi blocks (soparse blocks selection) of a single head, with a "frame" of 
@@ -197,7 +206,9 @@ def generate_sparse_blocks_by_row(
       - each row always includes the last block-col
     Output:
       - shape [n_block_rows][n_block_cols]
-      - each row: sorted selected cols, then pad_value to the end
+      - each row: selected cols, then pad_value to the end. Cols are sorted ascending
+        when sort_within_row=True (default); otherwise shuffled deterministically per seed
+        (kernel sparse-loop assumes sorted — see SABI_SORTED).
     """
     sparsity = max(0.0, min(1.0, float(sparsity)))
 
@@ -256,6 +267,10 @@ def generate_sparse_blocks_by_row(
                 sparse_selected_col_ids = rng.sample(sparse_candidate_col_ids, n_kept_row_blocks_per_row)
                 cols = sorted(list(sparse_forced_col_ids) + sparse_selected_col_ids)
             cols = cols + [pad_value] * (n_block_cols - len(cols))
+        if not sort_within_row:
+            kept = [c for c in cols if c != pad_value]
+            rng.shuffle(kept)
+            cols = kept + [pad_value] * (len(cols) - len(kept))
         rows.append(cols)
 
     return rows
@@ -303,6 +318,7 @@ def generate_sparse_blocks_by_row_per_head(
     num_heads: int,
     frame: FrameWidths,
     base_seed: int,
+    sort_within_row: bool = True,
 ) -> list[list[list[int]]]:
     """
     Returns sparse blocks per head.
@@ -319,6 +335,7 @@ def generate_sparse_blocks_by_row_per_head(
             sparsity=sparsity,
             seed=base_seed + h,
             frame=frame,
+            sort_within_row=sort_within_row,
         )
         for h in range(num_heads)
     ]
@@ -583,15 +600,17 @@ def create_attention_mask(b, h, s_q, s_kv, d, sparsity, attention_matrix,
             sm, pre_tok, post_tok = 4, BAND_PRE_TOKENS, BAND_POST_TOKENS
     elif attention_matrix == "blocks_optimized":
         if emit_atten_mask and sparsity > 0:
-            per_head_block_ids = generate_sparse_blocks_by_row_per_head(s_q, s_kv, block_size_q, block_size_kv, 
-                                                                            sparsity, h, frame, BLOCK_MASK_SEED)
-            pfa_atten_mask = make_block_mask_per_head(s_q, s_kv, block_size_q, block_size_kv, per_head_block_ids, 
+            per_head_block_ids = generate_sparse_blocks_by_row_per_head(s_q, s_kv, block_size_q, block_size_kv,
+                                                                            sparsity, h, frame, BLOCK_MASK_SEED,
+                                                                            sort_within_row=SABI_SORTED)
+            pfa_atten_mask = make_block_mask_per_head(s_q, s_kv, block_size_q, block_size_kv, per_head_block_ids,
                                                       device)
             sabi = torch.tensor(per_head_block_ids, dtype=torch.uint16, device=device)
     elif attention_matrix == "blocks_optimized_batched":
         per_batch_head_block_indices = [
-            generate_sparse_blocks_by_row_per_head(s_q, s_kv, block_size_q, block_size_kv, sparsity, h, 
-                                                   frame, BLOCK_MASK_SEED + bidx)
+            generate_sparse_blocks_by_row_per_head(s_q, s_kv, block_size_q, block_size_kv, sparsity, h,
+                                                   frame, BLOCK_MASK_SEED + bidx,
+                                                   sort_within_row=SABI_SORTED)
             for bidx in range(b)
         ]
         sabi = torch.tensor(per_batch_head_block_indices, dtype=torch.uint16, device=device)
@@ -702,7 +721,7 @@ def benchmark_blitz_sparse_attention():
     # Print table header
     logger.info("=" * 90)
     logger.info(f"  {DTYPE=}  {INPUT_LAYOUT=}  {ATTENTION_MATRIX=}")
-    logger.info(f"  {BLOCK_SIZE_Q=}  {BLOCK_SIZE_KV=}")
+    logger.info(f"  {BLOCK_SIZE_Q=}  {BLOCK_SIZE_KV=}  {SABI_SORTED=}")
     logger.info(f"  {FRAME}")
     logger.info(f"  {TORCH_REFERENCE=}")
     logger.info("=" * 90)
