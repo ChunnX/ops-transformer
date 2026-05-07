@@ -14,7 +14,7 @@
  */
 
 #include "sparse_attn_sharedkv_grad_tiling_general.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 #include "../op_kernel/sparse_attn_sharedkv_grad_template_tiling_key.h"
 
 namespace optiling {
