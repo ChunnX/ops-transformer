@@ -34,7 +34,7 @@ const std::initializer_list<DataType> KV_DTYPE_SUPPORT_LIST = {
     DataType::DT_FLOAT16, DataType::DT_BF16
 };
 const std::initializer_list<DataType> CACHE_DTYPE_SUPPORT_LIST = {
-    DataType::DT_FLOAT16, DataType::DT_BF16, DataType::DT_INT8
+    DataType::DT_FLOAT16, DataType::DT_BF16, DataType::DT_INT8, DataType::DT_FLOAT8_E4M3FN, DataType::DT_HIFLOAT8
 };
 const std::initializer_list<DataType> INDEX_DTYPE_SUPPORT_LIST = {
     DataType::DT_INT64

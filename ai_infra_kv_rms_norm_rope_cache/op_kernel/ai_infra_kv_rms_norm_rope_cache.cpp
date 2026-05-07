@@ -24,6 +24,9 @@
 #include "ai_infra_kv_rms_norm_rope_cache_b16_pa_blk_nz_quant.h"
 #include "ai_infra_kv_rms_norm_rope_cache_b16_pa.h"
 #include "ai_infra_kv_rms_norm_rope_cache_b16_pa_bnsd_c8.h"
+
+#include "arch35/ai_infra_kv_rms_norm_rope_cache_regbase_full_load.h"
+#include "arch35/ai_infra_kv_rms_norm_rope_cache_regbase_recompute.h"
 using namespace AscendC;
 using namespace AiInfraKvRmsNormRopeCache;
 #define AI_INFRA_KV_RMS_NORM_ROPE_CACHE_B16_NORM 1000
@@ -51,6 +54,36 @@ extern "C" __global__ __aicore__ void ai_infra_kv_rms_norm_rope_cache(
     GM_ADDR c_kv_cache_out, GM_ADDR k_rope, GM_ADDR c_kv, GM_ADDR workspace, GM_ADDR tiling)
 {
     TPipe pipe;
+#if (__CCE_AICORE__ == 310)
+    #define FLOAT_OVERFLOW_MODE_CTRL 60
+    #if (__NPU_ARCH__ == 3510)
+        int64_t oriOverflowMode = AscendC::GetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>();
+    #endif
+        KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
+    #if (__NPU_ARCH__ == 3510)
+        AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
+    #endif
+    if (TILING_KEY_IS(10000)) {
+        GET_TILING_DATA_WITH_STRUCT(AiInfraKvRmsNormRopeCacheRegbaseFullLoadTilingData, tiling_data_in, tiling);
+        const AiInfraKvRmsNormRopeCacheRegbaseFullLoadTilingData* __restrict tilingData = &tiling_data_in;
+        AiInfraKvRmsNormRopeCacheRegbaseFullLoad<DTYPE_KV, DTYPE_K_CACHE, DTYPE_CKV_CACHE> op(&pipe, tilingData);
+        op.Init(
+            kv, gamma, cos, sin, index, k_cache, ckv_cache, k_rope_scale, c_kv_scale, k_rope_offset, c_kv_offset,
+            k_rope, c_kv);
+        op.Process();
+    } else if(TILING_KEY_IS(20000)) {
+        GET_TILING_DATA_WITH_STRUCT(AiInfraKvRmsNormRopeCacheRegbaseRecomputeTilingData, tiling_data_in, tiling);
+        const AiInfraKvRmsNormRopeCacheRegbaseRecomputeTilingData* __restrict tilingData = &tiling_data_in;
+        AiInfraKvRmsNormRopeCacheRegbaseRecompute<DTYPE_KV, DTYPE_K_CACHE, DTYPE_CKV_CACHE> op(&pipe, tilingData);
+        op.Init(
+            kv, gamma, cos, sin, index, k_cache, ckv_cache, k_rope_scale, c_kv_scale, k_rope_offset, c_kv_offset,
+            k_rope, c_kv);
+        op.Process();
+    }
+    #if (__NPU_ARCH__ == 3510)
+        AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(oriOverflowMode);
+    #endif
+#else
     if (TILING_KEY_IS(AI_INFRA_KV_RMS_NORM_ROPE_CACHE_B16_NORM)) {
         GET_TILING_DATA_WITH_STRUCT(AiInfraKvRmsNormRopeCacheTilingData, tiling_data_in, tiling);
         const AiInfraKvRmsNormRopeCacheTilingData* __restrict tilingData = &tiling_data_in;
@@ -160,4 +193,5 @@ extern "C" __global__ __aicore__ void ai_infra_kv_rms_norm_rope_cache(
         op.Init(kv, gamma, cos, sin, index, k_cache, ckv_cache, k_rope, c_kv, v);
         op.Process();
     }
+#endif
 }

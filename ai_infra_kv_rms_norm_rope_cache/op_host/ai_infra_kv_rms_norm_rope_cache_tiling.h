@@ -48,6 +48,76 @@ END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(AiInfraKvRmsNormRopeCache, AiInfraKvRmsNormRopeCacheTilingData)
 
+// D全载
+BEGIN_TILING_DATA_DEF(AiInfraKvRmsNormRopeCacheRegbaseFullLoadTilingData)
+TILING_DATA_FIELD_DEF(int64_t, batchSize);
+TILING_DATA_FIELD_DEF(int64_t, numHead);
+TILING_DATA_FIELD_DEF(int64_t, seqLength);
+TILING_DATA_FIELD_DEF(int64_t, cacheLength);
+TILING_DATA_FIELD_DEF(int64_t, blockSize);
+TILING_DATA_FIELD_DEF(int64_t, cosSinNeedBrc);
+TILING_DATA_FIELD_DEF(int64_t, kScaleType);
+TILING_DATA_FIELD_DEF(int64_t, kOffsetType);
+TILING_DATA_FIELD_DEF(int64_t, vScaleType);
+TILING_DATA_FIELD_DEF(int64_t, vOffsetType);
+TILING_DATA_FIELD_DEF(int64_t, isOutputKv);
+TILING_DATA_FIELD_DEF(int64_t, cacheMode);
+TILING_DATA_FIELD_DEF(int64_t, dk);
+TILING_DATA_FIELD_DEF(int64_t, dkAlign);
+TILING_DATA_FIELD_DEF(int64_t, dkB8Align);
+TILING_DATA_FIELD_DEF(int64_t, halfDk);
+TILING_DATA_FIELD_DEF(int64_t, halfDkAlign);
+TILING_DATA_FIELD_DEF(int64_t, dv);
+TILING_DATA_FIELD_DEF(int64_t, dvAlign);
+TILING_DATA_FIELD_DEF(int64_t, dvB8Align);
+TILING_DATA_FIELD_DEF(int64_t, blockFactor);
+TILING_DATA_FIELD_DEF(int64_t, ubFactor);
+TILING_DATA_FIELD_DEF(int64_t, inUbSize);
+TILING_DATA_FIELD_DEF(int64_t, outUbSize);
+TILING_DATA_FIELD_DEF(int64_t, rmsNormWspSize);
+TILING_DATA_FIELD_DEF(float, epsilon);
+TILING_DATA_FIELD_DEF(float, reciprocal);
+TILING_DATA_FIELD_DEF(int64_t, quantMode);   // 设置quant的类型，支持none、static、pertile128
+TILING_DATA_FIELD_DEF(int64_t, rotaryMode);  // 设置rope计算的旋转类型
+TILING_DATA_FIELD_DEF(int64_t, cacheLayOut); // 设置cache具体排布格式
+TILING_DATA_FIELD_DEF(int64_t, vStride);     // 用于非连续的搬出到ckv_cache
+TILING_DATA_FIELD_DEF(int64_t, kStride);     // 用于非连续的搬出到k_cache
+TILING_DATA_FIELD_DEF(int64_t, pertileSize);    // tilesize in Dynamic quant
+TILING_DATA_FIELD_DEF(int64_t, dynamicScaleAlign);  // pertile128量化输出的scale对齐
+END_TILING_DATA_DEF;
+
+REGISTER_TILING_DATA_CLASS(AiInfraKvRmsNormRopeCache_10000, AiInfraKvRmsNormRopeCacheRegbaseFullLoadTilingData)
+
+// Recompute
+BEGIN_TILING_DATA_DEF(AiInfraKvRmsNormRopeCacheRegbaseRecomputeTilingData)
+TILING_DATA_FIELD_DEF(int64_t, bs);
+TILING_DATA_FIELD_DEF(int64_t, batchSize);
+TILING_DATA_FIELD_DEF(int64_t, numHead);
+TILING_DATA_FIELD_DEF(int64_t, seqLength);
+TILING_DATA_FIELD_DEF(int64_t, cacheLength);
+TILING_DATA_FIELD_DEF(int64_t, blockSize);
+TILING_DATA_FIELD_DEF(int64_t, cosSinNeedBrc);
+TILING_DATA_FIELD_DEF(int64_t, kScaleType);
+TILING_DATA_FIELD_DEF(int64_t, kOffsetType);
+TILING_DATA_FIELD_DEF(int64_t, vScaleType);
+TILING_DATA_FIELD_DEF(int64_t, vOffsetType);
+TILING_DATA_FIELD_DEF(int64_t, isOutputKv);
+TILING_DATA_FIELD_DEF(int64_t, cacheMode);
+TILING_DATA_FIELD_DEF(int64_t, dk);
+TILING_DATA_FIELD_DEF(int64_t, dv); // 计算rmsnorm的D
+TILING_DATA_FIELD_DEF(int64_t, blockFactor);
+TILING_DATA_FIELD_DEF(int64_t, ubFactor);
+TILING_DATA_FIELD_DEF(int64_t, ubFactorDvTail);
+TILING_DATA_FIELD_DEF(int64_t, ubFactorDvLoopCountCeil);
+TILING_DATA_FIELD_DEF(int64_t, ubFactorDkTail);
+TILING_DATA_FIELD_DEF(int64_t, ubFactorDkLoopCountCeil);
+TILING_DATA_FIELD_DEF(int64_t, basicBlockLoop); // 二分累加：循环次数，折叠点左半部分的block数量
+TILING_DATA_FIELD_DEF(int64_t, mainFoldCount);  // 二分累加：折叠的块数，折叠点右半部分的block数量-1
+TILING_DATA_FIELD_DEF(float, epsilon);
+TILING_DATA_FIELD_DEF(float, reciprocal);
+END_TILING_DATA_DEF;
+
+REGISTER_TILING_DATA_CLASS(AiInfraKvRmsNormRopeCache_20000, AiInfraKvRmsNormRopeCacheRegbaseRecomputeTilingData)
 
 constexpr int32_t TEMPLATE_DS_PRIORITY = 1000;
 constexpr int32_t TEMPLATE_D_FULL_LOAD_PRIORITY = 2000;
@@ -132,6 +202,7 @@ constexpr int64_t BATCHES_FOR_EACH_CORE = 4;
 constexpr int64_t NON_QUANT_MODE = 0;   // Shared None Quant Index
 constexpr int64_t QUANT_MODE = 1;       // Static Symmetric Quant
 constexpr int64_t ASYM_QUANT_MODE = 2;  // Static Asymmetric Quant
+constexpr int64_t V_PERTILE_128_QUANT_MODE = 3; // Dynamic V_Pertile 128 Quant
 
 // Submode choices of static quant
 constexpr int64_t STATIC_QUANT_SCALE = 1;
@@ -246,6 +317,65 @@ protected:
 
 private:
     AiInfraKvRmsNormRopeCacheTilingData tilingData_;
+};
+
+class AiInfraKvRmsNormRopeCacheRegbaseFullLoadTiling : virtual public AiInfraKvRmsNormRopeCacheTilingBase {
+public:
+    explicit AiInfraKvRmsNormRopeCacheRegbaseFullLoadTiling(gert::TilingContext* tillingContext)
+        : AiInfraKvRmsNormRopeCacheTilingBase(tillingContext)
+    {}
+    ~AiInfraKvRmsNormRopeCacheRegbaseFullLoadTiling() override
+    {}
+
+    uint64_t usedCoreNum_ = 0;
+    int64_t kScaleType_ = 0;
+    int64_t kOffsetType_ = 0;
+    int64_t vScaleType_ = 0;
+    int64_t vOffsetType_ = 0;
+
+protected:
+    bool IsCapable() override;
+    ge::graphStatus DoOpTiling() override;
+    ge::graphStatus PostTiling() override;
+
+protected:
+    bool CheckScaleOffsetShape(const gert::StorageShape* inShape, int64_t lastDim, int64_t& brcFlag);
+    bool CheckInputDtype();
+    bool CheckCacheIsQuant(ge::DataType& cacheDtype);
+    ge::graphStatus CheckInputShapeIsEmpty();
+
+private:
+    AiInfraKvRmsNormRopeCacheRegbaseFullLoadTilingData tilingData_;
+};
+
+class AiInfraKvRmsNormRopeCacheRegbaseRecomputeTiling : virtual public AiInfraKvRmsNormRopeCacheTilingBase {
+public:
+    explicit AiInfraKvRmsNormRopeCacheRegbaseRecomputeTiling(gert::TilingContext* tillingContext)
+        : AiInfraKvRmsNormRopeCacheTilingBase(tillingContext)
+    {}
+    ~AiInfraKvRmsNormRopeCacheRegbaseRecomputeTiling() override
+    {}
+
+    uint64_t usedCoreNum_ = 0;
+    int64_t kScaleType_ = 0;
+    int64_t kOffsetType_ = 0;
+    int64_t vScaleType_ = 0;
+    int64_t vOffsetType_ = 0;
+
+protected:
+    bool IsCapable() override;
+    ge::graphStatus DoOpTiling() override;
+    ge::graphStatus PostTiling() override;
+
+protected:
+    bool CheckScaleOffsetShape(const gert::StorageShape* inShape, int64_t lastDim, int64_t& brcFlag);
+    bool CheckInputDtype();
+    bool CheckCacheIsQuant(ge::DataType& cacheDtype);
+    ge::graphStatus CheckInputShapeIsEmpty();
+    int64_t FindNearestPower2(const int64_t value);
+
+private:
+    AiInfraKvRmsNormRopeCacheRegbaseRecomputeTilingData tilingData_;
 };
 
 } // namespace optiling

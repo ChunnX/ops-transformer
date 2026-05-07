@@ -12,6 +12,7 @@
  * \file platform.h
  * \brief platform apator
  */
+#pragma once
 #include "kernel_operator.h"
 
 namespace ops {
@@ -49,4 +50,8 @@ __aicore__ inline constexpr uint32_t GetUbBlockSize()
    return 32U;
 }
 
+__aicore__ inline constexpr uint32_t GetVRegSize()
+{
+   return AscendC::VECTOR_REG_WIDTH;
+}
 }  // namespace platform
