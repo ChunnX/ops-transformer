@@ -57,10 +57,10 @@ inline __aicore__ void run_fia_noquant_gqa_kernel(
                       BaseApi::UbOutCondition<INPUT_T>(false, static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope,
                                               (uint32_t)s1TemplateType == 64),
                       ((uint32_t)s2TemplateType == 256 && (uint32_t)s1TemplateType == 64), false);
-    // constexpr bool useDn =
-    //     BaseApi::IsDn(false, false, static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, (uint32_t)s1TemplateType == 64,
-    //          dTemplateType, hasRope, enableKVPrefix, true, IsSameType<INPUT_T, hifloat8_t>::value);
-    constexpr bool useDn = false;
+    constexpr bool useDn =
+        BaseApi::IsDn(false, false, static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, (uint32_t)s1TemplateType == 64,
+             dTemplateType, hasRope, enableKVPrefix, true, IsSameType<INPUT_T, hifloat8_t>::value);
+    // constexpr bool useDn = false;
     constexpr bool bmm2Write2Ub = bmm2OutPos == TPosition::VECCALC;
     constexpr bool splitD = (uint16_t)dVTemplateType > (uint16_t)DTemplateType::Aligned256;
 

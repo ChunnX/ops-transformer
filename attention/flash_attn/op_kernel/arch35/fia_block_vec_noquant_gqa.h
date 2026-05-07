@@ -1354,6 +1354,11 @@ public:
         if (constInfo.learnableSinkFlag) {
             this->tPipe->InitBuffer(sinkQue, 1, 256); // buffer size = 256 bytes
         }
+        stage1OutQue[0] = SharedBuffer1[0];
+        stage1OutQue[1] = SharedBuffer1[1];
+        attenMaskInQue[0] = SharedBuffer2[0];
+        attenMaskInQue[1] = SharedBuffer2[1];
+        stage2OutBuf = SharedBuffer3;
     }
 
     __aicore__ inline void AllocEventID()
