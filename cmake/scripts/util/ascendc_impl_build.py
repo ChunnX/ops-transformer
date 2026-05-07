@@ -20,9 +20,11 @@ from typing import List
 import json
 import opdesc_parser
 import const_var
+from pathlib import Path
 
 
 PYF_PATH = os.path.dirname(os.path.realpath(__file__))
+COMPUTE_UNIT = None
 
 if const_var.CHECK_ASC_DEVKIT_VERSION:
     IMPORT_HEADER = '''
@@ -638,7 +640,27 @@ class AdpBuilder(opdesc_parser.OpDesc):
             kern_name = self.kern_name
         else:
             kern_name = self.op_intf
-        src = self.op_file + '.cpp'
+        
+        search_dir = Path.cwd().parent
+        first_file = None
+        for file_path in search_dir.rglob(self.op_file + '.cpp'):
+            if "build" in file_path.parts:
+                continue
+            first_file = file_path
+            break
+        print(f"找到文件：{first_file}")
+        if len(COMPUTE_UNIT) > 0:
+            if COMPUTE_UNIT[0] == "ascend910_93" or COMPUTE_UNIT[0] == "ascend910b":
+                src = 'arch22/' + self.op_file + '.cpp'
+            elif COMPUTE_UNIT[0] == "ascend310p":
+                src = 'arch31/' + self.op_file + '.cpp'
+            elif COMPUTE_UNIT[0] == "ascend950":
+                src = 'arch35/' + self.op_file + '.cpp'
+            else:
+                src = self.op_file + '.cpp'
+        else:
+            src = self.op_file + '.cpp'
+    
         virt_exprs = self._build_virtual()
         fd.write(IMPL_API.format(self.op_type, pchk, \
                                  self.op_intf, argsdef, kern_name, self.impl_mode, virt_exprs, argsval,\
@@ -715,6 +737,7 @@ def parse_args(argv):
     parser = argparse.ArgumentParser()
     parser.add_argument('argv', nargs='+')
     parser.add_argument('--opsinfo-dir', nargs='*', default=None)
+    parser.add_argument('--compute-unit', nargs='*', default=['ascend910b'])
     return parser.parse_args(argv)
 
 
@@ -740,6 +763,7 @@ if __name__ == '__main__':
             raise OpFileNotExistsError(args.opsinfo_dir)
     else:
         ops_infos.append(args.argv[1])
-
+    COMPUTE_UNIT = args.compute_unit
+    print("COMPUTE_UNIT = ", COMPUTE_UNIT)
     for ops_info in ops_infos:
         write_scripts(cfgfile=ops_info, cfgs=rep_cfg, dirs=cfg_dir)
