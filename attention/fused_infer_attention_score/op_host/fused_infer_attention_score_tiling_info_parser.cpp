@@ -402,10 +402,8 @@ void FiaInfoParser::GetPreNextToken()
     } else if (sparseMode_ == SPARSE_MODE_ALL_MASK) {
         preToken_ = SPARSE_MODE_INT_MAX;
         nextToken_ = SPARSE_MODE_INT_MAX;
-    } else if (sparseMode_ == SPARSE_MODE_LEFT_UP || sparseMode_ == SPARSE_MODE_RIGHT_DOWN) {
-        nextToken_ = 0;
-        preToken_ = SPARSE_MODE_INT_MAX;
-    } else if (sparseMode_ == SPARSE_MODE_TREE) {
+    } else if (sparseMode_ == SPARSE_MODE_LEFT_UP || sparseMode_ == SPARSE_MODE_RIGHT_DOWN ||
+               sparseMode_ == SPARSE_MODE_TREE) {
         nextToken_ = 0;
         preToken_ = SPARSE_MODE_INT_MAX;
     }
@@ -443,27 +441,30 @@ void FiaInfoParser::GetPreNextToken()
 
 }
 
+ge::graphStatus FiaInfoParser::GetTensorListCache(uint32_t index, const std::string &name,
+                                                  std::vector<gert::StorageShape *> &cache)
+{
+    cache.clear();
+    uint32_t bIdx = 0;
+    while ((context_->GetDynamicInputShape(index, bIdx)) != nullptr) {
+        cache.push_back(const_cast<gert::StorageShape *>(context_->GetDynamicInputShape(index, bIdx)));
+        bIdx++;
+    }
+    OP_CHECK_IF(bIdx == 0,
+                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "tensor list of %s is empty.", name.c_str()),
+                return ge::GRAPH_FAILED);
+    cache.resize(bIdx);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus FiaInfoParser::GetKvCache()
 {
-    // 处理Key和value的TensorList场景
-    kCache_.clear();
-    uint32_t keyBIdx = 0;
-    while ((context_->GetDynamicInputShape(KEY_INDEX, keyBIdx)) != nullptr) {
-        kCache_.push_back(const_cast<gert::StorageShape *>(context_->GetDynamicInputShape(KEY_INDEX, keyBIdx)));
-        keyBIdx++;
+    if (GetTensorListCache(KEY_INDEX, KEY_NAME, kCache_) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
     }
-    OP_CHECK_IF(keyBIdx == 0,
-                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "tensor list of %s is empty.", KEY_NAME.c_str()),
-                return ge::GRAPH_FAILED);
-    kCache_.resize(keyBIdx);
-
-    vCache_.clear();
-    uint32_t valueBIdx = 0;
-    while ((context_->GetDynamicInputShape(VALUE_INDEX, valueBIdx)) != nullptr) {
-        vCache_.push_back(const_cast<gert::StorageShape *>(context_->GetDynamicInputShape(VALUE_INDEX, valueBIdx)));
-        valueBIdx++;
+    if (GetTensorListCache(VALUE_INDEX, VALUE_NAME, vCache_) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
     }
-    vCache_.resize(valueBIdx);
 
     OP_CHECK_IF(kCache_.size() != vCache_.size(),
                 OPS_REPORT_VECTOR_INNER_ERR(
@@ -620,6 +621,8 @@ ge::graphStatus FiaInfoParser::GetKvLayout()
     if (kvStorageMode_ != KvStorageMode::PAGE_ATTENTION) {
         kvLayout_ = qLayout_;
     } else {
+        OP_CHECK_IF(kCache_.empty() || kCache_[0] == nullptr,
+                    OP_LOGE(opName_, "kCache is empty or kCache[0] is nullptr"), return ge::GRAPH_FAILED);
         uint32_t keyDimNum = kCache_[0]->GetStorageShape().GetDimNum();
         if (keyDimNum == 3U) {
             kvLayout_ = FiaLayout::BnBsH;
