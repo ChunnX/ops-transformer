@@ -304,7 +304,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
         <td rowspan="1">输入</td>
         <td>表示左矩阵，对应公式中的X。</td>
         <td>-</td>
-        <td>INT8、INT4、INT32、FLOAT8_E4M3FN</td>
+        <td>INT8、INT4、INT32、FLOAT8_E4M3FN、FLOAT4_E2M1</td>
         <td>ND</td>
         <td>2</td>
         <td>√</td>
@@ -314,7 +314,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
         <td rowspan="1">输入</td>
         <td>表示权重矩阵，对应公式中的W。</td>
         <td>此接口weight强制视为FRACTAL_NZ格式。</td>
-        <td>INT8、INT4、INT32、FLOAT8_E4M3FN</td>
+        <td>INT8、INT4、INT32、FLOAT8_E4M3FN、FLOAT4_E2M1</td>
         <td>FRACTAL_NZ</td>
         <td>4、5</td>
         <td>√</td>
@@ -458,7 +458,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
         <td rowspan="1">输出</td>
         <td>表示输出的量化结果，公式中的Q。</td>
         <td>-</td>
-        <td>INT8、FLOAT8_E4M3FN</td>
+        <td>INT8、FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1</td>
         <td>ND</td>
         <td>2</td>
         <td>√</td>
@@ -513,6 +513,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
       - x和xScale支持M为0的空Tensor。
       - weight和weightScale支持N为0的空Tensor。
       - weight和weightScale目前仅支持tensorlist长度为1。
+      - MXFP4场景支持weight NZ格式，x和weight均为FLOAT4_E2M1，output支持FLOAT8_E4M3FN、FLOAT8_E5M2或FLOAT4_E2M1。
 
 - **返回值**
   
@@ -773,6 +774,15 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
               <td>FLOAT8_E4M3FN</td>
               <td>FLOAT8_E8M0</td>
             </tr>
+          <tr>
+            <td>MXFP4</td>
+            <td>FLOAT4_E2M1</td>
+            <td>FLOAT4_E2M1</td>
+            <td>FLOAT8_E8M0</td>
+            <td>FLOAT8_E8M0</td>
+            <td>FLOAT4_E2M1、FLOAT8_E4M3FN、FLOAT8_E5M2</td>
+            <td>FLOAT8_E8M0</td>
+          </tr>
           </tbody>
           </table>
 

@@ -18,6 +18,7 @@
 #include "lib/matmul_intf.h"
 #if ORIG_DTYPE_X_SCALE == DT_FLOAT8_E8M0
     #include "arch35/grouped_matmul_swiglu_quant_v2_mxquant.h"
+    #include "arch35/grouped_matmul_swiglu_quant_v2_mxfp4_weight_nz.h"
 #elif ORIG_DTYPE_X_SCALE == DT_FLOAT
     #include "arch35/grouped_matmul_swiglu_quant_v2_pertoken_quant.h"
 #endif
@@ -38,6 +39,9 @@ constexpr CubeFormat wFormat = CubeFormat::NZ;
 #else
 constexpr CubeFormat wFormat = CubeFormat::ND;
 #endif
+#if ORIG_DTYPE_X_SCALE == DT_FLOAT8_E8M0
+constexpr bool isMxFp4Input = AscendC::IsSameType<DTYPE_X, fp4x2_e2m1_t>::value;
+#endif
 }
 
 template <int8_t QUANT_B_TRANS, int8_t QUANT_A_TRANS>
@@ -52,7 +56,15 @@ __global__ __aicore__ void grouped_matmul_swiglu_quant_v2(GM_ADDR x, GM_ADDR xSc
     // enable overflow mode to avoid nan/inf value
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
 #if ORIG_DTYPE_X_SCALE == DT_FLOAT8_E8M0
-    if (wFormat == CubeFormat::NZ) {
+    if constexpr (wFormat == CubeFormat::NZ && isMxFp4Input) {
+        if (QUANT_B_TRANS == GMM_SWIGLU_QUANT_NO_TRANS && QUANT_A_TRANS == GMM_SWIGLU_QUANT_NO_TRANS) {
+            GmmSwigluMxFp4WeightNz<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz>(x, weight, weightScale,
+                xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace, tiling);
+        } else if (QUANT_B_TRANS == GMM_SWIGLU_QUANT_TRANS && QUANT_A_TRANS == GMM_SWIGLU_QUANT_NO_TRANS) {
+            GmmSwigluMxFp4WeightNz<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn>(x, weight, weightScale,
+                xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace, tiling);
+        }
+    } else if constexpr (wFormat == CubeFormat::NZ) {
         if (QUANT_B_TRANS == GMM_SWIGLU_QUANT_NO_TRANS && QUANT_A_TRANS == GMM_SWIGLU_QUANT_NO_TRANS) {
             GmmSwigluAswt<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz>(x, weight, weightScale, xScale,
                 weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace, tiling);

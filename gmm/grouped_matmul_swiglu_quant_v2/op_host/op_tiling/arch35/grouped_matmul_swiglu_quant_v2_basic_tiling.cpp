@@ -170,10 +170,12 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeDtype()
                     OP_LOGE(context_->GetNodeName(), "NZ weight storage shape must be 5."),
                     return false);
 
-        OP_CHECK_IF(!(inputParams_.aDtype == ge::DT_FLOAT8_E4M3FN &&
-                    inputParams_.bDtype == ge::DT_FLOAT8_E4M3FN),
+        OP_CHECK_IF(!((inputParams_.aDtype == ge::DT_FLOAT8_E4M3FN &&
+                       inputParams_.bDtype == ge::DT_FLOAT8_E4M3FN) ||
+                      (inputParams_.aDtype == ge::DT_FLOAT4_E2M1 &&
+                       inputParams_.bDtype == ge::DT_FLOAT4_E2M1)),
                     OP_LOGE(context_->GetNodeName(),
-                            "NZ weight, x and weight dtype must both be DT_FLOAT8_E4M3FN."),
+                            "NZ weight, x and weight dtype must both be DT_FLOAT8_E4M3FN or DT_FLOAT4_E2M1."),
                     return false);
     }
     if (inputParams_.aQuantMode == optiling::QuantMode::PERTOKEN_MODE) {

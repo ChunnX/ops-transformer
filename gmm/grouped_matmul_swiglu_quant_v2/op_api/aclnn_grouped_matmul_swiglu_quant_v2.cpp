@@ -127,6 +127,16 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize(const aclTen
         if (viewShape.GetDimNum() == WEIGHT_NZ_DIM_LIMIT) {
             // 若weight的viewShape为5维则视为NZ
             weightNZ->SetViewFormat(op::Format::FORMAT_FRACTAL_NZ);
+            if (w->GetDataType() == DataType::DT_FLOAT4_E2M1) {
+                int64_t e = storgeShape.GetDim(0);
+                int64_t k = storgeShape.GetDim(2) * storgeShape.GetDim(3);
+                int64_t n = storgeShape.GetDim(1) * storgeShape.GetDim(4);
+                op::Shape logicalViewShape = {e, k, n};
+                op::Strides logicalStrides = {k * n, n, 1};
+                weightNZ->SetViewShape(logicalViewShape);
+                weightNZ->SetViewStrides(logicalStrides);
+                weightNZ->SetViewFormat(op::Format::FORMAT_ND);
+            }
         } else if (viewShape.GetDimNum() == WEIGHT_ND_DIM_LIMIT) {
             // 若weight的viewShape为3维则视为ND
             weightNZ->SetViewFormat(op::Format::FORMAT_ND);
