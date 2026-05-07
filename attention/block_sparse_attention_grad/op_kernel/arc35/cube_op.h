@@ -86,24 +86,6 @@ public:
         l0_b_tensor_pong_ = l0_b_buffer_.GetWithOffset<INPUT_TYPE>(32 * 1024 / sizeof(INPUT_TYPE), 32 * 1024);
         l0_c_tensor_ping_ = l0_c_buffer_.GetWithOffset<INPUT_TYPE>(64 * 1024 / sizeof(INPUT_TYPE), 0);
         l0_c_tensor_pong_ = l0_c_buffer_.GetWithOffset<INPUT_TYPE>(64 * 1024 / sizeof(INPUT_TYPE), 64 * 1024);
-
-
-        auto size = l1_a_tensor_ping_.GetSize();
-        printf("l1_a_tensor_ping_ size: %d\n", size);
-        size = l1_a_tensor_pong_.GetSize();
-        printf("l1_a_tensor_pong_ size: %d\n", size);
-        size = l1_b_tensor_ping_.GetSize();
-        printf("l1_b_tensor_ping_ size: %d\n", size);
-        size = l1_b_tensor_pong_.GetSize();
-        printf("l1_b_tensor_pong_ size: %d\n", size);
-        size = l0_a_tensor_ping_.GetSize();
-        printf("l0_a_tensor_ping_ size: %d\n", size);
-        size = l0_a_tensor_pong_.GetSize();
-        printf("l0_a_tensor_pong_ size: %d\n", size);
-        size = l0_b_tensor_ping_.GetSize();
-        printf("l0_b_tensor_ping_ size: %d\n", size);
-        size = l0_b_tensor_pong_.GetSize();
-        printf("l0_b_tensor_pong_ size: %d\n", size);
     }
 
     __aicore__ inline void ComputeMM12(GlobalTensor<INPUT_TYPE> leftGm, GlobalTensor<INPUT_TYPE> rightGm,
@@ -125,18 +107,8 @@ public:
                 LocalTensor<INPUT_TYPE> l1_a_tensor = ping_pong_flag_inner ? l1_a_tensor_ping_ : l1_a_tensor_pong_;
                 LocalTensor<INPUT_TYPE> l0_a_tensor = ping_pong_flag_inner ? l0_a_tensor_ping_ : l0_a_tensor_pong_;
 
-                // DataCopy(l1_a_tensor, leftGm, 128);
-                SET_FLAG(MTE2, MTE1, EVENT_ID0);
-                WAIT_FLAG(MTE2, MTE1, EVENT_ID0);
-
-                AscendC::LoadData2dParams loadData2dParams;
-                loadData2dParams.repeatTimes = head_dim_align_ / 16;
-                loadData2dParams.srcStride = nProcessAlign / 16;
-                loadData2dParams.ifTranspose = false;
-                AscendC::LoadData(l0_a_tensor, l1_a_tensor, loadData2dParams);
-
-                // load_data_gm_2_l0<true, false>(l0_a_tensor, l1_a_tensor, leftGm, mProcess, head_dim_, mProcessAlign,
-                //                                head_dim_align_, head_dim_, true);
+                load_data_gm_2_l0<true, false>(l0_a_tensor, l1_a_tensor, leftGm, mProcess, head_dim_, mProcessAlign,
+                                               head_dim_align_, head_dim_, true);
 
 
                 ping_pong_flag_inner = 1 - ping_pong_flag_inner;
