@@ -370,6 +370,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::Init(
         dequantScaleWDkvkr, quantScaleCkv, quantScaleCkr, smoothScaleCq, kNopeClipAlpha);
     MmParamInit();
     WorkspaceInit(workspace);
+    ShareBufferInit();
     if ASCEND_IS_AIV {
         VectorBufferInit();
     } else {
@@ -566,6 +567,25 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmQnParamInit() {
 
 
 template<typename MLAPT>
+__aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::ShareBufferInit() {
+    usedShareBytes = 0;
+    if (splitKN) {
+        uint64_t cvShareBufferSize = GetCubeVecSharedBytes();
+        pipe_->InitBuffer(cube2VecBuffer_, cvShareBufferSize);
+        cube2VecLocal_ = cube2VecBuffer_.Get<mmQcQrOutputType>();
+        usedShareBytes += cvShareBufferSize;
+    }
+    pipe_->InitBuffer(aBufL1_, L1_A_SIZE * 2);
+    pipe_->InitBuffer(bBufL1_, L1_B_SIZE * 2);
+
+    aL1Tensor_ = aBufL1_.Get<mmInputType>();
+    bL1Tensor_ = bBufL1_.Get<mmInputType>();
+    bufParam_.aL1BufAddr = aBufL1_.GetBufferAddr(aL1Tensor_.GetBufferHandle());
+    bufParam_.bL1BufAddr = bBufL1_.GetBufferAddr(bL1Tensor_.GetBufferHandle());
+}
+
+
+template<typename MLAPT>
 __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::VectorBufferInit() {
     // 暂存已分配UB大小，其余为shareBuffer
     uint64_t usedBytes = usedShareBytes;
@@ -667,17 +687,17 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::VectorBufferInit() {
 template<typename MLAPT>
 __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::CubeBufferInit() {
     // cube相关Buffer初始化
-    pipe_->InitBuffer(aBufL1_, L1_A_SIZE * 2);
-    pipe_->InitBuffer(bBufL1_, L1_B_SIZE * 2);
+    // pipe_->InitBuffer(aBufL1_, L1_A_SIZE * 2);
+    // pipe_->InitBuffer(bBufL1_, L1_B_SIZE * 2);
 
     SetFlag<HardEvent::MTE1_MTE2>(A_EVENT0);
     SetFlag<HardEvent::MTE1_MTE2>(A_EVENT1);
     SetFlag<HardEvent::MTE1_MTE2>(B_EVENT0);
     SetFlag<HardEvent::MTE1_MTE2>(B_EVENT1);
-    aL1Tensor_ = aBufL1_.Get<mmInputType>();
-    bL1Tensor_ = bBufL1_.Get<mmInputType>();
-    bufParam_.aL1BufAddr = aBufL1_.GetBufferAddr(aL1Tensor_.GetBufferHandle());
-    bufParam_.bL1BufAddr = bBufL1_.GetBufferAddr(bL1Tensor_.GetBufferHandle());
+    // aL1Tensor_ = aBufL1_.Get<mmInputType>();
+    // bL1Tensor_ = bBufL1_.Get<mmInputType>();
+    // bufParam_.aL1BufAddr = aBufL1_.GetBufferAddr(aL1Tensor_.GetBufferHandle());
+    // bufParam_.bL1BufAddr = bBufL1_.GetBufferAddr(bL1Tensor_.GetBufferHandle());
     pipe_->InitBuffer(aBufL0_, L0A_PP_SIZE * 2); // 64K
     pipe_->InitBuffer(bBufL0_, L0B_PP_SIZE * 2); // 64K
     pipe_->InitBuffer(cBufL0_, L0C_PP_SIZE * 2); // 128K
