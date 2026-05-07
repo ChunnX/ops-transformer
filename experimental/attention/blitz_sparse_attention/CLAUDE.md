@@ -13,6 +13,38 @@ produced misleading wins that were reverted. The whole-cache invalidation is
 the required safety net — treat it as load-bearing, not as optimization
 surface. Any micro-gain from narrowing is not worth the correctness risk.
 
+## GOLDEN RULE — NEVER `git commit` (or move branch refs) WITHOUT EXPLICIT USER AUTHORIZATION
+
+**Do not run `git commit`, `git commit --amend`, `git push`,
+`git reset --hard`, `git revert`, `git rebase`, or any other git operation
+that modifies branch state, on the user's behalf, unless the user has
+*explicitly* asked for that specific action in the current conversation.**
+Local edits to source files are fine; staging files (`git add`) is fine;
+reading state (`git status`, `git log`, `git diff`) is fine. But the act of
+*creating a commit* or *moving a branch ref* is for the user, not for the agent.
+
+This rule overrides the convenience of "WIP checkpoint commits" or "final
+squashed commit" steps that may appear inside session plans (e.g. the
+`KERNEL_OPT.md` Session 15 plan): those steps are the *user's* prerogative,
+not auto-runnable. If a plan instructs the agent to commit, treat that as a
+request to *stage and prepare* the commit, then *stop and let the user
+commit*. The same applies to validation-gate decision-rule tables: even when
+a rule says "revert," the agent reports the gate result and pauses; the user
+runs the revert.
+
+**Why:** commits and branch moves are visible to others, harder to reverse
+than file edits, and easily caused by an agent misinterpreting a plan or a
+single ambiguous user instruction. The cost of asking before committing is
+one extra round-trip; the cost of an unwanted commit on a shared branch is
+hours of cleanup and lost work. The only thing that prevented Session 15's
+source mass-edits (~1300 lines deleted) from becoming permanent on the
+remote was the user owning the commit boundary.
+
+This rule is a hard policy, not a preference: it stays in force even when
+the agent is in "auto mode," even when a plan document describes a commit
+step, and even when the agent has just finished a long sequence of allowed
+actions. If in doubt, do not commit.
+
 ## Known limitations / TODOs
 
 **TODO: variable sabi granularity**

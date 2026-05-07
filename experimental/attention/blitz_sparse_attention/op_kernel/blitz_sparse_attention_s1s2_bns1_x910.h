@@ -715,12 +715,9 @@ protected:
                 }
             }
 
-            if(this->attentionMaskType == 4) { // 4:band OptimizationMode of sparseMode
-                SparseBandElewiseCompute(ubPingpong, souterSize, attenMaskOffsetPre);
-            } else {
-                this->template ElewiseCompute<U>(this->mmResUb[ubPingpong], souterSize, params->singleProcessSInnerSizeNow,
-                                             params->maskCopyInCol, params->useMask, this->bmm1ResCopyInEvent[ubPingpong], 0);
-            }
+            // T2.A: attentionMaskType ∈ {0, 1} only — band ElewiseCompute removed.
+            this->template ElewiseCompute<U>(this->mmResUb[ubPingpong], souterSize, params->singleProcessSInnerSizeNow,
+                                         params->maskCopyInCol, params->useMask, this->bmm1ResCopyInEvent[ubPingpong], 0);
 
             // Sparse sub-block correction: when a 512-wide cube tile contains inactive 128-element
             // KV sub-blocks (sabiSubBlockMask != fullMask), overwrite their columns with -10000
@@ -2365,26 +2362,11 @@ __aicore__ inline void BlitzSparseAttentionS1s2Bns1X910<PFAT>::SInnerLoopFunc(in
                 this->ComputeOffset(params, sInnerLoopIdx, 0);
             }
 
-            if (this->attentionMaskType == 2 || this->attentionMaskType == 3) {
-                params->useMask = ((sInnerFirstToken + params->singleProcessSOuterSize) > ((int64_t)sInnerLoopIdx * (int64_t)basicSInnerSize)
-                    || (sInnerLastToken - params->singleProcessSOuterSize < ((int64_t)(sInnerLoopIdx + 1) * (int64_t)basicSInnerSize)));
-            }
-
+            // T2.A: attentionMaskType ∈ {0, 1} only — leftUp/rightDown/band branches removed.
             // Determine whether the row invalidation OptimizationMode is enabled in the core.
             CheckRowInvalid(preTokens, nextTokens, params);
-    
-            if (this->attentionMaskType == 4) {
-                int32_t sOuterOffset = params->attenMaskOffset / SPARSE_ATTENTION_MASK_SIZE;
-                int32_t sInnerOffset = params->attenMaskOffset % SPARSE_ATTENTION_MASK_SIZE;
-                params->sparseBandSelect0 = (sOuterOffset < (sInnerOffset + (int32_t)params->maskCopyInCol));
-                sOuterOffset = params->attenMaskOffsetPre / SPARSE_ATTENTION_MASK_SIZE;
-                sInnerOffset = params->attenMaskOffsetPre % SPARSE_ATTENTION_MASK_SIZE;
-                params->sparseBandSelect1 = (sOuterOffset > (sInnerOffset - (int32_t)params->singleProcessSOuterSize));
-                params->useMask = params->sparseBandSelect0 || params->sparseBandSelect1;
-            } else {        // In Non band OptimizationMode，not involved sparseBandSelect0 and sparseBandSelect1. Set all to true to ensure that it does not affect public processes.
-                params->sparseBandSelect0 = true;
-                params->sparseBandSelect1 = true;
-            }
+            params->sparseBandSelect0 = true;
+            params->sparseBandSelect1 = true;
 
             if (this->queSize >= this->queSizeLimit) {
                 // When the queue is full, task is triggered. The task specified by headParams starts to send instructions.
@@ -2539,26 +2521,11 @@ __aicore__ inline void BlitzSparseAttentionS1s2Bns1X910<PFAT>::SInnerLoopFunc(in
                 this->ComputeOffset(params, sInnerLoopIdx, 0);
             }
 
-            if (this->attentionMaskType == 2 || this->attentionMaskType == 3) {
-                params->useMask = ((sInnerFirstToken + params->singleProcessSOuterSize) > ((int64_t)sInnerLoopIdx * (int64_t)basicSInnerSize)
-                    || (sInnerLastToken - params->singleProcessSOuterSize < ((int64_t)(sInnerLoopIdx + 1) * (int64_t)basicSInnerSize)));
-            }
-
+            // T2.A: attentionMaskType ∈ {0, 1} only — leftUp/rightDown/band branches removed.
             // Determine whether the row invalidation OptimizationMode is enabled in the core.
             CheckRowInvalid(preTokens, nextTokens, params);
-    
-            if (this->attentionMaskType == 4) {
-                int32_t sOuterOffset = params->attenMaskOffset / SPARSE_ATTENTION_MASK_SIZE;
-                int32_t sInnerOffset = params->attenMaskOffset % SPARSE_ATTENTION_MASK_SIZE;
-                params->sparseBandSelect0 = (sOuterOffset < (sInnerOffset + (int32_t)params->maskCopyInCol));
-                sOuterOffset = params->attenMaskOffsetPre / SPARSE_ATTENTION_MASK_SIZE;
-                sInnerOffset = params->attenMaskOffsetPre % SPARSE_ATTENTION_MASK_SIZE;
-                params->sparseBandSelect1 = (sOuterOffset > (sInnerOffset - (int32_t)params->singleProcessSOuterSize));
-                params->useMask = params->sparseBandSelect0 || params->sparseBandSelect1;
-            } else {        // In Non band OptimizationMode，not involved sparseBandSelect0 and sparseBandSelect1. Set all to true to ensure that it does not affect public processes.
-                params->sparseBandSelect0 = true;
-                params->sparseBandSelect1 = true;
-            }
+            params->sparseBandSelect0 = true;
+            params->sparseBandSelect1 = true;
 
             if (this->queSize >= this->queSizeLimit) {
                 // When the queue is full, task is triggered. The task specified by headParams starts to send instructions.
@@ -2802,21 +2769,13 @@ __aicore__ inline void BlitzSparseAttentionS1s2Bns1X910<PFAT>::ComputeEachCoreBa
     } else {
         this->actualKVPrefixLen = 0;
     }
-    if (this->attentionMaskType == 4) {
-        this->GetSparseParam(&preTokens, &nextTokens, sIdx, params);
-        actualSeqLengthsIdx = ((int64_t)actualSeqLengthsIdx >
-                               (int64_t)this->tilingData->promptAttentionBaseParams.seqInnerSize + this->actualKVPrefixLen +
-                               (int64_t)preTokens) ?
-                            this->tilingData->promptAttentionBaseParams.seqInnerSize + this->actualKVPrefixLen + preTokens :
-                            actualSeqLengthsIdx;  // This kernel does not transfer aclualseqlenkv. You do not need to change seqInnerSize.
-    } else {
-        actualSeqLengthsIdx = (this->attentionMaskType == 0 && (int64_t)actualSeqLengthsIdx >
-                            (int64_t)this->tilingData->promptAttentionBaseParams.seqInnerSize + this->actualKVPrefixLen +
-                            (int64_t)this->tilingData->promptAttentionBaseParams.preTokens) ?
-                            (int64_t)this->tilingData->promptAttentionBaseParams.seqInnerSize + this->actualKVPrefixLen + 
-                            (int64_t)this->tilingData->promptAttentionBaseParams.preTokens :
-                            actualSeqLengthsIdx;
-    }
+    // T2.A: attentionMaskType ∈ {0, 1} only — band (==4) branch removed.
+    actualSeqLengthsIdx = (this->attentionMaskType == 0 && (int64_t)actualSeqLengthsIdx >
+                        (int64_t)this->tilingData->promptAttentionBaseParams.seqInnerSize + this->actualKVPrefixLen +
+                        (int64_t)this->tilingData->promptAttentionBaseParams.preTokens) ?
+                        (int64_t)this->tilingData->promptAttentionBaseParams.seqInnerSize + this->actualKVPrefixLen +
+                        (int64_t)this->tilingData->promptAttentionBaseParams.preTokens :
+                        actualSeqLengthsIdx;
 
     int64_t sOuterBlockNum = (actualSeqLengthsIdx +
                               this->tilingData->promptAttentionSingleCoreParams.singleProcessSOuterSize - 1) /
