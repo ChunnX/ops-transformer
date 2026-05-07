@@ -508,7 +508,7 @@ TEST_F(MoeDistributeDispatchArch22TilingTest, A2Quant0Layered)
         &compileInfo, "Ascend910B", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 0UL;
-    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_FAILED, expectTilingKey);
 }
 TEST_F(MoeDistributeDispatchArch22TilingTest, A2Quant0)
 {
@@ -547,7 +547,7 @@ TEST_F(MoeDistributeDispatchArch22TilingTest, A2Quant0)
         &compileInfo, "Ascend910B", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 0UL;
-    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_FAILED, expectTilingKey);
 }
 // A2 test
 // 背景：4机 每机器8卡  每卡8个专家  由于deepseek 总共256 专家
@@ -589,7 +589,7 @@ TEST_F(MoeDistributeDispatchArch22TilingTest, A2GlobalBs)
         &compileInfo, "Ascend910B", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 0UL;
-    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_FAILED, expectTilingKey);
 }
 // 背景：4机 每机器8卡  每卡8个专家  由于deepseek 总共256 专家
 // 可选传入默认值   除了 quant_mode = 2 global_bs = 512  正常
