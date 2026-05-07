@@ -1284,6 +1284,22 @@ mc2:
       options:
         - matmul_reduce_scatter_v2
 
+    mega_moe:
+      module: True
+      src:
+        - mc2/mega_moe
+        - mc2/common
+      exclude:
+        - mc2/mega_moe/docs
+        - mc2/mega_moe/README.md
+      ut_cov_exclude:
+        - mc2/mega_moe/op_graph
+        - mc2/mega_moe/op_kernel
+      test:
+        examples: False
+      options:
+        - mega_moe
+
     quant_all_reduce:
       module: True
       src:
