@@ -58,7 +58,7 @@ aclnnStatus aclnnQuantLightningIndexer(
 ```
 
 ## aclnnQuantLightningIndexerGetWorkspaceSize
- 	 
+
 - **参数说明：**
 
 > [!NOTE]

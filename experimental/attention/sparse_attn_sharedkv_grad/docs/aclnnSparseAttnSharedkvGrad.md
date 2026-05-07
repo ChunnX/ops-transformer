@@ -7,13 +7,11 @@
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
 
-
-
 ## 功能说明
 
--   **接口功能**：计算`SparseAttnSharedkv`训练场景下注意力的反向输出，支持Sliding Window Attention、Compressed Attention以及Sparse Compressed Attention。
+- **接口功能**：计算`SparseAttnSharedkv`训练场景下注意力的反向输出，支持Sliding Window Attention、Compressed Attention以及Sparse Compressed Attention。
 
--   **计算公式**：
+- **计算公式**：
 
     已知正向公式：
     $$
@@ -50,10 +48,10 @@
     dK=((dS)^T@Q)\cdot \text{softmax\_scale}
     $$
 
-
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnSparseAttnSharedkvGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnSparseAttnSharedkvGrad”接口执行计算。
+每个算子分为[两段式接口](../../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnSparseAttnSharedkvGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnSparseAttnSharedkvGrad”接口执行计算。
+
 ```c++
 aclnnStatus aclnnSparseAttnSharedkvGradGetWorkspaceSize(
     const aclTensor   *query,
@@ -82,6 +80,7 @@ aclnnStatus aclnnSparseAttnSharedkvGradGetWorkspaceSize(
     uint64_t          *workspaceSize,
     aclOpExecutor    **executor);
 ```
+
 ```c++
 aclnnStatus aclnnSparseAttnSharedkvGrad(
     void             *workspace,
@@ -472,7 +471,6 @@ aclnnStatus aclnnSparseAttnSharedkvGrad(
         </tbody>
     </table>
 
-
 ## aclnnSparseAttnSharedkvGrad
 
 - **参数说明：**
@@ -515,7 +513,6 @@ aclnnStatus aclnnSparseAttnSharedkvGrad(
 - **返回值：**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-
 
 ## 约束说明
 
@@ -566,7 +563,9 @@ aclnnStatus aclnnSparseAttnSharedkvGrad(
         </tr>
         </tbody>
     </table>
+
 - 规格约束
+
     <table style="undefined;table-layout: fixed; width: 942px"><colgroup>
         <col style="width: 100px">
         <col style="width: 300px">

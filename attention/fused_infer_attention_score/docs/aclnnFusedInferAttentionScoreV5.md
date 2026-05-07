@@ -1555,6 +1555,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       |     6     |                                                                              global                                                                              |              -              |                                            不支持                                            |
       |     7     |                                                                              dilated                                                                              |              -              |                                            不支持                                            |
       |     8     |                                                                            block_local                                                                            |              -              |                                            不支持                                            |
+      
 - 存在性约束
   - 无
 - 一致性约束
