@@ -426,7 +426,6 @@ bool SparseLightningIndexerGradKLLossTilingBaseRegbase::AnalyzeDtype()
     OP_CHECK_NULL_WITH_CONTEXT(context_, softmaxMaxDesc);
     OP_CHECK_NULL_WITH_CONTEXT(context_, softmaxSumDesc);
 
-    // 以下5个为16类型保持一致
     auto queryDtype = queryDesc->GetDataType();
     auto keyDtype = keyDesc->GetDataType();
     auto queryIndexDtype = queryIndexDesc->GetDataType();
@@ -441,16 +440,15 @@ bool SparseLightningIndexerGradKLLossTilingBaseRegbase::AnalyzeDtype()
     bool same16 = false; // 判断输入为fp16或者部分16的是否一致
     bool same32 = false; // 判断输入为int32或者fp32的类型是否正确
     if (queryDtype == ge::DT_FLOAT16 && keyDtype == ge::DT_FLOAT16 && queryIndexDtype == ge::DT_FLOAT16 && 
-                            keyIndexDtype == ge::DT_FLOAT16 && weightsDtype == ge::DT_FLOAT16) {
+                            keyIndexDtype == ge::DT_FLOAT16) {
         same16 = true;
     } else if (queryDtype == ge::DT_BF16 && keyDtype == ge::DT_BF16 && queryIndexDtype == ge::DT_BF16 && 
-                            keyIndexDtype == ge::DT_BF16 && weightsDtype == ge::DT_BF16) {
+                            keyIndexDtype == ge::DT_BF16) {
         same16 = true;
     } else {
-        OP_LOGW(context_, "InputDtype is not same.: queryDtype[%s], keyDtype[%s], queryIndexDtype[%s], keyIndexDtype[%s], weightsDtype[%s]",
+        OP_LOGW(context_, "InputDtype is not same.: queryDtype[%s], keyDtype[%s], queryIndexDtype[%s], keyIndexDtype[%s]",
             ge::TypeUtils::DataTypeToSerialString(queryDtype).c_str(), ge::TypeUtils::DataTypeToSerialString(keyDtype).c_str(),
-            ge::TypeUtils::DataTypeToSerialString(queryIndexDtype).c_str(), ge::TypeUtils::DataTypeToSerialString(keyIndexDtype).c_str(),
-            ge::TypeUtils::DataTypeToSerialString(weightsDtype).c_str());
+            ge::TypeUtils::DataTypeToSerialString(queryIndexDtype).c_str(), ge::TypeUtils::DataTypeToSerialString(keyIndexDtype).c_str());
         same16 = false;
     } 
     if (sparseIndicesDtype == ge::DT_INT32 && softmaxMaxDtype == ge::DT_FLOAT && softmaxSumDtype == ge::DT_FLOAT) {
@@ -498,8 +496,8 @@ bool SparseLightningIndexerGradKLLossTilingBaseRegbase::CrossShapeVerify(const g
                  OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify T1 is failed, the value of query[0], query_index[0], weights[0], softmax_max[1] \
                  and softmax_sum[1] are respectively (%ld), (%ld), (%ld), (%ld), (%ld). Their values should be equal.", queryShape[0], queryIndexShape[0], weightsShape[0], softmaxMaxShape[1], softmaxSumShape[1]), return false);
         // 验证N Query数字是否正确
-        OP_CHECK_IF(queryShape[1] != NQUERY_SIZE_64 && queryShape[1] != NQUERY_SIZE_128,
-                 OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, shape N of query must be one of the {64, 128}, but the value of query[1] is (%ld)", queryShape[1]), return false);        
+        OP_CHECK_IF(queryShape[1] != NQUERY_SIZE_32 && queryShape[1] != NQUERY_SIZE_64 && queryShape[1] != NQUERY_SIZE_128,
+                 OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, shape N of query must be one of the {32, 64, 128}, but the value of query[1] is (%ld)", queryShape[1]), return false);        
         // 验证N Index数字是否正确
         OP_CHECK_IF(queryIndexShape[1] != NQUERYINDEX_SIZE_32 && queryIndexShape[1] != NQUERYINDEX_SIZE_64,
                  OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, shape N of query_index must be one of the {32, 64}, but the value of query_index[1] is (%ld).", queryIndexShape[1]), return false);
@@ -580,8 +578,8 @@ bool SparseLightningIndexerGradKLLossTilingBaseRegbase::CrossShapeVerify(const g
         OP_CHECK_IF(keyIndexShape[1] != s2Len,
                  OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify shape S2 is failed, the value of key[1] and key_index[1] are respectively (%ld), (%ld). Their values should be equal.", keyShape[1], keyIndexShape[1]), return false);
         // 验证N Query数字是否正确
-        OP_CHECK_IF(queryShape[2] != NQUERY_SIZE_64 && queryShape[2] != NQUERY_SIZE_128,
-                 OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, shape N of query must be one of the {64, 128}, but the value of query[2] is (%ld)", queryShape[2]), return false);        
+        OP_CHECK_IF(queryShape[2] != NQUERY_SIZE_32 && queryShape[2] != NQUERY_SIZE_64 && queryShape[2] != NQUERY_SIZE_128,
+                 OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, shape N of query must be one of the {32, 64, 128}, but the value of query[2] is (%ld)", queryShape[2]), return false);        
         // 验证N Index数字是否正确
         OP_CHECK_IF(queryIndexShape[2] != NQUERYINDEX_SIZE_32 && queryIndexShape[2] != NQUERYINDEX_SIZE_64,
                  OPS_REPORT_VECTOR_INNER_ERR(opName, "CrossShapeVerify failed, shape N of query_index must be one of the {32, 64}, but the value of query_index[2] is (%ld).", queryIndexShape[2]), return false);        
