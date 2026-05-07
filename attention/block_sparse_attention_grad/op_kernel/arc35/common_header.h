@@ -22,6 +22,12 @@ struct RunTimeInfo {
 };
 
 template <typename T>
+inline __aicore__ T CeilDiv(const T dividend, const T divisor)
+{
+    return (dividend + divisor - 1) / divisor;
+}
+
+template <typename T>
 inline __aicore__ T RoundUp(const T val, const T align)
 {
     return (val + align - 1) / align * align;

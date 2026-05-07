@@ -31,6 +31,7 @@ class BlockSparseAttentionGradArch35 {
 private:
     RunTimeInfo runTimeInfo_;
     AddrComputeModule<BSA_TYPE> addr_;
+    GlobalTensor<INPUT_TYPE> query_gm_, key_gm_;
 
 public:
     __aicore__ inline BlockSparseAttentionGradArch35(){};
@@ -40,7 +41,10 @@ public:
                                    GM_ADDR actualQseqlen, GM_ADDR actualKvseqlen, GM_ADDR dq, GM_ADDR dk, GM_ADDR dv,
                                    GM_ADDR workspace, const TILING_CLASS *tilingData, TPipe *tPipe)
     {
+        query_gm_.SetGlobalBuffer((__gm__ INPUT_TYPE *)q);
+        key_gm_.SetGlobalBuffer((__gm__ INPUT_TYPE *)k);
         addr_.Init(tilingData, actualQseqlen, actualKvseqlen);
+
 
         if ASCEND_IS_AIC {
             printf("=====================cubeIdx=%d=====================\n", GetBlockIdx());
@@ -62,8 +66,12 @@ public:
                                        GM_ADDR dv, GM_ADDR workspace, const TILING_CLASS *tilingData, TPipe *tPipe)
     {
         uint32_t taskId = 0;
+        CubeOp<BSA_TYPE> cubeOp;
+        cubeOp.Init(tilingData, tPipe);
+
         while (true) {
             addr_.GetRunTimeInfo(&runTimeInfo_);
+            cubeOp.ComputeMM12(query_gm_, key_gm_, &runTimeInfo_);
 
             if (runTimeInfo_.loop_finish) {
                 break;
