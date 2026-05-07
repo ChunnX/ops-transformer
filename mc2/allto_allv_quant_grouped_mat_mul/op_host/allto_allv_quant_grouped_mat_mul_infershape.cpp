@@ -163,6 +163,8 @@ static ge::graphStatus InferPermuteOutputShape(const gert::InferShapeContext *co
             permuteOutShape->SetDim(DIM_1, fixFp4);
         }
     }
+    std::cout << "infershape permute_out dim 1:" << permuteOutShape->GetDim(0) << std::endl;
+    std::cout << "infershape permute_out dim 2:" << permuteOutShape->GetDim(1) << std::endl;
     return ge::GRAPH_SUCCESS;
 }
 
