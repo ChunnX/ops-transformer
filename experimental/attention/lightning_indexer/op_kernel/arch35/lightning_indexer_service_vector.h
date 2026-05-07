@@ -560,7 +560,7 @@ __aicore__ inline void LIVector<LIT>::ProcessTopK(const LICommon::RunInfo &info)
                 }
             }
         } else {
-            AscendC::CreateVecIndex(indicesOutLocal_.ReinterpretCast<int32_t>(), (int32_t)zero, validS2Len);
+            AscendC::CreateVecIndex(indicesOutLocal_.ReinterpretCast<int32_t>(), (int32_t)(zero + outputIdxOffset), validS2Len);
             if (returnValueFlag) {
                 copyInParams.blockLen = LICommon::Align(validS2Len, (int32_t)32) * sizeof(uint16_t);
                 AscendC::DataCopyPad(scoreOutLocal_,
