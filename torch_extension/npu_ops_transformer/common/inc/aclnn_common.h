@@ -30,6 +30,7 @@
 #include "torch_npu/csrc/framework/interface/EnvVariables.h"
 #include "torch_npu/csrc/aten/NPUNativeFunctions.h"
 #include "torch_npu/csrc/core/npu/DeviceUtils.h"
+#include "torch_npu/csrc/custom_dtype/Init.h"
 #if __has_include("torch_npu/csrc/flopcount/FlopCount.h")
     #include "torch_npu/csrc/flopcount/FlopCount.h"
 #endif
@@ -63,6 +64,8 @@ constexpr int kHashBufSize = 8192;
 constexpr int kHashBufMaxSize = kHashBufSize + 1024;
 extern thread_local char g_hashBuf[kHashBufSize];
 extern thread_local int g_hashOffset;
+constexpr int64_t FP4_IN_INT8 = 2;
+constexpr int64_t PENULTIMATE_DIM = 2;
 
 #define AT_ALL_SCALAR_TYPE_AND_ACL_DATATYPE_PAIR(_)                                                                    \
     _(at::ScalarType::Byte, ACL_UINT8)                                                                                 \
@@ -119,6 +122,61 @@ constexpr aclDataType kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(at:
 #undef DEFINE_ENUM
 };
 
+namespace op_infer {
+const int N = 32;
+const int SIZE = 8;
+
+inline c10::SmallVector<int64_t, SIZE> array_to_small_vector(c10::IntArrayRef shape)
+{
+    c10::SmallVector<int64_t, SIZE> shape_small_vec;
+    for (uint64_t i = 0; i < shape.size(); i++) {
+        shape_small_vec.emplace_back(shape[i]);
+    }
+    return shape_small_vec;
+}
+}
+
+inline bool Is4BitDtype(const aclDataType acl_data_type)
+{
+    return acl_data_type == ACL_FLOAT4_E2M1 || acl_data_type == ACL_FLOAT4_E1M2 || acl_data_type == ACL_INT4;
+}
+
+
+inline void CollectB4ShapeInfo(const at::Tensor &at_tensor,
+                               c10::SmallVector<int64_t, MAX_DIM_NUM>& wrapperStride,
+                               c10::SmallVector<int64_t, MAX_DIM_NUM>& wrapperShape)
+{
+    int64_t nDim = at_tensor.sizes().size();
+    if (nDim == 1) {
+        wrapperShape[0] = wrapperShape[0] * FP4_IN_INT8;
+    } else if (nDim > 1) {
+        if (wrapperStride[nDim - 1] == 1 && wrapperStride[nDim - PENULTIMATE_DIM] == 1) {
+            if (wrapperShape[nDim - PENULTIMATE_DIM] == 1) {
+                wrapperStride[nDim - 1] = wrapperStride[nDim - 1] * FP4_IN_INT8;
+                wrapperShape[nDim - PENULTIMATE_DIM] = wrapperShape[nDim - PENULTIMATE_DIM] * FP4_IN_INT8;
+            } else if (wrapperShape[nDim - 1] == 1) {
+                wrapperStride[nDim - PENULTIMATE_DIM] = wrapperStride[nDim - PENULTIMATE_DIM] * FP4_IN_INT8;
+                wrapperShape[nDim - 1] = wrapperShape[nDim - 1] * FP4_IN_INT8;
+            }
+        } else if (wrapperStride[nDim - 1] == 1) {
+            wrapperStride[nDim - PENULTIMATE_DIM] =
+                wrapperStride[nDim - PENULTIMATE_DIM] * FP4_IN_INT8;
+            wrapperShape[nDim - 1] = wrapperShape[nDim - 1] * FP4_IN_INT8;
+        } else if (wrapperStride[nDim - PENULTIMATE_DIM] == 1) {
+            wrapperStride[nDim - 1] =
+                wrapperStride[nDim - 1] * FP4_IN_INT8;
+            wrapperShape[nDim - PENULTIMATE_DIM] =
+                wrapperShape[nDim - PENULTIMATE_DIM] * FP4_IN_INT8;
+        }
+
+        for (auto i = 0; i < nDim - PENULTIMATE_DIM; i++) {
+            wrapperStride[i] = wrapperStride[i] * FP4_IN_INT8;
+        }
+    } else {
+        TORCH_CHECK(false, "unsupported tensor size() in 4-bit dtype.", OPS_ERROR(ErrCode::VALUE));
+    }
+}
+
 enum QuantMode {
     QUANT_MODE_NO_QUANT = 0,
     QUANT_MODE_STATIC = 1,
@@ -137,6 +195,21 @@ enum QuantMode {
     auto ret = memcpy_s(g_hashBuf + g_hashOffset, size_expression, data_expression, size_expression); \
     TORCH_CHECK(ret == 0, "memcpy_s failed, error:", ret);                               \
     g_hashOffset += size_expression;
+
+aclDataType ConvertToAclDataType(const at::ScalarType &data_type)
+{
+    int64_t dtype_index = static_cast<int64_t>(data_type);
+    TORCH_CHECK(dtype_index >= 0 && dtype_index < static_cast<int64_t>(at::ScalarType::NumOptions) + 1,
+                "data_type enum value (",
+                dtype_index,
+                ") is out of range: [0, ",
+                static_cast<int64_t>(at::ScalarType::NumOptions),
+                "]")
+    auto acl_dtype = kATenScalarTypeToAclDataTypeTable[dtype_index];
+    TORCH_CHECK(acl_dtype != ACL_DT_UNDEFINED,
+                std::string(c10::toString(data_type)) + " has not been supported")
+    return acl_dtype;
+}
 
 inline const char *GetOpApiLibName(void)
 {
@@ -457,6 +530,76 @@ inline aclScalar *ConvertType(const c10::optional<at::Scalar> &opt_scalar)
 inline aclDataType ConvertType(const at::ScalarType scalarType)
 {
     return kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(scalarType)];
+}
+
+aclTensor *ConvertType(const TensorWrapper &tensor_r)
+{
+    static const auto aclCreateTensor = GET_OP_API_FUNC(aclCreateTensor);
+    if (aclCreateTensor == nullptr) {
+        return nullptr;
+    }
+
+    const at::Tensor &at_tensor = tensor_r.tensor_;
+
+    if (!at_tensor.defined()) {
+        return nullptr;
+    }
+
+    aclDataType acl_data_type = tensor_r.dtype;
+    c10::SmallVector<int64_t, MAX_DIM_NUM> storageDims;
+    c10::SmallVector<int64_t, MAX_DIM_NUM> wrapperStride = op_infer::array_to_small_vector(at_tensor.strides());
+    c10::SmallVector<int64_t, MAX_DIM_NUM> wrapperShape = op_infer::array_to_small_vector(at_tensor.sizes());
+
+    const auto dimNum = at_tensor.sizes().size();
+    aclFormat format = ACL_FORMAT_ND;
+    switch (dimNum) {
+        case 3:
+            format = ACL_FORMAT_NCL;
+            break;
+        case 4:
+            format = ACL_FORMAT_NCHW;
+            break;
+        case 5:
+            format = ACL_FORMAT_NCDHW;
+            break;
+        default:
+            format = ACL_FORMAT_ND;
+    }
+    // if acl_data_type is ACL_STRING, storageDims is empty.
+    if (acl_data_type != ACL_STRING) {
+        TORCH_CHECK(at_tensor.itemsize() > 0, "the itemsize of tensor must be greater than 0.");
+        if (Is4BitDtype(acl_data_type)) {
+            storageDims.push_back(at_tensor.storage().nbytes() / at_tensor.itemsize() * FP4_IN_INT8);
+            CollectB4ShapeInfo(at_tensor, wrapperStride, wrapperShape);
+        } else {
+            storageDims.push_back(at_tensor.storage().nbytes() / at_tensor.itemsize());
+        }
+    }
+
+    auto acl_tensor =
+        aclCreateTensor(wrapperShape.data(), at_tensor.sizes().size(), acl_data_type, wrapperStride.data(),
+                        at_tensor.storage_offset(), format, storageDims.data(), storageDims.size(),
+                        const_cast<void *>(at_tensor.storage().data()));
+    return acl_tensor;
+}
+
+aclTensorList *ConvertType(const TensorListWrapper &tensor_list_wrapper)
+{
+    if (tensor_list_wrapper.tensor_list_.size() == 0) {
+        return nullptr;
+    }
+    static const auto aclCreateTensorList = GET_OP_API_FUNC(aclCreateTensorList);
+    if (aclCreateTensorList == nullptr) {
+        return nullptr;
+    }
+
+    std::vector<const aclTensor *> tensor_list(tensor_list_wrapper.tensor_list_.size());
+    for (size_t i = 0; i < tensor_list.size(); i++) {
+        tensor_list[i] = ConvertType(TensorWrapper{
+            tensor_list_wrapper.tensor_list_[i], tensor_list_wrapper.dtype});
+    }
+    auto acl_tensor_list = aclCreateTensorList(tensor_list.data(), tensor_list.size());
+    return acl_tensor_list;
 }
 
 template <typename T>
