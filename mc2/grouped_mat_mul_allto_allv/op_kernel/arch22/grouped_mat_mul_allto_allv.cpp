@@ -17,8 +17,8 @@
 #else
 #include "kernel_operator.h"
 #endif
-#include "grouped_mat_mul_allto_allv.h"
-#include "grouped_mat_mul_allto_allv_tiling_key.h"
+#include "../grouped_mat_mul_allto_allv.h"
+#include "../grouped_mat_mul_allto_allv_tiling_key.h"
 
 using namespace AscendC;
 
@@ -33,29 +33,27 @@ struct GMMATAVType { // Grouped_Mat_Mul_All_To_Allv_Type
     static constexpr int commMode = TILINGKEY_COMM_MODE;
 };
 
-#define INVOKE_GMMATAV_OP_IMPL_A5(templateClass, ...)                                                   \
-    do {                                                                                                \
-        TPipe pipe;                                                                                     \
-        templateClass<GMMATAVType<__VA_ARGS__>> op;                                                     \
-        op.Init(                                                                                        \
-            gmmxGM, gmmweightGM, sendCountsTensorOptionalGM, recvCountsTensorOptionalGM, mmxOptionalGM, \
-            mmweightOptionalGM, yGM, mmyOptionalGM, workspaceGM, contextGM, &tilingData, &pipe);        \
-        op.Process();                                                                                   \
+#define INVOKE_GMMATAV_OP_IMPL_A5(templateClass, ...)                                                                  \
+    do {                                                                                                               \
+        TPipe pipe;                                                                                                    \
+        templateClass<GMMATAVType<__VA_ARGS__>> op;                                                                    \
+        op.Init(gmmxGM, gmmweightGM, sendCountsTensorOptionalGM, recvCountsTensorOptionalGM, mmxOptionalGM,            \
+                mmweightOptionalGM, yGM, mmyOptionalGM, workspaceGM, contextGM, &tilingData, &pipe);                   \
+        op.Process();                                                                                                  \
     } while (0)
 
-#define INVOKE_GMMATAV_OP_IMPL(templateClass, ...)                                                       \
-    do {                                                                                                 \
-        TPipe pipe;                                                                                      \
-        templateClass<GMMATAVType<__VA_ARGS__>> op;                                                      \
-        op.Init(                                                                                         \
-            gmmxGM, gmmweightGM, sendCountsTensorOptionalGM, recvCountsTensorOptionalGM, mmxOptionalGM,  \
-            mmweightOptionalGM, yGM, mmyOptionalGM, workspaceGM, contextGM, &tilingData, hcclInitTiling, \
-            alltoAllvCcTiling, &pipe);                                                                   \
-        op.Process();                                                                                    \
+#define INVOKE_GMMATAV_OP_IMPL(templateClass, ...)                                                                     \
+    do {                                                                                                               \
+        TPipe pipe;                                                                                                    \
+        templateClass<GMMATAVType<__VA_ARGS__>> op;                                                                    \
+        op.Init(gmmxGM, gmmweightGM, sendCountsTensorOptionalGM, recvCountsTensorOptionalGM, mmxOptionalGM,            \
+                mmweightOptionalGM, yGM, mmyOptionalGM, workspaceGM, contextGM, &tilingData, hcclInitTiling,           \
+                alltoAllvCcTiling, &pipe);                                                                             \
+        op.Process();                                                                                                  \
     } while (0)
 
 template <
-    bool TILINGKEY_COMPUTE_MATMUL, bool TILINGKEY_GROUPED_MATMUL_TRANS, 
+    bool TILINGKEY_COMPUTE_MATMUL, bool TILINGKEY_GROUPED_MATMUL_TRANS,
     bool TILINGKEY_MATMUL_TRANS, int TILINGKEY_COMM_MODE>
 __global__ __aicore__ void grouped_mat_mul_allto_allv(
     GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR sendCountsTensorOptionalGM, GM_ADDR recvCountsTensorOptionalGM,
@@ -70,10 +68,10 @@ __global__ __aicore__ void grouped_mat_mul_allto_allv(
     if (userWorkspace == nullptr) {
         return;
     }
-    REGISTER_TILING_DEFAULT(GroupedMatMulAlltoAllvTilingData); 
-    auto tiling = (__gm__ GroupedMatMulAlltoAllvTilingData*)tilingGM;
-    __gm__ void* hcclInitTiling = (__gm__ void*)(&(tiling->hcclInitTiling));
-    __gm__ void* alltoAllvCcTiling = (__gm__ void*)(&(tiling->alltoAllvCcTiling));
+    REGISTER_TILING_DEFAULT(GroupedMatMulAlltoAllvTilingData);
+    auto tiling = (__gm__ GroupedMatMulAlltoAllvTilingData *)tilingGM;
+    __gm__ void *hcclInitTiling = (__gm__ void *)(&(tiling->hcclInitTiling));
+    __gm__ void *alltoAllvCcTiling = (__gm__ void *)(&(tiling->alltoAllvCcTiling));
     GET_TILING_DATA(tilingData, tilingGM);
     GM_ADDR contextGM = GetHcclContext<HCCL_GROUP_ID_0>();
 
