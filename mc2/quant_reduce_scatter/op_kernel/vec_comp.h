@@ -37,8 +37,8 @@ class VectorCompute {
 public:
     __aicore__ inline VectorCompute() {};
     __aicore__ inline void InitBuffer(TPipe *tPipe);
-    __aicore__ inline void CastToFloat(LocalTensor<XType> &xTensor, LocalTensor<ScalesType> &scaleTensor);
-    __aicore__ inline void DequantReduceSum(LocalTensor<XType> &xTensor, LocalTensor<ScalesType> &scaleTensor, LocalTensor<float> &sumTensor);
+    __aicore__ inline void CastToFloat(LocalTensor<XType> &xTensor, LocalTensor<ScalesType> &scaleTensor, uint32_t xCount = 0);
+    __aicore__ inline void DequantReduceSum(LocalTensor<XType> &xTensor, LocalTensor<ScalesType> &scaleTensor, LocalTensor<float> &sumTensor, uint32_t xCount = 0);
     __aicore__ inline void SetBlockSize(uint32_t elementsPerBlock);
 private:
     uint32_t xNumPerBlock_{0};
@@ -105,8 +105,12 @@ __aicore__ inline void VectorCompute<TemplateType>::SetBlockSize(uint32_t elemen
 template <TemplateTypeClass>
 __aicore__ inline void VectorCompute<TemplateType>::CastToFloat(
     LocalTensor<XType> &xTensor,
-    LocalTensor<ScalesType> &scaleTensor)
+    LocalTensor<ScalesType> &scaleTensor,
+    uint32_t xCount)
 {
+    if (xCount == 0) {
+        xCount = xNumPerBlock_;
+    }
     xCastTemp_ = xCastBuf_.Get<float>();
     scaleCalTensor_ = brcbBuf_.Get<float>();
     LocalTensor<bfloat16_t> xTempBf16Tensor = xCastBf16Buf_.Get<bfloat16_t>();
@@ -115,47 +119,39 @@ __aicore__ inline void VectorCompute<TemplateType>::CastToFloat(
     
     if constexpr (AscendC::IsSameType<XType, fp4x2_e2m1_t>::value ||
         AscendC::IsSameType<XType, fp4x2_e1m2_t>::value) {
-        // fp4 -> bf16 -> fp32
-        Duplicate<bfloat16_t>(xTempBf16Tensor, (bfloat16_t)0.0, xNumPerBlock_);
-        Cast(xTempBf16Tensor, xTensor, RoundMode::CAST_NONE, xNumPerBlock_);
+        Duplicate<bfloat16_t>(xTempBf16Tensor, (bfloat16_t)0.0, xCount);
+        Cast(xTempBf16Tensor, xTensor, RoundMode::CAST_NONE, xCount);
         PipeBarrier<PIPE_V>();
-        Cast(xCastTemp_, xTempBf16Tensor, RoundMode::CAST_NONE, xNumPerBlock_);
+        Cast(xCastTemp_, xTempBf16Tensor, RoundMode::CAST_NONE, xCount);
         PipeBarrier<PIPE_V>();
     } else if constexpr (AscendC::IsSameType<XType, int8_t>::value) { 
-        // int8 -> fp16 -> fp32
-        Duplicate<float16_t>(xTempfp16Tensor, (float16_t)0.0, xNumPerBlock_);
-        Cast(xTempfp16Tensor, xTensor, RoundMode::CAST_NONE, xNumPerBlock_);
+        Duplicate<float16_t>(xTempfp16Tensor, (float16_t)0.0, xCount);
+        Cast(xTempfp16Tensor, xTensor, RoundMode::CAST_NONE, xCount);
         PipeBarrier<PIPE_V>();
-        Cast(xCastTemp_, xTempfp16Tensor, RoundMode::CAST_NONE, xNumPerBlock_);
+        Cast(xCastTemp_, xTempfp16Tensor, RoundMode::CAST_NONE, xCount);
         PipeBarrier<PIPE_V>();
     } else {
-        // fp8 -> fp32
-        Duplicate<float>(xCastTemp_, (float)0.0, xNumPerBlock_);
+        Duplicate<float>(xCastTemp_, (float)0.0, xCount);
         PipeBarrier<PIPE_V>();
-        Cast(xCastTemp_, xTensor, RoundMode::CAST_NONE, xNumPerBlock_);
+        Cast(xCastTemp_, xTensor, RoundMode::CAST_NONE, xCount);
         PipeBarrier<PIPE_V>();
     }
 
     if constexpr (AscendC::IsSameType<ScalesType, fp8_e8m0_t>::value) {
-        // fp8_e8m0 -> bf16 -> fp32
-        // 当前Cast接口不支持fp8_e8m0_t类型转换只能使用微指令实现
         tempBf16Scale_ = tempBf16ScaleBuf_.Get<bfloat16_t>();
         Duplicate<bfloat16_t>(tempBf16Scale_, (bfloat16_t)0.0, MX_SIZE);
         PipeBarrier<PIPE_V>();
         __local_mem__ fp8_e8m0_t* srcPtr = (__local_mem__ fp8_e8m0_t*)scaleTensor.GetPhyAddr();
         __local_mem__ bfloat16_t* tempBf16ScalePtr = (__local_mem__ bfloat16_t*)tempBf16Scale_.GetPhyAddr();
-        // 当前Cast接口不支持fp8_e8m0_t类型转换只能使用微指令实现
         VF_CALL<CastVf>(tempBf16ScalePtr, srcPtr, MX_SIZE);
         PipeBarrier<PIPE_V>();
         Cast(castLocalScale, tempBf16Scale_, RoundMode::CAST_NONE, MX_SIZE);
         PipeBarrier<PIPE_V>();
-        // MX量化将scale广播成32
         const uint32_t broadcastDst[TWO_DIMS]{MX_SCALE_TRANS_NUM, MX_SIZE};
         const uint32_t broadcastSrc[TWO_DIMS]{MX_SCALE_TRANS_NUM, 1};
         BroadCast<float, TWO_DIMS, 1>(scaleCalTensor_, castLocalScale, broadcastDst, broadcastSrc);
     } else {
         castLocalScale = scaleTensor.template ReinterpretCast<float>();
-        // KG量化将scale广播成128
         const uint32_t broadcastDst[TWO_DIMS]{KG_SCALE_TRANS_NUM, PER_GROUP_SIZE};
         const uint32_t broadcastSrc[TWO_DIMS]{KG_SCALE_TRANS_NUM, 1};
         BroadCast<float, TWO_DIMS, 1>(scaleCalTensor_, castLocalScale, broadcastDst, broadcastSrc);
@@ -180,16 +176,17 @@ template <TemplateTypeClass>
 __aicore__ inline void VectorCompute<TemplateType>::DequantReduceSum(
     LocalTensor<XType> &xTensor,
     LocalTensor<ScalesType> &scaleTensor,
-    LocalTensor<float> &sumTensor)
+    LocalTensor<float> &sumTensor,
+    uint32_t xCount)
 {
-    // Cast成float计算
-    CastToFloat(xTensor, scaleTensor);
+    if (xCount == 0) {
+        xCount = xNumPerBlock_;
+    }
+    CastToFloat(xTensor, scaleTensor, xCount);
     PipeBarrier<PIPE_V>();
-    // 反量化
-    Mul(xCastTemp_, xCastTemp_, scaleCalTensor_, xNumPerBlock_);
+    Mul(xCastTemp_, xCastTemp_, scaleCalTensor_, xCount);
     PipeBarrier<PIPE_V>();
-    // 累加
-    Add(sumTensor, sumTensor, xCastTemp_, xNumPerBlock_);
+    Add(sumTensor, sumTensor, xCastTemp_, xCount);
     PipeBarrier<PIPE_V>();
 }
 } // VectorComputeImpl

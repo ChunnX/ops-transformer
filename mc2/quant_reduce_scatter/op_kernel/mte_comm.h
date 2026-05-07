@@ -47,7 +47,7 @@ public:
     __aicore__ inline void InitBuffer(TPipe *tPipe);
     __aicore__ inline void SetBlockSize(uint32_t elementsPerBlock, uint64_t aivNum, uint64_t lastBlockNum);
      template <bool isReduceScatter = false>
-    __aicore__ inline void CopyDataToWin(uint64_t xSliceSizeNums = 0, uint64_t scaleSliceNums = 0);
+    __aicore__ inline void CopyDataToWin(uint64_t xSliceSizeNums = 0, uint64_t scaleSliceNums = 0, uint32_t tailScaleNums = 0);
     __aicore__ inline void WriteStatusToWin();
     __aicore__ inline void ReadStatus();
     __aicore__ inline void CopyResultToOutput(uint64_t outOffsetGM, LocalTensor<float>& localResultTensor, uint32_t count);
@@ -72,7 +72,7 @@ private:
     uint32_t xNumPerBlock_{0};
     uint64_t tailXNums_{0};
 
-    __aicore__ inline void CopyDataBlock(uint64_t curXOffset, uint64_t curScaleOffset, uint32_t count);
+    __aicore__ inline void CopyDataBlock(uint64_t curXOffset, uint64_t curScaleOffset, uint32_t xCount, uint32_t scaleCount);
 
     GlobalTensor<XType> xGMTensor_;
     GlobalTensor<ScalesType> scalesGMTensor_;
@@ -207,23 +207,20 @@ __aicore__ inline void MTECommunication<TemplateType>::ComputeTailAivId(uint64_t
  * @param count 当前x数据块dataCopy的元素数量
  */
 template <TemplateTypeClass>
-__aicore__ inline void MTECommunication<TemplateType>::CopyDataBlock(uint64_t curXOffset, uint64_t curScaleOffset, uint32_t count)
+__aicore__ inline void MTECommunication<TemplateType>::CopyDataBlock(uint64_t curXOffset, uint64_t curScaleOffset, uint32_t xCount, uint32_t scaleCount)
 {
-    // 先拷贝data数据， 再拷贝scales
-    /* x 从 GM -> UB -> Win */
     xTmpTensor_ = xQueue_.AllocTensor<XType>();
-    DataCopy(xTmpTensor_, xGMTensor_[curXOffset], count);
+    DataCopy(xTmpTensor_, xGMTensor_[curXOffset], xCount);
     xQueue_.EnQue(xTmpTensor_);
     xTmpTensor_ = xQueue_.DeQue<XType>();
-    DataCopy(localWinXGMTensor_[curXOffset], xTmpTensor_, count);
+    DataCopy(localWinXGMTensor_[curXOffset], xTmpTensor_, xCount);
     xQueue_.FreeTensor<XType>(xTmpTensor_);
 
-    /* scale 从 GM -> UB -> Win */
     scaleTmpTensor_ = scaleQueue_.AllocTensor<ScalesType>();
-    DataCopy(scaleTmpTensor_, scalesGMTensor_[curScaleOffset], scaleNumsPerBlcok_);
+    DataCopy(scaleTmpTensor_, scalesGMTensor_[curScaleOffset], scaleCount);
     scaleQueue_.EnQue(scaleTmpTensor_);
     scaleTmpTensor_ = scaleQueue_.DeQue<ScalesType>();
-    DataCopy(localWinScaleGMTensor_[curScaleOffset], scaleTmpTensor_, scaleNumsPerBlcok_);
+    DataCopy(localWinScaleGMTensor_[curScaleOffset], scaleTmpTensor_, scaleCount);
     scaleQueue_.FreeTensor<ScalesType>(scaleTmpTensor_);
 }
 
@@ -241,29 +238,25 @@ __aicore__ inline void MTECommunication<TemplateType>::CopyDataBlock(uint64_t cu
  */
 template <TemplateTypeClass>
 template <bool isReduceScatter>
-__aicore__ inline void MTECommunication<TemplateType>::CopyDataToWin(uint64_t xSliceSizeNums, uint64_t scaleSliceNums)
+__aicore__ inline void MTECommunication<TemplateType>::CopyDataToWin(uint64_t xSliceSizeNums, uint64_t scaleSliceNums, uint32_t tailScaleNums)
 {
-    // 遍历每个核需要搬运的数据块
     for (uint64_t curBlock = 0; curBlock < assignedBlockNums_; ++curBlock) {
-        uint64_t curXOffset = xOffset_ + curBlock * xNumPerBlock_; // 计算现在搬第几个x
-        uint64_t curScaleOffset = scaleOffset_ + curBlock * scaleNumsPerBlcok_; // 计算现在搬第几个scale
-        uint32_t copyBlockNum = xNumPerBlock_;
+        uint64_t curXOffset = xOffset_ + curBlock * xNumPerBlock_;
+        uint64_t curScaleOffset = scaleOffset_ + curBlock * scaleNumsPerBlcok_;
+        uint32_t xCount = xNumPerBlock_;
+        uint32_t scaleCount = scaleNumsPerBlcok_;
         if ((aivId_ ==  lastAivId_) && (curBlock == assignedBlockNums_ - 1)) {
-            copyBlockNum = tailXNums_; // 检测是否为最后的尾块搬运
+            xCount = tailXNums_;
+            scaleCount = (tailScaleNums > 0) ? tailScaleNums : scaleNumsPerBlcok_;
         }
         if constexpr (isReduceScatter) {
-            // ReduceScatter过程，数据按卡均分，需要对卡进行遍历
             for(uint64_t curRank = 0; curRank < hcclContext_->rankDim; ++curRank) {
-                // all2all过程，加上卡偏移
                 uint64_t curRankXOffset = curXOffset + curRank * xSliceSizeNums;
                 uint64_t curRankScaleOffset = curScaleOffset + curRank * scaleSliceNums;
-
-                // 搬运当前数据块到Win区
-                CopyDataBlock(curRankXOffset, curRankScaleOffset, copyBlockNum);
+                CopyDataBlock(curRankXOffset, curRankScaleOffset, xCount, scaleCount);
             }
         } else {
-            // AllReduce过程，allgather直接搬运
-            CopyDataBlock(curXOffset, curScaleOffset, copyBlockNum);
+            CopyDataBlock(curXOffset, curScaleOffset, xCount, scaleCount);
         }
     }
     PipeBarrier<PIPE_ALL>();
