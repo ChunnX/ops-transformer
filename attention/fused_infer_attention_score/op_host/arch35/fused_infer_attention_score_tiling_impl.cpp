@@ -2191,7 +2191,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetFATilingData(const FiaTil
     if (fiaInfo.antiQuantFlag) {
         inputParams.set_isGqa(gsMergeFlag_);
     } else {
-        inputParams.set_isGqa(gsMergeFlag_ && fiaInfo.ropeMode != RopeMode::ROPE_SPLIT);
+        inputParams.set_isGqa(gsMergeFlag_ && fiaInfo.mlaMode != MlaMode::ROPE_SPLIT_D512);
     }
     inputParams.set_isSoftMaxLseEnable(fiaInfo.softmaxLseFlag);
     inputParams.set_isQHasLeftPadding(fiaInfo.qPaddingSizeFlag);
