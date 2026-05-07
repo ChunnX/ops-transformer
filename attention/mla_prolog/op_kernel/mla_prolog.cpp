@@ -16,10 +16,8 @@
 #define MLA_PROLOG_VERSION 1
 #if __CCE_AICORE__ == 310
 #include "arch35/kernel_mla_prolog_split_n.h"
-#elif __CCE_AICORE__ == 220
-#include "arch32/kernel_mla_prolog_split_n.h"
 #else
-#error "Unsupported ai core arch for mla_prolog"
+#include "arch32/kernel_mla_prolog_split_n.h"
 #endif
 using namespace MlaProlog; 
 

@@ -25,8 +25,8 @@
 #include "service_scatter_cache.h"
 #include "service_dequant.h"
 #include "service_dynamic_quant_qn_mul_qr.h"
-#include "mla_prolog_tiling_data.h"
-#include "mla_prolog_template_tiling_key.h"
+#include "../mla_prolog_tiling_data.h"
+#include "../mla_prolog_template_tiling_key.h"
 
 namespace MlaProlog {
 template <typename MLAPT>

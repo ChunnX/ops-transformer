@@ -19,8 +19,10 @@
 #if __CCE_AICORE__ == 310
 #if __has_include("../../mla_prolog/op_kernel/arch35/kernel_mla_prolog_split_n.h")
 #include "../../mla_prolog/op_kernel/arch35/kernel_mla_prolog_split_n.h"
+#include "../../mla_prolog/op_kernel/arch35/kernel_mla_prolog_split_m.h"
 #else
 #include "../mla_prolog/arch35/kernel_mla_prolog_split_n.h"
+#include "../mla_prolog/arch35/kernel_mla_prolog_split_m.h"
 #endif
 #else
 #if __has_include("../../mla_prolog/op_kernel/arch32/kernel_mla_prolog_split_n.h")
@@ -30,19 +32,6 @@
 #endif
 #endif
 
-#if __CCE_AICORE__ == 310
-#if __has_include("../../mla_prolog/op_kernel/arch35/kernel_mla_prolog_split_m.h")
-#include "../../mla_prolog/op_kernel/arch35/kernel_mla_prolog_split_m.h"
-#else
-#include "../mla_prolog/arch35/kernel_mla_prolog_split_m.h"
-#endif
-#else
-#if __has_include("../../mla_prolog/op_kernel/arch32/kernel_mla_prolog_split_m.h")
-#include "../../mla_prolog/op_kernel/arch32/kernel_mla_prolog_split_m.h"
-#else
-#include "../mla_prolog/arch32/kernel_mla_prolog_split_m.h"
-#endif
-#endif
 
 
 using namespace MlaProlog;
@@ -175,7 +164,9 @@ __global__ __aicore__ void mla_prolog_v3(
                 dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr, smoothScalesCq, actualSeqLen, kNopeClipAlpha,
                 queryOut, queryRopeOut, dequantScaleQNopeOut, queryNormOut, dequantScaleQNormOut, workspace);
         op.Process();
-    } else if constexpr (static_cast<SCENARIO>(Scenario) == SCENARIO::QUANT && 
+    } 
+#if __CCE_AICORE__ == 310
+    else if constexpr (static_cast<SCENARIO>(Scenario) == SCENARIO::QUANT && 
                          static_cast<QUANT_MODE>(QuantMode) == QUANT_MODE::MXFP8_FULL_QUANT_KV_NO_QUANT) {
         if constexpr (splitMMode == SPLIT_M_MODE::ENABLED) {
             MlaPrologV3SplitM<MLAPType<FP8E4M3, FP8E4M3, bfloat16_t, FP8E8M0, cacheMode,
@@ -299,6 +290,7 @@ __global__ __aicore__ void mla_prolog_v3(
                 queryOut, queryRopeOut, dequantScaleQNopeOut, queryNormOut, dequantScaleQNormOut, workspace);
         op.Process();
     }
+#endif
 #if (__NPU_ARCH__ == 3510)
     AscendC::SetCtrlSpr<GLOBAL_OVERFLOW_MODE_CTRL, GLOBAL_OVERFLOW_MODE_CTRL>(globalOriOverflowMode);
 #endif
