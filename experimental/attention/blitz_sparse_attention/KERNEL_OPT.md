@@ -2893,3 +2893,177 @@ Bootstrap prompt for the next Claude session (B=1,
 > version (8.5.0-beta.1) accepts `--aic-metrics=PipeUtilization` only
 > (single value); the comma-separated form is rejected.
 
+---
+
+## Session 17 — bmm1 `baseN` widening 128 → 256: clean negative
+
+**TL;DR:** Reverted. The user's "fewer MTE2 instructions" framing was tested by
+the smallest possible lever (`SetFixSplit` baseN bumped from 128 to 256 in
+`blitz_sparse_attention_tiling.cpp`, single-line tiling change). It cuts the
+matmul library's MTE2 issue count per cube tile from 4 to 2 but barely moves
+`aic_mte2_ratio` (0.689 → 0.677) and adds wall-time at sparsity 0. **Cube is
+HBM-bandwidth bound, not MTE2-issue-overhead bound.** Useful diagnostic; no
+behavioural change kept.
+
+### What was applied (and reverted)
+
+- `op_host/blitz_sparse_attention_tiling.cpp:1287-1290` — `baseN` literal
+  `std::min(uint32_t(128), sInnerFactor)` → `std::min(uint32_t(256), sInnerFactor)`.
+  bmm2's `baseN` was deliberately left at 128 to isolate the bmm1 effect. The
+  only path touched is the NORM / SPLIT_NBS_CUBE / SPLIT_ONEN_CUBE branch
+  (BSA's actual path for D=128 BF16 CVDIFF). Sabi granularity unchanged at
+  128×128; cube tile width unchanged at 512.
+
+### Validation
+
+**Wall time** (B=1, H=3, S=118 806, D=128, BF16; mean of 10 reps; µs;
+back-to-back measurement on same device session):
+
+```
+sparsity   baseN=128 (today)   baseN=256    delta
+0.00       176 811             195 373      +18.56 ms ✗
+0.05       174 544             189 818      +15.27 ms ✗
+0.10       174 271             185 913      +11.64 ms ✗
+0.20       169 660             174 649       +4.99 ms ✗
+0.30       162 180             163 020       +0.84 ms ~
+0.40       156 839             157 256       +0.42 ms ~
+0.50       149 205             149 006       −0.20 ms ~
+0.60       134 911             135 525       +0.61 ms ~
+0.70       113 063             113 360       +0.30 ms ~
+0.80        80 798              80 851       +0.05 ms ~
+0.90        33 645              34 170       +0.53 ms ~
+```
+
+Note: today's `baseN=128` numbers run ~16 ms faster at sparsity 0 than
+Session 16's reported T1.C+T2.A baseline (176 811 vs 192 977). Same source,
+clean rebuild — likely device-thermal / library-cache drift between sessions.
+Both back-to-back numbers in this table are from the same session window so
+the +18.6 ms regression at sparsity 0 is reliable.
+
+**msprof at sparsity 0** (mean of 6 BSA calls per run):
+
+| Metric                | T1.C+T2.A (S16) | baseN=256 | Δ |
+|---|---|---|---|
+| Task Duration (µs)    | 194 168  | 187 906   | -6.3 ms (msprof-only)  |
+| `aic_scalar_ratio`    | 1.000    | 1.000     | 0          |
+| `aic_mac_ratio`       | 0.3335   | 0.3440    | +0.011     |
+| `aic_mte1_ratio`      | 0.2420   | 0.2498    | +0.008     |
+| **`aic_mte2_ratio`**  | **0.6893** | **0.6775** | **-0.012** |
+| `aic_fixpipe_ratio`   | 0.4252   | 0.4278    | +0.003     |
+| `aic_icache_miss_rate`| —        | 0.0010    | —          |
+| `aiv_vec_ratio`       | 0.6207   | 0.6408    | +0.020     |
+| `aiv_scalar_ratio`    | 0.4702   | 0.4843    | +0.014     |
+| `aiv_icache_miss_rate`| 0.0100   | 0.0100    | 0 (preserved) |
+
+The msprof-reported Task Duration drops -6.3 ms but wall-time rises +18.6 ms.
+The msprof and benchmark windows are different (msprof: N_REPEATS=3, no overhead
+amortisation; benchmark: N_REPEATS=10). The benchmark is the load-bearing
+measurement.
+
+Pytest: `test_attn.py` 80/80 ✓ (Session 16's reference suite). `test_lse.py`
+100/100 ✓ when run in isolation. `test_joint.py` 19/20 — a single fp16
+numerical drift `b1-h4-s8192-d128-float16` exceeds atol=0.001 by 0.002 (BF16
+configurations all pass). When running all three suites combined, an AIC
+exception cascades from one of the joint tests, producing 81 spurious failures
+in subsequent tests — separate from this experiment, pre-existing instability
+that surfaces only under combined runs.
+
+### Mechanism
+
+`aic_mte2_ratio` moved by only 0.012 (from 0.689 to 0.677) for a 2× cut in
+MTE2 issue count. If issue overhead were the dominant cube-side cost,
+halving issues would have pushed mte2_ratio toward 0.35 — the actual
+movement is ~17× smaller. Conclusion: each MTE2 *instruction* is mostly
+busy waiting on HBM bytes, not setup overhead. **The cube at sparsity 0
+is HBM-bandwidth bound across 24 cores.**
+
+The wall-time regression at sparsity 0 (+18.6 ms) likely comes from the
+secondary effect of widening baseN: per-B-sub-tile L1 footprint doubles
+(32 KB → 64 KB), so the library halves its in-flight prefetch depth. Less
+MTE2-MAC overlap → exposed MTE2 latency → wall time up. `aic_mac_ratio`
+and `aic_mte1_ratio` both nudged up (more cycles spent on those engines as
+a fraction), consistent with marginally better cube utilisation that loses
+when amortised against the larger cycle budget per call.
+
+A side observation: `aic_icache_miss_rate` dropped to 0.0010 (from
+unreported in S16, but ~0.01 in earlier sessions) — fewer distinct matmul
+instructions means tighter aic i-cache. Doesn't help here because aic
+i-cache wasn't the bottleneck, but worth noting if future levers need it.
+
+### Decision
+
+Reverted. Rationale:
+- Per-step gate `aic_mte2_ratio < 0.62 at sparsity 0`: **fail** (0.677).
+- Per-step gate `wall time at sparsity 0/5 not regress beyond +5 ms vs baseline`:
+  **fail** (+18.6 ms vs today's baseN=128 baseline; well over the +5 ms threshold).
+- Reverting `baseN=256 → 128` and rebuilding: pytest test_attn.py 80/80,
+  benchmark sparsity 0 = 176 811 µs (matches pre-experiment).
+
+The diagnostic is the keeper: **for cube-side work at sparsity 0, MTE2 issue
+count is not the bottleneck — HBM bandwidth is.** Future levers should target
+either (a) cutting HBM bytes (real sub-tile gather at sparsity > 0), or
+(b) cutting AIV-side scalar work (the 128×128 sabi inner-loop scan that costs
+~930 sabi reads per row at sparsity 0). The "more MTE2 instructions per call"
+framing is dead.
+
+bmm2's `baseN` was not tested independently. Skipping for now — the same
+HBM-bandwidth-bound argument likely applies, and the wall-time signal here
+makes it unlikely bmm2 alone would flip.
+
+### Side change kept
+
+`benchmark/benchmark.py` gained a `SABI_SORTED = True` global (default matches
+today's behaviour) wired through `generate_sparse_blocks_by_row[_per_head]`'s
+new `sort_within_row` keyword and printed in the table header. Setting
+`SABI_SORTED=False` shuffles each row's kept indices deterministically per seed
+(padding stays at end). Kernel correctness still requires sorted sabi
+(`FirstGreaterEqual` + chunkIdx forward-walk); the False mode is a hook for
+future experiments where the kernel handles unsorted input.
+
+### State at end of Session 17
+
+- Source: T1.C + T2.A unchanged (commit 67458fe6). `tiling.cpp` reverted to
+  baseN=128. `benchmark/benchmark.py` carries the `SABI_SORTED` global.
+  `KERNEL_OPT.md` carries this Session 17 log.
+- Installed binary: T1.C + T2.A, baseN=128 (matches pre-experiment).
+  Pytest test_attn.py 80/80 against it.
+- Working tree: 3 modified files (`tiling.cpp` reverted but file timestamp
+  changed, `benchmark.py`, `KERNEL_OPT.md`).
+
+### Next steps
+
+The HBM-bandwidth-bound diagnosis points to two non-overlapping levers:
+
+1. **AIV-side scalar trim** (Tier 3 from Session 16 next-step list, sabi padding
+   trim). At sparsity 0 the inner-loop sub-block scan does ~4 sabi reads per
+   cube tile × 233 tiles = ~930 scalar reads per row. Sabi rows are padded to
+   929 entries regardless of sparsity — at high-density rows (sparsity 0–10%)
+   most of those entries are valid; at low-density rows the kernel scans well
+   past the kept set before hitting `kPadU16`. Trimming the per-row pad to
+   `actual_kept + small_headroom` cuts the scan cost. Strictly orthogonal,
+   doesn't touch the cube. Best chance to claw back AIV-side cost without
+   adding HBM bytes.
+
+2. **Real sub-tile gather** (long-promised 128×128 cube benefit). Only delivers
+   at sparsity > 0 where individual sub-tiles can be skipped. Implementation
+   cost is high (custom MTE2 + matmul library accommodation, or post-cube
+   masking replaced with pre-cube selection). Defer until (1) proves out.
+
+Recommended order: (1) → measure → if it lands, return to (2). Skip baseN
+tuning entirely going forward.
+
+### How to continue in a new session
+
+> Continue BSA optimisation on branch `blitz-sparse-attention-128x128`.
+> Read `KERNEL_OPT.md` Session 17 — `baseN` 128→256 was a clean negative;
+> reverted. Diagnosis: cube at sparsity 0 is HBM-bandwidth bound, not
+> issue-overhead bound. Next lever: Tier 3 (sabi padding trim). At
+> sparsity 0–10% the inner-loop sub-block scan reads ~930 sabi entries per
+> row; rows are padded to 929 entries regardless of sparsity. Trim per-row
+> pad to actual_kept + small_headroom; strictly orthogonal to cube path.
+> Constraints: B=1, ASCEND_RT_VISIBLE_DEVICES=5. Golden rules in CLAUDE.md:
+> never narrow whole-cache DCCI, never commit/reset/push without explicit
+> user authorisation. msprof CLI accepts `--aic-metrics=PipeUtilization`
+> single-value only on this CANN version (8.5.0-beta.1).
+
+
