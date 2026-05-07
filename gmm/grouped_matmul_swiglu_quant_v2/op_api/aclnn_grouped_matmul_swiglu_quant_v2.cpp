@@ -59,6 +59,22 @@ static aclnnStatus aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(const cha
     return ACLNN_ERR_PARAM_INVALID;
 }
 
+static aclnnStatus CheckMxfp4WeightNzStorageShape(const aclTensor *weight, const op::Shape &storageShape)
+{
+    if (weight->GetDataType() != DataType::DT_FLOAT4_E2M1) {
+        return ACLNN_SUCCESS;
+    }
+    constexpr size_t nzLastSecondDimIndex = 3UL;
+    constexpr size_t nzLastDimIndex = 4UL;
+    int64_t lastSecondDim = storageShape.GetDim(nzLastSecondDimIndex);
+    int64_t lastDim = storageShape.GetDim(nzLastDimIndex);
+    CHECK_COND((lastSecondDim != 1 && lastDim != 1), ACLNN_ERR_PARAM_INVALID,
+               "When weight dtype is DT_FLOAT4_E2M1 and weight storage shape is 5D NZ, the last two dimensions of "
+               "weight should not be 1, but got %ld and %ld.",
+               lastSecondDim, lastDim);
+    return ACLNN_SUCCESS;
+}
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -122,6 +138,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize(const aclTen
                    "aclnnGroupedMatmulSwigluQuantWeightNzV2, The dimnum of storageShape for second input (weight)"
                  "must be 5. \n But StorageShape got %s , and dimNum is %lu.",
                    op::ToString(storgeShape).GetString(), storgeShape.GetDimNum());
+        CHECK_RET(CheckMxfp4WeightNzStorageShape(w, storgeShape) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
         // weight的StorageFormat无条件视为NZ
         weightNZ->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
         if (viewShape.GetDimNum() == WEIGHT_NZ_DIM_LIMIT) {

@@ -474,8 +474,8 @@ protected:
         // 转置情况下从weight的第1维获取n，非转置情况下从weight的第2维获取n
         int64_t nValue = gmmDsqParams_.transposeWeight ? ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(1) :
                                                          ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(2);
-        // mxfp4场景不支持k=2
-        if (kValue == MXFP4_K_CONSTRAINT) {
+        // mxfp4场景要求K大于2
+        if (kValue <= MXFP4_K_CONSTRAINT) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                     "When the dtypes of x and weight inputs are DT_FLOAT4_E2M1, the K value \
 should be greater than 2, but actual value is %lu.",
