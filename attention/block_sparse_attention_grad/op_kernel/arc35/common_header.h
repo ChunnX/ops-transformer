@@ -10,6 +10,10 @@
 
 namespace BSA_ARC35 {
 
+#define SET_FLAG(trigger, waiter, e) AscendC::SetFlag<AscendC::HardEvent::trigger##_##waiter>((e))
+#define WAIT_FLAG(trigger, waiter, e) AscendC::WaitFlag<AscendC::HardEvent::trigger##_##waiter>((e))
+#define PIPE_BARRIER(pipe) AscendC::PipeBarrier<PIPE_##pipe>()
+
 struct RunTimeInfo {
     int32_t taskId{0};
     int32_t bIdx{0};        // 当前计算的batch id

@@ -84,7 +84,7 @@ public:
                 int32_t mProcessAlign = RoundUp(mProcess, 16);
                 LocalTensor<INPUT_TYPE> l1_a_tensor = ping_pong_flag_inner ? l1_a_tensor_ping_ : l1_a_tensor_pong_;
 
-                load_data_gm_2_l1(l1_a_tensor, leftGm, mProcess, head_dim_, mProcessAlign, kSizeAlign, s1Stride);
+                load_data_gm_2_l1(l1_a_tensor, leftGm, mProcess, head_dim_, mProcessAlign, head_dim_align_, s1Stride);
                 ping_pong_flag_inner = 1 - ping_pong_flag_inner;
             }
 
@@ -100,9 +100,9 @@ private:
     {
         if constexpr (NZ) {
             AscendC::DataCopyParams intriParams;
-            intriParams.blockCount = kSizeAlign / C0_SIZE;
-            intriParams.blockLen = mSizeAlign * C0_SIZE * sizeof(INPUT_TYPE) / 32;
-            intriParams.srcStride = (srcStride - mSizeAlign) * C0_SIZE * sizeof(INPUT_TYPE) / 32;
+            intriParams.blockCount = kSizeAlign / 16;
+            intriParams.blockLen = mSizeAlign * 16 * sizeof(INPUT_TYPE) / 32;
+            intriParams.srcStride = (srcStride - mSizeAlign) * 16 * sizeof(INPUT_TYPE) / 32;
             intriParams.dstStride = 0;
             DataCopy(dstL1Tensor, srcGmTensor, intriParams);
         } else {
@@ -169,7 +169,6 @@ private:
 
         AscendC::LoadData(dstL0Tensor, dstL1Tensor, loadData2dParams);
     }
-};
 };
 
 } // namespace BSA_ARC35
