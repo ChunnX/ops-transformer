@@ -1,0 +1,82 @@
+# Step 3 输出: 数据切分与偏移计算
+
+offset_calculation:
+  params:
+    x:
+      pattern: "M, K"
+      sliced_dims: ["matM"]
+      offset_level: "multi_core"
+      strides: { K: 1, M: "matK" }
+      offset_expr: "(groupStart + mOffset) * matK"
+      process: "S0_C0Process"
+
+    weight:
+      pattern: "K, N"
+      sliced_dims: ["matN"]
+      offset_level: "multi_core"
+      strides: { N: 1, K: "N" }
+      offset_expr: "nBlock * singleMatN"
+      note: "isTransposeB=true, Cube API 处理转置, tensorList per group"
+
+    workspace_write:
+      pattern: "singleM, N"
+      sliced_dims: ["matM", "matN"]
+      offset_level: "multi_core"
+      strides: { N: 1, M: "matN" }
+      offset_expr: "(groupStart + mOffset) * matN + nBlock * singleMatN"
+      size_expr: "mSize * nSize"
+      process: "S0_C0Process"
+
+    workspace_read:
+      pattern: "singleM, N"
+      sliced_dims: ["matM", "matM_i"]
+      offset_level: "intra_core"
+      strides: { N: 1, M: "matN" }
+      offset_expr: "(groupStart + mOffset + chunkOffset) * matN"
+      process: "S0_V0Process"
+
+    weightScale:
+      pattern: "N"
+      sliced_dims: []
+      offset_level: "outermost"
+      offset_expr: "0"
+      note: "per group 常量, group 循环切换时重新绑定 GM 地址"
+
+    xScale:
+      pattern: "M"
+      sliced_dims: ["matM", "matM_i"]
+      offset_level: "intra_core"
+      offset_expr: "groupStart + mOffset + chunkOffset"
+      process: "S0_V0Process"
+
+    quantOutput:
+      pattern: "M, N/2"
+      sliced_dims: ["matM", "matM_i"]
+      offset_level: "intra_core"
+      strides: { N_half: 1, M: "matN / 2" }
+      offset_expr: "(groupStart + mOffset + chunkOffset) * (matN / 2)"
+      process: "S0_V0Process"
+
+    quantScaleOutput:
+      pattern: "M"
+      sliced_dims: ["matM", "matM_i"]
+      offset_level: "intra_core"
+      offset_expr: "groupStart + mOffset + chunkOffset"
+      process: "S0_V0Process"
+
+  stride_vars:
+    - name: "stride_x_M_"
+      value: "matK_"
+      desc: "x [M,K] 行 stride"
+    - name: "stride_ws_M_"
+      value: "matN_"
+      desc: "workspace [M,N] 行 stride (int32)"
+    - name: "stride_out_M_"
+      value: "matN_ / 2"
+      desc: "quantOutput [M,N/2] 行 stride (int8)"
+
+  group_boundary:
+    desc: "groupList 累积和确定 group 起止行"
+    groupStart_expr: "(groupIdx == 0) ? 0 : groupList[groupIdx - 1]"
+    groupEnd_expr: "groupList[groupIdx]"
+    currentM_expr: "groupEnd - groupStart"

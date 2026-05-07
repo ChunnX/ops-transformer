@@ -1,0 +1,29 @@
+# op-kernel skill 状态文件
+operator_name: "gmmdsq"
+current_step: 5
+completed_steps: [0, 0b, 1, 2, 3, 4]
+
+paths:
+  python_golden: "gmmdsq_guide.md"
+  output_dir: "gmmdsq/"
+  template: "templates/kernel_frame/kernel_unified.h"
+
+step_outputs:
+  step0:
+    status: "confirmed"
+    spec_file: "spec_step0.yaml"
+  step0b:
+    status: "confirmed"
+    spec_file: "spec_dependency.yaml"
+  step1:
+    status: "confirmed"
+    spec_file: "spec_step1.yaml"
+  step2:
+    status: "confirmed"
+    spec_file: "spec_step2.yaml"
+  step3:
+    status: "confirmed"
+  step4:
+    status: "confirmed"
+  step5:
+    status: "pending"

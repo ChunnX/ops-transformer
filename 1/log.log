@@ -1,0 +1,2802 @@
+
+生成算子的kernel
+ascend-op-gen-plugins:op-kernel skill
+我来帮你生成算子的 Kernel。首先让我检查一下当前环境状态。
+
+Globpattern: "**/state.yaml"
+No files found
+Bash List operator directories
+IN
+ls "c:/Users/liuchunyuan/Desktop/kenerl生成/templates/op_frame/" 2>/dev/null || echo "No op_frame directory found"
+
+OUT
+No op_frame directory found
+Globpattern: "**/*_guide.md"
+No files found
+没有找到已有的状态文件或算子目录。我需要先了解你想为哪个算子生成 Kernel。
+
+AskUserQuestion
+OUT
+User has answered your questions: "请提供要生成 Kernel 的算子名称是什么？（例如：add_custom、rms_norm、matmul 等）"="gmmdsq". You can now continue with the user's answers in mind.
+好的，算子名称是 gmmdsq。让我检查是否已有该算子的目录结构。
+
+Bash Search for gmmdsq operator directory
+IN
+find "c:/Users/liuchunyuan/Desktop/kenerl生成" -type d -name "gmmdsq" 2>/dev/null; find "c:/Users/liuchunyuan/Desktop/kenerl生成" -path "*/op_frame/*" 2>/dev/null | head -30
+
+OUT
+c:/Users/liuchunyuan/Desktop/kenerl生成/gmmdsq
+Globpattern: "**/gmmdsq*/**"
+No files found
+找到了算子目录，让我查看其内容结构。
+
+Bash List all files in gmmdsq directory
+IN
+find "c:/Users/liuchunyuan/Desktop/kenerl生成/gmmdsq" -type f 2>/dev/null | head -50
+
+OUT
+(Bash completed with no output)
+Bash List gmmdsq directory contents
+IN
+ls -la "c:/Users/liuchunyuan/Desktop/kenerl生成/gmmdsq/" 2>/dev/null && echo "---" && ls -R "c:/Users/liuchunyuan/Desktop/kenerl生成/gmmdsq/" 2>/dev/null
+
+OUT
+total 0
+drwxr-xr-x 1 liuchunyuan 197121 0 May  7 21:59 .
+drwxr-xr-x 1 liuchunyuan 197121 0 May  7 21:59 ..
+---
+c:/Users/liuchunyuan/Desktop/kenerl生成/gmmdsq/:
+算子目录 gmmdsq 存在但为空。按照 Step 0 流程，我需要先生成 Guide 模板文件。让我先检查一下项目的模板目录结构。
+
+Bash List project root directory
+IN
+ls -la "c:/Users/liuchunyuan/Desktop/kenerl生成/" 2>/dev/null
+
+OUT
+total 16
+drwxr-xr-x 1 liuchunyuan 197121 0 May  7 21:59 .
+drwxr-xr-x 1 liuchunyuan 197121 0 May  7 21:49 ..
+drwxr-xr-x 1 liuchunyuan 197121 0 May  7 22:00 .claude
+drwxr-xr-x 1 liuchunyuan 197121 0 May  7 21:59 gmmdsq
+Globpattern: "templates/**/*"
+No files found
+Globpattern: "**/*.h"
+No files found
+Globpattern: "**/*.py"
+No files found
+Globpattern: "C:/Users/liuchunyuan/.claude/plugins/marketplaces/ascend/plugins/ascend-op-gen-plugins/skills/op-kernel/step_v2/*.md"
+Found 7 files
+Read step0_golden_analysis.md
+Read _template_guide.md
+好的，现在我来生成 gmmdsq 算子的 Guide 模板文件和状态文件。
+
+Write gmmdsq_guide.md
+218 lines
+# gmmdsq 算子 Kernel 生成 Guide
+
+## 基本信息 [必填]
+
+- **算子名称**: gmmdsq
+- **功能描述**: <!-- TODO: 填写算子功能描述 -->
+- **作者**:
+- **日期**:
+
+---
+
+## 输入/输出 [必填]
+
+### 输入张量
+
+| 名称 | Shape | Dtype | Layout | 说明 |
+|------|-------|-------|--------|------|
+|      |       |       |        | <!-- TODO: 填写 --> |
+|      |       |       |        |  |
+
+### 输出张量
+
+| 名称 | Shape | Dtype | Layout | 说明 |
+|------|-------|-------|--------|------|
+|      |       |       |        | <!-- TODO: 填写 --> |
+
+### 标量参数（可选）
+
+| 名称 | Dtype | 默认值 | 说明 |
+|------|-------|--------|------|
+|      |       |        |  |
+
+---
+
+## 典型 Shape 配置 [必填]
+
+<!-- TODO: 填写各轴的典型维度大小，用于切分决策和资源估算 -->
+<!-- 轴名与"输入/输出"章节中的 Shape 符号对应 -->
+<!-- 如有多组典型配置，分行填写 -->
+
+| 场景 | B | S | N | D | 核数 | 说明 |
+|------|---|---|---|---|------|------|
+| 默认 | <!-- TODO --> | <!-- TODO --> | <!-- TODO --> | <!-- TODO --> | <!-- TODO --> | <!-- TODO: 填写 --> |
+|      |   |   |   |   |      |  |
+
+**说明**：
+- **轴名**：列头 B/S/N/D 为示例，根据实际算子的 Shape 符号自行修改，列数按需增减
+- **核数**：目标 AICore 数量，影响 block 大小推导和负载均衡策略
+- **场景**：可填写多组典型配置（如"大 shape"、"小 shape"），用于多场景切分验证
+
+---
+
+## Python Golden [必填]
+
+<!-- TODO: 在下方填入完整的 Python Golden 代码，按阶段标记 -->
+
+```python
+import torch
+
+def gmmdsq(...) -> torch.Tensor:
+    """
+    Golden 实现
+
+    阶段标记格式：
+    # ========== [V0] Vector 前处理 ==========
+    # ========== [C0] Cube 处理 ==========
+    # ========== [V1] Vector 后处理 ==========
+    """
+    # TODO: 实现计算逻辑
+
+    pass
+```
+
+---
+
+## CV 协作模式建模 [使用建模语言]
+
+### 建模语言说明
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  建模语言语法                                                │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  语法元素：                                                  │
+│  - V0, V1, V2 ...  → Vector 阶段                            │
+│  - C0, C1, C2 ...  → Cube 阶段                              │
+│  - ->             → 顺序执行                                 │
+│  - ()             → 并行执行（内层循环）                      │
+│  - ;              → Stage 分隔（多 Stage）                    │
+│                                                             │
+│  表达式示例：                                                │
+│  - V0                   → Vector Only                        │
+│  - C0                   → Cube Only                          │
+│  - V0->C0->V1           → 简单 V→C→V（顺序执行）              │
+│  - (C0V0)->V1           → 嵌套循环（内层 C0V0 并行）           │
+│  - (C0V0)->(C1V1)->V2   → 多层嵌套                           │
+│  - V0->C0->V1;V2->C1->V3 → 两独立 Stage（分号分隔）         │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 核启动模式分析
+
+<!-- AI 根据 Python Golden 分析并填写 -->
+
+**⚠️ 默认规则：有 Cube 参与时，默认使用 1c2v 模式**
+
+- [ ] **Vector Only** - 只有逐元素/归约操作
+- [ ] **1c2v** ⭐ 默认 - 有矩阵乘法 + 逐元素操作（或可能有逐元素操作）
+- [ ] **1c1v** - 矩阵乘法 + 逐元素（单 Vector），需用户明确指定
+- [ ] **Cube Only** - 只有矩阵乘法，无任何 V 参与
+
+**AI 推荐模式**: <!-- AI 填充 -->
+**推荐原因**: <!-- AI 填充 -->
+
+### CV 序列建模 [必填，使用建模语言]
+
+<!-- 请使用建模语言描述 CV 序列 -->
+
+**建模表达式**:
+```
+<!-- TODO: 用户填写，例如：
+  简单 V→C→V:      V0->C0->V1
+  两独立 Stage:    V0->C0->V1;V2->C1->V3
+  嵌套循环:        (C0V0)->V1
+  多层嵌套:        (C0V0)->(C1V1)->V2
+  纯 Vector:       V0
+-->
+```
+
+**推导依据**:
+```
+<!-- TODO: AI/用户填写，说明为什么是这个建模 -->
+```
+
+### Stage/Phase 配置 [AI 根据建模表达式生成]
+
+<!-- AI 自动解析建模表达式，生成配置 -->
+
+```yaml
+# ========== Stage 配置 ==========
+stages:
+  - name: "Stage0"
+    cv_sequence: []
+    multi_core_split:
+      axis: "<axis_name>"
+    phases: []
+```
+
+---
+
+## 切分策略配置 [Step 1-3]
+
+### Step 1: 多核切分
+
+| 参数 | 值 | 说明 |
+|------|-----|------|
+| **切分轴** | <!-- AI 填充 --> | |
+| **变量命名** | <!-- AI 填充 --> | ⚠️ 根据 axis 动态派生 |
+| **核数** | <!-- AI 填充 --> | Tiling 参数 |
+
+### Step 2: Vector 切分（仅 1c2v）
+
+| 参数 | 值 | 说明 |
+|------|-----|------|
+| **切分类型** | 同轴 / 异轴 | <!-- 用户选择 --> |
+| **切分轴** | <!-- 与多核相同 或 独立轴 --> | |
+
+### Step 3: 核内切分
+
+| 参数 | 值 | 说明 |
+|------|-----|------|
+| **切分轴** | <!-- AI 填充 --> | |
+| **表达式** | <!-- AI 填充 --> | |
+| **innerChunkSize** | <!-- 常量默认值 16，Step 6 优化 --> | ⚠️ **常量定义，不是 Tiling 参数** |
+
+---
+
+## 参数参与模式 [Step 4]
+
+```yaml
+tensor_patterns: {}
+```
+
+---
+
+## 指令序列 [Step 5] <!-- AI 根据 Python Golden 自动生成 -->
+
+### 参数分类
+
+| 参数 | 分类 | 说明 |
+|------|------|------|
+|      |      |      |
+
+---
+
+## UB 资源分配 [Step 6]
+
+### UB 占用验证
+
+| Buffer | 大小 | 说明 |
+|--------|------|------|
+| **总计** | <!-- AI 填充 --> | 应 ≤ 192KB |
+
+---
+
+## 补充说明 [可选]
+
+### 特殊约束
+-
+
+### 性能优化建议
+-
+
+### 参考实现
+-
+Write state.yaml
+30 lines
+# op-kernel skill 状态文件
+operator_name: "gmmdsq"
+current_step: 0
+completed_steps: []
+
+paths:
+  python_golden: "gmmdsq_guide.md"
+  output_dir: "gmmdsq/"
+  template: "templates/kernel_frame/kernel_unified.h"
+
+step_outputs:
+  step0:
+    status: "guide_generated"
+    spec_file: "spec_step0.yaml"
+  step0b:
+    status: "pending"
+    spec_file: "spec_dependency.yaml"
+  step1:
+    status: "pending"
+    spec_file: "spec_step1.yaml"
+  step2:
+    status: "pending"
+    spec_file: "spec_step2.yaml"
+  step3:
+    status: "pending"
+  step4:
+    status: "pending"
+  step5:
+    status: "pending"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[步骤 0: 指南模板生成]
+算子: gmmdsq
+
+已生成 Guide 模板文件: gmmdsq_guide.md
+位置: gmmdsq/gmmdsq_guide.md
+
+请填写以下内容后输入 "继续":
+  1. 基本信息（算子名称、功能描述）
+  2. 输入/输出张量（Shape, Dtype, Layout）
+  3. 典型 Shape 配置（各轴维度大小 + 核数）
+  4. Python Golden 代码（核心计算逻辑）
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+c:\Users\liuchunyuan\Desktop\kenerl生成\gmmdsq\gmmdsq_guide.md
+继续
+让我读取你填写的 Guide 内容进行分析。
+
+Read gmmdsq_guide.md
+Guide 内容已填写完整，开始 Step 0 分析。
+
+Update Todos
+
+Step 0: Golden 分析（操作识别 + 轴识别 + 隐式操作 + 融合 + CV序列 + 参数分类）
+
+Step 0b: 依赖建模（数据流 DAG + Workspace 分析）
+
+Step 1: 切分决策（收益分析 + 多核分配 + 设计原语）
+
+Step 2: 骨架生成 + 指令占位
+
+Step 3: 数据切分与偏移计算
+
+Step 4: 指令填充（Python → AscendC 映射）
+
+Step 5: UB 资源分配 + 最终代码生成
+现在基于 Python Golden 进行全面分析。
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Step 0: Golden 分析完成]
+
+算子: gmmdsq (Grouped MatMul with Dynamic Scale Quantization)
+
+━━━ 1. 操作识别 ━━━
+
+| # | Python 操作                   | 类型       | 说明                                |
+|---|-------------------------------|-----------|-------------------------------------|
+| 1 | matmul(int8×int8→int32)       | Cube      | 分组矩阵乘法, isTransposeB=true     |
+| 2 | Cast int32→fp32               | Hidden    | matmul 输出精度转换                  |
+| 3 | mul perChannelScale [N]       | Vector    | 反量化 step1, broadcast per column   |
+| 4 | mul perTokenScale [m,1]       | Vector    | 反量化 step2, broadcast per row      |
+| 5 | chunk(N → N/2 × 2)            | Note      | SwiGLU: 拆分 N 维度, 影响内存布局     |
+| 6 | sigmoid(c_temp4)              | Vector    | SwiGLU 组件                          |
+| 7 | x * sigmoid(x) → SiLU        | Vector    | SiLU 激活                            |
+| 8 | silu * gate                   | Vector    | Gate 乘法                            |
+| 9 | max(abs(c_temp6), dim=-1)     | Vector    | 动态量化: reduce (absmax)            |
+|10 | 127.0 / abs_max               | Vector    | 量化 scale 计算                      |
+|11 | round(result * scale)         | Vector    | 量化取整                             |
+|12 | Cast fp32→int8                | Hidden    | 最终输出精度转换                      |
+
+━━━ 2. 轴识别 ━━━
+
+实例轴: E (group index)
+  ✓ 不属于 matmul 几何维度 {M, K, N}
+  ✓ 每个组触发独立的 matmul, 使用不同 weight[i]
+  ✓ 组间无中间数据依赖
+
+Cube 轴映射 (每组内):
+  matM_i (当前组 token 数) → 虚拟轴 M  (行维度, 动态, 由 groupList 决定)
+  matK                     → 虚拟轴 K  (消减维度)
+  matN                     → 虚拟轴 N  (列维度)
+
+━━━ 3. 隐式操作 ━━━
+
+| 操作                    | 触发原因                                   |
+|------------------------|-------------------------------------------|
+| Cast int32→fp32         | matmul 输出 int32, 后续 dequant/SwiGLU 需 fp32 |
+| Cast fp32→int8          | 最终输出需 int8 量化结果                       |
+| Reshape [m]→[m,1]       | perTokenScale 广播, Mul 指令需要 2D 对齐        |
+| Chunk [m,N]→[m,N/2]×2   | SwiGLU 拆分, 影响输出 shape 和内存布局           |
+
+━━━ 4. 可融合分析 ━━━
+
+Cube 融合计划:
+  C0 (matmul):
+    ✓ weight transpose → isTransposeB=true (Cube API 参数, 非独立融合)
+    ✗ bias_add → 无 bias
+    ✗ dequant → Cube API 不支持 int32→fp32 自动 Cast
+
+  结论: C0 仅包含 matmul, 无额外融合操作
+
+━━━ 5. CV 序列 + 核启动模式 ━━━
+
+CV 序列: C0 → V0
+
+  C0: matmul (int8×int8→int32)  — 分组矩阵乘法
+  V0: Cast(int32→fp32) + dequant(perChannelScale, perTokenScale)
+     + SwiGLU(sigmoid, SiLU, gate)
+     + 动态量化(absmax, scale, round, Cast fp32→int8)
+
+  C0 → V0 数据传递: matmul int32 结果 → workspace → V0 Cast int32→fp32
+
+核启动模式: 1c2v (AIC 计算 + AIV 后处理)
+
+━━━ 6. 参数分类 ━━━
+
+| 参数            | 分类              | 说明                                |
+|----------------|------------------|-------------------------------------|
+| x [M,K]        | data_tensor      | 激活值, 按 groupList 分组切片        |
+| weight [E,K,N] | data_tensor      | tensorList, 每组独立 weight[i]       |
+| weightScale [E,N]| constant_tensor | tensorList, 每组 [N] floats, broadcast per column |
+| xScale [M]     | constant_tensor  | per-token scale, broadcast per row   |
+| groupList [E]  | constant_tensor  | 累积索引表, E=8, 极小                |
+
+━━━ 7. TilingData 字段 ━━━
+
+已有字段 (from tiling.h):
+  matmulTiling: TCubeTiling    — Matmul API tiling 配置
+  coreNum: uint32_t            — AICore 核数
+  totalLength: uint64_t        — = M * (N/2)
+  matM: int64_t                — x 行数 (总 token 数)
+  matK: int64_t                — hidden 维度
+  matN: int64_t                — 输出维度
+
+需补充分析:
+  groupNum: uint32_t           — 分组数 E (= groupList 长度)
+  groupList: GM_ADDR           — 累积 token 索引表 (运行时传入)
+
+━━━ 8. 典型 Shape 资源画像 ━━━
+
+典型配置: M=4096, K=5120, N=7192, E=8, 核数=最大
+
+轴分析:
+  E (instance):   size=8,     category="split_candidate" (仅 8 组, 核利用率可能不足)
+  matM (per group≈512): size=512, category="split_candidate" (每组可沿 M 切分)
+  matK:           size=5120,  category="reduce_candidate" (Cube 消减轴)
+  matN:           size=7192,  category="split_candidate" (大维度, SwiGLU 需完整 N)
+
+资源估算 (单组):
+  matmul 输出 int32: 512 × 7192 × 4 ≈ 14.7 MB → 远超 UB, 必须切分
+  V0 fp32 中间结果: 512 × 7192 × 4 ≈ 14.7 MB → 同上
+  V0 N/2 输出:      512 × 3596 × 1 ≈ 1.8 MB  → 仍超 UB
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[待确认]
+1. 操作识别是否正确？特别是 SwiGLU 和动态量化步骤
+2. 实例轴 = E (group index) 是否正确？
+3. CV 序列: C0(matmul) → V0(Cast+dequant+SwiGLU+quantize)？
+4. 隐式操作（Cast int32↔fp32, fp32→int8）是否完整？
+5. 参数分类（weightScale/xScale 为 constant_tensor）是否合理？
+
+[确认] → 进入 Step 0b 依赖建模 | [修改] 调整
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+确认
+好的，Step 0 已确认。先生成 spec_step0.yaml，然后进入 Step 0b 依赖建模。
+
+Write spec_step0.yaml
+181 lines
+operator_name: "gmmdsq"
+
+inputs:
+  - name: x
+    shape: [M, K]
+    dtype: int8
+    layout: ND
+    description: "全部 token 的激活值"
+  - name: weight
+    shape: [E, K, N]
+    dtype: int8
+    layout: ND
+    tensor_list: true
+    description: "所有专家权重, 每个专家 [K, N]"
+  - name: weightScale
+    shape: [E, N]
+    dtype: float32
+    layout: ND
+    tensor_list: true
+    description: "所有专家的 per-channel scale"
+  - name: xScale
+    shape: [M]
+    dtype: float32
+    layout: ND
+    description: "全部 token 的 per-token scale"
+  - name: groupList
+    shape: [E]
+    dtype: int64
+    layout: ND
+    description: "累积 token 数 (累积和 = M)"
+
+outputs:
+  - name: quantOutput
+    shape: [M, N/2]
+    dtype: int8
+    layout: ND
+    description: "量化输出"
+  - name: quantScaleOutput
+    shape: [M]
+    dtype: float32
+    layout: ND
+    description: "输出缩放因子"
+
+parameter_classification:
+  data_tensors:
+    - {name: "x", shape: [M, K], dtype: int8}
+    - {name: "weight", shape: [E, K, N], dtype: int8, tensor_list: true}
+  constant_tensors:
+    - {name: "weightScale", shape: [E, N], dtype: float32, tensor_list: true, broadcast: "per column within group"}
+    - {name: "xScale", shape: [M], dtype: float32, broadcast: "per row"}
+    - {name: "groupList", shape: [E], dtype: int64, description: "索引表, 极小"}
+  scalar_attrs: []
+
+op_list:
+  - {op: "matmul", type: "cube", in_shape: "[m_i,K],[K,N]", out_shape: "[m_i,N]", note: "int8×int8→int32, isTransposeB=true"}
+  - {op: "cast_int32_fp32", type: "vector", hidden: true, note: "matmul 输出精度转换"}
+  - {op: "mul", type: "vector", note: "dequant step1: perChannelScale broadcast [N]"}
+  - {op: "mul", type: "vector", note: "dequant step2: perTokenScale broadcast [m,1]"}
+  - {op: "chunk", type: "note", note: "SwiGLU: N → N/2×2, 内存布局变化"}
+  - {op: "sigmoid", type: "vector", note: "SwiGLU 组件"}
+  - {op: "mul_silu", type: "vector", note: "SiLU = x * sigmoid(x)"}
+  - {op: "mul_gate", type: "vector", note: "gate * silu(left)"}
+  - {op: "abs_max_reduce", type: "vector", note: "动态量化: absmax along last dim"}
+  - {op: "div", type: "vector", note: "quant scale: 127 / abs_max"}
+  - {op: "round_mul", type: "vector", note: "量化取整"}
+  - {op: "cast_fp32_int8", type: "vector", hidden: true, note: "最终输出精度转换"}
+
+fusion_plan:
+  - group: "C0"
+    ops: ["matmul"]
+    fused_ops: ["transpose_weight"]
+    fused_reason: "isTransposeB=true 为 Cube API 参数, 非独立融合操作"
+    cube_api_config: {type: "Matmul", has_bias: false, isTransposeB: true, input_dtype: int8, output_dtype: int32}
+    cube_precision_constraints:
+      - cube_id: "C0"
+        output: "int32"
+        next_op_needs: "fp32"
+        needs_vec_cast: true
+        cast_responsible: "V0"
+
+  - group: "V0"
+    ops: ["cast_int32_fp32", "mul(perChannelScale)", "mul(perTokenScale)", "chunk", "sigmoid", "mul_silu", "mul_gate", "abs_max_reduce", "div", "round_mul", "cast_fp32_int8"]
+    fused_ops: []
+
+config:
+  launch_mode: "1c2v"
+  cv_sequence:
+    - id: "C0"
+      type: "cube"
+      ops: ["matmul"]
+      process: "S0_C0Process"
+      cube_api_config: {type: "Matmul", has_bias: false, isTransposeB: true}
+    - id: "V0"
+      type: "vector"
+      ops: ["cast_int32_fp32", "dequant_perChannel", "dequant_perToken", "swiglu", "dynamic_quantize", "cast_fp32_int8"]
+      process: "S0_V0Process"
+
+axis_mapping:
+  instance_axis: "E"
+  instance_axis_description: "group index, 每个组触发独立 matmul, 使用不同 weight[i]"
+  instance_axis_source: "groupList 长度"
+  mappings:
+    - {physical: "matM_i", virtual: "M", context: "C0(matmul) 的行维度, 动态: groupList[i]-groupList[i-1]"}
+    - {physical: "matK", virtual: "K", context: "C0(matmul) 的消减维度"}
+    - {physical: "matN", virtual: "N", context: "C0(matmul) 的列维度"}
+
+  physical_axes:
+    - {name: "E", source: "groupList.shape[0]", description: "实例轴: 分组数"}
+    - {name: "matM", source: "x.shape[0]", description: "总 token 数"}
+    - {name: "matK", source: "x.shape[1]", description: "hidden 维度"}
+    - {name: "matN", source: "weight.shape[2]", description: "输出维度"}
+
+tiling_data_fields:
+  existing:
+    - {name: "matmulTiling", type: "TCubeTiling", source: "platform", description: "Matmul API tiling 配置"}
+    - {name: "coreNum", type: "uint32_t", source: "platform", description: "AICore 核数"}
+    - {name: "totalLength", type: "uint64_t", source: "calculated", formula: "M * (N/2)", description: "总输出长度"}
+    - {name: "matM", type: "int64_t", source: "input_shape", description: "x 行数"}
+    - {name: "matK", type: "int64_t", source: "input_shape", description: "x 列数"}
+    - {name: "matN", type: "int64_t", source: "input_shape", description: "weight 列数"}
+  additional_needed:
+    - {name: "groupNum", type: "uint32_t", source: "input_shape", description: "分组数 E (= groupList 长度)"}
+    - {name: "groupList", type: "GM_ADDR", source: "runtime", description: "累积 token 索引表 (运行时传入)"}
+
+typical_shape_profile:
+  typical_shapes:
+    - name: "default"
+      shape: {M: 4096, K: 5120, N: 7192, E: 8}
+      cores: "最大核数"
+  axis_analysis:
+    - shape_name: "default"
+      axes:
+        E:     {size: 8,    category: "split_candidate", note: "仅 8 组, 核利用率可能不足"}
+        matM:  {size: 4096, category: "split_candidate", note: "可沿 M 切分, 每组约 512"}
+        matK:  {size: 5120, category: "reduce_candidate", note: "Cube 消减轴"}
+        matN:  {size: 7192, category: "split_candidate", note: "大维度, SwiGLU 需完整 N 才能拆半"}
+
+annotated_golden: |
+  # ═══ 实例轴: E (group index) ═══
+  # 每个组使用独立的 weight[i], weightScale[i]
+  # 外层循环: for i in range(E)
+
+  def GMM_Swiglu_quant(x, weight, perChannelScale, perTokenScale, m):
+      """
+      单组核心计算逻辑
+      x: [DATA] int8 [m, K]
+      weight: [DATA] int8 [K, N]
+      perChannelScale: [CONST: broadcast per column] float32 [N]
+      perTokenScale: [CONST: broadcast per row] float32 [m]
+      """
+
+      # ═══ CV: C0 (Cube) ═══
+      # [FUSED: weight transpose → C0 (isTransposeB=true)]
+      c_temp1 = matmul(x, weight)  # [m, N] int32
+
+      # ═══ CV: V0 (Vector 后处理) ═══
+      # [HIDDEN: cast int32→fp32]
+      c_temp1 = cast_to_fp32(c_temp1)  # [m, N] fp32
+
+      # [CONST: broadcast perChannelScale [N] → [m, N]]
+      c_temp2 = mul(c_temp1, perChannelScale)  # dequant step1
+
+      # [CONST: broadcast perTokenScale [m] → [m, 1]]
+      # [HIDDEN: reshape perTokenScale [m] → [m, 1]]
+      c_temp3 = mul(c_temp2, perTokenScale_2d)  # dequant step2
+
+      # [NOTE: chunk(2, dim=-1) 拆分 N → N/2]
+      c_temp4, gate = chunk(c_temp3, 2, dim=-1)  # 各 [m, N/2]
+      c_temp5 = c_temp4 * sigmoid(c_temp4)  # SiLU: [m, N/2]
+      c_temp6 = c_temp5 * gate              # gate: [m, N/2]
+
+      # 动态量化
+      abs_max = reduce_max(abs(c_temp6), dim=-1)  # [m]
+      quantScale = 127.0 / abs_max                  # [m]
+      quantOutput = round(c_temp6 * broadcast(quantScale, [m,1]))  # [m, N/2]
+      # [HIDDEN: cast fp32→int8]
+      quantOutput = cast_to_int8(quantOutput)
+      quantScale = 1.0 / quantScale  # 反量化 scale
+
+      return quantOutput, quantScale
+Edit state.yaml
+Modified
+Edit state.yaml
+Modified
+Update Todos
+
+Step 0: Golden 分析（操作识别 + 轴识别 + 隐式操作 + 融合 + CV序列 + 参数分类）
+
+Step 0b: 依赖建模（数据流 DAG + Workspace 分析）
+
+Step 1: 切分决策（收益分析 + 多核分配 + 设计原语）
+
+Step 2: 骨架生成 + 指令占位
+
+Step 3: 数据切分与偏移计算
+
+Step 4: 指令填充（Python → AscendC 映射）
+
+Step 5: UB 资源分配 + 最终代码生成
+spec_step0.yaml 已生成，进入 Step 0b: 依赖建模。让我先读取 Step 0b 的详细规范。
+
+Read step0b_dependency_modeling.md
+基于 spec_step0.yaml 的分析结果，进行依赖建模分析。
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Step 0b: 依赖建模]
+
+━━━ C1: 数据流 DAG ━━━
+
+输入节点:
+  input_x         [M, K]    int8    → GM (按 groupList 切片给 C0)
+  input_weight    [E, K, N] int8    → GM (tensorList, 每组 [K,N])
+  input_weightScale [E, N]  float32 → GM (tensorList, 每组 [N])
+  input_xScale    [M]       float32 → GM (按 groupList 切片给 V0)
+  input_groupList [E]       int64   → GM (索引表)
+
+CV 单元节点:
+  C0 (Cube):
+    输入: input_x_slice [m_i, K] int8, input_weight_i [K, N] int8
+    输出: C0_output [m_i, N] int32
+    消减轴: K (matmul 累积)
+    compute_dtype: int8→int32
+
+  V0 (Vector):
+    输入: C0_output [m_i, N] int32 (workspace)
+          input_weightScale_i [N] float32 (GM)
+          input_xScale_slice [m_i] float32 (GM)
+    输出: quantOutput [m_i, N/2] int8 → GM
+          quantScaleOutput [m_i] float32 → GM
+    消减轴: N/2 (absmax reduce for 动态量化)
+    compute_dtype: fp32 (Cast 后)
+
+数据流:
+  input_x(GM) ─────────────────────→ C0
+  input_weight(GM,tensorList) ─────→ C0
+  C0 ──→ C0_output [m_i,N] int32 ──→ (workspace) ──→ V0
+  input_weightScale(GM,tensorList) ─────────────────→ V0
+  input_xScale(GM) ────────────────────────────────→ V0
+  V0 ──→ quantOutput [m_i,N/2] int8 ──→ GM
+  V0 ──→ quantScaleOutput [m_i] fp32 ──→ GM
+
+━━━ C1: 共享消减轴识别 ━━━
+
+  C0 reduces: K (matmul 累积轴)
+  V0 reduces: N/2 (absmax, 动态量化)
+  交集: 无
+
+  结论: C0 与 V0 无共享消减轴 → 不需要 cube_accumulate 策略
+
+━━━ C2: Workspace 传递需求 ━━━
+
+  传递项 #1: C0 → V0
+    data_id: C0_output (matmul int32 结果)
+    shape: [block_m, N]          (N=7192)
+    dtype: int32
+    size_per_block: block_m × N × 4 bytes
+    produced_per_tile: true      (matmul 可逐 tile 沿 M 产出)
+    tile_axis: M (行维度)
+    aiv_access: row_split        (两个 AIV 各处理一半行)
+
+  传递项 #2: V0 内部 — quantScaleOutput
+    data_id: V0_quantScale
+    shape: [block_m]
+    dtype: float32
+    size_per_block: block_m × 4 bytes
+    aiv_access: row_split
+    note: absmax reduce 结果, 用于量化 scale, 需写回 GM
+
+━━━ C2: Cast UB 开销分析 ━━━
+
+  V0 Cast #1: int32 → fp32 (matmul 结果)
+    input_buf:  block_m × N × 4 bytes (int32)
+    output_buf: block_m × N × 4 bytes (fp32)
+    note: 大小相同 (int32=fp32=4bytes), 但需双 buffer
+
+  V0 Cast #2: fp32 → int8 (最终量化输出)
+    input_buf:  block_m × (N/2) × 4 bytes (fp32, SwiGLU 后 N 减半)
+    output_buf: block_m × (N/2) × 1 byte  (int8)
+    note: 输出仅为输入的 1/4
+
+  V0 总 Cast UB 开销: ~block_m × N × 4 × 2 + block_m × (N/2) × 5 bytes
+    (粗估, Step 5 做精确分配)
+
+━━━ C2: 1c2v Workspace 分片策略 ━━━
+
+  模式: row_split
+  策略: 每个 AIV 处理 block 行的前半/后半行
+  适用项: C0_output [block_m, N]
+  不适用项: V0_quantScale [block_m] (标量级, 按 AIV 行范围切片)
+  per_aiv_rows: block_m / 2
+
+━━━ Workspace 总量估算 ━━━
+
+  per_block:
+    C0_output: block_m × N × 4 bytes (int32, 主开销)
+    ≈ 512 × 7192 × 4 = ~14.7 MB (当 block_m=512, 整组)
+    ⚠️ 远超 UB, 必须 tile 化切分
+
+  per_tile (假设 tile_m=64):
+    C0_output: 64 × 7192 × 4 = ~1.8 MB (仍超 UB)
+    → 需进一步沿 N 轴 tile
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[待确认]
+1. 数据流 C0→V0 的 workspace 传递是否正确?
+2. C0 与 V0 无共享消减轴, 不需要 cube_accumulate — 是否同意?
+3. Cast 操作 (int32↔fp32, fp32→int8) 的 UB 开销分析是否合理?
+4. 1c2v row_split 分片策略是否合理?
+
+[确认] → 进入 Step 1 切分决策 | [修改] 调整
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+确认，1c2v row_split 分片策略先忽略，后续再分析，进行下一步骤
+好的，跳过 1c2v row_split 细节，先生成 spec_dependency.yaml 并进入 Step 1。
+
+Write spec_dependency.yaml
+48 lines
+# Step 0b 输出: 依赖建模
+
+shared_reduce_axes: []
+# C0 reduces K, V0 reduces N/2 → 无共享消减轴, 不需要 cube_accumulate
+
+workspace_transfers:
+  - from: "C0"
+    to: "V0"
+    data_id: "C0_output"
+    shape: "[block_m, N]"
+    dtype: "int32"
+    size_per_block: "block_m * N * 4"
+    produced_per_tile: true
+    tile_axis: "M"
+    aiv_access: "deferred"
+    note: "matmul int32 结果, 1c2v row_split 策略后续分析"
+
+  - from: "V0"
+    to: "GM"
+    data_id: "V0_quantScale"
+    shape: "[block_m]"
+    dtype: "float32"
+    size_per_block: "block_m * 4"
+    produced_per_tile: false
+    aiv_access: "deferred"
+    note: "动态量化 scale, absmax reduce 结果"
+
+cast_ub_overhead:
+  - cv_id: "V0"
+    casts: ["int32 → fp32 (matmul 结果)", "fp32 → int8 (量化输出)"]
+    input_buf: "block_m * N * 4 bytes (int32)"
+    output_buf: "block_m * N * 4 bytes (fp32)"
+    note: "Cast int32→fp32 需双 buffer; Cast fp32→int8 输出仅为输入 1/4"
+
+aiv_workspace_split:
+  mode: "deferred"
+  note: "1c2v row_split 策略待后续分析"
+
+workspace_summary:
+  per_block:
+    total_per_block: "block_m * N * 4 + block_m * 4"
+    dominant_item: "C0_output [block_m, N] int32"
+    note: "block_m * N * 4 远超 UB, 必须沿 M/N 双轴 tile 化"
+
+  per_tile_estimate:
+    tile_m_64: "64 * 7192 * 4 = ~1.8 MB (仍超 UB, 需进一步沿 N tile)"
+    conclusion: "需 M + N 双轴 tile 才能控制 workspace 在合理范围"
+Edit state.yaml
+Modified
+Edit state.yaml
+Modified
+Update Todos
+
+Step 0: Golden 分析（操作识别 + 轴识别 + 隐式操作 + 融合 + CV序列 + 参数分类）
+
+Step 0b: 依赖建模（数据流 DAG + Workspace 分析）
+
+Step 1: 切分决策（收益分析 + 多核分配 + 设计原语）
+
+Step 2: 骨架生成 + 指令占位
+
+Step 3: 数据切分与偏移计算
+
+Step 4: 指令填充（Python → AscendC 映射）
+
+Step 5: UB 资源分配 + 最终代码生成
+进入 Step 1: 切分决策，让我先读取 Step 1 规范。
+
+Read step1_split_decision.md
+现在对 gmmdsq 算子进行 Step 1 切分决策分析。
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Step 1: 切分决策]
+
+━━━ 1.1 轴优先级与约束分析 ━━━
+
+| 轴    | 约束        | 大小   | 优先级 | 原因                                         |
+|-------|------------|--------|--------|----------------------------------------------|
+| E     | free (实例) | 8      | 1      | 实例轴, 每组独立 matmul, 天然并行             |
+| matM  | free       | 4096   | 2      | 行维度, 可沿 M 切分                          |
+| matK  | accumulate | 5120   | -1     | C0 matmul 消减轴, 不参与多核切分             |
+| matN  | forbidden  | 7192   | -1     | SwiGLU chunk(N→N/2) 需完整 N, 禁止切分       |
+
+━━━ 1.1.2 多核切分建议 ━━━
+
+推荐方案: 沿 E (group axis) 多核切分
+
+  理由:
+    ✓ E 是实例轴, 每组独立 matmul, 无跨组数据依赖
+    ✓ 实现最简洁, 每个核处理分配到的 group
+    ✗ E=8 < coreNum(~20) 时有核空闲 (可接受, 后续可优化)
+
+  Block 大小推导:
+    block_size = 1         (每个 block = 1 个 group)
+    totalBlocks = E = 8
+    blocksPerCore = ceil(8 / coreNum)
+    allocation = linear    (前 E 个核各得 1 group, 其余空闲)
+
+  备选方案: 沿 matM 展平切分
+    - 将 M=4096 行均匀分配给所有核
+    - 每个核需通过 groupList 查找行所属 group 并加载对应 weight
+    - 更高核利用率, 但实现复杂度高
+
+━━━ 1.1.3 核内切分建议 ━━━
+
+C0 (Cube):
+  Cube API (Matmul) 通过 TCubeTiling 内部处理 M/K tiling
+  → 核内切分由 Cube API 自动管理, 无需手动编排
+
+V0 (Vector 后处理):
+  matmul 输出 int32 [baseM, N] 写入 workspace (GM)
+  V0 从 workspace 读取并处理, 需 vec_chunk 控制 UB:
+
+  ━━ UB 验算 (vec_chunk 推导) ━━
+
+  单行开销 (N=7192):
+    int32 buffer:  7192 × 4 = 28.1 KB  (从 workspace 读入)
+    fp32 buffer:   7192 × 4 = 28.1 KB  (Cast 后, int32 可释放)
+    weightScale:   7192 × 4 = 28.1 KB  (常驻, per-group 广播)
+    SwiGLU peak:   ~42 KB per row       (sigmoid temp + gate)
+
+  Cast 阶段 peak (瓶颈):
+    int32 + fp32 双 buffer = chunk × 56.2 KB
+    + weightScale = 28.1 KB
+    ≤ 192 KB → chunk ≤ (192 - 28.1) / 56.2 ≈ 2.9
+
+  ✓ vec_chunk_size = 2 rows (保守)
+
+  V0 内部循环:
+    for (row = 0; row < baseM; row += vec_chunk_size=2):
+      读 2 行 int32 from workspace
+      → Cast int32→fp32 (释放 int32 buffer)
+      → × weightScale (dequant step1)
+      → × xScale       (dequant step2)
+      → chunk(N→N/2)   (SwiGLU 拆分)
+      → sigmoid + silu  (SiLU 激活)
+      → × gate          (gate 乘法)
+      → absmax + scale  (动态量化)
+      → round + Cast fp32→int8
+      → 写 GM
+
+━━━ 1.2 多核分配方式 ━━━
+
+  strategy: linear
+  reason: "E=8 组均匀分布, 组间无负载差异, 线性分配简单高效"
+  tail_handling: "前 E 个核各得 1 group"
+
+━━━ 1.3 设计原语 ━━━
+
+  primitive: "E:[C0->V0]"
+
+  含义:
+    E:      多核切分轴 (实例轴, block 不跨 group)
+    C0→V0:  每个 block 内顺序执行
+    C0:     Cube API 内部 tile (TCubeTiling)
+    V0:     vec_chunk=2 rows 内部 tile
+
+  annotations:
+    splits:
+      E:
+        type: "instance_axis_multi_core"
+        allocation: "linear"
+        shared_by: ["C0", "V0"]
+        block_size: 1
+        total_blocks: 8
+        blocks_per_core: "ceil(8/coreNum)"
+        cube_api_params:
+          physical_M: "matM_i"  (动态, groupList 决定)
+          physical_K: "matK"
+          physical_N: "matN"
+
+      V0_vec_chunk:
+        type: "intra_core"
+        applies_to: ["V0"]
+        axis: "matM"
+        chunk_size: 2
+        reason: "Cast int32↔fp32 双 buffer + weightScale 常驻 UB 约束"
+
+━━━ 1.4 Stage 划分 ━━━
+
+  stage_count: 1
+  理由:
+    CV 序列线性无环 (C0→V0)
+    无 reduce 冲突 (C0 reduce K, V0 reduce N/2, 交集为空)
+    无 shape 跳变需全局同步
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[待确认]
+1. 多核沿 E (group axis) 切分是否合理? (E=8 < coreNum 时部分核空闲)
+2. V0 vec_chunk=2 是否可接受? (保守值, Step 5 可优化)
+3. 设计原语 E:[C0->V0] 是否正确?
+4. 单 Stage 是否足够?
+
+[确认] → 进入 Step 2 骨架生成 | [修改] 调整 | [提问]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+为了充分利用更多的核，在matM_i 上做多核切分
+好的，修改多核切分策略为沿 matM 展平切分。重新推导。
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Step 1: 切分决策 — 修订版]
+
+━━━ 1.1 轴优先级与约束分析 (不变) ━━━
+
+| 轴    | 约束        | 大小   | 优先级 | 原因                          |
+|-------|------------|--------|--------|-------------------------------|
+| E     | free (实例) | 8      | 1      | 实例轴, block 不跨 group      |
+| matM  | free       | 4096   | 2      | 行维度, 多核切分轴            |
+| matK  | accumulate | 5120   | -1     | C0 matmul 消减轴              |
+| matN  | forbidden  | 7192   | -1     | SwiGLU 需完整 N               |
+
+━━━ 1.1.2 多核切分建议 — 修订 ━━━
+
+切分轴: matM (展平 M 行, 跨 group 分配)
+
+  核心思路:
+    将 M=4096 行展平分配给所有核
+    每个核负责一段连续的行范围 [startM, endM)
+    核需通过 groupList 查找行所属 group, 加载对应 weight
+
+  Block 大小推导:
+
+    1. per_row_cost (workspace, GM):
+       C0 output int32: N × 4 = 7192 × 4 = 28,768 bytes
+       → workspace 在 GM, 不受 UB 限制
+
+    2. 负载均衡推导:
+       total_matM = 4096
+       coreNum ≈ 20
+       naive_single = floor(4096 / 20) = 204
+
+    3. 对齐到 2 的幂:
+       single_matM = floor_pow2(204) = 128
+
+    4. 验证:
+       totalBlocks    = ceil(4096 / 128) = 32
+       blocksPerCore  = ceil(32 / 20) = 2
+       workspace_per_block = 128 × 7192 × 4 ≈ 3.7 MB (GM, ✓)
+       ✓ blocksPerCore ≥ 1
+       ✓ 所有 20 核参与计算
+
+  Group 边界处理:
+    ⚠️ block 可能跨越 group 边界
+    例: block [row=480..607] 可能横跨 group 0 [0..512) 和 group 1 [512..1024)
+
+    策略: 核内按 group 边界拆分 sub-block
+      while (row < endM):
+        group_idx = find_group(groupList, row)
+        sub_end = min(endM, groupList[group_idx])
+        处理 sub_block [row, sub_end) 使用 weight[group_idx]
+        row = sub_end
+
+  对比原方案:
+    | 指标         | 原方案 (E 切分) | 修订方案 (matM 切分) |
+    |-------------|----------------|---------------------|
+    | 核利用率     | 8/20 = 40%     | 20/20 = 100%        |
+    | 实现复杂度   | 低             | 中 (需 group 查找)   |
+    | 负载均衡     | 取决于组大小   | 均匀                 |
+
+━━━ 1.1.3 核内切分 (不变) ━━━
+
+  C0: Cube API (TCubeTiling) 内部 tile
+  V0: vec_chunk = 2 rows (Cast int32↔fp32 + weightScale UB 约束)
+
+━━━ 1.2 多核分配方式 ━━━
+
+  strategy: linear
+  reason: "matM 行均匀分布, 连续行数据局部性好, GM 地址连续"
+  tail_handling: "最后核处理余量行"
+
+━━━ 1.3 设计原语 — 修订 ━━━
+
+  primitive: "{E}:matM:[C0->V0]"
+
+  含义:
+    {E}:    实例轴约束 (block 不跨越 group 边界)
+    matM:   多核切分轴 (每个核分配 continuous M 行)
+    [C0→V0]: 每个 sub-block 内顺序执行
+    核内按 group 边界拆分 sub-block, 每个 sub-block 使用对应 weight
+
+  annotations:
+    splits:
+      matM:
+        type: "multi_core"
+        allocation: "linear"
+        shared_by: ["C0", "V0"]
+        block_size: 128
+        total_blocks: 32
+        blocks_per_core: 2
+        derivation: "floor_pow2(floor(4096/20)) = 128"
+        instance_constraint: "E"
+        instance_handling: "核内按 groupList 拆分 sub-block"
+        cube_api_params:
+          physical_M: "matM_i" (动态, sub-block 内实际行数)
+          physical_K: "matK"
+          physical_N: "matN"
+
+      V0_vec_chunk:
+        type: "intra_core"
+        applies_to: ["V0"]
+        axis: "matM"
+        chunk_size: 2
+        reason: "Cast 双 buffer + weightScale UB 约束"
+
+━━━ 1.4 Stage 划分 (不变) ━━━
+
+  stage_count: 1
+  理由: C0→V0 线性无环, 无 reduce 冲突
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[待确认]
+1. matM 多核切分 + group 边界 sub-block 拆分策略是否合理?
+2. block_size=128, blocksPerCore=2 是否可接受?
+3. 设计原语 {E}:matM:[C0->V0] 是否正确?
+4. V0 vec_chunk=2 是否保持?
+
+[确认] → 进入 Step 2 骨架生成 | [修改] 调整
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+为了提高cube核和vector计算的并行度，cude计算时多核切分M轴和N轴，而vector计算因为依赖N轴只多核切分M轴，每次cude计算完一整行singleM时，vector才开始计算singleM的数据
+理解了。C0 用 2D (M×N) 多核切分提升 Cube 吞吐，V0 仅沿 M 切分（SwiGLU 需完整 N），按 M-block 流水衔接。重新推导。
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Step 1: 切分决策 — 修订版 v2]
+
+━━━ 核心设计 ━━━
+
+  C0 (Cube):  多核切分 matM × matN → 2D 核网格 [numMCores × numNCores]
+  V0 (Vector): 多核切分 matM only  → 1D 核组 [numMCores]
+  流水:       每个 M-block 内, C0 所有 N-tile 完成后 → V0 开始处理 [singleM, full_N]
+
+  ━━ 流水时序 ━━
+
+  时间 →
+       ┌──────── M-block 0 ────────┬──────── M-block 1 ────────┬── ...
+  C0:  │ N-tile 0..4 并行计算       │ N-tile 0..4 并行计算       │
+       │ [sM,sN]×5 核              │ [sM,sN]×5 核              │
+       ├────────────────────────────┼────────────────────────────┤
+  同步: │          N-axis barrier    │          N-axis barrier    │
+       ├────────────────────────────┼────────────────────────────┤
+  V0:  │              处理 [sM, N]   │              处理 [sM, N]  │
+       │              dequant+SwiGLU │              dequant+SwiGLU│
+       │              +quantize      │              +quantize      │
+
+  ⚠️ C0 的 N-tile 间可流水 (Cube API 内部 tile), 但 V0 必须等完整 N 到齐
+
+━━━ 核网格分配 ━━━
+
+  coreNum = 20 (示例, 最大核数)
+  核网格: numMCores × numNCores ≤ coreNum
+
+  候选方案:
+    | 方案 | numMCores | numNCores | singleM | singleN | Cube吞吐 | V0并行度 |
+    |------|-----------|-----------|---------|---------|----------|----------|
+    | A    | 4         | 5         | 1024    | ~1439   | 高       | 4        |
+    | B    | 5         | 4         | ~820    | 1798    | 中高     | 5        |
+    | C    | 2         | 8         | 2048    | ~899    | 最高     | 2        |
+
+  推荐: 方案 B (numMCores=5, numNCores=4)
+    理由:
+      ✓ singleN=1798 足够大, Cube baseN 对齐良好
+      ✓ V0 并行度=5, 后处理不会成为瓶颈
+      ✓ 5×4=20 正好用满所有核
+
+━━━ Block 大小推导 ━━━
+
+  ━━ C0 Block (Stage 0): [singleM, singleN] ━━
+
+    total_matM = 4096, total_matN = 7192
+    numMCores = 5, numNCores = 4
+
+    naive_singleM = ceil(4096 / 5) = 820
+    naive_singleN = ceil(7192 / 4) = 1798
+
+    Workspace 验证 (per M-block, all N assembled):
+      singleM × N × 4 = 820 × 7192 × 4 ≈ 23.6 MB  (GM, ✓)
+
+    双缓冲 (流水乒乓):
+      2 × 23.6 MB ≈ 47.2 MB workspace (GM, ✓)
+
+    Cube API 内部 tile:
+      baseM, baseN from TCubeTiling
+      每个 C0 核遍历 singleM/baseM × singleN/baseN 个 Cube tile
+
+  ━━ V0 Block (Stage 1): [singleM, full_N] ━━
+
+    V0 处理组装后的 [singleM, N] = [820, 7192]
+    V0 多核: numMCores=5 个 AIV 各处理 1 个 M-block
+
+    V0 内部 vec_chunk (UB 约束):
+      单行 fp32 buffer: 7192 × 4 = 28.1 KB
+      weightScale 常驻:  7192 × 4 = 28.1 KB
+      Cast 双 buffer 瓶颈 → vec_chunk = 2 rows
+
+━━━ Stage 划分 ━━━
+
+  stage_count: 2
+
+  Stage 0 (C0):
+    cv_sequence: ["C0"]
+    multi_core_split:
+      axes: ["matM", "matN"]
+      core_grid: "5 × 4 = 20"
+      singleM: 820 (动态, 按 groupList 调整)
+      singleN: 1798
+    sync_after: true   ← N-axis barrier, 所有 N-tile 完成后同步
+
+  Stage 1 (V0):
+    cv_sequence: ["V0"]
+    multi_core_split:
+      axes: ["matM"]
+      numMCores: 5
+      singleM: 820 (与 Stage 0 对齐)
+    sync_after: false
+
+  流水:
+    双缓冲乒乓: Stage 0 写 buffer A → 同步 → Stage 1 读 buffer A
+                 Stage 0 同时写 buffer B → 同步 → Stage 1 读 buffer B
+
+━━━ 设计原语 ━━━
+
+  primitive: "{E}:matM:matN:[C0];matM:[V0]"
+
+  含义:
+    {E}:     实例轴 (block 不跨 group)
+    matM:    外层多核切分 (Stage 0 和 Stage 1 共享 M 分核)
+    matN:    Stage 0 额外的 N 多核切分 (仅 C0)
+    [C0]     Stage 0: Cube matmul, 2D (M×N) 核网格
+    ;        Stage 分隔 (N-axis barrier 同步)
+    [V0]     Stage 1: Vector 后处理, 1D (M) 核分配
+
+  annotations:
+    splits:
+      matM:
+        type: "multi_core"
+        allocation: "linear"
+        shared_by: ["C0", "V0"]
+        block_size: 820
+        total_blocks: 5
+        blocks_per_core: 1
+        instance_constraint: "E"
+        instance_handling: "核内按 groupList 拆分 sub-block"
+        cube_api_params:
+          physical_M: "matM_i"  (动态)
+          physical_K: "matK"
+          physical_N: "matN"
+
+      matN:
+        type: "multi_core"
+        allocation: "linear"
+        shared_by: ["C0"]
+        block_size: 1798
+        total_blocks: 4
+        blocks_per_core: 1
+        sync: "barrier_after_all_N_tiles"
+        sync_reason: "V0 需完整 N 才能执行 SwiGLU"
+
+      V0_vec_chunk:
+        type: "intra_core"
+        applies_to: ["V0"]
+        axis: "matM"
+        chunk_size: 2
+        reason: "Cast 双 buffer + weightScale UB 约束"
+
+    stages:
+      - id: 0
+        cv_sequence: ["C0"]
+        sync_after: true
+        description: "Cube matmul 2D (M×N) 多核"
+      - id: 1
+        cv_sequence: ["V0"]
+        sync_after: false
+        description: "Vector 后处理 1D (M) 多核, 流水跟随 Stage 0"
+
+    pipeline:
+      mode: "double_buffer"
+      granularity: "per M-block"
+      sync_point: "N-axis barrier between Stage 0 and Stage 1"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[待确认]
+1. 2 Stage 设计: C0 (M×N 2D) → barrier → V0 (M 1D) 是否合理?
+2. 核网格 5×4=20 是否可接受? 或调整比例?
+3. singleM=820, singleN=1798 是否需要调整?
+4. V0 vec_chunk=2 是否保持?
+5. 双缓冲流水策略是否合理?
+
+[确认] → 进入 Step 2 骨架生成 | [修改] 调整
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+设计原语为：E:{matM:[matN:[C0]->matM_i:[V0]]}
+理解，使用用户提供的设计原语。让我解析并生成对应的 spec_step1.yaml。
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Step 1: 切分决策 — 用户设计原语确认]
+
+━━━ 原语解析 ━━━
+
+  E:{matM:[matN:[C0]->matM_i:[V0]]}
+
+  层级展开:
+    E                     → 实例轴 (group 外层循环)
+    {matM: ...}           → matM 多核切分 (block 不跨 E 边界)
+      [matN: [C0]         → C0: matM × matN 2D 多核 (Cube 2D 并行)
+          ->              → Stage 同步点 (N-axis barrier, 等 C0 所有 N-tile 完成)
+       matM_i: [V0]]      → V0: 继承 matM 多核, 内部 matM_i 核内切分 (vec_chunk)
+
+  核心映射:
+    ┌─ E 外层循环 (实例轴) ─────────────────────────────────────┐
+    │ for each assigned group:                                  │
+    │   ┌─ matM 多核切分 ──────────────────────────────────┐    │
+    │   │ for each assigned M-block:                       │    │
+    │   │   ┌─ Stage 0: C0 (matN 多核) ────────────────┐   │    │
+    │   │   │ 所有 N-tile 并行 Cube matmul              │   │    │
+    │   │   │ [singleM, singleN] × numNCores           │   │    │
+    │   │   └──────────────────────────────────────────┘   │    │
+    │   │            ↓ N-axis barrier                       │    │
+    │   │   ┌─ Stage 1: V0 (matM_i 核内切分) ──────────┐   │    │
+    │   │   │ for (row=0; row<singleM; row+=chunk)      │   │    │
+    │   │   │   vec_chunk=2 行:                         │   │    │
+    │   │   │   Cast+dequant+SwiGLU+quantize            │   │    │
+    │   │   └──────────────────────────────────────────┘   │    │
+    │   └──────────────────────────────────────────────────┘    │
+    └───────────────────────────────────────────────────────────┘
+
+  同步机制:
+    C0 matN 多核: 同一 M-block 的 numNCores 个核并行计算不同 N-tile
+    barrier:      所有 N-tile 完成 → 信号通知 V0
+    V0:           单核处理 [singleM, full_N], matM_i 逐 chunk
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Write spec_step1.yaml
+88 lines
+# Step 1 输出: 切分决策
+
+primitive: "E:{matM:[matN:[C0]->matM_i:[V0]]}"
+
+annotations:
+  splits:
+    E:
+      type: "instance_axis"
+      description: "实例轴 (group 外层循环), block 不跨 group"
+      source: "groupList"
+
+    matM:
+      type: "multi_core"
+      allocation: "linear"
+      shared_by: ["C0", "V0"]
+      instance_constraint: "E"
+      instance_handling: "核内按 groupList 拆分 sub-block, 每段使用对应 weight[group_idx]"
+      derivation: "total_matM / numMCores"
+      note: "具体 singleM 由 TCubeTiling 和核网格决定"
+
+    matN:
+      type: "multi_core"
+      allocation: "linear"
+      shared_by: ["C0"]
+      sync: "barrier_after_all_N_tiles"
+      sync_reason: "V0 需完整 N 执行 SwiGLU, 等 C0 所有 N-tile 完成后同步"
+      derivation: "total_matN / numNCores"
+      note: "具体 singleN 由 TCubeTiling 和核网格决定"
+
+    matM_i:
+      type: "intra_core"
+      applies_to: ["V0"]
+      strategy: "vec_chunk"
+      chunk_size: 2
+      reason: "V0 UB 约束: Cast int32↔fp32 双 buffer + weightScale 常驻 ≈ 192KB 限制"
+      description: "V0 逐 chunk=2 行处理: Cast→dequant→SwiGLU→quantize"
+
+  stages:
+    - id: 0
+      cv_sequence: ["C0"]
+      multi_core:
+        axes: ["matM", "matN"]
+        core_grid: "numMCores × numNCores"
+      sync_after: true
+      sync_type: "N-axis barrier"
+      description: "Cube matmul 2D (M×N) 多核并行"
+
+    - id: 1
+      cv_sequence: ["V0"]
+      multi_core:
+        axes: ["matM"]
+        inherited_from: "Stage 0 matM split"
+      intra_core:
+        axis: "matM_i"
+        chunk_size: 2
+      sync_after: false
+      description: "Vector 后处理 1D (M) 多核, matM_i 核内切分, 流水跟随 Stage 0"
+
+  cv_order:
+    anchor: "C0"
+    ordering:
+      - {cv: "C0", position: "anchor", stage: 0}
+      - {cv: "V0", position: "after_C0", stage: 1, reason: "V0 依赖 C0 matmul 完整 N 输出"}
+
+  pipeline:
+    enabled: true
+    mode: "double_buffer"
+    granularity: "per M-block"
+    sync_point: "N-axis barrier between Stage 0 and Stage 1"
+    flow: "C0 写 [singleM, singleN]×numNCores 到 workspace → barrier → V0 读 [singleM, full_N]"
+
+axis_priority:
+  - {axis: "E", constraint: "free", size: 8, priority: 1, role: "instance_axis"}
+  - {axis: "matM", constraint: "free", size: 4096, priority: 2, role: "multi_core"}
+  - {axis: "matN", constraint: "forbidden_for_V0", size: 7192, priority: 3, role: "multi_core_C0_only"}
+  - {axis: "matK", constraint: "accumulate", size: 5120, priority: -1, role: "Cube_reduce"}
+  - {axis: "matM_i", constraint: "free", size: "dynamic", priority: -1, role: "intra_core_V0"}
+
+stage_config:
+  stage_count: 2
+  stages:
+    - id: 0
+      cv_sequence: ["C0"]
+      sync_after: true
+    - id: 1
+      cv_sequence: ["V0"]
+      sync_after: false
+Edit state.yaml
+Modified
+Edit state.yaml
+Modified
+Update Todos
+
+Step 0: Golden 分析
+
+Step 0b: 依赖建模
+
+Step 1: 切分决策
+
+Step 2: 骨架生成 + 指令占位
+
+Step 3: 数据切分与偏移计算
+
+Step 4: 指令填充
+
+Step 5: UB 资源分配
+spec_step1.yaml 已生成。进入 Step 2: 骨架生成 + 指令占位。先读取 Step 2 规范和模板。
+
+Read step2_skeleton_code.md
+Globpattern: "**/kernel_unified.h"
+Found 1 file
+Read kernel_unified.h
+已读取模板和 Step 2 规范。现在基于设计原语 E:{matM:[matN:[C0]->matM_i:[V0]]} 生成骨架分析。
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Step 2: 骨架生成 + 指令占位]
+
+━━━ 设计原语 → 代码映射 ━━━
+
+  E:{matM:[matN:[C0]->matM_i:[V0]]}
+
+  ━━ 层级展开 ━━
+
+  L0: E 实例轴 → for (groupIdx = 0; groupIdx < groupNum_; ++groupIdx)
+      │  按 groupList 确定 groupStart, groupEnd, currentM
+      │  核需通过 groupList 查找行所属 group
+      │
+  L1: matM 多核切分 → for (mBlock = assigned_start; mBlock < assigned_end; ++mBlock)
+      │  AIC: (mIdx, nIdx) 2D 映射, blockIdx → (mIdx, nIdx)
+      │  AIV: mIdx 1D 映射
+      │
+      ├── Stage 0: matN:[C0]  ─── AIC only ──────────────────────┐
+      │   L2: matN 多核切分 (AIC 内部)                              │
+      │     nIdx 决定 singleN 范围                                  │
+      │     Cube API: matmul [singleM, singleN] int32               │
+      │                                                             │
+      │   → N-axis barrier (同 M-block 所有 N-tile 完成)            │
+      │   SetFlag<C2V>(SYNC_S0_L1_C2V_0)                           │
+      ├─────────────────────────────────────────────────────────────┘
+      │
+      └── Stage 1: matM_i:[V0]  ─── AIV only ────────────────────┐
+          WaitFlag(SYNC_S0_L1_C2V_0)                               │
+          L3: matM_i 核内切分 (vec_chunk=2)                         │
+            for (row = 0; row < singleM; row += 2)                  │
+              Cast int32→fp32 → dequant → SwiGLU → quantize        │
+          Write GM (quantOutput, quantScaleOutput)                  │
+          ─────────────────────────────────────────────────────────┘
+
+━━━ 同步计划 ━━━
+
+  SYNC_S0_L1_C2V_0:
+    方向: C→V (Cube → Vector)
+    触发: Stage 0 所有 N-tile 完成 (同 M-block)
+    时机: per M-block
+    AIC: SetFlag
+    AIV: WaitFlag
+
+━━━ 指令占位 ━━━
+
+  S0_C0Process (AIC):
+    ┌─ 指令占位: Cube matmul int8×int8→int32 ─────────────────┐
+    │ 输入: x_slice [GM → Cube A], singleM 行从 groupStart+mOffset  │
+    │       weight_i [GM → Cube B], tensorList[groupIdx]       │
+    │ 输出: C0_output [workspace GM], [singleM, singleN] int32 │
+    │ 类型: Matmul API                                         │
+    │       isTransposeB=true, has_bias=false                   │
+    │       int8 → int32                                       │
+    └──────────────────────────────────────────────────────────┘
+
+  S0_V0Process (AIV):
+    ┌─ 指令占位: Cast int32→fp32 ──────────────────────────────┐
+    │ 输入: C0_output [workspace], matM_i 行 int32             │
+    │ 输出: fp32_buf [UB]                                      │
+    │ 类型: Cast                                               │
+    ├──────────────────────────────────────────────────────────┤
+    │ 指令占位: dequant perChannelScale ──────────────────────│
+    │ 输入: fp32_buf [UB], weightScale_i [GM→UB broadcast]     │
+    │ 输出: dequant_result [UB]                                │
+    │ 类型: Mul (broadcast [N] → [chunk, N])                   │
+    ├──────────────────────────────────────────────────────────┤
+    │ 指令占位: dequant perTokenScale ────────────────────────│
+    │ 输入: dequant_result [UB], xScale_slice [GM→UB]          │
+    │ 输出: fp32_dequant [UB]                                  │
+    │ 类型: Mul (broadcast [chunk] → [chunk, N])               │
+    ├──────────────────────────────────────────────────────────┤
+    │ 指令占位: SwiGLU ──────────────────────────────────────│
+    │ 输入: fp32_dequant [UB], [chunk, N]                      │
+    │       chunk(N→N/2): left [chunk, N/2] + gate [chunk, N/2]│
+    │       sigmoid(left) → SiLU = left * sigmoid(left)        │
+    │       result = SiLU * gate                               │
+    │ 输出: swiglu_result [UB], [chunk, N/2] fp32              │
+    │ 类型: Sigmoid + Mul + Mul                                │
+    ├──────────────────────────────────────────────────────────┤
+    │ 指令占位: 动态量化 ────────────────────────────────────│
+    │ 输入: swiglu_result [UB]                                 │
+    │       abs → max(dim=-1) → absmax [chunk] fp32            │
+    │       quantScale = 127.0 / absmax                        │
+    │       round(swiglu_result * quantScale) → int8           │
+    │       dequantScale = 1.0 / quantScale                    │
+    │ 输出: quantOutput [GM, int8], quantScaleOutput [GM, fp32] │
+    │ 类型: Abs + ReduceMax + Muls + Round + Cast(fp32→int8)  │
+    └──────────────────────────────────────────────────────────┘
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[待确认]
+1. 骨架循环结构 (E → matM → { Stage0(matN:C0) → barrier → Stage1(matM_i:V0) }) 是否正确?
+2. 同步点 SYNC_S0_L1_C2V_0 (per M-block, C→V) 是否正确?
+3. C0/V0 指令占位是否完整?
+
+[确认] → 生成 spec_step2.yaml + gmmdsq_kernel.h | [修改] 调整
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+正确
+好的，生成 spec_step2.yaml 和 gmmdsq_kernel.h。
+
+Write spec_step2.yaml
+104 lines
+# Step 2 输出: 骨架代码 + 指令占位
+
+skeleton_config:
+  primitive: "E:{matM:[matN:[C0]->matM_i:[V0]]}"
+
+  sync_schedule:
+    - name: "SYNC_S0_L1_C2V_0"
+      direction: "C2V"
+      timing: "per M-block"
+      context: "Stage 0 (C0) 所有 N-tile 完成 → 通知 Stage 1 (V0)"
+      between: ["C0", "V0"]
+      set_flag_side: "AIC"
+      wait_flag_side: "AIV"
+      note: "N-axis barrier: 同一 M-block 的所有 numNCores AIC 核完成后触发"
+
+  instruction_placeholders:
+    S0_C0Process:
+      - op: "Cube matmul int8×int8→int32"
+        type: "Matmul API"
+        in: "x_slice [GM, singleM×K, int8], weight_i [GM, K×N, int8, tensorList]"
+        out: "C0_output [workspace GM, singleM×singleN, int32]"
+        note: "isTransposeB=true, has_bias=false, 沿 N 轴多核切分(nIdx)"
+      - op: "N-tile write to workspace"
+        type: "DataCopy (implicit in Matmul API)"
+        in: "C0_output"
+        out: "workspace offset by (mIdx, nIdx)"
+
+    S0_V0Process:
+      - op: "Read matmul result from workspace"
+        type: "DataCopy (load)"
+        in: "C0_output [workspace, chunk×N, int32]"
+        out: "int32_buf [UB]"
+      - op: "Cast int32→fp32"
+        type: "Cast"
+        in: "int32_buf [UB]"
+        out: "fp32_buf [UB]"
+      - op: "Load perChannelScale and broadcast"
+        type: "DataCopy + Duplicate (broadcast)"
+        in: "weightScale_i [GM, N, fp32, tensorList]"
+        out: "weightScale_ub [UB]"
+      - op: "Dequant step1: mul perChannelScale"
+        type: "Mul"
+        in: "fp32_buf [UB], weightScale_ub [UB, broadcast N→chunk×N]"
+        out: "dequant1_buf [UB]"
+      - op: "Load perTokenScale slice"
+        type: "DataCopy (load)"
+        in: "xScale_slice [GM, chunk, fp32]"
+        out: "xScale_ub [UB]"
+      - op: "Dequant step2: mul perTokenScale"
+        type: "Mul"
+        in: "dequant1_buf [UB], xScale_ub [UB, broadcast chunk×1→chunk×N]"
+        out: "dequant2_buf [UB, chunk×N]"
+      - op: "SwiGLU: chunk N→N/2 split"
+        type: "memory view (no compute)"
+        in: "dequant2_buf [UB, chunk×N]"
+        out: "left_half [UB, chunk×N/2], gate [UB, chunk×N/2]"
+      - op: "SwiGLU: sigmoid(left)"
+        type: "Sigmoid"
+        in: "left_half [UB]"
+        out: "sigmoid_buf [UB, chunk×N/2]"
+      - op: "SwiGLU: SiLU = left * sigmoid(left)"
+        type: "Mul"
+        in: "left_half [UB], sigmoid_buf [UB]"
+        out: "silu_buf [UB, chunk×N/2]"
+      - op: "SwiGLU: result = SiLU * gate"
+        type: "Mul"
+        in: "silu_buf [UB], gate [UB]"
+        out: "swiglu_buf [UB, chunk×N/2]"
+      - op: "Dynamic quant: abs + max reduce"
+        type: "Abs + ReduceMax"
+        in: "swiglu_buf [UB, chunk×N/2]"
+        out: "absmax_buf [UB, chunk]"
+        note: "reduce along last dim (N/2)"
+      - op: "Dynamic quant: scale = 127.0 / absmax"
+        type: "Divs (scalar div)"
+        in: "absmax_buf [UB, chunk]"
+        out: "quantScale_ub [UB, chunk]"
+      - op: "Dynamic quant: round(swiglu * scale)"
+        type: "Mul + Round"
+        in: "swiglu_buf [UB, chunk×N/2], quantScale_ub [UB, broadcast chunk→chunk×N/2]"
+        out: "rounded_buf [UB, chunk×N/2]"
+      - op: "Cast fp32→int8"
+        type: "Cast"
+        in: "rounded_buf [UB]"
+        out: "quantOutput_ub [UB, int8]"
+      - op: "Store quantOutput to GM"
+        type: "DataCopy (store)"
+        in: "quantOutput_ub [UB, int8]"
+        out: "quantOutput [GM]"
+      - op: "Compute dequantScale = 1.0 / quantScale"
+        type: "Divs (scalar div)"
+        in: "quantScale_ub [UB, chunk]"
+        out: "dequantScale_ub [UB, chunk]"
+      - op: "Store quantScaleOutput to GM"
+        type: "DataCopy (store)"
+        in: "dequantScale_ub [UB, fp32]"
+        out: "quantScaleOutput [GM]"
+
+  vec_chunk:
+    enabled: true
+    applies_to: ["S0_V0Process"]
+    chunk_size: 2
+    axis: "matM_i"
+Write gmmdsq_kernel.h
+566 lines
+/**
+ * \file gmmdsq_kernel.h
+ * \brief Grouped MatMul with Dynamic Scale Quantization Kernel
+ *
+ * 设计原语: E:{matM:[matN:[C0]->matM_i:[V0]]}
+ * 核启动模式: 1c2v
+ * CV 序列: C0(matmul int8×int8→int32) → V0(Cast+dequant+SwiGLU+quantize)
+ *
+ * Stage 0 (AIC): C0, matM×matN 2D 多核切分
+ * Stage 1 (AIV): V0, matM 多核切分 + matM_i 核内切分(vec_chunk=2)
+ */
+
+#ifndef __GMMDSQ_KERNEL_H_
+#define __GMMDSQ_KERNEL_H_
+
+#include "kernel_operator.h"
+#include "lib/matmul_intf.h"
+#include "kernel_tiling/kernel_tiling.h"
+
+namespace Gmmdsq {
+
+using namespace AscendC;
+using namespace matmul;
+
+// ============================================================================
+// [SECTION: TYPE_DEFS] 类型定义
+// ============================================================================
+
+// -------------------- Matmul 类型 --------------------
+// [SECTION: MATMUL_TYPES]
+// int8 × int8 → int32, B transposed (isTransposeB=true)
+using aT = MatmulType<TPosition::GM, CubeFormat::ND, int8_t>;          // x [M, K]
+using bT = MatmulType<TPosition::GM, CubeFormat::ND, int8_t, true>;    // weight^T [N, K]
+using cT = MatmulType<TPosition::GM, CubeFormat::ND, int32_t>;         // output [M, N]
+using MT = matmul::MatmulImpl<aT, bT, cT>;
+// [END_SECTION: MATMUL_TYPES]
+
+// -------------------- 自定义类型别名 --------------------
+using XMAT_T = int8_t;
+using WMAT_T = int8_t;
+using SCALE_T = float;
+using OUT_T = int8_t;
+
+// -------------------- Init 参数结构体 --------------------
+// [SECTION: INIT_PARAMS]
+struct InitParams {
+    GM_ADDR x;                  // [M, K] int8
+    GM_ADDR weight;             // tensorList [E, K, N] int8
+    GM_ADDR weightScale;        // tensorList [E, N] float
+    GM_ADDR xScale;             // [M] float
+    GM_ADDR groupList;          // [E] int64
+    GM_ADDR quantOutput;        // [M, N/2] int8
+    GM_ADDR quantScaleOutput;   // [M] float
+    GM_ADDR workspace;
+    TPipe *tPipe;
+    GmmdsqTilingData *tilingData;
+};
+// [END_SECTION: INIT_PARAMS]
+
+// -------------------- 多核切分结构体 --------------------
+// [SECTION: S1_MULTI_CORE_TILING]
+struct MatMTilingParams {
+    uint64_t totalMatM;     // 总 M (=matM from tiling)
+    uint32_t numMCores;     // M 轴核数
+    uint32_t singleMatM;    // 每 M-block 行数
+    uint32_t numMBlocks;    // M block 总数
+};
+
+struct MatNTilingParams {
+    uint64_t totalMatN;     // 总 N (=matN from tiling)
+    uint32_t numNCores;     // N 轴核数
+    uint32_t singleMatN;    // 每 N-block 列数
+    uint32_t numNBlocks;    // N block 总数
+};
+
+struct MatMKernalIter {
+    uint32_t mIdxBegin;
+    uint32_t mIdxEnd;
+};
+// [END_SECTION: S1_MULTI_CORE_TILING]
+
+// -------------------- 编译时常量 --------------------
+// [SECTION: COMPILE_CONSTANTS]
+static constexpr uint64_t SYNC_MODE = 0x2;
+
+// 同步标志
+// Stage 0 C0 → Stage 1 V0: per M-block N-axis barrier
+static constexpr uint64_t SYNC_S0_L1_C2V_0 = 0x1;
+
+// V0 vec_chunk (matM_i intra-core)
+static constexpr uint32_t DEFAULT_VEC_CHUNK_SIZE = 2;  // rows per chunk
+// [END_SECTION: COMPILE_CONSTANTS]
+
+// [END_SECTION: TYPE_DEFS]
+
+// ============================================================================
+// [SECTION: KERNEL_CLASS] Kernel 类定义
+// ============================================================================
+
+template <class T, class P = void>
+class GmmdsqKernel {
+public:
+    // [SECTION: CONSTRUCTOR]
+    __aicore__ inline GmmdsqKernel(MT &matmul) : mm_(matmul) {}
+    // [END_SECTION: CONSTRUCTOR]
+
+    __aicore__ inline void Init(const InitParams &params);
+    __aicore__ inline void InitLocalBuffers();  // AIV 专用初始化
+    __aicore__ inline void Process();
+
+private:
+    // ========================================================================
+    // [SECTION: MEMBERS] 成员变量
+    // ========================================================================
+
+    // -------------------- GlobalTensor --------------------
+    // [SECTION: GLOBAL_TENSORS]
+    GlobalTensor<int8_t> xGm_;              // x [M, K]
+    GlobalTensor<int8_t> weightGm_;         // weight tensorList current element [K, N]
+    GlobalTensor<float> weightScaleGm_;     // weightScale tensorList current element [N]
+    GlobalTensor<float> xScaleGm_;          // xScale [M]
+    GlobalTensor<int64_t> groupListGm_;     // groupList [E]
+    GlobalTensor<int8_t> quantOutputGm_;    // quantOutput [M, N/2]
+    GlobalTensor<float> quantScaleOutputGm_; // quantScaleOutput [M]
+    GlobalTensor<int32_t> workspaceGm_;     // workspace for C0→V0 int32 results
+    // [END_SECTION: GLOBAL_TENSORS]
+
+    // -------------------- Queue（Step 5 生成）--------------------
+    // [SECTION: S6_QUEUES]
+    // Step 5 根据 SSA 生命周期分析生成
+    TQue<QuePosition::VECIN, 1> int32InQueue_;    // 占位符, Step 5 覆盖
+    TQue<QuePosition::VECOUT, 1> int8OutQueue_;    // 占位符, Step 5 覆盖
+    // [END_SECTION: S6_QUEUES]
+
+    // -------------------- Buffer（Step 5 生成）--------------------
+    // [SECTION: S6_BUFFERS]
+    // Step 5 根据 SSA 生命周期分析生成
+    TBuf<TPosition::VECCALC> fp32Buf_;       // 占位符, Step 5 覆盖
+    TBuf<TPosition::VECCALC> weightScaleBuf_; // 占位符, Step 5 覆盖
+    // [END_SECTION: S6_BUFFERS]
+
+    // -------------------- LocalTensor（Step 5 生成）--------------------
+    // [SECTION: S6_LOCAL_TENSORS]
+    // Step 5 根据 SSA 映射生成
+    // 占位符, Step 5 覆盖
+    // [END_SECTION: S6_LOCAL_TENSORS]
+
+    // -------------------- TilingData --------------------
+    // [SECTION: TILING_DATA]
+    const GmmdsqTilingData *tiling_;
+
+    // From tiling
+    uint32_t coreNum_;
+    int64_t matM_;          // 总 M
+    int64_t matK_;          // K 维度
+    int64_t matN_;          // N 维度
+    uint32_t groupNum_;     // E (分组数)
+
+    // Step 1: 多核切分参数
+    uint32_t numMCores_;    // M 轴核数
+    uint32_t numNCores_;    // N 轴核数
+    uint32_t singleMatM_;   // 每 M-block 行数
+    uint32_t singleMatN_;   // 每 N-block 列数
+    uint32_t numMBlocks_;   // M block 总数
+    uint32_t numNBlocks_;   // N block 总数
+
+    // 核内切分 (V0 vec_chunk)
+    // DEFAULT_VEC_CHUNK_SIZE = 2 (constexpr, 不放 TilingData)
+
+    // Step 4: Stride 参数（按需生成）
+    // [SECTION: S4_STRIDE_DATA]
+    // stride 由 Step 4 根据实际 tensor patterns 生成
+    // [END_SECTION: S4_STRIDE_DATA]
+    // [END_SECTION: TILING_DATA]
+
+    // -------------------- 运行时状态 --------------------
+    // [SECTION: RUNTIME_VARS]
+    TPipe *pipe_;
+    uint32_t coreIdx_;
+    uint32_t mIdx_;     // 当前核在 M 轴的索引
+    uint32_t nIdx_;     // 当前核在 N 轴的索引 (AIC only)
+    // [END_SECTION: RUNTIME_VARS]
+
+    // -------------------- Matmul 实例 --------------------
+    // [SECTION: MATMUL_INSTANCE]
+    MT &mm_;
+    // [END_SECTION: MATMUL_INSTANCE]
+
+    // [END_SECTION: MEMBERS]
+
+    // ========================================================================
+    // [SECTION: SUBPROCESS_DECL] 子流程声明
+    // ========================================================================
+    // Stage 0: C0 (AIC, matM×matN 2D)
+    __aicore__ inline void S0_C0Process(uint32_t groupIdx,
+                                         uint64_t mOffset, uint64_t mSize,
+                                         uint32_t nBlockIdx);
+    // Stage 1: V0 (AIV, matM + matM_i intra-core)
+    __aicore__ inline void S0_V0Process(uint32_t groupIdx,
+                                         uint64_t mOffset, uint64_t mSize);
+    // [END_SECTION: SUBPROCESS_DECL]
+
+    // ========================================================================
+    // [SECTION: HELPER_DECL] 辅助方法声明
+    // ========================================================================
+    __aicore__ inline void RunStage0();
+    __aicore__ inline uint32_t FindGroupIdx(uint64_t row);
+    // [END_SECTION: HELPER_DECL]
+};
+
+// ============================================================================
+// [SECTION: S1_IMPL] Step 1 实现：多核切分
+// ============================================================================
+
+// -------------------- 辅助方法: 查找行所属 group --------------------
+// [SECTION: HELPER_IMPL]
+template <class T, class P>
+__aicore__ inline uint32_t GmmdsqKernel<T, P>::FindGroupIdx(uint64_t row)
+{
+    // [SECTION: V0_P0_S4_OFFSET]
+    // Step 4: 实现 groupList 二分查找或线性查找
+    // 输入: row (全局行号)
+    // 输出: groupIdx
+    // [ASCEND_MODIFY] Step 4 填充具体实现
+    return 0;
+    // [END_SECTION]
+}
+// [END_SECTION: HELPER_IMPL]
+
+// -------------------- RunStage0: 主循环框架 --------------------
+// 设计原语: E:{matM:[matN:[C0]->matM_i:[V0]]}
+//
+// L0: E 实例轴 → group 循环
+// L1: matM 多核切分 → M-block 循环
+//   Stage 0: matN:[C0] (AIC, N-tile 并行)
+//   → SYNC (N-axis barrier)
+//   Stage 1: matM_i:[V0] (AIV, vec_chunk)
+// [SECTION: S1_LOOP_BODY]
+template <class T, class P>
+__aicore__ inline void GmmdsqKernel<T, P>::RunStage0()
+{
+    // ====================================================================
+    // L0: E 实例轴 — 遍历 group
+    // ====================================================================
+    for (uint32_t groupIdx = 0; groupIdx < groupNum_; ++groupIdx) {
+
+        // [SECTION: GROUP_BOUNDARY]
+        // Step 4: 计算 group 起止行
+        //   groupStart = (groupIdx == 0) ? 0 : groupList_[groupIdx - 1]
+        //   groupEnd = groupList_[groupIdx]
+        //   currentM = groupEnd - groupStart
+        //
+        // 绑定当前 group 的 weight 和 weightScale
+        //   weightGm_.SetGlobalBuffer(tensorList_element(weight, groupIdx))
+        //   weightScaleGm_.SetGlobalBuffer(tensorList_element(weightScale, groupIdx))
+        // [END_SECTION: GROUP_BOUNDARY]
+
+        // ====================================================================
+        // L1: matM 多核切分 — 每个 M-block
+        // ====================================================================
+        // AIC: mIdx = coreIdx / numNCores_, 按 numMCores_ 步进
+        // AIV: mIdx = coreIdx, 按 numMCores_ 步进 (1c2v 核独立分配)
+        uint32_t assignedMStart = 0;  // [ASCEND_MODIFY] Step 4 计算
+        uint32_t assignedMEnd = 0;    // [ASCEND_MODIFY] Step 4 计算
+
+        for (uint32_t mBlock = assignedMStart; mBlock < assignedMEnd; ++mBlock) {
+            // [SECTION: MBLOCK_OFFSET]
+            // Step 4: M-block 偏移
+            //   uint64_t mOffset = groupStart + mBlock * singleMatM_;
+            //   uint64_t mSize = min(singleMatM_, currentM - mBlock * singleMatM_);
+            // [END_SECTION: MBLOCK_OFFSET]
+
+            // ================================================================
+            // Stage 0: C0 — AIC only, matN 多核切分
+            // ================================================================
+            if ASCEND_IS_AIC {
+                // L2: matN 多核切分 — 遍历当前核负责的 N-tile
+                for (uint32_t nBlock = nIdx_; nBlock < numNBlocks_; nBlock += numNCores_) {
+                    // [SECTION: C0_NBLOCK_OFFSET]
+                    // Step 4: N-block 偏移
+                    //   uint64_t nOffset = nBlock * singleMatN_;
+                    //   uint64_t nSize = min(singleMatN_, matN_ - nOffset);
+                    // [END_SECTION: C0_NBLOCK_OFFSET]
+
+                    S0_C0Process(groupIdx, /*mOffset*/0, /*mSize*/0, nBlock);
+                }
+
+                // N-axis barrier: 所有 N-tile 完成, 通知 AIV
+                CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_S0_L1_C2V_0);
+            }
+
+            // ================================================================
+            // Stage 1: V0 — AIV only, matM_i 核内切分
+            // ================================================================
+            if ASCEND_IS_AIV {
+                CrossCoreWaitFlag(SYNC_S0_L1_C2V_0);
+
+                S0_V0Process(groupIdx, /*mOffset*/0, /*mSize*/0);
+            }
+        }
+    }
+}
+// [END_SECTION: S1_LOOP_BODY]
+
+// [END_SECTION: S1_IMPL]
+
+// ============================================================================
+// [SECTION: SUBPROCESS_IMPL] 子流程实现
+// ============================================================================
+
+// -------------------- S0_C0Process (AIC, Cube matmul) --------------------
+// Stage 0: C0 — int8×int8→int32 matmul, 2D (matM×matN) 多核
+//
+// Cube API 处理 [singleM, singleN] tile
+// isTransposeB=true, has_bias=false
+template <class T, class P>
+__aicore__ inline void GmmdsqKernel<T, P>::S0_C0Process(
+    uint32_t groupIdx,
+    uint64_t mOffset, uint64_t mSize,
+    uint32_t nBlockIdx)
+{
+    // [SECTION: C0_P0_S4_OFFSET]
+    // Step 4: 偏移计算
+    //
+    // x_slice offset:   mOffset * matK_               (行偏移 × K)
+    // weight offset:    0 (tensorList 已绑定当前 group)
+    // workspace offset: mOffset * matN_ + nBlockIdx * singleMatN_  (2D 布局)
+    // [END_SECTION: C0_P0_S4_OFFSET]
+
+    // [SECTION: C0_P0_S5_INSTRUCTIONS]
+    // Step 5: 指令填充 (Cube matmul)
+    //
+    // --- 指令占位: Cube matmul int8×int8→int32 ---
+    // 输入: x_slice [GM, mSize×K, int8] (producer: GM, offset from groupStart+mOffset)
+    //       weight_i [GM, K×N, int8] (producer: tensorList[groupIdx])
+    // 输出: C0_output [workspace GM, mSize×nSize, int32]
+    // 类型: Matmul API
+    //       mm_.SetTensorA(xGm_[x_offset])
+    //       mm_.SetTensorB(weightGm_)  // isTransposeB=true in type def
+    //       mm_.IterateAll(workspaceGm_[ws_offset])
+    //       mm_.End()
+    // [ASCEND_MODIFY] Step 5 填充具体 API 调用
+    // [END_SECTION: C0_P0_S5_INSTRUCTIONS]
+}
+
+// -------------------- S0_V0Process (AIV, Vector 后处理) --------------------
+// Stage 1: V0 — Cast + dequant + SwiGLU + dynamic quantize
+// matM_i 核内切分, vec_chunk = 2 rows
+template <class T, class P>
+__aicore__ inline void GmmdsqKernel<T, P>::S0_V0Process(
+    uint32_t groupIdx,
+    uint64_t mOffset, uint64_t mSize)
+{
+    // [SECTION: S3_TILING_LOOP]
+    // matM_i 核内切分: vec_chunk = DEFAULT_VEC_CHUNK_SIZE = 2
+    constexpr uint32_t VEC_CHUNK_SIZE = DEFAULT_VEC_CHUNK_SIZE;
+
+    for (uint64_t chunkOffset = 0; chunkOffset < mSize; chunkOffset += VEC_CHUNK_SIZE) {
+        uint64_t chunkSize = (VEC_CHUNK_SIZE < mSize - chunkOffset)
+                             ? VEC_CHUNK_SIZE : (mSize - chunkOffset);
+
+        // [SECTION: V0_P0_S4_OFFSET]
+        // Step 4: 偏移计算
+        //
+        // workspace read offset: (mOffset + chunkOffset) * matN_ (int32 结果)
+        // xScale offset:         mOffset + chunkOffset             (per-token scale)
+        // quantOutput offset:    (mOffset + chunkOffset) * (matN_ / 2)  (N/2 列)
+        // quantScaleOutput offset: mOffset + chunkOffset
+        // [END_SECTION: V0_P0_S4_OFFSET]
+
+        // [SECTION: V0_P0_S5_INSTRUCTIONS]
+        // Step 5: 指令填充 (Vector 后处理, vec_chunk=2 rows)
+        //
+        // --- 指令占位: Read matmul result from workspace ---
+        // 输入: C0_output [workspace, chunk×N, int32]
+        // 输出: int32_buf [UB]
+        // 类型: DataCopy (load)
+        //
+        // --- 指令占位: Cast int32→fp32 ---
+        // 输入: int32_buf [UB]
+        // 输出: fp32_buf [UB]
+        // 类型: Cast
+        //
+        // --- 指令占位: Load perChannelScale and broadcast ---
+        // 输入: weightScale_i [GM, N, fp32] (tensorList[groupIdx])
+        // 输出: weightScale_ub [UB]
+        // 类型: DataCopy (load) — 仅首次或 group 切换时加载
+        //
+        // --- 指令占位: Dequant step1: mul perChannelScale ---
+        // 输入: fp32_buf [UB], weightScale_ub [UB, broadcast N→chunk×N]
+        // 输出: dequant1_buf [UB]
+        // 类型: Mul
+        //
+        // --- 指令占位: Load perTokenScale slice ---
+        // 输入: xScale_slice [GM, chunk, fp32]
+        // 输出: xScale_ub [UB]
+        // 类型: DataCopy (load)
+        //
+        // --- 指令占位: Dequant step2: mul perTokenScale ---
+        // 输入: dequant1_buf [UB], xScale_ub [UB, broadcast chunk×1→chunk×N]
+        // 输出: dequant2_buf [UB, chunk×N]
+        // 类型: Mul
+        //
+        // --- 指令占位: SwiGLU: chunk N→N/2 split ---
+        // 输入: dequant2_buf [UB, chunk×N]
+        // 输出: left_half [UB, chunk×N/2], gate [UB, chunk×N/2]
+        // 类型: memory view (no compute)
+        //
+        // --- 指令占位: SwiGLU: sigmoid(left) ---
+        // 输入: left_half [UB]
+        // 输出: sigmoid_buf [UB, chunk×N/2]
+        // 类型: Sigmoid
+        //
+        // --- 指令占位: SwiGLU: SiLU = left * sigmoid(left) ---
+        // 输入: left_half [UB], sigmoid_buf [UB]
+        // 输出: silu_buf [UB, chunk×N/2]
+        // 类型: Mul
+        //
+        // --- 指令占位: SwiGLU: result = SiLU * gate ---
+        // 输入: silu_buf [UB], gate [UB]
+        // 输出: swiglu_buf [UB, chunk×N/2]
+        // 类型: Mul
+        //
+        // --- 指令占位: Dynamic quant: abs + max reduce ---
+        // 输入: swiglu_buf [UB, chunk×N/2]
+        // 输出: absmax_buf [UB, chunk]
+        // 类型: Abs + ReduceMax (reduce along N/2)
+        //
+        // --- 指令占位: Dynamic quant: scale = 127.0 / absmax ---
+        // 输入: absmax_buf [UB, chunk]
+        // 输出: quantScale_ub [UB, chunk]
+        // 类型: Muls (scalar: 127.0)
+        //       注意: 这里实际是 127.0 / x, 需用 Reciprocal 或 Divs
+        //
+        // --- 指令占位: Dynamic quant: round(swiglu * scale) ---
+        // 输入: swiglu_buf [UB, chunk×N/2], quantScale_ub [UB, broadcast]
+        // 输出: rounded_buf [UB, chunk×N/2]
+        // 类型: Mul + Round
+        //
+        // --- 指令占位: Cast fp32→int8 ---
+        // 输入: rounded_buf [UB]
+        // 输出: quantOutput_ub [UB, int8]
+        // 类型: Cast
+        //
+        // --- 指令占位: Store quantOutput to GM ---
+        // 输入: quantOutput_ub [UB, int8]
+        // 输出: quantOutput [GM, offset=(mOffset+chunkOffset)*(N/2)]
+        // 类型: DataCopy (store)
+        //
+        // --- 指令占位: Compute dequantScale = 1.0 / quantScale ---
+        // 输入: quantScale_ub [UB, chunk]
+        // 输出: dequantScale_ub [UB, chunk]
+        // 类型: Reciprocal (1/x)
+        //
+        // --- 指令占位: Store quantScaleOutput to GM ---
+        // 输入: dequantScale_ub [UB, fp32]
+        // 输出: quantScaleOutput [GM, offset=mOffset+chunkOffset]
+        // 类型: DataCopy (store)
+        //
+        // [ASCEND_MODIFY] Step 5 填充具体 SSA 指令和 AscendC API 调用
+        // [END_SECTION: V0_P0_S5_INSTRUCTIONS]
+    }
+    // [END_SECTION: S3_TILING_LOOP]
+}
+
+// [END_SECTION: SUBPROCESS_IMPL]
+
+// ============================================================================
+// [SECTION: INIT_IMPL] Init 实现
+// ============================================================================
+
+template <class T, class P>
+__aicore__ inline void GmmdsqKernel<T, P>::Init(const InitParams &params)
+{
+    // 1. 绑定 GlobalTensor
+    // [SECTION: INIT_GLOBAL]
+    xGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int8_t *>(params.x));
+    // weight, weightScale: tensorList, 需在 group 循环中动态绑定
+    xScaleGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(params.xScale));
+    groupListGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>(params.groupList));
+    quantOutputGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int8_t *>(params.quantOutput));
+    quantScaleOutputGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(params.quantScaleOutput));
+    workspaceGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.workspace));
+    // [END_SECTION: INIT_GLOBAL]
+
+    // 2. 解析 TilingData
+    // [SECTION: INIT_TILING]
+    tiling_ = params.tilingData;
+
+    coreNum_ = tiling_->coreNum;
+    matM_ = tiling_->matM;
+    matK_ = tiling_->matK;
+    matN_ = tiling_->matN;
+    groupNum_ = tiling_->groupNum;
+
+    // Step 1: 多核切分参数
+    // numMCores_, numNCores_ 由 tiling 或推导确定
+    // singleMatM_ = ceil(matM_ / numMCores_)
+    // singleMatN_ = ceil(matN_ / numNCores_)
+    // numMBlocks_ = ceil(matM_ / singleMatM_)
+    // numNBlocks_ = ceil(matN_ / singleMatN_)
+    // [ASCEND_MODIFY] 从 tiling 读取或推导
+
+    // 核 ID 映射
+    coreIdx_ = GetBlockIdx();
+    if ASCEND_IS_AIC {
+        mIdx_ = coreIdx_ / numNCores_;
+        nIdx_ = coreIdx_ % numNCores_;
+    }
+    if ASCEND_IS_AIV {
+        mIdx_ = coreIdx_;
+        nIdx_ = 0;  // V0 不切 N
+    }
+    // [END_SECTION: INIT_TILING]
+
+    // 3. 初始化 Pipe 和 Queue/Buffer
+    // [SECTION: INIT_PIPE]
+    pipe_ = params.tPipe;
+
+    if ASCEND_IS_AIV {
+        InitLocalBuffers();
+    }
+    // [END_SECTION: INIT_PIPE]
+
+    SyncAll();
+}
+
+// -------------------- InitLocalBuffers (AIV 专用) --------------------
+// [SECTION: S6_IMPL] Step 5: UB 资源分配 + InitLocalBuffers 实现
+template <class T, class P>
+__aicore__ inline void GmmdsqKernel<T, P>::InitLocalBuffers()
+{
+    // [SECTION: S6_INIT_QUEUES]
+    // Step 5: Queue 初始化（根据 SSA 生命周期分析生成）
+    // 占位符, Step 5 覆盖
+    // [END_SECTION: S6_INIT_QUEUES]
+
+    // [SECTION: S6_INIT_BUFFERS]
+    // Step 5: Buffer 初始化（根据 SSA 生命周期分析生成）
+    // 占位符, Step 5 覆盖
+    // [END_SECTION: S6_INIT_BUFFERS]
+
+    // [SECTION: S6_INIT_LOCAL_TENSORS]
+    // Step 5: LocalTensor 获取（根据 SSA 映射生成）
+    // 占位符, Step 5 覆盖
+    // [END_SECTION: S6_INIT_LOCAL_TENSORS]
+}
+// [END_SECTION: S6_IMPL]
+
+// ============================================================================
+// [SECTION: PROCESS_IMPL] Process 实现
+// ============================================================================
+
+template <class T, class P>
+__aicore__ inline void GmmdsqKernel<T, P>::Process()
+{
+    RunStage0();
+    SyncAll();
+}
+
+// [END_SECTION: PROCESS_IMPL]
+
+} // namespace Gmmdsq
+
+#endif // __GMMDSQ_KERNEL_H_
+Edit state.yaml
+Modified
+Edit state.yaml
+Modified
+Update Todos
+
+Step 0: Golden 分析
+
+Step 0b: 依赖建模
+
+Step 1: 切分决策
+
+Step 2: 骨架生成 + 指令占位
+
+Step 3: 数据切分与偏移计算
+
+Step 4: 指令填充
+
+Step 5: UB 资源分配
+已生成以下文件：
+
+spec_step2.yaml — 骨架配置 + 同步计划 + 指令占位清单
+gmmdsq_kernel.h — 骨架代码（循环框架 + SECTION 占位 + 指令占位注释）
+骨架结构总结：
+
+Process() → RunStage0() → E(group 循环) → matM(M-block 循环) → { C0(AIC, matN 循环) → barrier → V0(AIV, matM_i vec_chunk 循环) }
+C0: Cube API matmul int8×int8→int32, 2D 多核
+V0: vec_chunk=2, Cast+dequant+SwiGLU+quantize
+同步: SYNC_S0_L1_C2V_0 per M-block
+Step 0-2 已完成。 后续 Step 3-5 为增量模式：偏移计算 → 指令填充 → UB 分配。需要继续吗？
+
+c#278-278
+这里的nIdx的是全局的，通过startIdx和endIdx将idx限制在当前的M_i行内
+明白，nIdx_ 是全局核索引，需要用 startIdx/endIdx 限制在当前 M-block 范围内。修正这个循环。
+
+Edit gmmdsq_kernel.h
+Added 9 lines
+已修正：N-block 循环现在使用 nStartIdx/nEndIdx 约束范围，nIdx_ 作为全局核索引决定起始位置和步进。Step 4 会填充具体的 nStartIdx/nEndIdx 计算逻辑。
+
+需要继续 Step 3（偏移计算）吗？
+
+c#308-308
+这里应该添加vector的syscALL命令，确保每个vector都接收到了来自cude核的同步信号
+好的，在 WaitFlag 之后添加 SysSyncAll 确保所有 AIV 核都收到同步信号后再开始 V0 处理。
+
+Edit gmmdsq_kernel.h
+Edit failed
+Read gmmdsq_kernel.h (lines 301-320)
+Edit gmmdsq_kernel.h
+Modified
+已添加 SysSyncAll<true>()。AIV 在收到 WaitFlag 后，通过 SysSyncAll 确保所有 Vector 核都收到了 Cube 核的同步信号，然后再进入 V0 处理。
+
+继续
+继续 Step 3: 数据切分与偏移计算。先读取 Step 3 规范。
+
+Read step3_offset_calculation.md
+基于设计原语 E:{matM:[matN:[C0]->matM_i:[V0]]} 分析偏移计算。
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Step 3: 数据切分与偏移计算]
+
+━━━ 切分层级 ━━━
+
+  instance:   E (groupIdx, groupList 边界)
+  multi_core: matM (M-block), matN (N-block, C0 only)
+  intra_core: matM_i (vec_chunk=2, V0 only)
+
+━━━ 参数参与分析 ━━━
+
+  ┌────────────────────┬──────────────┬─────────────────┬──────────────┐
+  │ 参数                │ 模式         │ sliced_dims     │ offset_level │
+  ├────────────────────┼──────────────┼─────────────────┼──────────────┤
+  │ x (C0)             │ M, K         │ matM            │ multi_core   │
+  │ weight (C0)        │ K, N         │ matN            │ multi_core   │
+  │ workspace_write(C0)│ singleM, N   │ matM, matN      │ multi_core   │
+  │ workspace_read(V0) │ singleM, N   │ matM            │ multi_core   │
+  │ weightScale (V0)   │ N            │ none            │ outermost    │
+  │ xScale (V0)        │ M            │ matM, matM_i    │ intra_core   │
+  │ quantOutput (V0)   │ M, N/2       │ matM, matM_i    │ intra_core   │
+  │ quantScaleOut (V0) │ M            │ matM, matM_i    │ intra_core   │
+  └────────────────────┴──────────────┴─────────────────┴──────────────┘
+
+  全局行号 = groupStart + mOffset (group 内相对偏移)
+  groupStart = (groupIdx == 0) ? 0 : groupList[groupIdx - 1]
+
+━━━ 偏移表达式 ━━━
+
+  C0Process (AIC, matM + matN 多核):
+    x_offset           = (groupStart + mOffset) * matK
+    weight_offset      = nBlock * singleMatN           (isTransposeB=true, Cube API 处理)
+    ws_write_offset    = (groupStart + mOffset) * matN + nBlock * singleMatN
+    ws_write_size      = mSize * nSize                  (int32 元素数)
+
+  V0Process (AIV, matM + matM_i vec_chunk):
+    ws_read_base       = (groupStart + mOffset) * matN  (完整 N 行起点)
+    ws_read_offset     = ws_read_base + chunkOffset * matN  (per chunk)
+    xScale_offset      = groupStart + mOffset + chunkOffset
+    quantOutput_offset = (groupStart + mOffset + chunkOffset) * (matN / 2)
+    quantScaleOut_offset = groupStart + mOffset + chunkOffset
+    weightScale        = 常量地址, per group 加载一次 (outermost, 不切分)
+
+━━━ Stride 推导 ━━━
+
+  x [M, K]:       stride_M = K
+  workspace [M, N]: stride_M = N
+  quantOutput [M, N/2]: stride_M = N/2
+
+  (单轴切分场景, stride 直接用维度值, 无需额外 stride 变量)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[待确认]
+1. 参数 offset_level 推导是否正确?
+2. workspace 2D 偏移 (C0 写 + V0 读) 是否正确?
+3. weightScale 作为 outermost 常量 (per group 加载) 是否合理?
+
+[确认] → 生成 spec_step3.yaml + 更新 kernel.h 偏移代码
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+确认
+Write spec_step3.yaml
+83 lines
+# Step 3 输出: 数据切分与偏移计算
+
+offset_calculation:
+  params:
+    x:
+      pattern: "M, K"
+      sliced_dims: ["matM"]
+      offset_level: "multi_core"
+      strides: { K: 1, M: "matK" }
+      offset_expr: "(groupStart + mOffset) * matK"
+      process: "S0_C0Process"
+
+    weight:
+      pattern: "K, N"
+      sliced_dims: ["matN"]
+      offset_level: "multi_core"
+      strides: { N: 1, K: "N" }
+      offset_expr: "nBlock * singleMatN"
+      note: "isTransposeB=true, Cube API 处理转置, tensorList per group"
+
+    workspace_write:
+      pattern: "singleM, N"
+      sliced_dims: ["matM", "matN"]
+      offset_level: "multi_core"
+      strides: { N: 1, M: "matN" }
+      offset_expr: "(groupStart + mOffset) * matN + nBlock * singleMatN"
+      size_expr: "mSize * nSize"
+      process: "S0_C0Process"
+
+    workspace_read:
+      pattern: "singleM, N"
+      sliced_dims: ["matM", "matM_i"]
+      offset_level: "intra_core"
+      strides: { N: 1, M: "matN" }
+      offset_expr: "(groupStart + mOffset + chunkOffset) * matN"
+      process: "S0_V0Process"
+
+    weightScale:
+      pattern: "N"
+      sliced_dims: []
+      offset_level: "outermost"
+      offset_expr: "0"
+      note: "per group 常量, group 循环切换时重新绑定 GM 地址"
+
+    xScale:
+      pattern: "M"
+      sliced_dims: ["matM", "matM_i"]
+      offset_level: "intra_core"
+      offset_expr: "groupStart + mOffset + chunkOffset"
+      process: "S0_V0Process"
+
+    quantOutput:
+      pattern: "M, N/2"
+      sliced_dims: ["matM", "matM_i"]
+      offset_level: "intra_core"
+      strides: { N_half: 1, M: "matN / 2" }
+      offset_expr: "(groupStart + mOffset + chunkOffset) * (matN / 2)"
+      process: "S0_V0Process"
+
+    quantScaleOutput:
+      pattern: "M"
+      sliced_dims: ["matM", "matM_i"]
+      offset_level: "intra_core"
+      offset_expr: "groupStart + mOffset + chunkOffset"
+      process: "S0_V0Process"
+
+  stride_vars:
+    - name: "stride_x_M_"
+      value: "matK_"
+      desc: "x [M,K] 行 stride"
+    - name: "stride_ws_M_"
+      value: "matN_"
+      desc: "workspace [M,N] 行 stride (int32)"
+    - name: "stride_out_M_"
+      value: "matN_ / 2"
+      desc: "quantOutput [M,N/2] 行 stride (int8)"
+
+  group_boundary:
+    desc: "groupList 累积和确定 group 起止行"
+    groupStart_expr: "(groupIdx == 0) ? 0 : groupList[groupIdx - 1]"
+    groupEnd_expr: "groupList[groupIdx]"
+    currentM_expr: "groupEnd - groupStart"
+现在更新 kernel.h 中的偏移计算代码。
+
+Read gmmdsq_kernel.h
+现在更新所有 SECTION 偏移占位符为实际偏移计算代码。
+
+Edit gmmdsq_kernel.h
+Added 2 lines
+Edit gmmdsq_kernel.h
+Added 5 lines
+Edit gmmdsq_kernel.h
+Added 1 line
+Edit gmmdsq_kernel.h
+Modified
+Edit gmmdsq_kernel.h
+Modified
+Edit gmmdsq_kernel.h
+Modified
+现在更新 C0Process 和 V0Process 的偏移计算部分。
+
+Edit gmmdsq_kernel.h
+Modified
+Edit gmmdsq_kernel.h
+Removed 2 lines
+Edit state.yaml
+Modified
+Edit state.yaml
+Modified
+Update Todos
+
+Step 0: Golden 分析
+
+Step 0b: 依赖建模
+
+Step 1: 切分决策
+
+Step 2: 骨架生成 + 指令占位
+
+Step 3: 数据切分与偏移计算
+
+Step 4: 指令填充
+
+Step 5: UB 资源分配
+Step 3 完成。 更新内容：
+
+Stride 变量: stride_x_M_ = matK, stride_ws_M_ = matN, stride_out_M_ = matN/2
+GROUP_BOUNDARY: 从 groupList 读取 groupStart/groupEnd/currentM
+M-block 偏移: mOffset = mBlock * singleMatM_, mSize = min(...)
+N-block 偏移: nOffset = nBlock * singleMatN_, nSize = min(...)
+C0 偏移: x_offset = (groupStart + mOffset) * matK, ws_offset = (groupStart + mOffset) * matN + nOffset
+V0 偏移: ws_read_offset, xScale_offset, quantOut_offset, quantScaleOut_offset 均含 chunkOffset
+已生成 spec_step3.yaml 并更新 gmmdsq_kernel.h。剩余 Step 4（指令填充）和 Step 5（UB 分配）。需要继续吗？
+
+c:\Users\liuchunyuan\Desktop\kenerl生成\gmmdsq\gmmdsq_kernel.h
+继续
+继续 Step 4: 指令填充。先读取 Step 4 规范。
+
+Read step4_instruction_filling.md
+基于 Golden 代码和 Step 3 偏移，生成 SSA 指令序列。
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Step 4: 指令填充]
+
+━━━ C0Process (AIC, Cube matmul) ━━━
+
+  Python: c_temp1 = torch.matmul(x.to(torch.int32), weight.to(torch.int32))
+  匹配 API: Matmul API (int8×int8→int32)
+
+  SSA:
+    mm_.SetTensorA(xGm_[x_offset])              // x [mSize, K] int8
+    mm_.SetTensorB(weightGm_)                    // weight [K, N] int8, isTransposeB=true
+    mm_.SetOrgShape(mSize, nSize, matK_, matK_, matN_)  // orgKc=matN (N 多核切分)
+    mm_.SetSingleShape(mSize, nSize, matK_)
+    while (mm_.Iterate()) {
+        mm_.GetTensorC(workspaceGm_[ws_offset], 0, true)  // 连续写, 供 V0 读取
+    }
+    mm_.End()
+
+━━━ V0Process (AIV, vec_chunk=2) ━━━
+
+  ├─ #1  Python: c_temp1 = c_temp1.to(torch.float32)
+  │   匹配: Cast(int32→fp32)
+  │   SSA: load %0_in ← workspace; Cast(%1_alc, %0_in, CAST_NONE, chunk*N)
+  │
+  ├─ #2  Python: c_temp2 = c_temp1 * perChannelScale  (broadcast [N]→[chunk,N])
+  │   匹配: Mul
+  │   SSA: Mul(%2_alc, %1_alc, weightScale_alc, chunk*N)
+  │
+  ├─ #3  Python: c_temp3 = c_temp2 * perTokenScale.reshape(m,1)  (broadcast [chunk]→[chunk,N])
+  │   匹配: Muls (per-row scalar mul, 循环 chunkSize 行)
+  │   SSA: for row: Muls(row_ptr, row_ptr, xScale[row], N)
+  │
+  ├─ #4  Python: c_temp4, gate = c_temp3.chunk(2, dim=-1)  (view, no compute)
+  │   SSA: left = view(%2_alc, offset=0, size=chunk*N/2)
+  │        gate = view(%2_alc, offset=chunk*N/2, size=chunk*N/2)
+  │
+  ├─ #5  Python: c_temp5 = c_temp4 * sigmoid(c_temp4)  (SiLU)
+  │   匹配: Sigmoid + Mul
+  │   SSA: Sigmoid(%5_alc, left, chunk*N/2); Mul(%6_alc, left, %5_alc, chunk*N/2)
+  │
+  ├─ #6  Python: c_temp6 = c_temp5 * gate
+  │   匹配: Mul
+  │   SSA: Mul(%7_alc, %6_alc, gate, chunk*N/2)
+  │
+  ├─ #7  Python: abs_max = torch.max(torch.abs(c_temp6), -1).values  (reduce N/2)
+  │   匹配: Abs + ReduceMax
+  │   SSA: Abs(%8_alc, %7_alc, chunk*N/2); ReduceMax(%9_alc, %8_alc, tmp, chunk, N/2)
+  │
+  ├─ #8  Python: quantScale = 127.0 / abs_max
+  │   匹配: Reciprocal + Muls(127.0)
+  │   SSA: Reciprocal(%9_alc, %9_alc, chunk); Muls(%9_alc, %9_alc, 127.0, chunk)
+  │
+  ├─ #9  Python: quantOutput = round(c_temp6 * quantScale).to(torch.int8)
+  │   匹配: Mul(broadcast scale) + Cast(CAST_ROUND)
+  │   SSA: Muls(%7_alc, %7_alc, quantScale[row], N/2) per row
+  │        Cast(%10_out, %7_alc, RoundMode::CAST_ROUND, chunk*N/2)
+  │   store %10_out → quantOutputGm_[quantOut_offset]
+  │
+  ├─ #10 Python: quantScaleOutput = 1.0 / quantScale  (dequant scale)
+  │   匹配: Reciprocal
+  │   SSA: Reciprocal(%9_alc, %9_alc, chunk)
+  │   store %9_alc → quantScaleOutputGm_[quantScaleOut_offset]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[待确认]
+1. C0 Matmul API 调用顺序 (SetTensorA/B → SetOrgShape → Iterate+GetTensorC) 是否正确?
+2. V0 SSA 序列是否完整覆盖 Golden 所有操作?
+3. absmax reduce 使用 ReduceMax 是否正确?
+4. 动态量化: Reciprocal + Muls(127.0) + Cast(CAST_ROUND) 是否合理?
+
+[确认] → 生成 spec_step4.yaml + 更新 kernel.h
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+确认
+Update Todos
+
+Step 0: Golden 分析
+
+Step 0b: 依赖建模
+
+Step 1: 切分决策
+
+Step 2: 骨架生成 + 指令占位
+
+Step 3: 数据切分与偏移计算
+
+Step 4: 指令填充
+
+Step 5: UB 资源分配
+Write spec_step4.yaml
+176 lines
+# Step 4 输出: SSA 指令序列
+
+ssa_instructions:
+  C0_P0:
+    desc: "Cube matmul int8×int8→int32, 2D (matM×matN) 多核"
+    params:
+      inputs: ["x"]
+      workspace_write: ["C0_output"]
+    variables:
+      - name: "xGm_[x_offset]"
+        location: "GM"
+        dtype: "int8_t"
+        shape: "[mSize, K]"
+      - name: "weightGm_"
+        location: "GM"
+        dtype: "int8_t"
+        shape: "[K, N]"
+      - name: "workspaceGm_[ws_offset]"
+        location: "GM"
+        dtype: "int32_t"
+        shape: "[mSize, nSize]"
+    code:
+      - comment: "Python: c_temp1 = matmul(x, weight^T)  # int8×int8→int32"
+      - instruction: "mm_.SetTensorA(xGm_[x_offset])"
+      - instruction: "mm_.SetTensorB(weightGm_)"
+      - instruction: "mm_.SetOrgShape(mSize, nSize, matK_, matK_, matN_)"
+      - instruction: "mm_.SetSingleShape(mSize, nSize, matK_)"
+      - instruction: "while (mm_.Iterate()) { mm_.GetTensorC(workspaceGm_[ws_offset], 0, true); }"
+      - instruction: "mm_.End()"
+    api_mode: "iterate_get_tensor_c"
+    sequential_write: true
+    enAtomic: 0
+    orgKc: "matN_"
+
+  V0_P0:
+    desc: "Vector 后处理: Cast + dequant + SwiGLU + dynamic quantize"
+    params:
+      workspace_read: ["C0_output"]
+      broadcast: ["weightScale"]
+      inputs: ["xScale"]
+      outputs: ["quantOutput", "quantScaleOutput"]
+    variables:
+      - name: "%0_in"
+        location: "VECIN"
+        dtype: "int32_t"
+        shape: "[chunkSize, N]"
+        desc: "matmul int32 result from workspace"
+      - name: "%1_alc"
+        location: "VECCALC"
+        dtype: "float"
+        shape: "[chunkSize, N]"
+        desc: "Cast fp32 result / dequant workspace"
+      - name: "weightScale_alc"
+        location: "VECCALC"
+        dtype: "float"
+        shape: "[N]"
+        desc: "perChannelScale, loaded per group, broadcast"
+      - name: "%2_alc"
+        location: "VECCALC"
+        dtype: "float"
+        shape: "[chunkSize, N]"
+        desc: "dequant1: mul perChannelScale result"
+      - name: "xScale_alc"
+        location: "VECCALC"
+        dtype: "float"
+        shape: "[chunkSize]"
+        desc: "perTokenScale slice"
+      - name: "%3_alc"
+        location: "VECCALC"
+        dtype: "float"
+        shape: "[chunkSize, N]"
+        desc: "dequant2 result = full dequantized [chunk,N]"
+      - name: "left_view"
+        location: "VECCALC"
+        dtype: "float"
+        shape: "[chunkSize, N/2]"
+        desc: "chunk(N→N/2) left half, view into %3_alc"
+      - name: "gate_view"
+        location: "VECCALC"
+        dtype: "float"
+        shape: "[chunkSize, N/2]"
+        desc: "chunk(N→N/2) right half, view into %3_alc"
+      - name: "%4_alc"
+        location: "VECCALC"
+        dtype: "float"
+        shape: "[chunkSize, N/2]"
+        desc: "sigmoid(left) result"
+      - name: "%5_alc"
+        location: "VECCALC"
+        dtype: "float"
+        shape: "[chunkSize, N/2]"
+        desc: "SiLU = left * sigmoid(left)"
+      - name: "%6_alc"
+        location: "VECCALC"
+        dtype: "float"
+        shape: "[chunkSize, N/2]"
+        desc: "swiglu = SiLU * gate"
+      - name: "%7_alc"
+        location: "VECCALC"
+        dtype: "float"
+        shape: "[chunkSize, N/2]"
+        desc: "abs(swiglu)"
+      - name: "%8_alc"
+        location: "VECCALC"
+        dtype: "float"
+        shape: "[chunkSize]"
+        desc: "absmax (reduce N/2)"
+      - name: "%9_alc"
+        location: "VECCALC"
+        dtype: "float"
+        shape: "[chunkSize]"
+        desc: "quantScale = 127.0 / absmax"
+      - name: "%6_out"
+        location: "VECOUT"
+        dtype: "int8_t"
+        shape: "[chunkSize, N/2]"
+        desc: "quantized int8 output"
+      - name: "%10_alc"
+        location: "VECCALC"
+        dtype: "float"
+        shape: "[chunkSize]"
+        desc: "dequantScale = 1.0 / quantScale"
+    code:
+      # --- #1 Cast int32→fp32 ---
+      - comment: "Python: c_temp1 = c_temp1.to(torch.float32)"
+      - load: { var: "%0_in", source: "workspaceGm_[ws_read_offset]", size: "chunkSize * matN" }
+      - instruction: "Cast(%1_alc, %0_in, RoundMode::CAST_NONE, chunkSize * matN)"
+
+      # --- #2 Dequant step1: mul perChannelScale ---
+      - comment: "Python: c_temp2 = c_temp1 * perChannelScale"
+      - comment: "weightScale loaded per group (outermost), broadcast [N]→[chunk,N]"
+      - instruction: "Mul(%2_alc, %1_alc, weightScale_alc, chunkSize * matN)"
+
+      # --- #3 Dequant step2: mul perTokenScale ---
+      - comment: "Python: c_temp3 = c_temp2 * perTokenScale.reshape(m,1)"
+      - load: { var: "xScale_alc", source: "xScaleGm_[xScale_offset]", size: "chunkSize" }
+      - comment: "per-row Muls: for row in chunkSize: Muls(row, row, xScale[row], N)"
+      - instruction: "for (uint32_t r = 0; r < chunkSize; ++r) { Muls(%2_alc[r*N], %2_alc[r*N], xScale_alc.GetValue(r), N); }"
+      - note: "结果就地写回 %2_alc, 视为 %3_alc"
+
+      # --- #4 SwiGLU: chunk N→N/2 split (view) ---
+      - comment: "Python: c_temp4, gate = c_temp3.chunk(2, dim=-1)"
+      - comment: "left_view = view(%2_alc, 0, chunkSize*N/2)"
+      - comment: "gate_view = view(%2_alc, chunkSize*N/2, chunkSize*N/2)"
+
+      # --- #5 SwiGLU: sigmoid + SiLU ---
+      - comment: "Python: c_temp5 = c_temp4 * sigmoid(c_temp4)  # SiLU"
+      - instruction: "Sigmoid(%4_alc, left_view, chunkSize * (matN / 2))"
+      - instruction: "Mul(%5_alc, left_view, %4_alc, chunkSize * (matN / 2))"
+
+      # --- #6 SwiGLU: result = SiLU * gate ---
+      - comment: "Python: c_temp6 = c_temp5 * gate"
+      - instruction: "Mul(%6_alc, %5_alc, gate_view, chunkSize * (matN / 2))"
+
+      # --- #7 Dynamic quant: abs + max reduce ---
+      - comment: "Python: abs_max = torch.max(torch.abs(c_temp6), -1).values"
+      - instruction: "Abs(%7_alc, %6_alc, chunkSize * (matN / 2))"
+      - instruction: "ReduceMax(%8_alc, %7_alc, tmpBuf_, chunkSize, matN / 2)"
+
+      # --- #8 Dynamic quant: scale = 127.0 / absmax ---
+      - comment: "Python: quantScale = 127.0 / abs_max"
+      - instruction: "Reciprocal(%8_alc, %8_alc, chunkSize)"
+      - instruction: "Muls(%9_alc, %8_alc, 127.0, chunkSize)"
+
+      # --- #9 Dynamic quant: round(swiglu * scale) → int8 ---
+      - comment: "Python: quantOutput = round(c_temp6 * quantScale).to(torch.int8)"
+      - comment: "per-row: Muls then Cast with CAST_ROUND"
+      - instruction: "for (uint32_t r = 0; r < chunkSize; ++r) { Muls(%6_alc[r*N/2], %6_alc[r*N/2], %9_alc.GetValue(r), N/2); }"
+      - instruction: "Cast(%6_out, %6_alc, RoundMode::CAST_ROUND, chunkSize * (matN / 2))"
+      - store: { var: "%6_out", dest: "quantOutputGm_[quantOut_offset]", size: "chunkSize * (matN / 2)" }
+
+      # --- #10 Compute dequantScale = 1.0 / quantScale ---
+      - comment: "Python: quantScaleOutput = 1.0 / quantScale"
+      - instruction: "Reciprocal(%10_alc, %9_alc, chunkSize)"
+      - store: { var: "%10_alc", dest: "quantScaleOutputGm_[quantScaleOut_offset]", size: "chunkSize" }
+现在更新 kernel.h 中的 C0 和 V0 的 S5_INSTRUCTIONS SECTION。
+
+Read gmmdsq_kernel.h (lines 336-485)
+Edit gmmdsq_kernel.h
+Modified
+Edit gmmdsq_kernel.h
+Removed 32 lines
+Edit state.yaml
+Modified
+Edit state.yaml
+Modified
+Update Todos
+
+Step 0: Golden 分析
+
+Step 0b: 依赖建模
+
+Step 1: 切分决策
+
+Step 2: 骨架生成 + 指令占位
+
+Step 3: 数据切分与偏移计算
+
+Step 4: 指令填充
+
+Step 5: UB 资源分配
+Step 4 完成。 已生成 spec_step4.yaml 并更新 gmmdsq_kernel.h。
+
+填充内容：
+
+C0 (AIC):
+
+SetTensorA / SetTensorB → SetOrgShape (含 orgKc=matN) → SetSingleShape → Iterate+GetTensorC (连续写) → End
+V0 (AIV) — 10 步 SSA 指令序列:
+
+Cast(int32→fp32) — 精度转换
+Mul(perChannelScale) — dequant step1
+Muls(perTokenScale) per-row — dequant step2
+chunk N→N/2 view — SwiGLU 拆分
+Sigmoid + Mul — SiLU
+Mul — gate 乘法
+Abs + ReduceMax — absmax
+Reciprocal + Muls(127.0) — quantScale
+Muls(quantScale) per-row + Cast(CAST_ROUND) — 量化到 int8
+Reciprocal — dequantScale
+剩余 Step 5: UB 资源分配。需要继续吗？
+
+继续
+继续 Step 5: UB 资源分配。先读取 Step 5 规范。
+
+Read step5_ub_allocation.md
+API Error: The model has reached its context window limit.
+
+把当前对话保存为log文件
+API Error: The model has reached its context window limit.
+

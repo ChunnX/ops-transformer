@@ -1,0 +1,180 @@
+operator_name: "gmmdsq"
+
+inputs:
+  - name: x
+    shape: [M, K]
+    dtype: int8
+    layout: ND
+    description: "全部 token 的激活值"
+  - name: weight
+    shape: [E, K, N]
+    dtype: int8
+    layout: ND
+    tensor_list: true
+    description: "所有专家权重, 每个专家 [K, N]"
+  - name: weightScale
+    shape: [E, N]
+    dtype: float32
+    layout: ND
+    tensor_list: true
+    description: "所有专家的 per-channel scale"
+  - name: xScale
+    shape: [M]
+    dtype: float32
+    layout: ND
+    description: "全部 token 的 per-token scale"
+  - name: groupList
+    shape: [E]
+    dtype: int64
+    layout: ND
+    description: "累积 token 数 (累积和 = M)"
+
+outputs:
+  - name: quantOutput
+    shape: [M, N/2]
+    dtype: int8
+    layout: ND
+    description: "量化输出"
+  - name: quantScaleOutput
+    shape: [M]
+    dtype: float32
+    layout: ND
+    description: "输出缩放因子"
+
+parameter_classification:
+  data_tensors:
+    - {name: "x", shape: [M, K], dtype: int8}
+    - {name: "weight", shape: [E, K, N], dtype: int8, tensor_list: true}
+  constant_tensors:
+    - {name: "weightScale", shape: [E, N], dtype: float32, tensor_list: true, broadcast: "per column within group"}
+    - {name: "xScale", shape: [M], dtype: float32, broadcast: "per row"}
+    - {name: "groupList", shape: [E], dtype: int64, description: "索引表, 极小"}
+  scalar_attrs: []
+
+op_list:
+  - {op: "matmul", type: "cube", in_shape: "[m_i,K],[K,N]", out_shape: "[m_i,N]", note: "int8×int8→int32, isTransposeB=true"}
+  - {op: "cast_int32_fp32", type: "vector", hidden: true, note: "matmul 输出精度转换"}
+  - {op: "mul", type: "vector", note: "dequant step1: perChannelScale broadcast [N]"}
+  - {op: "mul", type: "vector", note: "dequant step2: perTokenScale broadcast [m,1]"}
+  - {op: "chunk", type: "note", note: "SwiGLU: N → N/2×2, 内存布局变化"}
+  - {op: "sigmoid", type: "vector", note: "SwiGLU 组件"}
+  - {op: "mul_silu", type: "vector", note: "SiLU = x * sigmoid(x)"}
+  - {op: "mul_gate", type: "vector", note: "gate * silu(left)"}
+  - {op: "abs_max_reduce", type: "vector", note: "动态量化: absmax along last dim"}
+  - {op: "div", type: "vector", note: "quant scale: 127 / abs_max"}
+  - {op: "round_mul", type: "vector", note: "量化取整"}
+  - {op: "cast_fp32_int8", type: "vector", hidden: true, note: "最终输出精度转换"}
+
+fusion_plan:
+  - group: "C0"
+    ops: ["matmul"]
+    fused_ops: ["transpose_weight"]
+    fused_reason: "isTransposeB=true 为 Cube API 参数, 非独立融合操作"
+    cube_api_config: {type: "Matmul", has_bias: false, isTransposeB: true, input_dtype: int8, output_dtype: int32}
+    cube_precision_constraints:
+      - cube_id: "C0"
+        output: "int32"
+        next_op_needs: "fp32"
+        needs_vec_cast: true
+        cast_responsible: "V0"
+
+  - group: "V0"
+    ops: ["cast_int32_fp32", "mul(perChannelScale)", "mul(perTokenScale)", "chunk", "sigmoid", "mul_silu", "mul_gate", "abs_max_reduce", "div", "round_mul", "cast_fp32_int8"]
+    fused_ops: []
+
+config:
+  launch_mode: "1c2v"
+  cv_sequence:
+    - id: "C0"
+      type: "cube"
+      ops: ["matmul"]
+      process: "S0_C0Process"
+      cube_api_config: {type: "Matmul", has_bias: false, isTransposeB: true}
+    - id: "V0"
+      type: "vector"
+      ops: ["cast_int32_fp32", "dequant_perChannel", "dequant_perToken", "swiglu", "dynamic_quantize", "cast_fp32_int8"]
+      process: "S0_V0Process"
+
+axis_mapping:
+  instance_axis: "E"
+  instance_axis_description: "group index, 每个组触发独立 matmul, 使用不同 weight[i]"
+  instance_axis_source: "groupList 长度"
+  mappings:
+    - {physical: "matM_i", virtual: "M", context: "C0(matmul) 的行维度, 动态: groupList[i]-groupList[i-1]"}
+    - {physical: "matK", virtual: "K", context: "C0(matmul) 的消减维度"}
+    - {physical: "matN", virtual: "N", context: "C0(matmul) 的列维度"}
+
+  physical_axes:
+    - {name: "E", source: "groupList.shape[0]", description: "实例轴: 分组数"}
+    - {name: "matM", source: "x.shape[0]", description: "总 token 数"}
+    - {name: "matK", source: "x.shape[1]", description: "hidden 维度"}
+    - {name: "matN", source: "weight.shape[2]", description: "输出维度"}
+
+tiling_data_fields:
+  existing:
+    - {name: "matmulTiling", type: "TCubeTiling", source: "platform", description: "Matmul API tiling 配置"}
+    - {name: "coreNum", type: "uint32_t", source: "platform", description: "AICore 核数"}
+    - {name: "totalLength", type: "uint64_t", source: "calculated", formula: "M * (N/2)", description: "总输出长度"}
+    - {name: "matM", type: "int64_t", source: "input_shape", description: "x 行数"}
+    - {name: "matK", type: "int64_t", source: "input_shape", description: "x 列数"}
+    - {name: "matN", type: "int64_t", source: "input_shape", description: "weight 列数"}
+  additional_needed:
+    - {name: "groupNum", type: "uint32_t", source: "input_shape", description: "分组数 E (= groupList 长度)"}
+    - {name: "groupList", type: "GM_ADDR", source: "runtime", description: "累积 token 索引表 (运行时传入)"}
+
+typical_shape_profile:
+  typical_shapes:
+    - name: "default"
+      shape: {M: 4096, K: 5120, N: 7192, E: 8}
+      cores: "最大核数"
+  axis_analysis:
+    - shape_name: "default"
+      axes:
+        E:     {size: 8,    category: "split_candidate", note: "仅 8 组, 核利用率可能不足"}
+        matM:  {size: 4096, category: "split_candidate", note: "可沿 M 切分, 每组约 512"}
+        matK:  {size: 5120, category: "reduce_candidate", note: "Cube 消减轴"}
+        matN:  {size: 7192, category: "split_candidate", note: "大维度, SwiGLU 需完整 N 才能拆半"}
+
+annotated_golden: |
+  # ═══ 实例轴: E (group index) ═══
+  # 每个组使用独立的 weight[i], weightScale[i]
+  # 外层循环: for i in range(E)
+
+  def GMM_Swiglu_quant(x, weight, perChannelScale, perTokenScale, m):
+      """
+      单组核心计算逻辑
+      x: [DATA] int8 [m, K]
+      weight: [DATA] int8 [K, N]
+      perChannelScale: [CONST: broadcast per column] float32 [N]
+      perTokenScale: [CONST: broadcast per row] float32 [m]
+      """
+
+      # ═══ CV: C0 (Cube) ═══
+      # [FUSED: weight transpose → C0 (isTransposeB=true)]
+      c_temp1 = matmul(x, weight)  # [m, N] int32
+
+      # ═══ CV: V0 (Vector 后处理) ═══
+      # [HIDDEN: cast int32→fp32]
+      c_temp1 = cast_to_fp32(c_temp1)  # [m, N] fp32
+
+      # [CONST: broadcast perChannelScale [N] → [m, N]]
+      c_temp2 = mul(c_temp1, perChannelScale)  # dequant step1
+
+      # [CONST: broadcast perTokenScale [m] → [m, 1]]
+      # [HIDDEN: reshape perTokenScale [m] → [m, 1]]
+      c_temp3 = mul(c_temp2, perTokenScale_2d)  # dequant step2
+
+      # [NOTE: chunk(2, dim=-1) 拆分 N → N/2]
+      c_temp4, gate = chunk(c_temp3, 2, dim=-1)  # 各 [m, N/2]
+      c_temp5 = c_temp4 * sigmoid(c_temp4)  # SiLU: [m, N/2]
+      c_temp6 = c_temp5 * gate              # gate: [m, N/2]
+
+      # 动态量化
+      abs_max = reduce_max(abs(c_temp6), dim=-1)  # [m]
+      quantScale = 127.0 / abs_max                  # [m]
+      quantOutput = round(c_temp6 * broadcast(quantScale, [m,1]))  # [m, N/2]
+      # [HIDDEN: cast fp32→int8]
+      quantOutput = cast_to_int8(quantOutput)
+      quantScale = 1.0 / quantScale  # 反量化 scale
+
+      return quantOutput, quantScale

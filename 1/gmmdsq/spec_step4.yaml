@@ -1,0 +1,175 @@
+# Step 4 输出: SSA 指令序列
+
+ssa_instructions:
+  C0_P0:
+    desc: "Cube matmul int8×int8→int32, 2D (matM×matN) 多核"
+    params:
+      inputs: ["x"]
+      workspace_write: ["C0_output"]
+    variables:
+      - name: "xGm_[x_offset]"
+        location: "GM"
+        dtype: "int8_t"
+        shape: "[mSize, K]"
+      - name: "weightGm_"
+        location: "GM"
+        dtype: "int8_t"
+        shape: "[K, N]"
+      - name: "workspaceGm_[ws_offset]"
+        location: "GM"
+        dtype: "int32_t"
+        shape: "[mSize, nSize]"
+    code:
+      - comment: "Python: c_temp1 = matmul(x, weight^T)  # int8×int8→int32"
+      - instruction: "mm_.SetTensorA(xGm_[x_offset])"
+      - instruction: "mm_.SetTensorB(weightGm_)"
+      - instruction: "mm_.SetOrgShape(mSize, nSize, matK_, matK_, matN_)"
+      - instruction: "mm_.SetSingleShape(mSize, nSize, matK_)"
+      - instruction: "while (mm_.Iterate()) { mm_.GetTensorC(workspaceGm_[ws_offset], 0, true); }"
+      - instruction: "mm_.End()"
+    api_mode: "iterate_get_tensor_c"
+    sequential_write: true
+    enAtomic: 0
+    orgKc: "matN_"
+
+  V0_P0:
+    desc: "Vector 后处理: Cast + dequant + SwiGLU + dynamic quantize"
+    params:
+      workspace_read: ["C0_output"]
+      broadcast: ["weightScale"]
+      inputs: ["xScale"]
+      outputs: ["quantOutput", "quantScaleOutput"]
+    variables:
+      - name: "%0_in"
+        location: "VECIN"
+        dtype: "int32_t"
+        shape: "[chunkSize, N]"
+        desc: "matmul int32 result from workspace"
+      - name: "%1_alc"
+        location: "VECCALC"
+        dtype: "float"
+        shape: "[chunkSize, N]"
+        desc: "Cast fp32 result / dequant workspace"
+      - name: "weightScale_alc"
+        location: "VECCALC"
+        dtype: "float"
+        shape: "[N]"
+        desc: "perChannelScale, loaded per group, broadcast"
+      - name: "%2_alc"
+        location: "VECCALC"
+        dtype: "float"
+        shape: "[chunkSize, N]"
+        desc: "dequant1: mul perChannelScale result"
+      - name: "xScale_alc"
+        location: "VECCALC"
+        dtype: "float"
+        shape: "[chunkSize]"
+        desc: "perTokenScale slice"
+      - name: "%3_alc"
+        location: "VECCALC"
+        dtype: "float"
+        shape: "[chunkSize, N]"
+        desc: "dequant2 result = full dequantized [chunk,N]"
+      - name: "left_view"
+        location: "VECCALC"
+        dtype: "float"
+        shape: "[chunkSize, N/2]"
+        desc: "chunk(N→N/2) left half, view into %3_alc"
+      - name: "gate_view"
+        location: "VECCALC"
+        dtype: "float"
+        shape: "[chunkSize, N/2]"
+        desc: "chunk(N→N/2) right half, view into %3_alc"
+      - name: "%4_alc"
+        location: "VECCALC"
+        dtype: "float"
+        shape: "[chunkSize, N/2]"
+        desc: "sigmoid(left) result"
+      - name: "%5_alc"
+        location: "VECCALC"
+        dtype: "float"
+        shape: "[chunkSize, N/2]"
+        desc: "SiLU = left * sigmoid(left)"
+      - name: "%6_alc"
+        location: "VECCALC"
+        dtype: "float"
+        shape: "[chunkSize, N/2]"
+        desc: "swiglu = SiLU * gate"
+      - name: "%7_alc"
+        location: "VECCALC"
+        dtype: "float"
+        shape: "[chunkSize, N/2]"
+        desc: "abs(swiglu)"
+      - name: "%8_alc"
+        location: "VECCALC"
+        dtype: "float"
+        shape: "[chunkSize]"
+        desc: "absmax (reduce N/2)"
+      - name: "%9_alc"
+        location: "VECCALC"
+        dtype: "float"
+        shape: "[chunkSize]"
+        desc: "quantScale = 127.0 / absmax"
+      - name: "%6_out"
+        location: "VECOUT"
+        dtype: "int8_t"
+        shape: "[chunkSize, N/2]"
+        desc: "quantized int8 output"
+      - name: "%10_alc"
+        location: "VECCALC"
+        dtype: "float"
+        shape: "[chunkSize]"
+        desc: "dequantScale = 1.0 / quantScale"
+    code:
+      # --- #1 Cast int32→fp32 ---
+      - comment: "Python: c_temp1 = c_temp1.to(torch.float32)"
+      - load: { var: "%0_in", source: "workspaceGm_[ws_read_offset]", size: "chunkSize * matN" }
+      - instruction: "Cast(%1_alc, %0_in, RoundMode::CAST_NONE, chunkSize * matN)"
+
+      # --- #2 Dequant step1: mul perChannelScale ---
+      - comment: "Python: c_temp2 = c_temp1 * perChannelScale"
+      - comment: "weightScale loaded per group (outermost), broadcast [N]→[chunk,N]"
+      - instruction: "Mul(%2_alc, %1_alc, weightScale_alc, chunkSize * matN)"
+
+      # --- #3 Dequant step2: mul perTokenScale ---
+      - comment: "Python: c_temp3 = c_temp2 * perTokenScale.reshape(m,1)"
+      - load: { var: "xScale_alc", source: "xScaleGm_[xScale_offset]", size: "chunkSize" }
+      - comment: "per-row Muls: for row in chunkSize: Muls(row, row, xScale[row], N)"
+      - instruction: "for (uint32_t r = 0; r < chunkSize; ++r) { Muls(%2_alc[r*N], %2_alc[r*N], xScale_alc.GetValue(r), N); }"
+      - note: "结果就地写回 %2_alc, 视为 %3_alc"
+
+      # --- #4 SwiGLU: chunk N→N/2 split (view) ---
+      - comment: "Python: c_temp4, gate = c_temp3.chunk(2, dim=-1)"
+      - comment: "left_view = view(%2_alc, 0, chunkSize*N/2)"
+      - comment: "gate_view = view(%2_alc, chunkSize*N/2, chunkSize*N/2)"
+
+      # --- #5 SwiGLU: sigmoid + SiLU ---
+      - comment: "Python: c_temp5 = c_temp4 * sigmoid(c_temp4)  # SiLU"
+      - instruction: "Sigmoid(%4_alc, left_view, chunkSize * (matN / 2))"
+      - instruction: "Mul(%5_alc, left_view, %4_alc, chunkSize * (matN / 2))"
+
+      # --- #6 SwiGLU: result = SiLU * gate ---
+      - comment: "Python: c_temp6 = c_temp5 * gate"
+      - instruction: "Mul(%6_alc, %5_alc, gate_view, chunkSize * (matN / 2))"
+
+      # --- #7 Dynamic quant: abs + max reduce ---
+      - comment: "Python: abs_max = torch.max(torch.abs(c_temp6), -1).values"
+      - instruction: "Abs(%7_alc, %6_alc, chunkSize * (matN / 2))"
+      - instruction: "ReduceMax(%8_alc, %7_alc, tmpBuf_, chunkSize, matN / 2)"
+
+      # --- #8 Dynamic quant: scale = 127.0 / absmax ---
+      - comment: "Python: quantScale = 127.0 / abs_max"
+      - instruction: "Reciprocal(%8_alc, %8_alc, chunkSize)"
+      - instruction: "Muls(%9_alc, %8_alc, 127.0, chunkSize)"
+
+      # --- #9 Dynamic quant: round(swiglu * scale) → int8 ---
+      - comment: "Python: quantOutput = round(c_temp6 * quantScale).to(torch.int8)"
+      - comment: "per-row: Muls then Cast with CAST_ROUND"
+      - instruction: "for (uint32_t r = 0; r < chunkSize; ++r) { Muls(%6_alc[r*N/2], %6_alc[r*N/2], %9_alc.GetValue(r), N/2); }"
+      - instruction: "Cast(%6_out, %6_alc, RoundMode::CAST_ROUND, chunkSize * (matN / 2))"
+      - store: { var: "%6_out", dest: "quantOutputGm_[quantOut_offset]", size: "chunkSize * (matN / 2)" }
+
+      # --- #10 Compute dequantScale = 1.0 / quantScale ---
+      - comment: "Python: quantScaleOutput = 1.0 / quantScale"
+      - instruction: "Reciprocal(%10_alc, %9_alc, chunkSize)"
+      - store: { var: "%10_alc", dest: "quantScaleOutputGm_[quantScaleOut_offset]", size: "chunkSize" }

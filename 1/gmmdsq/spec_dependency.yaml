@@ -1,0 +1,47 @@
+# Step 0b 输出: 依赖建模
+
+shared_reduce_axes: []
+# C0 reduces K, V0 reduces N/2 → 无共享消减轴, 不需要 cube_accumulate
+
+workspace_transfers:
+  - from: "C0"
+    to: "V0"
+    data_id: "C0_output"
+    shape: "[block_m, N]"
+    dtype: "int32"
+    size_per_block: "block_m * N * 4"
+    produced_per_tile: true
+    tile_axis: "M"
+    aiv_access: "deferred"
+    note: "matmul int32 结果, 1c2v row_split 策略后续分析"
+
+  - from: "V0"
+    to: "GM"
+    data_id: "V0_quantScale"
+    shape: "[block_m]"
+    dtype: "float32"
+    size_per_block: "block_m * 4"
+    produced_per_tile: false
+    aiv_access: "deferred"
+    note: "动态量化 scale, absmax reduce 结果"
+
+cast_ub_overhead:
+  - cv_id: "V0"
+    casts: ["int32 → fp32 (matmul 结果)", "fp32 → int8 (量化输出)"]
+    input_buf: "block_m * N * 4 bytes (int32)"
+    output_buf: "block_m * N * 4 bytes (fp32)"
+    note: "Cast int32→fp32 需双 buffer; Cast fp32→int8 输出仅为输入 1/4"
+
+aiv_workspace_split:
+  mode: "deferred"
+  note: "1c2v row_split 策略待后续分析"
+
+workspace_summary:
+  per_block:
+    total_per_block: "block_m * N * 4 + block_m * 4"
+    dominant_item: "C0_output [block_m, N] int32"
+    note: "block_m * N * 4 远超 UB, 必须沿 M/N 双轴 tile 化"
+
+  per_tile_estimate:
+    tile_m_64: "64 * 7192 * 4 = ~1.8 MB (仍超 UB, 需进一步沿 N tile)"
+    conclusion: "需 M + N 双轴 tile 才能控制 workspace 在合理范围"

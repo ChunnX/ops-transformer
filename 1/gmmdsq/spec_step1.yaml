@@ -1,0 +1,87 @@
+# Step 1 输出: 切分决策
+
+primitive: "E:{matM:[matN:[C0]->matM_i:[V0]]}"
+
+annotations:
+  splits:
+    E:
+      type: "instance_axis"
+      description: "实例轴 (group 外层循环), block 不跨 group"
+      source: "groupList"
+
+    matM:
+      type: "multi_core"
+      allocation: "linear"
+      shared_by: ["C0", "V0"]
+      instance_constraint: "E"
+      instance_handling: "核内按 groupList 拆分 sub-block, 每段使用对应 weight[group_idx]"
+      derivation: "total_matM / numMCores"
+      note: "具体 singleM 由 TCubeTiling 和核网格决定"
+
+    matN:
+      type: "multi_core"
+      allocation: "linear"
+      shared_by: ["C0"]
+      sync: "barrier_after_all_N_tiles"
+      sync_reason: "V0 需完整 N 执行 SwiGLU, 等 C0 所有 N-tile 完成后同步"
+      derivation: "total_matN / numNCores"
+      note: "具体 singleN 由 TCubeTiling 和核网格决定"
+
+    matM_i:
+      type: "intra_core"
+      applies_to: ["V0"]
+      strategy: "vec_chunk"
+      chunk_size: 2
+      reason: "V0 UB 约束: Cast int32↔fp32 双 buffer + weightScale 常驻 ≈ 192KB 限制"
+      description: "V0 逐 chunk=2 行处理: Cast→dequant→SwiGLU→quantize"
+
+  stages:
+    - id: 0
+      cv_sequence: ["C0"]
+      multi_core:
+        axes: ["matM", "matN"]
+        core_grid: "numMCores × numNCores"
+      sync_after: true
+      sync_type: "N-axis barrier"
+      description: "Cube matmul 2D (M×N) 多核并行"
+
+    - id: 1
+      cv_sequence: ["V0"]
+      multi_core:
+        axes: ["matM"]
+        inherited_from: "Stage 0 matM split"
+      intra_core:
+        axis: "matM_i"
+        chunk_size: 2
+      sync_after: false
+      description: "Vector 后处理 1D (M) 多核, matM_i 核内切分, 流水跟随 Stage 0"
+
+  cv_order:
+    anchor: "C0"
+    ordering:
+      - {cv: "C0", position: "anchor", stage: 0}
+      - {cv: "V0", position: "after_C0", stage: 1, reason: "V0 依赖 C0 matmul 完整 N 输出"}
+
+  pipeline:
+    enabled: true
+    mode: "double_buffer"
+    granularity: "per M-block"
+    sync_point: "N-axis barrier between Stage 0 and Stage 1"
+    flow: "C0 写 [singleM, singleN]×numNCores 到 workspace → barrier → V0 读 [singleM, full_N]"
+
+axis_priority:
+  - {axis: "E", constraint: "free", size: 8, priority: 1, role: "instance_axis"}
+  - {axis: "matM", constraint: "free", size: 4096, priority: 2, role: "multi_core"}
+  - {axis: "matN", constraint: "forbidden_for_V0", size: 7192, priority: 3, role: "multi_core_C0_only"}
+  - {axis: "matK", constraint: "accumulate", size: 5120, priority: -1, role: "Cube_reduce"}
+  - {axis: "matM_i", constraint: "free", size: "dynamic", priority: -1, role: "intra_core_V0"}
+
+stage_config:
+  stage_count: 2
+  stages:
+    - id: 0
+      cv_sequence: ["C0"]
+      sync_after: true
+    - id: 1
+      cv_sequence: ["V0"]
+      sync_after: false
