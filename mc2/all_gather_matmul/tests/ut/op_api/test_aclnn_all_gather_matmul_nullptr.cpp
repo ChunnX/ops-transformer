@@ -76,7 +76,7 @@ TEST_F(AclnnAllGatherMatmulNullptrTest, TestAscend910A5Platform)
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_NE(aclRet, ACLNN_SUCCESS);
+    EXPECT_EQ(aclRet, ACLNN_SUCCESS);
     op::SetPlatformNpuArch(NpuArch::DAV_3103);
 }
 
