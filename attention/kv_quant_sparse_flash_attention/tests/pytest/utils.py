@@ -129,13 +129,57 @@ def load_excel_test_cases(excel_file_path, sheet_name):
         pytest.skip(f"Failed to read Excel file: {error}", allow_module_level=True)
 
     required_columns = [
-        "Testcase_Prefix", "Testcase_Number",
+        "Testcase_Prefix",
         "layout_query", "layout_kv", "q_type", "kv_type",
         "B", "S1", "S2", "N1", "N2", "D", "K",
         "scale_value", "key_quant_mode", "value_quant_mode",
         "sparse_block_size", "tile_size", "rope_head_dim",
-"sparse_mode", "attention_mode", "quant_scale_repo_mode",
+        "sparse_mode", "attention_mode", "quant_scale_repo_mode",
         "block_size", "block_num", "actual_seq_q", "actual_seq_kv",
+    ]
+    missing_columns = [column for column in required_columns if column not in dataframe.columns]
+    if missing_columns:
+        pytest.skip(f"Missing required columns in Excel: {missing_columns}", allow_module_level=True)
+    return [row.to_dict() for _, row in dataframe.iterrows()]
+
+
+def save_result(params, result, fulfill_percent, result_path):
+    """保存测试结果，列与 example.xlsx 一致，结果文件可直接用于批量生成 pt。"""
+    row_data = {
+        "Testcase_Prefix": params.get("Testcase_Prefix", "kvQuantSparseFlashAttn"),
+        "layout_query": params.get("layout_query"),
+        "layout_kv": params.get("layout_kv"),
+        "q_type": str(params.get("q_type")),
+        "kv_type": str(params.get("kv_type")) if params.get("kv_type") is not None else None,
+        "B": params.get("B"),
+        "T1": params.get("T1"),
+        "T2": params.get("T2"),
+        "S1": params.get("S1"),
+        "S2": params.get("S2"),
+        "N1": params.get("N1"),
+        "N2": params.get("N2"),
+        "D": params.get("D"),
+        "K": params.get("K"),
+        "scale_value": params.get("scalevalue"),
+        "key_quant_mode": params.get("key_quant_mode"),
+        "value_quant_mode": params.get("value_quant_mode"),
+        "sparse_block_size": params.get("sparse_blocksize"),
+        "tile_size": params.get("tile_size"),
+        "rope_head_dim": params.get("rope_head_dim"),
+        "sparse_mode": params.get("sparsemode"),
+        "attention_mode": params.get("attention_mode"),
+        "quant_scale_repo_mode": params.get("quant_scale_repo_mode"),
+        "block_size": params.get("block_size"),
+        "block_num": params.get("block_num"),
+        "actual_seq_q": str(params.get("actual_seq_q")) if params.get("actual_seq_q") is not None else None,
+        "actual_seq_kv": str(params.get("actual_seq_kv")) if params.get("actual_seq_kv") is not None else None,
+        "range_query": str(params.get("range_query")) if params.get("range_query") is not None else None,
+        "range_key": str(params.get("range_key")) if params.get("range_key") is not None else None,
+        "range_query_rope": str(params.get("range_query_rope")) if params.get("range_query_rope") is not None else None,
+        "range_key_rope": str(params.get("range_key_rope")) if params.get("range_key_rope") is not None else None,
+        "range_dequant_scale": str(params.get("range_dequant_scale")) if params.get("range_dequant_scale") is not None else None,
+        "result": result,
+        "fulfill_percent": fulfill_percent,
     }
 
     if result_path.exists():
