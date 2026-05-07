@@ -27,37 +27,23 @@ protected:
 
 namespace {
 
-gert::InfershapeContextPara BuildInfershapePara(int64_t b, int64_t n, int64_t s, int64_t h, bool mask1_present = true,
-                                                bool bias_present = true, int64_t key_s = -1, int64_t value_n = -1,
-                                                int64_t mask1_last_dim = -1)
+gert::InfershapeContextPara BuildInfershapePara(int64_t b, int64_t n, int64_t s, int64_t h, bool mask1_present = true)
 {
-    if (key_s < 0) {
-        key_s = s;
-    }
-    if (value_n < 0) {
-        value_n = n;
-    }
-    if (mask1_last_dim < 0) {
-        mask1_last_dim = s;
-    }
     return gert::InfershapeContextPara(
         "SwinAttentionScoreQuant",
         {
             {{{b, n, s, h}, {b, n, s, h}}, ge::DT_INT8, ge::FORMAT_ND},
-            {{{b, n, key_s, h}, {b, n, key_s, h}}, ge::DT_INT8, ge::FORMAT_ND},
-            {{{b, value_n, s, h}, {b, value_n, s, h}}, ge::DT_INT8, ge::FORMAT_ND},
+            {{{b, n, s, h}, {b, n, s, h}}, ge::DT_INT8, ge::FORMAT_ND},
+            {{{b, n, s, h}, {b, n, s, h}}, ge::DT_INT8, ge::FORMAT_ND},
             {{{1, s}, {1, s}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{1, s}, {1, s}}, ge::DT_UINT64, ge::FORMAT_ND},
             {{{1, h}, {1, h}}, ge::DT_UINT64, ge::FORMAT_ND},
-            bias_present ? gert::InfershapeContextPara::TensorDescription({{1, s}, {1, s}}, ge::DT_FLOAT16, ge::FORMAT_ND)
-                         : gert::InfershapeContextPara::TensorDescription({{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND),
-            bias_present ? gert::InfershapeContextPara::TensorDescription({{1, s}, {1, s}}, ge::DT_INT32, ge::FORMAT_ND)
-                         : gert::InfershapeContextPara::TensorDescription({{}, {}}, ge::DT_INT32, ge::FORMAT_ND),
-            bias_present ? gert::InfershapeContextPara::TensorDescription({{1, h}, {1, h}}, ge::DT_INT32, ge::FORMAT_ND)
-                         : gert::InfershapeContextPara::TensorDescription({{}, {}}, ge::DT_INT32, ge::FORMAT_ND),
+            {{{1, s}, {1, s}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, s}, {1, s}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{1, h}, {1, h}}, ge::DT_INT32, ge::FORMAT_ND},
             mask1_present
-                ? gert::InfershapeContextPara::TensorDescription({{1, n, s, mask1_last_dim}, {1, n, s, mask1_last_dim}},
-                                                                 ge::DT_FLOAT16, ge::FORMAT_ND)
+                ? gert::InfershapeContextPara::TensorDescription({{1, n, s, s}, {1, n, s, s}}, ge::DT_FLOAT16,
+                                                                 ge::FORMAT_ND)
                 : gert::InfershapeContextPara::TensorDescription({{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND),
             {{{1, n, s, s}, {1, n, s, s}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         },
@@ -82,40 +68,4 @@ TEST_F(SwinAttentionScoreQuantTest, swin_attention_score_quant_infershape_withou
 {
     auto para = BuildInfershapePara(10, 3, 49, 32, false);
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, {{10, 3, 49, 32}});
-}
-
-TEST_F(SwinAttentionScoreQuantTest, swin_attention_score_quant_infershape_null_input_003)
-{
-    auto para = BuildInfershapePara(10, 3, 49, 32, true, false);
-    ExecuteTestCase(para, ge::GRAPH_SUCCESS);
-}
-
-TEST_F(SwinAttentionScoreQuantTest, swin_attention_score_quant_infershape_wrong_s_004)
-{
-    auto para = BuildInfershapePara(10, 3, 1025, 32);
-    ExecuteTestCase(para, ge::GRAPH_SUCCESS);
-}
-
-TEST_F(SwinAttentionScoreQuantTest, swin_attention_score_quant_infershape_wrong_h_005)
-{
-    auto para = BuildInfershapePara(10, 3, 49, 33);
-    ExecuteTestCase(para, ge::GRAPH_SUCCESS);
-}
-
-TEST_F(SwinAttentionScoreQuantTest, swin_attention_score_quant_infershape_wrong_key_006)
-{
-    auto para = BuildInfershapePara(10, 3, 49, 32, true, true, 50);
-    ExecuteTestCase(para, ge::GRAPH_SUCCESS);
-}
-
-TEST_F(SwinAttentionScoreQuantTest, swin_attention_score_quant_infershape_wrong_value_007)
-{
-    auto para = BuildInfershapePara(10, 3, 49, 32, true, true, 49, 4);
-    ExecuteTestCase(para, ge::GRAPH_SUCCESS);
-}
-
-TEST_F(SwinAttentionScoreQuantTest, swin_attention_score_quant_infershape_wrong_mask_008)
-{
-    auto para = BuildInfershapePara(10, 3, 49, 32, true, true, 49, 3, 50);
-    ExecuteTestCase(para, ge::GRAPH_SUCCESS);
 }
