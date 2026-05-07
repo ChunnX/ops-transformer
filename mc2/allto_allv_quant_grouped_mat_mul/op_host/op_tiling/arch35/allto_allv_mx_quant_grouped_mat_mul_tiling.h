@@ -10,55 +10,18 @@
 
 /* !
  * \file allto_allv_mx_quant_grouped_mat_mul_tiling.h
- * \brief
+ * \brief V1 MX inherits V2 MX
  */
 #ifndef ALLTO_ALLV_MX_QUANT_GROUPED_MATMUL_TILING_H
 #define ALLTO_ALLV_MX_QUANT_GROUPED_MATMUL_TILING_H
 
-#include "allto_allv_quant_grouped_mat_mul_tiling_common.h"
-#include "../../../../3rd/grouped_matmul/op_tiling/gmm_qbmm_tiling.h"
+#include "mc2/allto_allv_quant_grouped_mat_mul_v2/op_host/op_tiling/arch35/allto_allv_mx_quant_grouped_mat_mul_tiling.h"
 
 namespace optiling {
-class AlltoAllvMXQuantGmmTiling : public AlltoAllvQuantGmmTilingCommon {
-    friend class AlltoAllvMXQuantGmmTilingHelper;
-public:
-    explicit AlltoAllvMXQuantGmmTiling(gert::TilingContext *context) : AlltoAllvQuantGmmTilingCommon(context){};
 
-protected:
-    // tiling base
-    bool IsCapable() override;
-    uint64_t GetTilingKey() const override;
-    // quant base
-    ge::graphStatus CheckScaleFormatAndDtype() const override;
-    ge::graphStatus CheckInputDtype() const override;
-    ge::graphStatus CheckScaleShape() const override;
-    ge::graphStatus CheckQuantMode() const override;
-    ge::graphStatus DoGmmTiling(uint64_t gmmMSize) override;
-    void GetPermuteOutSize() override;
-private:
-    ge::graphStatus CheckGmmInputDtype(ge::DataType gXDataType, ge::DataType gWtDataType,
-        ge::DataType gYDataType) const;
-    ge::graphStatus CheckMmInputDtype(ge::DataType gXDataType, ge::DataType gWtDataType,
-        ge::DataType gYDataType) const;
-    ge::graphStatus CheckFp4Input(ge::DataType gXDataType, ge::DataType gWtDataType) const;
-    ge::graphStatus CheckGmmScale() const;
-    ge::graphStatus CheckMmScale() const;
-    ge::graphStatus CheckQuantGroupSize() const;
-    ge::graphStatus CheckGmmScaleShape() const;
-    ge::graphStatus CheckMmScaleShape() const;
-};
-
-class AlltoAllvMXQuantGmmTilingHelper : public Mc2GroupedMatmulTiling::Mc2GroupedQbmmTiling {
+class AlltoAllvMXQuantGmmTiling : public AlltoAllvMXQuantGmmV2Tiling {
 public:
-    AlltoAllvMXQuantGmmTilingHelper(
-        AlltoAllvMXQuantGmmTiling& AlltoAllvMXQuantGmmTiling) : Mc2GroupedQbmmTiling(AlltoAllvMXQuantGmmTiling.context_) {}
-    const Mc2GroupedMatmulTilingData::GMMQuantTilingData& GetAlltoAllvQuantHelperData() const {return tilingData_; }
-    bool AnalyzeAttrs() override {return true; }
-    bool AnalyzeDtype() override {return true; }
-    bool AnalyzeInputs() override {return true; }
-    void Reset() override {} 
-    ge::graphStatus SetInputParams(uint64_t M, uint64_t N, uint64_t K, bool transB);
-    ge::graphStatus Process();
+    explicit AlltoAllvMXQuantGmmTiling(gert::TilingContext *context) : AlltoAllvMXQuantGmmV2Tiling(context){};
 };
 
 }  // namespace optiling
