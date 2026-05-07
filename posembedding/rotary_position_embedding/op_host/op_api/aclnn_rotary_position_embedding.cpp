@@ -109,43 +109,43 @@ aclnnStatus aclnnRotaryPositionEmbedding(void* workspace, uint64_t workspaceSize
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }
 
-/* v2 interface - supports rotate parameter */
-aclnnStatus aclnnRotaryPositionEmbeddingV2GetWorkspaceSize(const aclTensor* x, const aclTensor* cos, const aclTensor* sin,
-                                                           int64_t mode, const aclTensor* rotate, aclTensor* out,
-                                                           uint64_t* workspaceSize, aclOpExecutor** executor)
-{
-    L2_DFX_PHASE_1(aclnnRotaryPositionEmbeddingV2,
-        DFX_IN(x, cos, sin, mode, rotate),
-        DFX_OUT(out));
+// /* v2 interface - supports rotate parameter */
+// aclnnStatus aclnnRotaryPositionEmbeddingV2GetWorkspaceSize(const aclTensor* x, const aclTensor* cos, const aclTensor* sin,
+//                                                            int64_t mode, const aclTensor* rotate, aclTensor* out,
+//                                                            uint64_t* workspaceSize, aclOpExecutor** executor)
+// {
+//     L2_DFX_PHASE_1(aclnnRotaryPositionEmbeddingV2,
+//         DFX_IN(x, cos, sin, mode, rotate),
+//         DFX_OUT(out));
 
-    if (rotate != nullptr) {
-        CHECK_COND(op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201, 
-                   ACLNN_ERR_PARAM_INVALID, "the soc verison is not support");
-    }
+//     if (rotate != nullptr) {
+//         CHECK_COND(op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201, 
+//                    ACLNN_ERR_PARAM_INVALID, "the soc verison is not support");
+//     }
 
-    auto uniqueExecutor = CREATE_EXECUTOR();
-    CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+//     auto uniqueExecutor = CREATE_EXECUTOR();
+//     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
-    if (out->IsEmpty()) {
-        *workspaceSize = 0;
-        uniqueExecutor.ReleaseTo(executor);
-        return ACLNN_SUCCESS;
-    }
+//     if (out->IsEmpty()) {
+//         *workspaceSize = 0;
+//         uniqueExecutor.ReleaseTo(executor);
+//         return ACLNN_SUCCESS;
+//     }
     
-    auto ret = RotaryPositionEmbeddingCommonProcess(x, cos, sin, rotate, mode, out, uniqueExecutor.get());
-    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+//     auto ret = RotaryPositionEmbeddingCommonProcess(x, cos, sin, rotate, mode, out, uniqueExecutor.get());
+//     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
-    *workspaceSize = uniqueExecutor->GetWorkspaceSize();
-    uniqueExecutor.ReleaseTo(executor);
-    return ACLNN_SUCCESS;
-}
+//     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
+//     uniqueExecutor.ReleaseTo(executor);
+//     return ACLNN_SUCCESS;
+// }
 
-aclnnStatus aclnnRotaryPositionEmbeddingV2(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
-                                           aclrtStream stream)
-{
-    L2_DFX_PHASE_2(aclnnRotaryPositionEmbeddingV2);
-    return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
-}
+// aclnnStatus aclnnRotaryPositionEmbeddingV2(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
+//                                            aclrtStream stream)
+// {
+//     L2_DFX_PHASE_2(aclnnRotaryPositionEmbeddingV2);
+//     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
+// }
 
 #ifdef __cplusplus
 }

@@ -161,49 +161,112 @@ ge::graphStatus RopeRegBaseTilingClass::CheckShape()
 {
     auto &xShape = context_->GetInputShape(X_INDEX)->GetStorageShape();
     auto &cosShape = context_->GetInputShape(COS_INDEX)->GetStorageShape();
-    auto &sinShape = context_->GetInputShape(SIN_INDEX)->GetStorageShape();
-    auto &yShape = context_->GetOutputShape(Y_INDEX)->GetStorageShape();
-    if (xShape.GetDimNum() != DIM_NUM) {
-        std::string dimNumStr = std::to_string(xShape.GetDimNum());
-        OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "x", dimNumStr.c_str(), "4D");
-        return ge::GRAPH_FAILED;
-    }
-    if (cosShape.GetDimNum() != DIM_NUM) {
-        std::string dimNumStr = std::to_string(cosShape.GetDimNum());
-        OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "cos", dimNumStr.c_str(), "4D");
-        return ge::GRAPH_FAILED;
-    }
-    if (sinShape.GetDimNum() != DIM_NUM) {
-        std::string dimNumStr = std::to_string(sinShape.GetDimNum());
-        OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "sin", dimNumStr.c_str(), "4D");
-        return ge::GRAPH_FAILED;
-    }
-    if (yShape.GetDimNum() != DIM_NUM) {
-        std::string dimNumStr = std::to_string(yShape.GetDimNum());
-        OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "y", dimNumStr.c_str(), "4D");
-        return ge::GRAPH_FAILED;
+
+    int64_t xShapeSize = xShape.GetShapeSize();
+ 	 
+    std::string reasonMsg = "此时的分支为： xShapeSize = " + std::to_string(xShapeSize) + " 。";
+
+    // 从1到10 的分支
+    if (xShapeSize == 1){
+        // EZ0008
+        OP_LOGE_FOR_INVALID_SHAPE(
+            context_->GetNodeName(), "x", ToString(xShape).c_str(),
+            "[1,2]");
+    } else if (xShapeSize == 2){
+        // EZ0009
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            context_->GetNodeName(), "x", ToString(xShape).c_str(),
+            "The 0th axis of input x must be 2");
+    } else if (xShapeSize == 3){
+        // EZ0010
+        std::string shapeMsg = ToString(xShape) + " and " + ToString(cosShape);
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+            context_->GetNodeName(), "x and cos", shapeMsg.c_str(),
+            "The shapes of input x and cos must be the same");
+    } else if (xShapeSize == 4){
+        // EZ0011
+        OP_LOGE_FOR_INVALID_SHAPEDIM(
+            context_->GetNodeName(), "x", "2",
+            "3");
+    } else if (xShapeSize == 5){
+        // EZ0012
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            context_->GetNodeName(), "x", "2",
+            "The shape dim of input x must be 3");
+    } else if (xShapeSize == 6){
+        // EZ0013
+        OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(
+            context_->GetNodeName(), "x and cos", "2 and 3",
+            "The shape dims of input x and cos must be the same");
+    } else if (xShapeSize == 7){
+        // EZ0014
+        OP_LOGE_FOR_INVALID_SHAPESIZE(
+            context_->GetNodeName(), "x", std::to_string(xShapeSize).c_str(),
+            "15");
+    } else if (xShapeSize == 8){
+        // EZ0015
+        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
+            context_->GetNodeName(), "x", std::to_string(xShapeSize).c_str(),
+            "The shape size of input x must be 15");
+    } else if (xShapeSize == 9){
+        // EZ0016
+        OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(
+            context_->GetNodeName(), "x and cos", "15 and 20",
+            "The shape sizes of input x and cos must be the same");
+    } else if (xShapeSize == 10){
+        // EZ0017
+        OP_LOGE_FOR_INVALID_FORMAT(
+            context_->GetNodeName(), "x", "NCHW",
+            "ND");
     }
 
-    if (cosShape != sinShape) {
-        std::string shapeMsg = ToString(cosShape) + " and " + ToString(sinShape);
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "cos and sin", shapeMsg.c_str(),
-            "The shapes of input cos and sin should be the same");
-        return ge::GRAPH_FAILED;
-    }
-    if (xShape != yShape) {
-        std::string shapeMsg = ToString(xShape) + " and " + ToString(yShape);
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "x and y", shapeMsg.c_str(),
-            "The shapes of input x and output y should be the same");
-        return ge::GRAPH_FAILED;
-    }
-    if (cosShape.GetDim(DIM_3) != xShape.GetDim(DIM_3)) {
-        std::string shapeMsg = ToString(xShape) + " and " + ToString(cosShape);
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "x and cos", shapeMsg.c_str(),
-            "The D axes of input x and cos should be the same, where D refers to the 3rd dim");
-        return ge::GRAPH_FAILED;
-    }
-    OP_CHECK_IF(CheckRotaryModeShapeRelation(xShape.GetDim(DIM_3)) != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_, "D is invalid for rotary mode."), return ge::GRAPH_FAILED);
+    // auto &cosShape = context_->GetInputShape(COS_INDEX)->GetStorageShape();
+    // auto &sinShape = context_->GetInputShape(SIN_INDEX)->GetStorageShape();
+    // auto &yShape = context_->GetOutputShape(Y_INDEX)->GetStorageShape();
+
+
+    return ge::GRAPH_FAILED;
+    // if (xShape.GetDimNum() != DIM_NUM) {
+    //     std::string dimNumStr = std::to_string(xShape.GetDimNum());
+    //     OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "x", dimNumStr.c_str(), "4D");
+    //     return ge::GRAPH_FAILED;
+    // }
+    // if (cosShape.GetDimNum() != DIM_NUM) {
+    //     std::string dimNumStr = std::to_string(cosShape.GetDimNum());
+    //     OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "cos", dimNumStr.c_str(), "4D");
+    //     return ge::GRAPH_FAILED;
+    // }
+    // if (sinShape.GetDimNum() != DIM_NUM) {
+    //     std::string dimNumStr = std::to_string(sinShape.GetDimNum());
+    //     OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "sin", dimNumStr.c_str(), "4D");
+    //     return ge::GRAPH_FAILED;
+    // }
+    // if (yShape.GetDimNum() != DIM_NUM) {
+    //     std::string dimNumStr = std::to_string(yShape.GetDimNum());
+    //     OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "y", dimNumStr.c_str(), "4D");
+    //     return ge::GRAPH_FAILED;
+    // }
+
+    // if (cosShape != sinShape) {
+    //     std::string shapeMsg = ToString(cosShape) + " and " + ToString(sinShape);
+    //     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "cos and sin", shapeMsg.c_str(),
+    //         "The shapes of input cos and sin should be the same");
+    //     return ge::GRAPH_FAILED;
+    // }
+    // if (xShape != yShape) {
+    //     std::string shapeMsg = ToString(xShape) + " and " + ToString(yShape);
+    //     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "x and y", shapeMsg.c_str(),
+    //         "The shapes of input x and output y should be the same");
+    //     return ge::GRAPH_FAILED;
+    // }
+    // if (cosShape.GetDim(DIM_3) != xShape.GetDim(DIM_3)) {
+    //     std::string shapeMsg = ToString(xShape) + " and " + ToString(cosShape);
+    //     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "x and cos", shapeMsg.c_str(),
+    //         "The D axes of input x and cos should be the same, where D refers to the 3rd dim");
+    //     return ge::GRAPH_FAILED;
+    // }
+    // OP_CHECK_IF(CheckRotaryModeShapeRelation(xShape.GetDim(DIM_3)) != ge::GRAPH_SUCCESS,
+    //             OP_LOGE(context_, "D is invalid for rotary mode."), return ge::GRAPH_FAILED);
     return CheckShapeAllPositive();
 }
 
