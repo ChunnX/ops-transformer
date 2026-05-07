@@ -3,11 +3,12 @@
  * This file is a part of the CANN Open Software.
  */
 
-#include "../block_sparse_attention_grad_tiling.h"
 #include "err/ops_err.h"
 #include "log/log.h"
 #include "tiling_base/tiling_base.h"
 #include "tiling_base/tiling_templates_registry.h"
+#include "tiling/platform/platform_ascendc.h"
+#include "../block_sparse_attention_grad_tiling.h"
 
 namespace optiling {
 class BlockSparseAttentionGradArch35Tiling : public Ops::Transformer::OpTiling::TilingBaseClass {
@@ -125,7 +126,18 @@ protected:
 
     ge::graphStatus DoOpTiling() override
     {
+        auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
+        auto coreNum = ascendcPlatform.GetCoreNum();
+        uint64_t ub_size, l1_size;
+        ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ub_size);
+        ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, l1_size);
         uint32_t cube_core_num = 2;
+
+
+        std::cout << "coreNum is " << coreNum << std::endl;
+        std::cout << "ub_size is " << ub_size << std::endl;
+        std::cout << "l1_size is " << l1_size << std::endl;
+
         tilingData_.set_cubeCoreNum(cube_core_num);
         tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
         context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());

@@ -43,6 +43,7 @@ private:
     int32_t single_s2_len_{0};    // 每个cube核计算的s2方向的长度
     int32_t current_loop_{0};     // 当前循环次数(包括sparse跳过的计算)
     int32_t current_cube_idx_{0}; // 当前cube计算到的位置
+
 public:
     __aicore__ inline void Init(const TILING_CLASS *tilingData, GM_ADDR actualQseqlen, GM_ADDR actualKvseqlen)
     {
@@ -78,6 +79,7 @@ public:
         while (true) {
             if (InitStartIdx()) {
                 runTimeInfo->loop_finish = 1;
+                printf("loop finish\n");
                 break;
             }
 

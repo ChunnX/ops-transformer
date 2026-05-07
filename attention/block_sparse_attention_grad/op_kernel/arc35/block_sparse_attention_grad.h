@@ -38,7 +38,7 @@ public:
     __aicore__ inline void Process(GM_ADDR dout, GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR out, GM_ADDR softmaxLse,
                                    GM_ADDR blockSparseMask, GM_ADDR blockShape, GM_ADDR attentionMask,
                                    GM_ADDR actualQseqlen, GM_ADDR actualKvseqlen, GM_ADDR dq, GM_ADDR dk, GM_ADDR dv,
-                                   GM_ADDR workspace, const TILING_CLASS *tilingData)
+                                   GM_ADDR workspace, const TILING_CLASS *tilingData, TPipe *tPipe)
     {
         addr_.Init(tilingData, actualQseqlen, actualKvseqlen);
 
@@ -59,7 +59,7 @@ public:
     __aicore__ inline void CubeProcess(GM_ADDR dout, GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR out, GM_ADDR softmaxLse,
                                        GM_ADDR blockSparseMask, GM_ADDR blockShape, GM_ADDR attentionMask,
                                        GM_ADDR actualQseqlen, GM_ADDR actualKvseqlen, GM_ADDR dq, GM_ADDR dk,
-                                       GM_ADDR dv, GM_ADDR workspace, const TILING_CLASS *tilingData)
+                                       GM_ADDR dv, GM_ADDR workspace, const TILING_CLASS *tilingData, TPipe *tPipe)
     {
         uint32_t taskId = 0;
         while (true) {
@@ -74,7 +74,7 @@ public:
     __aicore__ inline void VectorProcess(GM_ADDR dout, GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR out, GM_ADDR softmaxLse,
                                          GM_ADDR blockSparseMask, GM_ADDR blockShape, GM_ADDR attentionMask,
                                          GM_ADDR actualQseqlen, GM_ADDR actualKvseqlen, GM_ADDR dq, GM_ADDR dk,
-                                         GM_ADDR dv, GM_ADDR workspace, const TILING_CLASS *tilingData)
+                                         GM_ADDR dv, GM_ADDR workspace, const TILING_CLASS *tilingData, TPipe *tPipe)
     {
         uint32_t taskId = 0;
         while (true) {
