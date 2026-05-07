@@ -105,7 +105,7 @@ public:
                 LocalTensor<INPUT_TYPE> l1_a_tensor = ping_pong_flag_inner ? l1_a_tensor_ping_ : l1_a_tensor_pong_;
                 LocalTensor<INPUT_TYPE> l0_a_tensor = ping_pong_flag_inner ? l0_a_tensor_ping_ : l0_a_tensor_pong_;
 
-                DataCopy(l1_a_tensor, leftGm, 128);
+                // DataCopy(l1_a_tensor, leftGm, 128);
                 SET_FLAG(MTE2, MTE1, EVENT_ID0);
                 WAIT_FLAG(MTE2, MTE1, EVENT_ID0);
 
