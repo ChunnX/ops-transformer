@@ -14,12 +14,12 @@ using namespace gmm;
 
 namespace {
 static const std::unordered_set<DataType> FP8_SUPPORT_SET = {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2, ge::DT_HIFLOAT8};
-static constexpr int64_t X_Y_SEPARATED = 0L;  // x,y no split
-static constexpr int64_t Y_SEPARATED = 1L;    // x split
-static constexpr int64_t X_SEPARATED = 2L;    // y split
-static constexpr int64_t NO_SEPARATED = 3L;   // x,y split
+static constexpr int64_t X_Y_SEPARATED = 0L; // x,y no split
+static constexpr int64_t Y_SEPARATED = 1L;   // x split
+static constexpr int64_t X_SEPARATED = 2L;   // y split
+static constexpr int64_t NO_SEPARATED = 3L;  // x,y split
 static constexpr int64_t MAX_GROUP_LIST_SIZE_ARRAY = 128L;
-}  // namespace
+} // namespace
 
 bool AclnnGroupedMatmulWeightQuantDAV3510Checker::IsA16MxFp4NZ() const
 {
@@ -107,7 +107,7 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckTensorShape(const 
     auto wShape = (*gmmParams_.weight)[idx]->GetViewShape();
 
     size_t tensorDimNum = tensorShape.GetDimNum();
-    size_t expectedDimNum = gmmParams_.groupType == SPLIT_M ? 2 : 1;  // 单单单场景默认维度为2，多多多场景默认维度为1
+    size_t expectedDimNum = gmmParams_.groupType == SPLIT_M ? 2 : 1; // 单单单场景默认维度为2，多多多场景默认维度为1
 
     if ((IsA16MxFp4NZ() || IsS8S4NZ()) && tensorType.find("antiquant") != std::string::npos) {
         expectedDimNum = 3; // Mx / PerGroup量化，仅支持antiquantSacle/antiquantOffset维度为3
@@ -168,8 +168,7 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckAntiQuantParams() 
     // 多多多场景antiQuantScale可能为[(0)]，此时会被aclnn_grouped_matmul.cpp中的CheckOptionalTensorListEmpty置为nullptr
     auto w0Shape = (*gmmParams_.weight)[0]->GetViewShape();
     int64_t w0NDim = w0Shape.GetDim(w0Shape.GetDimNum() - 1);
-    bool antiquantScaleNullFlag =
-        gmmParams_.groupType == NO_SPLIT && gmmParams_.weight->Size() == 1 && w0NDim == 0;
+    bool antiquantScaleNullFlag = gmmParams_.groupType == NO_SPLIT && gmmParams_.weight->Size() == 1 && w0NDim == 0;
     if (!antiquantScaleNullFlag) {
         CHECK_COND(gmmParams_.antiquantScaleOptional != nullptr, ACLNN_ERR_PARAM_NULLPTR,
                    "AntiquantScale must not be nullptr in antiquant, but now is nullptr.");
@@ -325,8 +324,8 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckV1GroupList(size_t
         int64_t xMDimValue = (*gmmParams_.x)[idx]->GetViewShape().GetDim(0);
         int64_t preGroupList = idx == 0 ? 0 : (*gmmParams_.groupListOptional)[idx - 1];
         int64_t mValueGroupList = (*gmmParams_.groupListOptional)[idx] - preGroupList;
-        std::string errorMessage = idx == 0 ? "groupListOptional[0]"
-                                            : "groupListOptional[" + std::to_string(idx) + "] - groupListOptional[" +
+        std::string errorMessage = idx == 0 ? "groupListOptional[0]" :
+                                              "groupListOptional[" + std::to_string(idx) + "] - groupListOptional[" +
                                                   std::to_string(idx - 1) + "]";
         CHECK_COND(xMDimValue == mValueGroupList, ACLNN_ERR_PARAM_INVALID,
                    "x[%lu] dim 0 value %ld should be equal to %s %ld.", idx, xMDimValue, errorMessage.c_str(),
@@ -367,10 +366,11 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckBiasDtype()
                        "When x dtype is float16, the bias dtype should be float16, but the actual dtype is [%s].",
                        op::ToString(biasDtype_).GetString());
         } else if (IsMxA8W4NZ()) {
-            CHECK_COND(biasDtype_ == yDtype_, ACLNN_ERR_PARAM_INVALID,
-                       "When xDtype-weightDtype is fp8_e4m3fn-fp4_e2m1, the bias dtype must be equal to y dtype, but the "
-                       "actual bias dtype is [%s], y dtype is [%s].",
-                       op::ToString(biasDtype_).GetString(), op::ToString(yDtype_).GetString());
+            CHECK_COND(
+                biasDtype_ == yDtype_, ACLNN_ERR_PARAM_INVALID,
+                "When xDtype-weightDtype is fp8_e4m3fn-fp4_e2m1, the bias dtype must be equal to y dtype, but the "
+                "actual bias dtype is [%s], y dtype is [%s].",
+                op::ToString(biasDtype_).GetString(), op::ToString(yDtype_).GetString());
         } else if (IsS8S4NZ()) {
             CHECK_COND(
                 biasDtype_ == DataType::DT_FLOAT, ACLNN_ERR_PARAM_INVALID,
@@ -403,9 +403,9 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckAntiQuantDtype(siz
 
     if (gmmParams_.antiquantOffsetOptional != nullptr) {
         // 当前有antiquantOffset的数据流，antiquantOffset的数据类型均和x一致
-        CHECK_RET(
-            CheckTensorDtype(gmmParams_.antiquantOffsetOptional, xDtype_, idx, "antiquantOffset") == ACLNN_SUCCESS,
-            ACLNN_ERR_PARAM_INVALID);
+        CHECK_RET(CheckTensorDtype(gmmParams_.antiquantOffsetOptional, xDtype_, idx, "antiquantOffset") ==
+                      ACLNN_SUCCESS,
+                  ACLNN_ERR_PARAM_INVALID);
     }
     return ACLNN_SUCCESS;
 }
@@ -469,7 +469,7 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckScaleAndPerTokenSc
         auto perTokenScaleShape = (*gmmParams_.perTokenScaleOptional)[0]->GetViewShape();
         auto perTokenScaleShapeDimNum = perTokenScaleShape.GetDimNum();
         CHECK_COND(perTokenScaleShapeDimNum == 1, ACLNN_ERR_PARAM_INVALID,
-                   "The dim of pertokenscale must be 1!");  // 仅支持perTokenScale维度为1
+                   "The dim of pertokenscale must be 1!"); // 仅支持perTokenScale维度为1
         auto xShape = (*gmmParams_.x)[0]->GetViewShape();
         auto weightShape = (*gmmParams_.weight)[0]->GetViewShape();
         auto xShapeMDim = xShape.GetDim(0);
@@ -510,8 +510,12 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckUnsupportedApi() c
                    "Only AclnnGroupedMatmulNz supports fp16/bf16-fp4_e2m1, fp8_e4m3fn-fp4_e2m1 and int8-int4 for "
                    "xDtype-weightDtype.");
     } else {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Weight quant case with x dtype [%s] and weight dtype [%s] is not supported.",
-                op::ToString(xDtype_).GetString(), op::ToString(weightDtype_).GetString());
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+            "GroupedMatmulWeightQuant", "x, weight",
+            (std::string("[") + op::ToString(xDtype_).GetString() + "], [" + op::ToString(weightDtype_).GetString() +
+             "]")
+                .c_str(),
+            "Weight quant case with this x dtype and weight dtype combination is not supported");
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -532,7 +536,7 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckGroupSize(size_t i
     // 2含义: (g,k,n)的k轴索引
     int64_t kSize = weightShape.GetDim(weightShape.GetDimNum() - 2);
     // 2含义: (g,k/groupSize,n)的k轴索引
-    int64_t groupNum = IsMxA8W4NZ() ? antiquantScaleShape.GetDim(antiquantScaleDimNum - 3) * 2:
+    int64_t groupNum = IsMxA8W4NZ() ? antiquantScaleShape.GetDim(antiquantScaleDimNum - 3) * 2 :
                                       antiquantScaleShape.GetDim(antiquantScaleDimNum - 2);
     CHECK_COND(groupNum > 0, ACLNN_ERR_PARAM_INVALID,
                "GroupNum must be greater than 0, but the actual groupNum is [%ld].", groupNum);
@@ -571,9 +575,9 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckGroupTypeScenario(
                    gmmParams_.groupType);
     } else {
         errorMessage =
-            gmmParams_.apiVersion == gmm::GMMApiVersion::V1
-                ? "M-split scenario, but the actual scenario is no-split (multi-multi-multi)"
-                : "groupType 0 (split M), but the actual groupType is [" + std::to_string(gmmParams_.groupType) + "]";
+            gmmParams_.apiVersion == gmm::GMMApiVersion::V1 ?
+                "M-split scenario, but the actual scenario is no-split (multi-multi-multi)" :
+                "groupType 0 (split M), but the actual groupType is [" + std::to_string(gmmParams_.groupType) + "]";
         CHECK_COND(gmmParams_.groupType == SPLIT_M, ACLNN_ERR_PARAM_INVALID,
                    "Weight quant cases with x dtype [%s] and weight dtype [%s] only support %s.",
                    op::ToString(xDtype_).GetString(), op::ToString(weightDtype_).GetString(), errorMessage.c_str());
@@ -588,8 +592,8 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckGroupTypeScenario(
                    "actual sizes are [%zu], [%zu] and [%zu].",
                    gmmParams_.x->Size(), gmmParams_.weight->Size(), gmmParams_.y->Size());
     } else {
-        errorMessage = gmmParams_.apiVersion == gmm::GMMApiVersion::V1 ? "When splited axis is M"
-                                                                       : "When groupType is 0 (split M)";
+        errorMessage = gmmParams_.apiVersion == gmm::GMMApiVersion::V1 ? "When splited axis is M" :
+                                                                         "When groupType is 0 (split M)";
         CHECK_COND(gmmParams_.x->Size() == 1 && gmmParams_.weight->Size() == 1 && gmmParams_.y->Size() == 1,
                    ACLNN_ERR_PARAM_INVALID,
                    "%s, the sizes of x, weight and y should all be 1, but the actual sizes are [%zu], [%zu] and [%zu].",
@@ -615,7 +619,7 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckGroupListAndSplitI
     } else {
         if (gmmParams_.apiVersion == gmm::GMMApiVersion::V1 || gmmParams_.apiVersion == gmm::GMMApiVersion::V2) {
             CHECK_COND(gmmParams_.groupListOptional != nullptr, ACLNN_ERR_PARAM_INVALID,
-                       "GroupListOptional should not be nullptr when splited axis is M.");  // V1 没有groupType参数
+                       "GroupListOptional should not be nullptr when splited axis is M."); // V1 没有groupType参数
         } else {
             CHECK_COND(gmmParams_.groupTensorOptional != nullptr, ACLNN_ERR_PARAM_INVALID,
                        "GroupListOptional should not be nullptr when groupType is 0.");

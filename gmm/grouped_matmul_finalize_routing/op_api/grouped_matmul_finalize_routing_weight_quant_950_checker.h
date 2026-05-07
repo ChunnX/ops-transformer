@@ -141,19 +141,19 @@ public:
         int64_t e = (gmmParams_.x2)->GetViewShape().GetDim(0);
         int64_t outputBS = gmmParams_.out->GetViewShape().GetDim(0);
         if (k <= 0) {
-            // 保证M/N非0已校验
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "K value should be positive, but got %ld.", k);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "k", std::to_string(k).c_str(), "K value should be positive");
             return false;
         }
         // A8W4约束: k % 32 == 0
         if (k % K_ALIGN_SIZE != 0) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "k must be a multiple of %ld, but got %ld.", K_ALIGN_SIZE, k);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "k", std::to_string(k).c_str(),
+                                                  "k must be a multiple of 32 in A8W4 quant");
             return false;
         }
         // A8W4约束: n % 32 == 0
         if (n % N_ALIGN_SIZE != 0) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "n must be a multiple of %ld, but got %ld.", N_ALIGN_SIZE, n);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "n", std::to_string(n).c_str(),
+                                                  "n must be a multiple of 32 in A8W4 quant");
             return false;
         }
         if (!CheckRequiredShapes(m, k, n, e, outputBS)) {
@@ -198,14 +198,19 @@ public:
         if (gmmParams_.shareInput != nullptr) {
             int64_t bsdp = gmmParams_.shareInput->GetViewShape().GetDim(0);
             if (bsdp > gmmParams_.out->GetViewShape().GetDim(0)) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "shareInput batch %ld should <= outputBS %ld.", bsdp,
-                        gmmParams_.out->GetViewShape().GetDim(0));
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+                    "GroupedMatmulFinalizeRoutingWeightQuant", "shareInput_batch, outputBS",
+                    (std::to_string(bsdp) + ", " + std::to_string(gmmParams_.out->GetViewShape().GetDim(0))).c_str(),
+                    "shareInput batch should <= outputBS");
                 return false;
             }
             if (gmmParams_.shareInputOffset > gmmParams_.out->GetViewShape().GetDim(0) - bsdp) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                        "sharedInputOffset(%ld) + shareInput batch(%ld) should <= outputBS(%ld).",
-                        gmmParams_.shareInputOffset, bsdp, gmmParams_.out->GetViewShape().GetDim(0));
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "sharedInputOffset, shareInput_batch, outputBS",
+                                                       (std::to_string(gmmParams_.shareInputOffset) + ", " +
+                                                        std::to_string(bsdp) + ", " +
+                                                        std::to_string(gmmParams_.out->GetViewShape().GetDim(0)))
+                                                           .c_str(),
+                                                       "sharedInputOffset + shareInput_batch should <= outputBS");
                 return false;
             }
             op::Shape shareInputExpectShape = {bsdp, n};
@@ -221,21 +226,21 @@ public:
         int64_t kInWeight = gmmParams_.x2->GetViewShape().GetDim(WQ_DIM_TWO);
         int64_t e = (gmmParams_.x2)->GetViewShape().GetDim(0);
         if (kInWeight != k) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "The dimension (k) of 'x' (%ld) must be equal to the dimension (k) of 'weight' (%ld)", k,
-                    kInWeight);
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "x, weight",
+                                                   (std::to_string(k) + ", " + std::to_string(kInWeight)).c_str(),
+                                                   "The k-axis of x and weight must be equal");
             return false;
         }
         int64_t groupListLen = gmmParams_.groupList->GetViewShape().GetDim(WQ_DIM_ZERO);
         if (groupListLen != e) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "Length of 'groupList'(%ld) should be equal to the number of experts in 'weight' (%ld).",
-                    groupListLen, e);
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                "GroupedMatmulFinalizeRoutingWeightQuant", "groupList, weight", (std::to_string(groupListLen) + ", " + std::to_string(e)).c_str(),
+                "Length of groupList should be equal to the number of experts in weight");
             return false;
         }
         if (e > WQ_MAX_NUM_EXPERTS) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In A8W4 quant, e must be less than or equal to %ld. But got %ld.",
-                    WQ_MAX_NUM_EXPERTS, e);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("GroupedMatmulFinalizeRoutingWeightQuant", "e", std::to_string(e).c_str(),
+                                                  "In A8W4 quant, e must be <= 1024");
             return false;
         }
         return true;
@@ -274,15 +279,14 @@ public:
     bool CheckXAndWeightFormat()
     {
         if (op::IsPrivateFormat(gmmParams_.x1->GetStorageFormat())) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "x must be ND format, but got: %s.",
-                    op::ToString(gmmParams_.x1->GetStorageFormat()).GetString());
+            OP_LOGE_FOR_INVALID_FORMAT("GroupedMatmulFinalizeRoutingWeightQuant", "x", op::ToString(gmmParams_.x1->GetStorageFormat()).GetString(), "ND");
             return false;
         }
         // A8W4场景：权重为NZ格式
         if (gmmParams_.x2->GetStorageFormat() != Format::FORMAT_FRACTAL_NZ &&
             gmmParams_.x2->GetStorageFormat() != Format::FORMAT_FRACTAL_NZ_C0_32) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Format of weight should be NZ(C0_32), current format is %s.",
-                    op::ToString(gmmParams_.x2->GetStorageFormat()).GetString());
+            OP_LOGE_FOR_INVALID_FORMAT("GroupedMatmulFinalizeRoutingWeightQuant", "weight", op::ToString(gmmParams_.x2->GetStorageFormat()).GetString(),
+                                       "NZ(C0_32)");
             return false;
         }
         return true;
@@ -291,43 +295,44 @@ public:
     bool CheckOtherTensorFormats()
     {
         if (op::IsPrivateFormat(gmmParams_.pertokenScaleOptional->GetStorageFormat())) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Format of pertokenScaleOptional must be ND, current format is: %s.",
-                    op::ToString(gmmParams_.pertokenScaleOptional->GetStorageFormat()).GetString());
+            OP_LOGE_FOR_INVALID_FORMAT("GroupedMatmulFinalizeRoutingWeightQuant", "pertokenScaleOptional",
+                                       op::ToString(gmmParams_.pertokenScaleOptional->GetStorageFormat()).GetString(),
+                                       "ND");
             return false;
         }
         if (op::IsPrivateFormat(gmmParams_.scale->GetStorageFormat())) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Format of scale should be ND, current format is %s.",
-                    op::ToString(gmmParams_.scale->GetStorageFormat()).GetString());
+            OP_LOGE_FOR_INVALID_FORMAT("GroupedMatmulFinalizeRoutingWeightQuant", "scale", op::ToString(gmmParams_.scale->GetStorageFormat()).GetString(),
+                                       "ND");
             return false;
         }
         if (op::IsPrivateFormat(gmmParams_.groupList->GetStorageFormat())) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Format of groupList should be ND, current format is %s.",
-                    op::ToString(gmmParams_.groupList->GetStorageFormat()).GetString());
+            OP_LOGE_FOR_INVALID_FORMAT("GroupedMatmulFinalizeRoutingWeightQuant", "groupList",
+                                       op::ToString(gmmParams_.groupList->GetStorageFormat()).GetString(), "ND");
             return false;
         }
         if (op::IsPrivateFormat(gmmParams_.logit->GetStorageFormat())) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Format of logit should be ND, current format is %s.",
-                    op::ToString(gmmParams_.logit->GetStorageFormat()).GetString());
+            OP_LOGE_FOR_INVALID_FORMAT("GroupedMatmulFinalizeRoutingWeightQuant", "logit", op::ToString(gmmParams_.logit->GetStorageFormat()).GetString(),
+                                       "ND");
             return false;
         }
         if (op::IsPrivateFormat(gmmParams_.rowIndex->GetStorageFormat())) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Format of rowIndex should be ND, current format is %s.",
-                    op::ToString(gmmParams_.rowIndex->GetStorageFormat()).GetString());
+            OP_LOGE_FOR_INVALID_FORMAT("GroupedMatmulFinalizeRoutingWeightQuant", "rowIndex",
+                                       op::ToString(gmmParams_.rowIndex->GetStorageFormat()).GetString(), "ND");
             return false;
         }
         if (op::IsPrivateFormat(gmmParams_.out->GetStorageFormat())) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Format of out should be ND, current format is %s.",
-                    op::ToString(gmmParams_.out->GetStorageFormat()).GetString());
+            OP_LOGE_FOR_INVALID_FORMAT("GroupedMatmulFinalizeRoutingWeightQuant", "out", op::ToString(gmmParams_.out->GetStorageFormat()).GetString(),
+                                       "ND");
             return false;
         }
         if (gmmParams_.bias != nullptr && op::IsPrivateFormat(gmmParams_.bias->GetStorageFormat())) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Format of bias should be ND, current format is %s.",
-                    op::ToString(gmmParams_.bias->GetStorageFormat()).GetString());
+            OP_LOGE_FOR_INVALID_FORMAT("GroupedMatmulFinalizeRoutingWeightQuant", "bias", op::ToString(gmmParams_.bias->GetStorageFormat()).GetString(),
+                                       "ND");
             return false;
         }
         if (gmmParams_.shareInput != nullptr && op::IsPrivateFormat(gmmParams_.shareInput->GetStorageFormat())) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Format of shareInput should be ND, current format is %s.",
-                    op::ToString(gmmParams_.shareInput->GetStorageFormat()).GetString());
+            OP_LOGE_FOR_INVALID_FORMAT("GroupedMatmulFinalizeRoutingWeightQuant", "shareInput",
+                                       op::ToString(gmmParams_.shareInput->GetStorageFormat()).GetString(), "ND");
             return false;
         }
         return true;

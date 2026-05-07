@@ -216,15 +216,16 @@ aclnnStatus AclnnQuantGroupedMatmulInplaceAddDAV3510Checker<T>::CheckQuantGroupe
                GetInputTensorSize(gmmParams_.y));
     int64_t groupListLen = gmmParams_.groupTensorOptional->GetViewShape().GetDim(0);
     CHECK_COND(groupListLen <= 1024, ACLNN_ERR_PARAM_INVALID, // The group number should not be greater than 1024
-                "The length of groupList should not be greater than 1024, but actual is %ld.", groupListLen);
+               "The length of groupList should not be greater than 1024, but actual is %ld.", groupListLen);
     CHECK_RET(CheckQuantCasesFormat() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckGeneralQuantShape() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     if (xDtype == DataType::DT_HIFLOAT8 && weightDtype == DataType::DT_HIFLOAT8) {
         return CheckHif8QuantParams();
     } else {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "GmmInplaceAdd T-C/T-T Quant case with x dtype %s and weight dtype %s is not supported.",
-                op::ToString(xDtype).GetString(), op::ToString(weightDtype).GetString());
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+            "QuantGroupedMatmulInplaceAdd", "x, weight",
+            (std::string(op::ToString(xDtype).GetString()) + ", " + op::ToString(weightDtype).GetString()).c_str(),
+            "GmmInplaceAdd T-C/T-T Quant case with this x dtype and weight dtype combination is not supported");
         return ACLNN_ERR_PARAM_INVALID;
     }
 }

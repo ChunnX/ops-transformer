@@ -13,9 +13,9 @@
 using namespace gmm;
 
 namespace gmm {
-    template class AclnnGroupedMatmulDAV3510Checker<aclTensorList>;
-    template class AclnnGroupedMatmulDAV3510Checker<aclTensor>;
-}
+template class AclnnGroupedMatmulDAV3510Checker<aclTensorList>;
+template class AclnnGroupedMatmulDAV3510Checker<aclTensor>;
+} // namespace gmm
 
 namespace {
 const aclTensor *GetInputTensor(const aclTensorList *input, size_t index = 0)
@@ -155,8 +155,7 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckWeightStorageShape(int64_t
     auto weightStorageLastSecondDim = weightStorage.GetDim(weightStorageShapeDim - LAST_SECOND_DIM_INDEX);
     auto weightStorageLastDim = weightStorage.GetDim(weightStorageShapeDim - LAST_FIRST_DIM_INDEX);
 
-    bool isMxfp4 = (gmmParams_.xDtype == DataType::DT_FLOAT4_E2M1 ||
-                    gmmParams_.xDtype == DataType::DT_FLOAT4_E1M2);
+    bool isMxfp4 = (gmmParams_.xDtype == DataType::DT_FLOAT4_E2M1 || gmmParams_.xDtype == DataType::DT_FLOAT4_E1M2);
 
     const int64_t CUBE_BLOCK_SIZE_K = isMxfp4 ? CUBE_BLOCK_SIZE_64 : CUBE_BLOCK_SIZE_32;
     CHECK_COND(weightStorageLastDim == CUBE_BLOCK_SIZE_K, ACLNN_ERR_PARAM_INVALID,
@@ -201,9 +200,9 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckWeightNzSpecialParams() co
 
     auto wDtype = GetInputTensor(gmmParams_.weight)->GetDataType();
     bool isInputFp8e4m3 = gmmParams_.xDtype == DataType::DT_FLOAT8_E4M3FN && wDtype == DataType::DT_FLOAT8_E4M3FN;
-    bool isInputFp4 = (gmmParams_.xDtype == DataType::DT_FLOAT4_E2M1 ||
-                       gmmParams_.xDtype == DataType::DT_FLOAT4_E1M2) &&
-                      (wDtype == DataType::DT_FLOAT4_E2M1 || wDtype == DataType::DT_FLOAT4_E1M2);
+    bool isInputFp4 =
+        (gmmParams_.xDtype == DataType::DT_FLOAT4_E2M1 || gmmParams_.xDtype == DataType::DT_FLOAT4_E1M2) &&
+        (wDtype == DataType::DT_FLOAT4_E2M1 || wDtype == DataType::DT_FLOAT4_E1M2);
     CHECK_COND((gmmParams_.xDtype == DataType::DT_INT8 && wDtype == DataType::DT_INT8) || isInputFp8e4m3 || isInputFp4,
                ACLNN_ERR_PARAM_INVALID,
                "When the format of weight is FRACTAL_NZ, x dtype and weight should be "
@@ -211,19 +210,17 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckWeightNzSpecialParams() co
                "but actual dtypes are x=%s and weight=%s.",
                op::ToString(gmmParams_.xDtype).GetString(), op::ToString(wDtype).GetString());
     if (isInputFp8e4m3 || isInputFp4) {
-        CHECK_COND(
-            gmmParams_.perTokenScaleOptional != nullptr, ACLNN_ERR_PARAM_INVALID,
-            "When format of weight is FRACTAL_NZ and in mxfp8/mxfp4 case, perTokenScaleOptional "
-            "should not be nullptr.");
+        CHECK_COND(gmmParams_.perTokenScaleOptional != nullptr, ACLNN_ERR_PARAM_INVALID,
+                   "When format of weight is FRACTAL_NZ and in mxfp8/mxfp4 case, perTokenScaleOptional "
+                   "should not be nullptr.");
         DataType scaleDtype = GetInputTensor(gmmParams_.scaleOptional)->GetDataType();
         DataType perTokenDtype = GetInputTensor(gmmParams_.perTokenScaleOptional)->GetDataType();
-        CHECK_COND(
-            (scaleDtype == DataType::DT_FLOAT8_E8M0 && perTokenDtype == DataType::DT_FLOAT8_E8M0),
-            ACLNN_ERR_PARAM_INVALID,
-            "When the format of weight is FRACTAL_NZ and x/weight dtype is FLOAT8_E4M3FN/FLOAT8_E4M3FN "
-            "or FLOAT4_E2M1|FLOAT4_E1M2 combinations, both scale and perTokenScale must be FLOAT8_E8M0, "
-            "but actual dtypes are scale=%s and perTokenScale=%s.",
-            op::ToString(scaleDtype).GetString(), op::ToString(perTokenDtype).GetString());
+        CHECK_COND((scaleDtype == DataType::DT_FLOAT8_E8M0 && perTokenDtype == DataType::DT_FLOAT8_E8M0),
+                   ACLNN_ERR_PARAM_INVALID,
+                   "When the format of weight is FRACTAL_NZ and x/weight dtype is FLOAT8_E4M3FN/FLOAT8_E4M3FN "
+                   "or FLOAT4_E2M1|FLOAT4_E1M2 combinations, both scale and perTokenScale must be FLOAT8_E8M0, "
+                   "but actual dtypes are scale=%s and perTokenScale=%s.",
+                   op::ToString(scaleDtype).GetString(), op::ToString(perTokenDtype).GetString());
     }
 
     auto yDtype = GetInputTensor(gmmParams_.y)->GetDataType();
@@ -246,10 +243,10 @@ template <typename T>
 aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckGroupedMatmulMxDtype() const
 {
     if (gmmParams_.biasOptional != nullptr) {
-       DataType biasDtype = GetInputTensor(gmmParams_.biasOptional)->GetDataType();
-       CHECK_COND(biasDtype == DataType::DT_FLOAT, ACLNN_ERR_PARAM_INVALID,
-                  "The %s dtype in mx should be FLOAT32, but actual dtype is %s.", biasName_.c_str(),
-                  op::ToString(biasDtype).GetString());
+        DataType biasDtype = GetInputTensor(gmmParams_.biasOptional)->GetDataType();
+        CHECK_COND(biasDtype == DataType::DT_FLOAT, ACLNN_ERR_PARAM_INVALID,
+                   "The %s dtype in mx should be FLOAT32, but actual dtype is %s.", biasName_.c_str(),
+                   op::ToString(biasDtype).GetString());
     }
     DataType perTokenDtype = GetInputTensor(gmmParams_.perTokenScaleOptional)->GetDataType();
     CHECK_COND(perTokenDtype == DataType::DT_FLOAT8_E8M0, ACLNN_ERR_PARAM_INVALID,
@@ -322,11 +319,11 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckMxBiasInputShape(const Ten
         auto biasGDimValue = GetInputTensor(gmmParams_.biasOptional, index)->GetViewShape().GetDim(0);
         auto biasNDimValue = GetInputTensor(gmmParams_.biasOptional, index)->GetViewShape().GetDim(1);
         CHECK_COND(biasGDimValue == groupNum, ACLNN_ERR_PARAM_INVALID,
-               "The group dim of %s[%ld] and group number[%ld] should be equal.", biasName_.c_str(), biasGDimValue,
-               groupNum);
+                   "The group dim of %s[%ld] and group number[%ld] should be equal.", biasName_.c_str(), biasGDimValue,
+                   groupNum);
         CHECK_COND(biasNDimValue == weightNDimValue, ACLNN_ERR_PARAM_INVALID,
-               "The n dim of %s[%ld] and n dim of %s[%ld] should be equal.", biasName_.c_str(), biasNDimValue,
-               weightName_.c_str(), weightNDimValue);
+                   "The n dim of %s[%ld] and n dim of %s[%ld] should be equal.", biasName_.c_str(), biasNDimValue,
+                   weightName_.c_str(), weightNDimValue);
     }
     return ACLNN_SUCCESS;
 }
@@ -372,7 +369,8 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckMxTypeMCaseInputShape(cons
                "The last dim of %s should be equal to 2, but the actual is [%ld].", perTokenScaleName_.c_str(),
                pertokenScaleLastDimValue);
     CHECK_COND(scaleLastDimValue == MXFP_MULTI_BASE_SIZE, ACLNN_ERR_PARAM_INVALID,
-               "The last dim of %s should be equal to 2, but the actual is [%ld].", scaleName_.c_str(), scaleLastDimValue);
+               "The last dim of %s should be equal to 2, but the actual is [%ld].", scaleName_.c_str(),
+               scaleLastDimValue);
     return ACLNN_SUCCESS;
 }
 
@@ -415,10 +413,10 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckMxFp8TypeKCaseInputShape(c
                scaleName_.c_str(), scaleNDimValue);
     CHECK_COND(pertokenKDimValue == (xKDimValue / MXFP_DIVISOR_SIZE + groupNum), ACLNN_ERR_PARAM_INVALID,
                "The k dim of %s[%ld] should be equal to the k dim of %s[%ld] divided by 64, plus the groupSize[%ld].",
-                perTokenScaleName_.c_str(), pertokenKDimValue, xName_.c_str(), xKDimValue, groupNum);
+               perTokenScaleName_.c_str(), pertokenKDimValue, xName_.c_str(), xKDimValue, groupNum);
     CHECK_COND(scaleKDimValue == (xKDimValue / MXFP_DIVISOR_SIZE + groupNum), ACLNN_ERR_PARAM_INVALID,
                "The k dim of %s[%ld] should be equal to the k dim of %s[%ld] divided by 64, plus the groupSize[%ld].",
-                scaleName_.c_str(), scaleKDimValue, xName_.c_str(), xKDimValue, groupNum);
+               scaleName_.c_str(), scaleKDimValue, xName_.c_str(), xKDimValue, groupNum);
     CHECK_COND(scaleLastDimValue == 2, ACLNN_ERR_PARAM_INVALID, // last dim should be 2 in mx typek quant mode
                "The last dim of %s[%ld] should be 2 when split k in mx quant mode.", scaleName_.c_str(),
                scaleLastDimValue);
@@ -551,20 +549,21 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckGroupedMatmulFp4MxDimValue
         auto weightNDimValue = GetInputTensor(gmmParams_.weight, i)->GetViewShape().GetDim(weightNIndex);
         auto weightKIndex = GetInputTensor(gmmParams_.weight, i)->GetViewShape().GetDimNum() - LAST_TWO_DIM_INDEX;
         auto weightKDimValue = GetInputTensor(gmmParams_.weight, i)->GetViewShape().GetDim(weightKIndex);
-        //2：检查N是否为偶数
+        // 2：检查N是否为偶数
         auto weightNDimModValue = weightNDimValue % 2;
-        //2：检查K是否为偶数
+        // 2：检查K是否为偶数
         auto xKDimModValue = xKDimValue % 2;
         if (!gmmParams_.transposeWeight) {
             CHECK_COND(weightNDimModValue == 0, ACLNN_ERR_PARAM_INVALID,
-                   "When the weight is not transposed, the dim N value of %s should be even, but actual dim \
+                       "When the weight is not transposed, the dim N value of %s should be even, but actual dim \
 value is %lu",
-                   weightName_.c_str(), weightNDimValue);
+                       weightName_.c_str(), weightNDimValue);
         }
-        CHECK_COND(xKDimModValue == 0, ACLNN_ERR_PARAM_INVALID,
-                   "When the dtypes of x and weight inputs are fp4 , the dim K value of %s should be even, but actual dim \
+        CHECK_COND(
+            xKDimModValue == 0, ACLNN_ERR_PARAM_INVALID,
+            "When the dtypes of x and weight inputs are fp4 , the dim K value of %s should be even, but actual dim \
 value is %lu",
-                   xName_.c_str(), xKDimValue);
+            xName_.c_str(), xKDimValue);
         // 2: mxfp4场景下不支持k轴为2
         CHECK_COND(xKDimValue != 2 && weightKDimValue != 2, ACLNN_ERR_PARAM_INVALID,
                    "When the dtypes of x and weight inputs are fp4, the dim K value should not be 2, but actual dim K \
@@ -735,14 +734,17 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckInt8QuantDtype() const
     DataType scaleDtype = GetInputTensor(gmmParams_.scaleOptional)->GetDataType();
     if (yDtype == DataType::DT_BF16) {
         CHECK_COND(scaleDtype == DataType::DT_BF16 || scaleDtype == DataType::DT_UINT64 ||
-                       scaleDtype == DataType::DT_INT64 || scaleDtype == DataType::DT_FLOAT, ACLNN_ERR_PARAM_INVALID,
+                       scaleDtype == DataType::DT_INT64 || scaleDtype == DataType::DT_FLOAT,
+                   ACLNN_ERR_PARAM_INVALID,
                    "When y dtype is bfloat16, the scale dtype should be bfloat16, uint64, int64 or float32, but actual \
-dtype is %s", op::ToString(scaleDtype).GetString());
-    } else if (yDtype == DataType::DT_FLOAT16) {
-        CHECK_COND(scaleDtype == DataType::DT_UINT64 || scaleDtype == DataType::DT_INT64 ||
-                       scaleDtype == DataType::DT_FLOAT, ACLNN_ERR_PARAM_INVALID,
-                   "When y dtype is float16, the scale dtype should be uint64, int64 or float32, but actual dtype is %s",
+dtype is %s",
                    op::ToString(scaleDtype).GetString());
+    } else if (yDtype == DataType::DT_FLOAT16) {
+        CHECK_COND(
+            scaleDtype == DataType::DT_UINT64 || scaleDtype == DataType::DT_INT64 || scaleDtype == DataType::DT_FLOAT,
+            ACLNN_ERR_PARAM_INVALID,
+            "When y dtype is float16, the scale dtype should be uint64, int64 or float32, but actual dtype is %s",
+            op::ToString(scaleDtype).GetString());
     } else if (yDtype == DataType::DT_INT8) {
         CHECK_COND(scaleDtype == DataType::DT_UINT64 || scaleDtype == DataType::DT_INT64, ACLNN_ERR_PARAM_INVALID,
                    "When y dtype is int8, the scale dtype should be uint64 or int64, but actual dtype is %s",
@@ -764,11 +766,13 @@ but actual dtype is %s",
         if (yDtype == DataType::DT_BF16) {
             CHECK_COND(scaleDtype == DataType::DT_BF16 || scaleDtype == DataType::DT_FLOAT, ACLNN_ERR_PARAM_INVALID,
                        "When perTokenScaleOptional is not nullptr and y dtype is bfloat16, the scale dtype should be \
-bfloat16 or float32, but actual dtype is %s", op::ToString(scaleDtype).GetString());
+bfloat16 or float32, but actual dtype is %s",
+                       op::ToString(scaleDtype).GetString());
         } else if (yDtype == DataType::DT_FLOAT16) {
             CHECK_COND(scaleDtype == DataType::DT_FLOAT, ACLNN_ERR_PARAM_INVALID,
                        "When perTokenScaleOptional is not nullptr and y dtype is float16, the scale dtype should be \
-float32, but actual dtype is %s", op::ToString(scaleDtype).GetString());
+float32, but actual dtype is %s",
+                       op::ToString(scaleDtype).GetString());
         }
     }
     return ACLNN_SUCCESS;
@@ -945,7 +949,8 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckFp8Hif8QuantParams() const
     DataType scaleDtype = GetInputTensor(gmmParams_.scaleOptional)->GetDataType();
     if (scaleDtype == DataType::DT_UINT64 || scaleDtype == DataType::DT_INT64) {
         CHECK_COND(gmmParams_.groupType == SPLIT_M, ACLNN_ERR_PARAM_INVALID,
-                   "In float8/hifloat8 quant case, when the %s dtype is uint64 or int64, only groupType 0 (split M) is supported.",
+                   "In float8/hifloat8 quant case, when the %s dtype is uint64 or int64, only groupType 0 (split M) is "
+                   "supported.",
                    scaleName_.c_str());
     } else {
         CHECK_COND(gmmParams_.groupType != SPLIT_N, ACLNN_ERR_PARAM_INVALID,
@@ -965,10 +970,11 @@ float8/hifloat8 quant case, but actual dtype is %s",
                    scaleName_.c_str(), perTokenScaleName_.c_str(), op::ToString(scaleDtype).GetString());
     }
     DataType yDtype = GetInputTensor(gmmParams_.y)->GetDataType();
-    CHECK_COND(yDtype == DataType::DT_FLOAT || yDtype == DataType::DT_BF16 || yDtype == DataType::DT_FLOAT16,
-               ACLNN_ERR_PARAM_INVALID,
-               "Expect y dtype to be float32, float16 or bfloat16 in float8/hifloat8 quant case, but actual dtype is %s",
-               op::ToString(yDtype).GetString());
+    CHECK_COND(
+        yDtype == DataType::DT_FLOAT || yDtype == DataType::DT_BF16 || yDtype == DataType::DT_FLOAT16,
+        ACLNN_ERR_PARAM_INVALID,
+        "Expect y dtype to be float32, float16 or bfloat16 in float8/hifloat8 quant case, but actual dtype is %s",
+        op::ToString(yDtype).GetString());
     if (IsPerTileQuantMode()) {
         CHECK_RET(CheckGroupedMatmulPerTile() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
         return ACLNN_SUCCESS;
@@ -988,8 +994,8 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckFp8Params(const DataType &
                scaleDtype == DataType::DT_INT64) {
         return CheckFp8Hif8QuantParams();
     } else {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Unsupported quant scale dtype %s with float8 case",
-                op::ToString(scaleDtype).GetString());
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON("GroupedMatmul", "scale", op::ToString(scaleDtype).GetString(),
+                                              "Unsupported quant scale dtype with float8 case");
         return ACLNN_ERR_PARAM_INVALID;
     }
 }
@@ -1004,21 +1010,20 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckFp4Params(const DataType &
     bool isE1M2 = (gmmParams_.xDtype == DataType::DT_FLOAT4_E1M2 ||
                    GetInputTensor(gmmParams_.weight)->GetDataType() == DataType::DT_FLOAT4_E1M2);
     if (isE1M2 && weightStorageFormat == op::Format::FORMAT_ND) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "float4_e1m2 does not support ND format. Weight storage format must be FRACTAL_NZ, but actual is ND.");
+        OP_LOGE_FOR_INVALID_FORMAT("GroupedMatmul", "weight", "ND", "FRACTAL_NZ");
         return ACLNN_ERR_PARAM_INVALID;
     }
     if (scaleDtype == DataType::DT_FLOAT8_E8M0) {
         return CheckGroupedMatmulMxfp4();
     }
-    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Unsupported quant scale dtype %s with float4 case",
-            op::ToString(scaleDtype).GetString());
+    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON("GroupedMatmul", "scale", op::ToString(scaleDtype).GetString(),
+                                          "Unsupported quant scale dtype with float4 case");
     return ACLNN_ERR_PARAM_INVALID;
 }
 
 template <typename T>
 aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckInputAndOutputDtypeForV3Version() const
-{   
+{
     DataType xDtype = gmmParams_.xDtype;
     DataType weightDtype = GetInputTensor(gmmParams_.weight)->GetDataType();
     DataType scaleDtype = GetInputTensor(gmmParams_.scaleOptional)->GetDataType();
@@ -1030,33 +1035,30 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckInputAndOutputDtypeForV3Ve
                "In quant case, scale dtype should be uint64 or int64, but the actual is %s.",
                op::ToString(scaleDtype).GetString());
     CHECK_COND(yDtype == DataType::DT_INT8, ACLNN_ERR_PARAM_INVALID,
-               "In quant case, y dtype should be int8, but the actual is %s.",
-               op::ToString(yDtype).GetString());
+               "In quant case, y dtype should be int8, but the actual is %s.", op::ToString(yDtype).GetString());
     if (gmmParams_.biasOptional != nullptr) {
         DataType biasDtype = (*gmmParams_.biasOptional)[0]->GetDataType();
         CHECK_COND(biasDtype == DataType::DT_INT32, ACLNN_ERR_PARAM_INVALID,
                    "In quant case, bias dtype should be int32, but the actual is %s.",
                    op::ToString(biasDtype).GetString());
-    } 
+    }
     return ACLNN_SUCCESS;
 }
 
 template <typename T>
 aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckInputShapeForV3Version() const
-{   
+{
     auto groupNum = gmmParams_.groupTensorOptional->GetViewShape().GetDim(0);
     auto scaleDimNumber = GetInputTensor(gmmParams_.scaleOptional)->GetViewShape().GetDimNum();
     auto scaleNDim = GetInputTensor(gmmParams_.scaleOptional)->GetViewShape().GetDim(scaleDimNumber - 1);
     auto weightNIndex = GetInputTensor(gmmParams_.weight)->GetViewShape().GetDimNum() - 1;
     auto weightNDim = GetInputTensor(gmmParams_.weight)->GetViewShape().GetDim(weightNIndex);
-    CHECK_COND(GetInputTensor(gmmParams_.scaleOptional)->GetViewShape().GetDim(0) == groupNum,
-               ACLNN_ERR_PARAM_INVALID,
-               "In quant case, the first dim of %s[%ld] should be equal to that of %s[%ld].",
-               scaleName_.c_str(), GetInputTensor(gmmParams_.scaleOptional)->GetViewShape().GetDim(0),
-               groupTensorName_.c_str(), groupNum);
+    CHECK_COND(GetInputTensor(gmmParams_.scaleOptional)->GetViewShape().GetDim(0) == groupNum, ACLNN_ERR_PARAM_INVALID,
+               "In quant case, the first dim of %s[%ld] should be equal to that of %s[%ld].", scaleName_.c_str(),
+               GetInputTensor(gmmParams_.scaleOptional)->GetViewShape().GetDim(0), groupTensorName_.c_str(), groupNum);
     CHECK_COND(scaleNDim == weightNDim, ACLNN_ERR_PARAM_INVALID,
-               "In quant case, the N dim of %s[%ld] should be equal to that of %s[%ld].",
-               scaleName_.c_str(), scaleNDim, weightName_.c_str(), weightNDim);
+               "In quant case, the N dim of %s[%ld] should be equal to that of %s[%ld].", scaleName_.c_str(), scaleNDim,
+               weightName_.c_str(), weightNDim);
     if (gmmParams_.biasOptional != nullptr) {
         auto biasGDimValue = GetInputTensor(gmmParams_.biasOptional)->GetViewShape().GetDim(0);
         auto biasNDimValue = GetInputTensor(gmmParams_.biasOptional)->GetViewShape().GetDim(1);
@@ -1082,7 +1084,7 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckInputParamsForV3Version() 
 
 template <typename T>
 aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckGroupedMatmulDAV3510() const
-{   
+{
     DataType xDtype = gmmParams_.xDtype;
     DataType weightDtype = GetInputTensor(gmmParams_.weight)->GetDataType();
     DataType yDtype = GetInputTensor(gmmParams_.y)->GetDataType();
@@ -1102,14 +1104,14 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckGroupedMatmulDAV3510() con
                GetInputTensorSize(gmmParams_.x), GetInputTensorSize(gmmParams_.weight),
                GetInputTensorSize(gmmParams_.y));
     CHECK_RET(CheckQuantCasesFormat() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
-    if (GetInputTensor(gmmParams_.weight)->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ){
+    if (GetInputTensor(gmmParams_.weight)->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ) {
         CHECK_RET(CheckWeightNzSpecialParams() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     }
     CHECK_RET(CheckGeneralQuantShape() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     if (gmmParams_.apiVersion == gmm::GMMApiVersion::V3) {
-        CHECK_COND(CheckInputParamsForV3Version() == ACLNN_SUCCESS,
-        ACLNN_ERR_PARAM_INVALID, "CheckInputParamsForV3Version failed.");
+        CHECK_COND(CheckInputParamsForV3Version() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
+                   "CheckInputParamsForV3Version failed.");
     }
     DataType scaleDtype = DataType::DT_UINT64;
     if (gmmParams_.scaleOptional != nullptr) {
@@ -1118,21 +1120,23 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckGroupedMatmulDAV3510() con
     if (xDtype == DataType::DT_INT8 && weightDtype == DataType::DT_INT8) {
         return CheckInt8QuantParams();
     } else if (xDtype == DataType::DT_HIFLOAT8 && weightDtype == DataType::DT_HIFLOAT8) {
-        CHECK_COND(
-            scaleDtype == DataType::DT_UINT64 || scaleDtype == DataType::DT_FLOAT || scaleDtype == DataType::DT_INT64,
-            ACLNN_ERR_PARAM_INVALID,
-            "In hifloat8 quant case, scale dtype should be uint64, int64 or float32, but actual dtype is %s",
-            op::ToString(scaleDtype).GetString());
+        CHECK_COND(scaleDtype == DataType::DT_UINT64 || scaleDtype == DataType::DT_FLOAT ||
+                       scaleDtype == DataType::DT_INT64,
+                   ACLNN_ERR_PARAM_INVALID,
+                   "In hifloat8 quant case, scale dtype should be uint64, int64 or float32, but actual dtype is %s",
+                   op::ToString(scaleDtype).GetString());
         return CheckFp8Hif8QuantParams();
     } else if ((xDtype == DataType::DT_FLOAT8_E4M3FN || xDtype == DataType::DT_FLOAT8_E5M2) &&
-                (weightDtype == DataType::DT_FLOAT8_E4M3FN || weightDtype == DataType::DT_FLOAT8_E5M2)) {
+               (weightDtype == DataType::DT_FLOAT8_E4M3FN || weightDtype == DataType::DT_FLOAT8_E5M2)) {
         return CheckFp8Params(scaleDtype);
     } else if ((xDtype == DataType::DT_FLOAT4_E2M1 || xDtype == DataType::DT_FLOAT4_E1M2) &&
-                (weightDtype == DataType::DT_FLOAT4_E2M1 || weightDtype == DataType::DT_FLOAT4_E1M2)) {
+               (weightDtype == DataType::DT_FLOAT4_E2M1 || weightDtype == DataType::DT_FLOAT4_E1M2)) {
         return CheckFp4Params(scaleDtype);
     } else {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Quant case with x dtype %s and weight dtype %s is not supported.",
-                op::ToString(xDtype).GetString(), op::ToString(weightDtype).GetString());
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+            "GroupedMatmul", "x, weight",
+            (std::string(op::ToString(xDtype).GetString()) + ", " + op::ToString(weightDtype).GetString()).c_str(),
+            "Quant case with this x dtype and weight dtype combination is not supported");
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
