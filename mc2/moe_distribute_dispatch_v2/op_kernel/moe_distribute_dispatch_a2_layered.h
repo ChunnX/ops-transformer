@@ -295,7 +295,8 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
     ubLocalHead = rdmaInBuf2_.Get<uint32_t>();
     leftBufSize -= UB_32B_ALIGN * 2;
 
-    uint32_t aDumpSize = Std::max(RoundUp(Mc2A2Kernel::H_POS + 1U, BITS32_PER_BLOCK), BITS32_PER_BLOCK * 2U) * sizeof(uint32_t);
+    uint32_t aDumpSize = Std::max(RoundUp(Mc2A2Kernel::H_POS + 1U, BITS32_PER_BLOCK),
+                                  BITS32_PER_BLOCK * 2U) * sizeof(uint32_t);
     tpipe_->InitBuffer(aDumpBuf_, aDumpSize);
     leftBufSize -= aDumpSize;
 
@@ -326,8 +327,9 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
     magicVal_ = addrInfo_.GetMagicValue();
     LocalTensor<uint8_t> aDumpTensor = aDumpBuf_.Get<uint8_t>();
     GM_ADDR aDumpAddr = addrInfo_.GetIpcAdumpWinAddr();
-    aDump_.Init(aDumpAddr, aivId_, rankId_, worldSize_, rankId_, moeExpertNum_, worldSize_, globalBs_, (magicVal_ - 1UL) & 0x1,
-        Mc2A2Kernel::IS_HIERARCHY, aivNum_, aDumpTensor, axisH_);
+    aDump_.Init(aDumpAddr, aivId_, rankId_, worldSize_, rankId_, moeExpertNum_, worldSize_,
+                globalBs_, (magicVal_ - 1UL) & 0x1,
+                Mc2A2Kernel::IS_HIERARCHY, aivNum_, aDumpTensor, axisH_);
     AscendC::PipeBarrier<PIPE_ALL>();
 }
 

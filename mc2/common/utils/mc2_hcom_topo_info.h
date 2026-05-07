@@ -66,7 +66,7 @@ private:
     using FuncGetInstSize = HcclResult (*)(HcclComm, uint32_t, uint32_t *);
 #endif
     using FuncGetCclBufferSize = HcclResult (*)(HcclComm, uint64_t *);
-    using FuncGetHcclBuffer = HcclResult (*)(HcclComm, void **, uint64_t *); 
+    using FuncGetHcclBuffer = HcclResult (*)(HcclComm, void **, uint64_t *);
     void *hcclHandle_ = nullptr;
     FuncGetHandle getCommHandle_ = nullptr;
 #ifdef BUILD_OPEN_PROJECT
