@@ -52,6 +52,18 @@ public:
             .ParamType(OPTIONAL)
             .DataType({ge::DT_INT32, ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
+        this->Input("queryDequantScaleOptional")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
+            .FormatList({ge::FORMAT_ND});
+        this->Input("keyDequantScaleOptional")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
+            .FormatList({ge::FORMAT_ND});
+        this->Input("valueDequantScaleOptional")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
+            .FormatList({ge::FORMAT_ND});
         this->Output("attentionOut")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
