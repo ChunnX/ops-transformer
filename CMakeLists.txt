@@ -538,6 +538,8 @@ if (BUILD_OPS_RTY_KERNEL)
             ${ASCEND_IMPL_OUT_DIR}
             ${ASCEND_AUTOGEN_DIR}
             --opsinfo-dir ${base_aclnn_binary_dir} ${base_aclnn_binary_dir}/inner ${base_aclnn_binary_dir}/exc
+            --compute-unit ${ASCEND_COMPUTE_UNIT}
+            --enable-experimental ${ENABLE_EXPERIMENTAL}
     )
 
     add_dependencies(generate_transformer_adapt_py opbuild_gen_default opbuild_gen_inner opbuild_gen_exc)
