@@ -22,6 +22,7 @@
 #include "kernel_operator.h"
 #endif
 #include "const_def.h"
+
 using namespace AttentionCommon;
 using namespace AscendC;
 using AscendC::LocalTensor;
@@ -695,9 +696,9 @@ __aicore__ inline void ComputeSoftMaxLse(LocalTensor<T> &softmaxlseUb, LocalTens
 }
 
 static constexpr uint64_t headDim = 512ULL;
-template <FIA_LAYOUT LAYOUT_T, typename OUT_T>
+template <FIA_LAYOUT LAYOUT_T, typename OUT_T, typename CONST_INFO_T = AttentionCommon::ConstInfo>
 __aicore__ inline void Bmm2DataCopyOutNBSDMTiling(LocalTensor<OUT_T> &attenOutUb, const FusedTransposeInfo &transInfo,
-                                                  const AttentionCommon::ConstInfo &constInfo,
+                                                  const CONST_INFO_T &constInfo,
                                                   GlobalTensor<uint64_t> &actualSeqLengthsGmQ,
                                                   GlobalTensor<OUT_T> &attentionOutGm)
 {
@@ -747,10 +748,9 @@ __aicore__ inline void Bmm2DataCopyOutNBSDMTiling(LocalTensor<OUT_T> &attenOutUb
     }
 }
 
-template <typename OUT_T>
+template <typename OUT_T, typename CONST_INFO_T = AttentionCommon::ConstInfo>
 __aicore__ inline void Bmm2DataCopyOutNBSDGTiling(LocalTensor<OUT_T> &attenOutUb, const FusedTransposeInfo &transInfo,
-                                                  const AttentionCommon::ConstInfo &constInfo,
-                                                  GlobalTensor<OUT_T> &attentionOutGm)
+                                                  const CONST_INFO_T &constInfo, GlobalTensor<OUT_T> &attentionOutGm)
 {
     bool hasHeadBlock = transInfo.s1StartIdx != 0;
     bool hasTailBlock = (transInfo.s1EndIdx + 1) != constInfo.qSeqSize;
@@ -1224,8 +1224,8 @@ __aicore__ inline void AttentionMaskCompute(LocalTensor<T> &dstUb, LocalTensor<T
             SelectWithBytesMask(dstUb, srcUb, *((T *)&info.maskValue), attenMaskUb, tmpBuf,
                                 selectWithBytesMaskShapeInfo);
         }
-        srcUb.SetSize(AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_32K /
-                      sizeof(T)); // mmResUb Size复原,mask不用复原,与原来一致
+        constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768;
+        srcUb.SetSize(BUFFER_SIZE_BYTE_32K / sizeof(T)); // mmResUb Size复原,mask不用复原,与原来一致
     }
 }
 
@@ -1253,6 +1253,19 @@ __aicore__ inline constexpr UbInputFormat GeInputUbFormat()
     if constexpr (LAYOUT_T == FIA_LAYOUT::BSH || LAYOUT_T == FIA_LAYOUT::TND || LAYOUT_T == FIA_LAYOUT::BSND) {
         return UbInputFormat::S1G;
     } else if constexpr (LAYOUT_T == FIA_LAYOUT::BNSD || LAYOUT_T == FIA_LAYOUT::NTD) {
+        return UbInputFormat::GS1;
+    }
+}
+
+template <LayOutTypeEnum LAYOUT>
+__aicore__ inline constexpr UbInputFormat GeInputUbFormat()
+{
+    static_assert((LAYOUT == LayOutTypeEnum::LAYOUT_BSH) || (LAYOUT == LayOutTypeEnum::LAYOUT_BNSD) ||
+                      (LAYOUT == LayOutTypeEnum::LAYOUT_TND) || (LAYOUT == LayOutTypeEnum::LAYOUT_NTD),
+                  "Get Query GmFormat fail, LAYOUT_T is incorrect");
+    if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH || LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
+        return UbInputFormat::S1G;
+    } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BNSD || LAYOUT == LayOutTypeEnum::LAYOUT_NTD) {
         return UbInputFormat::GS1;
     }
 }
