@@ -29,10 +29,6 @@
 using namespace AscendC;
 using namespace matmul;
 
-#ifndef FORMAT_FRACTAL_NZ
-    #define FORMAT_FRACTAL_NZ
-#endif
-
 namespace {
 #if defined(FORMAT_WEIGHT) && FORMAT_WEIGHT == FORMAT_FRACTAL_NZ
 constexpr CubeFormat wFormat = CubeFormat::NZ;
