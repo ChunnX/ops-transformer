@@ -34,7 +34,7 @@
     
 ## 函数原型
 
-该算子分为两段式接口，必须先调用“aclnnQuantReduceScatterGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnQuantReduceScatter”接口执行计算。
+该算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnQuantReduceScatterGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnQuantReduceScatter”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnQuantReduceScatterGetWorkspaceSize(
@@ -249,7 +249,7 @@ aclnnStatus aclnnQuantReduceScatter(
 
 示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
 
-- <term>Atlas A5 训练系列产品/Atlas A5 推理系列产品</term>：
+- <term>Ascend 950PR/Ascend 950DT</term>：
 
     ```Cpp
     #include <thread>

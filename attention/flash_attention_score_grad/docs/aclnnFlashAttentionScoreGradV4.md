@@ -21,51 +21,51 @@
   - pseType=1时，与[FlashAttentionScoreGrad](./aclnnFlashAttentionScoreGrad.md)计算公式相同
   - pseType=其他取值时，公式如下：
 
-  $$
-  Y=Dropout(Softmax(Mask(\frac{QK^T}{\sqrt{d}}+pse),atten\_mask),keep\_prob)V
-  $$
+    $$
+    Y=Dropout(Softmax(Mask(\frac{QK^T}{\sqrt{d}}+pse),atten\_mask),keep\_prob)V
+    $$
 
     为方便表达，以变量$S$和$P$表示计算公式：
 
-  $$
-  S=Mask(\frac{QK^T}{\sqrt{d}}+pse),atten\_mask
-  $$
+    $$
+    S=Mask(\frac{QK^T}{\sqrt{d}}+pse),atten\_mask
+    $$
 
-  $$
-  P=Dropout(Softmax(S),keep\_prob)
-  $$
+    $$
+    P=Dropout(Softmax(S),keep\_prob)
+    $$
 
-  $$
-  Y=PV
-  $$
+    $$
+    Y=PV
+    $$
 
     则注意力的反向计算公式为：
 
-  $$
-  dV=P^TdY
-  $$
+    $$
+    dV=P^TdY
+    $$
 
-  $$
-  dQ=\frac{((dS)*K)}{\sqrt{d}}
-  $$
+    $$
+    dQ=\frac{((dS)*K)}{\sqrt{d}}
+    $$
 
-  $$
-  dK=\frac{((dS)^T*Q)}{\sqrt{d}}
-  $$
+    $$
+    dK=\frac{((dS)^T*Q)}{\sqrt{d}}
+    $$
 
-  其中增加**sink**之后计算逻辑见下，主要修改相关softmax_max和softmax_sum逻辑计算部分
+    其中增加**sink**之后计算逻辑见下，主要修改相关softmax_max和softmax_sum逻辑计算部分
 
-  $$
-  m = max(sink, max(S))
-  $$
+    $$
+    m = max(sink, max(S))
+    $$
 
-  $$
-  Attention = \frac{e^{S - m} @ V}{\sum e^{S-m} + S^{sink - m}}
-  $$
+    $$
+    Attention = \frac{e^{S - m} @ V}{\sum e^{S-m} + S^{sink - m}}
+    $$
 
-  $$
-  dSink = reduce(-Softmax(S) * dP * SimpleSoftmax(sink, x\_max, x\_sum))
-  $$
+    $$
+    dSink = reduce(-Softmax(S) * dP * SimpleSoftmax(sink, x\_max, x\_sum))
+    $$
 
     **说明：**
     query、keyIn、value数据排布格式支持从多种维度解读，其中T (Total S Length) 表示所有batch对应的S的总长、B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、d（Head-Dim）表示隐藏层最小的单元尺寸，且满足d=H/N。

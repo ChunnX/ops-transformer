@@ -36,7 +36,7 @@
 
 ## 函数原型
 
-该算子分为两段式接口，必须先调用“aclnnQuantAllReduceGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnQuantAllReduce”接口执行计算。
+该算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnQuantAllReduceGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnQuantAllReduce”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnQuantAllReduceGetWorkspaceSize(
@@ -44,7 +44,7 @@ aclnnStatus aclnnQuantAllReduceGetWorkspaceSize(
     const aclTensor*  scales,
     const char*       group,
     const char*       reduceOp,
-    aclTensor*  output,
+    aclTensor*        output,
     uint64_t*         workspaceSize,
     aclOpExecutor**   executor)
 ```

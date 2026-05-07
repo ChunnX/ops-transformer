@@ -13,7 +13,6 @@
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
 
-
 ## 功能说明
 
 - 接口功能：MhcPreBackward是MhcPre的反向算子，MhcPre算子基于一系列计算得到mHC（Manifold-Constrained Hyper-Connections）架构中的$H^{res}$和$H^{post}$投影矩阵以及Atten或MLP层的输入矩阵$h^{in}$
@@ -23,8 +22,11 @@
     - 输出组合梯度计算
 
         - 正向公式：
+
             $$H\_in = \sum_{i=1}^{N} x[{B,S,i,:}] · H\_pre_n[B,S,i]$$
+
         - 反向计算：
+
             $$
             \begin{aligned}
             H\_pre\_grad &= \text{Reduce}\left(H\_in\_grad.\text{unsqueeze}(-2) \odot x, \text{dim}=-1\right) \quad ([B,S,N]) \\
@@ -34,8 +36,11 @@
 
     - Sigmoid门控反向（H_pre）
         - 正向公式：
-        $$H\_pre = \text{Sigmoid}(\alpha\_pre * H\_pre\_1 + bias\_pre) + hc\_eps$$
+
+            $$H\_pre = \text{Sigmoid}(\alpha\_pre * H\_pre\_1 + bias\_pre) + hc\_eps$$
+
         - 反向计算：
+
             $$
             \begin{aligned}
             s &= H\_pre - hc\_eps \\
@@ -48,8 +53,11 @@
 
     - Sigmoid门控反向（H_post）
         - 正向公式：
-        $$H\_post = \text{Sigmoid}(\alpha\_post * H\_post\_1 + bias\_post) * 2$$
+
+            $$H\_post = \text{Sigmoid}(\alpha\_post * H\_post\_1 + bias\_post) * 2$$
+
         - 反向计算：
+
             $$
             \begin{aligned}
             H\_post\_2\_grad &= H\_post\_grad \odot \left(H\_post \cdot \left(1 - \frac{H\_post}{2}\right)\right) \\
@@ -61,8 +69,11 @@
 
     - 残差连接反向（H_res）
         - 正向公式：
-        $$H\_res = \alpha\_res * H\_res\_1 + bias\_res$$
+
+            $$H\_res = \alpha\_res * H\_res\_1 + bias\_res$$
+
         - 反向计算：
+
             $$
             \begin{aligned}
             H\_res\_2\_grad &= H\_res\_grad \cdot \alpha_{res} \quad ([B,S,N,N]) \\
@@ -74,8 +85,11 @@
 
     - RMSNorm Fusion反向
         - 正向公式：
-        $$H\_mix\_tmp = H\_mix * inv\_rms$$
+
+            $$H\_mix\_tmp = H\_mix * inv\_rms$$
+
         - 反向计算：
+
             $$
             \begin{aligned}
             H\_mix\_tmp\_grad &= \text{Concat}(H\_pre\_1\_grad, H\_post\_1\_grad, H\_res\_1\_grad) \quad ([B,S,2N+N^2]) \\
@@ -86,9 +100,13 @@
 
     - 矩阵乘法反向
         - 正向公式：
-        $$H\_mix = x\_rs @ phi^T$$
-        $$x\_rs = x * gamma$$
+
+            $$H\_mix = x\_rs @ phi^T$$
+
+            $$x\_rs = x * gamma$$
+
         - 反向计算：
+
             $$
             \begin{aligned}
             x\_rs\_grad &= H\_mix\_grad @ phi \quad ([B,S,ND]) \\
@@ -100,8 +118,11 @@
 
     - 特征缩放反向
         - 正向公式：
-        $$x\_rs = x * gamma$$
+
+            $$x\_rs = x * gamma$$
+
         - 反向计算：
+
             $$
             \begin{aligned}
             x\_grad\_mm &= x\_rs\_grad * gamma \\
@@ -111,10 +132,13 @@
 
     - RMS归一化梯度计算
         - 正向公式：
+
             $$
             inv\_rms = \frac{1}{\sqrt{\frac{1}{n}\sum_{i=1}^{n}x_i^2 + eps}}, \quad 其中\ n = N * D
             $$
+
         - 反向计算：
+
             $$
             \begin{aligned}
             x\_rs\_grad\_inv &= - \left(\frac{inv\_rms\_grad \cdot {inv\_rms}^3}{N*D}\right) \cdot x\_rs \\
@@ -125,6 +149,7 @@
             $$
 
     - 融合mhc_post的grad_x相加操作
+
         $$
         \begin{aligned}
         x\_grad &= x\_grad + grad\_x\_post
@@ -134,6 +159,7 @@
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMhcPreBackwardGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMhcPreBackward”接口执行计算。
+
 ```Cpp
 aclnnStatus aclnnMhcPreBackwardGetWorkspaceSize(  
     const aclTensor     *x,
@@ -157,6 +183,7 @@ aclnnStatus aclnnMhcPreBackwardGetWorkspaceSize(
     uint64_t            *workspaceSize,
     aclOpExecutor       **executor)
 ```
+
 ```Cpp
 aclnnStatus aclnnMhcPreBackward(
     void             *workspace, 
@@ -491,7 +518,6 @@ aclnnStatus aclnnMhcPreBackward(
         </tbody>
     </table>
 
-
 ## aclnnMhcPreBackward
 
 - **参数说明：**
@@ -568,10 +594,10 @@ aclnnStatus aclnnMhcPreBackward(
         </tbody>
     </table>
 
-
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+
 ```Cpp
 #include <iostream>
 #include <vector>

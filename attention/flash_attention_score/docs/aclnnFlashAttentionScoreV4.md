@@ -22,28 +22,30 @@
 
 - 计算公式：
 
-   注意力的正向计算公式如下：
+  注意力的正向计算公式如下：
 
-   - psetype=1时，与[FlashAttentionScore](./aclnnFlashAttentionScore.md)计算公式相同。
+  - psetype=1时，与[FlashAttentionScore](./aclnnFlashAttentionScore.md)计算公式相同。
 
-   - psetype=其他取值时，公式如下：
+  - psetype=其他取值时，公式如下：
 
-     $$
-     attention\_out=Dropout(Softmax(Mask(scale*(query*key^T) + pse),atten\_mask),keep\_prob)*value
-     $$
-  其中增加**sink**之后计算逻辑见下，主要修改相关softmax_max和softmax_sum逻辑计算部分
-  
-  $$
-  S = Q * K^{T}
-  $$
-  
-  $$
-  m = max(sink, max(S))
-  $$
-  
-  $$
-  Attention = \frac{e^{S - m} * V}{\sum e^{S-m} + e^{sink - m}}
-  $$
+    $$
+    attention\_out=Dropout(Softmax(Mask(scale*(query*key^T) + pse),atten\_mask),keep\_prob)*value
+    $$
+
+    其中增加**sink**之后计算逻辑见下，主要修改相关softmax_max和softmax_sum逻辑计算部分
+    
+    $$
+    S = Q * K^{T}
+    $$
+    
+    $$
+    m = max(sink, max(S))
+    $$
+    
+    $$
+    Attention = \frac{e^{S - m} * V}{\sum e^{S-m} + e^{sink - m}}
+    $$
+
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnFlashAttentionScoreV4GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFlashAttentionScoreV4”接口执行计算。

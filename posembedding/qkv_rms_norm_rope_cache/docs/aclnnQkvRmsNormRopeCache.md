@@ -147,14 +147,14 @@ aclnnStatus aclnnQkvRmsNormRopeCache(
 
 - **参数说明：**
 
-  <table style="undefined;table-layout: fixed; width: 1503px"><colgroup>
+  <table style="undefined;table-layout: fixed; width: 1553px"><colgroup>
   <col style="width: 146px">
   <col style="width: 120px">
   <col style="width: 271px">
   <col style="width: 392px">
   <col style="width: 228px">
-  <col style="width: 101px">
-  <col style="width: 100px">
+  <col style="width: 121px">
+  <col style="width: 130px">
   <col style="width: 145px">
   </colgroup>
   <thead>
@@ -432,10 +432,10 @@ aclnnStatus aclnnQkvRmsNormRopeCache(
 
 - **参数说明：**
 
-  <table style="undefined;table-layout: fixed; width: 953px"><colgroup>
-  <col style="width: 173px">
-  <col style="width: 112px">
-  <col style="width: 668px">
+  <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+  <col style="width: 170px">
+  <col style="width: 130px">
+  <col style="width: 850px">
   </colgroup>
   <thead>
     <tr>
