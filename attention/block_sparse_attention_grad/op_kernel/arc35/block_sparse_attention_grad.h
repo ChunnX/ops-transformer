@@ -40,17 +40,19 @@ public:
                                    GM_ADDR actualQseqlen, GM_ADDR actualKvseqlen, GM_ADDR dq, GM_ADDR dk, GM_ADDR dv,
                                    GM_ADDR workspace, const TILING_CLASS *tilingData)
     {
-        printf("BlockSparseAttentionGrad LAUNCHED!\n");
-
         addr_.Init(tilingData, actualQseqlen, actualKvseqlen);
 
         if ASCEND_IS_AIC {
+            printf("=====================cubeIdx=%d=====================\n", GetBlockIdx());
             CubeProcess(dout, q, k, v, out, softmaxLse, blockSparseMask, blockShape, attentionMask, actualQseqlen,
                         actualKvseqlen, dq, dk, dv, workspace, tilingData);
+            printf("====================================================\n");
         }
         if ASCEND_IS_AIV {
+            printf("=====================vectorIdx=%d=====================\n", GetBlockIdx());
             VectorProcess(dout, q, k, v, out, softmaxLse, blockSparseMask, blockShape, attentionMask, actualQseqlen,
                           actualKvseqlen, dq, dk, dv, workspace, tilingData);
+            printf("====================================================\n");
         }
     }
 
@@ -59,8 +61,6 @@ public:
                                        GM_ADDR actualQseqlen, GM_ADDR actualKvseqlen, GM_ADDR dq, GM_ADDR dk,
                                        GM_ADDR dv, GM_ADDR workspace, const TILING_CLASS *tilingData)
     {
-        printf("CubeProcess LAUNCHED!\n");
-
         uint32_t taskId = 0;
         while (true) {
             addr_.GetRunTimeInfo(&runTimeInfo_);
@@ -73,8 +73,6 @@ public:
                                          GM_ADDR actualQseqlen, GM_ADDR actualKvseqlen, GM_ADDR dq, GM_ADDR dk,
                                          GM_ADDR dv, GM_ADDR workspace, const TILING_CLASS *tilingData)
     {
-        printf("VectorProcess LAUNCHED!\n");
-
         uint32_t taskId = 0;
         while (true) {
             addr_.GetRunTimeInfo(&runTimeInfo_);
