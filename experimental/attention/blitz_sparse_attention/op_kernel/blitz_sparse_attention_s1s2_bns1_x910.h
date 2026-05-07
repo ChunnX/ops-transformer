@@ -525,18 +525,98 @@ protected:
             this->mm.SetSelfDefineData(reinterpret_cast<int64_t>(this->bmm1CBDataPtr[params->gmPingpong]));
         }
 
-        this->mm.SetTail(params->singleProcessSOuterSize * this->msdIterNum, params->singleProcessSInnerBmmTail);
+        if (this->isKvContinuous == 0) {
+            ListTensorDesc keyListDesc((__gm__ void*)this->key_ptr);
+            __gm__ uint8_t* tempKeyGm = (__gm__ uint8_t*)keyListDesc.GetDataPtr<__gm__ uint8_t>(params->taskBatch);
+            this->keyGm.SetGlobalBuffer((__gm__ KV_T*)tempKeyGm);
+        }
+
         if constexpr (PFAT::msdMode == MsdMode::MSD_ON) {
             this->mm.SetTensorA(this->queryMsdExpandGm);
         } else {
             this->mm.SetTensorA(this->queryGm[params->tensorAOffset]);
         }
 
-        if (this->isKvContinuous == 0) {
-            ListTensorDesc keyListDesc((__gm__ void*)this->key_ptr);
-            __gm__ uint8_t* tempKeyGm = (__gm__ uint8_t*)keyListDesc.GetDataPtr<__gm__ uint8_t>(params->taskBatch);
-            this->keyGm.SetGlobalBuffer((__gm__ KV_T*)tempKeyGm);
+        // quant:
+        if constexpr (IsSameType<T, int8_t>::value) {
+            this->mm.SetQuantScalar(this->dequantScale1);
         }
+
+        if (params->isBlockSparse) {
+            // Session 18 Stage A / 19 Stage B: true sub-tile gather.
+            //
+            // Two paths share this code:
+            //   1) Contiguous-K fast path: when the packed sabi indices form a
+            //      consecutive run [s, s+1, ..., s+packedCount-1], the kept K
+            //      positions span one contiguous HBM region of length
+            //      packedCount*128. Emit ONE wide matmul of N=mm1SingleCoreN
+            //      (= packedCount*128 minus tail truncation) at column offset 0.
+            //      This matches the pre-Stage-18 effective work pattern at
+            //      sparsity 0 (where every coarse tile is fully kept).
+            //   2) Gather slow path: when sabis are non-contiguous (mid-sparsity
+            //      with sub-blocks skipped within a coarse tile), issue
+            //      packedCount narrow N=128 matmuls, each writing the i-th
+            //      128-wide slice. Intermediate iters use sync=true because
+            //      back-to-back IterateAll<false> hangs the cube on this CANN
+            //      version regardless of waitIterateAll flag — the library
+            //      drops completion-flag state on intermediate iterates.
+            const uint32_t souterM = params->singleProcessSOuterSize * this->msdIterNum;
+            const int64_t kvTokenStride =
+                (PFAT::layout == PFALayout::BNSD)
+                ? (int64_t)this->tilingData->promptAttentionBaseParams.headSize
+                : (int64_t)this->MultiHeadKV;
+            // params->tensorBOffset holds the per-batch-head base (tensorBCoreOffset),
+            // captured at enqueue time. Reading this->tensorBCoreOffset live would
+            // race against multi-head LoopSOuterOffsetInit updates between batches.
+            const int64_t kvBase = params->tensorBOffset;
+            const uint16_t firstSabi = params->packedSabi[0];
+            const uint16_t lastSabi  = params->packedSabi[params->packedCount - 1];
+            const bool kContiguous   = ((uint32_t)lastSabi - (uint32_t)firstSabi + 1u
+                                        == (uint32_t)params->packedCount);
+            if (kContiguous) {
+                const int64_t kvOffset = kvBase + (int64_t)firstSabi * 128 * kvTokenStride;
+                this->mm.SetTail(souterM, params->mm1SingleCoreN);
+                if constexpr (PFAT::msdMode != MsdMode::MSD_ON
+                              && (!IsSameType<T, KV_T>::value && IsSameType<KV_T, int8_t>::value)) {
+                    this->mm.SetTensorB(this->keyGmAntiquant[kvOffset], true);
+                } else if constexpr (PFAT::MM_TYPE == MatMulType::MM_PA) {
+                    this->mm.SetTensorB(this->keyGm, true);
+                } else {
+                    this->mm.SetTensorB(this->keyGm[kvOffset], true);
+                }
+                this->mm.template IterateAll<false>(
+                    this->bmm1ResGmDb[params->gmPingpong], false, false, true, params->fakeMsg);
+                return;
+            }
+            for (int i = 0; i < (int)params->packedCount; ++i) {
+                const int64_t kvOffset = kvBase
+                    + (int64_t)params->packedSabi[i] * 128 * kvTokenStride;
+                uint32_t cols = (i == (int)params->packedCount - 1)
+                    ? (params->mm1SingleCoreN - (uint32_t)i * 128u)
+                    : 128u;
+                this->mm.SetTail(souterM, cols);
+                if constexpr (PFAT::msdMode != MsdMode::MSD_ON
+                              && (!IsSameType<T, KV_T>::value && IsSameType<KV_T, int8_t>::value)) {
+                    this->mm.SetTensorB(this->keyGmAntiquant[kvOffset], true);
+                } else if constexpr (PFAT::MM_TYPE == MatMulType::MM_PA) {
+                    this->mm.SetTensorB(this->keyGm, true);
+                } else {
+                    this->mm.SetTensorB(this->keyGm[kvOffset], true);
+                }
+                if (i < (int)params->packedCount - 1) {
+                    this->mm.template IterateAll<true>(
+                        this->bmm1ResGmDb[params->gmPingpong][(int64_t)i * 128],
+                        false, false, false, params->fakeMsg);
+                } else {
+                    this->mm.template IterateAll<false>(
+                        this->bmm1ResGmDb[params->gmPingpong][(int64_t)i * 128],
+                        false, false, true, params->fakeMsg);
+                }
+            }
+            return;
+        }
+
+        this->mm.SetTail(params->singleProcessSOuterSize * this->msdIterNum, params->singleProcessSInnerBmmTail);
 
         if constexpr (PFAT::msdMode != MsdMode::MSD_ON and (!IsSameType<T, KV_T>::value && IsSameType<KV_T, int8_t>::value)) {
             this->mm.SetTensorB(this->keyGmAntiquant, true);
@@ -550,11 +630,6 @@ protected:
             }
         } else {
             this->mm.SetTensorB(this->keyGm[params->tensorBOffset], true);
-        }
-
-        // quant:
-        if constexpr (IsSameType<T, int8_t>::value) {
-            this->mm.SetQuantScalar(this->dequantScale1);
         }
 
         this->mm.template IterateAll<false>(this->bmm1ResGmDb[params->gmPingpong], false, false, true, params->fakeMsg);
@@ -719,17 +794,10 @@ protected:
             this->template ElewiseCompute<U>(this->mmResUb[ubPingpong], souterSize, params->singleProcessSInnerSizeNow,
                                          params->maskCopyInCol, params->useMask, this->bmm1ResCopyInEvent[ubPingpong], 0);
 
-            // Sparse sub-block correction: when a 512-wide cube tile contains inactive 128-element
-            // KV sub-blocks (sabiSubBlockMask != fullMask), overwrite their columns with -10000
-            // so softmax treats them as -inf and they contribute zero weight to the output.
-            // The body lives in ApplySubBlockMaskCorrection (noinline) to keep this inlined hot
-            // path's I-cache footprint compact — Session 8 inlined a similar batched Duplicate
-            // body and regressed 10% sparsity by 26 ms purely from instruction layout shift.
-            if (params->isBlockSparse && params->sabiSubBlockMask != 0xFu) {
-                ApplySubBlockMaskCorrection(ubPingpong, params->sabiSubBlockMask,
-                                            params->singleProcessSInnerSizeNow,
-                                            static_cast<uint32_t>(souterSize));
-            }
+            // Session 18+: with true sub-tile gather, every score-buffer column is a
+            // kept K position by construction. The post-matmul Adds(-10000) sub-block
+            // correction (sabiSubBlockMask) is no longer needed — bmm1 only writes
+            // packedCount * 128 valid columns, all of them active sabi entries.
 
             bool firstIter = params->isBlockSparse ? params->isFirstComputedIter : params->isFirstInnerIter;
             this->isSoftmaxResNeedUpdate = (firstIter ||
@@ -878,6 +946,112 @@ protected:
             this->bmm2.SetSelfDefineData(reinterpret_cast<int64_t>(this->bmm2CBDataPtr[params->gmPingpong]));
        }
 
+        if (this->isKvContinuous == 0) {
+            ListTensorDesc valueListDesc((__gm__ void*)this->value_ptr);
+            __gm__ uint8_t* tempValueGm = (__gm__ uint8_t*)valueListDesc.GetDataPtr<__gm__ uint8_t>(params->taskBatch);
+            this->valueGm.SetGlobalBuffer((__gm__ KV_T*)tempValueGm);
+        }
+
+        if constexpr (IsSameType<T, int8_t>::value) {
+            this->bmm2.SetQuantScalar(this->dequantScale2);
+        }
+
+        if (params->isBlockSparse) {
+            // Session 18 Stage A / 19 Stage B: mirror Bmm1ComputeIterate.
+            //
+            // Contiguous-K fast path: when packed sabis are consecutive, V slice is
+            // contiguous → ONE bmm2 IterateAll of full K=mm1SingleCoreN. The bmm1
+            // result is already a dense [souter, mm1SingleCoreN] tile (because the
+            // bmm1 fast path wrote one wide block at offset 0).
+            //
+            // Gather slow path (non-contiguous sabis): packedCount narrow K=128
+            // bmm2 calls, each consuming the matching 128-wide slice from
+            // bmm1ResGmDb and atomic-adding into bmm2ResGmDb. Intermediate iters
+            // use sync=true (back-to-back IterateAll<false> hangs the cube on this
+            // CANN version, same as bmm1).
+            const uint32_t souterM = params->singleProcessSOuterSize * this->msdIterNum;
+            const uint32_t headSize = this->tilingData->promptAttentionBaseParams.headSize;
+            const int64_t kvTokenStride =
+                (PFAT::layout == PFALayout::BNSD)
+                ? (int64_t)headSize
+                : (int64_t)this->MultiHeadKV;
+            // params->valueOffset holds the per-batch-head base (valueCoreOffset),
+            // captured at enqueue time. See Bmm1ComputeIterate for the same fix.
+            const int64_t valBase = params->valueOffset;
+            const uint16_t firstSabi = params->packedSabi[0];
+            const uint16_t lastSabi  = params->packedSabi[params->packedCount - 1];
+            const bool kContiguous   = ((uint32_t)lastSabi - (uint32_t)firstSabi + 1u
+                                        == (uint32_t)params->packedCount);
+            if (kContiguous) {
+                const int64_t valOffset = valBase + (int64_t)firstSabi * 128 * kvTokenStride;
+                this->bmm2.SetTail(souterM, headSize, params->mm1SingleCoreN);
+                if constexpr (IsSameType<T, int8_t>::value) {
+                    this->bmm2.SetTensorA(this->quant1ResGmDb[params->gmPingpong]);
+                } else if constexpr (PFAT::msdMode != MsdMode::MSD_ON
+                                     && (PFAT::calcMode == OptimizationMode::HighPrecision
+                                         || IsSameType<T, bfloat16_t>::value)) {
+                    uint64_t gmSize = this->tilingData->promptAttentionSingleCoreParams.singleProcessSOuterSize *
+                                      this->tilingData->promptAttentionSingleCoreParams.singleProcessSInnerSize;
+                    GlobalTensor<T> tmpBmm1ResGmDb;
+                    tmpBmm1ResGmDb.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(this->bmm1ResGmDb[params->gmPingpong].address_), gmSize);
+                    this->bmm2.SetTensorA(tmpBmm1ResGmDb);
+                } else if constexpr (PFAT::msdMode == MsdMode::MSD_ON) {
+                    this->bmm2.SetTensorA(this->bmm1ExpandGm[params->gmPingpong]);
+                } else {
+                    this->bmm2.SetTensorA(this->bmm1ResGmDb[params->gmPingpong]);
+                }
+                if constexpr (PFAT::msdMode != MsdMode::MSD_ON
+                              && (!IsSameType<T, KV_T>::value && IsSameType<KV_T, int8_t>::value)) {
+                    this->bmm2.SetTensorB(this->valueGmAntiquant[valOffset]);
+                } else if constexpr (PFAT::MM_TYPE == MatMulType::MM_PA) {
+                    this->bmm2.SetTensorB(this->valueGm);
+                } else {
+                    this->bmm2.SetTensorB(this->valueGm[valOffset]);
+                }
+                this->bmm2.template IterateAll<false>(this->bmm2ResGmDb[params->gmPingpong], 0, false, true, params->fakeMsg);
+                return;
+            }
+            for (int i = 0; i < (int)params->packedCount; ++i) {
+                const int64_t valOffset = valBase
+                    + (int64_t)params->packedSabi[i] * 128 * kvTokenStride;
+                uint32_t kCols = (i == (int)params->packedCount - 1)
+                    ? (params->mm1SingleCoreN - (uint32_t)i * 128u)
+                    : 128u;
+                this->bmm2.SetTail(souterM, headSize, kCols);
+                if constexpr (IsSameType<T, int8_t>::value) {
+                    this->bmm2.SetTensorA(this->quant1ResGmDb[params->gmPingpong][(int64_t)i * 128]);
+                } else if constexpr (PFAT::msdMode != MsdMode::MSD_ON
+                                     && (PFAT::calcMode == OptimizationMode::HighPrecision
+                                         || IsSameType<T, bfloat16_t>::value)) {
+                    uint64_t gmSize = this->tilingData->promptAttentionSingleCoreParams.singleProcessSOuterSize *
+                                      this->tilingData->promptAttentionSingleCoreParams.singleProcessSInnerSize;
+                    GlobalTensor<T> tmpBmm1ResGmDb;
+                    tmpBmm1ResGmDb.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(this->bmm1ResGmDb[params->gmPingpong].address_), gmSize);
+                    this->bmm2.SetTensorA(tmpBmm1ResGmDb[(int64_t)i * 128]);
+                } else if constexpr (PFAT::msdMode == MsdMode::MSD_ON) {
+                    this->bmm2.SetTensorA(this->bmm1ExpandGm[params->gmPingpong][(int64_t)i * 128]);
+                } else {
+                    this->bmm2.SetTensorA(this->bmm1ResGmDb[params->gmPingpong][(int64_t)i * 128]);
+                }
+                if constexpr (PFAT::msdMode != MsdMode::MSD_ON
+                              && (!IsSameType<T, KV_T>::value && IsSameType<KV_T, int8_t>::value)) {
+                    this->bmm2.SetTensorB(this->valueGmAntiquant[valOffset]);
+                } else if constexpr (PFAT::MM_TYPE == MatMulType::MM_PA) {
+                    this->bmm2.SetTensorB(this->valueGm);
+                } else {
+                    this->bmm2.SetTensorB(this->valueGm[valOffset]);
+                }
+                bool isLast = (i == (int)params->packedCount - 1);
+                uint8_t enAtomic = (i == 0) ? 0 : 1;
+                if (!isLast) {
+                    this->bmm2.template IterateAll<true>(this->bmm2ResGmDb[params->gmPingpong], enAtomic, false, false, params->fakeMsg);
+                } else {
+                    this->bmm2.template IterateAll<false>(this->bmm2ResGmDb[params->gmPingpong], enAtomic, false, true, params->fakeMsg);
+                }
+            }
+            return;
+        }
+
         this->bmm2.SetTail(params->singleProcessSOuterSize * this->msdIterNum,
             this->tilingData->promptAttentionBaseParams.headSize, params->singleProcessSInnerBmmTail);
         if constexpr (IsSameType<T, int8_t>::value) {
@@ -896,12 +1070,6 @@ protected:
             this->bmm2.SetTensorA(this->bmm1ResGmDb[params->gmPingpong]);
         }
 
-        if (this->isKvContinuous == 0) {
-            ListTensorDesc valueListDesc((__gm__ void*)this->value_ptr);
-            __gm__ uint8_t* tempValueGm = (__gm__ uint8_t*)valueListDesc.GetDataPtr<__gm__ uint8_t>(params->taskBatch);
-            this->valueGm.SetGlobalBuffer((__gm__ KV_T*)tempValueGm);
-        }
-
         if constexpr (PFAT::msdMode != MsdMode::MSD_ON and (!IsSameType<T, KV_T>::value && IsSameType<KV_T, int8_t>::value)) {
             this->bmm2.SetTensorB(this->valueGmAntiquant);
         } else if constexpr (PFAT::MM_TYPE == MatMulType::MM_PA) {
@@ -914,10 +1082,6 @@ protected:
             }
         } else {
             this->bmm2.SetTensorB(this->valueGm[params->valueOffset]);
-        }
-
-        if constexpr (IsSameType<T, int8_t>::value) {
-            this->bmm2.SetQuantScalar(this->dequantScale2);
         }
 
         this->bmm2.template IterateAll<false>(this->bmm2ResGmDb[params->gmPingpong], false, false, true, params->fakeMsg);
@@ -961,7 +1125,11 @@ protected:
         dst->isFirstComputedIter = src->isFirstComputedIter;
         dst->isSecondComputedIter = src->isSecondComputedIter;
         dst->isLastComputedIter = src->isLastComputedIter;
-        dst->sabiSubBlockMask = src->sabiSubBlockMask;
+        dst->packedSabi[0] = src->packedSabi[0];
+        dst->packedSabi[1] = src->packedSabi[1];
+        dst->packedSabi[2] = src->packedSabi[2];
+        dst->packedSabi[3] = src->packedSabi[3];
+        dst->packedCount = src->packedCount;
 
         dst->unalignSInner = src->unalignSInner;
         dst->tensorAOffset = src->tensorAOffset;
@@ -2400,158 +2568,136 @@ __aicore__ inline void BlitzSparseAttentionS1s2Bns1X910<PFAT>::SInnerLoopFunc(in
             }
         }
     } else {
-        // rowSabi must contain unique block indices in 128-granularity.
-        // startIndex/endIndex are in cube-tile granularity (basicSInnerSize wide).
-        // sabiPerTile = how many 128-wide sabi blocks fit in one cube tile (4 when s2=512, 1 when s2=128).
-        const int32_t sabiPerTile = basicSInnerSize / 128;
+        // ===========================================================================
+        // Session 21 Stage D.1: K-contiguous-only packing.
+        // Strict superset of Stage B by construction; subsumes Stage B's
+        // same-coarse-tile guard (a fully-kept coarse tile is K-contiguous, so
+        // it still packs as one batch) and additionally captures cross-coarse-tile
+        // contiguous runs that Stage B left on the table.
+        //
+        // The slow gather path in Bmm1/Bmm2ComputeIterate is therefore unreachable
+        // under D.1 — every packed batch is K-contiguous by construction and takes
+        // the fast path (one wide matmul). The slow gather code is kept compiled
+        // because Stage D.3 will replace it with a hand-rolled L1-managed cube
+        // path that will become reachable again when the packer is later relaxed.
+        // ===========================================================================
+        constexpr int32_t kPackSize = 4;
+        const int32_t sabiPerTile = basicSInnerSize / 128;  // 4 when basicSInnerSize=512
         int32_t firstSabiIdx = FirstGreaterEqual(rowSabi, (uint16_t)(startIndex * sabiPerTile));
         if (firstSabiIdx < 0) return;
 
-        // Prime `curSabi`: the first sabi entry for this chunk. Subsequent iterations
-        // reuse `nextSabi` (the read that caused the inner while-loop to break), so the
-        // per-iteration lookahead that determined `done` is folded into the next iteration's
-        // primary read -> one fewer HBM scalar sabi read per outer iteration.
-        const uint8_t fullMask = (uint8_t)((1u << sabiPerTile) - 1u);
+        // Effective last K column read by the dense path = sInnerLastToken aligned UP
+        // to softmaxInnerBasicSize (64). Matching this preserves arithmetic equivalence
+        // with the original dense + sub-block-mask path under causal/preTokens clipping.
+        const int64_t sInnerLastTokenAligned =
+            ((int64_t)sInnerLastToken + (int64_t)softmaxInnerBasicSize - 1) /
+            (int64_t)softmaxInnerBasicSize * (int64_t)softmaxInnerBasicSize;
+
+        const int64_t kvTokenStride =
+            (PFAT::layout == PFALayout::BNSD)
+            ? (int64_t)this->tilingData->promptAttentionBaseParams.headSize
+            : (int64_t)this->MultiHeadKV;
+
         int32_t computedBlocks = 0;
         int32_t chunkIdx = firstSabiIdx;
-        int32_t curSabi = rowSabi.Get(static_cast<uint32_t>(chunkIdx));
-        ++chunkIdx;
-        while (curSabi != kPadU16) {
-            int32_t sInnerLoopIdx = curSabi / sabiPerTile;
-            if (sInnerLoopIdx >= endIndex) break;
 
-            // Advance past all other sabi entries that belong to this same cube tile.
-            uint8_t subMask = (uint8_t)(1u << (curSabi % sabiPerTile));
-            int32_t nextSabi = kPadU16;
-            bool haveNext = false;
-            while (chunkIdx < (int32_t)rowSabi.len) {
-                int32_t nxt = rowSabi.Get(static_cast<uint32_t>(chunkIdx));
-                if (nxt == kPadU16 || nxt / sabiPerTile != sInnerLoopIdx) {
-                    nextSabi = nxt;
-                    haveNext = true;
+        while (chunkIdx < (int32_t)rowSabi.len) {
+            uint16_t batch[4] = {0, 0, 0, 0};
+            int32_t batchCount = 0;
+            bool exhausted = false;
+            while (batchCount < kPackSize && chunkIdx < (int32_t)rowSabi.len) {
+                uint16_t s = rowSabi.Get(static_cast<uint32_t>(chunkIdx));
+                if (s == kPadU16) { exhausted = true; break; }
+                if ((int64_t)s * 128 >= sInnerLastTokenAligned) { exhausted = true; break; }
+                // D.1 K-contiguous-only guard: pack iff next sabi == last + 1.
+                // On break we do NOT advance chunkIdx, so the next outer iter
+                // starts a fresh batch with this entry as its first element.
+                if (batchCount > 0 &&
+                    (uint32_t)s != (uint32_t)batch[batchCount - 1] + 1u) {
                     break;
                 }
-                subMask |= (uint8_t)(1u << (nxt % sabiPerTile));
+                batch[batchCount++] = s;
                 ++chunkIdx;
             }
-            params->sabiSubBlockMask = (sabiPerTile <= 1) ? fullMask : subMask;
-            params->sInnerLoopOffset = sInnerLoopIdx;
+            if (batchCount == 0) break;
+
+            bool done;
+            if (exhausted || chunkIdx >= (int32_t)rowSabi.len) {
+                done = true;
+            } else {
+                uint16_t nxt = rowSabi.Get(static_cast<uint32_t>(chunkIdx));
+                done = (nxt == kPadU16) ||
+                       ((int64_t)nxt * 128 >= sInnerLastTokenAligned);
+            }
+
+            const uint16_t lastSabi = batch[batchCount - 1];
+            const int64_t lastSabiTokenStart = (int64_t)lastSabi * 128;
+            const int64_t lastCols64 = sInnerLastTokenAligned - lastSabiTokenStart;
+            const int32_t lastCols = (lastCols64 >= 128) ? 128 : (int32_t)lastCols64;
+            const uint32_t totalCols = (uint32_t)((batchCount - 1) * 128 + lastCols);
+
+            for (int i = 0; i < batchCount; ++i) {
+                params->packedSabi[i] = batch[i];
+            }
+            params->packedCount = static_cast<uint8_t>(batchCount);
+
+            params->mm1SingleCoreN              = totalCols;
+            params->singleProcessSInnerSizeNow  = totalCols;
+            params->singleProcessSInnerBmmTail  = totalCols;
+            params->mm2SingleKAlign = (params->mm1SingleCoreN + MM2_SINGLE_K_ALIGN_SIZE - 1)
+                                    / MM2_SINGLE_K_ALIGN_SIZE * MM2_SINGLE_K_ALIGN_SIZE;
+            params->maskCopyInCol      = totalCols;
+            params->pseShiftCopyInCol  = totalCols;
 
             params->isFirstComputedIter  = (computedBlocks == 0);
             params->isSecondComputedIter = (computedBlocks == 1);
-            bool done;
-            if (!haveNext) {
-                // while-loop exited because chunkIdx hit end-of-array
-                done = true;
-            } else {
-                done = (nextSabi == kPadU16) || (nextSabi / sabiPerTile >= endIndex);
-            }
-            params->isLastComputedIter = done;
+            params->isLastComputedIter   = done;
 
-            // Keep legacy flags if other code still expects dense meaning:
-            params->isFirstInnerIter  = (sInnerLoopIdx == startIndex);
-            params->isSecondInnerIter = (sInnerLoopIdx == (startIndex + 1));
-            params->isLastInnerIter   = (sInnerLoopIdx == (endIndex - 1));
+            // Legacy *InnerIter flags now mirror Computed-iter flags. Downstream code
+            // selects between them via params->isBlockSparse, but keeping them
+            // consistent prevents stale values leaking through any unreviewed path.
+            params->isFirstInnerIter   = params->isFirstComputedIter;
+            params->isSecondInnerIter  = params->isSecondComputedIter;
+            params->isLastInnerIter    = params->isLastComputedIter;
+            params->isPrefixInnerIter  = 0;       // prefix path deferred — Session 22
+            params->isInnerTail        = (lastCols < 128);
 
-            if constexpr (PFAT::enablePrefix) {
-                params->isPrefixInnerIter = sInnerLoopIdx * basicSInnerSize < this->actualKVPrefixLen;
-            } else {
-                params->isPrefixInnerIter = 0;
-            }
-            if (unlikely(isS2Load)) {
-                params->isInnerTail = true;
-            } else {
-                params->isInnerTail = (sInnerLoopIdx == (int32_t)this->maxInnerLoopTimes - 1) || (sInnerLoopIdx == (int32_t)this->maxInnerLoopPrefixTimes - 1);
-            }
+            params->sInnerLoopOffset = (uint32_t)(lastSabi / sabiPerTile);
 
-            if (unlikely(params->isInnerTail)) {
-                if (!params->isPrefixInnerIter) {
-                    lastInnerMargin = (sInnerLoopIdx * basicSInnerSize + params->unalignSInner - sInnerLastToken)
-                        / softmaxInnerBasicSize * softmaxInnerBasicSize;
-                    lastInnerMargin = (lastInnerMargin > 0) ? lastInnerMargin : 0;
-                    if constexpr (PFAT::enablePrefix) {
-                        lastInnerMargin = 0;
-                    }
-                    params->mm1SingleCoreN = params->singleProcessSInnerSizeTail - lastInnerMargin;
-                    params->singleProcessSInnerSizeNow = params->singleProcessSInnerSizeTail - lastInnerMargin;
-                    params->singleProcessSInnerBmmTail = params->unalignSInner - lastInnerMargin;
-                    params->maskCopyInCol = params->maskInnerTailAlign - lastInnerMargin;
-                    params->pseShiftCopyInCol = params->pseShiftInnerTailAlign - lastInnerMargin;
-                } else {
-                    if constexpr (PFAT::enablePrefix) {
-                        params->mm1SingleCoreN = params->singleProcessSInnerPrefixSizeTail;
-                        params->singleProcessSInnerSizeNow = params->singleProcessSInnerPrefixSizeTail;
-                        params->singleProcessSInnerBmmTail = params->unalignSInnerPrefix;
-                        params->maskCopyInCol = params->maskInnerPrefixTailAlign;
-                        params->pseShiftCopyInCol = params->pseShiftInnerPrefixTailAlign;
-                    }
-                }
-            } else {
-                params->mm1SingleCoreN = params->singleProcessSInnerSize;
-                params->singleProcessSInnerSizeNow = params->singleProcessSInnerSize;
-                params->singleProcessSInnerBmmTail = params->singleProcessSInnerSize;
-                params->maskCopyInCol = params->singleProcessSInnerSize;
-                params->pseShiftCopyInCol = params->singleProcessSInnerSize;
-                // Apply lastMargin only if it's the dense last boundary.
-                if (params->isLastInnerIter) {
-                    if constexpr (PFAT::enablePrefix) {
-                        lastInnerMargin = 0;
-                    }
-                    params->mm1SingleCoreN -= lastInnerMargin;
-                    params->singleProcessSInnerSizeNow -= lastInnerMargin;
-                    params->singleProcessSInnerBmmTail -= lastInnerMargin;
-                    params->maskCopyInCol -= lastInnerMargin;
-                    params->pseShiftCopyInCol -= lastInnerMargin;
-                }
-            }
-            params->mm2SingleKAlign = (params->mm1SingleCoreN + MM2_SINGLE_K_ALIGN_SIZE - 1) / MM2_SINGLE_K_ALIGN_SIZE * MM2_SINGLE_K_ALIGN_SIZE;
-            if (params->isFirstInnerIter) {
-                if constexpr (PFAT::enablePrefix) {
-                    firstInnerMargin = 0;
-                }
-                params->mm1SingleCoreN -= firstInnerMargin;
-                params->singleProcessSInnerSizeNow -= firstInnerMargin;
-                params->singleProcessSInnerBmmTail -= firstInnerMargin;
-                params->maskCopyInCol -= firstInnerMargin;
-                params->pseShiftCopyInCol -= firstInnerMargin;
-                params->tensorBOffset = this->GetBmm1TensorBOffset(params, sInnerLoopIdx, firstInnerMargin);
-                this->ComputeOffset(params, sInnerLoopIdx, firstInnerMargin);
-            } else {
-                params->tensorBOffset = this->GetBmm1TensorBOffset(params, sInnerLoopIdx, 0);
-                this->ComputeOffset(params, sInnerLoopIdx, 0);
-            }
+            // KV offsets — sparse path stores per-batch-head BASE only. Bmm1/Bmm2
+            // ComputeIterate add the per-sabi offset (packedSabi[i] * 128 * stride)
+            // at compute time. Reading this->tensorBCoreOffset directly inside the
+            // cube would race against multi-head LoopSOuterOffsetInit updates
+            // (the queue can outlive a batch transition).
+            const int64_t firstSabiTokenOff = (int64_t)batch[0] * 128;
+            params->tensorBOffset            = this->tensorBCoreOffset;
+            params->valueOffset              = this->valueCoreOffset;
+            params->tensorAOffset            = this->tensorACoreOffset;
+            params->sInnerOffsetDataSize     = firstSabiTokenOff;
+            params->antiqParamOffsetPerToken = this->antiqParamBatchOffsetPerToken + firstSabiTokenOff;
+            params->attenMaskOffset          = 0;
+            params->attenMaskOffsetPre       = 0;
+            params->pseShiftOffset           = 0;
 
-            // T2.A: attentionMaskType ∈ {0, 1} only — leftUp/rightDown/band branches removed.
-            // Determine whether the row invalidation OptimizationMode is enabled in the core.
             CheckRowInvalid(preTokens, nextTokens, params);
             params->sparseBandSelect0 = true;
             params->sparseBandSelect1 = true;
 
             if (this->queSize >= this->queSizeLimit) {
-                // When the queue is full, task is triggered. The task specified by headParams starts to send instructions.
                 ComputeEachCoreSInnerLoop();
-
-                // prehead update
                 this->preHeadParams = this->headParams;
-
-                // head out of queue
                 this->headId = (this->headId + 1) % PFA_PARAMS_QUEUE_CAPBABILITY;
                 this->headParams = &this->pfaParamsQueue[this->headId];
-
-                // tail join the queue
                 this->tailId = (this->tailId + 1) % PFA_PARAMS_QUEUE_CAPBABILITY;
                 PFAComputeParam *nextTailParams = &this->pfaParamsQueue[this->tailId];
                 if (computedBlocks < PFA_PARAMS_QUEUE_CAPBABILITY - 1) {
-                    // Overwrite the old head parameter. The next tail is not assigned a value outside the Inner loop and has no parameters. We need to copy the parameters that will be recorded outside the loop.
                     this->CopyParamsAttrOutOfInnerLoop(nextTailParams, this->tailParams);
                 }
                 nextTailParams->gmPingpong = this->tailParams->gmPingpong ^ 1;
                 this->tailParams = nextTailParams;
-            }
-            else {// tail join the queue
+            } else {
                 this->tailId = (this->tailId + 1) % PFA_PARAMS_QUEUE_CAPBABILITY;
                 PFAComputeParam *nextTailParams = &this->pfaParamsQueue[this->tailId];
-                // Overwrite the old head parameter. The next tail is not assigned a value outside the Inner loop and has no parameters. We need to copy the parameters that will be recorded outside the loop.
                 this->CopyParamsAttrOutOfInnerLoop(nextTailParams, this->tailParams);
                 nextTailParams->gmPingpong = this->tailParams->gmPingpong ^ 1;
                 this->tailParams = nextTailParams;
@@ -2559,11 +2705,7 @@ __aicore__ inline void BlitzSparseAttentionS1s2Bns1X910<PFAT>::SInnerLoopFunc(in
             }
             ++computedBlocks;
 
-            // Advance: the read that broke out of the inner while-loop is reused as the
-            // primary read for the next outer iteration. If we exhausted sabi, terminate.
             if (done) break;
-            curSabi = nextSabi;
-            ++chunkIdx;
         }
     }
 }

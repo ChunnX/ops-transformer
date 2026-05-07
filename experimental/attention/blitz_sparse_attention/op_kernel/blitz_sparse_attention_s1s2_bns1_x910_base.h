@@ -117,10 +117,12 @@ struct PFAComputeParam {
     bool isFirstComputedIter = false;
     bool isSecondComputedIter = false;
     bool isLastComputedIter = false;
-    // Bitmask of which 128-element sub-blocks within the current cube tile are active in sabi.
-    // Bit i=1 means sub-block i (columns [128*i .. 128*(i+1))) is active.
-    // 0xF = all four sub-blocks active (or sabiPerTile==1); no correction needed.
-    uint8_t sabiSubBlockMask = 0xF;
+    // Session 18+: true sub-tile gather. Each queue entry carries up to 4 kept sabi
+    // entries (128-token blocks). The cube tile is built by issuing one narrow N=128
+    // matmul per kept entry, writing the i-th slice at column offset i*128 of the
+    // bmm1 result buffer. packedCount==1 in Stage A; up to 4 in Stage B/C.
+    uint16_t packedSabi[4] = {0, 0, 0, 0};
+    uint8_t  packedCount = 0;
 
     bool isInnerTail;
     bool useMask;
