@@ -239,6 +239,31 @@ enum class AlltoAllvGroupedMatMulAttrIdx : size_t {
     K_PERMUTE_OUT_FLAG
 };
 
+enum class AlltoAllvGroupedMatMulV2InputIdx : size_t {
+    K_GMM_X,
+    K_GMM_WEIGHT,
+    K_SEND_COUNTS_TENSOR,
+    K_RECV_COUNTS_TENSOR,
+    K_MM_X,
+    K_MM_WEIGHT
+};
+
+enum class AlltoAllvGroupedMatMulV2OutputIdx : size_t {
+    K_GMM_Y,
+    K_MM_Y,
+    K_PERMUTE_OUT
+};
+
+enum class AlltoAllvGroupedMatMulV2AttrIdx : size_t {
+    K_GROUP,
+    K_EP_WORLD_SIZE,
+    K_SEND_COUNTS,
+    K_RECV_COUNTS,
+    K_TRANS_GMM_WEIGHT,
+    K_TRANS_MM_WEIGHT,
+    K_PERMUTE_OUT_FLAG
+};
+
 enum class GroupedMatMulAlltoAllvInputIdx : size_t {
     K_GMM_X,
     K_GMM_WEIGHT,
