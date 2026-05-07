@@ -151,6 +151,7 @@ private:
             for (int32_t i = 0; i < sp; i++) {
                 lseGm.SetGlobalBuffer(reinterpret_cast<__gm__ lseType*>(*(lsePtr + i)), totalLength);
                 inGm.SetGlobalBuffer(reinterpret_cast<__gm__ outType*>(*(inPtr + i)), totalLength * hDim);
+                // 当前场景curLength是8对齐的
                 DataCopy(lseLocal[curLength * i], lseGm[progress * tileLength + gmStartOffset],
                          curLength);
                 if constexpr (std::is_same<outType, float>::value) {
@@ -167,9 +168,11 @@ private:
                 inQueueIn.EnQue(inLocal);
                 inLocal = inQueueIn.DeQue<float>();
                 inLocalFp16 = inLocal.template ReinterpretCast<outType>()[inLocalFp16Offest];
+                // headdim
                 Cast(inLocal, inLocalFp16, RoundMode::CAST_NONE, curLength * hDim * sp);
             }
         } else {
+            // 重复变量，和curLengthPad一样，似乎tileLengthAlig也是重复多余的变量
             uint32_t curLengthAlig = ((curLength + NUM7) / NUM8) * NUM8;
             for (int32_t i = 0; i < sp; i++) {
                 lseGm.SetGlobalBuffer(reinterpret_cast<__gm__ lseType*>(*(lsePtr + i)), totalLength);
