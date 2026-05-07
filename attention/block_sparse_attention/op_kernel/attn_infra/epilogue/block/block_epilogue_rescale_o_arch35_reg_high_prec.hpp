@@ -248,12 +248,12 @@ public:
 
         for (uint16_t i = 0; i < row; ++i) {
             for (uint16_t j = 0; j < colFullLoop; ++j) {
-                LoadAlign<ElementOTmp, StoreDist::DIST_NORM>(oVreg, goUb + i * colStride + j * vlElemNum);
+                LoadAlign<ElementOTmp, LoadDist::DIST_NORM>(oVreg, goUb + i * colStride + j * vlElemNum);
                 Muls(oVreg, oVreg, deqScalar, pregAll);
                 StoreAlign<ElementOTmp, StoreDist::DIST_NORM_B32>(goUb + i * colStride + j * vlElemNum, oVreg,
                                                                   pregAll);
             }
-            LoadAlign<ElementOTmp, StoreDist::DIST_NORM>(oVreg, goUb + i * colStride + colFullLoop * vlElemNum);
+            LoadAlign<ElementOTmp, LoadDist::DIST_NORM>(oVreg, goUb + i * colStride + colFullLoop * vlElemNum);
             Muls(oVreg, oVreg, deqScalar, pregTail);
             StoreAlign<ElementOTmp, StoreDist::DIST_NORM_B32>(goUb + i * colStride + colFullLoop * vlElemNum, oVreg,
                                                               pregTail);

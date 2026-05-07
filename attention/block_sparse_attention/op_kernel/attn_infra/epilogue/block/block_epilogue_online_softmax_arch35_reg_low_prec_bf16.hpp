@@ -214,7 +214,7 @@ public:
         WaitCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
 
         if constexpr (std::is_same_v<ElementOutput, float8_e4m3_t>) {
-            ScaleP(pAddr, m, nLoops, tailN, nRound, 448);
+            ScaleP<ElementOutput>(pAddr, m, nLoops, tailN, nRound, 448.0f);
             // CastPToFp8<ElementOutput, bloat16_t>(pAddr, pAddr, m, nLoops, tailN, nRound);
         }
 

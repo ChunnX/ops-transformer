@@ -70,15 +70,15 @@ public:
         CalcOnChipBufTileInfo(bsaTilingData);
         // global buffers
         AscendC::GlobalTensor<ElementQ> gQ;
-        gQ.SetGlobalBuffer((__gm__ ElementQ *)params.q);
+        gQ.SetGlobalBuffer((__gm__ ElementQ *)params.query);
         AscendC::GlobalTensor<ElementK> gK;
-        gK.SetGlobalBuffer((__gm__ ElementK *)params.k);
+        gK.SetGlobalBuffer((__gm__ ElementK *)params.key);
         AscendC::GlobalTensor<ElementK> gV;
-        gV.SetGlobalBuffer((__gm__ ElementK *)params.v);
+        gV.SetGlobalBuffer((__gm__ ElementK *)params.value);
         AscendC::GlobalTensor<int64_t> gActualQseqlen;
-        gActualQseqlen.SetGlobalBuffer((__gm__ int64_t *)params.actualQseqlen);
+        gActualQseqlen.SetGlobalBuffer((__gm__ int64_t *)params.actualSeqLengths);
         AscendC::GlobalTensor<int64_t> gActualKvseqlen;
-        gActualKvseqlen.SetGlobalBuffer((__gm__ int64_t *)params.actualKvseqlen);
+        gActualKvseqlen.SetGlobalBuffer((__gm__ int64_t *)params.actualSeqLengthsKv);
         AscendC::GlobalTensor<uint8_t> gBlockSparseMask;
         gBlockSparseMask.SetGlobalBuffer((__gm__ uint8_t *)params.blockSparseMask);
         AscendC::GlobalTensor<float> gQueryDequantScale;
@@ -267,7 +267,7 @@ public:
 
             uint32_t qDeqScaleOffset =
                 curBatch * qHeads_ * xBlockNumAligned_ + qHeadIdx * xBlockNumAligned_ + xBlockIdx;
-            float qDeqScaleValue = queryDequantScale.GetValue(qDeqScaleOffset);
+            float qDeqScaleValue = gQueryDequantScale.GetValue(qDeqScaleOffset);
 #endif
 #ifdef __DAV_VEC__
             uint32_t oShapeCol = 0;
@@ -299,7 +299,7 @@ public:
                     uint32_t kvDeqScaleOffset =
                         curBatch * kvHeads_ * yBlockNumAligned_ + kvHeadIdx * yBlockNumAligned_ + yBlockIndex;
 #ifdef __DAV_CUBE__
-                    float kDeqScaleValue = keyDequantScale.GetValue(kvDeqScaleOffset);
+                    float kDeqScaleValue = gKeyDequantScale.GetValue(kvDeqScaleOffset);
                     float combinedDeqScalar = qDeqScaleValue * kDeqScaleValue;
                     uint64_t deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&combinedDeqScalar));
 
@@ -365,7 +365,7 @@ public:
                     // rescale O
                     Arch::CrossCoreFlag mm2ToReFlag(Mm2ToReFlagId);
                     uint32_t curTileMod = gatheredKvSTileIdxDe % (PRE_LAUNCH + 1);
-                    float vDeqScaleValue = valueDequantScale.GetValue(kvDeqScaleOffset);
+                    float vDeqScaleValue = gValueDequantScale.GetValue(kvDeqScaleOffset);
                     float combinedDeqScalar = vDeqScaleValue * STATIC_P_SCALE_2;
                     uint64_t deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&combinedDeqScalar));
                     epilogueRescaleO(

@@ -205,7 +205,7 @@ public:
         WaitCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
 
         if constexpr (std::is_same_v<ElementOutput, float8_e4m3_t>) {
-            ScaleP(pAddr, m, nLoops, tailN, nRound, 448.0f);
+            ScaleP<ElementOutput>(pAddr, m, nLoops, tailN, nRound, 448.0f);
             // CastPToFp8<ElementOutput, half>(pAddr, pAddr, m, nLoops, tailN, nRound);
         }
 
@@ -410,7 +410,7 @@ private:
 
     template <typename ElementP>
     __simd_vf__ inline void ScaleP(__ubuf__ ElementP *pUb, uint16_t m, uint16_t nLoopCount, uint32_t tailN,
-                                                uint16 nRound, float staticScale)
+                                                uint16_t nRound, float staticScale)
     {
         using namespace AscendC::MicroAPI;
 
@@ -422,7 +422,7 @@ private:
             for (uint16_t j = 0; j < nLoopCount; ++j) {
                 LoadAlign(pVreg, pUb + i * nRound + j * FLOAT8_REP_SIZE);
                 Muls(pVreg, pVreg, staticScale, pregAll);
-                StoreAlign<ElementS, StoreDist::DIST_NORM_B8>(pUb + i * nRound + j * FLOAT8_REP_SIZE, pVreg, pregAll);
+                StoreAlign<ElementP, StoreDist::DIST_NORM_B8>(pUb + i * nRound + j * FLOAT8_REP_SIZE, pVreg, pregAll);
             }
             LoadAlign(pVreg, pUb + i * nRound + nLoopCount * FLOAT8_REP_SIZE);
             Muls(pVreg, pVreg, staticScale, pregTailN);
