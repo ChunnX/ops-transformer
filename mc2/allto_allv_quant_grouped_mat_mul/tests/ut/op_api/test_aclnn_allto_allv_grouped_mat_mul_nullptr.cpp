@@ -380,6 +380,7 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMa
     EXPECT_EQ(ACLNN_ERR_PARAM_INVALID, ut_null_permuteout_true.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 }
 
+
 TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMatMulQuantModeNotVaild )
 {
     TensorDesc gmmX = {{8192, 7168}, ACL_HIFLOAT8, ACL_FORMAT_ND};
