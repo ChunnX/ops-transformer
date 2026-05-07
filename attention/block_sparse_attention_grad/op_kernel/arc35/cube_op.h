@@ -46,6 +46,7 @@ private:
 
     static constexpr int32_t L1_SIZE = 512 * 1024;
     static constexpr int32_t L0_AB_SIZE = 64 * 1024;
+    static constexpr int32_t L0_C_SIZE = 256 * 1024;
     static constexpr int32_t BASE_BLOCK_SIZE = 128 * 128;
 
 public:
@@ -67,6 +68,7 @@ public:
         tPipe->InitBuffer(l1_buffer_, L1_SIZE);
         tPipe->InitBuffer(l0_a_buffer_, L0_AB_SIZE);
         tPipe->InitBuffer(l0_b_buffer_, L0_AB_SIZE);
+        tPipe->InitBuffer(l0_c_buffer_, L0_C_SIZE);
 
         uint32_t l1_offset = 0;
         l1_a_tensor_ping_ = l1_buffer_.GetWithOffset<INPUT_TYPE>(128 * 1024 / sizeof(INPUT_TYPE), l1_offset);
