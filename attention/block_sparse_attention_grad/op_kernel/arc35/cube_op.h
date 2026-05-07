@@ -84,6 +84,24 @@ public:
         l0_b_tensor_pong_ = l0_b_buffer_.GetWithOffset<INPUT_TYPE>(32 * 1024 / sizeof(INPUT_TYPE), 32 * 1024);
         l0_c_tensor_ping_ = l0_c_buffer_.GetWithOffset<INPUT_TYPE>(64 * 1024 / sizeof(INPUT_TYPE), 0);
         l0_c_tensor_pong_ = l0_c_buffer_.GetWithOffset<INPUT_TYPE>(64 * 1024 / sizeof(INPUT_TYPE), 64 * 1024);
+
+
+        auto size = l1_a_tensor_ping_.GetSize();
+        printf("l1_a_tensor_ping_ size: %d\n", size);
+        size = l1_a_tensor_pong_.GetSize();
+        printf("l1_a_tensor_pong_ size: %d\n", size);
+        size = l1_b_tensor_ping_.GetSize();
+        printf("l1_b_tensor_ping_ size: %d\n", size);
+        size = l1_b_tensor_pong_.GetSize();
+        printf("l1_b_tensor_pong_ size: %d\n", size);
+        size = l0_a_tensor_ping_.GetSize();
+        printf("l0_a_tensor_ping_ size: %d\n", size);
+        size = l0_a_tensor_pong_.GetSize();
+        printf("l0_a_tensor_pong_ size: %d\n", size);
+        size = l0_b_tensor_ping_.GetSize();
+        printf("l0_b_tensor_ping_ size: %d\n", size);
+        size = l0_b_tensor_pong_.GetSize();
+        printf("l0_b_tensor_pong_ size: %d\n", size);
     }
 
     __aicore__ inline void ComputeMM12(GlobalTensor<INPUT_TYPE> leftGm, GlobalTensor<INPUT_TYPE> rightGm,
