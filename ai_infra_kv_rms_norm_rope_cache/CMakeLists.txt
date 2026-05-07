@@ -21,11 +21,15 @@ target_sources(op_host_aclnnExc PRIVATE
 target_sources(optiling PRIVATE
         op_host/ai_infra_kv_rms_norm_rope_cache_base_tiling.cpp
         op_host/ai_infra_kv_rms_norm_rope_cache_ds_tiling.cpp
+        op_host/ai_infra_kv_rms_norm_rope_cache_regbase_full_load_tiling.cpp
+        op_host/ai_infra_kv_rms_norm_rope_cache_regbase_recompute_tiling.cpp
 )
 if (NOT BUILD_OPEN_PROJECT)
     target_sources(opmaster_ct PRIVATE
         op_host/ai_infra_kv_rms_norm_rope_cache_base_tiling.cpp
         op_host/ai_infra_kv_rms_norm_rope_cache_ds_tiling.cpp
+        op_host/ai_infra_kv_rms_norm_rope_cache_regbase_full_load_tiling.cpp
+        op_host/ai_infra_kv_rms_norm_rope_cache_regbase_recompute_tiling.cpp
     )
 endif ()
 target_include_directories(optiling PRIVATE
