@@ -8,7 +8,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-message(STATUS "=== Debug: start ops.moe.moe_gating_top_k.tests.CMakeLists.txt")
+message(STATUS "=== Debug: start ops.moe.moe_gating_top_k_backward.tests.CMakeLists.txt")
 file(GLOB CURRENT_DIRS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/*)
 foreach(SUB_DIR ${CURRENT_DIRS})
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${SUB_DIR}/CMakeLists.txt")

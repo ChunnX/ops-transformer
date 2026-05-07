@@ -8,34 +8,23 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-message(STATUS "=== Debug: start ops.moe.moe_gating_top_k.op_host.CMakeLists.txt")
+message(STATUS "=== Debug: start ops.moe.moe_gating_top_k_backward.op_host.CMakeLists.txt")
 
 set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
 if (BUILD_OPEN_PROJECT)
     message(STATUS "=== Debug: BUILD is BUILD_OPEN_PROJECT")
     target_sources(op_host_aclnn PRIVATE
-        moe_gating_top_k_def.cpp
+        moe_gating_top_k_backward_def.cpp
     )
-    if(CONDITION_UNIT STREQUAL "ascend950")
-        add_ops_compile_options(
-            OP_NAME MoeGatingTopK
-            OPTIONS --cce-auto-sync=off
-                    -Wno-deprecated-declarations
-                    -Werror
-                    -mllvm 
-                    -cce-aicore-dcci-before-kernel-end=false
-        )
-    else()
-        add_ops_compile_options(
-            OP_NAME MoeGatingTopK
-            OPTIONS --cce-auto-sync=on
-                    -Wno-deprecated-declarations
-                    -Werror
-        )
-    endif()
+    add_ops_compile_options(
+        OP_NAME MoeGatingTopKBackward
+        OPTIONS --cce-auto-sync=off
+                -Wno-deprecated-declarations
+                -Werror
+    )
 endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)
     message(STATUS "=== Debug: BUILD is NOT BUILD_OPS_RTY_KERNEL")
-    add_modules_sources(OPTYPE moe_gating_top_k ACLNNTYPE aclnn)
+    add_modules_sources(OPTYPE moe_gating_top_k_backward ACLNNTYPE aclnn)
 endif()

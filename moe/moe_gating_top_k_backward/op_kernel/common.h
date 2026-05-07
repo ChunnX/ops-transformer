@@ -12,12 +12,12 @@
  * \file common.h
  * \brief
  */
-#ifndef MOE_GATING_TOP_K_COMMON_H
-#define MOE_GATING_TOP_K_COMMON_H
+#ifndef MOE_GATING_TOP_K_BACKWARD_COMMON_H
+#define MOE_GATING_TOP_K_BACKWARD_COMMON_H
 
 #include "kernel_operator.h"
 
-namespace MoeGatingTopK {
+namespace MoeGatingTopKBackward {
 using namespace AscendC;
 const float MIN_FP32 = *(float *)(&F32_NEG_INF);
 constexpr int32_t FLOAT32_NEG_INF = 0xFF800000; // -inf -2139095040
@@ -85,5 +85,5 @@ __aicore__ inline T1 CeilDiv(T1 x, T2 y)
     return x;
 }
 
-} // namespace MoeGatingTopK
-#endif // MOE_GATING_TOP_K_COMMON_H
+} // namespace MoeGatingTopKBackward
+#endif // MOE_GATING_TOP_K_BACKWARD_COMMON_H
