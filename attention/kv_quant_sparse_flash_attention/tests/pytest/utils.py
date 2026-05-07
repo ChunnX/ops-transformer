@@ -182,6 +182,7 @@ def save_result(params, result, fulfill_percent, result_path, softmax_max_percen
         "range_query_rope": str(params.get("range_query_rope")) if params.get("range_query_rope") is not None else None,
         "range_key_rope": str(params.get("range_key_rope")) if params.get("range_key_rope") is not None else None,
         "range_dequant_scale": str(params.get("range_dequant_scale")) if params.get("range_dequant_scale") is not None else None,
+        "return_softmax_lse": params.get("return_softmax_lse", False),
         "result": result,
         "fulfill_percent": fulfill_percent,
         "softmax_max_percent": softmax_max_percent,
@@ -199,7 +200,7 @@ def save_result(params, result, fulfill_percent, result_path, softmax_max_percen
 def combin_params(enabled_params, pytest_paramset=True):
     param_combination_set = []
     base_param_names = [
-        "Testcase_Prefix", "Testcase_Number",
+        "Testcase_Prefix",
         "layout_query", "layout_kv", "q_type", "kv_type",
         "B", "T", "T2", "S1", "S2", "N1", "N2", "D", "K",
         "scale_value", "key_quant_mode", "value_quant_mode",
