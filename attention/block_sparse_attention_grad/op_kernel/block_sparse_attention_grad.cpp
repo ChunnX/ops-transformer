@@ -53,7 +53,7 @@ extern "C" __global__ __aicore__ void block_sparse_attention_grad(__gm__ uint8_t
                 BSA_ARC35::BSA_TYPE<half, BlockSparseAttentionGradTilingDataArch35, true>
             > op;
         op.Process(dout, query, key, value, out, softmaxLse, blockSparseMask, blockShape, attentionMask,
-                   actualSeqLengths, actualSeqLengthsKv, dq, dk, dv, user, tilingDataPtrArch35);
+                   actualSeqLengths, actualSeqLengthsKv, dq, dk, dv, user, tilingDataPtrArch35, tPipe);
     } 
     tPipe.Destroy();
 
