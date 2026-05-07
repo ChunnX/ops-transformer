@@ -124,7 +124,6 @@ class MatmulReduceScatterV2 : public OpDef {
         .ExtendCfgInfo("opFile.value", "matmul_reduce_scatter_v2_apt");
     this->AICore().AddConfig("ascend950", aicore_config);
     this->MC2().HcclGroup("group");
-    this->MC2().HcclServerType(HcclServerType::AICPU);
 
     OpAICoreConfig aicore_config_910b;
     aicore_config_910b.Input("x1")
