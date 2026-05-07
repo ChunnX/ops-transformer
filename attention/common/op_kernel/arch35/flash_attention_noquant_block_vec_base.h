@@ -381,15 +381,23 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Dn(
 {
     bmm1ResBuf.WaitCrossCore();
     LocalTensor<uint8_t> attenMaskUb;
-    // s1=s2时s2方向末尾一轮需要处理atten，s1!=s2且有尾块时s2方向末尾两轮需要处理atten
-    bool needAtten = hasAtten && ((runInfo.s2EndIdx - s1BaseSize < s2BaseSize) ||
-                      ((runInfo.s2EndIdx - s1BaseSize >= s2BaseSize) &&
-                       (runInfo.s2LoopCount == runInfo.s2LoopLimit ||
-                        runInfo.s2LoopCount == runInfo.s2LoopLimit - 1)));
-    if constexpr ((isFp8 || isBf16Fp16) && hasAtten) {
-        AttenMaskCopyInDn<hasAtten>(this->attenMaskInQue[runInfo.taskIdMod2], this->attenMaskGmInt,
-                                    runInfo, constInfo, *attenMaskInfoPtr,
-                                    needAtten);
+    if constexpr (optionalDn) {
+        // s1=s2时s2方向末尾一轮需要处理atten，s1!=s2且有尾块时s2方向末尾两轮需要处理atten
+        bool needAtten = hasAtten && ((runInfo.s2EndIdx - s1BaseSize < s2BaseSize) ||
+                                      ((runInfo.s2EndIdx - s1BaseSize >= s2BaseSize) &&
+                                       (runInfo.s2LoopCount == runInfo.s2LoopLimit ||
+                                        runInfo.s2LoopCount == runInfo.s2LoopLimit - 1)));
+        AttenMaskCopyInDn<hasAtten, optionalDn>(this->attenMaskInQue[runInfo.taskIdMod2], this->attenMaskGmInt,
+                                                runInfo, constInfo, *attenMaskInfoPtr, needAtten);
+        attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
+    } else {
+        if constexpr (isFp8 && hasAtten) {
+            AttenMaskCopyInDn<hasAtten>(this->attenMaskInQue[0], this->attenMaskGmInt,
+                                        runInfo, constInfo, *attenMaskInfoPtr,
+                                        (runInfo.s2EndIdx - s1BaseSize < s2BaseSize) ||
+                                         ((runInfo.s2EndIdx - s1BaseSize >= s2BaseSize) &&
+                                          (runInfo.s2LoopCount == runInfo.s2LoopLimit)));
+        }
         attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
     }
     LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>()[0];
@@ -428,23 +436,17 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Dn(
     float pScale = 1.0f;
     auto stage1CastTensor = this->stage1OutQue[stage1Offset].template AllocTensor<INPUT_T>();
     if (unlikely(runInfo.s2LoopCount == 0)) {
-        if constexpr (isFp8) {
-            FaVectorApi::ProcessVec1VfDn<T, INPUT_T, false, hasAtten, s2BaseSize, false>(
-                stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb, apiTmpBuffer,
-                ((runInfo.s1RealSizeAlign64 >> 1) + 63) >> 6 << 6, runInfo.s2AlignedSize, runInfo.s2RealSize,
-                static_cast<T>(constInfo.scaleValue), descaleQK,
-                negativeFloatScalar, constInfo.keepProb, runInfo.s2EndIdx - s1BaseSize < s2BaseSize);
-        } else if constexpr (isBf16Fp16) {
+        if constexpr (optionalDn) {
             if (constInfo.learnableSinkFlag) {
                 if constexpr (implMode == ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION) {
-                    FaVectorApi::ProcessVec1VfDn<T, INPUT_T, false, hasAtten, s2BaseSize, true, true>(
+                    FaVectorApi::ProcessVec1VfDnCausal<T, INPUT_T, false, hasAtten, s2BaseSize, true, true>(
                         stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
                         apiTmpBuffer, runInfo.s1RealSizeAlign64 >> 1, runInfo.s2AlignedSize, runInfo.s2RealSize,
                         static_cast<T>(constInfo.scaleValue), descaleQK, negativeFloatScalar, constInfo.keepProb,
                         needAtten && attenMaskInfoPtr->computeMode != AttenMaskComputeMode::NO_NEED_COMPUTE_MODE,
                         pScale, constInfo.sinkValue);
                 } else {
-                    FaVectorApi::ProcessVec1VfDn<T, INPUT_T, false, hasAtten, s2BaseSize, true, false>(
+                    FaVectorApi::ProcessVec1VfDnCausal<T, INPUT_T, false, hasAtten, s2BaseSize, true, false>(
                         stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
                         apiTmpBuffer, runInfo.s1RealSizeAlign64 >> 1, runInfo.s2AlignedSize, runInfo.s2RealSize,
                         static_cast<T>(constInfo.scaleValue), descaleQK, negativeFloatScalar, constInfo.keepProb,
@@ -453,14 +455,14 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Dn(
                 }
             } else {
                 if constexpr (implMode == ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION) {
-                    FaVectorApi::ProcessVec1VfDn<T, INPUT_T, false, hasAtten, s2BaseSize, false, true>(
+                    FaVectorApi::ProcessVec1VfDnCausal<T, INPUT_T, false, hasAtten, s2BaseSize, false, true>(
                         stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
                         apiTmpBuffer, runInfo.s1RealSizeAlign64 >> 1, runInfo.s2AlignedSize, runInfo.s2RealSize,
                         static_cast<T>(constInfo.scaleValue), descaleQK, negativeFloatScalar, constInfo.keepProb,
                         needAtten && attenMaskInfoPtr->computeMode != AttenMaskComputeMode::NO_NEED_COMPUTE_MODE,
                         pScale, constInfo.sinkValue);
                 } else {
-                    FaVectorApi::ProcessVec1VfDn<T, INPUT_T, false, hasAtten, s2BaseSize, false, false>(
+                    FaVectorApi::ProcessVec1VfDnCausal<T, INPUT_T, false, hasAtten, s2BaseSize, false, false>(
                         stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
                         apiTmpBuffer, runInfo.s1RealSizeAlign64 >> 1, runInfo.s2AlignedSize, runInfo.s2RealSize,
                         static_cast<T>(constInfo.scaleValue), descaleQK, negativeFloatScalar, constInfo.keepProb,
@@ -469,38 +471,41 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Dn(
                 }
             }
         } else {
-            if (constInfo.learnableSinkFlag) {
-                FaVectorApi::ProcessVec1VfDn<T, INPUT_T, false, false, s2BaseSize, true>(
-                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
-                    apiTmpBuffer, runInfo.s1RealSizeAlign64 >> 1, runInfo.s2AlignedSize, runInfo.s2RealSize,
-                    static_cast<T>(constInfo.scaleValue), descaleQK,
-                    negativeFloatScalar, constInfo.keepProb, false, pScale, constInfo.sinkValue);
-            } else {
-                FaVectorApi::ProcessVec1VfDn<T, INPUT_T, false, false, s2BaseSize, false>(
-                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
-                    apiTmpBuffer, runInfo.s1RealSizeAlign64 >> 1, runInfo.s2AlignedSize, runInfo.s2RealSize,
-                    static_cast<T>(constInfo.scaleValue), descaleQK,
-                    negativeFloatScalar, constInfo.keepProb, false, pScale, constInfo.sinkValue);
+            if constexpr (isFp8) {
+                    FaVectorApi::ProcessVec1VfDn<T, INPUT_T, false, hasAtten, s2BaseSize, false>(
+                        stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
+                        ((runInfo.s1RealSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.s2AlignedSize, runInfo.s2RealSize,
+                        static_cast<T>(constInfo.scaleValue), descaleQK,
+                        negativeFloatScalar, constInfo.keepProb, runInfo.s2EndIdx - s1BaseSize < s2BaseSize);
+                } else {
+                    if (constInfo.learnableSinkFlag) {
+                        FaVectorApi::ProcessVec1VfDn<T, INPUT_T, false, false, s2BaseSize, true>(
+                            stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
+                            runInfo.s1RealSizeAlign32 >> 1, runInfo.s2AlignedSize, runInfo.s2RealSize,
+                            static_cast<T>(constInfo.scaleValue), descaleQK,
+                            negativeFloatScalar, constInfo.keepProb, false, pScale, constInfo.sinkValue);
+                    } else {
+                        FaVectorApi::ProcessVec1VfDn<T, INPUT_T, false, false, s2BaseSize, false>(
+                            stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
+                            runInfo.s1RealSizeAlign32 >> 1, runInfo.s2AlignedSize, runInfo.s2RealSize,
+                            static_cast<T>(constInfo.scaleValue), descaleQK,
+                            negativeFloatScalar, constInfo.keepProb, false, pScale, constInfo.sinkValue);
+                    }
+                }
             }
         }
     } else {
-        if constexpr (isFp8) {
-            FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, hasAtten, s2BaseSize, false>(
-                stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb, apiTmpBuffer,
-                ((runInfo.s1RealSizeAlign64 >> 1) + 63) >> 6 << 6, runInfo.s2AlignedSize, runInfo.s2RealSize,
-                static_cast<T>(constInfo.scaleValue), descaleQK,
-                negativeFloatScalar, constInfo.keepProb, runInfo.s2LoopCount == runInfo.s2LoopLimit);
-        } else if constexpr (isBf16Fp16) {
+        if constexpr (optionalDn) {
             if (constInfo.learnableSinkFlag) {
                 if constexpr (implMode == ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION) {
-                    FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, hasAtten, s2BaseSize, true, true>(
+                    FaVectorApi::ProcessVec1VfDnCausal<T, INPUT_T, true, hasAtten, s2BaseSize, true, true>(
                         stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
                         apiTmpBuffer, runInfo.s1RealSizeAlign64 >> 1, runInfo.s2AlignedSize, runInfo.s2RealSize,
                         static_cast<T>(constInfo.scaleValue), descaleQK, negativeFloatScalar, constInfo.keepProb,
                         needAtten && attenMaskInfoPtr->computeMode != AttenMaskComputeMode::NO_NEED_COMPUTE_MODE,
                         pScale, constInfo.sinkValue);
                 } else {
-                    FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, hasAtten, s2BaseSize, true, false>(
+                    FaVectorApi::ProcessVec1VfDnCausal<T, INPUT_T, true, hasAtten, s2BaseSize, true, false>(
                         stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
                         apiTmpBuffer, runInfo.s1RealSizeAlign64 >> 1, runInfo.s2AlignedSize, runInfo.s2RealSize,
                         static_cast<T>(constInfo.scaleValue), descaleQK, negativeFloatScalar, constInfo.keepProb,
@@ -509,14 +514,14 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Dn(
                 }
             } else {
                 if constexpr (implMode == ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION) {
-                    FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, hasAtten, s2BaseSize, false, true>(
+                    FaVectorApi::ProcessVec1VfDnCausal<T, INPUT_T, true, hasAtten, s2BaseSize, false, true>(
                         stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
                         apiTmpBuffer, runInfo.s1RealSizeAlign64 >> 1, runInfo.s2AlignedSize, runInfo.s2RealSize,
                         static_cast<T>(constInfo.scaleValue), descaleQK, negativeFloatScalar, constInfo.keepProb,
                         needAtten && attenMaskInfoPtr->computeMode != AttenMaskComputeMode::NO_NEED_COMPUTE_MODE,
                         pScale, constInfo.sinkValue);
                 } else {
-                    FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, hasAtten, s2BaseSize, false, false>(
+                    FaVectorApi::ProcessVec1VfDnCausal<T, INPUT_T, true, hasAtten, s2BaseSize, false, false>(
                         stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
                         apiTmpBuffer, runInfo.s1RealSizeAlign64 >> 1, runInfo.s2AlignedSize, runInfo.s2RealSize,
                         static_cast<T>(constInfo.scaleValue), descaleQK, negativeFloatScalar, constInfo.keepProb,
@@ -525,18 +530,26 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Dn(
                 }
             }
         } else {
-            if (constInfo.learnableSinkFlag) {
-                FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize, true>(
+            if constexpr (isFp8) {
+                FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, hasAtten, s2BaseSize, false>(
                     stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
-                    apiTmpBuffer, runInfo.s1RealSizeAlign64 >> 1, runInfo.s2AlignedSize, runInfo.s2RealSize,
+                    ((runInfo.s1RealSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.s2AlignedSize, runInfo.s2RealSize,
                     static_cast<T>(constInfo.scaleValue), descaleQK,
-                    negativeFloatScalar, constInfo.keepProb, false, pScale, constInfo.sinkValue);
+                    negativeFloatScalar, constInfo.keepProb, runInfo.s2LoopCount == runInfo.s2LoopLimit);
             } else {
-                FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize, false>(
-                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
-                    apiTmpBuffer, runInfo.s1RealSizeAlign64 >> 1, runInfo.s2AlignedSize, runInfo.s2RealSize,
-                    static_cast<T>(constInfo.scaleValue), descaleQK,
-                    negativeFloatScalar, constInfo.keepProb, false, pScale, constInfo.sinkValue);
+                if (constInfo.learnableSinkFlag) {
+                    FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize, true>(
+                        stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
+                        runInfo.s1RealSizeAlign32 >> 1, runInfo.s2AlignedSize, runInfo.s2RealSize,
+                        static_cast<T>(constInfo.scaleValue), descaleQK,
+                        negativeFloatScalar, constInfo.keepProb, false, pScale, constInfo.sinkValue);
+                } else {
+                    FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize, false>(
+                        stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
+                        runInfo.s1RealSizeAlign32 >> 1, runInfo.s2AlignedSize, runInfo.s2RealSize,
+                        static_cast<T>(constInfo.scaleValue), descaleQK,
+                        negativeFloatScalar, constInfo.keepProb, false, pScale, constInfo.sinkValue);
+                }
             }
         }
     }
@@ -554,11 +567,13 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Dn(
         DataCopy(mm2AL1Tensor[constInfo.subBlockIdx * vec1HalfS1BaseSize * ((runInfo.s2RealSize + 63) >> 6 << 6)],
             stage1CastTensor, {static_cast<uint16_t>((runInfo.s2RealSize + 63) >> 6), 64, 66, 0});
         DataCopy(mm2AL1Tensor[constInfo.subBlockIdx * vec1HalfS1BaseSize * ((runInfo.s2RealSize + 63) >> 6 << 6) +
-            ((runInfo.s2RealSize + 63) >> 6 << 6) * 32], stage1CastTensor[65 << 5], {static_cast<uint16_t>((runInfo.s2RealSize + 63) >> 6), 64, 66, 0});
+            ((runInfo.s2RealSize + 63) >> 6 << 6) * 32], stage1CastTensor[65 << 5],
+            {static_cast<uint16_t>((runInfo.s2RealSize + 63) >> 6), 64, 66, 0});
     } else {
         if (runInfo.s2RealSize > vec1S2CopyLenDn) {
             DataCopy(mm2AL1Tensor[constInfo.subBlockIdx * vec1HalfS1BaseSize * runInfo.s2AlignedSize], stage1CastTensor,
-                {vec1S2CopyCountDn, vec1S2CopyLenDn, 1, static_cast<uint16_t>(runInfo.s2AlignedSize - vec1S2CopyLenDn)});
+                {vec1S2CopyCountDn, vec1S2CopyLenDn, 1,
+                 static_cast<uint16_t>(runInfo.s2AlignedSize - vec1S2CopyLenDn)});
             DataCopy(mm2AL1Tensor[constInfo.subBlockIdx * vec1HalfS1BaseSize * runInfo.s2AlignedSize + vec1S2strideDn],
                 stage1CastTensor[vec1ResOffsetDn],
                 {vec1S2CopyCountDn, static_cast<uint16_t>(runInfo.s2AlignedSize - vec1S2CopyLenDn),
