@@ -21,6 +21,11 @@ struct RunTimeInfo {
     int32_t loop_finish{0}; // 是否遍历完所有任务
 };
 
+template <typename T>
+inline __aicore__ T RoundUp(const T val, const T align)
+{
+    return (val + align - 1) / align * align;
+}
 
 __aicore__ inline int64_t getSeqLen(int32_t i, __gm__ uint8_t *seq_Len)
 {

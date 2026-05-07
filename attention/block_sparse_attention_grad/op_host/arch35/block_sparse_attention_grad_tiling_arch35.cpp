@@ -131,13 +131,17 @@ protected:
         uint64_t ub_size, l1_size;
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ub_size);
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, l1_size);
-        uint32_t cube_core_num = 2;
-
-
+        ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_A, l1_size);
+        ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_B, l1_size);
+        ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, l1_size);
         std::cout << "coreNum is " << coreNum << std::endl;
         std::cout << "ub_size is " << ub_size << std::endl;
         std::cout << "l1_size is " << l1_size << std::endl;
+        std::cout << "l0_a_size is " << l1_size << std::endl;
+        std::cout << "l0_b_size is " << l1_size << std::endl;
+        std::cout << "l0_c_size is " << l1_size << std::endl;
 
+        uint32_t cube_core_num = 2;
         tilingData_.set_cubeCoreNum(cube_core_num);
         tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
         context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
