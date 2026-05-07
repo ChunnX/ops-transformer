@@ -216,11 +216,8 @@ AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulT
     tilingData_->mxTensorTailTilingData.fullN = mc2Tiling_.rankN;
     // 按 context 类型选择 tilingDataPtr：tensor API → mxTensor*，原 MatMulASWKernel → mc2QuantMm*
     if constexpr (AscendC::Std::is_same_v<typename AscendC::Std::remove_pointer<decltype(pipeLineContext_.computationContext->tilingDataPtr)>::type, TensorMatmulTilingData>) {
-        AscendC::printf("[MX-ARCH35] Tensor API tiling: tileM=%u fullK=%u fullN=%u\n",
-                        mc2Tiling_.tileM, mc2Tiling_.rankK * mc2Tiling_.rankDim, mc2Tiling_.rankN);
         pipeLineContext_.computationContext->tilingDataPtr = &(tilingData_->mxTensorTileTilingData);
     } else {
-        AscendC::printf("[MX-ARCH35] Original ASW tiling\n");
         pipeLineContext_.computationContext->tilingDataPtr = &(tilingData_->mc2QuantMmTileTilingData);
     }
 

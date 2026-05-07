@@ -386,12 +386,143 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::DoMxQuantMMTiling()
     AlltoAllMxQuantMatmulHelper mmTile(*this, localTilingData_.mc2QuantMmTileTilingData, mmMvalueLen_);
     GE_ASSERT_GRAPH_SUCCESS(mmTile.DoTiling());
     if (inferredInfo.tailCnt == 0) {
+        FillMxTensorTiling(inferredInfo.tileM);
         return ge::GRAPH_SUCCESS;
     }
     mmMvalueLen_ = inferredInfo.tailM;
     AlltoAllMxQuantMatmulHelper mmTail(*this, localTilingData_.mc2QuantMmTailTilingData, mmMvalueLen_);
     GE_ASSERT_GRAPH_SUCCESS(mmTail.DoTiling());
+    FillMxTensorTiling(inferredInfo.tailM);
     return ge::GRAPH_SUCCESS;
+}
+
+void AllToAllMxQuantMatmulTilingBase::FillMxTensorTiling(uint32_t tailM)
+{
+    // 参考 QuantMatmulTilingSwat 的 CalcBasicBlock + CalcPathSpecificL1 + CalcScaleKL1
+    static constexpr uint64_t DB_SIZE        = 2UL;
+    static constexpr uint64_t L1_SIZE        = 512 * 1024;
+    static constexpr uint64_t L0C_SIZE       = 256 * 1024;
+    static constexpr uint64_t CUBE_BLOCK     = 16UL;
+    static constexpr uint64_t SCALE_ALIGN    = 64UL;
+    static constexpr uint64_t SCALE_MULTI    = 2UL;
+    static constexpr uint64_t MXFP_GROUP     = 32UL;
+    static constexpr uint64_t STEPK_MAX      = 4UL;
+    static constexpr uint64_t SCALER_MAX     = 127UL;
+    static constexpr uint64_t MTE2_MIN_LOAD  = 32768UL;
+
+    uint64_t m = contextInfo.args_.orgMValue;
+    uint64_t n = contextInfo.args_.nValue;
+    uint64_t k = contextInfo.args_.orgKValue;
+    uint64_t rankDim = contextInfo.args_.rankDim;
+    uint64_t fullK = k * rankDim;
+    uint64_t aicNum = contextInfo.args_.aicCoreNum;
+    if (aicNum == 0) aicNum = 1;
+
+    uint32_t aBytes = 1; // fp8
+    uint32_t bBytes = 1;
+    uint32_t cBytes = 2; // fp16/bf16 output
+
+    // ── CalcBasicBlock ──
+    uint64_t halfL0A = 32 * 1024;                                // L0A 半区 (double buffer)
+    uint64_t maxM = halfL0A / (128 * aBytes);                     // curM × curKL0 ≤ halfL0A, curKL0≤128
+    uint64_t baseM = inferredInfo.tileM;
+    if (baseM > maxM) baseM = maxM;                               // L0A 容量硬约束
+    uint64_t maxBaseN = L0C_SIZE / baseM / cBytes;
+    uint64_t baseN = (maxBaseN >= 128) ? 128 : maxBaseN;
+
+    uint64_t maxBaseK = (L1_SIZE >> 1) / (baseM * aBytes + baseN * bBytes);
+    uint64_t baseK = (maxBaseK >= 128) ? 128 : (maxBaseK / CUBE_BLOCK * CUBE_BLOCK);
+    if (baseK < CUBE_BLOCK) baseK = CUBE_BLOCK;
+
+    // ── CalcPathSpecificL1: 参考 depth → stepK 逻辑 ──
+    uint64_t halfL1 = L1_SIZE >> 1;
+    uint64_t aPerBaseK = baseM * baseK * aBytes;  // A 单份 baseK 的 L1 占用
+    uint64_t bPerBaseK = baseN * baseK * bBytes;  // B 单份 baseK 的 L1 占用
+    uint64_t scaleAPerK = baseM * ((baseK + MXFP_GROUP - 1) / MXFP_GROUP);
+    uint64_t scaleBPerK = baseN * ((baseK + MXFP_GROUP - 1) / MXFP_GROUP);
+
+    // 先扣 scale 开销再算 depth
+    int64_t budgetA = (int64_t)halfL1 - (int64_t)(scaleBPerK * DB_SIZE);
+    int64_t budgetB = (int64_t)halfL1 - (int64_t)(scaleAPerK * DB_SIZE);
+    if (budgetA < 0) budgetA = 0;
+    if (budgetB < 0) budgetB = 0;
+    uint64_t depthA1 = (uint64_t)budgetA / aPerBaseK;
+    uint64_t depthB1 = (uint64_t)budgetB / bPerBaseK;
+
+    // power-of-2 对齐（参考 CalcPathSpecificL1）
+    auto alignDepth = [](uint64_t d) -> uint64_t {
+        uint64_t r = 1;
+        while (r <= d / 2) r <<= 1;
+        return r;
+    };
+    depthA1 = alignDepth(depthA1);
+    depthB1 = alignDepth(depthB1);
+
+    // stepK = depth / DB_SIZE，clamp 到 [1, STEPK_MAX]
+    uint64_t depth = (depthA1 < depthB1) ? depthA1 : depthB1;
+    uint64_t stepK = depth / DB_SIZE;
+    if (stepK < 1) stepK = 1;
+    if (stepK > STEPK_MAX) stepK = STEPK_MAX;
+
+    uint64_t kL1 = stepK * baseK;
+
+    // ── CalcScaleKL1 + L1 容限检查（联合迭代） ──
+    auto CeilDiv = [](uint64_t a, uint64_t b) -> uint64_t { return (a + b - 1) / b; };
+    auto AlignUp = [](uint64_t a, uint64_t b) -> uint64_t { return ((a + b - 1) / b) * b; };
+    uint64_t scaleKL1 = kL1;
+    for (int iter = 0; iter < 10; ++iter) {
+        uint64_t aBuf  = AlignUp(kL1, SCALE_ALIGN) * baseM * aBytes * DB_SIZE;
+        uint64_t bBuf  = kL1 * baseN * bBytes * DB_SIZE;
+        uint64_t saBuf = baseM * CeilDiv(scaleKL1, SCALE_ALIGN) * SCALE_MULTI * DB_SIZE;
+        uint64_t sbBuf = baseN * CeilDiv(scaleKL1, SCALE_ALIGN) * SCALE_MULTI * DB_SIZE;
+        uint64_t used  = aBuf + bBuf + saBuf + sbBuf;
+
+        if (used <= halfL1) {
+            // 有余量 → 增大 scaleKL1
+            uint64_t remain = halfL1 - used;
+            uint64_t saUnit = baseM * SCALE_MULTI * DB_SIZE;
+            uint64_t sbUnit = baseN * SCALE_MULTI * DB_SIZE;
+            uint64_t addReuse = (saUnit + sbUnit > 0) ? (remain / (saUnit + sbUnit)) : 0;
+            uint64_t newScaleKL1 = kL1 * (1 + addReuse);
+            if (newScaleKL1 > fullK) newScaleKL1 = fullK;
+            if (newScaleKL1 <= scaleKL1) break; // 收敛
+            scaleKL1 = newScaleKL1;
+        } else {
+            // 超了 → 缩 stepK
+            uint64_t oldStepK = stepK;
+            stepK = (kL1 - baseK) / baseK; // stepK-1
+            if (stepK < 1) stepK = 1;
+            kL1 = stepK * baseK;
+            scaleKL1 = kL1;
+            if (stepK == oldStepK) break; // 已到最小
+        }
+    }
+    if (scaleKL1 > fullK) scaleKL1 = fullK;
+
+    OP_LOGI(opName_, "[MX-TILING] tileM=%u fullK=%llu fullN=%llu baseM=%llu baseN=%llu baseK=%llu stepK=%llu kL1=%llu scaleKL1=%llu\n",
+           inferredInfo.tileM, (unsigned long long)fullK, (unsigned long long)n,
+           (unsigned long long)baseM, (unsigned long long)baseN, (unsigned long long)baseK,
+           (unsigned long long)stepK, (unsigned long long)kL1, (unsigned long long)scaleKL1);
+
+    // ── 填入 ──
+    uint32_t tileM = inferredInfo.tileM;
+    localTilingData_.mxTensorTileTilingData.tileM    = tileM;
+    localTilingData_.mxTensorTileTilingData.fullK    = fullK;
+    localTilingData_.mxTensorTileTilingData.fullN    = n;
+    localTilingData_.mxTensorTileTilingData.baseM    = baseM;
+    localTilingData_.mxTensorTileTilingData.baseN    = baseN;
+    localTilingData_.mxTensorTileTilingData.baseK    = baseK;
+    localTilingData_.mxTensorTileTilingData.kL1      = kL1;
+    localTilingData_.mxTensorTileTilingData.scaleKL1 = scaleKL1;
+
+    localTilingData_.mxTensorTailTilingData.tileM    = tailM;
+    localTilingData_.mxTensorTailTilingData.fullK    = fullK;
+    localTilingData_.mxTensorTailTilingData.fullN    = n;
+    localTilingData_.mxTensorTailTilingData.baseM    = baseM;
+    localTilingData_.mxTensorTailTilingData.baseN    = baseN;
+    localTilingData_.mxTensorTailTilingData.baseK    = baseK;
+    localTilingData_.mxTensorTailTilingData.kL1      = kL1;
+    localTilingData_.mxTensorTailTilingData.scaleKL1 = scaleKL1;
 }
 
 /**

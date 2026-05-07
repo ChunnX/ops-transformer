@@ -20,8 +20,8 @@
 #include "./arch35/allto_all_matmul_pipeline.h"
 #include "./arch35/allto_all_matmul_tiling_key.h"
 #include "./arch35/allto_all_matmul_tiling_data.h"
-#include "./arch35/tensor_matmul_stage.h"
-#include "./arch35/tensor_mx_matmul_stage.h"
+#include "../../common/op_kernel/mc2_templates/computation/matmul/tensor_matmul_stage.h"
+#include "../../common/op_kernel/mc2_templates/computation/matmul/tensor_mx_matmul_stage.h"
 #include "./arch35/allto_all_kc_quant_matmul_arch35.h"
 #include "./arch35/allto_all_kc_quant_matmul_pipeline.h"
 #include "./arch35/allto_all_mx_quant_matmul_arch35.h"
@@ -143,13 +143,10 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
     TPipe pipe;
 
 #if ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && ((ORIG_DTYPE_X1 == DT_FLOAT16) || (ORIG_DTYPE_X1 == DT_BF16)))
-    if (AscendC::GetBlockIdx() == 0) {
-        AscendC::printf("[KERNEL-ENTRY] FP path: ORIG_DTYPE_X1=%d DTYPEBIAS=%d\n",
-                        static_cast<int>(ORIG_DTYPE_X1), static_cast<int>(DTYPEBIAS));
-    }
     REGISTER_TILING_DEFAULT(AlltoAllMatmulTilingData);
     GET_TILING_DATA_WITH_STRUCT(AlltoAllMatmulTilingData, tilingData, tilingGM);
 
+    // level0_4p num=1 is here
     if constexpr (DTYPEBIAS == DTYPE_BIAS_SAME_WITH_X) {
         using DtypeBias = DTYPE_X1;
         ALLTO_ALL_MATMUL_APT_FP_IMPL(tilingData, pipe);
@@ -159,28 +156,14 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
     }
 
 #else
-    if (AscendC::GetBlockIdx() == 0) {
-        AscendC::printf("[KERNEL-ENTRY] QUANT path: QUANTMODE=%d X2TRANSPOSE=%d\n",
-                        static_cast<int>(QUANTMODE), static_cast<int>(X2TRANSPOSE));
-    }
     REGISTER_TILING_DEFAULT(AlltoAllQuantMatmulTilingData);
     GET_TILING_DATA_WITH_STRUCT(AlltoAllQuantMatmulTilingData, tilingData, tilingGM);
 #if (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) &&\
      ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2)))
-    if (AscendC::GetBlockIdx() == 0) {
-        AscendC::printf("[KERNEL-ENTRY] MX-FP8 tensor path\n");
-    }
     ALLTO_ALL_MX_TENSOR_MATMUL_IMPL(tilingData, pipe, DTYPE_X1);
 #elif ((ORIG_DTYPE_X1 == DT_FLOAT4_E2M1) && (ORIG_DTYPE_X2 == DT_FLOAT4_E2M1))
-    if (AscendC::GetBlockIdx() == 0) {
-        AscendC::printf("[KERNEL-ENTRY] MX-FP4 original path\n");
-    }
     ALLTO_ALL_MX_QUANT_MATMUL_IMPL(tilingData, pipe, uint8_t, true);
 #else
-    if (AscendC::GetBlockIdx() == 0) {
-        AscendC::printf("[KERNEL-ENTRY] KC-QUANT original path: QUANTMODE=%d\n",
-                        static_cast<int>(QUANTMODE));
-    }
     if constexpr (QUANTMODE == KC_QUANT_FP8E5M2_MODE) {
         ALLTO_ALL_KC_QUANT_MATMUL_IMPL(tilingData, pipe, float8_e5m2_t);
     } else if constexpr (QUANTMODE == KC_QUANT_FP8E4M3_MODE) {

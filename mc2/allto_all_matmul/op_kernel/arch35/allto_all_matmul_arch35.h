@@ -81,12 +81,10 @@ __aicore__ inline void AlltoAllMatmulArch35<SchedulerType, SchedulerContextType,
         ProcessTile(mc2Tiling_.tileCnt);
     }
 
-    AscendC::printf("********** CHUGUOWEI rm ProcessTail");
-
-    // // 启动尾块流水
-    // if (mc2Tiling_.tailCnt>0) {
-    //     ProcessTail(mc2Tiling_.tailCnt);
-    // }
+    // 启动尾块流水
+    if (mc2Tiling_.tailCnt>0) {
+        ProcessTail(mc2Tiling_.tailCnt);
+    }
 
     // 结束流水线
     pipeLine_->End();

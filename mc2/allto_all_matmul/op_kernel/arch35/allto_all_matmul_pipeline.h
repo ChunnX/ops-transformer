@@ -84,13 +84,11 @@ AlltoAllMatmulPipeLine<CommunicationType, TransposeType, ComputationType, Contex
             // 核间使用软同步，当前搭配的matmul没有使用软同步标识索引8和9，后续如果matmul有变化需要同步调整
             AscendC::CrossCoreSetFlag<0, PIPE_MTE3>(8);
             AscendC::CrossCoreWaitFlag(8);
-            // AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(9);
+            AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(9);
         }
         if ASCEND_IS_AIC {
-            AscendC::printf("********** CHUGUOWEI rm computeStage_->Process");
-            return;
-            // AscendC::CrossCoreWaitFlag(9);
-            // computeStage_->Process(index);
+            AscendC::CrossCoreWaitFlag(9);
+            computeStage_->Process(index);
         }
     }
 }
