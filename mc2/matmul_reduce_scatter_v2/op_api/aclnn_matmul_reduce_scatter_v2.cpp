@@ -416,7 +416,7 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeAivMode(const aclTensor* x1, co
     CHECK_RET(CheckShape(x1, x2, transposeX1), ACLNN_ERR_PARAM_INVALID);
     // 【A2、A3】检查x2矩阵非连续合法性
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
-        if (!Ops::Transformer::IsTransposeLastTwoDims(x2) && !MC2Aclnn::IsTensorContiguous(x2)) {
+        if (!Ops::Transformer::IsTransposeLastTwoDims(x2) && !MC2Aclnn::IsTensorContiguous(x2) && !x2->IsEmpty()) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The x2 without transpose in MatmulReduceScatter must be contiguous,"
                     "but it is non-contiguous.");
             return ACLNN_ERR_PARAM_INVALID;
