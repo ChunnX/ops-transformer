@@ -693,7 +693,7 @@ FABlockVecInfer<TEMPLATE_ARGS>::PostQuant(ConstInfo<isInfer, hasRope> &constInfo
                                           int64_t vec2S1Idx, int64_t dSizeAligned64)
 {
     AscendQuant(attenOut, vec2ResUb, constInfo.postQuantScaleValue, constInfo.postQuantOffsetValue,
-                runInfo.vec2S1RealSize * constInfo.dSizeV);
+                runInfo.vec2S1RealSize * dSizeAligned64);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
