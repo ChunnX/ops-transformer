@@ -498,7 +498,7 @@ inline __aicore__ void prompt_flash_attention_FIAS_regbase(__gm__ uint8_t* query
                 static_cast<uint64_t>(s2TemplateType) * (static_cast<uint64_t>(dTemplateType) >> 1)) * 2;
             INVOKE_PFA_NOQUANT_GENERAL_OP_IMPL_ASCEND950_FA_BASEAPI(BaseApi::FlashAttentionNoQuantKernelInfer, vec1ResultSize, qkvSizeRsv2, bfloat16_t, float, int8_t,
                 ImplModeEnum::AA_HIGH_PRECISION, inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-                static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope, true, isPa, nableKVPrefix, enableS1OutSplit);
+                static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope, true, isPa, enableKVPrefix, enableS1OutSplit);
         } else {
             constexpr uint64_t qkvSizeRsv2 = MAX(MAX(static_cast<uint64_t>(s1TemplateType), static_cast<uint64_t>(s2TemplateType)) * static_cast<uint64_t>(dTemplateType),
                 static_cast<uint64_t>(s2TemplateType) * static_cast<uint64_t>(dTemplateType)) * 2;
