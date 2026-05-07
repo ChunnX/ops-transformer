@@ -710,6 +710,13 @@ ge::graphStatus SFATilingCheck::CheckSingleParaKey() const
         ge::GRAPH_SUCCESS != CheckDimNumInLayoutSupport(kvLayout_, opParamInfo_.key.shape, KEY_NAME)) {
         return ge::GRAPH_FAILED;
     }
+
+    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.keyRope.desc, KEY_ROPE_NAME) ||
+        ge::GRAPH_SUCCESS != CheckLayoutSupport(kvLayout_, KEY_ROPE_NAME) ||
+        ge::GRAPH_SUCCESS != CheckDimNumSupport(&opParamInfo_.keyRope.tensor->GetShape(), keyDimNumList, KEY_ROPE_NAME) ||
+        ge::GRAPH_SUCCESS != CheckDimNumInLayoutSupport(kvLayout_, &opParamInfo_.keyRope.tensor->GetShape(), KEY_ROPE_NAME)) {
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -738,6 +745,10 @@ ge::graphStatus SFATilingCheck::CheckSingleParaSparseBlockSize() const
         OP_LOGE(opName_, "sparseBlockSize should be be in range [1, 128] and be a power of 2, but got: %ld.",
             *opParamInfo_.sparseBlockSize),
         return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF((npuArch_ == NpuArch::DAV_3510 && *opParamInfo_.sparseBlockSize != 1),
+        OP_LOGE(opName_, "when NpuArch is DAV_3510, sparse_block_size only support 1, but now is %d.",
+        *opParamInfo_.sparseBlockSize), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1057,20 +1068,20 @@ ge::graphStatus SFATilingCheck::CheckSoftmaxMax()
 {
     if (*opParamInfo_.returnSoftmaxLse) {
         OP_CHECK_IF(opParamInfo_.softmaxMax.shape->GetStorageShape().GetShapeSize() == 0,
-                OP_LOGE(opName_, "When return_softmax_lse is true, SoftmaxMax tensor cannot be empty tensor."),
+            OP_LOGE(opName_, "When return_softmax_lse is true, SoftmaxMax tensor cannot be empty tensor."),
                 return ge::GRAPH_FAILED);
         // type类型校验
         OP_CHECK_IF(opParamInfo_.softmaxMax.desc->GetDataType() != ge::DT_FLOAT,
-                OP_LOGE(opName_, "SoftmaxMax's dtype must be FLOAT."),
+            OP_LOGE(opName_, "SoftmaxMax's dtype must be FLOAT."),
                 return ge::GRAPH_FAILED);
         // shape和维度校验
         if (ge::GRAPH_SUCCESS != CheckAttenOutShape()) {
                 return ge::GRAPH_FAILED;
         }
     } else {
-        if (opParamInfo_.softmaxMax.shape->GetStorageShape().GetShapeSize() != 0) {
-            OP_LOGW(opName_, "When return_softmax_lse is false, SoftmaxMax tensor must be empty tensor.");
-        }
+        OP_CHECK_IF(opParamInfo_.softmaxMax.shape->GetStorageShape().GetShapeSize() != 0,
+            OP_LOGE(opName_, "When return_softmax_lse is false, SoftmaxMax tensor must be empty tensor."),
+                return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -1079,15 +1090,15 @@ ge::graphStatus SFATilingCheck::CheckSoftmaxSum()
 {
     if (*opParamInfo_.returnSoftmaxLse) {
         OP_CHECK_IF(opParamInfo_.softmaxSum.shape->GetStorageShape().GetShapeSize() == 0,
-                OP_LOGE(opName_, "When return_softmax_lse is true, softmaxSum tensor cannot be empty tensor."),
+            OP_LOGE(opName_, "When return_softmax_lse is true, softmaxSum tensor cannot be empty tensor."),
                 return ge::GRAPH_FAILED);
         OP_CHECK_IF(opParamInfo_.softmaxSum.desc->GetDataType() != ge::DT_FLOAT,
-                OP_LOGE(opName_, "softmaxSum's dtype must be FLOAT."),
+            OP_LOGE(opName_, "softmaxSum's dtype must be FLOAT."),
                 return ge::GRAPH_FAILED);
     } else {
-        if(opParamInfo_.softmaxSum.shape->GetStorageShape().GetShapeSize() != 0){
-            OP_LOGW(opName_, "When return_softmax_lse is false, softmaxSum tensor must be empty tensor.");
-        }
+        OP_CHECK_IF(opParamInfo_.softmaxSum.shape->GetStorageShape().GetShapeSize() != 0,
+            OP_LOGE(opName_, "When return_softmax_lse is false, softmaxSum tensor must be empty tensor."),
+                return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -1380,6 +1391,10 @@ ge::graphStatus SFATilingCheck::CheckFeatureMlaNoquantPa() const
     if (kvStorageMode_ != KvStorageMode::PAGE_ATTENTION) {
         return ge::GRAPH_SUCCESS;
     }
+    OP_CHECK_IF(inputBlockTableType_ != ge::DT_BF16 && inputBlockTableType_ != ge::DT_FLOAT16,
+        OP_LOGE(opName_, "blocktable dtype only support %s, but got %s",
+            SFADataTypeToSerialString(ge::DT_INT32).c_str(), SFADataTypeToSerialString(inputBlockTableType_).c_str()),
+        return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(blockSize_ <= 0 || blockSize_ > static_cast<int32_t>(MAX_BLOCK_SIZE),
         OP_LOGE(opName_, "when page attention is enabled, block_size(%d) should be in range (0, %u].",
@@ -1392,10 +1407,6 @@ ge::graphStatus SFATilingCheck::CheckFeatureMlaNoquantPa() const
     OP_CHECK_IF(blockSize_ % sparseBlockSize_ > 0,
         OP_LOGE(opName_, "when page attention is enabled, block_size(%d) must be divided by sparse_block_size(%d), but now the remainder is %d.",
         blockSize_, sparseBlockSize_, blockSize_ % sparseBlockSize_), return ge::GRAPH_FAILED);
-
-    OP_CHECK_IF((npuArch_ == NpuArch::DAV_3510 && sparseBlockSize_ != 1),
-        OP_LOGE(opName_, "when NpuArch is DAV_3510, sparse_block_size must be 1, but now is %d.",
-        sparseBlockSize_), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -1449,6 +1460,7 @@ void SFATilingCheck::Init()
     inputKvType_ = sfaInfo_.inputKvType;
     inputQRopeType_ = sfaInfo_.inputQRopeType;
     inputKRopeType_ = sfaInfo_.inputKRopeType;
+    inputBlockTableType_ = sfaInfo_.inputBlockTableType;
     outputType_ = sfaInfo_.outputType;
 
     qLayout_ = sfaInfo_.qLayout;
@@ -1700,6 +1712,9 @@ ge::graphStatus SFAInfoParser::GetInOutDataType()
     }
     if (opParamInfo_.keyRope.desc != nullptr) {
         inputKRopeType_ = opParamInfo_.keyRope.desc->GetDataType();
+    }
+    if (opParamInfo_.blockTable.desc != nullptr) {
+        inputBlockTableType_ = opParamInfo_.blockTable.desc->GetDataType();
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -1987,6 +2002,7 @@ void SFAInfoParser::GenerateInfo(SFATilingInfo &sfaInfo)
     sfaInfo.inputKvType = inputKvType_;
     sfaInfo.inputQRopeType = inputQRopeType_;
     sfaInfo.inputKRopeType = inputKRopeType_;
+    sfaInfo.inputBlockTableType = inputBlockTableType_;
     sfaInfo.outputType = outputType_;
 
     sfaInfo.kvStorageMode = kvStorageMode_;

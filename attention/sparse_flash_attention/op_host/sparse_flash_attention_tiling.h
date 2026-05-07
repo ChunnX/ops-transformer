@@ -294,6 +294,7 @@ struct SFATilingInfo {
 
     ge::DataType inputQRopeType = ge::DT_FLOAT16;
     ge::DataType inputKRopeType = ge::DT_FLOAT16;
+    ge::DataType inputBlockTableType = ge::DT_FLOAT16;
 
     uint64_t l2CacheSize = 0;
 };
@@ -514,6 +515,7 @@ private:
     ge::DataType inputKvType_ = ge::DT_FLOAT16;
     ge::DataType outputType_ = ge::DT_FLOAT16;
     ge::DataType inputQRopeType_ = ge::DT_FLOAT16;
+    ge::DataType inputBlockTableType_ = ge::DT_INT32;
     ge::DataType inputKRopeType_ = ge::DT_FLOAT16;
 
     gert::Shape queryShapeCmp_{};
@@ -617,6 +619,7 @@ public:
     ge::DataType inputKvType_ = ge::DT_FLOAT16;
     ge::DataType outputType_ = ge::DT_FLOAT16;
     ge::DataType inputQRopeType_ = ge::DT_FLOAT16;
+    ge::DataType inputBlockTableType_ = ge::DT_INT32;
     ge::DataType inputKRopeType_ = ge::DT_FLOAT16;
 
     uint64_t l2CacheSize_ = 0;
