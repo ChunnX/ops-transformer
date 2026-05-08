@@ -22,10 +22,10 @@
 #include "../mla_prolog/arch35/kernel_mla_prolog_split_n.h"
 #endif
 #else
-#if __has_include("../../mla_prolog/op_kernel/arch32/kernel_mla_prolog_split_n.h")
-#include "../../mla_prolog/op_kernel/arch32/kernel_mla_prolog_split_n.h"
+#if __has_include("../../mla_prolog/op_kernel/arch22/kernel_mla_prolog_split_n.h")
+#include "../../mla_prolog/op_kernel/arch22/kernel_mla_prolog_split_n.h"
 #else
-#include "../mla_prolog/arch32/kernel_mla_prolog_split_n.h"
+#include "../mla_prolog/arch22/kernel_mla_prolog_split_n.h"
 #endif
 #endif
 using namespace MlaProlog; 

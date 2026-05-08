@@ -669,12 +669,6 @@ void CalcleBandDeterParam(FuzzyBaseInfoParamsRegbase& fBaseParams)
     int64_t actualCalcS1Token{fBaseParams.s1Token}, actualCalcS2Token{fBaseParams.s2Token};
     int64_t p = CeilDivideBy(actualCalcS1Token, fBaseParams.s1Inner * fBaseParams.s1CvRatio) + 1;
     int64_t q = CeilDivideBy(actualCalcS2Token, fBaseParams.s2Inner * fBaseParams.s2CvRatio) + 1;
-    // band场景若是全计算，走dense分核
-    if (m - p < 2 && n - q < 2) {
-        OP_LOGD("CalcleBandDeterParam", "Change to DETER_DENSE.");
-        fBaseParams.deterSparseType = static_cast<uint32_t>(DeterSparseType::DETER_DENSE);
-        return;
-    }
 
     q = q > n ? n : q;
     p = p > m ? m : p;

@@ -17,7 +17,7 @@
 #define ASCEND_OPS_DECODE_UPDATE_TILING_H
 
 #include "register/tilingdata_base.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 #include "tiling/tiling_api.h"
 
 namespace optiling {

@@ -17,7 +17,7 @@
 #if __CCE_AICORE__ == 310
 #include "arch35/kernel_mla_prolog_split_n.h"
 #else
-#include "arch32/kernel_mla_prolog_split_n.h"
+#include "arch22/kernel_mla_prolog_split_n.h"
 #endif
 using namespace MlaProlog; 
 

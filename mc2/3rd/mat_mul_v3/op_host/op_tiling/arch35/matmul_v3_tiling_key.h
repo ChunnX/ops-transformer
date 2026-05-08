@@ -15,7 +15,7 @@
 #ifndef __OP_HOST_MATMUL_V3_TILING_KEY_H__
 #define __OP_HOST_MATMUL_V3_TILING_KEY_H__
 
-#include "tiling_base/tiling_key.h"
+#include "op_host/tiling_key.h"
 
 namespace optiling {
 namespace mc2_matmul_v3_advanced {

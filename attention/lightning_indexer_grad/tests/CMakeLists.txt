@@ -23,7 +23,7 @@ set(_LIG_TilingSourcesExt
 )
 
 set(_LIG_KernelTilingDataDefH
-        ${OPS_TRANSFORMER_DIR}/common/include/tiling_base/data_copy_transpose_tiling_def.h
+        ${OPS_TRANSFORMER_DIR}/common/include/op_host/data_copy_transpose_tiling_def.h
         ${CMAKE_SOURCE_DIR}/attention/lightning_indexer_grad/op_kernel/lightning_indexer_grad_tiling.h
 )
 

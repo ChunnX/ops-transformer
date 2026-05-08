@@ -124,7 +124,7 @@ aclnnStatus aclnnQuantMatmulAlltoAll(
     <td>FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1、INT8</td>
     <td>ND</td>
     <td>2维，shape为(H1, H2)</td>
-    <td>√</td>
+    <td>不同设备型号支持情况不同，参见<a href="#约束说明">约束说明</a>。</td>
     </tr>
     <tr>
     <td>biasOptional</td>
