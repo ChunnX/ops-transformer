@@ -1,15 +1,15 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
- * \file tiling_key.h
+ * \file tiling_type.h
  * \brief
  */
 
@@ -17,18 +17,96 @@
 
 #include <cstdint>
 
-namespace Ops {
-namespace Transformer {
-namespace OpTiling {
+namespace optiling {
+
+enum class AxisEnum {
+    B = 0,
+    N2 = 1,
+    G = 2,
+    S1 = 3,
+    S2 = 4,
+    D = 5,
+    NONE = 9,
+};
+
+enum class DtypeEnum {
+    FLOAT16 = 0,
+    FLOAT32 = 1,
+    BFLOAT16 = 2,
+    FLOAT16_PRECISION = 3,
+};
+
+enum class PerformanceOrientedEnum {
+    BIG_BUFFER = 1,
+    BIG_DOUBLE_BUFFER = 2,
+};
+
+enum class MatmulConfig {
+    NULL_CONFIG = 0,
+    NORMAL_CONFIG = 1,
+    MDL_CONFIG = 2
+};
+
+enum class PseConfig {
+    NO_PSE = 0,
+    EXIST_PSE = 1
+};
+
+enum class AttenMaskConfig {
+    NO_ATTEN_MASK = 0,
+    EXIST_ATTEN_MASK = 1
+};
+
+enum class DropOutConfig {
+    NO_DROP_OUT = 0,
+    EXIST_DROP_OUT = 1
+};
+
+enum class CubeFormatEnum {
+    ND = 0,
+    NZ = 1
+};
+enum class LayoutEnum {
+    BSND = 0,
+    SBND = 1,
+    BNSD = 2,
+    TND = 3,
+    NTD_TND = 4
+};
+
+enum class CubeInputSourceEnum {
+    GM = 0,
+    L1 = 1
+};
+
+enum class OptionEnum {
+    DISABLE = 0,
+    ENABLE = 1
+};
+
+enum class SparseEnum {
+    ALL = 0,
+    NONE = 1,
+    ANY = 2,
+    CAUSAL = 3,
+    BAND = 4,
+    PREFIX = 5,
+    BAND_COMPRESS = 6,
+    RIGHT_DOWN_CAUSAL = 7,
+    RIGHT_DOWN_CAUSAL_BAND = 8,
+    BAND_LEFT_UP_CAUSAL = 9
+};
+
 constexpr uint64_t RecursiveSum()
 {
     return 0;
 }
 
-constexpr uint64_t kBase = 10; // 10进制进位基数
+constexpr int64_t base10Multiplier = 10;
+
 template <typename T, typename... Args> constexpr uint64_t RecursiveSum(T templateId, Args... templateIds)
 {
-    return static_cast<uint64_t>(templateId) + kBase * RecursiveSum(templateIds...);
+    return static_cast<uint64_t>(templateId) + base10Multiplier * RecursiveSum(templateIds...);
 }
 
 // TilingKey 的生成规则：
@@ -58,6 +136,4 @@ template <typename... Args> constexpr uint64_t GET_TILINGKEY(Args... templateIds
     (GET_TILINGKEY(AxisEnum::ub2, AxisEnum::ub1, AxisEnum::block, DtypeEnum::dtype, LayoutEnum::layout,                \
                    SparseEnum::sparse))
 
-} // namespace Optiling
-} // namespace Transformer
-} // namespace Ops
+} // namespace optiling

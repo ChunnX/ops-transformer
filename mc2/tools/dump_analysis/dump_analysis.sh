@@ -85,23 +85,23 @@ done
 judge=0
 #判断TARGET_DIR
 if [ ! -n "$TARGET_DIR" ]; then
-    echo "warning:TARGET_DIR undefind,不进行dump数据解析"
+    echo "warning:TARGET_DIR 参数未输入,不进行dump数据解析"
 else
     if [ ! -d "$TARGET_DIR" ]; then 
-        echo "warning:unfind TARGET_DIR:$TARGET_DIR,不进行dump数据解析"
+        echo "warning:未找到该参数对应的路径,TARGET_DIR:$TARGET_DIR,不进行dump数据解析"
     fi
 fi
 #判断TOOL_PATH
 if [ ! -n "$TOOL_PATH" ]; then
-    echo "warning:TOOL_PATH undefind"
+    echo "warning:TOOL_PATH 参数未输入"
 else
     if [ ! -e "$TOOL_PATH/tools/msaicerr/msaicerr.py" ]; then
-        echo "warning:unfind TOOL_PATH:$TOOL_PATH/tools/msaicerr/msaicerr.py"
+        echo "warning:未找到该参数对应的路径,TOOL_PATH:$TOOL_PATH/tools/msaicerr/msaicerr.py"
     fi
 fi
 #判断SOC_VERSION
 if [ ! -n "$SOC_VERSION" ]; then
-    echo "warning:SOC_VERSION undefind,不进行dump数据解析"
+    echo "warning:SOC_VERSION 参数未输入,不进行dump数据解析"
 else
     if [ "$SOC_VERSION" != "$SOC_VERSION_910_93" ] && [ "$SOC_VERSION" != "$SOC_VERSION_950" ]; then
         echo "warning:SOC_VERSION:$SOC_VERSION 为非法输入"
@@ -110,7 +110,7 @@ fi
 #判断SP_MOE_NUM,TP_WORLDSIZE
 if [ ! -n "$SP_MOE_NUM" ]; then
     SP_MOE_NUM=0
-    echo "warning:SP_MOE_NUM undefind,使用默认值 SP_MOE_NUM  = 0"
+    echo "warning:SP_MOE_NUM 参数未输入,使用默认值 SP_MOE_NUM  = 0"
 fi
 if [ "$SP_MOE_NUM" -lt 0 ]; then
     echo "error:SP_MOE_NUM:$SP_MOE_NUM should > 0"
@@ -118,7 +118,7 @@ if [ "$SP_MOE_NUM" -lt 0 ]; then
 fi
 if [ ! -n "$TP_WORLDSIZE" ]; then
     TP_WORLDSIZE=1
-    echo "warning:TP_WORLDSIZE undefind,使用默认值 TP_WORLDSIZE  = 1"
+    echo "warning:TP_WORLDSIZE 参数未输入,使用默认值 TP_WORLDSIZE  = 1"
 fi
 if [ "$TP_WORLDSIZE" -lt 1 ]; then
     echo "error:TP_WORLDSIZE:$TP_WORLDSIZE should >= 1"
@@ -127,14 +127,14 @@ fi
 #判断共享专家卡数,共享专家数
 if [ ! -n "$SHARE_EXPERT_CARD_COUNT" ]; then
     SHARE_EXPERT_CARD_COUNT=0
-    echo "warning:SHARE_EXPERT_CARD_COUNT undefind,使用默认值 SHARE_EXPERT_CARD_COUNT  = 0"
+    echo "warning:SHARE_EXPERT_CARD_COUNT 参数未输入,使用默认值 SHARE_EXPERT_CARD_COUNT  = 0"
 fi
 if [ "$SHARE_EXPERT_CARD_COUNT" -lt 0 ]; then
     echo "error:SHARE_EXPERT_CARD_COUNT:$SHARE_EXPERT_CARD_COUNT should > 0"
     judge=1
 fi
 if [ ! -n "$SHARE_EXPERT_NUM" ]; then
-    echo "warning:SHARE_EXPERT_NUM undefind,使用默认值 SHARE_EXPERT_NUM  = 0"
+    echo "warning:SHARE_EXPERT_NUM 参数未输入,使用默认值 SHARE_EXPERT_NUM  = 0"
     SHARE_EXPERT_NUM=0
 fi
 if [ "$SHARE_EXPERT_NUM" -lt 0 ]; then
@@ -144,22 +144,22 @@ fi
 #判断profiling路径
 if [ ! -n "$PROFILING_PATH" ]; then
     PROFILING_PATH=$TARGET_DIR
-    echo "warning:PROFILING_PATH undefind,使用默认值 PROFILING_PATH = TARGET_DIR"
+    echo "warning:PROFILING_PATH 参数未输入,使用默认值 PROFILING_PATH = TARGET_DIR"
 fi
 #PLOG_PATH
 if [ ! -n "$PLOG_PATH" ]; then
-    echo "warning:PLOG_PATH undefind,不进行plog日志分析"
+    echo "warning:PLOG_PATH 参数未输入,不进行plog日志分析"
 else
     if [ ! -d "$PLOG_PATH" ]; then
-        echo "warning:unfind PLOG_PATH:$PLOG_PATH,不进行plog日志分析"
+        echo "warning:未找到该参数对应的路径,PLOG_PATH:$PLOG_PATH,不进行plog日志分析"
     fi
 fi
 #判断GRAPH_PATH
 if [ ! -n "$GRAPH_PATH" ]; then
-    echo "warning:GRAPH_PATH undefind,不进行graph图文件分析"
+    echo "warning:GRAPH_PATH 参数未输入,不进行graph图文件分析"
 else
     if [ ! -d "$GRAPH_PATH" ]; then
-        echo "warning:unfind GRAPH_PATH:$GRAPH_PATH,不进行graph图文件分析"
+        echo "warning:未找到该参数对应的路径,GRAPH_PATH:$GRAPH_PATH,不进行graph图文件分析"
     fi
 fi
 if [ "$judge" = "1" ]; then

@@ -101,8 +101,8 @@ public:
     }
 private:
     GlobalTensor<ACTLEN_T> actualSeqLengthsGm;
-    uint32_t actualLenDims;
-    uint64_t defaultVal;
+    uint32_t actualLenDims = 0;
+    uint64_t defaultVal = 0;
 };
 
 // ----------------------------------------------BlockTableParser--------------------------------

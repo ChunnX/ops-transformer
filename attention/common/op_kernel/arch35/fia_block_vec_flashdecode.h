@@ -758,14 +758,14 @@ public:
                     uint32_t prefixBS1 = qActSeqLensParser.GetTBase(taskInfo.bIdx);
                     uint64_t bN2Offset =
                         prefixBS1 * constInfo.gSize * constInfo.n2Size + taskInfo.n2Idx * constInfo.gSize;
-                    DataCopySoftmaxLseTND(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize, constInfo);
+                    DataCopySoftmaxLseTNDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize, constInfo);
                 } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
                     uint32_t prefixBS1 = qActSeqLensParser.GetTBase(taskInfo.bIdx);
                     uint32_t s1Size = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
                     uint64_t bN2Offset =
                         prefixBS1 * constInfo.gSize * constInfo.n2Size + taskInfo.n2Idx * constInfo.gSize;
-                    DataCopySoftmaxLseNTD(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize, constInfo,
-                                          s1Size);
+                    DataCopySoftmaxLseNTDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize, constInfo,
+                                                               s1Size);
                 } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
                     uint64_t bN2Offset = taskInfo.bIdx * constInfo.gSize * constInfo.n2Size * constInfo.s1Size +
                                          taskInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
@@ -774,8 +774,8 @@ public:
                         constInfo.isQHasLeftPadding ?
                             (constInfo.s1Size - qActSeqLens - constInfo.queryRightPaddingSize) :
                             0;
-                    DataCopySoftmaxLseBSND<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
-                                                          constInfo, s1LeftPaddingSize);
+                    DataCopySoftmaxLseBSNDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
+                                                                constInfo, s1LeftPaddingSize);
                 } else { // BNSD
                     uint64_t bN2Offset = taskInfo.bIdx * constInfo.gSize * constInfo.n2Size * constInfo.s1Size +
                                          taskInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
@@ -786,8 +786,8 @@ public:
                         constInfo.isQHasLeftPadding ?
                             (constInfo.s1Size - qActSeqLens - constInfo.queryRightPaddingSize) :
                             0;
-                    DataCopySoftmaxLseBNSD<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
-                                                          constInfo, qActSeqLens, s1LeftPaddingSize);
+                    DataCopySoftmaxLseBNSDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize,
+                                                                constInfo, qActSeqLens, s1LeftPaddingSize);
                 }
                 // SetFlag<HardEvent::MTE3_V>(SYNC_LSEOUTPUT_BUF_FLAG);
             }

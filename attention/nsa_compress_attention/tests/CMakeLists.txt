@@ -17,7 +17,7 @@ file(GLOB _Src "${OPS_TRANSFORMER_DIR}/attention/nsa_compress_attention/op_host/
 set(_NSA_COMPRESS_ATTENTION_TilingSourcesExt ${_Src})
 
 set(_NSA_COMPRESS_ATTENTION_KernelTilingDataDefH
-        ${OPS_TRANSFORMER_DIR}/common/include/tiling_base/data_copy_transpose_tiling_def.h
+        ${OPS_TRANSFORMER_DIR}/common/include/op_host/data_copy_transpose_tiling_def.h
         ${CMAKE_SOURCE_DIR}/attention/nsa_compress_attention/op_host/nsa_compress_attention_tiling.h
 )
 

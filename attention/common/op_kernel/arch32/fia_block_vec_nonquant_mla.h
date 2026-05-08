@@ -819,16 +819,16 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::CopySoftmaxLseToGmByLayout(
         uint32_t prefixBS1 = info.bIdx == 0U ? 0U : actualSeqLengthsGmQ.GetValue(info.bIdx - 1);
         uint64_t bN2Offset =
             static_cast<uint64_t>(prefixBS1) * constInfo.qHeadNum + static_cast<uint64_t>(info.n2Idx) * constInfo.gSize;
-        DataCopySoftmaxLseTND(softmaxLseGm, lseSrc, bN2Offset, mOffset, mSplitInfo.vecDealM, constInfo);
+        DataCopySoftmaxLseTND<T>(softmaxLseGm, lseSrc, bN2Offset, mOffset, mSplitInfo.vecDealM, constInfo);
     } else if constexpr (LAYOUT_T == FIA_LAYOUT::BSND || LAYOUT_T == FIA_LAYOUT::BSH) {
         uint64_t bN2Offset = static_cast<uint64_t>(info.bIdx) * constInfo.qHeadNum * constInfo.qSeqSize +
                              static_cast<uint64_t>(info.n2Idx) * constInfo.gSize * constInfo.qSeqSize;
-        DataCopySoftmaxLseBSND(softmaxLseGm, lseSrc, bN2Offset, mOffset, mSplitInfo.vecDealM, constInfo,
+        DataCopySoftmaxLseBSND<T, Q_MODE>(softmaxLseGm, lseSrc, bN2Offset, mOffset, mSplitInfo.vecDealM, constInfo,
                                qActSeqLensParser, info.bIdx);
     } else {
         uint64_t bN2Offset = static_cast<uint64_t>(info.bIdx) * constInfo.qHeadNum * constInfo.qSeqSize +
                              static_cast<uint64_t>(info.n2Idx) * constInfo.gSize * constInfo.qSeqSize;
-        DataCopySoftmaxLseBNSD<COMPUTE_T, Q_MODE>(softmaxLseGm, lseSrc, bN2Offset, mOffset, mSplitInfo.vecDealM,
+        DataCopySoftmaxLseBNSD<T, Q_MODE>(softmaxLseGm, lseSrc, bN2Offset, mOffset, mSplitInfo.vecDealM,
                                                   constInfo, qActSeqLensParser, info.bIdx);
     }
 }

@@ -116,7 +116,7 @@
 
 | 调用方式      | 调用样例                 | 说明                                                         |
 |--------------|-------------------------|--------------------------------------------------------------|
-| aclnn调用 | [test_aclnn_mhc_pobackward](examples/test_aclnn_mhc_post_backward.cpp) | 通过[aclnnMhcpostBackward](docs/aclnnMhcPostBackward.md)接口方式调用算子。|
+| aclnn调用 | [test_aclnn_mhc_post_backward](examples/test_aclnn_mhc_post_backward.cpp) | 通过[aclnnMhcpostBackward](docs/aclnnMhcPostBackward.md)接口方式调用算子。|
 
 
 

@@ -59,6 +59,16 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/chunk_gated_delta_rule/README.md">chunk_gated_delta_rule</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>推理场景下线性注意力Gated Delta Rule的chunk版本，用于prefill节点。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/flash_attention_score/README.md">flash_attention_score</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -266,6 +276,16 @@
     <td>✗</td>
     <td>AI Core</td>
     <td>训练场景下，实现NativeSparseAttention算法中selected-attention（选择注意力）的计算。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/sparse_lightning_indexer_grad_kl_loss/README.md">sparse_lightning_indexer_grad_kl_loss</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>SparselightningIndexerGradKlLoss算子是LightningIndexer的反向算子，再额外融合了Loss计算功能输出。</td>
   </tr>
   <tr>
     <td>attention</td>
