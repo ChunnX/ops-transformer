@@ -96,6 +96,7 @@ public:
     static constexpr bool useDn = CubeBlockType::useDn;
     /* HIFLOAT8场景 softmax计算使用Nz格式计算，vec1ResBuffer可以和bmm1ResBuffer进行复用*/
     static constexpr bool useNz = CubeBlockType::useNz;
+    static constexpr bool optionalDn = CubeBlockType::optionalDn;
     static constexpr TPosition bmm2OutPos = CubeBlockType::bmm2OutPos;
     static constexpr bool bmm2Write2Ub = CubeBlockType::bmm2Write2Ub;
     static constexpr bool splitD =  CubeBlockType::splitD;
@@ -627,8 +628,15 @@ __aicore__ inline void FlashAttentionNoQuantKernelBase<ChildClass, CubeBlockType
     }
     runParam.s1RealSize = Min(s1BaseSize, runParam.actualS1Size - runParam.s1oIdx * s1BaseSize);
     if constexpr (useDn || useNz) {
-        runParam.s1RealSizeAlign32 = (runParam.s1RealSize + 31) >> 5 << 5;
-        runParam.halfS1RealSize = runParam.s1RealSize <= 16 ? runParam.s1RealSize : (runParam.s1RealSizeAlign32 >> 1);
+        if constexpr (optionalDn) {
+            runParam.s1RealSizeAlign64 = (runParam.s1RealSize + 63) >> 6 << 6;
+            runParam.halfS1RealSize = runParam.s1RealSize <= 32 ?
+                                      runParam.s1RealSize : (runParam.s1RealSizeAlign64 >> 1);
+        } else {
+            runParam.s1RealSizeAlign32 = (runParam.s1RealSize + 31) >> 5 << 5;
+            runParam.halfS1RealSize = runParam.s1RealSize <= 16 ?
+                                      runParam.s1RealSize : (runParam.s1RealSizeAlign32 >> 1);
+        }
     } else {
         runParam.halfS1RealSize = (runParam.s1RealSize + 1) >> 1;
     }
@@ -690,7 +698,11 @@ __aicore__ inline void FlashAttentionNoQuantKernelBase<ChildClass, CubeBlockType
 {
     // ------------------------S1 Base Related---------------------------
     runInfo.s1RealSize = runParam.s1RealSize;
-    runInfo.s1RealSizeAlign32 = runParam.s1RealSizeAlign32;
+    if constexpr (optionalDn) {
+        runInfo.s1RealSizeAlign64 = runParam.s1RealSizeAlign64;
+    } else {
+        runInfo.s1RealSizeAlign32 = runParam.s1RealSizeAlign32;
+    }
     runInfo.halfS1RealSize = runParam.halfS1RealSize;
     runInfo.firstHalfS1RealSize = runParam.firstHalfS1RealSize;
 
