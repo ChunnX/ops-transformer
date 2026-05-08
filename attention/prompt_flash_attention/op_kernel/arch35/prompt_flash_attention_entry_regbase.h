@@ -28,10 +28,7 @@
 #include "../../../common/op_kernel/arch35/flash_attention_score_kernel_infer_mx_fullquant.h"
 #include "../../../common/op_kernel/arch35/flash_attention_kernel_noquant_mla.h"
 #include "../../../common/op_kernel/arch35/fia_kernel_noquant_gqa.h"
-<<<<<<< HEAD
-=======
 #include "../../../common/op_kernel/arch35/fia_kernel_fullquant_mx.h"
->>>>>>> be1e0ec2a... [FIA][FULLQUANT] MXfp8 decode
 #include "../../../common/op_kernel/arch35/fia_template_dispatcher.h"
 #else
 #include "../../common/arch35/flash_attention_score_kernel_infer.h"
@@ -40,10 +37,7 @@
 #include "../../common/arch35/flash_attention_score_kernel_infer_mx_fullquant.h"
 #include "../../common/arch35/flash_attention_kernel_noquant_mla.h"
 #include "../../common/arch35/fia_kernel_noquant_gqa.h"
-<<<<<<< HEAD
-=======
 #include "../../common/arch35/fia_kernel_fullquant_mx.h"
->>>>>>> be1e0ec2a... [FIA][FULLQUANT] MXfp8 decode
 #endif
 
 
