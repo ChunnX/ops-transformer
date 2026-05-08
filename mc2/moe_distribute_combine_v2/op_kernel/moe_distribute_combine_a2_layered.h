@@ -383,8 +383,9 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
     }
     LocalTensor<uint8_t> aDumpTensor = aDumpBuf_.Get<uint8_t>();
     GM_ADDR aDumpAddr = addrInfo_.GetIpcAdumpWinAddr();
-    aDump_.Init(aDumpAddr, coreIdx_, rankId_, worldSize_, rankId_, moeExpertNum_, worldSize_, globalBs_, (magicValue_ - 1UL) & 0x1,
-        Mc2A2Kernel::IS_HIERARCHY, aivNum_, aDumpTensor, axisH_);
+    aDump_.Init(aDumpAddr, coreIdx_, rankId_, worldSize_, rankId_, moeExpertNum_, worldSize_,
+                globalBs_, (magicValue_ - 1UL) & 0x1,
+                Mc2A2Kernel::IS_HIERARCHY, aivNum_, aDumpTensor, axisH_);
     PipeBarrier<PIPE_ALL>();
 }
 
@@ -393,7 +394,8 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
 {
     // 状态tBuf
     tpipe_->InitBuffer(statusBuf_, worldSize_ * UB_ALIGN);
-    uint32_t leftBufSize = AscendC::TOTAL_UB_SIZE - worldSize_ * UB_ALIGN - RoundUp(performanceInfoSize_, B64_PER_BLOCK) * sizeof(int64_t);
+    uint32_t leftBufSize = AscendC::TOTAL_UB_SIZE - worldSize_ * UB_ALIGN -
+                           RoundUp(performanceInfoSize_, B64_PER_BLOCK) * sizeof(int64_t);
 
     // AIVRDMAPostSend函数需要的tBuf
     tpipe_->InitBuffer(rdmaInBuf_, UB_ALIGN);
@@ -404,7 +406,8 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
     leftBufSize -= UB_ALIGN * 2;
 
     // aDumpBuf_
-    uint32_t aDumpSize = Std::max(RoundUp(Mc2A2Kernel::H_POS + 1U, B32_PER_BLOCK), B32_PER_BLOCK * 2U) * sizeof(uint32_t);
+    uint32_t aDumpSize = Std::max(RoundUp(Mc2A2Kernel::H_POS + 1U, B32_PER_BLOCK),
+                                  B32_PER_BLOCK * 2U) * sizeof(uint32_t);
     tpipe_->InitBuffer(aDumpBuf_, aDumpSize);
     leftBufSize -= aDumpSize;
 

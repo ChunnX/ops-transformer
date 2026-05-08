@@ -27,7 +27,8 @@ using namespace AscendC;
 class MoeDistributeA2ADump {
 public:
     __aicore__ inline void Init(GM_ADDR aDumpWinStartAddr,
-                                uint32_t aivId, uint32_t epRankIdHccl, uint32_t epWorldSizeHccl, uint32_t epRankIdOriginal,
+                                uint32_t aivId, uint32_t epRankIdHccl,
+                                uint32_t epWorldSizeHccl, uint32_t epRankIdOriginal,
                                 uint32_t moeExpertNum, uint32_t epWorldSizeOriginal, uint32_t globalBs,
                                 uint32_t bufferId, uint32_t isLayered, uint32_t aivNum,
                                 LocalTensor<uint8_t> dataStateLocalTensor, uint32_t axisH)
@@ -44,7 +45,7 @@ public:
         DataCopy(dataStateLocalTensor_, selfDataStatusGMTensor_, UB_ALIGN / sizeof(uint32_t));
         SyncFunc<AscendC::HardEvent::MTE2_S>();
         dataStateLocalTensor_.SetValue(BUFFERID_POS, bufferId);
-        dataStateLocalTensor_.SetValue(OPOSITION_POS, RUNPOS_INIT);   
+        dataStateLocalTensor_.SetValue(OPOSITION_POS, RUNPOS_INIT);
         dataStateLocalTensor_.SetValue(TILING_EPRANKID_POS, epRankIdOriginal);
         dataStateLocalTensor_.SetValue(MOE_NUM_POS, moeExpertNum);
         dataStateLocalTensor_.SetValue(TILING_WORLDSIZE_POS, epWorldSizeOriginal);
@@ -65,7 +66,8 @@ public:
         SyncFunc<AscendC::HardEvent::MTE3_S>();
     }
 
-    __aicore__ inline void RunPosRecord(const uint32_t runPos) {
+    __aicore__ inline void RunPosRecord(const uint32_t runPos)
+    {
         SyncFunc<AscendC::HardEvent::MTE3_S>();
         dataStateLocalTensor_.SetValue(0, runPos);
         auto dataStateParams = DataCopyExtParams{1U, sizeof(uint32_t), 0U, 0U, 0U};
@@ -73,7 +75,10 @@ public:
         DataCopyPad(selfDataStatusGMTensor_[OPOSITION_POS], dataStateLocalTensor_, dataStateParams);
     }
 
-    __aicore__ inline void UpdateFullmeshRankTaskInfo(const uint32_t firstEpRankId, const uint32_t rankNum, const bool isSend) {
+    __aicore__ inline void UpdateFullmeshRankTaskInfo(const uint32_t firstEpRankId,
+                                                      const uint32_t rankNum,
+                                                      const bool isSend)
+    {
         uint32_t offset = isSend ? FULLMESH_SEND_FIRST_EPRANKID_POS : FULLMESH_RECV_FIRST_EPRANKID_POS;
         SyncFunc<AscendC::HardEvent::MTE3_S>();
         dataStateLocalTensor_.SetValue(0U, firstEpRankId);
@@ -86,7 +91,9 @@ public:
         DataCopyPad(selfDataStatusGMTensor_[offset], dataStateLocalTensor_, dataStateParams);
     }
 
-    __aicore__ inline void UpdateFullmeshEpRankSendOrRecv(const uint32_t epRankId, const bool isSend) {
+    __aicore__ inline void UpdateFullmeshEpRankSendOrRecv(const uint32_t epRankId,
+                                                          const bool isSend)
+    {
         uint32_t loc = isSend ? 0U : 1U;
         uint32_t relativeLoc = (epRankId - firstEpRankId_[loc]) % (sizeof(uint32_t) * 8);
         uint32_t offset = FULLMESH_EPRANKID_POS + (epRankId - firstEpRankId_[loc]) / (sizeof(uint32_t) * 8);
@@ -104,7 +111,10 @@ public:
         DataCopyPad(selfDataStatusGMTensor_[offset], dataStateLocalTensor_, dataStateParams);
     }
 
-    __aicore__ inline void UpdateFullmeshTokenSendOrRecv(const uint32_t epRankId, const uint32_t tokenNum, const bool isSend) {
+    __aicore__ inline void UpdateFullmeshTokenSendOrRecv(const uint32_t epRankId,
+                                                         const uint32_t tokenNum,
+                                                         const bool isSend)
+    {
         uint32_t offset = epRankId;
         offset = isSend ? offset : offset + worldSize_;
         SyncFunc<AscendC::HardEvent::MTE3_S>();
@@ -114,7 +124,10 @@ public:
         DataCopyPad(selfTokenNumGMTensor_[offset], dataStateLocalTensor_[UB_ALIGN / sizeof(uint32_t)], dataStateParams);
     }
 
-    __aicore__ inline void UpdateHierarchyInterNodeSendOrRecv(uint32_t dstServerId, uint32_t tokenNum, bool isSend) {
+    __aicore__ inline void UpdateHierarchyInterNodeSendOrRecv(uint32_t dstServerId,
+                                                              uint32_t tokenNum,
+                                                              bool isSend)
+    {
         uint32_t offset = isSend ? HIERARCHY_INTER_NODE_SEND_POS : HIERARCHY_INTER_NODE_RECV_POS;
         SyncFunc<AscendC::HardEvent::MTE3_S>();
         dataStateLocalTensor_.SetValue(0U, dstServerId);
@@ -124,7 +137,8 @@ public:
         DataCopyPad(selfDataStatusGMTensor_[offset], dataStateLocalTensor_, dataStateParams);
     }
 
-    __aicore__ inline void UpdateHierarchyInnerSendOrRecv(uint32_t dstServerId, bool isSend) {
+    __aicore__ inline void UpdateHierarchyInnerSendOrRecv(uint32_t dstServerId, bool isSend)
+    {
         uint32_t offset = isSend ? HIERARCHY_INNER_SEND_POS : HIERARCHY_INNER_RECV_POS;
         SyncFunc<AscendC::HardEvent::MTE3_S>();
         dataStateLocalTensor_.SetValue(0U, dstServerId);
@@ -133,7 +147,8 @@ public:
         DataCopyPad(selfDataStatusGMTensor_[offset], dataStateLocalTensor_, dataStateParams);
     }
 
-    __aicore__ inline void CleanUp(bool isLayered) {
+    __aicore__ inline void CleanUp(bool isLayered)
+    {
         AscendC::Duplicate<uint32_t>(dataStateLocalTensor_, 0U, dataStateLocalTensor_.GetSize());
         SyncFunc<AscendC::HardEvent::V_MTE3>();
         uint32_t num = 0U;
