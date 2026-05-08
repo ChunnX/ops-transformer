@@ -230,6 +230,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::FirstBuffInit(TPipe *tP
     tPipe->InitBuffer(CopyTempBuf_, BUFFER_ALIGN * sizeof(QuantOutType));
     uint32_t maxResetBufAlign = Ops::Base::CeilDiv(
         static_cast<int32_t>(expertPerRank_ * INT_CACHELINE * sizeof(int32_t) * 2), static_cast<int32_t>(ALIGN_32));
+    // 确保ResetFlagBuf_足够容纳blockNumAlign个int32_t（用于ResetGmm2RowReadyFlags）
+    uint32_t blockNumAlignBytes = Ops::Base::CeilAlign(static_cast<int32_t>(blockNum_) * static_cast<int32_t>(sizeof(int32_t)),
+        static_cast<int32_t>(ALIGN_32));
+    maxResetBufAlign = max(maxResetBufAlign, blockNumAlignBytes);
     tPipe->InitBuffer(ResetFlagBuf_, maxResetBufAlign);
 }
 
@@ -290,19 +294,18 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetGmm2RowReadyFlags()
 {
     if constexpr(g_coreType == AIV) {
+        if (aivCoreIdx_ != 0) {
+            return;
+        }
         GlobalTensor<int32_t> rowReadyFlags;
         rowReadyFlags.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.ptrGmm2RowReady);
 
-        // 按核心数清零
-        int32_t coreLen, coreOffset;
-        TilingByCore(blockNum_, coreLen, coreOffset);
-
+        // 对齐到32B（8个int32_t）
+        int32_t blockNumAlign = Ops::Base::CeilAlign(static_cast<uint32_t>(blockNum_), static_cast<uint32_t>(8));
         LocalTensor<int32_t> initTensor = ResetFlagBuf_.Get<int32_t>();
-        if (coreLen != 0) {
-            Duplicate(initTensor, 0, coreLen);
-            SyncFunc<AscendC::HardEvent::V_MTE3>();
-            DataCopy(rowReadyFlags[coreOffset], initTensor, coreLen);
-        }
+        Duplicate(initTensor, 0, blockNumAlign);
+        SyncFunc<AscendC::HardEvent::V_MTE3>();
+        DataCopy(rowReadyFlags, initTensor, blockNumAlign);
     }
 }
 
@@ -715,6 +718,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     TPipe firstPipe;
     FirstBuffInit(&firstPipe);
     ResetWorkSpaceFlagList();
+    ResetGmm2RowReadyFlags();
 
     // 3. cnt值全ep域内的发送以及本端接收整理
     CrossRankSyncCntPerExpert();
@@ -726,12 +730,22 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 
     // 4. subBlockIdx_ == 1的AIV核心一次性完成所有专家的dispatch
     GMMAddrInfo gmmAddrInfo;
+    if constexpr(g_coreType == AscendC::AIV) {
+        if (subBlockIdx_ == 1) {
+            for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
+                if (!UpdateGroupParams(expertIdx)) {
+                    continue;
+                }
+                UpdateGlobalBuffer(gmmAddrInfo, 0);
+                DispatchTokens(gmmAddrInfo, expertIdx);
+            }
+        }
+    }
     
     // 5. subBlockIdx_ == 0的核心执行gmm1 → gmm2（输出到GM）
     preOffset_ = 0;
     baseOffset_ = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-    ResetGmm2RowReadyFlags();
-    SyncAll<true>();
+    // SyncAll<true>(); 这个不必要
 
     for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
         if (!UpdateGroupParams(expertIdx)) {
@@ -739,11 +753,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         }
         
         UpdateGlobalBuffer(gmmAddrInfo, 0);
-        if constexpr(g_coreType == AscendC::AIV) {
-            if (subBlockIdx_ == 1) {
-                DispatchTokens(gmmAddrInfo, expertIdx);
-            }
-        }
         if (subBlockIdx_ == 0) {
             MegaMoeImpl::GroupMatmulSwigluQuant<
                 QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType>(
@@ -754,12 +763,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         
         UpdateGlobalBuffer(gmmAddrInfo, 1);
         // gmm2 + combine，AIC和AIV在同一个函数里通过信号量同步
-        MegaMoeImpl::GroupMatmul2<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
-            params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_, expertIdx, gmm2PingPongIdx_,
-            rankId_);
+        if (subBlockIdx_ == 0) {
+            MegaMoeImpl::GroupMatmul2<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
+                params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_, expertIdx, gmm2PingPongIdx_,
+                rankId_);
+        }
+        // EndGMM2Sync();
         vecSetSyncCom_ = 0;
     }
-
     if constexpr(g_coreType == AscendC::AIV) {
         if (aivCoreIdx_ == 1) {
             ExpertTokenNumCopyOut();
