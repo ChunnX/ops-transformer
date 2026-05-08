@@ -1,0 +1,2 @@
+case_id;B;S1;kv_seq;He;Hcq;Hckv;N;D;Dr;Nkv;block_size;cache_slot;rmsnorm_epsilon_cq;rmsnorm_epsilon_ckv;cache_mode
+0;1;1;128;7168;1536;512;32;128;64;1;128;0;1e-05;1e-05;PA_BSND

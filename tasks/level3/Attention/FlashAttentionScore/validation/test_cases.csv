@@ -1,0 +1,2 @@
+case_id;B;N;S;D;head_num;scale_value;keep_prob;pre_tockens;next_tockens;inner_precise;sparse_mode
+0;1;2;16;64;2;0.125;1.0;2147483647;2147483647;0;0

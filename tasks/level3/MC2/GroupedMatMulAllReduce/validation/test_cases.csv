@@ -1,0 +1,3 @@
+case_id;dtype;M0;K0;N0;M1;K1;N1;has_bias;split_item;group;reduce_op;comm_turn
+0;float16;256;256;256;1024;256;256;true;0;hccl_world_group;sum;0
+1;bfloat16;128;64;32;96;64;48;false;0;hccl_world_group;sum;0

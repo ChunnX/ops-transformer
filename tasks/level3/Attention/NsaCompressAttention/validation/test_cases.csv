@@ -1,0 +1,2 @@
+case_id;N2;T1;T2;G;D1;D2;scale_value;head_num;sparse_mode;compress_block_size;compress_stride;select_block_size;select_block_count
+0;2;16;16;2;8;8;0.35355339059327373;4;0;8;4;8;4
