@@ -384,7 +384,7 @@ static ge::graphStatus InferDataTypeFusedInferAttentionScore(gert::InferDataType
         const int64_t *outTypePtr = attrs->GetInt(FIA_OUT_DTYPE_INDEX);
         if (outTypePtr != nullptr) {
             auto it = TORCH_DTYOE_NOT_SUPPORT_MAP.find(*outTypePtr);
-            if (it != TORCH_DTYOE_NOT_SUPPORT_MAP.end()){
+            if (it != TORCH_DTYOE_NOT_SUPPORT_MAP.end()) {
                 OP_LOGE("FusedInferAttentionScore", "Fia graph mode do not support post quant output data type: %s.", it->second.c_str());
                 return ge::GRAPH_FAILED;
             }
