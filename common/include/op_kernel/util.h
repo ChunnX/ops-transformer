@@ -38,8 +38,7 @@ using AscendC::HardEvent;
 using AscendC::SetFlag;
 using AscendC::WaitFlag;
 
-enum class LayOutTypeEnum
-{
+enum class LayOutTypeEnum {
     None = 0,
     LAYOUT_BSH = 1,
     LAYOUT_SBH = 2,

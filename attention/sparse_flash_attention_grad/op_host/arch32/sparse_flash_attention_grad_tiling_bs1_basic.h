@@ -17,8 +17,8 @@
 
 #include "../sparse_flash_attention_grad_tiling_common.h"
 #include "../sparse_flash_attention_grad_tiling.h"
-#include "tiling_base/tiling_base.h"
-#include "tiling_base/tiling_type.h"
+#include "op_host/tiling_base.h"
+#include "op_host/tiling_type.h"
 
 namespace optiling {
 namespace sfag {

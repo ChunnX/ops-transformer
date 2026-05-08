@@ -20,7 +20,7 @@
 #include "../../../moe_distribute_combine_v2/op_host/op_tiling/moe_distribute_combine_tiling_helper.h"
 #include "../../../moe_distribute_combine_v2/op_kernel/moe_distribute_combine_tiling.h"
 #include "../../op_kernel/moe_distribute_combine_tiling_key.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 
 namespace optiling {
 class MoeDistributeCombineTilingBase : public MoeTilingBase {

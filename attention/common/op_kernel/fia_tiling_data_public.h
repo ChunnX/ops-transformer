@@ -13,10 +13,6 @@
  * \brief
  */
 
-// TODO，文件头，宏定义整体调整与刷新
-
-// TODO，变量命名优化
-
 #ifndef FIA_TILING_DATA_PUBLIC_H_
 #define FIA_TILING_DATA_PUBLIC_H_
 

@@ -89,6 +89,8 @@ public:
     int64_t splitFactorSize;
     int64_t totalSize; // 表明有多少个S1
     int64_t bS1Index[MAX_CORE_NUM_REGBASE]; // 每个核B,S1合轴之后的起始和结束位置
+    uint32_t syKTotalSize;
+    uint32_t pKTotalSize;
 
     int32_t get_coreNum() const {return coreNum;}
     void set_coreNum(uint32_t coreNumParam) {this->coreNum = coreNumParam;}
@@ -100,6 +102,9 @@ public:
     void set_totalSize(int64_t totalSizeParam) {this->totalSize = totalSizeParam;}
 
     int64_t *get_bS1Ptr() {return bS1Index;}
+
+    void set_syKTotalSize(uint32_t syKTotalSizeParam) {this->syKTotalSize = syKTotalSizeParam;}
+    void set_pKTotalSize(uint32_t pKTotalSizeParam) {this->pKTotalSize = pKTotalSizeParam;}
 };
 
 class SLIGradKLLossInitOutputParamsRegbase {
