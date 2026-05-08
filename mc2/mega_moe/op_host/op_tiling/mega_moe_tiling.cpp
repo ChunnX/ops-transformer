@@ -326,6 +326,7 @@ static int64_t OpQuantModeToInitRoutingQuantMode(const int64_t opQuantMode)
     switch (opQuantMode) {
         case DISPATCH_QUANT_OUT_TYPE_E5M2: return 2LL;
         case DISPATCH_QUANT_OUT_TYPE_E4M3FN: return 3LL;
+        case DISPATCH_QUANT_OUT_TYPE_E2M1: return 9LL; // 待定，需要确认InitRouting对应的MXFP4对应枚举值
         default: return -1LL;
     }
     return -1LL;
@@ -337,6 +338,7 @@ static ge::DataType GetDataTypeByOpQuantMode(const int64_t opQuantMode)
     switch (opQuantMode) {
         case DISPATCH_QUANT_OUT_TYPE_E5M2: return ge::DT_FLOAT8_E5M2;
         case DISPATCH_QUANT_OUT_TYPE_E4M3FN: return ge::DT_FLOAT8_E4M3FN;
+        case DISPATCH_QUANT_OUT_TYPE_E2M1: return ge::DT_FLOAT4_E2M1;
         default: return ge::DT_UNDEFINED;
     }
     return ge::DT_UNDEFINED;
@@ -351,8 +353,10 @@ static int64_t GetOpQuantModeByAttrDispatchOutType(const gert::TilingContext *co
     int64_t opQuantMode;
     if (dispatchQuantOutType == (DISPATCH_QUANT_OUT_TYPE_E5M2 + DISPATCH_QUANT_OUT_TYPE_OFFSET)) {
         opQuantMode = DISPATCH_QUANT_OUT_TYPE_E5M2;
-    } else {
+    } else if (dispatchQuantOutType == (DISPATCH_QUANT_OUT_TYPE_E4M3FN + DISPATCH_QUANT_OUT_TYPE_OFFSET)) {
         opQuantMode = DISPATCH_QUANT_OUT_TYPE_E4M3FN;
+    } else {
+        opQuantMode = DISPATCH_QUANT_OUT_TYPE_E2M1;
     }
 
     return opQuantMode;
@@ -478,6 +482,7 @@ static ge::graphStatus CheckAndSetInitTilingData(
     initTilingData.expertNum = expertNum;
     initTilingData.dropPadMode = dropPadMode;
     initTilingData.expertTokensNumFlag = expertTokensNumFlag ? 1 : 0;
+    // InitRouting对应的quantmode没有使用
     initTilingData.quantMode = OpQuantModeToInitRoutingQuantMode(quantMode);
     initTilingData.rowIdxType = rowIdxType;
 
@@ -1203,16 +1208,18 @@ static ge::graphStatus CheckTensorDataType(const gert::TilingContext *context,
 
     OP_TILING_CHECK((
         (weightOneDesc->GetDataType() != ge::DT_FLOAT8_E5M2) &&
-        (weightOneDesc->GetDataType() != ge::DT_FLOAT8_E4M3FN)),
+        (weightOneDesc->GetDataType() != ge::DT_FLOAT8_E4M3FN) &&
+        (weightOneDesc->GetDataType() != ge::DT_FLOAT4_E2M1)),
         OP_LOGE(nodeName,
-            "weightOne dataType is invalid, dataType should be DT_FLOAT8_E5M2 or DT_FLOAT8_E4M3FN, but is %s.",
+            "weightOne dataType is invalid, dataType should be DT_FLOAT8_E5M2 or DT_FLOAT8_E4M3FN or DT_FLOAT4_E2M1, but is %s.",
         Ops::Base::ToString(weightOneDesc->GetDataType()).c_str()), return ge::GRAPH_FAILED);
     
     OP_TILING_CHECK((
         (weightTwoDesc->GetDataType() != ge::DT_FLOAT8_E5M2) &&
-        (weightTwoDesc->GetDataType() != ge::DT_FLOAT8_E4M3FN)),
+        (weightTwoDesc->GetDataType() != ge::DT_FLOAT8_E4M3FN) &&
+        (weightTwoDesc->GetDataType() != ge::DT_FLOAT4_E2M1)),
         OP_LOGE(nodeName,
-            "weightTwo dataType is invalid, dataType should be DT_FLOAT8_E5M2 or DT_FLOAT8_E4M3FN, but is %s.",
+            "weightTwo dataType is invalid, dataType should be DT_FLOAT8_E5M2 or DT_FLOAT8_E4M3FN or DT_FLOAT4_E2M1, but is %s.",
         Ops::Base::ToString(weightTwoDesc->GetDataType()).c_str()), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(weightOneDesc->GetDataType() != weightTwoDesc->GetDataType(),

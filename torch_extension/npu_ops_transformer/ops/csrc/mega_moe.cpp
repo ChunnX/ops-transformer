@@ -118,7 +118,7 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
     at::Tensor y;
     y = at::empty({bs, h}, topk_ids.options().dtype(x.scalar_type()));
 
-    TensorListWrapper weight1_wrapper = {weight1_ref, 
+    TensorListWrapper weight1_wrapper = {weight1_ref,
         weight1_type.has_value() ? c10_npu::GetAclDataType(weight1_type.value())
         : ConvertToAclDataType(weight1_ref[0].scalar_type())};
     TensorListWrapper weight2_wrapper = {weight2_ref,
