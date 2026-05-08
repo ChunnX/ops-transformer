@@ -110,6 +110,7 @@ extern thread_local int g_hashOffset;
     _(at::ScalarType::Int6, ACL_DT_UNDEFINED)                                                                          \
     _(at::ScalarType::Int7, ACL_DT_UNDEFINED)                                                                          \
     _(at::ScalarType::Float8_e8m0fnu, ACL_FLOAT8_E8M0)                                                                \
+    _(at::ScalarType::Float4_e2m1fn_x2, ACL_FLOAT4_E2M1)                                                              \
     _(at::ScalarType::Undefined, ACL_DT_UNDEFINED)                                                                     \
     _(at::ScalarType::NumOptions, ACL_DT_UNDEFINED)
 
@@ -121,18 +122,7 @@ constexpr aclDataType kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(at:
 
 inline aclDataType ScalarTypeToAclDataType(at::ScalarType scalarType)
 {
-    switch (scalarType) {
-        case at::ScalarType::Float8_e5m2:
-            return ACL_FLOAT8_E5M2;
-        case at::ScalarType::Float8_e4m3fn:
-            return ACL_FLOAT8_E4M3FN;
-        case at::ScalarType::Float8_e8m0fnu:
-            return ACL_FLOAT8_E8M0;
-        case at::ScalarType::Float4_e2m1fn_x2:
-            return ACL_FLOAT4_E2M1;
-        default:
-            return kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(scalarType)];
-    }
+    return kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(scalarType)];
 }
 
 enum QuantMode {
@@ -472,7 +462,7 @@ inline aclScalar *ConvertType(const c10::optional<at::Scalar> &opt_scalar)
 
 inline aclDataType ConvertType(const at::ScalarType scalarType)
 {
-    return ScalarTypeToAclDataType(scalarType);
+    return kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(scalarType)];
 }
 
 template <typename T>
