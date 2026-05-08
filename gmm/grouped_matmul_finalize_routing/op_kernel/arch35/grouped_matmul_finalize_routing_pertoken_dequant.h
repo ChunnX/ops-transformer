@@ -19,7 +19,10 @@
 #include "cgmct/kernel/kernel_gmm_finalize_routing_pertoken_dequant.h"
 #include "cgmct/block/block_mmad_builder.h"
 #include "cgmct/block/block_scheduler_gmm_aswt_with_tail_split.h"
+#include "cgmct/epilogue/block_epilogue_dequant_sequential_write.h"
 #include "grouped_matmul_finalize_routing_tiling_data.h"
+#include "gmm_fr_deterministic_a5.h"
+using namespace GMMFRDeterministic;
 
 using namespace Cgmct::Gemm;
 using namespace Cgmct::Gemm::Kernel;
@@ -78,15 +81,91 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
                         gmmFinalizeRoutingQuantParams_.hasBias};
 
     gmmParams.matmulTiling = &matmulTiling_;
-    Params params = {
-        {1, 1, 1, 1},                // problem shape
-        {x, w, y, bias, group_list}, // BlockMmadParams
-        {share_input, y, gmmFinalizeRoutingQuantParams_.sharedInputOffset,
-         gmmFinalizeRoutingQuantParams_.sharedInputLen, matmulTiling_.N, gmmFinalizeRoutingQuantParams_.batch,
-         gmmFinalizeRoutingQuantParams_.residualScale},                                          // prologue params
-        {y, w_scale, x_scale, bias, logit, row_index, matmulTiling_.baseM, matmulTiling_.baseN}, // epilogue params
-        gmmParams};
-    GmmKernel gmm;
-    gmm(params);
+
+    if (gmmFinalizeRoutingQuantParams_.deterministicFlag == 1) {
+        // ============ Deterministic mode (W8A8 INT8 only) ============
+        // Plan B: Use BlockEpilogueDequantSequentialWrite (no scatter, no AtomicAdd)
+        // Epilogue writes sequentially to workspace by input row index.
+        // After Cgmct Kernel completes, call FRDeterministicA5 to aggregate.
+
+        // Deterministic buffer starts after Cgmct system workspace (16MB).
+        // Cgmct Cube results go to UB, NOT to workspace (unlike A3).
+        constexpr uint64_t SYS_WORKSPACE_SIZE = 16UL * 1024 * 1024;
+        GM_ADDR deterBuffer = workspaceGM + SYS_WORKSPACE_SIZE;
+
+        // Define deterministic kernel with sequential-write Epilogue
+        using BlockEpilogueDeter =
+            Cgmct::Gemm::Block::BlockEpilogueDequantSequentialWrite<CType, C1Type, weightscaleType, xscaleType,
+                                                                     BiasType, rowIndexType>;
+        using GmmKernelDeter =
+            Cgmct::Gemm::Kernel::KernelGmmFinalizeRoutingPertokenDequant<ProblemShape, BlockMmadBuilder, BlockPrologue,
+                                                                          BlockEpilogueDeter, BlockScheduler>;
+        using ParamsDeter = typename GmmKernelDeter::Params;
+        using GMMTilingDeter = typename GmmKernelDeter::GMMTiling;
+
+        GMMTilingDeter gmmParamsDeter{gmmFinalizeRoutingQuantParams_.groupNum,
+                                       gmmFinalizeRoutingQuantParams_.groupListType,
+                                       matmulTiling_.baseM,
+                                       matmulTiling_.baseN,
+                                       matmulTiling_.baseK,
+                                       gmmFinalizeRoutingQuantParams_.hasBias};
+        gmmParamsDeter.matmulTiling = &matmulTiling_;
+
+        ParamsDeter params = {
+            {1, 1, 1, 1},
+            {x, w, deterBuffer, bias, group_list},              // y -> workspace
+            {share_input, deterBuffer,                           // prologue y -> workspace
+             gmmFinalizeRoutingQuantParams_.sharedInputOffset,
+             gmmFinalizeRoutingQuantParams_.sharedInputLen, matmulTiling_.N,
+             gmmFinalizeRoutingQuantParams_.batch,
+             gmmFinalizeRoutingQuantParams_.residualScale},
+            {deterBuffer, w_scale, x_scale, bias, logit, row_index,  // epilogue y -> workspace (sequential write)
+             matmulTiling_.baseM, matmulTiling_.baseN},
+            gmmParamsDeter};
+
+        // Execute Cgmct Kernel with sequential-write Epilogue (output to workspace)
+        GmmKernelDeter gmmDeter;
+        gmmDeter(params);
+
+        // ============ Deterministic aggregation: workspace -> yGm ============
+        GlobalTensor<float> deterBufferGm;
+        deterBufferGm.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(deterBuffer));
+        GlobalTensor<float> yGm;
+        yGm.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(y));
+        GlobalTensor<rowIndexType> tokenRanksGm;
+        tokenRanksGm.SetGlobalBuffer(reinterpret_cast<__gm__ rowIndexType*>(row_index));
+
+        // Init SyncConfig
+        SyncConfig syncConfig;
+        syncConfig.windowSize = gmmFinalizeRoutingQuantParams_.deterWorkspaceSize /
+                                (matmulTiling_.N * sizeof(float));
+        syncConfig.lowBoundM = syncConfig.windowSize;
+        uint64_t nTimes = Ceil(matmulTiling_.N, DETER_UB_SIZE / sizeof(float));
+        syncConfig.baseN = Ceil(Ceil(matmulTiling_.N, nTimes), 128) * 128;
+
+        // Init queBind (deterministic UB transfer buffer)
+        TQueBind<TPosition::VECIN, TPosition::VECOUT, 1> queBind;
+        TPipe deterPipe;
+        deterPipe.InitBuffer(queBind, BUFFER_NUM, DETER_UB_SIZE);
+
+        // Final aggregation: set curM to total rows, process all at once
+        syncConfig.curM = matmulTiling_.M;
+        FRDeterministicA5<float, rowIndexType>(
+            syncConfig, deterBufferGm, yGm, tokenRanksGm, queBind,
+            matmulTiling_.usedCoreNum, matmulTiling_.N);
+
+    } else {
+        // ============ Non-deterministic mode (unchanged) ============
+        Params params = {
+            {1, 1, 1, 1},                // problem shape
+            {x, w, y, bias, group_list}, // BlockMmadParams
+            {share_input, y, gmmFinalizeRoutingQuantParams_.sharedInputOffset,
+             gmmFinalizeRoutingQuantParams_.sharedInputLen, matmulTiling_.N, gmmFinalizeRoutingQuantParams_.batch,
+             gmmFinalizeRoutingQuantParams_.residualScale},                                          // prologue params
+            {y, w_scale, x_scale, bias, logit, row_index, matmulTiling_.baseM, matmulTiling_.baseN}, // epilogue params
+            gmmParams};
+        GmmKernel gmm;
+        gmm(params);
+    }
 }
 #endif

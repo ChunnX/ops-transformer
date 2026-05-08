@@ -89,6 +89,8 @@ protected:
     uint64_t GetTilingKey() const override;
     // 4、保存Tiling数据
     ge::graphStatus PostTiling() override;
+    // 5、计算Workspace大小
+    ge::graphStatus GetWorkspaceSize() override;
     void Reset() override;
 
 private:
@@ -122,6 +124,8 @@ private:
     uint64_t outputBs_ = 0;
     int8_t scaleType_ = 0;
     int8_t rowIndexType_ = 0;
+    uint32_t deterministicFlag_ = 0;       // 确定性标志：0=关闭, 1=开启
+    uint32_t deterWorkspaceSize_ = 0;      // 确定性 workspace 大小
 };
 } // namespace optiling
 
