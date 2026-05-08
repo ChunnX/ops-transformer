@@ -118,16 +118,11 @@ __aicore__ inline void ProcessVec1NoUpdate(
                 inMaxTensor, maskTensor, pseTensor, dropTensor, sharedTmpBuffer, m, originN, pseStride, slopes,
                 posShift, scale, dScaleQK, minValue, keepProb, queryScaleUb, deSCaleKValue, sinkValue, pScale);
         } else if constexpr (oriNRange == GT_256_AND_LTE_512) {
-            LocalTensor<uint8_t> indexesTensor;
-            if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
-                IsSameType<T2, hifloat8_t>::value || IsSameType<T2, int8_t>::value) {
-                indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::GT_64_AND_LTE_128_INDEX)].template Get<uint8_t>();
-            }
             ProcessVec1NoUpdateGeneralImpl512<T, T2, pseShiftType, s1BaseSize, s2BaseSize, hasAtten,
                 pseMode, hasDrop>(
                 dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, inExpSumTensor, inMaxTensor,
                 maskTensor, pseTensor, dropTensor, sharedTmpBuffer, m, originN, pseStride, slopes, posShift,
-                scale, minValue, keepProb, indexesTensor);
+                scale, minValue, keepProb);
         } else if constexpr (oriNRange == GT_512_AND_LTE_1024) {
             ProcessVec1NoUpdateGeneralImpl1024<T, T2, pseShiftType, s1BaseSize, s2BaseSize, hasAtten,
                 pseMode, hasDrop>(
@@ -306,15 +301,10 @@ __aicore__ inline void ProcessVec1Update(
                 inMaxTensor, maskTensor, pseTensor, dropTensor, sharedTmpBuffer, pScaleTensor, m, originN, pseStride,
                 slopes, posShift, scale, dScaleQK, minValue, keepProb, queryScaleUb, deSCaleKValue, sinkValue, pScale);
         } else if constexpr (oriNRange == GT_256_AND_LTE_512) {
-            LocalTensor<uint8_t> indexesTensor;
-            if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
-                IsSameType<T2, hifloat8_t>::value || IsSameType<T2, int8_t>::value) {
-                indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::GT_64_AND_LTE_128_INDEX)].template Get<uint8_t>();
-            }
             ProcessVec1UpdateGeneralImpl512<T, T2, pseShiftType, s1BaseSize, s2BaseSize, hasAtten, pseMode, hasDrop>(
                 dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor,
                 inExpSumTensor, inMaxTensor, maskTensor, pseTensor, dropTensor, sharedTmpBuffer, m, originN,
-                pseStride, slopes, posShift, scale, minValue, keepProb, indexesTensor);
+                pseStride, slopes, posShift, scale, minValue, keepProb);
         } else if constexpr (oriNRange == GT_512_AND_LTE_1024) {
             ProcessVec1UpdateGeneralImpl1024<T, T2, pseShiftType, s1BaseSize, s2BaseSize, hasAtten, pseMode, hasDrop>(
                 dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor,

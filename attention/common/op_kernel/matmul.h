@@ -17,19 +17,6 @@
 #include "buffers_policy.h"
 using namespace AscendC;
 
-#if defined(__DAV_C310__) || defined(__DAV_310R6__)
-__aicore__ inline void set_mark(uint64_t v)
-{
-#if defined(__CCE_KT_TEST__) && __CCE_KT_TEST__ == 1
-
-#else
-    __asm__ __volatile__("");
-    asm volatile("MOV COND, %0\n" : "+l"(v));
-    __asm__ __volatile__("");
-#endif
-}
-#endif
-
 namespace fa_base_matmul {
 
 constexpr uint32_t UNITFLAG_DISABLE = 0;
