@@ -45,17 +45,21 @@ protected:
     bool IsCapable() override;
 };
 
-class AlltoAllvGmmTiling
+class AlltoAllvGmmTiling : public AlltoAllvGmmTilingBase
 {
 public:
+    explicit AlltoAllvGmmTiling(gert::TilingContext* context) : AlltoAllvGmmTilingBase(context) {}
+    
     AlltoAllvGmmTilingData* tilingData;
 
-    ge::graphStatus Init(gert::TilingContext* context);
+    ge::graphStatus Init();
     ge::graphStatus RunFusionKernelTiling(gert::TilingContext* context);
     virtual std::vector<int64_t> GetEpWorldSizeOptional() const = 0;
     virtual bool NeedToCheckCounts() const = 0;
 
 protected:
+    bool IsCapable() override { return true; }
+    ge::graphStatus DoOpTiling() override { return ge::GRAPH_SUCCESS; }
     ge::graphStatus GetContextAttr(const gert::TilingContext* context);
     ge::graphStatus GetShapeAndFormat(const gert::TilingContext* context);
     ge::graphStatus CheckMKN(const gert::TilingContext* context);
@@ -72,7 +76,7 @@ protected:
     ge::graphStatus CalMMTiling(const gert::TilingContext* context, MMTilingParams& params) const;
     ge::graphStatus SetMMTiling(const gert::TilingContext* context, SetMMTilingParams& params) const;
     ge::graphStatus DoAiCoreTiling(const gert::TilingContext* context);
-    uint64_t GetTilingKey(const gert::TilingContext* context) const;
+    uint64_t GetTilingKey() const override;
     ge::graphStatus setNumBlocks(gert::TilingContext* context);
 
 private:
@@ -90,13 +94,6 @@ private:
     int32_t baseMForMM_;
     int32_t baseNForMM_;
     int32_t baseKForMM_;
-
-    const char* epGroup_;
-    uint32_t rankSize_;
-    uint32_t libApiWorkSpaceSize_;
-    uint64_t epWorldSize_;
-
-    ge::DataType mmDType_ = ge::DT_UNDEFINED;
 };
 } // namespace optiling
 #endif

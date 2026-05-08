@@ -17,14 +17,37 @@
 #else
 #include "kernel_operator.h"
 #endif
-#if __has_include("../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/mc2_templates.h")
-#include "../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/mc2_templates.h"
+#include "allto_allv_grouped_mat_mul_tiling.h"
+#include "allto_allv_grouped_mat_mul_tiling_key.h"
+#if __has_include("../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/mc2_templates.h")
+#include "../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/mc2_templates.h"
+#elif __has_include("../allto_allv_quant_grouped_mat_mul/mc2_templates/mc2_templates.h")
+#include "../allto_allv_quant_grouped_mat_mul/mc2_templates/mc2_templates.h"
 #else
 #include "../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/mc2_templates.h"
 #endif
-#include "allto_allv_grouped_mat_mul_tiling_key.h"
 
 using namespace AscendC;
+using namespace MC2KernelTemplate;
+using namespace Mc2GroupedMatmulTilingData;
+
+#if defined(CONST_TILING)
+#define GET_NESTED_TILING_DATA_MEMBER_ADDR(outerType, innerType, outerMember, innerMember, var, tiling) \
+    const outerType *outerPtr##var = (const outerType *)(tiling);                                       \
+    const innerType *innerPtr##var = &(outerPtr##var->outerPtr##var);                                   \
+    const int32_t *(var) = (const int32_t)((const uint8_t *)&(innerPtr##var->innerMember));
+#else
+#define GET_NESTED_TILING_DATA_MEMBER_ADDR(outerType, innerType, outerMember, innerMember, var, tiling) \
+    size_t outerOffset##var = (size_t)(&((outerType *)0)->outerMember);                                 \
+    size_t innerOffset##var = (size_t)(&((innerType *)0)->innerMember);                                 \
+    __gm__ int32_t *(var) = (__gm__ int32_t *)((__gm__ uint8_t *)(tiling) + outerOffset##var + innerOffset##var);
+#endif
+
+#if defined(CONST_TILING)
+#define TILING_TYPE const int32_t
+#else
+#define TILING_TYPE __gm__ int32_t
+#endif
 
 template <
     int D_T_MM, bool TILINGKEY_MM, bool TILINGKEY_GMM_WEIGHT_TRANSPOSE, 
@@ -46,7 +69,7 @@ __global__ __aicore__ void allto_allv_grouped_mat_mul(
     using LocalComputeOpType = QuantGroupedMatmul<AlltoAllvGmmTilingData, GMMQuantTilingData, DTYPE_GMM_X,
         DTYPE_GMM_WEIGHT, float, DTYPE_GMM_Y, CubeFormat::ND, false, TILINGKEY_MM_WEIGHT_TRANSPOSE,
         true, true>;  // isLocal=true, isA2avGmm=true
-    A2avGmmScheduler<HcclA2avOp<DTYPE_GMM_WEIGHT, false>, ComputeOpType, LocalComputeOpType,
+    MC2KernelTemplate::A2avGmmScheduler<HcclA2avOp<DTYPE_GMM_WEIGHT, false>, ComputeOpType, LocalComputeOpType,
         AlltoAllvGmmTilingData, GMMQuantTilingData, TILING_TYPE, TILINGKEY_MM> a2avGmmScheduler;  // MX_QUANT_MODE=false
     
     GET_NESTED_TILING_DATA_MEMBER_ADDR(AlltoAllvGmmTilingData, GMMQuantTilingData, gmmQuantTilingData,

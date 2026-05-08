@@ -29,14 +29,14 @@ namespace optiling {
         return false;
     }
 
-    ge::graphStatus AlltoAllvGmmTilingFuncA5::AlltoAllvGmmOpTilingFunc(gert::TilingContext* context)
-    {
-        AlltoAllvGmmTilingA5 tiling;
-        OP_TILING_CHECK(
-            tiling.Init(context) != ge::GRAPH_SUCCESS, OP_LOGE(A_INNER_DEBUG, "GMM tiling init failed."),
-            return ge::GRAPH_FAILED);
-        return tiling.RunFusionKernelTiling(context);
-    }
+ge::graphStatus AlltoAllvGmmTilingFuncA5::AlltoAllvGmmOpTilingFunc(gert::TilingContext* context)
+{
+    AlltoAllvGmmTilingA5 tiling(context);
+    OP_TILING_CHECK(
+        tiling.Init() != ge::GRAPH_SUCCESS, OP_LOGE(A_INNER_DEBUG, "GMM tiling init failed."),
+        return ge::GRAPH_FAILED);
+    return tiling.RunFusionKernelTiling(context);
+}
 
     ge::graphStatus AlltoAllvGmmTilingStructA5::DoOpTiling()
     {
