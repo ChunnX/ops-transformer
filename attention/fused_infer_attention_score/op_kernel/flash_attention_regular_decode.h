@@ -380,7 +380,7 @@ namespace SplitFuse {
                             uint64_t gmOffsetV = vBOffset + vNStartOffset +
                                 static_cast<uint64_t>(kvNIncreIdx * embedV);
                             if constexpr (PAGED_CACHE_FLAG && std::is_same_v<LayoutK, layout::zN>) {
- 	                                gmOffsetV = vBOffset + vNStartOffse + static_cast<uint64_t>(kvNIncreIdx * embedV * pagedBlockSize);
+ 	                                gmOffsetV = vBOffset + vNStartOffset + static_cast<uint64_t>(kvNIncreIdx * embedV * pagedBlockSize);
                             }
                             uint64_t gmOffsetO = oBOffset + oSOffset + oNStartOffset +
                                 static_cast<uint64_t>(kvNIncreIdx * groupSize * embed);
