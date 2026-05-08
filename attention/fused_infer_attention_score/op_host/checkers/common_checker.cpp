@@ -441,11 +441,11 @@ ge::graphStatus CommonChecker::CheckAxis(const FiaTilingInfo &fiaInfo)
                         fiaInfo.s2Size),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(fiaInfo.qkHeadDim > D_LIMIT || fiaInfo.qkHeadDim < 0,
-                OP_LOGE(fiaInfo.opName, "The axis D of query and key only support (0, %u], the current is %u.",
+                OP_LOGE(fiaInfo.opName, "The axis D of query and key only support [0, %u], the current is %u.",
                         D_LIMIT, fiaInfo.qkHeadDim),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(fiaInfo.vHeadDim > D_LIMIT || fiaInfo.vHeadDim < 0,
-                OP_LOGE(fiaInfo.opName, "The axis D of value only support (0, %u], the current is %u.",
+                OP_LOGE(fiaInfo.opName, "The axis D of value only support [0, %u], the current is %u.",
                         D_LIMIT, fiaInfo.vHeadDim),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(fiaInfo.isQKVDDifferent && (fiaInfo.qkHeadDim > 128),
