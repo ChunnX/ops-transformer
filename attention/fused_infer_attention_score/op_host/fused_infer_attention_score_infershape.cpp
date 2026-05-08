@@ -58,6 +58,7 @@ static constexpr uint32_t FIA_INPUT_KV_PADDING_SIZE_INDEX = 16;
 static constexpr uint32_t FIA_INPUT_ACTUAL_SHARED_PREFIX_LEN_INDEX = 23;
 static constexpr uint32_t FIA_QUERY_ROPE_INDEX = 24;
 static constexpr uint32_t FIA_OUT_DTYPE_INDEX = 15;
+static constexpr uint32_t VERSION_SIZE = 32;
 
 static const std::map<int64_t, ge::DataType> TORCH_DTYPE_ENUM_VALUE_TO_GE_DTYPE_MAP = {
     {5,  ge::DT_FLOAT16}, 
@@ -66,7 +67,7 @@ static const std::map<int64_t, ge::DataType> TORCH_DTYPE_ENUM_VALUE_TO_GE_DTYPE_
     {290, ge::DT_HIFLOAT8}
 };
 
-static const std::map<int64_t, std::string> TORCH_DTYOE_NOT_SUPPORT_MAP = {
+static const std::map<int64_t, std::string> TORCH_DTYPE_NOT_SUPPORT_MAP = {
     {23,  "DT_FLOAT8_E5M2"}, 
 };
 
@@ -383,8 +384,8 @@ static ge::graphStatus InferDataTypeFusedInferAttentionScore(gert::InferDataType
         OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
         const int64_t *outTypePtr = attrs->GetInt(FIA_OUT_DTYPE_INDEX);
         if (outTypePtr != nullptr) {
-            auto it = TORCH_DTYOE_NOT_SUPPORT_MAP.find(*outTypePtr);
-            if (it != TORCH_DTYOE_NOT_SUPPORT_MAP.end()){
+            auto it = TORCH_DTYPE_NOT_SUPPORT_MAP.find(*outTypePtr);
+            if (it != TORCH_DTYPE_NOT_SUPPORT_MAP.end()) {
                 OP_LOGE("FusedInferAttentionScore", "Fia graph mode do not support post quant output data type: %s.", it->second.c_str());
                 return ge::GRAPH_FAILED;
             }
