@@ -695,45 +695,13 @@ protected:
         SetFlag<HardEvent::MTE3_MTE2>(this->bmm1ResCopyOutEvent[ubPingpong]);
     }
 
-    // Out-of-line helper for sub-block mask correction. Marked noinline so the body
-    // does NOT bloat Res1VecCompute's inlined hot path (Session 8 measured a 26 ms
-    // regression at 10% sparsity when an equivalent batched-Duplicate body was inlined
-    // — pure I-cache layout shift, since at low sparsity the body never executes).
-    // Keeping the body out-of-line preserves the inlined caller's instruction layout
-    // while letting partial-chunk paths (mid-sparsity) benefit from batched 2D
-    // Duplicate dispatch (one Duplicate covering all souterSize rows at 64-lane width
-    // instead of one per-row call). Function-call overhead is paid only when the
-    // helper is actually called (≤34% of chunks at 10% sparsity, never at 0%).
-    __aicore__ __attribute__((noinline)) void ApplySubBlockMaskCorrection(
-        int32_t ubPingpong, uint8_t subMask, uint32_t sInnerNow, uint32_t souterSize) {
-        const uint8_t repStride = static_cast<uint8_t>(sInnerNow / 8u);  // 32-B blocks per row
-        for (int32_t sub = 0; sub < 4; ++sub) {
-            if (subMask & (1u << sub)) continue;  // active, skip
-            uint32_t colStart = static_cast<uint32_t>(sub) * 128u;
-            if (colStart >= sInnerNow) break;     // beyond actual KV length (tail chunk)
-            uint32_t subCols = (colStart + 128u <= sInnerNow) ? 128u : (sInnerNow - colStart);
-            // For fp32, one Duplicate repeat = 256 B = 64 lanes. Cover up to 128 cols
-            // with two 64-lane Duplicate calls, each spanning all souterSize rows via
-            // the dstRepStride parameter (instead of one Duplicate per row).
-            uint64_t firstMask = (subCols >= 64u) ? 64u : subCols;
-            Duplicate<computeType, false>(this->mmResUb[ubPingpong][colStart],
-                                          static_cast<computeType>(-10000.0f),
-                                          firstMask, souterSize, 1, repStride);
-            if (subCols > 64u) {
-                Duplicate<computeType, false>(this->mmResUb[ubPingpong][colStart + 64u],
-                                              static_cast<computeType>(-10000.0f),
-                                              static_cast<uint64_t>(subCols - 64u),
-                                              souterSize, 1, repStride);
-            }
-        }
-        PipeBarrier<PIPE_V>();
-    }
-
     // Session 25 Thread A.1 — pre-mask the cube-OOB cols [bmm2K, mm1N) to -10000
     // before softmax, on the global last batch only. Out-of-line + noinline so
     // the inlined caller (Res1VecCompute) keeps its instruction layout for the
-    // hot path that doesn't need this scrub. Same I-cache rationale as
-    // ApplySubBlockMaskCorrection above (Session 8).
+    // hot path that doesn't need this scrub. Same I-cache rationale as the
+    // dead `ApplySubBlockMaskCorrection` helper from Session 8 (deleted in
+    // Session 26 — call site removed by Session 18 Stage A's true sub-tile
+    // gather, see comment in Res1VecCompute below).
     //
     // Two stages:
     //   Stage 1 — partial leading BLOCK at floor(bmm2K/8)*8, bitmask form:
@@ -839,8 +807,8 @@ protected:
 
             // Session 18+: with true sub-tile gather, every score-buffer column is a
             // kept K position by construction. The post-matmul Adds(-10000) sub-block
-            // correction (sabiSubBlockMask) is no longer needed — bmm1 only writes
-            // packedCount * 128 valid columns, all of them active sabi entries.
+            // correction is no longer needed — bmm1 only writes packedCount * 128
+            // valid columns, all of them active sabi entries.
 
             // Session 25 Thread A.1: scrub the cube-OOB workspace cols
             // [bmm2K, singleProcessSInnerSizeNow) to -10000 *before* softmax on
