@@ -22,24 +22,17 @@
 #include "mc2_platform_info.h"
 
 namespace ops {
+// aicpu_only分支：950只支持AICPU通信，不需要CCU GenTask
 ge::Status AlltoAllvQuantGroupedMatMulCalcParamFunc(gert::ExeResGenerationContext *context)
 {
-    if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
-        OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTask CalcParamFunc");
-        return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "ccu server", "ccu_stream");
-    }
-    OPS_LOG_D(context->GetNodeName(), "Do A3 aicpu GenTask CalcParamFunc");
+    OPS_LOG_D(context->GetNodeName(), "Do AICPU GenTask CalcParamFunc");
     return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "aicpu kfc server", "kfc_stream");
 }
 
 ge::Status AlltoAllvQuantGroupedMatMulGenTaskFunc(const gert::ExeResGenerationContext *context,
                                             std::vector<std::vector<uint8_t>> &tasks)
 {
-    if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
-        OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTask GenTaskFunc");
-        return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks);
-    }
-    OPS_LOG_D(context->GetNodeName(), "Do A3 aicpu GenTask GenTaskFunc");
+    OPS_LOG_D(context->GetNodeName(), "Do AICPU GenTask GenTaskFunc");
     return Mc2MoeGenTaskOpsUtils::Mc2MoeGenTaskCallback(context, tasks);
 }
 
