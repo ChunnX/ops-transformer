@@ -370,9 +370,11 @@ public:
         wait_flag(PIPE_MTE2, PIPE_V, eventId);
 
         uint8_t repeatimes = CeilDiv(row, BRCB_BASE_NUM);
-        Brcb(lseFp32Brc, lse, repeatimes, {1, 8});
-        AscendC::PipeBarrier<PIPE_V>();
-
+        if constexpr (INPUT_LAYOUT == BNSD) {
+            Brcb(lseFp32Brc, lse, repeatimes, {1, 8});
+            AscendC::PipeBarrier<PIPE_V>();
+        }
+        
         Muls(sLocal, sLocal, (float)scaleValue, countAlign);
         AscendC::PipeBarrier<PIPE_V>();
 
@@ -463,7 +465,7 @@ public:
             uint64_t bOffset = n1 * prefixSum;
             startOffset = bOffset + curS1Idx * n1 + curCoreN1Idx;
             // 对于TND 格式来说， 会进行类似 (s n) -> (n s) 的transpose转换
-            DataCopyPad(lse,
+            DataCopyPad(lseFp32Brc,
                 LseGm[startOffset],
                 {static_cast<uint16_t>(count),
                     static_cast<uint32_t>(1 * sizeof(float)),
