@@ -328,6 +328,11 @@ ge::graphStatus DequantChecker::CheckExistenceNoquant(const FiaTilingInfo &fiaIn
     if (checkExistenece) {
         return ge::GRAPH_SUCCESS;
     } else {
+        if (fiaInfo.socVersion == platform_ascendc::SocVersion::ASCEND910B) {
+            if (fiaInfo.s1Size > 1 && (fiaInfo.inputQType == ge::DT_INT8 || fiaInfo.outputType != ge::DT_INT8)) {
+                return ge::GRAPH_SUCCESS;
+            }
+        }
         OP_LOGE(fiaInfo.opName,
                 "In gqa no quant scenario, quant related param cannot exist.");
         return ge::GRAPH_FAILED;
@@ -2524,9 +2529,7 @@ ge::graphStatus DequantChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
 ge::graphStatus DequantChecker::CheckParaExistence(const FiaTilingInfo &fiaInfo)
 {
     if (enableNonQuant_) {
-        if (fiaInfo.socVersion != platform_ascendc::SocVersion::ASCEND910B) {
-            return CheckExistenceNoquant(fiaInfo);
-        }
+        return CheckExistenceNoquant(fiaInfo);
     } else if (enableFullQuant_) {
         if (ge::GRAPH_SUCCESS != CheckExistencePertensorFullquant(fiaInfo) ||
             ge::GRAPH_SUCCESS != CheckExistenceMLAFullquant(fiaInfo) ||
