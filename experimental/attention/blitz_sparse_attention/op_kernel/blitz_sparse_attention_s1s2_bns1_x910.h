@@ -729,6 +729,49 @@ protected:
         PipeBarrier<PIPE_V>();
     }
 
+    // Session 25 Thread A.1 — pre-mask the cube-OOB cols [bmm2K, mm1N) to -10000
+    // before softmax, on the global last batch only. Out-of-line + noinline so
+    // the inlined caller (Res1VecCompute) keeps its instruction layout for the
+    // hot path that doesn't need this scrub. Same I-cache rationale as
+    // ApplySubBlockMaskCorrection above (Session 8).
+    //
+    // Two stages:
+    //   Stage 1 — partial leading BLOCK at floor(bmm2K/8)*8, bitmask form:
+    //     mask[0] = bits [laneOffset, 8) set, where laneOffset = bmm2K % 8.
+    //     Skipped when bmm2K is already 8-aligned (laneOffset == 0).
+    //   Stage 2 — full aligned BLOCKs from ceil(bmm2K/8)*8 to mm1N, count form
+    //     (writes the FIRST `count` lanes of each repeat).
+    //
+    // After the masked write, the vector mask register is restored to "all
+    // lanes on" so subsequent softmax/Muls/Add ops see a normal mask state.
+    __aicore__ __attribute__((noinline)) void ApplyTailKOOBPreMask(
+        int32_t ubPingpong, uint32_t bmm2K, uint32_t mm1N, uint32_t souterSize) {
+        const uint32_t partialStart = bmm2K & ~uint32_t(7);
+        const uint32_t laneOffset   = bmm2K - partialStart;
+        const uint32_t alignedStart = partialStart + ((laneOffset > 0u) ? 8u : 0u);
+        const uint8_t  repStride    = static_cast<uint8_t>(mm1N / 8u);
+
+        if (laneOffset != 0u) {
+            uint64_t partialMask[2] = {
+                ((1ULL << 8) - (1ULL << laneOffset)),
+                0ULL
+            };
+            Duplicate<computeType, true>(
+                this->mmResUb[ubPingpong][partialStart],
+                static_cast<computeType>(-10000.0f),
+                partialMask, static_cast<uint8_t>(souterSize), 1, repStride);
+        }
+        if (alignedStart < mm1N) {
+            Duplicate<computeType, true>(
+                this->mmResUb[ubPingpong][alignedStart],
+                static_cast<computeType>(-10000.0f),
+                static_cast<uint64_t>(mm1N - alignedStart),
+                static_cast<uint8_t>(souterSize), 1, repStride);
+        }
+        AscendC::SetVectorMask<int8_t>((uint64_t)-1, (uint64_t)-1);
+        PipeBarrier<PIPE_V>();
+    }
+
     __aicore__ inline void Res1VecCompute(PFAComputeParam *params) {
         if (params->fakeMsg) {
             return;
@@ -798,6 +841,16 @@ protected:
             // kept K position by construction. The post-matmul Adds(-10000) sub-block
             // correction (sabiSubBlockMask) is no longer needed — bmm1 only writes
             // packedCount * 128 valid columns, all of them active sabi entries.
+
+            // Session 25 Thread A.1: scrub the cube-OOB workspace cols
+            // [bmm2K, singleProcessSInnerSizeNow) to -10000 *before* softmax on
+            // the global last batch.  Out-of-line helper to keep the hot
+            // Res1VecCompute layout intact (Session 8 I-cache rationale).
+            if (params->isBlockSparse && params->bmm2K < params->singleProcessSInnerSizeNow) {
+                this->ApplyTailKOOBPreMask(
+                    ubPingpong, params->bmm2K,
+                    params->mm1SingleCoreN, static_cast<uint32_t>(souterSize));
+            }
 
             bool firstIter = params->isBlockSparse ? params->isFirstComputedIter : params->isFirstInnerIter;
             this->isSoftmaxResNeedUpdate = (firstIter ||
@@ -960,9 +1013,14 @@ protected:
             // Session 18 Stage A / 19 Stage B: mirror Bmm1ComputeIterate.
             //
             // Contiguous-K fast path: when packed sabis are consecutive, V slice is
-            // contiguous → ONE bmm2 IterateAll of full K=mm1SingleCoreN. The bmm1
-            // result is already a dense [souter, mm1SingleCoreN] tile (because the
-            // bmm1 fast path wrote one wide block at offset 0).
+            // contiguous → ONE bmm2 IterateAll of K = params->bmm2K (Session 25
+            // Thread A.1: = totalColsActual, unaligned). Cube-OOB workspace cols
+            // [bmm2K, mm1SingleCoreN) are pre-masked to -10000 in Res1VecCompute
+            // before softmax, so softmax fast-path runs on the full 64-aligned
+            // totalCols. bmm2's V load uses bmm2K = totalColsActual — V reads stay
+            // strictly inside actualSeqLengthKVPerBatch.
+            // (Session 24 used `singleProcessSInnerBmmTail` here; that is now
+            // = totalCols for the sparse path and would re-introduce the NaN bug.)
             //
             // Gather slow path (non-contiguous sabis): packedCount narrow K=128
             // bmm2 calls, each consuming the matching 128-wide slice from
@@ -984,7 +1042,7 @@ protected:
                                         == (uint32_t)params->packedCount);
             if (kContiguous) {
                 const int64_t valOffset = valBase + (int64_t)firstSabi * 128 * kvTokenStride;
-                this->bmm2.SetTail(souterM, headSize, params->mm1SingleCoreN);
+                this->bmm2.SetTail(souterM, headSize, params->bmm2K);
                 if constexpr (IsSameType<T, int8_t>::value) {
                     this->bmm2.SetTensorA(this->quant1ResGmDb[params->gmPingpong]);
                 } else if constexpr (PFAT::msdMode != MsdMode::MSD_ON
@@ -1014,8 +1072,10 @@ protected:
             for (int i = 0; i < (int)params->packedCount; ++i) {
                 const int64_t valOffset = valBase
                     + (int64_t)params->packedSabi[i] * 128 * kvTokenStride;
+                // Last iter uses bmm2K (= totalColsActual, Session 25 Thread A.1)
+                // not mm1SingleCoreN, to keep V reads inside actualSeqLengthKVPerBatch.
                 uint32_t kCols = (i == (int)params->packedCount - 1)
-                    ? (params->mm1SingleCoreN - (uint32_t)i * 128u)
+                    ? (params->bmm2K - (uint32_t)i * 128u)
                     : 128u;
                 this->bmm2.SetTail(souterM, headSize, kCols);
                 if constexpr (IsSameType<T, int8_t>::value) {
@@ -2636,18 +2696,55 @@ __aicore__ inline void BlitzSparseAttentionS1s2Bns1X910<PFAT>::SInnerLoopFunc(in
             const int32_t lastCols = (lastCols64 >= 128) ? 128 : (int32_t)lastCols64;
             const uint32_t totalCols = (uint32_t)((batchCount - 1) * 128 + lastCols);
 
+            // Session 25 Thread A.1: keep softmax fast-path firing on the global
+            // last batch (BmmTail = 64-aligned `totalCols`) by pre-masking the
+            // cube-OOB workspace cols [bmm2K, mm1SingleCoreN) to -10000 in
+            // Res1VecCompute. bmm2's V load narrows to bmm2K = totalColsActual
+            // (unaligned), so V reads stay strictly inside actualSeqLengthKVPerBatch
+            // — no allocator-slack dependency.
+            //
+            // Why A.1 and not A.4 (bmm2K = ceil(actual/8)*8): the Session 25 probe
+            // showed PyTorch NPU caching-allocator slack at S=118 806 contains NaN
+            // bit-patterns. Even a 2-token V OOB read poisons every row of the
+            // last head via the atomic-add bmm2.  Keeping the V load tight and
+            // paying for an unaligned pre-mask region (handled with a 2-stage
+            // Duplicate: bitmask form for the partial leading BLOCK + count form
+            // for the full aligned BLOCKs) is the only way to keep softmax fast
+            // AND not depend on allocator behaviour.
+            //
+            // Session 24's split (cube N type-aligned, BmmTail = totalColsActual)
+            // is replaced: BmmTail is back on totalCols, and the unaligned
+            // totalColsActual is captured in the new bmm2K field used only by
+            // bmm2 + the Res1VecCompute pre-mask.
+            const int64_t lastColsActual64 =
+                (int64_t)sInnerLastToken - lastSabiTokenStart;
+            const int32_t lastColsActual =
+                (lastColsActual64 >= 128) ? 128
+                : (lastColsActual64 < 0) ? 0
+                : (int32_t)lastColsActual64;
+            const uint32_t totalColsActual =
+                (uint32_t)((batchCount - 1) * 128 + lastColsActual);
+
             for (int i = 0; i < batchCount; ++i) {
                 params->packedSabi[i] = batch[i];
             }
             params->packedCount = static_cast<uint8_t>(batchCount);
 
+            // mm1SingleCoreN = singleProcessSInnerSizeNow = totalCols (64-aligned)
+            // matches Stage A's layout — the bmm1→UB DataCopy stride math (blockLen,
+            // srcStride divided by softmaxTypeByteNum=8) uses these.  totalCols
+            // is divisible by 8 because lastCols ∈ {64, 128}.
+            // singleProcessSInnerBmmTail = totalCols keeps softmax fast-path firing
+            // (gate is BmmTail % 64 == 0).  bmm2K = totalColsActual (unaligned)
+            // bounds bmm2's V load to actualSeqLengthKVPerBatch.
             params->mm1SingleCoreN              = totalCols;
             params->singleProcessSInnerSizeNow  = totalCols;
             params->singleProcessSInnerBmmTail  = totalCols;
+            params->bmm2K                       = totalColsActual;
             params->mm2SingleKAlign = (params->mm1SingleCoreN + MM2_SINGLE_K_ALIGN_SIZE - 1)
                                     / MM2_SINGLE_K_ALIGN_SIZE * MM2_SINGLE_K_ALIGN_SIZE;
-            params->maskCopyInCol      = totalCols;
-            params->pseShiftCopyInCol  = totalCols;
+            params->maskCopyInCol      = totalColsActual;
+            params->pseShiftCopyInCol  = totalColsActual;
 
             params->isFirstComputedIter  = (computedBlocks == 0);
             params->isSecondComputedIter = (computedBlocks == 1);

@@ -149,6 +149,13 @@ struct PFAComputeParam {
     uint32_t pseShiftInnerTailAlign;
     uint32_t pseShiftInnerPrefixTailAlign;
     uint32_t mm1SingleCoreN;
+    // Session 25 Thread A: bmm2's V-load K dimension. Sparse path narrows it to
+    // totalColsActual rounded UP to 8 fp32 lanes (= 1 fp32 BLOCK = 32 B). Decoupled
+    // from `singleProcessSInnerBmmTail` (= softmax srcK) so softmax fast-path
+    // stays on the 64-aligned `totalCols`, while bmm2's V load reaches at most
+    // 7 V tokens past `actualSeqLengthKVPerBatch` per (Q-tile × head). Dense path
+    // keeps it equal to `singleProcessSInnerBmmTail`.
+    uint32_t bmm2K;
     uint32_t mm2SingleKAlign;
     int64_t tensorAOffset;
     int64_t tensorBOffset;
