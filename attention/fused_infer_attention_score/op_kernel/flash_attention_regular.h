@@ -622,12 +622,12 @@ namespace SplitFuse {
 #endif
 #ifdef __DAV_C220_CUBE__
                 LayoutQ layoutQTemp(rowNum, embed);
+                LayoutK layoutKTemp(strideK, stackSeqTile);
+                LayoutV layoutVTemp(stackSeqTile, strideV);
                 uint32_t kRow = strideK;
  	            uint32_t kCol = stackSeqTile;
                 uint32_t vRow = stackSeqTile;
  	            uint32_t vCol = strideV;
-                LayoutK layoutKTemp(strideK, stackSeqTile);
-                LayoutV layoutVTemp(stackSeqTile, strideV);
                 if constexpr (PAGED_CACHE_FLAG && std::is_same_v<LayoutK, layout::nZ>) {
                     kRow = blockStackNum * strideK;
                     kCol = pagedBlockSize;
