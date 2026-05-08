@@ -266,7 +266,7 @@ BlockEpilogueDequantSequentialWrite<GMM_BLOCK_EPILOGUE_DEQUANT_SEQUENTIAL_FUNC_L
     uint32_t curBaseM, uint64_t offsetM, LocalTensor<float> &logitUb)
 {
     DataCopyExtParams perTokenScaleParams{1, static_cast<uint32_t>(curBaseM * sizeof(float)), 0, 0, 0};
-    DataCopyPadExtParams<float> padParams;
+    DataCopyPadExtParams<float> padParams{false, 0, 0, 0};
     DataCopyPad(logitUb, logitGlobal_[offsetM], perTokenScaleParams, padParams);
 }
 

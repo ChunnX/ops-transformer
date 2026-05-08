@@ -97,7 +97,8 @@ __aicore__ inline void FRDeterministicA5(
             // Read from workspace to UB
             LocalTensor<DTYPE_OUT> bindLocal = queBind.AllocTensor<DTYPE_OUT>();
             DataCopyExtParams copyParams{1, static_cast<uint32_t>(curVecBaseN * sizeof(DTYPE_OUT)), 0, 0, 0};
-            DataCopyPad(bindLocal, deterBufferGm[mOffset * n + nOffset], copyParams);
+            DataCopyPadExtParams<DTYPE_OUT> padParams{false, 0, 0, 0};
+            DataCopyPad(bindLocal, deterBufferGm[mOffset * n + nOffset], copyParams, padParams);
             queBind.EnQue(bindLocal);
             bindLocal = queBind.DeQue<DTYPE_OUT>();
 
