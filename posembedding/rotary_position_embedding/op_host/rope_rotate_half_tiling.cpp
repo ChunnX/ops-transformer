@@ -402,6 +402,64 @@ inline void RotateHalfTiling::GetAlignedInfo(const ge::DataType inputDtype, uint
 ge::graphStatus RotateHalfTiling::CheckShapeSupport(const gert::Shape &xShape, const gert::Shape &cosShape,
                                                     const gert::Shape &sinShape, uint64_t dLength)
 {   
+    int64_t xShapeSize = xShape.GetShapeSize();
+
+    // 从1到10 的分支
+    if (xShapeSize == 1){
+        // EZ0008
+        OP_LOGE_FOR_INVALID_SHAPE(
+            context->GetNodeName(), "x", ToString(xShape).c_str(),
+            "[1,2]");
+    } else if (xShapeSize == 2){
+        // EZ0009
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            context->GetNodeName(), "x", ToString(xShape).c_str(),
+            "The 0th axis of input x must be 2");
+    } else if (xShapeSize == 3){
+        // EZ0010
+        std::string shapeMsg = ToString(xShape) + " and " + ToString(cosShape);
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+            context->GetNodeName(), "x and cos", shapeMsg.c_str(),
+            "The shapes of input x and cos must be the same");
+    } else if (xShapeSize == 4){
+        // EZ0011
+        OP_LOGE_FOR_INVALID_SHAPEDIM(
+            context->GetNodeName(), "x", "2",
+            "3");
+    } else if (xShapeSize == 5){
+        // EZ0012
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            context->GetNodeName(), "x", "2",
+            "The shape dim of input x must be 3");
+    } else if (xShapeSize == 6){
+        // EZ0013
+        OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(
+            context->GetNodeName(), "x and cos", "2 and 3",
+            "The shape dims of input x and cos must be the same");
+    } else if (xShapeSize == 7){
+        // EZ0014
+        OP_LOGE_FOR_INVALID_SHAPESIZE(
+            context->GetNodeName(), "x", std::to_string(xShapeSize).c_str(),
+            "15");
+    } else if (xShapeSize == 8){
+        // EZ0015
+        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
+            context->GetNodeName(), "x", std::to_string(xShapeSize).c_str(),
+            "The shape size of input x must be 15");
+    } else if (xShapeSize == 9){
+        // EZ0016
+        OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(
+            context->GetNodeName(), "x and cos", "15 and 20",
+            "The shape sizes of input x and cos must be the same");
+    } else if (xShapeSize == 10){
+        // EZ0017
+        OP_LOGE_FOR_INVALID_FORMAT(
+            context->GetNodeName(), "x", "NCHW",
+            "ND");
+    }
+    return ge::GRAPH_FAILED;
+
+
     if(isTndLayOut){
         if (xShape.GetDimNum() != TND_DIM_NUM || cosShape.GetDimNum() != TND_DIM_NUM || sinShape.GetDimNum() != TND_DIM_NUM) {
             std::string dimNumMsg = std::to_string(xShape.GetDimNum()) + ", " +
