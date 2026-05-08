@@ -52,10 +52,10 @@ BASE = {"B": [2],
         "block_size": [-1],
         "return_softmax_lse": [False],
         "enable_learnable_sink": [False],
-        "cu_seqlens_q": [[]],
-        "cu_seqlens_kv": [[]],
-        "seqused_q": [[]],
-        "seqused_kv": [[]],
+        "cu_seqlens_q": [[None]],
+        "cu_seqlens_kv": [[None]],
+        "seqused_q": [[None]],
+        "seqused_kv": [[None]],
         "mask_mode": [1],
         "win_left": [-1],
         "win_right": [-1],
@@ -64,7 +64,7 @@ BASE = {"B": [2],
         'v_range': [(-5.0, 5.0)]}
 
 # 共95条
-TestCasesFunc = {
+TestCases = {
     # ------type
     "BF16_01"  : {**BASE,
                   "Dtype": ["bf16"]},
@@ -272,5 +272,5 @@ TestCasesFunc = {
                   "S2": [64],
                   "mask_mode": [4],
                   "win_left": [0, 63, 64, 90, 128],
-                  "win_right": [0, 15, 64]}, # 14条，其中0 0为无效用例
+                   "win_right": [0, 15, 64]}, # 14条，其中0 0为无效用例
 }

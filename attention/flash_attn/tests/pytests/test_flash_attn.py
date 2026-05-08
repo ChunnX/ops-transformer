@@ -1,6 +1,9 @@
 import os
 import sys
 import argparse
+import importlib
+import itertools
+
 import torch
 import torch_npu
 import math
@@ -8,8 +11,24 @@ import numpy as np
 from cpu_impl import tforward
 from test_utils import generate_qkv, generate_pse, generate_npu_mask, trans_bnsd_to_layout, get_seqlen_list
 from npu_impl import flash_attn_npu, flash_attn_metadata_only
-from test_case import TestCases
-from test_case_fia_STC import TestCasesFIA
+
+_DEFAULT_CASE_FILES = ["test_case", "test_case_fia_STC", "test_case_functional_single"]
+
+
+def load_case_modules(module_names):
+    all_cases = {}
+    for mod_name in module_names:
+        mod = importlib.import_module(mod_name)
+        for case_name, case_dict in mod.TestCases.items():
+            keys = list(case_dict.keys())
+            values = [case_dict[k] for k in keys]
+            combos = list(itertools.product(*values))
+            if len(combos) == 1:
+                all_cases[f"{mod_name}/{case_name}"] = dict(zip(keys, combos[0]))
+            else:
+                for i, combo in enumerate(combos):
+                    all_cases[f"{mod_name}/{case_name}_{i}"] = dict(zip(keys, combo))
+    return all_cases
 
 
 def save_tensor_to_txt(tensor, filepath):
@@ -223,39 +242,29 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
             print(f"[WARN] 可视化异常: {exc}")
     return passed
 
-def build_case_keys_pool(case_choice):
-    """返回 (keys_pool, conflict_warning_list)"""
-    if case_choice in ("base", "TestCases"):
-        return set(TestCases.keys()), []
-    elif case_choice in ("fia", "TestCasesFIA"):
-        return set(TestCasesFIA.keys()), []
-    elif case_choice == "all":
-        base_keys = set(TestCases.keys())
-        fia_keys = set(TestCasesFIA.keys())
-        conflict = base_keys & fia_keys
-        if conflict:
-            warn = f"警告: 以下 case 名称同时在 TestCases 和 TestCasesFIA 中存在，将只采用 TestCases 中的定义: {conflict}"
-            # 合并时，如果冲突，优先保留 TestCases 中的配置（你可以调整优先级）
-            keys_pool = base_keys | fia_keys
-            return keys_pool, [warn]
+def resolve_case_ids(case_id_arg, all_cases):
+    if case_id_arg == "all":
+        return sorted(all_cases.keys())
+    ids = [x.strip() for x in case_id_arg.split(",")]
+    result = []
+    missing = []
+    for cid in ids:
+        full_names = [k for k in all_cases if k.endswith(f"/{cid}") or k == cid]
+        if len(full_names) == 1:
+            result.append(full_names[0])
+        elif len(full_names) == 0:
+            missing.append(cid)
         else:
-            return base_keys | fia_keys, []
-    else:
-        raise ValueError(f"未知的 --case 值: {case_choice}")
-
-def get_case_config(case_name):
-    if case_name in TestCases:
-        return TestCases[case_name]
-    elif case_name in TestCasesFIA:
-        return TestCasesFIA[case_name]
-    else:
-        raise KeyError(f"找不到 case '{case_name}' 的配置")
+            print(f"[WARN] '{cid}' 在多个模块中存在，请使用完整名称: {full_names}")
+    if missing:
+        print(f"[WARN] 以下 case 不存在: {missing}")
+    return result
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="FlashAttn 精度测试（从 test_case.py 读取用例）")
-    parser.add_argument("--case", type=str, default="all",
-                        choices=["all", "base", "fia", "TestCases", "TestCasesFIA"],
-                        help="选择测试集: all(两个都包含), base(仅TestCases), fia(仅TestCasesFIA) (default: all)")
+    parser = argparse.ArgumentParser(description="FlashAttn 精度测试")
+    parser.add_argument("--case_files", type=str,
+                        default=",".join(_DEFAULT_CASE_FILES),
+                        help=f"逗号分隔的 test case 模块名（不含 .py） (default: {','.join(_DEFAULT_CASE_FILES)})")
     parser.add_argument("--case_id",      type=str,            default="all",
                         help="case名称，多个用逗号分隔，'all'表示全部 (default: all)")
     parser.add_argument("--device_id",    type=int,            default=0,
@@ -276,26 +285,17 @@ if __name__ == "__main__":
 
     torch.npu.set_device(args.device_id)
 
-    case_keys_pool, conflicts = build_case_keys_pool(args.case)
-    for w in conflicts:
-        print(f"[WARN] {w}")
+    module_names = [x.strip() for x in args.case_files.split(",")]
+    all_cases = load_case_modules(module_names)
 
-    if args.case_id == "all":
-        run_cases = sorted(case_keys_pool)   # 排序使执行顺序固定
-    else:
-        ids = [x.strip() for x in args.case_id.split(",")]
-        missing = [x for x in ids if x not in case_keys_pool]
-        if missing:
-            print(f"[WARN] 以下 case 不存在于所选测试集中: {missing}")
-        run_cases = [x for x in ids if x in case_keys_pool]
-
+    run_cases = resolve_case_ids(args.case_id, all_cases)
     if not run_cases:
         print("[ERROR] 没有可运行的 case，退出。")
         sys.exit(1)
 
     results = {}
     for name in run_cases:
-        config = get_case_config(name)
+        config = all_cases[name]
         kwargs = normalize_case(config)
         print(f"\n{'='*66}")
         print(f"  Case: {name}  "
@@ -321,12 +321,13 @@ if __name__ == "__main__":
     print(f"\n┌{SEP}┐")
     print(f"│  汇总结果  ({len(run_cases)} cases)")
     print(f"├{SEP}┤")
-    print(f"│  {'Case':<28}  {'Result':>8}  │")
+    max_name_len = max((len(n) for n in results.keys()), default=28)
+    print(f"│  {'Case':<{max_name_len}}  {'Result':>8}  │")
     print(f"├{SEP}┤")
     pass_cnt = fail_cnt = 0
     for name, ok in results.items():
         tag = "✓ PASS" if ok else "✗ FAIL"
-        print(f"│  {name:<28}  {tag:>8}  │")
+        print(f"│  {name:<{max_name_len}}  {tag:>8}  │")
         if ok: pass_cnt += 1
         else:  fail_cnt += 1
     print(f"├{SEP}┤")
