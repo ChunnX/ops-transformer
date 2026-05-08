@@ -41,84 +41,96 @@ struct TilingOptionalParaInfo {
 };
 
 BEGIN_TILING_DATA_DEF(MhcPreSinkhornTilingData)
-TILING_DATA_FIELD_DEF(int64_t, bs);
-TILING_DATA_FIELD_DEF(int64_t, hcMix);
-TILING_DATA_FIELD_DEF(int64_t, hcMult);
-TILING_DATA_FIELD_DEF(int64_t, d);
-TILING_DATA_FIELD_DEF(int64_t, hcMultAlign);
-TILING_DATA_FIELD_DEF(int64_t, rowOfFormerBlock);
-TILING_DATA_FIELD_DEF(int64_t, rowOfTailBlock);
-TILING_DATA_FIELD_DEF(int64_t, rowLoopOfFormerBlock);
-TILING_DATA_FIELD_DEF(int64_t, rowLoopOfTailBlock);
-TILING_DATA_FIELD_DEF(int64_t, rowFactor);
-TILING_DATA_FIELD_DEF(int64_t, tailRowFactorOfFormerBlock);
-TILING_DATA_FIELD_DEF(int64_t, tailRowFactorOfTailBlock);
-TILING_DATA_FIELD_DEF(int64_t, dLoop);
-TILING_DATA_FIELD_DEF(int64_t, dFactor);
-TILING_DATA_FIELD_DEF(int64_t, tailDFactor);
-TILING_DATA_FIELD_DEF(int64_t, iterTimes);
-TILING_DATA_FIELD_DEF(float, hcEps);
-TILING_DATA_FIELD_DEF(float, normEps);
-TILING_DATA_FIELD_DEF(int64_t, kBlockFactor);
-TILING_DATA_FIELD_DEF(int64_t, kFactor);
-TILING_DATA_FIELD_DEF(int64_t, tailKFactor);
-TILING_DATA_FIELD_DEF(int64_t, kLoop);
-TILING_DATA_FIELD_DEF(int64_t, stage2RowFactor);
+TILING_DATA_FIELD_DEF(int64_t, bs);                       // batch size
+TILING_DATA_FIELD_DEF(int64_t, hcMix);                    // hcMult * hcMult + 2 * hcMult
+TILING_DATA_FIELD_DEF(int64_t, hcMult);                   // n维度大小
+TILING_DATA_FIELD_DEF(int64_t, d);                        // 特征维度大小
+TILING_DATA_FIELD_DEF(int64_t, hcMultAlign);              // 对齐后的hcMult
+TILING_DATA_FIELD_DEF(int64_t, rowOfFormerBlock);         // 前核处理BS总数
+TILING_DATA_FIELD_DEF(int64_t, rowOfTailBlock);           // 尾核处理BS总数
+TILING_DATA_FIELD_DEF(int64_t, rowLoopOfFormerBlock);     // 前核处理行循环次数
+TILING_DATA_FIELD_DEF(int64_t, rowLoopOfTailBlock);       // 尾核处理行循环次数
+TILING_DATA_FIELD_DEF(int64_t, rowFactor);                // 每次处理的行数
+TILING_DATA_FIELD_DEF(int64_t, tailRowFactorOfFormerBlock);  // 前核尾次处理的行数
+TILING_DATA_FIELD_DEF(int64_t, tailRowFactorOfTailBlock);    // 尾核尾次处理的行数
+TILING_DATA_FIELD_DEF(int64_t, dLoop);                    // d维度循环次数
+TILING_DATA_FIELD_DEF(int64_t, dFactor);                  // 每次处理的d维度大小
+TILING_DATA_FIELD_DEF(int64_t, tailDFactor);              // 尾次处理的d维度大小
+TILING_DATA_FIELD_DEF(int64_t, iterTimes);                // Sinkhorn迭代轮数
+TILING_DATA_FIELD_DEF(float, hcEps);                      // Sinkhorn算法的epsilon参数
+TILING_DATA_FIELD_DEF(float, normEps);                    // 归一化的epsilon参数
+TILING_DATA_FIELD_DEF(int64_t, kBlockFactor);             // K维度块因子
+TILING_DATA_FIELD_DEF(int64_t, kFactor);                  // K维度每次处理大小
+TILING_DATA_FIELD_DEF(int64_t, tailKFactor);              // K维度尾次处理大小
+TILING_DATA_FIELD_DEF(int64_t, kLoop);                    // K维度循环次数
+TILING_DATA_FIELD_DEF(int64_t, stage2RowFactor);          // 阶段2每次处理的行数
+// 预留参数，切K优化使用
+TILING_DATA_FIELD_DEF(int64_t, k);                            // K维度总大小
+TILING_DATA_FIELD_DEF(int64_t, kLoopOfFormerBlock);          // 前核K维度循环次数
+TILING_DATA_FIELD_DEF(int64_t, kLoopOfTailBlock);            // 尾核K维度循环次数
+TILING_DATA_FIELD_DEF(int64_t, stage1KFactor);               // 阶段1 K维度每次处理大小
+TILING_DATA_FIELD_DEF(int64_t, kFactorOfFormerBlock);        // 前核K维度每次处理大小
+TILING_DATA_FIELD_DEF(int64_t, kL1Size);                     // K维度L1缓冲大小
+TILING_DATA_FIELD_DEF(int64_t, mL1Size);                     // M维度L1缓冲大小
+TILING_DATA_FIELD_DEF(int64_t, cubeBlockDimM);               // Cube核M维度切分数量
+TILING_DATA_FIELD_DEF(int64_t, cubeBlockDimK);               // Cube核K维度切分数量
+TILING_DATA_FIELD_DEF(int64_t, kUbSize);                     // K维度UB缓冲大小
+TILING_DATA_FIELD_DEF(int64_t, cvLoopKSize);                 // CV循环K维度大小
+TILING_DATA_FIELD_DEF(int64_t, multCoreSplitKSize);          // 多核切分K维度大小
+TILING_DATA_FIELD_DEF(int64_t, multCoreSplitMSize);          // 多核切分M维度大小
+TILING_DATA_FIELD_DEF(int64_t, tailKSizeOfFormerBlock);      // 前核K维度尾次大小
+TILING_DATA_FIELD_DEF(int64_t, tailKSizeOfTailBlock);        // 尾核K维度尾次大小
 
-TILING_DATA_FIELD_DEF(int64_t, k);
-TILING_DATA_FIELD_DEF(int64_t, kLoopOfFormerBlock);
-TILING_DATA_FIELD_DEF(int64_t, kLoopOfTailBlock);
-TILING_DATA_FIELD_DEF(int64_t, stage1KFactor);
-TILING_DATA_FIELD_DEF(int64_t, kFactorOfFormerBlock);
-TILING_DATA_FIELD_DEF(int64_t, kL1Size);
-TILING_DATA_FIELD_DEF(int64_t, mL1Size);
-TILING_DATA_FIELD_DEF(int64_t, cubeBlockDimM);
-TILING_DATA_FIELD_DEF(int64_t, cubeBlockDimK);
-TILING_DATA_FIELD_DEF(int64_t, kUbSize);
-TILING_DATA_FIELD_DEF(int64_t, cvLoopKSize);
-TILING_DATA_FIELD_DEF(int64_t, multCoreSplitKSize);
-TILING_DATA_FIELD_DEF(int64_t, multCoreSplitMSize);
-TILING_DATA_FIELD_DEF(int64_t, tailKSizeOfFormerBlock);
-TILING_DATA_FIELD_DEF(int64_t, tailKSizeOfTailBlock);
+TILING_DATA_FIELD_DEF(int64_t, mLoopOfFormerBlock);          // 前核M维度循环次数
+TILING_DATA_FIELD_DEF(int64_t, mLoopOfTailBlock);            // 尾核M维度循环次数
+TILING_DATA_FIELD_DEF(int64_t, formerMSize);                 // 前核M维度大小
+TILING_DATA_FIELD_DEF(int64_t, tailMSizeOfFormerBlock);      // 前核M维度尾次大小
+TILING_DATA_FIELD_DEF(int64_t, tailMSizeOfTailBlock);        // 尾核M维度尾次大小
 
-TILING_DATA_FIELD_DEF(int64_t, mLoopOfFormerBlock);
-TILING_DATA_FIELD_DEF(int64_t, mLoopOfTailBlock);
-TILING_DATA_FIELD_DEF(int64_t, formerMSize);
-TILING_DATA_FIELD_DEF(int64_t, tailMSizeOfFormerBlock);
-TILING_DATA_FIELD_DEF(int64_t, tailMSizeOfTailBlock);
+TILING_DATA_FIELD_DEF(int64_t, firstUsedCoreNum);            // 阶段1使用的核心数
+TILING_DATA_FIELD_DEF(int64_t, secondUsedCoreNum);           // 阶段2使用的核心数
 
-TILING_DATA_FIELD_DEF(int64_t, firstUsedCoreNum);
-TILING_DATA_FIELD_DEF(int64_t, secondUsedCoreNum);
+TILING_DATA_FIELD_DEF(int64_t, rowInnerFactor);              // 行内部因子
 
-TILING_DATA_FIELD_DEF(int64_t, rowInnerFactor);
+TILING_DATA_FIELD_DEF(int64_t, cubeCoreNum);                 // Cube核心数
+TILING_DATA_FIELD_DEF(int64_t, stage1MFactor);               // 阶段1 M维度每次处理大小
 
-TILING_DATA_FIELD_DEF(int64_t, cubeCoreNum);
-TILING_DATA_FIELD_DEF(int64_t, stage1MFactor);
+TILING_DATA_FIELD_DEF(int64_t, bufferPool0Size);             // 缓冲池0大小
+TILING_DATA_FIELD_DEF(int64_t, bufferPool1Size);             // 缓冲池1大小
+TILING_DATA_FIELD_DEF(int64_t, mUbSize);                     // M维度UB缓冲大小
 
-TILING_DATA_FIELD_DEF(int64_t, bufferPool0Size);
-TILING_DATA_FIELD_DEF(int64_t, bufferPool1Size);
-TILING_DATA_FIELD_DEF(int64_t, mUbSize);
+TILING_DATA_FIELD_DEF(int64_t, needGrad);                    // 是否需要梯度
+TILING_DATA_FIELD_DEF(int64_t, bsSplitThreshold);            // BS切分阈值
+TILING_DATA_FIELD_DEF(int64_t, bsLoop);                      // BS循环次数
+TILING_DATA_FIELD_DEF(int64_t, tailBs);                      // 尾批次BS数
+TILING_DATA_FIELD_DEF(int64_t, curBsSplit);                  // 当前BS切分大小
 
-TILING_DATA_FIELD_DEF(int64_t, needGrad);
-TILING_DATA_FIELD_DEF(int64_t, bsSplitThreshold);
-TILING_DATA_FIELD_DEF(int64_t, bsLoop);
-TILING_DATA_FIELD_DEF(int64_t, tailBs);
-TILING_DATA_FIELD_DEF(int64_t, curBsSplit);
+// 预留参数，切K优化情况 尾批次专用参数 (tailBs != BS_SPLIT_THRESHOLD 时使用)
+TILING_DATA_FIELD_DEF(int64_t, tailBsRowOfFormerBlock);         // 尾批次前核处理BS总数
+TILING_DATA_FIELD_DEF(int64_t, tailBsRowOfTailBlock);           // 尾批次尾核处理BS总数
+TILING_DATA_FIELD_DEF(int64_t, tailBsRowLoopOfFormerBlock);     // 尾批次前核处理行循环次数
+TILING_DATA_FIELD_DEF(int64_t, tailBsRowLoopOfTailBlock);       // 尾批次尾核处理行循环次数
+TILING_DATA_FIELD_DEF(int64_t, tailBsUsedCoreNum);              // 尾批次使用的核心数
+TILING_DATA_FIELD_DEF(int64_t, tailBsRowFactor);                // 尾批次每次处理的行数
+TILING_DATA_FIELD_DEF(int64_t, tailBsTailRowFactorOfFormerBlock);  // 尾批次前核尾次处理的行数
+TILING_DATA_FIELD_DEF(int64_t, tailBsTailRowFactorOfTailBlock);    // 尾批次尾核尾次处理的行数
+TILING_DATA_FIELD_DEF(int64_t, tailBsML1Size);                  // 尾批次M维度L1缓冲大小
+TILING_DATA_FIELD_DEF(int64_t, tailBsKL1Size);                  // 尾批次K维度L1缓冲大小
+TILING_DATA_FIELD_DEF(int64_t, tailBsMultCoreSplitMSize);       // 尾批次多核切分M维度大小
+TILING_DATA_FIELD_DEF(int64_t, tailBsCubeBlockDimM);            // 尾批次Cube核M维度切分数量
 
-// 尾批次专用参数 (tailBs != BS_SPLIT_THRESHOLD 时使用)
-TILING_DATA_FIELD_DEF(int64_t, tailBsRowOfFormerBlock);
-TILING_DATA_FIELD_DEF(int64_t, tailBsRowOfTailBlock);
-TILING_DATA_FIELD_DEF(int64_t, tailBsRowLoopOfFormerBlock);
-TILING_DATA_FIELD_DEF(int64_t, tailBsRowLoopOfTailBlock);
-TILING_DATA_FIELD_DEF(int64_t, tailBsUsedCoreNum);
-TILING_DATA_FIELD_DEF(int64_t, tailBsRowFactor);
-TILING_DATA_FIELD_DEF(int64_t, tailBsTailRowFactorOfFormerBlock);
-TILING_DATA_FIELD_DEF(int64_t, tailBsTailRowFactorOfTailBlock);
-TILING_DATA_FIELD_DEF(int64_t, tailBsML1Size);
-TILING_DATA_FIELD_DEF(int64_t, tailBsKL1Size);
-TILING_DATA_FIELD_DEF(int64_t, tailBsMultCoreSplitMSize);
-TILING_DATA_FIELD_DEF(int64_t, tailBsCubeBlockDimM);
-
+// 阶段1专用 Tiling 字段
+TILING_DATA_FIELD_DEF(int64_t, stage1VecCoreNum);         // 阶段1使用的 Vector Core 数量
+TILING_DATA_FIELD_DEF(int64_t, stage1CubeCoreNum);        // 阶段1使用的 Cube Core 数量
+TILING_DATA_FIELD_DEF(int64_t, stage1BsPerVecCore);       // 每个 Vector Core 处理的 BS 数
+TILING_DATA_FIELD_DEF(int64_t, stage1TailBsPerVecCore);   // 尾核处理的 BS 数
+TILING_DATA_FIELD_DEF(int64_t, stage1BsLoop);             // BS 循环轮数
+TILING_DATA_FIELD_DEF(int64_t, stage1BsFactor);           // 每轮 BS 数
+TILING_DATA_FIELD_DEF(int64_t, stage1NcLoop);             // n*c 切分段数
+TILING_DATA_FIELD_DEF(int64_t, stage1NcFactor);           // 每段大小
+TILING_DATA_FIELD_DEF(int64_t, stage1TailNcFactor);       // 尾段大小
+TILING_DATA_FIELD_DEF(int64_t, stage1XCastWsSize);        // X_cast workspace 大小
+TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, mm1TilingData)
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(MhcPreSinkhorn, MhcPreSinkhornTilingData)
@@ -144,6 +156,7 @@ public:
     ge::graphStatus CalcMKSplitCoreMembasePart2Tiling();
     ge::graphStatus CalcBsSplit();
     ge::graphStatus CalcTailBsTiling();
+    ge::graphStatus CalcStage1Tiling();
 
 private:
     gert::TilingContext *context_ = nullptr;
