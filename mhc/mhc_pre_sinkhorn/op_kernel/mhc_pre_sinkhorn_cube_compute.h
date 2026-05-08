@@ -18,6 +18,8 @@
 #include "kernel_operator.h"
 #include "kernel_operator_intf.h"
 #include "mhc_pre_sinkhorn_base.h"
+#include "lib/matmul_intf.h"
+#include <cstdint>
 
 using AscendC::BLOCK_CUBE;
 using AscendC::GlobalTensor;
@@ -32,6 +34,9 @@ using AscendC::WaitFlag;
 using namespace AscendC;
 
 namespace MhcPreSinkhorn {
+
+constexpr MatmulConfig MHC_PRE_GRAD_MM1_CFG = GetMDLConfig(false, false, 0, false, false, false, true);
+
 struct MmParams {
     uint64_t curML1;
     uint64_t curKL1;
@@ -45,16 +50,18 @@ struct MmParams {
     bool isLastK;
     bool isFirstK;
 };
-#define MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_PARAM template <bool enableSquareSum>
+#define MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_PARAM template <bool enableSquareSum>
+#define MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLASS HcCubeComputeSplitK<enableSquareSum>
+#define MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_PARAM template<typename T>
+#define MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_CLASS HcCubeCompute<T>
 
-#define MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_CLASS HcCubeCompute<enableSquareSum>
-
-MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_PARAM
-class HcCubeCompute {
+// 切K使用的矩阵乘实现
+MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_PARAM
+class HcCubeComputeSplitK {
 public:
-    __aicore__ inline HcCubeCompute(){};
+    __aicore__ inline HcCubeComputeSplitK(){};
 
-    __aicore__ inline void Init(const GlobalTensor<float>& xGm, const GlobalTensor<float>& fnGm, TPipe *tpipe);
+    __aicore__ inline void Init(const GlobalTensor<float>& xGm, const GlobalTensor<float>& phiGm, TPipe *tpipe);
     __aicore__ inline void ComputeDecode(const AscendC::GlobalTensor<float> &xGm, const AscendC::GlobalTensor<float> &workspaceGlobalA2,
         const AscendC::GlobalTensor<float> &workspaceGlobalAB, const MmParams &mmParams);
     __aicore__ inline void CopyInB1(
@@ -93,7 +100,7 @@ private:
     static constexpr int32_t ONE_BLOCK_SIZE = 32;
     int32_t perBlock32 = ONE_BLOCK_SIZE / sizeof(float);
 
-    GlobalTensor<float> fnGm_;
+    GlobalTensor<float> phiGm_;
     GlobalTensor<float> yGm_;
 
     static constexpr uint64_t MM1_MTE2_MTE1_EVENT = 2;
@@ -139,10 +146,10 @@ private:
     uint64_t n_ = 0;
 };
 
-MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_CLASS::Init(const GlobalTensor<float>& xGm, const GlobalTensor<float>& fnGm, TPipe *tpipe)
+MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_PARAM
+__aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLASS::Init(const GlobalTensor<float>& xGm, const GlobalTensor<float>& phiGm, TPipe *tpipe)
 {
-    fnGm_ = fnGm;
+    phiGm_ = phiGm;
 
     TBuf<TPosition::A1> l1aBuffer;
     tpipe->InitBuffer(l1aBuffer, 256 * 1024);
@@ -175,8 +182,8 @@ __aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_CLASS::Init(const 
     }
 }
 
-MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_CLASS::CopyInA1(
+MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_PARAM
+__aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLASS::CopyInA1(
     uint64_t kL1Size,
     const GlobalTensor<float> &aGlobal, const LocalTensor<float> &al1Local, const MmParams &mmParams)
 {
@@ -192,8 +199,8 @@ __aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_CLASS::CopyInA1(
     DataCopy(al1Local, aGlobal, nd2nzParams);
 }
 
-MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_CLASS::CopyInB1(
+MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_PARAM
+__aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLASS::CopyInB1(
     uint64_t mGmOffset, uint64_t kGmOffset, uint64_t kL1Size, const MmParams &mmParams)
 {
     AscendC::Nd2NzParams nd2nzParams;
@@ -205,11 +212,11 @@ __aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_CLASS::CopyInB1(
     nd2nzParams.dstNzC0Stride = (mmParams.curNL1 + BLOCK_CUBE - 1) / BLOCK_CUBE * BLOCK_CUBE;
     nd2nzParams.dstNzNStride = 1;
     nd2nzParams.dstNzMatrixStride = 1;
-    DataCopy(l1b_[(l1bLoopIdx_ % L1_BUF_NUM) * L1_BUF_OFFSET], fnGm_[mGmOffset * mmParams.kGmSize + kGmOffset], nd2nzParams);
+    DataCopy(l1b_[(l1bLoopIdx_ % L1_BUF_NUM) * L1_BUF_OFFSET], phiGm_[mGmOffset * mmParams.kGmSize + kGmOffset], nd2nzParams);
 }
 
-MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_CLASS::CopyOut(const AscendC::GlobalTensor<float> &workspaceGlobal,
+MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_PARAM
+__aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLASS::CopyOut(const AscendC::GlobalTensor<float> &workspaceGlobal,
     const AscendC::LocalTensor<float> &c1Local, uint64_t baseM, uint64_t baseN, bool enableNz2Nd, uint64_t N)
 {
     AscendC::DataCopyCO12DstParams intriParams;
@@ -231,8 +238,8 @@ __aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_CLASS::CopyOut(con
     AscendC::DataCopy(workspaceGlobal, c1Local, intriParams);
 }
 
-MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_CLASS::Fixp(const AscendC::GlobalTensor<float> &workspaceGlobalA2,
+MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_PARAM
+__aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLASS::Fixp(const AscendC::GlobalTensor<float> &workspaceGlobalA2,
     const AscendC::GlobalTensor<float> &workspaceGlobalAB, const MmParams &mmParams)
 {
     // Copy MmadA2
@@ -251,21 +258,21 @@ __aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_CLASS::Fixp(const 
         mmParams.nOutSize);  // nd m,n 512B对齐
 }
 
-MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_CLASS::SetBL1Mte1ToMte2Flag()
+MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_PARAM
+__aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLASS::SetBL1Mte1ToMte2Flag()
 {
     SetFlag<HardEvent::MTE1_MTE2>(B_MTE1_MTE2_EVENT + l1bLoopIdx_ % L1_BUF_NUM);
     l1bLoopIdx_++;
 }
 
-MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_CLASS::WaitBL1Mte1ToMte2Flag()
+MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_PARAM
+__aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLASS::WaitBL1Mte1ToMte2Flag()
 {
     WaitFlag<HardEvent::MTE1_MTE2>(B_MTE1_MTE2_EVENT + l1bLoopIdx_ % L1_BUF_NUM);
 }
 
-MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_CLASS::ComputeDecode(
+MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_PARAM
+__aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLASS::ComputeDecode(
     const AscendC::GlobalTensor<float> &xGm,
     const AscendC::GlobalTensor<float> &workspaceGlobalA2, const AscendC::GlobalTensor<float> &workspaceGlobalAB,
     const MmParams &mmParams)
@@ -342,8 +349,8 @@ __aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_CLASS::ComputeDeco
     Fixp(workspaceGlobalA2, workspaceGlobalAB, mmParams);  // l0cLoopIdx_++;
 }
 
-MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_CLASS::End()
+MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_PARAM
+__aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLASS::End()
 {
     for (int i = 0; i < L0A_BUF_NUM; i++) {
         WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT_L0A + i);
@@ -355,8 +362,8 @@ __aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_CLASS::End()
     }
 }
 
-MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_CLASS::LoadAToL0A(
+MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_PARAM
+__aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLASS::LoadAToL0A(
     uint64_t kL1Offset, uint64_t kL0Size, uint64_t l1LoopIdx, const MmParams &mmParams)
 {
     static constexpr IsResetLoad3dConfig LOAD3DV2_CONFIG = {true, true};
@@ -393,8 +400,8 @@ __aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_CLASS::LoadAToL0A(
                                    loadData3DParams);
 }
 
-MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_CLASS::LoadAToL0B(
+MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_PARAM
+__aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLASS::LoadAToL0B(
     uint64_t kL1Offset, uint64_t kL0Size, uint64_t l1LoopIdx, const MmParams &mmParams)
 {
     // mk nz -> m,k zz
@@ -413,8 +420,8 @@ __aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_CLASS::LoadAToL0B(
     }
 }
 
-MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_CLASS::MmadA2(
+MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_PARAM
+__aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLASS::MmadA2(
     uint64_t kGmOffset, uint64_t kL0Size, bool isLastK, const MmParams &mmParams)
 {
     SetFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
@@ -435,8 +442,8 @@ __aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_CLASS::MmadA2(
     }
 }
 
-MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_CLASS::LoadBToL0B(
+MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_PARAM
+__aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLASS::LoadBToL0B(
     uint64_t kL1Offset, uint64_t kL0Size, uint64_t l1LoopIdx, const MmParams &mmParams)
 {
     LoadData2DParams l1ToL0bParams;
@@ -452,8 +459,8 @@ __aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_CLASS::LoadBToL0B(
         l1ToL0bParams);
 }
 
-MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_CLASS::MmadAB(
+MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_PARAM
+__aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_SPLIT_K_TEMPLATE_CLASS::MmadAB(
     uint64_t kGmOffset, uint64_t kL0Size, bool isLastK, const MmParams &mmParams)
 {
     SetFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
@@ -473,6 +480,67 @@ __aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_CLASS::MmadAB(
         l0b_[(l0bLoopIdx_ % L0AB_BUF_NUM) * L0AB_BUF_OFFSET],
         mmadParams);
     AscendC::SetHF32Mode(0);
+}
+
+// 不切K使用的矩阵乘实现
+MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_PARAM
+class HcCubeCompute {
+public:
+    __aicore__ inline HcCubeCompute(){};
+    __aicore__ inline void Init(const GlobalTensor<float> &xGm, const GlobalTensor<float> &phiGm,
+                                const GlobalTensor<float> &workspaceGlobalAB, int64_t bs, int64_t n, int64_t c, int64_t vecCoreNum);
+    __aicore__ inline void ProcessMatmulXPhi(const int32_t taskOffset, const int32_t mm1M);
+
+public:
+    GlobalTensor<float> xGm_;
+    GlobalTensor<float> phiGm_;
+    GlobalTensor<float> workspaceGlobalAB_;
+    using AType = matmul::MatmulType<TPosition::GM, CubeFormat::ND, T>;
+    using BType = matmul::MatmulType<TPosition::GM, CubeFormat::ND, T, true>;
+    using CType = matmul::MatmulType<TPosition::GM, CubeFormat::ND, T>;
+    
+    matmul::MatmulImpl<AType, BType, CType, CType, MHC_PRE_GRAD_MM1_CFG> mm1_;
+
+    int64_t n_, c_, curBs_;
+    int64_t mm1K_, mm1M_, mm1N_;
+    int64_t ping4Cub = 1;
+    uint64_t vecCoreNum_ = 0;
+    uint64_t blockIdx_ = 0;
+};
+
+MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_PARAM
+__aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_CLASS::Init(const GlobalTensor<float> &xGm,
+                                                                          const GlobalTensor<float> &phiGm,
+                                                                          const GlobalTensor<float> &workspaceGlobalAB,
+                                                                          int64_t bs, int64_t n, int64_t c, int64_t vecCoreNum)
+{
+    blockIdx_ = GetBlockIdx();
+    xGm_ = xGm;
+    phiGm_ = phiGm;
+    workspaceGlobalAB_ = workspaceGlobalAB;
+    vecCoreNum_ = vecCoreNum;
+    n_ = n;
+    c_ = c;
+    curBs_ = bs;
+
+    mm1N_= n_ * n_ + 2 * n_;
+    mm1K_ = n_ * c_;
+}
+
+MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_PARAM
+__aicore__ inline void MHC_PRE_SINKHORN_CUBE_COMPUTE_TEMPLATE_CLASS::ProcessMatmulXPhi(const int32_t taskOffset, const int32_t mm1M)
+{
+    if (mm1M <= 0)
+        return;
+    uint64_t xxoffset = blockIdx_ * curBs_* 2 * mm1K_ + ping4Cub * vecCoreNum_ * curBs_*  mm1K_;
+    mm1_.SetTensorA(xGm_[blockIdx_ * curBs_* 2 * mm1K_ + ping4Cub * vecCoreNum_ * curBs_*  mm1K_]);
+    mm1_.SetTensorB(phiGm_, true);
+    mm1_.SetHF32(true, 1);
+    mm1_.SetOrgShape(mm1M, mm1N_, mm1K_);
+    mm1_.SetSingleShape(mm1M, mm1N_, mm1K_);
+    mm1_.template IterateAll<false> (workspaceGlobalAB_[taskOffset * mm1N_]);
+    mm1_.End();
+    ping4Cub = 1 - ping4Cub;
 }
 }  // namespace MhcPreSinkhorn
 
