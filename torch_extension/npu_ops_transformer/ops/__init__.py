@@ -17,6 +17,8 @@ from .mega_moe import (
     npu_get_mega_moe_ccl_buffer_size
 )
 from .deep_ep import MoeDistributeBuffer
+from .deep_gemm import DeepGEMMBuffer
 from .graph_convert.graph_convert_moe_distribute_dispatch_v3 import converter_moe_distribute_dispatch_v3
 from .graph_convert.graph_convert_moe_distribute_combine_v3 import convert_npu_moe_distribute_combine_v3
 from .graph_convert.graph_convert_mega_moe import convert_npu_mega_moe
+from .graph_convert.graph_convert_grouped_matmul_v5 import converter_grouped_matmul_v5
