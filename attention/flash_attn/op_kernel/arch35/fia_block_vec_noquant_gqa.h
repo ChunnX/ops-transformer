@@ -52,7 +52,75 @@ template <typename INPUT_T, typename T, typename OUTPUT_T,
           DTemplateType dVTemplateType = DTemplateType::Aligned128, PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE,
           bool hasAtten = false, bool hasDrop = false, bool hasRope = false, uint8_t KvLayoutType = 0, bool isFd = false,
           bool enableKVPrefix = false, bool useDn = false, bool bmm2Write2Ub = true, bool splitD = false>
-class FANoQuantGqaBlockVec {
+class VecBlockBase {
+public:
+    /* =================编译期常量的基本块信息================= */
+    static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
+    static constexpr uint32_t s2BaseSize = (uint32_t)s2TemplateType;
+    static constexpr uint32_t vec1S2CopyLenDn = s2BaseSize >> 1;
+    static constexpr uint32_t vec1HalfS1BaseSize = mBaseSize >> 1;
+    static constexpr uint32_t vec1S2CopyCountDn = mBaseSize >> 5;
+    static constexpr uint32_t vec1S2strideDn = s2BaseSize * 8;
+    static constexpr uint32_t vec1ScmBlock = mBaseSize * 8;
+    static constexpr uint32_t vec1ScmBlockFp32 = mBaseSize * 4;
+    static constexpr uint32_t vec1ScmBlockFp8 = mBaseSize * 16;
+    static constexpr uint32_t vec1ResOffsetDn = s2BaseSize * 32 + 64;
+    static constexpr uint32_t vec1Srcstride = (mBaseSize >> 1) + 1;
+    static constexpr uint32_t dTemplateAlign64 = Align64Func((uint16_t)dVTemplateType);
+
+    static constexpr uint32_t DB = 2;
+    static constexpr uint32_t PRELOAD_N = 2;  // C1 C1 C2
+    static constexpr bool HAS_MASK = hasAtten;
+    static constexpr bool FLASH_DECODE = isFd;
+
+    static constexpr uint32_t initOutputEventId = 0U;  // attenOut和lse，刷无效行会用到剩余ub，需要加同步
+
+    static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<layout>();
+
+    static constexpr bool hasPse = pseMode != PseTypeEnum::PSE_NONE_TYPE;
+    static constexpr bool hasPseOuter =
+        (pseMode == PseTypeEnum::PSE_OUTER_ADD_MUL_TYPE) || (pseMode == PseTypeEnum::PSE_OUTER_MUL_ADD_TYPE);
+
+    static constexpr bool POST_QUANT = !IsSameType<OUTPUT_T, half>::value && !IsSameType<OUTPUT_T, bfloat16_t>::value &&
+                                       !IsSameType<OUTPUT_T, float>::value;
+    using pseShiftType = INPUT_T;
+
+    static constexpr T BOOL_ATTEN_MASK_SCALAR_VALUE = -1000000000000.0; // 用于mask为bool类型
+    uint32_t negativeIntScalar = *((uint32_t *)&BOOL_ATTEN_MASK_SCALAR_VALUE);
+
+    using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
+                                                Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
+
+    using pseGmType = typename std::conditional<hasPse, GlobalTensor<pseShiftType>, int8_t>::type;
+    using attenMaskGmType = typename std::conditional<hasAtten, GlobalTensor<uint8_t>, int8_t>::type;
+
+    using vec2ResGmType = typename std::conditional<splitD, GlobalTensor<float>, int8_t>::type;
+
+    using postQuantGmType = typename std::conditional<POST_QUANT, GlobalTensor<float>, int8_t>::type;
+    using postQuantBf16GmType = typename std::conditional<POST_QUANT, GlobalTensor<bfloat16_t>, int8_t>::type;
+
+    using flashdecodeGmType = typename std::conditional<FLASH_DECODE, GlobalTensor<float>, int8_t>::type;
+
+    using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
+
+    using MM1_OUT_T = T;
+    using MM2_OUT_T = T;
+    using OUT_T = OUTPUT_T;
+
+    __aicore__ inline VecBlockBase(ConstInfoX &constInfo) {};
+}
+
+template <typename INPUT_T, typename T, typename OUTPUT_T,
+          LayOutTypeEnum layout = LayOutTypeEnum::None, LayOutTypeEnum outLayout = LayOutTypeEnum::None,
+          S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
+          S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
+          DTemplateType dTemplateType = DTemplateType::Aligned128,
+          DTemplateType dVTemplateType = DTemplateType::Aligned128, PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE,
+          bool hasAtten = false, bool hasDrop = false, bool hasRope = false, uint8_t KvLayoutType = 0, bool isFd = false,
+          bool enableKVPrefix = false, bool useDn = false, bool bmm2Write2Ub = true, bool splitD = false>
+class FANoQuantGqaBlockVec : public VecBlockBase<INPUT_T, T, OUTPUT_T, layout, outLayout, s1TemplateType, s2TemplateType, dTemplateType,
+                         dVTemplateType, pseMode, hasAtten, hasDrop, hasRope, KvLayoutType, isFd, enableKVPrefix,
+                         useDn, bmm2Write2Ub, splitD> {
 public:
     /* =================编译期常量的基本块信息================= */
     static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
@@ -169,7 +237,10 @@ public:
     bool pseHasBatch = true;
 
     // ==================== Functions ======================
-    __aicore__ inline FANoQuantGqaBlockVec(ConstInfoX &constInfo) : constInfo(constInfo){};
+    __aicore__ inline FANoQuantGqaBlockVec(ConstInfoX &constInfo) : VecBlockBase<INPUT_T, T, OUTPUT_T, layout, outLayout, s1TemplateType, s2TemplateType, dTemplateType,
+                                            dVTemplateType, pseMode, hasAtten, hasDrop, hasRope, KvLayoutType, isFd,
+                                            enableKVPrefix, useDn, bmm2Write2Ub, splitD>(constInfo),
+                                            constInfo(constInfo) {};
 
     __aicore__ inline void InitVecBlock(TPipe *pipe,
                                         __gm__ uint8_t *pse, __gm__ uint8_t *actualSeqQlenAddr,
