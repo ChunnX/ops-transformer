@@ -59,9 +59,7 @@ struct FiaPlatFormInfo {
     uint64_t defaultSysWorkspaceSize = 0;
 };
 
-// TODO，删除无效变量
-
-class FiaTilingFullQuantMxArch35 : public FiaTilingBase {      // TODO，类名与A3一致会报重复定义，是否要保持一致？
+class FiaTilingFullQuantMxArch35 : public FiaTilingBase {
 public:
     explicit FiaTilingFullQuantMxArch35(gert::TilingContext *context) : FiaTilingBase(context) {}
     ~FiaTilingFullQuantMxArch35() override = default;
