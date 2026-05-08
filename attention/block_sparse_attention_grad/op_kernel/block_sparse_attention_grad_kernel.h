@@ -633,11 +633,20 @@ namespace BSA {
                 // idx, 计算的行数
                 // 一个ai core里的aiv 0执行的行数：actualRow / 2 + actualRow % 2
                 // 一个ai core里的aiv 1执行的行数：actualRow / 2
-                if (vecCoreIdx % 2 != 0) {
-                    vecSftmg(curInfo.qOffset / headDim + curInfo.curCalQSize / 2 + curInfo.curCalQSize % 2,
-                        curInfo.curCalQSize / 2);
+                // if (vecCoreIdx % 2 != 0) {
+                //     vecSftmg(curInfo.qOffset / headDim + curInfo.curCalQSize / 2 + curInfo.curCalQSize % 2,
+                //         curInfo.curCalQSize / 2);
+                // } else {
+                //     vecSftmg(curInfo.qOffset / headDim, curInfo.curCalQSize / 2 + curInfo.curCalQSize % 2);
+                // }
+
+                uint32_t subBlockIdx = vecCoreIdx % 2;
+                if (inputLayout == 0) {
+                    vecSftmg(curInfo.qOffset / headDim + subBlockIdx * (curInfo.curCalQSize + 1) / 2 * numHeads,
+                        (curInfo.curCalQSize + 1 - subBlockIdx) / 2);
                 } else {
-                    vecSftmg(curInfo.qOffset / headDim, curInfo.curCalQSize / 2 + curInfo.curCalQSize % 2);
+                    vecSftmg(curInfo.qOffset / headDim + subBlockIdx * (curInfo.curCalQSize + 1) / 2,
+                        (curInfo.curCalQSize + 1 - subBlockIdx) / 2);
                 }
 
                 uint32_t curKvBlockNum = (curInfo.kvSeqlen + blockShapeY - 1) / blockShapeY;

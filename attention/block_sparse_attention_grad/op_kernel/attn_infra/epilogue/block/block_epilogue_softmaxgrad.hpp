@@ -317,9 +317,9 @@ public:
                     curS = curBatchLen;
 
                     uint64_t bTail = startIdx - prefixSum;
-                    nIdx = bTail / (curS * d);
-                    uint64_t nTail = bTail % (curS * d);
-                    sIdx = nTail / d;
+                    sIdx = bTail / (n1 * d);
+                    uint64_t sTail = bTail % (n1 * d);
+                    nIdx = sTail / d;
                     break;
                 }
                 prefixSum += curBatchElements;
