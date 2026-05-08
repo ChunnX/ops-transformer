@@ -31,8 +31,9 @@ namespace MlaProlog {
           col 列数，对应H
  */
 template <typename GammaType>
-__aicore__ inline void RmsNorm(const LocalTensor<float> &outLocal, const LocalTensor<float> &inputLocal, const LocalTensor<GammaType> &gammaLocal,
-                                           const LocalTensor<uint8_t> &shareTmpUb, const RmsNormParam& rmsNormParams) {
+__aicore__ inline void RmsNorm(const LocalTensor<float> &outLocal, const LocalTensor<float> &inputLocal,
+                            const LocalTensor<GammaType> &gammaLocal, const LocalTensor<uint8_t> &shareTmpUb,
+                            const RmsNormParam& rmsNormParams) {
     uint64_t cnt = rmsNormParams.row * rmsNormParams.col;
     LocalTensor<float> xSquareLocal = shareTmpUb.ReinterpretCast<float>();
     LocalTensor<float> xSumLocal = xSquareLocal[cnt];
@@ -49,7 +50,8 @@ __aicore__ inline void RmsNorm(const LocalTensor<float> &outLocal, const LocalTe
         8, // src0RepStrideIn
         0 // src1RepStrideIn
     };
-    Add(xSquareLocal, xSquareLocal[FP32_REPEAT_ELEMENT_NUM], xSquareLocal, FP32_REPEAT_ELEMENT_NUM, repeatTimesAdd - 1, addParams);
+    Add(xSquareLocal, xSquareLocal[FP32_REPEAT_ELEMENT_NUM], xSquareLocal,
+        FP32_REPEAT_ELEMENT_NUM, repeatTimesAdd - 1, addParams);
     AscendC::PipeBarrier<PIPE_V>();
     WholeReduceSum(xSumLocal, xSquareLocal, FP32_REPEAT_ELEMENT_NUM, 1, 8, 1, 8);
     AscendC::PipeBarrier<PIPE_V>();

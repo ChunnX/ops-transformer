@@ -18,7 +18,7 @@
 #include "moe_gating_top_k_softmax_tiling.h"
 #include "register/op_def_registry.h"
 #include "tiling/tiling_api.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 namespace optiling {
 BEGIN_TILING_DATA_DEF(MoeGatingTopKSoftmaxEKFullLoadTilingData)
 TILING_DATA_FIELD_DEF(uint32_t, tilingKey);

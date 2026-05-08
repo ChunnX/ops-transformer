@@ -96,9 +96,9 @@ def get_card_data_by_cprofiling(csv_path_list_func):
         current_count = type_count.get(type_val, 0)
         type_count[type_val] = current_count + 1
         base_mapping[(type_val, current_count)] = dur_0
-    reslut_dict = {}
+    result_dict = {}
     for (type_val, count), dur_0 in base_mapping.items():
-        reslut_dict[(type_val, count)] = [dur_0] + ["NA"] * (card_num_func - 1)
+        result_dict[(type_val, count)] = [dur_0] + ["NA"] * (card_num_func - 1)
     for card_num in range(1, card_num_func):
         card_path = csv_path_list_func[card_num]
         if card_path is None or not os.path.exists(card_path):
@@ -120,24 +120,24 @@ def get_card_data_by_cprofiling(csv_path_list_func):
             idx = current_type_count.get(t, 0)
             current_type_count[t] = idx + 1
             card_map[(t, idx)] = dur
-        for key in reslut_dict:
+        for key in result_dict:
             if key in card_map:
-                reslut_dict[key][card_num] = card_map[key]
+                result_dict[key][card_num] = card_map[key]
 
-    return reslut_dict
+    return result_dict
             
 
 # 计算最大最小值、抖动并导出
-def get_all_data(reslut_dict):
+def get_all_data(result_dict):
     script_path = os.path.abspath(__file__)
     csv_filename = "profiling_all_data.csv"
     csv_abs_path = os.path.dirname(os.path.join(script_path, csv_filename))
     rows_func = []
-    if not reslut_dict:
+    if not result_dict:
         logging.warning("无数据可导出")
         return
-    max_card_num = len(next(iter(reslut_dict.values())))
-    for (type_name, count), dur_list in reslut_dict.items():
+    max_card_num = len(next(iter(result_dict.values())))
+    for (type_name, count), dur_list in result_dict.items():
         valid_vals = [v for v in dur_list if v != 'NA']
         if not valid_vals:
             max_val = min_val = del_num = 'NA'
@@ -161,19 +161,19 @@ def get_all_data(reslut_dict):
 
 
 # 计算每种type算子的平均抖动
-def calculate_avg(reslut_dict):
+def calculate_avg(result_dict):
     script_path = os.path.abspath(__file__)
     csv_filename = "profiling_avg_data.csv"
     csv_abs_path = os.path.dirname(os.path.join(script_path, csv_filename))
     logging.info("开始计算所有算子的平均抖动")
     type_total_count = {}
     logging.info("计算算子平均抖动时, 不计算算子第0次调用时的抖动值")
-    for (type_name, _) in reslut_dict.keys():
+    for (type_name, _) in result_dict.keys():
         if type_name not in type_total_count:
             type_total_count[type_name] = 0
         type_total_count[type_name] += 1
     type_del_map = {}
-    for (type_name, count), dur_list in reslut_dict.items():
+    for (type_name, count), dur_list in result_dict.items():
         if count == 0:
             continue
         valid_vals = [v for v in dur_list if v != "NA"]
