@@ -560,7 +560,7 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::GetWorkspaceSize()
 {
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context_, workspaces);
-    size_t totalWorkspace = SYS_WORKSPACE_SIZE;
+    size_t totalWorkspace = GmmConstant::SYS_WORKSPACE_SIZES;
     // 确定性模式累加确定性 workspace
     if (deterministicFlag_ == 1 && deterWorkspaceSize_ > 0) {
         totalWorkspace += static_cast<size_t>(deterWorkspaceSize_);
