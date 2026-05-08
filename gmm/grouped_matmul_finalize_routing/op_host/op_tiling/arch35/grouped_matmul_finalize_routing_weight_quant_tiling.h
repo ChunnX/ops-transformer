@@ -123,13 +123,13 @@ auto CeilAlign(T a, T b) -> T
     return (a + b - 1) / b * b;
 }
 
-enum DataSize {
+enum class DataSize {
     B4_DATA_SIZE = 0,
     B8_DATA_SIZE = 1,
     RESERVED = 999,
 };
 
-enum DataSize GetSizeByDataType(ge::DataType dType);
+DataSize GetSizeByDataType(ge::DataType dType);
 
 
 class GMMFRWeightQuantTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
