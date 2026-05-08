@@ -373,7 +373,8 @@ inline __aicore__ void prompt_flash_attention_FIAS_regbase(__gm__ uint8_t* query
     REGISTER_TILING_FOR_TILINGKEY(
         "((TILING_KEY_VAR >> 22) & 0x1f) != 30 && ((TILING_KEY_VAR >> 22) & 0x1f) != 19 && ((TILING_KEY_VAR >> 8) & 0x12) != 9",
         FusedInferAttentionScoreTilingData);
-    REGISTER_TILING_FOR_TILINGKEY("((TILING_KEY_VAR >> 22) & 0x1f) == 19", FusedInferAttentionScoreFullQuantTilingData);
+    REGISTER_TILING_FOR_TILINGKEY("((TILING_KEY_VAR >> 22) & 0x1f) == 19 && ((TILING_KEY_VAR >> 40) & 0x1f) == 1", FusedInferAttentionScoreFullQuantTilingData);
+    REGISTER_TILING_FOR_TILINGKEY("((TILING_KEY_VAR >> 22) & 0x1f) == 19 && ((TILING_KEY_VAR >> 40) & 0x1f) == 0", FlashAttentionScoreSimplifiedTilingData);
     REGISTER_TILING_FOR_TILINGKEY("((TILING_KEY_VAR >> 22) & 0x1f) == 30", PFAFullQuantTilingData);
 >>>>>>> be1e0ec2a... [FIA][FULLQUANT] MXfp8 decode
     if constexpr (emptyTensor == true) {
