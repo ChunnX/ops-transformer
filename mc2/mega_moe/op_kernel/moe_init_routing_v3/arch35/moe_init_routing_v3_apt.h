@@ -55,6 +55,8 @@ __aicore__ inline void moe_init_routing_v3(
         GM_ADDR expertTokensCountOrCumsum, GM_ADDR expandedScale,
         GM_ADDR workspace, const MoeInitRoutingV3Arch35TilingData* tilingData, uint64_t tilingKey)
 {
+    constexpr bool IsQuantOutTypeFp4 = (std::is_same_v<DTYPE_EXPANDED_X, fp4x2_e2m1_t> || 
+                                        std::is_same_v<DTYPE_EXPANDED_X, fp4x2_e1m2_t>);
     if constexpr (g_coreType == AIC) {
         return;
     }
@@ -100,9 +102,17 @@ __aicore__ inline void moe_init_routing_v3(
     // 3.若rowIdxType=0(Gather)，映射计算输出expandedRowIdx；否则该输出在阶段1就被写出
 
     // 4.直接搬运或是搬运的过程中对x进行量化
-    TPipe gatherPipe;
-    MoeGatherOutMxfp8Quant<DTYPE_X, DTYPE_EXPANDED_X> gatherMxfp8QuantOp;
-    gatherMxfp8QuantOp.Init(x, scale, workspace, expandedRowIdx, expandedX, expandedScale, tilingData, &gatherPipe);
-    gatherMxfp8QuantOp.Process();
-    gatherPipe.Destroy();
+    if (IsQuantOutTypeFp4) {
+        TPipe gatherPipe;
+        MoeV3GatherMxfp4Quant<DTYPE_X, DTYPE_EXPANDED_X> gatherMxfp4QuantOp;
+        gatherMxfp4QuantOp.Init(x, scale, workspace, expandedRowIdx, expandedX, expandedScale, tilingData, &gatherPipe);
+        gatherMxfp4QuantOp.Process();
+        gatherPipe.Destroy();
+    } else {
+        TPipe gatherPipe;
+        MoeGatherOutMxfp8Quant<DTYPE_X, DTYPE_EXPANDED_X> gatherMxfp8QuantOp;
+        gatherMxfp8QuantOp.Init(x, scale, workspace, expandedRowIdx, expandedX, expandedScale, tilingData, &gatherPipe);
+        gatherMxfp8QuantOp.Process();
+        gatherPipe.Destroy();
+    }
 }
