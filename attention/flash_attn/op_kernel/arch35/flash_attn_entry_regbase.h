@@ -27,7 +27,7 @@
 #include "kernel_operator.h"
 #endif
 
-#include "fia_template_dispatcher.h"
+#include "fa_template_dispatcher.h"
 
 
 // FlashAttn kernel核心函数（arch35）

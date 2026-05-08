@@ -21,8 +21,8 @@
 #include "../utils/flash_attn_common_def.h"
 #include "../utils/flash_attn_utils.h"
 
-#include "fia_block_cube_noquant_gqa.h"
-#include "fia_block_vec_noquant_gqa.h"
+#include "fa_block_cube_noquant_gqa.h"
+#include "fa_block_vec_noquant_gqa.h"
 #include "../../../common/op_kernel/memory_copy_arch35.h"
 #include "flash_attention_noquant_block_vec_flashdecode.h"    // FiaBlockVecFlashDecode
 
