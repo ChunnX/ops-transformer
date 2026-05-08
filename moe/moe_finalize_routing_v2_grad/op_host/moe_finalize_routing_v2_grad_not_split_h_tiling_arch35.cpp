@@ -13,7 +13,7 @@
  * \brief
  */
 #include "moe_finalize_routing_v2_grad_tiling.h"
-#include "tiling_base/tiling_util.h"
+#include "op_host/tiling_util.h"
 namespace optiling {
 constexpr int64_t TILING_KEY_WITH_SCALE_NOT_CUT_H_WITHOUT_BIAS = 20011;
 constexpr int64_t TILING_KEY_WITH_SCALE_NOT_CUT_H_WITH_BIAS = 20021;

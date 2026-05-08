@@ -26,7 +26,7 @@
 #include "register/op_impl_registry.h"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 
 #include "./grouped_matmul_finalize_routing_quant_tiling.h"
 #include "../../../op_kernel/arch35/grouped_matmul_finalize_routing_tiling_data.h"

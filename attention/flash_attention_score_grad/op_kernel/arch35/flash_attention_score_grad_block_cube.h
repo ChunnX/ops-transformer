@@ -1232,7 +1232,7 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmDsQFixpout(typename DqkvResPos<T, IS_WRITE
             }
             FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
             fixpipeParams.nSize = realN;
-            fixpipeParams.mSize = (runInfo.commonRunInfo.s2RealSize + 1) >> 1 << 1;
+            fixpipeParams.mSize = runInfo.commonRunInfo.s2RealSize;
             fixpipeParams.srcStride = AlignTo16(fixpipeParams.mSize);
             fixpipeParams.dstStride = SPLIT_AXIS != BN2GS1S2 ? AlignTo16(constInfo.commonConstInfo.dSize) : constInfo.mm4Kb;
             fixpipeParams.dualDstCtl = 0;
