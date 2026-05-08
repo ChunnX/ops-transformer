@@ -147,9 +147,7 @@ constexpr uint8_t implMode = 0;  // AA_HIGH_PRECISION
 //     }
 // }
 // cu_seqlens 格式为 [0, s1, s1+s2, ..., T]（B+1 个元素，有前导 0）
-// ACCUM parser 期望 seqused 格式 [s1, s1+s2, ..., T]（B 个元素，无前导 0）
-// 若检测到前导 0，则剥离：指针前移 8 字节
-// [DBG] Dump attenMask values
+// TND布局时数据已统一为TND格式，无需运行时检查前导0
 
 // if (AscendC::GetBlockIdx() == 0) {
 //     AscendC::printf("[flash_attn_entry] attnMask=%p hasAttenMask=%u\n", attnMask, (uint32_t)hasAttenMask);
@@ -160,18 +158,6 @@ constexpr uint8_t implMode = 0;  // AA_HIGH_PRECISION
 //     }
 // }
 
-if (actualSeqLengthsQ != nullptr) {
-    auto *sq64 = (__gm__ uint64_t *)actualSeqLengthsQ;
-    if (sq64[0] == 0) {
-        actualSeqLengthsQ += sizeof(uint64_t);
-    }
-}
-if (actualSeqLengthsKv != nullptr) {
-    auto *sk64 = (__gm__ uint64_t *)actualSeqLengthsKv;
-    if (sk64[0] == 0) {
-        actualSeqLengthsKv += sizeof(uint64_t);
-    }
-}
 #if (ORIG_DTYPE_Q == DT_BF16)
 run_fia_noquant_gqa_kernel<bfloat16_t, bfloat16_t, inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType,
                             isFd, emptyTensor, PFAMask, pFAMatMulType, enableKVPrefix, enableS1OutSplit>(

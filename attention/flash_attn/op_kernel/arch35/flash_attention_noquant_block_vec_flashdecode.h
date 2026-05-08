@@ -125,8 +125,18 @@ protected:
     static constexpr ActualSeqLensMode KV_MODE = GetKvActSeqMode<layout, isPa>();
     // tensorlist
     __gm__ uint8_t *keyPtr = nullptr;
-    ActualSeqLensParser<Q_MODE> qActSeqLensParser;
-    ActualSeqLensParser<KV_MODE> kvActSeqLensParser;
+    
+    typename std::conditional<
+        (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD),
+        TNDSeqLensParser<uint64_t>,
+        ActualSeqLensParser<Q_MODE>
+    >::type qActSeqLensParser;
+    
+    typename std::conditional<
+        (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD),
+        TNDSeqLensParser<uint64_t>,
+        ActualSeqLensParser<KV_MODE>
+    >::type kvActSeqLensParser;
 
     int64_t preTokensPerBatch = 0;
     int64_t nextTokensPerBatch = 0;
