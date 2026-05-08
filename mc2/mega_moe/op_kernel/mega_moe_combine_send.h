@@ -21,12 +21,12 @@
 using namespace AscendC;
 
 namespace MegaMoeCombineImpl {
-template <typename ElementMMadOut2, typename GemmCoord>
+template <typename ElementMMadOut2, typename BlockShape>
 __aicore__ inline void CombineTokens(
     uint32_t mLoc, uint32_t nLoc, uint32_t n, uint32_t groupIdx, uint32_t rankId,
-    LocalTensor<ElementMMadOut2>& l0cOutUbGMM2, GemmCoord& actualBlockShape, const Params& params)
+    LocalTensor<ElementMMadOut2>& l0cOutUbGMM2, BlockShape& actualBlockShape, const Params& params)
 {
-    int32_t lenTile = actualBlockShape.m();
+    int32_t lenTile = Get<M_VALUE>(actualBlockShape);
     int32_t stTile = mLoc;
     int32_t edTile = stTile + lenTile;
     int32_t preSumRankInExpert = 0;
@@ -49,8 +49,8 @@ __aicore__ inline void CombineTokens(
             continue;
         }
 
-        int32_t stData = tla::max(stRankInExpert, stTile);
-        int32_t edData = tla::min(edRankInExpert, edTile);
+        int32_t stData = Blaze::Gemm::Max(stRankInExpert, stTile);
+        int32_t edData = Blaze::Gemm::Min(edRankInExpert, edTile);
         int32_t lenData = edData - stData;
         if (lenData <= 0) {
             continue;
@@ -65,17 +65,17 @@ __aicore__ inline void CombineTokens(
         uint64_t gmRemoteOffset = params.peermemInfo.ptrD - params.peermemInfo.ptrBase;
         __gm__ void* dstPeermemPtr = GetRankWinAddrWithOffset(dstEpIdx, gmRemoteOffset);
         gmRemoteD.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMMadOut2*>(dstPeermemPtr));
-        
+
         // 远端偏移地址
         uint64_t gmDstOffset = (dstOffsetInExpert + dstExpertOffset) * n + nLoc;
         auto gmTileD = gmRemoteD[gmDstOffset];
 
         AscendC::DataCopyExtParams ub2GmParams{1, 0, 0, 0, 0};
         ub2GmParams.blockCount = lenData;
-        ub2GmParams.blockLen = actualBlockShape.n() * sizeof(ElementMMadOut2);
-        ub2GmParams.dstStride = (n - actualBlockShape.n()) * sizeof(ElementMMadOut2);
+        ub2GmParams.blockLen = Get<N_VALUE>(actualBlockShape) * sizeof(ElementMMadOut2);
+        ub2GmParams.dstStride = (n - Get<N_VALUE>(actualBlockShape)) * sizeof(ElementMMadOut2);
 
-        AscendC::DataCopyPad(gmTileD, l0cOutUbGMM2[tileOffset *  actualBlockShape.n()], ub2GmParams);
+        AscendC::DataCopyPad(gmTileD, l0cOutUbGMM2[tileOffset *  Get<N_VALUE>(actualBlockShape)], ub2GmParams);
         tileOffset += lenData;
     }
 }

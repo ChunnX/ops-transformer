@@ -1208,10 +1208,7 @@ ge::graphStatus FiaInfoParser::GetActualSeqInfo()
                         preActualLen = actualLenData[i];
                     }
                     needInit_ = needInit_ || (actLen == 0);
-                    if (qLayout_ == FiaLayout::TND || qLayout_ == FiaLayout::NTD) {
-                        continue;
-                    }
-                    if (actLen != s2Size_) {
+                    if ((qLayout_ == FiaLayout::TND || qLayout_ == FiaLayout::NTD) || actLen != s2Size_) {
                         needInit_ = 1;
                     }
                 }
@@ -1275,6 +1272,9 @@ ge::graphStatus FiaInfoParser::GetFullQuantMode()
     if (quantMode_ == FiaQuantMode::FULL_QUANT) {
         if (opParamInfo_.deqScale1.tensor != nullptr && opParamInfo_.deqScale1.desc != nullptr) {
             fullQuantMode_ = FiaFullQuantMode::PER_TENSOR_FULL_QUANT;
+        } else if (*opParamInfo_.queryQuantMode == 6 && *opParamInfo_.keyAntiquantMode == 6 &&
+                   *opParamInfo_.valueAntiquantMode == 8) {
+            fullQuantMode_ = FiaFullQuantMode::MXFP8_FULL_QUANT;
         } else {
             fullQuantMode_ = FiaFullQuantMode::PER_BLOCK_FULL_QUANT;
         }

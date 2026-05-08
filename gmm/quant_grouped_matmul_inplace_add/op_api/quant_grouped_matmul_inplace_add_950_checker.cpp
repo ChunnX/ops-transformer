@@ -131,49 +131,44 @@ aclnnStatus AclnnQuantGroupedMatmulInplaceAddDAV3510Checker<T>::CheckQuantCasesF
 }
 
 template <typename T>
-aclnnStatus AclnnQuantGroupedMatmulInplaceAddDAV3510Checker<T>::IsGmmInplaceAddTCQuantMode() const
+aclnnStatus AclnnQuantGroupedMatmulInplaceAddDAV3510Checker<T>::CheckHif8QuantParamsShape() const
 {
     auto groupNum = gmmParams_.groupTensorOptional->GetViewShape().GetDim(0);
     for (size_t i = 0; i < GetInputTensorSize(gmmParams_.weight); ++i) {
-        auto scaleDimNumber = GetInputTensor(gmmParams_.scaleOptional, i)->GetViewShape().GetDimNum();
-        auto weightDimNumber = GetInputTensor(gmmParams_.weight, i)->GetViewShape().GetDimNum();
-        // 2 is the dimension for scale in GmmInplaceAdd T-C case
-        CHECK_COND(scaleDimNumber == 2 && weightDimNumber == scaleDimNumber, ACLNN_ERR_PARAM_INVALID,
-                   "The %s dim should be 2 and dim equal to %s in hifloat8 case, but actual %s dim is [%zu], "
-                   "%s dim is [%zu]",
-                   scaleName_.c_str(), weightName_.c_str(), scaleName_.c_str(), scaleDimNumber, weightName_.c_str(),
-                   weightDimNumber);
         auto xDimNumber = GetInputTensor(gmmParams_.x, i)->GetViewShape().GetDimNum();
+        auto weightDimNumber = GetInputTensor(gmmParams_.weight, i)->GetViewShape().GetDimNum();
+        auto scaleDimNumber = GetInputTensor(gmmParams_.scaleOptional, i)->GetViewShape().GetDimNum();
         auto perTokenDimNumber = GetInputTensor(gmmParams_.perTokenScaleOptional, i)->GetViewShape().GetDimNum();
-        // 2 is the maxmum dimension for perTokenScaleOptional in GmmInplaceAdd T-C case
-        CHECK_COND(xDimNumber == 2 && perTokenDimNumber <= xDimNumber, ACLNN_ERR_PARAM_INVALID,
-                   "The %s dim should be 2 and %s dim should <= %s in hifloat8 case, but actual %s dim is [%zu], "
-                   "%s dim is [%zu]",
-                   xName_.c_str(), perTokenScaleName_.c_str(), xName_.c_str(), xName_.c_str(), xDimNumber,
-                   perTokenScaleName_.c_str(), perTokenDimNumber);
-        auto scaleNDim = GetInputTensor(gmmParams_.scaleOptional, i)->GetViewShape().GetDim(scaleDimNumber - 1);
-        auto scaleGDim = GetInputTensor(gmmParams_.scaleOptional, i)
-                             ->GetViewShape()
-                             .GetDim(scaleDimNumber - gmm::LAST_TWO_DIM_INDEX);
-        auto weightNDim = GetInputTensor(gmmParams_.weight, i)->GetViewShape().GetDim(weightDimNumber - 1);
-        auto perTokenMDim = GetInputTensor(gmmParams_.perTokenScaleOptional, i)->GetViewShape().GetDim(0);
-        CHECK_COND(scaleGDim == groupNum && scaleNDim == weightNDim, ACLNN_ERR_PARAM_INVALID,
-                   "The %s G dim must equal with groupnum dim and %s N dim must equal with %s N dim in "
-                   "hifloat8 case, but actual %s G dim is [%zu], %s N dim is [%zu], %s N dim is [%zu]",
-                   scaleName_.c_str(), scaleName_.c_str(), weightName_.c_str(), scaleName_.c_str(), scaleGDim,
-                   scaleName_.c_str(), scaleNDim, weightName_.c_str(), weightNDim);
-        if (perTokenDimNumber != 1) {
-            auto perTokenKDim = GetInputTensor(gmmParams_.perTokenScaleOptional, i)->GetViewShape().GetDim(1);
-            CHECK_COND(perTokenKDim == 1 && perTokenMDim == groupNum, ACLNN_ERR_PARAM_INVALID,
-                       "The %s K dim should be 1 and %s M dim must equal groupnum in hifloat8 case, but "
-                       "actual %s K dim is [%zu], %s M dim is [%zu], groupnum is [%zu]",
-                       perTokenScaleName_.c_str(), perTokenScaleName_.c_str(), perTokenScaleName_.c_str(), perTokenKDim,
-                       perTokenScaleName_.c_str(), perTokenMDim, groupNum);
-        } else {
-            CHECK_COND(perTokenMDim == groupNum, ACLNN_ERR_PARAM_INVALID,
-                       "The %s M dim must equal groupnum in hifloat8 case, but actual %s M dim is [%zu], "
-                       "groupnum dim is [%zu]",
-                       perTokenScaleName_.c_str(), perTokenScaleName_.c_str(), perTokenMDim, groupNum);
+
+        // 校验 scale1 (perTokenScale)
+        CHECK_COND(perTokenDimNumber == 1 || perTokenDimNumber == 2, ACLNN_ERR_PARAM_INVALID,
+                   "In T-T/T-C mode, the %s dim should be 1 or 2, but actual dim is [%zu]", perTokenScaleName_.c_str(),
+                   perTokenDimNumber);
+        auto perTokenFirstDim = GetInputTensor(gmmParams_.perTokenScaleOptional, i)->GetViewShape().GetDim(0);
+        CHECK_COND(perTokenFirstDim == groupNum, ACLNN_ERR_PARAM_INVALID,
+                   "In T-T/T-C mode, the %s first dim must equal groupnum, but actual is [%zu], "
+                   "groupnum is [%zu]",
+                   perTokenScaleName_.c_str(), perTokenFirstDim, groupNum);
+        if (perTokenDimNumber == 2) {
+            auto perTokenLastDim = GetInputTensor(gmmParams_.perTokenScaleOptional, i)->GetViewShape().GetDim(1);
+            CHECK_COND(perTokenLastDim == 1, ACLNN_ERR_PARAM_INVALID,
+                       "In T-T/T-C mode, the %s last dim should be 1, but actual is [%zu]", perTokenScaleName_.c_str(),
+                       perTokenLastDim);
+        }
+
+        CHECK_COND(scaleDimNumber == 1 || scaleDimNumber == 2, ACLNN_ERR_PARAM_INVALID,
+                   "The %s dim should be 1 or 2, but actual dim is [%zu]", scaleName_.c_str(), scaleDimNumber);
+        auto scaleFirstDim = GetInputTensor(gmmParams_.scaleOptional, i)->GetViewShape().GetDim(0);
+        CHECK_COND(scaleFirstDim == groupNum, ACLNN_ERR_PARAM_INVALID,
+                   "In T-T mode, the %s first dim must equal groupnum, but actual is [%zu], "
+                   "groupnum is [%zu]",
+                   scaleName_.c_str(), scaleFirstDim, groupNum);
+        if (scaleDimNumber == 2) {
+            auto n = GetInputTensor(gmmParams_.weight, i)->GetViewShape().GetDim(1);
+            auto scaleLastDim = GetInputTensor(gmmParams_.scaleOptional, i)->GetViewShape().GetDim(1);
+            CHECK_COND(scaleLastDim == 1 || scaleLastDim == n, ACLNN_ERR_PARAM_INVALID,
+                       "In T-T/T-C mode, the %s last dim should be 1 or n[%zu], but actual is [%zu]",
+                       scaleName_.c_str(), n, scaleLastDim);
         }
     }
     return ACLNN_SUCCESS;
@@ -182,19 +177,23 @@ aclnnStatus AclnnQuantGroupedMatmulInplaceAddDAV3510Checker<T>::IsGmmInplaceAddT
 template <typename T>
 aclnnStatus AclnnQuantGroupedMatmulInplaceAddDAV3510Checker<T>::CheckHif8QuantParams() const
 {
-    CHECK_COND(gmmParams_.biasOptional == nullptr, ACLNN_ERR_PARAM_INVALID, "Hifloat8 case does not support bias.");
+    DataType scaleDtype = GetInputTensor(gmmParams_.scaleOptional)->GetDataType();
+    CHECK_COND(scaleDtype == DataType::DT_FLOAT, ACLNN_ERR_PARAM_INVALID,
+               "With hifloat8 inputs, scale dtype should be float32, but actual dtype is %s",
+               op::ToString(scaleDtype).GetString());
     CHECK_COND(gmmParams_.perTokenScaleOptional != nullptr, ACLNN_ERR_PARAM_NULLPTR,
                "Hifloat8 case perTokenScaleOptional not be null.");
     DataType perTokenScaleDtype = GetInputTensor(gmmParams_.perTokenScaleOptional)->GetDataType();
     CHECK_COND(perTokenScaleDtype == DataType::DT_FLOAT, ACLNN_ERR_PARAM_INVALID,
                "The %s dtype should be float32 in hifloat8 case, but actual dtype is %s", perTokenScaleName_.c_str(),
                op::ToString(perTokenScaleDtype).GetString());
+    CHECK_COND(gmmParams_.biasOptional == nullptr, ACLNN_ERR_PARAM_INVALID, "Hifloat8 case does not support bias.");
     CHECK_COND(gmmParams_.y != nullptr, ACLNN_ERR_PARAM_NULLPTR, "Hifloat8 case y not be null.");
     DataType yDtype = GetInputTensor(gmmParams_.y)->GetDataType();
     CHECK_COND(yDtype == DataType::DT_FLOAT, ACLNN_ERR_PARAM_INVALID,
                "Expect yDtype to be float32 in hifloat8 quant case, but actual dtype is %s",
                op::ToString(yDtype).GetString());
-    CHECK_RET(IsGmmInplaceAddTCQuantMode() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckHif8QuantParamsShape() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     return ACLNN_SUCCESS;
 }
 
@@ -220,15 +219,11 @@ aclnnStatus AclnnQuantGroupedMatmulInplaceAddDAV3510Checker<T>::CheckQuantGroupe
                 "The length of groupList should not be greater than 1024, but actual is %ld.", groupListLen);
     CHECK_RET(CheckQuantCasesFormat() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckGeneralQuantShape() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
-    DataType scaleDtype = GetInputTensor(gmmParams_.scaleOptional)->GetDataType();
     if (xDtype == DataType::DT_HIFLOAT8 && weightDtype == DataType::DT_HIFLOAT8) {
-        CHECK_COND(scaleDtype == DataType::DT_FLOAT || scaleDtype == DataType::DT_FLOAT8_E8M0, ACLNN_ERR_PARAM_INVALID,
-                   "With hifloat8 inputs, scale dtype should be float8_e8m0 or float32, but actual dtype is %s",
-                   op::ToString(scaleDtype).GetString());
         return CheckHif8QuantParams();
     } else {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "GmmInplaceAdd T-C Quant case with x dtype %s and weight dtype %s is not supported.",
+                "GmmInplaceAdd T-C/T-T Quant case with x dtype %s and weight dtype %s is not supported.",
                 op::ToString(xDtype).GetString(), op::ToString(weightDtype).GetString());
         return ACLNN_ERR_PARAM_INVALID;
     }

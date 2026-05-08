@@ -38,13 +38,14 @@
 #include "mc2_hcom_topo_info.h"
 #include "../../../moe_distribute_combine_v2/op_host/op_tiling/moe_distribute_combine_tiling_helper.h"
 #include "mc2_exception_dump.h"
+#include "moe_distribute_combine_v3_tiling_base.h"
 
 using namespace AscendC;
 using namespace ge;
 using namespace Mc2Tiling;
 
 namespace optiling {
-static ge::graphStatus MoeDistributeCombineV3TilingFunc(gert::TilingContext* context)
+ge::graphStatus MoeDistributeCombineV3TilingFuncBase::MoeDistributeCombineV3TilingFunc(gert::TilingContext* context)
 {
     CombineV2Config config;
     config.contextIndex = 0; // 0: 根据combineV2算子原型标志位初始化context索引
@@ -88,20 +89,9 @@ static ge::graphStatus MoeDistributeCombineV3TilingFunc(gert::TilingContext* con
 
     const char *nodeName = context->GetNodeName();
     OP_LOGD(nodeName, "Enter MoeDistributeDispatchV3 tiling");
-    ge::graphStatus ret = optiling::MoeDistributeCombineV2TilingFuncNew(context, config);
+    ge::graphStatus ret = MoeDistributeCombineV2TilingFuncNew(context, config);
     return ret;
 }
-
-struct MoeDistributeCombineV3CompileInfo {};
-ge::graphStatus TilingParseForMoeDistributeCombineV3(gert::TilingParseContext *context)
-{
-    (void)context;
-    return ge::GRAPH_SUCCESS;
-}
-
-IMPL_OP_OPTILING(MoeDistributeCombineV3)
-    .Tiling(MoeDistributeCombineV3TilingFunc)
-    .TilingParse<MoeDistributeCombineV3CompileInfo>(TilingParseForMoeDistributeCombineV3);
 } // namespace optiling
 
 #if RUNTIME_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION && METADEF_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
@@ -117,18 +107,18 @@ __attribute__((constructor)) void RegisterMoeDistributeCombineV3ExceptionFunc()
     int32_t metadefVersionNum = 0;
 
     if (aclsysGetVersionNum("runtime", &runtimeVersionNum) != ACL_SUCCESS) {
-        OP_LOGE("MoeDistributeCombineV3", "Get runtime version failed");
+        OP_LOGW("MoeDistributeCombineV3", "Get runtime version failed when register exception func.");
         return;
     }
     if (aclsysGetVersionNum("metadef", &metadefVersionNum) != ACL_SUCCESS) {
-        OP_LOGE("MoeDistributeCombineV3", "Get metadef version failed");
+        OP_LOGW("MoeDistributeCombineV3", "Get metadef version failed when register exception func.");
         return;
     }
 
     if (runtimeVersionNum < EXCEPTION_DUMP_SUPPORT_VERSION || metadefVersionNum < EXCEPTION_DUMP_SUPPORT_VERSION) {
-        OP_LOGE("MoeDistributeCombineV3",
-            "The runtime(%d) or metadata(%d) version is lower than the version(9.0.0) supporting Dump",
-            runtimeVersionNum, metadefVersionNum);
+        OP_LOGW("MoeDistributeCombineV3",
+            "The runtime(%d) or metadata(%d) version is lower than the version(%d) supporting exception func.",
+            runtimeVersionNum, metadefVersionNum, EXCEPTION_DUMP_SUPPORT_VERSION);
         return;
     }
 

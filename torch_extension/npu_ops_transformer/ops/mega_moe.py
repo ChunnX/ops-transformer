@@ -117,6 +117,39 @@ class SymmBuffer:
         self.comm_alg = comm_alg
 
 
+def npu_get_mega_moe_ccl_buffer_size(
+    ep_world_size: int, moe_expert_num: int, num_max_tokens_per_rank: int,
+    num_topk: int, hidden: int,
+    dispatch_quant_mode: int = 0, dispatch_quant_out_type: int = 28,
+    combine_quant_mode: int = 0, comm_alg: str = ""
+) -> int:
+    def inline_align(val, align):
+        return (val + align - 1) // align * align
+    torch._check(((ep_world_size >= 2) and (ep_world_size <= 768)),
+                     lambda: (f"ep_world_size only support in [2, 768], but got {ep_world_size=}."))
+    torch._check(((hidden >= 1024) and (hidden <= 8192)),
+                    lambda: (f"hidden only support in [1024, 8192], but got {hidden=}."))
+    torch._check(((num_max_tokens_per_rank >= 1) and (num_max_tokens_per_rank <= 512)),
+                    lambda: (f"num_max_tokens_per_rank only support in [1, 512], "
+                            f"but got {num_max_tokens_per_rank=}."))
+    torch._check(((moe_expert_num >= 1) and (moe_expert_num <= 1024)),
+                    lambda: (f"moe_expert_num only support in [1, 1024], but got {moe_expert_num=}."))
+    torch._check(((num_topk >= 1) and (num_topk <= 16)),
+                     lambda: (f"num_topk only support in [1, 16], but got {num_topk=}."))
+    local_moe_expert_num = moe_expert_num // ep_world_size
+    # 全卡软同步使用
+    peermem_data_offset = 60 * 1024
+    y_out_dtype_size = 2
+    mb_conversion = 1024 * 1024
+    dispatch_token_per_expert = ep_world_size * \
+        inline_align(ep_world_size * local_moe_expert_num, 128) * 4
+    quant_token_scales = inline_align(num_max_tokens_per_rank * num_topk * (hidden + hidden // 32), 512)
+    combine_out = inline_align(num_max_tokens_per_rank * num_topk * y_out_dtype_size, 512)
+    ccl_buffer_size = peermem_data_offset + dispatch_token_per_expert + quant_token_scales + combine_out
+    ccl_buffer_size = inline_align(inline_align(ccl_buffer_size, mb_conversion) // mb_conversion, 2) // 2
+    return ccl_buffer_size
+
+
 def get_symm_buffer_for_mega_moe(
     group,
     num_experts: int,

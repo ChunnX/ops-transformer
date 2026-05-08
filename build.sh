@@ -1980,4 +1980,4 @@ else
         build ${BUILD}
     fi
 fi
-} | gawk '{print strftime("[%Y-%m-%d %H:%M:%S]"), $0}'
+} | while IFS= read -r line; do echo "[$(date '+%Y-%m-%d %H:%M:%S')] $line"; done

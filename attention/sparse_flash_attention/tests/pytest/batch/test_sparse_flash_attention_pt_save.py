@@ -22,7 +22,7 @@ import sparse_flash_attention_golden
 
 PT_SAVE_PATH = "./pt_files/"
 EXCEL_PATH = os.environ.get("EXCEL_PATH", "./excel/example.xlsx")
-EXCEL_SHEET = os.environ.get("EXCEL_SHEET", "decode")
+EXCEL_SHEET = os.environ.get("EXCEL_SHEET", "Sheet1")
 RESULT_PATH = Path("result.xlsx")
 ENABLED_PARAMS = utils.load_excel_test_cases(EXCEL_PATH, EXCEL_SHEET)
 PARAM_COMBINATION_SET = utils.combin_params(ENABLED_PARAMS, pytest_paramset=False)

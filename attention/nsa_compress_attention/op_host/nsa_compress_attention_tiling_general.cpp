@@ -16,10 +16,10 @@
 #include "log/log.h"
 #include "err/ops_err.h"
 #include <numeric>
-#include "tiling_base/data_copy_transpose_tiling.h"
-#include "tiling_base/tiling_base.h"
-#include "tiling_base/tiling_templates_registry.h"
-#include "tiling_base/tiling_type.h"
+#include "op_host/data_copy_transpose_tiling.h"
+#include "op_host/tiling_base.h"
+#include "op_host/tiling_templates_registry.h"
+#include "op_host/tiling_type.h"
 #include "nsa_compress_attention_tiling.h"
 #include "nsa_compress_attention_tiling_common.h"
 using namespace Ops::Transformer::OpTiling;

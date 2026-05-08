@@ -129,7 +129,7 @@
       <tr>
           <td>sparse_block_size</td>
           <td>属性</td>
-          <td>代表sparse阶段的block大小，在计算importance score时使用，仅支持1。</td>
+          <td>代表sparse阶段的block大小。sparse_block_size为1时，为Token-wise稀疏化场景；sparse_block_size大于1且小于等于128时，为Block-wise稀疏化场景，块内token共享相同的稀疏化决策。</td>
           <td>INT64</td>
           <td>-</td>
       </tr>
@@ -212,5 +212,9 @@
 - 参数query中的Q_D值仅支持576，即nope\+rope=512\+64。
 - 参数key、value Atlas A2/A3系列产品支持int8数据类型，Ascend 950PR/Ascend 950DT支持float8_e4m3数据类型。Q_N值支持1/2/4/8/16/32/64/128。
 - 参数key、value中的KV_D值仅支持656，即nope\+rope\*2\+dequant\_scale\*4=512\+64\*2\+4\*4。KV_N值仅支持1。
-- sparse\_block\_size需要整除block\_size，Ascend 950PR/Ascend 950DT sparse\_block\_size值仅支持1。
+- sparse\_block\_size需要整除block\_size。
+  - <term>Ascend 950PR/Ascend 950DT</term>：
+    - 只支持sparse_block_size为1。
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+    - 支持[1,16]，且要求是2的幂次方，在PageAttention场景下要求sparse_block_size整除block_size
 - 非PageAttention场景layout\_query和layout\_kv需要保持一致。
