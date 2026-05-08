@@ -1,0 +1,1 @@
+# GMMSQ算子kernel实现设计说明书
