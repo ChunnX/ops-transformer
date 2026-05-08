@@ -16,7 +16,7 @@
 #include "aclnn/aclnn_base.h"
 #include "aclnn_util.h"
 #include "common/op_host/op_api/matmul_util.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "aclnn_kernels/op_error_check.h"
 
 using namespace Ops::Transformer;
 using namespace op;

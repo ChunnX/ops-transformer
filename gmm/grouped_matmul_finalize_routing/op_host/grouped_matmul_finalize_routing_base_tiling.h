@@ -17,7 +17,7 @@
 
 #include "grouped_matmul_finalize_routing_tiling.h"
 #include "op_host/tiling_base.h"
-#include "err/ops_err.h"
+#include "util/ops_err.h"
 
 namespace optiling {
 namespace grouped_matmul_finalize_routing {

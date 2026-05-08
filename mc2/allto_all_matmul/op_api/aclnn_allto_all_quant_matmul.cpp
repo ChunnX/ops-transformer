@@ -15,7 +15,7 @@
 #include "common/utils/op_mc2_def.h"
 #include "common/op_api/mc2_aclnn_util.h"
 #include "mc2/matmul_allto_all/op_api/matmul_allto_all_util.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "aclnn_kernels/op_error_check.h"
 #include "opdev/common_types.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/op_dfx.h"

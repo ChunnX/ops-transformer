@@ -15,7 +15,7 @@
 
 #include "aclnn_quant_lightning_indexer_metadata.h"
 #include "aclnn/aclnn_base.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "aclnn_kernels/op_error_check.h"
 #include "aclnn_kernels/contiguous.h"
 #include "aclnn_kernels/reshape.h"
 #include "l0_quant_lightning_indexer_metadata.h"
