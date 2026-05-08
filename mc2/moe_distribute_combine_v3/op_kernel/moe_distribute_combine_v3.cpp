@@ -18,7 +18,7 @@
 #include "kernel_operator.h"
 #endif
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-#include "../arch35/moe_distribute_combine_v2_host_kfc.h"
+#include "../moe_distribute_combine_v2/arch35/moe_distribute_combine_v2_host_kfc.h"
 #endif
 #include "lib/matmul_intf.h"
 #if __has_include("../moe_distribute_combine_v2/moe_distribute_combine_v2_tiling.h")
