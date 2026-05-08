@@ -66,39 +66,6 @@ Call Stack (most recent call first):
   CMakeLists.txt:148 (include)
 This warning is for project developers.  Use -Wno-dev to suppress it.
 
-/data/jcy/new/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.cpp: In member function ‘void optiling::GroupedNoQuantMatmulTiling::SetDisableL2Cache(const gert::TilingContext*, const optiling::GMMCompileInfo*)’:
-/data/jcy/new/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.cpp:188:66: warning: suggest parentheses around ‘&&’ within ‘||’ [-Wparentheses]
-  188 |     weightNoL2Cache_ = ((innerB * dataTypeSize % ALIGN_128 == 0) && flag || weightNzFlag_) && weightNoL2Cache_;
-      |                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~
-In file included from /data/jcy/new/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.h:20,
-                 from /data/jcy/new/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.cpp:15:
-/data/jcy/new/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.cpp: In member function ‘bool optiling::GroupedNoQuantMatmulTiling::CheckWeightNZShape(const gert::TilingContext*, int64_t)’:
-/data/jcy/new/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.cpp:258:21: warning: format ‘%ld’ expects argument of type ‘long int’, but argument 6 has type ‘size_t’ {aka ‘long unsigned int’} [-Wformat=]
-  258 |                     "the value of dim n, k is expected to be a multiple of 32B when NZ weight, but n value is %ld, k value is %ld.", nValue, kValue),
-      |                                                                                                                                      ~~~~~~
-      |                                                                                                                                      |
-      |                                                                                                                                      size_t {aka long unsigned int}
-/data/jcy/new/ops-transformer_1134/third_party/opbase/pkg_inc/op_common/log/log.h:253:13: note: in definition of macro ‘OP_CHECK_IF’
-  253 |             log;                                 \
-      |             ^~~
-/data/jcy/new/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.cpp:257:21: note: in expansion of macro ‘OP_LOGE’
-  257 |                     OP_LOGE(context->GetNodeName(),
-      |                     ^~~~~~~
-/data/jcy/new/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.cpp:258:21: warning: format ‘%ld’ expects argument of type ‘long int’, but argument 7 has type ‘size_t’ {aka ‘long unsigned int’} [-Wformat=]
-  258 |                     "the value of dim n, k is expected to be a multiple of 32B when NZ weight, but n value is %ld, k value is %ld.", nValue, kValue),
-      |                                                                                                                                              ~~~~~~
-      |                                                                                                                                              |
-      |                                                                                                                                              size_t {aka long unsigned int}
-/data/jcy/new/ops-transformer_1134/third_party/opbase/pkg_inc/op_common/log/log.h:253:13: note: in definition of macro ‘OP_CHECK_IF’
-  253 |             log;                                 \
-      |             ^~~
-/data/jcy/new/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.cpp:257:21: note: in expansion of macro ‘OP_LOGE’
-  257 |                     OP_LOGE(context->GetNodeName(),
-      |                     ^~~~~~~
-/data/jcy/new/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.cpp: In member function ‘bool optiling::GroupedNoQuantMatmulTiling::SplitKSingleXSeparatedWeight(const gert::TilingContext*, gert::Shape, gert::Shape)’:
-/data/jcy/new/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.cpp:562:107: warning: unused parameter ‘wShape’ [-Wunused-parameter]
-  562 |                                                               const gert::Shape xShape, const gert::Shape wShape)
-      |                                                                                         ~~~~~~~~~~~~~~~~~~^~~~~~
 In file included from /data/jcy/new/ops-transformer_1134/common/include/tiling_base/tiling_base.h:23,
                  from /data/jcy/new/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.h:20,
                  from /data/jcy/new/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp:15:
@@ -449,31 +416,60 @@ In file included from /data/jcy/new/ops-transformer_1134/gmm/grouped_matmul/op_h
       |                                                |     uint64_t {aka long unsigned int}
       |                                                long long int
       |                                             %ld
+/data/jcy/new/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.cpp: In member function ‘void optiling::GroupedNoQuantMatmulTiling::SetDisableL2Cache(const gert::TilingContext*, const optiling::GMMCompileInfo*)’:
+/data/jcy/new/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.cpp:188:66: warning: suggest parentheses around ‘&&’ within ‘||’ [-Wparentheses]
+  188 |     weightNoL2Cache_ = ((innerB * dataTypeSize % ALIGN_128 == 0) && flag || weightNzFlag_) && weightNoL2Cache_;
+      |                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~
+In file included from /data/jcy/new/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.h:20,
+                 from /data/jcy/new/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.cpp:15:
+/data/jcy/new/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.cpp: In member function ‘bool optiling::GroupedNoQuantMatmulTiling::CheckWeightNZShape(const gert::TilingContext*, int64_t)’:
+/data/jcy/new/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.cpp:258:21: warning: format ‘%ld’ expects argument of type ‘long int’, but argument 6 has type ‘size_t’ {aka ‘long unsigned int’} [-Wformat=]
+  258 |                     "the value of dim n, k is expected to be a multiple of 32B when NZ weight, but n value is %ld, k value is %ld.", nValue, kValue),
+      |                                                                                                                                      ~~~~~~
+      |                                                                                                                                      |
+      |                                                                                                                                      size_t {aka long unsigned int}
+/data/jcy/new/ops-transformer_1134/third_party/opbase/pkg_inc/op_common/log/log.h:253:13: note: in definition of macro ‘OP_CHECK_IF’
+  253 |             log;                                 \
+      |             ^~~
+/data/jcy/new/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.cpp:257:21: note: in expansion of macro ‘OP_LOGE’
+  257 |                     OP_LOGE(context->GetNodeName(),
+      |                     ^~~~~~~
+/data/jcy/new/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.cpp:258:21: warning: format ‘%ld’ expects argument of type ‘long int’, but argument 7 has type ‘size_t’ {aka ‘long unsigned int’} [-Wformat=]
+  258 |                     "the value of dim n, k is expected to be a multiple of 32B when NZ weight, but n value is %ld, k value is %ld.", nValue, kValue),
+      |                                                                                                                                              ~~~~~~
+      |                                                                                                                                              |
+      |                                                                                                                                              size_t {aka long unsigned int}
+/data/jcy/new/ops-transformer_1134/third_party/opbase/pkg_inc/op_common/log/log.h:253:13: note: in definition of macro ‘OP_CHECK_IF’
+  253 |             log;                                 \
+      |             ^~~
+/data/jcy/new/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.cpp:257:21: note: in expansion of macro ‘OP_LOGE’
+  257 |                     OP_LOGE(context->GetNodeName(),
+      |                     ^~~~~~~
+/data/jcy/new/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.cpp: In member function ‘bool optiling::GroupedNoQuantMatmulTiling::SplitKSingleXSeparatedWeight(const gert::TilingContext*, gert::Shape, gert::Shape)’:
+/data/jcy/new/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.cpp:562:107: warning: unused parameter ‘wShape’ [-Wunused-parameter]
+  562 |                                                               const gert::Shape xShape, const gert::Shape wShape)
+      |                                                                                         ~~~~~~~~~~~~~~~~~~^~~~~~
 CMake Warning at /data/jcy/new/ops-transformer_1134/build/abseil_build_transformer-prefix/src/abseil_build_transformer-stamp/verify-abseil_build_transformer.cmake:15 (message):
   File cannot be verified since no URL_HASH specified
 
 
 <command-line>: warning: "__FILE__" redefined [-Wbuiltin-macro-redefined]
-[2026-04-30 16:33:52] [ES-GEN] ========== ES Code Generation Started ==========
-[2026-04-30 16:33:52] [ES-GEN] Lock file: /data/jcy/new/ops-transformer_1134/build/es_transformer_cust_build/generated_code/.gen.lock
-[2026-04-30 16:33:52] [ES-GEN] Gen ESB: /data/huangjunzhe/Ascend/cann-9.0.0/bin/gen_esb
-[2026-04-30 16:33:52] [ES-GEN] OPP path: /data/jcy/new/ops-transformer_1134/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
-[2026-04-30 16:33:52] [ES-GEN] Output dir: /data/jcy/new/ops-transformer_1134/build/es_transformer_cust_build/generated_code
-[2026-04-30 16:33:52] [ES-GEN] Module: transformer_cust
-[2026-04-30 16:33:52] [ES-GEN] Lib path: /data/huangjunzhe/Ascend/cann-9.0.0/lib64
-[2026-04-30 16:33:52] [ES-GEN] Exclude ops: 
-[2026-04-30 16:33:52] [ES-GEN] ========== Main Logic Started ==========
-[2026-04-30 16:33:52] [ES-GEN] Using flock file locking mechanism
-[2026-04-30 16:33:52] [ES-GEN] [flock] Acquired lock immediately
-[2026-04-30 16:33:52] [ES-GEN] Waiting for filesystem sync...
+[2026-05-08 11:11:31] [ES-GEN] ========== ES Code Generation Started ==========
+[2026-05-08 11:11:31] [ES-GEN] Lock file: /data/jcy/new/ops-transformer_1134/build/es_transformer_cust_build/generated_code/.gen.lock
+[2026-05-08 11:11:31] [ES-GEN] Gen ESB: /data/huangjunzhe/Ascend/cann-9.0.0/bin/gen_esb
+[2026-05-08 11:11:31] [ES-GEN] OPP path: /data/jcy/new/ops-transformer_1134/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
+[2026-05-08 11:11:31] [ES-GEN] Output dir: /data/jcy/new/ops-transformer_1134/build/es_transformer_cust_build/generated_code
+[2026-05-08 11:11:31] [ES-GEN] Module: transformer_cust
+[2026-05-08 11:11:31] [ES-GEN] Lib path: /data/huangjunzhe/Ascend/cann-9.0.0/lib64
+[2026-05-08 11:11:31] [ES-GEN] Exclude ops: 
+[2026-05-08 11:11:31] [ES-GEN] ========== Main Logic Started ==========
 CMake Warning at /data/jcy/new/ops-transformer_1134/build/ascend_protobuf_build_transformer-prefix/src/ascend_protobuf_build_transformer-stamp/verify-ascend_protobuf_build_transformer.cmake:15 (message):
   File cannot be verified since no URL_HASH specified
 
 
-[2026-04-30 16:33:52] [ES-GEN] [Attempt 1/10] Executing gen_esb...
-[2026-04-30 16:33:52] [ES-GEN] Command: LD_LIBRARY_PATH=/data/huangjunzhe/Ascend/cann-9.0.0/lib64:$LD_LIBRARY_PATH ASCEND_OPP_PATH=/data/jcy/new/ops-transformer_1134/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust "/data/huangjunzhe/Ascend/cann-9.0.0/bin/gen_esb" --output_dir="/data/jcy/new/ops-transformer_1134/build/es_transformer_cust_build/generated_code" --module_name="transformer_cust" --exclude_ops=""     
-[2026-04-30 16:33:52] [ES-GEN] [Success] gen_esb executed successfully
-[2026-04-30 16:33:52] [ES-GEN] [flock] Execution completed, exit code: 0
+[2026-05-08 11:11:31] [ES-GEN] Using flock file locking mechanism
+[2026-05-08 11:11:31] [ES-GEN] [flock] Acquired lock immediately
+[2026-05-08 11:11:31] [ES-GEN] Waiting for filesystem sync...
 CMake Deprecation Warning at CMakeLists.txt:7 (cmake_policy):
   The OLD behavior for policy CMP0141 will be removed from a future version
   of CMake.
@@ -484,6 +480,10 @@ CMake Deprecation Warning at CMakeLists.txt:7 (cmake_policy):
   behavior and not rely on setting a policy to OLD.
 
 
+[2026-05-08 11:11:32] [ES-GEN] [Attempt 1/10] Executing gen_esb...
+[2026-05-08 11:11:32] [ES-GEN] Command: LD_LIBRARY_PATH=/data/huangjunzhe/Ascend/cann-9.0.0/lib64:$LD_LIBRARY_PATH ASCEND_OPP_PATH=/data/jcy/new/ops-transformer_1134/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust "/data/huangjunzhe/Ascend/cann-9.0.0/bin/gen_esb" --output_dir="/data/jcy/new/ops-transformer_1134/build/es_transformer_cust_build/generated_code" --module_name="transformer_cust" --exclude_ops=""     
+[2026-05-08 11:11:32] [ES-GEN] [Success] gen_esb executed successfully
+[2026-05-08 11:11:32] [ES-GEN] [flock] Execution completed, exit code: 0
 CMake Deprecation Warning at third_party/utf8_range/CMakeLists.txt:1 (cmake_minimum_required):
   Compatibility with CMake < 3.10 will be removed from a future version of
   CMake.

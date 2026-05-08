@@ -152,16 +152,16 @@ __aicore__ inline void GMMA8W4PreProcessNZ::compute(uint32_t mIdx, uint32_t kIdx
 
     //高4位tensor取法
     Cast(xHighHalfTensor, xTensor, AscendC::RoundMode::CAST_NONE, totalLen);
-    printf("输入张量");
-    AscendC::DumpTensor(xTensor, 0, 8);
-    AscendC::DumpTensor(xHighHalfTensor, 7, 8);
+    // printf("输入张量");
+    // AscendC::DumpTensor(xTensor, 0, 8);
+    // AscendC::DumpTensor(xHighHalfTensor, 7, 8);
     PipeBarrier<PIPE_V>();
     Muls(xHighHalfTensor, xHighHalfTensor, ONE_SIXTEEN, totalLen);
     PipeBarrier<PIPE_V>();
     Cast(xHighI4Tensor, xHighHalfTensor, AscendC::RoundMode::CAST_FLOOR, totalLen);
     printf("高四位");
     AscendC::DumpTensor(xHighHalfTensor, 1, 8);
-    AscendC::DumpTensor(xHighI4Tensor.ReinterpretCast<int8_t>(), 4, 8);
+    AscendC::DumpTensor(xHighI4Tensor.ReinterpretCast<int8_t>(), 1, 8);
     printf("\n");
 
     //低4位tensor取法                     
@@ -183,7 +183,7 @@ __aicore__ inline void GMMA8W4PreProcessNZ::compute(uint32_t mIdx, uint32_t kIdx
     PipeBarrier<PIPE_V>();
     printf("低四位");
     AscendC::DumpTensor(xLowHalfTensor, 2, 8);
-    AscendC::DumpTensor(xLowI4Tensor.ReinterpretCast<int8_t>(), 5, 8);
+    AscendC::DumpTensor(xLowI4Tensor.ReinterpretCast<int8_t>(), 2, 8);
     printf("\n");
     auto tensorOut = vecOutQueue.AllocTensor<int4b_t>();
     
@@ -222,7 +222,7 @@ __aicore__ inline void GMMA8W4PreProcessNZ::copyOut(uint32_t mIdx, uint32_t kIdx
     printf("curVecBaseM:%u,curVecBaseK:%d\n",curVecBaseM,curVecBaseK);
 
     DataCopyPad(xOutInt4[baseOffset], tensorOut, dataCopyParams);
-    AscendC::DumpTensor(dbgxOutInt4, 15, 65);
+    AscendC::DumpTensor(dbgxOutInt4, 5, 65);
     vecOutQueue.FreeTensor(tensorOut);
 }
 
