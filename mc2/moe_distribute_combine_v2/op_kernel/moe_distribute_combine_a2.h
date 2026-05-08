@@ -739,7 +739,6 @@ __aicore__ inline void MoeDistributeCombineA2<TemplateMC2TypeA2Func>::Process()
         aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_FULLMESH_COMBINE_RECV);
         LocalWindowCopy();
         CopyPerformanceInfo();
-        aDump_.Exception();
         aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_END);
         hccl_.Finalize();
     }
