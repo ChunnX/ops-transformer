@@ -26,6 +26,12 @@ using GMMQuantBasicApiTilingData = GroupedMatmulTilingData::GMMQuantBasicApiTili
 #endif
 #if defined(V310_GMM_QUANT_MX)
 #include "arch35/quant_adaptive_sliding_window_templates/gqmm_cgmct_mx_kernel.h"
+#if __has_include("blaze/kernel/kernel_qgmm_mx.h")
+#include "arch35/quant_adaptive_sliding_window_templates/gqmm_tensor_api_mx_kernel.h"
+#define GMM_MX_ENABLE_TENSOR_API 1
+#else
+#define GMM_MX_ENABLE_TENSOR_API 0
+#endif
 #endif
 #if defined(V310_GMM_QUANT_MX) || defined(V310_GMM_QUANT_PERTENSOR_CUBE)
 #include "arch35/quant_adaptive_sliding_window_templates/gqmm_init_output.h"
@@ -203,15 +209,27 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
                                              &gmmQuantParams_, &mmTilingData_, &tPipe);                                \
     } while (0)
 
-#define GMM_QUANT_MX_BASIC_API_IMPL_CLASS(xLayout, wLayout, yLayout)                                                   \
+#if defined(V310_GMM_QUANT_MX) && GMM_MX_ENABLE_TENSOR_API
+#define GMM_QUANT_MX_BASIC_API_IMPL_CLASS(cgmctXLayout, cgmctWLayout, cgmctYLayout, xLayout, wLayout, yLayout)         \
     do {                                                                                                               \
         GET_TILING_DATA_WITH_STRUCT(GMMQuantBasicApiTilingData, tilingData, tiling)                                    \
         GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, gmmQuantParams, gmmQuantParams_, tiling);                   \
         GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, mmTilingData, mmTilingData_, tiling);                       \
-        GmmCgmctMxKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, float, DTYPE_Y, xLayout, wLayout, yLayout,    \
-                         DTYPE_L0C_LOCAL>(x, weight, bias, scale, groupList, perTokenScale, y, user1,                  \
-                                          &gmmQuantParams_, &mmTilingData_, &tPipe);                                   \
+        GmmTensorApiMxKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, float, DTYPE_Y, xLayout, wLayout,         \
+                             yLayout, DTYPE_L0C_LOCAL>(x, weight, bias, scale, groupList, perTokenScale, y, user1,     \
+                                                       &gmmQuantParams_, &mmTilingData_, &tPipe);                      \
     } while (0)
+#elif defined(V310_GMM_QUANT_MX)
+#define GMM_QUANT_MX_BASIC_API_IMPL_CLASS(xLayout, wLayout, yLayout, teXLayout, teWLayout, teYLayout)                  \
+    do {                                                                                                               \
+        GET_TILING_DATA_WITH_STRUCT(GMMQuantBasicApiTilingData, tilingData, tiling)                                    \
+        GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, gmmQuantParams, gmmQuantParams_, tiling);                   \
+        GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, mmTilingData, mmTilingData_, tiling);                       \
+        GmmCgmctMxKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, float, DTYPE_Y, xLayout, wLayout,             \
+                         yLayout, DTYPE_L0C_LOCAL>(x, weight, bias, scale, groupList, perTokenScale, y, user1,         \
+                                                   &gmmQuantParams_, &mmTilingData_, &tPipe);                          \
+    } while (0)
+#endif
 
 #if defined(V310_GMM_QUANT)
 template <int8_t QUANT_B_TRANS, int8_t QUANT_A_TRANS, int8_t KERNEL_TYPE>
@@ -239,11 +257,13 @@ REGISTER_TILING_DEFAULT(GMMQuantTilingData);
 if constexpr (wFormat == CubeFormat::ND) {
     if constexpr (QUANT_B_TRANS == GMM_NO_TRANS && QUANT_A_TRANS == GMM_NO_TRANS && KERNEL_TYPE == GMM_DEQUANT_FIXP) {
         GMM_QUANT_MX_BASIC_API_IMPL_CLASS(Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::RowMajor,
-                                          Cgmct::Gemm::layout::RowMajor);
+                                          Cgmct::Gemm::layout::RowMajorAlign, AscendC::Te::NDExtLayoutPtn,
+                                          AscendC::Te::NDExtLayoutPtn, AscendC::Te::NDExtLayoutPtn);
     } else if constexpr (QUANT_B_TRANS == GMM_TRANS && QUANT_A_TRANS == GMM_NO_TRANS &&
                          KERNEL_TYPE == GMM_DEQUANT_FIXP) {
         GMM_QUANT_MX_BASIC_API_IMPL_CLASS(Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::ColumnMajor,
-                                          Cgmct::Gemm::layout::RowMajor);
+                                          Cgmct::Gemm::layout::RowMajorAlign, AscendC::Te::NDExtLayoutPtn,
+                                          AscendC::Te::DNExtLayoutPtn, AscendC::Te::NDExtLayoutPtn);
     } else if constexpr (QUANT_B_TRANS == GMM_NO_TRANS && QUANT_A_TRANS == GMM_TRANS &&
                          KERNEL_TYPE == GMM_DEQUANT_FIXP) {
         if ASCEND_IS_AIV {
@@ -251,17 +271,20 @@ if constexpr (wFormat == CubeFormat::ND) {
         }
         if ASCEND_IS_AIC {
             GMM_QUANT_MX_BASIC_API_IMPL_CLASS(Cgmct::Gemm::layout::ColumnMajor, Cgmct::Gemm::layout::RowMajor,
-                                              Cgmct::Gemm::layout::RowMajor);
+                                              Cgmct::Gemm::layout::RowMajorAlign, AscendC::Te::DNExtLayoutPtn,
+                                              AscendC::Te::NDExtLayoutPtn, AscendC::Te::NDExtLayoutPtn);
         }
     }
 } else {
     if constexpr (QUANT_B_TRANS == GMM_NO_TRANS && QUANT_A_TRANS == GMM_NO_TRANS && KERNEL_TYPE == GMM_DEQUANT_FIXP) {
         GMM_QUANT_MX_BASIC_API_IMPL_CLASS(Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz,
-                                          Cgmct::Gemm::layout::RowMajor);
+                                          Cgmct::Gemm::layout::RowMajorAlign, AscendC::Te::NDExtLayoutPtn,
+                                          AscendC::Te::NZLayoutPtn, AscendC::Te::NDExtLayoutPtn);
     } else if constexpr (QUANT_B_TRANS == GMM_TRANS && QUANT_A_TRANS == GMM_NO_TRANS &&
                          KERNEL_TYPE == GMM_DEQUANT_FIXP) {
         GMM_QUANT_MX_BASIC_API_IMPL_CLASS(Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn,
-                                          Cgmct::Gemm::layout::RowMajor);
+                                          Cgmct::Gemm::layout::RowMajorAlign, AscendC::Te::NDExtLayoutPtn,
+                                          AscendC::Te::ZNLayoutPtn, AscendC::Te::NDExtLayoutPtn);
     }
 }
 #endif
