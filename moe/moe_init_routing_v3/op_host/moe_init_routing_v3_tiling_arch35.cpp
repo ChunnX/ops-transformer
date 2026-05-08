@@ -96,6 +96,7 @@ const static int64_t QUANT_MODE_HIF8_CAST = 6LL;
 const static int64_t QUANT_MODE_HIF8_PERTENSOR = 7LL;
 const static int64_t QUANT_MODE_HIF8_PERTOKEN = 8LL;
 const static int64_t QUANT_MODE_MXFP4_E2M1 = 9LL;
+const static int64_t QUANT_MODE_INT4_DYNAMIC = 10LL;
 const static int64_t EXPERT_TOKENS_TYPE_CUMSUM = 0LL;
 
 const static int64_t EXPERT_TOKENS_TYPE_COUNT = 1LL;
@@ -246,7 +247,7 @@ private:
     bool IsSupportFullloadQuantMode() const
     {
         return (quantMode_ == QUANT_MODE_UNQUANT) || (quantMode_ == QUANT_MODE_STATIC) ||
-                (quantMode_ == QUANT_MODE_DYNAMIC);
+                (quantMode_ == QUANT_MODE_DYNAMIC) || (quantMode_ == QUANT_MODE_INT4_DYNAMIC);
     }
 
     // 辅助工具函数
@@ -635,12 +636,12 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetAttrs()
                     quantMode_ != QUANT_MODE_DYNAMIC && quantMode_ != QUANT_MODE_MXFP8_E5M2 &&
                     quantMode_ != QUANT_MODE_MXFP8_E4M3FN && quantMode_ != QUANT_MODE_HIF8_CAST &&
                     quantMode_ != QUANT_MODE_HIF8_PERTENSOR && quantMode_ != QUANT_MODE_HIF8_PERTOKEN &&
-                    quantMode_ != QUANT_MODE_MXFP4_E2M1,
+                    quantMode_ != QUANT_MODE_MXFP4_E2M1 && quantMode_ != QUANT_MODE_INT4_DYNAMIC,
                 OP_LOGE(context_,
-                        "Attr quant_mode currently supports (%ld, %ld, %ld, %ld, %ld, %ld, %ld, %ld, %ld), but got %ld",
+                        "Attr quant_mode currently supports (%ld, %ld, %ld, %ld, %ld, %ld, %ld, %ld, %ld, %ld), but got %ld",
                         QUANT_MODE_UNQUANT, QUANT_MODE_STATIC, QUANT_MODE_DYNAMIC, QUANT_MODE_MXFP8_E5M2,
                         QUANT_MODE_MXFP8_E4M3FN, QUANT_MODE_HIF8_CAST, QUANT_MODE_HIF8_PERTENSOR,
-                        QUANT_MODE_HIF8_PERTOKEN, QUANT_MODE_MXFP4_E2M1, quantMode_),
+                        QUANT_MODE_HIF8_PERTOKEN, QUANT_MODE_MXFP4_E2M1, QUANT_MODE_INT4_DYNAMIC, quantMode_),
                 return ge::GRAPH_FAILED);
     tilingDataPtr_->quantMode = quantMode_;
     // rowIdxType
@@ -702,6 +703,8 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckInputX()
     static const unordered_set<DataType>  MXFP4QUANT_SUPPORTED_DTYPES = {DataType::DT_FLOAT16, DataType::DT_BF16};
     static const unordered_set<DataType> DYNAMIC_QUANT_SUPPORTED_DTYPES = {DataType::DT_FLOAT, DataType::DT_FLOAT16,
                                                                            DataType::DT_BF16, DataType::DT_INT8};
+    static const unordered_set<DataType> INT4_DYNAMIC_SUPPORTED_DTYPES = {DataType::DT_FLOAT, DataType::DT_FLOAT16,
+                                                                           DataType::DT_BF16};
     static const std::unordered_set<DataType> MX_OR_HIF8_QUANT_SUPPORTED_DTYPES = {ge::DataType::DT_FLOAT16,
                                                                                    ge::DataType::DT_BF16};
     unordered_set<DataType> supportedDtypes;
@@ -715,6 +718,8 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckInputX()
         supportedDtypes = STATIC_QUANT_SUPPORTED_DTYPES;
     } else if (quantMode_ == QUANT_MODE_MXFP4_E2M1) {
         supportedDtypes = MXFP4QUANT_SUPPORTED_DTYPES;
+    } else if (quantMode_ == QUANT_MODE_INT4_DYNAMIC) {
+        supportedDtypes = INT4_DYNAMIC_SUPPORTED_DTYPES;
     } else {
         //! 出于历史调用的兼容性，这里不拦截quant_mode=1（动态量化）下输入x为int8类型，仅资料说明此时算子输出expandedX、expandedScale无意义
         supportedDtypes = DYNAMIC_QUANT_SUPPORTED_DTYPES;
@@ -790,6 +795,10 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckInputScale()
     } else if (quantMode_ == QUANT_MODE_DYNAMIC) {
         expectedRankScale = RANK_TWO;
         expectedDim0 = expertEnd_ - expertStart_;
+        expectedDim1 = xShape_.GetDim(1);
+    } else if (quantMode_ == QUANT_MODE_INT4_DYNAMIC) {
+        expectedRankScale = RANK_TWO;
+        expectedDim0 = 1;
         expectedDim1 = xShape_.GetDim(1);
     }
     if (expectedRankScale != -1) {
@@ -922,6 +931,15 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckOutputExpandedX()
                     expandedXDtype_),
             return ge::GRAPH_FAILED);
     }
+    // INT4动态量化场景下，输出expandedX的dtype必须为INT4
+    if (quantMode_ == QUANT_MODE_INT4_DYNAMIC) {
+        OP_CHECK_IF(
+            expandedXDtype_ != ge::DataType::DT_INT4,
+            OP_LOGE(context_,
+                    "The dtype of output expanded_x should be DT_INT4 under INT4 dynamic quantization, current is %d.",
+                    expandedXDtype_),
+            return ge::GRAPH_FAILED);
+    }
 
     return ge::GRAPH_SUCCESS;
 }
@@ -1001,7 +1019,8 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckOutputExpandedScale()
     int64_t expectedDim0{-1};
     int64_t expectedDim1{-1};
     int64_t expectedDim2{-1};
-    if ((quantMode_ == QUANT_MODE_UNQUANT && isInputScale_ == 1) || (quantMode_ == QUANT_MODE_DYNAMIC)) {
+    if ((quantMode_ == QUANT_MODE_UNQUANT && isInputScale_ == 1) || (quantMode_ == QUANT_MODE_DYNAMIC) ||
+        (quantMode_ == QUANT_MODE_INT4_DYNAMIC)) {
         if (isMXFPXNoQuantCase(quantMode_, xDtype_)) {
             expectedRank = RANK_THREE;
             expectedDim0 = totalLength_;
@@ -1332,7 +1351,7 @@ MultipleParams MoeInitRoutingV3Arch35TilingClass::GetMultipleParams()
         // colMultiple = 2*inputXDtypeSize + 2*1 + 4 + 2 = 2*inputXDtypeSize + 8
         params.colMultiple = NUM_TWO * inputXDtypeSize_ + NUM_TWO + sizeof(float) + sizeof(uint16_t);
         params.rowMultiple = STATIC_QUANT_ROW_MULTIPLE;
-    } else if (quantMode_ == QUANT_MODE_DYNAMIC) {
+    } else if (quantMode_ == QUANT_MODE_DYNAMIC || quantMode_ == QUANT_MODE_INT4_DYNAMIC) {
         params.colMultiple = DYNAMIC_QUANT_COLS_BUFFER;
         params.rowMultiple = NUM_FOUR;
     } else if (quantMode_ == QUANT_MODE_HIF8_CAST && xDtype_ == ge::DataType::DT_BF16) {
@@ -1539,7 +1558,7 @@ bool MoeInitRoutingV3Arch35TilingClass::IsFullLoad()
     int64_t perCoreTokens = 1;
     if (expertStart_ == 0 && expertEnd_ == expertNum_) {
         ep_ = 0;
-        if (quantMode_ != QUANT_MODE_DYNAMIC) {
+        if (quantMode_ != QUANT_MODE_DYNAMIC && quantMode_ != QUANT_MODE_INT4_DYNAMIC) {
             int64_t perCoreTokensEst = n_ / aivCoreNum_;
             int64_t remainder = n_ % aivCoreNum_;
             perCoreTokens = remainder <= 1 ? perCoreTokensEst + 1 : perCoreTokensEst + NUM_TWO;
@@ -1574,6 +1593,12 @@ bool MoeInitRoutingV3Arch35TilingClass::IsFullLoad()
         int64_t quantSpace = xAlignedCount * DYNAMIC_QUANT_FULLLOAD_COLS_BUFFER;
         int64_t scaleOutSpace = UB_BLOCK_SIZE * NUM_TWO;
         remainUb -= (quantSpace + scaleOutSpace);
+    } else if (quantMode_ == QUANT_MODE_INT4_DYNAMIC) {
+        int64_t xAlignedCount = Align(cols_, UB_BLOCK_SIZE);
+        int64_t quantSpace = xAlignedCount * DYNAMIC_QUANT_FULLLOAD_COLS_BUFFER;
+        int64_t scaleOutSpace = UB_BLOCK_SIZE * NUM_TWO;
+        int64_t int4ExtraUb = BLOCK_BYTES * NUM_TWO + BLOCK_BYTES * NUM_TWO + AlignBytes(MAX_VALUE_NUM, sizeof(float));
+        remainUb -= (quantSpace + scaleOutSpace + int4ExtraUb);
     }
 
     return remainUb > 0;
