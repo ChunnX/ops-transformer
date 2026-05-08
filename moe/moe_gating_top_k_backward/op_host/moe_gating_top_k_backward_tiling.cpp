@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -9,7 +9,7 @@
  */
 
 /* !
- * \file moe_gating_top_k_tiling.cpp
+ * \file moe_gating_top_k_backward_tiling.cpp
  * \brief
  */
 #include <cmath>
@@ -69,13 +69,13 @@ inline static int64_t CeilLog4(int64_t x)
     return static_cast<int64_t>(std::ceil(std::log(x) / std::log(4))); // 4 for four
 }
 
-class MoeGatingTopKTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
+class MoeGatingTopKBackwardTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit MoeGatingTopKTilingBase(gert::TilingContext *context) : Ops::Transformer::OpTiling::TilingBaseClass(context)
+    explicit MoeGatingTopKBackwardTilingBase(gert::TilingContext *context) : Ops::Transformer::OpTiling::TilingBaseClass(context)
     {
         Reset();
     }
-    ~MoeGatingTopKTilingBase() override = default;
+    ~MoeGatingTopKBackwardTilingBase() override = default;
 
     void Reset(gert::TilingContext *context) override
     {
@@ -134,10 +134,10 @@ private:
 
     int64_t inputDtypeSize_;
     const char *opName_ = "";
-    MoeGatingTopKTilingData moeGatingTopKTilingData_;
+    MoeGatingTopKBackwardTilingData MoeGatingTopKBackwardTilingData_;
 };
 
-ge::graphStatus MoeGatingTopKTilingBase::CheckInputShape()
+ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckInputShape()
 {
     size_t xDimNum = xShape_->GetDimNum();
     OP_CHECK_IF(xDimNum != X_INPUT_DIMS,
@@ -147,8 +147,8 @@ ge::graphStatus MoeGatingTopKTilingBase::CheckInputShape()
     // 通过输入获取rows 和 expertCount
     rows_ = xShape_->GetDim(0);
     expertCount_ = xShape_->GetDim(1);
-    moeGatingTopKTilingData_.set_rowCount(rows_);
-    moeGatingTopKTilingData_.set_expertCount(expertCount_);
+    MoeGatingTopKBackwardTilingData_.set_rowCount(rows_);
+    MoeGatingTopKBackwardTilingData_.set_expertCount(expertCount_);
     if (biasShape_ != nullptr) {
         addBias_ = 1;
         size_t biasDimNum = biasShape_->GetDimNum();
@@ -160,7 +160,7 @@ ge::graphStatus MoeGatingTopKTilingBase::CheckInputShape()
             OP_LOGE(context_, "The first dim of bias is: %ld, but should be %ld.", biasShape_->GetDim(0), expertCount_),
             return ge::GRAPH_FAILED);
     }
-    moeGatingTopKTilingData_.set_addBias(addBias_);
+    MoeGatingTopKBackwardTilingData_.set_addBias(addBias_);
 
     OP_CHECK_IF(k_ > expertCount_,
                 OP_LOGE(context_, "k is: %ld, expert num is: %ld, k cannot be greater than expert num.", k_, expertCount_),
@@ -168,7 +168,7 @@ ge::graphStatus MoeGatingTopKTilingBase::CheckInputShape()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeGatingTopKTilingBase::CheckAttr()
+ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckAttr()
 {
     OP_CHECK_IF(
         expertCount_ > MAX_EXPERT_COUNT,
@@ -227,12 +227,12 @@ ge::graphStatus MoeGatingTopKTilingBase::CheckAttr()
                     return ge::GRAPH_FAILED);
     }
 
-    moeGatingTopKTilingData_.set_perGroupExpertCount(perGroupExpertCount_);
-    moeGatingTopKTilingData_.set_perGroupExpertCountAlign(groupExpertCountAlign);
+    MoeGatingTopKBackwardTilingData_.set_perGroupExpertCount(perGroupExpertCount_);
+    MoeGatingTopKBackwardTilingData_.set_perGroupExpertCountAlign(groupExpertCountAlign);
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeGatingTopKTilingBase::GetShapeAttrsInfo()
+ge::graphStatus MoeGatingTopKBackwardTilingBase::GetShapeAttrsInfo()
 {
     opName_ = context_->GetNodeName();
     // 获取输入shape信息
@@ -304,62 +304,62 @@ ge::graphStatus MoeGatingTopKTilingBase::GetShapeAttrsInfo()
     const int64_t *kPtr = attrs->GetAttrPointer<int64_t>(K_ATTR_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, kPtr);
     k_ = *kPtr;
-    moeGatingTopKTilingData_.set_k(k_);
+    MoeGatingTopKBackwardTilingData_.set_k(k_);
     OP_LOGI(context_, "Attr k is: %ld ", k_);
 
     const int64_t *kGroupPtr = attrs->GetAttrPointer<int64_t>(K_GROUP_ATTR_INDEX);
     if (kGroupPtr != nullptr) {
         kGroup_ = *kGroupPtr;
-        moeGatingTopKTilingData_.set_kGroup(kGroup_);
+        MoeGatingTopKBackwardTilingData_.set_kGroup(kGroup_);
     }
     OP_LOGI(context_, "Attr k_group is: %ld ", kGroup_);
 
     const int64_t *groupCountPtr = attrs->GetAttrPointer<int64_t>(GROUP_COUNT_ATTR_INDEX);
     if (groupCountPtr != nullptr) {
         groupCount_ = *groupCountPtr;
-        moeGatingTopKTilingData_.set_groupCount(groupCount_);
+        MoeGatingTopKBackwardTilingData_.set_groupCount(groupCount_);
     }
     OP_LOGI(context_, "Attr group_count is: %ld ", groupCount_);
 
     const int64_t *groupSelectModePtr = attrs->GetAttrPointer<int64_t>(GROUP_SELECT_MODE_ATTR_INDEX);
     if (groupSelectModePtr != nullptr) {
         groupSelectMode_ = *groupSelectModePtr;
-        moeGatingTopKTilingData_.set_groupSelectMode(groupSelectMode_);
+        MoeGatingTopKBackwardTilingData_.set_groupSelectMode(groupSelectMode_);
     }
     OP_LOGI(context_, "Attr group_select_mode is: %ld ", groupSelectMode_);
 
     const int64_t *renormPtr = attrs->GetAttrPointer<int64_t>(RENORM_ATTR_INDEX);
     if (renormPtr != nullptr) {
         renorm_ = *renormPtr;
-        moeGatingTopKTilingData_.set_renorm(renorm_);
+        MoeGatingTopKBackwardTilingData_.set_renorm(renorm_);
     }
     OP_LOGI(context_, "Attr renorm is: %ld ", renorm_);
 
     const int64_t *normTypePtr = attrs->GetAttrPointer<int64_t>(NORM_TYPE_ATTR_INDEX);
     if (normTypePtr != nullptr) {
         normType_ = *normTypePtr;
-        moeGatingTopKTilingData_.set_normType(normType_);
+        MoeGatingTopKBackwardTilingData_.set_normType(normType_);
     }
     OP_LOGI(context_, "Attr norm_type is: %ld ", normType_);
 
     const bool *outFlagPtr = attrs->GetAttrPointer<bool>(OUT_FLAG_ATTR_INDEX);
     if (outFlagPtr != nullptr) {
         outFlag_ = (*outFlagPtr) ? 1 : 0;
-        moeGatingTopKTilingData_.set_outFlag(outFlag_);
+        MoeGatingTopKBackwardTilingData_.set_outFlag(outFlag_);
     }
     OP_LOGI(context_, "Attr out_flag is: %ld ", outFlag_);
 
     const float *routedScalingFactorPtr = attrs->GetAttrPointer<float>(ROUTED_SCALING_FACTOR_ATTR_INDEX);
     if (routedScalingFactorPtr != nullptr) {
         routedScalingFactor_ = *routedScalingFactorPtr;
-        moeGatingTopKTilingData_.set_routedScalingFactor(routedScalingFactor_);
+        MoeGatingTopKBackwardTilingData_.set_routedScalingFactor(routedScalingFactor_);
     }
     OP_LOGI(context_, "Attr routed_scaling_factor is: %f ", routedScalingFactor_);
 
     const float *epsPtr = attrs->GetAttrPointer<float>(EPS_ATTR_INDEX);
     if (epsPtr != nullptr) {
         eps_ = *epsPtr;
-        moeGatingTopKTilingData_.set_eps(eps_);
+        MoeGatingTopKBackwardTilingData_.set_eps(eps_);
     }
     OP_LOGI(context_, "Attr eps is: %f ", eps_);
 
@@ -367,7 +367,7 @@ ge::graphStatus MoeGatingTopKTilingBase::GetShapeAttrsInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeGatingTopKTilingBase::GetPlatformInfo()
+ge::graphStatus MoeGatingTopKBackwardTilingBase::GetPlatformInfo()
 {
     auto platformInfo = context_->GetPlatformInfo();
     OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(context_, "fail to get platform info"), return ge::GRAPH_FAILED);
@@ -379,7 +379,7 @@ ge::graphStatus MoeGatingTopKTilingBase::GetPlatformInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeGatingTopKTilingBase::CheckOutShape()
+ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckOutShape()
 {
     OP_CHECK_IF((yShape_->GetDimNum() != xShape_->GetDimNum()),
                 OP_LOGE(context_, "y out shape num %zu and x shape num %zu not equal, please check.", yShape_->GetDimNum(),
@@ -426,21 +426,21 @@ ge::graphStatus MoeGatingTopKTilingBase::CheckOutShape()
     return ge::GRAPH_SUCCESS;
 }
 
-void MoeGatingTopKTilingBase::SplitRows()
+void MoeGatingTopKBackwardTilingBase::SplitRows()
 {
     int64_t perCoreRows = Ops::Base::CeilDiv(rows_, static_cast<int64_t>(aicoreParams_.numBlocks));
     int64_t needCoreNum = Ops::Base::CeilDiv(rows_, perCoreRows);
     // perCoreRows cannot be 0
     int64_t lastCoreRows = rows_ % perCoreRows == 0 ? perCoreRows : rows_ % perCoreRows;
-    moeGatingTopKTilingData_.set_needCoreNum(needCoreNum);
-    moeGatingTopKTilingData_.set_perCoreRowCount(perCoreRows);
-    moeGatingTopKTilingData_.set_lastCoreRowCount(lastCoreRows);
+    MoeGatingTopKBackwardTilingData_.set_needCoreNum(needCoreNum);
+    MoeGatingTopKBackwardTilingData_.set_perCoreRowCount(perCoreRows);
+    MoeGatingTopKBackwardTilingData_.set_lastCoreRowCount(lastCoreRows);
     int64_t vmsCount = CeilLog4(Ops::Base::CeilDiv(kGroup_, 4L));
     OP_LOGI(context_, "vms count is: %ld", vmsCount);
-    moeGatingTopKTilingData_.set_vmsCount(vmsCount); // 需要归并的轮数
+    MoeGatingTopKBackwardTilingData_.set_vmsCount(vmsCount); // 需要归并的轮数
 }
 
-void MoeGatingTopKTilingBase::CalTmpBufUbSize()
+void MoeGatingTopKBackwardTilingBase::CalTmpBufUbSize()
 {
     std::vector<int64_t> shape_vec = {expertCount_};
     ge::Shape shape(shape_vec);
@@ -449,10 +449,10 @@ void MoeGatingTopKTilingBase::CalTmpBufUbSize()
     AscendC::GetSigmoidMaxMinTmpSize(shape, sizeof(float), false, maxValue, minValue);
 
     int64_t indexTmpBuf = (expertCount_ + 31) / 32 * 32 * static_cast<int64_t>(sizeof(float));
-    moeGatingTopKTilingData_.set_calTmpBufUbSize(std::max(indexTmpBuf, static_cast<int64_t>(minValue)));
+    MoeGatingTopKBackwardTilingData_.set_calTmpBufUbSize(std::max(indexTmpBuf, static_cast<int64_t>(minValue)));
 }
 
-ge::graphStatus MoeGatingTopKTilingBase::DoOpTiling()
+ge::graphStatus MoeGatingTopKBackwardTilingBase::DoOpTiling()
 {
     auto ret = CheckInputShape();
     if (ret != ge::GRAPH_SUCCESS) {
@@ -474,30 +474,30 @@ ge::graphStatus MoeGatingTopKTilingBase::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeGatingTopKTilingBase::DoLibApiTiling()
+ge::graphStatus MoeGatingTopKBackwardTilingBase::DoLibApiTiling()
 {
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeGatingTopKTilingBase::GetWorkspaceSize()
+ge::graphStatus MoeGatingTopKBackwardTilingBase::GetWorkspaceSize()
 {
     // 计算workspace大小
     workspaceSize_ = DEFAULT_WORKSPACE_SIZE;
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeGatingTopKTilingBase::PostTiling()
+ge::graphStatus MoeGatingTopKBackwardTilingBase::PostTiling()
 {
-    context_->SetBlockDim(moeGatingTopKTilingData_.get_needCoreNum());
+    context_->SetBlockDim(MoeGatingTopKBackwardTilingData_.get_needCoreNum());
     size_t *currentWorkspace = context_->GetWorkspaceSizes(1);
     currentWorkspace[0] = workspaceSize_;
-    moeGatingTopKTilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(),
+    MoeGatingTopKBackwardTilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(),
                                           context_->GetRawTilingData()->GetCapacity());
-    context_->GetRawTilingData()->SetDataSize(moeGatingTopKTilingData_.GetDataSize());
+    context_->GetRawTilingData()->SetDataSize(MoeGatingTopKBackwardTilingData_.GetDataSize());
     return ge::GRAPH_SUCCESS;
 }
 
-uint64_t MoeGatingTopKTilingBase::GetTilingKey() const
+uint64_t MoeGatingTopKBackwardTilingBase::GetTilingKey() const
 {
     // DeepSeekV3排序对齐高性能场景
     if (expertCount_ == 256 && groupCount_ == 8 && kGroup_ == 4 && k_ <= 32 && addBias_ &&
@@ -518,11 +518,11 @@ uint64_t MoeGatingTopKTilingBase::GetTilingKey() const
     }
 }
 
-void MoeGatingTopKTilingBase::Reset()
+void MoeGatingTopKBackwardTilingBase::Reset()
 {
     opName_ = nullptr;
     return;
 }
 
-REGISTER_OPS_TILING_TEMPLATE(MoeGatingTopK, MoeGatingTopKTilingBase, 2000);
+REGISTER_OPS_TILING_TEMPLATE(MoeGatingTopKBackward, MoeGatingTopKBackwardTilingBase, 2000);
 } // namespace optiling
