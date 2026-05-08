@@ -768,7 +768,7 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapePertensor(const FiaTilingI
 
 ge::graphStatus DequantChecker::CheckDequantScaleBnNBsDShapeMXFP8(const FiaTilingInfo &fiaInfo) {
     if (fiaInfo.kvLayout != FiaLayout::BnNBsD) {
-        return ge::GRAPH_FAILED;
+        return ge::GRAPH_SUCCESS;
     }
     // key
     const gert::Shape keyAntiquantScaleShape = fiaInfo.opParamInfo.keyAntiquantScale.tensor->GetStorageShape();
@@ -811,7 +811,7 @@ ge::graphStatus DequantChecker::CheckDequantScaleBnNBsDShapeMXFP8(const FiaTilin
 
 ge::graphStatus DequantChecker::CheckDequantScaleNZShapeMXFP8(const FiaTilingInfo &fiaInfo) {
     if (fiaInfo.kvLayout != FiaLayout::NZ) {
-        return ge::GRAPH_FAILED;
+        return ge::GRAPH_SUCCESS;
     }
     // key
     const gert::Shape keyAntiquantScaleShape = fiaInfo.opParamInfo.keyAntiquantScale.tensor->GetStorageShape();
