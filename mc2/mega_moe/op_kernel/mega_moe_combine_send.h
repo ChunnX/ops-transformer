@@ -85,8 +85,9 @@ __aicore__ inline void CombineTile(
         AscendC::DataCopyExtParams ub2GmParams{
             static_cast<uint16_t>(sendRowCount),
             static_cast<uint32_t>(colCount * sizeof(ElementMMadOut2)),
+            0,
             static_cast<uint16_t>((n - colCount) * sizeof(ElementMMadOut2)),
-            0, 0};
+            0};
         AscendC::DataCopyPad(gmRemoteD[(dstExpertOffset + dstRowOffset) * n + colStart], ubBuffer, ub2GmParams);
     }
 }
