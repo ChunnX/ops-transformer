@@ -230,6 +230,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::FirstBuffInit(TPipe *tP
     tPipe->InitBuffer(CopyTempBuf_, BUFFER_ALIGN * sizeof(QuantOutType));
     uint32_t maxResetBufAlign = Ops::Base::CeilDiv(
         static_cast<int32_t>(expertPerRank_ * INT_CACHELINE * sizeof(int32_t) * 2), static_cast<int32_t>(ALIGN_32));
+    // 确保ResetFlagBuf_足够容纳blockNumAlign个int32_t（用于ResetGmm2RowReadyFlags）
+    uint32_t blockNumAlignBytes = Ops::Base::CeilAlign(static_cast<int32_t>(blockNum_) * static_cast<int32_t>(sizeof(int32_t)),
+        static_cast<int32_t>(ALIGN_32));
+    maxResetBufAlign = max(maxResetBufAlign, blockNumAlignBytes);
     tPipe->InitBuffer(ResetFlagBuf_, maxResetBufAlign);
 }
 
@@ -290,19 +294,18 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetGmm2RowReadyFlags()
 {
     if constexpr(g_coreType == AIV) {
+        if (aivCoreIdx_ != 0) {
+            return;
+        }
         GlobalTensor<int32_t> rowReadyFlags;
         rowReadyFlags.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.ptrGmm2RowReady);
 
-        // 按核心数清零
-        int32_t coreLen, coreOffset;
-        TilingByCore(blockNum_, coreLen, coreOffset);
-
+        // 对齐到32B（8个int32_t）
+        int32_t blockNumAlign = Ops::Base::CeilAlign(static_cast<uint32_t>(blockNum_), static_cast<uint32_t>(8));
         LocalTensor<int32_t> initTensor = ResetFlagBuf_.Get<int32_t>();
-        if (coreLen != 0) {
-            Duplicate(initTensor, 0, coreLen);
-            SyncFunc<AscendC::HardEvent::V_MTE3>();
-            DataCopy(rowReadyFlags[coreOffset], initTensor, coreLen);
-        }
+        Duplicate(initTensor, 0, blockNumAlign);
+        SyncFunc<AscendC::HardEvent::V_MTE3>();
+        DataCopy(rowReadyFlags, initTensor, blockNumAlign);
     }
 }
 
@@ -737,6 +740,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                 DispatchTokens(gmmAddrInfo, expertIdx);
             }
         }
+
 
         if (subBlockIdx_ == 0) {
             MegaMoeImpl::GroupMatmulSwigluQuant<
