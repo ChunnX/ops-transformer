@@ -60,9 +60,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
     int32_t s2RealSize = this->vecBlock.GatherKV(this->selectedKWorkSpaceGm, this->constInfo, runInfo);
     
     if ASCEND_IS_AIV {
-        // printf("before InitCubeVecSharedParams, s2Realsize: %d\n", runInfo.commonRunInfo.s2RealSize);
         this->vecBlock.InitCubeVecSharedParams(runInfo, s2RealSize);
-        // printf("after InitCubeVecSharedParams, s2Realsize: %d\n", runInfo.commonRunInfo.s2RealSize);
 
         CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_V0_TO_C1_FLAG[runInfo.commonRunInfo.taskIdMod2]); // dqk must wait ds copy completely
     } else {
@@ -246,7 +244,6 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::Process()
 {
-    // printf("========kernel process==========\n");
     this->AllocEventID();
     if constexpr (IsSink) {
         this->vecBlock.CopySink(this->constInfo);

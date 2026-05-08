@@ -40,7 +40,10 @@
      int64_t formerCoreProcessNNum;
      int64_t remainCoreProcessNNum;
      int64_t layout;
-     int32_t sparseMode;
+     int32_t cmpSparseMode;
+     int32_t oriSparseMode;
+     int64_t oriWinLeft;
+     int64_t oriWinRight; 
      float scaleValue;
      int64_t selectedKWorkSpaceOffset;
      int64_t mm4ResWorkSpaceOffset;
@@ -64,7 +67,10 @@
      int64_t get_remainCoreProcessNNum() const {return remainCoreProcessNNum;}
      float get_scaleValue() const {return scaleValue;}
      int64_t get_layout() const {return layout;}
-     int32_t get_sparseMode() const {return sparseMode;}
+     int32_t get_cmpSparseMode() const {return cmpSparseMode;}
+     int32_t get_oriSparseMode() const {return oriSparseMode;}
+     int32_t get_oriWinLeft() const {return oriWinLeft;}
+     int32_t get_oriWinRight() const {return oriWinRight;}
      int64_t get_selectedKWorkSpaceOffset() const {return selectedKWorkSpaceOffset;}
      int64_t get_mm4ResWorkSpaceOffset() const {return mm4ResWorkSpaceOffset;}
      int64_t get_mm5ResWorkSpaceOffset() const {return mm5ResWorkSpaceOffset;}
@@ -87,7 +93,10 @@
      void set_remainCoreProcessNNum(int64_t remainCoreProcessNNumParam) { this->remainCoreProcessNNum = remainCoreProcessNNumParam; }
      void set_scaleValue(float scaleValueParam) { this->scaleValue = scaleValueParam; }
      void set_layout(int64_t layoutParam) { this->layout = layoutParam; }
-     void set_sparseMode(int32_t sparseModeParam) { this->sparseMode = sparseModeParam; }
+     void set_cmpSparseMode(int32_t cmpSparseModeParam) { this->cmpSparseMode = cmpSparseModeParam; }
+     void set_oriSparseMode(int32_t oriSparseModeParam) { this->oriSparseMode = oriSparseModeParam; }
+     void set_oriWinLeft(int32_t oriWinLeftParam) { this->oriWinLeft = oriWinLeftParam; }
+     void set_oriWinRight(int32_t oriWinRightParam) { this->oriWinRight = oriWinRightParam; }
      void set_selectedKWorkSpaceOffset(int64_t selectedKWorkSpaceOffsetParam) { this->selectedKWorkSpaceOffset = selectedKWorkSpaceOffsetParam; }
      void set_mm4ResWorkSpaceOffset(int64_t mm4ResWorkSpaceOffsetParam) { this->mm4ResWorkSpaceOffset = mm4ResWorkSpaceOffsetParam; }
      void set_mm5ResWorkSpaceOffset(int64_t mm5ResWorkSpaceOffsetParam) { this->mm5ResWorkSpaceOffset = mm5ResWorkSpaceOffsetParam; }
