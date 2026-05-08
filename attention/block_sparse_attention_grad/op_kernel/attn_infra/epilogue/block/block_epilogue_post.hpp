@@ -335,8 +335,8 @@ public:
         } else {
             outOffset = curBatch * ( n * s * d) + nIdx * (s * d) + curS * d;
         }
-        DataCopyExtParams copyParams{static_cast<uint16_t>(sCount), static_cast<uint32_t>(d * sizeof(OutputDtype_)),
-                                     static_cast<uint32_t>(transpseStride / BASE_BLOCK_BYTE), 0,
+        DataCopyExtParams copyParams{static_cast<uint16_t>(sCount), static_cast<uint32_t>(d * sizeof(OutputDtype_)), 0,
+                                     static_cast<uint32_t>(transpseStride / BASE_BLOCK_BYTE),
                                      0}; // 结构体DataCopyExtParams最后一个参数是rsv保留位
         DataCopyPad(outGm[outOffset], output[srcOffset], copyParams);
     }
