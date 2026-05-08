@@ -65,7 +65,8 @@ ASCENDC_TPL_ARGS_DECL(FlashAttentionScore, // 算子唯一标识，可以opType�
     ASCENDC_TPL_UINT_DECL(OutDtype, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST, 0, 1, 2),
     // bit:61
     ASCENDC_TPL_UINT_DECL(Regbase, ASCENDC_TPL_1_BW, ASCENDC_TPL_UI_LIST, 0, 1),
-
+    // bit:62
+    ASCENDC_TPL_UINT_DECL(optionalDn, ASCENDC_TPL_1_BW, ASCENDC_TPL_UI_LIST, 0, 1),
 );
 
 // DvTemplateType设置为0，表示DvTemplateType = DTemplateType
@@ -86,6 +87,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(HasRope, ASCENDC_TPL_UI_LIST, 0, 1),
         ASCENDC_TPL_UINT_SEL(OutDtype, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(Regbase, ASCENDC_TPL_UI_LIST, 1),
+        ASCENDC_TPL_UINT_SEL(optionalDn, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_TILING_STRUCT_SEL(optiling::FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
@@ -102,6 +104,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(HasRope, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(OutDtype, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(Regbase, ASCENDC_TPL_UI_LIST, 1),
+        ASCENDC_TPL_UINT_SEL(optionalDn, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_TILING_STRUCT_SEL(optiling::FlashAttentionScoreSimplifiedTilingData)
     ),
 
@@ -120,6 +123,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(HasRope, ASCENDC_TPL_UI_LIST, 0, 1),
         ASCENDC_TPL_UINT_SEL(OutDtype, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(Regbase, ASCENDC_TPL_UI_LIST, 1),
+        ASCENDC_TPL_UINT_SEL(optionalDn, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_TILING_STRUCT_SEL(optiling::FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
@@ -136,6 +140,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(HasRope, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(OutDtype, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(Regbase, ASCENDC_TPL_UI_LIST, 1),
+        ASCENDC_TPL_UINT_SEL(optionalDn, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_TILING_STRUCT_SEL(optiling::FlashAttentionScoreSimplifiedTilingData)
     ),
 
@@ -154,6 +159,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(HasRope, ASCENDC_TPL_UI_LIST, 0, 1),
         ASCENDC_TPL_UINT_SEL(OutDtype, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(Regbase, ASCENDC_TPL_UI_LIST, 1),
+        ASCENDC_TPL_UINT_SEL(optionalDn, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_TILING_STRUCT_SEL(optiling::FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
@@ -170,6 +176,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(HasRope, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(OutDtype, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(Regbase, ASCENDC_TPL_UI_LIST, 1),
+        ASCENDC_TPL_UINT_SEL(optionalDn, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_TILING_STRUCT_SEL(optiling::FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
@@ -186,6 +193,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(HasRope, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(OutDtype, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(Regbase, ASCENDC_TPL_UI_LIST, 1),
+        ASCENDC_TPL_UINT_SEL(optionalDn, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_TILING_STRUCT_SEL(optiling::FlashAttentionScoreSimplifiedTilingData)
     ),
 
@@ -204,6 +212,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(HasRope, ASCENDC_TPL_UI_LIST, 0, 1),
         ASCENDC_TPL_UINT_SEL(OutDtype, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(Regbase, ASCENDC_TPL_UI_LIST, 1),
+        ASCENDC_TPL_UINT_SEL(optionalDn, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_TILING_STRUCT_SEL(optiling::FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
@@ -220,6 +229,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(HasRope, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(OutDtype, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(Regbase, ASCENDC_TPL_UI_LIST, 1),
+        ASCENDC_TPL_UINT_SEL(optionalDn, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_TILING_STRUCT_SEL(optiling::FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
@@ -236,6 +246,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(HasRope, ASCENDC_TPL_UI_LIST, 0, 1),
         ASCENDC_TPL_UINT_SEL(OutDtype, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(Regbase, ASCENDC_TPL_UI_LIST, 1),
+        ASCENDC_TPL_UINT_SEL(optionalDn, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_TILING_STRUCT_SEL(optiling::FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
@@ -252,6 +263,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(HasRope, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(OutDtype, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(Regbase, ASCENDC_TPL_UI_LIST, 1),
+        ASCENDC_TPL_UINT_SEL(optionalDn, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_TILING_STRUCT_SEL(optiling::FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
@@ -268,6 +280,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(HasRope, ASCENDC_TPL_UI_LIST, 0, 1),
         ASCENDC_TPL_UINT_SEL(OutDtype, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(Regbase, ASCENDC_TPL_UI_LIST, 1),
+        ASCENDC_TPL_UINT_SEL(optionalDn, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_TILING_STRUCT_SEL(optiling::FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
@@ -284,6 +297,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(HasRope, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(OutDtype, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(Regbase, ASCENDC_TPL_UI_LIST, 1),
+        ASCENDC_TPL_UINT_SEL(optionalDn, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_TILING_STRUCT_SEL(optiling::FlashAttentionScoreSimplifiedTilingData)
     ),
 
@@ -302,6 +316,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(HasRope, ASCENDC_TPL_UI_LIST, 0, 1),
         ASCENDC_TPL_UINT_SEL(OutDtype, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(Regbase, ASCENDC_TPL_UI_LIST, 1),
+        ASCENDC_TPL_UINT_SEL(optionalDn, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_TILING_STRUCT_SEL(optiling::FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
@@ -318,6 +333,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(HasRope, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(OutDtype, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(Regbase, ASCENDC_TPL_UI_LIST, 1),
+        ASCENDC_TPL_UINT_SEL(optionalDn, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_TILING_STRUCT_SEL(optiling::FlashAttentionScoreSimplifiedTilingData)
     ),
 
@@ -336,6 +352,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(HasRope, ASCENDC_TPL_UI_LIST, 0, 1),
         ASCENDC_TPL_UINT_SEL(OutDtype, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(Regbase, ASCENDC_TPL_UI_LIST, 1),
+        ASCENDC_TPL_UINT_SEL(optionalDn, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_TILING_STRUCT_SEL(optiling::FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
@@ -352,6 +369,25 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(HasRope, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(OutDtype, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(Regbase, ASCENDC_TPL_UI_LIST, 1),
+        ASCENDC_TPL_UINT_SEL(optionalDn, ASCENDC_TPL_UI_LIST, 0),
+        ASCENDC_TPL_TILING_STRUCT_SEL(optiling::FlashAttentionScoreSimplifiedTilingData)
+    ),
+
+    ASCENDC_TPL_ARGS_SEL(
+        ASCENDC_TPL_UINT_SEL(KernelTypeKey, ASCENDC_TPL_UI_LIST, 0),
+        ASCENDC_TPL_UINT_SEL(ImplMode, ASCENDC_TPL_UI_LIST, 0, 2),
+        ASCENDC_TPL_UINT_SEL(Layout, ASCENDC_TPL_UI_LIST, 1, 2, 3, 4),
+        ASCENDC_TPL_UINT_SEL(S1TemplateType, ASCENDC_TPL_UI_LIST, 128),
+        ASCENDC_TPL_UINT_SEL(S2TemplateType, ASCENDC_TPL_UI_LIST, 128),
+        ASCENDC_TPL_UINT_SEL(DTemplateType, ASCENDC_TPL_UI_LIST, 16, 32, 48, 64, 80, 96, 128, 160, 192, 256),
+        ASCENDC_TPL_UINT_SEL(DvTemplateType, ASCENDC_TPL_UI_LIST, 0),
+        ASCENDC_TPL_UINT_SEL(PseMode, ASCENDC_TPL_UI_LIST, 9),
+        ASCENDC_TPL_UINT_SEL(HasAtten, ASCENDC_TPL_UI_LIST, 1),
+        ASCENDC_TPL_UINT_SEL(HasDrop, ASCENDC_TPL_UI_LIST, 0),
+        ASCENDC_TPL_UINT_SEL(HasRope, ASCENDC_TPL_UI_LIST, 0),
+        ASCENDC_TPL_UINT_SEL(OutDtype, ASCENDC_TPL_UI_LIST, 0),
+        ASCENDC_TPL_UINT_SEL(Regbase, ASCENDC_TPL_UI_LIST, 1),
+        ASCENDC_TPL_UINT_SEL(optionalDn, ASCENDC_TPL_UI_LIST, 1),
         ASCENDC_TPL_TILING_STRUCT_SEL(optiling::FlashAttentionScoreSimplifiedTilingData)
     ),
     #endif
@@ -372,6 +408,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(HasRope, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(OutDtype, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(Regbase, ASCENDC_TPL_UI_LIST, 1),
+        ASCENDC_TPL_UINT_SEL(optionalDn, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_TILING_STRUCT_SEL(optiling::FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
@@ -388,6 +425,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(HasRope, ASCENDC_TPL_UI_LIST, 0, 1),
         ASCENDC_TPL_UINT_SEL(OutDtype, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(Regbase, ASCENDC_TPL_UI_LIST, 1),
+        ASCENDC_TPL_UINT_SEL(optionalDn, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_TILING_STRUCT_SEL(optiling::FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
@@ -404,6 +442,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(HasRope, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(OutDtype, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(Regbase, ASCENDC_TPL_UI_LIST, 1),
+        ASCENDC_TPL_UINT_SEL(optionalDn, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_TILING_STRUCT_SEL(optiling::FlashAttentionScoreSimplifiedTilingData)
     ),
 
@@ -422,6 +461,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(HasRope, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(OutDtype, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(Regbase, ASCENDC_TPL_UI_LIST, 1),
+        ASCENDC_TPL_UINT_SEL(optionalDn, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_TILING_STRUCT_SEL(optiling::FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
@@ -438,6 +478,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(HasRope, ASCENDC_TPL_UI_LIST, 0, 1),
         ASCENDC_TPL_UINT_SEL(OutDtype, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(Regbase, ASCENDC_TPL_UI_LIST, 1),
+        ASCENDC_TPL_UINT_SEL(optionalDn, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_TILING_STRUCT_SEL(optiling::FlashAttentionScoreSimplifiedTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
@@ -454,6 +495,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(HasRope, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(OutDtype, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(Regbase, ASCENDC_TPL_UI_LIST, 1),
+        ASCENDC_TPL_UINT_SEL(optionalDn, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_TILING_STRUCT_SEL(optiling::FlashAttentionScoreSimplifiedTilingData)
     ),
     #endif
@@ -475,6 +517,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(HasRope, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(OutDtype, ASCENDC_TPL_UI_LIST, 2),
         ASCENDC_TPL_UINT_SEL(Regbase, ASCENDC_TPL_UI_LIST, 1),
+        ASCENDC_TPL_UINT_SEL(optionalDn, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_TILING_STRUCT_SEL(optiling::FlashAttentionScoreSimplifiedTilingData)
     ),
     // invalid line in fp8
@@ -492,6 +535,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(HasRope, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(OutDtype, ASCENDC_TPL_UI_LIST, 2),
         ASCENDC_TPL_UINT_SEL(Regbase, ASCENDC_TPL_UI_LIST, 1),
+        ASCENDC_TPL_UINT_SEL(optionalDn, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_TILING_STRUCT_SEL(optiling::FlashAttentionScoreSimplifiedTilingData)
     ),
     #endif
@@ -511,7 +555,9 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(HasRope, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(OutDtype, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_UINT_SEL(Regbase, ASCENDC_TPL_UI_LIST, 1),
+        ASCENDC_TPL_UINT_SEL(optionalDn, ASCENDC_TPL_UI_LIST, 0),
         ASCENDC_TPL_TILING_STRUCT_SEL(optiling::FlashAttentionScoreEmptyInputTilingDataRegbase)
     ),
+
 );
 #endif
