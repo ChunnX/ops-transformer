@@ -22,6 +22,85 @@
 - 仅整改 A5 芯片相关文件，公共代码暂不整改
 - NPU_FORMAT_CAST 为公共算子，纳入整改范围
 
+### 2.0 OP_LOGE 调用方式架构差异
+
+**重要说明：** op_api 和 op_host 层的 OP_LOGE 宏定义不同，第一个参数含义完全不同！
+
+#### op_api 层（ACLNN API层）
+
+**定义文件：**
+- 原定义：`opbase/include/nnopbase/opdev/op_log.h`
+- 包定义：`aclnn/opdev/op_log.h`
+
+**调用方式：**
+```cpp
+OP_LOGE(错误码, "message", args...)
+```
+
+**示例：**
+```cpp
+OP_LOGE(ACLNN_ERR_PARAM_INVALID, 
+        "Per-token quant case is only supported when x, weight and y are all single tensor, "
+        "but now x size is %zu, weight size is %zu, y size is %zu",
+        xGroupedSize, weightGroupedSize, yGroupedSize);
+```
+
+**行为：**
+- 第一个参数传入 ACLNN 错误码（如 ACLNN_ERR_PARAM_INVALID）
+- 最终通过 `ReportErrorMessage` 将错误码转为 EZ 开头的错误码
+- **问题：** 最终上报为 EZ9999 通用错误码，不够精确
+
+#### op_host 层（算子Host实现层）
+
+**定义文件：**
+- 原定义：`opbase/pkg_inc/op_common/log/log.h`
+- 包定义：`pkg_inc/op_common/log/log.h`
+
+**调用方式：**
+```cpp
+OP_LOGE(算子名, "message", args...)
+```
+
+**示例：**
+```cpp
+OP_LOGE(context->GetNodeName(),
+        "When m(%lu)/n(%lu)/k(%lu)/groupNum(%lu) in mx quant mode, scaleFactor should not be equal to 0.",
+        inputParams_.mSize, inputParams_.nSize, inputParams_.kSize, inputParams_.groupNum);
+```
+
+**行为：**
+- 第一个参数传入算子名（通过 `context->GetNodeName()` 获取）
+- 通过 `REPORT_INNER_ERR_MSG("EZ9999", ...)` 上报 EZ9999 通用错误码
+- **问题：** 上报为 EZ9999 通用错误码，不够精确
+
+#### 整改统一要求
+
+无论 op_api 还是 op_host 层，都需要整改为规范化的 `OP_LOGE_FOR_*` 宏：
+
+| 层级 | 当前状态 | 整改后 | 整改原因 |
+| --- | --- | --- | --- |
+| op_api | 第一个参数传错误码，最终上报 EZ9999 | `OP_LOGE_FOR_*` | 上报精确的 EZ0008-EZ0024 错误码 |
+| op_host | 第一个参数传算子名，上报 EZ9999 | `OP_LOGE_FOR_*` | 上报精确的 EZ0008-EZ0024 错误码 |
+
+**整改后的统一调用方式：**
+```cpp
+// op_api 层整改示例
+OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+    op::internal::GetLogApiInfo(),  // 获取算子名
+    "x_size",
+    "xGroupedSize",
+    "Per-token quant case only supports single tensor"
+);
+
+// op_host 层整改示例
+OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+    context->GetNodeName(),  // 算子名
+    "scaleFactor",
+    "0",
+    "scaleFactor should not be 0 in mx quant mode"
+);
+```
+
 ### 2.1 数据统计总览
 
 | 错误类型 | GMMFR | GMM | NPU_FORMAT_CAST | 合计 |
