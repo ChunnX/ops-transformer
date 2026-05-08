@@ -125,282 +125,270 @@ extern "C" __global__ __aicore__ void Mc2weight_quant_batch_matmul_v2(
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 #if (defined(MICROSCALING))
 #if (defined(FORMAT_WEIGHT) && (FORMAT_WEIGHT == FORMAT_FRACTAL_NZ))
-    #if TILING_KEY_VAR == 2000020003000004101UL
+    if (TILING_KEY_IS(2000020003000004101UL)) {
         static constexpr WqmmConfig wqmmCfg = {false,         false, Mc2QuantType::MX, false, Mc2QuantType::PER_TENSOR,
                                                CubeFormat::NZ};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-    #elif TILING_KEY_VAR == 2000020001000004101UL
+    } else if (TILING_KEY_IS(2000020001000004101UL)) {
         static constexpr WqmmConfig wqmmCfg = {false,         false, Mc2QuantType::MX, false, Mc2QuantType::PER_TENSOR,
                                                CubeFormat::NZ};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
-    #endif
+    }
 #else
-    #if TILING_KEY_VAR == 2000020002000014100UL
+    if (TILING_KEY_IS(2000020002000014100UL)) {
         static constexpr WqmmConfig wqmmCfg = {false,         true, Mc2QuantType::MX, false, Mc2QuantType::PER_TENSOR,
                                                CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_2);
-    #elif TILING_KEY_VAR == 2000030003000004100UL
+    } else if (TILING_KEY_IS(2000030003000004100UL)) {
         static constexpr WqmmConfig wqmmCfg = {false,         false, Mc2QuantType::MX, false, Mc2QuantType::PER_TENSOR,
                                                CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-    #endif
+    }
 #endif
 #endif
 // 当前场景不支持c8输出和fp8输入
 #if (!defined(MICROSCALING) && defined(ORIG_DTYPE_Y) && (ORIG_DTYPE_Y != DT_INT8) & !defined(WEIGHT_F8_INPUT))
-    #if TILING_KEY_VAR == 100300UL
+    if (TILING_KEY_IS(100300UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, false, false, false, Mc2QuantType::PER_GROUP);
-    #elif TILING_KEY_VAR == 100310UL
+    } else if (TILING_KEY_IS(100310UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, false, true, false, Mc2QuantType::PER_GROUP);
-    #elif TILING_KEY_VAR == 100311UL
+    } else if (TILING_KEY_IS(100311UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, true, true, false, Mc2QuantType::PER_GROUP);
-    #elif TILING_KEY_VAR == 100301UL
+    } else if (TILING_KEY_IS(100301UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, true, false, false, Mc2QuantType::PER_GROUP);
-    #elif TILING_KEY_VAR == 10100300UL
+    } else if (TILING_KEY_IS(10100300UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, false, false, false, Mc2QuantType::PER_GROUP, true);
-    #elif TILING_KEY_VAR == 10100310UL
+    } else if (TILING_KEY_IS(10100310UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, false, true, false, Mc2QuantType::PER_GROUP, true);
-    #elif TILING_KEY_VAR == 100200UL
+    } else if (TILING_KEY_IS(100200UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, false, false, false, Mc2QuantType::PER_CHANNEL);
-    #elif TILING_KEY_VAR == 100210UL
+    } else if (TILING_KEY_IS(100210UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, false, true, false, Mc2QuantType::PER_CHANNEL);
-    #elif TILING_KEY_VAR == 100211UL
+    } else if (TILING_KEY_IS(100211UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, true, true, false, Mc2QuantType::PER_CHANNEL);
-    #elif TILING_KEY_VAR == 100201UL
+    } else if (TILING_KEY_IS(100201UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, true, false, false, Mc2QuantType::PER_CHANNEL);
-    #elif TILING_KEY_VAR == 100100UL
+    } else if (TILING_KEY_IS(100100UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, false, false, false, Mc2QuantType::PER_TENSOR);
-    #elif TILING_KEY_VAR == 100110UL
+    } else if (TILING_KEY_IS(100110UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, false, true, false, Mc2QuantType::PER_TENSOR);
-    #elif TILING_KEY_VAR == 100111UL
+    } else if (TILING_KEY_IS(100111UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, true, true, false, Mc2QuantType::PER_TENSOR);
-    #elif TILING_KEY_VAR == 100101UL
+    } else if (TILING_KEY_IS(100101UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, true, false, false, Mc2QuantType::PER_TENSOR);
-    #elif TILING_KEY_VAR == 101300UL
+    } else if (TILING_KEY_IS(101300UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, false, false, true, Mc2QuantType::PER_GROUP);
-    #elif TILING_KEY_VAR == 101310UL
+    } else if (TILING_KEY_IS(101310UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, false, true, true, Mc2QuantType::PER_GROUP);
-    #elif TILING_KEY_VAR == 101311UL
+    } else if (TILING_KEY_IS(101311UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, true, true, true, Mc2QuantType::PER_GROUP);
-    #elif TILING_KEY_VAR == 101301UL
+    } else if (TILING_KEY_IS(101301UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, true, false, true, Mc2QuantType::PER_GROUP);
-    #elif TILING_KEY_VAR == 10101300UL
+    } else if (TILING_KEY_IS(10101300UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, false, false, true, Mc2QuantType::PER_GROUP, true);
-    #elif TILING_KEY_VAR == 10101310UL
+    } else if (TILING_KEY_IS(10101310UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, false, true, true, Mc2QuantType::PER_GROUP, true);
-    #elif TILING_KEY_VAR == 101200UL
+    } else if (TILING_KEY_IS(101200UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, false, false, true, Mc2QuantType::PER_CHANNEL);
-    #elif TILING_KEY_VAR == 101210UL
+    } else if (TILING_KEY_IS(101210UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, false, true, true, Mc2QuantType::PER_CHANNEL);
-    #elif TILING_KEY_VAR == 101211UL
+    } else if (TILING_KEY_IS(101211UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, true, true, true, Mc2QuantType::PER_CHANNEL);
-    #elif TILING_KEY_VAR == 101201UL
+    } else if (TILING_KEY_IS(101201UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, true, false, true, Mc2QuantType::PER_CHANNEL);
-    #elif TILING_KEY_VAR == 101100UL
+    } else if (TILING_KEY_IS(101100UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, false, false, true, Mc2QuantType::PER_TENSOR);
-    #elif TILING_KEY_VAR == 101110UL
+    } else if (TILING_KEY_IS(101110UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, false, true, true, Mc2QuantType::PER_TENSOR);
-    #elif TILING_KEY_VAR == 101111UL
+    } else if (TILING_KEY_IS(101111UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, true, true, true, Mc2QuantType::PER_TENSOR);
-    #elif TILING_KEY_VAR == 101101UL
+    } else if (TILING_KEY_IS(101101UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, true, false, true, Mc2QuantType::PER_TENSOR);
-    #elif TILING_KEY_VAR == 2000020003000002101UL
+    } else if (TILING_KEY_IS(2000020003000002101UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             false, false, Mc2QuantType::PER_CHANNEL, false, Mc2QuantType::PER_TENSOR, CubeFormat::NZ};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-    #elif TILING_KEY_VAR == 2000020003000002121UL
+    } else if (TILING_KEY_IS(2000020003000002121UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             false, false, Mc2QuantType::PER_CHANNEL, true, Mc2QuantType::PER_TENSOR, CubeFormat::NZ};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-    #endif
 #if defined(A16) && defined(S4)
-    #if TILING_KEY_VAR == 2000020002000003101UL
+    } else if (TILING_KEY_IS(2000020002000003101UL)) {
         InvokeActKernel<2000020002000003101UL>(KERNEL_PARAMS);
-    #elif TILING_KEY_VAR == 2000020002000003121UL
+    } else if (TILING_KEY_IS(2000020002000003121UL)) {
         InvokeActKernel<2000020002000003121UL>(KERNEL_PARAMS);
-    #elif TILING_KEY_VAR == 2000020001000003101UL
+    } else if (TILING_KEY_IS(2000020001000003101UL)) {
         InvokeActKernel<2000020001000003101UL>(KERNEL_PARAMS);
-    #elif TILING_KEY_VAR == 2000020001000003121UL
+    } else if (TILING_KEY_IS(2000020001000003121UL)) {
         InvokeActKernel<2000020001000003121UL>(KERNEL_PARAMS);
-    #elif TILING_KEY_VAR == 2000020006000003101UL
+    } else if (TILING_KEY_IS(2000020006000003101UL)) {
         InvokeActKernel<2000020006000003101UL>(KERNEL_PARAMS);
-    #elif TILING_KEY_VAR == 2000020006000003121UL
+    } else if (TILING_KEY_IS(2000020006000003121UL)) {
         InvokeActKernel<2000020006000003121UL>(KERNEL_PARAMS);
-    #endif
 #endif
+    }
 #endif
 #if (!defined(MICROSCALING) && defined(FORMAT_WEIGHT) && (FORMAT_WEIGHT != FORMAT_FRACTAL_NZ))
-    #if TILING_KEY_VAR == 2000030004000012100UL
+    if (TILING_KEY_IS(2000030004000012100UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             false, true, Mc2QuantType::PER_CHANNEL, false, Mc2QuantType::PER_TENSOR, CubeFormat::ND};
-        #if defined(WEIGHT_B8_BRANCH)
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
-        #else
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
-        #endif
-    #endif
-    #if TILING_KEY_VAR == 2000030004000032100UL
+#if defined(WEIGHT_B8_BRANCH)
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
+#else
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
+#endif
+    } else if (TILING_KEY_IS(2000030004000032100UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             true, true, Mc2QuantType::PER_CHANNEL, false, Mc2QuantType::PER_TENSOR, CubeFormat::ND};
-        #if defined(WEIGHT_B8_BRANCH)
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
-        #else
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
-        #endif
-    #endif
-    #if TILING_KEY_VAR == 2000030004000012120UL
+#if defined(WEIGHT_B8_BRANCH)
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
+#else
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
+#endif
+    } else if (TILING_KEY_IS(2000030004000012120UL)) {
         static constexpr WqmmConfig wqmmCfg = {false,         true, Mc2QuantType::PER_CHANNEL, true, Mc2QuantType::PER_TENSOR,
                                                CubeFormat::ND};
-        #if defined(WEIGHT_B8_BRANCH)
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
-        #else
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
-        #endif
-    #endif
-    #if TILING_KEY_VAR == 2000030004000032120UL
+#if defined(WEIGHT_B8_BRANCH)
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
+#else
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
+#endif
+    } else if (TILING_KEY_IS(2000030004000032120UL)) {
         static constexpr WqmmConfig wqmmCfg = {true,          true, Mc2QuantType::PER_CHANNEL, true, Mc2QuantType::PER_TENSOR,
                                                CubeFormat::ND};
-        #if defined(WEIGHT_B8_BRANCH)
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
-        #else
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
-        #endif
-    #endif
-    #if TILING_KEY_VAR == 2000030004000011100UL
+#if defined(WEIGHT_B8_BRANCH)
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
+#else
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
+#endif
+    } else if (TILING_KEY_IS(2000030004000011100UL)) {
         static constexpr WqmmConfig wqmmCfg = {false,         true, Mc2QuantType::PER_TENSOR, false, Mc2QuantType::PER_TENSOR,
                                                CubeFormat::ND};
-        #if defined(WEIGHT_B8_BRANCH)
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
-        #else
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
-        #endif
-    #endif
-    #if TILING_KEY_VAR == 2000030004000031100UL
+#if defined(WEIGHT_B8_BRANCH)
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
+#else
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
+#endif
+    } else if (TILING_KEY_IS(2000030004000031100UL)) {
         static constexpr WqmmConfig wqmmCfg = {true,          true, Mc2QuantType::PER_TENSOR, false, Mc2QuantType::PER_TENSOR,
                                                CubeFormat::ND};
-        #if defined(WEIGHT_B8_BRANCH)
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
-        #else
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
-        #endif
-    #endif
-    #if TILING_KEY_VAR == 2000030004000011120UL
+#if defined(WEIGHT_B8_BRANCH)
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
+#else
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
+#endif
+    } else if (TILING_KEY_IS(2000030004000011120UL)) {
         static constexpr WqmmConfig wqmmCfg = {false,         true, Mc2QuantType::PER_TENSOR, true, Mc2QuantType::PER_TENSOR,
                                                CubeFormat::ND};
-        #if defined(WEIGHT_B8_BRANCH)
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
-        #else
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
-        #endif
-    #endif
-    #if TILING_KEY_VAR == 2000030004000031120UL
+#if defined(WEIGHT_B8_BRANCH)
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
+#else
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
+#endif
+    } else if (TILING_KEY_IS(2000030004000031120UL)) {
         static constexpr WqmmConfig wqmmCfg = {true,          true, Mc2QuantType::PER_TENSOR, true, Mc2QuantType::PER_TENSOR,
                                                CubeFormat::ND};
-        #if defined(WEIGHT_B8_BRANCH)
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
-        #else
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
-        #endif
-    #endif
-#if TILING_KEY_VAR == 2000030003000002100UL
-    static constexpr WqmmConfig wqmmCfg = {
-        false, false, Mc2QuantType::PER_CHANNEL, false, Mc2QuantType::PER_TENSOR, CubeFormat::ND};
-    INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-        WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-#elif TILING_KEY_VAR == 2000030003000022100UL
-    static constexpr WqmmConfig wqmmCfg = {
-        true, false, Mc2QuantType::PER_CHANNEL, false, Mc2QuantType::PER_TENSOR, CubeFormat::ND};
-    INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-        WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-#elif TILING_KEY_VAR == 2000030003000002120UL
-    static constexpr WqmmConfig wqmmCfg = {
-        false, false, Mc2QuantType::PER_CHANNEL, true, Mc2QuantType::PER_TENSOR, CubeFormat::ND};
-    INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-        WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-#elif TILING_KEY_VAR == 2000030003000022120UL
-    static constexpr WqmmConfig wqmmCfg = {
-        true, false, Mc2QuantType::PER_CHANNEL, true, Mc2QuantType::PER_TENSOR, CubeFormat::ND};
-    INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-        WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-#elif TILING_KEY_VAR == 2000030003000001100UL
-    static constexpr WqmmConfig wqmmCfg = {
-        false, false, Mc2QuantType::PER_TENSOR, false, Mc2QuantType::PER_TENSOR, CubeFormat::ND};
-    INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-        WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-#elif TILING_KEY_VAR == 2000030003000021100UL
-    static constexpr WqmmConfig wqmmCfg = {
-        true, false, Mc2QuantType::PER_TENSOR, false, Mc2QuantType::PER_TENSOR, CubeFormat::ND};
-    INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-        WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-#elif TILING_KEY_VAR == 2000030003000001120UL
-    static constexpr WqmmConfig wqmmCfg = {false, false, Mc2QuantType::PER_TENSOR,
-                                            true, Mc2QuantType::PER_TENSOR,
-                                            CubeFormat::ND};
-    INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-        WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-#elif TILING_KEY_VAR == 2000030003000021120UL
-    static constexpr WqmmConfig wqmmCfg = {true, false, Mc2QuantType::PER_TENSOR,
-                                            true, Mc2QuantType::PER_TENSOR,
-                                            CubeFormat::ND};
-    INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-        WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
+#if defined(WEIGHT_B8_BRANCH)
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
+#else
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
 #endif
+    } else if (TILING_KEY_IS(2000030003000002100UL)) {
+        static constexpr WqmmConfig wqmmCfg = {
+            false, false, Mc2QuantType::PER_CHANNEL, false, Mc2QuantType::PER_TENSOR, CubeFormat::ND};
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
+    } else if (TILING_KEY_IS(2000030003000022100UL)) {
+        static constexpr WqmmConfig wqmmCfg = {
+            true, false, Mc2QuantType::PER_CHANNEL, false, Mc2QuantType::PER_TENSOR, CubeFormat::ND};
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
+    } else if (TILING_KEY_IS(2000030003000002120UL)) {
+        static constexpr WqmmConfig wqmmCfg = {
+            false, false, Mc2QuantType::PER_CHANNEL, true, Mc2QuantType::PER_TENSOR, CubeFormat::ND};
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
+    } else if (TILING_KEY_IS(2000030003000022120UL)) {
+        static constexpr WqmmConfig wqmmCfg = {
+            true, false, Mc2QuantType::PER_CHANNEL, true, Mc2QuantType::PER_TENSOR, CubeFormat::ND};
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
+    } else if (TILING_KEY_IS(2000030003000001100UL)) {
+        static constexpr WqmmConfig wqmmCfg = {
+            false, false, Mc2QuantType::PER_TENSOR, false, Mc2QuantType::PER_TENSOR, CubeFormat::ND};
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
+    } else if (TILING_KEY_IS(2000030003000021100UL)) {
+        static constexpr WqmmConfig wqmmCfg = {
+            true, false, Mc2QuantType::PER_TENSOR, false, Mc2QuantType::PER_TENSOR, CubeFormat::ND};
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
+    } else if (TILING_KEY_IS(2000030003000001120UL)) {
+        static constexpr WqmmConfig wqmmCfg = {false,         false, Mc2QuantType::PER_TENSOR, true, Mc2QuantType::PER_TENSOR,
+                                               CubeFormat::ND};
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
+    } else if (TILING_KEY_IS(2000030003000021120UL)) {
+        static constexpr WqmmConfig wqmmCfg = {true,          false, Mc2QuantType::PER_TENSOR, true, Mc2QuantType::PER_TENSOR,
+                                               CubeFormat::ND};
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
+    }
 // 下列tiling key只在c8场景和非fp8输入下出现
 #if (defined(ORIG_DTYPE_Y) && (ORIG_DTYPE_Y == DT_INT8) && !defined(WEIGHT_F8_INPUT))
-    #if TILING_KEY_VAR == 2000030004000012200UL
+    else if (TILING_KEY_IS(2000030004000012200UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             false, true, Mc2QuantType::PER_CHANNEL, false, Mc2QuantType::PER_CHANNEL, CubeFormat::ND};
-    #endif
 #if defined(WEIGHT_B8_BRANCH)
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
@@ -408,10 +396,9 @@ extern "C" __global__ __aicore__ void Mc2weight_quant_batch_matmul_v2(
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
 #endif
-    #if TILING_KEY_VAR == 2000030004000032200UL
+    } else if (TILING_KEY_IS(2000030004000032200UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             true, true, Mc2QuantType::PER_CHANNEL, false, Mc2QuantType::PER_CHANNEL, CubeFormat::ND};
-    #endif
 #if defined(WEIGHT_B8_BRANCH)
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
@@ -419,10 +406,9 @@ extern "C" __global__ __aicore__ void Mc2weight_quant_batch_matmul_v2(
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
 #endif
-#if TILING_KEY_VAR == 2000030004000012220UL
-    static constexpr WqmmConfig wqmmCfg = {
-        false, true, Mc2QuantType::PER_CHANNEL, true, Mc2QuantType::PER_CHANNEL, CubeFormat::ND};
-#endif
+    } else if (TILING_KEY_IS(2000030004000012220UL)) {
+        static constexpr WqmmConfig wqmmCfg = {
+            false, true, Mc2QuantType::PER_CHANNEL, true, Mc2QuantType::PER_CHANNEL, CubeFormat::ND};
 #if defined(WEIGHT_B8_BRANCH)
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
@@ -430,10 +416,9 @@ extern "C" __global__ __aicore__ void Mc2weight_quant_batch_matmul_v2(
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
 #endif
-#if TILING_KEY_VAR == 2000030004000032220UL
-    static constexpr WqmmConfig wqmmCfg = {
-        true, true, Mc2QuantType::PER_CHANNEL, true, Mc2QuantType::PER_CHANNEL, CubeFormat::ND};
-#endif
+    } else if (TILING_KEY_IS(2000030004000032220UL)) {
+        static constexpr WqmmConfig wqmmCfg = {
+            true, true, Mc2QuantType::PER_CHANNEL, true, Mc2QuantType::PER_CHANNEL, CubeFormat::ND};
 #if defined(WEIGHT_B8_BRANCH)
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
@@ -441,10 +426,9 @@ extern "C" __global__ __aicore__ void Mc2weight_quant_batch_matmul_v2(
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
 #endif
-#if TILING_KEY_VAR == 2000030004000011200UL
-    static constexpr WqmmConfig wqmmCfg = {
-        false, true, Mc2QuantType::PER_TENSOR, false, Mc2QuantType::PER_CHANNEL, CubeFormat::ND};
-#endif
+    } else if (TILING_KEY_IS(2000030004000011200UL)) {
+        static constexpr WqmmConfig wqmmCfg = {
+            false, true, Mc2QuantType::PER_TENSOR, false, Mc2QuantType::PER_CHANNEL, CubeFormat::ND};
 #if defined(WEIGHT_B8_BRANCH)
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
@@ -452,10 +436,9 @@ extern "C" __global__ __aicore__ void Mc2weight_quant_batch_matmul_v2(
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
 #endif
-#if TILING_KEY_VAR == 2000030004000031200UL
-    static constexpr WqmmConfig wqmmCfg = {
-        true, true, Mc2QuantType::PER_TENSOR, false, Mc2QuantType::PER_CHANNEL, CubeFormat::ND};
-#endif
+    } else if (TILING_KEY_IS(2000030004000031200UL)) {
+        static constexpr WqmmConfig wqmmCfg = {
+            true, true, Mc2QuantType::PER_TENSOR, false, Mc2QuantType::PER_CHANNEL, CubeFormat::ND};
 #if defined(WEIGHT_B8_BRANCH)
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
@@ -463,11 +446,9 @@ extern "C" __global__ __aicore__ void Mc2weight_quant_batch_matmul_v2(
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
 #endif
-#if TILING_KEY_VAR == 2000030004000011220UL
-    static constexpr WqmmConfig wqmmCfg = {false, true, Mc2QuantType::PER_TENSOR, true,
-                                            Mc2QuantType::PER_CHANNEL,
-                                            CubeFormat::ND};
-#endif
+    } else if (TILING_KEY_IS(2000030004000011220UL)) {
+        static constexpr WqmmConfig wqmmCfg = {false,         true, Mc2QuantType::PER_TENSOR, true, Mc2QuantType::PER_CHANNEL,
+                                               CubeFormat::ND};
 #if defined(WEIGHT_B8_BRANCH)
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
@@ -475,11 +456,9 @@ extern "C" __global__ __aicore__ void Mc2weight_quant_batch_matmul_v2(
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
 #endif
-#if TILING_KEY_VAR == 2000030004000031220UL
-    static constexpr WqmmConfig wqmmCfg = {true, true, Mc2QuantType::PER_TENSOR, true,
-                                            Mc2QuantType::PER_CHANNEL,
-                                            CubeFormat::ND};
-#endif
+    } else if (TILING_KEY_IS(2000030004000031220UL)) {
+        static constexpr WqmmConfig wqmmCfg = {true,          true, Mc2QuantType::PER_TENSOR, true, Mc2QuantType::PER_CHANNEL,
+                                               CubeFormat::ND};
 #if defined(WEIGHT_B8_BRANCH)
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
@@ -487,538 +466,521 @@ extern "C" __global__ __aicore__ void Mc2weight_quant_batch_matmul_v2(
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
 #endif
-    #if TILING_KEY_VAR == 2000030003000002200UL
+    } else if (TILING_KEY_IS(2000030003000002200UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             false, false, Mc2QuantType::PER_CHANNEL, false, Mc2QuantType::PER_CHANNEL, CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-    #elif TILING_KEY_VAR == 2000030003000022200UL
+    } else if (TILING_KEY_IS(2000030003000022200UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             true, false, Mc2QuantType::PER_CHANNEL, false, Mc2QuantType::PER_CHANNEL, CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-    #elif TILING_KEY_VAR == 2000030003000002220UL
+    } else if (TILING_KEY_IS(2000030003000002220UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             false, false, Mc2QuantType::PER_CHANNEL, true, Mc2QuantType::PER_CHANNEL, CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-    #elif TILING_KEY_VAR == 2000030003000022220UL
+    } else if (TILING_KEY_IS(2000030003000022220UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             true, false, Mc2QuantType::PER_CHANNEL, true, Mc2QuantType::PER_CHANNEL, CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-    #elif TILING_KEY_VAR == 2000030003000001200UL
+    } else if (TILING_KEY_IS(2000030003000001200UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             false, false, Mc2QuantType::PER_TENSOR, false, Mc2QuantType::PER_CHANNEL, CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-    #elif TILING_KEY_VAR == 2000030003000021200UL
+    } else if (TILING_KEY_IS(2000030003000021200UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             true, false, Mc2QuantType::PER_TENSOR, false, Mc2QuantType::PER_CHANNEL, CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-    #elif TILING_KEY_VAR == 2000030003000001220UL
+    } else if (TILING_KEY_IS(2000030003000001220UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             false, false, Mc2QuantType::PER_TENSOR, true, Mc2QuantType::PER_CHANNEL, CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-    #elif TILING_KEY_VAR == 2000030003000021220UL
+    } else if (TILING_KEY_IS(2000030003000021220UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             true, false, Mc2QuantType::PER_TENSOR, true, Mc2QuantType::PER_CHANNEL, CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-    #endif
+    }
 #else // 下列tiling key不在c8场景下出现
-    #if TILING_KEY_VAR == 2000020000000012100UL
+    else if (TILING_KEY_IS(2000020000000012100UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             false, true, Mc2QuantType::PER_CHANNEL, false, Mc2QuantType::PER_TENSOR, CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
-    #elif TILING_KEY_VAR == 2000020001000012100UL
+    } else if (TILING_KEY_IS(2000020001000012100UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             false, true, Mc2QuantType::PER_CHANNEL, false, Mc2QuantType::PER_TENSOR, CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
-    #elif TILING_KEY_VAR == 2000020002000012100UL
+    } else if (TILING_KEY_IS(2000020002000012100UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             false, true, Mc2QuantType::PER_CHANNEL, false, Mc2QuantType::PER_TENSOR, CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_2);
-    #elif TILING_KEY_VAR == 2000020003000012100UL
+    } else if (TILING_KEY_IS(2000020003000012100UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             false, true, Mc2QuantType::PER_CHANNEL, false, Mc2QuantType::PER_TENSOR, CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-    #elif TILING_KEY_VAR == 2000020000000012120UL
+    } else if (TILING_KEY_IS(2000020000000012120UL)) {
         static constexpr WqmmConfig wqmmCfg = {false,         true, Mc2QuantType::PER_CHANNEL, true, Mc2QuantType::PER_TENSOR,
                                                CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
-    #elif TILING_KEY_VAR == 2000020001000012120UL
+    } else if (TILING_KEY_IS(2000020001000012120UL)) {
         static constexpr WqmmConfig wqmmCfg = {false,         true, Mc2QuantType::PER_CHANNEL, true, Mc2QuantType::PER_TENSOR,
                                                CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
-    #elif TILING_KEY_VAR == 2000020002000012120UL
+    } else if (TILING_KEY_IS(2000020002000012120UL)) {
         static constexpr WqmmConfig wqmmCfg = {false,         true, Mc2QuantType::PER_CHANNEL, true, Mc2QuantType::PER_TENSOR,
                                                CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_2);
-    #elif TILING_KEY_VAR == 2000020003000012120UL
+    } else if (TILING_KEY_IS(2000020003000012120UL)) {
         static constexpr WqmmConfig wqmmCfg = {false,         true, Mc2QuantType::PER_CHANNEL, true, Mc2QuantType::PER_TENSOR,
                                                CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-    #endif
+    }
+#endif
 #endif
 #if defined(ORIG_DTYPE_X) && defined(DT_BF16) && ORIG_DTYPE_X == DT_BF16
 #undef DTYPE_BIAS
 #define DTYPE_BIAS float
 #if (defined(MICROSCALING))
 #if (defined(FORMAT_WEIGHT) && (FORMAT_WEIGHT == FORMAT_FRACTAL_NZ))
-    #if TILING_KEY_VAR == 2000020003000004141UL
+    if (TILING_KEY_IS(2000020003000004141UL)) {
         static constexpr WqmmConfig wqmmCfg = {false,         false, Mc2QuantType::MX, true, Mc2QuantType::PER_TENSOR,
                                                CubeFormat::NZ};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-    #elif TILING_KEY_VAR == 2000020001000004141UL
+    } else if (TILING_KEY_IS(2000020001000004141UL)) {
         static constexpr WqmmConfig wqmmCfg = {false,         false, Mc2QuantType::MX, true, Mc2QuantType::PER_TENSOR,
                                                CubeFormat::NZ};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
-    #endif
+    }
 #else
-    #if TILING_KEY_VAR == 2000030003000004140UL
+    if (TILING_KEY_IS(2000030003000004140UL)) {
         static constexpr WqmmConfig wqmmCfg = {false,         false, Mc2QuantType::MX, false, Mc2QuantType::PER_TENSOR,
                                                CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-    #elif TILING_KEY_VAR == 2000020002000014140UL
+    } else if (TILING_KEY_IS(2000020002000014140UL)) {
         static constexpr WqmmConfig wqmmCfg = {false,         true, Mc2QuantType::MX, false, Mc2QuantType::PER_TENSOR,
                                                CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_2);
-    #endif
+    }
 #endif
 #endif
 // 当前场景不支持c8和fp8输入
 #if (!defined(MICROSCALING) && defined(ORIG_DTYPE_Y) && (ORIG_DTYPE_Y != DT_INT8) && !defined(WEIGHT_F8_INPUT))
-    #if TILING_KEY_VAR == 1100300UL
+    if (TILING_KEY_IS(1100300UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, false, false, false, Mc2QuantType::PER_GROUP);
-    #elif TILING_KEY_VAR == 1100310UL
+    } else if (TILING_KEY_IS(1100310UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, false, true, false, Mc2QuantType::PER_GROUP);
-    #elif TILING_KEY_VAR == 1100311UL
+    } else if (TILING_KEY_IS(1100311UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, true, true, false, Mc2QuantType::PER_GROUP);
-    #elif TILING_KEY_VAR == 1100301UL
+    } else if (TILING_KEY_IS(1100301UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, true, false, false, Mc2QuantType::PER_GROUP);
-    #elif TILING_KEY_VAR == 11100300UL
+    } else if (TILING_KEY_IS(11100300UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, false, false, false, Mc2QuantType::PER_GROUP, true);
-    #elif TILING_KEY_VAR == 11100310UL
+    } else if (TILING_KEY_IS(11100310UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, false, true, false, Mc2QuantType::PER_GROUP, true);
-    #elif TILING_KEY_VAR == 1100200UL
+    } else if (TILING_KEY_IS(1100200UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, false, false, false, Mc2QuantType::PER_CHANNEL);
-    #elif TILING_KEY_VAR == 1100210UL
+    } else if (TILING_KEY_IS(1100210UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, false, true, false, Mc2QuantType::PER_CHANNEL);
-    #elif TILING_KEY_VAR == 1100211UL
+    } else if (TILING_KEY_IS(1100211UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, true, true, false, Mc2QuantType::PER_CHANNEL);
-    #elif TILING_KEY_VAR == 1100201UL
+    } else if (TILING_KEY_IS(1100201UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, true, false, false, Mc2QuantType::PER_CHANNEL);
-    #elif TILING_KEY_VAR == 1100100UL
+    } else if (TILING_KEY_IS(1100100UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, false, false, false, Mc2QuantType::PER_TENSOR);
-    #elif TILING_KEY_VAR == 1100110UL
+    } else if (TILING_KEY_IS(1100110UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, false, true, false, Mc2QuantType::PER_TENSOR);
-    #elif TILING_KEY_VAR == 1100111UL
+    } else if (TILING_KEY_IS(1100111UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, true, true, false, Mc2QuantType::PER_TENSOR);
-    #elif TILING_KEY_VAR == 1100101UL
+    } else if (TILING_KEY_IS(1100101UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, true, false, false, Mc2QuantType::PER_TENSOR);
-    #elif TILING_KEY_VAR == 1101300UL
+    } else if (TILING_KEY_IS(1101300UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, false, false, true, Mc2QuantType::PER_GROUP);
-    #elif TILING_KEY_VAR == 1101310UL
+    } else if (TILING_KEY_IS(1101310UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, false, true, true, Mc2QuantType::PER_GROUP);
-    #elif TILING_KEY_VAR == 1101311UL
+    } else if (TILING_KEY_IS(1101311UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, true, true, true, Mc2QuantType::PER_GROUP);
-    #elif TILING_KEY_VAR == 1101301UL
+    } else if (TILING_KEY_IS(1101301UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, true, false, true, Mc2QuantType::PER_GROUP);
-    #elif TILING_KEY_VAR == 11101300UL
+    } else if (TILING_KEY_IS(11101300UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, false, false, true, Mc2QuantType::PER_GROUP, true);
-    #elif TILING_KEY_VAR == 11101310UL
+    } else if (TILING_KEY_IS(11101310UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, false, true, true, Mc2QuantType::PER_GROUP, true);
-    #elif TILING_KEY_VAR == 1101200UL
+    } else if (TILING_KEY_IS(1101200UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, false, false, true, Mc2QuantType::PER_CHANNEL);
-    #elif TILING_KEY_VAR == 1101210UL
+    } else if (TILING_KEY_IS(1101210UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, false, true, true, Mc2QuantType::PER_CHANNEL);
-    #elif TILING_KEY_VAR == 1101211UL
+    } else if (TILING_KEY_IS(1101211UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, true, true, true, Mc2QuantType::PER_CHANNEL);
-    #elif TILING_KEY_VAR == 1101201UL
+    } else if (TILING_KEY_IS(1101201UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, true, false, true, Mc2QuantType::PER_CHANNEL);
-    #elif TILING_KEY_VAR == 1101100UL
+    } else if (TILING_KEY_IS(1101100UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, false, false, true, Mc2QuantType::PER_TENSOR);
-    #elif TILING_KEY_VAR == 1101110UL
+    } else if (TILING_KEY_IS(1101110UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, false, true, true, Mc2QuantType::PER_TENSOR);
-    #elif TILING_KEY_VAR == 1101111UL
+    } else if (TILING_KEY_IS(1101111UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, true, true, true, Mc2QuantType::PER_TENSOR);
-    #elif TILING_KEY_VAR == 1101101UL
+    } else if (TILING_KEY_IS(1101101UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_REG_BASE_IMPL(
             Mc2WeightQuantBatchMatmulV2RegBaseKernel, true, false, true, Mc2QuantType::PER_TENSOR);
-    #elif TILING_KEY_VAR == 2000020003000002141UL
+    } else if (TILING_KEY_IS(2000020003000002141UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             false, false, Mc2QuantType::PER_CHANNEL, false, Mc2QuantType::PER_TENSOR, CubeFormat::NZ};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-    #elif TILING_KEY_VAR == 2000020003000002161UL
+    } else if (TILING_KEY_IS(2000020003000002161UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             false, false, Mc2QuantType::PER_CHANNEL, true, Mc2QuantType::PER_TENSOR, CubeFormat::NZ};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-    #endif
 #if defined(A16) && defined(S4)
-    #if TILING_KEY_VAR == 2000020002000003141UL
+    } else if (TILING_KEY_IS(2000020002000003141UL)) {
         InvokeActKernel<2000020002000003141UL>(KERNEL_PARAMS);
-    #elif TILING_KEY_VAR == 2000020002000003161UL
+    } else if (TILING_KEY_IS(2000020002000003161UL)) {
         InvokeActKernel<2000020002000003161UL>(KERNEL_PARAMS);
-    #elif TILING_KEY_VAR == 2000020001000003141UL
+    } else if (TILING_KEY_IS(2000020001000003141UL)) {
         InvokeActKernel<2000020001000003141UL>(KERNEL_PARAMS);
-    #elif TILING_KEY_VAR == 2000020001000003161UL
+    } else if (TILING_KEY_IS(2000020001000003161UL)) {
         InvokeActKernel<2000020001000003161UL>(KERNEL_PARAMS);
-    #elif TILING_KEY_VAR == 2000020006000003141UL
+    } else if (TILING_KEY_IS(2000020006000003141UL)) {
         InvokeActKernel<2000020006000003141UL>(KERNEL_PARAMS);
-    #elif TILING_KEY_VAR == 2000020006000003161UL
+    } else if (TILING_KEY_IS(2000020006000003161UL)) {
         InvokeActKernel<2000020006000003161UL>(KERNEL_PARAMS);
-    #endif
 #endif
+    }
 #endif
 #if (!defined(MICROSCALING) && defined(FORMAT_WEIGHT) && (FORMAT_WEIGHT != FORMAT_FRACTAL_NZ))
-    #if TILING_KEY_VAR == 2000030004000012140UL
+    if (TILING_KEY_IS(2000030004000012140UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             false, true, Mc2QuantType::PER_CHANNEL, false, Mc2QuantType::PER_TENSOR, CubeFormat::ND};
-    
-        #if defined(WEIGHT_B8_BRANCH)
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
-        #else
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
-        #endif
-    #endif
-    #if TILING_KEY_VAR == 2000030004000032140UL
+#if defined(WEIGHT_B8_BRANCH)
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
+#else
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
+#endif
+    } else if (TILING_KEY_IS(2000030004000032140UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             true, true, Mc2QuantType::PER_CHANNEL, false, Mc2QuantType::PER_TENSOR, CubeFormat::ND};
-    
-        #if defined(WEIGHT_B8_BRANCH)
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
-        #else
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
-        #endif
-    #endif
-    #if TILING_KEY_VAR == 2000030004000011140UL
+#if defined(WEIGHT_B8_BRANCH)
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
+#else
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
+#endif
+    } else if (TILING_KEY_IS(2000030004000011140UL)) {
         static constexpr WqmmConfig wqmmCfg = {false,         true, Mc2QuantType::PER_TENSOR, false, Mc2QuantType::PER_TENSOR,
                                                CubeFormat::ND};
-        #if defined(WEIGHT_B8_BRANCH)
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
-        #else
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
-        #endif
-    #endif
-    #if TILING_KEY_VAR == 2000030004000031140UL
+#if defined(WEIGHT_B8_BRANCH)
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
+#else
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
+#endif
+    } else if (TILING_KEY_IS(2000030004000031140UL)) {
         static constexpr WqmmConfig wqmmCfg = {true,          true, Mc2QuantType::PER_TENSOR, false, Mc2QuantType::PER_TENSOR,
                                                CubeFormat::ND};
-        #if defined(WEIGHT_B8_BRANCH)
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
-        #else
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
-        #endif
-    #endif
-    #if TILING_KEY_VAR == 2000030004000011160UL
+#if defined(WEIGHT_B8_BRANCH)
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
+#else
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
+#endif
+    } else if (TILING_KEY_IS(2000030004000011160UL)) {
         static constexpr WqmmConfig wqmmCfg = {false,         true, Mc2QuantType::PER_TENSOR, true, Mc2QuantType::PER_TENSOR,
                                                CubeFormat::ND};
-        #if defined(WEIGHT_B8_BRANCH)
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
-        #else
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
-        #endif
-    #endif
-    #if TILING_KEY_VAR == 2000030004000031160UL
+#if defined(WEIGHT_B8_BRANCH)
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
+#else
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
+#endif
+    } else if (TILING_KEY_IS(2000030004000031160UL)) {
         static constexpr WqmmConfig wqmmCfg = {true,          true, Mc2QuantType::PER_TENSOR, true, Mc2QuantType::PER_TENSOR,
                                                CubeFormat::ND};
-        #if defined(WEIGHT_B8_BRANCH)
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
-        #else
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
-        #endif
-    #endif
-    #if TILING_KEY_VAR == 2000030003000002140UL
+#if defined(WEIGHT_B8_BRANCH)
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
+#else
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
+#endif
+    } else if (TILING_KEY_IS(2000030003000002140UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             false, false, Mc2QuantType::PER_CHANNEL, false, Mc2QuantType::PER_TENSOR, CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-    #elif TILING_KEY_VAR == 2000030003000022140UL
+    } else if (TILING_KEY_IS(2000030003000022140UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             true, false, Mc2QuantType::PER_CHANNEL, false, Mc2QuantType::PER_TENSOR, CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-    #elif TILING_KEY_VAR == 2000030004000012160UL
+    } else if (TILING_KEY_IS(2000030004000012160UL)) {
         static constexpr WqmmConfig wqmmCfg = {false,         true, Mc2QuantType::PER_CHANNEL, true, Mc2QuantType::PER_TENSOR,
                                                CubeFormat::ND};
-        #if defined(WEIGHT_B8_BRANCH)
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
-        #else
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
-        #endif
-    #endif
-    #if TILING_KEY_VAR == 2000030004000032160UL
+#if defined(WEIGHT_B8_BRANCH)
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
+#else
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
+#endif
+    } else if (TILING_KEY_IS(2000030004000032160UL)) {
         static constexpr WqmmConfig wqmmCfg = {true,          true, Mc2QuantType::PER_CHANNEL, true, Mc2QuantType::PER_TENSOR,
                                                CubeFormat::ND};
-        #if defined(WEIGHT_B8_BRANCH)
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
-        #else
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
-        #endif
-    #endif
-    #if TILING_KEY_VAR == 2000030003000002160UL
+#if defined(WEIGHT_B8_BRANCH)
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
+#else
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
+#endif
+    } else if (TILING_KEY_IS(2000030003000002160UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             false, false, Mc2QuantType::PER_CHANNEL, true, Mc2QuantType::PER_TENSOR, CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-    #elif TILING_KEY_VAR == 2000030003000022160UL
+    } else if (TILING_KEY_IS(2000030003000022160UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             true, false, Mc2QuantType::PER_CHANNEL, true, Mc2QuantType::PER_TENSOR, CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-    #elif TILING_KEY_VAR == 2000030003000001140UL
+    } else if (TILING_KEY_IS(2000030003000001140UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             false, false, Mc2QuantType::PER_TENSOR, false, Mc2QuantType::PER_TENSOR, CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-    #elif TILING_KEY_VAR == 2000030003000021140UL
+    } else if (TILING_KEY_IS(2000030003000021140UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             true, false, Mc2QuantType::PER_TENSOR, false, Mc2QuantType::PER_TENSOR, CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-    #elif TILING_KEY_VAR == 2000030003000001160UL
+    } else if (TILING_KEY_IS(2000030003000001160UL)) {
         static constexpr WqmmConfig wqmmCfg = {false,         false, Mc2QuantType::PER_TENSOR, true, Mc2QuantType::PER_TENSOR,
                                                CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-    #elif TILING_KEY_VAR == 2000030003000021160UL
+    } else if (TILING_KEY_IS(2000030003000021160UL)) {
         static constexpr WqmmConfig wqmmCfg = {true,          false, Mc2QuantType::PER_TENSOR, true, Mc2QuantType::PER_TENSOR,
                                                CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-    #endif
+    }
 // 下列tiling key只在c8场景和非fp8输入下出现
 #if (defined(ORIG_DTYPE_Y) && (ORIG_DTYPE_Y == DT_INT8) && !defined(WEIGHT_F8_INPUT))
-    #if TILING_KEY_VAR == 2000030004000012240UL
+    else if (TILING_KEY_IS(2000030004000012240UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             false, true, Mc2QuantType::PER_CHANNEL, false, Mc2QuantType::PER_CHANNEL, CubeFormat::ND};
-        #if defined(WEIGHT_B8_BRANCH)
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
-        #else
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
-        #endif
-    #endif
-    #if TILING_KEY_VAR == 2000030004000032240UL
+#if defined(WEIGHT_B8_BRANCH)
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
+#else
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
+#endif
+    } else if (TILING_KEY_IS(2000030004000032240UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             true, true, Mc2QuantType::PER_CHANNEL, false, Mc2QuantType::PER_CHANNEL, CubeFormat::ND};
-        #if defined(WEIGHT_B8_BRANCH)
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
-        #else
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
-        #endif
-    #endif
-    #if TILING_KEY_VAR == 2000030004000012260UL
+#if defined(WEIGHT_B8_BRANCH)
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
+#else
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
+#endif
+    } else if (TILING_KEY_IS(2000030004000012260UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             false, true, Mc2QuantType::PER_CHANNEL, true, Mc2QuantType::PER_CHANNEL, CubeFormat::ND};
-        #if defined(WEIGHT_B8_BRANCH)
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
-        #else
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
-        #endif
-    #endif
-    #if TILING_KEY_VAR == 2000030004000032260UL
+#if defined(WEIGHT_B8_BRANCH)
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
+#else
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
+#endif
+    } else if (TILING_KEY_IS(2000030004000032260UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             true, true, Mc2QuantType::PER_CHANNEL, true, Mc2QuantType::PER_CHANNEL, CubeFormat::ND};
-        #if defined(WEIGHT_B8_BRANCH)
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
-        #else
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
-        #endif
-    #endif
-    #if TILING_KEY_VAR == 2000030004000011240UL
+#if defined(WEIGHT_B8_BRANCH)
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
+#else
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
+#endif
+    } else if (TILING_KEY_IS(2000030004000011240UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             false, true, Mc2QuantType::PER_TENSOR, false, Mc2QuantType::PER_CHANNEL, CubeFormat::ND};
-        #if defined(WEIGHT_B8_BRANCH)
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
-        #else
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
-        #endif
-    #endif
-    #if TILING_KEY_VAR == 2000030004000031240UL
+#if defined(WEIGHT_B8_BRANCH)
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
+#else
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
+#endif
+    } else if (TILING_KEY_IS(2000030004000031240UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             true, true, Mc2QuantType::PER_TENSOR, false, Mc2QuantType::PER_CHANNEL, CubeFormat::ND};
-        #if defined(WEIGHT_B8_BRANCH)
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
-        #else
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
-        #endif
-    #endif
-    #if TILING_KEY_VAR == 2000030004000011260UL
+#if defined(WEIGHT_B8_BRANCH)
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
+#else
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
+#endif
+    } else if (TILING_KEY_IS(2000030004000011260UL)) {
         static constexpr WqmmConfig wqmmCfg = {false,         true, Mc2QuantType::PER_TENSOR, true, Mc2QuantType::PER_CHANNEL,
                                                CubeFormat::ND};
-        #if defined(WEIGHT_B8_BRANCH)
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
-        #else
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
-        #endif
-    #endif
-    #if TILING_KEY_VAR == 2000030004000031260UL
+#if defined(WEIGHT_B8_BRANCH)
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
+#else
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
+#endif
+    } else if (TILING_KEY_IS(2000030004000031260UL)) {
         static constexpr WqmmConfig wqmmCfg = {true,          true, Mc2QuantType::PER_TENSOR, true, Mc2QuantType::PER_CHANNEL,
                                                CubeFormat::ND};
-        #if defined(WEIGHT_B8_BRANCH)
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
-        #else
-                INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
-                    WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
-        #endif
-    #endif
-    #if TILING_KEY_VAR == 2000030003000002240UL
+#if defined(WEIGHT_B8_BRANCH)
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
+#else
+        INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
+            WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
+#endif
+    } else if (TILING_KEY_IS(2000030003000002240UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             false, false, Mc2QuantType::PER_CHANNEL, false, Mc2QuantType::PER_CHANNEL, CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-    #elif TILING_KEY_VAR == 2000030003000022240UL
+    } else if (TILING_KEY_IS(2000030003000022240UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             true, false, Mc2QuantType::PER_CHANNEL, false, Mc2QuantType::PER_CHANNEL, CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-    #elif TILING_KEY_VAR == 2000030003000002260UL
+    } else if (TILING_KEY_IS(2000030003000002260UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             false, false, Mc2QuantType::PER_CHANNEL, true, Mc2QuantType::PER_CHANNEL, CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-    #elif TILING_KEY_VAR == 2000030003000022260UL
+    } else if (TILING_KEY_IS(2000030003000022260UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             true, false, Mc2QuantType::PER_CHANNEL, true, Mc2QuantType::PER_CHANNEL, CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-    #elif TILING_KEY_VAR == 2000030003000001240UL
+    } else if (TILING_KEY_IS(2000030003000001240UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             false, false, Mc2QuantType::PER_TENSOR, false, Mc2QuantType::PER_CHANNEL, CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-    #elif TILING_KEY_VAR == 2000030003000021240UL
+    } else if (TILING_KEY_IS(2000030003000021240UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             true, false, Mc2QuantType::PER_TENSOR, false, Mc2QuantType::PER_CHANNEL, CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-    #elif TILING_KEY_VAR == 2000030003000001260UL
+    } else if (TILING_KEY_IS(2000030003000001260UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             false, false, Mc2QuantType::PER_TENSOR, true, Mc2QuantType::PER_CHANNEL, CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-    #elif TILING_KEY_VAR == 2000030003000021260UL
+    } else if (TILING_KEY_IS(2000030003000021260UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             true, false, Mc2QuantType::PER_TENSOR, true, Mc2QuantType::PER_CHANNEL, CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-    #endif
+    }
 #else // 下列tiling key不在c8场景下出现
-    #if TILING_KEY_VAR == 2000020000000012140UL
+    else if (TILING_KEY_IS(2000020000000012140UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             false, true, Mc2QuantType::PER_CHANNEL, false, Mc2QuantType::PER_TENSOR, CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
-    #elif TILING_KEY_VAR == 2000020001000012140UL
+    } else if (TILING_KEY_IS(2000020001000012140UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             false, true, Mc2QuantType::PER_CHANNEL, false, Mc2QuantType::PER_TENSOR, CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
-    #elif TILING_KEY_VAR == 2000020002000012140UL
+    } else if (TILING_KEY_IS(2000020002000012140UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             false, true, Mc2QuantType::PER_CHANNEL, false, Mc2QuantType::PER_TENSOR, CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_2);
-    #elif TILING_KEY_VAR == 2000020003000012140UL
+    } else if (TILING_KEY_IS(2000020003000012140UL)) {
         static constexpr WqmmConfig wqmmCfg = {
             false, true, Mc2QuantType::PER_CHANNEL, false, Mc2QuantType::PER_TENSOR, CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-    #elif TILING_KEY_VAR == 2000020000000012160UL
+    } else if (TILING_KEY_IS(2000020000000012160UL)) {
         static constexpr WqmmConfig wqmmCfg = {false,         true, Mc2QuantType::PER_CHANNEL, true, Mc2QuantType::PER_TENSOR,
                                                CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
-    #elif TILING_KEY_VAR == 2000020001000012160UL
+    } else if (TILING_KEY_IS(2000020001000012160UL)) {
         static constexpr WqmmConfig wqmmCfg = {false,         true, Mc2QuantType::PER_CHANNEL, true, Mc2QuantType::PER_TENSOR,
                                                CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_1);
-    #elif TILING_KEY_VAR == 2000020002000012160UL
+    } else if (TILING_KEY_IS(2000020002000012160UL)) {
         static constexpr WqmmConfig wqmmCfg = {false,         true, Mc2QuantType::PER_CHANNEL, true, Mc2QuantType::PER_TENSOR,
                                                CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_2);
-    #elif TILING_KEY_VAR == 2000020003000012160UL
+    } else if (TILING_KEY_IS(2000020003000012160UL)) {
         static constexpr WqmmConfig wqmmCfg = {false,         true, Mc2QuantType::PER_CHANNEL, true, Mc2QuantType::PER_TENSOR,
                                                CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_3);
-    #endif
+    }
+#endif
 #endif
 #endif
 #elif defined(__DAV_310R6__)
@@ -1027,65 +989,65 @@ extern "C" __global__ __aicore__ void Mc2weight_quant_batch_matmul_v2(
     // 该分支处理bias与A类型一致的情况
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
 #if (defined(FORMAT_WEIGHT) && (FORMAT_WEIGHT != FORMAT_FRACTAL_NZ))
-    #if TILING_KEY_VAR == 5000030000000012100
+    if (TILING_KEY_IS(5000030000000012100)) {
         static constexpr WqmmConfig wqmmCfg = {
             false, true, Mc2QuantType::PER_CHANNEL, false, Mc2QuantType::PER_TENSOR, CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
-    #elif TILING_KEY_VAR == 5000030000000012120
+    } else if (TILING_KEY_IS(5000030000000012120)) {
         static constexpr WqmmConfig wqmmCfg = {false,         true, Mc2QuantType::PER_CHANNEL, true, Mc2QuantType::PER_TENSOR,
                                                CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
-    #elif TILING_KEY_VAR == 5000030005000002100
+    } else if (TILING_KEY_IS(5000030005000002100)) {
         static constexpr WqmmConfig wqmmCfg = {
             false, false, Mc2QuantType::PER_CHANNEL, false, Mc2QuantType::PER_TENSOR, CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_4);
-    #elif TILING_KEY_VAR == 5000030005000002120
+    } else if (TILING_KEY_IS(5000030005000002120)) {
         static constexpr WqmmConfig wqmmCfg = {
             false, false, Mc2QuantType::PER_CHANNEL, true, Mc2QuantType::PER_TENSOR, CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_4);
-    #endif
+    }
 #endif
 #if defined(ORIG_DTYPE_X) && defined(DT_BF16) && ORIG_DTYPE_X == DT_BF16
 #undef DTYPE_BIAS
 #define DTYPE_BIAS float
     // 该分支处理A数据类型为BF16且bias为fp32的情况
-    #if TILING_KEY_VAR == 5000030000000012140
+    if (TILING_KEY_IS(5000030000000012140)) {
         static constexpr WqmmConfig wqmmCfg = {
             false, true, Mc2QuantType::PER_CHANNEL, false, Mc2QuantType::PER_TENSOR, CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
-    #elif TILING_KEY_VAR == 5000030000000012160
+    } else if (TILING_KEY_IS(5000030000000012160)) {
         static constexpr WqmmConfig wqmmCfg = {false,         true, Mc2QuantType::PER_CHANNEL, true, Mc2QuantType::PER_TENSOR,
                                                CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_0);
-    #elif TILING_KEY_VAR == 5000030005000002140
+    } else if (TILING_KEY_IS(5000030005000002140)) {
         static constexpr WqmmConfig wqmmCfg = {
             false, false, Mc2QuantType::PER_CHANNEL, false, Mc2QuantType::PER_TENSOR, CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_4);
-    #elif TILING_KEY_VAR == 5000030005000002160
+    } else if (TILING_KEY_IS(5000030005000002160)) {
         static constexpr WqmmConfig wqmmCfg = {
             false, false, Mc2QuantType::PER_CHANNEL, true, Mc2QuantType::PER_TENSOR, CubeFormat::ND};
         INVOKE_WEIGHT_QUANT_BMM_ADAPTIVE_SPLIT_OP_IMPL(
             WeightQuantBatchMatmulV2BasicBlockController, wqmmCfg, VEC_ANTIQUANT_CONFIG_4);
-    #endif
+    }
 #endif
 #else
 #undef DTYPE_BIAS
 #define DTYPE_BIAS DTYPE_X
 #if (defined(FORMAT_WEIGHT) && (FORMAT_WEIGHT != FORMAT_FRACTAL_NZ))
-    #if TILING_KEY_VAR == 3000240000000001100UL
+    if (TILING_KEY_IS(3000240000000001100UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_ASW_IMPL(Mc2WeightQuantBatchMatmulV2ASWKernel, false, false, Mc2QuantType::PER_TENSOR,
                                             false, Mc2QuantType::PER_TENSOR);
-    #elif TILING_KEY_VAR == 3000240000000002100UL
+    } else if (TILING_KEY_IS(3000240000000002100UL)) {
         INVOKE_WEIGHT_QUANT_BMM_OP_ASW_IMPL(Mc2WeightQuantBatchMatmulV2ASWKernel, false, false, Mc2QuantType::PER_CHANNEL,
                                             false, Mc2QuantType::PER_TENSOR);
-    #endif
+    }
 #endif
 #endif
 }
