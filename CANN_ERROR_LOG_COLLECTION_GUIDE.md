@@ -187,13 +187,18 @@ def collect_errors(operator_name, base_path):
                             error_msg = match.group(1)
                     
                     all_errors.append({
-                        '算子': operator_name,
-                        '文件路径': filename,
-                        '完整路径': filepath,
-                        '行号': linenum,
-                        '错误类型': error_type,
-                        '错误内容': error_msg if error_msg else content[:100],
-                        '完整内容': content[:200]
+                        'errClass': 'Operator Errors',
+                        'errTitle': 'Invalid_Argument',
+                        'ErrCode': 'N/A',
+                        '原ErrMessage': error_msg if error_msg else content[:100],
+                        'ErrMessage(新增或修改可写中文)': '',
+                        'Arglist': '',
+                        'expect': '',
+                        '整改后Reason的具体描述(新增或修改可写中文)': '',
+                        'suggestion.Possible Cause(新增或修改可写中文)': '',
+                        '场景(中文)': error_type,
+                        '文件路径': filepath,
+                        '代码行': linenum
                     })
     
     # 2. 搜索Kernel层错误
@@ -215,17 +220,22 @@ def collect_errors(operator_name, base_path):
                     # 提取KERNEL_LOG中的错误消息
                     error_msg = ''
                     match = re.search(r'KERNEL_LOG\(KERNEL_ERROR,\s*"([^"]+)"', content)
-                    if match:
-                        error_msg = match.group(1)
+if match:
+                            error_msg = match.group(1)
                     
                     all_errors.append({
-                        '算子': operator_name,
-                        '文件路径': filename,
-                        '完整路径': filepath,
-                        '行号': linenum,
-                        '错误类型': error_type,
-                        '错误内容': error_msg if error_msg else content[:100],
-                        '完整内容': content[:200]
+                        'errClass': 'Operator Errors',
+                        'errTitle': 'Kernel_Safety_Check',
+                        'ErrCode': 'KERNEL_ERROR',
+                        '原ErrMessage': error_msg if error_msg else content[:100],
+                        'ErrMessage(新增或修改可写中文)': '',
+                        'Arglist': '',
+                        'expect': '',
+                        '整改后Reason的具体描述(新增或修改可写中文)': '',
+                        'suggestion.Possible Cause(新增或修改可写中文)': '',
+                        '场景(中文)': 'Kernel层安全检查',
+                        '文件路径': filepath,
+                        '代码行': linenum
                     })
     
     return all_errors
@@ -236,11 +246,11 @@ base_path = '/path/to/operator'
 
 errors = collect_errors(operator_name, base_path)
 df = pd.DataFrame(errors)
-df.to_csv('error_logs_complete.csv', index=False)
+df.to_csv('error_logs_standard.csv', index=False)
 
 print(f'总错误数: {len(df)}')
-print(f'按错误类型:')
-print(df['错误类型'].value_counts())
+print(f'按场景统计:')
+print(df['场景(中文)'].value_counts())
 ```
 
 ### 3.5 完整性验证（Step 4）
@@ -253,13 +263,14 @@ print(df['错误类型'].value_counts())
 import pandas as pd
 import subprocess
 
-df = pd.read_csv('error_logs_complete.csv')
+df = pd.read_csv('error_logs_standard.csv')
 
 print('=== 完整性验证 ===')
 print('\n【主机层验证】')
 
 # 1. 验证 OP_LOGE（无需考虑共存）
-csv_count = len(df[df['错误类型'] == 'OP_LOGE'])
+场景统计 = df[df['场景(中文)'] == 'OP_LOGE']
+csv_count = len(场景统计)
 cmd = f"grep -r 'OP_LOGE' --include='*.cpp' --include='*.h' ../op_host ../op_api 2>/dev/null | wc -l"
 result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
 actual_count = int(result.stdout.strip()) if result.stdout.strip() else 0
@@ -267,7 +278,7 @@ match = '✓' if csv_count == actual_count else '✗'
 print(f'{match} OP_LOGE: CSV={csv_count}, 实际={actual_count}')
 
 # 2. 验证 ACLNN_ERR_PARAM_NULLPTR（需要考虑共存）
-csv_count = len(df[df['错误类型'] == 'ACLNN_ERR_PARAM_NULLPTR'])
+csv_count = len(df[df['场景(中文)'] == 'ACLNN_ERR_PARAM_NULLPTR'])
 cmd = f"grep -r 'ACLNN_ERR_PARAM_NULLPTR' --include='*.cpp' --include='*.h' ../op_host ../op_api 2>/dev/null | wc -l"
 result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
 actual_count = int(result.stdout.strip()) if result.stdout.strip() else 0
@@ -281,7 +292,7 @@ match = '✓' if csv_count == expected_count else '✗'
 print(f'{match} ACLNN_ERR_PARAM_NULLPTR: CSV={csv_count}, 实际={actual_count} (其中 {coexist_count} 条与OP_LOGE共存)')
 
 # 3. 验证 ACLNN_ERR_PARAM_INVALID（需要考虑共存）
-csv_count = len(df[df['错误类型'] == 'ACLNN_ERR_PARAM_INVALID'])
+csv_count = len(df[df['场景(中文)'] == 'ACLNN_ERR_PARAM_INVALID'])
 cmd = f"grep -r 'ACLNN_ERR_PARAM_INVALID' --include='*.cpp' --include='*.h' ../op_host ../op_api 2>/dev/null | wc -l"
 result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
 actual_count = int(result.stdout.strip()) if result.stdout.strip() else 0
@@ -295,7 +306,7 @@ match = '✓' if csv_count == expected_count else '✗'
 print(f'{match} ACLNN_ERR_PARAM_INVALID: CSV={csv_count}, 实际={actual_count} (其中 {coexist_count} 条与OP_LOGE共存)')
 
 # 4. 验证 ACLNN_ERR_INNER
-csv_count = len(df[df['错误类型'] == 'ACLNN_ERR_INNER'])
+csv_count = len(df[df['场景(中文)'] == 'ACLNN_ERR_INNER'])
 cmd = f"grep -r 'ACLNN_ERR_INNER' --include='*.cpp' --include='*.h' ../op_host ../op_api 2>/dev/null | wc -l"
 result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
 actual_count = int(result.stdout.strip()) if result.stdout.strip() else 0
@@ -303,7 +314,7 @@ match = '✓' if csv_count == actual_count else '✗'
 print(f'{match} ACLNN_ERR_INNER: CSV={csv_count}, 实际={actual_count}')
 
 # 5. 验证 OPS_REPORT
-csv_count = len(df[df['错误类型'] == 'OPS_REPORT'])
+csv_count = len(df[df['场景(中文)'] == 'OPS_REPORT'])
 cmd = f"grep -r 'OPS_REPORT' --include='*.cpp' --include='*.h' ../op_host ../op_api 2>/dev/null | wc -l"
 result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
 actual_count = int(result.stdout.strip()) if result.stdout.strip() else 0
@@ -311,7 +322,7 @@ match = '✓' if csv_count == actual_count else '✗'
 print(f'{match} OPS_REPORT: CSV={csv_count}, 实际={actual_count}')
 
 print('\n【Kernel层验证】')
-kernel_count = len(df[df['错误类型'] == 'ASCENDC_ASSERT'])
+kernel_count = len(df[df['场景(中文)'] == 'Kernel层安全检查'])
 cmd = f"grep -r 'ASCENDC_ASSERT' --include='*.cpp' --include='*.h' ../op_kernel 2>/dev/null | wc -l"
 result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
 actual_kernel_count = int(result.stdout.strip()) if result.stdout.strip() else 0
@@ -507,21 +518,31 @@ OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Error");
 
 ### 6.3 文档输出建议
 
-生成的 CSV 文件应包含以下列：
+生成的 CSV 文件应包含以下列（标准化错误日志收集格式）：
 
-| 列名 | 说明 |
-|------|------|
-| 算子 | 算子名称 |
-| 错误来源 | host/kernel |
-| 文件路径 | 完整文件路径 |
-| 文件名 | 文件名（便于统计） |
-| 行号 | 错误所在行号 |
-| 错误类型 | 错误宏类型 |
-| 错误内容 | 提取的错误消息 |
-| 完整内容 | 错误行完整代码（便于定位） |
+| 列名 | 说明 | 是否必填 | 示例 |
+|------|------|---------|------|
+| errClass | 错误类别（Operator Errors等） | 必填 | Operator Errors |
+| errTitle | 错误标题（Invalid_Argument等） | 必填 | Invalid_Argument |
+| ErrCode | 错误码（EZ0008-EZ0024） | 必填 | EZ0023 |
+| 原ErrMessage | 原错误消息（原始代码中的错误消息） | 必填 | "K value should be positive, but got %ld." |
+| ErrMessage(新增或修改可写中文) | EZ错误码模板消息或修改后的错误消息 | 必填（中文） | "参数 %s of 算子 %s has incorrect value %s. Reason: %s." |
+| Arglist | EZ模板参数列表 | 必填 | op_name, param_name, incorrect_value, reason |
+| expect | 预期值或正确值 | 选填 | "K value should be positive" |
+| 整改后Reason的具体描述(新增或修改可写中文) | 整改后填入Reason参数的具体错误描述 | 必填（中文） | "K值必须为正数" |
+| suggestion.Possible Cause(新增或修改可写中文) | 可能原因和建议解决方案 | 选填（中文） | "检查参数值是否正确传递" |
+| 场景(中文) | 错误发生的具体场景描述 | 必填（中文） | "参数校验-K值验证" |
+| 文件路径 | 源文件完整路径 | 必填 | grouped_matmul/op_api/grouped_matmul_950_checker.cpp |
+| 代码行 | 错误所在行号 | 必填 | 145 |
+
+**CSV文件头示例**：
+```csv
+errClass,errTitle,ErrCode,原ErrMessage,ErrMessage(新增或修改可写中文),Arglist,expect,整改后Reason的具体描述(新增或修改可写中文),suggestion.Possible Cause(新增或修改可写中文),场景(中文),文件路径,代码行
+```
 
 ---
 
 **适用范围**: 所有 CANN 算子错误日志提取  
 **关键要素**: 错误宏识别、共存处理、去重逻辑、完整性验证  
-**更新时间**: 2026-04-30
+**更新时间**: 2026-05-07  
+**新增内容**: 标准化CSV输出格式（12列）

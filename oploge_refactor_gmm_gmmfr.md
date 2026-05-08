@@ -27,6 +27,79 @@
 | OPS_REPORT | 50 | 43 | **93** |
 | **总计** | **322** | **1292** | **1614** |
 
+### 2.1 涉及文件分类
+
+| 文件 | 呈现类别 | 错误类型 |
+| -- | -- | -- |
+| op_api | ACLNN_ERR_INNER | dtype |
+| op_host | ACLNN_ERR_PARAM_INVALID | shape |
+| | ACLNN_ERR_PARAM_NULLPTR | format |
+| | ASCENDC_ASSERT | |
+| | OP_LOGE | |
+| | OPS_REPORT | |
+| | OPS_REPORT_CUBE_INNER_ERR | |
+
+### 2.2 GMM 文件清单
+
+**完整清单：**
+
+| 完整路径 | 计数 | 占比 | 涉及芯片 | 量化类型 |
+| -- | --: | --: | -- | -- |
+| gmm/grouped_matmul/op_api/aclnn_grouped_matmul.cpp | 359 | 27.1% | 公共 | - |
+| gmm/grouped_matmul/op_api/grouped_matmul.cpp | 3 | 0.2% | 公共 | - |
+| gmm/grouped_matmul/op_api/grouped_matmul_no_quant_950_checker.cpp | 3 | 0.2% | A5 | 非量化 |
+| gmm/grouped_matmul/op_api/grouped_matmul_weight_quant_950_checker.cpp | 111 | 8.4% | A5 | 伪量化 |
+| gmm/grouped_matmul/op_api/grouped_matmul_950_checker.cpp | 153 | 11.5% | 公共 | - |
+| gmm/grouped_matmul/op_graph/fallback_grouped_matmul.cpp | 23 | 1.7% | A5 | - |
+| gmm/grouped_matmul/op_kernel/arch35/weight_quant_basic_block/tool.h | 4 | 0.3% | A5 | 伪量化 |
+| gmm/grouped_matmul/op_kernel/arch35/weight_quant_basic_block/custom_policy/wqbmm_copy_cube_out.h | 2 | 0.2% | A5 | 伪量化 |
+| gmm/grouped_matmul/op_kernel/arch35/quant_adaptive_sliding_window_templates/mm_extension_interface/gqmm_copy_cube_out.h | 2 | 0.2% | A5 | 全量化 |
+| gmm/grouped_matmul/op_kernel/a16w4_msd/tool.h | 2 | 0.2% | A5 | 伪量化 |
+| gmm/grouped_matmul/op_host/grouped_matmul_infershape_weight_quant_checker.cpp | 97 | 7.3% | A5 | 伪量化 |
+| gmm/grouped_matmul/op_host/grouped_matmul_infershape.cpp | 190 | 14.3% | 公共 | - |
+| gmm/grouped_matmul/op_host/grouped_matmul_infershape_quant_checker.cpp | 62 | 4.7% | 公共 | - |
+| gmm/grouped_matmul/op_host/op_tiling/grouped_matmul_tiling.cpp | 53 | 4.0% | 公共 | - |
+| gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp | 106 | 8.0% | A5 | - |
+| gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_basic_api_matmul_tiling.cpp | 4 | 0.3% | A5 | - |
+| gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp | 123 | 9.3% | A5 | 伪量化 |
+| gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.cpp | 28 | 2.1% | A5 | 非量化 |
+| gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.h | 2 | 0.2% | A5 | 全量化 |
+
+**筛选 A5、伪量化后：**
+
+| 完整路径 | 计数 | 占比 | 涉及芯片 | 量化类型 |
+| -- | --: | --: | -- | -- |
+| gmm/grouped_matmul/op_api/grouped_matmul_weight_quant_950_checker.cpp | 111 | 8.4% | A5 | 伪量化 |
+| gmm/grouped_matmul/op_kernel/arch35/weight_quant_basic_block/tool.h | 4 | 0.3% | A5 | 伪量化 |
+| gmm/grouped_matmul/op_kernel/arch35/weight_quant_basic_block/custom_policy/wqbmm_copy_cube_out.h | 2 | 0.2% | A5 | 伪量化 |
+| gmm/grouped_matmul/op_kernel/a16w4_msd/tool.h | 2 | 0.2% | A5 | 伪量化 |
+| gmm/grouped_matmul/op_host/grouped_matmul_infershape_weight_quant_checker.cpp | 97 | 7.3% | A5 | 伪量化 |
+| gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp | 123 | 9.3% | A5 | 伪量化 |
+
+### 2.3 GMMFR 文件清单
+
+**完整清单：**
+
+| 完整路径 | 计数 | 占比 | 涉及芯片 | 量化类型 |
+| -- | --: | --: | -- | -- |
+| gmm/grouped_matmul_finalize_routing/op_api/grouped_matmul_finalize_routing_weight_quant_950_checker.h | 46 | 10.5% | A5 | 伪量化 |
+| gmm/grouped_matmul_finalize_routing/op_api/grouped_matmul_finalize_routing_950_checker.h | 48 | 11.0% | A5 | - |
+| gmm/grouped_matmul_finalize_routing/op_api/aclnn_grouped_matmul_finalize_routing.cpp | 108 | 24.7% | 公共 | - |
+| gmm/grouped_matmul_finalize_routing/op_graph/fallback_grouped_matmul_finalize_routing.cpp | 18 | 4.1% | 公共 | - |
+| gmm/grouped_matmul_finalize_routing/op_kernel/arch35/common/tool.h | 4 | 0.9% | A5 | - |
+| gmm/grouped_matmul_finalize_routing/op_host/grouped_matmul_finalize_routing_base_tiling.cpp | 16 | 3.7% | 公共 | - |
+| gmm/grouped_matmul_finalize_routing/op_host/grouped_matmul_finalize_routing_infershape.cpp | 45 | 10.3% | 公共 | - |
+| gmm/grouped_matmul_finalize_routing/op_host/grouped_matmul_finalize_routing_tiling.cpp | 5 | 1.1% | 公共 | - |
+| gmm/grouped_matmul_finalize_routing/op_host/op_tiling/arch35/grouped_matmul_finalize_routing_weight_quant_tiling.cpp | 84 | 19.2% | A5 | 伪量化 |
+| gmm/grouped_matmul_finalize_routing/op_host/op_tiling/arch35/grouped_matmul_finalize_routing_quant_tiling.cpp | 64 | 14.6% | A5 | 全量化 |
+
+**筛选 A5、伪量化后：**
+
+| 完整路径 | 计数 | 占比 | 涉及芯片 | 量化类型 |
+| -- | --: | --: | -- | -- |
+| gmm/grouped_matmul_finalize_routing/op_api/grouped_matmul_finalize_routing_weight_quant_950_checker.h | 46 | 10.5% | A5 | 伪量化 |
+| gmm/grouped_matmul_finalize_routing/op_host/op_tiling/arch35/grouped_matmul_finalize_routing_weight_quant_tiling.cpp | 84 | 19.2% | A5 | 伪量化 |
+
 ---
 
 ## 2.1 需修改文件清单（按错误类型分类）
@@ -203,6 +276,22 @@ CHECK_COND(x != nullptr, ACLNN_ERR_PARAM_NULLPTR, "X must not be nullptr.");
 ---
 
 ## 4. 整改流程
+
+### 4.1 整改流程图
+
+```mermaid
+flowchart TD
+    A[现有代码整理csv表格] --> B{有现成ErrCode?}
+    B -- 有 --> C[OP_LOGE改OP_LOGE_FOR_*]
+    B -- 无 --> D[提供建议分类并评审]
+    D --> C
+    C --> E{写UT/ttk用例验证}
+    E -- 可以 --> H[review、冒烟、上库]
+    E -- 不可以 --> G[测不到的保证同类写法有成功案例]
+    G --> H
+```
+
+### 4.2 整改阶段
 
 | Phase | 任务 | 工具 |
 | --- | --- | --- |
