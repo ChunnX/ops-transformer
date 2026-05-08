@@ -1208,8 +1208,10 @@ ge::graphStatus FiaInfoParser::GetActualSeqInfo()
                         preActualLen = actualLenData[i];
                     }
                     needInit_ = needInit_ || (actLen == 0);
-                    if ((qLayout_ == FiaLayout::TND || qLayout_ == FiaLayout::NTD) || actLen != s2Size_) {
-                        needInit_ = 1;
+                    if (actLen != s2Size_) {
+                        if (qLayout_ != FiaLayout::TND && qLayout_ != FiaLayout::NTD) {
+                            needInit_ = 1;
+                        }
                     }
                 }
                 maxActualseq_ = maxActualseq_ < actLen ? actLen : maxActualseq_;
