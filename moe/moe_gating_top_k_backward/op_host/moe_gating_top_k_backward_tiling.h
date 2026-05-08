@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef AIR_CXX_RUNTIME_V2_OP_IMPL_MOE_GATING_TOP_K_H
-#define AIR_CXX_RUNTIME_V2_OP_IMPL_MOE_GATING_TOP_K_H
+#ifndef AIR_CXX_RUNTIME_V2_OP_IMPL_MOE_GATING_TOP_K_BACKWARD_H
+#define AIR_CXX_RUNTIME_V2_OP_IMPL_MOE_GATING_TOP_K_BACKWARD_H
 
 #include <cmath>
 #include <cstdint>
@@ -32,17 +32,17 @@
 
 namespace optiling {
 BEGIN_TILING_DATA_DEF(MoeGatingTopKBackwardTilingData)
-TILING_DATA_FIELD_DEF(int64_t, needCoreNum); // 所需要的总核数
-TILING_DATA_FIELD_DEF(int64_t, perCoreRows); // 头核需要处理的token数
-TILING_DATA_FIELD_DEF(int64_t, lastCoreRows); // 尾核需要处理的token数
-TILING_DATA_FIELD_DEF(int64_t, baseRows); // 头核、尾核的头loop一次搬运的token数，同时也是一个UB可以处理的最多token数
-TILING_DATA_FIELD_DEF(int64_t, perLoopTimes); // 头核需要loop的次数
-TILING_DATA_FIELD_DEF(int64_t, perTailRows); // 头核尾loop一次搬运的token数
-TILING_DATA_FIELD_DEF(int64_t, lastLoopTimes); // 尾核需要loop的次数
-TILING_DATA_FIELD_DEF(int64_t, lastTailRows); // 尾核尾loop一次搬运的token数
-TILING_DATA_FIELD_DEF(int64_t, expertCount); // x shape [M,N]中的N
-TILING_DATA_FIELD_DEF(int64_t, k); // x shape [M,K]中的K
-TILING_DATA_FIELD_DEF(int64_t, gradYDtype); // gradY的数据类型
+TILING_DATA_FIELD_DEF(int64_t, needCoreNum);   // 所需要的总核数
+TILING_DATA_FIELD_DEF(int64_t, perCoreRows);   // 头核需要处理的 token 数
+TILING_DATA_FIELD_DEF(int64_t, lastCoreRows);  // 尾核需要处理的 token 数
+TILING_DATA_FIELD_DEF(int64_t, baseRows);      // 头核、尾核的头 loop 一次搬运的 token 数，同时也是一个 UB 可以处理的最多 token 数
+TILING_DATA_FIELD_DEF(int64_t, perLoopTimes);  // 头核需要 loop 的次数
+TILING_DATA_FIELD_DEF(int64_t, perTailRows);   // 头核尾 loop 一次搬运的 token 数
+TILING_DATA_FIELD_DEF(int64_t, lastLoopTimes); // 尾核需要 loop 的次数
+TILING_DATA_FIELD_DEF(int64_t, lastTailRows);  // 尾核尾 loop 一次搬运的 token 数
+TILING_DATA_FIELD_DEF(int64_t, expertCount);   // x_norm shape [M,N] 中的 N, 所有的 expert 数量
+TILING_DATA_FIELD_DEF(int64_t, k);             // grad_y shape [M,K] 中的 K，选择的前 K 个 expert 数量
+TILING_DATA_FIELD_DEF(int64_t, gradYDtype);    // grad_y的数据类型
 TILING_DATA_FIELD_DEF(int64_t, renorm);
 TILING_DATA_FIELD_DEF(int64_t, normType);
 TILING_DATA_FIELD_DEF(float, routedScalingFactor);
@@ -52,4 +52,4 @@ REGISTER_TILING_DATA_CLASS(MoeGatingTopKBackward, MoeGatingTopKBackwardTilingDat
 
 struct MoeGatingTopKBackwardCompileInfo {};
 } // namespace optiling
-#endif // AIR_CXX_RUNTIME_V2_OP_IMPL_MOE_GATING_TOP_K_H
+#endif // AIR_CXX_RUNTIME_V2_OP_IMPL_MOE_GATING_TOP_K_BACKWARD_H
