@@ -950,11 +950,11 @@ aclnnStatus aclnnMlaProlog(
     <tr>
       <td> dequantScaleQNopeOutOptional </td>
       <td>无需赋值</td>
-      <td>/</td>
+      <td>-</td>
       <td>无需赋值</td>
-      <td>/</td>
+      <td>-</td>
       <td>无需赋值</td>
-      <td>/</td>
+      <td>-</td>
     </tr>
   </table>
   </div>
