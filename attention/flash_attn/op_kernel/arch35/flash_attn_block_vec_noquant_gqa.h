@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file flash_attention_noquant_block_vec_base.h
+ * \file flash_attn_block_vec_noquant_gqa.h
  * \brief
  */
 #ifndef FLASH_ATTENTION_NOQUANT_GQA_BLOCK_VEC_H_

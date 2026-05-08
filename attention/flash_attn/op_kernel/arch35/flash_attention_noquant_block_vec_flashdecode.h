@@ -12,8 +12,8 @@
  * \file flash_attention_noquant_block_vec_flashdecode.h
  * \brief
  */
-#ifndef FIA_BLOCK_VEC_FLASHDECODE_H
-#define FIA_BLOCK_VEC_FLASHDECODE_H
+#ifndef FLASH_ATTN_BLOCK_VEC_FLASHDECODE_H
+#define FLASH_ATTN_BLOCK_VEC_FLASHDECODE_H
 
 #include "kernel_operator.h"
 #include "kernel_operator_list_tensor_intf.h"
