@@ -10,7 +10,7 @@
 
 #include "aclnn_quant_grouped_mat_mul_allto_allv.h"
 #include "acl/acl.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "aclnn_kernels/op_error_check.h"
 #include "aclnn_kernels/transdata.h"
 #include "common/utils/hccl_util.h"
 #include "common/utils/op_mc2.h"

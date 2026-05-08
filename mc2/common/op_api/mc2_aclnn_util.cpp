@@ -10,7 +10,7 @@
 
 #include "mc2_aclnn_util.h"
 #include "common/op_host/op_api/matmul_util.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "aclnn_kernels/op_error_check.h"
 
 namespace MC2Aclnn {
 

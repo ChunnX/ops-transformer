@@ -12,7 +12,7 @@
 #include "common/utils/op_mc2_def.h"
 #include <algorithm>
 #include "opdev/common_types.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "aclnn_kernels/op_error_check.h"
 #include "opdev/op_log.h"
 #include "aclnnInner_ffn_to_attention.h"
 

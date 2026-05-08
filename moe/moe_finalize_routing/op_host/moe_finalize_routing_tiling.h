@@ -21,7 +21,7 @@
 #include "op_host/tiling_base.h"
 #include "op_host/tiling_templates_registry.h"
 #include "log/log.h"
-#include "err/ops_err.h"
+#include "util/ops_err.h"
 
 namespace optiling {
 const int64_t DTYPE_FLOAT_BIG_K = 20000;

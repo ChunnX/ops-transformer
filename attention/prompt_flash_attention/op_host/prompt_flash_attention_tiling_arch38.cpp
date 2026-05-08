@@ -19,7 +19,7 @@
 #include "tiling/tiling_api.h"
 #include "op_host/data_copy_transpose_tiling.h"
 #include "log/log.h"
-#include "err/ops_err.h"
+#include "util/ops_err.h"
 
 using namespace ge;
 using namespace AscendC;

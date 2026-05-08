@@ -524,7 +524,6 @@ if (BUILD_OPEN_PROJECT)
             ${ops_aclnn_src}
     )
     target_include_directories(ops_aclnn PRIVATE
-            ${PROJECT_SOURCE_DIR}/common/inc/common
             ${PROJECT_SOURCE_DIR}/common/inc/static
     )
     target_compile_options(ops_aclnn PRIVATE

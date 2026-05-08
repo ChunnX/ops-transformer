@@ -18,7 +18,7 @@
 #include "quant_grouped_matmul_dequant.h"
 #include "level0/padv3.h"
 #include "aclnn_kernels/contiguous.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "aclnn_kernels/op_error_check.h"
 #include "aclnn_kernels/transpose.h"
 #include "opdev/common_types.h"
 #include "opdev/op_dfx.h"
