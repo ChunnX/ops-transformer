@@ -275,7 +275,7 @@ int main()
     std::vector<int64_t> alpha_shape = {3};
     std::vector<int64_t> bias_shape = {hc_mix};
 
-    std::vector<int64_t> hin_shape = {bs, seq_len, n, c};
+    std::vector<int64_t> hin_shape = {bs, seq_len, c};
     std::vector<int64_t> h_post_shape = {bs, seq_len, n};
     std::vector<int64_t> h_res_shape = {bs, seq_len, n * n};
     std::vector<int64_t> h_pre_shape = {bs, seq_len, n};
