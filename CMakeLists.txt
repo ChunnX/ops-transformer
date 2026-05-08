@@ -126,6 +126,7 @@ set_directory_properties(PROPERTIES
 )
 
 include(cmake/third_party/opbase.cmake)
+include(cmake/third_party/ops-tensor.cmake)
 include(cmake/config.cmake)
 include(cmake/third_party/json.cmake)
 if (ENABLE_TEST)
