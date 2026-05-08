@@ -888,15 +888,6 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeMXFP8(const FiaTilingInfo 
         scaleKVDim = fiaInfo.pageAttentionFlag ? ((fiaInfo.kvLayout == FiaLayout::NZ) ? 6 : 5) : 4;
     }
 
-    // qkv dim
-    OP_CHECK_IF((dequantScaleQueryDimNum != scaleQDim || keyAntiquantScaleDimNum != scaleKVDim || valueAntiquantScaleDimNum != scaleKVDim),
-                    OP_LOGE(fiaInfo.opName,
-                            "In MXFP8 fullquant scenario (layout of query is %s, layout of kv is %s), "
-                            "the dim num of dequantScaleQuery(%u) should be equal to %u, "
-                            "the dim num of keyAntiquantScale(%u)/valueAntiquantScale(%u) should be equal to %u.",
-                            LayoutToSerialString(fiaInfo.qLayout).c_str(), LayoutToSerialString(fiaInfo.kvLayout).c_str(),
-                            dequantScaleQueryDimNum, scaleQDim, keyAntiquantScaleDimNum, valueAntiquantScaleDimNum, scaleKVDim),
-                    return ge::GRAPH_FAILED);
     // kv pa scale
     if (fiaInfo.pageAttentionFlag) {
         OP_CHECK_IF(enableMxfp8FullQuantPrefill_ && fiaInfo.kvLayout != FiaLayout::BnNBsD,
@@ -936,24 +927,6 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeMXFP8(const FiaTilingInfo 
                     dequantScaleQueryShape.GetDim(DIM_NUM_1), dequantScaleQueryShape.GetDim(DIM_NUM_2),
                     dequantScaleQueryShape.GetDim(DIM_NUM_3), queryInputShape.GetDim(DIM_NUM_0),
                     *fiaInfo.opParamInfo.numHeads, CeilDivision(queryInputShape.GetDim(DIM_NUM_2), mxfp8BlockSize), 2),
-            return ge::GRAPH_FAILED);
-        // decode query -- [N2, T, G, D/64, 2]
-        OP_CHECK_IF(
-            enableMxfp8FullQuantDecode_ && 
-            ((*fiaInfo.opParamInfo.kvHeadNums != dequantScaleQueryShape.GetDim(DIM_NUM_0)) ||
-            (queryInputShape.GetDim(DIM_NUM_0) != dequantScaleQueryShape.GetDim(DIM_NUM_1)) ||
-            (fiaInfo.gSize != dequantScaleQueryShape.GetDim(DIM_NUM_2)) ||
-            (CeilDivision(queryInputShape.GetDim(DIM_NUM_2), mxfp8BlockSize) !=
-                dequantScaleQueryShape.GetDim(DIM_NUM_3)) ||
-                (2 != dequantScaleQueryShape.GetDim(DIM_NUM_4))),
-            OP_LOGE(fiaInfo.opName,
-                    "In MXFP8 fullquant decode scenario (layout of query is %s), "
-                    "the shape of dequantScaleQuery([%ld, %ld, %ld, %ld, %ld]) should be [%ld, %ld, %ld, %ld, %ld].",
-                    LayoutToSerialString(fiaInfo.qLayout).c_str(), dequantScaleQueryShape.GetDim(DIM_NUM_0),
-                    dequantScaleQueryShape.GetDim(DIM_NUM_1), dequantScaleQueryShape.GetDim(DIM_NUM_2),
-                    dequantScaleQueryShape.GetDim(DIM_NUM_3), dequantScaleQueryShape.GetDim(DIM_NUM_4), 
-                    *fiaInfo.opParamInfo.kvHeadNums, queryInputShape.GetDim(DIM_NUM_0), fiaInfo.gSize,
-                    CeilDivision(queryInputShape.GetDim(DIM_NUM_2), mxfp8BlockSize), 2),
             return ge::GRAPH_FAILED);
         if (!fiaInfo.pageAttentionFlag) {
             // key -- [T, N, D/64, 2]
