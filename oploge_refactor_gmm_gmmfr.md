@@ -1,4 +1,4 @@
-# GMM/GMMFR 算子错误码规范化整改 SRS
+# GMM/GMMFR/NPU_FORMAT_CAST 算子错误码规范化整改 SRS
 
 ## 1. 迭代信息
 
@@ -19,13 +19,13 @@
 
 **数据统计：**
 
-| 错误类型 | GMMFR | GMM | 合计 |
-| --- | --- | --- | --- |
-| OP_LOGE | 231 | 653 | **884** |
-| CHECK_COND | 0 | 397 | **397** |
-| CHECK_RET | 18 | 7 | **25** |
-| OPS_REPORT | 50 | 43 | **93** |
-| **总计** | **322** | **1292** | **1614** |
+| 错误类型 | GMMFR | GMM | NPU_FORMAT_CAST | 合计 |
+| --- | --- | --- | --- | --- |
+| OP_LOGE | 231 | 653 | 37 | **921** |
+| CHECK_COND | 0 | 397 | 41 | **438** |
+| CHECK_RET | 18 | 7 | 5 | **30** |
+| OPS_REPORT | 50 | 43 | 0 | **93** |
+| **总计** | **322** | **1292** | **81** | **1695** |
 
 ### 2.1 涉及文件分类
 
@@ -100,11 +100,41 @@
 | gmm/grouped_matmul_finalize_routing/op_api/grouped_matmul_finalize_routing_weight_quant_950_checker.h | 46 | 10.5% | A5 | 伪量化 |
 | gmm/grouped_matmul_finalize_routing/op_host/op_tiling/arch35/grouped_matmul_finalize_routing_weight_quant_tiling.cpp | 84 | 19.2% | A5 | 伪量化 |
 
+### 2.4 NPU_FORMAT_CAST 算子分析
+
+**完整清单：**
+
+| 完整路径 | 计数 | 占比 | 涉及芯片 | 量化类型 |
+| -- | --: | --: | -- | -- |
+| conversion/npu_format_cast/op_host/op_api/aclnn_npu_format_cast.cpp | 81 | 100% | 公共 | - |
+
+**错误类型分布：**
+
+| 错误类型 | 计数 | 占比 | 整改策略 |
+| -- | --: | --: | -- |
+| ACLNN_ERR_PARAM_INVALID | 61 | 75.3% | 按参数类型细分整改 |
+| ACLNN_ERR_RUNTIME_ERROR | 13 | 16.0% | 上报新增错误码 |
+| ACLNN_ERR_INNER_NULLPTR | 6 | 7.4% | 上报新增 EZ_INNER_NULLPTR |
+| ACLNN_ERR_INNER_CREATE_EXECUTOR | 1 | 1.2% | 上报新增错误码 |
+
+**参数错误细分（估算）：**
+
+| 参数类型 | 计数 | 整改策略 |
+| -- | --: | -- |
+| dtype 错误 | ~8 | EZ0018 - OP_LOGE_FOR_INVALID_DTYPE |
+| format 错误 | ~15 | EZ0016 - OP_LOGE_FOR_INVALID_FORMAT |
+| shape 错误 | ~9 | EZ0008 - OP_LOGE_FOR_INVALID_SHAPE |
+| dim 错误 | ~10 | EZ0011 - OP_LOGE_FOR_INVALID_SHAPEDIM |
+| contiguous 错误 | ~3 | EZ0023 - OP_LOGE_FOR_INVALID_VALUE_WITH_REASON |
+| value 错误 | ~若干 | EZ0023 - OP_LOGE_FOR_INVALID_VALUE_WITH_REASON |
+
 ---
 
 ## 2.1 需修改文件清单（按错误类型分类）
 
-### dtype 错误【92条】→ EZ0018
+**说明：以下统计包含 GMM、GMMFR 和 NPU_FORMAT_CAST 三个算子**
+
+### dtype 错误【100条】→ EZ0018
 
 **整改策略：直接替换为 OP_LOGE_FOR_INVALID_DTYPE**
 
@@ -112,33 +142,37 @@
 - `grouped_matmul/op_host/grouped_matmul_infershape_weight_quant_checker.cpp` (17条)
 - `grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp` (13条)
 - `grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp` (8条)
+- `conversion/npu_format_cast/op_host/op_api/aclnn_npu_format_cast.cpp` (8条)
 - 其他6个文件 (23条)
 
-### format 错误【22条】→ EZ0016
+### format 错误【37条】→ EZ0016
 
 **整改策略：直接替换为 OP_LOGE_FOR_INVALID_FORMAT**
 
 - `grouped_matmul/op_host/grouped_matmul_infershape.cpp` (9条)
 - `grouped_matmul_finalize_routing/op_api/aclnn_grouped_matmul_finalize_routing.cpp` (4条)
 - `grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp` (3条)
+- `conversion/npu_format_cast/op_host/op_api/aclnn_npu_format_cast.cpp` (15条)
 - 其他4个文件 (6条)
 
-### shape 错误【108条】→ EZ0008
+### shape 错误【117条】→ EZ0008
 
 **整改策略：直接替换为 OP_LOGE_FOR_INVALID_SHAPE**
 
 - `grouped_matmul_finalize_routing/op_host/op_tiling/arch35/grouped_matmul_finalize_routing_weight_quant_tiling.cpp` (30条)
 - `grouped_matmul/op_host/grouped_matmul_infershape.cpp` (21条)
 - `grouped_matmul/op_host/grouped_matmul_infershape_weight_quant_checker.cpp` (13条)
+- `conversion/npu_format_cast/op_host/op_api/aclnn_npu_format_cast.cpp` (9条)
 - 其他7个文件 (44条)
 
-### dim 错误【104条】→ EZ0011
+### dim 错误【114条】→ EZ0011
 
 **整改策略：直接替换为 OP_LOGE_FOR_INVALID_SHAPEDIM**
 
 - `grouped_matmul_finalize_routing/op_api/aclnn_grouped_matmul_finalize_routing.cpp` (21条)
 - `grouped_matmul/op_host/grouped_matmul_infershape.cpp` (20条)
 - `grouped_matmul_finalize_routing/op_host/op_tiling/arch35/grouped_matmul_finalize_routing_weight_quant_tiling.cpp` (15条)
+- `conversion/npu_format_cast/op_host/op_api/aclnn_npu_format_cast.cpp` (10条)
 - 其他7个文件 (48条)
 
 ### value 错误【41条】→ EZ0023
@@ -321,7 +355,9 @@ flowchart TD
 | 错误类型 | 数量 | 建议 |
 | --- | --- | --- |
 | CHECK_COND(ACLNN_ERR_PARAM_NULLPTR) | 13条 | 新增 EZ_PARAM_NULLPTR 或使用 EZ0023 |
-| CHECK_RET(ACLNN_ERR_INNER) | 25条 | 新增 EZ_INNER_NULLPTR |
+| CHECK_RET(ACLNN_ERR_INNER) | 30条 | 新增 EZ_INNER_NULLPTR（含npu_format_cast 5条） |
+| ACLNN_ERR_RUNTIME_ERROR | 13条 | 新增 EZ_RUNTIME_ERROR（npu_format_cast算子） |
+| ACLNN_ERR_INNER_CREATE_EXECUTOR | 1条 | 新增 EZ_INNER_CREATE_EXECUTOR（npu_format_cast算子） |
 | optional参数错误 | 86条 | 新增 EZ_OPTIONAL_PARAM 或使用 EZ0023 |
 
 ### 6.2 OPS_REPORT 分类处理
@@ -330,6 +366,23 @@ flowchart TD
   - 参数验证类 → 整改
   - 内部错误类 → 上报新增
   - 业务逻辑类 → 上报
+
+### 6.3 NPU_FORMAT_CAST 算子特殊整改要点
+
+**算子特点：**
+- 涉及多种格式转换（ND ↔ NZ、NCDHW ↔ NDC1HWC0等）
+- 错误类型集中在 format、shape、dim 等参数验证
+- 包含运行时错误（内存分配失败）需上报新增错误码
+
+**整改难点：**
+- format 转换逻辑复杂，需仔细区分不同场景的错误信息
+- shape 匹配检查涉及多维度计算，需确保错误信息准确
+- 部分错误信息需要补充更详细的参数名称
+
+**整改优先级：**
+- 高优先级：dtype、format、shape、dim 等参数验证错误
+- 中优先级：contiguous、value 等参数验证错误
+- 上报处理：运行时错误、内部错误（需新增错误码）
 
 ---
 
