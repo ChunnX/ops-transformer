@@ -629,8 +629,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>deterministic</td>
             <td>bool</td>
             <td>
-            <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持确定性计算<br>
-            <term>Ascend 950PR/Ascend 950DT</term>支持确定性计算
+            支持确定性计算
             </td>
         </tr>
         <tr>
@@ -668,7 +667,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
         <tr>
             <td>K</td>
             <td>1024、2048、3072、4096、5120、6144、7168、8192</td>
-            <td><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不建议K * sparseBlockSize超过100k，由于内部算法硬件限制可能会导致oom</td>
+            <td>不建议K * sparseBlockSize超过100k，由于内部算法硬件限制可能会导致oom</td>
         </tr>
         <tr>
             <td>layout</td>
