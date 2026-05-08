@@ -19,28 +19,16 @@
 
 namespace MoeGatingTopKBackward {
 using namespace AscendC;
-const float MIN_FP32 = *(float *)(&F32_NEG_INF);
-constexpr int32_t FLOAT32_NEG_INF = 0xFF800000; // -inf -2139095040
-constexpr int64_t ONE_REPEAT_SORT_NUM = 32;
-constexpr int64_t BLOCK_BYTES = 32;
-constexpr int64_t REPEAT_BYTES = 256;
-constexpr int64_t REPEAT_BLOCKS = 8;
 
-constexpr int32_t CONSTANT_TWO = 2;
-constexpr int32_t CONSTANT_THREE = 3;
-constexpr int32_t CONSTANT_FOUR = 4;
-constexpr int32_t CONSTANT_EIGHT = 8;
+// constexpr int64_t MERGE_LIST_IDX_TWO = 2;
+// constexpr int64_t MERGE_LIST_IDX_THREE = 3;
 
-constexpr int64_t MERGE_LIST_TWO = 2;
-constexpr int64_t MERGE_LIST_THREE = 3;
-constexpr int64_t MERGE_LIST_FOUR = 4;
-
-constexpr int64_t MERGE_LIST_IDX_TWO = 2;
-constexpr int64_t MERGE_LIST_IDX_THREE = 3;
-
-constexpr int64_t NORM_TYPE_SOFTMAX = 0;
-constexpr int64_t NORM_TYPE_SIGMOID = 1;
-
+// constexpr int64_t NORM_TYPE_SOFTMAX = 0;
+// constexpr int64_t NORM_TYPE_SIGMOID = 1;
+constexpr int64_t NUM_ONE = 1;
+constexpr int64_t NUM_TWO = 2;
+constexpr int64_t SIZE_OF_FLOAT32 = 4;
+constexpr int64_t SIZE_OF_INT32 = 4;
 __aicore__ inline int64_t Ceil(int64_t a, int64_t b)
 {
     if (b == 0) {

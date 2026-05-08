@@ -40,6 +40,9 @@ TILING_DATA_FIELD_DEF(int64_t, perLoopTimes); // 头核需要loop的次数
 TILING_DATA_FIELD_DEF(int64_t, perTailRows); // 头核尾loop一次搬运的token数
 TILING_DATA_FIELD_DEF(int64_t, lastLoopTimes); // 尾核需要loop的次数
 TILING_DATA_FIELD_DEF(int64_t, lastTailRows); // 尾核尾loop一次搬运的token数
+TILING_DATA_FIELD_DEF(int64_t, expertCount); // x shape [M,N]中的N
+TILING_DATA_FIELD_DEF(int64_t, k); // x shape [M,K]中的K
+TILING_DATA_FIELD_DEF(int64_t, gradYDtype); // gradY的数据类型
 TILING_DATA_FIELD_DEF(int64_t, renorm);
 TILING_DATA_FIELD_DEF(int64_t, normType);
 TILING_DATA_FIELD_DEF(float, routedScalingFactor);
