@@ -1400,12 +1400,18 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::UpdateTilingKeyInfo(const Fi
             tilingKeyInfo_.hasAttenMask = false;
         }
         UpdateTilingKeyHasRope(fiaInfo);
-        tilingKeyInfo_.isPa = fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION;
+        if (fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION) {
+            // 重构前模板，KvLayout无需做常量化，为减少tilingkey，PA场景下，KvLayout统一取值KvLayoutType_ENABLE_PA
+            tilingKeyInfo_.KvLayoutType = 1;
+        } else {
+            tilingKeyInfo_.KvLayoutType = 0;
+        }
         tilingKeyInfo_.emptyTensor = fiaInfo.emptyTensorFlag;
         UpdateTilingKeyMaskMode(fiaInfo);
         UpdateTilingKeyMatmulMode(fiaInfo);
         tilingKeyInfo_.enableKvPrefix = fiaInfo.sysPrefixFlag;
         tilingKeyInfo_.enableS1OutSplit = enableS1OutSplit;
+        tilingKeyInfo_.isReconstructTemp = false;
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -1416,19 +1422,19 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::GenTilingKey(gert::TilingCon
     UpdateTilingKeyInfo(fiaInfo);
     uint64_t genTilingkey = GET_TPL_TILING_KEY(
         tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.pseMode, tilingKeyInfo_.quantMode,
-        tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.hasRope, tilingKeyInfo_.isPa, tilingKeyInfo_.isFd,
+        tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.hasRope, tilingKeyInfo_.KvLayoutType, tilingKeyInfo_.isFd,
         tilingKeyInfo_.emptyTensor, tilingKeyInfo_.maskMode, tilingKeyInfo_.matmulMode,
-        tilingKeyInfo_.enableKvPrefix, tilingKeyInfo_.enableS1OutSplit);
+        tilingKeyInfo_.enableKvPrefix, tilingKeyInfo_.enableS1OutSplit,tilingKeyInfo_.isReconstructTemp);
     context->SetTilingKey(genTilingkey);
     OP_LOGI(fiaInfo.opName, "The tilingkey is %llu.", genTilingkey);
     OP_LOGI(fiaInfo.opName,
             "The tilingkey param is inOutLayoutType: %llu, config: %llu, pseMode: %llu, quantMode: %llu, "
-            "hasAttenMask: %llu, hasRope: %llu, isPa: %llu, isFd: %llu, emptyTensor: %llu, PFAMask: %llu, "
-            "pFAMatMulType: %llu, enableKvPrefix: %llu, enableS1OutSplit: %llu.",
+            "hasAttenMask: %llu, hasRope: %llu, KvLayoutType: %llu, isFd: %llu, emptyTensor: %llu, PFAMask: %llu, "
+            "pFAMatMulType: %llu, enableKvPrefix: %llu, enableS1OutSplit: %llu, isReconstructTemp:%llu",
             tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.pseMode, tilingKeyInfo_.quantMode,
-            tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.hasRope, tilingKeyInfo_.isPa, tilingKeyInfo_.isFd,
+            tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.hasRope, tilingKeyInfo_.KvLayoutType, tilingKeyInfo_.isFd,
             tilingKeyInfo_.emptyTensor, tilingKeyInfo_.maskMode, tilingKeyInfo_.matmulMode,
-            tilingKeyInfo_.enableKvPrefix, tilingKeyInfo_.enableS1OutSplit);
+            tilingKeyInfo_.enableKvPrefix, tilingKeyInfo_.enableS1OutSplit,tilingKeyInfo_.isReconstructTemp);
     return ge::GRAPH_SUCCESS;
 }
 

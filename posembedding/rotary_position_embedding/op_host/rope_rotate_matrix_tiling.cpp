@@ -216,7 +216,7 @@ ge::graphStatus RotateMatrixTiling::CheckShapeSupport(const gert::Shape &xShape,
     if (xShape.GetDimNum() != DIM_NUM || cosShape.GetDimNum() != DIM_NUM || sinShape.GetDimNum() != DIM_NUM) {
         std::string dimNumMsg = std::to_string(xShape.GetDimNum()) + ", " +
                 std::to_string(cosShape.GetDimNum()) + " and " + std::to_string(sinShape.GetDimNum());
-        std::string reasonMsg = "The shape dims of input x, cos and sin should all be " +
+        std::string reasonMsg = "The shape dims of input x, cos and sin must be " +
             std::to_string(DIM_NUM);
         OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(context->GetNodeName(), "x, cos and sin",
             dimNumMsg.c_str(), reasonMsg.c_str());
@@ -230,8 +230,8 @@ ge::graphStatus RotateMatrixTiling::CheckShapeSupport(const gert::Shape &xShape,
         return ge::GRAPH_FAILED;
     }
     if (dLength > D_LENGTH_LIMIT) {
-        std::string reasonMsg = "The D axis of input x can not be greater than " + std::to_string(D_LENGTH_LIMIT) +
-            ", where D refers to the last dim";
+        std::string reasonMsg = "The D-dimension of input x must be less than or equal to " + std::to_string(D_LENGTH_LIMIT) +
+            ", where D is the last axis";
         std::string xShapeStr = ToString(xShape);
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "x", xShapeStr.c_str(),
             reasonMsg.c_str());
@@ -240,13 +240,13 @@ ge::graphStatus RotateMatrixTiling::CheckShapeSupport(const gert::Shape &xShape,
     if (GetRem(dLength, TWO) != 0) {
         std::string xShapeStr = ToString(xShape);
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "x", xShapeStr.c_str(),
-            "The D axis of input x must be an even number, where D refers to the last dim");
+            "The D-dimension of input x must be an even number, where D is the last axis");
         return ge::GRAPH_FAILED;
     }
     if (cosShape != sinShape) {
         std::string shapeMsg = ToString(cosShape) + " and " + ToString(sinShape);
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "cos and sin", shapeMsg.c_str(),
-            "The shapes of input cos and input sin should be the same");
+            "The shapes of input cos and input sin must be the same");
         return ge::GRAPH_FAILED;
     }
     uint64_t cosDLength = static_cast<uint64_t>(cosShape.GetDim(DIM_FOURTH));
@@ -255,14 +255,14 @@ ge::graphStatus RotateMatrixTiling::CheckShapeSupport(const gert::Shape &xShape,
     if (rotateFirstLength != rotateSecondLength) {
         std::string rotateShapeStr = ToString(rotateShape);
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "rotate", rotateShapeStr.c_str(),
-            "The 0th dim of input rotate should be equal to the 1st dim of input rotate");
+            "The 0th axis of input rotate must be equal to the 1st axis of input rotate");
         return ge::GRAPH_FAILED;
     }
 
     if (cosDLength != dLength || rotateSecondLength != dLength) {
         std::string shapeMsg = ToString(xShape) + ", " + ToString(cosShape) + " and " + ToString(rotateShape);
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "x, cos and rotate", shapeMsg.c_str(),
-            "The last dim of input x, cos and rotate should be the same");
+            "The last axis of input cos and rotate must be equal to the last axis of input x");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -312,7 +312,7 @@ ge::graphStatus RotateMatrixTiling::CheckDtype(){
         std::string dtypeMsg = ToString(inputDtype) + ", " + ToString(cosDtype) + ", " +
             ToString(sinDtype) + " and " + ToString(rotateDtype);
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context->GetNodeName(), "x, cos, sin and rotate", dtypeMsg.c_str(),
-            "The dtypes of input x, cos, sin and rotate should be the same");
+            "The dtypes of input x, cos, sin and rotate must be the same");
         return ge::GRAPH_FAILED;
     }
 
@@ -413,9 +413,9 @@ ge::graphStatus RotateMatrixTiling::MatmulTilingProcess(){
     const gert::Shape &xShape = inputXShapePtr->GetStorageShape();
 
     if (dLen == 0 || GetRem(gmLen, dLen) != 0) {
-        std::string reasonMsg = "The D axis of input x can not be 0 "
-            "and the shape size of input x should be divisible by its D axis, "
-            "where D refers to the last dim";
+        std::string reasonMsg = "The D-dimension of input x can not be 0 "
+            "and the shape size of input x must be divisible by its D axis, "
+            "where D is the last dim";
         std::string xShapeStr = ToString(xShape);
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "x", xShapeStr.c_str(),
             reasonMsg.c_str());
@@ -451,7 +451,7 @@ ge::graphStatus RotateMatrixTiling::MatmulTilingProcess(){
         mm_.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT, false);
         mm_.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT);
     } else {
-        OP_LOGE(context->GetNodeName(), "Unsupported tiling dtype: %d", static_cast<int>(tilingDtype));
+        OP_LOGE_FOR_INVALID_DTYPE(context->GetNodeName(), "x", ToString(inputDtype).c_str(), "FLOAT, BF16 or FLOAT16");
         return ge::GRAPH_FAILED;
     }
     mm_.SetBias(false);

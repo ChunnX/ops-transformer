@@ -52,6 +52,22 @@ struct MMParam {
     uint32_t realM = 0; // bmm2以s1realsize为M轴，不赋值时不影响现有代码逻辑
 };
 
+__aicore__ inline MMParam MakeMMParam(uint32_t singleM, uint32_t singleN, uint32_t singleK, bool isLeftTranspose,
+                                      bool isRightTranspose, bool cmatrixInitVal = true, bool isOutKFisrt = true,
+                                      uint32_t unitFlag = 0, uint32_t realM = 0)
+{
+    return {.singleM = singleM,
+            .singleN = singleN,
+            .singleK = singleK,
+            .isLeftTranspose = isLeftTranspose,
+            .isRightTranspose = isRightTranspose,
+            .cmatrixInitVal = cmatrixInitVal,
+            .isOutKFisrt = isOutKFisrt,
+            .unitFlag = unitFlag,
+            .realM = realM
+            };
+}
+
 enum class ABLayout {
     MK = 0,
     KM = 1,

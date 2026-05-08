@@ -24,8 +24,10 @@ set(src_files
   ${ATTENTION_SRC}/common/op_host/arch32/fia_tiling_nonquant_mla.cpp
   ${ATTENTION_SRC}/common/op_host/arch32/fia_tiling_nonquant.cpp
   ${ATTENTION_SRC}/common/op_host/arch32/fia_tiling_empty_tensor.cpp
+  ${ATTENTION_SRC}/common/op_host/arch35/fia_tiling_nonquant_gqa.cpp
   ${ATTENTION_SRC}/common/op_host/fia_tiling_shape.cpp
   ${ATTENTION_SRC}/common/op_host/split_core.cpp
+  ${ATTENTION_SRC}/common/op_host/split_core_v2.cpp
   ${ATTENTION_SRC}/fused_infer_attention_score/op_host/fused_infer_attention_score_tiling.cpp
   ${ATTENTION_SRC}/fused_infer_attention_score/op_host/fused_infer_attention_score_tiling_info_parser.cpp
   ${ATTENTION_SRC}/fused_infer_attention_score/op_host/arch32/fused_infer_attention_score_tiling_check.cpp

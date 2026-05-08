@@ -122,7 +122,8 @@ public:
                 OP_LOGI(context, "Ignore general op tiling priority=%d", it->first);
             }
         }
-        OPS_REPORT_VECTOR_INNER_ERR(op_type, "Do op tiling failed, no valid template is found.");
+        // arch35各模板tiling切换至注册方式中，报error会导致图模式下沉场景执行失败
+        OP_LOGW(op_type, "Do op tiling failed, no valid template is found.");
         return ge::GRAPH_FAILED;
     }
 
