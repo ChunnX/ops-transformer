@@ -113,13 +113,13 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
 
         ParamsDeter params = {
             {1, 1, 1, 1},
-            {x, w, deterBuffer, bias, group_list},              // y -> workspace
-            {share_input, deterBuffer,                           // prologue y -> workspace
+            {x, w, deterBuffer, bias, group_list},              // BlockMmad: c -> deterBuffer (unused by Cube)
+            {share_input, y,                                    // Prologue: y -> y (residual to final output, NOT workspace)
              gmmFinalizeRoutingQuantParams_.sharedInputOffset,
              gmmFinalizeRoutingQuantParams_.sharedInputLen, matmulTiling_.N,
              gmmFinalizeRoutingQuantParams_.batch,
              gmmFinalizeRoutingQuantParams_.residualScale},
-            {deterBuffer, w_scale, x_scale, bias, logit, row_index,  // epilogue y -> workspace (sequential write)
+            {deterBuffer, w_scale, x_scale, bias, logit, row_index,  // Epilogue: y -> deterBuffer (dequant only, no residual)
              matmulTiling_.baseM, matmulTiling_.baseN},
             gmmParamsDeter};
 
