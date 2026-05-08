@@ -282,24 +282,20 @@ BlockEpilogueDequantSequentialWrite<GMM_BLOCK_EPILOGUE_DEQUANT_SEQUENTIAL_FUNC_L
 //   SetAtomicNone();
 //
 // New (sequential write, DETERMINISTIC):
-//   for (i = 0; i < curVecBaseM; i++) {
-//       DataCopyPad(yGlobal_[(offsetM + i) * n_ + yOffset], yLocal[i * alignN_], ...);
-//   }
-//
-// offsetM is globally unique per core per tile (assigned by Cgmct scheduler),
-// so no two cores write to the same position. No AtomicAdd needed.
-// FRDeterministicA5 reads from workspace by (offsetM + i) = mOffset sequentially.
+//   Use outRow from rowIndexGlobal_ to scatter-write to workspace, same as original
+//   VectorAtomicProcess but WITHOUT SetAtomicAdd. This avoids the group-relative
+//   offsetM overlap issue (C offset resets per group in Cgmct scheduler).
 // ============================================================
 GMM_BLOCK_EPILOGUE_DEQUANT_SEQUENTIAL_CLASS_LOCAL_PARAMS
 __aicore__ inline void
 BlockEpilogueDequantSequentialWrite<GMM_BLOCK_EPILOGUE_DEQUANT_SEQUENTIAL_FUNC_LOCAL_PARAMS>::VectorSequentialWrite(
     uint32_t curBaseN, uint32_t curVecBaseM, uint64_t offsetM, uint64_t yOffset, LocalTensor<DataTypeOut> &yLocal)
 {
-    // NO SetAtomicAdd - sequential write, each core writes to unique positions
+    // NO SetAtomicAdd - scatter write to workspace using outRow (same as original)
     DataCopyExtParams paramsOut{1, static_cast<uint32_t>(curBaseN * sizeof(DataTypeOut)), 0, 0, 0};
     for (uint32_t i = 0; i < curVecBaseM; i++) {
-        // Write sequentially by input row index (offsetM + i), NOT by output row (outRow)
-        DataCopyPad(yGlobal_[(offsetM + i) * n_ + yOffset], yLocal[i * alignN_], paramsOut);
+        auto outRow = static_cast<uint64_t>(rowIndexGlobal_.GetValue(offsetM + i));
+        DataCopyPad(yGlobal_[outRow * n_ + yOffset], yLocal[i * alignN_], paramsOut);
     }
 }
 
