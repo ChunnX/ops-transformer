@@ -15,6 +15,8 @@
 
 #ifndef FLASH_ATTN_TILING_COMPILE_INFO_H
 #define FLASH_ATTN_TILING_COMPILE_INFO_H
+// #include "../../prompt_flash_attention/op_host/prompt_flash_attention_tiling.h"
+// #include "../../incre_flash_attention/op_host/incre_flash_attention_tiling.h"
 #include "register/tilingdata_base.h"
 
 namespace optiling {

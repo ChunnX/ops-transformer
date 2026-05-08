@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef ACTUAL_SEQ_LEN_CHECKER_H
-#define ACTUAL_SEQ_LEN_CHECKER_H
+#ifndef FLASH_ATTN_ACTUAL_SEQ_LEN_CHECKER_H
+#define FLASH_ATTN_ACTUAL_SEQ_LEN_CHECKER_H
 
 #include <map>
 #include <numeric>
@@ -22,6 +22,7 @@
 #include "base_checker.h"
 
 namespace optiling {
+namespace flash_attn {
 
 class ActualSeqLenChecker : public FABaseChecker {
 public:
@@ -42,5 +43,6 @@ private:
     ge::graphStatus CheckSingleParaMaxSeqlenKv(const FaTilingInfo &faInfo);
 };
 
+} // namespace flash_attn
 } // namespace optiling
-#endif // ACTUAL_SEQ_LEN_CHECKER_H
+#endif // FLASH_ATTN_ACTUAL_SEQ_LEN_CHECKER_H

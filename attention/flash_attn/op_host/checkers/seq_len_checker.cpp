@@ -23,6 +23,7 @@
 #include "seq_len_checker.h"
 
 namespace optiling {
+namespace flash_attn {
 using std::map;
 using std::pair;
 using std::string;
@@ -154,11 +155,39 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaCuSeqlensKv(const FaTilingIn
 
 ge::graphStatus ActualSeqLenChecker::CheckSingleParaMaxSeqlenQ(const FaTilingInfo &faInfo)
 {
+    // if (faInfo.qLayout != FaLayout::TND) {
+    //     OP_CHECK_IF(faInfo.maxSeqQ != -1,
+    //                 OP_LOGE(faInfo.opName,
+    //                         "max_seqlen_q(%ld) is not supported when layout_q is %s, only supported in TND layout. "
+    //                         "In non-TND layout, max_seqlen_q must be -1 (default).",
+    //                         faInfo.maxSeqQ, LayoutToSerialString(faInfo.qLayout).c_str()),
+    //                 return ge::GRAPH_FAILED);
+    // } else {
+    //     OP_CHECK_IF(
+    //         faInfo.maxSeqQ != -1 && faInfo.maxSeqQ < 0,
+    //         OP_LOGE(faInfo.opName, "max_seqlen_q(%ld) only supports -1 or non-negative integer.", faInfo.maxSeqQ),
+    //         return ge::GRAPH_FAILED);
+    // }
+
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus ActualSeqLenChecker::CheckSingleParaMaxSeqlenKv(const FaTilingInfo &faInfo)
 {
+    // if (faInfo.kvLayout != FaLayout::TND) {
+    //     OP_CHECK_IF(faInfo.maxSeqKv != -1,
+    //                 OP_LOGE(faInfo.opName,
+    //                         "max_seqlen_kv(%ld) is not supported when layout_kv is %s, only supported in TND layout. "
+    //                         "In non-TND layout, max_seqlen_kv must be -1 (default).",
+    //                         faInfo.maxSeqKv, LayoutToSerialString(faInfo.kvLayout).c_str()),
+    //                 return ge::GRAPH_FAILED);
+    // } else {
+    //     OP_CHECK_IF(
+    //         faInfo.maxSeqKv != -1 && faInfo.maxSeqKv < 0,
+    //         OP_LOGE(faInfo.opName, "max_seqlen_kv(%ld) only supports -1 or non-negative integer.", faInfo.maxSeqKv),
+    //         return ge::GRAPH_FAILED);
+    // }
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -222,12 +251,19 @@ ge::graphStatus ActualSeqLenChecker::CheckMultiPara(const FaTilingInfo &faInfo)
 {
     auto &cuSeqlensQTensor = faInfo.opParamInfo.cuSeqlensQ.tensor;
     if (cuSeqlensQTensor != nullptr && faInfo.qLayout == FaLayout::TND) {
+        // TODO: tensor值校验需用户自行保证
+        // 文档要求：cu_seqlens_q第一个元素为0、最后一个元素等于Q_T、其值应非递减排列
+        // 由于tiling侧无法获取tensor的具体数值，此处不做值校验
     }
 
     auto &cuSeqlensKvTensor = faInfo.opParamInfo.cuSeqlensKv.tensor;
     if (cuSeqlensKvTensor != nullptr && faInfo.kvLayout == FaLayout::TND) {
+        // TODO: tensor值校验需用户自行保证
+        // 文档要求：cu_seqlens_kv第一个元素为0、最后一个元素等于KV_T、其值应非递减排列
+        // 由于tiling侧无法获取tensor的具体数值，此处不做值校验
     }
     return ge::GRAPH_SUCCESS;
 }
 
+} // namespace flash_attn
 } // namespace optiling

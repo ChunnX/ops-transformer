@@ -12,8 +12,8 @@
  * \file fa_tiling_shape.h
  * \brief
  */
-#ifndef FA_TILING_SHAPE_H
-#define FA_TILING_SHAPE_H
+#ifndef FLASH_ATTN_FA_TILING_SHAPE_H
+#define FLASH_ATTN_FA_TILING_SHAPE_H
 
 #include "fa_tiling_info.h"
 
@@ -220,4 +220,4 @@ public:
     ge::graphStatus CompareShape(FaTilingShapeCompareParam &param, const std::string &funcName) const;
 };
 } // namespace optiling
-#endif // FA_TILING_SHAPE_H
+#endif // FLASH_ATTN_FA_TILING_SHAPE_H

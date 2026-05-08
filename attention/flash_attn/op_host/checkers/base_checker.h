@@ -13,8 +13,8 @@
  * \brief Base checker class for npu_flash_attn parameters
  */
 
-#ifndef BASE_CHECKER_H
-#define BASE_CHECKER_H
+#ifndef FLASH_ATTN_BASE_CHECKER_H
+#define FLASH_ATTN_BASE_CHECKER_H
 
 #include <map>
 #include <numeric>
@@ -25,6 +25,7 @@
 #include "../flash_attn_tiling_utils.h"
 
 namespace optiling {
+namespace flash_attn {
 class FABaseChecker {
 public:
     FABaseChecker() = default;
@@ -65,5 +66,6 @@ public:
     std::string DataTypeToSerialString(ge::DataType type) const;
     static uint32_t GetTypeSize(ge::DataType dtype);
 };
+} // namespace flash_attn
 } // namespace optiling
-#endif // BASE_CHECKER_H
+#endif // FLASH_ATTN_BASE_CHECKER_H

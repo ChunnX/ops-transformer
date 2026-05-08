@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef SPLIT_CORE_V2_H
-#define SPLIT_CORE_V2_H
+#ifndef FLASH_ATTN_SPLIT_CORE_V2_H
+#define FLASH_ATTN_SPLIT_CORE_V2_H
 
 #include <cstdint>
 #include <vector>

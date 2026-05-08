@@ -13,8 +13,8 @@
  * \brief Checker for layout parameters (文档约束: layout匹配关系)
  */
 
-#ifndef LAYOUT_CHECKER_H
-#define LAYOUT_CHECKER_H
+#ifndef FLASH_ATTN_LAYOUT_CHECKER_H
+#define FLASH_ATTN_LAYOUT_CHECKER_H
 
 #include <map>
 #include <numeric>
@@ -22,6 +22,7 @@
 #include "base_checker.h"
 
 namespace optiling {
+namespace flash_attn {
 
 class LayoutChecker : public FABaseChecker {
 public:
@@ -32,5 +33,6 @@ public:
     ge::graphStatus CheckMultiPara(const FaTilingInfo &faInfo) override;
 };
 
+} // namespace flash_attn
 } // namespace optiling
-#endif // LAYOUT_CHECKER_H
+#endif // FLASH_ATTN_LAYOUT_CHECKER_H

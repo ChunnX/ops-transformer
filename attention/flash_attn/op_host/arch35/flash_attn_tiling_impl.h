@@ -21,10 +21,12 @@
 #include "../fa_tiling_info.h"
 #include "tiling/tiling_api.h"
 #include "../../op_kernel/arch35/flash_attn_tiling_data.h"
+// #include "../../common/op_host/split_core_v2.h"
 #include "../fa_split_core_v2.h"
 #include "../../op_kernel/arch35/flash_attn_template_tiling_key.h"
 
 namespace optiling {
+// constexpr int64_t MASK_MODE_INT_MAX = 2147483647;
 
 struct FaTilingKeyInfo {
     uint64_t inputLayout = 0;
@@ -79,6 +81,9 @@ private:
     void CalcWorkspaceSize();
     void UpdateTilingKeyConfig();
     void UpdateTilingKeyLayout();
+    // void UpdateTilingKeyPseMode();
+    // void UpdateTilingKeyQuantMode();
+    // void UpdateTilingKeyHasRope();
     void UpdateTilingKeyMaskMode();
     void UpdateTilingKeyMatmulMode();
     void UpdateTilingKeyInfo();

@@ -13,8 +13,8 @@
  * \brief Checker for sinks parameter (文档参数名: sinks, 文档约束: LearnableSink参数组)
  */
 
-#ifndef SINKS_CHECKER_H
-#define SINKS_CHECKER_H
+#ifndef FLASH_ATTN_SINKS_CHECKER_H
+#define FLASH_ATTN_SINKS_CHECKER_H
 
 #include <map>
 #include <numeric>
@@ -22,6 +22,7 @@
 #include "base_checker.h"
 
 namespace optiling {
+namespace flash_attn {
 
 class SinksChecker : public FABaseChecker {
 public:
@@ -31,5 +32,6 @@ public:
     ge::graphStatus CheckSinglePara(const FaTilingInfo &faInfo) override;
 };
 
+} // namespace flash_attn
 } // namespace optiling
-#endif // SINKS_CHECKER_H
+#endif // FLASH_ATTN_SINKS_CHECKER_H
