@@ -245,8 +245,9 @@ private:
 
     bool IsSupportFullloadQuantMode() const
     {
-        return (quantMode_ == QUANT_MODE_UNQUANT) || (quantMode_ == QUANT_MODE_STATIC) ||
-                (quantMode_ == QUANT_MODE_DYNAMIC);
+        // return (quantMode_ == QUANT_MODE_UNQUANT) || (quantMode_ == QUANT_MODE_STATIC) ||
+        //         (quantMode_ == QUANT_MODE_DYNAMIC);
+        return false;
     }
 
     // 辅助工具函数
