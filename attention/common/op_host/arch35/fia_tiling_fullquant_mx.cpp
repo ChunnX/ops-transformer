@@ -86,7 +86,6 @@ ge::graphStatus FiaTilingFullQuantMxArch35::DoOpTiling()
     OP_CHECK_IF(SetPlatMemoryInfo() != ge::GRAPH_SUCCESS, OP_LOGE(fiaInfo_->opName, "Set plat memory info fail."),
                 return ge::GRAPH_FAILED);
 
-    // TODO，增加空tensor、路径6 STC验证用例
     if (fiaInfo_->emptyTensorFlag) {
         int64_t outSize = fiaInfo_->opParamInfo.attenOut.shape->GetStorageShape().GetShapeSize();
         int64_t lseSize =
@@ -358,7 +357,6 @@ void FiaTilingFullQuantMxArch35::SplitOutSeq()
     }
 
     int64_t actualUsedCoreNum = std::min(totalSize, static_cast<int64_t>(curCoreNum));
-    // actualUsedCoreNum = 1;
     CalcNumBlocks(actualUsedCoreNum);
     tilingData_.baseTiling.fiaS1OuterSplitCoreParams.totalSize = totalSize;
     tilingData_.baseTiling.fiaS1OuterSplitCoreParams.enableS1OutSplit = true;
@@ -708,7 +706,6 @@ void FiaTilingFullQuantMxArch35::UpdateTilingKeyInfo()
         tilingKeyInfo_.hasAttenMask = fiaInfo_->attenMaskFlag;
         UpdateTilingKeyHasRope();
 
-        // tilingKeyInfo_.isPa = fiaInfo_->pageAttentionFlag;
         tilingKeyInfo_.kvLayoutType = tilingData_.baseTiling.fiaPageAttentionParams.paLayoutType;
 
         if (fiaInfo_->pageAttentionFlag) {
@@ -779,7 +776,6 @@ void FiaTilingFullQuantMxArch35::CalcWorkspaceSize()
 
     workspaceSize_ = sysWorkspaceSize;
 
-    // TODO，确认这段workspace分配逻辑
     int64_t bmm2Bytes = 0;
     int64_t vec2Bytes = 0;
     int64_t bmm2ResBlockSize = dVBasicBlock;
