@@ -197,10 +197,11 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
         flash_attn_metadata_only(**kwargs)
         return True
     print(f"[{test_name}] CPU 参考计算...")
-    out, _, _ = tforward(qf, kf, v, pse_cpu, **kwargs)
+    out, x_max, x_sum = tforward(qf, kf, v, pse_cpu, **kwargs)
+    lse_out = torch.log(x_sum) + x_max
     atten_mask = generate_npu_mask(b, sq, skv, sparse_mode, pre_tokens, next_tokens, prefix)
     print(f"[{test_name}] NPU 算子执行...")
-    npu_out = flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse_npu, **kwargs)
+    npu_out, lse_npu = flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse_npu, **kwargs)
     out_trans = trans_bnsd_to_layout(out, output_layout)
     if dump_tensors:
         dump_path = os.path.join(dump_dir, test_name)
@@ -212,6 +213,10 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
         save_tensor_to_txt(npu_out.float(),   os.path.join(dump_path, "npu_out.txt"))
         print(f"[{test_name}] 已保存 q/k/v/cpu_out/npu_out → {dump_path}/")
     passed = check_result(test_name, out_trans.float(), npu_out.float(), verbose_diff=verbose_diff)
+    lse_passed = check_result("CHECK LSE", lse_out.float(), lse_npu.float())
+    with open("LSEOUT.TXT","w") as f:
+        f.write(f"cpu max:{str(x_max)}\n cpu sum: {str(x_sum)}\n")
+        f.write(f"cpu lse:{str(lse_out)}\n npu lse: {str(lse_npu)}\n")
     if visualize:
         try:
             from precision_visual import visualize_from_tensors

@@ -196,6 +196,31 @@ TestCases = {
         "Dtype": "fp16",
         "mask_mode": 1,
     },
+    "TND_custom": {
+        "B":  2,
+        "N1": 2,
+        "N2": 2,
+        "S1": 16,
+        "S2": 16,
+        # cu_seqlens: (B+1,) 累积偏移 [0, s1, s1+s2, ...]，此处与 seqused 精确对应（无 padding）
+        # 真实 padding 场景中 cu_seqlens 对应分配量、seqused 对应实际量，两者不同；
+        # 此处为保证 CPU/NPU 张量尺寸一致取无 padding 形式，四个参数仍独立提供。
+        "cu_seqlens_q":  [0, 16, 32],  # (B+1,) cumsum([200,1,128,1])
+        "cu_seqlens_kv": [0, 16, 32],   # (B+1,) cumsum([400,128,300,64])   fia:128, 256, 384, 512  1、tiling：tilingdata/tilingkey  TND    2、处理逻辑、
+        # # seqused: (B,) 各请求实际使用长度
+        "seqused_q":  [16, 16],       # sequsedQOptional
+        "seqused_kv": [16, 16],      # sequsedKvOptional
+        "D": 8,
+        "layout_q":   "TND",
+        "layout_kv":  "TND",
+        "layout_out": "TND",
+        "Dtype": "fp16",
+        "mask_mode": 0,
+        "q_range": (-10.0, 10.0),
+        "k_range": (-10.0, 10.0),
+        "v_range": (-10.0, 10.0),
+        "return_softmax_lse": 1,
+    },
     "TND_MIXED_01": {
         "B":  4,
         "N1": 1,

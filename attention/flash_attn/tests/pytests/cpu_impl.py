@@ -65,8 +65,8 @@ def forward(q, k, v, drop_mask, atten_mask, pse_type, pse, scale, keep_prob, ski
 
     out = torch.matmul(drop_res, v)
 
-    x_max = x_max.broadcast_to(-1, -1, -1, 8)
-    x_sum = x_sum.broadcast_to(-1, -1, -1, 8)
+    # x_max = x_max.broadcast_to(-1, -1, -1, 8)
+    # x_sum = x_sum.broadcast_to(-1, -1, -1, 8)
     return out, x_max, x_sum
 
 
@@ -184,8 +184,8 @@ def tforward_tnd(q, k, v, pse, **kwargs):
         drop_mask = gen_dropmask_tnd(qk_pointer[-1].item() * n1, keep_prob, seed, offset)
 
     out_golden = torch.zeros([1, n1, s1, d_v], dtype=q.dtype)
-    x_max = torch.empty(0)
-    x_sum = torch.empty(0)
+    x_max = torch.zeros([n1, s1], dtype=q.dtype)
+    x_sum = torch.zeros([n1, s1], dtype=q.dtype)
     for i in range(b):
         if seqlen_q_list[i] != 0 and seqlen_k_list[i] != 0:
             qi = q[:, :, actual_seq_qlen[i]:actual_seq_qlen[i + 1]]
@@ -222,8 +222,10 @@ def tforward_tnd(q, k, v, pse, **kwargs):
 
             outi, x_maxi, x_sumi = forward(qi, ki, vi, drop_maski, atten_maski, pse_type, psei, scale, keep_prob)
             out_golden[:, :, actual_seq_qlen[i]:actual_seq_qlen[i + 1]] = outi
-            x_max = torch.cat((x_max, x_maxi.contiguous().view(-1)))
-            x_sum = torch.cat((x_sum, x_sumi.contiguous().view(-1)))
+            x_max[:, actual_seq_qlen[i]:actual_seq_qlen[i + 1]] = x_maxi.squeeze()
+            x_sum[:, actual_seq_qlen[i]:actual_seq_qlen[i + 1]] = x_sumi.squeeze()
+    print("cpu max:", x_max)
+    print("cpu sum:", x_sum)
     return out_golden, x_max, x_sum
 
 

@@ -256,6 +256,7 @@ def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
     scale = kwargs.get("scale", 1 / (d ** 0.5))
     keep_prob = kwargs.get("keep_prob", 1)
     seed = kwargs.get("seed", 0)
+    lse_flag = kwargs.get("return_softmax_lse", 0)
 
     q1 = trans_bnsd_to_layout(q, layout_q).contiguous().to(device)
     k1 = trans_bnsd_to_layout(k, layout_kv).contiguous().to(device)
@@ -408,7 +409,7 @@ def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
         "layout_out": layout_out,
     })
 
-    out, _ = npu_flash_attn(
+    out, lse_out = npu_flash_attn(
         q1, k1, v1,
         block_table   = None,
         sinks         = None,
@@ -427,8 +428,8 @@ def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
         layout_q      = layout_q,
         layout_kv     = layout_kv,
         layout_out    = layout_out,
-        return_softmax_lse = 0,
+        return_softmax_lse = lse_flag,
         deterministic = 0,
     )
     torch.npu.synchronize()
-    return out.cpu()
+    return out.cpu(), lse_out.cpu()
