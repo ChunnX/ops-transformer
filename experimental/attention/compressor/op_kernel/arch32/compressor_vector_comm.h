@@ -34,6 +34,8 @@ struct RmsNormParam {
     float epsilon;
     uint32_t row;
     uint32_t col;
+    float scale;
+    uint16_t isScaleEnable;
 };
 
 /**
