@@ -223,16 +223,19 @@ public:
         uint64_t curS = s1; // tnd场景会在InitIndex中重新赋值
         uint32_t ping = 0;
 
+        uint64_t layoutFlag = 1;
+        if constexpr (INPUT_LAYOUT == TND) {
+            layoutFlag = n1;
+        }
         for (uint64_t i = 0; i < singleCoreLoop; i++) {
             if (i == singleCoreLoop - 1) {
                 nBurst = singleCoreLastLoopNBurstNum;
             }
-
             auto eventId = ping ? EVENT_ID3 : EVENT_ID2;
 
             // copyIn
             if (i == 0) {
-                InitIndex((startIdx + i * singleLoopNBurstNum) * d,
+                InitIndex((startIdx + i * singleLoopNBurstNum * layoutFlag) * d,
                         curS, actualSeqQlenAddr);
                 CopyInSfmg(nBurst, curS, actualSeqQlenAddr, ping);
             }
@@ -255,7 +258,7 @@ public:
                 wait_flag(PIPE_V, PIPE_MTE2, eventId);
 
                 uint64_t nextNBurst = i == singleCoreLoop - 2 ? singleCoreLastLoopNBurstNum : nBurst;
-                InitIndex((startIdx + (i + 1) * singleLoopNBurstNum) * d,
+                InitIndex((startIdx + (i + 1) * singleLoopNBurstNum * layoutFlag) * d,
                         curS, actualSeqQlenAddr);
                 CopyInSfmg(nextNBurst, curS, actualSeqQlenAddr, ping);
             }
@@ -287,8 +290,13 @@ public:
             wait_flag(PIPE_V, PIPE_MTE3, eventId);
 
             // copyOut
-            uint64_t sfmgOutputOffset = (startIdx + i * singleLoopNBurstNum) * BLOCK_SIZE;
-            DataCopy(sfmgWorkspaceGm[sfmgOutputOffset], softmaxGradTensor[ping], nBurst * BLOCK_SIZE);
+            uint64_t sfmgOutputOffset = (startIdx + i * singleLoopNBurstNum * layoutFlag) * BLOCK_SIZE;
+            if constexpr (INPUT_LAYOUT == TND) {
+                DataCopyPad(sfmgWorkspaceGm[sfmgOutputOffset], softmaxGradTensor[ping],
+                    {static_cast<uint16_t>(nBurst), static_cast<uint32_t>(BLOCK_SIZE * sizeof(float)), 0, static_cast<uint32_t>((n1 - 1) * 8 * 4), 0});
+            } else {
+                DataCopy(sfmgWorkspaceGm[sfmgOutputOffset], softmaxGradTensor[ping], nBurst * BLOCK_SIZE);
+            }
 
             if (STAGES == DOUBLE_BUFFER) {
                 ping = 1 - ping;
@@ -385,7 +393,6 @@ public:
                 srcOffset = bIdx * ( n1 * s1 * d) + nIdx * (s1 * d) + sIdx * d;
             }
         }
-
         DataCopyPad(doutTensor[ping][dstOffset], dyGm[srcOffset],
                     {static_cast<uint16_t>(curNBurst), static_cast<uint32_t>(d * sizeof(InputDType)),
                     static_cast<uint32_t>(transpseStride), 0, 0},
