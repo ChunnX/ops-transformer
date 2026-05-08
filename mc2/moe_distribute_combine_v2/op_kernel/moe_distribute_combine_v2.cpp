@@ -78,22 +78,13 @@ __global__ __aicore__ void moe_distribute_combine_v2(GM_ADDR expandX, GM_ADDR ex
 #if ((ORIG_DTYPE_EXPAND_X == DT_BF16) || (ORIG_DTYPE_EXPAND_X == DT_FLOAT16))
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     int64_t oriOverflowMode = AscendC::GetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>();
-    // if constexpr (ArchTag == TILINGKEY_TPL_A5) {
-    //     GET_TILING_DATA_WITH_STRUCT(MoeDistributeCombineV2TilingData, tilingData, tilingGM);
-    //     MoeDistributeCombineA5Impl::MoeDistributeCombineA5<DTYPE_EXPAND_X, int32_t> op;
-    //     op.Init(expandX, expertIds, assistInfoForCombine, epSendCount, tpSendCount, xActiveMask,
-    //             scales, sharedExpertX, XOut, workspaceGM, &pipe, &tilingData);
-    //     op.Process();
-    // }
-    AscendC::printf("printf kernel enter!");
-    GET_TILING_DATA_WITH_STRUCT(MoeDistributeCombineV2TilingData, tilingData, tilingGM);
-    MoeDistributeCombineV2Impl::MoeDistributeCombineV2HostKfc<DTYPE_EXPAND_X, DTYPE_X, int32_t, HasTp,
-                                                                         QuantMode == TILINGKEY_INT8_QUANT>
-        op;
-    op.Init(expandX, expertIds, assistInfoForCombine, epSendCount, tpSendCount, scales, expandScales, xActiveMask, sharedExpertX,
-            elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV, XOut, workspaceGM, &pipe,
-            &tilingData);
-    op.Process();
+    if constexpr (ArchTag == TILINGKEY_TPL_A5) {
+        GET_TILING_DATA_WITH_STRUCT(MoeDistributeCombineV2TilingData, tilingData, tilingGM);
+        MoeDistributeCombineA5Impl::MoeDistributeCombineA5<DTYPE_EXPAND_X, int32_t> op;
+        op.Init(expandX, expertIds, assistInfoForCombine, epSendCount, tpSendCount, xActiveMask,
+                scales, sharedExpertX, XOut, workspaceGM, &pipe, &tilingData);
+        op.Process();
+    }
 #else
     if constexpr ((ArchTag == TILINGKEY_TPL_A2) && 
                 (LayeredMode == TILINGKEY_TPL_MTE) && (QuantMode == TILINGKEY_NO_QUANT)) {
