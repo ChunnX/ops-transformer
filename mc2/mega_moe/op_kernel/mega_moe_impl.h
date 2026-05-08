@@ -339,13 +339,7 @@ __aicore__ inline void GroupMatmul2(
             typename BlockMmad::BlockShape singleShape{
                 Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape), Get<K_VALUE>(actualShape), 0};
             blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias, gmBlockC, singleShape);
-            PipeBarrier<PIPE_ALL>();
-            if (mLoc == 0 && nLoc == 0) {
-                GlobalTensor<bfloat16_t> gmm2OutGm;
-                gmm2OutGm.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(gmmAddrInfo.gmm2OutGlobal));
-                AscendC::PRINTF("AIC: gmm2OutGlobal=%p, gmC[0]=%f, gmC[1]=%f\n",
-                    gmmAddrInfo.gmm2OutGlobal, gmm2OutGm.GetValue(0), gmm2OutGm.GetValue(1));
-            }
+            PipeBarrier<PIPE_ALL>(); // 确保数据写回GM 改成对应流水
             // tile完成，在对应核心位置+1
             AscendC::AtomicAdd((__gm__ int32_t*)rowReadyFlags.GetPhyAddr() + blockIdx, int32_t(1));
         } else {
@@ -359,12 +353,10 @@ __aicore__ inline void GroupMatmul2(
             // 创建UB buffer用于GM→UB→GM
             int64_t ubOffset = 0;
             LocalTensor<bfloat16_t> ubBuffer = LocalTensor<bfloat16_t>(TPosition::VECIN, ubOffset, L1_TILE_M * L1_TILE_N);
-            PipeBarrier<PIPE_ALL>();
             // 从GM搬tile到UB，再从UB发送到远端GM
             MegaMoeCombineImpl::CombineTile<bfloat16_t, decltype(actualShape)>(
                 groupIdx, mLoc, nLoc, n, rankId,
                 gmmAddrInfo.gmm2OutGlobal, params, ubBuffer, actualShape);
-            PipeBarrier<PIPE_ALL>();
         }
     }
 

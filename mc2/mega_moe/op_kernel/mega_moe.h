@@ -746,30 +746,34 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     preOffset_ = 0;
     baseOffset_ = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     // SyncAll<true>(); 这个不必要
-
-    for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
-        if (!UpdateGroupParams(expertIdx)) {
-            continue;
-        }
-        
-        UpdateGlobalBuffer(gmmAddrInfo, 0);
-        if (subBlockIdx_ == 0) {
-            MegaMoeImpl::GroupMatmulSwigluQuant<
-                QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType>(
-                epilogueOp_, params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
+    uint32_t expertOffset = 0;
+    for (uint32_t wave = 0; wave < 2; wave++) {
+        for (uint32_t expertIdx = 0 + expertOffset; expertIdx < 2 + expertOffset; expertIdx++) {
+            if (!UpdateGroupParams(expertIdx)) {
+                continue;
+            }
+            
+            UpdateGlobalBuffer(gmmAddrInfo, 0);
+            if (subBlockIdx_ == 0) {
+                MegaMoeImpl::GroupMatmulSwigluQuant<
+                    QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType>(
+                    epilogueOp_, params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
+            }
         }
         EndSync();
         vecSetSyncCom_ = 0;
-        
-        UpdateGlobalBuffer(gmmAddrInfo, 1);
-        // gmm2 + combine，AIC和AIV在同一个函数里通过信号量同步
-        if (subBlockIdx_ == 0) {
-            MegaMoeImpl::GroupMatmul2<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
-                params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_, expertIdx, gmm2PingPongIdx_,
-                rankId_);
+        for (uint32_t expertIdx = 0 + expertOffset; expertIdx < 2 + expertOffset; expertIdx++) {
+            UpdateGlobalBuffer(gmmAddrInfo, 1);
+            // gmm2 + combine，AIC和AIV在同一个函数里通过信号量同步
+            if (subBlockIdx_ == 0) {
+                MegaMoeImpl::GroupMatmul2<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
+                    params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_, expertIdx, gmm2PingPongIdx_,
+                    rankId_);
+            }
+            // EndGMM2Sync();
+            // vecSetSyncCom_ = 0;
         }
-        // EndGMM2Sync();
-        vecSetSyncCom_ = 0;
+        expertOffset += 2;
     }
     if constexpr(g_coreType == AscendC::AIV) {
         if (aivCoreIdx_ == 1) {
