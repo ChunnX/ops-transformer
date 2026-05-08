@@ -456,14 +456,14 @@ ge::graphStatus CommonChecker::CheckAxis(const FiaTilingInfo &fiaInfo)
                 OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName, "Value headdim must smaller than 128 when query and key "
                     "headdim is not equal to value headdim."),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(fiaInfo.qLayout == FiaLayout::TND && fiaInfo.qTSize < 0,
+    OP_CHECK_IF((fiaInfo.qLayout == FiaLayout::TND || fiaInfo.qLayout == FiaLayout::NTD) && fiaInfo.qTSize < 0,
                 OP_LOGE(fiaInfo.opName,
-                "The axis T of query only support >0 when input layout is TND, the current is %u",
+                "The axis T of query only support >=0 when input layout is TND/NTD, the current is %u",
                         fiaInfo.qTSize),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(fiaInfo.kvLayout == FiaLayout::TND && fiaInfo.kTSize < 0,
+    OP_CHECK_IF((fiaInfo.kvLayout == FiaLayout::TND || fiaInfo.qLayout == FiaLayout::NTD) && fiaInfo.kTSize < 0,
                 OP_LOGE(fiaInfo.opName,
-                "The axis T of key only support >0 when input layout is TND, the current is %u.",
+                "The axis T of key only support >=0 when input layout is TND/NTD, the current is %u.",
                         fiaInfo.kTSize),
                 return ge::GRAPH_FAILED);
     if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) {
