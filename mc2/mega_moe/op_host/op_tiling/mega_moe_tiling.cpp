@@ -76,6 +76,7 @@ namespace {
     const static int64_t MAX_MOE_EXPERT_NUM = 1024LL;
     const static int64_t DISABLE_EXPERT_CAPACITY = -1LL;
     const static int64_t DISPATCH_QUANT_OUT_TYPE_OFFSET = 20LL;
+    const static int64_t DISPATCH_QUANT_OUT_TYPE_FP4_E2M1 = 293LL;
     const static int64_t INPUT_WEIGHT_SCALES_CEIL_ALIGN = 64LL;
     const static int64_t RESERVED_WORKSPACE_SIZE = 1024 * 1024 * 50LL;
 }
@@ -683,7 +684,8 @@ static int64_t CalcMaxRowIdxPerLoopMxQuant(int64_t perLoopCols, int64_t inputXDt
     int64_t xInSize = AlignBytes(perLoopCols, inputXDtypeSize) + AlignBytes(perLoopCols, sizeof(int8_t));
     int64_t scaleSize = 2 * AlignBytes(perLoopCols / MX_QUANT_BLOCK_SIZE, inputXDtypeSize) +
                         AlignBytes(perLoopCols / MX_QUANT_BLOCK_SIZE, sizeof(int8_t));
-    int64_t xOutSize = Align(perLoopCols / 4, sizeof(int8_t)) * 4;
+    const int64_t bytesPerElem = isFp4 ? 1 : 2;  // FP4: 2 elem/byte; FP8: 1 elem/byte
+    int64_t xOutSize = Align(perLoopCols / 4, sizeof(int8_t)) * 4 / bytesPerElem;
     return (availUbSize - (xInSize + scaleSize + xOutSize)) / static_cast<int64_t>(sizeof(int32_t));
 }
 
@@ -871,9 +873,10 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
     auto dispatchQuantOutTypePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantOutTypeIndex));
     int64_t dispatchQuantOutType = static_cast<int64_t>(*dispatchQuantOutTypePtr);
     OP_TILING_CHECK(dispatchQuantOutType != (DISPATCH_QUANT_OUT_TYPE_E5M2 + DISPATCH_QUANT_OUT_TYPE_OFFSET) &&
-                    dispatchQuantOutType != (DISPATCH_QUANT_OUT_TYPE_E4M3FN + DISPATCH_QUANT_OUT_TYPE_OFFSET),
+                    dispatchQuantOutType != (DISPATCH_QUANT_OUT_TYPE_E4M3FN + DISPATCH_QUANT_OUT_TYPE_OFFSET) &&
+                    dispatchQuantOutType != (DISPATCH_QUANT_OUT_TYPE_FP4_E2M1),
         OP_LOGE(nodeName,
-            "Invalid dispatchQuantOutType, only support fp8_e5m2(23) and fp8_e4m3fn(24), but now is %ld.",
+            "Invalid dispatchQuantOutType, only support fp8_e5m2(23), fp8_e4m3fn(24) and fp4_e2m1(293), but now is %ld.",
             dispatchQuantOutType),
         return ge::GRAPH_FAILED);
 
@@ -884,7 +887,8 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
         OP_LOGE(nodeName,
             "unsupported dispatchQuantMode(%ld), leading out data type to being DT_UNDEFINED.", dispatchQuantMode),
         return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(refWeightDataType != weightOneDesc->GetDataType(),
+    OP_TILING_CHECK((refWeightDataType != weightOneDesc->GetDataType()) &&
+                    (weightOneDesc->GetDataType() != ge::DT_FLOAT4_E2M1),
         OP_LOGE(nodeName, "refWeightDataType(%s) should be equal to weightOne & weightTwo dataType(%s).",
         Ops::Base::ToString(refWeightDataType).c_str(), Ops::Base::ToString(weightOneDesc->GetDataType()).c_str()),
         return ge::GRAPH_FAILED);
@@ -1321,7 +1325,8 @@ static ge::graphStatus CheckInputParam(const gert::TilingContext *context, MegaM
     OP_TILING_CHECK(xDim0 < MIN_BS || xDim0 > MAX_BS,
         OP_LOGE(nodeName, "BS should in [%ld, %ld], but now BS is %ld.", MIN_BS, MAX_BS, xDim0),
         return ge::GRAPH_FAILED);
-
+    
+    // MXFP4情况下，输入scales的H需为偶数
     int64_t xDim1 = xStorageShape->GetStorageShape().GetDim(1);
     OP_TILING_CHECK(xDim1 != 4LL * H_BASE && xDim1 != 5LL * H_BASE && xDim1 != 7LL * H_BASE,
         OP_LOGE(nodeName, "H only support 4k/5k/7k, but now H is %ld.", xDim1),
