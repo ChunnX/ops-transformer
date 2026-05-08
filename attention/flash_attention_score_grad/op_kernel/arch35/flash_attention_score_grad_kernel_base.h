@@ -1241,6 +1241,8 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::IsVa
                             curS2InvalidTotalNum += 1;
                         }
                         if (curS2InvalidTotalNum * CUBE_BASEM >= actualS1Len) {
+                            runInfo.s2CvBegin = s2IdxLeft;
+                            runInfo.s2CvEnd = s2IdxRight;
                             return true;
                         }
                     }

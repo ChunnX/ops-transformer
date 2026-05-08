@@ -136,8 +136,8 @@ constexpr int FINISH_VEC_CKVKR = 0x9;
 constexpr int FINISH_VEC_ALL = 0x7;
 
 constexpr int FINISH_MM_QCQR_SPLIT_N = 0X6;
-constexpr int FINISH_VEC_DEQUANT_QC_SPLIT_N = 0X6;
-constexpr int FINISH_MM_QN_SPLIT_N = 0X6;
+constexpr int FINISH_VEC_DEQUANT_QC_SPLIT_N = 0X7;
+constexpr int FINISH_MM_QN_SPLIT_N = 0X8;
 
 #ifdef ENABLE_DUMP_DATA
 #define DO_DUMP_DATA(srcTensor, id, len) AscendC::DumpTensor(srcTensor, id, len)

@@ -23,6 +23,7 @@
 using namespace Mc2Log;
 using namespace AscendC;
 using namespace Mc2Tiling;
+using namespace matmul_allto_all_910b_tiling_key;
 
 namespace {
 constexpr uint32_t ATTR_GROUP_INDEX = 0;
@@ -318,14 +319,15 @@ uint64_t FpMatmulAllToAllTilingBaseA3::GetTilingKey() const
 {
     // 按照量化组合模式，是否转置，bias数据类型进行展开
     bool x2TransposeFlag = contextInfo.args_.isBTrans ? true : false;
-    // 0代表数据类型和x一致(FP16 OR BF16)，1代表FP32
-    uint32_t biasDType = DTYPE_BIAS_SAME_WITH_X;
+    // 0代表数据类型为FP16，1代表FP32
+    uint32_t biasDType = TILINGKEY_TPL_FP16;
     if (contextInfo.args_.geBiasType != contextInfo.args_.geAType) {
-        biasDType = DTYPE_BIAS_FP32;
+        biasDType = TILINGKEY_TPL_FP32;
     }
-    const uint64_t tilingKey = GET_TPL_TILING_KEY(NON_QUANT_MODE, x2TransposeFlag, biasDType);
-    OP_LOGD(opName_, "QUANTMODE,X2TRANSPOSE,DTYPEBIAS: [%d,%d,%d], TilingKey is [%lu].", NON_QUANT_MODE,
-            x2TransposeFlag, biasDType, tilingKey);
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(
+        x2TransposeFlag, contextInfo.args_.isBias, 0, biasDType, SOC_ASCEND910_93);
+    OP_LOGD(opName_, "x2TransposeFlag,hasBias,biasDtype is: [%d,%d,%d], and tilingKey is [%lu].",
+        x2TransposeFlag, contextInfo.args_.isBias, biasDType, tilingKey);
     return tilingKey;
 }
 

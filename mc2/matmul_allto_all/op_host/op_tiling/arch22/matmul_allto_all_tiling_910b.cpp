@@ -769,7 +769,7 @@ ge::graphStatus MatmulAlltoAllTiling910B::DoOpTiling()
 
 void MatmulAlltoAllTiling910B::SetTilingKey()
 {
-    tilingKey_ = GET_TPL_TILING_KEY(needTransX2, hasBias, isQuantBF16);
+    tilingKey_ = GET_TPL_TILING_KEY(needTransX2, hasBias, isQuantBF16, 0, SOC_ASCEND910B);
 }
 
 /**

@@ -356,7 +356,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CrossRankSyncCntPerExpe
     LocalTensor<int32_t> prevSumBuf = PrevSumBuf_.Get<int32_t>();
     // 给对端发送
     uint64_t offsetInDstWinAddr = perRankStridesInTokenPerExpert_ * sizeof(int32_t) * rankId_ + PEERMEM_DATA_OFFSET;
-    for (int32_t dstRankIdx = aivCoreIdx_; dstRankIdx < worldSize_; dstRankIdx += blockNum_) {
+    for (int32_t dstRankIdx = aivCoreIdx_; dstRankIdx < worldSize_; dstRankIdx += blockAivNum_) {
         if (dstRankIdx == rankId_) {
             continue;
         }
@@ -375,7 +375,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CrossRankSyncCntPerExpe
     }
     // 本端接收
     int32_t intPer512 = ALIGN_512 / sizeof(int);
-    for (int32_t dstRankIdx = aivCoreIdx_; dstRankIdx < worldSize_; dstRankIdx += blockNum_) {
+    for (int32_t dstRankIdx = aivCoreIdx_; dstRankIdx < worldSize_; dstRankIdx += blockAivNum_) {
         if (dstRankIdx != rankId_) {
             for (int32_t checkIdx = 0; checkIdx < numPerCore; checkIdx += intPer512) {
                 __gm__ int32_t* syncCheck = reinterpret_cast<__gm__ int32_t*>(params_.peermemInfo.ptrTokenPerExpert)
@@ -585,6 +585,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ArgSortExpandedRowIdx()
     __gm__ int32_t *src = (__gm__ int32_t *)params_.workspaceInfo.expandedRowIdx;
     __gm__ int32_t *dst = (__gm__ int32_t *)params_.workspaceInfo.expandedRowIdxGather;
     Simt::VF_CALL<ArgsortSimt>(Simt::Dim3{MoeInitRoutingV3::SIMT_THREAD_NUM, 1, 1}, coreLen, coreOffset, src, dst);
+    PipeBarrier<PIPE_ALL>();
+    DataSyncBarrier<MemDsbT::DDR>();
+    GlobalTensor<int32_t> rowIndexGatherGm;
+    rowIndexGatherGm.SetGlobalBuffer((__gm__ int32_t *)params_.workspaceInfo.expandedRowIdxGather);
+    DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(rowIndexGatherGm);
 }
 
 template <TemplateMegaMoeTypeClass>
@@ -663,7 +668,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CrossRankSyncInWorldSiz
     __gm__ int32_t* syncRank = (__gm__ int32_t*)(params_.peermemInfo.ptrBase);
     __gm__ int32_t* syncCount = (__gm__ int32_t*)(params_.peermemInfo.ptrBase + 48 * 1024);
     int count = *(syncCount + aivCoreIdx_ * 16) + 1;
-    for (int i = aivCoreIdx_; i < worldSize_; i += blockNum_) {
+    for (int i = aivCoreIdx_; i < worldSize_; i += blockAivNum_) {
         __gm__ int32_t* syncRemoteAddr = (__gm__ int32_t*)(winRankAddr_[i]) + rankId_ * 16;
         WriteGmByPassDCache(syncRemoteAddr, count);
         auto syncCheck = syncRank + i * 16;
@@ -745,12 +750,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         }
     }
     EndGMM2Sync();
+    PipeBarrier<PIPE_ALL>();
     SyncAll<true>();
     // 6. unpermute & 清理win区上放置token的位置
     if constexpr(g_coreType == AIV) {
+        ArgSortExpandedRowIdx();
         TPipe secondPipe;
         SecondBuffInit(&secondPipe);
-        ArgSortExpandedRowIdx();
         ResetTokenPerExpert();
         CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
         Unpermute();

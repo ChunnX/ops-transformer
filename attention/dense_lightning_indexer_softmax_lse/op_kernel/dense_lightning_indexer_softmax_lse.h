@@ -83,7 +83,7 @@ public:
 
     static constexpr int64_t LD_PREFETCH_LEN = 2;
     // for workspace double
-    static constexpr uint32_t WS_DOBULE = 2;
+    static constexpr uint32_t WS_DOUBLE = 2;
 
 protected:
     TPipe *pipe = nullptr;
@@ -200,7 +200,7 @@ __aicore__ inline void DenseLISoftmaxLse<T>::InitWorkSpace(__gm__ uint8_t *works
     // |mm1ResGm(存S) DB|vec1ResGm(存放reduceSum中间结果) DB
     // |Core0_mm1ResDB0-Core0_mm1ResDB1-Core1_mm1ResDB0....Core23_mm1ResDB0-Core23_mm1ResDB1|
     uint64_t offset = 0;
-    uint64_t singleCoreMm1ResSize = WS_DOBULE * constInfo.mBaseSize * constInfo.s2BaseSize * sizeof(MM1_OUT_T);
+    uint64_t singleCoreMm1ResSize = WS_DOUBLE * constInfo.mBaseSize * constInfo.s2BaseSize * sizeof(MM1_OUT_T);
     mm1ResGm.SetGlobalBuffer((__gm__ MM1_OUT_T *)(workspace + offset + aiCoreIdx * singleCoreMm1ResSize));
     offset += GetBlockNum() * singleCoreMm1ResSize;
 

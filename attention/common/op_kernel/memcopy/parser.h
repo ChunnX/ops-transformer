@@ -29,17 +29,17 @@ enum class ActualSeqLensMode
 {
     BY_BATCH = 0,
     ACCUM = 1,
-    TND = 2,
 };
 
 template <ActualSeqLensMode MODE, typename ACTLEN_T = uint64_t>
 class ActualSeqLensParser {
 };
 
-template <typename ACTLEN_T>
-class ActualSeqLensParser<ActualSeqLensMode::TND, ACTLEN_T> {
+// ----------------------------------------------TNDSeqLensParser--------------------------------
+template <typename ACTLEN_T = uint64_t>
+class TNDSeqLensParser {
 public:
-    __aicore__ inline ActualSeqLensParser() = default;
+    __aicore__ inline TNDSeqLensParser() = default;
 
     __aicore__ inline void Init(GlobalTensor<ACTLEN_T> actualSeqLengthsGm, uint32_t actualLenDims,
                                 uint64_t defaultVal = 0)

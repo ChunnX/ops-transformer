@@ -135,10 +135,9 @@ static ge::graphStatus ParseRecvCounts(
  * @param host_api_ctx
  * @param para
  */
-inline ge::graphStatus GetAttrPara(const gert::OpExecuteContext* host_api_ctx, AttrParas& para)
+inline ge::graphStatus GetAttrPara(const gert::OpExecuteContext* host_api_ctx,
+                                   const gert::RuntimeAttrs* attrs, AttrParas& para)
 {
-    const auto attrs = host_api_ctx->GetAttrs();
-    OPS_CHECK(attrs == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "attrs is null."), return ge::GRAPH_FAILED);
     para.group = attrs->GetStr(INDEX_ATTR_GROUP);
     OPS_CHECK(para.group == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "group is null."), return ge::GRAPH_FAILED);
 
@@ -229,15 +228,14 @@ static ge::graphStatus MatmulAlltoAllExecuteFunc(gert::OpExecuteContext* host_ap
     OPS_CHECK(
         retPara != ge::SUCCESS, OP_LOGE(host_api_ctx->GetNodeName(), "Failed to get common matmul input paras."),
         return ge::GRAPH_FAILED);
-    AttrParas attrParas;
-    OPS_CHECK(GetAttrPara(host_api_ctx, attrParas) != ge::SUCCESS,
-              OP_LOGE(host_api_ctx->GetNodeName(), "Failed to get attr paras."), return ge::GRAPH_FAILED);
 
     const auto output = host_api_ctx->GetOutputTensor(INDEX_OUT);
     OPS_CHECK(output == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "output is null"), return ge::GRAPH_FAILED);
-    
-    const auto attrs = host_api_ctx->GetAttrs();
+    const gert::RuntimeAttrs* attrs = host_api_ctx->GetAttrs();
     OPS_CHECK(attrs == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "attrs is null"), return ge::GRAPH_FAILED);
+    AttrParas attrParas;
+    OPS_CHECK(GetAttrPara(host_api_ctx, attrs, attrParas) != ge::SUCCESS,
+              OP_LOGE(host_api_ctx->GetNodeName(), "Failed to get attr paras."), return ge::GRAPH_FAILED);
 
     const auto alltoAllAxesOptional = attrs->GetListInt(INDEX_ATTR_ALL2ALL_AXES);
     std::vector<int64_t> actSeqArray;
@@ -252,7 +250,6 @@ static ge::graphStatus MatmulAlltoAllExecuteFunc(gert::OpExecuteContext* host_ap
     const int64_t x1QuantMode = (x1QuantModePtr != nullptr ? *x1QuantModePtr : 0);
     const int64_t* x2QuantModePtr = attrs->GetInt(INDEX_ATTR_X2_QUANT_MODE);
     const int64_t x2QuantMode = (x2QuantModePtr != nullptr ? *x2QuantModePtr : 0);
-
     if (x1QuantMode == 0 && x2QuantMode == 0) {
         const auto ret = EXEC_OPAPI_CMD(aclnnMatmulAlltoAll, matmulParas.x1Acl, matmulParas.x2Acl, matmulParas.bias, actSeqArray, attrParas.group, attrParas.transposeX1,
                                         attrParas.transposeX2, output);
