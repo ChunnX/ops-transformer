@@ -417,13 +417,13 @@
 - 类型约束
   - pertensor量化
 
-    | gmmX | gmmWeight | gmmXScale | gmmWeightScale | mmXScale | mmWeightScale | gmmY |
+    | gmmX | gmmWeight | gmmXScale | gmmWeightScale | mmXScale | mmWeightScale | y |
     | :------: | :------: | :------: | :------: | :------: | :------: | :------: |
     | HIFLOAT8 | HIFLOAT8 | FLOAT32 | FLOAT32 | FLOAT32 | FLOAT32 | FLOAT16/BFLOAT16 |
 
   - mx量化
 
-    | gmmX | gmmWeight | gmmXScale | gmmWeightScale | mmXScale | mmWeightScale | gmmY |
+    | gmmX | gmmWeight | gmmXScale | gmmWeightScale | mmXScale | mmWeightScale | y |
     | :------: | :------: | :------: | :------: | :------: | :------: | :------: |
     | FLOAT8_E4M3FN | FLOAT8_E4M3FN | FLOAT8_E8M0 | FLOAT8_E8M0 | FLOAT8_E8M0 | FLOAT8_E8M0 | FLOAT16/BFLOAT16 |
     | FLOAT8_E4M3FN | FLOAT8_E5M2 | FLOAT8_E8M0 | FLOAT8_E8M0 | FLOAT8_E8M0 | FLOAT8_E8M0 | FLOAT16/BFLOAT16 |
@@ -431,7 +431,7 @@
     | FLOAT8_E5M2 | FLOAT8_E5M2 | FLOAT8_E8M0 | FLOAT8_E8M0 | FLOAT8_E8M0 | FLOAT8_E8M0 | FLOAT16/BFLOAT16 |
     | FLOAT4_E2M1 | FLOAT4_E2M1 | FLOAT8_E8M0 | FLOAT8_E8M0 | FLOAT8_E8M0 | FLOAT8_E8M0 | FLOAT16/BFLOAT16 |
 
-  - mmX类型与gmmX类型保持一致，mmWeight类型与gmmWeight类型保持一致，mmY类型与gmmY类型保持一致。
+  - mmX类型与gmmX类型保持一致，mmWeight类型与gmmWeight类型保持一致，mmY类型与y类型保持一致。
 
 ## 调用说明
 
