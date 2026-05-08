@@ -153,7 +153,6 @@ if (BUILD_OPEN_PROJECT)
         include(cmake/third_party/abseil-cpp.cmake)
         include(cmake/third_party/ascend_protobuf.cmake)
 
-        include(cmake/third_party/makeself-fetch.cmake)
         include(cmake/custom_build.cmake)
         message(STATUS "End building custom package.")
         include(cmake/opbuild.cmake)
