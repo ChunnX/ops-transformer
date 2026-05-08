@@ -1549,49 +1549,17 @@ extern "C" __global__ __aicore__ void fused_infer_attention(
     TILING_KEY_IS(103000000020603001);
     TILING_KEY_IS(103000000020703001);
  
-    TILING_KEY_IS(103000000000203003);
-    TILING_KEY_IS(103000000000303003);
-    TILING_KEY_IS(103000000000603003);
-    TILING_KEY_IS(103000000000703003);
-    TILING_KEY_IS(103000000010203003);
-    TILING_KEY_IS(103000000010303003);
-    TILING_KEY_IS(103000000010603003);
-    TILING_KEY_IS(103000000010703003);
-    TILING_KEY_IS(103000000020203003);
-    TILING_KEY_IS(103000000020303003);
-    TILING_KEY_IS(103000000020603003);
-    TILING_KEY_IS(103000000020703003);
 
-    TILING_KEY_IS(103000000000203005);
-    TILING_KEY_IS(103000000000303005);
-    TILING_KEY_IS(103000000000603005);
-    TILING_KEY_IS(103000000000703005);
-    TILING_KEY_IS(103000000010203005);
-    TILING_KEY_IS(103000000010303005);
-    TILING_KEY_IS(103000000010603005);
-    TILING_KEY_IS(103000000010703005);
-    TILING_KEY_IS(103000000020203005);
-    TILING_KEY_IS(103000000020303005);
-    TILING_KEY_IS(103000000020603005);
-    TILING_KEY_IS(103000000020703005);
 
     // Gqa NoQuant Non PA Non Perf
     TILING_KEY_IS(103000000000003000);
     TILING_KEY_IS(103000000010003001);
-    TILING_KEY_IS(103000000030003003);
-    TILING_KEY_IS(103000000050003005);
     TILING_KEY_IS(103000000000103000);
     TILING_KEY_IS(103000000010103001);
-    TILING_KEY_IS(103000000030103003);
-    TILING_KEY_IS(103000000050103005);
     TILING_KEY_IS(103000000000403000);
     TILING_KEY_IS(103000000010403001);
-    TILING_KEY_IS(103000000030403003);
-    TILING_KEY_IS(103000000050403005);
     TILING_KEY_IS(103000000000503000);
     TILING_KEY_IS(103000000010503001);
-    TILING_KEY_IS(103000000030503003);
-    TILING_KEY_IS(103000000050503005);
 //104
     TILING_KEY_IS(104000000000203000);
     TILING_KEY_IS(104000000000303000);
@@ -1619,49 +1587,17 @@ extern "C" __global__ __aicore__ void fused_infer_attention(
     TILING_KEY_IS(104000000020603001);
     TILING_KEY_IS(104000000020703001);
  
-    TILING_KEY_IS(104000000000203003);
-    TILING_KEY_IS(104000000000303003);
-    TILING_KEY_IS(104000000000603003);
-    TILING_KEY_IS(104000000000703003);
-    TILING_KEY_IS(104000000010203003);
-    TILING_KEY_IS(104000000010303003);
-    TILING_KEY_IS(104000000010603003);
-    TILING_KEY_IS(104000000010703003);
-    TILING_KEY_IS(104000000020203003);
-    TILING_KEY_IS(104000000020303003);
-    TILING_KEY_IS(104000000020603003);
-    TILING_KEY_IS(104000000020703003);
 
-    TILING_KEY_IS(104000000000203005);
-    TILING_KEY_IS(104000000000303005);
-    TILING_KEY_IS(104000000000603005);
-    TILING_KEY_IS(104000000000703005);
-    TILING_KEY_IS(104000000010203005);
-    TILING_KEY_IS(104000000010303005);
-    TILING_KEY_IS(104000000010603005);
-    TILING_KEY_IS(104000000010703005);
-    TILING_KEY_IS(104000000020203005);
-    TILING_KEY_IS(104000000020303005);
-    TILING_KEY_IS(104000000020603005);
-    TILING_KEY_IS(104000000020703005);
 
     // Gqa NoQuant Non PA Non Perf
     TILING_KEY_IS(104000000000003000);
     TILING_KEY_IS(104000000010003001);
-    TILING_KEY_IS(104000000030003003);
-    TILING_KEY_IS(104000000050003005);
     TILING_KEY_IS(104000000000103000);
     TILING_KEY_IS(104000000010103001);
-    TILING_KEY_IS(104000000030103003);
-    TILING_KEY_IS(104000000050103005);
     TILING_KEY_IS(104000000000403000);
     TILING_KEY_IS(104000000010403001);
-    TILING_KEY_IS(104000000030403003);
-    TILING_KEY_IS(104000000050403005);
     TILING_KEY_IS(104000000000503000);
     TILING_KEY_IS(104000000010503001);
-    TILING_KEY_IS(104000000030503003);
-    TILING_KEY_IS(104000000050503005);
 
 // Gqa NoQuant PA Non Perf
 #if TILING_KEY_VAR == 103000000000203000
@@ -1760,103 +1696,6 @@ extern "C" __global__ __aicore__ void fused_infer_attention(
 	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
                                half, half, int8_t, half, true, true, FIA_LAYOUT::BSH, false, false,
                                     FIA_LAYOUT::NZ, true);
-#elif TILING_KEY_VAR == 103000000000203003
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, false, FIA_LAYOUT::TND, false, false,
-                                   FIA_LAYOUT::BNSD, false);
-#elif TILING_KEY_VAR == 103000000000303003
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, true, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::BNSD, false);
-#elif TILING_KEY_VAR == 103000000000603003
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, false, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::BNSD, true);
-#elif TILING_KEY_VAR == 103000000000703003
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, true, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::BNSD, true);
-#elif TILING_KEY_VAR == 103000000010203003
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, false, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::BSH, false);
-#elif TILING_KEY_VAR == 103000000010303003
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, true, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::BSH, false);
-#elif TILING_KEY_VAR == 103000000010603003
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, false, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::BSH, true);
-#elif TILING_KEY_VAR == 103000000010703003
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, true, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::BSH, true);
-#elif TILING_KEY_VAR == 103000000020203003
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, false, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::NZ, false);
-#elif TILING_KEY_VAR == 103000000020303003
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, true, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::NZ, false);
-#elif TILING_KEY_VAR == 103000000020603003
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, false, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::NZ, true);
-#elif TILING_KEY_VAR == 103000000020703003
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, true, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::NZ, true);
-#elif TILING_KEY_VAR == 103000000000203005
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, false, FIA_LAYOUT::NTD, false, false,
-                                   FIA_LAYOUT::BNSD, false);
-#elif TILING_KEY_VAR == 103000000000303005
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, true, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::BNSD, false);
-#elif TILING_KEY_VAR == 103000000000603005
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, false, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::BNSD, true);
-#elif TILING_KEY_VAR == 103000000000703005
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, true, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::BNSD, true);
-#elif TILING_KEY_VAR == 103000000010203005
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, false, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::BSH, false);
-#elif TILING_KEY_VAR == 103000000010303005
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, true, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::BSH, false);
-#elif TILING_KEY_VAR == 103000000010603005
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, false, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::BSH, true);
-#elif TILING_KEY_VAR == 103000000010703005
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, true, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::BSH, true);
-#elif TILING_KEY_VAR == 103000000020203005
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, false, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::NZ, false);
-#elif TILING_KEY_VAR == 103000000020303005
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, true, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::NZ, false);
-#elif TILING_KEY_VAR == 103000000020603005
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, false, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::NZ, true);
-#elif TILING_KEY_VAR == 103000000020703005
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, true, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::NZ, true);
-// Gqa NoQuant Non PA Non Perf
 #elif TILING_KEY_VAR == 103000000000003000
 	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
                                half, half, int8_t, half, false, false, FIA_LAYOUT::BNSD, false, false,
@@ -1865,14 +1704,6 @@ extern "C" __global__ __aicore__ void fused_infer_attention(
 	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
                                half, half, int8_t, half, false, false, FIA_LAYOUT::BSH, false, false,
                                     FIA_LAYOUT::BSH, false);
-#elif TILING_KEY_VAR == 103000000030003003
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, false, false, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::TND, false);
-#elif TILING_KEY_VAR == 103000000050003005
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, false, false, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::NTD, false);
 #elif TILING_KEY_VAR == 103000000000103000
 	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
                                half, half, int8_t, half, false, true, FIA_LAYOUT::BNSD, false, false,
@@ -1881,14 +1712,6 @@ extern "C" __global__ __aicore__ void fused_infer_attention(
 	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
                                half, half, int8_t, half, false, true, FIA_LAYOUT::BSH, false, false,
                                     FIA_LAYOUT::BSH, false);
-#elif TILING_KEY_VAR == 103000000030103003
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, false, true, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::TND, false);
-#elif TILING_KEY_VAR == 103000000050103005
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, false, true, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::NTD, false);
 #elif TILING_KEY_VAR == 103000000000403000
 	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
                                half, half, int8_t, half, false, false, FIA_LAYOUT::BNSD, false, false,
@@ -1897,14 +1720,6 @@ extern "C" __global__ __aicore__ void fused_infer_attention(
 	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
                                half, half, int8_t, half, false, false, FIA_LAYOUT::BSH, false, false,
                                     FIA_LAYOUT::BSH, true);
-#elif TILING_KEY_VAR == 103000000030403003
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, false, false, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::TND, true);
-#elif TILING_KEY_VAR == 103000000050403005
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, false, false, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::NTD, true);
 #elif TILING_KEY_VAR == 103000000000503000
 	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
                                half, half, int8_t, half, false, true, FIA_LAYOUT::BNSD, false, false,
@@ -1913,15 +1728,6 @@ extern "C" __global__ __aicore__ void fused_infer_attention(
 	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
                                half, half, int8_t, half, false, true, FIA_LAYOUT::BSH, false, false,
                                     FIA_LAYOUT::BSH, true);
-#elif TILING_KEY_VAR == 103000000030503003
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, false, true, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::TND, true);
-#elif TILING_KEY_VAR == 103000000050503005
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, false, true, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::NTD, true);
-//104
 #elif TILING_KEY_VAR == 104000000000203000
 	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
                                half, half, int8_t, half, true, false, FIA_LAYOUT::BNSD, false, false,
@@ -2018,103 +1824,6 @@ extern "C" __global__ __aicore__ void fused_infer_attention(
 	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
                                half, half, int8_t, half, true, true, FIA_LAYOUT::BSH, false, false,
                                     FIA_LAYOUT::NZ, true);
-#elif TILING_KEY_VAR == 104000000000203003
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, false, FIA_LAYOUT::TND, false, false,
-                                   FIA_LAYOUT::BNSD, false);
-#elif TILING_KEY_VAR == 104000000000303003
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, true, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::BNSD, false);
-#elif TILING_KEY_VAR == 104000000000603003
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, false, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::BNSD, true);
-#elif TILING_KEY_VAR == 104000000000703003
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, true, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::BNSD, true);
-#elif TILING_KEY_VAR == 104000000010203003
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, false, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::BSH, false);
-#elif TILING_KEY_VAR == 104000000010303003
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, true, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::BSH, false);
-#elif TILING_KEY_VAR == 104000000010603003
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, false, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::BSH, true);
-#elif TILING_KEY_VAR == 104000000010703003
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, true, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::BSH, true);
-#elif TILING_KEY_VAR == 104000000020203003
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, false, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::NZ, false);
-#elif TILING_KEY_VAR == 104000000020303003
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, true, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::NZ, false);
-#elif TILING_KEY_VAR == 104000000020603003
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, false, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::NZ, true);
-#elif TILING_KEY_VAR == 104000000020703003
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, true, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::NZ, true);
-#elif TILING_KEY_VAR == 104000000000203005
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, false, FIA_LAYOUT::NTD, false, false,
-                                   FIA_LAYOUT::BNSD, false);
-#elif TILING_KEY_VAR == 104000000000303005
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, true, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::BNSD, false);
-#elif TILING_KEY_VAR == 104000000000603005
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, false, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::BNSD, true);
-#elif TILING_KEY_VAR == 104000000000703005
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, true, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::BNSD, true);
-#elif TILING_KEY_VAR == 104000000010203005
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, false, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::BSH, false);
-#elif TILING_KEY_VAR == 104000000010303005
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, true, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::BSH, false);
-#elif TILING_KEY_VAR == 104000000010603005
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, false, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::BSH, true);
-#elif TILING_KEY_VAR == 104000000010703005
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, true, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::BSH, true);
-#elif TILING_KEY_VAR == 104000000020203005
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, false, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::NZ, false);
-#elif TILING_KEY_VAR == 104000000020303005
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, true, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::NZ, false);
-#elif TILING_KEY_VAR == 104000000020603005
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, false, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::NZ, true);
-#elif TILING_KEY_VAR == 104000000020703005
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, true, true, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::NZ, true);
-// Gqa NoQuant Non PA Non Perf
 #elif TILING_KEY_VAR == 104000000000003000
 	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
                                half, half, int8_t, half, false, false, FIA_LAYOUT::BNSD, false, false,
@@ -2123,14 +1832,6 @@ extern "C" __global__ __aicore__ void fused_infer_attention(
 	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
                                half, half, int8_t, half, false, false, FIA_LAYOUT::BSH, false, false,
                                     FIA_LAYOUT::BSH, false);
-#elif TILING_KEY_VAR == 104000000030003003
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, false, false, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::TND, false);
-#elif TILING_KEY_VAR == 104000000050003005
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, false, false, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::NTD, false);
 #elif TILING_KEY_VAR == 104000000000103000
 	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
                                half, half, int8_t, half, false, true, FIA_LAYOUT::BNSD, false, false,
@@ -2139,14 +1840,6 @@ extern "C" __global__ __aicore__ void fused_infer_attention(
 	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
                                half, half, int8_t, half, false, true, FIA_LAYOUT::BSH, false, false,
                                     FIA_LAYOUT::BSH, false);
-#elif TILING_KEY_VAR == 104000000030103003
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, false, true, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::TND, false);
-#elif TILING_KEY_VAR == 104000000050103005
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, false, true, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::NTD, false);
 #elif TILING_KEY_VAR == 104000000000403000
 	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
                                half, half, int8_t, half, false, false, FIA_LAYOUT::BNSD, false, false,
@@ -2155,14 +1848,6 @@ extern "C" __global__ __aicore__ void fused_infer_attention(
 	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
                                half, half, int8_t, half, false, false, FIA_LAYOUT::BSH, false, false,
                                     FIA_LAYOUT::BSH, true);
-#elif TILING_KEY_VAR == 104000000030403003
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, false, false, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::TND, true);
-#elif TILING_KEY_VAR == 104000000050403005
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, false, false, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::NTD, true);
 #elif TILING_KEY_VAR == 104000000000503000
 	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
                                half, half, int8_t, half, false, true, FIA_LAYOUT::BNSD, false, false,
@@ -2171,15 +1856,6 @@ extern "C" __global__ __aicore__ void fused_infer_attention(
 	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
                                half, half, int8_t, half, false, true, FIA_LAYOUT::BSH, false, false,
                                     FIA_LAYOUT::BSH, true);
-#elif TILING_KEY_VAR == 104000000030503003
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, false, true, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::TND, true);
-#elif TILING_KEY_VAR == 104000000050503005
-	INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               half, half, int8_t, half, false, true, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::NTD, true);
-
 #endif    
 #endif
 
@@ -2211,52 +1887,22 @@ extern "C" __global__ __aicore__ void fused_infer_attention(
     TILING_KEY_IS(103000000020623221);
     TILING_KEY_IS(103000000020723221);
  
-    TILING_KEY_IS(103000000000223223);
-    TILING_KEY_IS(103000000000323223);
-    TILING_KEY_IS(103000000000623223);
-    TILING_KEY_IS(103000000000723223);
-    TILING_KEY_IS(103000000010223223);
-    TILING_KEY_IS(103000000010323223);
-    TILING_KEY_IS(103000000010623223);
-    TILING_KEY_IS(103000000010723223);
-    TILING_KEY_IS(103000000020223223);
-    TILING_KEY_IS(103000000020323223);
-    TILING_KEY_IS(103000000020623223);
-    TILING_KEY_IS(103000000020723223);
 
-    TILING_KEY_IS(103000000000223225);
-    TILING_KEY_IS(103000000000323225);
-    TILING_KEY_IS(103000000000623225);
-    TILING_KEY_IS(103000000000723225);
-    TILING_KEY_IS(103000000010223225);
-    TILING_KEY_IS(103000000010323225);
-    TILING_KEY_IS(103000000010623225);
-    TILING_KEY_IS(103000000010723225);
-    TILING_KEY_IS(103000000020223225);
-    TILING_KEY_IS(103000000020323225);
-    TILING_KEY_IS(103000000020623225);
-    TILING_KEY_IS(103000000020723225);
 
 
     // Gqa NoQuant Non PA
     TILING_KEY_IS(103000000000023220);
     TILING_KEY_IS(103000000010023221);
-    TILING_KEY_IS(103000000030023223);
     TILING_KEY_IS(103000000050023223);
     TILING_KEY_IS(103000000000123220);
     TILING_KEY_IS(103000000010123221);
-    TILING_KEY_IS(103000000030123223);
     TILING_KEY_IS(103000000050123223);
     TILING_KEY_IS(103000000000423220);
     TILING_KEY_IS(103000000010423221);
-    TILING_KEY_IS(103000000030423223);
     TILING_KEY_IS(103000000050423223);
     TILING_KEY_IS(103000000000523220);
     TILING_KEY_IS(103000000010523221);
-    TILING_KEY_IS(103000000030523223);
     TILING_KEY_IS(103000000050523223);
-    TILING_KEY_IS(103000000050023225);
-    TILING_KEY_IS(103000000050123225);
 //104
     TILING_KEY_IS(104000000000223220);
     TILING_KEY_IS(104000000000323220);
@@ -2284,52 +1930,22 @@ extern "C" __global__ __aicore__ void fused_infer_attention(
     TILING_KEY_IS(104000000020623221);
     TILING_KEY_IS(104000000020723221);
  
-    TILING_KEY_IS(104000000000223223);
-    TILING_KEY_IS(104000000000323223);
-    TILING_KEY_IS(104000000000623223);
-    TILING_KEY_IS(104000000000723223);
-    TILING_KEY_IS(104000000010223223);
-    TILING_KEY_IS(104000000010323223);
-    TILING_KEY_IS(104000000010623223);
-    TILING_KEY_IS(104000000010723223);
-    TILING_KEY_IS(104000000020223223);
-    TILING_KEY_IS(104000000020323223);
-    TILING_KEY_IS(104000000020623223);
-    TILING_KEY_IS(104000000020723223);
 
-    TILING_KEY_IS(104000000000223225);
-    TILING_KEY_IS(104000000000323225);
-    TILING_KEY_IS(104000000000623225);
-    TILING_KEY_IS(104000000000723225);
-    TILING_KEY_IS(104000000010223225);
-    TILING_KEY_IS(104000000010323225);
-    TILING_KEY_IS(104000000010623225);
-    TILING_KEY_IS(104000000010723225);
-    TILING_KEY_IS(104000000020223225);
-    TILING_KEY_IS(104000000020323225);
-    TILING_KEY_IS(104000000020623225);
-    TILING_KEY_IS(104000000020723225);
 
 
     // Gqa NoQuant Non PA
     TILING_KEY_IS(104000000000023220);
     TILING_KEY_IS(104000000010023221);
-    TILING_KEY_IS(104000000030023223);
     TILING_KEY_IS(104000000050023223);
     TILING_KEY_IS(104000000000123220);
     TILING_KEY_IS(104000000010123221);
-    TILING_KEY_IS(104000000030123223);
     TILING_KEY_IS(104000000050123223);
     TILING_KEY_IS(104000000000423220);
     TILING_KEY_IS(104000000010423221);
-    TILING_KEY_IS(104000000030423223);
     TILING_KEY_IS(104000000050423223);
     TILING_KEY_IS(104000000000523220);
     TILING_KEY_IS(104000000010523221);
-    TILING_KEY_IS(104000000030523223);
     TILING_KEY_IS(104000000050523223);
-    TILING_KEY_IS(104000000050023225);
-    TILING_KEY_IS(104000000050123225);
 // Gqa NoQuant PA
 #if TILING_KEY_VAR == 103000000000223220 
     INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
@@ -2429,105 +2045,6 @@ extern "C" __global__ __aicore__ void fused_infer_attention(
                                bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, true, FIA_LAYOUT::BSH, false, false,
                                     FIA_LAYOUT::NZ, true);
  
-#elif TILING_KEY_VAR == 103000000000223223 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, false, FIA_LAYOUT::TND, false, false,
-                                   FIA_LAYOUT::BNSD);
-#elif TILING_KEY_VAR == 103000000000323223 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, true, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::BNSD);
-#elif TILING_KEY_VAR == 103000000000623223 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, false, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::BNSD, true);
-#elif TILING_KEY_VAR == 103000000000723223 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, true, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::BNSD, true);
-#elif TILING_KEY_VAR == 103000000010223223 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, false, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::BSH);
-#elif TILING_KEY_VAR == 103000000010323223 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, true, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::BSH);
-#elif TILING_KEY_VAR == 103000000010623223 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, false, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::BSH, true);
-#elif TILING_KEY_VAR == 103000000010723223 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, true, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::BSH, true);
-#elif TILING_KEY_VAR == 103000000020223223 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, false, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::NZ);
-#elif TILING_KEY_VAR == 103000000020323223 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, true, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::NZ);
-#elif TILING_KEY_VAR == 103000000020623223 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, false, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::NZ, true);
-#elif TILING_KEY_VAR == 103000000020723223 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, true, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::NZ, true);
- 
-#elif TILING_KEY_VAR == 103000000000223225 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, false, FIA_LAYOUT::NTD, false, false,
-                                   FIA_LAYOUT::BNSD);
-#elif TILING_KEY_VAR == 103000000000323225 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, true, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::BNSD);
-#elif TILING_KEY_VAR == 103000000000623225 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, false, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::BNSD, true);
-#elif TILING_KEY_VAR == 103000000000723225 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, true, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::BNSD, true);
-#elif TILING_KEY_VAR == 103000000010223225 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, false, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::BSH);
-#elif TILING_KEY_VAR == 103000000010323225 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, true, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::BSH);
-#elif TILING_KEY_VAR == 103000000010623225 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, false, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::BSH, true);
-#elif TILING_KEY_VAR == 103000000010723225 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, true, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::BSH, true);
-#elif TILING_KEY_VAR == 103000000020223225 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, false, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::NZ);
-#elif TILING_KEY_VAR == 103000000020323225 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, true, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::NZ);
-#elif TILING_KEY_VAR == 103000000020623225 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, false, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::NZ, true);
-#elif TILING_KEY_VAR == 103000000020723225 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, true, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::NZ, true);
-
-// Gqa NoQuant Non PA
 #elif TILING_KEY_VAR == 103000000000023220 
     INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
                                bfloat16_t, bfloat16_t, int8_t, bfloat16_t, false, false, FIA_LAYOUT::BNSD, false, false,
@@ -2536,14 +2053,6 @@ extern "C" __global__ __aicore__ void fused_infer_attention(
     INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
                                bfloat16_t, bfloat16_t, int8_t, bfloat16_t, false, false, FIA_LAYOUT::BSH, false, false,
                                     FIA_LAYOUT::BSH);
-#elif TILING_KEY_VAR == 103000000030023223 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, false, false, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::TND);
-#elif TILING_KEY_VAR == 103000000050023225
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, false, false, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::NTD);
 #elif TILING_KEY_VAR == 103000000000123220 
     INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
                                bfloat16_t, bfloat16_t, int8_t, bfloat16_t, false, true, FIA_LAYOUT::BNSD, false, false,
@@ -2552,14 +2061,6 @@ extern "C" __global__ __aicore__ void fused_infer_attention(
     INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
                                bfloat16_t, bfloat16_t, int8_t, bfloat16_t, false, true, FIA_LAYOUT::BSH, false, false,
                                     FIA_LAYOUT::BSH);
-#elif TILING_KEY_VAR == 103000000030123223 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, false, true, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::TND);
-#elif TILING_KEY_VAR == 103000000050123225
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, false, true, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::NTD);
 #elif TILING_KEY_VAR == 103000000000423220 
     INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
                                bfloat16_t, bfloat16_t, int8_t, bfloat16_t, false, false, FIA_LAYOUT::BNSD, false, false,
@@ -2568,14 +2069,6 @@ extern "C" __global__ __aicore__ void fused_infer_attention(
     INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
                                bfloat16_t, bfloat16_t, int8_t, bfloat16_t, false, false, FIA_LAYOUT::BSH, false, false,
                                     FIA_LAYOUT::BSH, true);
-#elif TILING_KEY_VAR == 103000000030423223 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, false, false, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::TND, true);
-#elif TILING_KEY_VAR == 103000000050423225
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, false, false, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::NTD, true);
 #elif TILING_KEY_VAR == 103000000000523220 
     INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
                                bfloat16_t, bfloat16_t, int8_t, bfloat16_t, false, true, FIA_LAYOUT::BNSD, false, false,
@@ -2584,15 +2077,6 @@ extern "C" __global__ __aicore__ void fused_infer_attention(
     INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
                                bfloat16_t, bfloat16_t, int8_t, bfloat16_t, false, true, FIA_LAYOUT::BSH, false, false,
                                     FIA_LAYOUT::BSH, true);
-#elif TILING_KEY_VAR == 103000000030523223 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, false, true, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::TND, true);
-#elif TILING_KEY_VAR == 103000000050523225
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuantGqa, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, false, true, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::NTD, true);
-//104
 #elif TILING_KEY_VAR == 104000000000223220 
     INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
                                bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, false, FIA_LAYOUT::BNSD, false, false,
@@ -2691,105 +2175,6 @@ extern "C" __global__ __aicore__ void fused_infer_attention(
                                bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, true, FIA_LAYOUT::BSH, false, false,
                                     FIA_LAYOUT::NZ, true);
  
-#elif TILING_KEY_VAR == 104000000000223223 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, false, FIA_LAYOUT::TND, false, false,
-                                   FIA_LAYOUT::BNSD);
-#elif TILING_KEY_VAR == 104000000000323223 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, true, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::BNSD);
-#elif TILING_KEY_VAR == 104000000000623223 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, false, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::BNSD, true);
-#elif TILING_KEY_VAR == 104000000000723223 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, true, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::BNSD, true);
-#elif TILING_KEY_VAR == 104000000010223223 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, false, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::BSH);
-#elif TILING_KEY_VAR == 104000000010323223 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, true, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::BSH);
-#elif TILING_KEY_VAR == 104000000010623223 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, false, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::BSH, true);
-#elif TILING_KEY_VAR == 104000000010723223 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, true, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::BSH, true);
-#elif TILING_KEY_VAR == 104000000020223223 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, false, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::NZ);
-#elif TILING_KEY_VAR == 104000000020323223 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, true, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::NZ);
-#elif TILING_KEY_VAR == 104000000020623223 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, false, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::NZ, true);
-#elif TILING_KEY_VAR == 104000000020723223 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, true, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::NZ, true);
- 
-#elif TILING_KEY_VAR == 104000000000223225 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, false, FIA_LAYOUT::NTD, false, false,
-                                   FIA_LAYOUT::BNSD);
-#elif TILING_KEY_VAR == 104000000000323225 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, true, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::BNSD);
-#elif TILING_KEY_VAR == 104000000000623225 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, false, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::BNSD, true);
-#elif TILING_KEY_VAR == 104000000000723225 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, true, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::BNSD, true);
-#elif TILING_KEY_VAR == 104000000010223225 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, false, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::BSH);
-#elif TILING_KEY_VAR == 104000000010323225 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, true, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::BSH);
-#elif TILING_KEY_VAR == 104000000010623225 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, false, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::BSH, true);
-#elif TILING_KEY_VAR == 104000000010723225 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, true, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::BSH, true);
-#elif TILING_KEY_VAR == 104000000020223225 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, false, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::NZ);
-#elif TILING_KEY_VAR == 104000000020323225 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, true, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::NZ);
-#elif TILING_KEY_VAR == 104000000020623225 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, false, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::NZ, true);
-#elif TILING_KEY_VAR == 104000000020723225 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, true, true, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::NZ, true);
-
-// Gqa NoQuant Non PA
 #elif TILING_KEY_VAR == 104000000000023220 
     INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
                                bfloat16_t, bfloat16_t, int8_t, bfloat16_t, false, false, FIA_LAYOUT::BNSD, false, false,
@@ -2798,14 +2183,6 @@ extern "C" __global__ __aicore__ void fused_infer_attention(
     INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
                                bfloat16_t, bfloat16_t, int8_t, bfloat16_t, false, false, FIA_LAYOUT::BSH, false, false,
                                     FIA_LAYOUT::BSH);
-#elif TILING_KEY_VAR == 104000000030023223 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, false, false, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::TND);
-#elif TILING_KEY_VAR == 104000000050023225
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, false, false, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::NTD);
 #elif TILING_KEY_VAR == 104000000000123220 
     INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
                                bfloat16_t, bfloat16_t, int8_t, bfloat16_t, false, true, FIA_LAYOUT::BNSD, false, false,
@@ -2814,14 +2191,6 @@ extern "C" __global__ __aicore__ void fused_infer_attention(
     INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
                                bfloat16_t, bfloat16_t, int8_t, bfloat16_t, false, true, FIA_LAYOUT::BSH, false, false,
                                     FIA_LAYOUT::BSH);
-#elif TILING_KEY_VAR == 104000000030123223 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, false, true, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::TND);
-#elif TILING_KEY_VAR == 104000000050123225
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, false, true, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::NTD);
 #elif TILING_KEY_VAR == 104000000000423220 
     INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
                                bfloat16_t, bfloat16_t, int8_t, bfloat16_t, false, false, FIA_LAYOUT::BNSD, false, false,
@@ -2830,14 +2199,6 @@ extern "C" __global__ __aicore__ void fused_infer_attention(
     INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
                                bfloat16_t, bfloat16_t, int8_t, bfloat16_t, false, false, FIA_LAYOUT::BSH, false, false,
                                     FIA_LAYOUT::BSH, true);
-#elif TILING_KEY_VAR == 104000000030423223 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, false, false, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::TND, true);
-#elif TILING_KEY_VAR == 104000000050423225
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, false, false, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::NTD, true);
 #elif TILING_KEY_VAR == 104000000000523220 
     INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
                                bfloat16_t, bfloat16_t, int8_t, bfloat16_t, false, true, FIA_LAYOUT::BNSD, false, false,
@@ -2846,14 +2207,6 @@ extern "C" __global__ __aicore__ void fused_infer_attention(
     INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
                                bfloat16_t, bfloat16_t, int8_t, bfloat16_t, false, true, FIA_LAYOUT::BSH, false, false,
                                     FIA_LAYOUT::BSH, true);
-#elif TILING_KEY_VAR == 104000000030523223 
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, false, true, FIA_LAYOUT::TND, false, false,
-                                    FIA_LAYOUT::TND, true);
-#elif TILING_KEY_VAR == 104000000050523225
-    INVOKE_FIA_OP_GENERAL_IMPL(FiaKernelNonQuant, FiaBlockCubeNonQuant, FiaBlockVecNonQuant, FiaBlockVecFlashDecode,
-                               bfloat16_t, bfloat16_t, int8_t, bfloat16_t, false, true, FIA_LAYOUT::NTD, false, false,
-                                    FIA_LAYOUT::NTD, true);
 #endif    
 #endif
 
