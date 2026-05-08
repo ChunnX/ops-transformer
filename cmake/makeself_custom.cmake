@@ -12,9 +12,6 @@
 # 设置 makeself 路径
 set(MAKESELF_EXE ${CPACK_MAKESELF_PATH}/makeself.sh)
 set(MAKESELF_HEADER_EXE ${CPACK_MAKESELF_PATH}/makeself-header.sh)
-if(NOT MAKESELF_EXE)
-    message(FATAL_ERROR "makeself not found!")
-endif()
 
 execute_process(COMMAND bash ${MAKESELF_EXE}
                         --header ${MAKESELF_HEADER_EXE}
