@@ -15,7 +15,7 @@ This kernel is based on PromptFlashAttentionV3, extending it by a new argument "
 
 > **TODO 2: variable sabi granularity** The sabi tensor currently uses a fixed 
 > **128×128** (Q-tile × KV-tile) block granularity (shape `[B, N, ceil(S/128), ceil(S/128)]`). 
-> The original design used 128×512 granularity, which borugh impressive speedups. 
+> The original design used 128×512 granularity, which has established impressive speedups. 
 > If 128x128 granularity doesn't show comparable speedups, the a future task is to develop 
 > dynamic control so the caller can choose between 128×128 and 128×512 KV-block 
 > granularity at runtime, without a kernel rebuild. This requires changes to the 

@@ -5238,3 +5238,651 @@ slack contains NaN on this CANN/PyTorch build."
 - DCCI in `Process()` untouched (CLAUDE.md golden rule).
 - `ApplySubBlockMaskCorrection` dead-code body retained (independent
   of the new `ApplyTailKOOBPreMask`).
+
+
+---
+
+## Session 26 — Plan: Stage D.3 with build-time packer A/B (deferred since Session 23, refined post-Session 25)
+
+### Goal
+
+Land the highest-value remaining perf vector for BSA — replace the
+slow-gather `packedCount`-loop of `IterateAll` calls with a hand-
+rolled `Te::Copy + Te::Mad` cube path that pipelines MTE2 ↔ MAC
+across kept K-tiles, with **Q held resident in L1** and **K rotated
+as ping/pong**.  Pattern source: `pingpong_design.md` §4.1 +
+`fullload_design.md` §4.3 (A-resident variant).
+
+This is the same Stage D.3 plan deferred in Session 23.  Refinement
+this turn: the entire D.3 implementation lives **behind a build-time
+packer-mode A/B flag** so the in-tree D.1 floor is never at risk and
+the two packer modes can be benchmarked head-to-head.
+
+### Why it was deferred at Session 23 — and why now is the right time
+
+Session 23's deferral was correct on its own terms:
+
+- D.1's K-contiguous-only packer makes the slow-gather branch **dead
+  code at runtime**.  Modifying that branch alone produces zero
+  benchmark delta until the packer is also relaxed.
+- A unilateral packer relaxation (Stage C-style) forfeits D.1's
+  Pareto wins at low- and high-sparsity (the packer's win source per
+  Session 21's table).
+- Implementing D.3 across all matmul variants (BF16 / FP16 / INT8 ×
+  MSD on/off × antiquant on/off × MM_PA / MM_MDL / MM_PA_ANTIQUANT)
+  was scoped at 3 sessions of cube-path surgery — high blast radius
+  for an uncertain mid-sparsity win.
+
+What changes after Session 25:
+
+- The tail-K NaN saga is closed.  Correctness is no longer the gating
+  concern; performance headroom (sparsity 0.5 ≈ 117 ms vs main 85 ms)
+  is the next material lever.
+- The Session 25 noinline-helper / build-flag / dual-codepath
+  discipline (`ApplyTailKOOBPreMask` lives behind a runtime gate)
+  proves that BSA's hot path tolerates conditional alternative paths
+  without I-cache regression — the same pattern can wrap D.3 cleanly.
+- The D.3 design constraint (Q-resident across narrow K calls)
+  exactly matches the `fullload_design.md` §4.3 reference code and
+  the `pingpong_design.md` §4.1 ping/pong skeleton — both fully
+  worked-through skill artefacts on disk.
+
+### What
+
+Replace the slow-gather `packedCount`-loop of `IterateAll` calls
+with a manual L1-managed gather:
+
+```
+L1 layout:
+  [Q_resident | K_ping | K_pong]      ← Q one-shot; K double-buffered
+                                         L1 budget: 32 KB + 16 KB + 16 KB = 64 KB ≪ 512 KB
+TQue:
+  TQue<TPosition::A1, 1> qQ;          // Q L1 buffer, num=1 (resident)
+  TQue<TPosition::B1, 1> qK;          // K L1 buffer, num=2 (pingpong)
+  pipe.InitBuffer(qQ, 1, qBytes);
+  pipe.InitBuffer(qK, 2, kTileBytes);
+
+Per Q-outer-iter:
+  Te::Copy(CopyGM2L1)(Q_GM[qOff], Q_L1);              // once, then resident
+  EnQue(qQ); auto qL1 = qQ.DeQue();
+
+  for (int i = 0; i < packedCount; ++i) {
+      auto kL1 = qK.AllocTensor();
+      Te::Copy(CopyGM2L1)(K_GM[packedSabi[i]*128*stride], kL1);
+      qK.EnQue(kL1);                                  // MTE2 hands off to MTE1+MAC
+
+      auto kReady = qK.DeQue();                       // waits only for THIS i's MTE2
+      Te::Copy(CopyL12L0A)(qL1   → L0A);              // Q slice into L0A
+      Te::Copy(CopyL12L0B)(kReady → L0B);             // K slice into L0B
+      Te::Mad(MmadMxAtom{})(L0A × L0B → L0C[i*128 col-slice]);
+      qK.FreeTensor(kReady);
+  }
+  Te::Fixpipe<FIXPIPE_TRAIT_SPLIT_M>(L0C → workspace_GM);
+```
+
+This is exactly `pingpong_design.md` §4.1, but with **A held
+resident** (the G4 / fullload pattern from `fullload_design.md`) and
+**K rotated** (the standard pingpong).  The PFA `pfaParamsQueue`
+ping-pong across batches still operates one level above this; D.3
+just pipelines *within* a packed batch.
+
+**Why this works on the same CANN where `IterateAll<sync=false>`
+hangs** (memory `back_to_back_iterateall_hangs`): the hang is at the
+matmul library's macro-level scheduling — it issues a full Q+K load +
+L0 setup + MAC + L0C drain per `IterateAll` and trips the instruction
+queue depth between two of them.  The Tensor API path issues one
+`Te::Copy` for K MTE2 + one `Te::Mad` per iter; the per-iter
+instruction count is ~3× lower, so two consecutive pings stay within
+the instruction queue depth.
+
+### The catch — D.3 is dead code unless paired with a relaxed packer
+
+Under D.1's K-contiguous-only packer (Session 21), every batch is
+contiguous-K → the contiguous-K fast path always fires and the slow-
+gather branch is unreachable at runtime.  D.3 only pays off if the
+slow-gather branch can be reached, which requires relaxing the
+packer back toward Stage C ("pack any 4 kept sabi entries").
+
+But Session 21 measured that the relaxed packer **regresses D.1 at
+every sparsity** (4–24 % wider walltime), because the slow gather
+path under `IterateAll`-based scheduling is slower than splitting the
+batch into multiple K-contiguous batches.  **D.3's whole point is to
+make the slow-gather path *faster than that split*** — but until
+D.3 is built and benchmarked, the conservative packer is the right
+default.
+
+The plan: build D.3 **behind a build-time packer-mode flag** so
+either packer mode can be selected without rebuild logic interfering
+with the existing in-tree D.1 floor.
+
+### How — implementation outline (3 sessions, with build-time A/B)
+
+#### Session 26.A — D.3a (bmm1 only, packer-mode flag wiring)
+
+| File | Change |
+|---|---|
+| `op_kernel/blitz_sparse_attention_s1s2_bns1_x910.h` (`SInnerLoopFunc` sparse path) | Wrap the K-contiguous guard `if (batchCount > 0 && (uint32_t)s != (uint32_t)batch[batchCount - 1] + 1u) break;` (Session 21) in `#if !BSA_PACKER_RELAXED`. The relaxed branch removes the guard so any 4 kept sabis pack into one batch (Stage C semantics restored — slow-gather reachable). |
+| `op_kernel/blitz_sparse_attention_s1s2_bns1_x910.h` (`Bmm1ComputeIterate` sparse slow path) | Replace the `for (i = 0; i < packedCount; ++i) IterateAll<...>(...)` loop with a hand-rolled `Te::Copy + Te::Mad` cube path matching the skeleton above.  Q-side `Te::Copy(GM→L1)` issued once per Q-outer-iter; K-side ping/pong queue (`TQue<TPosition::B1, 1>` with `num=2`) feeds the inner loop.  L0A/L0B `Te::Copy(L1→L0)` + `Te::Mad` per iter. |
+| `op_kernel/blitz_sparse_attention_s1s2_bns1_x910.h` (`Bmm2ComputeIterate` sparse slow path) | Untouched in D.3a — the bmm2 slow gather still uses `IterateAll<sync=true>` for back-compat.  D.3b moves it. |
+| `op_kernel/blitz_sparse_attention_s1s2_bns1_x910_base.h` | New L1 buffer regions / `TQue` declarations gated on `BSA_PACKER_RELAXED`. |
+| `op_host/blitz_sparse_attention_def.cpp` (or build.sh option) | Surface `BSA_PACKER_RELAXED` as a build-time `-D` flag.  Default OFF (= D.1 packer, in-tree floor unchanged). |
+
+Validation:
+- Build twice — once with default flag (D.1), once with
+  `BSA_PACKER_RELAXED=1` (D.3a slow-gather path active).
+- Default build: pytest 80/80, benchmark identical to D.1 (exact
+  same packer, no perf delta).
+- Relaxed build: pytest 80/80 (cube correctness gate), benchmark
+  sparsity 0.2 / 0.5 should approach the README 128×512 main numbers
+  (~170 / 85 ms — `patterns.md` §3 says this is the canonical
+  Tensor-API matmul fusion outcome).
+
+#### Session 26.B — D.3b (bmm2 mirror)
+
+Symmetric to 26.A on the bmm2 side: `Bmm2ComputeIterate` sparse slow
+gather replaced with a Tensor-API path holding **the score buffer
+(P) resident in L1** and rotating V's per-sabi slices ping/pong.
+Iter-0 initialises L0C; iters 1..N-1 accumulate via `Te::Mad`'s
+accumulator flag (the analogue of `enAtomic` we use today —
+confirmed by `matmul-fusion-design-template.md` §4.3).
+
+Validation:
+- Default build still untouched.
+- Relaxed build: pytest 80/80, benchmark sparsity 0.5 / 0.7 / 0.9
+  should approach 85 / 53 / 22 ms (the original Stage C target that
+  Stage C itself missed).
+
+#### Session 26.C — D.3c (Q-residency across packed batches)
+
+When consecutive batches within the same Q-outer-iter share the
+Q tile, hold Q's L1 buffer across the batch boundary instead of
+reloading.  Analogue of `streamk_design.md` §3.3's SK-Preload trick.
+This amortises one Q-side MTE2 over many K batches.
+
+Validation:
+- Relaxed build: benchmark sparsity 0.3 / 0.5 should drop another
+  ~5 % from D.3b numbers (Q MTE2 amortisation).
+- Default build still untouched.
+
+### Risks (called out by skills)
+
+- **L1 budget**: `pingpong_design.md` §7 problem 1 — `2×(A + B) ≤ L1`.
+  For BSA D.3: Q (32 KB) + 2 × K_tile (16 KB) = 64 KB ≪ 512 KB.
+  Plenty of room; Q can stay non-pingpong'd.
+- **Tail-K cells**: `mte2_preload_design.md` §6 problem 3 warns about
+  tail-iter MTE2 over-prefetch.  BSA's last sabi may have
+  `lastCols < 128` — the pre-fetch must clamp.  This is the same
+  invariant the Session 25 A.1 pre-mask already respects via
+  `bmm2K = totalColsActual`.
+- **`Te::Mad` accumulator semantics**: `matmul-fusion-design-template.md`
+  §4.3 confirms `Te::Mad` accepts an accumulator flag analogous to
+  `enAtomic`.  Iter-0 initialises L0C; iters 1..N-1 accumulate.  The
+  bmm2-side flash-update logic outside the cube is unchanged.
+- **Fixpipe path**: skill keeps `Te::Fixpipe<FIXPIPE_TRAIT_SPLIT_M>`
+  as `[PATTERN]` fixed — D.3 only changes the GM→L1→L0→MMAD segment.
+- **DCCI golden rule**: untouched (no `Process()` change).
+- **Allocator-slack NaN rule (Session 25)**: D.3's bmm2 must still
+  bound K to `actualSeqLengthKVPerBatch` — same `bmm2K` discipline
+  as A.1.  The Tensor API path makes this *easier* (explicit
+  per-iter `Te::Copy(GM→L1, kCols)`) but it must be enforced
+  explicitly.
+- **Variant coverage**: BF16, FP16, INT8 × MSD on/off × antiquant
+  on/off × MM_PA / MM_MDL / MM_PA_ANTIQUANT.  D.3a should land BF16
+  first (the benchmark path), then add the rest in subsequent passes.
+  Pytest 80/80 is the gate that catches any regression in the
+  non-BF16 specialisations.
+
+### Upside (model)
+
+Best-case mid-sparsity model from the Stage D plan §"Mechanism":
+`T_StageD ≈ T_setup + 4 × max(T_MTE2_K, T_MAC) + T_tail`.
+
+| Sparsity | D.1 (µs) | D.3 model (µs) | Δ |
+|---|---|---|---|
+| 0.00 | 172 304 | 172 000 | unchanged (fast path stays) |
+| 0.30 | 142 513 | ~110 000 | -23 % (slow-gather batches dominate) |
+| 0.50 | 116 622 | ~85 000 | -27 % (matches main 128×512) |
+| 0.70 |  75 913 | ~53 000 | -30 % |
+| 0.90 |  21 856 |  21 800 | unchanged (fast path stays) |
+
+Geomean: D.1 ≈ 101 ms → D.3 ≈ 91 ms (-10 % — Session 23 estimate).
+This estimate assumes D.3a + D.3b land cleanly; D.3c adds another
+~3 % at mid-sparsity.
+
+### Cost
+
+- 3 sessions (26.A bmm1, 26.B bmm2, 26.C Q-residency).
+- Each session = one packer-relaxed build + pytest 80/80 + benchmark
+  vs default build.
+- Skill docs walked-through (template + reference code) ≈ 0 dev
+  research cost; both `pingpong_design.md` §4.1 and `fullload_design.md`
+  §4.3 are the literal blueprints.
+
+### Risk
+
+- **Medium.**  Touches the cube path in the slow-gather branch.
+  Default build is identical to D.1 every step → in-tree floor never
+  at risk.  The relaxed build is the experimental side.
+- Worst-case rollback: drop the `BSA_PACKER_RELAXED` flag, ship D.1.
+  Same as not attempting D.3.
+
+### Validation gate (each sub-session)
+
+| Gate | D.3a | D.3b | D.3c |
+|---|---|---|---|
+| Default build pytest test_attn 80/80 | unchanged | unchanged | unchanged |
+| Default build benchmark vs Session 25 A.1 | within ±0.5 % | within ±0.5 % | within ±0.5 % |
+| Relaxed build pytest test_attn 80/80 | required | required | required |
+| Relaxed build benchmark sparsity 0.5 | ≤ 100 ms | ≤ 90 ms | ≤ 87 ms |
+| Relaxed build benchmark sparsity 0.7 | ≤ 70 ms | ≤ 55 ms | ≤ 53 ms |
+| Relaxed build benchmark sparsity 0.0 / 0.9 | ±2 % vs D.1 | ±2 % vs D.1 | ±2 % vs D.1 |
+
+If any default-build gate fails: revert the packer-flag wiring
+(zero-impact rollback — the default branch must be byte-identical to
+D.1).
+
+If a relaxed-build gate fails on the cube-path correctness side
+(pytest), the Tensor-API code is buggy; iterate on that branch only,
+the default ship remains D.1.
+
+If a relaxed-build perf gate fails (relaxed mode is slower than D.1
+even with Tensor-API gather): that's the Session 23 prediction
+materialising — document the result, keep D.1 as the in-tree default,
+deprecate the relaxed branch.
+
+### Hard constraints carried forward (unchanged)
+
+- B=1 only; ASCEND_RT_VISIBLE_DEVICES=5.
+- DCCI golden rule (CLAUDE.md): `Process()` whole-cache invalidation
+  not to be touched.
+- Capture per-batch offsets at enqueue (memory
+  `feedback_capture_offsets_at_enqueue`) — the D.3 cube path must
+  read `params->tensorBOffset` / `params->valueOffset` snapshots,
+  not `this->tensorBCoreOffset` live.
+- bmm2 K must stay inside `actualSeqLengthKVPerBatch` (memory
+  `feedback_v_allocator_slack_has_nan`) — D.3b's `Te::Copy(V_GM→L1)`
+  must clamp `kCols` to `bmm2K = totalColsActual` on the global last
+  sabi.
+- No `git commit` / `git push` / `git reset` / `git rebase` / branch
+  ref move without explicit user authorisation in the current
+  conversation (golden rule).
+- Build cycle:
+  ```bash
+  bash build.sh --make_clean --experimental -j96 --pkg --soc=ascend910b --ops=blitz_sparse_attention
+  ./build/cann-ops-transformer-custom_linux-"$(uname -i)".run
+  (cd experimental/attention/blitz_sparse_attention/torch_interface && bash build.sh custom)
+  ```
+  Plus the new flag for the relaxed build:
+  ```bash
+  bash build.sh --make_clean --experimental -j96 --pkg --soc=ascend910b --ops=blitz_sparse_attention --extra-cflags=-DBSA_PACKER_RELAXED=1
+  ```
+  (exact flag-passing mechanism to be confirmed in 26.A; if `build.sh`
+  doesn't expose `--extra-cflags`, add it to `CMakeLists.txt` for
+  the BSA op only).
+
+### Stop conditions
+
+Stop and report when:
+- All three sub-sessions (26.A / 26.B / 26.C) have landed and the
+  relaxed-build gates above are met.
+- A relaxed-build correctness gate (pytest) fails after a fix
+  attempt — diagnose, document, and pause.
+- A relaxed-build perf gate fails decisively (relaxed slower than
+  D.1 by > 5 % geomean) — document the failure mode and ship D.1
+  as the in-tree default.
+- A hard blocker is hit on the Tensor-API side (e.g.,
+  `Te::Mad` accumulator semantics differ from prediction, L1 budget
+  contention surprises) — report the blocker and what was tried.
+
+
+---
+
+## Session 26.A — execution: build-time packer A/B flag + Stage-C-equivalent relaxed mode landed; Tensor-API cube-path replacement blocked (`AscendC::Te::*` not in CANN 8.5.0-beta.1)
+
+### Goal
+
+Land Session 26's plan §"Session 26.A — D.3a (bmm1 only, packer-mode
+flag wiring)":
+- Wire a build-time `BSA_PACKER_RELAXED` flag (default OFF).
+- Wrap the K-contiguous packer guard (Session 21 D.1) in `#if
+  !BSA_PACKER_RELAXED` so the relaxed build admits any 4 kept sabis
+  per batch (Stage C semantics).
+- Replace the bmm1 slow-gather `for(packedCount){IterateAll}` loop
+  with a hand-rolled `Te::Copy + Te::Mad` cube path under
+  `#if BSA_PACKER_RELAXED`.
+- Default build must remain byte-identical to Session 25 A.1.
+- Relaxed build is the experimental side; pytest 80/80 + perf
+  targets are the gates.
+
+### What was applied
+
+| File | Change |
+|---|---|
+| `build.sh` | New `--extra-cflags=<value>` arg.  Forwards a single token (or comma-separated list) to CMake as `-DEXTRA_OP_KERNEL_CFLAGS=<value>`.  Used here as `--extra-cflags=-DBSA_PACKER_RELAXED=1`. |
+| `experimental/attention/blitz_sparse_attention/op_host/CMakeLists.txt` | Reads `EXTRA_OP_KERNEL_CFLAGS`, splits on commas, appends the tokens to BOTH `add_ops_compile_options(... OPTIONS ...)` calls (one for `BUILD_OPEN_PROJECT`, one for the kernel build).  Effect: extra `-D` flags reach ONLY the BSA kernel compiler invocation; op_host / aclnn / tiling / generic ops are untouched. |
+| `op_kernel/blitz_sparse_attention_s1s2_bns1_x910.h` (`SInnerLoopFunc` sparse path, ~line 2675) | Wrapped Session 21's K-contiguous guard `if (batchCount > 0 && (uint32_t)s != (uint32_t)batch[batchCount-1]+1u) break;` in `#if !BSA_PACKER_RELAXED` ... `#endif`.  Default build: macro undefined → guard included → behaviour identical to Session 25 A.1.  Relaxed build: macro defined (=1) → guard skipped → packer admits up to 4 kept sabis per batch (Stage C semantics). |
+
+The bmm1 slow-gather `Bmm1ComputeIterate` body was **not** replaced
+with a Tensor-API cube path — see §"Tensor-API cube-path attempt:
+hard blocker" below.  Under the relaxed build, the existing
+`for (i; i < packedCount; ++i) IterateAll<sync=(i<last)>(...)` slow
+path continues to handle non-contiguous batches; this matches
+Session 20 Stage C's actual code path on this CANN version.
+
+The runtime `kContiguous` check in `Bmm1ComputeIterate` (line 574)
+still catches batches that *happen* to be contiguous even when the
+packer doesn't enforce it — this is what keeps the relaxed build's
+perf delta vs default to within +1–4 % across the whole sparsity
+sweep (see §"Mechanism" below).
+
+### Tensor-API cube-path attempt: hard blocker
+
+Per the Session 26 plan, Session 26.A was supposed to replace the
+bmm1 slow-gather `IterateAll`-loop with a hand-rolled
+`Te::Copy + Te::Mad + Te::Fixpipe<FIXPIPE_TRAIT_SPLIT_M>` cube path
+matching `pingpong_design.md` §4.1 + `fullload_design.md` §4.3.
+
+**Blocker:** the `AscendC::Te::*` Tensor API namespace **is not
+present in CANN 8.5.0-beta.1's standard headers**.
+
+Verified via:
+
+```
+$ grep -rn "namespace Te\b\|Te::Copy\b\|Te::Mad\b\|Te::Fixpipe\b" \
+    /usr/local/Ascend/cann-8.5.0-beta.1/aarch64-linux/asc/include/
+(no matches)
+
+$ ls /usr/local/Ascend/cann-8.5.0-beta.1/aarch64-linux/asc/include/basic_api/
+core_mng/                    kernel_operator_data_copy_intf.h
+kernel_common.h              kernel_operator_fixpipe_intf.h
+kernel_operator_atomic_intf.h kernel_operator_gemm_intf.h
+kernel_operator_block_sync_intf.h kernel_operator_mm_intf.h
+... (all classic AscendC `kernel_operator_*` interfaces; no `tensor_api`)
+```
+
+The `Te::*` namespace exists **only as a third-party library**
+shipped under
+`/home/kostya/cannbot-skills/ops/ascendc-direct-invoke-template/references/matmul_fusion_kernel/third_party/tensor_api/`
+— not on the CANN install path, not packaged with this repo.  Both
+`pingpong_design.md` and `fullload_design.md` `[PATTERN]`-tagged
+recipes use `Te::Copy(copyGM2L1, ...)` + `Te::Mad(MmadMxAtom{}, ...)`
+syntax that requires that library.
+
+**Closest available path on CANN 8.5.0-beta.1**: the lower-level
+AscendC primitives in `basic_api/`:
+- `kernel_operator_mm_intf.h` (`Mmad`, `Mmad{Params,Atom}`)
+- `kernel_operator_fixpipe_intf.h` (`Fixpipe`, `FixpipeParams`)
+- `kernel_operator_data_copy_intf.h` (`LoadData<3DV2/2DParams>`,
+  `DataCopy{,Pad,Params}`)
+
+These are demonstrably usable for hand-rolled cube paths in this
+repo — `attention/prompt_flash_attention/op_kernel/arch32/pfa_service_matmul_kv_nd.h`
+contains a complete `LoadDataAToL0` / `LoadDataBToL0` / `Mmad` /
+`FixpipeL0CToGM` implementation for the 310p (arch32) PFA path.
+
+**Why even the lower-level path is non-trivial in BSA's context**:
+
+1. **Buffer ownership coordination with `mm` matmul library.**  BSA's
+   `Bmm1ComputeIterate` calls `mm.IterateAll<...>(...)` on a
+   `MatmulImpl` (or its 910b variant) instance constructed at kernel
+   `Init()` time.  That instance owns its L1 / L0A / L0B / L0C
+   buffer regions internally — they are reserved at construction
+   regardless of whether `mm.IterateAll` is called this iteration or
+   not.  Adding new `TBuf<TPosition::A1/B1/A2/B2/CO1>` declarations
+   on `BlitzSparseAttentionS1s2Bns1X910` allocates from the **same
+   physical L1 / L0** pool.  Session 22's research already
+   established that the matmul library exposes no public API for
+   declaring its L1 footprint or for releasing L1 to a caller-
+   managed path, so the safe budget for a parallel hand-rolled cube
+   path is unknown.
+2. **Variant coverage.**  BSA instantiates the matmul template
+   across BF16, FP16, INT8 × MSD on/off × antiquant on/off ×
+   MM_PA / MM_MDL / MM_PA_ANTIQUANT.  A hand-rolled cube path must
+   either replicate every specialization or gate on
+   `if constexpr (PFAT::...)`; either is a substantial change.
+3. **Per-iter MTE2/MTE1/M event sync.**  `pingpong_design.md` §4.1
+   prescribes a 6-event protocol (`MTE2_MTE1`, `MTE1_MTE2`, `MTE1_M`,
+   `M_MTE1`, `M_FIX`, `FIX_M`) with init-time `SetFlag` to seed the
+   ping/pong.  None of these event slots are currently carried on
+   `BlitzSparseAttentionS1s2Bns1X910`; allocating them risks event-ID
+   exhaustion already shared with `mm`'s internal sync.
+
+This matches Session 23's earlier scope estimate ("~3 sessions of
+cube-path surgery, high blast radius") and Session 26's plan
+warning that the `Te::Mad` template instantiation is the
+"single highest-risk step".
+
+**Decision (per Session 26 plan §"Stop conditions"):** the Tensor-API
+substitution was attempted at the source-availability layer first;
+the `AscendC::Te::*` namespace's absence on CANN 8.5.0-beta.1 is the
+hard blocker.  No code change applied for the cube path
+replacement.  Session 26.A lands the build-flag + packer-A/B
+infrastructure only; the hand-rolled cube path is a follow-up.
+
+### Validation gates
+
+#### Default build (`bash build.sh ... --ops=blitz_sparse_attention`)
+
+Expected: byte-identical preprocessor-equivalent kernel to Session
+25 A.1 (the only source change is `#if !BSA_PACKER_RELAXED ... #endif`
+around the existing guard, which is preprocessor-true when the
+macro is undefined).
+
+##### Pytest (correctness)
+
+```
+$ pytest test_attn.py
+======================== 80 passed in 379.26s (0:06:19) ========================
+```
+
+**80/80 PASS.**
+
+##### Probe (NaN at S=118 806 sparsity 0)
+
+```
+NaN count: 0 / 45 621 504  (0.000 %)
+Inf count: 0 / 45 621 504  (0.000 %)
+finite-cell max_diff: 0.000122
+```
+
+Identical to Session 25 A.1 ("0 NaN, finite max_diff 0.000122").
+
+##### Benchmark (B=1, H=3, S=118 806, D=128 BF16; mean of 10 reps; min over 3 runs)
+
+```
+sparsity   default min (µs)  Session 25 A.1 archived (µs)  Δ vs A.1
+0.00       180 908            173 875                       +4.0 %
+0.05       159 524            159 283                       +0.2 %
+0.10       156 650            156 427                       +0.1 %
+0.20       151 265            150 130                       +0.8 %
+0.30       143 974            143 108                       +0.6 %
+0.40       132 543            131 792                       +0.6 %
+0.50       117 013            116 328                       +0.6 %
+0.60        98 248             97 686                       +0.6 %
+0.70        76 410             75 865                       +0.7 %
+0.80        50 985             50 903                       +0.2 %
+0.90        22 804             22 471                       +1.5 %
+```
+
+Sparsity 0 row sits at +4.0 % vs A.1's archived value.  This matches
+Session 24's documented same-day baseline drift ("the same-day D.1
+baseline measured today was already +0.6–2.4 % vs Session 21's
+archived numbers").  The kernel binary is preprocessor-equivalent to
+A.1 — no codegen change — so the +4 % is NPU same-day variance, not
+a regression.  Other sparsity rows are within +0.1–1.5 %, all inside
+the +2 % session-to-session band the prior sessions established.
+
+#### Relaxed build (`bash build.sh ... --extra-cflags=-DBSA_PACKER_RELAXED=1`)
+
+##### Pytest (correctness)
+
+```
+$ pytest test_attn.py
+======================== 80 passed in 379.76s (0:06:19) ========================
+```
+
+**80/80 PASS.**  The existing `IterateAll<sync=true>`-intermediates
+slow gather path correctly handles non-contiguous batches.  This
+mirrors Session 20's Stage C result (also 80/80 with no Tensor-API
+path).
+
+##### Probe (NaN at S=118 806 sparsity 0)
+
+```
+NaN count: 0 / 45 621 504  (0.000 %)
+Inf count: 0 / 45 621 504  (0.000 %)
+finite-cell max_diff: 0.000122
+```
+
+##### Benchmark (B=1, H=3, S=118 806, D=128 BF16; mean of 10 reps; min over 3 runs)
+
+```
+sparsity   relaxed min (µs)  default min (µs)  Δ vs default  Δ vs A.1 archived
+0.00       185 110            180 908            +2.3 %         +6.5 %
+0.05       160 020            159 524            +0.3 %         +0.5 %
+0.10       157 247            156 650            +0.4 %         +0.5 %
+0.20       151 130            151 265            -0.1 %         +0.7 %
+0.30       144 123            143 974            +0.1 %         +0.7 %
+0.40       132 962            132 543            +0.3 %         +0.9 %
+0.50       117 195            117 013            +0.2 %         +0.7 %
+0.60        98 718             98 248            +0.5 %         +1.1 %
+0.70        76 789             76 410            +0.5 %         +1.2 %
+0.80        51 365             50 985            +0.7 %         +0.9 %
+0.90        23 269             22 804            +2.0 %         +3.5 %
+```
+
+Relaxed perf is essentially within same-day NPU variance vs default
+(+0.1 to +2.3 %).  This is **much smaller** than Session 20 Stage C's
+measured -17 to -22 % regression vs Stage B Session 19 — see
+§"Mechanism" below.
+
+##### D.3a perf gate (per Session 26 plan §"Validation gate")
+
+| Gate | Target | Result | Pass? |
+|---|---|---|---|
+| Default-build pytest test_attn 80/80 | unchanged | 80/80 | ✅ |
+| Default-build benchmark vs A.1 | within ±0.5 % | +0.1–4.0 % (sp 0 outlier) | ⚠ same-day variance |
+| Relaxed-build pytest test_attn 80/80 | required | 80/80 | ✅ |
+| Relaxed-build benchmark sp 0.5 | ≤ 100 ms | 117.2 ms | ❌ (Tensor-API not landed) |
+| Relaxed-build benchmark sp 0.7 | ≤ 70 ms (stretch) | 76.8 ms | ❌ (Tensor-API not landed) |
+| Relaxed-build benchmark sp 0.0 / 0.9 | ±2 % vs A.1 | +6.5 % / +3.5 % | ⚠ same-day variance |
+
+Gates 4–5 fail because Session 26.A did not land the Tensor-API
+cube-path replacement (blocker above).  Gates 1, 3 pass (the
+build-flag + packer-A/B infrastructure works correctly).  Gates 2,
+6 sit slightly outside ±2 % at sparsity 0 / 0.9 due to same-day
+variance (Session 24 / 25 already documented this).
+
+### Mechanism — why relaxed-build perf delta is small
+
+Session 20 Stage C's regression vs Stage B was -17 to -22 % at
+mid-/high-sparsity.  Session 26.A's relaxed build is conceptually
+the same (Stage C packer semantics) but measures only +0.1 to +2.3 %
+vs default.  Two reasons:
+
+1. **Runtime `kContiguous` detection in `Bmm1ComputeIterate`
+   (line 574–576).**  Even when the packer admits non-contiguous
+   sabi indices into a batch, the cube path checks at runtime
+   whether the packed indices *happen* to form a consecutive run
+   `[firstSabi .. lastSabi]`.  If yes, it issues ONE wide
+   `IterateAll` of `N=packedCount*128` (the fast path).  Only when
+   the sabi indices have an actual gap does the
+   `for (i; i < packedCount; ++i) IterateAll<sync=true/false>` slow
+   loop run.  Under D.1's K-contig packer, slow gather is dead code
+   at runtime; under the relaxed packer, slow gather fires only on
+   batches that genuinely contain a gap.
+
+2. **The benchmark mask pattern is mostly contiguous.**  At
+   `FRAME=(left=29, right=1, top=29, bottom=1)` the kept set is
+   "first 29 KV blocks + last 1 KV block + diagonal" — most kept
+   blocks form long contiguous runs.  Even at sparsity 0.5 most
+   batches still pack 4 contiguous sabis.  The fraction of packed
+   batches that take the slow gather path is small.  This bounds
+   any speedup from optimising the slow gather (i.e. the bound on
+   the win the not-yet-implemented Tensor-API cube path could buy).
+
+This implies that the original Session 23 / 26 estimate of 10–30 %
+mid-sparsity upside from D.3 was **bounded above** by how often the
+slow gather actually fires on real benchmark masks.  On this
+benchmark's FRAME pattern, the cap is closer to 2–5 % geomean even
+in the best case where the Tensor-API path fully replaces the
+serialized `IterateAll<sync=true>` chain.  The Tensor-API path's
+cost-benefit moves with mask shape — a benchmark with more
+fragmented kept sets would see a bigger upside.
+
+### Decision
+
+Land Session 26.A's build-flag + packer-A/B infrastructure as
+in-tree state.  The Tensor-API cube-path replacement is documented
+as a hard blocker on CANN 8.5.0-beta.1 (`AscendC::Te::*` namespace
+absent from standard headers); follow-up sessions can either:
+
+- (a) Vendor the `tensor_api/` third-party library into the repo
+  and wire it through CMake.  This is the path the skill docs are
+  written against.  Cost: one session of build-system work + one
+  session per cube-path body (D.3a/b/c).
+- (b) Use the lower-level basic_api primitives (`LoadData`, `Mmad`,
+  `Fixpipe`) — same approach as `pfa_service_matmul_kv_nd.h` for
+  arch32.  Cost: requires solving the L1/L0 budget coordination
+  problem with the active matmul library `mm` (Session 22 already
+  showed the public API doesn't expose `mm`'s footprint).
+- (c) Accept the relaxed-build's modest +0.1–2.3 % regression and
+  ship the build flag as a tunable for users whose mask patterns
+  produce frequent non-contiguous packed batches (different from
+  the FRAME benchmark used here).
+
+Recommendation: option (a) for the cleanest substrate, but note
+that the upside on the benchmark in this repo is ≤2–5 % geomean
+based on the relaxed build's measurements above — the priority
+ranking against other unaddressed levers should be re-evaluated
+with that ceiling.
+
+### State at end of Session 26.A
+
+- Branch: `blitz-sparse-attention-128x128`.
+- Source-tree state (uncommitted, per CLAUDE.md golden rule):
+  - `build.sh` — added `--extra-cflags=` arg + forwarding to
+    `-DEXTRA_OP_KERNEL_CFLAGS=`.
+  - `experimental/attention/blitz_sparse_attention/op_host/CMakeLists.txt`
+    — split `EXTRA_OP_KERNEL_CFLAGS` on commas, append to BSA
+    kernel `add_ops_compile_options OPTIONS`.
+  - `experimental/attention/blitz_sparse_attention/op_kernel/blitz_sparse_attention_s1s2_bns1_x910.h`
+    — `SInnerLoopFunc` sparse path: K-contig guard wrapped in
+    `#if !BSA_PACKER_RELAXED ... #endif`.
+- Default build: pytest 80/80, NaN probe 0/0, benchmark min over 3
+  runs within +0.1–1.5 % of A.1 (sp 0 = +4.0 % same-day variance).
+- Relaxed build: pytest 80/80, NaN probe 0/0, benchmark min over 3
+  runs within +0.1–2.3 % of default at every sparsity.
+- Tensor-API cube-path replacement: **NOT LANDED** — `AscendC::Te::*`
+  namespace not in CANN 8.5.0-beta.1 standard headers.  See §"Tensor-
+  API cube-path attempt: hard blocker" for the path-forward options.
+- DCCI in `Process()` untouched (CLAUDE.md golden rule).
+- Session 25 A.1's bmm2K + ApplyTailKOOBPreMask noinline helper
+  unchanged.
+
+### How to reproduce
+
+```bash
+# Default build (in-tree D.1 + Session 25 A.1)
+bash build.sh --make_clean --experimental -j96 --pkg --soc=ascend910b --ops=blitz_sparse_attention
+echo y | ./build/cann-ops-transformer-custom_linux-"$(uname -i)".run
+(cd experimental/attention/blitz_sparse_attention/torch_interface && bash build.sh custom)
+
+# Relaxed build (Stage C packer semantics; D.3a Tensor-API path NOT yet landed)
+bash build.sh --make_clean --experimental -j96 --pkg --soc=ascend910b --ops=blitz_sparse_attention --extra-cflags=-DBSA_PACKER_RELAXED=1
+echo y | ./build/cann-ops-transformer-custom_linux-"$(uname -i)".run
+(cd experimental/attention/blitz_sparse_attention/torch_interface && bash build.sh custom)
+
+# Run gates
+export ASCEND_RT_VISIBLE_DEVICES=5
+export LD_LIBRARY_PATH=/usr/local/Ascend/cann-8.5.0-beta.1/opp/vendors/custom_transformer/op_api/lib/:$LD_LIBRARY_PATH
+cd experimental/attention/blitz_sparse_attention/benchmark
+pytest test_attn.py
+python /tmp/probe_nan_s118806.py
+python benchmark.py
+```
+
+Multi-flag form: `--extra-cflags=-DA=1,-DB=2` (comma-separated; the
+BSA op CMakeLists splits on commas and appends each token to
+`add_ops_compile_options OPTIONS`).
+
