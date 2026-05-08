@@ -58,7 +58,6 @@ private:
     MC2KernelTemplate::MC2MMContext<
         MC2KernelTemplate::MXQuantMMAdditionalData, TilingType> MMcontext_;
     AscendC::TPipe *tPipePtr_;
-    BlockOp mxMmadOp_;
 };
 
 
@@ -87,14 +86,15 @@ __aicore__ inline void TensorMXQuantMatmulStage<TilingType, X2TRANSPOSE>::Proces
     uint32_t l1k    = tiling->kL1;
     uint32_t skl1   = tiling->scaleKL1;
 
+    BlockOp mxMmadOp_;
     typename BlockOp::L1Params l1Params{l1k, skl1};
     typename BlockOp::TupleShape problemShape{static_cast<int64_t>(m_), static_cast<int64_t>(n_), static_cast<int64_t>(k_)};
     typename BlockOp::BlockShape l0TileShape{static_cast<int64_t>(baseM_), static_cast<int64_t>(baseN_), static_cast<int64_t>(baseK_), 0};
-    mxMmadOp_.Init(problemShape, l0TileShape, l1Params, true);
+    mxMmadOp_.Init(problemShape, l0TileShape, l1Params, tiling->dbL0c > 1);
 
     uint32_t kScaleGrp = (k_ + 32 - 1) / 32;
     auto layoutA = AscendC::Te::MakeNDLayout<AType>(m_, k_);
-    auto layoutB = AscendC::Te::MakeNDLayout<BType>(k_, n_);
+    auto layoutB = AscendC::Te::MakeDNLayout<BType>(n_, k_);
     auto layoutC = AscendC::Te::MakeNDLayout<CType>(m_, n_);
     auto layoutSA = AscendC::Te::MakeScaleANDLayout<ScaleAType>(m_, kScaleGrp);
     auto layoutSB = AscendC::Te::MakeScaleBDNLayout<ScaleBType>(kScaleGrp, n_);
@@ -107,13 +107,30 @@ __aicore__ inline void TensorMXQuantMatmulStage<TilingType, X2TRANSPOSE>::Proces
 
     ProblemShape problem{m_, n_, k_, 1L};
     using SchParams = typename SchedulerOp::Params;
-    SchParams schParams{static_cast<int64_t>(baseM_), static_cast<int64_t>(baseN_), 0, 0, 0, 0, 0, 0};
+    SchParams schParams{static_cast<int64_t>(baseM_), static_cast<int64_t>(baseN_),
+                        static_cast<int64_t>(tiling->mTailTile), static_cast<int64_t>(tiling->nTailTile),
+                        static_cast<int64_t>(tiling->mBaseTailSplitCnt), static_cast<int64_t>(tiling->nBaseTailSplitCnt),
+                        static_cast<int64_t>(tiling->mTailMain), static_cast<int64_t>(tiling->nTailMain)};
     SchedulerOp bs(problem, schParams);
 
     using BlockCoord = AscendC::Coord<int64_t, int64_t, int64_t, int64_t>;
     BlockCoord blockIdx;
     constexpr int64_t kPos = 0L;
+
+    if (AscendC::GetBlockIdx() == 0) {
+        AscendC::printf("[MX-TILING-DEV] tileM=%u fullK=%u fullN=%u baseM=%u baseN=%u baseK=%u kL1=%u scaleKL1=%u dbL0c=%u\n",
+                        m_, k_, n_, baseM_, baseN_, baseK_, l1k, skl1, tiling->dbL0c);
+    }
+
+    uint32_t loopCnt = 0;
+    const uint32_t MAX_LOOP = (m_ / baseM_ + 1) * (n_ / baseN_ + 1) + 1;
     while (bs.GetTileIdx(blockIdx)) {
+        if (++loopCnt > MAX_LOOP) {
+            if (AscendC::GetBlockIdx() == 0) {
+                AscendC::printf("[MX-LOOP] DEADLOOP break at cnt=%u\n", loopCnt);
+            }
+            break;
+        }
         int64_t mPos = AscendC::Std::get<MNK_M>(blockIdx);
         int64_t nPos = AscendC::Std::get<MNK_N>(blockIdx);
         auto singleShape = bs.GetBlockShape(blockIdx);

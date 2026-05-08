@@ -330,6 +330,8 @@ public:
                     CopyL12L0MxScaleB3510, tensorScaleBL0, tensorBlockScaleBL1,
                     AscendC::Te::MakeCoord(kL0Offset, 0));
 
+                AscendC::PipeBarrier<PIPE_ALL>();
+
                 AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0BufId);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0BufId);
                 uint8_t mmadUnitFlag =
@@ -341,6 +343,9 @@ public:
                         static_cast<uint16_t>(CeilAlign(curKL0, MXFP_DIVISOR_SIZE)),
                         static_cast<uint16_t>(curN), mmadUnitFlag, false, mmadCmatrixInitVal),
                     tensorL0C, tensorAL0, tensorBL0);
+
+                // AscendC::PipeBarrier<PIPE_ALL>();
+
                 AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0BufId);
                 l0PingPong_++;
             }

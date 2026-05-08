@@ -1,7 +1,6 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * 基于参考 BlockMmad + BlockScheduler 的矩阵乘计算阶段
- * 替换 MC2FpMatmul，提供 Init / GetContextPtr / Process / End 接口
  */
 
 #ifndef TENSOR_MATMUL_STAGE_H
@@ -23,7 +22,6 @@ public:
     using AType = DTYPE_X1;
     using BType = DTYPE_X2;
     using CType = DTYPE_Y;
-
     using LayoutA = layout::RowMajor;
     using LayoutB = layout::RowMajor;
     using LayoutC = layout::RowMajor;
@@ -33,92 +31,63 @@ public:
     using BlockScheduler = MatmulSwatScheduler<NO_FULL_LOAD_MODE>;
     using SchedulerOp = typename Block::BlockSchedulerSelector<ProblemShape, BlockScheduler, false, false>::SchedulerOp;
 
-    static constexpr uint32_t BASE_M = 128;
-    static constexpr uint32_t BASE_N = 128;
-    static constexpr uint32_t BASE_K = 128;
-
     __aicore__ inline TensorMatmulStage(AscendC::TPipe *tPipe) : tPipePtr_(tPipe) {}
-
     __aicore__ inline void Init() {}
-
     __aicore__ inline MC2KernelTemplate::MC2MMContext<
-        MC2KernelTemplate::FpMMAdditionalData, TilingType> *GetContextPtr()
-    {
-        return &MMcontext_;
-    }
-
+        MC2KernelTemplate::FpMMAdditionalData, TilingType> *GetContextPtr() { return &MMcontext_; }
     __aicore__ inline void Process(uint32_t taskIndex);
-
     __aicore__ inline void End() {}
 
 private:
     MC2KernelTemplate::MC2MMContext<
         MC2KernelTemplate::FpMMAdditionalData, TilingType> MMcontext_;
     AscendC::TPipe *tPipePtr_;
-    BlockOp mmadOp_;
 };
-
 
 template <typename TilingType>
 __aicore__ inline void TensorMatmulStage<TilingType>::Process(uint32_t taskIndex)
 {
-    if ASCEND_IS_AIV {
-        return;
-    }
+    if ASCEND_IS_AIV { return; }
 
     auto& base = MMcontext_.baseData;
     GM_ADDR aGM = base.aGM + taskIndex * base.aOffset;
     GM_ADDR bGM = base.bGM + taskIndex * base.bOffset;
     GM_ADDR cGM = base.cGM + taskIndex * base.cOffset;
-
     tPipePtr_->Reset();
 
     auto* tiling = MMcontext_.tilingDataPtr;
-    uint32_t m_ = tiling->tileM;
-    uint32_t k_ = tiling->fullK;
-    uint32_t n_ = tiling->fullN;
-    uint32_t baseM_ = tiling->baseM;
-    uint32_t baseN_ = tiling->baseN;
-    uint32_t baseK_ = tiling->baseK;
-    uint32_t l1k   = tiling->kL1;
+    uint32_t m_ = tiling->tileM, k_ = tiling->fullK, n_ = tiling->fullN;
+    uint32_t baseM_ = tiling->baseM, baseN_ = tiling->baseN, baseK_ = tiling->baseK, l1k = tiling->kL1;
 
-    typename BlockOp::L1Params l1Params{l1k};
-    typename BlockOp::TupleShape problemShape{static_cast<int64_t>(m_), static_cast<int64_t>(n_), static_cast<int64_t>(k_)};
-    typename BlockOp::BlockShape l0TileShape{static_cast<int64_t>(baseM_), static_cast<int64_t>(baseN_), static_cast<int64_t>(baseK_), 0};
-    mmadOp_.Init(problemShape, l0TileShape, l1Params, (m_ > baseM_) || (n_ > baseN_));
+    BlockOp mmadOp_;
+    mmadOp_.Init(typename BlockOp::TupleShape{static_cast<int64_t>(m_), static_cast<int64_t>(n_), static_cast<int64_t>(k_)},
+                 typename BlockOp::BlockShape{static_cast<int64_t>(baseM_), static_cast<int64_t>(baseN_), static_cast<int64_t>(baseK_), 0},
+                 typename BlockOp::L1Params{l1k}, tiling->dbL0c > 1);
 
-    auto layoutA = AscendC::Te::MakeNDLayout<AType>(m_, k_);
-    auto layoutB = AscendC::Te::MakeNDLayout<BType>(k_, n_);
-    auto layoutC = AscendC::Te::MakeNDLayout<CType>(m_, n_);
-    auto gmA = AscendC::Te::MakeTensor(AscendC::Te::MakeGMmemPtr(reinterpret_cast<__gm__ AType*>(aGM)), layoutA);
-    auto gmB = AscendC::Te::MakeTensor(AscendC::Te::MakeGMmemPtr(reinterpret_cast<__gm__ BType*>(bGM)), layoutB);
-    auto gmC = AscendC::Te::MakeTensor(AscendC::Te::MakeGMmemPtr(reinterpret_cast<__gm__ CType*>(cGM)), layoutC);
+    auto gmA = AscendC::Te::MakeTensor(AscendC::Te::MakeGMmemPtr(reinterpret_cast<__gm__ AType*>(aGM)), AscendC::Te::MakeNDLayout<AType>(m_, k_));
+    auto gmB = AscendC::Te::MakeTensor(AscendC::Te::MakeGMmemPtr(reinterpret_cast<__gm__ BType*>(bGM)), AscendC::Te::MakeDNLayout<BType>(n_, k_));
+    auto gmC = AscendC::Te::MakeTensor(AscendC::Te::MakeGMmemPtr(reinterpret_cast<__gm__ CType*>(cGM)), AscendC::Te::MakeNDLayout<CType>(m_, n_));
 
-    ProblemShape problem{m_, n_, k_, 1L};
     using SchParams = typename SchedulerOp::Params;
-    SchParams schParams{static_cast<int64_t>(baseM_), static_cast<int64_t>(baseN_), 0, 0, 0, 0, 0, 0};
-    SchedulerOp bs(problem, schParams);
+    SchedulerOp bs(ProblemShape{m_, n_, k_, 1L},
+                   SchParams{static_cast<int64_t>(baseM_), static_cast<int64_t>(baseN_),
+                             static_cast<int64_t>(tiling->mTailTile), static_cast<int64_t>(tiling->nTailTile),
+                             static_cast<int64_t>(tiling->mBaseTailSplitCnt), static_cast<int64_t>(tiling->nBaseTailSplitCnt),
+                             static_cast<int64_t>(tiling->mTailMain), static_cast<int64_t>(tiling->nTailMain)});
 
     using BlockCoord = AscendC::Coord<int64_t, int64_t, int64_t, int64_t>;
     BlockCoord blockIdx;
     constexpr int64_t kPos = 0L;
     while (bs.GetTileIdx(blockIdx)) {
-        int64_t mPos = AscendC::Std::get<MNK_M>(blockIdx);
-        int64_t nPos = AscendC::Std::get<MNK_N>(blockIdx);
-        auto singleShape = bs.GetBlockShape(blockIdx);
-
-        if (Get<MNK_M>(singleShape) <= 0 || Get<MNK_N>(singleShape) <= 0) {
-            break;
-        }
-
-        auto gmBlockA = gmA(AscendC::Te::MakeCoord(mPos, kPos), AscendC::Te::MakeShape(Get<MNK_M>(singleShape), k_));
-        auto gmBlockB = gmB(AscendC::Te::MakeCoord(kPos, nPos), AscendC::Te::MakeShape(k_, Get<MNK_N>(singleShape)));
-        auto gmBlockC = gmC(AscendC::Te::MakeCoord(mPos, nPos), AscendC::Te::MakeShape(Get<MNK_M>(singleShape), Get<MNK_N>(singleShape)));
-
-        mmadOp_(gmBlockA, gmBlockB, gmBlockC, singleShape);
+        int64_t mPos = AscendC::Std::get<MNK_M>(blockIdx), nPos = AscendC::Std::get<MNK_N>(blockIdx);
+        auto ss = bs.GetBlockShape(blockIdx);
+        if (Get<MNK_M>(ss) <= 0 || Get<MNK_N>(ss) <= 0) break;
+        mmadOp_(gmA(AscendC::Te::MakeCoord(mPos, kPos), AscendC::Te::MakeShape(Get<MNK_M>(ss), k_)),
+                gmB(AscendC::Te::MakeCoord(kPos, nPos), AscendC::Te::MakeShape(k_, Get<MNK_N>(ss))),
+                gmC(AscendC::Te::MakeCoord(mPos, nPos), AscendC::Te::MakeShape(Get<MNK_M>(ss), Get<MNK_N>(ss))),
+                ss);
     }
 }
 
 } // namespace Mc2Kernel
-
 #endif

@@ -42,7 +42,7 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
         TransposeType transposeImplName(&pipe);                                                                        \
         using ComputationContextType = MC2KernelTemplate::MC2MMContext<                                                \
             MC2KernelTemplate::FpMMAdditionalData, TensorMatmulTilingData>;                                            \
-        using ComputationType = Mc2Kernel::TensorMatmulStage<TensorMatmulTilingData>;                                  \
+        using ComputationType = Mc2Kernel::TensorMatmulStage<TensorMatmulTilingData>;                                                    \
         ComputationType matmulImplName(&pipe);                                                                         \
         using SchedulerContextType = Mc2Kernel::AlltoAllMmPipelineContext<ComputationContextType>;                     \
         using SchedulerType = Mc2Kernel::AlltoAllMatmulPipeLine<CommunicationType, TransposeType, ComputationType,     \

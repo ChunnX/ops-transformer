@@ -105,73 +105,61 @@ ge::graphStatus AllToAllFpMatmulTilingBase::DoOpTiling()
 ge::graphStatus AllToAllFpMatmulTilingBase::DoMMTiling()
 {
     static constexpr uint32_t L0C_BYTES = 256 * 1024;
-    static constexpr uint32_t L1_HALF_BYTES = 256 * 1024;
-    static constexpr uint32_t MIN_TILE = 128;
-    static constexpr uint32_t DB_SIZE = 2;
-    static constexpr uint32_t MAX_STEP_K = 2;
+    static constexpr uint32_t L1_HALF   = 256 * 1024;
+    static constexpr uint32_t MIN_TILE  = 128;
+    static constexpr uint32_t DB        = 2;
+    static constexpr uint32_t SK_MAX    = 4;
 
-    uint32_t aBytes = 2;   // fp16/bf16 = 2
-    uint32_t bBytes = 2;
-    uint32_t cBytes = 2;
-
-    uint32_t tileM = inferredInfo.tileM;
-    uint32_t nSize = contextInfo.args_.nValue;
-    uint32_t kSize = contextInfo.args_.orgKValue;
+    uint32_t bA = 2, bB = 2, bC = 2;
+    uint32_t tileM  = inferredInfo.tileM;
+    uint32_t nSize  = contextInfo.args_.nValue;
+    uint32_t kSize  = contextInfo.args_.orgKValue;
     uint32_t rankDim = contextInfo.args_.rankDim;
 
-    // baseM = tileM（跟随 MC2 pipeline 切分），L0A 容量硬约束
-    uint32_t maxM = L1_HALF_BYTES / 2 / (128 * aBytes); // halfL0A=32KB, curM×128×2≤32KB
-    uint32_t baseM = tileM;
-    if (baseM > maxM) baseM = maxM;
-
-    // baseN：L0C 约束下最大化
-    uint32_t maxBaseN = L0C_BYTES / baseM / cBytes;
-    uint32_t baseN = (maxBaseN >= MIN_TILE) ? MIN_TILE : maxBaseN;
-
-    // baseK：L1 约束下最大化
-    uint32_t maxBaseK = L1_HALF_BYTES / (baseM * aBytes + baseN * bBytes);
-    uint32_t baseK = (maxBaseK >= MIN_TILE) ? MIN_TILE : (maxBaseK / 16 * 16);
+    uint32_t baseM = (tileM > 256) ? 256 : tileM;
+    uint32_t maxN  = L0C_BYTES / baseM / bC;
+    uint32_t baseN = (maxN >= 256) ? 256 : ((maxN >= 128) ? 128 : maxN);
+    uint32_t maxK  = L1_HALF / (baseM * bA + baseN * bB);
+    uint32_t baseK = (maxK >= MIN_TILE) ? MIN_TILE : (maxK / 16 * 16);
     if (baseK < 16) baseK = 16;
 
-    // stepK: depth1/DB_SIZE，多步 K 聚合减少外循环次数
-    uint32_t depthA1 = L1_HALF_BYTES / (baseM * baseK * aBytes);
-    uint32_t depthB1 = L1_HALF_BYTES / (baseN * baseK * bBytes);
-    uint32_t stepKUncapped = (depthA1 < depthB1) ? (depthA1 / DB_SIZE) : (depthB1 / DB_SIZE);
-    uint32_t stepK = (stepKUncapped > MAX_STEP_K) ? MAX_STEP_K : stepKUncapped;
+    uint32_t dA1  = L1_HALF / (baseM * baseK * bA);
+    uint32_t dB1  = L1_HALF / (baseN * baseK * bB);
+    uint32_t stepK = ((dA1 < dB1) ? dA1 : dB1) / DB;
+    if (stepK > SK_MAX) stepK = SK_MAX;
     if (stepK < 1) stepK = 1;
-
-    // 回退检查：BlockMmad 单半区 A+B ≤ L1_HALF
-    while (stepK > 1) {
-        uint32_t testKL1 = stepK * baseK;
-        if (baseM * testKL1 * aBytes + baseN * testKL1 * bBytes <= L1_HALF_BYTES) break;
-        stepK--;
-    }
-
+    while (stepK > 1 && baseM * stepK * baseK * bA + baseN * stepK * baseK * bB > L1_HALF) stepK--;
     uint32_t kL1 = stepK * baseK;
 
-    OP_LOGI(opName_, "[FP-TILING] tileM=%u fullK=%u fullN=%u baseM=%u baseN=%u baseK=%u stepK=%u kL1=%u\n",
-           tileM, kSize * rankDim, nSize, baseM, baseN, baseK, stepK, kL1);
+    auto fill = [&](TensorMatmulTilingData& d, uint32_t blockM) {
+        d.tileM             = blockM;
+        d.fullK             = kSize * rankDim;
+        d.fullN             = nSize;
+        d.baseM             = baseM;
+        d.baseN             = baseN;
+        d.baseK             = baseK;
+        d.kL1               = kL1;
+        d.scaleKL1          = 0;
+        d.mTailTile         = 1;
+        d.nTailTile         = 1;
+        d.mBaseTailSplitCnt = 1;
+        d.nBaseTailSplitCnt = 1;
+        d.mTailMain         = 0;
+        d.nTailMain         = 0;
+        d.dbL0c             = 1;
+    };
 
-    // 填入头块 tiling
-    localTilingData_.tensorMatmulTileTilingData.tileM   = tileM;
-    localTilingData_.tensorMatmulTileTilingData.fullK   = kSize * rankDim;
-    localTilingData_.tensorMatmulTileTilingData.fullN   = nSize;
-    localTilingData_.tensorMatmulTileTilingData.baseM   = baseM;
-    localTilingData_.tensorMatmulTileTilingData.baseN   = baseN;
-    localTilingData_.tensorMatmulTileTilingData.baseK   = baseK;
-    localTilingData_.tensorMatmulTileTilingData.kL1     = kL1;
-    localTilingData_.tensorMatmulTileTilingData.scaleKL1 = 0;
+    fill(localTilingData_.tensorMatmulTileTilingData, tileM);
+    fill(localTilingData_.tensorMatmulTailTilingData, inferredInfo.tailM);
 
-    // 填入尾块 tiling
-    uint32_t tailM = inferredInfo.tailM;
-    localTilingData_.tensorMatmulTailTilingData.tileM   = tailM;
-    localTilingData_.tensorMatmulTailTilingData.fullK   = kSize * rankDim;
-    localTilingData_.tensorMatmulTailTilingData.fullN   = nSize;
-    localTilingData_.tensorMatmulTailTilingData.baseM   = baseM;
-    localTilingData_.tensorMatmulTailTilingData.baseN   = baseN;
-    localTilingData_.tensorMatmulTailTilingData.baseK   = baseK;
-    localTilingData_.tensorMatmulTailTilingData.kL1     = kL1;
-    localTilingData_.tensorMatmulTailTilingData.scaleKL1 = 0;
+    printf("[FP-TILING] tileM=%u tailM=%u fullK=%u fullN=%u baseM=%u baseN=%u baseK=%u kL1=%u dbL0c=%u\n",
+           localTilingData_.tensorMatmulTileTilingData.tileM,
+           localTilingData_.tensorMatmulTailTilingData.tileM,
+           localTilingData_.tensorMatmulTileTilingData.fullK,
+           localTilingData_.tensorMatmulTileTilingData.fullN,
+           baseM, baseN, baseK, kL1,
+           localTilingData_.tensorMatmulTileTilingData.dbL0c);
+    fflush(stdout);
 
     return ge::GRAPH_SUCCESS;
 }
