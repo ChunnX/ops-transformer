@@ -23,14 +23,19 @@ using namespace AscendC;
 
 namespace MegaMoeCombineImpl {
 
-// 按tile粒度发送（128x256），GM→UB→GM
+// 按tile粒度发送，GM→UB→GM，计算逻辑和stepOne的CombineTokens一致
 template <typename ElementMMadOut2>
 __aicore__ inline void CombineTile(
     uint32_t expertIdx, uint32_t rowStart, uint32_t rowCount,
-    uint32_t colStart, uint32_t colCount, uint32_t n,
+    uint32_t colStart, uint32_t colCount, uint32_t n, uint32_t rankId,
     GM_ADDR gmm2OutAddr, const Params& params,
     LocalTensor<ElementMMadOut2>& ubBuffer)
 {
+    int32_t stTile = rowStart;
+    int32_t edTile = stTile + rowCount;
+    int32_t preSumRankInExpert = 0;
+    int32_t tileOffset = 0;
+
     GlobalTensor<int32_t> tokenPerExpertWin, preSumBeforeRankWorkSpace;
     tokenPerExpertWin.SetGlobalBuffer((__gm__ int32_t*)params.peermemInfo.ptrTokenPerExpert);
     preSumBeforeRankWorkSpace.SetGlobalBuffer((__gm__ int32_t*)params.workspaceInfo.ptrSumBeforeRank);
@@ -38,26 +43,32 @@ __aicore__ inline void CombineTile(
     GlobalTensor<ElementMMadOut2> gmm2OutGm;
     gmm2OutGm.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMMadOut2*>(gmm2OutAddr));
 
-    int32_t preSumRankInExpert = 0;
     for (int32_t dstEpIdx = 0; dstEpIdx < params.tilingData->epWorldSize; dstEpIdx++) {
         int32_t lenRankInExpert = tokenPerExpertWin(dstEpIdx * Ops::Base::CeilAlign(
             static_cast<uint32_t>(params.tilingData->epWorldSize * params.tilingData->expertPerRank),
-            static_cast<uint32_t>(ALIGN_128)) + params.tilingData->rankId * params.tilingData->expertPerRank + expertIdx);
+            static_cast<uint32_t>(ALIGN_128)) + rankId * params.tilingData->expertPerRank + expertIdx);
         int32_t dstExpertOffset = preSumBeforeRankWorkSpace(dstEpIdx * params.tilingData->expertPerRank + expertIdx);
         int32_t stRankInExpert = preSumRankInExpert;
+        int32_t edRankInExpert = stRankInExpert + lenRankInExpert;
         preSumRankInExpert += lenRankInExpert;
 
-        if (lenRankInExpert <= 0) {
+        if (stRankInExpert >= edTile) {
+            break;
+        } else if (edRankInExpert <= stTile) {
             continue;
         }
 
-        // 计算当前tile行范围与该rank的交集
-        uint32_t tileRowEnd = rowStart + rowCount;
-        uint32_t rankRowEnd = stRankInExpert + lenRankInExpert;
-        uint32_t sendRowStart = max(rowStart, static_cast<uint32_t>(stRankInExpert));
-        uint32_t sendRowEnd = min(tileRowEnd, rankRowEnd);
-        if (sendRowStart >= sendRowEnd) {
+        // 和stepOne一致的交集计算
+        int32_t stData = Blaze::Gemm::Max(stRankInExpert, stTile);
+        int32_t edData = Blaze::Gemm::Min(edRankInExpert, edTile);
+        int32_t lenData = edData - stData;
+        if (lenData <= 0) {
             continue;
+        }
+
+        uint32_t dstOffsetInExpert = 0;
+        if (stTile > stRankInExpert) {
+            dstOffsetInExpert = stTile - stRankInExpert;
         }
 
         AscendC::GlobalTensor<ElementMMadOut2> gmRemoteD;
@@ -65,33 +76,32 @@ __aicore__ inline void CombineTile(
         __gm__ void* dstPeermemPtr = GetRankWinAddrWithOffset(dstEpIdx, gmRemoteOffset);
         gmRemoteD.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMMadOut2*>(dstPeermemPtr));
 
-        uint32_t sendRowCount = sendRowEnd - sendRowStart;
-        uint32_t srcRowOffset = sendRowStart - rowStart;
-        uint32_t dstRowOffset = sendRowStart - stRankInExpert;
+        // 远端偏移地址（和stepOne一致）
+        uint64_t gmDstOffset = (dstOffsetInExpert + dstExpertOffset) * n + colStart;
+        auto gmTileD = gmRemoteD[gmDstOffset];
 
-        // GM→UB：从GM读取到UB
-
-        // DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(m_ * topK_ * sizeof(float)), 0U, 0U, 0U};
+        // 从GM读取到UB（源地址从GM读取，按行读取）
         DataCopyPadExtParams<ElementMMadOut2> copyPadParams{false, 0U, 0U, 0U};
-
         AscendC::DataCopyExtParams gm2UbParams{
-            static_cast<uint16_t>(sendRowCount),
+            static_cast<uint16_t>(lenData),
             static_cast<uint32_t>(colCount * sizeof(ElementMMadOut2)),
             static_cast<uint16_t>((n - colCount) * sizeof(ElementMMadOut2)),
             0, 0};
-        AscendC::DataCopyPad(ubBuffer, gmm2OutGm[(rowStart + srcRowOffset) * n + colStart], gm2UbParams, copyPadParams);
+        // 源地址：GM上从tileOffset行开始，colStart列开始
+        AscendC::DataCopyPad(ubBuffer[tileOffset * colCount],
+            gmm2OutGm[(stData) * n + colStart], gm2UbParams, copyPadParams);
         SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
-        // UB→GM：从UB写到远端GM
-        AscendC::DataCopyExtParams ub2GmParams{
-            static_cast<uint16_t>(sendRowCount),
-            static_cast<uint32_t>(colCount * sizeof(ElementMMadOut2)),
-            0,
-            static_cast<uint16_t>((n - colCount) * sizeof(ElementMMadOut2)),
-            0};
-        AscendC::DataCopyPad(gmRemoteD[(dstExpertOffset + dstRowOffset) * n + colStart], ubBuffer, ub2GmParams);
+
+        // 从UB发送到远端GM（和stepOne一致的参数）
+        AscendC::DataCopyExtParams ub2GmParams{1, 0, 0, 0, 0};
+        ub2GmParams.blockCount = lenData;
+        ub2GmParams.blockLen = colCount * sizeof(ElementMMadOut2);
+        ub2GmParams.dstStride = (n - colCount) * sizeof(ElementMMadOut2);
+
+        AscendC::DataCopyPad(gmTileD, ubBuffer[tileOffset * colCount], ub2GmParams);
+        tileOffset += lenData;
     }
 }
-
 }  // namespace MegaMoeCombineImpl
 
 #endif  // MEGA_MOE_COMBINE_SEND_H

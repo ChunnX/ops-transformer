@@ -213,11 +213,6 @@ __aicore__ inline void GroupMatmul2(
     const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom2, uint32_t groupIdx,
     uint16_t& pingpongIdx, int32_t rankId)
 {
-    if constexpr(g_coreType == AscendC::AIV) {
-        if (GetSubBlockIdx() == 0) {
-            return;
-        }
-    }
 
     uint32_t m = Get<M_VALUE>(problemShape);
     uint32_t n = Get<K_VALUE>(problemShape);
@@ -361,7 +356,7 @@ __aicore__ inline void GroupMatmul2(
 
             uint32_t rowCount = min(L1_TILE_M, m - mLoc);
             uint32_t colCount = min(L1_TILE_N, n - nLoc);
-            MegaMoeCombineImpl::CombineTile<bfloat16_t>(groupIdx, mLoc, rowCount, nLoc, colCount, n,
+            MegaMoeCombineImpl::CombineTile<bfloat16_t>(groupIdx, mLoc, rowCount, nLoc, colCount, n, rankId,
                 gmmAddrInfo.gmm2OutGlobal, params, ubBuffer);
         }
     }

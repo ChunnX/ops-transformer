@@ -715,6 +715,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     TPipe firstPipe;
     FirstBuffInit(&firstPipe);
     ResetWorkSpaceFlagList();
+    ResetGmm2RowReadyFlags();
 
     // 3. cnt值全ep域内的发送以及本端接收整理
     CrossRankSyncCntPerExpert();
@@ -726,11 +727,21 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 
     // 4. subBlockIdx_ == 1的AIV核心一次性完成所有专家的dispatch
     GMMAddrInfo gmmAddrInfo;
+    if constexpr(g_coreType == AscendC::AIV) {
+        if (subBlockIdx_ == 1) {
+            for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
+                if (!UpdateGroupParams(expertIdx)) {
+                    continue;
+                }
+                UpdateGlobalBuffer(gmmAddrInfo, 0);
+                DispatchTokens(gmmAddrInfo, expertIdx);
+            }
+        }
+    }
     
     // 5. subBlockIdx_ == 0的核心执行gmm1 → gmm2（输出到GM）
     preOffset_ = 0;
     baseOffset_ = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-    ResetGmm2RowReadyFlags();
     SyncAll<true>();
 
     for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
@@ -739,11 +750,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         }
         
         UpdateGlobalBuffer(gmmAddrInfo, 0);
-        if constexpr(g_coreType == AscendC::AIV) {
-            if (subBlockIdx_ == 1) {
-                DispatchTokens(gmmAddrInfo, expertIdx);
-            }
-        }
         if (subBlockIdx_ == 0) {
             MegaMoeImpl::GroupMatmulSwigluQuant<
                 QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType>(
@@ -754,12 +760,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         
         UpdateGlobalBuffer(gmmAddrInfo, 1);
         // gmm2 + combine，AIC和AIV在同一个函数里通过信号量同步
-        MegaMoeImpl::GroupMatmul2<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
-            params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_, expertIdx, gmm2PingPongIdx_,
-            rankId_);
+        if (subBlockIdx_ == 0) {
+            MegaMoeImpl::GroupMatmul2<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
+                params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_, expertIdx, gmm2PingPongIdx_,
+                rankId_);
+        }
+        // EndGMM2Sync();
         vecSetSyncCom_ = 0;
     }
-
     if constexpr(g_coreType == AscendC::AIV) {
         if (aivCoreIdx_ == 1) {
             ExpertTokenNumCopyOut();
