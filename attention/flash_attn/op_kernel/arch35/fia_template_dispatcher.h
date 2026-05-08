@@ -77,19 +77,50 @@ inline __aicore__ void run_fia_noquant_gqa_kernel(
                                      s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
                                       static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope, KvLayoutType,
                                       enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
-    using Kernel = BaseApi::FlashAttentionNoQuantGqaKernel<CubBlock, VecFaBlock, VecFdBlock>;
-    // GET_TILING_DATA_WITH_STRUCT(FusedInferAttentionScoreTilingData, tilingDataIn, tiling);
-    GET_TILING_DATA_MEMBER(FlashAttnTilingData, baseTiling, baseTilingIn, tiling);
-    const FlashAttnNoQuantTilingArch35 *__restrict tilingData = &baseTilingIn;
-    // Runtime metadata from npu_flash_attn_metadata AICPU operator (tiling-embedded metadata no longer supported)
-    __gm__ uint8_t *fiaMetaData = runtimeMetaData;
-    TPipe tPipe;
-    Kernel op;
-    op.Init(query, key, value, pseShift, attenMask, actualSeqLengths, actualSeqLengthsKV, blocktable, queryPaddingSize,
-            kvPaddingSize, postQuantScale, postQuantOffset, keySharedPrefix, valueSharedPrefix,
-            actualSharedPrefixLen, queryRope, keyRope, learnableSink, softmaxLse, attentionOut, workspace, fiaMetaData,
-            tilingData, &tPipe);
-    op.Process();
+    // using Kernel = BaseApi::FlashAttentionNoQuantGqaKernel<CubBlock, VecFaBlock, VecFdBlock>;
+    // // GET_TILING_DATA_WITH_STRUCT(FusedInferAttentionScoreTilingData, tilingDataIn, tiling);
+    // GET_TILING_DATA_MEMBER(FlashAttnTilingData, baseTiling, baseTilingIn, tiling);
+    // const FlashAttnNoQuantTilingArch35 *__restrict tilingData = &baseTilingIn;
+    // // Runtime metadata from npu_flash_attn_metadata AICPU operator (tiling-embedded metadata no longer supported)
+    // __gm__ uint8_t *fiaMetaData = runtimeMetaData;
+    // TPipe tPipe;
+    // Kernel op;
+    // op.Init(query, key, value, pseShift, attenMask, actualSeqLengths, actualSeqLengthsKV, blocktable, queryPaddingSize,
+    //         kvPaddingSize, postQuantScale, postQuantOffset, keySharedPrefix, valueSharedPrefix,
+    //         actualSharedPrefixLen, queryRope, keyRope, learnableSink, softmaxLse, attentionOut, workspace, fiaMetaData,
+    //         tilingData, &tPipe);
+    // op.Process();
+    using VecBlockDummy = BaseApi::VecBlockBase<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
+                                      s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+                                      static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope, KvLayoutType,
+                                      enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
+    using CubeBlockDummy = BaseApi::CubeBlockBase<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType,
+                                       dVTemplateType, hasRope, KvLayoutType, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
+    #ifdef __DAV_C310_CUBE__
+        using Kernel = BaseApi::FlashAttentionNoQuantGqaKernel<CubBlock, VecBlockDummy, VecBlockDummy>;
+        GET_TILING_DATA_MEMBER(FlashAttnTilingData, baseTiling, baseTilingIn, tiling);
+        const FlashAttnNoQuantTilingArch35 *__restrict tilingData = &baseTilingIn;
+        __gm__ uint8_t *fiaMetaData = runtimeMetaData;
+        TPipe tPipe;
+        Kernel op;
+        op.Init(query, key, value, pseShift, attenMask, actualSeqLengths, actualSeqLengthsKV, blocktable, queryPaddingSize,
+                kvPaddingSize, postQuantScale, postQuantOffset, keySharedPrefix, valueSharedPrefix,
+                actualSharedPrefixLen, queryRope, keyRope, learnableSink, softmaxLse, attentionOut, workspace, fiaMetaData,
+                tilingData, &tPipe);
+        op.Process();
+    #else
+        using Kernel = BaseApi::FlashAttentionNoQuantGqaKernel<CubeBlockDummy, VecFaBlock, VecFdBlock>;
+        GET_TILING_DATA_MEMBER(FlashAttnTilingData, baseTiling, baseTilingIn, tiling);
+        const FlashAttnNoQuantTilingArch35 *__restrict tilingData = &baseTilingIn;
+        __gm__ uint8_t *fiaMetaData = runtimeMetaData;
+        TPipe tPipe;
+        Kernel op;
+        op.Init(query, key, value, pseShift, attenMask, actualSeqLengths, actualSeqLengthsKV, blocktable, queryPaddingSize,
+                kvPaddingSize, postQuantScale, postQuantOffset, keySharedPrefix, valueSharedPrefix,
+                actualSharedPrefixLen, queryRope, keyRope, learnableSink, softmaxLse, attentionOut, workspace, fiaMetaData,
+                tilingData, &tPipe);
+        op.Process();
+    #endif
 }
 
 

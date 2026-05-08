@@ -134,7 +134,91 @@ template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::
           DTemplateType dTemplateType = DTemplateType::Aligned128,
           DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasRope = false, uint8_t KvLayoutType = 0,
           bool enableKVPrefix = false, bool useDn = false, bool bmm2Write2Ub = true, bool splitD = false>
-class FANoQuantGqaBlockCube {
+class CubeBlockBase {
+public:
+    template <uint32_t dBaseSize>
+    struct QL1BuffSel {
+        using Type = std::conditional_t<(dBaseSize > 256), BuffersPolicySingleBuffer<BufferType::L1>,
+                                        BuffersPolicyDB<BufferType::L1>>;
+    };
+
+    /* ============确定Key的L1类型============= */
+    template <uint32_t s2BaseSize, uint32_t dBaseSize>
+    struct KVL1BuffSel {
+        using Type = std::conditional_t<(s2BaseSize == 256 && dBaseSize > 128),
+                                        BuffersPolicySingleBuffer<BufferType::L1>, BuffersPolicyDB<BufferType::L1>>;
+    };
+
+    /* ============确定L0A的类型============= */
+    struct L0ABuffSel {
+        using Type = BuffersPolicyDB<BufferType::L0A>;
+    };
+    /* ============确定L0B的类型============= */
+    template <uint32_t s2BaseSize, uint32_t dBaseSize>
+    struct L0BBuffSel {
+        using Type = std::conditional_t<(s2BaseSize == 256 && dBaseSize > 128),
+                                        BuffersPolicySingleBuffer<BufferType::L0B>, BuffersPolicyDB<BufferType::L0B>>;
+    };
+
+    /* ============确定L0C的类型============= */
+    template <uint32_t mBaseSize, uint32_t s2BaseSize, uint32_t dVBaseSize>
+    struct L0CBuffSel {
+        using Type = std::conditional_t<(mBaseSize * s2BaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4 &&
+                                         mBaseSize * dVBaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4),
+                                        BuffersPolicy4buff<BufferType::L0C>, BuffersPolicyDB<BufferType::L0C>>;
+    };
+
+    static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
+    static constexpr uint32_t s2BaseSize = (uint32_t)s2TemplateType;
+    static constexpr uint32_t dBaseSize = (uint32_t)dTemplateType;
+    static constexpr uint32_t dVBaseSize = (uint32_t)dVTemplateType;
+    static constexpr uint32_t l1BaseD = 128;
+    static constexpr LayOutTypeEnum LAYOUT = layout;
+    static constexpr bool isPa = (KvLayoutType > 0);
+    static constexpr bool PAGE_ATTENTION = isPa;
+    static constexpr bool HAS_ROPE = hasRope;
+    static constexpr bool HAS_PREFIX = enableKVPrefix;
+    static constexpr bool BMM2_TOUB = bmm2Write2Ub;
+    static constexpr bool USE_DN = useDn;
+    static constexpr bool SPLITD = splitD;
+
+    static constexpr FixpipeConfig BMM2_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, bmm2Write2Ub};
+    static constexpr GmFormat Q_FORMAT = GetQueryGmFormat<layout>();
+    // static constexpr GmFormat KV_FORMAT = GetKVGmFormat<layout, KvLayoutType>();
+    static constexpr GmFormat KV_FORMAT = GetKVGmFormat<layout, KvLayoutType, isPa>();
+
+    using ROPE_T = INPUT_T;
+    using Q_T = INPUT_T;
+    using KV_T = INPUT_T;
+    using MM_T = T;
+    using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
+                                                Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
+
+    using MM1_DBUF_T = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
+    using MM2_ABUF_POLICY_T = BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
+    using MM2_ABUF_T = Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
+    using MM2_DBUF_T = mm2ResPos;
+
+    using L1KvType = typename KVL1BuffSel<s2BaseSize, dBaseSize>::Type;
+    using L1QType = typename QL1BuffSel<dBaseSize>::Type;
+    using L0AType = typename L0ABuffSel::Type;
+    using L0BType = typename L0BBuffSel<s2BaseSize, dBaseSize>::Type;
+    using L0CType = typename L0CBuffSel<mBaseSize, s2BaseSize, dVBaseSize>::Type;
+
+    using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
+
+    __aicore__ inline CubeBlockBase(ConstInfoX &constInfo) {};
+
+};
+
+template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::None,
+          S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
+          S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
+          DTemplateType dTemplateType = DTemplateType::Aligned128,
+          DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasRope = false, uint8_t KvLayoutType = 0,
+          bool enableKVPrefix = false, bool useDn = false, bool bmm2Write2Ub = true, bool splitD = false>
+class FANoQuantGqaBlockCube : public CubeBlockBase<INPUT_T, T, layout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+                         hasRope, KvLayoutType, enableKVPrefix, useDn, bmm2Write2Ub, splitD> {
 public:
     template <uint32_t dBaseSize>
     struct QL1BuffSel {
@@ -244,7 +328,9 @@ public:
     const ConstInfoX &constInfo;
 
     /*============================================================================== */
-    __aicore__ inline FANoQuantGqaBlockCube(ConstInfoX &constInfo) : constInfo(constInfo){};
+    __aicore__ inline FANoQuantGqaBlockCube(ConstInfoX &constInfo)
+        : CubeBlockBase<INPUT_T, T, layout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+                    hasRope, KvLayoutType, enableKVPrefix, useDn, bmm2Write2Ub, splitD>(constInfo), constInfo(constInfo) {};
 
     __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> *l1BuffMgr,
                                          __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
