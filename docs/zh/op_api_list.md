@@ -164,6 +164,8 @@
 |[aclnnSparseFlashAttentionGrad](../../attention/sparse_flash_attention_grad/docs/aclnnSparseFlashAttentionGrad.md)|根据topkIndices对key和value选取大小为selectedBlockSize的数据重排，接着进行训练场景下计算注意力的反向输出。|默认非确定性实现，支持配置开启|-|
 |[aclnnSparseLightningIndexerGradKLLoss](../../attention/sparse_lightning_indexer_grad_kl_loss/docs/aclnnSparseLightningIndexerGradKLLoss.md)|LightningIndexer的反向算子，再额外融合了Loss计算功能。|默认非确定性实现，不支持配置开启|-|
 |[aclnnWeightQuantMatmulAllReduce](../../mc2/matmul_all_reduce/docs/aclnnWeightQuantMatmulAllReduce.md)|对入参x2进行伪量化计算后，完成MatMul和AllReduce计算。|默认非确定性实现，支持配置开启|默认确定性实现|
+|[aclnnFusedFloydAttention](../../attention/fused_floyd_attention/docs/aclnnFusedFloydAttention.md)|训练场景下，使用FloydAttention算法实现多维自注意力的计算。|默认确定性实现| - |
+|[aclnnFusedFloydAttentionGrad](../../attention/fused_floyd_attention_grad/docs/aclnnFusedFloydAttentionGrad.md)|训练场景下，计算Floyd注意力的反向输出，FloydAttn相较于传统FA主要是计算qk/pv注意力时会额外将seq作为batch轴从而转换为batchMatmul。|默认非确定性实现，不支持配置开启| - |
 
 ## 废弃接口
 
