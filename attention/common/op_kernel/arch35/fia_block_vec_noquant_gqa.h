@@ -72,6 +72,8 @@ public:
     static constexpr bool HAS_MASK = hasAtten;
     static constexpr bool FLASH_DECODE = isFd;
 
+    static constexpr uint32_t initOutputEventId = 0U;  // attenOut和lse，刷无效行会用到剩余ub，需要加同步
+
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<layout>();
 
     static constexpr bool hasPse = pseMode != PseTypeEnum::PSE_NONE_TYPE;
@@ -170,11 +172,19 @@ public:
     // ==================== Functions ======================
     __aicore__ inline FANoQuantGqaBlockVec(ConstInfoX &constInfo) : constInfo(constInfo){};
 
-    __aicore__ inline void InitVecBlock(TPipe *pipe)
+    __aicore__ inline void InitVecBlock(TPipe *pipe,
+                                        __gm__ uint8_t *pse, __gm__ uint8_t *actualSeqQlenAddr,
+                                        __gm__ uint8_t *actualSeqKvlenAddr, __gm__ uint8_t *postQuantScale,
+                                        __gm__ uint8_t *postQuantOffset, __gm__ uint8_t *attenMask,
+                                        __gm__ uint8_t *learnableSink, __gm__ uint8_t *softmaxLse,
+                                        __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace)
     {
         tPipe = pipe;
-        SetExtremeValue();
-        InitLocalBuffer();
+        uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32;
+        this->negativeFloatScalar = *((T *)&tmp1);
+
+        InitVecInput(pse, actualSeqQlenAddr, actualSeqKvlenAddr, postQuantScale, postQuantOffset,
+            attenMask, learnableSink, softmaxLse, attentionOut, workspace);
     }
 
     __aicore__ inline void InitVecInput(__gm__ uint8_t *pse, __gm__ uint8_t *actualSeqQlenAddr,
@@ -187,7 +197,10 @@ public:
         if constexpr (POST_QUANT) {
             this->attentionOutInitGm.SetGlobalBuffer((__gm__ half *)attentionOut);
         }
-        softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
+
+        if (constInfo.isSoftmaxLseEnable) {
+            softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
+        }
 
         actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint64_t *)actualSeqQlenAddr, constInfo.actualSeqLenSize);
         qActSeqLensParser.Init(actualSeqLengthsGmQ, constInfo.actualSeqLenSize, constInfo.s1Size);
@@ -232,6 +245,13 @@ public:
                                        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
                                        RunInfoX runInfo)
     {
+#ifdef SKIP_V1
+        bmm1ResBuf.WaitCrossCore();
+        bmm1ResBuf.SetCrossCore();
+        outputBuf.SetCrossCore();
+        return;
+#endif
+
         bmm1ResBuf.WaitCrossCore();
         if (unlikely(runInfo.actVecMSize == 0)) {
             bmm1ResBuf.SetCrossCore();
@@ -249,10 +269,12 @@ public:
     __aicore__ inline void ClearOutput()
     {
         if (IsInitAttentionOutGm()) {
+            SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);     // 释放剩余ub
             InitOutputSingleCore();
             if (constInfo.isSoftmaxLseEnable) {
                 InitLseOutputSingleCore();
             }
+            WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
             SyncAll();
         }
     }
@@ -293,6 +315,7 @@ public:
         int64_t singleInitOutputSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
 
         if (singleInitOutputSize > 0) {
+            WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
             if constexpr (IsSameType<OUT_T, int8_t>::value) {
                 GlobalTensor<half> attentionOutTmpGm;
                 attentionOutTmpGm.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(attentionOutGm.GetPhyAddr(0)));
@@ -300,6 +323,7 @@ public:
             } else {
                 matmul::InitOutput<OUT_T>(attentionOutGm[constInfo.aivIdx * singleCoreSize], singleInitOutputSize, 0);
             }
+            SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
         }
     }
 
@@ -317,8 +341,10 @@ public:
         int64_t singleInitOutputSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
 
         if (singleInitOutputSize > 0) {
+            WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
             matmul::InitOutput<float>(softmaxLseGm[constInfo.aivIdx * singleCoreSize], singleInitOutputSize,
                                       3e+99); // 3e+99: set the value of invalid batch to inf
+            SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
         }
     }
 
@@ -426,28 +452,30 @@ public:
         if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
             uint32_t prefixBS1 = qActSeqLensParser.GetTBase(runInfo.bIdx);
             uint64_t bN2Offset = prefixBS1 * constInfo.n2Size * constInfo.gSize + runInfo.n2Idx * constInfo.gSize;
-            DataCopySoftmaxLseTND(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize, constInfo);
+            DataCopySoftmaxLseTNDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
+                                                       constInfo);
         } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
             uint32_t prefixBS1 = qActSeqLensParser.GetTBase(runInfo.bIdx);
             uint32_t s1Size = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
             uint64_t bN2Offset = prefixBS1 * constInfo.n2Size * constInfo.gSize + runInfo.n2Idx * constInfo.gSize;
-            DataCopySoftmaxLseNTD(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize, constInfo, s1Size);
+            DataCopySoftmaxLseNTDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
+                                                       constInfo, s1Size);
         } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
             uint64_t bN2Offset = runInfo.bIdx * constInfo.n2Size * constInfo.gSize * constInfo.s1Size +
                                  runInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
             uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
             uint64_t s1LeftPaddingSize =
                 constInfo.isQHasLeftPadding ? (constInfo.s1Size - qActSeqLens - constInfo.queryRightPaddingSize) : 0;
-            DataCopySoftmaxLseBSND(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize, constInfo,
-                                   s1LeftPaddingSize);
+            DataCopySoftmaxLseBSNDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
+                                                        constInfo, s1LeftPaddingSize);
         } else { // BNSD
             uint64_t bN2Offset = runInfo.bIdx * constInfo.n2Size * constInfo.gSize * constInfo.s1Size +
                                  runInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
             uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
             uint64_t s1LeftPaddingSize =
                 constInfo.isQHasLeftPadding ? (constInfo.s1Size - qActSeqLens - constInfo.queryRightPaddingSize) : 0;
-            DataCopySoftmaxLseBNSD(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize, constInfo, qActSeqLens,
-                                   s1LeftPaddingSize);
+            DataCopySoftmaxLseBNSDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
+                                                        constInfo, qActSeqLens, s1LeftPaddingSize);
         }
 
         softmaxLseQueue.FreeTensor(lseUb);
@@ -564,9 +592,9 @@ public:
         LocalTensor<uint8_t> attenMaskUb;
         LocalTensor<uint8_t> attenMaskUbPre;
         if constexpr (hasAtten == true) {
+            // TODO，attenMaskInQue后续可以改成TBuf，用set/wait同步
             attenMaskUb = this->attenMaskInQue[runInfo.loop % DB].template AllocTensor<uint8_t>();
-            attenMaskUbPre = this->attenMaskInQue[1 - runInfo.loop % DB].template AllocTensor<uint8_t>();
-            AttenMaskCopyIn(attenMaskUb, attenMaskUbPre, 0, runInfo.actVecMSize, runInfo); // 全量拷贝
+            AttenMaskCopyIn(attenMaskUb, 0, runInfo.actVecMSize, runInfo); // 全量拷贝
         }
 
         LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>();
@@ -654,7 +682,6 @@ public:
         bmm1ResBuf.SetCrossCore();
         if constexpr (hasAtten) {
             this->attenMaskInQue[runInfo.loop % DB].template FreeTensor(attenMaskUb);
-            this->attenMaskInQue[1 - runInfo.loop % DB].template FreeTensor(attenMaskUbPre);
         }
         if constexpr (hasPseOuter) {
             this->pseInQue.template FreeTensor(pseUb);
@@ -865,7 +892,7 @@ public:
 
             // 经过了跳读，UB上每行是按照dTemplateAlign64对齐的
             int64_t vec2ResInnerOffset = mIdx * constInfo.dBasicBlock;
-            if (vec2LoopLimit > 1) { // TODO 这个分支有疑问
+            if (vec2LoopLimit > 1) {
                 SetFlag<HardEvent::MTE3_MTE2>(mte3ToMte2);
                 WaitFlag<HardEvent::MTE3_MTE2>(mte3ToMte2);
                 if constexpr (useDn) {
@@ -987,7 +1014,6 @@ public:
             bool batchNeedRowInvalid = constInfo.isRowInvalidOpen || // 手动开启行无效
                                        ((constInfo.sparseMode != SparseMode::LEFT_UP_CAUSAL) &&
                                         hasValidRow); // sparse = 0 or 3 or 4，preToekens or nextTokens负数
-
             if (!batchNeedRowInvalid) {
                 return;
             }
@@ -1123,6 +1149,14 @@ public:
 
     __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfoX runInfo)
     {
+#ifdef SKIP_V2
+        bmm2ResBuf.WaitCrossCore();
+        if constexpr (bmm2Write2Ub) {
+            bmm2ResBuf.SetCrossCore();
+        }
+        return;
+#endif
+
         bmm2ResBuf.WaitCrossCore();
 
         if constexpr (bmm2Write2Ub) {
@@ -1246,7 +1280,7 @@ public:
         tPipe->InitBuffer(sumBrdcst, 1, 2048); // [64, 8]
     }
 
-    __aicore__ inline void InitLocalBuffer()
+    __aicore__ inline void InitBuffers()
     {
         uint32_t mm1ResultSize = mBaseSize / CV_RATIO * s2BaseSize * sizeof(T);
         uint32_t mm2ResultSize = mBaseSize / CV_RATIO * dTemplateAlign64 * sizeof(T);
@@ -1316,24 +1350,30 @@ public:
         if (constInfo.learnableSinkFlag) {
             this->tPipe->InitBuffer(sinkQue, 1, 256); // buffer size = 256 bytes
         }
+    }
 
+    __aicore__ inline void AllocEventID()
+    {
         mte3ToVId[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
         mte3ToVId[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
-
         vToMte3Id[0] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
         vToMte3Id[1] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
         SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
         SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
     }
 
-    __aicore__ inline void SetExtremeValue()
+    __aicore__ inline void FreeEventID()
     {
-        uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32;
-        this->negativeFloatScalar = *((T *)&tmp1);
+        WaitFlag<AscendC::HardEvent::MTE3_V>(mte3ToVId[0]);
+        WaitFlag<AscendC::HardEvent::MTE3_V>(mte3ToVId[1]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(mte3ToVId[0]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(mte3ToVId[1]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(vToMte3Id[0]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(vToMte3Id[1]);
     }
 
-    __aicore__ inline void AttenMaskCopyIn(LocalTensor<uint8_t> attenMaskUb, LocalTensor<uint8_t> attenMaskUbPre,
-                                           uint32_t vecMIdx, uint32_t mDealSize, RunInfoX &runInfo)
+    __aicore__ inline void AttenMaskCopyIn(LocalTensor<uint8_t> attenMaskUb, uint32_t vecMIdx, uint32_t mDealSize,
+        RunInfoX &runInfo)
     {
         MaskInfo maskInfo;
         maskInfo.gs1StartIdx = runInfo.gS1Idx + runInfo.vecMbaseIdx + vecMIdx;
@@ -1343,6 +1383,7 @@ public:
         maskInfo.s2StartIdx = runInfo.s2Idx;
         maskInfo.s2dealNum = runInfo.actSingleLoopS2Size;
         maskInfo.s2Size = runInfo.actS2Size;
+        maskInfo.nBaseSize = s2BaseSize;
         maskInfo.preToken = constInfo.preTokens;
         maskInfo.nextToken = constInfo.nextTokens;
         maskInfo.sparseMode = static_cast<SparseMode>(constInfo.sparseMode);
@@ -1362,22 +1403,27 @@ public:
         } else {
             maskInfo.layout = GS;
         }
-
         maskInfo.attenMaskType = MASK_BOOL; // compatible with int8/uint8
 
         bool IsSkipMask = IsSkipAttentionmask(maskInfo);
         bool IsSkipMaskForPre = IsSkipAttentionmaskForPre(maskInfo);
-        if (!IsSkipMask) {
-            AttentionmaskCopyIn(attenMaskUb, attenMaskUbPre, attenMaskGmInt, maskInfo);
-        }
-        if (IsSkipMask) {
-            Duplicate(attenMaskUb, static_cast<uint8_t>(0U), maskInfo.gs1dealNum * Align(maskInfo.s2dealNum, 32U));
-        }
-        if (!IsSkipMaskForPre) {
-            AttentionmaskCopyIn(attenMaskUb, attenMaskUbPre, attenMaskGmInt, maskInfo, true);
-        }
+
         if (IsSkipMask && IsSkipMaskForPre) {
-            Duplicate(attenMaskUb, static_cast<uint8_t>(0U), maskInfo.gs1dealNum * Align(maskInfo.s2dealNum, 32U));
+            Duplicate(attenMaskUb, static_cast<uint8_t>(0U), maskInfo.gs1dealNum * s2BaseSize);
+            return;
+        }
+
+        if (!IsSkipMask) {
+            AttentionmaskCopyIn(attenMaskUb, attenMaskGmInt, maskInfo);
+        } else {
+            Duplicate(attenMaskUb, static_cast<uint8_t>(0U), maskInfo.gs1dealNum * s2BaseSize);
+        }
+
+        if (!IsSkipMaskForPre) {
+            LocalTensor<uint8_t> attenMaskUbPre = this->attenMaskInQue[1 - runInfo.loop % DB].template AllocTensor<uint8_t>();
+            AttentionmaskCopyIn(attenMaskUbPre, attenMaskGmInt, maskInfo, true);
+            MergeMask(attenMaskUb, attenMaskUbPre, maskInfo.gs1dealNum, s2BaseSize);
+            this->attenMaskInQue[1 - runInfo.loop % DB].template FreeTensor(attenMaskUbPre);
         }
     }
 
@@ -1405,7 +1451,7 @@ public:
 #endif
     }
 
-    __aicore__ inline void DealZeroActSeqLen(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t mDealSize)
+    __aicore__ inline void DealZeroActSeqLen(uint32_t bN2Cur)
     {
         uint32_t n2Idx = bN2Cur % constInfo.n2Size;
         uint32_t bIdx = bN2Cur / constInfo.n2Size;
@@ -1416,26 +1462,26 @@ public:
             if (constInfo.outputLayout == FIA_LAYOUT::BSH) {
                 OffsetCalculator<GmFormat::BSNGD> offsetCalculator;
                 offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                      constInfo.dSize, actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
+                                      constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
                 DealActSeqLenIsZero<GmFormat::BSNGD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
             } else if (constInfo.outputLayout == FIA_LAYOUT::BNSD) {
                 OffsetCalculator<GmFormat::BNGSD> offsetCalculator;
                 offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                      constInfo.dSize, actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
+                                      constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
                 DealActSeqLenIsZero<GmFormat::BNGSD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
             } else if (constInfo.outputLayout == FIA_LAYOUT::NBSD) {
                 OffsetCalculator<GmFormat::NGBSD> offsetCalculator;
                 offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                      constInfo.dSize, actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
+                                      constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
                 DealActSeqLenIsZero<GmFormat::NGBSD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
             } else if (constInfo.outputLayout == FIA_LAYOUT::TND) {
                 OffsetCalculator<GmFormat::TNGD> offsetCalculator;
-                offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSize, actualSeqLengthsGmQ,
+                offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, actualSeqLengthsGmQ,
                                       constInfo.actualSeqLenSize);
                 DealActSeqLenIsZero<GmFormat::TNGD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
             } else if (constInfo.outputLayout == FIA_LAYOUT::NTD) {
                 OffsetCalculator<GmFormat::NGTD> offsetCalculator;
-                offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSize, actualSeqLengthsGmQ,
+                offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, actualSeqLengthsGmQ,
                                       constInfo.actualSeqLenSize);
                 DealActSeqLenIsZero<GmFormat::NGTD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
             }

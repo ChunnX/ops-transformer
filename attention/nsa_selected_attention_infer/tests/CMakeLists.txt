@@ -20,7 +20,7 @@ set(_NSA_SELECTED_ATTENTION_INFER_TilingSourcesExt
 )
 
 set(_NSA_SELECTED_ATTENTION_INFER_KernelTilingDataDefH
-        ${OPS_TRANSFORMER_DIR}/common/include/tiling_base/data_copy_transpose_tiling_def.h
+        ${OPS_TRANSFORMER_DIR}/common/include/op_host/data_copy_transpose_tiling_def.h
         ${CMAKE_SOURCE_DIR}/attention/nsa_selected_attention_infer/op_host/nsa_selected_attention_infer_tiling.h
 )
 

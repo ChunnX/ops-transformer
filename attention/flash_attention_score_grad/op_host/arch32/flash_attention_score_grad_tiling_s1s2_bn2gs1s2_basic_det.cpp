@@ -15,9 +15,9 @@
 #include "flash_attention_score_grad_tiling_common.h"
 #include "flash_attention_score_grad_tiling_s1s2_bn2gs1s2_basic_det.h"
 #include <register/op_impl_registry.h>
-#include "tiling_base/data_copy_transpose_tiling.h"
-#include "tiling_base/tiling_templates_registry.h"
-#include "tiling_base/tiling_type.h"
+#include "op_host/data_copy_transpose_tiling.h"
+#include "op_host/tiling_templates_registry.h"
+#include "op_host/tiling_type.h"
 #include "../../op_kernel/arch32/flash_attention_score_grad_tiling.h"
 #include "../../op_kernel/arch32/flash_attention_score_grad_template_tiling_key.h"
 
