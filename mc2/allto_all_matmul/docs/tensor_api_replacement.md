@@ -180,3 +180,85 @@ BlockMmad 和 Scheduler 代码与参考**逐字节相同**，张量子视图逻�
 ### 10.2 nBufferNum 恒为 2
 
 尚未支持 4 buffer 模式。参考通过 `CalculateDefaultNBufferNum()` 动态选择 2/4 buffer，可提升 MTE2 带宽受限场景的吞吐。
+
+## 十一、MX BlockMmad 同步优化（重点）
+
+### 11.1 问题现象
+
+`mx_block_mmad_swat.h:333` 原本必须使用 `PipeBarrier<PIPE_ALL>()` 才能避免 L0A 读写冲突，造成全流水线停顿，性能损失严重。
+
+### 11.2 问题根因
+
+**Ascend C 硬件中 `MTE1_M` 和 `M_MTE1` 是耦合的双向同步对**，它们共享同一个内部的流水线标记机制。原代码中不同事件类型使用了重叠的 flag ID：
+
+| 事件类型 | 原使用的 flag ID |
+|---------|-----------------|
+| `MTE1_MTE2` / `MTE2_MTE1` | 0, 1, 2, 3... (L1 buffer 管理) |
+| `M_MTE1` | **0, 1** |
+| `MTE1_M` | **0, 1** |
+
+当 `M_MTE1` 和 `MTE1_M` 使用相同的 flag ID 时，会导致硬件内部的等待/通知状态混乱：
+- `WaitFlag<MTE1_M>(0)` 可能提前返回（被 `M_MTE1` flag 0 的状态变化干扰）
+- Mad 在 L1→L0 搬运完成前就开始读取 L0A/L0B 数据
+- 必须用 `PipeBarrier<PIPE_ALL>()` 强制同步，但代价是全流水线停顿
+
+### 11.3 解决方案
+
+**使用分离的 flag ID 范围，避免不同同步对的 flag ID 重叠**：
+
+```cpp
+// mx_block_mmad_swat.h:126-127
+constexpr static uint16_t M_MTE1_FLAG_0 = 4;  // 原为 ZERO_FLAG=0
+constexpr static uint16_t M_MTE1_FLAG_1 = 5;  // 原为 FIRST_FLAG=1
+```
+
+优化后的 flag ID 分配：
+
+| 事件类型 | 优化后的 flag ID |
+|---------|-----------------|
+| `MTE1_MTE2` / `MTE2_MTE1` | 0, 1, 2, 3 (L1 buffer 管理) |
+| `M_MTE1` | **4, 5** |
+| `MTE1_M` | 0, 1 (与 M_MTE1 分离) |
+
+### 11.4 关键代码改动
+
+**构造函数/析构函数**：
+```cpp
+// mx_block_mmad_swat.h:135-136, 146-147
+AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(M_MTE1_FLAG_0);
+AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(M_MTE1_FLAG_1);
+// 析构时对应 WaitFlag
+```
+
+**内层循环同步流程**：
+```cpp
+// mx_block_mmad_swat.h:273-344
+uint16_t mte1WaitMFlag = l0BufId + M_MTE1_FLAG_0;  // 计算为 4 或 5
+AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(mte1WaitMFlag);  // 等待上一轮 Mad 完成
+
+// 4 次 L1→L0 异步搬运
+Copy(A, L1→L0A) → Copy(B, L1→L0B) → Copy(ScaleA, L1→L0A) → Copy(ScaleB, L1→L0B)
+
+// 移除 PipeBarrier<PIPE_ALL>()，改用细粒度同步
+AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0BufId);   // 信号搬运完成
+AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0BufId);  // 等待搬运完成
+
+Mad(...);  // 执行矩阵乘
+
+AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(mte1WaitMFlag);  // 信号 Mad 完成
+```
+
+### 11.5 性能收益
+
+- **移除全流水线停顿**：`PipeBarrier<PIPE_ALL>()` 阻塞所有流水线阶段
+- **细粒度同步**：`SetFlag<MTE1_M>` + `WaitFlag<MTE1_M>` 仅阻塞 MTE1→M 数据依赖
+- **预期提升**：减少流水线停顿，提高 L1→L0 搬运与 Mad 的并行度
+
+### 11.6 核心知识点
+
+1. **`MTE1_M` 和 `M_MTE1` 是硬件耦合的双向同步对**，共享内部流水线标记
+2. **必须使用分离的 flag ID**，避免耦合同步对之间的状态干扰
+3. **`SetFlag<MTE1_M>` + `WaitFlag<MTE1_M>` 等价于 MTE1 流水线屏障**，足以保证所有 L1→L0 搬运完成
+4. **`PipeBarrier<PIPE_ALL>()` 仅用于调试**，生产代码应使用事件标志同步
+
+参考代码 `ops-tensor/include/blaze/block/block_mmad_mx.h` 使用相同的分离策略（`M_MTE1_FLAG_0=4, M_MTE1_FLAG_1=5`），是验证过的正确实践。
