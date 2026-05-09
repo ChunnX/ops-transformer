@@ -21,17 +21,17 @@ namespace ge {
 /**
  * @brief Apply rotary position embedding for a single tensor.
  * @par Inputs:
- * @li x: A 4D tensor which rotary position embedding is applied, format supports ND, and data type must be float16,
+ * @li x: A 3D or 4D tensor which rotary position embedding is applied, format supports ND, and data type must be float16,
  * float or bfloat16.
- * @li cos: A 4D tensor which is "cos" in rotary position embedding, format supports ND, data type must be the same as
+ * @li cos: A 3D or 4D tensor which is "cos" in rotary position embedding, format supports ND, data type must be the same as
  * "x", and shape must be the same as "sin".
- * @li sin: A 4D tensor which is "sin" in rotary position embedding, format supports ND, data type must be the same as	 
+ * @li sin: A 3D or 4D tensor which is "sin" in rotary position embedding, format supports ND, data type must be the same as
  * "x", and shape must be the same as "cos".
  * @li rotate: An optional 2D tensor which is the transformation matrix for position transformation of the "x" in rotary
  * position embedding, format supports ND, data type must be the same as "x", both dimensions are the same and equal to
  * the last dimension of "x".
  * @par Outputs:
- * y: A 4D tensor which is the result of rotary position embedding, format supports ND, data type must be the same as
+ * y: A 3D or 4D tensor which is the result of rotary position embedding, format supports ND, data type must be the same as
  * "x", and shape must be the same as "x".
  * @par Attributes:
  * mode: An optional attribute of type int, specifying the mode of rotary position embedding, must be 0-"half",
