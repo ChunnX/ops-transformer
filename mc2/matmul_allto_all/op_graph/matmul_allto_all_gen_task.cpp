@@ -24,7 +24,8 @@
 
 namespace ops {
 
-ge::Status MatmulAlltoAllGenTaskCallback(const gert::ExeResGenerationContext *context, std::vector<std::vector<uint8_t>> &tasks)
+ge::Status MatmulAlltoAllGenTaskCallback(const gert::ExeResGenerationContext *context,
+                                         std::vector<std::vector<uint8_t>> &tasks)
 {
     return Mc2GenTaskOpsUtils::CommonKFCMc2GenTask(context, tasks);
 }
@@ -45,8 +46,9 @@ static ge::Status MatmulAlltoAllGenTaskFunc(const gert::ExeResGenerationContext 
     //     OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTaskFunc");
     //     return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks);
     // }
+
     return MatmulAlltoAllGenTaskCallback(context, tasks);
 }
 
 IMPL_OP(MatmulAlltoAll).CalcOpParam(MatmulAlltoAllCalcOpParamFunc).GenerateTask(MatmulAlltoAllGenTaskFunc);
-}
+} // namespace ops
