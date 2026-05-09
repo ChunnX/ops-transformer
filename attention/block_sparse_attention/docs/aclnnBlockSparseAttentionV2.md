@@ -384,6 +384,8 @@ aclnnStatus aclnnBlockSparseAttentionV2(
       <td>
         控制online softmax阶段以及rescale阶段运算使用的数据类型。当前只支持传4。
         <ul>
+          <li>0：表示online softmax和rescale全部采取fp32数据类型，适合追求计算精度的场景使用。</li>
+          <li>1：仅支持输入的query、key、value均为fp16数据类型时配置，表示online softmax和rescale全部采取fp16数据类型，性能更好，但精度较低，且可能发生计算时的数值溢出，使用者需根据值域范围自行判断是否使用。</li>
           <li>4：表示混合精度运算，在性能与精度上取得一个折中。online softmax采取fp16/bf16数据类型（与query、key、value数据类型相同），rescale采取fp32数据类型，在online softmax阶段可能发生数值溢出。</li>
         </ul>
       </td>
