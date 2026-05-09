@@ -741,7 +741,11 @@ public:
                 UpdateValue(runInfo.bIdx);
             }
         }
-
+        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> mm2A = inputBuf.Get();
+        mm2A.WaitCrossCore();
+        outputBuf.WaitCrossCore();
+        outputBuf.SetCrossCore();
+        return;
         IterateBmm2Nd(outputBuf, inputBuf, runInfo);
     }
 
