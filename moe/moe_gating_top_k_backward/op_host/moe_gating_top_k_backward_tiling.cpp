@@ -21,16 +21,16 @@
 #include "moe_gating_top_k_backward_tiling.h"
 
 namespace optiling {
-// ATTR constants
-const static int64_t RENORM_TYPE_ZERO = 0;      // Re-norm before top K
+// Attribute constants
+const static int64_t RENORM_TYPE_ZERO = 0; // Re-norm before top K
 const static int64_t NORM_TYPE_SOFTMAX = 0;
 const static int64_t NORM_TYPE_SIGMOID = 1;
 
 // Tensor dimensions
-const static size_t X_NORM_INPUT_DIMS = 2;      // [m,n]
-const static size_t GRAD_Y_INPUT_DIMS = 2;      // [m,k]
-const static size_t EXPERT_IDX_INPUT_DIMS = 2;  // [m,k]
-const static size_t GRAD_X_OUTPUT_DIMS = 2;     // [m,n]
+const static size_t X_NORM_INPUT_DIMS = 2;     // [m,n]
+const static size_t GRAD_Y_INPUT_DIMS = 2;     // [m,k]
+const static size_t EXPERT_IDX_INPUT_DIMS = 2; // [m,k]
+const static size_t GRAD_X_OUTPUT_DIMS = 2;    // [m,n]
 
 // Indices
 const static int64_t X_NORM_INPUT_INDEX = 0;
@@ -40,6 +40,9 @@ const static int64_t RENORM_ATTR_INDEX = 0;
 const static int64_t NORM_TYPE_ATTR_INDEX = 1;
 const static int64_t ROUTED_SCALING_FACTOR_ATTR_INDEX = 2;
 const static int64_t EPS_ATTR_INDEX = 3;
+const static int64_t M_DIM_INDEX = 0;
+const static int64_t N_DIM_INDEX = 1;
+const static int64_t K_DIM_INDEX = 1;
 
 // Tiling keys
 const static uint64_t TILING_KEY_RENORM_SIGMOID = 1;
@@ -50,7 +53,7 @@ const static size_t SIZE_T_FLOAT16 = 2;
 const static size_t SIZE_T_BFLOAT16 = 2;
 
 // Miscellaneous
-const static int64_t MAX_EXPERT_COUNT = 2048;   // max value for n
+const static int64_t MAX_EXPERT_COUNT = 2048;           // max value for n
 const static int64_t DEFAULT_WORKSPACE_SIZE = 16777216; // 预留16M空间
 
 
@@ -61,7 +64,8 @@ inline static int64_t CeilLog4(int64_t x)
 
 class MoeGatingTopKBackwardTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit MoeGatingTopKBackwardTilingBase(gert::TilingContext *context) : Ops::Transformer::OpTiling::TilingBaseClass(context)
+    explicit MoeGatingTopKBackwardTilingBase(gert::TilingContext *context)
+        : Ops::Transformer::OpTiling::TilingBaseClass(context)
     {
         Reset();
     }
@@ -101,25 +105,20 @@ private:
     void SplitRows();
     void CalTmpBufUbSize();
 
-    const gert::Shape *xShape_ = nullptr;
-    const gert::Shape *biasShape_ = nullptr;
-    const gert::Shape *yShape_ = nullptr;
+    // Shapes
+    const gert::Shape *xNormShape_ = nullptr;
+    const gert::Shape *gradYShape_ = nullptr;
     const gert::Shape *expertIdxShape_ = nullptr;
-    const gert::Shape *outShape_ = nullptr;
+    const gert::Shape *outputGradXShape_ = nullptr;
 
-    int64_t rows_ = 0;
-    int64_t expertCount_ = 0;
-    int64_t addBias_ = 0;
+    int64_t tokenCount_ = 0;   // m
+    int64_t expertCount_ = 0;  // n
+    int64_t k_ = 0;            // k
 
-    int64_t k_ = 0;
-    int64_t kGroup_ = 0;
-    int64_t groupCount_ = 0;
-    int64_t perGroupExpertCount_ = 0;
-    int64_t groupSelectMode_ = GROUP_SELECT_MODE_MAX;
-    int64_t renorm_ = RENORM_NO;
+    // Attributes
+    int64_t renorm_ = RENORM_TYPE_ZERO;
     int64_t normType_ = NORM_TYPE_SOFTMAX;
-    int64_t outFlag_ = OUT_FLAG_FALSE;
-    float routedScalingFactor_ = 1.0;
+    float routedScalingFactor_ = 1.0f;
     float eps_ = 1e-20f;
 
     int64_t inputDtypeSize_;
@@ -129,32 +128,55 @@ private:
 
 ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckInputShape()
 {
-    size_t xDimNum = xShape_->GetDimNum();
-    OP_CHECK_IF(xDimNum != X_INPUT_DIMS,
-                OP_LOGE(context_, "The dim number of x is: %zu, but should be %zu.", xDimNum, X_INPUT_DIMS),
-                return ge::GRAPH_FAILED);
+    // Check x_norm dim num
+    size_t xNormDimNum = xNormShape_->GetDimNum();
+    OP_CHECK_IF(
+        xNormDimNum != X_NORM_INPUT_DIMS,
+        OP_LOGE(context_, "The dim number of x_norm is: %zu, but should be %zu.", xNormDimNum, X_NORM_INPUT_DIMS),
+        return ge::GRAPH_FAILED);
 
-    // 通过输入获取rows 和 expertCount
-    rows_ = xShape_->GetDim(0);
-    expertCount_ = xShape_->GetDim(1);
-    MoeGatingTopKBackwardTilingData_.set_rowCount(rows_);
+    // Parse m and n from input x_norm
+    tokenCount_ = xNormShape_->GetDim(M_DIM_INDEX);
+    expertCount_ = xShape_->GetDim(N_DIM_INDEX);
+    MoeGatingTopKBackwardTilingData_.set_tokenCount(tokenCount_);
     MoeGatingTopKBackwardTilingData_.set_expertCount(expertCount_);
-    if (biasShape_ != nullptr) {
-        addBias_ = 1;
-        size_t biasDimNum = biasShape_->GetDimNum();
-        OP_CHECK_IF(biasDimNum != BIAS_INPUT_DIMS,
-                    OP_LOGE(context_, "The dim number of bias is: %zu, but should be %zu.", biasDimNum, BIAS_INPUT_DIMS),
-                    return ge::GRAPH_FAILED);
-        OP_CHECK_IF(
-            biasShape_->GetDim(0) != expertCount_,
-            OP_LOGE(context_, "The first dim of bias is: %ld, but should be %ld.", biasShape_->GetDim(0), expertCount_),
-            return ge::GRAPH_FAILED);
-    }
-    MoeGatingTopKBackwardTilingData_.set_addBias(addBias_);
 
-    OP_CHECK_IF(k_ > expertCount_,
-                OP_LOGE(context_, "k is: %ld, expert num is: %ld, k cannot be greater than expert num.", k_, expertCount_),
-                return ge::GRAPH_FAILED);
+    // Check grad_y dim num
+    size_t gradYDimNum = gradYShape_->GetDimNum();
+    OP_CHECK_IF(
+        gradYDimNum != GRAD_Y_INPUT_DIMS,
+        OP_LOGE(context_, "The dim number of grad_y is: %zu, but should be %zu.", gradYDimNum, GRAD_Y_INPUT_DIMS),
+        return ge::GRAPH_FAILED);
+
+    // Check if grad_y matches x_norm in dim 0
+    int64_t gradYTokenCount = gradYShape_->GetDim(M_DIM_INDEX);
+    OP_CHECK_IF(
+        gradYTokenCount != tokenCount_,
+        OP_LOGE(context_, "Dim 0 of grad_y is: %zu, but should be %zu.", gradYTokenCount, tokenCount_),
+        return ge::GRAPH_FAILED);
+
+    // Parse k from input grad_y
+    k_ = gradYShape_->GetDim(K_DIM_INDEX);
+    MoeGatingTopKBackwardTilingData_.set_k(k_);
+
+    // Check if k is less than or equal to n
+    OP_CHECK_IF(
+        k_ > expertCount_,
+        OP_LOGE(context_, "k is: %ld, expert num is: %ld, k cannot be greater than expert num.", k_, expertCount_),
+        return ge::GRAPH_FAILED);
+
+    // Check if expert_idx has the same shape as grad_y
+    int64_t expertIdxTokenCount = expertIdxShape_->GetDim(M_DIM_INDEX);
+    int64_t expertIdxK= expertIdxShape_->GetDim(K_DIM_INDEX);
+    OP_CHECK_IF(
+        expertIdxTokenCount != tokenCount_,
+        OP_LOGE(context_, "Dim 0 of expertIdx is: %zu, but should be %zu.", gradYTokenCount, tokenCount_),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        expertIdxK != k_,
+        OP_LOGE(context_, "Dim 1 of expertIdx is: %zu, but should be %zu.", expertIdxK, k_),
+        return ge::GRAPH_FAILED);
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -179,17 +201,18 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckAttr()
 
     OP_CHECK_IF(normType_ != NORM_TYPE_SOFTMAX && normType_ != NORM_TYPE_SIGMOID,
                 OP_LOGE(context_, "norm type is: %ld, but currently only support %ld and %ld.", normType_,
-                     NORM_TYPE_SOFTMAX, NORM_TYPE_SIGMOID),
+                        NORM_TYPE_SOFTMAX, NORM_TYPE_SIGMOID),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(groupSelectMode_ != GROUP_SELECT_MODE_SUM && groupSelectMode_ != GROUP_SELECT_MODE_MAX,
-                OP_LOGE(context_, "group select mode is: %ld, but currently only support %ld and %ld.", groupSelectMode_,
-                     GROUP_SELECT_MODE_SUM, GROUP_SELECT_MODE_MAX),
+                OP_LOGE(context_, "group select mode is: %ld, but currently only support %ld and %ld.",
+                        groupSelectMode_, GROUP_SELECT_MODE_SUM, GROUP_SELECT_MODE_MAX),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(renorm_ != RENORM_NO && renorm_ != RENORM_L1,
-                OP_LOGE(context_, "renorm is: %ld, but currently only support %ld and %ld.", renorm_, RENORM_NO, RENORM_L1),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        renorm_ != RENORM_NO && renorm_ != RENORM_L1,
+        OP_LOGE(context_, "renorm is: %ld, but currently only support %ld and %ld.", renorm_, RENORM_NO, RENORM_L1),
+        return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(expertCount_ % groupCount_ != 0,
                 OP_LOGE(context_, "Expert count : %ld is not divisible by k_group: %ld", expertCount_, groupCount_),
@@ -201,9 +224,10 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckAttr()
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(
         groupSelectMode_ == GROUP_SELECT_MODE_SUM && perGroupExpertCount_ < 2,
-        OP_LOGE(context_,
-             "group expert count is: %ld, if group select mode is: %ld, group expert count should be greater than 1.",
-             perGroupExpertCount_, groupSelectMode_),
+        OP_LOGE(
+            context_,
+            "group expert count is: %ld, if group select mode is: %ld, group expert count should be greater than 1.",
+            perGroupExpertCount_, groupSelectMode_),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(k_ > kGroup_ * perGroupExpertCount_,
                 OP_LOGE(context_, "k is: %ld, but should be smaller than %ld.", k_, kGroup_ * perGroupExpertCount_),
@@ -212,8 +236,9 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckAttr()
     if (groupCount_ != 1 && groupCount_ != expertCount_ && kGroup_ != groupCount_) {
         // 分组场景下才需要校验对齐后的数量
         OP_CHECK_IF(groupCount_ * groupExpertCountAlign > MAX_EXPERT_COUNT,
-                    OP_LOGE(context_, "group count * group expert count align is: %ld, but should not greater than %ld.",
-                         groupCount_ * groupExpertCountAlign, MAX_EXPERT_COUNT),
+                    OP_LOGE(context_,
+                            "group count * group expert count align is: %ld, but should not greater than %ld.",
+                            groupCount_ * groupExpertCountAlign, MAX_EXPERT_COUNT),
                     return ge::GRAPH_FAILED);
     }
 
@@ -250,15 +275,15 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::GetShapeAttrsInfo()
     OP_CHECK_IF(
         (xDtype != ge::DataType::DT_FLOAT && xDtype != ge::DataType::DT_FLOAT16 && xDtype != ge::DataType::DT_BF16),
         OP_LOGE(context_, "x dtype %s error, only supports float32, half, bf16. please check.",
-             ge::TypeUtils::DataTypeToSerialString(xDtype).c_str()),
+                ge::TypeUtils::DataTypeToSerialString(xDtype).c_str()),
         return ge::GRAPH_FAILED);
 
     if (biasShapePtr != nullptr) {
         auto biasDtype = context_->GetOptionalInputDesc(BIAS_INPUT_INDEX)->GetDataType();
         OP_CHECK_IF((biasDtype != xDtype),
                     OP_LOGE(context_, "bias dtype %s not equal x dtype %s, please check.",
-                         ge::TypeUtils::DataTypeToSerialString(biasDtype).c_str(),
-                         ge::TypeUtils::DataTypeToSerialString(xDtype).c_str()),
+                            ge::TypeUtils::DataTypeToSerialString(biasDtype).c_str(),
+                            ge::TypeUtils::DataTypeToSerialString(xDtype).c_str()),
                     return ge::GRAPH_FAILED);
     }
 
@@ -267,8 +292,8 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::GetShapeAttrsInfo()
     auto yDtype = yDesc->GetDataType();
     OP_CHECK_IF((yDtype != xDtype),
                 OP_LOGE(context_, "y out dtype %s must be the same with x dtype %s.",
-                     ge::TypeUtils::DataTypeToSerialString(yDtype).c_str(),
-                     ge::TypeUtils::DataTypeToSerialString(xDtype).c_str()),
+                        ge::TypeUtils::DataTypeToSerialString(yDtype).c_str(),
+                        ge::TypeUtils::DataTypeToSerialString(xDtype).c_str()),
                 return ge::GRAPH_FAILED);
 
     auto expertIdDesc = context_->GetOutputDesc(EXPERT_IDX_OUTPUT_INDEX);
@@ -276,7 +301,7 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::GetShapeAttrsInfo()
     auto expertIdDtype = expertIdDesc->GetDataType();
     OP_CHECK_IF((expertIdDtype != ge::DataType::DT_INT32),
                 OP_LOGE(context_, "expertId out dtype %s error, only supports int32. please check.",
-                     ge::TypeUtils::DataTypeToSerialString(expertIdDtype).c_str()),
+                        ge::TypeUtils::DataTypeToSerialString(expertIdDtype).c_str()),
                 return ge::GRAPH_FAILED);
 
     auto normOutDesc = context_->GetOutputDesc(OUT_OUTPUT_INDEX);
@@ -284,7 +309,7 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::GetShapeAttrsInfo()
     auto normOutDtype = normOutDesc->GetDataType();
     OP_CHECK_IF((normOutDtype != ge::DataType::DT_FLOAT),
                 OP_LOGE(context_, "norm out dtype %s error, only supports float. please check.",
-                     ge::TypeUtils::DataTypeToSerialString(normOutDtype).c_str()),
+                        ge::TypeUtils::DataTypeToSerialString(normOutDtype).c_str()),
                 return ge::GRAPH_FAILED);
 
     // 获取属性
@@ -372,32 +397,32 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::GetPlatformInfo()
 ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckOutShape()
 {
     OP_CHECK_IF((yShape_->GetDimNum() != xShape_->GetDimNum()),
-                OP_LOGE(context_, "y out shape num %zu and x shape num %zu not equal, please check.", yShape_->GetDimNum(),
-                     xShape_->GetDimNum()),
+                OP_LOGE(context_, "y out shape num %zu and x shape num %zu not equal, please check.",
+                        yShape_->GetDimNum(), xShape_->GetDimNum()),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF((expertIdxShape_->GetDimNum() != xShape_->GetDimNum()),
                 OP_LOGE(context_, "expertId out shape num %zu and x shape num %zu not equal, please check.",
-                     expertIdxShape_->GetDimNum(), xShape_->GetDimNum()),
+                        expertIdxShape_->GetDimNum(), xShape_->GetDimNum()),
                 return ge::GRAPH_FAILED);
     if (outShape_ != nullptr) {
         OP_CHECK_IF((outShape_->GetDimNum() != xShape_->GetDimNum()),
                     OP_LOGE(context_, "norm out shape num %zu and x shape num %zu not equal, please check.",
-                         outShape_->GetDimNum(), xShape_->GetDimNum()),
+                            outShape_->GetDimNum(), xShape_->GetDimNum()),
                     return ge::GRAPH_FAILED);
     }
 
     OP_CHECK_IF((yShape_->GetDim(0) != xShape_->GetDim(0)),
                 OP_LOGE(context_, "y out dim[0] %ld not euqal x dim[0] %ld, please check.", yShape_->GetDim(0),
-                     xShape_->GetDim(0)),
+                        xShape_->GetDim(0)),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF((expertIdxShape_->GetDim(0) != xShape_->GetDim(0)),
                 OP_LOGE(context_, "expertId out dim[0] %ld not euqal x dim[0] %ld, please check.",
-                     expertIdxShape_->GetDim(0), xShape_->GetDim(0)),
+                        expertIdxShape_->GetDim(0), xShape_->GetDim(0)),
                 return ge::GRAPH_FAILED);
     if (outFlag_ && outShape_ != nullptr) {
         OP_CHECK_IF((outShape_->GetDim(0) != xShape_->GetDim(0)),
                     OP_LOGE(context_, "norm out dim[0] %ld and x dim[0] %ld not equal, please check.",
-                         outShape_->GetDim(0), outShape_->GetDim(0)),
+                            outShape_->GetDim(0), outShape_->GetDim(0)),
                     return ge::GRAPH_FAILED);
     }
 
@@ -409,8 +434,8 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckOutShape()
                 return ge::GRAPH_FAILED);
     if (outFlag_ && outShape_ != nullptr) {
         OP_CHECK_IF((outShape_->GetDim(1) != xShape_->GetDim(1)),
-                    OP_LOGE(context_, "normOut dim[1] %ld and x dim[1] %ld not equal, please check.", outShape_->GetDim(1),
-                         xShape_->GetDim(1)),
+                    OP_LOGE(context_, "normOut dim[1] %ld and x dim[1] %ld not equal, please check.",
+                            outShape_->GetDim(1), xShape_->GetDim(1)),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -482,7 +507,7 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::PostTiling()
     size_t *currentWorkspace = context_->GetWorkspaceSizes(1);
     currentWorkspace[0] = workspaceSize_;
     MoeGatingTopKBackwardTilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(),
-                                          context_->GetRawTilingData()->GetCapacity());
+                                                  context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(MoeGatingTopKBackwardTilingData_.GetDataSize());
     return ge::GRAPH_SUCCESS;
 }
