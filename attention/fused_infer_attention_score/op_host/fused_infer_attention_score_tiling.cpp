@@ -995,6 +995,27 @@ ge::graphStatus CheckSparseModeParams(const gert::TilingContext *context, int64_
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus CheckKVNzShape(const gert::TilingContext *context)
+{
+    auto attrs = context->GetAttrs();
+    int32_t blockSize = static_cast<int32_t>(*(attrs->GetAttrPointer<int64_t>(ATTR_BLOCK_SIZE_INDEX)));
+    auto blockTable = context->GetOptionalInputShape(BLOCK_TABLE_INDEX);
+    uint32_t numBlocks = blockTable->GetStorageShape().GetDim(DIM_1);
+    auto tempK = context->GetInputShape(KEY_INDEX);
+    auto tempV = context->GetInputShape(VALUE_INDEX);
+
+    OP_CHECK_IF((tempK->GetStorageShape().GetDim(DIM_0) != numBlocks) || (tempV->GetStorageShape().GetDim(DIM_0) != numBlocks),
+        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "The first dimension of kv should to be :%ld.",numBlocks),
+            return ge::GRAPH_FAILED);
+    OP_CHECK_IF((tempK->GetStorageShape().GetDim(DIM_4) != 16) || (tempV->GetStorageShape().GetDim(DIM_0) != 16),
+        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "The last dimension of kv should to be 16."),
+            return ge::GRAPH_FAILED);
+    OP_CHECK_IF((tempK->GetStorageShape().GetDim(DIM_3) != blockSize) || (tempV->GetStorageShape().GetDim(DIM_3) != blockSize),
+        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "The four dimension of kv should to be :%ld.",blockSize),
+            return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus CheckFAIIsTND(gert::TilingContext *context, bool isPageAttention)
 {
     const gert::StorageShape* queryShape = context->GetInputShape(QUERY_INDEX);
@@ -1022,6 +1043,9 @@ ge::graphStatus CheckFAIIsTND(gert::TilingContext *context, bool isPageAttention
             OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
                 "When input layout is TND and paged cache and kvnz is used, the K and V must have five dims"),
                 return ge::GRAPH_FAILED);
+        if (CheckKVNzShape(context) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
     }
 
     const gert::Tensor* actSeqLenData = context->GetOptionalInputTensor(ACTUAL_SEQ_Q_INDEX);
