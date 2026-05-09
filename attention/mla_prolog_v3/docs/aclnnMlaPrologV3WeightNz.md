@@ -884,8 +884,8 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
         <td>PagedAttention 场景下的块数</td>
         <td>
           <ul>
-            <li>当CacheMode="PA_BSND"/"PA_NZ"时，取值大于或等于 ⌈(B*S)/BlockSize⌉。</li>
-            <li>当CacheMode="PA_BLK_BSND"/"PA_BLK_NZ"时，取值大于或等于 B × ⌈S/BlockSize⌉。</li>
+            <li>当CacheMode="PA_BSND"/"PA_NZ"时，取值大于或等于 ⌈(B * S) / BlockSize⌉。</li>
+            <li>当CacheMode="PA_BLK_BSND"/"PA_BLK_NZ"时，取值大于或等于 B * ⌈S / BlockSize⌉。</li>
           </ul>
           <p>注：BS合轴场景，每个Batch中的S长度可以不同，因此BlockNum的取值需大于或等于各Batch中S长度除以BlockSize后的向上取整结果相加。</p>
           <p>举例：actualSeqLenOptional数值为[47, 151, 261, 422]，blocksize=128，那么Batch中的长度分别为[47, 104, 110, 161]，此时 BlockNum = ⌈47/128⌉ + ⌈104/128⌉ + ⌈110/128⌉ + ⌈161/128⌉ = 5</p>
