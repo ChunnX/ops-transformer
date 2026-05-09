@@ -372,6 +372,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::Init(
         actualSeqLenGm_.SetGlobalBuffer((__gm__ int32_t *)actualSeqLen);
     }
 
+    splitKN = baseParams_->mm1KnKGroupSize > 1;
     ScaleInit(dequantScaleX, dequantScaleWDq, deqScaleQcQrW,
         dequantScaleWDkvkr, quantScaleCkv, quantScaleCkr, smoothScaleCq, kNopeClipAlpha);
     MmParamInit();
@@ -382,7 +383,6 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::Init(
     } else {
         CubeBufferInit();
     }
-    splitKN = baseParams_->mm1KnKGroupSize > 1;
 }
 
 template<typename MLAPT>
@@ -537,6 +537,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmQcQrParamInit() {
         } else {
             if constexpr (std::is_same<mmInputType, FP8E4M3>::value && isFp8E8m0) { // FP8全量化场景下L1B用满，修改baseN会造成内存踩踏
                 mmQcQrParam_.baseN = 128;
+                mmQcQrParam_.baseK = 64;
             } else {
                 if (mmQcQrParam_.m <= 64) {	// FP8全量化场景，scale需要额外占用L1，该优化不适用
                     mmQcQrParam_.baseN = 256;
@@ -2439,18 +2440,20 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::M3AndM4(AicOffset &aicOffset)
     mmLocalTensors<T, O_L0C> localTensors;
     localTensors.Init(bufParam_);
     LocalTensor<O_L0C> cL0;
+    uint64_t qnResOffset = aicOffset.qnResOffset;
+    uint64_t weightUkOffset = aicOffset.weightUkOffset;
     for (uint32_t nL1 = 0; nL1 < nL1loops; nL1++) {
         // matmulsplitk需要更换成不进行fixpipe的函数，方便控制fixpipe
         if constexpr (std::is_same<mmQcQrInputType, FP8E4M3>::value && isFp8E8m0) {
             if (isAFullLoad) {
-                MatmulSplitK<rmsNormCqOutputType, mmQcQrOutputType, dequantScaleType, true, true, false, DataFormat::NZ,
+                MatmulSplitK<rmsNormCqOutputType, float, dequantScaleType, true, true, false, DataFormat::NZ,
                              false>({}, rmsNormCqResGm_[aicOffset.rmsNormCqResOffset],
                                     weightUqQrGm_[aicOffset.weightUqQrOffset], mmQcQrParam_, bufParam_,
                                     nL1 * nL1SplitSize, nL1SplitSize, nL1 * nL1SplitSize, mmQcQrParam_.orgKc,
                                     dequantTool_.deQuantScaleCqGm_[aicOffset.dequantScaleCqOffset],
                                     deqScaleQcQrW_[aicOffset.dequantScaleWuqqrOffset]);
             } else {
-                MatmulSplitK<rmsNormCqOutputType, mmQcQrOutputType, dequantScaleType, false, true, false,
+                MatmulSplitK<rmsNormCqOutputType, float, dequantScaleType, false, true, false,
                              DataFormat::NZ, false>(
                     {}, rmsNormCqResGm_[aicOffset.rmsNormCqResOffset], weightUqQrGm_[aicOffset.weightUqQrOffset],
                     mmQcQrParam_, bufParam_, nL1 * nL1SplitSize, nL1SplitSize, nL1 * nL1SplitSize, mmQcQrParam_.orgKc,
@@ -2459,12 +2462,12 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::M3AndM4(AicOffset &aicOffset)
             }
         } else {
             if (isAFullLoad) {
-                MatmulSplitK<rmsNormCqOutputType, mmQcQrOutputType, dequantScaleType, true, false, false,
+                MatmulSplitK<rmsNormCqOutputType, float, dequantScaleType, true, false, false,
                              DataFormat::NZ, false>(
                     {}, rmsNormCqResGm_[aicOffset.rmsNormCqResOffset], weightUqQrGm_[aicOffset.weightUqQrOffset],
                     mmQcQrParam_, bufParam_, nL1 * nL1SplitSize, nL1SplitSize, nL1 * nL1SplitSize, mmQcQrParam_.orgKc);
             } else {
-                MatmulSplitK<rmsNormCqOutputType, mmQcQrOutputType, dequantScaleType, false, false, false,
+                MatmulSplitK<rmsNormCqOutputType, float, dequantScaleType, false, false, false,
                              DataFormat::NZ, false>(
                     {}, rmsNormCqResGm_[aicOffset.rmsNormCqResOffset], weightUqQrGm_[aicOffset.weightUqQrOffset],
                     mmQcQrParam_, bufParam_, nL1 * nL1SplitSize, nL1SplitSize, nL1 * nL1SplitSize, mmQcQrParam_.orgKc);
@@ -2474,38 +2477,40 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::M3AndM4(AicOffset &aicOffset)
         cL0 = localTensors.cL0Tensor[(bufParam_.cL0BufIter & 1u) * (L0C_PP_SIZE / sizeof(O_L0C))];
         uint64_t mm3ResOffset = 0;
         uint32_t mm4AL1BufIter = isAFullLoad ? bufParam_.aL1BufIter + 1 : bufParam_.aL1BufIter;
+        LocalTensor<T> aL1 = localTensors.aL1Tensor[(mm4AL1BufIter & 1u) * aL1Offset];
+        LocalTensor<T> bL1 = localTensors.bL1Tensor[(bufParam.bL1BufIter & 1u) * bL1Offset];
         if constexpr (std::is_same<mmQcQrInputType, int8_t>::value || std::is_same<mmQcQrInputType, HIF8>::value ||
                       (std::is_same<mmQcQrInputType, FP8E4M3>::value && !isFp8E8m0)) {
-            GetTensorCToUb<T>(mm3ResLocal_, cL0, mmQcQrParam_.m, baseParams_->dimHeadSizeQc, Align(mmQcQrParam_.m, BLOCK_CUBE_SIZE),
+            GetTensorCToUb<T>(mm3ResLocal_, cL0, mmQcQrParam_.m, baseParams_->dimHeadSizeQc, mSize,
                     mmQcQrParam_.orgKc, bufParam_);
             CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_FIX>(FINISH_MM_QCQR_SPLIT_N);
             mm3ResOffset += mmQcQrParam_.m * baseParams_->dimHeadSizeQc;
         } else {
-            GetTensorCToL1<T>(localTensors.aL1Tensor[(mm4AL1BufIter & 1u) * aL1Offset], cL0, mmQcQrParam_.m, baseParams_->dimHeadSizeQc, Align(mmQcQrParam_.m, BLOCK_CUBE_SIZE),
-                    mmQcQrParam_.orgKc, bufParam_);
-            SetFlag<HardEvent::FIX_MTE1>(L0A_EVENT0 + (bufParam_.aL0BufIter & 1u));  
+            GetTensorCToL1<T>(aL1, cL0, mmQcQrParam_.m, baseParams_->dimHeadSizeQc, mSize,
+                    mSize, bufParam_);
+            SetFlag<HardEvent::FIX_MTE1>(L0A_EVENT0 + (mm4AL1BufIter & 1u));  
+            WaitFlag<HardEvent::FIX_MTE1>(L0A_EVENT0 + (mm4AL1BufIter & 1u)); 
         }
 
-        GetTensorCToL1<T>(mm3ResLocal_[mm3ResOffset], cL0[baseParams_->dimHeadSizeQc], mmQcQrParam_.m, baseParams_->dimHeadRope, Align(mmQcQrParam_.m, BLOCK_CUBE_SIZE),
+        GetTensorCToUb<T>(mm3ResLocal_[mm3ResOffset], cL0[baseParams_->dimHeadSizeQc], mmQcQrParam_.m, baseParams_->dimHeadRope, Align(mmQcQrParam_.m, BLOCK_CUBE_SIZE),
                 mmQcQrParam_.orgKc, bufParam_);
         SetFlag<HardEvent::FIX_M>(L0C_EVENT0 + (bufParam_.cL0BufIter & 1u));
+        bufParam_.cL0BufIter++;
 
         // if constexpr (std::is_same<mmQcQrInputType, FP8E4M3>::value && isFp8E8m0) {
         //     WaitFlag<HardEvent::MTE1_MTE2>(SCALE_EVENT); // FP8场景下Scale不做db，需要等scale用完才能做mmQn
         // }
         // PreloadQnAndSync(aicOffset, mmQnLoops);
         // MatmulQnWeightPreload(aicOffset.weightUkOffset, mmQnLoops);
-        LoadL1B<mmQnInputType, DataFormat::ND, false>(weightUkGm_[aicOffset.weightUkOffset], 
+        LoadL1B<mmQnInputType, DataFormat::ND, false>(weightUkGm_[weightUkOffset], 
             mmQnParam_.n, mmQnParam_.n, mmQnParam_.k, mmQnParam_.k, bufParam_);
         WaitFlag<HardEvent::MTE2_MTE1>(B_EVENT0 + (bufParam_.bL1BufIter & 1u));
 
         if constexpr (std::is_same<mmQcQrInputType, int8_t>::value || std::is_same<mmQcQrInputType, HIF8>::value ||
                       (std::is_same<mmQcQrInputType, FP8E4M3>::value && !isFp8E8m0)) {
             CrossCoreWaitFlag(FINISH_VEC_DEQUANT_QC_SPLIT_N);
-        } else {
-            WaitFlag<HardEvent::FIX_MTE1>(L0A_EVENT0 + (mm4AL1BufIter & 1u));  
-        }
-        bufParam_.cL0BufIter++;
+        } 
+
         // MatmulQnSyncDynamicQuantAndMulQr<needQnDynamicQuant>(aicOffset.qcOffset, aicOffset.weightUkOffset, aicOffset.qnResOffset, mmQnLoops);
         // 替换成MatmulL0
         // A有ub传输过来，B已提前搬运，所以不需要进行load
@@ -2513,25 +2518,34 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::M3AndM4(AicOffset &aicOffset)
         // mmad结果根据分支条件不同需要传输到gm或者ub中 
         LocalTensor<T> aL1 = localTensors.aL1Tensor[(mm4AL1BufIter & 1u) * aL1Offset];
         LocalTensor<T> bL1 = localTensors.bL1Tensor[(bufParam_.bL1BufIter & 1u) * bL1Offset];
-        MmadParams mmadParams = MmadParams(mSize, nL1SplitSize, mmQnParam_.k, UNIT_FLAG_DISABLE, false, true);
+        MmadParams mmadParams = MmadParams(mSize, mmQnParam_.baseN, mmQnParam_.k, UNIT_FLAG_DISABLE, false, true);
 
-        WaitFlag<HardEvent::FIX_M>(L0C_EVENT0 + (bufParam_.cL0BufIter & 1u));
-        cL0 = localTensors.cL0Tensor[(bufParam_.cL0BufIter & 1u) * (L0C_PP_SIZE / sizeof(O_L0C))];
-        MatmulL0<T, O_L0C, dequantScaleType>(bufParam_, aL1, bL1[mmQnParam_.k * nL1SplitSize], localTensors.aL0Tensor,
-            localTensors.bL0Tensor, cL0, mmadParams, mmQnParam_.kL1StepSize);
+        uint32_t nSplitSizeAct = mmQnParam_.baseN;
+        uint32_t nloops = CeilDivT(mmQnParam_.n, mmQnParam_.baseN);
 
-        if constexpr (needQnDynamicQuant) {
-            GetTensorCToUb<T>(mm4ResLocal_, cL0, mmQnParam_.m, nL1SplitSize, mSize, mmQnParam_.orgKc,
-                                                bufParam_);
-        } else {
-            GetTensorC<T>(mmQnResGm_[nL1SplitSize], cL0, mmQnParam_.m, nL1SplitSize, mSize, mmQnParam_.orgKc,
-                                                bufParam_);
+        for (uint32_t n = 0; n < nloops; n++) {
+            if (n == nloops - 1) {
+                nSplitSizeAct = mmQnParam_.n - (nloops - 1) * mmQnParam_.baseN;
+                mmadParams.n = nSplitSizeAct;
+            }
+
+            WaitFlag<HardEvent::FIX_M>(L0C_EVENT0 + (bufParam_.cL0BufIter & 1u));
+            cL0 = localTensors.cL0Tensor[(bufParam_.cL0BufIter & 1u) * (L0C_PP_SIZE / sizeof(O_L0C))];
+            MatmulL0<T, O_L0C, dequantScaleType>(bufParam_, aL1, bL1[mmQnParam_.k * mmQnParam_.baseN], localTensors.aL0Tensor,
+                localTensors.bL0Tensor, cL0, mmadParams, mmQnParam_.kL1StepSize);
+
+            if constexpr (needQnDynamicQuant) {
+                GetTensorCToUb<T>(mm4ResLocal_[n * mmQnParam_.baseN], cL0, mmQnParam_.m, mmQnParam_.baseN, mSize, mmQnParam_.orgKc,
+                                                    bufParam_);
+            } else {
+                GetTensorC<T>(mmQnResGm_[qnResOffset + n * mmQnParam_.baseN], cL0, mmQnParam_.m, mmQnParam_.baseN, mSize, mmQnParam_.orgKc,
+                                                    bufParam_);
+            }
+            SetFlag<HardEvent::FIX_M>(L0C_EVENT0 + (bufParam_.cL0BufIter & 1u));
+            bufParam_.cL0BufIter++;
         }
-        SetFlag<HardEvent::FIX_M>(L0C_EVENT0 + (bufParam_.cL0BufIter & 1u));
-        bufParam_.cL0BufIter++;
         SetFlag<HardEvent::MTE1_MTE2>(B_EVENT0 + (bufParam_.bL1BufIter & 1u));
         bufParam_.bL1BufIter++;
-        SetFlag<HardEvent::MTE1_MTE2>(A_EVENT0 + (mm4AL1BufIter & 1u));
         if (!isAFullLoad) {
             bufParam_.aL1BufIter++;
         }
