@@ -20,7 +20,7 @@
 
 template <typename INPUT_T, typename OUT_T, uint8_t inOutLayoutType, uint16_t config, uint8_t pseMode,
           uint8_t quantMode, bool hasAttenMask, bool hasRope, uint8_t KvLayoutType, bool isFd, bool emptyTensor,
-          uint8_t pFAMask, uint8_t pFAMatMulType, bool enableKVPrefix, bool enableS1OutSplit>
+          bool enableKVPrefix, bool enableS1OutSplit>
 inline __aicore__ void run_fia_noquant_gqa_kernel(
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pseShift,
     __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *actualSeqLengthsKV,

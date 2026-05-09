@@ -268,13 +268,6 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::AdjustSinnerAndSouter(gert::
     uint32_t softmaxSOuterFactor = SOUTER_64;
     sOuterFactor_ = SOUTER_64;
     sInnerFactor_ = SINNER_128;
-    // arch35 除int8 per-tensor全量化模板，均使用基础API实现，无需配置MM API TILING
-    if (fiaInfo.fullQuantMode == FiaFullQuantMode::PER_TENSOR_FULL_QUANT) {
-        OP_CHECK_IF(SetMM1TilingData(context, fiaInfo) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(fiaInfo.opName, "set bmm1 tiling data fail."), return ge::GRAPH_FAILED);
-        OP_CHECK_IF(SetMM2TilingData(context, fiaInfo) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(fiaInfo.opName, "set bmm2 tiling data fail."), return ge::GRAPH_FAILED);
-    }
 
     if (fiaInfo.vHeadDim <= DSIZE_128 && fiaInfo.mlaMode != MlaMode::ROPE_COMBINE_D128) {
         bool checkDtype = fiaInfo.quantMode == FiaQuantMode::NO_QUANT;
@@ -300,12 +293,9 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::AdjustSinnerAndSouter(gert::
             sInnerFactor_ = SINNER_256;
         }
     } else if (fiaInfo.vHeadDim > DSIZE_128 && fiaInfo.mlaMode != MlaMode::ROPE_SPLIT_D512 && fiaInfo.s1Size != 1) {
-        if (fiaInfo.fullQuantMode == FiaFullQuantMode::PER_TENSOR_FULL_QUANT) {
-            sOuterFactor_ = SOUTER_32;
-            sInnerFactor_ = SINNER_64;
-        } else if (((fiaInfo.qLayout == FiaLayout::BSH) || (fiaInfo.qLayout == FiaLayout::BSND) ||
-                    (fiaInfo.qLayout == FiaLayout::TND)) &&
-                   pfaMergeFlag_ && fiaInfo.vHeadDim <= DSIZE_256) {  // 256 : D size
+        if (((fiaInfo.qLayout == FiaLayout::BSH) || (fiaInfo.qLayout == FiaLayout::BSND) ||
+            (fiaInfo.qLayout == FiaLayout::TND)) && pfaMergeFlag_ && 
+            fiaInfo.vHeadDim <= DSIZE_256) {  // 256 : D size
             sOuterFactor_ = SOUTER_32;
             sInnerFactor_ = SINNER_256;
         } else {
@@ -315,15 +305,12 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::AdjustSinnerAndSouter(gert::
         softmaxSOuterFactor = SOUTER_32;
     } else if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512 ||
                (fiaInfo.s1Size == 1 && fiaInfo.vHeadDim > DSIZE_128)) {  // IFA VD > 128
-        if (fiaInfo.fullQuantMode == FiaFullQuantMode::PER_TENSOR_FULL_QUANT || fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) {
+        if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) {
             sOuterFactor_ = SOUTER_32;
         } else {
             sOuterFactor_ = SOUTER_64;
         }
-        sInnerFactor_ = fiaInfo.fullQuantMode == FiaFullQuantMode::PER_TENSOR_FULL_QUANT && fiaInfo.mlaMode != MlaMode::ROPE_SPLIT_D512 &&
-                                fiaInfo.pseShiftFlag ?
-                            SINNER_64 :
-                            SINNER_128;
+        sInnerFactor_ = SINNER_128;
         softmaxSOuterFactor = SOUTER_64;
     }
     if (fiaInfo.fullQuantMode == FiaFullQuantMode::MXFP8_FULL_QUANT) {
@@ -1343,45 +1330,6 @@ void FusedInferAttentionScoreTilingImpl::UpdateTilingKeyHasRope(const FiaTilingI
     }
 }
 
-void FusedInferAttentionScoreTilingImpl::UpdateTilingKeyMaskMode(const FiaTilingInfo &fiaInfo)
-{
-    if (fiaInfo.fullQuantMode == FiaFullQuantMode::PER_TENSOR_FULL_QUANT) {
-        if (!fiaInfo.attenMaskFlag) {
-            tilingKeyInfo_.maskMode = PFAMask_DISABLE_MASK;
-        } else if (fiaInfo.sparseMode == 4) {
-            tilingKeyInfo_.maskMode = PFAMask_ENABLE_MASK_BAND;
-        } else {
-            tilingKeyInfo_.maskMode = PFAMask_ENABLE_MASK_NO_BAND;
-        }
-    } else {
-        tilingKeyInfo_.maskMode = 0;
-    }
-}
-
-void FusedInferAttentionScoreTilingImpl::UpdateTilingKeyMatmulMode(const FiaTilingInfo &fiaInfo)
-{
-    if (fiaInfo.quantMode == FiaQuantMode::NO_QUANT || fiaInfo.quantMode == FiaQuantMode::ANTI_QUANT) {
-        tilingKeyInfo_.matmulMode = 0;
-    }
-    if (fiaInfo.quantMode == FiaQuantMode::FULL_QUANT) {
-        if (tilingKeyInfo_.quantMode != FullQuantMode) {
-            tilingKeyInfo_.matmulMode = 0;
-        } else {  //当前仅int8 per-tensor 量化场景
-            if (fiaInfo.qkHeadDim == 512) {
-                if (fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION) {
-                    tilingKeyInfo_.matmulMode = PFAMatMulType_MM_PA_D512;
-                } else {
-                    tilingKeyInfo_.matmulMode = PFAMatMulType_MM_IFA_MLA;
-                }
-            } else if (fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION) {
-                tilingKeyInfo_.matmulMode = PFAMatMulType_MM_PA;
-            } else {
-                tilingKeyInfo_.matmulMode = PFAMatMulType_MM_PFA;
-            }
-        }
-    }
-}
-
 ge::graphStatus FusedInferAttentionScoreTilingImpl::UpdateTilingKeyInfo(const FiaTilingInfo &fiaInfo)
 {
     if (fiaInfo.emptyTensorFlag) {
@@ -1396,9 +1344,6 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::UpdateTilingKeyInfo(const Fi
             tilingKeyInfo_.isFd = false;
         }
         tilingKeyInfo_.hasAttenMask = fiaInfo.attenMaskFlag;
-        if (fiaInfo.fullQuantMode == FiaFullQuantMode::PER_TENSOR_FULL_QUANT) {
-            tilingKeyInfo_.hasAttenMask = false;
-        }
         UpdateTilingKeyHasRope(fiaInfo);
         if (fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION) {
             // 重构前模板，KvLayout无需做常量化，为减少tilingkey，PA场景下，KvLayout统一取值KvLayoutType_ENABLE_PA
@@ -1407,8 +1352,6 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::UpdateTilingKeyInfo(const Fi
             tilingKeyInfo_.KvLayoutType = 0;
         }
         tilingKeyInfo_.emptyTensor = fiaInfo.emptyTensorFlag;
-        UpdateTilingKeyMaskMode(fiaInfo);
-        UpdateTilingKeyMatmulMode(fiaInfo);
         tilingKeyInfo_.enableKvPrefix = fiaInfo.sysPrefixFlag;
         tilingKeyInfo_.enableS1OutSplit = enableS1OutSplit;
         tilingKeyInfo_.isReconstructTemp = false;
@@ -1423,18 +1366,18 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::GenTilingKey(gert::TilingCon
     uint64_t genTilingkey = GET_TPL_TILING_KEY(
         tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.pseMode, tilingKeyInfo_.quantMode,
         tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.hasRope, tilingKeyInfo_.KvLayoutType, tilingKeyInfo_.isFd,
-        tilingKeyInfo_.emptyTensor, tilingKeyInfo_.maskMode, tilingKeyInfo_.matmulMode,
-        tilingKeyInfo_.enableKvPrefix, tilingKeyInfo_.enableS1OutSplit,tilingKeyInfo_.isReconstructTemp);
+        tilingKeyInfo_.emptyTensor, tilingKeyInfo_.enableKvPrefix, tilingKeyInfo_.enableS1OutSplit,
+        tilingKeyInfo_.isReconstructTemp);
     context->SetTilingKey(genTilingkey);
     OP_LOGI(fiaInfo.opName, "The tilingkey is %llu.", genTilingkey);
     OP_LOGI(fiaInfo.opName,
             "The tilingkey param is inOutLayoutType: %llu, config: %llu, pseMode: %llu, quantMode: %llu, "
-            "hasAttenMask: %llu, hasRope: %llu, KvLayoutType: %llu, isFd: %llu, emptyTensor: %llu, PFAMask: %llu, "
-            "pFAMatMulType: %llu, enableKvPrefix: %llu, enableS1OutSplit: %llu, isReconstructTemp:%llu",
+            "hasAttenMask: %llu, hasRope: %llu, KvLayoutType: %llu, isFd: %llu, emptyTensor: %llu, "
+            "enableKvPrefix: %llu, enableS1OutSplit: %llu, isReconstructTemp:%llu",
             tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.pseMode, tilingKeyInfo_.quantMode,
             tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.hasRope, tilingKeyInfo_.KvLayoutType, tilingKeyInfo_.isFd,
-            tilingKeyInfo_.emptyTensor, tilingKeyInfo_.maskMode, tilingKeyInfo_.matmulMode,
-            tilingKeyInfo_.enableKvPrefix, tilingKeyInfo_.enableS1OutSplit,tilingKeyInfo_.isReconstructTemp);
+            tilingKeyInfo_.emptyTensor, tilingKeyInfo_.enableKvPrefix, tilingKeyInfo_.enableS1OutSplit,
+            tilingKeyInfo_.isReconstructTemp);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1558,9 +1501,6 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::GetWorkspace(gert::TilingCon
         OP_CHECK_IF(SetWorkspaceAntiQuant(fiaInfo, workspace) != ge::GRAPH_SUCCESS,
                     OP_LOGE(fiaInfo.opName, "Get workspace failed ."), return ge::GRAPH_FAILED);
 
-    } else if (fiaInfo.fullQuantMode == FiaFullQuantMode::PER_TENSOR_FULL_QUANT) {
-        OP_CHECK_IF(SetWorkspacePTQuant(fiaInfo, workspace) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(fiaInfo.opName, "Get workspace failed ."), return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(SetWorkspaceNormal(fiaInfo, workspace) != ge::GRAPH_SUCCESS,
                     OP_LOGE(fiaInfo.opName, "Get workspace failed ."), return ge::GRAPH_FAILED);
@@ -1999,8 +1939,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::ComputeTilingData(const FiaT
         inputParams.set_attenMaskCompressMode(itr->second);
     }
 
-    if ((fiaInfo.quantMode == FiaQuantMode::ANTI_QUANT && !isPFAFlag_) ||
-        fiaInfo.fullQuantMode == FiaFullQuantMode::PER_TENSOR_FULL_QUANT) {
+    if (fiaInfo.quantMode == FiaQuantMode::ANTI_QUANT && !isPFAFlag_) {
         uint8_t sparseType = 0;
         inputParams.set_sparseType(sparseType);
     } else {
@@ -2254,9 +2193,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetFATilingData(const FiaTil
 ge::graphStatus FusedInferAttentionScoreTilingImpl::SetTilingData(gert::TilingContext *context,
                                                                   const FiaTilingInfo &fiaInfo)
 {
-    if (fiaInfo.fullQuantMode == FiaFullQuantMode::PER_TENSOR_FULL_QUANT) {
-        SetFullQuantTilingData(fiaInfo);
-    } else if (!fiaInfo.emptyTensorFlag) {
+    if (!fiaInfo.emptyTensorFlag) {
         if (fiaInfo.quantMode == FiaQuantMode::ANTI_QUANT) {
             SetDequantMMTilingData(context, fiaInfo);
         }
@@ -2265,17 +2202,12 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetTilingData(gert::TilingCo
 
     int64_t cap = context->GetRawTilingData()->GetCapacity();
     OP_LOGI(fiaInfo.opName, "Tiling Data context GetCapacity: %lu.", cap);
-    if (fiaInfo.fullQuantMode == FiaFullQuantMode::PER_TENSOR_FULL_QUANT) {
-        PFAFullQuantTilingData *tiling = context_->GetTilingData<PFAFullQuantTilingData>();
-        OP_CHECK_IF(tiling == nullptr, OP_LOGE(fiaInfo.opName, "The tiling data is nullptr"), return ge::GRAPH_FAILED);
-        tiling->MigrateFromLegacyFormat(pfaTilingData_);
-    } else {
-        PrintAllTilingData(fiaInfo);
-        FlashAttentionScoreSimplifiedTilingData *tiling =
-            context->GetTilingData<FlashAttentionScoreSimplifiedTilingData>();
-        OP_CHECK_IF(tiling == nullptr, OP_LOGE(fiaInfo.opName, "The tiling data is nullptr"), return ge::GRAPH_FAILED);
-        *tiling = faRunTilingAdapter_;
-    }
+
+    PrintAllTilingData(fiaInfo);
+    FlashAttentionScoreSimplifiedTilingData *tiling =
+        context->GetTilingData<FlashAttentionScoreSimplifiedTilingData>();
+    OP_CHECK_IF(tiling == nullptr, OP_LOGE(fiaInfo.opName, "The tiling data is nullptr"), return ge::GRAPH_FAILED);
+    *tiling = faRunTilingAdapter_;
     return ge::GRAPH_SUCCESS;
 }
 
