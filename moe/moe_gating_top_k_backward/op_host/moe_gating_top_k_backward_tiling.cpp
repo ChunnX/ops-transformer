@@ -18,51 +18,41 @@
 #include "tiling_base/tiling_base.h"
 #include "platform/platform_info.h"
 #include "log/log.h"
-#include "moe_gating_top_k_tiling.h"
+#include "moe_gating_top_k_backward_tiling.h"
 
 namespace optiling {
-const static int64_t GROUP_SELECT_MODE_MAX = 0;
-const static int64_t GROUP_SELECT_MODE_SUM = 1;
-const static int64_t RENORM_NO = 0;
-const static int64_t RENORM_L1 = 1;
+// ATTR constants
+const static int64_t RENORM_TYPE_ZERO = 0;      // Re-norm before top K
 const static int64_t NORM_TYPE_SOFTMAX = 0;
 const static int64_t NORM_TYPE_SIGMOID = 1;
-const static int64_t OUT_FLAG_FALSE = 0;
-const static int64_t OUT_FLAG_TRUE = 1;
-const static size_t X_INPUT_DIMS = 2;
-const static size_t BIAS_INPUT_DIMS = 1;
-const static size_t Y_OUTPUT_DIMS = 2;
-const static size_t EXPERT_IDX_OUTPUY_DIMS = 2;
-const static size_t OUT_OUTPUT_DIMS = 2;
-const static int64_t MAX_EXPERT_COUNT = 2048;
 
-const static int64_t X_INPUT_INDEX = 0;
-const static int64_t BIAS_INPUT_INDEX = 1;
-const static int64_t Y_OUTPUT_INDEX = 0;
-const static int64_t EXPERT_IDX_OUTPUT_INDEX = 1;
-const static int64_t OUT_OUTPUT_INDEX = 2;
-const static int64_t K_ATTR_INDEX = 0;
-const static int64_t K_GROUP_ATTR_INDEX = 1;
-const static int64_t GROUP_COUNT_ATTR_INDEX = 2;
-const static int64_t GROUP_SELECT_MODE_ATTR_INDEX = 3;
-const static int64_t RENORM_ATTR_INDEX = 4;
-const static int64_t NORM_TYPE_ATTR_INDEX = 5;
-const static int64_t OUT_FLAG_ATTR_INDEX = 6;
-const static int64_t ROUTED_SCALING_FACTOR_ATTR_INDEX = 7;
-const static int64_t EPS_ATTR_INDEX = 8;
+// Tensor dimensions
+const static size_t X_NORM_INPUT_DIMS = 2;      // [m,n]
+const static size_t GRAD_Y_INPUT_DIMS = 2;      // [m,k]
+const static size_t EXPERT_IDX_INPUT_DIMS = 2;  // [m,k]
+const static size_t GRAD_X_OUTPUT_DIMS = 2;     // [m,n]
+
+// Indices
+const static int64_t X_NORM_INPUT_INDEX = 0;
+const static int64_t GRAD_Y_INPUT_INDEX = 1;
+const static int64_t EPXERT_IDX_INPUT_INDEX = 2;
+const static int64_t RENORM_ATTR_INDEX = 0;
+const static int64_t NORM_TYPE_ATTR_INDEX = 1;
+const static int64_t ROUTED_SCALING_FACTOR_ATTR_INDEX = 2;
+const static int64_t EPS_ATTR_INDEX = 3;
+
+// Tiling keys
+const static uint64_t TILING_KEY_RENORM_SIGMOID = 1;
+
+// Datatype sizes
+const static size_t SIZE_T_FLOAT32 = 4;
+const static size_t SIZE_T_FLOAT16 = 2;
+const static size_t SIZE_T_BFLOAT16 = 2;
+
+// Miscellaneous
+const static int64_t MAX_EXPERT_COUNT = 2048;   // max value for n
 const static int64_t DEFAULT_WORKSPACE_SIZE = 16777216; // 预留16M空间
-const static uint32_t DATATYPESIZE_FLOAT = 4;
-const static bool IS_LARGEST = true;
-const static bool IS_INITINDEX = false;
-const static bool IS_REUSESOURCE = false;
-const static uint64_t WITH_GROUP_CONDITION = 1;
-const static uint64_t WITHOUT_GROUP_CONDITION = 2;
-const static uint64_t MAX_IN_GROUP_CONDITION = 3;
-constexpr int32_t ROW_COUNT_PER_TASK = 1;
 
-const static uint64_t TILING_KEY_EXPERTNUM_GROUPNUM_ALIGN_HIGH_PERF = 0;
-const static uint64_t TILING_KEY_WITHOUT_GROUP = 1;
-const static uint64_t TILING_KEY_GENERALIZED = 2;
 
 inline static int64_t CeilLog4(int64_t x)
 {
