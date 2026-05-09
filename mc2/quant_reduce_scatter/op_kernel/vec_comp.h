@@ -47,9 +47,11 @@ private:
     LocalTensor<bfloat16_t> tempBf16Scale_;
     LocalTensor<float> xCastTemp_;
 
+    // x做反量化的buffer，从UB上申请一块内存地址
     TBuf<> xCastBuf_;
     TBuf<> xCastBf16Buf_;
     TBuf<> xCastfp16Buf_;
+
     TBuf<> tempBf16ScaleBuf_;
     TBuf<> castScaleBuf_;
     TBuf<> brcbBuf_;
@@ -86,12 +88,12 @@ __aicore__ inline void VectorCompute<TemplateType>::SetBlockSize(uint32_t elemen
 /**
  * @brief 将量化数据x和缩放因子scale都转换为浮点数float
  * 
- * 该函数根据输入数据类型执行不同的转换策略：
+ * 该函数根据输入数据（x）类型执行不同的转换策略：
  * 1. 对于fp浮点4类型（fp4x2_e2m1_t/fp4x2_e1m2_t）：fp4 → bfloat16 → float32
  * 2. 对于int8类型：int8 → float16 → float32
  * 3. 对于其他fp8浮点类型（fp8_e5m2/fp8_e4m2）：直接转换为float32
  * 
- * 同时处理缩放因子的转换和广播：
+ * 同时处理缩放因子（scale）的转换和广播：
  * - 对于fp8_e8m0缩放因子：fp8_e8m0 → bfloat16 → float32 → MX量化将scale广播成32
  * - 对于其他缩放因子：直接转换为float32 → KG量化将scale广播成128
  * 
