@@ -37,7 +37,8 @@ BlackList = {
         "quant_sals_indexer",
         "quant_sals_indexer_metadata",
         "sparse_flash_attention_antiquant",
-        "sparse_flash_attention_antiquant_metadata"
+        "sparse_flash_attention_antiquant_metadata",
+        "kv_quant_sparse_attn_sharedkv"
     }
 
 
