@@ -60,11 +60,6 @@ const static int64_t MIN_K = 1;                         // min value for k
 const static int64_t DEFAULT_WORKSPACE_SIZE = 16777216; // 预留16M空间
 
 
-inline static int64_t CeilLog4(int64_t x)
-{
-    return static_cast<int64_t>(std::ceil(std::log(x) / std::log(4))); // 4 for four
-}
-
 class MoeGatingTopKBackwardTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
     explicit MoeGatingTopKBackwardTilingBase(gert::TilingContext *context)
@@ -106,7 +101,6 @@ private:
     ge::graphStatus CheckAttr();
     ge::graphStatus CheckOutShape();
     void SplitRows();
-    void CalTmpBufUbSize();
 
     // Shapes
     const gert::Shape *xNormShape_ = nullptr;
@@ -137,6 +131,7 @@ private:
     int64_t eps_ = 1e-20f;
 };
 
+// todo: add opName_ for OP_CHECK_IF and OP_LOGE
 ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckInputShape()
 {
     // Check x_norm dim num
@@ -229,7 +224,11 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckAttr()
 ge::graphStatus MoeGatingTopKBackwardTilingBase::GetShapeAttrsInfo()
 {
     opName_ = context_->GetNodeName();
-    
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckDataType()
+{
     // Parse input shape info
     auto xNormShapePtr = context_->GetInputShape(X_NORM_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, xNormShapePtr);
@@ -270,8 +269,6 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::GetShapeAttrsInfo()
         return ge::GRAPH_FAILED);
 
     // todo: fill the rest
-
-    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus MoeGatingTopKBackwardTilingBase::GetPlatformInfo()
@@ -312,6 +309,11 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::DoOpTiling()
         return ret;
     }
 
+    ret = CheckDataType();
+    if (ret != ge::GRAPH_SUCCESS) {
+        return ret;
+    }
+
     SplitRows();
     return ge::GRAPH_SUCCESS;
 }
@@ -336,12 +338,16 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::PostTiling()
 uint64_t MoeGatingTopKBackwardTilingBase::GetTilingKey() const
 {
     return TILING_KEY_RENORM_SIGMOID;
-
 }
 
 void MoeGatingTopKBackwardTilingBase::Reset()
 {
     opName_ = nullptr;
+    return;
+}
+
+void MoeGatingTopKBackwardTilingBase::DumpTilingInfo()
+{
     return;
 }
 
