@@ -149,7 +149,7 @@ ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV2GradGetWorkspaceSize(
                                                  gradExpandedXOut, gradScalesOut, uniqueExecutor.get());
     auto [gradExpandedXOut_, gradScalesOut_] = result;
     bool hasNullptr = (gradExpandedXOut_ == nullptr) || (gradScalesOut_ == nullptr);
-    CHECK_RET(hasNullptr != true, ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(hasNullptr != true, ACLNN_ERR_INNER_TILING_ERROR);
 
     // copyout结果，如果出参是非连续Tensor，需要把计算完的连续Tensor转非连续
     auto viewCopyGradExpandedXOutResult = l0op::ViewCopy(gradExpandedXOut_, gradExpandedXOut, uniqueExecutor.get());

@@ -225,7 +225,7 @@ ACLNN_API aclnnStatus aclnnMoeInitRoutingV2GetWorkspaceSize(
                                                  expertTokensBeforeCapacityOutOptional);
     }
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
-    
+
     // 固定写法，将输入转换成连续的tensor
     auto xContiguous = l0op::Contiguous(x, uniqueExecutor.get());
     CHECK_RET(xContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
@@ -240,7 +240,7 @@ ACLNN_API aclnnStatus aclnnMoeInitRoutingV2GetWorkspaceSize(
                                          expertTokensBeforeCapacityOutOptional, uniqueExecutor.get());
     auto [expandedXOut_, expandedRowIdxOut_, expertTokensCountOrCumsumOut_, expertTokensBeforeCapacityOut_] = result;
     bool hasNullptr = (expandedXOut_ == nullptr) || (expandedRowIdxOut_ == nullptr);
-    CHECK_RET(hasNullptr != true, ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(hasNullptr != true, ACLNN_ERR_INNER_TILING_ERROR);
 
     // copyout结果，如果出参是非连续Tensor，需要把计算完的连续Tensor转非连续
     auto viewCopyExpandedXOutResult = l0op::ViewCopy(expandedXOut_, expandedXOut, uniqueExecutor.get());
