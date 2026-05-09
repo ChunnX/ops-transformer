@@ -1040,7 +1040,7 @@ int main() {
         numKvHeads,               // numKeyValueHeads
         0,                        // maskType
         scaleValue,               // scaleValue
-        0,                        // innerPrecise (1=fp16 softmax)
+        4,                        // innerPrecise
         0,                        // blockSize
         2147483647,               // preTokens
         2147483647,               // nextTokens
