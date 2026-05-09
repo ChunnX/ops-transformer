@@ -40,10 +40,12 @@ namespace MlaProlog {
           col 列数，对应H
  */
 template <typename T, typename GammaType, typename C, typename O, typename U>
-__aicore__ inline void RmsNormNormal(const LocalTensor<O>& outputLocal, const GlobalTensor<T>& inputGm, const LocalTensor<GammaType>& gammaLocal,
-                               const LocalTensor<float> &dequantScaleWDqLocal,
-                               const LocalTensor<float> &dequantScaleXLocal, const LocalTensor<uint8_t>& shareTmpUb,
-                               RmsNormParam& rmsNormParams) {
+__aicore__ inline void RmsNormNormal(const LocalTensor<O> &outputLocal, const GlobalTensor<T> &inputGm,
+                                     const LocalTensor<GammaType> &gammaLocal,
+                                     const LocalTensor<float> &dequantScaleWDqLocal,
+                                     const LocalTensor<float> &dequantScaleXLocal,
+                                     const LocalTensor<uint8_t> &shareTmpUb, RmsNormParam &rmsNormParams)
+{
     int64_t cnt = rmsNormParams.row * rmsNormParams.col;
     LocalTensor<C> xFp32Local = shareTmpUb.ReinterpretCast<C>();
 
@@ -59,9 +61,8 @@ __aicore__ inline void RmsNormNormal(const LocalTensor<O>& outputLocal, const Gl
         DataCopyPad(xFp32Local, inputGm, copyParams, padParams);
         SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
         WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
-        Rectangle rectangleParams {
-            (uint32_t)rmsNormParams.row,
-            (uint32_t)rmsNormParams.col,
+        Rectangle rectangleParams{
+            (uint32_t)rmsNormParams.row, (uint32_t)rmsNormParams.col,
             (uint32_t)rmsNormParams.col // columnStride
         };
         Dequant(xFp32Local, xFp32Local, dequantScaleWDqLocal, dequantScaleXLocal, rectangleParams);
@@ -71,9 +72,8 @@ __aicore__ inline void RmsNormNormal(const LocalTensor<O>& outputLocal, const Gl
         DataCopyPad(xInt32Local, inputGm, copyParams, padParams);
         SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
         WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
-        Rectangle rectangleParams {
-            (uint32_t)rmsNormParams.row,
-            (uint32_t)rmsNormParams.col,
+        Rectangle rectangleParams{
+            (uint32_t)rmsNormParams.row, (uint32_t)rmsNormParams.col,
             (uint32_t)rmsNormParams.col // columnStride
         };
         Dequant(xFp32Local, xInt32Local, dequantScaleWDqLocal, dequantScaleXLocal, rectangleParams);
@@ -123,14 +123,17 @@ __aicore__ inline void RmsNormNormal(const LocalTensor<O>& outputLocal, const Gl
  * @param enableSmoothScalesCq 表示是否有smoothGm的需求
  */
 template <typename T, typename GammaType, typename SmoothType, typename C, typename O, typename U>
-__aicore__ inline void RmsNormDynamicQuant(const LocalTensor<O>& outputLocal, const LocalTensor<U> &outputScales, const GlobalTensor<T>& inputGm, const LocalTensor<GammaType>& gammaLocal,
-                                           const LocalTensor<SmoothType>& smoothLocal, const LocalTensor<float> &dequantScaleWDqLocal,
-                                           const LocalTensor<float>& dequantScaleXLocal, 
-                                           const LocalTensor<uint8_t>& shareTmpUb,
-                                           RmsNormParam& rmsNormParams, bool enableSmoothScalesCq = true) {
+__aicore__ inline void
+RmsNormDynamicQuant(const LocalTensor<O> &outputLocal, const LocalTensor<U> &outputScales,
+                    const GlobalTensor<T> &inputGm, const LocalTensor<GammaType> &gammaLocal,
+                    const LocalTensor<SmoothType> &smoothLocal, const LocalTensor<float> &dequantScaleWDqLocal,
+                    const LocalTensor<float> &dequantScaleXLocal, const LocalTensor<uint8_t> &shareTmpUb,
+                    RmsNormParam &rmsNormParams, bool enableSmoothScalesCq = true)
+{
     int64_t cnt = rmsNormParams.row * rmsNormParams.col;
     LocalTensor<C> xFp32Local = shareTmpUb.ReinterpretCast<C>();
-    RmsNormNormal<T, GammaType, C, C, U>(xFp32Local, inputGm, gammaLocal, dequantScaleWDqLocal, dequantScaleXLocal, shareTmpUb[rmsNormParams.col * sizeof(C)], rmsNormParams);
+    RmsNormNormal<T, GammaType, C, C, U>(xFp32Local, inputGm, gammaLocal, dequantScaleWDqLocal, dequantScaleXLocal,
+                                         shareTmpUb[rmsNormParams.col * sizeof(C)], rmsNormParams);
     AscendC::PipeBarrier<PIPE_V>();
     if constexpr (std::is_same<O, fp8_e4m3fn_t>::value && std::is_same<U, fp8_e8m0_t>::value) {
         LocalTensor<bfloat16_t> xBf16Local = xFp32Local[cnt].template ReinterpretCast<bfloat16_t>();
@@ -139,11 +142,11 @@ __aicore__ inline void RmsNormDynamicQuant(const LocalTensor<O>& outputLocal, co
         LocalTensor<uint16_t> outputScalesLocal = outputScales.template ReinterpretCast<uint16_t>();
         LocalTensor<int8_t> outLocal = outputLocal.template ReinterpretCast<int8_t>();
         LocalTensor<uint8_t> tmpLocal = xBf16Local[cnt].template ReinterpretCast<uint8_t>();
-        DynamicQuantPerBlockMxfp8Vf<bfloat16_t, fp8_e4m3fn_t>(outLocal, outputScalesLocal, xBf16Local, tmpLocal, rmsNormParams.row, rmsNormParams.col);
+        DynamicQuantPerBlockMxfp8Vf<bfloat16_t, fp8_e4m3fn_t>(outLocal, outputScalesLocal, xBf16Local, tmpLocal,
+                                                              rmsNormParams.row, rmsNormParams.col);
         LocalTensor<uint8_t> scale = outputScalesLocal.template ReinterpretCast<uint8_t>();
         AscendC::PipeBarrier<PIPE_V>();
-    }
-    else {
+    } else {
         if (enableSmoothScalesCq) {
             Mul(xFp32Local, xFp32Local, smoothLocal, cnt);
         }
