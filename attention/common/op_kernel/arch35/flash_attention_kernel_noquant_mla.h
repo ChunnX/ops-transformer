@@ -608,9 +608,7 @@ __aicore__ inline bool FAKernelNoquantMla<CubeBlockType, VecBlockType>::IsLastBN
         } else {
             for (uint32_t bnIdx = bnStartIdx + 1; bnIdx < bnEndIdx; bnIdx++) {
                 uint32_t boIdx = bnIdx / constInfo.n2Size;
-                if (constInfo.actualSeqLenSize == 1 && actualSeqQlenAddr[0] != 0) {
-                    return false;
-                } else if (actualSeqQlenAddr[boIdx] != 0) {
+                if (actualSeqQlenAddr[boIdx] != 0) {
                     return false;
                 }
             }
