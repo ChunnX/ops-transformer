@@ -161,9 +161,9 @@ __global__ __aicore__ void mla_prolog_v3(
                 dequantScaleWDkvKr, quantScaleCkv, quantScaleCkr, smoothScalesCq, actualSeqLen, kNopeClipAlpha,
                 queryOut, queryRopeOut, dequantScaleQNopeOut, queryNormOut, dequantScaleQNormOut, workspace);
         op.Process();
-    } 
+    }
 #if __CCE_AICORE__ == 310
-    else if constexpr (static_cast<SCENARIO>(Scenario) == SCENARIO::QUANT && 
+    else if constexpr (static_cast<SCENARIO>(Scenario) == SCENARIO::QUANT &&
                          static_cast<QUANT_MODE>(QuantMode) == QUANT_MODE::MXFP8_FULL_QUANT_KV_NO_QUANT) {
         if constexpr (splitMMode == SPLIT_M_MODE::ENABLED) {
             MlaPrologV3SplitM<MLAPType<FP8E4M3, FP8E4M3, bfloat16_t, FP8E8M0, cacheMode,
