@@ -117,6 +117,20 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
         constexpr uint64_t SYS_WORKSPACE_SIZE = 16UL * 1024 * 1024;
         GM_ADDR deterBuffer = workspaceGM + SYS_WORKSPACE_SIZE;
 
+        // Deterministic branch must use GmmKernelDeterministic's own GMMTiling type.
+        // GMMTiling is a nested struct inside the kernel template, so different kernel
+        // instantiations produce incompatible GMMTiling types even with identical layout.
+        using GMMTilingDeterministic = typename GmmKernelDeterministic::GMMTiling;
+
+        GMMTilingDeterministic gmmParamsDeter{gmmFinalizeRoutingQuantParams_.groupNum,
+                                              gmmFinalizeRoutingQuantParams_.groupListType,
+                                              matmulTiling_.baseM,
+                                              matmulTiling_.baseN,
+                                              matmulTiling_.baseK,
+                                              gmmFinalizeRoutingQuantParams_.hasBias};
+
+        gmmParamsDeter.matmulTiling = &matmulTiling_;
+
         // Use deterministic kernel with SequentialWrite epilogue (no scatter, no AtomicAdd)
         ParamsDeterministic params = {
             {1, 1, 1, 1},
@@ -132,7 +146,7 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
              gmmFinalizeRoutingQuantParams_.residualScale},
             {deterBuffer, w_scale, x_scale, bias, logit, row_index,  // Epilogue: y -> workspace (sequential write)
              matmulTiling_.baseM, matmulTiling_.baseN},
-            gmmParams};
+            gmmParamsDeter};
 
         GmmKernelDeterministic gmm;
         gmm(params);
