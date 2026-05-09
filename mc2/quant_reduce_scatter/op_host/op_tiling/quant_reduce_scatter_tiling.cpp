@@ -103,7 +103,7 @@ static void SetXPerBlock(gert::TilingContext *context, QuantReduceScatterTilingD
 {
     (void)context;
     constexpr uint32_t TARGET_ITER = 3U;   // 与 QAR 对称
-    constexpr uint32_t MIN_BLOCK = 2048U;  // QRS comm-bound：per_core 太小公式失效，MIN 兜到 2048（与 stage2 cap 等效，实测最优）
+    constexpr uint32_t MIN_BLOCK = 2048U;  // QRS comm-bound：per_core 太小公式失效，MIN 兜到 2048（512/2048/4096 三点扫参，2048 最优）
     constexpr uint32_t ALIGN_BLOCK = 1024U;  // 与 kernel X_BLOCK_ALIGN_NUM 对齐
     uint64_t xNums = tilingData.quantReduceScatterTilingInfo.bs * tilingData.quantReduceScatterTilingInfo.hiddenSize;
     uint64_t aivNum = tilingData.quantReduceScatterTilingInfo.aivNum;

@@ -104,7 +104,7 @@ static void SetXPerBlock(gert::TilingContext *context, QuantAllReduceTilingData 
     (void)context;
     (void)runInfo;
     constexpr uint32_t TARGET_ITER = 3U;  // stage3：T=3 命中 DoubleBuffer 甜点（实测优于 T=2/4/6）
-    constexpr uint32_t MIN_BLOCK = 1024U;  // 与 kernel X_BLOCK_ALIGN_NUM 对齐
+    constexpr uint32_t MIN_BLOCK = 2048U;  // 与 QRS MIN 统一，QAR per_core 够大不会被 MIN 主导
     constexpr uint32_t ALIGN_BLOCK = 1024U;
     uint64_t xNums = tilingData.quantAllReduceTilingInfo.bs * tilingData.quantAllReduceTilingInfo.hiddenSize;
     uint64_t aivNum = tilingData.quantAllReduceTilingInfo.aivNum;
