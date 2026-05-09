@@ -713,7 +713,8 @@ static ge::graphStatus InferShape4MoeInitRoutingV3(gert::InferShapeContext *cont
     if (quantMode == QuantMode::INT4_DYNAMIC) {
         int64_t colsCheck = xShape->GetDimNum() == DIM_ONE ? NEG_ONE : xShape->GetDim(1);
         OP_CHECK_IF(colsCheck > 0 && colsCheck % 2 != 0,
-                    OP_LOGE(context, "When quant_mode=10 (INT4 dynamic), H (cols) must be even, but got %ld.", colsCheck),
+                    OP_LOGE(context, "When quant_mode=10 (INT4 dynamic), "
+                            "H (cols) must be even, but got %ld.", colsCheck),
                     return ge::GRAPH_FAILED);
     }
 
