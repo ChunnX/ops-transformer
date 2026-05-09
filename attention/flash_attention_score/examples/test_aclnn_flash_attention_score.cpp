@@ -18,6 +18,7 @@
 #include <cstdint>
 #include <cmath>
 #include "acl/acl.h"
+#include "aclnn/opdev/fp16_t.h"
 #include "aclnnop/aclnn_flash_attention_score.h"
 
 #define CHECK_RET(cond, return_expr) \
@@ -40,14 +41,25 @@ int64_t GetShapeSize(const std::vector<int64_t>& shape) {
   return shapeSize;
 }
 
-void PrintOutResult(std::vector<int64_t> &shape, void** deviceAddr) {
+void PrintOutResultFp16(std::vector<int64_t> &shape, void** deviceAddr, int64_t printNum = 10) {
+  auto size = GetShapeSize(shape);
+  std::vector<op::fp16_t> resultData(size, 0.0f);
+  auto ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(op::fp16_t),
+                         *deviceAddr, size * sizeof(op::fp16_t), ACL_MEMCPY_DEVICE_TO_HOST);
+  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return);
+  for (int64_t i = 0; i < size && i < printNum; i++) {
+    LOG_PRINT("result[%ld] is: %f\n", i, static_cast<float>(resultData[i]));
+  }
+}
+
+void PrintOutResultFp32(std::vector<int64_t> &shape, void** deviceAddr, int64_t printNum = 10) {
   auto size = GetShapeSize(shape);
   std::vector<float> resultData(size, 0);
-  auto ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]),
-                         *deviceAddr, size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
+  auto ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(float),
+                         *deviceAddr, size * sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return);
-  for (int64_t i = 0; i < size; i++) {
-    LOG_PRINT("mean result[%ld] is: %f\n", i, resultData[i]);
+  for (int64_t i = 0; i < size && i < printNum; i++) {
+    LOG_PRINT("result[%ld] is: %f\n", i, resultData[i]);
   }
 }
 
@@ -97,21 +109,21 @@ int main() {
   int64_t B = 1;
   int64_t N1 = 1;
   int64_t N2 = 1;
-  int64_t S1 = 256;
-  int64_t S2 = 256;
+  int64_t S1 = 1048576;
+  int64_t S2 = 1048576;
   int64_t D = 128;
   int64_t H1 = N1 * D;
   int64_t H2 = N2 * D;
 
   int64_t q_size = S1 * B * H1;
   int64_t kv_size = S2 * B * H2;
-  int64_t atten_mask_size = S1 * S2;
+  // int64_t atten_mask_size = S1 * S2;  // 不使用掩码，无需分配 O(S²) 内存
   int64_t softmax_size = B * N1 * S1 * 8;
 
   std::vector<int64_t> qShape = {S1, B, H1};
   std::vector<int64_t> kShape = {S2, B, H2};
   std::vector<int64_t> vShape = {S2, B, H2};
-  std::vector<int64_t> attenmaskShape = {S1, S2};
+  // std::vector<int64_t> attenmaskShape = {S1, S2};  // 不使用掩码
 
   std::vector<int64_t> attentionOutShape = {S1, B, H1};
   std::vector<int64_t> softmaxMaxShape = {B, N1, S1, 8};
@@ -120,7 +132,7 @@ int main() {
   void* qDeviceAddr = nullptr;
   void* kDeviceAddr = nullptr;
   void* vDeviceAddr = nullptr;
-  void* attenmaskDeviceAddr = nullptr;
+  // void* attenmaskDeviceAddr = nullptr;  // 不使用掩码
   void* attentionOutDeviceAddr = nullptr;
   void* softmaxMaxDeviceAddr = nullptr;
   void* softmaxSumDeviceAddr = nullptr;
@@ -131,29 +143,30 @@ int main() {
   aclTensor* pse = nullptr;
   aclTensor* dropMask = nullptr;
   aclTensor* padding = nullptr;
-  aclTensor* attenmask = nullptr;
+  aclTensor* attenmask = nullptr;  // 不使用掩码，传 nullptr 表示全计算（sparseMode=0 + attenmask=nullptr）
   aclTensor* attentionOut = nullptr;
   aclTensor* softmaxMax = nullptr;
   aclTensor* softmaxSum = nullptr;
   aclTensor* softmaxOut = nullptr;
 
-  std::vector<float> qHostData(q_size, 1.0);
-  std::vector<float> kHostData(kv_size, 1.0);
-  std::vector<float> vHostData(kv_size, 1.0);
-  std::vector<uint8_t> attenmaskHostData(atten_mask_size, 0);
-  std::vector<float> attentionOutHostData(q_size, 0);
-  std::vector<float> softmaxMaxHostData(softmax_size, 3.0); 
+  std::vector<op::fp16_t> qHostData(q_size, 1.0f);
+  std::vector<op::fp16_t> kHostData(kv_size, 1.0f);
+  std::vector<op::fp16_t> vHostData(kv_size, 1.0f);
+  // std::vector<uint8_t> attenmaskHostData(atten_mask_size, 0);  // 不使用掩码
+  std::vector<op::fp16_t> attentionOutHostData(q_size, 0.0f);
+  std::vector<float> softmaxMaxHostData(softmax_size, 3.0);
   std::vector<float> softmaxSumHostData(softmax_size, 3.0);
 
-  ret = CreateAclTensor(qHostData, qShape, &qDeviceAddr, aclDataType::ACL_FLOAT, &q);
+  ret = CreateAclTensor(qHostData, qShape, &qDeviceAddr, aclDataType::ACL_FLOAT16, &q);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(kHostData, kShape, &kDeviceAddr, aclDataType::ACL_FLOAT, &k);
+  ret = CreateAclTensor(kHostData, kShape, &kDeviceAddr, aclDataType::ACL_FLOAT16, &k);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(vHostData, vShape, &vDeviceAddr, aclDataType::ACL_FLOAT, &v);
+  ret = CreateAclTensor(vHostData, vShape, &vDeviceAddr, aclDataType::ACL_FLOAT16, &v);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(attenmaskHostData, attenmaskShape, &attenmaskDeviceAddr, aclDataType::ACL_UINT8, &attenmask);
-  CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(attentionOutHostData, attentionOutShape , &attentionOutDeviceAddr, aclDataType::ACL_FLOAT, &attentionOut);
+  // 不使用掩码，跳过 attenmask tensor 的创建
+  // ret = CreateAclTensor(attenmaskHostData, attenmaskShape, &attenmaskDeviceAddr, aclDataType::ACL_UINT8, &attenmask);
+  // CHECK_RET(ret == ACL_SUCCESS, return ret);
+  ret = CreateAclTensor(attentionOutHostData, attentionOutShape, &attentionOutDeviceAddr, aclDataType::ACL_FLOAT16, &attentionOut);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(softmaxMaxHostData, softmaxMaxShape, &softmaxMaxDeviceAddr, aclDataType::ACL_FLOAT, &softmaxMax);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -173,7 +186,7 @@ int main() {
   int64_t headNum = 1;
   int64_t innerPrecise = 0;
   int64_t sparseMode = 0;
-  int64_t pseType = 1;
+  int64_t pseType = 0;
   char layOut[5] = {'S', 'B', 'H', 0};
   
   // 3. 调用CANN算子库API，需要修改为具体的Api名称
@@ -203,15 +216,15 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
   
   // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
-  PrintOutResult(attentionOutShape, &attentionOutDeviceAddr);
-  PrintOutResult(softmaxMaxShape, &softmaxMaxDeviceAddr);
-  PrintOutResult(softmaxSumShape, &softmaxSumDeviceAddr);
+  PrintOutResultFp16(attentionOutShape, &attentionOutDeviceAddr);
+  PrintOutResultFp32(softmaxMaxShape, &softmaxMaxDeviceAddr);
+  PrintOutResultFp32(softmaxSumShape, &softmaxSumDeviceAddr);
   
   // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
   aclDestroyTensor(q);
   aclDestroyTensor(k);
   aclDestroyTensor(v);
-  aclDestroyTensor(attenmask);
+  // aclDestroyTensor(attenmask);  // 不使用掩码
   aclDestroyTensor(attentionOut);
   aclDestroyTensor(softmaxMax);
   aclDestroyTensor(softmaxSum);
@@ -223,7 +236,7 @@ int main() {
   aclrtFree(qDeviceAddr);
   aclrtFree(kDeviceAddr);
   aclrtFree(vDeviceAddr);
-  aclrtFree(attenmaskDeviceAddr);
+  // aclrtFree(attenmaskDeviceAddr);  // 不使用掩码
   aclrtFree(attentionOutDeviceAddr);
   aclrtFree(softmaxMaxDeviceAddr);
   aclrtFree(softmaxSumDeviceAddr);
