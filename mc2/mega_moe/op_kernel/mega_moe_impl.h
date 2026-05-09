@@ -211,7 +211,7 @@ template <typename ElementA, typename ElementB, typename ElementC, typename Elem
 __aicore__ inline void GroupMatmul2(
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
     const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom2, uint32_t groupIdx,
-    uint16_t& pingpongIdx, int32_t rankId)
+    uint16_t& pingpongIdx, int32_t rankId, LocalTensor<ElementC> combineUbTensor)
 {
 
     uint32_t m = Get<M_VALUE>(problemShape);
@@ -220,6 +220,14 @@ __aicore__ inline void GroupMatmul2(
 
     uint32_t blockNum = GetBlockNum();
     uint32_t blockIdx = GetBlockIdx() / GetTaskRation();
+    uint32_t subBlockIdx = GetSubBlockIdx();
+
+    // Route: AIC(matmul) on subBlock 0, AIV(combine) on subBlock 1
+    if constexpr (g_coreType == AscendC::AIC) {
+        if (subBlockIdx != 0) return;
+    } else {
+        if (subBlockIdx != 1) return;
+    }
 
     GlobalTensor<int32_t> groupFlagListGm;
     groupFlagListGm.SetGlobalBuffer((__gm__ int32_t*)gmmAddrInfo.groupFlagList);
@@ -350,13 +358,10 @@ __aicore__ inline void GroupMatmul2(
             }
             AscendC::AtomicAdd((__gm__ int32_t*)rowReadyFlags.GetPhyAddr() + blockIdx, int32_t(-1));
 
-            // 创建UB buffer用于GM→UB→GM
-            int64_t ubOffset = 0;
-            LocalTensor<bfloat16_t> ubBuffer = LocalTensor<bfloat16_t>(TPosition::VECIN, ubOffset, L1_TILE_M * L1_TILE_N);
-            // 从GM搬tile到UB，再从UB发送到远端GM
+            // 复用dispatch的CopyTempBuf_作为combine UB（dispatch与combine不并行）
             MegaMoeCombineImpl::CombineTile<bfloat16_t, decltype(actualShape)>(
                 groupIdx, mLoc, nLoc, n, rankId,
-                gmmAddrInfo.gmm2OutGlobal, params, ubBuffer, actualShape);
+                gmmAddrInfo.gmm2OutGlobal, params, combineUbTensor, actualShape);
         }
     }
 
