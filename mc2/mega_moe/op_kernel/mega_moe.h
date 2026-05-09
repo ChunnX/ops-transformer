@@ -537,8 +537,11 @@ __aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGroupParams(uint3
         splitValue = static_cast<uint64_t>(groupList_.GetValue(expertIdx));
     }
     Get<M_VALUE>(problemShape_) = splitValue;
+    if (Get<IDX_M_OFFSET>(baseOffset_) + Get<M_VALUE>(problemShape_) > maxOutputSize_) {
+        Get<M_VALUE>(problemShape_) = maxOutputSize_ - Get<IDX_M_OFFSET>(baseOffset_);
+    }
     // split_m，when m=0, skip
-    if (Get<M_VALUE>(problemShape_) == 0) {
+    if (Get<M_VALUE>(problemShape_) <= 0) {
         return false;
     }
     return true;
@@ -603,7 +606,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetTokenPerExpert()
     SyncFunc<AscendC::HardEvent::MTE3_V>();
     LocalTensor<int32_t> tmp = ResetTokenBuf_.Get<int32_t>();
     Duplicate(tmp, 0, num);
-    SyncFunc<AscendC::HardEvent::V_MTE3>();
+    PipeBarrier<PIPE_ALL>(); // 保证前侧combine做完了再清理
     DataCopy(tokenPerExpertWin_, tmp, num);
 }
 
@@ -750,8 +753,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         }
     }
     EndGMM2Sync();
-    PipeBarrier<PIPE_ALL>();
     SyncAll<true>();
+
     // 6. unpermute & 清理win区上放置token的位置
     if constexpr(g_coreType == AIV) {
         ArgSortExpandedRowIdx();
