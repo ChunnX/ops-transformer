@@ -202,6 +202,7 @@ struct RunInfo {
     bool isActualLenDimsKVNull; /* 判断是否有actualseq_kv */ \
     bool isSoftmaxLseEnable; \
     bool rsvd1; \
+    bool returnSoftmaxLse; \
     uint32_t oriSparseBlockCount; \
     uint32_t cmpSparseBlockCount; \
     uint32_t actualSeqLenSize; /* 用户输入的actualseq的长度 */ \
