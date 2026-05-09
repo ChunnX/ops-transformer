@@ -184,7 +184,7 @@ inline void CollectB4ShapeInfo(const at::Tensor &at_tensor,
             wrapperStride[i] = wrapperStride[i] * FP4_IN_INT8;
         }
     } else {
-        TORCH_CHECK(false, "unsupported tensor size() in 4-bit dtype.", OPS_ERROR(ErrCode::VALUE));
+        TORCH_CHECK(false, "unsupported tensor size() in 4-bit dtype.");
     }
 }
 
