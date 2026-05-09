@@ -146,11 +146,11 @@ struct GmLayoutParams<GmFormat::BN2GS1S2> {
 };
 
 // ----------------------------------------------OffsetCalculator--------------------------------
-template <GmFormat FORMAT, FormatCategory CATEGORY, typename ACTLEN_T>
+template <GmFormat FORMAT, FormatCategory CATEGORY, typename ACTLEN_T, bool isCuSeq = false>
 struct OffsetCalculatorImpl {};
 
-template <GmFormat FORMAT, typename ACTLEN_T>
-struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_Q_OUT_BNGSD, ACTLEN_T> {
+template <GmFormat FORMAT, typename ACTLEN_T, bool isCuSeq = false>
+struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_Q_OUT_BNGSD, ACTLEN_T, isCuSeq> {
     GmLayout<FORMAT> gmLayout;
     ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, ACTLEN_T> actualSeqLensQParser;
     bool isQPaddingFlag = false;
@@ -238,10 +238,11 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_Q_OUT_BNGSD, ACTLEN_T> {
     }
 };
 
-template <GmFormat FORMAT, typename ACTLEN_T>
-struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_Q_OUT_TND, ACTLEN_T> {
+template <GmFormat FORMAT, typename ACTLEN_T, bool isCuSeq = false>
+struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_Q_OUT_TND, ACTLEN_T, isCuSeq> {
     GmLayout<FORMAT> gmLayout;
-    TNDSeqLensParser<ACTLEN_T> actualSeqLensQParser;
+    std::conditional_t<isCuSeq, CuSeqLensParser<ACTLEN_T>, 
+                       ActualSeqLensParser<ActualSeqLensMode::ACCUM, ACTLEN_T>> actualSeqLensQParser;
 
     __aicore__ inline OffsetCalculatorImpl() = default;
 
@@ -307,8 +308,8 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_Q_OUT_TND, ACTLEN_T> {
     }
 };
 
-template <GmFormat FORMAT, typename ACTLEN_T>
-struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_BNSD, ACTLEN_T> {
+template <GmFormat FORMAT, typename ACTLEN_T, bool isCuSeq = false>
+struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_BNSD, ACTLEN_T, isCuSeq> {
     GmLayout<FORMAT> gmLayout;
     ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, ACTLEN_T> actualSeqLensKVParser;
     bool isKvPaddingFlag = false;
@@ -386,10 +387,11 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_BNSD, ACTLEN_T> {
     }
 };
 
-template <GmFormat FORMAT, typename ACTLEN_T>
-struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_TND, ACTLEN_T> {
+template <GmFormat FORMAT, typename ACTLEN_T, bool isCuSeq = false>
+struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_TND, ACTLEN_T, isCuSeq> {
     GmLayout<FORMAT> gmLayout;
-    TNDSeqLensParser<ACTLEN_T> actualSeqLensKVParser;
+    std::conditional_t<isCuSeq, CuSeqLensParser<ACTLEN_T>, 
+                       ActualSeqLensParser<ActualSeqLensMode::ACCUM, ACTLEN_T>> actualSeqLensKVParser;
 
     __aicore__ inline OffsetCalculatorImpl() = default;
 
@@ -445,8 +447,8 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_TND, ACTLEN_T> {
     }
 };
 
-template <GmFormat FORMAT, typename ACTLEN_T>
-struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_PA_BNBD, ACTLEN_T> {
+template <GmFormat FORMAT, typename ACTLEN_T, bool isCuSeq = false>
+struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_PA_BNBD, ACTLEN_T, isCuSeq> {
     GmLayout<FORMAT> gmLayout;
     BlockTableParser blockTableParser;
 
@@ -507,8 +509,8 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_PA_BNBD, ACTLEN_T> {
     }
 };
 
-template <GmFormat FORMAT, typename ACTLEN_T>
-struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_PA_NZ, ACTLEN_T> {
+template <GmFormat FORMAT, typename ACTLEN_T, bool isCuSeq = false>
+struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_PA_NZ, ACTLEN_T, isCuSeq> {
     GmLayout<FORMAT> gmLayout;
     BlockTableParser blockTableParser;
 
@@ -583,8 +585,8 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_PA_NZ, ACTLEN_T> {
 };
 
 // post_quant
-template <GmFormat FORMAT, typename ACTLEN_T>
-struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_POST_QUANT_NGD, ACTLEN_T> {
+template <GmFormat FORMAT, typename ACTLEN_T, bool isCuSeq = false>
+struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_POST_QUANT_NGD, ACTLEN_T, isCuSeq> {
     GmLayout<FORMAT> gmLayout;
 
     __aicore__ inline OffsetCalculatorImpl() = default;
@@ -634,8 +636,8 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_POST_QUANT_NGD, ACTLEN_T>
 };
 
 //antiquant
-template <GmFormat FORMAT, typename ACTLEN_T>
-struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_ANTIQ_ND, ACTLEN_T> {
+template <GmFormat FORMAT, typename ACTLEN_T, bool isCuSeq = false>
+struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_ANTIQ_ND, ACTLEN_T, isCuSeq> {
     GmLayout<FORMAT> gmLayout;
 
     __aicore__ inline OffsetCalculatorImpl() = default;
@@ -674,8 +676,8 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_ANTIQ_ND, ACTLEN_T> {
     }
 };
 
-template <GmFormat FORMAT, typename ACTLEN_T>
-struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_ANTIQ_BS, ACTLEN_T> {
+template <GmFormat FORMAT, typename ACTLEN_T, bool isCuSeq = false>
+struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_ANTIQ_BS, ACTLEN_T, isCuSeq> {
     GmLayout<FORMAT> gmLayout;
 
     __aicore__ inline OffsetCalculatorImpl() = default;
@@ -714,8 +716,8 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_ANTIQ_BS, ACTLEN_T> {
     }
 };
 
-template <GmFormat FORMAT, typename ACTLEN_T>
-struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_ANTIQ_BNS, ACTLEN_T> {
+template <GmFormat FORMAT, typename ACTLEN_T, bool isCuSeq = false>
+struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_ANTIQ_BNS, ACTLEN_T, isCuSeq> {
     GmLayout<FORMAT> gmLayout;
 
     __aicore__ inline OffsetCalculatorImpl() = default;
@@ -764,8 +766,8 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_ANTIQ_BNS, ACTLEN_T> {
     }
 };
 
-template <GmFormat FORMAT, typename ACTLEN_T>
-struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_ANTIQ_BnBs, ACTLEN_T> {
+template <GmFormat FORMAT, typename ACTLEN_T, bool isCuSeq = false>
+struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_ANTIQ_BnBs, ACTLEN_T, isCuSeq> {
     GmLayout<FORMAT> gmLayout;
     BlockTableParser blockTableParser;
 
@@ -808,8 +810,8 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_ANTIQ_BnBs, ACTLEN_T> {
     }
 };
 
-template <GmFormat FORMAT, typename ACTLEN_T>
-struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_ANTIQ_BnNBs, ACTLEN_T> {
+template <GmFormat FORMAT, typename ACTLEN_T, bool isCuSeq = false>
+struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_ANTIQ_BnNBs, ACTLEN_T, isCuSeq> {
     GmLayout<FORMAT> gmLayout;
     BlockTableParser blockTableParser;
 
@@ -863,8 +865,8 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_ANTIQ_BnNBs, ACTLEN_T> {
 };
 
 //PSE
-template <GmFormat FORMAT, typename ACTLEN_T>
-struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_PSE_BN2GS1S2, ACTLEN_T> {
+template <GmFormat FORMAT, typename ACTLEN_T, bool isCuSeq = false>
+struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_PSE_BN2GS1S2, ACTLEN_T, isCuSeq> {
     GmLayout<FORMAT> gmLayout;
     ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, ACTLEN_T> actualSeqLensQParser;
     bool isQPaddingFlag = false;
@@ -947,8 +949,8 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_PSE_BN2GS1S2, ACTLEN_T> {
     }
 };
 
-template <GmFormat FORMAT, typename ACTLEN_T = uint64_t>
-struct OffsetCalculator : public OffsetCalculatorImpl<FORMAT, GmLayoutParams<FORMAT>::CATEGORY, ACTLEN_T> {
+template <GmFormat FORMAT, typename ACTLEN_T = uint64_t, bool isCuSeq = false>
+struct OffsetCalculator : public OffsetCalculatorImpl<FORMAT, GmLayoutParams<FORMAT>::CATEGORY, ACTLEN_T, isCuSeq> {
 };
 
 #endif

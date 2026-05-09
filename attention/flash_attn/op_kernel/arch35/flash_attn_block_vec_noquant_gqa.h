@@ -1145,7 +1145,7 @@ public:
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if (outLayout == LayOutTypeEnum::LAYOUT_TND) {
             constexpr GmFormat OUT_FORMAT = GmFormat::TNGD;
-            FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
+            FaGmTensor<OUTPUT_T, OUT_FORMAT, uint64_t, true> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV,
                                               actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
@@ -1153,7 +1153,7 @@ public:
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if (outLayout == LayOutTypeEnum::LAYOUT_NTD) {
             constexpr GmFormat OUT_FORMAT = GmFormat::NGTD;
-            FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
+            FaGmTensor<OUTPUT_T, OUT_FORMAT, uint64_t, true> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV,
                                               actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
@@ -1556,12 +1556,12 @@ public:
                                       constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
                 DealActSeqLenIsZero<GmFormat::NGBSD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
             } else if (outLayout == LayOutTypeEnum::LAYOUT_TND) {
-                OffsetCalculator<GmFormat::TNGD> offsetCalculator;
+                OffsetCalculator<GmFormat::TNGD, uint64_t, true> offsetCalculator;
                 offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, actualSeqLengthsGmQ,
                                       constInfo.actualSeqLenSize);
                 DealActSeqLenIsZero<GmFormat::TNGD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
             } else if (outLayout == LayOutTypeEnum::LAYOUT_NTD) {
-                OffsetCalculator<GmFormat::NGTD> offsetCalculator;
+                OffsetCalculator<GmFormat::NGTD, uint64_t, true> offsetCalculator;
                 offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, actualSeqLengthsGmQ,
                                       constInfo.actualSeqLenSize);
                 DealActSeqLenIsZero<GmFormat::NGTD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);

@@ -144,13 +144,13 @@ public:
 
     typename std::conditional<
         (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND || LAYOUT_Q == LayOutTypeEnum::LAYOUT_NTD),
-        TNDSeqLensParser<uint64_t>,
+        CuSeqLensParser<uint64_t>,
         ActualSeqLensParser<Q_MODE>
     >::type qActSeqLensParser;
     
     typename std::conditional<
         (LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND || LAYOUT_KV == LayOutTypeEnum::LAYOUT_NTD),
-        TNDSeqLensParser<uint64_t>,
+        CuSeqLensParser<uint64_t>,
         ActualSeqLensParser<KV_MODE>
     >::type kvActSeqLensParser;
 

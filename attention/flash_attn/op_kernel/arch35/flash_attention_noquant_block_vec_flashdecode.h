@@ -128,13 +128,13 @@ protected:
     
     typename std::conditional<
         (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD),
-        TNDSeqLensParser<uint64_t>,
+        CuSeqLensParser<uint64_t>,
         ActualSeqLensParser<Q_MODE>
     >::type qActSeqLensParser;
     
     typename std::conditional<
         (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD),
-        TNDSeqLensParser<uint64_t>,
+        CuSeqLensParser<uint64_t>,
         ActualSeqLensParser<KV_MODE>
     >::type kvActSeqLensParser;
 

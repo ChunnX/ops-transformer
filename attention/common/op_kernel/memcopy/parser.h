@@ -35,11 +35,11 @@ template <ActualSeqLensMode MODE, typename ACTLEN_T = uint64_t>
 class ActualSeqLensParser {
 };
 
-// ----------------------------------------------TNDSeqLensParser--------------------------------
+// ----------------------------------------------CuSeqLensParser--------------------------------
 template <typename ACTLEN_T = uint64_t>
-class TNDSeqLensParser {
+class CuSeqLensParser {
 public:
-    __aicore__ inline TNDSeqLensParser() = default;
+    __aicore__ inline CuSeqLensParser() = default;
 
     __aicore__ inline void Init(GlobalTensor<ACTLEN_T> actualSeqLengthsGm, uint32_t actualLenDims,
                                 uint64_t defaultVal = 0)
