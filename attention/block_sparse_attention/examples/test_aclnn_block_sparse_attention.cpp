@@ -170,6 +170,7 @@ void FreeResource(aclTensor *query, aclTensor *key, aclTensor *value, aclTensor 
 }
 
 enum SparsityMode {
+    SPARSITY_NONE = 0,    // 0% 稀疏度：所有 blocks 全部激活（全稠密）
     SPARSITY_HIGH = 1,    // ~99.8% 稀疏度：仅对角线+次对角线
     SPARSITY_MEDIUM = 2,  // ~50% 稀疏度：下三角 causal mask
     SPARSITY_LOW = 3      // ~25% 稀疏度：75% blocks 激活
@@ -182,6 +183,14 @@ void FillBlockSparseMask(std::vector<int8_t>& mask, int32_t batch, int32_t numHe
         for (int32_t h = 0; h < numHeads; h++) {
             int64_t baseOffset = ((int64_t)b * numHeads + h) * qBlockNum * kvBlockNum;
             switch (mode) {
+            case SPARSITY_NONE:
+                for (int32_t i = 0; i < qBlockNum; i++) {
+                    int64_t rowOffset = baseOffset + (int64_t)i * kvBlockNum;
+                    for (int32_t j = 0; j < kvBlockNum; j++) {
+                        mask[rowOffset + j] = 1;
+                    }
+                }
+                break;
             case SPARSITY_HIGH:
                 for (int32_t i = 0; i < qBlockNum; i++) {
                     int64_t rowOffset = baseOffset + (int64_t)i * kvBlockNum;
@@ -222,10 +231,11 @@ int main() {
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
     // ===================== 稀疏度模式开关 =====================
+    // SPARSITY_NONE   (0): 0% 稀疏度，所有 blocks 全部激活（全稠密，等价于标准 attention）
     // SPARSITY_HIGH   (1): ~99.8% 稀疏度，仅对角线+次对角线激活
     // SPARSITY_MEDIUM (2): ~50% 稀疏度，下三角 causal mask
     // SPARSITY_LOW    (3): ~25% 稀疏度，75% blocks 激活
-    SparsityMode sparsityMode = SPARSITY_MEDIUM;
+    SparsityMode sparsityMode = SPARSITY_NONE;
     // =========================================================
 
     // 2. 设置参数
