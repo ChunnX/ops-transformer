@@ -13,8 +13,8 @@
  * \brief Checker for PagedAttention parameters (文档约束: Paged Attention参数组)
  */
 
-#ifndef PAGED_ATTENTION_CHECKER_H
-#define PAGED_ATTENTION_CHECKER_H
+#ifndef FLASH_ATTN_PAGED_ATTENTION_CHECKER_H
+#define FLASH_ATTN_PAGED_ATTENTION_CHECKER_H
 
 #include <map>
 #include <numeric>
@@ -22,6 +22,7 @@
 #include "base_checker.h"
 
 namespace optiling {
+namespace flash_attn {
 
 class PagedAttentionChecker : public FABaseChecker {
 public:
@@ -33,5 +34,6 @@ public:
     ge::graphStatus CheckMultiPara(const FaTilingInfo &faInfo) override;
 };
 
+} // namespace flash_attn
 } // namespace optiling
-#endif // PAGED_ATTENTION_CHECKER_H
+#endif // FLASH_ATTN_PAGED_ATTENTION_CHECKER_H

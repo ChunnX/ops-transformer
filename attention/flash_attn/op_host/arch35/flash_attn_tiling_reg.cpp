@@ -39,7 +39,7 @@ ge::graphStatus TilingFlashAttnReg(gert::TilingContext *context)
         return ge::GRAPH_FAILED;
     }
 
-    FAChecker faChecker;
+    flash_attn::FAChecker faChecker;
     faChecker.Init(faInfo);
     // Check函数只做校验，不能修改faInfo中的信息
     // if (faChecker.Process(faInfo) != ge::GRAPH_SUCCESS) {

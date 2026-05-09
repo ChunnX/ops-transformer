@@ -13,12 +13,13 @@
  * \brief Checker for metadata parameter (文档: INT32, shape=(max_schedule_size,))
  */
 
-#ifndef METADATA_CHECKER_H
-#define METADATA_CHECKER_H
+#ifndef FLASH_ATTN_METADATA_CHECKER_H
+#define FLASH_ATTN_METADATA_CHECKER_H
 
 #include "./base_checker.h"
 
 namespace optiling {
+namespace flash_attn {
 class MetadataChecker : public FABaseChecker {
 public:
     MetadataChecker() = default;
@@ -26,5 +27,6 @@ public:
 
     ge::graphStatus CheckSinglePara(const FaTilingInfo &faInfo) override;
 };
+} // namespace flash_attn
 } // namespace optiling
-#endif // METADATA_CHECKER_H
+#endif // FLASH_ATTN_METADATA_CHECKER_H

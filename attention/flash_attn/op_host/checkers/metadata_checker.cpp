@@ -23,6 +23,7 @@
 #include "metadata_checker.h"
 
 namespace optiling {
+namespace flash_attn {
 using std::map;
 using std::pair;
 using std::string;
@@ -61,4 +62,5 @@ ge::graphStatus MetadataChecker::CheckSinglePara(const FaTilingInfo &faInfo)
     return ge::GRAPH_SUCCESS;
 }
 
+} // namespace flash_attn
 } // namespace optiling

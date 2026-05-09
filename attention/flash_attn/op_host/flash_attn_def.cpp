@@ -25,24 +25,21 @@ public:
     {
         this->Input("q")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16,
-                       ge::DT_FLOAT16, ge::DT_BF16})
-            .FormatList({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND})
+            .DataType({ge::DT_FLOAT16, ge::DT_BF16})
+            .FormatList({ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("k")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16,
-                       ge::DT_FLOAT16, ge::DT_BF16})
-            .FormatList({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND})
+            .DataType({ge::DT_FLOAT16, ge::DT_BF16})
+            .FormatList({ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("v")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16,
-                       ge::DT_FLOAT16, ge::DT_BF16})
-            .FormatList({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND})
+            .DataType({ge::DT_FLOAT16, ge::DT_BF16})
+            .FormatList({ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("block_table")
             .ParamType(OPTIONAL)
@@ -94,10 +91,9 @@ public:
             .AutoContiguous();
         this->Output("attn_out")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16,
-                       ge::DT_FLOAT16, ge::DT_BF16})
-            .FormatList({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND})
+            .DataType({ge::DT_FLOAT16, ge::DT_BF16})
+            .FormatList({ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Output("softmax_lse")
             .ParamType(OPTIONAL)
