@@ -17,7 +17,6 @@
 #define VF_ROPE_H
 #include "kernel_tensor.h"
 
-#if __CCE_AICORE__ == 310
 
 namespace MlaProlog {
 constexpr uint64_t FLOAT_VF_SIZE = 64;
@@ -109,5 +108,4 @@ __aicore__ inline void RotaryPosEmbVF(const LocalTensor<C> &outputLocal, const L
 }
 
 } // namespace MlaProlog
-#endif // __CCE_AICORE__ == 310
 #endif // VF_ROPE_H
