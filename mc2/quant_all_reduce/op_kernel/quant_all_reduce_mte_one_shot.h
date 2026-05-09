@@ -136,6 +136,12 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::Init(GM_ADDR x, G
     uint64_t remainingSpace = TOTAL_UB_SIZE - totalFixedSpace;
     uint64_t maxXPerBlock = remainingSpace / totalDynamicBytes;
 
+    // 3.5 限制最大分块大小为 2048，确保 DoubleBuffer pipeline 有效（每核迭代≥3）
+    constexpr uint32_t X_MAX_BLOCK_NUM = 2048U;
+    if (maxXPerBlock > X_MAX_BLOCK_NUM) {
+        maxXPerBlock = X_MAX_BLOCK_NUM;
+    }
+
     // 4. 考虑数据量限制：不超过总数据量 xNums_
     xPerBlock_ = static_cast<uint32_t>(maxXPerBlock < xNums_ ? maxXPerBlock : xNums_);
 

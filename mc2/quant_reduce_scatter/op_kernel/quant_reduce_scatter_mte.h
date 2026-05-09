@@ -148,6 +148,12 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::Init(GM_ADDR x, GM_A
     uint64_t remainingSpace = TOTAL_UB_SIZE - totalFixedSpace;
     uint64_t maxXPerBlock = remainingSpace / totalDynamicBytes;
 
+    // 3.5 限制最大分块大小为 2048，确保 DoubleBuffer pipeline 有效（每核迭代≥3）
+    constexpr uint32_t X_MAX_BLOCK_NUM = 2048U;
+    if (maxXPerBlock > X_MAX_BLOCK_NUM) {
+        maxXPerBlock = X_MAX_BLOCK_NUM;
+    }
+
     // 4. 考虑数据量限制：不超过每卡分片数据量 xSliceSizeNums_
     xPerBlock_ = static_cast<uint32_t>(maxXPerBlock < xSliceSizeNums_ ? maxXPerBlock : xSliceSizeNums_);
 
