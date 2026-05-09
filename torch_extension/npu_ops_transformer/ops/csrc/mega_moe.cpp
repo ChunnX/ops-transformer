@@ -56,10 +56,9 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
 
     aclDataType weight_scales1_dtype;
     if (weight1_type.has_value()) {
-        if (weight1_type.value() == static_cast<int64_t>(c10_npu::DType::FLOAT4_E2M1) ||
-            weight1_type.value() == static_cast<int64_t>(c10_npu::DType::FLOAT4_E1M2) ||
-            weight1_type.value() == static_cast<int64_t>(c10_npu::DType::FLOAT8_E4M3FN) ||
-            weight1_type.value() == static_cast<int64_t>(c10_npu::DType::FLOAT8_E5M2)) {
+        if (weight1_type.value() == static_cast<int64_t>(DType::FLOAT4_E2M1) ||
+            weight1_type.value() == static_cast<int64_t>(DType::FLOAT8_E4M3FN) ||
+            weight1_type.value() == static_cast<int64_t>(DType::FLOAT8_E5M2)) {
             weight_scales1_dtype = aclDataType::ACL_FLOAT8_E8M0;
         } else {
             weight_scales1_dtype = aclDataType::ACL_FLOAT;
@@ -70,10 +69,9 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
 
     aclDataType weight_scales2_dtype;
     if (weight2_type.has_value()) {
-        if (weight2_type.value() == static_cast<int64_t>(c10_npu::DType::FLOAT4_E2M1) ||
-            weight2_type.value() == static_cast<int64_t>(c10_npu::DType::FLOAT4_E1M2) ||
-            weight2_type.value() == static_cast<int64_t>(c10_npu::DType::FLOAT8_E4M3FN) ||
-            weight2_type.value() == static_cast<int64_t>(c10_npu::DType::FLOAT8_E5M2)) {
+        if (weight2_type.value() == static_cast<int64_t>(DType::FLOAT4_E2M1) ||
+            weight2_type.value() == static_cast<int64_t>(DType::FLOAT8_E4M3FN) ||
+            weight2_type.value() == static_cast<int64_t>(DType::FLOAT8_E5M2)) {
             weight_scales2_dtype = aclDataType::ACL_FLOAT8_E8M0;
         } else {
             weight_scales2_dtype = aclDataType::ACL_FLOAT;
@@ -89,7 +87,7 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
     int64_t k = topk_ids_size[1];
 
     if ((dispatch_quant_out_type.has_value()) &&
-        (dispatch_quant_out_type.value() == static_cast<int64_t>(c10_npu::DType::FLOAT4_E2M1))) {
+        (dispatch_quant_out_type.value() == static_cast<int64_t>(DType::FLOAT4_E2M1))) {
         TORCH_CHECK(h % 2 == 0,
                     "The last dim input shape must be divisible by 2 if "
                     "dispatch quant output type is torch_npu.float4_e2m1");
@@ -109,10 +107,10 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
     y = at::empty({bs, h}, topk_ids.options().dtype(x.scalar_type()));
 
     TensorListWrapper weight1_wrapper = {weight1_ref,
-        weight1_type.has_value() ? c10_npu::GetAclDataType(weight1_type.value())
+        weight1_type.has_value() ? GetAclDataType(weight1_type.value())
         : ConvertToAclDataType(weight1_ref[0].scalar_type())};
     TensorListWrapper weight2_wrapper = {weight2_ref,
-        weight2_type.has_value() ? c10_npu::GetAclDataType(weight2_type.value())
+        weight2_type.has_value() ? GetAclDataType(weight2_type.value())
         : ConvertToAclDataType(weight2_ref[0].scalar_type())};
     TensorListWrapper weight_scales1_wrapper = {weight_scales1_ref, weight_scales1_dtype};
     TensorListWrapper weight_scales2_wrapper = {weight_scales2_ref, weight_scales2_dtype};

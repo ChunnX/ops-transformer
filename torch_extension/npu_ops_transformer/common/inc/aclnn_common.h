@@ -30,7 +30,7 @@
 #include "torch_npu/csrc/framework/interface/EnvVariables.h"
 #include "torch_npu/csrc/aten/NPUNativeFunctions.h"
 #include "torch_npu/csrc/core/npu/DeviceUtils.h"
-#include "torch_npu/csrc/custom_dtype/Init.h"
+// #include "torch_npu/csrc/custom_dtype/Init.h"
 #if __has_include("torch_npu/csrc/flopcount/FlopCount.h")
     #include "torch_npu/csrc/flopcount/FlopCount.h"
 #endif
@@ -67,6 +67,7 @@ extern thread_local int g_hashOffset;
 constexpr int64_t MAX_DIM_NUM = 5;
 constexpr int64_t FP4_IN_INT8 = 2;
 constexpr int64_t PENULTIMATE_DIM = 2;
+const int g_toAclOffset = 256;
 
 #define AT_ALL_SCALAR_TYPE_AND_ACL_DATATYPE_PAIR(_)                                                                    \
     _(at::ScalarType::Byte, ACL_UINT8)                                                                                 \
@@ -121,6 +122,39 @@ constexpr aclDataType kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(at:
 #define DEFINE_ENUM(_1, n) n,
     AT_ALL_SCALAR_TYPE_AND_ACL_DATATYPE_PAIR(DEFINE_ENUM)
 #undef DEFINE_ENUM
+};
+
+#define ENUM_OFFSET(new_name, old_name) new_name = static_cast<int>(old_name) + g_toAclOffset,
+
+enum class DType {
+    UNDEFINED = -1,
+    ENUM_OFFSET(FLOAT, ACL_FLOAT)
+    ENUM_OFFSET(FLOAT16, ACL_FLOAT16)
+    ENUM_OFFSET(INT8, ACL_INT8)
+    ENUM_OFFSET(INT32, ACL_INT32)
+    ENUM_OFFSET(UINT8, ACL_UINT8)
+    ENUM_OFFSET(INT16, ACL_INT16)
+    ENUM_OFFSET(UINT16, ACL_UINT16)
+    ENUM_OFFSET(UINT32, ACL_UINT32)
+    ENUM_OFFSET(INT64, ACL_INT64)
+    ENUM_OFFSET(UINT64, ACL_UINT64)
+    ENUM_OFFSET(DOUBLE, ACL_DOUBLE)
+    ENUM_OFFSET(BOOL, ACL_BOOL)
+    ENUM_OFFSET(STRING, ACL_STRING)
+    ENUM_OFFSET(COMPLEX64, ACL_COMPLEX64)
+    ENUM_OFFSET(COMPLEX128, ACL_COMPLEX128)
+    ENUM_OFFSET(BF16, ACL_BF16)
+    ENUM_OFFSET(INT4, ACL_INT4)
+    ENUM_OFFSET(UINT1, ACL_UINT1)
+    ENUM_OFFSET(COMPLEX32, ACL_COMPLEX32)
+    ENUM_OFFSET(HIFLOAT8, ACL_HIFLOAT8)
+    ENUM_OFFSET(FLOAT8_E5M2, ACL_FLOAT8_E5M2)
+    ENUM_OFFSET(FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN)
+    ENUM_OFFSET(FLOAT8_E8M0, ACL_FLOAT8_E8M0)
+    ENUM_OFFSET(FLOAT6_E3M2, ACL_FLOAT6_E3M2)
+    ENUM_OFFSET(FLOAT6_E2M3, ACL_FLOAT6_E2M3)
+    ENUM_OFFSET(FLOAT4_E2M1, ACL_FLOAT4_E2M1)
+    ENUM_OFFSET(FLOAT4_E1M2, ACL_FLOAT4_E1M2)
 };
 
 namespace op_infer {
@@ -220,6 +254,15 @@ aclDataType ConvertToAclDataType(const at::ScalarType &data_type)
     TORCH_CHECK(acl_dtype != ACL_DT_UNDEFINED,
                 std::string(c10::toString(data_type)) + " has not been supported")
     return acl_dtype;
+}
+
+inline aclDataType GetAclDataType(int64_t t)
+{
+    if (t >= g_toAclOffset) {
+        return static_cast<aclDataType>(t - g_toAclOffset);
+    }
+    return ConvertToAclDataType(
+        static_cast<at::ScalarType>(t));
 }
 
 inline const char *GetOpApiLibName(void)
