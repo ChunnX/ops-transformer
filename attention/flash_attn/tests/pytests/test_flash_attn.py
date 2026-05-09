@@ -249,13 +249,11 @@ def resolve_case_ids(case_id_arg, all_cases):
     result = []
     missing = []
     for cid in ids:
-        full_names = [k for k in all_cases if k.endswith(f"/{cid}") or k == cid]
-        if len(full_names) == 1:
-            result.append(full_names[0])
-        elif len(full_names) == 0:
-            missing.append(cid)
+        full_names = [k for k in all_cases if k.endswith(f"/{cid}") or k == cid or k.rsplit("/", 1)[-1].startswith(f"{cid}_")]
+        if len(full_names) >= 1:
+            result.extend(full_names)
         else:
-            print(f"[WARN] '{cid}' 在多个模块中存在，请使用完整名称: {full_names}")
+            missing.append(cid)
     if missing:
         print(f"[WARN] 以下 case 不存在: {missing}")
     return result
