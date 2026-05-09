@@ -15,6 +15,7 @@
 #ifndef MATMUL_H
 #define MATMUL_H
 #include "buffers_policy.h"
+#include "common/inc_ops_tensor/tensor_api/include/tensor_api/atom/cube_compute/mmad_atom.h"
 using namespace AscendC;
 
 namespace fa_base_matmul {
@@ -785,7 +786,9 @@ __aicore__ inline void MatmulK(const LocalTensor<A> &aL1Tensor,
             mmadParams.unitFlag = (param.unitFlag == UNITFLAG_EN_OUTER_LAST) && (k == kLoops - 1) ?
                                   UNITFLAG_EN_OUTER_LAST : UNITFLAG_ENABLE;
         }
-        Mmad(cL0Tensor, L0ATensor, L0BTensor, mmadParams);
+        // Mmad(cL0Tensor, L0ATensor, L0BTensor, mmadParams);
+        auto mmadAtom = AscendC::Te::MakeMmad();
+        AscendC::Te::Mmad(mmadAtom, dst, src0, src1);
  
         l0aBuffer.Set<HardEvent::M_MTE1>(); // matmul完成后，通知mte1可以开始搬运新数据到L0A
         l0bBuffer.Set<HardEvent::M_MTE1>(); // matmul完成后，通知mte1可以开始搬运新数据到L0B

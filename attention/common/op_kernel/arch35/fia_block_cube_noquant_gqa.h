@@ -555,6 +555,7 @@ public:
             }
             return;
         }
+        // 切换Tensor API
         IterateBmm1NdL0Split(outputBuf, runInfo);
     }
 
@@ -615,6 +616,7 @@ public:
                     mm1A.GetTensor<Q_T>(), mm1B.GetTensor<KV_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(),
                     param);
             } else {
+                // 切换Tensor API, base(M = N = K) = 128.
                 MatmulK<Q_T, KV_T, T, 128, 128, 128, ABLayout::MK, ABLayout::KN>(
                     mm1A.GetTensor<Q_T>(), mm1B.GetTensor<KV_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(),
                     param);
