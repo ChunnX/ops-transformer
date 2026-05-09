@@ -721,11 +721,9 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
       </tr>
   </table>
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
   - tokenX、weightDq、weightUqQr、weightDkvKr、kvCacheRef、queryOut、queryNormOutOptional不支持FLOAT8_E4M3FN、HIFLOAT8数据类型。
   - dequantScaleXOptional、dequantScaleWDqOptional、dequantScaleWUqQrOptional、dequantScaleWDkvKrOptional、dequantScaleQNormOutOptional不支持FLOAT8_E8M0数据类型。
-- <term>Ascend 950PR/Ascend 950DT</term>
-  - 所列数据类型都支持。
 
 - **返回值**
 
@@ -1062,8 +1060,6 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
 
   <details>
   <summary><a id="SupportScenes"></a>不同量化场景参数的dtype约束</summary>
-
-  - 在不同量化场景下，参数的dtype组合需要满足如下条件：
 
   <div style="overflow-x: auto; width: 100%;">
   <table style="table-layout: auto;" border="1">
