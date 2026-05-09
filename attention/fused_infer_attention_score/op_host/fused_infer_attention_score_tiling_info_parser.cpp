@@ -1203,12 +1203,12 @@ ge::graphStatus FiaInfoParser::GetActualSeqInfo()
                         needInit_ = needInit_ || (actLen == 0);
                     }
                 } else {
-                    if (qLayout_ == FiaLayout::TND || qLayout_ == FiaLayout::NTD) {
+                    if (qLayout_ == FiaLayout::TND || qLayout_ == FiaLayout::NTD && kvStorageMode_ != KvStorageMode::PAGE_ATTENTION) {
                         actLen -= preActualLen;
                         preActualLen = actualLenData[i];
                     }
                     needInit_ = needInit_ || (actLen == 0);
-                    if ((qLayout_ == FiaLayout::TND || qLayout_ == FiaLayout::NTD) || actLen != s2Size_) {
+                    if (actLen != s2Size_ && qLayout_ != FiaLayout::TND && qLayout_ != FiaLayout::NTD) {
                         needInit_ = 1;
                     }
                 }
