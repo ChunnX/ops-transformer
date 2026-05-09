@@ -46,7 +46,8 @@ private:
     __aicore__ inline void ComputeX();
     __aicore__ inline void PadWithMinFp32(__local_mem__ float *addBiasOutAddr, uint16_t groupCount0,
                                         uint32_t perGroupExpertCount0, uint32_t perGroupExpertCountAlign0);
-    __aicore__ inline void GenerateIndexAndCopy(__local_mem__ float *addBiasOutAddr,
+    __aicore__ inline void GenerateIndexAndCopy(__local_mem__ float *sigmoidOutAddr,
+                                                __local_mem__ float *addBiasOutAddr,
                                                 __local_mem__ int32_t *indexOutAddr, uint32_t size, uint32_t vfLoopNum);
     __aicore__ inline void ComputeWithSoftMax(LocalTensor<float> xInLocalTensor, LocalTensor<float> xSigmoidTensor,
                                               LocalTensor<float> xBiasTensor, LocalTensor<uint32_t> indexTensor);
@@ -212,7 +213,8 @@ __aicore__ inline void MoeGatingTopKRegbase<T>::PadWithMinFp32(__local_mem__ flo
 }
 
 template <typename T>
-__aicore__ inline void MoeGatingTopKRegbase<T>::GenerateIndexAndCopy(__local_mem__ float *addBiasOutAddr,
+__aicore__ inline void MoeGatingTopKRegbase<T>::GenerateIndexAndCopy(__local_mem__ float *sigmoidOutAddr,
+                                                                      __local_mem__ float *addBiasOutAddr,
                                                                       __local_mem__ int32_t *indexOutAddr,
                                                                       uint32_t size, uint32_t vfLoopNum)
 {
@@ -222,12 +224,11 @@ __aicore__ inline void MoeGatingTopKRegbase<T>::GenerateIndexAndCopy(__local_mem
 
     for (uint16_t i = 0; i < vfLoopNum; i++) {
         preg0 = MicroAPI::UpdateMask<float>(size);
-        ops::LoadOneTensorForDtypeT<float>(addBiasOutAddr, vregSoftmaxResult, preg0, i * VL_FLOAT_SIZE);
+        ops::LoadOneTensorForDtypeT<float>(sigmoidOutAddr, vregSoftmaxResult, preg0, i * VL_FLOAT_SIZE);
         MicroAPI::Arange(vregIndex, static_cast<int32_t>(i * VL_FLOAT_SIZE));
         MicroAPI::DataCopy(addBiasOutAddr + i * VL_FLOAT_SIZE, vregSoftmaxResult, preg0);
         MicroAPI::DataCopy(indexOutAddr + i * VL_FLOAT_SIZE, vregIndex, preg0);
     }
-    MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_STORE>();
 }
 
 template <typename T>
@@ -295,7 +296,8 @@ __aicore__ inline void MoeGatingTopKRegbase<T>::ComputeWithSoftMax(LocalTensor<f
     } else {
         __VEC_SCOPE__
         {
-            GenerateIndexAndCopy(addBiasOutAddr, indexOutAddr, size, CeilDiv(size, VL_FLOAT_SIZE));
+            GenerateIndexAndCopy(sigmoidOutAddr, addBiasOutAddr, indexOutAddr, size, CeilDiv(size, VL_FLOAT_SIZE));
+            MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_STORE>();
             PadWithMinFp32(addBiasOutAddr, groupCount0, perGroupExpertCount0, perGroupExpertCountAlign0);
         }
     }
