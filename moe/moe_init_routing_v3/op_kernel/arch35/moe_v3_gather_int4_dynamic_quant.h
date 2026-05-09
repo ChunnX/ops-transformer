@@ -93,7 +93,7 @@ private:
     constexpr static MicroAPI::CastTrait castTraitF32ToF16 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::NO_SAT,
                                                               MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_TRUNC};
     constexpr static MicroAPI::CastTrait castTraitF16ToI4 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::SAT,
-                                                               MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
+                                                             MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
 };
 
 template <typename T>
