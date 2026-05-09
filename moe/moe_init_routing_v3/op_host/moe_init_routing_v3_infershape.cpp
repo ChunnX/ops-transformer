@@ -310,7 +310,8 @@ static ge::graphStatus CheckInputScaleShape(gert::InferShapeContext *context, co
 
     /*
         When quant_mode is:
-            NON_QUANT/DYNAMIC_QUANT/MXQUANT_FP8_E5M2/MXQUANT_FP8_E4M3FN/HIF8_CAST/HIF8_PERTOKEN/MXQUANT_FP4_E2M1/INT4_DYNAMIC
+            NON_QUANT/DYNAMIC_QUANT/MXQUANT_FP8_E5M2/MXQUANT_FP8_E4M3FN/HIF8_CAST/HIF8_PERTOKEN/
+            MXQUANT_FP4_E2M1/INT4_DYNAMIC
         scale can be none.
     */
     OP_CHECK_IF((nullptr == scaleShape &&
@@ -439,14 +440,16 @@ static ge::graphStatus CheckInputScaleShape(gert::InferShapeContext *context, co
                     !isSameDim(scaleShape->GetDim(0), DIM_ONE),
                     OP_LOGE(
                         context,
-                        "When quant_mode is %ld (INT4 dynamic) in static shape, the first dim of scale should be 1, but its shape is (%ld).",
+                        "When quant_mode is %ld (INT4 dynamic) in static shape, the first dim of scale should be 1,"
+                        " but its shape is (%ld).",
                         quantMode, scaleShape->GetDim(0)),
                     return ge::GRAPH_FAILED);
                 OP_CHECK_IF(
                     !isSameDim(scaleShape->GetDim(1), xShape->GetDim(1)),
                     OP_LOGE(
                         context,
-                        "When quant_mode is %ld (INT4 dynamic) in static shape, the second dim of scale should be %ld, but its shape is (%ld).",
+                        "When quant_mode is %ld (INT4 dynamic) in static shape, the second dim of scale should be %ld,"
+                        " but its shape is (%ld).",
                         quantMode, xShape->GetDim(1), scaleShape->GetDim(1)),
                     return ge::GRAPH_FAILED);
             } else {
@@ -454,7 +457,8 @@ static ge::graphStatus CheckInputScaleShape(gert::InferShapeContext *context, co
                     scaleShape->GetDim(0) != NEG_ONE || (scaleShape->GetDim(1) != NEG_ONE && scaleShape->GetDim(1) != xShape->GetDim(1)),
                     OP_LOGE(
                         context,
-                        "When quant_mode is %ld (INT4 dynamic) and scale dim is 2 in dynamic shape, the shape of scale should be (-1, -1) or (-1, %d), but its shape is (%s).",
+                        "When quant_mode is %ld (INT4 dynamic) and scale dim is 2 in dynamic shape,"
+                        " the shape of scale should be (-1, -1) or (-1, %d), but its shape is (%s).",
                         quantMode, xShape->GetDim(1), Ops::Base::ToString(*scaleShape).c_str()),
                     return ge::GRAPH_FAILED);
             }
