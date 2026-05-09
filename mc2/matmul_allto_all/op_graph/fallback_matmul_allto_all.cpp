@@ -171,8 +171,12 @@ inline ge::graphStatus GetAttrPara(const gert::OpExecuteContext* host_api_ctx,
     const bool* transX1Ptr = attrs->GetBool(INDEX_ATTR_TRANS_X1);
     para.transposeX1 = (transX1Ptr != nullptr ? *transX1Ptr : false);
     para.transposeX2 = (transX2Ptr != nullptr ? *transX2Ptr : false);
+
+    OP_LOGE(host_api_ctx->GetNodeName(), "in fallback, before");
     const int64_t* groupSize_ptr = attrs->GetInt(INDEX_ATTR_GROUP_SIZE);
+    OP_LOGE(host_api_ctx->GetNodeName(), "in fallback, groupSize_ptr middle is: %ld", *groupSize_ptr);
     para.groupSize = (groupSize_ptr != nullptr ? *groupSize_ptr : 0);
+    OP_LOGE(host_api_ctx->GetNodeName(), "in fallback, groupSize after is: %ld", para.groupSize);
 
     return ge::SUCCESS;
 }
@@ -223,6 +227,7 @@ static ge::graphStatus MatmulAlltoAllExecuteFunc(gert::OpExecuteContext* host_ap
 {
     OPS_LOG_D(MatmulAlltoAllInfo, "Start to fallback for matmul_allto_all.");
  	OPS_ERR_IF(host_api_ctx == nullptr, OPS_LOG_E(MatmulAlltoAllInfo, "host_api_ctx is null"), return ge::GRAPH_FAILED);
+
     CommonMatmulParas matmulParas;
     ge::graphStatus retPara = GetCommonMatmulInputPara(host_api_ctx, matmulParas);
     OPS_CHECK(
@@ -231,6 +236,7 @@ static ge::graphStatus MatmulAlltoAllExecuteFunc(gert::OpExecuteContext* host_ap
 
     const auto output = host_api_ctx->GetOutputTensor(INDEX_OUT);
     OPS_CHECK(output == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "output is null"), return ge::GRAPH_FAILED);
+
     const gert::RuntimeAttrs* attrs = host_api_ctx->GetAttrs();
     OPS_CHECK(attrs == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "attrs is null"), return ge::GRAPH_FAILED);
     AttrParas attrParas;
