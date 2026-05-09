@@ -426,18 +426,8 @@ void AllToAllMxQuantMatmulTilingBase::FillMxTensorTiling(uint32_t blockM, Tensor
     out->mTailMain         = r.mTailMain;
     out->nTailMain         = r.nTailMain;
     out->dbL0c             = r.dbL0c;
-
-    printf("[MX-TILING] blockM=%u fullK=%llu fullN=%llu baseM=%llu baseN=%llu baseK=%llu"
-           " kL1=%llu scaleKL1=%llu dbL0c=%u tail=(%u,%u,%u,%u,%u,%u)\n",
-           out->tileM,
-           (unsigned long long)out->fullK, (unsigned long long)out->fullN,
-           (unsigned long long)out->baseM, (unsigned long long)out->baseN, (unsigned long long)out->baseK,
-           (unsigned long long)out->kL1, (unsigned long long)out->scaleKL1, out->dbL0c,
-           out->mTailTile, out->nTailTile,
-           out->mBaseTailSplitCnt, out->nBaseTailSplitCnt,
-           out->mTailMain, out->nTailMain);
-    fflush(stdout);
 }
+
 /**
  * @brief 设置hccl的config,进行hccl对应的通信任务设置
  *

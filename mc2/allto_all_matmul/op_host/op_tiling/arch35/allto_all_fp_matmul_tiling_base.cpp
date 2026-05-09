@@ -152,15 +152,6 @@ ge::graphStatus AllToAllFpMatmulTilingBase::DoMMTiling()
     fill(localTilingData_.tensorMatmulTileTilingData, tileM);
     fill(localTilingData_.tensorMatmulTailTilingData, inferredInfo.tailM);
 
-    printf("[FP-TILING] tileM=%u tailM=%u fullK=%u fullN=%u baseM=%u baseN=%u baseK=%u kL1=%u dbL0c=%u\n",
-           localTilingData_.tensorMatmulTileTilingData.tileM,
-           localTilingData_.tensorMatmulTailTilingData.tileM,
-           localTilingData_.tensorMatmulTileTilingData.fullK,
-           localTilingData_.tensorMatmulTileTilingData.fullN,
-           baseM, baseN, baseK, kL1,
-           localTilingData_.tensorMatmulTileTilingData.dbL0c);
-    fflush(stdout);
-
     return ge::GRAPH_SUCCESS;
 }
 

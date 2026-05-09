@@ -94,7 +94,7 @@ __aicore__ inline void TensorMXQuantMatmulStage<TilingType, X2TRANSPOSE>::Proces
 
     uint32_t kScaleGrp = (k_ + 32 - 1) / 32;
     auto layoutA = AscendC::Te::MakeNDLayout<AType>(m_, k_);
-    auto layoutB = AscendC::Te::MakeDNLayout<BType>(n_, k_);
+    auto layoutB = AscendC::Te::MakeDNLayout<BType>(k_, n_);
     auto layoutC = AscendC::Te::MakeNDLayout<CType>(m_, n_);
     auto layoutSA = AscendC::Te::MakeScaleANDLayout<ScaleAType>(m_, kScaleGrp);
     auto layoutSB = AscendC::Te::MakeScaleBDNLayout<ScaleBType>(kScaleGrp, n_);
@@ -117,17 +117,11 @@ __aicore__ inline void TensorMXQuantMatmulStage<TilingType, X2TRANSPOSE>::Proces
     BlockCoord blockIdx;
     constexpr int64_t kPos = 0L;
 
-    if (AscendC::GetBlockIdx() == 0) {
-        AscendC::printf("[MX-TILING-DEV] tileM=%u fullK=%u fullN=%u baseM=%u baseN=%u baseK=%u kL1=%u scaleKL1=%u dbL0c=%u\n",
-                        m_, k_, n_, baseM_, baseN_, baseK_, l1k, skl1, tiling->dbL0c);
-    }
-
     uint32_t loopCnt = 0;
     const uint32_t MAX_LOOP = (m_ / baseM_ + 1) * (n_ / baseN_ + 1) + 1;
     while (bs.GetTileIdx(blockIdx)) {
         if (++loopCnt > MAX_LOOP) {
             if (AscendC::GetBlockIdx() == 0) {
-                AscendC::printf("[MX-LOOP] DEADLOOP break at cnt=%u\n", loopCnt);
             }
             break;
         }

@@ -65,7 +65,7 @@ __aicore__ inline void TensorMatmulStage<TilingType>::Process(uint32_t taskIndex
                  typename BlockOp::L1Params{l1k}, tiling->dbL0c > 1);
 
     auto gmA = AscendC::Te::MakeTensor(AscendC::Te::MakeGMmemPtr(reinterpret_cast<__gm__ AType*>(aGM)), AscendC::Te::MakeNDLayout<AType>(m_, k_));
-    auto gmB = AscendC::Te::MakeTensor(AscendC::Te::MakeGMmemPtr(reinterpret_cast<__gm__ BType*>(bGM)), AscendC::Te::MakeDNLayout<BType>(n_, k_));
+    auto gmB = AscendC::Te::MakeTensor(AscendC::Te::MakeGMmemPtr(reinterpret_cast<__gm__ BType*>(bGM)), AscendC::Te::MakeDNLayout<BType>(k_, n_));
     auto gmC = AscendC::Te::MakeTensor(AscendC::Te::MakeGMmemPtr(reinterpret_cast<__gm__ CType*>(cGM)), AscendC::Te::MakeNDLayout<CType>(m_, n_));
 
     using SchParams = typename SchedulerOp::Params;
