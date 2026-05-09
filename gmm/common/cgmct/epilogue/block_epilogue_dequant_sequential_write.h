@@ -160,6 +160,9 @@ private:
     uint16_t yPingPongID_ = 0;
     uint16_t logitPingPongID_ = 0;
     BlockCoord blockCoord_{0, 0, 0, 0, 0, 0};
+    // Accumulated group offset for absolute row addressing in workspace writes
+    // Updated in UpdateGlobalAddr to track cumulative logit offset across groups
+    uint64_t accumulatedGroupOffset_ = 0;
 };
 
 // ============================================================
@@ -242,6 +245,11 @@ BlockEpilogueDequantSequentialWrite<GMM_BLOCK_EPILOGUE_DEQUANT_SEQUENTIAL_FUNC_L
     const BlockCoord &baseOffset)
 {
     if ASCEND_IS_AIV {
+        // Capture accumulated group offset for absolute row addressing in workspace writes.
+        // SEQ_LOGIT_INDEXS tracks the cumulative row offset across groups (set by the
+        // kernel's UpdateGlobalBuffer). We store it so VectorSequentialWrite can compute
+        // globally-unique workspace addresses: (accumulatedGroupOffset_ + offsetM + i) * n_.
+        accumulatedGroupOffset_ = static_cast<uint64_t>(Get<SEQ_LOGIT_INDEXS>(baseOffset));
         logitGlobal_.SetGlobalBuffer((__gm__ float *)params_->logitGmAddr + Get<SEQ_LOGIT_INDEXS>(baseOffset));
         rowIndexGlobal_.SetGlobalBuffer((__gm__ DataTypeRowIndex *)params_->rowIndexGmAddr +
                                         Get<SEQ_LOGIT_INDEXS>(baseOffset));
@@ -280,22 +288,38 @@ BlockEpilogueDequantSequentialWrite<GMM_BLOCK_EPILOGUE_DEQUANT_SEQUENTIAL_FUNC_L
 //       DataCopyPad(yGlobal_[outRow * n_ + yOffset], yLocal[i * alignN_], ...);
 //   }
 //   SetAtomicNone();
+//   Problem: multiple cores can AtomicAdd to the same outRow address,
+//   making the float accumulation order non-deterministic.
 //
-// New (sequential write, DETERMINISTIC):
-//   Use outRow from rowIndexGlobal_ to scatter-write to workspace, same as original
-//   VectorAtomicProcess but WITHOUT SetAtomicAdd. This avoids the group-relative
-//   offsetM overlap issue (C offset resets per group in Cgmct scheduler).
+// New (sequential write by mOffset, DETERMINISTIC):
+//   Write to workspace[(absRow + i) * n_ + yOffset] for each row i,
+//   where absRow = accumulatedGroupOffset_ + offsetM (absolute row index).
+//   Each address is globally unique across all cores and groups.
+//   No AtomicAdd needed because Prologue writes to yGm (not workspace),
+//   so workspace only contains dequant results.
+//
+//   A3 reference: DataCopyPad2D(mmQuantOutGm[mOffset * n + nOffset], yLocal, dimParams, n)
+//   Both A3 and A5 use direct write (no AtomicAdd) because Prologue targets yGm.
 // ============================================================
 GMM_BLOCK_EPILOGUE_DEQUANT_SEQUENTIAL_CLASS_LOCAL_PARAMS
 __aicore__ inline void
 BlockEpilogueDequantSequentialWrite<GMM_BLOCK_EPILOGUE_DEQUANT_SEQUENTIAL_FUNC_LOCAL_PARAMS>::VectorSequentialWrite(
     uint32_t curBaseN, uint32_t curVecBaseM, uint64_t offsetM, uint64_t yOffset, LocalTensor<DataTypeOut> &yLocal)
 {
-    // NO SetAtomicAdd - scatter write to workspace using outRow (same as original)
+    // Sequential write to workspace by input row order (mOffset), NO AtomicAdd.
+    // Each address is (accumulatedGroupOffset_ + offsetM + i) * n_ + yOffset,
+    // globally unique across all cores and groups (no overlap).
+    //
+    // No AtomicAdd needed because the Prologue writes to yGm (final output), NOT to
+    // workspace. The workspace (deterBuffer) only contains dequant results from the
+    // Epilogue. FRDeterministicA5 aggregation will later AtomicAdd workspace values
+    // on top of the Prologue's residual in yGm.
+    uint64_t absRowBase = accumulatedGroupOffset_ + offsetM;
     DataCopyExtParams paramsOut{1, static_cast<uint32_t>(curBaseN * sizeof(DataTypeOut)), 0, 0, 0};
     for (uint32_t i = 0; i < curVecBaseM; i++) {
-        auto outRow = static_cast<uint64_t>(rowIndexGlobal_.GetValue(offsetM + i));
-        DataCopyPad(yGlobal_[outRow * n_ + yOffset], yLocal[i * alignN_], paramsOut);
+        // Write by absolute mOffset (input row order), NOT by outRow (output/scatter order)
+        // Direct write (no AtomicAdd): workspace only contains dequant results
+        DataCopyPad(yGlobal_[(absRowBase + i) * n_ + yOffset], yLocal[i * alignN_], paramsOut);
     }
 }
 

@@ -16,11 +16,14 @@
  *   - FRDeterministic() line 653-687
  *   - VectorSync() line 622-649
  *
- * Core mechanism:
- *   1. SyncAll() - ensure all cores finished workspace writes
- *   2. Assign row ownership by outRow % coreNumVec
- *   3. Read workspace -> UB (queBind) -> SetAtomicAdd to yGm (single writer per row)
- *   4. SyncAll() - ensure all writes complete
+ * Data flow:
+ *   1. Prologue writes to yGm (zeros + residual), NOT to workspace
+ *   2. SequentialWrite Epilogue writes dequant to workspace (no AtomicAdd, no scatter)
+ *   3. This function aggregates: workspace[mOffset] -> yGm[outRow] via AtomicAdd
+ *
+ * Determinism guarantee:
+ *   - Each workspace address has exactly one writer (Epilogue, no race)
+ *   - Each yGm outRow is owned by exactly one core (outRow % coreNumVec)
  */
 
 #ifndef GMM_FR_DETERMINISTIC_A5_H
@@ -52,6 +55,19 @@ struct SyncConfig {
  * A3 prototype: QuantGroupMatmul<P>::FRDeterministic()
  *               (grouped_matmul_finalize_routing.h line 653-687)
  *
+ * Workspace layout (set by SequentialWrite epilogue):
+ *   workspace[mOffset * N + nOffset] = dequant_result (NO residual)
+ *   Rows are in absolute input-row order (mOffset), NOT in output-row order.
+ *   Prologue writes residual to yGm, not to workspace.
+ *
+ * Aggregation logic:
+ *   1. SyncAll - ensure workspace writes complete
+ *   2. For each mOffset, look up outRow via rowIndex
+ *   3. AtomicAdd workspace[mOffset*N] to yGm[outRow*N]
+ *      yGm already has residual from Prologue
+ *      Deterministic because: each outRow is owned by exactly one core
+ *   4. SyncAll - ensure all writes complete
+ *
  * Template params:
  *   DTYPE_OUT       - Output data type (float)
  *   ROW_INDEX_DTYPE - Row index data type (int64_t or int32_t)
@@ -80,6 +96,11 @@ __aicore__ inline void FRDeterministicA5(
     uint64_t coreNumVec = coreNum * GetTaskRation();
     uint64_t baseOffset = syncConfig.lowBoundM - syncConfig.windowSize;
 
+    // Step 2: Read workspace by mOffset, AtomicAdd to yGm by outRow
+    //
+    // yGm has already been initialized by the Prologue (zeros + residual).
+    // We AtomicAdd workspace values on top of Prologue's initial values.
+    // This is deterministic because each outRow is owned by exactly one core.
     for (uint64_t mOffset = 0; mOffset < totalM; mOffset++) {
         auto outRow = static_cast<uint64_t>(tokenRanksGm.GetValue(baseOffset + mOffset));
 
@@ -102,7 +123,7 @@ __aicore__ inline void FRDeterministicA5(
             queBind.EnQue(bindLocal);
             bindLocal = queBind.DeQue<DTYPE_OUT>();
 
-            // Atomic write to final output (single writer per row, deterministic order)
+            // Atomic write to final output (single writer per outRow, deterministic)
             SetAtomicAdd<DTYPE_OUT>();
             DataCopyExtParams paramsOut{1, static_cast<uint32_t>(curVecBaseN * sizeof(DTYPE_OUT)), 0, 0, 0};
             DataCopyPad(yGm[outRow * n + nOffset], bindLocal, paramsOut);
@@ -111,7 +132,7 @@ __aicore__ inline void FRDeterministicA5(
             queBind.FreeTensor(bindLocal);
         }
     }
-    SyncAll();  // Step 2: Full sync, ensure all writes complete
+    SyncAll();  // Step 4: Full sync, ensure all writes complete
 }
 
 }  // namespace GMMFRDeterministic

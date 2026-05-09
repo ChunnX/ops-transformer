@@ -19,6 +19,8 @@
 #include "cgmct/kernel/kernel_gmm_finalize_routing_pertoken_dequant.h"
 #include "cgmct/block/block_mmad_builder.h"
 #include "cgmct/block/block_scheduler_gmm_aswt_with_tail_split.h"
+#include "cgmct/epilogue/block_epilogue_dequant_sequential_write.h"
+#include "gmm_fr_deterministic_a5.h"
 #include "grouped_matmul_finalize_routing_tiling_data.h"
 
 using namespace Cgmct::Gemm;
@@ -64,11 +66,23 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
         Cgmct::Gemm::Block::BlockEpilogueDequantFinalizeRouting<CType, C1Type, weightscaleType, xscaleType, BiasType,
                                                                 rowIndexType>;
 
+    // Deterministic epilogue: writes dequant results sequentially by mOffset (no scatter, no AtomicAdd)
+    using BlockEpilogueDequantSeq =
+        Cgmct::Gemm::Block::BlockEpilogueDequantSequentialWrite<CType, C1Type, weightscaleType, xscaleType, BiasType,
+                                                                 rowIndexType>;
+
     using GmmKernel =
         Cgmct::Gemm::Kernel::KernelGmmFinalizeRoutingPertokenDequant<ProblemShape, BlockMmadBuilder, BlockPrologue,
                                                                      BlockEpilogueDequant, BlockScheduler>;
+
+    // Deterministic kernel: uses SequentialWrite epilogue for deterministic workspace writes
+    using GmmKernelDeterministic =
+        Cgmct::Gemm::Kernel::KernelGmmFinalizeRoutingPertokenDequant<ProblemShape, BlockMmadBuilder, BlockPrologue,
+                                                                      BlockEpilogueDequantSeq, BlockScheduler>;
+
     using Params = typename GmmKernel::Params;
     using GMMTiling = typename GmmKernel::GMMTiling;
+    using ParamsDeterministic = typename GmmKernelDeterministic::Params;
 
     GMMTiling gmmParams{gmmFinalizeRoutingQuantParams_.groupNum,
                         gmmFinalizeRoutingQuantParams_.groupListType,
@@ -86,43 +100,60 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
     if (gmmFinalizeRoutingQuantParams_.deterministicFlag == 1) {
         // ============ Deterministic mode (W8A8 INT8 only) ============
         //
-        // Data flow:
-        //   1. Prologue: zeros workspace, writes residual to workspace
-        //      (Prologue natively zeros y[0..batch*N] and writes residual * scale)
-        //   2. Epilogue: AtomicAdd scatter dequant to workspace (multi-group accumulation)
-        //      workspace[outRow*N] = residual/0 + sum_groups(dequant)
-        //   3. Aggregation: direct write workspace -> yGm (single writer per row)
-        //      yGm[outRow*N] = workspace[outRow*N]  (no AtomicAdd needed)
+        // Data flow (3 phases):
+        //   1. Prologue: zeros yGm, writes residual to yGm
+        //      (Prologue targets yGm directly, NOT workspace)
+        //   2. Epilogue (SequentialWrite): writes dequant results to workspace by mOffset order
+        //      workspace[absoluteRow * N] = dequant_result
+        //      Each row written exactly once (no AtomicAdd, no scatter)
+        //   3. Aggregation (FRDeterministicA5): reads workspace by mOffset, maps to outRow via rowIndex
+        //      yGm[outRow * N] += workspace[mOffset * N] using AtomicAdd
+        //      (yGm already has residual from Phase 1)
         //
-        // Why this works for multi-iteration:
-        //   - Prologue zeros workspace every iteration (no stale data)
-        //   - Aggregation uses direct write (no stale yGm accumulation)
+        // Why this is deterministic:
+        //   - Phase 2: Each workspace address written by exactly one core (no race)
+        //   - Phase 3: Each outRow assigned to exactly one core (outRow % coreNumVec)
 
         constexpr uint64_t SYS_WORKSPACE_SIZE = 16UL * 1024 * 1024;
         GM_ADDR deterBuffer = workspaceGM + SYS_WORKSPACE_SIZE;
 
-        // Prologue y -> workspace: Prologue zeros it and writes residual
-        // Epilogue y -> workspace: AtomicAdd dequant on top of Prologue's initial values
-        Params params = {
+        // Use deterministic kernel with SequentialWrite epilogue (no scatter, no AtomicAdd)
+        ParamsDeterministic params = {
             {1, 1, 1, 1},
             {x, w, deterBuffer, bias, group_list},              // BlockMmad: c -> workspace
-            {share_input, deterBuffer,                           // Prologue: y -> workspace (zeros + residual)
+            {share_input, y,                                     // Prologue: y -> yGm (zeros + residual)
+                                                                    // IMPORTANT: Prologue writes to final output (y),
+                                                                    // NOT to workspace. This avoids conflict with Epilogue.
+                                                                    // FRDeterministicA5 will later AtomicAdd workspace
+                                                                    // on top of Prologue's residual in yGm.
              gmmFinalizeRoutingQuantParams_.sharedInputOffset,
              gmmFinalizeRoutingQuantParams_.sharedInputLen, matmulTiling_.N,
              gmmFinalizeRoutingQuantParams_.batch,
              gmmFinalizeRoutingQuantParams_.residualScale},
-            {deterBuffer, w_scale, x_scale, bias, logit, row_index,  // Epilogue: y -> workspace (AtomicAdd scatter)
+            {deterBuffer, w_scale, x_scale, bias, logit, row_index,  // Epilogue: y -> workspace (sequential write)
              matmulTiling_.baseM, matmulTiling_.baseN},
             gmmParams};
 
-        GmmKernel gmm;
+        GmmKernelDeterministic gmm;
         gmm(params);
 
-        // ============ Aggregation: workspace -> yGm (direct write, single writer per row) ============
+        // ============ Aggregation: workspace -> yGm via FRDeterministicA5 ============
+        //
+        // Workspace layout: rows stored by absolute mOffset (input row order)
+        // Aggregation reads workspace[mOffset * N], maps mOffset -> outRow via rowIndex,
+        // and writes to yGm[outRow * N] using AtomicAdd.
+        //
+        // This matches A3's FRDeterministic pattern (line 653-687 of A3 reference):
+        //   for mOffset = 0..totalM:
+        //     outRow = rowIndex[mOffset]
+        //     workspace[mOffset*N] -> yGm[outRow*N] via AtomicAdd
+
         GlobalTensor<float> deterBufferGm;
         deterBufferGm.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(deterBuffer));
         GlobalTensor<float> yGm;
         yGm.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(y));
+        GlobalTensor<rowIndexType> rowIndexGm;
+        rowIndexGm.SetGlobalBuffer(reinterpret_cast<__gm__ rowIndexType*>(row_index));
 
         TQueBind<TPosition::VECIN, TPosition::VECOUT, 1> queBind;
         TPipe deterPipe;
@@ -132,37 +163,18 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
         uint64_t nTimes = Ceil(matmulTiling_.N, DETER_UB_SIZE / sizeof(float));
         uint64_t baseN = Ceil(Ceil(matmulTiling_.N, nTimes), 128) * 128;
 
-        SyncAll();  // Ensure all Cgmct kernel workspace writes complete
+        // totalM = total number of input rows across all groups = batch size
+        uint64_t totalM = static_cast<uint64_t>(gmmFinalizeRoutingQuantParams_.batch);
 
-        if (g_coreType != AIC) {
-            for (uint64_t outRow = 0; outRow < gmmFinalizeRoutingQuantParams_.batch; outRow++) {
-                if (outRow % coreNumVec != GetBlockIdx()) {
-                    continue;
-                }
-                uint64_t curVecBaseN = baseN;
-                for (uint64_t nOffset = 0; nOffset < static_cast<uint64_t>(matmulTiling_.N); nOffset += baseN) {
-                    if (nOffset + baseN >= static_cast<uint64_t>(matmulTiling_.N)) {
-                        curVecBaseN = matmulTiling_.N - nOffset;
-                    }
-                    // Read from workspace
-                    LocalTensor<float> bindLocal = queBind.AllocTensor<float>();
-                    DataCopyExtParams copyParams{1, static_cast<uint32_t>(curVecBaseN * sizeof(float)), 0, 0, 0};
-                    DataCopyPadExtParams<float> padParams{false, 0, 0, 0};
-                    DataCopyPad(bindLocal, deterBufferGm[outRow * matmulTiling_.N + nOffset], copyParams, padParams);
-                    queBind.EnQue(bindLocal);
-                    bindLocal = queBind.DeQue<float>();
+        GMMFRDeterministic::SyncConfig syncConfig{};
+        syncConfig.curM = totalM;
+        syncConfig.lowBoundM = totalM;
+        syncConfig.windowSize = totalM;
+        syncConfig.baseN = baseN;
 
-                    // Direct write to yGm (single writer per row, no AtomicAdd)
-                    // Overwrites yGm completely - no stale data from previous iteration
-                    DataCopyExtParams paramsOut{1, static_cast<uint32_t>(curVecBaseN * sizeof(float)), 0, 0, 0};
-                    DataCopyPad(yGm[outRow * matmulTiling_.N + nOffset], bindLocal, paramsOut);
-
-                    queBind.FreeTensor(bindLocal);
-                }
-            }
-        }
-
-        SyncAll();  // Ensure all writes complete
+        GMMFRDeterministic::FRDeterministicA5<float, rowIndexType>(
+            syncConfig, deterBufferGm, yGm, rowIndexGm, queBind,
+            matmulTiling_.usedCoreNum, static_cast<uint32_t>(matmulTiling_.N));
 
     } else {
         // ============ Non-deterministic mode (unchanged) ============
