@@ -28,7 +28,7 @@
 #include "../mla_prolog/arch32/kernel_mla_prolog_split_n.h"
 #endif
 #endif
-using namespace MlaProlog; 
+using namespace MlaProlog;
 
 template<uint8_t CacheMode, uint8_t Scenario, uint8_t QuantMode,
          bool EnableDequantOpt, bool EnableGroupComputeOpt, uint8_t EmptyTensorMode,
