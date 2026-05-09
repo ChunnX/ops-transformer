@@ -177,8 +177,8 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
         uint64_t nTimes = Ceil(matmulTiling_.N, DETER_UB_SIZE / sizeof(float));
         uint64_t baseN = Ceil(Ceil(matmulTiling_.N, nTimes), 128) * 128;
 
-        // totalM = total number of input rows across all groups = batch size
-        uint64_t totalM = static_cast<uint64_t>(gmmFinalizeRoutingQuantParams_.batch);
+        // totalM = total number of input rows across all groups = batch * topK
+        uint64_t totalM = static_cast<uint64_t>(matmulTiling_.M);
 
         GMMFRDeterministic::SyncConfig syncConfig{};
         syncConfig.curM = totalM;
