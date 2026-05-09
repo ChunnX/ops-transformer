@@ -76,7 +76,7 @@ namespace {
     const static int64_t MAX_MOE_EXPERT_NUM = 1024LL;
     const static int64_t DISABLE_EXPERT_CAPACITY = -1LL;
     const static int64_t DISPATCH_QUANT_OUT_TYPE_OFFSET = 20LL;
-    const static int64_t DISPATCH_QUANT_OUT_TYPE_FP4_E2M1 = 293LL;
+    const static int64_t DISPATCH_QUANT_OUT_TYPE_FP4_E2M1 = 296LL;
     const static int64_t INPUT_WEIGHT_SCALES_CEIL_ALIGN = 64LL;
     const static int64_t RESERVED_WORKSPACE_SIZE = 1024 * 1024 * 50LL;
 }
