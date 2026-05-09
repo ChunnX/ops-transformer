@@ -1004,14 +1004,15 @@ ge::graphStatus CheckKVNzShape(const gert::TilingContext *context)
     auto tempK = context->GetInputShape(KEY_INDEX);
     auto tempV = context->GetInputShape(VALUE_INDEX);
 
-    OP_CHECK_IF((tempK->GetStorageShape().GetDim(DIM_0) != numBlocks) || (tempV->GetStorageShape().GetDim(DIM_0) != numBlocks),
-        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "The first dimension of kv should to be :%ld.",numBlocks),
-            return ge::GRAPH_FAILED);
+    OP_CHECK_IF((tempK->GetStorageShape().GetDim(DIM_0) != numBlocks) ||
+                    (tempV->GetStorageShape().GetDim(DIM_0) != numBlocks),
+                        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "The first dimension of kv should to be :%ld.", numBlocks),
+                            return ge::GRAPH_FAILED);
     OP_CHECK_IF((tempK->GetStorageShape().GetDim(DIM_4) != 16) || (tempV->GetStorageShape().GetDim(DIM_0) != 16),
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "The last dimension of kv should to be 16."),
             return ge::GRAPH_FAILED);
     OP_CHECK_IF((tempK->GetStorageShape().GetDim(DIM_3) != blockSize) || (tempV->GetStorageShape().GetDim(DIM_3) != blockSize),
-        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "The four dimension of kv should to be :%ld.",blockSize),
+        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "The four dimension of kv should to be :%ld.", blockSize),
             return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

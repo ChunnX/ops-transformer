@@ -297,7 +297,7 @@ namespace optiling{
         }
         if (faInfo_.innerPrecise == 1) {
             tilingKey += static_cast<uint64_t>(INNER_LOW_PREC_KEY);
-        } 
+        }
         if ((faInfo_.pagedCacheFlag) && !(faInfo_.maskType == MaskType::SWA_MASK) && !faInfo_.lseFlag && !faInfo_.learnableSinkFlag && !(faInfo_.innerPrecise == 1) && faInfo_.flashDecodeFlag) {
             tilingKey += static_cast<uint64_t>(FLASH_DECODE_KEY);
         } else if (faInfo_.decodingFlag) {
