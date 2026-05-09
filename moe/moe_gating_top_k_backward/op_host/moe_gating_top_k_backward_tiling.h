@@ -43,7 +43,7 @@ TILING_DATA_FIELD_DEF(int64_t, lastTailRows);  // 尾核尾 loop 一次搬运的
 TILING_DATA_FIELD_DEF(int64_t, tokenCount);    // x_norm shape [M,N] 中的 M, 所有的 token 数量
 TILING_DATA_FIELD_DEF(int64_t, expertCount);   // x_norm shape [M,N] 中的 N, 所有的 expert 数量
 TILING_DATA_FIELD_DEF(int64_t, k);             // grad_y shape [M,K] 中的 K，选择的前 K 个 expert 数量
-TILING_DATA_FIELD_DEF(int64_t, gradYDtype);    // grad_y的数据类型
+TILING_DATA_FIELD_DEF(int64_t, gradYDtypeSize);    // grad_y的数据类型
 TILING_DATA_FIELD_DEF(int64_t, renorm);
 TILING_DATA_FIELD_DEF(int64_t, normType);
 TILING_DATA_FIELD_DEF(float, routedScalingFactor);
