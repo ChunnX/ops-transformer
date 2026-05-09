@@ -999,6 +999,9 @@ public:
     __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfoX runInfo)
     {
         bmm2ResBuf.WaitCrossCore();
+        bmm2ResBuf.SetCrossCore();
+        return;
+        bmm2ResBuf.WaitCrossCore();
         if constexpr (bmm2Write2Ub) {
             ProcessVec2OnUb(bmm2ResBuf, runInfo);
         }
