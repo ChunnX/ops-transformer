@@ -490,6 +490,10 @@ static ge::graphStatus CheckInputOffsetShape(gert::InferShapeContext *context, c
 {
     // The shape of offset can be none.
     if (quantMode != QuantMode::STATIC_QUANT) {
+        if (quantMode == QuantMode::INT4_DYNAMIC && nullptr != offsetShape) {
+            OP_LOGE(context, "When quant_mode=10 (INT4 dynamic), offset should be empty/nullptr.");
+            return ge::GRAPH_FAILED;
+        }
         return ge::GRAPH_SUCCESS;
     } else if (nullptr == offsetShape) {
         return ge::GRAPH_FAILED;
@@ -699,6 +703,14 @@ static ge::graphStatus InferShape4MoeInitRoutingV3(gert::InferShapeContext *cont
     if (CheckInputShape(context, xShape, expertIdxShape, scaleShape, offsetShape, expertStart, expertEnd, quantMode) !=
         ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
+    }
+
+    // INT4 dynamic quantization requires H (cols) to be even (one byte packs two int4 elements)
+    if (quantMode == QuantMode::INT4_DYNAMIC) {
+        int64_t colsCheck = xShape->GetDimNum() == DIM_ONE ? NEG_ONE : xShape->GetDim(1);
+        OP_CHECK_IF(colsCheck > 0 && colsCheck % 2 != 0,
+                    OP_LOGE(context, "When quant_mode=10 (INT4 dynamic), H (cols) must be even, but got %ld.", colsCheck),
+                    return ge::GRAPH_FAILED);
     }
 
     // 3. Infer output shape
