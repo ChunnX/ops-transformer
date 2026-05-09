@@ -29,6 +29,8 @@
 #include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tile_copy.hpp"
 #include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tile_mmad.hpp"
 
+#include "../tools/coc_timer/coc_timer_host.hpp"
+
 using namespace AscendC;
 
 namespace Catlass::Gemm::Kernel {
@@ -350,6 +352,8 @@ public:
         int32_t outputBlockSize = blockM * params.problemShape.n();
         uint64_t mnSize = params.problemShape.m() * params.problemShape.n();
         for (int32_t calIdx = 0; calIdx < calCount; calIdx++) {
+            timerDevice_.Tik(CocTimer::AIC);
+
             int32_t flagIdx = calIdx % MAX_BLOCK_COUNT;
             int32_t actualPValue = params.pValue;
             if (calIdx == calCount - 1) {
@@ -419,6 +423,7 @@ public:
  	            blockMmad(gmAIn[gmOffsetA], params.layoutPeerMem, gmB[gmOffsetB], params.layoutB, gmDst[gmOffsetC],
  	                    params.layoutC, gmAInNext[gmOffsetNextA], gmB[gmOffsetNextB], blockSizeCoord,
                         nextBlockSizeCoord, isFirstBlock, hasNextBlock);
+                timerDevice_.Tok<Overwrite>(CocTimer::AIC);
             }
             FFTSCrossCoreSync<PIPE_FIX, 2>(flagIdx);
         }

@@ -82,6 +82,10 @@ class AllGatherMatmulV2 : public OpDef {
                    ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
+    this->Input("timer_buffer")
+        .ParamType(OPTIONAL)
+        .DataType({ge::DT_INT64})
+        .FormatList({ge::FORMAT_ND});
 
     this->Output("y")
         .ParamType(REQUIRED)

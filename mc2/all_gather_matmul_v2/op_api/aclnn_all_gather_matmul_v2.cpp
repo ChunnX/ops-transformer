@@ -480,7 +480,7 @@ bool IsViewTransposeX2(const aclTensor* x1, const aclTensor* x2, bool isTransX1)
 
 aclnnStatus allGatherMatmulV2GetWorkspaceSizeAIVMode(const aclTensor* x1, const aclTensor* x2, const aclTensor* bias,
                                                    const aclTensor* x1Scale, const aclTensor* x2Scale,
-                                                   const aclTensor* quantScale, int64_t blockSize, const char* group,
+                                                   const aclTensor* quantScale, const aclTensor* timerBuffer, int64_t blockSize, const char* group,
                                                    int64_t gatherIndex, int64_t commTurn, int64_t streamMode,
                                                    int64_t groupSize, const char* commMode, aclTensor* output, aclTensor* gatherOut,
                                                    aclTensor* amaxOut, uint64_t* workspaceSize,
@@ -503,7 +503,7 @@ aclnnStatus allGatherMatmulV2GetWorkspaceSizeAIVMode(const aclTensor* x1, const 
                 "The x2 without transpose in aclnnAllGatherMatmul must be contiguous, but it is non-contiguous.");
         return ACLNN_ERR_PARAM_INVALID;});
     }
-    aclnnStatus ret = aclnnInnerAllGatherMatmulV2GetWorkspaceSize(x1, x2, bias, x1Scale, x2Scale, quantScale,
+    aclnnStatus ret = aclnnInnerAllGatherMatmulV2GetWorkspaceSize(x1, x2, bias, x1Scale, x2Scale, quantScale, timerBuffer,
         const_cast<char *>(group), transposeX1, transposeX2, gatherIndex, commTurn, rankSize, blockSize, groupSize,
         isGatherOut, isAmaxOut, yDtype, const_cast<char *>(commMode), output, gatherOut, amaxOut, workspaceSize,
         executor);
@@ -513,7 +513,7 @@ aclnnStatus allGatherMatmulV2GetWorkspaceSizeAIVMode(const aclTensor* x1, const 
 
 aclnnStatus aclnnAllGatherMatmulV2GetWorkspaceSize(const aclTensor* x1, const aclTensor* x2, const aclTensor* bias,
                                                    const aclTensor* x1Scale, const aclTensor* x2Scale,
-                                                   const aclTensor* quantScale, int64_t blockSize, const char* group,
+                                                   const aclTensor* quantScale, const aclTensor* timerBuffer, int64_t blockSize, const char* group,
                                                    int64_t gatherIndex, int64_t commTurn, int64_t streamMode,
                                                    int64_t groupSize, const char* commMode, aclTensor* output, aclTensor* gatherOut,
                                                    aclTensor* amaxOut, uint64_t* workspaceSize,
@@ -521,10 +521,10 @@ aclnnStatus aclnnAllGatherMatmulV2GetWorkspaceSize(const aclTensor* x1, const ac
 {
     aclnnStatus ret = ACLNN_SUCCESS;
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        ret = allGatherMatmulV2GetWorkspaceSizeCCUMode(x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, group, gatherIndex, commTurn,
+        ret = allGatherMatmulV2GetWorkspaceSizeCCUMode(x1, x2, bias, x1Scale, x2Scale, quantScale, timerBuffer, blockSize, group, gatherIndex, commTurn,
                                                        streamMode, groupSize, commMode, output, gatherOut, amaxOut, workspaceSize, executor);
     } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
-        ret = allGatherMatmulV2GetWorkspaceSizeAIVMode(x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, group, gatherIndex, commTurn,
+        ret = allGatherMatmulV2GetWorkspaceSizeAIVMode(x1, x2, bias, x1Scale, x2Scale, quantScale, timerBuffer, blockSize, group, gatherIndex, commTurn,
                                                        streamMode, groupSize, commMode, output, gatherOut, amaxOut, workspaceSize, executor);
     } else {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Unsupported npuArch");

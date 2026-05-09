@@ -37,6 +37,8 @@
 #include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/gemm_type.hpp"
 #include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm_coord.hpp"
 
+#include "../tools/coc_timer/coc_timer_host.hpp"
+
 #include "gather_matmul.hpp"
 
 using namespace AscendC;
@@ -104,7 +106,7 @@ class AllGatherMatmulAIVMode
 public:
     __aicore__ inline AllGatherMatmulAIVMode(){};
     __aicore__ inline void Init(
-        GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR x1ScaleGM, GM_ADDR x2ScaleGM, GM_ADDR cGM,
+        GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR x1ScaleGM, GM_ADDR x2ScaleGM, GM_ADDR timerBufferGM, GM_ADDR cGM,
         GM_ADDR allgatherGM, GM_ADDR workspaceGM, GM_ADDR tilingGM);
     __aicore__ inline void Process();
 
@@ -137,6 +139,7 @@ private:
     GM_ADDR cGM_;
     GM_ADDR x1ScaleGM_;
     GM_ADDR x2ScaleGM_;
+    GM_ADDR timerBufferGM_;
     GM_ADDR allgatherGM_;
     GM_ADDR windowInGM_;
     GM_ADDR windowOutGM_;
@@ -195,6 +198,8 @@ private:
     bool needPerChannel;
     bool needPerToken;
 
+    CocTimerDevice timerDevice_;
+
     __gm__ supportX1Type* gm_peer_mem;
 
     GM_ADDR gm_a_align;
@@ -211,7 +216,7 @@ private:
 
 template <TemplateAGMMClass>
 __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Init(
-    GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR x1ScaleGM, GM_ADDR x2ScaleGM, GM_ADDR cGM, GM_ADDR allgatherGM,
+    GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR x1ScaleGM, GM_ADDR x2ScaleGM, GM_ADDR timerBufferGM, GM_ADDR cGM, GM_ADDR allgatherGM,
     GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     auto tiling = (__gm__ AllGatherMatmulAIVModeTilingData*)tilingGM;
@@ -224,6 +229,10 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Init(
     allgatherGM_ = allgatherGM;
     x1ScaleGM_ = x1ScaleGM;
     x2ScaleGM_ = x2ScaleGM;
+    timerBufferGM_ = timerBufferGM;
+
+    timerDevice_.Init(timerBufferGM_);
+    timerDevice_.Tik();
 
     m = tilingData.allGatherMatmulInfo.M;
     k = tilingData.allGatherMatmulInfo.K;
@@ -790,6 +799,8 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Process()
         PipeBarrier<PIPE_ALL>();
 
         for (int32_t cal_idx = 0; cal_idx < cal_count + MAX_BLOCK_COUNT; ++cal_idx) {
+            timerDevice_.Tik(CocTimer::AIV);
+            
             uint64_t flag_idx = cal_idx % MAX_BLOCK_COUNT;
 
             if (cal_idx == cal_count - 1) {
@@ -879,6 +890,7 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Process()
  	            Dequant(cal_idx - MAX_BLOCK_COUNT);
                 SetAndWaitAivSync(FLAG_VALUE);
  	        }
+            timerDevice_.Tok<Overwrite>(CocTimer::AIV);
         }
 
         for (int32_t idx = 0; idx < num_flags; ++idx) {
@@ -894,6 +906,8 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Process()
         PipeBarrier<PIPE_ALL>();
     }
     CatlassMatmul();
+
+    timerDevice_.Tok<Overwrite>(CocTimer::KERNEL_TIMING_IDX);
 
     SyncAll<false>();
 }
