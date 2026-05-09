@@ -1,0 +1,13 @@
+op_name,case_name,input_tensor_shape,input_tensor_range,input_tensor_dtype,mc2_memory,golden_memory,memory_rate,mc2_prof,golden_prof,prof_rate,recordtime,avg_hccl,avg_matmul,mask_rate,result
+aclnnQuantReduceScatter,48_7168_fp8_e5m2_fp32_bf16_DSV3_T-G_quantreducescatter_ID0001,"[48, 7168]","(-10.0, 10.0)",fp8_e5m2,206.736328125,nan,nan,11.317800000000002,19.175,1.6942338617045714,2026-04-30 15:17:39,,,,
+aclnnQuantReduceScatter,48_7168_fp8_e4m3fn_fp8_e8m0_bf16_DSV3_mxfp_quantreducescatter_ID0006,"[48, 7168]","(-3.0, 3.0)",fp8_e4m3fn,206.736328125,nan,nan,11.7112,19.1246,1.6330179657080404,2026-04-30 15:17:52,,,,
+aclnnQuantReduceScatter,48_5120_hif8_fp32_fp32_qwen_T-G_quantreducescatter_ID0016,"[48, 5120]","(-10, 10)",hif8,206.736328125,nan,nan,10.292600000000002,22.8366,2.2187396770495305,2026-04-30 15:18:04,,,,
+aclnnQuantReduceScatter,1_48_5120_int8_fp32_fp16_qwen_T-G_quantreducescatter_ID0015,"[1, 48, 5120]","(-10, 10)",int8,206.736328125,nan,nan,10.406,16.5912,1.5943878531616376,2026-04-30 15:18:18,,,,
+aclnnQuantReduceScatter,1_48_5120_fp8_e4m3fn_fp8_e8m0_fp32_qwen_mxfp_quantreducescatter_ID0017,"[1, 48, 5120]","(-20, 20)",fp8_e5m2,206.736328125,nan,nan,10.573999999999998,22.8016,2.156383582371856,2026-04-30 15:18:40,,,,
+aclnnQuantReduceScatter,48_7168_fp8_e4m3fn_fp32_fp16_DSV3_T-G_quantreducescatter_ID0002,"[48, 7168]","(-5.0, 5.0)",fp8_e4m3fn,206.736328125,nan,nan,11.3166,19.1432,1.6916034851457153,2026-04-30 15:18:54,,,,
+aclnnQuantReduceScatter,48_7168_int8_fp32_fp32_DSV3_T-G_quantreducescatter_ID0003,"[48, 7168]","(-10, 0)",int8,207.42236328125,nan,nan,11.314000000000002,27.8786,2.464079901007601,2026-04-30 15:19:07,,,,
+aclnnQuantReduceScatter,48_7168_fp8_e5m2_fp8_e8m0_fp32_DSV3_mxfp_quantreducescatter_ID0005,"[48, 7168]","(-5.0, 5.0)",fp8_e5m2,207.42236328125,nan,nan,11.7134,27.5964,2.3559683780968803,2026-04-30 15:19:21,,,,
+aclnnQuantReduceScatter,1_48_7168_fp8_e5m2_fp8_e8m0_fp16_DSV3_mxfp_quantreducescatter_ID0011,"[1, 48, 7168]","(-10.0, 10.0)",fp8_e5m2,206.736328125,nan,nan,11.602,19.1646,1.6518358903637305,2026-04-30 15:19:34,,,,
+aclnnQuantReduceScatter,48_5120_int8_fp32_bf16_qwen_T-G_quantreducescatter_ID0015,"[48, 5120]","(-7, 7)",int8,206.736328125,nan,nan,10.6056,16.588,1.5640793543033868,2026-04-30 15:19:47,,,,
+aclnnQuantReduceScatter,48_5120_fp8_e4m3fn_fp8_e8m0_bf16_qwen_mxfp_quantreducescatter_ID0017,"[48, 5120]","(0, 10)",fp8_e5m2,206.736328125,nan,nan,10.926199999999998,16.59,1.51836869176841,2026-04-30 15:20:02,,,,
+aclnnQuantReduceScatter,48_5120_fp8_e5m2_fp8_e8m0_fp16_qwen_mxfp_quantreducescatter_ID0018,"[48, 5120]","(-10, 10)",fp8_e4m3fn,206.736328125,nan,nan,10.9628,16.5982,1.5140475061115772,2026-04-30 15:20:17,,,,

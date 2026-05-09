@@ -34,7 +34,7 @@ using namespace VectorComputeImpl;
 using namespace AscendC;
 
 // 常量定义
-constexpr static uint32_t X_PRE_BLOCK_NUM = 1024U;  // MTE搬运的基本块大小，x dtype为 8bit 时对应 1024个x数据
+constexpr static uint32_t X_BLOCK_ALIGN_NUM = 1024U;  // x 分块大小的最小对齐粒度（元素数，与 Win 区数据布局对齐）
 constexpr static uint32_t MX_SIZE = 32U;            // MX量化时，32个x数据共有一个scale
 constexpr static uint32_t PER_GROUP_SIZE = 128U;    // KG量化时，128个x数据共有一个scale
 
@@ -136,30 +136,31 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::Init(GM_ADDR x, G
     uint64_t remainingSpace = TOTAL_UB_SIZE - totalFixedSpace;
     uint64_t maxXPerBlock = remainingSpace / totalDynamicBytes;
 
-    // 3.5 限制最大分块大小为 2048，确保 DoubleBuffer pipeline 有效（每核迭代≥3）
-    constexpr uint32_t X_MAX_BLOCK_NUM = 2048U;
-    if (maxXPerBlock > X_MAX_BLOCK_NUM) {
-        maxXPerBlock = X_MAX_BLOCK_NUM;
+    // 3.5 stage3：以 host 推荐值（基于 TARGET_ITER 公式）作为上限，kernel 端 ub_max 仍作 safety net
+    uint32_t hostRecommended = tiliingDatainfo.xPerBlock;
+    if (hostRecommended != 0U && maxXPerBlock > hostRecommended) {
+        maxXPerBlock = hostRecommended;
     }
 
     // 4. 考虑数据量限制：不超过总数据量 xNums_
     xPerBlock_ = static_cast<uint32_t>(maxXPerBlock < xNums_ ? maxXPerBlock : xNums_);
 
-    // 5. 对齐到 X_PRE_BLOCK_NUM（保持与Win区数据布局兼容）
-    xPerBlock_ = FloorAlign(xPerBlock_, X_PRE_BLOCK_NUM);
+    // 5. 对齐到 X_BLOCK_ALIGN_NUM（保持与Win区数据布局兼容）
+    xPerBlock_ = FloorAlign(xPerBlock_, X_BLOCK_ALIGN_NUM);
     if (xPerBlock_ == 0) {
-        xPerBlock_ = X_PRE_BLOCK_NUM;  // 最小值 1024
+        xPerBlock_ = X_BLOCK_ALIGN_NUM;  // 最小值 X_BLOCK_ALIGN_NUM (512)
     }
 
-    // 6. 计算scale数量并对齐到32B
+    // 6. 计算scale数量（real 值，用于 GM 偏移与 DataCopy 字节数）
     if constexpr (AscendC::IsSameType<ScalesType, fp8_e8m0_t>::value) {
         scaleNumsPerBlock_ = xPerBlock_ / MX_SIZE;
     } else {
         scaleNumsPerBlock_ = xPerBlock_ / PER_GROUP_SIZE;
     }
+    // UB buffer 大小按 32B 对齐分配（硬件要求），但 GM 偏移与 DataCopy 用 real 值（DataCopyPad 处理 sub-32B 拷贝）
     uint32_t scaleAlignNum = UB_ALIGN_BYTES / sizeof(ScalesType);
-    scaleNumsPerBlock_ = CeilAlignU32(scaleNumsPerBlock_, scaleAlignNum);
-    uint64_t scaleInQueSize = scaleNumsPerBlock_ * sizeof(ScalesType);
+    uint32_t scaleAllocCount = CeilAlignU32(scaleNumsPerBlock_, scaleAlignNum);
+    uint64_t scaleInQueSize = scaleAllocCount * sizeof(ScalesType);
 
     // 7. 分配 UB buffer
     tPipe->InitBuffer(xInQueue_, BUFFER_NUM, xPerBlock_ * sizeof(XType));
@@ -209,9 +210,13 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::ReadDataBlockRedu
     xInQueue_.EnQue(xTmpTensor);
     xTmpTensor = xInQueue_.DeQue<XType>();
 
-    /* 读取 scale 从 Win -> UB */
+    /* 读取 scale 从 Win -> UB（DataCopyPad 处理 sub-32B 对齐） */
     LocalTensor<ScalesType> scaleTmpTensor = scaleInQue.AllocTensor<ScalesType>();
-    DataCopy(scaleTmpTensor, remoteWinScaleTensor_[curScaleOffset], scaleNum);
+    DataCopyParams scaleCopyParams;
+    scaleCopyParams.blockLen = scaleNum * sizeof(ScalesType);
+    scaleCopyParams.blockCount = 1;
+    DataCopyPadParams scalePadParams;
+    DataCopyPad(scaleTmpTensor, remoteWinScaleTensor_[curScaleOffset], scaleCopyParams, scalePadParams);
     scaleInQue.EnQue(scaleTmpTensor);
     scaleTmpTensor = scaleInQue.DeQue<ScalesType>();
 
@@ -245,13 +250,11 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::ExecuteAllReduce(
         uint32_t curScaleNum = scaleNumsPerBlock_;
         if ((aivId == myLastAivId_) && (curBlock == myAssignedBlockNums_ - 1)) {
             curXNum = myTailXNums_;
-            // 尾块的scale数量：需要覆盖curXNum，向上对齐到scale分组大小
+            // 尾块的scale数量：real 值（DataCopyPad 处理 sub-32B 拷贝，不再需要硬对齐）
             if constexpr (AscendC::IsSameType<ScalesType, fp8_e8m0_t>::value) {
-                // MXFP: 每32个x共用1个scale，scale数量向上对齐到32B
-                curScaleNum = CeilAlignU32(CeilDivU32(curXNum, MX_SIZE), UB_ALIGN_BYTES / sizeof(ScalesType));
+                curScaleNum = CeilDivU32(curXNum, MX_SIZE);
             } else {
-                // KG: 每128个x共用1个scale，scale数量向上对齐到32B
-                curScaleNum = CeilAlignU32(CeilDivU32(curXNum, PER_GROUP_SIZE), UB_ALIGN_BYTES / sizeof(ScalesType));
+                curScaleNum = CeilDivU32(curXNum, PER_GROUP_SIZE);
             }
         }
 
