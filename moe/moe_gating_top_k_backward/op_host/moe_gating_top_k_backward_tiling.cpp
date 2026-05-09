@@ -135,6 +135,7 @@ private:
     int64_t normType_ = NORM_TYPE_SOFTMAX;
     int64_t routedScalingFactor_ = 1.0f;
     int64_t eps_ = 1e-20f;
+};
 
 ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckInputShape()
 {
