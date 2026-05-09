@@ -50,6 +50,9 @@ const std::array<const aclTensor *, 2> BlockSparseAttention(
     const aclIntArray *actualSeqLengthsOptional,
     const aclIntArray *actualSeqLengthsKvOptional,
     const aclTensor *blockTableOptional,
+    const aclTensor *queryDequantScaleOptional,
+    const aclTensor *keyDequantScaleOptional,
+    const aclTensor *valueDequantScaleOptional,
     const char *qInputLayout,
     const char *kvInputLayout,
     int64_t numKeyValueHeads,
@@ -63,10 +66,10 @@ const std::array<const aclTensor *, 2> BlockSparseAttention(
     aclOpExecutor *executor)
 {
     const char *safeKvInputLayout = (kvInputLayout != nullptr) ? kvInputLayout : qInputLayout;
-    
-    L0_DFX(BlockSparseAttention, query, key, value, blockSparseMaskOptional,
-           attenMaskOptional, blockShapeOptional, actualSeqLengthsOptional, actualSeqLengthsKvOptional,
-           blockTableOptional, qInputLayout, safeKvInputLayout, numKeyValueHeads,
+
+    L0_DFX(BlockSparseAttention, query, key, value, blockSparseMaskOptional, attenMaskOptional, blockShapeOptional,
+           actualSeqLengthsOptional, actualSeqLengthsKvOptional, blockTableOptional, queryDequantScaleOptional,
+           keyDequantScaleOptional, valueDequantScaleOptional, qInputLayout, safeKvInputLayout, numKeyValueHeads,
            maskType, scaleValue, innerPrecise, blockSize, preTokens, nextTokens, softmaxLseFlag);
 
     const aclTensor *blockShapeOptionalTensor = nullptr;
@@ -88,13 +91,14 @@ const std::array<const aclTensor *, 2> BlockSparseAttention(
     // scaleValue is already float type, no need for cast
     auto ret = INFER_SHAPE(BlockSparseAttention,
                            OP_INPUT(query, key, value, blockSparseMaskOptional, attenMaskOptional,
-                                    blockShapeOptionalTensor, actualSeqTensor, actualSeqKvTensor, blockTableOptional),
+                                    blockShapeOptionalTensor, actualSeqTensor, actualSeqKvTensor, blockTableOptional,
+                                    queryDequantScaleOptional, keyDequantScaleOptional, valueDequantScaleOptional),
                            OP_OUTPUT(attentionOutTensor, softmaxLseTensor),
-                           OP_ATTR(qInputLayout, safeKvInputLayout,
-                                   static_cast<int64_t>(numKeyValueHeads), static_cast<int64_t>(maskType),
-                                   static_cast<float>(scaleValue), static_cast<int64_t>(innerPrecise),
-                                   static_cast<int64_t>(blockSize), static_cast<uint32_t>(preTokens),
-                                   static_cast<int64_t>(nextTokens), static_cast<int64_t>(softmaxLseFlag)));
+                           OP_ATTR(qInputLayout, safeKvInputLayout, static_cast<int64_t>(numKeyValueHeads),
+                                   static_cast<int64_t>(maskType), static_cast<float>(scaleValue),
+                                   static_cast<int64_t>(innerPrecise), static_cast<int64_t>(blockSize),
+                                   static_cast<uint32_t>(preTokens), static_cast<int64_t>(nextTokens),
+                                   static_cast<int64_t>(softmaxLseFlag)));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "BlockSparseAttention infer shape failed, scaleValue: %f.", scaleValue);
         return {nullptr, nullptr};
@@ -102,8 +106,8 @@ const std::array<const aclTensor *, 2> BlockSparseAttention(
     
     ADD_TO_LAUNCHER_LIST_AICORE(BlockSparseAttention,
                                 OP_INPUT(query, key, value, blockSparseMaskOptional, attenMaskOptional,
-                                         blockShapeOptionalTensor, actualSeqTensor, actualSeqKvTensor,
-                                         blockTableOptional),
+                                         blockShapeOptionalTensor, actualSeqTensor, actualSeqKvTensor, blockTableOptional,
+                                         queryDequantScaleOptional, keyDequantScaleOptional, valueDequantScaleOptional),
                                 OP_OUTPUT(attentionOutTensor, softmaxLseTensor),
                                 OP_ATTR(qInputLayout, safeKvInputLayout, static_cast<int64_t>(numKeyValueHeads),
                                         static_cast<int64_t>(maskType), static_cast<float>(scaleValue),
