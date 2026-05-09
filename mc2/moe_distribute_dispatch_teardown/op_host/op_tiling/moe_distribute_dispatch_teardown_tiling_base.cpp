@@ -595,9 +595,10 @@ const bool MoeDistributeDispatchTeardownTilingBase::CheckInputTensorDataType()
          (context_->GetInputDesc(INPUT_Y_INDEX)->GetDataType() != ge::DT_BF16) &&
          (context_->GetInputDesc(INPUT_Y_INDEX)->GetDataType() != ge::DT_INT8) &&
          (context_->GetInputDesc(INPUT_Y_INDEX)->GetDataType() != ge::DT_FLOAT8_E4M3FN) &&
-         (context_->GetInputDesc(INPUT_Y_INDEX)->GetDataType() != ge::DT_FLOAT8_E5M2)),
+         (context_->GetInputDesc(INPUT_Y_INDEX)->GetDataType() != ge::DT_FLOAT8_E5M2)&&
+         (context_->GetInputDesc(INPUT_Y_INDEX)->GetDataType() != ge::DT_HIFLOAT8)),
         OP_LOGE(
-            nodeName_, "Unsupported dataType, y only support float16 or bfloat16 or int8, but is %s!",
+            nodeName_, "Unsupported dataType, y only support float16/bfloat16/int8/fp8/hif8, but is %s!",
             Ops::Base::ToString(context_->GetInputDesc(INPUT_Y_INDEX)->GetDataType()).c_str()),
         return false);
     OP_TILING_CHECK(
@@ -647,22 +648,23 @@ const bool MoeDistributeDispatchTeardownTilingBase::CheckRelationTensorDataType(
     OP_TILING_CHECK(
         (context_->GetOutputDesc(OUTPUT_EXPERT_TOKEN_NUMS_INDEX) == nullptr),
         OP_LOGE(nodeName_, "Get output expertTokenNumsOut is null!"), return false);
-    OP_TILING_CHECK(
-        ((context_->GetOutputDesc(OUTPUT_EXPAND_X_INDEX)->GetDataType() != ge::DT_FLOAT16) &&
-         (context_->GetOutputDesc(OUTPUT_EXPAND_X_INDEX)->GetDataType() != ge::DT_BF16) &&
-         (context_->GetOutputDesc(OUTPUT_EXPAND_X_INDEX)->GetDataType() != ge::DT_INT8)),
-        OP_LOGE(
-            nodeName_, "Unsupported dataType, expandXOut only support float16 or bfloat16 or int8, but is %s!",
-            Ops::Base::ToString(context_->GetInputDesc(OUTPUT_EXPAND_X_INDEX)->GetDataType()).c_str()),
-        return false);
-    if ((quantMode != UNQUANT) && (quantMode != STATIC_QUANT)) {
+
+    if ((quantMode == PERTOKEN_DYNAMIC_QUANT) && (quantMode = PERGROUP_DYNAMIC_QUANT)) {
         OP_TILING_CHECK(
             (context_->GetOutputDesc(OUTPUT_DYNAMIC_SCALES_INDEX)->GetDataType() != ge::DT_FLOAT),
             OP_LOGE(
                 nodeName_, "Unsupported dataType, dynamicScalesOut only support float32, but is %s!",
                 Ops::Base::ToString(context_->GetOutputDesc(OUTPUT_DYNAMIC_SCALES_INDEX)->GetDataType()).c_str()),
             return false);
+    } else if (quantMode == MX_QUANT) {
+        OP_TILING_CHECK(
+            (context_->GetOutputDesc(OUTPUT_DYNAMIC_SCALES_INDEX)->GetDataType() != ge::DT_FLOAT8_E8M0),
+            OP_LOGE(
+                nodeName_, "Unsupported dataType, dynamicScalesOut only support fp8_e8m0, but is %s!",
+                Ops::Base::ToString(context_->GetOutputDesc(OUTPUT_DYNAMIC_SCALES_INDEX)->GetDataType()).c_str()),
+            return false);
     }
+
     OP_TILING_CHECK(
         (context_->GetOutputDesc(OUTPUT_ASSIST_INFO_FOR_COMBINE_INDEX)->GetDataType() != ge::DT_INT32),
         OP_LOGE(
@@ -685,6 +687,9 @@ const ge::graphStatus MoeDistributeDispatchTeardownTilingBase::CheckTensorDataTy
         !CheckInputTensorDataType(), OP_LOGE(nodeName_, "Check input dataType failed!"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         !CheckOutputTensorDataType(), OP_LOGE(nodeName_, "Check output dataType failed!"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        !CheckRelationTensorDataType(),
+            OP_LOGE(nodeName_, "Check relation tensor dataType failed!"), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }

@@ -13,8 +13,8 @@
  * \brief Checker for mask_mode, attn_mask, win_left, win_right parameters (文档约束: Mask参数组)
  */
 
-#ifndef MASK_CHECKER_H
-#define MASK_CHECKER_H
+#ifndef FLASH_ATTN_MASK_CHECKER_H
+#define FLASH_ATTN_MASK_CHECKER_H
 
 #include <map>
 #include <numeric>
@@ -22,6 +22,7 @@
 #include "base_checker.h"
 
 namespace optiling {
+namespace flash_attn {
 class MaskChecker : public FABaseChecker {
 public:
     MaskChecker() = default;
@@ -36,5 +37,6 @@ private:
     ge::graphStatus CheckSingleParaWindowParams(const FaTilingInfo &faInfo);
 };
 
+} // namespace flash_attn
 } // namespace optiling
-#endif // MASK_CHECKER_H
+#endif // FLASH_ATTN_MASK_CHECKER_H

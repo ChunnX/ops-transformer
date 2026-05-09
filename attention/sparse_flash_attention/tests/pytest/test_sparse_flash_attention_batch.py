@@ -44,23 +44,37 @@ else:
 def execute_sfa(testcase_file):
     test_data = torch.load(testcase_file, map_location="cpu")
     testcase_name = os.path.basename(testcase_file).replace(".pt", "")
-    result = utils.sfa_run_npu(test_data, testcase_name=testcase_name, device_id=DEVICE_ID, result_path=RESULT_PATH)
-    return result, test_data
+    result, compare_results = utils.sfa_run_npu(test_data, testcase_name=testcase_name, device_id=DEVICE_ID, result_path=RESULT_PATH)
+    return result, compare_results, test_data
 
 
 @pytest.mark.ci
 @pytest.mark.parametrize("testcase_file", locals()["testcase_files"])
 def test_sparse_flash_attention_batch(testcase_file):
     test_data = None
+    compare_results = {}
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
         future = executor.submit(execute_sfa, testcase_file)
         for completed_future in concurrent.futures.as_completed([future]):
             try:
-                result, test_data = completed_future.result()
+                result, compare_results, test_data = completed_future.result()
                 if result == "Failed":
-                    pytest.fail(f"测试结果为Failed")
+                    case_name = os.path.basename(testcase_file).replace(".pt", "")
+                    return_softmax_lse = test_data.get("input", {}).get("return_softmax_lse", False)
+                    compare_items = ["attn_out"]
+                    if return_softmax_lse:
+                        compare_items.extend(["softmax_max", "softmax_sum"])
+                    detail_parts = []
+                    for item in compare_items:
+                        item_result = compare_results.get(item, {})
+                        item_status = item_result.get("result", "Unknown")
+                        item_percent = item_result.get("fulfill_percent", 0.0)
+                        detail_parts.append(f"{item}: {item_status}({item_percent:.4f}%)")
+                    detail_msg = ", ".join(detail_parts)
+                    pytest.fail(f"用例名: {case_name}, 对比结果: {detail_msg}", pytrace=False)
             except Exception as error:
                 params = test_data.get("params") if test_data else None
+                case_name = os.path.basename(testcase_file).replace(".pt", "")
                 if params:
-                    utils.save_result(params, "Failed", "", RESULT_PATH)
-                pytest.fail(f"当前用例线程执行失败: {error}")
+                    utils.save_result(params, "Failed", "", RESULT_PATH, None, None)
+                pytest.fail(f"用例名: {case_name}, 当前用例线程执行失败: {error}")

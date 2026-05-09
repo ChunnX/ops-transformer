@@ -13,8 +13,8 @@
  * \brief Checker for softmax_lse parameter (文档约束: SoftmaxLSE参数组)
  */
 
-#ifndef SOFTMAX_LSE_CHECKER_H
-#define SOFTMAX_LSE_CHECKER_H
+#ifndef FLASH_ATTN_SOFTMAX_LSE_CHECKER_H
+#define FLASH_ATTN_SOFTMAX_LSE_CHECKER_H
 
 #include <map>
 #include <numeric>
@@ -22,6 +22,7 @@
 #include "base_checker.h"
 
 namespace optiling {
+namespace flash_attn {
 
 class SoftmaxLSEChecker : public FABaseChecker {
 public:
@@ -32,5 +33,6 @@ public:
     ge::graphStatus CheckParaExistence(const FaTilingInfo &faInfo) override;
 };
 
+} // namespace flash_attn
 } // namespace optiling
-#endif // SOFTMAX_LSE_CHECKER_H
+#endif // FLASH_ATTN_SOFTMAX_LSE_CHECKER_H

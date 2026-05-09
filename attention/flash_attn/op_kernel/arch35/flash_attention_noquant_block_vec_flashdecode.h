@@ -12,8 +12,8 @@
  * \file flash_attention_noquant_block_vec_flashdecode.h
  * \brief
  */
-#ifndef FIA_BLOCK_VEC_FLASHDECODE_H
-#define FIA_BLOCK_VEC_FLASHDECODE_H
+#ifndef FLASH_ATTN_BLOCK_VEC_FLASHDECODE_H
+#define FLASH_ATTN_BLOCK_VEC_FLASHDECODE_H
 
 #include "kernel_operator.h"
 #include "kernel_operator_list_tensor_intf.h"
@@ -125,8 +125,18 @@ protected:
     static constexpr ActualSeqLensMode KV_MODE = GetKvActSeqMode<layout, isPa>();
     // tensorlist
     __gm__ uint8_t *keyPtr = nullptr;
-    ActualSeqLensParser<Q_MODE> qActSeqLensParser;
-    ActualSeqLensParser<KV_MODE> kvActSeqLensParser;
+    
+    typename std::conditional<
+        (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD),
+        TNDSeqLensParser<uint64_t>,
+        ActualSeqLensParser<Q_MODE>
+    >::type qActSeqLensParser;
+    
+    typename std::conditional<
+        (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD),
+        TNDSeqLensParser<uint64_t>,
+        ActualSeqLensParser<KV_MODE>
+    >::type kvActSeqLensParser;
 
     int64_t preTokensPerBatch = 0;
     int64_t nextTokensPerBatch = 0;

@@ -20,7 +20,7 @@
 #include <register/op_impl_registry.h>
 #include "tests/utils/log.h"
 #include "tests/utils/platform.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 
 
 extern "C" __global__ __aicore__ void nsa_selected_attention_infer NSA_SELECT_ATTENTION_INFER_KERNEL_PARAM;

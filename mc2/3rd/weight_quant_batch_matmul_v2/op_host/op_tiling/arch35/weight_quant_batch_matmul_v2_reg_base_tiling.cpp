@@ -16,7 +16,7 @@
 #include "graph/utils/type_utils.h"
 #include "register/op_impl_registry.h"
 #include "weight_quant_batch_matmul_v2_reg_base_tiling.h"
-#include "tiling_base/tiling_key.h"
+#include "op_host/tiling_key.h"
 
 using namespace platform_ascendc;
 using Ops::Transformer::OpTiling::RecursiveSum;

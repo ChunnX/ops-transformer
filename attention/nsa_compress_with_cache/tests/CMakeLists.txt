@@ -30,7 +30,7 @@ set(_NCWC_OpTilingPrivateIncludesExt)
 
 set(_NCWC_OpKernelTilingDataDefH
         # 公共
-        ${OPS_TRANSFORMER_DIR}/common/include/tiling_base/data_copy_transpose_tiling_def.h
+        ${OPS_TRANSFORMER_DIR}/common/include/op_host/data_copy_transpose_tiling_def.h
         # NCWC
         ${OPS_TRANSFORMER_DIR}/attention/nsa_compress_with_cache/op_host/nsa_compress_with_cache_tiling.h
 )

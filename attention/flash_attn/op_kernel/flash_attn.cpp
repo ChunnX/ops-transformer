@@ -41,12 +41,21 @@ __global__ __aicore__ void flash_attn(
     __gm__ uint8_t *tiling)
 {
     REGISTER_TILING_DEFAULT(optiling::FlashAttnTilingData);
-    // 框架根据tilingKey模板参数分发至flash_attn_regbase<...>()
-    flash_attn_regbase<
-        inOutLayoutType, config, pseMode, quantMode,
-        hasAttenMask, hasRope, KvLayoutType, isFd,
-        emptyTensor, PFAMask, pFAMatMulType, enableKVPrefix, enableS1OutSplit>(
-        query, key, value, blockTable, attnMask,
-        actualSeqLengthsQ, actualSeqLengthsKv, sequsedQ,
-        sequsedKv, sinks, metadata, attnOut, softmaxLse, workspace, tiling);
+    __gm__ uint8_t *user = GetUserWorkspace(workspace);
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+
+    // dtype 分发 → flash_attn_kernel_run (类型推导 + kernel实例化执行)
+#if (ORIG_DTYPE_Q == DT_BF16)
+    flash_attn_kernel_run<bfloat16_t, bfloat16_t,
+        inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType,
+        isFd, emptyTensor, PFAMask, pFAMatMulType, enableKVPrefix, enableS1OutSplit>(
+        query, key, value, attnMask, actualSeqLengthsQ, actualSeqLengthsKv,
+        blockTable, sinks, attnOut, softmaxLse, user, tiling, metadata);
+#elif (ORIG_DTYPE_Q == DT_FLOAT16)
+    flash_attn_kernel_run<half, half,
+        inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType,
+        isFd, emptyTensor, PFAMask, pFAMatMulType, enableKVPrefix, enableS1OutSplit>(
+        query, key, value, attnMask, actualSeqLengthsQ, actualSeqLengthsKv,
+        blockTable, sinks, attnOut, softmaxLse, user, tiling, metadata);
+#endif
 }

@@ -93,10 +93,10 @@
           <ul>
                 <li>公式中Query的反量化系数Scale_Q。</li>
                 <li>不支持非连续。</li>
-                <li>layout_query为BSND时，shape为(B,S1,N1)。layout_query为TND时，shape为(T,N1)。</li>
+                <li>layout_query为BSND时，shape为(B,S1,N1)。layout_query为TND时，shape为(T1,N1)。</li>
           </ul>
       </td>
-      <td>FLOAT16、BFLOAT16</td>
+      <td>FLOAT、FLOAT16</td>
       <td>ND</td>
     </tr>
     <tr>
@@ -106,11 +106,12 @@
           <ul>
                 <li>公式中Key的反量化系数Scale_K。</li>
                 <li>支持非连续。</li>
-                <li>layout_query为BSND时，shape为(B,S1,N2)。layout_query为TND时，shape为(T,N2)。</li>
+                <li>layout_key为BSND时，shape为(B,S2,N2)。layout_key为TND时，shape为(T2,N2)。</li>
+                <li>layout_key为PA_BSND时，shape为(block_num, block_size, N2)。</li>
                 <li>block_num为PageAttention时block总数，block_size为一个block的token数。</li>
           </ul>
       </td>
-      <td>FLOAT16、BFLOAT16</td>
+      <td>FLOAT、FLOAT16</td>
       <td>ND</td>
     </tr>
     <tr>
@@ -328,6 +329,21 @@ Ascend 950PR/Ascend 950DT：
     </td>
     <td class="tg-lboi" rowspan="6">
     通过算子IR构图方式调用npu_quant_lightning_indexer算子
+    </td>
+  </tr>
+</tbody>
+<tbody>
+  <tr>
+    <td class="tg-9wq8" rowspan="6">aclnn接口</td>
+    <td class="tg-0pky">
+    <a href="./examples/test_aclnn_quant_lightning_indexer.cpp">test_aclnn_quant_lightning_indexer
+    </a>
+    </td>
+    <td class="tg-lboi" rowspan="6">
+    通过
+    <a href="./docs/aclnnQuantLightningIndexer.md">aclnnQuantLightningIndexer
+    </a>
+    接口方式调用算子
     </td>
   </tr>
 </tbody></table>

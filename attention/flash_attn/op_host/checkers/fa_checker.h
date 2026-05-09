@@ -13,8 +13,8 @@
  * \brief FAChecker using Composite Pattern - manages all checkers uniformly
  */
 
-#ifndef FA_CHECKER_H
-#define FA_CHECKER_H
+#ifndef FLASH_ATTN_FA_CHECKER_H
+#define FLASH_ATTN_FA_CHECKER_H
 
 #include <memory>
 #include <vector>
@@ -32,6 +32,7 @@
 #include "./softmax_lse_checker.h"
 
 namespace optiling {
+namespace flash_attn {
 
 class FAChecker {
 public:
@@ -56,5 +57,6 @@ private:
     std::vector<std::unique_ptr<FABaseChecker>> checkers_;
 };
 
+} // namespace flash_attn
 } // namespace optiling
-#endif // FA_CHECKER_H
+#endif // FLASH_ATTN_FA_CHECKER_H

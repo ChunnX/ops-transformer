@@ -111,9 +111,9 @@ void FlashAttnTilingImpl::InitImplParam()
         actSeqLenQDims = (actSeqLenQ != nullptr) ? actSeqLenQ->GetShapeSize() : 0;
         actSeqLenKVDims = (actSeqLenKV != nullptr) ? actSeqLenKV->GetShapeSize() : 0;
         cuSeqLenQFlag_ =
-            !((actSeqLenQDims == 0) || (actSeqLenQ == nullptr) || (actSeqLenQ->GetData<int64_t>() == nullptr));
+            !((actSeqLenQDims == 0) || (actSeqLenQ == nullptr) || (actSeqLenQ->GetData<int32_t>() == nullptr));
         cuSeqLenKVFlag_ =
-            !((actSeqLenKVDims == 0) || (actSeqLenKV == nullptr) || (actSeqLenKV->GetData<int64_t>() == nullptr));
+            !((actSeqLenKVDims == 0) || (actSeqLenKV == nullptr) || (actSeqLenKV->GetData<int32_t>() == nullptr));
 
     // for (uint32_t bIdx = 0; bIdx < faInfo_->bSize; bIdx++) {
     //     if (cuSeqLenQFlag_) {
@@ -315,16 +315,16 @@ void FlashAttnTilingImpl::CreateSplitInput(fa_split_core_v2::BaseInfo &baseInfo,
     const gert::Tensor *actSeqLenDataKV = faInfo_->opParamInfo.cuSeqlensKv.tensor;
     if (actSeqLenData != nullptr) {
         baseInfo.cuSeqS1Size.reserve(baseInfo.bSize);
-        const int64_t *s1Ptr = actSeqLenData->GetData<int64_t>();
+        const int32_t *s1Ptr = actSeqLenData->GetData<int32_t>();
         for (uint32_t i = 0; i < baseInfo.bSize; i++) {
-            baseInfo.cuSeqS1Size.emplace_back(s1Ptr[i]);
+            baseInfo.cuSeqS1Size.emplace_back(static_cast<int64_t>(s1Ptr[i]));
         }
     }
     if (actSeqLenDataKV != nullptr) {
         baseInfo.cuSeqS2Size.reserve(baseInfo.bSize);
-        const int64_t *s2Ptr = actSeqLenDataKV->GetData<int64_t>();
+        const int32_t *s2Ptr = actSeqLenDataKV->GetData<int32_t>();
         for (uint32_t i = 0; i < baseInfo.bSize; i++) {
-            baseInfo.cuSeqS2Size.emplace_back(s2Ptr[i]);
+            baseInfo.cuSeqS2Size.emplace_back(static_cast<int64_t>(s2Ptr[i]));
         }
     }
     splitParam.mBaseSize = sOuterFactor_ * optiling::arch35FA::CV_RATIO;
@@ -811,7 +811,7 @@ void FlashAttnTilingImpl::PrintAllTilingData()
     OP_LOGD(faInfo_->opName, "totalOutputSize:%d", flashAttnEmptyTensorParams.totalOutputSize);
     OP_LOGD(faInfo_->opName, "totalSoftMaxLseOutputSize:%d", flashAttnEmptyTensorParams.totalSoftMaxLseOutputSize);
 
-    for (int aicIdx = 0; aicIdx <= FA_AIC_CORE_NUM; ++aicIdx) {
+    for (int aicIdx = 0; aicIdx < FA_AIC_CORE_NUM; ++aicIdx) {
         OP_LOGD(faInfo_->opName, "FAMetadata[%d], [0]:%d, [1]:%d, [2]:%d, [3]:%d, [4]:%d, [5]:%d, [6]:%d, [7]:%d",
                 aicIdx, flashAttnMetaData.FAMetadata[aicIdx][0], flashAttnMetaData.FAMetadata[aicIdx][1],
                 flashAttnMetaData.FAMetadata[aicIdx][2], flashAttnMetaData.FAMetadata[aicIdx][3],
@@ -819,7 +819,7 @@ void FlashAttnTilingImpl::PrintAllTilingData()
                 flashAttnMetaData.FAMetadata[aicIdx][6], flashAttnMetaData.FAMetadata[aicIdx][7]);
     }
 
-    for (int aivIdx = 0; aivIdx <= FA_AIV_CORE_NUM; ++aivIdx) {
+    for (int aivIdx = 0; aivIdx < FA_AIV_CORE_NUM; ++aivIdx) {
         OP_LOGD(faInfo_->opName, "FDMetadata[%d], [0]:%d, [1]:%d, [2]:%d, [3]:%d, [4]:%d, [5]:%d, [6]:%d, [7]:%d",
                 aivIdx, flashAttnMetaData.FDMetadata[aivIdx][0], flashAttnMetaData.FDMetadata[aivIdx][1],
                 flashAttnMetaData.FDMetadata[aivIdx][2], flashAttnMetaData.FDMetadata[aivIdx][3],

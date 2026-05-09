@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef FA_TILING_BASE_H
-#define FA_TILING_BASE_H
+#ifndef FLASH_ATTN_FA_TILING_BASE_H
+#define FLASH_ATTN_FA_TILING_BASE_H
 
 #include <sstream>
 #include "register/tilingdata_base.h"
@@ -176,4 +176,4 @@ private:
 };
 
 } // namespace optiling
-#endif // FA_TILING_BASE_H
+#endif // FLASH_ATTN_FA_TILING_BASE_H

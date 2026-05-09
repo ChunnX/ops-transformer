@@ -88,355 +88,372 @@ extern "C" __global__ __aicore__ void mat_mul_v3(GM_ADDR aGM, GM_ADDR bGM, GM_AD
     REGISTER_TILING_FOR_TILINGKEY("TILING_KEY_VAR < 10001900009000090000UL", MatMulV3TilingDataCopy);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIC_ONLY);
 
-    if (TILING_KEY_IS(10000900009000090000UL)) {
-        MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, false, false, nullptr, Mc2MatmulV3Advanced::Mc2MatmulAswKernel, Mc2MatmulV3Advanced::Mc2MatmulAswBlock,
-                              MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009000090001UL)) {
-        MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, true, false, nullptr, Mc2MatmulV3Advanced::Mc2MatmulAswKernel, Mc2MatmulV3Advanced::Mc2MatmulAswBlock,
-                              MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009000090002UL)) {
-        MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, false, true, nullptr, Mc2MatmulV3Advanced::Mc2MatmulAswKernel, Mc2MatmulV3Advanced::Mc2MatmulAswBlock,
-                              MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009000090003UL)) {
-        MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, true, true, nullptr, Mc2MatmulV3Advanced::Mc2MatmulAswKernel, Mc2MatmulV3Advanced::Mc2MatmulAswBlock,
-                              MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009000490000UL)) {
-        MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, false, false, nullptr, Mc2MatmulV3Advanced::Mc2MatmulAswKernel, Mc2MatmulV3Advanced::MatmulDaswBlock,
-                              MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009000490001UL)) {
-        MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, true, false, nullptr, Mc2MatmulV3Advanced::Mc2MatmulAswKernel, Mc2MatmulV3Advanced::MatmulDaswBlock,
-                              MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009000490002UL)) {
-        MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, false, true, nullptr, Mc2MatmulV3Advanced::Mc2MatmulAswKernel, Mc2MatmulV3Advanced::MatmulDaswBlock,
-                              MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009000490003UL)) {
-        MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, true, true, nullptr, Mc2MatmulV3Advanced::Mc2MatmulAswKernel, Mc2MatmulV3Advanced::MatmulDaswBlock,
-                              MM_CFG_NO_PRELOAD);
+#if TILING_KEY_VAR == 10000900009000090000UL
+    MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, false, false, nullptr,
+                            Mc2MatmulV3Advanced::Mc2MatmulAswKernel,
+                            Mc2MatmulV3Advanced::Mc2MatmulAswBlock,
+                            MM_CFG_NO_PRELOAD);
+#elif TILING_KEY_VAR == 10000900009000090001UL
+    MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, true, false, nullptr,
+                            Mc2MatmulV3Advanced::Mc2MatmulAswKernel,
+                            Mc2MatmulV3Advanced::Mc2MatmulAswBlock,
+                            MM_CFG_NO_PRELOAD);
+#elif TILING_KEY_VAR == 10000900009000090002UL
+    MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, false, true, nullptr,
+                            Mc2MatmulV3Advanced::Mc2MatmulAswKernel,
+                            Mc2MatmulV3Advanced::Mc2MatmulAswBlock,
+                            MM_CFG_NO_PRELOAD);
+#elif TILING_KEY_VAR == 10000900009000090003UL
+    MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, true, true, nullptr,
+                            Mc2MatmulV3Advanced::Mc2MatmulAswKernel,
+                            Mc2MatmulV3Advanced::Mc2MatmulAswBlock,
+                            MM_CFG_NO_PRELOAD);
+#elif TILING_KEY_VAR == 10000900009000490000UL
+    MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, false, false, nullptr,
+                            Mc2MatmulV3Advanced::Mc2MatmulAswKernel,
+                            Mc2MatmulV3Advanced::MatmulDaswBlock,
+                            MM_CFG_NO_PRELOAD);
+#elif TILING_KEY_VAR == 10000900009000490001UL
+    MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, true, false, nullptr,
+                            Mc2MatmulV3Advanced::Mc2MatmulAswKernel,
+                            Mc2MatmulV3Advanced::MatmulDaswBlock,
+                            MM_CFG_NO_PRELOAD);
+#elif TILING_KEY_VAR == 10000900009000490002UL
+    MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, false, true, nullptr,
+                            Mc2MatmulV3Advanced::Mc2MatmulAswKernel,
+                            Mc2MatmulV3Advanced::MatmulDaswBlock,
+                            MM_CFG_NO_PRELOAD);
+#elif TILING_KEY_VAR == 10000900009000490003UL
+    MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, true, true, nullptr,
+                            Mc2MatmulV3Advanced::Mc2MatmulAswKernel,
+                            Mc2MatmulV3Advanced::MatmulDaswBlock,
+                            MM_CFG_NO_PRELOAD);
+#endif
 #if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 5102))
-    } else if (TILING_KEY_IS(10001900009000090000UL)) {
+    #if TILING_KEY_VAR == 10001900009000090000UL
         GET_TILING_DATA_WITH_STRUCT(Mc2MatMulV3BasicTilingData, tilingData, tilingGM);
         Mc2MatmulV3Advanced::MatMulActKernel<
             DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::RowMajor, layout::RowMajor, layout::RowMajor>(
             aGM, bGM, biasGM, cGM, nullptr, tilingData);
-    } else if (TILING_KEY_IS(10001900009000090001UL)) {
+    #elif TILING_KEY_VAR == 10001900009000090001UL
         GET_TILING_DATA_WITH_STRUCT(Mc2MatMulV3BasicTilingData, tilingData, tilingGM);
         Mc2MatmulV3Advanced::MatMulActKernel<
             DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::ColumnMajor, layout::RowMajor, layout::RowMajor>(
             aGM, bGM, biasGM, cGM, nullptr, tilingData);
-    } else if (TILING_KEY_IS(10001900009000090002UL)) {
+    #elif TILING_KEY_VAR == 10001900009000090002UL
         GET_TILING_DATA_WITH_STRUCT(Mc2MatMulV3BasicTilingData, tilingData, tilingGM);
         Mc2MatmulV3Advanced::MatMulActKernel<
             DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::RowMajor, layout::ColumnMajor, layout::RowMajor>(
             aGM, bGM, biasGM, cGM, nullptr, tilingData);
-    } else if (TILING_KEY_IS(10001900009000090003UL)) {
+    #elif TILING_KEY_VAR == 10001900009000090003UL
         GET_TILING_DATA_WITH_STRUCT(Mc2MatMulV3BasicTilingData, tilingData, tilingGM);
         Mc2MatmulV3Advanced::MatMulActKernel<
             DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::ColumnMajor, layout::ColumnMajor, layout::RowMajor>(
             aGM, bGM, biasGM, cGM, nullptr, tilingData);
-    } else if (TILING_KEY_IS(10001900009002090000UL)) {
+    #elif TILING_KEY_VAR == 10001900009002090000UL
         GET_TILING_DATA_WITH_STRUCT(Mc2MatMulV3BasicTilingData, tilingData, tilingGM);
         Mc2MatmulV3Advanced::MatMulActKernel<
             DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::RowMajor, layout::RowMajor, layout::RowMajor,
             B_FULL_LOAD_MODE>(aGM, bGM, biasGM, cGM, nullptr, tilingData);
-    } else if (TILING_KEY_IS(10001900009002090001UL)) {
+    #elif TILING_KEY_VAR == 10001900009002090001UL
         GET_TILING_DATA_WITH_STRUCT(Mc2MatMulV3BasicTilingData, tilingData, tilingGM);
         Mc2MatmulV3Advanced::MatMulActKernel<
             DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::ColumnMajor, layout::RowMajor, layout::RowMajor,
             B_FULL_LOAD_MODE>(aGM, bGM, biasGM, cGM, nullptr, tilingData);
-    } else if (TILING_KEY_IS(10001900009002090002UL)) {
+    #elif TILING_KEY_VAR == 10001900009002090002UL
         GET_TILING_DATA_WITH_STRUCT(Mc2MatMulV3BasicTilingData, tilingData, tilingGM);
         Mc2MatmulV3Advanced::MatMulActKernel<
             DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::RowMajor, layout::ColumnMajor, layout::RowMajor,
             B_FULL_LOAD_MODE>(aGM, bGM, biasGM, cGM, nullptr, tilingData);
-    } else if (TILING_KEY_IS(10001900009002090003UL)) {
+    #elif TILING_KEY_VAR == 10001900009002090003UL
         GET_TILING_DATA_WITH_STRUCT(Mc2MatMulV3BasicTilingData, tilingData, tilingGM);
         Mc2MatmulV3Advanced::MatMulActKernel<
             DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::ColumnMajor, layout::ColumnMajor, layout::RowMajor,
             B_FULL_LOAD_MODE>(aGM, bGM, biasGM, cGM, nullptr, tilingData);
-    } else if (TILING_KEY_IS(10001900009000290000UL)) {
+    #elif TILING_KEY_VAR == 10001900009000290000UL
         KERNEL_TASK_TYPE(10001900009000290000UL, KERNEL_TYPE_MIX_AIC_1_2);
         GET_TILING_DATA_WITH_STRUCT(Mc2MatMulV3BasicTilingData, tilingData, tilingGM);
         MatMulStreamKActKernel<DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::RowMajor, layout::RowMajor,
                                layout::RowMajor, MatMulL0C2Out::ON_THE_FLY>(
             aGM, bGM, biasGM, cGM, workspaceGM, tilingData);
-    } else if (TILING_KEY_IS(10001900009000290001UL)) {
+    #elif TILING_KEY_VAR == 10001900009000290001UL
         KERNEL_TASK_TYPE(10001900009000290001UL, KERNEL_TYPE_MIX_AIC_1_2);
         GET_TILING_DATA_WITH_STRUCT(Mc2MatMulV3BasicTilingData, tilingData, tilingGM);
         MatMulStreamKActKernel<DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::ColumnMajor, layout::RowMajor,
                                layout::RowMajor, MatMulL0C2Out::ON_THE_FLY>(
             aGM, bGM, biasGM, cGM, workspaceGM, tilingData);
-    } else if (TILING_KEY_IS(10001900009000290002UL)) {
+    #elif TILING_KEY_VAR == 10001900009000290002UL
         KERNEL_TASK_TYPE(10001900009000290002UL, KERNEL_TYPE_MIX_AIC_1_2);
         GET_TILING_DATA_WITH_STRUCT(Mc2MatMulV3BasicTilingData, tilingData, tilingGM);
         MatMulStreamKActKernel<DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::RowMajor, layout::ColumnMajor,
                                layout::RowMajor, MatMulL0C2Out::ON_THE_FLY>(
             aGM, bGM, biasGM, cGM, workspaceGM, tilingData);
-    } else if (TILING_KEY_IS(10001900009000290003UL)) {
+    #elif TILING_KEY_VAR == 10001900009000290003UL
         KERNEL_TASK_TYPE(10001900009000290003UL, KERNEL_TYPE_MIX_AIC_1_2);
         GET_TILING_DATA_WITH_STRUCT(Mc2MatMulV3BasicTilingData, tilingData, tilingGM);
         MatMulStreamKActKernel<DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::ColumnMajor, layout::ColumnMajor,
                                layout::RowMajor, MatMulL0C2Out::ON_THE_FLY>(
             aGM, bGM, biasGM, cGM, workspaceGM, tilingData);
-    } else if (TILING_KEY_IS(10001902009000290000UL)) {
+    #elif TILING_KEY_VAR == 10001902009000290000UL
         KERNEL_TASK_TYPE(10001902009000290000UL, KERNEL_TYPE_MIX_AIC_1_2);
         GET_TILING_DATA_WITH_STRUCT(Mc2MatMulV3BasicTilingData, tilingData, tilingGM);
         MatMulStreamKActKernel<DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::RowMajor, layout::RowMajor,
                                layout::RowMajor, MatMulL0C2Out::ND_FIXPIPE_1_2>(
             aGM, bGM, biasGM, cGM, workspaceGM, tilingData);
-    } else if (TILING_KEY_IS(10001902009000290001UL)) {
+    #elif TILING_KEY_VAR == 10001902009000290001UL
         KERNEL_TASK_TYPE(10001902009000290001UL, KERNEL_TYPE_MIX_AIC_1_2);
         GET_TILING_DATA_WITH_STRUCT(Mc2MatMulV3BasicTilingData, tilingData, tilingGM);
         MatMulStreamKActKernel<DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::ColumnMajor, layout::RowMajor,
                                layout::RowMajor, MatMulL0C2Out::ND_FIXPIPE_1_2>(
             aGM, bGM, biasGM, cGM, workspaceGM, tilingData);
-    } else if (TILING_KEY_IS(10001902009000290002UL)) {
+    #elif TILING_KEY_VAR == 10001902009000290002UL
         KERNEL_TASK_TYPE(10001902009000290002UL, KERNEL_TYPE_MIX_AIC_1_2);
         GET_TILING_DATA_WITH_STRUCT(Mc2MatMulV3BasicTilingData, tilingData, tilingGM);
         MatMulStreamKActKernel<DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::RowMajor, layout::ColumnMajor,
                                layout::RowMajor, MatMulL0C2Out::ND_FIXPIPE_1_2>(
             aGM, bGM, biasGM, cGM, workspaceGM, tilingData);
-    } else if (TILING_KEY_IS(10001902009000290003UL)) {
+    #elif TILING_KEY_VAR == 10001902009000290003UL
         KERNEL_TASK_TYPE(10001902009000290003UL, KERNEL_TYPE_MIX_AIC_1_2);
         GET_TILING_DATA_WITH_STRUCT(Mc2MatMulV3BasicTilingData, tilingData, tilingGM);
         MatMulStreamKActKernel<DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::ColumnMajor, layout::ColumnMajor,
                                layout::RowMajor, MatMulL0C2Out::ND_FIXPIPE_1_2>(
             aGM, bGM, biasGM, cGM, workspaceGM, tilingData);
-    } else if (TILING_KEY_IS(10000900009000290000UL)) {
+    #elif TILING_KEY_VAR == 10000900009000290000UL
         KERNEL_TASK_TYPE(10000900009000290000UL, KERNEL_TYPE_MIX_AIC_1_2);
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, false, false, workspaceGM, Mc2MatmulV3Advanced::Mc2MatmulStreamKKernel, Mc2MatmulV3Advanced::MatmulStreamKBlock,
                               MM_CFG_NO_PRELOAD, false);
-    } else if (TILING_KEY_IS(10000900009000290001UL)) {
+    #elif TILING_KEY_VAR == 10000900009000290001UL
         KERNEL_TASK_TYPE(10000900009000290001UL, KERNEL_TYPE_MIX_AIC_1_2);
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, true, false, workspaceGM, Mc2MatmulV3Advanced::Mc2MatmulStreamKKernel, Mc2MatmulV3Advanced::MatmulStreamKBlock,
                               MM_CFG_NO_PRELOAD, false);
-    } else if (TILING_KEY_IS(10000900009000290002UL)) {
+    #elif TILING_KEY_VAR == 10000900009000290002UL
         KERNEL_TASK_TYPE(10000900009000290002UL, KERNEL_TYPE_MIX_AIC_1_2);
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, false, true, workspaceGM, Mc2MatmulV3Advanced::Mc2MatmulStreamKKernel, Mc2MatmulV3Advanced::MatmulStreamKBlock,
                               MM_CFG_NO_PRELOAD, false);
-    } else if (TILING_KEY_IS(10000900009000290003UL)) {
+    #elif TILING_KEY_VAR == 10000900009000290003UL
         KERNEL_TASK_TYPE(10000900009000290003UL, KERNEL_TYPE_MIX_AIC_1_2);
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, true, true, workspaceGM, Mc2MatmulV3Advanced::Mc2MatmulStreamKKernel, Mc2MatmulV3Advanced::MatmulStreamKBlock,
                               MM_CFG_NO_PRELOAD, false);
-    } else if (TILING_KEY_IS(10000902009000290000UL)) {
+    #elif TILING_KEY_VAR == 10000902009000290000UL
         KERNEL_TASK_TYPE(10000902009000290000UL, KERNEL_TYPE_MIX_AIC_1_2);
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, false, false, workspaceGM, Mc2MatmulV3Advanced::Mc2MatmulStreamKKernel,
                                     Mc2MatmulV3Advanced::MatmulStreamKBlock, MM_CFG_NO_PRELOAD, true);
-    } else if (TILING_KEY_IS(10000902009000290001UL)) {
+    #elif TILING_KEY_VAR == 10000902009000290001UL
         KERNEL_TASK_TYPE(10000902009000290001UL, KERNEL_TYPE_MIX_AIC_1_2);
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, true, false, workspaceGM, Mc2MatmulV3Advanced::Mc2MatmulStreamKKernel,
                                     Mc2MatmulV3Advanced::MatmulStreamKBlock, MM_CFG_NO_PRELOAD, true);
-    } else if (TILING_KEY_IS(10000902009000290002UL)) {
+    #elif TILING_KEY_VAR == 10000902009000290002UL
         KERNEL_TASK_TYPE(10000902009000290002UL, KERNEL_TYPE_MIX_AIC_1_2);
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, false, true, workspaceGM, Mc2MatmulV3Advanced::Mc2MatmulStreamKKernel,
                                     Mc2MatmulV3Advanced::MatmulStreamKBlock, MM_CFG_NO_PRELOAD, true);
-    } else if (TILING_KEY_IS(10000902009000290003UL)) {
+    #elif TILING_KEY_VAR == 10000902009000290003UL
         KERNEL_TASK_TYPE(10000902009000290003UL, KERNEL_TYPE_MIX_AIC_1_2);
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, true, true, workspaceGM, Mc2MatmulV3Advanced::Mc2MatmulStreamKKernel,
                                     Mc2MatmulV3Advanced::MatmulStreamKBlock, MM_CFG_NO_PRELOAD, true);
-    } else if (TILING_KEY_IS(10000900009001090000UL)) {
+    #elif TILING_KEY_VAR == 10000900009001090000UL
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, false, false, nullptr, Mc2MatmulV3Advanced::MatmulAswKernelAL1FullLoad,
             Mc2MatmulV3Advanced::Mc2MatmulAswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009001090001UL)) {
+    #elif TILING_KEY_VAR == 10000900009001090001UL
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, true, false, nullptr, Mc2MatmulV3Advanced::MatmulAswKernelAL1FullLoad,
             Mc2MatmulV3Advanced::Mc2MatmulAswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009001090002UL)) {
+    #elif TILING_KEY_VAR == 10000900009001090002UL
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, false, true, nullptr, Mc2MatmulV3Advanced::MatmulAswKernelAL1FullLoad,
             Mc2MatmulV3Advanced::Mc2MatmulAswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009001090003UL)) {
+    #elif TILING_KEY_VAR == 10000900009001090003UL
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, true, true, nullptr, Mc2MatmulV3Advanced::MatmulAswKernelAL1FullLoad,
             Mc2MatmulV3Advanced::Mc2MatmulAswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009001490000UL)) {
+    #elif TILING_KEY_VAR == 10000900009001490000UL
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, false, false, nullptr, Mc2MatmulV3Advanced::MatmulAswKernelAL1FullLoad,
             Mc2MatmulV3Advanced::MatmulDaswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009001490001UL)) {
+    #elif TILING_KEY_VAR == 10000900009001490001UL
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, true, false, nullptr, Mc2MatmulV3Advanced::MatmulAswKernelAL1FullLoad,
             Mc2MatmulV3Advanced::MatmulDaswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009001490002UL)) {
+    #elif TILING_KEY_VAR == 10000900009001490002UL
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, false, true, nullptr, Mc2MatmulV3Advanced::MatmulAswKernelAL1FullLoad,
             Mc2MatmulV3Advanced::MatmulDaswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009001490003UL)) {
+    #elif TILING_KEY_VAR == 10000900009001490003UL
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, true, true, nullptr, Mc2MatmulV3Advanced::MatmulAswKernelAL1FullLoad,
             Mc2MatmulV3Advanced::MatmulDaswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009002090000UL)) {
+    #elif TILING_KEY_VAR == 10000900009002090000UL
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, false, false, nullptr, Mc2MatmulV3Advanced::Mc2MatmulAswKernelBL1FullLoad,
             Mc2MatmulV3Advanced::Mc2MatmulAswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009002090001UL)) {
+    #elif TILING_KEY_VAR == 10000900009002090001UL
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, true, false, nullptr, Mc2MatmulV3Advanced::Mc2MatmulAswKernelBL1FullLoad,
             Mc2MatmulV3Advanced::Mc2MatmulAswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009002090002UL)) {
+    #elif TILING_KEY_VAR == 10000900009002090002UL
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, false, true, nullptr, Mc2MatmulV3Advanced::Mc2MatmulAswKernelBL1FullLoad,
             Mc2MatmulV3Advanced::Mc2MatmulAswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009002090003UL)) {
+    #elif TILING_KEY_VAR == 10000900009002090003UL
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, true, true, nullptr, Mc2MatmulV3Advanced::Mc2MatmulAswKernelBL1FullLoad,
             Mc2MatmulV3Advanced::Mc2MatmulAswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009002490000UL)) {
+    #elif TILING_KEY_VAR == 10000900009002490000UL
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, false, false, nullptr, Mc2MatmulV3Advanced::Mc2MatmulAswKernelBL1FullLoad,
             Mc2MatmulV3Advanced::MatmulDaswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009002490001UL)) {
+    #elif TILING_KEY_VAR == 10000900009002490001UL
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, true, false, nullptr, Mc2MatmulV3Advanced::Mc2MatmulAswKernelBL1FullLoad,
             Mc2MatmulV3Advanced::MatmulDaswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009002490002UL)) {
+    #elif TILING_KEY_VAR == 10000900009002490002UL
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, false, true, nullptr, Mc2MatmulV3Advanced::Mc2MatmulAswKernelBL1FullLoad,
             Mc2MatmulV3Advanced::MatmulDaswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009002490003UL)) {
+    #elif TILING_KEY_VAR == 10000900009002490003UL
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, true, true, nullptr, Mc2MatmulV3Advanced::Mc2MatmulAswKernelBL1FullLoad,
             Mc2MatmulV3Advanced::MatmulDaswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000901009000090000UL)) {
+    #elif TILING_KEY_VAR == 10000901009000090000UL
         KERNEL_TASK_TYPE(10000901009000090000UL, KERNEL_TYPE_MIX_AIC_1_2);
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, false, false, workspaceGM, Mc2MatmulV3Advanced::Mc2MatmulFixpipeOptiKernel,
             Mc2MatmulV3Advanced::Mc2MatmulAswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000901009000090001UL)) {
+    #elif TILING_KEY_VAR == 10000901009000090001UL
         KERNEL_TASK_TYPE(10000901009000090001UL, KERNEL_TYPE_MIX_AIC_1_2);
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, true, false, workspaceGM, Mc2MatmulV3Advanced::Mc2MatmulFixpipeOptiKernel,
             Mc2MatmulV3Advanced::Mc2MatmulAswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000901009000090002UL)) {
+    #elif TILING_KEY_VAR == 10000901009000090002UL
         KERNEL_TASK_TYPE(10000901009000090002UL, KERNEL_TYPE_MIX_AIC_1_2);
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, false, true, workspaceGM, Mc2MatmulV3Advanced::Mc2MatmulFixpipeOptiKernel,
             Mc2MatmulV3Advanced::Mc2MatmulAswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000901009000090003UL)) {
+    #elif TILING_KEY_VAR == 10000901009000090003UL
         KERNEL_TASK_TYPE(10000901009000090003UL, KERNEL_TYPE_MIX_AIC_1_2);
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, true, true, workspaceGM, Mc2MatmulV3Advanced::Mc2MatmulFixpipeOptiKernel,
             Mc2MatmulV3Advanced::Mc2MatmulAswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10001901009002090000UL)) {
+    #elif TILING_KEY_VAR == 10001901009002090000UL
         GET_TILING_DATA_WITH_STRUCT(Mc2MatMulV3BasicTilingData, tilingData, tilingGM);
         KERNEL_TASK_TYPE(10001901009002090000UL, KERNEL_TYPE_MIX_AIC_1_2);
         Mc2MatmulV3Advanced::MatMulFixpipeOptiActKernel<DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::RowMajor,
         layout::RowMajor, layout::RowMajor, B_FULL_LOAD_MODE>(aGM, bGM, biasGM, cGM, workspaceGM, tilingData);
-    } else if (TILING_KEY_IS(10001901009002090001UL)) {
+    #elif TILING_KEY_VAR == 10001901009002090001UL
         GET_TILING_DATA_WITH_STRUCT(Mc2MatMulV3BasicTilingData, tilingData, tilingGM);
         KERNEL_TASK_TYPE(10001901009002090001UL, KERNEL_TYPE_MIX_AIC_1_2);
         Mc2MatmulV3Advanced::MatMulFixpipeOptiActKernel<DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::ColumnMajor,
         layout::RowMajor, layout::RowMajor, B_FULL_LOAD_MODE>(aGM, bGM, biasGM, cGM, workspaceGM, tilingData);
-    } else if (TILING_KEY_IS(10001901009002090002UL)) {
+    #elif TILING_KEY_VAR == 10001901009002090002UL
         GET_TILING_DATA_WITH_STRUCT(Mc2MatMulV3BasicTilingData, tilingData, tilingGM);
         KERNEL_TASK_TYPE(10001901009002090002UL, KERNEL_TYPE_MIX_AIC_1_2);
         Mc2MatmulV3Advanced::MatMulFixpipeOptiActKernel<DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::RowMajor,
         layout::ColumnMajor, layout::RowMajor, B_FULL_LOAD_MODE>(aGM, bGM, biasGM, cGM, workspaceGM, tilingData);
-    } else if (TILING_KEY_IS(10001901009002090003UL)) {
+    #elif TILING_KEY_VAR == 10001901009002090003UL
         GET_TILING_DATA_WITH_STRUCT(Mc2MatMulV3BasicTilingData, tilingData, tilingGM);
         KERNEL_TASK_TYPE(10001901009002090003UL, KERNEL_TYPE_MIX_AIC_1_2);
         Mc2MatmulV3Advanced::MatMulFixpipeOptiActKernel<DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::ColumnMajor,
         layout::ColumnMajor, layout::RowMajor, B_FULL_LOAD_MODE>(aGM, bGM, biasGM, cGM, workspaceGM, tilingData);
-    } else if (TILING_KEY_IS(10001901009000090000UL)) {
+    #elif TILING_KEY_VAR == 10001901009000090000UL
         GET_TILING_DATA_WITH_STRUCT(Mc2MatMulV3BasicTilingData, tilingData, tilingGM);
         KERNEL_TASK_TYPE(10001901009000090000UL, KERNEL_TYPE_MIX_AIC_1_2);
         Mc2MatmulV3Advanced::MatMulFixpipeOptiActKernel<DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::RowMajor,
         layout::RowMajor, layout::RowMajor>(aGM, bGM, biasGM, cGM, workspaceGM, tilingData);
-    } else if (TILING_KEY_IS(10001901009000090001UL)) {
+    #elif TILING_KEY_VAR == 10001901009000090001UL
         GET_TILING_DATA_WITH_STRUCT(Mc2MatMulV3BasicTilingData, tilingData, tilingGM);
         KERNEL_TASK_TYPE(10001901009000090001UL, KERNEL_TYPE_MIX_AIC_1_2);
         Mc2MatmulV3Advanced::MatMulFixpipeOptiActKernel<DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::ColumnMajor,
         layout::RowMajor, layout::RowMajor>(aGM, bGM, biasGM, cGM, workspaceGM, tilingData);
-    } else if (TILING_KEY_IS(10001901009000090002UL)) {
+    #elif TILING_KEY_VAR == 10001901009000090002UL
         GET_TILING_DATA_WITH_STRUCT(Mc2MatMulV3BasicTilingData, tilingData, tilingGM);
         KERNEL_TASK_TYPE(10001901009000090002UL, KERNEL_TYPE_MIX_AIC_1_2);
         Mc2MatmulV3Advanced::MatMulFixpipeOptiActKernel<DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::RowMajor,
         layout::ColumnMajor, layout::RowMajor>(aGM, bGM, biasGM, cGM, workspaceGM, tilingData);
-    } else if (TILING_KEY_IS(10001901009000090003UL)) {
+    #elif TILING_KEY_VAR == 10001901009000090003UL
         GET_TILING_DATA_WITH_STRUCT(Mc2MatMulV3BasicTilingData, tilingData, tilingGM);
         KERNEL_TASK_TYPE(10001901009000090003UL, KERNEL_TYPE_MIX_AIC_1_2);
         Mc2MatmulV3Advanced::MatMulFixpipeOptiActKernel<DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::ColumnMajor,
         layout::ColumnMajor, layout::RowMajor>(aGM, bGM, biasGM, cGM, workspaceGM, tilingData);
-    } else if (TILING_KEY_IS(10001902009000090000UL)) {
+    #elif TILING_KEY_VAR == 10001902009000090000UL
         GET_TILING_DATA_WITH_STRUCT(Mc2MatMulV3BasicTilingData, tilingData, tilingGM);
         KERNEL_TASK_TYPE(10001902009000090000UL, KERNEL_TYPE_MIX_AIC_1_2);
         Mc2MatmulV3Advanced::MatMulFixpipeOptiActKernel<DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::RowMajor,
         layout::RowMajor, layout::RowMajor>(aGM, bGM, biasGM, cGM, workspaceGM, tilingData);
-    } else if (TILING_KEY_IS(10001902009000090001UL)) {
+    #elif TILING_KEY_VAR == 10001902009000090001UL
         GET_TILING_DATA_WITH_STRUCT(Mc2MatMulV3BasicTilingData, tilingData, tilingGM);
         KERNEL_TASK_TYPE(10001902009000090001UL, KERNEL_TYPE_MIX_AIC_1_2);
         Mc2MatmulV3Advanced::MatMulFixpipeOptiActKernel<DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::ColumnMajor,
         layout::RowMajor, layout::RowMajor>(aGM, bGM, biasGM, cGM, workspaceGM, tilingData);
-    } else if (TILING_KEY_IS(10001902009000090002UL)) {
+    #elif TILING_KEY_VAR == 10001902009000090002UL
         GET_TILING_DATA_WITH_STRUCT(Mc2MatMulV3BasicTilingData, tilingData, tilingGM);
         KERNEL_TASK_TYPE(10001902009000090002UL, KERNEL_TYPE_MIX_AIC_1_2);
         Mc2MatmulV3Advanced::MatMulFixpipeOptiActKernel<DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::RowMajor,
         layout::ColumnMajor, layout::RowMajor>(aGM, bGM, biasGM, cGM, workspaceGM, tilingData);
-    } else if (TILING_KEY_IS(10001902009000090003UL)) {
+    #elif TILING_KEY_VAR == 10001902009000090003UL
         GET_TILING_DATA_WITH_STRUCT(Mc2MatMulV3BasicTilingData, tilingData, tilingGM);
         KERNEL_TASK_TYPE(10001902009000090003UL, KERNEL_TYPE_MIX_AIC_1_2);
         Mc2MatmulV3Advanced::MatMulFixpipeOptiActKernel<DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::ColumnMajor,
         layout::ColumnMajor, layout::RowMajor>(aGM, bGM, biasGM, cGM, workspaceGM, tilingData);
-    } else if (TILING_KEY_IS(10000901009000490000UL)) {
+    #elif TILING_KEY_VAR == 10000901009000490000UL
         KERNEL_TASK_TYPE(10000901009000490000UL, KERNEL_TYPE_MIX_AIC_1_2);
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, false, false, workspaceGM, Mc2MatmulV3Advanced::Mc2MatmulFixpipeOptiKernel,
             Mc2MatmulV3Advanced::MatmulDaswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000901009000490001UL)) {
+    #elif TILING_KEY_VAR == 10000901009000490001UL
         KERNEL_TASK_TYPE(10000901009000490001UL, KERNEL_TYPE_MIX_AIC_1_2);
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, true, false, workspaceGM, Mc2MatmulV3Advanced::Mc2MatmulFixpipeOptiKernel,
             Mc2MatmulV3Advanced::MatmulDaswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000901009000490002UL)) {
+    #elif TILING_KEY_VAR == 10000901009000490002UL
         KERNEL_TASK_TYPE(10000901009000490002UL, KERNEL_TYPE_MIX_AIC_1_2);
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, false, true, workspaceGM, Mc2MatmulV3Advanced::Mc2MatmulFixpipeOptiKernel,
             Mc2MatmulV3Advanced::MatmulDaswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000901009000490003UL)) {
+    #elif TILING_KEY_VAR == 10000901009000490003UL
         KERNEL_TASK_TYPE(10000901009000490003UL, KERNEL_TYPE_MIX_AIC_1_2);
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, true, true, workspaceGM, Mc2MatmulV3Advanced::Mc2MatmulFixpipeOptiKernel,
             Mc2MatmulV3Advanced::MatmulDaswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000902009000090000UL)) {
+    #elif TILING_KEY_VAR == 10000902009000090000UL
         KERNEL_TASK_TYPE(10000902009000090000UL, KERNEL_TYPE_MIX_AIC_1_2);
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, false, false, workspaceGM, Mc2MatmulV3Advanced::Mc2MatmulFixpipeOptiDualDstKernel,
             Mc2MatmulV3Advanced::Mc2MatmulAswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000902009000090001UL)) {
+    #elif TILING_KEY_VAR == 10000902009000090001UL
         KERNEL_TASK_TYPE(10000902009000090001UL, KERNEL_TYPE_MIX_AIC_1_2);
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, true, false, workspaceGM, Mc2MatmulV3Advanced::Mc2MatmulFixpipeOptiDualDstKernel,
             Mc2MatmulV3Advanced::Mc2MatmulAswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000902009000090002UL)) {
+    #elif TILING_KEY_VAR == 10000902009000090002UL
         KERNEL_TASK_TYPE(10000902009000090002UL, KERNEL_TYPE_MIX_AIC_1_2);
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, false, true, workspaceGM, Mc2MatmulV3Advanced::Mc2MatmulFixpipeOptiDualDstKernel,
             Mc2MatmulV3Advanced::Mc2MatmulAswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000902009000090003UL)) {
+    #elif TILING_KEY_VAR == 10000902009000090003UL
         KERNEL_TASK_TYPE(10000902009000090003UL, KERNEL_TYPE_MIX_AIC_1_2);
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, true, true, workspaceGM, Mc2MatmulV3Advanced::Mc2MatmulFixpipeOptiDualDstKernel,
             Mc2MatmulV3Advanced::Mc2MatmulAswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10001902009002090000UL)) { // Fixpipe B全载fp32场景切换act kernel
+    #elif TILING_KEY_VAR == 10001902009002090000UL
         GET_TILING_DATA_WITH_STRUCT(Mc2MatMulV3BasicTilingData, tilingData, tilingGM);
         KERNEL_TASK_TYPE(10001902009002090000UL, KERNEL_TYPE_MIX_AIC_1_2);
         Mc2MatmulV3Advanced::MatMulFixpipeOptiActKernel<DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::RowMajor,
         layout::RowMajor, layout::RowMajor, B_FULL_LOAD_MODE>(aGM, bGM, biasGM, cGM, workspaceGM, tilingData);
-    } else if (TILING_KEY_IS(10001902009002090001UL)) {
+    #elif TILING_KEY_VAR == 10001902009002090001UL
         GET_TILING_DATA_WITH_STRUCT(Mc2MatMulV3BasicTilingData, tilingData, tilingGM);
         KERNEL_TASK_TYPE(10001902009002090001UL, KERNEL_TYPE_MIX_AIC_1_2);
         Mc2MatmulV3Advanced::MatMulFixpipeOptiActKernel<DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::ColumnMajor,
         layout::RowMajor, layout::RowMajor, B_FULL_LOAD_MODE>(aGM, bGM, biasGM, cGM, workspaceGM, tilingData);
-    } else if (TILING_KEY_IS(10001902009002090002UL)) {
+    #elif TILING_KEY_VAR == 10001902009002090002UL
         GET_TILING_DATA_WITH_STRUCT(Mc2MatMulV3BasicTilingData, tilingData, tilingGM);
         KERNEL_TASK_TYPE(10001902009002090002UL, KERNEL_TYPE_MIX_AIC_1_2);
         Mc2MatmulV3Advanced::MatMulFixpipeOptiActKernel<DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::RowMajor,
         layout::ColumnMajor, layout::RowMajor, B_FULL_LOAD_MODE>(aGM, bGM, biasGM, cGM, workspaceGM, tilingData);
-    } else if (TILING_KEY_IS(10001902009002090003UL)) {
+    #elif TILING_KEY_VAR == 10001902009002090003UL
         GET_TILING_DATA_WITH_STRUCT(Mc2MatMulV3BasicTilingData, tilingData, tilingGM);
         KERNEL_TASK_TYPE(10001902009002090003UL, KERNEL_TYPE_MIX_AIC_1_2);
         Mc2MatmulV3Advanced::MatMulFixpipeOptiActKernel<DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::ColumnMajor,
         layout::ColumnMajor, layout::RowMajor, B_FULL_LOAD_MODE>(aGM, bGM, biasGM, cGM, workspaceGM, tilingData);
-    } else if (TILING_KEY_IS(10000902009000490000UL)) {
+    #elif TILING_KEY_VAR == 10000902009000490000UL
         KERNEL_TASK_TYPE(10000902009000490000UL, KERNEL_TYPE_MIX_AIC_1_2);
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, false, false, workspaceGM, Mc2MatmulV3Advanced::Mc2MatmulFixpipeOptiDualDstKernel,
             Mc2MatmulV3Advanced::MatmulDaswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000902009000490001UL)) {
+    #elif TILING_KEY_VAR == 10000902009000490001UL
         KERNEL_TASK_TYPE(10000902009000490001UL, KERNEL_TYPE_MIX_AIC_1_2);
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, true, false, workspaceGM, Mc2MatmulV3Advanced::Mc2MatmulFixpipeOptiDualDstKernel,
             Mc2MatmulV3Advanced::MatmulDaswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000902009000490002UL)) {
+    #elif TILING_KEY_VAR == 10000902009000490002UL
         KERNEL_TASK_TYPE(10000902009000490002UL, KERNEL_TYPE_MIX_AIC_1_2);
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, false, true, workspaceGM, Mc2MatmulV3Advanced::Mc2MatmulFixpipeOptiDualDstKernel,
             Mc2MatmulV3Advanced::MatmulDaswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000902009000490003UL)) {
+    #elif TILING_KEY_VAR == 10000902009000490003UL
         KERNEL_TASK_TYPE(10000902009000490003UL, KERNEL_TYPE_MIX_AIC_1_2);
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, true, true, workspaceGM, Mc2MatmulV3Advanced::Mc2MatmulFixpipeOptiDualDstKernel,
             Mc2MatmulV3Advanced::MatmulDaswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009003090000UL)) {
+    #elif TILING_KEY_VAR == 10000900009003090000UL
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, false, false, nullptr, Mc2MatmulV3Advanced::Mc2MatmulAswKernelABL1FullLoad,
             Mc2MatmulV3Advanced::Mc2MatmulAswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009003090001UL)) {
+    #elif TILING_KEY_VAR == 10000900009003090001UL
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, true, false, nullptr, Mc2MatmulV3Advanced::Mc2MatmulAswKernelABL1FullLoad,
             Mc2MatmulV3Advanced::Mc2MatmulAswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009003090002UL)) {
+    #elif TILING_KEY_VAR == 10000900009003090002UL
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, false, true, nullptr, Mc2MatmulV3Advanced::Mc2MatmulAswKernelABL1FullLoad,
             Mc2MatmulV3Advanced::Mc2MatmulAswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009003090003UL)) {
+    #elif TILING_KEY_VAR == 10000900009003090003UL
         MMV3_IMPL_CLASS_TRANS(tilingData, tilingGM, true, true, nullptr, Mc2MatmulV3Advanced::Mc2MatmulAswKernelABL1FullLoad,
             Mc2MatmulV3Advanced::Mc2MatmulAswBlock, MM_CFG_NO_PRELOAD);
+    #endif
 #endif
-    }
 }

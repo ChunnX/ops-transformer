@@ -92,7 +92,7 @@ aclnnStatus aclnnMatmulAlltoAll(
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
     <td>2维，shape为(H1, H2)</td>
-    <td>√</td>
+    <td>不同设备型号支持情况不同，参见<a href="#约束说明">约束说明</a>。</td>
     </tr>
     <tr>
     <td>biasOptional</td>
