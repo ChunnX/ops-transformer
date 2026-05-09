@@ -15,8 +15,8 @@
 
 - 接口功能：训练场景下计算注意力的反向输出，即[aclnnFlashAttentionVarLenScoreV4](../../flash_attention_score/docs/aclnnFlashAttentionVarLenScoreV4.md)的反向计算。该接口相较于[aclnnFlashAttentionUnpaddingScoreGrad](./aclnnFlashAttentionUnpaddingScoreGrad.md)接口，新增softmaxInLayout参数。
   - <term>Ascend 950PR/Ascend 950DT</term>：暂不支持softmaxInLayout参数。
-  - 当输入softmaxSumOut和softmaxMaxOut的shape和实际数据排布均为TND格式时，softmaxInLayout需要配置为"same_as_input"。
-  - 当输入softmaxSumOut和softmaxMaxOut的shape为TND但实际数据排布均为NTD格式时，softmaxInLayout需要配置为""。
+  - 当输入softmaxSumOut和softmaxMaxOut的shape和实际数据排布均为TND格式时，softmaxInLayout需要配置为""。
+  - 当输入softmaxSumOut和softmaxMaxOut的shape为TND但实际数据排布均为NTD格式时，softmaxInLayout需要配置为"same_as_input"。
   - 原有FlashAttentionVarLenScore接口的softmaxSumOut和softmaxMaxOut的输出格式为NTD，FlashAttentionVarLenScoreV4接口允许传入字符串类型参数softmaxOutLayout，来控制是否输出Shape和数据排布均为TND格式的softmaxSumOut和softmaxMaxOut。
 
 - 计算公式：
@@ -360,7 +360,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
         <td>softmaxInLayout</td>
         <td>可选输入</td>
         <td>控制softmaxMax、softmaxSum的实际数据排布。</td>
-        <td>TND时传"same_as_input"，NTD时传""。</td>
+        <td>shape为TND，实际数据排布需要NTD时传"same_as_input"，TND时传""。</td>
         <td>String</td>
         <td>-</td>
         <td>-</td>

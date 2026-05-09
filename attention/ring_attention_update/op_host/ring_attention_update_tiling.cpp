@@ -15,7 +15,7 @@
 
 #include <iostream>
 #include "log/log.h"
-#include "tiling_base/tiling_util.h"
+#include "op_host/tiling_util.h"
 #include "platform/platform_info.h"
 #include "register/op_impl_registry.h"
 #include "tiling/platform/platform_ascendc.h"
@@ -156,8 +156,8 @@ static ge::graphStatus IfShapeSupport(const gert::TilingContext* context, const 
   size_t shapeSize = labelShape.GetDimNum();
   if (dataShape.GetDimNum() != shapeSize) {
     std::string dimNumMsg = std::to_string(dataShape.GetDimNum()) + " and " + std::to_string(shapeSize);
-    std::string reasonMsg = "The dimension num of parameter " + std::string(paramName) +
-      " should be equal to the dimension num of parameter " + std::string(refParamName);
+    std::string reasonMsg = "The shape dims of parameter " + std::string(paramName) +
+      " and " + std::string(refParamName) + " should be the same";
     OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(context->GetNodeName(), paramMsg.c_str(),
         dimNumMsg.c_str(), reasonMsg.c_str());
     return ge::GRAPH_FAILED;
@@ -173,8 +173,8 @@ static ge::graphStatus IfShapeSupport(const gert::TilingContext* context, const 
     }
     if (labelShape.GetDim(dimIndex) != dataShape.GetDim(dimIndex)) {
       std::string shapeMsg = ToString(dataShape) + " and " + ToString(labelShape);
-      std::string reasonMsg = "The shape of parameter " + std::string(paramName) +
-        " should be the same as the shape of parameter " + std::string(refParamName);
+      std::string reasonMsg = "The shapes of parameter " + std::string(paramName) +
+        " and " + std::string(refParamName) + " should be the same";
       OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), paramMsg.c_str(),
           shapeMsg.c_str(), reasonMsg.c_str());
       return ge::GRAPH_FAILED;
@@ -244,8 +244,8 @@ static ge::graphStatus IfDtypeSupport(const gert::TilingContext* context, const 
   if (dataDtype != labelDtype) {
     std::string paramMsg = std::string(paramName) + " and " + std::string(refParamName);
     std::string dtypeMsg = ToString(dataDtype) + " and " + ToString(labelDtype);
-    std::string reasonMsg = "The dtype of parameter " + std::string(paramName) +
-      " should be the same as the dtype of parameter " + std::string(refParamName);
+    std::string reasonMsg = "The dtypes of parameter " + std::string(paramName) +
+      " and " + std::string(refParamName) + " should be the same";
     OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context->GetNodeName(), paramMsg.c_str(),
         dtypeMsg.c_str(), reasonMsg.c_str());
     return ge::GRAPH_FAILED;
@@ -472,7 +472,14 @@ static ge::graphStatus RingAttentionUpdateTNDUbSizeCheck(const gert::TilingConte
     return ge::GRAPH_FAILED;
   }
   if (headNum > MAX_HEAD_NUM_LIMIT_SIZE) {
-    OP_LOGE(context->GetNodeName(), "Don't support this shape currently, please try to use smaller N!");
+    auto prevAttnOutShapePtr = context->GetInputShape(0);
+    OP_CHECK_NULL_WITH_CONTEXT(context, prevAttnOutShapePtr);
+    gert::Shape prevAttnOutShape = prevAttnOutShapePtr->GetStorageShape();
+    std::string reasonMsg = "The N-dimension of input prev_attn_out must be less than or equal to " +
+      std::to_string(MAX_HEAD_NUM_LIMIT_SIZE) +
+      ", where N is the 1st axis when the format of prev_attn_out is TND";
+    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "prev_attn_out",
+      ToString(prevAttnOutShape).c_str(), reasonMsg.c_str());
     return ge::GRAPH_FAILED;
   }
 
@@ -532,7 +539,7 @@ static ge::graphStatus Tiling4RingAttentionUpdateTND(const gert::TilingContext* 
   } else if (strcmp(softmaxInputLayout, "TND") == 0) {
       tndSoftmaxLayout = 1;
   } else {
-      OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "input_softmax_layout",
+      OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "input_softmax_layout",
           softmaxInputLayout, "\"\" or \"SBH\" or \"TND\"");
       return ge::GRAPH_FAILED;
   }

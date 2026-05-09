@@ -494,8 +494,12 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::GetActualSeqLenKV(
     if (constInfo.isActualLenDimsKVNull) {
         actualSeqLen = s2InCurrentBatch;
     } else {
-        actualSeqLen = (constInfo.actualSeqLenKVSize == 1) ? actualSeqKvlenAddr[0] :
-                                                             actualSeqKvlenAddr[boIdx];
+        actualSeqLen = (constInfo.actualSeqLenKVSize == 1) ? actualSeqKvlenAddr[0] : actualSeqKvlenAddr[boIdx];
+        if constexpr ((layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD) && (!isPa)) {
+            if (boIdx > 0) {
+                actualSeqLen -= actualSeqKvlenAddr[boIdx - 1];
+            }
+        }
     }
     if (constInfo.isKVHasLeftPadding) {
         int64_t kvLeftPaddingSize = constInfo.s2Size - actualSeqLen - constInfo.kvRightPaddingSize;
@@ -516,7 +520,7 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::MlaBnsdWithActqLse
     // 处理第一个S
     uint32_t headS1 = 0;
     uint32_t needDealHeadS1 = 0;
-    this->MlaBnsdWithActqPreProcess(runInfo, constInfo, gIdxStart, s1IdxStart, 
+    this->MlaBnsdWithActqPreProcess(runInfo, constInfo, runInfo.halfS1RealSize, gIdxStart, s1IdxStart,
         gIdxEnd, s1IdxEnd, headS1, needDealHeadS1);
                                        
     int64_t startOffset = 0;             // gm起始位置偏移
@@ -539,8 +543,8 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::MlaBnsdWithActqLse
             startOffsetOfUb += constInfo.s1Size * 8; // 8：fp32对齐
             dealedCount += constInfo.s1Size;
         }
-        if (runInfo.vec2S1RealSize - dealedCount > 0) {
-            int64_t tmpBlockCount = runInfo.vec2S1RealSize - dealedCount;
+        if (runInfo.halfS1RealSize - dealedCount > 0) {
+            int64_t tmpBlockCount = runInfo.halfS1RealSize - dealedCount;
             tmpBlockCount = tmpBlockCount < runInfo.actualSeqLengthOfMlaPerBatch ?
                 tmpBlockCount : runInfo.actualSeqLengthOfMlaPerBatch;
             if (tmpBlockCount > 0) {

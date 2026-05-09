@@ -32,6 +32,7 @@ namespace ChunkGatedDeltaRule {
     constexpr uint64_t FIX_MTE2_EVENT = 6;
     constexpr uint64_t S_MTE3_EVENT = 6;
 
+    constexpr uint64_t NUM_ONE = 1;
     constexpr uint64_t BUFFER_NUM_ONE = 1;
     constexpr uint64_t BUFFER_NUM_TWO = 2;
     constexpr uint64_t TQUE_DEPTH_TWO = 2;

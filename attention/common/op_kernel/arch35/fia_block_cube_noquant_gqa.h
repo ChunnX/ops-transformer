@@ -108,6 +108,9 @@ public:
     using L0CType = typename L0CBuffSel<mBaseSize, s2BaseSize, dVBaseSize>::Type;
 
     using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
+
+    TPipe *tPipe;
+
     /* =====================GM变量(with layout)==================== */
     FaGmTensor<Q_T, Q_FORMAT> queryGm;
     FaGmTensor<KV_T, KV_FORMAT> keyGm;
@@ -145,13 +148,20 @@ public:
     /*============================================================================== */
     __aicore__ inline FANoQuantGqaBlockCube(ConstInfoX &constInfo) : constInfo(constInfo){};
 
-    __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> *l1BuffMgr)
+    __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> *l1BuffMgr,
+                                         __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
+                                         __gm__ uint8_t *blockTable, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
+                                         __gm__ uint8_t *actualSeqQlenAddr, __gm__ uint8_t *actualSeqKvlenAddr,
+                                         __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
+                                         __gm__ uint8_t *actualSharedPrefixLen)
     {
+        tPipe = pipe;
         l1BufferManagerPtr = l1BuffMgr;
-        InitLocalBuffer(pipe);
+        InitCubeInput(query, key, value, blockTable, queryRope, keyRope, actualSeqQlenAddr, actualSeqKvlenAddr,
+            keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen);
     }
 
-    __aicore__ inline void InitLocalBuffer(TPipe *tPipe)
+    __aicore__ inline void InitBuffers()
     {
         if constexpr (dBaseSize > 256) {
             /* D大于256的其他dtype场景，Bmm1左矩阵不开DB + 驻留 + 复用 + L1切K
@@ -229,6 +239,7 @@ public:
                          constInfo.n2Size, constInfo.blockSize, constInfo.dSizeRope, keyRopeGm, keyRope);
         }
 
+
         if constexpr (HAS_PREFIX) {
             static_assert(!isPa);
             static_assert(GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD);
@@ -276,6 +287,21 @@ public:
         } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_TND) {
             kvGmTensor.offsetCalculator.Init(n2Size, headDim, actualSeqLengthsGm, actualLenDims);
         }
+    }
+
+    __aicore__ inline void AllocEventID()
+    {
+        // InitBuffers阶段已完成eventId申请和SetFlag，这里为空实现
+    }
+
+    __aicore__ inline void FreeEventID()
+    {
+        l1QBuffers.Uninit((*l1BufferManagerPtr));
+        l1KBuffers.Uninit((*l1BufferManagerPtr));
+        l1VBuffers.Uninit((*l1BufferManagerPtr));
+        mmL0ABuffers.Uninit(l0aBufferManager);
+        mmL0BBuffers.Uninit(l0bBufferManager);
+        mmL0CBuffers.Uninit(l0cBufferManager);
     }
 
     // copy query with full s1g and split D
@@ -509,6 +535,12 @@ public:
                 UpdateKey(runInfo.bIdx);
             }
         }
+
+#ifdef SKIP_C1
+        outputBuf.WaitCrossCore();
+        outputBuf.SetCrossCore();
+        return;
+#endif
 
         if constexpr (dBaseSize > 256) {
             IterateBmm1NdL1SplitK(outputBuf, runInfo);
@@ -793,6 +825,16 @@ public:
                 UpdateValue(runInfo.bIdx);
             }
         }
+
+#ifdef SKIP_C2
+        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> mm2A = inputBuf.Get();
+        mm2A.WaitCrossCore();
+        if constexpr (bmm2Write2Ub) {
+            outputBuf.WaitCrossCore();
+        }
+        outputBuf.SetCrossCore();
+        return;
+#endif
 
         if constexpr ((uint32_t)dVTemplateType > 256 || (uint32_t)dTemplateType > 256) {
             IterateBmm2L1SplitN(outputBuf, inputBuf, runInfo);

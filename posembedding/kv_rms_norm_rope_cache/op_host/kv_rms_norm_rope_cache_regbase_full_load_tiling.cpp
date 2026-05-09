@@ -131,7 +131,7 @@ bool KvRmsNormRopeCacheRegbaseFullLoadTiling::CheckInputDtype()
     if (gammaDtype != kvDtype) {
         std::string dtypeMsg = ToString(gammaDtype) + " and " + ToString(kvDtype);
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), "gamma and kv", dtypeMsg.c_str(),
-            "The dtype of input gamma should be the same as the dtype of input kv");
+            "The dtypes of input gamma and input kv should be the same");
         return false;
     }
 
@@ -164,10 +164,10 @@ bool KvRmsNormRopeCacheRegbaseFullLoadTiling::CheckInputDtype()
     OP_CHECK_NULL_WITH_CONTEXT(context_, kcacheDesc);
     ge::DataType kcacheDtype = kcacheDesc->GetDataType();
     if ((kcacheDtype != kvDtype) && (!CheckCacheIsQuant(kcacheDtype))) {
-        std::string dtypeMsg = ToString(kcacheDtype) + " and " + ToString(kvDtype);
-        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), "k_cache and kv", dtypeMsg.c_str(),
-            "The dtype of input k_cache should be the same as the dtype of input kv, "
-            "or INT8, HIFLOAT8, FLOAT8_E4M3FN or FLOAT8_E5M2");
+        std::string dtypeMsg = ToString(kcacheDtype);
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "k_cache", dtypeMsg.c_str(),
+            "The dtype of input k_cache should be INT8, HIFLOAT8, FLOAT8_E4M3FN or FLOAT8_E5M2, "
+            "or the same as the dtype of input kv");
         return false;
     }
     if (CheckCacheIsQuant(kcacheDtype)) {
@@ -178,8 +178,8 @@ bool KvRmsNormRopeCacheRegbaseFullLoadTiling::CheckInputDtype()
         if (kRopeScaleDtype != ge::DT_FLOAT) {
             std::string kRopeScaleDtypeStr = ToString(kRopeScaleDtype);
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "k_rope_scale", kRopeScaleDtypeStr.c_str(),
-                "When the dtype of input k_cache is INT8, HIFLOAT8, FLOAT8_E4M3FN or FLOAT8_E5M2, "
-                "the dtype of input k_rope_scale should be FLOAT");
+                "The dtype of input k_rope_scale should be FLOAT "
+                "when the dtype of input k_cache is INT8, HIFLOAT8, FLOAT8_E4M3FN or FLOAT8_E5M2");
             return false;
         }
         // k_rope_offset
@@ -189,8 +189,8 @@ bool KvRmsNormRopeCacheRegbaseFullLoadTiling::CheckInputDtype()
             if (kRopeOffsetDtype != ge::DT_FLOAT) {
                 std::string kRopeOffsetDtypeStr = ToString(kRopeOffsetDtype);
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "k_rope_offset", kRopeOffsetDtypeStr.c_str(),
-                    "When the dtype of input k_cache is INT8, HIFLOAT8, FLOAT8_E4M3FN or FLOAT8_E5M2, "
-                    "the dtype of input k_rope_offset should be FLOAT");
+                    "The dtype of input k_rope_offset should be FLOAT "
+                    "when the dtype of input k_cache is INT8, HIFLOAT8, FLOAT8_E4M3FN or FLOAT8_E5M2");
                 return false;
             }
         }
@@ -201,10 +201,10 @@ bool KvRmsNormRopeCacheRegbaseFullLoadTiling::CheckInputDtype()
     OP_CHECK_NULL_WITH_CONTEXT(context_, vcacheDesc);
     ge::DataType vcacheDtype = vcacheDesc->GetDataType();
     if ((vcacheDtype != kvDtype) && (!CheckCacheIsQuant(vcacheDtype))) {
-        std::string dtypeMsg = ToString(vcacheDtype) + " and " + ToString(kvDtype);
-        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), "ckv_cache and kv", dtypeMsg.c_str(),
-            "The dtype of input ckv_cache should be the same as the dtype of input kv, "
-            "or INT8, HIFLOAT8, FLOAT8_E4M3FN or FLOAT8_E5M2");
+        std::string dtypeMsg = ToString(vcacheDtype);
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "ckv_cache", dtypeMsg.c_str(),
+            "The dtype of input ckv_cache should be INT8, HIFLOAT8, FLOAT8_E4M3FN or FLOAT8_E5M2, "
+            "or the same as the dtype of input kv");
         return false;
     }
     if (CheckCacheIsQuant(vcacheDtype)) {
@@ -215,8 +215,8 @@ bool KvRmsNormRopeCacheRegbaseFullLoadTiling::CheckInputDtype()
         if (ckvScaleDtype != ge::DT_FLOAT) {
             std::string ckvScaleDtypeStr = ToString(ckvScaleDtype);
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "c_kv_scale", ckvScaleDtypeStr.c_str(),
-                "When the dtype of input ckv_cache is INT8, HIFLOAT8, FLOAT8_E4M3FN or FLOAT8_E5M2, "
-                "the dtype of input c_kv_scale should be FLOAT");
+                "The dtype of input c_kv_scale should be FLOAT "
+                "when the dtype of input ckv_cache is INT8, HIFLOAT8, FLOAT8_E4M3FN or FLOAT8_E5M2");
             return false;
         }
         // v_kv_offset
@@ -226,8 +226,8 @@ bool KvRmsNormRopeCacheRegbaseFullLoadTiling::CheckInputDtype()
             if (vKvOffsetDtype != ge::DT_FLOAT) {
                 std::string vKvOffsetDtypeStr = ToString(vKvOffsetDtype);
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "v_kv_offset", vKvOffsetDtypeStr.c_str(),
-                    "When the dtype of input ckv_cache is INT8, HIFLOAT8, FLOAT8_E4M3FN or FLOAT8_E5M2, "
-                    "the dtype of input v_kv_offset should be FLOAT");
+                    "The dtype of input v_kv_offset should be FLOAT "
+                    "when the dtype of input ckv_cache is INT8, HIFLOAT8, FLOAT8_E4M3FN or FLOAT8_E5M2");
                 return false;
             }
         }

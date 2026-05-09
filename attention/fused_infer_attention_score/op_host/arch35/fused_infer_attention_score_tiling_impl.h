@@ -32,13 +32,15 @@ struct FiaTilingKeyInfo {
     uint64_t quantMode = 31;
     bool hasAttenMask = false;
     bool hasRope = false;
-    bool isPa = false;
+    // bool isPa = false;
+    uint64_t KvLayoutType = 0;
     bool isFd = false;
     bool emptyTensor = false;
     uint64_t maskMode = 0;
     uint64_t matmulMode = 0;
     bool enableKvPrefix = false;
     bool enableS1OutSplit = false;
+    bool isReconstructTemp = false;
 };
 
 struct FiaPlatFormInfo {
@@ -103,8 +105,7 @@ protected:
     int64_t GetCutBlockNums(int64_t blockSeqLengthKV, int64_t blockSeqLength, int64_t sInner, int64_t sOuter,
                             int64_t token);
     int64_t GetCalcBlockNumsOneHead(const FiaTilingInfo &fiaInfo, int64_t actualSeqLength, int64_t actualSeqLengthKV,
-                                    uint32_t sOuterSize, uint32_t sInnerSize, int64_t preTokensLeftUp,
-                                    int64_t nextTokensLeftUp);
+                                    uint32_t sOuterSize, uint32_t sInnerSize);
     int64_t GetSInnerBlockNums(int64_t sInnerIndexStart, int64_t sInnerIndexEnd, int64_t innerBlockNums);
     void ComputeSplitNBSeq(const FiaTilingInfo &fiaInfo, const size_t tilingElementArrayLen, uint32_t sOuterSize,
                            uint32_t sInnerSize, double coreWeightTarget, uint32_t &curCore);

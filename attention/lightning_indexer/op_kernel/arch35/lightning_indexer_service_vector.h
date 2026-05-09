@@ -106,8 +106,10 @@ private:
     LocalTensor<uint16_t> vec1OutUB_;
 
     // tmp buff for returnValue bfloat16
+    TBuf<TPosition::VECCALC> uIntToBfloat16Buf_;
     LocalTensor<bfloat16_t> uIntToBfloat16Local_;
     // tmp buff for returnValue K_T
+    TBuf<TPosition::VECCALC> valueOutBuf_;
     LocalTensor<K_T> valueOutLocal_;
 
     // tmp buff for topk
@@ -164,10 +166,17 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::InitBuffers(TPipe *pi
                     (topkCountAlign256_ + trunkLen_) * sizeof(uint16_t));
     mrgValueLocal_ = mrgValueBuf_.Get<uint16_t>();
     // returnvalue
-    valueOutLocal_ = mrgValueBuf_.Get<K_T>(); // returnValue float
-    if (std::is_same_v<K_T, half>) {
-        uIntToBfloat16Local_ = // returnValue bfloat16
-            valueOutLocal_.template ReinterpretCast<bfloat16_t>()[topkCountAlign256_];
+    if (topkCount_ <= 2048) {
+        pipe->InitBuffer(uIntToBfloat16Buf_, topkCountAlign256_ * sizeof(bfloat16_t));
+        uIntToBfloat16Local_ = uIntToBfloat16Buf_.Get<bfloat16_t>();
+        pipe->InitBuffer(valueOutBuf_, topkCountAlign256_ * sizeof(K_T));
+        valueOutLocal_ = valueOutBuf_.Get<K_T>();
+    } else { // sparseCount > 2k时，复用return value相关UB
+        valueOutLocal_ = mrgValueBuf_.Get<K_T>(); // returnValue float
+        if (std::is_same_v<K_T, half>) {
+            uIntToBfloat16Local_ = // returnValue bfloat16
+                valueOutLocal_.template ReinterpretCast<bfloat16_t>()[topkCountAlign256_];
+        }
     }
 
     // 大小：(topkCountAlign256_ + 64) * 4  64:duplicate刷-1需要额外空间
@@ -257,21 +266,12 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::CleanInvalidOutput(in
 {
     // init -1 and copy to output
     uint64_t dealSize = constInfo_.sparseCount;
-    GlobalTensor<int32_t> output = indiceOutGm[invalidS1Offset];
-    AscendC::InitGlobalMemory(output, dealSize, constInfo_.INVALID_IDX);
-
+    GlobalTensor<int32_t> indexOutput = indiceOutGm[invalidS1Offset];
+    AscendC::InitGlobalMemory(indexOutput, dealSize, constInfo_.INVALID_IDX);
     if (returnValueFlag) {
         SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
         WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-
-        uint16_t negInf = 0;
-        if constexpr (std::is_same_v<K_T, float16_t>) {
-            negInf = 0xFC00;
-        }else {
-            negInf = 0xFF80;
-        }
-        
-        Duplicate(valueOutLocal_.template ReinterpretCast<uint16_t>(), negInf, constInfo_.sparseCount);
+        Duplicate(valueOutLocal_.template ReinterpretCast<uint16_t>(), constInfo_.INVALID_VAL, constInfo_.sparseCount);
 
         SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
         WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
@@ -408,13 +408,7 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessTopK(const LIC
             SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
             if (returnValueFlag) {
                 WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-                uint16_t negInf = 0;
-                if constexpr (std::is_same_v<K_T, float16_t>) {
-                    negInf = 0xFC00;
-                }else {
-                    negInf = 0xFF80;
-                }
-                Duplicate(valueOutLocal_.template ReinterpretCast<uint16_t>(), negInf, topkCount_);
+                Duplicate(valueOutLocal_.template ReinterpretCast<uint16_t>(), constInfo_.INVALID_VAL, topkCount_);
 
                 SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
                 WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
@@ -556,28 +550,19 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessTopK(const LIC
                 Cast(valueOutLocal_, uIntToBfloat16Local_, RoundMode::CAST_RINT, topkCountAlign256_);
             }
 
-            // 无效值刷 -inf
-            uint16_t negInf = 0;
-            if constexpr (std::is_same_v<K_T, float16_t>) {
-                negInf = 0xFC00;
-            }else {
-                negInf = 0xFF80;
-            }
             if (validS2Len < topkCount_) {
                 uint64_t mask[1];
                 mask[0] = ~0;
                 mask[0] = mask[0] << (validS2Len % 16);
                 PipeBarrier<PIPE_V>();
                 Duplicate(valueOutLocal_.template ReinterpretCast<uint16_t>()[validS2Len / 16 * 16],
-                            negInf, mask, 1, 1, 0);
+                            constInfo_.INVALID_VAL, mask, 1, 1, 0);
             }
             if (validS2Len / 16 * 16 + 64 < topkCount_) {
                 PipeBarrier<PIPE_V>();
                 Duplicate(valueOutLocal_.template ReinterpretCast<uint16_t>()[validS2Len / 16 * 16 + 64],
-                            negInf, topkCount_ - (validS2Len / 16 * 16 + 64));
+                            constInfo_.INVALID_VAL, topkCount_ - (validS2Len / 16 * 16 + 64));
             }
-            SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-            WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
             SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
             WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
             AscendC::DataCopyParams copyOutValueParams;

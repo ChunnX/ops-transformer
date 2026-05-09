@@ -230,7 +230,6 @@ __aicore__ inline void
 FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::SetRunInfoDeterForTND(
     FagRunInfo &runInfo, int64_t taskId, int64_t index, CoordinateInfo &coordinateInfo,int64_t nextIndex)
 {
-    runInfo.qDxPingPongIdx = taskId & 1;
     int64_t bIdx = coordinateInfo.batchId;
     int64_t actualS1Len = coordinateInfo.actualS1Len;
     int64_t actualS2Len = coordinateInfo.actualS2Len;
@@ -1222,6 +1221,5 @@ __aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBloc
 }
  
 } // namespace FagBaseApi
- 
- 
+
 #endif

@@ -17,8 +17,8 @@
 
 #include "tiling/tiling_api.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
-#include "tiling_base/tiling_base.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_base.h"
+#include "op_host/tiling_templates_registry.h"
 #include "common/matmul_allto_all_util_tiling.h"
 #include "common/allto_all_formulaic_tiling.h"
 #include "common/allto_all_tiling_factory.h"

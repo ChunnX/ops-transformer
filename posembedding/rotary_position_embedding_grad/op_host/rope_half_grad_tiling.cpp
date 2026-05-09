@@ -172,7 +172,7 @@ static ge::graphStatus RopeHalfGradShapeDimCheck(const gert::TilingContext* cont
     if (cosShape.GetDimNum() != inputDimNum) {
         std::string dimNumMsg = std::to_string(cosShape.GetDimNum()) + " and " + std::to_string(xDimNum);
         OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(context->GetNodeName(), "cos and dy",
-            dimNumMsg.c_str(), "The numbers of dimensions of input cos and dy should be the same");
+            dimNumMsg.c_str(), "The shape dims of input cos and dy should be the same");
         return ge::GRAPH_FAILED;
     }
     if (cosShape != sinShape) {
@@ -184,7 +184,7 @@ static ge::graphStatus RopeHalfGradShapeDimCheck(const gert::TilingContext* cont
     if (xShape.GetDim(xDimNum - 1) != cosShape.GetDim(xDimNum - 1)) {
         std::string shapeMsg = ToString(xShape) + " and " + ToString(cosShape);
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "dy and cos", shapeMsg.c_str(),
-            "The D axis of input dy and cos should be the same, where D refers to the last dim");
+            "The D axes of input dy and cos should be the same, where D refers to the last dim");
         return ge::GRAPH_FAILED;
     }
     if (xShape.GetDim(xDimNum - 1) > D_THRESHOLD) {
@@ -210,7 +210,7 @@ static ge::graphStatus RopeHalfGradShapeDimCheck(const gert::TilingContext* cont
         if (xOptionalStorageShape != xShape) {
             std::string shapeMsg = ToString(xOptionalStorageShape) + " and " + ToString(xShape);
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "x and dy", shapeMsg.c_str(),
-                "The shape of input x should be the same as the shape of input dy");
+                "The shapes of input x and input dy should be the same");
             return ge::GRAPH_FAILED;
         }
     }
@@ -259,9 +259,16 @@ static uint64_t RopeHalfGradSelectLayout(
         // SBND and SB1D
         layout = LAYOUT_KEY_SBND;
     } else {
-        OP_LOGE(
-            context->GetNodeName(), "invalid shape! x shape: [%ld, %ld, %ld, %ld] and cos shape: [%ld, %ld, %ld, %ld]",
-            xDim0, xDim1, xDim2, xShapePerDim[DIM_THREE], cosDim0, cosDim1, cosDim2, xShapePerDim[DIM_THREE]);
+        const auto xStorage = context->GetInputShape(INDEX_GRAD);
+        OP_CHECK_NULL_WITH_CONTEXT(context, xStorage);
+        const auto xShape = xStorage->GetStorageShape();
+        const auto cosStorage = context->GetInputShape(INDEX_COS);
+        OP_CHECK_NULL_WITH_CONTEXT(context, cosStorage);
+        const auto cosShape = cosStorage->GetStorageShape();
+
+        std::string shapeMsg = ToString(cosShape) + " and " + ToString(xShape);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "cos and dy", shapeMsg.c_str(),
+            "Each axis of input cos except the last must be 1 or equal to the same axis of input dy");
     }
 
     return layout;

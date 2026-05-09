@@ -24,7 +24,7 @@
 #include "arch32/fused_infer_attention_score_tiling_v3.h"
 #include "flash_attention_infer_tiling.h"
 #include "register/op_def_registry.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 #include "../../incre_flash_attention/op_host/incre_flash_attention_tiling_impl.h"
 #include "arch35/fused_infer_attention_score_tiling_v4.h"
 

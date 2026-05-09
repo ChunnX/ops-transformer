@@ -13,9 +13,9 @@
  * \brief
  */
 
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 #include "tiling/tiling_api.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 #include "platform/platform_info.h"
 #include "rotary_position_embedding_tiling.h"
 #include "log/log.h"
@@ -151,7 +151,9 @@ ge::graphStatus RopeRegBaseTilingClass::JudgeLayoutByShape(const gert::Shape &xS
         layout_ = RopeLayout::BNSD;
         is1snd_ = true;
     } else {
-        OP_LOGE(context_->GetNodeName(), "the shape of x and sin not satisfy the broadcast.");
+        std::string shapeMsg = ToString(cosShape) + " and " + ToString(xShape);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "cos and x", shapeMsg.c_str(), 
+            "Each axis of input cos except the last must be 1 or equal to the same axis of input x");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -219,7 +221,7 @@ ge::graphStatus RopeRegBaseTilingClass::CheckDtypeAndAttr()
         auto type = context_->GetInputDesc(i)->GetDataType();
         if (type != dtype_) {
             std::string dtypeMsg = ToString(type) + " and " + ToString(dtype_);
-            std::string reasonMsg = "The dtype of input " + inputNames[i] + " should be the same as the dtype of input x";
+            std::string reasonMsg = "The dtypes of input " + inputNames[i] + " and input x should be the same";
             std::string paramMsg = inputNames[i] + " and x";
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), paramMsg.c_str(),
                 dtypeMsg.c_str(), reasonMsg.c_str());
@@ -230,7 +232,7 @@ ge::graphStatus RopeRegBaseTilingClass::CheckDtypeAndAttr()
     if (outputType != dtype_) {
         std::string dtypeMsg = ToString(outputType) + " and " + ToString(dtype_);
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), "y and x", dtypeMsg.c_str(),
-            "The dtype of output y should be the same as the dtype of input x");
+            "The dtypes of output y and input x should be the same");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -303,7 +305,7 @@ ge::graphStatus RopeRegBaseTilingClass::GetShapeAttrsInfo()
     int32_t modeValue = (mode == nullptr) ? 0 : static_cast<int32_t>(*mode);
     if (IsRotaryPosEmbeddingMode(modeValue) != true) {
         std::string modeValueStr = std::to_string(modeValue);
-        OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "mode",
+        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "mode",
             modeValueStr.c_str(), "0, 1, 2 or 3");
         return ge::GRAPH_FAILED;
     }

@@ -106,10 +106,14 @@ __aicore__ inline int64_t CalculateActualS1Size(RunParamStr<isInfer>& runParam,
                 actualSeqQlenAddr[bIdx] - actualSeqQlenAddr[bIdx - 1];
             actualMSize = runParam.actualSeqLengthOfMlaPerBatch * constInfo.gSize;
         } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BNSD) {
-            actualMSize = constInfo.gS1;
             runParam.actualSeqLengthOfMlaPerBatch = 
                 (constInfo.actualSeqLenSize == actualSeqMin) ?
                 actualSeqQlenAddr[0] : actualSeqQlenAddr[bIdx];
+            if (runParam.actualSeqLengthOfMlaPerBatch == 0) {
+                actualMSize = 0;
+            } else {
+                actualMSize = constInfo.gS1;
+            }
         }
     } else if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || 
                          layout == LayOutTypeEnum::LAYOUT_NTD) {
@@ -400,12 +404,18 @@ TEMPLATE_INTF
 __aicore__ inline void ComputeS1LoopInfo(RunParamStr<isInfer>& runParam, const ConstInfo<isInfer, hasRope> &constInfo,
     bool lastBN, int64_t nextGs1Idx)
 {
+    static constexpr bool isFp8 = IsSameType<INPUT_T, fp8_e5m2_t>::value ||
+                                  IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
+                                  IsSameType<INPUT_T, hifloat8_t>::value;
+    static constexpr bool isInt8 = IsSameType<INPUT_T, int8_t>::value;
     constexpr int32_t s1BaseSize = static_cast<int32_t>(s1TemplateType);
     int32_t s1LoopTimes;
     if constexpr (hasRope && (dTemplateType == DTemplateType::Aligned576)) {
         s1LoopTimes = CeilDiv(runParam.actualS1Size, s1BaseSize);
-        runParam.s1LoopTimes = s1LoopTimes;
-        return;
+        if constexpr (!isFp8 && !isInt8) {
+            runParam.s1LoopTimes = s1LoopTimes;
+            return;
+        }
     } else {
         if (constInfo.isGqa) {
             s1LoopTimes = CeilDiv(runParam.actualS1Size * constInfo.gSize, s1BaseSize);
@@ -560,17 +570,17 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr<isInfer>& runParam, cons
                     curS1Idx * constInfo.dSizeV; // s1
             }
         } else {
-            if (constInfo.isGqa && constInfo.s1Size > 1) { // PFA
-                if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND) {
-                    runParam.attentionOutOffset = attentionOutSeqOffset + runParam.queryLeftPaddingSize * constInfo.n2GDv +
-                        runParam.sOuterOffset / constInfo.gSize * constInfo.n2GDv + runParam.n2oIdx * constInfo.gDv;
+            if (constInfo.isGqa) { // PFA
+                int64_t gs1Idx = runParam.gS1Idx + constInfo.subBlockIdx * runParam.firstHalfS1RealSize;
+                if (constInfo.s1Size == 1 || (layout != LayOutTypeEnum::LAYOUT_BSH &&
+                    layout != LayOutTypeEnum::LAYOUT_TND)) {
+                    runParam.attentionOutOffset = attentionOutSeqOffset +
+                        runParam.n2oIdx * constInfo.gDv * actualSeqLen + gs1Idx * constInfo.dSizeV;
                 } else {
-                    runParam.attentionOutOffset = attentionOutSeqOffset + runParam.n2oIdx * constInfo.gDv * actualSeqLen +
-                        runParam.sOuterOffset * constInfo.dSizeV;
+                    runParam.attentionOutOffset = attentionOutSeqOffset +
+                        (runParam.queryLeftPaddingSize + gs1Idx / constInfo.gSize) * constInfo.n2GDv +
+                        runParam.n2oIdx * constInfo.gDv + gs1Idx % constInfo.gSize * constInfo.dSizeV;
                 }
-            } else if (constInfo.isGqa) { // IFA
-                    runParam.attentionOutOffset = attentionOutSeqOffset + runParam.n2oIdx * constInfo.gDv * actualSeqLen +	
-                        runParam.sOuterOffset * constInfo.dSizeV;
             } else {
                 if (constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BNSD_BSND) ||
                     constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::NTD_TND) || layout == LayOutTypeEnum::LAYOUT_TND ||
@@ -638,12 +648,21 @@ __aicore__ inline bool ComputeParamS1(RunParamStr<isInfer>& runParam, const Cons
 }
 
 TEMPLATE_INTF
-__aicore__ inline bool ComputeLastBN(RunParamStr<isInfer>& runParam, __gm__ int64_t *actualSeqQlenAddr) 
+__aicore__ inline bool ComputeLastBN(RunParamStr<isInfer>& runParam, const ConstInfo<isInfer, hasRope> &constInfo,
+    __gm__ int64_t *actualSeqQlenAddr)
 {
     if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
         // TND格式下 相邻Batch中当actualSeqQlen相等时则返回true
         if (runParam.boIdx > 0 && actualSeqQlenAddr[runParam.boIdx] - actualSeqQlenAddr[runParam.boIdx - 1] == 0) {
             return true;
+        }
+    } else {
+        if (!constInfo.isActualLenDimsNull) {
+            if (constInfo.actualSeqLenSize == 1) {
+                return actualSeqQlenAddr[0] == 0;
+            } else {
+                return actualSeqQlenAddr[runParam.boIdx] == 0;
+            }
         }
     }
     return false;
