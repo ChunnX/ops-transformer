@@ -260,7 +260,8 @@ bool CommonChecker::CheckNormalTensorList(const FiaTilingInfo &fiaInfo)
                 }
             }
         }
-    } else if (layoutStr == "BNSD" || layoutStr == "BNSD_BSND" || layoutStr == "BNSD_NBSD") { // check N and D, respectively, are the same
+    } else if (layoutStr == "BNSD" || layoutStr == "BNSD_BSND" || layoutStr == "BNSD_NBSD") {
+        // check N and D, respectively, are the same
         // across batches and KVs under BNSD/BNSD_BSND/BNSD_NBSD
         auto standardN = fiaInfo.kCache[0]->GetStorageShape().GetDim(1);
         auto standardKD = fiaInfo.kCache[0]->GetStorageShape().GetDim(3);
