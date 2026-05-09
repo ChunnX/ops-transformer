@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef AIR_CXX_RUNTIME_V2_OP_IMPL_FLASHATTN_V2_H_
-#define AIR_CXX_RUNTIME_V2_OP_IMPL_FLASHATTN_V2_H_
+#ifndef FLASH_ATTN_TILING_REG_H_
+#define FLASH_ATTN_TILING_REG_H_
 #include "register/tilingdata_base.h"
 #include "../fa_tiling_base.h"
 #include "../fa_tiling_info.h"
@@ -23,4 +23,4 @@ namespace optiling {
 ge::graphStatus TilingFlashAttnReg(gert::TilingContext *context);
 
 } // namespace optiling
-#endif // AIR_CXX_RUNTIME_V2_OP_IMPL_FLASHATTN_V2_H_
+#endif // FLASH_ATTN_TILING_REG_H_

@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef SHAPE_CHECKER_H
-#define SHAPE_CHECKER_H
+#ifndef FLASH_ATTN_SHAPE_CHECKER_H
+#define FLASH_ATTN_SHAPE_CHECKER_H
 
 #include <map>
 #include <memory>
@@ -25,6 +25,7 @@
 
 using std::map;
 namespace optiling {
+namespace flash_attn {
 class ShapeChecker : public FABaseChecker {
 public:
     ShapeChecker() = default;
@@ -55,5 +56,6 @@ private:
     std::shared_ptr<FaTilingShapeCompare> attnOutShapeCmp_;
 };
 
+} // namespace flash_attn
 } // namespace optiling
-#endif // SHAPE_CHECKER_H
+#endif // FLASH_ATTN_SHAPE_CHECKER_H

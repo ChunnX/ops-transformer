@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef FA_ADJUST_SINNER_SOUTER_H
-#define FA_ADJUST_SINNER_SOUTER_H
+#ifndef FLASH_ATTN_FA_ADJUST_SINNER_SOUTER_H
+#define FLASH_ATTN_FA_ADJUST_SINNER_SOUTER_H
 
 #include <cstdint>
 
@@ -89,4 +89,4 @@ inline void AdjustSinnerAndSouter(uint32_t vHeadDim, uint32_t s1Size, int64_t s2
 }  // namespace fa_tiling_util
 }  // namespace optiling
 
-#endif  // FA_ADJUST_SINNER_SOUTER_H
+#endif  // FLASH_ATTN_FA_ADJUST_SINNER_SOUTER_H

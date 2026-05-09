@@ -21,8 +21,8 @@
 #include "../utils/flash_attn_common_def.h"
 #include "../utils/flash_attn_utils.h"
 
-#include "fia_block_cube_noquant_gqa.h"
-#include "fia_block_vec_noquant_gqa.h"
+#include "flash_attn_block_cube_noquant_gqa.h"
+#include "flash_attn_block_vec_noquant_gqa.h"
 #include "../../../common/op_kernel/memory_copy_arch35.h"
 #include "flash_attention_noquant_block_vec_flashdecode.h"    // FiaBlockVecFlashDecode
 
@@ -142,8 +142,17 @@ public:
     TQue<QuePosition::VECIN, 1> SharedBuffer2[2];  // 共用
     TBuf<> SharedBuffer3; // 共用
 
-    ActualSeqLensParser<Q_MODE> qActSeqLensParser;
-    ActualSeqLensParser<KV_MODE> kvActSeqLensParser;
+    typename std::conditional<
+        (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND || LAYOUT_Q == LayOutTypeEnum::LAYOUT_NTD),
+        TNDSeqLensParser<uint64_t>,
+        ActualSeqLensParser<Q_MODE>
+    >::type qActSeqLensParser;
+    
+    typename std::conditional<
+        (LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND || LAYOUT_KV == LayOutTypeEnum::LAYOUT_NTD),
+        TNDSeqLensParser<uint64_t>,
+        ActualSeqLensParser<KV_MODE>
+    >::type kvActSeqLensParser;
 
     // ==============================fuction=======================================================
     __aicore__ inline FlashAttentionNoQuantGqaKernel() : cubeBlock(constInfo), vecFaBlock(constInfo), vecFdBlock(constInfo){};
@@ -175,10 +184,10 @@ public:
         keyPtr = key;
         valuePtr = value;
 
-        actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint64_t *)actualSeqLengths, constInfo.actualSeqLenSize);
+        actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint64_t *)actualSeqLengths, constInfo.actualSeqLenSize + 1);
         qActSeqLensParser.Init(actualSeqLengthsGmQ, constInfo.actualSeqLenSize, constInfo.s1Size);
 
-        actualSeqLengthsGm.SetGlobalBuffer((__gm__ uint64_t *)actualSeqLengthsKv, constInfo.actualSeqLenKVSize);
+        actualSeqLengthsGm.SetGlobalBuffer((__gm__ uint64_t *)actualSeqLengthsKv, constInfo.actualSeqLenKVSize + 1);
         kvActSeqLensParser.Init(actualSeqLengthsGm, constInfo.actualSeqLenKVSize, constInfo.s2Size);
 
         InitMMResBuf(workspace);

@@ -36,6 +36,8 @@ namespace l0op {
  * @param maskMode            掩码模式（int64_t）
  * @param winLeft             左窗口大小（int64_t）
  * @param winRight            右窗口大小（int64_t）
+ * @param maxSeqlenQ          query最大序列长度（int32_t）
+ * @param maxSeqlenKV         kv最大序列长度（int32_t）
  * @param layoutQ             query布局字符串
  * @param layoutKv            kv布局字符串
  * @param layoutOut           输出布局字符串
@@ -61,6 +63,8 @@ const std::array<const aclTensor *, 2> FlashAttn(
     int32_t maskMode,
     int32_t winLeft,
     int32_t winRight,
+    int32_t maxSeqlenQ,
+    int32_t maxSeqlenKV,
     const char *layoutQ,
     const char *layoutKv,
     const char *layoutOut,

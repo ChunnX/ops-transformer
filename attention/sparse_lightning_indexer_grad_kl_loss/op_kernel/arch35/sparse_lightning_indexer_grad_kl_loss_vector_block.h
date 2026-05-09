@@ -97,6 +97,7 @@ public:
 
 private:
     static constexpr int64_t UB_ROW_SIZE = 8;
+    static constexpr int64_t N_INDEX_SIZE_12 = 12;
     static constexpr event_t EVENT_ID0 = (event_t)4;
     static constexpr event_t EVENT_ID2 = (event_t)6;
     static constexpr event_t EVENT_ID_DETER_PING = (event_t)8;
@@ -137,6 +138,7 @@ private:
     TQue<QuePosition::VECIN, 1> scatterAddInQue[2];
     TQue<QuePosition::VECIN, 1> scatterAddInQue2[2];
     TQue<QuePosition::VECOUT, 1> dKeyOutQue[2];
+    TQue<QuePosition::VECIN, 1> zeroRowQue;
 
     LocalTensor<INPUT_T> gatherKeyUb;
     LocalTensor<INPUT_T> gatherKeyIndexUb;
@@ -144,6 +146,7 @@ private:
     LocalTensor<INPUT_T> kvMergUb_;
     LocalTensor<INPUT_T> ropeMergUb_;
     LocalTensor<INPUT_T> mm1AL1Tensor;
+    LocalTensor<INPUT_T> zeroRowTensor;
 };
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -210,14 +213,18 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::InitBuffers(TPipe *pip
     pipe->InitBuffer(this->dwQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_128);
     pipe->InitBuffer(this->dwOutQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_64);
     pipe->InitBuffer(this->lossSumQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_32);
+    pipe->InitBuffer(this->zeroRowQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_2K);
     gatherKeyUb = gatherTbuf.Get<INPUT_T>();
     gatherKeyIndexUb = gatherKeyUb;
     auto lossSumUb = this->lossSumQue.template AllocTensor<T>();
     auto dwUb = this->dwQue.template AllocTensor<T>();
+    auto zeroRowUb = this->zeroRowQue.template AllocTensor<INPUT_T>();
     Duplicate(lossSumUb, 0.0f, 8);
     Duplicate(dwUb, 0.0f, 32);
+    Duplicate(zeroRowUb, static_cast<INPUT_T>(0), 2048);   // 8*256
     this->lossSumQue.template FreeTensor(lossSumUb);
     this->dwQue.template FreeTensor(dwUb);
+    this->zeroRowQue.template FreeTensor(zeroRowUb);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -659,6 +666,7 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector6(Buffer<
     LocalTensor<INPUT_T> weightInUb = weightInQue.template AllocTensor<INPUT_T>();
     auto reduceSumTensor = this->reduceSumOutQue.template AllocTensor<T>();
     auto dwTensor = this->dwQue.template AllocTensor<T>();
+    auto zeroRowTensor = this->zeroRowQue.template AllocTensor<INPUT_T>();
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = runInfo.nIndexSize;
     dataCopyParams.blockLen = VEC_P_BASESIZE * sizeof(T);
@@ -679,8 +687,20 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector6(Buffer<
         this->reluGradQue.template EnQue(reluGradUb);
         this->reluGradQue.template DeQue<INPUT_T>();
         LocalTensor<INPUT_T> mm3AL1Tensor = outputBuf.GetTensor<INPUT_T>();
+        uint16_t dstGap = constInfo.gSizeQueryIndex == G_SIZE_QUERY_INDEX_24 ?
+                            (static_cast<uint16_t>(AlignTo(runInfo.nIndexSize, 16) * 2 - runInfo.nIndexSize)) :
+                            (static_cast<uint16_t>(runInfo.nIndexSize));
         DataCopy(mm3AL1Tensor[constInfo.subBlockIdx * runInfo.nIndexSize * BLOCK_SINGLE_LEN], reluGradUb,
-            {static_cast<uint16_t>(constInfo.pKBaseSize / BLOCK_SINGLE_LEN),  static_cast<uint16_t>(runInfo.nIndexSize), 0, static_cast<uint16_t>(runInfo.nIndexSize)});
+            {static_cast<uint16_t>(constInfo.pKBaseSize / BLOCK_SINGLE_LEN),
+             static_cast<uint16_t>(runInfo.nIndexSize),
+             0,
+             dstGap});
+        if (runInfo.nIndexSize == N_INDEX_SIZE_12 && constInfo.subBlockIdx == 0) {    // 空行置零
+            uint16_t zeroRow = static_cast<uint16_t>((AlignTo(runInfo.nIndexSize, 16) - runInfo.nIndexSize) * 2);
+            uint16_t zeroRowGap = static_cast<uint16_t>(AlignTo(runInfo.nIndexSize, 16) * 2 - zeroRow);
+            DataCopy(mm3AL1Tensor[2 * runInfo.nIndexSize * BLOCK_SINGLE_LEN], zeroRowTensor,
+                {static_cast<uint16_t>(constInfo.pKBaseSize / BLOCK_SINGLE_LEN), zeroRow, 0, zeroRowGap});
+            }
         CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_V6_TO_C3_FLAG);
     }
     if (kRunInfo.isS2end) {
@@ -704,6 +724,7 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector6(Buffer<
     this->weightInQue.template FreeTensor(weightInUb);
     this->dwQue.template FreeTensor(dwTensor);
     this->reduceSumOutQue.template FreeTensor(reduceSumTensor);
+    this->zeroRowQue.template FreeTensor(zeroRowTensor);
 }
 
 TEMPLATES_DEF_NO_DEFAULT

@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef FA_TILING_INFO_H
-#define FA_TILING_INFO_H
+#ifndef FLASH_ATTN_FA_TILING_INFO_H
+#define FLASH_ATTN_FA_TILING_INFO_H
 
 #include <vector>
 #include "fa_tiling_base.h"
@@ -206,4 +206,4 @@ public:
     FaLayout kvLayout = FaLayout::BSND;
 };
 } // namespace optiling
-#endif // FA_TILING_INFO_H
+#endif // FLASH_ATTN_FA_TILING_INFO_H

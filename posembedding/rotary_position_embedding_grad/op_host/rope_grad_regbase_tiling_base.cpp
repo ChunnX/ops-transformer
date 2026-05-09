@@ -202,7 +202,9 @@ ge::graphStatus RopeGradRegBaseTilingClass::JudgeLayoutByShape(const gert::Shape
         layout_ = RopeLayout::BNSD;
         is1snd_ = true;
     } else {
-        OP_LOGE(context_->GetNodeName(), "the shape of dy and cos/sin not satisfy the broadcast.");
+        std::string shapeMsg = ToString(cosShape) + " and " + ToString(xShape);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "cos and dy", shapeMsg.c_str(),
+            "Each axis of input cos except the last must be 1 or equal to the same axis of input dy");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

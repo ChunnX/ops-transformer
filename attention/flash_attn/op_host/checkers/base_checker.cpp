@@ -19,6 +19,7 @@
 #include "../flash_attn_tiling_constants.h"
 #include "base_checker.h"
 namespace optiling {
+namespace flash_attn {
 using std::map;
 using std::pair;
 using std::string;
@@ -84,4 +85,5 @@ uint32_t FABaseChecker::GetTypeSize(ge::DataType dtype)
             return NUM_BYTES_FLOAT16;
     }
 }
+} // namespace flash_attn
 } // namespace optiling

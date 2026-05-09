@@ -18,6 +18,7 @@
 #include "opdev/op_executor.h"
 #include "common/op_api_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
+#include "aclnnInner_moe_token_unpermute_grad.h"  // 该文件为自动生成，在build/autogen/inner路径下
 #include "external/aclnn_kernels/aclnn_platform.h"
 #include "aclnn_kernels/contiguous.h"
 #include "opdev/tensor_view_utils.h"
@@ -29,13 +30,6 @@ using namespace op;
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-extern aclnnStatus aclnnInnerMoeTokenUnpermuteGradGetWorkspaceSize(
-    const aclTensor* permuteTokens, const aclTensor* unpermutedTokensGrad, const aclTensor* sortedIndices,
-    const aclTensor* probsOptional, bool paddedMode, const aclIntArray* restoreShapeOptional,
-    aclTensor* permutedTokensGradOut, aclTensor* probsGradOut, uint64_t* workspaceSize, aclOpExecutor** executor);
-extern aclnnStatus aclnnInnerMoeTokenUnpermuteGrad(
-    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream);
 
 aclnnStatus aclnnMoeTokenUnpermuteGradGetWorkspaceSize(
     const aclTensor* permuteTokens, const aclTensor* unpermutedTokensGrad, const aclTensor* sortedIndices,

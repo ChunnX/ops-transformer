@@ -23,6 +23,7 @@
 #include "layout_checker.h"
 
 namespace optiling {
+namespace flash_attn {
 using std::map;
 using std::pair;
 using std::string;
@@ -97,4 +98,5 @@ ge::graphStatus LayoutChecker::CheckMultiPara(const FaTilingInfo &faInfo)
     return ge::GRAPH_SUCCESS;
 }
 
+} // namespace flash_attn
 } // namespace optiling
