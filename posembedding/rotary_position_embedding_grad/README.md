@@ -220,11 +220,11 @@
 ## 约束说明
 
   - <term>Ascend 950PR/Ascend 950DT</term>：
-    
-    输入张量x共有四维，各参数的shape约束可以描述如下：
-    - 输入张量x、cos、sin及输出张量y的最后一维大小必须相同，且小于等于1024。对于half、interleave和interleave-half模式，最后一维必须能被2整除，对于quarter模式，最后一维必须能被4整除。
-    - 输入张量x和输出张量y的shape必须完全相同。
-    - 输入张量cos和sin的shape必须完全相同，cos和sin的shape需要与x满足[broadcast关系](../../docs/zh/context/broadcast关系.md)，且广播后的shape必须等于x的shape。
+    输入张量dy支持BNSD、BSND、SBND、TND排布。各参数的shape约束可以描述如下：
+    - 输入张量dy、cos、sin及输出张量dx的最后一维大小必须相同，且小于等于1024。对于half、interleave和interleave-half模式，最后一维必须能被2整除，对于quarter模式，最后一维必须能被4整除。
+    - 输入张量dy和输出张量dx的shape必须完全相同。
+    - 输入张量cos和sin的shape必须完全相同，cos和sin的shape需要与dy满足[broadcast关系](../../docs/zh/context/broadcast关系.md)，且广播后的shape必须等于dy的shape。
+    - 当dy为TND时，cos、sin支持T1D、TND。
 
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
 

@@ -21,20 +21,20 @@ namespace ge {
 /**
  * @brief Backwards calculation of RotaryPositionEmbedding.
  * @par Inputs:
- * @li dy: A 4D tensor which represents the gradient of output "y" in RotaryPositionEmbedding, format supports ND, and
+ * @li dy: A 3D or 4D tensor which represents the gradient of output "y" in RotaryPositionEmbedding, format supports ND, and
  * data type must be float16, float or bfloat16.
- * @li cos: A 4D tensor which is input "cos" in RotaryPositionEmbedding, format supports ND, data type must be the same
+ * @li cos: A 3D or 4D tensor which is input "cos" in RotaryPositionEmbedding, format supports ND, data type must be the same
  * as "dy", and shape must be the same as "sin".
- * @li sin: A 4D tensor which is input "sin" in RotaryPositionEmbedding, format supports ND, data type must be the same
+ * @li sin: A 3D or 4D tensor which is input "sin" in RotaryPositionEmbedding, format supports ND, data type must be the same
  * as "dy", and shape must be the same as "cos".
- * @li x: An optional 4D tensor which is input "x" in RotaryPositionEmbedding, format supports ND, data type must be the
+ * @li x: An optional 3D or 4D tensor which is input "x" in RotaryPositionEmbedding, format supports ND, data type must be the
  * same as "dy", and shape must be the same as "dy". If "x" is nullptr, the output "dcos" and "dsin" is meaningless.
  * @par Outputs:
- * @li dx: A 4D Tensor which is the grad of input "x" in RotaryPositionEmbedding, format supports ND, data type must be
+ * @li dx: A 3D or 4D Tensor which is the grad of input "x" in RotaryPositionEmbedding, format supports ND, data type must be
  * the same as "dy", and shape must be the same as "dy".
- * @li dcos: A 4D Tensor which is the grad of input "cos" in RotaryPositionEmbedding, format supports ND, data type must
+ * @li dcos: A 3D or 4D Tensor which is the grad of input "cos" in RotaryPositionEmbedding, format supports ND, data type must
  * be the same as "dy", and shape must be the same as "cos".
- * @li dsin: A 4D Tensor which is the grad of input "sin" in RotaryPositionEmbedding, format supports ND, data type must
+ * @li dsin: A 3D or 4D Tensor which is the grad of input "sin" in RotaryPositionEmbedding, format supports ND, data type must
  * be the same as "dy", and shape must be the same as "sin".
  * @par Attributes:
  * mode: An optional attribute of type int, specifying the mode of rotary position embedding, must be 0-"half",
