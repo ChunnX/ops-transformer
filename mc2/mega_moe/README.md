@@ -190,7 +190,7 @@
   <tr>
    <td>max_recv_token_num</td>
    <td>可选属性</td>
-   <td>每个 Rank 最大可接收 Token 数，默认值为 0 表示自动计算。默认值按最大值 bs*ep_world_size*min(topK,expertPerRank)。</td>
+   <td>每个 Rank 最大可接收 Token 数。默认值为0。该值为0时，会按最大值 bs*ep_world_size*min(topK,expertPerRank) 预留内存大小；不为0时，将按照输入值大小预留内存，该场景下需用户保证填入值大于等于每个rank最大可接收的 Token 数。</td>
    <td>INT64</td>
    <td></td>
   </tr>
