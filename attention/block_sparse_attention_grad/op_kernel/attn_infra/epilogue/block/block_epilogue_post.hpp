@@ -169,9 +169,9 @@ public:
         dkWorkSpaceGm.SetGlobalBuffer((__gm__ float *)params.dkWrk + dkvOffset);
         dvWorkSpaceGm.SetGlobalBuffer((__gm__ float *)params.dvWrk + dkvOffset);
 
-        dqGm.SetGlobalBuffer((__gm__ OutputDtype_ *)params.dq);
-        dkGm.SetGlobalBuffer((__gm__ OutputDtype_ *)params.dk);
-        dvGm.SetGlobalBuffer((__gm__ OutputDtype_ *)params.dv);
+        dqGm.SetGlobalBuffer((__gm__ OutputDtype_ *)params.dq + dqOffset);
+        dkGm.SetGlobalBuffer((__gm__ OutputDtype_ *)params.dk + dkvOffset);
+        dvGm.SetGlobalBuffer((__gm__ OutputDtype_ *)params.dv + dkvOffset);
 
         ubBasePreBufferSize = ubBaseSize/ BUFFER_NUM / BASE_BLOCK_BYTE * BASE_BLOCK_BYTE; // double buffer 
         for (uint64_t i = 0; i < BUFFER_NUM; i++) {
@@ -388,7 +388,19 @@ public:
             set_flag(PIPE_V, PIPE_MTE3, event_id);
             wait_flag(PIPE_V, PIPE_MTE3, event_id);
 
-            CopyOutPost(sCount, output[ping], qkvFlag);
+            // CopyOutPost(sCount, output[ping], qkvFlag);
+            
+             if constexpr (INPUT_LAYOUT == TND) {
+                GlobalTensor<OutputDtype_> outGm = dqGm;
+                if (qkvFlag == DK) {
+                    outGm = dkGm;
+                } else if (qkvFlag == DV) {
+                    outGm = dvGm;
+                }
+                DataCopy(outGm[gmOffset], dstLocal, sCount * d);
+            } else {
+                DataCopy(outGm[gmOffset], dstLocal, sCount * d);
+            }
             
             set_flag(PIPE_MTE3, PIPE_MTE2, event_id);
 
