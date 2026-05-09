@@ -35,7 +35,7 @@
 
 ## 函数原型
 
-每个算子分为两段式接口，必须先调用"aclnnBlockSparseAttentionGetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnBlockSparseAttention"接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnBlockSparseAttentionGetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnBlockSparseAttention"接口执行计算。
 
 ```c++
 aclnnStatus aclnnBlockSparseAttentionGetWorkspaceSize(
@@ -476,7 +476,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>stream</td>
       <td>输入</td>
-      <td>指定执行任务的AscendCL stream流。</td>
+      <td>指定执行任务的Stream。</td>
     </tr>
   </tbody>
   </table>
