@@ -53,6 +53,10 @@ constexpr int64_t SCATTER = 1;
 
 constexpr uint16_t FLOAT_REG_TENSOR_LENGTH = VECTOR_REG_WIDTH / sizeof(float);
 constexpr float HIFLOAT8_MAX_VALUE = 32768.0f;
+// INT4 动态量化常量
+constexpr float DYNAMIC_QUANT_INT4_SYM_SCALE = 7.0f;
+constexpr int64_t ONE_BYTE_INT4_NUM = 2;
+constexpr int64_t MAX_VALUE_NUM = 8;
 
 // fp32指数位偏移
 constexpr int32_t FP32_BIAS = 127;
