@@ -59,11 +59,12 @@ ge::graphStatus MoeReRoutingRTiling::SplitUb()
 
 ge::graphStatus MoeReRoutingRTiling::DoOpTiling()
 {
-    OP_CHECK_IF(CheckParam() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "check param fail."),
+    OP_CHECK_IF(CheckParam() != ge::GRAPH_SUCCESS,
+                OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "params", "invalid", "valid params"),
                 return ge::GRAPH_FAILED);
     SplitCore();
     if (SplitUb() != ge::GRAPH_SUCCESS) {
-        OP_LOGE(context_->GetNodeName(), "SplitUb Failed.");
+        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "SplitUb result", "failed", "success");
         return ge::GRAPH_FAILED;
     }
     if (hasScale_) {
