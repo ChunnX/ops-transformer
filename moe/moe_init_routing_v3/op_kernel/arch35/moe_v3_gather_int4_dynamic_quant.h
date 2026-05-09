@@ -92,7 +92,7 @@ private:
 
     constexpr static MicroAPI::CastTrait castTraitF32ToF16 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::NO_SAT,
                                                               MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_TRUNC};
-    constexpr static MicroAPI::CastTrait castTraitF16ToI4 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::SAT_SYM,
+    constexpr static MicroAPI::CastTrait castTraitF16ToI4 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::SAT,
                                                                MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
 };
 
@@ -119,7 +119,7 @@ __aicore__ inline void MoeV3GatherInt4DynamicQuant<T>::Compute(LocalTensor<float
 
     __local_mem__ float *inUbAddr = (__local_mem__ float *)inLocal.GetPhyAddr();
     __local_mem__ float *scaleUbAddr = (__local_mem__ float *)scaleLocal.GetPhyAddr();
-    __local_mem__ int4b_t *outUbAddr = (__local_mem__ int4b_t *)outLocal.GetPhyAddr();
+    __local_mem__ int4x2_t *outPackedAddr = (__local_mem__ int4x2_t *)outLocal.GetPhyAddr();
     __local_mem__ T *inUbAddrCastT;
     if constexpr (!IsSameType<T, float>::value) {
         inUbAddrCastT = (__local_mem__ T *)inLocal.ReinterpretCast<T>().GetPhyAddr() + perLoopColsAlign_;
@@ -136,7 +136,7 @@ __aicore__ inline void MoeV3GatherInt4DynamicQuant<T>::Compute(LocalTensor<float
         MicroAPI::RegTensor<float> inReg, smoothReg, scaleValueReg;
         MicroAPI::Duplicate(scaleValueReg, 0.0f);
         MicroAPI::RegTensor<half> outRegF16;
-        MicroAPI::RegTensor<int4b_t> outRegI4;
+        MicroAPI::RegTensor<int4x2_t> outRegI4x2;
 
         MicroAPI::MaskReg maskRegInLoop;
         MicroAPI::MaskReg maskRegAll = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
@@ -174,9 +174,10 @@ __aicore__ inline void MoeV3GatherInt4DynamicQuant<T>::Compute(LocalTensor<float
             MicroAPI::DataCopy(inReg, inUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
             MicroAPI::Div(inReg, inReg, scaleValueReg, maskRegInLoop);
             MicroAPI::Cast<half, float, castTraitF32ToF16>(outRegF16, inReg, maskRegInLoop);
-            MicroAPI::Cast<int4b_t, half, castTraitF16ToI4>(outRegI4, outRegF16, maskRegInLoop);
-            MicroAPI::DataCopy<int4b_t, MicroAPI::StoreDist::DIST_PACK4_B32>(outUbAddr + i * FLOAT_REG_TENSOR_LENGTH,
-                                                                             outRegI4, maskRegInLoop);
+            uint32_t maskLenI4x2 = static_cast<uint32_t>(Ceil(static_cast<int64_t>(sreg), static_cast<int64_t>(2)));
+            maskRegInLoop = MicroAPI::UpdateMask<int4x2_t>(maskLenI4x2);
+            MicroAPI::Cast<int4x2_t, half, castTraitF16ToI4>(outRegI4x2, outRegF16, maskRegInLoop);
+            MicroAPI::DataCopy<int4x2_t>(outPackedAddr + i * FLOAT_REG_TENSOR_LENGTH / 2, outRegI4x2, maskRegInLoop);
         }
     }
 
@@ -332,7 +333,7 @@ __aicore__ inline void MoeV3GatherInt4DynamicQuant<T>::ComputeScale(LocalTensor<
     inLocal = inputXInQueue_.DeQue<float>();
 
     __local_mem__ float *inUbAddr = (__local_mem__ float *)inLocal.GetPhyAddr();
-    __local_mem__ int4b_t *outUbAddr = (__local_mem__ int4b_t *)outLocal.GetPhyAddr();
+    __local_mem__ int4x2_t *outPackedAddr = (__local_mem__ int4x2_t *)outLocal.GetPhyAddr();
 
     uint16_t repeatTimes = Ceil(colsTileLength_, FLOAT_REG_TENSOR_LENGTH);
     uint32_t sreg;
@@ -340,7 +341,7 @@ __aicore__ inline void MoeV3GatherInt4DynamicQuant<T>::ComputeScale(LocalTensor<
     {
         MicroAPI::RegTensor<float> inReg, tempReg;
         MicroAPI::RegTensor<half> outRegF16;
-        MicroAPI::RegTensor<int4b_t> outRegI4;
+        MicroAPI::RegTensor<int4x2_t> outRegI4x2;
 
         MicroAPI::MaskReg maskRegLoop;
 
@@ -351,9 +352,10 @@ __aicore__ inline void MoeV3GatherInt4DynamicQuant<T>::ComputeScale(LocalTensor<
             MicroAPI::DataCopy(inReg, inUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
             MicroAPI::Div(tempReg, inReg, tempReg, maskRegLoop);
             MicroAPI::Cast<half, float, castTraitF32ToF16>(outRegF16, tempReg, maskRegLoop);
-            MicroAPI::Cast<int4b_t, half, castTraitF16ToI4>(outRegI4, outRegF16, maskRegLoop);
-            MicroAPI::DataCopy<int4b_t, MicroAPI::StoreDist::DIST_PACK4_B32>(outUbAddr + i * FLOAT_REG_TENSOR_LENGTH,
-                                                                             outRegI4, maskRegLoop);
+            uint32_t maskLenI4x2 = static_cast<uint32_t>(Ceil(static_cast<int64_t>(sreg), static_cast<int64_t>(2)));
+            maskRegLoop = MicroAPI::UpdateMask<int4x2_t>(maskLenI4x2);
+            MicroAPI::Cast<int4x2_t, half, castTraitF16ToI4>(outRegI4x2, outRegF16, maskRegLoop);
+            MicroAPI::DataCopy<int4x2_t>(outPackedAddr + i * FLOAT_REG_TENSOR_LENGTH / 2, outRegI4x2, maskRegLoop);
         }
     }
 
