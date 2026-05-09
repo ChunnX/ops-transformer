@@ -123,29 +123,28 @@ public:
         uint64_t scaleKL1;
     };
 
+    constexpr static uint16_t M_MTE1_FLAG_0 = 4;
+    constexpr static uint16_t M_MTE1_FLAG_1 = 5;
+
     __aicore__ inline BlockMmad()
     {
-        // Prime all producer/consumer events so the first iteration can enter
-        // the pipelined copy-and-compute loop without special-case branches.
         #pragma unroll
         for (uint8_t i = 0; i < MTE1_MTE2_EVENT_ID_NUM; ++i) {
             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(i);
         }
-        AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(ZERO_FLAG);
-        AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(FIRST_FLAG);
+        AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(M_MTE1_FLAG_0);
+        AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(M_MTE1_FLAG_1);
         AscendC::SetMMLayoutTransform(true);
     }
 
     __aicore__ inline ~BlockMmad()
     {
-        // Drain every in-flight transfer before leaving so later blocks do not
-        // observe stale event state from the previous pipeline instance.
         #pragma unroll
         for (uint8_t i = 0; i < MTE1_MTE2_EVENT_ID_NUM; ++i) {
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(i);
         }
-        AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(ZERO_FLAG);
-        AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(FIRST_FLAG);
+        AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(M_MTE1_FLAG_0);
+        AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(M_MTE1_FLAG_1);
         AscendC::SetMMLayoutTransform(false);
     }
 
@@ -272,13 +271,12 @@ public:
 
             uint64_t kL0Iter = CeilDiv(curGmBKL1, baseK_);
             for (uint16_t iter1 = 0; iter1 < kL0Iter; ++iter1) {
-                // Each inner iteration slices the current L1 chunk into one
-                // L0-sized MMAD tile and accumulates it into L0C.
                 auto kL0Offset = iter1 * baseK_;
                 auto curKL0 = (kL0Offset + baseK_ > curPadKL1) ? (curPadKL1 - kL0Offset) : baseK_;
                 uint64_t l0BufId = l0PingPong_ & 0x1;
+                uint16_t mte1WaitMFlag = l0BufId + M_MTE1_FLAG_0;
                 uint64_t l0Offset = HALF_L0_SIZE * l0BufId;
-                AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0BufId);
+                AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(mte1WaitMFlag);
 
                 auto CopyL12L0 = AscendC::Te::MakeCopy(AscendC::Te::CopyL12L0{});
                 auto layoutAL0 = AscendC::Te::MakeNzLayout<AType>(curM, curKL0);
@@ -330,8 +328,6 @@ public:
                     CopyL12L0MxScaleB3510, tensorScaleBL0, tensorBlockScaleBL1,
                     AscendC::Te::MakeCoord(kL0Offset, 0));
 
-                AscendC::PipeBarrier<PIPE_ALL>();
-
                 AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0BufId);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0BufId);
                 uint8_t mmadUnitFlag =
@@ -344,9 +340,7 @@ public:
                         static_cast<uint16_t>(curN), mmadUnitFlag, false, mmadCmatrixInitVal),
                     tensorL0C, tensorAL0, tensorBL0);
 
-                // AscendC::PipeBarrier<PIPE_ALL>();
-
-                AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0BufId);
+                AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(mte1WaitMFlag);
                 l0PingPong_++;
             }
 
