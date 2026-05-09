@@ -25,6 +25,55 @@ DATA_RANGE_RIGHT = 2
 FP8_DATA_RANGE_LEFT = -1
 FP8_DATA_RANGE_RIGHT = 1
 
+HIF8_EXP_ZERO_THRESHOLD = -23  # 边界值
+HIF8_EXP_DML_MIN = -22         # DML最小指数
+HIF8_EXP_DML_MAX = -15         # DML最大指数
+HIF8_EXP_D0 = 0                # D0指数值
+HIF8_EXP_D1_BOUNDARY = 1       # D1指数值
+HIF8_EXP_D2_MIN, HIF8_EXP_D2_MAX = 2, 3   # D2指数范围
+HIF8_EXP_D3_MIN, HIF8_EXP_D3_MAX = 4, 7   # D3指数范围
+HIF8_EXP_D4_MIN, HIF8_EXP_D4_MAX = 8, 15  # D4指数范围
+
+HIF8_DOT_DML = 0               # DML: Denormal Low, 指数范围 -22 ~ -16, 0位尾数
+HIF8_DOT_D0 = 1                # D0: 指数为0，3位尾数（最高精度）
+HIF8_DOT_D1 = 2                # D1: 指数为±1，3位尾数
+HIF8_DOT_D2 = 4                # D2: 指数为±2 ~ ±3，3位尾数
+HIF8_DOT_D3 = 8                # D3: 指数为±4 ~ ±7，2位尾数
+HIF8_DOT_D4 = 12               # D4: 指数为±8 ~ ±15，1位尾数（最低精度）
+HIF8_DOT_INVALID = -1          # 无效状态
+
+HIF8_FRAC_BITS_DML = 0         # DML档位尾数位数
+HIF8_FRAC_BITS_D0 = 3          # D0档位尾数位数
+HIF8_FRAC_BITS_D1 = 3          # D1档位尾数位数
+HIF8_FRAC_BITS_D2 = 3          # D2档位尾数位数
+HIF8_FRAC_BITS_D3 = 2          # D3档位尾数位数
+HIF8_FRAC_BITS_D4 = 1          # D4档位尾数位数
+
+HIF8_EXP_BITS_DML = 3          # DML档位指数位数
+HIF8_EXP_BITS_D0 = 3           # D0档位指数位数
+HIF8_EXP_BITS_D1 = 3           # D1档位指数位数
+HIF8_EXP_BITS_D2 = 3           # D2档位指数位数
+HIF8_EXP_BITS_D3 = 2           # D3档位指数位数
+HIF8_EXP_BITS_D4 = 1           # D4档位指数位数
+
+HIF8_NAN = 128                 # 0b10000000, NaN
+HIF8_NEG_INF = 239             # 0b11101111, -inf
+HIF8_NEG_MAX = 238             # 0b11101110, 负极大值
+HIF8_POS_INF = 111             # 0b01101111, +inf
+HIF8_POS_MAX = 110             # 0b01101110, 正极大值
+HIF8_SIGN_MASK = 128           # 0b10000000, 符号位掩码
+HIF8_OVERFLOW_SCALE = 1.25     # 溢出阈值缩放因子
+
+FP32_FRACTION_BITS = 23        # fp32尾数位数
+HIF8_DML_EXP_OFFSET = 23       # DML指数偏移值
+HIF8_DOT_BIT_SHIFT = 3         # Dot值在HiF8中的起始位置(bit3)
+
+SSR_T14_MASK = 16383           # 0b0011 1111 1111 1111, 14位低位掩码
+SSR_F14_OFFSET = 8192          # 0b0010 0000 0000 0000, F14偏移值
+SSR_DML_SHIFT = 10             # SSR舍入移位值
+SSR_RESERVED_BITS = 14         # SSR舍入保留位数
+HYBRID_ROUND_EXP_THRESHOLD = 4 # 混合舍入的指数分界点
+
 class GeneralizedSFAQuant:
     def __init__(self, layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, N1, N2, D, K, block_num1, block_num2,
                  block_size1, block_size2, cu_seqlens_q, seqused_kv, softmax_scale, cmp_ratio, ori_mask_mode, cmp_mask_mode,
@@ -333,6 +382,150 @@ def gen_cmp_sparse_indices_tnd(cmp_ratio, B, T1, N2, K, cu_seqlens_q, seqused_kv
                 cmp_sparse_indices[s1_prefix + i_S1, i_N2, :valid_blocks_topk] = block_indices[0:valid_blocks_topk]
     return cmp_sparse_indices
 
+def fp32_ta_round_to_hif8(fraction32_int, hif8_bits_num, exponent):
+    if exponent == HIF8_EXP_ZERO_THRESHOLD:
+        return True, 0
+    hif8_value_tmp = fraction32_int >> (FP32_FRACTION_BITS - (hif8_bits_num + 1))
+    if hif8_value_tmp == pow(2, hif8_bits_num + 1) - 1:
+        return True, 0
+    elif hif8_value_tmp == 0:
+        return False, 0
+    elif hif8_value_tmp % 2 == 1:
+        hif8_value_tmp += 1
+        return False, hif8_value_tmp >> 1
+    else:
+        return False, hif8_value_tmp >> 1
+
+
+
+def fp32_ssr_round_to_hif8(fraction32_int, hif8_bits_num, exponent):
+    t14_mask = SSR_T14_MASK
+    if exponent == HIF8_EXP_ZERO_THRESHOLD:
+        f14_values = (fraction32_int >> SSR_DML_SHIFT) + SSR_F14_OFFSET
+        t14_values = fraction32_int & t14_mask
+        hif8_value = 0
+    else:
+        hif8_value = fraction32_int >> (FP32_FRACTION_BITS - hif8_bits_num)
+        f14_t14 = fraction32_int - (hif8_value << (FP32_FRACTION_BITS - hif8_bits_num))
+        f14_values = f14_t14 >>(FP32_FRACTION_BITS - hif8_bits_num - SSR_RESERVED_BITS)
+        t14_values = f14_t14 & t14_mask
+    if f14_values >= t14_values:
+        if hif8_value == pow(2, hif8_bits_num) - 1:
+            return True, 0
+        else:
+            hif8_value += 1
+            return False, hif8_value
+    else:
+        return False, hif8_value
+
+def get_hif8_fraction_bits_number(exponent):
+    if exponent < HIF8_EXP_DML_MIN:
+        return HIF8_DOT_INVALID, HIF8_EXP_BITS_DML, HIF8_FRAC_BITS_DML
+    if HIF8_EXP_DML_MIN <= exponent < HIF8_EXP_DML_MAX:
+        return HIF8_DOT_DML, HIF8_EXP_BITS_DML, HIF8_FRAC_BITS_DML
+    if exponent == HIF8_EXP_D0:
+        return HIF8_DOT_D0, HIF8_EXP_BITS_D0, HIF8_FRAC_BITS_D0
+    if abs(exponent) == HIF8_EXP_D1_BOUNDARY:
+        return HIF8_DOT_D1, HIF8_EXP_BITS_D1, HIF8_FRAC_BITS_D1
+    if HIF8_EXP_D2_MIN <= abs(exponent) <= HIF8_EXP_D2_MAX:
+        return HIF8_DOT_D2, HIF8_EXP_BITS_D2, HIF8_FRAC_BITS_D2
+    if HIF8_EXP_D3_MIN <= abs(exponent) <= HIF8_EXP_D3_MAX:
+        return HIF8_DOT_D3, HIF8_EXP_BITS_D3, HIF8_FRAC_BITS_D3
+    if HIF8_EXP_D4_MIN <= abs(exponent) <= HIF8_EXP_D4_MAX:
+        return HIF8_DOT_D4, HIF8_EXP_BITS_D4, HIF8_FRAC_BITS_D4
+    if exponent > HIF8_EXP_D4_MAX:
+        return HIF8_DOT_D4, HIF8_EXP_BITS_D4, HIF8_DOT_INVALID
+
+def cvt_float32_to_hifuint8(x, round_mode = "round", over_mode = True):
+    sign = False
+    sign_int_value = 0
+    x_abs = math.fabs(x)
+    ec = 0
+    over_value = HIF8_OVERFLOW_SCALE * pow(2.0, HIF8_EXP_D4_MAX + ec)
+    if x < 0.0:
+        sign = True
+        sign_int_value = HIF8_SIGN_MASK
+    if torch.isinf(x) or x_abs >= over_value:
+        if sign:
+            if over_mode:
+                return HIF8_NEG_INF
+            else:
+                return HIF8_NEG_MAX
+        else:
+            if over_mode:
+                return HIF8_POS_INF
+            else:
+                return HIF8_POS_MAX
+    if torch.isnan(x):
+        if over_mode:
+            return HIF8_NAN
+        else:
+            return 0
+    if x_abs == 0.0:
+        return 0
+    exponent = math.floor(math.log2(x_abs))
+    if round_mode == "hybrid":
+        if abs(exponent) < HYBRID_ROUND_EXP_THRESHOLD:
+            cut_bit_type = "TA"
+        else:
+            cut_bit_type = "SSR"
+    elif round_mode == "round":
+        cut_bit_type = "TA"
+    elif round_mode == "storound":
+        cut_bit_type = "SSR"
+    else:
+        cut_bit_type = "TA"
+    fraction_int = int(x_abs * pow(2, FP32_FRACTION_BITS) * pow(2, -exponent) - pow(2, FP32_FRACTION_BITS))
+    dot_hif8_value, exponent_hif8_bits, fraction_hif8_bits = get_hif8_fraction_bits_number(exponent)
+    if cut_bit_type == "TA":
+        carry_exp_status, hif8_frac_value = fp32_ta_round_to_hif8(fraction_int, fraction_hif8_bits, exponent)
+    elif cut_bit_type == "SSR":
+        carry_exp_status, hif8_frac_value = fp32_ssr_round_to_hif8(fraction_int, fraction_hif8_bits, exponent)
+    else:
+        print(f"unknown round type")
+        return 0
+
+    if carry_exp_status:
+        exponent += 1
+        dot_hif8_value, exponent_hif8_bits, fraction_hif8_bits_new = get_hif8_fraction_bits_number(exponent)
+        fraction_hif8_bits = fraction_hif8_bits_new
+    if exponent < HIF8_EXP_ZERO_THRESHOLD:
+        return 0
+    if exponent < 0:
+        sig_exp = 1
+    else:
+        sig_exp = 0
+    if dot_hif8_value <= 0:
+        if exponent <= HIF8_EXP_ZERO_THRESHOLD:
+            return 0
+        else:
+            return sign_int_value + exponent + HIF8_DML_EXP_OFFSET
+    elif dot_hif8_value == 1:
+        dot_int_value = dot_hif8_value << HIF8_DOT_BIT_SHIFT
+        hif8_int_value = sign_int_value + dot_int_value + hif8_frac_value
+    else:
+        abs_exponent = abs(exponent)
+        abs_exponent = abs_exponent - pow(2, exponent_hif8_bits - 1)
+        exponent_int_value = abs_exponent << fraction_hif8_bits
+        sig_exp = sig_exp << (exponent_hif8_bits - 1 + fraction_hif8_bits)
+        dot_int_value = dot_hif8_value << HIF8_DOT_BIT_SHIFT
+        hif8_int_value = sign_int_value + dot_int_value + sig_exp + exponent_int_value + hif8_frac_value
+    return hif8_int_value
+
+def trans_float_tensor_to_hifuint8(in_tensor, round_mode = "round", over_mode = True):
+    tensor_shape = in_tensor.shape
+    tensor_shape_size = in_tensor.numel()
+    if tensor_shape_size == 1.0:
+        tensor_shape_size = int(tensor_shape_size)
+    
+    out_tensor = torch.zeros(tensor_shape_size).to(torch.uint8)
+    in_tensor = in_tensor.reshape(tensor_shape_size)
+    for i in range(tensor_shape_size):
+        out_tensor[i] = cvt_float32_to_hifuint8(in_tensor[i], round_mode, over_mode)
+    out_tensor = out_tensor.view(torch.uint8)
+    out_tensor = out_tensor.reshape(tensor_shape)
+    return out_tensor
+
 def gen_ori_kv(q_type, ori_kv_type, B, N2, rope_head_dim, nope_head_dim, tile_size, quant_scale_head_dim, d_aligned_128, 
                 pad_d, block_num1, block_size1, ori_max_s2, ori_max_block_num_per_batch,
                 seqused_kv, quant_param_range_left, quant_param_range_right):
@@ -538,8 +731,8 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         cmp_max_s2 = math.floor(ori_max_s2 / cmp_ratio)
         cmp_max_block_num_per_batch = math.ceil(cmp_max_s2 / block_size2)
 
-    if kv_quant_mode != 1:
-        raise ValueError(f"input kv_quant_mode = {kv_quant_mode}, only support 1")
+    if kv_quant_mode != 1 and kv_quant_mode != 10:
+        raise ValueError(f"input kv_quant_mode = {kv_quant_mode}, only support 1 and 10")
 
     # 计算kv每个区域D轴长度
     nope_head_dim = D - rope_head_dim
@@ -555,7 +748,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
 
     # generate sinks tensor
     sinks = torch.tensor(np.random.uniform(DATA_RANGE_LEFT/10, DATA_RANGE_RIGHT/10, (N1))).to(torch.float)
-    
+
     # generate ori_kv tensor
     ori_k_bnsd, ori_k_in_pa_shape, ori_block_table = gen_ori_kv(q_type, ori_kv_type, B, N2, rope_head_dim, nope_head_dim, tile_size, quant_scale_head_dim, d_aligned_128, 
                                                 pad_d, block_num, block_size1, ori_max_s2, ori_max_block_num_per_batch,
@@ -584,8 +777,8 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         cmp_k_in_pa_shape = fusionBlock.view(block_num, -1)[:, block_size1 * N2 * (d_combined + pad_d) :].view(block_num, block_size2, N2, d_combined + pad_d)
 
     test_sas = GeneralizedSFAQuant(layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, N1, N2, D, K,
-                              block_num1, block_num2, block_size1, block_size2, cu_seqlens_q, seqused_kv, softmax_scale, cmp_ratio,
-                              ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, kv_quant_mode, tile_size, rope_head_dim, template_run_mode)
+        block_num1, block_num2, block_size1, block_size2, cu_seqlens_q, seqused_kv, softmax_scale, cmp_ratio,
+        ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, kv_quant_mode, tile_size, rope_head_dim, template_run_mode)
     cpu_result = test_sas.forward(q, ori_k_bnsd, cmp_k_bnsd, cmp_sparse_indices, cu_seqlens_q, seqused_kv, sinks)
     
     print("mode:%s\n",template_run_mode)
@@ -627,7 +820,8 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             'layout_q': layout_q,
             'layout_kv': layout_kv,
             'has_ori_kv': True,
-            'has_cmp_kv': False if template_run_mode == "SWA" else True  # SWA 为false
+            'has_cmp_kv': False if template_run_mode == "SWA" else True,  # SWA 为false
+            'kv_quant_mode': kv_quant_mode,
         },
 
         'input': {
@@ -640,7 +834,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             'cu_seqlens_q': cu_seqlens_q,
             'seqused_kv': seqused_kv,
             'sinks': sinks,
-            'kv_quant_mode': 1,
+            'kv_quant_mode': kv_quant_mode,
             'tile_size': 64,
             'rope_head_dim': 64,
             'softmax_scale': softmax_scale,
