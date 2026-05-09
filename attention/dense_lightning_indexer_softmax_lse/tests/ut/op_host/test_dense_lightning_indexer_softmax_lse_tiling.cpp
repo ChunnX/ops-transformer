@@ -98,3 +98,143 @@ TEST_F(DenseLightningIndexerSoftmaxLseTilingTest, tiling_tnd_case0)
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
+
+TEST_F(DenseLightningIndexerSoftmaxLseTilingTest, tiling_bsnd_a5_case0)
+{
+    struct DenseLightningIndexerSoftmaxLseCompileInfo {} compileInfo;
+
+    int64_t b = 1, s1 = 128, s2 = 256, nidx1 = 8, nidx2 = 1, d = 128;
+
+    int64_t actualSeqQueryData[1] = {s1};
+    int64_t actualSeqKeyData[1] = {s2};
+
+    gert::TilingContextPara tilingContextPara(
+        "DenseLightningIndexerSoftmaxLse",
+        {
+            {{ {b, s1, nidx1, d}, {b, s1, nidx1, d} }, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{ {b, s2, nidx2, d}, {b, s2, nidx2, d} }, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{ {b, s1, nidx1}, {b, s1, nidx1} }, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{ {b}, {b} }, ge::DT_INT64, ge::FORMAT_ND, true, (void*)actualSeqQueryData},
+            {{ {b}, {b} }, ge::DT_INT64, ge::FORMAT_ND, true, (void*)actualSeqKeyData}
+        },
+        {
+            {{ {b, nidx2, s1}, {b, nidx2, s1} }, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{ {b, nidx2, s1}, {b, nidx2, s1} }, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {"layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+            {"sparseMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+            {"preTokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(9223372036854775807)},
+            {"nextTokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(9223372036854775807)}
+        },
+        &compileInfo, "Ascend950", 64, 262144, 16384);
+
+    uint64_t expectTilingKey = 0UL;
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+}
+
+TEST_F(DenseLightningIndexerSoftmaxLseTilingTest, tiling_tnd_a5_case0)
+{
+    struct DenseLightningIndexerSoftmaxLseCompileInfo {} compileInfo;
+
+    int64_t b = 1, t1 = 128, t2 = 256, nidx1 = 16, nidx2 = 1, d = 128;
+
+    int64_t actualSeqQueryData[1] = {t1};
+    int64_t actualSeqKeyData[1] = {t2};
+
+    gert::TilingContextPara tilingContextPara(
+        "DenseLightningIndexerSoftmaxLse",
+        {
+            {{ {t1, nidx1, d}, {t1, nidx1, d} }, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{ {t2, nidx2, d}, {t2, nidx2, d} }, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{ {t1, nidx1}, {t1, nidx1} }, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{ {b}, {b} }, ge::DT_INT64, ge::FORMAT_ND, true, (void*)actualSeqQueryData},
+            {{ {b}, {b} }, ge::DT_INT64, ge::FORMAT_ND, true, (void*)actualSeqKeyData}
+        },
+        {
+            {{ {nidx2, t1}, {nidx2, t1} }, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{ {nidx2, t1}, {nidx2, t1} }, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {"layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
+            {"sparseMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+            {"preTokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(9223372036854775807)},
+            {"nextTokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(9223372036854775807)}
+        },
+        &compileInfo, "Ascend950", 64, 262144, 16384);
+
+    uint64_t expectTilingKey = 1UL;
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+}
+
+TEST_F(DenseLightningIndexerSoftmaxLseTilingTest, tiling_bsnd_a5_case1_bf16)
+{
+    struct DenseLightningIndexerSoftmaxLseCompileInfo {} compileInfo;
+
+    int64_t b = 2, s1 = 256, s2 = 512, nidx1 = 32, nidx2 = 1, d = 128;
+
+    int64_t actualSeqQueryData[2] = {s1, s1};
+    int64_t actualSeqKeyData[2] = {s2, s2};
+
+    gert::TilingContextPara tilingContextPara(
+        "DenseLightningIndexerSoftmaxLse",
+        {
+            {{ {b, s1, nidx1, d}, {b, s1, nidx1, d} }, ge::DT_BF16, ge::FORMAT_ND},
+            {{ {b, s2, nidx2, d}, {b, s2, nidx2, d} }, ge::DT_BF16, ge::FORMAT_ND},
+            {{ {b, s1, nidx1}, {b, s1, nidx1} }, ge::DT_BF16, ge::FORMAT_ND},
+            {{ {b}, {b} }, ge::DT_INT64, ge::FORMAT_ND, true, (void*)actualSeqQueryData},
+            {{ {b}, {b} }, ge::DT_INT64, ge::FORMAT_ND, true, (void*)actualSeqKeyData}
+        },
+        {
+            {{ {b, nidx2, s1}, {b, nidx2, s1} }, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{ {b, nidx2, s1}, {b, nidx2, s1} }, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {"layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+            {"sparseMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+            {"preTokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(9223372036854775807)},
+            {"nextTokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(9223372036854775807)}
+        },
+        &compileInfo, "Ascend950", 64, 262144, 16384);
+
+    uint64_t expectTilingKey = 0UL;
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+}
+
+TEST_F(DenseLightningIndexerSoftmaxLseTilingTest, tiling_large_s_a5_case0)
+{
+    struct DenseLightningIndexerSoftmaxLseCompileInfo {} compileInfo;
+
+    int64_t b = 1, s1 = 4096, s2 = 8192, nidx1 = 64, nidx2 = 1, d = 128;
+
+    int64_t actualSeqQueryData[1] = {s1};
+    int64_t actualSeqKeyData[1] = {s2};
+
+    gert::TilingContextPara tilingContextPara(
+        "DenseLightningIndexerSoftmaxLse",
+        {
+            {{ {b, s1, nidx1, d}, {b, s1, nidx1, d} }, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{ {b, s2, nidx2, d}, {b, s2, nidx2, d} }, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{ {b, s1, nidx1}, {b, s1, nidx1} }, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{ {b}, {b} }, ge::DT_INT64, ge::FORMAT_ND, true, (void*)actualSeqQueryData},
+            {{ {b}, {b} }, ge::DT_INT64, ge::FORMAT_ND, true, (void*)actualSeqKeyData}
+        },
+        {
+            {{ {b, nidx2, s1}, {b, nidx2, s1} }, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{ {b, nidx2, s1}, {b, nidx2, s1} }, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {"layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+            {"sparseMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+            {"preTokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(9223372036854775807)},
+            {"nextTokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(9223372036854775807)}
+        },
+        &compileInfo, "Ascend950", 64, 262144, 16384);
+
+    uint64_t expectTilingKey = 0UL;
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
+}
