@@ -39,10 +39,8 @@
     constexpr DTemplateType dVTemplateType = static_cast<DTemplateType>(ConfigValue[config].dv)
 
 #define PARSE_PARAMS_FullQuant(inOutLayoutType, config, pseMode, ...)                                                  \
-    constexpr LayOutTypeEnum inputLayoutType =                                                                         \
-        static_cast<LayOutTypeEnum>(InOutLayoutPFATypeValue[inOutLayoutType][0]);                                      \
-    constexpr LayOutTypeEnum outputLayoutType =                                                                        \
-        static_cast<LayOutTypeEnum>(InOutLayoutPFATypeValue[inOutLayoutType][1]);                                      \
+    constexpr LayOutTypeEnum inputLayoutType = static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[inOutLayoutType][0]);  \
+    constexpr LayOutTypeEnum outputLayoutType = static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[inOutLayoutType][1]); \
     constexpr S1TemplateType s1TemplateType = static_cast<S1TemplateType>(ConfigValue[config].s1);                     \
     constexpr S2TemplateType s2TemplateType = static_cast<S2TemplateType>(ConfigValue[config].s2);                     \
     constexpr DTemplateType dTemplateType = static_cast<DTemplateType>(ConfigValue[config].d);                         \
