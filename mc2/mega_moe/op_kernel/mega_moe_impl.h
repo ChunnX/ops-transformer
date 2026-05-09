@@ -27,6 +27,7 @@
 #include "include/tensor_api/tensor.h"
 #include "blaze/block/block_mmad_mx.h"
 #include "blaze/block/block_scheduler_swizzle.h"
+#include "../../common/op_kernel/mc2_kernel_utils.h"
 
 #include "mega_moe_combine_send.h"
 
@@ -344,7 +345,7 @@ __aicore__ inline void GroupMatmul2(
             typename BlockMmad::BlockShape singleShape{
                 Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape), Get<K_VALUE>(actualShape), 0};
             blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias, gmBlockC, singleShape);
-            PipeBarrier<PIPE_ALL>(); // 确保数据写回GM 改成对应流水
+            SyncFunc<AscendC::HardEvent::FIX_S>();
             // tile完成，在对应核心位置+1
             AscendC::AtomicAdd((__gm__ int32_t*)rowReadyFlags.GetPhyAddr() + blockIdx, int32_t(1));
         } else {

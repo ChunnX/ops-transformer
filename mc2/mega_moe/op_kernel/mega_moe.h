@@ -783,8 +783,16 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         }
         EndSync();
         vecSetSyncCom_ = 0;
-
+        // 重置baseOffset_，replay到当前wave起始位置
+        baseOffset_ = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+        preOffset_ = 0;
+        for (uint32_t i = 0; i < expertOffset; i++) {
+            UpdateGroupParams(i);
+        }
         for (uint32_t expertIdx = 0 + expertOffset; expertIdx < 2 + expertOffset && expertIdx < expertPerRank_; expertIdx++) {
+            if (!UpdateGroupParams(expertIdx)) {
+                continue;
+            }
             UpdateGlobalBuffer(gmmAddrInfo, 1);
             // gmm2(AIC on subBlock0) + combine(AIV on subBlock1)，通过GM rowReadyFlags同步
             MegaMoeImpl::GroupMatmul2<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
