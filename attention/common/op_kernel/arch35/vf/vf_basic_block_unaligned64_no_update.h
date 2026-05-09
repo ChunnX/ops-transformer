@@ -31,7 +31,7 @@ __simd_vf__ void ProcessVec1NoUpdateImpl64VF(
     const uint32_t repeatStride, const uint32_t nPadding, uint32_t pltOriginalN, float divValue,
     uint32_t pltSrcN, uint32_t pltSrcN16, const float dScale, const uint16_t m, const uint32_t pseStride,
     const float slopes, const float posShift, const T scale, const float dScaleQK, const T minValue,
-    const float deSCaleKValue = 1.0f, const float sinkValue = 0.0f)
+    const float deSCaleKValue = 1.0f, const float sinkValue = 0.0f, const float pScale = 1.0f)
 {
     RegTensor<float> vreg_min;
     RegTensor<float> vreg_sel;
@@ -79,6 +79,11 @@ __simd_vf__ void ProcessVec1NoUpdateImpl64VF(
     MaskReg preg2 = CreateMask<int8_t, MaskPattern::ALLF>();
     MaskReg preg3;
     MaskReg preg4;
+     //pScale
+    RegTensor<float> vreg_p_scale;
+    RegTensor<float> vreg_ln_p_scale;
+    Duplicate(vreg_p_scale, static_cast<float>(pScale));
+    Ln(vreg_ln_p_scale, vreg_p_scale, preg_all);
 
     if constexpr (hasSink) {
         Duplicate(vreg_sink_input, sinkValue);
@@ -148,11 +153,15 @@ __simd_vf__ void ProcessVec1NoUpdateImpl64VF(
             Select(vreg_sel, vreg_min, vreg_input_x, preg_compare);
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
                 (__ubuf__ T *&)srcUb + i * s2BaseSize, vreg_sel, preg_src_n);
+            //TODO: pScale,preg均需要关注
+            Sub(vreg_sel, vreg_sel, vreg_ln_p_scale, preg_all);
             Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(
                 vreg_input_max, vreg_sel, preg_ori_src_n);
         } else {
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
                 (__ubuf__ T *&)srcUb + i * s2BaseSize, vreg_input_x, preg_src_n);
+            //TODO: pScale,preg均需要关注
+            Sub(vreg_input_x, vreg_input_x, vreg_ln_p_scale, preg_all);
             Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(
                 vreg_input_max, vreg_input_x, preg_ori_src_n);
         }
@@ -289,7 +298,7 @@ __aicore__ inline void ProcessVec1NoUpdateImpl64(
     const LocalTensor<uint8_t>& sharedTmpBuffer, const uint16_t m, const uint32_t originN, const uint32_t pseStride,
     const float slopes, const float posShift, const T scale, const float dScaleQK, const T minValue, float keepProb,
     const LocalTensor<T>& queryScaleUb = LocalTensor<T>(), const float deSCaleKValue = 1.0f,
-    const float sinkValue = 0.0f)
+    const float sinkValue = 0.0f, const float pScale = 1.0f)
 {
     __ubuf__ T2 * expUb = (__ubuf__ T2*)dstTensor.GetPhyAddr();
     __ubuf__ pseShiftType * pseUb = (__ubuf__ pseShiftType*)pseTensor.GetPhyAddr();
@@ -320,7 +329,7 @@ __aicore__ inline void ProcessVec1NoUpdateImpl64(
         isMlaSgd, isMlaFullQuant, hasSink>(
         expUb, pseUb, expSumUb, maxUb, maxUbStart, srcUb, qScaleUb, indexesUb, maskUb, dropMaskUb, blockStride,
         repeatStride, nPadding, pltOriginalN, divValue, pltSrcN, pltSrcN16, dScale, m, pseStride, slopes, posShift,
-        scale, dScaleQK, minValue, deSCaleKValue, sinkValue);
+        scale, dScaleQK, minValue, deSCaleKValue, sinkValue, pScale);
 }
 } // namespace
 
