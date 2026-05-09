@@ -105,13 +105,13 @@ int main() {
 
   int64_t q_size = S1 * B * H1;
   int64_t kv_size = S2 * B * H2;
-  int64_t atten_mask_size = S1 * S2;
+  // int64_t atten_mask_size = S1 * S2;  // 不使用掩码，无需分配 O(S²) 内存
   int64_t softmax_size = B * N1 * S1 * 8;
 
   std::vector<int64_t> qShape = {S1, B, H1};
   std::vector<int64_t> kShape = {S2, B, H2};
   std::vector<int64_t> vShape = {S2, B, H2};
-  std::vector<int64_t> attenmaskShape = {S1, S2};
+  // std::vector<int64_t> attenmaskShape = {S1, S2};  // 不使用掩码
 
   std::vector<int64_t> attentionOutShape = {S1, B, H1};
   std::vector<int64_t> softmaxMaxShape = {B, N1, S1, 8};
@@ -120,7 +120,7 @@ int main() {
   void* qDeviceAddr = nullptr;
   void* kDeviceAddr = nullptr;
   void* vDeviceAddr = nullptr;
-  void* attenmaskDeviceAddr = nullptr;
+  // void* attenmaskDeviceAddr = nullptr;  // 不使用掩码
   void* attentionOutDeviceAddr = nullptr;
   void* softmaxMaxDeviceAddr = nullptr;
   void* softmaxSumDeviceAddr = nullptr;
@@ -131,7 +131,7 @@ int main() {
   aclTensor* pse = nullptr;
   aclTensor* dropMask = nullptr;
   aclTensor* padding = nullptr;
-  aclTensor* attenmask = nullptr;
+  aclTensor* attenmask = nullptr;  // 不使用掩码，传 nullptr 表示全计算（sparseMode=0 + attenmask=nullptr）
   aclTensor* attentionOut = nullptr;
   aclTensor* softmaxMax = nullptr;
   aclTensor* softmaxSum = nullptr;
@@ -140,7 +140,7 @@ int main() {
   std::vector<float> qHostData(q_size, 1.0);
   std::vector<float> kHostData(kv_size, 1.0);
   std::vector<float> vHostData(kv_size, 1.0);
-  std::vector<uint8_t> attenmaskHostData(atten_mask_size, 0);
+  // std::vector<uint8_t> attenmaskHostData(atten_mask_size, 0);  // 不使用掩码
   std::vector<float> attentionOutHostData(q_size, 0);
   std::vector<float> softmaxMaxHostData(softmax_size, 3.0); 
   std::vector<float> softmaxSumHostData(softmax_size, 3.0);
@@ -151,8 +151,9 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(vHostData, vShape, &vDeviceAddr, aclDataType::ACL_FLOAT, &v);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(attenmaskHostData, attenmaskShape, &attenmaskDeviceAddr, aclDataType::ACL_UINT8, &attenmask);
-  CHECK_RET(ret == ACL_SUCCESS, return ret);
+  // 不使用掩码，跳过 attenmask tensor 的创建
+  // ret = CreateAclTensor(attenmaskHostData, attenmaskShape, &attenmaskDeviceAddr, aclDataType::ACL_UINT8, &attenmask);
+  // CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(attentionOutHostData, attentionOutShape , &attentionOutDeviceAddr, aclDataType::ACL_FLOAT, &attentionOut);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(softmaxMaxHostData, softmaxMaxShape, &softmaxMaxDeviceAddr, aclDataType::ACL_FLOAT, &softmaxMax);
@@ -211,7 +212,7 @@ int main() {
   aclDestroyTensor(q);
   aclDestroyTensor(k);
   aclDestroyTensor(v);
-  aclDestroyTensor(attenmask);
+  // aclDestroyTensor(attenmask);  // 不使用掩码
   aclDestroyTensor(attentionOut);
   aclDestroyTensor(softmaxMax);
   aclDestroyTensor(softmaxSum);
@@ -223,7 +224,7 @@ int main() {
   aclrtFree(qDeviceAddr);
   aclrtFree(kDeviceAddr);
   aclrtFree(vDeviceAddr);
-  aclrtFree(attenmaskDeviceAddr);
+  // aclrtFree(attenmaskDeviceAddr);  // 不使用掩码
   aclrtFree(attentionOutDeviceAddr);
   aclrtFree(softmaxMaxDeviceAddr);
   aclrtFree(softmaxSumDeviceAddr);
