@@ -56,14 +56,15 @@ private:
     constexpr static MicroAPI::CastTrait castTraitF32ToF16 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::NO_SAT,
                                                               MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_TRUNC};
     constexpr static MicroAPI::CastTrait castTraitF16ToI4 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::SAT_SYM,
-                                                              MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
+                                                               MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
 };
 
 template <typename T>
 __aicore__ inline void
 MoeV3FullLoadInt4DynamicQuant<T>::Init(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR expandedX,
-                                       GM_ADDR expandedRowIdx, GM_ADDR expertTokensCountOrCumsum, GM_ADDR expandedScale,
-                                       GM_ADDR workspace, const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
+                                       GM_ADDR expandedRowIdx, GM_ADDR expertTokensCountOrCumsum,
+                                       GM_ADDR expandedScale, GM_ADDR workspace,
+                                       const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
 {
     MoeV3FullLoadBase<T>::Init(expertIdx, expandedRowIdx, expertTokensCountOrCumsum, workspace, tilingData, tPipe);
 
@@ -84,7 +85,8 @@ MoeV3FullLoadInt4DynamicQuant<T>::Init(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR sca
         this->pipe_->InitBuffer(inputXInQueue_, FULLLOAD_INT4_DYNAMIC_QUANT_BUFFER_NUM,
                                 2 * AlignBytes(this->cols_, sizeof(T)));
     }
-    this->pipe_->InitBuffer(smoothInQueue_, FULLLOAD_INT4_DYNAMIC_QUANT_BUFFER_NUM, AlignBytes(this->cols_, sizeof(float)));
+    this->pipe_->InitBuffer(smoothInQueue_, FULLLOAD_INT4_DYNAMIC_QUANT_BUFFER_NUM,
+                             AlignBytes(this->cols_, sizeof(float)));
     this->pipe_->InitBuffer(inputXOutQueue_, FULLLOAD_INT4_DYNAMIC_QUANT_BUFFER_NUM,
                             AlignBytes(this->cols_ / ONE_BYTE_INT4_NUM, sizeof(int4b_t)));
     this->pipe_->InitBuffer(scaleOutQueue_, FULLLOAD_INT4_DYNAMIC_QUANT_BUFFER_NUM, BLOCK_BYTES + BLOCK_BYTES);
@@ -178,7 +180,9 @@ __aicore__ inline void MoeV3FullLoadInt4DynamicQuant<T>::ScatterOutXInt4DynamicQ
 
     DataCopyExtParams copyInParams{1, static_cast<uint32_t>(this->cols_ * sizeof(T)), 0, 0, 0};
     DataCopyExtParams smoothParams{1, static_cast<uint32_t>(this->cols_ * sizeof(float)), 0, 0, 0};
-    DataCopyExtParams copyOutParams{1, static_cast<uint32_t>(this->cols_ / ONE_BYTE_INT4_NUM * sizeof(int4b_t)), 0, 0, 0};
+    DataCopyExtParams copyOutParams{1,
+                                        static_cast<uint32_t>(this->cols_ / ONE_BYTE_INT4_NUM * sizeof(int4b_t)),
+                                        0, 0, 0};
 
     LocalTensor<float> smoothLocal = smoothInQueue_.AllocTensor<float>();
     int32_t lastExpertIdx = -1;
@@ -235,7 +239,9 @@ __aicore__ inline void MoeV3FullLoadInt4DynamicQuant<T>::GatherOutXInt4DynamicQu
     int64_t startRowIdx = this->blockIdx_ * this->perCoreIndicesElements_;
 
     DataCopyExtParams copyInParams{1, static_cast<uint32_t>(this->cols_ * sizeof(T)), 0, 0, 0};
-    DataCopyExtParams copyOutParams{1, static_cast<uint32_t>(this->cols_ / ONE_BYTE_INT4_NUM * sizeof(int4b_t)), 0, 0, 0};
+    DataCopyExtParams copyOutParams{1,
+                                        static_cast<uint32_t>(this->cols_ / ONE_BYTE_INT4_NUM * sizeof(int4b_t)),
+                                        0, 0, 0};
 
     int64_t curIndex = startRowIdx;
     int64_t k = 0;

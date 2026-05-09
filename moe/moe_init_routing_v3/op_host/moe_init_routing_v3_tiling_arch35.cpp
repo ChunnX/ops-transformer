@@ -638,7 +638,8 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetAttrs()
                     quantMode_ != QUANT_MODE_HIF8_PERTENSOR && quantMode_ != QUANT_MODE_HIF8_PERTOKEN &&
                     quantMode_ != QUANT_MODE_MXFP4_E2M1 && quantMode_ != QUANT_MODE_INT4_DYNAMIC,
                 OP_LOGE(context_,
-                        "Attr quant_mode currently supports (%ld, %ld, %ld, %ld, %ld, %ld, %ld, %ld, %ld, %ld), but got %ld",
+                        "Attr quant_mode currently supports (%ld, %ld, %ld, %ld, %ld,"
+                        " %ld, %ld, %ld, %ld, %ld), but got %ld",
                         QUANT_MODE_UNQUANT, QUANT_MODE_STATIC, QUANT_MODE_DYNAMIC, QUANT_MODE_MXFP8_E5M2,
                         QUANT_MODE_MXFP8_E4M3FN, QUANT_MODE_HIF8_CAST, QUANT_MODE_HIF8_PERTENSOR,
                         QUANT_MODE_HIF8_PERTOKEN, QUANT_MODE_MXFP4_E2M1, QUANT_MODE_INT4_DYNAMIC, quantMode_),
@@ -704,7 +705,7 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckInputX()
     static const unordered_set<DataType> DYNAMIC_QUANT_SUPPORTED_DTYPES = {DataType::DT_FLOAT, DataType::DT_FLOAT16,
                                                                            DataType::DT_BF16, DataType::DT_INT8};
     static const unordered_set<DataType> INT4_DYNAMIC_SUPPORTED_DTYPES = {DataType::DT_FLOAT, DataType::DT_FLOAT16,
-                                                                           DataType::DT_BF16};
+                                                                          DataType::DT_BF16};
     static const std::unordered_set<DataType> MX_OR_HIF8_QUANT_SUPPORTED_DTYPES = {ge::DataType::DT_FLOAT16,
                                                                                    ge::DataType::DT_BF16};
     unordered_set<DataType> supportedDtypes;

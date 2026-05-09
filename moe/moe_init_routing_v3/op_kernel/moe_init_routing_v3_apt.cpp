@@ -418,7 +418,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
         if constexpr ((IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
             IsSameType<DTYPE_X, float32_t>::value) && IsSameType<DTYPE_EXPANDED_X, int4b_t>::value) {
             TPipe gatherPipe;
-            MoeGatherOutInt4DynamicQuant<DTYPE_X> gatherInt4DynamicQuantOp;
+            MoeV3GatherInt4DynamicQuant<DTYPE_X> gatherInt4DynamicQuantOp;
             gatherInt4DynamicQuantOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
             gatherInt4DynamicQuantOp.Process();
             gatherPipe.Destroy();

@@ -24,9 +24,9 @@ using namespace AscendC;
 constexpr int64_t GATHER_OUT_INT4_DYNAMIC_QUANT_BUFFER_NUM = 1;
 
 template <typename T>
-class MoeGatherOutInt4DynamicQuant {
+class MoeV3GatherInt4DynamicQuant {
 public:
-    __aicore__ inline MoeGatherOutInt4DynamicQuant(){};
+    __aicore__ inline MoeV3GatherInt4DynamicQuant(){};
     __aicore__ inline void InitBaseData(GM_ADDR sortedExpertIdx,
                                         const MoeInitRoutingV3Arch35TilingData *tilingData,
                                         TPipe *tPipe);
@@ -93,11 +93,11 @@ private:
     constexpr static MicroAPI::CastTrait castTraitF32ToF16 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::NO_SAT,
                                                               MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_TRUNC};
     constexpr static MicroAPI::CastTrait castTraitF16ToI4 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::SAT_SYM,
-                                                              MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
+                                                               MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
 };
 
 template <typename T>
-__aicore__ inline void MoeGatherOutInt4DynamicQuant<T>::CopyInExpandedExpertIdx(int64_t progress)
+__aicore__ inline void MoeV3GatherInt4DynamicQuant<T>::CopyInExpandedExpertIdx(int64_t progress)
 {
     indicesOffset_ = progress * perLoopRows_;
     LocalTensor<int32_t> indicesLocal = expandRowIdxInQueue_.AllocTensor<int32_t>();
@@ -111,7 +111,7 @@ __aicore__ inline void MoeGatherOutInt4DynamicQuant<T>::CopyInExpandedExpertIdx(
 
 template <typename T>
 template <bool IS_INPUT_SCALE>
-__aicore__ inline void MoeGatherOutInt4DynamicQuant<T>::Compute(LocalTensor<float> &smoothLocal)
+__aicore__ inline void MoeV3GatherInt4DynamicQuant<T>::Compute(LocalTensor<float> &smoothLocal)
 {
     LocalTensor<float> inLocal = inputXInQueue_.DeQue<float>();
     LocalTensor<int4b_t> outLocal = inputXOutQueue_.AllocTensor<int4b_t>();
@@ -185,14 +185,16 @@ __aicore__ inline void MoeGatherOutInt4DynamicQuant<T>::Compute(LocalTensor<floa
 }
 
 template <typename T>
-__aicore__ inline void MoeGatherOutInt4DynamicQuant<T>::CopyOutXQuantEH(int64_t progress)
+__aicore__ inline void MoeV3GatherInt4DynamicQuant<T>::CopyOutXQuantEH(int64_t progress)
 {
     LocalTensor<int32_t> indicesLocal = expandRowIdxInQueue_.DeQue<int32_t>();
     SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
 
     DataCopyExtParams copyInParams{1, static_cast<uint32_t>(perLoopCols_ * sizeof(T)), 0, 0, 0};
     DataCopyExtParams smoothParams{1, static_cast<uint32_t>(perLoopCols_ * sizeof(float)), 0, 0, 0};
-    DataCopyExtParams copyOutParams{1, static_cast<uint32_t>(perLoopCols_ / ONE_BYTE_INT4_NUM * sizeof(int4b_t)), 0, 0, 0};
+    DataCopyExtParams copyOutParams{1,
+                                        static_cast<uint32_t>(perLoopCols_ / ONE_BYTE_INT4_NUM * sizeof(int4b_t)),
+                                        0, 0, 0};
 
     LocalTensor<float> smoothLocal = smoothInQueue_.AllocTensor<float>();
     int32_t lastExpertIdx = -1;
@@ -236,7 +238,7 @@ __aicore__ inline void MoeGatherOutInt4DynamicQuant<T>::CopyOutXQuantEH(int64_t 
 
 template <typename T>
 template <bool IS_INPUT_SCALE>
-__aicore__ inline float MoeGatherOutInt4DynamicQuant<T>::ComputeMax(LocalTensor<float> &inLocal,
+__aicore__ inline float MoeV3GatherInt4DynamicQuant<T>::ComputeMax(LocalTensor<float> &inLocal,
                                                                      LocalTensor<float> &scaleLocal, int32_t srcIdx,
                                                                      int32_t expertIdx, int64_t j)
 {
@@ -315,11 +317,13 @@ __aicore__ inline float MoeGatherOutInt4DynamicQuant<T>::ComputeMax(LocalTensor<
 }
 
 template <typename T>
-__aicore__ inline void MoeGatherOutInt4DynamicQuant<T>::ComputeScale(LocalTensor<float> &inLocal, float scaleTemp,
+__aicore__ inline void MoeV3GatherInt4DynamicQuant<T>::ComputeScale(LocalTensor<float> &inLocal, float scaleTemp,
                                                                       int64_t dstIndex, int64_t j)
 {
     DataCopyExtParams copyInParams{1, static_cast<uint32_t>(colsTileLength_ * sizeof(float)), 0, 0, 0};
-    DataCopyExtParams copyOutParams{1, static_cast<uint32_t>(colsTileLength_ / ONE_BYTE_INT4_NUM * sizeof(int4b_t)), 0, 0, 0};
+    DataCopyExtParams copyOutParams{1,
+                                       static_cast<uint32_t>(colsTileLength_ / ONE_BYTE_INT4_NUM * sizeof(int4b_t)),
+                                       0, 0, 0};
 
     LocalTensor<int4b_t> outLocal = inputXOutQueue_.AllocTensor<int4b_t>();
 
@@ -362,7 +366,7 @@ __aicore__ inline void MoeGatherOutInt4DynamicQuant<T>::ComputeScale(LocalTensor
 }
 
 template <typename T>
-__aicore__ inline void MoeGatherOutInt4DynamicQuant<T>::CopyOutPartialXQuantEH(int64_t progress)
+__aicore__ inline void MoeV3GatherInt4DynamicQuant<T>::CopyOutPartialXQuantEH(int64_t progress)
 {
     LocalTensor<int32_t> indicesLocal = expandRowIdxInQueue_.DeQue<int32_t>();
     SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
@@ -412,9 +416,9 @@ __aicore__ inline void MoeGatherOutInt4DynamicQuant<T>::CopyOutPartialXQuantEH(i
 }
 
 template <typename T>
-__aicore__ inline void MoeGatherOutInt4DynamicQuant<T>::InitBaseData(GM_ADDR sortedExpertIdx,
-                                                                      const MoeInitRoutingV3Arch35TilingData *tilingData,
-                                                                      TPipe *tPipe)
+__aicore__ inline void MoeV3GatherInt4DynamicQuant<T>::InitBaseData(GM_ADDR sortedExpertIdx,
+                                                                     const MoeInitRoutingV3Arch35TilingData *tilingData,
+                                                                     TPipe *tPipe)
 {
     pipe_ = tPipe;
     blockIdx_ = GetBlockIdx();
@@ -462,10 +466,12 @@ __aicore__ inline void MoeGatherOutInt4DynamicQuant<T>::InitBaseData(GM_ADDR sor
 }
 
 template <typename T>
-__aicore__ inline void MoeGatherOutInt4DynamicQuant<T>::Init(GM_ADDR inputX, GM_ADDR quantSmooth, GM_ADDR sortedExpertIdx,
+__aicore__ inline void MoeV3GatherInt4DynamicQuant<T>::Init(GM_ADDR inputX, GM_ADDR quantSmooth,
+                                                              GM_ADDR sortedExpertIdx,
                                                               GM_ADDR expandedRowIdx, GM_ADDR expandedX,
                                                               GM_ADDR expandedScale,
-                                                              const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
+                                                              const MoeInitRoutingV3Arch35TilingData *tilingData,
+                                                              TPipe *tPipe)
 {
     InitBaseData(sortedExpertIdx, tilingData, tPipe);
     inputXGm_.SetGlobalBuffer((__gm__ T *)inputX);
@@ -513,7 +519,7 @@ __aicore__ inline void MoeGatherOutInt4DynamicQuant<T>::Init(GM_ADDR inputX, GM_
 }
 
 template <typename T>
-__aicore__ inline void MoeGatherOutInt4DynamicQuant<T>::Process()
+__aicore__ inline void MoeV3GatherInt4DynamicQuant<T>::Process()
 {
     if (blockIdx_ < needCoreNum_) {
         currentLoopRows_ = perLoopRows_;
