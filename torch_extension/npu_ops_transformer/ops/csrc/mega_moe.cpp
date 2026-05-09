@@ -15,16 +15,6 @@ namespace op_api {
 using npu_utils = at_npu::native::NpuUtils;
 const int DIM_TWO = 2;
 
-typedef struct {
-    const at::Tensor& tensor_;
-    aclDataType dtype;
-} TensorWrapper;
-
-typedef struct {
-    const at::TensorList& tensor_list_;
-    aclDataType dtype;
-} TensorListWrapper;
-
 // const std::vector<at::Tensor> &weight1
 std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
     const at::Tensor &context, const at::Tensor &x, const at::Tensor &topk_ids,

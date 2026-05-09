@@ -64,6 +64,7 @@ constexpr int kHashBufSize = 8192;
 constexpr int kHashBufMaxSize = kHashBufSize + 1024;
 extern thread_local char g_hashBuf[kHashBufSize];
 extern thread_local int g_hashOffset;
+constexpr int64_t MAX_DIM_NUM = 5;
 constexpr int64_t FP4_IN_INT8 = 2;
 constexpr int64_t PENULTIMATE_DIM = 2;
 
@@ -135,6 +136,16 @@ inline c10::SmallVector<int64_t, SIZE> array_to_small_vector(c10::IntArrayRef sh
     return shape_small_vec;
 }
 }
+
+typedef struct {
+    const at::Tensor& tensor_;
+    aclDataType dtype;
+} TensorWrapper;
+
+typedef struct {
+    const at::TensorList& tensor_list_;
+    aclDataType dtype;
+} TensorListWrapper;
 
 inline bool Is4BitDtype(const aclDataType acl_data_type)
 {
