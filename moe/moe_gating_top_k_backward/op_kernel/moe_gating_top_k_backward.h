@@ -46,11 +46,14 @@ private:
     TQue<QuePosition::VECOUT, 1> xQue_;
     TQue<QuePosition::VECOUT, 1> outQue_;
 
-    TBuf<TPosition::VECCALC> bufk0;
-    TBuf<TPosition::VECCALC> bufk1;
-    TBuf<TPosition::VECCALC> bufn2;
-    TBuf<TPosition::VECCALC> bufn3;
-    TBuf<TPosition::VECCALC> bufs;
+    TBuf<TPosition::VECCALC> bufk0_;
+    TBuf<TPosition::VECCALC> bufk1_;
+    TBuf<TPosition::VECCALC> bufn2_;
+    TBuf<TPosition::VECCALC> bufn3_;
+    TBuf<TPosition::VECCALC> bufs_;
+    TBuf<TPosition::VECCALC> bufk4Add_;
+    TBuf<TPosition::VECCALC> bufk4Index_;
+    TBuf<TPosition::VECCALC> bufk4RecipSumW_;
 
     GlobalTensor<float> xNormGm_;
     GlobalTensor<T> gradYGm_;
@@ -76,23 +79,6 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::Init(GM_ADDR xNorm, GM_AD
     pipe_ = tPipe;
     blockIdx_ = GetBlockIdx();
 
-
-// TILING_DATA_FIELD_DEF(int64_t, needCoreNum); // 所需要的总核数
-// TILING_DATA_FIELD_DEF(int64_t, perCoreRows); // 头核需要处理的token数
-// TILING_DATA_FIELD_DEF(int64_t, lastCoreRows); // 尾核需要处理的token数
-// TILING_DATA_FIELD_DEF(int64_t, baseRows); // 头核、尾核的头loop一次搬运的token数，同时也是一个UB可以处理的最多token数
-// TILING_DATA_FIELD_DEF(int64_t, perLoopTimes); // 头核需要loop的次数
-// TILING_DATA_FIELD_DEF(int64_t, perTailRows); // 头核尾loop一次搬运的token数
-// TILING_DATA_FIELD_DEF(int64_t, lastLoopTimes); // 尾核需要loop的次数
-// TILING_DATA_FIELD_DEF(int64_t, lastTailRows); // 尾核尾loop一次搬运的token数
-// TILING_DATA_FIELD_DEF(int64_t, expertCount); // x shape [M,N]中的N
-// TILING_DATA_FIELD_DEF(int64_t, k); // x shape [M,K]中的K
-// TILING_DATA_FIELD_DEF(int64_t, gradYDtype); // gradY的数据类型
-// TILING_DATA_FIELD_DEF(int64_t, renorm);
-// TILING_DATA_FIELD_DEF(int64_t, normType);
-// TILING_DATA_FIELD_DEF(float, routedScalingFactor);
-// TILING_DATA_FIELD_DEF(float, eps);
-
     // 获得当前核所需要的处理的loop次数、尾loop搬入的token数。
     if (blockIdx_ == GetBlockNum() - 1) {
         loopTimes_ = tilingData_->lastLoopTimes;
@@ -111,17 +97,19 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::Init(GM_ADDR xNorm, GM_AD
 
     // init que
     // 对齐xque按照4字节对齐；gradYQue_按照dtype字节对齐，indices按照4字节对齐，outQue按照4字节对齐，buf统一按照4字节对齐
-    pipe_->InitBuffer(gradYQue_, NUM_TWO, baseRows * AlignBytes(tilingData_->k, tilingData_->gradYDtype));
-    pipe_->InitBuffer(indicesQue_, NUM_TWO, baseRows * AlignBytes(tilingData_->k, SIZE_OF_INT32));
-    pipe_->InitBuffer(xQue_, NUM_TWO, baseRows * AlignBytes(tilingData_->expertCount, SIZE_OF_FLOAT32));
-    pipe_->InitBuffer(outQue_, NUM_ONE, baseRows * AlignBytes(tilingData_->expertCount, tilingData_->gradYDtype));
+    pipe_->InitBuffer(gradYQue_, NUM_TWO, AlignBytes(tilingData_->baseRows * tilingData_->k, tilingData_->gradYDtype));
+    pipe_->InitBuffer(indicesQue_, NUM_TWO, AlignBytes(tilingData_->baseRows * tilingData_->k, SIZE_OF_INT32));
+    pipe_->InitBuffer(xQue_, NUM_TWO, AlignBytes(tilingData_->baseRows * tilingData_->expertCount, SIZE_OF_FLOAT32));
+    pipe_->InitBuffer(outQue_, NUM_ONE, AlignBytes(tilingData_->baseRows * tilingData_->expertCount, tilingData_->gradYDtype));
     
-    
-    pipe_->InitBuffer(bufk0, AlignBytes(tilingData_->k, SIZE_OF_FLOAT32));
-    pipe_->InitBuffer(bufk1, AlignBytes(tilingData_->k, SIZE_OF_FLOAT32));
-    pipe_->InitBuffer(bufn2, AlignBytes(tilingData_->expertCount, SIZE_OF_FLOAT32));
-    pipe_->InitBuffer(bufn3, AlignBytes(tilingData_->expertCount, SIZE_OF_FLOAT32));
-    pipe_->InitBuffer(bufs, AlignBytes(1, SIZE_OF_FLOAT32));
+    pipe_->InitBuffer(bufk0_, AlignBytes(tilingData_->baseRows * tilingData_->k, SIZE_OF_FLOAT32));
+    pipe_->InitBuffer(bufk1_, AlignBytes(tilingData_->baseRows * tilingData_->k, SIZE_OF_FLOAT32));
+    pipe_->InitBuffer(bufk4Add_, AlignBytes(tilingData_->baseRows * tilingData_->k, SIZE_OF_FLOAT32));
+    pipe_->InitBuffer(bufk4Index_, AlignBytes(tilingData_->baseRows * tilingData_->k, SIZE_OF_FLOAT32));
+    pipe_->InitBuffer(bufk4RecipSumW_, AlignBytes(tilingData_->baseRows * tilingData_->k, SIZE_OF_FLOAT32));
+    pipe_->InitBuffer(bufn2_, AlignBytes(tilingData_->baseRows * tilingData_->expertCount, SIZE_OF_FLOAT32));
+    pipe_->InitBuffer(bufn3_, AlignBytes(tilingData_->baseRows * tilingData_->expertCount, SIZE_OF_FLOAT32));
+    pipe_->InitBuffer(bufs_, AlignBytes(tilingData_->baseRows * 1, SIZE_OF_FLOAT32));
 }
 
 template <typename T>
@@ -129,12 +117,15 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::Process()
 {
     for(int64_t loopIdx = 0; loopIdx < loopTimes_; loopIdx++) {
         curRows_ = loopIdx == loopTimes_ - 1 ? tailRows_ : tilingData_->baseRows;
-        CopyIn(); // 搬入gradY、xnorm、expertidx
-        for(int64_t tokenIdx = 0; tokenIdx < curRows_; tokenIdx++) {
-            Compute(); // 计算
-        }
-        CopyOut(); // 搬出
+        CopyInGradY(); // 搬入gradY、xnorm、expertidx
+        CopyInXNorm();
+        CopyInExpertIdx();
+        
+        Sigmoid();
+        GetGradXNorm();
+        GetGradX();
 
+        CopyOut(); // 搬出
     }
 }
 } // namespace MoeGatingTopK
