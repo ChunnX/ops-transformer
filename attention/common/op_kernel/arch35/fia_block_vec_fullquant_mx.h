@@ -206,6 +206,10 @@ public:
                                        RunInfoX runInfo, uint32_t subLoop)
     {
         bmm1ResBuf.WaitCrossCore();
+        bmm1ResBuf.SetCrossCore();
+        outputBuf.SetCrossCore();
+        return;
+        bmm1ResBuf.WaitCrossCore();
         if (unlikely(runInfo.actVecMSize == 0)) {
             bmm1ResBuf.SetCrossCore();
             outputBuf.SetCrossCore();
@@ -998,6 +1002,9 @@ public:
 
     __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfoX runInfo)
     {
+        bmm2ResBuf.WaitCrossCore();
+        bmm2ResBuf.SetCrossCore();
+        return;
         bmm2ResBuf.WaitCrossCore();
         if constexpr (bmm2Write2Ub) {
             ProcessVec2OnUb(bmm2ResBuf, runInfo);
