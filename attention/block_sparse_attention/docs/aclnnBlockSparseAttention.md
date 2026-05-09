@@ -69,7 +69,7 @@ aclnnStatus aclnnBlockSparseAttention(
   void             *workspace,
   uint64_t          workspaceSize,
   aclOpExecutor    *executor,
-  aclrtStream stream)
+  aclrtStream       stream)
 ```
 
 ## aclnnBlockSparseAttentionGetWorkspaceSize
@@ -237,7 +237,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>qInputLayout</td>
       <td>输入</td>
-      <td>Host侧的string，代表输入query的数据排布格式。</td>
+      <td>代表输入query的数据排布格式。</td>
       <td>当前仅支持"TND"和"BNSD"，qInputLayout与kvInputLayout需要保持一致。</td>
       <td>String</td>
       <td>-</td>
@@ -257,7 +257,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>numKeyValueHeads</td>
       <td>输入</td>
-      <td>Host侧的int64_t，代表key/value的head个数。</td>
+      <td>代表key/value的head个数。</td>
       <td>-</td>
       <td>INT64</td>
       <td>-</td>
@@ -282,7 +282,7 @@ aclnnStatus aclnnBlockSparseAttention(
     <tr>
       <td>scaleValue</td>
       <td>输入</td>
-      <td>Host侧的double，公式中的scale，代表缩放系数。</td>
+      <td>公式中的scale，代表缩放系数。</td>
       <td>一般设置为D^-0.5。</td>
       <td>DOUBLE</td>
       <td>-</td>
@@ -546,7 +546,7 @@ int64_t GetShapeSize(const std::vector<int64_t>& shape) {
 }
 
 int Init(int32_t deviceId, aclrtStream* stream) {
-    // 固定写法，AscendCL初始化
+    // 固定写法，资源初始化
     auto ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n", ret); return ret);
     ret = aclrtSetDevice(deviceId);

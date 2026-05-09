@@ -97,7 +97,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
   void             *workspace,
   uint64_t          workspaceSize,
   aclOpExecutor    *executor,
-  aclrtStream stream)
+  aclrtStream       stream)
 ```
 
 ## aclnnBlockSparseAttentionV2GetWorkspaceSize
@@ -108,8 +108,8 @@ aclnnStatus aclnnBlockSparseAttentionV2(
   <colgroup>
   <col style="width: 269px">
   <col style="width: 132px">
-  <col style="width: 318px">
-  <col style="width: 236px">
+  <col style="width: 270px">
+  <col style="width: 350px">
   <col style="width: 185px">
   <col style="width: 119px">
   <col style="width: 146px">
@@ -129,7 +129,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
   </thead>
   <tbody>
     <tr>
-      <td>query</td>
+      <td>query（aclTensor*）</td>
       <td>输入</td>
       <td>公式中的query。</td>
       <td>支持的shape为：
@@ -142,7 +142,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
       <td>×</td>
     </tr>
     <tr>
-      <td>key</td>
+      <td>key（aclTensor*）</td>
       <td>输入</td>
       <td>公式中的key。</td>
       <td>支持的shape为：
@@ -157,7 +157,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
       <td>×</td>
     </tr>
     <tr>
-      <td>value</td>
+      <td>value（aclTensor*）</td>
       <td>输入</td>
       <td>公式中的value。</td>
       <td>
@@ -173,7 +173,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
       <td>×</td>
     </tr>
     <tr>
-      <td>blockSparseMaskOptional</td>
+      <td>blockSparseMaskOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示实际的稀疏pattern。</td>
       <td>
@@ -190,7 +190,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
       <td>×</td>
     </tr>
     <tr>
-      <td>attenMaskOptional</td>
+      <td>attenMaskOptional（aclTensor*）</td>
       <td>输入</td>
       <td>公式中的atten_mask。</td>
       <td>atten_mask会与稀疏pattern叠加产生作用。当前不支持，必须传入nullptr。</td>
@@ -201,7 +201,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
     </tr>
     <tr>
     <tr>
-      <td>blockShapeOptional</td>
+      <td>blockShapeOptional（aclIntArray*）</td>
       <td>输入</td>
       <td>稀疏块形状数组。</td>
       <td>
@@ -221,7 +221,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
       <td>1</td>
       <td>-</td>
     </tr>
-      <td>actualSeqLengthsOptional</td>
+      <td>actualSeqLengthsOptional（aclIntArray*）</td>
       <td>输入</td>
       <td>描述每个Batch对应的query序列长度。</td>
       <td>
@@ -237,7 +237,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
       <td>-</td>
     </tr>
     <tr>
-      <td>actualSeqLengthsKvOptional</td>
+      <td>actualSeqLengthsKvOptional（aclIntArray*）</td>
       <td>输入</td>
       <td>描述每个Batch对应的key/value序列长度。</td>
       <td>
@@ -253,7 +253,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
       <td>-</td>
     </tr>
     <tr>
-      <td>blockTableOptional</td>
+      <td>blockTableOptional（aclTensor*）</td>
       <td>输入</td>
       <td>Block表用于PagedAttention。</td>
       <td>当前不支持，必须传入nullptr。</td>
@@ -263,7 +263,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
       <td>×</td>
     </tr>
     <tr>
-      <td>queryDequantScaleOptional</td>
+      <td>queryDequantScaleOptional（aclTensor*）</td>
       <td>输入</td>
       <td>query的反量化缩放因子。</td>
       <td>
@@ -283,7 +283,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
       <td>×</td>
     </tr>
     <tr>
-      <td>keyDequantScaleOptional</td>
+      <td>keyDequantScaleOptional（aclTensor*）</td>
       <td>输入</td>
       <td>key的反量化缩放因子。</td>
       <td>
@@ -303,7 +303,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
       <td>×</td>
     </tr>
     <tr>
-      <td>valueDequantScaleOptional</td>
+      <td>valueDequantScaleOptional（aclTensor*）</td>
       <td>输入</td>
       <td>value的反量化缩放因子。</td>
       <td>
@@ -323,9 +323,9 @@ aclnnStatus aclnnBlockSparseAttentionV2(
       <td>×</td>
     </tr>
     <tr>
-      <td>qInputLayout</td>
+      <td>qInputLayout（char*）</td>
       <td>输入</td>
-      <td>Host侧的string，代表输入query的数据排布格式。</td>
+      <td>代表输入query的数据排布格式。</td>
       <td>当前仅支持"TND"和"BNSD"，qInputLayout与kvInputLayout需要保持一致。</td>
       <td>String</td>
       <td>-</td>
@@ -333,7 +333,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
       <td>-</td>
     </tr>
     <tr>
-      <td>kvInputLayout</td>
+      <td>kvInputLayout（char*）</td>
       <td>输入</td>
       <td>代表输入key、value的数据排布格式。</td>
       <td>当前仅支持"TND"和"BNSD"，qInputLayout与kvInputLayout需要保持一致。</td>
@@ -343,9 +343,9 @@ aclnnStatus aclnnBlockSparseAttentionV2(
       <td>-</td>
     </tr>
     <tr>
-      <td>numKeyValueHeads</td>
+      <td>numKeyValueHeads（int64_t）</td>
       <td>输入</td>
-      <td>Host侧的int64_t，代表key/value的head个数。</td>
+      <td>代表key/value的head个数。</td>
       <td>-</td>
       <td>INT64</td>
       <td>-</td>
@@ -353,7 +353,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
       <td>-</td>
     </tr>
     <tr>
-      <td>maskType</td>
+      <td>maskType（int64_t）</td>
       <td>输入</td>
       <td>表示attention计算中的掩码类型。</td>
       <td>
@@ -368,9 +368,9 @@ aclnnStatus aclnnBlockSparseAttentionV2(
       <td>-</td>
     </tr>
     <tr>
-      <td>scaleValue</td>
+      <td>scaleValue（double）</td>
       <td>输入</td>
-      <td>Host侧的double，公式中的scale，代表缩放系数。</td>
+      <td>公式中的scale，代表缩放系数。</td>
       <td>一般设置为D^-0.5。</td>
       <td>DOUBLE</td>
       <td>-</td>
@@ -378,7 +378,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
       <td>-</td>
     </tr>
     <tr>
-      <td>innerPrecise</td>
+      <td>innerPrecise（int64_t）</td>
       <td>输入</td>
       <td>Softmax计算采取的精度级别。</td>
       <td>
@@ -395,7 +395,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
       <td>-</td>
     </tr>
     <tr>
-      <td>blockSize</td>
+      <td>blockSize（int64_t）</td>
       <td>输入</td>
       <td>PagedAttention的block大小。</td>
       <td>用于PagedAttention场景，当前不支持PagedAttention功能，因此只支持传0。</td>
@@ -405,7 +405,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
       <td>-</td>
     </tr>
     <tr>
-      <td>preTokens</td>
+      <td>preTokens（int64_t）</td>
       <td>输入</td>
       <td>滑窗attention场景下，滑窗需要向前包含多少个token。</td>
       <td>用于滑窗attention场景，当前不支持滑窗attention，只支持传入2147483647。</td>
@@ -415,7 +415,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
       <td>-</td>
     </tr>
     <tr>
-      <td>nextTokens</td>
+      <td>nextTokens（int64_t）</td>
       <td>输入</td>
       <td>滑窗attention场景下，滑窗需要向后包含多少个token。</td>
       <td>用于滑窗attention场景，当前不支持滑窗attention，只支持传入2147483647。</td>
@@ -425,7 +425,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
       <td>-</td>
     </tr>
     <tr>
-      <td>softmaxLseFlag</td>
+      <td>softmaxLseFlag（int64_t）</td>
       <td>输入</td>
       <td>是否使能softmaxLse输出的标志位。</td>
       <td>
@@ -441,7 +441,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
       <td>-</td>
     </tr>
     <tr>
-      <td>attentionOut</td>
+      <td>attentionOut（aclTensor*）</td>
       <td>输出</td>
       <td>公式中的attentionOut。</td>
       <td>数据类型和shape与query保持一致。</td>
@@ -451,7 +451,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
       <td>√</td>
     </tr>
     <tr>
-      <td>softmaxLseOptional</td>
+      <td>softmaxLseOptional（aclTensor*）</td>
       <td>输出</td>
       <td>Softmax计算的log-sum-exp中间结果。</td>
       <td>
@@ -467,7 +467,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
       <td>√</td>
     </tr>
     <tr>
-      <td>workspaceSize</td>
+      <td>workspaceSize（uint64_t）</td>
       <td>输出</td>
       <td>返回需要在Device侧申请的workspace大小。</td>
       <td>-</td>
@@ -477,7 +477,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
       <td>-</td>
     </tr>
     <tr>
-      <td>executor</td>
+      <td>executor（aclOpExecutor**）</td>
       <td>输出</td>
       <td>返回op执行器，包含算子计算流程。</td>
       <td>-</td>
@@ -642,7 +642,7 @@ int64_t GetShapeSize(const std::vector<int64_t>& shape) {
 }
 
 int Init(int32_t deviceId, aclrtStream* stream) {
-    // 固定写法，AscendCL初始化
+    // 固定写法，资源初始化
     auto ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n", ret); return ret);
     ret = aclrtSetDevice(deviceId);
