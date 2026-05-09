@@ -21,7 +21,7 @@ using namespace ge;
 
 namespace ops {
 
-// 属性索引 对其def注册索引   TODO::图模式infershape没有验证
+// 属性索引 对其def注册索引  
 static constexpr size_t ATTR_IDX_SOFTMAX_SCALE    = 0;
 static constexpr size_t ATTR_IDX_MASK_MODE        = 1;
 static constexpr size_t ATTR_IDX_WIN_LEFT         = 2;

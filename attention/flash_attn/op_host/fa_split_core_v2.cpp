@@ -18,7 +18,7 @@
 #include <math.h>
 
 
-namespace fa_split_core_v2 {     // TODOx，需要确定2套分核的演进策略
+namespace fa_split_core_v2 {     
 
     uint32_t GetS1SeqSize(uint32_t bIdx, const BaseInfo &baseInfo)
     {

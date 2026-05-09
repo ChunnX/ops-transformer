@@ -251,14 +251,12 @@ ge::graphStatus ActualSeqLenChecker::CheckMultiPara(const FaTilingInfo &faInfo)
 {
     auto &cuSeqlensQTensor = faInfo.opParamInfo.cuSeqlensQ.tensor;
     if (cuSeqlensQTensor != nullptr && faInfo.qLayout == FaLayout::TND) {
-        // TODO: tensor值校验需用户自行保证
         // 文档要求：cu_seqlens_q第一个元素为0、最后一个元素等于Q_T、其值应非递减排列
         // 由于tiling侧无法获取tensor的具体数值，此处不做值校验
     }
 
     auto &cuSeqlensKvTensor = faInfo.opParamInfo.cuSeqlensKv.tensor;
     if (cuSeqlensKvTensor != nullptr && faInfo.kvLayout == FaLayout::TND) {
-        // TODO: tensor值校验需用户自行保证
         // 文档要求：cu_seqlens_kv第一个元素为0、最后一个元素等于KV_T、其值应非递减排列
         // 由于tiling侧无法获取tensor的具体数值，此处不做值校验
     }
