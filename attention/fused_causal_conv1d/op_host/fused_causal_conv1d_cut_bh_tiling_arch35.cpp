@@ -19,21 +19,35 @@
 
 namespace optiling {
 
+// =========================================================================
+// IsCapable
+// 判断当前平台是否支持 BH 模板，始终返回 true（由 IsCapable 机制筛选模板）
+// =========================================================================
 bool FusedCausalConv1dCutBHTiling::IsCapable()
 {
     return true;
 }
 
+// =========================================================================
+// GetPlatformInfo
+// 获取硬件参数：AIV 核数（totalCoreNum_）和 UB 大小（ubSize_）
+//
+// 两种来源：
+//   1. 运行时 PlatformInfo（优先，GetCoreNumAiv / GetCoreMemSize）
+//   2. 编译期 CompileInfo（AOT 或单元测试场景，从 CompileInfo 结构体读取）
+// =========================================================================
 ge::graphStatus FusedCausalConv1dCutBHTiling::GetPlatformInfo()
 {
     ubBlockSize_ = Ops::Base::GetUbBlockSize(context_);
     auto platformInfo = context_->GetPlatformInfo();
     if (platformInfo == nullptr) {
+        // 无运行时平台信息，降级使用编译期 CompileInfo
         auto compileInfoPtr = reinterpret_cast<const FusedCausalConv1dCutBHCompileInfo *>(context_->GetCompileInfo());
         OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_, "compile info is null"), return ge::GRAPH_FAILED);
         totalCoreNum_ = compileInfoPtr->coreNum;
         ubSize_ = compileInfoPtr->ubSize;
     } else {
+        // 正常路径：从运行时平台信息读取
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
         totalCoreNum_ = static_cast<uint64_t>(ascendcPlatform.GetCoreNumAiv());
         if (totalCoreNum_ == 0UL) {
@@ -52,6 +66,11 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetPlatformInfo()
     return ge::GRAPH_SUCCESS;
 }
 
+// =========================================================================
+// GetShapeAttrsInfo
+// 顶层入口，依次调用 GetShapeInfo / GetTypeInfo / CheckInputParams /
+// GetAttrInfo / GetStrideInfo，完成形状、类型、属性、stride 的读取与校验
+// =========================================================================
 ge::graphStatus FusedCausalConv1dCutBHTiling::GetShapeAttrsInfo()
 {
     OP_CHECK_IF(context_ == nullptr, OP_LOGE("FusedCausalConv1dCutBH", "context is null"), return ge::GRAPH_FAILED);
@@ -64,7 +83,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetShapeAttrsInfo()
         OP_LOGE(context_->GetNodeName(), "GetTypeInfo FAILED"),
         return ge::GRAPH_FAILED);
 
-    // Perform all validations (depends on shapes and types)
+    // 形状和类型读取完成后才能做合法性校验
     OP_CHECK_IF(CheckInputParams() != ge::GRAPH_SUCCESS,
         OP_LOGE(context_->GetNodeName(), "FusedCausalConv1dCutBH CheckInputParams FAILED."),
         return ge::GRAPH_FAILED);
@@ -80,39 +99,44 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetShapeAttrsInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-// Shape related info: x/weight/conv_states shapes and derived fields
+// =========================================================================
+// GetShapeInfo
+// 读取 x / weight / conv_states 的形状，提取关键维度信息：
+//   batchSize_, seqLen_, cuSeqLen_, dim_, kernelSize_, stateLen_
+// 同时推断 apcEnable_ / hasCacheIndices_ / hasNumComputedTokens_ 等标志
+// =========================================================================
 ge::graphStatus FusedCausalConv1dCutBHTiling::GetShapeInfo()
 {
-    // Get x shape
+    // 获取 x 的 shape
     auto xShape = context_->GetInputShape(X_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, xShape);
     auto xOriginShape = xShape->GetOriginShape();
 
-    // Support both 3D [batch, seq_len, dim] and 2D [cu_seq_len, dim] input
+    // 支持 3D [batch, seq_len, dim] 和 2D [cu_seq_len, dim] 两种输入格式
     if (xOriginShape.GetDimNum() == DIM_3) {
-        xInputMode_ = X_INPUT_3D;  // 3D input mode
+        xInputMode_ = X_INPUT_3D;
         batchSize_ = xOriginShape.GetDim(DIM_0);
-        seqLen_ = xOriginShape.GetDim(DIM_1);
-        dim_ = xOriginShape.GetDim(DIM_2);
+        seqLen_    = xOriginShape.GetDim(DIM_1);
+        dim_       = xOriginShape.GetDim(DIM_2);
     } else if (xOriginShape.GetDimNum() == DIM_2) {
-        xInputMode_ = X_INPUT_2D;                // 2D input mode
-        cuSeqLen_ = xOriginShape.GetDim(DIM_0);  // cu_seq_len = batch * seq_len
-        dim_ = xOriginShape.GetDim(DIM_1);
+        // 2D 输入：cu_seq_len = 所有 batch token 总数
+        xInputMode_ = X_INPUT_2D;
+        cuSeqLen_   = xOriginShape.GetDim(DIM_0);
+        dim_        = xOriginShape.GetDim(DIM_1);
 
-        // For 2D input, query_start_loc must be specified to get batch
+        // 2D 输入必须提供 query_start_loc 才能反推 batch 数
+        // query_start_loc 形状为 (batch + 1,)，因此 batch = dim0 - 1
         auto queryStartLocShape = context_->GetOptionalInputShape(QUERY_START_LOC_INDEX);
         OP_CHECK_NULL_WITH_CONTEXT(context_, queryStartLocShape);
         auto queryStartLocOriginShape = queryStartLocShape->GetOriginShape();
-
-        // query_start_loc shape is (batch + 1,), so batch = dim0 - 1
         batchSize_ = queryStartLocOriginShape.GetDim(DIM_0) - 1;
-        seqLen_ = 0;
+        seqLen_    = 0;  // 2D 模式下 seqLen_ 在 UB 计算时由 maxQueryLen_ 替代
     } else {
         OP_LOGE(context_->GetNodeName(), "X dimension number must be 2 or 3, but got %lu", xOriginShape.GetDimNum());
         return ge::GRAPH_FAILED;
     }
 
-    // Get weight shape
+    // 获取 weight 形状，提取卷积核大小 kernelSize_
     auto weightShape = context_->GetInputShape(WEIGHT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, weightShape);
     auto weightOriginShape = weightShape->GetOriginShape();
@@ -121,29 +145,27 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetShapeInfo()
             context_->GetNodeName(), "Weight dimension number must be 2, but got %lu", weightOriginShape.GetDimNum());
         return ge::GRAPH_FAILED;
     }
-
     kernelSize_ = weightOriginShape.GetDim(DIM_0);
 
-    // Get convStates shape to retrieve stateLen
+    // 获取 conv_states 形状，提取 stateLen_（= kernel_size - 1 + max_seq_len）
     auto convStatesShape = context_->GetInputShape(CONV_STATES_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, convStatesShape);
     auto convStatesOriginShape = convStatesShape->GetOriginShape();
-    // stateLen is the second dimension of convStates [-1, stateLen, dim]
     stateLen_ = convStatesOriginShape.GetDim(DIM_1);
 
-    // 判断 APC 是否开启：blockIdxLastScheduledToken 不为空则开启（F1）
+    // 判断 APC 是否开启：blockIdxLastScheduledToken 存在则表示 APC 开启
     auto blockIdxLastDesc = context_->GetOptionalInputDesc(BLOCK_IDX_LAST_SCHEDULED_TOKEN_INDEX);
     apcEnable_ = (blockIdxLastDesc != nullptr) ? 1 : 0;
 
-    // 判断 cacheIndices 是否有效（F2）
+    // 判断 cacheIndices 是否提供
     auto cacheIndicesDesc = context_->GetOptionalInputDesc(CACHE_INDICES_INDEX);
     hasCacheIndices_ = (cacheIndicesDesc != nullptr) ? 1 : 0;
 
-    // 判断 numComputedTokens 是否有效（APC 和 convMode 之外的统一判断）
+    // 判断 numComputedTokens 是否提供
     auto numComputedTokensDesc = context_->GetOptionalInputDesc(NUM_COMPUTED_TOKENS_INDEX);
     hasNumComputedTokens_ = (numComputedTokensDesc != nullptr) ? 1 : 0;
 
-    // APC 开启时解析 maxNumBlocks（cacheIndices 为 2D）
+    // APC 开启时解析 maxNumBlocks（cacheIndices 为 2D [batch, maxNumBlocks]）
     if (apcEnable_) {
         auto cacheIndicesShape = context_->GetOptionalInputShape(CACHE_INDICES_INDEX);
         OP_CHECK_IF(cacheIndicesShape == nullptr,
@@ -161,36 +183,39 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetShapeInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-// Type related info: dtypes and dtype size
+// =========================================================================
+// GetTypeInfo
+// 读取各输入张量的数据类型，填充 xDtype_ 等成员变量
+// 同时设置 hasAcceptTokenNum_ 标志和 xDtypeSize_
+// =========================================================================
 ge::graphStatus FusedCausalConv1dCutBHTiling::GetTypeInfo()
 {
-    // Get data types
-    xDtype_ = context_->GetInputDesc(X_INDEX)->GetDataType();
-    weightDtype_ = context_->GetInputDesc(WEIGHT_INDEX)->GetDataType();
-    convStatesDtype_ = context_->GetInputDesc(CONV_STATES_INDEX)->GetDataType();
+    xDtype_         = context_->GetInputDesc(X_INDEX)->GetDataType();
+    weightDtype_    = context_->GetInputDesc(WEIGHT_INDEX)->GetDataType();
+    convStatesDtype_= context_->GetInputDesc(CONV_STATES_INDEX)->GetDataType();
 
-    // Get queryStartLoc dtype if available (optional input)
+    // 可选输入：query_start_loc
     auto queryStartLocDesc = context_->GetOptionalInputDesc(QUERY_START_LOC_INDEX);
     if (queryStartLocDesc != nullptr) {
         queryStartLocDtype_ = queryStartLocDesc->GetDataType();
     }
 
-    // Get cacheIndices dtype if available (optional input)
+    // 可选输入：cache_indices
     auto cacheIndicesDesc = context_->GetOptionalInputDesc(CACHE_INDICES_INDEX);
     if (cacheIndicesDesc != nullptr) {
         cacheIndicesDtype_ = cacheIndicesDesc->GetDataType();
     }
 
-    // Get numAcceptedToken dtype if available (optional input)
+    // 可选输入：num_accepted_token（存在时设置 hasAcceptTokenNum_ = 1）
     auto numAcceptedTokenDesc = context_->GetOptionalInputDesc(NUM_ACCEPTED_TOKEN_INDEX);
     if (numAcceptedTokenDesc != nullptr) {
         numAcceptedTokenDtype_ = numAcceptedTokenDesc->GetDataType();
-        hasAcceptTokenNum_ = 1;  // true
+        hasAcceptTokenNum_ = 1;
     } else {
-        hasAcceptTokenNum_ = 0;  // false
+        hasAcceptTokenNum_ = 0;
     }
 
-    // Get dtype size
+    // 计算 x 数据类型的字节大小（用于后续内存计算）
     xDtypeSize_ = GetSizeByDataType(xDtype_);
     OP_CHECK_IF(xDtypeSize_ == 0,
         OP_LOGE(context_->GetNodeName(),
@@ -201,54 +226,65 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetTypeInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-// Attr related info: read op attributes
+// =========================================================================
+// GetAttrInfo
+// 读取算子属性并填充成员变量，不存在的属性保持默认值
+// 注意：inplace_ 属性语义翻转（0→1, 非0→0），含义是"原地更新开关"
+// =========================================================================
 ge::graphStatus FusedCausalConv1dCutBHTiling::GetAttrInfo()
 {
     auto attrs = context_->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
 
+    // 激活函数模式（可选，默认 0=无激活）
     const int64_t *activationModePtr = attrs->GetAttrPointer<int64_t>(ATTR_ACTIVATION_MODE_INDEX);
     if (activationModePtr != nullptr) {
         activationMode_ = *activationModePtr;
     }
 
+    // padding slot id（可选，默认 -1 表示不使用 padding）
     const int64_t *padSlotIdPtr = attrs->GetAttrPointer<int64_t>(ATTR_PAD_SLOT_ID_INDEX);
     if (padSlotIdPtr != nullptr) {
         padSlotId_ = *padSlotIdPtr;
     }
 
+    // 运行模式（可选，预留扩展）
     const int64_t *runModePtr = attrs->GetAttrPointer<int64_t>(ATTR_RUN_MODE_INDEX);
     if (runModePtr != nullptr) {
         runMode_ = *runModePtr;
     }
 
+    // 2D 输入时的最大序列长度（决定 UB 分配时 seqLen 取值）
     const int64_t *maxQueryLenPtr = attrs->GetAttrPointer<int64_t>(ATTR_MAX_QUERY_LEN_INDEX);
     if (maxQueryLenPtr != nullptr) {
         maxQueryLen_ = *maxQueryLenPtr;
     }
 
+    // 是否使用残差连接（0=否，1=是）
     const int64_t *residualConnectionPtr = attrs->GetAttrPointer<int64_t>(ATTR_RESIDUAL_CONNECTION_INDEX);
     if (residualConnectionPtr != nullptr) {
         residualConnection_ = *residualConnectionPtr;
     }
 
-    // 新增属性解析（第二期需求）
+    // APC block 大小（APC 开启时必须非零）
     const int64_t *blockSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_BLOCK_SIZE_INDEX);
     if (blockSizePtr != nullptr) {
         blockSize_ = *blockSizePtr;
     }
 
+    // 卷积模式（0=Qwen3 默认，1=Pangu v2 前 width-1 token 置零）
     const int64_t *convModePtr = attrs->GetAttrPointer<int64_t>(ATTR_CONV_MODE_INDEX);
     if (convModePtr != nullptr) {
         convMode_ = *convModePtr;
     }
 
+    // 原地更新开关：属性值 0 → inplace_=1（原地），非 0 → inplace_=0（非原地）
     const int64_t *inplacePtr = attrs->GetAttrPointer<int64_t>(ATTR_INPLACE_INDEX);
     if (inplacePtr != nullptr) {
         inplace_ = (*inplacePtr == 0) ? 1 : 0;
     }
 
-    // APC 开启时 blockSize 必须非零
+    // APC 开启时 blockSize 必须有效
     if (apcEnable_ && blockSize_ == 0) {
         OP_LOGE(context_->GetNodeName(), "blockSize must not be 0 when APC is enabled");
         return ge::GRAPH_FAILED;
@@ -257,10 +293,14 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetAttrInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-// Stride related info: input strides when input is view
+// =========================================================================
+// GetStrideInfo
+// 获取 x 和 conv_states 的 stride（支持非连续张量 / view）
+// 若非 view 则按默认连续 stride 计算（即元素个数）
+// =========================================================================
 ge::graphStatus FusedCausalConv1dCutBHTiling::GetStrideInfo()
 {
-    // 获取 x 的 stride
+    // 获取 x 的 stride（3D 输入取 DIM_1 stride；2D 输入取 DIM_0 stride）
     bool xIsView = context_->InputIsView(X_INDEX);
     if (xIsView) {
         auto *xStride = context_->GetInputStride(X_INDEX);
@@ -271,18 +311,19 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetStrideInfo()
             OP_CHECK_IF(xStride->GetDimNum() != DIM_3,
                 OP_LOGE(context_->GetNodeName(), "The number of dimensions in x stride must be 3."),
                 return ge::GRAPH_FAILED);
-            xStride_ = xStride->GetStride(DIM_1);  // batch, seq_len, dim
+            xStride_ = xStride->GetStride(DIM_1);  // [batch, seq_len, dim] 中 seq_len 维的 stride
         } else {
             OP_CHECK_IF(xStride->GetDimNum() != DIM_2,
                 OP_LOGE(context_->GetNodeName(), "The number of dimensions in x stride must be 2."),
                 return ge::GRAPH_FAILED);
-            xStride_ = xStride->GetStride(DIM_0);  // cu_seq_len, dim
+            xStride_ = xStride->GetStride(DIM_0);  // [cu_seq_len, dim] 中 cu_seq_len 维的 stride
         }
     } else {
+        // 连续张量：stride = dim_（每行 dim_ 个元素）
         xStride_ = dim_;
     }
 
-    // 获取 cacheStates 的 stride
+    // 获取 conv_states 的 stride（形状为 [batch, state_len, dim]）
     bool cacheIsView = context_->InputIsView(CONV_STATES_INDEX);
     if (cacheIsView) {
         auto *cacheStride = context_->GetInputStride(CONV_STATES_INDEX);
@@ -292,52 +333,52 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetStrideInfo()
         OP_CHECK_IF(cacheStride->GetDimNum() != DIM_3,
             OP_LOGE(context_->GetNodeName(), "The number of dimensions in conv_states stride must be 3."),
             return ge::GRAPH_FAILED);
-        cacheStride0_ = cacheStride->GetStride(DIM_0);
-        cacheStride1_ = cacheStride->GetStride(DIM_1);
+        cacheStride0_ = cacheStride->GetStride(DIM_0);  // batch 维 stride
+        cacheStride1_ = cacheStride->GetStride(DIM_1);  // state_len 维 stride
     } else {
-        cacheStride0_ = dim_ * stateLen_;
-        cacheStride1_ = dim_;
+        // 连续张量默认 stride
+        cacheStride0_ = dim_ * stateLen_;  // batch 步长
+        cacheStride1_ = dim_;              // state_len 步长
     }
 
     return ge::GRAPH_SUCCESS;
 }
 
-// Validate X tensor shape
+// =========================================================================
+// ValidateXShape
+// 校验 x 张量的形状合法性：
+//   - batch 范围：[MIN_BATCH, MAX_BATCH]
+//   - 3D 模式：seqLen = m+1，m ∈ [MIN_M, MAX_M]
+//   - 2D 模式：max_query_len ∈ [1, MAX_M+1]
+//   - dim 范围：[MIN_DIM, MAX_DIM]，且必须是 128 的倍数
+// =========================================================================
 ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateXShape()
 {
-    // Validate batch size: [1, 256]
     OP_CHECK_IF(batchSize_ < MIN_BATCH || batchSize_ > MAX_BATCH,
         OP_LOGE(context_->GetNodeName(),
             "X batch size must be in [%ld, %ld], but got %ld",
-            MIN_BATCH,
-            MAX_BATCH,
-            batchSize_),
+            MIN_BATCH, MAX_BATCH, batchSize_),
         return ge::GRAPH_FAILED);
 
-    // For 3D input, validate sequence length
     if (xInputMode_ == X_INPUT_3D) {
-        // Validate sequence length: m+1 where m in [0, MAX_M]
+        // seqLen = m+1，m 表示当前 decode 步数（BH 模板只支持短序列）
         int64_t m = seqLen_ - 1;
         OP_CHECK_IF(m < MIN_M || m > MAX_M,
             OP_LOGE(context_->GetNodeName(),
                 "X sequence length must be m+1 where m in [%ld, %ld], but got seqLen=%ld (m=%ld)",
-                MIN_M,
-                MAX_M,
-                seqLen_,
-                m),
+                MIN_M, MAX_M, seqLen_, m),
             return ge::GRAPH_FAILED);
     }
-    // For 2D input, validate max_query_len <= MAX_M + 1
     if (xInputMode_ == X_INPUT_2D) {
+        // 2D 模式下通过属性传入最大序列长度
         OP_CHECK_IF(maxQueryLen_ < 1 || maxQueryLen_ > MAX_M + 1,
             OP_LOGE(context_->GetNodeName(),
                 "max_query_len must be in [1, %ld], but got %ld",
-                MAX_M + 1,
-                maxQueryLen_),
+                MAX_M + 1, maxQueryLen_),
             return ge::GRAPH_FAILED);
     }
 
-    // Validate dimension: [128, 16384]
+    // dim 必须在合法范围内，且为 128 的整数倍（满足向量计算对齐要求）
     OP_CHECK_IF(dim_ < MIN_DIM || dim_ > MAX_DIM,
         OP_LOGE(context_->GetNodeName(), "X dimension must be in [%ld, %ld], but got %ld", MIN_DIM, MAX_DIM, dim_),
         return ge::GRAPH_FAILED);
@@ -349,14 +390,16 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateXShape()
     return ge::GRAPH_SUCCESS;
 }
 
-// Validate weight tensor shape
+// =========================================================================
+// ValidateWeightShape
+// 校验 weight 的 dim 维度是否与 x 的 dim 一致
+// =========================================================================
 ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateWeightShape()
 {
     auto weightShape = context_->GetInputShape(WEIGHT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, weightShape);
     auto weightOriginShape = weightShape->GetOriginShape();
 
-    // Validate weight dim matches x dim
     int64_t weightDim = weightOriginShape.GetDim(1);
     OP_CHECK_IF(weightDim != dim_,
         OP_LOGE(context_->GetNodeName(), "Weight dimension must match X dimension %ld, but got %ld", dim_, weightDim),
@@ -365,58 +408,63 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateWeightShape()
     return ge::GRAPH_SUCCESS;
 }
 
-// Validate conv states tensor shape
+// =========================================================================
+// ValidateConvStatesShape
+// 校验 conv_states 的形状：
+//   - 必须为 3D [batch, state_len, dim]
+//   - 3D 输入模式下：state_len >= kernel_size + seqLen - 2
+//   - dim 必须与 x 的 dim 一致
+// =========================================================================
 ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateConvStatesShape()
 {
     auto convStatesShape = context_->GetInputShape(CONV_STATES_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, convStatesShape);
     auto convStatesOriginShape = convStatesShape->GetOriginShape();
 
-    // Validate dimension number
     OP_CHECK_IF(convStatesOriginShape.GetDimNum() != DIM_3,
         OP_LOGE(context_->GetNodeName(),
             "ConvStates dimension number must be 3, but got %lu",
             convStatesOriginShape.GetDimNum()),
         return ge::GRAPH_FAILED);
 
-    // conv states shape: [-1, K-1+m, dim]
-    // The second dimension should be K-1 + m = K-1 + (seqLen-1) = K + seqLen - 2
-    // state_len must be greater than the maximum of width-1+seq_len-1 for all batches
+    // conv_states shape: [-1, K-1+m, dim]，state_len 需能容纳所有历史状态
     if (xInputMode_ == X_INPUT_3D) {
-        int64_t expectedCacheLen = kernelSize_ + seqLen_ - 2;
+        int64_t expectedCacheLen = kernelSize_ + seqLen_ - 2;  // = (K-1) + (seqLen-1)
         int64_t state_len = convStatesOriginShape.GetDim(DIM_1);
         OP_CHECK_IF(state_len < expectedCacheLen,
             OP_LOGE(context_->GetNodeName(),
                 "state_len must be greater than width-1+seq_len-1 = %ld, but got %ld",
-                expectedCacheLen,
-                state_len),
+                expectedCacheLen, state_len),
             return ge::GRAPH_FAILED);
     }
 
-    // Validate conv states dim matches x dim
+    // dim 维度必须与 x 一致
     int64_t convStatesDim = convStatesOriginShape.GetDim(DIM_2);
     OP_CHECK_IF(convStatesDim != dim_,
         OP_LOGE(context_->GetNodeName(),
             "ConvStates dimension must match X dimension %ld, but got %ld",
-            dim_,
-            convStatesDim),
+            dim_, convStatesDim),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
 
-// Validate cache indices tensor shape
+// =========================================================================
+// ValidateCacheIndicesShape
+// 校验 cache_indices 的形状（可选输入，不存在时直接返回成功）：
+//   - APC 开启：必须为 2D [batch, maxNumBlocks]
+//   - APC 关闭：必须为 1D [batch]
+// =========================================================================
 ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateCacheIndicesShape()
 {
-    // This is an optional input
     auto indicesShape = context_->GetOptionalInputShape(CACHE_INDICES_INDEX);
     if (indicesShape == nullptr) {
-        return ge::GRAPH_SUCCESS;
+        return ge::GRAPH_SUCCESS;  // 可选输入，不存在时跳过
     }
     auto indicesOriginShape = indicesShape->GetOriginShape();
 
     if (apcEnable_) {
-        // APC 开启时 cacheIndices 必须为 2D [batch, maxNumBlocks]
+        // APC 模式：2D [batch, maxNumBlocks]
         OP_CHECK_IF(indicesOriginShape.GetDimNum() != DIM_2,
             OP_LOGE(context_->GetNodeName(),
                 "CacheIndices must be 2D [batch, maxNumBlocks] when APC is enabled, but got %lu dims",
@@ -429,7 +477,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateCacheIndicesShape()
                 batchSize_, indicesBatch),
             return ge::GRAPH_FAILED);
     } else {
-        // APC 关闭时 cacheIndices 为 1D [batch]
+        // 非 APC 模式：1D [batch]
         OP_CHECK_IF(indicesOriginShape.GetDimNum() != DIM_1,
             OP_LOGE(context_->GetNodeName(),
                 "CacheIndices dimension number must be 1 (non-APC mode), but got %lu",
@@ -446,44 +494,47 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateCacheIndicesShape()
     return ge::GRAPH_SUCCESS;
 }
 
-// Validate accept token num tensor shape
+// =========================================================================
+// ValidateNumAcceptedTokenShape
+// 校验 num_accepted_token 的形状（可选输入）：
+//   - 必须为 1D [batch]
+// =========================================================================
 ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateNumAcceptedTokenShape()
 {
-    // This is an optional input
     if (context_->GetOptionalInputTensor(NUM_ACCEPTED_TOKEN_INDEX) == nullptr) {
-        return ge::GRAPH_SUCCESS;
+        return ge::GRAPH_SUCCESS;  // 可选输入，不存在时跳过
     }
 
     auto acceptShape = context_->GetOptionalInputShape(NUM_ACCEPTED_TOKEN_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, acceptShape);
     auto acceptOriginShape = acceptShape->GetOriginShape();
 
-    // Validate dimension number: must be 1
     OP_CHECK_IF(acceptOriginShape.GetDimNum() != DIM_1,
         OP_LOGE(context_->GetNodeName(),
             "NumAcceptedToken dimension number must be 1, but got %lu",
             acceptOriginShape.GetDimNum()),
         return ge::GRAPH_FAILED);
 
-    // Validate shape matches batch size
     int64_t acceptLen = acceptOriginShape.GetDim(DIM_0);
     OP_CHECK_IF(acceptLen != batchSize_,
         OP_LOGE(context_->GetNodeName(),
             "NumAcceptedToken length must match batch size %ld, but got %ld",
-            batchSize_,
-            acceptLen),
+            batchSize_, acceptLen),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
 
-// Validate query start loc tensor shape
+// =========================================================================
+// ValidateQueryStartLocShape
+// 校验 query_start_loc 的形状（2D 输入模式必须提供）：
+//   - 必须为 1D [batch+1]
+// =========================================================================
 ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateQueryStartLocShape()
 {
     if (xInputMode_ == X_INPUT_3D) {
-        return ge::GRAPH_SUCCESS;
+        return ge::GRAPH_SUCCESS;  // 3D 输入不需要 query_start_loc
     }
-    // This is an optional input
     auto queryStartLocShape = context_->GetOptionalInputShape(QUERY_START_LOC_INDEX);
     OP_CHECK_IF(queryStartLocShape == nullptr,
         OP_LOGE(context_->GetNodeName(), "queryStartLoc must be provided when input X is 2D"),
@@ -491,26 +542,27 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateQueryStartLocShape()
 
     auto queryStartLocOriginShape = queryStartLocShape->GetOriginShape();
 
-    // Validate dimension number: must be 1
     OP_CHECK_IF(queryStartLocOriginShape.GetDimNum() != DIM_1,
         OP_LOGE(context_->GetNodeName(),
             "QueryStartLoc dimension number must be 1, but got %lu",
             queryStartLocOriginShape.GetDimNum()),
         return ge::GRAPH_FAILED);
 
-    // Validate shape: should be (batch + 1,)
+    // 形状应为 (batch + 1,)，多出的 1 用于表示结束偏移
     int64_t queryStartLocLen = queryStartLocOriginShape.GetDim(DIM_0);
     OP_CHECK_IF(queryStartLocLen != batchSize_ + 1,
         OP_LOGE(context_->GetNodeName(),
             "QueryStartLoc length must be batch_size + 1 = %ld, but got %ld",
-            batchSize_ + 1,
-            queryStartLocLen),
+            batchSize_ + 1, queryStartLocLen),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
 
-// Validate X tensor type
+// =========================================================================
+// ValidateXType / ValidateWeightType / ValidateConvStatesType
+// 类型校验：x 必须为 fp16 或 bf16，weight / conv_states 必须与 x 类型一致
+// =========================================================================
 ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateXType()
 {
     OP_CHECK_IF(xDtype_ != ge::DataType::DT_FLOAT16 && xDtype_ != ge::DataType::DT_BF16,
@@ -518,11 +570,9 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateXType()
             "X data type must be FLOAT16 or BFLOAT16, but got %s",
             Ops::Base::ToString(xDtype_).c_str()),
         return ge::GRAPH_FAILED);
-
     return ge::GRAPH_SUCCESS;
 }
 
-// Validate weight tensor type
 ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateWeightType()
 {
     OP_CHECK_IF(weightDtype_ != xDtype_,
@@ -531,11 +581,9 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateWeightType()
             Ops::Base::ToString(xDtype_).c_str(),
             Ops::Base::ToString(weightDtype_).c_str()),
         return ge::GRAPH_FAILED);
-
     return ge::GRAPH_SUCCESS;
 }
 
-// Validate conv states tensor type
 ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateConvStatesType()
 {
     OP_CHECK_IF(convStatesDtype_ != xDtype_,
@@ -544,116 +592,108 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateConvStatesType()
             Ops::Base::ToString(xDtype_).c_str(),
             Ops::Base::ToString(convStatesDtype_).c_str()),
         return ge::GRAPH_FAILED);
-
     return ge::GRAPH_SUCCESS;
 }
 
-// Validate cache indices tensor type
+// =========================================================================
+// ValidateCacheIndicesType
+// cache_indices 类型必须为 INT32（可选输入，不存在时跳过）
+// =========================================================================
 ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateCacheIndicesType()
 {
-    // This is an optional input
     auto cacheIndicesDesc = context_->GetOptionalInputDesc(CACHE_INDICES_INDEX);
     if (cacheIndicesDesc == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
-
     OP_CHECK_IF(cacheIndicesDtype_ != ge::DataType::DT_INT32,
         OP_LOGE(context_->GetNodeName(),
             "CacheIndices data type must be INT32, but got %s",
             Ops::Base::ToString(cacheIndicesDtype_).c_str()),
         return ge::GRAPH_FAILED);
-
     return ge::GRAPH_SUCCESS;
 }
 
-// Validate query start loc tensor type
+// =========================================================================
+// ValidateQueryStartLocType
+// query_start_loc 类型必须为 INT32（2D 输入模式必须提供）
+// =========================================================================
 ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateQueryStartLocType()
 {
     if (xInputMode_ == X_INPUT_3D) {
         return ge::GRAPH_SUCCESS;
     }
-    // This is an optional input
     auto queryStartLocDesc = context_->GetOptionalInputDesc(QUERY_START_LOC_INDEX);
     OP_CHECK_IF(queryStartLocDesc == nullptr,
         OP_LOGE(context_->GetNodeName(), "queryStartLoc must be provided when input X is 2D"),
         return ge::GRAPH_FAILED);
-
     OP_CHECK_IF(queryStartLocDtype_ != ge::DataType::DT_INT32,
         OP_LOGE(context_->GetNodeName(),
             "QueryStartLoc data type must be INT32, but got %s",
             Ops::Base::ToString(queryStartLocDtype_).c_str()),
         return ge::GRAPH_FAILED);
-
     return ge::GRAPH_SUCCESS;
 }
 
-// Validate num accepted tokens tensor type
+// =========================================================================
+// ValidateNumAcceptedTokenType
+// num_accepted_token 类型必须为 INT32（可选输入，不存在时跳过）
+// =========================================================================
 ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateNumAcceptedTokenType()
 {
-    // This is an optional input
     auto numAcceptedTokenDesc = context_->GetOptionalInputDesc(NUM_ACCEPTED_TOKEN_INDEX);
     if (numAcceptedTokenDesc == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
-
     OP_CHECK_IF(numAcceptedTokenDtype_ != ge::DataType::DT_INT32,
         OP_LOGE(context_->GetNodeName(),
             "NumAcceptedToken data type must be INT32, but got %s",
             Ops::Base::ToString(numAcceptedTokenDtype_).c_str()),
         return ge::GRAPH_FAILED);
-
     return ge::GRAPH_SUCCESS;
 }
 
-// Overall input parameters validation
+// =========================================================================
+// CheckInputParams
+// 总校验入口：依次调用所有形状和类型校验函数
+// =========================================================================
 ge::graphStatus FusedCausalConv1dCutBHTiling::CheckInputParams()
 {
-    // Validate all shapes
+    // 形状校验
     OP_CHECK_IF(ValidateXShape() != ge::GRAPH_SUCCESS,
         OP_LOGE(context_->GetNodeName(), "X shape validation failed"),
         return ge::GRAPH_FAILED);
-
     OP_CHECK_IF(ValidateWeightShape() != ge::GRAPH_SUCCESS,
         OP_LOGE(context_->GetNodeName(), "Weight shape validation failed"),
         return ge::GRAPH_FAILED);
-
     OP_CHECK_IF(ValidateConvStatesShape() != ge::GRAPH_SUCCESS,
         OP_LOGE(context_->GetNodeName(), "ConvStates shape validation failed"),
         return ge::GRAPH_FAILED);
-
     OP_CHECK_IF(ValidateQueryStartLocShape() != ge::GRAPH_SUCCESS,
         OP_LOGE(context_->GetNodeName(), "QueryStartLoc shape validation failed"),
         return ge::GRAPH_FAILED);
-
     OP_CHECK_IF(ValidateCacheIndicesShape() != ge::GRAPH_SUCCESS,
         OP_LOGE(context_->GetNodeName(), "CacheIndices shape validation failed"),
         return ge::GRAPH_FAILED);
-
     OP_CHECK_IF(ValidateNumAcceptedTokenShape() != ge::GRAPH_SUCCESS,
         OP_LOGE(context_->GetNodeName(), "NumAcceptedToken shape validation failed"),
         return ge::GRAPH_FAILED);
 
-    // Validate all types
+    // 类型校验
     OP_CHECK_IF(ValidateXType() != ge::GRAPH_SUCCESS,
         OP_LOGE(context_->GetNodeName(), "X type validation failed"),
         return ge::GRAPH_FAILED);
-
     OP_CHECK_IF(ValidateWeightType() != ge::GRAPH_SUCCESS,
         OP_LOGE(context_->GetNodeName(), "Weight type validation failed"),
         return ge::GRAPH_FAILED);
-
     OP_CHECK_IF(ValidateConvStatesType() != ge::GRAPH_SUCCESS,
         OP_LOGE(context_->GetNodeName(), "ConvStates type validation failed"),
         return ge::GRAPH_FAILED);
-
     OP_CHECK_IF(ValidateQueryStartLocType() != ge::GRAPH_SUCCESS,
         OP_LOGE(context_->GetNodeName(), "QueryStartLoc type validation failed"),
         return ge::GRAPH_FAILED);
-
     OP_CHECK_IF(ValidateCacheIndicesType() != ge::GRAPH_SUCCESS,
         OP_LOGE(context_->GetNodeName(), "CacheIndices type validation failed"),
         return ge::GRAPH_FAILED);
-
     OP_CHECK_IF(ValidateNumAcceptedTokenType() != ge::GRAPH_SUCCESS,
         OP_LOGE(context_->GetNodeName(), "NumAcceptedToken type validation failed"),
         return ge::GRAPH_FAILED);
@@ -661,23 +701,27 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::CheckInputParams()
     return ge::GRAPH_SUCCESS;
 }
 
+// =========================================================================
+// DoOpTiling
+// Tiling 主入口，根据 dim 大小选择细粒度（< 1024）或粗粒度（>= 1024）策略：
+//   细粒度：dim 按 128 元素分块（DIM_ALIGN_ELEMENT）
+//   粗粒度：dim 按 1024 元素分块（COARSE_GRAIN_ELEMENT）
+// =========================================================================
 ge::graphStatus FusedCausalConv1dCutBHTiling::DoOpTiling()
 {
     if (dim_ >= COARSE_GRAIN_THRESHOLD) {
-        // Coarse-grain tiling for large dim (>= 1024)
+        // 粗粒度模式（dim >= 1024）：更大的切块粒度
         OP_CHECK_IF(ComputeInterCoreSplitCoarse() != ge::GRAPH_SUCCESS,
             OP_LOGE(context_->GetNodeName(), "ComputeInterCoreSplitCoarse failed"),
             return ge::GRAPH_FAILED);
-
         OP_CHECK_IF(ComputeIntraCoreUbTilingCoarse() != ge::GRAPH_SUCCESS,
             OP_LOGE(context_->GetNodeName(), "ComputeIntraCoreUbTilingCoarse failed"),
             return ge::GRAPH_FAILED);
     } else {
-        // Fine-grain tiling for small dim (< 1024)
+        // 细粒度模式（dim < 1024）：128 元素为切块单元，适合小 dim 场景充分利用所有核
         OP_CHECK_IF(ComputeInterCoreSplit() != ge::GRAPH_SUCCESS,
             OP_LOGE(context_->GetNodeName(), "ComputeInterCoreSplit failed"),
             return ge::GRAPH_FAILED);
-
         OP_CHECK_IF(ComputeIntraCoreUbTiling() != ge::GRAPH_SUCCESS,
             OP_LOGE(context_->GetNodeName(), "ComputeIntraCoreUbTiling failed"),
             return ge::GRAPH_FAILED);
@@ -686,422 +730,74 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
+// =========================================================================
+// ComputeInterCoreSplit（细粒度核间切分）
+//
+// 策略：2D 非均匀切分（dim × batch）
+//   1. 将 dim 划分为 N = dim/128 个对齐块
+//   2. 贪心搜索使 dimCoreCnt × batchCoreCnt 最大的 (dc, bc) 组合
+//   3. 对 dim 和 batch 两个方向各自做非均匀切分：
+//      - 前 remainder 个核为"大核"，多分 1 块
+//      - 其余为"小核"，分基础数量
+// =========================================================================
 ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeInterCoreSplit()
 {
-    // 2D tiling (non-uniform): first split dim by 128, then split batch to maximize cores
+    // N = dim / 128，即 dim 方向可用的对齐块数
     int64_t N = dim_ / DIM_ALIGN_ELEMENT;
     if (N <= 0) {
         OP_LOGE(context_->GetNodeName(), "dim %ld is smaller than DIM_ALIGN_ELEMENT %ld", dim_, DIM_ALIGN_ELEMENT);
         return ge::GRAPH_FAILED;
     }
 
-    // Compute max available cores considering data-size limit（128）
+    // 根据数据量计算可用核数上限
     limitedCoreNum_ = CalculateLimitedCoreNum();
     int64_t maxCoresAvailable = std::min<int64_t>(totalCoreNum_, limitedCoreNum_);
 
-    // 贪心搜索让batch和dim方向核数相乘最多的解法
+    // 贪心搜索：从 N 到 1 遍历 dim 方向核数 dc，
+    // 找使 dc × actualBS 最大的组合（优先总利用率高，相同时 dc 更大）
     int64_t bestDimCores = 1;
     int64_t bestBSCores = 1;
-    int64_t bestUsed = 1;  // dc=1 initially
+    int64_t bestUsed = 1;
     for (int64_t dc = N; dc >= 1; --dc) {
         int64_t maxAllowedBSByCore = maxCoresAvailable / dc;
         if (maxAllowedBSByCore == 0)
             continue;
-        int64_t actualBS = std::min<int64_t>(batchSize_, maxAllowedBSByCore);
+        int64_t actualBS = std::min<int64_t>(batchSize_, maxAllowedBSByCore); //确保每个bs核上有1哥bacth
         if (actualBS <= 0)
             continue;
         int64_t usedCores = dc * actualBS;
         if (usedCores > bestUsed || (usedCores == bestUsed && dc > bestDimCores)) {
             bestDimCores = dc;
-            bestBSCores = actualBS;
-            bestUsed = usedCores;
+            bestBSCores  = actualBS;
+            bestUsed     = usedCores;
         }
         if (bestUsed == maxCoresAvailable) {
-            break;  // fully utilized
+            break;  // 已满核，提前退出
         }
     }
 
-    // Derive dim non-uniform parameters
-    int64_t base = N / bestDimCores;
-    int64_t remainder = N % bestDimCores;  // big core count
+    // dim 方向非均匀切分：base = N / dc，前 remainder 个核多分 1 块
+    int64_t base      = N / bestDimCores;
+    int64_t remainder = N % bestDimCores;
 
     dimCoreCnt_ = bestDimCores;
     if (remainder == 0) {
-        // Even split on dim: treat as only main cores, no tail cores
+        // 整除：所有核同样大小，统一归为"主核"
         dimMainCoreCnt_ = bestDimCores;
         dimTailCoreCnt_ = 0;
-        // Both main/tail lengths are the same tile size; keep tail length equal for UB calc
         mainCoredimLen_ = base * DIM_ALIGN_ELEMENT;
-        tailCoredimLen_ = base * DIM_ALIGN_ELEMENT;
+        tailCoredimLen_ = base * DIM_ALIGN_ELEMENT;  // 与主核相同，供后续 UB 计算使用
     } else {
-        // Non-even split: first 'remainder' big cores take (base+1) tiles, rest take base tiles
+        // 不整除：前 remainder 个为大核（base+1 块），其余为小核（base 块）
         dimMainCoreCnt_ = remainder;
         dimTailCoreCnt_ = bestDimCores - remainder;
-        mainCoredimLen_ = (base + 1) * DIM_ALIGN_ELEMENT;  // big core size
-        tailCoredimLen_ = base * DIM_ALIGN_ELEMENT;        // small core size
+        mainCoredimLen_ = (base + 1) * DIM_ALIGN_ELEMENT;
+        tailCoredimLen_ = base * DIM_ALIGN_ELEMENT;
     }
 
-    // Derive batch non-uniform parameters
+    // batch 方向非均匀切分：bsBase = batch / bc，前 bsRemainder 个核多分 1 个 batch
     batchCoreCnt_ = bestBSCores;
-    int64_t bsBase = batchSize_ / batchCoreCnt_;
-    int64_t bsRemainder = batchSize_ % batchCoreCnt_;
-    if (bsRemainder == 0) {
-        // Even split on batch: treat as only main cores, no tail cores
-        batchMainCoreCnt_ = batchCoreCnt_;
-        batchTailCoreCnt_ = 0;
-        mainCoreBatchNum_ = bsBase;
-        tailCoreBatchNum_ = bsBase;
-    } else {
-        // Non-even split: first 'bsRemainder' big cores take (bsBase+1) batches, rest take bsBase batches
-        batchMainCoreCnt_ = bsRemainder;                  // 前remainder个核是大核
-        batchTailCoreCnt_ = batchCoreCnt_ - bsRemainder;  // 其余是小核
-        mainCoreBatchNum_ = bsBase + 1;                   // 大核批大小
-        tailCoreBatchNum_ = bsBase;                       // 小核批大小
-    }
-
-    usedCoreNum_ = dimCoreCnt_ * batchCoreCnt_;
-
-    return ge::GRAPH_SUCCESS;
-}
-
-void FusedCausalConv1dCutBHTiling::ComputeUbFor(int64_t coreDimElems, int64_t coreBS, int64_t availableUbSize,
-    int64_t &outUbDim, int64_t &outUbBS, int64_t &outLoopDim, int64_t &outLoopBS, int64_t &outUbTailDim,
-    int64_t &outUbTailBS)
-{
-    // 如果x为2维输入，seqLen_的值为 max_query_len 属性指定的最大序列长度
-    if (xInputMode_ == X_INPUT_2D) {
-        seqLen_ = maxQueryLen_;
-    }
-    //计算每个dim所需的内存
-    int64_t weightConvStatesCoeffPerDim = (BUFFER_NUM * kernelSize_ + BUFFER_NUM * (kernelSize_ - 1) * 2) * DTYPE_SIZE;
-    int64_t xCoeffPerDimFullBS = BUFFER_NUM * coreBS * seqLen_ * DTYPE_SIZE * 2;
-    int64_t totalCoeffPerDim = weightConvStatesCoeffPerDim + xCoeffPerDimFullBS;
-    int64_t maxUbDim = (totalCoeffPerDim > 0) ? (availableUbSize / totalCoeffPerDim) : 0;
-    maxUbDim = (maxUbDim / DIM_ALIGN_ELEMENT) * DIM_ALIGN_ELEMENT;
-    //至少能放一个dim块
-    if (maxUbDim >= DIM_ALIGN_ELEMENT) {
-        outUbBS = coreBS;
-        outUbDim = std::min(maxUbDim, coreDimElems);
-        outUbDim = (outUbDim / DIM_ALIGN_ELEMENT) * DIM_ALIGN_ELEMENT;
-        if (outUbDim == 0)
-            outUbDim = DIM_ALIGN_ELEMENT;
-    } else {
-        outUbDim = DIM_ALIGN_ELEMENT;
-        int64_t weightConvStatesSize = weightConvStatesCoeffPerDim * outUbDim;
-        int64_t availableForX = availableUbSize - weightConvStatesSize;
-        int64_t xSizePerBatch = BUFFER_NUM * seqLen_ * outUbDim * DTYPE_SIZE * 2;
-        outUbBS = (xSizePerBatch > 0) ? (availableForX / xSizePerBatch) : 0;
-        outUbBS = std::max<int64_t>(outUbBS, 1);
-        outUbBS = std::min(outUbBS, coreBS);
-    }
-    outLoopDim = (coreDimElems + outUbDim - 1) / outUbDim;
-    outUbTailDim = (outLoopDim == 1) ? outUbDim : (coreDimElems - (outLoopDim - 1) * outUbDim);
-    outLoopBS = (coreBS + outUbBS - 1) / outUbBS;
-    outUbTailBS = (outLoopBS == 1) ? outUbBS : (coreBS - (outLoopBS - 1) * outUbBS);
-}
-
-ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeIntraCoreUbTiling()
-{
-    // Intra-core UB tiling (big and tail blocks separately)
-    // 固定 buffer：acceptTokenBuf（始终）
-    int64_t numAcceptedTokensUBSize = (batchSize_ * sizeof(int32_t) + ALIGN_BYTES - 1) / ALIGN_BYTES * ALIGN_BYTES;
-    fixedUBSize = numAcceptedTokensUBSize;
-
-    // indicesBuf：非APC且hasCacheIndices时存batch索引，APC时存单batch的block索引
-    int64_t cacheIndicesUBSize = (batchSize_ * sizeof(int32_t) + ALIGN_BYTES - 1) / ALIGN_BYTES * ALIGN_BYTES;
-    if (apcEnable_) {
-        cacheIndicesUBSize = (maxNumBlocks_ * sizeof(int32_t) + ALIGN_BYTES - 1) / ALIGN_BYTES * ALIGN_BYTES;
-    }
-    fixedUBSize += cacheIndicesUBSize;
-
-    // queryStartLocBuf：2D 输入时分配
-    if (xInputMode_ == X_INPUT_2D) {
-        int64_t queryStartLocUBSize =
-            ((batchSize_ + 1) * sizeof(int32_t) + ALIGN_BYTES - 1) / ALIGN_BYTES * ALIGN_BYTES;
-        fixedUBSize += queryStartLocUBSize;
-    }
-
-    // numComputedTokensBuf：以 numComputedTokens 是否提供为准
-    if (hasNumComputedTokens_) {
-        int64_t numComputedTokensUBSize =
-            (batchSize_ * sizeof(int32_t) + ALIGN_BYTES - 1) / ALIGN_BYTES * ALIGN_BYTES;
-        fixedUBSize += numComputedTokensUBSize;
-    }
-    if (apcEnable_) {
-        int64_t apcAuxBufSize = (batchSize_ * sizeof(int32_t) + ALIGN_BYTES - 1) / ALIGN_BYTES * ALIGN_BYTES;
-        fixedUBSize += apcAuxBufSize * 3;  // initialStateIdx + blockIdxFirst + blockIdxLast
-    }
-
-    int64_t availableUbSize = static_cast<int64_t>(ubSize_ - SYSTEM_RESERVED_UB_SIZE) - fixedUBSize;
-    // Big cores UB params
-    ComputeUbFor(mainCoredimLen_,
-        mainCoreBatchNum_,
-        availableUbSize,
-        ubMainFactorDim_,
-        ubMainFactorBS_,
-        loopNumDim_,
-        loopNumBS_,
-        ubTailFactorDim_,
-        ubTailFactorBS_);
-
-    // Tail cores UB params
-    if (dimTailCoreCnt_ > 0 || batchTailCoreCnt_ > 0) {
-        int64_t tailCoreDim = (dimMainCoreCnt_ > 0 ? tailCoredimLen_ : mainCoredimLen_);
-        ComputeUbFor(tailCoreDim,
-            tailCoreBatchNum_,
-            availableUbSize,
-            tailBlockubFactorDim_,
-            tailBlockubFactorBS_,
-            tailBlockloopNumDim_,
-            tailBlockloopNumBS_,
-            tailBlockubTailFactorDim_,
-            tailBlockubTailFactorBS_);
-    } else {
-        // No tail cores: mirror main-core UB params to keep values consistent
-        tailBlockubFactorDim_ = ubMainFactorDim_;
-        tailBlockubFactorBS_ = ubMainFactorBS_;
-        tailBlockloopNumDim_ = loopNumDim_;
-        tailBlockloopNumBS_ = loopNumBS_;
-        tailBlockubTailFactorDim_ = ubTailFactorDim_;
-        tailBlockubTailFactorBS_ = ubTailFactorBS_;
-    }
-
-    return ge::GRAPH_SUCCESS;
-}
-
-int64_t FusedCausalConv1dCutBHTiling::CalculateLimitedCoreNum()
-{
-    // Calculate input x size in bytes (only consider batch * dim_)
-    int64_t xSizeBytes;
-    xSizeBytes = batchSize_ * dim_ * DTYPE_SIZE;
-
-    // Limit core number based on data size
-    // increase 1 core per additional 256 bytes of x data
-    // effectiveCoreNum = ceil(xSizeBytes / 256)
-    int64_t effectiveCoreNum = (xSizeBytes + DIM_ALIGN_SIZE - 1) / DIM_ALIGN_SIZE;
-    effectiveCoreNum = std::max(effectiveCoreNum, static_cast<int64_t>(1));
-
-    // Actual core number is min(effectiveCoreNum, totalCoreNum_)
-    return std::min(effectiveCoreNum, static_cast<int64_t>(totalCoreNum_));
-}
-
-int64_t FusedCausalConv1dCutBHTiling::CalculateLimitedCoreNumCoarse()
-{
-    // Calculate input x size in bytes (only consider batch * dim_)
-    int64_t xSizeBytes = batchSize_ * dim_ * DTYPE_SIZE;
-
-    // Limit core number based on data size for coarse-grain tiling
-    // increase 1 core per additional 2048 bytes (1024 elements) of x data
-    // effectiveCoreNum = ceil(xSizeBytes / 2048)
-    int64_t effectiveCoreNum = (xSizeBytes + COARSE_GRAIN_SIZE - 1) / COARSE_GRAIN_SIZE;
-    effectiveCoreNum = std::max(effectiveCoreNum, static_cast<int64_t>(1));
-
-    // Actual core number is min(effectiveCoreNum, totalCoreNum_)
-    return std::min(effectiveCoreNum, static_cast<int64_t>(totalCoreNum_));
-}
-
-uint64_t FusedCausalConv1dCutBHTiling::GetTilingKey() const
-{
-    if (xDtype_ == ge::DataType::DT_BF16) {
-        return TILING_KEY_BH_BF16;
-    } else if (xDtype_ == ge::DataType::DT_FLOAT16) {
-        return TILING_KEY_BH_FP16;
-    }
-}
-
-ge::graphStatus FusedCausalConv1dCutBHTiling::PostTiling()
-{
-    // Set block dimension (number of cores to use)
-    context_->SetBlockDim(usedCoreNum_);
-
-    // Populate tiling data - core distribution
-    tilingData_.usedCoreNum = usedCoreNum_;
-    tilingData_.dimCoreCnt = dimCoreCnt_;
-    tilingData_.batchCoreCnt = batchCoreCnt_;
-
-    // Dim tiling parameters
-    tilingData_.dimMainCoreCnt = dimMainCoreCnt_;
-    tilingData_.dimTailCoreCnt = dimTailCoreCnt_;
-    tilingData_.mainCoredimLen = mainCoredimLen_;
-    tilingData_.tailCoredimLen = tailCoredimLen_;
-
-    // Batch tiling parameters
-    tilingData_.batchMainCoreCnt = batchMainCoreCnt_;
-    tilingData_.batchTailCoreCnt = batchTailCoreCnt_;
-    tilingData_.mainCoreBatchNum = mainCoreBatchNum_;
-    tilingData_.tailCoreBatchNum = tailCoreBatchNum_;
-
-    // Intra-core tiling parameters (UB loop, big/tail blocks)
-    tilingData_.loopNumBS = loopNumBS_;
-    tilingData_.loopNumDim = loopNumDim_;
-    tilingData_.ubMainFactorBS = ubMainFactorBS_;
-    tilingData_.ubTailFactorBS = ubTailFactorBS_;
-    tilingData_.ubMainFactorDim = ubMainFactorDim_;
-    tilingData_.ubTailFactorDim = ubTailFactorDim_;
-    tilingData_.tailBlockloopNumBS = tailBlockloopNumBS_;
-    tilingData_.tailBlockloopNumDim = tailBlockloopNumDim_;
-    tilingData_.tailBlockubFactorBS = tailBlockubFactorBS_;
-    tilingData_.tailBlockubTailFactorBS = tailBlockubTailFactorBS_;
-    tilingData_.tailBlockubFactorDim = tailBlockubFactorDim_;
-    tilingData_.tailBlockubTailFactorDim = tailBlockubTailFactorDim_;
-
-    // Shape information for kernel use
-    tilingData_.batchSize = batchSize_;
-    tilingData_.seqLen = seqLen_;
-    tilingData_.cuSeqLen = cuSeqLen_;
-    tilingData_.dim = dim_;
-    tilingData_.kernelSize = kernelSize_;
-    tilingData_.stateLen = stateLen_;
-    tilingData_.xStride = xStride_;
-    tilingData_.cacheStride0 = cacheStride0_;
-    tilingData_.cacheStride1 = cacheStride1_;
-    tilingData_.padSlotId = padSlotId_;
-    tilingData_.xInputMode = xInputMode_;
-    tilingData_.hasAcceptTokenNum = hasAcceptTokenNum_;
-    tilingData_.residualConnection = residualConnection_;
-    // 新增字段（第二期需求）
-    tilingData_.apcEnable       = apcEnable_;
-    tilingData_.blockSize       = blockSize_;
-    tilingData_.maxNumBlocks    = maxNumBlocks_;
-    tilingData_.hasCacheIndices = hasCacheIndices_;
-    tilingData_.inplace         = inplace_;
-    tilingData_.convMode        = convMode_;
-    tilingData_.hasNumComputedTokens = hasNumComputedTokens_;
-
-    // Save tiling data to buffer
-    auto tilingDataSize = sizeof(FusedCausalConv1dCutBHTilingData);
-    errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(),
-        context_->GetRawTilingData()->GetCapacity(),
-        reinterpret_cast<void *>(&tilingData_),
-        tilingDataSize);
-    if (ret != EOK) {
-        OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", ret);
-        return ge::GRAPH_FAILED;
-    }
-    context_->GetRawTilingData()->SetDataSize(tilingDataSize);
-
-    return ge::GRAPH_SUCCESS;
-}
-
-void FusedCausalConv1dCutBHTiling::DumpTilingInfo()
-{
-    OP_LOGI(context_->GetNodeName(), "=== FusedCausalConv1dCutBH DumpTilingInfo ===");
-
-    // Core distribution parameters
-    OP_LOGI(context_->GetNodeName(), "usedCoreNum: %ld", tilingData_.usedCoreNum);
-    OP_LOGI(context_->GetNodeName(), "dimCoreCnt: %ld", tilingData_.dimCoreCnt);
-    OP_LOGI(context_->GetNodeName(), "batchCoreCnt: %ld", tilingData_.batchCoreCnt);
-
-    // Dim tiling parameters
-    OP_LOGI(context_->GetNodeName(), "dimMainCoreCnt: %ld", tilingData_.dimMainCoreCnt);
-    OP_LOGI(context_->GetNodeName(), "dimTailCoreCnt: %ld", tilingData_.dimTailCoreCnt);
-    OP_LOGI(context_->GetNodeName(), "mainCoredimLen: %ld", tilingData_.mainCoredimLen);
-    OP_LOGI(context_->GetNodeName(), "tailCoredimLen: %ld", tilingData_.tailCoredimLen);
-
-    // Batch tiling parameters
-    OP_LOGI(context_->GetNodeName(), "batchMainCoreCnt: %ld", tilingData_.batchMainCoreCnt);
-    OP_LOGI(context_->GetNodeName(), "batchTailCoreCnt: %ld", tilingData_.batchTailCoreCnt);
-    OP_LOGI(context_->GetNodeName(), "mainCoreBatchNum: %ld", tilingData_.mainCoreBatchNum);
-    OP_LOGI(context_->GetNodeName(), "tailCoreBatchNum: %ld", tilingData_.tailCoreBatchNum);
-
-    // Intra-core tiling parameters (UB loop, big/tail blocks)
-    OP_LOGI(context_->GetNodeName(), "loopNumBS: %ld", tilingData_.loopNumBS);
-    OP_LOGI(context_->GetNodeName(), "loopNumDim: %ld", tilingData_.loopNumDim);
-    OP_LOGI(context_->GetNodeName(), "ubMainFactorBS: %ld", tilingData_.ubMainFactorBS);
-    OP_LOGI(context_->GetNodeName(), "ubTailFactorBS: %ld", tilingData_.ubTailFactorBS);
-    OP_LOGI(context_->GetNodeName(), "ubMainFactorDim: %ld", tilingData_.ubMainFactorDim);
-    OP_LOGI(context_->GetNodeName(), "ubTailFactorDim: %ld", tilingData_.ubTailFactorDim);
-    OP_LOGI(context_->GetNodeName(), "tailBlockloopNumBS: %ld", tilingData_.tailBlockloopNumBS);
-    OP_LOGI(context_->GetNodeName(), "tailBlockloopNumDim: %ld", tilingData_.tailBlockloopNumDim);
-    OP_LOGI(context_->GetNodeName(), "tailBlockubFactorBS: %ld", tilingData_.tailBlockubFactorBS);
-    OP_LOGI(context_->GetNodeName(), "tailBlockubTailFactorBS: %ld", tilingData_.tailBlockubTailFactorBS);
-    OP_LOGI(context_->GetNodeName(), "tailBlockubFactorDim: %ld", tilingData_.tailBlockubFactorDim);
-    OP_LOGI(context_->GetNodeName(), "tailBlockubTailFactorDim: %ld", tilingData_.tailBlockubTailFactorDim);
-
-    // Shape information for kernel use
-    OP_LOGI(context_->GetNodeName(), "batchSize: %ld", tilingData_.batchSize);
-    OP_LOGI(context_->GetNodeName(), "seqLen: %ld", tilingData_.seqLen);
-    OP_LOGI(context_->GetNodeName(), "cuSeqLen: %ld", tilingData_.cuSeqLen);
-    OP_LOGI(context_->GetNodeName(), "dim: %ld", tilingData_.dim);
-    OP_LOGI(context_->GetNodeName(), "kernelSize: %ld", tilingData_.kernelSize);
-    OP_LOGI(context_->GetNodeName(), "stateLen: %ld", tilingData_.stateLen);
-    OP_LOGI(context_->GetNodeName(), "xStride: %ld", tilingData_.xStride);
-    OP_LOGI(context_->GetNodeName(), "cacheStride0: %ld", tilingData_.cacheStride0);
-    OP_LOGI(context_->GetNodeName(), "cacheStride1: %ld", tilingData_.cacheStride1);
-    OP_LOGI(context_->GetNodeName(), "padSlotId: %ld", tilingData_.padSlotId);
-    OP_LOGI(context_->GetNodeName(), "xInputMode: %ld", tilingData_.xInputMode);
-    OP_LOGI(context_->GetNodeName(), "hasAcceptTokenNum: %ld", tilingData_.hasAcceptTokenNum);
-    OP_LOGI(context_->GetNodeName(), "residualConnection: %ld", tilingData_.residualConnection);
-    // 新增字段
-    OP_LOGI(context_->GetNodeName(), "apcEnable: %ld", tilingData_.apcEnable);
-    OP_LOGI(context_->GetNodeName(), "blockSize: %ld", tilingData_.blockSize);
-    OP_LOGI(context_->GetNodeName(), "maxNumBlocks: %ld", tilingData_.maxNumBlocks);
-    OP_LOGI(context_->GetNodeName(), "hasCacheIndices: %ld", tilingData_.hasCacheIndices);
-    OP_LOGI(context_->GetNodeName(), "inplace: %ld", tilingData_.inplace);
-    OP_LOGI(context_->GetNodeName(), "convMode: %ld", tilingData_.convMode);
-    OP_LOGI(context_->GetNodeName(), "hasNumComputedTokens: %ld", tilingData_.hasNumComputedTokens);
-    OP_LOGI(context_->GetNodeName(), "maxQueryLen: %ld", maxQueryLen_);
-}
-
-ge::graphStatus FusedCausalConv1dCutBHTiling::DoLibApiTiling()
-{
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus FusedCausalConv1dCutBHTiling::GetWorkspaceSize()
-{
-    auto platformInfo = context_->GetPlatformInfo();
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    uint32_t sysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
-    size_t *currentWorkspace = context_->GetWorkspaceSizes(1);
-    currentWorkspace[0] = static_cast<size_t>(0UL + sysWorkspaceSize);
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeInterCoreSplitCoarse()
-{
-    // Coarse-grain tiling: split dim by 1024 elements, remainder by 128 elements
-    int64_t coarseBlocks = dim_ / COARSE_GRAIN_ELEMENT;  // Number of 1024-element blocks
-    int64_t remainder = dim_ % COARSE_GRAIN_ELEMENT;     // Remainder elements
-    int64_t fineBlocks = remainder / DIM_ALIGN_ELEMENT;  // Number of 128-element blocks from remainder
-
-    // Compute max available cores considering data-size limit (coarse-grain version)
-    limitedCoreNum_ = CalculateLimitedCoreNumCoarse();
-    int64_t maxCoresAvailable = std::min<int64_t>(totalCoreNum_, limitedCoreNum_);
-
-    // Dim direction: coarseBlocks cores, first fineBlocks cores get extra 128 elements
-    dimCoreCnt_ = std::min(coarseBlocks, maxCoresAvailable);
-    if (dimCoreCnt_ <= 0) {
-        OP_LOGE(
-            context_->GetNodeName(), "dim %ld is smaller than COARSE_GRAIN_ELEMENT %ld", dim_, COARSE_GRAIN_ELEMENT);
-        return ge::GRAPH_FAILED;
-    }
-
-    // Distribute remainder 128-blocks evenly to all cores
-    int64_t fineBase = fineBlocks / dimCoreCnt_;       // Base 128-blocks per core
-    int64_t fineRemainder = fineBlocks % dimCoreCnt_;  // Extra 128-blocks for first fineRemainder cores
-
-    if (fineRemainder == 0) {
-        // Even distribution: all cores get same number of 128-blocks
-        dimMainCoreCnt_ = dimCoreCnt_;
-        dimTailCoreCnt_ = 0;
-        mainCoredimLen_ = COARSE_GRAIN_ELEMENT + fineBase * DIM_ALIGN_ELEMENT;
-        tailCoredimLen_ = mainCoredimLen_;  // Same as main
-    } else {
-        // Non-even distribution: first fineRemainder cores get (fineBase+1) 128-blocks
-        dimMainCoreCnt_ = fineRemainder;
-        dimTailCoreCnt_ = dimCoreCnt_ - fineRemainder;
-        mainCoredimLen_ = COARSE_GRAIN_ELEMENT + (fineBase + 1) * DIM_ALIGN_ELEMENT;
-        tailCoredimLen_ = COARSE_GRAIN_ELEMENT + fineBase * DIM_ALIGN_ELEMENT;
-    }
-
-    // Batch direction: use remaining cores
-    int64_t remainingCores = maxCoresAvailable / dimCoreCnt_;
-    batchCoreCnt_ = std::min(batchSize_, remainingCores);
-    batchCoreCnt_ = std::max(batchCoreCnt_, static_cast<int64_t>(1));
-
-    // Batch non-uniform split
-    int64_t bsBase = batchSize_ / batchCoreCnt_;
+    int64_t bsBase      = batchSize_ / batchCoreCnt_;
     int64_t bsRemainder = batchSize_ % batchCoreCnt_;
     if (bsRemainder == 0) {
         batchMainCoreCnt_ = batchCoreCnt_;
@@ -1120,111 +816,533 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeInterCoreSplitCoarse()
     return ge::GRAPH_SUCCESS;
 }
 
-void FusedCausalConv1dCutBHTiling::ComputeUbForCoarse(int64_t coreDimElems, int64_t coreBS, int64_t availableUbSize,
+// =========================================================================
+// ComputeUbFor（细粒度核内 UB 切分核心计算）
+//
+// 参数：
+//   coreDimElems   — 当前核负责的 dim 元素总数
+//   coreBS         — 当前核负责的 batch 数
+//   availableUbSize— 可用 UB 大小（已扣除固定占用）
+//
+// 返回（通过引用）：
+//   outUbDim       — 每次 UB 循环处理的 dim 元素数（主块）
+//   outUbBS        — 每次 UB 循环处理的 batch 数（主块）
+//   outLoopDim     — dim 方向循环总次数
+//   outLoopBS      — batch 方向循环总次数
+//   outUbTailDim   — dim 方向尾块大小
+//   outUbTailBS    — batch 方向尾块大小
+//
+// UB 占用估算（per dim element）：
+//   weight + conv_states 部分：BUFFER_NUM * (kernelSize + (kernelSize-1)*2) * DTYPE_SIZE
+//   x 部分（包含 x_in 和 y_out 双 buffer）：BUFFER_NUM * coreBS * seqLen * DTYPE_SIZE * 2
+//
+// 优先保持 batch 完整（outUbBS = coreBS），若 UB 不足则逐步减小 batch
+// =========================================================================
+void FusedCausalConv1dCutBHTiling::ComputeUbFor(int64_t coreDimElems, int64_t coreBS, int64_t availableUbSize,
     int64_t &outUbDim, int64_t &outUbBS, int64_t &outLoopDim, int64_t &outLoopBS, int64_t &outUbTailDim,
     int64_t &outUbTailBS)
 {
-    // 如果x为2维输入，seqLen_的值为 max_query_len 属性指定的最大序列长度
+    // 2D 输入模式：seqLen 不固定，用属性中的最大值保守估算 UB 需求
     if (xInputMode_ == X_INPUT_2D) {
         seqLen_ = maxQueryLen_;
     }
-    // int64_t weightConvStatesCoeffPerDim = (BUFFER_NUM * kernelSize_ + 2 * BUFFER_NUM * stateLen_ * 2) * DTYPE_SIZE;
-    int64_t weightConvStatesCoeffPerDim = (BUFFER_NUM * kernelSize_ + BUFFER_NUM * (kernelSize_ - 1) * 2) * DTYPE_SIZE;
-    int64_t xCoeffPerDimFullBS = BUFFER_NUM * coreBS * seqLen_ * DTYPE_SIZE * 2;
-    int64_t totalCoeffPerDim = weightConvStatesCoeffPerDim + xCoeffPerDimFullBS;
+
+    // 每个 dim 元素对应的 weight/conv_states UB 开销（字节）
+    // weight 单 buffer（1份），cacheQueueIn + cacheQueueOut 各 DB（2×2份）
+    int64_t weightConvStatesCoeffPerDim = (kernelSize_ + BUFFER_NUM * stateLen_ * 2) * DTYPE_SIZE;
+    // 每个 dim 元素对应的 x（含 y）UB 开销（单 buffer × batch × seqLen × 2 方向）
+    int64_t xCoeffPerDimFullBS = coreBS * seqLen_ * DTYPE_SIZE * 2;
+    int64_t totalCoeffPerDim   = weightConvStatesCoeffPerDim + xCoeffPerDimFullBS;
+
+    // 计算一次循环最多能放多少 dim 元素（对齐到 128 的倍数）
     int64_t maxUbDim = (totalCoeffPerDim > 0) ? (availableUbSize / totalCoeffPerDim) : 0;
-    maxUbDim = (maxUbDim / COARSE_GRAIN_ELEMENT) * COARSE_GRAIN_ELEMENT;
-    if (maxUbDim >= COARSE_GRAIN_ELEMENT) {
-        outUbBS = coreBS;
+    maxUbDim = (maxUbDim / DIM_ALIGN_ELEMENT) * DIM_ALIGN_ELEMENT;
+
+    if (maxUbDim >= DIM_ALIGN_ELEMENT) {
+        // UB 足够放 >= 1 个 128 元素块且保持 batch 完整
+        outUbBS  = coreBS;
         outUbDim = std::min(maxUbDim, coreDimElems);
-        outUbDim = (outUbDim / COARSE_GRAIN_ELEMENT) * COARSE_GRAIN_ELEMENT;
-        if (outUbDim == 0)
-            outUbDim = COARSE_GRAIN_ELEMENT;
+        outUbDim = (outUbDim / DIM_ALIGN_ELEMENT) * DIM_ALIGN_ELEMENT;
+        if (outUbDim == 0) outUbDim = DIM_ALIGN_ELEMENT; //若对齐为0，强制设为DIM_ALIGN_ELEMENT
     } else {
-        outUbDim = COARSE_GRAIN_ELEMENT;
+        // UB 不足：固定 dim=128，尽量多放 batch
+        outUbDim = DIM_ALIGN_ELEMENT;
         int64_t weightConvStatesSize = weightConvStatesCoeffPerDim * outUbDim;
-        int64_t availableForX = availableUbSize - weightConvStatesSize;
-        int64_t xSizePerBatch = BUFFER_NUM * seqLen_ * outUbDim * DTYPE_SIZE * 2;
-        outUbBS = (xSizePerBatch > 0) ? (availableForX / xSizePerBatch) : 0;
-        outUbBS = std::max<int64_t>(outUbBS, 1);
+        int64_t availableForX        = availableUbSize - weightConvStatesSize; //保证x核state能载入
+        int64_t xSizePerBatch        = seqLen_ * outUbDim * DTYPE_SIZE * 2;
+        outUbBS = (xSizePerBatch > 0) ? (availableForX / xSizePerBatch) : 0; //多余的ub空间放x
+        outUbBS = std::max<int64_t>(outUbBS, 1);   // 至少处理 1 个 batch
         outUbBS = std::min(outUbBS, coreBS);
     }
-    outLoopDim = (coreDimElems + outUbDim - 1) / outUbDim;
+
+    // 计算循环次数和尾块大小
+    outLoopDim   = (coreDimElems + outUbDim - 1) / outUbDim;
+    // 若只有 1 次循环，尾块 = 主块大小；否则尾块 = 剩余元素
     outUbTailDim = (outLoopDim == 1) ? outUbDim : (coreDimElems - (outLoopDim - 1) * outUbDim);
-    outLoopBS = (coreBS + outUbBS - 1) / outUbBS;
-    outUbTailBS = (outLoopBS == 1) ? outUbBS : (coreBS - (outLoopBS - 1) * outUbBS);
+    outLoopBS    = (coreBS + outUbBS - 1) / outUbBS;
+    outUbTailBS  = (outLoopBS == 1) ? outUbBS : (coreBS - (outLoopBS - 1) * outUbBS);
 }
 
-ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeIntraCoreUbTilingCoarse()
+// =========================================================================
+// ComputeIntraCoreUbTiling（细粒度核内 UB 切分）
+//
+// 1. 计算固定 UB 占用（acceptTokenBuf / indicesBuf / queryStartLocBuf 等辅助 buffer）
+// 2. 分别对大核（main core）和小核（tail core）调用 ComputeUbFor 计算 UB 循环参数
+// =========================================================================
+ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeIntraCoreUbTiling()
 {
-    // Intra-core UB tiling for coarse-grain mode
-    // 固定 buffer：acceptTokenBuf（始终）
+    // 固定 UB 占用：acceptTokenBuf（每核始终分配，存放 batch 级别的 accepted token 数）
     int64_t numAcceptedTokensUBSize = (batchSize_ * sizeof(int32_t) + ALIGN_BYTES - 1) / ALIGN_BYTES * ALIGN_BYTES;
     fixedUBSize = numAcceptedTokensUBSize;
 
-    // indicesBuf：非APC且hasCacheIndices时存batch索引，APC时存单batch的block索引
+    // indicesBuf：非 APC 时存 [batch] 个 cache 索引；APC 时存单个 batch 的 [maxNumBlocks] 个 block 索引
     int64_t cacheIndicesUBSize = (batchSize_ * sizeof(int32_t) + ALIGN_BYTES - 1) / ALIGN_BYTES * ALIGN_BYTES;
     if (apcEnable_) {
         cacheIndicesUBSize = (maxNumBlocks_ * sizeof(int32_t) + ALIGN_BYTES - 1) / ALIGN_BYTES * ALIGN_BYTES;
     }
     fixedUBSize += cacheIndicesUBSize;
 
-    // queryStartLocBuf：2D 输入时分配
+    // queryStartLocBuf：2D 输入时需要存储 [batch+1] 个位置信息
     if (xInputMode_ == X_INPUT_2D) {
         int64_t queryStartLocUBSize =
             ((batchSize_ + 1) * sizeof(int32_t) + ALIGN_BYTES - 1) / ALIGN_BYTES * ALIGN_BYTES;
         fixedUBSize += queryStartLocUBSize;
     }
 
-    // numComputedTokensBuf：以 numComputedTokens 是否提供为准
+    // numComputedTokensBuf：按 numComputedTokens 是否提供来分配
     if (hasNumComputedTokens_) {
         int64_t numComputedTokensUBSize =
             (batchSize_ * sizeof(int32_t) + ALIGN_BYTES - 1) / ALIGN_BYTES * ALIGN_BYTES;
         fixedUBSize += numComputedTokensUBSize;
     }
+
+    // APC 开启时额外分配 3 个辅助 buffer：initialStateIdx / blockIdxFirst / blockIdxLast
     if (apcEnable_) {
         int64_t apcAuxBufSize = (batchSize_ * sizeof(int32_t) + ALIGN_BYTES - 1) / ALIGN_BYTES * ALIGN_BYTES;
-        fixedUBSize += apcAuxBufSize * 3;  // initialStateIdx + blockIdxFirst + blockIdxLast
+        fixedUBSize += apcAuxBufSize * 3;
     }
 
+    // 扣除系统预留和固定占用后的可用 UB
     int64_t availableUbSize = static_cast<int64_t>(ubSize_ - SYSTEM_RESERVED_UB_SIZE) - fixedUBSize;
 
-    // Main cores UB params (handle 1152 or 1024 elements depending on remainder)
-    ComputeUbForCoarse(mainCoredimLen_,
-        mainCoreBatchNum_,
-        availableUbSize,
-        ubMainFactorDim_,
-        ubMainFactorBS_,
-        loopNumDim_,
-        loopNumBS_,
-        ubTailFactorDim_,
-        ubTailFactorBS_);
+    // 主核 UB 参数
+    ComputeUbFor(mainCoredimLen_, mainCoreBatchNum_, availableUbSize,
+        ubMainFactorDim_, ubMainFactorBS_, loopNumDim_, loopNumBS_, ubTailFactorDim_, ubTailFactorBS_);
 
-    // Tail cores UB params
+    // 尾核 UB 参数（存在尾核时才单独计算；否则复制主核参数保持一致）
     if (dimTailCoreCnt_ > 0 || batchTailCoreCnt_ > 0) {
-        int64_t tailCoreDim = (dimMainCoreCnt_ > 0) ? tailCoredimLen_ : mainCoredimLen_;
-        ComputeUbForCoarse(tailCoreDim,
-            tailCoreBatchNum_,
-            availableUbSize,
-            tailBlockubFactorDim_,
-            tailBlockubFactorBS_,
-            tailBlockloopNumDim_,
-            tailBlockloopNumBS_,
-            tailBlockubTailFactorDim_,
-            tailBlockubTailFactorBS_);
+        // 小核负责的 dim 大小：优先取 tailCoredimLen_，若无 dim 小核则与大核相同
+        int64_t tailCoreDim = (dimMainCoreCnt_ > 0 ? tailCoredimLen_ : mainCoredimLen_);
+        ComputeUbFor(tailCoreDim, tailCoreBatchNum_, availableUbSize,
+            tailBlockubFactorDim_, tailBlockubFactorBS_,
+            tailBlockloopNumDim_, tailBlockloopNumBS_,
+            tailBlockubTailFactorDim_, tailBlockubTailFactorBS_);
     } else {
-        // No tail cores: mirror main-core UB params
-        tailBlockubFactorDim_ = ubMainFactorDim_;
-        tailBlockubFactorBS_ = ubMainFactorBS_;
-        tailBlockloopNumDim_ = loopNumDim_;
-        tailBlockloopNumBS_ = loopNumBS_;
+        // 无小核：直接复制大核参数，确保 kernel 逻辑无需区分大小核分支
+        tailBlockubFactorDim_     = ubMainFactorDim_;
+        tailBlockubFactorBS_      = ubMainFactorBS_;
+        tailBlockloopNumDim_      = loopNumDim_;
+        tailBlockloopNumBS_       = loopNumBS_;
         tailBlockubTailFactorDim_ = ubTailFactorDim_;
-        tailBlockubTailFactorBS_ = ubTailFactorBS_;
+        tailBlockubTailFactorBS_  = ubTailFactorBS_;
     }
 
     return ge::GRAPH_SUCCESS;
 }
 
+// =========================================================================
+// CalculateLimitedCoreNum（细粒度）
+// 根据输入数据量估算合理的最大核数：
+//   每 256 字节（= 128 元素 × 2 字节）分配 1 核，最多不超过 totalCoreNum_
+// =========================================================================
+int64_t FusedCausalConv1dCutBHTiling::CalculateLimitedCoreNum()
+{
+    // 只考虑 batch × dim 的数据量（不含 seqLen，因为 seqLen 较小且固定）
+    int64_t xSizeBytes = batchSize_ * dim_ * DTYPE_SIZE;
+
+    // ceil(xSizeBytes / 256)，每 256 字节（128 元素）分配 1 核
+    int64_t effectiveCoreNum = (xSizeBytes + DIM_ALIGN_SIZE - 1) / DIM_ALIGN_SIZE;
+    effectiveCoreNum = std::max(effectiveCoreNum, static_cast<int64_t>(1));
+
+    return std::min(effectiveCoreNum, static_cast<int64_t>(totalCoreNum_));
+}
+
+// =========================================================================
+// CalculateLimitedCoreNumCoarse（粗粒度）
+// 粗粒度模式下按 2048 字节（= 1024 元素）粒度估算合理核数
+// =========================================================================
+int64_t FusedCausalConv1dCutBHTiling::CalculateLimitedCoreNumCoarse()
+{
+    int64_t xSizeBytes = batchSize_ * dim_ * DTYPE_SIZE;
+
+    // ceil(xSizeBytes / 2048)，每 2048 字节分配 1 核
+    int64_t effectiveCoreNum = (xSizeBytes + COARSE_GRAIN_SIZE - 1) / COARSE_GRAIN_SIZE;
+    effectiveCoreNum = std::max(effectiveCoreNum, static_cast<int64_t>(1));
+
+    return std::min(effectiveCoreNum, static_cast<int64_t>(totalCoreNum_));
+}
+
+// =========================================================================
+// GetTilingKey
+// 根据 x 数据类型返回对应的 TilingKey，框架据此选择 kernel 分支
+// =========================================================================
+uint64_t FusedCausalConv1dCutBHTiling::GetTilingKey() const
+{
+    if (xDtype_ == ge::DataType::DT_BF16) {
+        return TILING_KEY_BH_BF16;
+    } else if (xDtype_ == ge::DataType::DT_FLOAT16) {
+        return TILING_KEY_BH_FP16;
+    }
+}
+
+// =========================================================================
+// PostTiling
+// 将所有 tiling 计算结果写入 tilingData_，并通过 memcpy 复制到 RawTilingData
+// 同时调用 SetBlockDim 告知框架实际使用的核数
+// =========================================================================
+ge::graphStatus FusedCausalConv1dCutBHTiling::PostTiling()
+{
+    // 设置实际使用的核数（由框架传递给 runtime 调度器）
+    context_->SetBlockDim(usedCoreNum_);
+
+    // ---- 核分布参数 ----
+    tilingData_.usedCoreNum  = usedCoreNum_;
+    tilingData_.dimCoreCnt   = dimCoreCnt_;
+    tilingData_.batchCoreCnt = batchCoreCnt_;
+
+    // ---- dim 方向切分参数 ----
+    tilingData_.dimMainCoreCnt  = dimMainCoreCnt_;
+    tilingData_.dimTailCoreCnt  = dimTailCoreCnt_;
+    tilingData_.mainCoredimLen  = mainCoredimLen_;
+    tilingData_.tailCoredimLen  = tailCoredimLen_;
+
+    // ---- batch 方向切分参数 ----
+    tilingData_.batchMainCoreCnt = batchMainCoreCnt_;
+    tilingData_.batchTailCoreCnt = batchTailCoreCnt_;
+    tilingData_.mainCoreBatchNum = mainCoreBatchNum_;
+    tilingData_.tailCoreBatchNum = tailCoreBatchNum_;
+
+    // ---- 大核（main core）UB 循环参数 ----
+    tilingData_.loopNumBS        = loopNumBS_;
+    tilingData_.loopNumDim       = loopNumDim_;
+    tilingData_.ubMainFactorBS   = ubMainFactorBS_;
+    tilingData_.ubTailFactorBS   = ubTailFactorBS_;
+    tilingData_.ubMainFactorDim  = ubMainFactorDim_;
+    tilingData_.ubTailFactorDim  = ubTailFactorDim_;
+
+    // ---- 小核（tail core）UB 循环参数 ----
+    tilingData_.tailBlockloopNumBS        = tailBlockloopNumBS_;
+    tilingData_.tailBlockloopNumDim       = tailBlockloopNumDim_;
+    tilingData_.tailBlockubFactorBS       = tailBlockubFactorBS_;
+    tilingData_.tailBlockubTailFactorBS   = tailBlockubTailFactorBS_;
+    tilingData_.tailBlockubFactorDim      = tailBlockubFactorDim_;
+    tilingData_.tailBlockubTailFactorDim  = tailBlockubTailFactorDim_;
+
+    // ---- 形状信息（kernel 运行时使用）----
+    tilingData_.batchSize  = batchSize_;
+    tilingData_.seqLen     = seqLen_;
+    tilingData_.cuSeqLen   = cuSeqLen_;
+    tilingData_.dim        = dim_;
+    tilingData_.kernelSize = kernelSize_;
+    tilingData_.stateLen   = stateLen_;
+    tilingData_.xStride    = xStride_;
+    tilingData_.cacheStride0 = cacheStride0_;
+    tilingData_.cacheStride1 = cacheStride1_;
+    tilingData_.padSlotId  = padSlotId_;
+    tilingData_.xInputMode = xInputMode_;
+    tilingData_.hasAcceptTokenNum   = hasAcceptTokenNum_;
+    tilingData_.residualConnection  = residualConnection_;
+
+    // ---- 第二期新增字段 ----
+    tilingData_.apcEnable          = apcEnable_;
+    tilingData_.blockSize          = blockSize_;
+    tilingData_.maxNumBlocks       = maxNumBlocks_;
+    tilingData_.hasCacheIndices    = hasCacheIndices_;
+    tilingData_.inplace            = inplace_;
+    tilingData_.convMode           = convMode_;
+    tilingData_.hasNumComputedTokens = hasNumComputedTokens_;
+
+    // 将 tilingData_ 序列化到 RawTilingData（供 kernel 侧反序列化）
+    auto tilingDataSize = sizeof(FusedCausalConv1dCutBHTilingData);
+    errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(),
+        context_->GetRawTilingData()->GetCapacity(),
+        reinterpret_cast<void *>(&tilingData_),
+        tilingDataSize);
+    if (ret != EOK) {
+        OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", ret);
+        return ge::GRAPH_FAILED;
+    }
+    context_->GetRawTilingData()->SetDataSize(tilingDataSize);
+
+    return ge::GRAPH_SUCCESS;
+}
+
+// =========================================================================
+// DumpTilingInfo
+// 打印所有 tiling 参数（INFO 级别日志），用于调试和问题定位
+// =========================================================================
+void FusedCausalConv1dCutBHTiling::DumpTilingInfo()
+{
+    OP_LOGI(context_->GetNodeName(), "=== FusedCausalConv1dCutBH DumpTilingInfo ===");
+
+    // 核分布参数
+    OP_LOGI(context_->GetNodeName(), "usedCoreNum: %ld", tilingData_.usedCoreNum);
+    OP_LOGI(context_->GetNodeName(), "dimCoreCnt: %ld",  tilingData_.dimCoreCnt);
+    OP_LOGI(context_->GetNodeName(), "batchCoreCnt: %ld",tilingData_.batchCoreCnt);
+
+    // dim 方向切分参数
+    OP_LOGI(context_->GetNodeName(), "dimMainCoreCnt: %ld", tilingData_.dimMainCoreCnt);
+    OP_LOGI(context_->GetNodeName(), "dimTailCoreCnt: %ld", tilingData_.dimTailCoreCnt);
+    OP_LOGI(context_->GetNodeName(), "mainCoredimLen: %ld", tilingData_.mainCoredimLen);
+    OP_LOGI(context_->GetNodeName(), "tailCoredimLen: %ld", tilingData_.tailCoredimLen);
+
+    // batch 方向切分参数
+    OP_LOGI(context_->GetNodeName(), "batchMainCoreCnt: %ld", tilingData_.batchMainCoreCnt);
+    OP_LOGI(context_->GetNodeName(), "batchTailCoreCnt: %ld", tilingData_.batchTailCoreCnt);
+    OP_LOGI(context_->GetNodeName(), "mainCoreBatchNum: %ld", tilingData_.mainCoreBatchNum);
+    OP_LOGI(context_->GetNodeName(), "tailCoreBatchNum: %ld", tilingData_.tailCoreBatchNum);
+
+    // 大核 UB 循环参数
+    OP_LOGI(context_->GetNodeName(), "loopNumBS: %ld",        tilingData_.loopNumBS);
+    OP_LOGI(context_->GetNodeName(), "loopNumDim: %ld",       tilingData_.loopNumDim);
+    OP_LOGI(context_->GetNodeName(), "ubMainFactorBS: %ld",   tilingData_.ubMainFactorBS);
+    OP_LOGI(context_->GetNodeName(), "ubTailFactorBS: %ld",   tilingData_.ubTailFactorBS);
+    OP_LOGI(context_->GetNodeName(), "ubMainFactorDim: %ld",  tilingData_.ubMainFactorDim);
+    OP_LOGI(context_->GetNodeName(), "ubTailFactorDim: %ld",  tilingData_.ubTailFactorDim);
+
+    // 小核 UB 循环参数
+    OP_LOGI(context_->GetNodeName(), "tailBlockloopNumBS: %ld",       tilingData_.tailBlockloopNumBS);
+    OP_LOGI(context_->GetNodeName(), "tailBlockloopNumDim: %ld",      tilingData_.tailBlockloopNumDim);
+    OP_LOGI(context_->GetNodeName(), "tailBlockubFactorBS: %ld",      tilingData_.tailBlockubFactorBS);
+    OP_LOGI(context_->GetNodeName(), "tailBlockubTailFactorBS: %ld",  tilingData_.tailBlockubTailFactorBS);
+    OP_LOGI(context_->GetNodeName(), "tailBlockubFactorDim: %ld",     tilingData_.tailBlockubFactorDim);
+    OP_LOGI(context_->GetNodeName(), "tailBlockubTailFactorDim: %ld", tilingData_.tailBlockubTailFactorDim);
+
+    // 形状信息
+    OP_LOGI(context_->GetNodeName(), "batchSize: %ld",  tilingData_.batchSize);
+    OP_LOGI(context_->GetNodeName(), "seqLen: %ld",     tilingData_.seqLen);
+    OP_LOGI(context_->GetNodeName(), "cuSeqLen: %ld",   tilingData_.cuSeqLen);
+    OP_LOGI(context_->GetNodeName(), "dim: %ld",        tilingData_.dim);
+    OP_LOGI(context_->GetNodeName(), "kernelSize: %ld", tilingData_.kernelSize);
+    OP_LOGI(context_->GetNodeName(), "stateLen: %ld",   tilingData_.stateLen);
+    OP_LOGI(context_->GetNodeName(), "xStride: %ld",    tilingData_.xStride);
+    OP_LOGI(context_->GetNodeName(), "cacheStride0: %ld", tilingData_.cacheStride0);
+    OP_LOGI(context_->GetNodeName(), "cacheStride1: %ld", tilingData_.cacheStride1);
+    OP_LOGI(context_->GetNodeName(), "padSlotId: %ld",  tilingData_.padSlotId);
+    OP_LOGI(context_->GetNodeName(), "xInputMode: %ld", tilingData_.xInputMode);
+    OP_LOGI(context_->GetNodeName(), "hasAcceptTokenNum: %ld",  tilingData_.hasAcceptTokenNum);
+    OP_LOGI(context_->GetNodeName(), "residualConnection: %ld", tilingData_.residualConnection);
+    // 第二期新增字段
+    OP_LOGI(context_->GetNodeName(), "apcEnable: %ld",          tilingData_.apcEnable);
+    OP_LOGI(context_->GetNodeName(), "blockSize: %ld",          tilingData_.blockSize);
+    OP_LOGI(context_->GetNodeName(), "maxNumBlocks: %ld",       tilingData_.maxNumBlocks);
+    OP_LOGI(context_->GetNodeName(), "hasCacheIndices: %ld",    tilingData_.hasCacheIndices);
+    OP_LOGI(context_->GetNodeName(), "inplace: %ld",            tilingData_.inplace);
+    OP_LOGI(context_->GetNodeName(), "convMode: %ld",           tilingData_.convMode);
+    OP_LOGI(context_->GetNodeName(), "hasNumComputedTokens: %ld", tilingData_.hasNumComputedTokens);
+    OP_LOGI(context_->GetNodeName(), "maxQueryLen: %ld", maxQueryLen_);
+}
+
+// =========================================================================
+// DoLibApiTiling
+// LibAPI tiling 接口（本算子不需要，直接返回成功）
+// =========================================================================
+ge::graphStatus FusedCausalConv1dCutBHTiling::DoLibApiTiling()
+{
+    return ge::GRAPH_SUCCESS;
+}
+
+// =========================================================================
+// GetWorkspaceSize
+// 申请系统 workspace（用于 LibAPI 内部使用）
+// =========================================================================
+ge::graphStatus FusedCausalConv1dCutBHTiling::GetWorkspaceSize()
+{
+    auto platformInfo = context_->GetPlatformInfo();
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+    uint32_t sysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
+    size_t *currentWorkspace = context_->GetWorkspaceSizes(1);
+    currentWorkspace[0] = static_cast<size_t>(0UL + sysWorkspaceSize);
+    return ge::GRAPH_SUCCESS;
+}
+
+// =========================================================================
+// ComputeInterCoreSplitCoarse（粗粒度核间切分，dim >= 1024）
+//
+// 策略：
+//   1. 将 dim 划分为 coarseBlocks = dim/1024 个粗块
+//   2. 余数 remainder = dim % 1024，再细分为 fineBlocks = remainder/128 个对齐块
+//   3. 将 fineBlocks 平均分给各 dim 核（非均匀：前 fineRemainder 个核多分 1 个细块）
+//      大核 = 1024 + (fineBase+1)*128 元素；小核 = 1024 + fineBase*128 元素
+//   4. batch 方向：剩余核数均分 batch（非均匀切分与细粒度相同）
+// =========================================================================
+ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeInterCoreSplitCoarse()
+{
+    // 计算粗粒度块数和余数细块数
+    int64_t coarseBlocks = dim_ / COARSE_GRAIN_ELEMENT;  // 1024 元素块数
+    int64_t remainder    = dim_ % COARSE_GRAIN_ELEMENT;   // 不足 1024 的余数元素
+    int64_t fineBlocks   = remainder / DIM_ALIGN_ELEMENT; // 将余数划分为 128 元素细块
+
+    limitedCoreNum_ = CalculateLimitedCoreNumCoarse();
+    int64_t maxCoresAvailable = std::min<int64_t>(totalCoreNum_, limitedCoreNum_);
+
+    // dim 方向：最多使用 coarseBlocks 个核（一核一粗块），不超过可用核上限
+    dimCoreCnt_ = std::min(coarseBlocks, maxCoresAvailable);
+    if (dimCoreCnt_ <= 0) {
+        OP_LOGE(
+            context_->GetNodeName(), "dim %ld is smaller than COARSE_GRAIN_ELEMENT %ld", dim_, COARSE_GRAIN_ELEMENT);
+        return ge::GRAPH_FAILED;
+    }
+
+    // 将余数细块平均分给各 dim 核
+    int64_t fineBase      = fineBlocks / dimCoreCnt_;
+    int64_t fineRemainder = fineBlocks % dimCoreCnt_;
+
+    if (fineRemainder == 0) {
+        // 整除：所有 dim 核负责相同大小
+        dimMainCoreCnt_ = dimCoreCnt_;
+        dimTailCoreCnt_ = 0;
+        mainCoredimLen_ = COARSE_GRAIN_ELEMENT + fineBase * DIM_ALIGN_ELEMENT;
+        tailCoredimLen_ = mainCoredimLen_;
+    } else {
+        // 不整除：前 fineRemainder 个核多分 1 个细块
+        dimMainCoreCnt_ = fineRemainder;
+        dimTailCoreCnt_ = dimCoreCnt_ - fineRemainder;
+        mainCoredimLen_ = COARSE_GRAIN_ELEMENT + (fineBase + 1) * DIM_ALIGN_ELEMENT;
+        tailCoredimLen_ = COARSE_GRAIN_ELEMENT + fineBase * DIM_ALIGN_ELEMENT;
+    }
+
+    // batch 方向：用剩余核均分 batch（至少 1 个核）
+    int64_t remainingCores = maxCoresAvailable / dimCoreCnt_;
+    batchCoreCnt_ = std::min(batchSize_, remainingCores);
+    batchCoreCnt_ = std::max(batchCoreCnt_, static_cast<int64_t>(1));
+
+    // batch 非均匀切分（与细粒度相同逻辑）
+    int64_t bsBase      = batchSize_ / batchCoreCnt_;
+    int64_t bsRemainder = batchSize_ % batchCoreCnt_;
+    if (bsRemainder == 0) {
+        batchMainCoreCnt_ = batchCoreCnt_;
+        batchTailCoreCnt_ = 0;
+        mainCoreBatchNum_ = bsBase;
+        tailCoreBatchNum_ = bsBase;
+    } else {
+        batchMainCoreCnt_ = bsRemainder;
+        batchTailCoreCnt_ = batchCoreCnt_ - bsRemainder;
+        mainCoreBatchNum_ = bsBase + 1;
+        tailCoreBatchNum_ = bsBase;
+    }
+
+    usedCoreNum_ = dimCoreCnt_ * batchCoreCnt_;
+
+    return ge::GRAPH_SUCCESS;
+}
+
+// =========================================================================
+// ComputeUbForCoarse（粗粒度 UB 切分核心计算）
+// 逻辑与 ComputeUbFor 相同，区别在于 dim 对齐粒度为 COARSE_GRAIN_ELEMENT（1024）
+// =========================================================================
+void FusedCausalConv1dCutBHTiling::ComputeUbForCoarse(int64_t coreDimElems, int64_t coreBS, int64_t availableUbSize,
+    int64_t &outUbDim, int64_t &outUbBS, int64_t &outLoopDim, int64_t &outLoopBS, int64_t &outUbTailDim,
+    int64_t &outUbTailBS)
+{
+    // 2D 输入模式：用最大序列长度估算 UB
+    if (xInputMode_ == X_INPUT_2D) {
+        seqLen_ = maxQueryLen_;
+    }
+
+    // UB 占用系数（weight 单 buffer，cacheQueue DB，x/y 单 buffer）
+    int64_t weightConvStatesCoeffPerDim = (kernelSize_ + BUFFER_NUM * stateLen_ * 2) * DTYPE_SIZE;
+    int64_t xCoeffPerDimFullBS = coreBS * seqLen_ * DTYPE_SIZE * 2;
+    int64_t totalCoeffPerDim   = weightConvStatesCoeffPerDim + xCoeffPerDimFullBS;
+
+    // 粗粒度模式：dim 对齐到 1024 元素
+    int64_t maxUbDim = (totalCoeffPerDim > 0) ? (availableUbSize / totalCoeffPerDim) : 0;
+    maxUbDim = (maxUbDim / COARSE_GRAIN_ELEMENT) * COARSE_GRAIN_ELEMENT;
+
+    if (maxUbDim >= COARSE_GRAIN_ELEMENT) {
+        // UB 足够：保持 batch 完整，尽量多放 dim
+        outUbBS  = coreBS;
+        outUbDim = std::min(maxUbDim, coreDimElems);
+        outUbDim = (outUbDim / COARSE_GRAIN_ELEMENT) * COARSE_GRAIN_ELEMENT;
+        if (outUbDim == 0) outUbDim = COARSE_GRAIN_ELEMENT;
+    } else {
+        // UB 不足：固定 dim=1024，减小 batch
+        outUbDim = COARSE_GRAIN_ELEMENT;
+        int64_t weightConvStatesSize = weightConvStatesCoeffPerDim * outUbDim;
+        int64_t availableForX        = availableUbSize - weightConvStatesSize;
+        int64_t xSizePerBatch        = seqLen_ * outUbDim * DTYPE_SIZE * 2;
+        outUbBS = (xSizePerBatch > 0) ? (availableForX / xSizePerBatch) : 0;
+        outUbBS = std::max<int64_t>(outUbBS, 1);
+        outUbBS = std::min(outUbBS, coreBS);
+    }
+
+    // 循环次数和尾块大小
+    outLoopDim   = (coreDimElems + outUbDim - 1) / outUbDim;
+    outUbTailDim = (outLoopDim == 1) ? outUbDim : (coreDimElems - (outLoopDim - 1) * outUbDim);
+    outLoopBS    = (coreBS + outUbBS - 1) / outUbBS;
+    outUbTailBS  = (outLoopBS == 1) ? outUbBS : (coreBS - (outLoopBS - 1) * outUbBS);
+}
+
+// =========================================================================
+// ComputeIntraCoreUbTilingCoarse（粗粒度核内 UB 切分）
+// 与细粒度版本逻辑相同，只是调用 ComputeUbForCoarse 代替 ComputeUbFor
+// =========================================================================
+ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeIntraCoreUbTilingCoarse()
+{
+    // 固定 UB 占用（与细粒度版本相同）
+    int64_t numAcceptedTokensUBSize = (batchSize_ * sizeof(int32_t) + ALIGN_BYTES - 1) / ALIGN_BYTES * ALIGN_BYTES;
+    fixedUBSize = numAcceptedTokensUBSize;
+
+    int64_t cacheIndicesUBSize = (batchSize_ * sizeof(int32_t) + ALIGN_BYTES - 1) / ALIGN_BYTES * ALIGN_BYTES;
+    if (apcEnable_) {
+        cacheIndicesUBSize = (maxNumBlocks_ * sizeof(int32_t) + ALIGN_BYTES - 1) / ALIGN_BYTES * ALIGN_BYTES;
+    }
+    fixedUBSize += cacheIndicesUBSize;
+
+    if (xInputMode_ == X_INPUT_2D) {
+        int64_t queryStartLocUBSize =
+            ((batchSize_ + 1) * sizeof(int32_t) + ALIGN_BYTES - 1) / ALIGN_BYTES * ALIGN_BYTES;
+        fixedUBSize += queryStartLocUBSize;
+    }
+
+    if (hasNumComputedTokens_) {
+        int64_t numComputedTokensUBSize =
+            (batchSize_ * sizeof(int32_t) + ALIGN_BYTES - 1) / ALIGN_BYTES * ALIGN_BYTES;
+        fixedUBSize += numComputedTokensUBSize;
+    }
+
+    if (apcEnable_) {
+        int64_t apcAuxBufSize = (batchSize_ * sizeof(int32_t) + ALIGN_BYTES - 1) / ALIGN_BYTES * ALIGN_BYTES;
+        fixedUBSize += apcAuxBufSize * 3;
+    }
+
+    int64_t availableUbSize = static_cast<int64_t>(ubSize_ - SYSTEM_RESERVED_UB_SIZE) - fixedUBSize;
+
+    // 大核 UB 参数（粗粒度版本）
+    ComputeUbForCoarse(mainCoredimLen_, mainCoreBatchNum_, availableUbSize,
+        ubMainFactorDim_, ubMainFactorBS_, loopNumDim_, loopNumBS_, ubTailFactorDim_, ubTailFactorBS_);
+
+    // 小核 UB 参数（粗粒度版本）
+    if (dimTailCoreCnt_ > 0 || batchTailCoreCnt_ > 0) {
+        int64_t tailCoreDim = (dimMainCoreCnt_ > 0) ? tailCoredimLen_ : mainCoredimLen_;
+        ComputeUbForCoarse(tailCoreDim, tailCoreBatchNum_, availableUbSize,
+            tailBlockubFactorDim_, tailBlockubFactorBS_,
+            tailBlockloopNumDim_, tailBlockloopNumBS_,
+            tailBlockubTailFactorDim_, tailBlockubTailFactorBS_);
+    } else {
+        // 无小核：复制大核参数
+        tailBlockubFactorDim_     = ubMainFactorDim_;
+        tailBlockubFactorBS_      = ubMainFactorBS_;
+        tailBlockloopNumDim_      = loopNumDim_;
+        tailBlockloopNumBS_       = loopNumBS_;
+        tailBlockubTailFactorDim_ = ubTailFactorDim_;
+        tailBlockubTailFactorBS_  = ubTailFactorBS_;
+    }
+
+    return ge::GRAPH_SUCCESS;
+}
+
+// 向框架注册 BH 模板，优先级为 1
 REGISTER_OPS_TILING_TEMPLATE(FusedCausalConv1dCutBH, FusedCausalConv1dCutBHTiling, 1);
 
 }  // namespace optiling
