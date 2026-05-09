@@ -15,7 +15,6 @@
 
 #ifndef PROMPT_FLASH_ATTENTION_ENTRY_310_H_
 #define PROMPT_FLASH_ATTENTION_ENTRY_310_H_
-#include "kernel/prompt_flash_attention_normal_bns1_preload.h"
 #include "matmul_modules/pfa_policy_data.h"
 #include "prompt_flash_attention_zero_output.h"
 #include "prompt_flash_attention_tiling_regbase.h"
@@ -60,60 +59,6 @@ using namespace regbaseutil;
                 user, tilingData, &tPipe);                                                                              \
         op.Process();                                                                                                   \
     } while(0)
-
-#if defined(__DAV_C310_CUBE__) || (defined __DAV_310R6_CUBE__)
-#define INVOKE_PFA_TILING_DATA_95(tiling)                                                                               \
-    GET_TILING_DATA_MEMBER(PromptFlashAttentionTilingDataV2, bmm1TilingDataRect, bmm1TilingData, tiling);                 \
-    GET_TILING_DATA_MEMBER(PromptFlashAttentionTilingDataV2, bmm2TilingDataRect, bmm2TilingData, tiling);                 \
-    const TCubeTiling* __restrict bmm1tiling = &bmm1TilingData;                                                         \
-    const TCubeTiling* __restrict bmm2tiling = &bmm2TilingData;                                                         \
-    const PromptFlashAttentionTilingDataV2* __restrict tiling_data = nullptr;                                             \
-    AscendC::Impl::Detail::PFAGlobalTscmArray tscmArray;                                                                   \
-    AscendC::Impl::Detail::tscmGlobalPFA = &tscmArray;                                                                     \
-    TSCM<QuePosition::VECIN, 1, 0x4> bmm2Scm[2];                                                                        \
-    tPipe.InitBuffer(bmm2Scm[0], 1, 65536);                                                                             \
-    tPipe.InitBuffer(bmm2Scm[1], 1, 65536);                                                                             \
-    tPipe.InitBuffer(AscendC::Impl::Detail::tscmGlobalPFA->localScm[0], 1, L1BUFSIZE);                                     \
-    tPipe.InitBuffer(AscendC::Impl::Detail::tscmGlobalPFA->localScm[1], 1, L1BUFSIZE);                                     \
-    tPipe.InitBuffer(AscendC::Impl::Detail::tscmGlobalPFA->localScm[2], 1, L1BUFSIZE);                                     \
-    tPipe.InitBuffer(AscendC::Impl::Detail::tscmGlobalPFA->localScm[3], 1, L1BUFSIZE);                                     \
-    tPipe.InitBuffer(AscendC::Impl::Detail::tscmGlobalPFA->localScm[4], 1, L1BUFSIZE);                                     \
-    tPipe.InitBuffer(AscendC::Impl::Detail::tscmGlobalPFA->localScm[5], 1, L1BUFSIZE)
-
-#define INVOKE_PFA_TILING_DATA_55(tiling)                                                                               \
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);                                                                  \
-    GET_TILING_DATA_MEMBER(PromptFlashAttentionTilingDataV2, bmm1TilingDataRect, bmm1TilingData, tiling);                 \
-    GET_TILING_DATA_MEMBER(PromptFlashAttentionTilingDataV2, bmm2TilingDataRect, bmm2TilingData, tiling);                 \
-    const TCubeTiling* __restrict bmm1tiling = &bmm1TilingData;                                                         \
-    const TCubeTiling* __restrict bmm2tiling = &bmm2TilingData;                                                         \
-    const PromptFlashAttentionTilingDataV2* __restrict tiling_data = nullptr;                                             \
-    AscendC::Impl::Detail::PFAGlobalTscmArray tscmArray;                                                                   \
-    AscendC::Impl::Detail::tscmGlobalPFA = &tscmArray;                                                                     \
-    TSCM<QuePosition::VECIN, 1, 0x4> bmm2Scm[2];                                                                        \
-    tPipe.InitBuffer(bmm2Scm[0], 1, 32768);                                                                             \
-    tPipe.InitBuffer(bmm2Scm[1], 1, 32768);                                                                             \
-    tPipe.InitBuffer(AscendC::Impl::Detail::tscmGlobalPFA->localScm[0], 1, L1BUFSIZE);                                     \
-    tPipe.InitBuffer(AscendC::Impl::Detail::tscmGlobalPFA->localScm[1], 1, L1BUFSIZE);                                     \
-    tPipe.InitBuffer(AscendC::Impl::Detail::tscmGlobalPFA->localScm[2], 1, L1BUFSIZE);                                     \
-    tPipe.InitBuffer(AscendC::Impl::Detail::tscmGlobalPFA->localScm[3], 1, L1BUFSIZE);                                     \
-    tPipe.InitBuffer(AscendC::Impl::Detail::tscmGlobalPFA->localScm[4], 1, L1BUFSIZE);                                     \
-    tPipe.InitBuffer(AscendC::Impl::Detail::tscmGlobalPFA->localScm[5], 1, L1BUFSIZE)
-
-#else
-#define INVOKE_PFA_TILING_DATA_V2(tiling)                                                                             \
-    PromptFlashAttentionTilingDataV2 tiling_data_in;                                                                    \
-    GET_TILING_DATA_WITH_STRUCT(PFAFullQuantTilingData, tiling_data_in_new, tiling);                       \
-    TilingDataCopy(tiling_data_in, tiling_data_in_new);                                                               \
-    const PromptFlashAttentionTilingDataV2* __restrict tiling_data = &tiling_data_in;                                   \
-    const TCubeTiling* __restrict bmm1tiling = &(tiling_data->bmm1TilingDataRect);                                    \
-    const TCubeTiling* __restrict bmm2tiling = &(tiling_data->bmm2TilingDataRect)
-
-#define INVOKE_PFA_TILING_DATA_95(tiling)           \
-    INVOKE_PFA_TILING_DATA_V2(tiling)
-
-#define INVOKE_PFA_TILING_DATA_55(tiling)           \
-    INVOKE_PFA_TILING_DATA_V2(tiling)
-#endif
 
 #ifdef __DAV_C310_CUBE__ // CUBE 实现
 #define PFA_REGBASE_COPY_TILING_DATA(tiling)                                                                     \
@@ -293,29 +238,6 @@ using namespace regbaseutil;
     } while (0)
 #endif
 
-#define INVOKE_PFA_GENERAL_OP_IMPL_V2(templateClass, ...)                                                                  \
-    do {                                                                                                                \
-        if (query == nullptr) {return;}                                                                                 \
-        TPipe tPipe;                                                                                                    \
-        INVOKE_PFA_TILING_DATA_95(tiling);                                                                              \
-        templateClass<__VA_ARGS__> op;                                                                                  \
-        REGIST_MATMUL_OBJ(&tPipe, GetSysWorkSpacePtr(), op.mm1.mm, (TCubeTiling*)nullptr, op.mm2.mm, (TCubeTiling*)nullptr);                        \
-        op.Init(query, key, value, pseShift, attenMask, actualSeqLengths, actualSeqLengthsKV, blocktable, queryPaddingSize,         \
-                kvPaddingSize, queryRope, keyRope, attentionOut, softmaxLse, user, tiling_data, &tPipe);                                    \
-        op.Process();                                                                                                   \
-    } while (0)
-#define INVOKE_PFA_INT8_OP_IMPL_V2(templateClass, ...)                                                                  \
-    do {                                                                                                                \
-        if (query == nullptr) {return;}                                                                                 \
-        TPipe tPipe;                                                                                                    \
-        INVOKE_PFA_TILING_DATA_95(tiling);                                                                              \
-        templateClass<__VA_ARGS__> op;                                                                                  \
-        REGIST_MATMUL_OBJ(&tPipe, GetSysWorkSpacePtr(), op.mm1.mm, (TCubeTiling*)nullptr, op.mm2.mm, (TCubeTiling*)nullptr);                        \
-        op.Init(query, key, value, pseShift, attenMask, actualSeqLengths, actualSeqLengthsKV, blocktable, queryPaddingSize,         \
-                kvPaddingSize, queryRope, keyRope, attentionOut, softmaxLse, user, tiling_data, &tPipe);                                    \
-        op.InitQuant(deq_scale1, quant_scale1, deq_scale2, postQuantScale, postQuantOffset);                                \
-        op.Process();                                                                                                   \
-    } while (0)
 // kv is empty tensor, return zero output
 #define INVOKE_PFA_ZERO_OP_IMPL_V2(T)                                                                   \
     TPipe tPipe;                                                                                        \
@@ -335,7 +257,7 @@ using namespace regbaseutil;
 constexpr uint32_t L1BUFSIZE = 65536; // D最大支持256, 65536: 128 * 256 * 2
 
 template<uint8_t inOutLayoutType, uint16_t config, uint8_t pseMode, uint8_t quantMode, bool hasAttenMask, bool hasRope, 
-  uint8_t KvLayoutType, bool isFd, bool emptyTensor, uint8_t pFAMask, uint8_t pFAMatMulType, bool enableKVPrefix, bool enableS1OutSplit, bool isReconstructTemp>
+  uint8_t KvLayoutType, bool isFd, bool emptyTensor, bool enableKVPrefix, bool enableS1OutSplit, bool isReconstructTemp>
 inline __aicore__ void prompt_flash_attention_FIAS_regbase(__gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value,
     __gm__ uint8_t* pseShift, __gm__ uint8_t* attenMask, __gm__ uint8_t* actualSeqLengths,
     __gm__ uint8_t* actualSeqLengthsKV, __gm__ uint8_t* deq_scale1, __gm__ uint8_t* quant_scale1,
@@ -351,7 +273,7 @@ inline __aicore__ void prompt_flash_attention_FIAS_regbase(__gm__ uint8_t* query
 
 #if (__CCE_AICORE__ == 310) && (!defined (__DAV_310R6__))
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-    REGISTER_TILING_DEFAULT(PFAFullQuantTilingData);
+    REGISTER_TILING_DEFAULT(FlashAttentionScoreSimplifiedTilingData);
     REGISTER_TILING_FOR_TILINGKEY(
         "((TILING_KEY_VAR >> 22) & 0x1f) != 30 && ((TILING_KEY_VAR >> 28) & 0x1) == 1 && ((TILING_KEY_VAR >> 8) & 0x12) == 9",
         FlashAttentionScoreSimplifiedTilingData);
@@ -372,12 +294,12 @@ inline __aicore__ void prompt_flash_attention_FIAS_regbase(__gm__ uint8_t* query
         // 解析两个合并字段
         if constexpr (isReconstructTemp  == true) {
             run_fia_noquant_gqa_kernel<half, half, inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType,
-                                    isFd, emptyTensor, pFAMask, pFAMatMulType, enableKVPrefix, enableS1OutSplit>(
+                                    isFd, emptyTensor, enableKVPrefix, enableS1OutSplit>(
                 query, key, value, pseShift, attenMask, actualSeqLengths, actualSeqLengthsKV, postQuantScale,
                 postQuantOffset, blocktable, queryPaddingSize, kvPaddingSize, keySharedPrefix, valueSharedPrefix,
                 actualSharedPrefixLen, queryRope, keyRope, learnableSink, attentionOut, softmaxLse, user, tiling);
         } else{
-            PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix, enableS1OutSplit);
+            PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, enableKVPrefix, enableS1OutSplit);
             // 计算参数，这个地方必须先用constexpr将表达式的值计算出来，否则INVOKE_FA_OP_IMPL_ASCEND950_KVSAME_BASEAPI会报结构体的某些变量不存在
             // 原因：不使用constexpr，所有组合都会在编译阶段进入该函数，因此会出现hasRope字段为false的情况导致变量不存在
             if constexpr(dTemplateType == DTemplateType::Aligned576) {
@@ -407,12 +329,12 @@ inline __aicore__ void prompt_flash_attention_FIAS_regbase(__gm__ uint8_t* query
         // 解析两个合并字段
         if constexpr (isReconstructTemp  == true) {
             run_fia_noquant_gqa_kernel<bfloat16_t, bfloat16_t, inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType,
-                                    isFd, emptyTensor, pFAMask, pFAMatMulType, enableKVPrefix, enableS1OutSplit>(
+                                    isFd, emptyTensor, enableKVPrefix, enableS1OutSplit>(
                 query, key, value, pseShift, attenMask, actualSeqLengths, actualSeqLengthsKV, postQuantScale,
                 postQuantOffset, blocktable, queryPaddingSize, kvPaddingSize, keySharedPrefix, valueSharedPrefix,
                 actualSharedPrefixLen, queryRope, keyRope, learnableSink, attentionOut, softmaxLse, user, tiling);
         } else {
-            PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix, enableS1OutSplit);
+            PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, enableKVPrefix, enableS1OutSplit);
             // 计算参数，这个地方必须先用constexpr将表达式的值计算出来，否则INVOKE_FA_OP_IMPL_ASCEND950_KVSAME_BASEAPI会报结构体的某些变量不存在
             // 原因：不使用constexpr，所有组合都会在编译阶段进入该函数，因此会出现hasRope字段为false的情况导致变量不存在    
             if constexpr(dTemplateType == DTemplateType::Aligned576) {
@@ -441,7 +363,7 @@ inline __aicore__ void prompt_flash_attention_FIAS_regbase(__gm__ uint8_t* query
 
     #if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_FLOAT16 && ORIG_DTYPE_ATTENTION_OUT == DT_INT8)
         // 解析两个合并字段
-        PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix, enableS1OutSplit);
+        PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, enableKVPrefix, enableS1OutSplit);
         // 计算参数，这个地方必须先用constexpr将表达式的值计算出来，否则INVOKE_FA_OP_IMPL_ASCEND950_KVSAME_BASEAPI会报结构体的某些变量不存在
         // 原因：不使用constexpr，所有组合都会在编译阶段进入该函数，因此会出现hasRope字段为false的情况导致变量不存在    
         if constexpr(dTemplateType == DTemplateType::Aligned576) {
@@ -467,7 +389,7 @@ inline __aicore__ void prompt_flash_attention_FIAS_regbase(__gm__ uint8_t* query
  
     #if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_FLOAT16 && ORIG_DTYPE_ATTENTION_OUT == DT_HIFLOAT8)
         // 解析两个合并字段
-        PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix, enableS1OutSplit);
+        PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, enableKVPrefix, enableS1OutSplit);
         if constexpr(dTemplateType == DTemplateType::Aligned576) {
             INVOKE_FA_OP_IMPL_ASCEND950_KVSAME_BASEAPI(FAKernelNoquantMla, half, float, hifloat8_t, ImplModeEnum::AA_HIGH_PRECISION, inputLayoutType,
             s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, true, true, isPa, false);
@@ -491,7 +413,7 @@ inline __aicore__ void prompt_flash_attention_FIAS_regbase(__gm__ uint8_t* query
  
     #if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_FLOAT16 && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT8_E4M3FN)
         // 解析两个合并字段
-        PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix, enableS1OutSplit);
+        PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, enableKVPrefix, enableS1OutSplit);
         if constexpr(dTemplateType == DTemplateType::Aligned576) {
             INVOKE_FA_OP_IMPL_ASCEND950_KVSAME_BASEAPI(FAKernelNoquantMla, half, float, fp8_e4m3fn_t, ImplModeEnum::AA_HIGH_PRECISION, inputLayoutType,
             s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, true, true, isPa, false);
@@ -515,7 +437,7 @@ inline __aicore__ void prompt_flash_attention_FIAS_regbase(__gm__ uint8_t* query
  
     #if (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_BF16 && ORIG_DTYPE_ATTENTION_OUT == DT_INT8)
         // 解析两个合并字段
-        PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix, enableS1OutSplit);
+        PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, enableKVPrefix, enableS1OutSplit);
         if constexpr(dTemplateType == DTemplateType::Aligned576) {
             INVOKE_FA_OP_IMPL_ASCEND950_KVSAME_BASEAPI(FAKernelNoquantMla, bfloat16_t, float, int8_t, ImplModeEnum::AA_HIGH_PRECISION, inputLayoutType,
             s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, true, true, isPa, false);
@@ -539,7 +461,7 @@ inline __aicore__ void prompt_flash_attention_FIAS_regbase(__gm__ uint8_t* query
  
     #if (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_BF16 && ORIG_DTYPE_ATTENTION_OUT == DT_HIFLOAT8)
         // 解析两个合并字段
-        PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix, enableS1OutSplit);
+        PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, enableKVPrefix, enableS1OutSplit);
         if constexpr(dTemplateType == DTemplateType::Aligned576) {
             INVOKE_FA_OP_IMPL_ASCEND950_KVSAME_BASEAPI(FAKernelNoquantMla, bfloat16_t, float, hifloat8_t, ImplModeEnum::AA_HIGH_PRECISION, inputLayoutType,
                 s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, true, true, isPa, false);
@@ -563,7 +485,7 @@ inline __aicore__ void prompt_flash_attention_FIAS_regbase(__gm__ uint8_t* query
  
     #if (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_BF16 && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT8_E4M3FN)
         // 解析两个合并字段
-        PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix, enableS1OutSplit);
+        PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, enableKVPrefix, enableS1OutSplit);
         if constexpr(dTemplateType == DTemplateType::Aligned576) {
             INVOKE_FA_OP_IMPL_ASCEND950_KVSAME_BASEAPI(FAKernelNoquantMla, bfloat16_t, float, fp8_e4m3fn_t, ImplModeEnum::AA_HIGH_PRECISION, inputLayoutType,
                 s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, true, true, isPa, false);
@@ -585,16 +507,8 @@ inline __aicore__ void prompt_flash_attention_FIAS_regbase(__gm__ uint8_t* query
         }
 #endif
 
-    #if (ORIG_DTYPE_QUERY == DT_INT8 && ORIG_DTYPE_KEY == DT_INT8 && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16)
-        PARSE_PARAMS_FullQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType);
-        constexpr PFAPse pFaPse = (pseMode == PSE_MODE_PSE_NONE_TYPE) ? PFAPse::DISABLE_PSE : PFAPse::ENABLE_PSE;
-        INVOKE_PFA_INT8_OP_IMPL_V2(PromptFlashAttentionNormalBNS1Preload, PFAType<static_cast<PFALayout>(inputLayoutType), int8_t, uint8_t, half, int8_t,
-                                    static_cast<PFAMask>(pFAMask), pFaPse, RunMode::HighPrecision, SplitCoreMode::SPLIT_NBS_CUBE,
-                                    static_cast<uint32_t>(s1TemplateType), static_cast<uint32_t>(s2TemplateType), static_cast<uint32_t>(dTemplateType), static_cast<uint32_t>(dVTemplateType), static_cast<PFAMatMulType>(pFAMatMulType)>);
-    #endif
-
     #if (ORIG_DTYPE_QUERY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_KEY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16)
-        PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix, enableS1OutSplit);
+        PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, enableKVPrefix, enableS1OutSplit);
         constexpr uint64_t vec1ResultSize = static_cast<uint64_t>(s1TemplateType) * static_cast<uint64_t>(s2TemplateType) * 2;
         if constexpr (quantMode == FULLQUANT_MODE_MXFP8) {
             constexpr uint64_t qkvSizeRsv2 = MAX(MAX(static_cast<uint64_t>(s1TemplateType), static_cast<uint64_t>(s2TemplateType)) * (static_cast<uint64_t>(dTemplateType) >> 1),
@@ -612,7 +526,7 @@ inline __aicore__ void prompt_flash_attention_FIAS_regbase(__gm__ uint8_t* query
     #endif
 
     #if (ORIG_DTYPE_QUERY == DT_HIFLOAT8 && ORIG_DTYPE_KEY == DT_HIFLOAT8 && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16)
-        PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType);
+        PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor);
         constexpr uint64_t vec1ResultSize = static_cast<uint64_t>(s1TemplateType) * static_cast<uint64_t>(s2TemplateType) * 2;
         constexpr uint64_t qkvSizeRsv2 = MAX(MAX(static_cast<uint64_t>(s1TemplateType), static_cast<uint64_t>(s2TemplateType)) * static_cast<uint64_t>(dTemplateType),
             static_cast<uint64_t>(s2TemplateType) * static_cast<uint64_t>(dTemplateType)) * 2;
@@ -622,7 +536,7 @@ inline __aicore__ void prompt_flash_attention_FIAS_regbase(__gm__ uint8_t* query
     #endif
 
     #if (ORIG_DTYPE_QUERY == DT_HIFLOAT8 && ORIG_DTYPE_KEY == DT_HIFLOAT8 && ORIG_DTYPE_ATTENTION_OUT == DT_BF16)
-        PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
+        PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, enableKVPrefix);
         constexpr uint64_t vec1ResultSize = static_cast<uint64_t>(s1TemplateType) * static_cast<uint64_t>(s2TemplateType) * 2;
         if constexpr (quantMode == FULLQUANT_MODE_PER_TOKEN_HEAD) { // mla fullquant
             constexpr uint64_t qkvSizeRsv2 = MAX(MAX(static_cast<uint64_t>(s1TemplateType), static_cast<uint64_t>(s2TemplateType)) * (static_cast<uint64_t>(dVTemplateType) >> 1),
@@ -640,7 +554,7 @@ inline __aicore__ void prompt_flash_attention_FIAS_regbase(__gm__ uint8_t* query
     #endif
 
     #if (ORIG_DTYPE_QUERY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_KEY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_ATTENTION_OUT == DT_BF16)
-        PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
+        PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, enableKVPrefix);
         constexpr uint64_t vec1ResultSize = static_cast<uint64_t>(s1TemplateType) * static_cast<uint64_t>(s2TemplateType) * 2;
         if constexpr (quantMode == FULLQUANT_MODE_PER_TOKEN_HEAD) { // mla fullquant
             constexpr uint64_t qkvSizeRsv2 = MAX(MAX(static_cast<uint64_t>(s1TemplateType), static_cast<uint64_t>(s2TemplateType)) * (static_cast<uint64_t>(dVTemplateType) >> 1),
@@ -663,7 +577,7 @@ inline __aicore__ void prompt_flash_attention_FIAS_regbase(__gm__ uint8_t* query
         }
     #endif
     #if (ORIG_DTYPE_QUERY == DT_INT8 && ORIG_DTYPE_KEY == DT_INT8 && ORIG_DTYPE_ATTENTION_OUT == DT_BF16)
-        PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType, enableKVPrefix);
+        PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, enableKVPrefix);
         constexpr uint64_t vec1ResultSize = static_cast<uint64_t>(s1TemplateType) * static_cast<uint64_t>(s2TemplateType) * 2;
         if constexpr (quantMode == FULLQUANT_MODE_PER_TOKEN_HEAD) { // mla fullquant
             constexpr uint64_t qkvSizeRsv2 = MAX(MAX(static_cast<uint64_t>(s1TemplateType), static_cast<uint64_t>(s2TemplateType)) * (static_cast<uint64_t>(dVTemplateType) >> 1),
