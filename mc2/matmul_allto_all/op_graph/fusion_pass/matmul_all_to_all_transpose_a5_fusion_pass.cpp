@@ -49,31 +49,25 @@ namespace {
     typedef EsCTensorHolder* (*EsTransposeFunc)(EsCTensorHolder*, EsCTensorHolder*);
     
     EsTransposeFunc GetEsTransposeFunc() {
-        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "printf GetEsTransposeFunc func begin.");
         void* handle = dlopen("libes_math.so", RTLD_LAZY | RTLD_GLOBAL);
         if (!handle) {
             OPS_LOG_E("MatmulAllToAllTransposeA5FusionPass", "dlopen failed: %s", dlerror());
             return nullptr;
         }
-        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "printf handle get successfull.");
         dlerror();
         auto func = reinterpret_cast<EsTransposeFunc>(dlsym(handle, "EsTranspose"));
         if (dlerror() != nullptr) {
             OPS_LOG_E("MatmulAllToAllTransposeA5FusionPass", "dlsym EsTranspose failed");
             return nullptr;
         }
-        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "printf symbol get successfull.");
         return func;
     }
     
     ge::es::EsTensorHolder TransposeDL(const ge::es::EsTensorLike& x, const ge::es::EsTensorLike& perm) {
-        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "printf TransposeDL func begin.");
         static EsTransposeFunc func = GetEsTransposeFunc();
         auto* builder = ge::es::ResolveBuilder(x, perm);
-        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "printf ResolveBuilder func end.");
         auto result = func(x.ToTensorHolder(builder).GetCTensorHolder(),
                             perm.ToTensorHolder(builder).GetCTensorHolder());
-        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "printf func func end.");
         return result;
     }
 }

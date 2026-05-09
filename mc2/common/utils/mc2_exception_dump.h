@@ -48,19 +48,14 @@ typedef const char* (*acldumpGetPath_t)(acldumpType dumpType);
 // 动态加载clrtGetArgsFromExceptionInfo函数
 inline aclrtGetArgsFromExceptionInfo_t GetAclrtGetArgsFromExceptionInfoFunc()
 {
-    OP_LOGD(OP_NAME, "printf GetAclrtGetArgsFromExceptionInfoFunc begin.");
     static aclrtGetArgsFromExceptionInfo_t func = nullptr;
     static bool initialized = false;
-    
     if (!initialized) {
         initialized = true;
-        
         // 直接从 libacl_rt.so 加载符号
         void *handle = dlopen("libacl_rt.so", RTLD_NOLOAD | RTLD_LAZY);
-        OP_LOGD(OP_NAME, "printf get handle ptr successfull.");
         if (handle != nullptr) {
             func = (aclrtGetArgsFromExceptionInfo_t)dlsym(handle, "aclrtGetArgsFromExceptionInfo");
-            OP_LOGD(OP_NAME, "printf get func ptr successfull.");
             if (func == nullptr) {
                 OP_LOGE(OP_NAME, "dlsym aclrtGetArgsFromExceptionInfo failed: %s", dlerror());
             }
@@ -74,16 +69,12 @@ inline aclrtGetArgsFromExceptionInfo_t GetAclrtGetArgsFromExceptionInfoFunc()
 // 动态加载acldumpGetPath函数
 inline acldumpGetPath_t GetAcldumpGetPathFunc()
 {
-    OP_LOGD(OP_NAME, "printf GetAcldumpGetPathFunc begin.");
     static acldumpGetPath_t func = nullptr;
     static bool initialized = false;
-    
     if (!initialized) {
         initialized = true;
-        
         // 尝试加载ascend_dump.so
         void *handle = dlopen("libascend_dump.so", RTLD_NOLOAD | RTLD_LAZY);
-        
         if (handle != nullptr) {
             func = (acldumpGetPath_t)dlsym(handle, "acldumpGetPath");
             if (func == nullptr) {
@@ -231,7 +222,6 @@ inline int ProcessArgsForA3(uint64_t argsAddr, std::vector<uint8_t> &winBuf)
 
 inline void Mc2ExceptionImpl(aclrtExceptionInfo *args, void *userdata, const char *op)
 {
-    OP_LOGD(OP_NAME, "printf Mc2ExceptionImpl begin.");
     const char* socName = aclrtGetSocName();
     if((std::strstr(socName, "Ascend950") == nullptr) && (std::strstr(socName, "Ascend910_93") == nullptr)) {
         OP_LOGE(OP_NAME, "The soc version is %s, skip dump process", socName);
