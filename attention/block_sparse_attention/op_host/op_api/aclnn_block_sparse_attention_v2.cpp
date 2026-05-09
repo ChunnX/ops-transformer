@@ -170,12 +170,11 @@ static aclnnStatus MakeContiguous(const aclTensor *&query,
         blockSparseMaskOptional = l0op::Contiguous(blockSparseMaskOptional, executor);
         CHECK_RET(blockSparseMaskOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
         if (blockSparseMaskOptional->GetStorageShape().GetDimNum() != 4) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "blockSparseMask must be 4D tensor");
-        return ACLNN_ERR_PARAM_INVALID;
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "blockSparseMask must be 4D tensor");
+            return ACLNN_ERR_PARAM_INVALID;
         }
-       // CHECK_RET(blockSparseMaskOptional->GetStorageShape().GetDim() == 4, "blockSparseMask must be 4D tensor");
-    } 
+        // CHECK_RET(blockSparseMaskOptional->GetStorageShape().GetDim() == 4, "blockSparseMask must be 4D tensor");
+    }
 
     if (attenMaskOptional != nullptr) {
         attenMaskOptional = l0op::Contiguous(attenMaskOptional, executor);
