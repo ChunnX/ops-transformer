@@ -67,8 +67,8 @@ public:
 
 // protected:
     void InitTilingInfo(TilingInfo *tilingInfo) {}
-    bool IsCapable() {}
-    ge::graphStatus DoOpTiling() {}
+    bool IsCapable() { return true; }
+    ge::graphStatus DoOpTiling() { return ge::GRAPH_SUCCESS; }
     ge::graphStatus DoOpTiling(const FaTilingInfo *faInfo);
 
 private:
