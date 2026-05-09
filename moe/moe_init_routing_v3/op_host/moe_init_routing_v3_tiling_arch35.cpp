@@ -449,7 +449,7 @@ uint64_t MoeInitRoutingV3Arch35TilingClass::GetTilingKey() const
     }
     
     if (quantMode_ == QUANT_MODE_MXFP8_E5M2 || quantMode_ == QUANT_MODE_MXFP8_E4M3FN ||
-        quantMode_ == QUANT_MODE_MXFP4_E2M1) {
+        quantMode_ == QUANT_MODE_MXFP4_E2M1 || quantMode_ == QUANT_MODE_INT4_DYNAMIC) {
         // 对于MXFP8量化，两种模式在TilingKey体现的QuantMode都为3。
         // 其余非量化为0，静态量化为1，动态量化为2，即都是quantMode_+1
         // 可以用与最低的UNQUANT的数值的差值来作为quantModeFactor，这里值就为3
@@ -871,6 +871,11 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckInputOffset()
                     return ge::GRAPH_FAILED);
     }
 
+    if (quantMode_ == QUANT_MODE_INT4_DYNAMIC && isInputOffset_ == 1) {
+        OP_LOGE(context_, "When quant_mode=10 (INT4 dynamic), offset should be empty.");
+        return ge::GRAPH_FAILED;
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -888,6 +893,11 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetInputs()
     OP_CHECK_IF(k_ < 0, OP_LOGE(context_, "Invalid k value: %ld, should be greater than or equal to 0.", k_),
                 return ge::GRAPH_FAILED);
     cols_ = xShape_.GetDim(1);
+    if (quantMode_ == QUANT_MODE_INT4_DYNAMIC) {
+        OP_CHECK_IF(cols_ % 2 != 0,
+                    OP_LOGE(context_, "When quant_mode=10 (INT4 dynamic), H (cols) must be even, but got %ld.", cols_),
+                    return ge::GRAPH_FAILED);
+    }
     totalLength_ = n_ * k_;
     tilingDataPtr_->n = n_;
     tilingDataPtr_->k = k_;

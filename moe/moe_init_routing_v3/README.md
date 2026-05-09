@@ -13,9 +13,9 @@
 
 ## 功能说明
 
-- 算子功能：MoE的routing计算，根据[aclnnMoeGatingTopKSoftmaxV2](../moe_gating_top_k_softmax_v2/docs/aclnnMoeGatingTopKSoftmaxV2.md)的计算结果做routing处理，支持不量化和动态量化模式。本接口针对V2接口[aclnnMoeInitRoutingV2](../moe_init_routing_v2/docs/aclnnMoeInitRoutingV2.md)做了如下功能变更，请根据实际情况选择合适的接口：
+- 算子功能：MoE的routing计算，根据[aclnnMoeGatingTopKSoftmaxV2](../moe_gating_top_k_softmax_v2/docs/aclnnMoeGatingTopKSoftmaxV2.md)的计算结果做routing处理，支持不量化、动态量化和INT4动态量化模式。本接口针对V2接口[aclnnMoeInitRoutingV2](../moe_init_routing_v2/docs/aclnnMoeInitRoutingV2.md)做了如下功能变更，请根据实际情况选择合适的接口：
 
-    1.增加动态量化功能，支持输出expendX的 int8动态量化输出。
+    1.增加动态量化功能，支持输出expendX的 int8动态量化输出和INT4动态量化输出。
 
     2.增加参数activeExpertRangeOptional，支持筛选有效范围内的expertId。
 
@@ -42,7 +42,7 @@
     $$
 
   4.计算quant结果：
-    - 动态quant：
+    - 动态quant（quant_mode=1）：
         - 若不输入scale：
             $$
             dynamicQuantScaleOutOptional = row\_max(abs(x)) / 127
@@ -59,6 +59,28 @@
             $$
             quantResult = round(x / dynamicQuantScaleOutOptional)
             $$
+    - INT4动态quant（quant_mode=10）：
+        - 若不输入scale：
+            $$
+            dynamicQuantScaleOutOptional = row\_max(abs(x)) / 7
+            $$
+
+            $$
+            quantResult = round(x / dynamicQuantScaleOutOptional)
+            $$
+        - 若输入scale:
+            $$
+            smoothX = x * scaleOptional
+            $$
+
+            $$
+            dynamicQuantScaleOutOptional = row\_max(abs(smoothX)) / 7
+            $$
+
+            $$
+            quantResult = round(smoothX / dynamicQuantScaleOutOptional)
+            $$
+        - quantResult 会被打包为 packed int4 格式写回 expandedXOut（每字节存放 2 个 int4 元素）。
   
   5.对quantResult取前NUM\_ROWS个sortedRowIdx的对应位置的值，得出expandedXOut：
 
@@ -106,14 +128,14 @@
       <tr>
         <td>scaleOptional</td>
         <td>可选输入</td>
-        <td>表示用于计算quant结果的参数。如果不输入表示计算时不使用scale，对应公式中scale。<br>• 仅quantMode=-1且x的数据类型为FLOAT4_E2M1、FLOAT8_E4M3FN或FLOAT8_E5M2时，scale数据类型支持FLOAT8_E8M0。</td>
+        <td>表示用于计算quant结果的参数。如果不输入表示计算时不使用scale，对应公式中scale。<br>• 仅quantMode=-1且x的数据类型为FLOAT4_E2M1、FLOAT8_E4M3FN或FLOAT8_E5M2时，scale数据类型支持FLOAT8_E8M0；quantMode=10时scale为可选输入，如果输入则要求为2D的Tensor，shape为(1, H)。</td>
         <td>FLOAT32、FLOAT8_E8M0</td>
         <td>ND</td>
       </tr>
       <tr>
         <td>offsetOptional</td>
         <td>可选输入</td>
-        <td>表示用于计算quant结果的偏移值。在非量化场景下和动态quant场景下不输入，对应公式中offsetOptional。</td>
+        <td>表示用于计算quant结果的偏移值。在非量化场景下、动态quant场景下和INT4动态量化场景下不输入，对应公式中offsetOptional。</td>
         <td>FLOAT32</td>
         <td>ND</td>
       </tr>
@@ -162,7 +184,7 @@
       <tr>
         <td>quantMode</td>
         <td>属性</td>
-        <td>取值为0、1、-1、2、3、6、7、8、9。<br>• 0：表示静态quant场景。<br>• 1：表示动态quant场景。<br>• -1：表示不量化场景。<br>• 2：表示MXFP8量化场景，expandedXOut量化到FLOAT8_E5M2。<br>• 3：表示MXFP8量化场景，expandedXOut量化到FLOAT8_E4M3FN。<br>• 6：表示HIF8直转量化场景下，expandedXOut量化到HIFLOAT8。<br>• 7：表示HIF8 PERTENSOR量化场景，expandedXOut量化到HIFLOAT8。<br>• 8：表示HIF8 PERTOKEN量化场景，expandedXOut量化到HIFLOAT8。<br>• 9：表示MXFP4量化场景，expandedXOut量化到FLOAT4_E2M1。</td>
+        <td>取值为0、1、-1、2、3、6、7、8、9、10。<br>• 0：表示静态quant场景。<br>• 1：表示动态quant场景。<br>• -1：表示不量化场景。<br>• 2：表示MXFP8量化场景，expandedXOut量化到FLOAT8_E5M2。<br>• 3：表示MXFP8量化场景，expandedXOut量化到FLOAT8_E4M3FN。<br>• 6：表示HIF8直转量化场景下，expandedXOut量化到HIFLOAT8。<br>• 7：表示HIF8 PERTENSOR量化场景，expandedXOut量化到HIFLOAT8。<br>• 8：表示HIF8 PERTOKEN量化场景，expandedXOut量化到HIFLOAT8。<br>• 9：表示MXFP4量化场景，expandedXOut量化到FLOAT4_E2M1。<br>• 10：表示INT4动态量化场景，expandedXOut量化到INT4。</td>
         <td>INT</td>
         <td>-</td>
       </tr>
@@ -184,7 +206,7 @@
         <td>expandedXOut</td>
         <td>输出</td>
         <td>根据expertIdx进行扩展过的特征。非量化场景下数据类型同x，量化场景quantMode为0、1时数据类型支持INT8，quantMode为2、3时数据类型分别支持FLOAT8_E5M2、FLOAT8_E4M3FN，quantMode为6、7、8时数据类型支持HIFLOAT8，quantMode为9时数据类型支持FLOAT4_E2M1。</td>
-        <td>FLOAT32、FLOAT16、BFLOAT16、INT8、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8、FLOAT4_E2M1</td>
+        <td>FLOAT32、FLOAT16、BFLOAT16、INT8、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8、FLOAT4_E2M1、INT4</td>
         <td>ND</td>
       </tr>
       <tr>
@@ -221,7 +243,14 @@
   - expertTokensNumFlag 只支持 true，代表输出 expertTokensCountOrCumsumOut。
   - quantMode:
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持1、-1，分别代表动态量化场景和不量化场景。
-    - <term>Ascend 950PR/Ascend 950DT</term>：支持-1、1、2、3、6、7、8、9，分别表示不量化、动态量化、MXFP8量化到FLOAT8_E5M2、MXFP8量化到FLOAT8_E4M3FN、按直转方式量化到HIFLOAT8、按PERTENSOR模式量化到HIFLOAT8、按PERTOKEN模式量化到HIFLOAT8，MXFP4量化到FLOAT4_E2M1。
+    - <term>Ascend 950PR/Ascend 950DT</term>：支持-1、1、2、3、6、7、8、9、10，分别表示不量化、动态量化、MXFP8量化到FLOAT8_E5M2、MXFP8量化到FLOAT8_E4M3FN、按直转方式量化到HIFLOAT8、按PERTENSOR模式量化到HIFLOAT8、按PERTOKEN模式量化到HIFLOAT8，MXFP4量化到FLOAT4_E2M1、INT4动态量化。
+  
+- INT4动态量化（quant_mode=10）额外约束：
+  - 仅支持 dropless（drop_pad_mode=0）。
+  - H（cols）必须为偶数。
+  - x dtype 仅支持 FLOAT16、BFLOAT16、FLOAT32，不支持 INT8。
+  - scaleOptional 允许为空；非空时仅支持 shape 为 (1, H)。
+  - offsetOptional 应为空。
   
 - 其他限制：该算子部分产品支持两种性能模板，进入两种性能模板需要分别额外满足以下条件，不满足条件则进入通用模板。
   - 支持性能模板的产品：
