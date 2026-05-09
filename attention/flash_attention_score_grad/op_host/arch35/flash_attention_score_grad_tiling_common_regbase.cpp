@@ -1414,7 +1414,7 @@ ge::graphStatus ProcessPseNormal(gert::TilingContext *context_, FuzzyBaseInfoPar
         fBaseParams.pseShapeType = static_cast<uint32_t>(PseShapeType::PSE_SHAPE_TYPE_1NHS);
     } else if (isAlibiBNHS) {
         fBaseParams.pseShapeType = static_cast<uint32_t>(PseShapeType::PSE_SHAPE_TYPE_BNHS);
-    } else {
+    } else { 
         if (isTndPse) {
             OP_LOGE(context_, "The shape of pse[%ld,%ld,%ld,%ld] is invalid or tocken[%ld,%ld] not casual, support "
                     "shape of pse[1,%ld,1024,%ld] or [%ld,%ld,1024,%ld]", dim0, dim1, dim2, dim3, fBaseParams.s1Token,
