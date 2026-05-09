@@ -193,30 +193,9 @@ aclnnStatus aclnnMoeInitRoutingV2Grad(
         <td>输入和输出的数据类型不在支持的范围内。</td>
       </tr>
       <tr>
-        <td rowspan="8">ACLNN_ERR_INNER_TILING_ERROR</td>
-        <td rowspan="8">561002</td>
-        <td>dropPadMode的属性值不是0或1。</td>
-      </tr>
-      <tr>
-        <td>topK小于等于0。</td>
-      </tr>
-      <tr>
-        <td>activeNum小于0。</td>
-      </tr>
-      <tr>
-        <td>gradExpandedX不是2D/3D，或者dropPadMode为1时，gradExpandedX不是3D。</td>
-      </tr>
-      <tr>
-        <td>dropPadMode和activeNum都为0时，gradExpandedX和expandedRowIdx的0轴大小不相等。</td>
-      </tr>
-      <tr>
-        <td>dropPadMode为0且activeNum大于0时，gradExpandedX的0轴与activeNum大小不相等。</td>
-      </tr>
-      <tr>
-        <td>out和gradExpandedX的尾轴大小不相等。</td>
-      </tr>
-      <tr>
-        <td>out的0轴不等于expandedRowIdx的0轴大小除以topK。</td>
+        <td rowspan="8">ACLNN_ERR_INNER_NULLPTR</td>
+        <td rowspan="8">561103</td>
+        <td>API内部校验错误，通常由于输入的shape或属性的规格不在支持的范围之内导致。</td>
       </tr>
     </tbody>
   </table>
