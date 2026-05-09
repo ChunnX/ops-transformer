@@ -381,11 +381,11 @@ public:
                     } else {
                         uint32_t out_stride;
                         if constexpr (LAYOUT == BSNGD || LAYOUT == TND) {
-                            out_gm_offset = mIdx * SIZE_128 * dimN2 * dimD;
-                            out_stride = dimN2 * dimD;
+                            out_gm_offset = mIdx * SIZE_128 * dimN1 * dimD;
+                            out_stride = dimN1 * dimD;
                         } else if constexpr (LAYOUT == SBNGD) {
-                            out_gm_offset = mIdx * SIZE_128 * dimB * dimN2 * dimD;
-                            out_stride = dimB * dimN2 * dimD;
+                            out_gm_offset = mIdx * SIZE_128 * dimB * dimN1 * dimD;
+                            out_stride = dimB * dimN1 * dimD;
                         } else if constexpr (LAYOUT == BNGSD) {
                             out_gm_offset = mIdx * SIZE_128 * dimD;
                             out_stride = dimD;
@@ -504,11 +504,11 @@ public:
                     } else {
                         uint32_t out_stride;
                         if constexpr (LAYOUT == BSNGD || LAYOUT == TND) {
-                            out_gm_offset = nIdx * SIZE_128 * dimN1 * dimD;
-                            out_stride = dimN1 * dimD;
+                            out_gm_offset = nIdx * SIZE_128 * dimN2 * dimD;
+                            out_stride = dimN2 * dimD;
                         } else if constexpr (LAYOUT == SBNGD) {
-                            out_gm_offset = nIdx * SIZE_128 * dimB * dimN1 * dimD;
-                            out_stride = dimB * dimN1 * dimD;
+                            out_gm_offset = nIdx * SIZE_128 * dimB * dimN2 * dimD;
+                            out_stride = dimB * dimN2 * dimD;
                         } else if constexpr (LAYOUT == BNGSD) {
                             out_gm_offset = nIdx * SIZE_128 * dimD;
                             out_stride = dimD;
