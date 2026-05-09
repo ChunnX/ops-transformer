@@ -184,7 +184,7 @@ static void PrintTilingData(Mc2Tiling::RCSTiling& rcsTiling)
     OP_LOGD("MatmulReduceScatter", "rcsTiling.gatherIndex %d", rcsTiling.gatherIndex);
     OP_LOGD("MatmulReduceScatter", "rcsTiling.isTransA %d", rcsTiling.isTransposeA);
     OP_LOGD("MatmulReduceScatter", "rcsTiling.isTransB %d", rcsTiling.isTransposeB);
-	OP_LOGD("MatmulReduceScatter", "rcsTiling.storageGather %d", rcsTiling.storageGather);
+    OP_LOGD("MatmulReduceScatter", "rcsTiling.storageGather %d", rcsTiling.storageGather);
     OP_LOGD("MatmulReduceScatter", "rcsTiling.nd2NzWorkLen %lu", rcsTiling.nd2NzWorkLen);
     OP_LOGD("MatmulReduceScatter", "rcsTiling.cToFloatLen %lu", rcsTiling.cToFloatLen);
     OP_LOGD("MatmulReduceScatter", "rcsTiling.gatherLen %lu", rcsTiling.gatherLen);
