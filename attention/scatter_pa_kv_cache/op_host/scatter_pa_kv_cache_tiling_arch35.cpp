@@ -292,13 +292,17 @@ ge::graphStatus ScatterPaKvCacheTiling::TemplateNormal()
     isFullyLoad_ = NOT_FULLY_LOAD;
     kHandleNumPerLoop_ = (ubSize_ - RESERVED_UB_SIZE) / dtypeByteSize_ / DIM2;
     kLoopNum_ = Ops::Base::CeilDiv<int64_t>(kHandleNumPerCore_, kHandleNumPerLoop_);
-    kTailHandleNum_ = kHandleNumPerCore_ - (kLoopNum_ - 1) * kHandleNumPerLoop_;
-    kLoopNum_--;
+    if (kLoopNum_ > 0) {
+        kTailHandleNum_ = kHandleNumPerCore_ - (kLoopNum_ - 1) * kHandleNumPerLoop_;
+        kLoopNum_--;
+    }
     if (inOutMode_ == DUAL_IN_OUT) {
         vHandleNumPerLoop_ = (ubSize_ - RESERVED_UB_SIZE) / dtypeByteSize_ / DIM2;
         vLoopNum_ = Ops::Base::CeilDiv<int64_t>(vHandleNumPerCore_, vHandleNumPerLoop_);
-        vTailHandleNum_ = vHandleNumPerCore_ - (vLoopNum_ - 1) * vHandleNumPerLoop_;
-        vLoopNum_--;
+        if (vLoopNum_ > 0) {
+            vTailHandleNum_ = vHandleNumPerCore_ - (vLoopNum_ - 1) * vHandleNumPerLoop_;
+            vLoopNum_--;
+        }
     }
 
     return ge::GRAPH_SUCCESS;
@@ -358,14 +362,18 @@ ge::graphStatus ScatterPaKvCacheTiling::TemplateNZ()
     kHandleNumPerLoop_ = maxHandleNumPerLoop / dtypeByteSize_ / DOUBLE_BUFFER;
     kHandleNumPerLoop_ = Ops::Base::FloorAlign(kHandleNumPerLoop_, BLOCK_SIZE / dtypeByteSize_);
     kLoopNum_ = Ops::Base::CeilDiv<int64_t>(kHandleNumPerCore_, kHandleNumPerLoop_);
-    kTailHandleNum_ = kHandleNumPerCore_ - (kLoopNum_ - 1) * kHandleNumPerLoop_;
-    kLoopNum_--;
+    if (kLoopNum_ > 0) {
+        kTailHandleNum_ = kHandleNumPerCore_ - (kLoopNum_ - 1) * kHandleNumPerLoop_;
+        kLoopNum_--;
+    }
     if (inOutMode_ == DUAL_IN_OUT) {
         vHandleNumPerLoop_ = maxHandleNumPerLoop / valueDtypeByteSize_ / DOUBLE_BUFFER;
         vHandleNumPerLoop_ = Ops::Base::FloorAlign(vHandleNumPerLoop_, BLOCK_SIZE / valueDtypeByteSize_);
         vLoopNum_ = Ops::Base::CeilDiv<int64_t>(vHandleNumPerCore_, vHandleNumPerLoop_);
-        vTailHandleNum_ = vHandleNumPerCore_ - (vLoopNum_ - 1) * vHandleNumPerLoop_;
-        vLoopNum_--;
+        if (vLoopNum_ > 0) {
+            vTailHandleNum_ = vHandleNumPerCore_ - (vLoopNum_ - 1) * vHandleNumPerLoop_;
+            vLoopNum_--;
+        }
     }
 
     return ge::GRAPH_SUCCESS;
@@ -412,14 +420,18 @@ ge::graphStatus ScatterPaKvCacheTiling::TemplateRope()
 
     kHandleNumPerLoop_ = MAX_HANLDE_BYTE_SIZE_PER_LOOP / dtypeByteSize_;
     kLoopNum_ = Ops::Base::CeilDiv<int64_t>(kHeadSize_, kHandleNumPerLoop_);
-    kTailHandleNum_ = kHeadSize_ - (kLoopNum_ - 1) * kHandleNumPerLoop_;
-    kLoopNum_--;
+    if (kLoopNum_ > 0) {
+        kTailHandleNum_ = kHeadSize_ - (kLoopNum_ - 1) * kHandleNumPerLoop_;
+        kLoopNum_--;
+    }
 
     if (inOutMode_ == DUAL_IN_OUT) {
         vHandleNumPerLoop_ = MAX_HANLDE_BYTE_SIZE_PER_LOOP / dtypeByteSize_;
         vLoopNum_ = Ops::Base::CeilDiv<int64_t>(vHeadSize_, vHandleNumPerLoop_);
-        vTailHandleNum_ = vHeadSize_ - (vLoopNum_ - 1) * vHandleNumPerLoop_;
-        vLoopNum_--;
+        if (vLoopNum_ > 0) {
+            vTailHandleNum_ = vHeadSize_ - (vLoopNum_ - 1) * vHandleNumPerLoop_;
+            vLoopNum_--;
+        }
     }
 
     return ge::GRAPH_SUCCESS;
@@ -456,15 +468,19 @@ ge::graphStatus ScatterPaKvCacheTiling::TemplateOmni()
     kHandleNumPerLoop_ = inOutMode_ == SINGLE_IN_OUT ? (ubSize_ / dtypeByteSize_) : (ubSize_ / dtypeByteSize_ / DIM2);
     kHandleNumPerLoop_ = Ops::Base::FloorAlign(kHandleNumPerLoop_, BLOCK_SIZE / dtypeByteSize_);
     kLoopNum_ = Ops::Base::CeilDiv<int64_t>(kHeadSize_, kHandleNumPerLoop_);
-    kTailHandleNum_ = kHeadSize_ - (kLoopNum_ - 1) * kHandleNumPerLoop_;
-    kLoopNum_--;
+    if (kLoopNum_ > 0) {
+        kTailHandleNum_ = kHeadSize_ - (kLoopNum_ - 1) * kHandleNumPerLoop_;
+        kLoopNum_--;
+    }
 
     if (inOutMode_ == DUAL_IN_OUT) {
         vHandleNumPerLoop_ = ubSize_ / dtypeByteSize_ / DIM2;
         vHandleNumPerLoop_ = Ops::Base::FloorAlign(vHandleNumPerLoop_, BLOCK_SIZE / dtypeByteSize_);
         vLoopNum_ = Ops::Base::CeilDiv<int64_t>(vHeadSize_, vHandleNumPerLoop_);
-        vTailHandleNum_ = vHeadSize_ - (vLoopNum_ - 1) * vHandleNumPerLoop_;
-        vLoopNum_--;
+        if (vLoopNum_ > 0) {
+            vTailHandleNum_ = vHeadSize_ - (vLoopNum_ - 1) * vHandleNumPerLoop_;
+            vLoopNum_--;
+        }
     }
 
     return ge::GRAPH_SUCCESS;
@@ -500,14 +516,18 @@ ge::graphStatus ScatterPaKvCacheTiling::TemplateAlibi()
 
     kHandleNumPerLoop_ = MAX_HANLDE_BYTE_SIZE_PER_LOOP / dtypeByteSize_;
     kLoopNum_ = Ops::Base::CeilDiv<int64_t>(kHeadSize_, kHandleNumPerLoop_);
-    kTailHandleNum_ = kHeadSize_ - (kLoopNum_ - 1) * kHandleNumPerLoop_;
-    kLoopNum_--;
+    if (kLoopNum_ > 0) {
+        kTailHandleNum_ = kHeadSize_ - (kLoopNum_ - 1) * kHandleNumPerLoop_;
+        kLoopNum_--;
+    }
 
     if (inOutMode_ == DUAL_IN_OUT) {
         vHandleNumPerLoop_ = MAX_HANLDE_BYTE_SIZE_PER_LOOP / dtypeByteSize_;
         vLoopNum_ = Ops::Base::CeilDiv<int64_t>(vHeadSize_, vHandleNumPerLoop_);
-        vTailHandleNum_ = vHeadSize_ - (vLoopNum_ - 1) * vHandleNumPerLoop_;
-        vLoopNum_--;
+        if (vLoopNum_ > 0) {
+            vTailHandleNum_ = vHeadSize_ - (vLoopNum_ - 1) * vHandleNumPerLoop_;
+            vLoopNum_--;
+        }
     }
 
     return ge::GRAPH_SUCCESS;
@@ -806,8 +826,31 @@ ge::graphStatus ScatterPaKvCacheTiling::GetShapeAttrsInfo()
     auto compressLens = context_->GetOptionalInputTensor(inputCompressLens_);
     auto compressSeqOffset = context_->GetOptionalInputTensor(inputCompressSeqOffset_);
     auto seqLens = context_->GetOptionalInputTensor(inputSeqLens_);
+
+    auto inputSlotMappingDesc = context_->GetInputDesc(inputSlotMapping_);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, inputSlotMappingDesc);
+    ge::DataType inputSlotMappingDtype = inputSlotMappingDesc->GetDataType();
+
+    auto inputCompressLensDsc = context_->GetOptionalInputDesc(inputCompressLens_);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, inputCompressLensDsc);
+    ge::DataType inputCompressLensDtype = inputCompressLensDsc->GetDataType();
+    OP_CHECK_IF(inputSlotMappingDtype != inputCompressLensDtype,
+                OP_LOGE(context_, "the type of CompressLens and SlotMapping are not the same."),
+                return ge::GRAPH_FAILED;);
+    auto inputSeqLensDsc = context_->GetOptionalInputDesc(inputSeqLens_);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, inputSeqLensDsc);
+    ge::DataType inputSeqLensDtype = inputSeqLensDsc->GetDataType();
+    OP_CHECK_IF(inputSlotMappingDtype != inputSeqLensDtype,
+                OP_LOGE(context_, "the type of SeqLens and SlotMapping are not the same."),
+                return ge::GRAPH_FAILED;);
     if (templateType_ == TEMPLATE_ROPE || templateType_ == TEMPLATE_OMNI) {
         // entering template rope omni
+        auto inputCompressSeqOffsetSDsc = context_->GetOptionalInputDesc(inputCompressSeqOffset_);
+        OP_CHECK_NULL_WITH_CONTEXT(context_, inputCompressSeqOffsetSDsc);
+        ge::DataType inputCompressSeqOffsetSDtype = inputCompressSeqOffsetSDsc->GetDataType();
+        OP_CHECK_IF(inputSlotMappingDtype != inputCompressSeqOffsetSDtype,
+                    OP_LOGE(context_, "the type of CompressSeqOffset and SlotMapping are not the same."),
+                    return ge::GRAPH_FAILED;);
         compressLensShape_ = compressLens->GetStorageShape();
         compressSeqOffsetShape_ = compressSeqOffset->GetStorageShape();
         seqLensShape_ = seqLens->GetStorageShape();
@@ -816,7 +859,7 @@ ge::graphStatus ScatterPaKvCacheTiling::GetShapeAttrsInfo()
         compressLensShape_ = compressLens->GetStorageShape();
         seqLensShape_ = seqLens->GetStorageShape();
     } else {
-        OP_LOGE(context_, "when dim num of inputKey is 4, compress_lens and seq_lens must not be None.");
+        OP_LOGE(context_, "Cache mode, scatter mode or shape error. No proper template is found.");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

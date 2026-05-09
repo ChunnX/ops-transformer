@@ -590,7 +590,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>dpseOut</td>
       <td>输出</td>
       <td>d(pse)梯度。</td>
-      <td>暂未使用。</td>
+      <td>暂未使用，传入的shape必须和pse_shape保持一致。</td>
       <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>0、4</td>
