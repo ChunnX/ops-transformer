@@ -39,10 +39,12 @@ namespace MlaProlog {
           col 列数，对应H
  */
 template <typename T, typename GammaType, typename C, typename O, typename U>
-__aicore__ inline void RmsNormNormal(const LocalTensor<O>& outputLocal, const GlobalTensor<T>& inputGm, const LocalTensor<GammaType>& gammaLocal,
-                               const LocalTensor<float> &dequantScaleWDqLocal,
-                               const LocalTensor<float> &dequantScaleXLocal, const LocalTensor<uint8_t>& shareTmpUb,
-                               RmsNormParam& rmsNormParams) {
+__aicore__ inline void RmsNormNormal(const LocalTensor<O> &outputLocal, const GlobalTensor<T> &inputGm,
+                                     const LocalTensor<GammaType> &gammaLocal,
+                                     const LocalTensor<float> &dequantScaleWDqLocal,
+                                     const LocalTensor<float> &dequantScaleXLocal,
+                                     const LocalTensor<uint8_t> &shareTmpUb, RmsNormParam &rmsNormParams)
+{
     int64_t cnt = rmsNormParams.row * rmsNormParams.col;
     LocalTensor<C> xFp32Local = shareTmpUb.ReinterpretCast<C>();
 
@@ -58,9 +60,8 @@ __aicore__ inline void RmsNormNormal(const LocalTensor<O>& outputLocal, const Gl
         DataCopyPad(xFp32Local, inputGm, copyParams, padParams);
         SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
         WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
-        Rectangle rectangleParams {
-            (uint32_t)rmsNormParams.row,
-            (uint32_t)rmsNormParams.col,
+        Rectangle rectangleParams{
+            (uint32_t)rmsNormParams.row, (uint32_t)rmsNormParams.col,
             (uint32_t)rmsNormParams.col // columnStride
         };
         Dequant(xFp32Local, xFp32Local, dequantScaleWDqLocal, dequantScaleXLocal, rectangleParams);
@@ -70,9 +71,8 @@ __aicore__ inline void RmsNormNormal(const LocalTensor<O>& outputLocal, const Gl
         DataCopyPad(xInt32Local, inputGm, copyParams, padParams);
         SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
         WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
-        Rectangle rectangleParams {
-            (uint32_t)rmsNormParams.row,
-            (uint32_t)rmsNormParams.col,
+        Rectangle rectangleParams{
+            (uint32_t)rmsNormParams.row, (uint32_t)rmsNormParams.col,
             (uint32_t)rmsNormParams.col // columnStride
         };
         Dequant(xFp32Local, xInt32Local, dequantScaleWDqLocal, dequantScaleXLocal, rectangleParams);
@@ -92,10 +92,10 @@ __aicore__ inline void RmsNormNormal(const LocalTensor<O>& outputLocal, const Gl
     WaitFlag<HardEvent::MTE3_V>(EVENT_ID1);
 
     if constexpr (std::is_same<C, O>::value) {
-        RmsNorm(outputLocal, xFp32Local ,gammaLocal, rmsnormShareUB.template ReinterpretCast<uint8_t>(), rmsNormParams);
+        RmsNorm(outputLocal, xFp32Local, gammaLocal, rmsnormShareUB.template ReinterpretCast<uint8_t>(), rmsNormParams);
         AscendC::PipeBarrier<PIPE_V>();
     } else {
-        RmsNorm(xFp32Local, xFp32Local ,gammaLocal, rmsnormShareUB.template ReinterpretCast<uint8_t>(), rmsNormParams);
+        RmsNorm(xFp32Local, xFp32Local, gammaLocal, rmsnormShareUB.template ReinterpretCast<uint8_t>(), rmsNormParams);
         // Cast xFp32 to outputLocal
         AscendC::PipeBarrier<PIPE_V>();
         Cast(outputLocal, xFp32Local, RoundMode::CAST_RINT, cnt);
@@ -122,14 +122,17 @@ __aicore__ inline void RmsNormNormal(const LocalTensor<O>& outputLocal, const Gl
  * @param enableSmoothScalesCq 表示是否有smoothGm的需求
  */
 template <typename T, typename GammaType, typename SmoothType, typename C, typename O, typename U>
-__aicore__ inline void RmsNormDynamicQuant(const LocalTensor<O>& outputLocal, const LocalTensor<U> &outputScales, const GlobalTensor<T>& inputGm, const LocalTensor<GammaType>& gammaLocal,
-                                           const LocalTensor<SmoothType>& smoothLocal, const LocalTensor<float> &dequantScaleWDqLocal,
-                                           const LocalTensor<float>& dequantScaleXLocal, 
-                                           const LocalTensor<uint8_t>& shareTmpUb,
-                                           RmsNormParam& rmsNormParams, bool enableSmoothScalesCq = true) {
+__aicore__ inline void
+RmsNormDynamicQuant(const LocalTensor<O> &outputLocal, const LocalTensor<U> &outputScales,
+                    const GlobalTensor<T> &inputGm, const LocalTensor<GammaType> &gammaLocal,
+                    const LocalTensor<SmoothType> &smoothLocal, const LocalTensor<float> &dequantScaleWDqLocal,
+                    const LocalTensor<float> &dequantScaleXLocal, const LocalTensor<uint8_t> &shareTmpUb,
+                    RmsNormParam &rmsNormParams, bool enableSmoothScalesCq = true)
+{
     int64_t cnt = rmsNormParams.row * rmsNormParams.col;
     LocalTensor<C> xFp32Local = shareTmpUb.ReinterpretCast<C>();
-    RmsNormNormal<T, GammaType, C, C, U>(xFp32Local, inputGm, gammaLocal, dequantScaleWDqLocal, dequantScaleXLocal, shareTmpUb[rmsNormParams.col * sizeof(C)], rmsNormParams);
+    RmsNormNormal<T, GammaType, C, C, U>(xFp32Local, inputGm, gammaLocal, dequantScaleWDqLocal, dequantScaleXLocal,
+                                         shareTmpUb[rmsNormParams.col * sizeof(C)], rmsNormParams);
     AscendC::PipeBarrier<PIPE_V>();
     if (enableSmoothScalesCq) {
         Mul(xFp32Local, xFp32Local, smoothLocal, cnt);
@@ -139,7 +142,8 @@ __aicore__ inline void RmsNormDynamicQuant(const LocalTensor<O>& outputLocal, co
     int64_t rowAlign = Align(rmsNormParams.row, FP32_BLOCK_ELEMENT_NUM);
     Duplicate<C>(maxInt8Tensor, static_cast<C>(127.0), rowAlign);
     AscendC::PipeBarrier<PIPE_V>();
-    DynamicQuant(xFp32Local, outputScales, xFp32Local, maxInt8Tensor, shareTmpUb[(cnt + rowAlign) * sizeof(C)], rmsNormParams.row, rmsNormParams.col);
+    DynamicQuant(xFp32Local, outputScales, xFp32Local, maxInt8Tensor, shareTmpUb[(cnt + rowAlign) * sizeof(C)],
+                 rmsNormParams.row, rmsNormParams.col);
     AscendC::PipeBarrier<PIPE_V>();
     CastFP32ToINT8(outputLocal, xFp32Local, shareTmpUb, cnt);
     AscendC::PipeBarrier<PIPE_V>();

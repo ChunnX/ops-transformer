@@ -24,23 +24,27 @@
 namespace MlaProlog {
 
 template <typename T, typename C, typename O>
-__aicore__ inline void DynamicQuantMultiRow(const GlobalTensor<O>& outputGm, const LocalTensor<C>& scaleOutputLocal, const GlobalTensor<T>& inputGm, 
-                                        const LocalTensor<C> outputLocal, const LocalTensor<T>& inputHalf, const LocalTensor<C>& inputLocal, 
-                                        const LocalTensor<C>& maxInt8Tensor, const LocalTensor<uint8_t>& shareTmpUb, 
-                                        uint64_t row, uint64_t col, uint64_t subRow, uint64_t queryOutStride,
-                                        uint32_t DYNAMIC_QUANT_INPUT_READY, uint32_t DYNAMIC_QUANT_OUTPUT_READY) {
+__aicore__ inline void DynamicQuantMultiRow(const GlobalTensor<O> &outputGm, const LocalTensor<C> &scaleOutputLocal,
+                                            const GlobalTensor<T> &inputGm, const LocalTensor<C> outputLocal,
+                                            const LocalTensor<T> &inputHalf, const LocalTensor<C> &inputLocal,
+                                            const LocalTensor<C> &maxInt8Tensor, const LocalTensor<uint8_t> &shareTmpUb,
+                                            uint64_t row, uint64_t col, uint64_t subRow, uint64_t queryOutStride,
+                                            uint32_t DYNAMIC_QUANT_INPUT_READY, uint32_t DYNAMIC_QUANT_OUTPUT_READY)
+{
     constexpr uint64_t inputBlockAlign = (ALIGN_BLOCK_SIZE / sizeof(T));
     constexpr uint64_t outputBlockAlign = (ALIGN_BLOCK_SIZE / sizeof(O));
     // DataCopyParams  : count len srcStrideIn dstStrideIn
-    DataCopyParams outParams {(uint16_t)subRow, (uint16_t)(col / outputBlockAlign), 0, (uint16_t)((queryOutStride - col) / outputBlockAlign)};
-    DataCopyParams inputParams {(uint16_t)subRow, (uint16_t)(col / inputBlockAlign), (uint16_t)((queryOutStride - col) / inputBlockAlign), 0};
+    DataCopyParams outParams{(uint16_t)subRow, (uint16_t)(col / outputBlockAlign), 0,
+                             (uint16_t)((queryOutStride - col) / outputBlockAlign)};
+    DataCopyParams inputParams{(uint16_t)subRow, (uint16_t)(col / inputBlockAlign),
+                               (uint16_t)((queryOutStride - col) / inputBlockAlign), 0};
 
     uint32_t computeSize = subRow * col;
     uint64_t loopCnt = CeilDivT(row, subRow);
     uint64_t lastSubRow = row - (loopCnt - 1) * subRow;
     uint64_t inputGmOffset = 0;
     uint64_t scaleOffset = 0;
-    
+
     for (uint64_t loopIdx = 0; loopIdx < loopCnt; loopIdx++) {
         if ((loopIdx == loopCnt - 1) && (lastSubRow != subRow)) {
             subRow = lastSubRow;
@@ -70,11 +74,12 @@ __aicore__ inline void DynamicQuantMultiRow(const GlobalTensor<O>& outputGm, con
 }
 
 template <typename T, typename C>
-__aicore__ inline void MulQr(const GlobalTensor<T>& outputGmRope, const GlobalTensor<T>& inputGmRope, LocalTensor<T> outputLocalRope,
-                               const LocalTensor<T>& qrInputLocal, const LocalTensor<C>& qrFp32Local,
-                               const LocalTensor<C>& reciprocalLocal, const LocalTensor<C>& dequantScaleBrcbLocal,
-                               uint64_t row, uint64_t colRope, uint64_t subRowRope, uint64_t qrOutputStrideRope, float quantScaleCkvRope,
-                               uint32_t MUL_QR_INPUT_COPY_READY, uint32_t MUL_QR){
+__aicore__ inline void
+MulQr(const GlobalTensor<T> &outputGmRope, const GlobalTensor<T> &inputGmRope, LocalTensor<T> outputLocalRope,
+      const LocalTensor<T> &qrInputLocal, const LocalTensor<C> &qrFp32Local, const LocalTensor<C> &reciprocalLocal,
+      const LocalTensor<C> &dequantScaleBrcbLocal, uint64_t row, uint64_t colRope, uint64_t subRowRope,
+      uint64_t qrOutputStrideRope, float quantScaleCkvRope, uint32_t MUL_QR_INPUT_COPY_READY, uint32_t MUL_QR)
+{
     constexpr uint64_t inputBlockAlign = (ALIGN_BLOCK_SIZE / sizeof(T));
     constexpr uint64_t computeBlockAlign = (ALIGN_BLOCK_SIZE / sizeof(C));
 
@@ -83,13 +88,15 @@ __aicore__ inline void MulQr(const GlobalTensor<T>& outputGmRope, const GlobalTe
     uint32_t computeSizeRope = subRowRope * colRope;
 
     // DataCopyParams  : count len srcStrideIn dstStrideIn
-    DataCopyParams inputParamsRope {(uint16_t)row, (uint16_t)(colRope / inputBlockAlign), (uint16_t)((qrOutputStrideRope - colRope) / inputBlockAlign), 0};
-    DataCopyParams outputParamsRope {(uint16_t)(subRowRope), (uint16_t)(colRope / inputBlockAlign), 0, (uint16_t)((qrOutputStrideRope - colRope) / inputBlockAlign)};
+    DataCopyParams inputParamsRope{(uint16_t)row, (uint16_t)(colRope / inputBlockAlign),
+                                   (uint16_t)((qrOutputStrideRope - colRope) / inputBlockAlign), 0};
+    DataCopyParams outputParamsRope{(uint16_t)(subRowRope), (uint16_t)(colRope / inputBlockAlign), 0,
+                                    (uint16_t)((qrOutputStrideRope - colRope) / inputBlockAlign)};
 
     uint64_t inputGmRopeOffset = 0;
     uint64_t dequantScaleOffset = 0;
     uint64_t inputLocalRopeOffset = 0;
-    
+
 
     WaitFlag<HardEvent::V_MTE2>(MUL_QR_INPUT_COPY_READY);
     DataCopy(qrInputLocal, inputGmRope, inputParamsRope);
@@ -144,20 +151,25 @@ __aicore__ inline void MulQr(const GlobalTensor<T>& outputGmRope, const GlobalTe
 template <typename T, typename C, typename O>
 __aicore__ inline void DynamicQuantQnWithMulQr(
     // Dynamic Quant With MulQr 输出
-    const GlobalTensor<C>& scaleOutputGm, const GlobalTensor<O>& outputGm, const GlobalTensor<T>& outputGmRope,
+    const GlobalTensor<C> &scaleOutputGm, const GlobalTensor<O> &outputGm, const GlobalTensor<T> &outputGmRope,
     // Dynamic Quant 入参
-    const GlobalTensor<T>& inputGm, LocalTensor<uint8_t>& shareTmpUb, uint64_t row, uint64_t col,  
-     uint64_t scaleOutStride, uint64_t queryOutStride,
+    const GlobalTensor<T> &inputGm, LocalTensor<uint8_t> &shareTmpUb, uint64_t row, uint64_t col,
+    uint64_t scaleOutStride, uint64_t queryOutStride,
     // Mul Qr 入参
-    const GlobalTensor<T>& inputGmRope, float quantScaleCkvRope, uint64_t colRope, uint64_t qrOutputStrideRope,
-    uint32_t cvRatio) {
-    if (row == 0 || col == 0) { return; }
+    const GlobalTensor<T> &inputGmRope, float quantScaleCkvRope, uint64_t colRope, uint64_t qrOutputStrideRope,
+    uint32_t cvRatio)
+{
+    if (row == 0 || col == 0) {
+        return;
+    }
     // 常量
     constexpr uint32_t MUL_QR = EVENT_ID1; // 用于控制Mul_Qr的同步
-    constexpr uint32_t DYNAMIC_QUANT_INPUT_READY = EVENT_ID0; //dynamicquant输入的计算/搬运 是否已经完成可以开始下一轮的 搬运/计算
+    constexpr uint32_t DYNAMIC_QUANT_INPUT_READY =
+        EVENT_ID0; // dynamicquant输入的计算/搬运 是否已经完成可以开始下一轮的 搬运/计算
     constexpr uint32_t MUL_QR_INPUT_COPY_READY = EVENT_ID3; // 是否可以开始下一轮的MUL_QR_INPUT_COPY
-    constexpr uint32_t CALC_SCALE_FINISH = EVENT_ID0; // dynamicquant的scale是否计算完成可以开始搬运
-    constexpr uint32_t DYNAMIC_QUANT_OUTPUT_READY = EVENT_ID3; //dynamicquant输出的计算/搬运 是否已经完成可以开始下一轮的 搬运/计算
+    constexpr uint32_t CALC_SCALE_FINISH = EVENT_ID0;       // dynamicquant的scale是否计算完成可以开始搬运
+    constexpr uint32_t DYNAMIC_QUANT_OUTPUT_READY =
+        EVENT_ID3; // dynamicquant输出的计算/搬运 是否已经完成可以开始下一轮的 搬运/计算
 
     constexpr uint64_t computeBlockAlign = (ALIGN_BLOCK_SIZE / sizeof(C));
     constexpr uint64_t inputBlockAlign = (ALIGN_BLOCK_SIZE / sizeof(T));
@@ -191,7 +203,8 @@ __aicore__ inline void DynamicQuantQnWithMulQr(
     LocalTensor<C> scaleOutputLocal = dynamicQuantUb[computeSize + brcbCnt * computeBlockAlign];
     LocalTensor<C> scaleBrcb = scaleOutputLocal[Align(row, computeBlockAlign)];
 
-    // Rope Post Process流程在Dynamic Quant流程结束，两者UB Buffer不会同时使用，故可以从起始位置开始重新计算，减少UB Buffer使用
+    // Rope Post Process流程在Dynamic Quant流程结束，两者UB Buffer不会同时使用，故可以从起始位置开始重新计算，减少UB
+    // Buffer使用
     LocalTensor<C> qrFp32Local = inputLocal;
     LocalTensor<C> reciprocalLocal = qrFp32Local[computeSizeRope + computeBlockAlign];
 
@@ -200,26 +213,28 @@ __aicore__ inline void DynamicQuantQnWithMulQr(
     AscendC::PipeBarrier<PIPE_V>();
 
     DynamicQuantMultiRow(outputGm, scaleOutputLocal, inputGm, outputLocal, inputHalf, inputLocal, maxInt8Tensor,
-                        dynamicQuantUb.template ReinterpretCast<uint8_t>(), row, col, subRow, queryOutStride, DYNAMIC_QUANT_INPUT_READY, DYNAMIC_QUANT_OUTPUT_READY);
+                         dynamicQuantUb.template ReinterpretCast<uint8_t>(), row, col, subRow, queryOutStride,
+                         DYNAMIC_QUANT_INPUT_READY, DYNAMIC_QUANT_OUTPUT_READY);
 
     Brcb(scaleBrcb, scaleOutputLocal, CeilDivT(row, computeBlockAlign), {1, computeBlockAlign});
     AscendC::PipeBarrier<PIPE_V>();
 
     // DataCopyParams  : count len srcStrideIn dstStrideIn
-    DataCopyParams scaleOutCopyParams {(uint16_t)row, (uint16_t)sizeof(C), 0, (uint16_t)((scaleOutStride - 1) * sizeof(C))};
+    DataCopyParams scaleOutCopyParams{(uint16_t)row, (uint16_t)sizeof(C), 0,
+                                      (uint16_t)((scaleOutStride - 1) * sizeof(C))};
 
     SetFlag<HardEvent::V_MTE3>(CALC_SCALE_FINISH);
     WaitFlag<HardEvent::V_MTE3>(CALC_SCALE_FINISH);
     DataCopyPad(scaleOutputGm, scaleBrcb, scaleOutCopyParams);
 
     // qr rope 后的乘法
-    MulQr(outputGmRope, inputGmRope,  outputLocalRope, qrInputLocal, qrFp32Local, reciprocalLocal, scaleBrcb, row, colRope,
-          subRowRope, qrOutputStrideRope, quantScaleCkvRope, MUL_QR_INPUT_COPY_READY, MUL_QR);
+    MulQr(outputGmRope, inputGmRope, outputLocalRope, qrInputLocal, qrFp32Local, reciprocalLocal, scaleBrcb, row,
+          colRope, subRowRope, qrOutputStrideRope, quantScaleCkvRope, MUL_QR_INPUT_COPY_READY, MUL_QR);
 
     SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
     WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
 }
 
-}
+} // namespace MlaProlog
 
 #endif
