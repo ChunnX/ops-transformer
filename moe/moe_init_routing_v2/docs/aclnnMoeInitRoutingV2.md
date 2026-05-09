@@ -289,21 +289,9 @@ aclnnStatus aclnnMoeInitRoutingV2(
         <td>计算输入和输出的数据类型和格式不在支持的范围内。</td>
       </tr>
       <tr>
-        <td rowspan="5">ACLNN_ERR_INNER_TILING_ERROR</td>
-        <td rowspan="5">561002</td>
-        <td>expertTokensCountOrCumsumOut需要输出时，expertNum等于0。</td>
-      </tr>
-      <tr>
-        <td>x和expertIdx的shape维度不等于2，且第一维不相等。</td>
-      </tr>
-      <tr>
-        <td>activeNum、expertNum、expertCapacity的值小于0。</td>
-      </tr>
-      <tr>
-        <td>dropPadMode、expertTokensCountOrCumsumFlag、expertTokensBeforeCapacityFlag不在取值范围内。</td>
-      </tr>
-      <tr>
-        <td>dropPadMode等于1时，expertCapacity和expertNum等于0。</td>
+        <td rowspan="5">ACLNN_ERR_INNER_NULLPTR</td>
+        <td rowspan="5">561103</td>
+        <td>API内部校验错误，通常由于输入的shape或属性的规格不在支持的范围之内导致。</td>
       </tr>
     </tbody>
   </table>

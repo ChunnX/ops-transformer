@@ -233,12 +233,9 @@ aclnnStatus aclnnMoeFinalizeRoutingV2(
     <td>输入和输出的数据类型和数据格式不在支持的范围之内。</td>
     </tr>
     <tr>
-    <td rowspan="2"> ACLNN_ERR_INNER_TILING_ERROR </td>
-    <td rowspan="2"> 561002 </td>
-    <td>多个输入tensor之间的shape信息不匹配。</td>
-    </tr>
-    <tr>
-    <td>输入属性和输入tensor之间的shape信息不匹配。</td>
+    <td rowspan="2"> ACLNN_ERR_INNER_NULLPTR </td>
+    <td rowspan="2"> 561103 </td>
+    <td>API内部校验错误，通常由于输入的shape或属性的规格不在支持的范围之内导致。</td>
     </tr>
   </tbody></table>
 
