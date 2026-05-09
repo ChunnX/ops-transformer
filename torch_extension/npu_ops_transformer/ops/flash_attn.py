@@ -53,7 +53,7 @@ class FlashAttenOpBuilder(OpBuilder):
                 tSize = q.size(0)
                 nSize = q.size(1)
                 dSize = v.size(2)
-                softmaxOutSize = (nSize, tSize)
+                softmaxOutSize = (tSize, nSize)
             elif layout_q == "BSND":
                 bSize = q.size(0)
                 sSize = q.size(1)

@@ -226,7 +226,7 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
             print("[WARN] precision_visual 导入失败，请确认 matplotlib 已安装")
         except Exception as exc:
             print(f"[WARN] 可视化异常: {exc}")
-    return passed
+    return passed, lse_passed
 
 def build_case_keys_pool(case_choice):
     """返回 (keys_pool, conflict_warning_list)"""
@@ -310,7 +310,7 @@ if __name__ == "__main__":
         
         print(f"{'='*66}")
         try:
-            passed = call_flash_attn(name, dump_tensors=args.dump_tensors,
+            passed, lse_passed = call_flash_attn(name, dump_tensors=args.dump_tensors,
                                      dump_dir=args.dump_dir, verbose_diff=args.verbose_diff,
                                      visualize=args.visualize, viz_dir=args.viz_dir,
                                      meta_only=args.meta_only, **kwargs)
@@ -319,7 +319,10 @@ if __name__ == "__main__":
             print(f"[ERROR] {name} 运行异常: {e}")
             traceback.print_exc()
             passed = False
-        results[name] = passed
+        name_out = name + " Attention Out"
+        results[name_out] = passed
+        name_lse = name + " LSE"
+        results[name_lse] = lse_passed
 
     # 汇总表格
     SEP = "─" * 50
