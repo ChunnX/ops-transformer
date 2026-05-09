@@ -762,11 +762,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             }
             
             UpdateGlobalBuffer(gmmAddrInfo, 0);
-            if (subBlockIdx_ == 0) {
-                MegaMoeImpl::GroupMatmulSwigluQuant<
-                    QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType>(
-                    epilogueOp_, params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
-            }
+            // if (subBlockIdx_ == 0) {
+            MegaMoeImpl::GroupMatmulSwigluQuant<
+                QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType>(
+                epilogueOp_, params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
+            // }
 
             // dispatch领先一个专家，用独立变量；最后一个专家越界则跳过
             if constexpr(g_coreType == AscendC::AIV) {

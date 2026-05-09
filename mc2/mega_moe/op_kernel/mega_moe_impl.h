@@ -60,6 +60,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
 
     uint32_t blockNum = GetBlockNum();
     uint32_t blockIdx = GetBlockIdx() / GetTaskRation();
+    uint32_t subBlockIdx = GetSubBlockIdx();
     uint32_t dispatchBlockNumPerEP = params.tilingData->blockNumPerEP;
 
     GlobalTensor<int32_t> groupFlagListGm2;
@@ -190,6 +191,9 @@ __aicore__ inline void GroupMatmulSwigluQuant(
         vecSetSyncCom = 1;
 
         if constexpr (g_coreType == AscendC::AIV) {
+            if (subBlockIdx == 1) {
+                break;
+            }
             Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{
                 Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape), 0, 0};
             Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> epilogueOffset{
@@ -221,13 +225,6 @@ __aicore__ inline void GroupMatmul2(
     uint32_t blockNum = GetBlockNum();
     uint32_t blockIdx = GetBlockIdx() / GetTaskRation();
     uint32_t subBlockIdx = GetSubBlockIdx();
-
-    // Route: AIC(matmul) on subBlock 0, AIV(combine) on subBlock 1
-    if constexpr (g_coreType == AscendC::AIC) {
-        if (subBlockIdx != 0) return;
-    } else {
-        if (subBlockIdx != 1) return;
-    }
 
     GlobalTensor<int32_t> groupFlagListGm;
     groupFlagListGm.SetGlobalBuffer((__gm__ int32_t*)gmmAddrInfo.groupFlagList);
@@ -351,6 +348,9 @@ __aicore__ inline void GroupMatmul2(
             // tile完成，在对应核心位置+1
             AscendC::AtomicAdd((__gm__ int32_t*)rowReadyFlags.GetPhyAddr() + blockIdx, int32_t(1));
         } else {
+            if (subBlockIdx == 0) {
+                break;
+            }
             // AIV: 等待对应C核完成并combine发送
             while (ReadGmByPassDCache((__gm__ int32_t*)rowReadyFlags.GetPhyAddr() + blockIdx) < 1) {
                 int64_t st = GetSystemCycle();
