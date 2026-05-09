@@ -980,29 +980,29 @@ static bool CheckDtype_X2(const gert::TilingContext *context, MatmulReduceScatte
 
 static void PrintTilingDataInfo(MatmulReduceScatterV2AivModeInfo &info, CoCTiling &cocTilingInfo)
 {
-    OP_LOGD("MatmulReduceScatterV2AivModeTiling", " tiling.M %u", info.M);
-    OP_LOGD("MatmulReduceScatterV2AivModeTiling", " tiling.k %u", info.K);
-    OP_LOGD("MatmulReduceScatterV2AivModeTiling", " tiling.N %u", info.N);
-    OP_LOGD("MatmulReduceScatterV2AivModeTiling", " tiling.aivNum %u", info.aivNum);
-    OP_LOGD("MatmulReduceScatterV2AivModeTiling", " tiling.totalUbSize %u", info.totalUbSize);
-    OP_LOGD("MatmulReduceScatterV2AivModeTiling", " tiling.isTransposeA %d", info.isTransposeA);
-    OP_LOGD("MatmulReduceScatterV2AivModeTiling", " tiling.isTransposeB %d", info.isTransposeB);
-    OP_LOGD("MatmulReduceScatterV2AivModeTiling", " tiling.aAlignSize %lu", info.aAlignSize);
-    OP_LOGD("MatmulReduceScatterV2AivModeTiling", " tiling.bAlignSize %lu", info.bAlignSize);
-    OP_LOGD("MatmulReduceScatterV2AivModeTiling", " tiling.quantFlag %d", info.quantFlag);
-    OP_LOGD("MatmulReduceScatterV2AivModeTiling", " tiling.is910C %d", info.is910C);
-    OP_LOGD("MatmulReduceScatterV2AivModeTiling", " tiling.isX2ScaleTypeInt64 %d", info.isX2ScaleTypeInt64);
+    OP_LOGD("MatmulReduceScatterV2AivModeTiling", "tiling.M %u", info.M);
+    OP_LOGD("MatmulReduceScatterV2AivModeTiling", "tiling.k %u", info.K);
+    OP_LOGD("MatmulReduceScatterV2AivModeTiling", "tiling.N %u", info.N);
+    OP_LOGD("MatmulReduceScatterV2AivModeTiling", "tiling.aivNum %u", info.aivNum);
+    OP_LOGD("MatmulReduceScatterV2AivModeTiling", "tiling.totalUbSize %u", info.totalUbSize);
+    OP_LOGD("MatmulReduceScatterV2AivModeTiling", "tiling.isTransposeA %d", info.isTransposeA);
+    OP_LOGD("MatmulReduceScatterV2AivModeTiling", "tiling.isTransposeB %d", info.isTransposeB);
+    OP_LOGD("MatmulReduceScatterV2AivModeTiling", "tiling.aAlignSize %lu", info.aAlignSize);
+    OP_LOGD("MatmulReduceScatterV2AivModeTiling", "tiling.bAlignSize %lu", info.bAlignSize);
+    OP_LOGD("MatmulReduceScatterV2AivModeTiling", "tiling.quantFlag %d", info.quantFlag);
+    OP_LOGD("MatmulReduceScatterV2AivModeTiling", "tiling.is910C %d", info.is910C);
+    OP_LOGD("MatmulReduceScatterV2AivModeTiling", "tiling.isX2ScaleTypeInt64 %d", info.isX2ScaleTypeInt64);
 
-    OP_LOGD("MatmulReduceScatterV2AivModeTiling", " tiling.m0 %d", cocTilingInfo.m0);
-    OP_LOGD("MatmulReduceScatterV2AivModeTiling", " tiling.k0 %d", cocTilingInfo.k0);
-    OP_LOGD("MatmulReduceScatterV2AivModeTiling", " tiling.n0 %d", cocTilingInfo.n0);
-    OP_LOGD("MatmulReduceScatterV2AivModeTiling", " tiling.swizzlCount %d", cocTilingInfo.swizzlCount);
-    OP_LOGD("MatmulReduceScatterV2AivModeTiling", " tiling.swizzlDirect %d", cocTilingInfo.swizzlDirect);
-    OP_LOGD("MatmulReduceScatterV2AivModeTiling", " tiling.pValue %d", cocTilingInfo.pValue);
-    OP_LOGD("MatmulReduceScatterV2AivModeTiling", " tiling.ubMoveNum %d", cocTilingInfo.ubMoveNum);
-    OP_LOGD("MatmulReduceScatterV2AivModeTiling", " tiling.commNpuSplit %d", cocTilingInfo.commNpuSplit);
-    OP_LOGD("MatmulReduceScatterV2AivModeTiling", " tiling.commDataSplit %d", cocTilingInfo.commDataSplit);
-    OP_LOGD("MatmulReduceScatterV2AivModeTiling", " tiling.lenPerLoop %d", cocTilingInfo.lenPerLoop);
+    OP_LOGD("MatmulReduceScatterV2AivModeTiling", "tiling.m0 %d", cocTilingInfo.m0);
+    OP_LOGD("MatmulReduceScatterV2AivModeTiling", "tiling.k0 %d", cocTilingInfo.k0);
+    OP_LOGD("MatmulReduceScatterV2AivModeTiling", "tiling.n0 %d", cocTilingInfo.n0);
+    OP_LOGD("MatmulReduceScatterV2AivModeTiling", "tiling.swizzlCount %d", cocTilingInfo.swizzlCount);
+    OP_LOGD("MatmulReduceScatterV2AivModeTiling", "tiling.swizzlDirect %d", cocTilingInfo.swizzlDirect);
+    OP_LOGD("MatmulReduceScatterV2AivModeTiling", "tiling.pValue %d", cocTilingInfo.pValue);
+    OP_LOGD("MatmulReduceScatterV2AivModeTiling", "tiling.ubMoveNum %d", cocTilingInfo.ubMoveNum);
+    OP_LOGD("MatmulReduceScatterV2AivModeTiling", "tiling.commNpuSplit %d", cocTilingInfo.commNpuSplit);
+    OP_LOGD("MatmulReduceScatterV2AivModeTiling", "tiling.commDataSplit %d", cocTilingInfo.commDataSplit);
+    OP_LOGD("MatmulReduceScatterV2AivModeTiling", "tiling.lenPerLoop %d", cocTilingInfo.lenPerLoop);
 }
 
 ge::graphStatus MatmulReduceScatterTilingV2AivModeFunc(gert::TilingContext *context)
@@ -1062,7 +1062,7 @@ ge::graphStatus MatmulReduceScatterTilingV2AivModeFunc(gert::TilingContext *cont
     uint64_t tilingKey = INIT_TILINGKEY;
     GetTilingKey(tilingKey, info, context);
     context->SetTilingKey(tilingKey);
-    OP_LOGD("MatmulReduceScatterV2AivModeTiling", " tilingkey is %lu", tilingKey);
+    OP_LOGD("MatmulReduceScatterV2AivModeTiling", "tilingkey is %lu", tilingKey);
 
     // 4. workspace
     size_t *workSpaces = context->GetWorkspaceSizes(1);

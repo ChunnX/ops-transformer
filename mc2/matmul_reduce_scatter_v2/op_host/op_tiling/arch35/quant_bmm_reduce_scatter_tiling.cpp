@@ -515,54 +515,54 @@ ge::graphStatus QuantBmmReduceScatterTiling::GetWorkspaceSize()
 
 void PrintTCubeTilingParams(const std::string &opName, DequantBmm::Mc2QuantBatchMatmulV3DataParams &tiling)
 {
-    OP_LOGD(opName, " tiling.batchA %d", tiling.batchA);
-    OP_LOGD(opName, " tiling.batchB %d", tiling.batchB);
-    OP_LOGD(opName, " tiling.batchC %d", tiling.batchC);
-    OP_LOGD(opName, " tiling.batchA1 %d", tiling.batchA1);
-    OP_LOGD(opName, " tiling.batchA2 %d", tiling.batchA2);
-    OP_LOGD(opName, " tiling.batchA3 %d", tiling.batchA3);
-    OP_LOGD(opName, " tiling.batchA4 %d", tiling.batchA4);
-    OP_LOGD(opName, " tiling.batchB1 %d", tiling.batchB1);
-    OP_LOGD(opName, " tiling.batchB2 %d", tiling.batchB2);
-    OP_LOGD(opName, " tiling.batchB3 %d", tiling.batchB3);
-    OP_LOGD(opName, " tiling.batchB4 %d", tiling.batchB4);
-    OP_LOGD(opName, " tiling.batchC1 %d", tiling.batchC1);
-    OP_LOGD(opName, " tiling.batchC2 %d", tiling.batchC2);
-    OP_LOGD(opName, " tiling.batchC3 %d", tiling.batchC3);
-    OP_LOGD(opName, " tiling.batchC4 %d", tiling.batchC4);
-    OP_LOGD(opName, " tiling.singleCoreBatch %d", tiling.singleCoreBatch);
-    OP_LOGD(opName, " tiling.realSingleCoreM %d", tiling.realSingleCoreM);
-    OP_LOGD(opName, " tiling.realSingleCoreN %d", tiling.realSingleCoreN);
-    OP_LOGD(opName, " tiling.isPerTensor %d", tiling.isPerTensor);
-    OP_LOGD(opName, " tiling.isDoubleScale %d", tiling.isDoubleScale);
-    OP_LOGD(opName, " tiling.isPertoken %d", tiling.isPertoken);
-    OP_LOGD(opName, " tiling.biasThreeDim %d", tiling.biasThreeDim);
-    OP_LOGD(opName, " tiling.ubCalcM %d", tiling.ubCalcM);
-    OP_LOGD(opName, " tiling.ubCalcN %d", tiling.ubCalcN);
-    OP_LOGD(opName, " tiling.needUbBuffer %d", tiling.needUbBuffer);
-    OP_LOGD(opName, " tiling.biasDtype %d", tiling.biasDtype);
-    OP_LOGD(opName, " tiling.ubSize %d", tiling.ubSize);
-    OP_LOGD(opName, " tiling.groupSizeM %d", tiling.groupSizeM);
-    OP_LOGD(opName, " tiling.groupSizeN %d", tiling.groupSizeN);
-    OP_LOGD(opName, " tiling.groupSizeK %d", tiling.groupSizeK);
-    OP_LOGD(opName, " tiling.isMClash %d", tiling.isMClash);
-    OP_LOGD(opName, " tiling.isNClash %d", tiling.isNClash);
+    OP_LOGD(opName, "tiling.batchA %d", tiling.batchA);
+    OP_LOGD(opName, "tiling.batchB %d", tiling.batchB);
+    OP_LOGD(opName, "tiling.batchC %d", tiling.batchC);
+    OP_LOGD(opName, "tiling.batchA1 %d", tiling.batchA1);
+    OP_LOGD(opName, "tiling.batchA2 %d", tiling.batchA2);
+    OP_LOGD(opName, "tiling.batchA3 %d", tiling.batchA3);
+    OP_LOGD(opName, "tiling.batchA4 %d", tiling.batchA4);
+    OP_LOGD(opName, "tiling.batchB1 %d", tiling.batchB1);
+    OP_LOGD(opName, "tiling.batchB2 %d", tiling.batchB2);
+    OP_LOGD(opName, "tiling.batchB3 %d", tiling.batchB3);
+    OP_LOGD(opName, "tiling.batchB4 %d", tiling.batchB4);
+    OP_LOGD(opName, "tiling.batchC1 %d", tiling.batchC1);
+    OP_LOGD(opName, "tiling.batchC2 %d", tiling.batchC2);
+    OP_LOGD(opName, "tiling.batchC3 %d", tiling.batchC3);
+    OP_LOGD(opName, "tiling.batchC4 %d", tiling.batchC4);
+    OP_LOGD(opName, "tiling.singleCoreBatch %d", tiling.singleCoreBatch);
+    OP_LOGD(opName, "tiling.realSingleCoreM %d", tiling.realSingleCoreM);
+    OP_LOGD(opName, "tiling.realSingleCoreN %d", tiling.realSingleCoreN);
+    OP_LOGD(opName, "tiling.isPerTensor %d", tiling.isPerTensor);
+    OP_LOGD(opName, "tiling.isDoubleScale %d", tiling.isDoubleScale);
+    OP_LOGD(opName, "tiling.isPertoken %d", tiling.isPertoken);
+    OP_LOGD(opName, "tiling.biasThreeDim %d", tiling.biasThreeDim);
+    OP_LOGD(opName, "tiling.ubCalcM %d", tiling.ubCalcM);
+    OP_LOGD(opName, "tiling.ubCalcN %d", tiling.ubCalcN);
+    OP_LOGD(opName, "tiling.needUbBuffer %d", tiling.needUbBuffer);
+    OP_LOGD(opName, "tiling.biasDtype %d", tiling.biasDtype);
+    OP_LOGD(opName, "tiling.ubSize %d", tiling.ubSize);
+    OP_LOGD(opName, "tiling.groupSizeM %d", tiling.groupSizeM);
+    OP_LOGD(opName, "tiling.groupSizeN %d", tiling.groupSizeN);
+    OP_LOGD(opName, "tiling.groupSizeK %d", tiling.groupSizeK);
+    OP_LOGD(opName, "tiling.isMClash %d", tiling.isMClash);
+    OP_LOGD(opName, "tiling.isNClash %d", tiling.isNClash);
 }
 
 void PrintTCubeTilingWindowParam(const std::string &opName, DequantBmm::Mc2SlidingWindowParams &tiling)
 {
-    OP_LOGD(opName, " tiling.mTailTile %d", tiling.mTailTile);
-    OP_LOGD(opName, " tiling.nTailTile %d", tiling.nTailTile);
+    OP_LOGD(opName, "tiling.mTailTile %d", tiling.mTailTile);
+    OP_LOGD(opName, "tiling.nTailTile %d", tiling.nTailTile);
 }
 
 void PrintTCubeTilingL2cache(const std::string &opName, DequantBmm::Mc2L2cacheTileParams &tiling)
 {
-    OP_LOGD(opName, " tiling.calOrder %d", tiling.calOrder);
-    OP_LOGD(opName, " tiling.mTileCntL2 %d", tiling.mTileCntL2);
-    OP_LOGD(opName, " tiling.nTileCntL2 %d", tiling.nTileCntL2);
-    OP_LOGD(opName, " tiling.mTileBlock %d", tiling.mTileBlock);
-    OP_LOGD(opName, " tiling.nTileBlock %d", tiling.nTileBlock);
-    OP_LOGD(opName, " tiling.isBasicTiling %d", tiling.isBasicTiling);
+    OP_LOGD(opName, "tiling.calOrder %d", tiling.calOrder);
+    OP_LOGD(opName, "tiling.mTileCntL2 %d", tiling.mTileCntL2);
+    OP_LOGD(opName, "tiling.nTileCntL2 %d", tiling.nTileCntL2);
+    OP_LOGD(opName, "tiling.mTileBlock %d", tiling.mTileBlock);
+    OP_LOGD(opName, "tiling.nTileBlock %d", tiling.nTileBlock);
+    OP_LOGD(opName, "tiling.isBasicTiling %d", tiling.isBasicTiling);
 }
 
 ge::graphStatus QuantBmmReduceScatterTiling::PostTiling()
