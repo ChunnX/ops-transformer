@@ -34,7 +34,7 @@ public:
 
 private:
     __aicore__ inline void CopyInDstToSrcIndices(int64_t progress);
-    __aicore__ inline void GatherOutOneBlock(int64_t outPosStart, int64_t outPosRows,
+    __aicore__ inline void GatherOutOneBlock(int64_t outPosStart, int64_t outPosRows, int64_t indexOffset,
                                              LocalTensor<int32_t> &dstToSrcLocal);
     __aicore__ inline void GatherOut(int64_t progress);
     __aicore__ inline void CopyOutZero(int64_t progress, LocalTensor<int32_t> &dstToSrcLocal);
@@ -81,18 +81,26 @@ __aicore__ inline void MoeV2GatherOutBatchRow<T>::CopyInDstToSrcIndices(int64_t 
 
 template <typename T>
 __aicore__ inline void MoeV2GatherOutBatchRow<T>::GatherOutOneBlock(int64_t outPosStart, int64_t outPosRows,
+                                                                    int64_t indexOffset,
                                                                     LocalTensor<int32_t> &dstToSrcLocal)
 {
     LocalTensor<T> outRowsLocal = outputRowsQueue.AllocTensor<T>();
 
-    for (int64_t outPosIdx = 0; outPosIdx < outPosRows; outPosIdx++) {
-        int32_t expandedTokenIdx = dstToSrcLocal.GetValue(outPosIdx);
+    Duplicate(outRowsLocal, static_cast<T>(0), outPosRows * this->cols);
 
-        if (expandedTokenIdx == -1) {
+    for (int64_t outPosIdx = 0; outPosIdx < outPosRows; outPosIdx++) {
+        int32_t expandedTokenIdx = dstToSrcLocal.GetValue(indexOffset + outPosIdx);
+
+        if (expandedTokenIdx < 0 || expandedTokenIdx >= this->totalLength ||
+            (this->dropPadMode == DROPLESS_MODE && expandedTokenIdx >= this->activateRows)) {
             continue;
         }
 
         int64_t srcRowIdx = expandedTokenIdx / this->k;
+
+        if (srcRowIdx < 0 || srcRowIdx >= this->n) {
+            continue;
+        }
 
         DataCopyExtParams copyInParams{1, static_cast<uint32_t>(this->cols * sizeof(T)), 0, 0, 0};
         DataCopyPadExtParams<T> copyInPadParams{false, 0, 0, 0};
@@ -100,11 +108,14 @@ __aicore__ inline void MoeV2GatherOutBatchRow<T>::GatherOutOneBlock(int64_t outP
                     copyInPadParams);
     }
 
+    AscendC::PipeBarrier<PIPE_MTE2>();
+
     SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
 
     DataCopyExtParams copyOutParams{static_cast<uint16_t>(outPosRows), static_cast<uint32_t>(this->cols * sizeof(T)), 0,
                                     0, 0};
-    DataCopyPad(expandedXGm[outPosStart * this->cols], outRowsLocal, copyOutParams);
+    DataCopyPadExtParams<T> copyOutPadParams{false, 0, 0, 0};
+    DataCopyPad(expandedXGm[outPosStart * this->cols], outRowsLocal, copyOutParams, copyOutPadParams);
 
     outputRowsQueue.FreeTensor(outRowsLocal);
 }
@@ -115,10 +126,6 @@ __aicore__ inline void MoeV2GatherOutBatchRow<T>::GatherOut(int64_t progress)
     CopyInDstToSrcIndices(progress);
     LocalTensor<int32_t> dstToSrcLocal = dstToSrcIndexQueue.DeQue<int32_t>();
     SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
-
-    if (this->dropPadMode == DROP_PAD_MODE) {
-        CopyOutZero(progress, dstToSrcLocal);
-    }
 
     int64_t outPosStart = this->gatherOutTilingData->perCoreRows * this->blockIdx + this->perLoopRows * progress;
     int64_t totalOutPosRows = this->currentLoopRows;
@@ -132,7 +139,8 @@ __aicore__ inline void MoeV2GatherOutBatchRow<T>::GatherOut(int64_t progress)
         }
 
         int64_t blockOutPosStart = outPosStart + ubBlockIdx * this->ubRowsPerLoop;
-        GatherOutOneBlock(blockOutPosStart, currentUbRows, dstToSrcLocal);
+        int64_t blockIndexOffset = ubBlockIdx * this->ubRowsPerLoop;
+        GatherOutOneBlock(blockOutPosStart, currentUbRows, blockIndexOffset, dstToSrcLocal);
     }
 
     dstToSrcIndexQueue.FreeTensor(dstToSrcLocal);
@@ -194,14 +202,15 @@ __aicore__ inline void MoeV2GatherOutBatchRow<T>::Init(GM_ADDR inputX, GM_ADDR e
 
     this->ubRowsPerLoop = this->gatherOutTilingData->perLoopCols;
 
-    int64_t maxPerLoopRows = this->gatherOutTilingData->perCorePerLoopRows > this->gatherOutTilingData->lastCorePerLoopRows 
-        ? this->gatherOutTilingData->perCorePerLoopRows 
-        : this->gatherOutTilingData->lastCorePerLoopRows;
+    int64_t maxPerLoopRows =
+        this->gatherOutTilingData->perCorePerLoopRows > this->gatherOutTilingData->lastCorePerLoopRows ?
+            this->gatherOutTilingData->perCorePerLoopRows :
+            this->gatherOutTilingData->lastCorePerLoopRows;
 
     inputXGm.SetGlobalBuffer((__gm__ T *)inputX, this->n * this->cols);
     expandedXGm.SetGlobalBuffer((__gm__ T *)expandedX, this->totalLength * this->cols);
 
-    dstToSrcIndexGm.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx +
+    dstToSrcIndexGm.SetGlobalBuffer((__gm__ int32_t *)workspace + Align(this->totalLength, sizeof(int32_t)) +
                                         this->blockIdx * this->gatherOutTilingData->perCoreRows,
                                     Align(this->coreRows, sizeof(int32_t)));
 
