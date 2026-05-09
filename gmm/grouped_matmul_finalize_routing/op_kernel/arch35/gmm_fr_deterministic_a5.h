@@ -10,20 +10,16 @@
 
 /*!
  * \file gmm_fr_deterministic_a5.h
- * \brief A5 platform deterministic deferred aggregation for GMMFR.
+ * \brief A5 deterministic deferred aggregation for GMMFR.
  *
- * A3 prototype: op_kernel/grouped_matmul_finalize_routing.h
- *   - FRDeterministic() line 653-687
- *   - VectorSync() line 622-649
+ * Ported from A3 FRDeterministic() (grouped_matmul_finalize_routing.h line 653-687).
  *
  * Data flow:
- *   1. Prologue writes to yGm (zeros + residual), NOT to workspace
- *   2. SequentialWrite Epilogue writes dequant to workspace (no AtomicAdd, no scatter)
- *   3. This function aggregates: workspace[mOffset] -> yGm[outRow] via AtomicAdd
+ *   1. Prologue -> yGm (zeros + residual)
+ *   2. SequentialWrite epilogue -> workspace (no race)
+ *   3. This function: workspace[mOffset] -> yGm[outRow] via AtomicAdd
  *
- * Determinism guarantee:
- *   - Each workspace address has exactly one writer (Epilogue, no race)
- *   - Each yGm outRow is owned by exactly one core (outRow % coreNumVec)
+ * Determinism: each workspace address written by one core, each outRow owned by one core.
  */
 
 #ifndef GMM_FR_DETERMINISTIC_A5_H
@@ -35,42 +31,28 @@ namespace GMMFRDeterministic {
 
 using namespace AscendC;
 
-// Consistent with A3 constants
-constexpr uint32_t DETER_UB_SIZE = 12 * 1024;   // Deterministic UB buffer size (12KB)
+// Constants consistent with A3
+constexpr uint32_t DETER_UB_SIZE = 12 * 1024;
 constexpr uint32_t BUFFER_NUM = 2;
 
-// Sliding window sync config (identical to A3 SyncConfig)
+// Sync config (matches A3 SyncConfig layout)
 struct SyncConfig {
-    uint64_t curM = 0;        // Current accumulated row offset
-    uint64_t curGroup = 0;    // Current group index
-    uint64_t curGroupM = 0;   // Current accumulated rows within group
-    uint64_t lowBoundM = 0;   // Window lower bound
-    uint64_t windowSize = 0;  // Window size = deterWorkspaceSize / (N * sizeof(float))
-    uint64_t baseN = 0;       // N-dim block size, 128-aligned
+    uint64_t curM = 0;
+    uint64_t curGroup = 0;
+    uint64_t curGroupM = 0;
+    uint64_t lowBoundM = 0;
+    uint64_t windowSize = 0;
+    uint64_t baseN = 0;
 };
 
 /**
- * FRDeterministicA5 - A5 deterministic deferred aggregation core function
+ * FRDeterministicA5 - Deferred aggregation: workspace -> yGm via rowIndex + AtomicAdd.
  *
- * A3 prototype: QuantGroupMatmul<P>::FRDeterministic()
- *               (grouped_matmul_finalize_routing.h line 653-687)
+ * Ported from A3 FRDeterministic() (line 653-687).
+ * Workspace rows in input-row order (mOffset), mapped to output rows via rowIndex.
+ * Deterministic: each outRow owned by exactly one core (outRow % coreNumVec).
  *
- * Workspace layout (set by SequentialWrite epilogue):
- *   workspace[mOffset * N + nOffset] = dequant_result (NO residual)
- *   Rows are in absolute input-row order (mOffset), NOT in output-row order.
- *   Prologue writes residual to yGm, not to workspace.
- *
- * Aggregation logic:
- *   1. SyncAll - ensure workspace writes complete
- *   2. For each mOffset, look up outRow via rowIndex
- *   3. AtomicAdd workspace[mOffset*N] to yGm[outRow*N]
- *      yGm already has residual from Prologue
- *      Deterministic because: each outRow is owned by exactly one core
- *   4. SyncAll - ensure all writes complete
- *
- * Template params:
- *   DTYPE_OUT       - Output data type (float)
- *   ROW_INDEX_DTYPE - Row index data type (int64_t or int32_t)
+ * Template: DTYPE_OUT (float), ROW_INDEX_DTYPE (int32_t or int64_t)
  */
 template <typename DTYPE_OUT, typename ROW_INDEX_DTYPE>
 __aicore__ inline void FRDeterministicA5(
@@ -83,28 +65,23 @@ __aicore__ inline void FRDeterministicA5(
     uint32_t n)
 {
     if (g_coreType == AIC) {
-        // A5 SyncAll requires all cores to participate (strict 1:1 pairing)
-        // AIC cores only sync, no actual data processing
+        // A5 SyncAll requires all cores to participate; AIC cores only sync
         SyncAll();
         SyncAll();
         return;
     }
 
-    SyncAll();  // Step 1: Full sync, ensure workspace writes complete
+    SyncAll();  // Ensure workspace writes complete
 
     uint64_t totalM = syncConfig.curM - (syncConfig.lowBoundM - syncConfig.windowSize);
     uint64_t coreNumVec = coreNum * GetTaskRation();
     uint64_t baseOffset = syncConfig.lowBoundM - syncConfig.windowSize;
 
-    // Step 2: Read workspace by mOffset, AtomicAdd to yGm by outRow
-    //
-    // yGm has already been initialized by the Prologue (zeros + residual).
-    // We AtomicAdd workspace values on top of Prologue's initial values.
-    // This is deterministic because each outRow is owned by exactly one core.
+    // Read workspace by mOffset, AtomicAdd to yGm by outRow (one writer per outRow)
     for (uint64_t mOffset = 0; mOffset < totalM; mOffset++) {
         auto outRow = static_cast<uint64_t>(tokenRanksGm.GetValue(baseOffset + mOffset));
 
-        // Row ownership: only the core with outRow % coreNumVec == GetBlockIdx() handles this row
+        // Row ownership: only the core matching outRow % coreNumVec handles this row
         if (outRow % coreNumVec != GetBlockIdx()) {
             continue;
         }
@@ -112,10 +89,9 @@ __aicore__ inline void FRDeterministicA5(
         uint64_t curVecBaseN = syncConfig.baseN;
         for (uint64_t nOffset = 0; nOffset < n; nOffset += syncConfig.baseN) {
             if (nOffset + syncConfig.baseN >= n) {
-                curVecBaseN = n - nOffset;  // Tail block
+                curVecBaseN = n - nOffset;
             }
 
-            // Read from workspace to UB
             LocalTensor<DTYPE_OUT> bindLocal = queBind.AllocTensor<DTYPE_OUT>();
             DataCopyExtParams copyParams{1, static_cast<uint32_t>(curVecBaseN * sizeof(DTYPE_OUT)), 0, 0, 0};
             DataCopyPadExtParams<DTYPE_OUT> padParams{false, 0, 0, 0};
@@ -123,7 +99,7 @@ __aicore__ inline void FRDeterministicA5(
             queBind.EnQue(bindLocal);
             bindLocal = queBind.DeQue<DTYPE_OUT>();
 
-            // Atomic write to final output (single writer per outRow, deterministic)
+            // AtomicAdd workspace -> yGm (single writer per outRow)
             SetAtomicAdd<DTYPE_OUT>();
             DataCopyExtParams paramsOut{1, static_cast<uint32_t>(curVecBaseN * sizeof(DTYPE_OUT)), 0, 0, 0};
             DataCopyPad(yGm[outRow * n + nOffset], bindLocal, paramsOut);
@@ -132,7 +108,7 @@ __aicore__ inline void FRDeterministicA5(
             queBind.FreeTensor(bindLocal);
         }
     }
-    SyncAll();  // Step 4: Full sync, ensure all writes complete
+    SyncAll();  // Ensure all writes complete
 }
 
 }  // namespace GMMFRDeterministic

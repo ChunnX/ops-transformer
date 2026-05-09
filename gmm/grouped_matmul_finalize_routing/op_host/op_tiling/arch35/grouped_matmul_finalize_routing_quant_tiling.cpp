@@ -517,8 +517,8 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::DoLibApiTiling()
     tilingData_.matmulTiling.stepKb = basicTiling_.stepKb;
     tilingData_.matmulTiling.isBias = inputParams_.hasBias ? 1 : 0;
     tilingData_.matmulTiling.iterateOrder = basicTiling_.iterateOrder;
-    tilingData_.matmulTiling.dbL0A = 2; // db switch, 1: off, 2: on
-    tilingData_.matmulTiling.dbL0B = 2; // db switch, 1: off, 2: on
+    tilingData_.matmulTiling.dbL0A = 2; // double buffer on
+    tilingData_.matmulTiling.dbL0B = 2;
     tilingData_.matmulTiling.dbL0C = basicTiling_.dbL0c;
     if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE) {
         if (basicTiling_.scaleFactorA >= SCALER_FACTOR_MIN && basicTiling_.scaleFactorA <= SCALER_FACTOR_MAX &&
