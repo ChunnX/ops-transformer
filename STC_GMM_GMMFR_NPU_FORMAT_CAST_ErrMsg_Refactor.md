@@ -23,7 +23,7 @@
 
 | 测试层级 | 测试类型 | 测试对象 | 验证内容 | 测试工具 |
 | --- | --- | --- | --- | --- |
-| **UT** | 单元测试 | op_api/op_host函数 | 错误码上报正确性、参数验证逻辑 | pytest/gtest |
+| **UT** | 单元测试 | op_api/op_host函数 | 错误码上报正确性、参数验证逻辑 | gtest |
 | **ST** | 系统测试 | ACLNN API调用 | 错误日志输出格式、端到端错误传递 | Python ACL脚本 |
 | **冒烟测试** | 快速验证 | 关键场景 | 基本功能正确性、编译通过性 | build.sh + UT |
 
@@ -209,50 +209,6 @@ ST测试用例脑图
 │  │  ├─ ACL日志中EZ码正确性
 │  │  ├─ 错误码与错误类型匹配
 │  │  └─ 错误码格式符合规范
-│  ├─ 1.2 错误信息完整性验证
-│  │  ├─ 参数名准确传递
-│  │  ├─ 错误原因描述清晰
-│  │  ├─ 实际值与期望值对比
-│  │  └─ 算子名正确显示
-│  └─ 1.3 错误日志格式验证
-│     ├─ 日志格式符合CANN规范
-│     ├─ 关键信息可解析
-│     └─ 日志级别正确（ERROR）
-├─ 2. 多算子一致性验证
-│  ├─ 2.1 相同错误场景对比
-│  │  ├─ GMM vs GMMFR dtype错误
-│  │  ├─ GMM vs FORMAT_CAST shape错误
-│  │  └─ 错误码一致性
-│  ├─ 2.2 错误信息格式统一性
-│  │  ├─ 参数命名风格统一
-│  │  ├─ 错误描述风格统一
-│  │  └─ 日志格式统一
-│  └─ 2.3 不同SOC版本兼容性
-│     ├─ A5 vs 910B错误码一致
-│     ├─ 公共代码 vs A5代码一致
-│     └─ 量化 vs 非量化场景一致
-├─ 3. 性能影响验证
-│  ├─ 3.1 整改前后性能对比
-│  │  ├─ 正常场景性能无退化
-│  │  ├─ 错误上报性能影响
-│  │  └─ 日志格式化开销
-│  └─ 3.2 内存占用验证
-│     ├─ 内存占用无增加
-│     ├─ 错误信息长度合理
-│     └─ 日志缓冲区无溢出
-└─ 4. 真实场景验证
-   ├─ 4.1 模型推理场景
-   │  ├─ GMM在MoE模型中的错误上报
-   │  ├─ FORMAT_CAST在量化模型中的错误上报
-   │  └─ 错误信息可定位问题
-   ├─ 4.2 多并发场景
-   │  ├─ 多线程错误上报不冲突
-   │  ├─ 错误日志不丢失
-   │  └─ 错误码不混淆
-   └─ 4.3 长时间运行场景
-      ├─ 错误日志稳定性
-      ├─ 内存不泄漏
-      └─ 性能不退化
 ```
 
 ### 3.2 ST测试用例明细表
@@ -363,26 +319,14 @@ ST测试用例脑图
 | Phase 0 | 测试用例设计 | 5.9-5.12 | 设计ErrMsg整改专项测试用例 | - | 测试用例文档、测试数据 |
 | Phase 1 | UT测试执行 | 5.18-5.20 | 执行整改文件的UT测试 | pytest/gtest | UT测试报告 |
 | Phase 2 | ST测试执行 | 5.22-5.25 | 执行端到端ST测试 | Python ACL脚本 | ST测试报告 |
-| Phase 3 | 性能验证 | 5.26-5.27 | 性能对比、内存验证 | 性能测试工具 | 性能测试报告 |
-| Phase 4 | 冒烟测试 | 5.28-5.29 | 整改后冒烟测试验证 | build.sh + UT | 冒烟测试报告 |
+| Phase 3 | 冒烟测试 | 5.28-5.29 | 整改后冒烟测试验证 | build.sh + UT | 冒烟测试报告 |
 
-### 5.2 测试环境要求
-
-| 环境项 | 要求 | 说明 |
-| --- | --- | --- |
-| SOC版本 | Ascend950/Ascend910B | 覆盖A5和公共代码 |
-| CANN版本 | 9.0.0+ | 支持EZ错误码规范 |
-| Python版本 | 3.7+ | ACL Python API |
-| pytest版本 | 6.0+ | UT测试框架 |
-| ACL日志配置 | ERROR级别开启 | 捕获错误日志 |
-
-### 5.3 测试数据准备
+### 5.2 测试数据准备
 
 **测试数据分类：**
 1. **正常场景数据**：验证整改后功能不受影响
 2. **边界场景数据**：shape边界值、dtype边界值等
 3. **异常场景数据**：非法dtype、非法shape、非法format等
-4. **真实模型数据**：MoE模型、量化模型的真实输入
 
 **数据生成脚本：**
 ```python
@@ -415,7 +359,6 @@ def generate_shape_error_test_data():
 | 错误码精确性 | 所有错误场景上报精确EZ码（非EZ9999） | UT反向测试通过率100% |
 | 参数名准确性 | 错误信息中参数名与实际参数名一致 | UT日志解析验证 |
 | 错误描述准确性 | 错误原因描述清晰、准确 | UT错误信息关键字匹配 |
-| 覆盖率要求 | 整改文件UT覆盖率≥80% | pytest覆盖率报告 |
 
 ### 6.2 ST测试验收标准
 
@@ -426,47 +369,9 @@ def generate_shape_error_test_data():
 | 多算子一致性 | 相同错误场景错误码一致 | ST对比测试通过 |
 | 真实场景可用性 | 错误信息可定位问题根源 | 真实场景测试通过 |
 
-### 6.3 性能验收标准
-
-| 验收项 | 验收标准 | 验证方法 |
-| --- | --- | --- |
-| 性能不退化 | 整改后性能退化≤5% | 性能对比测试 |
-| 内存不泄漏 | 长时间运行内存稳定 | 内存监控测试 |
-| 错误上报耗时 | 错误上报耗时≤100ms | 错误上报性能测试 |
-
 ---
 
-## 7. 测试报告模板
-
-### 7.1 UT测试报告模板
-
-```markdown
-## UT测试报告
-
-**测试时间：** YYYY-MM-DD
-**测试人员：** XXX
-**测试环境：** Ascend950, CANN 9.0.0
-
-### 1. 测试执行情况
-
-| 测试项 | 用例数 | 通过数 | 失败数 | 通过率 |
-| --- | ---: | ---: | ---: | ---: |
-| dtype错误测试 | 15 | 15 | 0 | 100% |
-| format错误测试 | 10 | 10 | 0 | 100% |
-| shape错误测试 | 20 | 20 | 0 | 100% |
-| dim错误测试 | 12 | 12 | 0 | 100% |
-| value错误测试 | 18 | 18 | 0 | 100% |
-| **总计** | **75** | **75** | **0** | **100%** |
-
-### 2. 错误码验证结果
-
-| 错误类型 | 预期错误码 | 实际错误码 | 参数名准确性 | 错误描述准确性 | 结果 |
-| --- | --- | --- | --- | --- | --- |
-| dtype错误 | EZ0020 | EZ0020 | ✅ | ✅ | PASS |
-| shape错误 | EZ0008 | EZ0008 | ✅ | ✅ | PASS |
-| ... | ... | ... | ... | ... | ... |
-
-### 3. 典型错误日志示例
+### 2. 典型错误日志示例
 
 **示例1：dtype错误**
 ```
@@ -479,291 +384,3 @@ Reason: Only support INT8/FLOAT16/BF16.
 [ERROR] EZ0008: Parameter x of operator grouped_matmul has incorrect shape [64,128]. 
 The correct one should be [128,256].
 ```
-
-### 4. 覆盖率报告
-
-| 文件 | 整改前覆盖率 | 整改后覆盖率 | 变化 |
-| --- | ---: | ---: | ---: |
-| grouped_matmul_weight_quant_950_checker.cpp | 65% | 82% | +17% |
-| grouped_matmul_finalize_routing_weight_quant_tiling.cpp | 58% | 85% | +27% |
-| aclnn_npu_format_cast.cpp | 70% | 88% | +18% |
-
-### 5. 测试结论
-
-✅ 所有UT测试用例通过
-✅ 错误码上报精确性符合要求
-✅ 参数名传递准确性符合要求
-✅ UT覆盖率达标
-```
-
-### 7.2 ST测试报告模板
-
-```markdown
-## ST测试报告
-
-**测试时间：** YYYY-MM-DD
-**测试人员：** XXX
-**测试环境：** Ascend950/910B, CANN 9.0.0
-
-### 1. 端到端测试执行情况
-
-| 测试项 | 用例数 | 通过数 | 失败数 | 通过率 |
-| --- | ---: | ---: | ---: | ---: |
-| 错误日志验证 | 10 | 10 | 0 | 100% |
-| 多算子一致性 | 5 | 5 | 0 | 100% |
-| 性能影响验证 | 3 | 3 | 0 | 100% |
-| 真实场景验证 | 3 | 3 | 0 | 100% |
-| **总计** | **21** | **21** | **0** | **100%** |
-
-### 2. 错误日志分析结果
-
-**错误日志格式正确性：**
-- ✅ EZ错误码正确显示
-- ✅ 算子名正确传递
-- ✅ 参数名准确显示
-- ✅ 错误原因描述清晰
-- ✅ 实际值与期望值对比准确
-
-**多算子一致性验证：**
-- ✅ GMM vs GMMFR dtype错误码一致
-- ✅ GMM vs NPU_FORMAT_CAST shape错误码一致
-- ✅ 不同SOC版本错误上报一致
-
-### 3. 性能测试结果
-
-| 性能项 | 整改前 | 整改后 | 变化 | 结论 |
-| --- | ---: | ---: | ---: | --- |
-| 正常场景耗时 | 10ms | 10.2ms | +2% | ✅ 性能无退化 |
-| 错误上报耗时 | - | 15ms | - | ✅ 耗时合理 |
-| 内存占用 | 100MB | 100.5MB | +0.5% | ✅ 内存稳定 |
-
-### 4. 真实场景验证结果
-
-**MoE模型错误定位测试：**
-- ✅ 错误信息可快速定位到具体参数
-- ✅ 错误原因清晰易懂
-- ✅ 错误日志格式符合规范
-
-**量化模型format错误测试：**
-- ✅ format转换路径清晰显示
-- ✅ src→dst format完整展示
-- ✅ 错误原因准确定位
-
-### 5. 测试结论
-
-✅ 所有ST测试用例通过
-✅ 端到端错误传递符合要求
-✅ 错误信息完整性符合要求
-✅ 多算子一致性符合要求
-✅ 性能影响符合要求
-✅ 真实场景可用性符合要求
-```
-
----
-
-## 8. 反串讲要点
-
-### 8.1 ErrMsg整改反串讲重点
-
-**反串讲目标：**
-1. 确认测试用例覆盖整改内容完整性
-2. 确认测试设计符合ErrMsg整改要求
-3. 确认测试验收标准合理可行
-4. 确认测试环境与工具准备充分
-
-**反串讲清单：**
-
-| 序号 | 反串讲项 | 反串讲内容 | 验证要点 | 预期结果 |
-| --- | --- | --- | --- | --- |
-| 1 | **整改点覆盖** | 测试用例是否覆盖所有整改点 | 1.对照整改表格逐项检查<br>2.确认每类错误都有测试用例<br>3.重点文件专项测试完整 | 所有整改点都有对应测试用例 |
-| 2 | **错误码精确性** | 测试用例是否验证错误码精确性 | 1.确认EZ码替换EZ9999<br>2.确认错误码与错误类型匹配<br>3.确认参数名准确传递 | 所有错误场景上报精确EZ码 |
-| 3 | **测试数据准备** | 异常测试数据是否充分 | 1.非法dtype/shape/format数据<br>2.边界场景数据<br>3.真实模型数据 | 测试数据覆盖所有错误场景 |
-| 4 | **测试环境准备** | 测试环境是否满足要求 | 1.SOC版本配置<br>2.CANN版本要求<br>3.ACL日志配置 | 测试环境配置正确 |
-| 5 | **测试工具准备** | 测试工具是否可用 | 1.pytest/gtest框架<br>2.日志解析工具<br>3.性能测试工具 | 测试工具准备充分 |
-| 6 | **验收标准确认** | 验收标准是否合理 | 1.覆盖率要求合理<br>2.性能要求合理<br>3.错误码要求合理 | 验收标准可达成 |
-| 7 | **风险评估** | 测试风险是否识别 | 1.新增错误码审批延迟风险<br>2.公共代码整改范围风险<br>3.测试数据准备风险 | 风险已识别并有缓解措施 |
-| 8 | **测试计划确认** | 测试计划是否合理 | 1.测试时间节点合理<br>2.测试工作量合理<br>3.测试资源充足 | 测试计划可行 |
-
-### 8.2 反串讲问题清单
-
-**关键问题：**
-
-| 问题编号 | 问题内容 | 问题类型 | 责任人 | 回答要点 |
-| --- | --- | --- | --- | --- |
-| Q1 | 新增错误码（EZ_RUNTIME_ERROR等）审批时间较长，如何保证测试进度？ | 进度风险 | 琦钧 | 1.提前提交审批申请<br>2.预留缓冲时间<br>3.先测试可整改部分 |
-| Q2 | 公共代码暂不整改，测试范围是否包含公共代码？ | 测试范围 | 琦钧 | 1.本次仅测试A5整改文件<br>2.公共代码整改时再补充测试<br>3.SRS已明确范围 |
-| Q3 | OPS_REPORT有93条需逐条分析，测试如何覆盖？ | 测试覆盖 | 琦钧 | 1.按分类规则测试<br>2.参数验证类全量测试<br>3.内部错误类上报测试 |
-| Q4 | NPU_FORMAT_CAST的运行时错误如何触发测试？ | 测试方法 | 琦钧 | 1.Mock内存分配失败<br>2.传入超大shape tensor<br>3.验证新增错误码上报 |
-| Q5 | 测试覆盖率80%是否足够？ | 验收标准 | 琦钧 | 1.80%为最低要求<br>2.重点文件目标85%+<br>3.可根据实际情况调整 |
-| Q6 | 真实模型测试数据如何准备？ | 测试数据 | 琦钧 | 1.准备MoE模型样本数据<br>2.准备量化模型样本数据<br>3.使用公开模型数据集 |
-
-### 8.3 反串讲输出物
-
-**反串讲输出：**
-1. **反串讲记录文档**：记录反串讲问题和解答
-2. **测试用例清单**：确认后的测试用例清单
-3. **测试计划确认表**：确认后的测试计划
-4. **风险评估表**：识别的风险和缓解措施
-
----
-
-## 9. 附录
-
-### 9.1 测试用例执行脚本模板
-
-```python
-# UT测试执行脚本示例
-import pytest
-import acl
-
-class TestGMMErrMsgRefactor:
-    """GMM算子ErrMsg整改UT测试"""
-    
-    def test_dtype_error_ez0020(self):
-        """测试dtype错误上报EZ0020"""
-        # 准备非法dtype输入
-        x = acl.Tensor(shape=[64,256], dtype="DOUBLE")  # 非法dtype
-        weight = acl.Tensor(shape=[256,128], dtype="INT8")
-        
-        # 调用ACLNN API
-        ret = acl.nn.grouped_matmul(x, weight, ...)
-        
-        # 验证错误码
-        assert ret == acl.ACLNN_ERR_PARAM_INVALID
-        
-        # 捕获并解析错误日志
-        log = acl.get_error_log()
-        assert "EZ0020" in log
-        assert "Parameter x has incorrect dtype DOUBLE" in log
-        assert "Reason:" in log
-    
-    def test_shape_error_ez0008(self):
-        """测试shape错误上报EZ0008"""
-        # 准备非法shape输入
-        x = acl.Tensor(shape=[64,128], dtype="INT8")  # shape不匹配
-        weight = acl.Tensor(shape=[256,128], dtype="INT8")
-        
-        # 调用ACLNN API
-        ret = acl.nn.grouped_matmul(x, weight, ...)
-        
-        # 验证错误码和错误信息
-        log = acl.get_error_log()
-        assert "EZ0008" in log
-        assert "Parameter x has incorrect shape [64,128]" in log
-        assert "The correct one should be [128,256]" in log
-
-if __name__ == "__main__":
-    pytest.main(["-v", "--cov=grouped_matmul", "--cov-report=html"])
-```
-
-### 9.2 测试数据生成工具
-
-```python
-# 异常测试数据生成工具
-class ErrMsgTestDataGenerator:
-    """ErrMsg整改测试数据生成器"""
-    
-    @staticmethod
-    def generate_dtype_error_cases():
-        """生成dtype错误测试用例数据"""
-        return [
-            {"case_name": "unsupported_dtype", "dtype": "DOUBLE", "expect_err": "EZ0020"},
-            {"case_name": "dtype_mismatch", "dtype": ["FLOAT16", "BF16"], "expect_err": "EZ0021"},
-        ]
-    
-    @staticmethod
-    def generate_shape_error_cases():
-        """生成shape错误测试用例数据"""
-        return [
-            {"case_name": "shape_mismatch", "shape": [64,128], "expect_shape": [128,256], "expect_err": "EZ0008"},
-            {"case_name": "empty_tensor", "shape": [0,256], "expect_err": "EZ0009"},
-        ]
-    
-    @staticmethod
-    def generate_format_error_cases():
-        """生成format错误测试用例数据"""
-        return [
-            {"case_name": "unsupported_format", "format": "NCHW", "expect_err": "EZ0018"},
-            {"case_name": "format_mismatch", "format": ["ND", "NCHW"], "expect_err": "EZ0017"},
-        ]
-```
-
-### 9.3 错误日志解析工具
-
-```python
-# 错误日志解析工具
-import re
-
-class ErrLogParser:
-    """ACL错误日志解析器"""
-    
-    @staticmethod
-    def parse_error_code(log):
-        """解析错误码"""
-        pattern = r'EZ(\d{4})'
-        match = re.search(pattern, log)
-        return match.group(0) if match else None
-    
-    @staticmethod
-    def parse_error_message(log):
-        """解析错误信息"""
-        pattern = r'Parameter (\w+) of operator (\w+) has incorrect (\w+)'
-        match = re.search(pattern, log)
-        if match:
-            return {
-                "param_name": match.group(1),
-                "op_name": match.group(2),
-                "error_type": match.group(3)
-            }
-        return None
-    
-    @staticmethod
-    def validate_error_log(log, expected_err_code, expected_param_name):
-        """验证错误日志是否符合预期"""
-        err_code = ErrLogParser.parse_error_code(log)
-        err_msg = ErrLogParser.parse_error_message(log)
-        
-        return err_code == expected_err_code and err_msg["param_name"] == expected_param_name
-```
-
----
-
-## 10. 测试总结
-
-### 10.1 测试关键点总结
-
-**ErrMsg整改测试三大关键点：**
-
-1. **错误码精确性验证**
-   - 从EZ9999通用错误码改为精确EZ0008-EZ0024
-   - 每类错误对应特定EZ错误码
-   - 测试验证错误码与错误类型匹配
-
-2. **错误信息准确性验证**
-   - 参数名从模糊描述改为具体参数名
-   - 错误原因描述清晰详细
-   - 实际值与期望值对比展示
-
-3. **整改影响验证**
-   - 功能不受影响（正常场景测试）
-   - 性能不退化（性能对比测试）
-   - 内存不泄漏（长时间运行测试）
-
-### 10.2 测试价值总结
-
-**ErrMsg整改测试价值：**
-
-| 价值项 | 具体价值 |
-| --- | --- |
-| **问题定位效率提升** | 错误信息精确后，问题定位时间缩短50%+ |
-| **用户体验改善** | 错误信息清晰易懂，用户可快速修复问题 |
-| **运维成本降低** | 错误日志标准化，自动化运维工具可解析 |
-| **代码质量提升** | 错误处理规范化，代码可维护性提升 |
-
----
-
-**文档版本：** V1.0  
-**创建时间：** 2026-05-09  
-**创建人：** 琦钧  
-**审核人：** XXX  
-**批准人：** XXX
