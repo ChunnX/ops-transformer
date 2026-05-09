@@ -222,10 +222,9 @@ aclnnStatus AclnnQuantGroupedMatmulInplaceAddDAV3510Checker<T>::CheckQuantGroupe
     if (xDtype == DataType::DT_HIFLOAT8 && weightDtype == DataType::DT_HIFLOAT8) {
         return CheckHif8QuantParams();
     } else {
-        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
-            "QuantGroupedMatmulInplaceAdd", "x, weight",
-            (std::string(op::ToString(xDtype).GetString()) + ", " + op::ToString(weightDtype).GetString()).c_str(),
-            "GmmInplaceAdd T-C/T-T Quant case with this x dtype and weight dtype combination is not supported");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "GmmInplaceAdd T-C/T-T Quant case with x dtype %s and weight dtype %s is not supported.",
+                op::ToString(xDtype).GetString(), op::ToString(weightDtype).GetString());
         return ACLNN_ERR_PARAM_INVALID;
     }
 }

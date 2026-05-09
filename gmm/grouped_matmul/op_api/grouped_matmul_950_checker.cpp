@@ -988,10 +988,10 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckFp8Params(const DataType &
                scaleDtype == DataType::DT_INT64) {
         return CheckFp8Hif8QuantParams();
     } else {
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON("GroupedMatmul", "scale", 
-                                              op::ToString(scaleDtype).GetString(),
-                                              "Unsupported quant scale dtype with float8 case");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Unsupported quant scale dtype %s with float8 case",
+                op::ToString(scaleDtype).GetString());
         return ACLNN_ERR_PARAM_INVALID;
+    }
 }
 
 template <typename T>
@@ -1004,17 +1004,19 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckFp4Params(const DataType &
     bool isE1M2 = (gmmParams_.xDtype == DataType::DT_FLOAT4_E1M2 ||
                    GetInputTensor(gmmParams_.weight)->GetDataType() == DataType::DT_FLOAT4_E1M2);
     if (isE1M2 && weightStorageFormat == op::Format::FORMAT_ND) {
-        OP_LOGE_FOR_INVALID_FORMAT("GroupedMatmul", "weight", "ND", "FRACTAL_NZ");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "float4_e1m2 does not support ND format. Weight storage format must be FRACTAL_NZ, but actual is ND.");
         return ACLNN_ERR_PARAM_INVALID;
+    }
     if (scaleDtype == DataType::DT_FLOAT8_E8M0) {
         return CheckGroupedMatmulMxfp4();
     }
     OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Unsupported quant scale dtype %s with float4 case",
             op::ToString(scaleDtype).GetString());
-    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON("GroupedMatmul", "scale", 
-                                          op::ToString(scaleDtype).GetString(),
-                                          "Unsupported quant scale dtype with float4 case");
     return ACLNN_ERR_PARAM_INVALID;
+}
+
+template <typename T>
 aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckInputAndOutputDtypeForV3Version() const
 {   
     DataType xDtype = gmmParams_.xDtype;
@@ -1131,9 +1133,7 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckGroupedMatmulDAV3510() con
     } else {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Quant case with x dtype %s and weight dtype %s is not supported.",
                 op::ToString(xDtype).GetString(), op::ToString(weightDtype).GetString());
-        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
-            "GroupedMatmul", "x, weight",
-            (std::string(op::ToString(xDtype).GetString()) + ", " + 
-             op::ToString(weightDtype).GetString()).c_str(),
-            "Quant case with this x dtype and weight dtype combination is not supported");
         return ACLNN_ERR_PARAM_INVALID;
+    }
+    return ACLNN_SUCCESS;
+}
