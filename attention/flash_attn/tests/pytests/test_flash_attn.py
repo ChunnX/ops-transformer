@@ -1,14 +1,34 @@
 import os
 import sys
 import argparse
+import importlib
+import itertools
+
 import torch
 import math
 import numpy as np
 from cpu_impl import tforward
 from test_utils import (generate_qkv, generate_pse, generate_npu_mask, trans_bnsd_to_layout, get_seqlen_list,
                          data_compare_benchmark_new, Result)
-from test_case import TestCases
-from test_case_fia_STC import TestCasesFIA
+
+_DEFAULT_CASE_FILES = ["test_case", "test_case_fia_STC", "test_case_functional_single"]
+
+
+def load_case_modules(module_names):
+    all_cases = {}
+    for mod_name in module_names:
+        mod = importlib.import_module(mod_name)
+        for case_name, case_dict in mod.TestCases.items():
+            keys = list(case_dict.keys())
+            values = [case_dict[k] for k in keys]
+            combos = list(itertools.product(*values))
+            if len(combos) == 1:
+                all_cases[f"{mod_name}/{case_name}"] = dict(zip(keys, combos[0]))
+            else:
+                for i, combo in enumerate(combos):
+                    all_cases[f"{mod_name}/{case_name}_{i}"] = dict(zip(keys, combo))
+    return all_cases
+
 
 # ------------------ 动态导入 GPU / NPU 实现 ------------------
 try:
@@ -88,26 +108,21 @@ def normalize_case(raw):
     c.setdefault("v_range",     None)
     if layout_q == "TND":
         if isinstance(c.get("cu_seqlens_q"), list):
-            # New 4-param style: cu_seqlens_q=(B+1,) cumulative with 0, seqused_q=(B,) individual actual
             cum_q_full  = list(c["cu_seqlens_q"])
             cum_kv_full = list(c.get("cu_seqlens_kv", cum_q_full))
             def _diffs(lst): return [lst[i+1] - lst[i] for i in range(len(lst) - 1)]
             ind_q  = list(c.get("seqused_q",  _diffs(cum_q_full)))
             ind_kv = list(c.get("seqused_kv", _diffs(cum_kv_full)))
-            # cpu_impl slices by cu_seqlens boundaries (without leading 0)
-            c["actual_seq_qlen"]  = cum_q_full[1:]    # [0, 128, 256, 512]
+            c["actual_seq_qlen"]  = cum_q_full[1:]
             c["actual_seq_kvlen"] = cum_kv_full[1:]
-            c["seqlens_list_q"]   = cum_q_full[1:]    # [128, 128, 256]
+            c["seqlens_list_q"]   = cum_q_full[1:]
             c["seqlens_list_kv"]  = cum_kv_full[1:]
-            # NPU: pass full (B+1,) list as cuSeqlens, (B,) individual as seqused
             c["_npu_cu_q"]       = cum_q_full
             c["_npu_cu_kv"]      = cum_kv_full
             c["_npu_seqused_q"]  = ind_q
             c["_npu_seqused_kv"] = ind_kv
-            # TND tensors are always [1, N, T, D]; request count is encoded in cu_seqlens lists
             c["B"] = 1
         else:
-            # Legacy style: cu_seqused_q/kv as cumulative list (with or without leading 0)
             cu_q  = list(c.get("cu_seqused_q", []))
             cu_kv = list(c.get("cu_seqused_kv", cu_q))
             if cu_q  and cu_q[0]  == 0: cu_q  = cu_q[1:]
@@ -119,10 +134,8 @@ def normalize_case(raw):
             c["B"] = 1
     return c
 
-def check_result(test_name, expect, result, except_label = "CPU", comp_label="NPU", verbose_diff=False):
-    """比较两个 tensor，输出精度报告。
-    comp_label 用于标识对比的另一方（如 'GPU'/'NPU'）。
-    """
+def check_result(test_name, expect, result, except_label="CPU", comp_label="NPU", verbose_diff=False):
+    """比较两个 tensor，输出精度报告。"""
     SEP = "─" * 64
     print(f"\n┌{SEP}┐")
     print(f"│  精度报告: {test_name}  ({except_label} vs {comp_label})")
@@ -181,7 +194,6 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
                     meta_only=False, compare_mode=False,
                     load_gpu_dump=None, load_npu_dump=None,
                     **kwargs):
-    # ... 参数提取（与原一致）...
     b          = kwargs.get("B", 1)
     n1         = kwargs.get("N1")
     n2         = kwargs.get("N2", n1)
@@ -228,7 +240,7 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
     # ------------------ 1. CPU Golden 计算 (总是执行) ------------------
     print(f"[{test_name}] CPU 参考计算...")
     out_cpu, _, _ = tforward(qf, kf, v, pse_cpu, **kwargs)
-    out_cpu_out_layout = trans_bnsd_to_layout(out_cpu, output_layout)  # CPU 标准结果，用于对比
+    out_cpu_out_layout = trans_bnsd_to_layout(out_cpu, output_layout)
     if dump_tensors:
         dump_path = os.path.join(dump_dir, test_name)
         os.makedirs(dump_path, exist_ok=True)
@@ -261,14 +273,10 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
             if dump_tensors:
                 dump_path = os.path.join(dump_dir, test_name)
                 os.makedirs(dump_path, exist_ok=True)
-                # save_tensor_to_txt(q.cpu(), os.path.join(dump_path, "q.txt"))
-                # save_tensor_to_txt(k.cpu(), os.path.join(dump_path, "k.txt"))
-                # save_tensor_to_txt(v.cpu(), os.path.join(dump_path, "v.txt"))
                 save_tensor_to_txt(gpu_out.float(), os.path.join(dump_path, "gpu_out.txt"))
                 print(f"[{test_name}] 已保存 q/k/v/gpu_out → {dump_path}/")
         else:
             print(f"[{test_name}] GPU 不可用，跳过计算。")
-    # 尝试从 dump 加载 GPU 结果（如果未计算）
     if gpu_out is None or load_gpu_dump:
         gpu_dump_path = load_gpu_dump if load_gpu_dump else os.path.join(dump_dir, test_name, "gpu_out.txt")
         if os.path.exists(gpu_dump_path):
@@ -278,25 +286,20 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
             print(f"[{test_name}] 未找到 GPU dump 文件: {gpu_dump_path}")
 
     # ---- NPU 计算或加载 dump ----
-    if not kwargs.get("_use_gpu", False):   # NPU 模式
+    if not kwargs.get("_use_gpu", False):
         if not NPU_AVAILABLE:
             print(f"[{test_name}] 警告: NPU 不可用，尝试从 dump 加载。")
         if NPU_AVAILABLE:
             print(f"[{test_name}] NPU 计算...")
             atten_mask = generate_npu_mask(b, sq, skv, sparse_mode, pre_tokens, next_tokens, prefix)
             npu_out = flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse_npu, **kwargs)
-            # flash_attn_npu 内部已将结果移至 CPU，这里 npu_out 即最终布局的输出
             if dump_tensors:
                 dump_path = os.path.join(dump_dir, test_name)
                 os.makedirs(dump_path, exist_ok=True)
-                # save_tensor_to_txt(q,                 os.path.join(dump_path, "q.txt"))
-                # save_tensor_to_txt(k,                 os.path.join(dump_path, "k.txt"))
-                # save_tensor_to_txt(v,                 os.path.join(dump_path, "v.txt"))
                 save_tensor_to_txt(npu_out.float(),   os.path.join(dump_path, "npu_out.txt"))
                 print(f"[{test_name}] 已保存 q/k/v/npu_out → {dump_path}/")
         else:
             print(f"[{test_name}] NPU 不可用，跳过计算。")
-    # 尝试从 dump 加载 NPU 结果（如果未计算）
     if npu_out is None or load_npu_dump:
         npu_dump_path = load_npu_dump if load_npu_dump else os.path.join(dump_dir, test_name, "npu_out.txt")
         if os.path.exists(npu_dump_path):
@@ -310,15 +313,14 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
     passed_cpu_npu = False
     passed_gpu_npu = False
 
-    # 三方对比模式（使用详细精度统计）
     if compare_mode:
         if gpu_out is not None and npu_out is not None:
             print(f"\n{'='*40} 三方对比模式（详细精度统计） {'='*40}")
-            
+
             dtype_str = kwargs.get("Dtype", "fp16")
             dtype_map = {"fp16": "fp16", "bf16": "bf16", "fp32": "fp32"}
             out_dtype_key = dtype_map.get(dtype_str, dtype_str)
-            
+
             params = {
                 "op_name": "flash_attn",
                 "case_name": test_name,
@@ -353,13 +355,13 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
                     }
                 },
             }
-            
+
             npu_np = npu_out.float().numpy()
             gpu_np = gpu_out.float().numpy()
             cpu_np = out_cpu_out_layout.float().numpy()
-            
+
             str1, str2, data = data_compare_benchmark_new(params, npu_np, gpu_np, cpu_np, out_dtype_key, i=0)
-            
+
             print("\n====== 三方对比结果 ======")
             print(f"状态: {str1}, 原因: {str2}")
             passed_cpu_gpu = (str1 == 'Pass')
@@ -368,31 +370,26 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
         else:
             print(f"[{test_name}] 缺少 GPU 或 NPU 结果，无法执行三方对比，使用标准对比模式。")
             compare_mode = False
-    
-    # 标准对比模式
+
     if not compare_mode:
-        # CPU vs GPU
         if gpu_out is not None:
             print(f"\n{'='*40} 对比 CPU vs GPU {'='*40}")
             passed_cpu_gpu = check_result(test_name + "_CPU_vs_GPU", out_cpu_out_layout.float(), gpu_out.float(), except_label="CPU", comp_label="GPU", verbose_diff=verbose_diff)
         else:
             print(f"[{test_name}] 缺少 GPU 结果，跳过 CPU vs GPU 对比。")
 
-        # CPU vs NPU
         if npu_out is not None:
             print(f"\n{'='*40} 对比 CPU vs NPU {'='*40}")
             passed_cpu_npu = check_result(test_name + "_CPU_vs_NPU", out_cpu_out_layout.float(), npu_out.float(), except_label="CPU", comp_label="NPU", verbose_diff=verbose_diff)
         else:
             print(f"[{test_name}] 缺少 NPU 结果，跳过 CPU vs NPU 对比。")
 
-        # GPU vs NPU
         if gpu_out is not None and npu_out is not None:
             print(f"\n{'='*40} 对比 GPU vs NPU {'='*40}")
             passed_gpu_npu = check_result(test_name + "_GPU_vs_NPU", gpu_out.float(), npu_out.float(), except_label="GPU", comp_label="NPU", verbose_diff=verbose_diff)
         else:
             print(f"[{test_name}] 缺少 GPU 或 NPU 结果，跳过 GPU vs NPU 对比。")
 
-    # 可视化（如果指定）
     if visualize:
         try:
             from precision_visual import visualize_from_tensors
@@ -405,44 +402,36 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
         except Exception as exc:
             print(f"[WARN] 可视化异常: {exc}")
 
-    # 返回总体结果：至少一方对比通过即可（可根据需求调整逻辑）
     at_least_one_pass = passed_cpu_gpu or passed_cpu_npu or passed_gpu_npu
     return at_least_one_pass
 
-# ------------------ 其它辅助函数（build_case_keys_pool 等）与原一致 ------------------
-def build_case_keys_pool(case_choice):
-    """返回 (keys_pool, conflict_warning_list)"""
-    if case_choice in ("base", "TestCases"):
-        return set(TestCases.keys()), []
-    elif case_choice in ("fia", "TestCasesFIA"):
-        return set(TestCasesFIA.keys()), []
-    elif case_choice == "all":
-        base_keys = set(TestCases.keys())
-        fia_keys = set(TestCasesFIA.keys())
-        conflict = base_keys & fia_keys
-        if conflict:
-            warn = f"警告: 以下 case 名称同时在 TestCases 和 TestCasesFIA 中存在，将只采用 TestCases 中的定义: {conflict}"
-            keys_pool = base_keys | fia_keys
-            return keys_pool, [warn]
-        else:
-            return base_keys | fia_keys, []
-    else:
-        raise ValueError(f"未知的 --case 值: {case_choice}")
 
-def get_case_config(case_name):
-    if case_name in TestCases:
-        return TestCases[case_name]
-    elif case_name in TestCasesFIA:
-        return TestCasesFIA[case_name]
-    else:
-        raise KeyError(f"找不到 case '{case_name}' 的配置")
+def resolve_case_ids(case_id_arg, all_cases):
+    if case_id_arg == "all":
+        return sorted(all_cases.keys())
+    ids = [x.strip() for x in case_id_arg.split(",")]
+    result = []
+    missing = []
+    for cid in ids:
+        full_names = [k for k in all_cases if k.endswith(f"/{cid}") or k == cid or k.rsplit("/", 1)[-1].startswith(f"{cid}_")]
+        if len(full_names) >= 1:
+            result.extend(full_names)
+        else:
+            missing.append(cid)
+    if missing:
+        print(f"[WARN] 以下 case 不存在: {missing}")
+    return result
+
 
 # ------------------ main ------------------
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="FlashAttn 精度测试（CPU vs GPU vs NPU）")
+    parser.add_argument("--case_files", type=str,
+                        default=",".join(_DEFAULT_CASE_FILES),
+                        help=f"逗号分隔的 test case 模块名（不含 .py） (default: {','.join(_DEFAULT_CASE_FILES)})")
     parser.add_argument("--case", type=str, default="all",
                         choices=["all", "base", "fia", "TestCases", "TestCasesFIA"],
-                        help="选择测试集 (default: all)")
+                        help="选择测试集，覆盖 --case_files (default: all)")
     parser.add_argument("--case_id",      type=str,            default="all",
                         help="case名称，多个用逗号分隔，'all'表示全部 (default: all)")
     parser.add_argument("--device_id",    type=int,            default=0,
@@ -476,14 +465,12 @@ if __name__ == "__main__":
         torch.cuda.set_device(args.gpu_device)
         print(f"[INFO] GPU 模式，使用设备 cuda:{args.gpu_device}")
     elif args.compare_mode:
-        # compare_mode 下允许纯 CPU 运行（从 dump 文件对比），或 GPU 运行
         if torch.cuda.is_available():
             torch.cuda.set_device(args.gpu_device)
             print(f"[INFO] Compare 模式，使用 GPU 设备 cuda:{args.gpu_device}")
         elif args.load_gpu_dump and args.load_npu_dump:
             print(f"[INFO] Compare 模式，从 dump 文件对比（无 GPU/NPU）")
         else:
-            # 尝试使用 NPU
             try:
                 import torch_npu
                 torch.npu.set_device(args.device_id)
@@ -492,7 +479,6 @@ if __name__ == "__main__":
                 print("[ERROR] compare_mode 需要至少一种设备（GPU/NPU）或同时指定 --load_gpu_dump 和 --load_npu_dump")
                 sys.exit(1)
     else:
-        # 默认 NPU 模式
         try:
             import torch_npu
             torch.npu.set_device(args.device_id)
@@ -502,36 +488,31 @@ if __name__ == "__main__":
             print("[提示] 使用 --use_gpu 切换到 GPU 模式，或使用 --compare_mode --use_gpu 进行三方对比")
             sys.exit(1)
 
-    case_keys_pool, conflicts = build_case_keys_pool(args.case)
-    for w in conflicts:
-        print(f"[WARN] {w}")
-
-    if args.case_id == "all":
-        run_cases = sorted(case_keys_pool)
+    # --case 优先覆盖 --case_files（仅限 base/fia/all）
+    if args.case in ("base", "TestCases"):
+        case_files = "test_case"
+    elif args.case in ("fia", "TestCasesFIA"):
+        case_files = "test_case_fia_STC"
     else:
-        ids = [x.strip() for x in args.case_id.split(",")]
-        missing = [x for x in ids if x not in case_keys_pool]
-        if missing:
-            print(f"[WARN] 以下 case 不存在于所选测试集中: {missing}")
-        run_cases = [x for x in ids if x in case_keys_pool]
+        case_files = args.case_files
 
+    module_names = [x.strip() for x in case_files.split(",")]
+    all_cases = load_case_modules(module_names)
+
+    run_cases = resolve_case_ids(args.case_id, all_cases)
     if not run_cases:
         print("[ERROR] 没有可运行的 case，退出。")
         sys.exit(1)
 
-    # 根据模式决定是否传递 _use_gpu 及加载 dump 行为
-    # 自动推断是否需要从 dump 加载另一方结果
     results = {}
     for name in run_cases:
-        config = get_case_config(name)
+        config = all_cases[name]
         kwargs = normalize_case(config)
         if args.use_gpu:
             kwargs["_use_gpu"] = True
-            # 如果 NPU 不可用，自动尝试加载 npu dump（仅在 dump 功能开启或显式指定时加载）
             auto_load_npu = args.load_npu_dump or (args.dump_tensors and not NPU_AVAILABLE)
         else:
             kwargs["_use_gpu"] = False
-            # 如果 GPU 不可用，自动尝试加载 gpu dump
             auto_load_gpu = args.load_gpu_dump or (args.dump_tensors and not GPU_AVAILABLE)
 
         print(f"\n{'='*66}")
@@ -567,12 +548,13 @@ if __name__ == "__main__":
     print(f"\n┌{SEP}┐")
     print(f"│  汇总结果  ({len(run_cases)} cases)")
     print(f"├{SEP}┤")
-    print(f"│  {'Case':<28}  {'Result':>8}  │")
+    max_name_len = max((len(n) for n in results.keys()), default=28)
+    print(f"│  {'Case':<{max_name_len}}  {'Result':>8}  │")
     print(f"├{SEP}┤")
     pass_cnt = fail_cnt = 0
     for name, ok in results.items():
         tag = "✓ PASS" if ok else "✗ FAIL"
-        print(f"│  {name:<28}  {tag:>8}  │")
+        print(f"│  {name:<{max_name_len}}  {tag:>8}  │")
         if ok: pass_cnt += 1
         else:  fail_cnt += 1
     print(f"├{SEP}┤")
