@@ -87,26 +87,6 @@
     <td>AI Core</td>
     <td>训练场景下计算注意力的反向输出，即FlashAttentionScore的反向计算。</td>
   </tr>
-    <tr>
-    <td>attention</td>
-    <td><a href="../../attention/fused_floyd_attention/README.md">fused_floyd_attention</a></td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✗</td>
-    <td>AI Core</td>
-    <td>训练场景下，使用FloydAttention算法实现多维自注意力的计算。</td>
-  </tr>
-  <tr>
-    <td>attention</td>
-    <td><a href="../../attention/fused_floyd_attention_grad/README.md">fused_floyd_attention_grad</a></td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✗</td>
-    <td>AI Core</td>
-    <td>训练场景下，计算Floyd注意力的反向输出，FloydAttn相较于传统FA主要是计算qk/pv注意力时会额外将seq作为batch轴从而转换为batchMatmul。</td>
-  </tr>
   <tr>
     <td>attention</td>
     <td><a href="../../attention/fused_infer_attention_score/README.md">fused_infer_attention_score</a></td>
@@ -296,16 +276,6 @@
     <td>✗</td>
     <td>AI Core</td>
     <td>训练场景下，实现NativeSparseAttention算法中selected-attention（选择注意力）的计算。</td>
-  </tr>
-  <tr>
-    <td>attention</td>
-    <td><a href="../../attention/sparse_lightning_indexer_grad_kl_loss/README.md">sparse_lightning_indexer_grad_kl_loss</a></td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✓</td>
-    <td>✗</td>
-    <td>AI Core</td>
-    <td>SparselightningIndexerGradKlLoss算子是LightningIndexer的反向算子，再额外融合了Loss计算功能输出。</td>
   </tr>
   <tr>
     <td>attention</td>

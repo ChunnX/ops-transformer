@@ -401,10 +401,8 @@ static ge::graphStatus PrintfTilingData(gert::TilingContext *context, AllGatherM
 }
 
 void GetUsrWorkSpaceSize(uint32_t nElemAlign, uint32_t elementSize, uint64_t &userWorkSpaceSize, int64_t rankSize,
-    AllGatherMatmulAIVModeTilingData* tilingData)
+                         AllGatherMatmulAIVModeInfo &info)
 {
-    auto& info = tilingData->allGatherMatmulInfo;
-    const auto& cocTiling = tilingData->cocTiling;
     bool hasAAlign = (!IsMatrixAligned(info.M, info.K, info.isTransposeX1, nElemAlign) && info.M != 1);
     bool hasBAlign = !IsMatrixAligned(info.K, info.N, info.isTransposeX2, nElemAlign);
     int32_t mAlign = AlignUp(info.M, nElemAlign);
@@ -434,9 +432,7 @@ void GetUsrWorkSpaceSize(uint32_t nElemAlign, uint32_t elementSize, uint64_t &us
         userWorkSpaceSize += info.bAlignSize;
     }
     if (info.quantFlag) {
-        info.accumWorkSpacePingPong = (info.M < MAX_BLOCK_COUNT * cocTiling.m0 * cocTiling.pValue);
-        int32_t workspaceM = info.accumWorkSpacePingPong ? info.M : MAX_BLOCK_COUNT * cocTiling.m0 * cocTiling.pValue;
-        userWorkSpaceSize += static_cast<uint64_t>(workspaceM * info.N * rankSize * sizeof(int32_t));
+        userWorkSpaceSize += static_cast<uint64_t>(info.M * info.N * rankSize * sizeof(int32_t));
     }
     if (info.dequantType == DequantType::PER_TOKEN) {
         userWorkSpaceSize += static_cast<uint64_t>(info.M * rankSize * sizeof(float32_t));
@@ -635,7 +631,7 @@ ge::graphStatus AllGatherMatmulTilingAIVModeFunc(gert::TilingContext *context)
     }
 
     uint64_t userWorkSpaceSize = 0;
-    GetUsrWorkSpaceSize(nElemAlign, elementSize, userWorkSpaceSize, rankSize, tilingData);
+    GetUsrWorkSpaceSize(nElemAlign, elementSize, userWorkSpaceSize, rankSize, info);
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + userWorkSpaceSize;
 
     // 5. communication

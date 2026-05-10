@@ -85,6 +85,8 @@ private:
     void UpdateTilingKeyPseMode();
     void UpdateTilingKeyQuantMode();
     void UpdateTilingKeyHasRope();
+    void UpdateTilingKeyMaskMode();
+    void UpdateTilingKeyMatmulMode();
     void UpdateTilingKeyInfo();
     void SetFATilingData();
 
