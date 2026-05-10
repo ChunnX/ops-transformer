@@ -77,6 +77,22 @@ ge::graphStatus AllToAllFpMatmulTilingBase::InitTilingContextParameters()
     return ge::GRAPH_SUCCESS;
 }
 
+CutResult AllToAllFpMatmulTilingBase::GetCutResOfCommAndCompute()
+{
+    constexpr uint32_t COMM_RANKDIM_FOUR = 4;
+    constexpr uint32_t COMM_RANKDIM_EIGHT = 8;
+    if (contextInfo_.args_.rankDim == COMM_RANKDIM_FOUR || contextInfo_.args_.rankDim == COMM_RANKDIM_EIGHT) {
+        TopoType topoType =
+            contextInfo_.args_.rankDim == COMM_RANKDIM_FOUR ? TopoType::STANDARD_CARD : TopoType::EIGHT_P;
+        // 950的4卡和8卡形态使用基于拟合数据的公式化tiling
+        AlltoAllMatmulFitBalanceTiling tiling(matmulQuantType_, contextInfo_.args_, topoType, SocVersion::SOC950);
+        return tiling.GetTiling();
+    } else {
+        // 调用父类的通用实现
+        return AllToAllMatmulTilingBase::GetCutResOfCommAndCompute();
+    }
+}
+
 /**
  * @brief 主要处理逻辑，设置hccl参数；进行通算切分, 获取mm tiling等
  *
@@ -89,7 +105,6 @@ ge::graphStatus AllToAllFpMatmulTilingBase::DoOpTiling()
     // 参数校验通过后赋值给全局上下文变量
     GE_ASSERT_GRAPH_SUCCESS(InitTilingContextParameters());
     // 进行通算切分
-    matmulQuantType_ = QuantType::FP_QUANT;
     GE_ASSERT_GRAPH_SUCCESS(TileCommAndCompute());
     // 调用非量化Matmul的tiling方法进行切分
     GE_ASSERT_GRAPH_SUCCESS(DoMMTiling());
