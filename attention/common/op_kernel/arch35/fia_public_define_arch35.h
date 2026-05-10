@@ -175,7 +175,7 @@ struct PseConstInfo {
 };
 
 struct TensorListConstInfo {
-    bool isKvContinuous = 0; /* 是否为tensorlist */
+    bool isKvContinuous = false; /* 是否为tensorlist */
 };
 
 struct PostQuantConstInfo {
