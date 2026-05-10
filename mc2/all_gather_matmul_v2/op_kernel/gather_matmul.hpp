@@ -79,7 +79,6 @@ public:
         int32_t rankIdx;
         int32_t rankSize;
         bool needFixpipe;
-        bool accumWorkSpacePingPong;
 
         // Methods
         CATLASS_HOST_DEVICE
@@ -91,13 +90,11 @@ public:
         Params(GemmCoord const &problemShape_, GM_ADDR ptrA_, LayoutA layoutA_, GM_ADDR ptrB_, LayoutB layoutB_,
                GM_ADDR ptrC_, LayoutC layoutC_, GM_ADDR ptrScale_, LayoutScale layoutScale_, GM_ADDR ptrPeerMem_,
                LayoutA layoutPeerMem_, GM_ADDR ptrWorkSpace_, int32_t pValue_, int32_t swizzlCount_,
-               int32_t swizzlDirect_, int32_t rankIdx_, int32_t rankSize_, bool needFixpipe_,
-               bool accumWorkSpacePingPong_)
+               int32_t swizzlDirect_, int32_t rankIdx_, int32_t rankSize_, bool needFixpipe_)
             : problemShape(problemShape_), ptrA(ptrA_), layoutA(layoutA_), ptrB(ptrB_), layoutB(layoutB_), ptrC(ptrC_),
               layoutC(layoutC_), ptrScale(ptrScale_), layoutScale(layoutScale_), ptrPeerMem(ptrPeerMem_),
               layoutPeerMem(layoutPeerMem_), ptrWorkSpace(ptrWorkSpace_), pValue(pValue_), swizzlCount(swizzlCount_),
-              swizzlDirect(swizzlDirect_), rankIdx(rankIdx_), rankSize(rankSize_), needFixpipe(needFixpipe_),
-              accumWorkSpacePingPong(accumWorkSpacePingPong_)
+              swizzlDirect(swizzlDirect_), rankIdx(rankIdx_), rankSize(rankSize_), needFixpipe(needFixpipe_)
         {
         }
     };
@@ -295,12 +292,8 @@ public:
                 MatrixCoord offsetC{blockLocCoord.m(), blockLocCoord.n()};
                 uint64_t gmOffsetA = pingPongSt + dstBlockIdx * blockSize + params.layoutPeerMem.GetOffset(offsetA);
                 uint64_t gmOffsetB = params.layoutB.GetOffset(offsetB);
-                int64_t gmOffsetC = static_cast<int64_t>(dstBlockIdx + flagIdx * params.rankSize) * outputBlockSize
+                uint64_t gmOffsetC = dstBlockIdx * mnSize + calIdx * outputBlockSize
                                         + params.layoutC.GetOffset(offsetC);
-                
-                if (params.accumWorkSpacePingPong) {
-                    gmOffsetC = dstBlockIdx * mnSize + calIdx * outputBlockSize + params.layoutC.GetOffset(offsetC);
-                }
 
                 AscendC::GlobalTensor<ElementAInt8> gmAIn = gmPeerMemInt8;
  	            if (dstBlockIdx == params.rankIdx) { // 从gmA里面取
@@ -386,12 +379,8 @@ public:
                 MatrixCoord offsetC{blockLocCoord.m(), blockLocCoord.n()};
                 uint64_t gmOffsetA = pingPongSt + dstBlockIdx * blockSize + params.layoutPeerMem.GetOffset(offsetA);
                 uint64_t gmOffsetB = params.layoutB.GetOffset(offsetB);
-                int64_t gmOffsetC = static_cast<int64_t>(dstBlockIdx + flagIdx * params.rankSize) * outputBlockSize
+                uint64_t gmOffsetC = dstBlockIdx * mnSize + calIdx * outputBlockSize
                                         + params.layoutC.GetOffset(offsetC);
-                
-                if (params.accumWorkSpacePingPong) {
-                    gmOffsetC = dstBlockIdx * mnSize + calIdx * outputBlockSize + params.layoutC.GetOffset(offsetC);
-                }
 
                 AscendC::GlobalTensor<ElementA> gmAIn = gmPeerMem;
  	            if (dstBlockIdx == params.rankIdx) { // 从gmA里面取

@@ -143,7 +143,7 @@
 |[aclnnMhcPre](../../mhc/mhc_pre/docs/aclnnMhcPre.md)|基于一系列计算得到MHC架构中hidden层的$H^{res}$和$H^{post}$投影矩阵以及Attention或MLP层的输入矩阵$h^{in}$。|默认确定性实现| 默认确定性实现 |
 |[aclnnMhcPreBackward](../../mhc/mhc_pre_backward/docs/aclnnMhcPreBackward.md)|[aclnnMhcPre](../../mhc/mhc_pre/docs/aclnnMhcPre.md)的反向传播。|默认确定性实现|默认确定性实现|
 |[aclnnMhcPost](../../mhc/mhc_post/docs/aclnnMhcPost.md)|基于一系列计算对mHC架构中上一层输出进行Post Mapping，对上一层的输入进行Res Mapping，然后对二者进行残差连接，得到下一层的输入。|默认确定性实现| 默认确定性实现 |
-|[aclnnMhcPostBackward](../../mhc/mhc_post_backward/docs/aclnnMhcPostBackward.md)|mhc_post基于一系列计算对mHC架构中上一层输出进行Post Mapping，对上一层的输入进行Res Mapping，然后对二者进行残差连接，得到下一层的输入。该算子实现前述过程的反向。|默认确定性实现| 默认确定性实现 |
+|[aclnnMhcPostBackward](../../mhc/mhc_postbackward/docs/aclnnMhcPostBackward.md)|mhc_post基于一系列计算对mHC架构中上一层输出进行Post Mapping，对上一层的输入进行Res Mapping，然后对二者进行残差连接，得到下一层的输入。该算子实现前述过程的反向|默认确定性实现| 默认确定性实现 |
 |[aclnnMhcSinkhornBackward](../../mhc/mhc_sinkhorn_backward/docs/aclnnMhcSinkhornBackward.md)|[aclnnMhcSinkhorn](../../mhc\mhc_sinkhorn\docs\aclnnMhcSinkhorn.md)的反向传播。| - | 默认确定性实现 |
 |[aclnnNormRopeConcat](../../posembedding/norm_rope_concat/docs/aclnnNormRopeConcat.md)|transfomer注意力机制中，针对query、key和Value实现归一化（Norm）、旋转位置编码（Rope）、特征拼接（Concat）。|默认确定性实现| 默认确定性实现 |
 |[aclnnNormRopeConcatBackward](../../posembedding/norm_rope_concat_grad/docs/aclnnNormRopeConcatBackward.md)|transfomer注意力机制中，针对query、key和Value实现归一化（Norm）、旋转位置编码（Rope）、特征拼接（Concat）融合算子功能反向推导。|默认非确定性实现，支持配置开启| 默认确定性实现 |
@@ -174,7 +174,6 @@
 |[aclnnRopeWithSinCosCache](../../posembedding/rope_with_sin_cos_cache/docs/aclnnRopeWithSinCosCache.md)|推理网络为了提升性能，将sin和cos输入通过cache传入，执行旋转位置编码计算。|默认确定性实现| 默认确定性实现 |
 |[aclnnRopeWithSinCosCacheV2](../../posembedding/rope_with_sin_cos_cache/docs/aclnnRopeWithSinCosCacheV2.md)|对比V1增加cacheMode属性，指示cos和sin的拼接方式。|默认确定性实现| 默认确定性实现 |
 |[aclnnRotaryPositionEmbedding](../../posembedding/rotary_position_embedding/docs/aclnnRotaryPositionEmbedding.md)|执行单路旋转位置编码计算。|默认确定性实现| 默认确定性实现 |
-|[aclnnRotaryPositionEmbeddingV2](../../posembedding/rotary_position_embedding/docs/aclnnRotaryPositionEmbeddingV2.md)|执行单路旋转位置编码计算。本接口相较于[aclnnRotaryPositionEmbedding](../../posembedding/rotary_position_embedding/docs/aclnnRotaryPositionEmbedding.md)，新增入参rotate。|默认确定性实现| 默认确定性实现 |
 |[aclnnRotaryPositionEmbeddingGrad](../../posembedding/rotary_position_embedding_grad/docs/aclnnRotaryPositionEmbeddingGrad.md)|单路旋转位置编码[aclnnRotaryPositionEmbedding](../../posembedding/rotary_position_embedding/docs/aclnnRotaryPositionEmbedding.md)的反向计算。|默认确定性实现| 默认确定性实现 |
 |[aclnnScatterPaCache](../../attention/scatter_pa_cache/docs/aclnnScatterPaCache.md)|更新KCache中指定位置的key。|默认确定性实现| 默认确定性实现 |
 |[aclnnScatterPaKvCache](../../attention/scatter_pa_kv_cache/docs/aclnnScatterPaKvCache.md)|更新KvCache中指定位置的key和value。|默认确定性实现| 默认确定性实现 |
@@ -185,8 +184,6 @@
 |[aclnnSwinTransformerLnQkvQuant](../../ffn/swin_transformer_ln_qkv_quant/docs/aclnnSwinTransformerLnQkvQuant.md)|Swin Transformer网络模型完成 Q、K、V 的计算。| - | - |
 |[aclnnWeightQuantMatmulAllReduce](../../mc2/matmul_all_reduce/docs/aclnnWeightQuantMatmulAllReduce.md)|对入参x2进行伪量化计算后，完成MatMul和AllReduce计算。|默认非确定性实现，支持配置开启| 默认确定性实现 |
 |[aclnnKvRmsNormRopeCache](../../posembedding/kv_rms_norm_rope_cache/docs/aclnnKvRmsNormRopeCache.md)|对输入张量（kv）的尾轴，拆分出左半边用于rms_norm计算，右半边用于RoPE计算，再将计算结果分别scatter到两块cache中。|默认确定性实现|默认确定性实现|
-|[aclnnFusedFloydAttention](../../attention/fused_floyd_attention/docs/aclnnFusedFloydAttention.md)|训练场景下，使用FloydAttention算法实现多维自注意力的计算。|默认确定性实现| - |
-|[aclnnFusedFloydAttentionGrad](../../attention/fused_floyd_attention_grad/docs/aclnnFusedFloydAttentionGrad.md)|训练场景下，计算Floyd注意力的反向输出，FloydAttn相较于传统FA主要是计算qk/pv注意力时会额外将seq作为batch轴从而转换为batchMatmul。|默认非确定性实现，不支持配置开启| - |
 
 ## 废弃接口
 

@@ -283,7 +283,7 @@ aiv_mte3_time：AI CORE->片上内存搬运类指令在AI Vector Core上的耗�
 [INFO] 7. 卡1的算子执行流程并未卡死在combine算子上，不进行异常分析<br>
 [INFO] 7. 各卡的expertids、dump数据中读取的expandidx、本卡专家数、该卡算子执行流程卡死在哪个算子上已归档至win_all_card_expandidx.csv<br>
 [INFO] 7. 所有卡的expandidx对比完成<br>
-<b>上述结果为多卡间的dispatch&combine的expandidx、epsendcnt输入校验，该功能会计算出所有专家对应的expertidx以及每张卡的epsendcnt，当该卡挂在combine算子上时，对该卡的输入expertidx、epsendcnt与计算的expertidx、epsendcnt进行对比，如果不同，将该异常以ERROR的形式输出，并将各卡的输入expertids、dump数据中读取的expandidx、epsendcnt(仅挂在combine算子上的卡，否则为空)、本卡专家数、该卡挂在哪个算子上，五项数据存储至win_all_card_expandidx.csv。</b>
+<b>上述结果为多卡间的dispatch&combine的expandidx、epsendcnt输入校验，该功能会计算出所有专家对应的expertidx以及每张卡的epsnedcnt，当该卡挂在combine算子上时，对该卡的输入expertidx、epsnedcnt与计算的expertidx、epsnedcnt进行对比，如果不同，将该异常以ERROR的形式输出，并将各卡的输入expertids、dump数据中读取的expandidx、epsnedcnt(仅挂在combine算子上的卡，否则为空)、本卡专家数、该卡挂在哪个算子上，五项数据存储至win_all_card_expandidx.csv。</b>
 
 -----------------------<br>
 在指定的路径: xxxxxx/xxx/xxx/xx 下找到 16 张卡的profiling数据<br>

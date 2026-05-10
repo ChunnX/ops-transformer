@@ -14,7 +14,7 @@
  */
 
 #include "sparse_attn_sharedkv_grad_tiling_general.h"
-#include "op_host/tiling_templates_registry.h"
+#include "tiling_base/tiling_templates_registry.h"
 #include "../op_kernel/sparse_attn_sharedkv_grad_template_tiling_key.h"
 
 namespace optiling {
@@ -367,7 +367,7 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetBaseShapeInfo()
     const int64_t *oriWinRightPtr = context_->GetAttrs()->GetAttrPointer<int64_t>(static_cast<size_t>(AttrIndex::ORI_WIN_RIGHT));
 
     // -------------------------------------
-    if (dimDq != dimOriKv) {
+    if (dimDq != dimDq) {
         OP_LOGE(context_, "The headDim of query, ori_kv should be the same. But got dimDq=%ld, dimOriKv=%ld",
                 dimDq, dimOriKv);
         return ge::GRAPH_FAILED;

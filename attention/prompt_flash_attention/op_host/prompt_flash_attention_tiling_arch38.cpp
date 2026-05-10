@@ -17,7 +17,7 @@
 
 #include "register/op_def_registry.h"
 #include "tiling/tiling_api.h"
-#include "op_host/data_copy_transpose_tiling.h"
+#include "tiling_base/data_copy_transpose_tiling.h"
 #include "log/log.h"
 #include "err/ops_err.h"
 
@@ -1832,7 +1832,9 @@ bool PromptFlashAttentionTilingArch38::CheckInnerPrecise(ContextParamsForPFATili
     // Determine the bit0 bit of innerPrecise, high-performance or high-precision mode.
     innerPrecise = HIGH_PRECISION; // High-precision contains high-performance and high-precision mode.
 
-    innerPrecise = HIGH_PERFORMANCE;
+    if (contextKeyParams.compileInfoPtr->socShortName == platform_ascendc::SocVersion::MC62CM12A) {
+        innerPrecise = HIGH_PERFORMANCE;
+    }
 
     // FP16 pse is forced to enter high-precision mode.
     if ((contextKeyParams.pseShift != nullptr) && (inputType == ge::DT_FLOAT16) && (innerPrecise == HIGH_PERFORMANCE)) {
@@ -2439,7 +2441,10 @@ void PromptFlashAttentionTilingArch38::InferTilingMod(const ContextParamsForPFAT
 
 void PromptFlashAttentionTilingArch38::InferSplitCoreMode() 
 {
-    splitCoreMode = SplitCoreMode::SPLIT_NBS_VECTOR;
+    splitCoreMode = SplitCoreMode::SPLIT_NBS_CUBE;
+    if (ascendPlatformInfo.socVersion == platform_ascendc::SocVersion::MC62CM12A) {
+        splitCoreMode = SplitCoreMode::SPLIT_NBS_VECTOR;
+    }
 }
 
 void PromptFlashAttentionTilingArch38::InferConstantization() 
@@ -2662,7 +2667,9 @@ bool PromptFlashAttentionTilingArch38::AdjustCVTilingCVDiff(const ContextParamsF
         softmaxSOuterFactor = SOUTER_FACTOR_SUB;
     }
 
-    minFactor *= 2; // 2 for cv ratio equals 1:1, previous calculation based on cv ratio equals 1:2
+    if (compileInfoPtr->socShortName == platform_ascendc::SocVersion::MC62CM12A) {
+        minFactor *= 2; // 2 for cv ratio equals 1:1, previous calculation based on cv ratio equals 1:2
+    }
 
     sOuterFactor = minFactor;
     sInnerFactor = rectangleFactor;
@@ -2892,11 +2899,22 @@ void PromptFlashAttentionTilingArch38::UpdateTilingKeySOuterConst(PromptFlashAtt
     if (!isConstantization) {
         return;
     }
-    if (tilingData.promptAttentionSingleCoreParams.get_singleProcessSOuterSize() == 64) {  // 64:souter32
+    if (ascendPlatformInfo.socVersion == platform_ascendc::SocVersion::MC62CM12A) {
+        if (tilingData.promptAttentionSingleCoreParams.get_singleProcessSOuterSize() == 64) {  // 64:souter32
+            tilingKey += tilingKeySOuterConstValue64;
+        } else if (tilingData.promptAttentionSingleCoreParams.get_singleProcessSOuterSize() == 96) {  // 96:souter48*2
+            tilingKey += tilingKeySOuterConstValue96;
+        } else if (tilingData.promptAttentionSingleCoreParams.get_singleProcessSOuterSize() == 128) {  // 128:souter64*2
+            tilingKey += tilingKeySOuterConstValue128;
+        }
+        return;
+    }
+    // SAMEAB calculates the souter from the cube kernel perspective, which is twice the souter from the vector kernel perspective.
+    if (tilingData.promptAttentionSingleCoreParams.get_singleProcessSOuterSize() * 2 == 64) { // 64: souter32
         tilingKey += tilingKeySOuterConstValue64;
-    } else if (tilingData.promptAttentionSingleCoreParams.get_singleProcessSOuterSize() == 96) {  // 96:souter48*2
+    } else if (tilingData.promptAttentionSingleCoreParams.get_singleProcessSOuterSize() * 2 == 96) { // 96: souter48*2
         tilingKey += tilingKeySOuterConstValue96;
-    } else if (tilingData.promptAttentionSingleCoreParams.get_singleProcessSOuterSize() == 128) {  // 128:souter64*2
+    } else if (tilingData.promptAttentionSingleCoreParams.get_singleProcessSOuterSize() * 2 == 128) { // 128: souter64*2
         tilingKey += tilingKeySOuterConstValue128;
     }
 }
@@ -3348,7 +3366,9 @@ ge::graphStatus PromptFlashAttentionTilingArch38::SetPlatMemoryInfo(ContextParam
     OP_LOGI(contextKeyParams.opName, "ascendPlatformInfo:aivNum = %u, aicNum = %u, l1Size = %lu, l0CSize = %lu,"
         "l0ASize = %lu, l0BSize = %lu, ubSize = %lu!", aivNum, aicNum, compileInfoPtr->l1Size, compileInfoPtr->l0CSize,
         compileInfoPtr->l0ASize, compileInfoPtr->l0BSize, compileInfoPtr->ubSize);
-    CV_RATIO = 1U; // Vector : Cube
+    if (ascendPlatformInfo.socVersion == platform_ascendc::SocVersion::MC62CM12A) {
+        CV_RATIO = 1U; // Vector : Cube
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -3450,6 +3470,10 @@ ge::graphStatus PromptFlashAttentionTilingArch38::SetAttributeInfo(ContextParams
         }else{
             enablePertensorQuant = true;
         }
+    }
+
+    if (enablePertensorQuant && contextKeyParams.compileInfoPtr->socShortName != platform_ascendc::SocVersion::MC62CM12A) {
+        faRunFlag_ = false;
     }
 
     return ge::GRAPH_SUCCESS;
