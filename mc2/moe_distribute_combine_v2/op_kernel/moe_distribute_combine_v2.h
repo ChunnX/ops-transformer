@@ -438,7 +438,9 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::InitAttrs(GM_
         epRankIdHccl = Mc2Kernel::GetRankId(epWinContext_);
         epWorldSizeHccl = Mc2Kernel::GetRankDim(epWinContext_);
     }
-    selfDataStatusGMTensor_.SetGlobalBuffer((__gm__ uint32_t*)(statusDataSpaceGm_ + COMBINE_STATE_WIN_OFFSET + coreIdx_ * WIN_ADDR_ALIGN));
+    // Plan B: 与 sender 端 toRankId × RANK_STATE_SHIFT 对齐，receiver 自身基址叠加 epRankIdOriginal_ 错开
+    selfDataStatusGMTensor_.SetGlobalBuffer((__gm__ uint32_t*)(statusDataSpaceGm_ + COMBINE_STATE_WIN_OFFSET
+        + epRankIdOriginal_ * RANK_STATE_SHIFT + coreIdx_ * WIN_ADDR_ALIGN));
     TBuf<> dataStateBuf;
     tpipe_->InitBuffer(dataStateBuf, UB_ALIGN);
     dataState_ = InitWinState(selfDataStatusGMTensor_, epRankIdHccl, epWorldSizeHccl, epRankIdOriginal_, moeExpertNum_, epWorldSizeOriginal_, globalBS_, dataStateBuf);
@@ -904,8 +906,9 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ExpertAlltoAl
         }
         ExpertAlltoAllDispatchInnerCopyAdd(toRankId, tokenId, topkId, tkIndex);
         PipeBarrier<PIPE_MTE3>();
-        GM_ADDR stateGM = GetWinStateAddrByRankId(toRankId, EP_DOMAIN) + tokenId * flagRcvCount_ * stateOffset_ +
-            topkId * stateOffset_;  // 计算地址偏移
+        // Plan B: 不同对端 toRankId 错开 512B，避免跨 rank 写竞争
+        GM_ADDR stateGM = GetWinStateAddrByRankId(toRankId, EP_DOMAIN) + toRankId * RANK_STATE_SHIFT
+            + tokenId * flagRcvCount_ * stateOffset_ + topkId * stateOffset_;  // 计算地址偏移
         GlobalTensor<float> stateGMTensor;
         stateGMTensor.SetGlobalBuffer((__gm__ float*)stateGM);
         DataCopy<float>(stateGMTensor, statusTensor, FLOAT_PER_UB_ALIGN);  // 8是数据大小，按32对齐拷贝

@@ -18,7 +18,7 @@
 
 
 namespace Mc2Kernel {
-constexpr uint32_t STATE_SIZE = 1024 * 1024; // 1M
+constexpr uint32_t STATE_SIZE = 4U * 1024U * 1024U; // 4M (Plan B: dispatch+combine 状态区按 dstRank×512 错开)
 constexpr uint64_t TIMEOUT_OFFSET = 1000UL * 1024UL;
 
 // distributev2base所需常量段
@@ -36,7 +36,7 @@ constexpr uint32_t HCCL_WORLDSIZE_POS = 1U;
 constexpr uint32_t UB_ALIGN = 32U;
 
 // dispatchv2所需常量段
-constexpr uint64_t DISPATCH_STATE_WIN_OFFSET = 768UL * 1024UL;
+constexpr uint64_t DISPATCH_STATE_WIN_OFFSET = 3072UL * 1024UL; // Plan B: 双 ping-pong 半各1536K 之后
 constexpr uint8_t BUFFER_NUM = 2;        // 多buf
 constexpr uint8_t BUFFER_SINGLE = 1; 
 constexpr uint32_t STATE_OFFSET = 32U;  // 状态空间偏移地址
@@ -46,7 +46,9 @@ constexpr uint8_t COMM_TP_IDX = 1;
 constexpr uint8_t QUANT_PADDING_VALUE = 0;
 constexpr uint32_t FIRST_CORE = 0U;
 // 先写死这个偏移，如果TP固定为2，可直接往起始数据偏移开始读写
-constexpr uint64_t WIN_STATE_OFFSET = 384UL * 1024UL;
+constexpr uint64_t WIN_STATE_OFFSET = 1536UL * 1024UL; // Plan B: ping-pong stride（dispatch 640K + combine 896K）
+// Plan B: 对端状态区按 dstRankId/toRankId 错开 512B，避免不同 rank 同地址写竞争
+constexpr uint32_t RANK_STATE_SHIFT = 512U;
 constexpr uint64_t TIMEOUT_DETECTION_THRESHOLD = 50000UL;
 constexpr uint64_t CYCLES_PER_US = 50UL;
 constexpr uint64_t TIMEOUT_DETECTION_TX_UNITS = 8UL;
@@ -81,8 +83,8 @@ constexpr uint8_t MXFP8_E5M2_COMM_QUANT = 3;
 constexpr uint8_t MXFP8_E4M3_COMM_QUANT = 4;
 
 // combinev2额外所需常量段
-constexpr uint64_t COMBINE_STATE_WIN_OFFSET = 818UL * 1024UL;   // combine 0/1状态区偏移，为dispatch预留50k大小
-constexpr uint32_t COMBINE_STATE_OFFSET = 64U * 1024U;  // 本卡状态空间偏移地址，前面的地址给dispatch用
+constexpr uint64_t COMBINE_STATE_WIN_OFFSET = 3122UL * 1024UL;  // Plan B: dispatch self-status 之后 50K
+constexpr uint32_t COMBINE_STATE_OFFSET = 640U * 1024U;  // Plan B: dispatch 子区扩到 640K，combine 子区从此处起
 constexpr uint8_t EP_DOMAIN = 0;
 constexpr uint8_t TP_DOMAIN = 1;
 constexpr uint32_t FLOAT_PER_UB_ALIGN = 8U;

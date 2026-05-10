@@ -503,7 +503,8 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
         tpWindowGM_ = GetWindAddrByRankId(COMM_TP_IDX, tpGatherRankId_);
         tpStatusWindowGM_ = GetWindStateAddrByRankId(COMM_TP_IDX, tpGatherRankId_);
     }
-    windowInstatusFp32Tensor_.SetGlobalBuffer((__gm__ float*)(statusSpaceGm_));
+    // Plan B: 与 SetStatus 写入端一致，receiver 自身状态区按 epRankIdOriginal_ × RANK_STATE_SHIFT 平移
+    windowInstatusFp32Tensor_.SetGlobalBuffer((__gm__ float*)(statusSpaceGm_ + epRankIdOriginal_ * RANK_STATE_SHIFT));
     if constexpr (IsNeedAllgather) {
         winTpGatherOutGMTensor_.SetGlobalBuffer((__gm__ XOutType*)tpWindowGM_);
         fpWinTpGatherOutGMTensor_.SetGlobalBuffer((__gm__ float*)tpWindowGM_);
@@ -1023,7 +1024,9 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::SetS
         if (isScalingDownFlag_) {
             dstRankId = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + dstRankId);
         }
-        GM_ADDR rankGM = (__gm__ uint8_t*)(GetWindStateAddrByRankId(COMM_EP_IDX, dstRankId) + offset);  // 计算地址偏移
+        // Plan B: 不同对端 dst rank 错开 512B，避免跨 rank 写竞争
+        GM_ADDR rankGM = (__gm__ uint8_t*)(GetWindStateAddrByRankId(COMM_EP_IDX, dstRankId)
+                                           + dstRankId * RANK_STATE_SHIFT + offset);  // 计算地址偏移
         rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)rankGM);
         // 按32对齐拷贝，8是32字节包含的元素个数, 本卡数据需要去掉起始index偏移
         DataCopy<int32_t>(rankGMTensor, statusTensor_[(expertIndex - startExpertId_)* 8], 8UL);
