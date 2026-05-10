@@ -94,8 +94,30 @@ public:
 
     __aicore__ inline void Process()
     {
+        if ASCEND_IS_AIV {
+            if (GetBlockIdx() == 0) {
+                AscendC::PRINTF("YYYYYY op a2av scheduler Process start e:%u isNeedMM:%d mxMode:%d scaleBatch:%d\n",
+                    e_, static_cast<int32_t>(IsNeedMM), static_cast<int32_t>(MX_QUANT_MODE),
+                    static_cast<int32_t>(isScaleBatchMode_));
+            }
+        }
         if (IsNeedMM) {
+            if ASCEND_IS_AIV {
+                if (GetBlockIdx() == 0) {
+                    AscendC::PRINTF("YYYYYY op a2av scheduler localCompute start\n");
+                }
+            }
             localComputeOp.Process(0);
+            if ASCEND_IS_AIV {
+                if (GetBlockIdx() == 0) {
+                    AscendC::PRINTF("YYYYYY op a2av scheduler localCompute end\n");
+                }
+            }
+        }
+        if ASCEND_IS_AIV {
+            if (GetBlockIdx() == 0) {
+                AscendC::PRINTF("YYYYYY op a2av scheduler comm process start\n");
+            }
         }
         if constexpr (MX_QUANT_MODE) {
             if (isScaleBatchMode_) {
@@ -106,7 +128,17 @@ public:
         } else {
             ProcessCommRoundMode();
         }
+        if ASCEND_IS_AIV {
+            if (GetBlockIdx() == 0) {
+                AscendC::PRINTF("YYYYYY op a2av scheduler End start\n");
+            }
+        }
         this->End();
+        if ASCEND_IS_AIV {
+            if (GetBlockIdx() == 0) {
+                AscendC::PRINTF("YYYYYY op a2av scheduler Process end\n");
+            }
+        }
     }
 
 protected:
@@ -120,35 +152,95 @@ protected:
 private:
     __aicore__ inline void ProcessScaleCommBatchMode()
     {
+        if ASCEND_IS_AIV {
+            if (GetBlockIdx() == 0) {
+                AscendC::PRINTF("YYYYYY op a2av scheduler scale batch launch scale e:%u\n", e_);
+            }
+        }
         commOp.LaunchScaleBeforeCompute(0, e_);
         for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
+            if ASCEND_IS_AIV {
+                if (GetBlockIdx() == 0) {
+                    AscendC::PRINTF("YYYYYY op a2av scheduler scale batch launch expert:%u\n", expertIdx);
+                }
+            }
             commOp.Launch(expertIdx, 1);
+        }
+        if ASCEND_IS_AIV {
+            if (GetBlockIdx() == 0) {
+                AscendC::PRINTF("YYYYYY op a2av scheduler scale batch wait scale\n");
+            }
         }
         commOp.WaitScale(0);
         SyncAll<false>();
         commOp.PermuteScale();
         SyncAll<false>();
         for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
+            if ASCEND_IS_AIV {
+                if (GetBlockIdx() == 0) {
+                    AscendC::PRINTF("YYYYYY op a2av scheduler scale batch wait expert:%u\n", expertIdx);
+                }
+            }
             commOp.Wait(expertIdx);
             SyncAll<false>();
+            if ASCEND_IS_AIV {
+                if (GetBlockIdx() == 0) {
+                    AscendC::PRINTF("YYYYYY op a2av scheduler scale batch compute expert:%u\n", expertIdx);
+                }
+            }
             computeOp.Process(expertIdx);
         }
     }
 
     __aicore__ inline void ProcessCommRoundMode()
     {
-        for (uint32_t expertIdx = 0; expertIdx < e_; expertIdx++) {
-            if constexpr (MX_QUANT_MODE) {
-                commOp.LaunchScaleBeforeCompute(expertIdx, 1);
+        if ASCEND_IS_AIV {
+            if (GetBlockIdx() == 0) {
+                AscendC::PRINTF("YYYYYY op a2av scheduler round launch start e:%u\n", e_);
             }
-            commOp.Launch(expertIdx, 1);
         }
         for (uint32_t expertIdx = 0; expertIdx < e_; expertIdx++) {
             if constexpr (MX_QUANT_MODE) {
+                if ASCEND_IS_AIV {
+                    if (GetBlockIdx() == 0) {
+                        AscendC::PRINTF("YYYYYY op a2av scheduler round launch scale expert:%u\n", expertIdx);
+                    }
+                }
+                commOp.LaunchScaleBeforeCompute(expertIdx, 1);
+            }
+            if ASCEND_IS_AIV {
+                if (GetBlockIdx() == 0) {
+                    AscendC::PRINTF("YYYYYY op a2av scheduler round launch expert:%u\n", expertIdx);
+                }
+            }
+            commOp.Launch(expertIdx, 1);
+        }
+        if ASCEND_IS_AIV {
+            if (GetBlockIdx() == 0) {
+                AscendC::PRINTF("YYYYYY op a2av scheduler round wait start e:%u\n", e_);
+            }
+        }
+        for (uint32_t expertIdx = 0; expertIdx < e_; expertIdx++) {
+            if constexpr (MX_QUANT_MODE) {
+                if ASCEND_IS_AIV {
+                    if (GetBlockIdx() == 0) {
+                        AscendC::PRINTF("YYYYYY op a2av scheduler round wait scale expert:%u\n", expertIdx);
+                    }
+                }
                 commOp.WaitScale(expertIdx);
+            }
+            if ASCEND_IS_AIV {
+                if (GetBlockIdx() == 0) {
+                    AscendC::PRINTF("YYYYYY op a2av scheduler round wait expert:%u\n", expertIdx);
+                }
             }
             commOp.Wait(expertIdx);
             SyncAll<false>();
+            if ASCEND_IS_AIV {
+                if (GetBlockIdx() == 0) {
+                    AscendC::PRINTF("YYYYYY op a2av scheduler round compute expert:%u\n", expertIdx);
+                }
+            }
             computeOp.Process(expertIdx);
         }
     }

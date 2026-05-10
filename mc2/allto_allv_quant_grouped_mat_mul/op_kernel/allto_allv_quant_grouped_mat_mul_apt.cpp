@@ -59,9 +59,13 @@ __global__ __aicore__ void allto_allv_quant_grouped_mat_mul(GM_ADDR gmmxGM, GM_A
     GM_ADDR mmxScaleGM, GM_ADDR mmWeightScaleGM, GM_ADDR gmmyGM, GM_ADDR mmyOptionalGM,
     GM_ADDR permuteOutOptionalGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
+    AscendC::PRINTF("YYYYYY op a2av entry blockIdx:%ld coreType:%d workspace:%p tiling:%p\n",
+        GetBlockIdx(), static_cast<int32_t>(g_coreType), workspaceGM, tilingGM);
     SetSysWorkspace(workspaceGM);
     GM_ADDR userWorkspace = AscendC::GetUserWorkspace(workspaceGM);
+    AscendC::PRINTF("YYYYYY op a2av userWorkspace blockIdx:%ld userWorkspace:%p\n", GetBlockIdx(), userWorkspace);
     if (userWorkspace == nullptr) {
+        AscendC::PRINTF("YYYYYY op a2av return because userWorkspace is nullptr blockIdx:%ld\n", GetBlockIdx());
         return;
     }
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
