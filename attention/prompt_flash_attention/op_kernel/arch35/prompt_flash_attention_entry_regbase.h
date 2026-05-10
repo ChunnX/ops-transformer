@@ -282,8 +282,10 @@ inline __aicore__ void prompt_flash_attention_FIAS_regbase(__gm__ uint8_t* query
     REGISTER_TILING_FOR_TILINGKEY(
         "((TILING_KEY_VAR >> 22) & 0x1f) != 30 && ((TILING_KEY_VAR >> 22) & 0x1f) != 19 && ((TILING_KEY_VAR >> 8) & 0x12) != 9",
         FusedInferAttentionScoreTilingData);
-    REGISTER_TILING_FOR_TILINGKEY("((TILING_KEY_VAR >> 22) & 0x1f) == 19 && ((TILING_KEY_VAR >> 35) & 0x1f) == 1", FusedInferAttentionScoreFullQuantTilingData);
-    REGISTER_TILING_FOR_TILINGKEY("((TILING_KEY_VAR >> 22) & 0x1f) == 19 && ((TILING_KEY_VAR >> 35) & 0x1f) == 0", FlashAttentionScoreSimplifiedTilingData);
+    REGISTER_TILING_FOR_TILINGKEY("((TILING_KEY_VAR >> 22) & 0x1f) == 19 && ((TILING_KEY_VAR >> 35) & 0x1f) == 1",
+        FusedInferAttentionScoreFullQuantTilingData);
+    REGISTER_TILING_FOR_TILINGKEY("((TILING_KEY_VAR >> 22) & 0x1f) == 19 && ((TILING_KEY_VAR >> 35) & 0x1f) == 0",
+        FlashAttentionScoreSimplifiedTilingData);
     REGISTER_TILING_FOR_TILINGKEY("((TILING_KEY_VAR >> 22) & 0x1f) != 19", FlashAttentionScoreSimplifiedTilingData);
     if constexpr (emptyTensor == true) {
         # if (ORIG_DTYPE_ATTENTION_OUT != DT_FLOAT16 && ORIG_DTYPE_ATTENTION_OUT != DT_BF16)
