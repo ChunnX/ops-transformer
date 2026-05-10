@@ -575,7 +575,10 @@ public:
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
 
-        Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(dstTensor, l0C, fixpipeParams);
+        // Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(dstTensor, l0C, fixpipeParams);
+        /* --------------------------------- Tensor API ------------------------------------ */
+        AscendC::Te::Copy(AscendC::Te::CopyAtom<AscendC::Te::CopyTraits<CopyL0C2UB, FixpipeTraitDefault>>{}, 
+                          dstTensor, l0C, fixpipeParams);
     }
 
     /* 针对S1Base=128, S2Base = 128, D > 128场景，L1全载，左矩阵驻留 + L0切D + L0Db*/
@@ -616,7 +619,8 @@ public:
                     mm1A.GetTensor<Q_T>(), mm1B.GetTensor<KV_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(),
                     param);
             } else {
-                // 切换Tensor API, base(M = N = K) = 128.
+                /* --------------------------------- Tensor API ------------------------------------ */
+                // base(M = N = K) = 128.
                 MatmulK<Q_T, KV_T, T, 128, 128, 128, ABLayout::MK, ABLayout::KN>(
                     mm1A.GetTensor<Q_T>(), mm1B.GetTensor<KV_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(),
                     param);
@@ -923,7 +927,9 @@ public:
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
-        Fixpipe<T, T, BMM2_FIXPIPE_CONFIG>(dstTensor, l0C, fixpipeParams);
+        // Fixpipe<T, T, BMM2_FIXPIPE_CONFIG>(dstTensor, l0C, fixpipeParams);
+        /* --------------------------------- Tensor API ------------------------------------ */
+        Copy(CopyAtom<CopyTraits<CopyL0C2UB, FixpipeTraitDefault>>{}, dstTensor, l0C, fixpipeParams);
     }
 
     __aicore__ inline void IterateBmm2l0Split(mm2ResPos &outputBuf, MM2_ABUF_POLICY_T &inputBuf, RunInfoX &runInfo)
