@@ -18,7 +18,8 @@
 
 
 namespace Mc2Kernel {
-constexpr uint32_t STATE_SIZE = 1024 * 1024; // 1M
+// Plan A: 状态区每 rank 扩容到 2560K，为 dispatch 子区错开偏移预留 704K 上限
+constexpr uint32_t STATE_SIZE = 2560U * 1024U; // 2560K
 constexpr uint64_t TIMEOUT_OFFSET = 1000UL * 1024UL;
 
 // distributev2base所需常量段
@@ -36,7 +37,7 @@ constexpr uint32_t HCCL_WORLDSIZE_POS = 1U;
 constexpr uint32_t UB_ALIGN = 32U;
 
 // dispatchv2所需常量段
-constexpr uint64_t DISPATCH_STATE_WIN_OFFSET = 768UL * 1024UL;
+constexpr uint64_t DISPATCH_STATE_WIN_OFFSET = 2048UL * 1024UL; // Plan A: 原 768K
 constexpr uint8_t BUFFER_NUM = 2;        // 多buf
 constexpr uint8_t BUFFER_SINGLE = 1; 
 constexpr uint32_t STATE_OFFSET = 32U;  // 状态空间偏移地址
@@ -46,7 +47,9 @@ constexpr uint8_t COMM_TP_IDX = 1;
 constexpr uint8_t QUANT_PADDING_VALUE = 0;
 constexpr uint32_t FIRST_CORE = 0U;
 // 先写死这个偏移，如果TP固定为2，可直接往起始数据偏移开始读写
-constexpr uint64_t WIN_STATE_OFFSET = 384UL * 1024UL;
+constexpr uint64_t WIN_STATE_OFFSET = 1024UL * 1024UL; // Plan A: 原 384K
+// 调试验证用：对端状态区按 dstRankId 错开偏移，避免不同 rank 同地址写竞争
+constexpr uint32_t RANK_STATE_SHIFT = 512U;
 constexpr uint64_t TIMEOUT_DETECTION_THRESHOLD = 50000UL;
 constexpr uint64_t CYCLES_PER_US = 50UL;
 constexpr uint64_t TIMEOUT_DETECTION_TX_UNITS = 8UL;
@@ -81,8 +84,8 @@ constexpr uint8_t MXFP8_E5M2_COMM_QUANT = 3;
 constexpr uint8_t MXFP8_E4M3_COMM_QUANT = 4;
 
 // combinev2额外所需常量段
-constexpr uint64_t COMBINE_STATE_WIN_OFFSET = 818UL * 1024UL;   // combine 0/1状态区偏移，为dispatch预留50k大小
-constexpr uint32_t COMBINE_STATE_OFFSET = 64U * 1024U;  // 本卡状态空间偏移地址，前面的地址给dispatch用
+constexpr uint64_t COMBINE_STATE_WIN_OFFSET = 2176UL * 1024UL;   // Plan A: 原 818K，为 dispatch 错开预留更大空间
+constexpr uint32_t COMBINE_STATE_OFFSET = 704U * 1024U;  // Plan A: 原 64K，dispatch 子区扩到 704K
 constexpr uint8_t EP_DOMAIN = 0;
 constexpr uint8_t TP_DOMAIN = 1;
 constexpr uint32_t FLOAT_PER_UB_ALIGN = 8U;
