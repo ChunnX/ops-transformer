@@ -14,6 +14,7 @@
  */
 
 #include "allto_allv_grouped_mat_mul_tiling.h"
+#include "mc2_tiling_utils.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -835,8 +836,9 @@ uint64_t AlltoAllvGmmTiling::GetTilingKey(const gert::TilingContext* context) co
     } else {
         tilingekyMmTrans = false;
     }
+    uint8_t commMode = mc2tiling::Mc2TilingUtils::GetCommModeFromEnv();
     uint64_t tilingKey = GET_TPL_TILING_KEY(templateMmDType, tilingkeyMm,
-                                    tilingekyGmmTrans, tilingekyMmTrans);
+                                    tilingekyGmmTrans, tilingekyMmTrans, commMode);
 
     PrintCommonTilingInfo(tilingData->commonTilingInfo);
     OP_LOGD(A_INNER_DEBUG, "end RunFusionKernelTiling, tilingKey is %lu", tilingKey);

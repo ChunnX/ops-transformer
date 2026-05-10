@@ -23,8 +23,26 @@
 
 using namespace AscendC;
 
+#ifndef TILINGKEY_TPL_CCU
+#define TILINGKEY_TPL_CCU 0
+#endif
+#ifndef TILINGKEY_TPL_AICPU
+#define TILINGKEY_TPL_AICPU 1
+#endif
+
 namespace MC2KernelTemplate {
-template <typename hcclDataType, bool commBeforeComputeFlag>
+
+template<int commMode>
+struct HcclTypeSelector {
+    using type = Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU>;
+};
+
+template<>
+struct HcclTypeSelector<TILINGKEY_TPL_CCU> {
+    using type = Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU>;
+};
+
+template <typename hcclDataType, bool commBeforeComputeFlag, int commMode = TILINGKEY_TPL_CCU>
 class HcclA2avOp {
 public:
     __aicore__ inline void Init(const void *hcclInitTiling, uint64_t hcclCcTilingOffset,
@@ -382,7 +400,7 @@ private:
     }
 
 // AICPU only: 只支持AICPU通信模式
-    Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU> hccl_;
+    typename HcclTypeSelector<commMode>::type hccl_;
 
     const TaskTilingInfo *taskTilingInfo_;
 

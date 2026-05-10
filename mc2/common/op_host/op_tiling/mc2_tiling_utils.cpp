@@ -25,6 +25,7 @@ namespace {
 constexpr char DEUBG_MODE_ENV[] = "ASCEND_MC2_DEBUG_MODE";
 constexpr char DEUBG_COMM_ALG_ENV[] = "ASCEND_MC2_DEBUG_COMM_ALG";
 constexpr char DEUBG_STEP_SIZE_ENV[] = "ASCEND_MC2_DEBUG_STEP_SIZE";
+constexpr char COMM_MODE_ENV[] = "ASCEND_MC2_COMM_MODE";
 constexpr char HCCL_BUFFSIZE[] = "HCCL_BUFFSIZE";
 }  // namespace
 uint8_t Mc2TilingUtils::GetDebugMode() {
@@ -55,6 +56,19 @@ uint8_t Mc2TilingUtils::GetDebugStepSize() {
   }
   OP_LOGI("", "Get ASCEND_MC2_DEBUG_STEP_SIZE is %u", debugStepSize);
   return debugStepSize;
+}
+
+uint8_t Mc2TilingUtils::GetCommModeFromEnv() {
+  auto commModeEnv = getenv(COMM_MODE_ENV);
+  uint8_t commMode = COMM_MODE_CCU;
+  if (commModeEnv != nullptr) {
+    std::string mode(commModeEnv);
+    if (mode == "aicpu" || mode == "1") {
+      commMode = COMM_MODE_AICPU;
+    }
+  }
+  OP_LOGI("", "Get ASCEND_MC2_COMM_MODE is %u (0=CCU, 1=AICPU)", commMode);
+  return commMode;
 }
 
 matmul_tiling::DataType ConvertGeTypeToMmType(const std::string &opName,
