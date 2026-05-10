@@ -15,7 +15,7 @@
 #ifndef MATMUL_H
 #define MATMUL_H
 #include "buffers_policy.h"
-#include "common/inc_ops_tensor/tensor_api/include/tensor_api/atom/cube_compute/mmad_atom.h"
+#include "tensor_api/include/tensor_api/tensor.h"
 using namespace AscendC;
 
 namespace fa_base_matmul {
@@ -149,7 +149,9 @@ __aicore__ inline void LoadDataToL0A(LocalTensor<T>& aL0Tensor, const LocalTenso
             LoadData(aL0Tensor, aL1Tensor[L1Aoffset], loadData2DParamsA);
         }
     } else {
-        LoadData(aL0Tensor, aL1Tensor[L1Aoffset], loadData2DParamsA);
+        // LoadData(aL0Tensor, aL1Tensor[L1Aoffset], loadData2DParamsA);
+        /* --------------------------------- Tensor API ------------------------------------ */
+        Copy(CopyAtom<CopyTraits<CopyL12L0, LoadDataTraitDefault>>{}, aL0Tensor, aL1Tensor[L1Aoffset], loadData2DParamsA);
     }
 }
 
@@ -710,7 +712,11 @@ __aicore__ inline void MatmulFull(const LocalTensor<A> &aL1Tensor,
         mmadParams.m = 16;
     }
  
-    Mmad(cL0Tensor, L0ATensor, L0BTensor, mmadParams);
+    // Mmad(cL0Tensor, L0ATensor, L0BTensor, mmadParams);
+    /* --------------------------------- Tensor API ------------------------------------ */
+    // MmadOperation + MmadTrait --> MmadAtom --> Mmad
+    auto mmadAtom = AscendC::Te::MakeMmad(AscendC::Te::MmadOperation, AscendC::Te::MmadTraitDefault);
+    AscendC::Te::Mmad(mmadAtom.with(mmadParams), cL0Tensor, L0ATensor, L0BTensor);
  
     l0aBuffer.Set<HardEvent::M_MTE1>();
     l0bBuffer.Set<HardEvent::M_MTE1>();
@@ -775,7 +781,7 @@ __aicore__ inline void MatmulK(const LocalTensor<A> &aL1Tensor,
         l0bBuffer.Set<HardEvent::MTE1_M>(); // mte1搬运完后，通知可以开始matmul
         // l0aBuffer和l0bBuffer共用MTE1_M，在D=512场景减少同步指令数量，提升性能
         l0bBuffer.Wait<HardEvent::MTE1_M>(); // matmul等mte1：L0B数据搬运完成后才能开始matmul
- 
+
         MmadParams mmadParams;
         mmadParams.m = param.singleM;
         if (param.realM != 0) {
@@ -793,8 +799,10 @@ __aicore__ inline void MatmulK(const LocalTensor<A> &aL1Tensor,
                                   UNITFLAG_EN_OUTER_LAST : UNITFLAG_ENABLE;
         }
         // Mmad(cL0Tensor, L0ATensor, L0BTensor, mmadParams);
-        auto mmadAtom = AscendC::Te::MakeMmad();
-        AscendC::Te::Mmad(mmadAtom, dst, src0, src1);
+        /* --------------------------------- Tensor API ------------------------------------ */
+        // MmadOperation + MmadTrait --> MmadAtom --> Mmad
+        auto mmadAtom = AscendC::Te::MakeMmad(AscendC::Te::MmadOperation, AscendC::Te::MmadTraitDefault);
+        AscendC::Te::Mmad(mmadAtom.with(mmadParams), cL0Tensor, L0ATensor, L0BTensor);
  
         l0aBuffer.Set<HardEvent::M_MTE1>(); // matmul完成后，通知mte1可以开始搬运新数据到L0A
         l0bBuffer.Set<HardEvent::M_MTE1>(); // matmul完成后，通知mte1可以开始搬运新数据到L0B
