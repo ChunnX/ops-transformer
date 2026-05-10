@@ -703,7 +703,6 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::VectorBufferInit() {
         pipe_->InitBuffer(shareBuffer_, MAX_UB_SIZE - usedBytes);
     }
     CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE3>(FINISH_VEC_CKVKR);
-    CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE3>(FINISH_VEC_QR);
 }
 
 template<typename MLAPT>
@@ -1094,6 +1093,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AivProcess(AivOffset &aivOffs
 
     // 根据不同分支条件处理
     if (splitKN) {
+        CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE3>(FINISH_VEC_QR);
         V3AndV4<needQnDynamicQuant>(aivOffset);
     } else {
         if constexpr (MLAPT::enableGroupComputeOpt) {
