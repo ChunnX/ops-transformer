@@ -15,7 +15,7 @@
 #include "moe_gating_top_k_softmax_v2_tiling.h"
 #include "log/log.h"
 #include "platform/platform_info.h"
-#include "op_host/tiling_templates_registry.h"
+#include "tiling_base/tiling_templates_registry.h"
 using namespace Ops::Transformer::OpTiling;
 using namespace AscendC;
 using namespace ge;
@@ -30,7 +30,7 @@ static const uint32_t MAX_INT32 = 2147483647;
 ge::graphStatus MoeGatingTopKSoftmaxV2BaseTiling::GetPlatformInfo()
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
-    coreNum = ascendcPlatform.GetCoreNumAiv();
+    coreNum = ascendcPlatform.GetCoreNum();
     socVersion = ascendcPlatform.GetSocVersion();
     uint64_t ubSizePlatForm;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);

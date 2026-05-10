@@ -1149,11 +1149,9 @@ public:
         }
     }
 
-     __aicore__ inline void RopeVF(__local_mem__ T_KV*& outPtr1, __local_mem__ T_KV*& outPtr2,
-                                   __local_mem__ T_KV*& ropePtr, __local_mem__ T_KV*& cosPtr1,
-                                   __local_mem__ T_KV*& cosPtr2, __local_mem__ T_KV*& sinPtr1,
-                                   __local_mem__ T_KV*& sinPtr2, __local_mem__ float*& tmpBufferPtr,
-                                   uint32_t ubFactor)
+     __aicore__ inline void RopeVF(__local_mem__ T_KV*& outPtr, __local_mem__ T_KV*& ropePtr, __local_mem__ T_KV*& cosPtr1,
+                                   __local_mem__ T_KV*& cosPtr2, __local_mem__ T_KV*& sinPtr1, __local_mem__ T_KV*& sinPtr2,
+                                   __local_mem__ float*& tmpBufferPtr, uint32_t ubFactor)
     {
         uint32_t vlStride = VL_FP32 * CONST_TWO;
         uint16_t repeatTimesFloor = ops::FloorDiv(ubFactor, vlStride);
@@ -1170,8 +1168,7 @@ public:
             for (uint16_t j = 0; j < repeatTimesFloor; j++) {
                 auto ropeAddr1 = ropePtr + j * VL_FP32 * CONST_TWO;
                 auto ropeAddr2 = ropePtr + (j * CONST_TWO + CONST_ONE) * VL_FP32;
-                auto outAddr1 = outPtr1 + j * VL_FP32;
-                auto outAddr2 = outPtr2 + j * VL_FP32;
+                auto outAddr = outPtr + j * VL_FP32;
                 auto cosAddr1 = cosPtr1 + j * VL_FP32;
                 auto cosAddr2 = cosPtr2 + j * VL_FP32;
                 auto sinAddr1 = sinPtr1 + j * VL_FP32;
@@ -1197,15 +1194,15 @@ public:
                 AscendC::MicroAPI::Add(vregCos1Fp32, vregCos1Fp32, vregSin1Fp32, mask);
                 AscendC::MicroAPI::Add(vregCos2Fp32, vregCos2Fp32, vregSin2Fp32, mask);
 
-                StoreDataAndCastFromFp32(outAddr1, vregCos1Fp32, uReg, mask, width);
-                StoreDataAndCastFromFp32(outAddr2, vregCos2Fp32, uReg, mask, width);
+                StoreDataAndCastFromFp32(outAddr, vregCos1Fp32, uReg, mask, width);
+                auto outAddrTmp = outAddr + ubFactor / CONST_TWO;
+                StoreDataAndCastFromFp32(outAddrTmp, vregCos2Fp32, uReg, mask, width);
             }
 
             // 尾VL计算范式
             auto ropeAddr1 = ropePtr + repeatTimesFloor * VL_FP32 * CONST_TWO;
             auto ropeAddr2 = ropePtr + (repeatTimesFloor * CONST_TWO + CONST_ONE) * VL_FP32;
-            auto outAddr1 = outPtr1 + repeatTimesFloor * VL_FP32;
-            auto outAddr2 = outPtr2 + repeatTimesFloor * VL_FP32;
+            auto outAddr = outPtr + repeatTimesFloor * VL_FP32;
             auto cosAddr1 = cosPtr1 + repeatTimesFloor * VL_FP32;
             auto cosAddr2 = cosPtr2 + repeatTimesFloor * VL_FP32;
             auto sinAddr1 = sinPtr1 + repeatTimesFloor * VL_FP32;
@@ -1233,8 +1230,9 @@ public:
 
             width = regTailWidth;
             mask = AscendC::MicroAPI::UpdateMask<float>(width);
-            StoreDataAndCastFromFp32(outAddr1, vregCos1Fp32, uReg, mask, width);
-            StoreDataAndCastFromFp32(outAddr2, vregCos2Fp32, uReg, mask, width);
+            StoreDataAndCastFromFp32(outAddr, vregCos1Fp32, uReg, mask, width);
+            auto outAddrTmp = outAddr + ubFactor / CONST_TWO;
+            StoreDataAndCastFromFp32(outAddrTmp, vregCos2Fp32, uReg, mask, width);
         }
     }
 
@@ -1486,7 +1484,7 @@ public:
             kQuantLocal = kOutLocal.template ReinterpretCast<T_K_CACHE>()[this->ubFactor * sizeof(T_KV) / sizeof(T_K_CACHE)];
 
             int64_t tmpFactor = this->ubFactor;
-            if (ubIdx == ubFactorDkLoopCountCeil - 1 && ubFactorDkTail > 0) { // 尾块
+            if (ubIdx == ubFactorDkLoopCountCeil - 1) { // 尾块
                 tmpFactor = ubFactorDkTail;
             }
             
@@ -1500,7 +1498,7 @@ public:
             uint32_t kOutOffset2 = this->dk / CONST_TWO + kOutOffset1;
 
             uint32_t cosSinLen = tmpFactor / CONST_TWO;
-            uint32_t alignOffset = this->ubFactor / CONST_TWO;
+            uint32_t alignOffset = ops::CeilDiv(cosSinLen, 32) * 32;
             LocalTensor<T_KV> cosLocalPart2 = cosLocalPart1[alignOffset];
             LocalTensor<T_KV> sinLocalPart1 = cosLocalPart2[alignOffset];
             LocalTensor<T_KV> sinLocalPart2 = sinLocalPart1[alignOffset];
@@ -1708,7 +1706,7 @@ public:
             kQuantLocal = outQueue.AllocTensor<T_K_CACHE>();
 
             int64_t tmpFactor = this->ubFactor;
-            if (ubIdx == ubFactorDkLoopCountCeil - 1 && ubFactorDkTail > 0) { // 尾块
+            if (ubIdx == ubFactorDkLoopCountCeil - 1) { // 尾块
                 tmpFactor = ubFactorDkTail;
             }
             
@@ -1721,7 +1719,7 @@ public:
             uint32_t kOffset2 = this->dk / CONST_TWO + kOffset1;
 
             uint32_t cosSinLen = tmpFactor / CONST_TWO;
-            uint32_t alignOffset = this->ubFactor / CONST_TWO;
+            uint32_t alignOffset = ops::CeilDiv(cosSinLen, 32) * 32;
             LocalTensor<T_KV> cosLocalPart2 = cosLocalPart1[alignOffset];
             LocalTensor<T_KV> sinLocalPart1 = cosLocalPart2[alignOffset];
             LocalTensor<T_KV> sinLocalPart2 = sinLocalPart1[alignOffset];
@@ -1934,7 +1932,7 @@ public:
             kQuantLocal = outQueue.AllocTensor<T_K_CACHE>();
 
             int64_t tmpFactor = this->ubFactor;
-            if (ubIdx == ubFactorDkLoopCountCeil - 1 && ubFactorDkTail > 0) { // 尾块
+            if (ubIdx == ubFactorDkLoopCountCeil - 1) { // 尾块
                 tmpFactor = ubFactorDkTail;
             }
             
@@ -1945,7 +1943,7 @@ public:
             uint32_t kScaleOffset2 = this->dk / CONST_TWO + kScaleOffset1;
 
             uint32_t cosSinLen = tmpFactor / CONST_TWO;
-            uint32_t alignOffset = this->ubFactor / CONST_TWO;
+            uint32_t alignOffset = ops::CeilDiv(cosSinLen, 32) * 32;
             LocalTensor<T_KV> cosLocalPart2 = cosLocalPart1[alignOffset];
             LocalTensor<T_KV> sinLocalPart1 = cosLocalPart2[alignOffset];
             LocalTensor<T_KV> sinLocalPart2 = sinLocalPart1[alignOffset];
@@ -2019,7 +2017,7 @@ public:
             kOutLocal = outQueue.AllocTensor<T_KV>();
 
             int64_t tmpFactor = this->ubFactor;
-            if (ubIdx == ubFactorDkLoopCountCeil - 1 && ubFactorDkTail > 0) {
+            if (ubIdx == ubFactorDkLoopCountCeil - 1) {
                 tmpFactor = ubFactorDkTail;
             }
             
@@ -2032,19 +2030,18 @@ public:
             int64_t kOutOffset1 = rowIdx * this->dk + this->ubFactor * ubIdx / CONST_TWO;
             int64_t kOutOffset2 = this->dk / CONST_TWO + kOutOffset1;
 
-            int64_t alignOffset = this->ubFactor / CONST_TWO;
-            LocalTensor<T_KV> cosLocalPart2 = cosLocalPart1[alignOffset];
-            LocalTensor<T_KV> sinLocalPart1 = cosLocalPart2[alignOffset];
-            LocalTensor<T_KV> sinLocalPart2 = sinLocalPart1[alignOffset];
-            kOutLocal1 = kOutLocal[alignOffset];
+            int64_t cosSinLen = tmpFactor / CONST_TWO;
+            LocalTensor<T_KV> cosLocalPart2 = cosLocalPart1[cosSinLen];
+            LocalTensor<T_KV> sinLocalPart1 = cosLocalPart2[cosSinLen];
+            LocalTensor<T_KV> sinLocalPart2 = sinLocalPart1[cosSinLen];
+            kOutLocal1 = kOutLocal[cosSinLen];
 
             __local_mem__ T_KV* ropePtr = (__local_mem__ T_KV*)ropeLocal.GetPhyAddr();
             __local_mem__ T_KV* cosPtr1 = (__local_mem__ T_KV*)cosLocalPart1.GetPhyAddr();
             __local_mem__ T_KV* cosPtr2 = (__local_mem__ T_KV*)cosLocalPart2.GetPhyAddr();
             __local_mem__ T_KV* sinPtr1 = (__local_mem__ T_KV*)sinLocalPart1.GetPhyAddr();
             __local_mem__ T_KV* sinPtr2 = (__local_mem__ T_KV*)sinLocalPart2.GetPhyAddr();
-            __local_mem__ T_KV* outPtr1 = (__local_mem__ T_KV*)kOutLocal.GetPhyAddr();
-            __local_mem__ T_KV* outPtr2 = (__local_mem__ T_KV*)kOutLocal1.GetPhyAddr();
+            __local_mem__ T_KV* outPtr = (__local_mem__ T_KV*)kOutLocal.GetPhyAddr();
             LocalTensor<float> tmpLocal = xPowBuffer.Get<float>();
             __local_mem__ float* tmpBufferPtr = (__local_mem__ float*)tmpLocal.GetPhyAddr();
 
@@ -2061,7 +2058,7 @@ public:
             inQueueCosSin.EnQue<T_KV>(cosLocalPart1);
             cosLocalPart1 = inQueueCosSin.DeQue<T_KV>();
 
-            RopeVF(outPtr1, outPtr2, ropePtr, cosPtr1, cosPtr2, sinPtr1, sinPtr2, tmpBufferPtr, tmpFactor);
+            RopeVF(outPtr, ropePtr, cosPtr1, cosPtr2, sinPtr1, sinPtr2, tmpBufferPtr, tmpFactor);
             
             outQueue.EnQue<T_KV>(kOutLocal);
             kOutLocal = outQueue.DeQue<T_KV>();
@@ -2231,7 +2228,7 @@ public:
             kQuantLocal = kOutLocal.template ReinterpretCast<T_K_CACHE>()[this->ubFactor * sizeof(T_KV) / sizeof(T_K_CACHE)];
 
             int64_t tmpFactor = this->ubFactor;
-            if (ubIdx == ubFactorDkLoopCountCeil - 1 && ubFactorDkTail > 0) { // 尾块
+            if (ubIdx == ubFactorDkLoopCountCeil - 1) { // 尾块
                 tmpFactor = ubFactorDkTail;
             }
             
@@ -2247,7 +2244,7 @@ public:
             uint32_t kOutOffset2 = this->dk / CONST_TWO + kOutOffset1;
 
             uint32_t cosSinLen = tmpFactor / CONST_TWO;
-            uint32_t alignOffset = this->ubFactor / CONST_TWO;
+            uint32_t alignOffset = ops::CeilDiv(cosSinLen, 32) * 32;
             LocalTensor<T_KV> cosLocalPart2 = cosLocalPart1[alignOffset];
             LocalTensor<T_KV> sinLocalPart1 = cosLocalPart2[alignOffset];
             LocalTensor<T_KV> sinLocalPart2 = sinLocalPart1[alignOffset];

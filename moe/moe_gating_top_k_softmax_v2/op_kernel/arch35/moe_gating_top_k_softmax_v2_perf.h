@@ -478,7 +478,6 @@ private:
             SoftMax<float, true, false>(
                 topKOutsLocal.ReinterpretCast<float>(), topKOutsLocal.ReinterpretCast<float>(),
                 tilingData->softmaxTilingData, softmaxShapeInfo);
-            PipeBarrier<PIPE_ALL>();
             GatherSoftmaxResult(topKOutsLocal, curRowsNum, tilingData);
         } else {
             if (tilingData->col < CONSTANT_EIGHT) {
@@ -495,7 +494,6 @@ private:
             SoftMax<float, true, false>(
                 topKOutsLocal.ReinterpretCast<float>(), topKOutsLocal.ReinterpretCast<float>(),
                 tilingData->softmaxTilingData, softmaxShapeInfo);
-            PipeBarrier<PIPE_ALL>();
             GatherSoftmaxResult(topKOutsLocal, curRowsNum, tilingData);
             Cast(
                 topKOutsLocal.ReinterpretCast<T>(), topKOutsLocal.ReinterpretCast<float>(), RoundMode::CAST_RINT,
@@ -522,7 +520,6 @@ private:
             if constexpr (IsSameType<T, float>::value) {
                 SoftMax<float, true, false>(
                     softmaxResultOutLocal, gatingLocal, tilingData->softmaxTilingData, softmaxShapeInfo);
-                PipeBarrier<PIPE_ALL>();
                 gatingQueue.FreeTensor(gatingLocal);
                 if (this->softmaxFlag == 1) {
                     CopyOutSoftmax(OuterIdx, curRowsNum, softmaxResultOutLocal, tilingData);
@@ -541,7 +538,6 @@ private:
                 gatingQueue.FreeTensor(gatingLocal);
                 SoftMax<float, true, false>(
                     softmaxResultOutLocal, tmpTensorLocal, tilingData->softmaxTilingData, softmaxShapeInfo);
-                PipeBarrier<PIPE_ALL>();
                 if (this->softmaxFlag == 1) {
                     CopyOutSoftmax(OuterIdx, curRowsNum, softmaxResultOutLocal, tilingData);
                 }

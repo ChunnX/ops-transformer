@@ -13,9 +13,9 @@
  * \brief
  */
 
-#include "op_host/tiling_templates_registry.h"
+#include "tiling_base/tiling_templates_registry.h"
 #include "tiling/tiling_api.h"
-#include "op_host/tiling_base.h"
+#include "tiling_base/tiling_base.h"
 #include "platform/platform_info.h"
 #include "rotary_position_embedding_tiling.h"
 #include "log/log.h"
@@ -151,9 +151,7 @@ ge::graphStatus RopeRegBaseTilingClass::JudgeLayoutByShape(const gert::Shape &xS
         layout_ = RopeLayout::BNSD;
         is1snd_ = true;
     } else {
-        std::string shapeMsg = ToString(cosShape) + " and " + ToString(xShape);
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "cos and x", shapeMsg.c_str(), 
-            "Each axis of input cos except the last must be 1 or equal to the same axis of input x");
+        OP_LOGE(context_->GetNodeName(), "the shape of x and sin not satisfy the broadcast.");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

@@ -133,67 +133,47 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>query</td>
             <td>输入</td>
             <td>attention结构的输入Q。</td>
-            <td>
-            <ul>
-                <li>数据类型与key/queryIndex/keyIndex保持一致。</li>
-                <li>不支持空Tensor。</li>
-            </ul>
-            </td>
+            <td>数据类型与key/queryIndex/keyIndex保持一致。</td>
             <td>FLOAT16、BFLOAT16 </td>
             <td>ND</td>
-            <td>(B,S1,N1,DQuery)、(T1,N1,DQuery)</td>
+            <td>(B,S1,N1,D)、(T1,N1,D)</td>
             <td>x</td>
         </tr>
         <tr>
             <td>key</td>
             <td>输入</td>
             <td>attention结构的输入K。</td>
-            <td>
-            <ul>
-                <li>数据类型与query/queryIndex/keyIndex保持一致。</li>
-                <li>不支持空Tensor。</li>
-            </ul>
-            </td>
+            <td>数据类型与query/queryIndex/keyIndex保持一致。</td>
             <td>FLOAT16、BFLOAT16 </td>
             <td>ND</td>
-            <td>(B,S2,N2,DQuery)、(T2,N2,DQuery)</td>
+            <td>(B,S2,N2,D)、(T2,N2,D)</td>
             <td>x</td>
         </tr>
         <tr>
             <td>queryIndex</td>
             <td>输入</td>
             <td>lightingIndexer结构的输入queryIndex。</td>
-            <td>
-            <ul>
-                <li>数据类型与query/key/keyIndex保持一致。</li>
-                <li>不支持空Tensor。</li>
-            </ul>
-            </td>
+            <td>数据类型与query/key/keyIndex保持一致。</td>
             <td>FLOAT16、BFLOAT16</td>
             <td>ND</td>
-            <td>(B,S1,Nidx1,DQueryIndex)、(T1,Nidx1,DQueryIndex)</td>
+            <td>(B,S1,Nidx1,D)、(T1,Nidx1,D)</td>
             <td>x</td>
         </tr>
         <tr>
             <td>keyIndex</td>
             <td>输入</td>
             <td>lightingIndexer结构的输入keyIndex。</td>
-            <td>
-            <ul>
-                <li>数据类型与query/key/queryIndex保持一致。</li>
-                <li>不支持空Tensor。</li>
-            </ul>
-            </td>
+            <td>数据类型与query/key/queryIndex保持一致。</td>
             <td>FLOAT16、BFLOAT16</td>
             <td>ND</td>
-            <td>(B,S2,Nidx2,DQueryIndex)、(T2,Nidx2,DQueryIndex)</td>
+            <td>(B,S2,Nidx2,D)、(T2,Nidx2,D)</td>
             <td>x</td>
         </tr>
         <tr>
             <td>weights</td>
             <td>输入</td>
             <td>权重。</td>
-            <td>不支持空Tensor。</td>
+            <td>-</td>
             <td>FLOAT16、BFLOAT16、FLOAT32</td>
             <td>ND</td>
             <td>(B,S1,Nidx1)、(T1,Nidx1)</td>
@@ -203,7 +183,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>sparseIndices</td>
             <td>输入</td>
             <td>topk_index，用来选择每个query对应的key和value。</td>
-            <td>不支持空Tensor。</td>
+            <td>-</td>
             <td>INT32</td>
             <td>ND</td>
             <td>(B,S1,Nidx2,K)、(T1,Nidx2,K)</td>
@@ -213,7 +193,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>softmaxMax</td>
             <td>输入</td>
             <td>注意力正向计算的中间输出。</td>
-            <td>不支持空Tensor。</td>
+            <td>-</td>
             <td>FLOAT32</td>
             <td>ND</td>
             <td>(B,N2,S1,G)、(N2,T1,G)</td>
@@ -223,7 +203,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>softmaxSum</td>
             <td>输入</td>
             <td>注意力正向计算的中间输出。</td>
-            <td>不支持空Tensor。</td>
+            <td>-</td>
             <td>FLOAT32</td>
             <td>ND</td>
             <td>(B,N2,S1,G)、(N2,T1,G)</td>
@@ -234,14 +214,11 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>输入</td>
             <td>MLA rope部分：Query位置编码的输出。</td>
             <td>
-            <ul>
-                <li>与query的layout维度保持一致。</li>
-                <li>不支持空Tensor。</li>
-            <ul>
+            与query的layout维度保持一致。
             </td>
             <td>FLOAT16、BFLOAT16</td>
             <td>ND</td>
-            <td>(B,S1,N1,DRope)、(T1,N1,DRope)</td>
+            <td>(B,S1,N1,Dr)、(T1,N1,Dr)</td>
             <td>x</td>
         </tr>
         <tr>
@@ -249,14 +226,11 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>输入</td>
             <td>MLA rope部分：Key位置编码的输出。</td>
             <td>
-            <ul>
-                <li>与key的layout维度保持一致。</li>
-                <li>不支持空Tensor。</li>
-            <ul>
+            与key的layout维度保持一致。
             </td>
             <td>FLOAT16、BFLOAT16</td>
             <td>ND</td>
-            <td>(B,S2,N2,DRope)、(T2,N2,DRope)</td>
+            <td>(B,S2,N2,Dr)、(T2,N2,Dr)</td>
             <td>x</td>
         </tr>    
         <tr>
@@ -268,7 +242,6 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
                 <li>值依赖。</li>
                 <li>长度与B保持一致。</li>
                 <li>累加和与T1保持一致。</li>
-                <li>不支持空Tensor。</li>
             </ul>
             </td>
             <td>INT64</td>
@@ -285,7 +258,6 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
                 <li>值依赖。</li>
                 <li>长度与B保持一致。</li>
                 <li>累加和T2保持一致。</li>
-                <li>不支持空Tensor。</li>
             </ul>
             </td>
             <td>INT64</td>
@@ -351,7 +323,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>-</td>
             <td>FLOAT16、BFLOAT16</td>
             <td>ND</td>
-            <td>(B,S1,Nidx1,DQueryIndex)、(T1,Nidx1,DQueryIndex)</td>
+            <td>(B,S1,Nidx1,D)、(T1,Nidx1,D)</td>
             <td>x</td>
         </tr>
         <tr>
@@ -361,7 +333,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>-</td>
             <td>FLOAT16、BFLOAT16</td>
             <td>ND</td>
-            <td>(B,S2,Nidx2,DQueryIndex)、(T2,Nidx2,DQueryIndex)</td>
+            <td>(B,S2,Nidx2,D)、(T2,Nidx2,D)</td>
             <td>x</td>
         </tr>
         <tr>
@@ -468,7 +440,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
 ## 约束说明
 
 - 确定性计算：
-  - aclnnSparseLightningIndexerGradKLLoss默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
+  - aclnnSparseLightningIndexerGradKLLoss默认非确定性实现，不支持通过aclrtCtxSetSysParamOpt开启确定性。
 - 公共约束
     - 参数query、key、queryIndex、keyIndex的数据类型应保持一致。
     - 参数weights不为float32时，参数query、key、queryIndex、keyIndex、weights的数据类型应保持一致。
@@ -551,8 +523,17 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         </thead>
         <tbody>
         <tr>
+            <td>deterministic</td>
+            <td>bool</td>
+            <td>
+            <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持确定性计算<br>
+            <term>Ascend 950PR/Ascend 950DT</term>支持确定性计算
+            </td>
+        </tr>
+        <tr>
             <td>B</td>
-            <td>支持1~256</td>
+            <td><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持1~256<br>
+                <term>Ascend 950PR/Ascend 950DT</term>支持1~128</td>
             <td>-</td>
         </tr>
         <tr>
@@ -563,14 +544,16 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         <tr>
             <td>N1</td>
             <td>
-            32、64、128
+            <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持32、64、128<br>
+            <term>Ascend 950PR/Ascend 950DT</term>支持32、48、64、128
             </td>
             <td>SparseFA为MQA。</td>
         </tr>
         <tr>
             <td>Nidx1</td>
             <td>
-            16、32、64
+            <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持8、16、32、64<br>
+            <term>Ascend 950PR/Ascend 950DT</term>支持16、24、32、64
             </td>
             <td>SparseFA为MQA。</td>
         </tr>
@@ -585,17 +568,12 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>SparseFA为MQA，N2=1。</td>
         </tr>
         <tr>
-            <td>DQuery</td>
+            <td>D</td>
             <td>512</td>
-            <td>-</td>
+            <td>query与query_index的D不同。</td>
         </tr>
         <tr>
-            <td>DQueryIndex</td>
-            <td>128</td>
-            <td>-</td>
-        </tr>
-        <tr>
-            <td>DRope</td>
+            <td>Drope</td>
             <td>64</td>
             <td>-</td>
         </tr>
@@ -604,12 +582,54 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>1024、2048、3072、4096、5120、6144、7168、8192</td>
             <td>-</td>
         </tr>
+        <tr>
+            <td>layout</td>
+            <td>BSND/TND</td>
+            <td>-</td>
+        </tr>
         </tbody>
     </table>
-    <ul>
-        <li>Ascend 950PR、Ascend 950DT处理器：B仅支持1~128，N1额外支持48，Nidx1额外支持24。</li>
-        <li>Atlas A2 训练系列产品、Atlas A2 推理系列产品、Atlas A3 训练系列产品、Atlas A3 推理系列产品：Nidx1额外支持8。</li>
-    </ul>
+
+- 典型值
+    <table style="undefined;table-layout: fixed; width: 942px"><colgroup>
+        <col style="width: 100px">
+        <col style="width: 300px">
+        </colgroup>
+        <thead>
+            <tr>
+                <th>规格项</th>
+                <th>典型值</th>
+            </tr>
+        </thead>
+        <tbody>
+        <tr>
+            <td>query</td>
+            <td>
+            <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持N1 = 128/64/32; D = 512<br>
+            <term>Ascend 950PR/Ascend 950DT</term>支持N1 = 128/64/48/32; D = 512
+            </td>
+        </tr>
+        <tr>
+            <td>queryIndex</td>
+            <td>
+            <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持N1 = 64/32/16/8;  D = 128 ; S1 = 64k/128k<br>
+            <term>Ascend 950PR/Ascend 950DT</term>支持N1 = 64/32/24/16;  D = 128 ; S1 = 64k/128k
+            </td>
+        </tr>
+        <tr>
+            <td>keyIndex</td>
+            <td>D = 128</td>
+        </tr>
+        <tr>
+            <td>topk</td>
+            <td>topk = 1024/2048/3072/4096/5120/6144/7168/8192</td>
+        </tr>
+        <tr>
+            <td>qRope</td>
+            <td>d= 64</td>
+        </tr>
+        </tbody>
+    </table>
 
 ## 调用示例
 

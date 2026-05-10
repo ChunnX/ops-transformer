@@ -232,20 +232,17 @@ macro(add_modules_sources_with_soc)
       message(WARNING "failed to extract OPS_NAME, SOURCE_DIR: ${SOURCE_DIR}")
       return()
   endif()
-  set(OP_ARCH_DIRECTORY ${ARCH_DIRECTORY})
+
   foreach(COMPUTE_UNIT IN LISTS ASCEND_COMPUTE_UNIT)
-      if (DEFINED ${_op_name}_${COMPUTE_UNIT}_arch_directory)
-          list(APPEND OP_ARCH_DIRECTORY ${${_op_name}_${COMPUTE_UNIT}_arch_directory})
-      endif()
       if("${COMPUTE_UNIT}" STREQUAL "ascend310p" AND MODULE_OP_MC2_ENABLE)
-          list(APPEND OP_ARCH_DIRECTORY arch31)
+          list(APPEND ARCH_DIRECTORY arch31)
       endif()
   endforeach()
   # deduplicate
- 	list(REMOVE_DUPLICATES OP_ARCH_DIRECTORY)
+ 	list(REMOVE_DUPLICATES ARCH_DIRECTORY)
   
   file(GLOB OPINFER_SRCS ${SOURCE_DIR}/*_infershape*.cpp)
-  foreach(ARCH ${OP_ARCH_DIRECTORY})
+  foreach(ARCH ${ARCH_DIRECTORY})
     file(GLOB_RECURSE files ${SOURCE_DIR}/${ARCH}/*_infershape*.cpp)
     list(APPEND OPINFER_SRCS ${files})
   endforeach()
@@ -269,7 +266,7 @@ macro(add_modules_sources_with_soc)
     endif()
   endif()
 
-  foreach(ARCH ${OP_ARCH_DIRECTORY})
+  foreach(ARCH ${ARCH_DIRECTORY})
   if (MODULE_OP_MC2_ENABLE)
     file(GLOB_RECURSE files ${SOURCE_DIR}/op_tiling/${ARCH}/*.cpp)
   else()
@@ -891,45 +888,6 @@ function(add_aicpu_cust_kernel_modules target_name)
     )
     if (NOT ${target_name} IN_LIST AICPU_CUST_OBJ_TARGETS)
       set(AICPU_CUST_OBJ_TARGETS ${AICPU_CUST_OBJ_TARGETS} ${target_name} CACHE INTERNAL "All aicpu cust obj targets")
-    endif()
-  endif()
-endfunction()
-
-# Compiles aicpu source as OBJECT for host side (x86).
-# Collects into AICPU_HOST_OBJ_TARGETS; linking into libtransformer_constant_folding_ops.so
-# is done in symbol.cmake gen_aicpu_const_symbol().
-function(add_aicpu_host_kernel_modules host_target_name)
-  message(STATUS "add_aicpu_host_kernel_modules for ${host_target_name}")
-  if(NOT TARGET ${host_target_name})
-    add_library(${host_target_name} OBJECT)
-    target_include_directories(${host_target_name} PRIVATE
-        ${AICPU_INCLUDE}
-        ${CANN_3RD_LIB_PATH}/eigen
-    )
-    target_compile_definitions(
-      ${host_target_name} PRIVATE
-                    _FORTIFY_SOURCE=2
-                    google=ascend_private
-    )
-    target_compile_options(
-      ${host_target_name} PRIVATE
-                    -Dgoogle=ascend_private
-                    -fvisibility=hidden ${AICPU_DEFINITIONS}
-    )
-    target_link_libraries(
-      ${host_target_name}
-      PRIVATE $<BUILD_INTERFACE:$<IF:$<BOOL:${ENABLE_TEST}>,intf_llt_pub_asan_cxx14,intf_pub_cxx14>>
-              $<BUILD_INTERFACE:dlog_headers>
-              Eigen3::EigenTransformer
-    )
-
-    get_property(_host_targets GLOBAL PROPERTY AICPU_HOST_OBJ_TARGETS)
-    if (NOT host_target_name IN_LIST _host_targets)
-      set_property(GLOBAL APPEND PROPERTY
-        AICPU_HOST_OBJ_TARGETS ${host_target_name})
-      message(STATUS "Aicpu regist host target: ${host_target_name}")
-    else()
-      message(STATUS "Skip duplicate target: ${host_target_name}")
     endif()
   endif()
 endfunction()
