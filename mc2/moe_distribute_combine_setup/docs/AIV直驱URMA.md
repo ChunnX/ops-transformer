@@ -71,7 +71,7 @@ CI指针，也由芯片（硬件）控制，用户（软件）需要记录CI值�
 
 Write SQE结构体，占用一个WQEBB：
 
-【图】
+![Write SQE](asserts/Write.png)
 
 其中：
 - cqe：表示当前WQE是否需要上报CQE
@@ -82,9 +82,9 @@ Write SQE结构体，占用一个WQEBB：
 
 #### Write with notify SQE
 
-Write with notify SQE结构体，占用两个个WQEBB：
+Write with notify SQE结构体，占用两个WQEBB：
 
-【图】
+![Write with notify SQE](asserts/WriteWithNotify.png)
 
 除了与Write SQE相同的字段外：
 - notify_addr：notify写入的地址
@@ -92,7 +92,7 @@ Write with notify SQE结构体，占用两个个WQEBB：
 
 ## URMA通信接口
 
-相关通信接口定义在`mc2\moe_distribute_combine_setup\op_kernel\moe_distribute_base.h`
+相关通信接口定义在[`moe_distribute_base.h`](..\op_kernel\moe_distribute_base.h)
 
 ### 获取URMA Jetty信息
 
