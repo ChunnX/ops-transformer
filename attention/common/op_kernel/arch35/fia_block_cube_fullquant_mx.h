@@ -132,7 +132,7 @@ public:
     using ValueScaleGmToL1Type = typename ValueScaleGmToL1Sel<KvLayoutType>::Type;
 
     using ConstInfoX = ConstInfo_t<FiaKernelType::FULL_QUANT>;
-    TPipe *tPipe;
+    TPipe *tPipe = nullptr;
     /* =====================GM变量(with layout)==================== */
     FaGmTensor<Q_T, Q_FORMAT> queryGm;
     FaGmTensor<KV_T, KV_FORMAT> keyGm;
