@@ -117,14 +117,15 @@ public:
     ActualSeqLensParser<KV_MODE> kvActSeqLensParser;
 
     // ==============================fuction=======================================================
-    __aicore__ inline FlashAttentionFullQuantMxKernel() : cubeBlock(constInfo), vecFaBlock(constInfo), vecFdBlock(constInfo){};
+    __aicore__ inline FlashAttentionFullQuantMxKernel()
+        : cubeBlock(constInfo), vecFaBlock(constInfo), vecFdBlock(constInfo){};
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pse,
                                 __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengths,
                                 __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *blockTable,
                                 __gm__ uint8_t *dequantScaleQuery, __gm__ uint8_t *dequantScaleKey,
                                 __gm__ uint8_t *dequantScaleValue, __gm__ uint8_t *pScale, __gm__ uint8_t *queryRope,
-                                __gm__ uint8_t *keyRope, __gm__ uint8_t *softmaxLse,
-                                __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace, __gm__ uint8_t *fiaMetaData,
+                                __gm__ uint8_t *keyRope, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
+                                __gm__ uint8_t *workspace, __gm__ uint8_t *fiaMetaData,
                                 const FullQuantTiling *__restrict tiling, TPipe *tPipe)
     {
         this->pipe = tPipe;
@@ -147,13 +148,15 @@ public:
         InitMMResBuf(workspace);
 
         if ASCEND_IS_AIV {
-            vecFaBlock.InitVecBlock(tPipe, actualSeqLengths, actualSeqLengthsKv, pScale, attenMask, softmaxLse, attentionOut, workspace);
+            vecFaBlock.InitVecBlock(tPipe, actualSeqLengths, actualSeqLengthsKv, pScale, attenMask, softmaxLse,
+                                    attentionOut, workspace);
             vecFaBlock.ClearOutput();
         }
 
         if ASCEND_IS_AIC {
-            cubeBlock.InitCubeBlock(tPipe, &l1BufferManager, query, key, value, blockTable, queryRope, keyRope, actualSeqLengths,
-                                    actualSeqLengthsKv, dequantScaleQuery, dequantScaleKey, dequantScaleValue);
+            cubeBlock.InitCubeBlock(tPipe, &l1BufferManager, query, key, value, blockTable, queryRope, keyRope,
+                                    actualSeqLengths, actualSeqLengthsKv, dequantScaleQuery, dequantScaleKey,
+                                    dequantScaleValue);
         }
         if constexpr (FLASH_DECODE) {
             if ASCEND_IS_AIV {
