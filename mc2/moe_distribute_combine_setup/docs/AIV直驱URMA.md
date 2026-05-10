@@ -98,7 +98,7 @@ Write with notify SQE结构体，占用两个WQEBB：
 
 ## URMA通信接口
 
-相关通信接口定义在[`moe_distribute_base.h`](..\op_kernel\moe_distribute_base.h)
+CombineSetup使用的相关通信接口定义在[`moe_distribute_base.h`](../op_kernel/moe_distribute_base.h)。
 
 ### 获取URMA Jetty信息
 
@@ -167,7 +167,7 @@ __aicore__ inline void InvalidateCqeStatus(const AscendC::LocalTensor<uint8_t> &
 
 当首次进入通信域时，需要调用`InvalidateCqeStatus()`清空原有的CQ队列，入参`cqeInfoTensor`为CQ信息，`cqeTensor`为用户申请的临时空间，用于清空操作。
 
-### 填充SQ队列
+### 将WQE拷贝至SQ队列
 
 ```cpp
 __aicore__ inline void PutCommSQE(const AscendC::LocalTensor<uint8_t> &sqInfoTensor, const AscendC::LocalTensor<uint8_t> &sqeTensor, uint32_t sendSqeIdx, uint32_t sqPi);
@@ -187,6 +187,6 @@ __aicore__ inline void PutCommNotifySQE(const AscendC::LocalTensor<uint8_t> &sqI
 
 ![CombineSetup流程图](asserts/CombineSetup.png)
 
-方案通过两次分核，将组装WQE步骤与Jetty解耦，使得在第一次分核中算子可以将SQ队列视为普通的GM目的地址，直接将每个专家组装完成的WQE放入SQ队列的指定位置。而其余需要对Jetty做操作的步骤统一放在第二次分核后处理，通过重新分核保证当前AIV直驱URMA通信约束之一“每个Jetty只能由一个AIV核处理”。两次分核之间通过插入全核核间同步保证在敲JFS Doorbell之前所有WQE已经正确写入相应位置。
+方案通过两次分核，将组装WQE步骤与Jetty解耦，使得在第一次分核中算子可以将SQ队列视为普通的GM目的地址，直接将每个专家组装完成的WQE放入SQ队列的指定位置，从而充分利用AIV核。而其余需要对Jetty做操作的步骤统一放在第二次分核后处理，通过重新分核保证当前AIV直驱URMA通信约束之一“每个Jetty只能由一个AIV核处理”。两次分核之间通过插入全核核间同步，保证在敲JFS Doorbell之前所有WQE已经正确写入相应位置。
 
-但同时，由于解耦后WQE写入函数无法动态获取SQPI与SQCI，使得AIV直驱URMA通信另一约束“每次发送WQEBB个数不能超过SQ队列深度”当前通过CombineSetup算子入参Attr保证，即每次发送的WQE个数为$max(MoE专家总数/卡数)=256<<SQ队列深度$。
+但同时，由于解耦后WQE写入函数无法动态获取SQPI与SQCI，使得AIV直驱URMA通信另一约束“每次发送WQEBB个数不能超过SQ队列深度”当前通过CombineSetup算子入参Attr保证，即每次发送的WQE个数为$\max(MoE专家总数/卡数)=256 \ll SQ队列深度$。
