@@ -92,6 +92,8 @@ static ge::graphStatus CheckActualWinSize(const char *nodeName, const CheckWinSi
     if (winSizeData.isMc2Context) {
         actualSize += MB_SIZE;  // V3流程加1M状态区
     };
+    // Plan B: state 区从 1M 扩到 4M（dispatch+combine 均按 dstRank×512 错开），额外 3MB
+    actualSize += 3UL * MB_SIZE;
     if (winSizeData.isLayered) {
         // 校验可变bs
         OP_TILING_CHECK((bs != maxBs), OP_LOGE(nodeName, "Layered cannot support variableBs, bs is %lu, maxBs is %lu",
