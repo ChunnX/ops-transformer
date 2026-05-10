@@ -63,7 +63,7 @@ CI指针，也由芯片（硬件）控制，用户（软件）需要记录CI值�
 
 ### WQE通信语义
 
-通过WQE字段中的opcode可以设置Normal SQE的通信语义。当前支持的通信语义包括`Send`、`Write`、`Write with notify`、`Read`等等。
+通过WQE中的opcode字段可以设置Normal SQE的通信语义。URMA通信支持的通信语义包括`Send`、`Write`、`Write with notify`、`Read`等等。
 
 当前DispatchSetup中使用`Write`语义，CombineSetup中使用`Write with notify`语义，其余语义暂未实现。
 
