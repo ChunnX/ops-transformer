@@ -42,7 +42,12 @@ __aicore__ inline void CopySingleMatrixNDToNZ(LocalTensor<T> l1Tensor, const Glo
         nd2nzPara.dstNzNStride = 1;
         nd2nzPara.srcNdMatrixStride = 0;
         nd2nzPara.dstNzMatrixStride = 0;
-        DataCopy(l1Tensor, gmTensor, nd2nzPara);
+        // DataCopy(l1Tensor, gmTensor, nd2nzPara);
+        /* --------------------------------- Tensor API ------------------------------------ */
+        // layout --> tensor --> slice --> copy
+        auto copyGm2L1 = AscendC::Te::MakeCopy(AscendC::Te::copyGm2L1{});
+        auto gmTensorBlock = gmTensor.Slice(AscendC::Te::MakeCoord(0, k * tileK), AscendC::Te::MakeShape(param.singleM, tileK));
+        AscendC::Te::Copy(copyGm2L1, l1Tensor, gmTensorBlock);
     } else {
         uint64_t l1Offset = 0;
         uint64_t gmOffset = 0;
@@ -66,8 +71,12 @@ __aicore__ inline void CopySingleMatrixNDToNZ(LocalTensor<T> l1Tensor, const Glo
             nd2nzPara.dstNzNStride = 1;
             nd2nzPara.srcNdMatrixStride = 0;
             nd2nzPara.dstNzMatrixStride = 0;
-            DataCopy(l1Tensor[l1Offset], gmTensor[gmOffset], nd2nzPara);
-
+            // DataCopy(l1Tensor[l1Offset], gmTensor[gmOffset], nd2nzPara);
+            /* --------------------------------- Tensor API ------------------------------------ */
+            // layout --> tensor --> slice --> copy
+            auto copyGm2L1 = AscendC::Te::MakeCopy(AscendC::Te::copyGm2L1{});
+            auto gmTensorBlock = gmTensor.Slice(AscendC::Te::MakeCoord(0, k * tileK), AscendC::Te::MakeShape(param.singleM, tileK));
+            AscendC::Te::Copy(copyGm2L1, l1Tensor, gmTensorBlock);
             gmOffset += srcNdMatrixStride;
             l1Offset += dstNzMatrixStride;
         }

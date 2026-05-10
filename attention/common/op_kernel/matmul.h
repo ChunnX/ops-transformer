@@ -15,7 +15,7 @@
 #ifndef MATMUL_H
 #define MATMUL_H
 #include "buffers_policy.h"
-#include "common/inc_ops_tensor/tensor_api/include/tensor_api/atom/cube_compute/mmad_atom.h"
+#include "tensor_api/include/tensor_api/tensor.h"
 using namespace AscendC;
 
 namespace fa_base_matmul {
@@ -662,34 +662,49 @@ __aicore__ inline void MatmulFull(const LocalTensor<A> &aL1Tensor,
                                   const LocalTensor<AScaleType> &aScaleL1Tensor = LocalTensor<AScaleType>(),
                                   const LocalTensor<BScaleType> &bScaleL1Tensor = LocalTensor<AScaleType>())
 {
-    Buffer<BufferType::L0A> l0aBuffer = aL0BuffsDb.Get();
-    l0aBuffer.Wait<HardEvent::M_MTE1>();
-    LocalTensor<L0ADType> L0ATensor = l0aBuffer.GetTensor<L0ADType>();
-#if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__) || (__NPU_ARCH__ == 5102))
-    if constexpr (IsSameType<L0ADType, mx_fp8_e4m3_t>::value) {
-        LoadDataToL0AMx<A, L0ADType>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, 0, param.singleK, param.singleM); // d,s2
-    } else
-#endif
-    {
-        LoadDataToL0A(L0ATensor, aL1Tensor, param, 0, param.singleK, param.singleM); // s2*d,d,s2
-    }
-    l0aBuffer.Set<HardEvent::MTE1_M>();
+//     Buffer<BufferType::L0A> l0aBuffer = aL0BuffsDb.Get();
+//     l0aBuffer.Wait<HardEvent::M_MTE1>();
+//     LocalTensor<L0ADType> L0ATensor = l0aBuffer.GetTensor<L0ADType>();
+// #if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__) || (__NPU_ARCH__ == 5102))
+//     if constexpr (IsSameType<L0ADType, mx_fp8_e4m3_t>::value) {
+//         LoadDataToL0AMx<A, L0ADType>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, 0, param.singleK, param.singleM); // d,s2
+//     } else
+// #endif
+//     {
+//         LoadDataToL0A(L0ATensor, aL1Tensor, param, 0, param.singleK, param.singleM); // s2*d,d,s2
+//     }
+//     l0aBuffer.Set<HardEvent::MTE1_M>();
+    /* --------------------------------- Tensor API ------------------------------------ */
+    // layout --> tensor --> slice --> copy
+    AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(0);
+    auto copyL12L0A = AscendC::Te::MakeCopy(AscendC::Te::CopyL12L0A{});
+    auto aL0Layout = AscendC::Te::MakeNzLayout<A>(param.singleM, tileK);
+    auto aL0Tensor = AscendC::Te::MakeTensor(AscendC::Te::MakeL0AmemPtr<A>(k * L1Aoffset), aL0Layout);
+    auto aL1TensorBlock = aL1Tensor.Slice(AscendC::Te::MakeCoord(0, k * tileK), AscendC::Te::MakeShape(param.singleM, tileK));
+    AscendC::Te::Copy(copyL12L0A, aL0Tensor, aL1TensorBlock);
 
-    Buffer<BufferType::L0B> l0bBuffer = bL0BuffsDb.Get();
-    l0bBuffer.Wait<HardEvent::M_MTE1>();
-    LocalTensor<L0BDType> L0BTensor = l0bBuffer.GetTensor<L0BDType>();
-#if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__))
-    if constexpr (IsSameType<L0BDType, mx_fp8_e4m3_t>::value) {
-        LoadDataToL0BMx<B, L0BDType>(L0BTensor, bL1Tensor, bScaleL1Tensor, param, 0, param.singleK, param.singleN);
-    } else
-#endif
-    {
-        LoadDataToL0B(L0BTensor, bL1Tensor, param, 0, param.singleK, param.singleN);
-    }
-    l0bBuffer.Set<HardEvent::MTE1_M>();
+//     Buffer<BufferType::L0B> l0bBuffer = bL0BuffsDb.Get();
+//     l0bBuffer.Wait<HardEvent::M_MTE1>();
+//     LocalTensor<L0BDType> L0BTensor = l0bBuffer.GetTensor<L0BDType>();
+// #if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__))
+//     if constexpr (IsSameType<L0BDType, mx_fp8_e4m3_t>::value) {
+//         LoadDataToL0BMx<B, L0BDType>(L0BTensor, bL1Tensor, bScaleL1Tensor, param, 0, param.singleK, param.singleN);
+//     } else
+// #endif
+//     {
+//         LoadDataToL0B(L0BTensor, bL1Tensor, param, 0, param.singleK, param.singleN);
+//     }
+//     l0bBuffer.Set<HardEvent::MTE1_M>();
+    /* --------------------------------- Tensor API ------------------------------------ */
+    // layout --> tensor --> slice --> copy
+    auto copyL12L0B = AscendC::Te::MakeCopy(AscendC::Te::CopyL12L0B{});
+    auto bL0Layout = AscendC::Te::MakeNzLayout<B>(tileK, param.singleN);
+    auto bL0Tensor = AscendC::Te::MakeTensor(AscendC::Te::MakeL0BmemPtr<B>(k * L1Boffset), bL0Layout);
+    auto bL1TensorBlock = bL1Tensor.Slice(AscendC::Te::MakeCoord(k * tileK, 0), AscendC::Te::MakeShape(tileK, param.singleN));
+    AscendC::Te::Copy(copyL12L0B, bL0Tensor, bL1TensorBlock);
 
-    l0aBuffer.Wait<HardEvent::MTE1_M>();
-    l0bBuffer.Wait<HardEvent::MTE1_M>();
+    // l0aBuffer.Wait<HardEvent::MTE1_M>();
+    // l0bBuffer.Wait<HardEvent::MTE1_M>();
 
     MmadParams mmadParams;
     mmadParams.m = param.singleM;
@@ -705,10 +720,17 @@ __aicore__ inline void MatmulFull(const LocalTensor<A> &aL1Tensor,
         mmadParams.m = 16;
     }
  
-    Mmad(cL0Tensor, L0ATensor, L0BTensor, mmadParams);
+    // Mmad(cL0Tensor, L0ATensor, L0BTensor, mmadParams);
+    /* --------------------------------- Tensor API ------------------------------------ */
+    // MmadOperation + MmadTrait --> MmadAtom --> Mmad
+    AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(0);
+    AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(0);
+    auto mmadAtom = AscendC::Te::MakeMmad(AscendC::Te::MmadOperation, AscendC::Te::MmadTraitDefault);
+    AscendC::Te::Mmad(mmadAtom.with(mmadParams), cL0Tensor, L0ATensor, L0BTensor);
  
-    l0aBuffer.Set<HardEvent::M_MTE1>();
-    l0bBuffer.Set<HardEvent::M_MTE1>();
+    // l0aBuffer.Set<HardEvent::M_MTE1>();
+    // l0bBuffer.Set<HardEvent::M_MTE1>();
+    AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(0);
 }
 
 // 切K
@@ -742,34 +764,49 @@ __aicore__ inline void MatmulK(const LocalTensor<A> &aL1Tensor,
  
     for (uint32_t k = 0; k < kLoops; k++) {
         uint32_t tileK = (k == (kLoops - 1)) ? tailK : baseK;
-        Buffer<BufferType::L0A> l0aBuffer = aL0BuffsDb.Get();
-        l0aBuffer.Wait<HardEvent::M_MTE1>(); // mte1等Matmul：上一轮matmul完成后才能搬运新数据到L0A
-        LocalTensor<L0ADType> L0ATensor = l0aBuffer.GetTensor<L0ADType>();
-#if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__))
-        if constexpr (IsSameType<L0ADType, mx_fp8_e4m3_t>::value) {
-            LoadDataToL0AMx<A, L0ADType>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, k * L1Aoffset, tileK, param.singleM); // s2,
-        } else
-#endif
-        {
-            LoadDataToL0A(L0ATensor, aL1Tensor, param, k * L1Aoffset, tileK, param.singleM); // s2*d,d,s2
-        }
+//         Buffer<BufferType::L0A> l0aBuffer = aL0BuffsDb.Get();
+//         l0aBuffer.Wait<HardEvent::M_MTE1>(); // mte1等Matmul：上一轮matmul完成后才能搬运新数据到L0A
+//         LocalTensor<L0ADType> L0ATensor = l0aBuffer.GetTensor<L0ADType>();
+// #if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__))
+//         if constexpr (IsSameType<L0ADType, mx_fp8_e4m3_t>::value) {
+//             LoadDataToL0AMx<A, L0ADType>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, k * L1Aoffset, tileK, param.singleM); // s2,
+//         } else
+// #endif
+//         {
+//             LoadDataToL0A(L0ATensor, aL1Tensor, param, k * L1Aoffset, tileK, param.singleM); // s2*d,d,s2
+//         }
+        /* --------------------------------- Tensor API ------------------------------------ */
+        // layout --> tensor --> slice --> copy
+        AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(0);
+        auto copyL12L0A = AscendC::Te::MakeCopy(AscendC::Te::CopyL12L0A{});
+        auto aL0Layout = AscendC::Te::MakeNzLayout<A>(param.singleM, tileK);
+        auto aL0Tensor = AscendC::Te::MakeTensor(AscendC::Te::MakeL0AmemPtr<A>(k * L1Aoffset), aL0Layout);
+        auto aL1TensorBlock = aL1Tensor.Slice(AscendC::Te::MakeCoord(0, k * tileK), AscendC::Te::MakeShape(param.singleM, tileK));
+        AscendC::Te::Copy(copyL12L0A, aL0Tensor, aL1TensorBlock);
 
-        Buffer<BufferType::L0B> l0bBuffer = bL0BuffsDb.Get();
-        l0bBuffer.Wait<HardEvent::M_MTE1>(); // mte1等Matmul：上一轮matmul完成后才能搬运新数据到L0B
-        LocalTensor<L0BDType> L0BTensor = l0bBuffer.GetTensor<L0BDType>();
-        uint64_t loopNum = param.isRightTranspose ? 1 : kLoops;
-#if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__))
-        if constexpr (IsSameType<L0BDType, mx_fp8_e4m3_t>::value) {
-            LoadDataToL0BMx<B, L0BDType>(L0BTensor, bL1Tensor, bScaleL1Tensor, param, k * L1Boffset, tileK, param.singleN, loopNum); // tileK.D
-        } else
-#endif
-        {
-            LoadDataToL0B(L0BTensor, bL1Tensor, param, k * L1Boffset, tileK, param.singleN, loopNum);
-        }
-        l0bBuffer.Set<HardEvent::MTE1_M>(); // mte1搬运完后，通知可以开始matmul
-        // l0aBuffer和l0bBuffer共用MTE1_M，在D=512场景减少同步指令数量，提升性能
-        l0bBuffer.Wait<HardEvent::MTE1_M>(); // matmul等mte1：L0B数据搬运完成后才能开始matmul
- 
+//         Buffer<BufferType::L0B> l0bBuffer = bL0BuffsDb.Get();
+//         l0bBuffer.Wait<HardEvent::M_MTE1>(); // mte1等Matmul：上一轮matmul完成后才能搬运新数据到L0B
+//         LocalTensor<L0BDType> L0BTensor = l0bBuffer.GetTensor<L0BDType>();
+//         uint64_t loopNum = param.isRightTranspose ? 1 : kLoops;
+// #if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__))
+//         if constexpr (IsSameType<L0BDType, mx_fp8_e4m3_t>::value) {
+//             LoadDataToL0BMx<B, L0BDType>(L0BTensor, bL1Tensor, bScaleL1Tensor, param, k * L1Boffset, tileK, param.singleN, loopNum); // tileK.D
+//         } else
+// #endif
+//         {
+//             LoadDataToL0B(L0BTensor, bL1Tensor, param, k * L1Boffset, tileK, param.singleN, loopNum);
+//         }
+//         l0bBuffer.Set<HardEvent::MTE1_M>(); // mte1搬运完后，通知可以开始matmul
+//         // l0aBuffer和l0bBuffer共用MTE1_M，在D=512场景减少同步指令数量，提升性能
+//         l0bBuffer.Wait<HardEvent::MTE1_M>(); // matmul等mte1：L0B数据搬运完成后才能开始matmul
+        /* --------------------------------- Tensor API ------------------------------------ */
+        // layout --> tensor --> slice --> copy
+        auto copyL12L0B = AscendC::Te::MakeCopy(AscendC::Te::CopyL12L0B{});
+        auto bL0Layout = AscendC::Te::MakeNzLayout<B>(tileK, param.singleN);
+        auto bL0Tensor = AscendC::Te::MakeTensor(AscendC::Te::MakeL0BmemPtr<B>(k * L1Boffset), bL0Layout);
+        auto bL1TensorBlock = bL1Tensor.Slice(AscendC::Te::MakeCoord(k * tileK, 0), AscendC::Te::MakeShape(tileK, param.singleN));
+        AscendC::Te::Copy(copyL12L0B, bL0Tensor, bL1TensorBlock);
+
         MmadParams mmadParams;
         mmadParams.m = param.singleM;
         if (param.realM != 0) {
@@ -787,11 +824,16 @@ __aicore__ inline void MatmulK(const LocalTensor<A> &aL1Tensor,
                                   UNITFLAG_EN_OUTER_LAST : UNITFLAG_ENABLE;
         }
         // Mmad(cL0Tensor, L0ATensor, L0BTensor, mmadParams);
-        auto mmadAtom = AscendC::Te::MakeMmad();
-        AscendC::Te::Mmad(mmadAtom, dst, src0, src1);
+        /* --------------------------------- Tensor API ------------------------------------ */
+        // MmadOperation + MmadTrait --> MmadAtom --> Mmad
+        AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(0);
+        auto mmadAtom = AscendC::Te::MakeMmad(AscendC::Te::MmadOperation, AscendC::Te::MmadTraitDefault);
+        AscendC::Te::Mmad(mmadAtom.with(mmadParams), cL0Tensor, L0ATensor, L0BTensor);
  
-        l0aBuffer.Set<HardEvent::M_MTE1>(); // matmul完成后，通知mte1可以开始搬运新数据到L0A
-        l0bBuffer.Set<HardEvent::M_MTE1>(); // matmul完成后，通知mte1可以开始搬运新数据到L0B
+        // l0aBuffer.Set<HardEvent::M_MTE1>(); // matmul完成后，通知mte1可以开始搬运新数据到L0A
+        // l0bBuffer.Set<HardEvent::M_MTE1>(); // matmul完成后，通知mte1可以开始搬运新数据到L0B
+        AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(0);
     }
 }
 
