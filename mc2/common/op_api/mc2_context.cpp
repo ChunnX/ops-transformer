@@ -24,7 +24,9 @@ constexpr uint64_t MAX_CONTEXT_TAG_SIZE = 255;
 constexpr uint32_t HCCL_COMM_LAYERS_MTE_CCU = 1;
 constexpr uint32_t HCCL_COMM_LAYERS_UB_MEM = 0;
 constexpr uint32_t GET_LOCAL_SERVER_RANK_SIZE_LAYER = 0;
-constexpr uint32_t EP_RANK_OFFSET_STEP = 8192;
+constexpr uint32_t INIT_CHANNEL_NUM_ONE = 1;
+constexpr uint32_t INIT_CHANNEL_NUM_TWO = 2;
+ 
 } // namespace
 
 namespace Mc2Aclnn {
@@ -109,6 +111,7 @@ aclnnStatus Mc2Context::LoadHcclSymbols()
         {reinterpret_cast<void **>(&HcclGetRankId), "HcclGetRankId"},
         {reinterpret_cast<void **>(&HcclGetRankSize), "HcclGetRankSize"},
         {reinterpret_cast<void **>(&HcclRankGraphGetRanksByLayer), "HcclRankGraphGetRanksByLayer"},
+        {reinterpret_cast<void **>(&HcomChannelGetPtrByHandle), "HcomChannelGetPtrByHandle"},
     };
 
     for (auto &sym : symbols) {
@@ -179,28 +182,19 @@ aclnnStatus Mc2Context::GetNetLayers(const HcclComm &hcclHandle, uint32_t *&netL
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus Mc2Context::GetRankSizePerServer(const HcclComm &hcclHandle, uint32_t netLayers)
+aclnnStatus Mc2Context::InitHcclChannel(const HcclComm &hcclHandle, uint32_t srcRankId,const CommProtocol &protocol,
+                                        std::vector<std::vector<HcclChannelDesc>> &channelDesc)
 {
-    auto hcclRet = HcclRankGraphGetRankSizeByLayer(hcclHandle, netLayers, &rankSizePerServer_);
-    if (hcclRet != HCCL_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER, "Get HCCL rank size per server failed");
-        return ACLNN_ERR_INNER;
-    }
-    OP_LOGD("Get HCCL rank size per server success, rankSizePerServer_ is: %u", rankSizePerServer_);
-    return ACLNN_SUCCESS;
-}
-
-aclnnStatus Mc2Context::InitHcclChannel(const HcclComm &hcclHandle, uint32_t rankDim, uint32_t srcRankId,
-                                        const CommProtocol &protocol, std::vector<HcclChannelDesc> &channelDesc)
-{
-    uint32_t channelNum = channelDesc.size();
-    auto hcclRet = HcclChannelDescInit(channelDesc.data(), channelNum);
-    if (hcclRet != HCCL_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER, "HCCL channel init failed");
-        return ACLNN_ERR_INNER;
+    for (auto &channel : channelDesc) {
+        uint32_t channelNum = channel.size();
+        auto hcclRet = HcclChannelDescInit(channel.data(), channelNum);
+        if (hcclRet != HCCL_SUCCESS) {
+            OP_LOGE(ACLNN_ERR_INNER, "HCCL channel init failed");
+            return ACLNN_ERR_INNER;
+        }
     }
     OP_LOGD("HCCL channel init success");
-
+    // 初始化UB域内通信通道描述符
     uint32_t netLayerNum = 0;
     uint32_t layerId = 0;
     uint32_t *netLayerList = nullptr;
@@ -209,8 +203,7 @@ aclnnStatus Mc2Context::InitHcclChannel(const HcclComm &hcclHandle, uint32_t ran
         OP_LOGE(ACLNN_ERR_INNER, "Get HCCL net layers failed netLayerNum is: %u", netLayerNum);
         return ret;
     }
-
-    for (uint32_t i = 0; i < rankDim; ++i) {
+    for (uint32_t i = 0; i < channelDesc[INIT_CHANNEL_NUM_ONE].size(); ++i) {
         if (i == srcRankId) {
             continue;
         }
@@ -220,49 +213,77 @@ aclnnStatus Mc2Context::InitHcclChannel(const HcclComm &hcclHandle, uint32_t ran
         layerId = netLayerNum == 1 ?
                       netLayerList[HCCL_COMM_LAYERS_UB_MEM] :
                       layerMap[dstRank]; // 如果只有一层通信，直接使用该层；如果有多层通信，使用之前记录的通信层
-        ret = GetHcclCommLink(hcclHandle, layerId, srcRankId, dstRank, protocol, links);
+        ret = GetHcclCommLink(hcclHandle, layerId, srcRankId, dstRank, CommProtocol::COMM_PROTOCOL_UB_MEM, links);
         if (ret != ACLNN_SUCCESS) {
             return ret;
         }
-        channelDesc[channelId].channelProtocol = protocol;
-        channelDesc[channelId].remoteRank = dstRank;
-        channelDesc[channelId].localEndpoint = links->srcEndpointDesc;
-        channelDesc[channelId].remoteEndpoint = links->dstEndpointDesc;
+        channelDesc[INIT_CHANNEL_NUM_ONE][channelId].channelProtocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
+        channelDesc[INIT_CHANNEL_NUM_ONE][channelId].remoteRank = dstRank;
+        channelDesc[INIT_CHANNEL_NUM_ONE][channelId].localEndpoint = links->srcEndpointDesc;
+        channelDesc[INIT_CHANNEL_NUM_ONE][channelId].remoteEndpoint = links->dstEndpointDesc;
+    }
+
+    // 初始化ROCE通信通道描述符
+    if (protocol == CommProtocol::COMM_PROTOCOL_ROCE) {
+        for (uint32_t i = 0; i < ubDomainNum_; i++) {
+            if (i == srcRankId / rankNumPerUbDomain_) {
+                continue;
+            }
+            uint32_t dstRank = i * rankNumPerUbDomain_ + srcRankId % rankNumPerUbDomain_;
+            uint32_t channelId = (dstRank > srcRankId) ? (i - 1) : i;
+            CommLink *links = nullptr;
+            layerId = layerROCEMap_[dstRank]; // 从ROCE通信层映射表中获取ROCE通信层ID
+            ret = GetHcclCommLink(hcclHandle, layerId, srcRankId, dstRank, CommProtocol::COMM_PROTOCOL_ROCE, links);
+            if (ret != ACLNN_SUCCESS) {
+                return ret;
+            }
+            channelDesc[INIT_CHANNEL_NUM_TWO][channelId].channelProtocol = CommProtocol::COMM_PROTOCOL_ROCE;
+            channelDesc[INIT_CHANNEL_NUM_TWO][channelId].remoteRank = dstRank;
+            channelDesc[INIT_CHANNEL_NUM_TWO][channelId].localEndpoint = links->srcEndpointDesc;
+            channelDesc[INIT_CHANNEL_NUM_TWO][channelId].remoteEndpoint = links->dstEndpointDesc;
+        }
     }
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus Mc2Context::GetHcclCommChannel(const HcclComm &hcclHandle, uint32_t rankDim, uint32_t srcRankId,
+
+
+aclnnStatus Mc2Context::GetHcclCommChannel(const HcclComm &hcclHandle, uint32_t srcRankId,
                                            const CommProtocol &protocol, const CommEngine &engine,
-                                           std::vector<ChannelHandle> &channels)
+                                           std::vector<std::vector<ChannelHandle>> &channels)
 {
     OP_LOGD("Start to get HCCL communication channel");
-    uint32_t channelNum = rankDim - 1;
-    std::vector<HcclChannelDesc> channelDesc(channelNum);
-    channels.resize(channelNum);
+    uint32_t initChannelNum = protocol == CommProtocol::COMM_PROTOCOL_UB_MEM ?
+                                          INIT_CHANNEL_NUM_ONE : INIT_CHANNEL_NUM_TWO;
+    uint32_t ubMemChannelArrNum = rankNumPerUbDomain_ - 1; // ub_mem通信通道数组大小为卡数减1
+    uint32_t roceChannelArrNum = ubDomainNum_ - 1; // roce通信通道数组大小为ub域数减1，因为本卡只会与其他UB域内同层次的卡通信
+    channels.resize(initChannelNum);
+    std::vector<std::vector<HcclChannelDesc>> channelDesc(initChannelNum);
+    channels[INIT_CHANNEL_NUM_ONE].resize(ubMemChannelArrNum);
+    channelDesc[INIT_CHANNEL_NUM_ONE].resize(ubMemChannelArrNum);
+    if (protocol == CommProtocol::COMM_PROTOCOL_ROCE) {
+        channels[INIT_CHANNEL_NUM_TWO].resize(roceChannelArrNum);
+        channelDesc[INIT_CHANNEL_NUM_TWO].resize(roceChannelArrNum);
+    }
 
-    uint32_t *netLayerList = nullptr;
-    uint32_t netLayerNum = 0;
-    auto ret = GetNetLayers(hcclHandle, netLayerList, netLayerNum);
+    ret = InitHcclChannel(hcclHandle, srcRankId, protocol, channelDesc);
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }
-
-    uint32_t netLayers = netLayerList[GET_LOCAL_SERVER_RANK_SIZE_LAYER]; // 获取本server卡数
-    ret = GetRankSizePerServer(hcclHandle, netLayers);
-    if (ret != ACLNN_SUCCESS) {
-        return ret;
-    }
-
-    ret = InitHcclChannel(hcclHandle, rankDim, srcRankId, protocol, channelDesc);
-    if (ret != ACLNN_SUCCESS) {
-        return ret;
-    }
-
-    auto hcclRet = HcclChannelAcquire(hcclHandle, engine, channelDesc.data(), channelNum, channels.data());
+    
+    auto hcclRet = HcclChannelAcquire(hcclHandle, engine, channelDesc[INIT_CHANNEL_NUM_ONE].data(),
+                                      ubMemChannelArrNum, channels[INIT_CHANNEL_NUM_ONE].data());
     if (hcclRet != HCCL_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER, "Acquire HCCL channel failed");
+        OP_LOGE(ACLNN_ERR_INNER, "Acquire HCCL ub_mem channel failed");
         return ACLNN_ERR_INNER;
+    }
+    if (protocol == CommProtocol::COMM_PROTOCOL_ROCE) {
+        hcclRet = HcclChannelAcquire(hcclHandle, engine, channelDesc[INIT_CHANNEL_NUM_TWO].data(), 
+                                     roceChannelArrNum, channels[INIT_CHANNEL_NUM_TWO].data());
+        if (hcclRet != HCCL_SUCCESS) {
+            OP_LOGE(ACLNN_ERR_INNER, "Acquire HCCL roce channel failed");
+            return ACLNN_ERR_INNER;
+        }
     }
     return ACLNN_SUCCESS;
 }
@@ -272,42 +293,49 @@ aclnnStatus Mc2Context::GetHcclCommResource(const HcclComm &hcclHandle, const Co
 {
     OP_LOGD("Start to get HCCL communication resource");
     uint32_t rankId = mc2ContextStruct->epRankId;
-    std::vector<ChannelHandle> channels;
+    uint32_t relativeIndex = rankId % rankNumPerUbDomain_;
+    std::vector<std::vector<ChannelHandle>> Channels;
 
-    auto ret = GetHcclCommChannel(hcclHandle, epRankSize_, rankId, protocol, engine, channels);
+    auto ret = GetHcclCommChannel(hcclHandle, rankId, protocol, engine, Channels);
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }
-    // 将rankSizePerServer_写入通信资源结构体中，后续DPU直驱需要使用
-    mc2ContextStruct->rankSizePerServer = rankSizePerServer_;
-    OP_LOGD("Get HCCL communication channel success, channel num is: %u", channels.size());
+    OP_LOGD("Get HCCL communication channel success");
 
-    for (uint32_t i = 0; i < epRankSize_; ++i) {
+    for (uint32_t i = 0; i < rankNumPerUbDomain_; ++i) {
         void *tempBuffer = nullptr;
         uint64_t bufSize = 0;
         HcclResult hcclRet;
 
-        if (i == rankId) {
+        if (i == relativeIndex) {
             hcclRet = HcclGetHcclBuffer(hcclHandle, &tempBuffer, &hcclBuffSize_);
         } else {
-            uint32_t idx = (i < rankId) ? i : (i - 1);
-            hcclRet = HcclChannelGetHcclBuffer(hcclHandle, channels[idx], &tempBuffer, &bufSize);
+            uint32_t idx = (i < relativeIndex) ? i : (i - 1);
+            hcclRet = HcclChannelGetHcclBuffer(hcclHandle, Channels[INIT_CHANNEL_NUM_ONE][idx], &tempBuffer, &bufSize);
         }
 
         if (hcclRet != HCCL_SUCCESS) {
             OP_LOGE(ACLNN_ERR_INNER, "Get HCCL buffer failed, src: %u, dst: %u", rankId, i);
             return ACLNN_ERR_INNER;
         }
-
-        mc2ContextStruct->epHcclBuffer_[i] = reinterpret_cast<uint64_t>(tempBuffer) + i * EP_RANK_OFFSET_STEP;
+        mc2ContextStruct->epHcclBuffer_[i] = reinterpret_cast<uint64_t>(tempBuffer);
+    }
+    if (protocol == CommProtocol::COMM_PROTOCOL_ROCE) {
+        ChannelPtr* channelPtr = nullptr;
+        hcclRet = HcclChannelGetPtrByHandle(Channels[INIT_CHANNEL_NUM_TWO].data(), Channels[INIT_CHANNEL_NUM_TWO].size(), &channelPtr);
+        if (hcclRet != HCCL_SUCCESS) {
+            OP_LOGE(ACLNN_ERR_INNER, "Get HCCL roce channel ptr failed");
+            return ACLNN_ERR_INNER;
+        }
+        mc2ContextStruct->kfcContextAddr = reinterpret_cast<uint64_t>(channelPtr);
     }
     OP_LOGD("Get HCCL CommResource success");
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus Mc2Context::CreatMc2Context(const HcclComm &hcclHandle, const std::string &mc2ContextTag,
+aclnnStatus Mc2Context::CreateMc2Context(const HcclComm &hcclHandle, const std::string &mc2ContextTag,
                                         const CommEngine &engine, const CommProtocol &protocol, void *&ctx,
-                                        Mc2MoeContext *mc2ContextStruct)
+                                        Mc2MoeContext *mc2ContextStruct, uint64_t &hcclBuffSize)
 {
     OP_LOGD("Start to create HCCL context");
     uint64_t ctxSize = sizeof(Mc2MoeContext);
@@ -318,25 +346,24 @@ aclnnStatus Mc2Context::CreatMc2Context(const HcclComm &hcclHandle, const std::s
     }
     OP_LOGD("Create HCCL context success, ctx: %p", ctx);
 
-    hcclRet = HcclGetRankId(hcclHandle, &mc2ContextStruct->epRankId);
-    if (hcclRet != HCCL_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER, "Get rank ID failed");
-        return ACLNN_ERR_INNER;
+    if (protocol == CommProtocol::COMM_PROTOCOL_UB_MEM) {
+        rankSizePerServer_ = epRankSize_; // 全部都是UB_MEM协议下，单个server卡数为epRankSize_
+    } else  if (protocol == CommProtocol::COMM_PROTOCOL_ROCE) {
+        rankSizePerServer_ = rankNumPerUbDomain_; // ROCE协议下，单个server卡数为UB域卡数
     }
-    OP_LOGD("Get rank ID success, rankId is: %u", mc2ContextStruct->epRankId);
-
-    hcclRet = HcclGetRankSize(hcclHandle, &epRankSize_);
-    if (hcclRet != HCCL_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER, "Get rank size failed");
-        return ACLNN_ERR_INNER;
-    }
-    OP_LOGD("Get rank size success, rankSize is: %u", epRankSize_);
+    ubDomainNum_ = epRankSize_ / rankNumPerUbDomain_; // 计算UB域数量
+    mc2ContextStruct->epRankId = epRankId_; // 记录本卡的rankId
+    mc2ContextStruct->rankSizePerServer = rankSizePerServer_; // 记录单个ub域卡数
+    OP_LOGD("ubDomainNum_ is: %u, rankSizePerServer_ is: %u,", ubDomainNum_, rankSizePerServer_);
 
     auto ret = GetHcclCommResource(hcclHandle, engine, protocol, mc2ContextStruct);
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER, "Get HCCL communication resource failed");
         return ret;
     }
+
+    hcclBuffSize = hcclBuffSize_;
+    OP_LOGD("hcclBuffSize_ is: %u", hcclBuffSize_);
 
     hcclRet = HcclEngineCtxCopy(hcclHandle, engine, mc2ContextTag.c_str(), mc2ContextStruct, ctxSize,
                                 KOPY_DEFAULT_CTX_OFFSET);
@@ -380,63 +407,121 @@ aclnnStatus Mc2Context::GetHcclBufferSize(const HcclComm &hcclHandle, uint64_t &
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus Mc2Context::CheckLinks(uint32_t &netLinkNum, CommLink *linksList)
+aclnnStatus Mc2Context::CheckLinks(uint32_t &netLinkNum, CommLink *linksList, CommProtocol &protocol)
 {
-    bool isFoundUbMemProtocol = false;
-    for (uint32_t j = 0; j < netLinkNum; ++j) {
-        if (linksList[j].linkAttr.linkProtocol == CommProtocol::COMM_PROTOCOL_UB_MEM) {
-            isFoundUbMemProtocol = true;
-            break;
+    bool isFoundSupportProtocol = false;
+    if (protocol == CommProtocol::COMM_PROTOCOL_UB_MEM) { //目前还在UB域中，需要校验是否有UB_MEM协议,若是有ROCE协议,则切换到ROCE域
+        for (uint32_t j = 0; j < netLinkNum; ++j) {
+            if (linksList[j].linkAttr.linkProtocol == CommProtocol::COMM_PROTOCOL_UB_MEM) {
+                isFoundSupportProtocol = true;
+                break;
+            }
+            if (linksList[j].linkAttr.linkProtocol == CommProtocol::COMM_PROTOCOL_ROCE) {
+                protocol = CommProtocol::COMM_PROTOCOL_ROCE;
+                isFoundSupportProtocol = true;
+                break;
+            }
+        }
+        //  如果是转换到UB域间了，第一次判断时有可能两张卡即不支持UB_MEM, 也不支持ROCE协议，这种情况下不应该报错
+        //  正常情况下，这种情况netLinkNum应该为0，但是为了防止不标准的情况，这里做一个冗余防御处理
+        //  这种情况下，直接将protocol设置为ROCE协议，
+        if (!isFoundSupportProtocol) {
+            protocol = CommProtocol::COMM_PROTOCOL_ROCE;
+            isFoundSupportProtocol = true;
+        }
+    } 
+    if (protocol == CommProtocol::COMM_PROTOCOL_ROCE) { // 在ROCE域中，需要校验是否有ROCE协议，若没有则报错
+        for (uint32_t j = 0; j < netLinkNum; ++j) {
+            if (linksList[j].linkAttr.linkProtocol == CommProtocol::COMM_PROTOCOL_ROCE) {
+                isFoundSupportProtocol = true;
+                break;
+            }
+        }
+        if (!isFoundSupportProtocol) {
+            OP_LOGE(ACLNN_ERR_INNER, "No ROCE or UB_MEM protocol found in links, please check the Hccl Configuration.");
         }
     }
-    return isFoundUbMemProtocol ? ACLNN_SUCCESS : ACLNN_ERR_INNER;
+    return isFoundSupportProtocol ? ACLNN_SUCCESS : ACLNN_ERR_INNER;
 }
 
-aclnnStatus Mc2Context::CheckProtocolSupport(const HcclComm &hcclHandle, uint32_t *&layerList, uint32_t &layerNum)
+aclnnStatus Mc2Context::GetEpRankIdAndSize(const HcclComm &hcclHandle)
 {
-    uint32_t srcRankId = 0;
-    uint32_t dstRankId = 0;
+    auto hcclRet = HcclGetRankId(hcclHandle, &epRankId_);
+    if (hcclRet != HCCL_SUCCESS) {
+        OP_LOGE(ACLNN_ERR_INNER, "Get rank ID failed");
+        return ACLNN_ERR_INNER;
+    }
+    OP_LOGD("Get rank ID success, rankId is: %u", epRankId_);
+
+    hcclRet = HcclGetRankSize(hcclHandle, &epRankSize_);
+    if (hcclRet != HCCL_SUCCESS) {
+        OP_LOGE(ACLNN_ERR_INNER, "Get rank size failed");
+        return ACLNN_ERR_INNER;
+    }
+    OP_LOGD("Get rank size success, rankSize is: %u", epRankSize_);
+}
+
+aclnnStatus Mc2Context::CheckProtocolSupport(const HcclComm &hcclHandle, uint32_t *&layerList, uint32_t &layerNum,
+                                             CommProtocol &protocol)
+{
     uint32_t netLinkNum = 0;
     uint32_t rankNumInLayer = 0;
     uint32_t *rankIdLists = nullptr;
     CommLink *linksList = nullptr;
-
-    auto hcclRet = HcclGetRankId(hcclHandle, &srcRankId);
-    if (hcclRet != HCCL_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER, "CheckProtocolSupport Get rank ID failed");
-        return ACLNN_ERR_INNER;
-    }
-    OP_LOGD("CheckProtocolSupport Get rank ID success, rankId is: %d", srcRankId);
+    protocol = CommProtocol::COMM_PROTOCOL_UB_MEM; // 假设所有卡默认支持UB_MEM协议
 
     for (uint32_t layerIndex = 0; layerIndex < layerNum; ++layerIndex) {
-        OP_LOGD("CheckProtocolSupport Check layer %d", layerList[layerIndex]);
+        OP_LOGD("CheckProtocolSupport Check layer %u", layerList[layerIndex]);
         hcclRet = HcclRankGraphGetRanksByLayer(hcclHandle, layerList[layerIndex], &rankIdLists, &rankNumInLayer);
         if (hcclRet != HCCL_SUCCESS) {
             OP_LOGE(ACLNN_ERR_INNER, "Get rank IDs by layer failed");
             return ACLNN_ERR_INNER;
         }
         for (uint32_t rankId = 0; rankId < rankNumInLayer; ++rankId) {
-            if (rankIdLists[rankId] == srcRankId ||
-                layerMap.find(rankIdLists[rankId]) != layerMap.end()) { // 本卡或者已经校验过的卡跳过
+            if (rankIdLists[rankId] == epRankId_ ||
+                layerUBMEMMap_.find(rankIdLists[rankId]) != layerUBMEMMap_.end()) { // 本卡或者已经校验过的卡跳过
                 continue;
             }
-            hcclRet = HcclRankGraphGetLinks(hcclHandle, layerList[layerIndex], srcRankId, rankIdLists[rankId],
+            if (protocol == CommProtocol::COMM_PROTOCOL_ROCE) {
+               if(rankIdLists[rankId] % rankNumPerUbDomain_ != epRankId_ % rankNumPerUbDomain_ || 
+                 layerROCEMap_.find(rankIdLists[rankId]) != layerROCEMap_.end()) { // DPU只需要知道每个UE域中同级别的卡地址
+                    continue;
+               }
+            }
+            hcclRet = HcclRankGraphGetLinks(hcclHandle, layerList[layerIndex], epRankId_, rankIdLists[rankId],
                                             &linksList, &netLinkNum);
             if (hcclRet != HCCL_SUCCESS) {
                 OP_LOGE(ACLNN_ERR_INNER, "Get HCCL links failed");
                 return ACLNN_ERR_INNER;
             }
-            if (netLinkNum == 0) {
-                OP_LOGE(ACLNN_ERR_INNER, "No available HCCL links found, srcRankID %d, dstRankID %d layer is %d",
-                        srcRankId, rankIdLists[rankId], layerList[layerIndex]);
+            if (netLinkNum == 0) { // DPU场景下, 需要考虑第一次跨UE域时获取链接时可能存在没有链接的情况，这种情况并不算错误，需要跳过
+                if (protocol == CommProtocol::COMM_PROTOCOL_UB_MEM) {
+                    if ((rankNumInLayer == epRankSize_) && (rankId == rankNumInLayer - 1)) {
+                        OP_LOGD("The last rank cannot use ROCE protocol, please check the hccl Configuration.");
+                        return ACLNN_ERR_INNER;
+                    }
+                    protocol = CommProtocol::COMM_PROTOCOL_ROCE;
+                    OP_LOGD("protocol is UB_MEM, but no available HCCL links found, set protocol to ROCE_DPU");
+                    continue; 
+                }
+                OP_LOGE("No available HCCL links found, layer is %d, protocol is %s", layerList[layerIndex], protocol);
+                return ACLNN_ERR_INNER; //  如果已经是ROCE协议，且没有链接，返回错误
+            }
+            if (CheckLinks(netLinkNum, linksList, protocol) != ACLNN_SUCCESS) {
+                OP_LOGE(ACLNN_ERR_INNER, "No HCCL links support %s, srcRankID %d, dstRankID %d layer is %d",
+                        protocol == CommProtocol::COMM_PROTOCOL_UB_MEM ? "UB_MEM" : "ROCE_DPU",
+                        epRankId_, rankIdLists[rankId], layerList[layerIndex]);
                 return ACLNN_ERR_INNER;
             }
-            if (CheckLinks(netLinkNum, linksList) != ACLNN_SUCCESS) {
-                OP_LOGE(ACLNN_ERR_INNER, "No HCCL links support UB_MEM srcRankID %d, dstRankID %d layer is %d",
-                        srcRankId, dstRankId, layerList[layerIndex]);
-                return ACLNN_ERR_INNER;
+            if (protocol == CommProtocol::COMM_PROTOCOL_UB_MEM) {
+                layerUBMEMMap_[rankIdLists[rankId]] = layerList[layerIndex];
+            } else if (protocol == CommProtocol::COMM_PROTOCOL_ROCE && 
+                       rankIdLists[rankId] % rankNumPerUbDomain_ == epRankId_ % rankNumPerUbDomain_) {
+                layerROCEMap_[rankIdLists[rankId]] = layerList[layerIndex];
             }
-            layerMap[rankIdLists[rankId]] = layerList[layerIndex];
+        }
+        if (protocol == CommProtocol::COMM_PROTOCOL_UB_MEM) {
+            rankNumPerUbDomain_ = rankNumInLayer; // 记录当前UB域中卡的数量
         }
     }
     return ACLNN_SUCCESS;
@@ -447,6 +532,12 @@ aclnnStatus Mc2Context::GetCommProtocol(const HcclComm &hcclHandle, CommProtocol
     OP_LOGD("Start to get HCCL communication protocol");
     uint32_t layerNum = 0;
     uint32_t *layerList = nullptr;
+
+    auto aclnnRet = GetEpRankIdAndSize(hcclHandle);
+    if (aclnnRet != ACLNN_SUCCESS) {
+        return aclnnRet;
+    }
+
     auto ret = HcclRankGraphGetLayers(hcclHandle, &layerList, &layerNum);
     if (ret != HCCL_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER, "Get HCCL layers failed");
@@ -454,19 +545,19 @@ aclnnStatus Mc2Context::GetCommProtocol(const HcclComm &hcclHandle, CommProtocol
     }
 
     if (layerNum == HCCL_COMM_LAYERS_MTE_CCU) {
-        protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
+        protocol = CommProtocol::COMM_PROTOCOL_UB_MEM; // COMM_PROTOCOL_UB_MEM
         return ACLNN_SUCCESS;
     }
 
-    OP_LOGD("start CheckProtocolSupport, layerNum is %d", layerNum);
+    OP_LOGD("start CheckProtocolSupport, layerNum is %u", layerNum);
 
-    auto aclnnRet = CheckProtocolSupport(hcclHandle, layerList, layerNum);
+    aclnnRet = CheckProtocolSupport(hcclHandle, layerList, layerNum, protocol);
     if (aclnnRet != ACLNN_SUCCESS) {
         return aclnnRet;
     }
 
-    OP_LOGD("CheckProtocolSupport success!");
-    protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
+    std::string protocolStr = protocol == CommProtocol::COMM_PROTOCOL_UB_MEM ? "MTE_UB_MEM" : "ROCE_DPU";
+    OP_LOGD("CheckProtocolSupport success!, protocol is %s", protocolStr.c_str());
     return ACLNN_SUCCESS;
 }
 
@@ -480,23 +571,20 @@ aclnnStatus Mc2Context::ValidateContextTag(const std::string &mc2ContextTag)
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus Mc2Context::GetOrCreateMc2Context(const HcclComm &hcclHandle, const std::string &mc2ContextTag,
-                                              const CommEngine &engine, const CommProtocol &protocol, void *&ctx,
-                                              uint64_t &hcclBuffSize)
+aclnnStatus Mc2Context::CheckHcclContext(const HcclComm &hcclHandle, const std::string &mc2ContextTag,
+                                         const CommEngine &engine, void *&ctx, uint64_t &hcclBuffSize)
 {
     uint64_t ctxSize = 0;
     auto hcclRet = HcclEngineCtxGet(hcclHandle, mc2ContextTag.c_str(), engine, &ctx, &ctxSize);
-    if (hcclRet != HCCL_SUCCESS) {
-        Mc2MoeContext mc2ContextStruct;
-        auto aclnnRet = CreatMc2Context(hcclHandle, mc2ContextTag, engine, protocol, ctx, &mc2ContextStruct);
-        CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
-        hcclBuffSize = hcclBuffSize_;
-    } else {
+    if (hcclRet == HCCL_SUCCESS) {
         auto aclnnRet = GetHcclBufferSize(hcclHandle, hcclBuffSize);
-        CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
+        CHECK_RET(aclnnRet == ACLNN_SUCCESS, return aclnnRet);
+        return ACLNN_SUCCESS;
     }
+    hcclBuffSize = 0; // 为了做一个标志位，表示是否需要创建Mc2ContextTensor
     return ACLNN_SUCCESS;
 }
+
 
 aclnnStatus Mc2Context::GetMc2ContextTensor(const char *groupEp, const char *opName, uint64_t &hcclBuffSize,
                                             aclTensor *&mc2Context)
@@ -505,30 +593,41 @@ aclnnStatus Mc2Context::GetMc2ContextTensor(const char *groupEp, const char *opN
     auto &instance = GetInstance();
 
     auto aclnnRet = instance.LoadHcclSymbols();
-    CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
+    CHECK_RET(aclnnRet == ACLNN_SUCCESS, return aclnnRet);
 
     void *ctx = nullptr;
     CommProtocol protocol;
     std::string mc2ContextTag = std::string(groupEp) + std::string(opName);
 
     aclnnRet = instance.ValidateContextTag(mc2ContextTag);
-    CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
+    CHECK_RET(aclnnRet == ACLNN_SUCCESS, return aclnnRet);
 
     HcclComm hcclHandle;
     aclnnRet = instance.GetCommHandle(groupEp, hcclHandle);
-    CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
+    CHECK_RET(aclnnRet == ACLNN_SUCCESS, return aclnnRet);
 
-    CommEngine engine = CommEngine::COMM_ENGINE_AIV;
+    aclnnRet = instance.CheckHcclContext(hcclHandle, mc2ContextTag, engine, ctx, hcclBuffSize);
+    CHECK_RET(aclnnRet == ACLNN_SUCCESS, return aclnnRet);
+    if (hcclBuffSize != 0) { // 如果有缓存，直接创建Mc2ContextTensor
+        aclnnRet = instance.CreatMc2ContextTensor(ctx, mc2Context);
+        CHECK_RET(aclnnRet == ACLNN_SUCCESS, return aclnnRet);
+        OP_LOGD("Found context cache, Get Mc2MoeContext Tensor Success");
+        return ACLNN_SUCCESS;
+    }   
+
+    CommEngine engine = CommEngine::COMM_ENGINE_AIV; // 目前DPU与MTE通信仅支持AIV引擎
     aclnnRet = instance.GetCommProtocol(hcclHandle, protocol);
-    CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
+    CHECK_RET(aclnnRet == ACLNN_SUCCESS, return aclnnRet);
 
-    aclnnRet = instance.GetOrCreateMc2Context(hcclHandle, mc2ContextTag, engine, protocol, ctx, hcclBuffSize);
-    CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
-
+    Mc2MoeContext mc2ContextStruct;
+    auto aclnnRet = instance.CreateMc2Context(hcclHandle, mc2ContextTag, engine, protocol, ctx, &mc2ContextStruct,
+                                              hcclBuffSize);
+    CHECK_RET(aclnnRet == ACLNN_SUCCESS, return aclnnRet);
+    
     aclnnRet = instance.CreatMc2ContextTensor(ctx, mc2Context);
-    CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
+    CHECK_RET(aclnnRet == ACLNN_SUCCESS, return aclnnRet);
 
-    OP_LOGD("Get Mc2MoeContext Tensor Success");
+    OP_LOGD("Create Mc2MoeContext Tensor Success");
     return ACLNN_SUCCESS;
 }
 
