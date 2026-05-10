@@ -120,7 +120,7 @@ ASCENDC_TPL_ARGS_DECL(FusedInferAttentionScore,
     //    0: false
     //    1: true
     ASCENDC_TPL_BOOL_DECL(EnableS1OutSplit, false, true),
-    //    bit 41 IsReconstructTemp
+    //    bit 36 IsReconstructTemp
     //    0: false
     //    1: true
     ASCENDC_TPL_BOOL_DECL(IsReconstructTemp, false, true),
