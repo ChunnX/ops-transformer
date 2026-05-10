@@ -164,6 +164,7 @@ static ge::graphStatus QuantReduceScatterTilingFunc(gert::TilingContext *context
 
     OP_TILING_CHECK(SetHcommCfg(context, tilingData, runInfo) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "SetHCommCfg failed."), return ge::GRAPH_FAILED);
+    context->SetScheduleMode(1);
     SetTilingData(context, *tilingData);
     SetXPerBlock(context, *tilingData, runInfo);
     SetTilingKey(context);

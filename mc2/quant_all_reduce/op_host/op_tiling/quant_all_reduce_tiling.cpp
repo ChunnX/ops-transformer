@@ -157,6 +157,7 @@ static ge::graphStatus QuantAllReduceTilingFunc(gert::TilingContext *context)
                     OP_LOGE(nodeName, "tiling check failed in quant_all_reduce."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(SetHcommCfg(context, tilingData, runInfo) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "SetHCommCfg failed."), return ge::GRAPH_FAILED);
+    context->SetScheduleMode(1);
     SetTilingData(context, *tilingData);
     SetXPerBlock(context, *tilingData, runInfo);
     SetTilingKey(context);

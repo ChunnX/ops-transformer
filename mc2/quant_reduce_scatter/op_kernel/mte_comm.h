@@ -327,17 +327,21 @@ __aicore__ inline void MTECommunication<TemplateType>::WriteStatusToWin()
 template <TemplateTypeClass>
 __aicore__ inline void MTECommunication<TemplateType>::ReadStatus()
 {
-    GM_ADDR stateGM = GetWinStatusAddrGm(hcclContext_->rankId, winBufferFlags_); // 获取本卡的状态区用于读取
+    if (aivId_ != 0) {
+        SyncAll();
+        return;
+    }
+
+    GM_ADDR stateGM = GetWinStatusAddrGm(hcclContext_->rankId, winBufferFlags_);
     GlobalTensor<float> selfStatusWinTensor;
-    uint32_t offset = aivId_ * hcclContext_->rankDim * FLOAT_UB_ALIGN_NUM; // 获取当前核所需读取状态位的头地址，状态按32B对齐
+    uint32_t offset = 0;
     selfStatusWinTensor.SetGlobalBuffer((__gm__ float*)(stateGM));
     LocalTensor<float> statusTensor = readStateBuf_.Get<float>();
-    float flag = 0; // 用于计算状态和
-    uint32_t statusCnt = hcclContext_->rankDim * FLOAT_UB_ALIGN_NUM; // 一次读rankDim个，按32B对齐
+    float flag = 0;
+    uint32_t statusCnt = hcclContext_->rankDim * FLOAT_UB_ALIGN_NUM;
     SumParams sumParams{1, statusCnt, statusCnt};
     float minTarget = hcclContext_->rankDim - (float)0.5;
     float maxTarget = hcclContext_->rankDim + (float)0.5;
-    // 读取statusCnt个数据求和
     while ((flag < minTarget) || (flag > maxTarget)) {
         SyncFunc<AscendC::HardEvent::S_MTE2>();
         DataCopy<float>(statusTensor, selfStatusWinTensor[offset], statusCnt);
@@ -347,7 +351,9 @@ __aicore__ inline void MTECommunication<TemplateType>::ReadStatus()
         flag = statusTensor(0);
     }
     SyncFunc<AscendC::HardEvent::S_MTE3>();
-    DataCopy<float>(selfStatusWinTensor[offset], stateResetTensor_, statusCnt); // 相关状态区重新置零
+    DataCopy<float>(selfStatusWinTensor[offset], stateResetTensor_, statusCnt);
+
+    SyncAll();
 }
 
 /**
