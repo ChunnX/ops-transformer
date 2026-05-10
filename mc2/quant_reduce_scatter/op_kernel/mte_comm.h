@@ -298,20 +298,22 @@ __aicore__ inline void MTECommunication<TemplateType>::WriteStatusToWin()
 {
     uint32_t coreOffset = aivId_ * hcclContext_->rankDim; // Win区大小为 aivNum * rankDim, 此处计算核偏移
     // 遍历每一张卡，给每一张卡都要写入状态
+
+    // 初始化statusTensor为全零（提到循环外，避免每rank重复DataCopy+SyncFunc）
+    LocalTensor<float> statusTensor = writeStateBuf_.Get<float>();
+    DataCopy<float>(statusTensor, stateResetTensor_, FLOAT_UB_ALIGN_NUM);
+    SyncFunc<AscendC::HardEvent::MTE2_S>();
+
     for (uint32_t curRank = 0; curRank < hcclContext_->rankDim; ++curRank) {
-        // 写入状态到对端，每个核写一个状态，表示自己的数据块已经写完
-        LocalTensor<float> statusTensor = writeStateBuf_.Get<float>();
-        DataCopy<float>(statusTensor, stateResetTensor_, FLOAT_UB_ALIGN_NUM); // 先重置statusTensor数据，后面累加需要Tensor内全部数据，防止脏数据
-        SyncFunc<AscendC::HardEvent::MTE2_S>();
         statusTensor(0) = (float)1.0;  // 用1标识
-        GM_ADDR remoteWinStateGM = GetWinStatusAddrGm(curRank, winBufferFlags_); // 获取当前要写对端卡的状态区地址
+        GM_ADDR remoteWinStateGM = GetWinStatusAddrGm(curRank, winBufferFlags_);
         GlobalTensor<float> stateGMTensor;
         stateGMTensor.SetGlobalBuffer((__gm__ float*)remoteWinStateGM);
-        // 不同卡上的核的状态写到相邻位置，读时可以一次读rankDim个状态, 状态区大小设计为 aivNum * ranDim
-        uint64_t curOffset = (coreOffset + hcclContext_->rankId) * FLOAT_UB_ALIGN_NUM; // 当前核偏移 + 卡偏移， 按32B对齐
+        uint64_t curOffset = (coreOffset + hcclContext_->rankId) * FLOAT_UB_ALIGN_NUM;
         SyncFunc<AscendC::HardEvent::S_MTE3>();
-        DataCopy(stateGMTensor[curOffset], statusTensor, FLOAT_UB_ALIGN_NUM); // 按32B对齐拷贝
+        DataCopy(stateGMTensor[curOffset], statusTensor, FLOAT_UB_ALIGN_NUM);
         SyncFunc<AscendC::HardEvent::MTE3_S>();
+        statusTensor(0) = (float)0.0; // 复位状态，供下一轮使用
     }
 }
 
