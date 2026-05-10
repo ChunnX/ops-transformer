@@ -284,7 +284,7 @@ inline __aicore__ void prompt_flash_attention_FIAS_regbase(__gm__ uint8_t* query
         FusedInferAttentionScoreTilingData);
     REGISTER_TILING_FOR_TILINGKEY("((TILING_KEY_VAR >> 22) & 0x1f) == 19 && ((TILING_KEY_VAR >> 40) & 0x1f) == 1", FusedInferAttentionScoreFullQuantTilingData);
     REGISTER_TILING_FOR_TILINGKEY("((TILING_KEY_VAR >> 22) & 0x1f) == 19 && ((TILING_KEY_VAR >> 40) & 0x1f) == 0", FlashAttentionScoreSimplifiedTilingData);
-    REGISTER_TILING_FOR_TILINGKEY("((TILING_KEY_VAR >> 22) & 0x1f) == 30", PFAFullQuantTilingData);
+    REGISTER_TILING_FOR_TILINGKEY("((TILING_KEY_VAR >> 22) & 0x1f) != 19", FlashAttentionScoreSimplifiedTilingData);
     if constexpr (emptyTensor == true) {
         # if (ORIG_DTYPE_ATTENTION_OUT != DT_FLOAT16 && ORIG_DTYPE_ATTENTION_OUT != DT_BF16)
             INVOKE_PFA_ZERO_OP_IMPL_V2(fp8_e4m3fn_t);
