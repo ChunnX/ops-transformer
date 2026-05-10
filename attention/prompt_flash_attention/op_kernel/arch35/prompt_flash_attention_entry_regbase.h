@@ -515,7 +515,7 @@ inline __aicore__ void prompt_flash_attention_FIAS_regbase(__gm__ uint8_t* query
     #if (ORIG_DTYPE_QUERY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_KEY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16)
         if constexpr (isReconstructTemp == true) {
             run_fia_fullquant_mx_kernel<fp8_e4m3fn_t, half, inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType,
-                                    isFd, emptyTensor, pFAMask, pFAMatMulType, enableKVPrefix, enableS1OutSplit>(
+                                    isFd, emptyTensor, enableKVPrefix, enableS1OutSplit>(
                 query, key, value, pseShift, attenMask, actualSeqLengths, actualSeqLengthsKV, blocktable, dequantScaleQuery,
                 key_antiquant_scale, value_antiquant_scale, quant_scale1, queryRope, keyRope, attentionOut, softmaxLse, user, tiling);
         } else {
@@ -568,7 +568,7 @@ inline __aicore__ void prompt_flash_attention_FIAS_regbase(__gm__ uint8_t* query
     #if (ORIG_DTYPE_QUERY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_KEY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_ATTENTION_OUT == DT_BF16)
         if constexpr (isReconstructTemp == true) {
             run_fia_fullquant_mx_kernel<fp8_e4m3fn_t, bfloat16_t, inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType,
-                                    isFd, emptyTensor, pFAMask, pFAMatMulType, enableKVPrefix, enableS1OutSplit>(
+                                    isFd, emptyTensor, enableKVPrefix, enableS1OutSplit>(
                 query, key, value, pseShift, attenMask, actualSeqLengths, actualSeqLengthsKV, blocktable, dequantScaleQuery,
                 key_antiquant_scale, value_antiquant_scale, quant_scale1, queryRope, keyRope, attentionOut, softmaxLse, user, tiling);
         } else {
