@@ -71,6 +71,65 @@ __aicore__ inline constexpr GmFormat GetKVGmFormat()
     }
 }
 
+template <LayOutTypeEnum LAYOUT>
+__aicore__ inline constexpr GmFormat GetQueryScaleGmFormat()
+{
+    if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH || LAYOUT == LayOutTypeEnum::LAYOUT_BNSD) {
+        return GmFormat::BNGSD;
+    } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
+        return GmFormat::NTGD;
+    } else {
+        return GmFormat::TNGD;
+    }
+}
+
+template <LayOutTypeEnum LAYOUT, uint8_t kvLayoutType = 0, bool isPa = false>
+__aicore__ inline constexpr GmFormat GetKeyScaleGmFormat()
+{
+    if constexpr (kvLayoutType == 0) { // KvLayoutType_NO_PA
+        if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH) {
+            return GmFormat::BSND;
+        } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_SBH) {
+            return GmFormat::SBND;
+        } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BNSD) {
+            return GmFormat::BNSD;
+        } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
+            return GmFormat::TND;
+        } else {
+            return GmFormat::NTD;
+            }
+    } else if constexpr (kvLayoutType == 1) { // KvLayoutType_PA_BBH
+        return GmFormat::PA_BnBsND;
+    } else if constexpr (kvLayoutType == 2) { // KvLayoutType_PA_BNBD
+        return GmFormat::PA_BnNBsD;
+    } else {
+        return GmFormat::PA_NZ_K_SCALE;
+    }
+}
+
+template <LayOutTypeEnum LAYOUT, uint8_t kvLayoutType = 0, bool isPa = false>
+__aicore__ inline constexpr GmFormat GetValueScaleGmFormat()
+{
+    if constexpr (kvLayoutType == 0) { // KvLayoutType_NO_PA
+        if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH) {
+            return GmFormat::BSND;
+        } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_SBH) {
+            return GmFormat::SBND;
+        } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BNSD) {
+            return GmFormat::BNSD;
+        } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
+            return GmFormat::TND2;
+        } else {
+            return GmFormat::NTD;
+            }
+    } else if constexpr (kvLayoutType == 1) { // KvLayoutType_PA_BBH
+        return GmFormat::PA_BnBsND;
+    } else if constexpr (kvLayoutType == 2) { // KvLayoutType_PA_BNBD
+        return GmFormat::PA_BnNBsD;
+    } else {
+        return GmFormat::PA_NZ;
+    }
+}
 
 template <LayOutTypeEnum LAYOUT>
 __aicore__ inline constexpr GmFormat GetOutGmFormat()
@@ -208,5 +267,4 @@ __aicore__ void CopyParamsGmToUb(LocalTensor<PARAM_T> &dstUb, FaGmTensor<PARAM_T
             offsetCalculator.GetDimD(), offsetCalculator.GetStrideG(), postQuantInfo.colCount);
     }
 }
-
 #endif
