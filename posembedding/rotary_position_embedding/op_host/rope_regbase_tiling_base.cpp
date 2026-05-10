@@ -13,9 +13,9 @@
  * \brief
  */
 
-#include "op_host/tiling_templates_registry.h"
+#include "tiling_base/tiling_templates_registry.h"
 #include "tiling/tiling_api.h"
-#include "op_host/tiling_base.h"
+#include "tiling_base/tiling_base.h"
 #include "platform/platform_info.h"
 #include "rotary_position_embedding_tiling.h"
 #include "log/log.h"
