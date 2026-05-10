@@ -52,7 +52,7 @@ using namespace Mc2GroupedMatmulTilingData;
         op.Process();                                                                                             \
     } while (0)
 
-template <int D_T_MM, bool TILINGKEY_MM, bool TILINGKEY_GMM_WEIGHT_TRANSPOSE, bool TILINGKEY_MM_WEIGHT_TRANSPOSE>
+template <int D_T_MM, bool TILINGKEY_MM, bool TILINGKEY_GMM_WEIGHT_TRANSPOSE, bool TILINGKEY_MM_WEIGHT_TRANSPOSE, int TILINGKEY_COMM_MODE>
 __global__ __aicore__ void allto_allv_quant_grouped_mat_mul(GM_ADDR gmmxGM, GM_ADDR gmmweightGM,
     GM_ADDR gmmxScaleGM, GM_ADDR gmmWeightScaleGM, GM_ADDR sendCountsTensorOptionalGM,
     GM_ADDR recvCountsTensorOptionalGM, GM_ADDR mmxOptionalGM, GM_ADDR mmweightOptionalGM,

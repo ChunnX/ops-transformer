@@ -235,7 +235,7 @@ public:
             }
         }
 
-        alltoAllvScaleHandleId_[startExpertIdx] = hccl_.AlltoAllV<true>(
+        alltoAllvScaleHandleId_[startExpertIdx] = hccl_.template AlltoAllV<true>(
             (__gm__ uint8_t *)sendScaleGlobalBuffer_.GetPhyAddr(), alltoAllvScaleSendCnt, alltoAllvScaleSendOffset,
             HCCL_DATA_TYPE_FP8E8M0, (__gm__ uint8_t *)recvScaleGlobalBuffer_.GetPhyAddr(), alltoAllvScaleRecvCnt,
             alltoAllvScaleRecvOffset, HCCL_DATA_TYPE_FP8E8M0);
@@ -344,10 +344,10 @@ private:
                 alltoAllvRecvOffsetLastSum += alltoAllvRecvCnt[i];
             }
         }
-        AscendC::PRINTF("YYYYYY op a2av alltoallv before compute launch expert:%u rankId:%u rankDim:%u send0:%lu recv0:%lu soff0:%lu roff0:%lu axis:%lu\n",
+AscendC::PRINTF("YYYYYY op a2av alltoallv before compute launch expert:%u rankId:%u rankDim:%u send0:%lu recv0:%lu soff0:%lu roff0:%lu axis:%lu\n",
             startExpertIdx, rankId_, rankDim_, alltoAllvSendCnt[0], alltoAllvRecvCnt[0],
             alltoAllvSendOffset[0], alltoAllvRecvOffset[0], axis);
-        alltoAllvHandleId_[startExpertIdx] = hccl_.AlltoAllV<true>(
+        alltoAllvHandleId_[startExpertIdx] = hccl_.template AlltoAllV<true>(
             (__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), alltoAllvSendCnt, alltoAllvSendOffset, hcclDataType_,
             (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset, hcclDataType_);
         AscendC::PRINTF("YYYYYY op a2av alltoallv before compute handle expert:%u handle:%d\n", startExpertIdx,
@@ -389,10 +389,10 @@ private:
                 alltoAllvRecvOffset[i] += static_cast<uint64_t>(recvCounts_[startExpertIdx + (i - 1) * e_ + j]) * N1_;
             }
         }
-        AscendC::PRINTF("YYYYYY op a2av alltoallv after compute launch expert:%u rankId:%u rankDim:%u send0:%lu recv0:%lu soff0:%lu roff0:%lu axis:%lu\n",
+AscendC::PRINTF("YYYYYY op a2av alltoallv after compute launch expert:%u rankId:%u rankDim:%u send0:%lu recv0:%lu soff0:%lu roff0:%lu axis:%lu\n",
             startExpertIdx, rankId_, rankDim_, alltoAllvSendCnt[0], alltoAllvRecvCnt[0],
             alltoAllvSendOffset[0], alltoAllvRecvOffset[0], N1_);
-        alltoAllvHandleId_[startExpertIdx] = hccl_.AlltoAllV<true>(
+        alltoAllvHandleId_[startExpertIdx] = hccl_.template AlltoAllV<true>(
             (__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), alltoAllvSendCnt, alltoAllvSendOffset, hcclDataType_,
             (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset, hcclDataType_);
         AscendC::PRINTF("YYYYYY op a2av alltoallv after compute handle expert:%u handle:%d\n", startExpertIdx,
