@@ -32,6 +32,7 @@ DUMP_FILE_NAME = "win_dump_input_serverid_{}.csv"
 ERROR_INFO_FILE_NAME = "errorinfo_{}.csv"
 
 
+#获取各核的islayer值
 def get_islayer_ep(arr_func: np.ndarray, core_num_func: int, d_c: str):
     per_core = 128
     islayer = []
@@ -48,6 +49,7 @@ def get_islayer_ep(arr_func: np.ndarray, core_num_func: int, d_c: str):
     return islayer, max_islayer
 
 
+#获取发送和接收信息
 def get_send_and_recv_info(arr_func: np.ndarray, core_num_func: int,
                            islayer: int, ep_rankid: int, d_c: str, ep_worldsize: int):
     raw_send_or_recv, fullmesh_num_tokens = get_raw_send_or_recv_info(
@@ -70,6 +72,7 @@ def get_send_and_recv_info(arr_func: np.ndarray, core_num_func: int,
             unfinish_info, unfinish_info_inner]
 
 
+#获取原始发送或接收信息
 def get_raw_send_or_recv_info(
         arr_func: np.ndarray, core_num_func: int, islayer: int, ep_worldsize: int):
     per_core = 128
@@ -86,6 +89,7 @@ def get_raw_send_or_recv_info(
     return raw_send_or_recv, fullmesh_num_tokens
 
 
+#获取fullmesh模式下的发送和接收信息
 def get_fullmesh_send_and_recv_info(raw_send_or_recv: list, core_num_func: int, ep_rankid: int,
                                     d_c: str, ep_worldsize: int, fullmesh_num_tokens: list):
     has_send_ep = [0] * ep_worldsize
@@ -140,6 +144,7 @@ def get_fullmesh_send_and_recv_info(raw_send_or_recv: list, core_num_func: int, 
         unfinish_send_ep, unfinish_recv_ep]
 
 
+#获取hierarchy模式下的发送和接收信息
 def get_hierarchy_send_and_recv_info(
         raw_send_or_recv: list, ep_rankid: int, d_c: str, ep_worldsize: int):
     server_num = ep_worldsize // SERVER_RANK_NUM
@@ -179,6 +184,7 @@ def get_hierarchy_send_and_recv_info(
         unfinish_send_ep, unfinish_recv_ep]
 
 
+#获取hierarchy模式下dispatch的inner发送和接收信息
 def get_hierarchy_dis_inner_send_and_recv_info(
         raw_send_or_recv: list, ep_rankid: int, d_c: str, ep_worldsize: int):
     server_num = ep_worldsize // SERVER_RANK_NUM
@@ -216,6 +222,7 @@ def get_hierarchy_dis_inner_send_and_recv_info(
     return has_send_ep, has_recv_ep, [unfinish_send_ep, unfinish_recv_ep]
 
 
+#获取combine算子的dump信息
 def get_combine_dumpinfo(target_path: str, bsk: int,
                          moe_expert_num: int, islayer: int):
     expandidx_input = get_dump_expandidx(
@@ -249,9 +256,7 @@ def get_dump_xactivemask(target_path: str):
             return xactivemask_input
     return xactivemask_input
 
-# 从input.3.bin中获取epsendcnt
-
-
+#从input.3.bin中获取epsendcnt
 def get_dump_epsendcnt(target_path: str, moe_expert_num: int):
     epsendcnt_input = []
     for filename_func in os.listdir(os.path.join(target_path)):
@@ -263,6 +268,7 @@ def get_dump_epsendcnt(target_path: str, moe_expert_num: int):
     return epsendcnt_input
 
 
+#获取窗口状态
 def get_win_state(win_status: np.ndarray, d_c: str,
                   moe_expert_num: int, ep_worldsize: int, islayer: int):
     if d_c == "dispatch":
@@ -271,6 +277,7 @@ def get_win_state(win_status: np.ndarray, d_c: str,
     return get_com_win_state(win_status, ep_worldsize, islayer)
 
 
+#获取dispatch算子的窗口状态
 def get_dis_win_state(dis_win_status: np.ndarray,
                       moe_expert_num: int, ep_worldsize: int, islayer: int):
     if islayer == 0:
@@ -280,6 +287,7 @@ def get_dis_win_state(dis_win_status: np.ndarray,
         return get_hierarchy_dis_win_status(dis_win_status, ep_worldsize)
 
 
+#获取combine算子的窗口状态
 def get_com_win_state(com_win_status: np.ndarray,
                       ep_worldsize: int, islayer: int):
     if islayer == 0:
@@ -288,6 +296,7 @@ def get_com_win_state(com_win_status: np.ndarray,
         return get_hierarchy_com_win_status(com_win_status, ep_worldsize)
 
 
+#获取hierarchy模式下dispatch算子的窗口状态
 def get_hierarchy_dis_win_status(
         dis_win_status: np.ndarray, ep_worldsize: int):
     server_num = ep_worldsize // SERVER_RANK_NUM
@@ -307,6 +316,7 @@ def get_hierarchy_dis_win_status(
     return [token_win_status, sync_win_status, inner_win_status]
 
 
+#获取hierarchy模式下combine算子的窗口状态
 def get_hierarchy_com_win_status(
         com_win_status: np.ndarray, ep_worldsize: int):
     server_num = ep_worldsize // SERVER_RANK_NUM
@@ -322,6 +332,7 @@ def get_hierarchy_com_win_status(
     return [token_win_status, sync_win_status]
 
 
+#获取fullmesh模式下dispatch算子的窗口状态
 def get_fullmesh_dis_win_state(
         dis_win_status: np.ndarray, moe_expert_num: int, ep_worldsize: int):
     local_moe_expert_num = moe_expert_num // ep_worldsize
@@ -338,6 +349,7 @@ def get_fullmesh_dis_win_state(
     return [token_win_status, arrive_win_status]
 
 
+#获取fullmesh模式下combine算子的窗口状态
 def get_fullmesh_com_win_state(com_win_status: np.ndarray, ep_worldsize: int):
     token_win_status = []
     arrive_win_status = []
@@ -350,6 +362,7 @@ def get_fullmesh_com_win_state(com_win_status: np.ndarray, ep_worldsize: int):
     return [token_win_status, arrive_win_status]
 
 
+#获取设备数量
 def get_device_count():
     try:
         import torch
@@ -367,6 +380,7 @@ def get_device_count():
         return 8
 
 
+#保存dump数据到CSV文件
 def save_dump_data(
     ep_rankid: int, ep_worldsize: int, moe_expert_num: int, bs: int, k: int, islayer: int, d_c: str, buffer_id: int,
     *,
@@ -407,8 +421,10 @@ def save_dump_data(
                                    index=[local_rank_id])
     dump_input_info.to_csv(file_name, index=True, mode='a',
                            header=not file_exists, encoding="gbk")
+    logging.info(f"EP{ep_rankid} dump info data save to {file_name}")
 
 
+#保存窗口数据到CSV文件
 def save_win_data(all_unfinish_info, islayer: int,
                   ep_rankid: int, ep_worldsize: int, d_c: str,
                   min_run_coreid, run_info):
@@ -441,8 +457,9 @@ def save_win_data(all_unfinish_info, islayer: int,
         index=[local_rank_id])
     dump_input_info.to_csv(file_name, index=True, mode='a',
                            header=not file_exists, encoding="gbk")
+    logging.info(f"EP{ep_rankid} win info data save to {file_name}")
 
-
+#获取运行位置排序
 def get_runpos_sort(next_pos):
     num = len(next_pos)
     pos_sort = [0] * num
@@ -456,6 +473,7 @@ def get_runpos_sort(next_pos):
     return pos_sort
 
 
+#获取运行位置分析的基础信息
 def get_runpos_analysis_basic(islayer: int, d_c: str):
     # 以下内容根据mc2/moe_distribute_dispatch_v2/op_kernel/moe_distribute_a2_constant.h定义
     NEXT_POS = [1, 3, len(POS_MAPPING)]
@@ -488,6 +506,7 @@ def get_runpos_analysis_basic(islayer: int, d_c: str):
     return POS_MAPPING, NEXT_POS, POS_POSITION
 
 
+#分析运行位置
 def analyze_runpos(runpos: List[int], islayer: int, d_c: str):
     POS_MAPPING, NEXT_POS, POS_POSITION = get_runpos_analysis_basic(
         islayer, d_c)
@@ -510,6 +529,7 @@ def analyze_runpos(runpos: List[int], islayer: int, d_c: str):
     return min_run_coreid, run_info
 
 
+#分析单卡数据
 def analyze_single_card(arr_func_dis: np.ndarray, arr_func_com: np.ndarray, core_num_func: int,
                         ep_rankid: int, d_c: str, ep_worldsize: int, runpos: List[int],
                         moe_expert_num: int, bs: int, k: int, buffer_id: int,
@@ -552,7 +572,6 @@ def analyze_single_card(arr_func_dis: np.ndarray, arr_func_com: np.ndarray, core
         expertids=expertids, expandidx_input=expandidx_input,
         xactivemask_input=xactivemask_input, epsendcnt_input=epsendcnt_input,
     )
-    save_win_data()
     if d_c == "dispatch":
         all_unfinish_info = dis_unfinish_info
     else:
@@ -560,6 +579,7 @@ def analyze_single_card(arr_func_dis: np.ndarray, arr_func_com: np.ndarray, core
     save_win_data(all_unfinish_info, islayer, ep_rankid, ep_worldsize, d_c,
                   min_run_coreid, run_info)
 
+#判断是否为A2架构
 def isA2(soc_version):
     return soc_version == SOC_VERSION_A2
 
