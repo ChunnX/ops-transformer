@@ -444,7 +444,6 @@ __aicore__ inline void SparseLightningIndexerGradKLLossBase<SLIT>::Process()
         //     AscendC::InitOutput(dWeightGm[s1Offset * constInfo.gSizeQuery], constInfo.gSizeQuery * s1Len, static_cast<T>(0));
         // }
 
-        s1StartIdxThisBatch = max(constInfo.cmpRatio - 1, s1StartIdxThisBatch);
         for (int64_t s1Idx = s1StartIdxThisBatch; s1Idx < s1EndIdxThisBatch + extraLoopTimes; s1Idx++) {
             SLIGradKLLossRunInfo &runInfoNeg2 = runInfos[(taskId + 1) % 3];       // 上2轮
             SLIGradKLLossRunInfo &runInfoNeg1 = runInfos[(taskId + 2) % 3];       // 上1轮
@@ -562,7 +561,7 @@ __aicore__ inline int32_t SparseLightningIndexerGradKLLossBase<SLIT>::GetS2Spars
 {
     if (sparseMode == SLISparseMode::RightDown) {
         if (constInfo.cmpRatio != 0) { 
-            return (s1Idx + 1) / constInfo.cmpRatio;
+            return (actualSeqLensK * constInfo.cmpRatio - actualSeqLensQ + s1Idx + 1) / constInfo.cmpRatio;
         } else {
             return Max(actualSeqLensK - actualSeqLensQ + s1Idx + 1, 0);
         }
