@@ -24,10 +24,30 @@
 #include "allto_allv_gmm.h"
 #include "lib/matmul_intf.h"
 #include "allto_allv_grouped_mat_mul_tiling.h"
+
+// 通信模式定义
+#ifndef TILINGKEY_TPL_CCU
+#define TILINGKEY_TPL_CCU 0
+#endif
+#ifndef TILINGKEY_TPL_AICPU
+#define TILINGKEY_TPL_AICPU 1
+#endif
+
 namespace AscendC {
 using namespace ALLTO_ALLV_GMM;
 
-template <typename DataType, bool IsTranGmmW, bool IsTranMmW>
+// Hccl类型选择器
+template<int commMode>
+struct HcclTypeSelector {
+    using type = Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU>;
+};
+
+template<>
+struct HcclTypeSelector<TILINGKEY_TPL_CCU> {
+    using type = Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU>;
+};
+
+template <typename DataType, bool IsTranGmmW, bool IsTranMmW, int TILINGKEY_COMM_MODE = TILINGKEY_TPL_CCU>
 class AlltoAllvGmmCoarseGrained
 {
 public:
@@ -71,8 +91,7 @@ private:
 
     // alltoall 流程数据结构
     static constexpr uint64_t MAX_HANDLE_ID_NUM = 64U;
-// AICPU only: 只支持AICPU通信模式
-    Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU> hccl_;
+    typename HcclTypeSelector<TILINGKEY_COMM_MODE>::type hccl_;
     HcclDataType hcclDataType_ = HCCL_DATA_TYPE_FP16;
     HcclHandle alltoAllvHandleId_[MAX_HANDLE_ID_NUM] = {INVALID_HANDLE_ID};
 

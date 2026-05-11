@@ -131,9 +131,16 @@ aclnnStatus aclnnAlltoAllvGroupedMatMulGetWorkspaceSize(const aclTensor* gmmX, c
 aclnnStatus aclnnAlltoAllvGroupedMatMul(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                         aclrtStream stream)
 {
-    // AICPU only: 硬编码AICPU通信模式
+    constexpr char* COMM_MODE_ENV = "ENV_MC2_COMM_MODE_AICPU";
     if (NnopbaseSetHcclServerType) {
-        NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+        auto commModeEnv = getenv(COMM_MODE_ENV);
+        if (commModeEnv != nullptr) {
+            OP_LOGD("", "aclnnAlltoAllvGroupedMatMul: ENV_MC2_COMM_MODE_AICPU set, use AICPU mode");
+            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+        } else {
+            OP_LOGD("", "aclnnAlltoAllvGroupedMatMul: ENV_MC2_COMM_MODE_AICPU not set, use CCU mode");
+            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+        }
     }
     aclnnStatus ret = aclnnInnerAlltoAllvGroupedMatMul(workspace, workspaceSize, executor, stream);
     return ret;

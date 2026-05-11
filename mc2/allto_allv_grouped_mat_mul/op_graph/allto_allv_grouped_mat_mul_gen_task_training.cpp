@@ -22,17 +22,24 @@
 #include "mc2_platform_info.h"
 
 namespace ops {
-// aicpu_only分支：950只支持AICPU通信，不需要CCU GenTask
 ge::Status AlltoAllvGroupedMatMulCalcParamFunc(gert::ExeResGenerationContext *context)
 {
-    OPS_LOG_D(context->GetNodeName(), "Do AICPU GenTask CalcParamFunc");
-    return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "aicpu kfc server", "kfc_stream");
+    constexpr char* COMM_MODE_ENV = "ENV_MC2_COMM_MODE_AICPU";
+    auto commModeEnv = getenv(COMM_MODE_ENV);
+    const char* serverType = "ccu kfc server";
+    if (commModeEnv != nullptr) {
+        serverType = "aicpu kfc server";
+        OPS_LOG_D(context->GetNodeName(), "ENV_MC2_COMM_MODE_AICPU set, use AICPU GenTask");
+    } else {
+        OPS_LOG_D(context->GetNodeName(), "ENV_MC2_COMM_MODE_AICPU not set, use CCU GenTask");
+    }
+    return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, serverType, "kfc_stream");
 }
 
 ge::Status AlltoAllvGroupedMatMulGenTaskFunc(const gert::ExeResGenerationContext *context,
                                             std::vector<std::vector<uint8_t>> &tasks)
 {
-    OPS_LOG_D(context->GetNodeName(), "Do AICPU GenTask GenTaskFunc");
+    OPS_LOG_D(context->GetNodeName(), "GenTask GenTaskFunc");
     return Mc2MoeGenTaskOpsUtils::Mc2MoeGenTaskCallback(context, tasks);
 }
 

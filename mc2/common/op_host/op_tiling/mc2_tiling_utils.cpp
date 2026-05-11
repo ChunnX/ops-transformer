@@ -65,7 +65,7 @@ uint8_t Mc2TilingUtils::GetCommModeFromEnv()
     if (commModeEnv != nullptr) {
         commMode = COMM_MODE_AICPU;
     }
-    OP_LOGI("", "Get ENV_MC2_COMM_MODE_AICPU is %u (0=CCU, 1=AICPU)", commMode);
+    OP_LOGD("", "Get ENV_MC2_COMM_MODE_AICPU is %u (0=CCU, 1=AICPU)", commMode);
     return commMode;
 }
 

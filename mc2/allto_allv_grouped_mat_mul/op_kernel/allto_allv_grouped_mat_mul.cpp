@@ -52,12 +52,12 @@ __global__ __aicore__ void allto_allv_grouped_mat_mul(
 
     if (!tilingData.commonTilingInfo.isFp16) {
         AlltoAllvGmmCoarseGrained<bfloat16_t, TILINGKEY_GMM_WEIGHT_TRANSPOSE,
-                                    TILINGKEY_MM_WEIGHT_TRANSPOSE> op;
+                                    TILINGKEY_MM_WEIGHT_TRANSPOSE, TILINGKEY_COMM_MODE> op;
         INVOKE_ALLTOALLV_GROUPED_MATMUL_OP_IMPL();
         return;
     }
 
     AlltoAllvGmmCoarseGrained<half, TILINGKEY_GMM_WEIGHT_TRANSPOSE,
-                                TILINGKEY_MM_WEIGHT_TRANSPOSE> op;
+                                TILINGKEY_MM_WEIGHT_TRANSPOSE, TILINGKEY_COMM_MODE> op;
     INVOKE_ALLTOALLV_GROUPED_MATMUL_OP_IMPL();
 }
