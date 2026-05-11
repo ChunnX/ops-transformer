@@ -61,7 +61,7 @@ uint8_t Mc2TilingUtils::GetDebugStepSize() {
 
 uint8_t Mc2TilingUtils::GetCommModeFromEnv()
 {
-    return mc2::GetCommModeFromEnv();
+    return Mc2Comm::GetCommModeFromEnv();
 }
 
 matmul_tiling::DataType ConvertGeTypeToMmType(const std::string &opName,

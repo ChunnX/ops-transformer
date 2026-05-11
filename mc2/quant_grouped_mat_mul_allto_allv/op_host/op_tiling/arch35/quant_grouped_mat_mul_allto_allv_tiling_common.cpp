@@ -952,12 +952,12 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::GetWorkspaceSize()
 
 uint64_t QuantGroupedMatmulAllToAllvTilingCommon::GetTilingKey() const
 {
-    const uint64_t tilingKey =
-        GET_TPL_TILING_KEY(localParams_.hasSharedMm, localParams_.isGmmWeightTrans, localParams_.isMmWeightTrans,
-                           localParams_.gmmQuantSuit, localParams_.mmQuantSuit);
-    OP_LOGD(opName_, "GET_TPL_TILING_KEY: [%d,%d,%d,%d,%d], TilingKey is [%lu].", localParams_.hasSharedMm,
-            localParams_.isGmmWeightTrans, localParams_.isMmWeightTrans, localParams_.gmmQuantSuit,
-            localParams_.mmQuantSuit, tilingKey);
+    uint8_t commMode = mc2tiling::Mc2TilingUtils::GetCommModeFromEnv();
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(localParams_.hasSharedMm, localParams_.isGmmWeightTrans,
+        localParams_.isMmWeightTrans, localParams_.gmmQuantSuit, localParams_.mmQuantSuit, commMode);
+    OP_LOGD(opName_, "GET_TPL_TILING_KEY: [%d,%d,%d,%d,%d,%d], TilingKey is [%lu].", localParams_.hasSharedMm,
+        localParams_.isGmmWeightTrans, localParams_.isMmWeightTrans, localParams_.gmmQuantSuit,
+        localParams_.mmQuantSuit, commMode, tilingKey);
     return tilingKey;
 }
 
