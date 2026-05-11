@@ -113,10 +113,29 @@ __aicore__ inline void CombineTile(
     uint32_t rowCount = Get<M_VALUE>(actualBlockShape);
     uint32_t colCount = Get<N_VALUE>(actualBlockShape);
 
-    // 第一步：从GM一次性搬整个tile到UB
+    // // 第一步：从GM一次性搬整个tile到UB
+    // if (mLoc < 2 && nLoc < 4) {
+    //     PipeBarrier<PIPE_ALL>();
+    //     AscendC::DataCacheCleanAndInvalid<ElementMMadOut2, AscendC::CacheLine::ENTIRE_DATA_CACHE, AscendC::DcciDst::CACHELINE_OUT>(gmm2OutGm);
+    //     uint32_t base = mLoc * n + nLoc;
+    //     AscendC::PRINTF("COMB GM e%d mLoc=%u nLoc=%u row=%u col=%u n=%u GM[0-7]=%f %f %f %f %xf %f %f %f\n",
+    //         groupIdx, mLoc, nLoc, rowCount, colCount, n,
+    //         gmm2OutGm.GetValue(base + 0), gmm2OutGm.GetValue(base + 1),
+    //         gmm2OutGm.GetValue(base + 2), gmm2OutGm.GetValue(base + 3),
+    //         gmm2OutGm.GetValue(base + 4), gmm2OutGm.GetValue(base + 5),
+    //         gmm2OutGm.GetValue(base + 6), gmm2OutGm.GetValue(base + 7));
+    // }
     SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
     CopyTileFromGM(ubBuffer, gmm2OutGm, mLoc, rowCount, nLoc, colCount, n);
     SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
+    // if (mLoc < 2 && nLoc < 4) {
+    //     PipeBarrier<PIPE_ALL>();
+    //     AscendC::PRINTF("COMB UB e%d mLoc=%u nLoc=%u UB[0-7]=%f %f %f %f %f %f %f %f\n", groupIdx, mLoc, nLoc,
+    //         ubBuffer.GetValue(0), ubBuffer.GetValue(1),
+    //         ubBuffer.GetValue(2), ubBuffer.GetValue(3),
+    //         ubBuffer.GetValue(4), ubBuffer.GetValue(5),
+    //         ubBuffer.GetValue(6), ubBuffer.GetValue(7));
+    // }
 
     // 第二步：从UB发送到远端GM
     CombineTokens(mLoc, nLoc, n, groupIdx, rankId, ubBuffer, actualBlockShape, params);
