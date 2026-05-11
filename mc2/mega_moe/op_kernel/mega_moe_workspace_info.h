@@ -106,7 +106,7 @@ struct WorkspaceInfo {
         workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * INT_CACHELINE;
         ptrGmmOut = base + workspaceSize;
         workspaceSize += Ops::Base::CeilAlign(
-            static_cast<int64_t>(2 * tilingData->expertPerRank * tilingData->maxOutputSize * tilingData->k),
+            static_cast<int64_t>(2 * tilingData->maxOutputSize * tilingData->k),
             ALIGN_512);
         ptrGmm2RowReady = base + workspaceSize;
         workspaceSize += SIZE_INT_32 * Ops::Base::CeilAlign(
