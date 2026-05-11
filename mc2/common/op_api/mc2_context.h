@@ -25,7 +25,7 @@
 #include <vector>
 #include <unordered_map>
 #include "hccl/hccl_rank_graph.h"
-// #include "hcomm/hcomm_res_entity_defs.h" TODO:需要确认是否会有冲突
+#include "hcomm/hcomm_res_entity_defs.h"
 #include "aclnn/aclnn_base.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
@@ -96,7 +96,6 @@ private:
     HcclResult (*HcclGetRankId)(HcclComm, uint32_t *) = nullptr;
     HcclResult (*HcclGetRankSize)(HcclComm, uint32_t *) = nullptr;
     HcclResult (*HcclRankGraphGetRanksByLayer)(HcclComm, uint32_t, uint32_t **, uint32_t *) = nullptr;
-    HcclResult (*HcomChannelGetPtrByHandle)(const ChannelHandle *, uint32_t, ChannelPtr *) = nullptr;
 };
 } // namespace Mc2Aclnn
 
