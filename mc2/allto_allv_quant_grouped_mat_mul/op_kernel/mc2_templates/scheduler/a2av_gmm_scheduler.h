@@ -28,7 +28,7 @@ using namespace AscendC;
 
 namespace MC2KernelTemplate {
 template <typename CommOpType, typename ComputeOpType, typename LocalComputeOpType, typename TilingDataType,
-          typename GmmTilingDataType, typename GmmArrayAddrType, bool IsNeedMM>
+          typename GmmTilingDataType, typename GmmArrayAddrType>
 class A2avGmmScheduler {
 public:
     __aicore__ inline void Init(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR mmxOptionalGM, GM_ADDR mmweightOptionalGM,
@@ -81,20 +81,18 @@ public:
         }
         // 计算类使用的workspace起始地址（偏移后的workspace）
         computeWorkspaceGm_ = workspaceGM + workspaceOffset;
-        // mm compute init
-        if (IsNeedMM) {
+        if (tilingData_->isNeedMM != 0) {
             localComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmxScaleGM, mmWeightScaleGM, mmyOptionalGM,
                                 computeWorkspaceGm_, tilingData_, &tilingData_->mmQuantTilingData, mmArrayAddrIn, tPipe,
                                 isA2avGmmFlag);
         }
-        // gmm compute init
         computeOp.Init(commOutGm_, gmmweightGM, computeScaleGm_, gmmWeightScaleGM, gmmyGM, computeWorkspaceGm_,
                        tilingData_, &tilingData_->gmmQuantTilingData, gmmArrayAddrIn, tPipe, isA2avGmmFlag);
     }
 
     __aicore__ inline void Process()
     {
-        if (IsNeedMM) {
+        if (tilingData_->isNeedMM != 0) {
             localComputeOp.Process(0);
         }
         if constexpr (MX_QUANT_MODE) {
