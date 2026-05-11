@@ -206,7 +206,11 @@ __aicore__ inline void MoeReRoutingRRegbase<T, TIndex, TScale, hasScales>::Proce
     if constexpr (hasScales) {
         tokSclSize += Ops::Base::CeilAlign(static_cast<int64_t>(scaleSize_ * sizeof(TScale)), BLOCK_SIZE);
     }
-    if (tilingData_->ubFactor < tokSclSize) {
+    bool needSeparateScaleCopy = false;
+    if constexpr (hasScales && IsSameType<T, int8_t>::value) {
+        needSeparateScaleCopy = tokenSizeOrigin_ > 0;
+    }
+    if (tilingData_->ubFactor < tokSclSize || needSeparateScaleCopy) {
         CopyOutIndex(currTokenNum, tokensSrc_, tokensDst_);
         UbOverLoad(currTokenNum);
     } else {
