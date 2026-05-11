@@ -94,46 +94,25 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
     gmmParams.matmulTiling = &matmulTiling_;
 
     // Deterministic constants (consistent with A3)
-    constexpr uint32_t DETER_UB_SIZE = 12 * 1024;
+    constexpr uint32_t DETER_UB_SIZE = 8 * 1024;
     constexpr uint32_t BUFFER_NUM = 2;
 
     if (gmmFinalizeRoutingQuantParams_.deterministicFlag == 1) {
-        // Deterministic mode (W8A8 INT8 only):
-        //   Phase 1: Prologue zeros yGm + writes residual -> yGm
-        //   Phase 2: SequentialWrite epilogue writes dequant -> workspace (no race)
-        //   Phase 3: FRDeterministicA5 aggregates workspace -> yGm via AtomicAdd (one writer per outRow)
-
+        // === Deterministic mode: sliding window multi-round loop ===
         constexpr uint64_t SYS_WORKSPACE_SIZE = 16UL * 1024 * 1024;
         GM_ADDR deterBuffer = workspaceGM + SYS_WORKSPACE_SIZE;
 
-        // Must use GmmKernelDeterministic's own GMMTiling type (different kernel instantiations have incompatible nested types)
-        using GMMTilingDeterministic = typename GmmKernelDeterministic::GMMTiling;
+        uint32_t windowSize = gmmFinalizeRoutingQuantParams_.windowSize;
+        uint32_t groupNum = gmmFinalizeRoutingQuantParams_.groupNum;
+        uint8_t groupListType = gmmFinalizeRoutingQuantParams_.groupListType;
+        uint32_t n = static_cast<uint32_t>(matmulTiling_.N);
+        uint64_t k = static_cast<uint64_t>(matmulTiling_.Ka);
 
-        GMMTilingDeterministic gmmParamsDeter{gmmFinalizeRoutingQuantParams_.groupNum,
-                                              gmmFinalizeRoutingQuantParams_.groupListType,
-                                              matmulTiling_.baseM,
-                                              matmulTiling_.baseN,
-                                              matmulTiling_.baseK,
-                                              gmmFinalizeRoutingQuantParams_.hasBias};
+        // Read groupList for window grouping calculation
+        GlobalTensor<int64_t> groupListGm;
+        groupListGm.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t*>(group_list));
 
-        gmmParamsDeter.matmulTiling = &matmulTiling_;
-
-        ParamsDeterministic params = {
-            {1, 1, 1, 1},
-            {x, w, deterBuffer, bias, group_list},              // BlockMmad: c -> workspace
-            {share_input, y,                                     // Prologue: zeros + residual -> yGm
-             gmmFinalizeRoutingQuantParams_.sharedInputOffset,
-             gmmFinalizeRoutingQuantParams_.sharedInputLen, matmulTiling_.N,
-             gmmFinalizeRoutingQuantParams_.batch,
-             gmmFinalizeRoutingQuantParams_.residualScale},
-            {deterBuffer, w_scale, x_scale, bias, logit, row_index,  // Epilogue: dequant -> workspace
-             matmulTiling_.baseM, matmulTiling_.baseN},
-            gmmParamsDeter};
-
-        GmmKernelDeterministic gmm;
-        gmm(params);
-
-        // Aggregation: workspace -> yGm via rowIndex mapping + AtomicAdd
+        // Prepare GlobalTensors for aggregation
         GlobalTensor<float> deterBufferGm;
         deterBufferGm.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(deterBuffer));
         GlobalTensor<float> yGm;
@@ -146,21 +125,125 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
         deterPipe.InitBuffer(queBind, BUFFER_NUM, DETER_UB_SIZE);
 
         uint32_t coreNumVec = matmulTiling_.usedCoreNum * GetTaskRation();
-        uint64_t nTimes = Ceil(matmulTiling_.N, DETER_UB_SIZE / sizeof(float));
-        uint64_t baseN = Ceil(Ceil(matmulTiling_.N, nTimes), 128) * 128;
+        uint64_t nTimes = Ceil(n, DETER_UB_SIZE / sizeof(float));
+        uint64_t baseN = Ceil(Ceil(n, nTimes), 128) * 128;
 
-        // totalM = total input rows across all groups
-        uint64_t totalM = static_cast<uint64_t>(matmulTiling_.M);
+        // Helper: get M value for group[idx]
+        auto getGroupM = [&](uint32_t idx) -> uint32_t {
+            int64_t val = groupListGm.GetValue(idx);
+            if (groupListType == 0) {
+                int64_t prev = (idx > 0) ? groupListGm.GetValue(idx - 1) : 0;
+                return static_cast<uint32_t>(val - prev);
+            }
+            return static_cast<uint32_t>(val);
+        };
 
-        GMMFRDeterministic::SyncConfig syncConfig{};
-        syncConfig.curM = totalM;
-        syncConfig.lowBoundM = totalM;
-        syncConfig.windowSize = totalM;
-        syncConfig.baseN = baseN;
+        // NZ format weight offset constant (consistent with Cgmct Kernel UpdateOffset)
+        constexpr uint32_t WEIGHT_TILE_N_LARGE = 32;
+        constexpr uint32_t WEIGHT_TILE_K_SMALL = 16;
+        constexpr uint32_t WEIGHT_TILE_CAPACITY = 512;
+        uint64_t singleGroupWeightNZ = CeilDiv(n, WEIGHT_TILE_N_LARGE) *
+                                       CeilDiv(k, WEIGHT_TILE_K_SMALL) *
+                                       WEIGHT_TILE_CAPACITY;
 
-        GMMFRDeterministic::FRDeterministicA5<float, rowIndexType>(
-            syncConfig, deterBufferGm, yGm, rowIndexGm, queBind,
-            matmulTiling_.usedCoreNum, static_cast<uint32_t>(matmulTiling_.N));
+        // === Sliding window loop ===
+        uint32_t globalRowOffset = 0;
+        uint32_t groupStart = 0;
+        uint64_t xRowOffset = 0;
+        uint64_t wGroupOffset = 0;
+        bool isFirstRound = true;
+
+        // Must use GmmKernelDeterministic's own GMMTiling type (different kernel instantiations have incompatible nested types)
+        using GMMTilingDeterministic = typename GmmKernelDeterministic::GMMTiling;
+
+        while (groupStart < groupNum) {
+            // 1. Determine this round's group range [groupStart, groupEnd)
+            uint32_t roundM = 0;
+            uint32_t groupEnd = groupStart;
+            while (groupEnd < groupNum) {
+                uint32_t mi = getGroupM(groupEnd);
+                if (mi == 0) { groupEnd++; continue; }
+                if (roundM + mi > windowSize && roundM > 0) {
+                    break;
+                }
+                roundM += mi;
+                groupEnd++;
+            }
+            if (roundM == 0) {
+                groupStart = groupEnd;
+                continue;
+            }
+
+            uint32_t roundGroupNum = groupEnd - groupStart;
+
+            // 2. Compute preOffsetInit for cumulative mode
+            int32_t preOffsetInit = 0;
+            if (groupListType == 0 && groupStart > 0) {
+                preOffsetInit = static_cast<int32_t>(groupListGm.GetValue(groupStart - 1));
+            }
+
+            // 3. Construct offset input pointers
+            GM_ADDR xRound = x + xRowOffset * k;
+            GM_ADDR wRound = w + wGroupOffset * singleGroupWeightNZ;
+            GM_ADDR groupListRound = group_list + groupStart * sizeof(int64_t);
+            GM_ADDR wScaleRound = w_scale + wGroupOffset * n * sizeof(weightscaleType);
+            GM_ADDR xScaleRound = x_scale + xRowOffset * sizeof(float);
+            GM_ADDR biasRound = bias + wGroupOffset * n * sizeof(bfloat16_t);
+            GM_ADDR logitRound = logit + xRowOffset * sizeof(float);
+            GM_ADDR rowIndexRound = row_index + xRowOffset * sizeof(rowIndexType);
+
+            // 4. Prologue parameter: first round normal init, subsequent rounds skip (batch=0)
+            uint32_t prologueBatch = isFirstRound ?
+                gmmFinalizeRoutingQuantParams_.batch : 0;
+            uint32_t prologueSharedInputOffset = isFirstRound ?
+                gmmFinalizeRoutingQuantParams_.sharedInputOffset : 0;
+            uint32_t prologueSharedInputLen = isFirstRound ?
+                gmmFinalizeRoutingQuantParams_.sharedInputLen : 0;
+
+            // 5. Construct GMMTiling and Kernel parameters
+            GMMTilingDeterministic gmmParamsRound{
+                roundGroupNum, groupListType,
+                matmulTiling_.baseM, matmulTiling_.baseN, matmulTiling_.baseK,
+                gmmFinalizeRoutingQuantParams_.hasBias,
+                preOffsetInit
+            };
+            gmmParamsRound.matmulTiling = &matmulTiling_;
+
+            ParamsDeterministic params = {
+                {1, 1, 1, 1},
+                {xRound, wRound, deterBuffer, biasRound, groupListRound},
+                {share_input, y,
+                 prologueSharedInputOffset,
+                 prologueSharedInputLen, n,
+                 prologueBatch,
+                 gmmFinalizeRoutingQuantParams_.residualScale},
+                {deterBuffer, wScaleRound, xScaleRound, biasRound, logitRound, rowIndexRound,
+                 matmulTiling_.baseM, matmulTiling_.baseN},
+                gmmParamsRound
+            };
+
+            // 6. Run this round's Kernel (Prologue + Cube MMAD + Vector Epilogue)
+            GmmKernelDeterministic gmm;
+            gmm(params);
+
+            // 7. Window aggregation: workspace -> yGm
+            GMMFRDeterministic::SyncConfig syncConfig{};
+            syncConfig.curM = roundM;
+            syncConfig.lowBoundM = roundM;
+            syncConfig.windowSize = roundM;
+            syncConfig.baseN = baseN;
+
+            GMMFRDeterministic::FRDeterministicA5<float, rowIndexType>(
+                syncConfig, deterBufferGm, yGm, rowIndexGm, queBind,
+                matmulTiling_.usedCoreNum, n, globalRowOffset);
+
+            // 8. Update offsets
+            globalRowOffset += roundM;
+            xRowOffset += roundM;
+            wGroupOffset += roundGroupNum;
+            groupStart = groupEnd;
+            isFirstRound = false;
+        }
 
     } else {
         // Non-deterministic mode

@@ -142,14 +142,15 @@ public:
         int32_t baseN;
         int32_t baseK;
         uint8_t hasBias;
+        int32_t preOffsetInit = 0;
         const TCubeTiling *__restrict matmulTiling;
         __aicore__ GMMTiling()
         {
         }
         __aicore__ GMMTiling(uint32_t groupNum_, uint8_t groupListType_, int32_t baseM_, int32_t baseN_, int32_t baseK_,
-                             uint8_t hasBias_)
+                             uint8_t hasBias_, int32_t preOffsetInit_ = 0)
             : groupNum(groupNum_), groupListType(groupListType_), baseM(baseM_), baseN(baseN_), baseK(baseK_),
-              hasBias(hasBias_)
+              hasBias(hasBias_), preOffsetInit(preOffsetInit_)
         {
         }
     };
@@ -280,6 +281,7 @@ public:
         Get<MNK_N>(problemShape_) = params.gmmParams.matmulTiling->N;
         Get<MNK_K>(problemShape_) = params.gmmParams.matmulTiling->Ka;
         groupListGm_.SetGlobalBuffer((__gm__ int64_t *)params.mmadParams.groupListGmAddr);
+        preOffset_ = params.gmmParams.preOffsetInit;
     }
 
     __aicore__ inline void ProcessSingleGroup(const Params &params, BlockSchedulerOp &bs, uint32_t groupIdx)

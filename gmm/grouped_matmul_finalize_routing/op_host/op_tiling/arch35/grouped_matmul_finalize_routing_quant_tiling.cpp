@@ -468,19 +468,17 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::DoOpTiling()
         constexpr uint32_t DETER_WORK_SPACE_LOWER_SIZE = 64UL * 1024 * 1024;
         deterWorkspaceSize_ = l2Size > DETER_WORK_SPACE_SIZE
                               ? DETER_WORK_SPACE_SIZE : DETER_WORK_SPACE_LOWER_SIZE;
-        // 溢出保护：检查所需确定性 buffer 是否在 workspace 范围内
-        uint64_t requiredDeterSize = inputParams_.mSize * inputParams_.nSize * sizeof(float);
-        if (requiredDeterSize > deterWorkspaceSize_) {
-            OP_LOGW(context_->GetNodeName(),
-                    "Deterministic buffer overflow: required %lu bytes but only %u available, "
-                    "deterministic mode disabled.",
-                    requiredDeterSize, deterWorkspaceSize_);
-            deterministicFlag_ = 0;
-            tilingData_.gmmFinalizeRoutingDataParams.deterministicFlag = 0;
-            tilingData_.gmmFinalizeRoutingDataParams.deterWorkspaceSize = 0;
-        } else {
-            tilingData_.gmmFinalizeRoutingDataParams.deterWorkspaceSize = deterWorkspaceSize_;
+        // 滑动窗口：计算窗口大小，永不降级
+        uint64_t windowSizeRows = deterWorkspaceSize_ / (inputParams_.nSize * sizeof(float));
+        if (windowSizeRows == 0) {
+            OP_LOGE(context_->GetNodeName(),
+                    "Deterministic workspace too small for N=%lu, workspaceSize=%u",
+                    inputParams_.nSize, deterWorkspaceSize_);
+            return ge::GRAPH_FAILED;
         }
+        tilingData_.gmmFinalizeRoutingDataParams.deterWorkspaceSize = deterWorkspaceSize_;
+        tilingData_.gmmFinalizeRoutingDataParams.windowSize = static_cast<uint32_t>(windowSizeRows);
+        tilingData_.gmmFinalizeRoutingDataParams.totalM = static_cast<uint32_t>(inputParams_.mSize);
     }
 
     PrintQuantParams();
@@ -601,7 +599,9 @@ void GroupedMatmulFinalizeRoutingQuantTiling::PrintQuantParams()
         << ", bQuantMode = " << tilingData_.gmmFinalizeRoutingDataParams.bQuantMode
         << ", hasBias = " << static_cast<uint32_t>(tilingData_.gmmFinalizeRoutingDataParams.hasBias)
         << ", deterministicFlag = " << tilingData_.gmmFinalizeRoutingDataParams.deterministicFlag
-        << ", deterWorkspaceSize = " << tilingData_.gmmFinalizeRoutingDataParams.deterWorkspaceSize;
+        << ", deterWorkspaceSize = " << tilingData_.gmmFinalizeRoutingDataParams.deterWorkspaceSize
+        << ", windowSize = " << tilingData_.gmmFinalizeRoutingDataParams.windowSize
+        << ", totalM = " << tilingData_.gmmFinalizeRoutingDataParams.totalM;
     OP_LOGD(context_->GetNodeName(), "%s", oss.str().c_str());
 }
 
