@@ -241,7 +241,7 @@ ge::graphStatus MoeGatingTopKTilingRegbase::CheckAttrExpert()
 ge::graphStatus MoeGatingTopKTilingRegbase::CheckAttrMode()
 {
     OP_CHECK_IF(groupSelectMode_ != GROUP_SELECT_MODE_SUM && groupSelectMode_ != GROUP_SELECT_MODE_MAX,
-                OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "group_select_mode", 
+                OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "group_select_mode",
                                           std::to_string(groupSelectMode_),
                                           "0 or 1"),
                 return ge::GRAPH_FAILED);

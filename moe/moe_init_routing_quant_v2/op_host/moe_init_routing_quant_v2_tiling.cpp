@@ -229,7 +229,7 @@ ge::graphStatus MoeInitRoutingQuantV2TilingBase::GetShapeAttrsInfo()
         CHECK_NULL(context_, scaleDesc, "scale");
         auto dt_scale = scaleDesc->GetDataType();
         CHECK_FAIL(context_, dt_scale != ge::DT_FLOAT,
-            OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "scale", 
+            OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "scale",
             Ops::Base::ToString(dt_scale).c_str(), "FLOAT"));
 
         auto offsetShapePtr = context_->GetOptionalInputShape(INDEX_OFFSET);
