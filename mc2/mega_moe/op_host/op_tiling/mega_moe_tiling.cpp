@@ -686,8 +686,7 @@ static int64_t CalcMaxRowIdxPerLoopMxQuant(int64_t perLoopCols, int64_t inputXDt
     int64_t xInSize = AlignBytes(perLoopCols, inputXDtypeSize) + AlignBytes(perLoopCols, sizeof(int8_t));
     int64_t scaleSize = 2 * AlignBytes(perLoopCols / MX_QUANT_BLOCK_SIZE, inputXDtypeSize) +
                         AlignBytes(perLoopCols / MX_QUANT_BLOCK_SIZE, sizeof(int8_t));
-    const int64_t bytesPerElem = isFp4 ? 1 : 2;  // FP4: 2 elem/byte; FP8: 1 elem/byte
-    int64_t xOutSize = Align(perLoopCols / 4, sizeof(int8_t)) * 4 / bytesPerElem;
+    int64_t xOutSize = Align(perLoopCols / 4, sizeof(int8_t)) * 4;
     return (availUbSize - (xInSize + scaleSize + xOutSize)) / static_cast<int64_t>(sizeof(int32_t));
 }
 
