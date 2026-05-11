@@ -406,10 +406,12 @@ static ge::graphStatus CheckInitTilingData(
         return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(
-        quantMode != DISPATCH_QUANT_OUT_TYPE_E5M2 && quantMode != DISPATCH_QUANT_OUT_TYPE_E4M3FN,
+        quantMode != DISPATCH_QUANT_OUT_TYPE_E5M2 && quantMode != DISPATCH_QUANT_OUT_TYPE_E4M3FN &&
+        quantMode != DISPATCH_QUANT_OUT_TYPE_E2M1,
         OP_LOGE(nodeName,
-            "only support DISPATCH_QUANT_OUT_TYPE_E5M2(%d), DISPATCH_QUANT_OUT_TYPE_E4M3FN(%d), but now is %ld.",
-            DISPATCH_QUANT_OUT_TYPE_E5M2, DISPATCH_QUANT_OUT_TYPE_E4M3FN, quantMode),
+            "only support DISPATCH_QUANT_OUT_TYPE_E5M2(%d), DISPATCH_QUANT_OUT_TYPE_E4M3FN(%d), "
+            "DISPATCH_QUANT_OUT_TYPE_E2M1(%d), but now is %ld.",
+            DISPATCH_QUANT_OUT_TYPE_E5M2, DISPATCH_QUANT_OUT_TYPE_E4M3FN, DISPATCH_QUANT_OUT_TYPE_E2M1, quantMode),
         return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(
