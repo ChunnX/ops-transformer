@@ -82,19 +82,19 @@
 |----------------------------|-----------|-----|----------------------------------------------------------------------|----------------------------|
 | token_x                     | 输入      | 公式中计算Query和Key的输入tensor | BFLOAT16、FLOAT8_E4M3FN、INT8、HIFLOAT8 | ND         |
 | weight_dq                   | 输入      | 公式中计算Query的下采样权重矩阵$W^{DQ}$ <br> 不转置的情况下各个维度的表示：（k，n） | BFLOAT16、FLOAT8_E4M3FN、INT8、HIFLOAT8 | FRACTAL_NZ |
-| weight_uq_qr                 | 输入      | 公式中计算Query的上采样权重矩阵$W^{UQ}$和位置编码权重矩阵$W^{QR}$ <br> 不转置的情况下各个维度的表示：（k，n）| BFLOAT16、INT8、FLOAT8_E4M3FN、HIFLOAT8 | FRACTAL_NZ |
+| weight_uq_qr                 | 输入      | 公式中计算Query的上采样权重矩阵$W^{UQ}$和位置编码权重矩阵$W^{QR}$ <br> 不转置的情况下各个维度的表示：（k，n）| BFLOAT16、FLOAT8_E4M3FN、INT8、HIFLOAT8 | FRACTAL_NZ |
 | weight_uk                   | 输入      | 公式中计算Key的上采样权重$W^{UK}$ | BFLOAT16 | ND         |
 | weight_dkv_kr                | 输入      | 公式中计算Key的下采样权重矩阵$W^{DKV}$和位置编码权重矩阵$W^{KR}$ <br> 不转置的情况下各个维度的表示：（k，n）| BFLOAT16、FLOAT8_E4M3FN、INT8、HIFLOAT8 | FRACTAL_NZ |
 | rmsnorm_gamma_cq             | 输入      | 计算$c^Q$的RmsNorm公式中$\gamma$参数 | BFLOAT16 | ND         |
 | rmsnorm_gamma_ckv            | 输入      | 计算$c^{KV}$的RmsNorm公式中$\gamma$参数 | BFLOAT16 | ND         |
 | rope_sin                    | 输入      | 旋转位置编码的正弦参数矩阵 | BFLOAT16 | ND         |
 | rope_cos                    | 输入      | 旋转位置编码的余弦参数矩阵 | BFLOAT16 | ND         |
-| kv_cache                 | 输入/ 输出| cache索引的aclTensor，计算结果原地更新（对应$k^C$）|  BFLOAT16、INT8、FLOAT8_E4M3FN、HIFLOAT8 | ND         |
+| kv_cache                 | 输入/ 输出| cache索引的aclTensor，计算结果原地更新（对应$k^C$）|  BFLOAT16、FLOAT8_E4M3FN、INT8、HIFLOAT8 | ND         |
 | kr_cache                 | 输入/ 输出| key位置编码的cache，计算结果原地更新（对应$k^R$） |  BFLOAT16、INT8 | ND         |
-| cache_index                 | 输入      | 存储kvCache和krCache的索引 |  ND         |
+| cache_index                 | 输入      | 存储kvCache和krCache的索引 | INT64| ND         |
 | dequant_scale_x      | 输入      | token_x的反量化参数  | FLOAT8_E8M0、FLOAT | ND         |
 | dequant_scale_w_dq    | 输入      | weight_dq的反量化参数 | FLOAT8_E8M0、FLOAT | ND         |
-| dequant_scale_w_uq_qr  | 输入      | MatmulQcQr矩阵乘后反量化的per-channel参数 | FLOAT、FLOAT8_E8M0 | ND         |
+| dequant_scale_w_uq_qr  | 输入      | MatmulQcQr矩阵乘后反量化的per-channel参数 | FLOAT8_E8M0、FLOAT | ND         |
 | dequant_scale_w_dkv_kr | 输入      | weight_dkv_kr的反量化参数 | FLOAT8_E8M0、FLOAT | ND         |
 | quant_scale_ckv      | 输入      | KVCache输出量化参数 | FLOAT | ND         |
 | quant_scale_ckr      | 输入      | KRCache输出量化参数 | FLOAT | ND         |
@@ -116,7 +116,7 @@
 | query                   | 输出      | 公式中Query的输出tensor（对应$q^N$） | BFLOAT16、FLOAT8_E4M3FN、INT8、HIFLOAT8 | ND         |
 | query_rope               | 输出      | 公式中Query位置编码的输出tensor（对应$q^R$） | BFLOAT16 | ND |
 | dequant_scale_q_nope | 输出     | 表示Query的输出tensor的量化参数   | FLOAT | ND         |
-| query_norm               | 输出      | 公式中tokenX做rmsNorm后的输出tensor（对应$c^Q$） | BFLOAT16、INT8、FLOAT8_E4M3FN、HIFLOAT8 | ND |
+| query_norm               | 输出      | 公式中tokenX做rmsNorm后的输出tensor（对应$c^Q$） | BFLOAT16、FLOAT8_E4M3FN、INT8、HIFLOAT8 | ND |
 | dequant_scale_q_norm | 输出     | query_norm的输出tensor的量化参数   | FLOAT、FLOAT8_E8M0 | ND         |
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
