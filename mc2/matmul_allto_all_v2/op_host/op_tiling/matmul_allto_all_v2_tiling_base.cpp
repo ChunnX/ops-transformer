@@ -27,7 +27,7 @@ namespace MC2Tiling {
  *
  * @return ge::graphStatus
  */
-ge::graphStatus MatmulAllToAllTilingBase::GetShapeAttrsInfo()
+ge::graphStatus MatmulAlltoAllV2TilingBase::GetShapeAttrsInfo()
 {
     opName_ = context_->GetNodeName();
     return ge::GRAPH_SUCCESS;
@@ -38,7 +38,7 @@ ge::graphStatus MatmulAllToAllTilingBase::GetShapeAttrsInfo()
  *
  * @return ge::graphStatus
  */
-ge::graphStatus MatmulAllToAllTilingBase::GetPlatformInfo()
+ge::graphStatus MatmulAlltoAllV2TilingBase::GetPlatformInfo()
 {
     fe::PlatFormInfos *platformInfo = context_->GetPlatformInfo();
     OP_TILING_CHECK(platformInfo == nullptr, OP_LOGE(opName_, "Fail to get platform info."), return ge::GRAPH_FAILED);
@@ -55,7 +55,7 @@ ge::graphStatus MatmulAllToAllTilingBase::GetPlatformInfo()
  *
  * @return ge::graphStatus
  */
-ge::graphStatus MatmulAllToAllTilingBase::DoLibApiTiling()
+ge::graphStatus MatmulAlltoAllV2TilingBase::DoLibApiTiling()
 {
     return ge::GRAPH_SUCCESS;
 }
@@ -65,7 +65,7 @@ ge::graphStatus MatmulAllToAllTilingBase::DoLibApiTiling()
  *
  * @return ge::graphStatus
  */
-ge::graphStatus MatmulAllToAllTilingBase::GetWorkspaceSize()
+ge::graphStatus MatmulAlltoAllV2TilingBase::GetWorkspaceSize()
 {
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(opName_, "Get workspace failed"), return ge::GRAPH_FAILED);
@@ -76,7 +76,7 @@ ge::graphStatus MatmulAllToAllTilingBase::GetWorkspaceSize()
     return ge::GRAPH_SUCCESS;
 }
 
-CutResult MatmulAllToAllTilingBase::GetTilingResult()
+CutResult MatmulAlltoAllV2TilingBase::GetTilingResult()
 {
     SocVersion nowSocVersion = SocVersion::SOC950;
     std::string socVersionStr = mc2tiling::GetSocVersion(context_);
@@ -91,7 +91,7 @@ CutResult MatmulAllToAllTilingBase::GetTilingResult()
  * @brief 返回具体的切分结果
  *
  */
-ge::graphStatus MatmulAllToAllTilingBase::TileCommAndCompute()
+ge::graphStatus MatmulAlltoAllV2TilingBase::TileCommAndCompute()
 {
     OP_LOGD(opName_, "Start to find proper tile by formulaic tiling.");
     CutResult mCutMMAlltoAll = GetTilingResult();
@@ -110,7 +110,7 @@ ge::graphStatus MatmulAllToAllTilingBase::TileCommAndCompute()
  * @brief 设置额外需要的空间，包括计算结果地址，重排地址，偏移地址等
  *
  */
-void MatmulAllToAllTilingBase::SetUserWorkSpace()
+void MatmulAlltoAllV2TilingBase::SetUserWorkSpace()
 {
     constexpr uint64_t alignAddrLen = 512;
     // MatmulAlltoAllV2先进行计算，需要有对应的空间先存放结果，假设x1(m,k),
@@ -128,7 +128,7 @@ void MatmulAllToAllTilingBase::SetUserWorkSpace()
  *
  * @return ge::graphStatus
  */
-ge::graphStatus MatmulAllToAllTilingBase::Check2DMatrixMulShapes(const gert::TilingContext *context, const char *opName)
+ge::graphStatus MatmulAlltoAllV2TilingBase::Check2DMatrixMulShapes(const gert::TilingContext *context, const char *opName)
 {
     bool x2TransFlag = false;
     // attr及其元素的非空校验在前置的Check方法里都校验过，所以这里不需要额外判断
@@ -178,7 +178,7 @@ ge::graphStatus MatmulAllToAllTilingBase::Check2DMatrixMulShapes(const gert::Til
  *
  * @return ge::graphStatus
  */
-ge::graphStatus MatmulAllToAllTilingBase::CheckKcQuantMatrixMulShapes(const gert::TilingContext *context,
+ge::graphStatus MatmulAlltoAllV2TilingBase::CheckKcQuantMatrixMulShapes(const gert::TilingContext *context,
                                                                       const char *opName)
 {
     OP_TILING_CHECK(Check2DMatrixMulShapes(context, opName) != ge::GRAPH_SUCCESS,
@@ -193,7 +193,7 @@ ge::graphStatus MatmulAllToAllTilingBase::CheckKcQuantMatrixMulShapes(const gert
  *
  * @return ge::graphStatus
  */
-ge::graphStatus MatmulAllToAllTilingBase::CheckKcQuantScaleShapes(const gert::TilingContext *context,
+ge::graphStatus MatmulAlltoAllV2TilingBase::CheckKcQuantScaleShapes(const gert::TilingContext *context,
                                                                   const char *opName)
 {
     bool TransX2Flag = false;

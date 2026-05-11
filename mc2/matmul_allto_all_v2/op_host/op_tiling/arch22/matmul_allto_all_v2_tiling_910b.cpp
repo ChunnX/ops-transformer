@@ -36,15 +36,15 @@ constexpr uint32_t SUPPORT_QUANT_MODE = 32; // x1_quant_mode * X1_QUANT_SIGN + x
 constexpr int32_t RANKSIZE_TWO = 2;
 constexpr int32_t RANKSIZE_FOUR = 4;
 constexpr int32_t RANKSIZE_EIGHT = 8;
-constexpr int32_t MATMULALLTOALL_TWO_RANK_FP16_UBMOVENUM_DEFAULT = 40;
-constexpr int32_t MATMULALLTOALL_TWO_RANK_FP16_PVALUE_DEFAULT = 10;
-constexpr int32_t MATMULALLTOALL_TWO_RANK_FP16_M0_DEFAULT = 128;
-constexpr int32_t MATMULALLTOALL_FOUR_RANK_FP16_UBMOVENUM_DEFAULT = 40;
-constexpr int32_t MATMULALLTOALL_FOUR_RANK_FP16_PVALUE_DEFAULT = 10;
-constexpr int32_t MATMULALLTOALL_FOUR_RANK_FP16_M0_DEFAULT = 128;
-constexpr int32_t MATMULALLTOALL_EIGHT_RANK_FP16_M0_DEFAULT = 128;
-constexpr int32_t MATMULALLTOALL_EIGHT_RANK_FP16_PVALUE_DEFAULT = 10;
-constexpr int32_t MATMULALLTOALL_EIGHT_RANK_FP16_UBMOVENUM_DEFAULT = 80;
+constexpr int32_t MATMUL_ALLTO_ALL_V2_TWO_RANK_FP16_UBMOVENUM_DEFAULT = 40;
+constexpr int32_t MATMUL_ALLTO_ALL_V2_TWO_RANK_FP16_PVALUE_DEFAULT = 10;
+constexpr int32_t MATMUL_ALLTO_ALL_V2_TWO_RANK_FP16_M0_DEFAULT = 128;
+constexpr int32_t MATMUL_ALLTO_ALL_V2_FOUR_RANK_FP16_UBMOVENUM_DEFAULT = 40;
+constexpr int32_t MATMUL_ALLTO_ALL_V2_FOUR_RANK_FP16_PVALUE_DEFAULT = 10;
+constexpr int32_t MATMUL_ALLTO_ALL_V2_FOUR_RANK_FP16_M0_DEFAULT = 128;
+constexpr int32_t MATMUL_ALLTO_ALL_V2_EIGHT_RANK_FP16_M0_DEFAULT = 128;
+constexpr int32_t MATMUL_ALLTO_ALL_V2_EIGHT_RANK_FP16_PVALUE_DEFAULT = 10;
+constexpr int32_t MATMUL_ALLTO_ALL_V2_EIGHT_RANK_FP16_UBMOVENUM_DEFAULT = 80;
 constexpr int32_t HALF_KBYTE = 512;
 constexpr int32_t DEFAULT_ROW = 128;
 constexpr int32_t DEFAULT_COL = 256;
@@ -69,7 +69,7 @@ const std::vector<std::vector<uint32_t>> SUPPORTED_TYPES_WITHOUT_BIAS = {
 
 namespace MC2Tiling {
 
-static std::map<int, std::vector<std::vector<int>>> g_matmulalltoallTwoRankFP16M0Map = {
+static std::map<int, std::vector<std::vector<int>>> g_matmulAlltoAllV2TwoRankFP16M0Map = {
     {128,
      {{-1, 11264, -1, 2147483647, -1, 5632},
       {-1, 11264, -1, 8704, 5632, 6656},
@@ -94,7 +94,7 @@ static std::map<int, std::vector<std::vector<int>>> g_matmulalltoallTwoRankFP16M
       {-1, 2147483647, 9728, 2147483647, 7680, 9728},
       {1536, 2147483647, 9728, 2147483647, 9728, 2147483647}}}};
 
-static std::map<int, std::vector<std::vector<int>>> g_matmulalltoallTwoRankFP16PvalueMap = {
+static std::map<int, std::vector<std::vector<int>>> g_matmulAlltoAllV2TwoRankFP16PvalueMap = {
     {8, {{-1, 2560, -1, 1536, -1, 1536}, {2560, 2147483647, -1, 1536, 2560, 3584}}},
     {4,
      {{-1, 2560, 1536, 6144, -1, 1536},
@@ -146,7 +146,7 @@ static std::map<int, std::vector<std::vector<int>>> g_matmulalltoallTwoRankFP16P
       {7680, 2147483647, 9728, 2147483647, 2560, 4608}}},
     {7, {{9728, 2147483647, 2304, 2816, -1, 4608}}}};
 
-static std::map<int, std::vector<std::vector<int>>> g_matmulalltoallTwoRankFP16UbmovenumMap = {
+static std::map<int, std::vector<std::vector<int>>> g_matmulAlltoAllV2TwoRankFP16UbmovenumMap = {
     {40, {{-1, 3584, -1, 3328, -1, 1536}, {15360, 2147483647, 2304, 5632, -1, 1536}}},
     {30,
      {{-1, 3584, 3328, 6144, -1, 1536},
@@ -185,7 +185,7 @@ static std::map<int, std::vector<std::vector<int>>> g_matmulalltoallTwoRankFP16U
       {8704, 2147483647, 9728, 2147483647, 7680, 8704},
       {11264, 15360, 5632, 2147483647, 8704, 9728}}}};
 
-static std::map<int, std::vector<std::vector<int>>> g_matmulalltoallFourRankFP16M0Map = {
+static std::map<int, std::vector<std::vector<int>>> g_matmulAlltoAllV2FourRankFP16M0Map = {
     {128,
      {{-1, 6656, -1, 2147483647, -1, 6656},
       {6656, 2147483647, -1, 8704, -1, 6656},
@@ -204,7 +204,7 @@ static std::map<int, std::vector<std::vector<int>>> g_matmulalltoallFourRankFP16
       {-1, 2560, 7680, 2147483647, 7680, 2147483647},
       {2560, 2147483647, 7680, 2147483647, 6656, 2147483647}}}};
 
-static std::map<int, std::vector<std::vector<int>>> g_matmulalltoallFourRankFP16PvalueMap = {
+static std::map<int, std::vector<std::vector<int>>> g_matmulAlltoAllV2FourRankFP16PvalueMap = {
     {8, {{-1, 2560, -1, 1536, -1, 1536}}},
     {4,
      {{-1, 2560, 1536, 2816, -1, 1536},
@@ -254,7 +254,7 @@ static std::map<int, std::vector<std::vector<int>>> g_matmulalltoallFourRankFP16
       {-1, 1536, 4352, 9728, 4608, 5632},
       {-1, 1536, 4352, 7680, 5632, 2147483647}}}};
 
-static std::map<int, std::vector<std::vector<int>>> g_matmulalltoallFourRankFP16UbmovenumMap = {
+static std::map<int, std::vector<std::vector<int>>> g_matmulAlltoAllV2FourRankFP16UbmovenumMap = {
     {30,
      {{-1, 2560, -1, 3840, -1, 1536},
       {2560, 13312, 1536, 3840, -1, 1536},
@@ -276,7 +276,7 @@ static std::map<int, std::vector<std::vector<int>>> g_matmulalltoallFourRankFP16
       {13312, 15360, 6144, 2147483647, -1, 1536},
       {-1, 2147483647, 4608, 2147483647, 1536, 2147483647}}}};
 
-static std::map<int, std::vector<std::vector<int>>> g_matmulalltoallEightRankFP16UbmovenumMap = {
+static std::map<int, std::vector<std::vector<int>>> g_matmulAlltoAllV2EightRankFP16UbmovenumMap = {
     {70, {{-1, 1536, -1, 2304, -1, 1536}}},
     {30,
      {{-1, 1536, 2304, 2816, -1, 1536},
@@ -302,7 +302,7 @@ static std::map<int, std::vector<std::vector<int>>> g_matmulalltoallEightRankFP1
       {3584, 2147483647, 2304, 2147483647, 1536, 2147483647}}},
     {80, {{-1, 1536, -1, 1536, 1536, 4096}}}};
 
-static std::map<int, std::vector<std::vector<int>>> g_matmulalltoallEightRankFP16PvalueMap = {
+static std::map<int, std::vector<std::vector<int>>> g_matmulAlltoAllV2EightRankFP16PvalueMap = {
     {2,
      {{-1, 1536, -1, 2147483647, -1, 1536},
       {1536, 2560, -1, 5632, -1, 1536},
@@ -358,7 +358,7 @@ static std::map<int, std::vector<std::vector<int>>> g_matmulalltoallEightRankFP1
       {9728, 2147483647, 3328, 2147483647, 6656, 2147483647}}},
     {1, {{-1, 2560, 1536, 6656, 3584, 2147483647}, {2560, 3584, -1, 3840, 8704, 9728}}}};
 
-static std::map<int, std::vector<std::vector<int>>> g_matmulalltoallEightRankFP16M0Map = {
+static std::map<int, std::vector<std::vector<int>>> g_matmulAlltoAllV2EightRankFP16M0Map = {
     {256, {{-1, 2147483647, -1, 2147483647, -1, 1536}, {-1, 2147483647, -1, 2147483647, 2560, 2147483647}}},
     {128, {{-1, 2147483647, -1, 2147483647, 1536, 2560}}}};
 
@@ -372,7 +372,7 @@ bool MatmulAlltoAllV2Tiling910B::IsCapable()
     OP_LOGD(opName_, "Current SocVersion is : %s", socVersionStr.c_str());
     QuantMode mode = MatmulAlltoAllV2TilingUtil::GetQuantMode(context_, opName_);
     if (socVersionStr == "Ascend910B") {
-        OP_LOGI(opName_, "Start with MatmulAllToAll tiling.");
+        OP_LOGI(opName_, "Start with MatmulAlltoAllV2 tiling.");
         return true;
     }
     OP_LOGD(opName_, "Skip MatmulAlltoAllV2Tiling910b tiling when the SocVersion is unsupported.");
@@ -691,11 +691,11 @@ void MatmulAlltoAllV2Tiling910B::DoTwoRankTiling(CoCTiling &cocTilingData, Matmu
 {
     std::map<int *, MatmulAlltoAllV2TilingValue> TilingParamMap;
     TilingParamMap[&cocTilingData.m0] =
-        MatmulAlltoAllV2TilingValue(MATMULALLTOALL_TWO_RANK_FP16_M0_DEFAULT, g_matmulalltoallTwoRankFP16M0Map);
+        MatmulAlltoAllV2TilingValue(MATMUL_ALLTO_ALL_V2_TWO_RANK_FP16_M0_DEFAULT, g_matmulAlltoAllV2TwoRankFP16M0Map);
     TilingParamMap[&cocTilingData.pValue] =
-        MatmulAlltoAllV2TilingValue(MATMULALLTOALL_TWO_RANK_FP16_PVALUE_DEFAULT, g_matmulalltoallTwoRankFP16PvalueMap);
-    TilingParamMap[&cocTilingData.ubMoveNum] = MatmulAlltoAllV2TilingValue(MATMULALLTOALL_TWO_RANK_FP16_UBMOVENUM_DEFAULT,
-                                                                         g_matmulalltoallTwoRankFP16UbmovenumMap);
+        MatmulAlltoAllV2TilingValue(MATMUL_ALLTO_ALL_V2_TWO_RANK_FP16_PVALUE_DEFAULT, g_matmulAlltoAllV2TwoRankFP16PvalueMap);
+    TilingParamMap[&cocTilingData.ubMoveNum] = MatmulAlltoAllV2TilingValue(MATMUL_ALLTO_ALL_V2_TWO_RANK_FP16_UBMOVENUM_DEFAULT,
+                                                                         g_matmulAlltoAllV2TwoRankFP16UbmovenumMap);
     CalTilingParam(cocTilingData, TilingParamMap, info);
 }
 
@@ -703,11 +703,11 @@ void MatmulAlltoAllV2Tiling910B::DoFourRankTiling(CoCTiling &cocTilingData, Matm
 {
     std::map<int *, MatmulAlltoAllV2TilingValue> TilingParamMap;
     TilingParamMap[&cocTilingData.m0] =
-        MatmulAlltoAllV2TilingValue(MATMULALLTOALL_FOUR_RANK_FP16_M0_DEFAULT, g_matmulalltoallFourRankFP16M0Map);
+        MatmulAlltoAllV2TilingValue(MATMUL_ALLTO_ALL_V2_FOUR_RANK_FP16_M0_DEFAULT, g_matmulAlltoAllV2FourRankFP16M0Map);
     TilingParamMap[&cocTilingData.pValue] =
-        MatmulAlltoAllV2TilingValue(MATMULALLTOALL_FOUR_RANK_FP16_PVALUE_DEFAULT, g_matmulalltoallFourRankFP16PvalueMap);
+        MatmulAlltoAllV2TilingValue(MATMUL_ALLTO_ALL_V2_FOUR_RANK_FP16_PVALUE_DEFAULT, g_matmulAlltoAllV2FourRankFP16PvalueMap);
     TilingParamMap[&cocTilingData.ubMoveNum] = MatmulAlltoAllV2TilingValue(
-        MATMULALLTOALL_FOUR_RANK_FP16_UBMOVENUM_DEFAULT, g_matmulalltoallFourRankFP16UbmovenumMap);
+        MATMUL_ALLTO_ALL_V2_FOUR_RANK_FP16_UBMOVENUM_DEFAULT, g_matmulAlltoAllV2FourRankFP16UbmovenumMap);
     CalTilingParam(cocTilingData, TilingParamMap, info);
 }
 
@@ -715,11 +715,11 @@ void MatmulAlltoAllV2Tiling910B::DoEightRankTiling(CoCTiling &cocTilingData, Mat
 {
     std::map<int *, MatmulAlltoAllV2TilingValue> TilingParamMap;
     TilingParamMap[&cocTilingData.m0] =
-        MatmulAlltoAllV2TilingValue(MATMULALLTOALL_EIGHT_RANK_FP16_M0_DEFAULT, g_matmulalltoallEightRankFP16M0Map);
-    TilingParamMap[&cocTilingData.pValue] = MatmulAlltoAllV2TilingValue(MATMULALLTOALL_EIGHT_RANK_FP16_PVALUE_DEFAULT,
-                                                                      g_matmulalltoallEightRankFP16PvalueMap);
+        MatmulAlltoAllV2TilingValue(MATMUL_ALLTO_ALL_V2_EIGHT_RANK_FP16_M0_DEFAULT, g_matmulAlltoAllV2EightRankFP16M0Map);
+    TilingParamMap[&cocTilingData.pValue] = MatmulAlltoAllV2TilingValue(MATMUL_ALLTO_ALL_V2_EIGHT_RANK_FP16_PVALUE_DEFAULT,
+                                                                      g_matmulAlltoAllV2EightRankFP16PvalueMap);
     TilingParamMap[&cocTilingData.ubMoveNum] = MatmulAlltoAllV2TilingValue(
-        MATMULALLTOALL_EIGHT_RANK_FP16_UBMOVENUM_DEFAULT, g_matmulalltoallEightRankFP16UbmovenumMap);
+        MATMUL_ALLTO_ALL_V2_EIGHT_RANK_FP16_UBMOVENUM_DEFAULT, g_matmulAlltoAllV2EightRankFP16UbmovenumMap);
     CalTilingParam(cocTilingData, TilingParamMap, info);
 }
 
@@ -851,11 +851,11 @@ ge::graphStatus MatmulAlltoAllV2Tiling910B::PostTiling()
 }
 
 /**
- * @brief 构造函数，创建一个MatmulAllToAllTiling910B对象
+ * @brief 构造函数，创建一个MatmulAlltoAllV2Tiling910B对象
  *
  * @param context
  */
-MatmulAlltoAllV2Tiling910B::MatmulAlltoAllV2Tiling910B(gert::TilingContext *context) : MatmulAllToAllTilingBase(context)
+MatmulAlltoAllV2Tiling910B::MatmulAlltoAllV2Tiling910B(gert::TilingContext *context) : MatmulAlltoAllV2TilingBase(context)
 {
 }
 

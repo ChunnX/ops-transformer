@@ -42,12 +42,12 @@ constexpr uint64_t MX_GROUP_SIZE_K = 32;
 constexpr uint64_t MX_GROUP_SIZE_M = 1;
 constexpr uint64_t MX_GROUP_SIZE_N = 1;
 
-class MxQuantMatmulAllToAllTilingBase : public MatmulAllToAllTilingBase 
+class MxQuantMatmulAlltoAllV2TilingBase : public MatmulAlltoAllV2TilingBase 
 {
     friend class MxQuantMatmulAlltoAllV2Helper;
 public:
-    explicit MxQuantMatmulAllToAllTilingBase(gert::TilingContext *context);
-    ~MxQuantMatmulAllToAllTilingBase() override = default;
+    explicit MxQuantMatmulAlltoAllV2TilingBase(gert::TilingContext *context);
+    ~MxQuantMatmulAlltoAllV2TilingBase() override = default;
 protected:
     bool IsCapable() override;
     ge::graphStatus DoOpTiling() override;
@@ -85,7 +85,7 @@ private:
 class MxQuantMatmulAlltoAllV2Helper : public Mc2AdaptiveSlidingWindowTiling 
 {
 public:
-    MxQuantMatmulAlltoAllV2Helper(MxQuantMatmulAllToAllTilingBase& mxQuantMatmulAllToAllTilingBase,
+    MxQuantMatmulAlltoAllV2Helper(MxQuantMatmulAlltoAllV2TilingBase& mxQuantMatmulAlltoAllV2TilingBase,
                                 DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams& out, uint64_t& mmMvalueLen);
     const gert::Shape GetX1Shape(const size_t index) override;
     const gert::StorageShape* GetPertokenShape(const size_t index) override;
@@ -100,7 +100,7 @@ public:
 
 private:
     uint64_t mmLen_ = 0;
-    MxQuantMatmulAllToAllTilingBase& tilingProcesser_;
+    MxQuantMatmulAlltoAllV2TilingBase& tilingProcesser_;
 };
 } // namespace MC2Tiling
 #endif
