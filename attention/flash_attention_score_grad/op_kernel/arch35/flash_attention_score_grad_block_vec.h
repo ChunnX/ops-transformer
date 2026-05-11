@@ -1235,7 +1235,6 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::DeterComputeDq(FagConstInfo &
                                  dqDeterBuf[(cIx - eachLoopStart) * constInfo.deterConstInfo.dqEachVectorSize],
                                  dataCopyPadParams);
             }
-            PipeBarrier<PIPE_MTE3>();
         }
         deterInOutQue.FreeTensor(dqDeterBuf);
     }
@@ -1415,7 +1414,6 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::DeterComputeDqkv(LocalTensor<
                                     dqDeterBuf[(cIx - eachLoopStart) * constInfo.deterConstInfo.dqEachVectorSize],
                                     dataCopyPadParams);
             }
-            PipeBarrier<PIPE_MTE3>();
         }
         deterInOutQue.FreeTensor(dqDeterBuf);
     }
@@ -1530,7 +1528,6 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::WriteDataToDkv(LocalTensor<CA
                                         dataCopyDvPadParams);
                 }
             }
-            PipeBarrier<PIPE_MTE3>();
         }
         if (loopIdx < loopTimes - 1) {
             SetFlag<HardEvent::MTE3_MTE2>(constInfo.deterConstInfo.eventIDMte3ToMte2);
