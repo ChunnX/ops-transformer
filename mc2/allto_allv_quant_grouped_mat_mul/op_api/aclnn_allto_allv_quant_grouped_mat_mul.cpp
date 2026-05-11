@@ -29,7 +29,6 @@
 namespace {
 using namespace op;
 
-// 环境变量名：有设置=AICPU，无设置=CCU
 #include "mc2_comm_utils.h"
 
 enum class NnopbaseHcclServerType : uint32_t {
