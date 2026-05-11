@@ -31,10 +31,10 @@ namespace MC2Tiling {
 using namespace optiling;
 using namespace mc2_matmul_v3_advanced;
 
-class FpMatmulAllToAllTilingBase : public MatmulAllToAllTilingBase {
+class FpMatmulAlltoAllV2TilingBase : public MatmulAlltoAllV2TilingBase {
 public:
-    explicit FpMatmulAllToAllTilingBase(gert::TilingContext *context);
-    ~FpMatmulAllToAllTilingBase() override = default;
+    explicit FpMatmulAlltoAllV2TilingBase(gert::TilingContext *context);
+    ~FpMatmulAlltoAllV2TilingBase() override = default;
 
 protected:
     bool IsCapable() override;

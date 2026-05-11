@@ -323,7 +323,7 @@ __aicore__ inline void MatmulAlltoAllV2<TemplateMMA2AFunc>::QuantCatlassMatmul()
         // kernel level
         using BlockMmadOpt = Gemm::Block::BlockMmad<DispatchPolicy, L1TileShape, L0TileShape, AType_, BType_, CType_>;
         using QuantMatmulKernel =
-            Gemm::Kernel::QuantMatmulAllToAllKernel<BlockMmadOpt, QuantBlockEpilogue, BlockScheduler, workspaceStages>;
+            Gemm::Kernel::QuantMatmulAlltoAllV2Kernel<BlockMmadOpt, QuantBlockEpilogue, BlockScheduler, workspaceStages>;
 
         QuantMatmulKernel quant_matmul_op;
         typename QuantMatmulKernel::Params params{problemShape,
@@ -368,7 +368,7 @@ __aicore__ inline void MatmulAlltoAllV2<TemplateMMA2AFunc>::QuantCatlassMatmul()
         // kernel level
         using BlockMmadOpt = Gemm::Block::BlockMmad<DispatchPolicy, L1TileShape, L0TileShape, AType_, BType_, CType_>;
         using QuantMatmulKernel =
-            Gemm::Kernel::QuantMatmulAllToAllKernel<BlockMmadOpt, QuantBlockEpilogue, BlockScheduler, workspaceStages>;
+            Gemm::Kernel::QuantMatmulAlltoAllV2Kernel<BlockMmadOpt, QuantBlockEpilogue, BlockScheduler, workspaceStages>;
 
         QuantMatmulKernel quant_matmul_op;
         typename QuantMatmulKernel::Params params{problemShape,
