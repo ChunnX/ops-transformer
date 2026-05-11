@@ -38,8 +38,6 @@ struct FiaTilingKeyInfo {
     uint64_t kvLayoutType = 0;
     bool isFd = false;
     bool emptyTensor = false;
-    uint64_t maskMode = 0;
-    uint64_t matmulMode = 0;
     bool enableKvPrefix = false;
     bool enableS1OutSplit = false;
     bool isReconstructTemp = false;
@@ -86,8 +84,6 @@ private:
     void UpdateTilingKeyPseMode();
     void UpdateTilingKeyQuantMode();
     void UpdateTilingKeyHasRope();
-    void UpdateTilingKeyMaskMode();
-    void UpdateTilingKeyMatmulMode();
     void UpdateTilingKeyInfo();
     void SetFATilingData();
     void AdjustSinnerAndSouter();

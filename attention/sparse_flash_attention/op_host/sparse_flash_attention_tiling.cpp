@@ -1333,9 +1333,8 @@ ge::graphStatus SFATilingCheck::CheckFeatureMlaNoQuantShape() const
         OP_LOGE(opName_, "q_head_num(%u) must be divisible by kv_head_num(%u)", n1Size_, n2Size_),
         return ge::GRAPH_FAILED);
 
-    std::vector<uint32_t> gSizeSupportList = {1, 2, 4, 8, 16, 32, 64, 128};
-    OP_CHECK_IF(std::find(gSizeSupportList.begin(), gSizeSupportList.end(), gSize_) == gSizeSupportList.end(),
-        OP_LOGE(opName_, "group num should be in 1, 2, 4, 8, 16, 32, 64, 128, but got %u", gSize_),
+    OP_CHECK_IF(gSize_ < 1 || (gSize_ > 64 && gSize_ != 128),
+        OP_LOGE(opName_, "group num should be in 1 ~ 64, 128, but got %u", gSize_),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(qkHeadDim_ != 512,
