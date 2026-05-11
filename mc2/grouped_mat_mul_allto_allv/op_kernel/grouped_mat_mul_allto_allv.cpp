@@ -1,59 +1,50 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file grouped_mat_mul_allto_allv.cpp
- * \brief
+ * \brief Grouped MatMul AlltoAllV Kernel实现（复用quant模板，非量化模式）
  */
-#if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
-#else
-#include "kernel_operator.h"
-#endif
-#include "grouped_mat_mul_allto_allv.h"
+#include "grouped_mat_mul_allto_allv_tiling.h"
 #include "grouped_mat_mul_allto_allv_tiling_key.h"
 
+#if __has_include("../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/mc2_templates.h")
+#include "../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/mc2_templates.h"
+#else
+#include "../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/mc2_templates.h"
+#endif
+
+#if defined(CONST_TILING)
+#define GET_NESTED_TILING_DATA_MEMBER_ADDR(outerType, innerType, outerMember, innerMember, var, tiling)                \
+    const outerType *outerPtr##var = (const outerType *)(tiling);                                                      \
+    const innerType *innerPtr##var = &(outerPtr##var->outerMember);                                                    \
+    const int32_t *(var) = (const int32_t)((const uint8_t *)&(innerPtr##var->innerMember))
+#else
+#define GET_NESTED_TILING_DATA_MEMBER_ADDR(outerType, innerType, outerMember, innerMember, var, tiling)                \
+    size_t outerOffset##var = (size_t)(&((outerType *)0)->outerMember);                                                \
+    size_t innerOffset##var = (size_t)(&((innerType *)0)->innerMember);                                                \
+    __gm__ int32_t *(var) = (__gm__ int32_t *)((__gm__ uint8_t *)(tiling) + outerOffset##var + innerOffset##var)
+#endif
+
 using namespace AscendC;
+using namespace MC2KernelTemplate;
+using namespace Mc2GroupedMatmulTilingData;
 
-template <typename X_T, const bool IS_OPT_MM, const bool IS_GMM_WEIGHT_TRANS, const bool IS_OPT_WEIGHT_TRANS>
-struct GMMATAVType { // Grouped_Mat_Mul_All_To_Allv_Type
-    using xType = X_T;
-    static constexpr bool isOptionalMm = IS_OPT_MM;
-    static constexpr bool isGmmWeightTrans = IS_GMM_WEIGHT_TRANS;
-    static constexpr bool isOptWeightTrans = IS_OPT_WEIGHT_TRANS;
-};
+#if defined(CONST_TILING)
+#define TILING_TYPE const int32_t
+#else
+#define TILING_TYPE __gm__ int32_t
+#endif
 
-#define INVOKE_GMMATAV_OP_IMPL_A5(templateClass, ...)                                                   \
-    do {                                                                                                \
-        TPipe pipe;                                                                                     \
-        templateClass<GMMATAVType<__VA_ARGS__>> op;                                                     \
-        op.Init(                                                                                        \
-            gmmxGM, gmmweightGM, sendCountsTensorOptionalGM, recvCountsTensorOptionalGM, mmxOptionalGM, \
-            mmweightOptionalGM, yGM, mmyOptionalGM, workspaceGM, contextGM, &tilingData, &pipe);        \
-        op.Process();                                                                                   \
-    } while (0)
-
-#define INVOKE_GMMATAV_OP_IMPL(templateClass, ...)                                                       \
-    do {                                                                                                 \
-        TPipe pipe;                                                                                      \
-        templateClass<GMMATAVType<__VA_ARGS__>> op;                                                      \
-        op.Init(                                                                                         \
-            gmmxGM, gmmweightGM, sendCountsTensorOptionalGM, recvCountsTensorOptionalGM, mmxOptionalGM,  \
-            mmweightOptionalGM, yGM, mmyOptionalGM, workspaceGM, contextGM, &tilingData, hcclInitTiling, \
-            alltoAllvCcTiling, &pipe);                                                                   \
-        op.Process();                                                                                    \
-    } while (0)
-
-template <
-    bool TILINGKEY_COMPUTE_MATMUL, bool TILINGKEY_GROUPED_MATMUL_TRANS, 
-    bool TILINGKEY_MATMUL_TRANS>
+template <bool TILINGKEY_COMPUTE_MATMUL, bool TILINGKEY_GMM_WEIGHT_TRANS, bool TILINGKEY_SHARED_MM_WEIGHT_TRANS>
 __global__ __aicore__ void grouped_mat_mul_allto_allv(
     GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR sendCountsTensorOptionalGM, GM_ADDR recvCountsTensorOptionalGM,
     GM_ADDR mmxOptionalGM, GM_ADDR mmweightOptionalGM, GM_ADDR yGM, GM_ADDR mmyOptionalGM, GM_ADDR workspaceGM,
@@ -67,22 +58,48 @@ __global__ __aicore__ void grouped_mat_mul_allto_allv(
     if (userWorkspace == nullptr) {
         return;
     }
-    REGISTER_TILING_DEFAULT(GroupedMatMulAlltoAllvTilingData); 
-    auto tiling = (__gm__ GroupedMatMulAlltoAllvTilingData*)tilingGM;
-    __gm__ void* hcclInitTiling = (__gm__ void*)(&(tiling->hcclInitTiling));
-    __gm__ void* alltoAllvCcTiling = (__gm__ void*)(&(tiling->alltoAllvCcTiling));
+
+    TPipe pipe;
+    REGISTER_TILING_DEFAULT(GmmA2avTilingData);
     GET_TILING_DATA(tilingData, tilingGM);
-    GM_ADDR contextGM = GetHcclContext<HCCL_GROUP_ID_0>();
+    const GmmA2avTilingData *tilingData_ = &tilingData;
+    const void *hcclInitTiling = &(tilingData_->hcclA2avTiling.hcclInitTiling);
+    uint64_t hcclCcTilingOffset = offsetof(GmmA2avTilingData, hcclA2avTiling) +
+                                  offsetof(MC2KernelTemplate::HcclA2avTilingInfo, a2avCcTiling);
+    constexpr CubeFormat W_FORMAT = CubeFormat::ND;
+    constexpr bool ENABLE_SCALE_QUANT = false;
 
-#if (ORIG_DTYPE_GMM_X == DT_FLOAT16)
-    using X_TYPE = half;
-    INVOKE_GMMATAV_OP_IMPL(GroupedMatmulAlltoAllv, X_TYPE, TILINGKEY_COMPUTE_MATMUL,
-                            TILINGKEY_GROUPED_MATMUL_TRANS, TILINGKEY_MATMUL_TRANS);
-#endif
+    using HcclOpType = HcclA2avOp<half, false, ENABLE_SCALE_QUANT>;
+    using GmmASWKernelType =
+        Mc2GroupedMatmul::Mc2GmmASWKernel<half, half, float, float, half, W_FORMAT,
+                                          TILINGKEY_GMM_WEIGHT_TRANS, TILINGKEY_SHARED_MM_WEIGHT_TRANS>;
+    using ComputeOpType =
+        QuantGroupedMatmul<GmmA2avTilingData, GMMQuantTilingData, half, half, float,
+                           half, CubeFormat::ND, false, TILINGKEY_GMM_WEIGHT_TRANS, false, false>;
+    using SharedGmmExpertOpType =
+        QuantGroupedMatmul<GmmA2avTilingData, GMMQuantTilingData, half, half, float,
+                           half, CubeFormat::ND, false, TILINGKEY_SHARED_MM_WEIGHT_TRANS, true, false>;
+    using GmmA2avSchedulerType =
+        GmmA2avScheduler<HcclOpType, ComputeOpType, SharedGmmExpertOpType, TILINGKEY_COMPUTE_MATMUL>;
 
-#if (ORIG_DTYPE_GMM_X == DT_BF16)
-    using X_TYPE = bfloat16_t;
-    INVOKE_GMMATAV_OP_IMPL(GroupedMatmulAlltoAllv, X_TYPE, TILINGKEY_COMPUTE_MATMUL,
-                            TILINGKEY_GROUPED_MATMUL_TRANS, TILINGKEY_MATMUL_TRANS);
-#endif
+    HcclOpType hcclOp;
+    hcclOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData.taskTilingInfo, workspaceGM, yGM);
+
+    GET_NESTED_TILING_DATA_MEMBER_ADDR(GmmA2avTilingData, GMMQuantTilingData, gmmBaseTiling, gmmArray,
+                                       gmmArrayAddr_, tilingGM);
+    ComputeOpType computeOp;
+    auto gmmGroupListGM = workspaceGM + tilingData_->workspaceInfo.wsGmmOutputSize;
+    computeOp.Init(gmmxGM, gmmweightGM, nullptr, nullptr, workspaceGM, gmmGroupListGM, tilingData_,
+                   &tilingData_->gmmBaseTiling, gmmArrayAddr_, &pipe, false);
+
+    GET_NESTED_TILING_DATA_MEMBER_ADDR(GmmA2avTilingData, GMMQuantTilingData, sharedGmmTiling, gmmArray,
+                                       mmArrayAddr_, tilingGM);
+    SharedGmmExpertOpType shareComputeOp;
+    auto mmGroupListGM =
+        workspaceGM + tilingData_->workspaceInfo.wsGmmOutputSize + tilingData_->workspaceInfo.wsGmmComputeWorkspaceSize;
+    shareComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, nullptr, nullptr, mmyOptionalGM, mmGroupListGM, tilingData_,
+                        &tilingData_->sharedGmmTiling, mmArrayAddr_, &pipe, false);
+
+    GmmA2avSchedulerType gmmA2avScheduler(hcclOp, computeOp, shareComputeOp, &tilingData.taskTilingInfo);
+    gmmA2avScheduler.Process();
 }
