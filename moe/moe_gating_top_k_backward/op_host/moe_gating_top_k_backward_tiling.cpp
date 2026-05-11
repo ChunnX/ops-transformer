@@ -153,7 +153,7 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckInputShape()   // fqy
 void MoeGatingTopKBackwardTilingBase::CheckXNorm()
 {
     const gert::StorageShape* xNormShapePtr = context_->GetInputShape(X_NORM_INPUT_INDEX);
-    OP_CHECK_IF(xNormShapePtr == nullptr, OP_LOGE(opName_, "xNorm InputShape is nullptr."), return ge::GRAPH_FAILED);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, xNormShapePtr);
     auto xNormDimSize = xNormShapePtr->GetOriginShape().GetDimNum();
     OP_CHECK_IF(xNormDimSize != X_NORM_INPUT_DIMS, OP_LOGE(opName_, " xNorm : the number of dimensions must be 2, but got %ld.", xNormDimSize),
         return ge::GRAPH_FAILED);
@@ -164,7 +164,7 @@ void MoeGatingTopKBackwardTilingBase::CheckXNorm()
         return ge::GRAPH_FAILED);
     
     auto xNormDesc = context_->GetInputDesc(X_NORM_INPUT_INDEX);
-    OP_CHECK_IF(xNormDesc == nullptr, OP_LOGE(opName_, "xNorm InputDesc is nullptr."), return ge::GRAPH_FAILED);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, xNormDesc);
     auto xNormDtype = xNormDesc->GetDataType();
     OP_CHECK_IF(xNormDtype != ge::DataType::DT_FLOAT,OP_LOGE(opName_, "xNorm only support float32 now"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -173,7 +173,7 @@ void MoeGatingTopKBackwardTilingBase::CheckXNorm()
 void MoeGatingTopKBackwardTilingBase::CheckGradY()
 {
     const gert::StorageShape* gradYShapePtr = context_->GetInputShape(GRAD_Y_INPUT_INDEX);
-    OP_CHECK_IF(gradYShapePtr == nullptr, OP_LOGE(opName_, "gradY InputShape is nullptr."), return ge::GRAPH_FAILED);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, gradYShapePtr);
     auto gradYDimSize = gradYShapePtr->GetOriginShape().GetDimNum();
     OP_CHECK_IF(gradYDimSize != GRAD_Y_INPUT_DIMS, OP_LOGE(opName_, "gradY : the number of dimensions must be 2, but got %ld.", gradYDimSize),
         return ge::GRAPH_FAILED);
@@ -185,7 +185,7 @@ void MoeGatingTopKBackwardTilingBase::CheckGradY()
         return ge::GRAPH_FAILED);
     
     auto gradYDesc = context_->GetInputDesc(GRAD_Y_INPUT_INDEX);
-    OP_CHECK_IF(gradYDesc == nullptr, OP_LOGE(opName_, "gradY InputDesc is nullptr."), return ge::GRAPH_FAILED);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, gradYDesc);
     auto gradYDtype = gradYDesc->GetDataType();
     OP_CHECK_IF(gradYDtype != ge::DataType::DT_FLOAT && gradYDtype != ge::DataType::DT_FLOAT16 && gradYDtype != ge::DataType::DT_BF16,
         OP_LOGE(opName_, "gradY only support float32, float16 and bfloat16 now."), return ge::GRAPH_FAILED);
@@ -196,7 +196,7 @@ void MoeGatingTopKBackwardTilingBase::CheckGradY()
 void MoeGatingTopKBackwardTilingBase::CheckExpertIdx()
 {
     const gert::StorageShape* expertIdxShapePtr = context_->GetInputShape(EXPERT_IDX_INPUT_INDEX);
-    OP_CHECK_IF(expertIdxShapePtr == nullptr, OP_LOGE(opName_, "expertIdx InputShape is nullptr."), return ge::GRAPH_FAILED);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, expertIdxShapePtr);
     auto expertIdxDimSize = expertIdxShapePtr->GetOriginShape().GetDimNum();
     OP_CHECK_IF(expertIdxDimSize != EXPERT_IDX_INPUT_DIMS, OP_LOGE(opName_, "expertIdx : the number of dimensions must be 2, but got %ld.", expertIdxDimSize),
         return ge::GRAPH_FAILED);
@@ -208,7 +208,7 @@ void MoeGatingTopKBackwardTilingBase::CheckExpertIdx()
         return ge::GRAPH_FAILED);
     
     auto expertIdxDesc = context_->GetInputDesc(EXPERT_IDX_INPUT_INDEX);
-    OP_CHECK_IF(expertIdxDesc == nullptr, OP_LOGE(opName_, "expertIdx InputDesc is nullptr."), return ge::GRAPH_FAILED);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, expertIdxDesc);
     auto expertIdxDtype = expertIdxDesc->GetDataType();
     OP_CHECK_IF(expertIdxDtype != ge::DataType::DT_INT32, OP_LOGE(opName_, "expertIdx only support int32 now."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -305,7 +305,7 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::GetPlatformInfo()   // fqy
     auto platformInfo = context_->GetPlatformInfo();
     if (platformInfo == nullptr) {
         auto compileInfoPtr = context_->GetCompileInfo<MoeGatingTopKBackwardCompileInfo>();
-        OP_CHECK_IF(compileInfoPtr == nullptr, OPS_REPORT_VECTOR_INNER_ERR(opName, "compileInfoPtr is null."),
+        OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(opName_, "compileInfoPtr is null."),
                 return ge::GRAPH_FAILED);
         aicoreParams_.numBlocks = compileInfoPtr->numBlocks;
         aicoreParams_.ubSize = compileInfoPtr->ubSize;
@@ -426,6 +426,12 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::GetWorkspaceSize()
 
 ge::graphStatus MoeGatingTopKBackwardTilingBase::PostTiling()
 {
+    context_->SetBlockDim(MoeGatingTopKBackwardTilingData_.get_needCoreNum());
+    size_t *currentWorkspace = context_->GetWorkspaceSizes(1);
+    currentWorkspace[0] = workspaceSize_;
+    MoeGatingTopKBackwardTilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(),
+                                          context_->GetRawTilingData()->GetCapacity());
+    context_->GetRawTilingData()->SetDataSize(MoeGatingTopKBackwardTilingData_.GetDataSize());
     return ge::GRAPH_SUCCESS;
 }
 
