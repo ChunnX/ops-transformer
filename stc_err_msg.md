@@ -72,7 +72,7 @@ UT测试用例脑图
 │  └─ 1.6 tensor num错误（EZ0022）
 │     ├─ tensor数量错误 → EZ0022
 │     └─ tensor list长度错误 → EZ0022
-├─ 2. 内部错误测试（新增错误码）
+└─ 2. 内部错误测试（新增错误码）
 │  ├─ 2.1 空指针错误
 │  │  ├─ context空指针 → EZ_INNER_NULLPTR（上报新增）
 │  │  ├─ tensor空指针 → EZ_PARAM_NULLPTR（评审决定）
@@ -83,14 +83,6 @@ UT测试用例脑图
 │  └─ 2.3 CHECK_RET错误
 │     ├─ CHECK_RET失败 → EZ_INNER_NULLPTR（上报新增）
 │     └─ 内部断言失败 → EZ_INNER_NULLPTR（上报新增）
-├─ 3. OPS_REPORT分类测试
-│  ├─ 3.1 参数验证类 → 改为EZ错误码
-│  ├─ 3.2 内部错误类 → 上报新增错误码
-│  └─ 3.3 业务逻辑类 → 保持不变
-└─ 4. 跨算子对比测试
-   ├─ 4.1 相同错误场景对比
-   ├─ 4.2 不同算子错误码一致性
-   └─ 4.3 错误信息格式统一性
 ```
 
 ### 2.2 GMM算子UT测试用例明细
@@ -327,26 +319,6 @@ ST测试用例脑图
 1. **正常场景数据**：验证整改后功能不受影响
 2. **边界场景数据**：shape边界值、dtype边界值等
 3. **异常场景数据**：非法dtype、非法shape、非法format等
-
-**数据生成脚本：**
-```python
-# 生成异常测试数据的示例脚本
-def generate_dtype_error_test_data():
-    """生成dtype错误测试数据"""
-    test_cases = [
-        {"x_dtype": "DOUBLE", "weight_dtype": "INT8", "expect_err": "EZ0020"},
-        {"x_dtype": "FLOAT16", "weight_dtype": "BF16", "expect_err": "EZ0021"},
-    ]
-    return test_cases
-
-def generate_shape_error_test_data():
-    """生成shape错误测试数据"""
-    test_cases = [
-        {"x_shape": [0, 256], "weight_shape": [256, 128], "expect_err": "EZ0009"},
-        {"x_shape": [64, 1], "weight_shape": [1, 128], "expect_err": "EZ0009"},
-    ]
-    return test_cases
-```
 
 ---
 

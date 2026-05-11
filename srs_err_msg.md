@@ -115,6 +115,8 @@ OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
 
 ## 3. 算子文件清单
 
+其中 op_api 和 op_kernel 本次不修改，只修改 op_host
+
 ### 3.1 GMM 算子文件清单
 
 **完整清单：**
@@ -135,7 +137,6 @@ OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
 
 | 文件 | 计数 | 整改策略 |
 | -- | --: | -- |
-| grouped_matmul_weight_quant_950_checker.cpp | 111 | 参数验证错误全量整改 |
 | grouped_matmul_infershape_weight_quant_checker.cpp | 97 | 参数验证错误全量整改 |
 | grouped_weight_quant_batch_matmul_tiling.cpp | 123 | 参数验证错误全量整改 |
 
@@ -145,17 +146,16 @@ OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
 
 | 完整路径 | 计数 | 占比 | 涉及芯片 | 量化类型 | 整改范围 |
 | -- | --: | --: | -- | -- | -- |
-| gmm/grouped_matmul_finalize_routing/op_api/grouped_matmul_finalize_routing_weight_quant_950_checker.h | 46 | 10.5% | A5 | 伪量化 | **重点整改** |
-| gmm/grouped_matmul_finalize_routing/op_api/grouped_matmul_finalize_routing_950_checker.h | 48 | 11.0% | A5 | - | 整改 |
+| gmm/grouped_matmul_finalize_routing/op_api/grouped_matmul_finalize_routing_weight_quant_950_checker.h | 46 | 10.5% | A5 | 伪量化 | op_api的OP_LOGE不明确 |
+| gmm/grouped_matmul_finalize_routing/op_api/grouped_matmul_finalize_routing_950_checker.h | 48 | 11.0% | A5 | - | 全量化 |
 | gmm/grouped_matmul_finalize_routing/op_api/aclnn_grouped_matmul_finalize_routing.cpp | 108 | 24.7% | 公共 | - | 暂不整改 |
 | gmm/grouped_matmul_finalize_routing/op_host/op_tiling/arch35/grouped_matmul_finalize_routing_weight_quant_tiling.cpp | 84 | 19.2% | A5 | 伪量化 | **重点整改** |
-| 其他文件 | 36 | 8.6% | - | - | 暂不整改/不整改 |
+| 其他文件 | 36 | 8.6% | - | - | 公共文件不整改 |
 
 **重点整改文件（A5 + 伪量化）：**
 
 | 文件 | 计数 | 整改策略 |
 | -- | --: | -- |
-| grouped_matmul_finalize_routing_weight_quant_950_checker.h | 46 | 参数验证错误全量整改 |
 | grouped_matmul_finalize_routing_weight_quant_tiling.cpp | 84 | 参数验证错误全量整改 |
 
 ### 3.3 NPU_FORMAT_CAST 算子文件清单
@@ -173,13 +173,16 @@ OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
 | ACLNN_ERR_INNER_NULLPTR | 6 | 7.4% | 上报新增 EZ_INNER_NULLPTR |
 | ACLNN_ERR_INNER_CREATE_EXECUTOR | 1 | 1.2% | 上报新增 EZ_INNER_CREATE_EXECUTOR |
 
+**重点整改文件（A5 + 伪量化）：**
+
+因为npu_format_cast都是aclnn接口，所以本次整改不涉及
 ---
 
 ## 4. 错误类型分类与整改策略
 
 ### 4.1 可直接整改的错误（按错误码分类）
 
-#### dtype 错误【92条】→ EZ0018
+#### dtype 错误【30条】→ EZ0018
 
 **整改策略：替换为 `OP_LOGE_FOR_INVALID_DTYPE`**
 
@@ -187,9 +190,6 @@ OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
 | -- | -- | --: |
 | GMM | grouped_matmul_infershape_weight_quant_checker.cpp | 17 |
 | GMM | grouped_weight_quant_batch_matmul_tiling.cpp | 13 |
-| GMM | grouped_quant_matmul_tiling.cpp | 8 |
-| GMM | 其他文件 | 54 |
-| NPU_FORMAT_CAST | aclnn_npu_format_cast.cpp（估算） | ~8 |
 
 #### format 错误【22条】→ EZ0016
 
@@ -239,60 +239,36 @@ OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
 
 **整改策略：按参数类型细分，统一使用 `OP_LOGE_FOR_INVALID_VALUE_WITH_REASON`**
 
-#### group 参数错误【271条】
+#### group 参数错误
 
 | 文件 | 计数 |
 | -- | --: |
-| aclnn_grouped_matmul.cpp | 101 |
-| grouped_matmul_infershape.cpp | 43 |
-| grouped_matmul_950_checker.cpp | 43 |
+| grouped_matmul_infershape.cpp | 区分芯片 |
 | grouped_matmul_weight_quant_950_checker.cpp | 24 |
 | 其他文件 | 60 |
 
-#### scale 参数错误【140条】
+#### scale 参数错误
 
 | 文件 | 计数 |
 | -- | --: |
-| grouped_matmul_950_checker.cpp | 47 |
-| aclnn_grouped_matmul.cpp | 32 |
-| grouped_matmul_infershape.cpp | 17 |
-| 其他文件 | 44 |
+| grouped_matmul_infershape.cpp | 区分芯片 |
 
-#### quant 参数错误【114条】
+#### quant 参数错误
 
 | 文件 | 计数 |
 | -- | --: |
-| aclnn_grouped_matmul.cpp | 38 |
-| grouped_matmul_infershape.cpp | 32 |
+| grouped_matmul_infershape.cpp | 区分芯片 |
 | grouped_weight_quant_batch_matmul_tiling.cpp | 20 |
-| 其他文件 | 24 |
 
 #### 其他参数错误
 
 | 参数类型 | 计数 | 主要文件 |
 | -- | --: | -- |
-| optional 参数 | 86 | aclnn_grouped_matmul.cpp（54条） |
-| support/unsupported | 69 | grouped_matmul_infershape.cpp（18条） |
-| per_token 参数 | 60 | checker 文件 |
-| tensorlist 参数 | 48 | aclnn_grouped_matmul.cpp |
 | bias 参数 | 46 | 分散在多个文件 |
 | offset 参数 | 34 | 分散在多个文件 |
 | transpose 参数 | 34 | 分散在多个文件 |
 
-### 4.3 CHECK_COND 宏展开错误【438条】
-
-**整改策略：宏展开后按错误内容分类**
-
-| 文件 | 计数 | 整改策略 |
-| -- | --: | -- |
-| aclnn_grouped_matmul.cpp | 209 | 按内容细分到上述类别 |
-| grouped_matmul_950_checker.cpp | 107 | 按内容细分到上述类别 |
-| grouped_matmul_weight_quant_950_checker.cpp | 65 | 按内容细分到上述类别 |
-| grouped_matmul_no_quant_950_checker.cpp | 2 | 按内容细分到上述类别 |
-| aclnn_npu_format_cast.cpp | 41 | 按内容细分到上述类别 |
-| 其他文件 | 14 | 按内容细分到上述类别 |
-
-### 4.4 内部错误与运行时错误【44条】→ 上报新增
+### 4.3 内部错误与运行时错误【44条】→ 上报新增
 
 | 错误类型 | 计数 | 整改策略 | 建议 |
 | -- | --: | -- | -- |
@@ -301,7 +277,7 @@ OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
 | ACLNN_ERR_INNER_CREATE_EXECUTOR | 1 | 上报新增 | 新增 EZ_INNER_CREATE_EXECUTOR |
 | ACLNN_ERR_INNER_NULLPTR | 5 | 上报新增 | 使用 EZ_INNER_NULLPTR |
 
-### 4.5 OPS_REPORT 错误【93条】→ 逐条分析
+### 4.4 OPS_REPORT 错误【93条】→ 逐条分析
 
 **整改策略：手动分析内容后分类处理**
 
@@ -499,11 +475,9 @@ flowchart TD
 
 ## 附录 A：整改文件路径映射表
 
-| 算子 | 原路径 | 整改状态 |
-| -- | -- | -- |
-| GMM | gmm/grouped_matmul/op_api/grouped_matmul_weight_quant_950_checker.cpp | 重点整改 |
-| GMM | gmm/grouped_matmul/op_host/grouped_matmul_infershape_weight_quant_checker.cpp | 重点整改 |
-| GMM | gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp | 重点整改 |
-| GMMFR | gmm/grouped_matmul_finalize_routing/op_api/grouped_matmul_finalize_routing_weight_quant_950_checker.h | 重点整改 |
-| GMMFR | gmm/grouped_matmul_finalize_routing/op_host/op_tiling/arch35/grouped_matmul_finalize_routing_weight_quant_tiling.cpp | 重点整改 |
-| NPU_FORMAT_CAST | ../ops-math/conversion/npu_format_cast/op_host/op_api/aclnn_npu_format_cast.cpp | 全量整改 |
+| 算子 | 原路径 |
+| -- | -- |
+| GMM | gmm/grouped_matmul/op_host/grouped_matmul_infershape.cpp |
+gmm/grouped_matmul/op_host/grouped_matmul_infershape.cppgrouped_matmul_infershape_weight_quant_checker.cpp |
+| GMM | gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp |
+| GMMFR | gmm/grouped_matmul_finalize_routing/op_host/op_tiling/arch35/grouped_matmul_finalize_routing_weight_quant_tiling.cpp |
