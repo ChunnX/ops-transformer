@@ -1254,6 +1254,9 @@ static ge::graphStatus CheckAndCalWinSize(const gert::TilingContext *context, Mo
     winSizeData.isSetFullMeshV2 = isSetFullMeshV2;
     winSizeData.isLayered = isLayered;
     winSizeData.isMc2Context = config.isMc2Context;
+    // A5(__NPU_ARCH__ == 3510)：MOE_V2 dispatch/combine 状态区按 dstRankId*512B 错开，需校验 2816KB 占用
+    std::string socVersion = mc2tiling::GetSocVersion(context);
+    winSizeData.isArchV2A5 = (socVersion != "Ascend910B" && socVersion != "Ascend910_93");
     OP_TILING_CHECK(CheckWinSize(context, nodeName, winSizeData) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Get WinSize failed."), return ge::GRAPH_FAILED);
     tilingData.moeDistributeDispatchV2Info.totalWinSizeEp = winSizeData.totalWinSizeEp;
