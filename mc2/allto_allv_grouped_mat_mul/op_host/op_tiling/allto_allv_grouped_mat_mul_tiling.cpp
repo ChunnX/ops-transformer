@@ -701,6 +701,7 @@ ge::graphStatus AlltoAllvGmmTiling::SetHcclTiling(const gert::TilingContext* con
                                          alltoAllvReduceType, alltoAllvDstDataType, alltoAllvSrcDataType);
     uint8_t commMode = mc2tiling::Mc2TilingUtils::GetCommModeFromEnv();
     uint8_t engineType = (commMode == mc2tiling::COMM_MODE_CCU) ? mc2tiling::A5_CCU_ENGINE : mc2tiling::AICPU_ENGINE;
+    OP_LOGD(context->GetNodeName(), "AlltoAllvGmm tiling: commMode=%u (0=CCU, 1=AICPU), engineType=%u (0=CCU_ENGINE, 1=AICPU_ENGINE)", commMode, engineType);
     hcclCcTilingConfig.SetCommEngine(engineType);
     OP_TILING_CHECK(hcclCcTilingConfig.GetTiling(tilingData->hcclInitTiling) != 0,
         OP_LOGE(A_INNER_DEBUG, "mc2CcTilingConfig mc2tiling GetTiling hcclInitTiling failed"), return ge::GRAPH_FAILED);
@@ -818,6 +819,8 @@ uint64_t AlltoAllvGmmTiling::GetTilingKey(const gert::TilingContext* context) co
     bool tilingekyMmTrans = tilingData->commonTilingInfo.isMmWeightTrans;
     uint8_t commMode = mc2tiling::Mc2TilingUtils::GetCommModeFromEnv();
     uint64_t tilingKey = GET_TPL_TILING_KEY(tilingekyGmmTrans, tilingekyMmTrans, commMode);
+    OP_LOGD(A_INNER_DEBUG, "AlltoAllvGmm GetTilingKey: gmmTrans=%d, mmTrans=%d, commMode=%u, tilingKey=%lu",
+            tilingekyGmmTrans, tilingekyMmTrans, commMode, tilingKey);
 
     PrintCommonTilingInfo(tilingData->commonTilingInfo);
     OP_LOGD(A_INNER_DEBUG, "end RunFusionKernelTiling, tilingKey is %lu", tilingKey);
