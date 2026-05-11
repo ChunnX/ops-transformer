@@ -478,6 +478,6 @@ flowchart TD
 | 算子 | 原路径 |
 | -- | -- |
 | GMM | gmm/grouped_matmul/op_host/grouped_matmul_infershape.cpp |
-gmm/grouped_matmul/op_host/grouped_matmul_infershape.cppgrouped_matmul_infershape_weight_quant_checker.cpp |
+| GMM | gmm/grouped_matmul/op_host/grouped_matmul_infershape.cppgrouped_matmul_infershape_weight_quant_checker.cpp |
 | GMM | gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp |
 | GMMFR | gmm/grouped_matmul_finalize_routing/op_host/op_tiling/arch35/grouped_matmul_finalize_routing_weight_quant_tiling.cpp |
