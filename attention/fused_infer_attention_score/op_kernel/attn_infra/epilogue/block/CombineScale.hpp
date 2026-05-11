@@ -126,6 +126,9 @@ public:
 
             uint32_t splitNumAlign = (splitNum + 7) / 8 * 8;  // 32b align
             uint32_t lseBlock = vectorsubBlockID == 0 ? sum_former : sum - sum_former;
+            if (lseBlock == 0) {
+                continue;
+            }
             uint32_t lseBlockAlign = (lseBlock + 7) / 8 * 8;  // 32b align
             int32_t count = splitNum * lseBlockAlign;
             int32_t lnCount = 1 * lseBlockAlign;
