@@ -18,11 +18,13 @@
 
 namespace Mc2Aclnn {
 constexpr uint32_t HCCL_MAX_RANK_SIZE = 1024;
+constexpr uint32_t HCCL_MAX_SERVER_SIZE = 512;
 
 struct Mc2MoeContext {
     uint32_t epRankId;
     uint32_t rankSizePerServer;
     uint64_t kfcContextAddr; // host kfc方案中，需要传递通信API所需的地址
+    void* dpuCommHandle_[HCCL_MAX_SERVER_SIZE];
     uint64_t epHcclBuffer_[HCCL_MAX_RANK_SIZE];
 };
 }

@@ -111,7 +111,6 @@ aclnnStatus Mc2Context::LoadHcclSymbols()
         {reinterpret_cast<void **>(&HcclGetRankId), "HcclGetRankId"},
         {reinterpret_cast<void **>(&HcclGetRankSize), "HcclGetRankSize"},
         {reinterpret_cast<void **>(&HcclRankGraphGetRanksByLayer), "HcclRankGraphGetRanksByLayer"},
-        {reinterpret_cast<void **>(&HcomChannelGetPtrByHandle), "HcomChannelGetPtrByHandle"},
     };
 
     for (auto &sym : symbols) {
@@ -321,13 +320,11 @@ aclnnStatus Mc2Context::GetHcclCommResource(const HcclComm &hcclHandle, const Co
         mc2ContextStruct->epHcclBuffer_[i] = reinterpret_cast<uint64_t>(tempBuffer);
     }
     if (protocol == CommProtocol::COMM_PROTOCOL_ROCE) {
-        ChannelPtr* channelPtr = nullptr;
-        hcclRet = HcclChannelGetPtrByHandle(Channels[INIT_CHANNEL_NUM_TWO].data(), Channels[INIT_CHANNEL_NUM_TWO].size(), &channelPtr);
+        hcclRet = HcomChannelGetPtrByHandle(Channels[INIT_CHANNEL_NUM_TWO].data(), Channels[INIT_CHANNEL_NUM_TWO].size(), &mc2ContextStruct->dpuCommHandle_);
         if (hcclRet != HCCL_SUCCESS) {
             OP_LOGE(ACLNN_ERR_INNER, "Get HCCL roce channel ptr failed");
             return ACLNN_ERR_INNER;
         }
-        mc2ContextStruct->kfcContextAddr = reinterpret_cast<uint64_t>(channelPtr);
     }
     OP_LOGD("Get HCCL CommResource success");
     return ACLNN_SUCCESS;
