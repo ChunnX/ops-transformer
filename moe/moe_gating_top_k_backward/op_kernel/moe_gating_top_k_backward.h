@@ -28,16 +28,14 @@ public:
     __aicore__ inline void Process();
 
 private:
-    // __aicore__ inline void CopyInBiasAndInitExpertId();
-    // __aicore__ inline void CopyInX(int64_t progress);
-    // __aicore__ inline void ComputeX();
-    // __aicore__ inline void CopuOutXNorm(int64_t row);
-    // __aicore__ inline void SortInGroup();
-    // __aicore__ inline void SelectTopKGroupIndex();
-    // __aicore__ inline void SelectTopKExpertIdx();
-    // __aicore__ inline void SelectTopKExpertScore();
-    // __aicore__ inline void CumputeActualTopKExpertId();
-    // __aicore__ inline void CopyOut(int64_t row);
+    __aicore__ inline void GetGatherOffsetIndex(); // fqy
+    __aicore__ inline void CopyInGradY(); // lc
+    __aicore__ inline void CopyInXNorm(); // fqy
+    __aicore__ inline void CopyInExpertIdx(); // fqy
+    __aicore__ inline void Sigmoid(); // fqy
+    __aicore__ inline void GetGradXNorm(); // lc
+    __aicore__ inline void GetGradX(); // lc
+    __aicore__ inline void CopyOut();  // lc
 
 private:
     TPipe *pipe_;
@@ -115,7 +113,7 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::Init(GM_ADDR xNorm, GM_AD
 template <typename T>
 __aicore__ inline void MoeGatingTopKBackwardKernel<T>::Process()
 {
-    GetGatherOffsetIndex();
+    GetGatherOffsetIndex(); // fqy
     for(int64_t loopIdx = 0; loopIdx < loopTimes_; loopIdx++) {
         curRows_ = loopIdx == loopTimes_ - 1 ? tailRows_ : tilingData_->baseRows;
         CopyInGradY(); // lc
@@ -129,5 +127,46 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::Process()
         CopyOut();  // lc
     }
 }
+
+template <typename T>
+__aicore__ inline void MoeGatingTopKBackwardKernel<T>::GetGatherOffsetIndex()
+{
+}
+
+template <typename T>
+__aicore__ inline void MoeGatingTopKBackwardKernel<T>::CopyInGradY()
+{
+}
+
+template <typename T>
+__aicore__ inline void MoeGatingTopKBackwardKernel<T>::CopyInXNorm()
+{
+}
+
+template <typename T>
+__aicore__ inline void MoeGatingTopKBackwardKernel<T>::CopyInExpertIdx()
+{
+}
+
+template <typename T>
+__aicore__ inline void MoeGatingTopKBackwardKernel<T>::Sigmoid()
+{
+}
+
+template <typename T>
+__aicore__ inline void MoeGatingTopKBackwardKernel<T>::GetGradXNorm()
+{
+}
+
+template <typename T>
+__aicore__ inline void MoeGatingTopKBackwardKernel<T>::GetGradX()
+{
+}
+
+template <typename T>
+__aicore__ inline void MoeGatingTopKBackwardKernel<T>::CopyOut()
+{
+}
+
 } // namespace MoeGatingTopK
 #endif // MOE_GATING_TOP_K_E_K_GENERALIZED_H
