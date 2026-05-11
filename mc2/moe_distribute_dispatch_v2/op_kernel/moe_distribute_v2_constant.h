@@ -83,6 +83,26 @@ constexpr uint8_t MXFP8_E4M3_COMM_QUANT = 4;
 // combinev2额外所需常量段
 constexpr uint64_t COMBINE_STATE_WIN_OFFSET = 818UL * 1024UL;   // combine 0/1状态区偏移，为dispatch预留50k大小
 constexpr uint32_t COMBINE_STATE_OFFSET = 64U * 1024U;  // 本卡状态空间偏移地址，前面的地址给dispatch用
+
+// dispatch_v2 / combine_v2 在 A5 上对每个对端按 dstRankId 错开 512B 写状态，避免发送端同地址冲突。
+// 为容纳错开后的最坏偏移（dispatchSub=608KB、combineSub=672KB），A5 上状态区由 1MB 扩到 2.75MB；
+// half 偏移、DFX 区起点等也同步改写。A3 上以下常量等于原值，且 RANK_STATE_SHIFT=0，所有写法在编译期回退为现状。
+// 其它模板（full_mesh_v2 / arch35/host_kfc / layered / A2）继续使用上方原常量，不受影响。
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+constexpr uint64_t RANK_STATE_SHIFT                  = 512UL;
+constexpr uint32_t MOE_V2_STATE_SIZE                 = 2816U * 1024U;
+constexpr uint64_t MOE_V2_WIN_STATE_OFFSET           = 1280UL * 1024UL;
+constexpr uint32_t MOE_V2_COMBINE_STATE_OFFSET       =  608U * 1024U;
+constexpr uint64_t MOE_V2_DISPATCH_STATE_WIN_OFFSET  = 2560UL * 1024UL;
+constexpr uint64_t MOE_V2_COMBINE_STATE_WIN_OFFSET   = 2610UL * 1024UL;
+#else
+constexpr uint64_t RANK_STATE_SHIFT                  = 0UL;
+constexpr uint32_t MOE_V2_STATE_SIZE                 = STATE_SIZE;
+constexpr uint64_t MOE_V2_WIN_STATE_OFFSET           = WIN_STATE_OFFSET;
+constexpr uint32_t MOE_V2_COMBINE_STATE_OFFSET       = COMBINE_STATE_OFFSET;
+constexpr uint64_t MOE_V2_DISPATCH_STATE_WIN_OFFSET  = DISPATCH_STATE_WIN_OFFSET;
+constexpr uint64_t MOE_V2_COMBINE_STATE_WIN_OFFSET   = COMBINE_STATE_WIN_OFFSET;
+#endif
 constexpr uint8_t EP_DOMAIN = 0;
 constexpr uint8_t TP_DOMAIN = 1;
 constexpr uint32_t FLOAT_PER_UB_ALIGN = 8U;
