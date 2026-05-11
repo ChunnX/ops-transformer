@@ -24,7 +24,8 @@
 using namespace AscendC;
 
 namespace MC2KernelTemplate {
-template <typename hcclDataType, bool commBeforeComputeFlag>
+
+template <typename hcclDataType, bool commBeforeComputeFlag, bool enableScaleQuant = true>
 class HcclA2avOp {
 public:
     __aicore__ inline void Init(const void *hcclInitTiling, uint64_t hcclCcTilingOffset,
@@ -84,10 +85,12 @@ public:
     // commOutBuffer: scale AlltoAllV通信输出缓冲区（按rank排列），用于PermuteScale输入
     __aicore__ inline void InitScaleBuffer(GM_ADDR sendBuffer, GM_ADDR commOutBuffer, GM_ADDR permuteOutBuffer)
     {
-        sendScaleGlobalBuffer_.SetGlobalBuffer((__gm__ fp8_e8m0_t *)sendBuffer);
-        recvScaleGlobalBuffer_.SetGlobalBuffer((__gm__ fp8_e8m0_t *)commOutBuffer);
-        scalePermuteOutBuffer_.SetGlobalBuffer((__gm__ fp8_e8m0_t *)permuteOutBuffer);
-        // 初始化scale重排用的UB Buffer
+        if constexpr (!enableScaleQuant) {
+            return;
+        }
+        sendScaleGlobalBuffer_.SetGlobalBuffer((__gm__ AscendC::fp8_e8m0_t *)sendBuffer);
+        recvScaleGlobalBuffer_.SetGlobalBuffer((__gm__ AscendC::fp8_e8m0_t *)commOutBuffer);
+        scalePermuteOutBuffer_.SetGlobalBuffer((__gm__ AscendC::fp8_e8m0_t *)permuteOutBuffer);
         TPipe *pipe = GetTPipePtr();
         pipe->InitBuffer(scaleTBuf_, taskTilingInfo_->ubSize);
     }
@@ -95,6 +98,9 @@ public:
     // PermuteScale: 将scaleCommOutBuffer（按rank排列）重排到recvScaleGlobalBuffer（按专家排列）
     __aicore__ inline void PermuteScale()
     {
+        if constexpr (!enableScaleQuant) {
+            return;
+        }
         if ASCEND_IS_AIC {
             return;
         }
@@ -130,7 +136,7 @@ public:
         }
 
         TPipe *permutePipe = GetTPipePtr();
-        LocalTensor<fp8_e8m0_t> scaleUbTensor = scaleTBuf_.Get<fp8_e8m0_t>();
+        LocalTensor<AscendC::fp8_e8m0_t> scaleUbTensor = scaleTBuf_.Get<AscendC::fp8_e8m0_t>();
         for (uint32_t rankIndex = 0U; rankIndex < rankDim_; rankIndex++) {
             for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
                 uint32_t posBefore = rankIndex * e_ + expertIdx;
@@ -164,6 +170,9 @@ public:
 
     __aicore__ inline void LaunchScaleBeforeCompute(uint32_t startExpertIdx, uint32_t expertNum)
     {
+        if constexpr (!enableScaleQuant) {
+            return;
+        }
         if ASCEND_IS_AIC {
             return;
         }
@@ -215,6 +224,9 @@ public:
 
     __aicore__ inline void WaitScale(uint32_t startExpertIdx)
     {
+        if constexpr (!enableScaleQuant) {
+            return;
+        }
         if ASCEND_IS_AIC {
             return;
         }
@@ -357,10 +369,12 @@ private:
 
     GlobalTensor<hcclDataType> sendGlobalBuffer_;
     GlobalTensor<hcclDataType> recvGlobalBuffer_;
-
-    GlobalTensor<fp8_e8m0_t> sendScaleGlobalBuffer_;
-    GlobalTensor<fp8_e8m0_t> recvScaleGlobalBuffer_;
-    GlobalTensor<fp8_e8m0_t> scalePermuteOutBuffer_;
+    typename AscendC::Conditional<enableScaleQuant, GlobalTensor<AscendC::fp8_e8m0_t>, int>::type
+        sendScaleGlobalBuffer_;
+    typename AscendC::Conditional<enableScaleQuant, GlobalTensor<AscendC::fp8_e8m0_t>, int>::type
+        recvScaleGlobalBuffer_;
+    typename AscendC::Conditional<enableScaleQuant, GlobalTensor<AscendC::fp8_e8m0_t>, int>::type
+        scalePermuteOutBuffer_;
 
     TBuf<QuePosition::VECIN> scaleTBuf_;
 
