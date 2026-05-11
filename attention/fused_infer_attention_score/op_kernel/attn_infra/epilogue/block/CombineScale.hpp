@@ -83,7 +83,8 @@ public:
         AscendC::SetMaskNorm();
         AscendC::SetVectorMask<int8_t>((uint64_t)-1, (uint64_t)-1);
 
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+        // MTE3_MTE2(EVENT_ID0) 的 set/wait 收纳在每个非空外层迭代内部，
+        // 此处不再需要循环外的预置 set。
 
         int64_t vectorsubBlockID = AscendC::GetSubBlockIdx();
         int64_t subBlockNum = AscendC::GetBlockNum() * 2;
@@ -143,8 +144,11 @@ public:
             AscendC::Duplicate(llUbTensor, std::numeric_limits<float>::lowest(), calcLen);
             AscendC::Duplicate(tlUbTensor, 0.0f, calcLen);
 
+            // 注：此处不再 WaitFlag<MTE3_MTE2>(EVENT_ID0)。
+            // 准备阶段所写的 ll/tl/lm/broadcast/rs/ts/gl 全部位于 GO_UB_OFFSET 区以下，
+            // 与上一外层迭代 MTE3 读取的 go16UbTensor(GO_UB_OFFSET) 不重叠，无 UB hazard。
+            // 跨外层迭代的真实 hazard 已被外层迭代收尾 wait 自然消解。
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID2);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID2);
 
             // Copy LSE from GM to UB
@@ -203,6 +207,11 @@ public:
                 tokenTile = (tokenTile / n_len) * n_len;
             }
 
+            // 启动 token：让 tile 循环第一轮的 WaitFlag<MTE3_MTE2> 直接放行；
+            // 配合循环内每个 tile 末尾的 SetFlag 和循环外收尾的 WaitFlag，
+            // 使本外层迭代的 MTE3_MTE2 set/wait 严格成对、自洽闭包。
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+
             for (uint32_t tileStart = 0; tileStart < lseBlock; tileStart += tokenTile) {
                 uint32_t curTile = (tileStart + tokenTile <= lseBlock) ?
                                     tokenTile : (lseBlock - tileStart);
@@ -218,6 +227,9 @@ public:
                 uint32_t blockLenWriteAligned = (blockLenWrite + 31) / 32 * 32;
                 uint32_t srcStrideWrite = (headSizeVPad * sizeof(ElementOutput) - blockLenWriteAligned) / 32;                
 
+                // 第一轮消费循环外的启动 token；后续轮消费上一 tile 末尾的 SetFlag。
+                // 真实保护对象是后续 V 写入 goUbTensor，需等上一 tile MTE3 完成对其读取。
+                AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
                 AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID2);
                 for (uint32_t nIdx = 0; nIdx < splitNum; nIdx++) {
 
@@ -293,13 +305,13 @@ public:
                         remaining -= nCount;
                     }
                 }
+                // 每个 tile 末尾无条件 set：要么被下一 tile 开头的 wait 消费，
+                // 要么被本外层迭代收尾的 wait 消费。
                 AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
-                if (tileStart + tokenTile < lseBlock) {
-                    AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
-                }
             }
+            // 收尾 wait：消费最后一个 tile 留下的 set，使本外层迭代收支精确为 0。
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
         }
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
     }
 
 private:
