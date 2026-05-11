@@ -91,6 +91,38 @@ static void SetTilingData(gert::TilingContext *context, QuantReduceScatterTiling
 }
 
 /**
+ * @brief 基于 TARGET_ITER 公式计算 host 推荐的 xPerBlock，写入 tilingData
+ *        stage3：QRS 分子先除 rankSize（每卡分片），再走 TARGET_ITER 反推
+ * @param context: tiling context
+ * @param tilingData: tilingData
+ * @param runInfo: 含 rankSize 等运行信息
+ * @return
+ */
+static void SetXPerBlock(gert::TilingContext *context, QuantReduceScatterTilingData &tilingData,
+                         const TilingRunInfo &runInfo)
+{
+    (void)context;
+    constexpr uint32_t TARGET_ITER = 3U;   // 与 QAR 对称
+    constexpr uint32_t MIN_BLOCK = 2048U;  // QRS comm-bound：per_core 太小公式失效，MIN 兜到 2048（512/2048/4096 三点扫参，2048 最优）
+    constexpr uint32_t ALIGN_BLOCK = 1024U;  // 与 kernel X_BLOCK_ALIGN_NUM 对齐
+    uint64_t xNums = tilingData.quantReduceScatterTilingInfo.bs * tilingData.quantReduceScatterTilingInfo.hiddenSize;
+    uint64_t aivNum = tilingData.quantReduceScatterTilingInfo.aivNum;
+    uint64_t rankSize = static_cast<uint64_t>(runInfo.rankSize);
+    if (rankSize == 0U) {
+        rankSize = 1U;
+    }
+    uint64_t xSliceSizeNums = xNums / rankSize;
+    uint64_t perCoreElem = (xSliceSizeNums + aivNum - 1U) / aivNum;
+    uint64_t xPerBlock = (perCoreElem + TARGET_ITER - 1U) / TARGET_ITER;
+    if (xPerBlock < MIN_BLOCK) {
+        xPerBlock = MIN_BLOCK;
+    }
+    xPerBlock = (xPerBlock / ALIGN_BLOCK) * ALIGN_BLOCK;
+    tilingData.quantReduceScatterTilingInfo.xPerBlock = static_cast<uint32_t>(xPerBlock);
+    tilingData.quantReduceScatterTilingInfo.reserved = 0U;
+}
+
+/**
  * @brief 设置tilingKey
  * @param context: 框架根据input，output，attrs等信息生成tiling需要的context
  * @return
@@ -132,7 +164,9 @@ static ge::graphStatus QuantReduceScatterTilingFunc(gert::TilingContext *context
 
     OP_TILING_CHECK(SetHcommCfg(context, tilingData, runInfo) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "SetHCommCfg failed."), return ge::GRAPH_FAILED);
+    context->SetScheduleMode(1);
     SetTilingData(context, *tilingData);
+    SetXPerBlock(context, *tilingData, runInfo);
     SetTilingKey(context);
     PrintTilingDataInfo(context, *tilingData);
     return ge::GRAPH_SUCCESS;

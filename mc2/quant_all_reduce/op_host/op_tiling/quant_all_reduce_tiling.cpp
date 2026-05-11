@@ -91,6 +91,34 @@ static void SetTilingData(gert::TilingContext *context, QuantAllReduceTilingData
 }
 
 /**
+ * @brief 基于 TARGET_ITER 公式计算 host 推荐的 xPerBlock，写入 tilingData
+ *        stage3：取代 kernel 内硬编码 cap=2048，按每核迭代数自适应
+ * @param context: tiling context
+ * @param tilingData: tilingData
+ * @param runInfo: 含 rankSize 等运行信息
+ * @return
+ */
+static void SetXPerBlock(gert::TilingContext *context, QuantAllReduceTilingData &tilingData,
+                         const TilingRunInfo &runInfo)
+{
+    (void)context;
+    (void)runInfo;
+    constexpr uint32_t TARGET_ITER = 3U;  // stage3：T=3 命中 DoubleBuffer 甜点（实测优于 T=2/4/6）
+    constexpr uint32_t MIN_BLOCK = 2048U;  // 与 QRS MIN 统一，QAR per_core 够大不会被 MIN 主导
+    constexpr uint32_t ALIGN_BLOCK = 1024U;
+    uint64_t xNums = tilingData.quantAllReduceTilingInfo.bs * tilingData.quantAllReduceTilingInfo.hiddenSize;
+    uint64_t aivNum = tilingData.quantAllReduceTilingInfo.aivNum;
+    uint64_t perCoreElem = (xNums + aivNum - 1U) / aivNum;
+    uint64_t xPerBlock = (perCoreElem + TARGET_ITER - 1U) / TARGET_ITER;
+    if (xPerBlock < MIN_BLOCK) {
+        xPerBlock = MIN_BLOCK;
+    }
+    xPerBlock = (xPerBlock / ALIGN_BLOCK) * ALIGN_BLOCK;
+    tilingData.quantAllReduceTilingInfo.xPerBlock = static_cast<uint32_t>(xPerBlock);
+    tilingData.quantAllReduceTilingInfo.reserved = 0U;
+}
+
+/**
  * @brief 设置tilingKey
  * @param context: 框架根据input，output，attrs等信息生成tiling需要的context
  * @return
@@ -129,7 +157,9 @@ static ge::graphStatus QuantAllReduceTilingFunc(gert::TilingContext *context)
                     OP_LOGE(nodeName, "tiling check failed in quant_all_reduce."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(SetHcommCfg(context, tilingData, runInfo) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "SetHCommCfg failed."), return ge::GRAPH_FAILED);
+    context->SetScheduleMode(1);
     SetTilingData(context, *tilingData);
+    SetXPerBlock(context, *tilingData, runInfo);
     SetTilingKey(context);
     PrintTilingDataInfo(context, *tilingData);
     return ge::GRAPH_SUCCESS;

@@ -32,11 +32,29 @@ __aicore__ inline uint64_t CeilDiv(uint64_t a, uint32_t b)
     return (a + b - 1) / b;
 };
 
+// uint32_t版本的向上取整除法
+__aicore__ inline uint32_t CeilDivU32(uint32_t a, uint32_t b)
+{
+    if (b == 0) {
+        return 0;
+    }
+    return (a + b - 1) / b;
+};
+
 // 向上对齐：将a向上对齐到b的倍数
 __aicore__ inline uint64_t CeilAlign(uint64_t a, uint32_t b)
 {
     uint64_t bTemp = static_cast<uint64_t>(b);
     return (bTemp == 0) ? a : CeilDiv(a, bTemp) * bTemp;
+};
+
+// uint32_t版本的向上对齐
+__aicore__ inline uint32_t CeilAlignU32(uint32_t a, uint32_t b)
+{
+    if (b == 0) {
+        return a;
+    }
+    return CeilDivU32(a, b) * b;
 };
 
 // 尾块模运算：计算a对b取模，模为0时返回b（用于数据块尾块的计算）
@@ -45,10 +63,24 @@ __aicore__ inline uint64_t BlockAlignMod(uint64_t a, uint32_t b)
     if (b == 0) {
         return 0;
     }
-    
+
     uint64_t c = a % b;
     return c ? c : b;
 }
+
+// 向下取整对齐：将a向下对齐到b的倍数
+__aicore__ inline uint64_t FloorAlign(uint64_t a, uint32_t b)
+{
+    if (b == 0) {
+        return a;
+    }
+    return (a / b) * b;
+}
+
+// MIN 宏：返回两个值中的较小值
+#ifndef MIN
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+#endif
 
 static constexpr AscendC::MicroAPI::CastTrait castTrait = {AscendC::MicroAPI::RegLayout::ZERO,
     AscendC::MicroAPI::SatMode::NO_SAT, AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_NONE};
