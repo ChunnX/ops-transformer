@@ -68,7 +68,7 @@ static inline bool CheckDtypeValid(const aclTensor *gradY, const aclTensor *expa
         OP_CHECK_DTYPE_NOT_SAME(gradExpandedXOut, gradY, return false);
     }
     if (gradScalesOut != nullptr && gradScalesOut->GetViewShape().GetShapeSize() != 0) {
-        OP_CHECK_DTYPE_NOT_SAME(gradScalesOut, gradY, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT(gradScalesOut, MOE_FINALIZE_ROUTING_V2_GRAD_DTYPE_SUPPORT_LIST_X, return false);
     }
     return true;
 }

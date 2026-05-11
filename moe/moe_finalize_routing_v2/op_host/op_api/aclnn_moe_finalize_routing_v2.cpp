@@ -148,7 +148,9 @@ ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV2GetWorkspaceSize(
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
-    bool is310P = GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND310P;
+    bool is310P = GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND310P ||
+                  GetCurrentPlatformInfo().GetSocVersion() == SocVersion::KIRINX90 ||
+                  GetCurrentPlatformInfo().GetSocVersion() == SocVersion::KIRIN9030;
     aclnnStatus ret;
     if (is310P) {
         ret = MoeFinalizeRoutingV2Check::CheckParams310P(expandedX, expandedRowIdx, x1Optional, x2Optional,
