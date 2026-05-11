@@ -20,8 +20,17 @@
 using namespace ge;
 
 namespace ops {
+constexpr uint32_t DIM_NUM_1 = 1;
+constexpr uint32_t DIM_NUM_3 = 3;
+constexpr uint32_t DIM_NUM_4 = 4;
+constexpr uint32_t DIM_INDEX_0 = 0;
+constexpr uint32_t DIM_INDEX_1 = 1;
+constexpr uint32_t DIM_INDEX_2 = 2;
+constexpr uint32_t DIM_INDEX_3 = 3;
 constexpr uint32_t QUERY_INPUT_INDEX = 0;
-constexpr uint32_t RETURN_SOFTMAX_INDEX = 8;
+constexpr uint32_t ORI_KV_INPUT_INDEX = 1;
+constexpr uint32_t RETURN_SOFTMAX_INDEX = 11;
+constexpr uint32_t LAYOUT_ORI_KEY_ATTR_INDEX = 7;
 
 ge::graphStatus InferShapeSparseAttnSharedkv(gert::InferShapeContext *context)
 {
@@ -29,6 +38,9 @@ ge::graphStatus InferShapeSparseAttnSharedkv(gert::InferShapeContext *context)
                return ge::GRAPH_FAILED);
     const gert::Shape *queryShape = context->GetInputShape(QUERY_INPUT_INDEX);
     OPS_LOG_E_IF_NULL(context, queryShape, return ge::GRAPH_FAILED)
+    const gert::Shape *oriKvShape = context->GetInputShape(ORI_KV_INPUT_INDEX);
+    OPS_LOG_E_IF_NULL(context, oriKvShape, return ge::GRAPH_FAILED)
+
     gert::Shape *attentionOutShape = context->GetOutputShape(0);
     OPS_LOG_E_IF_NULL(context, attentionOutShape, return ge::GRAPH_FAILED)
     *attentionOutShape = *queryShape;
@@ -37,14 +49,34 @@ ge::graphStatus InferShapeSparseAttnSharedkv(gert::InferShapeContext *context)
     OPS_LOG_E_IF_NULL(context, attentionOutShape, return ge::GRAPH_FAILED)
     auto attr = context->GetAttrs();
     const bool *returnSoftmaxLsePtr = attr->GetAttrPointer<bool>(RETURN_SOFTMAX_INDEX);
+    const char *inputLayoutOriKeyPtr = attrs->GetAttrPointer<char>(LAYOUT_ORI_KEY_ATTR_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, inputLayoutOriKeyPtr);
+    std::string inputLayoutOriKeyPtr = std::string(inputLayoutOriKeyPtr);
     bool returnSoftmaxLse = (returnSoftmaxLsePtr != nullptr) ? *returnSoftmaxLsePtr : false;
+
     if (returnSoftmaxLse) {
-        *softmaxLseShape = *queryShape;
-        auto lastDimIdx = softmaxLseShape->GetDimNum() - 1;
-        softmaxLseShape->SetDim(lastDimIdx, 1);
+        if(queryShape->GetDimNum() == DIM_NUM_3){
+            if (inputLayoutOriKeyPtr == "PA_BNBD") {
+                softmaxLseShape->SetDimNum(DIM_NUM_3);
+                softmaxLseShape->SetDim(DIM_INDEX_0, oriKvShape->GetDim(DIM_INDEX_2));
+                softmaxLseShape->SetDim(DIM_INDEX_1, queryShape->GetDim(DIM_INDEX_0));
+                softmaxLseShape->SetDim(DIM_INDEX_2, queryShape->GetDim(DIM_INDEX_1) / oriKvShape->GetDim(DIM_INDEX_2));
+            } else {
+                softmaxLseShape->SetDimNum(DIM_NUM_3);
+                softmaxLseShape->SetDim(DIM_INDEX_0, oriKvShape->GetDim(DIM_INDEX_1));
+                softmaxLseShape->SetDim(DIM_INDEX_1, queryShape->GetDim(DIM_INDEX_0));
+                softmaxLseShape->SetDim(DIM_INDEX_2, queryShape->GetDim(DIM_INDEX_1) / oriKvShape->GetDim(DIM_INDEX_1));
+            }
+        } else {
+            softmaxLseShape->SetDimNum(DIM_NUM_4);
+            softmaxLseShape->SetDim(DIM_INDEX_0, queryShape->GetDim(DIM_INDEX_0));
+            softmaxLseShape->SetDim(DIM_INDEX_1, oriKvShape->GetDim(DIM_INDEX_2));
+            softmaxLseShape->SetDim(DIM_INDEX_2, queryShape->GetDim(DIM_INDEX_1));
+            softmaxLseShape->SetDim(DIM_INDEX_3, queryShape->GetDim(DIM_INDEX_2) / oriKvShape->GetDim(DIM_INDEX_2));
+        }
     } else {
-        softmaxLseShape->SetDimNum(1);
-        softmaxLseShape->SetDim(0, 0);
+        softmaxLseShape->SetDimNum(DIM_NUM_1);
+        softmaxLseShape->SetDim(DIM_INDEX_0, 0);
     }
     return GRAPH_SUCCESS;
 }

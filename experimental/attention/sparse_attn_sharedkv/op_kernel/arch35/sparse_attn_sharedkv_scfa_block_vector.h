@@ -74,7 +74,7 @@ public:
     // 初始化LocalTensor
     __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo);
     // 初始化attentionOutGM
-    __aicore__ inline void CleanOutput(__gm__ uint8_t *attentionOut, ConstInfo &constInfo);
+    __aicore__ inline void CleanOutput(__gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, ConstInfo &constInfo);
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV,
         __gm__ uint8_t *oriSparseIndices, __gm__ uint8_t *cmpSparseIndices, __gm__ uint8_t *oriBlockTable,
         __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sinks);
@@ -128,6 +128,7 @@ private:
     TPipe *tPipe;
 
     GlobalTensor<OUTPUT_T> attentionOutGm;
+    GlobalTensor<T> softmaxLseGm;
     GlobalTensor<KV_T> oriKVGm;
     GlobalTensor<KV_T> cmpKVGm;
     GlobalTensor<KV_T> keyGm;
@@ -162,6 +163,7 @@ private:
     TBuf<> softmaxMaxBuf[2];
     TBuf<> softmaxSumBuf[2];
     TBuf<> softmaxExpBuf[2];
+    TBuf<> outLseBuf[2];
 
     T negativeFloatScalar;
     bool isSinks = false;
@@ -665,6 +667,23 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec1(
     if (runInfo.s2LoopCount != 0 || (runInfo.s2LoopCount == 0 && isSinks)) {
         SCFAUpdateExpSumAndExpMax<T>(sumUb, maxUb, expUb, sumUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize);
     }
+    printf("V1 : returnSoftmaxLse = %s \n", constInfo.returnSoftmaxLse ? "true" : "false");
+    if (constInfo.returnSoftmaxLse && runInfo.s2LoopCount == runInfo.s2LoopLimit) {
+        LocalTensor<float> outLse = this->outLseBuf[runInfo.multiCoreIdxMod2].template Get<float>();
+        DumpTensor(outLse, 111, 64);
+        DataCopyExtParams dataCopyParams;
+        dataCopyParams.blockCount = 1;
+        dataCopyParams.blockLen = sizeof(float) * runInfo.halfMRealSize;
+        dataCopyParams.srcStride = 0;
+        dataCopyParams.dstStride = 0;
+        DumpTensor(sumUb, 222, 64);
+        DumpTensor(maxUb, 333, 64);
+        ComputeLse(outLse, sumUb, maxUb, runInfo.halfMRealSize);
+        DumpTensor(outLse, 444, 64);
+        WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        DataCopyPad(this->softmaxLseGm[runInfo.softmaxLseOffset], outLse, dataCopyParams);
+        SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+    }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -770,10 +789,11 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitOutputSingleCore(ConstIn
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CleanOutput(__gm__ uint8_t *attentionOut, ConstInfo &constInfo) 
+__aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CleanOutput(__gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,ConstInfo &constInfo) 
 {
     if ASCEND_IS_AIV {
         this->attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
+        this->softmaxLseGm.SetGlobalBuffer((__gm__ T *)softmaxLse);
         if (constInfo.needInit == 1) {
             InitOutputSingleCore(constInfo);
         }
@@ -874,6 +894,10 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe,
             tPipe->InitBuffer(s2LenBuf[2], S2_REAL_BUF_LEN * sizeof(int32_t) * 4);
         }
     }
+    if (constInfo.returnSoftmaxLse) {
+        tPipe->InitBuffer(outLseBuf[0], 256);
+        tPipe->InitBuffer(outLseBuf[1], 256);
+    }
 
     tPipe->InitBuffer(stage1OutQue[0], 1, vec1Srcstride * s2BaseSize * sizeof(Q_T));
     tPipe->InitBuffer(stage1OutQue[1], 1, vec1Srcstride * s2BaseSize * sizeof(Q_T));
@@ -917,7 +941,7 @@ TEMPLATES_DEF
 class SCFABlockVecDummy {
 public:
     __aicore__ inline SCFABlockVecDummy() {};
-    __aicore__ inline void CleanOutput(__gm__ uint8_t *attentionOut, ConstInfo &constInfo) {}
+    __aicore__ inline void CleanOutput(__gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, ConstInfo &constInfo) {}
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV,
         __gm__ uint8_t *oriSparseIndices, __gm__ uint8_t *cmpSparseIndices, __gm__ uint8_t *oriBlockTable,
         __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sinks) {}

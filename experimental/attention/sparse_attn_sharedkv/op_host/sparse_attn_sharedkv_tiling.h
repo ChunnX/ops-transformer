@@ -99,7 +99,7 @@ constexpr uint32_t ATTR_ORI_WIN_LEFT_INDEX = 4;
 constexpr uint32_t ATTR_ORI_WIN_RIGHT_INDEX = 5;
 constexpr uint32_t ATTR_LAYOUT_Q_INDEX = 6;
 constexpr uint32_t ATTR_LAYOUT_KV_INDEX = 7;
-
+constexpr uint32_t ATTR_RETURN_SOFTMAX_LSE_INDEX = 11;
 // Dim Index
 constexpr uint32_t DIM_IDX_ONE = 1;
 constexpr uint32_t DIM_IDX_TWO = 2;
@@ -154,7 +154,7 @@ TILING_DATA_FIELD_DEF(uint32_t, usedCoreNum);
 
 TILING_DATA_FIELD_DEF(uint32_t, mmResUbSize);
 TILING_DATA_FIELD_DEF(uint32_t, bmm2ResUbSize);
-
+TILING_DATA_FIELD_DEF(uint32_t, returnSoftmaxLse)
 TILING_DATA_FIELD_DEF(uint32_t, mBaseSize)
 TILING_DATA_FIELD_DEF(uint32_t, s2BaseSize)
 END_TILING_DATA_DEF
@@ -204,6 +204,7 @@ struct SASParaInfo {
     const uint32_t *oriWinRight = nullptr;
     const char *layoutQ = nullptr;
     const char *layoutKv = nullptr;
+    const bool *returnSoftmaxLse = nullptr;
 };
 
 static std::string SASDataTypeToSerialString(ge::DataType type);
@@ -250,6 +251,7 @@ public:
     int32_t sparseMode = 0;
     // Others Flag
     uint32_t sparseCount = 0;
+    bool returnSoftmaxLse = false;
     
     // PageAttention
     uint32_t blockTypeSize = 0;
