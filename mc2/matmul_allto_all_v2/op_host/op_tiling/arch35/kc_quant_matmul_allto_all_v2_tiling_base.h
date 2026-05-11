@@ -31,11 +31,11 @@ namespace MC2Tiling {
 using namespace optiling;
 using namespace mc2_matmul_v3_advanced;
 
-class KcQuantMatmulAllToAllTilingBase : public MatmulAllToAllTilingBase {
+class KcQuantMatmulAlltoAllV2TilingBase : public MatmulAlltoAllV2TilingBase {
     friend class KcQuantMatmulAlltoAllV2Helper;
 public:
-    explicit KcQuantMatmulAllToAllTilingBase(gert::TilingContext *context);
-    ~KcQuantMatmulAllToAllTilingBase() override = default;
+    explicit KcQuantMatmulAlltoAllV2TilingBase(gert::TilingContext *context);
+    ~KcQuantMatmulAlltoAllV2TilingBase() override = default;
 protected:
     bool IsCapable() override;
     ge::graphStatus DoOpTiling() override;
@@ -59,7 +59,7 @@ private:
 
 class KcQuantMatmulAlltoAllV2Helper : public Mc2AdaptiveSlidingWindowTiling {
 public:
-    KcQuantMatmulAlltoAllV2Helper(KcQuantMatmulAllToAllTilingBase& kcQuantMatmulAllToAllTilingBase,
+    KcQuantMatmulAlltoAllV2Helper(KcQuantMatmulAlltoAllV2TilingBase& kcQuantMatmulAlltoAllV2TilingBase,
                                 DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams& out, uint64_t& mmMvalueLen);
     const gert::Shape GetX1Shape(const size_t index) override;
     const gert::Shape GetX2Shape(const size_t index) override;
@@ -74,7 +74,7 @@ public:
 
 private:
     uint64_t mmLen = 0;
-    KcQuantMatmulAllToAllTilingBase& tilingProcesser_;
+    KcQuantMatmulAlltoAllV2TilingBase& tilingProcesser_;
 };
 } // namespace MC2Tiling
 #endif
