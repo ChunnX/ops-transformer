@@ -237,7 +237,7 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
 
 bool FlashAttnMetadataCpuKernel::BalanceSchedule(SectionStreamKResult &splitRes)
 {
-    return load_balance::SectionStreamK::Compute(deviceInfo, baseInfo, param, splitRes) == LOAD_BALANCE_SUCCESS;
+    return load_balance::SectionStreamK::Compute(deviceInfo, baseInfo, param, splitRes) == SECTION_STREAM_K_SUCCESS;
 }
 
 bool FlashAttnMetadataCpuKernel::GenMetaData(SectionStreamKResult &splitRes)

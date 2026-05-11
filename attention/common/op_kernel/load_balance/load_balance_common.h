@@ -42,6 +42,7 @@ struct DeviceInfo {
     uint32_t aicCoreMinNum { 0U };      // At least amount of aic core would be turned on, this is not final used number
     uint32_t aivCoreMaxNum { 0U };      // At most amount of aiv core would be turned on, this is not final used number
     uint32_t aivCoreMinNum { 0U };      // At least amount of aiv core would be turned on, this is not final used number
+    uint32_t cvRadio {0U};
     SocVersion version { SocVersion::BUTT };
 };
 
