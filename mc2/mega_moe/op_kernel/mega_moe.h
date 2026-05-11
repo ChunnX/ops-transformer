@@ -137,6 +137,7 @@ private:
     GlobalTensor<int32_t> groupList_;
     GlobalTensor<int32_t> expertTokenNumsOut_;
     LocalTensor<float> topKWeightsTensor_;
+    LocalTensor<bfloat16_t> combineUbTensor_;
 
     uint32_t m_ = 0;
     uint32_t k_ = 0;
@@ -235,6 +236,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::FirstBuffInit(TPipe *tP
         static_cast<int32_t>(ALIGN_32));
     maxResetBufAlign = max(maxResetBufAlign, blockNumAlignBytes);
     tPipe->InitBuffer(ResetFlagBuf_, maxResetBufAlign);
+    combineUbTensor_ = CopyTempBuf_.Get<bfloat16_t>();
 }
 
 template <TemplateMegaMoeTypeClass>
@@ -772,7 +774,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         if (subBlockIdx_ == 0) {
             MegaMoeImpl::GroupMatmul2<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
                 params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_, expertIdx, gmm2PingPongIdx_,
-                rankId_);
+                rankId_, combineUbTensor_);
         }
     }
     EndGMM2Sync();

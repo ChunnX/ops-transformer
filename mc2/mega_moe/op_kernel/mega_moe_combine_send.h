@@ -38,10 +38,6 @@ __aicore__ inline void CopyTileFromGM(
         static_cast<uint16_t>((n - colCount) * sizeof(ElementMMadOut2)),
         0, 0};
     AscendC::DataCopyPad(ubDst, gmSrc[rowStart * n + colStart], gm2UbParams, copyPadParams);
-    PipeBarrier<PIPE_ALL>();
-    AscendC::PRINTF("cur in 42 ubDst[0 1 2 3 10 200 300 500 900 2048] = %f %f %f %f %f %f %f %f %f %f\n",
-        ubDst.GetValue(0), ubDst.GetValue(1), ubDst.GetValue(2), ubDst.GetValue(3), ubDst.GetValue(10),
-        ubDst.GetValue(200), ubDst.GetValue(300), ubDst.GetValue(500), ubDst.GetValue(900), ubDst.GetValue(2048));
 }
 
 // 从UB发送到远端GM（复用stepOne的CombineTokens逻辑）
@@ -118,13 +114,12 @@ __aicore__ inline void CombineTile(
     uint32_t colCount = Get<N_VALUE>(actualBlockShape);
 
     // 第一步：从GM一次性搬整个tile到UB
-    PipeBarrier<PIPE_ALL>();
+    SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
     CopyTileFromGM(ubBuffer, gmm2OutGm, mLoc, rowCount, nLoc, colCount, n);
     SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
 
     // 第二步：从UB发送到远端GM（复用stepOne的CombineTokens逻辑）
     CombineTokens(mLoc, nLoc, n, groupIdx, rankId, ubBuffer, actualBlockShape, params);
-    PipeBarrier<PIPE_ALL>();
 }
 }  // namespace MegaMoeCombineImpl
 
