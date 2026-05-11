@@ -544,7 +544,7 @@ protected:
                 splitCoreMode = SplitCoreMode::SQ_MULTI_CORE_FIRST;
             }
         }
-
+        splitCoreMode = SplitCoreMode::SQ_MULTI_CORE_FIRST;
         multiCoreParamsRegbase_->set_splitCoreMode(static_cast<uint8_t>(splitCoreMode));
         multiCoreParamsRegbase_->set_firstFullLoadS1OuterIdx(firstFullLoadS1OuterIdx);
 
