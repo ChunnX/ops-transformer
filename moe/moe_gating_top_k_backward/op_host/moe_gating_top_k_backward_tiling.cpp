@@ -61,7 +61,7 @@ const static int64_t MIN_EXPERT_COUNT = 2;              // min value for n
 const static int64_t MIN_K = 1;                         // min value for k
 const static int64_t DEFAULT_WORKSPACE_SIZE = 16777216; // 预留16M空间
 const static int64_t DOUBLE_BUFFER_NUM = 2;
-const static int64_t UB_ALIGN_BYTES = 31;
+const static int64_t UB_ALIGN_BYTES_MINUS_ONE = 31;
 
 
 class MoeGatingTopKBackwardTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
@@ -140,7 +140,7 @@ private:
 };
 
 inline int64_t AlignBytes_(int64_t x) {
-    return (x + UB_ALIGN_BYTES) & ~UB_ALIGN_BYTES;
+    return (x + UB_ALIGN_BYTES_MINUS_ONE) & ~UB_ALIGN_BYTES_MINUS_ONE;
 }
 
 ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckInputShape()   // fqy
