@@ -32,17 +32,17 @@ using namespace AscendC;
 
 namespace MC2KernelTemplate {
 
-template<int commMode>
-struct HcclTypeSelector {
-    using type = Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU>;
-};
-
 template<>
 struct HcclTypeSelector<TILINGKEY_TPL_CCU> {
     using type = Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU>;
 };
 
-template <typename hcclDataType, bool commBeforeComputeFlag, int commMode = TILINGKEY_TPL_CCU>
+template<>
+struct HcclTypeSelector<TILINGKEY_TPL_AICPU> {
+    using type = Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU>;
+};
+
+template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
 class HcclA2avOp {
 public:
     __aicore__ inline void Init(const void *hcclInitTiling, uint64_t hcclCcTilingOffset,
