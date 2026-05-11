@@ -134,7 +134,7 @@ ge::graphStatus InnerMoeInitRoutingV2TilingBase::CheckTokenCount(int64_t num, co
         OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), tag, dimStr.c_str(), "1D"));
     CHECK_FAIL(
         context_, expertTokensShape.GetDim(0) != expertNum,
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), tag, 
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), tag,
             Ops::Base::ToString(expertTokensShape).c_str(),
             "The first dim should be expertNum"));
     return ge::GRAPH_SUCCESS;
@@ -177,7 +177,7 @@ ge::graphStatus InnerMoeInitRoutingV2TilingBase::CheckOutShape()
         CHECK_FAIL(
             context_, expandedXShape.GetDim(0) != firstDim,
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "expandedX",
-                Ops::Base::ToString(expandedXShape).c_str(), 
+                Ops::Base::ToString(expandedXShape).c_str(),
                 "The first dim of expandedX should be n * k or activeNum"));
         CHECK_FAIL(
             context_, expandedXShape.GetDim(1) != moeInitRoutingTilingData.get_cols(),
@@ -264,11 +264,11 @@ ge::graphStatus InnerMoeInitRoutingV2TilingBase::GetShapeAttrsInfo()
             "The first dim of x and expertIdx should be equal"));
     CHECK_FAIL(context_, xShape.GetDim(0) < 0,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-            context_->GetNodeName(), "x", Ops::Base::ToString(xShape).c_str(), 
+            context_->GetNodeName(), "x", Ops::Base::ToString(xShape).c_str(),
             "The first dim of x cannot be less than 0"));
     CHECK_FAIL(context_, xShape.GetDim(1) < 0,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-            context_->GetNodeName(), "x", Ops::Base::ToString(xShape).c_str(), 
+            context_->GetNodeName(), "x", Ops::Base::ToString(xShape).c_str(),
             "The second dim of x cannot be less than 0"));
     CHECK_FAIL(context_, expertIdxShape.GetDim(0) < 0,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "expertIdx",
@@ -286,7 +286,7 @@ ge::graphStatus InnerMoeInitRoutingV2TilingBase::GetShapeAttrsInfo()
         OP_LOGE_WITH_INVALID_ATTR(
             context_->GetNodeName(), "expertNum", std::to_string(expertNum).c_str(), "greater than or equal to 0"));
     CHECK_FAIL(context_, dropPadMode < 0 || dropPadMode > 1,
-        OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "dropPadMode", 
+        OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "dropPadMode",
         std::to_string(dropPadMode).c_str(), "0 or 1"));
     CHECK_FAIL(
         context_, dropPadMode > 0 && (expertCapacity < 1 || expertNum < 1),
