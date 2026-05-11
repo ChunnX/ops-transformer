@@ -386,6 +386,7 @@ namespace BSA {
             uint32_t mmadFlag = 0;
 
             SetFlag();
+            uint32_t vec2CubeFlag = 0;
             for (uint32_t i = 0; i < taskLength; i++) {
                 TaskInfo curInfo = taskInfo[i % 2];
                 uint64_t kvBlockOffset = 0;
@@ -395,6 +396,7 @@ namespace BSA {
                     // BlcokSpaseMask shape : [batch, numhead, CeilDiv(maxQSeqlen, blockShapeX), CeilDiv(maxKvSeqlen, blockShapeY)]
                     uint64_t maskOffset = curInfo.curBatchIdx * batchBlocks + curInfo.curHeadIdx * headBlocks + curInfo.curQBlcokIdx * maskKvBlockNum + idx;
                     if (gBlcokSpaseMask.GetValue(maskOffset)) {
+                        vec2CubeFlag++;
                         uint64_t kvBlockBasicOffset = 0;
                         uint32_t kvBlockSize = (idx != curKvBlockNum - 1) ? blockShapeY : curInfo.kvSeqlen - blockShapeY * idx;
                         uint32_t kvLoop = (kvBlockSize + basicKVBlockSize - 1) / basicKVBlockSize;
@@ -500,53 +502,54 @@ namespace BSA {
                         blockShapeX, basicQBlockSize, inputLayout, taskInfo[i % 2], taskInfo[(i + 1) % 2]);
                 }
             }
-            AscendC::WaitEvent(VEC2CUBE);
-            LayoutA2 layoutA2(preTaskInfo.curCalQSize, preTaskInfo.curCalKVSize);
-            LayoutB2 layoutB2;
-            LayoutC2 layoutC2;
+            if (vec2CubeFlag != 0) {
+                AscendC::WaitEvent(VEC2CUBE);
+                LayoutA2 layoutA2(preTaskInfo.curCalQSize, preTaskInfo.curCalKVSize);
+                LayoutB2 layoutB2;
+                LayoutC2 layoutC2;
 
-            LayoutA3 layoutA3(preTaskInfo.curCalKVSize, preTaskInfo.curCalQSize);
-            LayoutB3 layoutB3;
-            LayoutC3 layoutC3;
-            if (inputLayout == 0) {
-                layoutB2 = LayoutB2(preTaskInfo.curCalKVSize, headDim, kvHeads * headDim);
-                layoutC2 = LayoutC2(preTaskInfo.curCalQSize, headDim, numHeads * headDim);
-                layoutB3 = LayoutB3(preTaskInfo.curCalQSize, headDim, numHeads * headDim);
-                layoutC3 = LayoutC3(preTaskInfo.curCalKVSize, headDim, kvHeads * headDim);
-            } else {
-                layoutB2 = LayoutB2(preTaskInfo.curCalKVSize, headDim);
-                layoutC2 = LayoutC2(preTaskInfo.curCalQSize, headDim);
-                layoutB3 = LayoutB3(preTaskInfo.curCalQSize, headDim);
-                layoutC3 = LayoutC3(preTaskInfo.curCalKVSize, headDim);
+                LayoutA3 layoutA3(preTaskInfo.curCalKVSize, preTaskInfo.curCalQSize);
+                LayoutB3 layoutB3;
+                LayoutC3 layoutC3;
+                if (inputLayout == 0) {
+                    layoutB2 = LayoutB2(preTaskInfo.curCalKVSize, headDim, kvHeads * headDim);
+                    layoutC2 = LayoutC2(preTaskInfo.curCalQSize, headDim, numHeads * headDim);
+                    layoutB3 = LayoutB3(preTaskInfo.curCalQSize, headDim, numHeads * headDim);
+                    layoutC3 = LayoutC3(preTaskInfo.curCalKVSize, headDim, kvHeads * headDim);
+                } else {
+                    layoutB2 = LayoutB2(preTaskInfo.curCalKVSize, headDim);
+                    layoutC2 = LayoutC2(preTaskInfo.curCalQSize, headDim);
+                    layoutB3 = LayoutB3(preTaskInfo.curCalQSize, headDim);
+                    layoutC3 = LayoutC3(preTaskInfo.curCalKVSize, headDim);
+                }
+                GemmCoord actualShape2{preTaskInfo.curCalQSize, headDim, preTaskInfo.curCalKVSize};
+                GemmCoord actualShape3{preTaskInfo.curCalKVSize, headDim, preTaskInfo.curCalQSize};
+
+                blockMmad2(gDs[preTaskInfo.sOffset],
+                    gK[preTaskInfo.kvOffset],
+                    gDq[preTaskInfo.qOffset],
+                    layoutA2,
+                    layoutB2,
+                    layoutC2,
+                    actualShape2,
+                    mmadFlag);
+                blockMmad3(gP[preTaskInfo.sOffset],
+                    gDout[preTaskInfo.qOffset],
+                    gDv[preTaskInfo.kvOffset],
+                    layoutA3,
+                    layoutB3,
+                    layoutC3,
+                    actualShape3,
+                    mmadFlag);
+                blockMmad3(gDs[preTaskInfo.sOffset],
+                    gQ[preTaskInfo.qOffset],
+                    gDk[preTaskInfo.kvOffset],
+                    layoutA3,
+                    layoutB3,
+                    layoutC3,
+                    actualShape3,
+                    mmadFlag);
             }
-            GemmCoord actualShape2{preTaskInfo.curCalQSize, headDim, preTaskInfo.curCalKVSize};
-            GemmCoord actualShape3{preTaskInfo.curCalKVSize, headDim, preTaskInfo.curCalQSize};
-
-            blockMmad2(gDs[preTaskInfo.sOffset],
-                gK[preTaskInfo.kvOffset],
-                gDq[preTaskInfo.qOffset],
-                layoutA2,
-                layoutB2,
-                layoutC2,
-                actualShape2,
-                mmadFlag);
-            blockMmad3(gP[preTaskInfo.sOffset],
-                gDout[preTaskInfo.qOffset],
-                gDv[preTaskInfo.kvOffset],
-                layoutA3,
-                layoutB3,
-                layoutC3,
-                actualShape3,
-                mmadFlag);
-            blockMmad3(gDs[preTaskInfo.sOffset],
-                gQ[preTaskInfo.qOffset],
-                gDk[preTaskInfo.kvOffset],
-                layoutA3,
-                layoutB3,
-                layoutC3,
-                actualShape3,
-                mmadFlag);
-
             AscendC::CrossCoreSetFlag<2, PIPE_FIX>(CUBE2POST);
             WaitFlag();
         }
