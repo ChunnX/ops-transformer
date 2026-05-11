@@ -112,7 +112,8 @@ void MoeGatingTopKSoftmaxRegbaseTiling::SplitRowInUb(int64_t &perLoopRowCount, i
 ge::graphStatus MoeGatingTopKSoftmaxRegbaseTiling::DoOpTiling()
 {
     OP_CHECK_IF((col > MAX_EXPERT_NUM),
-                OP_LOGE(context_->GetNodeName(), "expert count (=%u) is too large, please check.", col),
+                OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "expert_count", std::to_string(col),
+                                          std::string("no more than ") + std::to_string(MAX_EXPERT_NUM)),
                 return ge::GRAPH_FAILED);
     rows_ = static_cast<int64_t>(row);
     perCoreRowCount_ = static_cast<int64_t>((rows_ + aivNum - 1) / aivNum);

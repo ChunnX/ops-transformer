@@ -33,10 +33,11 @@ static ge::graphStatus InfershapeForMoeComputeExpertTokens(gert::InferShapeConte
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
     int64_t numExperts = *(attrs->GetInt(numExpertsAttrIdx));
+    std::string numExpertsStr = std::to_string(numExperts);
     OP_CHECK_IF(
         numExperts <= 0,
-        OP_LOGE(
-            context->GetNodeName(),"Number of experts %ld should greater than 0!", numExperts),
+        OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "num_experts",
+            numExpertsStr.c_str(), "greater than 0"),
         return GRAPH_FAILED);
 
     // 获取输出值shape
