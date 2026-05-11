@@ -23,6 +23,7 @@
 #include "adv_api/reduce/sum.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "../moe_distribute_combine_v2_tiling.h"
+#include "../../common/op_kernel/mc2_moe_context.h"
 #if __has_include("../../moe_distribute_dispatch_v2/check_winsize.h")
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../moe_distribute_dispatch_v2/check_winsize.h"
@@ -185,6 +186,8 @@ private:
     GM_ADDR stateGM_;
     GM_ADDR maskCalcWorkspaceGM_;
     GM_ADDR statusDataSpaceGm_;
+
+    __gm__ Mc2MoeContext* mc2Context_{nullptr};
 
     LocalTensor<XType> winTpSendCountTensor_;
     LocalTensor<ExpandXType> gmTpSendCountTensor_;
