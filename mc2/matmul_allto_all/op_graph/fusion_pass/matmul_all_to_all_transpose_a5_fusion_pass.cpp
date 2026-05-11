@@ -51,7 +51,8 @@ struct ReplaceGraphInputs {
 namespace {
     typedef EsCTensorHolder* (*EsTransposeFunc)(EsCTensorHolder*, EsCTensorHolder*);
     
-    EsTransposeFunc GetEsTransposeFunc() {
+    EsTransposeFunc GetEsTransposeFunc()
+    {
         void* handle = dlopen("libes_math.so", RTLD_LAZY | RTLD_GLOBAL);
         if (!handle) {
             OPS_LOG_E("MatmulAllToAllTransposeA5FusionPass", "dlopen failed: %s", dlerror());
@@ -66,11 +67,12 @@ namespace {
         return func;
     }
     
-    ge::es::EsTensorHolder TransposeDL(const ge::es::EsTensorLike& x, const ge::es::EsTensorLike& perm) {
+    ge::es::EsTensorHolder TransposeDL(const ge::es::EsTensorLike& x, const ge::es::EsTensorLike& perm)
+    {
         static EsTransposeFunc func = GetEsTransposeFunc();
         auto* builder = ge::es::ResolveBuilder(x, perm);
-        auto result = func(x.ToTensorHolder(builder).GetCTensorHolder(),
-                            perm.ToTensorHolder(builder).GetCTensorHolder());
+        auto result = func(x.ToTensorHolder(builder).GetCTensorHolder(), 
+            perm.ToTensorHolder(builder).GetCTensorHolder());
         return result;
     }
 }
