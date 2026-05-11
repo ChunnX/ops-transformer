@@ -16,6 +16,7 @@
 #include "moe_init_routing_v2_grad_tiling.h"
 using namespace AscendC;
 namespace optiling {
+using namespace Ops::Base;
 const static size_t DIM_ONE = 1;
 const static size_t DIM_TWO = 2;
 const static size_t DIM_THREE = 3;

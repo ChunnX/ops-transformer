@@ -21,6 +21,7 @@ using namespace AscendC;
 using namespace ge;
 
 namespace optiling {
+using namespace Ops::Base;
 static const int32_t OUT_INDEX = 0;
 static const int32_t INDICES_INDEX = 1;
 static const int32_t SOFTMAX_RESULT_INDEX = 2;
