@@ -757,6 +757,17 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     }
     EndSync();
 
+    // [DEBUG] 1.gmm1 EndSync后
+    if constexpr(g_coreType == AIC) {
+        GlobalTensor<uint8_t> sg;
+        PipeBarrier<PIPE_ALL>();
+        sg.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(params_.workspaceInfo.ptrA2Scale));
+        AscendC::DataCacheCleanAndInvalid<uint8_t, AscendC::CacheLine::ENTIRE_DATA_CACHE, AscendC::DcciDst::CACHELINE_OUT>(sg);
+        AscendC::PRINTF("AIC scale_afterGMM1[0-7]=%x %x %x %x %x %x %x %x\n",
+            sg.GetValue(0), sg.GetValue(1), sg.GetValue(2), sg.GetValue(3),
+            sg.GetValue(4), sg.GetValue(5), sg.GetValue(6), sg.GetValue(7));
+    }
+
     if constexpr(g_coreType == AscendC::AIV) {
         if (aivCoreIdx_ == 1) {
             ExpertTokenNumCopyOut();
@@ -767,15 +778,48 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         }
     }
 
+    // [DEBUG] 2.清理后
+    if constexpr(g_coreType == AIC) {
+        GlobalTensor<uint8_t> sg;
+        PipeBarrier<PIPE_ALL>();
+        sg.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(params_.workspaceInfo.ptrA2Scale));
+        AscendC::DataCacheCleanAndInvalid<uint8_t, AscendC::CacheLine::ENTIRE_DATA_CACHE, AscendC::DcciDst::CACHELINE_OUT>(sg);
+        AscendC::PRINTF("AIC scale_afterCleanup[0-7]=%x %x %x %x %x %x %x %x\n",
+            sg.GetValue(0), sg.GetValue(1), sg.GetValue(2), sg.GetValue(3),
+            sg.GetValue(4), sg.GetValue(5), sg.GetValue(6), sg.GetValue(7));
+    }
+
     // 5. for循环按照本卡专家id进行gmm2 & combine，内部gmm2与combine之间按照基本块进行流水
     preOffset_ = 0;
     vecSetSyncCom_ = 0;
     baseOffset_ = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+    // [DEBUG] 3.gmm2循环前
+    if constexpr(g_coreType == AIC) {
+        GlobalTensor<uint8_t> sg;
+        PipeBarrier<PIPE_ALL>();
+        sg.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(params_.workspaceInfo.ptrA2Scale));
+        AscendC::DataCacheCleanAndInvalid<uint8_t, AscendC::CacheLine::ENTIRE_DATA_CACHE, AscendC::DcciDst::CACHELINE_OUT>(sg);
+        AscendC::PRINTF("AIC scale_beforeGMM2[0-7]=%x %x %x %x %x %x %x %x\n",
+            sg.GetValue(0), sg.GetValue(1), sg.GetValue(2), sg.GetValue(3),
+            sg.GetValue(4), sg.GetValue(5), sg.GetValue(6), sg.GetValue(7));
+    }
+
     for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
         if (!UpdateGroupParams(expertIdx)) {
             continue;
         }
         UpdateGlobalBuffer(gmmAddrInfo, 1);
+        // [DEBUG] 4.gmm2入口
+        if constexpr(g_coreType == AIC) {
+            GlobalTensor<uint8_t> sg;
+            PipeBarrier<PIPE_ALL>();
+            sg.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(params_.workspaceInfo.ptrA2Scale));
+            AscendC::DataCacheCleanAndInvalid<uint8_t, AscendC::CacheLine::ENTIRE_DATA_CACHE, AscendC::DcciDst::CACHELINE_OUT>(sg);
+            AscendC::PRINTF("AIC scale_gmm2entry[0-7]=%x %x %x %x %x %x %x %x\n",
+                sg.GetValue(0), sg.GetValue(1), sg.GetValue(2), sg.GetValue(3),
+                sg.GetValue(4), sg.GetValue(5), sg.GetValue(6), sg.GetValue(7));
+        }
         if (subBlockIdx_ == 0) {
             MegaMoeImpl::GroupMatmul2<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
                 params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_, expertIdx, gmm2PingPongIdx_,
