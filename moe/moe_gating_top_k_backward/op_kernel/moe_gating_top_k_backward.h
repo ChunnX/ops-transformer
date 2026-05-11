@@ -115,17 +115,18 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::Init(GM_ADDR xNorm, GM_AD
 template <typename T>
 __aicore__ inline void MoeGatingTopKBackwardKernel<T>::Process()
 {
+    GetGatherOffsetIndex();
     for(int64_t loopIdx = 0; loopIdx < loopTimes_; loopIdx++) {
         curRows_ = loopIdx == loopTimes_ - 1 ? tailRows_ : tilingData_->baseRows;
-        CopyInGradY(); // 搬入gradY、xnorm、expertidx
-        CopyInXNorm();
-        CopyInExpertIdx();
+        CopyInGradY(); // lc
+        CopyInXNorm(); // fqy
+        CopyInExpertIdx(); // fqy
         
-        Sigmoid();
-        GetGradXNorm();
-        GetGradX();
+        Sigmoid(); // fqy
+        GetGradXNorm(); // lc
+        GetGradX(); // lc
 
-        CopyOut(); // 搬出
+        CopyOut();  // lc
     }
 }
 } // namespace MoeGatingTopK
