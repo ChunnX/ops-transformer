@@ -42,7 +42,7 @@ struct HcclTypeSelector<TILINGKEY_TPL_AICPU> {
     using type = Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU>;
 };
 
-template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
+template <typename hcclDataType, bool commBeforeComputeFlag, int commMode = TILINGKEY_TPL_CCU>
 class HcclA2avOp {
 public:
     __aicore__ inline void Init(const void *hcclInitTiling, uint64_t hcclCcTilingOffset,
