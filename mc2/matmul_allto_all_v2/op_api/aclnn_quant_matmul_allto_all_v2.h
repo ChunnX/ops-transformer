@@ -12,8 +12,8 @@
  * \file aclnn_allto_all_matmul.h
  * \brief
  */
-#ifndef OP_API_INC_QUANT_MATMUL_ALL_TO_ALL_
-#define OP_API_INC_QUANT_MATMUL_ALL_TO_ALL_
+#ifndef OP_API_INC_QUANT_MATMUL_ALLTO_ALL_V2_
+#define OP_API_INC_QUANT_MATMUL_ALLTO_ALL_V2_
 
 #include "aclnn/aclnn_base.h"
 
@@ -88,4 +88,4 @@ __attribute__((visibility("default"))) aclnnStatus aclnnQuantMatmulAlltoAllV2(
 }
 #endif
 
-#endif // OP_API_INC_QUANT_MATMUL_ALL_TO_ALL_
+#endif // OP_API_INC_QUANT_MATMUL_ALLTO_ALL_V2_

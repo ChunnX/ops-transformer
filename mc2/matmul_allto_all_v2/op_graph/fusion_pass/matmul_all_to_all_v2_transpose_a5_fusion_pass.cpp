@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "matmul_all_to_all_transpose_a5_fusion_pass.h"
+#include "matmul_allto_all_v2_transpose_a5_fusion_pass.h"
 
 #if CANN_VERSION_NUM >= GRAPH_FUSION_SUPPORT_VERSION
 #include "es_MatmulAlltoAllV2.h" // es autogen header
@@ -19,7 +19,7 @@
 #include "ge/ge_utils.h"
 
 namespace ops {
-const std::string FUSION_PASS_NAME = "MatmulAllToAllTransposeA5FusionPass";
+const std::string FUSION_PASS_NAME = "MatmulAlltoAllV2TransposeA5FusionPass";
 const std::string PATTERN_TRANSPOSE = "Transpose";
 const std::string PATTERN_TRANSPOSE_D = "TransposeD";
 const std::string PATTERN_BIAS = "HasBias";
@@ -191,7 +191,7 @@ static void GetInputsInfo(const std::vector<ge::fusion::SubgraphInput> &subGraph
                           std::vector<ge::Shape> &inputShapes, std::vector<ge::DataType> &inputDTypes,
                           std::vector<ge::Format> &inputFormats)
 {
-    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Enter GetInputsInfo for MatmulAllToAllTransposeA5FusionPass");
+    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Enter GetInputsInfo for MatmulAlltoAllV2TransposeA5FusionPass");
     for (const auto &subGraphInput : subGraphInputs) {
         OPS_LOG_D(FUSION_PASS_NAME.c_str(), "GetInputsInfo: collecting input datas.");
         auto matchNodes = subGraphInput.GetAllInputs();
@@ -209,13 +209,13 @@ static void GetInputsInfo(const std::vector<ge::fusion::SubgraphInput> &subGraph
         inputDTypes.emplace_back(tmpDesc.GetDataType());
         inputFormats.emplace_back(tmpDesc.GetOriginFormat());
     }
-    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Finish GetInputsInfo for MatmulAllToAllTransposeA5FusionPass");
+    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Finish GetInputsInfo for MatmulAlltoAllV2TransposeA5FusionPass");
 }
 
 static bool InferShapeReplaceGraph(const ge::fusion::GraphUniqPtr &replaceGraph,
                                    const std::vector<ge::fusion::SubgraphInput> &subgraphInputs)
 {
-    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Enter InferShapeReplaceGraph for MatmulAllToAllTransposeA5FusionPass");
+    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Enter InferShapeReplaceGraph for MatmulAlltoAllV2TransposeA5FusionPass");
     std::vector<ge::Shape> inputShapes;
     for (const auto &subgraphInput : subgraphInputs) {
         auto matchNodes = subgraphInput.GetAllInputs();
@@ -351,9 +351,9 @@ static ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::
     return replaceGraphBuilder.BuildAndReset({mc2});
 }
 
-std::vector<ge::fusion::PatternUniqPtr> MatmulAllToAllTransposeA5FusionPass::Patterns()
+std::vector<ge::fusion::PatternUniqPtr> MatmulAlltoAllV2TransposeA5FusionPass::Patterns()
 {
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Enter Patterns for MatmulAllToAllTransposeA5FusionPass");
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Enter Patterns for MatmulAlltoAllV2TransposeA5FusionPass");
     bool hasBias = true;
     std::vector<ge::fusion::PatternUniqPtr> patternGraphs;
     patternGraphs.emplace_back(MakePatternForTranspose(hasBias));
@@ -363,9 +363,9 @@ std::vector<ge::fusion::PatternUniqPtr> MatmulAllToAllTransposeA5FusionPass::Pat
     return patternGraphs;
 }
 
-bool MatmulAllToAllTransposeA5FusionPass::MeetRequirements(const std::unique_ptr<ge::fusion::MatchResult> &matchResult)
+bool MatmulAlltoAllV2TransposeA5FusionPass::MeetRequirements(const std::unique_ptr<ge::fusion::MatchResult> &matchResult)
 {
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Enter MeetRequirements for MatmulAllToAllTransposeA5FusionPass");
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Enter MeetRequirements for MatmulAlltoAllV2TransposeA5FusionPass");
 
     // 是否ascend950
     if (!IsTargetPlatformNpuArch(FUSION_PASS_NAME.c_str(), NPUARCH_A5)) {
@@ -389,9 +389,9 @@ bool MatmulAllToAllTransposeA5FusionPass::MeetRequirements(const std::unique_ptr
 }
 
 ge::fusion::GraphUniqPtr
-MatmulAllToAllTransposeA5FusionPass::Replacement(const std::unique_ptr<ge::fusion::MatchResult> &matchResult)
+MatmulAlltoAllV2TransposeA5FusionPass::Replacement(const std::unique_ptr<ge::fusion::MatchResult> &matchResult)
 {
-    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Enter Replacement for MatmulAllToAllTransposeA5FusionPass");
+    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Enter Replacement for MatmulAlltoAllV2TransposeA5FusionPass");
     std::vector<ge::fusion::SubgraphInput> subgraphInputs;
     if (matchResult->ToSubgraphBoundary()->GetAllInputs(subgraphInputs) != ge::SUCCESS) {
         OPS_LOG_E(FUSION_PASS_NAME.c_str(), "Get subgraph inputs failed in Replacement.");
@@ -414,7 +414,7 @@ MatmulAllToAllTransposeA5FusionPass::Replacement(const std::unique_ptr<ge::fusio
     return std::move(replaceGraph);
 }
 
-REG_FUSION_PASS(MatmulAllToAllTransposeA5FusionPass)
+REG_FUSION_PASS(MatmulAlltoAllV2TransposeA5FusionPass)
     .Stage(ge::CustomPassStage::kCompatibleInherited); // 兼容性场景下指定stage
 } // namespace ops
 #endif // GRAPH_FUSION_SUPPORT_VERSION
