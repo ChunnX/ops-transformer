@@ -168,6 +168,7 @@ __aicore__ inline void SparseAttnSharedkvSwa<CubeBlockType, VecBlockType>::Parse
     constInfo.oriWinLeft = sparseAttnSharedkvBaseParams.oriWinLeft;
     constInfo.oriWinRight = sparseAttnSharedkvBaseParams.oriWinRight;
     constInfo.layoutType = sparseAttnSharedkvBaseParams.outputLayout; 
+    constInfo.returnSoftmaxLse = sparseAttnSharedkvBaseParams.returnSoftmaxLse;
     constInfo.tileSize = 0;
     constInfo.dSizeRope = 64;
     constInfo.softmaxScale = sparseAttnSharedkvBaseParams.softmaxScale; 

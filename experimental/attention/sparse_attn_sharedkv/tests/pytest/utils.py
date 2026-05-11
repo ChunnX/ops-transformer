@@ -232,7 +232,8 @@ def generate_param_combinations(ENABLED_PARAMS, is_save_pt=False):
             "q_datarange": params.get("q_datarange", ["[-10, 10]"] if not is_save_pt else "[-10, 10]"),
             "ori_kv_datarange": params.get("ori_kv_datarange", ["[-10, 10]"] if not is_save_pt else "[-10, 10]"),
             "cmp_kv_datarange": params.get("cmp_kv_datarange", ["[-10, 10]"] if not is_save_pt else "[-10, 10]"),
-            "qk_equal_len": params.get("qk_equal_len", ["False"] if not is_save_pt else False)
+            "qk_equal_len": params.get("qk_equal_len", ["False"] if not is_save_pt else False),
+            "return_softmax_lse": params.get("return_softmax_lse", ["full"] if not is_save_pt else "full")
         }
         param_names = list(param_values.keys())
         for key, value in param_values.items():
