@@ -1,5 +1,7 @@
 # aclnnMatmulAlltoAllV2
 
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/mc2/matmul_allto_all_v2)
+
 ## 产品支持情况
 
 | 产品                                                         | 是否支持 |
@@ -14,6 +16,9 @@
 ## 功能说明
 
 - 接口功能：完成Matmul计算、Permute（保证通信后地址连续）和AlltoAll通信的融合，**先计算后通信**。
+
+  - <term>Ascend 950PR/Ascend 950DT</term>：新增`commMode`参数，根据该参数指定通信类型。
+
 - 计算公式：假设x1的shape为(BS, H1)，x2的shape为(H1, H2)，rankSize为NPU卡数。
 
   $$
@@ -33,6 +38,7 @@ aclnnStatus aclnnMatmulAlltoAllV2GetWorkspaceSize(
   const aclTensor*   biasOptional,
   const aclIntArray* alltoAllAxesOptional,
   const char*        group,
+  const char*        commMode,
   bool               transposeX1,
   bool               transposeX2,
   const aclTensor*   output,
@@ -119,6 +125,16 @@ aclnnStatus aclnnMatmulAlltoAllV2(
     <td>输入</td>
     <td>标识列组的字符串，即通信域名称，通过Hccl接口HcclGetCommName获取commName作为该参数。</td>
     <td>字符串长度要求(0, 128)。</td>
+    <td>STRING</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    </tr>
+    <tr>
+    <td>commMode</td>
+    <td>输入</td>
+    <td>指定当前通信类型。</td>
+    <td>支持输入"default"、"aicpu"或"ccu"。</td>
     <td>STRING</td>
     <td>-</td>
     <td>-</td>
