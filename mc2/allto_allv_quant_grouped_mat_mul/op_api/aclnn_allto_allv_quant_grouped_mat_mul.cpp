@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
   */
 #include <algorithm>
+#include <cstdlib>
 
 #include "securec.h"
 #include "common/utils/op_mc2.h"
@@ -27,6 +28,9 @@
 
 namespace {
 using namespace op;
+
+// 环境变量名：有设置=AICPU，无设置=CCU
+#include "mc2_comm_utils.h"
 
 enum class NnopbaseHcclServerType : uint32_t {
     NNOPBASE_HCCL_SERVER_TYPE_AICPU = 0,
@@ -505,7 +509,12 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMul(void *workspace, uint64_
                                                         aclOpExecutor *executor, aclrtStream stream)
 {
     if (NnopbaseSetHcclServerType) {
-        if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        uint8_t commMode = mc2::GetCommModeFromEnv();
+        if (commMode == mc2::COMM_MODE_AICPU) {
+            OP_LOGD("", "aclnnAlltoAllvQuantGroupedMatMul: ENV_MC2_COMM_MODE_AICPU set, use AICPU mode");
+            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+        } else {
+            OP_LOGD("", "aclnnAlltoAllvQuantGroupedMatMul: ENV_MC2_COMM_MODE_AICPU not set, use CCU mode");
             NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
         }
     }

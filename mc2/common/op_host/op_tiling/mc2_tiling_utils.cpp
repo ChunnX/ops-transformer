@@ -19,12 +19,14 @@
 #include "mc2_hcom_topo_info.h"
 #include "mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_tiling_strategy.h"
 #include "mc2_tiling_utils.h"
+#include "mc2_comm_utils.h"
 
 namespace mc2tiling {
 namespace {
 constexpr char DEUBG_MODE_ENV[] = "ASCEND_MC2_DEBUG_MODE";
 constexpr char DEUBG_COMM_ALG_ENV[] = "ASCEND_MC2_DEBUG_COMM_ALG";
 constexpr char DEUBG_STEP_SIZE_ENV[] = "ASCEND_MC2_DEBUG_STEP_SIZE";
+constexpr char COMM_MODE_ENV[] = "ENV_MC2_COMM_MODE_AICPU";
 constexpr char HCCL_BUFFSIZE[] = "HCCL_BUFFSIZE";
 }  // namespace
 uint8_t Mc2TilingUtils::GetDebugMode() {
@@ -55,6 +57,11 @@ uint8_t Mc2TilingUtils::GetDebugStepSize() {
   }
   OP_LOGI("", "Get ASCEND_MC2_DEBUG_STEP_SIZE is %u", debugStepSize);
   return debugStepSize;
+}
+
+uint8_t Mc2TilingUtils::GetCommModeFromEnv()
+{
+    return mc2::GetCommModeFromEnv();
 }
 
 matmul_tiling::DataType ConvertGeTypeToMmType(const std::string &opName,
