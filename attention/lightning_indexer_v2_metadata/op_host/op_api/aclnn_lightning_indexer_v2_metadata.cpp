@@ -305,16 +305,31 @@ aclnnStatus aclnnLightningIndexerV2MetadataGetWorkspaceSize(
                            aicCoreNum, aivCoreNum, socVersion);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
-    auto cuSeqlensQOptionalContiguous = l0op::Contiguous(cuSeqlensQOptional, uniqueExecutor.get());
-    CHECK_RET(cuSeqlensQOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    auto cuSeqlensKOptionalContiguous = l0op::Contiguous(cuSeqlensKOptional, uniqueExecutor.get());
-    CHECK_RET(cuSeqlensKOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    auto sequsedQOptionalContiguous = l0op::Contiguous(sequsedQOptional, uniqueExecutor.get());
-    CHECK_RET(sequsedQOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    auto sequsedKOptionalContiguous = l0op::Contiguous(sequsedKOptional, uniqueExecutor.get());
-    CHECK_RET(sequsedKOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    auto cmpResidualLKOptionalContiguous = l0op::Contiguous(cmpResidualKOptional, uniqueExecutor.get());
-    CHECK_RET(cmpResidualLKOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    const aclTensor *cuSeqlensQOptionalContiguous = nullptr;
+    if (cuSeqlensQOptional != nullptr) {
+        cuSeqlensQOptionalContiguous = l0op::Contiguous(cuSeqlensQOptional, uniqueExecutor.get());
+        CHECK_RET(cuSeqlensQOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+    const aclTensor *cuSeqlensKOptionalContiguous = nullptr;
+    if (cuSeqlensKOptional != nullptr) {
+        cuSeqlensKOptionalContiguous = l0op::Contiguous(cuSeqlensKOptional, uniqueExecutor.get());
+        CHECK_RET(cuSeqlensKOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+    const aclTensor *sequsedQOptionalContiguous = nullptr;
+    if (sequsedQOptional != nullptr) {
+        sequsedQOptionalContiguous = l0op::Contiguous(sequsedQOptional, uniqueExecutor.get());
+        CHECK_RET(sequsedQOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+    const aclTensor *sequsedKOptionalContiguous = nullptr;
+    if (sequsedKOptional != nullptr) {
+        sequsedKOptionalContiguous = l0op::Contiguous(sequsedKOptional, uniqueExecutor.get());
+        CHECK_RET(sequsedKOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+    const aclTensor *cmpResidualLKOptionalContiguous = nullptr;
+    if (cmpResidualKOptional != nullptr) {
+        cmpResidualLKOptionalContiguous = l0op::Contiguous(cmpResidualKOptional, uniqueExecutor.get());
+        CHECK_RET(cmpResidualLKOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
 
     auto output = l0op::LightningIndexerV2Metadata(
         cuSeqlensQOptionalContiguous, cuSeqlensKOptionalContiguous, sequsedQOptionalContiguous,
