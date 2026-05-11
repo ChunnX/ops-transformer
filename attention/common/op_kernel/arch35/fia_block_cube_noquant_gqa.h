@@ -18,6 +18,7 @@
 #include "../matmul.h"
 #include "../FixpipeOut.h"
 #include "../memory_copy_arch35.h"
+#include "tensor_api/include/tensor_api/tensor.h"
 
 #include "infer_flash_attention_comm.h"
 #include "flash_attention_score_common_regbase.h"
@@ -254,7 +255,9 @@ public:
                                        uint32_t actualLenQDims, FaGmTensor<Q_T, Q_FORMAT> &qGmTensor,
                                        __gm__ uint8_t *gm)
     {
-        qGmTensor.gmTensor.SetGlobalBuffer((__gm__ Q_T *)gm);
+        // qGmTensor.gmTensor.SetGlobalBuffer((__gm__ Q_T *)gm);
+        /* --------------------------------- Tensor API ------------------------------------ */
+        qGmTensor.gmTensor = MakeTensor(MakeGMmemPtr((__gm__ Q_T *)gm), MakeShape(batchSize, n2Size, gSize, qSeqSize, headDim));
         if constexpr (GmLayoutParams<Q_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_BNGSD) {
             qGmTensor.offsetCalculator.Init(batchSize, n2Size, gSize, qSeqSize, headDim, actualSeqLengthsGmQ,
                                             actualLenQDims, constInfo.isQHasLeftPadding,
@@ -269,7 +272,9 @@ public:
                                         uint32_t n2Size, uint32_t kvCacheBlockSize, uint32_t headDim,
                                         FaGmTensor<KV_T, KV_FORMAT> &kvGmTensor, __gm__ uint8_t *gm)
     {
-        kvGmTensor.gmTensor.SetGlobalBuffer((__gm__ KV_T *)gm);
+        // kvGmTensor.gmTensor.SetGlobalBuffer((__gm__ KV_T *)gm);
+        /* --------------------------------- Tensor API ------------------------------------ */
+        kvGmTensor.gmTensor = MakeTensor(MakeGMmemPtr((__gm__ KV_T *)gm), MakeShape(batchSize, n2Size, kvSeqSize, headDim));
 
         if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_BNBD) {
             kvGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, headDim, blockTableGm,

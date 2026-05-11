@@ -768,7 +768,9 @@ __aicore__ inline void MatmulK(const LocalTensor<A> &aL1Tensor,
 
         Buffer<BufferType::L0B> l0bBuffer = bL0BuffsDb.Get();
         l0bBuffer.Wait<HardEvent::M_MTE1>(); // mte1等Matmul：上一轮matmul完成后才能搬运新数据到L0B
-        LocalTensor<L0BDType> L0BTensor = l0bBuffer.GetTensor<L0BDType>();
+        // LocalTensor<L0BDType> L0BTensor = l0bBuffer.GetTensor<L0BDType>();
+        /* --------------------------------- Tensor API ------------------------------------ */
+        LocalTensor<L0BDType> L0BTensor = MakeTensor(MakeL0BmemPtr<L0BDType>(k * L1Boffset), MakeShape(tileK, param.singleN));
         uint64_t loopNum = param.isRightTranspose ? 1 : kLoops;
 #if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
         if constexpr (IsSameType<L0BDType, mx_fp8_e4m3_t>::value) {
