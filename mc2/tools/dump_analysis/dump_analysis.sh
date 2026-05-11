@@ -41,6 +41,7 @@ function help {
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 SOC_VERSION_950="950"
 SOC_VERSION_910_93="910_93"
+SOC_VERSION_910B="910B"
 
 #入参
 for arg in "$@"; do
@@ -103,7 +104,7 @@ fi
 if [ ! -n "$SOC_VERSION" ]; then
     echo "warning:SOC_VERSION 参数未输入,不进行dump数据解析"
 else
-    if [ "$SOC_VERSION" != "$SOC_VERSION_910_93" ] && [ "$SOC_VERSION" != "$SOC_VERSION_950" ]; then
+    if [ "$SOC_VERSION" != "$SOC_VERSION_910_93" ] && [ "$SOC_VERSION" != "$SOC_VERSION_950" ] && [ "$SOC_VERSION" != "$SOC_VERSION_910B" ]; then
         echo "warning:SOC_VERSION:$SOC_VERSION 为非法输入"
     fi
 fi
@@ -333,6 +334,36 @@ elif [ "$SOC_VERSION" = "$SOC_VERSION_950" ]; then
                 fi
             done
         fi
+    else
+        echo "error:路径 $TARGET_DIR 下没有以mc2_exception_info开头的dump数据"
+    fi
+elif [ "$SOC_VERSION" = "$SOC_VERSION_910B" ]; then
+    echo "进入 A2 处理流程"
+    if ls "$TARGET_DIR/1/mc2_exception_info"* >/dev/null 2>&1; then
+        echo "开始解析多卡dump数据"
+        for ((i = 0; i < file_num; i++))
+        do
+            if ls "$TARGET_DIR$i/exception_info."*.workspace.* >/dev/null 2>&1; then
+                echo "开始解析 $i 卡数据"
+                python3 $SCRIPT_DIR/dump_analysis.py $SP_MOE_NUM $TP_WORLDSIZE $SHARE_EXPERT_CARD_COUNT $SHARE_EXPERT_NUM $file_num $i $TARGET_DIR$i/ $SOC_VERSION
+                echo "$i 卡数据解析完成"
+                echo "--------------------------------------------"
+            else
+                for file_dump in $TARGET_DIR$i/exception_info.*;
+                do
+                    if [[ -f "$file_dump" ]]; then
+                        echo "开始解析 $i 卡数据"
+                        python3 $TOOL_PATH/tools/msaicerr/msaicerr.py -d "$file_dump"
+                        python3 $SCRIPT_DIR/dump_analysis.py $SP_MOE_NUM $TP_WORLDSIZE $SHARE_EXPERT_CARD_COUNT $SHARE_EXPERT_NUM $file_num $i $TARGET_DIR$i/ $SOC_VERSION
+                        echo "$i 卡数据解析完成"
+                        echo "--------------------------------------------"
+                    else
+                        echo "error:路径 $TARGET_DIR$i/ 下没有dump数据"
+                        echo "--------------------------------------------"
+                    fi
+                done
+            fi
+        done
     else
         echo "error:路径 $TARGET_DIR 下没有以mc2_exception_info开头的dump数据"
     fi
