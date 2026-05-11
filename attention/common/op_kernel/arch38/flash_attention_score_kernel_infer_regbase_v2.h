@@ -125,7 +125,6 @@ __aicore__ inline void FlashAttentionScoreKernelInferRegbaseV2<CubeBlockType, Ve
     int64_t taskId = 0;
     bool notLast = true;
     bool isLastBmm1 = false;
-    LocalTensor<INPUT_T> scmTensor[2];
     RunInfo<isInfer> runInfo[4];
     RunParamStr<isInfer> runParam;
 

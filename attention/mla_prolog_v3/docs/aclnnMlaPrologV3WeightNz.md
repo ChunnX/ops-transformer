@@ -140,72 +140,672 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
 
 - **参数说明**
 
-  | 参数名                     | 输入/输出/属性 | 描述             | 使用说明       | A2/A3支持数据类型       | Ascend 950PR/Ascend 950DT支持数据类型| 数据格式   | 维度(shape)    |非连续Tensor |
-  |----------------------------|-----------|----------------------------------------------|----------------|----------------|-|------------|-----------------|-------|
-  | tokenX          | 输入      | 公式中用于计算Query和Key的输入tensor。    | - 支持B=0,S=0,T=0的空Tensor   | BFLOAT16、INT8 | BFLOAT16、FLOAT8_E4M3FN、INT8、HIFLOAT8 | ND    | - BS合轴：(T,He) <br>- BS非合轴：(B,S,He)         |×   |
-  | weightDq        | 输入      | 公式中用于计算Query的下采样权重矩阵$W^{DQ}$。<br>在不转置的情况下各个维度的表示：（k，n）| - 不支持空Tensor      | BFLOAT16、INT8 | BFLOAT16、FLOAT8_E4M3FN、INT8、HIFLOAT8 | FRACTAL_NZ | (He,Hcq)                      |×   |
-  | weightUqQr      | 输入      | 公式中用于计算Query的上采样权重矩阵$W^{UQ}$和位置编码权重矩阵$W^{QR}$。<br>在不转置的情况下各个维度的表示：（k，n） | - 不支持空Tensor  | BFLOAT16、INT8 | BFLOAT16、INT8、FLOAT8_E4M3FN、HIFLOAT8| FRACTAL_NZ | (Hcq,N*(D+Dr))                |×   |
-  | weightUk        | 输入      | 公式中用于计算Key的上采样权重$W^{UK}$。           | - 不支持空Tensor     | BFLOAT16       | BFLOAT16 | ND         | (N,D,Hckv)                    |×   |
-  | weightDkvKr     | 输入      | 公式中用于计算Key的下采样权重矩阵$W^{DKV}$和位置编码权重矩阵$W^{KR}$。<br>在不转置的情况下各个维度的表示：（k，n） | - 不支持空Tensor  | BFLOAT16、INT8 | BFLOAT16、FLOAT8_E4M3FN、INT8、HIFLOAT8 |  FRACTAL_NZ | (He,Hckv+Dr)                  |×   |
-  | rmsnormGammaCq  | 输入      | 计算$c^Q$的RmsNorm公式中的$\gamma$参数。        | - 不支持空Tensor   | BFLOAT16       | BFLOAT16 | ND         | (Hcq)                         |×   |
-  | rmsnormGammaCkv | 输入      | 计算$c^{KV}$的RmsNorm公式中的$\gamma$参数。      | - 不支持空Tensor | BFLOAT16       | BFLOAT16 | ND         | (Hckv)                        |×   |
-  | ropeSin         | 输入      | 用于计算旋转位置编码的正弦参数矩阵。              | - 支持B=0,S=0,T=0的空Tensor | BFLOAT16       | BFLOAT16| ND         | - BS合轴：(T,Dr) <br>- BS非合轴：(B,S,Dr)         |×   |
-  | ropeCos         | 输入      | 用于计算旋转位置编码的余弦参数矩阵。           | - 支持B=0,S=0,T=0的空Tensor  | BFLOAT16       | BFLOAT16| ND         | - BS合轴：(T,Dr) <br>- BS非合轴：(B,S,Dr)         |×   |
-  | kvCacheRef      | 输入/输出      | 用于cache索引的aclTensor，计算结果原地更新（对应公式中的$k^C$）。  | - 支持B=0,Skv=0的空Tensor；Nkv与N关联，N是超参，故Nkv不支持等于0  | BFLOAT16、INT8 | BFLOAT16、INT8、FLOAT8_E4M3FN、HIFLOAT8 | ND   | - CacheMode="PA_BSND"/"PA_NZ"/"PA_BLK_BSND"/"PA_BLK_NZ": (BlockNum,BlockSize,Nkv,Dtile) <br> - CacheMode="BSND": (B,S,Nkv,Dtile) <br> - CacheMode="TND": (T,Nkv,Dtile) |×   |
-  | krCacheRef      | 输入/输出      | 用于key位置编码的cache，计算结果原地更新（对应公式中的$k^R$）。    | - 支持B=0,Skv=0的空Tensor；Nkv与N关联，N是超参，故Nkv不支持等于0 | BFLOAT16、INT8 | BFLOAT16、INT8 | ND         | - CacheMode="PA_BSND"/"PA_NZ"/"PA_BLK_BSND"/"PA_BLK_NZ": (BlockNum,BlockSize,Nkv,Dr) <br> - CacheMode="BSND": (B,S,Nkv,Dr) <br> - CacheMode="TND"时: (T,Nkv,Dr) <br> - 当ckvkrRepoMode=1时: 维度应包含0，支持维度为(0) |×   |
-  | cacheIndexOptional | 输入      | 用于存储kvCache和krCache的索引。| - 支持B=0,S=0,T=0的空Tensor <br>- cacheMode="PA_BSND"/"PA_NZ": 取值范围需在[0,BlockNum*BlockSize)内 <br>- cacheMode="PA_BLK_BSND"/"PA_BLK_NZ": 取值范围需在[0,BlockNum)内 <br>- cacheMode="TND"/"BSND": nullptr | INT64   | INT64 | ND  | - CacheMode="PA_BSND"/"PA_NZ": <br>1. BS合轴：(T) <br>2. BS非合轴：(B,S) <br>- CacheMode="PA_BLK_BSND"/"PA_BLK_NZ": <br> 1. BS合轴：(Sum(Ceil(S_i/BlockSize)))，S_i为每个Batch中的S的长度 <br> 2. BS非合轴：(B,Ceil(S/BlockSize)) <br>- CacheMode="TND"/"BSND": nullptr |×   |
-  | dequantScaleXOptional      | 输入      | tokenX的反量化参数。 | - 支持B=0,S=0,T=0的空Tensor（weightQuantMode=2/3/4/5的场景需传）   | FLOAT          | FLOAT8_E8M0、FLOAT | ND         | - weightQuantMode=2/4/5： <br>1. BS合轴：(T, 1) <br>2. BS非合轴：(B\*S,1) <br>- weightQuantMode=3： <br>  1. BS合轴：(T, He/32) <br>  2. BS非合轴：(B*S, He/32)                               |×   |
-  | dequantScaleWDqOptional    | 输入      | weightDq的反量化参数。   | - 支持非空Tensor（weightQuantMode=2/3/4/5的场景需传）    | FLOAT          | FLOAT8_E8M0、FLOAT| ND          | - weightQuantMode=2/4/5：(1,Hcq) <br> - weightQuantMode=3：(Hcq, He/32)                                 |×   |
-  | dequantScaleWUqQrOptional  | 输入      | 用于MatmulQcQr矩阵乘后反量化操作的per-channel参数。 | - 支持非空Tensor（weightQuantMode=1/2/3/4/5的场景需传）  | FLOAT          | FLOAT、FLOAT8_E8M0 | ND         | - weightQuantMode=1/2/4/5：(1,N*(D+Dr))<br> - weightQuantMode=3： (N*(D+Dr), Hcq/32)     |×   |
-  | dequantScaleWDkvKrOptional | 输入      | weightDkvKr的反量化参数。   | - 支持非空Tensor（weightQuantMode=2/3/4/5的场景需传）   | FLOAT          | FLOAT8_E8M0、FLOAT| ND         | - weightQuantMode=2/4/5：(1,Hckv+Dr) <br> - weightQuantMode=3：(Hckv+Dr, He/32) |×   |
-  | quantScaleCkvOptional      | 输入      | 用于对kvCache输出数据做量化操作的参数。 | - 支持非空Tensor（kvCacheQuantMode=1/2的场景需传）  | FLOAT          | FLOAT| ND         | - kvCacheQuantMode=1：(1) <br> - kvCacheQuantMode=2：(1,Hckv) |×   |
-  | quantScaleCkrOptional      | 输入      | 用于对krCache输出数据做量化操作的参数。| - 支持非空Tensor（kvCacheQuantMode=2的场景需传）    | FLOAT    | FLOAT | ND   | (1,Dr)     |×   |
-  | smoothScalesCqOptional     | 输入      | 用于对RmsNormCq输出做动态量化操作的参数。   | - 支持非空Tensor（weightQuantMode=1/2/4/5的场景可选传）| FLOAT  | FLOAT | ND | (1,Hcq)                       |×   |
-  | actualSeqLenOptional     | 输入      | 表示每个batch中的序列长度，以前缀和的形式储存。 | - BS合轴且CacheMode="PA_BLK_BSND"/"PA_BLK_NZ"时需传  | INT32    | INT32 | ND   | (B)     |×   |
-  | kNopeClipAlphaOptional     | 输入      | 表示对kvCache做clip操作时的缩放因子。  | - 在部分量化和int8全量化的per-tile场景下shape为1，其余场景可不填，不支持空Tensor | FLOAT  | - | ND | (1)    |×   |
-  | rmsnormEpsilonCq           | 输入      | 计算$c^Q$的RmsNorm公式中的$\epsilon$参数。        | - 用户未特意指定时，建议传入1e-05 - 仅支持double类型 | DOUBLE         | DOUBLE | -          | - |-   |
-  | rmsnormEpsilonCkv          | 输入      | 计算$c^{KV}$的RmsNorm公式中的$\epsilon$参数。   | - 用户未特意指定时，建议传入1e-05 - 仅支持double类型   | DOUBLE         | DOUBLE | -          | -  |-   |
-  | cacheModeOptional          | 输入      | 表示kvCache的模式。| - 用户未特意指定时，建议传入"PA_BSND" <br> - 仅支持char*类型 <br> - 可选值为："PA_BSND"、 "PA_NZ"、 "PA_BLK_BSND"、 "PA_BLK_NZ"、 "BSND"、 "TND" | CHAR*          | CHAR* | -          | - |-   |
-  | queryNormFlag     | 输入      | 表示是否输出queryNormOutOptional、dequantScaleQNormOutOptional。  | - false表示不输出，true表示输出，默认值为false | BOOL  | BOOL| -- | --    |-   |
-  | weightQuantMode     | 输入      | 表示weightDq、weightUqQr、weightUk、weightDkvKr的量化模式。  | - 0表示非量化，1表示weightUqQr量化，2表示weightDq、weightUqQr、weightDkvKr int8量化，3表示weightDq、weightUqQr、weightDkvKr mxfp8量化，4表示weightDq、weightUqQr、weightDkvKr fp8量化，5表示weightDq、weightUqQr、weightDkvKr hif8量化，默认值为0 | INT  | INT| -- | --    |-   |
-  | kvCacheQuantMode     | 输入      | 表示kvCache的量化模式。  | - 0表示非量化，1表示per-tensor量化，2表示per-channel量化，3-表示per-tile量化，默认值为0| INT64  | INT64| -- | --    |-   |
-  | queryQuantMode     | 输入      | 表示query的量化模式。  | - 0表示非量化，1表示per-token-head量化，默认值为0| INT64  | INT64| -- | --    |-   |
-  | ckvkrRepoMode     | 输入      | 表示kvCache和krCache的存储模式。  | - 0表示kvCache和krCache分别存储，1表示kvCache和krCache合并存储，默认值为0| INT64  | INT64 | -- | --    |-   |
-  | quantScaleRepoMode     | 输入      | 表示量化scale的存储模式。  | - 0表示量化scale和数据分别存储，1表示量化scale和数据合并存储作为kvCacheRef输出，默认值为0| INT64  | INT64 | -- | --    |-   |
-  | tileSize     | 输入      | 表示per-tile量化时每个tile的大小，仅在kvCacheQuantMode为3时有效。  | - 默认值为128 | INT64 | INT64 | -- | --    |-   |
-  | qcQrScale     | 输入      |   表示Query的尺度矫正系数。  | - 用户不特意指定时需要传入1.0 | DOUBLE | DOUBLE | -   | -  |- |
-  | kcScale     | 输入      |   表示Key的尺度矫正系数。  | - 用户不特意指定时需要传入1.0 | DOUBLE | DOUBLE | -    | -  |- |
-  | queryOut                   | 输出      | 公式中Query的输出tensor（对应$q^N$）。     | -  | BFLOAT16、INT8 | BFLOAT16、FLOAT8_E4M3FN、INT8、HIFLOAT8 | ND         | - BS合轴：(T,N,Hckv) <br>- BS非合轴：(B,S,N,Hckv) |×   |
-  | queryRopeOut               | 输出      | 公式中Query位置编码的输出tensor（对应$q^R$）。  | - | BFLOAT16       | BFLOAT16 | ND         | - BS合轴：(T,N,Dr) <br>- BS非合轴：(B,S,N,Dr)     |×   |
-  | dequantScaleQNopeOutOptional  | 输出           | 公式中Query输出的反量化参数。  | - weightQuantMode=2/3/4/5时输出，weightQuantMode=0/1时为nullptr     | FLOAT      | FLOAT| ND   | - BS合轴：(T,N,1) <br>- BS非合轴：(B*S,N,1)   |×   |
-  | queryNormOutOptional     | 输出      | 公式中tokenX做rmsNorm后的输出tensor（对应$c^Q$）。  | - queryNormFlag=true时输出  | BFLOAT16、INT8  | BFLOAT16、INT8、FLOAT8_E4M3FN、HIFLOAT8 | ND | - BS合轴：(T,Hcq) <br> - BS非合轴：(B,S,Hcq)  |×   |
-  | dequantScaleQNormOutOptional     | 输出      | queryNormOutOptional的反量化参数。  | - queryNormFlag=true，weightQuantMode=1/2/3/4/5时输出，weightQuantMode=0时为nullptr | FLOAT  | FLOAT、FLOAT8_E8M0 | ND | - weightQuantMode=1/2/4/5：<br> 1. BS合轴：（T,1）<br> 2. BS非合轴：（B*S,1） <br> -weightQuantMode=3： <br>  1. BS合轴：(T, Hcq/32) <br>  2. BS非合轴：(B\*S, Hcq/32) |×   |
-  | workspaceSize              | 输出      | 返回需在Device侧申请的workspace大小。  | - 仅用于输出结果，无需输入配置 - 数据类型为uint64_t* | -              | -| -          | -                                  |-   |
-  | executor                   | 输出      | 返回op执行器，包含算子计算流程。        | - 仅用于输出结果，无需输入配置 - 数据类型为aclOpExecutor**    | -              | -| -          | -                                  |-   |
+    <table style="undefined;table-layout: fixed; width: 1625px"><colgroup>
+    <col style="width: 247px">
+    <col style="width: 132px">
+    <col style="width: 232px">
+    <col style="width: 293px">
+    <col style="width: 185px">
+    <col style="width: 119px">
+    <col style="width: 272px">
+    <col style="width: 145px">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>参数名</th>
+        <th>输入/输出</th>
+        <th>描述</th>
+        <th>使用说明</th>
+        <th>数据类型</th>
+        <th>数据格式</th>
+        <th>维度（shape）</th>
+        <th>非连续Tensor</th>
+      </tr>
+    </thead>
+      <tr>
+        <td>tokenX</td>
+        <td>输入</td>
+        <td>公式中用于计算Query和Key的输入tensor。</td>
+        <td>支持B=0,S=0,T=0的空Tensor</td>
+        <td>BFLOAT16、FLOAT8_E4M3FN、INT8、HIFLOAT8</td>
+        <td>ND</td>
+        <td>
+          <ul>
+            <li>BS合轴：(T, He)</li>
+            <li>BS非合轴：(B, S, He)</li>
+          </ul>
+        </td>
+        <td>×</td>
+      </tr>
+      <tr>
+        <td>weightDq</td>
+        <td>输入</td>
+        <td>公式中用于计算Query的下采样权重矩阵<i>W<sup><i>DQ</i></sup></i>。<br>在不转置的情况下各个维度的表示：（k, n）</td>
+        <td>不支持空Tensor</td>
+        <td>BFLOAT16、FLOAT8_E4M3FN、INT8、HIFLOAT8</td>
+        <td>FRACTAL_NZ</td>
+        <td>(He, Hcq)</td>
+        <td>×</td>
+      </tr>
+      <tr>
+        <td>weightUqQr</td>
+        <td>输入</td>
+        <td>公式中用于计算Query的上采样权重矩阵<i>W<sup><i>UQ</i></sup></i>和位置编码权重矩阵<i>W<sup><i>QR</i></sup></i>。<br>在不转置的情况下各个维度的表示：（k, n）</td>
+        <td>不支持空Tensor</td>
+        <td>BFLOAT16、INT8、FLOAT8_E4M3FN、HIFLOAT8</td>
+        <td>FRACTAL_NZ</td>
+        <td>(Hcq, N*(D+Dr))</td>
+        <td>×</td>
+      </tr>
+      <tr>
+        <td>weightUk</td>
+        <td>输入</td>
+        <td>公式中用于计算Key的上采样权重<i>W<sup><i>UK</i></sup></i>。</td>
+        <td>不支持空Tensor</td>
+        <td>BFLOAT16</td>
+        <td>ND</td>
+        <td>(N, D, Hckv)</td>
+        <td>×</td>
+      </tr>
+      <tr>
+        <td>weightDkvKr</td>
+        <td>输入</td>
+        <td>公式中用于计算Key的下采样权重矩阵<i>W<sup><i>DKV</i></sup></i>和位置编码权重矩阵<i>W<sup><i>KR</i></sup></i>。<br>在不转置的情况下各个维度的表示：（k, n）</td>
+        <td>不支持空Tensor</td>
+        <td>BFLOAT16、FLOAT8_E4M3FN、INT8、HIFLOAT8</td>
+        <td>FRACTAL_NZ</td>
+        <td>(He,Hckv+Dr)</td>
+        <td>×</td>
+      </tr>
+      <tr>
+        <td>rmsnormGammaCq</td>
+        <td>输入</td>
+        <td>计算<i>c<sup><i>Q</i></sup></i>的RmsNorm公式中的<i>γ</i>参数。</td>
+        <td>不支持空Tensor</td>
+        <td>BFLOAT16</td>
+        <td>ND</td>
+        <td>(Hcq)</td>
+        <td>×</td>
+      </tr>
+      <tr>
+        <td>rmsnormGammaCkv</td>
+        <td>输入</td>
+        <td>计算<i>c<sup><i>KV</i></sup></i>的RmsNorm公式中的<i>γ</i>参数。</td>
+        <td>不支持空Tensor</td>
+        <td>BFLOAT16</td>
+        <td>ND</td>
+        <td>(Hckv)</td>
+        <td>×</td>
+      </tr>
+      <tr>
+        <td>ropeSin</td>
+        <td>输入</td>
+        <td>用于计算旋转位置编码的正弦参数矩阵。</td>
+        <td>支持B=0,S=0,T=0的空Tensor</td>
+        <td>BFLOAT16</td>
+        <td>ND</td>
+        <td>
+          <ul>
+            <li>BS合轴：(T,Dr)</li>
+            <li>BS非合轴：(B,S,Dr)</li>
+          </ul>
+        </td>
+        <td>×</td>
+      </tr>
+      <tr>
+        <td>ropeCos</td>
+        <td>输入</td>
+        <td>用于计算旋转位置编码的余弦参数矩阵。</td>
+        <td>支持B=0,S=0,T=0的空Tensor</td>
+        <td>BFLOAT16</td>
+        <td>ND</td>
+        <td>
+          <ul>
+            <li>BS合轴：(T,Dr)</li>
+            <li>BS非合轴：(B,S,Dr)</li>
+          </ul>
+        </td>
+        <td>×</td>
+      </tr>
+      <tr>
+        <td>kvCacheRef</td>
+        <td>输入/输出</td>
+        <td>用于cache索引的aclTensor，计算结果原地更新（对应公式中的<i>k<sup><i>C</i></sup></i>）。</td>
+        <td>
+        <ul style="margin:0; padding-left:20px;">
+            <li>支持B=0,Skv=0的空Tensor；</li>
+            <li>Nkv与N关联，N是超参，故Nkv不支持等于0</li>
+        </ul>
+        </td>
+        <td>BFLOAT16、INT8、FLOAT8_E4M3FN、HIFLOAT8</td>
+        <td>ND</td>
+        <td>
+          <ul>
+            <li>CacheMode="PA_BSND"/"PA_NZ"/"PA_BLK_BSND"/"PA_BLK_NZ": (BlockNum,BlockSize,Nkv,Dtile)</li>
+            <li>CacheMode="BSND": (B,S,Nkv,Dtile)</li>
+            <li>CacheMode="TND": (T,Nkv,Dtile)</li>
+          </ul>
+        </td>
+        <td>×</td>
+      </tr>
+      <tr>
+        <td>krCacheRef</td>
+        <td>输入/输出</td>
+        <td>用于key位置编码的cache，计算结果原地更新（对应公式中的<i>k<sup><i>R</i></sup></i>）。</td>
+        <td>
+        <ul style="margin:0; padding-left:20px;">
+            <li>支持B=0,Skv=0的空Tensor；</li>
+            <li>Nkv与N关联，N是超参，故Nkv不支持等于0</li>
+        </ul>
+        </td>
+        <td>BFLOAT16、INT8</td>
+        <td>ND</td>
+        <td>
+          <ul>
+            <li>CacheMode="PA_BSND"/"PA_NZ"/"PA_BLK_BSND"/"PA_BLK_NZ": (BlockNum,BlockSize,Nkv,Dr)</li>
+            <li>CacheMode="BSND": (B,S,Nkv,Dr)</li>
+            <li>CacheMode="TND"时: (T,Nkv,Dr)</li>
+            <li>当ckvkrRepoMode=1时: 维度应包含0，支持shape为(0)</li>
+          </ul>
+        </td>
+        <td>×</td>
+      </tr>
+      <tr>
+        <td>cacheIndexOptional</td>
+        <td>输入</td>
+        <td>用于存储kvCache和krCache的索引。</td>
+        <td>
+        <ul>
+            <li>支持B=0,S=0,T=0的空Tensor</li>
+            <li>cacheMode="PA_BSND"/"PA_NZ": 取值范围需在[0,BlockNum*BlockSize)内</li>
+            <li>cacheMode="PA_BLK_BSND"/"PA_BLK_NZ": 取值范围需在[0,BlockNum)内</li>
+            <li>cacheMode="TND"/"BSND": nullptr</li>
+        </ul>
+        </td>
+        <td>INT64</td>
+        <td>ND</td>
+        <td>
+          <ul>
+            <li>CacheMode="PA_BSND"/"PA_NZ":
+              <ol>
+                <li>BS合轴：(T)</li>
+                <li>BS非合轴：(B,S)</li>
+              </ol>
+            </li>
+            <li>CacheMode="PA_BLK_BSND"/"PA_BLK_NZ":
+              <ol>
+                <li>BS合轴：(Sum(⌈S<sub>i</sub>/BlockSize⌉))，S<sub>i</sub> 为每个Batch中的S的长度</li>
+                <li>BS非合轴：(B,⌈S/BlockSize⌉)</li>
+              </ol>
+            </li>
+            <li>CacheMode="TND"/"BSND": nullptr</li>
+          </ul>
+        </td>
+        <td>×</td>
+      </tr>
+      <tr>
+        <td>dequantScaleXOptional</td>
+        <td>输入</td>
+        <td>tokenX的反量化参数。</td>
+        <td>支持B=0,S=0,T=0的空Tensor（weightQuantMode=2/3/4/5的场景需传）</td>
+        <td>FLOAT8_E8M0、FLOAT</td>
+        <td>ND</td>
+        <td>
+          <ul>
+            <li>weightQuantMode=2/4/5：
+              <ol>
+                <li>BS合轴：(T, 1)</li>
+                <li>BS非合轴：(B*S,1)</li>
+              </ol>
+            </li>
+            <li>weightQuantMode=3：
+              <ol>
+                <li>BS合轴：(T, He/32)</li>
+                <li>BS非合轴：(B*S, He/32)</li>
+              </ol>
+            </li>
+          </ul>
+        </td>
+        <td>×</td>
+      </tr>
+      <tr>
+        <td>dequantScaleWDqOptional</td>
+        <td>输入</td>
+        <td>weightDq的反量化参数。</td>
+        <td>支持非空Tensor（weightQuantMode=2/3/4/5的场景需传）</td>
+        <td>FLOAT8_E8M0、FLOAT</td>
+        <td>ND</td>
+        <td>
+          <ul>
+            <li>weightQuantMode=2/4/5：(1,Hcq)</li>
+            <li>weightQuantMode=3：(Hcq, He/32)</li>
+          </ul>
+        </td>
+        <td>×</td>
+      </tr>
+      <tr>
+        <td>dequantScaleWUqQrOptional</td>
+        <td>输入</td>
+        <td>用于MatmulQcQr矩阵乘后反量化操作的per-channel参数。</td>
+        <td>支持非空Tensor（weightQuantMode=1/2/3/4/5的场景需传）</td>
+        <td>FLOAT、FLOAT8_E8M0</td>
+        <td>ND</td>
+        <td>
+          <ul>
+            <li>weightQuantMode=1/2/4/5：(1,N*(D+Dr))</li>
+            <li>weightQuantMode=3：(N*(D+Dr), Hcq/32)</li>
+          </ul>
+        </td>
+        <td>×</td>
+      </tr>
+      <tr>
+        <td>dequantScaleWDkvKrOptional</td>
+        <td>输入</td>
+        <td>weightDkvKr的反量化参数。</td>
+        <td>支持非空Tensor（weightQuantMode=2/3/4/5的场景需传）</td>
+        <td>FLOAT8_E8M0、FLOAT</td>
+        <td>ND</td>
+        <td>
+          <ul>
+            <li>weightQuantMode=2/4/5：(1,Hckv+Dr)</li>
+            <li>weightQuantMode=3：(Hckv+Dr, He/32)</li>
+          </ul>
+        </td>
+        <td>×</td>
+      </tr>
+      <tr>
+        <td>quantScaleCkvOptional</td>
+        <td>输入</td>
+        <td>用于对kvCache输出数据做量化操作的参数。</td>
+        <td>支持非空Tensor（kvCacheQuantMode=1/2的场景需传）</td>
+        <td>FLOAT</td>
+        <td>ND</td>
+        <td>
+          <ul>
+            <li>kvCacheQuantMode=1：(1)</li>
+            <li>kvCacheQuantMode=2：(1,Hckv)</li>
+          </ul>
+        </td>
+        <td>×</td>
+      </tr>
+      <tr>
+        <td>quantScaleCkrOptional</td>
+        <td>输入</td>
+        <td>用于对krCache输出数据做量化操作的参数。</td>
+        <td>支持非空Tensor（kvCacheQuantMode=2的场景需传）</td>
+        <td>FLOAT</td>
+        <td>ND</td>
+        <td>(1,Dr)</td>
+        <td>×</td>
+      </tr>
+      <tr>
+        <td>smoothScalesCqOptional</td>
+        <td>输入</td>
+        <td>用于对RmsNormCq输出做动态量化操作的参数。</td>
+        <td>支持非空Tensor（weightQuantMode=1/2/4/5的场景可选传）</td>
+        <td>FLOAT</td>
+        <td>ND</td>
+        <td>(1,Hcq)</td>
+        <td>×</td>
+      </tr>
+      <tr>
+        <td>actualSeqLenOptional</td>
+        <td>输入</td>
+        <td>表示每个batch中的序列长度，以前缀和的形式储存。</td>
+        <td>BS合轴且CacheMode="PA_BLK_BSND"/"PA_BLK_NZ"时需传</td>
+        <td>INT32</td>
+        <td>ND</td>
+        <td>(B)</td>
+        <td>×</td>
+      </tr>
+      <tr>
+        <td>kNopeClipAlphaOptional</td>
+        <td>输入</td>
+        <td>表示对kvCache做clip操作时的缩放因子。</td>
+        <td>在部分量化per-tile场景和int8全量化per-tile场景下shape为1，其余场景可不填，不支持空Tensor</td>
+        <td>FLOAT</td>
+        <td>ND</td>
+        <td>(1)</td>
+        <td>×</td>
+      </tr>
+      <tr>
+        <td>rmsnormEpsilonCq</td>
+        <td>输入</td>
+        <td>计算<i>c<sup><i>Q</i></sup></i>的RmsNorm公式中的<i>ε</i>参数。</td>
+        <td>
+        <ul>
+            <li>用户未特意指定时，建议传入1e-05</li>
+            <li>仅支持double类型</li>
+        </ul>
+        </td>
+        <td>DOUBLE</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>rmsnormEpsilonCkv</td>
+        <td>输入</td>
+        <td>计算<i>c<sup><i>KV</i></sup></i>的RmsNorm公式中的<i>ε</i>参数。</td>
+        <td>
+        <ul>
+            <li>用户未特意指定时，建议传入1e-05</li>
+            <li>仅支持double类型</li>
+        </ul>
+        </td>
+        <td>DOUBLE</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>cacheModeOptional</td>
+        <td>输入</td>
+        <td>表示kvCache的模式。</td>
+        <td>
+        <ul>
+            <li>用户未特意指定时，建议传入"PA_BSND"</li>
+            <li>仅支持char*类型</li>
+            <li>可选值为："PA_BSND"、 "PA_NZ"、 "PA_BLK_BSND"、 "PA_BLK_NZ"、 "BSND"、 "TND"</li>
+        </ul>
+        </td>
+        <td>CHAR*</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>queryNormFlag</td>
+        <td>输入</td>
+        <td>表示是否输出queryNormOutOptional、dequantScaleQNormOutOptional。</td>
+        <td>false表示不输出，true表示输出，默认值为false</td>
+        <td>BOOL</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>weightQuantMode</td>
+        <td>输入</td>
+        <td>表示weightDq、weightUqQr、weightUk、weightDkvKr的量化模式。</td>
+        <td>
+        <ul>
+            <li>0 表示非量化</li>
+            <li>1 表示 weightUqQr 量化</li>
+            <li>2 表示 weightDq、weightUqQr、weightDkvKr int8 量化</li>
+            <li>3 表示 weightDq、weightUqQr、weightDkvKr mxfp8 量化</li>
+            <li>4 表示 weightDq、weightUqQr、weightDkvKr fp8 量化</li>
+            <li>5 表示 weightDq、weightUqQr、weightDkvKr hif8 量化</li>
+            <li>默认值为 0</li>
+        </ul>
+        </td>
+        <td>INT</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>kvCacheQuantMode</td>
+        <td>输入</td>
+        <td>表示kvCache的量化模式。</td>
+        <td>0表示非量化，1表示per-tensor量化，2表示per-channel量化，3表示per-tile量化，默认值为0</td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>queryQuantMode</td>
+        <td>输入</td>
+        <td>表示query的量化模式。</td>
+        <td>0表示非量化，1表示per-token-head量化，默认值为0</td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>ckvkrRepoMode</td>
+        <td>输入</td>
+        <td>表示kvCache和krCache的存储模式。</td>
+        <td>0表示kvCache和krCache分别存储，1表示kvCache和krCache合并存储，默认值为0</td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>quantScaleRepoMode</td>
+        <td>输入</td>
+        <td>表示量化scale的存储模式。</td>
+        <td>0表示量化scale和数据分别存储，1表示量化scale和数据合并存储作为kvCacheRef输出，默认值为0</td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>tileSize</td>
+        <td>输入</td>
+        <td>表示per-tile量化时每个tile的大小，仅在kvCacheQuantMode为3时有效。</td>
+        <td>默认值为128</td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>qcQrScale</td>
+        <td>输入</td>
+        <td>表示Query的尺度矫正系数。</td>
+        <td>用户不特意指定时需要传入1.0</td>
+        <td>DOUBLE</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>kcScale</td>
+        <td>输入</td>
+        <td>表示Key的尺度矫正系数。</td>
+        <td>用户不特意指定时需要传入1.0</td>
+        <td>DOUBLE</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>queryOut</td>
+        <td>输出</td>
+        <td>公式中Query的输出tensor（对应<i>q<sup><i>N</i></sup></i>）。</td>
+        <td>-</td>
+        <td>BFLOAT16、FLOAT8_E4M3FN、INT8、HIFLOAT8</td>
+        <td>ND</td>
+        <td>
+          <ul>
+            <li>BS合轴：(T,N,Hckv)</li>
+            <li>BS非合轴：(B,S,N,Hckv)</li>
+          </ul>
+        </td>
+        <td>×</td>
+      </tr>
+      <tr>
+        <td>queryRopeOut</td>
+        <td>输出</td>
+        <td>公式中Query位置编码的输出tensor（对应<i>q<sup><i>R</i></sup></i>）。</td>
+        <td>-</td>
+        <td>BFLOAT16</td>
+        <td>ND</td>
+        <td>
+          <ul>
+            <li>BS合轴：(T,N,Dr)</li>
+            <li>BS非合轴：(B,S,N,Dr)</li>
+          </ul>
+        </td>
+        <td>×</td>
+      </tr>
+      <tr>
+        <td>dequantScaleQNopeOutOptional</td>
+        <td>输出</td>
+        <td>公式中Query输出的反量化参数。</td>
+        <td>weightQuantMode=2/3/4/5时输出，weightQuantMode=0/1时为nullptr</td>
+        <td>FLOAT</td>
+        <td>ND</td>
+        <td>
+          <ul>
+            <li>BS合轴：(T,N,1)</li>
+            <li>BS非合轴：(B*S,N,1)</li>
+          </ul>
+        </td>
+        <td>×</td>
+      </tr>
+      <tr>
+        <td>queryNormOutOptional</td>
+        <td>输出</td>
+        <td>公式中tokenX做rmsNorm后的输出tensor（对应<i>c<sup><i>Q</i></sup></i>）。</td>
+        <td>queryNormFlag=true时输出</td>
+        <td>BFLOAT16、INT8、FLOAT8_E4M3FN、HIFLOAT8</td>
+        <td>ND</td>
+        <td>
+          <ul>
+            <li>BS合轴：(T,Hcq)</li>
+            <li>BS非合轴：(B,S,Hcq)</li>
+          </ul>
+        </td>
+        <td>×</td>
+      </tr>
+      <tr>
+        <td>dequantScaleQNormOutOptional</td>
+        <td>输出</td>
+        <td>queryNormOutOptional的反量化参数。</td>
+        <td>queryNormFlag=true，weightQuantMode=1/2/3/4/5时输出，weightQuantMode=0时为nullptr</td>
+        <td>FLOAT、FLOAT8_E8M0</td>
+        <td>ND</td>
+        <td>
+          <ul>
+            <li>weightQuantMode=1/2/4/5：
+              <ol>
+                <li>BS合轴：(T,1)</li>
+                <li>BS非合轴：(B*S,1)</li>
+              </ol>
+            </li>
+            <li>weightQuantMode=3：
+              <ol>
+                <li>BS合轴：(T, Hcq/32)</li>
+                <li>BS非合轴：(B*S, Hcq/32)</li>
+              </ol>
+            </li>
+          </ul>
+        </td>
+        <td>×</td>
+      </tr>
+      <tr>
+        <td>workspaceSize</td>
+        <td>输出</td>
+        <td>返回需在Device侧申请的workspace大小。</td>
+        <td>仅用于输出结果，无需输入配置，数据类型为uint64_t*</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>executor</td>
+        <td>输出</td>
+        <td>返回op执行器，包含算子计算流程。</td>
+        <td>仅用于输出结果，无需输入配置，数据类型为aclOpExecutor**</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+  </table>
+
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+  - tokenX、weightDq、weightUqQr、weightDkvKr、kvCacheRef、queryOut、queryNormOutOptional不支持FLOAT8_E4M3FN、HIFLOAT8数据类型。
+  - dequantScaleXOptional、dequantScaleWDqOptional、dequantScaleWUqQrOptional、dequantScaleWDkvKrOptional、dequantScaleQNormOutOptional不支持FLOAT8_E8M0数据类型。
 
 - **返回值**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
-    
-    | 返回值                 | 错误码               | 描述                                                                 |
-    |------------------------|----------------------|----------------------------------------------------------------------|
-    | ACLNN_ERR_PARAM_NULLPTR | 161001               | 必须传入的参数（如接口核心依赖的输入/输出参数）中存在空指针。         |
-    | ACLNN_ERR_PARAM_INVALID | 161002               | 输入参数的 shape（维度/尺寸）、dtype（数据类型）不在接口支持的范围内。 |
-    | ACLNN_ERR_RUNTIME_ERROR | 361001               | API 内存调用 NPU Runtime 接口时发生异常（如 Runtime 服务未启动、内存申请失败等）。 |
-    | ACLNN_ERR_INNER_TILING_ERROR | 561002          | tiling发生异常，入参的dtype类型或者shape错误。 |
+
+    <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
+    <col style="width: 319px">
+    <col style="width: 144px">
+    <col style="width: 671px">
+    </colgroup>
+      <thead>
+        <tr>
+          <th>返回值</th>
+          <th>错误码</th>
+          <th>描述</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>ACLNN_ERR_PARAM_NULLPTR</td>
+          <td>161001</td>
+          <td>必须传入的参数（如接口核心依赖的输入/输出参数）中存在空指针。</td>
+        </tr>
+        <tr>
+          <td>ACLNN_ERR_PARAM_INVALID</td>
+          <td>161002</td>
+          <td>输入参数的 shape（维度/尺寸）、dtype（数据类型）不在接口支持的范围内。</td>
+        </tr>
+        <tr>
+          <td>ACLNN_ERR_RUNTIME_ERROR</td>
+          <td>361001</td>
+          <td>API 内存调用 NPU Runtime 接口时发生异常（如 Runtime 服务未启动、内存申请失败等）。</td>
+        </tr>
+        <tr>
+          <td>ACLNN_ERR_INNER_TILING_ERROR</td>
+          <td>561002</td>
+          <td>tiling发生异常，入参的dtype类型或者shape错误。</td>
+        </tr>
+      </tbody>
+    </table>
 
 ## aclnnMlaPrologV3WeightNz
 
 - **参数说明**
 
-  | 参数名        | 参数类型         | 含义                                                                 |
-  |---------------|------------------|----------------------------------------------------------------------|
-  | workspace     | void\*           | 在Device侧申请的workspace内存地址。                                  |
-  | workspaceSize | uint64_t         | 在Device侧申请的workspace大小，由第一段接口aclnnMlaPrologV3WeightNzGetWorkspaceSize获取。 |
-  | executor      | aclOpExecutor\*  | op执行器，包含了算子计算流程。                                       |
-  | stream        | aclrtStream      | 指定执行任务的Stream。                                   |
+    <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+    <col style="width: 168px">
+    <col style="width: 128px">
+    <col style="width: 854px">
+    </colgroup>
+      <thead>
+        <tr>
+          <th>参数名</th>
+          <th>参数类型</th>
+          <th>含义</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>workspace</td>
+          <td>void*</td>
+          <td>在Device侧申请的workspace内存地址。</td>
+        </tr>
+        <tr>
+          <td>workspaceSize</td>
+          <td>uint64_t</td>
+          <td>在Device侧申请的workspace大小，由第一段接口aclnnMlaPrologV3WeightNzGetWorkspaceSize获取。</td>
+        </tr>
+        <tr>
+          <td>executor</td>
+          <td>aclOpExecutor*</td>
+          <td>op执行器，包含了算子计算流程。</td>
+        </tr>
+        <tr>
+          <td>stream</td>
+          <td>aclrtStream</td>
+          <td>指定执行任务的Stream。</td>
+        </tr>
+      </tbody>
+    </table>
 
 - **返回值**
 
@@ -215,61 +815,158 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
 
 - 确定性计算：
   - aclnnMlaPrologV3WeightNz默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
-- shape 格式字段含义说明
 
-  | 字段名       | 英文全称/含义                  | 取值规则与说明                                                                 |
-  |--------------|--------------------------------|------------------------------------------------------------------------------|
-  | B            | Batch（输入样本批量大小）      | 取值范围：0~65536                                                           |
-  | S            | Seq-Length（输入样本序列长度） | 取值范围：不限制                                                              |
-  | He           | Head-Size（隐藏层大小）        | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>取值固定为：1024、2048、3072、4096、5120、6144、7168、7680、8192  |
-  | Hcq          | q 低秩矩阵维度                 | 取值固定为：1536、2048                                                           |
-  | N            | Head-Num（多头数）             | 取值范围：1、2、4、8、16、32、64、128                                       |
-  | Hckv         | kv 低秩矩阵维度                | 取值固定为：512                                                             |
-  | D            | qk 不含位置编码维度            | 取值固定为：128、192                                                             |
-  | Dr           | qk 位置编码维度                | 取值固定为：64                                                              |
-  | Nkv          | kv 的 head 数                  | 取值固定为：1                                                               |
-  | BlockNum     | PagedAttention 场景下的块数    | 1. 当CacheMode="PA_BSND"/"PA_NZ"时，取值大于或等于 `(B*S)/BlockSize` 向上取整的结果。<br> 2. 当CacheMode="PA_BLK_BSND"/"PA_BLK_NZ"时，取值大于或等于`B` * `(S / BlockSize)`向上取整的结果（即`B * Ceil(S/BlockSize)`）。注：BS合轴场景，每个Batch中的S长度可以不同，因此BlockNum的取值需大于或等于各Batch中S长度除以BlockSize后的向上取整结果相加。举例：actualSeqLenOptional数值为[47, 151, 261, 422]，blocksize=128，那么Batch中的长度分别为[47, 104, 110, 161] ，此时BlockNum=Ceil(47/128)+ Ceil(104/128)+ Ceil(110/128)+ Ceil(161/128)=5|
-  | BlockSize    | PagedAttention 场景下的块大小  | 取值范围：16~1024，且为16的倍数<br>                                              |
-  | T            | BS 合轴后的大小                | 取值范围：不限制；注：若采用 BS 合轴，此时 tokenX、ropeSin、ropeCos 均为 2 维，cacheIndex 为 1 维，queryOut、queryRopeOut 为 3 维 |
-  | Dtile        | kvCache的D维度的大小           | - Per-tile量化场景下，取值固定为656 <br> - 其他场景下，取值固定为Hckv（512）                                                       |
+<details>
+  <summary><a id="shapeDesc"></a>shape 格式字段含义说明</summary>
+    &nbsp;&nbsp;<table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+        <col style="width: 165px">
+        <col style="width: 625px">
+        <col style="width: 360px">
+        </colgroup>
+  <table>
+    <thead>
+      <tr>
+        <th>字段名</th>
+        <th>英文全称/含义</th>
+        <th>取值规则与说明</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>B</td>
+        <td>Batch（输入样本批量大小）</td>
+        <td>取值范围：0~65536</td>
+      </tr>
+      <tr>
+        <td>S</td>
+        <td>Seq-Length（输入样本序列长度）</td>
+        <td>取值范围：不限制</td>
+      </tr>
+      <tr>
+        <td>He</td>
+        <td>Head-Size（隐藏层大小）</td>
+        <td>取值固定为：1024、2048、3072、4096、5120、6144、7168、7680、8192</td>
+      </tr>
+      <tr>
+        <td>Hcq</td>
+        <td>q 低秩矩阵维度</td>
+        <td>取值固定为：1536、2048</td>
+      </tr>
+      <tr>
+        <td>N</td>
+        <td>Head-Num（多头数）</td>
+        <td>取值范围：1、2、4、8、16、32、64、128</td>
+      </tr>
+      <tr>
+        <td>Hckv</td>
+        <td>kv 低秩矩阵维度</td>
+        <td>取值固定为：512</td>
+      </tr>
+      <tr>
+        <td>D</td>
+        <td>qk 不含位置编码维度</td>
+        <td>取值固定为：128、192</td>
+      </tr>
+      <tr>
+        <td>Dr</td>
+        <td>qk 位置编码维度</td>
+        <td>取值固定为：64</td>
+      </tr>
+      <tr>
+        <td>Nkv</td>
+        <td>kv 的 head 数</td>
+        <td>取值固定为：1</td>
+      </tr>
+      <tr>
+        <td>BlockNum</td>
+        <td>PagedAttention 场景下的块数</td>
+        <td>
+          <ul>
+            <li>当CacheMode="PA_BSND"/"PA_NZ"时，取值大于或等于 ⌈(B * S) / BlockSize⌉。</li>
+            <li>当CacheMode="PA_BLK_BSND"/"PA_BLK_NZ"时，取值大于或等于 B * ⌈S / BlockSize⌉。</li>
+          </ul>
+          <p>注：BS合轴场景，每个Batch中的S长度可以不同，因此BlockNum的取值需大于或等于各Batch中S长度除以BlockSize后的向上取整结果相加。</p>
+          <p>举例：actualSeqLenOptional数值为[47, 151, 261, 422]，blocksize=128，那么Batch中的长度分别为[47, 104, 110, 161]，此时 BlockNum = ⌈47/128⌉ + ⌈104/128⌉ + ⌈110/128⌉ + ⌈161/128⌉ = 5</p>
+        </td>
+      </tr>
+      <tr>
+        <td>BlockSize</td>
+        <td>PagedAttention 场景下的块大小</td>
+        <td>取值范围：16~1024，且为16的倍数</td>
+      </tr>
+      <tr>
+        <td>T</td>
+        <td>BS 合轴后的大小</td>
+        <td>
+          <ul>
+            <li>取值范围：不限制</li>
+            <li>注：若采用 BS 合轴，此时 tokenX、ropeSin、ropeCos 均为 2 维，cacheIndex 为 1 维，queryOut、queryRopeOut 为 3 维</li>
+          </ul>
+        </td>
+      </tr>
+      <tr>
+        <td>Dtile</td>
+        <td>kvCache的D维度的大小</td>
+        <td>
+          <ul>
+            <li>Per-tile量化场景下，取值固定为656，即等于 512(Hckv) + 64(Dr)*2 + 4(Hckv/tileSize)*4</li>
+            <li>其他场景下，取值固定为Hckv（512）</li>
+          </ul>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</details>
 
-- shape约束
-    - 若tokenX的维度采用BS合轴，即(T, He)
-        - ropeSin和ropeCos的shape为(T, Dr)
-        - 当CacheMode为PA_BSND或PA_NZ时，cacheIndex的shape为(T)
-        - 当CacheMode为PA_BLK_BSND或PA_BLK_NZ时，cacheIndex的shape为(Sum(Ceil(S_i/BlockSize)))，S_i为每个Batch中的S的长度
-        - 当CacheMode为PA_BLK_BSND或PA_BLK_NZ时，actualSeqLenOptional需要传入，维度为(B)
-        - int8/fp8/hif8全量化场景下，dequantScaleXOptional的shape为(T, 1)；mxfp8全量化场景下，dequantScaleXOptional的shape为(T, He/32)
-        - queryOut的shape为(T, N, Hckv)
-        - queryRopeOut的shape为(T, N, Dr)
-        - int8/mxfp8/fp8/hif8全量化场景下，dequantScaleQNopeOutOptional的shape为(T, N, 1)，其他场景下为nullptr
-    - 若tokenX的维度不采用BS合轴，即(B, S, He)
-        - ropeSin和ropeCos的shape为(B, S, Dr)
-        - 当CacheMode为PA_BSND或PA_NZ时，cacheIndex的shape为(B, S)
-        - 当CacheMode为PA_BLK_BSND或PA_BLK_NZ时，cacheIndex的shape为(B,Ceil(S/BlockSize))
-        - int8/fp8/hif8全量化场景下，dequantScaleXOptional的shape为(B\*S, 1)；mxfp8全量化场景下，dequantScaleXOptional的shape为(B*S, He/32)
-        - queryOut的shape为(B, S, N, Hckv)
-        - queryRopeOut的shape为(B, S, N, Dr)
-        - int8/mxfp8/fp8/hif8全量化场景下，dequantScaleQNopeOutOptional的shape为(B*S, N, 1)，其他场景下为nullptr
-    - B、S、T、Skv值允许一个或多个取0，即Shape与B、S、T、Skv值相关的入参允许传入空Tensor，其余入参不支持传入空Tensor。
-        - 如果B、S、T取值为0，则queryOut、queryRopeOut输出空Tensor，kvCacheRef、krCacheRef不做更新。
-        - 如果Skv取值为0，则queryOut、queryRopeOut、dequantScaleQNopeOutOptional正常计算，kvCacheRef、krCacheRef不做更新，即输出空Tensor。
-    - 当CacheMode为BSND时
-        - tokenX应不采用BS合轴，即维度为(B, S, He)
-        - kvCache的维度为(B,S,Nkv,Dr)
-    - 当CacheMode为TND时
-        - tokenX应采用BS合轴，即维度为(T, He)
-        - kvCache的维度为(T,Nkv,Dr)
-    - 当ckvkrRepoMode=1时
-        - krCache的维度应包含0，支持维度为(0)
+  <details>
+  <summary><a id="shapeConstraint"></a>shape 约束</summary>
 
-- 特殊约束
+  - 若tokenX的维度采用BS合轴，即(T, He)
+    - ropeSin和ropeCos的shape为(T, Dr)
+    - 当CacheMode为PA_BSND或PA_NZ时，cacheIndex的shape为(T)
+    - 当CacheMode为PA_BLK_BSND或PA_BLK_NZ时，cacheIndex的shape为(Sum(⌈<i>S<sub>i</sub></i>/BlockSize⌉))，S_i为每个Batch中的S的长度
+    - 当CacheMode为PA_BLK_BSND或PA_BLK_NZ时，actualSeqLenOptional需要传入，维度为(B)
+    - int8/fp8/hif8全量化场景下，dequantScaleXOptional的shape为(T, 1)；mxfp8全量化场景下，dequantScaleXOptional的shape为(T, He/32)
+    - queryOut的shape为(T, N, Hckv)
+    - queryRopeOut的shape为(T, N, Dr)
+    - int8/mxfp8/fp8/hif8全量化场景下，dequantScaleQNopeOutOptional的shape为(T, N, 1)，其他场景下为nullptr
+  - 若tokenX的维度不采用BS合轴，即(B, S, He)
+      - ropeSin和ropeCos的shape为(B, S, Dr)
+      - 当CacheMode为PA_BSND或PA_NZ时，cacheIndex的shape为(B, S)
+      - 当CacheMode为PA_BLK_BSND或PA_BLK_NZ时，cacheIndex的shape为(B, ⌈S/BlockSize⌉)
+      - int8/fp8/hif8全量化场景下，dequantScaleXOptional的shape为(B\*S, 1)；mxfp8全量化场景下，dequantScaleXOptional的shape为(B*S, He/32)
+      - queryOut的shape为(B, S, N, Hckv)
+      - queryRopeOut的shape为(B, S, N, Dr)
+      - int8/mxfp8/fp8/hif8全量化场景下，dequantScaleQNopeOutOptional的shape为(B*S, N, 1)，其他场景下为nullptr
+  - B、S、T、Skv值允许一个或多个取0，即Shape与B、S、T、Skv值相关的入参允许传入空Tensor，其余入参不支持传入空Tensor。
+      - 如果B、S、T取值为0，则queryOut、queryRopeOut输出空Tensor，kvCacheRef、krCacheRef不做更新。
+      - 如果Skv取值为0，则queryOut、queryRopeOut、dequantScaleQNopeOutOptional正常计算，kvCacheRef、krCacheRef不做更新，即输出空Tensor。
+  - 当CacheMode为BSND时
+      - tokenX应不采用BS合轴，即维度为(B, S, He)
+      - kvCache的维度为(B,S,Nkv,Dr)
+  - 当CacheMode为TND时
+      - tokenX应采用BS合轴，即维度为(T, He)
+      - kvCache的维度为(T,Nkv,Dr)
+  - 当ckvkrRepoMode=1时
+      - krCache的维度应包含0，支持shape为(0)
+  </details>
+
+  <details>
+  <summary><a id="specialConstraint"></a>特殊约束</summary>
+
   - actualSeqLenOptional传入时，actualSeqLenOptional最后一个数需与T保持一致。
   - per-tile量化模式下，ckvkrRepoMode和quantScaleRepoMode必须同时为1；其他量化模式以及非量化场景下，ckvkrRepoMode和quantScaleRepoMode必须同时为0。
   - per-tile量化模式下，CacheMode只支持PA_BSND, BSND和TND。
   - 当ckvkrRepoMode值为1时，krCache必须为空Tensor（即shape的乘积为0）。
   - kvcache per-tensor量化模式下，kvCacheQuantMode和queryQuantMode必须同时为1。
-- aclnnMlaPrologV3WeightNz接口支持场景：<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>当前不支持fp8/hif8/mxfp8全量化场景，<term>Ascend 950PR/Ascend 950DT</term>当前支持所有量化场景
+  </details>
+
+  <details>
+  <summary><a id="SupportScenes"></a>aclnnMlaPrologV3WeightNz接口支持场景</summary>
+  <ul>
+    <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：当前不支持 fp8/hif8/mxfp8 全量化场景</li>
+    <li><term>Ascend 950PR/Ascend 950DT</term>：当前支持所有量化场景</li>
+  </ul>
   <table style="table-layout: auto;" border="1">
     <tr>
       <th colspan="2">场景</th>
@@ -359,8 +1056,10 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
       </td>
     </tr>
   </table>
+  </details>
 
-- 在不同量化场景下，参数的dtype组合需要满足如下条件：
+  <details>
+  <summary><a id="SupportScenes"></a>不同量化场景参数的dtype约束</summary>
 
   <div style="overflow-x: auto; width: 100%;">
   <table style="table-layout: auto;" border="1">
@@ -885,6 +1584,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
     </tr>
   </table>
   </div>
+  </details>
 
 ## 调用示例
 
@@ -1282,7 +1982,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
   }
   ```
 
-A5示例代码如下，仅供参考。
+<term>Ascend 950PR/Ascend 950DT</term>示例代码如下，仅供参考。
 
   ```Cpp
 #include <iostream>
@@ -1397,7 +2097,7 @@ int main() {
     std::vector<int64_t> weightDkvKrShape = {7168, 576};        // He,Hckv+Dr
     std::vector<int64_t> rmsnormGammaCqShape = {1536};          // Hcq
     std::vector<int64_t> rmsnormGammaCkvShape = {512};          // Hckv
-    std::vector<int64_t> ropeSinShape = {8, 1 64};             // B,S,Dr
+    std::vector<int64_t> ropeSinShape = {8, 1, 64};             // B,S,Dr
     std::vector<int64_t> ropeCosShape = {8, 1, 64};             // B,S,Dr
     std::vector<int64_t> kvCacheShape = {1, 16, 1, 512};      // BlockNum,BlockSize,Nkv,Hckv
     std::vector<int64_t> krCacheShape = {1, 16, 1, 64};       // BlockNum,BlockSize,Nkv,Dr

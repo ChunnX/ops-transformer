@@ -55,15 +55,15 @@ bool MatmulReduceScatterV2Tiling::IsCapable()
 void PrintMMV3TilingData(const std::string &opName, Mc2MatMulV3TilingData &tiling)
 {
     PrintTCubeTilingData(opName, tiling.tCubeTiling);
-    OP_LOGD(opName, " tiling.isHf32 %d", tiling.isHf32);
-    OP_LOGD(opName, " tiling.mTailCnt %d", tiling.mTailCnt);
-    OP_LOGD(opName, " tiling.nTailCnt %d", tiling.nTailCnt);
-    OP_LOGD(opName, " tiling.kTailCnt %d", tiling.kTailCnt);
-    OP_LOGD(opName, " tiling.mBaseTailSpiltCnt %d", tiling.mBaseTailSplitCnt);
-    OP_LOGD(opName, " tiling.nBaseTailSpiltCnt %d", tiling.nBaseTailSplitCnt);
-    OP_LOGD(opName, " tiling.mTailMain %d", tiling.mTailMain);
-    OP_LOGD(opName, " tiling.nTailMain %d", tiling.nTailMain);
-    OP_LOGD(opName, " tiling.aswWindowLen %d", tiling.aswWindowLen);
+    OP_LOGD(opName, "tiling.isHf32 %d", tiling.isHf32);
+    OP_LOGD(opName, "tiling.mTailCnt %d", tiling.mTailCnt);
+    OP_LOGD(opName, "tiling.nTailCnt %d", tiling.nTailCnt);
+    OP_LOGD(opName, "tiling.kTailCnt %d", tiling.kTailCnt);
+    OP_LOGD(opName, "tiling.mBaseTailSpiltCnt %d", tiling.mBaseTailSplitCnt);
+    OP_LOGD(opName, "tiling.nBaseTailSpiltCnt %d", tiling.nBaseTailSplitCnt);
+    OP_LOGD(opName, "tiling.mTailMain %d", tiling.mTailMain);
+    OP_LOGD(opName, "tiling.nTailMain %d", tiling.nTailMain);
+    OP_LOGD(opName, "tiling.aswWindowLen %d", tiling.aswWindowLen);
 }
 
 void MatmulReduceScatterV2Tiling::PrintAllTilingData() const

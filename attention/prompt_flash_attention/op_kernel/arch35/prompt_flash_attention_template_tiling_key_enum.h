@@ -39,10 +39,8 @@
     constexpr DTemplateType dVTemplateType = static_cast<DTemplateType>(ConfigValue[config].dv)
 
 #define PARSE_PARAMS_FullQuant(inOutLayoutType, config, pseMode, ...)                                                  \
-    constexpr LayOutTypeEnum inputLayoutType =                                                                         \
-        static_cast<LayOutTypeEnum>(InOutLayoutPFATypeValue[inOutLayoutType][0]);                                      \
-    constexpr LayOutTypeEnum outputLayoutType =                                                                        \
-        static_cast<LayOutTypeEnum>(InOutLayoutPFATypeValue[inOutLayoutType][1]);                                      \
+    constexpr LayOutTypeEnum inputLayoutType = static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[inOutLayoutType][0]);  \
+    constexpr LayOutTypeEnum outputLayoutType = static_cast<LayOutTypeEnum>(InOutLayoutTypeValue[inOutLayoutType][1]); \
     constexpr S1TemplateType s1TemplateType = static_cast<S1TemplateType>(ConfigValue[config].s1);                     \
     constexpr S2TemplateType s2TemplateType = static_cast<S2TemplateType>(ConfigValue[config].s2);                     \
     constexpr DTemplateType dTemplateType = static_cast<DTemplateType>(ConfigValue[config].d);                         \
@@ -236,19 +234,6 @@ static constexpr ConfigParams ConfigValue[] ={
 #define KvLayoutType_PA_BBH 1
 #define KvLayoutType_PA_BNBD 2
 #define KvLayoutType_PA_NZ 3
-
-// PFAMaskEnum
-#define PFAMask_DISABLE_MASK 0
-#define PFAMask_ENABLE_MASK_NO_BAND 1
-#define PFAMask_ENABLE_MASK_BAND 2
-
-// PFAMatMulTypeEnum
-#define PFAMatMulType_MM_PFA 0
-#define PFAMatMulType_MM_PA 1
-#define PFAMatMulType_MM_IFA_MLA 2
-#define PFAMatMulType_MM_IFA_MLA_PA 3
-#define PFAMatMulType_MM_PA_D512 4
-#define PFAMatMulType_MM_DN 5
 
 // SplitCoreModeEnum
 #define SplitCoreMode_SPLIT_NBS_VECTOR 0
