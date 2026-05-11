@@ -25,13 +25,13 @@
 namespace ops {
 ge::Status AlltoAllvGroupedMatMulCalcParamFunc(gert::ExeResGenerationContext *context)
 {
-    uint8_t commMode = mc2::GetCommModeFromEnv();
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
     bool isA5 = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5);
 
     const char* serverType = nullptr;
     const char* streamType = nullptr;
 
-    if (commMode == mc2::COMM_MODE_AICPU) {
+    if (commMode == Mc2Comm::COMM_MODE_AICPU) {
         serverType = "aicpu kfc server";
         streamType = "kfc_stream";
         OPS_LOG_D(context->GetNodeName(), "ENV_MC2_COMM_MODE_AICPU set, force AICPU GenTask");

@@ -508,8 +508,8 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMul(void *workspace, uint64_
                                                         aclOpExecutor *executor, aclrtStream stream)
 {
     if (NnopbaseSetHcclServerType) {
-        uint8_t commMode = mc2::GetCommModeFromEnv();
-        if (commMode == mc2::COMM_MODE_AICPU) {
+        uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+        if (commMode == Mc2Comm::COMM_MODE_AICPU) {
             OP_LOGD("", "aclnnAlltoAllvQuantGroupedMatMul: ENV_MC2_COMM_MODE_AICPU set, use AICPU mode");
             NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
         } else {

@@ -14,7 +14,7 @@
 #include <cstdint>
 #include <cstdlib>
 
-namespace mc2 {
+namespace Mc2Comm {
 
 constexpr char COMM_MODE_ENV[] = "ENV_MC2_COMM_MODE_AICPU";
 
