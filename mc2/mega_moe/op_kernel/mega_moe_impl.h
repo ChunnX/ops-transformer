@@ -357,10 +357,12 @@ __aicore__ inline void GroupMatmul2(
             }
             AscendC::AtomicAdd((__gm__ int32_t*)rowReadyFlags.GetPhyAddr() + blockIdx, int32_t(-1));
 
-            // 复用dispatch的CopyTempBuf_作为combine UB（dispatch与combine不并行）
+            // 裸分配UB用于GM→UB→远端GM（与gmm1串行，offset 0不冲突）
+            int64_t ubOffset = 0;
+            LocalTensor<bfloat16_t> ubBuffer = LocalTensor<bfloat16_t>(TPosition::VECIN, ubOffset, L1_TILE_M * L1_TILE_N);
             MegaMoeCombineImpl::CombineTile<bfloat16_t, decltype(actualShape)>(
                 groupIdx, mLoc, nLoc, n, rankId,
-                gmmAddrInfo.gmm2OutGlobal, params, combineUbTensor, actualShape);
+                gmmAddrInfo.gmm2OutGlobal, params, ubBuffer, actualShape);
         }
     }
 
