@@ -65,14 +65,6 @@ public:
         for (int i = 0; i < e_ * rankDim_; i++) {
             recvCounts_[i] = taskTilingInfo_->recvCnt[i];
         }
-        if ASCEND_IS_AIV {
-            if (GetBlockIdx() == 0) {
-                AscendC::PRINTF("YYYYYY op a2av hccl init rankId:%u rankDim:%u e:%u H1:%u N1:%u "
-                    "ctx:%p send:%p recv:%p ccOffset:%lu\n",
-                    rankId_, rankDim_, e_, H1_, N1_, hcclContextGm, sendBuffer, recvBuffer,
-                    hcclCcTilingOffset);
-            }
-        }
     }
 
     __aicore__ inline void Launch(uint32_t startExpertIdx, uint32_t expertNum)
@@ -85,8 +77,6 @@ public:
                 return;
             }
         }
-        AscendC::PRINTF("YYYYYY op a2av launch enter expert:%u expertNum:%u rankId:%u rankDim:%u commBefore:%d\n",
-            startExpertIdx, expertNum, rankId_, rankDim_, static_cast<int32_t>(commBeforeComputeFlag));
         // comm hccl datatype
         if constexpr (AscendC::IsSameType<hcclDataType, bfloat16_t>::value) {
             hcclDataType_ = HCCL_DATA_TYPE_BFP16;
@@ -99,8 +89,6 @@ public:
         } else {
             hcclDataType_ = HCCL_DATA_TYPE_INT8;
         }
-        AscendC::PRINTF("YYYYYY op a2av launch dtype expert:%u dtype:%d\n", startExpertIdx,
-            static_cast<int32_t>(hcclDataType_));
         // comm and compute order
         if constexpr (commBeforeComputeFlag) {
             LaunchCommBeforeCompute(startExpertIdx, expertNum);
@@ -270,11 +258,7 @@ public:
                 return;
             }
         }
-        AscendC::PRINTF("YYYYYY op a2av wait start expert:%u handle:%d\n", startExpertIdx,
-            alltoAllvHandleId_[startExpertIdx]);
         hccl_.Wait(alltoAllvHandleId_[startExpertIdx]);
-        AscendC::PRINTF("YYYYYY op a2av wait end expert:%u handle:%d\n", startExpertIdx,
-            alltoAllvHandleId_[startExpertIdx]);
     }
 
     __aicore__ inline void WaitAll(uint32_t allNum)
@@ -288,9 +272,7 @@ public:
             }
         }
         for (uint32_t i = 0U; i < allNum; i++) {
-            AscendC::PRINTF("YYYYYY op a2av waitAll start idx:%u handle:%d\n", i, alltoAllvHandleId_[i]);
             hccl_.Wait(alltoAllvHandleId_[i]);
-            AscendC::PRINTF("YYYYYY op a2av waitAll end idx:%u handle:%d\n", i, alltoAllvHandleId_[i]);
         }
     }
 
@@ -301,13 +283,11 @@ public:
         }
         if ASCEND_IS_AIV {
             if (GetBlockIdx() == 0) {
-                AscendC::PRINTF("YYYYYY op a2av finalize start rankId:%u\n", rankId_);
             }
         }
         hccl_.Finalize();
         if ASCEND_IS_AIV {
             if (GetBlockIdx() == 0) {
-                AscendC::PRINTF("YYYYYY op a2av finalize end rankId:%u\n", rankId_);
             }
         }
     }
@@ -346,15 +326,9 @@ private:
                 alltoAllvRecvOffsetLastSum += alltoAllvRecvCnt[i];
             }
         }
-AscendC::PRINTF("YYYYYY op a2av alltoallv before compute launch expert:%u rankId:%u rankDim:%u "
-            "send0:%lu recv0:%lu soff0:%lu roff0:%lu axis:%lu\n",
-            startExpertIdx, rankId_, rankDim_, alltoAllvSendCnt[0], alltoAllvRecvCnt[0],
-            alltoAllvSendOffset[0], alltoAllvRecvOffset[0], axis);
         alltoAllvHandleId_[startExpertIdx] = hccl_.template AlltoAllV<true>(
             (__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), alltoAllvSendCnt, alltoAllvSendOffset, hcclDataType_,
             (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset, hcclDataType_);
-        AscendC::PRINTF("YYYYYY op a2av alltoallv before compute handle expert:%u handle:%d\n", startExpertIdx,
-            alltoAllvHandleId_[startExpertIdx]);
     }
 
     __aicore__ inline void LaunchCommAfterCompute(uint32_t startExpertIdx, uint32_t expertNum)
@@ -392,15 +366,9 @@ AscendC::PRINTF("YYYYYY op a2av alltoallv before compute launch expert:%u rankId
                 alltoAllvRecvOffset[i] += static_cast<uint64_t>(recvCounts_[startExpertIdx + (i - 1) * e_ + j]) * N1_;
             }
         }
-AscendC::PRINTF("YYYYYY op a2av alltoallv after compute launch expert:%u rankId:%u rankDim:%u "
-            "send0:%lu recv0:%lu soff0:%lu roff0:%lu axis:%lu\n",
-            startExpertIdx, rankId_, rankDim_, alltoAllvSendCnt[0], alltoAllvRecvCnt[0],
-            alltoAllvSendOffset[0], alltoAllvRecvOffset[0], N1_);
         alltoAllvHandleId_[startExpertIdx] = hccl_.template AlltoAllV<true>(
             (__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), alltoAllvSendCnt, alltoAllvSendOffset, hcclDataType_,
             (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset, hcclDataType_);
-        AscendC::PRINTF("YYYYYY op a2av alltoallv after compute handle expert:%u handle:%d\n", startExpertIdx,
-            alltoAllvHandleId_[startExpertIdx]);
     }
 
 // AICPU only: 只支持AICPU通信模式
