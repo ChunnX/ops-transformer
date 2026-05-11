@@ -28,7 +28,7 @@
 
 namespace Catlass::Gemm::Kernel {
 template <class BlockMmad_, class BlockEpilogue_, class BlockScheduler_, uint32_t WORKSPACE_STAGES_>
-class QuantMatmulAllToAllKernel {
+class QuantMatmulAlltoAllV2Kernel {
 public:
     using BlockMmad = BlockMmad_;
     using ArchTag = typename BlockMmad::ArchTag;
@@ -100,7 +100,7 @@ public:
 
     // Methods
     CATLASS_DEVICE
-    QuantMatmulAllToAllKernel()
+    QuantMatmulAlltoAllV2Kernel()
     {
         Arch::FlagID flagId = 0;
         for (uint32_t stageId = 0; stageId < WORKSPACE_STAGES; ++stageId) {
@@ -361,7 +361,7 @@ private:
     friend struct AicSetFunc;
 
     struct AicWaitFunc {
-        using MatmulKernel = QuantMatmulAllToAllKernel<BlockMmad, BlockEpilogue, BlockScheduler, WORKSPACE_STAGES>;
+        using MatmulKernel = QuantMatmulAlltoAllV2Kernel<BlockMmad, BlockEpilogue, BlockScheduler, WORKSPACE_STAGES>;
 
         CATLASS_DEVICE
         AicWaitFunc() = default;
@@ -377,7 +377,7 @@ private:
     };
 
     struct AicSetFunc {
-        using MatmulKernel = QuantMatmulAllToAllKernel<BlockMmad, BlockEpilogue, BlockScheduler, WORKSPACE_STAGES>;
+        using MatmulKernel = QuantMatmulAlltoAllV2Kernel<BlockMmad, BlockEpilogue, BlockScheduler, WORKSPACE_STAGES>;
 
         CATLASS_DEVICE
         AicSetFunc() = default;

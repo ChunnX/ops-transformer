@@ -81,7 +81,7 @@ enum class QuantModeType : int64_t {
         retExpr;                                                                                                       \
     }
 
-// 校验AlltoAll和Permute数据交换的方向参数, 在alltoallmatmul中可以为空和{-1,-2}, 在matmulalltoall中可以为空和{-2,-1},
+// 校验AlltoAll和Permute数据交换的方向参数, 在alltoallmatmul中可以为空和{-1,-2}, 在matmulAlltoAllV2中可以为空和{-2,-1},
 // 不允许为其他值
 bool CheckAlltoAllAxes(const aclIntArray *alltoAllAxesOptional, bool isMatmulAlltoAllV2);
 
