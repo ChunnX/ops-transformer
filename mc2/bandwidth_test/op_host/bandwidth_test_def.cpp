@@ -59,7 +59,6 @@ public:
         .ExtendCfgInfo("jitCompile.flag", "static_false");
 
     this->AICore().AddConfig("ascend950", aicore_config);
-    this->MC2().HcclGroup({"group"});
   }
 };
 
