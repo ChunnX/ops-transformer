@@ -122,8 +122,8 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
             constexpr uint32_t WEIGHT_TILE_N_LARGE = 32;
             constexpr uint32_t WEIGHT_TILE_K_SMALL = 16;
             constexpr uint32_t WEIGHT_TILE_CAPACITY = 512;
-            uint64_t singleGroupWeightNZ = CeilDiv(n, WEIGHT_TILE_N_LARGE) *
-                                           CeilDiv(k, WEIGHT_TILE_K_SMALL) *
+            uint64_t singleGroupWeightNZ = CeilDiv(static_cast<uint64_t>(n), static_cast<uint64_t>(WEIGHT_TILE_N_LARGE)) *
+                                           CeilDiv(static_cast<uint64_t>(k), static_cast<uint64_t>(WEIGHT_TILE_K_SMALL)) *
                                            WEIGHT_TILE_CAPACITY;
 
             // === Sliding window loop ===
