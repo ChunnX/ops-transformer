@@ -314,6 +314,27 @@ __aicore__ inline void GroupMatmul2(
         if constexpr (g_coreType == AscendC::AIC) {
             // AIC: 执行gmm2计算
             if (loopIdx == startLoopIdx) {
+                // 打印gmm2输入数据（FP8用uint8打出，自行换算）
+                GlobalTensor<uint8_t> gmAGt, gmBGt, gmScaleAGt, gmScaleBGt;
+                gmAGt.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(gmmAddrInfo.aGlobal));
+                gmBGt.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(gmmAddrInfo.bGlobal));
+                gmScaleAGt.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(gmmAddrInfo.aScaleGlobal));
+                gmScaleBGt.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(gmmAddrInfo.bScaleGlobal));
+                AscendC::PRINTF("AIC e%d aGlobal=%p aScale=%p bGlobal=%p bScale=%p\n", expertIdx,
+                    gmmAddrInfo.aGlobal, gmmAddrInfo.aScaleGlobal, gmmAddrInfo.bGlobal, gmmAddrInfo.bScaleGlobal);
+                AscendC::PRINTF("AIC e%d gmA[0-7]=%x %x %x %x %x %x %x %x\n", expertIdx,
+                    gmAGt.GetValue(0), gmAGt.GetValue(1), gmAGt.GetValue(2), gmAGt.GetValue(3),
+                    gmAGt.GetValue(4), gmAGt.GetValue(5), gmAGt.GetValue(6), gmAGt.GetValue(7));
+                AscendC::PRINTF("AIC e%d gmB[0-7]=%x %x %x %x %x %x %x %x\n", expertIdx,
+                    gmBGt.GetValue(0), gmBGt.GetValue(1), gmBGt.GetValue(2), gmBGt.GetValue(3),
+                    gmBGt.GetValue(4), gmBGt.GetValue(5), gmBGt.GetValue(6), gmBGt.GetValue(7));
+                AscendC::PRINTF("AIC e%d scaleA[0-7]=%x %x %x %x %x %x %x %x\n", expertIdx,
+                    gmScaleAGt.GetValue(0), gmScaleAGt.GetValue(1), gmScaleAGt.GetValue(2), gmScaleAGt.GetValue(3),
+                    gmScaleAGt.GetValue(4), gmScaleAGt.GetValue(5), gmScaleAGt.GetValue(6), gmScaleAGt.GetValue(7));
+                AscendC::PRINTF("AIC e%d scaleB[0-7]=%x %x %x %x %x %x %x %x\n", expertIdx,
+                    gmScaleBGt.GetValue(0), gmScaleBGt.GetValue(1), gmScaleBGt.GetValue(2), gmScaleBGt.GetValue(3),
+                    gmScaleBGt.GetValue(4), gmScaleBGt.GetValue(5), gmScaleBGt.GetValue(6), gmScaleBGt.GetValue(7));
+
                 BlockScheduler gmmBlockScheduler(
                     {m, k, n},
                     BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M),
