@@ -750,7 +750,9 @@ __aicore__ inline void MatmulK(const LocalTensor<A> &aL1Tensor,
         uint32_t tileK = (k == (kLoops - 1)) ? tailK : baseK;
         Buffer<BufferType::L0A> l0aBuffer = aL0BuffsDb.Get();
         l0aBuffer.Wait<HardEvent::M_MTE1>(); // mte1等Matmul：上一轮matmul完成后才能搬运新数据到L0A
-        LocalTensor<L0ADType> L0ATensor = l0aBuffer.GetTensor<L0ADType>();
+        /* --------------------------------- Tensor API ------------------------------------ */
+        // LocalTensor<L0ADType> L0ATensor = l0aBuffer.GetTensor<L0ADType>();
+        LocalTensor<L0ADType> L0ATensor = MakeTensor(MakeL0AmemPtr<L0ADType>(k * L1Aoffset), MakeShape(param.singleM, tileK));
 #if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__))
         if constexpr (IsSameType<L0ADType, mx_fp8_e4m3_t>::value) {
             LoadDataToL0AMx<A, L0ADType>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, k * L1Aoffset, tileK, param.singleM); // s2,
@@ -762,7 +764,9 @@ __aicore__ inline void MatmulK(const LocalTensor<A> &aL1Tensor,
 
         Buffer<BufferType::L0B> l0bBuffer = bL0BuffsDb.Get();
         l0bBuffer.Wait<HardEvent::M_MTE1>(); // mte1等Matmul：上一轮matmul完成后才能搬运新数据到L0B
-        LocalTensor<L0BDType> L0BTensor = l0bBuffer.GetTensor<L0BDType>();
+        // LocalTensor<L0BDType> L0BTensor = l0bBuffer.GetTensor<L0BDType>();
+        /* --------------------------------- Tensor API ------------------------------------ */
+        LocalTensor<L0BDType> L0BTensor = MakeTensor(MakeL0BmemPtr<L0BDType>(k * L1Boffset), MakeShape(tileK, param.singleN));
         uint64_t loopNum = param.isRightTranspose ? 1 : kLoops;
 #if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__))
         if constexpr (IsSameType<L0BDType, mx_fp8_e4m3_t>::value) {
