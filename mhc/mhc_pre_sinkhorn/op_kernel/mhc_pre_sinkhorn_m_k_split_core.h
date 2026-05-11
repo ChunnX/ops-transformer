@@ -181,7 +181,7 @@ private:
     LocalTensor<float> yCastLocal;
     LocalTensor<float> mmOutLocal;
     
-    HcCubeCompute<false> cubeCompute_;
+    HcCubeComputeSplitK<false> cubeCompute_;
     static constexpr uint64_t SYNC_AIV_TO_AIC_FLAG = 8;
     static constexpr uint64_t SYNC_AIC_TO_AIV_FLAG = 9;
     static constexpr uint64_t SYNC_MODE2 = NUM_TWO;
@@ -230,7 +230,7 @@ public:
         }
 
         // InQue
-        int64_t stage1UsedCoreNum = tilingData->cubeBlockDimK; // todo check 此处不应该写死32
+        int64_t stage1UsedCoreNum = tilingData->cubeBlockDimK;
         int64_t mixesQue01Size = stage1UsedCoreNum * tilingData->stage2RowFactor * tilingData->hcMultAlign * NUM_TWO * sizeof(float);
         pipe->InitBuffer(mixesQue01, NUM_TWO, mixesQue01Size);
         pipe->InitBuffer(mixesQue2, NUM_TWO,
@@ -353,6 +353,7 @@ public:
                                 mxies01Local[stage1UsedCoreNum * curRowFactor * tilingData->hcMultAlign],
                                 stage1UsedCoreNum, curRowFactor, tilingData->hcMult, curBs,
                                 CeilAlign(tilingData->hcMix, WORKSPACE_ALIGN_SIZE / sizeof(float)));
+
                 // wk:[2, kcorenum, bs, n^2 +2n]
                 // mx0[2,kcorenum, curRowfator, n]
                 mixesQue01.EnQue(mxies01Local);
