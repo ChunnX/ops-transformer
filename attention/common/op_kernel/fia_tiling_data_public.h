@@ -51,89 +51,97 @@ constexpr uint32_t FD_WORKSPACE_IDX_INDEX = 4;
 constexpr uint32_t FD_M_START_INDEX = 5;
 constexpr uint32_t FD_M_NUM_INDEX = 6;
 
-struct FiaBaseParams {
-    uint32_t bSize = 0;
-    uint32_t t1Size = 0;
-    uint32_t t2Size = 0;
-    uint32_t n2Size = 0;
-    uint32_t gSize = 0;
-    uint32_t s1Size = 0;
-    uint32_t s2Size = 0;
-    uint32_t dSize = 0;
-    uint32_t dSizeV = 0;
-    uint32_t dSizeRope = 0;
-    uint32_t actualSeqLengthsQSize = 0;
-    uint32_t actualSeqLengthsKVSize = 0;
-    float scaleValue = 0.0f;
-    uint8_t isActualSeqLengthsNull = 0;   // TODO，未使用，是否要删除？
-    uint8_t isActualSeqLengthsKVNull = 0; // TODO，未使用，是否要删除？
-    uint8_t isKvContinuous = 0;
-    uint8_t isSoftMaxLseEnable = 0;
-    uint32_t coreNum = 0;
-    uint32_t outputLayout = 0;
-};
-
-struct FiaAttenMaskParams {
-    uint8_t sparseMode = 0;
-    int32_t preTokens = 0;
-    int32_t nextTokens = 0;
-    uint32_t attenMaskBatch = 0;
-    uint32_t attenMaskS1Size = 0;
-    uint32_t attenMaskS2Size = 0;
-    uint8_t isRowInvalidOpen = 0;
-    uint8_t isExistRowInvalid = 0;
-};
-
-struct FiaPseParams {
-    uint8_t pseShiftByBatch = 0;
-    uint32_t pseS1Size = 0;
-    uint32_t pseS2Size = 0;
-    uint32_t pseStride = 0;
-    uint32_t qStartIdx = 0;
-    uint32_t kvStartIdx = 0;
-};
-
-struct FiaSystemPrefixParams {
-    uint8_t isActualSharedPrefixLenNull = 0;
-    uint32_t prefixSeqInnerSize = 0;
-};
-
-struct FiaPageAttentionParams {
-    uint8_t paLayoutType = 0;
-    uint32_t blockSize = 0;
-    uint32_t maxBlockNumPerBatch = 0;
-};
-
-struct FiaLeftPaddingParams {
-    uint8_t isQHasLeftPadding = 0;
-    uint8_t isKVHasLeftPadding = 0;
-};
-
-struct FiaPostQuantParams {
-    uint8_t isPostQuantPerChnl = 0;
-    uint8_t isPostQuantBF16 = 0;
-};
-
-struct FiaWorkspaceParams {
-    uint32_t accumOutSize = 0;
-    uint32_t logSumExpSize = 0;
-};
-
-struct FiaS1OuterSplitCoreParams {
-    bool enableS1OutSplit = false;
-    uint64_t totalSize = 0;
-};
-
-struct FiaEmptyTensorParams {
-    uint32_t singleCoreSize = 0;
-    uint8_t needInit = 0;
-    uint64_t totalOutputSize = 0;
-    uint64_t totalSoftMaxLseOutputSize = 0;
-};
-
-struct FiaMetaData {
-    uint32_t FAMetadata[NPU_AIC_CORE_NUM][FA_METADATA_SIZE] = {0};
-    uint32_t FDMetadata[NPU_AIV_CORE_NUM][FD_METADATA_SIZE] = {0};
-};
-} // namespace optiling
-#endif
+struct FiaBaseParams {	 
+     uint32_t bSize = 0;	 
+     uint32_t t1Size = 0;	 
+     uint32_t t2Size = 0;	 
+     uint32_t n2Size = 0;	 
+     uint32_t gSize = 0;	 
+     uint32_t s1Size = 0;	 
+     uint32_t s2Size = 0;	 
+     uint32_t dSize = 0;	 
+     uint32_t dSizeV = 0;	 
+     uint32_t dSizeRope = 0;	 
+     uint32_t actualSeqLengthsQSize = 0;	 
+     uint32_t actualSeqLengthsKVSize = 0;	 
+     float scaleValue = 0.0f;	  
+     uint8_t isKvContinuous = 0;	 
+     uint8_t isSoftMaxLseEnable = 0;	 
+     uint32_t coreNum = 0; 
+     uint32_t outputLayout = 0; 
+ };	 
+ 
+ 
+ struct FiaAttenMaskParams {	 
+     uint8_t sparseMode = 0;	 
+     int32_t preTokens = 0;	 
+     int32_t nextTokens = 0;	 
+     uint32_t attenMaskBatch = 0;	 
+     uint32_t attenMaskS1Size = 0;	 
+     uint32_t attenMaskS2Size = 0;	 
+     uint8_t isRowInvalidOpen = 0;	 
+     uint8_t isExistRowInvalid = 0;	 
+ };	 
+ 
+ 
+ struct FiaPseParams {	 
+     uint8_t pseShiftByBatch = 0;	 
+     uint32_t pseS1Size = 0;	 
+     uint32_t pseS2Size = 0;	 
+     uint32_t pseStride = 0;	 
+     uint32_t qStartIdx = 0;	 
+     uint32_t kvStartIdx = 0;	 
+ };	 
+ 
+ 
+ struct FiaSystemPrefixParams {	 
+     uint8_t isActualSharedPrefixLenNull = 0;	 
+     uint32_t prefixSeqInnerSize = 0;	 
+ };	 
+ 
+ 
+ struct FiaPageAttentionParams {	 
+     uint8_t paLayoutType = 0;	 
+     uint32_t blockSize = 0;	 
+     uint32_t maxBlockNumPerBatch = 0;	 
+ };	 
+ 
+ 
+ struct FiaLeftPaddingParams {	 
+     uint8_t isQHasLeftPadding = 0;	 
+     uint8_t isKVHasLeftPadding = 0;	 
+ };	 
+ 
+ 
+ struct FiaPostQuantParams {	 
+     uint8_t isPostQuantPerChnl = 0;	 
+     uint8_t isPostQuantBF16 = 0;	 
+ };	 
+ 
+ 
+ struct FiaWorkspaceParams {	 
+     uint32_t accumOutSize = 0;	 
+     uint32_t logSumExpSize = 0;	 
+ };	 
+ 
+ 
+ struct FiaS1OuterSplitCoreParams {	 
+     bool enableS1OutSplit = false;	 
+     uint64_t totalSize = 0;	 
+ };	 
+ 
+ 
+ struct FiaEmptyTensorParams {	 
+     uint32_t singleCoreSize = 0;	 
+     uint8_t needInit = 0;	 
+     uint64_t totalOutputSize = 0;	 
+     uint64_t totalSoftMaxLseOutputSize = 0;	 
+ };	 
+ 
+ 
+ struct FiaMetaData {	 
+     uint32_t FAMetadata[NPU_AIC_CORE_NUM][FA_METADATA_SIZE] = {0};	 
+     uint32_t FDMetadata[NPU_AIV_CORE_NUM][FD_METADATA_SIZE] = {0};	 
+ };	 
+ } // namespace optiling	 
+ #endif
