@@ -744,6 +744,33 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl256Mxfp8FullquantVFSubloop1(
     Mul(first_loop_sum, vreg_exp_max, first_loop_sum, preg_all);
     Add(vreg_exp_sum3, first_loop_sum, vreg_exp_sum_brc, preg_all);
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)expSumUb, vreg_exp_sum3, preg_all);
+    // todo pscale
+    Mul(vreg_p_scale, vreg_exp_max, vreg_p_scale, preg_all);
+    RegTensor<bfloat16_t> vreg_p_scale_even_bf16;
+    RegTensor<bfloat16_t> vreg_p_scale_odd_bf16;
+    RegTensor<fp8_e8m0_t> vreg_p_scale_bf16_0;
+    RegTensor<fp8_e8m0_t> vreg_p_scale_bf16_1;
+    RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0_0;
+    RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0_1;
+    RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0_2;
+    RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0_3;
+    Cast<bfloat16_t, T, castTraitRintZero>(vreg_p_scale_bf16_0, vreg_p_scale, preg_all);
+    Cast<fp8_e8m0_t, bfloat16_t, castTraitRintZero>(vreg_p_scale_f8e8m0_0, vreg_p_scale_bf16_0, preg_all);
+    Cast<fp8_e8m0_t, bfloat16_t, castTraitRintOne>(vreg_p_scale_f8e8m0_1, vreg_p_scale_bf16_0, preg_all);
+    Cast<bfloat16_t, T, castTraitRintOne>(vreg_p_scale_bf16_1, vreg_p_scale, preg_all);
+    Cast<fp8_e8m0_t, bfloat16_t, castTraitRintZero>(vreg_p_scale_f8e8m0_2, vreg_p_scale_bf16_1, preg_all);
+    Cast<fp8_e8m0_t, bfloat16_t, castTraitRintOne>(vreg_p_scale_f8e8m0_3, vreg_p_scale_bf16_1, preg_all);
+    Or((RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_0, (RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_0,
+               (RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_1, preg_all_b8);
+    Or((RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_2, (RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_2,
+               (RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_3, preg_all_b8);
+    Or((RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_0, (RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_0,
+               (RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_2, preg_all_b8);
+    Gather(vreg_p_scale_f8e8m0_0, vreg_p_scale_f8e8m0_0, vreg_exp_merge_f8e4m3_indexes);
+    for (uint16_t i = 0; i < 4; ++i) {
+        StoreAlign<fp8_e8m0_t, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+            ((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0), vreg_p_scale_f8e8m0_0, blockStride, repeatStride, preg_all_b8_128);
+    }
 }
 
 // no update, 128 < originN <= 256
