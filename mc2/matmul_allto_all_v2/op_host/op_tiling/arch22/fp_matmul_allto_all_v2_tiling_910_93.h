@@ -31,12 +31,12 @@ namespace MC2Tiling {
 using namespace optiling;
 using namespace mc2_matmul_v3_advanced;
 
-class FpMatmulAllToAllTilingBaseA3 : public MatmulAllToAllTilingBase {
-    friend class FpMatmulAllToAllHelper;
+class FpMatmulAlltoAllV2TilingBaseA3 : public MatmulAlltoAllV2TilingBase {
+    friend class FpMatmulAlltoAllV2Helper;
 
 public:
-    explicit FpMatmulAllToAllTilingBaseA3(gert::TilingContext *context);
-    ~FpMatmulAllToAllTilingBaseA3() override = default;
+    explicit FpMatmulAlltoAllV2TilingBaseA3(gert::TilingContext *context);
+    ~FpMatmulAlltoAllV2TilingBaseA3() override = default;
     ge::graphStatus GetWorkspaceSize() override;
 
 protected:
@@ -63,13 +63,13 @@ private:
     void PrintMatmulAlltoAllV2TilingInfo(const std::string &opName, MatmulAlltoAllV2TilingInfoA3 &tilingInfo);
 };
 
-class FpMatmulAllToAllHelper : public mc2_matmul_v3::Mc2MatmulV3BaseTiling {
+class FpMatmulAlltoAllV2Helper : public mc2_matmul_v3::Mc2MatmulV3BaseTiling {
 public:
-    FpMatmulAllToAllHelper(FpMatmulAllToAllTilingBaseA3 &matmulAlltoAllV2TilingA3, Mc2MatmulV3TilingData &data);
+    FpMatmulAlltoAllV2Helper(FpMatmulAlltoAllV2TilingBaseA3 &matmulAlltoAllV2TilingA3, Mc2MatmulV3TilingData &data);
     ge::graphStatus GetShapeAttrsInfo() override;
 
 private:
-    FpMatmulAllToAllTilingBaseA3 &tilingProcesser_;
+    FpMatmulAlltoAllV2TilingBaseA3 &tilingProcesser_;
 };
 
 } // namespace MC2Tiling

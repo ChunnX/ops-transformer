@@ -36,7 +36,7 @@ struct MatmulAlltoAllV2TilingValue {
     }
 };
 
-class MatmulAlltoAllV2Tiling910B : public MatmulAllToAllTilingBase {
+class MatmulAlltoAllV2Tiling910B : public MatmulAlltoAllV2TilingBase {
 public:
     explicit MatmulAlltoAllV2Tiling910B(gert::TilingContext *context);
     ~MatmulAlltoAllV2Tiling910B() override = default;
