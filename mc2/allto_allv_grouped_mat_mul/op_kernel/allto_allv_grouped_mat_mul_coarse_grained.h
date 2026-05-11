@@ -221,7 +221,7 @@ __aicore__ inline void AlltoAllvGmmCoarseGrained<DataType, IsTranGmmW, IsTranMmW
                     alltoAllvRecvOffsetLastSum += alltoAllvRecvCnt[i];
                 }
             }
-            alltoAllvHandleId_[e] = hccl_.AlltoAllV<true>(
+            alltoAllvHandleId_[e] = hccl_.template AlltoAllV<true>(
                 (__gm__ uint8_t*)this->gmmxGMTensor_.GetPhyAddr(), alltoAllvSendCnt, alltoAllvSendOffset, hcclDataType_,
                 (__gm__ uint8_t*)this->permutedGMTensor_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset,
                 hcclDataType_);
