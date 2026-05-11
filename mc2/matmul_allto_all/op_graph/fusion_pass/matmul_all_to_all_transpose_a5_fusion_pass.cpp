@@ -71,7 +71,7 @@ namespace {
     {
         static EsTransposeFunc func = GetEsTransposeFunc();
         auto* builder = ge::es::ResolveBuilder(x, perm);
-        auto result = func(x.ToTensorHolder(builder).GetCTensorHolder(), 
+        auto result = func(x.ToTensorHolder(builder).GetCTensorHolder(),
             perm.ToTensorHolder(builder).GetCTensorHolder());
         return result;
     }
