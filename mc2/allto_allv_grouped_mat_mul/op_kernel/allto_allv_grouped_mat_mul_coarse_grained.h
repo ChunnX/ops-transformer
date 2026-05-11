@@ -105,8 +105,8 @@ private:
     typename mmType::MT mm_;
 };
 
-template <typename DataType, bool IsTranGmmW, bool IsTranMmW>
-__aicore__ inline void AlltoAllvGmmCoarseGrained<DataType, IsTranGmmW, IsTranMmW>::Init(
+template <typename DataType, bool IsTranGmmW, bool IsTranMmW, int TILINGKEY_COMM_MODE>
+__aicore__ inline void AlltoAllvGmmCoarseGrained<DataType, IsTranGmmW, IsTranMmW, TILINGKEY_COMM_MODE>::Init(
     GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR sendCountsTensorOptionalGM, GM_ADDR recvCountsTensorOptionalGM,
     GM_ADDR mmxOptionalGM, GM_ADDR mmweightOptionalGM, GM_ADDR gmmyGM, GM_ADDR mmyOptionalGM,
     GM_ADDR permuteOutOptionalGM, GM_ADDR workspaceGM, GM_ADDR contextGM, const AlltoAllvGmmTilingData* tilingData,
@@ -144,8 +144,8 @@ __aicore__ inline void AlltoAllvGmmCoarseGrained<DataType, IsTranGmmW, IsTranMmW
     permutedGMTensor_.SetGlobalBuffer((__gm__ DataType*)this->permuteOutGM_);
 }
 
-template <typename DataType, bool IsTranGmmW, bool IsTranMmW>
-__aicore__ inline void AlltoAllvGmmCoarseGrained<DataType, IsTranGmmW, IsTranMmW>::Process()
+template <typename DataType, bool IsTranGmmW, bool IsTranMmW, int TILINGKEY_COMM_MODE>
+__aicore__ inline void AlltoAllvGmmCoarseGrained<DataType, IsTranGmmW, IsTranMmW, TILINGKEY_COMM_MODE>::Process()
 {
     HcclAlltoAllvPrepare();
     if (tilingData_->commonTilingInfo.isNeedMM) {
@@ -157,8 +157,8 @@ __aicore__ inline void AlltoAllvGmmCoarseGrained<DataType, IsTranGmmW, IsTranMmW
     HcclFinalize();
 }
 
-template <typename DataType, bool IsTranGmmW, bool IsTranMmW>
-__aicore__ inline void AlltoAllvGmmCoarseGrained<DataType, IsTranGmmW, IsTranMmW>::CalcMatmul()
+template <typename DataType, bool IsTranGmmW, bool IsTranMmW, int TILINGKEY_COMM_MODE>
+__aicore__ inline void AlltoAllvGmmCoarseGrained<DataType, IsTranGmmW, IsTranMmW, TILINGKEY_COMM_MODE>::CalcMatmul()
 {
     mm_.Init(&(tilingData_->mmTilingData));
     GMMCompute<mmType> computeOp(mm_);
@@ -178,8 +178,8 @@ __aicore__ inline void AlltoAllvGmmCoarseGrained<DataType, IsTranGmmW, IsTranMmW
     }
 }
 
-template <typename DataType, bool IsTranGmmW, bool IsTranMmW>
-__aicore__ inline void AlltoAllvGmmCoarseGrained<DataType, IsTranGmmW, IsTranMmW>::HcclAlltoAllvPrepare()
+template <typename DataType, bool IsTranGmmW, bool IsTranMmW, int TILINGKEY_COMM_MODE>
+__aicore__ inline void AlltoAllvGmmCoarseGrained<DataType, IsTranGmmW, IsTranMmW, TILINGKEY_COMM_MODE>::HcclAlltoAllvPrepare()
 {
     if ASCEND_IS_AIV {
         if (GetBlockIdx() != 0) {
@@ -229,8 +229,8 @@ __aicore__ inline void AlltoAllvGmmCoarseGrained<DataType, IsTranGmmW, IsTranMmW
     }
 }
 
-template <typename DataType, bool IsTranGmmW, bool IsTranMmW>
-__aicore__ inline void AlltoAllvGmmCoarseGrained<DataType, IsTranGmmW, IsTranMmW>::HcclAlltoAllvExec()
+template <typename DataType, bool IsTranGmmW, bool IsTranMmW, int TILINGKEY_COMM_MODE>
+__aicore__ inline void AlltoAllvGmmCoarseGrained<DataType, IsTranGmmW, IsTranMmW, TILINGKEY_COMM_MODE>::HcclAlltoAllvExec()
 {
     gmm_.Init(&(tilingData_->gmmTilingData));
     GMMCompute<gmmType> computeOp(gmm_);
@@ -281,8 +281,8 @@ __aicore__ inline void AlltoAllvGmmCoarseGrained<DataType, IsTranGmmW, IsTranMmW
     }
 }
 
-template <typename DataType, bool IsTranGmmW, bool IsTranMmW>
-__aicore__ inline void AlltoAllvGmmCoarseGrained<DataType, IsTranGmmW, IsTranMmW>::HcclFinalize()
+template <typename DataType, bool IsTranGmmW, bool IsTranMmW, int TILINGKEY_COMM_MODE>
+__aicore__ inline void AlltoAllvGmmCoarseGrained<DataType, IsTranGmmW, IsTranMmW, TILINGKEY_COMM_MODE>::HcclFinalize()
 {
     if ASCEND_IS_AIV {
         hccl_.Finalize();
