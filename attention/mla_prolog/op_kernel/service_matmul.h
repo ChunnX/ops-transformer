@@ -489,7 +489,7 @@ __aicore__ inline void GetTensorCToUb(const LocalTensor<O> &tensorCGm, const Loc
     Fixpipe<O, O_L0C, MLA_PROLOG_CFG_ROW_MAJOR_UB>(tensorCGm, cL0, fixParams);
 }
 
-template <typename T, typename O, typename O_L0C, bool enUnitFlag = false>
+template <typename O, typename O_L0C, bool enUnitFlag = false>
 __aicore__ inline void GetTensorCToL1(const LocalTensor<O> &tensorCGm, const LocalTensor<O_L0C> &cL0, const uint32_t mSize,
                                   const uint32_t nSize, const uint32_t srcStride, const uint32_t dstStride,
                                   MMBufParams &bufParam)

@@ -173,7 +173,7 @@ constexpr uint8_t DUAL_TARGET_MODE_SPLIT_N = 0b10;
 constexpr FixpipeConfig MLA_PROLOG_CFG_ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR, true}; // ROW_MAJOR: 使能NZ2ND，输出数据格式为ND格式; true: 用于用户指定目的地址的位置是否是UB
 constexpr FixpipeConfig MLA_PROLOG_CFG_ROW_MAJOR_GM = {CO2Layout::ROW_MAJOR, false}; // ROW_MAJOR: 使能NZ2ND，输出数据格式为ND格式; true: 用于用户指定目的地址的位置是否是UB
 constexpr FixpipeConfig MLA_PROLOG_CFG_NZ_UB = {CO2Layout::NZ, true}; // 不使能NZ2ND，输出数据格式为NZ格式; true: 用于用户指定目的地址的位置是UB
-constexpr FixpipeConfig MLA_PROLOG_CFG_NZ_UB = {CO2Layout::NZ, false}; // 不使能NZ2ND，输出数据格式为NZ格式; false: 用于用户指定目的地址的位置不是UB
+constexpr FixpipeConfig MLA_PROLOG_CFG_NZ_L1 = {CO2Layout::NZ, false}; // 不使能NZ2ND，输出数据格式为NZ格式; false: 用于用户指定目的地址的位置不是UB
 
 class NoneType {};
 

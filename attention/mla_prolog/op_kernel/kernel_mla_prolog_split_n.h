@@ -16,7 +16,6 @@
 #ifndef KERNEL_MLA_PROLOG_SPLIT_N_H
 #define KERNEL_MLA_PROLOG_SPLIT_N_H
 
-#include "arch22/service_rope.h"
 #include "mla_prolog_comm.h"
 #include "mla_prolog_vector_comm.h"
 #include "service_matmul.h"
@@ -1467,7 +1466,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::CopyInSinCos(int64_t tokenInd
         int64_t offset = (curStepBatchSize / cvRatio_) * subBlockIdx_ + batchOffset;
         GatherSinCos<ropeSinCosType, ropeComputType>(cosLocal_, sinLocal_, ropeCosGm_, ropeSinGm_, offset, (curStepBatchSize + cvRatio_ - 1) / cvRatio_,
             shareTmpUb, vectorRow_, baseParams_->dimHeadRope);
-    } else if (SplitKnAccumParams) {
+    } else if (splitKN) {
         // 如果是切N场景，mm3的每个C核都会做rope
         if (cubeBlockIdx_ >= baseParams_->mm3BlockNum) {
             return;
@@ -2507,14 +2506,14 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::M3AndM4(AicOffset &aicOffset)
             // CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_FIX>(FINISH_MM_QCQR_SPLIT_N);
             // mm3ResOffset += mmQcQrParam_.m * baseParams_->dimHeadSizeQc;
         } else {
-            GetTensorCToL1<T>(aL1, cL0, mmQcQrParam_.m, baseParams_->dimHeadSizeQc, mSize,
+            GetTensorCToL1(aL1, cL0, mmQcQrParam_.m, baseParams_->dimHeadSizeQc, mSize,
                     mSize, bufParam_);
             SetFlag<HardEvent::FIX_MTE1>(L0A_EVENT0 + (mm4AL1BufIter & 1u));  
             WaitFlag<HardEvent::FIX_MTE1>(L0A_EVENT0 + (mm4AL1BufIter & 1u)); 
         }
         CrossCoreWaitFlag(FINISH_VEC_QR);
         // TODO：此处偏移需要修改
-        GetTensorCToUb<T>(mm3ResLocal_, cL0[baseParams_->dimHeadSizeQc * mSize], mmQcQrParam_.m, baseParams_->dimHeadRope, mSize,
+        GetTensorCToUb(mm3ResLocal_, cL0[baseParams_->dimHeadSizeQc * mSize], mmQcQrParam_.m, baseParams_->dimHeadRope, mSize,
                 baseParams_->dimHeadRope, bufParam_);
         CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_FIX>(FINISH_MM_QCQR_SPLIT_N);
         SetFlag<HardEvent::FIX_M>(L0C_EVENT0 + (bufParam_.cL0BufIter & 1u));
