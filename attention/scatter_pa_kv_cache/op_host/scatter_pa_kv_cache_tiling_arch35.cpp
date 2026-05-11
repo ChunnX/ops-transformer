@@ -753,33 +753,61 @@ ge::graphStatus ScatterPaKvCacheTiling::GetTemplateType(int64_t inputKeyDimNum)
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus ScatterPaKvCacheTiling::GetContiguousTensorInfo(gert::Shape &shape, gert::Stride &stride, size_t idx) 
+{
+    auto xStorageShape = context_->GetInputShape(idx);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, xStorageShape);
+    shape = xStorageShape->GetStorageShape();
+    stride.SetDimNum(shape.GetDimNum());
+    int32_t maxDim = static_cast<int32_t>(shape.GetDimNum()) - 1;
+    int64_t xStride = 1; 
+    for (int32_t j = maxDim; j >= 0; --j) {
+        stride.SetStride(j, xStride);
+        xStride *= shape.GetDim(j);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus ScatterPaKvCacheTiling::GetTensorInfo(gert::Shape &shape, gert::Stride &stride, size_t idx) 
+{
+    bool isView = context_->InputIsView(idx);
+    if (isView) {
+        auto* inputStride = context_->GetInputStride(idx);
+        if (inputStride == nullptr || inputStride->GetDimNum() == 0 ) {
+            return GetContiguousTensorInfo(shape, stride, idx);
+        } else {
+            stride = *inputStride;
+            shape = context_->GetInputShape(idx)->GetShape();
+        } 
+    } else {
+        return GetContiguousTensorInfo(shape, stride, idx);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus ScatterPaKvCacheTiling::GetShapeAttrsInfo()
 {
     SetInputPos();
-    auto inputKey = context_->GetRequiredInputTensor(inputKey_);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, inputKey);
-    inputKeyShape_ = inputKey->GetStorageShape();
+    OP_CHECK_IF(GetTensorInfo(inputKeyShape_, keyStride_, inputKey_) != ge::GRAPH_SUCCESS, ,
+                return ge::GRAPH_FAILED;);
     size_t inputKeyDimNum = inputKeyShape_.GetDimNum();
     if (GetTemplateType(inputKeyDimNum) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     OP_CHECK_IF(GetInputDtype() != ge::GRAPH_SUCCESS || GetIndexDtype() != ge::GRAPH_SUCCESS, ,
                 return ge::GRAPH_FAILED;);
-    auto inputKeyCacheIn = context_->GetRequiredInputTensor(inputKeyCacheIn_);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, inputKeyCacheIn);
-    inputKeyCacheInShape_ = inputKeyCacheIn->GetStorageShape();
+    OP_CHECK_IF(GetTensorInfo(inputKeyCacheInShape_, keyCacheStride_, inputKeyCacheIn_) != ge::GRAPH_SUCCESS, ,
+                return ge::GRAPH_FAILED;);
 
     auto slotMapping = context_->GetRequiredInputTensor(inputSlotMapping_);
     OP_CHECK_NULL_WITH_CONTEXT(context_, slotMapping);
     slotMappingShape_ = slotMapping->GetStorageShape();
 
-    auto inputValue = context_->GetRequiredInputTensor(inputValue_);
-    auto inputValueCacheIn = context_->GetRequiredInputTensor(inputValueCacheIn_);
     if (inOutMode_ == DUAL_IN_OUT) {
-        OP_CHECK_NULL_WITH_CONTEXT(context_, inputValue);
-        OP_CHECK_NULL_WITH_CONTEXT(context_, inputValueCacheIn);
-        inputValueShape_ = inputValue->GetStorageShape();
-        inputValueCacheInShape_ = inputValueCacheIn->GetStorageShape();
+        OP_CHECK_IF(GetTensorInfo(inputValueShape_, valueStride_, inputValue_) != ge::GRAPH_SUCCESS, ,
+                    return ge::GRAPH_FAILED;);
+        OP_CHECK_IF(GetTensorInfo(inputValueCacheInShape_, valueCacheStride_, inputValueCacheIn_) != ge::GRAPH_SUCCESS, ,
+                    return ge::GRAPH_FAILED;);
         size_t inputValueDimNum = inputValueShape_.GetDimNum();
         OP_CHECK_IF(inputKeyDimNum != inputValueDimNum,
                     OP_LOGE(context_, "the dim num of inputKey and inputValue are not the same."),
@@ -936,6 +964,14 @@ ge::graphStatus ScatterPaKvCacheTiling::PostTiling()
     tilingData_.set_vStride(vStride_);
     tilingData_.set_kOffset(kOffset_);
     tilingData_.set_vOffset(vOffset_);
+    tilingData_.set_keyCacheStride0(keyCacheStride_[0]);
+    tilingData_.set_keyCacheStride1(keyCacheStride_[1]);
+    tilingData_.set_keyCacheStride2(keyCacheStride_[2]);
+    if (inOutMode_ == DUAL_IN_OUT) {
+        tilingData_.set_valueCacheStride0(valueCacheStride_[0]);
+        tilingData_.set_valueCacheStride1(valueCacheStride_[1]);
+        tilingData_.set_valueCacheStride2(valueCacheStride_[2]);
+    }
     GenTilingKey();
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
@@ -985,6 +1021,14 @@ void ScatterPaKvCacheTiling::DumpTilingInfo()
     info += " vStride: " + std::to_string(vStride_);
     info += " kOffset: " + std::to_string(kOffset_);
     info += " vOffset: " + std::to_string(vOffset_);
+    info += " keyCacheStride0: " + std::to_string(keyCacheStride_[0]);
+    info += " keyCacheStride1: " + std::to_string(keyCacheStride_[1]);
+    info += " keyCacheStride2: " + std::to_string(keyCacheStride_[2]);
+    if (inOutMode_ == DUAL_IN_OUT) {
+        info += " valueCacheStride0: " + std::to_string(valueCacheStride_[0]);
+        info += " valueCacheStride1: " + std::to_string(valueCacheStride_[1]);
+        info += " valueCacheStride2: " + std::to_string(valueCacheStride_[2]);
+    }
     OP_LOGI(context_->GetNodeName(), "%s", info.c_str());
 }
 

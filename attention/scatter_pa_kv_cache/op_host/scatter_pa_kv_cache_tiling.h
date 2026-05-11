@@ -63,6 +63,12 @@ TILING_DATA_FIELD_DEF(int64_t, kStride);
 TILING_DATA_FIELD_DEF(int64_t, vStride);
 TILING_DATA_FIELD_DEF(int64_t, kOffset);
 TILING_DATA_FIELD_DEF(int64_t, vOffset);
+TILING_DATA_FIELD_DEF(int64_t, keyCacheStride0);
+TILING_DATA_FIELD_DEF(int64_t, keyCacheStride1);
+TILING_DATA_FIELD_DEF(int64_t, keyCacheStride2);
+TILING_DATA_FIELD_DEF(int64_t, valueCacheStride0);
+TILING_DATA_FIELD_DEF(int64_t, valueCacheStride1);
+TILING_DATA_FIELD_DEF(int64_t, valueCacheStride2);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(ScatterPaKvCache, ScatterPaKvCacheTilingData)
@@ -103,6 +109,8 @@ protected:
     ge::graphStatus CheckAlibi();
     ge::graphStatus CheckNz();
     ge::graphStatus GetTemplateType(int64_t inputKeyDimNum);
+    ge::graphStatus GetContiguousTensorInfo(gert::Shape &shape, gert::Stride &stride, size_t idx);
+    ge::graphStatus GetTensorInfo(gert::Shape &shape, gert::Stride &stride, size_t idx);
     void SetInputPos();
     void GetCommonTilingInfo();
     ge::graphStatus CheckSlotMappingShape(int64_t requiredDimNum);
@@ -166,6 +174,11 @@ private:
     gert::Shape compressLensShape_;
     gert::Shape compressSeqOffsetShape_;
     gert::Shape seqLensShape_;
+
+    gert::Stride keyStride_;
+    gert::Stride valueStride_;
+    gert::Stride keyCacheStride_;
+    gert::Stride valueCacheStride_;
 
     ge::DataType inputDtype_;
     ge::DataType valueDtype_;
