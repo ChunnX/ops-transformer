@@ -357,7 +357,7 @@ __aicore__ inline void GroupMatmul2(
             AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
             MegaMoeCombineImpl::CombineTokens<ElementC, decltype(actualShape)>(
-                mLoc, nLoc, n, groupIdx, rankId, l0cOutUbGMM2, actualShape, params);
+                mLoc, nLoc, n, groupIdx, rankId, gmmAddrInfo.mBaseOffset, l0cOutUbGMM2, actualShape, params);
             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
             NotifyCube(pingpongIdx);

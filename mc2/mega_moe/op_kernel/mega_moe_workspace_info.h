@@ -65,6 +65,7 @@ struct WorkspaceInfo {
     GM_ADDR gmCtx;
     GM_ADDR ptrA;
     GM_ADDR ptrAScale;
+    GM_ADDR ptrTriplet;
     GM_ADDR ptrA2;
     GM_ADDR ptrA2Scale;
     GM_ADDR ptrcumsumMM;
@@ -83,6 +84,8 @@ struct WorkspaceInfo {
         ptrAScale = base + workspaceSize;
         workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->h /
             MXFP_SCALE_GROUP_NUM, ALIGN_512);
+        ptrTriplet = base + workspaceSize;
+        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_32 * tilingData->maxOutputSize, ALIGN_512);
         ptrA2 = base + workspaceSize;
         workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize *
             tilingData->hiddenDim / SWIGLU_N_HALF, ALIGN_512);
