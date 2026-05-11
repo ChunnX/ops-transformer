@@ -430,8 +430,7 @@ __aicore__ inline void SWACubeBlock<SAST>::ComputeMm1(const RunInfo &info, const
                         nd2nzPara.dstNzNStride = 1;
                         nd2nzPara.srcNdMatrixStride = 0;
                         nd2nzPara.dstNzMatrixStride = 0;
-                        DataCopy(bL1Tensor, oriKvGm[info.tensorBOffset + curS2Offset * constInfo.headDim +
-                                nL1 * N_SPLIT_SIZE * constInfo.headDim], nd2nzPara);
+                        DataCopy(bL1Tensor, oriKvGm[info.tensorBOffset + curS2Offset * constInfo.headDim], nd2nzPara);
                     } else {
                         Nd2NzParams nd2nzPara;
                         nd2nzPara.ndNum = 1;
@@ -443,9 +442,8 @@ __aicore__ inline void SWACubeBlock<SAST>::ComputeMm1(const RunInfo &info, const
                         nd2nzPara.srcNdMatrixStride = 0;
                         nd2nzPara.dstNzMatrixStride = 0;
                         DataCopy(bL1Tensor,
-                                    oriKvGm[info.tensorBOffset + curS2Offset * constInfo.headDim + (constInfo.headDim >> 1) +
-                                        nL1 * N_SPLIT_SIZE * constInfo.headDim],
-                                    nd2nzPara);
+                            oriKvGm[info.tensorBOffset + curS2Offset * constInfo.headDim + (constInfo.headDim >> 1)],
+                            nd2nzPara);
                     }
                 }
             } else {
