@@ -230,17 +230,17 @@ SectionStreamKImpl::Compute(const DeviceInfo &deviceInfo, const IBaseInfo &baseI
     std::vector<SectionStreamKImplResult> result {};
 
     CalcGridInfo(computeContext);
-    // 全空case
+        // 全空case
     if (computeContext.gridInfo.isEmpty) {
         result.emplace_back(deviceInfo.aicCoreMaxNum, deviceInfo.aivCoreMaxNum);
         result[0].usedCoreNum = 1U;
         result[0].bN2End[0] = NumToIndex(baseInfo.GetBatchSize() * baseInfo.GetQueryHeadNum());
         result[0].gS1End[0] = 0U;
         result[0].s2End[0] = 0U;
-        return result;
+                return result;
     }
     CalcCostInfo(computeContext);
-
+    
     for (uint32_t sectionIdx = 0; sectionIdx < computeContext.gridInfo.sectionNum; ++sectionIdx) {
         auto res = ScheduleSection(sectionIdx, computeContext);
         result.emplace_back(res);
@@ -425,9 +425,9 @@ inline void SectionStreamKImpl::CalcCostInfo(ComputeContext &computeContext)
 
         uint32_t bIdx = FloorDiv(bn2StartIdx, baseInfo.GetKvHeadNum());
         for (uint32_t bn2Idx = bn2StartIdx; bn2Idx < bn2EndIdx; ++bn2Idx) {
+            bIdx = FloorDiv(bn2Idx, baseInfo.GetKvHeadNum());
             costInfo.sectionBlockNum[sectionIdx] += costInfo.bN2BlockOfEachBatch[bIdx];
             costInfo.sectionCost[sectionIdx] += costInfo.bN2CostOfEachBatch[bIdx];
-            bIdx = FloorDiv(bn2Idx, baseInfo.GetKvHeadNum());
         }
     }
 }
@@ -448,8 +448,8 @@ inline Range<uint32_t> SectionStreamKImpl::CalcCoreRange(uint32_t sectionIdx, co
     uint32_t maxCore = std::min(deviceInfo.aicCoreMaxNum, computeContext.costInfo.sectionBlockNum[sectionIdx]);
     uint32_t minCore = std::lround(
         std::sqrt(static_cast<float>(computeContext.costInfo.sectionBlockNum[sectionIdx]) + 0.25f) + 0.5f);
-    minCore = std::min(minCore, maxCore);
     minCore = std::max(minCore, deviceInfo.aicCoreMinNum);
+    minCore = std::min(minCore, maxCore);
 
     return std::make_pair(minCore, maxCore);
 }
@@ -538,7 +538,7 @@ SectionStreamKImpl::ScheduleSection(uint32_t sectionIdx, const ComputeContext &c
     faWithFdConfig.costLimit = bestResultWithFd.maxCost;
 
     auto coreRange = CalcCoreRange(sectionIdx, computeContext);
-    for (uint32_t i = coreRange.first; i <= coreRange.second; ++i) {
+        for (uint32_t i = coreRange.first; i <= coreRange.second; ++i) {
         faConfig.coreNum = i;
         faWithFdConfig.coreNum = i;
 
@@ -591,7 +591,7 @@ inline void SectionStreamKImpl::ScheduleFa(const FaConfig &faConfig, const Compu
     CalcBatchCache(assignContext.curBIdx, computeContext, assignContext.batchCache);
     CalcS1GCache(assignContext.curS1GIdx, computeContext, assignContext.batchCache, assignContext.s1GCache);
     assignContext.curS2Idx = assignContext.s1GCache.s2Start;
-
+    
     for (uint32_t i = 0; i < faConfig.coreNum; ++i) {
         if (result.maxCost > faConfig.costLimit && i > faConfig.coreLimit) {
             return;
