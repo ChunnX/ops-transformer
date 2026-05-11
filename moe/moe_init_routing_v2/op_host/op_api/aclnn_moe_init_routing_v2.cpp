@@ -240,7 +240,7 @@ ACLNN_API aclnnStatus aclnnMoeInitRoutingV2GetWorkspaceSize(
                                          expertTokensBeforeCapacityOutOptional, uniqueExecutor.get());
     auto [expandedXOut_, expandedRowIdxOut_, expertTokensCountOrCumsumOut_, expertTokensBeforeCapacityOut_] = result;
     bool hasNullptr = (expandedXOut_ == nullptr) || (expandedRowIdxOut_ == nullptr);
-    CHECK_RET(hasNullptr != true, ACLNN_ERR_INNER_TILING_ERROR);
+    CHECK_RET(hasNullptr != true, ACLNN_ERR_INNER_NULLPTR);
 
     // copyout结果，如果出参是非连续Tensor，需要把计算完的连续Tensor转非连续
     auto viewCopyExpandedXOutResult = l0op::ViewCopy(expandedXOut_, expandedXOut, uniqueExecutor.get());
