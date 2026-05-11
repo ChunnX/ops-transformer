@@ -114,6 +114,22 @@ void AllToAllMatmulTilingBase::SetUserWorkSpace()
     }
 }
 
+CutResult AllToAllMatmulTilingBase::GetCutResOfCommAndCompute()
+{
+    OP_LOGD(opName_, "Start to find proper tile by formulaic tiling.");
+    std::string socVersionStr = mc2tiling::GetSocVersion(context_);
+    OP_LOGD(opName_, "Current SocVersion is : %s", socVersionStr.c_str());
+
+    SocVersion nowSocVersion = SocVersion::SOC950;
+    if (socVersionStr == "Ascend910_93") {
+        nowSocVersion = SocVersion::SOC910_93;
+    }
+    AlltoAllMM alltoallMatmulTileFormulate(contextInfo_.args_, contextInfo_.args_.rankDim, KernelType::ALL_TO_ALL,
+                                            nowSocVersion, true);
+    alltoallMatmulTileFormulate.GetTiling();
+    return alltoallMatmulTileFormulate.tilingM_.cutRes;
+}
+
 /**
  * @brief 进行通算切分:使用公式化tiling的方式，当前阶段公式化tiling只是个预估，AlltoAllMatmul传递的内轴为K,与
  * MatmulAlltoAll的要区分开，用一个额外参数进行隔离
@@ -122,53 +138,22 @@ void AllToAllMatmulTilingBase::SetUserWorkSpace()
  */
 ge::graphStatus AllToAllMatmulTilingBase::TileCommAndCompute()
 {
-    OP_LOGD(opName_, "Start to find proper tile by formulaic tiling.");
-    std::string socVersionStr = mc2tiling::GetSocVersion(context_);
-    OP_LOGD(opName_, "Current SocVersion is : %s", socVersionStr.c_str());
-
-    constexpr uint32_t COMM_RANKDIM_FOUR = 4;
-    constexpr uint32_t COMM_RANKDIM_EIGHT = 8;
-    if (socVersionStr == "Ascend950" &&
-        (contextInfo_.args_.rankDim == COMM_RANKDIM_FOUR || contextInfo_.args_.rankDim == COMM_RANKDIM_EIGHT)) {
-        TopoType topoType =
-            contextInfo_.args_.rankDim == COMM_RANKDIM_FOUR ? TopoType::STANDARD_CARD : TopoType::EIGHT_P;
-        // 950的4卡和8卡形态使用基于拟合数据的公式化tiling
-        AlltoAllMatmulFitBalanceTiling tiling(matmulQuantType_, contextInfo_.args_, topoType, SocVersion::SOC950);
-        CutResult cutRes = tiling.GetTiling();
-        if (!cutRes.shortTileAtBack && cutRes.numShortTile > 0) {
-            inferredInfo_.tileM = cutRes.shortTileLen;
-            inferredInfo_.tileCnt = cutRes.numShortTile;
-            if (cutRes.numLongTile > 0) {
-                inferredInfo_.tailM = cutRes.longTileLen;
-                inferredInfo_.tailCnt = cutRes.numLongTile;
-            }
-        } else {
-            inferredInfo_.tileM = cutRes.longTileLen;
-            inferredInfo_.tileCnt = cutRes.numLongTile;
-            inferredInfo_.tailM = 0;
-            inferredInfo_.tailCnt = 0;
-            if (cutRes.numShortTile > 0) {
-                inferredInfo_.tailM = cutRes.shortTileLen;
-                inferredInfo_.tailCnt = cutRes.numShortTile;
-            }
+    CutResult cutRes = GetCutResOfCommAndCompute();
+    if (!cutRes.shortTileAtBack && cutRes.numShortTile > 0) {
+        inferredInfo_.tileM = cutRes.shortTileLen;
+        inferredInfo_.tileCnt = cutRes.numShortTile;
+        if (cutRes.numLongTile > 0) {
+            inferredInfo_.tailM = cutRes.longTileLen;
+            inferredInfo_.tailCnt = cutRes.numLongTile;
         }
     } else {
-        // 保持原本的公式化tiling
-        SocVersion nowSocVersion = SocVersion::SOC950;
-        if (socVersionStr == "Ascend910_93") {
-            nowSocVersion = SocVersion::SOC910_93;
-        }
-        AlltoAllMM alltoallMatmulTileFormulate(contextInfo_.args_, contextInfo_.args_.rankDim, KernelType::ALL_TO_ALL,
-                                               nowSocVersion, true);
-        alltoallMatmulTileFormulate.GetTiling();
-        CutResult mCutMMAlltoAll = alltoallMatmulTileFormulate.tilingM_.cutRes;
-        inferredInfo_.tileM = mCutMMAlltoAll.longTileLen;
-        inferredInfo_.tileCnt = mCutMMAlltoAll.numLongTile;
+        inferredInfo_.tileM = cutRes.longTileLen;
+        inferredInfo_.tileCnt = cutRes.numLongTile;
         inferredInfo_.tailM = 0;
         inferredInfo_.tailCnt = 0;
-        if (mCutMMAlltoAll.numShortTile > 0) {
-            inferredInfo_.tailM = mCutMMAlltoAll.shortTileLen;
-            inferredInfo_.tailCnt = mCutMMAlltoAll.numShortTile;
+        if (cutRes.numShortTile > 0) {
+            inferredInfo_.tailM = cutRes.shortTileLen;
+            inferredInfo_.tailCnt = cutRes.numShortTile;
         }
     }
     return ge::GRAPH_SUCCESS;

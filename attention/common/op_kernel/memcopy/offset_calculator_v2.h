@@ -21,8 +21,7 @@
 using AscendC::GlobalTensor;
 
 // ----------------------------------------------GmLayoutParams--------------------------------
-enum class FormatCategory
-{
+enum class FormatCategory {
     GM_Q_OUT_BNGSD = 0,
     GM_Q_OUT_TND = 1,
     GM_KV_BNSD = 2,
@@ -30,12 +29,12 @@ enum class FormatCategory
     GM_KV_PA_BNBD = 4,
     GM_KV_PA_NZ = 5,
     GM_POST_QUANT_NGD = 6, // post_quant
-    GM_ANTIQ_ND = 7, //antiquant no PA
+    GM_ANTIQ_ND = 7, // antiquant no PA
     GM_ANTIQ_BS = 8,
     GM_ANTIQ_BNS = 9,
-    GM_ANTIQ_BnBs = 10, //antiquant PA
+    GM_ANTIQ_BnBs = 10, // antiquant PA
     GM_ANTIQ_BnNBs = 11,
-    GM_PSE_BN2GS1S2 = 12, //PSE
+    GM_PSE_BN2GS1S2 = 12, // PSE
     GM_V_SCALE_TND = 13,
     GM_K_SCALE_PA_NZ = 14,
 };
@@ -135,7 +134,7 @@ struct GmLayoutParams<GmFormat::NGD> {
     static constexpr FormatCategory CATEGORY = FormatCategory::GM_POST_QUANT_NGD;
 };
 
-//antiquant
+// antiquant
 template <>
 struct GmLayoutParams<GmFormat::ND> {
     static constexpr FormatCategory CATEGORY = FormatCategory::GM_ANTIQ_ND;
@@ -157,7 +156,7 @@ struct GmLayoutParams<GmFormat::PA_BnNBs> {
     static constexpr FormatCategory CATEGORY = FormatCategory::GM_ANTIQ_BnNBs;
 };
 
-//pse
+// pse
 template <>
 struct GmLayoutParams<GmFormat::BN2GS1S2> {
     static constexpr FormatCategory CATEGORY = FormatCategory::GM_PSE_BN2GS1S2;
@@ -187,7 +186,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_Q_OUT_BNGSD, ACTLEN_T> {
     {
         this->isQPaddingFlag = isQPaddingFlag;
         this->qPaddingSize = qPaddingSize;
-        if(actualLenQDims != 0) {
+        if (actualLenQDims != 0) {
             actualSeqLensQParser.Init(actualSeqLengthsGmQ, actualLenQDims, 0);
         }
         gmLayout.MakeLayout(b, n2, g, s1, d);
@@ -345,7 +344,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_BNSD, ACTLEN_T> {
     {
         this->isKvPaddingFlag = isKvPaddingFlag;
         this->kvPaddingSize = kvPaddingSize;
-        if(actualLenKvDims != 0) {
+        if (actualLenKvDims != 0) {
             actualSeqLensKVParser.Init(actualSeqLengthsGm, actualLenKvDims, 0);
         }
         gmLayout.MakeLayout(b, n2, s2, d);
@@ -541,7 +540,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_PA_BNBD, ACTLEN_T> {
         uint64_t blockIdxInBatch = s2Idx / GetBlockSize(); // 获取block table上的索引
         uint64_t bsIdx = s2Idx % GetBlockSize();           // 获取在单个块上超出的行数
         int32_t blockIdx = blockTableParser.GetBlockIdx(bIdx, blockIdxInBatch);
-        
+
         uint64_t offset =
             blockIdx * GetStrideBlockNum() + n2Idx * GetStrideN2() + bsIdx * GetStrideBlockSize() + dIdx * GetStrideD();
         return offset;
@@ -607,8 +606,8 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_PA_NZ, ACTLEN_T> {
 
         uint32_t d1Idx = dIdx / GetD0();
         uint32_t d0Idx = dIdx % GetD0();
-        uint64_t offset = blockIdx * GetStrideBlockNum() + n2Idx * GetStrideN2() +
-                          d1Idx * GetStrideD1() + bsIdx * GetStrideBlockSize() + d0Idx * GetStrideD0();
+        uint64_t offset = blockIdx * GetStrideBlockNum() + n2Idx * GetStrideN2() + d1Idx * GetStrideD1() +
+                          bsIdx * GetStrideBlockSize() + d0Idx * GetStrideD0();
         return offset;
     }
 
@@ -684,8 +683,8 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_K_SCALE_PA_NZ, ACTLEN_T> 
         uint32_t bs1Idx = bsIdx / bs0;
         uint32_t bs0Idx = bsIdx % bs0;
 
-        uint64_t offset = blockIdx * GetStrideBlockNum() + n2Idx * GetStrideN2() +
-                          bs1Idx * GetStrideBlockSize1() + dIdx * GetStrideD() +  bs0Idx * GetStrideBlockSize0();
+        uint64_t offset = blockIdx * GetStrideBlockNum() + n2Idx * GetStrideN2() + bs1Idx * GetStrideBlockSize1() +
+                          dIdx * GetStrideD() + bs0Idx * GetStrideBlockSize0();
         return offset;
     }
 
@@ -793,7 +792,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_POST_QUANT_NGD, ACTLEN_T>
     }
 };
 
-//antiquant
+// antiquant
 template <GmFormat FORMAT, typename ACTLEN_T>
 struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_ANTIQ_ND, ACTLEN_T> {
     GmLayout<FORMAT> gmLayout;
@@ -931,8 +930,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_ANTIQ_BnBs, ACTLEN_T> {
 
     __aicore__ inline OffsetCalculatorImpl() = default;
 
-    __aicore__ inline void Init(uint32_t blockSize,
-                                GlobalTensor<int32_t> blockTableGm, uint32_t maxblockNumPerBatch)
+    __aicore__ inline void Init(uint32_t blockSize, GlobalTensor<int32_t> blockTableGm, uint32_t maxblockNumPerBatch)
     {
         blockTableParser.Init(blockTableGm, maxblockNumPerBatch);
         gmLayout.MakeLayout(blockSize);
@@ -943,8 +941,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_ANTIQ_BnBs, ACTLEN_T> {
         uint64_t blockIdxInBatch = sIdx / GetStrideBlockSize(); // 获取block table上的索引
         uint64_t bsIdx = sIdx % GetStrideBlockSize();           // 获取在单个块上超出的行数
         int32_t blockIdx = blockTableParser.GetBlockIdx(bIdx, blockIdxInBatch);
-        uint64_t offset =
-            blockIdx * GetStrideBlockNum() + bsIdx * GetStrideBlockSize();
+        uint64_t offset = blockIdx * GetStrideBlockNum() + bsIdx * GetStrideBlockSize();
 
         return offset;
     }
@@ -975,8 +972,8 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_ANTIQ_BnNBs, ACTLEN_T> {
 
     __aicore__ inline OffsetCalculatorImpl() = default;
 
-    __aicore__ inline void Init(uint32_t n, uint32_t blockSize,
-                                GlobalTensor<int32_t> blockTableGm, uint32_t maxblockNumPerBatch)
+    __aicore__ inline void Init(uint32_t n, uint32_t blockSize, GlobalTensor<int32_t> blockTableGm,
+                                uint32_t maxblockNumPerBatch)
     {
         blockTableParser.Init(blockTableGm, maxblockNumPerBatch);
         gmLayout.MakeLayout(n, blockSize);
@@ -987,8 +984,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_ANTIQ_BnNBs, ACTLEN_T> {
         uint64_t blockIdxInBatch = sIdx / GetStrideBlockSize(); // 获取block table上的索引
         uint64_t bsIdx = sIdx % GetStrideBlockSize();           // 获取在单个块上超出的行数
         int32_t blockIdx = blockTableParser.GetBlockIdx(bIdx, blockIdxInBatch);
-        uint64_t offset =
-            blockIdx * GetStrideBlockNum() + nIdx * GetStrideN() + bsIdx * GetStrideBlockSize();
+        uint64_t offset = blockIdx * GetStrideBlockNum() + nIdx * GetStrideN() + bsIdx * GetStrideBlockSize();
 
         return offset;
     }
@@ -1022,7 +1018,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_ANTIQ_BnNBs, ACTLEN_T> {
     }
 };
 
-//PSE
+// PSE
 template <GmFormat FORMAT, typename ACTLEN_T>
 struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_PSE_BN2GS1S2, ACTLEN_T> {
     GmLayout<FORMAT> gmLayout;
@@ -1038,7 +1034,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_PSE_BN2GS1S2, ACTLEN_T> {
     {
         this->isQPaddingFlag = isQPaddingFlag;
         this->qPaddingSize = qPaddingSize;
-        if(actualLenQDims != 0) {
+        if (actualLenQDims != 0) {
             actualSeqLensQParser.Init(actualSeqLengthsGmQ, actualLenQDims, 0);
         }
         gmLayout.MakeLayout(b, n2, g, s1, s2);
@@ -1108,7 +1104,6 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_PSE_BN2GS1S2, ACTLEN_T> {
 };
 
 template <GmFormat FORMAT, typename ACTLEN_T = uint64_t>
-struct OffsetCalculator : public OffsetCalculatorImpl<FORMAT, GmLayoutParams<FORMAT>::CATEGORY, ACTLEN_T> {
-};
+struct OffsetCalculator : public OffsetCalculatorImpl<FORMAT, GmLayoutParams<FORMAT>::CATEGORY, ACTLEN_T> {};
 
 #endif

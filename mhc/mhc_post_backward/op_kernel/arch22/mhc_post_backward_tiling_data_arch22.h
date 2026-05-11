@@ -12,10 +12,10 @@
  * \brief mhc_post_backward
  */
 
-#ifndef MHC_POST_BACKWARD_TILING_DATA_ARCH32_H
-#define MHC_POST_BACKWARD_TILING_DATA_ARCH32_H
+#ifndef MHC_POST_BACKWARD_TILING_DATA_ARCH22_H
+#define MHC_POST_BACKWARD_TILING_DATA_ARCH22_H
 
-class MhcPostBackwardTilingDataArch32 {
+class MhcPostBackwardTilingDataArch22 {
 public:
     uint64_t coreUsed{0};
     uint64_t frontCore{0};
@@ -36,4 +36,4 @@ public:
     uint64_t loopC{0};
 };
 
-#endif // MHC_POST_BACKWARD_TILING_DATA_ARCH32_H
+#endif // MHC_POST_BACKWARD_TILING_DATA_ARCH22_H
