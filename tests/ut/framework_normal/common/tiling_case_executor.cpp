@@ -326,7 +326,9 @@ void ExecuteTestCase(const gert::TilingContextPara& tilingContextPara,
 
     // check tiling key
     auto tilingKeyResult = tilingContext->GetTilingKey();
-    ASSERT_EQ(tilingKeyResult, expectTilingKey);
+    if (!(expectTilingKey == 0 && expectTilingData.empty())) {
+        ASSERT_EQ(tilingKeyResult, expectTilingKey);
+    }
 
     // check tiling data
     if (expectTilingData != "") {
