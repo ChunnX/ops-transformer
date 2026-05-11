@@ -40,7 +40,7 @@
 #include "adv_api/hccl/hccl.h"
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
-#include "../common/op_kernel/mc2_moe_context.h"
+#include "../../common/op_kernel/mc2_moe_context.h"
 
 #if __has_include("../moe_distribute_dispatch_v2/moe_distribute_v2_base.h")
 #include "../moe_distribute_dispatch_v2/moe_distribute_v2_base.h"
@@ -54,6 +54,7 @@ namespace BandwidthTestImpl {
 
 using namespace AscendC;
 using namespace Mc2Kernel;
+using namespace Mc2Aclnn;
 
 #define TemplateBandwidthTestTypeClass \
     typename XType, \
