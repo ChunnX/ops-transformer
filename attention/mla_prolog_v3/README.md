@@ -153,7 +153,7 @@
         - tokenX应采用BS合轴，即维度为(T, He)
         - kvCache的维度为(T,Nkv,Dr)
     - 当ckvkrRepoMode=1时
-        - krCache的维度应包含0，支持维度为(0)
+        - krCache的维度应包含0，支持shape为(0)
 
 - 特殊约束
   - actualSeqLenOptional传入时，actualSeqLenOptional最后一个数需与T保持一致。
