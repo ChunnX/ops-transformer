@@ -156,7 +156,8 @@ static bool CheckFormat(const aclTensor *x1, const aclTensor *x2, const aclTenso
         }
     }
     if (IsPrivateFormat(output->GetStorageFormat())) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclnnQuantMatmulAlltoAllV2, output format %s does not support private format.",
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "aclnnQuantMatmulAlltoAllV2, output format %s does not support private format.",
                 op::ToString(output->GetStorageFormat()).GetString());
         return false;
     }
@@ -247,15 +248,16 @@ extern "C" aclnnStatus aclnnInnerMatmulAlltoAllV2GetWorkspaceSize(
     bool transposeX1, bool transposeX2, int64_t groupSize, const aclTensor *out, uint64_t *workspaceSize,
     aclOpExecutor **executor);
 extern "C" aclnnStatus aclnnInnerMatmulAlltoAllV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                                aclrtStream stream);
+                                                  aclrtStream stream);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 // 非量化L2接口调用L0时需要设置较多默认值，通过InnerMatmulAlltoAllV2GetWorkspaceSize完成默认值传参和调用L0层接口
 extern "C" aclnnStatus InnerMatmulAlltoAllV2GetWorkspaceSize(const aclTensor *x1, const aclTensor *x2,
-                                                           const aclTensor *biasOptional,
-                                                           const aclIntArray *alltoAllAxesOptional, const char *group,
-                                                           bool transposeX1, bool transposeX2, const aclTensor *output,
-                                                           uint64_t *workspaceSize, aclOpExecutor **executor)
+                                                             const aclTensor *biasOptional,
+                                                             const aclIntArray *alltoAllAxesOptional, const char *group,
+                                                             bool transposeX1, bool transposeX2,
+                                                             const aclTensor *output, uint64_t *workspaceSize,
+                                                             aclOpExecutor **executor)
 {
     // ACL和GE的datatype枚举值对undefined定义不同，inner接口进入到算子内部，需要使用GE枚举值，因此此处使用的枚举值为28
     const int64_t GE_UNDEFINED = 28;
@@ -284,10 +286,11 @@ extern "C" aclnnStatus InnerMatmulAlltoAllV2GetWorkspaceSize(const aclTensor *x1
 
 // 两段式接口
 extern "C" aclnnStatus aclnnMatmulAlltoAllV2GetWorkspaceSize(const aclTensor *x1, const aclTensor *x2,
-                                                           const aclTensor *biasOptional,
-                                                           const aclIntArray *alltoAllAxesOptional, const char *group,
-                                                           bool transposeX1, bool transposeX2, const aclTensor *output,
-                                                           uint64_t *workspaceSize, aclOpExecutor **executor)
+                                                             const aclTensor *biasOptional,
+                                                             const aclIntArray *alltoAllAxesOptional, const char *group,
+                                                             bool transposeX1, bool transposeX2,
+                                                             const aclTensor *output, uint64_t *workspaceSize,
+                                                             aclOpExecutor **executor)
 {
     // 处理非连续Tensor，目前只有支持转置的x2涉及该处理
     aclnnStatus checkX2Ret = CheckX2Valid(x2);
@@ -318,7 +321,7 @@ extern "C" aclnnStatus aclnnMatmulAlltoAllV2GetWorkspaceSize(const aclTensor *x1
         return DealWithEmptyTensor(workspaceSize, executor);
     }
     aclnnStatus ret = InnerMatmulAlltoAllV2GetWorkspaceSize(x1, transX2, biasOptional, alltoAllAxesOptional, group,
-                                                          transposeX1, transposeX2, output, workspaceSize, executor);
+                                                            transposeX1, transposeX2, output, workspaceSize, executor);
     OP_LOGD("MatmulAlltoAllV2, end ret %d", ret);
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER,
@@ -328,7 +331,7 @@ extern "C" aclnnStatus aclnnMatmulAlltoAllV2GetWorkspaceSize(const aclTensor *x1
 }
 
 extern "C" aclnnStatus aclnnMatmulAlltoAllV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                           aclrtStream stream)
+                                             aclrtStream stream)
 {
     if (NnopbaseSetHcclServerType) {
         if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
@@ -341,7 +344,8 @@ extern "C" aclnnStatus aclnnMatmulAlltoAllV2(void *workspace, uint64_t workspace
     }
     aclnnStatus ret = aclnnInnerMatmulAlltoAllV2(workspace, workspaceSize, executor, stream);
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER, "This is an error in launch aicore, aclnnInnerMatmulAlltoAllV2 interface call failed.");
+        OP_LOGE(ACLNN_ERR_INNER,
+                "This is an error in launch aicore, aclnnInnerMatmulAlltoAllV2 interface call failed.");
         return ACLNN_ERR_INNER;
     }
     return ACLNN_SUCCESS;

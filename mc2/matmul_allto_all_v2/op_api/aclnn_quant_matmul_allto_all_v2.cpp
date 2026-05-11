@@ -317,17 +317,20 @@ static bool CheckFormat(const aclTensor *x1, const aclTensor *x2, const aclTenso
         }
     }
     if (IsPrivateFormat(x1Scale->GetStorageFormat())) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclnnQuantMatmulAlltoAllV2, x1Scale format %s does not support private format.",
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "aclnnQuantMatmulAlltoAllV2, x1Scale format %s does not support private format.",
                 op::ToString(x1Scale->GetStorageFormat()).GetString());
         return false;
     }
     if (IsPrivateFormat(x2Scale->GetStorageFormat())) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclnnQuantMatmulAlltoAllV2, x2Scale format %s does not support private format.",
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "aclnnQuantMatmulAlltoAllV2, x2Scale format %s does not support private format.",
                 op::ToString(x2Scale->GetStorageFormat()).GetString());
         return false;
     }
     if (IsPrivateFormat(output->GetStorageFormat())) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclnnQuantMatmulAlltoAllV2, output format %s does not support private format.",
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "aclnnQuantMatmulAlltoAllV2, output format %s does not support private format.",
                 op::ToString(output->GetStorageFormat()).GetString());
         return false;
     }
@@ -417,7 +420,7 @@ extern "C" aclnnStatus aclnnInnerMatmulAlltoAllV2GetWorkspaceSize(
     bool transposeX1, bool transposeX2, int64_t groupSize, const aclTensor *out, uint64_t *workspaceSize,
     aclOpExecutor **executor);
 extern "C" aclnnStatus aclnnInnerMatmulAlltoAllV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                                aclrtStream stream);
+                                                  aclrtStream stream);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 // 两段式接口
@@ -483,7 +486,7 @@ extern "C" aclnnStatus aclnnQuantMatmulAlltoAllV2GetWorkspaceSize(
 }
 
 extern "C" aclnnStatus aclnnQuantMatmulAlltoAllV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                                aclrtStream stream)
+                                                  aclrtStream stream)
 {
     if (NnopbaseSetHcclServerType) {
         if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
@@ -494,7 +497,8 @@ extern "C" aclnnStatus aclnnQuantMatmulAlltoAllV2(void *workspace, uint64_t work
     }
     aclnnStatus ret = aclnnInnerMatmulAlltoAllV2(workspace, workspaceSize, executor, stream);
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER, "This is an error in launch aicore, aclnnQuantMatmulAlltoAllV2 interface call failed.");
+        OP_LOGE(ACLNN_ERR_INNER,
+                "This is an error in launch aicore, aclnnQuantMatmulAlltoAllV2 interface call failed.");
         return ACLNN_ERR_INNER;
     }
     return ACLNN_SUCCESS;
