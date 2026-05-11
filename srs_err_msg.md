@@ -12,42 +12,16 @@
 
 ## 2. 整改目标与范围
 
-**目标：** 将主机层 ERROR 日志规范化为 EZ0008-EZ0024 错误码
+**目标：** 将op_host的 ERROR 日志规范化为 EZ0008-EZ0017 错误码
 
-**范围：** A5责任田 host 层（op_api + op_host）
+**范围：** A5责任田 + op_host
 
 **约束：** 
 - 不整改 op_kernel、op_graph 层代码
 - 仅整改 A5 芯片相关文件，公共代码暂不整改
 - NPU_FORMAT_CAST 为公共算子，纳入整改范围
 
-### 2.0 OP_LOGE 调用方式架构差异
-
-**重要说明：** op_api 和 op_host 层的 OP_LOGE 宏定义不同，第一个参数含义完全不同！
-
-#### op_api 层（ACLNN API层）
-
-**定义文件：**
-- 原定义：`opbase/include/nnopbase/opdev/op_log.h`
-- 包定义：`aclnn/opdev/op_log.h`
-
-**调用方式：**
-```cpp
-OP_LOGE(错误码, "message", args...)
-```
-
-**示例：**
-```cpp
-OP_LOGE(ACLNN_ERR_PARAM_INVALID, 
-        "Per-token quant case is only supported when x, weight and y are all single tensor, "
-        "but now x size is %zu, weight size is %zu, y size is %zu",
-        xGroupedSize, weightGroupedSize, yGroupedSize);
-```
-
-**行为：**
-- 第一个参数传入 ACLNN 错误码（如 ACLNN_ERR_PARAM_INVALID）
-- 最终通过 `ReportErrorMessage` 将错误码转为 EZ 开头的错误码
-- **问题：** 最终上报为 EZ9999 通用错误码，不够精确
+### 2.0 OP_LOGE 调用方式
 
 #### op_host 层（算子Host实现层）
 
@@ -245,13 +219,13 @@ OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
 | offset 参数 | 34 | 分散在多个文件 |
 | transpose 参数 | 34 | 分散在多个文件 |
 
-### 4.3 OPS_REPORT 错误【93条】→ 逐条分析
+### 4.3 OPS_REPORT 错误【43条】→ 逐条分析
 
 **整改策略：手动分析内容后分类处理**
 
 | 文件 | 计数 | 处理方式 |
 | -- | --: | -- |
-| grouped_matmul_tiling.cpp | 43 | 逐条分析分类 |
+| grouped_matmul_tiling.cpp | 0 | 公共代码，不涉及A5 |
 | grouped_matmul_finalize_routing_infershape.cpp | 43 | 逐条分析分类 |
 | 其他文件 | 7 | 逐条分析分类 |
 
@@ -339,13 +313,12 @@ flowchart TD
 
 ## 7. EZ错误码速查表
 
-| 错误场景 | 错误码 | 宏名称 | 适用范围 |
-| --- | --- | --- | --- |
-| Shape 错误 | EZ0008 | OP_LOGE_FOR_INVALID_SHAPE | shape 参数验证失败 |
-| Dtype 错误 | EZ0018 | OP_LOGE_FOR_INVALID_DTYPE | dtype 参数验证失败 |
-| Format 错误 | EZ0016 | OP_LOGE_FOR_INVALID_FORMAT | format 参数验证失败 |
-| Dim 错误 | EZ0011 | OP_LOGE_FOR_INVALID_SHAPEDIM | dimension 参数验证失败 |
-| Value 错误 | EZ0023 | OP_LOGE_FOR_INVALID_VALUE_WITH_REASON | 参数值验证失败 |
+| 错误场景 | 错误码 | 宏名称 |
+| --- | --- | --- |
+| Format 错误 | EZ0006 | OP_LOGE_WITH_INVALID_INPUT_FORMAT |
+| Dtype 错误 | EZ0007 | OP_LOGE_WITH_INVALID_INPUT_DTYPE |
+| Shape 错误 | EZ0008 | OP_LOGE_FOR_INVALID_INPUT_SHAPE |
+| Dim 错误 | EZ0009 | OP_LOGE_FOR_INVALID_INPUT_SHAPE_DIM |
 
 ---
 
@@ -400,7 +373,6 @@ flowchart TD
 
 | 算子 | 原路径 |
 | -- | -- |
-| GMM | gmm/grouped_matmul/op_host/grouped_matmul_tiling.cpp |
 | GMM | gmm/grouped_matmul/op_host/grouped_matmul_infershape.cpp |
 | GMM | gmm/grouped_matmul/op_host/grouped_matmul_infershape.cppgrouped_matmul_infershape_weight_quant_checker.cpp |
 | GMM | gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp |
