@@ -88,6 +88,7 @@ static void SetTilingData(gert::TilingContext *context, QuantAllReduceTilingData
     tilingData.quantAllReduceTilingInfo.hiddenSize = xValueH;
     tilingData.quantAllReduceTilingInfo.scaleHiddenSize = scalesValueH;
     tilingData.quantAllReduceTilingInfo.totalWinSize = mc2tiling::Mc2TilingUtils::GetMaxWindowSize();
+    tilingData.quantAllReduceTilingInfo.alignBlock = 1024U;
 }
 
 /**

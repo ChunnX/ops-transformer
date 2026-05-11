@@ -33,8 +33,7 @@ using namespace QuantMTECommImpl;
 using namespace VectorComputeImpl;
 using namespace AscendC;
 
-// 之后可修改成从tiling侧获取数据切块大小
-constexpr static uint32_t X_PRE_BLOCK_NUM = 1024U;  // 当前一次搬运一个x数据块，x dtype为 8bit 时对应 1024个x数据. 对于fp4需要另外算
+// x 分块对齐粒度，从 tiling data 读取（调参入口在 tiling）
 
 template<TemplateTypeClass>
 class QuantAllReduceMteOneShot {
@@ -53,6 +52,7 @@ private:
     uint64_t totalWinSize_{0};
     uint64_t tailXNums_{0};
     uint32_t totalBlockNums_{0};
+    uint32_t blockNum_{0};  // x 分块元素数（来自 tiling data）
 
     MTECommunication<TemplateType> mteComm_; // MTE 通信相关实现
     VectorCompute<TemplateType> vecComp_; // vector 计算相关实现
@@ -74,10 +74,11 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::Init(GM_ADDR x, G
 
     /* quant_all_reduce自己的数据 */
     auto&& tiliingDatainfo = tilingData->quantAllReduceTilingInfo;
+    blockNum_ = tiliingDatainfo.alignBlock;
     totalWinSize_ = tiliingDatainfo.totalWinSize;
     xNums_ = tiliingDatainfo.bs * tiliingDatainfo.hiddenSize; // 总的x数据个数， bs * h
     xSize_ = xNums_ * sizeof(XType); // 总的x数据量，B
-    tailXNums_ = BlockAlignMod(xNums_, X_PRE_BLOCK_NUM); // 计算最后一个数据块的大小
+    tailXNums_ = BlockAlignMod(xNums_, blockNum_); // 计算最后一个数据块的大小
     totalBlockNums_ = CeilDiv(xSize_, X_BLOCK_BYTES); // 按每次搬运x的数据量分块，得到的总块数
     mteComm_.round_ = totalBlockNums_ / tiliingDatainfo.aivNum; // 计算总的数据分核搬运需要的轮次数
     mteComm_.tailBlockNums_ = totalBlockNums_ % tiliingDatainfo.aivNum; // 搬运的尾块数
@@ -85,12 +86,12 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::Init(GM_ADDR x, G
     tPipe->Reset();
     tPipe->InitBuffer(xInQueue_, BUFFER_NUM, X_BLOCK_BYTES); // 每次拷贝 1024B x; 128 * 8
     tPipe->InitBuffer(scaleInQue, BUFFER_NUM, UB_ALIGN_BYTES); // 每次拷贝 32B scale；4 * 8
-    tPipe->InitBuffer(sumBuf_, X_PRE_BLOCK_NUM * sizeof(float)); // 用于Reduce_sum 求和，1024 * 4 = 4k
+    tPipe->InitBuffer(sumBuf_, blockNum_ * sizeof(float)); // 用于Reduce_sum 求和，1024 * 4 = 4k
     sumTensor_ = sumBuf_.Get<float>();
 
     // 设置切块大小
-    mteComm_.SetBlockSize(X_PRE_BLOCK_NUM, tiliingDatainfo.aivNum, tailXNums_);
-    vecComp_.SetBlockSize(X_PRE_BLOCK_NUM);  
+    mteComm_.SetBlockSize(blockNum_, tiliingDatainfo.aivNum, tailXNums_);
+    vecComp_.SetBlockSize(blockNum_);  
 
     // 公共MTE搬运参数计算
     mteComm_.InitParams();
@@ -109,7 +110,7 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::ReadDataBlockRedu
 {
     /* 读取 x 从 Win -> UB */
     LocalTensor<XType> xTmpTensor = xInQueue_.AllocTensor<XType>();
-    DataCopy(xTmpTensor, remoteWinXTensor_[curXOffset], X_PRE_BLOCK_NUM);
+    DataCopy(xTmpTensor, remoteWinXTensor_[curXOffset], blockNum_);
     xInQueue_.EnQue(xTmpTensor);
     xTmpTensor = xInQueue_.DeQue<XType>();
 
@@ -128,7 +129,7 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::ReadDataBlockRedu
 template <TemplateTypeClass>
 __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::ClearSumTensor()
 {
-    Duplicate<float>(sumTensor_, (float)0.0, X_PRE_BLOCK_NUM); // sumTensor 清零
+    Duplicate<float>(sumTensor_, (float)0.0, blockNum_); // sumTensor 清零
 }
 
 template <TemplateTypeClass>
@@ -138,7 +139,7 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::ExecuteAllReduce(
     mteComm_.ReadStatus();
     // 遍历需要搬运的数据块
     for (uint64_t curBlock = 0; curBlock < mteComm_.assignedBlockNums_; ++curBlock) {
-        uint64_t curXOffset = mteComm_.xOffset_ + curBlock * X_PRE_BLOCK_NUM;
+        uint64_t curXOffset = mteComm_.xOffset_ + curBlock * blockNum_;
         uint64_t curScaleOffset = mteComm_.scaleOffset_ + curBlock * mteComm_.scaleNumsPerBlcok_;
         ClearSumTensor(); // sumTensor 清零
         // 遍历每张卡，读取其Win区的数据，采取错卡序读取，从自己卡上读起
@@ -157,7 +158,7 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::ExecuteAllReduce(
         }
 
         // 将计算好的数据拷贝到输出tensor
-        uint32_t copyBlockNum = X_PRE_BLOCK_NUM;
+        uint32_t copyBlockNum = blockNum_;
         if ((mteComm_.aivId_ ==  mteComm_.lastAivId_) && (curBlock == mteComm_.assignedBlockNums_ - 1)) {
             copyBlockNum = tailXNums_; // 检测是否为最后的尾块搬运（即最后一个核的最后一个数据块）
         }

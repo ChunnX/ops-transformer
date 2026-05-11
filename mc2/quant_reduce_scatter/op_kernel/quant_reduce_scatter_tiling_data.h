@@ -24,6 +24,7 @@ struct QuantReduceScatterTilingInfo {
     uint64_t scaleHiddenSize;
     uint64_t aivNum;
     uint64_t totalWinSize;   // Win区总大小，即HCCL_BUFFER_SIZE
+    uint32_t alignBlock;      // x 分块对齐粒度（host/kernel 共享，调参入口）
 };
 
 struct QuantReduceScatterTilingData {
