@@ -346,11 +346,11 @@ actual is %zu",
     auto expectedKDimValue = CeilDiv(inputParams_.kSize, MXFP_BASEK_FACTOR);
     if (wScaleKDim != 1 && wScaleNDim != 1) {
         OP_CHECK_IF(
-            wScaleEDim != inputParams_.groupNum || wScaleKDim != expectedKDimValue || wScaleNDim != inputParams_.nSize ||
-                wScaleLastDim != MXFP_MULTI_BASE_SIZE,
+            wScaleEDim != inputParams_.groupNum || wScaleKDim != expectedKDimValue ||
+                wScaleNDim != inputParams_.nSize || wScaleLastDim != MXFP_MULTI_BASE_SIZE,
             OP_LOGE(inputParams_.opName,
                     "When split m in mx quant mode, the expected shape of scale is (%lu,%lu,%lu,2), but the actual \
-    is (%lu,%lu,%lu,%lu).",
+is (%lu,%lu,%lu,%lu).",
                     inputParams_.groupNum, inputParams_.nSize, expectedKDimValue, wScaleEDim, wScaleNDim, wScaleKDim,
                     wScaleLastDim),
             return false);
@@ -399,9 +399,11 @@ actual is %zu",
                             inputParams_.transA, inputParams_.transB),
                     return false);
         OP_CHECK_IF(
-            xScaleLastDim != MXFP_MULTI_BASE_SIZE || xScaleKDim != expectedKDimValue || xScaleMDim != inputParams_.mSize,
-            OP_LOGE(inputParams_.opName, "When split k in mx quant mode, the expected shape of pertokenScale is \
-    (%lu,%lu,%lu), but the actual is (%lu,%lu,%lu).",
+            xScaleLastDim != MXFP_MULTI_BASE_SIZE || xScaleKDim != expectedKDimValue ||
+                xScaleMDim != inputParams_.mSize,
+            OP_LOGE(inputParams_.opName,
+                    "When split k in mx quant mode, the expected shape of pertokenScale is \
+(%lu,%lu,%lu), but the actual is (%lu,%lu,%lu).",
                     expectedKDimValue, inputParams_.mSize, MXFP_MULTI_BASE_SIZE, xScaleKDim, xScaleMDim, xScaleLastDim),
             return false);
     }
