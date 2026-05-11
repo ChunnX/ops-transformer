@@ -107,6 +107,7 @@ private:
     ge::graphStatus CheckExpertIdx();
     ge::graphStatus CheckAttr();
     ge::graphStatus CheckOutShape();
+    int64_t CalcMaxRows();
     void SplitRows();
 
     // Shapes
@@ -134,8 +135,8 @@ private:
     int64_t gradYDtypeSize_ = 0;
     int64_t renorm_ = RENORM_TYPE_ZERO;
     int64_t normType_ = NORM_TYPE_SOFTMAX;
-    int64_t routedScalingFactor_ = 1.0f;
-    int64_t eps_ = 1e-20f;
+    float routedScalingFactor_ = 1.0f;
+    float eps_ = 1e-20f;
 };
 
 inline int64_t AlignBytes_(int64_t x) {
@@ -217,35 +218,47 @@ void MoeGatingTopKBackwardTilingBase::CheckExpertIdx()
 
 ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckAttr()   // lc
 {
-    OP_CHECK_IF(
-        expertCount_ > MAX_EXPERT_COUNT,
-        OP_LOGE(context_, "expert count is: %ld, but should not be greater than %ld.", expertCount_, MAX_EXPERT_COUNT),
-        return ge::GRAPH_FAILED);
+    auto attrs = context_->GetAttrs();
+    OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
 
-    OP_CHECK_IF(
-        expertCount_ < MIN_EXPERT_COUNT,
-        OP_LOGE(context_, "expert count is: %ld, but should not be less than %ld.", expertCount_, MIN_EXPERT_COUNT),
-        return ge::GRAPH_FAILED);
-
-    OP_CHECK_IF(
-        k_ < MIN_K,
-        OP_LOGE(context_, "k is: %ld, but should not be less than %ld.", k_, MIN_K), 
-        return ge::GRAPH_FAILED);
-
-    OP_CHECK_IF(
-        k_ > expertCount_,
-        OP_LOGE(context_, "k is: %ld, but should not be greater than %ld.", k_, expertCount_), 
-        return ge::GRAPH_FAILED);
+    const int64_t *renormPtr = attrs->GetAttrPointer<int64_t>(RENORM_ATTR_INDEX);
+    if (renormPtr != nullptr) {
+        renorm_ = *renormPtr;
+    }
+    OP_LOGI(context_, "Attr renorm is: %ld.", renorm_);
 
     OP_CHECK_IF(
         renorm_ != RENORM_TYPE_ZERO,
         OP_LOGE(context_, "renorm is: %ld, but currently only %ld is supported.", renorm_, RENORM_TYPE_ZERO),
         return ge::GRAPH_FAILED);
 
+    const int64_t *normTypePtr = attrs->GetAttrPointer<int64_t>(NORM_TYPE_ATTR_INDEX);
+    if (normTypePtr != nullptr) {
+        normType_ = *normTypePtr;
+    }
+    OP_LOGI(context_, "Attr normType is: %ld.", normType_);
+
     OP_CHECK_IF(
         normType_ != NORM_TYPE_SIGMOID,
         OP_LOGE(context_, "norm type is: %ld, but currently only %ld is supported.", normType_, NORM_TYPE_SIGMOID),
         return ge::GRAPH_FAILED);
+
+    const float *routedScalingFactorPtr = attrs->GetAttrPointer<float>(ROUTED_SCALING_FACTOR_ATTR_INDEX);
+    if (routedScalingFactorPtr != nullptr) {
+        routedScalingFactor_ = *routedScalingFactorPtr;
+    }
+    OP_LOGI(context_, "Attr routedScalingFactor is: %f.", routedScalingFactor_);
+
+    OP_CHECK_IF(
+        routedScalingFactor_ > 0.0f,
+        OP_LOGE(context_, "routedScalingFactor is: %f, but should be greater than 0.", routedScalingFactor_),
+        return ge::GRAPH_FAILED);
+
+    const float *epsPtr = attrs->GetAttrPointer<float>(EPS_ATTR_INDEX);
+    if (epsPtr != nullptr) {
+        eps_ = *epsPtr;
+    }
+    OP_LOGI(context_, "Attr eps is: %f.", eps_);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -254,50 +267,6 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::GetShapeAttrsInfo()
 {
     opName_ = context_->GetNodeName();
     return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckDataType()
-{
-    // Parse input shape info
-    auto xNormShapePtr = context_->GetInputShape(X_NORM_INPUT_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, xNormShapePtr);
-    xNormShape_ = &xNormShapePtr->GetOriginShape();
-
-    auto gradYShapePtr = context_->GetInputShape(GRAD_Y_INPUT_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, gradYShapePtr);
-    gradYShape_ = &gradYShapePtr->GetOriginShape();
-
-    auto expertIdxShapePtr = context_->GetInputShape(EXPERT_IDX_INPUT_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, expertIdxShapePtr);
-    expertIdxShape_ = &expertIdxShapePtr->GetOriginShape();
-
-    // Parse output shape info
-    auto gradXShapePtr = context_->GetOutputShape(GRAD_X_OUTPUT_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, gradXShapePtr);
-    gradXShape_ = &gradXShapePtr->GetStorageShape();
-
-    // Check data types
-    auto x_norm = context_->GetInputDesc(X_NORM_INPUT_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, x_norm);
-    auto xNormDtype = x_norm->GetDataType();
-    OP_CHECK_IF(
-        xNormDtype != ge::DataType::DT_FLOAT,
-        OP_LOGE(context_, "x_norm dtype is %s, but only float32 is supported.",
-            ge::TypeUtils::DataTypeToSerialString(xNormDtype).c_str()),
-        return ge::GRAPH_FAILED);
-
-    auto grad_y = context_->GetInputDesc(GRAD_Y_INPUT_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, grad_y);
-    auto gradYDtype = grad_y->GetDataType();
-    OP_CHECK_IF(
-        (gradYDtype != ge::DataType::DT_FLOAT &&
-            gradYDtype != ge::DataType::DT_FLOAT16 &&
-            gradYDtype != ge::DataType::DT_BF16),
-        OP_LOGE(context_, "grad_y dtype is %s, but only supports float32, half and bf16 are supported.",
-            ge::TypeUtils::DataTypeToSerialString(xDtype).c_str()),
-        return ge::GRAPH_FAILED);
-
-    // todo: fill the rest
 }
 
 ge::graphStatus MoeGatingTopKBackwardTilingBase::GetPlatformInfo()   // fqy
@@ -323,15 +292,37 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::GetPlatformInfo()   // fqy
 
 ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckOutShape()   // lc
 {
+    auto gradXShapePtr = context_->GetOutputShape(GRAD_X_OUTPUT_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, gradXShapePtr);
+    auto gradXDimSize = gradXShapePtr->GetOriginShape().GetDimNum();
+    OP_CHECK_IF(gradXDimSize != GRAD_Y_INPUT_DIMS,
+                OP_LOGE(opName_, "gradX : the number of dimensions must be 2, but got %ld.", gradXDimSize),
+                return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(gradXShapePtr->GetOriginShape().GetDim(DIM_ZERO) != tokenCount_,
+                OP_LOGE(opName_, "gradX : Shape xNorm and gradX should match in dimension 0."),
+                return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(gradXShapePtr->GetOriginShape().GetDim(DIM_ONE) != expertCount_,
+                OP_LOGE(opName_, "gradX : Shape xNorm and gradX should match in dimension 1."),
+                return ge::GRAPH_FAILED);
+
+    auto gradYDesc = context_->GetInputDesc(GRAD_Y_INPUT_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, gradYDesc);
+    auto gradYDtype = gradYDesc->GetDataType();
+
+    auto gradXDesc = context_->GetOutputDesc(GRAD_X_OUTPUT_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, gradXDesc);
+    auto gradXDtype = gradXDesc->GetDataType();
+
+    OP_CHECK_IF(gradXDtype != gradYDtype, OP_LOGE(opName_, "gradX's data type must match that of gradY."),
+                return ge::GRAPH_FAILED);
+
     return ge::GRAPH_SUCCESS;
 }
 
-void MoeGatingTopKBackwardTilingBase::SplitRows()   // lc
+int64_t MoeGatingTopKBackwardTilingBase::CalcMaxRows()
 {
-    perCoreRows_ = Ops::Base::CeilDiv(tokenCount_, static_cast<int64_t>(aicoreParams_.numBlocks));
-    needCoreNum_ = Ops::Base::CeilDiv(tokenCount_, perCoreRows_);
-    lastCoreRows_ = tokenCount_ % perCoreRows_ == 0 ? perCoreRows_ : tokenCount_ % perCoreRows_;
-
     int64_t gradYQuePerTokenSpace = DOUBLE_BUFFER_NUM * k_ * gradYDtypeSize_;
     int64_t indicesQuePerTokenSpace = DOUBLE_BUFFER_NUM * k_ * SIZE_OF_FLOAT32;
     int64_t xQuePerTokenSpace = DOUBLE_BUFFER_NUM * expertCount_ * SIZE_OF_FLOAT32;
@@ -373,9 +364,24 @@ void MoeGatingTopKBackwardTilingBase::SplitRows()   // lc
         maxRows--;
     }
 
-    OP_CHECK_IF(
-        maxRows > 0, OP_LOGE(context_, "maxRows should be greater than zero, current value is %ld.", maxRows),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(maxRows > 0, OP_LOGE(context_,
+        "maxRows should be greater than zero, current value is %ld. Check if N and K are within valid ranges.",
+        maxRows), return ge::GRAPH_FAILED);
+    
+    return maxRows;
+}
+
+void MoeGatingTopKBackwardTilingBase::SplitRows()   // lc
+{
+    perCoreRows_ = Ops::Base::CeilDiv(tokenCount_, static_cast<int64_t>(aicoreParams_.numBlocks));
+    needCoreNum_ = Ops::Base::CeilDiv(tokenCount_, perCoreRows_);
+    lastCoreRows_ = tokenCount_ % perCoreRows_ == 0 ? perCoreRows_ : tokenCount_ % perCoreRows_;
+
+    baseRows_ = CalcMaxRows();
+    perLoopTimes_ = (perCoreRows_ + baseRows_ - 1) / baseRows_;
+    perTailRows_ = perCoreRows_ - (perLoopTimes_ - 1) * baseRows_;
+    lastLoopTimes_ = (lastCoreRows_ + baseRows_ - 1) / baseRows_;
+    lastTailRows_ = lastCoreRows_ - (lastLoopTimes_ - 1) * baseRows_;
 }
 
 ge::graphStatus MoeGatingTopKBackwardTilingBase::DoOpTiling()
