@@ -21,6 +21,10 @@ constexpr char COMM_MODE_ENV[] = "ENV_MC2_COMM_MODE_AICPU";
 constexpr uint8_t COMM_MODE_CCU = 0;
 constexpr uint8_t COMM_MODE_AICPU = 1;
 
+// 引擎类型（与mc2tiling命名空间保持一致）
+constexpr uint8_t ENGINE_CCU = 0;       // 默认/CCU
+constexpr uint8_t ENGINE_AICPU = 2;     // AICPU_TS (注意：A5不支持)
+
 inline uint8_t GetCommModeFromEnv()
 {
     auto commModeEnv = getenv(COMM_MODE_ENV);
