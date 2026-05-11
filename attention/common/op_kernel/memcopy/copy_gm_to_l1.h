@@ -19,6 +19,7 @@
 #include "fa_l1_tensor.h"
 #include "gm_coord.h"
 #include "offset_calculator_v2.h"
+#include "tensor_api/include/tensor_api/tensor.h"
 
 // ----------------------------------------------CopyQueryGmToL1--------------------------------
 template <typename T>
