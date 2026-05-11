@@ -13,7 +13,6 @@
 
 #include <cstdint>
 #include <cstdlib>
-#include "mc2_log.h"
 
 namespace mc2 {
 
@@ -25,12 +24,10 @@ constexpr uint8_t COMM_MODE_AICPU = 1;
 inline uint8_t GetCommModeFromEnv()
 {
     auto commModeEnv = getenv(COMM_MODE_ENV);
-    uint8_t commMode = COMM_MODE_CCU;
     if (commModeEnv != nullptr) {
-        commMode = COMM_MODE_AICPU;
+        return COMM_MODE_AICPU;
     }
-    OPS_LOG_D("", "Get ENV_MC2_COMM_MODE_AICPU is %u (0=CCU, 1=AICPU)", commMode);
-    return commMode;
+    return COMM_MODE_CCU;
 }
 
 }
