@@ -700,7 +700,7 @@ ge::graphStatus AlltoAllvGmmTiling::SetHcclTiling(const gert::TilingContext* con
     Mc2CcTilingConfig hcclCcTilingConfig(epGroup_, alltoAllvCmd, alltoAllvConfig,
                                          alltoAllvReduceType, alltoAllvDstDataType, alltoAllvSrcDataType);
     uint8_t commMode = mc2tiling::Mc2TilingUtils::GetCommModeFromEnv();
-    uint8_t engineType = (commMode == mc2tiling::COMM_MODE_CCU) ? mc2tiling::A5_CCU_ENGINE : mc2tiling::AICPU_ENGINE;
+    uint8_t engineType = (commMode == mc2tiling::COMM_MODE_CCU) ? 0 : mc2tiling::AICPU_ENGINE;
     OP_LOGD(context->GetNodeName(), "AlltoAllvGmm tiling: commMode=%u (0=CCU, 1=AICPU), engineType=%u", commMode, engineType);
     hcclCcTilingConfig.SetCommEngine(engineType);
     OP_TILING_CHECK(hcclCcTilingConfig.GetTiling(tilingData->hcclInitTiling) != 0,
