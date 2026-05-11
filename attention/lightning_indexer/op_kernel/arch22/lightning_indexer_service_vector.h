@@ -353,11 +353,17 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
             LIServiceVec::DoReduce(reduceCacheBuf[REDUCE_BANK_CONFLICT_NUM], reduceOutInner, gRedCnt, s2BaseSize_);
             outQueue_.FreeTensor(reduceCacheBuf);
 
+            LocalTensor<bfloat16_t> reduceOutInnerBf16 = reduceOutBuff.template ReinterpretCast<bfloat16_t>();
+            Cast(reduceOutInnerBf16, reduceOutInner, RoundMode::CAST_ROUND, s2BaseSize_);
+            LocalTensor<float> reduceOutInnerFp32 = outQueue_.AllocTensor<float>();
+            Cast(reduceOutInnerFp32, reduceOutInnerBf16, RoundMode::CAST_NONE, s2BaseSize_);
+
             LocalTensor<float> sortScoreUb = reduceOutBuff;
             LocalTensor<float> sortIndiceUb = reduceOutBuff[cuS2LenVecAlign];
             Duplicate(sortScoreUb.template ReinterpretCast<int32_t>(), LIServiceVec::NEG_INF, cuS2LenVecAlign);
             PipeBarrier<PIPE_V>();
-            Adds(sortScoreUb, reduceOutInner, 0.0f, cuS2Len);
+            Adds(sortScoreUb, reduceOutInnerFp32, 0.0f, cuS2Len);
+            outQueue_.FreeTensor(reduceOutInnerFp32);
             PipeBarrier<PIPE_V>();
             LocalTensor<int32_t> sortIndiceUbInt = sortIndiceUb.template ReinterpretCast<int32_t>();
             // 无效数据索引填充为-1
