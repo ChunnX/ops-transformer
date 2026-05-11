@@ -48,7 +48,6 @@ public:
     __aicore__ inline void Init(const void *hcclInitTiling, uint64_t hcclCcTilingOffset,
                                 const TaskTilingInfo *taskTilingInfo, GM_ADDR sendBuffer, GM_ADDR recvBuffer)
     {
-        // init member var
         taskTilingInfo_ = taskTilingInfo;
         GM_ADDR hcclContextGm = GetHcclContext<HCCL_GROUP_ID_0>();
         hccl_.InitV2(hcclContextGm, hcclInitTiling);
@@ -58,10 +57,13 @@ public:
         e_ = taskTilingInfo_->e;
         H1_ = taskTilingInfo_->H1;
         N1_ = taskTilingInfo_->N1;
-        // set gmmx comm buffer
+        if ASCEND_IS_AIV {
+            if (GetBlockIdx() == 0) {
+                AscendC::PRINTF("HcclA2avOp Init: commMode=%d (0=CCU, 1=AICPU)\n", commMode);
+            }
+        }
         sendGlobalBuffer_.SetGlobalBuffer((__gm__ hcclDataType *)sendBuffer);
         recvGlobalBuffer_.SetGlobalBuffer((__gm__ hcclDataType *)recvBuffer);
-        // recv counts
         for (int i = 0; i < e_ * rankDim_; i++) {
             recvCounts_[i] = taskTilingInfo_->recvCnt[i];
         }
@@ -241,11 +243,7 @@ public:
                 return;
             }
         }
-        AscendC::PRINTF("YYYYYY op a2av waitScale start expert:%u handle:%d\n", startExpertIdx,
-            alltoAllvScaleHandleId_[startExpertIdx]);
         hccl_.Wait(alltoAllvScaleHandleId_[startExpertIdx]);
-        AscendC::PRINTF("YYYYYY op a2av waitScale end expert:%u handle:%d\n", startExpertIdx,
-            alltoAllvScaleHandleId_[startExpertIdx]);
     }
 
     __aicore__ inline void Wait(uint32_t startExpertIdx)
