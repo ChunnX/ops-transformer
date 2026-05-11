@@ -36,7 +36,7 @@ class Mc2Context {
 public:
     static aclnnStatus GetMc2ContextTensor(const char *groupEp, const char *opName, uint64_t &hcclBuffSize,
                                            aclTensor *&mc2Context);
-
+    static aclnnStatus GetMc2RankSize(const char *groupEp, uint32_t &rankSize);
 private:
     static Mc2Context &GetInstance();
     explicit Mc2Context();
