@@ -11,7 +11,7 @@
 #ifndef OP_API_INC_GROUPED_MATMUL_950_CHECKER_H
 #define OP_API_INC_GROUPED_MATMUL_950_CHECKER_H
 #include "opdev/format_utils.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "aclnn_kernels/op_error_check.h"
 #include "grouped_matmul_util.h"
 
 namespace gmm {

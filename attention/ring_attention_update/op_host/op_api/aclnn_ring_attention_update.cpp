@@ -15,7 +15,7 @@
 #include "aclnn_kernels/cast.h"
 #include "aclnn_kernels/contiguous.h"
 #include "aclnn_kernels/transdata.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "aclnn_kernels/op_error_check.h"
 #include "aclnn_kernels/reshape.h"
 #include "aclnn_kernels/slice.h"
 #include "aclnn_kernels/transpose.h"

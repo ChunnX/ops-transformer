@@ -11,7 +11,7 @@
 #ifndef OP_API_INC_GROUPED_MATMUL_FINALIZE_ROUTING_WEIGHT_QUANT_950_CHECKER_H
 #define OP_API_INC_GROUPED_MATMUL_FINALIZE_ROUTING_WEIGHT_QUANT_950_CHECKER_H
 #include "opdev/format_utils.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "aclnn_kernels/op_error_check.h"
 #include "quant_grouped_matmul_finalize_routing_util.h"
 #include "../../grouped_matmul/op_api/grouped_matmul_util.h"
 #include "util/math_util.h"

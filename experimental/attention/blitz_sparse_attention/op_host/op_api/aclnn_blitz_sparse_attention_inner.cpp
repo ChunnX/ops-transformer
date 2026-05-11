@@ -20,7 +20,7 @@
 #include "aclnn_kernels/reshape.h"
 #include "aclnn_kernels/slice.h"
 #include "aclnn_kernels/transpose.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "aclnn_kernels/op_error_check.h"
 #include "opdev/op_dfx.h"
 #include "opdev/op_log.h"
 

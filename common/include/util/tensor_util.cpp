@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "tensor_util.h"
+#include "util/tensor_util.h"
 #include "aclnn_kernels/transdata.h"
 #include "aclnn_kernels/transpose.h"
 #include "aclnn_kernels/reshape.h"

@@ -21,7 +21,7 @@
 #include "opdev/shape_utils.h"
 #include "opdev/op_def.h"
 #include "opdev/op_dfx.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "aclnn_kernels/op_error_check.h"
 
 using namespace op;
 namespace l0op {
