@@ -52,88 +52,88 @@ constexpr uint32_t FD_M_START_INDEX = 5;
 constexpr uint32_t FD_M_NUM_INDEX = 6;
 
 struct FiaBaseParams {
-    uint32_t bSize;
-    uint32_t t1Size;
-    uint32_t t2Size;
-    uint32_t n2Size;
-    uint32_t gSize;
-    uint32_t s1Size;
-    uint32_t s2Size;
-    uint32_t dSize;
-    uint32_t dSizeV;
-    uint32_t dSizeRope;
-    uint32_t actualSeqLengthsQSize;
-    uint32_t actualSeqLengthsKVSize;
-    float scaleValue;
-    uint8_t isActualSeqLengthsNull;   // TODO，未使用，是否要删除？
-    uint8_t isActualSeqLengthsKVNull; // TODO，未使用，是否要删除？
-    uint8_t isKvContinuous;
-    uint8_t isSoftMaxLseEnable;
-    uint32_t coreNum;
-    uint32_t outputLayout;
+    uint32_t bSize = 0;
+    uint32_t t1Size = 0;
+    uint32_t t2Size = 0;
+    uint32_t n2Size = 0;
+    uint32_t gSize = 0;
+    uint32_t s1Size = 0;
+    uint32_t s2Size = 0;
+    uint32_t dSize = 0;
+    uint32_t dSizeV = 0;
+    uint32_t dSizeRope = 0;
+    uint32_t actualSeqLengthsQSize = 0;
+    uint32_t actualSeqLengthsKVSize = 0;
+    float scaleValue = 0.0f;
+    uint8_t isActualSeqLengthsNull = 0;   // TODO，未使用，是否要删除？
+    uint8_t isActualSeqLengthsKVNull = 0; // TODO，未使用，是否要删除？
+    uint8_t isKvContinuous = 0;
+    uint8_t isSoftMaxLseEnable = 0;
+    uint32_t coreNum = 0;
+    uint32_t outputLayout = 0;
 };
 
 struct FiaAttenMaskParams {
-    uint8_t sparseMode;
-    int32_t preTokens;
-    int32_t nextTokens;
-    uint32_t attenMaskBatch;
-    uint32_t attenMaskS1Size;
-    uint32_t attenMaskS2Size;
-    uint8_t isRowInvalidOpen;
-    uint8_t isExistRowInvalid;
+    uint8_t sparseMode = 0;
+    int32_t preTokens = 0;
+    int32_t nextTokens = 0;
+    uint32_t attenMaskBatch = 0;
+    uint32_t attenMaskS1Size = 0;
+    uint32_t attenMaskS2Size = 0;
+    uint8_t isRowInvalidOpen = 0;
+    uint8_t isExistRowInvalid = 0;
 };
 
 struct FiaPseParams {
-    uint8_t pseShiftByBatch;
-    uint32_t pseS1Size;
-    uint32_t pseS2Size;
-    uint32_t pseStride;
-    uint32_t qStartIdx;
-    uint32_t kvStartIdx;
+    uint8_t pseShiftByBatch = 0;
+    uint32_t pseS1Size = 0;
+    uint32_t pseS2Size = 0;
+    uint32_t pseStride = 0;
+    uint32_t qStartIdx = 0;
+    uint32_t kvStartIdx = 0;
 };
 
 struct FiaSystemPrefixParams {
-    uint8_t isActualSharedPrefixLenNull;
-    uint32_t prefixSeqInnerSize;
+    uint8_t isActualSharedPrefixLenNull = 0;
+    uint32_t prefixSeqInnerSize = 0;
 };
 
 struct FiaPageAttentionParams {
     uint8_t paLayoutType = 0;
-    uint32_t blockSize;
-    uint32_t maxBlockNumPerBatch;
+    uint32_t blockSize = 0;
+    uint32_t maxBlockNumPerBatch = 0;
 };
 
 struct FiaLeftPaddingParams {
-    uint8_t isQHasLeftPadding;
-    uint8_t isKVHasLeftPadding;
+    uint8_t isQHasLeftPadding = 0;
+    uint8_t isKVHasLeftPadding = 0;
 };
 
 struct FiaPostQuantParams {
-    uint8_t isPostQuantPerChnl;
-    uint8_t isPostQuantBF16;
+    uint8_t isPostQuantPerChnl = 0;
+    uint8_t isPostQuantBF16 = 0;
 };
 
 struct FiaWorkspaceParams {
-    uint32_t accumOutSize;
-    uint32_t logSumExpSize;
+    uint32_t accumOutSize = 0;
+    uint32_t logSumExpSize = 0;
 };
 
 struct FiaS1OuterSplitCoreParams {
-    bool enableS1OutSplit;
-    uint64_t totalSize;
+    bool enableS1OutSplit = false;
+    uint64_t totalSize = 0;
 };
 
 struct FiaEmptyTensorParams {
-    uint32_t singleCoreSize;
-    uint8_t needInit;
-    uint64_t totalOutputSize;
-    uint64_t totalSoftMaxLseOutputSize;
+    uint32_t singleCoreSize = 0;
+    uint8_t needInit = 0;
+    uint64_t totalOutputSize = 0;
+    uint64_t totalSoftMaxLseOutputSize = 0;
 };
 
 struct FiaMetaData {
-    uint32_t FAMetadata[NPU_AIC_CORE_NUM][FA_METADATA_SIZE];
-    uint32_t FDMetadata[NPU_AIV_CORE_NUM][FD_METADATA_SIZE];
+    uint32_t FAMetadata[NPU_AIC_CORE_NUM][FA_METADATA_SIZE] = {0};
+    uint32_t FDMetadata[NPU_AIV_CORE_NUM][FD_METADATA_SIZE] = {0};
 };
 } // namespace optiling
 #endif
