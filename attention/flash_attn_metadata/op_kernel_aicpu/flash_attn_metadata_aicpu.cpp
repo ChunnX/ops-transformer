@@ -162,15 +162,7 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
             }
         }
     }
-    if (!baseInfo.isCumulativeQuerySeq && sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr) {
-        batchSize_ = sequsedQ_->GetTensorShape()->GetDimSize(0);
-        auto sequsedQ = GetTensorDataAsInt64(sequsedQ_, batchSize_);
-        baseInfo.actualQuerySeqSize.resize(batchSize_, maxSeqlenQ_);
-        for (uint32_t i = 0; i < batchSize_; ++i) {
-            baseInfo.actualQuerySeqSize[i] = sequsedQ[i];
-            maxSeqlenQ_ = std::max(static_cast<int64_t>(maxSeqlenQ_), sequsedQ[i]);
-        }
-    } else if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
+    if (baseInfo.isCumulativeQuerySeq && cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
         batchSize_ = cuSeqlensQ_->GetTensorShape()->GetDimSize(0) - 1;
         auto cuSeqlensQ = GetTensorDataAsInt64(cuSeqlensQ_, batchSize_ + 1);
         baseInfo.actualQuerySeqSize.resize(batchSize_, maxSeqlenQ_);
@@ -179,21 +171,37 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
             maxSeqlenQ_ = std::max(static_cast<int64_t>(maxSeqlenQ_), cuSeqlensQ[i + 1] - cuSeqlensQ[i]);
         }
     }
-    if (!baseInfo.isCumulativeKvSeq && sequsedKv_ != nullptr && sequsedKv_->GetData() != nullptr) {
-        batchSize_ = sequsedKv_->GetTensorShape()->GetDimSize(0);
-        auto sequsedKv = GetTensorDataAsInt64(sequsedKv_, batchSize_);
-        baseInfo.actualKvSeqSize.resize(batchSize_, maxSeqlenKv_);
+    if (sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr) {
+        batchSize_ = sequsedQ_->GetTensorShape()->GetDimSize(0);
+        auto sequsedQ = GetTensorDataAsInt64(sequsedQ_, batchSize_);
+        baseInfo.actualQuerySeqSize.resize(batchSize_, maxSeqlenQ_);
         for (uint32_t i = 0; i < batchSize_; ++i) {
-            baseInfo.actualKvSeqSize[i] = sequsedKv[i];
-            maxSeqlenKv_ = std::max(static_cast<int64_t>(maxSeqlenKv_), sequsedKv[i]);
+            baseInfo.actualQuerySeqSize[i] = sequsedQ[i];
+            if (baseInfo.isCumulativeQuerySeq && (i > 0)) {
+                baseInfo.actualQuerySeqSize[i] += baseInfo.actualQuerySeqSize[i - 1];
+            }
+            maxSeqlenQ_ = std::max(static_cast<int64_t>(maxSeqlenQ_), sequsedQ[i]);
         }
-    } else if (cuSeqlensKv_ != nullptr && cuSeqlensKv_->GetData() != nullptr) {
+    }
+    if (baseInfo.isCumulativeKvSeq && cuSeqlensKv_ != nullptr && cuSeqlensKv_->GetData() != nullptr) {
         batchSize_ = cuSeqlensKv_->GetTensorShape()->GetDimSize(0) - 1;
         auto cuSeqlensKv = GetTensorDataAsInt64(cuSeqlensKv_, batchSize_ + 1);
         baseInfo.actualKvSeqSize.resize(batchSize_, maxSeqlenKv_);
         for (uint32_t i = 0; i < batchSize_; ++i) {
             baseInfo.actualKvSeqSize[i] = cuSeqlensKv[i + 1];
             maxSeqlenKv_ = std::max(static_cast<int64_t>(maxSeqlenKv_), cuSeqlensKv[i + 1] - cuSeqlensKv[i]);
+        }
+    }
+    if (sequsedKv_ != nullptr && sequsedKv_->GetData() != nullptr) {
+        batchSize_ = sequsedKv_->GetTensorShape()->GetDimSize(0);
+        auto sequsedKv = GetTensorDataAsInt64(sequsedKv_, batchSize_);
+        baseInfo.actualKvSeqSize.resize(batchSize_, maxSeqlenKv_);
+        for (uint32_t i = 0; i < batchSize_; ++i) {
+            baseInfo.actualKvSeqSize[i] = sequsedKv[i];
+            if (baseInfo.isCumulativeKvSeq && (i > 0)) {
+                baseInfo.actualKvSeqSize[i] += baseInfo.actualKvSeqSize[i - 1];
+            }
+            maxSeqlenKv_ = std::max(static_cast<int64_t>(maxSeqlenKv_), sequsedKv[i]);
         }
     }
     baseInfo.batchSize = batchSize_;
@@ -247,7 +255,7 @@ bool FlashAttnMetadataCpuKernel::GenMetaData(SectionStreamKResult &splitRes)
     uint32_t* ptr = (uint32_t*)metaData_->GetData();
     ptr[1] = mBaseSize_;
     ptr[2] = s2BaseSize_;
-    for (uint32_t sectionId = 0; sectionId < sectionNum; ++sectionId) {
+        for (uint32_t sectionId = 0; sectionId < sectionNum; ++sectionId) {
         for (uint32_t i = 0; i < AIC_CORE_NUM; ++i) {
             // faMetadata.setFaMetadata(sectionId, i, optiling::FA_CORE_ENABLE_INDEX, 0U);
             faMetadata.setFaMetadata(sectionId, i, optiling::FA_BN2_START_INDEX, 0U);
