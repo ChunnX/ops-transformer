@@ -387,8 +387,6 @@ public:
 
             set_flag(PIPE_V, PIPE_MTE3, event_id);
             wait_flag(PIPE_V, PIPE_MTE3, event_id);
-
-            // CopyOutPost(sCount, output[ping], qkvFlag);
             
              if constexpr (INPUT_LAYOUT == TND) {
                 GlobalTensor<OutputDtype_> outGm = dqGm;
@@ -399,7 +397,7 @@ public:
                 }
                 DataCopy(outGm[gmOffset], dstLocal, sCount * d);
             } else {
-                DataCopy(outGm[gmOffset], dstLocal, sCount * d);
+                CopyOutPost(sCount, output[ping], qkvFlag);
             }
             
             set_flag(PIPE_MTE3, PIPE_MTE2, event_id);
