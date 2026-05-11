@@ -27,6 +27,7 @@
 #include "service_dynamic_quant_qn_mul_qr.h"
 #include "mla_prolog_tiling_data.h"
 #include "mla_prolog_template_tiling_key.h"
+#include "arch35/vf/vf_rope.h"
 
 namespace MlaProlog {
 template <typename MLAPT>
@@ -1041,14 +1042,14 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AicProcess(AicOffset &aicOffs
         if constexpr (std::is_same<mmQcQrInputType, FP8E4M3>::value && isFp8E8m0) {
             SetFlag<HardEvent::MTE1_MTE2>(SCALE_EVENT); // FP8场景下Scale不做db，需要mmQn用完才能做下一轮
         }
-        if constexpr (!needQnDynamicQuant) {
-            // MatmulQn的结果直接输出到 queryOut, qnOffset需要按Batch轴偏移
-            aicOffset.qnResOffset += static_cast<int64_t>(baseParams_->stepBatchSize) * static_cast<int64_t>(baseParams_->headSizeCkv) *
-                        static_cast<int64_t>(baseParams_->numHeadSize);
-        }
-        if (unlikely (baseParams_->queryNormFlag == 1U)) {
-            aicOffset.rmsNormCqResOffset += static_cast<int64_t>(baseParams_->stepBatchSize) * static_cast<int64_t>(baseParams_->headSizeCq);
-        }
+    }
+    if constexpr (!needQnDynamicQuant) {
+        // MatmulQn的结果直接输出到 queryOut, qnOffset需要按Batch轴偏移
+        aicOffset.qnResOffset += static_cast<int64_t>(baseParams_->stepBatchSize) * static_cast<int64_t>(baseParams_->headSizeCkv) *
+                    static_cast<int64_t>(baseParams_->numHeadSize);
+    }
+    if (unlikely (baseParams_->queryNormFlag == 1U)) {
+        aicOffset.rmsNormCqResOffset += static_cast<int64_t>(baseParams_->stepBatchSize) * static_cast<int64_t>(baseParams_->headSizeCq);
     }
 }
 
@@ -2597,13 +2598,13 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::V3AndV4(AivOffset &aivOffset)
     ropeRow = subBlockIdx_ == 0 ? ropeRow : mmQcQrParam_.m - ropeRow;
     uint32_t ropeCnt = ropeRow * baseParams_->dimHeadRope;
 
-    LocalTensor<uint8_t> ropeShareTmpUb;
-    LocalTensor<ropeOutputType> outputLocal;
+    // LocalTensor<uint8_t> ropeShareTmpUb;
+    LocalTensor<ropeOutputType> outputLocal = mm3ResLocal_.template ReinterpretCast<ropeOutputType>();
     int64_t ropeQrResOffset = aivOffset.ropeQrResOffset;
     ropeQrResOffset =
         subBlockIdx_ == 0 ? ropeQrResOffset : ropeQrResOffset + CeilDivT(mmQcQrParam_.m, 2U) * baseParams_->headSizeQr;
-    outputLocal = mm3ResLocal_[ropeCnt].template ReinterpretCast<ropeOutputType>();
-    ropeShareTmpUb = outputLocal[ropeCnt].template ReinterpretCast<uint8_t>();
+    // outputLocal = 
+    // ropeShareTmpUb = outputLocal[ropeCnt].template ReinterpretCast<uint8_t>();
 
     DataCopyParams outputCopyParams{static_cast<uint16_t>(ropeRow),
                                     static_cast<uint16_t>(baseParams_->dimHeadRope / 16), 0,
@@ -2614,9 +2615,10 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::V3AndV4(AivOffset &aivOffset)
     uint32_t nL1loops = CeilDivT(nInput, nL1SplitSize);
     for (uint32_t nL1 = 0; nL1 < nL1loops; nL1++) {
         CrossCoreWaitFlag(FINISH_MM_QCQR_SPLIT_N);
-        RotaryPosEmb(mm3ResLocal_, mm3ResLocal_, cosLocal_, sinLocal_, ropeShareTmpUb, ropeRow, baseParams_->dimHeadRope, baseParams_->dimHeadRope);
-        PipeBarrier<PIPE_V>();
-        Cast(outputLocal, mm3ResLocal_, RoundMode::CAST_RINT, ropeCnt);
+        RotaryPosEmbVF(outputLocal, mm3ResLocal_, cosLocal_, sinLocal_, ropeRow, baseParams_->dimHeadRope, baseParams_->dimHeadRope, baseParams_->dimHeadRope);
+        // RotaryPosEmb(mm3ResLocal_, mm3ResLocal_, cosLocal_, sinLocal_, ropeShareTmpUb, ropeRow, baseParams_->dimHeadRope, baseParams_->dimHeadRope);
+        // PipeBarrier<PIPE_V>();
+        // Cast(outputLocal, mm3ResLocal_, RoundMode::CAST_RINT, ropeCnt);
         PipeBarrier<PIPE_V>();
         SetFlag<HardEvent::V_MTE3>(EVENT_ID1);
         WaitFlag<HardEvent::V_MTE3>(EVENT_ID1);
