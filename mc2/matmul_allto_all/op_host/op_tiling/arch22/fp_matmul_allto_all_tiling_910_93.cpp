@@ -149,6 +149,30 @@ ge::graphStatus FpMatmulAllToAllTilingBaseA3::CheckOpInputInfo()
                     OP_LOGE(opName_, "Tiling check shape failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(Check2DMatrixMulShapes(context_, opName_) != ge::GRAPH_SUCCESS,
                     OP_LOGE(opName_, "Tiling check shape failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CheckBsRankSizeRange() != ge::GRAPH_SUCCESS,
+                    OP_LOGE(opName_, "Tiling check BS*rankSize range failed."), return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus FpMatmulAllToAllTilingBaseA3::CheckBsRankSizeRange()
+{
+    const gert::StorageShape *x1Shape = context_->GetInputShape(INPUT_X1_INDEX);
+    uint64_t x1Dim0 = x1Shape->GetStorageShape().GetDim(0);
+    const gert::RuntimeAttrs *attrs = context_->GetAttrs();
+    const int64_t *worldSize = attrs->GetAttrPointer<int64_t>(ATTR_WORLD_SIZE_INDEX);
+    const char *group = attrs->GetAttrPointer<char>(ATTR_GROUP_INDEX);
+    int64_t rankSize = 0;
+    if (worldSize == nullptr || *worldSize == RANK_DEFAULT_NUM) {
+        OP_TILING_CHECK(!mc2tiling::GetRankSize(opName_, group, rankSize), OP_LOGE(opName_, "GetRankSize failed."),
+                        return ge::GRAPH_FAILED);
+    } else {
+        rankSize = *worldSize;
+    }
+    uint64_t bsRankProduct = x1Dim0 * static_cast<uint64_t>(rankSize);
+    OP_TILING_CHECK(bsRankProduct > MAX_INT32_VALUE,
+                    OP_LOGE(opName_, "BS*rankSize exceeds INT32_MAX, BS=%lu, rankSize=%ld, product=%lu.",
+                            x1Dim0, rankSize, bsRankProduct),
+                    return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
