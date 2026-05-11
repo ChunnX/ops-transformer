@@ -160,15 +160,16 @@ public:
                                          int64_t nSplitOffset = 0)
     {
         if constexpr (layoutB == CubeFormat::NZ) {
-            if (c0 == 0) {
-                return 0;
-            }
-            if constexpr (isTransB) {
-                return batchTileIdx * CeilAlign(n, OUTER_SIZE) * CeilAlign(k, c0) +
-                       (nTileIdx * l1N + nSplitOffset) * c0 + kTileIdx * l1K * CeilAlign(n, OUTER_SIZE);
-            }
-            return batchTileIdx * CeilAlign(n, c0) * CeilAlign(k, OUTER_SIZE) + kTileIdx * l1K * c0 +
-                   (nTileIdx * l1N + nSplitOffset) * CeilAlign(k, OUTER_SIZE);
+            return batchTileIdx * n * k + (nTileIdx * l1N + nSplitOffset) * k + kTileIdx * l1K;
+            // if (c0 == 0) {
+            //     return 0;
+            // }
+            // if constexpr (isTransB) {
+            //     return batchTileIdx * CeilAlign(n, OUTER_SIZE) * CeilAlign(k, c0) +
+            //            (nTileIdx * l1N + nSplitOffset) * c0 + kTileIdx * l1K * CeilAlign(n, OUTER_SIZE);
+            // }
+            // return batchTileIdx * CeilAlign(n, c0) * CeilAlign(k, OUTER_SIZE) + kTileIdx * l1K * c0 +
+            //        (nTileIdx * l1N + nSplitOffset) * CeilAlign(k, OUTER_SIZE);
         }
         if constexpr (isTransB) {
             return batchTileIdx * n * k + (nTileIdx * l1N + nSplitOffset) * k + kTileIdx * l1K;
