@@ -32,6 +32,9 @@ using namespace AscendC;
 
 namespace MC2KernelTemplate {
 
+template<int commMode>
+struct HcclTypeSelector;
+
 template<>
 struct HcclTypeSelector<TILINGKEY_TPL_CCU> {
     using type = Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU>;
