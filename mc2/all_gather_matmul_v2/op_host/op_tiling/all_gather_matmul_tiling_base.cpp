@@ -41,6 +41,7 @@ using namespace Mc2Tiling;
 namespace optiling {
 const std::set<int> SUPPORT_RANK_SIZE{2, 4, 8, 16, 32, 64};
 constexpr uint64_t BLOCK_SIZE_INDEX = 6;
+const std::vector<std::string> SUPPORT_COMM_MODES = {"ccu", "aicpu", "default"};
 
 static const std::initializer_list<ge::DataType> FP8_DTYPE_SUPPORT_LIST = {
     ge::DataType::DT_FLOAT8_E4M3FN, ge::DataType::DT_FLOAT8_E5M2, ge::DataType::DT_HIFLOAT8};
@@ -598,10 +599,16 @@ bool AllGatherMatmulTilingBase::AnalyzeAttrs()
     auto attrs = context_->GetAttrs();
     OP_TILING_CHECK((attrs == nullptr), VECTOR_INNER_ERR_REPORT_TILING(opName_, "failed to get attrs"), return false);
     group_ = attrs->GetAttrPointer<char>(GROUP);
+    commMode_ = attrs->GetAttrPointer<char>(COMM_MODE_INDEX);
     auto isTransA = attrs->GetAttrPointer<bool>(IS_TRANS_A);
     auto isTransB = attrs->GetAttrPointer<bool>(IS_TRANS_B);
     auto gatherIndexPtr = attrs->GetAttrPointer<int64_t>(GATHER_IDX);
     auto commTurn = attrs->GetAttrPointer<int64_t>(COMM_TURN);
+    OP_TILING_CHECK(commMode_ == nullptr, VECTOR_INNER_ERR_REPORT_TILING(opName_, "comm_mode is nullptr!"),
+                    return false);
+    OP_TILING_CHECK(std::find(SUPPORT_COMM_MODES.begin(), SUPPORT_COMM_MODES.end(), commMode_) == SUPPORT_COMM_MODES.end(), 
+                    VECTOR_INNER_ERR_REPORT_TILING(opName_, "comm_mode should be ccu or aicpu or default, but the actual value is %s.", commMode_),
+                    return false);
     OP_TILING_CHECK(!mc2tiling::GetRankSize(opName_, group_, rankSize_), VECTOR_INNER_ERR_REPORT_TILING(opName_,
                     "GetRankSize failed."), return false);
     OP_TILING_CHECK(
@@ -722,11 +729,20 @@ ge::graphStatus AllGatherMatmulTilingBase::GetWorkspaceSize()
 uint64_t AllGatherMatmulTilingBase::GetTilingKey() const
 {
     uint8_t outputType = (outputIsFp8_) ? static_cast<uint8_t>(1) : static_cast<uint8_t>(0);
-    uint8_t commMode = (Mc2Comm::GetCommModeFromEnv() == Mc2Comm::COMM_MODE_AICPU)?
-                        Mc2Comm::COMM_MODE_AICPU : Mc2Comm::COMM_MODE_CCU;
+    
     // Non-A5 platform must use AICPU mode
-    if (npuArch_ != NpuArch::DAV_3510) {
-        commMode = Mc2Comm::COMM_MODE_AICPU;
+    uint8_t commMode = Mc2Comm::COMM_MODE_AICPU;
+    
+    if (npuArch_ == NpuArch::DAV_3510) {    
+        if (commMode_ == "ccu") {
+            commMode = Mc2Comm::COMM_MODE_CCU;
+        } else if (commMode_ == "aicpu") {
+            commMode = Mc2Comm::COMM_MODE_AICPU;
+        } else {
+            if (rankSize_ <= 8){
+                commMode = Mc2Comm::COMM_MODE_CCU;
+            }
+        }
     }
     const uint64_t tilingKey = GET_TPL_TILING_KEY(
         inputIsBf16Fp16_, args_.isBTrans, outputType, TPL_DEFAULT_MODE, SCALE_TYPE_NOT_IS_MX, commMode);

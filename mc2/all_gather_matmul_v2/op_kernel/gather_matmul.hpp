@@ -295,7 +295,12 @@ public:
                 MatrixCoord offsetC{blockLocCoord.m(), blockLocCoord.n()};
                 uint64_t gmOffsetA = pingPongSt + dstBlockIdx * blockSize + params.layoutPeerMem.GetOffset(offsetA);
                 uint64_t gmOffsetB = params.layoutB.GetOffset(offsetB);
-                int64_t gmOffsetC = dstBlockIdx * mnSize + calIdx * outputBlockSize + params.layoutC.GetOffset(offsetC);
+                int64_t gmOffsetC = static_cast<int64_t>(dstBlockIdx + flagIdx * params.rankSize) * outputBlockSize
+                                        + params.layoutC.GetOffset(offsetC);
+                
+                if (params.accumWorkSpacePingPong) {
+                    gmOffsetC = dstBlockIdx * mnSize + calIdx * outputBlockSize + params.layoutC.GetOffset(offsetC);
+                }
 
                 AscendC::GlobalTensor<ElementAInt8> gmAIn = gmPeerMemInt8;
  	            if (dstBlockIdx == params.rankIdx) { // 从gmA里面取
@@ -381,10 +386,11 @@ public:
                 MatrixCoord offsetC{blockLocCoord.m(), blockLocCoord.n()};
                 uint64_t gmOffsetA = pingPongSt + dstBlockIdx * blockSize + params.layoutPeerMem.GetOffset(offsetA);
                 uint64_t gmOffsetB = params.layoutB.GetOffset(offsetB);
-                int64_t gmOffsetC = dstBlockIdx * mnSize + calIdx * outputBlockSize + params.layoutC.GetOffset(offsetC);
-                if (params.accumWorkSpacePingPong) {
-                    gmOffsetC = static_cast<int64_t>(dstBlockIdx + flagIdx * params.rankSize) * outputBlockSize
+                int64_t gmOffsetC = static_cast<int64_t>(dstBlockIdx + flagIdx * params.rankSize) * outputBlockSize
                                         + params.layoutC.GetOffset(offsetC);
+                
+                if (params.accumWorkSpacePingPong) {
+                    gmOffsetC = dstBlockIdx * mnSize + calIdx * outputBlockSize + params.layoutC.GetOffset(offsetC);
                 }
 
                 AscendC::GlobalTensor<ElementA> gmAIn = gmPeerMem;
