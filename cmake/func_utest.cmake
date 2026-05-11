@@ -347,7 +347,7 @@ function(OpsTest_AddOpTilingShared)
             PRIVATE
                 ${OPBASE_INC_DIRS}
                 ${_OpsTestUt_OpTilingPrivateIncludesExt}
-                ${OPS_TRANSFORMER_DIR}/common/include
+                ${OPS_TRANSFORMER_DIR}/common/inc
     )
     target_compile_definitions(${_Target}
             PRIVATE
@@ -590,7 +590,7 @@ function(OpsTest_Level1_AddUTestCommonStatic)
                     ${TMP_PUBLIC_INCLUDES_EXT}
                 PRIVATE
                     ${OPBASE_INC_DIRS}
-                    ${OPS_TRANSFORMER_DIR}/common/include
+                    ${OPS_TRANSFORMER_DIR}/common/inc
                     ${ASCEND_CANN_PACKAGE_PATH}/include
                     ${TMP_PRIVATE_INCLUDES_EXT}
         )
