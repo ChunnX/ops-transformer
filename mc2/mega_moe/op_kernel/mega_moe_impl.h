@@ -341,12 +341,13 @@ __aicore__ inline void GroupMatmul2(
                 Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape), Get<K_VALUE>(actualShape), 0};
             blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias, gmBlockC, singleShape);
             SyncFunc<AscendC::HardEvent::FIX_S>();
-            // if (mLoc == 0 && nLoc == 0) {
-            //     GlobalTensor<bfloat16_t> gmm2OutGm;
-            //     gmm2OutGm.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(gmmAddrInfo.gmm2OutGlobal));
-            //     AscendC::PRINTF("AIC: gmm2OutGlobal=%p, gmC[0]=%f, gmC[1]=%f\n",
-            //         gmmAddrInfo.gmm2OutGlobal, gmm2OutGm.GetValue(0), gmm2OutGm.GetValue(1));
-            // }
+            if (mLoc == 0 && nLoc == 0) {
+                GlobalTensor<bfloat16_t> gmm2OutGm;
+                gmm2OutGm.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(gmmAddrInfo.gmm2OutGlobal));
+                AscendC::DataCacheCleanAndInvalid<bfloat16_t, AscendC::CacheLine::ENTIRE_DATA_CACHE, AscendC::DcciDst::CACHELINE_OUT>(gmm2OutGm);
+                AscendC::PRINTF("AIC: gmm2OutGlobal=%p, gmC[0]=%f, gmC[1]=%f\n, gmC[10]=%f, gmC[20]=%f\n",
+                    gmmAddrInfo.gmm2OutGlobal, gmm2OutGm.GetValue(0), gmm2OutGm.GetValue(1), gmm2OutGm.GetValue(10), gmm2OutGm.GetValue(20));
+            }
             // tile完成，在对应核心位置+1
             AscendC::AtomicAdd((__gm__ int32_t*)rowReadyFlags.GetPhyAddr() + blockIdx, int32_t(1));
         } else {
@@ -357,10 +358,12 @@ __aicore__ inline void GroupMatmul2(
             }
             AscendC::AtomicAdd((__gm__ int32_t*)rowReadyFlags.GetPhyAddr() + blockIdx, int32_t(-1));
 
-            // 复用dispatch的CopyTempBuf_作为combine UB（dispatch与combine不并行）
+            // 裸分配UB用于GM→UB→远端GM（与gmm1串行，offset 0不冲突）
+            int64_t ubOffset = 0;
+            LocalTensor<bfloat16_t> ubBuffer = LocalTensor<bfloat16_t>(TPosition::VECIN, ubOffset, L1_TILE_M * L1_TILE_N);
             MegaMoeCombineImpl::CombineTile<bfloat16_t, decltype(actualShape)>(
                 groupIdx, mLoc, nLoc, n, rankId,
-                gmmAddrInfo.gmm2OutGlobal, params, combineUbTensor, actualShape);
+                gmmAddrInfo.gmm2OutGlobal, params, ubBuffer, actualShape);
         }
     }
 
