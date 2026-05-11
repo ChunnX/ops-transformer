@@ -35,6 +35,7 @@ except ImportError:
 # ======================== xlsx 列名 → test_case.py key 映射 ========================
 # None = 跳过该列；以 '_' 开头的内部标记不直接写入输出
 COLUMN_MAP = {
+    # ---- 格式1: 红线用例表 ----
     'Testcase_Name':       '_key_',
     'custorm_info':        None,
     'batch_size':          'B',
@@ -78,11 +79,33 @@ COLUMN_MAP = {
     'metadata':            None,
     'max_seqlen_q':        None,
     'max_seqlen_kv':       None,
+    # ---- 格式2: varlen 测试表 ----
+    'testcase_name':       '_key_',
+    'enable':              '_enable_',
+    'level':               None,
+    'B':                   'B',
+    'N1':                  'N1',
+    'N2':                  'N2',
+    'S1':                  'S1',
+    'S2':                  'S2',
+    'D':                   'D',
+    'seqlens_list_q':      '_seqlens_list_q_',   # 非前缀和，需转换
+    'seqlens_list_kv':     '_seqlens_list_kv_',  # 非前缀和，需转换
+    'dtype':               'Dtype',
+    'sparse_mode':         'mask_mode',
+    'pre_tokens':          'pre_tokens',
+    'next_tokens':         'next_tokens',
+    'input_layout':        '_input_layout_',      # 同时设置 layout_q/kv/out
+    'atten_mask_dtype':    'atten_mask_dtype',
+    'atten_mask_layout':   'atten_mask_layout',
+    'keep_prob':           'keep_prob',
 }
 
 DTYPE_MAP = {
     'BF16': 'bf16', 'FP16': 'fp16', 'FP32': 'fp32', 'INT8': 'int8',
     'bf16': 'bf16', 'fp16': 'fp16', 'fp32': 'fp32', 'int8': 'int8',
+    'FLOAT16': 'fp16', 'BFLOAT16': 'bf16',
+    'float16': 'fp16', 'bfloat16': 'bf16',
 }
 
 # 输出时 key 的排列顺序（与 test_case.py 风格一致）
@@ -92,10 +115,13 @@ KEY_ORDER = [
     'Dtype',
     'q_range', 'k_range', 'v_range',
     'scale',
-    'mask_mode', 'winLeft', 'winRight',
+    'mask_mode', 'pre_tokens', 'next_tokens',
+    'winLeft', 'winRight',
+    'keep_prob',
     'seqused_q', 'seqused_kv',
     'cu_seqlens_q', 'cu_seqlens_kv',
     'block_table', 'block_size',
+    'atten_mask_dtype', 'atten_mask_layout',
     'return_softmax_lse', 'deterministic',
 ]
 
@@ -153,6 +179,25 @@ def generate_block_table(shape_str, batch_size):
     return table
 
 
+def parse_bracket_list(val):
+    """解析 '[54, 341, 57, 46]' 或 '54, 341, 57, 46' 格式为 int 列表"""
+    s = str(val).strip()
+    # 去除外层方括号
+    s = s.strip('[]')
+    parts = [x.strip() for x in s.split(',') if x.strip()]
+    return [int(float(x)) for x in parts]
+
+
+def seqlens_to_prefix_sum(lengths):
+    """将逐 batch 长度列表转换为前缀和（含首位 0）
+    [54, 341, 57] → [0, 54, 395, 452]
+    """
+    result = [0]
+    for l in lengths:
+        result.append(result[-1] + l)
+    return result
+
+
 # ======================== 行转换 ========================
 
 def convert_row(headers, row_values):
@@ -162,15 +207,26 @@ def convert_row(headers, row_values):
         if i < len(row_values):
             raw[h] = row_values[i]
 
-    # 提取 case_name、batch_size、block_table_shape
+    # 提取 case_name（兼容两种列名）
     case_name = None
+    for key_col in ('Testcase_Name', 'testcase_name'):
+        if key_col in raw and not is_empty(raw[key_col]):
+            case_name = str(raw[key_col]).strip()
+            break
+
+    # enable 列过滤（格式2）
+    if 'enable' in raw and not is_empty(raw['enable']):
+        enable_str = str(raw['enable']).strip().lower()
+        if enable_str in ('false', '0', 'no'):
+            return None, None
+
     batch_size = 1
     bt_shape = None
 
-    if 'Testcase_Name' in raw and not is_empty(raw['Testcase_Name']):
-        case_name = str(raw['Testcase_Name']).strip()
     if 'batch_size' in raw and not is_empty(raw['batch_size']):
         batch_size = int(float(raw['batch_size']))
+    if 'B' in raw and not is_empty(raw['B']):
+        batch_size = int(float(raw['B']))
     if 'block_table_shape' in raw and not is_empty(raw['block_table_shape']):
         bt_shape = str(raw['block_table_shape']).strip()
 
@@ -178,6 +234,21 @@ def convert_row(headers, row_values):
         return None, None
 
     case_dict = {}
+
+    # ---- 处理 input_layout → layout_q/kv/out（格式2）----
+    if 'input_layout' in raw and not is_empty(raw['input_layout']):
+        layout_val = str(raw['input_layout']).strip()
+        case_dict['layout_q'] = [layout_val]
+        case_dict['layout_kv'] = [layout_val]
+        case_dict['layout_out'] = [layout_val]
+
+    # ---- 处理 seqlens_list_q/kv → cu_seqlens_q/kv（逐batch长度→前缀和）----
+    if 'seqlens_list_q' in raw and not is_empty(raw['seqlens_list_q']):
+        lengths_q = parse_bracket_list(raw['seqlens_list_q'])
+        case_dict['cu_seqlens_q'] = [seqlens_to_prefix_sum(lengths_q)]
+    if 'seqlens_list_kv' in raw and not is_empty(raw['seqlens_list_kv']):
+        lengths_kv = parse_bracket_list(raw['seqlens_list_kv'])
+        case_dict['cu_seqlens_kv'] = [seqlens_to_prefix_sum(lengths_kv)]
 
     for col_name, val in raw.items():
         if col_name not in COLUMN_MAP:
@@ -190,8 +261,15 @@ def convert_row(headers, row_values):
 
         val_str = str(val).strip()
 
+        # 跳过已由上面特殊逻辑处理的字段
+        if key in ('layout_q', 'layout_kv', 'layout_out') and key in case_dict:
+            continue
+        if key in ('cu_seqlens_q', 'cu_seqlens_kv') and key in case_dict:
+            continue
+
         # ---- 整数标量 ----
-        if key in ('B', 'N1', 'N2', 'S1', 'S2', 'D', 'mask_mode', 'block_size'):
+        if key in ('B', 'N1', 'N2', 'S1', 'S2', 'D', 'mask_mode', 'block_size',
+                   'pre_tokens', 'next_tokens'):
             case_dict[key] = [int(float(val))]
 
         # ---- 字符串标量 (layout) ----
@@ -208,8 +286,8 @@ def convert_row(headers, row_values):
             if r is not None:
                 case_dict[key] = [r]
 
-        # ---- 浮点标量 (softmax_scale) ----
-        elif key == 'scale':
+        # ---- 浮点标量 (softmax_scale, keep_prob) ----
+        elif key in ('scale', 'keep_prob'):
             case_dict[key] = [float(val)]
 
         # ---- winLeft / winRight (保持字符串，与 test_case.py 一致) ----
@@ -230,6 +308,10 @@ def convert_row(headers, row_values):
                 case_dict[key] = [True]
             elif val_str.lower() in ('false', '0', 'no'):
                 case_dict[key] = [False]
+
+        # ---- 字符串透传 (atten_mask_dtype, atten_mask_layout 等) ----
+        elif key in ('atten_mask_dtype', 'atten_mask_layout'):
+            case_dict[key] = [val_str]
 
     # block_table 由 shape 自动生成
     if bt_shape:
@@ -295,9 +377,9 @@ def xlsx_to_testcase(input_xlsx, output_py, sheet_name=None):
     if unknown:
         print(f"[INFO] 以下列名未在映射中，将被忽略: {unknown}")
 
-    missing = [h for h in ('Testcase_Name',) if h not in headers]
-    if missing:
-        print(f"[ERROR] 缺少必需列: {missing}")
+    has_key_col = any(h in ('Testcase_Name', 'testcase_name') for h in headers)
+    if not has_key_col:
+        print(f"[ERROR] 缺少必需列: Testcase_Name 或 testcase_name")
         wb.close()
         sys.exit(1)
 
