@@ -519,7 +519,9 @@ aclnnStatus aclnnAllGatherMatmulV2GetWorkspaceSize(const aclTensor* x1, const ac
                                                    aclTensor* amaxOut, uint64_t* workspaceSize,
                                                    aclOpExecutor** executor)
 {
-    aclnnStatus ret = ACLNN_SUCCESS;
+    
+  aclnnStatus ret = ACLNN_SUCCESS;
+  OP_LOGD("==========before aclnnAllGatherMatmulV2GetWorkspaceSize end==============");
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         ret = allGatherMatmulV2GetWorkspaceSizeCCUMode(x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, group, gatherIndex, commTurn,
                                                        streamMode, groupSize, commMode, output, gatherOut, amaxOut, workspaceSize, executor);
@@ -530,6 +532,7 @@ aclnnStatus aclnnAllGatherMatmulV2GetWorkspaceSize(const aclTensor* x1, const ac
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Unsupported npuArch");
         return ACLNN_ERR_PARAM_INVALID;
     }
+    OP_LOGD("==========aclnnAllGatherMatmulV2GetWorkspaceSize end==============");
     return ret;
 }
 
@@ -541,6 +544,7 @@ aclnnStatus aclnnAllGatherMatmulV2(void* workspace, uint64_t workspaceSize, aclO
     return ACLNN_SUCCESS;
   }
 
+  OP_LOGD("==========before NnopbaseSetHcclServerType==============");
   if (NnopbaseSetHcclServerType) {
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
       NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
@@ -548,6 +552,7 @@ aclnnStatus aclnnAllGatherMatmulV2(void* workspace, uint64_t workspaceSize, aclO
       NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
     }
   }
+  OP_LOGD("==========after NnopbaseSetHcclServerType==============");
 
   return aclnnInnerAllGatherMatmulV2(workspace, workspaceSize, executor, stream);
 }

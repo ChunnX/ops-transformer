@@ -25,8 +25,18 @@ namespace ops {
 static ge::Status AllGatherMatmulV2CalcOpParam(gert::ExeResGenerationContext *context)
 {
     if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
-        OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTask CalcOpParam");
-        return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "ccu server", "ccu_stream");
+        ge::AscendString commMode; 
+        std::string attr_name = "comm_mode";
+        auto result = context->GetStrAttrVal(attr_name.c_str(), commMode);
+        if (commMode == 'default') {
+            OPS_LOG_D(context->GetNodeName(), "Do A5 default GenTask CalcOpParam");
+        } else if (commMode == 'ccu') {
+            OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTask CalcOpParam");
+            return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "ccu server", "ccu_stream");
+        }else {
+            OPS_LOG_D(context->GetNodeName(), "Do A5 AICPU GenTask CalcOpParam");
+            return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "aicpu kfc server", "kfc_stream");
+        } 
     }
     OPS_LOG_E(context->GetNodeName(), "Only support A5");
     return ge::GRAPH_FAILED;
