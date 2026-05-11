@@ -57,11 +57,6 @@ public:
         e_ = taskTilingInfo_->e;
         H1_ = taskTilingInfo_->H1;
         N1_ = taskTilingInfo_->N1;
-        if ASCEND_IS_AIV {
-            if (GetBlockIdx() == 0) {
-                AscendC::PRINTF("HcclA2avOp Init: commMode=%d (0=CCU, 1=AICPU)\n", commMode);
-            }
-        }
         sendGlobalBuffer_.SetGlobalBuffer((__gm__ hcclDataType *)sendBuffer);
         recvGlobalBuffer_.SetGlobalBuffer((__gm__ hcclDataType *)recvBuffer);
         for (int i = 0; i < e_ * rankDim_; i++) {
@@ -279,15 +274,7 @@ public:
         if ASCEND_IS_AIC {
             return;
         }
-        if ASCEND_IS_AIV {
-            if (GetBlockIdx() == 0) {
-            }
-        }
         hccl_.Finalize();
-        if ASCEND_IS_AIV {
-            if (GetBlockIdx() == 0) {
-            }
-        }
     }
 
 private:
