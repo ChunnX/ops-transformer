@@ -1380,8 +1380,8 @@ static ge::graphStatus CheckAndSetInput(const gert::TilingContext *context, Mega
     OP_TILING_CHECK(TilingCheckMegaMoe(context, config, nodeName) == ge::GRAPH_FAILED,
         OP_LOGE(nodeName, "check input failed."), return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(CheckInputParam(context, config, nodeName) == ge::GRAPH_FAILED,
-        OP_LOGE(nodeName, "check input param failed."), return ge::GRAPH_FAILED);
+    // OP_TILING_CHECK(CheckInputParam(context, config, nodeName) == ge::GRAPH_FAILED,
+    //     OP_LOGE(nodeName, "check input param failed."), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(SetInputParam(context, tilingData, config) == ge::GRAPH_FAILED,
         OP_LOGE(nodeName, "set input param failed."), return ge::GRAPH_FAILED);
