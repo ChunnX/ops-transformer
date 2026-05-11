@@ -11,7 +11,7 @@
 /*!
  * \file fia_template_dispatcher.h
  * \brief
- */
+*/
 
 #ifndef FIA_TEMPLATE_DISPATCHER_H
 #define FIA_TEMPLATE_DISPATCHER_H
@@ -47,17 +47,35 @@ inline __aicore__ void run_fia_noquant_gqa_kernel(
     constexpr bool bmm2Write2Ub = bmm2OutPos == TPosition::VECCALC;
     constexpr bool splitD = (uint16_t)dVTemplateType > (uint16_t)DTemplateType::Aligned256;
 
-    using CubBlock = BaseApi::FANoQuantGqaBlockCube<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType,
-                                                    dTemplateType, dVTemplateType, hasRope, KvLayoutType,
-                                                    enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
-    using VecFaBlock = BaseApi::FANoQuantGqaBlockVec<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-                                                     s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-                                                     static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope,
-                                                     KvLayoutType, isFd, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
-    using VecFdBlock = BaseApi::FiaBlockVecFlashDecode<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-                                                       s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-                                                       static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope,
-                                                       KvLayoutType, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
+    // CubBlockType
+    using CubBlockNormal = BaseApi::FANoQuantGqaBlockCube<INPUT_T, float, inputLayoutType,
+        s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, hasRope, KvLayoutType,
+        enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
+    using CubBlockDummy = BaseApi::FANoQuantGqaBlockCubeDummy<INPUT_T, float, inputLayoutType,
+        s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, hasRope, KvLayoutType,
+        enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
+    using CubBlock = typename std::conditional<g_coreType == AscendC::AIC, CubBlockNormal, CubBlockDummy>::type;
+
+    // VecFaBlockType
+    using VecFaBlockNormal = BaseApi::FANoQuantGqaBlockVec<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
+        s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, static_cast<PseTypeEnum>(pseMode),
+        hasAttenMask, false, hasRope, KvLayoutType, isFd, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
+    using VecFaBlockDummy = BaseApi::FANoQuantGqaBlockVecDummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
+        s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, static_cast<PseTypeEnum>(pseMode), hasAttenMask,
+        false, hasRope, KvLayoutType, isFd, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
+    using VecFaBlock = typename std::conditional<g_coreType == AscendC::AIV, VecFaBlockNormal, VecFaBlockDummy>::type;
+
+    // VecFdBlockType
+    using VecFdBlockNormal = BaseApi::FiaBlockVecFlashDecode<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
+        s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, static_cast<PseTypeEnum>(pseMode), hasAttenMask,
+        false, hasRope, KvLayoutType, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
+    using VecFdBlockDummy = BaseApi::FiaBlockVecFlashDecodeDummy<INPUT_T, float, OUT_T,
+        inputLayoutType, outputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+        static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope, KvLayoutType, enableKVPrefix,
+        useDn, bmm2Write2Ub, splitD>;
+    using VecFdBlock = typename std::conditional<g_coreType == AscendC::AIV, VecFdBlockNormal, VecFdBlockDummy>::type;
+
+    // KernelType
     using Kernel = FlashAttentionNoQuantGqaKernel<CubBlock, VecFaBlock, VecFdBlock>;
 
     GET_TILING_DATA_MEMBER(FusedInferAttentionScoreTilingData, baseTiling, baseTilingIn, tiling);
@@ -79,7 +97,8 @@ inline __aicore__ void run_fia_fullquant_mx_kernel(
     __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *actualSeqLengthsKV,
     __gm__ uint8_t *blockTable, __gm__ uint8_t *dequantScaleQuery, __gm__ uint8_t *dequantScaleKey,
     __gm__ uint8_t *dequantScaleValue, __gm__ uint8_t *pScale, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
-    __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
+    __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
+    __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
     PARSE_PARAMS_FullQuant(inOutLayoutType, config, pseMode, ...);
 
@@ -96,17 +115,14 @@ inline __aicore__ void run_fia_fullquant_mx_kernel(
     constexpr bool splitD = (uint16_t)dVTemplateType > (uint16_t)DTemplateType::Aligned256;
 
     using CubBlock = BaseApi::FAFullQuantMxBlockCube<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType,
-                                                     dTemplateType, dVTemplateType, hasRope, KvLayoutType,
-                                                     enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
+        dTemplateType, dVTemplateType, hasRope, KvLayoutType, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
     using VecFaBlock = BaseApi::FAFullQuantMxBlockVec<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-                                                      s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-                                                      static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope,
-                                                      KvLayoutType, isFd, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
-    using VecFdBlock =
-        BaseApi::FiaBlockVecFlashDecodeFullQuant<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-                                                 s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-                                                 static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope,
-                                                 KvLayoutType, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
+        s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope,
+        KvLayoutType, isFd, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
+    using VecFdBlock = BaseApi::FiaBlockVecFlashDecodeFullQuant<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
+                                                         s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+                                                       static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope,
+                                                       KvLayoutType, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
 
     using Kernel = FlashAttentionFullQuantMxKernel<CubBlock, VecFaBlock, VecFdBlock>;
     GET_TILING_DATA_MEMBER(FusedInferAttentionScoreFullQuantTilingData, baseTiling, baseTilingIn, tiling);
