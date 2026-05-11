@@ -15,6 +15,7 @@
 #include "common/utils/op_mc2.h"
 #include "mc2_log.h"
 #include "mx_quant_matmul_allto_all_tiling_base.h"
+#include "matmul_allto_all_fit_balance_tiling.h"
 
 using namespace Mc2Log;
 using namespace AscendC;
@@ -932,6 +933,17 @@ uint64_t MxQuantMatmulAllToAllTilingBase::GetTilingKey() const
     OP_LOGD(opName_, "MXQUANTMODE,X2TRANSPOSE,DTYPEBIAS: [%d,%d,%d], TilingKey is [%lu].", MX_QUANT_MODE,
             x2TransposeFlag, biasDType, tilingKey);
     return tilingKey;
+}
+
+/**
+ * @brief 获取tiling切分结果（arch35覆盖）
+ *
+ * @return CutResult
+ */
+CutResult MxQuantMatmulAllToAllTilingBase::GetTilingResult()
+{
+    return GetArch35TilingResult(contextInfo.args_, KernelType::ALL_TO_ALL, SocVersion::SOC950, npuArch_,
+                                 QuantMode::MX_QUANT);
 }
 
 /**
