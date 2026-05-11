@@ -74,8 +74,7 @@ ge::graphStatus FiaInfoParser::CheckRequiredAttrExistence() const
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.queryQuantMode == nullptr, OP_LOGE(opName_, "attr queryQuantMode is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.pseType == nullptr, OP_LOGE(opName_, "attr pseType is nullptr"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.pseType == nullptr, OP_LOGE(opName_, "attr pseType is nullptr"), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -131,9 +130,9 @@ ge::graphStatus FiaInfoParser::GetEmptyTensorFlag()
 ge::graphStatus FiaInfoParser::GetMaxWorkspaceFlag()
 {
     if ((opParamInfo_.actualSeqLengths.tensor != nullptr &&
-        opParamInfo_.actualSeqLengths.tensor->GetData<int64_t>() == nullptr) ||
+         opParamInfo_.actualSeqLengths.tensor->GetData<int64_t>() == nullptr) ||
         (opParamInfo_.actualSeqLengthsQ.tensor != nullptr &&
-        opParamInfo_.actualSeqLengthsQ.tensor->GetData<int64_t>() == nullptr)) {
+         opParamInfo_.actualSeqLengthsQ.tensor->GetData<int64_t>() == nullptr)) {
         isMaxWorkspace_ = true;
         OP_LOGI(opName_, "FIA tiling sink");
     } else {
@@ -201,9 +200,9 @@ ge::graphStatus FiaInfoParser::GetNpuInfo()
     socVersion_ = ascendcPlatform.GetSocVersion();
     npuArch_ = ascendcPlatform.GetCurNpuArch();
     if ((socVersion_ != platform_ascendc::SocVersion::ASCEND310P) &&
-        (socVersion_ != platform_ascendc::SocVersion::ASCEND910B) &&
-        (npuArch_ != NpuArch::DAV_3510)) {
-        OPS_REPORT_VECTOR_INNER_ERR(opName_, "SOC Version[%d]/NpuArch[%d] is not support.", static_cast<int32_t>(socVersion_), static_cast<int32_t>(npuArch_));
+        (socVersion_ != platform_ascendc::SocVersion::ASCEND910B) && (npuArch_ != NpuArch::DAV_3510)) {
+        OPS_REPORT_VECTOR_INNER_ERR(opName_, "SOC Version[%d]/NpuArch[%d] is not support.",
+                                    static_cast<int32_t>(socVersion_), static_cast<int32_t>(npuArch_));
         return GRAPH_FAILED;
     }
 
@@ -349,13 +348,13 @@ ge::graphStatus FiaInfoParser::GetAttrParaInfo()
     opParamInfo_.layOut = attrs->GetStr(ATTR_INPUT_LAYOUT_INDEX);
     opParamInfo_.kvHeadNums = attrs->GetAttrPointer<int32_t>(ATTR_NUM_KV_HEADS_INDEX);
     opParamInfo_.blockSize = attrs->GetAttrPointer<int32_t>(ATTR_BLOCK_SIZE_INDEX);
-    opParamInfo_.antiquantMode = attrs->GetAttrPointer<int64_t>(ANTIQUANT_MODE_INDEX);
-    opParamInfo_.softmaxLseFlag = attrs->GetAttrPointer<bool>(SOFTMAX_LSE_FLAG_INDEX);
-    opParamInfo_.keyAntiquantMode = attrs->GetAttrPointer<int64_t>(KEY_ANTIQUANT_MODE_INDEX);
-    opParamInfo_.valueAntiquantMode = attrs->GetAttrPointer<int64_t>(VALUE_ANTIQUANT_MODE_INDEX);
+    opParamInfo_.antiquantMode = attrs->GetAttrPointer<int64_t>(ATTR_ANTIQUANT_MODE_INDEX);
+    opParamInfo_.softmaxLseFlag = attrs->GetAttrPointer<bool>(ATTR_SOFTMAX_LSE_FLAG_INDEX);
+    opParamInfo_.keyAntiquantMode = attrs->GetAttrPointer<int64_t>(ATTR_KEY_ANTIQUANT_MODE_INDEX);
+    opParamInfo_.valueAntiquantMode = attrs->GetAttrPointer<int64_t>(ATTR_VALUE_ANTIQUANT_MODE_INDEX);
     opParamInfo_.innerPrecise = attrs->GetAttrPointer<int32_t>(ATTR_INNER_PRECISE_INDEX);
-    opParamInfo_.queryQuantMode = attrs->GetAttrPointer<int64_t>(QUERY_QUANT_MODE_INDEX);
-    opParamInfo_.pseType = attrs->GetAttrPointer<int64_t>(PSE_TYPE_INDEX);
+    opParamInfo_.queryQuantMode = attrs->GetAttrPointer<int64_t>(ATTR_QUERY_QUANT_MODE_INDEX);
+    opParamInfo_.pseType = attrs->GetAttrPointer<int64_t>(ATTR_PSE_TYPE_INDEX);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -402,10 +401,8 @@ void FiaInfoParser::GetPreNextToken()
     } else if (sparseMode_ == SPARSE_MODE_ALL_MASK) {
         preToken_ = SPARSE_MODE_INT_MAX;
         nextToken_ = SPARSE_MODE_INT_MAX;
-    } else if (sparseMode_ == SPARSE_MODE_LEFT_UP || sparseMode_ == SPARSE_MODE_RIGHT_DOWN) {
-        nextToken_ = 0;
-        preToken_ = SPARSE_MODE_INT_MAX;
-    } else if (sparseMode_ == SPARSE_MODE_TREE) {
+    } else if (sparseMode_ == SPARSE_MODE_LEFT_UP || sparseMode_ == SPARSE_MODE_RIGHT_DOWN ||
+               sparseMode_ == SPARSE_MODE_TREE) {
         nextToken_ = 0;
         preToken_ = SPARSE_MODE_INT_MAX;
     }
@@ -440,30 +437,32 @@ void FiaInfoParser::GetPreNextToken()
         preToken_ = SPARSE_MODE_INT_MAX;
         nextToken_ = SPARSE_MODE_INT_MAX;
     }
+}
 
+ge::graphStatus FiaInfoParser::GetTensorListCache(uint32_t index, const std::string &name,
+                                                  std::vector<gert::StorageShape *> &cache)
+{
+    cache.clear();
+    uint32_t bIdx = 0;
+    while ((context_->GetDynamicInputShape(index, bIdx)) != nullptr) {
+        cache.push_back(const_cast<gert::StorageShape *>(context_->GetDynamicInputShape(index, bIdx)));
+        bIdx++;
+    }
+    OP_CHECK_IF(bIdx == 0,
+                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "tensor list of %s is empty.", name.c_str()),
+                return ge::GRAPH_FAILED);
+    cache.resize(bIdx);
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus FiaInfoParser::GetKvCache()
 {
-    // 处理Key和value的TensorList场景
-    kCache_.clear();
-    uint32_t keyBIdx = 0;
-    while ((context_->GetDynamicInputShape(KEY_INDEX, keyBIdx)) != nullptr) {
-        kCache_.push_back(const_cast<gert::StorageShape *>(context_->GetDynamicInputShape(KEY_INDEX, keyBIdx)));
-        keyBIdx++;
+    if (GetTensorListCache(KEY_INDEX, KEY_NAME, kCache_) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
     }
-    OP_CHECK_IF(keyBIdx == 0,
-                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "tensor list of %s is empty.", KEY_NAME.c_str()),
-                return ge::GRAPH_FAILED);
-    kCache_.resize(keyBIdx);
-
-    vCache_.clear();
-    uint32_t valueBIdx = 0;
-    while ((context_->GetDynamicInputShape(VALUE_INDEX, valueBIdx)) != nullptr) {
-        vCache_.push_back(const_cast<gert::StorageShape *>(context_->GetDynamicInputShape(VALUE_INDEX, valueBIdx)));
-        valueBIdx++;
+    if (GetTensorListCache(VALUE_INDEX, VALUE_NAME, vCache_) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
     }
-    vCache_.resize(valueBIdx);
 
     OP_CHECK_IF(kCache_.size() != vCache_.size(),
                 OPS_REPORT_VECTOR_INNER_ERR(
@@ -620,6 +619,8 @@ ge::graphStatus FiaInfoParser::GetKvLayout()
     if (kvStorageMode_ != KvStorageMode::PAGE_ATTENTION) {
         kvLayout_ = qLayout_;
     } else {
+        OP_CHECK_IF(kCache_.empty() || kCache_[0] == nullptr,
+                    OP_LOGE(opName_, "kCache is empty or kCache[0] is nullptr"), return ge::GRAPH_FAILED);
         uint32_t keyDimNum = kCache_[0]->GetStorageShape().GetDimNum();
         if (keyDimNum == 3U) {
             kvLayout_ = FiaLayout::BnBsH;
@@ -813,8 +814,7 @@ ge::graphStatus FiaInfoParser::GetRopeMode()
 {
     bool existQuerySplitRopeTensor =
         ((opParamInfo_.queryRope.tensor != nullptr) && (opParamInfo_.queryRope.desc != nullptr));
-    bool existKeySplitRopeTensor =
-        ((opParamInfo_.keyRope.tensor != nullptr) && (opParamInfo_.keyRope.desc != nullptr));
+    bool existKeySplitRopeTensor = ((opParamInfo_.keyRope.tensor != nullptr) && (opParamInfo_.keyRope.desc != nullptr));
     bool existSplitRopeTensor = existQuerySplitRopeTensor && existKeySplitRopeTensor;
     if (npuArch_ == NpuArch::DAV_3510) {
         if (existSplitRopeTensor) {
@@ -886,10 +886,12 @@ ge::graphStatus FiaInfoParser::GetRopeHeadDim()
         }
         uint32_t queryRopeHeadDim = static_cast<uint32_t>(queryRopeShape_->GetShapeD());
         uint32_t keyRopeHeadDim = static_cast<uint32_t>(keyRopeShape_->GetShapeD());
-        OP_CHECK_IF(queryRopeHeadDim != keyRopeHeadDim, OPS_REPORT_VECTOR_INNER_ERR(opName_,
-            "the query Rope Head Dim is (%u) and the key Rope Head Dim is (%u), they should be equal.",
-            queryRopeHeadDim, keyRopeHeadDim),
-            return GRAPH_FAILED);
+        OP_CHECK_IF(queryRopeHeadDim != keyRopeHeadDim,
+                    OPS_REPORT_VECTOR_INNER_ERR(
+                        opName_,
+                        "the query Rope Head Dim is (%u) and the key Rope Head Dim is (%u), they should be equal.",
+                        queryRopeHeadDim, keyRopeHeadDim),
+                    return GRAPH_FAILED);
         ropeHeadDim_ = queryRopeHeadDim;
     }
     return ge::GRAPH_SUCCESS;
@@ -982,7 +984,7 @@ ge::graphStatus FiaInfoParser::GetAttenMaskSparse9Info()
         }
     } else {
         if (maskDimNum == 3U) {
-            attenMaskBatchStride_ = maskTensor->GetStorageShape().GetDim(maskDimNum - 1) * \
+            attenMaskBatchStride_ = maskTensor->GetStorageShape().GetDim(maskDimNum - 1) *
                                     maskTensor->GetStorageShape().GetDim(maskDimNum - 2);
             attenMaskStride_ = maskTensor->GetStorageShape().GetDim(maskTensor->GetStorageShape().GetDimNum() - 1);
         } else {
@@ -1002,10 +1004,9 @@ ge::graphStatus FiaInfoParser::GetAntiQuantInfo()
     if (!antiQuantFlag_) {
         return ge::GRAPH_SUCCESS;
     }
-    bool kPerChnVPerTokFlag_ =
-         (inputKvType_ == ge::DT_INT4 || inputKvType_ == ge::DT_INT8) && 
-         (*(opParamInfo_.keyAntiquantMode) == 0 && *(opParamInfo_.valueAntiquantMode) == 1);
-    
+    bool kPerChnVPerTokFlag_ = (inputKvType_ == ge::DT_INT4 || inputKvType_ == ge::DT_INT8) &&
+                               (*(opParamInfo_.keyAntiquantMode) == 0 && *(opParamInfo_.valueAntiquantMode) == 1);
+
     auto tmpAntiquantMode = *(opParamInfo_.keyAntiquantMode);
     auto tmpAntiquant = opParamInfo_.keyAntiquantScale.tensor->GetStorageShape();
     if (opParamInfo_.keyAntiquantOffset.tensor != nullptr) {
@@ -1023,18 +1024,22 @@ ge::graphStatus FiaInfoParser::GetAntiQuantInfo()
     if (tmpAntiquantMode == 6) {
         if (systemPrefixFlag_) {
             if (tmpAntiquant.GetDimNum() != 5) {
-                OP_LOGE(opName_, "The dimension(%lu) of antiquant is illegal, it should be 5 when per-token-group mode.", tmpAntiquant.GetDimNum());
+                OP_LOGE(opName_,
+                        "The dimension(%lu) of antiquant is illegal, it should be 5 when per-token-group mode.",
+                        tmpAntiquant.GetDimNum());
             }
             antiquantParaSeqSize_ = tmpAntiquant.GetDim(3);
         }
     } else if (tmpAntiquantMode == 1) {
         if (tmpAntiquant.GetDimNum() != 2 && tmpAntiquant.GetDimNum() != 3) {
-            OP_LOGE(opName_, "The dimension(%lu) of antiquant is illegal, it should be 2 or 3 when per-token mode.", tmpAntiquant.GetDimNum());
+            OP_LOGE(opName_, "The dimension(%lu) of antiquant is illegal, it should be 2 or 3 when per-token mode.",
+                    tmpAntiquant.GetDimNum());
         }
         antiquantParaSeqSize_ = tmpAntiquant.GetDimNum() == 3U ? tmpAntiquant.GetDim(2) : tmpAntiquant.GetDim(1);
     } else if (tmpAntiquantMode == 3) {
         if (tmpAntiquant.GetDimNum() != 3) {
-            OP_LOGE(opName_, "The dimension(%lu) of antiquant is illegal, it should be 3 when per-token-head mode.", tmpAntiquant.GetDimNum());
+            OP_LOGE(opName_, "The dimension(%lu) of antiquant is illegal, it should be 3 when per-token-head mode.",
+                    tmpAntiquant.GetDimNum());
         }
         antiquantParaSeqSize_ = tmpAntiquant.GetDim(2);
     }
@@ -1081,8 +1086,8 @@ ge::graphStatus FiaInfoParser::GetAttenMaskInfo()
 
 void FiaInfoParser::GetPaddingSizeFlag()
 {
-    qPaddingSizeFlag_ = ((!isLegacyIfa_ || npuArch_ == NpuArch::DAV_3510) &&
-                (opParamInfo_.queryPaddingSize.tensor != nullptr));
+    qPaddingSizeFlag_ =
+        ((!isLegacyIfa_ || npuArch_ == NpuArch::DAV_3510) && (opParamInfo_.queryPaddingSize.tensor != nullptr));
 
     if (isLegacyIfa_) {
         if ((opParamInfo_.kvPaddingSize.tensor != nullptr &&
@@ -1099,7 +1104,7 @@ void FiaInfoParser::GetPaddingSizeFlag()
     if (antiQuantFlag_) {
         if (qPaddingSizeFlag_ || (kvPaddingSizeFlag_ && s1Size_ == 1)) {
             needInit_ = true;
-        } 
+        }
     } else {
         if (qPaddingSizeFlag_ || kvPaddingSizeFlag_) {
             needInit_ = true;
@@ -1122,28 +1127,28 @@ ge::graphStatus FiaInfoParser::GetPseShiftFlag()
     if (opParamInfo_.pseType != nullptr) {
         pseType_ = *opParamInfo_.pseType;
         OP_CHECK_IF((pseType_ != static_cast<int64_t>(IfaPseType::PSE_OUTER_MUL_ADD_TYPE)) &&
-                    (pseType_ != static_cast<int64_t>(IfaPseType::PSE_INNER_MUL_ADD_TYPE)) &&
-                    (pseType_ != static_cast<int64_t>(IfaPseType::PSE_INNER_MUL_ADD_SQRT_TYPE)),
+                        (pseType_ != static_cast<int64_t>(IfaPseType::PSE_INNER_MUL_ADD_TYPE)) &&
+                        (pseType_ != static_cast<int64_t>(IfaPseType::PSE_INNER_MUL_ADD_SQRT_TYPE)),
                     OP_LOGE(opName_, "PseType(%ld) is not support, pseType must be 0/2/3.", pseType_),
                     return ge::GRAPH_FAILED);
     }
     if (pseType_ == static_cast<int64_t>(IfaPseType::PSE_INNER_MUL_ADD_TYPE) ||
-        pseType_ == static_cast<int64_t>(IfaPseType::PSE_INNER_MUL_ADD_SQRT_TYPE)){
+        pseType_ == static_cast<int64_t>(IfaPseType::PSE_INNER_MUL_ADD_SQRT_TYPE)) {
         enableAlibiPse_ = true;
     }
     if ((pseShiftShape == nullptr) ||
         ((pseShiftShape != nullptr) && (pseShiftShape->GetStorageShape().GetShapeSize() == 0))) {
         pseShiftFlag_ = false;
-    } else if (pseType_ == static_cast<int64_t>(IfaPseType::PSE_OUTER_MUL_ADD_TYPE)){
+    } else if (pseType_ == static_cast<int64_t>(IfaPseType::PSE_OUTER_MUL_ADD_TYPE)) {
         pseShiftFlag_ = true;
         pseShiftByBatch_ = pseShiftShape->GetStorageShape().GetDim(0);
         if (socVersion_ == platform_ascendc::SocVersion::ASCEND910B) {
             pseShiftByBatch_ = pseShiftShape->GetStorageShape().GetDim(0) != 1U ? 1 : 0;
         }
-        pseShiftS1_ = pseShiftShape->GetStorageShape().GetDim(PSE_SHIFT_S1_INDEX);
-        pseShiftS2_ = pseShiftShape->GetStorageShape().GetDim(PSE_SHIFT_S2_INDEX);
+        pseShiftS1_ = pseShiftShape->GetStorageShape().GetDim(ATTR_PSE_SHIFT_S1_INDEX);
+        pseShiftS2_ = pseShiftShape->GetStorageShape().GetDim(ATTR_PSE_SHIFT_S2_INDEX);
     } else if (pseType_ == static_cast<int64_t>(IfaPseType::PSE_INNER_MUL_ADD_TYPE) ||
-        pseType_ == static_cast<int64_t>(IfaPseType::PSE_INNER_MUL_ADD_SQRT_TYPE)){
+               pseType_ == static_cast<int64_t>(IfaPseType::PSE_INNER_MUL_ADD_SQRT_TYPE)) {
         if (antiQuantFlag_) {
             pseShiftByBatch_ = pseShiftShape->GetStorageShape().GetDimNum() != 0 ? 1 : 0;
         } else {
