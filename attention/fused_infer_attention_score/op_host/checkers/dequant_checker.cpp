@@ -1546,14 +1546,24 @@ ge::graphStatus DequantChecker::CheckInputKVTypeForAntiquant(const FiaTilingInfo
     }
     if (keyAntiquantMode == PER_TENSOR_HEAD_MODE && valueAntiquantMode == PER_TENSOR_HEAD_MODE) {
         // per-tensor-head模式，支持key/value的数据类型为INT8
-        OP_CHECK_IF((inputKvType != ge::DT_INT8),
-                    OP_LOGE(fiaInfo.opName,
-                            "Datatype of key and value(%s) is not supported. "
-                            "Datatype of key and value must be INT8 when "
-                            "keyAntiquantMode is per-tensor-head mode and "
-                            "valueAntiquantMode is per-tensor-head mode.",
-                            DataTypeToSerialString(inputKvType).c_str()),
-                    return ge::GRAPH_FAILED);
+        if (inputKvType == ge::DT_INT4 || inputKvType == ge::DT_INT32) {
+            OP_CHECK_IF((inputKvType != ge::DT_INT8),
+                        OP_LOGE(fiaInfo.opName,
+                                "Datatype of key and value(INT4/INT32) is not supported. "
+                                "Datatype of key and value must be INT8 when "
+                                "keyAntiquantMode is per-tensor-head mode and "
+                                "valueAntiquantMode is per-tensor-head mode."),
+                        return ge::GRAPH_FAILED);
+        } else {
+            OP_CHECK_IF((inputKvType != ge::DT_INT8),
+                        OP_LOGE(fiaInfo.opName,
+                                "Datatype of key and value(%s) is not supported. "
+                                "Datatype of key and value must be INT8 when "
+                                "keyAntiquantMode is per-tensor-head mode and "
+                                "valueAntiquantMode is per-tensor-head mode.",
+                                DataTypeToSerialString(inputKvType).c_str()),
+                        return ge::GRAPH_FAILED);
+        }
     }
     if (keyAntiquantMode == PER_TOKEN_HEAD_MODE && valueAntiquantMode == PER_TOKEN_HEAD_MODE) {
         // per-token-head模式，支持key/value的数据类型为INT8、INT4(INT32)
