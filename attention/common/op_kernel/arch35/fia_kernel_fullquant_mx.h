@@ -74,6 +74,7 @@ public:
     BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers;
     BuffersPolicySingleBuffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm2Buffers;
     BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers;
+    BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PScaleBuffers;
 
     GlobalTensor<uint64_t> actualSeqLengthsGmQ;
     GlobalTensor<uint64_t> actualSeqLengthsGm;
@@ -184,6 +185,7 @@ public:
         // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
         // TODO，共享buffer初始化放到block层
         l1PBuffers.Init(l1BufferManager, mm2LeftSize);
+        l1PScaleBuffers.Init(l1BufferManager, s1BaseSize * s2BaseSize / 32);
         if constexpr (BMM2_TOUB) {
             ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize);
             bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
@@ -625,9 +627,9 @@ public:
     __aicore__ inline void ComputeVec1(RunInfoX &runInfo, uint32_t subLoop)
     {
         if (subLoop % 2 == 0) {
-            vecFaBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfo, subLoop);
+            vecFaBlock.ProcessVec1(this->l1PBuffers.Get(), this->l1PScaleBuffers.Get(), this->bmm1Buffers.Get(), runInfo, subLoop);
         } else {
-            vecFaBlock.ProcessVec1(this->l1PBuffers.GetPre(), this->bmm1Buffers.Get(), runInfo, subLoop);
+            vecFaBlock.ProcessVec1(this->l1PBuffers.GetPre(), this->l1PScaleBuffers.Get(), this->bmm1Buffers.Get(), runInfo, subLoop);
         }
     }
 

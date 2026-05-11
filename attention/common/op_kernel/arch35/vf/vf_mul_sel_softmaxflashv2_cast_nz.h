@@ -407,7 +407,8 @@ __aicore__ inline void ProcessVec1NoUpdateMxfp8(
     const LocalTensor<uint8_t>& sharedTmpBuffer, uint32_t subLoop,  const uint16_t m, const uint32_t originN,
     const uint32_t pseStride, const float slopes, const float posShift, const T scale, const float dScaleQK,
     const T minValue, float keepProb, const LocalTensor<T>& queryScaleUb = LocalTensor<T>(),
-    const float deSCaleKValue = 1.0f, const float pScale = 1.0f, float sinkValue = 0.0f)
+    const float deSCaleKValue = 1.0f, const float pScale = 1.0f, float sinkValue = 0.0f,
+    const LocalTensor<fp8_e8m0_t>& pScaleSubLoop0Tensor)
 {
 
     if constexpr (oriNRange == GT_128_AND_LTE_256) {
@@ -422,7 +423,7 @@ __aicore__ inline void ProcessVec1NoUpdateMxfp8(
             dstTensor, indexesTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, inExpSumTensor, inMaxTensor,
             maskTensor, pseTensor, dropTensor, sharedTmpBuffer, subLoop,
             m, originN, pseStride, slopes, posShift,
-            scale, dScaleQK, minValue, keepProb, sinkValue, pScale);
+            scale, dScaleQK, minValue, keepProb, sinkValue, pScale, pScaleSubLoop0Tensor);
         
     } else if constexpr (oriNRange == EQ_128) {
         LocalTensor<uint8_t> indexesTensor;
@@ -477,7 +478,7 @@ __aicore__ inline void ProcessVec1UpdateMxfp8(
     const uint16_t m, const uint32_t originN, const uint32_t pseStride,
     const float slopes, const float posShift, const T scale, const float dScaleQK, const T minValue, float keepProb,
     const LocalTensor<T>& queryScaleUb = LocalTensor<T>(), const float deSCaleKValue = 1.0f, const float pScale = 1.0f,
-    float sinkValue = 0.0f)
+    float sinkValue = 0.0f, const LocalTensor<fp8_e8m0_t>& pScaleSubLoop0Tensor)
 {
 
     if constexpr (oriNRange == GT_128_AND_LTE_256) {
@@ -492,7 +493,7 @@ __aicore__ inline void ProcessVec1UpdateMxfp8(
             dstTensor, indexesTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, inExpSumTensor, inMaxTensor,
             maskTensor, pseTensor, dropTensor, sharedTmpBuffer, preLoopMaxTensor, preLoopSumTensor, firstLoopSumTensor,
             subLoop, m, originN, pseStride, slopes, posShift,
-            scale, dScaleQK, minValue, keepProb, sinkValue, pScale);
+            scale, dScaleQK, minValue, keepProb, sinkValue, pScale, pScaleSubLoop0Tensor);
        
     } else if constexpr (oriNRange == EQ_128) {
         LocalTensor<uint8_t> indexesTensor;
@@ -552,7 +553,7 @@ __aicore__ inline void ProcessVec1VfMxfp8(const LocalTensor<T2>& dstTensor, TBuf
     const uint16_t m, const uint32_t originN, const uint32_t pseStride,
     const float slopes, const float posShift, const T scale, const float dScaleQK, const T minValue, float keepProb,
     const LocalTensor<T>& queryScaleUb = LocalTensor<T>(), const float deSCaleKValue = 1.0f,
-    const float pScale = 1.0f, float sinkValue = 0.0f)
+    const float pScale = 1.0f, float sinkValue = 0.0f, const LocalTensor<fp8_e8m0_t>& pScaleSubLoop0Tensor)
 {
     static_assert(IsSameType<T, float>::value, "VF mul_sel_softmaxflashv2_cast_nz, T must be float");
     static_assert(IsSameType<T2, half>::value || IsSameType<T2, bfloat16_t>::value || IsSameType<T2, float>::value ||
@@ -567,7 +568,7 @@ __aicore__ inline void ProcessVec1VfMxfp8(const LocalTensor<T2>& dstTensor, TBuf
             dstTensor, vselrIndexesBuf, expSumTensor, maxTensor, srcTensor, expMaxTensor,
             inExpSumTensor, inMaxTensor, maskTensor, pseTensor, dropTensor, sharedTmpBuffer, subLoop,
             m, originN, pseStride, slopes, posShift, scale, dScaleQK, minValue, keepProb, queryScaleUb,
-            deSCaleKValue, pScale, sinkValue);
+            deSCaleKValue, pScale, sinkValue, pScaleSubLoop0Tensor);
     } else {
         ProcessVec1UpdateMxfp8<T, T2, pseShiftType, s1BaseSize, s2BaseSize, oriNRange, hasAtten, pseMode,
             hasDrop, isMlaSgd, isMlaFullQuant, useNz, hasSink>(
@@ -575,7 +576,7 @@ __aicore__ inline void ProcessVec1VfMxfp8(const LocalTensor<T2>& dstTensor, TBuf
             inExpSumTensor, inMaxTensor, maskTensor, pseTensor, dropTensor, sharedTmpBuffer, preLoopMaxTensor,
             preLoopSumTensor, firstLoopSumTensor, subLoop,
             m, originN, pseStride, slopes, posShift, scale, dScaleQK, minValue, keepProb, queryScaleUb,
-            deSCaleKValue, pScale, sinkValue);
+            deSCaleKValue, pScale, sinkValue, pScaleSubLoop0Tensor);
     }
 }
 
