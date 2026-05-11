@@ -15,6 +15,7 @@
 
 #include "allto_allv_mx_quant_grouped_mat_mul_tiling.h"
 #include "mc2_tiling_utils.h"
+#include "mc2_comm_utils.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -40,7 +41,7 @@ bool AlltoAllvMXQuantGmmTiling::IsCapable()
 
 uint64_t AlltoAllvMXQuantGmmTiling::GetTilingKey() const
 {
-    uint8_t commMode = mc2tiling::Mc2TilingUtils::GetCommModeFromEnv();
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
     uint64_t tilingKey = GET_TPL_TILING_KEY(transGmmWeight_, transMmWeight_, commMode);
     return tilingKey;
 }

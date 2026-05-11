@@ -15,6 +15,7 @@
 
 #include "allto_allv_grouped_mat_mul_tiling.h"
 #include "mc2_tiling_utils.h"
+#include "mc2_comm_utils.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -699,7 +700,7 @@ ge::graphStatus AlltoAllvGmmTiling::SetHcclTiling(const gert::TilingContext* con
 
     Mc2CcTilingConfig hcclCcTilingConfig(epGroup_, alltoAllvCmd, alltoAllvConfig,
                                          alltoAllvReduceType, alltoAllvDstDataType, alltoAllvSrcDataType);
-    uint8_t commMode = mc2tiling::Mc2TilingUtils::GetCommModeFromEnv();
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
     uint8_t engineType = (commMode == mc2tiling::COMM_MODE_CCU) ? 0 : mc2tiling::AICPU_ENGINE;
     OP_LOGD(context->GetNodeName(), "AlltoAllvGmm tiling: commMode=%u, engineType=%u",
             commMode, engineType);
@@ -818,7 +819,7 @@ uint64_t AlltoAllvGmmTiling::GetTilingKey(const gert::TilingContext* context) co
 {
     bool tilingekyGmmTrans = tilingData->commonTilingInfo.isGmmWeightTrans;
     bool tilingekyMmTrans = tilingData->commonTilingInfo.isMmWeightTrans;
-    uint8_t commMode = mc2tiling::Mc2TilingUtils::GetCommModeFromEnv();
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
     uint64_t tilingKey = GET_TPL_TILING_KEY(tilingekyGmmTrans, tilingekyMmTrans, commMode);
     OP_LOGD(A_INNER_DEBUG, "AlltoAllvGmm GetTilingKey: gmmTrans=%d, mmTrans=%d, commMode=%u, tilingKey=%lu",
             tilingekyGmmTrans, tilingekyMmTrans, commMode, tilingKey);

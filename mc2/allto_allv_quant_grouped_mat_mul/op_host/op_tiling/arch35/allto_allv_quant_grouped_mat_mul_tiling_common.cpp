@@ -14,6 +14,7 @@
  */
 
 #include "allto_allv_quant_grouped_mat_mul_tiling_common.h"
+#include "mc2_comm_utils.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -268,7 +269,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::SetHcclTiling() const
 
     Mc2CcTilingConfig hcclCcTilingConfig(group_, alltoAllvCmd, alltoAllvConfig, alltoAllvReduceType, alltoAllvDataType,
         alltoAllvDataType);
-    uint8_t commMode = mc2tiling::Mc2TilingUtils::GetCommModeFromEnv();
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
     uint8_t engineType = (commMode == mc2tiling::COMM_MODE_CCU) ? 0 : mc2tiling::AICPU_ENGINE;
     hcclCcTilingConfig.SetCommEngine(engineType);
     OP_TILING_CHECK(hcclCcTilingConfig.GetTiling(tilingData->hcclA2avTilingInfo.hcclInitTiling) != 0,
