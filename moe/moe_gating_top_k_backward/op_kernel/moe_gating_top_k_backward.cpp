@@ -28,7 +28,7 @@ extern "C" __global__ __aicore__ void moe_gating_top_k_backward(GM_ADDR xNorm, G
     const MoeGatingTopKBackwardTilingData *__restrict t = &tilingData;
     TPipe tPipe;
     if (TILING_KEY_IS(1)) {
-        MoeGatingTopKBackwardKernel<DTYPE_X_NORM> op;
+        MoeGatingTopKBackwardKernel<DTYPE_GRAD_Y> op;
         op.Init(xNorm, gradY, expertIdx, gradX, t, &tPipe);
         op.Process();
     }

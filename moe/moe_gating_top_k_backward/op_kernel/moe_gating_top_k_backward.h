@@ -58,6 +58,10 @@ private:
     GlobalTensor<int32_t> expertIdxGm_;
     GlobalTensor<T> gradXGm_;
 
+    LocalTensor<float> xNormLocal_;
+    LocalTensor<float> gradYLocal_;
+    LocalTensor<float> expertIdxLocal_;
+
     int64_t blockIdx_ = 0;
     int64_t loopTimes_ = 0;
     int64_t tailRows_ = 0;
@@ -94,7 +98,6 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::Init(GM_ADDR xNorm, GM_AD
     gradX.SetGlobalBuffer((__gm__ T *)gradX + tilingData_->perCoreRows * tilingData_->expertCount * blockIdx_);
 
     // init que
-    // 对齐xque按照4字节对齐；gradYQue_按照dtype字节对齐，indices按照4字节对齐，outQue按照4字节对齐，buf统一按照4字节对齐
     pipe_->InitBuffer(gradYQue_, NUM_TWO, AlignBytes(tilingData_->baseRows * tilingData_->k, tilingData_->gradYDtype));
     pipe_->InitBuffer(indicesQue_, NUM_TWO, AlignBytes(tilingData_->baseRows * tilingData_->k, SIZE_OF_INT32));
     pipe_->InitBuffer(xQue_, NUM_TWO, AlignBytes(tilingData_->baseRows * tilingData_->expertCount, SIZE_OF_FLOAT32));
@@ -131,6 +134,14 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::Process()
 template <typename T>
 __aicore__ inline void MoeGatingTopKBackwardKernel<T>::GetGatherOffsetIndex()
 {
+    LocalTensor<int32_t> bufk0 = bufk0_.Get<int32_t>();
+    LocalTensor<int32_t> bufk4Add = bufk4Add_.Get<int32_t>();
+    Arange(bufk0, static_cast<int32_t>(0), static_cast<int32_t>(tilingData_->expertCount), static_cast<int32_t>(tilingData_->baseRows));
+    SetWaitFlag<HardEvent::S_V>(HardEvent::S_V); // Arange中存在S和V，不同count结束的操作流不一样
+    PipeBarrier<PIPE_V>();
+    uint32_t dstShape[NUM_TWO] = { tilingData_->baseRows, tilingData_->k };
+    uint32_t srcShape[NUM_TWO] = { tilingData_->baseRows, 1 };
+    BroadCast<int32_t, NUM_TWO, 1>(bufk4Add, bufk0, dstShape, srcShape); //下一次使用bufk4Add前PIPE_V
 }
 
 template <typename T>
@@ -141,6 +152,17 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::CopyInGradY()
 template <typename T>
 __aicore__ inline void MoeGatingTopKBackwardKernel<T>::CopyInXNorm()
 {
+    xNormLocal_ = xQue_.AllocTensor<float>();
+    DataCopyExtParams copyParams;
+    copyParams.blockCount = static_cast<uint16_t>(1);
+    copyParams.blockLen = static_cast<uint32_t>(curRows_ * tilingData_->expertCount * sizeof(float));
+    copyParams.srcStride = static_cast<uint32_t>(0);
+    copyParams.dstStride = static_cast<uint32_t>(0);
+    DataCopyPadExtParams<float> padParams{true, 0, 0, 0}; // 不能为false？，必须填充数值0，需要计算右侧填充的元素个数吗？待测试
+    DataCopyPad(xNormLocal_, this->xNormGm_, copyParams, padParams); // init中已经给Gm设定核间偏移量了，不需要再设置
+
+    xQue_.EnQue(xNormLocal_);
+    xNormLocal_ = xQue_.DeQue<float>();
 }
 
 template <typename T>

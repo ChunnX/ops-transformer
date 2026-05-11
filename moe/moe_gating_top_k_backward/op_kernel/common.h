@@ -73,5 +73,13 @@ __aicore__ inline T1 CeilDiv(T1 x, T2 y)
     return x;
 }
 
+template <HardEvent event>
+__aicore__ inline void SetWaitFlag(HardEvent evt)
+{
+    event_t eventId = static_cast<event_t>(GetTPipePtr()->FetchEventID(evt));
+    SetFlag<event>(eventId);
+    WaitFlag<event>(eventId);
+}
+
 } // namespace MoeGatingTopKBackward
 #endif // MOE_GATING_TOP_K_BACKWARD_COMMON_H
