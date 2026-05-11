@@ -158,6 +158,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::PostTiling()
     tilingData->taskTilingInfo.mainLoopExpertNum = e_;
     tilingData->taskTilingInfo.tailLoopExpertNum = 0;
     tilingData->taskTilingInfo.totalLoopCount = e_;
+    tilingData->isNeedMM = hasSharedExpertFlag_;
     for (uint32_t i = 0; i < e_ * epWorldSize_; i++) {
         tilingData->taskTilingInfo.sendCnt[i] = sendCounts[i];
         tilingData->taskTilingInfo.recvCnt[i] = recvCounts[i];
@@ -267,6 +268,9 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::SetHcclTiling() const
 
     Mc2CcTilingConfig hcclCcTilingConfig(group_, alltoAllvCmd, alltoAllvConfig, alltoAllvReduceType, alltoAllvDataType,
         alltoAllvDataType);
+    uint8_t commMode = mc2tiling::Mc2TilingUtils::GetCommModeFromEnv();
+    uint8_t engineType = (commMode == mc2tiling::COMM_MODE_CCU) ? 0 : mc2tiling::AICPU_ENGINE;
+    hcclCcTilingConfig.SetCommEngine(engineType);
     OP_TILING_CHECK(hcclCcTilingConfig.GetTiling(tilingData->hcclA2avTilingInfo.hcclInitTiling) != 0,
         OP_LOGE(context_->GetNodeName(),
         "mc2CcTilingConfig mc2tiling GetTiling hcclA2avTilingInfo.hcclInitTiling failed"),
