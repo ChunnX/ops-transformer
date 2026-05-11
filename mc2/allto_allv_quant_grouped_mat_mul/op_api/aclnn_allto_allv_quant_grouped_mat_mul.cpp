@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
   */
 #include <algorithm>
+#include <cstdlib>
 
 #include "securec.h"
 #include "common/utils/op_mc2.h"
@@ -27,6 +28,9 @@
 
 namespace {
 using namespace op;
+
+// 环境变量名：有设置=AICPU，无设置=CCU
+constexpr char COMM_MODE_ENV[] = "ENV_MC2_COMM_MODE_AICPU";
 
 enum class NnopbaseHcclServerType : uint32_t {
     NNOPBASE_HCCL_SERVER_TYPE_AICPU = 0,
@@ -504,9 +508,13 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize(
 extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMul(void *workspace, uint64_t workspaceSize,
                                                         aclOpExecutor *executor, aclrtStream stream)
 {
-    // AICPU only: 硬编码AICPU通信模式
     if (NnopbaseSetHcclServerType) {
-        NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+        auto commModeEnv = getenv(COMM_MODE_ENV);
+        if (commModeEnv != nullptr) {
+            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+        } else {
+            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+        }
     }
     aclnnStatus ret = aclnnInnerAlltoAllvQuantGroupedMatMul(workspace, workspaceSize, executor, stream);
     return ret;
