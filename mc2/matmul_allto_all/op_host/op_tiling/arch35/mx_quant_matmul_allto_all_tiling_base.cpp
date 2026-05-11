@@ -604,7 +604,7 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::SetHcclTiling()
     AscendC::Mc2CcTilingConfig matmulAllToAllTilingConfig = 
         matmulAllToAllBuilder
             .withReduceType(opName_, AscendC::HcclReduceOp::HCCL_REDUCE_SUM, contextInfo.args_.geCType, contextInfo.args_.geCType)
-            .withCommEngine(mc2tiling::A5_CCU_ENGINE)
+            .withCommEngine(0)
             .build();
     if (!matmulAllToAllBuilder.isSuccess()) {
         OP_LOGE(opName_, "Mx quant matmul allto all build hccl tiling config failed: %s", matmulAllToAllBuilder.errorMsg().c_str());

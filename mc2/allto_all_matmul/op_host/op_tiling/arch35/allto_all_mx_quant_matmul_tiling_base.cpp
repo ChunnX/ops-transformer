@@ -489,7 +489,7 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::SetHcclTiling()
     // reducetype接口附带的数据类型优先于调用通信接口传入的数据类型，因此这里需要设置
     AscendC::Mc2CcTilingConfig allToAllTilingConfig =
         allToAllMatmulBuilder.withReduceType(opName_, AscendC::HcclReduceOp::HCCL_REDUCE_SUM, hcclDtype, hcclDtype)
-            .withCommEngine(mc2tiling::A5_CCU_ENGINE)
+            .withCommEngine(0)
             .build();
     if (!allToAllMatmulBuilder.isSuccess()) {
         OP_LOGE(opName_, "Allto All Matmul build hccl tiling config failed: %s",
