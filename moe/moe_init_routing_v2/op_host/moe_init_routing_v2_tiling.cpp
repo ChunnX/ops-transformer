@@ -142,7 +142,7 @@ ge::graphStatus MoeInitRoutingV2TilingBase::CheckTokenCount(int64_t num, const c
                OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), tag, std::to_string(expertTokensDimNum).c_str(),
                                             "1D"));
     CHECK_FAIL(context_, expertTokensShape.GetDim(0) != expertNum,
-               OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), tag, 
+               OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), tag,
                                                 PrintShape(expertTokensShape).c_str(),
                                                 ("The first dim should be " + std::to_string(expertNum)).c_str()));
     return ge::GRAPH_SUCCESS;
