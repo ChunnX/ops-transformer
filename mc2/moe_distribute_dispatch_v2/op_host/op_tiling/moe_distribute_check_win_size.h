@@ -48,6 +48,7 @@ struct CheckWinSizeData {
     bool isSetFullMeshV2;
     bool isLayered;
     bool isMc2Context;
+    bool isArchV2A5 = false;
 };
 
 static ge::graphStatus CheckTpWinSize(const gert::TilingContext *context, const char *nodeName,
@@ -90,7 +91,11 @@ static ge::graphStatus CheckActualWinSize(const char *nodeName, const CheckWinSi
         tokenNeedSizeDispatch * epWorldSize * static_cast<uint64_t>(winSizeData.localMoeExpertNum)) + (maxBs *
         tokenNeedSizeCombine * (k + sharedExpertNum))) * DOUBLE_DATA_BUFFER;
     if (winSizeData.isMc2Context) {
-        actualSize += MB_SIZE;  // V3流程加1M状态区
+        if (!winSizeData.isSetFullMeshV2 && !winSizeData.isLayered && winSizeData.isArchV2A5) {
+            actualSize += 2816UL * 1024UL;  // A5 上 MOE_V2 状态区错开后总占用 2816KB
+        } else {
+            actualSize += MB_SIZE;  // V3流程加1M状态区
+        }
     };
     if (winSizeData.isLayered) {
         // 校验可变bs
