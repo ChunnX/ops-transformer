@@ -132,7 +132,7 @@ private:
 };
 
 // todo: add opName_ for OP_CHECK_IF and OP_LOGE
-ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckInputShape()
+ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckInputShape()   // fqy
 {
     // Check x_norm dim num
     size_t xNormDimNum = xNormShape_->GetDimNum();
@@ -186,7 +186,7 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckInputShape()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckAttr()
+ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckAttr()   // lc
 {
     OP_CHECK_IF(
         expertCount_ > MAX_EXPERT_COUNT,
@@ -271,7 +271,7 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckDataType()
     // todo: fill the rest
 }
 
-ge::graphStatus MoeGatingTopKBackwardTilingBase::GetPlatformInfo()
+ge::graphStatus MoeGatingTopKBackwardTilingBase::GetPlatformInfo()   // fqy
 {
     auto platformInfo = context_->GetPlatformInfo();
     if (platformInfo == null) {
@@ -282,12 +282,12 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::GetPlatformInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckOutShape()
+ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckOutShape()   // lc
 {
     return ge::GRAPH_SUCCESS;
 }
 
-void MoeGatingTopKBackwardTilingBase::SplitRows()
+void MoeGatingTopKBackwardTilingBase::SplitRows()   // lc
 {
 
 }
@@ -305,11 +305,6 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::DoOpTiling()
     }
 
     ret = CheckAttr();
-    if (ret != ge::GRAPH_SUCCESS) {
-        return ret;
-    }
-
-    ret = CheckDataType();
     if (ret != ge::GRAPH_SUCCESS) {
         return ret;
     }
@@ -346,7 +341,7 @@ void MoeGatingTopKBackwardTilingBase::Reset()
     return;
 }
 
-void MoeGatingTopKBackwardTilingBase::DumpTilingInfo()
+void MoeGatingTopKBackwardTilingBase::DumpTilingInfo()   // fqy
 {
     return;
 }
