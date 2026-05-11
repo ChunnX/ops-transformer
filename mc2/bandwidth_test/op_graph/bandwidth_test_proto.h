@@ -49,9 +49,9 @@ REG_OP(BandwidthTest)
     .REQUIRED_ATTR(group, String)
     .REQUIRED_ATTR(world_size, Int)
     .REQUIRED_ATTR(ccl_buffer_size, Int)
-    .OPTIONAL_ATTR(max_bs, Int)
-    .OPTIONAL_ATTR(mode, Int)
-    .OPTIONAL_ATTR(comm_alg, Int)
+    .ATTR(max_bs, Int, 0)
+    .ATTR(mode, Int, 0)
+    .ATTR(comm_alg, Int, 0)
     .OP_END_FACTORY_REG(BandwidthTest)
 
 }  // namespace ge
