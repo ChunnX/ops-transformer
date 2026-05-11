@@ -225,9 +225,8 @@ OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
 
 | 文件 | 计数 | 处理方式 |
 | -- | --: | -- |
-| grouped_matmul_tiling.cpp | 0 | 公共代码，不涉及A5 |
+| grouped_matmul_tiling.cpp | ? | 公共代码，逐条分析分类处理A5的代码 |
 | grouped_matmul_finalize_routing_infershape.cpp | 43 | 逐条分析分类 |
-| 其他文件 | 7 | 逐条分析分类 |
 
 **分类规则：**
 - 参数验证类 → 整改
@@ -371,9 +370,8 @@ flowchart TD
 
 ## 附录 A：整改文件路径映射表
 
-| 算子 | 原路径 |
-| -- | -- |
-| GMM | gmm/grouped_matmul/op_host/grouped_matmul_infershape.cpp |
-| GMM | gmm/grouped_matmul/op_host/grouped_matmul_infershape.cppgrouped_matmul_infershape_weight_quant_checker.cpp |
-| GMM | gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp |
-| GMMFR | gmm/grouped_matmul_finalize_routing/op_host/op_tiling/arch35/grouped_matmul_finalize_routing_weight_quant_tiling.cpp |
+| 算子 | 原路径 | 备注 |
+| -- | -- | -- |
+| GMM | gmm/grouped_matmul/op_host/grouped_matmul_tiling.cpp | 只改A5部分 |
+| GMM | gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp | - |
+| GMMFR | gmm/grouped_matmul_finalize_routing/op_host/op_tiling/arch35/grouped_matmul_finalize_routing_weight_quant_tiling.cpp | - |
