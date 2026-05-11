@@ -242,7 +242,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
         </ul></td>
       <td>FLOAT32、FLOAT8_E8M0</td>
       <td>ND</td>
-      <td>1-2</td>
+      <td>1-3</td>
       <td>-</td>
     </tr>
     <tr>
@@ -426,7 +426,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       </td>
       <td>FLOAT32、FLOAT8_E8M0</td>
       <td>ND</td>
-      <td>1-2</td>
+      <td>1-3</td>
       <td>-</td>
     </tr>
     <tr>
