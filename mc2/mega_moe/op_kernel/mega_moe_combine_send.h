@@ -114,9 +114,32 @@ __aicore__ inline void CombineTile(
     uint32_t colCount = Get<N_VALUE>(actualBlockShape);
 
     // 第一步：从GM一次性搬整个tile到UB
+    if (mLoc < 2 && nLoc < 2) {
+        AscendC::PRINTF("COMB e%d mLoc=%u nLoc=%u row=%u col=%u n=%u GM[0-7]=%x %x %x %x %x %x %x %x\n",
+            groupIdx, mLoc, nLoc, rowCount, colCount, n,
+            *(reinterpret_cast<__gm__ uint16_t*>(gmm2OutAddr) + mLoc * n + nLoc + 0),
+            *(reinterpret_cast<__gm__ uint16_t*>(gmm2OutAddr) + mLoc * n + nLoc + 1),
+            *(reinterpret_cast<__gm__ uint16_t*>(gmm2OutAddr) + mLoc * n + nLoc + 2),
+            *(reinterpret_cast<__gm__ uint16_t*>(gmm2OutAddr) + mLoc * n + nLoc + 3),
+            *(reinterpret_cast<__gm__ uint16_t*>(gmm2OutAddr) + mLoc * n + nLoc + 4),
+            *(reinterpret_cast<__gm__ uint16_t*>(gmm2OutAddr) + mLoc * n + nLoc + 5),
+            *(reinterpret_cast<__gm__ uint16_t*>(gmm2OutAddr) + mLoc * n + nLoc + 6),
+            *(reinterpret_cast<__gm__ uint16_t*>(gmm2OutAddr) + mLoc * n + nLoc + 7));
+    }
     SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
     CopyTileFromGM(ubBuffer, gmm2OutGm, mLoc, rowCount, nLoc, colCount, n);
     SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
+    if (mLoc < 2 && nLoc < 2) {
+        AscendC::PRINTF("COMB e%d mLoc=%u nLoc=%u UB[0-7]=%x %x %x %x %x %x %x %x\n", groupIdx, mLoc, nLoc,
+            *(reinterpret_cast<__gm__ uint16_t*>(ubBuffer.GetPhyAddr()) + 0),
+            *(reinterpret_cast<__gm__ uint16_t*>(ubBuffer.GetPhyAddr()) + 1),
+            *(reinterpret_cast<__gm__ uint16_t*>(ubBuffer.GetPhyAddr()) + 2),
+            *(reinterpret_cast<__gm__ uint16_t*>(ubBuffer.GetPhyAddr()) + 3),
+            *(reinterpret_cast<__gm__ uint16_t*>(ubBuffer.GetPhyAddr()) + 4),
+            *(reinterpret_cast<__gm__ uint16_t*>(ubBuffer.GetPhyAddr()) + 5),
+            *(reinterpret_cast<__gm__ uint16_t*>(ubBuffer.GetPhyAddr()) + 6),
+            *(reinterpret_cast<__gm__ uint16_t*>(ubBuffer.GetPhyAddr()) + 7));
+    }
 
     // 第二步：从UB发送到远端GM
     CombineTokens(mLoc, nLoc, n, groupIdx, rankId, ubBuffer, actualBlockShape, params);
