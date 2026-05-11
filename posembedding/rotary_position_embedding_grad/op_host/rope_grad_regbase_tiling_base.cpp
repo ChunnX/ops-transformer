@@ -414,7 +414,7 @@ ge::graphStatus RopeGradRegBaseTilingClass::CheckRotaryModeShapeRelation(const i
     if (d > D_LIMIT) {
         std::string shapeMsg = ToString(dyShape);
         std::string reasonMsg = "The D axis of input dy can not be greater than " + std::to_string(D_LIMIT) +
-            ", where D refers to the 3rd dim";
+            ", where D refers to the last dim";
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "dy",
             shapeMsg.c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
@@ -426,7 +426,7 @@ ge::graphStatus RopeGradRegBaseTilingClass::CheckRotaryModeShapeRelation(const i
             std::string reasonMsg =
                 "The D axis of input dy should be divisible by " + std::to_string(HALF_INTERLEAVE_MODE_COEF) +
                 " when the attr mode is half, interleave or deepseek_interleave, "
-                "where D refers to the 3rd dim";
+                "where D refers to the last dim";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "dy",
                 shapeMsg.c_str(), reasonMsg.c_str());
             return ge::GRAPH_FAILED;
@@ -436,7 +436,7 @@ ge::graphStatus RopeGradRegBaseTilingClass::CheckRotaryModeShapeRelation(const i
             std::string shapeMsg = ToString(dyShape);
             std::string reasonMsg =
                 "The D axis of input dy should be divisible by " + std::to_string(QUARTER_MODE_COEF) +
-                " when the attr mode is quarter, where D refers to the 3rd dim";
+                " when the attr mode is quarter, where D refers to the last dim";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "dy",
                 shapeMsg.c_str(), reasonMsg.c_str());
             return ge::GRAPH_FAILED;
