@@ -73,7 +73,8 @@ extern "C" __global__ __aicore__ void mhc_pre_sinkhorn(GM_ADDR x, GM_ADDR phi, G
 
         TPipe pipeStage2;
         MhcPreSinkhornNs::MhcPreSinkhornMKSplitCorePart2Gradout<DTYPE_X> op2;
-        op2.Init(x, alpha, bias, hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, userWs, tilingData, &pipeStage2);
+        op2.Init(x, alpha, bias, hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut,
+                 userWs, tilingData, &pipeStage2);
         op2.Process();
         pipeStage2.Destroy();
 
@@ -81,7 +82,8 @@ extern "C" __global__ __aicore__ void mhc_pre_sinkhorn(GM_ADDR x, GM_ADDR phi, G
         GET_TILING_DATA_WITH_STRUCT(MhcPreSinkhornTilingData, tiling_data_in, tiling);
         const MhcPreSinkhornTilingData *__restrict tilingData = &tiling_data_in;
         MhcPreSinkhornNs::MhcPreSinkhornMSplitCorePart1Gradout<DTYPE_X> op;
-        op.Init(x, phi, alpha, bias, hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, tilingData, &pipe);
+        op.Init(x, phi, alpha, bias, hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut,
+              tilingData, &pipe);
         op.Process();
     }
 }
