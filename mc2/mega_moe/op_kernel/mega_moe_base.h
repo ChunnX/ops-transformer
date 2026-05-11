@@ -40,28 +40,28 @@ struct GMMAddrInfo {
 };
 
 struct PeermemInfo {
-    GM_ADDR ptrBase;
-    GM_ADDR ptrTokenPerExpert;
-    GM_ADDR ptrA0;      // initrouting结果，包括data+scale
-    GM_ADDR ptrD;
+    GM_ADDR rankSyncInWorldPtr;
+    GM_ADDR topKInfoInWorldSizePtr;
+    GM_ADDR quantTokenScalePtr;      // initrouting结果，包括data+scale
+    GM_ADDR combineSendPtr;
     __aicore__ inline PeermemInfo() = default;
     __aicore__ inline PeermemInfo(GM_ADDR base, const MegaMoeTilingData *tilingData)
     {
-        ptrBase = base;
+        rankSyncInWorldPtr = base;
         int64_t offset = PEERMEM_DATA_OFFSET;
-        ptrTokenPerExpert = base + offset;
-        offset += tilingData->epWorldSize * Ops::Base::CeilAlign(
-            (int64_t)(tilingData->epWorldSize * tilingData->expertPerRank), (int64_t)ALIGN_128) * sizeof(int32_t);
-        ptrA0 = base + offset;
-        offset += tilingData->m * tilingData->topK *
-            (tilingData->k + tilingData->k / MXFP_SCALE_GROUP_NUM) * sizeof(int8_t);
-        ptrD = base + offset;
+        topKInfoInWorldSizePtr = base + offset;
+        offset += tilingData->epWorldSize * 
+            Ops::Base::CeilAlign((int64_t)(tilingData->m * tilingData->topK * sizeof(int32_t)), (int64_t)ALIGN_512);
+        quantTokenScalePtr = base + offset;
+        offset += Ops::Base::CeilAlign(tilingData->m *
+            (tilingData->k + tilingData->k / MXFP_SCALE_GROUP_NUM) * sizeof(int8_t), (int64_t)ALIGN_512);
+        combineSendPtr = base + offset;
     }
 };
 
 struct Params {
     GM_ADDR aGmAddr;
-    GM_ADDR expertIdxGmAddr;
+    GM_ADDR topkIdsGmAddr;
     GM_ADDR bGmAddr;
     GM_ADDR bScaleGmAddr;
     GM_ADDR b2GmAddr;
