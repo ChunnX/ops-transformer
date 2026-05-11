@@ -142,10 +142,12 @@ ge::graphStatus KcQuantMatmulAllToAllTilingBase::SetHcclTiling()
     Mc2CcTilingConfigBuilder allToAllBuilder =
         Mc2CcTilingConfigBuilder::create(contextInfo.group, mc2tiling::AicpuComType::HCCL_CMD_ALLTOALL,
                                          Mc2CcTilingConfigBuilder::AlgConfigType::ALL_TO_ALL);
-    //reducetype接口附带的数据类型优先于调用通信接口传入的数据类型，因此这里需要设置
-    AscendC::Mc2CcTilingConfig allToAllTilingConfig = allToAllBuilder.
-        withReduceType(opName_, AscendC::HcclReduceOp::HCCL_REDUCE_SUM, contextInfo.args_.geCType, contextInfo.args_.geCType).
-        withCommEngine(mc2tiling::A5_CCU_ENGINE).build();
+    // reducetype接口附带的数据类型优先于调用通信接口传入的数据类型，因此这里需要设置
+    AscendC::Mc2CcTilingConfig allToAllTilingConfig =
+        allToAllBuilder
+            .withReduceType(opName_, AscendC::HcclReduceOp::HCCL_REDUCE_SUM, contextInfo.args_.geCType,
+                            contextInfo.args_.geCType)
+            .build();
     if (!allToAllBuilder.isSuccess()) {
         OP_LOGE(opName_, "Build hccl tiling config failed: %s", allToAllBuilder.errorMsg().c_str());
         return ge::GRAPH_FAILED;
@@ -177,56 +179,55 @@ ge::graphStatus KcQuantMatmulAllToAllTilingBase::DoKcQuantMMTiling()
 
 /**
  * @brief 重写获取MM index的信息
- * 由于本算子的context和MM不一样，需要重写获取MM index的一些信息，把我们的context传给Matmul，来达到可以调用MM策略的目的。
+ * 由于本算子的context和MM不一样，需要重写获取MM
+ * index的一些信息，把我们的context传给Matmul，来达到可以调用MM策略的目的。
  * @return ge::graphStatus
  */
 const gert::Shape KcQuantMatmulAlltoAllHelper::GetX1Shape(const size_t index)
 {
     (void)index;
-    return gert::Shape(
-        {static_cast<int64_t>(mmLen), static_cast<int64_t>(tilingProcesser_.contextInfo.args_.kValue)});
+    return gert::Shape({static_cast<int64_t>(mmLen), static_cast<int64_t>(tilingProcesser_.contextInfo.args_.kValue)});
 }
 const gert::Shape KcQuantMatmulAlltoAllHelper::GetX2Shape(const size_t index)
 {
     (void)index;
     if (tilingProcesser_.contextInfo.args_.isBTrans) {
-        return gert::Shape(
-            {static_cast<int64_t>(tilingProcesser_.contextInfo.args_.nValue), static_cast<int64_t>(tilingProcesser_.contextInfo.args_.kValue)});
+        return gert::Shape({static_cast<int64_t>(tilingProcesser_.contextInfo.args_.nValue),
+                            static_cast<int64_t>(tilingProcesser_.contextInfo.args_.kValue)});
     }
-    return gert::Shape(
-        {static_cast<int64_t>(tilingProcesser_.contextInfo.args_.kValue), static_cast<int64_t>(tilingProcesser_.contextInfo.args_.nValue)});
+    return gert::Shape({static_cast<int64_t>(tilingProcesser_.contextInfo.args_.kValue),
+                        static_cast<int64_t>(tilingProcesser_.contextInfo.args_.nValue)});
 }
 
-const gert::Shape& KcQuantMatmulAlltoAllHelper::GetScaleShape(const size_t index)
+const gert::Shape &KcQuantMatmulAlltoAllHelper::GetScaleShape(const size_t index)
 {
     (void)index;
     return context_->GetOptionalInputShape(static_cast<size_t>(INPUT_X2_SCALE_INDEX))->GetStorageShape();
 }
 
-const gert::StorageShape* KcQuantMatmulAlltoAllHelper::GetOffsetShape(const size_t index)
-{
-    (void) index; 
-    return (gert::StorageShape*)nullptr;
-}
-
-const gert::StorageShape* KcQuantMatmulAlltoAllHelper::GetPertokenShape(const size_t index)
+const gert::StorageShape *KcQuantMatmulAlltoAllHelper::GetOffsetShape(const size_t index)
 {
     (void)index;
-    kcQuantStorageShape = gert::StorageShape(
-        {static_cast<int64_t>(mmLen)}, {static_cast<int64_t>(mmLen)});
+    return (gert::StorageShape *)nullptr;
+}
+
+const gert::StorageShape *KcQuantMatmulAlltoAllHelper::GetPertokenShape(const size_t index)
+{
+    (void)index;
+    kcQuantStorageShape = gert::StorageShape({static_cast<int64_t>(mmLen)}, {static_cast<int64_t>(mmLen)});
     return &kcQuantStorageShape;
 }
 
-const gert::StorageShape* KcQuantMatmulAlltoAllHelper::GetBiasShape(const size_t index)
+const gert::StorageShape *KcQuantMatmulAlltoAllHelper::GetBiasShape(const size_t index)
 {
     (void)index;
     return context_->GetOptionalInputShape(static_cast<size_t>(INPUT_BIAS_INDEX));
 }
 
 ge::graphStatus KcQuantMatmulAlltoAllHelper::GetShapeAttrsInfo()
-{   
+{
     OP_LOGD(tilingProcesser_.opName_, "Start assemble input params for matmul tiling");
-    auto&& tilingArgs = tilingProcesser_.contextInfo.args_;
+    auto &&tilingArgs = tilingProcesser_.contextInfo.args_;
     inputParams_.opName = tilingProcesser_.opName_;
     inputParams_.transA = false;
     inputParams_.transB = tilingArgs.isBTrans;
@@ -258,11 +259,10 @@ ge::graphStatus KcQuantMatmulAlltoAllHelper::GetShapeAttrsInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-void KcQuantMatmulAlltoAllHelper::PrintTilingInputParam(Mc2QuantBatchMatmulInfo& quantMatmulInfo)
+void KcQuantMatmulAlltoAllHelper::PrintTilingInputParam(Mc2QuantBatchMatmulInfo &quantMatmulInfo)
 {
-    OP_LOGD(tilingProcesser_.opName_, "mSize_ %ld kSize_ %ld nSize_ %ld libApiWorkSpaceSize %u",
-            quantMatmulInfo.mSize, quantMatmulInfo.kSize, quantMatmulInfo.nSize,
-            quantMatmulInfo.libApiWorkSpaceSize);
+    OP_LOGD(tilingProcesser_.opName_, "mSize_ %ld kSize_ %ld nSize_ %ld libApiWorkSpaceSize %u", quantMatmulInfo.mSize,
+            quantMatmulInfo.kSize, quantMatmulInfo.nSize, quantMatmulInfo.libApiWorkSpaceSize);
     OP_LOGD(tilingProcesser_.opName_,
             "aDtype_ %d bDtype_ %d cDtype_ %d biasDtype_ %d outDtype %ld"
             " scaleDtype %d perTokenScaleDtype %d",
@@ -297,10 +297,11 @@ ge::graphStatus KcQuantMatmulAlltoAllHelper::PostTiling()
  *
  * @param context
  */
-KcQuantMatmulAlltoAllHelper::KcQuantMatmulAlltoAllHelper(KcQuantMatmulAllToAllTilingBase& kcQuantMatmulAllToAllTilingBase, 
-                                                     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams& data, uint64_t& mmMvalueLen)
-    : Mc2AdaptiveSlidingWindowTiling(kcQuantMatmulAllToAllTilingBase.context_, &data), tilingProcesser_(kcQuantMatmulAllToAllTilingBase),
-    mmLen(mmMvalueLen)
+KcQuantMatmulAlltoAllHelper::KcQuantMatmulAlltoAllHelper(
+    KcQuantMatmulAllToAllTilingBase &kcQuantMatmulAllToAllTilingBase,
+    DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &data, uint64_t &mmMvalueLen)
+    : Mc2AdaptiveSlidingWindowTiling(kcQuantMatmulAllToAllTilingBase.context_, &data),
+      tilingProcesser_(kcQuantMatmulAllToAllTilingBase), mmLen(mmMvalueLen)
 {
 }
 
@@ -310,10 +311,11 @@ KcQuantMatmulAlltoAllHelper::KcQuantMatmulAlltoAllHelper(KcQuantMatmulAllToAllTi
  * @param opName
  * @param tiling
  */
-void KcQuantMatmulAllToAllTilingBase::PrintKcQuantMMV3TilingData(const std::string &opName, DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &tiling)
+void KcQuantMatmulAllToAllTilingBase::PrintKcQuantMMV3TilingData(
+    const std::string &opName, DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &tiling)
 {
     PrintTCubeTilingData(opName, tiling.matmulTiling);
- 	PrintExtendMatmulTiling(opName, tiling);
+    PrintExtendMatmulTiling(opName, tiling);
 }
 
 /**
@@ -322,50 +324,51 @@ void KcQuantMatmulAllToAllTilingBase::PrintKcQuantMMV3TilingData(const std::stri
  * @param opName
  * @param tiling
  */
-void KcQuantMatmulAllToAllTilingBase::PrintExtendMatmulTiling(const std::string &opName, DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &tiling)
- 	 {
- 	     OP_LOGD(opName, "QuantBmmV3Params.batchA=%u.", tiling.params.batchA);
- 	     OP_LOGD(opName, "QuantBmmV3Params.batchB=%u.", tiling.params.batchB);
- 	     OP_LOGD(opName, "QuantBmmV3Params.batchC=%u.", tiling.params.batchC);
- 	     OP_LOGD(opName, "QuantBmmV3Params.batchA1=%u.", tiling.params.batchA1);
- 	     OP_LOGD(opName, "QuantBmmV3Params.batchA2=%u.", tiling.params.batchA2);
- 	     OP_LOGD(opName, "QuantBmmV3Params.batchA3=%u.", tiling.params.batchA3);
- 	     OP_LOGD(opName, "QuantBmmV3Params.batchA4=%u.", tiling.params.batchA4);
- 	     OP_LOGD(opName, "QuantBmmV3Params.batchB1=%u.", tiling.params.batchB1);
- 	     OP_LOGD(opName, "QuantBmmV3Params.batchB2=%u.", tiling.params.batchB2);
- 	     OP_LOGD(opName, "QuantBmmV3Params.batchB3=%u.", tiling.params.batchB3);
- 	     OP_LOGD(opName, "QuantBmmV3Params.batchB4=%u.", tiling.params.batchB4);
- 	     OP_LOGD(opName, "QuantBmmV3Params.batchC1=%u.", tiling.params.batchC1);
- 	     OP_LOGD(opName, "QuantBmmV3Params.batchC2=%u.", tiling.params.batchC2);
- 	     OP_LOGD(opName, "QuantBmmV3Params.batchC3=%u.", tiling.params.batchC3);
- 	     OP_LOGD(opName, "QuantBmmV3Params.batchC4=%u.", tiling.params.batchC4);
- 	     OP_LOGD(opName, "QuantBmmV3Params.singleCoreBatch=%u.", tiling.params.singleCoreBatch);
- 	     OP_LOGD(opName, "QuantBmmV3Params.isPerTensor=%u.", tiling.params.isPerTensor);
- 	     OP_LOGD(opName, "QuantBmmV3Params.isPertoken=%u.", tiling.params.isPertoken);
- 	     OP_LOGD(opName, "QuantBmmV3Params.isDoubleScale=%u.", tiling.params.isDoubleScale);
- 	     OP_LOGD(opName, "QuantBmmV3Params.biasThreeDim=%u.", tiling.params.biasThreeDim);
- 	     OP_LOGD(opName, "QuantBmmV3Params.ubCalcM=%u.", tiling.params.ubCalcM);
- 	     OP_LOGD(opName, "QuantBmmV3Params.ubCalcN=%u.", tiling.params.ubCalcN);
- 	     OP_LOGD(opName, "QuantBmmV3Params.needUbBuffer=%u.", tiling.params.needUbBuffer);
- 	     OP_LOGD(opName, "QuantBmmV3Params.realSingleCoreM=%u.", tiling.params.realSingleCoreM);
- 	     OP_LOGD(opName, "QuantBmmV3Params.realSingleCoreN=%u.", tiling.params.realSingleCoreN);
- 	     OP_LOGD(opName, "QuantBmmV3Params.biasDtype=%u.", tiling.params.biasDtype);
- 	     OP_LOGD(opName, "QuantBmmV3Params.ubSize=%u.", tiling.params.ubSize);
- 	     OP_LOGD(opName, "QuantBmmV3Params.isMClash=%u.", tiling.params.isMClash);
- 	     OP_LOGD(opName, "QuantBmmV3Params.isNClash=%u.", tiling.params.isNClash);
- 	     OP_LOGD(opName, "QuantBmmV3Params.groupSizeM=%u.", tiling.params.groupSizeM);
- 	     OP_LOGD(opName, "QuantBmmV3Params.groupSizeK=%u.", tiling.params.groupSizeK);
- 	     OP_LOGD(opName, "QuantBmmV3Params.groupSizeN=%u.", tiling.params.groupSizeN);
- 	     OP_LOGD(opName, "TileL2cacheTiling.mTileCntL2=%u.", tiling.tileL2cacheTiling.mTileCntL2);
- 	     OP_LOGD(opName, "TileL2cacheTiling.nTileCntL2=%u.", tiling.tileL2cacheTiling.nTileCntL2);
- 	     OP_LOGD(opName, "TileL2cacheTiling.mTileBlock=%u.", tiling.tileL2cacheTiling.mTileBlock);
- 	     OP_LOGD(opName, "TileL2cacheTiling.nTileBlock=%u.", tiling.tileL2cacheTiling.nTileBlock);
- 	     OP_LOGD(opName, "TileL2cacheTiling.calOrder=%u.", tiling.tileL2cacheTiling.calOrder);
- 	     OP_LOGD(opName, "TileL2cacheTiling.isBasicTiling=%u.", tiling.tileL2cacheTiling.isBasicTiling);
- 	     OP_LOGD(opName, "AdaptiveSlidingWin.mTailTile=%u.", tiling.adaptiveSlidingWin.mTailTile);
- 	     OP_LOGD(opName, "AdaptiveSlidingWin.nTailTile=%u.", tiling.adaptiveSlidingWin.nTailTile);
-    }
-     
+void KcQuantMatmulAllToAllTilingBase::PrintExtendMatmulTiling(const std::string &opName,
+                                                              DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &tiling)
+{
+    OP_LOGD(opName, "QuantBmmV3Params.batchA=%u.", tiling.params.batchA);
+    OP_LOGD(opName, "QuantBmmV3Params.batchB=%u.", tiling.params.batchB);
+    OP_LOGD(opName, "QuantBmmV3Params.batchC=%u.", tiling.params.batchC);
+    OP_LOGD(opName, "QuantBmmV3Params.batchA1=%u.", tiling.params.batchA1);
+    OP_LOGD(opName, "QuantBmmV3Params.batchA2=%u.", tiling.params.batchA2);
+    OP_LOGD(opName, "QuantBmmV3Params.batchA3=%u.", tiling.params.batchA3);
+    OP_LOGD(opName, "QuantBmmV3Params.batchA4=%u.", tiling.params.batchA4);
+    OP_LOGD(opName, "QuantBmmV3Params.batchB1=%u.", tiling.params.batchB1);
+    OP_LOGD(opName, "QuantBmmV3Params.batchB2=%u.", tiling.params.batchB2);
+    OP_LOGD(opName, "QuantBmmV3Params.batchB3=%u.", tiling.params.batchB3);
+    OP_LOGD(opName, "QuantBmmV3Params.batchB4=%u.", tiling.params.batchB4);
+    OP_LOGD(opName, "QuantBmmV3Params.batchC1=%u.", tiling.params.batchC1);
+    OP_LOGD(opName, "QuantBmmV3Params.batchC2=%u.", tiling.params.batchC2);
+    OP_LOGD(opName, "QuantBmmV3Params.batchC3=%u.", tiling.params.batchC3);
+    OP_LOGD(opName, "QuantBmmV3Params.batchC4=%u.", tiling.params.batchC4);
+    OP_LOGD(opName, "QuantBmmV3Params.singleCoreBatch=%u.", tiling.params.singleCoreBatch);
+    OP_LOGD(opName, "QuantBmmV3Params.isPerTensor=%u.", tiling.params.isPerTensor);
+    OP_LOGD(opName, "QuantBmmV3Params.isPertoken=%u.", tiling.params.isPertoken);
+    OP_LOGD(opName, "QuantBmmV3Params.isDoubleScale=%u.", tiling.params.isDoubleScale);
+    OP_LOGD(opName, "QuantBmmV3Params.biasThreeDim=%u.", tiling.params.biasThreeDim);
+    OP_LOGD(opName, "QuantBmmV3Params.ubCalcM=%u.", tiling.params.ubCalcM);
+    OP_LOGD(opName, "QuantBmmV3Params.ubCalcN=%u.", tiling.params.ubCalcN);
+    OP_LOGD(opName, "QuantBmmV3Params.needUbBuffer=%u.", tiling.params.needUbBuffer);
+    OP_LOGD(opName, "QuantBmmV3Params.realSingleCoreM=%u.", tiling.params.realSingleCoreM);
+    OP_LOGD(opName, "QuantBmmV3Params.realSingleCoreN=%u.", tiling.params.realSingleCoreN);
+    OP_LOGD(opName, "QuantBmmV3Params.biasDtype=%u.", tiling.params.biasDtype);
+    OP_LOGD(opName, "QuantBmmV3Params.ubSize=%u.", tiling.params.ubSize);
+    OP_LOGD(opName, "QuantBmmV3Params.isMClash=%u.", tiling.params.isMClash);
+    OP_LOGD(opName, "QuantBmmV3Params.isNClash=%u.", tiling.params.isNClash);
+    OP_LOGD(opName, "QuantBmmV3Params.groupSizeM=%u.", tiling.params.groupSizeM);
+    OP_LOGD(opName, "QuantBmmV3Params.groupSizeK=%u.", tiling.params.groupSizeK);
+    OP_LOGD(opName, "QuantBmmV3Params.groupSizeN=%u.", tiling.params.groupSizeN);
+    OP_LOGD(opName, "TileL2cacheTiling.mTileCntL2=%u.", tiling.tileL2cacheTiling.mTileCntL2);
+    OP_LOGD(opName, "TileL2cacheTiling.nTileCntL2=%u.", tiling.tileL2cacheTiling.nTileCntL2);
+    OP_LOGD(opName, "TileL2cacheTiling.mTileBlock=%u.", tiling.tileL2cacheTiling.mTileBlock);
+    OP_LOGD(opName, "TileL2cacheTiling.nTileBlock=%u.", tiling.tileL2cacheTiling.nTileBlock);
+    OP_LOGD(opName, "TileL2cacheTiling.calOrder=%u.", tiling.tileL2cacheTiling.calOrder);
+    OP_LOGD(opName, "TileL2cacheTiling.isBasicTiling=%u.", tiling.tileL2cacheTiling.isBasicTiling);
+    OP_LOGD(opName, "AdaptiveSlidingWin.mTailTile=%u.", tiling.adaptiveSlidingWin.mTailTile);
+    OP_LOGD(opName, "AdaptiveSlidingWin.nTailTile=%u.", tiling.adaptiveSlidingWin.nTailTile);
+}
+
 /**
  * @brief 打印tilingInfo信息
  *
@@ -373,7 +376,7 @@ void KcQuantMatmulAllToAllTilingBase::PrintExtendMatmulTiling(const std::string 
  * @param tilingInfo
  */
 void KcQuantMatmulAllToAllTilingBase::PrintKcQuantMatmulAlltoAllTilingInfo(const std::string &opName,
-                                                               MatmulAlltoAllTilingInfo &tilingInfo)
+                                                                           MatmulAlltoAllTilingInfo &tilingInfo)
 {
     OP_LOGD(opName, "tilingInfo.rankDim: %u", tilingInfo.rankDim);
     OP_LOGD(opName, "tilingInfo.tileM: %u", tilingInfo.tileM);
@@ -495,7 +498,8 @@ CutResult KcQuantMatmulAllToAllTilingBase::GetTilingResult()
  *
  * @param context
  */
-KcQuantMatmulAllToAllTilingBase::KcQuantMatmulAllToAllTilingBase(gert::TilingContext *context) : MatmulAllToAllTilingBase(context)
+KcQuantMatmulAllToAllTilingBase::KcQuantMatmulAllToAllTilingBase(gert::TilingContext *context)
+    : MatmulAllToAllTilingBase(context)
 {
 }
 
@@ -503,4 +507,4 @@ KcQuantMatmulAllToAllTilingBase::KcQuantMatmulAllToAllTilingBase(gert::TilingCon
 REGISTER_TILING_TEMPLATE_WITH_ARCH(MatmulAlltoAll, KcQuantMatmulAllToAllTilingBase,
                                    static_cast<int32_t>(NpuArch::DAV_3510), 1);
 
-} // namespace optiling
+} // namespace MC2Tiling
