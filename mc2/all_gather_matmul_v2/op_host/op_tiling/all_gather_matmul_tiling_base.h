@@ -49,6 +49,7 @@ constexpr size_t GROUPSIZE_INDEX = 7;
 constexpr size_t IS_GATHER_OUT = 8;
 constexpr size_t IS_AMAX_OUT = 9;
 constexpr size_t Y_DTYPE = 10;
+constexpr size_t COMM_MODE_INDEX = 11;
 
 constexpr uint64_t PERBLOCK_SCALE_SIZE = 128;
 constexpr uint32_t COMM_VERSION3 = 3U;
