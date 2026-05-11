@@ -16,7 +16,7 @@
 #include "hccl/hccl_types.h"
 
 // 量化与非量化共用的方法和常量、枚举值
-namespace matmul_allto_all_v2_check {
+namespace matmul_allto_all_check {
 
 // 需要使用的常量定义
 constexpr int64_t NEG_ONE = -1;
@@ -75,7 +75,7 @@ enum class QuantModeType : int64_t {
   }
 
 // 校验AlltoAll和Permute数据交换的方向参数, 在alltoallmatmul中可以为空和{-1,-2}, 在matmulalltoall中可以为空和{-2,-1}, 不允许为其他值
-bool CheckAlltoAllAxes(const aclIntArray* alltoAllAxesOptional, bool isMatmulAlltoAllV2);
+bool CheckAlltoAllAxes(const aclIntArray* alltoAllAxesOptional, bool isMatmulAlltoAll);
 
 // 校验输入的转置配置，x1不允许转置
 bool CheckTransposeX1(bool transposeX1);
@@ -83,7 +83,7 @@ bool CheckTransposeX1(bool transposeX1);
 // 校验通信域名的字符串长度是否符合要求
 bool CheckGroupLength(const char *group);
 
-// 校验MatmulAlltoAllV2和QuantMatmulAlltoAllV2输入属性shape
+// 校验MatmulAlltoAll和QuantMatmulAlltoAll输入属性shape
 bool CheckShapeMMAA(const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional, bool transposeX2, const aclTensor* output);
 // 校验AlltoAllMatmul和AlltoAllQuantMatmul输入属性shape
 bool CheckShapeAAMM(const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional, bool transposeX2, const aclTensor* output, const aclTensor* alltoAllOutOptional);
@@ -99,6 +99,6 @@ bool IsAll2AllOut(const aclTensor *alltoAllOut);
 
 // 处理支持转置的tensor物理排布不连续问题
 aclTensor *TransX2Tensor(const aclTensor *x2);
-} // namespace matmul_allto_all_v2_check
+} // namespace matmul_allto_all_check
 
 #endif //CHECKER_H
