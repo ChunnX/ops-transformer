@@ -104,67 +104,67 @@ struct RunInfoX {
 
 struct CommonConstInfo {
     /* 轴长度 */
-    uint32_t bSize = 0;
-    uint64_t t1Size = 0;
-    uint64_t t2Size = 0;
-    uint32_t dSize = 0;
-    uint32_t dSizeV = 0;
-    uint32_t dBasicBlock = 0;
-    uint32_t dSizeRope = 0;
-    uint32_t gSize = 0; /* g轴的大小 */
-    uint32_t n2Size = 0;
-    uint64_t s1Size = 0;             /* s1总大小 */
-    uint64_t s2Size = 0;             /* s2总大小 */
-    uint64_t actualSeqLenSize = 0;   /* 用户输入的actualseq的长度 */
-    uint64_t actualSeqLenKVSize = 0; /* 用户输入的actualseq_kv的长度 */
+    uint32_t bSize;
+    uint64_t t1Size;
+    uint64_t t2Size;
+    uint32_t dSize;
+    uint32_t dSizeV;
+    uint32_t dBasicBlock;
+    uint32_t dSizeRope;
+    uint32_t gSize; /* g轴的大小 */
+    uint32_t n2Size;
+    uint64_t s1Size;             /* s1总大小 */
+    uint64_t s2Size;             /* s2总大小 */
+    uint64_t actualSeqLenSize;   /* 用户输入的actualseq的长度 */
+    uint64_t actualSeqLenKVSize; /* 用户输入的actualseq_kv的长度 */
 
     /* FA kernel meta */
-    uint32_t bN2Start = 0;
-    uint32_t bN2End = 0;
-    uint32_t gS1OStart = 0;
-    uint32_t gS1OEnd = 0;
-    uint32_t s2OStart = 0;
-    uint32_t s2OEnd = 0;
-    uint32_t coreFirstTmpOutWsPos = 0;
+    uint32_t bN2Start;
+    uint32_t bN2End;
+    uint32_t gS1OStart;
+    uint32_t gS1OEnd;
+    uint32_t s2OStart;
+    uint32_t s2OEnd;
+    uint32_t coreFirstTmpOutWsPos;
 
     /* mask */
-    uint32_t sparseMode = 0; // sparse
-    uint32_t attenMaskBatch = 0;
-    uint32_t attenMaskS1Size = 0;
-    uint32_t attenMaskS2Size = 0;
-    int64_t preTokens = 0;
-    int64_t nextTokens = 0;
-    bool isRowInvalidOpen = false;
-    bool isExistRowInvalid = false;
-    float scaleValue = 0.0f;
+    uint32_t sparseMode; // sparse
+    uint32_t attenMaskBatch;
+    uint32_t attenMaskS1Size;
+    uint32_t attenMaskS2Size;
+    int64_t preTokens;
+    int64_t nextTokens;
+    bool isRowInvalidOpen;
+    bool isExistRowInvalid;
+    float scaleValue;
 
     /* 核信息 */
-    uint32_t aicIdx = 0;
-    uint32_t aivIdx = 0;
-    uint8_t subBlockIdx = 0;
-    uint32_t coreNum = 0;
+    uint32_t aicIdx;
+    uint32_t aivIdx;
+    uint8_t subBlockIdx;
+    uint32_t coreNum;
 
     /* FA中间结果写出workspace信息 */
-    uint32_t accumOutSize = 0;
-    uint32_t logSumExpSize = 0;
+    uint32_t accumOutSize;
+    uint32_t logSumExpSize;
 
     /* 输出shape */
-    FIA_LAYOUT outputLayout = FIA_LAYOUT::BSH;
+    FIA_LAYOUT outputLayout;
 };
 
 /* 高阶特性 */
 struct PAConstInfo {
-    uint32_t blockSize = 0;
-    uint32_t maxBlockNumPerBatch = 0;
-    uint32_t paLayoutType = 0;
+    uint32_t blockSize;
+    uint32_t maxBlockNumPerBatch;
+    uint32_t paLayoutType;
 };
 
 struct LseConstInfo {
-    bool isSoftmaxLseEnable = false;
+    bool isSoftmaxLseEnable;
 };
 
 struct SinkConstInfo {
-    bool learnableSinkFlag = false;
+    bool learnableSinkFlag;
 };
 
 struct PseConstInfo {
@@ -175,7 +175,7 @@ struct PseConstInfo {
 };
 
 struct TensorListConstInfo {
-    bool isKvContinuous = false; /* 是否为tensorlist */
+    bool isKvContinuous; /* 是否为tensorlist */
 };
 
 struct PostQuantConstInfo {
@@ -194,10 +194,10 @@ struct LeftPaddingConstInfo {
 };
 
 struct SysPrefixConstInfo {
-    bool isActualSharedPrefixLenNull = true;
-    int64_t actualKVPrefixSize = 0; /* 保存prefix实际长度 */
-    int64_t kvPrefixSize = 0;       /* 保存prefix shape完整长度 */
-    int64_t prefixLoopCount = 0;    /* 保存prefix参与的S2方向循环次数 */
+    bool isActualSharedPrefixLenNull;
+    int64_t actualKVPrefixSize; /* 保存prefix实际长度 */
+    int64_t kvPrefixSize;       /* 保存prefix shape完整长度 */
+    int64_t prefixLoopCount;    /* 保存prefix参与的S2方向循环次数 */
 };
 
 template <FiaKernelType>
