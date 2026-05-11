@@ -752,6 +752,19 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     }
     EndSync();
 
+    // [DEBUG] 多处检查ptrA2Scale，定位scale变ff的时间点
+    auto printScale = [&](const char* tag) {
+        if constexpr(g_coreType == AIC) {
+            GlobalTensor<uint8_t> sg;
+            sg.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(params_.workspaceInfo.ptrA2Scale));
+            AscendC::DataCacheCleanAndInvalid<uint8_t, AscendC::CacheLine::ENTIRE_DATA_CACHE, AscendC::DcciDst::CACHELINE_OUT>(sg);
+            AscendC::PRINTF("AIC %s scaleA[0-7]=%x %x %x %x %x %x %x %x\n", tag,
+                sg.GetValue(0), sg.GetValue(1), sg.GetValue(2), sg.GetValue(3),
+                sg.GetValue(4), sg.GetValue(5), sg.GetValue(6), sg.GetValue(7));
+        }
+    };
+    printScale("afterGMM1_EndSync");
+
     if constexpr(g_coreType == AscendC::AIV) {
         if (aivCoreIdx_ == 1) {
             ExpertTokenNumCopyOut();
@@ -761,16 +774,19 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             firstPipe.Destroy();
         }
     }
+    printScale("afterCleanup");
 
     // 5. for循环按照本卡专家id进行gmm2 & combine，内部gmm2与combine之间按照基本块进行流水
     preOffset_ = 0;
     vecSetSyncCom_ = 0;
     baseOffset_ = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    printScale("beforeGMM2loop");
     for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
         if (!UpdateGroupParams(expertIdx)) {
             continue;
         }
         UpdateGlobalBuffer(gmmAddrInfo, 1);
+        printScale("gmm2_entry");
         if (subBlockIdx_ == 0) {
             MegaMoeImpl::GroupMatmul2<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
                 params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_, expertIdx, gmm2PingPongIdx_,
