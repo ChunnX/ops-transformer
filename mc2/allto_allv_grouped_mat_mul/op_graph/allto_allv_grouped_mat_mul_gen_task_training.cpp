@@ -20,14 +20,14 @@
 #include "register/op_impl_registry.h"
 #include "mc2_log.h"
 #include "mc2_platform_info.h"
+#include "mc2_comm_utils.h"
 
 namespace ops {
 ge::Status AlltoAllvGroupedMatMulCalcParamFunc(gert::ExeResGenerationContext *context)
 {
-    constexpr char* COMM_MODE_ENV = "ENV_MC2_COMM_MODE_AICPU";
-    auto commModeEnv = getenv(COMM_MODE_ENV);
+    uint8_t commMode = mc2::GetCommModeFromEnv();
     const char* serverType = "ccu kfc server";
-    if (commModeEnv != nullptr) {
+    if (commMode == mc2::COMM_MODE_AICPU) {
         serverType = "aicpu kfc server";
         OPS_LOG_D(context->GetNodeName(), "ENV_MC2_COMM_MODE_AICPU set, use AICPU GenTask");
     } else {
