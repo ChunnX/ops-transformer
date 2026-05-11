@@ -129,6 +129,12 @@ __aicore__ inline void AlltoAllvGmmCoarseGrained<DataType, IsTranGmmW, IsTranMmW
     rankId_ = hccl_.GetRankId();
     rankDim_ = hccl_.GetRankDim();
 
+    if ASCEND_IS_AIV {
+        if (GetBlockIdx() == 0) {
+            AscendC::PRINTF("AlltoAllvGmmCoarseGrained Init: TILINGKEY_COMM_MODE=%d (0=CCU, 1=AICPU)\n", TILINGKEY_COMM_MODE);
+        }
+    }
+
     expertNumInOneRank_ = tilingData_->commonTilingInfo.E_ep;
     expertNumAll_ = expertNumInOneRank_ * rankDim_;
 

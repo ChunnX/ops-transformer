@@ -135,10 +135,10 @@ aclnnStatus aclnnAlltoAllvGroupedMatMul(void *workspace, uint64_t workspaceSize,
     if (NnopbaseSetHcclServerType) {
         uint8_t commMode = mc2::GetCommModeFromEnv();
         if (commMode == mc2::COMM_MODE_AICPU) {
-            OP_LOGD("", "aclnnAlltoAllvGroupedMatMul: ENV_MC2_COMM_MODE_AICPU set, use AICPU mode");
+            OP_LOGD("AlltoAllvGroupedMatMul", "ENV_MC2_COMM_MODE_AICPU set, use AICPU mode");
             NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
         } else {
-            OP_LOGD("", "aclnnAlltoAllvGroupedMatMul: ENV_MC2_COMM_MODE_AICPU not set, use CCU mode");
+            OP_LOGD("AlltoAllvGroupedMatMul", "ENV_MC2_COMM_MODE_AICPU not set, use CCU mode");
             NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
         }
     }
