@@ -27,14 +27,14 @@ namespace MC2Tiling {
  *
  * @return true
  */
-bool FpMatmulAllToAllTilingBase::IsCapable()
+bool FpMatmulAlltoAllV2TilingBase::IsCapable()
 {
     QuantMode mode = MatmulAlltoAllV2TilingUtil::GetQuantMode(context_, opName_);
     if (mode == QuantMode::NON_QUANT) {
-        OP_LOGI(opName_, "Start with FpMatmulAllToAll tiling.");
+        OP_LOGI(opName_, "Start with FpMatmulAlltoAllV2 tiling.");
         return true;
     }
-    OP_LOGI(opName_, "Skip FpMatmulAllToAll tiling when not NON_QUANT.");
+    OP_LOGI(opName_, "Skip FpMatmulAlltoAllV2 tiling when not NON_QUANT.");
     return false;
 }
 
@@ -43,16 +43,16 @@ bool FpMatmulAllToAllTilingBase::IsCapable()
  *
  * @return ge::graphStatus
  */
-ge::graphStatus FpMatmulAllToAllTilingBase::CheckOpInputInfo()
+ge::graphStatus FpMatmulAlltoAllV2TilingBase::CheckOpInputInfo()
 {
-    OP_TILING_CHECK(MatmulAlltoAllV2TilingUtil::CheckAttrsInfo(context_, opName_, MATMUL_ALLTOALL_INDEX_SCHEMA) !=
+    OP_TILING_CHECK(MatmulAlltoAllV2TilingUtil::CheckAttrsInfo(context_, opName_, MATMUL_ALLTO_ALL_V2_INDEX_SCHEMA) !=
                         ge::GRAPH_SUCCESS,
                     OP_LOGE(opName_, "Tiling check Attrs failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(MatmulAlltoAllV2TilingUtil::CheckTensorFormat(context_, opName_) != ge::GRAPH_SUCCESS,
                     OP_LOGE(opName_, "Tiling check format failed."), return ge::GRAPH_FAILED);              
     OP_TILING_CHECK(MatmulAlltoAllV2TilingUtil::CheckNonQuantTensorDataType(context_, opName_) != ge::GRAPH_SUCCESS,
                     OP_LOGE(opName_, "Tiling check Dtype failed."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(MatmulAlltoAllV2TilingUtil::CheckShapeInfo(context_, opName_, MATMUL_ALLTOALL_INDEX_SCHEMA) !=
+    OP_TILING_CHECK(MatmulAlltoAllV2TilingUtil::CheckShapeInfo(context_, opName_, MATMUL_ALLTO_ALL_V2_INDEX_SCHEMA) !=
                         ge::GRAPH_SUCCESS,
                     OP_LOGE(opName_, "Tiling check shape failed."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(Check2DMatrixMulShapes(context_, opName_) != ge::GRAPH_SUCCESS,
@@ -65,10 +65,10 @@ ge::graphStatus FpMatmulAllToAllTilingBase::CheckOpInputInfo()
  *
  * @return ge::graphStatus
  */
-ge::graphStatus FpMatmulAllToAllTilingBase::InitTilingContextParameters()
+ge::graphStatus FpMatmulAlltoAllV2TilingBase::InitTilingContextParameters()
 {
     GE_ASSERT_GRAPH_SUCCESS(
-        MatmulAlltoAllV2TilingUtil::SetAttrsInfo(context_, opName_, contextInfo, MATMUL_ALLTOALL_INDEX_SCHEMA));
+        MatmulAlltoAllV2TilingUtil::SetAttrsInfo(context_, opName_, contextInfo, MATMUL_ALLTO_ALL_V2_INDEX_SCHEMA));
     GE_ASSERT_GRAPH_SUCCESS(MatmulAlltoAllV2TilingUtil::SetDataTypeInfo(context_, opName_, contextInfo));
     GE_ASSERT_GRAPH_SUCCESS(MatmulAlltoAllV2TilingUtil::SetShapeInfo(context_, contextInfo));
     contextInfo.quantMode = QuantMode::NON_QUANT; // 在isCapable判断过，直接赋值即可
@@ -80,7 +80,7 @@ ge::graphStatus FpMatmulAllToAllTilingBase::InitTilingContextParameters()
  *
  * @return ge::graphStatus
  */
-ge::graphStatus FpMatmulAllToAllTilingBase::DoOpTiling()
+ge::graphStatus FpMatmulAlltoAllV2TilingBase::DoOpTiling()
 {
     // 输入参数的校验:Attrs,Dtype,Shape等
     GE_ASSERT_GRAPH_SUCCESS(CheckOpInputInfo());
@@ -100,7 +100,7 @@ ge::graphStatus FpMatmulAllToAllTilingBase::DoOpTiling()
  *
  * @return ge::graphStatus
  */
-ge::graphStatus FpMatmulAllToAllTilingBase::DoMMTiling()
+ge::graphStatus FpMatmulAlltoAllV2TilingBase::DoMMTiling()
 {
     // 非空校验已在GetPlatformInfo校验过
     fe::PlatFormInfos *platformInfo = context_->GetPlatformInfo();
@@ -143,7 +143,7 @@ ge::graphStatus FpMatmulAllToAllTilingBase::DoMMTiling()
  * @param tilingData 对应首块或尾块的tilingData
  * @return ge::graphStatus
  */
-ge::graphStatus FpMatmulAllToAllTilingBase::DoMatmulV3Tiling(Mc2MatmulHelper::Mc2MatmulTilingCfg &tilingCfg,
+ge::graphStatus FpMatmulAlltoAllV2TilingBase::DoMatmulV3Tiling(Mc2MatmulHelper::Mc2MatmulTilingCfg &tilingCfg,
                                                              Mc2MMRegisterCfg &registerCfg,
                                                              Mc2MatMulV3TilingData &tilingData)
 {
@@ -162,7 +162,7 @@ ge::graphStatus FpMatmulAllToAllTilingBase::DoMatmulV3Tiling(Mc2MatmulHelper::Mc
  *
  * @return ge::graphStatus
  */
-ge::graphStatus FpMatmulAllToAllTilingBase::SetHcclTiling()
+ge::graphStatus FpMatmulAlltoAllV2TilingBase::SetHcclTiling()
 {
     OP_TILING_CHECK(mc2tiling::ConvertGeTypeToHcclType(opName_, contextInfo.args_.geCType) ==
                         mc2tiling::HcclDataType::HCCL_DATA_TYPE_RESERVED,
@@ -191,7 +191,7 @@ ge::graphStatus FpMatmulAllToAllTilingBase::SetHcclTiling()
  * @param opName
  * @param tiling
  */
-void FpMatmulAllToAllTilingBase::PrintMMV3TilingData(const std::string &opName, Mc2MatMulV3TilingData &tiling)
+void FpMatmulAlltoAllV2TilingBase::PrintMMV3TilingData(const std::string &opName, Mc2MatMulV3TilingData &tiling)
 {
     PrintTCubeTilingData(opName, tiling.tCubeTiling);
     OP_LOGD(opName, " tiling.mTailCnt %d", tiling.mTailCnt);
@@ -211,7 +211,7 @@ void FpMatmulAllToAllTilingBase::PrintMMV3TilingData(const std::string &opName, 
  * @param opName
  * @param tilingInfo
  */
-void FpMatmulAllToAllTilingBase::PrintMatmulAlltoAllV2TilingInfo(const std::string &opName,
+void FpMatmulAlltoAllV2TilingBase::PrintMatmulAlltoAllV2TilingInfo(const std::string &opName,
                                                                MatmulAlltoAllV2TilingInfo &tilingInfo)
 {
     OP_LOGD(opName, "tilingInfo.rankDim: %u", tilingInfo.rankDim);
@@ -235,14 +235,14 @@ void FpMatmulAllToAllTilingBase::PrintMatmulAlltoAllV2TilingInfo(const std::stri
  *
  * @param outTilingData tilingData参数
  */
-void FpMatmulAllToAllTilingBase::PrintMatmulAlltoAllV2TilingData(MatmulAlltoAllV2TilingData &outTilingData)
+void FpMatmulAlltoAllV2TilingBase::PrintMatmulAlltoAllV2TilingData(MatmulAlltoAllV2TilingData &outTilingData)
 {
     PrintMatmulAlltoAllV2TilingInfo(opName_, outTilingData.matmulAlltoAllV2TilingInfo);
     PrintMMV3TilingData(opName_, outTilingData.mc2MmV3TileTilingData);
     if (outTilingData.matmulAlltoAllV2TilingInfo.tailCnt == 0) {
         return;
     }
-    OP_LOGD(opName_, "Matmulalltoall has tail");
+    OP_LOGD(opName_, "MatmulAlltoAllV2 has tail");
     PrintMMV3TilingData(opName_, outTilingData.mc2MmV3TailTilingData);
 }
 
@@ -253,7 +253,7 @@ void FpMatmulAllToAllTilingBase::PrintMatmulAlltoAllV2TilingData(MatmulAlltoAllV
  *
  * @return uint64_t tilingKey结果
  */
-uint64_t FpMatmulAllToAllTilingBase::GetTilingKey() const
+uint64_t FpMatmulAlltoAllV2TilingBase::GetTilingKey() const
 {
     // 按照量化组合模式，是否转置，bias数据类型进行展开
     bool x2TransposeFlag = contextInfo.args_.isBTrans ? true : false;
@@ -273,7 +273,7 @@ uint64_t FpMatmulAllToAllTilingBase::GetTilingKey() const
  *
  * @return ge::graphStatus
  */
-ge::graphStatus FpMatmulAllToAllTilingBase::PostTiling()
+ge::graphStatus FpMatmulAlltoAllV2TilingBase::PostTiling()
 {
     SetTilingInfo(localTilingData_.matmulAlltoAllV2TilingInfo);
     MatmulAlltoAllV2TilingData *outTilingData = context_->GetTilingData<MatmulAlltoAllV2TilingData>();
@@ -305,7 +305,7 @@ ge::graphStatus FpMatmulAllToAllTilingBase::PostTiling()
  *
  * @param tilingInfo 目标结构体
  */
-void FpMatmulAllToAllTilingBase::SetTilingInfo(MatmulAlltoAllV2TilingInfo &tilingInfo) const
+void FpMatmulAlltoAllV2TilingBase::SetTilingInfo(MatmulAlltoAllV2TilingInfo &tilingInfo) const
 {
     // 基本字段拷贝
     tilingInfo.tileM = inferredInfo.tileM;
@@ -325,15 +325,15 @@ void FpMatmulAllToAllTilingBase::SetTilingInfo(MatmulAlltoAllV2TilingInfo &tilin
 }
 
 /**
- * @brief 构造函数，创建一个FpMatmulAllToAllTilingBase对象
+ * @brief 构造函数，创建一个FpMatmulAlltoAllV2TilingBase对象
  *
  * @param context
  */
-FpMatmulAllToAllTilingBase::FpMatmulAllToAllTilingBase(gert::TilingContext *context) : MatmulAllToAllTilingBase(context)
+FpMatmulAlltoAllV2TilingBase::FpMatmulAlltoAllV2TilingBase(gert::TilingContext *context) : MatmulAlltoAllV2TilingBase(context)
 {
 }
 
 // 注册tiling类
-REGISTER_TILING_TEMPLATE_WITH_ARCH(MatmulAlltoAllV2, FpMatmulAllToAllTilingBase,
+REGISTER_TILING_TEMPLATE_WITH_ARCH(MatmulAlltoAllV2, FpMatmulAlltoAllV2TilingBase,
                                    static_cast<int32_t>(NpuArch::DAV_3510), 0);
 } // namespace MC2Tiling

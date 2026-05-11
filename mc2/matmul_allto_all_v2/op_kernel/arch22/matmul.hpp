@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef CATLASS_GEMM_KERNEL_MATMUL_ALLTOALL_HPP
-#define CATLASS_GEMM_KERNEL_MATMUL_ALLTOALL_HPP
+#ifndef CATLASS_GEMM_KERNEL_MATMUL_ALLTO_ALL_V2_HPP
+#define CATLASS_GEMM_KERNEL_MATMUL_ALLTO_ALL_V2_HPP
 
 #include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
 #include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/coord.hpp"
