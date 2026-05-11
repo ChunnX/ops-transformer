@@ -281,8 +281,12 @@ __aicore__ inline constexpr bool IsTileShapeValid()
         return false;
     }
     // Check L1 L0 shape
-    return l1M == l0M && l1N == l0N && (l1Ka >= l0K && (l0K == 0 || l1Ka % l0K == 0)) &&
-           (l1Kb >= l0K && (l0K == 0 || l1Kb % l0K == 0));
+    if constexpr (l0K == 0) {
+        return l1M == l0M && l1N == l0N;
+    } else {
+        return l1M == l0M && l1N == l0N && (l1Ka >= l0K && l1Ka % l0K == 0) &&
+               (l1Kb >= l0K && l1Kb % l0K == 0);
+    }
 }
 
 /**
