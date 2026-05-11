@@ -18,8 +18,7 @@
 #include "kernel_operator.h"
 #include "mhc_pre_sinkhorn_base_arch35.h"
 
-namespace MhcPreSinkhornNs
-{
+namespace MhcPreSinkhornNs {
     using namespace AscendC;
     constexpr static uint32_t FINAL_ACCUMULATION = 3;
     constexpr static uint32_t NON_FINAL_ACCUMULATION = 2;
@@ -31,8 +30,7 @@ namespace MhcPreSinkhornNs
     static constexpr uint64_t L1_BUF_OFFSET = 128 * 256;
     constexpr static int SYNC_MODE4 = 4;
 
-    class MhcPreSinkhornCubeCompute
-    {
+    class MhcPreSinkhornCubeCompute {
     public:
         uint64_t m_{0};
         uint64_t n_{0};
@@ -89,8 +87,8 @@ namespace MhcPreSinkhornNs
             AscendC::SetHF32TransMode(1);
         }
 
-        __aicore__ inline void CopyInB1Nd2Nz(uint64_t k, uint64_t currentK, uint64_t baseN, const AscendC::GlobalTensor<float> &bGlobal,
-                                             const AscendC::LocalTensor<float> &bl1Local)
+        __aicore__ inline void CopyInB1Nd2Nz(uint64_t k, uint64_t currentK, uint64_t baseN,
+            const AscendC::GlobalTensor<float>& bGlobal, const AscendC::LocalTensor<float>& bl1Local)
         {
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(bL1BufferID_);
             k_ = k;
@@ -111,17 +109,16 @@ namespace MhcPreSinkhornNs
         }
 
         // note: baseM * baseK must <= 256 * 32; baseN * baseK must <= 256 * 32; baseM * baseN must <= 256 * 128
-        __aicore__ inline void Process(uint64_t m, uint64_t n, uint64_t baseM, uint64_t baseK, 
-                                       bool isFirstKL1, bool isLastKL1, const AscendC::LocalTensor<float> &al1Local,
-                                       const AscendC::LocalTensor<float> &bl1Local)
+        __aicore__ inline void Process(uint64_t m, uint64_t n, uint64_t baseM, uint64_t baseK,
+            bool isFirstKL1, bool isLastKL1, const AscendC::LocalTensor<float>& al1Local,
+            const AscendC::LocalTensor<float>& bl1Local)
         {
             m_ = m;
             n_ = n;
             baseM_ = baseM;
             baseK_ = baseK;
             uint64_t kL1Offset = 0;
-            for (uint64_t kb = 0; kb < kL1_; kb += baseK_)
-            {
+            for (uint64_t kb = 0; kb < kL1_; kb += baseK_) {
                 bool isLastKL0 = (kb + baseK_) >= kL1_;
                 AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0PingPongID_ + 3);
                 CopyInA2(kb, kL1Offset, al1Local);
@@ -137,7 +134,8 @@ namespace MhcPreSinkhornNs
             bL1BufferID_ ^= 1;
         }
 
-        __aicore__ inline void CopyInA2(uint64_t kOffset, uint64_t kAL1Offset, const AscendC::LocalTensor<float> &al1Local_)
+        __aicore__ inline void CopyInA2(uint64_t kOffset, uint64_t kAL1Offset,
+            const AscendC::LocalTensor<float>& al1Local_)
         {
             uint64_t mAL1 = Align(baseM_, AscendC::BLOCK_CUBE);
             uint64_t offsetAL1 = Align(kAL1Offset, C0_SIZE) * mAL1;
@@ -155,7 +153,8 @@ namespace MhcPreSinkhornNs
             AscendC::LoadData(l0PingPongID_ == 0 ? aL0Ping_ : aL0Pong_, al1Local_[offsetAL1], loadData2dParams);
         }
 
-        __aicore__ inline void CopyInB2(uint64_t kOffset, uint64_t kBL1Offset, const AscendC::LocalTensor<float> &bl1Local_)
+        __aicore__ inline void CopyInB2(uint64_t kOffset, uint64_t kBL1Offset,
+            const AscendC::LocalTensor<float>& bl1Local_)
         {
             uint64_t nBL1 = Align(baseN_, AscendC::BLOCK_CUBE);
             uint64_t offsetBL1 = Align(kBL1Offset, C0_SIZE) * nBL1;
@@ -185,7 +184,8 @@ namespace MhcPreSinkhornNs
             mmadParams.cmatrixInitVal = (isFirstKL1 && kOffset == 0); // kOffset == 0: isFirstKL0
             mmadParams.cmatrixSource = false;
             mmadParams.unitFlag = (isLastKL1 && isLastKL0) ? FINAL_ACCUMULATION : NON_FINAL_ACCUMULATION;
-            AscendC::Mmad(cl0PingPongID_ == 0 ? cL0Ping_ : cL0Pong_, l0PingPongID_ == 0 ? aL0Ping_ : aL0Pong_,
+            AscendC::Mmad(cl0PingPongID_ == 0 ? cL0Ping_ : cL0Pong_,
+                          l0PingPongID_ == 0 ? aL0Ping_ : aL0Pong_,
                           l0PingPongID_ == 0 ? bL0Ping_ : bL0Pong_, mmadParams);
         }
 
@@ -202,12 +202,14 @@ namespace MhcPreSinkhornNs
             fixpipeParams.quantPre = QuantMode_t::NoQuant;
             // fixpipeParams.quantPre = 0;
             // set cvRatio=1:2 默认splitM
-            fixpipeParams.dualDstCtl = splitM_ ? static_cast<uint8_t>(AscendC::McgShfMode::DUAL_DST_SPLIT_M) : 0;
+            fixpipeParams.dualDstCtl =
+                splitM_ ? static_cast<uint8_t>(AscendC::McgShfMode::DUAL_DST_SPLIT_M) : 0;
             fixpipeParams.unitFlag = FINAL_ACCUMULATION; // 3 unitflag
             fixpipeParams.params.ndNum = 1;              // ndNum
             fixpipeParams.params.srcNdStride = 1;        // srcNdStride
             fixpipeParams.params.dstNdStride = 1;        // dstNdStride
-            AscendC::Fixpipe<float, float, AscendC::Impl::CFG_ROW_MAJOR_UB>(dstLocal, cl0PingPongID_ == 0 ? cL0Ping_ : cL0Pong_, fixpipeParams);
+            AscendC::Fixpipe<float, float, AscendC::Impl::CFG_ROW_MAJOR_UB>(dstLocal,
+                    cl0PingPongID_ == 0 ? cL0Ping_ : cL0Pong_, fixpipeParams);
             cl0PingPongID_ ^= 1;
         }
 
@@ -224,7 +226,8 @@ namespace MhcPreSinkhornNs
             intriParams.nz2ndEn = true;
             intriParams.unitFlag = FINAL_ACCUMULATION; // 3 unitflag
             AscendC::SetFixpipeNz2ndFlag(1, 1, 1);
-            AscendC::DataCopy(cGlobal, cl0PingPongID_ == 0 ? cL0Ping_ : cL0Pong_, intriParams);
+            AscendC::DataCopy(cGlobal,
+                    cl0PingPongID_ == 0 ? cL0Ping_ : cL0Pong_, intriParams);
             cl0PingPongID_ ^= 1;
         }
 
