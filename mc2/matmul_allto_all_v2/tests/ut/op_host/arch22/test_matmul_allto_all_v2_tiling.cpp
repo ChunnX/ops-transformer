@@ -106,7 +106,7 @@ struct MatmulAlltoAllV2TestParam {
 // tilingDataReservedLen = 43tilingDatamc2InitTilingmc2CcTiling
 static MatmulAlltoAllV2TestParam g_testCases[] = {
     // legal
-    {"matmul_alltoall_case_normal_dtype_float16",
+    {"matmul_allto_all_v2_case_normal_dtype_float16",
     {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND,
     {128, 256}, ge::DT_FLOAT16,ge::FORMAT_ND,
     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
@@ -121,7 +121,7 @@ static MatmulAlltoAllV2TestParam g_testCases[] = {
     ge::GRAPH_SUCCESS,
     32UL, "", {16867328}, 0},
     
-    {"matmul_alltoall_case_bigshape_4p",
+    {"matmul_allto_all_v2_case_bigshape_4p",
     {28543, 3072}, ge::DT_FLOAT16, ge::FORMAT_ND,
     {3072, 9216}, ge::DT_FLOAT16, ge::FORMAT_ND,
     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
@@ -136,7 +136,7 @@ static MatmulAlltoAllV2TestParam g_testCases[] = {
     ge::GRAPH_SUCCESS, 
     32UL, "", {1068986368}, 0},
 
-    {"matmul_alltoall_case_bigshape_8p",
+    {"matmul_allto_all_v2_case_bigshape_8p",
     {28543, 3072}, ge::DT_FLOAT16, ge::FORMAT_ND,
     {3072, 9216}, ge::DT_FLOAT16, ge::FORMAT_ND,
     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
@@ -151,7 +151,7 @@ static MatmulAlltoAllV2TestParam g_testCases[] = {
     ge::GRAPH_SUCCESS,
     32UL, "", {1068986368}, 0},
 
-    {"matmul_alltoall_case_bigshape_16p",
+    {"matmul_allto_all_v2_case_bigshape_16p",
     {28543, 3072}, ge::DT_FLOAT16, ge::FORMAT_ND,
     {3072, 9216}, ge::DT_FLOAT16, ge::FORMAT_ND,
     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
@@ -167,7 +167,7 @@ static MatmulAlltoAllV2TestParam g_testCases[] = {
     32UL, "", {1068986368}, 0},
     
     // illegal
-    {"matmul_alltoall_case_illegal_group_empty",
+    {"matmul_allto_all_v2_case_illegal_group_empty",
     {88, 128}, ge::DT_BF16, ge::FORMAT_ND,
     {256, 128}, ge::DT_BF16, ge::FORMAT_ND,
     {256}, ge::DT_FLOAT, ge::FORMAT_ND,
@@ -182,7 +182,7 @@ static MatmulAlltoAllV2TestParam g_testCases[] = {
     ge::GRAPH_FAILED,
     0UL, "", {6867328}, 0},
 
-    {"matmul_alltoall_case_illegal_world_size_invalid",
+    {"matmul_allto_all_v2_case_illegal_world_size_invalid",
     {88, 128}, ge::DT_BF16, ge::FORMAT_ND,
     {256, 128}, ge::DT_BF16, ge::FORMAT_ND,
     {256}, ge::DT_FLOAT, ge::FORMAT_ND,
@@ -197,7 +197,7 @@ static MatmulAlltoAllV2TestParam g_testCases[] = {
     ge::GRAPH_FAILED,
     0UL, "", {6867328}, 0},
 
-    {"matmul_alltoall_case_illegal_x1_quant_mode_invalid",
+    {"matmul_allto_all_v2_case_illegal_x1_quant_mode_invalid",
     {88, 128}, ge::DT_BF16, ge::FORMAT_ND,
     {256, 128}, ge::DT_BF16, ge::FORMAT_ND,
     {256}, ge::DT_FLOAT, ge::FORMAT_ND,
@@ -212,7 +212,7 @@ static MatmulAlltoAllV2TestParam g_testCases[] = {
     ge::GRAPH_FAILED,
     0UL, "", {6867328}, 0},
 
-    {"matmul_alltoall_case_illegal_x1_dtype_float",
+    {"matmul_allto_all_v2_case_illegal_x1_dtype_float",
     {88, 128}, ge::DT_FLOAT, ge::FORMAT_ND,
     {256, 128}, ge::DT_BF16, ge::FORMAT_ND,
     {256}, ge::DT_FLOAT, ge::FORMAT_ND,
@@ -227,7 +227,7 @@ static MatmulAlltoAllV2TestParam g_testCases[] = {
     ge::GRAPH_FAILED,
     0UL, "", {6867328}, 0},
 
-    {"matmul_alltoall_case_illegal_bias_dtype_mismatch",
+    {"matmul_allto_all_v2_case_illegal_bias_dtype_mismatch",
     {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND,
     {256, 128}, ge::DT_FLOAT16, ge::FORMAT_ND,
     {256}, ge::DT_BF16, ge::FORMAT_ND,
@@ -242,7 +242,7 @@ static MatmulAlltoAllV2TestParam g_testCases[] = {
     ge::GRAPH_FAILED,
     0UL, "", {6867328}, 0},
 
-    {"matmul_alltoall_case_illegal_x1_scale_not_null",
+    {"matmul_allto_all_v2_case_illegal_x1_scale_not_null",
     {88, 128}, ge::DT_BF16, ge::FORMAT_ND,
     {256, 128}, ge::DT_BF16, ge::FORMAT_ND,
     {256}, ge::DT_FLOAT, ge::FORMAT_ND,
@@ -257,7 +257,7 @@ static MatmulAlltoAllV2TestParam g_testCases[] = {
     ge::GRAPH_FAILED,
     0UL, "", {6867328}, 0},
 
-    {"matmul_alltoall_case_illegal_k_mismatch",
+    {"matmul_allto_all_v2_case_illegal_k_mismatch",
     {88, 128}, ge::DT_BF16, ge::FORMAT_ND,
     {256, 64}, ge::DT_BF16, ge::FORMAT_ND,
     {256}, ge::DT_FLOAT, ge::FORMAT_ND,
@@ -272,7 +272,7 @@ static MatmulAlltoAllV2TestParam g_testCases[] = {
     ge::GRAPH_FAILED,
     0UL, "", {6867328}, 0},
 
-    {"matmul_alltoall_case_illegal_bias_shape_wrong",
+    {"matmul_allto_all_v2_case_illegal_bias_shape_wrong",
     {88, 128}, ge::DT_BF16, ge::FORMAT_ND,
     {256, 128}, ge::DT_BF16, ge::FORMAT_ND,
     {88}, ge::DT_FLOAT, ge::FORMAT_ND,
@@ -287,7 +287,7 @@ static MatmulAlltoAllV2TestParam g_testCases[] = {
     ge::GRAPH_FAILED,
     0UL, "", {6867328}, 0},
 
-    {"matmul_alltoall_case_illegal_y_shape_wrong",
+    {"matmul_allto_all_v2_case_illegal_y_shape_wrong",
     {88, 128}, ge::DT_BF16, ge::FORMAT_ND,
     {256, 128}, ge::DT_BF16, ge::FORMAT_ND,
     {256}, ge::DT_FLOAT, ge::FORMAT_ND,
@@ -302,7 +302,7 @@ static MatmulAlltoAllV2TestParam g_testCases[] = {
     ge::GRAPH_FAILED,
     0UL, "", {6867328}, 0},
 
-    {"matmul_alltoall_case_illegal_x1_1d",
+    {"matmul_allto_all_v2_case_illegal_x1_1d",
     {128}, ge::DT_BF16, ge::FORMAT_ND,
     {256, 128}, ge::DT_BF16, ge::FORMAT_ND,
     {256}, ge::DT_FLOAT, ge::FORMAT_ND,
@@ -317,7 +317,7 @@ static MatmulAlltoAllV2TestParam g_testCases[] = {
     ge::GRAPH_FAILED,
     0UL, "", {6867328}, 0},
 
-    {"matmul_alltoall_case_illegal_x2_3d",
+    {"matmul_allto_all_v2_case_illegal_x2_3d",
     {88, 128}, ge::DT_BF16, ge::FORMAT_ND,
     {128, 256, 16}, ge::DT_BF16, ge::FORMAT_ND,
     {256}, ge::DT_FLOAT, ge::FORMAT_ND,
@@ -332,7 +332,7 @@ static MatmulAlltoAllV2TestParam g_testCases[] = {
     ge::GRAPH_FAILED,
     0UL, "", {6867328}, 0},
 
-    {"matmul_alltoall_case_m_zero",
+    {"matmul_allto_all_v2_case_m_zero",
     {0, 128}, ge::DT_FLOAT16, ge::FORMAT_ND,   
     {128, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
@@ -347,7 +347,7 @@ static MatmulAlltoAllV2TestParam g_testCases[] = {
     ge::GRAPH_FAILED,
     0UL, "", {16777216}, 0},
 
-    {"matmul_alltoall_case_n_zero",
+    {"matmul_allto_all_v2_case_n_zero",
     {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND,
     {128, 0}, ge::DT_FLOAT16, ge::FORMAT_ND,
     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
@@ -362,7 +362,7 @@ static MatmulAlltoAllV2TestParam g_testCases[] = {
     ge::GRAPH_FAILED,
     0UL, "", {16777216}, 0},
 
-    {"matmul_alltoall_case_k_zero",
+    {"matmul_allto_all_v2_case_k_zero",
     {88, 0}, ge::DT_FLOAT16, ge::FORMAT_ND,
     {0, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
@@ -377,7 +377,7 @@ static MatmulAlltoAllV2TestParam g_testCases[] = {
     ge::GRAPH_FAILED,
     0UL, "", {16867328}, 0},
 
-    {"matmul_alltoall_case_k_zero_transx2",
+    {"matmul_allto_all_v2_case_k_zero_transx2",
     {88, 0}, ge::DT_FLOAT16, ge::FORMAT_ND,
     {256, 0}, ge::DT_FLOAT16, ge::FORMAT_ND,
     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
@@ -392,7 +392,7 @@ static MatmulAlltoAllV2TestParam g_testCases[] = {
     ge::GRAPH_FAILED,
     0UL, "", {16867328}, 0},
 
-    {"matmul_alltoall_case_n_zero_transx2",
+    {"matmul_allto_all_v2_case_n_zero_transx2",
     {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND,
     {0, 128}, ge::DT_FLOAT16, ge::FORMAT_ND,
     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
@@ -407,7 +407,7 @@ static MatmulAlltoAllV2TestParam g_testCases[] = {
     ge::GRAPH_FAILED,
     0UL, "", {16777216}, 0},
 
-    {"matmul_alltoall_case_illegal_k_too_large",
+    {"matmul_allto_all_v2_case_illegal_k_too_large",
     {88, 65536}, ge::DT_FLOAT16, ge::FORMAT_ND, 
     {65536, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
     {256}, ge::DT_FLOAT16, ge::FORMAT_ND,
@@ -422,7 +422,7 @@ static MatmulAlltoAllV2TestParam g_testCases[] = {
     ge::GRAPH_FAILED,
     0UL, "", {6867328}, 0},
 
-    {"matmul_alltoall_case_illegal_n_not_divisible",
+    {"matmul_allto_all_v2_case_illegal_n_not_divisible",
     {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND,
     {128, 257}, ge::DT_FLOAT16, ge::FORMAT_ND,
     {257}, ge::DT_FLOAT16, ge::FORMAT_ND,
@@ -437,7 +437,7 @@ static MatmulAlltoAllV2TestParam g_testCases[] = {
     ge::GRAPH_FAILED,
     0UL, "", {6867328}, 0},
 
-    {"matmul_alltoall_case_illegal_transpose_x1_true",
+    {"matmul_allto_all_v2_case_illegal_transpose_x1_true",
     {128, 88}, ge::DT_FLOAT16, ge::FORMAT_ND,
     {128, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
     {256}, ge::DT_FLOAT16, ge::FORMAT_ND,
@@ -452,7 +452,7 @@ static MatmulAlltoAllV2TestParam g_testCases[] = {
     ge::GRAPH_FAILED,
     0UL, "", {6867328}, 0},
 
-    {"matmul_alltoall_case_illegal_x1_k_empty",
+    {"matmul_allto_all_v2_case_illegal_x1_k_empty",
     {88, 0}, ge::DT_FLOAT16, ge::FORMAT_ND,
     {0, 256}, ge::DT_FLOAT16,ge::FORMAT_ND,
     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
@@ -467,7 +467,7 @@ static MatmulAlltoAllV2TestParam g_testCases[] = {
     ge::GRAPH_FAILED,
     0UL, "", {16867328}, 0},
 
-    {"matmul_alltoall_case_illegal_x1_format_not_nd",
+    {"matmul_allto_all_v2_case_illegal_x1_format_not_nd",
     {88, 12}, ge::DT_FLOAT16, ge::FORMAT_FRACTAL_NZ,
     {12, 256}, ge::DT_FLOAT16,ge::FORMAT_ND,
     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
@@ -482,7 +482,7 @@ static MatmulAlltoAllV2TestParam g_testCases[] = {
     ge::GRAPH_FAILED,
     0UL, "", {16867328}, 0},
 
-    {"matmul_alltoall_case_illegal_x2_format_not_nd",
+    {"matmul_allto_all_v2_case_illegal_x2_format_not_nd",
     {88, 12}, ge::DT_FLOAT16, ge::FORMAT_ND,
     {12, 256}, ge::DT_FLOAT16,ge::FORMAT_FRACTAL_NZ,
     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
@@ -497,7 +497,7 @@ static MatmulAlltoAllV2TestParam g_testCases[] = {
     ge::GRAPH_FAILED,
     0UL, "", {16867328}, 0},
 
-    {"matmul_alltoall_case_illegal_output_format_not_nd",
+    {"matmul_allto_all_v2_case_illegal_output_format_not_nd",
     {88, 12}, ge::DT_FLOAT16, ge::FORMAT_ND,
     {12, 256}, ge::DT_FLOAT16,ge::FORMAT_ND,
     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
@@ -512,7 +512,7 @@ static MatmulAlltoAllV2TestParam g_testCases[] = {
     ge::GRAPH_FAILED,
     0UL, "", {16867328}, 0},
 
-    {"matmul_alltoall_case_illegal_bias_format_not_nd",
+    {"matmul_allto_all_v2_case_illegal_bias_format_not_nd",
     {88, 12}, ge::DT_FLOAT16, ge::FORMAT_ND,
     {12, 256}, ge::DT_FLOAT16,ge::FORMAT_ND,
     {256}, ge::DT_FLOAT16, ge::FORMAT_FRACTAL_NZ,
@@ -527,7 +527,7 @@ static MatmulAlltoAllV2TestParam g_testCases[] = {
     ge::GRAPH_FAILED,
     0UL, "", {16867328}, 0},
 
-    {"matmul_alltoall_case_illegal_groupName_len_over128",
+    {"matmul_allto_all_v2_case_illegal_groupName_len_over128",
     {88, 128}, ge::DT_BF16, ge::FORMAT_ND,
     {128, 256}, ge::DT_BF16,ge::FORMAT_ND,
     {}, ge::DT_FLOAT, ge::FORMAT_ND,

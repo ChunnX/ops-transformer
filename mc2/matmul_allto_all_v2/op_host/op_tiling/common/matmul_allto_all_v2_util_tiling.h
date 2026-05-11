@@ -74,7 +74,7 @@ constexpr size_t ALLTOALLMATMUL_ATTR_GROUP_SIZE_INDEX = 11;
 constexpr size_t ALLTOALLMATMUL_ATTR_ALLTO_ALL_OUT_FLAG_INDEX = 12;
 
 // 用来存放MatmulAlltoAllV2和AllToAllMatmul错位的属性信息的处理，
-// 比如说MatmulAllToAll存放x1转置(ATTR_X1_TRANSPOSE_INDEX)的位置是8，
+// 比如说MatmulAlltoAllV2存放x1转置(ATTR_X1_TRANSPOSE_INDEX)的位置是8，
 // AllToAllMatmul(ALLTOALLMATMUL_ATTR_X1_TRANSPOSE_INDEX)的是9
 struct OpAttrIndexSchema {
     size_t x1Transpose;
@@ -83,7 +83,7 @@ struct OpAttrIndexSchema {
 };
 
 // 上面结构体的实例化
-const OpAttrIndexSchema MATMUL_ALLTOALL_INDEX_SCHEMA = {ATTR_X1_TRANSPOSE_INDEX, ATTR_X2_TRANSPOSE_INDEX};
+const OpAttrIndexSchema MATMUL_ALLTO_ALL_V2_INDEX_SCHEMA = {ATTR_X1_TRANSPOSE_INDEX, ATTR_X2_TRANSPOSE_INDEX};
 
 const OpAttrIndexSchema ALLTOALL_MATMUL_INDEX_SCHEMA = {ALLTOALLMATMUL_ATTR_X1_TRANSPOSE_INDEX,
                                                         ALLTOALLMATMUL_ATTR_X2_TRANSPOSE_INDEX};
