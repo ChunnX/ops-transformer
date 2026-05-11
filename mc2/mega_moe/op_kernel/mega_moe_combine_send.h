@@ -32,7 +32,7 @@ __aicore__ inline void CombineTokens(
     int32_t preSumRankInExpert = 0;
     int32_t tileOffset = 0;
     GlobalTensor<int32_t> tokenPerExpertWin, preSumBeforeRankWorkSpace;
-    tokenPerExpertWin.SetGlobalBuffer((__gm__ int32_t*)params.peermemInfo.ptrTokenPerExpert);
+    tokenPerExpertWin.SetGlobalBuffer((__gm__ int32_t*)params.peermemInfo.topKInfoInWorldSizePtr);
     preSumBeforeRankWorkSpace.SetGlobalBuffer((__gm__ int32_t*)params.workspaceInfo.ptrSumBeforeRank);
     for (int32_t dstEpIdx = 0; dstEpIdx < params.tilingData->epWorldSize; dstEpIdx++) {
         int32_t lenRankInExpert = tokenPerExpertWin(dstEpIdx * Ops::Base::CeilAlign(
@@ -62,7 +62,7 @@ __aicore__ inline void CombineTokens(
         }
 
         AscendC::GlobalTensor<ElementMMadOut2> gmRemoteD;
-        uint64_t gmRemoteOffset = params.peermemInfo.ptrD - params.peermemInfo.ptrBase;
+        uint64_t gmRemoteOffset = params.peermemInfo.combineSendPtr - params.peermemInfo.rankSyncInWorldPtr;
         __gm__ void* dstPeermemPtr = GetRankWinAddrWithOffset(dstEpIdx, gmRemoteOffset);
         gmRemoteD.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMMadOut2*>(dstPeermemPtr));
 
