@@ -142,6 +142,7 @@ aclnnStatus aclnnBandwidthTestGetWorkspaceSize(
 aclnnStatus aclnnBandwidthTest(void* workspace, uint64_t workspaceSize,
                                         aclOpExecutor* executor, aclrtStream stream)
 {
+#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
     OP_LOGD("aclnnBandwidthTest start");
     
     if (NnopbaseSetHcclServerType) {
@@ -155,6 +156,7 @@ aclnnStatus aclnnBandwidthTest(void* workspace, uint64_t workspaceSize,
     aclnnStatus ret = aclnnInnerBandwidthTest(workspace, workspaceSize, executor, stream);
     OP_LOGD("aclnnBandwidthTest end");
     return ret;
+#endif
 }
 
 #ifdef __cplusplus
