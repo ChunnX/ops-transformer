@@ -10,32 +10,32 @@
 
 if (BUILD_OPEN_PROJECT)  # custom
     target_sources(op_host_aclnnInner PRIVATE
-        matmul_allto_all_def.cpp
+        matmul_allto_all_v2_def.cpp
     )
     add_modules_sources_with_soc(
         OP_API_INDEPENDENT ON 
         OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api 
         OP_MC2_ENABLE ON 
-        OPTYPE matmul_allto_all matmul_allto_all ACLNNTYPE aclnn aclnn_inner)
+        OPTYPE matmul_allto_all_v2 matmul_allto_all_v2 ACLNNTYPE aclnn aclnn_inner)
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
     set(MC2_OPT ON PARENT_SCOPE)
-    set(matmul_allto_all_depends mc2/common mc2/3rd PARENT_SCOPE)
-    set(matmul_allto_all_apt_depends mc2/common mc2/3rd PARENT_SCOPE)
+    set(matmul_allto_all_v2_depends mc2/common mc2/3rd PARENT_SCOPE)
+    set(matmul_allto_all_v2_apt_depends mc2/common mc2/3rd PARENT_SCOPE)
 
-    file(GLOB MATMUL_ALLTO_ALL_TILING_SRCS
+    file(GLOB MATMUL_ALLTO_ALL_V2_TILING_SRCS
         ${CMAKE_CURRENT_SOURCE_DIR}/op_tiling/*.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/op_tiling/common/*.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/op_tiling/arch35/*.cpp
     )
-    if(MATMUL_ALLTO_ALL_TILING_SRCS AND (SUB_MC2_COMPILE OR OP_HOST_UT OR UT_TEST_ALL))
+    if(MATMUL_ALLTO_ALL_V2_TILING_SRCS AND (SUB_MC2_COMPILE OR OP_HOST_UT OR UT_TEST_ALL))
         add_tiling_modules()
-        target_sources(${OPHOST_NAME}_tiling_obj PRIVATE ${MATMUL_ALLTO_ALL_TILING_SRCS})
+        target_sources(${OPHOST_NAME}_tiling_obj PRIVATE ${MATMUL_ALLTO_ALL_V2_TILING_SRCS})
     endif()
 
     set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
     if("${CONDITION_UNIT}" STREQUAL "ascend950")
         add_ops_compile_options(
-            OP_NAME MatmulAlltoAll
+            OP_NAME MatmulAlltoAllV2
             COMPUTE_UNIT Ascend950PR_9599
             OPTIONS --cce-auto-sync=off
                     -mllvm -cce-aicore-dcci-before-kernel-end=false
@@ -43,13 +43,13 @@ if (BUILD_OPEN_PROJECT)  # custom
         )
     elseif("${CONDITION_UNIT}" STREQUAL "ascend910_93")
  	         add_ops_compile_options(
- 	             OP_NAME MatmulAlltoAll
+ 	             OP_NAME MatmulAlltoAllV2
  	             OPTIONS --cce-auto-sync=off
  	                     -DAICORE_EXCEPTION_RESTART
  	     )
     endif()
 
 else() # 回黄host
-    add_mc2_modules_sources(OPTYPE matmul_allto_all matmul_allto_all ACLNNTYPE aclnn aclnn_inner)
+    add_mc2_modules_sources(OPTYPE matmul_allto_all_v2 matmul_allto_all_v2 ACLNNTYPE aclnn aclnn_inner)
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
 endif()
