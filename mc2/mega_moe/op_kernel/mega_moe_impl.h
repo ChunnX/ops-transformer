@@ -260,6 +260,7 @@ __aicore__ inline void GroupMatmul2(
     auto layoutScaleB = MakeLayoutScaleB{}(scaleK, n);
     auto layoutBias = Te::MakeFrameLayout<LayoutBias>(1U, n);
     auto layoutC = MakeLayoutC{}(m, n);  // 使用完整m,n而不是tile大小
+    auto layoutCTile = MakeLayoutC{}(L1_TILE_M, L1_TILE_N);
 
     using BiasType = float;
     using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<>;
@@ -276,7 +277,11 @@ __aicore__ inline void GroupMatmul2(
     typename BlockMmad::TupleShape matmulShape{m, n, k};
     blockMmad.Init(matmulShape, l0TileShape, l1Params, false, enableL0CPingPong);
 
-    // 直接声明GM输出tensor，参考kernel_qbmm_mx.h的做法
+    // 用旧pong buffer的UB做对比：先声明裸LocalTensor，再包MakeTensor（完全对齐commit前写法）
+    constexpr uint32_t UB_PONG_OFFSET = MAX_SINGLE_MN_ALIGN32_NUM * sizeof(ElementC);
+    LocalTensor<ElementC> l0cOutUbGMM2Pong = LocalTensor<ElementC>(TPosition::VECIN, UB_PONG_OFFSET, L1_TILE_M * L1_TILE_N);
+    auto l0cOutUbPong = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(UB_PONG_OFFSET), layoutC);
+
     auto gmC = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementC*>(gmmAddrInfo.gmm2OutGlobal)), layoutC);
 
@@ -341,12 +346,22 @@ __aicore__ inline void GroupMatmul2(
                 Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape), Get<K_VALUE>(actualShape), 0};
             blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias, gmBlockC, singleShape);
             SyncFunc<AscendC::HardEvent::FIX_S>();
+
+            if (mLoc == 0 && nLoc == 0) {
+            // 同样一次blockMmad写到UB（旧pong buffer），做对比
+            auto ubDebugTile = l0cOutUbPong.Slice(
+                Te::MakeCoord(0, 0), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
+            blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias, ubDebugTile, singleShape);
+            PipeBarrier<PIPE_ALL>();
             if (mLoc == 0 && nLoc == 0) {
                 GlobalTensor<bfloat16_t> gmm2OutGm;
                 gmm2OutGm.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(gmmAddrInfo.gmm2OutGlobal));
                 AscendC::DataCacheCleanAndInvalid<bfloat16_t, AscendC::CacheLine::ENTIRE_DATA_CACHE, AscendC::DcciDst::CACHELINE_OUT>(gmm2OutGm);
                 AscendC::PRINTF("AIC expertIdx=%d: gmm2OutGlobal=%p, gmC[0]=%f, gmC[1]=%f, gmC[10]=%f, gmC[20]=%f\n", expertIdx,
                     gmmAddrInfo.gmm2OutGlobal, gmm2OutGm.GetValue(0), gmm2OutGm.GetValue(1), gmm2OutGm.GetValue(10), gmm2OutGm.GetValue(20));
+                AscendC::PRINTF("AIC expertIdx=%d UB[0]=%f, UB[1]=%f, UB[10]=%f, UB[20]=%f\n", expertIdx,
+                    static_cast<float>(l0cOutUbGMM2Pong.GetValue(0)), static_cast<float>(l0cOutUbGMM2Pong.GetValue(1)),
+                    static_cast<float>(l0cOutUbGMM2Pong.GetValue(10)), static_cast<float>(l0cOutUbGMM2Pong.GetValue(20)));
             }
             // tile完成，在对应核心位置+1
             AscendC::AtomicAdd((__gm__ int32_t*)rowReadyFlags.GetPhyAddr() + blockIdx, int32_t(1));
