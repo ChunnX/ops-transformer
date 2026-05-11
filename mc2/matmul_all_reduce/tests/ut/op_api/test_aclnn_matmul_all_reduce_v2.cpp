@@ -43,6 +43,9 @@ TEST_P(AclnnMatmulAllReduceV2Test, param)
     auto aclnnRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
     if (param.expectResult == ACLNN_SUCCESS) {
         EXPECT_NE(ACLNN_ERR_PARAM_INVALID, aclnnRet);
+        if (aclnnRet == ACLNN_SUCCESS) {
+            aclnnMatmulAllReduceV2(nullptr, workspace_size, executor, nullptr);
+        }
     } else {
         EXPECT_EQ(param.expectResult, aclnnRet);
     }
