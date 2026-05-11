@@ -32,8 +32,9 @@ using namespace AscendC;
     } while (0)
 
 template <
-    bool TILINGKEY_GMM_WEIGHT_TRANSPOSE, 
-    bool TILINGKEY_MM_WEIGHT_TRANSPOSE, int TILINGKEY_COMM_MODE>
+    bool TILINGKEY_GMM_WEIGHT_TRANSPOSE,
+    bool TILINGKEY_MM_WEIGHT_TRANSPOSE,
+    int TILINGKEY_COMM_MODE>
 __global__ __aicore__ void allto_allv_grouped_mat_mul(
     GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR sendCountsTensorOptionalGM, GM_ADDR recvCountsTensorOptionalGM,
     GM_ADDR mmxOptionalGM, GM_ADDR mmweightOptionalGM, GM_ADDR gmmyGM, GM_ADDR mmyOptionalGM,

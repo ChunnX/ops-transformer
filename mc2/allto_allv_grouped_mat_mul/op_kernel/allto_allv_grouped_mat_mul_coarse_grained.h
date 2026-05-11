@@ -126,7 +126,8 @@ __aicore__ inline void AlltoAllvGmmCoarseGrained<DataType, IsTranGmmW, IsTranMmW
 
     if ASCEND_IS_AIV {
         if (GetBlockIdx() == 0) {
-            AscendC::PRINTF("AlltoAllvGmmCoarseGrained Init: TILINGKEY_COMM_MODE=%d (0=CCU, 1=AICPU)\n", TILINGKEY_COMM_MODE);
+            AscendC::PRINTF("AlltoAllvGmmCoarseGrained Init: TILINGKEY_COMM_MODE=%d\n",
+                            TILINGKEY_COMM_MODE);
         }
     }
 
@@ -179,7 +180,8 @@ __aicore__ inline void AlltoAllvGmmCoarseGrained<DataType, IsTranGmmW, IsTranMmW
 }
 
 template <typename DataType, bool IsTranGmmW, bool IsTranMmW, int TILINGKEY_COMM_MODE>
-__aicore__ inline void AlltoAllvGmmCoarseGrained<DataType, IsTranGmmW, IsTranMmW, TILINGKEY_COMM_MODE>::HcclAlltoAllvPrepare()
+__aicore__ inline void AlltoAllvGmmCoarseGrained<DataType, IsTranGmmW, IsTranMmW,
+                                                  TILINGKEY_COMM_MODE>::HcclAlltoAllvPrepare()
 {
     if ASCEND_IS_AIV {
         if (GetBlockIdx() != 0) {
@@ -230,7 +232,8 @@ __aicore__ inline void AlltoAllvGmmCoarseGrained<DataType, IsTranGmmW, IsTranMmW
 }
 
 template <typename DataType, bool IsTranGmmW, bool IsTranMmW, int TILINGKEY_COMM_MODE>
-__aicore__ inline void AlltoAllvGmmCoarseGrained<DataType, IsTranGmmW, IsTranMmW, TILINGKEY_COMM_MODE>::HcclAlltoAllvExec()
+__aicore__ inline void AlltoAllvGmmCoarseGrained<DataType, IsTranGmmW, IsTranMmW,
+                                                  TILINGKEY_COMM_MODE>::HcclAlltoAllvExec()
 {
     gmm_.Init(&(tilingData_->gmmTilingData));
     GMMCompute<gmmType> computeOp(gmm_);
