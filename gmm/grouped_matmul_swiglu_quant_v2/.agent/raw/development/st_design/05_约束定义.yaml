@@ -1,0 +1,227 @@
+metadata:
+  operator: "aclnnGroupedMatmulSwigluQuantV2"
+  version: "1.0"
+  description: "GMMSQ算子MxA8W4场景约束关系定义"
+
+factors:
+  # 输入Tensor因子节点
+  x.dtype: {type: dtype, param: x, io_type: input}
+  x.shape: {type: shape, param: x, io_type: input}
+  x.format: {type: format, param: x, io_type: input}
+  x.exist: {type: exist, param: x, io_type: input}
+  x.dimensions: {type: dimensions, param: x, io_type: input}
+
+  weight.dtype: {type: dtype, param: weight, io_type: input}
+  weight.shape: {type: shape, param: weight, io_type: input}
+  weight.format: {type: format, param: weight, io_type: input}
+  weight.exist: {type: exist, param: weight, io_type: input}
+  weight.dimensions: {type: dimensions, param: weight, io_type: input}
+
+  weightScale.dtype: {type: dtype, param: weightScale, io_type: input}
+  weightScale.shape: {type: shape, param: weightScale, io_type: input}
+  weightScale.format: {type: format, param: weightScale, io_type: input}
+  weightScale.exist: {type: exist, param: weightScale, io_type: input}
+  weightScale.dimensions: {type: dimensions, param: weightScale, io_type: input}
+
+  weightAssistMatrix.dtype: {type: dtype, param: weightAssistMatrix, io_type: input}
+  weightAssistMatrix.shape: {type: shape, param: weightAssistMatrix, io_type: input}
+  weightAssistMatrix.format: {type: format, param: weightAssistMatrix, io_type: input}
+  weightAssistMatrix.exist: {type: exist, param: weightAssistMatrix, io_type: input}
+  weightAssistMatrix.dimensions: {type: dimensions, param: weightAssistMatrix, io_type: input}
+
+  bias.dtype: {type: dtype, param: bias, io_type: input}
+  bias.shape: {type: shape, param: bias, io_type: input}
+  bias.format: {type: format, param: bias, io_type: input}
+  bias.exist: {type: exist, param: bias, io_type: input}
+  bias.dimensions: {type: dimensions, param: bias, io_type: input}
+
+  xScale.dtype: {type: dtype, param: xScale, io_type: input}
+  xScale.shape: {type: shape, param: xScale, io_type: input}
+  xScale.format: {type: format, param: xScale, io_type: input}
+  xScale.exist: {type: exist, param: xScale, io_type: input}
+  xScale.dimensions: {type: dimensions, param: xScale, io_type: input}
+
+  smoothScale.dtype: {type: dtype, param: smoothScale, io_type: input}
+  smoothScale.shape: {type: shape, param: smoothScale, io_type: input}
+  smoothScale.format: {type: format, param: smoothScale, io_type: input}
+  smoothScale.exist: {type: exist, param: smoothScale, io_type: input}
+  smoothScale.dimensions: {type: dimensions, param: smoothScale, io_type: input}
+
+  groupList.dtype: {type: dtype, param: groupList, io_type: input}
+  groupList.shape: {type: shape, param: groupList, io_type: input}
+  groupList.format: {type: format, param: groupList, io_type: input}
+  groupList.exist: {type: exist, param: groupList, io_type: input}
+  groupList.dimensions: {type: dimensions, param: groupList, io_type: input}
+
+  # 标量/属性因子节点
+  dequantMode.dtype: {type: dtype, param: dequantMode, io_type: input}
+  dequantMode.exist: {type: exist, param: dequantMode, io_type: input}
+  dequantMode.value: {type: value, param: dequantMode, io_type: input}
+
+  dequantDtype.dtype: {type: dtype, param: dequantDtype, io_type: input}
+  dequantDtype.exist: {type: exist, param: dequantDtype, io_type: input}
+  dequantDtype.value: {type: value, param: dequantDtype, io_type: input}
+
+  quantMode.dtype: {type: dtype, param: quantMode, io_type: input}
+  quantMode.exist: {type: exist, param: quantMode, io_type: input}
+  quantMode.value: {type: value, param: quantMode, io_type: input}
+
+  groupListType.dtype: {type: dtype, param: groupListType, io_type: input}
+  groupListType.exist: {type: exist, param: groupListType, io_type: input}
+  groupListType.value: {type: value, param: groupListType, io_type: input}
+
+  tuningConfig.dtype: {type: dtype, param: tuningConfig, io_type: input}
+  tuningConfig.exist: {type: exist, param: tuningConfig, io_type: input}
+
+  transpose_x.dtype: {type: dtype, param: transpose_x, io_type: input}
+  transpose_x.exist: {type: exist, param: transpose_x, io_type: input}
+  transpose_x.value: {type: value, param: transpose_x, io_type: input}
+
+  transpose_w.dtype: {type: dtype, param: transpose_w, io_type: input}
+  transpose_w.exist: {type: exist, param: transpose_w, io_type: input}
+  transpose_w.value: {type: value, param: transpose_w, io_type: input}
+
+  # 输出Tensor因子节点
+  output.dtype: {type: dtype, param: output, io_type: output}
+  output.shape: {type: shape, param: output, io_type: output}
+  output.format: {type: format, param: output, io_type: output}
+  output.exist: {type: exist, param: output, io_type: output}
+  output.dimensions: {type: dimensions, param: output, io_type: output}
+
+  outputScale.dtype: {type: dtype, param: outputScale, io_type: output}
+  outputScale.shape: {type: shape, param: outputScale, io_type: output}
+  outputScale.format: {type: format, param: outputScale, io_type: output}
+  outputScale.exist: {type: exist, param: outputScale, io_type: output}
+  outputScale.dimensions: {type: dimensions, param: outputScale, io_type: output}
+
+constraints:
+  # ========== 存在性约束（MxA8W4场景特定） ==========
+  - id: "C-EXIST-001"
+    type: existential
+    trigger: "weightAssistMatrix.exist"
+    trigger_value: true
+    effect:
+      target: "weightAssistMatrix.dtype"
+      action: set_na
+    description: "MxA8W4场景下weightAssistMatrix必须为null/NA"
+
+  - id: "C-EXIST-002"
+    type: existential
+    trigger: "bias.exist"
+    trigger_value: true
+    effect:
+      target: "bias.dtype"
+      action: set_na
+    description: "MxA8W4场景下bias必须为null/NA"
+
+  - id: "C-EXIST-003"
+    type: existential
+    trigger: "smoothScale.exist"
+    trigger_value: true
+    effect:
+      target: "smoothScale.dtype"
+      action: set_na
+    description: "MxA8W4场景下smoothScale必须为null/NA"
+
+  # ========== 类型约束 ==========
+  - id: "C-TYPE-001"
+    type: calculate
+    sources: ["x.dtype"]
+    target: "x.dtype"
+    expression: "sources[0]"
+    description: "x.dtype固定为float8_e4m3fn"
+
+  - id: "C-TYPE-002"
+    type: calculate
+    sources: ["weight.dtype"]
+    target: "weight.dtype"
+    expression: "sources[0]"
+    description: "weight.dtype固定为float4_e2m1"
+
+  - id: "C-TYPE-003"
+    type: calculate
+    sources: ["weightScale.dtype"]
+    target: "weightScale.dtype"
+    expression: "sources[0]"
+    description: "weightScale.dtype固定为float8_e8m0"
+
+  - id: "C-TYPE-004"
+    type: calculate
+    sources: ["xScale.dtype"]
+    target: "xScale.dtype"
+    expression: "sources[0]"
+    description: "xScale.dtype固定为float8_e8m0"
+
+  - id: "C-TYPE-005"
+    type: calculate
+    sources: ["output.dtype"]
+    target: "output.dtype"
+    expression: "sources[0]"
+    description: "output.dtype固定为float8_e4m3fn"
+
+  - id: "C-TYPE-006"
+    type: calculate
+    sources: ["outputScale.dtype"]
+    target: "outputScale.dtype"
+    expression: "sources[0]"
+    description: "outputScale.dtype固定为float8_e8m0"
+
+  # ========== 形状约束 ==========
+  - id: "C-SHAPE-001"
+    type: calculate
+    sources: ["x.shape", "weight.shape"]
+    target: "x.shape[1]"
+    expression: "sources[1][2]"
+    description: "x.shape[1] == weight.shape[2], K维度一致"
+
+  - id: "C-SHAPE-002"
+    type: calculate
+    sources: ["x.shape"]
+    target: "output.shape"
+    expression: "[sources[0][0], sources[0][1] // 2]"
+    description: "output.shape = [M, N/2]"
+
+  - id: "C-SHAPE-003"
+    type: calculate
+    sources: ["x.shape"]
+    target: "outputScale.shape"
+    expression: "[sources[0][0], (sources[0][1] // 2 + 63) // 64, 2]"
+    description: "outputScale.shape = [M, ceil((N/2)/64), 2]"
+
+  - id: "C-SHAPE-004"
+    type: match
+    sources: ["groupList.shape"]
+    source_index: 0
+    target: "weight.shape"
+    target_index: 0
+    description: "groupList.shape[0] == weight.shape[0], 专家数一致"
+
+  - id: "C-SHAPE-005"
+    type: calculate
+    sources: ["x.shape"]
+    target: "xScale.shape"
+    expression: "[sources[0][0], (sources[0][1] + 63) // 64, 2]"
+    description: "xScale.shape = [M, ceil(K/64), 2]"
+
+  # ========== 维度约束 ==========
+  - id: "C-DIM-001"
+    type: calculate
+    sources: ["weight.shape"]
+    target: "weightScale.shape"
+    expression: "[sources[0][0], sources[0][1], (sources[0][2] + 63) // 64, 2]"
+    description: "weightScale.shape = [E, N, ceil(K/64), 2]"
+
+  # ========== 属性值约束 ==========
+  - id: "C-ATTR-001"
+    type: calculate
+    sources: ["transpose_x.value"]
+    target: "transpose_x.value"
+    expression: "sources[0]"
+    description: "transpose_x固定为false"
+
+  - id: "C-ATTR-002"
+    type: calculate
+    sources: ["transpose_w.value"]
+    target: "transpose_w.value"
+    expression: "sources[0]"
+    description: "transpose_w固定为true"

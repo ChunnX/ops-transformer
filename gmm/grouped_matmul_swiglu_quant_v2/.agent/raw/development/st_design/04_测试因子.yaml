@@ -1,0 +1,133 @@
+x:
+  type: aclTensor
+  factors:
+    x.exist: [true]
+    x.format: [ND]
+    x.dimensions: [2]
+    x.dtype: [float8_e4m3fn]
+    x.value_range_float8_e4m3fn: [[0, 0.001], [0.001, 0.01], [0.01, 1], [1, 2], [2, 10], [10, 100], [-0.001, 0], [-0.01, -0.001], [-1, -0.01], [-2, -1], [-10, -2], [-100, -10], [-1, 1], [-0.01, 0.01], [-100, 100], [0, 0], [-448.0, 448.0], [-448.0, -448.0], [448.0, 448.0], ["nan", "nan"]]
+
+weight:
+  type: aclTensor
+  factors:
+    weight.exist: [true]
+    weight.format: [FRACTAL_NZ_C0_32]
+    weight.dimensions: [5]
+    weight.dtype: [float4_e2m1]
+    weight.value_range_float4_e2m1: [[-6.0, 6.0], [0, 0], [-6.0, -6.0], [6.0, 6.0], [-1, 1], ["nan", "nan"]]
+
+weightScale:
+  type: aclTensor
+  factors:
+    weightScale.exist: [true]
+    weightScale.format: [ND]
+    weightScale.dimensions: [4]
+    weightScale.dtype: [float8_e8m0]
+    weightScale.value_range_float8_e8m0: [[0.001, 0.01], [0.01, 1], [1, 2], [2, 10], [10, 100], [100, 256], [256, 512], [0, 0], ["nan", "nan"]]
+
+weightAssistMatrix:
+  type: aclTensor
+  factors:
+    weightAssistMatrix.exist: [true, false]
+    weightAssistMatrix.format: [NA]
+    weightAssistMatrix.dimensions: []
+    weightAssistMatrix.dtype: [float32]
+
+bias:
+  type: aclTensor
+  factors:
+    bias.exist: [true, false]
+    bias.format: [NA]
+    bias.dimensions: []
+    bias.dtype: [float32]
+
+xScale:
+  type: aclTensor
+  factors:
+    xScale.exist: [true]
+    xScale.format: [ND]
+    xScale.dimensions: [3]
+    xScale.dtype: [float8_e8m0]
+    xScale.value_range_float8_e8m0: [[0.001, 0.01], [0.01, 1], [1, 2], [2, 10], [10, 100], [100, 256], [256, 512], [0, 0], ["nan", "nan"]]
+
+smoothScale:
+  type: aclTensor
+  factors:
+    smoothScale.exist: [true, false]
+    smoothScale.format: [NA]
+    smoothScale.dimensions: []
+    smoothScale.dtype: [float32]
+
+groupList:
+  type: aclTensor
+  factors:
+    groupList.exist: [true]
+    groupList.format: [ND]
+    groupList.dimensions: [1]
+    groupList.dtype: [int64]
+    groupList.value_range_int64: [[0, 1], [1, 2], [2, 10], [10, 100], [100, 1000], [0, 0], [1, 1], [1024, 1024], [-9223372036854775808, 9223372036854775807]]
+
+dequantMode:
+  type: int64_t
+  factors:
+    dequantMode.exist: [true]
+    dequantMode.dtype: [int64]
+    dequantMode.value: [2]
+
+dequantDtype:
+  type: int64_t
+  factors:
+    dequantDtype.exist: [true]
+    dequantDtype.dtype: [int64]
+    dequantDtype.value: [0]
+
+quantMode:
+  type: int64_t
+  factors:
+    quantMode.exist: [true]
+    quantMode.dtype: [int64]
+    quantMode.value: [2]
+
+groupListType:
+  type: int64_t
+  factors:
+    groupListType.exist: [true]
+    groupListType.dtype: [int64]
+    groupListType.value: [0, 1]
+
+tuningConfig:
+  type: int64_t
+  factors:
+    tuningConfig.exist: [true, false]
+    tuningConfig.dtype: [int64]
+    tuningConfig.value_range_int64: [[0, 1], [1, 2], [2, 10], [0, 0], [-9223372036854775808, 9223372036854775807]]
+
+transpose_x:
+  type: bool
+  factors:
+    transpose_x.exist: [true]
+    transpose_x.dtype: [bool]
+    transpose_x.value: [false]
+
+transpose_w:
+  type: bool
+  factors:
+    transpose_w.exist: [true]
+    transpose_w.dtype: [bool]
+    transpose_w.value: [true]
+
+output:
+  type: aclTensor
+  factors:
+    output.exist: [true]
+    output.format: [ND]
+    output.dimensions: [2]
+    output.dtype: [float8_e4m3fn]
+
+outputScale:
+  type: aclTensor
+  factors:
+    outputScale.exist: [true]
+    outputScale.format: [ND]
+    outputScale.dimensions: [3]
+    outputScale.dtype: [float8_e8m0]

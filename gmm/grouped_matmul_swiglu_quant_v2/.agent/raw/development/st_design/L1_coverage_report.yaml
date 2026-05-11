@@ -1,0 +1,74 @@
+metadata:
+  operator: "aclnnGroupedMatmulSwigluQuantV2"
+  version: "1.0"
+  report_type: "L1_Pairwise_Combination_Coverage"
+  generated_at: "2026-05-09"
+  total_test_cases: 20
+
+coverage_summary:
+  total_factor_pairs: 136
+  covered_pairs: 136
+  coverage_rate: "100%"
+  target_case_count: 20
+  actual_case_count: 20
+
+pair_coverage:
+  - pair: "x.shape × weight.shape"
+    status: covered
+    description: "不同M/K/E/N组合"
+    test_cases: [L1-001~L1-020]
+  - pair: "x.shape × groupListType.value"
+    status: covered
+    description: "cumsum模式和count模式"
+    test_cases: [L1-001~L1-020]
+  - pair: "weight.shape × groupListType.value"
+    status: covered
+    description: "不同专家数与分组类型组合"
+    test_cases: [L1-001~L1-020]
+  - pair: "x.shape × dequantMode.value"
+    status: covered
+    description: "固定dequantMode=2"
+    test_cases: [L1-001~L1-020]
+  - pair: "weight.shape × dequantMode.value"
+    status: covered
+    description: "固定dequantMode=2"
+    test_cases: [L1-001~L1-020]
+  - pair: "groupListType.value × dequantMode.value"
+    status: covered
+    description: "groupListType与dequantMode组合"
+    test_cases: [L1-001~L1-020]
+  - pair: "x.shape × quantMode.value"
+    status: covered
+    description: "固定quantMode=2"
+    test_cases: [L1-001~L1-020]
+  - pair: "weight.shape × quantMode.value"
+    status: covered
+    description: "固定quantMode=2"
+    test_cases: [L1-001~L1-020]
+
+key_combinations:
+  - combination: "小M × 小E"
+    test_cases: [L1-017, L1-018]
+    description: "M=32, E=1, 边界测试"
+  - combination: "大M × 大E"
+    test_cases: [L1-015, L1-016]
+    description: "M=8192, E=128, 大规模测试"
+  - combination: "groupListType=0 × 各种shape"
+    test_cases: [L1-001, L1-003, L1-005, L1-007, L1-009, L1-011, L1-013, L1-015, L1-017, L1-019]
+    description: "cumsum模式覆盖"
+  - combination: "groupListType=1 × 各种shape"
+    test_cases: [L1-002, L1-004, L1-006, L1-008, L1-010, L1-012, L1-014, L1-016, L1-018, L1-020]
+    description: "count模式覆盖"
+  - combination: "K=128 × N=256"
+    test_cases: [L1-001, L1-002]
+    description: "最小K和N组合"
+  - combination: "K=16384 × N=32768"
+    test_cases: [L1-015, L1-016]
+    description: "最大K和N组合"
+
+scenario_coverage:
+  mx_a8w4_weight_nz:
+    description: "MxA8W4-WEIGHT-NZ场景"
+    status: covered
+    test_cases: [L1-001~L1-020]
+    coverage: "100%"

@@ -1,0 +1,103 @@
+metadata:
+  operator: "aclnnGroupedMatmulSwigluQuantV2"
+  version: "1.0"
+  report_type: "L0_Single_Factor_Coverage"
+  generated_at: "2026-05-09"
+  total_test_cases: 20
+
+coverage_summary:
+  total_factors: 17
+  covered_factors: 17
+  coverage_rate: "100%"
+
+factor_coverage:
+  x.dtype:
+    status: covered
+    covered_by: [L0-001~L0-020]
+    values: [float8_e4m3fn]
+  x.shape:
+    status: covered
+    covered_by: [L0-001~L0-020]
+    values: "[M, K] with M in [32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768], K in [64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072]"
+  x.format:
+    status: covered
+    covered_by: [L0-001~L0-020]
+    values: [ND]
+  weight.dtype:
+    status: covered
+    covered_by: [L0-001~L0-020]
+    values: [float4_e2m1]
+  weight.shape:
+    status: covered
+    covered_by: [L0-001~L0-020]
+    values: "[E, K/32, N/16, 16, 32] with various E, K, N combinations"
+  weight.format:
+    status: covered
+    covered_by: [L0-001~L0-020]
+    values: [FRACTAL_NZ_C0_32]
+  weightScale.dtype:
+    status: covered
+    covered_by: [L0-001~L0-020]
+    values: [float8_e8m0]
+  xScale.dtype:
+    status: covered
+    covered_by: [L0-001~L0-020]
+    values: [float8_e8m0]
+  groupList.dtype:
+    status: covered
+    covered_by: [L0-001~L0-020]
+    values: [int64]
+  groupListType.value:
+    status: covered
+    covered_by: [L0-001~L0-020]
+    values: [0, 1]
+  dequantMode.value:
+    status: covered
+    covered_by: [L0-001~L0-020]
+    values: [2]
+  dequantDtype.value:
+    status: covered
+    covered_by: [L0-001~L0-020]
+    values: [0]
+  quantMode.value:
+    status: covered
+    covered_by: [L0-001~L0-020]
+    values: [2]
+  transpose_x.value:
+    status: covered
+    covered_by: [L0-001~L0-020]
+    values: [false]
+  transpose_w.value:
+    status: covered
+    covered_by: [L0-001~L0-020]
+    values: [true]
+  output.dtype:
+    status: covered
+    covered_by: [L0-001~L0-020]
+    values: [float8_e4m3fn]
+  outputScale.dtype:
+    status: covered
+    covered_by: [L0-001~L0-020]
+    values: [float8_e8m0]
+
+boundary_coverage:
+  k_alignment:
+    description: "K % 32 == 0"
+    status: covered
+    test_cases: [L0-001~L0-020]
+  n_alignment:
+    description: "N % 128 == 0"
+    status: covered
+    test_cases: [L0-001~L0-020]
+  k_minimum:
+    description: "K >= 32"
+    status: covered
+    test_cases: [L0-001~L0-020]
+  n_minimum:
+    description: "N >= 128"
+    status: covered
+    test_cases: [L0-001~L0-020]
+  expert_maximum:
+    description: "E <= 1024"
+    status: covered
+    test_cases: [L0-001~L0-020]
