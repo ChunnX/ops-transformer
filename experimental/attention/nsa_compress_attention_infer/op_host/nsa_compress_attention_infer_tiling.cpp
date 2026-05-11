@@ -17,7 +17,7 @@
 #include "nsa_compress_attention_infer_tiling_utils.h"
 #include "register/op_def_registry.h"
 #include "log/log.h"
-#include "err/ops_err.h"
+#include "util/ops_err.h"
 
 #include <register/op_impl_registry.h>
 #include "op_host/data_copy_transpose_tiling.h"

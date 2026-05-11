@@ -19,7 +19,7 @@
 #include <algorithm>
 #include <unordered_map>
 #include <graph/utils/type_utils.h>
-#include "err/ops_err.h"
+#include "util/ops_err.h"
 #include "register/op_def_registry.h"
 #include "compressor_tiling.h"
 

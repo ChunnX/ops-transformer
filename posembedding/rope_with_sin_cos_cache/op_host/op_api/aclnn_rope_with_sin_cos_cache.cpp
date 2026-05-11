@@ -21,7 +21,7 @@
 #include "aclnn_kernels/cast.h"
 #include "aclnn_rope_with_sin_cos_cache.h"
 #include "aclnn_rope_with_sin_cos_cache_v2.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "aclnn_kernels/op_error_check.h"
 #include "external/aclnn_kernels/aclnn_platform.h"
 #include "aclnn/aclnn_base.h"
 #include "opdev/common_types.h"

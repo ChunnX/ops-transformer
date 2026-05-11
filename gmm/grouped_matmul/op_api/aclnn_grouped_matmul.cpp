@@ -23,7 +23,7 @@
 #include "../op_host/grouped_matmul_host_util.h"
 #include "acl/acl.h"
 #include "aclnn/aclnn_base.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "aclnn_kernels/op_error_check.h"
 #include "opdev/common_types.h"
 #include "opdev/data_type_utils.h"
 #include "opdev/format_utils.h"

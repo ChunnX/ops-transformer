@@ -16,7 +16,7 @@
 #include <cstdint>
 #include <string>
 #include <unordered_map>
-#include "err/ops_err.h"
+#include "util/ops_err.h"
 #include "graph/types.h"
 #include "graph/tensor.h"
 #include "tiling/platform/platform_ascendc.h"

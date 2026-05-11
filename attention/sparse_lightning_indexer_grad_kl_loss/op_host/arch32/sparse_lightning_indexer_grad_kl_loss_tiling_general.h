@@ -23,7 +23,7 @@
 #include "../sparse_lightning_indexer_grad_kl_loss_tiling_common.h"
 #include "../../op_kernel/arch32/sparse_lightning_indexer_grad_kl_loss_template_tiling_key.h"
 #include "../../op_kernel/arch32/sparse_lightning_indexer_grad_kl_loss_tiling.h"
-#include "err/ops_err.h"
+#include "util/ops_err.h"
 
 using namespace ge;
 using namespace AscendC;

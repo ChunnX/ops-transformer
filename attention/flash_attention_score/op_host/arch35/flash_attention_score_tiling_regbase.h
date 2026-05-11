@@ -19,7 +19,7 @@
 #include "op_host/tiling_type.h"
 #include "../../op_kernel/arch35/flash_attention_score_template_tiling_key.h"
 #include "../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h"
-#include "err/ops_err.h"
+#include "util/ops_err.h"
 #include "platform/soc_spec.h"
 
 using namespace Ops::Transformer::OpTiling;

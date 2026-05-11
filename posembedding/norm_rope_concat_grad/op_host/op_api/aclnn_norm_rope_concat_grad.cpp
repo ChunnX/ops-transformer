@@ -17,7 +17,7 @@
 #include "norm_rope_concat_grad.h"
 #include "../norm_rope_concat_grad_base.h"
 #include "aclnn/aclnn_base.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "aclnn_kernels/op_error_check.h"
 #include "aclnn_kernels/contiguous.h"
 #include "opdev/common_types.h"
 #include "opdev/data_type_utils.h"
