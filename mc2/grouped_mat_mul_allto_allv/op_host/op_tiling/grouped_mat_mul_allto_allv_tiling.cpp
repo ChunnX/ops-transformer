@@ -26,6 +26,7 @@
 #include "register/op_def_registry.h"
 #include "op_host/op_tiling/hccl_formulaic_tiling.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
+#include "mc2_tiling_utils.h"
 
 using namespace AscendC;
 using namespace ge;
@@ -725,7 +726,10 @@ static ge::graphStatus SetHcclTiling(const gert::TilingContext* context, Grouped
 
     Mc2CcTilingConfig hcclCcTilingConfig(groupEpPtr, alltoAllvCmd, alltoAllvConfig,
                                          alltoAllvReduceType, alltoAllvDstDataType, alltoAllvSrcDataType);
-    hcclCcTilingConfig.SetCommEngine(mc2tiling::AICPU_ENGINE);
+    uint8_t commMode = mc2tiling::Mc2TilingUtils::GetCommModeFromEnv();
+    uint8_t engineType = (commMode == mc2tiling::COMM_MODE_CCU) ? mc2tiling::A5_CCU_ENGINE : mc2tiling::AICPU_ENGINE;
+    hcclCcTilingConfig.SetCommEngine(engineType);
+    OP_LOGD(A_INNER_DEBUG, "SetCommEngine commMode=%u engineType=%u (0=CCU/5=A5_CCU, 2=AICPU)", commMode, engineType);
     OP_TILING_CHECK(hcclCcTilingConfig.GetTiling(tilingData->hcclInitTiling) != 0,
         OP_LOGE(C_INNER_DEBUG, "mc2CcTilingConfig mc2tiling GetTiling hcclInitTiling failed"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(hcclCcTilingConfig.GetTiling(tilingData->alltoAllvCcTiling) != 0,
@@ -904,6 +908,7 @@ static void UpdateTilingKey(uint64_t& tilingKey, const GroupedMatMulAlltoAllvTil
     bool tilingkeyComputeMm = false;
     bool tilingkeyGmmTrans = false;
     bool tilingkeyMmTrans = false;
+    uint8_t commMode = mc2tiling::Mc2TilingUtils::GetCommModeFromEnv();
 
     if (tilingData->commonTilingInfo.isOptionalMatmul) {
         tilingkeyComputeMm = true;
@@ -921,8 +926,7 @@ static void UpdateTilingKey(uint64_t& tilingKey, const GroupedMatMulAlltoAllvTil
         tilingkeyMmTrans = false;
     }
 
-    tilingKey = GET_TPL_TILING_KEY(tilingkeyComputeMm,
-                                    tilingkeyGmmTrans, tilingkeyMmTrans);
+    tilingKey = GET_TPL_TILING_KEY(tilingkeyComputeMm, tilingkeyGmmTrans, tilingkeyMmTrans, commMode);
     return;
 }
 

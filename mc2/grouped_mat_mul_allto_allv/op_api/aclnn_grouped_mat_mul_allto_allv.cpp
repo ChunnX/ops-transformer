@@ -136,9 +136,15 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvGetWorkspaceSize(
 aclnnStatus aclnnGroupedMatMulAlltoAllv(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
                                         aclrtStream stream)
 {
+    constexpr char* COMM_MODE_ENV = "ENV_MC2_COMM_MODE_AICPU";
     if (NnopbaseSetHcclServerType) {
-        if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        auto commModeEnv = getenv(COMM_MODE_ENV);
+        if (commModeEnv != nullptr) {
+            OP_LOGD("", "aclnnGroupedMatMulAlltoAllv: ENV_MC2_COMM_MODE_AICPU set, use AICPU mode");
             NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+        } else {
+            OP_LOGD("", "aclnnGroupedMatMulAlltoAllv: ENV_MC2_COMM_MODE_AICPU not set, use CCU mode");
+            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
         }
     }
     aclnnStatus ret = aclnnInnerGroupedMatMulAlltoAllv(workspace, workspaceSize, executor, stream);

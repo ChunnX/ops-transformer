@@ -24,22 +24,23 @@
 namespace ops {
 ge::Status GroupedMatMulAlltoAllvCalcParamFunc(gert::ExeResGenerationContext *context)
 {
-    if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
-        OPS_LOG_D(context->GetNodeName(), "Do A5 CCU CalcParamFunc");
-        return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "ccu server", "ccu_stream");
+    constexpr char* COMM_MODE_ENV = "ENV_MC2_COMM_MODE_AICPU";
+    auto commModeEnv = getenv(COMM_MODE_ENV);
+    const char* serverType = "ccu kfc server";
+
+    if (commModeEnv != nullptr) {
+        serverType = "aicpu kfc server";
+        OPS_LOG_D(context->GetNodeName(), "ENV_MC2_COMM_MODE_AICPU set, use AICPU GenTask");
+    } else {
+        OPS_LOG_D(context->GetNodeName(), "ENV_MC2_COMM_MODE_AICPU not set, use CCU GenTask");
     }
-    OPS_LOG_D(context->GetNodeName(), "Do A3 AICPU CalcParamFunc");
-    return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "aicpu kfc server", "kfc_stream");
+    return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, serverType, "kfc_stream");
 }
 
 ge::Status GroupedMatMulAlltoAllvGenTaskFunc(const gert::ExeResGenerationContext *context,
                                              std::vector<std::vector<uint8_t>> &tasks)
 {
-    if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
-        OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTaskFunc");
-        return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks);
-    }
-    OPS_LOG_D(context->GetNodeName(), "Do A3 AICPU GenTaskFunc");
+    OPS_LOG_D(context->GetNodeName(), "GenTask GenTaskFunc");
     return Mc2MoeGenTaskOpsUtils::Mc2MoeGenTaskCallback(context, tasks);
 }
 

@@ -29,9 +29,28 @@
 #endif
 #include "grouped_mat_mul_allto_allv_tiling.h"
 
+ // 通信模式定义
+#ifndef TILINGKEY_TPL_CCU
+#define TILINGKEY_TPL_CCU 0
+#endif
+#ifndef TILINGKEY_TPL_AICPU
+#define TILINGKEY_TPL_AICPU 1
+#endif
+
 namespace AscendC {
 using namespace ALLTO_ALLV_GMM;
-template <typename GMMATAV>
+// Hccl类型选择器
+template<int commMode>
+struct HcclTypeSelector {
+    using type = Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU>;
+};
+
+template<>
+struct HcclTypeSelector<TILINGKEY_TPL_CCU> {
+    using type = Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU>;
+};
+
+template <typename GMMATAV, int TILINGKEY_COMM_MODE = TILINGKEY_TPL_CCU>
 class GroupedMatmulAlltoAllv
 {
 public:
@@ -93,11 +112,7 @@ private:
     static constexpr uint64_t TOTAL_UBSIZE = static_cast<uint64_t>(190U * 1024U / 2U);
     static constexpr uint64_t MAX_AIV_NUM = 48U;
     static constexpr uint64_t MAX_HANDLE_ID_NUM = 64U;
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-    Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU> hccl_;
-#else
-    Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;
-#endif
+    typename HcclTypeSelector<TILINGKEY_COMM_MODE>::type hccl_;
     HcclHandle allGatherHandleId_{INVALID_HANDLE_ID};
     HcclHandle alltoAllvHandleId_[MAX_HANDLE_ID_NUM] = {INVALID_HANDLE_ID};
     HcclDataType hcclDataType_;
@@ -113,8 +128,8 @@ private:
     typename gmmType::MT gmm;
     typename sharedmmType::MT sharedmm;
 };
-template <typename GMMATAV>
-__aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::Init(
+template <typename GMMATAV, int TILINGKEY_COMM_MODE>
+__aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV, TILINGKEY_COMM_MODE>::Init(
     GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR sendCountsTensorGM, GM_ADDR recvCountsTensorGM, GM_ADDR mmGM,
     GM_ADDR mmweightGM, GM_ADDR yGM, GM_ADDR mmyGM, GM_ADDR workspaceGM, GM_ADDR contextGM,
     const GroupedMatMulAlltoAllvTilingData* tilingData, __gm__ void* hcclInitTiling, __gm__ void* alltoAllvCcTiling,
@@ -164,8 +179,8 @@ __aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::Init(
     yOutGMTensor_.SetGlobalBuffer((__gm__ X_T*)this->yGM_);
 }
 
-template <typename GMMATAV>
-__aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::Process()
+template <typename GMMATAV, int TILINGKEY_COMM_MODE>
+__aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV, TILINGKEY_COMM_MODE>::Process()
 {
     HcclAlltoAllvPrepare(); // alltoall prepare
     // gmm + alltoall，做完一块gmm下发一块alltoall
@@ -180,8 +195,8 @@ __aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::Process()
     HcclFinalize();
 }
 
-template <typename GMMATAV>
-__aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::ShareMatMulCompute()
+template <typename GMMATAV, int TILINGKEY_COMM_MODE>
+__aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV, TILINGKEY_COMM_MODE>::ShareMatMulCompute()
 {
     if (NEED_MM) {
         if ASCEND_IS_AIC {
@@ -206,8 +221,8 @@ __aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::ShareMatMulCompute()
     }
 }
 
-template <typename GMMATAV>
-__aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::GmmProcessAlltoallv()
+template <typename GMMATAV, int TILINGKEY_COMM_MODE>
+__aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV, TILINGKEY_COMM_MODE>::GmmProcessAlltoallv()
 {
     gmm.Init(&(tilingData_->matmulTiling));
     GMMCompute<gmmType> computeOp(gmm);
@@ -258,8 +273,8 @@ __aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::GmmProcessAlltoallv()
     SyncAll<false>();
 }
 
-template <typename GMMATAV>
-__aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::HcclAlltoAllvPrepare()
+template <typename GMMATAV, int TILINGKEY_COMM_MODE>
+__aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV, TILINGKEY_COMM_MODE>::HcclAlltoAllvPrepare()
 {
     if ASCEND_IS_AIV {
         if (GetBlockIdx() != 0) {
@@ -308,15 +323,15 @@ __aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::HcclAlltoAllvPrepare()
                 }
             }
 
-            alltoAllvHandleId_[e] = hccl_.AlltoAllV<false>(
+            alltoAllvHandleId_[e] = hccl_.template AlltoAllV<false>(
                 (__gm__ uint8_t*)gmmOutGMTensor_.GetPhyAddr(), alltoAllvSendCnt, alltoAllvSendOffset, hcclDataType_,
                 (__gm__ uint8_t*)yOutGMTensor_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset, hcclDataType_);
         }
     }
 }
 
-template <typename GMMATAV>
-__aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::HcclFinalize()
+template <typename GMMATAV, int TILINGKEY_COMM_MODE>
+__aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV, TILINGKEY_COMM_MODE>::HcclFinalize()
 {
     if ASCEND_IS_AIV {
         hccl_.Finalize();

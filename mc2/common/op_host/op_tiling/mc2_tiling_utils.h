@@ -169,11 +169,16 @@ inline NpuArch GetNpuArch(const gert::TilingContext *context)
     return ascendcPlatform.GetCurNpuArch();
 }
 
+// 通信模式常量定义
+constexpr uint8_t COMM_MODE_CCU = 0;      // CCU通信模式
+constexpr uint8_t COMM_MODE_AICPU = 1;    // AICPU通信模式
+
 class Mc2TilingUtils {
  public:
   static uint8_t GetDebugMode();
   static uint8_t GetDebugCommAlg();
   static uint8_t GetDebugStepSize();
+  static uint8_t GetCommModeFromEnv();
   static uint32_t GetCommSets(const char *group);
   static ge::graphStatus CommonParamCheck(const gert::TilingContext *context);
   static mc2tiling::HcclDataType GetDataType(ge::DataType type);
