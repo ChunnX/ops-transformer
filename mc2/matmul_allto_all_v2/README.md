@@ -1,12 +1,12 @@
-# MatmulAlltoAll
+# MatmulAlltoAllV2
 
 ## 产品支持情况
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
 | <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    x     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    x     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
 | <term>Atlas 推理系列产品</term>                             |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
@@ -261,7 +261,7 @@ x1QuantMode、x2QuantMode、commQuantMode的枚举值与[量化模式](../../doc
         - A3目前不支持量化场景。
     - <term>Ascend 950PR/Ascend 950DT</term>：
         - 非量化场景下，x1/x2计算输入的数据类型为FLOAT16时，bias计算输入的数据类型支持FLOAT16和FLOAT32；x1/x2计算输入的数据类型为BFLOAT16时，bias计算输入的数据类型支持BFLOAT16和FLOAT32。
-        - 量化场景下，支持K-C量化模式和mx量化模式，x1、x2计算输入的数据类型为FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1，bias的数据类型为FLOAT32或者bias为空，具体类型组合详见[量化aclnn约束说明](./docs/aclnnQuantMatmulAlltoAll.md#约束说明)。
+        - 量化场景下，支持K-C量化模式和mx量化模式，x1、x2计算输入的数据类型为FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1，bias的数据类型为FLOAT32或者bias为空，具体类型组合详见[量化aclnn约束说明](./docs/aclnnQuantMatmulAlltoAllV2.md#约束说明)。
         - mx量化模式下，当x1和x2的数据类型为FLOAT4_E2M1时，两者的数据类型必须一致。
 * 通算融合算子不支持并发调用，不同的通算融合算子也不支持并发调用。
 * 不支持跨超节点通信，只支持超节点内。
@@ -270,5 +270,5 @@ x1QuantMode、x2QuantMode、commQuantMode的枚举值与[量化模式](../../doc
 
 | 调用方式   | 样例代码           | 说明                                         |
 | ---------------- | --------------------------- | --------------------------------------------------- |
-| aclnn接口  | [test_aclnn_matmul_allto_all.cpp](./examples/test_aclnn_matmul_allto_all.cpp) | 通过[aclnnMatMulAlltoAll](./docs/aclnnMatmulAlltoAll.md)接口方式调用非量化场景的MatMulAlltoAll算子。 |
-| aclnn接口  | [test_aclnn_quant_matmul_allto_all.cpp](./examples/test_aclnn_quant_matmul_allto_all.cpp) | 通过[aclnnQuantMatMulAlltoAll](./docs/aclnnQuantMatmulAlltoAll.md)接口方式调用量化场景的MatMulAlltoAll算子。 |
+| aclnn接口  | [test_aclnn_matmul_allto_all_v2.cpp](./examples/test_aclnn_matmul_allto_all_v2.cpp) | 通过[aclnnMatMulAlltoAll](./docs/aclnnMatmulAlltoAllV2.md)接口方式调用非量化场景的MatMulAlltoAll算子。 |
+| aclnn接口  | [test_aclnn_quant_matmul_allto_all_v2.cpp](./examples/test_aclnn_quant_matmul_allto_all_v2.cpp) | 通过[aclnnQuantMatMulAlltoAll](./docs/aclnnQuantMatmulAlltoAllV2.md)接口方式调用量化场景的MatMulAlltoAll算子。 |
