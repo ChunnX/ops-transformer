@@ -776,8 +776,10 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::ProcessDeterVector2(SLIGrad
                 int64_t actualLenK = this->actualSeqLengthsKeyGm.GetValue(index);
                 if (bS1Index < actualLenQ) {
                     bIdx = index;
-                    seqLenQ = (index == 0) ? actualLenQ : this->actualSeqLengthsQueryGm.GetValue(index) - this->actualSeqLengthsQueryGm.GetValue(index - 1);
-                    seqLenK = (index == 0) ? actualLenK : this->actualSeqLengthsKeyGm.GetValue(index) - this->actualSeqLengthsKeyGm.GetValue(index - 1);
+                    seqLenQ = (index == 0) ? actualLenQ 
+                        : this->actualSeqLengthsQueryGm.GetValue(index) - this->actualSeqLengthsQueryGm.GetValue(index - 1);
+                    seqLenK = (index == 0) ? actualLenK 
+                        : this->actualSeqLengthsKeyGm.GetValue(index) - this->actualSeqLengthsKeyGm.GetValue(index - 1);
                     break;
                 }
                 actualSum = actualLenQ;
