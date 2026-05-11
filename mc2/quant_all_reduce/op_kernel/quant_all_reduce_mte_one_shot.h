@@ -135,7 +135,7 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::Init(GM_ADDR x, G
     uint64_t remainingSpace = TOTAL_UB_SIZE - totalFixedSpace;
     uint64_t maxXPerBlock = remainingSpace / totalDynamicBytes;
 
-    // 3.5 stage3：以 host 推荐值（基于 TARGET_ITER 公式）作为上限，kernel 端 ub_max 仍作 safety net
+    // 以 host 推荐值（基于 TARGET_ITER 公式）作为上限，kernel 端 ub_max 仍作 safety net
     uint32_t hostRecommended = tiliingDatainfo.xPerBlock;
     if (hostRecommended != 0U && maxXPerBlock > hostRecommended) {
         maxXPerBlock = hostRecommended;

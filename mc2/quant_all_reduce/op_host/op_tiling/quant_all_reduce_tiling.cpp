@@ -92,7 +92,7 @@ static void SetTilingData(gert::TilingContext *context, QuantAllReduceTilingData
 
 /**
  * @brief 基于 TARGET_ITER 公式计算 host 推荐的 xPerBlock，写入 tilingData
- *        stage3：取代 kernel 内硬编码 cap=2048，按每核迭代数自适应
+ *        按每核迭代数自适应计算 xPerBlock
  * @param context: tiling context
  * @param tilingData: tilingData
  * @param runInfo: 含 rankSize 等运行信息
@@ -103,7 +103,7 @@ static void SetXPerBlock(gert::TilingContext *context, QuantAllReduceTilingData 
 {
     (void)context;
     (void)runInfo;
-    constexpr uint32_t TARGET_ITER = 3U;  // stage3：T=3 命中 DoubleBuffer 甜点（实测优于 T=2/4/6）
+    constexpr uint32_t TARGET_ITER = 3U;  // T=3 命中 DoubleBuffer 甜点
     constexpr uint32_t MIN_BLOCK = 2048U;  // 与 QRS MIN 统一，QAR per_core 够大不会被 MIN 主导
     constexpr uint32_t ALIGN_BLOCK = 1024U;
     uint64_t xNums = tilingData.quantAllReduceTilingInfo.bs * tilingData.quantAllReduceTilingInfo.hiddenSize;

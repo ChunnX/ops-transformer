@@ -92,7 +92,7 @@ static void SetTilingData(gert::TilingContext *context, QuantReduceScatterTiling
 
 /**
  * @brief 基于 TARGET_ITER 公式计算 host 推荐的 xPerBlock，写入 tilingData
- *        stage3：QRS 分子先除 rankSize（每卡分片），再走 TARGET_ITER 反推
+ *        QRS 分子先除 rankSize（每卡分片），再走 TARGET_ITER 反推计算 xPerBlock
  * @param context: tiling context
  * @param tilingData: tilingData
  * @param runInfo: 含 rankSize 等运行信息
