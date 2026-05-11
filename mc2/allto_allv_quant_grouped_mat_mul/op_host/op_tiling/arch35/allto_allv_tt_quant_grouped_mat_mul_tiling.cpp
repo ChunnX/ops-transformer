@@ -37,7 +37,7 @@ bool AlltoAllvTTQuantGmmTiling::IsCapable()
 uint64_t AlltoAllvTTQuantGmmTiling::GetTilingKey() const
 {
     uint8_t commMode = mc2tiling::Mc2TilingUtils::GetCommModeFromEnv();
-    uint64_t tilingKey = GET_TPL_TILING_KEY(ADD_TPL_HIF8, hasSharedExpertFlag_, transGmmWeight_, transMmWeight_, commMode);
+    uint64_t tilingKey = GET_TPL_TILING_KEY(transGmmWeight_, transMmWeight_, commMode);
     return tilingKey;
 }
 

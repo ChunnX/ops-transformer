@@ -28,7 +28,7 @@ using namespace AscendC;
 
 namespace MC2KernelTemplate {
 template <typename CommOpType, typename ComputeOpType, typename LocalComputeOpType, typename TilingDataType,
-          typename GmmTilingDataType, typename GmmArrayAddrType, bool IsNeedMM>
+          typename GmmTilingDataType, typename GmmArrayAddrType>
 class A2avGmmScheduler {
 public:
     __aicore__ inline void Init(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR mmxOptionalGM, GM_ADDR mmweightOptionalGM,
@@ -81,8 +81,7 @@ public:
         }
         // 计算类使用的workspace起始地址（偏移后的workspace）
         computeWorkspaceGm_ = workspaceGM + workspaceOffset;
-        // mm compute init
-        if (IsNeedMM) {
+        if (tilingData_->isNeedMM != 0) {
             localComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmxScaleGM, mmWeightScaleGM, mmyOptionalGM,
                                 computeWorkspaceGm_, tilingData_, &tilingData_->mmQuantTilingData, mmArrayAddrIn, tPipe,
                                 isA2avGmmFlag);
@@ -97,11 +96,11 @@ public:
         if ASCEND_IS_AIV {
             if (GetBlockIdx() == 0) {
                 AscendC::PRINTF("YYYYYY op a2av scheduler Process start e:%u isNeedMM:%d mxMode:%d scaleBatch:%d\n",
-                    e_, static_cast<int32_t>(IsNeedMM), static_cast<int32_t>(MX_QUANT_MODE),
+                    e_, tilingData_->isNeedMM, static_cast<int32_t>(MX_QUANT_MODE),
                     static_cast<int32_t>(isScaleBatchMode_));
             }
         }
-        if (IsNeedMM) {
+        if (tilingData_->isNeedMM != 0) {
             if ASCEND_IS_AIV {
                 if (GetBlockIdx() == 0) {
                     AscendC::PRINTF("YYYYYY op a2av scheduler localCompute start\n");

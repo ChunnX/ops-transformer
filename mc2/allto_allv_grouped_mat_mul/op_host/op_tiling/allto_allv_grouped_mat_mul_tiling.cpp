@@ -812,33 +812,10 @@ ge::graphStatus AlltoAllvGmmTiling::Init(gert::TilingContext* context)
 
 uint64_t AlltoAllvGmmTiling::GetTilingKey(const gert::TilingContext* context) const
 {
-    uint32_t templateMmDType = ADD_TPL_FP16;
-    bool tilingkeyMm = false;
-    bool tilingekyGmmTrans = false;
-    bool tilingekyMmTrans = false;
-    if (context->GetInputDesc(GMM_X_INDEX)->GetDataType() == ge::DT_FLOAT16) {
-        templateMmDType = ADD_TPL_FP16;
-    } else if (context->GetInputDesc(GMM_X_INDEX)->GetDataType() == ge::DT_BF16) {
-        templateMmDType = ADD_TPL_BP16;
-    }
-    if (tilingData->commonTilingInfo.isNeedMM) {
-        tilingkeyMm = true;
-    } else {
-        tilingkeyMm = false;
-    }
-    if (tilingData->commonTilingInfo.isGmmWeightTrans) {
-        tilingekyGmmTrans = true;
-    } else {
-        tilingekyGmmTrans = false;
-    }
-    if (tilingData->commonTilingInfo.isMmWeightTrans) {
-        tilingekyMmTrans = true;
-    } else {
-        tilingekyMmTrans = false;
-    }
+    bool tilingekyGmmTrans = tilingData->commonTilingInfo.isGmmWeightTrans;
+    bool tilingekyMmTrans = tilingData->commonTilingInfo.isMmWeightTrans;
     uint8_t commMode = mc2tiling::Mc2TilingUtils::GetCommModeFromEnv();
-    uint64_t tilingKey = GET_TPL_TILING_KEY(templateMmDType, tilingkeyMm,
-                                    tilingekyGmmTrans, tilingekyMmTrans, commMode);
+    uint64_t tilingKey = GET_TPL_TILING_KEY(tilingekyGmmTrans, tilingekyMmTrans, commMode);
 
     PrintCommonTilingInfo(tilingData->commonTilingInfo);
     OP_LOGD(A_INNER_DEBUG, "end RunFusionKernelTiling, tilingKey is %lu", tilingKey);
