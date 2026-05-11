@@ -50,10 +50,11 @@ constexpr uint8_t MC2_DEBUG_ONLY_AICPU = 4;  // 只通信不计算
 constexpr char HCCL_DETERMINISTIC[] = "HCCL_DETERMINISTIC";
 /**
 当前通信API未提供枚举，后续会提供
-0：默认值 1：HOST_TS（A2/3支持 A5不支持）2：AICPU_TS（A2/3支持 A5不支持）
-3：AIV 4：AIV_ONLY（A2/3支持 A5不支持） 5：CCU_MS（A2/3支持 A5不支持）
-6：CCU_SCHED（A2/3支持 A5不支持） 7：AICPU_UB/ROCE（A5不支持）
+0：默认值 1：HOST_TS 2：AICPU_TS
+3：AIV 4：AIV_ONLY 5：CCU_MS
+6：CCU_SCHED 7：AICPU_UB/ROCE
 **/
+constexpr uint8_t AICPU_ENGINE = 2;
 constexpr uint8_t AIV_ENGINE = 3;
 constexpr uint8_t A5_CCU_ENGINE = 5;
 constexpr uint8_t Y_INDEX = 3;
@@ -168,11 +169,16 @@ inline NpuArch GetNpuArch(const gert::TilingContext *context)
     return ascendcPlatform.GetCurNpuArch();
 }
 
+// 通信模式常量定义
+constexpr uint8_t COMM_MODE_CCU = 0;      // CCU通信模式
+constexpr uint8_t COMM_MODE_AICPU = 1;    // AICPU通信模式
+
 class Mc2TilingUtils {
  public:
   static uint8_t GetDebugMode();
   static uint8_t GetDebugCommAlg();
   static uint8_t GetDebugStepSize();
+  static uint8_t GetCommModeFromEnv();
   static uint32_t GetCommSets(const char *group);
   static ge::graphStatus CommonParamCheck(const gert::TilingContext *context);
   static mc2tiling::HcclDataType GetDataType(ge::DataType type);
