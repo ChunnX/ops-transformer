@@ -727,7 +727,7 @@ static ge::graphStatus SetHcclTiling(const gert::TilingContext* context, Grouped
     Mc2CcTilingConfig hcclCcTilingConfig(groupEpPtr, alltoAllvCmd, alltoAllvConfig,
                                          alltoAllvReduceType, alltoAllvDstDataType, alltoAllvSrcDataType);
     uint8_t commMode = mc2tiling::Mc2TilingUtils::GetCommModeFromEnv();
-    uint8_t engineType = (commMode == mc2tiling::COMM_MODE_CCU) ? mc2tiling::A5_CCU_ENGINE : mc2tiling::AICPU_ENGINE;
+    uint8_t engineType = (commMode == mc2tiling::COMM_MODE_CCU) ? 0 : mc2tiling::AICPU_ENGINE;
     hcclCcTilingConfig.SetCommEngine(engineType);
     OP_LOGD(A_INNER_DEBUG, "SetCommEngine commMode=%u engineType=%u (0=CCU/5=A5_CCU, 2=AICPU)", commMode, engineType);
     OP_TILING_CHECK(hcclCcTilingConfig.GetTiling(tilingData->hcclInitTiling) != 0,

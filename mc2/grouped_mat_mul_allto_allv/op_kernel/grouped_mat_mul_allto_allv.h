@@ -29,28 +29,23 @@
 #endif
 #include "grouped_mat_mul_allto_allv_tiling.h"
 
- // 通信模式定义
-#ifndef TILINGKEY_TPL_CCU
-#define TILINGKEY_TPL_CCU 0
-#endif
-#ifndef TILINGKEY_TPL_AICPU
-#define TILINGKEY_TPL_AICPU 1
-#endif
+constexpr int CCU_COMM_MODE = 0;
+constexpr int AICPU_COMM_MODE = 1;
 
 namespace AscendC {
 using namespace ALLTO_ALLV_GMM;
 
-template<int commMode = TILINGKEY_TPL_CCU>
+template<int commMode = CCU_COMM_MODE>
 struct HcclTypeSelector {
     using type = Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU>;
 };
 
 template<>
-struct HcclTypeSelector<TILINGKEY_TPL_AICPU> {
-    using type = Hccl<HcclServerType::TILINGKEY_TPL_AICPU>;
+struct HcclTypeSelector<AICPU_COMM_MODE> {
+    using type = Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU>;
 };
 
-template <typename GMMATAV, int TILINGKEY_COMM_MODE = TILINGKEY_TPL_CCU>
+template <typename GMMATAV, int TILINGKEY_COMM_MODE = CCU_COMM_MODE>
 class GroupedMatmulAlltoAllv
 {
 public:
