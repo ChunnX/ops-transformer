@@ -573,7 +573,7 @@ public:
     __aicore__ inline void CopyValueSlice(const LocalTensor<KV_T> &dstTensor, uint32_t s2Offset, uint32_t s2RealSize,
                                           uint32_t dOffset, uint32_t dRealSize, RunInfoX &runInfo)
     {
-        uint32_t dstStride = (s2RealSize + 31) >> 5 << 5;
+        uint32_t dstStride = (s2RealSize + 63) >> 6 << 6;
         FaL1Tensor<KV_T, L1Format::NZ> l1Tensor {
             .tensor = dstTensor,
             .rowCount = dstStride
@@ -788,7 +788,7 @@ public:
             mm2B.Wait<HardEvent::MTE1_MTE2>();
             LocalTensor<KV_T> mm2BTensor = mm2B.GetTensor<KV_T>();
             CopyValueSlice(mm2BTensor, runInfo.s2Idx + k * baseK, realK, 0, constInfo.dSizeV, runInfo);
-            uint32_t vScaleOffset = (((realK) + 31) >> 5 << 5) * constInfo.dSizeV; // VScale在mm1B的偏移量（单位：元素）
+            uint32_t vScaleOffset = (((realK) + 63) >> 6 << 6) * constInfo.dSizeV; // VScale在mm1B的偏移量（单位：元素）
             LocalTensor<SCALE_T> mm2BScaleTensor = mm2B.GetTensor<SCALE_T>(vScaleOffset);
             CopyValueScaleSlice(mm2BScaleTensor, (runInfo.s2Idx + k * baseK) / MXFP_DIVISOR_SIZE,
                                 (realK + 63) / MXFP_DIVISOR_SIZE, 0, constInfo.dSizeV * MXFP_MULTI_BASE_SIZE, runInfo);

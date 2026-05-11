@@ -665,20 +665,18 @@ __aicore__ inline void MatmulFull(const LocalTensor<A> &aL1Tensor,
     Buffer<BufferType::L0A> l0aBuffer = aL0BuffsDb.Get();
     l0aBuffer.Wait<HardEvent::M_MTE1>();
     LocalTensor<L0ADType> L0ATensor = l0aBuffer.GetTensor<L0ADType>();
-#if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__) || (__NPU_ARCH__ == 5102))
+#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
     if constexpr (IsSameType<L0ADType, mx_fp8_e4m3_t>::value) {
-        LoadDataToL0AMx<A, L0ADType>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, 0, param.singleK, param.singleM); // d,s2
+        LoadDataToL0AMx<A, L0ADType>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, 0, param.singleK, param.singleM);
     } else
 #endif
     {
         LoadDataToL0A(L0ATensor, aL1Tensor, param, 0, param.singleK, param.singleM); // s2*d,d,s2
     }
-    l0aBuffer.Set<HardEvent::MTE1_M>();
 
     Buffer<BufferType::L0B> l0bBuffer = bL0BuffsDb.Get();
-    l0bBuffer.Wait<HardEvent::M_MTE1>();
     LocalTensor<L0BDType> L0BTensor = l0bBuffer.GetTensor<L0BDType>();
-#if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__))
+#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
     if constexpr (IsSameType<L0BDType, mx_fp8_e4m3_t>::value) {
         LoadDataToL0BMx<B, L0BDType>(L0BTensor, bL1Tensor, bScaleL1Tensor, param, 0, param.singleK, param.singleN);
     } else
@@ -686,10 +684,9 @@ __aicore__ inline void MatmulFull(const LocalTensor<A> &aL1Tensor,
     {
         LoadDataToL0B(L0BTensor, bL1Tensor, param, 0, param.singleK, param.singleN);
     }
-    l0bBuffer.Set<HardEvent::MTE1_M>();
+    l0aBuffer.Set<HardEvent::MTE1_M>();
 
     l0aBuffer.Wait<HardEvent::MTE1_M>();
-    l0bBuffer.Wait<HardEvent::MTE1_M>();
 
     MmadParams mmadParams;
     mmadParams.m = param.singleM;
@@ -708,7 +705,6 @@ __aicore__ inline void MatmulFull(const LocalTensor<A> &aL1Tensor,
     Mmad(cL0Tensor, L0ATensor, L0BTensor, mmadParams);
  
     l0aBuffer.Set<HardEvent::M_MTE1>();
-    l0bBuffer.Set<HardEvent::M_MTE1>();
 }
 
 // 切K
@@ -746,7 +742,7 @@ __aicore__ inline void MatmulK(const LocalTensor<A> &aL1Tensor,
         Buffer<BufferType::L0A> l0aBuffer = aL0BuffsDb.Get();
         l0aBuffer.Wait<HardEvent::M_MTE1>(); // mte1等Matmul：上一轮matmul完成后才能搬运新数据到L0A
         LocalTensor<L0ADType> L0ATensor = l0aBuffer.GetTensor<L0ADType>();
-#if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__))
+#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
         if constexpr (IsSameType<L0ADType, mx_fp8_e4m3_t>::value) {
             LoadDataToL0AMx<A, L0ADType>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, k * L1Aoffset, tileK, param.singleM); // s2,
         } else
@@ -759,7 +755,7 @@ __aicore__ inline void MatmulK(const LocalTensor<A> &aL1Tensor,
         l0bBuffer.Wait<HardEvent::M_MTE1>(); // mte1等Matmul：上一轮matmul完成后才能搬运新数据到L0B
         LocalTensor<L0BDType> L0BTensor = l0bBuffer.GetTensor<L0BDType>();
         uint64_t loopNum = param.isRightTranspose ? 1 : kLoops;
-#if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__))
+#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
         if constexpr (IsSameType<L0BDType, mx_fp8_e4m3_t>::value) {
             LoadDataToL0BMx<B, L0BDType>(L0BTensor, bL1Tensor, bScaleL1Tensor, param, k * L1Boffset, tileK, param.singleN, loopNum); // tileK.D
         } else
@@ -897,7 +893,7 @@ __aicore__ inline void MatmulN(const LocalTensor<A> &aL1Tensor,
     Buffer<BufferType::L0A> l0aBuffer = aL0BuffsDb.Get();
     l0aBuffer.Wait<HardEvent::M_MTE1>(); // mte1等Matmul：上一轮matmul完成后才能搬运新数据到L0A
     LocalTensor<L0ADType> L0ATensor = l0aBuffer.GetTensor<L0ADType>();
-#if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__))
+#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
     if constexpr (IsSameType<L0ADType, mx_fp8_e4m3_t>::value) {
         LoadDataToL0AMx<A, L0ADType>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, 0, param.singleK, param.singleM); // d,s2
     } else
@@ -912,7 +908,7 @@ __aicore__ inline void MatmulN(const LocalTensor<A> &aL1Tensor,
         l0bBuffer.Wait<HardEvent::M_MTE1>(); // mte1等Matmul：上一轮matmul完成后才能搬运新数据到L0B
         LocalTensor<L0BDType> L0BTensor = l0bBuffer.GetTensor<L0BDType>();
         uint64_t loopNum = param.isRightTranspose ? nLoops : 1;
-#if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__))
+#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
         if constexpr (IsSameType<L0BDType, mx_fp8_e4m3_t>::value) {
             LoadDataToL0BMx<B, L0BDType>(L0BTensor, bL1Tensor, bScaleL1Tensor, param, n * L1Boffset, param.singleK, tileN, loopNum); // tileK.D
         } else
