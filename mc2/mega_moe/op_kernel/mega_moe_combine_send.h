@@ -23,21 +23,21 @@ using namespace AscendC;
 
 namespace MegaMoeCombineImpl {
 
-// 一次性从GM搬整个tile到UB
+// 一次性从GM搬整个tile到UB（gmNStride为layout对齐后的真实行跨度）
 template <typename ElementMMadOut2>
 __aicore__ inline void CopyTileFromGM(
     LocalTensor<ElementMMadOut2>& ubDst,
     GlobalTensor<ElementMMadOut2>& gmSrc,
-    uint32_t rowStart, uint32_t rowCount, uint32_t colStart, uint32_t colCount, uint32_t n)
+    uint32_t rowStart, uint32_t rowCount, uint32_t colStart, uint32_t colCount, uint32_t gmNStride)
 {
     // 从GM读取tile数据到UB
     DataCopyPadExtParams<ElementMMadOut2> copyPadParams{false, 0U, 0U, 0U};
     AscendC::DataCopyExtParams gm2UbParams{
         static_cast<uint16_t>(rowCount),
         static_cast<uint32_t>(colCount * sizeof(ElementMMadOut2)),
-        static_cast<uint16_t>((n - colCount) * sizeof(ElementMMadOut2)),
+        static_cast<uint16_t>((gmNStride - colCount) * sizeof(ElementMMadOut2)),
         0, 0};
-    AscendC::DataCopyPad(ubDst, gmSrc[rowStart * n + colStart], gm2UbParams, copyPadParams);
+    AscendC::DataCopyPad(ubDst, gmSrc[rowStart * gmNStride + colStart], gm2UbParams, copyPadParams);
 }
 
 // 从UB发送到远端GM（复用stepOne的CombineTokens逻辑）
@@ -118,7 +118,7 @@ __aicore__ inline void CombineTile(
     CopyTileFromGM(ubBuffer, gmm2OutGm, mLoc, rowCount, nLoc, colCount, n);
     SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
 
-    // 第二步：从UB发送到远端GM（复用stepOne的CombineTokens逻辑）
+    // 第二步：从UB发送到远端GM
     CombineTokens(mLoc, nLoc, n, groupIdx, rankId, ubBuffer, actualBlockShape, params);
 }
 }  // namespace MegaMoeCombineImpl
