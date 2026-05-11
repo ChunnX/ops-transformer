@@ -260,8 +260,9 @@ bool CommonChecker::CheckNormalTensorList(const FiaTilingInfo &fiaInfo)
                 }
             }
         }
-    } else if (layoutStr == "BNSD" || layoutStr == "BNSD_BSND") { // check N and D, respectively, are the same
-        // across batches and KVs under BNSD/BNSD_BSND
+    } else if (layoutStr == "BNSD" || layoutStr == "BNSD_BSND" || layoutStr == "BNSD_NBSD") {
+        // check N and D, respectively, are the same
+        // across batches and KVs under BNSD/BNSD_BSND/BNSD_NBSD
         auto standardN = fiaInfo.kCache[0]->GetStorageShape().GetDim(1);
         auto standardKD = fiaInfo.kCache[0]->GetStorageShape().GetDim(3);
         auto standardVD = fiaInfo.vCache[0]->GetStorageShape().GetDim(3);
@@ -441,11 +442,11 @@ ge::graphStatus CommonChecker::CheckAxis(const FiaTilingInfo &fiaInfo)
                         fiaInfo.s2Size),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(fiaInfo.qkHeadDim > D_LIMIT || fiaInfo.qkHeadDim < 0,
-                OP_LOGE(fiaInfo.opName, "The axis D of query and key only support (0, %u], the current is %u.",
+                OP_LOGE(fiaInfo.opName, "The axis D of query and key only support [0, %u], the current is %u.",
                         D_LIMIT, fiaInfo.qkHeadDim),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(fiaInfo.vHeadDim > D_LIMIT || fiaInfo.vHeadDim < 0,
-                OP_LOGE(fiaInfo.opName, "The axis D of value only support (0, %u], the current is %u.",
+                OP_LOGE(fiaInfo.opName, "The axis D of value only support [0, %u], the current is %u.",
                         D_LIMIT, fiaInfo.vHeadDim),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(fiaInfo.isQKVDDifferent && (fiaInfo.qkHeadDim > 128),
@@ -456,14 +457,14 @@ ge::graphStatus CommonChecker::CheckAxis(const FiaTilingInfo &fiaInfo)
                 OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName, "Value headdim must smaller than 128 when query and key "
                     "headdim is not equal to value headdim."),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(fiaInfo.qLayout == FiaLayout::TND && fiaInfo.qTSize < 0,
+    OP_CHECK_IF((fiaInfo.qLayout == FiaLayout::TND || fiaInfo.qLayout == FiaLayout::NTD) && fiaInfo.qTSize < 0,
                 OP_LOGE(fiaInfo.opName,
-                "The axis T of query only support >0 when input layout is TND, the current is %u",
+                "The axis T of query only support >=0 when input layout is TND/NTD, the current is %u",
                         fiaInfo.qTSize),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(fiaInfo.kvLayout == FiaLayout::TND && fiaInfo.kTSize < 0,
+    OP_CHECK_IF((fiaInfo.kvLayout == FiaLayout::TND || fiaInfo.qLayout == FiaLayout::NTD) && fiaInfo.kTSize < 0,
                 OP_LOGE(fiaInfo.opName,
-                "The axis T of key only support >0 when input layout is TND, the current is %u.",
+                "The axis T of key only support >=0 when input layout is TND/NTD, the current is %u.",
                         fiaInfo.kTSize),
                 return ge::GRAPH_FAILED);
     if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) {
