@@ -44,7 +44,10 @@ enum class GmFormat {
     PA_BnNBs = 17,
     BN2GS1S2 = 18, //PSE_GmFormat
     SBNGD = 19,
-    SBND = 20
+    SBND = 20,
+    NTGD = 21,
+    TND2 = 22, // VSCALE, 尾轴2
+    PA_NZ_K_SCALE = 23,
 };
 
 template <GmFormat FORMAT>
@@ -135,6 +138,22 @@ struct GmLayout<GmFormat::NGTD> {
 };
 
 template <>
+struct GmLayout<GmFormat::NTGD> {
+    AscendC::Shape<uint32_t, uint32_t, uint32_t, uint32_t> shape;
+    AscendC::Stride<uint64_t, uint64_t, uint64_t, uint64_t> stride;
+
+    __aicore__ inline GmLayout() = default;
+    __aicore__ inline void MakeLayout(uint32_t t, uint32_t n, uint32_t g, uint32_t d) {
+        shape = AscendC::MakeShape(t, n, g, d);
+        uint64_t dStride = 1;
+        uint64_t gStride = dStride * d;
+        uint64_t tStride = gStride * g;
+        uint64_t nStride = tStride * t;
+        stride = AscendC::MakeStride(tStride, nStride, gStride, dStride);
+    }
+};
+
+template <>
 struct GmLayout<GmFormat::BSND> {
     AscendC::Shape<uint32_t, uint32_t, uint32_t, uint32_t> shape;
     AscendC::Stride<uint64_t, uint64_t, uint64_t, uint64_t> stride;
@@ -168,6 +187,21 @@ struct GmLayout<GmFormat::BNSD> {
 
 template <>
 struct GmLayout<GmFormat::TND> {
+    AscendC::Shape<uint32_t, uint32_t, uint32_t> shape;
+    AscendC::Stride<uint64_t, uint64_t, uint64_t> stride;
+
+    __aicore__ inline GmLayout() = default;
+    __aicore__ inline void MakeLayout(uint32_t t, uint32_t n, uint32_t d) {
+        shape = AscendC::MakeShape(t, n, d);
+        uint64_t dStride = 1;
+        uint64_t nStride = dStride * d;
+        uint64_t tStride = nStride * n;
+        stride = AscendC::MakeStride(tStride, nStride, dStride);
+    }
+};
+
+template <>
+struct GmLayout<GmFormat::TND2> {
     AscendC::Shape<uint32_t, uint32_t, uint32_t> shape;
     AscendC::Stride<uint64_t, uint64_t, uint64_t> stride;
 
@@ -245,6 +279,23 @@ struct GmLayout<GmFormat::PA_NZ> {
     }
 };
 
+template <>
+struct GmLayout<GmFormat::PA_NZ_K_SCALE> {
+    AscendC::Shape<uint32_t, uint32_t, uint32_t, uint32_t> shape;
+    AscendC::Stride<uint64_t, uint64_t, uint64_t, uint64_t, uint64_t> stride;
+
+    __aicore__ inline GmLayout() = default;
+    __aicore__ inline void MakeLayout(uint32_t n, uint32_t blockSize1, uint32_t d, uint32_t blockSize0) {
+        shape = AscendC::MakeShape(n, blockSize1, d, blockSize0);
+        uint64_t bs0Stride = 1;
+        uint64_t dStride = bs0Stride * blockSize0;
+        uint64_t bs1Stride = dStride * d;
+        uint64_t nStride = bs1Stride * blockSize1;
+        uint64_t bnStride = nStride * n;
+        stride = AscendC::MakeStride(bnStride, nStride, bs1Stride, dStride, bs0Stride);
+    }
+};
+
 // post_quant
 template <>
 struct GmLayout<GmFormat::NGD> {
@@ -303,12 +354,12 @@ struct GmLayout<GmFormat::BNS2> {
         uint64_t sStride = 1;
         uint64_t nStride = sStride * s;
         uint64_t bStride = nStride * n;
-        
+
         stride = AscendC::MakeStride(bStride, nStride, sStride);
     }
 };
 template <>
-struct GmLayout<GmFormat::PA_BnBs> { 
+struct GmLayout<GmFormat::PA_BnBs> {
     AscendC::Shape<uint32_t> shape;
     AscendC::Stride<uint64_t, uint64_t> stride;
 
