@@ -69,6 +69,7 @@ private:
     ge::graphStatus CheckDequantScaleShapePertensor(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckDequantScaleShapeMXFP8(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckDequantScaleBnNBsDShapeMXFP8(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckDequantScaleNZShapeMXFP8(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckQuantScale1ShapePerblock(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckQuantScale1ShapeMXFP8(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckDequantScaleShapePerblock(const FiaTilingInfo &fiaInfo);
@@ -126,6 +127,8 @@ private:
     bool enablePertensorQuant_ = false;
     bool enableIFAMLAFullQuant_ = false;
     bool enableMxfp8FullQuant_ = false;
+    bool enableMxfp8FullQuantPrefill_ = false;
+    bool enableMxfp8FullQuantDecode_ = false;
 };
 
 } // namespace optiling

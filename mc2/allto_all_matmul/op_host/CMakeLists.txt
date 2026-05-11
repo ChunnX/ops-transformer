@@ -21,16 +21,6 @@ if (BUILD_OPEN_PROJECT)  # custom
     set(MC2_OPT ON PARENT_SCOPE)
     set(allto_all_matmul_depends mc2/common mc2/3rd mc2/matmul_allto_all PARENT_SCOPE)
     set(allto_all_matmul_apt_depends mc2/common mc2/3rd mc2/matmul_allto_all PARENT_SCOPE)
-
-    file(GLOB ALLTO_ALL_MATMUL_TILING_SRCS
-        ${CMAKE_CURRENT_SOURCE_DIR}/op_tiling/*.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/op_tiling/arch35/*.cpp
-    )
-    if(ALLTO_ALL_MATMUL_TILING_SRCS AND (SUB_MC2_COMPILE OR OP_HOST_UT OR UT_TEST_ALL))
-        add_tiling_modules()
-        target_sources(${OPHOST_NAME}_tiling_obj PRIVATE ${ALLTO_ALL_MATMUL_TILING_SRCS})
-    endif()
-
     set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
     if("${CONDITION_UNIT}" STREQUAL "ascend950")
         add_ops_compile_options(
