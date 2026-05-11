@@ -223,6 +223,8 @@ bool SparseLightningIndexerGradKLLossTilingBase::AnalyzeDimLayout(const gert::Sh
     // dRopeSize的确定，有queryRopeShape 和 keyRopeShape
     if (layoutLen == 3UL) {
         if (inputLayout[0] == 'T' && inputLayout[1] == 'N' && inputLayout[2] == 'D') {
+            OP_CHECK_IF(true,
+                OP_LOGE(opName, "op current not support tnd layout"), return false);
             int64_t actualSeqQLen = 0;
             int64_t actualSeqKLen = 0;
             int64_t t1Size = queryShape.GetDim(0); // TND只有三个数值 T:0 N:1 D:2

@@ -373,6 +373,12 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetBaseShapeInfo()
         return ge::GRAPH_FAILED;
     }
     int64_t N2 = oriKvShape.GetDim(dimSize - 2);
+
+    if (strcmp(inputLayout, TND_STR) == 0) {
+        OP_LOGE(context_, "SparseAttnSharedkvGrad not support TND layout");
+        return ge::GRAPH_FAILED;
+    }
+    
     if (strcmp(inputLayout, TND_STR) != 0 && strcmp(inputLayout, BSND_STR) != 0) {
         OP_LOGE(context_, "SparseAttnSharedkvGrad only support TND or BSND layout, now layout is %s.", inputLayout);
         return ge::GRAPH_FAILED;
