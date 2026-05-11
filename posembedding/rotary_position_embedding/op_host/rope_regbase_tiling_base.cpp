@@ -151,7 +151,9 @@ ge::graphStatus RopeRegBaseTilingClass::JudgeLayoutByShape(const gert::Shape &xS
         layout_ = RopeLayout::BNSD;
         is1snd_ = true;
     } else {
-        OP_LOGE(context_->GetNodeName(), "the shape of x and sin not satisfy the broadcast.");
+        std::string shapeMsg = ToString(cosShape) + " and " + ToString(xShape);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "cos and x", shapeMsg.c_str(), 
+            "Each axis of input cos except the last must be 1 or equal to the same axis of input x");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

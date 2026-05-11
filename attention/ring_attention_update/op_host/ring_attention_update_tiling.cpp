@@ -472,7 +472,14 @@ static ge::graphStatus RingAttentionUpdateTNDUbSizeCheck(const gert::TilingConte
     return ge::GRAPH_FAILED;
   }
   if (headNum > MAX_HEAD_NUM_LIMIT_SIZE) {
-    OP_LOGE(context->GetNodeName(), "Don't support this shape currently, please try to use smaller N!");
+    auto prevAttnOutShapePtr = context->GetInputShape(0);
+    OP_CHECK_NULL_WITH_CONTEXT(context, prevAttnOutShapePtr);
+    gert::Shape prevAttnOutShape = prevAttnOutShapePtr->GetStorageShape();
+    std::string reasonMsg = "The N-dimension of input prev_attn_out must be less than or equal to " +
+      std::to_string(MAX_HEAD_NUM_LIMIT_SIZE) +
+      ", where N is the 1st axis when the format of prev_attn_out is TND";
+    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "prev_attn_out",
+      ToString(prevAttnOutShape).c_str(), reasonMsg.c_str());
     return ge::GRAPH_FAILED;
   }
 

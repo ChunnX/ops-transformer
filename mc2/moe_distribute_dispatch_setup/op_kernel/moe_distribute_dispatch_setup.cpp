@@ -31,51 +31,51 @@ extern "C" __global__ __aicore__ void moe_distribute_dispatch_setup(GM_ADDR x, G
     TPipe pipe;
     auto tiling = (__gm__ MoeDistributeDispatchSetupTilingData*)tilingGM;
 #if (ORIG_DTYPE_Y == DT_BF16 || ORIG_DTYPE_Y == DT_FLOAT16)
-    #if TILING_KEY_VAR == 1000
+    if (TILING_KEY_IS(1000)) {
         GET_TILING_DATA_WITH_STRUCT(MoeDistributeDispatchSetupTilingData, tilingData, tilingGM);
         MoeDistributeDispatchSetup<DTYPE_X, DTYPE_Y, UNQUANT, false> op;
         op.Init(x, expertIds, scales, xActiveMask, YOut, expandIdxOut, commCmdInfoOut,
                  workspaceGM, &pipe, &tilingData);
         op.Process();
-    #endif
+    } 
 #elif ((ORIG_DTYPE_Y == DT_INT8) || (ORIG_DTYPE_Y == DT_FLOAT8_E5M2) || (ORIG_DTYPE_Y == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_Y == DT_HIFLOAT8))
-    #if TILING_KEY_VAR == 1011
+    if (TILING_KEY_IS(1011)) {
         GET_TILING_DATA_WITH_STRUCT(MoeDistributeDispatchSetupTilingData, tilingData, tilingGM);
         MoeDistributeDispatchSetup<DTYPE_X, DTYPE_Y, STATIC_QUANT, true> op;
         op.Init(x, expertIds, scales, xActiveMask, YOut, expandIdxOut, commCmdInfoOut,
             workspaceGM, &pipe, &tilingData);
         op.Process();
-    #elif TILING_KEY_VAR == 1002
+    } else if (TILING_KEY_IS(1002)) {
         GET_TILING_DATA_WITH_STRUCT(MoeDistributeDispatchSetupTilingData, tilingData, tilingGM);
         MoeDistributeDispatchSetup<DTYPE_X, DTYPE_Y, PERTOKEN_DYNAMIC_QUANT, false> op;
         op.Init(x, expertIds, scales, xActiveMask, YOut, expandIdxOut, commCmdInfoOut,
             workspaceGM, &pipe, &tilingData);
         op.Process();
-    #elif TILING_KEY_VAR == 1012
+    } else if (TILING_KEY_IS(1012)) {
         GET_TILING_DATA_WITH_STRUCT(MoeDistributeDispatchSetupTilingData, tilingData, tilingGM);
         MoeDistributeDispatchSetup<DTYPE_X, DTYPE_Y, PERTOKEN_DYNAMIC_QUANT, true> op;
         op.Init(x, expertIds, scales, xActiveMask, YOut, expandIdxOut, commCmdInfoOut,
             workspaceGM, &pipe, &tilingData);
         op.Process();
-    #elif TILING_KEY_VAR == 1003
+    } else if (TILING_KEY_IS(1003)) {
         GET_TILING_DATA_WITH_STRUCT(MoeDistributeDispatchSetupTilingData, tilingData, tilingGM);
         MoeDistributeDispatchSetup<DTYPE_X, DTYPE_Y, PERGROUP_DYNAMIC_QUANT, false> op;
         op.Init(x, expertIds, scales, xActiveMask, YOut, expandIdxOut, commCmdInfoOut,
             workspaceGM, &pipe, &tilingData);
         op.Process();
-    #elif TILING_KEY_VAR == 1013
+    } else if (TILING_KEY_IS(1013)) {
         GET_TILING_DATA_WITH_STRUCT(MoeDistributeDispatchSetupTilingData, tilingData, tilingGM);
         MoeDistributeDispatchSetup<DTYPE_X, DTYPE_Y, PERGROUP_DYNAMIC_QUANT, true> op;
         op.Init(x, expertIds, scales, xActiveMask, YOut, expandIdxOut, commCmdInfoOut,
             workspaceGM, &pipe, &tilingData);
         op.Process();
-    #elif TILING_KEY_VAR == 1004
+    } else if (TILING_KEY_IS(1004)) {
         GET_TILING_DATA_WITH_STRUCT(MoeDistributeDispatchSetupTilingData, tilingData, tilingGM);
         MoeDistributeDispatchSetup<DTYPE_X, DTYPE_Y, MX_QUANT, false> op;
         op.Init(x, expertIds, scales, xActiveMask, YOut, expandIdxOut, commCmdInfoOut,
             workspaceGM, &pipe, &tilingData);
         op.Process();
-    #endif
+    }
 
 #endif
 }

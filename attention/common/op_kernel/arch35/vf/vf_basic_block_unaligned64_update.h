@@ -31,7 +31,7 @@ __simd_vf__ void ProcessVec1UpdateImpl64VF(
     __ubuf__ uint32_t * dropMaskUb, const uint32_t nPadding, const uint32_t blockStride, const uint32_t repeatStride,
     const float dScale, uint32_t pltOriginalN, float divValue, uint32_t pltSrcN, uint32_t pltSrcN16, const uint16_t m,
     const uint32_t pseStride, const float slopes, const float posShift, const T scale, const float dScaleQK,
-    const T minValue, const float deSCaleKValue = 1.0f, const float sinkValue = 0.0f)
+    const T minValue, const float deSCaleKValue = 1.0f, const float sinkValue = 0.0f, const float pScale = 1.0f)
 {
     RegTensor<float> vreg_min;
     RegTensor<float> vreg_sel;
@@ -83,6 +83,12 @@ __simd_vf__ void ProcessVec1UpdateImpl64VF(
     MaskReg preg2 = CreateMask<int8_t, MaskPattern::ALLF>();
     MaskReg preg3;
     MaskReg preg4;
+
+    //pScale
+    RegTensor<float> vreg_p_scale;
+    RegTensor<float> vreg_ln_p_scale;
+    Duplicate(vreg_p_scale, static_cast<float>(pScale));
+    Ln(vreg_ln_p_scale, vreg_p_scale, preg_all);
 
     if constexpr (hasSink) {
         Duplicate(vreg_sink_input, sinkValue);
@@ -152,11 +158,15 @@ __simd_vf__ void ProcessVec1UpdateImpl64VF(
             Select(vreg_sel, vreg_min, vreg_input_x, preg_compare);
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
                 (__ubuf__ T *&)srcUb + i * s2BaseSize, vreg_sel, preg_src_n);
+            //TODO: pScale,preg均需要关注
+            Sub(vreg_sel, vreg_sel, vreg_ln_p_scale, preg_all);
             Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(
                 vreg_input_max, vreg_sel, preg_ori_src_n);
         } else {
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
                 (__ubuf__ T *&)srcUb + i * s2BaseSize, vreg_input_x, preg_src_n);
+            //TODO: pScale,preg均需要关注
+            Sub(vreg_input_x, vreg_input_x, vreg_ln_p_scale, preg_all);
             Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(
                 vreg_input_max, vreg_input_x, preg_ori_src_n);
         }
@@ -303,7 +313,7 @@ __aicore__ inline void ProcessVec1UpdateImpl64(
     const LocalTensor<uint8_t>& sharedTmpBuffer, const LocalTensor<T>& pScaleTensor, const uint16_t m,
     const uint32_t originN, const uint32_t pseStride, const float slopes, const float posShift, const T scale,
     const float dScaleQK, const T minValue, float keepProb, const LocalTensor<T>& queryScaleUb = LocalTensor<T>(),
-    const float deSCaleKValue = 1.0f, const float sinkValue = 0.0f)
+    const float deSCaleKValue = 1.0f, const float sinkValue = 0.0f, const float pScale = 1.0f)
 {
     const uint32_t nPadding = (s2BaseSize + blockBytesU8 - 1) / blockBytesU8 * blockBytesU8;
     // 写的时候固定用65或者33的stride去写，因为正向目前使能settail之后mm2的s1方向必须算满128或者64行
@@ -335,7 +345,7 @@ __aicore__ inline void ProcessVec1UpdateImpl64(
         isMlaSgd, isMlaFullQuant, hasSink>(
         expUb, pseUb, maxUb, srcUb, expMaxUb, inMaxUb, tmpExpSumUb, tmpMaxUb, tmpMaxUb2, qScaleUb, pScaleUb,
         indexesUb, maskUb, dropMaskUb, nPadding, blockStride, repeatStride, dScale, pltOriginalN, divValue, pltSrcN,
-        pltSrcN16, m, pseStride, slopes, posShift, scale, dScaleQK, minValue, deSCaleKValue, sinkValue);
+        pltSrcN16, m, pseStride, slopes, posShift, scale, dScaleQK, minValue, deSCaleKValue, sinkValue, pScale);
 }
 } // namespace
 
