@@ -58,14 +58,15 @@ uint8_t Mc2TilingUtils::GetDebugStepSize() {
   return debugStepSize;
 }
 
-uint8_t Mc2TilingUtils::GetCommModeFromEnv() {
-  auto commModeEnv = getenv(COMM_MODE_ENV);
-  uint8_t commMode = COMM_MODE_CCU;
-  if (commModeEnv != nullptr) {
-    commMode = COMM_MODE_AICPU;
-  }
-  OP_LOGI("", "Get ENV_MC2_COMM_MODE_AICPU is %u (0=CCU, 1=AICPU)", commMode);
-  return commMode;
+uint8_t Mc2TilingUtils::GetCommModeFromEnv()
+{
+    auto commModeEnv = getenv(COMM_MODE_ENV);
+    uint8_t commMode = COMM_MODE_CCU;
+    if (commModeEnv != nullptr) {
+        commMode = COMM_MODE_AICPU;
+    }
+    OP_LOGI("", "Get ENV_MC2_COMM_MODE_AICPU is %u (0=CCU, 1=AICPU)", commMode);
+    return commMode;
 }
 
 matmul_tiling::DataType ConvertGeTypeToMmType(const std::string &opName,

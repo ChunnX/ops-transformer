@@ -67,8 +67,10 @@ public:
         }
         if ASCEND_IS_AIV {
             if (GetBlockIdx() == 0) {
-                AscendC::PRINTF("YYYYYY op a2av hccl init rankId:%u rankDim:%u e:%u H1:%u N1:%u ctx:%p send:%p recv:%p ccOffset:%lu\n",
-                    rankId_, rankDim_, e_, H1_, N1_, hcclContextGm, sendBuffer, recvBuffer, hcclCcTilingOffset);
+                AscendC::PRINTF("YYYYYY op a2av hccl init rankId:%u rankDim:%u e:%u H1:%u N1:%u "
+                    "ctx:%p send:%p recv:%p ccOffset:%lu\n",
+                    rankId_, rankDim_, e_, H1_, N1_, hcclContextGm, sendBuffer, recvBuffer,
+                    hcclCcTilingOffset);
             }
         }
     }
@@ -344,7 +346,8 @@ private:
                 alltoAllvRecvOffsetLastSum += alltoAllvRecvCnt[i];
             }
         }
-AscendC::PRINTF("YYYYYY op a2av alltoallv before compute launch expert:%u rankId:%u rankDim:%u send0:%lu recv0:%lu soff0:%lu roff0:%lu axis:%lu\n",
+AscendC::PRINTF("YYYYYY op a2av alltoallv before compute launch expert:%u rankId:%u rankDim:%u "
+            "send0:%lu recv0:%lu soff0:%lu roff0:%lu axis:%lu\n",
             startExpertIdx, rankId_, rankDim_, alltoAllvSendCnt[0], alltoAllvRecvCnt[0],
             alltoAllvSendOffset[0], alltoAllvRecvOffset[0], axis);
         alltoAllvHandleId_[startExpertIdx] = hccl_.template AlltoAllV<true>(
@@ -389,7 +392,8 @@ AscendC::PRINTF("YYYYYY op a2av alltoallv before compute launch expert:%u rankId
                 alltoAllvRecvOffset[i] += static_cast<uint64_t>(recvCounts_[startExpertIdx + (i - 1) * e_ + j]) * N1_;
             }
         }
-AscendC::PRINTF("YYYYYY op a2av alltoallv after compute launch expert:%u rankId:%u rankDim:%u send0:%lu recv0:%lu soff0:%lu roff0:%lu axis:%lu\n",
+AscendC::PRINTF("YYYYYY op a2av alltoallv after compute launch expert:%u rankId:%u rankDim:%u "
+            "send0:%lu recv0:%lu soff0:%lu roff0:%lu axis:%lu\n",
             startExpertIdx, rankId_, rankDim_, alltoAllvSendCnt[0], alltoAllvRecvCnt[0],
             alltoAllvSendOffset[0], alltoAllvRecvOffset[0], N1_);
         alltoAllvHandleId_[startExpertIdx] = hccl_.template AlltoAllV<true>(
