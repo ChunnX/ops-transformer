@@ -115,7 +115,8 @@ struct MatmulAllReduceTilingUtParam: public MatmulAllReduceHostUtParamBase {
         this->ranksize = stoull(ReadMap(csvMap, "ranksize"));
 
         if(this->expectResult == ge::GRAPH_SUCCESS) {
-            this->expectTilingKey = stoull(ReadMap(csvMap, "expectTilingKey"));
+            std::string tilingKeyStr = ReadMap(csvMap, "expectTilingKey");
+            this->expectTilingKey = tilingKeyStr.empty() ? 0 : stoull(tilingKeyStr);
             this->expectTilingDataHash = ReadMap(csvMap, "expectTilingDataHash");
         }
     }
