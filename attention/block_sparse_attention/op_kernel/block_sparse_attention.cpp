@@ -110,6 +110,7 @@ extern "C" __global__ __aicore__ void block_sparse_attention(
     TILING_KEY_IS(QF8_KVF8_OBF16_QBNSD_KVBNSD_NOCACHE_SMF16_REF32_NOMASK_KEY);
 
     #if TILING_KEY_VAR == QF16_KVF16_QTND_KVTND_NOCACHE_SMF16_REF32_NOMASK_KEY
+        AscendC::Printf("tkd QF16_KVF16_QTND_KVTND_NOCACHE_SMF16_REF32_NOMASK_KEY\n");
         BsaInferIntfRegular<
             half, half, float, BsaKernelArch35::Format::TND, BsaKernelArch35::Format::TND>(
                 query, key, value, mask, blockTable, attentionOut,

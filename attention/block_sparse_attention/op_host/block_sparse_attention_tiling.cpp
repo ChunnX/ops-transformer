@@ -596,21 +596,25 @@ ge::graphStatus BSATiling::ValidateGenericDequantScale(gert::TilingContext *bsaC
 
 ge::graphStatus BSATiling::ValidateQDequantScale(gert::TilingContext *bsaContext)
 {
+    printf("tkd ValidateQDequantScale\n");
     return ValidateGenericDequantScale(bsaContext, Q_DEQUANT_SCALE_INDEX);
 }
 
 ge::graphStatus BSATiling::ValidateKDequantScale(gert::TilingContext *bsaContext)
 {
+    printf("tkd ValidateKDequantScale\n");
     return ValidateGenericDequantScale(bsaContext, K_DEQUANT_SCALE_INDEX);
 }
 
 ge::graphStatus BSATiling::ValidateVDequantScale(gert::TilingContext *bsaContext)
 {
+    printf("tkd ValidateVDequantScale\n");
     return ValidateGenericDequantScale(bsaContext, V_DEQUANT_SCALE_INDEX);
 }
 
 ge::graphStatus BSATiling::CheckBlockShapeQuantContraint(gert::TilingContext *bsaContext)
 {
+    printf("tkd CheckBlockShapeQuantContraint\n");
     if (dataType_ == ge::DT_FLOAT8_E4M3FN) {
         constexpr int64_t SUPPORTED_BLOCK_SHAPE_X = 128;
         constexpr int64_t SUPPORTED_MULTIPLE_OF_BLOCK_SHAPE_Y = 256;
@@ -638,6 +642,7 @@ ge::graphStatus BSATiling::ParseOptionalTensors(gert::TilingContext *bsaContext)
     }
 
     if (socVer_ == SOC_VER_950_CODE) {
+        printf("tkd ParseOptionalTensors if (socVer_ == SOC_VER_950_CODE)\n");
         if (ValidateQDequantScale(bsaContext) != ge::GRAPH_SUCCESS ||
             ValidateKDequantScale(bsaContext) != ge::GRAPH_SUCCESS ||
             ValidateVDequantScale(bsaContext) != ge::GRAPH_SUCCESS ||
@@ -1050,6 +1055,7 @@ uint64_t BSATiling::GenerateTilingKey(gert::TilingContext *bsaContext)
     if (softmaxLseFlag_) {
         tilingKey += 100000000ULL; // 1 for lse out
     }
+    printf("tkd tilingKey: %llu", tilingKey);
     
     return tilingKey;
 }
