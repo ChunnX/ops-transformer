@@ -60,14 +60,14 @@ private:
     uint32_t scaleNumsPerBlock_{0};   // 每块对应的scale数量
 
     // 动态分块参数（基于xPerBlock_）
-    uint32_t myTotalBlockNums_{0};    // 总块数（基于xPerBlock_）
-    uint32_t myAssignedBlockNums_{0}; // 当前核分配的块数
-    uint32_t myRound_{0};             // 基础轮次数
-    uint32_t myTailBlockNums_{0};     // 尾块数（分配给前几个核）
-    uint32_t myLastAivId_{0};         // 最后一个核的ID
-    uint64_t myXOffset_{0};           // 当前核的起始x偏移
-    uint64_t myScaleOffset_{0};       // 当前核的起始scale偏移
-    uint32_t myTailXNums_{0};         // 尾块的x数量
+    uint32_t totalBlockNums_{0};    // 总块数（基于xPerBlock_）
+    uint32_t assignedBlockNums_{0}; // 当前核分配的块数
+    uint32_t round_{0};             // 基础轮次数
+    uint32_t tailBlockNums_{0};     // 尾块数（分配给前几个核）
+    uint32_t lastAivId_{0};         // 最后一个核的ID
+    uint64_t xOffset_{0};           // 当前核的起始x偏移
+    uint64_t scaleOffset_{0};       // 当前核的起始scale偏移
+    uint32_t tailXNums_{0};         // 尾块的x数量
 
     MTECommunication<TemplateType> mteComm_; // MTE 通信相关实现
     VectorCompute<TemplateType> vecComp_; // vector 计算相关实现
@@ -172,17 +172,17 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::Init(GM_ADDR x, G
     uint64_t aivId = GetBlockIdx();
     uint64_t aivNum = tiliingDatainfo.aivNum;
 
-    myTotalBlockNums_ = CeilDiv(xNums_, xPerBlock_);  // 总块数
-    myRound_ = myTotalBlockNums_ / aivNum;           // 每核基础轮次
-    myTailBlockNums_ = myTotalBlockNums_ % aivNum;   // 尾块数
-    myAssignedBlockNums_ = aivId < myTailBlockNums_ ? myRound_ + 1 : myRound_;
-    myLastAivId_ = (myRound_ == 0) ? myTailBlockNums_ - 1 : aivNum - 1;
+    totalBlockNums_ = CeilDiv(xNums_, xPerBlock_);  // 总块数
+    round_ = totalBlockNums_ / aivNum;           // 每核基础轮次
+    tailBlockNums_ = totalBlockNums_ % aivNum;   // 尾块数
+    assignedBlockNums_ = aivId < tailBlockNums_ ? round_ + 1 : round_;
+    lastAivId_ = (round_ == 0) ? tailBlockNums_ - 1 : aivNum - 1;
 
     // 计算当前核的起始偏移
-    uint64_t blockIdx = aivId * myRound_ + (aivId < myTailBlockNums_ ? aivId : myTailBlockNums_);
-    myXOffset_ = blockIdx * xPerBlock_;
-    myScaleOffset_ = blockIdx * scaleNumsPerBlock_;
-    myTailXNums_ = BlockAlignMod(xNums_, xPerBlock_);
+    uint64_t blockIdx = aivId * round_ + (aivId < tailBlockNums_ ? aivId : tailBlockNums_);
+    xOffset_ = blockIdx * xPerBlock_;
+    scaleOffset_ = blockIdx * scaleNumsPerBlock_;
+    tailXNums_ = BlockAlignMod(xNums_, xPerBlock_);
 
     // 设置vecComp的块大小
     vecComp_.SetBlockSize(xPerBlock_);
@@ -190,10 +190,10 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::Init(GM_ADDR x, G
     // MTE搬运参数初始化：与 ExecuteAllReduce 用相同的动态分块策略（基于 xPerBlock_）
     // 这样每核 CopyDataToWin 搬运的范围 = ExecuteAllReduce 读取的范围，
     // 跨 rank 同步后每核读自己搬的数据，不会跨核读取
-    mteComm_.round_ = myRound_;
-    mteComm_.tailBlockNums_ = myTailBlockNums_;
+    mteComm_.round_ = round_;
+    mteComm_.tailBlockNums_ = tailBlockNums_;
     mteComm_.ComputeTailAivId(aivNum);
-    mteComm_.SetBlockSize(xPerBlock_, aivNum, myTailXNums_, scaleNumsPerBlock_);
+    mteComm_.SetBlockSize(xPerBlock_, aivNum, tailXNums_, scaleNumsPerBlock_);
     mteComm_.InitParams();
     mteComm_.InitBuffer(tPipe);
     vecComp_.InitBuffer(tPipe);
@@ -241,15 +241,15 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::ExecuteAllReduce(
     uint64_t aivId = GetBlockIdx();
 
     // 遍历需要处理的数据块（基于动态xPerBlock_分块）
-    for (uint64_t curBlock = 0; curBlock < myAssignedBlockNums_; ++curBlock) {
-        uint64_t curXOffset = myXOffset_ + curBlock * xPerBlock_;
-        uint64_t curScaleOffset = myScaleOffset_ + curBlock * scaleNumsPerBlock_;
+    for (uint64_t curBlock = 0; curBlock < assignedBlockNums_; ++curBlock) {
+        uint64_t curXOffset = xOffset_ + curBlock * xPerBlock_;
+        uint64_t curScaleOffset = scaleOffset_ + curBlock * scaleNumsPerBlock_;
 
         // 计算当前块的x数量（尾块处理）
         uint32_t curXNum = xPerBlock_;
         uint32_t curScaleNum = scaleNumsPerBlock_;
-        if ((aivId == myLastAivId_) && (curBlock == myAssignedBlockNums_ - 1)) {
-            curXNum = myTailXNums_;
+        if ((aivId == lastAivId_) && (curBlock == assignedBlockNums_ - 1)) {
+            curXNum = tailXNums_;
             // 尾块的scale数量：real 值（DataCopyPad 处理 sub-32B 拷贝，不再需要硬对齐）
             if constexpr (AscendC::IsSameType<ScalesType, fp8_e8m0_t>::value) {
                 curScaleNum = CeilDivU32(curXNum, MX_SIZE);
