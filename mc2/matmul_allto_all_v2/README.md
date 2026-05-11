@@ -274,5 +274,5 @@ x1QuantMode、x2QuantMode、commQuantMode的枚举值与[量化模式](../../doc
 
 | 调用方式   | 样例代码           | 说明                                         |
 | ---------------- | --------------------------- | --------------------------------------------------- |
-| aclnn接口  | [test_aclnn_matmul_allto_all_v2.cpp](./examples/test_aclnn_matmul_allto_all_v2.cpp) | 通过[aclnnMatMulAlltoAll](./docs/aclnnMatmulAlltoAllV2.md)接口方式调用非量化场景的MatMulAlltoAll算子。 |
-| aclnn接口  | [test_aclnn_quant_matmul_allto_all_v2.cpp](./examples/test_aclnn_quant_matmul_allto_all_v2.cpp) | 通过[aclnnQuantMatMulAlltoAll](./docs/aclnnQuantMatmulAlltoAllV2.md)接口方式调用量化场景的MatMulAlltoAll算子。 |
+| aclnn接口  | [test_aclnn_matmul_allto_all_v2.cpp](./examples/test_aclnn_matmul_allto_all_v2.cpp) | 通过[aclnnMatmulAlltoAllV2](./docs/aclnnMatmulAlltoAllV2.md)接口方式调用非量化场景的MatmulAlltoAllV2算子。 |
+| aclnn接口  | [test_aclnn_quant_matmul_allto_all_v2.cpp](./examples/test_aclnn_quant_matmul_allto_all_v2.cpp) | 通过[aclnnQuantMatmulAlltoAllV2](./docs/aclnnQuantMatmulAlltoAllV2.md)接口方式调用量化场景的MatmulAlltoAllV2算子。 |

@@ -316,7 +316,7 @@ extern "C" aclnnStatus aclnnMatmulAlltoAllV2GetWorkspaceSize(const aclTensor *x1
     aclnnStatus retParam =
         CheckAndHandleParams(x1, transX2, biasOptional, alltoAllAxesOptional, group, transposeX1, transposeX2, output);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
-    // 处理空tensor，目前非量化matmulalltoall只支持x1第一维度bs为0，空tensor作异常处理
+    // 处理空tensor，目前非量化matmulAlltoAllV2只支持x1第一维度bs为0，空tensor作异常处理
     if (x1->GetViewShape().GetDim(0) == 0 && GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         return DealWithEmptyTensor(workspaceSize, executor);
     }

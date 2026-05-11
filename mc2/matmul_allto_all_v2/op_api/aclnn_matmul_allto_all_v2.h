@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file aclnn_matmul_all_to_all.h
+ * \file aclnn_matmul_allto_all_v2.h
  * \brief
  */
-#ifndef OP_API_INC_MATMUL_ALL_TO_ALL_
-#define OP_API_INC_MATMUL_ALL_TO_ALL_
+#ifndef OP_API_INC_MATMUL_ALLTO_ALL_V2_
+#define OP_API_INC_MATMUL_ALLTO_ALL_V2_
 
 #include "aclnn/aclnn_base.h"
 
@@ -60,4 +60,4 @@ __attribute__((visibility("default"))) aclnnStatus aclnnMatmulAlltoAllV2(
 }
 #endif
 
-#endif // OP_API_INC_MATMUL_ALL_TO_ALL_
+#endif // OP_API_INC_MATMUL_ALLTO_ALL_V2_
