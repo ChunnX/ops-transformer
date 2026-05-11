@@ -407,7 +407,7 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl256Mxfp8FullquantVFSubloop1(
     const uint32_t tailN1, const uint32_t tailN2, uint32_t pltOriTailN1, uint32_t pltOriTailN2, uint32_t pltTailN1,
     uint32_t pltTailN2, float divValue, uint32_t pltN, const uint16_t m, const uint32_t pseStride, const float slopes,
     const float posShift, const T scale, const float dScaleQK, const T minValue, const float sinkValue = 0.0f,
-    const float pScale = 1.0f)
+    const float pScale = 1.0f, __ubuf__ fp8_e8m0_t *pScaleSubLoop0)
 {
     RegTensor<float> vreg_min;
     RegTensor<float> vreg_sel1;
@@ -762,6 +762,23 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl256Mxfp8FullquantVFSubloop1(
     Mul(vreg_pre_sum, vreg_exp_max, vreg_pre_sum, preg_all);
     Add(vreg_pre_sum, vreg_first_sum, vreg_pre_sum, preg_all);
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)expSumUb, vreg_pre_sum, preg_all);
+    // todo pscale
+    Mul(vreg_p_scale, vreg_exp_max, vreg_p_scale, preg_all);
+    RegTensor<bfloat16_t> vreg_p_scale_bf16_0;
+    RegTensor<bfloat16_t> vreg_p_scale_bf16_1;
+    RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0_0;
+    RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0_1;
+    Cast<bfloat16_t, T, castTraitRintZero>(vreg_p_scale_bf16_0, vreg_p_scale, preg_all);
+    Cast<fp8_e8m0_t, bfloat16_t, castTraitRintZero>(vreg_p_scale_f8e8m0_0, vreg_p_scale_bf16_0, preg_all);
+    Cast<bfloat16_t, T, castTraitRintOne>(vreg_p_scale_bf16_1, vreg_p_scale, preg_all);
+    Cast<fp8_e8m0_t, bfloat16_t, castTraitRintZero>(vreg_p_scale_f8e8m0_1, vreg_p_scale_bf16_1, preg_all);
+    Or((RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_0, (RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_0,
+               (RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_1, preg_all_b8);
+    Gather(vreg_p_scale_f8e8m0_0, vreg_p_scale_f8e8m0_0, vreg_exp_merge_f8e4m3_indexes);
+    for (uint16_t i = 0; i < 4; ++i) {
+        StoreAlign<fp8_e8m0_t, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+            ((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0), vreg_p_scale_f8e8m0_0, blockStride, repeatStride, preg_all_b8_128);
+    }
 }
 
 // update, 128 < originN <= 256
@@ -775,7 +792,7 @@ __aicore__ inline void ProcessVec1UpdateGeneralImpl256Mxfp8Fullquant(
     const LocalTensor<uint8_t> &sharedTmpBuffer, const LocalTensor<float> &preLoopMaxTensor,
     const LocalTensor<float> &preLoopSumTensor, const LocalTensor<float> &firstLoopSumTensor, uint32_t subLoop,
     const uint16_t m, const uint32_t originN, const uint32_t pseStride, const float slopes, const float posShift,
-    const T scale, const float dScaleQK, const T minValue, float keepProb, const float sinkValue, const float pScale)
+    const T scale, const float dScaleQK, const T minValue, float keepProb, const float sinkValue, const float pScale, const LocalTensor<fp8_e8m0_t> &pScaleSubLoop0Tensor)
 {
     const uint32_t nPadding = (s2BaseSize + blockBytesU8 - 1) / blockBytesU8 * blockBytesU8;
     // 写的时候固定用65或者33的stride去写，因为正向目前使能settail之后mm2的s1方向必须算满128或者64行
@@ -808,6 +825,7 @@ __aicore__ inline void ProcessVec1UpdateGeneralImpl256Mxfp8Fullquant(
     __ubuf__ T *tmpMaxUb = (__ubuf__ T *)sharedTmpBuffer.GetPhyAddr() + 64;
     __ubuf__ T *tmpMaxUb2 = (__ubuf__ T *)sharedTmpBuffer.GetPhyAddr() + 64;
     __ubuf__ uint8_t *indexesUb = (__ubuf__ uint8_t *)indexesTensor.GetPhyAddr();
+    __ubuf__ fp8_e8m0_t *pScaleSubLoop0Ub = (__ubuf__ fp8_e8m0_t *)pScaleSubLoop0Tensor.GetPhyAddr();
 
     __ubuf__ float *preLoopMaxUb = (__ubuf__ T *)preLoopMaxTensor.GetPhyAddr();
     __ubuf__ float *preLoopSumUb = (__ubuf__ T *)preLoopSumTensor.GetPhyAddr();
@@ -834,7 +852,7 @@ __aicore__ inline void ProcessVec1UpdateGeneralImpl256Mxfp8Fullquant(
             tmpExpSumUb2, tmpMaxUb, tmpMaxUb2, indexesUb, maskUb1, maskUb2, maskUb3, maskUb4, dropMaskUb1, dropMaskUb2,
             preLoopMaxUb, preLoopSumUb, firstLoopSumUb, nPadding, blockStride, repeatStride, oriTailN1, oriTailN2,
             tailN1, tailN2, pltOriTailN1, pltOriTailN2, pltTailN1, pltTailN2, divValue, pltN, m, pseStride, slopes,
-            posShift, scale, dScaleQK, minValue, sinkValue, pScale);
+            posShift, scale, dScaleQK, minValue, sinkValue, pScale, pScaleSubLoop0Ub);
     }
 }
 } // namespace FaVectorApi

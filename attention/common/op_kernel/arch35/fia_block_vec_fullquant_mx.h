@@ -128,6 +128,7 @@ public:
     // ub
     TBuf<> commonTBuf; // common的复用空间
     TQue<QuePosition::VECOUT, 1> stage1OutQue[2];
+    TQue<QuePosition::VECOUT, 1> pScaleSubLoop0Que;
     TQue<QuePosition::VECIN, 1> attenMaskInQue[2];
     TBuf<> stage2OutBuf;
     TEventID mte3ToVId[2]; // 存放MTE3_V的eventId, 2份表示可能存在pingpong
@@ -203,6 +204,7 @@ public:
     }
 
     __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
+                                       Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &mm2AScaleBuf,
                                        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
                                        RunInfoX runInfo, uint32_t subLoop)
     {
@@ -502,6 +504,7 @@ public:
     // }
 
     __aicore__ inline void ProcessVec1Nd(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
+                                         Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &mm2AScaleBuf,
                                          Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
                                          RunInfoX runInfo, uint32_t subLoop)
     {
@@ -540,6 +543,7 @@ public:
 
         LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
         auto stage1CastTensor = this->stage1OutQue[stage1Offset].template AllocTensor<INPUT_T>();
+        auto pScaleSubLoop0Tensor = this->pScaleSubLoop0Que.template AllocTensor<fp8_e8m0_t>();
 
         static constexpr int32_t s2BaseSizeCur = s2BaseSize / 2;
         uint32_t s2CalcSize = runInfo.actSingleLoopS2Size;
@@ -553,21 +557,21 @@ public:
                     stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
                     pseUb, dropMaskUb, apiTmpBuffer, pScaleUb, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop,
                     runInfo.actVecMSize, s2CalcSize, pseStride, slopes, posShift, static_cast<T>(constInfo.scaleValue),
-                    descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue, pScaleValue);
+                    descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue, pScaleValue, pScaleSubLoop0Tensor);
             } else if (s2CalcSize <= 64) {
                 ProcessVec1VfMxfp8<T, INPUT_T, pseShiftType, false, mBaseSize, s2BaseSizeCur, GT_0_AND_LTE_64, HAS_MASK,
                                    pseMode, hasDrop, false, false, false, false>(
                     stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
                     pseUb, dropMaskUb, apiTmpBuffer, pScaleUb, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop,
                     runInfo.actVecMSize, s2CalcSize, pseStride, slopes, posShift, static_cast<T>(constInfo.scaleValue),
-                    descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue, pScaleValue);
+                    descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue, pScaleValue, pScaleSubLoop0Tensor);
             } else if (s2CalcSize < 128) {
                 ProcessVec1VfMxfp8<T, INPUT_T, pseShiftType, false, mBaseSize, s2BaseSizeCur, GT_64_AND_LTE_128,
                                    HAS_MASK, pseMode, hasDrop, false, false, false, false>(
                     stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
                     pseUb, dropMaskUb, apiTmpBuffer, pScaleUb, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop,
                     runInfo.actVecMSize, s2CalcSize, pseStride, slopes, posShift, static_cast<T>(constInfo.scaleValue),
-                    descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue, pScaleValue);
+                    descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue, pScaleValue, pScaleSubLoop0Tensor);
             } else {
                 if constexpr (s2BaseSizeCur == 256) {
                     ProcessVec1VfMxfp8<T, INPUT_T, pseShiftType, false, mBaseSize, s2BaseSizeCur, GT_128_AND_LTE_256,
@@ -576,7 +580,7 @@ public:
                         pseUb, dropMaskUb, apiTmpBuffer, pScaleUb, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop,
                         runInfo.actVecMSize, s2CalcSize, pseStride, slopes, posShift,
                         static_cast<T>(constInfo.scaleValue), descaleQK, negativeFloatScalar, 0.0F, queryScaleUb,
-                        deSCaleKValue, pScaleValue);
+                        deSCaleKValue, pScaleValue, pScaleSubLoop0Tensor);
                 }
             }
         } else {
@@ -586,21 +590,21 @@ public:
                     stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
                     pseUb, dropMaskUb, apiTmpBuffer, pScaleUb, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop,
                     runInfo.actVecMSize, s2CalcSize, pseStride, slopes, posShift, static_cast<T>(constInfo.scaleValue),
-                    descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue, pScaleValue);
+                    descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue, pScaleValue, pScaleSubLoop0Tensor);
             } else if (s2CalcSize <= 64) {
                 ProcessVec1VfMxfp8<T, INPUT_T, pseShiftType, true, mBaseSize, s2BaseSizeCur, GT_0_AND_LTE_64, HAS_MASK,
                                    pseMode, hasDrop, false, false, false, false>(
                     stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
                     pseUb, dropMaskUb, apiTmpBuffer, pScaleUb, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop,
                     runInfo.actVecMSize, s2CalcSize, pseStride, slopes, posShift, static_cast<T>(constInfo.scaleValue),
-                    descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue, pScaleValue);
+                    descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue, pScaleValue, pScaleSubLoop0Tensor);
             } else if (s2CalcSize < 128) {
                 ProcessVec1VfMxfp8<T, INPUT_T, pseShiftType, true, mBaseSize, s2BaseSizeCur, GT_64_AND_LTE_128,
                                    HAS_MASK, pseMode, hasDrop, false, false, false, false>(
                     stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
                     pseUb, dropMaskUb, apiTmpBuffer, pScaleUb, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop,
                     runInfo.actVecMSize, s2CalcSize, pseStride, slopes, posShift, static_cast<T>(constInfo.scaleValue),
-                    descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue, pScaleValue);
+                    descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue, pScaleValue, pScaleSubLoop0Tensor);
             } else {
                 if constexpr (s2BaseSizeCur == 256) {
                     ProcessVec1VfMxfp8<T, INPUT_T, pseShiftType, true, mBaseSize, s2BaseSizeCur, GT_128_AND_LTE_256,
@@ -609,7 +613,7 @@ public:
                         pseUb, dropMaskUb, apiTmpBuffer, pScaleUb, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop,
                         runInfo.actVecMSize, s2CalcSize, pseStride, slopes, posShift,
                         static_cast<T>(constInfo.scaleValue), descaleQK, negativeFloatScalar, 0.0F, queryScaleUb,
-                        deSCaleKValue, pScaleValue);
+                        deSCaleKValue, pScaleValue, pScaleSubLoop0Tensor);
                 }
             }
         }
@@ -621,6 +625,17 @@ public:
         // ===================DataCopy to L1 ====================
         this->stage1OutQue[stage1Offset].template EnQue(stage1CastTensor);
         this->stage1OutQue[stage1Offset].template DeQue<INPUT_T>();
+
+        // todo pscale
+        this->pScaleSubLoop0Que.template EnQue(pScaleSubLoop0Tensor);
+        this->pScaleSubLoop0Que.template DeQue<fp8_e8m0_t>();
+        LocalTensor<fp8_e8m0_t> mm2AScaleL1Tensor;
+        mm2AScaleL1Tensor = mm2AScaleBuf.GetTensor<fp8_e8m0_t>();
+        DataCopy(mm2AScaleL1Tensor, pScaleSubLoop0Tensor,
+                     {s2BaseSizeCur / 32, (uint16_t)runInfo.actVecMSize,
+                      (uint16_t)(vec1Srcstride - runInfo.actVecMSize), (uint16_t)(mBaseSize - runInfo.actVecMSize)}); // todo pscale打印看搬运偏移
+        this->pScaleSubLoop0Que.template FreeTensor(pScaleSubLoop0Tensor);
+
         LocalTensor<INPUT_T> mm2AL1Tensor;
         mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
 
@@ -952,6 +967,7 @@ public:
         tPipe->InitBuffer(stage2OutBuf, 64 * dTemplateAlign64 * sizeof(T));
         tPipe->InitBuffer(stage1OutQue[0], 1, 16640); // (32 + 1) * (256 / 32) * 64
         tPipe->InitBuffer(stage1OutQue[1], 1, 16640);
+        tPipe->InitBuffer(pScaleSubLoop0Que, 1, 512);
         tPipe->InitBuffer(commonTBuf, 512);
         if constexpr (HAS_MASK) {
             tPipe->InitBuffer(attenMaskInQue[0], 1, 16384); // 256 * 64
