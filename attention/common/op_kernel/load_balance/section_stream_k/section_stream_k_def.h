@@ -22,8 +22,14 @@
 
 namespace load_balance {
 
+/******************************** ERROR CODE ********************************/
+#define SECTION_STREAM_K_SUCCESS                        0
+#define SECTION_STREAM_K_ERROR_INVALID_PARAM            1
+#define SECTION_STREAM_K_ERROR_AIV_LESS_THAN_AIC        2
+/****************************************************************************/
+
 struct SectionStreamKParam : GeneralBalanceParam {
-    uint32_t l2Byte { 128 * 1024U * 1024U };              // L2 size in Byte
+    uint32_t l2Byte { 128 * 1024U * 1024U };              // L2 size in Byte, 0 means infinite large
     uint32_t v0Cost { 0U };
 };
 
@@ -64,9 +70,8 @@ struct SectionStreamKFdResult {
 };
 
 struct SectionStreamKResult {
-    uint32_t sectionNum { 0U };
-    std::vector<SectionStreamKFaResult> sectionFaResult {};
-    std::vector<SectionStreamKFdResult> sectionFdResult {};
+    SectionStreamKFaResult sectionFaResult{0};
+    SectionStreamKFdResult sectionFdResult{0, 0};
 };
 
 }

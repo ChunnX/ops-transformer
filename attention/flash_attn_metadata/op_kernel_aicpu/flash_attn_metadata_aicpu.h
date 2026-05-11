@@ -54,7 +54,6 @@ private:
     bool BalanceSchedule(SectionStreamKResult &splitRes);
     bool GenMetaData(SectionStreamKResult &splitRes);
     bool ParamsInit();
-    bool ParamsInit_TND();
     std::vector<int64_t> GetTensorDataAsInt64(Tensor *tensor, size_t size);
 
 private:
@@ -91,6 +90,7 @@ private:
     load_balance::DeviceInfo deviceInfo;
     load_balance::BaseInfo baseInfo;
     load_balance::SectionStreamKParam param;
+
 private:
     enum class ParamId : uint32_t {
         // input
