@@ -307,6 +307,8 @@ uint64_t ChooseKbL1Size(uint64_t mL1Size, uint64_t nL1Size) {
 
 ### 8.3 Kernel
 
+> [kernel详细编码方案查看这里](./srs_coding_design.md)
+
 #### 8.3.1 执行流程
 
 GMMSQ的Kernel计算采用 **AIC + AIV异构协同** 模式，核心流程如下：
@@ -326,8 +328,8 @@ GMMSQ的Kernel计算采用 **AIC + AIV异构协同** 模式，核心流程如下
   │   ├── Phase B: 处理前一个basic block的SwiGLU+Quant输出（如果存在）
   │   │   ├── 设置AIC fixpipe信号
   │   │   ├── 等待AIC fixpipe完成
-  │   │   ├── V: SwiGLU计算（由其他团队实现）
-  │   │   ├── V: MX量化计算（由其他团队实现）
+  │   │   ├── V: SwiGLU计算
+  │   │   ├── V: MX量化计算
   │   │   └── MTE3: 写出量化结果到GM
   │   └── Pass 2: 继续加载剩余K chunk
   │       └── 同Pass 1流程
