@@ -31,7 +31,7 @@ namespace {
 using namespace op;
 
 // 环境变量名：有设置=AICPU，无设置=CCU
-constexpr char COMM_MODE_ENV[] = "ENV_MC2_COMM_MODE_AICPU";
+#include "mc2_comm_utils.h"
 
 enum class QuantModeType : int64_t {
     NO_QUANT = 0,
@@ -467,13 +467,15 @@ extern "C" aclnnStatus aclnnQuantGroupedMatMulAlltoAllvGetWorkspaceSize(
 extern "C" aclnnStatus aclnnQuantGroupedMatMulAlltoAllv(void *workspace, uint64_t workspaceSize,
                                                         aclOpExecutor *executor, aclrtStream stream)
 {
-    auto commModeEnv = getenv(COMM_MODE_ENV);
-    if (commModeEnv != nullptr) {
-        OP_LOGD("", "aclnnQuantGroupedMatMulAlltoAllv: ENV_MC2_COMM_MODE_AICPU set, use AICPU mode");
-        NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-    } else {
-        OP_LOGD("", "aclnnQuantGroupedMatMulAlltoAllv: ENV_MC2_COMM_MODE_AICPU not set, use CCU mode");
-        NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+    if (NnopbaseSetHcclServerType) {
+        uint8_t commMode = mc2::GetCommModeFromEnv();
+        if (commMode == mc2::COMM_MODE_AICPU) {
+            OP_LOGD("", "aclnnQuantGroupedMatMulAlltoAllv: ENV_MC2_COMM_MODE_AICPU set, use AICPU mode");
+            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+        } else {
+            OP_LOGD("", "aclnnQuantGroupedMatMulAlltoAllv: ENV_MC2_COMM_MODE_AICPU not set, use CCU mode");
+            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+        }
     }
     aclnnStatus ret = aclnnInnerQuantGroupedMatMulAlltoAllv(workspace, workspaceSize, executor, stream);
     return ret;

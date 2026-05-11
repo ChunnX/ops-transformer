@@ -20,27 +20,42 @@
 #include "register/op_impl_registry.h"
 #include "mc2_log.h"
 #include "mc2_platform_info.h"
+#include "mc2_comm_utils.h"
 
 namespace ops {
 ge::Status GroupedMatMulAlltoAllvCalcParamFunc(gert::ExeResGenerationContext *context)
 {
     constexpr char* COMM_MODE_ENV = "ENV_MC2_COMM_MODE_AICPU";
-    auto commModeEnv = getenv(COMM_MODE_ENV);
-    const char* serverType = "ccu kfc server";
+    bool isA5 = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5);
 
-    if (commModeEnv != nullptr) {
+    const char* serverType = nullptr;
+    const char* streamType = nullptr;
+
+    if (commMode == mc2::COMM_MODE_AICPU) {
         serverType = "aicpu kfc server";
-        OPS_LOG_D(context->GetNodeName(), "ENV_MC2_COMM_MODE_AICPU set, use AICPU GenTask");
+        streamType = "kfc_stream";
+        OPS_LOG_D(context->GetNodeName(), "ENV_MC2_COMM_MODE_AICPU set, force AICPU GenTask");
+    } else if (isA5) {
+        serverType = "ccu server";
+        streamType = "ccu_stream";
+        OPS_LOG_D(context->GetNodeName(), "A5 platform, use CCU GenTask");
     } else {
-        OPS_LOG_D(context->GetNodeName(), "ENV_MC2_COMM_MODE_AICPU not set, use CCU GenTask");
+        serverType = "aicpu kfc server";
+        streamType = "kfc_stream";
+        OPS_LOG_D(context->GetNodeName(), "Non-A5 platform, use AICPU GenTask");
     }
-    return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, serverType, "kfc_stream");
+    return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, serverType, streamType);
 }
 
 ge::Status GroupedMatMulAlltoAllvGenTaskFunc(const gert::ExeResGenerationContext *context,
                                              std::vector<std::vector<uint8_t>> &tasks)
 {
-    OPS_LOG_D(context->GetNodeName(), "GenTask GenTaskFunc");
+    bool isA5 = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5);
+    if (isA5) {
+        OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTask GenTaskFunc");
+        return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks);
+    }
+    OPS_LOG_D(context->GetNodeName(), "Do A3 aicpu GenTask GenTaskFunc");
     return Mc2MoeGenTaskOpsUtils::Mc2MoeGenTaskCallback(context, tasks);
 }
 

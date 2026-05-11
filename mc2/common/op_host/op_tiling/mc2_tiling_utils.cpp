@@ -19,6 +19,7 @@
 #include "mc2_hcom_topo_info.h"
 #include "mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_tiling_strategy.h"
 #include "mc2_tiling_utils.h"
+#include "mc2_comm_utils.h"
 
 namespace mc2tiling {
 namespace {
@@ -60,13 +61,7 @@ uint8_t Mc2TilingUtils::GetDebugStepSize() {
 
 uint8_t Mc2TilingUtils::GetCommModeFromEnv()
 {
-    auto commModeEnv = getenv(COMM_MODE_ENV);
-    uint8_t commMode = COMM_MODE_CCU;
-    if (commModeEnv != nullptr) {
-        commMode = COMM_MODE_AICPU;
-    }
-    OP_LOGD("", "Get ENV_MC2_COMM_MODE_AICPU is %u (0=CCU, 1=AICPU)", commMode);
-    return commMode;
+    return mc2::GetCommModeFromEnv();
 }
 
 matmul_tiling::DataType ConvertGeTypeToMmType(const std::string &opName,

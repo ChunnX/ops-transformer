@@ -39,15 +39,15 @@
 
 namespace AscendC {
 using namespace ALLTO_ALLV_GMM;
-// Hccl类型选择器
-template<int commMode>
+
+template<int commMode = TILINGKEY_TPL_CCU>
 struct HcclTypeSelector {
-    using type = Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU>;
+    using type = Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU>;
 };
 
 template<>
-struct HcclTypeSelector<TILINGKEY_TPL_CCU> {
-    using type = Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU>;
+struct HcclTypeSelector<TILINGKEY_TPL_AICPU> {
+    using type = Hccl<HcclServerType::TILINGKEY_TPL_AICPU>;
 };
 
 template <typename GMMATAV, int TILINGKEY_COMM_MODE = TILINGKEY_TPL_CCU>
