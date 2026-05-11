@@ -231,11 +231,22 @@ ge::graphStatus BSATiling::CheckQKVDtype(gert::TilingContext *bsaContext)
     dataType_ = qInputDesc->GetDataType();
     auto kDataType = kInputDesc->GetDataType();
     auto vDataType = vInputDesc->GetDataType();
-    if (dataType_ != ge::DT_FLOAT16 && dataType_ != ge::DT_BF16 && dataType_ != ge::DT_FLOAT8_E4M3FN) {
-        OP_LOGE(bsaContext->GetNodeName(),
-                "The supported dtype of query/key/value is float16, bfloat16 or float8_e4m3fn.");
-        return ge::GRAPH_FAILED;
+
+    if (socVer_ == SOC_VER_950_CODE) {
+        if (dataType_ != ge::DT_FLOAT16 && dataType_ != ge::DT_BF16 && dataType_ != ge::DT_FLOAT8_E4M3FN) {
+            OP_LOGE(bsaContext->GetNodeName(),
+                    "On chip 950, the supported dtype of query/key/value is float16, bfloat16 or float8_e4m3fn.");
+            return ge::GRAPH_FAILED;
+        }
+    } else {
+        if (dataType_ != ge::DT_FLOAT16 && dataType_ != ge::DT_BF16) {
+            OP_LOGE(
+                bsaContext->GetNodeName(),
+                "On chip 910 & 910_93, the supported dtype of query/key/value is float16 or bfloat16.");
+            return ge::GRAPH_FAILED;
+        }
     }
+
     if (dataType_ != kDataType || dataType_ != vDataType) {
         OP_LOGE(bsaContext->GetNodeName(), "Tensor query/key/value must have consistent dtype with each other.");
         return ge::GRAPH_FAILED;
