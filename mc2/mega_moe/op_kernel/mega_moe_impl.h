@@ -27,6 +27,7 @@
 #include "include/tensor_api/tensor.h"
 #include "blaze/block/block_mmad_mx.h"
 #include "blaze/block/block_scheduler_swizzle.h"
+#include "../../common/op_kernel/mc2_kernel_utils.h"
 
 #include "mega_moe_combine_send.h"
 
@@ -211,7 +212,7 @@ template <typename ElementA, typename ElementB, typename ElementC, typename Elem
 __aicore__ inline void GroupMatmul2(
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
     const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom2, uint32_t groupIdx,
-    uint16_t& pingpongIdx, int32_t rankId)
+    uint16_t& pingpongIdx, int32_t rankId, LocalTensor<ElementC> combineUbTensor)
 {
 
     uint32_t m = Get<M_VALUE>(problemShape);
@@ -339,13 +340,13 @@ __aicore__ inline void GroupMatmul2(
             typename BlockMmad::BlockShape singleShape{
                 Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape), Get<K_VALUE>(actualShape), 0};
             blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias, gmBlockC, singleShape);
-            PipeBarrier<PIPE_ALL>();
-            if (mLoc == 0 && nLoc == 0) {
-                GlobalTensor<bfloat16_t> gmm2OutGm;
-                gmm2OutGm.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(gmmAddrInfo.gmm2OutGlobal));
-                AscendC::PRINTF("AIC: gmm2OutGlobal=%p, gmC[0]=%f, gmC[1]=%f\n",
-                    gmmAddrInfo.gmm2OutGlobal, gmm2OutGm.GetValue(0), gmm2OutGm.GetValue(1));
-            }
+            SyncFunc<AscendC::HardEvent::FIX_S>();
+            // if (mLoc == 0 && nLoc == 0) {
+            //     GlobalTensor<bfloat16_t> gmm2OutGm;
+            //     gmm2OutGm.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(gmmAddrInfo.gmm2OutGlobal));
+            //     AscendC::PRINTF("AIC: gmm2OutGlobal=%p, gmC[0]=%f, gmC[1]=%f\n",
+            //         gmmAddrInfo.gmm2OutGlobal, gmm2OutGm.GetValue(0), gmm2OutGm.GetValue(1));
+            // }
             // tile完成，在对应核心位置+1
             AscendC::AtomicAdd((__gm__ int32_t*)rowReadyFlags.GetPhyAddr() + blockIdx, int32_t(1));
         } else {
@@ -356,15 +357,10 @@ __aicore__ inline void GroupMatmul2(
             }
             AscendC::AtomicAdd((__gm__ int32_t*)rowReadyFlags.GetPhyAddr() + blockIdx, int32_t(-1));
 
-            // 创建UB buffer用于GM→UB→GM
-            int64_t ubOffset = 0;
-            LocalTensor<bfloat16_t> ubBuffer = LocalTensor<bfloat16_t>(TPosition::VECIN, ubOffset, L1_TILE_M * L1_TILE_N);
-            PipeBarrier<PIPE_ALL>();
-            // 从GM搬tile到UB，再从UB发送到远端GM
+            // 复用dispatch的CopyTempBuf_作为combine UB（dispatch与combine不并行）
             MegaMoeCombineImpl::CombineTile<bfloat16_t, decltype(actualShape)>(
                 groupIdx, mLoc, nLoc, n, rankId,
-                gmmAddrInfo.gmm2OutGlobal, params, ubBuffer, actualShape);
-            PipeBarrier<PIPE_ALL>();
+                gmmAddrInfo.gmm2OutGlobal, params, combineUbTensor, actualShape);
         }
     }
 
