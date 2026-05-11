@@ -180,6 +180,6 @@ xPerBlock 固定 1024 元素。简单但无法适应不同 shape。
 
 ## 遗留优化方向
 
-1. **CrossCoreSetFlag/WaitFlag 替代 SyncAll**: 事件标志比全屏障轻量，可能降低 Leader 模式开销
-2. **QRS 核利用率**: qwen 形状 30/56 核空闲（54%），但减小 xPerBlock 劣化。需要更精细的分块策略
-3. **CANN 升级后可重新验证 TQueBind 读端 DB**: 当前版本 VECOUT→Vector 同步不兼容
+1. **CrossCoreSetFlag/WaitFlag 替代 SyncAll**: 当前 Leader 模式两个 SyncAll 开销抵消了跨卡通信节省。事件标志比全屏障轻量，可能降低开销让 Leader 模式产生正收益。尚未实验。
+
+2. **QRS 核利用率（并行 rank 读）**: qwen 形状 30/56 核空闲（54%）。已证伪：单纯减小 xPerBlock 激活更多核——MIN=512 劣化 +12%，MIN=1024 劣化 +25%，MIN=4096 劣化 +14%，2048 为局部最优。原因：comm-bound 算子块大小比核数更重要，小块 DB 效率损失 > 全核并行收益。替代思路：不改 xPerBlock，将 block 内 4 个 rank 的串行读拆成 4 核并行读，每核只负责 1 个 rank 的 Win→UB 搬运和反量化，最后跨核累加 partial sum。理论上 30×4=120 个任务分给 56 核可全核激活且不破坏块大小约束。实现量大（需改分块分配、跨核归并、同步机制），待评估优先级。
