@@ -51,6 +51,9 @@ TILING_DATA_FIELD_DEF(float, eps);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(MoeGatingTopKBackward, MoeGatingTopKBackwardTilingData)
 
-struct MoeGatingTopKBackwardCompileInfo {};
+struct MoeGatingTopKBackwardCompileInfo {
+    uint64_t ubSize = 0;
+    uint64_t numBlocks = 0;
+};
 } // namespace optiling
 #endif // AIR_CXX_RUNTIME_V2_OP_IMPL_MOE_GATING_TOP_K_BACKWARD_H
