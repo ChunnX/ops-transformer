@@ -49,7 +49,7 @@ const static int64_t K_DIM_INDEX = 1;
 const static uint64_t TILING_KEY_RENORM_SIGMOID = 1;
 
 // Data type sizes
-const static size_t FLOAT32_SIZE_T = 4;
+const static size_t SIZE_OF_FLOAT32 = 4;
 const static size_t FLOAT16_SIZE_T = 2;
 const static size_t BFLOAT16_SIZE_T = 2;
 
@@ -58,6 +58,8 @@ const static int64_t MAX_EXPERT_COUNT = 2048;           // max value for n
 const static int64_t MIN_EXPERT_COUNT = 2;              // min value for n
 const static int64_t MIN_K = 1;                         // min value for k
 const static int64_t DEFAULT_WORKSPACE_SIZE = 16777216; // 预留16M空间
+const static int64_t DOUBLE_BUFFER_NUM = 2;
+const static int64_t UB_ALIGN_BYTES = 31;
 
 
 class MoeGatingTopKBackwardTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
@@ -130,6 +132,10 @@ private:
     int64_t routedScalingFactor_ = 1.0f;
     int64_t eps_ = 1e-20f;
 };
+
+inline int64_t AlignBytes_(int64_t x) {
+    return (x + UB_ALIGN_BYTES) & ~UB_ALIGN_BYTES;
+}
 
 // todo: add opName_ for OP_CHECK_IF and OP_LOGE
 ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckInputShape()   // fqy
@@ -275,9 +281,13 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::GetPlatformInfo()   // fqy
 {
     auto platformInfo = context_->GetPlatformInfo();
     if (platformInfo == null) {
-
+        // todo fill
     } else {
-
+        auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+        aicoreParams_.numBlocks = ascendcPlatform.GetCoreNumAiv();
+        uint64_t ubSizePlatForm;
+        ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);
+        aicoreParams_.ubSize = ubSizePlatForm;
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -289,7 +299,54 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckOutShape()   // lc
 
 void MoeGatingTopKBackwardTilingBase::SplitRows()   // lc
 {
+    perCoreRows_ = Ops::Base::CeilDiv(tokenCount_, static_cast<int64_t>(aicoreParams_.numBlocks));
+    needCoreNum_ = Ops::Base::CeilDiv(tokenCount_, perCoreRows_);
+    lastCoreRows_ = tokenCount_ % perCoreRows_ == 0 ? perCoreRows_ : tokenCount_ % perCoreRows_;
 
+    int64_t gradYQuePerTokenSpace = DOUBLE_BUFFER_NUM * k_ * gradYDtypeSize_;
+    int64_t indicesQuePerTokenSpace = DOUBLE_BUFFER_NUM * k_ * SIZE_OF_FLOAT32;
+    int64_t xQuePerTokenSpace = DOUBLE_BUFFER_NUM * expertCount_ * SIZE_OF_FLOAT32;
+    int64_t outQuePerTokenSpace = expertCount_ * gradYDtypeSize_;
+    
+    int64_t bufk0PerTokenSpace = k_ * SIZE_OF_FLOAT32;
+    int64_t bufk1PerTokenSpace = k_ * SIZE_OF_FLOAT32;
+    int64_t bufn2PerTokenSpace = expertCount_ * SIZE_OF_FLOAT32;
+    int64_t bufn3PerTokenSpace = expertCount_ * SIZE_OF_FLOAT32;
+    int64_t bufk4AddPerTokenSpace = k_ * SIZE_OF_FLOAT32;
+    int64_t bufk4IndexPerTokenSpace = k_ * SIZE_OF_FLOAT32;
+    int64_t bufk4RecipSumPerTokenSpace = k_ * SIZE_OF_FLOAT32;
+    int64_t bufsPerTokenSpace = 1 * SIZE_OF_FLOAT32;
+
+    int64_t ubReserve = 1 * 1024;
+    int64_t shareTmpBufSpace = 0;
+
+    int64_t quePerTokenSpace =
+        gradYQuePerTokenSpace + indicesQuePerTokenSpace + xQuePerTokenSpace + outQuePerTokenSpace;
+    int64_t bufPerTokenSpace =
+        bufk0PerTokenSpace + bufk1PerTokenSpace + bufn2PerTokenSpace + bufn3PerTokenSpace + bufk4AddPerTokenSpace +
+        bufk4IndexPerTokenSpace + bufk4RecipSumPerTokenSpace + bufsPerTokenSpace;
+    int64_t maxRows = (aicoreParams_.ubSize - ubReserve - shareTmpBufSpace) / (quePerTokenSpace + bufPerTokenSpace);
+
+    while (maxRows > 0) {
+        int64_t queSpace =
+            AlignBytes_(maxRows * gradYQuePerTokenSpace) + AlignBytes_(maxRows * indicesQuePerTokenSpace) +
+            AlignBytes_(maxRows * xQuePerTokenSpace) + AlignBytes_(maxRows * outQuePerTokenSpace);
+        int64_t bufPerTokenSpace =
+            AlignBytes_(maxRows * bufk0PerTokenSpace) + AlignBytes_(maxRows * bufk1PerTokenSpace) +
+            AlignBytes_(maxRows * bufn2PerTokenSpace) + AlignBytes_(maxRows * bufn3PerTokenSpace) +
+            AlignBytes_(maxRows * bufk4AddPerTokenSpace) + AlignBytes_(maxRows * bufk4IndexPerTokenSpace) +
+            AlignBytes_(maxRows * bufk4RecipSumPerTokenSpace) + AlignBytes_(maxRows * bufsPerTokenSpace);
+        int64_t usedSpace = ubReserve + shareTmpBufSpace + queSpace + bufPerTokenSpace;
+
+        if (usedSpace <= aicoreParams_.ubSize) {
+            break;
+        }
+        maxRows--;
+    }
+
+    OP_CHECK_IF(
+        maxRows > 0, OP_LOGE(context_, "maxRows should be greater than zero, current value is %ld.", maxRows),
+        return ge::GRAPH_FAILED);
 }
 
 ge::graphStatus MoeGatingTopKBackwardTilingBase::DoOpTiling()
