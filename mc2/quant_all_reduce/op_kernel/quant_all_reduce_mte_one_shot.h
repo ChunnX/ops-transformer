@@ -168,10 +168,16 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::ExecuteAllReduce(
 template <TemplateTypeClass>
 __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::Process()
 {
+    // 纯AIV过程
+    if ASCEND_IS_AIC {
+        return;
+    }
+
+    // 一次性拷贝完所有数据到本地卡win区
     mteComm_.CopyDataToWin();
+    // 写入状态到状态区
     mteComm_.WriteStatusToWin();
-    SyncAll();                        // AIV全核同步，确保CopyDataToWin完成
-    // Leader模式：ReadStatus内leader自旋+SyncAll广播
+    // 执行AllReduce过程：等待状态区同步，读取数据并进行反量化ReduceSum
     ExecuteAllReduce();
 }
 } // QuantAllReduceImpl

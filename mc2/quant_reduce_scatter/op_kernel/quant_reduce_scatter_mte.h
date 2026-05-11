@@ -188,10 +188,16 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::ExecuteReduceScatter
 template <TemplateTypeClass>
 __aicore__ inline void QuantReduceScatterMte<TemplateType>::Process()
 {
+    // 纯AIV过程
+    if ASCEND_IS_AIC {
+        return;
+    }
+
+    // 一次性拷贝完所有数据到本地卡win区
     mteComm_.template CopyDataToWin<true>(xSliceSizeNums_, scaleSliceNums_);
+    // 写入状态到状态区
     mteComm_.WriteStatusToWin();
-    SyncAll();                        // AIV全核同步，确保CopyDataToWin完成
-    // Leader模式：ReadStatus内leader自旋+SyncAll广播
+    // 执行ReduceScatter过程：等待状态区同步，读取数据并进行反量化ReduceSum
     ExecuteReduceScatter();
 }
 } // QuantReduceScatterImpl

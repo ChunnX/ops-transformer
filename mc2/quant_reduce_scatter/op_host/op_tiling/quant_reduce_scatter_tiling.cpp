@@ -132,8 +132,6 @@ static ge::graphStatus QuantReduceScatterTilingFunc(gert::TilingContext *context
 
     OP_TILING_CHECK(SetHcommCfg(context, tilingData, runInfo) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "SetHCommCfg failed."), return ge::GRAPH_FAILED);
-    // Leader模式：需batch mode配合SyncAll
-    context->SetScheduleMode(1);
     SetTilingData(context, *tilingData);
     SetTilingKey(context);
     PrintTilingDataInfo(context, *tilingData);
