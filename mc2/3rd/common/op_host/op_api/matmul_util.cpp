@@ -10,7 +10,7 @@
 #include "common/op_host/op_api/matmul_util.h"
 
 #include "aclnn_kernels/cast.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "aclnn_kernels/op_error_check.h"
 #include "aclnn_kernels/contiguous.h"
 #include "aclnn_kernels/reshape.h"
 #include "aclnn_kernels/transdata.h"
@@ -29,7 +29,7 @@
 #include "opdev/op_log.h"
 #include "opdev/tensor_view_utils.h"
 #include "opdev/shape_utils.h"
-#include "common/op_api_def.h"
+#include "op_api/op_api_def.h"
 #include "common/op_host/op_api/cube_util.h"
 #include "common/op_host/math_util.h"
 

@@ -16,7 +16,7 @@
 #include "aclnn_chunk_gated_delta_rule.h"
 #include "chunk_gated_delta_rule.h"
 
-#include "aclnn_kernels/common/op_error_check.h"
+#include "aclnn_kernels/op_error_check.h"
 #include "opdev/common_types.h"
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"

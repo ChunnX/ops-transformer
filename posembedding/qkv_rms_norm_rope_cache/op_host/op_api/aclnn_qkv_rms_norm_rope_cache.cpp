@@ -19,7 +19,7 @@
 #include "aclnn_kernels/cast.h"
 #include "aclnn_kernels/contiguous.h"
 #include "aclnn/aclnn_base.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "aclnn_kernels/op_error_check.h"
 #include "opdev/op_log.h"
 #include "opdev/op_dfx.h"
 #include "opdev/common_types.h"
@@ -30,7 +30,7 @@
 #include "opdev/make_op_executor.h"
 #include "opdev/tensor_view_utils.h"
 #include "opdev/platform.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "aclnn_kernels/op_error_check.h"
 
 using namespace op;
 

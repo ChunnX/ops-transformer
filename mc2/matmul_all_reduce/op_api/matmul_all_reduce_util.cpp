@@ -10,7 +10,7 @@
 #include "matmul_all_reduce_util.h"
 #include "aclnnInner_matmul_all_reduce.h"
 #include "common/utils/op_mc2_def.h"
-#include "aclnn_kernels/common/op_error_check.h"
+#include "aclnn_kernels/op_error_check.h"
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
