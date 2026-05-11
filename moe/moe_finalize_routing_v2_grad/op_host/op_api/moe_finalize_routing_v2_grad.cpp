@@ -38,7 +38,6 @@ const std::array<const aclTensor *, 2> MoeFinalizeRoutingV2Grad(
         grad_expanded_x_out->GetDataType(), op::Format::FORMAT_ND);
     auto grad_scales = executor->AllocTensor(grad_scales_out->GetViewShape(),
         grad_scales_out->GetDataType(), op::Format::FORMAT_ND);
-
     if (!(grad_expanded_x->IsEmpty() && grad_scales->IsEmpty())) {
         auto ret = ADD_TO_LAUNCHER_LIST_AICORE(MoeFinalizeRoutingV2Grad,
             OP_INPUT(grad_y, expanded_row_idx, expanded_x, scales, expert_idx, bias),
