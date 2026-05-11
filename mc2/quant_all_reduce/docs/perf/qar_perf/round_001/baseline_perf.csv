@@ -1,0 +1,11 @@
+op_name,case_name,input_tensor_shape,input_tensor_range,input_tensor_dtype,mc2_memory,golden_memory,memory_rate,mc2_prof,golden_prof,prof_rate,recordtime,avg_hccl,avg_matmul,mask_rate,result
+aclnnQuantAllReduce,96_7168_int8_fp32_fp32_T-G_QuantAllReduce_DSV3_ID0001,"[96, 7168]","(-10.0, 10.0)",int8,206.736328125,0,,37.6348,62.8654,1.6704061134907056,2026-04-30 15:14:04,,,,
+aclnnQuantAllReduce,96_7168_fp8_e4m3fn_fp8_e8m0_fp32_mxfp_QuantAllReduce_DSV3_ID0005,"[96, 7168]","(-5.0, 5.0)",fp8_e4m3fn,206.736328125,0,,38.3236,62.9784,1.6433320460499536,2026-04-30 15:14:24,,,,
+aclnnQuantAllReduce,96_7168_fp8_e5m2_fp8_e8m0_fp16_mxfp_QuantAllReduce_DSV3_ID0006,"[96, 7168]","(-3.0, 3.0)",fp8_e5m2,206.736328125,0,,38.24059999999999,37.9712,0.9929551314571426,2026-04-30 15:14:47,,,,
+aclnnQuantAllReduce,96_7168_int8_fp32_bf16_T-G_QuantAllReduce_DSV3_ID0007,"[1, 96, 7168]","(-10, 0)",int8,206.736328125,0,,37.6874,38.0534,1.0097114685544772,2026-04-30 15:15:02,,,,
+aclnnQuantAllReduce,96_7168_fp8_e5m2_fp8_e8m0_bf16_mxfp_QuantAllReduce_DSV3_ID0012,"[1, 96, 7168]","(0, 10)",fp8_e5m2,206.736328125,0,,38.3448,37.919,0.9888954956082702,2026-04-30 15:15:17,,,,
+aclnnQuantAllReduce,96_4096_int8_fp32_fp16_T-G_QuantAllReduce_qwen_ID0013,"[96, 4096]","(-10.0, 10.0)",int8,206.736328125,0,,24.007,25.1004,1.045545049360603,2026-04-30 15:15:32,,,,
+aclnnQuantAllReduce,96_4096_hif8_fp32_bf16_T-G_QuantAllReduce_qwen_ID0014,"[96, 4096]","(0, 10)",hif8,206.736328125,0,,24.1158,25.006,1.0369135587457186,2026-04-30 15:15:54,,,,
+aclnnQuantAllReduce,96_4096_fp8_e4m3fn_fp8_e8m0_fp16_mxfp_QuantAllReduce_qwen_ID0017,"[96, 4096]","(-10.0, 10.0)",fp8_e4m3fn,206.736328125,0,,24.6996,25.099,1.0161703023530746,2026-04-30 15:16:13,,,,
+aclnnQuantAllReduce,96_4096_fp8_e5m2_fp8_e8m0_bf16_mxfp_QuantAllReduce_qwen_ID0018,"[96, 4096]","(-10, 0)",fp8_e5m2,206.736328125,0,,24.681600000000003,25.0648,1.0155257357707765,2026-04-30 15:16:28,,,,
+aclnnQuantAllReduce,96_4096_fp8_e5m2_fp8_e8m0_fp32_mxfp_QuantAllReduce_qwen_ID0024,"[1, 96, 4096]","(-3.0, 3.0)",fp8_e5m2,206.736328125,0,,24.5872,39.3708,1.601272206676645,2026-04-30 15:17:04,,,,

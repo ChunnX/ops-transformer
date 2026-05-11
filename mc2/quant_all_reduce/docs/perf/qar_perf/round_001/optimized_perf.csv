@@ -1,0 +1,10 @@
+op_name,case_name,input_tensor_shape,input_tensor_range,input_tensor_dtype,mc2_memory,golden_memory,memory_rate,mc2_prof,golden_prof,prof_rate,recordtime,avg_hccl,avg_matmul,mask_rate,result
+aclnnQuantAllReduce,96_7168_int8_fp32_fp32_T-G_QuantAllReduce_DSV3_ID0001,"[96, 7168]","(-10.0, 10.0)",int8,206.736328125,0,,38.4164,62.9662,1.6390447829572785,2026-04-30 14:56:40,,,,
+aclnnQuantAllReduce,96_7168_fp8_e4m3fn_fp8_e8m0_fp32_mxfp_QuantAllReduce_DSV3_ID0005,"[96, 7168]","(-5.0, 5.0)",fp8_e4m3fn,206.736328125,0,,37.9504,62.9774,1.6594660398836376,2026-04-30 14:56:59,,,,
+aclnnQuantAllReduce,96_7168_fp8_e5m2_fp8_e8m0_fp16_mxfp_QuantAllReduce_DSV3_ID0006,"[96, 7168]","(-3.0, 3.0)",fp8_e5m2,206.736328125,0,,42.0994,40.7016,0.9667976265694997,2026-04-30 14:57:21,,,,
+aclnnQuantAllReduce,96_7168_int8_fp32_bf16_T-G_QuantAllReduce_DSV3_ID0007,"[1, 96, 7168]","(-10, 0)",int8,206.736328125,0,,41.9304,37.971,0.9055720908934806,2026-04-30 14:57:37,,,,
+aclnnQuantAllReduce,96_7168_fp8_e5m2_fp8_e8m0_bf16_mxfp_QuantAllReduce_DSV3_ID0012,"[1, 96, 7168]","(0, 10)",fp8_e5m2,206.736328125,0,,41.3164,38.039,0.9206755670871615,2026-04-30 14:58:16,,,,
+aclnnQuantAllReduce,96_4096_int8_fp32_fp16_T-G_QuantAllReduce_qwen_ID0013,"[96, 4096]","(-10.0, 10.0)",int8,206.736328125,0,,25.3152,25.0422,0.9892159651118696,2026-04-30 14:58:46,,,,
+aclnnQuantAllReduce,96_4096_hif8_fp32_bf16_T-G_QuantAllReduce_qwen_ID0014,"[96, 4096]","(0, 10)",hif8,206.736328125,0,,25.3648,24.9948,0.9854128556109255,2026-04-30 14:59:05,,,,
+aclnnQuantAllReduce,96_4096_fp8_e4m3fn_fp8_e8m0_fp16_mxfp_QuantAllReduce_qwen_ID0017,"[96, 4096]","(-10.0, 10.0)",fp8_e4m3fn,206.736328125,0,,25.882,25.0094,0.9662854493470364,2026-04-30 14:59:23,,,,
+aclnnQuantAllReduce,96_4096_fp8_e5m2_fp8_e8m0_bf16_mxfp_QuantAllReduce_qwen_ID0018,"[96, 4096]","(-10, 0)",fp8_e5m2,206.736328125,0,,25.463,25.4688,1.0002277814868634,2026-04-30 14:59:49,,,,
