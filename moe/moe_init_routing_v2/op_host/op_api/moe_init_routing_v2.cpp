@@ -66,7 +66,7 @@ const std::array<const aclTensor *, 4> MoeInitRoutingV2(
             expert_tokens_before_capacity_out->GetDataType(), op::Format::FORMAT_ND);
     }
 
-    if (!(expanded_x->IsEmpty() && expanded_row_idx->IsEmpty() 
+    if (!(expanded_x->IsEmpty() && expanded_row_idx->IsEmpty()
         && expert_tokens_count_or_cumsum->IsEmpty() && expert_tokens_before_capacity->IsEmpty())) {
         auto ret = ADD_TO_LAUNCHER_LIST_AICORE(MoeInitRoutingV2,
             OP_INPUT(x, expert_idx),
