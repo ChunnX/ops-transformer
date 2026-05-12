@@ -521,8 +521,10 @@ __aicore__ inline int64_t ComputeAttenMaskOffset(const RunInfo<isInfer> &runInfo
     AttenMaskInfo &attenMaskInfo, const bool useDn = false, const int32_t subLoop = 0)
 {
     auto result = ComputeAttenMaskInnerOffset<hasAtten, hasRope, isInfer, dTemplateType, enableKVPrefix, isMxfp8FullQuant>(runInfo, constInfo, attenMaskInfo, useDn, subLoop);
-    if (constInfo.isFd) {
-        result += runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize;
+    if constexpr (isInfer) {
+        if (constInfo.isFd) {
+            result += runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize;
+        }
     }
     return result;
 }

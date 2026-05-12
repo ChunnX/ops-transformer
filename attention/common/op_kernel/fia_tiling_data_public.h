@@ -65,6 +65,7 @@ struct FiaBaseParams {
     uint32_t actualSeqLengthsQSize = 0;
     uint32_t actualSeqLengthsKVSize = 0;
     float scaleValue = 0.0f;
+    uint8_t isFd = 0;
     uint8_t isKvContinuous = 0;
     uint8_t isSoftMaxLseEnable = 0;
     uint32_t coreNum = 0;

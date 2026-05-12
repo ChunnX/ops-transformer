@@ -49,7 +49,7 @@ template <
     LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
     S2TemplateType s2TemplateType = S2TemplateType::Aligned128, DTemplateType dTemplateType = DTemplateType::Aligned128,
     DTemplateType dVTemplateType = DTemplateType::Aligned128, PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE,
-    bool hasAtten = false, bool hasDrop = false, bool hasRope = false, uint8_t KvLayoutType = 0, bool isFd = false,
+    bool hasAtten = false, bool hasDrop = false, bool hasRope = false, uint8_t KvLayoutType = 0,
     bool enableKVPrefix = false, bool useDn = false, bool bmm2Write2Ub = true, bool splitD = false>
 class FAFullQuantMxBlockVec {
 public:
@@ -71,7 +71,6 @@ public:
     static constexpr uint32_t DB = 2;
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C2
     static constexpr bool HAS_MASK = hasAtten;
-    static constexpr bool FLASH_DECODE = isFd;
 
     static constexpr uint32_t initOutputEventId = 0U; // attenOut和lse，刷无效行会用到剩余ub，需要加同步
 
@@ -95,7 +94,6 @@ public:
     using postQuantGmType = typename std::conditional<POST_QUANT, GlobalTensor<float>, int8_t>::type;
     using postQuantBf16GmType = typename std::conditional<POST_QUANT, GlobalTensor<bfloat16_t>, int8_t>::type;
 
-    using flashdecodeGmType = typename std::conditional<FLASH_DECODE, GlobalTensor<float>, int8_t>::type;
     using quantGmType = typename std::conditional<(isFp8), GlobalTensor<float>, int8_t>::type;
 
     using ConstInfoX = ConstInfo_t<FiaKernelType::FULL_QUANT>;
@@ -121,9 +119,9 @@ public:
     postQuantBf16GmType postQuantOffsetBf16Gm;
     quantGmType pScaleGm;
 
-    flashdecodeGmType accumOutGm;
-    flashdecodeGmType softmaxFDSumGm;
-    flashdecodeGmType softmaxFDMaxGm;
+    GlobalTensor<float> accumOutGm;
+    GlobalTensor<float> softmaxFDSumGm;
+    GlobalTensor<float> softmaxFDMaxGm;
 
     // ub
     TBuf<> commonTBuf; // common的复用空间
@@ -194,7 +192,7 @@ public:
             }
         }
 
-        if constexpr (FLASH_DECODE) {
+        if (constInfo.isFd) {
             accumOutGm.SetGlobalBuffer((__gm__ float *)workspace);
             softmaxFDSumGm.SetGlobalBuffer((__gm__ float *)workspace + constInfo.accumOutSize);
             softmaxFDMaxGm.SetGlobalBuffer((__gm__ float *)workspace + constInfo.accumOutSize +
@@ -244,7 +242,7 @@ public:
              * 但当前FD处理的这部分s2是无效的。为规避潜在的风险，只要带mask(constInfo.isExistRowInvalid)
              * 就认为可能存在无效行
              */
-            bool isExistRowInvalid = FLASH_DECODE ? HAS_MASK : constInfo.isExistRowInvalid;
+            bool isExistRowInvalid = constInfo.isFd ? HAS_MASK : constInfo.isExistRowInvalid;
             if (!isExistRowInvalid) {
                 return false;
             }
@@ -400,13 +398,13 @@ public:
 
     __aicore__ inline void SoftmaxDataCopyOut(RunInfoX runInfo, LocalTensor<float> &sumUb, LocalTensor<float> &maxUb)
     {
-        if constexpr (FLASH_DECODE) {
+        if (constInfo.isFd) {
             if (runInfo.isS2SplitCore) {
                 ComputeLogSumExpAndCopyToGm(runInfo, sumUb, maxUb);
             }
         }
 
-        if constexpr (FLASH_DECODE) {
+        if (constInfo.isFd) {
             if (!runInfo.isS2SplitCore && constInfo.isSoftmaxLseEnable) {
                 SoftmaxLseCopyOut(sumUb, maxUb, runInfo);
             }
@@ -717,7 +715,7 @@ public:
     __aicore__ inline void CopyOutAttentionOut(RunInfoX runInfo, LocalTensor<T> &vec2ResUb, uint32_t mStartVec,
                                                uint32_t mDealSize)
     {
-        if constexpr (FLASH_DECODE) {
+        if (constInfo.isFd) {
             if (runInfo.isS2SplitCore) {
                 Bmm2ResForFDCopyOut(runInfo, vec2ResUb, mStartVec, mDealSize);
             } else {
@@ -927,7 +925,7 @@ public:
         tPipe->InitBuffer(preLoopSumBuf, 256);   // [64, 1]
         tPipe->InitBuffer(firstLoopSumBuf, 256); // [64, 1]
 
-        if constexpr (FLASH_DECODE) {
+        if (constInfo.isFd) {
             tPipe->InitBuffer(maxBrdcst, 1, 2048); // [64, 8]
             tPipe->InitBuffer(sumBrdcst, 1, 2048); // [64, 8]
         }
