@@ -39,7 +39,7 @@ import itertools
 import pytest
 import torch
 import torch_npu  # noqa: F401  (registers the NPU backend)
-import bsa_npu
+import npu_ops_transformer
 
 sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "benchmark")))
 from util import (  # noqa: E402
@@ -87,7 +87,7 @@ def _run_block_sparse_attention(q, k, v, h, scale, s_q, s_kv, sabi):
 
     actual_seq = [s_q] * b
     actual_seq_kv = [s_kv] * b
-    out, _ = bsa_npu.block_sparse_attention(
+    out, _ = npu_ops_transformer.ops.block_sparse_attention(
         q, k, v,
         block_sparse_mask=block_mask,
         block_shape=[BLOCK_SIZE_Q, BLOCK_SIZE_KV],
@@ -108,7 +108,7 @@ def _run_block_sparse_attention(q, k, v, h, scale, s_q, s_kv, sabi):
 @pytest.mark.parametrize("frame,sparsity", FRAME_SPARSITY_COMBOS, ids=FRAME_SPARSITY_IDS)
 @pytest.mark.parametrize("shape", SHAPES, ids=lambda s: f"b{s[0]}-h{s[1]}-s{s[2]}-d{s[3]}")
 def test_block_sparse_attention_correctness(torch_ref, shape, frame, sparsity):
-    """Test correctness of bsa_npu.block_sparse_attention vs reference implementation."""
+    """Test correctness of npu_ops_transformer.ops.block_sparse_attention vs reference implementation."""
     torch.manual_seed(SEED)
     b, h, s_kv, d = shape
     s_q = s_kv
