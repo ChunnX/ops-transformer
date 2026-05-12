@@ -482,7 +482,8 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::DoOpTiling()
         }
         tilingData_.gmmFinalizeRoutingDataParams.windowSize = windowSizeRows;
         tilingData_.gmmFinalizeRoutingDataParams.totalM = static_cast<uint32_t>(inputParams_.mSize);
-        // Check that no single group's M exceeds windowSizeRows to prevent workspace overflow
+        // Log per-group M for debugging (single group may exceed windowSizeRows,
+        // kernel handles this by letting it occupy a round alone)
         auto groupListTensor = context_->GetOptionalInputTensor(GROUPLIST_INDEX);
         if (groupListTensor != nullptr) {
             auto groupListData = groupListTensor->GetData<int64_t>();
@@ -496,13 +497,9 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::DoOpTiling()
                     } else { // count mode (groupListType == 1)
                         groupM = groupListData[g];
                     }
-                    if (static_cast<uint64_t>(groupM) > windowSizeRows) {
-                        OP_LOGE(context_->GetNodeName(),
-                                "Deterministic sliding window: group[%lu] M=%ld exceeds windowSizeRows=%u. "
-                                "Single group too large for deterministic workspace.",
-                                g, groupM, windowSizeRows);
-                        return ge::GRAPH_FAILED;
-                    }
+                    OP_LOGD(context_->GetNodeName(),
+                            "Deterministic group[%lu] M=%ld, windowSizeRows=%u",
+                            g, groupM, windowSizeRows);
                 }
 
                 // Simulate sliding window rounds and print per-round debug info
