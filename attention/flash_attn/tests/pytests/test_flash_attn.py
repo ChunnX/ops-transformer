@@ -218,6 +218,7 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
     q_range     = kwargs.get("q_range", None)
     k_range     = kwargs.get("k_range", None)
     v_range     = kwargs.get("v_range", None)
+    lse_flag = kwargs.get("return_softmax_lse", 0)
     pse_b = b;  pse_s1 = sq;  pse_s2 = skv
     sq_gen = sq;  skv_gen = skv
     if input_layout == "TND":
@@ -391,7 +392,7 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
         else:
             print(f"[{test_name}] 缺少 GPU 或 NPU 结果，跳过 GPU vs NPU 对比。")
     
-    if lse_npu is not None:
+    if lse_flag == 1:
         print(f"\n{'='*40} 对比 lse goldem vs lse npu {'='*40}")
         passed_lse = check_result("LSE CHECK", lse_out.float(), lse_npu.float(), except_label="lse_golden", comp_label="lse_npu", verbose_diff=verbose_diff)
 
