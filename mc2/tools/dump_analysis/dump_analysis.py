@@ -629,6 +629,11 @@ for filename in os.listdir(os.path.join(floder_path)):
                                 com_epworldsize, com_hccl_epworldsize)
         else:
             logging.info("1.1 未调用到combine算子不进行combine的rankid,moe专家输入分析")
+        if A2.is_A2(soc_version):
+            if dis_core_num != 0:
+                all_card_num = dis_epworldsize
+            elif com_core_num != 0:
+                all_card_num = com_epworldsize
         if dis_moe_num != 0 and com_moe_num != 0:
             if dis_moe_num != com_moe_num:
                 logging.error("1.2 dispatch得出的moe专家数:%d与combine得出的moe专家数:%d不同", dis_moe_num, com_moe_num)
@@ -765,7 +770,7 @@ for filename in os.listdir(os.path.join(floder_path)):
             A2.analyze_single_card(
                 arr_func_dis=int32_dis_win_data, arr_func_com=int32_com_win_data,
                 core_num_func=max(dis_core_num, com_core_num),
-                ep_rankid=A2_ep_rankid, ep_worldsize=A2_ep_worldsize, runpos=A2_run_num_list,
+                ep_rankid=A2_ep_rankid, d_c=dis_com, ep_worldsize=A2_ep_worldsize, runpos=A2_run_num_list,
                 moe_expert_num=A2_moe_expert_num, bs=bs, k=k, buffer_id=buffer_id,
                 target_path=floder_path, expertids=expertids,
                 dis_status=dis_0_status, com_status=com_0_status,
