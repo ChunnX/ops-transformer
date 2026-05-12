@@ -67,7 +67,7 @@ public:
     }
 
     __aicore__ inline void operator()(LocalTensor<uint32_t>& mrgValueLocal, LocalTensor<uint32_t>& indicesOutLocal,
-                                      LocalTensor<uint32_t>& hisValueLocal, uint32_t s2SeqLen, uint32_t loopIdx, uint32_t s2LoopNum, bool returnValueFlag, uint32_t outputIdxOffset)
+                                      LocalTensor<uint32_t>& hisValueLocal, uint32_t s2SeqLen, uint32_t loopIdx, uint32_t s2LoopNum, bool returnValueFlag)
     {
         if (s2LoopNum == 1) {
             topkb32gather::LiTopKVF<false>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idx0Local, idx1Local, idx2Local, idx3Local, nkValueLocal, topK, s2SeqLen);
@@ -89,13 +89,6 @@ public:
                 }
             }
         }
-
-        //indices加偏移
-        if (outputIdxOffset != 0) {
-            topkb16gather::IndicesAddOffset(indicesOutLocal, outputIdxOffset, topK);
-        }
-
-        
     }
 private:
     LocalTensor<uint32_t> hisIndexLocal[2]; // 每trunkLen长度的s2选出的topK个索引
