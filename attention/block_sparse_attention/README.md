@@ -195,6 +195,12 @@ bash build.sh --make_clean -j96 --pkg --soc=ascend910b --ops=block_sparse_attent
 > 自动通过 ninja JIT 编译。详见
 > [`../../torch_extension/README.md`](../../torch_extension/README.md)。
 
+> Python 入口由 `torch_extension/npu_ops_transformer/` 提供 — 通过
+> `npu_ops_transformer.ops.block_sparse_attention(...)` 调用。算子的 C++ 包装器
+> `ops/csrc/block_sparse_attention.cpp` 在首次 `import npu_ops_transformer` 时
+> 自动通过 ninja JIT 编译。详见
+> [`../../torch_extension/README.md`](../../torch_extension/README.md)。
+
 ### 测试套件
 
 ```bash
