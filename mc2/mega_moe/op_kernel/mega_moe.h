@@ -34,8 +34,8 @@ using BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t,
                             int64_t, int64_t, int64_t, int64_t, int64_t,
                             int64_t, int64_t>;
 
-#define TemplateMegaMoeTypeClass typename XType, typename OutputType, typename TopkWeightsType, int32_t QuantMode
-#define TemplateMegaMoeTypeFunc XType, OutputType, TopkWeightsType, QuantMode
+#define TemplateMegaMoeTypeClass typename XType, typename OutputType, typename Weight1Type, typename TopkWeightsType, int32_t QuantMode
+#define TemplateMegaMoeTypeFunc XType, OutputType, Weight1Type, TopkWeightsType, QuantMode
 
 template <TemplateMegaMoeTypeClass>
 class MegaMoe {
@@ -43,6 +43,10 @@ public:
     using QuantOutType = typename std::conditional<((QuantMode >= 3) && (QuantMode != 4)),
         fp8_e5m2_t, fp8_e4m3fn_t>::type;
     using QuantScaleOutType = typename std::conditional<(QuantMode >= 3), fp8_e8m0_t, float>::type;
+    // using Weight1Type = typename std::conditional<(QuantMode == 6), fp4x2_e2m1_t, QuantOutType>::type;
+    static constexpr bool isWeight4Bit = AscendC::IsSameType<Weight1Type, fp4x2_e2m1_t>::value;
+    static constexpr bool isQuantOutType8Bit = AscendC::IsSameType<QuantOutType, fp8_e5m2_t>::value || AscendC::IsSameType<QuantOutType, fp8_e4m3fn_t>::value;
+    static constexpr bool isQuantOutType8BitE4M3 = AscendC::IsSameType<QuantOutType, fp8_e4m3fn_t>::value;
     __aicore__ inline MegaMoe() {};
     __aicore__ inline void Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights,
         GM_ADDR weight1, GM_ADDR weight2, GM_ADDR xActiveMask, GM_ADDR weightScales1, GM_ADDR weightScales2,
@@ -512,7 +516,7 @@ __aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGroupParams(uint3
         uint64_t n = Get<N_VALUE>(problemShape_);
         uint64_t k = Get<K_VALUE>(problemShape_);
         Get<IDX_A_OFFSET>(baseOffset_) += m * k;
-        Get<IDX_B_OFFSET>(baseOffset_) += n * k;
+        Get<IDX_B_OFFSET>(baseOffset_) += isWeight4Bit ? n * k / 2 : n * k;
         // only splitM
         auto scaleK = Ops::Base::CeilDiv(k, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
         Get<IDX_A_SCALE_OFFSET>(baseOffset_) += m * scaleK;
@@ -717,10 +721,16 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             }
         }
 
-        if (subBlockIdx_ == 0) {
-            MegaMoeImpl::GroupMatmulSwigluQuant<
-                QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType>(
+        if constexpr (isWeight4Bit && isQuantOutType8BitE4M3) {
+            MegaMoeImpl::GroupMatmulSwigluQuantA8W4<
+                QuantOutType, Weight1Type, float, QuantScaleOutType, QuantScaleOutType>(
                 epilogueOp_, params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
+        } else {
+            if (subBlockIdx_ == 0) {
+                MegaMoeImpl::GroupMatmulSwigluQuant<
+                    QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType>(
+                    epilogueOp_, params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
+            }
         }
     }
     EndSync();
