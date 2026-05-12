@@ -22,6 +22,7 @@
 #include "kernel_operator_list_tensor_intf.h"
 #include "lib/matmul_intf.h"
 #include "block_epilogue_swiglu_mx_quant.h"
+#include "weight_quant_grouped_matmul_mxfp8fp4_kernel_split_m.h"
 #include "mega_moe_base.h"
 
 #include "include/tensor_api/tensor.h"
