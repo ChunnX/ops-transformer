@@ -188,7 +188,7 @@ __aicore__ inline void MoeGatherOut<T>::CopyXIn(int64_t xSrcOffset, int64_t curL
 }
 
 template <typename T>
-__aicore__ inline void MoeGatherOut<T>::CopyXOut(int64_t xDstOffset, int64_t scaleDstOffset, int64_t curLoopCols)
+__aicore__ inline void MoeGatherOut<T>::CopyXOut(int64_t xDstOffset, int64_t curLoopCols)
 {
     LocalTensor<T> xLocal = xCopyInQueue_.DeQue<T>();
     DataCopyExtParams copyParams2{1, static_cast<uint32_t>(curLoopCols * sizeof(T)), 0, 0, 0};
@@ -273,7 +273,7 @@ __aicore__ inline void MoeGatherOut<T>::Process()
                 }
                 xCopyInQueue_.EnQue(xLocal);
             }
-            CopyXOut(curExpertLoopOffset * cols_, 1, curLoopElements * cols_);
+            CopyXOut(curExpertLoopOffset * cols_, curLoopElements * cols_);
             expandedRowIdxCopyInQueue_.FreeTensor(subRowIdxLocal);
         }
     }
