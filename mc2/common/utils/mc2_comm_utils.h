@@ -22,7 +22,7 @@ constexpr uint8_t COMM_MODE_CCU = 0;
 constexpr uint8_t COMM_MODE_AICPU = 1;
 
 constexpr uint8_t ENGINE_CCU = 0;
-constexpr uint8_t ENGINE_AICPU = 1;
+constexpr uint8_t ENGINE_AICPU = 2;
 
 inline uint8_t GetCommModeFromEnv()
 {
