@@ -100,9 +100,7 @@ static void SetXPerBlock(QuantAllReduceTilingData &tilingData)
     uint64_t aivNum = tilingData.quantAllReduceTilingInfo.aivNum;
     uint64_t perCoreElem = (xNums + aivNum - 1U) / aivNum;
     uint64_t xPerBlock = (perCoreElem + TARGET_ITER - 1U) / TARGET_ITER;
-    if (xPerBlock < MIN_BLOCK) {
-        xPerBlock = MIN_BLOCK;
-    }
+    xPerBlock = std::max<uint64_t>(xPerBlock, MIN_BLOCK);
     xPerBlock = (xPerBlock / ALIGN_BLOCK) * ALIGN_BLOCK;
     tilingData.quantAllReduceTilingInfo.xPerBlock = static_cast<uint32_t>(xPerBlock);
     tilingData.quantAllReduceTilingInfo.alignBlock = ALIGN_BLOCK;

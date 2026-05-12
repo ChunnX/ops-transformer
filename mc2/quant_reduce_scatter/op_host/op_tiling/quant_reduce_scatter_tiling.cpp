@@ -106,9 +106,7 @@ static void SetXPerBlock(QuantReduceScatterTilingData &tilingData,
     uint64_t xSliceSizeNums = xNums / rankSize;
     uint64_t perCoreElem = (xSliceSizeNums + aivNum - 1U) / aivNum;
     uint64_t xPerBlock = (perCoreElem + TARGET_ITER - 1U) / TARGET_ITER;
-    if (xPerBlock < MIN_BLOCK) {
-        xPerBlock = MIN_BLOCK;
-    }
+    xPerBlock = std::max<uint64_t>(xPerBlock, MIN_BLOCK);
     xPerBlock = (xPerBlock / ALIGN_BLOCK) * ALIGN_BLOCK;
     tilingData.quantReduceScatterTilingInfo.xPerBlock = static_cast<uint32_t>(xPerBlock);
     tilingData.quantReduceScatterTilingInfo.alignBlock = ALIGN_BLOCK;
