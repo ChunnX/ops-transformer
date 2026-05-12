@@ -160,12 +160,12 @@ private:
     AscendC::GlobalTensor<CType> yGlobal_;
 
     GM_ADDR groupListPtr_;
-    GM_ADDR xTensorPtr_;
-    GM_ADDR wTensorPtr_;
+    __gm__ AType* xTensorPtr_;
+    __gm__ BType* wTensorPtr_;
     GM_ADDR x1ScaleTensorPtr_;
-    GM_ADDR x2ScaleTensorPtr_;
-    GM_ADDR biasTensorPtr_;
-    GM_ADDR yTensorPtr_;
+    __gm__ AscendC::fp8_e8m0_t* x2ScaleTensorPtr_;
+    __gm__ BiasType* biasTensorPtr_;
+    __gm__ CType* yTensorPtr_;
 
     int64_t perGroupBOffset_;
     int32_t preOffset_ = 0; // cumsum of group list
@@ -221,13 +221,13 @@ __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::Init(const P
     const auto &mmadParams = params.mmadParams;
     const auto &gmmParams = params.gmmParams;
 
-    xTensorPtr_ = mmadParams.aGmAddr;
-    wTensorPtr_ = mmadParams.bGmAddr;
-    x1ScaleTensorPtr_ = mmadParams.x1ScaleGmAddr;
-    x2ScaleTensorPtr_ = mmadParams.x2ScaleGmAddr;
-    biasTensorPtr_ = mmadParams.biasGmAddr;
+    xTensorPtr_ = GetTensorAddr<AType>(0, mmadParams.aGmAddr);
+    wTensorPtr_ = GetTensorAddr<BType>(0, mmadParams.bGmAddr);
+    x1ScaleTensorPtr_ = GetTensorAddr<AscendC::fp8_e8m0_t>(0, mmadParams.x1ScaleGmAddr);
+    x2ScaleTensorPtr_ = GetTensorAddr<AscendC::fp8_e8m0_t>(0, mmadParams.x2ScaleGmAddr);
+    biasTensorPtr_ = GetTensorAddr<BiasType>(0, mmadParams.biasGmAddr);
     groupListPtr_ = mmadParams.groupListGmAddr;
-    yTensorPtr_ = mmadParams.cGmAddr;
+    yTensorPtr_ = GetTensorAddr<CType>(0, mmadParams.cGmAddr);
 
     groupNum_ = gmmParams.groupNum;
     curBaseM_ = gmmParams.baseM;
@@ -389,16 +389,16 @@ QGMM_MX_KERNEL_CLASS_TEM_PARAMS
 __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::UpdateMMGlobalAddr()
 {
     // Update global tensor addresses for the current grouped matmul instance.
-    aGlobal_.SetGlobalBuffer(GetTensorAddr<AType>(0, xTensorPtr_) + Get<IDX_A_OFFSET>(baseOffset_));
-    bGlobal_.SetGlobalBuffer(GetTensorAddr<BType>(0, wTensorPtr_) + Get<IDX_B_OFFSET>(baseOffset_));
+    aGlobal_.SetGlobalBuffer(xTensorPtr_ + Get<IDX_A_OFFSET>(baseOffset_));
+    bGlobal_.SetGlobalBuffer(wTensorPtr_ + Get<IDX_B_OFFSET>(baseOffset_));
     if (isBias_) {
-        biasGlobal_.SetGlobalBuffer(GetTensorAddr<BiasType>(0, biasTensorPtr_) + Get<IDX_BIAS_OFFSET>(baseOffset_));
+        biasGlobal_.SetGlobalBuffer(biasTensorPtr_ + Get<IDX_BIAS_OFFSET>(baseOffset_));
     }
     x1ScaleGlobal_.SetGlobalBuffer((__gm__ AscendC::fp8_e8m0_t *)(x1ScaleTensorPtr_) +
                                    Get<IDX_X1SCALE_OFFSET>(baseOffset_)); // optional input
-    x2ScaleGlobal_.SetGlobalBuffer(GetTensorAddr<AscendC::fp8_e8m0_t>(0, x2ScaleTensorPtr_) +
+    x2ScaleGlobal_.SetGlobalBuffer(x2ScaleTensorPtr_ +
                                    Get<IDX_X2SCALE_OFFSET>(baseOffset_));
-    yGlobal_.SetGlobalBuffer(GetTensorAddr<CType>(0, yTensorPtr_) + Get<IDX_C_OFFSET>(baseOffset_));
+    yGlobal_.SetGlobalBuffer(yTensorPtr_ + Get<IDX_C_OFFSET>(baseOffset_));
 }
 
 QGMM_MX_KERNEL_CLASS_TEM_PARAMS
