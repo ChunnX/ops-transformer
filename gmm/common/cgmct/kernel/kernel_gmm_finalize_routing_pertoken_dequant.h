@@ -109,7 +109,7 @@ public:
     using AType = typename BlockMmadBuilder::AType;
     using BType = typename BlockMmadBuilder::BType;
     using CType = typename BlockMmadBuilder::CType;
-    using TupleShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
+    using TupleShape = AscendC::Shape<int64_t, int64_t, int64_t>;
     using BlockShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
     using BlockCoord = AscendC::Coord<int64_t, int64_t, int64_t, int64_t>;
     // a, b, x1scale, x2scale, bias, y, logit
@@ -287,9 +287,8 @@ public:
         int64_t m = Get<MNK_M>(problemShape_);
         int64_t n = Get<MNK_N>(problemShape_);
         int64_t k = Get<MNK_K>(problemShape_);
-        TupleShape resProblemShape{Get<MNK_M>(problemShape_), Get<MNK_N>(problemShape_), Get<MNK_K>(problemShape_), 0};
-        bs.UpdateNextProblem(resProblemShape);
-        epilogueDequantOp_.UpdateNextProblem(resProblemShape);
+        bs.UpdateNextProblem(problemShape_);
+        epilogueDequantOp_.UpdateNextProblem(problemShape_);
         UpdateGlobalBuffer(params);
         CoordClass coord(m, n, k, params.gmmParams.baseM, params.gmmParams.baseN, params.gmmParams.baseK);
         BlockCoord tileIdx;
