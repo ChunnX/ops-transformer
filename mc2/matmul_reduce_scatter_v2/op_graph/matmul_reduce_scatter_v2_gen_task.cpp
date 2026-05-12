@@ -15,6 +15,7 @@
 
 #include "op_graph/mc2_gen_task_ops_utils.h"
 #include "op_graph/mc2_gen_task_ops_utils_arch35.h"
+#include "op_graph/mc2_moe_gen_task_ops_utils.h"
 #include "register/op_impl_registry.h"
 #include "mc2_log.h"
 #include "mc2_platform_info.h"
@@ -41,14 +42,19 @@ static ge::Status MatmulReduceScatterV2GenTask(const gert::ExeResGenerationConte
                                            std::vector<std::vector<uint8_t>> &tasks)
 {
     if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
-        uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-        if (commMode == Mc2Comm::COMM_MODE_AICPU) {
-            OPS_LOG_D(context->GetNodeName(), "Do A5 AICPU GenTaskFunc");
-            return Mc2GenTaskOpsUtils::CommonKFCMc2GenTask(context, tasks);
-        } else {
-            OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTaskFunc");
-            return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks);
-        }
+        OPS_LOG_D(context->GetNodeName(), "Do A5 GenTaskFunc");
+        return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks);
+        // std::string attr_name = "comm_mode";
+        // ge::AscendString comm_mode;
+        // auto result = context->GetStrAttrVal(attr_name.c_str(), comm_mode);
+        // std::string commEngine(comm_mode.GetString());
+        // if (strcmp(commEngine, "aicpu") == 0) {
+        //     OPS_LOG_D(context->GetNodeName(), "Do A5 AiCPU GenTaskFunc");
+        //     return Mc2MoeGenTaskOpsUtils::Mc2MoeGenTaskCallback(context, tasks);
+        // } else if (strcmp(commEngine, "ccu") == 0) {
+        //     OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTaskFunc");
+        //     return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks);
+        // }
     }
     OPS_LOG_E(context->GetNodeName(), "Only support A5");
     return ge::GRAPH_FAILED;

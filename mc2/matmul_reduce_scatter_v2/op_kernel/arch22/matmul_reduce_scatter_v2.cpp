@@ -28,7 +28,7 @@ using namespace matmulReduceScatterV2_aivmode_tiling;
 using namespace AscendC;
 using namespace MatmulReduceScatterV2Impl;
 
-template <bool TPL_ISBIAS, bool TPL_IS_TRANSPOSE_A, bool TPL_IS_TRANSPOSE_B, bool TPL_IS_SMALLM>
+template <bool TPL_ISBIAS, bool TPL_IS_TRANSPOSE_A, bool TPL_IS_TRANSPOSE_B, bool TPL_IS_SMALLM, uint8_t TPL_COMM_MODE>
 __global__ __aicore__ void matmul_reduce_scatter_v2(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR x1ScaleGM,
                                                     GM_ADDR x2ScaleGM, GM_ADDR quantScaleGM, GM_ADDR cGM,
                                                     GM_ADDR amaxOutGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
