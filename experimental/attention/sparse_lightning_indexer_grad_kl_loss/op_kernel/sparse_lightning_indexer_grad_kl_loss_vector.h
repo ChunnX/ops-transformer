@@ -701,7 +701,7 @@ __aicore__ inline int32_t SLIKLLossVectorService<SLIT>::GetS2SparseLen(int32_t s
 {
     if (sparseMode == SLISparseMode::RightDown) {
         if (cmpRatio == 4) { 
-            return (s1Idx + 1) / cmpRatio;
+            return (actualSeqLensK * constInfo.cmpRatio - actualSeqLensQ + s1Idx + 1) / constInfo.cmpRatio;
         } else {
             return Max(actualSeqLensK - actualSeqLensQ + s1Idx + 1, 0);
         }
@@ -733,6 +733,10 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::GetRunInfo(int64_t taskId, 
     runInfo.s2SparseLen = GetS2SparseLen(runInfo.s1Idx, runInfo.actS1Size, runInfo.actS2Size, constInfo.cmpRatio, constInfo.sparseMode);
     runInfo.s2RealSize = Min(topKSize, runInfo.s2SparseLen);
 
+    if (constInfo.cmpRatio != 0) {
+        runInfo.s2RealSize = Max(1, runInfo.s2RealSize);
+    }
+
     runInfo.kRealSize = runInfo.s2RealSize;
     runInfo.kRealSizeAlign8 = (runInfo.kRealSize + 7) >> 3 << 3;
 
@@ -761,48 +765,41 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::ProcessDeterVector2(SLIGrad
             tilingData->multiCoreParams.bS1Index[idx + 1] : tilingData->multiCoreParams.totalSize;
         int64_t bIdx, s1Idx;
 
-        if (constInfo.cmpRatio == 4) {
-            if (constInfo.cmpRatio >= constInfo.s1Size) {
-                continue;
-            }
-            int64_t startBIdx = bS1StartIndex / constInfo.s1Size;
-            int64_t startS1Idx = bS1StartIndex - startBIdx * constInfo.s1Size;
-            if (startS1Idx < (constInfo.cmpRatio - 1)) {
-                startS1Idx = constInfo.cmpRatio - 1;
-            }
-            int64_t firstS = constInfo.s1Size - startS1Idx;
-            if (runInfo.taskId < firstS) {
-                bIdx = startBIdx;
-                s1Idx = startS1Idx + runInfo.taskId;
-            } else {
-                bIdx = startBIdx + (runInfo.taskId - firstS) / (constInfo.s1Size - constInfo.cmpRatio - 1) + 1;
-                s1Idx = (runInfo.taskId - firstS) % (constInfo.s1Size - constInfo.cmpRatio - 1) + constInfo.cmpRatio - 1;
-            }
-            if (bIdx * constInfo.s1Size + s1Idx >= bS1EndIndex) {
-                continue;
-            } 
-        } else {
-            int64_t bS1Index = bS1StartIndex + runInfo.taskId;
-            if (bS1Index >= bS1EndIndex) {
-                continue;
-            }
-            int64_t actualSum = 0;
-            if constexpr (LAYOUT_T == SLILayout::TND) {
-                for (int index = 0; index < constInfo.bSize; index++) {
-                    int64_t actualLen = this->actualSeqLengthsQueryGm.GetValue(index);
-                    if (bS1Index < actualLen) {
-                        bIdx = index;
-                        break;
-                    }
-                    actualSum = actualLen;
+        int64_t bS1Index = bS1StartIndex + runInfo.taskId;
+        if (bS1Index >= bS1EndIndex) {
+            continue;
+        }
+        int64_t actualSum = 0;
+        int64_t actualLenQ = 0;
+        int64_t seqLenQ = 0;
+        int64_t actualLenK = 0;
+        int64_t seqLenK = 0;
+        if constexpr (LAYOUT_T == SLILayout::TND) {
+            for (int index = 0; index < constInfo.bSize; index++) {
+                int64_t actualLenQ = this->actualSeqLengthsQueryGm.GetValue(index);
+                int64_t actualLenK = this->actualSeqLengthsKeyGm.GetValue(index);
+                if (bS1Index < actualLenQ) {
+                    bIdx = index;
+                    seqLenQ = (index == 0) ? actualLenQ 
+                        : this->actualSeqLengthsQueryGm.GetValue(index) - this->actualSeqLengthsQueryGm.GetValue(index - 1);
+                    seqLenK = (index == 0) ? actualLenK 
+                        : this->actualSeqLengthsKeyGm.GetValue(index) - this->actualSeqLengthsKeyGm.GetValue(index - 1);
+                    break;
                 }
-                s1Idx = bS1Index - actualSum;
-            } else {
-                bIdx = bS1Index / constInfo.s1Size;
-                s1Idx = bS1Index - bIdx * constInfo.s1Size;
+                actualSum = actualLenQ;
             }
+            s1Idx = bS1Index - actualSum;
+        } else {
+            bIdx = bS1Index / constInfo.s1Size;
+            s1Idx = bS1Index - bIdx * constInfo.s1Size;
         }
 
+        if (constInfo.cmpRatio != 0) {
+            if (constInfo.cmpRatio * seqLenK - seqLenQ + s1Idx + 1 <= 0) {
+                continue;
+            }
+        }
+ 
         GetRunInfo(runInfo.taskId, bIdx, s1Idx, runInfo);
         
         int32_t v0RealKSize, v1RealKSize, vRealKSize;
@@ -1382,7 +1379,7 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorDwDqDkLess2k(SLIGradK
     // 只有一轮计算，计算完直接可以拷贝到GM输出
     PipeBarrier<PIPE_V>();
 
-    if ((runInfo.s1Idx + 1) < constInfo.cmpRatio) {
+    if (runInfo.s2SparseLen <= 0) {
         Duplicate(dwOutTensor, (KV_T)0.0, gSizePerVec);
     } else {
         Cast(dwOutTensor, reduceSumResTensor, AscendC::RoundMode::CAST_ROUND, gSizePerVec);
@@ -1519,7 +1516,7 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorDwDqDkMoreThan2k(SLIG
 
     if (kLoopIdx == runInfo.kLoopTimes - 1) {
         PipeBarrier<PIPE_V>();
-        if ((runInfo.s1Idx + 1) < constInfo.cmpRatio) {
+        if (runInfo.s2SparseLen <= 0) {
             Duplicate(dwOutTensor, (KV_T)0.0, gSizePerVec);
         } else {
             Cast(dwOutTensor, reduceSumResTensor, AscendC::RoundMode::CAST_ROUND, gSizePerVec);
@@ -1745,7 +1742,7 @@ template <typename SLIT>
 template <uint32_t range>
 __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorLoss(SLIGradKLLossRunInfo &runInfo, int32_t kLoopIdx)
 {
-    if ((runInfo.s1Idx + 1) >= constInfo.cmpRatio) {
+    if (runInfo.s2SparseLen > 0) {
         if constexpr (range <= SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_2K) {
             VectorLossLess2k(runInfo);
         } else {
