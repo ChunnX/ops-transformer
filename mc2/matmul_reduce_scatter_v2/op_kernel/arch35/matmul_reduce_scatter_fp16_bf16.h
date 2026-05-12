@@ -173,7 +173,7 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
         AscendC::CrossCoreSetFlag<0, PIPE_FIX>(3);
         AscendC::CrossCoreWaitFlag(3);
         recvCount = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? 1 : recvCount;
-        handles_[i + shift] = hccl_.ReduceScatter<true>(
+        handles_[i + shift] = hccl_.template ReduceScatter<true>(
             cWork, recvBuffer, recvCount, dataType_, HcclReduceOp::HCCL_REDUCE_SUM, stride, repeat);
         cWork += cOffset;
         recvBuffer += cOffset;

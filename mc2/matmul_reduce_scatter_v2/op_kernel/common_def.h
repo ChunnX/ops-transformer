@@ -16,6 +16,8 @@
  #ifndef COMMON_DEF_H
  #define COMMON_DEF_H
 
+#include "lib/hccl/hccl.h"
+
 namespace MatmulReduceScatterV2Impl {
 using A_DTYPE = DTYPE_X1;
 using B_DTYPE = DTYPE_X1;
@@ -25,6 +27,8 @@ constexpr uint8_t MAX_HANDLE = 64;          // 最大handle数
 constexpr uint8_t MC2_DEBUG_ONLY_CUBE = 1;  // 只计算不通信
 constexpr uint8_t MC2_DEBUG_ONLY_AICPU = 4; // 只通信不计算
 constexpr uint64_t BLOCK_SIZE = 128;
+
+using namespace AscendC;
 
 constexpr int CCU_COMM_MODE = 0;
 constexpr int AICPU_COMM_MODE = 1;

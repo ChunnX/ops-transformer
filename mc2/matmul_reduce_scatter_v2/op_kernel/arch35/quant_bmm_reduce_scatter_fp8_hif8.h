@@ -152,7 +152,7 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::MatMulReduce
     uint8_t repeat = 1;
     if ASCEND_IS_AIC {
         recvCount = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? 1 : recvCount;
-        handles_[0] = hccl_.ReduceScatter<true>(
+        handles_[0] = hccl_.template ReduceScatter<true>(
             cWork, recvBuffer, recvCount, dataType_, HcclReduceOp::HCCL_REDUCE_SUM, stride, repeat);
     }
 }
@@ -248,7 +248,7 @@ QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::MatMulComputReduceScatterPertensor(
         AscendC::CrossCoreSetFlag<0, PIPE_FIX>(3);
         AscendC::CrossCoreWaitFlag(3);
         recvCount = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? 1 : recvCount;
-        handles_[i + shift] = hccl_.ReduceScatter<true>(
+        handles_[i + shift] = hccl_.template ReduceScatter<true>(
             cWork, recvBuffer, recvCount, dataType_, HcclReduceOp::HCCL_REDUCE_SUM, stride, repeat);
         cWork += cOffset;
         recvBuffer += cOffset;
@@ -293,7 +293,7 @@ QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::MatMulComputReduceScatterPerblock(
         SyncAll<false>();
         if ASCEND_IS_AIC {
             recvCount = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? 1 : recvCount;
-            handles_[i + shift] = hccl_.ReduceScatter<true>(
+            handles_[i + shift] = hccl_.template ReduceScatter<true>(
                 cWork, recvBuffer, recvCount, dataType_, HcclReduceOp::HCCL_REDUCE_SUM, stride, repeat);
         }
         aAddr += aOffset;

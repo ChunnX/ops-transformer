@@ -243,7 +243,7 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::MatMul
 
     // V核发起 All2All 通信
     if ASCEND_IS_AIV {
-        handles_[0] = hccl_.AlltoAll<true>(
+        handles_[0] = hccl_.template AlltoAll<true>(
             sendBuffer, recvBuffer, recvCount, dataType_, stride, repeat);
     }
 }
@@ -388,7 +388,7 @@ QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::ExecuteAivCommReducePipeline(
 
     // --- Prologue: 启动第 0 轮通信 ---
     VecWaitCube(); // 确保依赖的 MatMul 已完成
-    handles_[0 + handleShift] = hccl_.AlltoAll<true>(
+    handles_[0 + handleShift] = hccl_.template AlltoAll<true>(
         currSendPtr, currRecvPtr, rankSliceElems, dataType_, stride, repeat
     );
     
@@ -407,7 +407,7 @@ QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::ExecuteAivCommReducePipeline(
 
         // 2. 启动下一轮 (i+1) 通信
         VecWaitCube(); 
-        handles_[i + 1 + handleShift] = hccl_.AlltoAll<true>(
+        handles_[i + 1 + handleShift] = hccl_.template AlltoAll<true>(
             currSendPtr, currRecvPtr, rankSliceElems, dataType_, stride, repeat
         );
 
@@ -523,7 +523,7 @@ QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::MatMulComputReduceScatterPerb
 
         // All2All 通信, AIV 发起
         if ASCEND_IS_AIV {
-            handles_[i + handleShift] = hccl_.AlltoAll<true>(
+            handles_[i + handleShift] = hccl_.template AlltoAll<true>(
                 currSendPtr,    // 发送缓冲区
                 currRecvPtr,    // 接收缓冲区
                 recvCount,      // 元素数量
