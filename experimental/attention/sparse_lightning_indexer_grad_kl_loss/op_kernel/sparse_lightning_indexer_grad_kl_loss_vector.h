@@ -733,6 +733,10 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::GetRunInfo(int64_t taskId, 
     runInfo.s2SparseLen = GetS2SparseLen(runInfo.s1Idx, runInfo.actS1Size, runInfo.actS2Size, constInfo.cmpRatio, constInfo.sparseMode);
     runInfo.s2RealSize = Min(topKSize, runInfo.s2SparseLen);
 
+    if (constInfo.cmpRatio != 0) {
+        runInfo.s2RealSize = Max(1, runInfo.s2RealSize);
+    }
+
     runInfo.kRealSize = runInfo.s2RealSize;
     runInfo.kRealSizeAlign8 = (runInfo.kRealSize + 7) >> 3 << 3;
 
@@ -1375,7 +1379,7 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorDwDqDkLess2k(SLIGradK
     // 只有一轮计算，计算完直接可以拷贝到GM输出
     PipeBarrier<PIPE_V>();
 
-    if (runInfo.s2RealSize == 0) {
+    if (runInfo.s2SparseLen <= 0) {
         Duplicate(dwOutTensor, (KV_T)0.0, gSizePerVec);
     } else {
         Cast(dwOutTensor, reduceSumResTensor, AscendC::RoundMode::CAST_ROUND, gSizePerVec);
@@ -1512,7 +1516,7 @@ __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorDwDqDkMoreThan2k(SLIG
 
     if (kLoopIdx == runInfo.kLoopTimes - 1) {
         PipeBarrier<PIPE_V>();
-        if (runInfo.s2RealSize == 0) {
+        if (runInfo.s2SparseLen <= 0) {
             Duplicate(dwOutTensor, (KV_T)0.0, gSizePerVec);
         } else {
             Cast(dwOutTensor, reduceSumResTensor, AscendC::RoundMode::CAST_ROUND, gSizePerVec);
@@ -1738,7 +1742,7 @@ template <typename SLIT>
 template <uint32_t range>
 __aicore__ inline void SLIKLLossVectorService<SLIT>::VectorLoss(SLIGradKLLossRunInfo &runInfo, int32_t kLoopIdx)
 {
-    if (runInfo.s2RealSize > 0) {
+    if (runInfo.s2SparseLen > 0) {
         if constexpr (range <= SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_2K) {
             VectorLossLess2k(runInfo);
         } else {
