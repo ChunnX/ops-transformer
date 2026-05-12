@@ -35,6 +35,7 @@ function help {
     echo "PROFILING_PATH(选填,分析profiling数据必填):profiling数据存放的路径,不填默认在TARGET_DIR指定的路径下查找"
     echo "PLOG_PATH(选填,分析错误日志必填):plog日志存放的路径,不填不进行plog日志分析"
     echo "GRAPH_PATH(选填,分析graph图文件必填):graph图文件存放的路径,不填不进行graph图文件分析"
+    echo "START_A2_CLUSTER(选填,分析A2集群数据必填):是否分析A2集群数据,0:不分析,1:分析,不填默认为0"
     exit 0
 }
 #获取sh脚本的文件路径
@@ -78,7 +79,10 @@ for arg in "$@"; do
     if [[ "$arg" == GRAPH_PATH=* ]]; then
         GRAPH_PATH="${arg#*=}"
     fi
-    if ! [[ "$arg" =~ ^(-h|-help|TARGET_DIR=|TOOL_PATH=|SP_MOE_NUM=|TP_WORLDSIZE=|SOC_VERSION=|SHARE_EXPERT_CARD_COUNT=|SHARE_EXPERT_NUM=|PROFILING_PATH=|PLOG_PATH=|GRAPH_PATH=) ]]; then
+    if [[ "$arg" == START_A2_CLUSTER=* ]]; then
+        START_A2_CLUSTER="${arg#*=}"
+    fi
+    if ! [[ "$arg" =~ ^(-h|-help|TARGET_DIR=|TOOL_PATH=|SP_MOE_NUM=|TP_WORLDSIZE=|SOC_VERSION=|SHARE_EXPERT_CARD_COUNT=|SHARE_EXPERT_NUM=|PROFILING_PATH=|PLOG_PATH=|GRAPH_PATH=|START_A2_CLUSTER=) ]]; then
         echo "warning:未知参数 $arg ,使用 -h or -help 查看帮助"
     fi
 done
@@ -339,7 +343,12 @@ elif [ "$SOC_VERSION" = "$SOC_VERSION_950" ]; then
     fi
 elif [ "$SOC_VERSION" = "$SOC_VERSION_910B" ]; then
     echo "进入 A2 处理流程"
-    if ls "$TARGET_DIR/1/mc2_exception_info"* >/dev/null 2>&1; then
+    if [ "$START_A2_CLUSTER" = "1" ]; then
+        echo "开始解析A2集群数据"
+        python3 $SCRIPT_DIR/dump_analysis_A2.py
+        echo "数据解析完成"
+        echo "--------------------------------------------"
+    elif ls "$TARGET_DIR/*/mc2_exception_info"* >/dev/null 2>&1; then
         echo "开始解析多卡dump数据"
         for ((i = 0; i < file_num; i++))
         do

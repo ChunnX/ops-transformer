@@ -749,13 +749,13 @@ for filename in os.listdir(os.path.join(floder_path)):
                 logging.error("4. combine 0/1标识位 should be 0/1 but got %d\n", com_0_1)
         else:
             logging.info("4. 未调用com,不进行com状态区分析\n")
-        if A2.isA2(soc_version):
+        if A2.is_A2(soc_version):
             if dis_com == 'dispatch':
                 A2_ep_rankid = dis_rankid
                 A2_ep_worldsize = dis_epworldsize
                 A2_moe_expert_num = dis_moe_num
                 A2_run_num_list = dis_status_list
-                buffer_id =dis_0_1
+                buffer_id = dis_0_1
             else:
                 A2_ep_rankid = com_rankid
                 A2_ep_worldsize = com_epworldsize
