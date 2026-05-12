@@ -90,18 +90,10 @@ static void SetTilingData(gert::TilingContext *context, QuantReduceScatterTiling
     tilingData.quantReduceScatterTilingInfo.totalWinSize = mc2tiling::Mc2TilingUtils::GetMaxWindowSize();
 }
 
-/**
- * @brief 基于 TARGET_ITER 公式计算 host 推荐的 xPerBlock，写入 tilingData
- *        QRS 分子先除 rankSize（每卡分片），再走 TARGET_ITER 反推计算 xPerBlock
- * @param context: tiling context
- * @param tilingData: tilingData
- * @param runInfo: 含 rankSize 等运行信息
- * @return
- */
-static void SetXPerBlock(gert::TilingContext *context, QuantReduceScatterTilingData &tilingData,
+// 基于 TARGET_ITER 公式计算 host 推荐的 xPerBlock（先除 rankSize 再反推），写入 tilingData
+static void SetXPerBlock(QuantReduceScatterTilingData &tilingData,
                          const TilingRunInfo &runInfo)
 {
-    (void)context;
     constexpr uint32_t TARGET_ITER = 3U;   // 与 QAR 对称
     constexpr uint32_t MIN_BLOCK = 2048U;  // QRS comm-bound：per_core 太小公式失效，MIN 兜到 2048（512/2048/4096 三点扫参，2048 最优）
     constexpr uint32_t ALIGN_BLOCK = 1024U;  // 与 kernel X_BLOCK_ALIGN_NUM 对齐
@@ -165,7 +157,7 @@ static ge::graphStatus QuantReduceScatterTilingFunc(gert::TilingContext *context
     OP_TILING_CHECK(SetHcommCfg(context, tilingData, runInfo) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "SetHCommCfg failed."), return ge::GRAPH_FAILED);
     SetTilingData(context, *tilingData);
-    SetXPerBlock(context, *tilingData, runInfo);
+    SetXPerBlock(*tilingData, runInfo);
     SetTilingKey(context);
     PrintTilingDataInfo(context, *tilingData);
     return ge::GRAPH_SUCCESS;
