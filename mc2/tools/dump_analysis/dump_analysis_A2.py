@@ -42,12 +42,12 @@ def get_islayer_ep(arr_func: np.ndarray, core_num_func: int, d_c: str):
     islayer = []
     for i in range(core_num_func):
         islayer.append(arr_func[11 + (i * per_core)])
-    logging.info("1.1 %s各核islayer:%s\n", d_c, islayer)
+    logging.info("[A2] 1.1 %s各核islayer:%s\n", d_c, islayer)
     islayer_count = Counter(islayer)
     max_islayer = max(islayer_count, key=islayer_count.get)
     diff_islayer = [idx for idx, val in enumerate(islayer) if val != max_islayer]
     if diff_islayer != []:
-        logging.error("1.1 %s有如下下标的核的islayer与其他核不相等%s,共%d个核\n",
+        logging.error("[A2] 1.1 %s有如下下标的核的islayer与其他核不相等%s,共%d个核\n",
                       d_c, diff_islayer, len(diff_islayer))
     return islayer, max_islayer
 
@@ -58,7 +58,7 @@ def get_send_and_recv_info(arr_func: np.ndarray, core_num_func: int,
     raw_send_or_recv, fullmesh_num_tokens = get_raw_send_or_recv_info(
         arr_func, core_num_func, islayer, ep_worldsize)
     inner_info = []
-    unfinish_info, unfinish_info_inner = [], []
+    unfinish_info, unfinish_info_inner = [[], []], [[], []]
     if islayer == 0:
         send_info, recv_info, unfinish_info = get_fullmesh_send_and_recv_info(
             raw_send_or_recv, core_num_func, ep_rankid, d_c, ep_worldsize, fullmesh_num_tokens)
@@ -69,7 +69,7 @@ def get_send_and_recv_info(arr_func: np.ndarray, core_num_func: int,
             inner_info, unfinish_info_inner = get_hierarchy_dis_inner_send_and_recv_info(
                 raw_send_or_recv, ep_rankid, d_c, ep_worldsize)
     else:
-        logging.error("1.1 %s的islayer为%d,不支持分析\n", d_c, islayer)
+        logging.error("[A2] 1.1 %s的islayer为%d,不支持分析\n", d_c, islayer)
     return send_info, recv_info, inner_info, [unfinish_info, unfinish_info_inner]
 
 
@@ -129,13 +129,13 @@ def get_fullmesh_send_and_recv_info(raw_send_or_recv: list, core_num_func: int, 
                     unfinish_recv_ep.append(recv_ep_rankid)
     if unfinish_send_ep != []:
         logging.error(
-            "1.1 %s EP%d 未完成发送的EP:%s\n",
+            "[A2] 1.1 %s EP%d 未完成发送的EP:%s\n",
             d_c,
             ep_rankid,
             unfinish_send_ep)
     if unfinish_recv_ep != []:
         logging.error(
-            "1.1 %s EP%d 未完成接收的EP:%s\n",
+            "[A2] 1.1 %s EP%d 未完成接收的EP:%s\n",
             d_c,
             ep_rankid,
             unfinish_recv_ep)
@@ -169,17 +169,17 @@ def get_hierarchy_send_and_recv_info(
         if has_recv_ep[i] == 0 and i != cur_server_id:
             unfinish_recv_ep.append(i)
     if unfinish_send_ep != []:
-        logging.error("1.1 %s EP%d 未完成发送的server:%s\n",
+        logging.error("[A2] 1.1 %s EP%d 未完成发送的server:%s\n",
                       d_c, ep_rankid, unfinish_send_ep)
     if unfinish_recv_ep != []:
-        logging.error("1.1 %s EP%d 未完成接收的server:%s\n",
+        logging.error("[A2] 1.1 %s EP%d 未完成接收的server:%s\n",
                       d_c, ep_rankid, unfinish_recv_ep)
 
-    logging.info("1.1 %s EP%d has send rank:%s\n", d_c, ep_rankid, has_send_ep)
-    logging.info("1.1 %s EP%d has recv rank:%s\n", d_c, ep_rankid, has_recv_ep)
-    logging.info("1.1 %s EP%d send token num:%s\n",
+    logging.info("[A2] 1.1 %s EP%d has send rank:%s\n", d_c, ep_rankid, has_send_ep)
+    logging.info("[A2] 1.1 %s EP%d has recv rank:%s\n", d_c, ep_rankid, has_recv_ep)
+    logging.info("[A2] 1.1 %s EP%d send token num:%s\n",
                  d_c, ep_rankid, send_num_tokens_ep)
-    logging.info("1.1 %s EP%d recv token num:%s\n",
+    logging.info("[A2] 1.1 %s EP%d recv token num:%s\n",
                  d_c, ep_rankid, recv_num_tokens_ep)
     return [has_send_ep, send_num_tokens_ep], [has_recv_ep, recv_num_tokens_ep], [
         unfinish_send_ep, unfinish_recv_ep]
@@ -205,33 +205,34 @@ def get_hierarchy_dis_inner_send_and_recv_info(
         if has_recv_ep[i] == 0 and i != cur_server_id:
             unfinish_recv_ep.append(i)
     if unfinish_send_ep != []:
-        logging.error("1.1 %s EP%d inner 未完成发送的server:%s\n",
+        logging.error("[A2] 1.1 %s EP%d inner 未完成发送的server:%s\n",
                       d_c, ep_rankid, unfinish_send_ep)
     if unfinish_recv_ep != []:
-        logging.error("1.1 %s EP%d inner 未完成接收的server:%s\n",
+        logging.error("[A2] 1.1 %s EP%d inner 未完成接收的server:%s\n",
                       d_c, ep_rankid, unfinish_recv_ep)
     logging.info(
-        "1.1 %s EP%d inner has_send_ep:%s\n",
+        "[A2] 1.1 %s EP%d inner has_send_ep:%s\n",
         d_c,
         ep_rankid,
         has_send_ep)
     logging.info(
-        "1.1 %s EP%d inner has_recv_ep:%s\n",
+        "[A2] 1.1 %s EP%d inner has_recv_ep:%s\n",
         d_c,
         ep_rankid,
         has_recv_ep)
     return [has_send_ep, has_recv_ep], [unfinish_send_ep, unfinish_recv_ep]
 
 
-#获取combine算子的dump信息
-def get_combine_dumpinfo(target_path: str, bsk: int,
-                         moe_expert_num: int, islayer: int):
-    expandidx_input = get_dump_expandidx(
-        target_path, bsk) if islayer == 0 else []
-    xactivemask_input = get_dump_xactivemask(target_path)
-    epsendcnt_input = get_dump_epsendcnt(target_path, moe_expert_num)
+#获取算子的dump信息
+def get_dumpinfo(target_path: str, bsk: int,
+                         moe_expert_num: int, islayer: int, d_c: str):
+    expandidx_input, epsendcnt_input = None, None
+    if d_c == 'combine':
+        expandidx_input = get_dump_expandidx(
+            target_path, bsk) if islayer == 0 else []
+        epsendcnt_input = get_dump_epsendcnt(target_path, moe_expert_num)
+    xactivemask_input = get_dump_xactivemask(target_path, d_c)
     return expandidx_input, xactivemask_input, epsendcnt_input
-
 
 # 从input.2.bin中获取expandidx
 def get_dump_expandidx(target_path: str, bsk: int):
@@ -247,14 +248,17 @@ def get_dump_expandidx(target_path: str, bsk: int):
 
 
 # 从input.6.bin中获取xactivemask
-def get_dump_xactivemask(target_path: str):
+def get_dump_xactivemask(target_path: str, d_c: str):
     xactivemask_input = []
+    target_file_name = 'input.3.bin' if d_c == "dispatch" else 'input.6.bin'
     for filename_func in os.listdir(os.path.join(target_path)):
-        if 'input.6.bin' in filename_func:
+        if target_file_name in filename_func:
             file_path_func = os.path.join(target_path, filename_func)
             xactivemask_input = np.fromfile(
-                file_path_func, dtype=np.int8).tolist()
-            return xactivemask_input
+                file_path_func, dtype=np.uint8).tolist()
+            if max(xactivemask_input) == 0:
+                xactivemask_input = []
+            break
     return xactivemask_input
 
 
@@ -306,6 +310,7 @@ def get_hierarchy_dis_win_status(
     inner_win_status = []
     sync_win_status = []
     per_server = 128
+    dis_win_status = dis_win_status.view(np.int32)
     for i in range(server_num):
         token_win_status.append(dis_win_status[per_server * i])
         inner_win_status.append(
@@ -324,6 +329,7 @@ def get_hierarchy_com_win_status(
     token_win_status = []
     sync_win_status = []
     per_server = 128
+    com_win_status = com_win_status.view(np.int32)
     for i in range(server_num):
         token_win_status.append(com_win_status[per_server * i])
     sync_offset = per_server * (server_num + 1)
@@ -337,16 +343,16 @@ def get_hierarchy_com_win_status(
 def get_fullmesh_dis_win_state(
         dis_win_status: np.ndarray, moe_expert_num: int, ep_worldsize: int):
     local_moe_expert_num = moe_expert_num // ep_worldsize
-    status_entry_count = ((local_moe_expert_num + 1 - 1) //
-                          UINT32_PER_BLOCK + 1) * UINT32_PER_BLOCK
+    status_entry_count = (local_moe_expert_num // UINT32_PER_BLOCK + 1) * UINT32_PER_BLOCK
     token_win_status = []
     arrive_win_status = []
+    dis_win_status = dis_win_status.view(np.int32)
     for i in range(ep_worldsize):
         offset = i * status_entry_count
         token_win_status.append(
-            dis_win_status[offset: offset + local_moe_expert_num])
+            dis_win_status[offset: offset + local_moe_expert_num].tolist())
         arrive_win_status.append(
-            dis_win_status[offset + status_entry_count - 1])
+            hex(dis_win_status[offset + status_entry_count - 1].view(np.uint32).item()))
     return [token_win_status, arrive_win_status]
 
 
@@ -355,6 +361,7 @@ def get_fullmesh_com_win_state(com_win_status: np.ndarray, ep_worldsize: int):
     token_win_status = []
     arrive_win_status = []
     per_ep = UINT32_PER_BLOCK * 2
+    com_win_status = com_win_status.view(np.uint32)
     for i in range(ep_worldsize):
         offset = i * per_ep
         token_win_status.append(com_win_status[offset])
@@ -376,7 +383,7 @@ def get_device_count():
     elif arch == 'x86_64':
         return 16
     else:
-        logging.error(f"未知架构:{arch}，默认返回8个设备")
+        logging.error(f"[A2] 未知架构:{arch}，默认返回8个设备")
         return 8
 
 
@@ -424,7 +431,7 @@ def save_dump_data(
         index=[local_rank_id])
     dump_input_info.to_csv(file_name, index=True, mode='a',
                            header=not file_exists, encoding="gbk")
-    logging.info(f"EP{ep_rankid} dump info data save to {file_name}")
+    logging.info(f"[A2] EP{ep_rankid} dump info data save to {file_name}")
 
 
 #保存窗口数据到CSV文件
@@ -460,7 +467,7 @@ def save_win_data(all_unfinish_info, islayer: int,
         index=[local_rank_id])
     dump_input_info.to_csv(file_name, index=True, mode='a',
                            header=not file_exists, encoding="gbk")
-    logging.info(f"EP{ep_rankid} win info data save to {file_name}")
+    logging.info(f"[A2] EP{ep_rankid} win info data save to {file_name}")
 
 
 #获取运行位置排序
@@ -496,13 +503,13 @@ def get_runpos_analysis_basic(islayer: int, d_c: str):
                 'INTRA_FINISH', 'IPC2OUT']
         else:
             pos_diff_mapping = [
-                'GM2IPC', 'IPC2OUT',
+                'GM2IPC', 'WAIT2IPC',
                 'INTER_SEND', 'INTER_RECV']
 
     pos_mapping = pos_common_mapping + pos_diff_mapping
     next_pos = [1, 3, len(pos_mapping)]
     next_tmp_pos = next_pos[1] + 1
-    for _ in range(3, len(pos_mapping)):
+    for _ in range(3, len(pos_mapping) - 1):
         next_pos.append(next_tmp_pos)
         next_tmp_pos += 1
     next_pos.append(2)
@@ -528,7 +535,7 @@ def analyze_runpos(runpos: List[int], islayer: int, d_c: str):
             min_run_pos = pos_position[runpos[core_id]]
         elif min_run_pos == pos_position[runpos[core_id]]:
             min_run_coreid.append(core_id)
-    logging.error("最早出问题的核:%s, 对应代码区域:%s", min_run_coreid,
+    logging.error("[A2] 最早出问题的核:%s, 对应代码区域:%s", min_run_coreid,
                   run_info[min_run_coreid[0]])
     return min_run_coreid, run_info
 
@@ -554,15 +561,14 @@ def analyze_single_card(arr_func_dis: np.ndarray, arr_func_com: np.ndarray, core
         moe_expert_num, ep_worldsize, islayer)
     if d_c == "combine":
         com_send_info, com_recv_info, _, com_unfinish_info = get_send_and_recv_info(
-            arr_func_dis, core_num_func, islayer, ep_rankid, d_c, ep_worldsize)
+            arr_func_com, core_num_func, islayer, ep_rankid, d_c, ep_worldsize)
         com_window_status = get_win_state(
             com_status, d_c, moe_expert_num, ep_worldsize, islayer)
-        expandidx_input, xactivemask_input, epsendcnt_input = None, None, None
     else:
         com_send_info, com_recv_info, com_unfinish_info = None, None, None
         com_window_status = None
-        expandidx_input, xactivemask_input, epsendcnt_input = get_combine_dumpinfo(
-            target_path, bs * k, moe_expert_num, islayer)
+    expandidx_input, xactivemask_input, epsendcnt_input = get_dumpinfo(
+        target_path, bs * k, moe_expert_num, islayer, d_c)
 
     min_run_coreid, run_info = analyze_runpos(runpos, islayer, d_c)
     save_dump_data(
@@ -593,7 +599,8 @@ def isinvalid_token(pos, xactivemask, k, expid, moe_expert_num):
     if expid >= moe_expert_num or expid < 0:
         return True
     tokenid = pos // k
-    if xactivemask is not None:
+    # logging.info(f"xactivemask:{xactivemask}")
+    if xactivemask is not None and xactivemask.size > 0:
         if xactivemask.ndim == 1:
             return xactivemask[tokenid] == 0
         return xactivemask[pos] == 0
@@ -623,7 +630,11 @@ def check_expandidx(expandidx_input_func, expertids_func, xactivemask_func, bs, 
         if not check_single_card_expandidx(expandidx_input_func[ep_rankid], expertids_func[ep_rankid],
             xactivemask_func[ep_rankid], moe_expert_num=moe_expert_num, bs=bs, k=k):
             error_rankid_info.append(ep_rankid)
-            logging.error(f"[Fullmesh] Combine Input ExpandIdxInput is wrong, cards: {error_rankid_info}")
+        else:
+            logging.info(f"[A2][Fullmesh] Combine EP{ep_rankid} Input ExpandIdxInput is right.")
+    if len(error_rankid_info) > 0:
+        logging.error(f"[A2][Fullmesh] Combine Input ExpandIdxInput is wrong, cards: {error_rankid_info}")
+
     return error_rankid_info
 
 
@@ -631,9 +642,9 @@ def check_epsendcnt(epsendcnt_input_func, expertids_func, xactivemask_func, ep_w
     error_rankid_info = []
     has_cards = len(epsendcnt_input_func.keys())
     if has_cards != ep_worldsize:
-        logging.error(f"Combine EP send count check failed: expected {ep_worldsize} cards \
-            but only {has_cards} cards have data, layer: {islayer}")
-        logging.error(f"Only {epsendcnt_input_func.keys()} cards have data.")
+        logging.error(f"[A2] Combine EP send count check failed: expected {ep_worldsize} ranks"\
+                f"but get {has_cards} ranks, layer: {islayer}")
+        logging.error(f"[A2] Only EP{list(epsendcnt_input_func.keys())} have data.")
         return error_rankid_info
     epsendcnt_golden = np.zeros((ep_worldsize, moe_expert_num), dtype=np.int32)
     for ep_rankid in sorted(epsendcnt_input_func.keys(), key=lambda x: int(x)):
@@ -655,7 +666,7 @@ def check_epsendcnt(epsendcnt_input_func, expertids_func, xactivemask_func, ep_w
         epsendcnt = np.array(epsendcnt_input_func[ep_rankid], dtype=np.int32)
         if not np.array_equal(epsendcnt, epsendcnt_golden[ep_rankid]):
             logging.error(
-                f"[Fullmesh] Combine EP send count mismatch: "
+                f"[A2][Fullmesh] Combine EP send count mismatch: "
                 f"golden={epsendcnt_golden[ep_rankid]}, dump={epsendcnt}"
             )
             error_rankid_info.append(ep_rankid)
@@ -687,32 +698,35 @@ def check_fullmesh_com_win(com_win_state_func, expertids_func, xactivemask_func,
         token_nums_dump = np.array(com_win_state[0], dtype=np.int32)
         if not np.array_equal(token_nums_dump, token_nums_golden):
             logging.error(
-                f"[Fullmesh] Combine Win State token nums mismatch: "
+                f"[A2][Fullmesh] Combine Win State token nums mismatch: "
                 f"golden={token_nums_golden}, dump={token_nums_dump}"
             )
             diff_ep_rankid = np.where(token_nums_golden != token_nums_dump)[0]
             logging.error(
-                f"[Fullmesh] Combine Win State token nums mismatch at "
+                f"[A2][Fullmesh] Combine Win State token nums mismatch at "
                 f"ep_rankid={diff_ep_rankid}"
             )
             error_rankid_info.append((ep_rankid, diff_ep_rankid))
-        if len(unfinish_recv_ep_func[ep_rankid]) > 0:
-            unfinish_eps = unfinish_recv_ep_func[ep_rankid]
+        unfinish_recv_ep = unfinish_recv_ep_func[ep_rankid][0][1]
+        if len(unfinish_recv_ep) > 0:
             logging.error(
-                f"[Fullmesh] Combine Win State has unfinished recv eps: {unfinish_eps}"
+                f"[A2][Fullmesh] EP{ep_rankid} Combine Win State has unfinished recv eps: {unfinish_recv_ep}"
             )
             logging.error(
-                f"[Fullmesh] Combine Win State target flag in dump: "
-                f"{np.array(com_win_state[0])[unfinish_eps]}"
+                f"[A2][Fullmesh] EP{ep_rankid} Combine Win State target flag in dump: "
+                f"{np.array(com_win_state[0])[unfinish_recv_ep]}"
             )
-            logging.error(
-                f"[Fullmesh] Combine Win State token nums in dump: "
-                f"{token_nums_dump[unfinish_eps]}"
-            )
-            logging.error(
-                f"[Fullmesh] Combine Win State token nums golden: "
-                f"{token_nums_golden[unfinish_eps]}"
-            )
+            if np.array_equal(token_nums_dump[unfinish_recv_ep], token_nums_golden[unfinish_recv_ep]):
+                logging.error(f"[A2][Fullmesh] EP{ep_rankid} Combine Win State token nums is right, maybe flag is wrong.")
+            else:
+                logging.error(
+                    f"[A2][Fullmesh] EP{ep_rankid} Combine Win State token nums in dump: "
+                    f"{token_nums_dump[unfinish_recv_ep]}"
+                )
+                logging.error(
+                    f"[A2][Fullmesh] EP{ep_rankid} Combine Win State token nums golden: "
+                    f"{token_nums_golden[unfinish_recv_ep]}"
+                )
     return error_rankid_info
 
 
@@ -739,49 +753,61 @@ def cal_dis_win_status_golden(expertids_func, xactivemask_func, ep_worldsize, mo
         for expidx, expid in enumerate(expertids_flatten):
             if not isinvalid_token(expidx, xactivemask, k, expid, moe_expert_num):
                 status_golden[expid // local_moe_expert_num, expid % local_moe_expert_num] += 1
-        dis_win_status_golden[ep_rankid] = status_golden
+        dis_win_status_golden[int(ep_rankid)] = status_golden
     return dis_win_status_golden
 
 
-def check_single_card_dis_win(dis_win_state, dis_win_status_golden, ep_rankid):
+def check_single_card_dis_win(dis_win_state, dis_win_state_flag, dis_win_status_golden, dis_unfinish_info, ep_rankid):
     error_rankid_info = []
+    unfinish_recv_ep = dis_unfinish_info[1]
+    if len(unfinish_recv_ep) > 0:
+        logging.info(f'[A2][Fullmesh] Dispatch has\'t recv token from EP {unfinish_recv_ep}, according to ADump.')
     for target_rankid, win_state in enumerate(dis_win_state):
         if dis_win_status_golden[target_rankid] is None:
-            logging.info(f'[Fullmesh] Dispatch has no EP {target_rankid} expertids.')
+            logging.info(f'[A2][Fullmesh] Dispatch has no EP {target_rankid} expertids.')
             continue
-        win_state_golden = dis_win_status_golden[target_rankid]
+        win_state_golden = dis_win_status_golden[target_rankid][int(ep_rankid)]
         local_moe_expert_num = win_state_golden.shape[-1]
         win_state = np.array(win_state, dtype=np.int32)[:local_moe_expert_num]
         if not np.array_equal(win_state, win_state_golden):
-            logging.info(f'[Fullmesh] Dispatch EP{ep_rankid} recv wrong status from EP{target_rankid}')
-            logging.info(f'[Fullmesh] Win status golden: {win_state_golden.tolist()}')
-            logging.info(f'[Fullmesh] Win status current: {win_state.tolist()}')
+            logging.info(f'[A2][Fullmesh] Dispatch EP{ep_rankid} recv wrong status from EP{target_rankid}')
+            logging.info(f'[A2][Fullmesh] Win status golden: {win_state_golden.tolist()}')
+            logging.info(f'[A2][Fullmesh] Win status current: {win_state.tolist()}')
             error_rankid_info.append(target_rankid)
+        else:
+            if dis_win_state_flag[target_rankid] == '0xffffffff':
+                logging.info(f'[A2][Fullmesh] Current EP{ep_rankid} from EP{target_rankid} Win status flag is right: {dis_win_state_flag[target_rankid]}.')
+                if target_rankid in unfinish_recv_ep:
+                    logging.info(f'[A2]But the token flag maybe wrong.')
+            else:
+                logging.info(f'[A2][Fullmesh] Current EP{ep_rankid} from EP{target_rankid} Win status flag is wrong: {dis_win_state_flag[target_rankid]}')
     return error_rankid_info
 
 
-def check_fullmesh_dis_win(dis_win_state_func, expertids_func, xactivemask_func, ep_worldsize, moe_expert_num, bs, k):
+def check_fullmesh_dis_win(dis_win_state_func, expertids_func, xactivemask_func, unfinish_recv_ep_func, ep_worldsize, moe_expert_num, bs, k):
     dis_win_status_golden = cal_dis_win_status_golden(expertids_func, xactivemask_func,
         ep_worldsize, moe_expert_num, bs, k)
     error_rankid_infos = []
     for ep_rankid in sorted(dis_win_state_func.keys(), key=lambda x: int(x)):
         error_rankid_info = check_single_card_dis_win(dis_win_state_func[ep_rankid][0],
-            dis_win_status_golden, ep_rankid)
+            dis_win_state_func[ep_rankid][1],
+            dis_win_status_golden, unfinish_recv_ep_func[ep_rankid][0], ep_rankid)
         error_rankid_infos.append((ep_rankid, error_rankid_info))
     return error_rankid_infos
 
 
-def check_dis(dis_win_state_func, expertids_func, xactivemask_func, ep_worldsize, moe_expert_num, bs, k):
+def check_dis(dis_win_state_func, expertids_func, xactivemask_func, unfinish_recv_ep_func, ep_worldsize, moe_expert_num, bs, k):
     error_rankid_infos = check_fullmesh_dis_win(dis_win_state_func, expertids_func,
-        xactivemask_func, ep_worldsize, moe_expert_num, bs, k)
+        xactivemask_func, unfinish_recv_ep_func, ep_worldsize, moe_expert_num, bs, k)
     if len(error_rankid_infos) > 0:
-        logging.error(f"[Fullmesh] Dispatch Win State status mismatch: {error_rankid_infos}")
+        logging.error(f"[A2][Fullmesh] Dispatch Win State status mismatch: {error_rankid_infos}")
 
 
 def analysis_all_cards(parent_path=PARENT_PATH):
     dis_win_state_func, com_win_state_func = {}, {}
+    dis_unfinish_info_func = {}
     expertids_func, xactivemask_func = {}, {}
-    unfinish_recv_ep_func = {}
+    unfinish_ep_func = {}
     expandidx_input_func, epsendcnt_input_func = {}, {}
     ep_worldsize, moe_expert_num = None, None
     bs, k, islayer = None, None, None
@@ -794,27 +820,31 @@ def analysis_all_cards(parent_path=PARENT_PATH):
                 for row in reader:
                     ep_rankid = row['ep_rankid'].strip()
                     dis_win_state_func[ep_rankid] = ast.literal_eval(row['dispatch接收状态'])
-                    d_c = row['d_c'].strip()
+                    d_c = row['当前报错算子'].strip()
+                    expertids_func[ep_rankid] = ast.literal_eval(row['expertids'])
+                    xactivemask_func[ep_rankid] = ast.literal_eval(row['xactivemask_input'])
                     if d_c == "combine":
-                        expertids_func[ep_rankid] = ast.literal_eval(row['expertids'])
-                        xactivemask_func[ep_rankid] = ast.literal_eval(row['xactivemask_input'])
                         expandidx_input_func[ep_rankid] = ast.literal_eval(row['expandidx_input'])
-                        unfinish_recv_ep_func[ep_rankid] = ast.literal_eval(row['combine未完成行为'])
+                        epsendcnt_input_func[ep_rankid] = ast.literal_eval(row['epsendcnt_input'])
+                        unfinish_ep_func[ep_rankid] = ast.literal_eval(row['combine未完成行为'])
                         com_win_state_func[ep_rankid] = ast.literal_eval(row['combine接收状态'])
+                    else:
+                        unfinish_ep_func[ep_rankid] = ast.literal_eval(row['dispatch未完成行为'])
                     ep_worldsize = int(row['ep_worldsize'])
                     moe_expert_num = int(row['moe_expert_num'])
                     bs = int(row['bs'])
                     k = int(row['k'])
                     islayer = int(row['是否分层'])
-    logging.info(f"Start to analysis {filename}")
-    logging.info(f"ep_worldsize: {ep_worldsize}, moe_expert_num: {moe_expert_num}, bs: {bs}, k: {k}, islayer: {islayer}, d_c: {d_c}")
+    logging.info(f"[A2] Start to analysis {filename}")
+    logging.info(f"[A2] ep_worldsize: {ep_worldsize}, moe_expert_num: {moe_expert_num}, bs: {bs}, k: {k}, islayer: {islayer}, d_c: {d_c}")
     if d_c is not None:
-        if d_c == "dispatch":
-            check_dis(dis_win_state_func, expertids_func, xactivemask_func, ep_worldsize, moe_expert_num, bs, k)
-        else:
-            check_com(expandidx_input_func, epsendcnt_input_func, expertids_func, xactivemask_func, com_win_state_func,
-                unfinish_recv_ep_func, ep_worldsize, bs, k, moe_expert_num, islayer)
-    logging.info(f"Analysis {filename} done.")
+        if islayer == 0:
+            if d_c == "dispatch":
+                check_dis(dis_win_state_func, expertids_func, xactivemask_func, unfinish_ep_func, ep_worldsize, moe_expert_num, bs, k)
+            else:
+                check_com(expandidx_input_func, epsendcnt_input_func, expertids_func, xactivemask_func, com_win_state_func,
+                    unfinish_ep_func, ep_worldsize, bs, k, moe_expert_num, islayer)
+    logging.info(f"[A2] Analysis {filename} done.")
 
 if __name__ == "__main__":
     analysis_all_cards(parent_path=PARENT_PATH)
