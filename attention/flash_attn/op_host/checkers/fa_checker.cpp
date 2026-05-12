@@ -20,7 +20,6 @@
 #include "log/error_code.h"
 #include "register/op_def_registry.h"
 #include "../fa_tiling_info.h"
-#include "../flash_attn_tiling_constants.h"
 #include "fa_checker.h"
 
 namespace optiling {
@@ -38,7 +37,7 @@ void FAChecker::RegisterCheckers()
 {
     checkers_.push_back(std::make_unique<LayoutChecker>());
     checkers_.push_back(std::make_unique<ShapeChecker>());
-    checkers_.push_back(std::make_unique<ActualSeqLenChecker>());
+    // checkers_.push_back(std::make_unique<ActualSeqLenChecker>());
     checkers_.push_back(std::make_unique<PagedAttentionChecker>());
     checkers_.push_back(std::make_unique<MaskChecker>());
     checkers_.push_back(std::make_unique<SinksChecker>());
@@ -104,7 +103,7 @@ ge::graphStatus FAChecker::Process(const FaTilingInfo &faInfo)
     if (ge::GRAPH_SUCCESS != CheckMultiPara(faInfo)) {
         return ge::GRAPH_FAILED;
     }
-    
+
     return ge::GRAPH_SUCCESS;
 }
 

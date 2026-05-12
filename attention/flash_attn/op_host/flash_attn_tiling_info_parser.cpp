@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -18,7 +18,6 @@
 #include "log/log.h"
 #include "log/error_code.h"
 #include "err/ops_err.h"
-#include "flash_attn_tiling_index.h"
 #include "flash_attn_tiling_info_parser.h"
 
 using std::map;
@@ -201,19 +200,19 @@ ge::graphStatus FaInfoParser::GetAttrParaInfo()
     opParamInfo_.softmaxScale = attrs->GetAttrPointer<float>(ATTR_SOFTMAX_SCALE_INDEX);
 
     // 索引1: mask_mode (Int)
-    opParamInfo_.maskMode = attrs->GetAttrPointer<int64_t>(ATTR_MASK_MODE_INDEX);
+    opParamInfo_.maskMode = attrs->GetAttrPointer<int32_t>(ATTR_MASK_MODE_INDEX);
 
     // 索引2: win_left (Int)
-    opParamInfo_.winLeft = attrs->GetAttrPointer<int64_t>(ATTR_WIN_LEFT_INDEX);
+    opParamInfo_.winLeft = attrs->GetAttrPointer<int32_t>(ATTR_WIN_LEFT_INDEX);
 
     // 索引3: win_right (Int)
-    opParamInfo_.winRight = attrs->GetAttrPointer<int64_t>(ATTR_WIN_RIGHT_INDEX);
+    opParamInfo_.winRight = attrs->GetAttrPointer<int32_t>(ATTR_WIN_RIGHT_INDEX);
 
     // 索引4: max_seqlen_q (Int)
-    opParamInfo_.maxSeqlenQ = attrs->GetAttrPointer<int64_t>(ATTR_MAX_SEQLEN_Q_INDEX);
+    opParamInfo_.maxSeqlenQ = attrs->GetAttrPointer<int32_t>(ATTR_MAX_SEQLEN_Q_INDEX);
 
     // 索引5: max_seqlen_kv (Int)
-    opParamInfo_.maxSeqlenKV = attrs->GetAttrPointer<int64_t>(ATTR_MAX_SEQLEN_KV_INDEX);
+    opParamInfo_.maxSeqlenKV = attrs->GetAttrPointer<int32_t>(ATTR_MAX_SEQLEN_KV_INDEX);
 
     // 索引6: layout_q (String)
     opParamInfo_.layoutQ = attrs->GetStr(ATTR_LAYOUT_Q_INDEX);
@@ -225,10 +224,10 @@ ge::graphStatus FaInfoParser::GetAttrParaInfo()
     opParamInfo_.layoutOut = attrs->GetStr(ATTR_LAYOUT_OUT_INDEX);
 
     // 索引9: return_softmax_lse (Int)
-    opParamInfo_.returnSoftMaxLse = attrs->GetAttrPointer<int64_t>(ATTR_RETURN_LSE_INDEX);
+    opParamInfo_.returnSoftMaxLse = attrs->GetAttrPointer<int32_t>(ATTR_RETURN_LSE_INDEX);
 
     // 索引10: deterministic (Int)
-    opParamInfo_.deterministic = attrs->GetAttrPointer<int64_t>(ATTR_DETERMINISTIC_INDEX);
+    opParamInfo_.deterministic = attrs->GetAttrPointer<int32_t>(ATTR_DETERMINISTIC_INDEX);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -238,8 +237,6 @@ void FaInfoParser::GetMaskParams()
     // 文档约束：不传或传入-1代表正无穷，默认值为-1
     winLeft_ = (opParamInfo_.winLeft == nullptr) ? -1 : *opParamInfo_.winLeft;
     winRight_ = (opParamInfo_.winRight == nullptr) ? -1 : *opParamInfo_.winRight;
-
-    // 文档约束：mask_mode 默认值为 0（全计算模式）
     maskMode_ = (opParamInfo_.maskMode == nullptr) ? 0 : *opParamInfo_.maskMode;
 }
 
@@ -306,7 +303,7 @@ ge::graphStatus FaInfoParser::GetS1Size()
     if (layoutQ_ == FaLayout::TND) {
         if (opParamInfo_.maxSeqlenQ != nullptr) {
             if (*opParamInfo_.maxSeqlenQ < -1) {
-                OP_LOGE(opName_, "max_seqlen_q must be >= -1, but got %ld", *opParamInfo_.maxSeqlenQ);
+                OP_LOGE(opName_, "max_seqlen_q must be >= -1, but got %d", *opParamInfo_.maxSeqlenQ);
                 return ge::GRAPH_FAILED;
             }
             if (*opParamInfo_.maxSeqlenQ == -1) {
@@ -340,7 +337,7 @@ ge::graphStatus FaInfoParser::GetS2SizeForBatchContinuous()
     if (layoutKV_ == FaLayout::TND) {
         if (opParamInfo_.maxSeqlenKV != nullptr) {
             if (*opParamInfo_.maxSeqlenKV < -1) {
-                OP_LOGE(opName_, "max_seqlen_kv must be >= -1, but got %ld", *opParamInfo_.maxSeqlenKV);
+                OP_LOGE(opName_, "max_seqlen_kv must be >= -1, but got %d", *opParamInfo_.maxSeqlenKV);
                 return ge::GRAPH_FAILED;
             }
             if (*opParamInfo_.maxSeqlenKV == -1) {
@@ -645,14 +642,9 @@ ge::graphStatus FaInfoParser::ParseFeatureInfo()
     returnSoftmaxLse_ = (opParamInfo_.returnSoftMaxLse == nullptr) ? 0 : *opParamInfo_.returnSoftMaxLse;
     softmaxLseFlag_ = (returnSoftmaxLse_ != 0);
 
-    // 公共参数组 - 属性解析
-    // 文档约束：softmax_scale 默认值为 1.0
-    softmaxScale_ = (opParamInfo_.softmaxScale == nullptr) ? 1.0f : static_cast<float>(*opParamInfo_.softmaxScale);
-    // 文档约束：deterministic 默认值为 0
+    softmaxScale_ = (opParamInfo_.softmaxScale == nullptr) ? 1.0f : *opParamInfo_.softmaxScale;
     deterministic_ = (opParamInfo_.deterministic == nullptr) ? 0 : *opParamInfo_.deterministic;
-    // 文档约束：max_seqlen_q 默认值为 -1
     maxSeqQ_ = (opParamInfo_.maxSeqlenQ == nullptr) ? -1 : *opParamInfo_.maxSeqlenQ;
-    // 文档约束：max_seqlen_kv 默认值为 -1
     maxSeqKv_ = (opParamInfo_.maxSeqlenKV == nullptr) ? -1 : *opParamInfo_.maxSeqlenKV;
 
     return ge::GRAPH_SUCCESS;
