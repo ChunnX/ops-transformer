@@ -482,63 +482,6 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::DoOpTiling()
         }
         tilingData_.gmmFinalizeRoutingDataParams.windowSize = windowSizeRows;
         tilingData_.gmmFinalizeRoutingDataParams.totalM = static_cast<uint32_t>(inputParams_.mSize);
-        // Log per-group M for debugging (single group may exceed windowSizeRows,
-        // kernel handles this by letting it occupy a round alone)
-        auto groupListTensor = context_->GetOptionalInputTensor(GROUPLIST_INDEX);
-        if (groupListTensor != nullptr) {
-            auto groupListData = groupListTensor->GetData<int64_t>();
-            if (groupListData != nullptr) {
-                int64_t prevOffset = 0;
-                for (uint64_t g = 0; g < inputParams_.groupNum; ++g) {
-                    int64_t groupM = 0;
-                    if (inputParams_.groupListType == 0) { // cumsum mode
-                        groupM = groupListData[g] - prevOffset;
-                        prevOffset = groupListData[g];
-                    } else { // count mode (groupListType == 1)
-                        groupM = groupListData[g];
-                    }
-                    OP_LOGD(context_->GetNodeName(),
-                            "Deterministic group[%lu] M=%ld, windowSizeRows=%u",
-                            g, groupM, windowSizeRows);
-                }
-
-                // Simulate sliding window rounds and print per-round debug info
-                int32_t logEnable = CheckLogLevel(static_cast<int32_t>(OP), DLOG_DEBUG);
-                if (logEnable == 1 && groupListData != nullptr) {
-                    uint32_t roundIdx = 0;
-                    uint32_t gs = 0;
-                    while (gs < inputParams_.groupNum) {
-                        int32_t prevOff = 0;
-                        if (inputParams_.groupListType == 0 && gs > 0) {
-                            prevOff = static_cast<int32_t>(groupListData[gs - 1]);
-                        }
-                        int32_t rM = 0;
-                        uint32_t ge = gs;
-                        while (ge < inputParams_.groupNum) {
-                            int32_t gm = 0;
-                            if (inputParams_.groupListType == 0) {
-                                gm = static_cast<int32_t>(groupListData[ge]) - (ge == gs ? prevOff : static_cast<int32_t>(groupListData[ge - 1]));
-                            } else {
-                                gm = static_cast<int32_t>(groupListData[ge]);
-                            }
-                            if (rM + gm > static_cast<int32_t>(windowSizeRows) && rM > 0) {
-                                break;
-                            }
-                            rM += gm;
-                            ge++;
-                            if (rM >= static_cast<int32_t>(windowSizeRows)) {
-                                break;
-                            }
-                        }
-                        OP_LOGD(context_->GetNodeName(),
-                                "DeterWindow round=%u, groupStart=%u, groupEnd=%u, roundM=%d",
-                                roundIdx, gs, ge, rM);
-                        gs = ge;
-                        roundIdx++;
-                    }
-                }
-            }
-        }
     }
 
     PrintQuantParams();
