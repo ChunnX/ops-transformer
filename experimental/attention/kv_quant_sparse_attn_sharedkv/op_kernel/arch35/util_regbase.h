@@ -68,7 +68,7 @@ struct RunParamStr {  // 分核与切块需要使用到参数
 };
 
 #define COMMON_RUN_INFO \
-    int64_t s2StartIdx; /* s2的起始位置，sparse场景下可能不是0 */ \
+    uint64_t s2StartIdx; /* s2的起始位置，sparse场景下可能不是0 */ \
     int64_t s2EndIdx; \
     int64_t s2LoopCount; /* s2循环当前的循环index */ \
     int64_t s2LoopLimit; \
