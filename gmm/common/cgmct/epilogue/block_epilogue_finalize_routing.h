@@ -71,7 +71,7 @@ public:
     // shape
     using BlockShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>; // blk_m, blk_n, blk_k, _
     using BlockCoord = AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t>; // y, _, _, _, logit, rowIndex
-    using ProblemShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>; // m, n, k, _
+    using ProblemShape = AscendC::Shape<int64_t, int64_t, int64_t>; // m, n, k
 
 public:
     __aicore__ inline void Init(Params const &params);
