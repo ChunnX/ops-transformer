@@ -85,7 +85,7 @@ attention:
     ut_cov_exclude:
       - attention/flash_attention_score
     test:
-      ut: False
+      ut: True
     options:
       - flash_attention_score
 
@@ -97,7 +97,7 @@ attention:
       - attention/flash_attention_score_grad/docs
       - attention/flash_attention_score_grad/README.md
     test:
-      ut: False
+      ut: True
     ut_cov_exclude:
       - attention/flash_attention_score_grad
     options:
@@ -305,7 +305,7 @@ attention:
         - attention/mla_prolog/docs
         - attention/mla_prolog/README.md
       test:
-        ut: False
+        ut: True
         examples: False
       options:
         - mla_prolog
@@ -339,7 +339,7 @@ attention:
         - attention/mla_prolog_v3/op_host/fallback_mla_prolog_v3.cpp
       test:
         examples: False
-        ut: False
+        ut: True
       options:
         - mla_prolog_v2
 
@@ -372,7 +372,7 @@ attention:
         - attention/mla_prolog_v3/op_host/fallback_mla_prolog_v3.cpp
       test:
         examples: False
-        ut: False
+        ut: True
       options:
         - mla_prolog_v3
 
@@ -388,7 +388,7 @@ attention:
       - attention/lightning_indexer/tests
     test:
       examples: False
-      ut: False
+      ut: True
     options:
       - lightning_indexer
 
@@ -404,7 +404,7 @@ attention:
       - attention/sparse_flash_attention/tests
     test:
       examples: False
-      ut: False
+      ut: True
     options:
       - sparse_flash_attention
 
@@ -418,7 +418,7 @@ attention:
       - attention/quant_lightning_indexer/tests
     test:
       examples: False
-      ut: False
+      ut: True
     options:
       - quant_lightning_indexer
 
@@ -432,7 +432,7 @@ attention:
       - attention/kv_quant_sparse_flash_attention/tests
     test:
       examples: False
-      ut: False
+      ut: True
     options:
       - kv_quant_sparse_flash_attention
 
