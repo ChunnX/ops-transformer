@@ -250,7 +250,7 @@ uint64_t MatmulReduceScatterTilingBase::GetTilingKey() const
     uint8_t commAlg = isA2APath_ ? TPL_CCU_ALL2ALL_VEC_REDUCE : TPL_CCU_REDUCESUM;
     uint64_t tilingKey = GET_TPL_TILING_KEY(    \
         false, args_.isATrans, args_.isBTrans, inputIsBf16Fp16, OUTPUT_TYPE_IS_FP8, TPL_X1_X2_DTYPE_IS_OTHER, commAlg, \
-        Mc2Comm::GetCommModeFromEnv());
+        commMode_);
     OP_LOGD(opName_, "args_.isATrans, args_.isBTrans, inputIsBf16Fp16 is: [%d, %d, %d]", \
             args_.isATrans, args_.isBTrans, inputIsBf16Fp16);
     return tilingKey;

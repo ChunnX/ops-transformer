@@ -30,6 +30,14 @@
 #include "aclnn_matmul_reduce_scatter_v2.h"
 #include "aclnnInner_matmul_reduce_scatter_v2.h"
 
+#ifdef BUILD_OPEN_PROJECT
+#include "version/hcomm_version.h"
+#define HCCL_CHANNEL_SUPPORT_VERSION 90000000
+#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+#include "common/op_api/mc2_context.h"
+#endif
+#endif
+
 using namespace op;
 
 #ifdef __cplusplus
@@ -60,6 +68,8 @@ enum class NnopbaseHcclServerType : uint32_t {
 };
 
 extern "C" uint64_t NnopbaseMsprofSysTime();
+extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
+extern "C" void *NnopbaseGetUserHandle(void *executor);
 extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId& dfxId);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
@@ -68,21 +78,19 @@ static inline bool IsAscend950(void)
     return op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
 }
 
-static void SetNnopbaseHcclServerTypeByArch(aclOpExecutor *executor)
+static void SetNnopbaseHcclServerTypeByArch(aclOpExecutor *executor, const char* commMode)
 {
     if ((executor == nullptr) || (NnopbaseSetHcclServerType == nullptr)) {
         return;
     }
-
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
         NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
     } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-        NnopbaseHcclServerType serverType = (commMode == Mc2Comm::COMM_MODE_AICPU)
+        const bool isAicpu = (strcmp(commMode, "aicpu") == 0);
+        NnopbaseHcclServerType serverType = isAicpu
             ? NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU
             : NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU;
-        OP_LOGD("[COMM_MODE] Set HcclServerType to %s for DAV_3510.",
-                (commMode == Mc2Comm::COMM_MODE_AICPU) ? "AICPU" : "CCU");
+        OP_LOGD("Execute commMode is %s for DAV_3510", isAicpu ? "AiCPU" : "CCU");
         NnopbaseSetHcclServerType(executor, serverType);
     }
 }
@@ -180,6 +188,20 @@ static aclnnStatus CheckAivModeParams(const aclTensor* x1, const aclTensor* x2,
 
     // 2. 检查输入的数据类型是否在API支持的数据类型范围之内，需要根据api定义校验
     CHECK_RET(CheckAivModeDtypeValid(x1, x2, bias, output), ACLNN_ERR_PARAM_INVALID);
+
+    // 3. 检查attr是否符合规则
+    CHECK_RET(CheckAttr(streamMode), ACLNN_ERR_PARAM_INVALID);
+    return ACLNN_SUCCESS;
+}
+
+static aclnnStatus CheckAiCPUModeParams(const aclTensor* x1, const aclTensor* x2, int64_t streamMode,
+                               const aclTensor* output)
+{
+    // 1. 检查参数是否为空指针
+    CHECK_RET(CheckNotNull(x1, x2, output), ACLNN_ERR_PARAM_NULLPTR);
+
+    // 2. 检查输入的数据类型是否在API支持的数据类型范围之内，需要根据api定义校验
+    // CHECK_RET(CheckAivModeDtypeValid(x1, x2, output), ACLNN_ERR_PARAM_INVALID);
 
     // 3. 检查attr是否符合规则
     CHECK_RET(CheckAttr(streamMode), ACLNN_ERR_PARAM_INVALID);
@@ -340,6 +362,7 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeCcuMode(const aclTensor* x1, co
                                                        aclTensor* amaxOutOptional, uint64_t* workspaceSize,
                                                        aclOpExecutor** executor)
 {
+    OP_LOGD("aclnnMatmulReduceScatterV2GetWorkspaceSizeCcuMode start");
     uint64_t timeStamp = NnopbaseMsprofSysTime();
     // 固定写法，参数检查
     auto retParam = CheckParams(x1, x2, bias, streamMode, output);
@@ -355,7 +378,7 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeCcuMode(const aclTensor* x1, co
         }
         uniqueExecutor.ReleaseTo(executor);
         if ((executor != nullptr) && (*executor != nullptr)) {
-            SetNnopbaseHcclServerTypeByArch(*executor);
+            SetNnopbaseHcclServerTypeByArch(*executor, commMode);
         }
         return ACLNN_SUCCESS;
     }
@@ -394,12 +417,71 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeCcuMode(const aclTensor* x1, co
         transposeX1, transposeX2, commTurn, rankSize, blockSize, groupSize, isAmaxOut, yDtype,
         const_cast<char*>(commMode), output, amaxOutOptional, workspaceSize, executor);
     if ((ret == ACLNN_SUCCESS) && (executor != nullptr) && (*executor != nullptr)) {
-        SetNnopbaseHcclServerTypeByArch(*executor);
+        SetNnopbaseHcclServerTypeByArch(*executor, commMode);
     }
     OP_LOGD("MatmulReduceScatterV2, end ret %d.", ret);
     static NnopbaseDfxId dfxId = {0x60000, __func__, false};
     NnopbaseReportApiInfo(timeStamp, dfxId);
     return ret;
+}
+
+aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeAicpuMode(const aclTensor* x1, const aclTensor* x2, const aclTensor* bias,
+                                                       const aclTensor* x1Scale, const aclTensor* x2Scale,
+                                                       const aclTensor* quantScale, int64_t blockSize,
+                                                       const char* group, const char* reduceOp, int64_t commTurn,
+                                                       int64_t streamMode, int64_t groupSize, const char* commMode, aclTensor* output,
+                                                       aclTensor* amaxOutOptional, uint64_t* workspaceSize,
+                                                       aclOpExecutor** executor)
+{
+    OP_LOGD("aclnnMatmulReduceScatterV2GetWorkspaceSizeAicpuMode start");
+    auto ret_param = CheckAiCPUModeParams(x1, x2, streamMode, output);
+    CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
+
+    bool transposeX1 = Ops::Transformer::IsTransposeLastTwoDims(x1);
+    bool transposeX2 = Ops::Transformer::IsTransposeLastTwoDims(x2);
+    uint32_t rankSize = 0;
+    bool isAmaxOut = false;
+    uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
+    CHECK_RET(CheckShape(x1, x2, transposeX1), ACLNN_ERR_PARAM_INVALID);
+
+    aclnnStatus ret = aclnnInnerMatmulReduceScatterV2GetWorkspaceSize(x1, x2, bias, x1Scale, x2Scale, quantScale,
+        const_cast<char*>(group), const_cast<char*>(reduceOp), transposeX1, transposeX2, commTurn, rankSize, blockSize,
+        groupSize, isAmaxOut, yDtype, const_cast<char*>(commMode), output, amaxOutOptional, workspaceSize, executor);
+    OP_LOGD("MatmulReduceScatterV2AiCPUMode, aclnnInnerGetWorkspaceSize ret = %d.", ret);
+    if ((ret == ACLNN_SUCCESS) && (executor != nullptr) && (*executor != nullptr)) {
+        SetNnopbaseHcclServerTypeByArch(*executor, commMode);
+    }
+    return ret;
+}
+
+aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeDefaultMode(const aclTensor* x1, const aclTensor* x2, const aclTensor* bias,
+                                                       const aclTensor* x1Scale, const aclTensor* x2Scale,
+                                                       const aclTensor* quantScale, int64_t blockSize,
+                                                       const char* group, const char* reduceOp, int64_t commTurn,
+                                                       int64_t streamMode, int64_t groupSize, const char* commMode, aclTensor* output,
+                                                       aclTensor* amaxOutOptional, uint64_t* workspaceSize,
+                                                       aclOpExecutor** executor)
+{
+    uint32_t rankSize = 0;
+#if defined(BUILD_OPEN_PROJECT) && (HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION)
+    auto getRankSizeRet = Mc2Aclnn::Mc2Context::GetMc2RankSize(group, rankSize);
+    CHECK_RET(getRankSizeRet == ACLNN_SUCCESS, getRankSizeRet);
+#endif
+    aclnnStatus ret = 0;
+    const char* effectiveCommMode = nullptr;
+    if (rankSize <= 8) {
+        // 小于等8p时走ccu
+        effectiveCommMode = "ccu";
+        ret = matmulReduceScatterV2GetWorkSpaceSizeCcuMode(x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, group, reduceOp, commTurn,
+                                                       streamMode, groupSize, effectiveCommMode, output, amaxOutOptional, workspaceSize, executor);
+    } else {
+        // 大于8p时走aicpu
+        effectiveCommMode = "aicpu";
+        ret = matmulReduceScatterV2GetWorkSpaceSizeAicpuMode(x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, group, reduceOp, commTurn,
+                                                       streamMode, groupSize, effectiveCommMode, output, amaxOutOptional, workspaceSize, executor);
+       
+    }
+    OP_LOGD("MatmulReduceScatterV2, end ret %d.", ret);
 }
 
 static bool MatmulReduceScatterV2IsWeightNZFormat(const aclTensor* x2)
@@ -452,7 +534,7 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeAivMode(const aclTensor* x1, co
         const_cast<char*>(group), const_cast<char*>(reduceOp), transposeX1, transposeX2, commTurn, rankSize, blockSize,
         groupSize, isAmaxOut, yDtype, const_cast<char*>(commMode), output, amaxOutOptional, workspaceSize, executor);
     if ((ret == ACLNN_SUCCESS) && (executor != nullptr) && (*executor != nullptr)) {
-        SetNnopbaseHcclServerTypeByArch(*executor);
+        SetNnopbaseHcclServerTypeByArch(*executor, commMode);
     }
     OP_LOGD("MatmulReduceScatterV2AivMode, aclnnInnerGetWorkspaceSize ret = %d.", ret);
     return ret;
@@ -468,11 +550,28 @@ aclnnStatus aclnnMatmulReduceScatterV2GetWorkspaceSize(const aclTensor* x1, cons
 {
     aclnnStatus ret = ACLNN_SUCCESS;
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        ret = matmulReduceScatterV2GetWorkSpaceSizeCcuMode(x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, group, reduceOp, commTurn,
+        if (strcmp(commMode, "aicpu") == 0) {
+            ret = matmulReduceScatterV2GetWorkSpaceSizeAicpuMode(x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, group, reduceOp, commTurn,
                                                        streamMode, groupSize, commMode, output, amaxOutOptional, workspaceSize, executor);
+        } else if (strcmp(commMode, "ccu") == 0) {
+            ret = matmulReduceScatterV2GetWorkSpaceSizeCcuMode(x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, group, reduceOp, commTurn,
+                                                       streamMode, groupSize, commMode, output, amaxOutOptional, workspaceSize, executor);
+        } else if (strcmp(commMode, "default") == 0 ) {
+            ret = matmulReduceScatterV2GetWorkSpaceSizeDefaultMode(x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, group, reduceOp, commTurn,
+                                                       streamMode, groupSize, commMode, output, amaxOutOptional, workspaceSize, executor);
+        }
     } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
         ret = matmulReduceScatterV2GetWorkSpaceSizeAivMode(x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, group, reduceOp, commTurn,
                                                        streamMode, groupSize, commMode, output, amaxOutOptional, workspaceSize, executor);
+    }
+
+    if (ret == ACLNN_SUCCESS && *executor != nullptr) {
+        char* commModePtr = new char[strlen(commMode) + 1];
+        if (commModePtr != nullptr) {
+            strcpy(commModePtr, commMode);
+            NnopbaseSetUserHandle(*executor, commModePtr);
+            OP_LOGD("[MatmulReduceScatterV2] GetWorkspaceSize set commMode=%s", commMode);
+        }
     }
     return ret;
 }
@@ -484,8 +583,9 @@ aclnnStatus aclnnMatmulReduceScatterV2(void* workspace, uint64_t workspaceSize, 
         OP_LOGD("Skip the api for empty tensor, workspace size %lu.", workspaceSize);
         return ACLNN_SUCCESS;
     }
+    const char* commMode = reinterpret_cast<char*>(NnopbaseGetUserHandle(executor));
 
-    SetNnopbaseHcclServerTypeByArch(executor);
+    SetNnopbaseHcclServerTypeByArch(executor, commMode);
 
     aclnnStatus ret = aclnnInnerMatmulReduceScatterV2(workspace, workspaceSize, executor, stream);
     if (ret != 0) {
