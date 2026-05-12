@@ -1698,7 +1698,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       - 不支持传入 antiquantScale、antiquantOffset
       - 不支持传入 keyRopeAntiquantScale
     - MxFP8 全量化
-      - dequantScaleQuery、keyAntiquantScale、valueAntiquantScale、quantScale1 需同时存在
+      - dequantScaleQuery、keyAntiquantScale、valueAntiquantScale 需同时存在
       - 不支持传入 keyAntiquantOffset、valueAntiquantOffset
       - 不支持传入 deqScale1、deqScale2
       - 不支持传入 antiquantScale、antiquantOffset
