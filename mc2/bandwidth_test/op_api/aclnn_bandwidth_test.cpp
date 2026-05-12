@@ -39,7 +39,7 @@ enum NnopbaseHcclServerType {
     NNOPBASE_HCCL_SERVER_TYPE_END
 };
 
-
+#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 extern aclnnStatus aclnnInnerBandwidthTestGetWorkspaceSize(
     const aclTensor* context, const aclTensor* x, const aclTensor* dstrankId,
     const char* group, int64_t worldSize, int64_t cclBufferSize, int64_t maxBs, int64_t mode, int64_t commAlg,
@@ -48,7 +48,7 @@ extern aclnnStatus aclnnInnerBandwidthTestGetWorkspaceSize(
 
 extern aclnnStatus aclnnInnerBandwidthTest(void* workspace, uint64_t workspaceSize,
                                                     aclOpExecutor* executor, aclrtStream stream);
-
+#endif
 
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
