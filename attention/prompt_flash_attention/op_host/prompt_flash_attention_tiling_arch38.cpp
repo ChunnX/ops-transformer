@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file prompt_flash_attention_tiling_v2.cpp
+ * \file prompt_flash_attention_tiling_arch38.cpp
  * \brief
  */
 #include "prompt_flash_attention_tiling_arch38.h"
@@ -2336,7 +2336,7 @@ void PromptFlashAttentionTilingArch38::GetEnableDN(PromptFlashAttentionTilingDat
     constexpr uint32_t dLimitDN = 128;
     constexpr uint32_t vecCoreNum = 2;
     constexpr uint32_t sOuterLimitDN = 64;
-    enableDN = (queryShapeInfo.d == 128) && !enableIFA && !enableMask; // pfa d=128 使能dn
+    enableDN = (AlignUp(queryShapeInfo.d, sOuterLimitDN) == 128) && !enableIFA && !enableMask; // pfa d=128 使能dn
     for (uint32_t i = LOOP_BEGIN_NUM; i < queryShapeInfo.b; i++) {
         if ((actualSeqLengths[i] % 32 > 0) || (actualSeqLengthsKV[i] <= 128)) { // 32: 只针对对齐场景修改基本快大小; 128: 扩大sInner的KV_S限制
             isQKVActualSeqLengthsRight = false;
@@ -2625,7 +2625,7 @@ bool PromptFlashAttentionTilingArch38::AdjustCVTilingCVDiff(const ContextParamsF
 
     if (tilingData.promptAttentionBaseParams.get_vHeadSize() <= 128 && !enablePFAMLA) { // 128 for D size
         bool checkDtype = contextKeyParams.inputDataType == ge::DT_FLOAT16 || contextKeyParams.inputDataType == ge::DT_BF16;
-        bool checkQueryAndValueS = queryShapeInfo.s <= SOUTER_FACTOR_DEFAULT && S2 >= SINNER_FACTOR_DEFAULT;
+        bool checkQueryAndValueS = queryShapeInfo.s <= SOUTER_FACTOR_DEFAULT;
         uint32_t sparseMode = tilingData.promptAttentionBaseParams.get_sparseMode();
         int32_t preTokens = tilingData.promptAttentionBaseParams.get_preTokens();
         int32_t nextTokens = tilingData.promptAttentionBaseParams.get_nextTokens();
@@ -3229,10 +3229,6 @@ bool PromptFlashAttentionTilingArch38::TilingGetTilingKeyAttentionAscendC(uint64
 
     if (enableIFAMLA) {
         tilingKey += static_cast<uint64_t>(3e7); // 3e7: the situation of IFA MLA
-    }
-
-    if (enablePFARope) {
-        tilingKey += static_cast<uint64_t>(7e7); // 7e7: the situation of PFA MLA Rope
     }
 
     if (enableDN) {
