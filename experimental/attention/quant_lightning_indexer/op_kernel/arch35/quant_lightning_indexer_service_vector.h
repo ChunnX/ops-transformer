@@ -407,7 +407,7 @@ __aicore__ inline void QLIVector<QLIT>::ProcessVec1(const QLICommon::RunInfo &in
                     qScaleGm[weightGmOffset], qwDataCopyExtParams, padQScaleParams);
 
         //kScaleGm  -->  kScaleUB_
-        GetKeyScale(info, kScaleUB_, info.bIdx, curS2Idx, s2BaseSize_);
+        GetKeyScale(info, kScaleUB_, info.bIdx, curS2Idx, info.actualSingleProcessSInnerSize);
         SetFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + pingpong);
         WaitFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + pingpong);
         WaitFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + pingpong);
@@ -565,7 +565,7 @@ __aicore__ inline void QLIVector<QLIT>::ProcessTopK(const QLICommon::RunInfo &in
                 }
             }
         } else {
-            AscendC::CreateVecIndex(indicesOutLocal_.ReinterpretCast<int32_t>(), (int32_t)zero, validS2Len);
+            AscendC::CreateVecIndex(indicesOutLocal_.ReinterpretCast<int32_t>(), (int32_t)(zero + outputIdxOffset), validS2Len);
         }
         
         if (validS2Len < topkCount_) {
