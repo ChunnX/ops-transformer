@@ -1091,8 +1091,6 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AivProcess(AivOffset &aivOffs
 
     // 根据不同分支条件处理
     if (splitKN) {
-        CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE3>(FINISH_VEC_QR);
-        CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE3>(FINISH_VEC_QN);
         V3AndV4<needQnDynamicQuant>(aivOffset, batchOffset);
         aivOffset.ropeQrResOffset += static_cast<int64_t>(baseParams_->stepBatchSize) * static_cast<int64_t>(baseParams_->headSizeQr);
     } else {
@@ -2600,6 +2598,8 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::V3AndV4(AivOffset &aivOffset,
     if (cubeBlockIdx_ >= baseParams_->mm3BlockNum) {
         return;
     }
+    CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE3>(FINISH_VEC_QR);
+    CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE3>(FINISH_VEC_QN);
     uint32_t subBlockIdx_ = blockIdx_ % cvRatio_;
     uint32_t row = CeilDivT(mmQcQrParam_.m, 2U);
     row = subBlockIdx_ == 0 ? row : mmQcQrParam_.m - row;
@@ -2657,7 +2657,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::V3AndV4(AivOffset &aivOffset,
             SetFlag<HardEvent::V_MTE3>(EVENT_ID1);
             WaitFlag<HardEvent::V_MTE3>(EVENT_ID1); // 计算是否已经完成可以搬运
             DataCopy(queryOutGm_[dynamicQuantQueryResOffset], queryOutputLocal, outParams);
-            if (nL1 <  baseParams_->headSizeCkv - 1) {
+            if (nL1 < nL1loops - 1) {
                 CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE3>(FINISH_VEC_QN);
             }
 
@@ -2669,7 +2669,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::V3AndV4(AivOffset &aivOffset,
         SetFlag<HardEvent::V_MTE3>(EVENT_ID1);
         WaitFlag<HardEvent::V_MTE3>(EVENT_ID1);
         DataCopy(qrOutGm_[ropeQrResOffset], queryRopeOutputLocal, outputCopyParams);
-        if (nL1 <  baseParams_->headSizeCkv - 1) {
+        if (nL1 < nL1loops - 1) {
             CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE3>(FINISH_VEC_QR);
         }
 
