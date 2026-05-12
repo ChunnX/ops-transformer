@@ -292,6 +292,13 @@ bool SparseLightningIndexerGradKLLossTilingBase::AnalyzeDimLayout(const gert::Sh
                         "Query s1Size(%ld) must be small than Key s2Size(%ld).",
                         s1Size, s2Size),
                     return false);
+            } else {
+                OP_CHECK_IF(
+                    s1Size != s2Size * cmpRatio,
+                    OP_LOGE(
+                        opName,
+                        "current op only support ori_kv = q_s1"),
+                    return false);
             }
             OP_CHECK_IF(n2Size == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "N2 is zero."), return false);
             gSizeQuery = queryShape.GetDim(2) / n2Size;
