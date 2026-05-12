@@ -72,6 +72,7 @@ constexpr uint32_t OUTPUT_TYPE_FLOAT = 2;
 constexpr uint32_t BLOCKSIZE_INDEX = 6;
 constexpr uint32_t GROUPSIZE_INDEX = 7;
 constexpr uint32_t TRANSPOSEB_INDEX = 3;
+constexpr uint32_t COMMMODE_INDEX = 10;
 }  // namespace
 
 bool QuantBmmReduceScatterTiling::IsCapable()
@@ -396,9 +397,17 @@ ge::graphStatus QuantBmmReduceScatterTiling::SetMc2Hcomm()
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(
         group, opType, rsConfig, reduceType, dataType, dataType
     );
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-    if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+    auto commMode = context_->GetAttrs()->GetAttrPointer<char>(COMMMODE_INDEX);
+    OP_LOGD(opName_, "[COMM_MODE] Set CommEngine to %s for matmul_reduce_scatter_v2.", commMode);
+    bool isAicpu = (strncmp(commMode, "ai_cpu", 6) == 0) ;
+    if (isAicpu) {
+        OP_LOGD(opName_, "[COMM_MODE] Set CommEngine to AICPU for matmul_reduce_scatter_v2");
         mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
+        commMode_ = TPL_AICPU_COMM_MODE;
+    } else {
+        OP_LOGD(opName_, "[COMM_MODE] Set CommEngine to CCU for matmul_reduce_scatter_v2");
+        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
+        commMode_ = TPL_CCU_COMM_MODE;
     }
 
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(quantBmmMatmulReducescatterTilingData_->mc2InitTiling) != 0,
@@ -497,7 +506,7 @@ uint64_t QuantBmmReduceScatterTiling::GetTilingKey() const
     uint8_t commAlg = isA2APath_ ? TPL_CCU_ALL2ALL_VEC_REDUCE : TPL_CCU_REDUCESUM;
     uint64_t tilingKey = GET_TPL_TILING_KEY(   \
         isPerBlock, args_.isATrans, args_.isBTrans, INPUT_TYPE_IS_FP8, outputType, scaleType, commAlg, \
-        Mc2Comm::GetCommModeFromEnv());
+        commMode_);
     OP_LOGD(opName_, "isPerBlock, transA, transB is: [%d, %d, %d]", isPerBlock, args_.isATrans, args_.isBTrans);
     OP_LOGD(opName_, "outputType, scaleType is: [%u, %u]", outputType, scaleType);
     return tilingKey;
