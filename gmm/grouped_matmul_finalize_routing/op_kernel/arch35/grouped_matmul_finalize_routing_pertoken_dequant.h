@@ -113,8 +113,8 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
         uint32_t groupNum = gmmFinalizeRoutingQuantParams_.groupNum;
         uint8_t groupListType = gmmFinalizeRoutingQuantParams_.groupListType;
         int32_t n = matmulTiling_.N;
-        int32_t k = matmulTiling_.K;
-        bool isTransB = layoutB::type == AscendC::layout::Type::COLUMN_MAJOR;
+        int32_t k = matmulTiling_.Ka;
+        constexpr bool isTransB = BlockMmadBuilder::transB;
 
         // NZ format: single group weight size
         constexpr uint32_t WEIGHT_TILE_K_LARGE = 32U;
@@ -125,11 +125,13 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
         uint64_t singleGroupWeightNZ = 0;
         if constexpr (BlockMmadBuilder::formatB == CubeFormat::NZ) {
             if (isTransB) {
-                singleGroupWeightNZ = CeilDiv(k, WEIGHT_TILE_K_LARGE) * CeilDiv(n, WEIGHT_TILE_N_SMALL)
-                                      * WEIGHT_TILE_CAPACITY;
+                singleGroupWeightNZ = CeilDiv(static_cast<uint64_t>(k), WEIGHT_TILE_K_LARGE)
+                                    * CeilDiv(static_cast<uint64_t>(n), WEIGHT_TILE_N_SMALL)
+                                    * WEIGHT_TILE_CAPACITY;
             } else {
-                singleGroupWeightNZ = CeilDiv(n, WEIGHT_TILE_N_LARGE) * CeilDiv(k, WEIGHT_TILE_K_SMALL)
-                                      * WEIGHT_TILE_CAPACITY;
+                singleGroupWeightNZ = CeilDiv(static_cast<uint64_t>(n), WEIGHT_TILE_N_LARGE)
+                                    * CeilDiv(static_cast<uint64_t>(k), WEIGHT_TILE_K_SMALL)
+                                    * WEIGHT_TILE_CAPACITY;
             }
         }
 
