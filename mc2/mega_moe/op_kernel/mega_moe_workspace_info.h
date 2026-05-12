@@ -42,6 +42,8 @@ constexpr uint64_t IDX_M_OFFSET = 11UL;
 constexpr uint8_t SYNC_AIC_AIV_MODE = 4;
 constexpr uint16_t AIC_SYNC_AIV_FLAG = 4;
 constexpr uint16_t AIV_SYNC_AIC_FLAG = 6;
+constexpr uint16_t AIC_SYNC_AIV_EPO_FLAG = 8;
+constexpr uint16_t FLAG_ID_MAX_PER_V = 16;
 constexpr uint32_t SWIGLU_N_HALF = 2U;
 constexpr int32_t MXFP_DIVISOR_SIZE = 64;
 constexpr int32_t MXFP_SCALE_GROUP_NUM = 32;
@@ -76,6 +78,8 @@ struct WorkspaceInfo {
     GM_ADDR ptrSumBeforeRank;
     GM_ADDR ptrFlagSwiGluToGmm2;
     GM_ADDR ptrFlagDispatchToGmm1;
+    GM_ADDR ptrMmadTileResFirst;
+    GM_ADDR ptrMmadTileResSecond;
     int64_t workspaceSize;
     HOST_DEVICE WorkspaceInfo() = default;
     HOST_DEVICE WorkspaceInfo(GM_ADDR base, const MegaMoeTilingData *tilingData)
@@ -106,6 +110,10 @@ struct WorkspaceInfo {
         ptrFlagDispatchToGmm1 = base + workspaceSize;
         workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * INT_CACHELINE;
         expandedRowIdxGather = ptrA;
+        ptrMmadTileResFirst = base + workspaceSize;
+        workspaceSize += SIZE_INT_32 * 192 * 1024 * 4;
+        ptrMmadTileResSecond = base + workspaceSize;
+        workspaceSize += SIZE_INT_32 * 192 * 1024 * 4;
     }
 };
 #endif // MEGA_MOE_WORKSPACE_INFO_H

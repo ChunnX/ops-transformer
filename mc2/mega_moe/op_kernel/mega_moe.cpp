@@ -31,7 +31,7 @@ __global__ __aicore__ void mega_moe(
     REGISTER_TILING_DEFAULT(MegaMoeTilingData);
     GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingData, tilingData, tilingGM);
     if constexpr (DispatchQuantMode == DISPATCH_QUANT_MODE_MXFP) {
-        MegaMoe<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DispatchQuantOutType> op;
+        MegaMoe<DTYPE_X, DTYPE_Y, DTYPE_WEIGHT1, DTYPE_TOPK_WEIGHTS, DispatchQuantOutType> op;
         op.Init(context, x, topkIds, topkWeights, weight1, weight2, xActiveMask, weightScales1, weightScales2,
                 scales, yOut, expertTokenNumsOut, workspaceGM, &tilingData);
         op.Process();
