@@ -404,7 +404,7 @@ attention:
       - attention/sparse_flash_attention/tests
     test:
       examples: False
-      ut: False
+      ut: True
     options:
       - sparse_flash_attention
 
