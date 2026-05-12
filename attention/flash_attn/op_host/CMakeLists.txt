@@ -46,7 +46,6 @@ else()
     add_tiling_modules()
     target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
     ${ARCH35_CHECKER_SRC_FILES}
-    fa_split_core_v2.cpp
     flash_attn_tiling_info_parser.cpp
     )
     add_modules_sources_with_soc(

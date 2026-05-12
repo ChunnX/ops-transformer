@@ -19,7 +19,7 @@
 #include "log/log.h"
 #include "log/error_code.h"
 #include "register/op_def_registry.h"
-#include "../flash_attn_tiling_constants.h"
+#include "../fa_tiling_info.h"
 #include "shape_checker.h"
 
 namespace optiling {
@@ -161,21 +161,12 @@ ge::graphStatus ShapeChecker::CheckAxis(const FaTilingInfo &faInfo)
                 OP_LOGE(faInfo.opName, "The axis KV_S must be greater than 0, the current is %ld.", faInfo.s2Size),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(faInfo.qkHeadDim > D_LIMIT || faInfo.qkHeadDim < 16,
-                OP_LOGE(faInfo.opName, "The axis D of query and key only support [16, %u], the current is %ld.",
-                        D_LIMIT, faInfo.qkHeadDim),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(faInfo.vHeadDim > D_LIMIT || faInfo.vHeadDim < 16,
-                OP_LOGE(faInfo.opName, "The axis D of value only support [16, %u], the current is %ld.", D_LIMIT,
-                        faInfo.vHeadDim),
-                return ge::GRAPH_FAILED);
-
     OP_CHECK_IF(
-        faInfo.qkHeadDim % 16 != 0,
-        OP_LOGE(faInfo.opName, "The axis D of query and key must be 16 aligned, the current is %ld.", faInfo.qkHeadDim),
+        faInfo.qkHeadDim != 128,
+        OP_LOGE(faInfo.opName, "The axis D of query and key only support 128, the current is %ld.", faInfo.qkHeadDim),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(faInfo.vHeadDim % 16 != 0,
-                OP_LOGE(faInfo.opName, "The axis D of value must be 16 aligned, the current is %ld.", faInfo.vHeadDim),
+    OP_CHECK_IF(faInfo.vHeadDim != 128,
+                OP_LOGE(faInfo.opName, "The axis D of value only support 128, the current is %ld.", faInfo.vHeadDim),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -291,8 +282,7 @@ ge::graphStatus ShapeChecker::CheckKVShape(const FaTilingInfo &faInfo) const
     }
 
     // PA layout
-    if (faInfo.kvLayout == FaLayout::PA_BBND || faInfo.kvLayout == FaLayout::PA_BNBD ||
-        faInfo.kvLayout == FaLayout::PA_Nz) {
+    if (faInfo.pageAttentionFlag) {
         return CheckKVShapeForPageAttention(faInfo);
     }
 
