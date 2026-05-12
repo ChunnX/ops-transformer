@@ -326,6 +326,8 @@ __aicore__ inline void AttentionmaskCopyInForSgLayout(LocalTensor<T> &attenMaskU
     if (headGCount > 1) {
         Copy<int16_t, false>(attenMaskUbDst[dstMaskOffset], mask16[srcMaskBaseOffset], AscendC::MASK_PLACEHOLDER,
                             headGCount - 1, {1, 1, static_cast<uint16_t>(attenMaskS2Stride / 32), 0});
+    }
+    if (headGCount > 0) {
         dstMaskOffset += headGCount * attenMaskS2Stride / sizeof(int16_t);
         srcMaskBaseOffset += headGCount * attenMaskS2Stride / sizeof(int16_t);
     }
