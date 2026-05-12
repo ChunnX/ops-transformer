@@ -9,7 +9,7 @@
  */
 
 #include "aclnn_attention_worker_scheduler.h"
-#include "common/tensor_util.h"
+#include "util/tensor_util.h"
 #include "attention_worker_scheduler.h"
 #include "aclnn_kernels/contiguous.h"
 #include "aclnn_kernels/reshape.h"
