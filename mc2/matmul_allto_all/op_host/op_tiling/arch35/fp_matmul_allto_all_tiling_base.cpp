@@ -178,7 +178,7 @@ ge::graphStatus FpMatmulAllToAllTilingBase::SetHcclTiling()
 
     uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
     // 0代表默认走调度模式
-    uint8_t engineType = (commMode == Mc2Comm::COMM_MODE_CCU) ? 0 : mc2tiling::AICPU_ENGINE;
+    uint8_t engineType = (commMode == Mc2Comm::COMM_MODE_CCU) ? 0 : Mc2Comm::ENGINE_AICPU;
 
     //reducetype接口附带的数据类型优先于调用通信接口传入的数据类型，因此这里需要设置
     AscendC::Mc2CcTilingConfig allToAllTilingConfig = allToAllBuilder.withCommEngine(engineType).
