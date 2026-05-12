@@ -125,16 +125,34 @@ extern "C" aclnnStatus aclnnMatmulAlltoAllV2GetWorkspaceSize(const aclTensor *x1
         InnerMatmulAlltoAllV2GetWorkspaceSize(x1, transX2, biasOptional, alltoAllAxesOptional, group, transposeX1,
                                               transposeX2, commMode, output, workspaceSize, executor);
 
+    // 获取卡数
+    HcclComm hcclHandle;
+    uint32_t rankSize = 0;
+    auto hcclRet = HcomGetCommHandleByGroup(group, &hcclHandle);
+    if (hcclRet != HCCL_SUCCESS) {
+        OP_LOGE(ACLNN_ERR_INNER, "Get HCCL handle failed, group: %s", group);
+        return ACLNN_ERR_INNER;
+    }
+    hcclRet = HcclGetRankSize(hcclHandle, &rankSize);
+    if (hcclRet != HCCL_SUCCESS) {
+        OP_LOGE(ACLNN_ERR_INNER, "Get rank size failed");
+        return ACLNN_ERR_INNER;
+    }
+
     if (ret == ACLNN_SUCCESS && *executor != nullptr && (NnopbaseSetHcclServerType)) {
         OP_LOGD("[MatmulAlltoAllV2] Execute commMode=%s", commMode);
+        auto hcclServerType = NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU;
         if (std::strcmp(commMode, "aicpu") == 0) {
-            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+            hcclServerType = NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU;
         } else if (std::strcmp(commMode, "ccu") == 0) {
-            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
         } else {
             // default：小于等于8P走CCU，否则走AICPU
-            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+            if (rankSize <= 8) {
+            } else {
+                hcclServerType = NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU;
+            }
         }
+        NnopbaseSetHcclServerType(executor, hcclServerType);
     }
 
     OP_LOGD("MatmulAlltoAllV2, end ret %d", ret);
