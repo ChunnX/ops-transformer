@@ -24,6 +24,7 @@
 #include "opdev/platform.h"
 #include "opdev/format_utils.h"
 #include "aclnn_kernels/transdata.h"
+#include "mc2_comm_utils.h"
 
 namespace {
 
@@ -324,7 +325,14 @@ extern "C" aclnnStatus aclnnMatmulAlltoAll(void *workspace, uint64_t workspaceSi
 {
     if (NnopbaseSetHcclServerType) {
         if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+            uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+            if (commMode == Mc2Comm::COMM_MODE_CCU) {
+                OP_LOGD("aclnnMatmulAlltoAll: ENV_MC2_COMM_MODE_AICPU not set, use CCU mode");
+                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+            } else {
+                OP_LOGD("aclnnMatmulAlltoAll: ENV_MC2_COMM_MODE_AICPU set, use AICPU mode");
+                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+            }
         } else if (GetCurrentPlatformInfo().GetSocVersion()== SocVersion::ASCEND910_93) {
             NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
         } else if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B){
