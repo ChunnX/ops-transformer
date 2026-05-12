@@ -605,7 +605,7 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::SetHcclTiling()
 
     uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
     // 0代表默认走调度模式
-    uint8_t engineType = (commMode == Mc2Comm::COMM_MODE_CCU) ? 0 : mc2tiling::AICPU_ENGINE;
+    uint8_t engineType = (commMode == Mc2Comm::COMM_MODE_CCU) ? 0 : Mc2Comm::ENGINE_AICPU;
 
     AscendC::Mc2CcTilingConfig matmulAllToAllTilingConfig =
         matmulAllToAllBuilder
