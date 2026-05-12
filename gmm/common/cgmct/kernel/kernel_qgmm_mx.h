@@ -223,7 +223,7 @@ __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::Init(const P
 
     xTensorPtr_ = GetTensorAddr<AType>(0, mmadParams.aGmAddr);
     wTensorPtr_ = GetTensorAddr<BType>(0, mmadParams.bGmAddr);
-    x1ScaleTensorPtr_ = GetTensorAddr<AscendC::fp8_e8m0_t>(0, mmadParams.x1ScaleGmAddr);
+    x1ScaleTensorPtr_ = mmadParams.x1ScaleGmAddr;
     x2ScaleTensorPtr_ = GetTensorAddr<AscendC::fp8_e8m0_t>(0, mmadParams.x2ScaleGmAddr);
     biasTensorPtr_ = GetTensorAddr<BiasType>(0, mmadParams.biasGmAddr);
     groupListPtr_ = mmadParams.groupListGmAddr;
