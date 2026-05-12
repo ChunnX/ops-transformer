@@ -41,7 +41,7 @@ template <TemplateMegaMoeTypeClass>
 class MegaMoe {
 public:
     using QuantOutType = typename std::conditional<((QuantMode >= 3) && (QuantMode != 4)),
-        fp8_e5m2_t, fp8_e4m3fn_t>::type;
+        fp8_e5m2_t, fp8_e4m3fn_t>::type; // 逻辑神秘
     using QuantScaleOutType = typename std::conditional<(QuantMode >= 3), fp8_e8m0_t, float>::type;
     __aicore__ inline MegaMoe() {};
     __aicore__ inline void Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights,

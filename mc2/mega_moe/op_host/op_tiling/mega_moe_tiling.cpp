@@ -76,6 +76,7 @@ namespace {
     const static int64_t MAX_MOE_EXPERT_NUM = 1024LL;
     const static int64_t DISABLE_EXPERT_CAPACITY = -1LL;
     const static int64_t DISPATCH_QUANT_OUT_TYPE_OFFSET = 20LL;
+    const static int64_t DISPATCH_QUANT_OUT_TYPE_FP4_E2M1 = 296LL;
     const static int64_t INPUT_WEIGHT_SCALES_CEIL_ALIGN = 64LL;
     const static int64_t RESERVED_WORKSPACE_SIZE = 1024 * 1024 * 50LL;
 }
@@ -331,6 +332,7 @@ static int64_t OpQuantModeToInitRoutingQuantMode(const int64_t opQuantMode)
     switch (opQuantMode) {
         case DISPATCH_QUANT_OUT_TYPE_E5M2: return 2LL;
         case DISPATCH_QUANT_OUT_TYPE_E4M3FN: return 3LL;
+        case DISPATCH_QUANT_OUT_TYPE_E2M1: return 9LL; // 待定，需要确认InitRouting对应的MXFP4对应枚举值
         default: return -1LL;
     }
     return -1LL;
@@ -342,6 +344,7 @@ static ge::DataType GetDataTypeByOpQuantMode(const int64_t opQuantMode)
     switch (opQuantMode) {
         case DISPATCH_QUANT_OUT_TYPE_E5M2: return ge::DT_FLOAT8_E5M2;
         case DISPATCH_QUANT_OUT_TYPE_E4M3FN: return ge::DT_FLOAT8_E4M3FN;
+        case DISPATCH_QUANT_OUT_TYPE_E2M1: return ge::DT_FLOAT4_E2M1;
         default: return ge::DT_UNDEFINED;
     }
     return ge::DT_UNDEFINED;
@@ -356,8 +359,10 @@ static int64_t GetOpQuantModeByAttrDispatchOutType(const gert::TilingContext *co
     int64_t opQuantMode;
     if (dispatchQuantOutType == (DISPATCH_QUANT_OUT_TYPE_E5M2 + DISPATCH_QUANT_OUT_TYPE_OFFSET)) {
         opQuantMode = DISPATCH_QUANT_OUT_TYPE_E5M2;
-    } else {
+    } else if (dispatchQuantOutType == (DISPATCH_QUANT_OUT_TYPE_E4M3FN + DISPATCH_QUANT_OUT_TYPE_OFFSET)) {
         opQuantMode = DISPATCH_QUANT_OUT_TYPE_E4M3FN;
+    } else {
+        opQuantMode = DISPATCH_QUANT_OUT_TYPE_E2M1;
     }
 
     return opQuantMode;
@@ -406,10 +411,12 @@ static ge::graphStatus CheckInitTilingData(
         return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(
-        quantMode != DISPATCH_QUANT_OUT_TYPE_E5M2 && quantMode != DISPATCH_QUANT_OUT_TYPE_E4M3FN,
+        quantMode != DISPATCH_QUANT_OUT_TYPE_E5M2 && quantMode != DISPATCH_QUANT_OUT_TYPE_E4M3FN &&
+        quantMode != DISPATCH_QUANT_OUT_TYPE_E2M1,
         OP_LOGE(nodeName,
-            "only support DISPATCH_QUANT_OUT_TYPE_E5M2(%d), DISPATCH_QUANT_OUT_TYPE_E4M3FN(%d), but now is %ld.",
-            DISPATCH_QUANT_OUT_TYPE_E5M2, DISPATCH_QUANT_OUT_TYPE_E4M3FN, quantMode),
+            "only support DISPATCH_QUANT_OUT_TYPE_E5M2(%d), DISPATCH_QUANT_OUT_TYPE_E4M3FN(%d), "
+            "DISPATCH_QUANT_OUT_TYPE_E2M1(%d), but now is %ld.",
+            DISPATCH_QUANT_OUT_TYPE_E5M2, DISPATCH_QUANT_OUT_TYPE_E4M3FN, DISPATCH_QUANT_OUT_TYPE_E2M1, quantMode),
         return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(
@@ -483,6 +490,7 @@ static ge::graphStatus CheckAndSetInitTilingData(
     initTilingData.expertNum = expertNum;
     initTilingData.dropPadMode = dropPadMode;
     initTilingData.expertTokensNumFlag = expertTokensNumFlag ? 1 : 0;
+    // InitRouting对应的quantmode没有使用
     initTilingData.quantMode = OpQuantModeToInitRoutingQuantMode(quantMode);
     initTilingData.rowIdxType = rowIdxType;
 
@@ -891,9 +899,10 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
     auto dispatchQuantOutTypePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantOutTypeIndex));
     int64_t dispatchQuantOutType = static_cast<int64_t>(*dispatchQuantOutTypePtr);
     OP_TILING_CHECK(dispatchQuantOutType != (DISPATCH_QUANT_OUT_TYPE_E5M2 + DISPATCH_QUANT_OUT_TYPE_OFFSET) &&
-                    dispatchQuantOutType != (DISPATCH_QUANT_OUT_TYPE_E4M3FN + DISPATCH_QUANT_OUT_TYPE_OFFSET),
+                    dispatchQuantOutType != (DISPATCH_QUANT_OUT_TYPE_E4M3FN + DISPATCH_QUANT_OUT_TYPE_OFFSET) &&
+                    dispatchQuantOutType != (DISPATCH_QUANT_OUT_TYPE_FP4_E2M1),
         OP_LOGE(nodeName,
-            "Invalid dispatchQuantOutType, only support fp8_e5m2(23) and fp8_e4m3fn(24), but now is %ld.",
+            "Invalid dispatchQuantOutType, only support fp8_e5m2(23), fp8_e4m3fn(24) and fp4_e2m1(293), but now is %ld.",
             dispatchQuantOutType),
         return ge::GRAPH_FAILED);
 
@@ -904,7 +913,8 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
         OP_LOGE(nodeName,
             "unsupported dispatchQuantMode(%ld), leading out data type to being DT_UNDEFINED.", dispatchQuantMode),
         return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(refWeightDataType != weightOneDesc->GetDataType(),
+    OP_TILING_CHECK((refWeightDataType != weightOneDesc->GetDataType()) &&
+                    (weightOneDesc->GetDataType() != ge::DT_FLOAT4_E2M1),
         OP_LOGE(nodeName, "refWeightDataType(%s) should be equal to weightOne & weightTwo dataType(%s).",
         Ops::Base::ToString(refWeightDataType).c_str(), Ops::Base::ToString(weightOneDesc->GetDataType()).c_str()),
         return ge::GRAPH_FAILED);
@@ -1280,16 +1290,18 @@ static ge::graphStatus CheckTensorDataType(const gert::TilingContext *context,
 
     OP_TILING_CHECK((
         (weightOneDesc->GetDataType() != ge::DT_FLOAT8_E5M2) &&
-        (weightOneDesc->GetDataType() != ge::DT_FLOAT8_E4M3FN)),
+        (weightOneDesc->GetDataType() != ge::DT_FLOAT8_E4M3FN) &&
+        (weightOneDesc->GetDataType() != ge::DT_FLOAT4_E2M1)),
         OP_LOGE(nodeName,
-            "weightOne dataType is invalid, dataType should be DT_FLOAT8_E5M2 or DT_FLOAT8_E4M3FN, but is %s.",
+            "weightOne dataType is invalid, dataType should be DT_FLOAT8_E5M2 or DT_FLOAT8_E4M3FN or DT_FLOAT4_E2M1, but is %s.",
         Ops::Base::ToString(weightOneDesc->GetDataType()).c_str()), return ge::GRAPH_FAILED);
     
     OP_TILING_CHECK((
         (weightTwoDesc->GetDataType() != ge::DT_FLOAT8_E5M2) &&
-        (weightTwoDesc->GetDataType() != ge::DT_FLOAT8_E4M3FN)),
+        (weightTwoDesc->GetDataType() != ge::DT_FLOAT8_E4M3FN) &&
+        (weightTwoDesc->GetDataType() != ge::DT_FLOAT4_E2M1)),
         OP_LOGE(nodeName,
-            "weightTwo dataType is invalid, dataType should be DT_FLOAT8_E5M2 or DT_FLOAT8_E4M3FN, but is %s.",
+            "weightTwo dataType is invalid, dataType should be DT_FLOAT8_E5M2 or DT_FLOAT8_E4M3FN or DT_FLOAT4_E2M1, but is %s.",
         Ops::Base::ToString(weightTwoDesc->GetDataType()).c_str()), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(weightOneDesc->GetDataType() != weightTwoDesc->GetDataType(),
@@ -1412,7 +1424,8 @@ static ge::graphStatus CheckInputParam(const gert::TilingContext *context, MegaM
     OP_TILING_CHECK(xDim0 < MIN_BS || xDim0 > MAX_BS,
         OP_LOGE(nodeName, "BS should in [%ld, %ld], but now BS is %ld.", MIN_BS, MAX_BS, xDim0),
         return ge::GRAPH_FAILED);
-
+    
+    // MXFP4情况下，输入scales的H需为偶数
     int64_t xDim1 = xStorageShape->GetStorageShape().GetDim(1);
     OP_TILING_CHECK(xDim1 != 4LL * H_BASE && xDim1 != 5LL * H_BASE && xDim1 != 7LL * H_BASE,
         OP_LOGE(nodeName, "H only support 4k/5k/7k, but now H is %ld.", xDim1),
