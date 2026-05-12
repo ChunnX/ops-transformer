@@ -103,8 +103,10 @@ inline __aicore__ void flash_attn_kernel_run(
 #endif
 
     // 5. Tiling 解析、实例化并执行
-    GET_TILING_DATA_MEMBER(FlashAttnTilingData, baseTiling, baseTilingIn, tiling);
-    const FlashAttnNoQuantTilingArch35 *__restrict tilingData = &baseTilingIn;
+    // GET_TILING_DATA_MEMBER(FlashAttnTilingData, baseTiling, baseTilingIn, tiling);
+    // const FlashAttnNoQuantTilingArch35 *__restrict tilingData = &baseTilingIn;
+    size_t offset = (size_t)(&((FlashAttnTilingData*)0)->baseTiling);
+    const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tilingData = (const __gm__ FlashAttnNoQuantTilingArch35 *__restrict)(tiling + offset);
 
     TPipe tPipe;
     Kernel op;
