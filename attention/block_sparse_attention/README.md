@@ -186,7 +186,7 @@ bash build.sh --make_clean -j96 --pkg --soc=ascend910b --ops=block_sparse_attent
 | 子目录 | 内容 |
 |---|---|
 | `benchmark/` | 性能基准。`benchmark.py` 在 `[B=1, H=3, S=118806, D=128]` (BF16, BNSD) 工作负载下扫描 sparsity 0..0.9,对比 `npu_fusion_attention` 密集参考的延迟。共享工具集中在同目录的 `util.py`。详见 [`benchmark/README.md`](benchmark/README.md)。 |
-| `test/` | pytest 正确性测试套件 (3 个文件,共数百个测试用例)。 |
+| `tests/pytest/` | pytest 正确性测试套件 (3 个文件,共数百个测试用例)。 |
 
 > Python 入口由 `torch_extension/npu_ops_transformer/` 提供 — 通过
 > `npu_ops_transformer.ops.block_sparse_attention(...)` 调用。算子的 C++ 包装器
@@ -198,7 +198,7 @@ bash build.sh --make_clean -j96 --pkg --soc=ascend910b --ops=block_sparse_attent
 
 ```bash
 # 先确保算子已编译安装 (见上方编译说明) 并且 torch_extension/npu_ops_transformer 已安装
-cd attention/block_sparse_attention/test
+cd attention/block_sparse_attention/tests/pytest
 ASCEND_RT_VISIBLE_DEVICES=1 pytest test_attn.py test_lse.py test_joint.py -v
 ```
 

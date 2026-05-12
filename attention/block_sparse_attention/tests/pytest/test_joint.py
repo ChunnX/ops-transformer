@@ -38,7 +38,7 @@ import torch
 import torch_npu
 import npu_ops_transformer
 
-sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "benchmark")))
+sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "..", "benchmark")))
 from util import create_attention_mask, FrameWidths  # noqa: E402
 
 SEED = 42
