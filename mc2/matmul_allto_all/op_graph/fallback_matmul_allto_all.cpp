@@ -82,10 +82,10 @@ struct QuantMatmulParas {
  */
 inline ge::graphStatus GetCommonMatmulInputPara(const gert::OpExecuteContext* host_api_ctx, CommonMatmulParas& para)
 {
-    const auto x2 = host_api_ctx->GetInputTensor(INDEX_IN_X2);
+    const gert::Tensor* x2 = host_api_ctx->GetInputTensor(INDEX_IN_X2);
     OPS_CHECK(x2 == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "x2 is null"), return ge::GRAPH_FAILED);
 
-    const auto x1 = host_api_ctx->GetInputTensor(INDEX_IN_X1);
+    const gert::Tensor* x1 = host_api_ctx->GetInputTensor(INDEX_IN_X1);
     OPS_CHECK(x1 == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "x1 is null"), return ge::GRAPH_FAILED);
 
     para.bias = host_api_ctx->GetOptionalInputTensor(INDEX_IN_BIAS);
@@ -143,21 +143,21 @@ inline ge::graphStatus GetAttrPara(const gert::OpExecuteContext* host_api_ctx,
 
     const bool* transX2Ptr = attrs->GetBool(INDEX_ATTR_TRANS_X2);
     const bool transX2 = (transX2Ptr != nullptr ? *transX2Ptr : false);
-    const auto commScaleOptional = host_api_ctx->GetOptionalInputTensor(INDEX_IN_COMM_SCALE);
+    const gert::Tensor* commScaleOptional = host_api_ctx->GetOptionalInputTensor(INDEX_IN_COMM_SCALE);
     if (commScaleOptional != nullptr) {
         para.commScaleOptional = ConvertMmType(commScaleOptional, transX2);
         OPS_CHECK(
             para.commScaleOptional == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "commScaleOptional is null"),
             return ge::GRAPH_FAILED);
     }
-    const auto x2OffsetOptional = host_api_ctx->GetOptionalInputTensor(INDEX_IN_X2_OFFSET);
+    const gert::Tensor* x2OffsetOptional = host_api_ctx->GetOptionalInputTensor(INDEX_IN_X2_OFFSET);
     if (x2OffsetOptional != nullptr) {
         para.x2OffsetOptional = ConvertMmType(x2OffsetOptional, false);
         OPS_CHECK(
             para.x2OffsetOptional == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "x2OffsetOptional is null"),
             return ge::GRAPH_FAILED);
     }
-    const auto x1OffsetOptional = host_api_ctx->GetOptionalInputTensor(INDEX_IN_X1_OFFSET);
+    const gert::Tensor* x1OffsetOptional = host_api_ctx->GetOptionalInputTensor(INDEX_IN_X1_OFFSET);
     if (x1OffsetOptional != nullptr) {
         para.x1OffsetOptional = ConvertMmType(x1OffsetOptional, false);
         OPS_CHECK(
@@ -184,12 +184,12 @@ inline ge::graphStatus GetAttrPara(const gert::OpExecuteContext* host_api_ctx,
  */
 inline ge::graphStatus GetQuantMatmulPara(const gert::OpExecuteContext* host_api_ctx, QuantMatmulParas& para)
 {
-    const auto x1Scale = host_api_ctx->GetOptionalInputTensor(INDEX_IN_X1_SCALE);
+    const gert::Tensor* x1Scale = host_api_ctx->GetOptionalInputTensor(INDEX_IN_X1_SCALE);
     OPS_CHECK(x1Scale == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "x1scale is null"), return ge::GRAPH_FAILED);
     para.x1ScaleAcl = ConvertMmType(x1Scale, false);
     OPS_CHECK(para.x1ScaleAcl == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "x1ScaleAcl is null"), return ge::GRAPH_FAILED);
 
-    const auto x2Scale = host_api_ctx->GetOptionalInputTensor(INDEX_IN_X2_SCALE);
+    const gert::Tensor* x2Scale = host_api_ctx->GetOptionalInputTensor(INDEX_IN_X2_SCALE);
     OPS_CHECK(x2Scale == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "x2scale is null"), return ge::GRAPH_FAILED);
     const gert::RuntimeAttrs* attrs = host_api_ctx->GetAttrs();
 
@@ -232,12 +232,12 @@ static ge::graphStatus MatmulAlltoAllExecuteFunc(gert::OpExecuteContext* host_ap
     OPS_CHECK(
         retPara != ge::SUCCESS, OP_LOGE(host_api_ctx->GetNodeName(), "Failed to get common matmul input paras."),
         return ge::GRAPH_FAILED);
-    const auto output = host_api_ctx->GetOutputTensor(INDEX_OUT);
+    const gert::Tensor* output = host_api_ctx->GetOutputTensor(INDEX_OUT);
     OPS_CHECK(output == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "output is null"), return ge::GRAPH_FAILED);
     AttrParas attrParas;
     OPS_CHECK(GetAttrPara(host_api_ctx, attrs, attrParas) != ge::SUCCESS,
               OP_LOGE(host_api_ctx->GetNodeName(), "Failed to get attr paras."), return ge::GRAPH_FAILED);
-    const auto alltoAllAxesOptional = attrs->GetListInt(INDEX_ATTR_ALL2ALL_AXES);
+    const gert::TypedContinuousVector<int64_t>* alltoAllAxesOptional = attrs->GetListInt(INDEX_ATTR_ALL2ALL_AXES);
     std::vector<int64_t> actSeqArray;
     if(alltoAllAxesOptional != nullptr) {
         OPS_CHECK(alltoAllAxesOptional == nullptr,
