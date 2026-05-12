@@ -432,7 +432,7 @@ attention:
       - attention/kv_quant_sparse_flash_attention/tests
     test:
       examples: False
-      ut: False
+      ut: True
     options:
       - kv_quant_sparse_flash_attention
 
