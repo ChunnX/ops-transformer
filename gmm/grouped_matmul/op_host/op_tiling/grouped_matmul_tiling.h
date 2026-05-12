@@ -214,6 +214,10 @@ private:
     bool isA4W4_ = false;
     bool isA16W16_ = false;
     bool isA8W4FakeA8W8_ = false;
+    uint64_t A8W4N_ = 0;
+    uint64_t A8W4K_ = 0;
+    uint64_t A8W4GroupNum_ = 0;
+    uint64_t A8W4QuantGroupNum_ = 0;
     bool isFixedAxisMove_ = false;
     uint64_t A8W4noMsdSpace_ = 0;
 
