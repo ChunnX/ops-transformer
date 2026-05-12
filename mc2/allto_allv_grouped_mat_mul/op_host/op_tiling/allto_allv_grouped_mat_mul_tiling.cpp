@@ -14,6 +14,8 @@
  */
 
 #include "allto_allv_grouped_mat_mul_tiling.h"
+#include "mc2_tiling_utils.h"
+#include "mc2_comm_utils.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -698,6 +700,14 @@ ge::graphStatus AlltoAllvGmmTiling::SetHcclTiling(const gert::TilingContext* con
 
     Mc2CcTilingConfig hcclCcTilingConfig(epGroup_, alltoAllvCmd, alltoAllvConfig,
                                          alltoAllvReduceType, alltoAllvDstDataType, alltoAllvSrcDataType);
+    bool isA5 = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5);
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    uint8_t engineType = isA5 ? Mc2Comm::ENGINE_CCU : Mc2Comm::ENGINE_AICPU;
+    if (isA5 && commMode == Mc2Comm::COMM_MODE_AICPU) {
+        engineType = Mc2Comm::ENGINE_AICPU;
+    }
+    OP_LOGD(context->GetNodeName(), "AlltoAllvGmm tiling: isA5=%d, commMode=%u, engineType=%u", isA5, commMode, engineType);
+    hcclCcTilingConfig.SetCommEngine(engineType);
     OP_TILING_CHECK(hcclCcTilingConfig.GetTiling(tilingData->hcclInitTiling) != 0,
         OP_LOGE(A_INNER_DEBUG, "mc2CcTilingConfig mc2tiling GetTiling hcclInitTiling failed"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(hcclCcTilingConfig.GetTiling(tilingData->alltoAllvCcTiling) != 0,
@@ -810,32 +820,13 @@ ge::graphStatus AlltoAllvGmmTiling::Init(gert::TilingContext* context)
 
 uint64_t AlltoAllvGmmTiling::GetTilingKey(const gert::TilingContext* context) const
 {
-    uint32_t templateMmDType = ADD_TPL_FP16;
-    bool tilingkeyMm = false;
-    bool tilingekyGmmTrans = false;
-    bool tilingekyMmTrans = false;
-    if (context->GetInputDesc(GMM_X_INDEX)->GetDataType() == ge::DT_FLOAT16) {
-        templateMmDType = ADD_TPL_FP16;
-    } else if (context->GetInputDesc(GMM_X_INDEX)->GetDataType() == ge::DT_BF16) {
-        templateMmDType = ADD_TPL_BP16;
-    }
-    if (tilingData->commonTilingInfo.isNeedMM) {
-        tilingkeyMm = true;
-    } else {
-        tilingkeyMm = false;
-    }
-    if (tilingData->commonTilingInfo.isGmmWeightTrans) {
-        tilingekyGmmTrans = true;
-    } else {
-        tilingekyGmmTrans = false;
-    }
-    if (tilingData->commonTilingInfo.isMmWeightTrans) {
-        tilingekyMmTrans = true;
-    } else {
-        tilingekyMmTrans = false;
-    }
-    uint64_t tilingKey = GET_TPL_TILING_KEY(templateMmDType, tilingkeyMm,
-                                    tilingekyGmmTrans, tilingekyMmTrans);
+    bool tilingekyGmmTrans = tilingData->commonTilingInfo.isGmmWeightTrans;
+    bool tilingekyMmTrans = tilingData->commonTilingInfo.isMmWeightTrans;
+    bool isA5 = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5);
+    uint8_t commMode = isA5 ? Mc2Comm::GetCommModeFromEnv() : Mc2Comm::COMM_MODE_AICPU;
+    uint64_t tilingKey = GET_TPL_TILING_KEY(tilingekyGmmTrans, tilingekyMmTrans, commMode);
+    OP_LOGD(A_INNER_DEBUG, "AlltoAllvGmm GetTilingKey: gmmTrans=%d, mmTrans=%d, commMode=%u, tilingKey=%lu",
+            tilingekyGmmTrans, tilingekyMmTrans, commMode, tilingKey);
 
     PrintCommonTilingInfo(tilingData->commonTilingInfo);
     OP_LOGD(A_INNER_DEBUG, "end RunFusionKernelTiling, tilingKey is %lu", tilingKey);

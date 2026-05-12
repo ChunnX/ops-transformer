@@ -14,6 +14,7 @@
  */
 
 #include "allto_allv_quant_grouped_mat_mul_tiling_common.h"
+#include "mc2_comm_utils.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -158,6 +159,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::PostTiling()
     tilingData->taskTilingInfo.mainLoopExpertNum = e_;
     tilingData->taskTilingInfo.tailLoopExpertNum = 0;
     tilingData->taskTilingInfo.totalLoopCount = e_;
+    tilingData->isNeedMM = hasSharedExpertFlag_;
     for (uint32_t i = 0; i < e_ * epWorldSize_; i++) {
         tilingData->taskTilingInfo.sendCnt[i] = sendCounts[i];
         tilingData->taskTilingInfo.recvCnt[i] = recvCounts[i];
@@ -267,6 +269,9 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::SetHcclTiling() const
 
     Mc2CcTilingConfig hcclCcTilingConfig(group_, alltoAllvCmd, alltoAllvConfig, alltoAllvReduceType, alltoAllvDataType,
         alltoAllvDataType);
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    uint8_t engineType = (commMode == Mc2Comm::COMM_MODE_CCU) ? Mc2Comm::ENGINE_CCU : Mc2Comm::ENGINE_AICPU;
+    hcclCcTilingConfig.SetCommEngine(engineType);
     OP_TILING_CHECK(hcclCcTilingConfig.GetTiling(tilingData->hcclA2avTilingInfo.hcclInitTiling) != 0,
         OP_LOGE(context_->GetNodeName(),
         "mc2CcTilingConfig mc2tiling GetTiling hcclA2avTilingInfo.hcclInitTiling failed"),
