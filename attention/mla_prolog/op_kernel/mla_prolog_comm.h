@@ -150,6 +150,7 @@ constexpr int FINISH_MM_QCQR_SPLIT_N = 0X6;
 constexpr int FINISH_VEC_DEQUANT_QC_SPLIT_N = 0X7;
 constexpr int FINISH_MM_QN_SPLIT_N = 0X8;
 constexpr int FINISH_VEC_QR = 0X5;
+constexpr int FINISH_VEC_QN = 0X6;
 
 // Split-KN sync flags (Ascend 950 only)
 #if __CCE_AICORE__ == 310

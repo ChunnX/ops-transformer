@@ -17,78 +17,12 @@
 #define VF_ROPE_MOD_H
 
 #include "kernel_tensor.h"
+#include "vf_comm.h"
 
 namespace MlaProlog {
-constexpr uint32_t ROPE_VF_COL = 64;
-
-constexpr MicroAPI::CastTrait castTraitB162B32 = {
-    MicroAPI::RegLayout::ZERO,
-    MicroAPI::SatMode::UNKNOWN,
-    MicroAPI::MaskMergeMode::ZEROING,
-    RoundMode::UNKNOWN,
-};
-
-constexpr MicroAPI::CastTrait castTraitB322B16 = {
-    MicroAPI::RegLayout::ZERO,
-    MicroAPI::SatMode::NO_SAT,
-    MicroAPI::MaskMergeMode::ZEROING,
-    RoundMode::CAST_RINT,
-};
-
-
-template <typename C>
-__simd_vf__ inline void RopeVFImpl(__ubuf__ C *outputUb, __ubuf__ C *inputUb, __ubuf__ C *sinUb,
-                                   __ubuf__ C *cosUb, uint32_t row, uint64_t srcStride, uint64_t dstStride, uint64_t sinCosStride)
-{
-    MicroAPI::RegTensor<C> vregX;
-    MicroAPI::RegTensor<C> vregSin;
-    MicroAPI::RegTensor<C> vregCos;
-    MicroAPI::RegTensor<C> vregEven;
-    MicroAPI::RegTensor<C> vregOdd;
-    MicroAPI::RegTensor<C> vregResLow;
-    MicroAPI::RegTensor<C> vregResHigh;
-    MicroAPI::RegTensor<C> vregRes;
-
-    uint32_t halfReg = ROPE_VF_COL / 2;
-    MicroAPI::MaskReg maskAll = MicroAPI::CreateMask<C, MicroAPI::MaskPattern::ALL>();
-    MicroAPI::MaskReg maskLowHalf = MicroAPI::CreateMask<C, MicroAPI::MaskPattern::H>();
-    MicroAPI::MaskReg maskHighHalf;
-    MicroAPI::Not(maskHighHalf, maskLowHalf, maskAll);
-
-    for (uint16_t i = 0; i < row; ++i) {
-        __ubuf__ C *curXUb = inputUb + i * srcStride;
-        __ubuf__ C *curResUb = outputUb + i * dstStride;
-        __ubuf__ C *curSinUb = sinUb + i * sinCosStride;
-        __ubuf__ C *curCosUb = cosUb + i * sinCosStride;
-
-        MicroAPI::LoadAlign(vregX, curXUb);
-        MicroAPI::LoadAlign(vregSin, curSinUb);
-        MicroAPI::LoadAlign(vregCos, curCosUb);
-
-        // vregEven = [evens(0..31), evens(32..63)]
-        // vregOdd = [odds(0..31),  odds(32..63)]
-        MicroAPI::DeInterleave<C>(vregEven, vregOdd, vregX, vregX);
-
-        // Part1 low  = cos * evens,        Part1 high preserved
-        MicroAPI::Mul(vregResLow, vregCos, vregEven, maskLowHalf);
-        // Part1 high = sin * evens,         Part1 low  preserved
-        MicroAPI::Mul(vregResHigh, vregSin, vregEven, maskHighHalf);
-        MicroAPI::Add(vregRes, vregResLow, vregResHigh, maskAll);
-        // Part2 low  = sin(-) * odds,      Part2 high preserved
-        MicroAPI::Mul(vregResLow, vregSin, vregOdd, maskLowHalf);
-        // Part2 high = cos * odds,          Part2 low  preserved
-        MicroAPI::Mul(vregResHigh, vregCos, vregOdd, maskHighHalf);
-
-        // Part1 = [cos_l*even + sin_l*odd, cos_u*odd + sin_u*even] = [y_lower, y_upper]
-        MicroAPI::Add(vregRes, vregRes, vregResHigh, maskAll);
-        MicroAPI::Add(vregRes, vregRes, vregResLow, maskAll);
-
-        MicroAPI::StoreAlign(curResUb, vregRes, maskAll);
-    }
-}
 
 template <typename O, typename C>
-__simd_vf__ inline void RopeCastVFImpl(__ubuf__ O *outputUb, __ubuf__ C *inputUb, __ubuf__ C *sinUb,
+__simd_vf__ inline void RopeVFImpl(__ubuf__ O *outputUb, __ubuf__ C *inputUb, __ubuf__ C *sinUb,
                                    __ubuf__ C *cosUb, uint32_t row, uint64_t srcStride, uint64_t dstStride, uint64_t sinCosStride)
 {
     MicroAPI::RegTensor<C> vregX;
@@ -135,8 +69,13 @@ __simd_vf__ inline void RopeCastVFImpl(__ubuf__ O *outputUb, __ubuf__ C *inputUb
         // Part1 = [cos_l*even + sin_l*odd, cos_u*odd + sin_u*even] = [y_lower, y_upper]
         MicroAPI::Add(vregRes, vregRes, vregResHigh, maskAll);
         MicroAPI::Add(vregRes, vregRes, vregResLow, maskAll);
-        MicroAPI::Cast<O, C, castTraitB322B16>(vregResCast, vregRes, maskAllCast);
-        MicroAPI::DataCopy<O, MicroAPI::StoreDist::DIST_PACK_B32>(curResUb, vregResCast, maskAllCast);
+        
+        if constexpr (std::is_same<C, O>::value) {
+            MicroAPI::StoreAlign(curResUb, vregRes, maskAll);
+        } else {
+            MicroAPI::Cast<O, C, castTraitB322B16>(vregResCast, vregRes, maskAllCast);
+            MicroAPI::DataCopy<O, MicroAPI::StoreDist::DIST_PACK_B32>(curResUb, vregResCast, maskAllCast);
+        }
     }
 }
 
@@ -152,11 +91,7 @@ __aicore__ inline void RotaryPosEmbVF(const LocalTensor<O> &outputLocal, const L
     __ubuf__ C *cosUb = (__ubuf__ C *)cosLocal.GetPhyAddr();
     __ubuf__ O *outputUb = (__ubuf__ O *)outputLocal.GetPhyAddr();
 
-    if constexpr (std::is_same<C, O>::value) {
-        RopeVFImpl(outputUb, inputUb, sinUb, cosUb, row, srcStride, dstStride, sinCosStride);
-    } else {
-        RopeCastVFImpl(outputUb, inputUb, sinUb, cosUb, row, srcStride, dstStride, sinCosStride);
-    }
+    RopeVFImpl(outputUb, inputUb, sinUb, cosUb, row, srcStride, dstStride, sinCosStride);
 }
 } // namespace MlaProlog
 

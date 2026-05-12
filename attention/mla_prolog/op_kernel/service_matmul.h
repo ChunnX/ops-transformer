@@ -593,7 +593,7 @@ __aicore__ inline void LoadL1ABAndScale(const GlobalTensor<T> &tensorAGm, const 
             LoadL1AAndScale<T, S, hasL1ALoaded, scaleSrcPadFlag>(tensorAGm, tensorAScaleGm, para.m, para.kL1StepSize,
                 para.orgKa, para.kScale, para.orgKa / 32, offsetL1A, bufParam);
         }
-        uint64_t scaleOffsetL1A = offsetL1A + L1_A_SIZE / sizeof(T); // 表示scale起始地址固定从L1A上pong的64k开始
+        uint64_t scaleOffsetL1A = offsetL1A + L1_A_SIZE / 4 / sizeof(T); // 表示scale起始地址固定从L1A上pong的64k开始
         LoadL1BAndScale(tensorBGm[nL1Offset * para.orgKb + para.kStart * GetC0Num<T>()], tensorBScaleGm[nL1Offset * para.orgKb / 32], nL1Size,
             para.kL1StepSize, para.orgKb, para.kScale, para.orgKb / 32, scaleOffsetL1A, bufParam);
     }
@@ -667,7 +667,7 @@ __aicore__ inline void MatmulL1(const LocalTensor<O_L0C> &cL0, const LocalTensor
 {
     uint32_t mSize = Align(para.m, BLOCK_CUBE_SIZE);
     uint64_t weightSizeL1A = L1_A_SIZE / 2 / sizeof(T); // 2表示scale起始地址固定从L1A上ping的64k开始
-    uint64_t scaleASize = L1_A_SIZE / sizeof(T);  // BS*224
+    uint64_t scaleASize = L1_A_SIZE / 4 / sizeof(T);  // BS*224
     uint32_t bOffset = 0;
     uint32_t aOffsetUnit = mSize * para.baseK;
     uint32_t bOffsetUnit = GetC0Num<T>() * para.baseK;
