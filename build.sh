@@ -1869,6 +1869,7 @@ function build_pr_ut_mc2()
     done
 }
 
+
 function build_pr_ut_exclude_mc2()
 {
     echo "Operators exclude mc2 that need to run UT: $TEST_EXCLUDE_MC2"
