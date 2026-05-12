@@ -117,7 +117,7 @@ __aicore__ inline void MoeV3FullLoadInt4DynamicQuant<T>::Compute(LocalTensor<flo
     uint32_t sreg;
     __VEC_SCOPE__
     {
-        MicroAPI::RegTensor<float> inReg, smoothReg, scaleValueReg;
+        MicroAPI::RegTensor<float> inReg, smoothReg, scaleValueReg, mulValueReg;
         MicroAPI::Duplicate(scaleValueReg, 0.0f);
         MicroAPI::RegTensor<half> outRegF16;
         MicroAPI::RegTensor<int4x2_t> outRegI4x2;
@@ -146,7 +146,10 @@ __aicore__ inline void MoeV3FullLoadInt4DynamicQuant<T>::Compute(LocalTensor<flo
             MicroAPI::Max(scaleValueReg, scaleValueReg, inReg, maskRegAll);
         }
         MicroAPI::ReduceMax(scaleValueReg, scaleValueReg, maskRegAll);
+        MicroAPI::Duplicate(mulValueReg, DYNAMIC_QUANT_INT4_SYM_SCALE, maskRegVL1);
+        MicroAPI::Div(mulValueReg, mulValueReg, scaleValueReg, maskRegVL1);
         MicroAPI::Muls(scaleValueReg, scaleValueReg, 1.0f / DYNAMIC_QUANT_INT4_SYM_SCALE, maskRegVL1);
+        MicroAPI::Duplicate(mulValueReg, mulValueReg, maskRegAll);
         MicroAPI::Duplicate(scaleValueReg, scaleValueReg, maskRegAll);
         MicroAPI::DataCopy(scaleUbAddr, scaleValueReg, maskRegVL8);
 
@@ -156,7 +159,7 @@ __aicore__ inline void MoeV3FullLoadInt4DynamicQuant<T>::Compute(LocalTensor<flo
         for (uint16_t i = 0; i < repeatTimes; i++) {
             maskRegInLoop = MicroAPI::UpdateMask<float>(sreg);
             MicroAPI::DataCopy(inReg, inUbAddr + i * FLOAT_REG_TENSOR_LENGTH);
-            MicroAPI::Div(inReg, inReg, scaleValueReg, maskRegInLoop);
+            MicroAPI::Mul(inReg, inReg, mulValueReg, maskRegInLoop);
             MicroAPI::Cast<half, float, castTraitF32ToF16>(outRegF16, inReg, maskRegInLoop);
             uint32_t maskLenI4x2 = static_cast<uint32_t>(Ceil(static_cast<int64_t>(sreg), static_cast<int64_t>(2)));
             maskRegInLoop = MicroAPI::UpdateMask<int4x2_t>(maskLenI4x2);

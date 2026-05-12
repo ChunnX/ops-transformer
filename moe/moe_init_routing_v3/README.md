@@ -247,8 +247,9 @@
   
 - INT4动态量化（quant_mode=10）额外约束：
   - 仅支持 dropless（drop_pad_mode=0）。
+  - NUM_ROWS 必须为偶数。
   - H（cols）必须为偶数。
-  - x dtype 仅支持 FLOAT16、BFLOAT16、FLOAT32，不支持 INT8。
+  - x dtype 仅支持 BFLOAT16、FLOAT32，不支持 FLOAT16、INT8。
   - scaleOptional 允许为空；非空时仅支持 shape 为 (1, H)。
   - offsetOptional 应为空。
   

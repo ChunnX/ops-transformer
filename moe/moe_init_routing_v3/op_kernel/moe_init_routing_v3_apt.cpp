@@ -194,8 +194,8 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
 #endif
         return;
     } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_FULLLOAD_INT4_DYNAMIC_QUANT)) {
-        if constexpr ((IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
-                    IsSameType<DTYPE_X, float32_t>::value) && IsSameType<DTYPE_EXPANDED_X, int4b_t>::value) {
+        if constexpr ((IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, float32_t>::value) &&
+                      IsSameType<DTYPE_EXPANDED_X, int4b_t>::value) {
             TPipe fullLoadPipe;
             MoeV3FullLoadInt4DynamicQuant<DTYPE_X> fullLoadOp;
             fullLoadOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale,
@@ -415,8 +415,8 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_INT4_DYNAMIC_QUANT_GATHER) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_INT4_DYNAMIC_QUANT_SCATTER)) {
         // INT4动态量化
-        if constexpr ((IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
-            IsSameType<DTYPE_X, float32_t>::value) && IsSameType<DTYPE_EXPANDED_X, int4b_t>::value) {
+        if constexpr ((IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, float32_t>::value) &&
+                      IsSameType<DTYPE_EXPANDED_X, int4b_t>::value) {
             TPipe gatherPipe;
             MoeV3GatherInt4DynamicQuant<DTYPE_X> gatherInt4DynamicQuantOp;
             gatherInt4DynamicQuantOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);

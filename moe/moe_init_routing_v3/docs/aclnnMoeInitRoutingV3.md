@@ -579,6 +579,13 @@ aclnnStatus aclnnMoeInitRoutingV3(
 - 空tensor处理：
   - 当输入的x首个维度的值为0时，DropPadMode必须为0, 进入空tensor模板。expandedXOut、expandedRowIdxOut和expandedScaleOut的返回值为空tensor，expertTokensCountOrCumsumOut返回全0的tensor。
 
+- INT4动态量化（quantMode=10）：
+  - 仅支持dropPadMode=0。
+  - NUM_ROWS必须为偶数，H必须为偶数。
+  - x数据类型仅支持FLOAT32、BFLOAT16，不支持FLOAT16、INT8。
+  - scaleOptional允许为空；非空时仅支持shape为(1, H)。
+  - offsetOptional应为空。
+
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
