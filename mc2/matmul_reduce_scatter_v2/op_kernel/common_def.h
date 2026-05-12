@@ -28,18 +28,16 @@ constexpr uint8_t MC2_DEBUG_ONLY_CUBE = 1;  // 只计算不通信
 constexpr uint8_t MC2_DEBUG_ONLY_AICPU = 4; // 只通信不计算
 constexpr uint64_t BLOCK_SIZE = 128;
 
-using namespace AscendC;
-
 constexpr int CCU_COMM_MODE = 0;
 constexpr int AICPU_COMM_MODE = 1;
 
 template <int commMode>
 struct HcclTypeSelector {
-    using type = Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU>;
+    using type = AscendC::Hccl<AscendC::HcclServerType::HCCL_SERVER_TYPE_CCU>;
 };
 template <>
 struct HcclTypeSelector<AICPU_COMM_MODE> {
-    using type = Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU>;
+    using type = AscendC::Hccl<AscendC::HcclServerType::HCCL_SERVER_TYPE_AICPU>;
 };
 template <class T>
 struct BiasType {
