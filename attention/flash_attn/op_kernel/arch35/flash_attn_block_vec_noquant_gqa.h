@@ -182,6 +182,7 @@ public:
     GlobalTensor<float> softmaxLseGm;
 
     GlobalTensor<uint64_t> actualSeqLengthsGmQ;
+    GlobalTensor<uint64_t> sequsedGmQ;
     ActualSeqLensParser<Q_MODE> qActSeqLensParser;
 
     __gm__ uint8_t *pseSlope;
@@ -244,7 +245,8 @@ public:
 
     __aicore__ inline void InitVecBlock(TPipe *pipe,
                                         __gm__ uint8_t *pse, __gm__ uint8_t *actualSeqQlenAddr,
-                                        __gm__ uint8_t *actualSeqKvlenAddr, __gm__ uint8_t *postQuantScale,
+                                        __gm__ uint8_t *actualSeqKvlenAddr, __gm__ uint8_t *sequsedQAddr,
+                                        __gm__ uint8_t *sequsedKvAddr, __gm__ uint8_t *postQuantScale,
                                         __gm__ uint8_t *postQuantOffset, __gm__ uint8_t *attenMask,
                                         __gm__ uint8_t *learnableSink, __gm__ uint8_t *softmaxLse,
                                         __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace)
@@ -253,12 +255,13 @@ public:
         uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32;
         this->negativeFloatScalar = *((T *)&tmp1);
 
-        InitVecInput(pse, actualSeqQlenAddr, actualSeqKvlenAddr, postQuantScale, postQuantOffset,
+        InitVecInput(pse, actualSeqQlenAddr, actualSeqKvlenAddr, sequsedQAddr, sequsedKvAddr, postQuantScale, postQuantOffset,
             attenMask, learnableSink, softmaxLse, attentionOut, workspace);
     }
 
     __aicore__ inline void InitVecInput(__gm__ uint8_t *pse, __gm__ uint8_t *actualSeqQlenAddr,
-                                        __gm__ uint8_t *actualSeqKvlenAddr, __gm__ uint8_t *postQuantScale,
+                                        __gm__ uint8_t *actualSeqKvlenAddr, __gm__ uint8_t *sequsedQAddr,
+                                        __gm__ uint8_t *sequsedKvAddr, __gm__ uint8_t *postQuantScale,
                                         __gm__ uint8_t *postQuantOffset, __gm__ uint8_t *attenMask,
                                         __gm__ uint8_t *learnableSink, __gm__ uint8_t *softmaxLse,
                                         __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace)
@@ -272,8 +275,14 @@ public:
             softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
         }
 
-        actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint64_t *)actualSeqQlenAddr, constInfo.actualSeqLenSize);
+        if (constInfo.actualSeqLenSize > 0) {
+            actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint64_t *)actualSeqQlenAddr, constInfo.actualSeqLenSize);
+        }
         qActSeqLensParser.Init(actualSeqLengthsGmQ, constInfo.actualSeqLenSize, constInfo.s1Size);
+
+        if (constInfo.sequsedQSize > 0 && sequsedQAddr != nullptr) {
+            sequsedGmQ.SetGlobalBuffer((__gm__ uint64_t *)sequsedQAddr, constInfo.sequsedQSize);
+        }
 
         if constexpr (hasPse) {
             pseGm.SetGlobalBuffer((__gm__ pseShiftType *)pse);
@@ -533,7 +542,15 @@ public:
         } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
             uint64_t bN2Offset = runInfo.bIdx * constInfo.n2Size * constInfo.gSize * constInfo.s1Size +
                                  runInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
-            uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
+            // uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
+            uint64_t qActSeqLens;
+            if (constInfo.sequsedQSize > 0) {
+                qActSeqLens = static_cast<uint64_t>(sequsedGmQ.GetValue(runInfo.bIdx));
+            } else if (constInfo.actualSeqLenSize > 0) {
+                qActSeqLens = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
+            } else {
+                qActSeqLens = constInfo.s1Size;
+            }
             uint64_t s1LeftPaddingSize =
                 constInfo.isQHasLeftPadding ? (constInfo.s1Size - qActSeqLens - constInfo.queryRightPaddingSize) : 0;
             DataCopySoftmaxLseBSNDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
@@ -541,7 +558,15 @@ public:
         } else { // BNSD
             uint64_t bN2Offset = runInfo.bIdx * constInfo.n2Size * constInfo.gSize * constInfo.s1Size +
                                  runInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
-            uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
+            // uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
+            uint64_t qActSeqLens;
+            if (constInfo.sequsedQSize > 0) {
+                qActSeqLens = static_cast<uint64_t>(sequsedGmQ.GetValue(runInfo.bIdx));
+            } else if (constInfo.actualSeqLenSize > 0) {
+                qActSeqLens = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
+            } else {
+                qActSeqLens = constInfo.s1Size;
+            }
             uint64_t s1LeftPaddingSize =
                 constInfo.isQHasLeftPadding ? (constInfo.s1Size - qActSeqLens - constInfo.queryRightPaddingSize) : 0;
             DataCopySoftmaxLseBNSDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,

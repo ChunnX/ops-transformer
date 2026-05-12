@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -59,6 +59,8 @@ struct FlashAttnBaseParams {
     uint32_t dSizeRope;
     uint32_t cuSeqLengthsQSize;
     uint32_t cuSeqLengthsKVSize;
+    uint32_t sequsedQSize;
+    uint32_t sequsedKvSize;
     float scaleValue;
     uint8_t iscuSeqLengthsNull;
     uint8_t iscuSeqLengthsKVNull;

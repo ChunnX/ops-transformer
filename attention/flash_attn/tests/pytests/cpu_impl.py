@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
-# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# Copyright (c) 2025 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@ from test_utils import *
 
 
 def tsoftmax(x):
-    x_max = torch.max(x, dim=-1, keepdims=True)[0]
+    x_max = x.max(dim=-1, keepdim=True).values
     x_sub = x.sub(x_max)
     y = torch.exp(x_sub)
     x_sum = y.sum(dim=-1, keepdims=True)
@@ -36,7 +36,7 @@ def skip_invalid_row(b, n, sq, softmax_res, x_max, x_sum):
     return softmax_res, x_max, x_sum
 
 
-def forward(q, k, v, drop_mask, atten_mask, pse_type, pse, scale, keep_prob, skip_invalid_row=False):
+def forward(q, k, v, drop_mask, atten_mask, pse_type, pse, scale, keep_prob, if_skip_invalid_row=False, s2=None):
     q = q.float()
     k = k.float()
     v = v.float()
@@ -51,9 +51,18 @@ def forward(q, k, v, drop_mask, atten_mask, pse_type, pse, scale, keep_prob, ski
             qk = qk.mul(scale).add(pse)
     if atten_mask is not None:
         qk = qk.masked_fill_(atten_mask.cpu().bool(), value=torch.tensor(-40000))
-    softmax_res, x_max, x_sum = tsoftmax(qk)
+    
+    if qk.shape[-1] == 0:
+        b, n, sq, _ = qk.shape
+        softmax_res = torch.zeros((b, n, sq, 0), dtype=qk.dtype)
+        x_max       = torch.zeros(b, n, sq, 1)  # torch.finfo(torch.float).min
+        x_sum       = torch.zeros(b, n, sq, 1)  # torch.finfo(torch.float).max
+    else:
+        softmax_res, x_max, x_sum = tsoftmax(qk)
 
-    if skip_invalid_row:
+    # softmax_res, x_max, x_sum = tsoftmax(qk)
+
+    if if_skip_invalid_row:
         b, n, sq, _ = softmax_res.shape
         softmax_res, x_max, x_sum = skip_invalid_row(b, n, sq, softmax_res, x_max, x_sum)
 
@@ -61,7 +70,6 @@ def forward(q, k, v, drop_mask, atten_mask, pse_type, pse, scale, keep_prob, ski
         drop_res = softmax_res * drop_mask * (1.0 / keep_prob)
     else:
         drop_res = softmax_res
-
     out = torch.matmul(drop_res, v)
 
     x_max = x_max.broadcast_to(-1, -1, -1, 8)
@@ -90,45 +98,94 @@ def broadcastKV(n1, n2, kv_tensor, dtype):
 
 
 def tforward_normal(q, k, v, pse, **kwargs):
-    b = kwargs.get("B")
-    n1 = kwargs.get("N1")
-    n2 = kwargs.get("N2", n1)
-    s1 = kwargs.get("S1")
-    s2 = kwargs.get("S2", s1)
-    d = kwargs.get("D")
+    b   = kwargs.get("B")
+    n1  = kwargs.get("N1")
+    n2  = kwargs.get("N2", n1)
+    s1  = kwargs.get("S1")
+    s2  = kwargs.get("S2", s1)
+    d   = kwargs.get("D")
     sparse_mode = kwargs.get("sparse_mode", None)
-    pre_tokens = kwargs.get("pre_tokens", 2147483647)
+    pre_tokens  = kwargs.get("pre_tokens", 2147483647)
     next_tokens = kwargs.get("next_tokens", 2147483647)
-    prefix = kwargs.get("prefix", [])
-    seed = kwargs.get("seed", 0)
-    offset = kwargs.get("offset", 0)
-
-    scale = kwargs.get("scale", 1 / (d ** 0.5))
-    pse_type = kwargs.get("pse_type", 1)
-    keep_prob = kwargs.get("keep_prob", 1)
+    prefix      = kwargs.get("prefix", [])
+    seed        = kwargs.get("seed", 0)
+    offset      = kwargs.get("offset", 0)
+    scale       = kwargs.get("scale", 1 / (d ** 0.5))
+    pse_type    = kwargs.get("pse_type", 1)
+    keep_prob   = kwargs.get("keep_prob", 1)
+    sequsedq = list(kwargs.get("seqused_q", [])) if kwargs.get("seqused_q") is not None else []
+    sequsedkv = list(kwargs.get("seqused_kv", [])) if kwargs.get("seqused_kv") is not None else []
 
     if abs(1 - keep_prob) < 2e-14:
         drop_mask = None
     else:
         drop_mask = gen_dropmask(b, n1, s1, s2, keep_prob, seed, offset)
+    
+    out_golden = torch.zeros([b, n1, s1, d], dtype=q.dtype)
+    x_max = torch.empty(0)
+    x_sum = torch.empty(0)
+    
+    if abs(1 - keep_prob) < 2e-14:
+        drop_mask = None
+    else:
+        drop_mask = gen_dropmask(b, n1, s1, s2, keep_prob, seed, offset)
+    
+    # if sparse_mode is None:
+    #     atten_mask = None
+    # else:
+    #     atten_mask = generate_cpu_mask(1, s1, s2, sparse_mode, pre_tokens, next_tokens, prefix)
 
-    atten_mask = generate_cpu_mask(b, s1, s2, sparse_mode, pre_tokens, next_tokens, prefix)
-    skip_invalid_row = False
-    if atten_mask is not None:
-        if sparse_mode == 0:
-            skip_invalid_row = next_tokens < 0 or pre_tokens + s2 < s1
-        elif sparse_mode == 3:
-            skip_invalid_row = s1 > s2
-        elif sparse_mode == 4:
-            skip_invalid_row = pre_tokens < 0 or next_tokens + s2 < s1
-        elif sparse_mode in [5, 6]:
-            skip_invalid_row = True if 0 in prefix else False
+    for i in range(b):
+        sq_i = sequsedq[i] if i < len(sequsedq) else s1
+        skv_i = sequsedkv[i] if i < len(sequsedkv) else s2
 
-    if n1 != n2:
-        k = broadcastKV(n1, n2, k, k.dtype)
-        v = broadcastKV(n1, n2, v, v.dtype)
-    out, x_max, x_sum = forward(q, k, v, drop_mask, atten_mask, pse_type, pse, scale, keep_prob, skip_invalid_row)
-    return out, x_max, x_sum
+        qi = q[i:i+1, :, :sq_i, :]
+        ki = k[i:i+1, :, :skv_i, :]
+        vi = v[i:i+1, :, :skv_i, :]
+        
+        if n1 != n2:
+            ki = broadcastKV(n1, n2, ki, ki.dtype)
+            vi = broadcastKV(n1, n2, vi, vi.dtype)
+        
+        if pse is None:
+            psei = None
+        else:
+            pse_layout = kwargs.get("pse_layout", "bnss").lower()
+            if pse_layout in ["bnss", "bn"]:
+                psei = pse[i:i+1, :, :sq_i, :skv_i]
+            elif pse_layout in ["1nss", "1nhs", "n"]:
+                psei = pse[:, :, :sq_i, :skv_i]
+            elif pse_layout in ["bnhs", "bn1s"]:
+                psei = pse[i:i+1, :, :, :skv_i]
+            else:
+                psei = pse[i:i+1, :, :sq_i, :skv_i]
+        
+        if drop_mask is None:
+            drop_maski = None
+        else:
+            drop_maski = drop_mask[i:i+1, :, :sq_i, :skv_i]
+        
+        if sparse_mode is None:
+            atten_maski = None
+        else:
+            atten_maski = generate_cpu_mask(1, sq_i, skv_i, sparse_mode, pre_tokens, next_tokens, prefix)
+
+        # if atten_mask is not None:
+        #     atten_maski = atten_mask[0:sq_i, 0:skv_i]
+        
+        if_skip_invalid_row = False
+        if atten_maski is not None:
+            if sparse_mode == 0:
+                if_skip_invalid_row = next_tokens < 0 or pre_tokens + skv_i < sq_i
+            elif sparse_mode == 3:
+                if_skip_invalid_row = sq_i > skv_i
+            elif sparse_mode == 4:
+                if_skip_invalid_row = pre_tokens < 0 or next_tokens + skv_i < sq_i
+        outi, x_maxi, x_sumi = forward(qi, ki, vi, drop_maski, atten_maski, pse_type, psei, scale, keep_prob, if_skip_invalid_row, s2)
+        out_golden[i, :, :sq_i, :] = outi[0]
+        x_max = torch.cat((x_max, x_maxi.contiguous().view(-1)))
+        x_sum = torch.cat((x_sum, x_sumi.contiguous().view(-1)))
+    return out_golden, x_max, x_sum
 
 
 def tforward_tnd(q, k, v, pse, **kwargs):

@@ -170,9 +170,9 @@ TestCasesFIA = {
     },
     'aclnnFusedInferAttentionScoreV5_FIA_16_180_12_253_1600_case69': {
         'layout_q': ['BNSD'],
-        'layout_kv': ['BNSD'],
+        'layout_kv': ['PA_BNBD'],
         'layout_out': ['BNSD'],
-        'Dtype': ['bf16'],
+        'Dtype': ['fp16'],
         'q_range': [(-5.0, 5.0)],
         'k_range': [(-5.0, 5.0)],
         'v_range': [(-5.0, 5.0)],
@@ -185,6 +185,9 @@ TestCasesFIA = {
         'D': [128],
         'N2': [12],
         'S2': [1600],
+        "block_size": [256],
+        'seqused_kv':[[1357,1085,35,1091,37,393,380,686,648,667,1448,999,387,1337,690,513]], # 
+        "block_table_shape": [[16,1536]],
     },
     'aclnnFusedInferAttentionScoreV5_FIA_8_64_4_512_512_case87': {
         'layout_q': ['BNSD'],
@@ -206,7 +209,7 @@ TestCasesFIA = {
     },
     'aclnnFusedInferAttentionScoreV5_FIA_32_32_4_1_1600_case110': {
         'layout_q': ['BNSD'],
-        'layout_kv': ['BNSD'],
+        'layout_kv': ['BSND'],
         'layout_out': ['BSND'],
         'Dtype': ['fp16'],
         'q_range': [(-5.0, 5.0)],
@@ -242,7 +245,7 @@ TestCasesFIA = {
     },
     'aclnnFusedInferAttentionScoreV5_FIA_30_64_2_3089_4096_case123': {
         'layout_q': ['BNSD'],
-        'layout_kv': ['BNSD'],
+        'layout_kv': ['PA_BBND'],
         'layout_out': ['BNSD'],
         'Dtype': ['fp16'],
         'q_range': [(-5.0, 5.0)],
@@ -257,6 +260,11 @@ TestCasesFIA = {
         'D': [128],
         'N2': [2],
         'S2': [4096],
+        "seqused_q": [[174,1866,2088,2639,2914,734,525,2282,1945,2514,911,1645,2291,2739,2913,342,1613,114,2470,1653,3074,2182,2285,1509,1135,291,1818,2511,2508,747]],
+        'seqused_kv':[[1725,2862,4079,2690,646,0,270,3561,2155,121,185,2129,3018,2007,1898,2142,3211,2158,3388,2646,2047,566,275,4030,995,2893,3107,3097,3607,214]],
+        'block_num': [496],
+        "block_size": [128],
+        "block_table_shape": [[30,4096]],
     },
 }
 

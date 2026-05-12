@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -147,6 +147,8 @@ protected:
 
     uint64_t actSeqLensKv = 0;
     uint64_t actSeqLensQ = 0;
+    GlobalTensor<uint64_t> sequsedGmQ;
+    GlobalTensor<uint64_t> sequsedGmKv;
     // ================================类成员变量====================================
     // aic、aiv核信息
     uint32_t blockIdx = 0U;
@@ -213,7 +215,8 @@ public:
                                             GlobalTensor<float> accumOutGm, GlobalTensor<OUTPUT_T> attentionOutGm,
                                             GlobalTensor<uint64_t> actualSeqLengthsGmQ,
                                             GlobalTensor<uint64_t> actualSeqLengthsGm, __gm__ uint8_t *key,
-                                            __gm__ uint8_t *quantScale2, __gm__ uint8_t *quantOffset2)
+                                            __gm__ uint8_t *quantScale2, __gm__ uint8_t *quantOffset2,
+                                            GlobalTensor<uint64_t> sequsedGmQIn = {}, GlobalTensor<uint64_t> sequsedGmKvIn = {})
     {
         this->lseMaxFdGm = lseMaxFdGm;
         this->lseSumFdGm = lseSumFdGm;
@@ -223,6 +226,9 @@ public:
         this->actualSeqLengthsGm = actualSeqLengthsGm;
 
         this->keyPtr = key;
+
+        this->sequsedGmQ = sequsedGmQIn;
+        this->sequsedGmKv = sequsedGmKvIn;
 
         qActSeqLensParser.Init(this->actualSeqLengthsGmQ, constInfo.actualSeqLenSize, constInfo.s1Size);
         kvActSeqLensParser.Init(this->actualSeqLengthsGm, constInfo.actualSeqLenKVSize, constInfo.s2Size);
@@ -454,11 +460,23 @@ protected:
     }
     __aicore__ inline void CalcPreNextTokens()
     {
-        actSeqLensQ = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
-        if (constInfo.actualSeqLenKVSize == 0 && !constInfo.isKvContinuous) {
+        // Q序列长度: seqused优先 → cuSeqLengths(仅TND) → 默认s1Size
+        if (constInfo.sequsedQSize > 0) {
+            actSeqLensQ = static_cast<uint64_t>(sequsedGmQ.GetValue(taskInfo.bIdx));
+        } else if (constInfo.actualSeqLenSize > 0) {
+            actSeqLensQ = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
+        } else {
+            actSeqLensQ = constInfo.s1Size;
+        }
+        // KV序列长度: seqused优先 → cuSeqLengths(仅TND) → tensorList → 默认s2Size
+        if (constInfo.sequsedKvSize > 0) {
+            actSeqLensKv = static_cast<uint64_t>(sequsedGmKv.GetValue(taskInfo.bIdx));
+        } else if (constInfo.actualSeqLenKVSize > 0) {
+            actSeqLensKv = kvActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
+        } else if (constInfo.actualSeqLenKVSize == 0 && !constInfo.isKvContinuous) {
             actSeqLensKv = SeqLenFromTensorList<layout>(keyPtr, taskInfo.bIdx);
         } else {
-            actSeqLensKv = kvActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
+            actSeqLensKv = constInfo.s2Size;
         }
         actSeqLensKv += constInfo.actualKVPrefixSize;
         int64_t safePreToken = constInfo.preTokens;
@@ -794,7 +812,15 @@ public:
                 } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
                     uint64_t bN2Offset = taskInfo.bIdx * constInfo.gSize * constInfo.n2Size * constInfo.s1Size +
                                          taskInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
-                    uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
+                    // uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
+                    uint64_t qActSeqLens;
+                    if (constInfo.sequsedQSize > 0) {
+                        qActSeqLens = static_cast<uint64_t>(sequsedGmQ.GetValue(taskInfo.bIdx));
+                    } else if (constInfo.actualSeqLenSize > 0) {
+                        qActSeqLens = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
+                    } else {
+                        qActSeqLens = constInfo.s1Size;
+                    }
                     uint64_t s1LeftPaddingSize =
                         constInfo.isQHasLeftPadding ?
                             (constInfo.s1Size - qActSeqLens - constInfo.queryRightPaddingSize) :
@@ -804,7 +830,16 @@ public:
                 } else { // BNSD
                     uint64_t bN2Offset = taskInfo.bIdx * constInfo.gSize * constInfo.n2Size * constInfo.s1Size +
                                          taskInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
-                    uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
+                    // uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
+                    uint64_t qActSeqLens;
+                    if (constInfo.sequsedQSize > 0) {
+                        qActSeqLens = static_cast<uint64_t>(sequsedGmQ.GetValue(taskInfo.bIdx));
+                    } else if (constInfo.actualSeqLenSize > 0) {
+                        qActSeqLens = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
+
+                    } else {
+                        qActSeqLens = constInfo.s1Size;
+                    }
                     // s1LeftPaddingSize = constInfo.qSeqSize - constInfo.qLeftPaddingSize -
                     // qActSeqLensParser.GetActualSeqLength(bIdx)
                     uint64_t s1LeftPaddingSize =
@@ -854,7 +889,9 @@ public:
     __aicore__ inline void InitGlobalTensor(GlobalTensor<float> lseMaxFdGm, GlobalTensor<float> lseSumFdGm,
                                             GlobalTensor<float> accumOutGm, GlobalTensor<OUTPUT_T> attentionOutGm,
                                             GlobalTensor<uint64_t> actualSeqLengthsGmQ,
-                                            GlobalTensor<uint64_t> actualSeqLengthsGm){};
+                                            GlobalTensor<uint64_t> actualSeqLengthsGm, __gm__ uint8_t *key = nullptr,
+                                            __gm__ uint8_t *quantScale2 = nullptr, __gm__ uint8_t *quantOffset2 = nullptr,
+                                            GlobalTensor<int32_t> sequsedGmQIn = {}, GlobalTensor<int32_t> sequsedGmKvIn = {}){};
     __aicore__ inline void InitParams(){};
     __aicore__ inline void InitSoftmaxLseGm(GlobalTensor<float> softmaxLseGm){};
     __aicore__ inline void InitLearnableSinkGm(GlobalTensor<SINK_T> learnableSink){};

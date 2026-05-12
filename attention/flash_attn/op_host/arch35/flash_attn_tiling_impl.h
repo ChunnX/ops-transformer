@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -84,6 +84,7 @@ private:
     // void UpdateTilingKeyPseMode();
     // void UpdateTilingKeyQuantMode();
     // void UpdateTilingKeyHasRope();
+    void UpdateTilingKeyKvLayout();
     void UpdateTilingKeyMaskMode();
     void UpdateTilingKeyMatmulMode();
     void UpdateTilingKeyInfo();
@@ -112,6 +113,8 @@ private:
     bool dnFlag_ = false;
     bool cuSeqLenQFlag_ = false;
     bool cuSeqLenKVFlag_ = false;
+    uint32_t sequsedQSize = 0;
+    uint32_t sequsedKVSize = 0;
     std::vector<int64_t> cuSeqLengthsQ_ = {};
     std::vector<int64_t> cuSeqLengthsKV_ = {};
     bool needInit_ = false;

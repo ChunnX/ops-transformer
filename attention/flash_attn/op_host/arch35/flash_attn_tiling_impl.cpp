@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -106,14 +106,22 @@ void FlashAttnTilingImpl::InitImplParam()
 {
     const gert::Tensor *actSeqLenQ = faInfo_->opParamInfo.cuSeqlensQ.tensor;
     const gert::Tensor *actSeqLenKV = faInfo_->opParamInfo.cuSeqlensKv.tensor;
+    const gert::Tensor *sequsedQ = faInfo_->opParamInfo.sequsedQ.tensor;
+    const gert::Tensor *sequsedKV = faInfo_->opParamInfo.sequsedKv.tensor;
     uint32_t actSeqLenQDims = 0;
     uint32_t actSeqLenKVDims = 0;
-        actSeqLenQDims = (actSeqLenQ != nullptr) ? actSeqLenQ->GetShapeSize() : 0;
-        actSeqLenKVDims = (actSeqLenKV != nullptr) ? actSeqLenKV->GetShapeSize() : 0;
-        cuSeqLenQFlag_ =
-            !((actSeqLenQDims == 0) || (actSeqLenQ == nullptr) || (actSeqLenQ->GetData<int32_t>() == nullptr));
-        cuSeqLenKVFlag_ =
-            !((actSeqLenKVDims == 0) || (actSeqLenKV == nullptr) || (actSeqLenKV->GetData<int32_t>() == nullptr));
+    uint32_t sequsedQDims = 0;
+    uint32_t sequsedKVDims = 0;
+    actSeqLenQDims = (actSeqLenQ != nullptr) ? actSeqLenQ->GetShapeSize() : 0;
+    actSeqLenKVDims = (actSeqLenKV != nullptr) ? actSeqLenKV->GetShapeSize() : 0;
+    sequsedQDims = (sequsedQ != nullptr) ? sequsedQ->GetShapeSize() : 0;
+    sequsedKVDims = (sequsedKV != nullptr) ? sequsedKV->GetShapeSize() : 0;
+    cuSeqLenQFlag_ =
+        !((actSeqLenQDims == 0) || (actSeqLenQ == nullptr) || (actSeqLenQ->GetData<int32_t>() == nullptr));
+    cuSeqLenKVFlag_ =
+        !((actSeqLenKVDims == 0) || (actSeqLenKV == nullptr) || (actSeqLenKV->GetData<int32_t>() == nullptr));
+    sequsedQSize = (sequsedQDims > 0) ? sequsedQDims : 0;
+    sequsedKVSize = (sequsedKVDims > 0) ? sequsedKVDims : 0;
 
     // for (uint32_t bIdx = 0; bIdx < faInfo_->bSize; bIdx++) {
     //     if (cuSeqLenQFlag_) {
@@ -473,6 +481,17 @@ void FlashAttnTilingImpl::UpdateTilingKeyLayout()
     }
 }
 
+void FlashAttnTilingImpl::UpdateTilingKeyKvLayout()
+{
+    if (faInfo_->kvLayout == FaLayout::PA_BBND) {
+        tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_BBH;
+    } else if (faInfo_->kvLayout == FaLayout::PA_BNBD) {
+        tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_BNBD;
+    } else if (faInfo_->kvLayout == FaLayout::PA_Nz) {
+        tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_NZ;
+    }
+}
+
 void FlashAttnTilingImpl::UpdateTilingKeyMaskMode()
 {
     tilingKeyInfo_.maskMode = 0;
@@ -497,7 +516,7 @@ void FlashAttnTilingImpl::UpdateTilingKeyInfo()
         tilingKeyInfo_.isFd = flashDecodeFlag_;
         // tilingKeyInfo_.hasAttenMask = faInfo_->attnMaskFlag;
         // UpdateTilingKeyHasRope();
-        // TODO:kvLayoutType需要赋值
+        UpdateTilingKeyKvLayout();
         // tilingKeyInfo_.isPa = faInfo_->pageAttentionFlag;
         // tilingKeyInfo_.emptyTensor = faInfo_->emptyTensorFlag;
         UpdateTilingKeyMaskMode();
@@ -687,12 +706,11 @@ void FlashAttnTilingImpl::ComputeTilingData()
     // }
 
     if (faInfo_->pageAttentionFlag) {
-        uint32_t keyCacheDimNum = faInfo_->opParamInfo.key.shape->GetStorageShape().GetDimNum();
-        if (keyCacheDimNum == 3) { // 3: BBH
+        if (faInfo_->kvLayout == FaLayout::PA_BBND) {
             tilingData_.baseTiling.flashAttnPageAttentionParams.paLayoutType = 1;
-        } else if (keyCacheDimNum == 4) { // 4: BNBD
+        } else if (faInfo_->kvLayout == FaLayout::PA_BNBD) {
             tilingData_.baseTiling.flashAttnPageAttentionParams.paLayoutType = 0;
-        } else if (keyCacheDimNum == 5) { // 5: PA NZ
+        } else if (faInfo_->kvLayout == FaLayout::PA_Nz) {
             tilingData_.baseTiling.flashAttnPageAttentionParams.paLayoutType = 2;
         }
     }
@@ -712,6 +730,8 @@ void FlashAttnTilingImpl::SetFATilingData()
     tilingData_.baseTiling.flashAttnBaseParams.scaleValue = faInfo_->softmaxScale;
     tilingData_.baseTiling.flashAttnBaseParams.cuSeqLengthsQSize = faInfo_->qLayout == FaLayout::TND ? faInfo_->bSize : 0;
     tilingData_.baseTiling.flashAttnBaseParams.cuSeqLengthsKVSize = faInfo_->qLayout == FaLayout::TND ? faInfo_->bSize : 0;
+    tilingData_.baseTiling.flashAttnBaseParams.sequsedQSize = sequsedQSize;
+    tilingData_.baseTiling.flashAttnBaseParams.sequsedKvSize = sequsedKVSize;
     tilingData_.baseTiling.flashAttnBaseParams.isKvContinuous = true;
     tilingData_.baseTiling.flashAttnBaseParams.isSoftMaxLseEnable = faInfo_->softmaxLseFlag;
     tilingData_.baseTiling.flashAttnBaseParams.iscuSeqLengthsNull = !cuSeqLenQFlag_;
@@ -775,6 +795,8 @@ void FlashAttnTilingImpl::PrintAllTilingData()
     OP_LOGD(faInfo_->opName, "dSizeRope:%d", flashAttnBaseParams.dSizeRope);
     OP_LOGD(faInfo_->opName, "cuSeqLengthsQSize:%d", flashAttnBaseParams.cuSeqLengthsQSize);
     OP_LOGD(faInfo_->opName, "cuSeqLengthsKVSize:%d", flashAttnBaseParams.cuSeqLengthsKVSize);
+    OP_LOGD(faInfo_->opName, "sequsedQSize:%d", flashAttnBaseParams.sequsedQSize);
+    OP_LOGD(faInfo_->opName, "sequsedKVSize:%d", flashAttnBaseParams.sequsedKvSize);
     OP_LOGD(faInfo_->opName, "scaleValue:%f", flashAttnBaseParams.scaleValue);
     OP_LOGD(faInfo_->opName, "iscuSeqLengthsNull:%d", flashAttnBaseParams.iscuSeqLengthsNull);
     OP_LOGD(faInfo_->opName, "iscuSeqLengthsKVNull:%d", flashAttnBaseParams.iscuSeqLengthsKVNull);

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -28,8 +28,8 @@ __global__ __aicore__ void flash_attn(
     __gm__ uint8_t *key,
     __gm__ uint8_t *value,
     __gm__ uint8_t *blockTable,
-    __gm__ uint8_t *actualSeqLengthsQ,
-    __gm__ uint8_t *actualSeqLengthsKv,
+    __gm__ uint8_t *cuSeqLengthsQ,
+    __gm__ uint8_t *cuSeqLengthsKv,
     __gm__ uint8_t *sequsedQ,
     __gm__ uint8_t *sequsedKv,
     __gm__ uint8_t *sinks,
@@ -49,13 +49,15 @@ __global__ __aicore__ void flash_attn(
     flash_attn_kernel_run<bfloat16_t, bfloat16_t,
         inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType,
         isFd, emptyTensor, PFAMask, pFAMatMulType, enableKVPrefix, enableS1OutSplit>(
-        query, key, value, attnMask, actualSeqLengthsQ, actualSeqLengthsKv,
+        query, key, value, attnMask, cuSeqLengthsQ, cuSeqLengthsKv,
+        sequsedQ, sequsedKv,
         blockTable, sinks, attnOut, softmaxLse, user, tiling, metadata);
 #elif (ORIG_DTYPE_Q == DT_FLOAT16)
     flash_attn_kernel_run<half, half,
         inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType,
         isFd, emptyTensor, PFAMask, pFAMatMulType, enableKVPrefix, enableS1OutSplit>(
-        query, key, value, attnMask, actualSeqLengthsQ, actualSeqLengthsKv,
+        query, key, value, attnMask, cuSeqLengthsQ, cuSeqLengthsKv,
+        sequsedQ, sequsedKv,
         blockTable, sinks, attnOut, softmaxLse, user, tiling, metadata);
 #endif
 }

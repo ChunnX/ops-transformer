@@ -10,6 +10,7 @@ import numpy as np
 from cpu_impl import tforward
 from test_utils import (generate_qkv, generate_pse, generate_npu_mask, trans_bnsd_to_layout, get_seqlen_list,
                          data_compare_benchmark_new, Result)
+from test_utils import *
 
 _DEFAULT_CASE_FILES = ["test_case", "test_case_fia_STC", "test_case_functional_single"]
 
@@ -132,6 +133,20 @@ def normalize_case(raw):
             c["actual_seq_qlen"]  = cu_q
             c["actual_seq_kvlen"] = cu_kv
             c["B"] = 1
+    if c["layout_kv"] in ["PA_BBND", "PA_BNBD", "PA_NZ" ]:
+        c.setdefault("block_size", c.get("block_size"))
+        c.setdefault("block_table_shape", c.get("block_table_shape"))
+        se_kv = c.get("seqused_kv", [])
+        block_size = c.get("block_size", 1)
+        block_table_shape = c.get("block_table_shape", [])
+        block_table = gen_block_table(c.get("B"), se_kv, block_size, block_table_shape)
+        c["block_table"]        = block_table
+    cum_q_full  = list(c.get("cu_seqlens_q", []))
+    cum_kv_full = list(c.get("cu_seqlens_kv", cum_q_full))
+    c["_npu_cu_q"]          = cum_q_full
+    c["_npu_cu_kv"]         = cum_kv_full
+    c["_npu_seqused_q"]     = c.get("seqused_q", None)
+    c["_npu_seqused_kv"]    = c.get("seqused_kv", None)
     return c
 
 def check_result(test_name, expect, result, except_label="CPU", comp_label="NPU", verbose_diff=False):
@@ -240,7 +255,7 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
     # ------------------ 1. CPU Golden 计算 (总是执行) ------------------
     print(f"[{test_name}] CPU 参考计算...")
     out_cpu, _, _ = tforward(qf, kf, v, pse_cpu, **kwargs)
-    out_cpu_out_layout = trans_bnsd_to_layout(out_cpu, output_layout)
+    out_cpu_out_layout = trans_bnsd_to_layout(out_cpu, output_layout, **kwargs)
     if dump_tensors:
         dump_path = os.path.join(dump_dir, test_name)
         os.makedirs(dump_path, exist_ok=True)
@@ -269,7 +284,7 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
             mask_gpu = atten_mask.cuda(device) if atten_mask is not None else None
             pse_gpu = pse_npu.cuda(device) if pse_npu is not None else None
             gpu_out_bnsd = flash_attn_gpu(q_gpu, k_gpu, v_gpu, q_rope_gpu, k_rope_gpu, mask_gpu, pse_gpu, **kwargs)
-            gpu_out = trans_bnsd_to_layout(gpu_out_bnsd, output_layout).cpu()
+            gpu_out = trans_bnsd_to_layout(gpu_out_bnsd, output_layout, **kwargs).cpu()
             if dump_tensors:
                 dump_path = os.path.join(dump_dir, test_name)
                 os.makedirs(dump_path, exist_ok=True)

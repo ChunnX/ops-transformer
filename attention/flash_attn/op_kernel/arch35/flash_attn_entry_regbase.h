@@ -42,7 +42,8 @@ template <typename INPUT_T, typename OUT_T,
           bool enableKVPrefix, bool enableS1OutSplit>
 inline __aicore__ void flash_attn_kernel_run(
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-    __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *actualSeqLengthsKV,
+    __gm__ uint8_t *attenMask, __gm__ uint8_t *cuSeqLengths, __gm__ uint8_t *cuSeqLengthsKV,
+    __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv,
     __gm__ uint8_t *blocktable, __gm__ uint8_t *learnableSink,
     __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
     __gm__ uint8_t *workspace, __gm__ uint8_t *tiling, __gm__ uint8_t *runtimeMetaData)
@@ -102,14 +103,13 @@ inline __aicore__ void flash_attn_kernel_run(
 #endif
 
     // 5. Tiling 解析、实例化并执行
-    // GET_TILING_DATA_MEMBER(FlashAttnTilingData, baseTiling, baseTilingIn, tiling);
-    // const FlashAttnNoQuantTilingArch35 *__restrict tilingData = &baseTilingIn;
-    size_t offset = (size_t)(&((FlashAttnTilingData*)0)->baseTiling);
-    const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tilingData = (const __gm__ FlashAttnNoQuantTilingArch35 *__restrict)(tiling + offset);
+    GET_TILING_DATA_MEMBER(FlashAttnTilingData, baseTiling, baseTilingIn, tiling);
+    const FlashAttnNoQuantTilingArch35 *__restrict tilingData = &baseTilingIn;
 
     TPipe tPipe;
     Kernel op;
-    op.Init(query, key, value, nullptr, attenMask, actualSeqLengths, actualSeqLengthsKV,
+    op.Init(query, key, value, nullptr, attenMask, cuSeqLengths, cuSeqLengthsKV,
+            sequsedQ, sequsedKv,
             blocktable, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
             nullptr, nullptr, nullptr, learnableSink, softmaxLse, attentionOut,
             workspace, runtimeMetaData, tilingData, &tPipe);

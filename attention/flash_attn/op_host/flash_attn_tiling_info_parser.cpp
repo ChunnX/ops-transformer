@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -386,10 +386,10 @@ ge::graphStatus FaInfoParser::GetS2SizeForPageAttention()
     if (GetBlockNum() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-
-    // TODO wmk PA场景需看max seq kv
-    // PA 获取不到s2的总长度, 先暂时给个int64_t最大值
-    s2Size_ = std::numeric_limits<int64_t>::max();
+    maxBlockNumPerBatch_ = opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(1);
+    s2Size_ = static_cast<int64_t>(maxBlockNumPerBatch_) * blockSize_;
+    printf("[parser] s2Size_=%d, maxBlockNumPerBatch_=%u, blockSize_=%d", s2Size_, maxBlockNumPerBatch_, blockSize_);
+    OP_LOGI("[PARSER]", "s2Size_=%d, maxBlockNumPerBatch_=%u, blockSize_=%d", s2Size_, maxBlockNumPerBatch_, blockSize_);
 
     return ge::GRAPH_SUCCESS;
 }

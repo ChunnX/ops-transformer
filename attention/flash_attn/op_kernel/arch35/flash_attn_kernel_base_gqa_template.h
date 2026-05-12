@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -12,7 +12,6 @@
  * \file flash_attention_noquant_kernel_base.h
  * \brief
  */
-
 #ifndef FLASH_ATTENTION_NOQUANT_GQA_KERNEL_H_
 #define FLASH_ATTENTION_NOQUANT_GQA_KERNEL_H_
 
@@ -84,6 +83,8 @@ public:
 
     GlobalTensor<uint64_t> actualSeqLengthsGmQ;
     GlobalTensor<uint64_t> actualSeqLengthsGm;
+    GlobalTensor<uint64_t> sequsedGmQ;
+    GlobalTensor<uint64_t> sequsedGmKv;
     GlobalTensor<uint32_t> faMetaDataGm;
     GlobalTensor<uint32_t> fdMetaDataGm;
     GlobalTensor<float> softmaxLseGm;
@@ -93,7 +94,7 @@ public:
 
     ConstInfoX constInfo;
 
-    const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tilingData;
+    const FlashAttnNoQuantTilingArch35 *__restrict tilingData;
     TPipe *pipe;
     CubeBlockType cubeBlock;
     VecFaBlockType vecFaBlock;
@@ -157,15 +158,17 @@ public:
     // ==============================fuction=======================================================
     __aicore__ inline FlashAttentionNoQuantGqaKernel() : cubeBlock(constInfo), vecFaBlock(constInfo), vecFdBlock(constInfo){};
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pse,
-                                __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengths,
-                                __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *blockTable,
+                                __gm__ uint8_t *attenMask, __gm__ uint8_t *cuSeqLengths,
+                                __gm__ uint8_t *cuSeqLengthsKv,
+                                __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv,
+                                __gm__ uint8_t *blockTable,
                                 __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
                                 __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset,
                                 __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
                                 __gm__ uint8_t *actualSharedPrefixLen, __gm__ uint8_t *queryRope,
                                 __gm__ uint8_t *keyRope, __gm__ uint8_t *learnableSink, __gm__ uint8_t *softmaxLse,
                                 __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace, __gm__ uint8_t *fiaMetaData,
-                                const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tiling, TPipe *tPipe)
+                                const FlashAttnNoQuantTilingArch35 *__restrict tiling, TPipe *tPipe)
     {
         this->pipe = tPipe;
         this->tilingData = tiling;
@@ -184,23 +187,34 @@ public:
         keyPtr = key;
         valuePtr = value;
 
-        actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint64_t *)actualSeqLengths, constInfo.actualSeqLenSize + 1);
+        if (constInfo.actualSeqLenSize > 0) {
+            actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint64_t *)cuSeqLengths, constInfo.actualSeqLenSize + 1);
+        }
         qActSeqLensParser.Init(actualSeqLengthsGmQ, constInfo.actualSeqLenSize, constInfo.s1Size);
 
-        actualSeqLengthsGm.SetGlobalBuffer((__gm__ uint64_t *)actualSeqLengthsKv, constInfo.actualSeqLenKVSize + 1);
+        if (constInfo.actualSeqLenKVSize > 0) {
+            actualSeqLengthsGm.SetGlobalBuffer((__gm__ uint64_t *)cuSeqLengthsKv, constInfo.actualSeqLenKVSize + 1);
+        }
         kvActSeqLensParser.Init(actualSeqLengthsGm, constInfo.actualSeqLenKVSize, constInfo.s2Size);
+
+        if (constInfo.sequsedQSize > 0 && sequsedQ != nullptr) {
+            sequsedGmQ.SetGlobalBuffer((__gm__ uint64_t *)sequsedQ, constInfo.sequsedQSize);
+        }
+        if (constInfo.sequsedKvSize > 0 && sequsedKv != nullptr) {
+            sequsedGmKv.SetGlobalBuffer((__gm__ uint64_t *)sequsedKv, constInfo.sequsedKvSize);
+        }
 
         InitMMResBuf(workspace);
 
         if ASCEND_IS_AIV {
-            vecFaBlock.InitVecBlock(tPipe, pse, actualSeqLengths, actualSeqLengthsKv, postQuantScale, postQuantOffset,
+            vecFaBlock.InitVecBlock(tPipe, pse, cuSeqLengths, cuSeqLengthsKv, sequsedQ, sequsedKv, postQuantScale, postQuantOffset,
                 attenMask, learnableSink, softmaxLse, attentionOut, workspace);
             vecFaBlock.ClearOutput();
         }
 
         if ASCEND_IS_AIC {
             cubeBlock.InitCubeBlock(tPipe, &l1BufferManager, query, key, value, blockTable, queryRope, keyRope,
-                actualSeqLengths, actualSeqLengthsKv, keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen);
+                cuSeqLengths, cuSeqLengthsKv, keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen);
         }
 
         if constexpr (FLASH_DECODE) {
@@ -209,7 +223,8 @@ public:
                 vecFdBlock.InitGlobalTensor(this->vecFaBlock.softmaxFDMaxGm, this->vecFaBlock.softmaxFDSumGm,
                                             this->vecFaBlock.accumOutGm, this->vecFaBlock.attentionOutGm,
                                             this->actualSeqLengthsGmQ, this->actualSeqLengthsGm, keyPtr, postQuantScale,
-                                            postQuantOffset);
+                                            postQuantOffset,
+                                            this->sequsedGmQ, this->sequsedGmKv);
                 if (learnableSink != nullptr) {
                     sinkGm.SetGlobalBuffer((__gm__ INPUT_T *)learnableSink);
                     constInfo.learnableSinkFlag = true;
@@ -265,78 +280,80 @@ public:
             constInfo.subBlockIdx = GetSubBlockIdx();
         }
 
-        // auto fiaBaseParams = this->tilingData->flashAttnBaseParams;
-        // auto fiaAttenMaskParams = this->tilingData->flashAttnAttenMaskParams;
-        // auto fiaPseParams = this->tilingData->flashAttnPseParams;
-        // auto fiaSystemPrefixParams = this->tilingData->flashAttnSystemPrefixParams;
-        // auto fiaPageAttentionParams = this->tilingData->flashAttnPageAttentionParams;
-        // auto fiaLeftPaddingParams = this->tilingData->flashAttnLeftPaddingParams;
-        // auto fiaPostQuantParams = this->tilingData->flashAttnPostQuantParams;
-        // auto fiaWorkspaceParams = this->tilingData->flashAttnWorkspaceParams;
-        // auto fiaS1OuterSplitCoreParams = this->tilingData->flashAttnS1OuterSplitCoreParams;
-        // auto fiaEmptyTensorParams = this->tilingData->flashAttnEmptyTensorParams;
+        auto fiaBaseParams = this->tilingData->flashAttnBaseParams;
+        auto fiaAttenMaskParams = this->tilingData->flashAttnAttenMaskParams;
+        auto fiaPseParams = this->tilingData->flashAttnPseParams;
+        auto fiaSystemPrefixParams = this->tilingData->flashAttnSystemPrefixParams;
+        auto fiaPageAttentionParams = this->tilingData->flashAttnPageAttentionParams;
+        auto fiaLeftPaddingParams = this->tilingData->flashAttnLeftPaddingParams;
+        auto fiaPostQuantParams = this->tilingData->flashAttnPostQuantParams;
+        auto fiaWorkspaceParams = this->tilingData->flashAttnWorkspaceParams;
+        auto fiaS1OuterSplitCoreParams = this->tilingData->flashAttnS1OuterSplitCoreParams;
+        auto fiaEmptyTensorParams = this->tilingData->flashAttnEmptyTensorParams;
 
-        constInfo.bSize = this->tilingData->flashAttnBaseParams.bSize;
-        constInfo.t1Size = this->tilingData->flashAttnBaseParams.t1Size;
-        constInfo.t2Size = this->tilingData->flashAttnBaseParams.t2Size;
-        constInfo.n2Size = this->tilingData->flashAttnBaseParams.n2Size;
-        constInfo.gSize = this->tilingData->flashAttnBaseParams.gSize;
-        constInfo.s1Size = this->tilingData->flashAttnBaseParams.s1Size;
-        constInfo.s2Size = this->tilingData->flashAttnBaseParams.s2Size;
-        constInfo.dSize = this->tilingData->flashAttnBaseParams.dSize;
-        constInfo.dSizeV = this->tilingData->flashAttnBaseParams.dSizeV;
+        constInfo.bSize = fiaBaseParams.bSize;
+        constInfo.t1Size = fiaBaseParams.t1Size;
+        constInfo.t2Size = fiaBaseParams.t2Size;
+        constInfo.n2Size = fiaBaseParams.n2Size;
+        constInfo.gSize = fiaBaseParams.gSize;
+        constInfo.s1Size = fiaBaseParams.s1Size;
+        constInfo.s2Size = fiaBaseParams.s2Size;
+        constInfo.dSize = fiaBaseParams.dSize;
+        constInfo.dSizeV = fiaBaseParams.dSizeV;
         if constexpr (HAS_ROPE) {
-            constInfo.dSizeRope = this->tilingData->flashAttnBaseParams.dSizeRope;
+            constInfo.dSizeRope = fiaBaseParams.dSizeRope;
         } else {
             constInfo.dSizeRope = 0;
         }
-        constInfo.actualSeqLenSize = this->tilingData->flashAttnBaseParams.cuSeqLengthsQSize;
-        constInfo.actualSeqLenKVSize = this->tilingData->flashAttnBaseParams.cuSeqLengthsKVSize;
-        constInfo.scaleValue = static_cast<float>(this->tilingData->flashAttnBaseParams.scaleValue);
-        constInfo.isKvContinuous = this->tilingData->flashAttnBaseParams.isKvContinuous != 0;
-        constInfo.coreNum = this->tilingData->flashAttnBaseParams.coreNum;
-        constInfo.outputLayout = static_cast<FA_LAYOUT>(this->tilingData->flashAttnBaseParams.outputLayout);
+        constInfo.actualSeqLenSize = fiaBaseParams.cuSeqLengthsQSize;
+        constInfo.actualSeqLenKVSize = fiaBaseParams.cuSeqLengthsKVSize;
+        constInfo.sequsedQSize = fiaBaseParams.sequsedQSize;
+        constInfo.sequsedKvSize = fiaBaseParams.sequsedKvSize;
+        constInfo.scaleValue = static_cast<float>(fiaBaseParams.scaleValue);
+        constInfo.isKvContinuous = fiaBaseParams.isKvContinuous != 0;
+        constInfo.coreNum = fiaBaseParams.coreNum;
+        constInfo.outputLayout = static_cast<FA_LAYOUT>(fiaBaseParams.outputLayout);
 
         // if constexpr (HAS_MASK) {
-        constInfo.sparseMode = this->tilingData->flashAttnAttenMaskParams.sparseMode;       // TODO，后续sparseType、attenMaskCompressMode引用全部改成sparseMode
-        constInfo.preTokens = this->tilingData->flashAttnAttenMaskParams.winLefts;
-        constInfo.nextTokens = this->tilingData->flashAttnAttenMaskParams.winRights;
-        constInfo.attenMaskBatch = this->tilingData->flashAttnAttenMaskParams.attenMaskBatch;
-        constInfo.attenMaskS1Size = this->tilingData->flashAttnAttenMaskParams.attenMaskS1Size;
-        constInfo.attenMaskS2Size = this->tilingData->flashAttnAttenMaskParams.attenMaskS2Size;
-        constInfo.isRowInvalidOpen = this->tilingData->flashAttnAttenMaskParams.isRowInvalidOpen;
-        constInfo.isExistRowInvalid = this->tilingData->flashAttnAttenMaskParams.isExistRowInvalid;
+        constInfo.sparseMode = fiaAttenMaskParams.sparseMode;       // TODO，后续sparseType、attenMaskCompressMode引用全部改成sparseMode
+        constInfo.preTokens = fiaAttenMaskParams.winLefts;
+        constInfo.nextTokens = fiaAttenMaskParams.winRights;
+        constInfo.attenMaskBatch = fiaAttenMaskParams.attenMaskBatch;
+        constInfo.attenMaskS1Size = fiaAttenMaskParams.attenMaskS1Size;
+        constInfo.attenMaskS2Size = fiaAttenMaskParams.attenMaskS2Size;
+        constInfo.isRowInvalidOpen = fiaAttenMaskParams.isRowInvalidOpen;
+        constInfo.isExistRowInvalid = fiaAttenMaskParams.isExistRowInvalid;
         // }
 
         if ASCEND_IS_AIV {
             if constexpr (VecFaBlockType::hasPse) {
-                constInfo.pseShiftByBatch = this->tilingData->flashAttnPseParams.pseShiftByBatch;
-                constInfo.pseS1Size = this->tilingData->flashAttnPseParams.pseS1Size;
-                constInfo.pseS2Size = this->tilingData->flashAttnPseParams.pseS2Size;
+                constInfo.pseShiftByBatch = fiaPseParams.pseShiftByBatch;
+                constInfo.pseS1Size = fiaPseParams.pseS1Size;
+                constInfo.pseS2Size = fiaPseParams.pseS2Size;
                 constInfo.pseStride = s2BaseSize;
             }
         }
 
-        constInfo.isPostQuantPerChnl = this->tilingData->flashAttnPostQuantParams.isPostQuantPerChnl;
-        constInfo.isPostQuantBF16 = this->tilingData->flashAttnPostQuantParams.isPostQuantBF16;
+        constInfo.isPostQuantPerChnl = fiaPostQuantParams.isPostQuantPerChnl;
+        constInfo.isPostQuantBF16 = fiaPostQuantParams.isPostQuantBF16;
 
-        constInfo.accumOutSize = this->tilingData->flashAttnWorkspaceParams.accumOutSize;
-        constInfo.logSumExpSize = this->tilingData->flashAttnWorkspaceParams.logSumExpSize;
+        constInfo.accumOutSize = fiaWorkspaceParams.accumOutSize;
+        constInfo.logSumExpSize = fiaWorkspaceParams.logSumExpSize;
 
-        constInfo.isQHasLeftPadding = this->tilingData->flashAttnLeftPaddingParams.isQHasLeftPadding;
-        constInfo.isKVHasLeftPadding = this->tilingData->flashAttnLeftPaddingParams.isKVHasLeftPadding;
+        constInfo.isQHasLeftPadding = fiaLeftPaddingParams.isQHasLeftPadding;
+        constInfo.isKVHasLeftPadding = fiaLeftPaddingParams.isKVHasLeftPadding;
         // pageAttention
         if constexpr (PAGE_ATTENTION) {
-            constInfo.maxBlockNumPerBatch = this->tilingData->flashAttnPageAttentionParams.maxBlockNumPerBatch;
-            constInfo.blockSize = this->tilingData->flashAttnPageAttentionParams.blockSize;
-            constInfo.paLayoutType = this->tilingData->flashAttnPageAttentionParams.paLayoutType;
+            constInfo.maxBlockNumPerBatch = fiaPageAttentionParams.maxBlockNumPerBatch;
+            constInfo.blockSize = fiaPageAttentionParams.blockSize;
+            constInfo.paLayoutType = fiaPageAttentionParams.paLayoutType;
         }
         // LSE
-        constInfo.isSoftmaxLseEnable = this->tilingData->flashAttnBaseParams.isSoftMaxLseEnable;
+        constInfo.isSoftmaxLseEnable = fiaBaseParams.isSoftMaxLseEnable;
         // prefix
         if constexpr (HAS_PREFIX) {
-            constInfo.isActualSharedPrefixLenNull = this->tilingData->flashAttnSystemPrefixParams.isActualSharedPrefixLenNull;
-            constInfo.actualKVPrefixSize = constInfo.kvPrefixSize = this->tilingData->flashAttnSystemPrefixParams.prefixSeqInnerSize;
+            constInfo.isActualSharedPrefixLenNull = fiaSystemPrefixParams.isActualSharedPrefixLenNull;
+            constInfo.actualKVPrefixSize = constInfo.kvPrefixSize = fiaSystemPrefixParams.prefixSeqInnerSize;
             if (!constInfo.isActualSharedPrefixLenNull) {
                 constInfo.actualKVPrefixSize = ((__gm__ int64_t *)actualSharedPrefixLen)[0];
             }
@@ -488,13 +505,25 @@ public:
         uint32_t bIdx = bN2Cur / constInfo.n2Size;
         if (isFirstTask || prevBIdx != bIdx) {
             prevBIdx = bIdx;
-            if (constInfo.actualSeqLenKVSize == 0 && !constInfo.isKvContinuous) {
+            // KV序列长度: seqused优先 → cuSeqLengths(仅TND) → tensorList → 默认s2Size
+            if (constInfo.sequsedKvSize > 0) {
+                actSeqLensKv = static_cast<uint64_t>(sequsedGmKv.GetValue(bIdx));
+            } else if (constInfo.actualSeqLenKVSize == 0 && !constInfo.isKvContinuous) {
                 actSeqLensKv = SeqLenFromTensorList<LAYOUT_KV>(keyPtr, bIdx);
-            } else {
+            } else if (constInfo.actualSeqLenKVSize > 0) {
                 actSeqLensKv = kvActSeqLensParser.GetActualSeqLength(bIdx);
+            } else {
+                actSeqLensKv = constInfo.s2Size;
             }
             actSeqLensKv += constInfo.actualKVPrefixSize;
-            actSeqLensQ = qActSeqLensParser.GetActualSeqLength(bIdx);
+            // Q序列长度: seqused优先 → cuSeqLengths(仅TND) → 默认s1Size
+            if (constInfo.sequsedQSize > 0) {
+                actSeqLensQ = static_cast<uint64_t>(sequsedGmQ.GetValue(bIdx));
+            } else if (constInfo.actualSeqLenSize > 0) {
+                actSeqLensQ = qActSeqLensParser.GetActualSeqLength(bIdx);
+            } else {
+                actSeqLensQ = constInfo.s1Size;
+            }
         }
         uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
         uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
@@ -559,7 +588,6 @@ public:
     {
         curS2Start = 0U;
         curS2End = (static_cast<uint32_t>(actSeqLensKv) + s2BaseSize - 1) / s2BaseSize;
-
         if ((bN2Cur == bN2Start_) && (gS1Cur == gS1OStart_)) {
             headS2Split = s2OStart_ != 0U;
             curS2Start = s2OStart_;
