@@ -239,8 +239,9 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
 
     # ------------------ 1. CPU Golden 计算 (总是执行) ------------------
     print(f"[{test_name}] CPU 参考计算...")
-    out_cpu, _, _ = tforward(qf, kf, v, pse_cpu, **kwargs)
+    out_cpu, x_max, x_sum = tforward(qf, kf, v, pse_cpu, **kwargs)
     out_cpu_out_layout = trans_bnsd_to_layout(out_cpu, output_layout)
+    lse_out = torch.log(x_sum) + x_max
     if dump_tensors:
         dump_path = os.path.join(dump_dir, test_name)
         os.makedirs(dump_path, exist_ok=True)
@@ -292,7 +293,7 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
         if NPU_AVAILABLE:
             print(f"[{test_name}] NPU 计算...")
             atten_mask = generate_npu_mask(b, sq, skv, sparse_mode, pre_tokens, next_tokens, prefix)
-            npu_out = flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse_npu, **kwargs)
+            npu_out, lse_npu = flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse_npu, **kwargs)
             if dump_tensors:
                 dump_path = os.path.join(dump_dir, test_name)
                 os.makedirs(dump_path, exist_ok=True)
@@ -389,6 +390,10 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
             passed_gpu_npu = check_result(test_name + "_GPU_vs_NPU", gpu_out.float(), npu_out.float(), except_label="GPU", comp_label="NPU", verbose_diff=verbose_diff)
         else:
             print(f"[{test_name}] 缺少 GPU 或 NPU 结果，跳过 GPU vs NPU 对比。")
+    
+    if lse_npu is not None:
+        print(f"\n{'='*40} 对比 lse goldem vs lse npu {'='*40}")
+        passed_lse = check_result("LSE CHECK", lse_out.float(), lse_npu.float(), except_label="lse_golden", comp_label="lse_npu", verbose_diff=verbose_diff)
 
     if visualize:
         try:
@@ -402,7 +407,7 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
         except Exception as exc:
             print(f"[WARN] 可视化异常: {exc}")
 
-    at_least_one_pass = passed_cpu_gpu or passed_cpu_npu or passed_gpu_npu
+    at_least_one_pass = passed_cpu_gpu or passed_cpu_npu or passed_gpu_npu or passed_lse
     return at_least_one_pass
 
 

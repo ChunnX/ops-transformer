@@ -215,6 +215,7 @@ TestCases = {
         'q_range': [(-10.0, 10.0)],
         'k_range': [(-10.0, 10.0)],
         'v_range': [(-10.0, 10.0)],
+        'return_softmax_lse' : 1,
     },
     'TND_MIXED_02': {
         'B': [8],
@@ -233,6 +234,7 @@ TestCases = {
         'q_range': [(-10.0, 10.0)],
         'k_range': [(-10.0, 10.0)],
         'v_range': [(-10.0, 10.0)],
+        'return_softmax_lse' : 1,
     },
     'TND_MIXED_03': {
         'N1': [16],
@@ -248,6 +250,7 @@ TestCases = {
         'q_range': [(-10.0, 10.0)],
         'k_range': [(-10.0, 10.0)],
         'v_range': [(-10.0, 10.0)],
+        'return_softmax_lse' : 1,
     },
     'ACTUAL_BNSD_01': {
         'layout_q': ['BNSD'],
