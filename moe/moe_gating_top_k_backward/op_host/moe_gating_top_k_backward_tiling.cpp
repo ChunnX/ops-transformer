@@ -323,39 +323,44 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckOutShape()   // lc
 
 int64_t MoeGatingTopKBackwardTilingBase::CalcMaxRows()
 {
-    int64_t gradYQuePerTokenSpace = DOUBLE_BUFFER_NUM * k_ * gradYDtypeSize_;
+    int64_t gradYQuePerTokenSpace = DOUBLE_BUFFER_NUM * k_ * SIZE_OF_FLOAT32;
     int64_t indicesQuePerTokenSpace = DOUBLE_BUFFER_NUM * k_ * SIZE_OF_FLOAT32;
     int64_t xQuePerTokenSpace = DOUBLE_BUFFER_NUM * expertCount_ * SIZE_OF_FLOAT32;
     int64_t outQuePerTokenSpace = expertCount_ * gradYDtypeSize_;
     
-    int64_t bufk0PerTokenSpace = k_ * SIZE_OF_FLOAT32;
     int64_t bufk1PerTokenSpace = k_ * SIZE_OF_FLOAT32;
     int64_t bufn2PerTokenSpace = expertCount_ * SIZE_OF_FLOAT32;
     int64_t bufn3PerTokenSpace = expertCount_ * SIZE_OF_FLOAT32;
     int64_t bufk4AddPerTokenSpace = k_ * SIZE_OF_FLOAT32;
     int64_t bufk4IndexPerTokenSpace = k_ * SIZE_OF_FLOAT32;
     int64_t bufk4RecipSumPerTokenSpace = k_ * SIZE_OF_FLOAT32;
+    int64_t bufk4MaskPerTokenSpace = k_ * SIZE_OF_FLOAT32;
     int64_t bufsPerTokenSpace = 1 * SIZE_OF_FLOAT32;
 
     int64_t ubReserve = 1 * 1024;
     int64_t shareTmpBufSpace = 0;
+
+    int64_t available_space = aicoreParams_.ubSize - ubReserve - shareTmpBufSpace;
+    OP_CHECK_IF(available_space <= 0, OP_LOGE(context_,
+        "Not enough space on UB, current available space is %ld.", available_space), return ge::GRAPH_FAILED);
 
     int64_t quePerTokenSpace =
         gradYQuePerTokenSpace + indicesQuePerTokenSpace + xQuePerTokenSpace + outQuePerTokenSpace;
     int64_t bufPerTokenSpace =
         bufk0PerTokenSpace + bufk1PerTokenSpace + bufn2PerTokenSpace + bufn3PerTokenSpace + bufk4AddPerTokenSpace +
         bufk4IndexPerTokenSpace + bufk4RecipSumPerTokenSpace + bufsPerTokenSpace;
-    int64_t maxRows = (aicoreParams_.ubSize - ubReserve - shareTmpBufSpace) / (quePerTokenSpace + bufPerTokenSpace);
+    int64_t maxRows = available_space / (quePerTokenSpace + bufPerTokenSpace);
 
     while (maxRows > 0) {
+        // queSpace: gradYQueSpace == indicesQueSpace; xQueSpace; outQueSpace
+        // bufSpace: bufk1Space == bufk4AddSpace == bufk4IndexSpace == bufk4RecipSumSpace == bufk4MaskSpace;
+        //           bufn2Space == bufn3Space; bufsSpace
         int64_t queSpace =
-            AlignBytes_(maxRows * gradYQuePerTokenSpace) + AlignBytes_(maxRows * indicesQuePerTokenSpace) +
-            AlignBytes_(maxRows * xQuePerTokenSpace) + AlignBytes_(maxRows * outQuePerTokenSpace);
+            2 * maxRows * AlignBytes_(gradYQuePerTokenSpace) + AlignBytes_(maxRows * xQuePerTokenSpace) +
+            AlignBytes_(maxRows * outQuePerTokenSpace);
         int64_t bufPerTokenSpace =
-            AlignBytes_(maxRows * bufk0PerTokenSpace) + AlignBytes_(maxRows * bufk1PerTokenSpace) +
-            AlignBytes_(maxRows * bufn2PerTokenSpace) + AlignBytes_(maxRows * bufn3PerTokenSpace) +
-            AlignBytes_(maxRows * bufk4AddPerTokenSpace) + AlignBytes_(maxRows * bufk4IndexPerTokenSpace) +
-            AlignBytes_(maxRows * bufk4RecipSumPerTokenSpace) + AlignBytes_(maxRows * bufsPerTokenSpace);
+            5 * maxRows * AlignBytes_(bufk1PerTokenSpace) + 2 * AlignBytes_(maxRows * bufn2PerTokenSpace) +
+            maxRows * AlignBytes_(bufk4MaskPerTokenSpace);
         int64_t usedSpace = ubReserve + shareTmpBufSpace + queSpace + bufPerTokenSpace;
 
         if (usedSpace <= aicoreParams_.ubSize) {
@@ -363,10 +368,6 @@ int64_t MoeGatingTopKBackwardTilingBase::CalcMaxRows()
         }
         maxRows--;
     }
-
-    OP_CHECK_IF(maxRows > 0, OP_LOGE(context_,
-        "maxRows should be greater than zero, current value is %ld. Check if N and K are within valid ranges.",
-        maxRows), return ge::GRAPH_FAILED);
     
     return maxRows;
 }
@@ -378,6 +379,10 @@ void MoeGatingTopKBackwardTilingBase::SplitRows()   // lc
     lastCoreRows_ = tokenCount_ % perCoreRows_ == 0 ? perCoreRows_ : tokenCount_ % perCoreRows_;
 
     baseRows_ = CalcMaxRows();
+    OP_CHECK_IF(baseRows_ <= 0, OP_LOGE(context_,
+        "baseRows should be greater than zero, current value is %ld. Check if N and K are within valid ranges.",
+        baseRows_), return ge::GRAPH_FAILED);
+
     perLoopTimes_ = (perCoreRows_ + baseRows_ - 1) / baseRows_;
     perTailRows_ = perCoreRows_ - (perLoopTimes_ - 1) * baseRows_;
     lastLoopTimes_ = (lastCoreRows_ + baseRows_ - 1) / baseRows_;

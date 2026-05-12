@@ -66,6 +66,8 @@ private:
     int64_t loopTimes_ = 0;
     int64_t tailRows_ = 0;
     int64_t curRows_ = 0;
+
+    int64_t elementCountPerLoop_ = 0;
     // int64_t blockIdx_ = 0;
     // int64_t perCoreRowCount_ = 0;
     // int64_t curCoreRowCount_ = 0;
@@ -119,7 +121,8 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::Process()
     GetGatherOffsetIndex(); // fqy
     for(int64_t loopIdx = 0; loopIdx < loopTimes_; loopIdx++) {
         curRows_ = loopIdx == loopTimes_ - 1 ? tailRows_ : tilingData_->baseRows;
-        CopyInGradY(); // lc
+        elementCountPerLoop_ = curRows_ * this->tilingData_->expertCount_;
+        CopyInGradY(loopIdx); // lc
         CopyInXNorm(); // fqy
         CopyInExpertIdx(); // fqy
         
@@ -127,7 +130,7 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::Process()
         GetGradXNorm(); // lc
         GetGradX(); // lc
 
-        CopyOut();  // lc
+        CopyOut(loopIdx);  // lc
     }
 }
 
@@ -145,8 +148,24 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::GetGatherOffsetIndex()
 }
 
 template <typename T>
-__aicore__ inline void MoeGatingTopKBackwardKernel<T>::CopyInGradY()
+__aicore__ inline void MoeGatingTopKBackwardKernel<T>::CopyInGradY(int64_t loopIdx)
 {
+    LocalTensor<float> gradYInLocalTensor = gradYQue_.AllocTensor<float>();
+    
+    DataCopyExtParams dataCopyParams{1, static_cast<uint32_t>(elementCountPerLoop_ * sizeof(T)), 0, 0, 0};
+    DataCopyPadExtParams dataCopyPadParams{false, 0, 0, static_cast<T>(0)};
+
+    if constexpr (IsSameType<T, float>::value) {
+        DataCopyPad(gradYInLocalTensor, gradYGm_[loopIdx * elementCountPerLoop_], dataCopyParams, dataCopyPadParams);
+    } else {
+        DataCopyPad(gradYInLocalTensor[elementCountPerLoop_].ReinterpretCast<T>(),
+                    gradYGm_[loopIdx * elementCountPerLoop_], dataCopyParams, dataCopyPadParams);
+        SetWaitFlag(HardEvent::MTE2_V);
+        Cast(gradYInLocalTensor, gradYInLocalTensor[elementCountPerLoop_].ReinterpretCast<T>(), RoundMode::CAST_NONE,
+             elementCountPerLoop_);
+    }
+
+    CopyInGradY.EnQue(gradYInLocalTensor);
 }
 
 template <typename T>
@@ -178,16 +197,60 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::Sigmoid()
 template <typename T>
 __aicore__ inline void MoeGatingTopKBackwardKernel<T>::GetGradXNorm()
 {
+    LocalTensor<float> gradYInLocalTensor = gradYQue_.DeQue<float>();
+    Muls(gradYInLocalTensor, gradYInLocalTensor, this->tilingData_->routedScalingFactor_, elementCountPerLoop_);
+    
+    LocalTensor<float> bufk1 = bufk1_.Get<float>();
+    Mul(bufk1, gradYInLocalTensor, bufk1, elementCountPerLoop_);
+
+    LocalTensor<float> bufs = bufs_.Get<float>();
+    // todo: reduceSum
+
+    uint32_t dstShape[NUM_TWO] = { tilingData_->baseRows, tilingData_->k };
+    uint32_t srcShape[NUM_TWO] = { tilingData_->baseRows, 1 };
+    Broadcast<float, NUM_TWO, 1>(bufk1, bufs, dstShape, srcShape);
+    
+    Sub(gradYInLocalTensor, gradYInLocalTensor, bufk1, elementCountPerLoop_);
+
+    LocalTensor<float> bufk4RecipSumW = bufk4RecipSumW_.Get<float>();
+    Mul(gradYInLocalTensor, gradYInLocalTensor, bufk4RecipSumW, elementCountPerLoop_);
+
+    LocalTensor<float> bufn3 = bufn3_.Get<float>();
+    Duplicate<float>(bufn3, 0.0f, this->tilingData_->expertCount_);
+
+    gradYQue_.EnQue(gradYInLocalTensor);
 }
 
 template <typename T>
 __aicore__ inline void MoeGatingTopKBackwardKernel<T>::GetGradX()
 {
+    // todo: add scatter
+    
+    LocalTensor<float> bufn2 = bufn2_.Get<float>();
+    xNormLocal_ = xQue_.DeQue<float>();
+
+    Subs(bufn2, 1.0f, xNormLocal_, elementCountPerLoop_);
+    Mul(bufn2, bufn2, xNormLocal_, elementCountPerLoop_);
+
+    LocalTensor<float> bufn3 = bufn3_.Get<float>();
+    Mul(bufn2, bufn2, bufn3, elementCountPerLoop_);
+
+    if constexpr (!IsSameType<T, float>::value) {
+        Cast(bufn2.ReinterpretCast<T>(), bufn2, RoundMode::CAST_NONE, elementCountPerLoop_);
+    }
+
+    LocalTensor<T> gradXOutTensor = outQue_.AllocTensor<T>();
+    DataCopy(gradXOutTensor, bufn2, elementCountPerLoop_);
+    outQue_.EnQue(gradXOutTensor);
 }
 
 template <typename T>
-__aicore__ inline void MoeGatingTopKBackwardKernel<T>::CopyOut()
+__aicore__ inline void MoeGatingTopKBackwardKernel<T>::CopyOut(int64_t loopIdx)
 {
+    LocalTensor<T> gradXOutTensor = outQue_.DeQue<T>();
+    DataCopyExtParams dataCopyParams{1, static_cast<uint32_t>(elementCountPerLoop_ * sizeof(T)), 0, 0, 0};
+    DataCopyPad(gradXGm_[loopIdx * elementCountPerLoop_], gradXOutTensor, dataCopyParams);
+    outQue_.FreeTensor(gradXOutTensor);
 }
 
 } // namespace MoeGatingTopK
