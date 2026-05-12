@@ -23,14 +23,31 @@
 
 using namespace AscendC;
 
+#ifndef TILINGKEY_TPL_CCU
+#define TILINGKEY_TPL_CCU 0
+#endif
+#ifndef TILINGKEY_TPL_AICPU
+#define TILINGKEY_TPL_AICPU 1
+#endif
+
 namespace MC2KernelTemplate {
-template <typename hcclDataType, bool commBeforeComputeFlag>
+
+template<int commMode = TILINGKEY_TPL_CCU>
+struct HcclTypeSelector {
+    using type = Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU>;
+};
+
+template<>
+struct HcclTypeSelector<TILINGKEY_TPL_AICPU> {
+    using type = Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU>;
+};
+
+template <typename hcclDataType, bool commBeforeComputeFlag, int commMode = TILINGKEY_TPL_CCU>
 class HcclA2avOp {
 public:
     __aicore__ inline void Init(const void *hcclInitTiling, uint64_t hcclCcTilingOffset,
                                 const TaskTilingInfo *taskTilingInfo, GM_ADDR sendBuffer, GM_ADDR recvBuffer)
     {
-        // init member var
         taskTilingInfo_ = taskTilingInfo;
         GM_ADDR hcclContextGm = GetHcclContext<HCCL_GROUP_ID_0>();
         hccl_.InitV2(hcclContextGm, hcclInitTiling);
@@ -40,10 +57,8 @@ public:
         e_ = taskTilingInfo_->e;
         H1_ = taskTilingInfo_->H1;
         N1_ = taskTilingInfo_->N1;
-        // set gmmx comm buffer
         sendGlobalBuffer_.SetGlobalBuffer((__gm__ hcclDataType *)sendBuffer);
         recvGlobalBuffer_.SetGlobalBuffer((__gm__ hcclDataType *)recvBuffer);
-        // recv counts
         for (int i = 0; i < e_ * rankDim_; i++) {
             recvCounts_[i] = taskTilingInfo_->recvCnt[i];
         }
@@ -207,7 +222,7 @@ public:
             }
         }
 
-        alltoAllvScaleHandleId_[startExpertIdx] = hccl_.AlltoAllV<true>(
+        alltoAllvScaleHandleId_[startExpertIdx] = hccl_.template AlltoAllV<true>(
             (__gm__ uint8_t *)sendScaleGlobalBuffer_.GetPhyAddr(), alltoAllvScaleSendCnt, alltoAllvScaleSendOffset,
             HCCL_DATA_TYPE_FP8E8M0, (__gm__ uint8_t *)recvScaleGlobalBuffer_.GetPhyAddr(), alltoAllvScaleRecvCnt,
             alltoAllvScaleRecvOffset, HCCL_DATA_TYPE_FP8E8M0);
@@ -296,7 +311,7 @@ private:
                 alltoAllvRecvOffsetLastSum += alltoAllvRecvCnt[i];
             }
         }
-        alltoAllvHandleId_[startExpertIdx] = hccl_.AlltoAllV<true>(
+        alltoAllvHandleId_[startExpertIdx] = hccl_.template AlltoAllV<true>(
             (__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), alltoAllvSendCnt, alltoAllvSendOffset, hcclDataType_,
             (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset, hcclDataType_);
     }
@@ -336,16 +351,13 @@ private:
                 alltoAllvRecvOffset[i] += static_cast<uint64_t>(recvCounts_[startExpertIdx + (i - 1) * e_ + j]) * N1_;
             }
         }
-        alltoAllvHandleId_[startExpertIdx] = hccl_.AlltoAllV<true>(
+        alltoAllvHandleId_[startExpertIdx] = hccl_.template AlltoAllV<true>(
             (__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), alltoAllvSendCnt, alltoAllvSendOffset, hcclDataType_,
             (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset, hcclDataType_);
     }
 
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-    Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;
-#else
-    Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU> hccl_;
-#endif
+// AICPU only: 只支持AICPU通信模式
+    typename HcclTypeSelector<commMode>::type hccl_;
 
     const TaskTilingInfo *taskTilingInfo_;
 
