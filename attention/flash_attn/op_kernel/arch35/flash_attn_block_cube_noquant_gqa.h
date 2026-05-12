@@ -428,27 +428,6 @@ public:
             InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGm, kvLenSize,
                          constInfo.n2Size, constInfo.blockSize, constInfo.dSizeV, valueGm, value);
         }
-
-        if constexpr (hasRope) {
-            InitQBuffer(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size, constInfo.dSizeRope,
-                        actualSeqLengthsGmQ,
-                        (LAYOUT == LayOutTypeEnum::LAYOUT_TND) ? constInfo.cuSeqLensQSize : constInfo.seqUsedQSize,
-                        queryRopeGm, queryRope);
-            uint32_t kvLenSize = (LAYOUT == LayOutTypeEnum::LAYOUT_TND) ? constInfo.cuSeqLensKVSize
-                                                                        : constInfo.seqUsedKvSize;
-            InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGm, kvLenSize,
-                         constInfo.n2Size, constInfo.blockSize, constInfo.dSizeRope, keyRopeGm, keyRope);
-        }
-
-        if constexpr (HAS_PREFIX) {
-            static_assert(!isPa);
-            static_assert(GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD);
-
-            keyPrefixGm.gmTensor.SetGlobalBuffer((__gm__ KV_T *)keySharedPrefix);
-            valuePrefixGm.gmTensor.SetGlobalBuffer((__gm__ KV_T *)valueSharedPrefix);
-            keyPrefixGm.offsetCalculator.Init(1, constInfo.n2Size, constInfo.kvPrefixSize, constInfo.dSize);
-            valuePrefixGm.offsetCalculator.Init(1, constInfo.n2Size, constInfo.kvPrefixSize, constInfo.dSizeV);
-        }
     }
 
     __aicore__ inline void InitQBuffer(uint32_t batchSize, uint32_t n2Size, uint32_t gSize, uint32_t qSeqSize,

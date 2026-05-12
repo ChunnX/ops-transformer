@@ -126,17 +126,20 @@ protected:
     // tensorlist
     __gm__ uint8_t *keyPtr = nullptr;
     
-    typename std::conditional<
+    using QSeqParserType = typename std::conditional<
         (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD),
-        TNDSeqLensParser<uint64_t>,
+        ActualSeqLensParser<Q_MODE, uint64_t, true>,
         ActualSeqLensParser<Q_MODE>
-    >::type qActSeqLensParser;
-    
-    typename std::conditional<
+    >::type;
+
+    using KvSeqParserType = typename std::conditional<
         (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD),
-        TNDSeqLensParser<uint64_t>,
+        ActualSeqLensParser<KV_MODE, uint64_t, true>,
         ActualSeqLensParser<KV_MODE>
-    >::type kvActSeqLensParser;
+    >::type;
+
+    QSeqParserType *qActSeqLensParser = nullptr;
+    KvSeqParserType *kvActSeqLensParser = nullptr;
 
     int64_t preTokensPerBatch = 0;
     int64_t nextTokensPerBatch = 0;
@@ -224,16 +227,15 @@ public:
 
         this->keyPtr = key;
 
-        uint64_t actualLenQSize = (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD)
-                                      ? constInfo.cuSeqLensQSize : constInfo.seqUsedQSize;
-        uint64_t actualLenKvSize = (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD)
-                                       ? constInfo.cuSeqLensKVSize : constInfo.seqUsedKvSize;
-        qActSeqLensParser.Init(this->actualSeqLengthsGmQ, actualLenQSize, constInfo.s1Size);
-        kvActSeqLensParser.Init(this->actualSeqLengthsGm, actualLenKvSize, constInfo.s2Size);
-
         if constexpr (POST_QUANT) {
             InitPostQuant(quantScale2, quantOffset2);
         }
+    }
+
+    __aicore__ inline void SetCuSeqLensParsers(QSeqParserType &qParser, KvSeqParserType &kvParser)
+    {
+        this->qActSeqLensParser = &qParser;
+        this->kvActSeqLensParser = &kvParser;
     }
 
     __aicore__ inline void InitSoftmaxLseGm(GlobalTensor<float> softmaxLseGm)
@@ -380,34 +382,34 @@ protected:
             constexpr GmFormat OUT_FORMAT = GmFormat::BSNGD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
+            outGmTensor.offsetCalculator.isQPaddingFlag = constInfo.isQHasLeftPadding;
+            outGmTensor.offsetCalculator.qPaddingSize = constInfo.queryRightPaddingSize;
             outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                              constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.seqUsedQSize,
-                                              constInfo.isQHasLeftPadding, constInfo.queryRightPaddingSize);
+                                              constInfo.dSizeV, *qActSeqLensParser);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_BNSD) {
             constexpr GmFormat OUT_FORMAT = GmFormat::BNGSD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
+            outGmTensor.offsetCalculator.isQPaddingFlag = constInfo.isQHasLeftPadding;
+            outGmTensor.offsetCalculator.qPaddingSize = constInfo.queryRightPaddingSize;
             outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                              constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.seqUsedQSize,
-                                              constInfo.isQHasLeftPadding, constInfo.queryRightPaddingSize);
+                                              constInfo.dSizeV, *qActSeqLensParser);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_TND) {
             constexpr GmFormat OUT_FORMAT = GmFormat::TNGD;
-            FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
+            FaGmTensor<OUTPUT_T, OUT_FORMAT, uint64_t, true> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
-            outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, actualSeqLengthsGmQ,
-                                              constInfo.cuSeqLensQSize);
+            outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, *qActSeqLensParser);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_NTD) {
             constexpr GmFormat OUT_FORMAT = GmFormat::NGTD;
-            FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
+            FaGmTensor<OUTPUT_T, OUT_FORMAT, uint64_t, true> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
-            outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, actualSeqLengthsGmQ,
-                                              constInfo.cuSeqLensQSize);
+            outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, *qActSeqLensParser);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         }
@@ -458,12 +460,12 @@ protected:
     }
     __aicore__ inline void CalcPreNextTokens()
     {
-        actSeqLensQ = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
+        actSeqLensQ = qActSeqLensParser->GetActualSeqLength(taskInfo.bIdx);
         if (constInfo.cuSeqLensKVSize == 0 && constInfo.seqUsedKvSize == 0 &&
             !constInfo.isKvContinuous) {
             actSeqLensKv = SeqLenFromTensorList<layout>(keyPtr, taskInfo.bIdx);
         } else {
-            actSeqLensKv = kvActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
+            actSeqLensKv = kvActSeqLensParser->GetActualSeqLength(taskInfo.bIdx);
         }
         actSeqLensKv += constInfo.actualKVPrefixSize;
         int64_t safePreToken = constInfo.preTokens;
@@ -517,7 +519,7 @@ protected:
             if constexpr ((Q_FORMAT == GmFormat::BSNGD) || (Q_FORMAT == GmFormat::TNGD)) { // 内存按照S1G排布
                 gIdx = (taskInfo.gS1Idx + startRow + row) % constInfo.gSize;
             } else if constexpr ((Q_FORMAT == GmFormat::BNGSD) || (Q_FORMAT == GmFormat::NGTD)) { // 内存按照GS1排布
-                int64_t actS1Size = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
+                int64_t actS1Size = qActSeqLensParser->GetActualSeqLength(taskInfo.bIdx);
                 gIdx = (taskInfo.gS1Idx + startRow + row) / actS1Size;
             }
             DataCopy(sinkExpBuf[row * BLOCK_ELEMENT_NUM], sinkBrcbBuf[gIdx * BLOCK_ELEMENT_NUM], BLOCK_ELEMENT_NUM);
@@ -785,13 +787,13 @@ public:
                 WaitFlag<HardEvent::V_MTE3>(SYNC_LSEOUTPUT_BUF_FLAG);
                 uint32_t mOffset = taskInfo.gS1Idx + startRow;
                 if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
-                    uint32_t prefixBS1 = qActSeqLensParser.GetTBase(taskInfo.bIdx);
+                    uint32_t prefixBS1 = qActSeqLensParser->GetTBase(taskInfo.bIdx);
                     uint64_t bN2Offset =
                         prefixBS1 * constInfo.gSize * constInfo.n2Size + taskInfo.n2Idx * constInfo.gSize;
                     DataCopySoftmaxLseTNDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize, constInfo);
                 } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
-                    uint32_t prefixBS1 = qActSeqLensParser.GetTBase(taskInfo.bIdx);
-                    uint32_t s1Size = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
+                    uint32_t prefixBS1 = qActSeqLensParser->GetTBase(taskInfo.bIdx);
+                    uint32_t s1Size = qActSeqLensParser->GetActualSeqLength(taskInfo.bIdx);
                     uint64_t bN2Offset =
                         prefixBS1 * constInfo.gSize * constInfo.n2Size + taskInfo.n2Idx * constInfo.gSize;
                     DataCopySoftmaxLseNTDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize, constInfo,
@@ -799,7 +801,7 @@ public:
                 } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH) {
                     uint64_t bN2Offset = taskInfo.bIdx * constInfo.gSize * constInfo.n2Size * constInfo.s1Size +
                                          taskInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
-                    uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
+                    uint64_t qActSeqLens = qActSeqLensParser->GetActualSeqLength(taskInfo.bIdx);
                     uint64_t s1LeftPaddingSize =
                         constInfo.isQHasLeftPadding ?
                             (constInfo.s1Size - qActSeqLens - constInfo.queryRightPaddingSize) :
@@ -809,9 +811,9 @@ public:
                 } else { // BNSD
                     uint64_t bN2Offset = taskInfo.bIdx * constInfo.gSize * constInfo.n2Size * constInfo.s1Size +
                                          taskInfo.n2Idx * constInfo.gSize * constInfo.s1Size;
-                    uint64_t qActSeqLens = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
+                    uint64_t qActSeqLens = qActSeqLensParser->GetActualSeqLength(taskInfo.bIdx);
                     // s1LeftPaddingSize = constInfo.qSeqSize - constInfo.qLeftPaddingSize -
-                    // qActSeqLensParser.GetActualSeqLength(bIdx)
+                    // qActSeqLensParser->GetActualSeqLength(bIdx)
                     uint64_t s1LeftPaddingSize =
                         constInfo.isQHasLeftPadding ?
                             (constInfo.s1Size - qActSeqLens - constInfo.queryRightPaddingSize) :

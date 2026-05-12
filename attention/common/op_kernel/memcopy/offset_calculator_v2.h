@@ -197,6 +197,13 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_Q_OUT_BNGSD, ACTLEN_T> {
         actualSeqLensQParser = parser;
     }
 
+    __aicore__ inline void Init(uint32_t b, uint32_t n2, uint32_t g, uint32_t s1, uint32_t d,
+                                const ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, ACTLEN_T>& parser)
+    {
+        actualSeqLensQParser = parser;
+        gmLayout.MakeLayout(b, n2, g, s1, d);
+    }
+
     __aicore__ inline uint64_t GetOffset(uint32_t bIdx, uint32_t n2Idx, uint32_t gIdx, uint32_t s1Idx, uint32_t dIdx)
     {
         if (isQPaddingFlag) {
