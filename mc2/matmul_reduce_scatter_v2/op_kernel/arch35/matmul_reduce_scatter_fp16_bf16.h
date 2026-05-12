@@ -29,7 +29,7 @@
 namespace MatmulReduceScatterV2Impl {
 using namespace AscendC;
 
-template <typename AType, typename BType, typename BiasType, typename CType>
+template <typename AType, typename BType, typename BiasType, typename CType, int TPL_COMM_MODE>
 class MatmulReduceScatterFP16BF16 {
 public:
     __aicore__ inline MatmulReduceScatterFP16BF16() {}
@@ -58,12 +58,12 @@ private:
     uint32_t rankId_;
     AscendC::HcclDataType dataType_;
     uint8_t debugMode_;
-    Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU> hccl_;              // AICPU模式
+    typename HcclTypeSelector<TPL_COMM_MODE>::type hccl_;
     AscendC::HcclHandle handles_[MAX_HANDLE];        // 最大支持64个handleId
 };
 
-template <typename AType, typename BType, typename BiasType, typename CType>
-__aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType>::Init(
+template <typename AType, typename BType, typename BiasType, typename CType, int TPL_COMM_MODE>
+__aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType, TPL_COMM_MODE>::Init(
     GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR contextGM, GM_ADDR workspaceGM,
     Mc2Tiling::MatmulReduceScatterV2TilingData* tilingData, TPipe* tPipe) {
     tilingData_ = tilingData;
@@ -87,8 +87,8 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
     gmToFloat_ = workspaceGM;
 }
 
-template <typename AType, typename BType, typename BiasType, typename CType>
-__aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType>::PostProcess()
+template <typename AType, typename BType, typename BiasType, typename CType, int TPL_COMM_MODE>
+__aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType, TPL_COMM_MODE>::PostProcess()
 {
     auto&& cfg = tilingData_->param;
     // 等待reducescatter执行完成
@@ -101,15 +101,15 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
     }
 }
 
-template <typename AType, typename BType, typename BiasType, typename CType>
-__aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType>::Process()
+template <typename AType, typename BType, typename BiasType, typename CType, int TPL_COMM_MODE>
+__aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType, TPL_COMM_MODE>::Process()
 {
     InnerProcess();
     PostProcess();
 }
 
-template <typename AType, typename BType, typename BiasType, typename CType>
-__aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType>::InnerProcess()
+template <typename AType, typename BType, typename BiasType, typename CType, int TPL_COMM_MODE>
+__aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType, TPL_COMM_MODE>::InnerProcess()
 {
     auto&& tiling = tilingData_->mC2Mmv3TileTilingData.tCubeTiling;
     auto&& cfg = tilingData_->param;
@@ -127,8 +127,8 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
     }
 }
 
-template <typename AType, typename BType, typename BiasType, typename CType>
-__aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType>::Compute(
+template <typename AType, typename BType, typename BiasType, typename CType, int TPL_COMM_MODE>
+__aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType, TPL_COMM_MODE>::Compute(
                                                    GM_ADDR cGM, Mc2MatMulV3TilingData& tiling,
                                                    uint32_t count, GM_ADDR gmToFloat, bool isLast, bool isTail)
 {
@@ -147,8 +147,8 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
     MatMulV3Compute(cGM, tiling, count, gmToFloat, isLast, isTail);
 }
 
-template <typename AType, typename BType, typename BiasType, typename CType>
-__aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType>::MatMulV3Compute(GM_ADDR cGM,
+template <typename AType, typename BType, typename BiasType, typename CType, int TPL_COMM_MODE>
+__aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType, TPL_COMM_MODE>::MatMulV3Compute(GM_ADDR cGM,
                                                    Mc2MatMulV3TilingData& tiling, 
                                                    uint32_t count, GM_ADDR gmToFloat,
                                                    bool isLast, bool isTail)
@@ -173,7 +173,7 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
         AscendC::CrossCoreSetFlag<0, PIPE_FIX>(3);
         AscendC::CrossCoreWaitFlag(3);
         recvCount = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? 1 : recvCount;
-        handles_[i + shift] = hccl_.ReduceScatter<true>(
+        handles_[i + shift] = hccl_.template ReduceScatter<true>(
             cWork, recvBuffer, recvCount, dataType_, HcclReduceOp::HCCL_REDUCE_SUM, stride, repeat);
         cWork += cOffset;
         recvBuffer += cOffset;
