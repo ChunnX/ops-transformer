@@ -26,8 +26,8 @@
 #include "matmul_reduce_scatter_v2_c_tiling.h"
 
 #define TEMPLATE_CLASS_PARAMS template <typename AType, typename BType, typename CType, typename ScaleType, \
-                                        class MMClass, bool IsPerBlock, bool ATrans, bool BTrans>
-#define TEMPLATE_FUNC_PARAMS AType, BType, CType, ScaleType, MMClass, IsPerBlock, ATrans, BTrans
+                                        class MMClass, bool IsPerBlock, bool ATrans, bool BTrans, int TPL_COMM_MODE>
+#define TEMPLATE_FUNC_PARAMS AType, BType, CType, ScaleType, MMClass, IsPerBlock, ATrans, BTrans, TPL_COMM_MODE
 
 namespace MatmulReduceScatterV2Impl {
 using namespace AscendC;
@@ -71,7 +71,7 @@ private:
     uint32_t rankId_{0};
     AscendC::HcclDataType dataType_{HCCL_DATA_TYPE_INT8};
     uint8_t debugMode_{0};
-    Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU> hccl_;        // AICPU模式
+    typename HcclTypeSelector<TPL_COMM_MODE>::type hccl_;
     AscendC::HcclHandle handles_[MAX_HANDLE];  // 最大支持64个handleId
     uint64_t preCoreNum_ = 0;
     uint32_t batchWeight_[MAX_HANDLE] = {0};

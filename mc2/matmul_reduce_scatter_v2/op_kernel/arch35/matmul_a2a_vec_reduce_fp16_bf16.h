@@ -27,8 +27,8 @@
 #include "matmul_reduce_scatter_v2_c_tiling.h"
 #include "../../common/op_kernel/reduce_sum_cast_fp32.h"
 
-#define TEMPLATE_CLASS_PARAMS template <typename AType, typename BType, typename BiasType, typename CType>
-#define TEMPLATE_FUNC_PARAMS AType, BType, BiasType, CType
+#define TEMPLATE_CLASS_PARAMS template <typename AType, typename BType, typename BiasType, typename CType, int TPL_COMM_MODE>
+#define TEMPLATE_FUNC_PARAMS AType, BType, BiasType, CType, TPL_COMM_MODE
 
 namespace MatmulReduceScatterV2Impl {
 using namespace AscendC;
@@ -74,7 +74,7 @@ private:
     __gm__ HcclCombinOpParam* context_;
     AscendC::HcclDataType dataType_;
     uint8_t debugMode_;
-    Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU> hccl_;  // AICPU模式
+    typename HcclTypeSelector<TPL_COMM_MODE>::type hccl_;
     AscendC::HcclHandle handles_[MAX_HANDLE];          // 最大支持64个handleId
     GM_ADDR sendBuf_;    // 存放 MatMul 输出（All2All send buffer）
     GM_ADDR recvBuf_;    // 存放 All2All 接收的 slices（内容为 [slice_r_from_rank0][slice_r_from_rank1]...[slice_r_from_rankR-1]）

@@ -37,7 +37,7 @@ using namespace MatmulReduceScatterV2Impl;
         using AType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, A_DTYPE, false>;                              \
         using CType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, C_DTYPE>;                                     \
         REGISTER_TILING_DEFAULT(Mc2Tiling::MatmulReduceScatterV2TilingData);                                           \
-        templateClass<AType, BType, BiasType, CType> op;                                                               \
+        templateClass<AType, BType, BiasType, CType, TPL_COMM_MODE> op;                                                               \
         op.Init(aGM, bGM, biasGM, cGM, (GM_ADDR)context, workspaceGM, &tilingData, &pipe);                            \
         op.Process();                                                                                                  \
     } while (0)
@@ -83,7 +83,7 @@ using namespace MatmulReduceScatterV2Impl;
         }                                                                                                             \
     } while (0)
 
-template<bool TPL_ISPERBLOCK, bool TPL_TRANSA, bool TPL_TRANSB, bool TPL_INPUT, uint8_t TPL_OUTPUTDTYPE, uint8_t TPL_SCALETYPE, uint8_t TPL_COMMALG>
+template<bool TPL_ISPERBLOCK, bool TPL_TRANSA, bool TPL_TRANSB, bool TPL_INPUT, uint8_t TPL_OUTPUTDTYPE, uint8_t TPL_SCALETYPE, uint8_t TPL_COMMALG, uint8_t TPL_COMM_MODE>
 __global__ __aicore__ void matmul_reduce_scatter_v2(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM,
                                                     GM_ADDR x1ScaleGM, GM_ADDR x2ScaleGM,
                                                     GM_ADDR quantScaleGM, GM_ADDR cGM, GM_ADDR amaxOutGM,
@@ -113,23 +113,23 @@ __global__ __aicore__ void matmul_reduce_scatter_v2(GM_ADDR aGM, GM_ADDR bGM, GM
     #if (ORIG_DTYPE_X1 != DT_HIFLOAT8)
         if constexpr (TPL_SCALETYPE == TPL_X1_X2_DTYPE_IS_FP8E8M0) {
             if constexpr (TPL_COMMALG == TPL_CCU_ALL2ALL_VEC_REDUCE) {
-                INVOKE_QUANT_BATCHMM_PERTENSOR_MXFP8_REDUCE_SCATTER_OP_IMPL(QuantBmmA2AVecReduceFP8HiF8, false, TPL_TRANSB);
+                INVOKE_QUANT_BATCHMM_PERTENSOR_MXFP8_REDUCE_SCATTER_OP_IMPL(QuantBmmA2AVecReduceFP8HiF8, false, TPL_TRANSB, TPL_COMM_MODE);
             } else {
-                INVOKE_QUANT_BATCHMM_PERTENSOR_MXFP8_REDUCE_SCATTER_OP_IMPL(QuantBMMReduceScatter, false, TPL_TRANSB);
+                INVOKE_QUANT_BATCHMM_PERTENSOR_MXFP8_REDUCE_SCATTER_OP_IMPL(QuantBMMReduceScatter, false, TPL_TRANSB, TPL_COMM_MODE);
             }
         }
     #endif
     if constexpr (!TPL_ISPERBLOCK && TPL_INPUT == INPUT_TYPE_IS_FP8 && TPL_SCALETYPE == TPL_X1_X2_DTYPE_IS_OTHER) {
         if constexpr (TPL_COMMALG == TPL_CCU_ALL2ALL_VEC_REDUCE) {
-            INVOKE_QUANT_BATCHMM_REDUCE_SCATTER_OP_IMPL(QuantBmmA2AVecReduceFP8HiF8, TPL_TRANSA, TPL_TRANSB);
+            INVOKE_QUANT_BATCHMM_REDUCE_SCATTER_OP_IMPL(QuantBmmA2AVecReduceFP8HiF8, TPL_TRANSA, TPL_TRANSB, TPL_COMM_MODE);
         } else {
-            INVOKE_QUANT_BATCHMM_REDUCE_SCATTER_OP_IMPL(QuantBMMReduceScatter, TPL_TRANSA, TPL_TRANSB);
+            INVOKE_QUANT_BATCHMM_REDUCE_SCATTER_OP_IMPL(QuantBMMReduceScatter, TPL_TRANSA, TPL_TRANSB, TPL_COMM_MODE);
         }
     } else if constexpr (TPL_ISPERBLOCK && TPL_INPUT == INPUT_TYPE_IS_FP8 && TPL_SCALETYPE == TPL_X1_X2_DTYPE_IS_OTHER) {
         if constexpr (TPL_COMMALG == TPL_CCU_ALL2ALL_VEC_REDUCE) {
-            INVOKE_QUANT_BATCHMM_PERBLOCK_REDUCE_SCATTER_OP_IMPL(QuantBmmA2AVecReduceFP8HiF8, TPL_TRANSA, TPL_TRANSB);
+            INVOKE_QUANT_BATCHMM_PERBLOCK_REDUCE_SCATTER_OP_IMPL(QuantBmmA2AVecReduceFP8HiF8, TPL_TRANSA, TPL_TRANSB, TPL_COMM_MODE);
         } else {
-            INVOKE_QUANT_BATCHMM_PERBLOCK_REDUCE_SCATTER_OP_IMPL(QuantBMMReduceScatter, TPL_TRANSA, TPL_TRANSB);
+            INVOKE_QUANT_BATCHMM_PERBLOCK_REDUCE_SCATTER_OP_IMPL(QuantBMMReduceScatter, TPL_TRANSA, TPL_TRANSB, TPL_COMM_MODE);
         }
     }
 #endif
