@@ -52,7 +52,7 @@ static inline bool CheckDtypeValid(const aclTensor *gradY, const aclTensor *expa
                                    return false);
     }
     if (expandedXOptional != nullptr && expandedXOptional->GetViewShape().GetShapeSize() != 0) {
-        OP_CHECK_DTYPE_NOT_SAME(expandedXOptional, gradY, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT(expandedXOptional, MOE_FINALIZE_ROUTING_V2_GRAD_DTYPE_SUPPORT_LIST_X, return false);
     }
     if (scalesOptional != nullptr && scalesOptional->GetViewShape().GetShapeSize() != 0) {
         OP_CHECK_DTYPE_NOT_SUPPORT(scalesOptional, MOE_FINALIZE_ROUTING_V2_GRAD_DTYPE_SUPPORT_LIST_X, return false);
@@ -62,10 +62,10 @@ static inline bool CheckDtypeValid(const aclTensor *gradY, const aclTensor *expa
                                    return false);
     }
     if (biasOptional != nullptr && biasOptional->GetViewShape().GetShapeSize() != 0) {
-        OP_CHECK_DTYPE_NOT_SAME(biasOptional, gradY, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT(biasOptional, MOE_FINALIZE_ROUTING_V2_GRAD_DTYPE_SUPPORT_LIST_X, return false);
     }
     if (gradExpandedXOut != nullptr && gradExpandedXOut->GetViewShape().GetShapeSize() != 0) {
-        OP_CHECK_DTYPE_NOT_SAME(gradExpandedXOut, gradY, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT(gradExpandedXOut, MOE_FINALIZE_ROUTING_V2_GRAD_DTYPE_SUPPORT_LIST_X, return false);
     }
     if (gradScalesOut != nullptr && gradScalesOut->GetViewShape().GetShapeSize() != 0) {
         OP_CHECK_DTYPE_NOT_SUPPORT(gradScalesOut, MOE_FINALIZE_ROUTING_V2_GRAD_DTYPE_SUPPORT_LIST_X, return false);

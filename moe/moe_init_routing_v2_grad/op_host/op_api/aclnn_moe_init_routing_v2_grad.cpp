@@ -47,7 +47,7 @@ static inline bool CheckDtypeValid(const aclTensor *gradExpandedX, const aclTens
         OP_CHECK_DTYPE_NOT_SUPPORT(expandedRowIdx, MOE_INIT_ROUTING_V2_GRAD_DTYPE_SUPPORT_LIST_ROW_IDX, return false);
     }
     if (out != nullptr && out->GetViewShape().GetShapeSize() != 0) {
-        OP_CHECK_DTYPE_NOT_SAME(out, gradExpandedX, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT(out, MOE_INIT_ROUTING_V2_GRAD_DTYPE_SUPPORT_LIST_GRAD_X, return false);
     }
     return true;
 }
