@@ -870,12 +870,30 @@ __aicore__ inline void CopyMxScaleGmToL1(const BasicBlockOffsetParam &param, uin
              mxScaleAGlobal_[scaleAGmOffset], scaleAdn2NzParams);
 
     // 搬运 ScaleB（per-channel scale）: shape [N, K/32]
-    Dn2NzParams scaleBdn2NzParams;
-    ConfigScaleDn2NzParams(param.nL1Size, scaleKGmSize, scaleKL1StandardLen,
-                           scaleKL1RealSize, scaleBdn2NzParams);
-    int64_t scaleBGmOffset = param.nOffset * scaleKGmSize + kbL1Offset / MX_GROUPSIZE;
+    // GMMSQ 特殊处理：ScaleB 也需要分 Swish 和 Gate 两部分搬运
+    //   Swish 分支 scaleB: antiquantScaleGm_[swishNOffset * scaleKGmSize + kOffset]
+    //   Gate 分支 scaleB:  antiquantScaleGm_[gateNOffset * scaleKGmSize + kOffset]
+    // 在 L1 上拼接为完整的 nL1Size = 256 列
+
+    uint64_t swishNOffset = param.nOffset * scaleKGmSize;
+    uint64_t gateNOffset = (param.nOffset + param.nSize / 2) * scaleKGmSize;
+    uint64_t kScaleOffset = kbL1Offset / MX_GROUPSIZE;
+
+    // Swish 分支 ScaleB（前 128 列）
+    Dn2NzParams scaleBdn2NzParamsSwish;
+    ConfigScaleDn2NzParams(param.nL1Size / 2, scaleKGmSize, scaleKL1StandardLen,
+                           scaleKL1RealSize, scaleBdn2NzParamsSwish);
+    int64_t scaleBGmOffsetSwish = swishNOffset + kScaleOffset;
     DataCopy(mxScaleBL1_[(mxScaleBufIdx_ & 1) * mxScaleBL1DbOffset_].ReinterpretCast<half>(),
-             mxScaleBGlobal_[scaleBGmOffset], scaleBdn2NzParams);
+             mxScaleBGlobal_[scaleBGmOffsetSwish], scaleBdn2NzParamsSwish);
+
+    // Gate 分支 ScaleB（后 128 列）
+    Dn2NzParams scaleBdn2NzParamsGate;
+    ConfigScaleDn2NzParams(param.nL1Size / 2, scaleKGmSize, scaleKL1StandardLen,
+                           scaleKL1RealSize, scaleBdn2NzParamsGate);
+    int64_t scaleBGmOffsetGate = gateNOffset + kScaleOffset;
+    DataCopy(mxScaleBL1_[(mxScaleBufIdx_ & 1) * mxScaleBL1DbOffset_ + MX_SCALE_L1_SIZE / 2].ReinterpretCast<half>(),
+             mxScaleBGlobal_[scaleBGmOffsetGate], scaleBdn2NzParamsGate);
 }
 ```
 
@@ -1015,9 +1033,19 @@ __aicore__ inline void DoMmadCompute(uint64_t loopId, uint64_t cvLoopIdx,
 __aicore__ inline void GetTensorC(LocalTensor<yType> &yUb, const BasicBlockOffsetParam &param)
 {
     // Fixpipe: L0C → UB（ROW_MAJOR, F32）
+    //
+    // 关键说明：
+    //   1. MMA 计算时，Swish 和 Gate 分支共享同一个 X 矩阵
+    //   2. 但 weight 来自 GM 的不同位置（前 N/2 和后 N/2）
+    //   3. 在 UB/L1 上，两个分支的 weight 被拼接为一个完整的 256 列基本块
+    //   4. 因此 MMAD 计算时，nL0Size = 256（完整基本块）
+    //   5. L0C 输出到 UB 后，再对 N 轴切分：
+    //        前 128 列 → Swish 分支
+    //        后 128 列 → Gate 分支
+    //
     FixL0CToDstParams fixL0CToDstParams;
     fixL0CToDstParams.mL0Size = param.mL1Size;   // M 方向实际计算大小
-    fixL0CToDstParams.nL0Size = param.nL1Size;   // N 方向实际计算大小
+    fixL0CToDstParams.nL0Size = param.nL1Size;   // N 方向实际计算大小（= 256）
     fixL0CToDstParams.outNSize = 256;             // 输出 N 方向总大小（用于 dstStride）
     fixL0CToDstParams.splitNSize = 0;             // 不切分
     fixL0CToDstParams.dstNdStride = 0;
@@ -1257,16 +1285,45 @@ __aicore__ inline void CopyGmToUb(uint64_t ubMte2KSize, uint64_t kGmOffset, uint
     if (offsetParam.nL1Size == 0 || ubMte2KSize == 0) { return; }
 
     // Weight 搬运（4bit，NZ 格式）
-    // GM 地址: wGlobal_[(kGmOffset + kL1Offset) * nAlign + nOffset * C0_SIZE]
-    // UB 地址: weightLowBit_[bufferIdx * singleBufferSize]
+    // GMMSQ 特殊处理：Swish 和 Gate 分支的 weight 分别存储在 GM 的不同位置，
+    // 但在 UB/L1 上拼接为一个完整的基本块（baseN=256）
+    //
+    // 全局 N 切分：
+    //   Swish 分支: W[0 : N/2, :]
+    //   Gate 分支:  W[N/2 : N, :]
+    //
+    // 当 baseN=256 时：
+    //   前 128 列来自 Swish 分支的 nOffset 处
+    //   后 128 列来自 Gate 分支的 (nOffset + N/2) 处
+    //
+    // 分两次搬运到 UB，在 UB 上拼接为连续的 256 列
+    //
+    // Swish 分支 GM 地址: wGlobal_[(kGmOffset + kL1Offset) * nAlign + nOffset * C0_SIZE]
+    // Gate 分支 GM 地址:  wGlobal_[(kGmOffset + kL1Offset) * nAlign + (nOffset + N/2) * C0_SIZE]
+    //
+    // 第一次搬运：Swish 分支（前 128 列）
+    uint64_t swishNOffset = offsetParam.nOffset * static_cast<uint64_t>(C0_SIZE);
+    uint64_t gateNOffset = (offsetParam.nOffset + offsetParam.nSize / 2) * static_cast<uint64_t>(C0_SIZE);
+    uint64_t kOffset = (kGmOffset + kL1Offset) * offsetParam.nAlign;
+
+    // Swish 分支: 搬运前 128 列到 UB 的前半部分
     DataCopyPad2D(
         weightLowBit_[(weightMte2LoopIdx_ % vecConfig.ubMte2BufferNum) *
                       UB_BUFFER_INFO.weightLowBitSingleBufferSize].ReinterpretCast<wType>(),
-        wGlobal_[(kGmOffset + kL1Offset) * offsetParam.nAlign +
-                 offsetParam.nOffset * static_cast<uint64_t>(C0_SIZE)],
+        wGlobal_[kOffset + swishNOffset],
         CeilDivide(ubMte2KSize, static_cast<uint64_t>(C0_SIZE)),
-        CeilAlign(offsetParam.nL1Size, static_cast<uint64_t>(BLOCK_CUBE)) * C0_SIZE,
-        CeilAlign(offsetParam.nL1Size, static_cast<uint64_t>(BLOCK_CUBE)) * C0_SIZE,
+        128 * C0_SIZE,  // Swish 分支 128 列
+        256 * C0_SIZE,  // UB 上总宽度（Swish + Gate）
+        offsetParam.nAlign * C0_SIZE);
+
+    // Gate 分支: 搬运后 128 列到 UB 的后半部分
+    DataCopyPad2D(
+        weightLowBit_[(weightMte2LoopIdx_ % vecConfig.ubMte2BufferNum) *
+                      UB_BUFFER_INFO.weightLowBitSingleBufferSize + 128 * C0_SIZE].ReinterpretCast<wType>(),
+        wGlobal_[kOffset + gateNOffset],
+        CeilDivide(ubMte2KSize, static_cast<uint64_t>(C0_SIZE)),
+        128 * C0_SIZE,  // Gate 分支 128 列
+        256 * C0_SIZE,  // UB 上总宽度（Swish + Gate）
         offsetParam.nAlign * C0_SIZE);
 
     SetFlag<HardEvent::MTE2_V>(EVENT_ID_MTE2_TO_V);
@@ -1332,9 +1389,18 @@ __aicore__ inline void SwiGLU(const LocalTensor<float> &yF32,
                               const BasicBlockOffsetParam &param)
 {
     // 输入: yF32[M, N]，其中 N = nL1Size = 256
-    //       前 N/2 = 128 为 Swish 分支
-    //       后 N/2 = 128 为 Gate 分支
+    //       前 N/2 = 128 为 Swish 分支（对应前 N/2 的 weight）
+    //       后 N/2 = 128 为 Gate 分支（对应后 N/2 的 weight）
     // 输出: yF32[M, N/2]（原地覆盖前 128 个元素）
+    //
+    // 关键说明：
+    //   1. MMA 计算时，Swish 和 Gate 分支共享同一个 X 矩阵
+    //   2. 但 weight 来自 GM 的不同位置（前 N/2 和后 N/2）
+    //   3. 在 UB/L1 上，两个分支的 weight 被拼接为一个完整的 256 列基本块
+    //   4. L0C 输出到 UB 后，再对 N 轴切分：
+    //        前 128 列 → Swish 分支输入
+    //        后 128 列 → Gate 分支输入
+    //   5. SwiGLU 计算完成后，输出大小为 M × (N/2)
     //
     // 算法: for m in 0..M-1:
     //         for n in 0..127:
