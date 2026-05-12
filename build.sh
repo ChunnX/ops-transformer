@@ -1526,7 +1526,6 @@ if [ -n "${TEST}" ];then
         CUSTOM_OPTION="${CUSTOM_OPTION} -DCMAKE_OBJCOPY=${CLANG_OBJCOPY}"
     fi
 
-    ASAN="true"
     if [ "${ASAN}" == "true" ];then
         CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_ASAN=TRUE"
     fi
