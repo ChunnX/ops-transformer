@@ -45,7 +45,7 @@ struct HcclTypeSelector<AICPU_COMM_MODE> {
     using type = Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU>;
 };
 
-template <typename GMMATAV, int TILINGKEY_COMM_MODE = CCU_COMM_MODE>
+template <typename GMMATAV>
 class GroupedMatmulAlltoAllv
 {
 public:
@@ -61,6 +61,7 @@ public:
     static constexpr bool NEED_MM = GMMATAV::isOptionalMm;
     static constexpr bool NEED_GMMW_TRANS = GMMATAV::isGmmWeightTrans;
     static constexpr bool NEED_MMW_TRANS = GMMATAV::isOptWeightTrans;
+    static constexpr bool COMM_MODE = GMMATAV::commMode;
 
     using aType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, X_T, false>;
     using gmmBType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, X_T, NEED_GMMW_TRANS>;
@@ -107,7 +108,7 @@ private:
     static constexpr uint64_t TOTAL_UBSIZE = static_cast<uint64_t>(190U * 1024U / 2U);
     static constexpr uint64_t MAX_AIV_NUM = 48U;
     static constexpr uint64_t MAX_HANDLE_ID_NUM = 64U;
-    typename HcclTypeSelector<TILINGKEY_COMM_MODE>::type hccl_;
+    typename HcclTypeSelector<COMM_MODE>::type hccl_;
     HcclHandle allGatherHandleId_{INVALID_HANDLE_ID};
     HcclHandle alltoAllvHandleId_[MAX_HANDLE_ID_NUM] = {INVALID_HANDLE_ID};
     HcclDataType hcclDataType_;
@@ -123,8 +124,8 @@ private:
     typename gmmType::MT gmm;
     typename sharedmmType::MT sharedmm;
 };
-template <typename GMMATAV, int TILINGKEY_COMM_MODE>
-__aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV, TILINGKEY_COMM_MODE>::Init(
+template <typename GMMATAV>
+__aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::Init(
     GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR sendCountsTensorGM, GM_ADDR recvCountsTensorGM, GM_ADDR mmGM,
     GM_ADDR mmweightGM, GM_ADDR yGM, GM_ADDR mmyGM, GM_ADDR workspaceGM, GM_ADDR contextGM,
     const GroupedMatMulAlltoAllvTilingData* tilingData, __gm__ void* hcclInitTiling, __gm__ void* alltoAllvCcTiling,
@@ -174,8 +175,8 @@ __aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV, TILINGKEY_COMM_MODE>::Ini
     yOutGMTensor_.SetGlobalBuffer((__gm__ X_T*)this->yGM_);
 }
 
-template <typename GMMATAV, int TILINGKEY_COMM_MODE>
-__aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV, TILINGKEY_COMM_MODE>::Process()
+template <typename GMMATAV>
+__aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::Process()
 {
     HcclAlltoAllvPrepare(); // alltoall prepare
     // gmm + alltoall，做完一块gmm下发一块alltoall
@@ -190,8 +191,8 @@ __aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV, TILINGKEY_COMM_MODE>::Pro
     HcclFinalize();
 }
 
-template <typename GMMATAV, int TILINGKEY_COMM_MODE>
-__aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV, TILINGKEY_COMM_MODE>::ShareMatMulCompute()
+template <typename GMMATAV>
+__aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::ShareMatMulCompute()
 {
     if (NEED_MM) {
         if ASCEND_IS_AIC {
@@ -216,8 +217,8 @@ __aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV, TILINGKEY_COMM_MODE>::Sha
     }
 }
 
-template <typename GMMATAV, int TILINGKEY_COMM_MODE>
-__aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV, TILINGKEY_COMM_MODE>::GmmProcessAlltoallv()
+template <typename GMMATAV>
+__aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::GmmProcessAlltoallv()
 {
     gmm.Init(&(tilingData_->matmulTiling));
     GMMCompute<gmmType> computeOp(gmm);
@@ -268,8 +269,8 @@ __aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV, TILINGKEY_COMM_MODE>::Gmm
     SyncAll<false>();
 }
 
-template <typename GMMATAV, int TILINGKEY_COMM_MODE>
-__aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV, TILINGKEY_COMM_MODE>::HcclAlltoAllvPrepare()
+template <typename GMMATAV>
+__aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::HcclAlltoAllvPrepare()
 {
     if ASCEND_IS_AIV {
         if (GetBlockIdx() != 0) {
@@ -325,8 +326,8 @@ __aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV, TILINGKEY_COMM_MODE>::Hcc
     }
 }
 
-template <typename GMMATAV, int TILINGKEY_COMM_MODE>
-__aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV, TILINGKEY_COMM_MODE>::HcclFinalize()
+template <typename GMMATAV>
+__aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::HcclFinalize()
 {
     if ASCEND_IS_AIV {
         hccl_.Finalize();

@@ -241,11 +241,7 @@ public:
                 return;
             }
         }
-        AscendC::PRINTF("YYYYYY op a2av waitScale start expert:%u handle:%d\n", startExpertIdx,
-            alltoAllvScaleHandleId_[startExpertIdx]);
         hccl_.Wait(alltoAllvScaleHandleId_[startExpertIdx]);
-        AscendC::PRINTF("YYYYYY op a2av waitScale end expert:%u handle:%d\n", startExpertIdx,
-            alltoAllvScaleHandleId_[startExpertIdx]);
     }
 
     __aicore__ inline void Wait(uint32_t startExpertIdx)
