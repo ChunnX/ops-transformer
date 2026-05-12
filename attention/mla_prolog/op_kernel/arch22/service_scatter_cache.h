@@ -52,42 +52,45 @@ struct ScatterCacheParams {
 };
 
 template <typename T, bool isNz>
-__aicore__ inline void ScatterCache(const GlobalTensor<T>& cacheGm, const LocalTensor<T>& inputLocal,
-                                    const ScatterCacheParams& scatterCacheParams) {
+__aicore__ inline void ScatterCache(const GlobalTensor<T> &cacheGm, const LocalTensor<T> &inputLocal,
+                                    const ScatterCacheParams &scatterCacheParams)
+{
     if (scatterCacheParams.paTokenIndex < 0) {
         return;
     }
     if constexpr (!isNz) {
-        DataCopy(cacheGm[scatterCacheParams.paTokenIndex * scatterCacheParams.stride],
-                inputLocal, scatterCacheParams.col);
+        DataCopy(cacheGm[scatterCacheParams.paTokenIndex * scatterCacheParams.stride], inputLocal,
+                 scatterCacheParams.col);
     } else {
         constexpr uint8_t col0 = ALIGN_BLOCK_SIZE / sizeof(T);
         int64_t cacheOffset = scatterCacheParams.paTokenIndex / scatterCacheParams.blockSize *
-                            scatterCacheParams.blockSize * scatterCacheParams.stride +
-                            scatterCacheParams.paTokenIndex % scatterCacheParams.blockSize * col0;
-        DataCopyParams copyParams {static_cast<uint16_t>(scatterCacheParams.col / col0),
-                                1, 0, static_cast<uint16_t>(scatterCacheParams.blockSize - 1)};
+                                  scatterCacheParams.blockSize * scatterCacheParams.stride +
+                              scatterCacheParams.paTokenIndex % scatterCacheParams.blockSize * col0;
+        DataCopyParams copyParams{static_cast<uint16_t>(scatterCacheParams.col / col0), 1, 0,
+                                  static_cast<uint16_t>(scatterCacheParams.blockSize - 1)};
         DataCopy(cacheGm[cacheOffset], inputLocal, copyParams);
     }
 }
 
 template <typename T, bool isNz>
-__aicore__ inline void ScatterCacheUnAligned(const GlobalTensor<T>& cacheGm, const LocalTensor<T>& inputLocal,
-                                             const ScatterCacheParams& scatterCacheParams) {
+__aicore__ inline void ScatterCacheUnAligned(const GlobalTensor<T> &cacheGm, const LocalTensor<T> &inputLocal,
+                                             const ScatterCacheParams &scatterCacheParams)
+{
     if (scatterCacheParams.paTokenIndex < 0) {
         return;
     }
     if constexpr (!isNz) {
         // blockCount, blockLen, srcStride, dstStride
-        DataCopyParams dataCopyParams {1, static_cast<uint16_t>(scatterCacheParams.col * sizeof(T)), 0, 0};
+        DataCopyParams dataCopyParams{1, static_cast<uint16_t>(scatterCacheParams.col * sizeof(T)), 0, 0};
         DataCopyPad(cacheGm[scatterCacheParams.paTokenIndex * scatterCacheParams.stride], inputLocal, dataCopyParams);
     }
 }
 
 template <typename T, bool isNz>
-__aicore__ inline void ScatterCacheMultiRows(GlobalTensor<T>& cacheGm, const LocalTensor<T>& inputLocal,
-                                             const ScatterCacheParams& scatterCacheParams, int64_t rowsInCurBatch,
-                                             int64_t cacheOffset, int64_t nextBatchOffset) {
+__aicore__ inline void ScatterCacheMultiRows(GlobalTensor<T> &cacheGm, const LocalTensor<T> &inputLocal,
+                                             const ScatterCacheParams &scatterCacheParams, int64_t rowsInCurBatch,
+                                             int64_t cacheOffset, int64_t nextBatchOffset)
+{
     if (cacheOffset < 0) {
         return;
     }
@@ -96,13 +99,13 @@ __aicore__ inline void ScatterCacheMultiRows(GlobalTensor<T>& cacheGm, const Loc
     if constexpr (!isNz) {
         DataCopy(cacheGm[cacheOffset], inputLocal, copyCnt);
         if (rowsInCurBatch != scatterCacheParams.row) {
-            DataCopy(cacheGm[nextBatchOffset],
-                inputLocal[copyCnt], (scatterCacheParams.row - rowsInCurBatch) * scatterCacheParams.col);
+            DataCopy(cacheGm[nextBatchOffset], inputLocal[copyCnt],
+                     (scatterCacheParams.row - rowsInCurBatch) * scatterCacheParams.col);
         }
     } else {
         constexpr uint8_t col0 = ALIGN_BLOCK_SIZE / sizeof(T);
-        DataCopyParams copyParams {static_cast<uint16_t>(scatterCacheParams.col / col0),
-                                   1, 0, static_cast<uint16_t>(scatterCacheParams.blockSize - 1)};
+        DataCopyParams copyParams{static_cast<uint16_t>(scatterCacheParams.col / col0), 1, 0,
+                                  static_cast<uint16_t>(scatterCacheParams.blockSize - 1)};
         DataCopy(cacheGm[cacheOffset], inputLocal, copyParams);
         if (rowsInCurBatch != scatterCacheParams.row) {
             for (int row = 0; row < scatterCacheParams.row - rowsInCurBatch; ++row) {
@@ -113,15 +116,10 @@ __aicore__ inline void ScatterCacheMultiRows(GlobalTensor<T>& cacheGm, const Loc
 }
 
 template <typename T, bool isNz>
-__aicore__ inline void MaterializeOffsetsWithHeadSize(
-    int64_t pageTokenOffset,
-    int64_t tokenOffsetInPage,
-    int64_t rowsThisStep,
-    bool spill,
-    int64_t nextPageId,
-    int64_t headSize,
-    CkvkrParams &ckvkrParams
-) {
+__aicore__ inline void MaterializeOffsetsWithHeadSize(int64_t pageTokenOffset, int64_t tokenOffsetInPage,
+                                                      int64_t rowsThisStep, bool spill, int64_t nextPageId,
+                                                      int64_t headSize, CkvkrParams &ckvkrParams)
+{
     ckvkrParams.rowsInCurBatch = rowsThisStep;
     if constexpr (isNz) {
         constexpr uint8_t col0 = ALIGN_BLOCK_SIZE / sizeof(T);
@@ -132,6 +130,6 @@ __aicore__ inline void MaterializeOffsetsWithHeadSize(
     ckvkrParams.nextBatchOffset = (spill && nextPageId >= 0) ? nextPageId * headSize : 0;
 }
 
-}
+} // namespace MlaProlog
 
 #endif

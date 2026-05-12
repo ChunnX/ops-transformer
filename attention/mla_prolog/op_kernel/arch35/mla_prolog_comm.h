@@ -88,7 +88,7 @@ enum class ACTUAL_SEQ_MODE : std::uint8_t {
 
 enum class SPLIT_M_MODE : std::uint8_t {
     DISABLED = static_cast<std::uint8_t>(0),
-    ENABLED  = static_cast<std::uint8_t>(1),
+    ENABLED = static_cast<std::uint8_t>(1),
 };
 
 enum class ROPE_MODE : std::uint8_t {
@@ -99,24 +99,24 @@ enum class ROPE_MODE : std::uint8_t {
 constexpr uint64_t BYTE_BLOCK = 32UL;
 constexpr uint8_t ALIGN_BLOCK_SIZE = 32; // 32B对齐
 constexpr uint32_t BLOCK_CUBE_SIZE = 16; // L1上m轴16对齐
-constexpr uint32_t FP8_TWO = 2; // L1上scale的存储方式为2个fp8类型存成1个bf16
+constexpr uint32_t FP8_TWO = 2;          // L1上scale的存储方式为2个fp8类型存成1个bf16
 constexpr uint32_t REPEAT_BLOCK_BYTE = 256;
-constexpr uint32_t REPEAT_STRIDE_UP_BOUND = 256;  // repeat stride 不能超过256
+constexpr uint32_t REPEAT_STRIDE_UP_BOUND = 256; // repeat stride 不能超过256
 constexpr uint32_t FP32_BLOCK_ELEMENT_NUM = ALIGN_BLOCK_SIZE / sizeof(float);
 constexpr uint32_t FP16_BLOCK_ELEMENT_NUM = ALIGN_BLOCK_SIZE / sizeof(half);
 constexpr uint32_t FP32_REPEAT_ELEMENT_NUM = REPEAT_BLOCK_BYTE / sizeof(float);
-constexpr uint32_t MAX_UB_SIZE = 192 * 1024; // 最大的UB大小
-constexpr uint32_t DIM_HEAD_SIZE_QCQR = 192;  // 算力分组方案D + Dr = 192
-constexpr uint32_t QC_CORE_NUM = 8; // 算力分组方案QC占用8核
-constexpr uint32_t QR_CORE_NUM = 4; // 算力分组方案QR占用4核
+constexpr uint32_t MAX_UB_SIZE = 192 * 1024;      // 最大的UB大小
+constexpr uint32_t DIM_HEAD_SIZE_QCQR = 192;      // 算力分组方案D + Dr = 192
+constexpr uint32_t QC_CORE_NUM = 8;               // 算力分组方案QC占用8核
+constexpr uint32_t QR_CORE_NUM = 4;               // 算力分组方案QR占用4核
 constexpr uint32_t INT8_AFULLLOAD_MAX_MSIZE = 64; // 计算mmQcQr时，int8类型的A矩阵在msize小于等于64可以全载L1
 constexpr uint32_t BF16_AFULLLOAD_MAX_MSIZE = 32; // 计算mmQcQr时，bf16类型的A矩阵在msize小于等于32可以全载L1
-constexpr uint32_t ONE_BYTE_TYPE_SIZE = 1; // 数据类型int8_t fp8大小为1字节
+constexpr uint32_t ONE_BYTE_TYPE_SIZE = 1;        // 数据类型int8_t fp8大小为1字节
 constexpr uint32_t FP8_E4M3_BLOCK_SIZE = 32;
 constexpr uint32_t K_STEP_SIZE_32 = 32; // for move left or right
 constexpr uint32_t SHIFTS_UNIT = 4;
 constexpr uint32_t UNIT_SIZE = 512;
-constexpr uint32_t ROUND_UP_UNIT = 15; // for round up
+constexpr uint32_t ROUND_UP_UNIT = 15;       // for round up
 constexpr uint32_t MAX_SYNC_FLAG_COUNT = 15; // 同一个flagId的计数器最多设置15次
 
 constexpr int SYNC_MODE_ALL_CUBE = 0x0;
@@ -147,23 +147,11 @@ constexpr int FINISH_MM_QN_SPLIT_N = 0X8;
 
 class NoneType {};
 
-#if __CCE_AICORE__ == 310
-    using FP8E4M3 = fp8_e4m3fn_t;
-#else
-    using FP8E4M3 = NoneType;
-#endif
+using FP8E4M3 = fp8_e4m3fn_t;
 
-#if __CCE_AICORE__ == 310
-    using FP8E8M0 = fp8_e8m0_t;
-#else
-    using FP8E8M0 = NoneType;
-#endif
+using FP8E8M0 = fp8_e8m0_t;
 
-#if __CCE_AICORE__ == 310
-    using HIF8 = hifloat8_t;
-#else
-    using HIF8 = NoneType;
-#endif
+using HIF8 = hifloat8_t;
 
 // mte2 <> mte1
 #define SCALE_EVENT EVENT_ID3
@@ -236,29 +224,33 @@ constexpr uint32_t L0C_PP_SIZE = 64 * 1024;
 */
 
 template <typename X_T, typename W_T, typename C_T, typename D_S, CACHE_MODE C_M, bool ENABLE_DEQUANT_OPT,
-          bool ENABLE_GROUP_COMPUTE_OPT, EMPTY_TENSOR_MODE EMPTY_MODE,
-          ACTUAL_SEQ_MODE SEQ_MODE, bool IS_PERTILE = false, uint32_t CV_RATIO = 2, typename... Args>
+          bool ENABLE_GROUP_COMPUTE_OPT, EMPTY_TENSOR_MODE EMPTY_MODE, ACTUAL_SEQ_MODE SEQ_MODE,
+          bool IS_PERTILE = false, uint32_t CV_RATIO = 2, typename... Args>
 struct MLAPType {
-    using mmInputType = X_T;           // tokenX的类型与weight的类型一致
+    using mmInputType = X_T; // tokenX的类型与weight的类型一致
     using mmQcQrInputType = W_T;
-    using mmQnInputType = bfloat16_t;         // matmul计算Qn的输入类型
-    using mmCqOutputType = typename std::conditional<std::is_same<X_T, int8_t>::value, int32_t, bfloat16_t>::type; // matmul计算Cq的输出类型
-    using mmCkvKrOutputType = typename std::conditional<std::is_same<X_T, int8_t>::value, int32_t, bfloat16_t>::type; // matmul计算CkvKr的输出类型
-    using mmQcQrOutputType = typename std::conditional<std::is_same<W_T, int8_t>::value, int32_t, bfloat16_t>::type; // matmul计算QcQr的输出类型
-    using mmQnOutputType = bfloat16_t;        // matmul计算Qn的输出类型
-    using rmsNormGammaType = bfloat16_t;      // gamma的输入类型
+    using mmQnInputType = bfloat16_t; // matmul计算Qn的输入类型
+    using mmCqOutputType = typename std::conditional<std::is_same<X_T, int8_t>::value, int32_t,
+                                                     bfloat16_t>::type; // matmul计算Cq的输出类型
+    using mmCkvKrOutputType = typename std::conditional<std::is_same<X_T, int8_t>::value, int32_t,
+                                                        bfloat16_t>::type; // matmul计算CkvKr的输出类型
+    using mmQcQrOutputType = typename std::conditional<std::is_same<W_T, int8_t>::value, int32_t,
+                                                       bfloat16_t>::type; // matmul计算QcQr的输出类型
+    using mmQnOutputType = bfloat16_t;                                    // matmul计算Qn的输出类型
+    using rmsNormGammaType = bfloat16_t;                                  // gamma的输入类型
     using rmsNormComputType = float;
     using rmsNormCqOutputType = W_T;
     using rmsNormCkvOutputType = C_T;
-    using ropeSinCosType = bfloat16_t;        // sin cos的输入类型
+    using ropeSinCosType = bfloat16_t; // sin cos的输入类型
     using ropeComputType = float;
     using ropeOutputType = bfloat16_t;
-    using kvCacheType = C_T;           // kvcache的类型
-    using krCacheType = typename std::conditional<
-        ((std::is_same<X_T, int8_t>::value && std::is_same<C_T, int8_t>::value) || IS_PERTILE),
-        bfloat16_t, C_T>::type;        // krcache的类型
-    using dequantScaleQNopeType = float;      // dequantScaleQNope的类型
-    using dequantScaleQNormType = float;      // dequantScaleQNorm的类型
+    using kvCacheType = C_T; // kvcache的类型
+    using krCacheType =
+        typename std::conditional<((std::is_same<X_T, int8_t>::value && std::is_same<C_T, int8_t>::value) ||
+                                   IS_PERTILE),
+                                  bfloat16_t, C_T>::type; // krcache的类型
+    using dequantScaleQNopeType = float;                  // dequantScaleQNope的类型
+    using dequantScaleQNormType = float;                  // dequantScaleQNorm的类型
     using dequantScaleType = float;
 
     static constexpr CACHE_MODE cacheMode = C_M;
@@ -271,29 +263,28 @@ struct MLAPType {
 };
 
 // 类模板特化，支持mxfp8/fp8全量化
-#if __CCE_AICORE__ == 310
 template <typename C_T, typename D_S, CACHE_MODE C_M, bool ENABLE_DEQUANT_OPT, bool ENABLE_GROUP_COMPUTE_OPT,
           EMPTY_TENSOR_MODE EMPTY_MODE, ACTUAL_SEQ_MODE SEQ_MODE, bool IS_PERTILE, uint32_t CV_RATIO, typename... Args>
-struct MLAPType<FP8E4M3, FP8E4M3, C_T, D_S, C_M, ENABLE_DEQUANT_OPT,
-                ENABLE_GROUP_COMPUTE_OPT, EMPTY_MODE, SEQ_MODE, IS_PERTILE, CV_RATIO, Args...> {
-    using mmInputType = FP8E4M3;           // tokenX的类型与weight的类型一致
+struct MLAPType<FP8E4M3, FP8E4M3, C_T, D_S, C_M, ENABLE_DEQUANT_OPT, ENABLE_GROUP_COMPUTE_OPT, EMPTY_MODE, SEQ_MODE,
+                IS_PERTILE, CV_RATIO, Args...> {
+    using mmInputType = FP8E4M3; // tokenX的类型与weight的类型一致
     using mmQcQrInputType = FP8E4M3;
-    using mmQnInputType = bfloat16_t;         // matmul计算Qn的输入类型
-    using mmCqOutputType = float; // matmul计算Cq的输出类型
-    using mmCkvKrOutputType = float; // matmul计算CkvKr的输出类型
-    using mmQcQrOutputType = float; // matmul计算QcQr的输出类型
-    using mmQnOutputType = bfloat16_t;        // matmul计算Qn的输出类型
-    using rmsNormGammaType = bfloat16_t;      // gamma的输入类型
+    using mmQnInputType = bfloat16_t;    // matmul计算Qn的输入类型
+    using mmCqOutputType = float;        // matmul计算Cq的输出类型
+    using mmCkvKrOutputType = float;     // matmul计算CkvKr的输出类型
+    using mmQcQrOutputType = float;      // matmul计算QcQr的输出类型
+    using mmQnOutputType = bfloat16_t;   // matmul计算Qn的输出类型
+    using rmsNormGammaType = bfloat16_t; // gamma的输入类型
     using rmsNormComputType = float;
     using rmsNormCqOutputType = FP8E4M3;
     using rmsNormCkvOutputType = C_T;
-    using ropeSinCosType = bfloat16_t;        // sin cos的输入类型
+    using ropeSinCosType = bfloat16_t; // sin cos的输入类型
     using ropeComputType = float;
     using ropeOutputType = bfloat16_t;
-    using kvCacheType = C_T;           // kvcache的类型
-    using krCacheType = bfloat16_t;        // krcache的类型
-    using dequantScaleQNopeType = float;      // dequantScaleQNope的类型
-    using dequantScaleQNormType = D_S;      // dequantScaleQNormType的类型
+    using kvCacheType = C_T;             // kvcache的类型
+    using krCacheType = bfloat16_t;      // krcache的类型
+    using dequantScaleQNopeType = float; // dequantScaleQNope的类型
+    using dequantScaleQNormType = D_S;   // dequantScaleQNormType的类型
     using dequantScaleType = D_S;
 
     static constexpr CACHE_MODE cacheMode = C_M;
@@ -308,26 +299,26 @@ struct MLAPType<FP8E4M3, FP8E4M3, C_T, D_S, C_M, ENABLE_DEQUANT_OPT,
 // 类模板特化，支持hif8全量化
 template <typename C_T, typename D_S, CACHE_MODE C_M, bool ENABLE_DEQUANT_OPT, bool ENABLE_GROUP_COMPUTE_OPT,
           EMPTY_TENSOR_MODE EMPTY_MODE, ACTUAL_SEQ_MODE SEQ_MODE, bool IS_PERTILE, uint32_t CV_RATIO, typename... Args>
-struct MLAPType<HIF8, HIF8, C_T, D_S, C_M, ENABLE_DEQUANT_OPT,
-                ENABLE_GROUP_COMPUTE_OPT, EMPTY_MODE, SEQ_MODE, IS_PERTILE, CV_RATIO, Args...> {
-    using mmInputType = HIF8;           // tokenX的类型与weight的类型一致
+struct MLAPType<HIF8, HIF8, C_T, D_S, C_M, ENABLE_DEQUANT_OPT, ENABLE_GROUP_COMPUTE_OPT, EMPTY_MODE, SEQ_MODE,
+                IS_PERTILE, CV_RATIO, Args...> {
+    using mmInputType = HIF8; // tokenX的类型与weight的类型一致
     using mmQcQrInputType = HIF8;
-    using mmQnInputType = bfloat16_t;         // matmul计算Qn的输入类型
-    using mmCqOutputType = float; // matmul计算Cq的输出类型
-    using mmCkvKrOutputType = float; // matmul计算CkvKr的输出类型
-    using mmQcQrOutputType = float; // matmul计算QcQr的输出类型
-    using mmQnOutputType = bfloat16_t;        // matmul计算Qn的输出类型
-    using rmsNormGammaType = bfloat16_t;      // gamma的输入类型
+    using mmQnInputType = bfloat16_t;    // matmul计算Qn的输入类型
+    using mmCqOutputType = float;        // matmul计算Cq的输出类型
+    using mmCkvKrOutputType = float;     // matmul计算CkvKr的输出类型
+    using mmQcQrOutputType = float;      // matmul计算QcQr的输出类型
+    using mmQnOutputType = bfloat16_t;   // matmul计算Qn的输出类型
+    using rmsNormGammaType = bfloat16_t; // gamma的输入类型
     using rmsNormComputType = float;
     using rmsNormCqOutputType = HIF8;
     using rmsNormCkvOutputType = C_T;
-    using ropeSinCosType = bfloat16_t;        // sin cos的输入类型
+    using ropeSinCosType = bfloat16_t; // sin cos的输入类型
     using ropeComputType = float;
     using ropeOutputType = bfloat16_t;
-    using kvCacheType = C_T;           // kvcache的类型
-    using krCacheType = bfloat16_t;        // krcache的类型
-    using dequantScaleQNopeType = float;      // dequantScaleQNope的类型
-    using dequantScaleQNormType = float;      // dequantScaleQNormType的类型
+    using kvCacheType = C_T;             // kvcache的类型
+    using krCacheType = bfloat16_t;      // krcache的类型
+    using dequantScaleQNopeType = float; // dequantScaleQNope的类型
+    using dequantScaleQNormType = float; // dequantScaleQNormType的类型
     using dequantScaleType = float;
 
     static constexpr CACHE_MODE cacheMode = C_M;
@@ -338,123 +329,122 @@ struct MLAPType<HIF8, HIF8, C_T, D_S, C_M, ENABLE_DEQUANT_OPT,
     static constexpr bool isPertile = IS_PERTILE;
     static constexpr uint32_t cvRatio = CV_RATIO; // 默认C:V 1:2
 };
-#endif
 
 struct MMParams {
-  uint32_t m;
-  uint32_t n;
-  uint32_t k;
-  uint32_t orgM;
-  uint32_t orgN;
-  uint32_t orgKa;
-  uint32_t orgKb;
-  uint32_t orgKc;
-  uint32_t baseM;
-  uint32_t baseN;
-  uint32_t baseK;
-  uint32_t stepK;
-  uint32_t needSetOrgShape;
-  uint32_t kL1StepSize;
-  uint32_t kScale;
+    uint32_t m;
+    uint32_t n;
+    uint32_t k;
+    uint32_t orgM;
+    uint32_t orgN;
+    uint32_t orgKa;
+    uint32_t orgKb;
+    uint32_t orgKc;
+    uint32_t baseM;
+    uint32_t baseN;
+    uint32_t baseK;
+    uint32_t stepK;
+    uint32_t needSetOrgShape;
+    uint32_t kL1StepSize;
+    uint32_t kScale;
 };
 
 struct MMBufParams {
-  uint32_t aL1BufIter = 0;
-  uint32_t bL1BufIter = 0;
-  TBuffAddr aL1BufAddr;
-  TBuffAddr bL1BufAddr;
-  uint32_t aL0BufIter = 0;
-  uint32_t bL0BufIter = 0;
-  uint32_t cL0BufIter = 0;
-  TBuffAddr aL0BufAddr;
-  TBuffAddr bL0BufAddr;
-  TBuffAddr cL0BufAddr;
+    uint32_t aL1BufIter = 0;
+    uint32_t bL1BufIter = 0;
+    TBuffAddr aL1BufAddr;
+    TBuffAddr bL1BufAddr;
+    uint32_t aL0BufIter = 0;
+    uint32_t bL0BufIter = 0;
+    uint32_t cL0BufIter = 0;
+    TBuffAddr aL0BufAddr;
+    TBuffAddr bL0BufAddr;
+    TBuffAddr cL0BufAddr;
 };
 
 struct AicOffset {
-  int64_t weightDqOffset = 0;
-  int64_t dequantScaleWDqOffset = 0;
-  int64_t cqResOffset = 0;
-  int64_t rmsNormCqResOffset = 0;
-  int64_t dequantScaleWDkvKrOffset = 0;
-  int64_t weightDkvKrOffset = 0;
-  int64_t ckvKrResOffset = 0;
-  int64_t weightUqQrOffset = 0;
-  int64_t weightUqOffset = 0;
-  int64_t weightQrOffset = 0;
-  int64_t qcQrResOffset = 0;
-  int64_t dequantScaleCqOffset = 0;
-  int64_t qCResOffset = 0;
-  int64_t qRResOffset = 0;
-  int64_t qcOffset = 0;
-  int64_t weightUkOffset = 0;
-  int64_t dequantScaleWuqqrOffset = 0;
-  int64_t qnResOffset = 0;
+    int64_t weightDqOffset = 0;
+    int64_t dequantScaleWDqOffset = 0;
+    int64_t cqResOffset = 0;
+    int64_t rmsNormCqResOffset = 0;
+    int64_t dequantScaleWDkvKrOffset = 0;
+    int64_t weightDkvKrOffset = 0;
+    int64_t ckvKrResOffset = 0;
+    int64_t weightUqQrOffset = 0;
+    int64_t weightUqOffset = 0;
+    int64_t weightQrOffset = 0;
+    int64_t qcQrResOffset = 0;
+    int64_t dequantScaleCqOffset = 0;
+    int64_t qCResOffset = 0;
+    int64_t qRResOffset = 0;
+    int64_t qcOffset = 0;
+    int64_t weightUkOffset = 0;
+    int64_t dequantScaleWuqqrOffset = 0;
+    int64_t qnResOffset = 0;
 };
 
 struct AivOffset {
-  int64_t curVecToken = 0;
-  int64_t curBlockTokenOffset = 0;
-  int64_t rmsNormCqOffset = 0;
-  int64_t rmsNormCqResOffset = 0;
-  int64_t rmsNormCkvOffset = 0;
-  int64_t ropeKrOffset = 0;
-  int64_t mmQnPreDequantOffset = 0;
-  int64_t mmQnPreDequantResOffset = 0;
-  int64_t ropeQrOffset = 0;
-  int64_t ropeQrResOffset = 0;
-  int64_t ropeQrSplitNOffset = 0;
-  int64_t ropeQrResSplitNOffset = 0;
-  int64_t qcScaleOffsetSplitN = 0;
+    int64_t curVecToken = 0;
+    int64_t curBlockTokenOffset = 0;
+    int64_t rmsNormCqOffset = 0;
+    int64_t rmsNormCqResOffset = 0;
+    int64_t rmsNormCkvOffset = 0;
+    int64_t ropeKrOffset = 0;
+    int64_t mmQnPreDequantOffset = 0;
+    int64_t mmQnPreDequantResOffset = 0;
+    int64_t ropeQrOffset = 0;
+    int64_t ropeQrResOffset = 0;
+    int64_t ropeQrSplitNOffset = 0;
+    int64_t ropeQrResSplitNOffset = 0;
+    int64_t qcScaleOffsetSplitN = 0;
 };
 
 struct UsedBlockParams {
-  uint32_t blockStartIdx;
-  uint32_t blockEndIdx;
+    uint32_t blockStartIdx;
+    uint32_t blockEndIdx;
 };
 
 struct CkvkrParams {
-  int64_t tokenIndex;
-  int64_t offset; 
-  int64_t curVecTokenIdx;
-  int64_t rowsInCurBatch;
-  int64_t cacheOffset;
-  int64_t nextBatchOffset;
+    int64_t tokenIndex;
+    int64_t offset;
+    int64_t curVecTokenIdx;
+    int64_t rowsInCurBatch;
+    int64_t cacheOffset;
+    int64_t nextBatchOffset;
 };
 
 
 struct RopeQrSplitNParams {
-  int64_t ropeQrOffset;
-  int64_t ropeQrResOffset;
-  uint32_t inputOffsetRope;
-  uint32_t deqScaleOffset;
-  uint32_t outputOffsetRope;
-  int64_t ropeStride;
-  uint32_t ropeDstStride;
-  uint32_t deQuantScaleCqOffset;
-  uint32_t sinCosOffset;
-  uint32_t ropeCnt;
+    int64_t ropeQrOffset;
+    int64_t ropeQrResOffset;
+    uint32_t inputOffsetRope;
+    uint32_t deqScaleOffset;
+    uint32_t outputOffsetRope;
+    int64_t ropeStride;
+    uint32_t ropeDstStride;
+    uint32_t deQuantScaleCqOffset;
+    uint32_t sinCosOffset;
+    uint32_t ropeCnt;
 };
 
 struct DequantQcQrSplitNParams {
-  int64_t mmQnPreDequantOffset;
-  int64_t mmQnPreDequantResOffset;
-  uint32_t inputOffset;
-  uint32_t outputOffset;
-  uint32_t srcStride;
-  uint32_t dstStride;
+    int64_t mmQnPreDequantOffset;
+    int64_t mmQnPreDequantResOffset;
+    uint32_t inputOffset;
+    uint32_t outputOffset;
+    uint32_t srcStride;
+    uint32_t dstStride;
 };
 
 struct CastQcQrSplitNParams {
-  int64_t mmQnPreCastOffset;
-  int64_t mmQnPreCastResOffset;
-  uint32_t inputOffset;
-  uint32_t outputOffset;
-  uint32_t srcStride;
-  uint32_t dstStride;
+    int64_t mmQnPreCastOffset;
+    int64_t mmQnPreCastResOffset;
+    uint32_t inputOffset;
+    uint32_t outputOffset;
+    uint32_t srcStride;
+    uint32_t dstStride;
 };
 
-constexpr MatmulConfig CFG_MDL_EXCEED_INIT {.doNorm = false,
+constexpr MatmulConfig CFG_MDL_EXCEED_INIT{.doNorm = false,
                                            .doBasicBlock = false,
                                            .doMultiDataLoad = true,
                                            .basicM = 0,
@@ -488,9 +478,10 @@ constexpr MatmulConfig CFG_MDL_EXCEED_INIT {.doNorm = false,
                                            .enableSetDefineData = true,
                                            .iterateMode = IterateMode::ITERATE_MODE_ALL};
 template <uint8_t modeId, pipe_t pipe>
-__aicore__ inline void WaitAllCore(uint16_t flagId) {
-  CrossCoreSetFlag<modeId, pipe>(flagId);
-  CrossCoreWaitFlag(flagId);
+__aicore__ inline void WaitAllCore(uint16_t flagId)
+{
+    CrossCoreSetFlag<modeId, pipe>(flagId);
+    CrossCoreWaitFlag(flagId);
 }
 }
 #endif
