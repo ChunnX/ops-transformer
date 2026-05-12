@@ -200,19 +200,17 @@ public:
     }
 
     __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-                                       Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &mm2AScaleBuf,
                                        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
                                        RunInfoX runInfo, uint32_t subLoop)
     {
         bmm1ResBuf.WaitCrossCore();
         if (unlikely(runInfo.actVecMSize == 0)) {
             bmm1ResBuf.SetCrossCore();
-            mm2AScaleBuf.SetCrossCore();
             outputBuf.SetCrossCore();
             return;
         }
 
-        ProcessVec1Nd(outputBuf, mm2AScaleBuf, bmm1ResBuf, runInfo, subLoop);
+        ProcessVec1Nd(outputBuf, bmm1ResBuf, runInfo, subLoop);
     }
 
     __aicore__ inline void ClearOutput()
@@ -460,7 +458,6 @@ public:
     // }
 
     __aicore__ inline void ProcessVec1Nd(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-                                         Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &mm2AScaleBuf,
                                          Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
                                          RunInfoX runInfo, uint32_t subLoop)
     {
@@ -581,10 +578,21 @@ public:
         // ===================DataCopy to L1 ====================
         this->stage1OutQue[stage1Offset].template EnQue(stage1CastTensor);
         this->stage1OutQue[stage1Offset].template DeQue<INPUT_T>();
+        this->pScaleSubLoop0Que.template EnQue(pScaleSubLoop0Tensor);
+        this->pScaleSubLoop0Que.template DeQue<fp8_e8m0_t>();
 
         LocalTensor<INPUT_T> mm2AL1Tensor;
         mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
-
+        if ((runInfo.actSingleLoopS2Size > 256) && (subLoop % 2 == 1)) {
+            uint32_t pScaleL1Offset = mBaseSize * s2BaseSizeCur; // PScale在L1P的偏移量（单位：元素）
+            LocalTensor<fp8_e8m0_t> mm2AScaleL1Tensor;
+            mm2AScaleL1Tensor = outputBuf.GetTensor<fp8_e8m0_t>(pScaleL1Offset);
+            DataCopy(mm2AScaleL1Tensor, pScaleSubLoop0Tensor,
+                        {s2BaseSizeCur / 32, (uint16_t)runInfo.actVecMSize,
+                        (uint16_t)(vec1Srcstride - runInfo.actVecMSize), (uint16_t)(mBaseSize - runInfo.actVecMSize)}); // todo pscale打印看搬运偏移
+            this->pScaleSubLoop0Que.template FreeTensor(pScaleSubLoop0Tensor);
+        }
+        
         if (likely(runInfo.actVecMSize != 0)) {
             int64_t dstOffset =
                 constInfo.subBlockIdx * (blockBytes / sizeof(INPUT_T)) * (runInfo.actMSize - runInfo.actVecMSize) +
@@ -596,16 +604,6 @@ public:
         this->stage1OutQue[stage1Offset].template FreeTensor(stage1CastTensor);
 
         if (((runInfo.actSingleLoopS2Size > 256) && (subLoop % 2 == 1)) || (runInfo.actSingleLoopS2Size <= 256)) {
-            // todo pscale
-            this->pScaleSubLoop0Que.template EnQue(pScaleSubLoop0Tensor);
-            this->pScaleSubLoop0Que.template DeQue<fp8_e8m0_t>();
-            LocalTensor<fp8_e8m0_t> mm2AScaleL1Tensor;
-            mm2AScaleL1Tensor = mm2AScaleBuf.GetTensor<fp8_e8m0_t>();
-            DataCopy(mm2AScaleL1Tensor, pScaleSubLoop0Tensor,
-                        {s2BaseSizeCur / 32, (uint16_t)runInfo.actVecMSize,
-                        (uint16_t)(vec1Srcstride - runInfo.actVecMSize), (uint16_t)(mBaseSize - runInfo.actVecMSize)}); // todo pscale打印看搬运偏移
-            this->pScaleSubLoop0Que.template FreeTensor(pScaleSubLoop0Tensor);
-            mm2AScaleBuf.SetCrossCore();
             outputBuf.SetCrossCore();
         }
 
@@ -915,7 +913,7 @@ public:
         }
         SoftmaxInitBuffer();
         tPipe->InitBuffer(stage2OutBuf, 64 * dTemplateAlign64 * sizeof(T));
-        tPipe->InitBuffer(stage1OutQue[0], 1, 16640); // (32 + 1) * (256 / 32) * 64
+        tPipe->InitBuffer(stage1OutQue[0], 1, 16640); // (s1base/2+1)*s2base/2*1=16640
         tPipe->InitBuffer(stage1OutQue[1], 1, 16640);
         tPipe->InitBuffer(pScaleSubLoop0Que, 1, 512);
         tPipe->InitBuffer(commonTBuf, 512);
