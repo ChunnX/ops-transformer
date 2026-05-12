@@ -209,6 +209,17 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
                     wGroupOffset += static_cast<uint64_t>(groupEnd - groupStart) * n * k;
                 }
                 groupStart = groupEnd;
+
+                // A5: empty round must execute same SyncAll count as normal round (4 total)
+                SyncAll();  // Match gmm() internal SyncAll<false>()
+                SyncAll();  // Match explicit SyncAll() at aggregation boundary
+
+                GMMFRDeterministic::SyncConfig emptyConfig{};
+                emptyConfig.curM = 0;
+                emptyConfig.baseN = baseN;
+                GMMFRDeterministic::FRDeterministicA5<float, rowIndexType>(
+                    emptyConfig, deterBufferGm, yGm, rowIndexGm, queBind,
+                    matmulTiling_.usedCoreNum, static_cast<uint32_t>(n), globalRowOffset);
                 continue;
             }
 
@@ -264,6 +275,7 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
 
             GmmKernelDeterministic gmm;
             gmm(params);
+            SyncAll();
 
             // Window aggregation: workspace -> yGm
             GMMFRDeterministic::SyncConfig syncConfig{};

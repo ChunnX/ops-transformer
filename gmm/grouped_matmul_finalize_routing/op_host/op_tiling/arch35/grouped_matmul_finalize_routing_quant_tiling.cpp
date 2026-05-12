@@ -504,6 +504,42 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::DoOpTiling()
                         return ge::GRAPH_FAILED;
                     }
                 }
+
+                // Simulate sliding window rounds and print per-round debug info
+                int32_t logEnable = CheckLogLevel(static_cast<int32_t>(OP), DLOG_DEBUG);
+                if (logEnable == 1 && groupListData != nullptr) {
+                    uint32_t roundIdx = 0;
+                    uint32_t gs = 0;
+                    while (gs < inputParams_.groupNum) {
+                        int32_t prevOff = 0;
+                        if (inputParams_.groupListType == 0 && gs > 0) {
+                            prevOff = static_cast<int32_t>(groupListData[gs - 1]);
+                        }
+                        int32_t rM = 0;
+                        uint32_t ge = gs;
+                        while (ge < inputParams_.groupNum) {
+                            int32_t gm = 0;
+                            if (inputParams_.groupListType == 0) {
+                                gm = static_cast<int32_t>(groupListData[ge]) - (ge == gs ? prevOff : static_cast<int32_t>(groupListData[ge - 1]));
+                            } else {
+                                gm = static_cast<int32_t>(groupListData[ge]);
+                            }
+                            if (rM + gm > static_cast<int32_t>(windowSizeRows) && rM > 0) {
+                                break;
+                            }
+                            rM += gm;
+                            ge++;
+                            if (rM >= static_cast<int32_t>(windowSizeRows)) {
+                                break;
+                            }
+                        }
+                        OP_LOGD(context_->GetNodeName(),
+                                "DeterWindow round=%u, groupStart=%u, groupEnd=%u, roundM=%d",
+                                roundIdx, gs, ge, rM);
+                        gs = ge;
+                        roundIdx++;
+                    }
+                }
             }
         }
     }
@@ -626,7 +662,9 @@ void GroupedMatmulFinalizeRoutingQuantTiling::PrintQuantParams()
         << ", bQuantMode = " << tilingData_.gmmFinalizeRoutingDataParams.bQuantMode
         << ", hasBias = " << static_cast<uint32_t>(tilingData_.gmmFinalizeRoutingDataParams.hasBias)
         << ", deterministicFlag = " << tilingData_.gmmFinalizeRoutingDataParams.deterministicFlag
-        << ", deterWorkspaceSize = " << tilingData_.gmmFinalizeRoutingDataParams.deterWorkspaceSize;
+        << ", deterWorkspaceSize = " << tilingData_.gmmFinalizeRoutingDataParams.deterWorkspaceSize
+        << ", windowSize = " << tilingData_.gmmFinalizeRoutingDataParams.windowSize
+        << ", totalM = " << tilingData_.gmmFinalizeRoutingDataParams.totalM;
     OP_LOGD(context_->GetNodeName(), "%s", oss.str().c_str());
 }
 
