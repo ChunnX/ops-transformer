@@ -998,12 +998,10 @@ public:
         } else {
             maskInfo.layout = GS;
         }
-
         maskInfo.attenMaskType = MASK_BOOL; // compatible with int8/uint8
 
         bool IsSkipMask = IsSkipAttentionmask(maskInfo);
         bool IsSkipMaskForPre = IsSkipAttentionmaskForPre(maskInfo);
-
         if (IsSkipMask && IsSkipMaskForPre) {
             Duplicate(attenMaskUb, static_cast<uint8_t>(0U), maskInfo.gs1dealNum * s2BaseSizeCur);
             return;

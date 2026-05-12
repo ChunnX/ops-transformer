@@ -61,7 +61,7 @@ public:
             return 0;
         }
         uint64_t ans = 0;
-        for( uint32_t idx = 0 ; idx < bIdx  ;idx++){
+        for (uint32_t idx = 0; idx < bIdx; idx++) {
             ans += ((GetActualSeqLength(idx) + 63) >> 6);
         }
         return ans;
