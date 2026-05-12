@@ -35,15 +35,15 @@ using MC2KernelTemplate::MC2AlltoAllContext;
 using MC2KernelTemplate::MC2AlltoAllPrimitives;
 
 #ifndef MATMUL_ALLTO_ALL_APT_FP_IMPL
-#define MATMUL_ALLTO_ALL_APT_FP_IMPL(tilingData, pipe, ServerType)                                                      \
+#define MATMUL_ALLTO_ALL_APT_FP_IMPL(tilingData, pipe, ServerType)                                                     \
     do {                                                                                                               \
         DEFINE_MC2_MATMUL_CONTEXT_FOR_MATMUL_COMPUTATION_FP(ComputationContextType);                                   \
         DEFINE_MC2_MATMUL_FOR_MATMUL_COMPUTATION_FP(false, X2TRANSPOSE, ComputationType);                              \
         ComputationType matmulImplName(&pipe);                                                                         \
         DEFINE_MC2_TRANSPOSE_FOR_MATH_COMPUTATION(DTYPE_Y, TransposeType);                                             \
         TransposeType transposeImplName(&pipe);                                                                        \
-        DEFINE_MC2_HCCL_FOR_COMMUNICATION(false, ServerType, MC2AlltoAllContext,                                        \
-                                          MatmulAlltoAllTilingData, MC2AlltoAllPrimitives, 1, 0, CommunicationType);   \
+        DEFINE_MC2_HCCL_FOR_COMMUNICATION(false, ServerType, MC2AlltoAllContext, MatmulAlltoAllTilingData,             \
+                                          MC2AlltoAllPrimitives, 1, 0, CommunicationType);                             \
         CommunicationType commImplName(&tilingData);                                                                   \
         using SchedulerContextType = MatmulAlltoAllPipelineContext<ComputationContextType>;                            \
         using SchedulerType =                                                                                          \
@@ -57,16 +57,15 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
 #endif
 
 #ifndef MATMUL_ALLTO_ALL_APT_KC_QUANT_IMPL
-#define MATMUL_ALLTO_ALL_APT_KC_QUANT_IMPL(tilingData, pipe, ServerType)                                                \
+#define MATMUL_ALLTO_ALL_APT_KC_QUANT_IMPL(tilingData, pipe, ServerType)                                               \
     do {                                                                                                               \
         DEFINE_MC2_MATMUL_CONTEXT_FOR_MATMUL_COMPUTATION_QUANT(KcComputationContextType);                              \
         DEFINE_MC2_MATMUL_FOR_MATMUL_COMPUTATION_QUANT(KcComputationType, DTYPE_X1, DTYPE_X2);                         \
         KcComputationType matmulImplName(&pipe);                                                                       \
         DEFINE_MC2_TRANSPOSE_FOR_MATH_COMPUTATION(DTYPE_Y, KcTransposeType);                                           \
         KcTransposeType transposeImplName(&pipe);                                                                      \
-        DEFINE_MC2_HCCL_FOR_COMMUNICATION(false, ServerType, MC2AlltoAllContext,                                        \
-                                          QuantMatmulAlltoAllTilingData, MC2AlltoAllPrimitives, 1, 0,                  \
-                                          CommunicationType);                                                          \
+        DEFINE_MC2_HCCL_FOR_COMMUNICATION(false, ServerType, MC2AlltoAllContext, QuantMatmulAlltoAllTilingData,        \
+                                          MC2AlltoAllPrimitives, 1, 0, CommunicationType);                             \
         CommunicationType commImplName(&tilingData);                                                                   \
         using SchedulerContextType = MatmulAlltoAllPipelineContext<KcComputationContextType>;                          \
         using SchedulerType =                                                                                          \
@@ -80,16 +79,15 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
 #endif
 
 #ifndef MATMUL_ALLTO_ALL_APT_MX_QUANT_IMPL
-#define MATMUL_ALLTO_ALL_APT_MX_QUANT_IMPL(tilingData, pipe, ServerType)                                                \
+#define MATMUL_ALLTO_ALL_APT_MX_QUANT_IMPL(tilingData, pipe, ServerType)                                               \
     do {                                                                                                               \
         DEFINE_MC2_MATMUL_CONTEXT_FOR_MATMUL_COMPUTATION_MX_QUANT(MxComputationContextType);                           \
         DEFINE_MC2_MATMUL_FOR_MATMUL_COMPUTATION_MX_QUANT(MxComputationType);                                          \
         MxComputationType matmulImplName(&pipe);                                                                       \
         DEFINE_MC2_TRANSPOSE_FOR_MATH_COMPUTATION(DTYPE_Y, TransposeType);                                             \
         TransposeType transposeImplName(&pipe);                                                                        \
-        DEFINE_MC2_HCCL_FOR_COMMUNICATION(false, ServerType, MC2AlltoAllContext,                                        \
-                                          QuantMatmulAlltoAllTilingData, MC2AlltoAllPrimitives, 1, 0,                  \
-                                          CommunicationType);                                                          \
+        DEFINE_MC2_HCCL_FOR_COMMUNICATION(false, ServerType, MC2AlltoAllContext, QuantMatmulAlltoAllTilingData,        \
+                                          MC2AlltoAllPrimitives, 1, 0, CommunicationType);                             \
         CommunicationType commImplName(&tilingData);                                                                   \
         using SchedulerContextType = MatmulAlltoAllPipelineContext<MxComputationContextType>;                          \
         using SchedulerType =                                                                                          \

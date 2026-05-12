@@ -24,7 +24,7 @@
 #include "opdev/platform.h"
 #include "opdev/format_utils.h"
 #include "aclnn_kernels/transdata.h"
-#include "mc2_comm_utils.h" 
+#include "mc2_comm_utils.h"
 
 namespace {
 
