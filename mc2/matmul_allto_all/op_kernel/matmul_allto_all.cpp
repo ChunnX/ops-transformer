@@ -52,7 +52,8 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
     } while (0)
 #endif
 
-template<bool MM_ALLTO_ALL_TRANS_X2, bool MM_ALLTO_ALL_HAS_BIAS, int MM_ALLTO_ALL_BIAS_DTYPE, int MM_ALLTO_ALL_SOC_VERSION>
+template<bool MM_ALLTO_ALL_TRANS_X2, bool MM_ALLTO_ALL_HAS_BIAS, int MM_ALLTO_ALL_BIAS_DTYPE, 
+            int MM_ALLTO_ALL_SOC_VERSION>
 __global__ __aicore__ void matmul_allto_all(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, 
                                             GM_ADDR x1_scale, GM_ADDR x2_scale, GM_ADDR comm_scale, GM_ADDR x1_offset, GM_ADDR x2_offset, 
                                             GM_ADDR y, GM_ADDR workspaceGM, GM_ADDR tilingGM)
