@@ -177,6 +177,36 @@ __aicore__ inline void SparseLightningIndexerGradKLLossBase<SLIT>::Init(
     dWeightGm.SetGlobalBuffer((__gm__ W_T *)dWeight);
     lossGm.SetGlobalBuffer((__gm__ T *)loss);
     lossGm.SetValue(0, 0.0F);
+    if constexpr (LAYOUT_T == SLILayout::TND) {
+        auto &baseInfo = tilingData->baseParams;
+        int64_t t1Size = baseInfo.t1Size;
+        int64_t t2Size = baseInfo.t2Size;
+        int64_t actualLen = actualSeqLengthsQueryGm.GetValue(constInfo.bSize - 1);
+        int64_t actuaKlLen = actualSeqLengthsKeyGm.GetValue(constInfo.bSize - 1);
+        if (t1Size > actualLen && t2Size > actuaKlLen) {
+            // init dq dw
+            int64_t totalAivNum = GetBlockNum() * GetTaskRation() * 2;
+            int64_t t1PadLen = t1Size - actualLen;
+            int64_t splitPadLen = CeilDiv(t1PadLen, totalAivNum);
+            int64_t preSplitCore = t1PadLen % totalAivNum;
+            preSplitCore = preSplitCore == 0 ? totalAivNum : preSplitCore;
+            int64_t currentCoreSplitPadLen = constInfo.aivIdx < preSplitCore ? splitPadLen : splitPadLen -1;
+            int64_t splitPadLenSum = constInfo.aivIdx > preSplitCore ? (splitPadLen * preSplitCore + (constInfo.aivIdx - preSplitCore) * currentCoreSplitPadLen) : constInfo.aivIdx * splitPadLen;
+            int64_t dQOutputOffset = (splitPadLenSum + actualLen) * constInfo.gSizeQueryIndex * constInfo.dSizeQueryIndex;
+            int64_t dWOutputOffset = (splitPadLenSum + actualLen) * constInfo.gSizeQueryIndex;
+            // init dk
+            int64_t t2PadLen = t2Size - actuaKlLen;
+            int64_t splitT2PadLen = CeilDiv(t2PadLen, totalAivNum);
+            int64_t preSplitT2Core = t2PadLen % totalAivNum;
+            preSplitT2Core = preSplitT2Core == 0 ? totalAivNum : preSplitT2Core;
+            int64_t currentCoreSplitT2PadLen = constInfo.aivIdx < preSplitT2Core ? splitT2PadLen : splitT2PadLen -1;
+            int64_t splitT2PadLenSum = constInfo.aivIdx > preSplitT2Core ? (splitT2PadLen * preSplitT2Core + (constInfo.aivIdx - preSplitT2Core) * currentCoreSplitT2PadLen) : constInfo.aivIdx * splitT2PadLen;
+            int64_t dKOutputOffset = (splitT2PadLenSum + actuaKlLen) * constInfo.dSizeQueryIndex;
+            AscendC::InitOutput<OUT_T>(dQueryIndexGm[dQOutputOffset], currentCoreSplitPadLen * constInfo.gSizeQueryIndex * constInfo.dSizeQueryIndex, 0);
+            AscendC::InitOutput<OUT_T>(dKeyIndexGm[dKOutputOffset], currentCoreSplitT2PadLen * constInfo.dSizeQueryIndex, 0);
+            AscendC::InitOutput<W_T>(dWeightGm[dWOutputOffset], currentCoreSplitPadLen * constInfo.gSizeQueryIndex, 0);
+        }
+    }
     AscendC::DataCacheCleanAndInvalid<T, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(lossGm);
     InitWorkspace(workspace);
     InitBuffer(pipe);
