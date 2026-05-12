@@ -52,8 +52,6 @@ const static uint64_t TILING_KEY_RENORM_SIGMOID = 1;
 
 // Data type sizes
 const static size_t SIZE_OF_FLOAT32 = 4;
-const static size_t FLOAT16_SIZE_T = 2;
-const static size_t BFLOAT16_SIZE_T = 2;
 
 // Miscellaneous
 const static int64_t MAX_EXPERT_COUNT = 2048;           // max value for n
@@ -249,11 +247,6 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckAttr()   // lc
     }
     OP_LOGI(context_, "Attr routedScalingFactor is: %f.", routedScalingFactor_);
 
-    OP_CHECK_IF(
-        routedScalingFactor_ > 0.0f,
-        OP_LOGE(context_, "routedScalingFactor is: %f, but should be greater than 0.", routedScalingFactor_),
-        return ge::GRAPH_FAILED);
-
     const float *epsPtr = attrs->GetAttrPointer<float>(EPS_ATTR_INDEX);
     if (epsPtr != nullptr) {
         eps_ = *epsPtr;
@@ -307,6 +300,7 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckOutShape()   // lc
                 OP_LOGE(opName_, "gradX : Shape xNorm and gradX should match in dimension 1."),
                 return ge::GRAPH_FAILED);
 
+    // gradYDtype可以作为一个私有成员
     auto gradYDesc = context_->GetInputDesc(GRAD_Y_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, gradYDesc);
     auto gradYDtype = gradYDesc->GetDataType();
@@ -337,8 +331,8 @@ int64_t MoeGatingTopKBackwardTilingBase::CalcMaxRows()
     int64_t bufk4MaskPerTokenSpace = k_ * SIZE_OF_FLOAT32;
     int64_t bufsPerTokenSpace = 1 * SIZE_OF_FLOAT32;
 
-    int64_t ubReserve = 1 * 1024;
-    int64_t shareTmpBufSpace = 0;
+    int64_t ubReserve = 1 * 1024; // 魔鬼数字
+    int64_t shareTmpBufSpace = 0; // shareTmpBufSpace需要具体计算BroadCast、reduceSum，先使用api把max和min打印出来
 
     int64_t available_space = aicoreParams_.ubSize - ubReserve - shareTmpBufSpace;
     OP_CHECK_IF(available_space <= 0, OP_LOGE(context_,
@@ -347,11 +341,11 @@ int64_t MoeGatingTopKBackwardTilingBase::CalcMaxRows()
     int64_t quePerTokenSpace =
         gradYQuePerTokenSpace + indicesQuePerTokenSpace + xQuePerTokenSpace + outQuePerTokenSpace;
     int64_t bufPerTokenSpace =
-        bufk0PerTokenSpace + bufk1PerTokenSpace + bufn2PerTokenSpace + bufn3PerTokenSpace + bufk4AddPerTokenSpace +
-        bufk4IndexPerTokenSpace + bufk4RecipSumPerTokenSpace + bufsPerTokenSpace;
+        bufk1PerTokenSpace + bufn2PerTokenSpace + bufn3PerTokenSpace + bufk4AddPerTokenSpace +
+        bufk4IndexPerTokenSpace + bufk4RecipSumPerTokenSpace + bufk4MaskPerTokenSpace + bufsPerTokenSpace;
     int64_t maxRows = available_space / (quePerTokenSpace + bufPerTokenSpace);
 
-    while (maxRows > 0) {
+    while (maxRows > 0) { // 魔鬼数字
         // queSpace: gradYQueSpace == indicesQueSpace; xQueSpace; outQueSpace
         // bufSpace: bufk1Space == bufk4AddSpace == bufk4IndexSpace == bufk4RecipSumSpace == bufk4MaskSpace;
         //           bufn2Space == bufn3Space; bufsSpace
@@ -360,7 +354,7 @@ int64_t MoeGatingTopKBackwardTilingBase::CalcMaxRows()
             AlignBytes_(maxRows * outQuePerTokenSpace);
         int64_t bufPerTokenSpace =
             5 * maxRows * AlignBytes_(bufk1PerTokenSpace) + 2 * AlignBytes_(maxRows * bufn2PerTokenSpace) +
-            maxRows * AlignBytes_(bufk4MaskPerTokenSpace);
+            maxRows * AlignBytes_(bufsPerTokenSpace);
         int64_t usedSpace = ubReserve + shareTmpBufSpace + queSpace + bufPerTokenSpace;
 
         if (usedSpace <= aicoreParams_.ubSize) {

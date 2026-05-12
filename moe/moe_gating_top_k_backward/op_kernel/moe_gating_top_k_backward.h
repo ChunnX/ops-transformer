@@ -129,11 +129,9 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::Process()
         CopyInGradY(loopIdx); // lc
         CopyInXNorm(); // fqy
         CopyInExpertIdx(); // fqy
-        
         Sigmoid(); // fqy
         GetGradXNorm(); // lc
         GetGradX(); // lc
-
         CopyOut(loopIdx);  // lc
     }
 }
