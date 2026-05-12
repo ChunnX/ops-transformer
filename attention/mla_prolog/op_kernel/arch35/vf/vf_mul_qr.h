@@ -74,7 +74,7 @@ __aicore__ inline void MulQrVF(const LocalTensor<O> &outputLocal, const LocalTen
     __ubuf__ T * inputBuf = (__ubuf__ T *)inputLocal.GetPhyAddr();
     __ubuf__ O * outputBuf = (__ubuf__ O *)outputLocal.GetPhyAddr();
     __ubuf__ T * dequantScaleBrcbBuf = (__ubuf__ T *)dequantScaleBrcbLocal.GetPhyAddr();
-    MulQrVFImpl<T>(outputBuf,inputBuf,  dequantScaleBrcbBuf, floatRepSize, repeatTimes, quantScaleCkvRope, computeBlockAlign);
+    MulQrVFImpl(outputBuf, inputBuf, dequantScaleBrcbBuf, floatRepSize, repeatTimes, quantScaleCkvRope, computeBlockAlign);
 }
 } // namespace MlaProlog
  #endif

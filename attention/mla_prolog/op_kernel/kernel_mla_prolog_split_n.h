@@ -190,7 +190,7 @@ private:
     template<bool needQnDynamicQuant>
     __aicore__ inline void M3AndM4(AicOffset &aicOffset);
     template<bool needQnDynamicQuant>
-    __aicore__ inline void V3AndV4(AivOffset &aivOffset);
+    __aicore__ inline void V3AndV4(AivOffset &aivOffset, int64_t batchOffset);
 
     TPipe* pipe_;
     const optiling::MlaPrologTilingData* __restrict tilingData_;
@@ -588,7 +588,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::ShareBufferInit() {
         uint64_t cvShareBufferSize = 64 * 192 * 4 + 64 * 512 * 4;
         pipe_->InitBuffer(shareBuffer_, cvShareBufferSize);
         mm3ResLocal_ = shareBuffer_.Get<float>();
-        mm4ResLocal_ = mm3ResLocal_[64 * 192 * 4];
+        mm4ResLocal_ = mm3ResLocal_[64 * 192];
         usedShareBytes += cvShareBufferSize;
     }
     pipe_->InitBuffer(aBufL1_, L1_A_SIZE * 2);
@@ -923,8 +923,6 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::Process() {
 
         WaitFlag<HardEvent::MTE1_MTE2>(SCALE_EVENT);
         CrossCoreWaitFlag(FINISH_VEC_CKVKR);
-        CrossCoreWaitFlag(FINISH_VEC_QR);
-        CrossCoreWaitFlag(FINISH_VEC_QN);
     }
 }
 
@@ -1095,7 +1093,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AivProcess(AivOffset &aivOffs
     if (splitKN) {
         CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE3>(FINISH_VEC_QR);
         CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE3>(FINISH_VEC_QN);
-        V3AndV4<needQnDynamicQuant>(aivOffset);
+        V3AndV4<needQnDynamicQuant>(aivOffset, batchOffset);
         aivOffset.ropeQrResOffset += static_cast<int64_t>(baseParams_->stepBatchSize) * static_cast<int64_t>(baseParams_->headSizeQr);
     } else {
         if constexpr (MLAPT::enableGroupComputeOpt) {
@@ -2534,10 +2532,10 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::M3AndM4(AicOffset &aicOffset)
         // PreloadQnAndSync(aicOffset, mmQnLoops);
         // MatmulQnWeightPreload(aicOffset.weightUkOffset, mmQnLoops);
 
-        if constexpr (std::is_same<mmQcQrInputType, int8_t>::value || std::is_same<mmQcQrInputType, HIF8>::value ||
-                      (std::is_same<mmQcQrInputType, FP8E4M3>::value && !isFp8E8m0)) {
-            CrossCoreWaitFlag(FINISH_VEC_DEQUANT_QC_SPLIT_N);
-        } 
+        // if constexpr (std::is_same<mmQcQrInputType, int8_t>::value || std::is_same<mmQcQrInputType, HIF8>::value ||
+        //               (std::is_same<mmQcQrInputType, FP8E4M3>::value && !isFp8E8m0)) {
+        //     CrossCoreWaitFlag(FINISH_VEC_DEQUANT_QC_SPLIT_N);
+        // } 
 
         // MatmulQnSyncDynamicQuantAndMulQr<needQnDynamicQuant>(aicOffset.qcOffset, aicOffset.weightUkOffset, aicOffset.qnResOffset, mmQnLoops);
         // 替换成MatmulL0
@@ -2564,7 +2562,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::M3AndM4(AicOffset &aicOffset)
                 if (n == 0) {
                     CrossCoreWaitFlag(FINISH_VEC_QN);
                 }
-                GetTensorCToUb<T>(mm4ResLocal_[n * mmQnParam_.baseN], cL0, mmQnParam_.m, mmQnParam_.baseN, mSize, mmQnParam_.orgKc,
+                GetTensorCToUb(mm4ResLocal_[n * mmQnParam_.baseN], cL0, mmQnParam_.m, mmQnParam_.baseN, mSize, baseParams_->headSizeCkv,
                                                     bufParam_);
             } else {
                 GetTensorC<T>(mmQnResGm_[qnResOffset + n * mmQnParam_.baseN], cL0, mmQnParam_.m, mmQnParam_.baseN, mSize, mmQnParam_.orgKc,
@@ -2658,8 +2656,10 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::V3AndV4(AivOffset &aivOffset,
             AscendC::PipeBarrier<PIPE_V>();
             SetFlag<HardEvent::V_MTE3>(EVENT_ID1);
             WaitFlag<HardEvent::V_MTE3>(EVENT_ID1); // 计算是否已经完成可以搬运
-            DataCopy(mmQnResGm_[dynamicQuantQueryResOffset], queryOutputLocal, outputParamsRope);
-            CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE3>(FINISH_VEC_QN);
+            DataCopy(queryOutGm_[dynamicQuantQueryResOffset], queryOutputLocal, outParams);
+            if (nL1 <  baseParams_->headSizeCkv - 1) {
+                CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE3>(FINISH_VEC_QN);
+            }
 
             Brcb(scaleBrcb, scaleOutputLocal, CeilDivT(static_cast<uint64_t>(row), computeBlockAlign), {1, computeBlockAlign});
             AscendC::PipeBarrier<PIPE_V>();
@@ -2669,7 +2669,9 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::V3AndV4(AivOffset &aivOffset,
         SetFlag<HardEvent::V_MTE3>(EVENT_ID1);
         WaitFlag<HardEvent::V_MTE3>(EVENT_ID1);
         DataCopy(qrOutGm_[ropeQrResOffset], queryRopeOutputLocal, outputCopyParams);
-        CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE3>(FINISH_VEC_QR);
+        if (nL1 <  baseParams_->headSizeCkv - 1) {
+            CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE3>(FINISH_VEC_QR);
+        }
 
         if constexpr (needQnDynamicQuant) {
             DataCopyParams scaleOutCopyParams{(uint16_t)row, (uint16_t)sizeof(float), 0,
