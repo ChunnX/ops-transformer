@@ -53,19 +53,16 @@ public:
 
     // ==================== Functions ======================
     __aicore__ inline SCFABlockVec() {};
-    __aicore__ inline void InitVecBlock(TPipe *pipe, const KvQuantSparseAttnSharedkvTilingData *__restrict tiling,
-        CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedKv)
+    __aicore__ inline void InitVecBlock(TPipe *pipe, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedKv)
     {
         if ASCEND_IS_AIV {
             tPipe = pipe;
-            tilingData = tiling;
             if (cuSeqlensQ != nullptr) {
                 cuSeqlensQGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensQ);
             }
             if (sequsedKv != nullptr) {
                 actualSeqLengthsKVGm.SetGlobalBuffer((__gm__ int32_t *)sequsedKv);
             }
-            this->InitCubeVecSharedParams(sharedParams, aicIdx, subBlockIdx);
             this->GetExtremeValue(this->negativeFloatScalar);
         }
     }
@@ -120,12 +117,10 @@ private:
     __aicore__ inline void CopyOutAttentionOut(
         RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx, int64_t vec2CalcSize);
     __aicore__ inline void SoftmaxInitBuffer();
-    __aicore__ inline void InitCubeVecSharedParams(CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx);
     __aicore__ inline void GetExtremeValue(T &negativeScalar);
     __aicore__ inline void InitSinksBuffer(ConstInfo &constInfo);
 
     TPipe *tPipe;
-    const KvQuantSparseAttnSharedkvTilingData *__restrict tilingData;
 
     GlobalTensor<OUTPUT_T> attentionOutGm;
     GlobalTensor<KV_T> oriKVGm;
@@ -983,69 +978,6 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe,
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitCubeVecSharedParams(
-    CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx)
-{
-    auto &sparseAttnSharedkvBaseParams = this->tilingData->baseParams;
-    sharedParams.bSize = sparseAttnSharedkvBaseParams.batchSize;
-    sharedParams.n2Size = 1;
-    sharedParams.gSize = sparseAttnSharedkvBaseParams.nNumOfQInOneGroup; 
-    sharedParams.s1Size = sparseAttnSharedkvBaseParams.qSeqSize;
-    sharedParams.s2Size = sparseAttnSharedkvBaseParams.kvSeqSize;
-    sharedParams.sparseBlockCount = sparseAttnSharedkvBaseParams.sparseBlockCount;
-    sharedParams.cmpRatio = sparseAttnSharedkvBaseParams.cmpRatio;
-    sharedParams.oriMaskMode = sparseAttnSharedkvBaseParams.oriMaskMode;
-    sharedParams.cmpMaskMode = sparseAttnSharedkvBaseParams.cmpMaskMode;
-    sharedParams.oriWinLeft = sparseAttnSharedkvBaseParams.oriWinLeft;
-    sharedParams.oriWinRight = sparseAttnSharedkvBaseParams.oriWinRight;
-    sharedParams.tileSize = sparseAttnSharedkvBaseParams.tileSize;
-    sharedParams.dSizeRope = sparseAttnSharedkvBaseParams.ropeHeadDim;
-    sharedParams.softmaxScale = sparseAttnSharedkvBaseParams.softmaxScale; 
-    sharedParams.oriKvStride = sparseAttnSharedkvBaseParams.oriKvStride;
-    sharedParams.cmpKvStride = sparseAttnSharedkvBaseParams.cmpKvStride;
-    sharedParams.dSize = sparseAttnSharedkvBaseParams.dSize;
-    sharedParams.dSizeVInput = sparseAttnSharedkvBaseParams.dSizeVInput;
-
-    // pageAttention, rope在C侧搬运时使用
-    if constexpr (isPa) {
-        sharedParams.oriBlockSize = sparseAttnSharedkvBaseParams.paOriBlockSize;
-        sharedParams.cmpBlockSize = sparseAttnSharedkvBaseParams.paCmpBlockSize;
-        sharedParams.oriMaxBlockNumPerBatch = sparseAttnSharedkvBaseParams.oriMaxBlockNumPerBatch; 
-        sharedParams.cmpMaxBlockNumPerBatch = sparseAttnSharedkvBaseParams.cmpMaxBlockNumPerBatch;
-    }
-    
-    // actQ->TND, actKV pa场景任意layout均有
-    sharedParams.isActualSeqLengthsKVNull = 0U; // 均flase 
-
-    sharedParams.needInit = 0;
-    for (uint32_t bIdx = 0; bIdx < sharedParams.bSize; bIdx++) {
-        int64_t s2Size = actualSeqLengthsKVGm.GetValue(bIdx);
-        int64_t s1Size;
-        if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
-            s1Size = cuSeqlensQGm.GetValue(bIdx + 1) - cuSeqlensQGm.GetValue(bIdx);
-        } else {
-            s1Size = sharedParams.s1Size;
-        }
-        if (s1Size > s2Size) {
-            sharedParams.needInit = 1;
-            break;
-        }
-    }
-
-    if ASCEND_IS_AIV {
-        if (subBlockIdx == 0) {
-            auto tempTilingSSbuf = reinterpret_cast<__ssbuf__ uint32_t*>(0); // 从ssbuf的0地址开始拷贝
-            auto tempTiling = reinterpret_cast<uint32_t *>(&sharedParams);
-            #pragma unroll
-            for (int i = 0; i < sizeof(CVSharedParams) / sizeof(uint32_t); ++i, ++tempTilingSSbuf, ++tempTiling) {
-                *tempTilingSSbuf = *tempTiling;
-            }
-            CrossCoreSetFlag<SYNC_MODE, PIPE_S>(15);
-        }
-    }
-}
-
-TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::GetExtremeValue(
     T &negativeScalar)
 {
@@ -1060,8 +992,7 @@ public:
     __aicore__ inline void CleanOutput(__gm__ uint8_t *attentionOut, ConstInfo &constInfo) {}
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV, __gm__ uint8_t *cmpSparseIndices,
         __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sinks) {}
-    __aicore__ inline void InitVecBlock(TPipe *pipe, const KvQuantSparseAttnSharedkvTilingData *__restrict tiling,
-        CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedKv) {};
+    __aicore__ inline void InitVecBlock(TPipe *pipe, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedKv) {};
     __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo) {}
     __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
         Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo &runInfo,
