@@ -623,6 +623,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
 #include <vector>
 #include <cmath>
 #include "acl/acl.h"
+#include "aclnn/opdev/fp16_t.h"
 #include "aclnnop/aclnn_flash_attention_score.h"
 
 #define CHECK_RET(cond, return_expr) \
