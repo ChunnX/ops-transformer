@@ -279,7 +279,6 @@ private:
     GlobalTensor<int32_t> elasticInfoGMTensor_;
     GlobalTensor<uint32_t> selfDataStatusGMTensor_;
     GlobalTensor<uint32_t> selfhcclDataStatusTensor_;
-    GlobalTensor<uint32_t> bufferChosenGlobal_;
     GlobalTensor<float> selfRankWinInGMTensor_;
 
     LocalTensor<ExpandXOutType> xTmpTensor_;
@@ -364,7 +363,6 @@ private:
     GM_ADDR tpLocalStatusWindowGM_;
     GM_ADDR recvCntWorkspaceGM_;
     GM_ADDR statusDataSpaceGm_;
-    GM_ADDR bufferChoseAddr_;
 
     GM_ADDR gmTemp;
     GM_ADDR gmMoeCntFlg;
@@ -378,7 +376,6 @@ private:
     uint32_t axisH_{0};
     uint32_t axisK_{0};
     uint32_t aivNum_{0};
-    uint32_t bufferId_{0};
     uint32_t sharedUsedAivNum_{0};
     uint32_t moeUsedAivNum_{0};
     uint32_t epWorldSize_{0};
@@ -495,15 +492,12 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     gmExpertOffsetCnt = gmMoeCntFlg + 32;
     gmSendTokenFlg = gmExpertOffsetCnt + 20 * 1024 * 1024;
     gmTemp = gmSendTokenFlg + 10 * 1024 * 1024;
-    GM_ADDR bufferChoseAddr_ = workspaceGM_ + 3UL  * 1024 * 1024 * 1024 + 1000UL * 1024 * 1024;
 
     tpipe_ = pipe;
     aivId_ = GetBlockIdx();
 
-    // 检查hcclwinsize是否越界 
     totalWinSizeEp_ = static_cast<uint64_t>(tilingData->moeDistributeDispatchV2Info.totalWinSizeEp);
     totalWinSizeTp_ = static_cast<uint64_t>(tilingData->moeDistributeDispatchV2Info.totalWinSizeTp);
-    
     rankSizePerServer_ = mc2Context_->rankSizePerServer;
     epRankId_ = tilingData->moeDistributeDispatchV2Info.epRankId;
     epRankIdOriginal_ = tilingData->moeDistributeDispatchV2Info.epRankId;
@@ -527,7 +521,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     aivNum_ = tilingData->moeDistributeDispatchV2Info.aivNum;
     tpWorldSize_ = tilingData->moeDistributeDispatchV2Info.tpWorldSize;
     serverNum_ = epWorldSize_ / rankSizePerServer_;
-    aivUsedCumSum_ = 2; //TODO:
+    aivUsedCumSum_ = 2; //TODO:这个需要根据实际情况来确定
     aivUsedRemotComm_ = serverNum_; // 每个核负责一个核发送
     aivUsedScatter_ = (aivNum_ -aivUsedCumSum_ - aivUsedRemotComm_) / 2;
     aivUsedGather_ = aivNum_ - aivUsedScatter_ - aivUsedRemotComm_ - aivUsedCumSum_;
@@ -735,11 +729,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::InitCommInfo()
 {
-    __gm__ void** tempPtr = reinterpret_cast<__gm__ void**>(mc2Context_->kfcContextAddr);
-    dpuCommHandle_ = reinterpret_cast<__gm__ ChannelEntity*>(tempPtr[0]);
-
-    bufferChosenGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(bufferChoseAddr_));
-    bufferId_ = bufferChosenGlobal_(0);
     uint32_t epRankIdHccl = mc2Context_->epRankId;
     statusDataSpaceGm_ = (GM_ADDR)(mc2Context_->epHcclBuffer_[epRankIdHccl]);
 
@@ -2125,27 +2114,27 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     LocalTensor<int32_t> sendTokenNumToexpert = subExpBuf_.Get<int32_t>();
     Duplicate<int32_t>(sendTokenNumToexpert, 0, moeExpertNumPerRank_ * rankSizePerServer_);
     for(uint32_t serverIndex = startServerId; serverIndex < endServerId; serverIndex++) {
-        uint32_t serverstartRankId = serverIndex * rankSizePerServer_;
+        uint32_t serverStartRankId = serverIndex * rankSizePerServer_;
         uint32_t moeOffset = 0;
-        uint32_t moeIdstart = (serverstartRankId - sharedExpertRankNum_) * moeExpertNumPerRank_;
+        uint32_t moeIdstart = (serverStartRankId - sharedExpertRankNum_) * moeExpertNumPerRank_;
         uint32_t moeNumInServer =  moeExpertNumPerRank_ * rankSizePerServer_;
         uint32_t moeIdend = moeIdstart + moeNumInServer;
-        if (serverstartRankId < sharedExpertRankNum_) { //目标server有共享专家
+        if (serverStartRankId < sharedExpertRankNum_) { //目标server有共享专家
             moeIdstart = 0;
-            moeNumInServer = (sharedExpertRankNum_ - serverstartRankId) * moeExpertNumPerRank_;
-            if (sharedExpertRankNum_ - serverstartRankId >= rankSizePerServer_) { //全部都是共享专家
+            moeNumInServer = (sharedExpertRankNum_ - serverStartRankId) * moeExpertNumPerRank_;
+            if (sharedExpertRankNum_ - serverStartRankId >= rankSizePerServer_) { //全部都是共享专家
                 moeNumInServer = 0;
             }
             moeIdend = moeIdstart + moeNumInServer;
             uint32_t groupId = epRankId_ % rankNumPerSharedExpert_;
-            moeOffset += sharedExpertRankNum_ - serverstartRankId; // 当前server有几个共享专家卡
+            moeOffset += sharedExpertRankNum_ - serverStartRankId; // 当前server有几个共享专家卡
             for(uint32_t shareIndex = 0; shareIndex < sharedExpertNum_; shareIndex++) {
                 uint32_t dstRankId = shareIndex * rankNumPerSharedExpert_ + groupId;
                 uint32_t dstServerId = dstRankId / rankSizePerServer_;
                 if (dstServerId != serverIndex) {
                     continue;
                 }
-                uint32_t dstOffsetIndex = dstRankId - serverstartRankId;
+                uint32_t dstOffsetIndex = dstRankId - serverStartRankId;
                 sendTokenNumToexpert.SetValue(dstOffsetIndex, serverCountTensor_.GetValue(dstServerId));
             }
         }
@@ -2162,9 +2151,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         if (serverIndex == serverId_) {
             continue;
         }
-        uint32_t handleindex = serverIndex > serverId_? serverIndex - 1 : serverIndex;
-        GM_ADDR dstGM = (GetSendStatusAddrBetweenServer(COMM_EP_IDX, serverIndex) + dstOffset); //todo:怎么拿到地址？
-        WriteNbi(dpuCommHandle_[handleindex],rankGM, dstGM, blockCntExpertPerServer_ * SERVER_STATE_ALIGN);// todo: todo: 
+        // uint32_t handleindex = serverIndex > serverId_? serverIndex - 1 : serverIndex;
+        // GM_ADDR dstGM = (GetSendStatusAddrBetweenServer(COMM_EP_IDX, serverIndex) + dstOffset); //todo:怎么拿到地址？
+        // WriteNbi(dpuCommHandle_[handleindex],rankGM, dstGM, blockCntExpertPerServer_ * SERVER_STATE_ALIGN);// todo: todo: 
     }
 }
 
