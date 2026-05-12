@@ -90,6 +90,7 @@ static void SetTilingData(gert::TilingContext *context, QuantAllReduceTilingData
     tilingData.quantAllReduceTilingInfo.totalWinSize = mc2tiling::Mc2TilingUtils::GetMaxWindowSize();
 }
 
+// 基于 TARGET_ITER 公式计算 host 推荐的 xPerBlock，写入 tilingData
 static void SetXPerBlock(QuantAllReduceTilingData &tilingData)
 {
     constexpr uint32_t TARGET_ITER = 3U;  // T=3 命中 DoubleBuffer 甜点

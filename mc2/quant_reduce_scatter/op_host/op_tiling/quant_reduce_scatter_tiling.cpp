@@ -90,6 +90,7 @@ static void SetTilingData(gert::TilingContext *context, QuantReduceScatterTiling
     tilingData.quantReduceScatterTilingInfo.totalWinSize = mc2tiling::Mc2TilingUtils::GetMaxWindowSize();
 }
 
+// 基于 TARGET_ITER 公式计算 host 推荐的 xPerBlock（先除 rankSize 再反推），写入 tilingData
 static void SetXPerBlock(QuantReduceScatterTilingData &tilingData,
                          const TilingRunInfo &runInfo)
 {
