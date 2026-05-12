@@ -190,12 +190,18 @@ public:
         keyPtr = key;
         valuePtr = value;
 
-        cuSeqLensGmQ.SetGlobalBuffer((__gm__ uint64_t *)cuSeqLensQ, constInfo.cuSeqLensQSize + 1);
-        cuSeqLensGm.SetGlobalBuffer((__gm__ uint64_t *)cuSeqLensKv, constInfo.cuSeqLensKVSize + 1);
         if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
+            cuSeqLensGmQ.SetGlobalBuffer((__gm__ uint64_t *)cuSeqLensQ, constInfo.cuSeqLensQSize + 1);
+            seqUsedGmQ.SetGlobalBuffer((__gm__ uint64_t *)seqUsedQ, constInfo.seqUsedQSize);
+        } else {
+            cuSeqLensGmQ.SetGlobalBuffer((__gm__ uint64_t *)cuSeqLensQ, constInfo.cuSeqLensQSize);
             seqUsedGmQ.SetGlobalBuffer((__gm__ uint64_t *)seqUsedQ, constInfo.seqUsedQSize);
         }
         if constexpr (LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND) {
+            cuSeqLensGm.SetGlobalBuffer((__gm__ uint64_t *)cuSeqLensKv, constInfo.cuSeqLensKVSize + 1);
+            seqUsedGmKv.SetGlobalBuffer((__gm__ uint64_t *)seqUsedKv, constInfo.seqUsedKvSize);
+        } else {
+            cuSeqLensGm.SetGlobalBuffer((__gm__ uint64_t *)cuSeqLensKv, constInfo.cuSeqLensKVSize);
             seqUsedGmKv.SetGlobalBuffer((__gm__ uint64_t *)seqUsedKv, constInfo.seqUsedKvSize);
         }
 
@@ -205,14 +211,24 @@ public:
         InitMMResBuf(workspace);
 
         if ASCEND_IS_AIV {
-            vecFaBlock.InitVecBlock(tPipe, pse, cuSeqLensQ, cuSeqLensKv, postQuantScale, postQuantOffset,
-                attenMask, learnableSink, softmaxLse, attentionOut, workspace);
+            if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
+                vecFaBlock.InitVecBlock(tPipe, pse, cuSeqLensQ, cuSeqLensKv, postQuantScale, postQuantOffset,
+                    attenMask, learnableSink, softmaxLse, attentionOut, workspace);
+            } else {
+                vecFaBlock.InitVecBlock(tPipe, pse, seqUsedQ, seqUsedKv, postQuantScale, postQuantOffset,
+                    attenMask, learnableSink, softmaxLse, attentionOut, workspace);
+            }
             vecFaBlock.ClearOutput();
         }
 
         if ASCEND_IS_AIC {
-            cubeBlock.InitCubeBlock(tPipe, &l1BufferManager, query, key, value, blockTable, queryRope, keyRope,
-                cuSeqLensQ, cuSeqLensKv, keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen);
+            if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
+                cubeBlock.InitCubeBlock(tPipe, &l1BufferManager, query, key, value, blockTable, queryRope, keyRope,
+                    cuSeqLensQ, cuSeqLensKv, keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen);
+            } else {
+                cubeBlock.InitCubeBlock(tPipe, &l1BufferManager, query, key, value, blockTable, queryRope, keyRope,
+                    seqUsedQ, seqUsedKv, keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen);
+            }
         }
 
         if constexpr (FLASH_DECODE) {
@@ -272,7 +288,7 @@ public:
             cuSeqLensParser.Init(cuSeqLensGmQ, seqUsedGmQ, constInfo.cuSeqLensQSize, constInfo.seqUsedQSize);
             qSeqUsedParser.Init(cuSeqLensGmQ, constInfo.cuSeqLensQSize, constInfo.s1Size);
         } else {
-            qSeqUsedParser.Init(cuSeqLensGmQ, constInfo.cuSeqLensQSize, constInfo.s1Size);
+            qSeqUsedParser.Init(seqUsedGmQ, constInfo.seqUsedQSize, constInfo.s1Size);
         }
     }
 
@@ -282,7 +298,7 @@ public:
             kvCuSeqLensParser.Init(cuSeqLensGm, seqUsedGmKv, constInfo.cuSeqLensKVSize, constInfo.seqUsedKvSize);
             kvSeqUsedParser.Init(cuSeqLensGm, constInfo.cuSeqLensKVSize, constInfo.s2Size);
         } else {
-            kvSeqUsedParser.Init(cuSeqLensGm, constInfo.cuSeqLensKVSize, constInfo.s2Size);
+            kvSeqUsedParser.Init(seqUsedGmKv, constInfo.seqUsedKvSize, constInfo.s2Size);
         }
     }
 
@@ -522,7 +538,8 @@ public:
         uint32_t bIdx = bN2Cur / constInfo.n2Size;
         if (isFirstTask || prevBIdx != bIdx) {
             prevBIdx = bIdx;
-            if (constInfo.cuSeqLensKVSize == 0 && !constInfo.isKvContinuous) {
+            if (constInfo.cuSeqLensKVSize == 0 && constInfo.seqUsedKvSize == 0 &&
+                !constInfo.isKvContinuous) {
                 actSeqLensKv = SeqLenFromTensorList<LAYOUT_KV>(keyPtr, bIdx);
             } else {
                 if constexpr (LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND) {

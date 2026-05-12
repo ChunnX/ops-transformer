@@ -201,8 +201,11 @@ public:
             softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
         }
 
-        actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint64_t *)actualSeqQlenAddr, constInfo.cuSeqLensQSize);
-        qActSeqLensParser.Init(actualSeqLengthsGmQ, constInfo.cuSeqLensQSize, constInfo.s1Size);
+        uint64_t actualLenQSize = (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD ||
+                                   layout == LayOutTypeEnum::LAYOUT_NTD_TND)
+                                      ? constInfo.cuSeqLensQSize : constInfo.seqUsedQSize;
+        actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint64_t *)actualSeqQlenAddr, actualLenQSize);
+        qActSeqLensParser.Init(actualSeqLengthsGmQ, actualLenQSize, constInfo.s1Size);
 
         if constexpr (hasPse) {
             pseGm.SetGlobalBuffer((__gm__ pseShiftType *)pse);
@@ -211,7 +214,7 @@ public:
             pseShiftGmTensor.gmTensor = pseGm;
             pseShiftGmTensor.offsetCalculator.Init(constInfo.pseShiftByBatch ? constInfo.bSize : 1, constInfo.n2Size,
                                                    constInfo.gSize, constInfo.pseS1Size, constInfo.pseS2Size,
-                                                   this->actualSeqLengthsGmQ, constInfo.cuSeqLensQSize);
+                                                   this->actualSeqLengthsGmQ, actualLenQSize);
         }
 
         if constexpr (hasAtten) {
@@ -1050,13 +1053,15 @@ public:
 
     __aicore__ inline void CopyAttentionOut(FaUbTensor<OUTPUT_T> &ubTensor, GmCoord &gmCoord)
     {
+        uint64_t actualLenSize = (outLayout == LayOutTypeEnum::LAYOUT_TND || outLayout == LayOutTypeEnum::LAYOUT_NTD)
+                                     ? constInfo.cuSeqLensQSize : constInfo.seqUsedQSize;
         if (outLayout == LayOutTypeEnum::LAYOUT_BSH) {
             constexpr GmFormat OUT_FORMAT = GmFormat::BSNGD;
             FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(
                 constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size, constInfo.dSizeV,
-                actualSeqLengthsGmQ, constInfo.cuSeqLensQSize, constInfo.isQHasLeftPadding, constInfo.queryRightPaddingSize);
+                actualSeqLengthsGmQ, actualLenSize, constInfo.isQHasLeftPadding, constInfo.queryRightPaddingSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if (outLayout == LayOutTypeEnum::LAYOUT_BNSD) {
@@ -1065,7 +1070,7 @@ public:
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(
                 constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size, constInfo.dSizeV,
-                actualSeqLengthsGmQ, constInfo.cuSeqLensQSize, constInfo.isQHasLeftPadding, constInfo.queryRightPaddingSize);
+                actualSeqLengthsGmQ, actualLenSize, constInfo.isQHasLeftPadding, constInfo.queryRightPaddingSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if (outLayout == LayOutTypeEnum::LAYOUT_TND) {
@@ -1073,7 +1078,7 @@ public:
             FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV,
-                                              actualSeqLengthsGmQ, constInfo.cuSeqLensQSize);
+                                              actualSeqLengthsGmQ, actualLenSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if (outLayout == LayOutTypeEnum::LAYOUT_NTD) {
@@ -1081,7 +1086,7 @@ public:
             FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV,
-                                              actualSeqLengthsGmQ, constInfo.cuSeqLensQSize);
+                                              actualSeqLengthsGmQ, actualLenSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         }
@@ -1446,30 +1451,32 @@ public:
         if constexpr (POST_QUANT) { // out int8
                                     // vectorService.DealZeroActSeqLenWithPostQuant(bIdx, n2Idx);
         } else {
+            uint64_t actualLenSize = (outLayout == LayOutTypeEnum::LAYOUT_TND || outLayout == LayOutTypeEnum::LAYOUT_NTD)
+                                         ? constInfo.cuSeqLensQSize : constInfo.seqUsedQSize;
             if (outLayout == LayOutTypeEnum::LAYOUT_BSH) {
                 OffsetCalculator<GmFormat::BSNGD> offsetCalculator;
                 offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                      constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.cuSeqLensQSize);
+                                      constInfo.dSizeV, actualSeqLengthsGmQ, actualLenSize);
                 DealActSeqLenIsZero<GmFormat::BSNGD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
             } else if (outLayout == LayOutTypeEnum::LAYOUT_BNSD) {
                 OffsetCalculator<GmFormat::BNGSD> offsetCalculator;
                 offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                      constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.cuSeqLensQSize);
+                                      constInfo.dSizeV, actualSeqLengthsGmQ, actualLenSize);
                 DealActSeqLenIsZero<GmFormat::BNGSD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
             } else if (outLayout == LayOutTypeEnum::LAYOUT_NBSD) {
                 OffsetCalculator<GmFormat::NGBSD> offsetCalculator;
                 offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                      constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.cuSeqLensQSize);
+                                      constInfo.dSizeV, actualSeqLengthsGmQ, actualLenSize);
                 DealActSeqLenIsZero<GmFormat::NGBSD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
             } else if (outLayout == LayOutTypeEnum::LAYOUT_TND) {
                 OffsetCalculator<GmFormat::TNGD> offsetCalculator;
                 offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, actualSeqLengthsGmQ,
-                                      constInfo.cuSeqLensQSize);
+                                      actualLenSize);
                 DealActSeqLenIsZero<GmFormat::TNGD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
             } else if (outLayout == LayOutTypeEnum::LAYOUT_NTD) {
                 OffsetCalculator<GmFormat::NGTD> offsetCalculator;
                 offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, actualSeqLengthsGmQ,
-                                      constInfo.cuSeqLensQSize);
+                                      actualLenSize);
                 DealActSeqLenIsZero<GmFormat::NGTD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
             }
         }
