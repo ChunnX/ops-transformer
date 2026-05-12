@@ -93,7 +93,7 @@ public:
 
     ConstInfoX constInfo;
 
-    const FlashAttnNoQuantTilingArch35 *__restrict tilingData;
+    const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tilingData;
     TPipe *pipe;
     CubeBlockType cubeBlock;
     VecFaBlockType vecFaBlock;
@@ -165,7 +165,7 @@ public:
                                 __gm__ uint8_t *actualSharedPrefixLen, __gm__ uint8_t *queryRope,
                                 __gm__ uint8_t *keyRope, __gm__ uint8_t *learnableSink, __gm__ uint8_t *softmaxLse,
                                 __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace, __gm__ uint8_t *fiaMetaData,
-                                const FlashAttnNoQuantTilingArch35 *__restrict tiling, TPipe *tPipe)
+                                const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tiling, TPipe *tPipe)
     {
         this->pipe = tPipe;
         this->tilingData = tiling;
@@ -265,78 +265,78 @@ public:
             constInfo.subBlockIdx = GetSubBlockIdx();
         }
 
-        auto fiaBaseParams = this->tilingData->flashAttnBaseParams;
-        auto fiaAttenMaskParams = this->tilingData->flashAttnAttenMaskParams;
-        auto fiaPseParams = this->tilingData->flashAttnPseParams;
-        auto fiaSystemPrefixParams = this->tilingData->flashAttnSystemPrefixParams;
-        auto fiaPageAttentionParams = this->tilingData->flashAttnPageAttentionParams;
-        auto fiaLeftPaddingParams = this->tilingData->flashAttnLeftPaddingParams;
-        auto fiaPostQuantParams = this->tilingData->flashAttnPostQuantParams;
-        auto fiaWorkspaceParams = this->tilingData->flashAttnWorkspaceParams;
-        auto fiaS1OuterSplitCoreParams = this->tilingData->flashAttnS1OuterSplitCoreParams;
-        auto fiaEmptyTensorParams = this->tilingData->flashAttnEmptyTensorParams;
+        // auto fiaBaseParams = this->tilingData->flashAttnBaseParams;
+        // auto fiaAttenMaskParams = this->tilingData->flashAttnAttenMaskParams;
+        // auto fiaPseParams = this->tilingData->flashAttnPseParams;
+        // auto fiaSystemPrefixParams = this->tilingData->flashAttnSystemPrefixParams;
+        // auto fiaPageAttentionParams = this->tilingData->flashAttnPageAttentionParams;
+        // auto fiaLeftPaddingParams = this->tilingData->flashAttnLeftPaddingParams;
+        // auto fiaPostQuantParams = this->tilingData->flashAttnPostQuantParams;
+        // auto fiaWorkspaceParams = this->tilingData->flashAttnWorkspaceParams;
+        // auto fiaS1OuterSplitCoreParams = this->tilingData->flashAttnS1OuterSplitCoreParams;
+        // auto fiaEmptyTensorParams = this->tilingData->flashAttnEmptyTensorParams;
 
-        constInfo.bSize = fiaBaseParams.bSize;
-        constInfo.t1Size = fiaBaseParams.t1Size;
-        constInfo.t2Size = fiaBaseParams.t2Size;
-        constInfo.n2Size = fiaBaseParams.n2Size;
-        constInfo.gSize = fiaBaseParams.gSize;
-        constInfo.s1Size = fiaBaseParams.s1Size;
-        constInfo.s2Size = fiaBaseParams.s2Size;
-        constInfo.dSize = fiaBaseParams.dSize;
-        constInfo.dSizeV = fiaBaseParams.dSizeV;
+        constInfo.bSize = this->tilingData->flashAttnBaseParams.bSize;
+        constInfo.t1Size = this->tilingData->flashAttnBaseParams.t1Size;
+        constInfo.t2Size = this->tilingData->flashAttnBaseParams.t2Size;
+        constInfo.n2Size = this->tilingData->flashAttnBaseParams.n2Size;
+        constInfo.gSize = this->tilingData->flashAttnBaseParams.gSize;
+        constInfo.s1Size = this->tilingData->flashAttnBaseParams.s1Size;
+        constInfo.s2Size = this->tilingData->flashAttnBaseParams.s2Size;
+        constInfo.dSize = this->tilingData->flashAttnBaseParams.dSize;
+        constInfo.dSizeV = this->tilingData->flashAttnBaseParams.dSizeV;
         if constexpr (HAS_ROPE) {
-            constInfo.dSizeRope = fiaBaseParams.dSizeRope;
+            constInfo.dSizeRope = this->tilingData->flashAttnBaseParams.dSizeRope;
         } else {
             constInfo.dSizeRope = 0;
         }
-        constInfo.actualSeqLenSize = fiaBaseParams.cuSeqLengthsQSize;
-        constInfo.actualSeqLenKVSize = fiaBaseParams.cuSeqLengthsKVSize;
-        constInfo.scaleValue = static_cast<float>(fiaBaseParams.scaleValue);
-        constInfo.isKvContinuous = fiaBaseParams.isKvContinuous != 0;
-        constInfo.coreNum = fiaBaseParams.coreNum;
-        constInfo.outputLayout = static_cast<FA_LAYOUT>(fiaBaseParams.outputLayout);
+        constInfo.actualSeqLenSize = this->tilingData->flashAttnBaseParams.cuSeqLengthsQSize;
+        constInfo.actualSeqLenKVSize = this->tilingData->flashAttnBaseParams.cuSeqLengthsKVSize;
+        constInfo.scaleValue = static_cast<float>(this->tilingData->flashAttnBaseParams.scaleValue);
+        constInfo.isKvContinuous = this->tilingData->flashAttnBaseParams.isKvContinuous != 0;
+        constInfo.coreNum = this->tilingData->flashAttnBaseParams.coreNum;
+        constInfo.outputLayout = static_cast<FA_LAYOUT>(this->tilingData->flashAttnBaseParams.outputLayout);
 
         // if constexpr (HAS_MASK) {
-        constInfo.sparseMode = fiaAttenMaskParams.sparseMode;       // TODO，后续sparseType、attenMaskCompressMode引用全部改成sparseMode
-        constInfo.preTokens = fiaAttenMaskParams.winLefts;
-        constInfo.nextTokens = fiaAttenMaskParams.winRights;
-        constInfo.attenMaskBatch = fiaAttenMaskParams.attenMaskBatch;
-        constInfo.attenMaskS1Size = fiaAttenMaskParams.attenMaskS1Size;
-        constInfo.attenMaskS2Size = fiaAttenMaskParams.attenMaskS2Size;
-        constInfo.isRowInvalidOpen = fiaAttenMaskParams.isRowInvalidOpen;
-        constInfo.isExistRowInvalid = fiaAttenMaskParams.isExistRowInvalid;
+        constInfo.sparseMode = this->tilingData->flashAttnAttenMaskParams.sparseMode;       // TODO，后续sparseType、attenMaskCompressMode引用全部改成sparseMode
+        constInfo.preTokens = this->tilingData->flashAttnAttenMaskParams.winLefts;
+        constInfo.nextTokens = this->tilingData->flashAttnAttenMaskParams.winRights;
+        constInfo.attenMaskBatch = this->tilingData->flashAttnAttenMaskParams.attenMaskBatch;
+        constInfo.attenMaskS1Size = this->tilingData->flashAttnAttenMaskParams.attenMaskS1Size;
+        constInfo.attenMaskS2Size = this->tilingData->flashAttnAttenMaskParams.attenMaskS2Size;
+        constInfo.isRowInvalidOpen = this->tilingData->flashAttnAttenMaskParams.isRowInvalidOpen;
+        constInfo.isExistRowInvalid = this->tilingData->flashAttnAttenMaskParams.isExistRowInvalid;
         // }
 
         if ASCEND_IS_AIV {
             if constexpr (VecFaBlockType::hasPse) {
-                constInfo.pseShiftByBatch = fiaPseParams.pseShiftByBatch;
-                constInfo.pseS1Size = fiaPseParams.pseS1Size;
-                constInfo.pseS2Size = fiaPseParams.pseS2Size;
+                constInfo.pseShiftByBatch = this->tilingData->flashAttnPseParams.pseShiftByBatch;
+                constInfo.pseS1Size = this->tilingData->flashAttnPseParams.pseS1Size;
+                constInfo.pseS2Size = this->tilingData->flashAttnPseParams.pseS2Size;
                 constInfo.pseStride = s2BaseSize;
             }
         }
 
-        constInfo.isPostQuantPerChnl = fiaPostQuantParams.isPostQuantPerChnl;
-        constInfo.isPostQuantBF16 = fiaPostQuantParams.isPostQuantBF16;
+        constInfo.isPostQuantPerChnl = this->tilingData->flashAttnPostQuantParams.isPostQuantPerChnl;
+        constInfo.isPostQuantBF16 = this->tilingData->flashAttnPostQuantParams.isPostQuantBF16;
 
-        constInfo.accumOutSize = fiaWorkspaceParams.accumOutSize;
-        constInfo.logSumExpSize = fiaWorkspaceParams.logSumExpSize;
+        constInfo.accumOutSize = this->tilingData->flashAttnWorkspaceParams.accumOutSize;
+        constInfo.logSumExpSize = this->tilingData->flashAttnWorkspaceParams.logSumExpSize;
 
-        constInfo.isQHasLeftPadding = fiaLeftPaddingParams.isQHasLeftPadding;
-        constInfo.isKVHasLeftPadding = fiaLeftPaddingParams.isKVHasLeftPadding;
+        constInfo.isQHasLeftPadding = this->tilingData->flashAttnLeftPaddingParams.isQHasLeftPadding;
+        constInfo.isKVHasLeftPadding = this->tilingData->flashAttnLeftPaddingParams.isKVHasLeftPadding;
         // pageAttention
         if constexpr (PAGE_ATTENTION) {
-            constInfo.maxBlockNumPerBatch = fiaPageAttentionParams.maxBlockNumPerBatch;
-            constInfo.blockSize = fiaPageAttentionParams.blockSize;
-            constInfo.paLayoutType = fiaPageAttentionParams.paLayoutType;
+            constInfo.maxBlockNumPerBatch = this->tilingData->flashAttnPageAttentionParams.maxBlockNumPerBatch;
+            constInfo.blockSize = this->tilingData->flashAttnPageAttentionParams.blockSize;
+            constInfo.paLayoutType = this->tilingData->flashAttnPageAttentionParams.paLayoutType;
         }
         // LSE
-        constInfo.isSoftmaxLseEnable = fiaBaseParams.isSoftMaxLseEnable;
+        constInfo.isSoftmaxLseEnable = this->tilingData->flashAttnBaseParams.isSoftMaxLseEnable;
         // prefix
         if constexpr (HAS_PREFIX) {
-            constInfo.isActualSharedPrefixLenNull = fiaSystemPrefixParams.isActualSharedPrefixLenNull;
-            constInfo.actualKVPrefixSize = constInfo.kvPrefixSize = fiaSystemPrefixParams.prefixSeqInnerSize;
+            constInfo.isActualSharedPrefixLenNull = this->tilingData->flashAttnSystemPrefixParams.isActualSharedPrefixLenNull;
+            constInfo.actualKVPrefixSize = constInfo.kvPrefixSize = this->tilingData->flashAttnSystemPrefixParams.prefixSeqInnerSize;
             if (!constInfo.isActualSharedPrefixLenNull) {
                 constInfo.actualKVPrefixSize = ((__gm__ int64_t *)actualSharedPrefixLen)[0];
             }
