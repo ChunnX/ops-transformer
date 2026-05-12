@@ -37,6 +37,9 @@ public:
     __aicore__ inline void CopyScaleIn(int64_t scaleSrcOffset);
     __aicore__ inline void CopyScaleOut(int64_t scaleDstOffset);
 
+    template <typename SrcT>
+    __aicore__ inline void ProcessGatherLoop(int64_t curLoopElements, int64_t curExpertLoopOffset);
+
 private:
     TPipe *pipe_;
     TQueBind<TPosition::VECIN, TPosition::VECOUT, GATHER_OUT_BUFFER_NUM> xCopyInQueue_;
@@ -216,6 +219,36 @@ __aicore__ inline void MoeGatherOut<T>::CopyScaleOut(int64_t scaleDstOffset)
 }
 
 template <typename T>
+template <typename SrcT>
+__aicore__ inline void MoeGatherOut<T>::ProcessGatherLoop(int64_t curLoopElements, int64_t curExpertLoopOffset)
+{
+    LocalTensor<int32_t> subRowIdxLocal = expandedRowIdxCopyInQueue_.DeQue<int32_t>();
+    SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
+
+    LocalTensor<SrcT> xLocal = xCopyInQueue_.AllocTensor<SrcT>();
+    for (int64_t indicesIndex = 0; indicesIndex < curLoopElements; indicesIndex++) {
+        int64_t rowIdx = subRowIdxLocal.GetValue(indicesIndex);
+        int64_t xSrcOffset = rowIdx / k_ * cols_;
+        int64_t scaleSrcOffset = rowIdx / k_;
+        SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
+        if (isInputScale_ == 1) {
+            CopyScaleIn(scaleSrcOffset);
+            CopyScaleOut(indicesIndex + curExpertLoopOffset);
+        }
+        int64_t curLoopCols = perLoopCols_;
+        for (int64_t colsLoop = 0; colsLoop < colsLoops_; colsLoop++) {
+            if (colsLoop == colsLoops_ - 1) {
+                curLoopCols = lastLoopCols_;
+            }
+            int64_t colsLoopOffset = colsLoop * perLoopCols_;
+            CopyXIn(xSrcOffset + colsLoopOffset, curLoopCols, xLocal);
+        }
+    }
+    xCopyInQueue_.EnQue(xLocal);
+    expandedRowIdxCopyInQueue_.FreeTensor(subRowIdxLocal);
+}
+
+template <typename T>
 __aicore__ inline void MoeGatherOut<T>::Process()
 {
     if (blockIdx_ < needCoreNum_) {
@@ -228,53 +261,12 @@ __aicore__ inline void MoeGatherOut<T>::Process()
             SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
             CopyExpertIn(curExpertLoopOffset, curLoopElements);
 
-            LocalTensor<int32_t> subRowIdxLocal = expandedRowIdxCopyInQueue_.DeQue<int32_t>();
-            SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
             if constexpr (IsSameType<T, hifloat8_t>::value) {
-                LocalTensor<uint8_t> xLocal = xCopyInQueue_.AllocTensor<uint8_t>();
-                for (int64_t indicesIndex = 0; indicesIndex < curLoopElements; indicesIndex++) {
-                    int64_t rowIdx = subRowIdxLocal.GetValue(indicesIndex);
-                    int64_t xSrcOffset = rowIdx / k_ * cols_;
-                    int64_t scaleSrcOffset = rowIdx / k_;
-                    SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
-                    if (isInputScale_ == 1) {
-                        CopyScaleIn(scaleSrcOffset);
-                        CopyScaleOut(indicesIndex + curExpertLoopOffset);
-                    }
-                    int64_t curLoopCols = perLoopCols_;
-                    for (int64_t colsLoop = 0; colsLoop < colsLoops_; colsLoop++) {
-                        if (colsLoop == colsLoops_ - 1) {
-                            curLoopCols = lastLoopCols_;
-                        }
-                        int64_t colsLoopOffset = colsLoop * perLoopCols_;
-                        CopyXIn(xSrcOffset + colsLoopOffset, scaleSrcOffset, curLoopCols);
-                    }
-                }
-                xCopyInQueue_.EnQue(xLocal);
+                ProcessGatherLoop<uint8_t>(curLoopElements, curExpertLoopOffset);
             } else {
-                LocalTensor<T> xLocal = xCopyInQueue_.AllocTensor<T>();
-                for (int64_t indicesIndex = 0; indicesIndex < curLoopElements; indicesIndex++) {
-                    int64_t rowIdx = subRowIdxLocal.GetValue(indicesIndex);
-                    int64_t xSrcOffset = rowIdx / k_ * cols_;
-                    int64_t scaleSrcOffset = rowIdx / k_;
-                    SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
-                    if (isInputScale_ == 1) {
-                        CopyScaleIn(scaleSrcOffset);
-                        CopyScaleOut(indicesIndex + curExpertLoopOffset);
-                    }
-                    int64_t curLoopCols = perLoopCols_;
-                    for (int64_t colsLoop = 0; colsLoop < colsLoops_; colsLoop++) {
-                        if (colsLoop == colsLoops_ - 1) {
-                            curLoopCols = lastLoopCols_;
-                        }
-                        int64_t colsLoopOffset = colsLoop * perLoopCols_;
-                        CopyXIn(xSrcOffset + colsLoopOffset, scaleSrcOffset, curLoopCols);
-                    }
-                }
-                xCopyInQueue_.EnQue(xLocal);
+                ProcessGatherLoop<T>(curLoopElements, curExpertLoopOffset);
             }
             CopyXOut(curExpertLoopOffset * cols_, curLoopElements * cols_);
-            expandedRowIdxCopyInQueue_.FreeTensor(subRowIdxLocal);
         }
     }
 }
