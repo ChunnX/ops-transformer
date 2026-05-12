@@ -455,9 +455,6 @@ if __name__ == "__main__":
                         help="指定 NPU dump 文件路径（用于离线对比）")
     parser.add_argument("--compare_mode", action="store_true",
                         help="启用三方对比模式（CPU vs GPU vs NPU），使用详细精度统计")
-    parser.add_argument("--case_range", type=str, default=None,
-                        help="按序号范围筛选用例，格式 N-M（1-based，两端包含），例: --case_range 1-10；"
-                             "单个序号例: --case_range 5")
     args = parser.parse_args()
 
     # 设备初始化
@@ -506,22 +503,6 @@ if __name__ == "__main__":
     if not run_cases:
         print("[ERROR] 没有可运行的 case，退出。")
         sys.exit(1)
-
-    if args.case_range:
-        rng = args.case_range.strip()
-        if '-' in rng:
-            lo_str, hi_str = rng.split('-', 1)
-            lo, hi = int(lo_str), int(hi_str)
-        else:
-            lo = hi = int(rng)
-        if lo < 1 or hi < lo:
-            print(f"[ERROR] --case_range '{args.case_range}' 无效，要求 1 <= N <= M。")
-            sys.exit(1)
-        run_cases = run_cases[lo - 1: hi]
-        print(f"[INFO] --case_range {args.case_range}: 选取第 {lo}~{hi} 号用例，实际可用 {len(run_cases)} 个")
-        if not run_cases:
-            print("[ERROR] 指定范围超出用例总数，退出。")
-            sys.exit(1)
 
     results = {}
     for name in run_cases:
