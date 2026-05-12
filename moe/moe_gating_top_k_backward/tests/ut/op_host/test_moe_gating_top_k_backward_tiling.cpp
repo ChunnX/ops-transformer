@@ -496,33 +496,3 @@ TEST_F(MoeGatingTopKTiling, moe_gating_top_k_tiling_fail_11) {
     std::vector<size_t> expectWorkspaces = {16777216};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
 }
-
-// TEST_F(MoeGatingTopKTiling, moe_gating_top_k_tiling_regbase_succ_01) {
-//     optiling::MoeGatingTopKCompileInfo compileInfo = {};
-//     gert::TilingContextPara tilingContextPara("MoeGatingTopK",
-//                                               {
-//                                                 {{{16, 256}, {16, 256}}, ge::DT_FLOAT, ge::FORMAT_ND},
-//                                                 {{{256}, {256}}, ge::DT_FLOAT, ge::FORMAT_ND},
-//                                               },
-//                                               {
-//                                                 {{{16, 8}, {16, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
-//                                                 {{{16, 8}, {16, 8}}, ge::DT_INT32, ge::FORMAT_ND},
-//                                                 {{{16, 256}, {16, 256}}, ge::DT_FLOAT, ge::FORMAT_ND},
-//                                               },
-//                                               {
-//                                                 {"k",Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
-//                                                 {"k_group",Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
-//                                                 {"group_count",Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
-//                                                 {"group_select_mode",Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-//                                                 {"renorm",Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-//                                                 {"norm_type",Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-//                                                 {"out_flag",Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-//                                                 {"routed_scaling_factor",Ops::Transformer::AnyValue::CreateFrom<float>(0)},
-//                                                 {"eps",Ops::Transformer::AnyValue::CreateFrom<float>(0)},
-//                                               },
-//                                               &compileInfo);
-//     uint64_t expectTilingKey = 10000;
-//     string expectTilingData = "16 16 1 1 256 1 8 4 8 32 32 1 0 1 0 0 0 0 ";
-//     std::vector<size_t> expectWorkspaces = {16777216};
-//     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 0, expectTilingData, expectWorkspaces);
-// }

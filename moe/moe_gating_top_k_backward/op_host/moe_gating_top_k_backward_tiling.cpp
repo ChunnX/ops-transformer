@@ -149,7 +149,7 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckInputShape()   // fqy
     return ge::GRAPH_SUCCESS;
 }
 
-void MoeGatingTopKBackwardTilingBase::CheckXNorm()
+ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckXNorm()
 {
     const gert::StorageShape* xNormShapePtr = context_->GetInputShape(X_NORM_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, xNormShapePtr);
@@ -169,7 +169,7 @@ void MoeGatingTopKBackwardTilingBase::CheckXNorm()
     return ge::GRAPH_SUCCESS;
 }
 
-void MoeGatingTopKBackwardTilingBase::CheckGradY()
+ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckGradY()
 {
     const gert::StorageShape* gradYShapePtr = context_->GetInputShape(GRAD_Y_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, gradYShapePtr);
@@ -192,7 +192,7 @@ void MoeGatingTopKBackwardTilingBase::CheckGradY()
     return ge::GRAPH_SUCCESS;
 }
 
-void MoeGatingTopKBackwardTilingBase::CheckExpertIdx()
+ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckExpertIdx()
 {
     const gert::StorageShape* expertIdxShapePtr = context_->GetInputShape(EXPERT_IDX_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, expertIdxShapePtr);
@@ -366,7 +366,7 @@ int64_t MoeGatingTopKBackwardTilingBase::CalcMaxRows()
     return maxRows;
 }
 
-void MoeGatingTopKBackwardTilingBase::SplitRows()   // lc
+ge::graphStatus MoeGatingTopKBackwardTilingBase::SplitRows()   // lc
 {
     perCoreRows_ = Ops::Base::CeilDiv(tokenCount_, static_cast<int64_t>(aicoreParams_.numBlocks));
     needCoreNum_ = Ops::Base::CeilDiv(tokenCount_, perCoreRows_);
@@ -381,6 +381,7 @@ void MoeGatingTopKBackwardTilingBase::SplitRows()   // lc
     perTailRows_ = perCoreRows_ - (perLoopTimes_ - 1) * baseRows_;
     lastLoopTimes_ = (lastCoreRows_ + baseRows_ - 1) / baseRows_;
     lastTailRows_ = lastCoreRows_ - (lastLoopTimes_ - 1) * baseRows_;
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus MoeGatingTopKBackwardTilingBase::DoOpTiling()
