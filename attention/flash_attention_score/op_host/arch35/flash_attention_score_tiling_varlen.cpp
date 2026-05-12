@@ -576,7 +576,7 @@ protected:
         // 如 {256, 384, 512, 640, 768, 896, 960, 1024}; {384, 512, 640, 768, 832, 896, 960, 1024};
         // 和 {256, 256, 512, 512, 768, 768, 1024, 1024};
         // cof数组可变化，以下为当前选择参数，可优化不对齐场景负载均衡
-        const int64_t cof[] = {128, 256, 384, 512, 640, 768, 896, 960, 1024};
+        const int64_t cof[] = {48, 96, 128};
         uint8_t sparseType = inputParamsRegbase_->get_sparseType();
         int64_t localAccumS1BlockNum = 0;
         for (int32_t i = 0; i < bSize; i++) {
@@ -585,12 +585,13 @@ protected:
             for (int64_t j = 0; j < s1BlockNum; j++) {
                 // 此处暂时设置为1, 由于实测尾块1和128性能差距不大，理论上应该如下所示
                 // 理论值: s1RealSize为std::min(s1BasicBlock, (actualSeqLenData[i] - s1BasicBlock * j))
-                int64_t s1RealSize = 1;
+                int64_t s1RealSize = std::min(s1BasicBlock, (actualSeqLenData[i] - s1BasicBlock * j));
+                s1RealSize = ((s1RealSize > 0) ? cof[CeilDivision(s1RealSize, 48L) - 1] : 0);
                 int64_t s2RealSize = GetS2RealSize(sparseType, i, j);
                 // 新增一个系数, 解决理论和实际的差异
                 int64_t s2RemainSize = s2RealSize % s2SizeLimitMax;
                 s2RealSize = (s2RealSize / s2SizeLimitMax) * s2SizeLimitMax;
-                int64_t s2SizeOffset = ((s2RemainSize > 0) ? cof[CeilDivision(s2RemainSize, 128L) - 1] : 0);
+                int64_t s2SizeOffset = ((s2RemainSize > 0) ? cof[CeilDivision(s2RemainSize, 48L) - 1] : 0);
                 s2RealSize += s2SizeOffset;
 
                 // 每个s1方向上切分块的计算量
@@ -726,8 +727,9 @@ protected:
         }
 
         // exchange initLoad and 负载均衡
-        if ((*std::max_element(localValue.begin(), localValue.end())) >
-            (*std::max_element(tmpLocalValue.begin(), tmpLocalValue.end()))) {
+        int64_t localValueMax =  *std::max_element(localValue.begin(), localValue.end());
+        int64_t tmpLocalValueMax = *std::max_element(tmpLocalValue.begin(), tmpLocalValue.end());
+        if ((localValueMax > tmpLocalValueMax) && (s1Size > 128)) {
             localSparseStartIdx.swap(tmpsparseStartIdx);
             localValue.swap(tmpLocalValue);
         }
