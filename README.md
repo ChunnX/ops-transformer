@@ -29,7 +29,7 @@ ops-transformer是[CANN](https://hiascend.com/software/cann) （Compute Architec
 
 ## ⚡️快速入门
 
-若您希望**从零到一快速体验**项目能力，请访问下述简易教程。
+若您希望从零到一快速体验项目能力，请访问下述简易教程。
 
 1. [环境部署](docs/zh/install/quick_install.md)：本文是**QuickStart和各类教程的操作前提**，请先完成基础环境搭建和源码下载。
 2. [QuickStart](docs/QUICKSTART.md)：针对源码编译、算子调用/开发/调试等关键能力，提供快速上手的简易指南。
