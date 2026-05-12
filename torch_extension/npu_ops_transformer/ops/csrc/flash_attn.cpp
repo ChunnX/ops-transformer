@@ -57,7 +57,7 @@ npu_flash_attn(const at::Tensor &q, const at::Tensor &k, const at::Tensor &v,
     }
     if (return_softmax_lse) {
         if (q.dim() == DIM_THREE) {
-            softmaxOutSize = {tSize, nSize};
+            softmaxOutSize = {nSize, tSize};
         } else {
             softmaxOutSize = {bSize, nSize, sSize};
         }
