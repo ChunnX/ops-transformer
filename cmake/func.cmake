@@ -1004,8 +1004,23 @@ endfunction()
  	 
 # 检查构建依赖
 function(check_pkg_build_deps pkg_name)
+    set(_build_deps ${CANN_VERSION_${pkg_name}_BUILD_DEPS})
+    if(DEFINED OPTENSOR_SOURCE_PATH AND EXISTS "${OPTENSOR_SOURCE_PATH}")
+        set(_filtered_build_deps)
+        set(_deps_iter ${_build_deps})
+        while(_deps_iter)
+            list(POP_FRONT _deps_iter _dep_pkg)
+            list(POP_FRONT _deps_iter _dep_info)
+            if(_dep_pkg STREQUAL "ops_tensor")
+                message(STATUS "Skip installed package dependency check for ops_tensor, use source path: ${OPTENSOR_SOURCE_PATH}")
+                continue()
+            endif()
+            list(APPEND _filtered_build_deps "${_dep_pkg}" "${_dep_info}")
+        endwhile()
+        set(_build_deps ${_filtered_build_deps})
+    endif()
     execute_process(
-        COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_build_dependencies.py "${ASCEND_CANN_PACKAGE_PATH}" ${CANN_VERSION_${pkg_name}_BUILD_DEPS}
+        COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_build_dependencies.py "${ASCEND_CANN_PACKAGE_PATH}" ${_build_deps}
         RESULT_VARIABLE result
     )
     if(result)
