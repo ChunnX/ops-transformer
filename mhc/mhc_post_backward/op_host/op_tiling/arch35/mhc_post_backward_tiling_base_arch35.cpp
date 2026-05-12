@@ -445,17 +445,17 @@ ge::graphStatus MhcPostBackwardTilingBaseArch35::CheckShapeConsistency()
                             B, S, D),
                     return ge::GRAPH_FAILED);
 
-        // Validate grad_h_post: (B, S, n)
+        // Validate grad_h_post: (B, S, n, D)
         auto gradHPostShapePtr = context_->GetOutputShape(GRAD_H_POST_OUTPUT_INDEX);
         const gert::Shape* gradHPostShape = &gradHPostShapePtr->GetStorageShape();
-        OP_CHECK_IF(gradHPostShape->GetDimNum() != 3,
-                    OP_LOGE(context_, "grad_h_post has %u dimensions, expected 3",
+        OP_CHECK_IF(gradHPostShape->GetDimNum() != 4,
+                    OP_LOGE(context_, "grad_h_post has %u dimensions, expected 4",
                             gradHPostShape->GetDimNum()),
                     return ge::GRAPH_FAILED);
-        OP_CHECK_IF(gradHPostShape->GetDim(0) != B || gradHPostShape->GetDim(1) != S || gradHPostShape->GetDim(2) != n,
-                    OP_LOGE(context_, "grad_h_post shape (%ld,%ld,%ld) != expected (%ld,%ld,%ld)",
-                            gradHPostShape->GetDim(0), gradHPostShape->GetDim(1), gradHPostShape->GetDim(2),
-                            B, S, n),
+        OP_CHECK_IF(gradHPostShape->GetDim(0) != B || gradHPostShape->GetDim(1) != S || gradHPostShape->GetDim(2) != n || gradHPostShape->GetDim(3) != D,
+                    OP_LOGE(context_, "grad_h_post shape (%ld,%ld,%ld,%ld) != expected (%ld,%ld,%ld,%ld)",
+                            gradHPostShape->GetDim(0), gradHPostShape->GetDim(1), gradHPostShape->GetDim(2), gradHPostShape->GetDim(3),
+                            B, S, n, D),
                     return ge::GRAPH_FAILED);
     } else {  // dimNum == 3
         // TND format validation
@@ -558,17 +558,17 @@ ge::graphStatus MhcPostBackwardTilingBaseArch35::CheckShapeConsistency()
                             T, D),
                     return ge::GRAPH_FAILED);
 
-        // Validate grad_h_post: (T, n)
+        // Validate grad_h_post: (T, n, D)
         auto gradHPostShapePtr = context_->GetOutputShape(GRAD_H_POST_OUTPUT_INDEX);
         const gert::Shape* gradHPostShape = &gradHPostShapePtr->GetStorageShape();
-        OP_CHECK_IF(gradHPostShape->GetDimNum() != 2,
-                    OP_LOGE(context_, "grad_h_post has %u dimensions, expected 2",
+        OP_CHECK_IF(gradHPostShape->GetDimNum() != 3,
+                    OP_LOGE(context_, "grad_h_post has %u dimensions, expected 3",
                             gradHPostShape->GetDimNum()),
                     return ge::GRAPH_FAILED);
-        OP_CHECK_IF(gradHPostShape->GetDim(0) != T || gradHPostShape->GetDim(1) != n,
-                    OP_LOGE(context_, "grad_h_post shape (%ld,%ld) != expected (%ld,%ld)",
-                            gradHPostShape->GetDim(0), gradHPostShape->GetDim(1),
-                            T, n),
+        OP_CHECK_IF(gradHPostShape->GetDim(0) != T || gradHPostShape->GetDim(1) != n || gradHPostShape->GetDim(2) != D, 
+                    OP_LOGE(context_, "grad_h_post shape (%ld,%ld,%ld) != expected (%ld,%ld,%ld)",
+                            gradHPostShape->GetDim(0), gradHPostShape->GetDim(1), gradHPostShape->GetDim(2),
+                            T, n, D),
                     return ge::GRAPH_FAILED);
     }
 

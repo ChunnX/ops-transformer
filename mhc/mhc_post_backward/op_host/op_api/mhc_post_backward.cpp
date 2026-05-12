@@ -62,7 +62,7 @@ const std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*> MhcPostBackward
     auto gradX = executor->AllocTensor(x->GetViewShape(), x->GetDataType(), x->GetViewFormat());
     auto gradHres = executor->AllocTensor(hRes->GetViewShape(), hRes->GetDataType(), hRes->GetViewFormat());
     auto gradHout = executor->AllocTensor(hOut->GetViewShape(), hOut->GetDataType(), hOut->GetViewFormat());
-    auto gradHpost = executor->AllocTensor(hPost->GetViewShape(), hPost->GetDataType(), hPost->GetViewFormat());
+    auto gradHpost = executor->AllocTensor(x->GetViewShape(), hPost->GetDataType(), x->GetViewFormat());
 
     return MhcPostBackwardAICore(gradOutput, x, hRes, hOut, hPost, gradX, gradHres, gradHout, gradHpost, executor);
 }
