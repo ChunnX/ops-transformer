@@ -630,7 +630,7 @@ private:
 
                 // 拷贝数据
                 DataCopyParams intriParams;
-                intriParams.blockCount = (copyRowCnt + 15) / 16;
+                intriParams.blockCount = (copyRowCnt + 15) >> 4;
                 intriParams.blockLen = gmCoord.dDealSize / 2;
                 intriParams.dstStride = 0;
                 intriParams.srcStride = 0;
