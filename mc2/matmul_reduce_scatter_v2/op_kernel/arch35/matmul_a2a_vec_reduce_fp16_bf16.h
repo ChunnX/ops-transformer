@@ -99,6 +99,7 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Init(
     uint64_t hcclCcTilingOffset = offsetof(Mc2Tiling::MatmulReduceScatterV2TilingData, mc2CcTiling);
     hccl_.InitV2(contextGM, hcclInitTilingV2);
     hccl_.SetCcTilingV2(hcclCcTilingOffset);
+    // TODO: 测试打印，验证通信模式后删除
     if constexpr (TPL_COMM_MODE == CCU_COMM_MODE) {
         AscendC::PRINTF("[COMM_MODE] HCCL initialized with CCU mode for matmul_a2a_vec_reduce_fp16_bf16.\n");
     } else {

@@ -113,6 +113,7 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::Init(
     uint64_t hcclCcTilingOffset = offsetof(Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData, mc2CcTiling);
     hccl_.InitV2(contextGM, hcclInitTilingV2);
     hccl_.SetCcTilingV2(hcclCcTilingOffset);
+    // TODO: 测试打印，验证通信模式后删除
     if constexpr (TPL_COMM_MODE == CCU_COMM_MODE) {
         AscendC::PRINTF("[COMM_MODE] HCCL initialized with CCU mode for quant_bmm_a2a_vec_reduce_fp8_hif8.\n");
     } else {
