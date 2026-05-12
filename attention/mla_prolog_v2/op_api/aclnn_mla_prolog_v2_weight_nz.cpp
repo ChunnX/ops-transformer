@@ -9,8 +9,8 @@
  */
 #include <cstring>
 #include "graph/types.h"
-#include "aclnn_mla_prolog_v2_weight_nz.h"
 #include "opdev/platform.h"
+#include "aclnn_mla_prolog_v2_weight_nz.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"
