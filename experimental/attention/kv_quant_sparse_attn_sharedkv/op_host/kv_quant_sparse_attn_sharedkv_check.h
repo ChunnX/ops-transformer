@@ -44,6 +44,9 @@ const std::string ATTEN_OUT_NAME = "attention_out";
 
 const std::string CU_SEQLENS_Q_NAME = "cu_seqlens_q";
 const std::string SEQUSED_KV_NAME = "seqused_kv";
+const std::string SEQUSED_ORI_KV_NAME = "seqused_ori_kv";
+const std::string SEQUSED_CMP_KV_NAME = "seqused_cmp_kv";
+const std::string CMP_RESIDUAL_KV_NAME = "cmp_residual_kv";
 
 // // ------------------公共定义--------------------------
 struct SASTilingRequiredParaInfo {
@@ -110,8 +113,11 @@ constexpr uint32_t CU_SEQLENS_ORI_KV_INDEX = 8;
 constexpr uint32_t CU_SEQLENS_CMP_KV_INDEX = 9;
 constexpr uint32_t SEQUSED_Q_INDEX = 10;
 constexpr uint32_t SEQUSED_KV_INDEX = 11;
-constexpr uint32_t SINKS_INDEX = 12;
-constexpr uint32_t METADATA_INDEX = 13;
+constexpr uint32_t SEQUSED_ORI_KV_INDEX = 12;
+constexpr uint32_t SEQUSED_CMP_KV_INDEX = 13;
+constexpr uint32_t CMP_RESIDUAL_KV_INDEX = 14;
+constexpr uint32_t SINKS_INDEX = 15;
+constexpr uint32_t METADATA_INDEX = 16;
 // Outputs Index
 constexpr uint32_t ATTN_OUT_INDEX = 0;
 
@@ -223,6 +229,9 @@ struct KvQuantSASParaInfo {
  	SASTilingOptionalParaInfo cuSeqLensCmpKv = {nullptr, nullptr};
     SASTilingOptionalParaInfo seqUsedQ = {nullptr, nullptr};
     SASTilingOptionalParaInfo sequsedKv = {nullptr, nullptr};
+    SASTilingOptionalParaInfo sequsedOriKv = {nullptr, nullptr};
+    SASTilingOptionalParaInfo sequsedCmpKv = {nullptr, nullptr};
+    SASTilingOptionalParaInfo cmpResidualKv = {nullptr, nullptr};
     SASTilingOptionalParaInfo sinks = {nullptr, nullptr};
     SASTilingOptionalParaInfo metadata = {nullptr, nullptr};
     SASTilingRequiredParaInfo attnOut = {nullptr, nullptr};
@@ -266,6 +275,12 @@ public:
     bool isSameSeqAllKVTensor = true;
     bool isSameActualseq = true;
     uint32_t actualLenDimsKV = 0;
+    bool isActualLenDimsOriKVNull = true;
+    bool isActualLenDimsCmpKVNull = true;
+    bool isCmpResidualKVNull = true;
+    uint32_t actualSeqLenSizeOriKV = 0;
+    uint32_t actualSeqLenSizeCmpKV = 0;
+    uint32_t cmpResidualKVSize = 0;
 
     int64_t kvQuantMode = 0;
     int64_t tileSize = 0;
@@ -379,6 +394,12 @@ public:
     bool isSameSeqAllKVTensor_ = true;
     uint32_t actualLenDimsKV_ = 0;
     uint32_t actualLenDimsQ_ = 0;
+    bool isActualSeqLenDimsOriKVNull_ = true;
+    bool isActualSeqLenDimsCmpKVNull_ = true;
+    bool isCmpResidualKVNull_ = true;
+    uint32_t actualSeqLenSizeOriKV_ = 0;
+    uint32_t actualSeqLenSizeCmpKV_ = 0;
+    uint32_t cmpResidualKVSize_ = 0;
     uint32_t dSizeQ_ = 0;
     uint32_t dSizeKV_ = 0;
     // Layout

@@ -42,6 +42,7 @@ third_party/
 .agents/
 .opencode/
 .claude/
+AGENTS.md
 
 # pre-commit log
 log/

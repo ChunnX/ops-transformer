@@ -107,6 +107,12 @@ void KvQuantSASInfoParser::GetOptionalInputParaInfo()
     opParamInfo_.seqUsedQ.desc = context_->GetOptionalInputDesc(SEQUSED_Q_INDEX);
     opParamInfo_.sequsedKv.tensor = context_->GetOptionalInputTensor(SEQUSED_KV_INDEX);
     opParamInfo_.sequsedKv.desc = context_->GetOptionalInputDesc(SEQUSED_KV_INDEX);
+    opParamInfo_.sequsedOriKv.tensor = context_->GetOptionalInputTensor(SEQUSED_ORI_KV_INDEX);
+    opParamInfo_.sequsedOriKv.desc = context_->GetOptionalInputDesc(SEQUSED_ORI_KV_INDEX);
+    opParamInfo_.sequsedCmpKv.tensor = context_->GetOptionalInputTensor(SEQUSED_CMP_KV_INDEX);
+    opParamInfo_.sequsedCmpKv.desc = context_->GetOptionalInputDesc(SEQUSED_CMP_KV_INDEX);
+    opParamInfo_.cmpResidualKv.tensor = context_->GetOptionalInputTensor(CMP_RESIDUAL_KV_INDEX);
+    opParamInfo_.cmpResidualKv.desc = context_->GetOptionalInputDesc(CMP_RESIDUAL_KV_INDEX);
     opParamInfo_.metadata.desc = context_->GetOptionalInputDesc(METADATA_INDEX);
     opParamInfo_.metadata.tensor = context_->GetOptionalInputTensor(METADATA_INDEX);
 }
@@ -427,6 +433,18 @@ ge::graphStatus KvQuantSASInfoParser::GetActualseqInfo()
     if (opParamInfo_.cuSeqLensQ.tensor != nullptr) {
         actualLenDimsQ_ = opParamInfo_.cuSeqLensQ.tensor->GetShapeSize(); // cuSeqLensQ shape is B+1
     }
+    if (opParamInfo_.sequsedOriKv.tensor != nullptr) {
+        isActualSeqLenDimsOriKVNull_ = false;
+        actualSeqLenSizeOriKV_ = opParamInfo_.sequsedOriKv.tensor->GetShapeSize();
+    }
+    if (opParamInfo_.sequsedCmpKv.tensor != nullptr) {
+        isActualSeqLenDimsCmpKVNull_ = false;
+        actualSeqLenSizeCmpKV_ = opParamInfo_.sequsedCmpKv.tensor->GetShapeSize();
+    }
+    if (opParamInfo_.cmpResidualKv.tensor != nullptr) {
+        isCmpResidualKVNull_ = false;
+        cmpResidualKVSize_ = opParamInfo_.cmpResidualKv.tensor->GetShapeSize();
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -497,6 +515,12 @@ void KvQuantSASInfoParser::GenerateInfo(KvQuantSASTilingInfo &sasInfo)
     sasInfo.maxActualseq = maxActualseq_;
     sasInfo.actualSeqLenFlag = (opParamInfo_.sequsedKv.tensor != nullptr);
     sasInfo.isSameSeqAllKVTensor = isSameSeqAllKVTensor_;
+    sasInfo.isActualLenDimsOriKVNull = isActualSeqLenDimsOriKVNull_;
+    sasInfo.isActualLenDimsCmpKVNull = isActualSeqLenDimsCmpKVNull_;
+    sasInfo.isCmpResidualKVNull = isCmpResidualKVNull_;
+    sasInfo.actualSeqLenSizeOriKV = actualSeqLenSizeOriKV_;
+    sasInfo.actualSeqLenSizeCmpKV = actualSeqLenSizeCmpKV_;
+    sasInfo.cmpResidualKVSize = cmpResidualKVSize_;
 
     sasInfo.kvQuantMode = *opParamInfo_.kvQuantMode;
     sasInfo.tileSize = *opParamInfo_.tileSize;

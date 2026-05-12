@@ -53,7 +53,8 @@ public:
 
     // ==================== Functions ======================
     __aicore__ inline SCFABlockVec() {};
-    __aicore__ inline void InitVecBlock(TPipe *pipe, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedKv)
+    __aicore__ inline void InitVecBlock(TPipe *pipe, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedKv,
+        __gm__ uint8_t *sequsedOriKv, __gm__ uint8_t *sequsedCmpKv, __gm__ uint8_t *cmpResidualKv)
     {
         if ASCEND_IS_AIV {
             tPipe = pipe;
@@ -62,6 +63,15 @@ public:
             }
             if (sequsedKv != nullptr) {
                 actualSeqLengthsKVGm.SetGlobalBuffer((__gm__ int32_t *)sequsedKv);
+            }
+            if (sequsedOriKv != nullptr) {
+                actualSeqOriKvGm.SetGlobalBuffer((__gm__ int32_t *)sequsedOriKv);
+            }
+            if (sequsedCmpKv != nullptr) {
+                actualSeqCmpKvGm.SetGlobalBuffer((__gm__ int32_t *)sequsedCmpKv);
+            }
+            if (cmpResidualKv != nullptr) {
+                cmpResidualKvGm.SetGlobalBuffer((__gm__ int32_t *)cmpResidualKv);
             }
             this->GetExtremeValue(this->negativeFloatScalar);
         }
@@ -72,7 +82,8 @@ public:
     // 初始化attentionOutGM
     __aicore__ inline void CleanOutput(__gm__ uint8_t *attentionOut, ConstInfo &constInfo);
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV, __gm__ uint8_t *cmpSparseIndices,
-        __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sinks);
+        __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sinks,
+        __gm__ uint8_t *sequsedOriKv, __gm__ uint8_t *sequsedCmpKv, __gm__ uint8_t *cmpResidualKv);
     __aicore__ inline void InitOutputSingleCore(ConstInfo &constInfo);
     __aicore__ inline void ProcessVec0(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
         Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
@@ -133,6 +144,9 @@ private:
     GlobalTensor<T> sinksGm;
     GlobalTensor<int32_t> cuSeqlensQGm;
     GlobalTensor<int32_t> actualSeqLengthsKVGm;
+    GlobalTensor<int32_t> actualSeqOriKvGm;
+    GlobalTensor<int32_t> actualSeqCmpKvGm;
+    GlobalTensor<int32_t> cmpResidualKvGm;
 
     TBuf<> commonTBuf; // common的复用空间
     TBuf<> sinksBuf;
@@ -229,7 +243,15 @@ __aicore__ inline uint32_t SCFABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTens
     int32_t *tokenData, const RunInfo &runInfo, ConstInfo &constInfo)
 {
     int64_t s2IdLimit = runInfo.s2RealSize;
-    s2IdLimit = (runInfo.s2RealSize - runInfo.actualS1Size + runInfo.s1oIdx + 1) / constInfo.cmpRatio;
+    int64_t accessible_kv = runInfo.s2RealSize - runInfo.actualS1Size + runInfo.s1oIdx + 1;
+    int64_t cmpResidual = runInfo.cmpResidual;
+    int64_t actualS2CmpSize = runInfo.actualS2CmpSize;
+    if (accessible_kv <= cmpResidual) {
+        s2IdLimit = 0;
+    } else {
+        s2IdLimit = (accessible_kv - cmpResidual) / constInfo.cmpRatio;
+    }
+    s2IdLimit = Min(s2IdLimit, actualS2CmpSize);
     uint32_t dealRow = 0;
     for (uint32_t i = 0; i < 8; i += 2) {
         int64_t keyOffset0 = GetkeyOffset(tokenData[i], runInfo, constInfo);
@@ -901,7 +923,8 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CleanOutput(__gm__ uint8_t *
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(__gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV,
-    __gm__ uint8_t *cmpSparseIndices, __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sinks)
+    __gm__ uint8_t *cmpSparseIndices, __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sinks,
+    __gm__ uint8_t *sequsedOriKv, __gm__ uint8_t *sequsedCmpKv, __gm__ uint8_t *cmpResidualKv)
 {
     oriKVGm.SetGlobalBuffer((__gm__ KV_T *)(oriKV));
     oriBlockTableGm.SetGlobalBuffer((__gm__ int32_t *)oriBlockTable);
