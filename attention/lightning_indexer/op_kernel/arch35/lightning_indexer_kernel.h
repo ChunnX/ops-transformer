@@ -430,7 +430,7 @@ __aicore__ inline void LightningIndexerKernel<LIT>::Init(__gm__ uint8_t *query,
                                             LICommon::Align(
                                                 (uint64_t)constInfo.kSeqSize,
                                                 (uint64_t)constInfo.s2BaseSize)  *
-                                            sizeof(uint16_t);
+                                            sizeof(SCORE_T);
     scoreGm.SetGlobalBuffer((__gm__ SCORE_T *)(workspace + aiCoreIdx * singleCoreScoreSize));
     offset += GetBlockNum() * singleCoreScoreSize;
 

@@ -154,9 +154,9 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::InitBuffers(TPipe *pi
     pipe->InitBuffer(resMm1Buf_, 2 * CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_ * sizeof(float));
     resMm1UB_ = resMm1Buf_.Get<float>();
     
-    pipe->InitBuffer(weightBuf_, 2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE);
+    pipe->InitBuffer(weightBuf_, 2 * CeilDiv(s1BaseSize_, 2) * gSize_* sizeof(W_T));
     weightUB_ = weightBuf_.Get<W_T>();
-    pipe->InitBuffer(weightFloatBuf_, 2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE);
+    pipe->InitBuffer(weightFloatBuf_, 2 * CeilDiv(s1BaseSize_, 2) * gSize_* sizeof(float));
     weightFloatUB_ = weightFloatBuf_.Get<float>();
     pipe->InitBuffer(outBuf_,
                     2 * CeilDiv(s1BaseSize_, 2) * s2BaseSize_ * sizeof(SCORE_T));      // 大小：2(开dB) * 2 * 128 * 4 = 2KB
@@ -164,7 +164,7 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::InitBuffers(TPipe *pi
 
     // Topk
     pipe->InitBuffer(mrgValueBuf_,
-                    (topkCountAlign256_ + trunkLen_) * sizeof(uint16_t));
+                    (topkCountAlign256_ + trunkLen_) * sizeof(SCORE_T));
     mrgValueLocal_ = mrgValueBuf_.Get<SCORE_T>();
     // returnvalue
     if (topkCount_ <= 2048) {
