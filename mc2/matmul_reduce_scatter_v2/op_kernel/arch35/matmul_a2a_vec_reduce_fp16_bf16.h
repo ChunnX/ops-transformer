@@ -99,7 +99,11 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Init(
     uint64_t hcclCcTilingOffset = offsetof(Mc2Tiling::MatmulReduceScatterV2TilingData, mc2CcTiling);
     hccl_.InitV2(contextGM, hcclInitTilingV2);
     hccl_.SetCcTilingV2(hcclCcTilingOffset);
-    AscendC::PRINTF("[CCU_TO_AICPU] HCCL initialized with AICPU mode for matmul_a2a_vec_reduce_fp16_bf16.\n");
+    if constexpr (TPL_COMM_MODE == CCU_COMM_MODE) {
+        AscendC::PRINTF("[COMM_MODE] HCCL initialized with CCU mode for matmul_a2a_vec_reduce_fp16_bf16.\n");
+    } else {
+        AscendC::PRINTF("[COMM_MODE] HCCL initialized with AICPU mode for matmul_a2a_vec_reduce_fp16_bf16.\n");
+    }
 
     // 读取上下文和配置
     context_ = (__gm__ HcclCombinOpParam *)(contextGM);

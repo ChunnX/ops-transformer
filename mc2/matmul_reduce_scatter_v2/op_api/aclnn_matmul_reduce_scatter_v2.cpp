@@ -83,9 +83,12 @@ static void SetNnopbaseHcclServerTypeByArch(aclOpExecutor *executor)
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
         NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
     } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        NnopbaseHcclServerType serverType = (Mc2Comm::GetCommModeFromEnv() == Mc2Comm::COMM_MODE_AICPU)
+        uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+        NnopbaseHcclServerType serverType = (commMode == Mc2Comm::COMM_MODE_AICPU)
             ? NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU
             : NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU;
+        OP_LOGD("[COMM_MODE] Set HcclServerType to %s for DAV_3510.",
+                (commMode == Mc2Comm::COMM_MODE_AICPU) ? "AICPU" : "CCU");
         NnopbaseSetHcclServerType(executor, serverType);
     }
 }
