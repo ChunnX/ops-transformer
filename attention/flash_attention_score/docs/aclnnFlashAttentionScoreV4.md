@@ -755,9 +755,15 @@ int main() {
   aclTensor* softmaxSum = nullptr;
   aclTensor* softmaxOut = nullptr;
  
+<<<<<<< HEAD
   std::vector<op::fp16_t> qHostData(q_size, 1.0);
   std::vector<op::fp16_t> kHostData(kv_size, 1.0);
   std::vector<op::fp16_t> vHostData(kv_size, 1.0);
+=======
+  std::vector<op::fp16> qHostData(q_size, 1.0);
+  std::vector<op::fp16> kHostData(kv_size, 1.0);
+  std::vector<op::fp16> vHostData(kv_size, 1.0);
+>>>>>>> fix flash_attention_score doc
   std::vector<uint8_t> attenmaskHostData(atten_mask_size, 0);
   std::vector<float> sinkHostData(sink_size, 3.0);
   std::vector<float> attentionOutHostData(q_size, 255);
