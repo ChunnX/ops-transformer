@@ -166,7 +166,7 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
 
         TQueBind<TPosition::VECIN, TPosition::VECOUT, 1> queBind;
         TPipe deterPipe;
-        if ASCEND_IS_AIV {
+        if (g_coreType == AIV) {
             deterPipe.InitBuffer(queBind, BUFFER_NUM, DETER_UB_SIZE);
         }
 
@@ -195,7 +195,6 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
                 }
                 roundM += gm;
                 groupEnd++;
-                // single group exceeds window: let it occupy a round alone
                 if (roundM >= static_cast<int32_t>(windowSize)) {
                     break;
                 }
@@ -225,38 +224,33 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
 
             uint32_t roundGroupNum = groupEnd - groupStart;
 
-            // preOffsetInit for cumulative mode kernel
             int32_t preOffsetInit = 0;
             if (groupListType == 0 && groupStart > 0) {
                 preOffsetInit = static_cast<int32_t>(groupListFullGm.GetValue(groupStart - 1));
             }
 
-            // Construct offset input pointers
             GM_ADDR xRound = x + xRowOffset * k;
             GM_ADDR wRound = w + wGroupOffset;
-            // bias: per-group stride N elements (bfloat16), kernel internally does += n per group
             GM_ADDR biasRound = bias + static_cast<uint64_t>(groupStart) * n * sizeof(bfloat16_t);
             GM_ADDR groupListRound = group_list + groupStart * sizeof(int64_t);
-            // w_scale is per-channel: stride N per group; kernel reads w_scale[groupIdx * n]
-            // Pre-offset so groupIdx=0 in kernel reads from the correct group
             uint64_t wScaleOffsetElements = static_cast<uint64_t>(groupStart) * n;
             GM_ADDR wScaleRound = w_scale + wScaleOffsetElements * sizeof(float);
-            // x_scale is per-token (float): kernel internally does += m per group
             GM_ADDR xScaleRound = x_scale + xRowOffset * sizeof(float);
-            // logit is per-token (float): kernel internally does += m per group
             GM_ADDR logitRound = logit + xRowOffset * sizeof(float);
 
-            // GMMTiling for this round
+            // Per-round matmulTiling: override M to roundM for correct scheduler behavior
+            TCubeTiling roundMatmulTiling = matmulTiling_;
+            roundMatmulTiling.M = static_cast<uint64_t>(roundM);
+
             GMMTilingDeterministic gmmParamsDeter{roundGroupNum,
                                                    groupListType,
                                                    matmulTiling_.baseM,
                                                    matmulTiling_.baseN,
                                                    matmulTiling_.baseK,
                                                    gmmFinalizeRoutingQuantParams_.hasBias};
-            gmmParamsDeter.matmulTiling = &matmulTiling_;
+            gmmParamsDeter.matmulTiling = &roundMatmulTiling;
             gmmParamsDeter.preOffsetInit = preOffsetInit;
 
-            // Prologue params: first round normal, subsequent rounds skip residual init
             uint32_t prologueBatch = isFirstRound ? gmmFinalizeRoutingQuantParams_.batch : 0;
             uint32_t prologueSharedInputOffset = isFirstRound ? gmmFinalizeRoutingQuantParams_.sharedInputOffset : 0;
             uint32_t prologueSharedInputLen = isFirstRound ? gmmFinalizeRoutingQuantParams_.sharedInputLen : 0;

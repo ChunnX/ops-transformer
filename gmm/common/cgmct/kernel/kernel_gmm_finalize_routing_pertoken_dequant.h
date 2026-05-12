@@ -286,6 +286,7 @@ public:
 
     __aicore__ inline void ProcessSingleGroup(const Params &params, BlockSchedulerOp &bs, uint32_t groupIdx)
     {
+        isVecSetSyncCom_ = false;
         int64_t m = Get<MNK_M>(problemShape_);
         int64_t n = Get<MNK_N>(problemShape_);
         int64_t k = Get<MNK_K>(problemShape_);
@@ -360,6 +361,7 @@ public:
                 continue;
             }
             ProcessSingleGroup(params, bs, groupIdx);
+            SyncAll<false>();
         }
         End();
     }

@@ -65,7 +65,7 @@ __aicore__ inline void FRDeterministicA5(
     uint32_t n,
     uint64_t globalRowOffset = 0)
 {
-    if ASCEND_IS_AIC {
+    if (g_coreType == AIC) {
         // A5 SyncAll requires all cores to participate; AIC cores only sync
         SyncAll();
         SyncAll();
