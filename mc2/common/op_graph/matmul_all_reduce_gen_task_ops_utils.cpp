@@ -17,6 +17,7 @@
 #include "mc2_common_log.h"
 #include "platform/platform_info.h"
 #include "mc2_gen_task_ops_utils.h"
+#include <algorithm>
 
 namespace ops {
 const int64_t AICORE_IDX = 0;
@@ -32,7 +33,7 @@ static bool IsPlatform310P() {
       ge::GRAPH_SUCCESS, OPS_LOG_E("", "Cannot get platform info!"), return false);
   OPS_LOG_D("", "Get soc version: %s", optional_info.soc_version.c_str());
   static const std::vector<std::string> version_with_common_def = {"Ascend310P", "Ascend310P1", "Ascend310P3"};
-  return find(version_with_common_def.begin(), version_with_common_def.end(), optional_info.soc_version) !=
+  return std::find(version_with_common_def.begin(), version_with_common_def.end(), optional_info.soc_version) !=
       version_with_common_def.end();
 }
 
