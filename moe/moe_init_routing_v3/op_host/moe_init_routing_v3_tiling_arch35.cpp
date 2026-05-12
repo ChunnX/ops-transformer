@@ -1404,23 +1404,22 @@ PerLoopParams MoeInitRoutingV3Arch35TilingClass::GetPerLoopParams(MultipleParams
                      NUM_TWO) / multipleParams.rowMultiple / static_cast<int64_t>(sizeof(int32_t));
         }
     } else {
-        perLoopParams.perLoopMaxIndicesElements =
-            (availUbSize_ - Align(perLoopParams.perLoopCols, inputXDtypeSize_) * multipleParams.colMultiple -
-             UB_BLOCK_SIZE * NUM_TWO) /
-            multipleParams.rowMultiple / static_cast<int64_t>(sizeof(int32_t));
-        while (perLoopParams.perLoopMaxIndicesElements <= 0 && perLoopParams.perLoopCols > 1) {
+        perLoopParams.perLoopMaxIndicesElements = availUbSize_ / NUM_TWO /
+            (AlignBytes(perLoopParams.perLoopCols, inputXDtypeSize_) +
+                AlignBytes(1, sizeof(float)) + static_cast<int64_t>(sizeof(int32_t)));
+        while (perLoopParams.perLoopMaxIndicesElements <= 0) {
             perLoopParams.perLoopCols = Ops::Base::CeilDiv(perLoopParams.perLoopCols, NUM_TWO);
-            perLoopParams.perLoopMaxIndicesElements =
-                (availUbSize_ - Align(perLoopParams.perLoopCols, inputXDtypeSize_) * multipleParams.colMultiple -
-                 UB_BLOCK_SIZE * NUM_TWO) /
-                multipleParams.rowMultiple / static_cast<int64_t>(sizeof(int32_t));
+            perLoopParams.perLoopMaxIndicesElements = availUbSize_ / NUM_TWO /
+            (AlignBytes(perLoopParams.perLoopCols, inputXDtypeSize_) +
+                AlignBytes(1, sizeof(float)) + static_cast<int64_t>(sizeof(int32_t)));
         }
         perLoopParams.perLoopMaxIndicesElements =
             std::min(perLoopParams.perLoopMaxIndicesElements, perCoreIndicesElements);
 
         int64_t rowIdxQueueSize = AlignBytes(perLoopParams.perLoopMaxIndicesElements, sizeof(int32_t));
-        int64_t xQueueSize = AlignBytes(perLoopParams.perLoopCols, inputXDtypeSize_);
-        int64_t scaleQueueSize = AlignBytes(1, sizeof(float));
+        int64_t xQueueSize = perLoopParams.perLoopMaxIndicesElements *
+                                AlignBytes(perLoopParams.perLoopCols, inputXDtypeSize_);
+        int64_t scaleQueueSize = perLoopParams.perLoopMaxIndicesElements * AlignBytes(1, sizeof(float));
 
         int64_t baseMemory = rowIdxQueueSize * NUM_TWO + xQueueSize * NUM_TWO + scaleQueueSize * NUM_TWO;
 
