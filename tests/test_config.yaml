@@ -339,7 +339,7 @@ attention:
         - attention/mla_prolog_v3/op_host/fallback_mla_prolog_v3.cpp
       test:
         examples: False
-        ut: False
+        ut: True
       options:
         - mla_prolog_v2
 
