@@ -21,8 +21,8 @@ using namespace GmUbGmCopyImpl;
 using namespace AiVReduceSumCastFp32Impl;
 constexpr uint32_t A2A_VSUM_AG_MAX_HANDLE_ID_NUM = 16;
 constexpr uint64_t FIVE_ONE_TWO = 512;
-template <typename XType, typename YType, Mc2CoreType CoreType>
-class MatmulAllReduceBase<XType, YType, CoreType, true>
+template <typename XType, typename YType, Mc2CoreType CoreType, int commMode>
+class MatmulAllReduceBase<XType, YType, CoreType, true, commMode>
 {
 public:
     __aicore__ inline MatmulAllReduceBase(
@@ -287,7 +287,7 @@ protected:
     MC2TilingHeader* tilingData_;
     MC2TileInfo tileInfo_, tailInfo_;
     TPipe* tPipe_;
-    Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;
+    typename HcclTypeSelector<commMode>::type hccl_;
     
     AscendC::HcclHandle all2allHandleId_[A2A_VSUM_AG_MAX_HANDLE_ID_NUM] = {0};
     AscendC::HcclHandle allgatherHandleId_[A2A_VSUM_AG_MAX_HANDLE_ID_NUM] = {0};
