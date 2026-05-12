@@ -706,8 +706,7 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckInputX()
     static const unordered_set<DataType>  MXFP4QUANT_SUPPORTED_DTYPES = {DataType::DT_FLOAT16, DataType::DT_BF16};
     static const unordered_set<DataType> DYNAMIC_QUANT_SUPPORTED_DTYPES = {DataType::DT_FLOAT, DataType::DT_FLOAT16,
                                                                            DataType::DT_BF16, DataType::DT_INT8};
-    static const unordered_set<DataType> INT4_DYNAMIC_SUPPORTED_DTYPES = {DataType::DT_FLOAT, DataType::DT_FLOAT16,
-                                                                          DataType::DT_BF16};
+    static const unordered_set<DataType> INT4_DYNAMIC_SUPPORTED_DTYPES = {DataType::DT_FLOAT, DataType::DT_BF16};
     static const std::unordered_set<DataType> MX_OR_HIF8_QUANT_SUPPORTED_DTYPES = {ge::DataType::DT_FLOAT16,
                                                                                    ge::DataType::DT_BF16};
     unordered_set<DataType> supportedDtypes;
@@ -897,6 +896,9 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetInputs()
                 return ge::GRAPH_FAILED);
     cols_ = xShape_.GetDim(1);
     if (quantMode_ == QUANT_MODE_INT4_DYNAMIC) {
+        OP_CHECK_IF(n_ % 2 != 0,
+                    OP_LOGE(context_, "When quant_mode=10 (INT4 dynamic), NUM_ROWS must be even, but got %ld.", n_),
+                    return ge::GRAPH_FAILED);
         OP_CHECK_IF(cols_ % 2 != 0,
                     OP_LOGE(context_, "When quant_mode=10 (INT4 dynamic), H (cols) must be even, but got %ld.", cols_),
                     return ge::GRAPH_FAILED);

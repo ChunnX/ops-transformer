@@ -711,6 +711,11 @@ static ge::graphStatus InferShape4MoeInitRoutingV3(gert::InferShapeContext *cont
 
     // INT4 dynamic quantization requires H (cols) to be even (one byte packs two int4 elements)
     if (quantMode == QuantMode::INT4_DYNAMIC) {
+        int64_t nCheck = xShape->GetDim(0);
+        OP_CHECK_IF(nCheck > 0 && nCheck % 2 != 0,
+                    OP_LOGE(context, "When quant_mode=10 (INT4 dynamic), "
+                            "NUM_ROWS must be even, but got %ld.", nCheck),
+                    return ge::GRAPH_FAILED);
         int64_t colsCheck = xShape->GetDimNum() == DIM_ONE ? NEG_ONE : xShape->GetDim(1);
         OP_CHECK_IF(colsCheck > 0 && colsCheck % 2 != 0,
                     OP_LOGE(context, "When quant_mode=10 (INT4 dynamic), "
@@ -841,8 +846,9 @@ static ge::graphStatus InferDataType4MoeInitRoutingV3(gert::InferDataTypeContext
             return ge::GRAPH_FAILED;
         }
     } else if (QuantMode::INT4_DYNAMIC == quantMode) {
-        if (ge::DT_INT8 == xDtype) {
-            OP_LOGE(context, "When quant_mode=%ld (INT4 dynamic), xDtype cannot be int_8.", quantMode);
+        if (xDtype != ge::DT_FLOAT && xDtype != ge::DT_BF16) {
+            OP_LOGE(context, "When quant_mode=%ld (INT4 dynamic), xDtype should be DT_FLOAT or DT_BF16. "
+                    "Current got unexpected dtype id of %d.", quantMode, xDtype);
             return ge::GRAPH_FAILED;
         }
     } else if (QuantMode::MXQUANT_FP8_E5M2 == quantMode || QuantMode::MXQUANT_FP8_E4M3FN == quantMode
