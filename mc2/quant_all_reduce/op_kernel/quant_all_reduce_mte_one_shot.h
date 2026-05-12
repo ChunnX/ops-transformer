@@ -80,7 +80,7 @@ private:
     GlobalTensor<ScalesType> remoteWinScaleTensor_;
     LocalTensor<float> sumTensor_;
 
-    TQue<QuePosition::VECIN, 1> xInQueue_, scaleInQue; // 用于读数据和反量化求和的通算并行
+    TQue<QuePosition::VECIN, 1> xInQueue_, scaleInQue_; // 用于读数据和反量化求和的通算并行
     TBuf<> sumBuf_; // 用于Reduce_sum 求和
 };
 
@@ -171,7 +171,7 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::ComputeXPerBlock(
     uint64_t scaleInQueSize = scaleAllocCount * sizeof(ScalesType);
 
     tPipe->InitBuffer(xInQueue_, BUFFER_NUM, xPerBlock_ * sizeof(XType));
-    tPipe->InitBuffer(scaleInQue, BUFFER_NUM, scaleInQueSize);
+    tPipe->InitBuffer(scaleInQue_, BUFFER_NUM, scaleInQueSize);
     tPipe->InitBuffer(sumBuf_, xPerBlock_ * sizeof(float));
     sumTensor_ = sumBuf_.Get<float>();
 }
@@ -220,19 +220,19 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::ReadDataBlockRedu
     xTmpTensor = xInQueue_.DeQue<XType>();
 
     /* 读取 scale 从 Win -> UB（DataCopyPad 处理 sub-32B 对齐） */
-    LocalTensor<ScalesType> scaleTmpTensor = scaleInQue.AllocTensor<ScalesType>();
+    LocalTensor<ScalesType> scaleTmpTensor = scaleInQue_.AllocTensor<ScalesType>();
     DataCopyParams scaleCopyParams;
     scaleCopyParams.blockLen = scaleNum * sizeof(ScalesType);
     scaleCopyParams.blockCount = 1;
     DataCopyPadParams scalePadParams;
     DataCopyPad(scaleTmpTensor, remoteWinScaleTensor_[curScaleOffset], scaleCopyParams, scalePadParams);
-    scaleInQue.EnQue(scaleTmpTensor);
-    scaleTmpTensor = scaleInQue.DeQue<ScalesType>();
+    scaleInQue_.EnQue(scaleTmpTensor);
+    scaleTmpTensor = scaleInQue_.DeQue<ScalesType>();
 
     /* 反量化计算与ReduceSum求和（累加到sumTensor_） */
     vecComp_.DequantReduceSum(xTmpTensor, scaleTmpTensor, sumTensor_);
     xInQueue_.FreeTensor(xTmpTensor);
-    scaleInQue.FreeTensor(scaleTmpTensor);
+    scaleInQue_.FreeTensor(scaleTmpTensor);
 }
 
 template <TemplateTypeClass>
