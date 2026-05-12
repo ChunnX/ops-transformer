@@ -561,8 +561,11 @@ but the actual x dim num is [%zu], actual weight dim num is [%zu].",
     }
     OP_CHECK_IF(CheckShapeForBias(context) != ge::GRAPH_SUCCESS,
                 OP_LOGE(context->GetNodeName(), "CheckShapeForBias failed."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!IsNonEmpty(context->GetDynamicInputShape(GMM_INDEX_IN_SCALE, 0)),
-                OP_LOGE(context->GetNodeName(), "The 1st tensor of scale cannot be empty."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        gmmAttrs.outputDtype != GMM_OUT_DTYPE_INT32 &&
+            !IsNonEmpty(context->GetDynamicInputShape(GMM_INDEX_IN_SCALE, 0)),
+        OP_LOGE(context->GetNodeName(), "When output dtype is not int32, the 1st tensor of scale cannot be empty."),
+        return ge::GRAPH_FAILED);
     OP_CHECK_IF(CheckShapeForQuantParam(context, gmmAttrs) != ge::GRAPH_SUCCESS,
                 OP_LOGE(context->GetNodeName(), "CheckShapeForQuantParam failed."), return ge::GRAPH_FAILED);
 
