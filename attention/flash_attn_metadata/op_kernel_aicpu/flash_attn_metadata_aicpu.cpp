@@ -143,7 +143,6 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
     deviceInfo.aivCoreMinNum = aivCoreNum_;
     deviceInfo.cvRadio = aivCoreNum_ / aicCoreNum_;
     // deviceInfo.socVersion = socVersion_;
-
     // baseInfo
     // actual seq size
     baseInfo.isCumulativeQuerySeq = layoutQ_ == "TND" || layoutQ_ == "NTD";
@@ -162,15 +161,7 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
             }
         }
     }
-    if (!baseInfo.isCumulativeQuerySeq && sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr) {
-        batchSize_ = sequsedQ_->GetTensorShape()->GetDimSize(0);
-        auto sequsedQ = GetTensorDataAsInt64(sequsedQ_, batchSize_);
-        baseInfo.actualQuerySeqSize.resize(batchSize_, maxSeqlenQ_);
-        for (uint32_t i = 0; i < batchSize_; ++i) {
-            baseInfo.actualQuerySeqSize[i] = sequsedQ[i];
-            maxSeqlenQ_ = std::max(static_cast<int64_t>(maxSeqlenQ_), sequsedQ[i]);
-        }
-    } else if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
+    if (baseInfo.isCumulativeQuerySeq && cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
         batchSize_ = cuSeqlensQ_->GetTensorShape()->GetDimSize(0) - 1;
         auto cuSeqlensQ = GetTensorDataAsInt64(cuSeqlensQ_, batchSize_ + 1);
         baseInfo.actualQuerySeqSize.resize(batchSize_, maxSeqlenQ_);
@@ -179,15 +170,19 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
             maxSeqlenQ_ = std::max(static_cast<int64_t>(maxSeqlenQ_), cuSeqlensQ[i + 1] - cuSeqlensQ[i]);
         }
     }
-    if (!baseInfo.isCumulativeKvSeq && sequsedKv_ != nullptr && sequsedKv_->GetData() != nullptr) {
-        batchSize_ = sequsedKv_->GetTensorShape()->GetDimSize(0);
-        auto sequsedKv = GetTensorDataAsInt64(sequsedKv_, batchSize_);
-        baseInfo.actualKvSeqSize.resize(batchSize_, maxSeqlenKv_);
+    if (sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr) {
+        batchSize_ = sequsedQ_->GetTensorShape()->GetDimSize(0);
+        auto sequsedQ = GetTensorDataAsInt64(sequsedQ_, batchSize_);
+        baseInfo.actualQuerySeqSize.resize(batchSize_, maxSeqlenQ_);
         for (uint32_t i = 0; i < batchSize_; ++i) {
-            baseInfo.actualKvSeqSize[i] = sequsedKv[i];
-            maxSeqlenKv_ = std::max(static_cast<int64_t>(maxSeqlenKv_), sequsedKv[i]);
+            baseInfo.actualQuerySeqSize[i] = sequsedQ[i];
+            if (baseInfo.isCumulativeQuerySeq && (i > 0)) {
+                baseInfo.actualQuerySeqSize[i] += baseInfo.actualQuerySeqSize[i - 1];
+            }
+            maxSeqlenQ_ = std::max(static_cast<int64_t>(maxSeqlenQ_), sequsedQ[i]);
         }
-    } else if (cuSeqlensKv_ != nullptr && cuSeqlensKv_->GetData() != nullptr) {
+    }
+    if (baseInfo.isCumulativeKvSeq && cuSeqlensKv_ != nullptr && cuSeqlensKv_->GetData() != nullptr) {
         batchSize_ = cuSeqlensKv_->GetTensorShape()->GetDimSize(0) - 1;
         auto cuSeqlensKv = GetTensorDataAsInt64(cuSeqlensKv_, batchSize_ + 1);
         baseInfo.actualKvSeqSize.resize(batchSize_, maxSeqlenKv_);
@@ -196,11 +191,17 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
             maxSeqlenKv_ = std::max(static_cast<int64_t>(maxSeqlenKv_), cuSeqlensKv[i + 1] - cuSeqlensKv[i]);
         }
     }
-    for (uint32_t i = 0; i < batchSize_; ++i) {
-        KERNEL_LOG_INFO("baseInfo.actualQuerySeqSize[%d] %lld", i, baseInfo.actualQuerySeqSize[i]);
-    }
-    for (uint32_t i = 0; i < batchSize_; ++i) {
-        KERNEL_LOG_INFO("baseInfo.actualKvSeqSize[%d] %lld", i, baseInfo.actualKvSeqSize[i]);
+    if (sequsedKv_ != nullptr && sequsedKv_->GetData() != nullptr) {
+        batchSize_ = sequsedKv_->GetTensorShape()->GetDimSize(0);
+        auto sequsedKv = GetTensorDataAsInt64(sequsedKv_, batchSize_);
+        baseInfo.actualKvSeqSize.resize(batchSize_, maxSeqlenKv_);
+        for (uint32_t i = 0; i < batchSize_; ++i) {
+            baseInfo.actualKvSeqSize[i] = sequsedKv[i];
+            if (baseInfo.isCumulativeKvSeq && (i > 0)) {
+                baseInfo.actualKvSeqSize[i] += baseInfo.actualKvSeqSize[i - 1];
+            }
+            maxSeqlenKv_ = std::max(static_cast<int64_t>(maxSeqlenKv_), sequsedKv[i]);
+        }
     }
     baseInfo.batchSize = batchSize_;
     baseInfo.queryHeadNum = numHeadsQ_;
@@ -242,70 +243,58 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
 
 bool FlashAttnMetadataCpuKernel::BalanceSchedule(SectionStreamKResult &splitRes)
 {
-    return load_balance::SectionStreamK::Compute(deviceInfo, baseInfo, param, splitRes) == LOAD_BALANCE_SUCCESS;
+    return load_balance::SectionStreamK::Compute(deviceInfo, baseInfo, param, splitRes) == SECTION_STREAM_K_SUCCESS;
 }
 
 bool FlashAttnMetadataCpuKernel::GenMetaData(SectionStreamKResult &splitRes)
 {
-    uint32_t sectionNum = splitRes.sectionNum;
-    detail::FaMetaData faMetadata(metaData_->GetData(), sectionNum);
+    detail::FaMetaData faMetadata(metaData_->GetData(), 1);
     uint32_t* ptr = (uint32_t*)metaData_->GetData();
     ptr[1] = mBaseSize_;
     ptr[2] = s2BaseSize_;
-    for (uint32_t sectionId = 0; sectionId < sectionNum; ++sectionId) {
-        for (uint32_t i = 0; i < AIC_CORE_NUM; ++i) {
-            // faMetadata.setFaMetadata(sectionId, i, optiling::FA_CORE_ENABLE_INDEX, 0U);
-            faMetadata.setFaMetadata(sectionId, i, optiling::FA_BN2_START_INDEX, 0U);
-            faMetadata.setFaMetadata(sectionId, i, optiling::FA_M_START_INDEX, 0U);
-            faMetadata.setFaMetadata(sectionId, i, optiling::FA_S2_START_INDEX, 0U);
-            faMetadata.setFaMetadata(sectionId, i, optiling::FA_BN2_END_INDEX, 0U);
-            faMetadata.setFaMetadata(sectionId, i, optiling::FA_M_END_INDEX, 0U);
-            faMetadata.setFaMetadata(sectionId, i, optiling::FA_S2_END_INDEX, 0U);
-            faMetadata.setFaMetadata(sectionId, i, optiling::FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, 0U);
+    for (uint32_t i = 0; i < AIC_CORE_NUM; ++i) {
+        faMetadata.setFaMetadata(0, i, optiling::FA_BN2_START_INDEX, 0U);
+        faMetadata.setFaMetadata(0, i, optiling::FA_M_START_INDEX, 0U);
+        faMetadata.setFaMetadata(0, i, optiling::FA_S2_START_INDEX, 0U);
+        faMetadata.setFaMetadata(0, i, optiling::FA_BN2_END_INDEX, 0U);
+        faMetadata.setFaMetadata(0, i, optiling::FA_M_END_INDEX, 0U);
+        faMetadata.setFaMetadata(0, i, optiling::FA_S2_END_INDEX, 0U);
+        faMetadata.setFaMetadata(0, i, optiling::FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, 0U);
+    }
+    for (uint32_t i = 0; i < AIV_CORE_NUM; ++i) {
+        faMetadata.setFdMetadata(0, i, optiling::FD_BN2_IDX_INDEX, 0U);
+        faMetadata.setFdMetadata(0, i, optiling::FD_M_IDX_INDEX, 0U);
+        faMetadata.setFdMetadata(0, i, optiling::FD_WORKSPACE_IDX_INDEX, 0U);
+        faMetadata.setFdMetadata(0, i, optiling::FD_WORKSPACE_NUM_INDEX, 0U);
+        faMetadata.setFdMetadata(0, i, optiling::FD_M_START_INDEX, 0U);
+        faMetadata.setFdMetadata(0, i, optiling::FD_M_NUM_INDEX, 0U);
+    }
+    // FA Metadata Generate
+    auto faSplitRes = splitRes.sectionFaResult;
+    for (uint32_t i = 0; i < faSplitRes.usedCoreNum; ++i) {
+        // FA start
+        if (i > 0) {
+            faMetadata.setFaMetadata(0, i, optiling::FA_BN2_START_INDEX, faSplitRes.bN2End[i - 1]);
+            faMetadata.setFaMetadata(0, i, optiling::FA_M_START_INDEX, faSplitRes.gS1End[i - 1]);
+            faMetadata.setFaMetadata(0, i, optiling::FA_S2_START_INDEX, faSplitRes.s2End[i - 1]);
         }
-        for (uint32_t i = 0; i < AIV_CORE_NUM; ++i) {
-            // faMetadata.setFdMetadata(sectionId, i, optiling::FD_CORE_ENABLE_INDEX, 0U);
-            faMetadata.setFdMetadata(sectionId, i, optiling::FD_BN2_IDX_INDEX, 0U);
-            faMetadata.setFdMetadata(sectionId, i, optiling::FD_M_IDX_INDEX, 0U);
-            faMetadata.setFdMetadata(sectionId, i, optiling::FD_WORKSPACE_IDX_INDEX, 0U);
-            faMetadata.setFdMetadata(sectionId, i, optiling::FD_WORKSPACE_NUM_INDEX, 0U);
-            faMetadata.setFdMetadata(sectionId, i, optiling::FD_M_START_INDEX, 0U);
-            faMetadata.setFdMetadata(sectionId, i, optiling::FD_M_NUM_INDEX, 0U);
-        }
-        // FA Metadata Generate
-        auto faSplitRes = splitRes.sectionFaResult[sectionId];
-        for (uint32_t i = 0; i < faSplitRes.usedCoreNum; ++i) {
-            // faMetadata.setFaMetadata(sectionId, i, optiling::FA_CORE_ENABLE_INDEX, 1U);
-            // FA start
-            if (i > 0) {
-                faMetadata.setFaMetadata(sectionId, i, optiling::FA_BN2_START_INDEX, faSplitRes.bN2End[i - 1]);
-                faMetadata.setFaMetadata(sectionId, i, optiling::FA_M_START_INDEX, faSplitRes.gS1End[i - 1]);
-                faMetadata.setFaMetadata(sectionId, i, optiling::FA_S2_START_INDEX, faSplitRes.s2End[i - 1]);
-            } else if (sectionId > 0) {
-                auto preFaSplitRes = splitRes.sectionFaResult[sectionId - 1];
-                faMetadata.setFaMetadata(sectionId, i, optiling::FA_BN2_START_INDEX, preFaSplitRes.bN2End[preFaSplitRes.usedCoreNum - 1]);
-                faMetadata.setFaMetadata(sectionId, i, optiling::FA_M_START_INDEX, preFaSplitRes.gS1End[preFaSplitRes.usedCoreNum - 1]);
-                faMetadata.setFaMetadata(sectionId, i, optiling::FA_S2_START_INDEX, preFaSplitRes.s2End[preFaSplitRes.usedCoreNum - 1]);
-            }
-            // FA end
-            faMetadata.setFaMetadata(sectionId, i, optiling::FA_BN2_END_INDEX, faSplitRes.bN2End[i]);
-            faMetadata.setFaMetadata(sectionId, i, optiling::FA_M_END_INDEX, faSplitRes.gS1End[i]);
-            faMetadata.setFaMetadata(sectionId, i, optiling::FA_S2_END_INDEX, faSplitRes.s2End[i]);
-            // FA idx
-            faMetadata.setFaMetadata(sectionId, i, optiling::FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, faSplitRes.firstFdDataWorkspaceIdx[i]);
-        }
-        // FD Metadata Generate
-        auto fdSplitRes = splitRes.sectionFdResult[sectionId];
-        for (uint32_t i = 0; i < fdSplitRes.usedVecNum; ++i) {
-            // faMetadata.setFdMetadata(sectionId, i, optiling::FD_CORE_ENABLE_INDEX, 1U);
-            uint32_t curTaskIdx = fdSplitRes.taskIdx[i];
-            faMetadata.setFdMetadata(sectionId, i, optiling::FD_BN2_IDX_INDEX, fdSplitRes.bN2Idx[curTaskIdx]);
-            faMetadata.setFdMetadata(sectionId, i, optiling::FD_M_IDX_INDEX, fdSplitRes.gS1Idx[curTaskIdx]);
-            faMetadata.setFdMetadata(sectionId, i, optiling::FD_WORKSPACE_IDX_INDEX, fdSplitRes.workspaceIdx[curTaskIdx]);
-            faMetadata.setFdMetadata(sectionId, i, optiling::FD_WORKSPACE_NUM_INDEX, fdSplitRes.s2SplitNum[curTaskIdx]);
-            faMetadata.setFdMetadata(sectionId, i, optiling::FD_M_START_INDEX, fdSplitRes.mStart[i]);
-            faMetadata.setFdMetadata(sectionId, i, optiling::FD_M_NUM_INDEX, fdSplitRes.mLen[i]);
-        }
+        // FA end
+        faMetadata.setFaMetadata(0, i, optiling::FA_BN2_END_INDEX, faSplitRes.bN2End[i]);
+        faMetadata.setFaMetadata(0, i, optiling::FA_M_END_INDEX, faSplitRes.gS1End[i]);
+        faMetadata.setFaMetadata(0, i, optiling::FA_S2_END_INDEX, faSplitRes.s2End[i]);
+        // FA idx
+        faMetadata.setFaMetadata(0, i, optiling::FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, faSplitRes.firstFdDataWorkspaceIdx[i]);
+    }
+    // FD Metadata Generate
+    auto fdSplitRes = splitRes.sectionFdResult;
+    for (uint32_t i = 0; i < fdSplitRes.usedVecNum; ++i) {
+        uint32_t curTaskIdx = fdSplitRes.taskIdx[i];
+        faMetadata.setFdMetadata(0, i, optiling::FD_BN2_IDX_INDEX, fdSplitRes.bN2Idx[curTaskIdx]);
+        faMetadata.setFdMetadata(0, i, optiling::FD_M_IDX_INDEX, fdSplitRes.gS1Idx[curTaskIdx]);
+        faMetadata.setFdMetadata(0, i, optiling::FD_WORKSPACE_IDX_INDEX, fdSplitRes.workspaceIdx[curTaskIdx]);
+        faMetadata.setFdMetadata(0, i, optiling::FD_WORKSPACE_NUM_INDEX, fdSplitRes.s2SplitNum[curTaskIdx]);
+        faMetadata.setFdMetadata(0, i, optiling::FD_M_START_INDEX, fdSplitRes.mStart[i]);
+        faMetadata.setFdMetadata(0, i, optiling::FD_M_NUM_INDEX, fdSplitRes.mLen[i]);
     }
     return true;
 }

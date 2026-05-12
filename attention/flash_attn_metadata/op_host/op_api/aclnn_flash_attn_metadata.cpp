@@ -40,7 +40,7 @@ static aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTen
                                const aclTensor *metaData)
 {
     return ACLNN_SUCCESS;
-    if (maskMode != 1 && maskMode != 3 && maskMode != 4) {
+    if (maskMode != 0 && maskMode != 3 && maskMode != 4) {
         OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "maskMode only supports 1, 3, 4, but got %ld", maskMode);
         return ACLNN_ERR_PARAM_INVALID;
     }

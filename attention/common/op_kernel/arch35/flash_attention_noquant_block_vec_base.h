@@ -169,8 +169,9 @@ protected:
     template <typename VEC2_RES_T>
     __aicore__ inline void Bmm2DataCopyOut(RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo,
         LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx, int64_t vec2CalcSize = 0);
-    __aicore__ inline void MlaBnsdWithActqPreProcess(RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo, int64_t &gIdxStart,
-        int64_t &s1IdxStart, int64_t &gIdxEnd, int64_t &s1IdxEnd, uint32_t &headS1, uint32_t &needDealHeadS1);
+    __aicore__ inline void MlaBnsdWithActqPreProcess(RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo,
+        int32_t s1DealSize, int64_t &gIdxStart, int64_t &s1IdxStart, int64_t &gIdxEnd, int64_t &s1IdxEnd,
+        uint32_t &headS1, uint32_t &needDealHeadS1);
 private:
     __aicore__ inline void SoftmaxInitBuffer();
     __aicore__ inline void ProcessVec1Dn(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
@@ -271,6 +272,12 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo<isInfer> &runInfo, 
     ConstInfo<isInfer, hasRope> &constInfo)
 {
+    bmm1ResBuf.WaitCrossCore();
+    if (unlikely(runInfo.halfS1RealSize == 0)) {
+        bmm1ResBuf.SetCrossCore();
+        outputBuf.SetCrossCore();
+        return;
+    }
     if constexpr (!isInfer) {
         if (constInfo.learnableSinkFlag) {
             constInfo.sinkValue = this->sinkGm.GetValue(runInfo.n2oIdx * constInfo.gSize + runInfo.goIdx);
@@ -292,7 +299,6 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nz(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo<isInfer> &runInfo, 
     ConstInfo<isInfer, hasRope> &constInfo)
 {
-    bmm1ResBuf.WaitCrossCore();
     LocalTensor<pseShiftType> pseUb;
     float slopes = 0.0f;
     float posShift = 0.0f;
@@ -375,7 +381,6 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Dn(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo<isInfer> &runInfo,
     ConstInfo<isInfer, hasRope> &constInfo)
 {
-    bmm1ResBuf.WaitCrossCore();
     LocalTensor<uint8_t> attenMaskUb;
     if constexpr (isFp8 && hasAtten) {
         AttenMaskCopyInDn<hasAtten>(this->attenMaskInQue[0], this->attenMaskGmInt,
@@ -774,7 +779,6 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo<isInfer> &runInfo, 
     ConstInfo<isInfer, hasRope> &constInfo)
 {
-    bmm1ResBuf.WaitCrossCore();
     LocalTensor<pseShiftType> pseUb;
     if constexpr (hasPseOuter == true) {
         PseCopyIn<T, pseShiftType, hasPseOuter>(this->pseInQue, this->pseGm, runInfo, constInfo, *pseInfoPtr);
@@ -803,14 +807,12 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
         } else if constexpr (isGqaNoQuant) {
             if (constInfo.isPfaGS1Merge) {
                 MaskInfo maskInfo;
-                maskInfo.gs1StartIdx = (constInfo.subBlockIdx == 0) ? 0 : runInfo.firstHalfS1RealSize;
+                maskInfo.gs1StartIdx = runInfo.gS1Idx + constInfo.subBlockIdx * runInfo.firstHalfS1RealSize;
                 if constexpr (layout == LayOutTypeEnum::LAYOUT_TND ||
                                 layout == LayOutTypeEnum::LAYOUT_BSH ||
                                 layout == LayOutTypeEnum::LAYOUT_SBH) {
-                    maskInfo.gs1StartIdx += runInfo.s1oIdx * constInfo.gSize + runInfo.goIdx;
                     maskInfo.layout = LAYOUT_Q::SG;
                 } else {
-                    maskInfo.gs1StartIdx += runInfo.goIdx * runInfo.actualS1Size + runInfo.s1oIdx;
                     maskInfo.layout = LAYOUT_Q::GS;
                 }
                 maskInfo.gs1dealNum = runInfo.halfS1RealSize;
@@ -1667,13 +1669,14 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::MlaTransposeDa
 
 
 TEMPLATES_DEF_BASE_NO_DEFAULT
-__aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::MlaBnsdWithActqPreProcess(RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo,
-    int64_t &gIdxStart, int64_t &s1IdxStart, int64_t &gIdxEnd, int64_t &s1IdxEnd, uint32_t &headS1, uint32_t &needDealHeadS1)
+__aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::MlaBnsdWithActqPreProcess(RunInfo<isInfer> &runInfo,
+    ConstInfo<isInfer, hasRope> &constInfo, int32_t s1DealSize, int64_t &gIdxStart, int64_t &s1IdxStart,
+    int64_t &gIdxEnd, int64_t &s1IdxEnd, uint32_t &headS1, uint32_t &needDealHeadS1)
 {
     gIdxStart = runInfo.sOuterOffset / constInfo.s1Size;
     s1IdxStart = runInfo.sOuterOffset % constInfo.s1Size;
-    gIdxEnd = (runInfo.sOuterOffset + runInfo.vec2S1RealSize) / constInfo.s1Size;
-    s1IdxEnd = (runInfo.sOuterOffset + runInfo.vec2S1RealSize) % constInfo.s1Size;
+    gIdxEnd = (runInfo.sOuterOffset + s1DealSize) / constInfo.s1Size;
+    s1IdxEnd = (runInfo.sOuterOffset + s1DealSize) % constInfo.s1Size;
 
     // 处理第一个S
     headS1 = 0;
@@ -1708,7 +1711,7 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::MlaTranspose2D
     // 处理第一个S
     uint32_t headS1 = 0;
     uint32_t needDealHeadS1 = 0;
-    MlaBnsdWithActqPreProcess(runInfo, constInfo, gIdxStart, s1IdxStart, 
+    MlaBnsdWithActqPreProcess(runInfo, constInfo, runInfo.vec2S1RealSize, gIdxStart, s1IdxStart,
         gIdxEnd, s1IdxEnd, headS1, needDealHeadS1);
 
     int64_t startOffsetOfUb = 0;         // ub起始位置偏移
@@ -1768,7 +1771,7 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::MlaBnsdWithAct
     // 处理第一个S
     uint32_t headS1 = 0;
     uint32_t needDealHeadS1 = 0;
-    MlaBnsdWithActqPreProcess(runInfo, constInfo, gIdxStart, s1IdxStart, 
+    MlaBnsdWithActqPreProcess(runInfo, constInfo, runInfo.vec2S1RealSize, gIdxStart, s1IdxStart,
         gIdxEnd, s1IdxEnd, headS1, needDealHeadS1);
                                        
     int64_t startOffset = 0;             // gm起始位置偏移
