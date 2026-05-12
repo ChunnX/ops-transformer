@@ -97,7 +97,7 @@ attention:
       - attention/flash_attention_score_grad/docs
       - attention/flash_attention_score_grad/README.md
     test:
-      ut: False
+      ut: True
     ut_cov_exclude:
       - attention/flash_attention_score_grad
     options:
