@@ -210,8 +210,7 @@ ASCEND_RT_VISIBLE_DEVICES=1 pytest test_attn.py test_lse.py test_joint.py -v
 
 #### 容差与已知差异
 
-- **attention_out**: 在所有测试 sparsity 下严格满足 `rtol=0.01, atol=0.001`
-  (与 BSA 测试套件一致)。
+- **attention_out**: 在所有测试 sparsity 下严格满足 `rtol=0.01, atol=0.001`。
 - **softmax_lse 密集**: 严格满足 `rtol=1e-3, atol=1e-4`。
 - **softmax_lse 稀疏 vs FIAS**: 存在 ~0.06–0.16 的偏差 (sparsity 0.5/0.8/0.9),
   属定义差异 (FIAS `sparse_mode=1` 与本算子在求和位置上不一致)。`test_lse.py` 中
@@ -224,9 +223,9 @@ ASCEND_RT_VISIBLE_DEVICES=1 pytest test_attn.py test_lse.py test_joint.py -v
 ```bash
 cd attention/block_sparse_attention/benchmark
 # 默认: 128×128 块粒度
-ASCEND_RT_VISIBLE_DEVICES=1 python benchmark.py
+python benchmark.py
 # 或: 128×512 块粒度 + token 对齐的边框
-ASCEND_RT_VISIBLE_DEVICES=1 BSA_BLOCK_SIZE_KV=512 BSA_FRAME=8,1,29,1 python benchmark.py
+BSA_BLOCK_SIZE_KV=512 BSA_FRAME=8,1,29,1 python benchmark.py
 ```
 
 完整的基准方法、表格、对照数据见 [`benchmark/README.md`](benchmark/README.md)。
