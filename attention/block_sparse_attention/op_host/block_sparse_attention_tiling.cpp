@@ -352,7 +352,7 @@ ge::graphStatus BSATiling::CheckAttentionOutDtype(gert::TilingContext *bsaContex
         if (attentionOutDataType_ != ge::DT_FLOAT16 && attentionOutDataType_ != ge::DT_BF16) {
             OP_LOGE(bsaContext->GetNodeName(),
                     "The supported dtype of attentionOut is float16 or bfloat16 when the dtype of query/key/value is "
-                    "all float8_e4m3fn, but now it is % s.",
+                    "all float8_e4m3fn, but now it is %s.",
                     DataTypeToString(attentionOutDataType_).c_str());
             return ge::GRAPH_FAILED;
         }
@@ -588,7 +588,7 @@ ge::graphStatus BSATiling::ValidateGenericDequantScale(gert::TilingContext *bsaC
         if (dequantScaleBatch != batch_ || dequantScaleNumHeads != specificNumHeads ||
             dequantScaleBlockNum != specificMaxBlockNum || dequantScaleLastDim != NUM_1) {
             OP_LOGE(bsaContext->GetNodeName(),
-                    "The shape of %s must be consistent with %s. The expected shape is (%u, %u, %u, %u), but the "
+                    "The shape of %s must be consistent with %s. The expected shape is (%u, %u, %u, %d), but the "
                     "current shape is (%u, %u, %u, %u).",
                     parameterName.c_str(), shapeDescription.c_str(), batch_, specificNumHeads, specificMaxBlockNum,
                     NUM_1, dequantScaleBatch, dequantScaleNumHeads, dequantScaleBlockNum, dequantScaleLastDim);
@@ -860,7 +860,7 @@ ge::graphStatus BSATiling::CalculateWorkSpace(gert::TilingContext *bsaContext)
         return ge::GRAPH_FAILED;
     }
 
-    const auto *blockSparseMaskShape = bsaContext->GetInputShape(BLOCK_SPARSE_MASK_INDEX);
+    // const auto *blockSparseMaskShape = bsaContext->GetInputShape(BLOCK_SPARSE_MASK_INDEX);
     selectIdxSize_ = CeilDiv(blockShapeX_, 128) * CeilDiv(maxKvBlockNum_, 32) * 32 * sizeof(uint32_t) * batch_ * numHeads_ * maxQBlockNum_;
     selectNumIdxSize_ = CeilDiv(blockShapeX_, 128) * sizeof(uint32_t) * 32 * batch_ * numHeads_ * maxQBlockNum_;
     int32_t syncSize_ = sizeof(uint32_t) * 256;
@@ -1066,7 +1066,7 @@ uint64_t BSATiling::GenerateTilingKey(gert::TilingContext *bsaContext)
     if (softmaxLseFlag_) {
         tilingKey += 100000000ULL; // 1 for lse out
     }
-    printf("tkd tilingKey: %llu", tilingKey);
+    printf("tkd tilingKey: %lu", tilingKey);
     
     return tilingKey;
 }
