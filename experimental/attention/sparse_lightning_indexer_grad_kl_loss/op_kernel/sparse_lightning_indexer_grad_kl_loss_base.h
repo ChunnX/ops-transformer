@@ -453,7 +453,7 @@ __aicore__ inline void SparseLightningIndexerGradKLLossBase<SLIT>::Process()
                 AscendC::InitOutput(dWeightGm[(s1Offset + s1StartIdxThisBatch) * constInfo.gSizeQuery], constInfo.gSizeQuery * s1CleanLen, static_cast<OUT_T>(0));
             
                 // skip invalid s1 loop
-                s1StartIdxThisBatch = Min(s1EndIdxThisBatch, Max(constInfo.cmpRatio - 1, s1StartIdxThisBatch));
+                s1StartIdxThisBatch = Min(s1EndIdxThisBatch, constInfo.cmpRatio - 1);
             }   
         }
 

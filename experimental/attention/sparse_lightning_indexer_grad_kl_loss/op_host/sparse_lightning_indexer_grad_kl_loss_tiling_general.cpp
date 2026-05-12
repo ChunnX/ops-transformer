@@ -294,7 +294,7 @@ bool SparseLightningIndexerGradKLLossTilingBase::AnalyzeDimLayout(const gert::Sh
                     return false);
             } else {
                 OP_CHECK_IF(
-                    s1Size != s2Size * cmpRatio,
+                    s1Size / cmpRatio != s2Size,
                     OP_LOGE(
                         opName,
                         "current op only support ori_kv = q_s1"),
