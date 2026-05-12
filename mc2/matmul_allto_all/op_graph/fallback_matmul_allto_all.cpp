@@ -171,8 +171,12 @@ inline ge::graphStatus GetAttrPara(const gert::OpExecuteContext* host_api_ctx,
     const bool* transX1Ptr = attrs->GetBool(INDEX_ATTR_TRANS_X1);
     para.transposeX1 = (transX1Ptr != nullptr ? *transX1Ptr : false);
     para.transposeX2 = (transX2Ptr != nullptr ? *transX2Ptr : false);
+
+    OP_LOGE(host_api_ctx->GetNodeName(), "in fallback, before");
     const int64_t* groupSize_ptr = attrs->GetInt(INDEX_ATTR_GROUP_SIZE);
+    OP_LOGE(host_api_ctx->GetNodeName(), "in fallback, groupSize_ptr is: %ld", *groupSize_ptr);
     para.groupSize = (groupSize_ptr != nullptr ? *groupSize_ptr : 0);
+    OP_LOGE(host_api_ctx->GetNodeName(), "in fallback, groupSize is: %ld", para.groupSize);
 
     return ge::SUCCESS;
 }
@@ -237,6 +241,11 @@ static ge::graphStatus MatmulAlltoAllExecuteFunc(gert::OpExecuteContext* host_ap
     AttrParas attrParas;
     OPS_CHECK(GetAttrPara(host_api_ctx, attrs, attrParas) != ge::SUCCESS,
               OP_LOGE(host_api_ctx->GetNodeName(), "Failed to get attr paras."), return ge::GRAPH_FAILED);
+
+    OP_LOGE(host_api_ctx->GetNodeName(), "in fallback, 111");
+    OP_LOGE(host_api_ctx->GetNodeName(), "in fallback, attrParas.groupSize is: %ld", attrParas.groupSize);
+    OP_LOGE(host_api_ctx->GetNodeName(), "in fallback, 222");
+
     const auto alltoAllAxesOptional = attrs->GetListInt(INDEX_ATTR_ALL2ALL_AXES);
     std::vector<int64_t> actSeqArray;
     if(alltoAllAxesOptional != nullptr) {
