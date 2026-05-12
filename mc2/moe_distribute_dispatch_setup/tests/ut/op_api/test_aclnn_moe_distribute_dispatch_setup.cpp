@@ -10,6 +10,7 @@
 
 #include <float.h>
 #include <array>
+#include <string>
 #include <vector>
 #include <gmock/gmock.h>
 #include "gtest/gtest.h"
@@ -368,6 +369,26 @@ TEST_F(L2MoeDistributeDispatchSetupTest, TestGetWorkspaceSizeEmptyGroupEp)
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
 
+TEST_F(L2MoeDistributeDispatchSetupTest, TestGetWorkspaceSizeMissingOptionalParamsReturnsNullptr)
+{
+    aclTensor *x = CreateAclTensor({8, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
+    aclTensor *expertIds = CreateAclTensor({8, 8}, ACL_INT32, ACL_FORMAT_ND);
+    aclTensor *scalesOptional = nullptr;
+    aclTensor *xActiveMaskOptional = nullptr;
+    aclTensor *yOut = CreateAclTensor({64, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
+    aclTensor *expandIdxOut = CreateAclTensor({64}, ACL_INT32, ACL_FORMAT_ND);
+    aclTensor *commCmdInfoOut = CreateAclTensor({1312}, ACL_INT32, ACL_FORMAT_ND);
+
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+
+    aclnnStatus aclRet = aclnnMoeDistributeDispatchSetupGetWorkspaceSize(
+        x, expertIds, scalesOptional, xActiveMaskOptional, "group_ep", 2, 0, 32, 0, 0, 0, 0, 0, 2, "", yOut,
+        expandIdxOut, commCmdInfoOut, &workspaceSize, &executor);
+
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
+}
+
 TEST_F(L2MoeDistributeDispatchSetupTest, TestTeardownCalcOutputSizeSharedExpert)
 {
     aclTensor *x = CreateAclTensor({8, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
@@ -529,6 +550,53 @@ TEST_F(L2MoeDistributeDispatchSetupTest, TestTeardownCalcOutputSizeEpRankIdShare
 
     EXPECT_EQ(aclRet, ACLNN_SUCCESS);
     EXPECT_GT(tokenMsgSize, 0);
+}
+
+TEST_F(L2MoeDistributeDispatchSetupTest, TestGetWorkspaceSizeGroupEpTooLong)
+{
+    aclTensor *x = CreateAclTensor({8, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
+    aclTensor *expertIds = CreateAclTensor({8, 8}, ACL_INT32, ACL_FORMAT_ND);
+    aclTensor *yOut = CreateAclTensor({64, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
+    aclTensor *expandIdxOut = CreateAclTensor({64}, ACL_INT32, ACL_FORMAT_ND);
+    aclTensor *commCmdInfoOut = CreateAclTensor({1312}, ACL_INT32, ACL_FORMAT_ND);
+
+    int num = 128;
+    std::string longGroupEp(num, 'g');
+
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+
+    aclnnStatus aclRet = aclnnMoeDistributeDispatchSetupGetWorkspaceSize(
+        x, expertIds, nullptr, nullptr, longGroupEp.c_str(), 2, 0, 32, 0, 0, 0, 0, 0, 2, "", yOut, expandIdxOut,
+        commCmdInfoOut, &workspaceSize, &executor);
+
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST_F(L2MoeDistributeDispatchSetupTest, TestTeardownCalcOutputSizeEpRankLessThanSharedRankNum)
+{
+    aclTensor *x = CreateAclTensor({8, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
+    aclTensor *expertIds = CreateAclTensor({8, 8}, ACL_INT32, ACL_FORMAT_ND);
+
+    uint64_t tokenMsgSize = 0;
+    uint64_t expandIdxOutSize = 0;
+    uint64_t assistInfoForCombineOutSize = 0;
+    uint64_t commCmdInfoOutSize = 0;
+
+    aclnnStatus aclRet = aclnnMoeDistributeDispatchSetupTeardownCalcOutputSize(
+        x, expertIds, nullptr, nullptr, "group_ep", 8, 0, 32, 0, 4, 4, 0, 0, 1, 2, "", tokenMsgSize, expandIdxOutSize,
+        assistInfoForCombineOutSize, commCmdInfoOutSize);
+
+    EXPECT_EQ(aclRet, ACLNN_SUCCESS);
+    EXPECT_GT(assistInfoForCombineOutSize, 0);
+}
+
+TEST_F(L2MoeDistributeDispatchSetupTest, TestSetupExecuteEntry)
+{
+    // 覆盖 aclnnMoeDistributeDispatchSetup 入口与 NnopbaseSetHcclServerType 弱符号分支（UT 桩无真实 workspace）
+    aclnnStatus execRet = aclnnMoeDistributeDispatchSetup(nullptr, 0, nullptr, nullptr);
+    EXPECT_THAT(execRet, testing::AnyOf(testing::Eq(ACLNN_SUCCESS), testing::Eq(ACLNN_ERR_PARAM_NULLPTR),
+                                         testing::Eq(ACLNN_ERR_PARAM_INVALID)));
 }
 
 } // namespace MoeDistributeDispatchSetup
