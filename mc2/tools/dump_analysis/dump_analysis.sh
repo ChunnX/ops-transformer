@@ -348,29 +348,34 @@ elif [ "$SOC_VERSION" = "$SOC_VERSION_910B" ]; then
         python3 $SCRIPT_DIR/dump_analysis_A2.py
         echo "数据解析完成"
         echo "--------------------------------------------"
-    elif ls "$TARGET_DIR/*/mc2_exception_info"* >/dev/null 2>&1; then
+    elif find "$TARGET_DIR" -maxdepth 2 -name "mc2_exception_info*" | grep -q .; then
         echo "开始解析多卡dump数据"
-        for ((i = 0; i < file_num; i++))
-        do
-            if ls "$TARGET_DIR$i/exception_info."*.workspace.* >/dev/null 2>&1; then
-                echo "开始解析 $i 卡数据"
-                python3 $SCRIPT_DIR/dump_analysis.py $SP_MOE_NUM $TP_WORLDSIZE $SHARE_EXPERT_CARD_COUNT $SHARE_EXPERT_NUM $file_num $i $TARGET_DIR$i/ $SOC_VERSION
-                echo "$i 卡数据解析完成"
+        # 获取所有数字文件夹
+        card_dirs=( "$TARGET_DIR"[0-9]*/ )
+        file_num=${#card_dirs[@]}
+        for card_dir in "${card_dirs[@]}"; do
+            card_num=$(basename "$card_dir")
+            if ls "$card_dir/exception_info."*.workspace.* >/dev/null 2>&1; then
+                echo "开始解析 $card_num 卡数据"
+                python3 $SCRIPT_DIR/dump_analysis.py $SP_MOE_NUM $TP_WORLDSIZE $SHARE_EXPERT_CARD_COUNT $SHARE_EXPERT_NUM $file_num $card_num $card_dir $SOC_VERSION
+                echo "$card_num 卡数据解析完成"
                 echo "--------------------------------------------"
             else
-                for file_dump in $TARGET_DIR$i/exception_info.*;
-                do
+                found_dump=0
+                for file_dump in "$card_dir"/exception_info.*; do
                     if [[ -f "$file_dump" ]]; then
-                        echo "开始解析 $i 卡数据"
+                        found_dump=1
+                        echo "开始解析 $card_num 卡数据"
                         python3 $TOOL_PATH/tools/msaicerr/msaicerr.py -d "$file_dump"
-                        python3 $SCRIPT_DIR/dump_analysis.py $SP_MOE_NUM $TP_WORLDSIZE $SHARE_EXPERT_CARD_COUNT $SHARE_EXPERT_NUM $file_num $i $TARGET_DIR$i/ $SOC_VERSION
-                        echo "$i 卡数据解析完成"
-                        echo "--------------------------------------------"
-                    else
-                        echo "error:路径 $TARGET_DIR$i/ 下没有dump数据"
+                        python3 $SCRIPT_DIR/dump_analysis.py $SP_MOE_NUM $TP_WORLDSIZE $SHARE_EXPERT_CARD_COUNT $SHARE_EXPERT_NUM $file_num $card_num $card_dir $SOC_VERSION
+                        echo "$card_num 卡数据解析完成"
                         echo "--------------------------------------------"
                     fi
                 done
+                if [[ $found_dump -eq 0 ]]; then
+                    echo "error:路径 $card_dir 下没有dump数据"
+                    echo "--------------------------------------------"
+                fi
             fi
         done
     else
