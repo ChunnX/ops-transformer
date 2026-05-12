@@ -52,7 +52,7 @@ TEST_F(MegaMoeArch35TilingTest, H4096_BS128_FP8E4M3FN)
         {
             {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
             {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
-            {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2097152)},
+            {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(12777472)},
             {"max_recv_token_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"dispatch_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
             {"dispatch_quant_out_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(24)},
@@ -91,7 +91,7 @@ TEST_F(MegaMoeArch35TilingTest, H5120_BS256_FP8E5M2)
         {
             {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
             {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
-            {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2097152)},
+            {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(23904256)},
             {"max_recv_token_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"dispatch_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
             {"dispatch_quant_out_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(23)},
@@ -130,7 +130,7 @@ TEST_F(MegaMoeArch35TilingTest, H7168_BS512)
         {
             {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
             {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
-            {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2097152)},
+            {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(89060352)},
             {"max_recv_token_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"dispatch_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
             {"dispatch_quant_out_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(24)},
@@ -169,7 +169,7 @@ TEST_F(MegaMoeArch35TilingTest, DifferentNConfig)
         {
             {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
             {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
-            {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2097152)},
+            {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(9598976)},
             {"max_recv_token_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"dispatch_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
             {"dispatch_quant_out_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(23)},

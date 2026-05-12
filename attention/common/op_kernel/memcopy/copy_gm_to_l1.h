@@ -434,7 +434,7 @@ private:
     }
 };
 
-#if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__))
+#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
 // ----------------------------------------------CopyQueryScaleGmToL1--------------------------------
 template <typename T>
 __aicore__ inline void CopySingleMXScaleDNToNZ(LocalTensor<T> l1Tensor, const GlobalTensor<T> gmTensor, uint32_t nValue,
@@ -630,12 +630,11 @@ private:
 
                 // 拷贝数据
                 DataCopyParams intriParams;
-                intriParams.blockCount = copyRowCnt / 16;
+                intriParams.blockCount = (copyRowCnt + 15) / 16;
                 intriParams.blockLen = gmCoord.dDealSize / 2;
                 intriParams.dstStride = 0;
                 intriParams.srcStride = 0;
                 DataCopy(dstTensor.tensor[l1Offset], srcTensor.gmTensor[gmOffset], intriParams);
-
                 // 更新完成拷贝的行数和s2Idx
                 copyFinishRowCnt += copyRowCnt;
                 curS2Idx += copyRowCnt;
@@ -690,8 +689,8 @@ public:
     __aicore__ inline void operator()(FaL1Tensor<V_SCALE_T, L1_FORMAT> &dstTensor,
                                       FaGmTensor<V_SCALE_T, GM_FORMAT> &srcTensor, GmKvCoord &gmCoord)
     {
-        if constexpr (GM_FORMAT == GmFormat::BNSD || GM_FORMAT == GmFormat::BSND || GM_FORMAT == GmFormat::NTD ||
-                      GM_FORMAT == GmFormat::TND || GM_FORMAT == GmFormat::TND2) {
+        if constexpr (GM_FORMAT == GmFormat::BNSD || GM_FORMAT == GmFormat::BSND ||
+                      GM_FORMAT == GmFormat::NTD || GM_FORMAT == GmFormat::TND) {
             ProcessContinuousOrTensorlist(dstTensor, srcTensor, gmCoord);
         } else if constexpr (GM_FORMAT == GmFormat::PA_BnBsND || GM_FORMAT == GmFormat::PA_BnNBsD ||
                              GM_FORMAT == GmFormat::PA_NZ) {

@@ -118,7 +118,7 @@ __aicore__ inline constexpr GmFormat GetValueScaleGmFormat()
         } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BNSD) {
             return GmFormat::BNSD;
         } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
-            return GmFormat::TND2;
+            return GmFormat::TND;
         } else {
             return GmFormat::NTD;
             }

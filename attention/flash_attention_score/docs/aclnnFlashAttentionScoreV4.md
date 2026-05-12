@@ -588,6 +588,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
     | 3           | 算子自动生成pse 先mul再add再sqrt         | - |
 
 - pseType为2或3的时候，当前只支持Sq和Skv等长。
+- sinkOptional不为None时，query与key等输入tensor仅支持float16和bfloat16两种类型。
 - sparseMode约束如下: 
   - 当所有的attenMaskOptional的shape小于2048且相同的时候，建议使用default模式，来减少内存使用量。
   - 配置为1、2、3、5时，用户配置的preTokens、nextTokens不会生效。
@@ -622,6 +623,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
 #include <vector>
 #include <cmath>
 #include "acl/acl.h"
+#include "aclnn/opdev/fp16_t.h"
 #include "aclnnop/aclnn_flash_attention_score.h"
 
 #define CHECK_RET(cond, return_expr) \
@@ -753,9 +755,9 @@ int main() {
   aclTensor* softmaxSum = nullptr;
   aclTensor* softmaxOut = nullptr;
  
-  std::vector<float> qHostData(q_size, 1.0);
-  std::vector<float> kHostData(kv_size, 1.0);
-  std::vector<float> vHostData(kv_size, 1.0);
+  std::vector<op::fp16_t> qHostData(q_size, 1.0);
+  std::vector<op::fp16_t> kHostData(kv_size, 1.0);
+  std::vector<op::fp16_t> vHostData(kv_size, 1.0);
   std::vector<uint8_t> attenmaskHostData(atten_mask_size, 0);
   std::vector<float> sinkHostData(sink_size, 3.0);
   std::vector<float> attentionOutHostData(q_size, 255);
