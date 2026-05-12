@@ -174,8 +174,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     GM_ADDR xActiveMask, GM_ADDR weightScales1, GM_ADDR weightScales2, GM_ADDR scales, GM_ADDR yOut,
     GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, MegaMoeTilingData *tilingData)
 {
-    m_ = tilingData->bs;
-    k_ = tilingData->h;
+    m_ = tilingData->m;
+    k_ = tilingData->k;
     topK_ = tilingData->topK;
     worldSize_ = tilingData->epWorldSize;
     expertPerRank_ = tilingData->expertPerRank;
@@ -183,7 +183,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     dispatchRows_ = tilingData->dispatchRows;
     groupListType_ = tilingData->groupListType;
     maxOutputSize_ = tilingData->maxOutputSize;
-    Get<N_VALUE>(problemShape_) = tilingData->hiddenDim;
+    Get<N_VALUE>(problemShape_) = tilingData->n;
     Get<K_VALUE>(problemShape_) = k_;
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext*>(context);
     rankId_ = mc2Context_->epRankId;
@@ -744,10 +744,12 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
 {
     int32_t coreLen, coreOffset;
+    constexpr int32_t rowTileN = static_cast<int32_t>(L1_TILE_N);
+    int32_t expectedRowTileCount = Ops::Base::CeilAlign(static_cast<uint32_t>(k_), static_cast<uint32_t>(rowTileN)) / rowTileN;
     TilingByCore(m_, coreLen, coreOffset, 1);
     if (rankId_ < 2 && coreLen > 0) {
-        PRINTF("[AIV UnpermuteEnter] block=%d rank=%d aivCore=%d coreOffset=%d coreLen=%d m=%d topK=%d k=%d\n",
-            GetBlockIdx(), rankId_, aivCoreIdx_, coreOffset, coreLen, m_, topK_, k_);
+        PRINTF("[AIV UnpermuteEnter] block=%d rank=%d aivCore=%d coreOffset=%d coreLen=%d m=%d topK=%d k=%d expectTileCnt=%d\n",
+            GetBlockIdx(), rankId_, aivCoreIdx_, coreOffset, coreLen, m_, topK_, k_, expectedRowTileCount);
     }
     GlobalTensor<bfloat16_t> expandedX;
     expandedX.SetGlobalBuffer((__gm__ bfloat16_t*)params_.peermemInfo.ptrD);
@@ -768,13 +770,18 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
             int32_t rowIdx = tokenIdx * topK_ + expId;
             float expScale = topKWeightsTensor_.GetValue(tokenIdx * topK_ + expId);
             if (rankId_ < 2 && coreLen > 0 && tokenIdx < 2 && expId < 6) {
-                PRINTF("[AIV RowWait] block=%d rank=%d token=%d exp=%d rowIdx=%d curReady=%d\n",
-                    GetBlockIdx(), rankId_, tokenIdx, expId, rowIdx, ReadGmByPassDCache(rowReady + rowIdx));
+                PRINTF("[AIV RowWait] block=%d rank=%d token=%d exp=%d rowIdx=%d curCnt=%d expectCnt=%d\n",
+                    GetBlockIdx(), rankId_, tokenIdx, expId, rowIdx,
+                    ReadGmByPassDCache(rowReady + rowIdx), expectedRowTileCount);
             }
-            GmSignalWaitBarrier(rowReady + rowIdx, 1);
+            int32_t curTileCount = ReadGmByPassDCache(rowReady + rowIdx);
+            while (curTileCount < expectedRowTileCount) {
+                PipeBarrier<PIPE_ALL>();
+                curTileCount = ReadGmByPassDCache(rowReady + rowIdx);
+            }
             if (rankId_ < 2 && coreLen > 0 && tokenIdx < 2 && expId < 6) {
-                PRINTF("[AIV RowReady] block=%d rank=%d token=%d exp=%d rowIdx=%d scale=%f\n",
-                    GetBlockIdx(), rankId_, tokenIdx, expId, rowIdx, expScale);
+                PRINTF("[AIV RowReady] block=%d rank=%d token=%d exp=%d rowIdx=%d finalCnt=%d scale=%f\n",
+                    GetBlockIdx(), rankId_, tokenIdx, expId, rowIdx, curTileCount, expScale);
             }
             auto event = (expId % 2 == 0) ? EVENT_ID0 : EVENT_ID1;
             auto dataInBf16 = (expId % 2 == 0) ? dataIn0Bf16 : dataIn1Bf16;
