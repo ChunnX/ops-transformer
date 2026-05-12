@@ -738,6 +738,10 @@ ge::graphStatus SFATilingCheck::CheckSingleParaSparseBlockSize() const
         OP_LOGE(opName_, "sparseBlockSize should be be in range [1, 128] and be a power of 2, but got: %ld.",
             *opParamInfo_.sparseBlockSize),
         return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF((npuArch_ == NpuArch::DAV_3510 && *opParamInfo_.sparseBlockSize != 1),
+        OP_LOGE(opName_, "when soc version is Ascend950, sparse_block_size only support 1, but now is %d.",
+        *opParamInfo_.sparseBlockSize), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1057,11 +1061,11 @@ ge::graphStatus SFATilingCheck::CheckSoftmaxMax()
 {
     if (*opParamInfo_.returnSoftmaxLse) {
         OP_CHECK_IF(opParamInfo_.softmaxMax.shape->GetStorageShape().GetShapeSize() == 0,
-                OP_LOGE(opName_, "When return_softmax_lse is true, SoftmaxMax tensor cannot be empty tensor."),
+            OP_LOGE(opName_, "When return_softmax_lse is true, SoftmaxMax tensor cannot be empty tensor."),
                 return ge::GRAPH_FAILED);
         // type类型校验
         OP_CHECK_IF(opParamInfo_.softmaxMax.desc->GetDataType() != ge::DT_FLOAT,
-                OP_LOGE(opName_, "SoftmaxMax's dtype must be FLOAT."),
+            OP_LOGE(opName_, "SoftmaxMax's dtype must be FLOAT."),
                 return ge::GRAPH_FAILED);
         // shape和维度校验
         if (ge::GRAPH_SUCCESS != CheckAttenOutShape()) {
@@ -1079,13 +1083,13 @@ ge::graphStatus SFATilingCheck::CheckSoftmaxSum()
 {
     if (*opParamInfo_.returnSoftmaxLse) {
         OP_CHECK_IF(opParamInfo_.softmaxSum.shape->GetStorageShape().GetShapeSize() == 0,
-                OP_LOGE(opName_, "When return_softmax_lse is true, softmaxSum tensor cannot be empty tensor."),
+            OP_LOGE(opName_, "When return_softmax_lse is true, softmaxSum tensor cannot be empty tensor."),
                 return ge::GRAPH_FAILED);
         OP_CHECK_IF(opParamInfo_.softmaxSum.desc->GetDataType() != ge::DT_FLOAT,
-                OP_LOGE(opName_, "softmaxSum's dtype must be FLOAT."),
+            OP_LOGE(opName_, "softmaxSum's dtype must be FLOAT."),
                 return ge::GRAPH_FAILED);
     } else {
-        if(opParamInfo_.softmaxSum.shape->GetStorageShape().GetShapeSize() != 0){
+        if (opParamInfo_.softmaxSum.shape->GetStorageShape().GetShapeSize() != 0) {
             OP_LOGW(opName_, "When return_softmax_lse is false, softmaxSum tensor must be empty tensor.");
         }
     }
@@ -1391,10 +1395,6 @@ ge::graphStatus SFATilingCheck::CheckFeatureMlaNoquantPa() const
     OP_CHECK_IF(blockSize_ % sparseBlockSize_ > 0,
         OP_LOGE(opName_, "when page attention is enabled, block_size(%d) must be divided by sparse_block_size(%d), but now the remainder is %d.",
         blockSize_, sparseBlockSize_, blockSize_ % sparseBlockSize_), return ge::GRAPH_FAILED);
-
-    OP_CHECK_IF((npuArch_ == NpuArch::DAV_3510 && sparseBlockSize_ != 1),
-        OP_LOGE(opName_, "when NpuArch is DAV_3510, sparse_block_size must be 1, but now is %d.",
-        sparseBlockSize_), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
