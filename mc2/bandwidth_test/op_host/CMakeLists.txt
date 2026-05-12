@@ -27,7 +27,6 @@ if (BUILD_OPEN_PROJECT)  # custom
         add_ops_compile_options(
             OP_NAME BandwidthTest
             OPTIONS --cce-auto-sync=off
-                    -mllvm -cce-aicore-dcci-before-kernel-end=false
         )
     endif()
 else() # 回黄host
