@@ -142,6 +142,7 @@ public:
         int32_t baseN;
         int32_t baseK;
         uint8_t hasBias;
+        int32_t preOffsetInit = 0;   // cumulative mode initial offset for sliding window
         const TCubeTiling *__restrict matmulTiling;
         __aicore__ GMMTiling()
         {
@@ -280,6 +281,7 @@ public:
         Get<MNK_N>(problemShape_) = params.gmmParams.matmulTiling->N;
         Get<MNK_K>(problemShape_) = params.gmmParams.matmulTiling->Ka;
         groupListGm_.SetGlobalBuffer((__gm__ int64_t *)params.mmadParams.groupListGmAddr);
+        preOffset_ = params.gmmParams.preOffsetInit;
     }
 
     __aicore__ inline void ProcessSingleGroup(const Params &params, BlockSchedulerOp &bs, uint32_t groupIdx)

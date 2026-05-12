@@ -468,18 +468,43 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::DoOpTiling()
         constexpr uint32_t DETER_WORK_SPACE_LOWER_SIZE = 64UL * 1024 * 1024;
         deterWorkspaceSize_ = l2Size > DETER_WORK_SPACE_SIZE
                               ? DETER_WORK_SPACE_SIZE : DETER_WORK_SPACE_LOWER_SIZE;
-        // 溢出保护：检查所需确定性 buffer 是否在 workspace 范围内
-        uint64_t requiredDeterSize = inputParams_.mSize * inputParams_.nSize * sizeof(float);
-        if (requiredDeterSize > deterWorkspaceSize_) {
-            OP_LOGW(context_->GetNodeName(),
-                    "Deterministic buffer overflow: required %lu bytes but only %u available, "
-                    "deterministic mode disabled.",
-                    requiredDeterSize, deterWorkspaceSize_);
+        // 滑动窗口：始终启用确定性模式，按 workspace 大小分轮处理
+        tilingData_.gmmFinalizeRoutingDataParams.deterWorkspaceSize = deterWorkspaceSize_;
+        uint32_t windowSizeRows = static_cast<uint32_t>(deterWorkspaceSize_ / (inputParams_.nSize * sizeof(float)));
+        if (windowSizeRows == 0) {
+            OP_LOGE(context_->GetNodeName(),
+                    "Deterministic workspace too small: %u bytes cannot hold even 1 row (N=%lu).",
+                    deterWorkspaceSize_, inputParams_.nSize);
             deterministicFlag_ = 0;
             tilingData_.gmmFinalizeRoutingDataParams.deterministicFlag = 0;
             tilingData_.gmmFinalizeRoutingDataParams.deterWorkspaceSize = 0;
-        } else {
-            tilingData_.gmmFinalizeRoutingDataParams.deterWorkspaceSize = deterWorkspaceSize_;
+            return ge::GRAPH_FAILED;
+        }
+        tilingData_.gmmFinalizeRoutingDataParams.windowSize = windowSizeRows;
+        tilingData_.gmmFinalizeRoutingDataParams.totalM = static_cast<uint32_t>(inputParams_.mSize);
+        // Check that no single group's M exceeds windowSizeRows to prevent workspace overflow
+        auto groupListTensor = context_->GetOptionalInputTensor(GROUPLIST_INDEX);
+        if (groupListTensor != nullptr) {
+            auto groupListData = groupListTensor->GetData<int64_t>();
+            if (groupListData != nullptr) {
+                int64_t prevOffset = 0;
+                for (uint64_t g = 0; g < inputParams_.groupNum; ++g) {
+                    int64_t groupM = 0;
+                    if (inputParams_.groupListType == 0) { // cumsum mode
+                        groupM = groupListData[g] - prevOffset;
+                        prevOffset = groupListData[g];
+                    } else { // count mode (groupListType == 1)
+                        groupM = groupListData[g];
+                    }
+                    if (static_cast<uint64_t>(groupM) > windowSizeRows) {
+                        OP_LOGE(context_->GetNodeName(),
+                                "Deterministic sliding window: group[%lu] M=%ld exceeds windowSizeRows=%u. "
+                                "Single group too large for deterministic workspace.",
+                                g, groupM, windowSizeRows);
+                        return ge::GRAPH_FAILED;
+                    }
+                }
+            }
         }
     }
 
