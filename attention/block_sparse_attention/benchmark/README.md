@@ -71,6 +71,28 @@ the speedup column reports `(dense baseline) / (our latency)` where the dense
 baseline is `npu_fusion_attention` at sparsity = 0 (printed in the
 `Ref_Latency_[usec]` column of the first row of each run).
 
+### Speedup summary vs dense baseline
+
+Dense baseline = **157,261 µs** (`npu_fusion_attention` at sparsity 0, from
+Run 1's `Ref_Latency_[usec]`; Run 2's baseline reading of 157,378 µs is within
+NPU-clock noise of this).
+
+| Sparsity | Run 1 (128×128) µs | Run 2 (128×512) µs | Speedup vs dense |
+|---------:|-------------------:|-------------------:|-----------------:|
+| 0.00 | 149,960 | 150,151 | 1.05× |
+| 0.10 | 136,602 | 136,249 | 1.15× |
+| 0.20 | 121,843 | 121,634 | 1.29× |
+| 0.30 | 107,140 | 106,928 | 1.47× |
+| 0.40 |  92,073 |  92,044 | 1.71× |
+| 0.50 |  77,249 |  77,263 | **2.04×** |
+| 0.60 |  61,088 |  61,112 | **2.57×** |
+| 0.70 |  45,480 |  45,626 | **3.46×** |
+| 0.80 |  29,936 |  29,911 | **5.25×** |
+| 0.90 |  14,823 |  14,681 | **10.61×** |
+
+Speedup column uses Run 1 latencies (the two runs agree within ~1% — see raw
+dumps below).
+
 ### Run 1 — `block_shape=[128, 128]`
 
 ```
