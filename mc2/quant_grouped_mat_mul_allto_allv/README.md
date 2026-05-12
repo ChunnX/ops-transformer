@@ -381,6 +381,8 @@
 
 - 确定性计算：
   - aclnnQuantGroupedMatMulAlltoAllv默认确定性实现。
+- 通信引擎约束：
+  - Ascend 950PR/Ascend 950DT：支持CCU通信。
 - e * epWorldSize最大支持256，e表示单卡上的专家数量，最大支持到32，epWorldSize支持2/4/8/16/32/64/128/256;
 - gmmX的shape(A, H1)，A为sendCounts之和，H1取值范围(0, 65536);
 - gmmWeight的shape(e, H1, N1)，N1取值范围(0, 65536);

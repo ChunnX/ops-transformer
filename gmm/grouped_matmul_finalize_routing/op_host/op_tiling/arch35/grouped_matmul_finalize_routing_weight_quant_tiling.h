@@ -43,6 +43,8 @@ using namespace GMMFinalizeRoutingArch35Tiling;
 namespace GroupedMatmulFinalizeRoutingArch35WeightQuantTiling {
 constexpr static int64_t GMMFR_WEIGHT_QUANT_TILING_VEC_ANTIQUANT = 2;
 
+constexpr uint32_t AIC_AIV_CORE_RATIO = 2;
+
 enum class ScenarioType {
     NONE = 0,
     MX_A8W4_WEIGHT_NZ = 1,
@@ -177,10 +179,12 @@ private:
     void RunSetInputFunc();
     bool SetMxA8W4NzInputFunc();
     bool SetMxA8W4NzConditionFunc();
+    bool CheckCoreNum() const;
     bool RunCheckFunc();
     bool InferScenario();
 
     int64_t coreNum_ = 0;
+    int64_t aivNum_ = 0;
 };
 } // namespace GroupedMatmulFinalizeRoutingArch35WeightQuantTiling
 } // namespace optiling

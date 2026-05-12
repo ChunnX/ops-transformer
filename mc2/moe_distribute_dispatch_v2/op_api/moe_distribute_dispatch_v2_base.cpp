@@ -148,7 +148,7 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
 
     const aclTensor *performanceInfoOptionalDispatchV2Temp = performanceInfoOptional;
     aclTensor *mc2Context = nullptr;
-    aclnnStatus getWorkspaceSizesRes;
+    aclnnStatus getWorkspaceSizesRes = ACLNN_ERR_INNER;
     const char *groupTpDispatchV2Temp = groupTp;
     if (is910B) {
         groupTpDispatchV2Temp = "";
@@ -169,8 +169,8 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
 #if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
         uint64_t hcclBuffSize = 0;
         const char *opName = "moe_distribute_dispatch_combine_v2";
-        auto ret = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
-        CHECK_RET(ret == ACLNN_SUCCESS, ret);
+        auto aclnnRet = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
+        CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
         getWorkspaceSizesRes = aclnnInnerMoeDistributeDispatchV3GetWorkspaceSize(
             mc2Context, x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional, elasticInfoOptional,
             performanceInfoOptionalDispatchV2Temp, epWorldSize, epRankId, moeExpertNum, hcclBuffSize, tpWorldSize,
