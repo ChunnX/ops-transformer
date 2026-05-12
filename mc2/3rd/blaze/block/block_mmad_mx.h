@@ -398,6 +398,9 @@ public:
         auto layoutL0C = AscendC::Te::FrameLayoutFormat<AscendC::Te::NZLayoutPtn, AscendC::Std::Int<C0_SIZE_L0C>>{}(
             tileL1L0Param.curM, tileL1L0Param.curN);
         tensorL0C = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<Location::L0C, float>(l0cOffset), layoutL0C);
+        if constexpr (Std::is_same_v<Te::GetMemLocation<TensorC>, Te::Location::GM>) {
+            AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(INPUT_BUFFER_FLAG_0);
+        }
         for (uint64_t iter0 = 0; iter0 < kL1Iter_; ++iter0) {
             uint64_t l1BufId = abL1LoopCnt_ & (l1BufNum_ - 1);
             uint64_t scaleL1BufId = scaleLoopCnt_ & 1;
@@ -457,6 +460,7 @@ public:
             // C L0C->GM
             auto CopyL0C2GM = AscendC::Te::MakeCopy(AscendC::Te::CopyL0C2GM{});
             AscendC::Te::Copy(CopyL0C2GM, gmC, tensorL0C, AscendC::Te::FixpipeParams{3});
+            AscendC::SetFlag<AscendC::HardEvent::FIX_M>(INPUT_BUFFER_FLAG_0);
         }
 
         if (enableL0cPingPong_) {

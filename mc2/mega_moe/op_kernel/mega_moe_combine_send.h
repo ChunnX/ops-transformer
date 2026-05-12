@@ -55,10 +55,16 @@ __aicore__ inline void CombineTokens(
     tokenPerExpertWin.SetGlobalBuffer((__gm__ int32_t*)params.peermemInfo.ptrTokenPerExpert);
     preSumBeforeRankWorkSpace.SetGlobalBuffer((__gm__ int32_t*)params.workspaceInfo.ptrSumBeforeRank);
     for (int32_t dstEpIdx = 0; dstEpIdx < params.tilingData->epWorldSize; dstEpIdx++) {
-        int32_t lenRankInExpert = tokenPerExpertWin(dstEpIdx * Ops::Base::CeilAlign(
-            static_cast<uint32_t>(params.tilingData->epWorldSize * params.tilingData->expertPerRank),
-            static_cast<uint32_t>(ALIGN_128)) + rankId * params.tilingData->expertPerRank + groupIdx);
-        int32_t dstExpertOffset = preSumBeforeRankWorkSpace(dstEpIdx * params.tilingData->expertPerRank + groupIdx);
+        // int32_t lenRankInExpert = tokenPerExpertWin(dstEpIdx * Ops::Base::CeilAlign(
+        //     static_cast<uint32_t>(params.tilingData->epWorldSize * params.tilingData->expertPerRank),
+        //     static_cast<uint32_t>(ALIGN_128)) + rankId * params.tilingData->expertPerRank + groupIdx);
+        // int32_t dstExpertOffset = preSumBeforeRankWorkSpace(dstEpIdx * params.tilingData->expertPerRank + groupIdx);
+        __gm__ int32_t* tokenPerExpertWinAddr = (__gm__ int32_t*)tokenPerExpertWin.GetPhyAddr() +
+            (dstEpIdx * Ops::Base::CeilAlign(
+                static_cast<uint32_t>(params.tilingData->epWorldSize * params.tilingData->expertPerRank),
+                static_cast<uint32_t>(ALIGN_128)) + rankId * params.tilingData->expertPerRank + groupIdx);
+        __gm__ int32_t* preSumBeforeRankWorkSpaceAddr = (__gm__ int32_t*)preSumBeforeRankWorkSpace.GetPhyAddr() +
+            (dstEpIdx * params.tilingData->expertPerRank + groupIdx);
         int32_t stRankInExpert = preSumRankInExpert;
         int32_t edRankInExpert = stRankInExpert + lenRankInExpert;
         preSumRankInExpert += lenRankInExpert;
