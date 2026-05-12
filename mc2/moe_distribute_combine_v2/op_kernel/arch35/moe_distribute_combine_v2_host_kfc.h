@@ -664,8 +664,8 @@ __aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::All
     safeReduceTileSize_ = (safeReduceTileSize_ < 1) ? 1 : safeReduceTileSize_;
     tpipe_->InitBuffer(sumBuf_, floatTokenBytesAlign * safeReduceTileSize_);
     // countBuf_ 需要能容纳 serverNum_ 个元素，取两者较大值避免越界写
-    uint32_t countBufSize = MAX(safeReduceTileSize_, serverNum_);
-    tpipe_->InitBuffer(countBuf_, countBufSize * sizeof(uint32_t));
+    // uint32_t countBufSize = MAX(safeReduceTileSize_, serverNum_);
+    tpipe_->InitBuffer(countBuf_, safeReduceTileSize_ * sizeof(uint32_t));
     // Server间通信buffer初始化
     tpipe_->InitBuffer(localCntBuf_, UB_ALIGN);
     tpipe_->InitBuffer(localTokenIdBuf_, UB_ALIGN);
@@ -807,9 +807,9 @@ __aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::Loa
 template <CombineV2HostTypeClass>
 __aicore__ inline void MoeDistributeCombineV2HostKfc<CombineV2HostTypeFunc>::AlltoAllDispatch()
 {
-    if (sendCntNum_ == 0U) {
-        return;
-    }
+    // if (sendCntNum_ == 0U) {
+    //     return;
+    // }
     LocalTensor<ExpandIdxType> expandIdxLocal = indexCountsBuf_.Get<ExpandIdxType>();
     const DataCopyExtParams bskParams{1U, static_cast<uint32_t>(sendCntNum_ * EXPAND_IDX_INFO * sizeof(uint32_t)), 0U,
                                       0U, 0U};
