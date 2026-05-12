@@ -41,7 +41,7 @@ import torch
 import torch_npu  # noqa: F401  (registers the NPU backend)
 import npu_ops_transformer
 
-sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "benchmark")))
+sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "..", "benchmark")))
 from util import (  # noqa: E402
     gen_pfa_inputs, create_attention_mask, FrameWidths,
     ref_attention_launcher,
