@@ -2565,10 +2565,10 @@ ge::graphStatus DequantChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
                     "It is recommended to use mxfp8 full quantization instead.");
         } else if (fiaInfo.fullQuantMode == FiaFullQuantMode::MXFP8_FULL_QUANT) {
             enableMxfp8FullQuant_ = true;
-            if (fiaInfo.gSize * fiaInfo.s1Size <= 80) { 
-                enableMxfp8FullQuantDecode_ = true; 
-            } else { 
-                enableMxfp8FullQuantPrefill_ = true; 
+            if (fiaInfo.gSize * fiaInfo.s1Size <= 80) {
+                enableMxfp8FullQuantDecode_ = true;
+            } else {
+                enableMxfp8FullQuantPrefill_ = true;
             }
         }
 
