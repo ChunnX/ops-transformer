@@ -282,7 +282,7 @@ ge::graphStatus PagedAttentionChecker::CheckPACacheShape(const FiaTilingInfo &fi
                     OP_LOGE(fiaInfo.opName, "When PA_NZ enable, if input kv dataType is INT32, "
                         "the last dim of kvCache(%u) should be %u; "
                         "if input kv dataType is INT4, the last dim of %s(%u) should be %u",
-                        inputName.c_str(), tempD0/NUM8, d0Size/NUM8, tempD0, d0Size),
+                        tempD0/NUM8, d0Size/NUM8, inputName.c_str(), tempD0, d0Size),
                     return ge::GRAPH_FAILED);
             } else {
                 OP_CHECK_IF(tempD0 != d0Size,
@@ -514,8 +514,6 @@ ge::graphStatus PagedAttentionChecker::CheckKVLayout(const FiaTilingInfo &fiaInf
     const uint32_t dimNum = fiaInfo.opParamInfo.key.shape->GetStorageShape().GetDimNum();
     if (fiaInfo.fullQuantMode == FiaFullQuantMode::MXFP8_FULL_QUANT) {
         OP_CHECK_IF(dimNum == 3, OP_LOGE(fiaInfo.opName, "In MXFP8 fullquant scenario, PA BnBsH is not supported."),
-                    return ge::GRAPH_FAILED);
-        OP_CHECK_IF(dimNum == 5, OP_LOGE(fiaInfo.opName, "In MXFP8 fullquant scenario, PA_NZ is not supported."),
                     return ge::GRAPH_FAILED);
     } else if (inputLayout == "BSH" || inputLayout == "BSND" || inputLayout == "BSH_NBSD" || inputLayout == "BSND_NBSD") {
         OP_CHECK_IF(dimNum == 4, OP_LOGE(fiaInfo.opName, "When page attention enable and input layout is %s, "

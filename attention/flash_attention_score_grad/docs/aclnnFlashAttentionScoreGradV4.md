@@ -470,7 +470,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>softmaxInLayout</td>
       <td>输入</td>
       <td>控制softmaxMax、softmaxSum的实际数据排布。</td>
-      <td>TND时传"same_as_input"，NTD时传""</td>
+      <td>shape为TND，实际数据排布需要NTD时传"same_as_input"，TND时传""</td>
       <td>String</td>
       <td>-</td>
       <td>-</td>
@@ -590,7 +590,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>dpseOut</td>
       <td>输出</td>
       <td>d(pse)梯度。</td>
-      <td>暂未使用。</td>
+      <td>暂未使用，传入的shape必须和pse_shape保持一致。</td>
       <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
       <td>0、4</td>
@@ -973,10 +973,10 @@ int main() {
 
   // 调用aclnnFlashAttentionScoreGradV4第一段接口
   ret = aclnnFlashAttentionScoreGradV4GetWorkspaceSize(q, k, v, dx, pse, dropMask, padding,
-            attenmask, softmaxMax, softmaxSum, softmaxIn, attentionIn, sinkInOptional, queryRope, keyRope, dScaleQ, dScaleK, dScaleV, 
+            attenmask, softmaxMax, softmaxSum, softmaxIn, attentionIn, nullptr, queryRope, keyRope, dScaleQ, dScaleK, dScaleV, 
             dScaleDy, dScaleO, nullptr, nullptr, nullptr, nullptr, nullptr, scaleValue, keepProb,
             preTokens, nextTokens, headNum, inputLayOut, softmaxInLayoutArr, innerPrecise, sparseMode,outDtype, pseType, seed, offset,
-            dq,dk,dv,dqRope,dkRope,dpse, dsink, &workspaceSize, &executor);
+            dq,dk,dv,dqRope,dkRope,dpse, nullptr, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFlashAttentionScoreGradV4GetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 
   // 根据第一段接口计算出的workspaceSize申请device内存
@@ -998,7 +998,6 @@ int main() {
   PrintOutResult(dqShape, &dqDeviceAddr);
   PrintOutResult(dkShape, &dkDeviceAddr);
   PrintOutResult(dvShape, &dvDeviceAddr);
-  PrintOutResult(dsinkShape, &dsinkDeviceAddr);
 
   // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
   aclDestroyTensor(q);

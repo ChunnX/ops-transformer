@@ -164,7 +164,7 @@ struct LseConstInfo {
 };
 
 struct SinkConstInfo {
-    bool learnableSinkFlag = false;
+    bool learnableSinkFlag;
 };
 
 struct PseConstInfo {
@@ -194,10 +194,10 @@ struct LeftPaddingConstInfo {
 };
 
 struct SysPrefixConstInfo {
-    bool isActualSharedPrefixLenNull = true;
-    int64_t actualKVPrefixSize = 0; /* 保存prefix实际长度 */
-    int64_t kvPrefixSize = 0;       /* 保存prefix shape完整长度 */
-    int64_t prefixLoopCount = 0;    /* 保存prefix参与的S2方向循环次数 */
+    bool isActualSharedPrefixLenNull;
+    int64_t actualKVPrefixSize; /* 保存prefix实际长度 */
+    int64_t kvPrefixSize;       /* 保存prefix shape完整长度 */
+    int64_t prefixLoopCount;    /* 保存prefix参与的S2方向循环次数 */
 };
 
 template <FiaKernelType>
@@ -213,6 +213,12 @@ struct ConstInfo_t<FiaKernelType::NO_QUANT> : CommonConstInfo,
                                               PostQuantConstInfo,
                                               LeftPaddingConstInfo,
                                               SysPrefixConstInfo {};
+
+template <>
+struct ConstInfo_t<FiaKernelType::FULL_QUANT> : CommonConstInfo,
+                                                PAConstInfo,
+                                                LseConstInfo,
+                                                TensorListConstInfo {};
 
 // struct FusedTransposeInfo {
 //     // 以下是FlashDecode分支区分的信息
