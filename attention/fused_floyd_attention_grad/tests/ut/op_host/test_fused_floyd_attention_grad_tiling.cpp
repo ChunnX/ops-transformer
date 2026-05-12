@@ -11,7 +11,7 @@
 #include <iostream>
 #include <gtest/gtest.h>
 #include "tiling/platform/platform_ascendc.h"
-#include "../../../../common/include/tiling_base/tiling_base.h"
+#include "../../../../common/include/op_host/tiling_base.h"
 #include "tiling_context_faker.h"
 #include "tiling_case_executor.h"
 

@@ -500,16 +500,16 @@ __aicore__ inline void FlashAttentionNoQuantKernelInfer<CubeBlockType, VecBlockT
     }
     // GS1合轴时，g轴信息包含在gS1中；GS1不合轴时，g轴信息包含在bn2g中；
     if (this->constInfo.isGqa) {
+        runParam.gS1Idx = gS1Index * this->s1BaseSize;
         if constexpr (layout == LayOutTypeEnum::LAYOUT_TND ||
                       layout == LayOutTypeEnum::LAYOUT_BSH ||
                       layout == LayOutTypeEnum::LAYOUT_SBH) {
-            runParam.goIdx = gS1Index * this->s1BaseSize % this->constInfo.gSize;
-            runParam.s1oIdx = gS1Index * this->s1BaseSize / this->constInfo.gSize;
+            runParam.goIdx = runParam.gS1Idx % this->constInfo.gSize;
+            runParam.s1oIdx = runParam.gS1Idx / this->constInfo.gSize;
         } else {
-            runParam.goIdx = gS1Index * this->s1BaseSize / runParam.actualS1Size;
-            runParam.s1oIdx = gS1Index * this->s1BaseSize % runParam.actualS1Size;
+            runParam.goIdx = runParam.gS1Idx / runParam.actualS1Size;
+            runParam.s1oIdx = runParam.gS1Idx % runParam.actualS1Size;
         }
-        runParam.gS1Idx = gS1Index * this->s1BaseSize;
     } else {
         runParam.goIdx = bnIndex % this->constInfo.headNumRatio;
         runParam.s1oIdx = gS1Index % this->constInfo.s1OuterSize;

@@ -11,13 +11,18 @@
 function(filter_copy_files SELECTED_FILES SELECTED_DIRS)
     set(_selected_files "")
     set(_selected_dirs "")
+    set(OP_ARCH_DIRECTORY ${ARCH_DIRECTORY})
+    foreach (_COMPUTE_UNIT ${ASCEND_COMPUTE_UNIT})
+        if (DEFINED ${_op_name}_${_COMPUTE_UNIT}_arch_directory)
+            list(APPEND OP_ARCH_DIRECTORY ${${_op_name}_${_COMPUTE_UNIT}_arch_directory})
+        endif()
+    endforeach ()
+    list(REMOVE_DUPLICATES OP_ARCH_DIRECTORY)
     foreach(item ${KERNEL_SUB_DIRS})
         set(path "${CURRENT_KERNEL_DIR}/${item}")
         if(IS_DIRECTORY "${path}")
-            if(_op_name STREQUAL "apply_rotary_pos_emb" AND ASCEND_COMPUTE_UNIT STREQUAL "mc62cm12a" AND item MATCHES "^arch")
-                set(path "${CURRENT_KERNEL_DIR}/arch35")
-            elseif(item MATCHES "^arch")
-                list(FIND ARCH_DIRECTORY "${item}" idx)
+            if(item MATCHES "^arch")
+                list(FIND OP_ARCH_DIRECTORY "${item}" idx)
                 if(idx EQUAL -1)
                     continue()
                 endif()
@@ -377,7 +382,8 @@ function(add_opc_config)
 
     if(ENABLE_OOM)
         list(APPEND _OPC_CONFIG "--oom")
-        list(APPEND _OPC_CONFIG "-ffunction-sections -fdata-sections")
+        list(APPEND _OPC_CONFIG "-ffunction-sections")
+        list(APPEND _OPC_CONFIG "-fdata-sections")
     endif()
 
     if(_OPC_CONFIG)
@@ -427,6 +433,7 @@ function(add_ops_src_copy)
         "allto_allv_quant_grouped_mat_mul;"
         "allto_all_all_gather_batch_mat_mul;"
         "distribute_barrier;"
+        "distribute_barrier_extend;"
         "moe_distribute_combine_add_rms_norm;"
         "moe_distribute_dispatch;"
         "moe_distribute_combine;"

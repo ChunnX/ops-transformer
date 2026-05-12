@@ -1712,18 +1712,18 @@ __attribute__((constructor)) void RegisterMoeDistributeCombineV2ExceptionFunc()
     int32_t metadefVersionNum = 0;
 
     if (aclsysGetVersionNum("runtime", &runtimeVersionNum) != ACL_SUCCESS) {
-        OP_LOGE("MoeDistributeCombineV2", "Get runtime version failed");
+        OP_LOGW("MoeDistributeCombineV2", "Get runtime version failed when register exception func.");
         return;
     }
     if (aclsysGetVersionNum("metadef", &metadefVersionNum) != ACL_SUCCESS) {
-        OP_LOGE("MoeDistributeCombineV2", "Get metadef version failed");
+        OP_LOGW("MoeDistributeCombineV2", "Get metadef version failed when register exception func.");
         return;
     }
 
     if (runtimeVersionNum < EXCEPTION_DUMP_SUPPORT_VERSION || metadefVersionNum < EXCEPTION_DUMP_SUPPORT_VERSION) {
-        OP_LOGE("MoeDistributeCombineV2",
-            "The runtime(%d) or metadata(%d) version is lower than the version(9.0.0) supporting Dump",
-            runtimeVersionNum, metadefVersionNum);
+        OP_LOGW("MoeDistributeCombineV2",
+            "The runtime(%d) or metadata(%d) version is lower than the version(%d) supporting exception func.",
+            runtimeVersionNum, metadefVersionNum, EXCEPTION_DUMP_SUPPORT_VERSION);
         return;
     }
 

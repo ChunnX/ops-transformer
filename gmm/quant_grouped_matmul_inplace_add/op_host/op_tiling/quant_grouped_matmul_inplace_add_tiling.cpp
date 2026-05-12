@@ -10,8 +10,8 @@
 #include <alog_pub.h>
 #include <climits>
 #include "log/log.h"
-#include "tiling_base/tiling_templates_registry.h"
-#include "tiling_base/tiling_type.h"
+#include "op_host/tiling_templates_registry.h"
+#include "op_host/tiling_type.h"
 #include "register/op_impl_registry.h"
 #include "quant_grouped_matmul_inplace_add_tiling.h"
 #include "quant_grouped_matmul_inplace_add_basic_api_tiling.h"

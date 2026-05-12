@@ -14,13 +14,13 @@
  */
 #include "platform/platform_info.h"
 #include "register/op_def_registry.h"
-#include "tiling_base/tiling_templates_registry.h"
-#include "tiling_base/tiling_type.h"
+#include "op_host/tiling_templates_registry.h"
+#include "op_host/tiling_type.h"
 #include "tiling/tiling_api.h"
 #include "moe_gating_top_k_softmax_tiling_base.h"
 #include "log/log.h"
 #include "../op_kernel/arch35/moe_gating_top_k_softmax_tiling_def.h"
-#include "tiling_base/tiling_util.h"
+#include "op_host/tiling_util.h"
 
 using namespace Ops::Transformer::OpTiling;
 using namespace AscendC;

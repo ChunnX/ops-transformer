@@ -382,6 +382,8 @@ __aicore__ inline void LiTopKVF(const LocalTensor<uint16_t>& tmpIdxLocal,
     FindKthVFImpl(nkValueBuf, histogramsBuf, idxHighBuf, idxLowBuf);
 
     // filter
+    int32_t count = QLICommon::Align(topK, (uint32_t)128) - topK / 128 * 128;
+    AscendC::Duplicate(tmpIdxLocal[topK / 128 * 128], (uint16_t)(0), count);
     // 输出大于k-value的值idx
     FindIdxGTOutputVFImpl(tmpIdxBuf, inputValueBuf, (uint32_t)(0), nkValueBuf, inputLoopNum);
     // 输出等于k-value的值idx

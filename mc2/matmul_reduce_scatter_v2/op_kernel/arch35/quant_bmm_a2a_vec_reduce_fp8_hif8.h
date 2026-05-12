@@ -27,8 +27,8 @@
 #include "../../common/op_kernel/reduce_sum_cast_fp32.h"
 
 #define TEMPLATE_CLASS_PARAMS template <typename AType, typename BType, typename CType, typename ScaleType, \
-                                        class MMClass, bool IsPerBlock, bool ATrans, bool BTrans>
-#define TEMPLATE_FUNC_PARAMS AType, BType, CType, ScaleType, MMClass, IsPerBlock, ATrans, BTrans
+                                        class MMClass, bool IsPerBlock, bool ATrans, bool BTrans, int TPL_COMM_MODE>
+#define TEMPLATE_FUNC_PARAMS AType, BType, CType, ScaleType, MMClass, IsPerBlock, ATrans, BTrans, TPL_COMM_MODE
 
 namespace MatmulReduceScatterV2Impl {
 using namespace AscendC;
@@ -89,7 +89,7 @@ private:
     uint32_t rankId_{0};
     AscendC::HcclDataType dataType_{HCCL_DATA_TYPE_INT8};
     uint8_t debugMode_{0};
-    Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU> hccl_;  // AICPU模式
+    typename HcclTypeSelector<TPL_COMM_MODE>::type hccl_;
     AscendC::HcclHandle handles_[MAX_HANDLE];          // 最大支持64个handleId
     uint64_t preCoreNum_ = 0;
     uint32_t batchWeight_[MAX_HANDLE] = {0};
@@ -113,7 +113,12 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::Init(
     uint64_t hcclCcTilingOffset = offsetof(Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData, mc2CcTiling);
     hccl_.InitV2(contextGM, hcclInitTilingV2);
     hccl_.SetCcTilingV2(hcclCcTilingOffset);
-    AscendC::PRINTF("[CCU_TO_AICPU] HCCL initialized with AICPU mode for quant_bmm_a2a_vec_reduce_fp8_hif8.\n");
+    // TODO: 测试打印，验证通信模式后删除
+    if constexpr (TPL_COMM_MODE == CCU_COMM_MODE) {
+        AscendC::PRINTF("[COMM_MODE] HCCL initialized with CCU mode for quant_bmm_a2a_vec_reduce_fp8_hif8.\n");
+    } else {
+        AscendC::PRINTF("[COMM_MODE] HCCL initialized with AICPU mode for quant_bmm_a2a_vec_reduce_fp8_hif8.\n");
+    }
 
     // 读取上下文和配置
     context_ = (__gm__ HcclCombinOpParam *)(contextGM);
@@ -243,7 +248,7 @@ __aicore__ inline void QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::MatMul
 
     // V核发起 All2All 通信
     if ASCEND_IS_AIV {
-        handles_[0] = hccl_.AlltoAll<true>(
+        handles_[0] = hccl_.template AlltoAll<true>(
             sendBuffer, recvBuffer, recvCount, dataType_, stride, repeat);
     }
 }
@@ -388,7 +393,7 @@ QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::ExecuteAivCommReducePipeline(
 
     // --- Prologue: 启动第 0 轮通信 ---
     VecWaitCube(); // 确保依赖的 MatMul 已完成
-    handles_[0 + handleShift] = hccl_.AlltoAll<true>(
+    handles_[0 + handleShift] = hccl_.template AlltoAll<true>(
         currSendPtr, currRecvPtr, rankSliceElems, dataType_, stride, repeat
     );
     
@@ -407,7 +412,7 @@ QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::ExecuteAivCommReducePipeline(
 
         // 2. 启动下一轮 (i+1) 通信
         VecWaitCube(); 
-        handles_[i + 1 + handleShift] = hccl_.AlltoAll<true>(
+        handles_[i + 1 + handleShift] = hccl_.template AlltoAll<true>(
             currSendPtr, currRecvPtr, rankSliceElems, dataType_, stride, repeat
         );
 
@@ -523,7 +528,7 @@ QuantBmmA2AVecReduceFP8HiF8<TEMPLATE_FUNC_PARAMS>::MatMulComputReduceScatterPerb
 
         // All2All 通信, AIV 发起
         if ASCEND_IS_AIV {
-            handles_[i + handleShift] = hccl_.AlltoAll<true>(
+            handles_[i + handleShift] = hccl_.template AlltoAll<true>(
                 currSendPtr,    // 发送缓冲区
                 currRecvPtr,    // 接收缓冲区
                 recvCount,      // 元素数量

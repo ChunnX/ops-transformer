@@ -210,8 +210,8 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>x（aclTensor）</td>
       <td>输入</td>
       <td>MOE的输入，即token特征输入</td>
-      <td>shape为(NUM_ROWS, H)，quantMode=6时支持输入类型为HIFLOAT8</td>
-      <td>FLOAT16、BFLOAT16、FLOAT32、INT8、HIFLOAT8、FLOAT4_E2M1</td>
+      <td>shape为(NUM_ROWS, H)</td>
+      <td>FLOAT16、BFLOAT16、FLOAT32、INT8、HIFLOAT8、FLOAT4_E2M1、FLOAT8_E4M3FN、FLOAT8_E5M2</td>
       <td>ND</td>
       <td>2</td>
       <td>-</td>
@@ -232,7 +232,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>表示用于计算量化结果的参数</td>
       <td><ul>
         <li>如果不输入表示计算时不使用scale;</li>
-        <li>非量化场景下为可选输入，如果输入则要求为1D的Tensor，shape为(NUM_ROWS,)，如果输入x数据类型为FLOAT4_E2M1则要求3D的Tensor，shape为(NUM_ROWS, CeilDiv(H, 64), 2);</li>
+        <li>非量化场景下为可选输入，如果输入则要求为1D的Tensor，shape为(NUM_ROWS,)，类型为FLOAT32。当输入x数据类型为FLOAT4_E2M1、FLOAT8_E4M3FN或FLOAT8_E5M2时，如果输入则要求3D的Tensor，shape为(NUM_ROWS, CeilDiv(H, 64), 2), 类型为FLOAT8_E8M0;</li>
         <li>静态量化场景必须输入，输入要求为1D的Tensor，shape为[1, ]；</li>
         <li>动态量化场景下为可选输入，如果输入则要求为2D的Tensor，shape为(expertEnd-expertStart, H)；</li>
         <li>MXFP8量化场景下（quantMode为2、3）不输入。</li>
@@ -240,7 +240,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
         <li>HIF8 PERTENSOR量化场景下（quantMode为7）,输入要求为1D的Tensor，shape为[1, ]。</li>
         <li>MXFP4量化场景下（quantMode为9）不输入。</li>
         </ul></td>
-      <td>FLOAT32</td>
+      <td>FLOAT32、FLOAT8_E8M0</td>
       <td>ND</td>
       <td>1-2</td>
       <td>-</td>
@@ -415,14 +415,14 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>输出不同量化过程中scaleOptional的中间值。</td>
       <td> 输出shape为expandedXOut的shape去掉最后一维之后所有维度的乘积。
         <ul style="list-style-type: circle;">
-        <li>非量化场景下，当scaleOptional输入时，前availableIdxNum个元素为有效数据。</li>
+        <li>非量化场景下，当scaleOptional输入时，shape为[NUM_ROWS*K, 1]，前availableIdxNum个元素为有效数据，输出FLOAT32类型。当输入x数据类型为FLOAT4_E2M1、FLOAT8_E4M3FN或FLOAT8_E5M2时，如果scaleOptional输入，则expandedScaleOut的shape为[NUM_ROWS*K, CeilDiv(H, 64), 2]，输出FLOAT8_E8M0类型。</li>
         <li>动态量化场景下，当scaleOptional输入时，前availableIdxNum个元素为有效数据。</li>
         <li>静态量化场景下不输出。</li>
         <li>MXFP8量化场景下，输出FLOAT8_E8M0类型，Shape为[NUM_ROWS*K, M]，其中M=CeilAlign(CeilDiv(H,32),2)，NUM_ROWS*K的前availableIdxNum行为有效数据。</li>
         <li>按照直转方式量化到HIFLOAT8场景下，expandedScaleOut不输出。</li>
         <li>按照PERTENSOR模式量化到HIFLOAT8场景下，expandedScaleOut不输出。</li>
         <li>按照PERTOKEN模式量化到HIFLOAT8场景下，输出FLOAT32类型，Shape为[NUM_ROWS*K, 1]。</li>
-        <li>MXFP4量化场景下，输出FLOAT8_E8M0类型，Shape为[NUM_ROWS*K, M, 2]，其中M=CeilAlign(CeilDiv(H,32),2)，NUM_ROWS*K的前availableIdxNum行为有效数据。</li></ul>
+        <li>MXFP4量化场景下，输出FLOAT8_E8M0类型，Shape为[NUM_ROWS*K, M, 2]，其中M=CeilDiv(H, 64)，NUM_ROWS*K的前availableIdxNum行为有效数据。</li></ul>
       </td>
       <td>FLOAT32、FLOAT8_E8M0</td>
       <td>ND</td>
@@ -493,7 +493,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
 - **不同产品支持情况差异**
   - quantMode支持情况差异：
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持-1、0、1。
-    - <term>Ascend 950PR/Ascend 950DT</term>：支持-1、0、1、2、3、6、7、8。
+    - <term>Ascend 950PR/Ascend 950DT</term>：支持-1、0、1、2、3、6、7、8、9。
   - <term>Ascend 950PR/Ascend 950DT</term>仅支持如下参数的值：
     - activeNum仅支持值等于NUM_ROWS*K。
     - expertCapacity仅校验其值，不使用该参数（即不限制每个专家能够处理的tokens数）。
