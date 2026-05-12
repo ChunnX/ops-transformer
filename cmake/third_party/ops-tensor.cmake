@@ -10,7 +10,7 @@
 
 include_guard(GLOBAL)
 
-set(OPTENSOR_TAG_ID 355dcd1d4b998f8a4e93ca8038e76d93808ca1b3)
+set(OPTENSOR_TAG_ID 05f116a9f938d25a8c42cb3e9135416921204bc2)
 
 if(EXISTS "${PROJECT_SOURCE_DIR}/../ops-tensor")
   get_filename_component(OPTENSOR_SOURCE_PATH
