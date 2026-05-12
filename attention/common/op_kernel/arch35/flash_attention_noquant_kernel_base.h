@@ -109,7 +109,7 @@ public:
 
     BufferManager<BufferType::UB> ubBufferManager;
     BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers;
-    using bmm2ResBufferType = typename NoQuantCube::Bmm2ResBuffSel<useDn, isFp8>::Type;
+    using bmm2ResBufferType = typename NoQuantCube::Bmm2ResBuffSel<useDn, isFp8, optionalDn>::Type;
     bmm2ResBufferType bmm2Buffers;
 
     // mm2左矩阵P
@@ -325,7 +325,7 @@ __aicore__ inline void FlashAttentionNoQuantKernelBase<ChildClass, CubeBlockType
     // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
     l1PBuffers.Init(l1BufferManager, mm2LeftSize);
     if constexpr (bmm2Write2Ub) {
-        if constexpr (!(useDn && isFp8)) {
+        if constexpr (!((useDn && isFp8) || optionalDn)) {
             ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize * 2);
             bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
             if ASCEND_IS_AIV {

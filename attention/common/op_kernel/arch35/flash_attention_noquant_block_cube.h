@@ -120,9 +120,9 @@ struct L0CBuffSel {
 };
 
 /* ============确定bmm2ResBuffer的类型============= */
-template <bool useDn, bool isFp8>
+template <bool useDn, bool isFp8, bool optionalDn>
 struct Bmm2ResBuffSel {
-    using Type = std::conditional_t<(useDn && isFp8),
+    using Type = std::conditional_t<((useDn && isFp8) || optionalDn),
         BuffersPolicySingleBuffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
         BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>>;
 };
@@ -152,8 +152,11 @@ public:
     static constexpr bool useNz = IsSameType<INPUT_T, hifloat8_t>::value && !isInfer;
     using ROPE_T = std::conditional_t<isMlaFullQuant, bfloat16_t, INPUT_T>;
     static constexpr TPosition bmm2OutPos = GetC2Position(dVTemplateType,
-                                                          UbOutCondition<INPUT_T>(IsSameType<INPUT_T, float>::value, pseMode, hasAtten, hasDrop, hasRope,
-                                                                                s1BaseSize == 64), (s2BaseSize == 256 && s1BaseSize == 64), isMlaFullQuant);
+                                                          UbOutCondition<INPUT_T>(IsSameType<INPUT_T, float>::value,
+                                                                                  pseMode, hasAtten, hasDrop, hasRope,
+                                                                                  s1BaseSize == 64),
+                                                                                  (s2BaseSize == 256 && s1BaseSize == 64),
+                                                                                  isMlaFullQuant, optionalDn);
     static constexpr bool bmm2Write2Ub = bmm2OutPos == TPosition::VECCALC;
     static constexpr FixpipeConfig BMM2_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, bmm2Write2Ub};
     static constexpr uint32_t l1BaseD = isFp8 ? 256: ((IsSameType<INPUT_T, float>::value) ? (dBaseSize > 128 ? 64 : 128): 128);
