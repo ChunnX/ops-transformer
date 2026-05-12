@@ -16,6 +16,21 @@
 
 #include "include/tensor_api/tensor.h"
 
+namespace Blaze::Gemm::Tile {
+
+struct MmadMx {
+    template <typename Tp, const Tp& traits, typename T, typename U, typename S>
+    __aicore__ inline static void Mad(
+        const T& dst, const U& fm, const S& filter, uint16_t m, uint16_t k, uint16_t n, uint8_t unitFlagCtrl,
+        bool btBuffCtrl, bool initCMatrixCtrl)
+    {
+        mad_mx(
+            dst.Data().Get(), fm.Data().Get(), filter.Data().Get(), m, k, n, unitFlagCtrl, true, btBuffCtrl,
+            initCMatrixCtrl);
+    }
+};
+}
+
 namespace AscendC {
 namespace Te {
 
@@ -29,5 +44,9 @@ template <>
 struct MmadTraits<MmadOperation, MmadTraitMX>
     : public MmadTraits<MmadOperation, MmadTraitDefault, MmadOpWith, MmadTraitMX> {};
 
+// Specialization for a8w4 MmadMx operation
+template <>
+struct MmadTraits<Blaze::Gemm::Tile::MmadMx>
+    : public MmadTraits<Blaze::Gemm::Tile::MmadMx, MmadTraitDefault, Blaze::Gemm::Tile::MmadMx, MmadTraitDefault> {};
 } // namespace Te
 } // namespace AscendC
