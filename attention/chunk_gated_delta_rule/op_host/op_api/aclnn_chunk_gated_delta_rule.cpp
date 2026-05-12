@@ -165,9 +165,6 @@ aclnnStatus aclnnChunkGatedDeltaRuleGetWorkspaceSize(const aclTensor *query, con
         CHECK_RET(gOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
 
-    // 输出 tensor 不做 Contiguous：ViewCopy 可直接写回非连续输出 tensor，
-    // 对输出调用 Contiguous 会将数据写入 workspace 而非用户 tensor
-
     // 调用 L0 接口，得到两个输出
     auto outRet = l0op::ChunkGatedDeltaRule(query_, key_, value_, beta_, initialState_, actualSeqLengths_, gOptional,
                                             scaleValue, uniqueExecutor.get());
@@ -180,7 +177,10 @@ aclnnStatus aclnnChunkGatedDeltaRuleGetWorkspaceSize(const aclTensor *query, con
 
     auto outRet0 = outRet[0];
     auto outRet1 = outRet[1];
+
     // 将 L0 输出回写到用户输出 tensor
+    // 输出 tensor 不做 Contiguous：ViewCopy 可直接写回非连续输出 tensor，
+    // 对输出在调用L0接口前调用 Contiguous 会将数据写入 workspace 而非用户 tensor， 会导致报错
     auto ViewCopyOut = l0op::ViewCopy(outRet0, out, uniqueExecutor.get());
     auto ViewCopyFinalState = l0op::ViewCopy(outRet1, finalState, uniqueExecutor.get());
     if (ViewCopyOut == nullptr) {
