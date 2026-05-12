@@ -3,6 +3,7 @@ import sys
 import argparse
 import importlib
 import itertools
+import time
 
 import torch
 import math
@@ -193,6 +194,7 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
                     verbose_diff=False, visualize=False, viz_dir="./viz_output",
                     meta_only=False, compare_mode=False,
                     load_gpu_dump=None, load_npu_dump=None,
+                    enable_prof=False,
                     **kwargs):
     b          = kwargs.get("B", 1)
     n1         = kwargs.get("N1")
@@ -294,7 +296,74 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
         if NPU_AVAILABLE:
             print(f"[{test_name}] NPU 计算...")
             atten_mask = generate_npu_mask(b, sq, skv, sparse_mode, pre_tokens, next_tokens, prefix)
-            npu_out, lse_npu = flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse_npu, **kwargs)
+            
+            if enable_prof:
+                try:
+                    import torch_npu
+                    script_dir = os.path.dirname(os.path.abspath(__file__))
+                    prof_base_dir = os.path.join(script_dir, "auto_prof")
+                    prof_case_dir = os.path.join(prof_base_dir, test_name)
+                    os.makedirs(prof_case_dir, exist_ok=True)
+                    
+                    warmup = 3
+                    prof_repeat = 5
+                    inner_repeat = 10
+                    
+                    print(f"[{test_name}] Profiling warmup ({warmup} iterations)...")
+                    for _ in range(warmup):
+                        _out, _lse = flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse_npu, **kwargs)
+                    
+                    prof_times = []
+                    
+                    for prof_idx in range(prof_repeat):
+                        prof_run_dir = os.path.join(prof_case_dir, f"run_{prof_idx + 1}")
+                        os.makedirs(prof_run_dir, exist_ok=True)
+                        
+                        print(f"[{test_name}] Profiling run {prof_idx + 1}/{prof_repeat} ({inner_repeat} iterations)...")
+                        
+                        start_event = torch.npu.Event(enable_timing=True)
+                        end_event = torch.npu.Event(enable_timing=True)
+                        
+                        with torch_npu.profiler.profile(
+                            activities=[
+                                torch_npu.profiler.ProfilerActivity.CPU,
+                                torch_npu.profiler.ProfilerActivity.NPU,
+                            ],
+                            record_shapes=True,
+                            profile_memory=True,
+                            with_stack=True,
+                            on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(prof_run_dir),
+                        ) as prof:
+                            start_event.record()
+                            for _ in range(inner_repeat):
+                                npu_out, lse_npu = flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse_npu, **kwargs)
+                            end_event.record()
+                            prof.step()
+                        
+                        elapsed_ms = start_event.elapsed_time(end_event)
+                        avg_time_us = elapsed_ms / inner_repeat * 1000
+                        prof_times.append(avg_time_us)
+                        print(f"[{test_name}] Run {prof_idx + 1} avg time: {avg_time_us:.2f} us")
+                    
+                    sorted_times = sorted(prof_times)
+                    trimmed_times = sorted_times[:-1]
+                    avg_time = sum(trimmed_times) / len(trimmed_times)
+                    
+                    print(f"\n[{test_name}] Profiling 结果:")
+                    print(f"  各次耗时: {[f'{t:.2f}' for t in prof_times]} us")
+                    print(f"  去除最差后平均: {avg_time:.2f} us (排除 {sorted_times[-1]:.2f} us)")
+                    print(f"  数据保存至: {prof_case_dir}")
+                    print(f"  可使用 msprof 或 TensorBoard 查看 AIC/AIV 耗时详情")
+                    
+                except ImportError:
+                    print(f"[{test_name}] 警告: torch_npu.profiler 不可用，跳过 profiling")
+                    npu_out, lse_npu = flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse_npu, **kwargs)
+                except Exception as e:
+                    print(f"[{test_name}] Profiling 异常: {e}")
+                    npu_out, lse_npu = flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse_npu, **kwargs)
+            else:
+                npu_out, lse_npu = flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse_npu, **kwargs)
+            
             if dump_tensors:
                 dump_path = os.path.join(dump_dir, test_name)
                 os.makedirs(dump_path, exist_ok=True)
@@ -461,6 +530,8 @@ if __name__ == "__main__":
                         help="指定 NPU dump 文件路径（用于离线对比）")
     parser.add_argument("--compare_mode", action="store_true",
                         help="启用三方对比模式（CPU vs GPU vs NPU），使用详细精度统计")
+    parser.add_argument("--prof", action="store_true",
+                        help="启用 NPU profiling，运行5次并去除最差结果后平均，数据保存至 auto_prof/<case_name>/")
     args = parser.parse_args()
 
     # 设备初始化
@@ -540,6 +611,7 @@ if __name__ == "__main__":
                 compare_mode=args.compare_mode,
                 load_gpu_dump=args.load_gpu_dump,
                 load_npu_dump=args.load_npu_dump,
+                enable_prof=args.prof,
                 **kwargs
             )
         except Exception as e:
