@@ -118,13 +118,14 @@ aclnnStatus aclnnBandwidthTestGetWorkspaceSize(
     uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     OP_LOGD("aclnnBandwidthTestGetWorkspaceSize start");
+    OP_LOGD("12345");
     
     auto ret_param = CheckParams(context, x, dstrankId, group, worldSize, cclBufferSize, maxBs, mode, commAlg, y, receiveCnt);
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
 
     aclTensor *mc2Context = nullptr;
     aclnnStatus getWorkspaceSizesRes;
-    printf("HCOMM_VERSION_NUM = %d\n", HCOMM_VERSION_NUM);
+    OP_LOGD(HCOMM_VERSION_NUM, "HCOMM_VERSION_NUM");
 #if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
     uint64_t hcclBuffSize = 0;
     const char *opName = "bandwidth_test";
