@@ -1415,7 +1415,6 @@ if [ -n "${ascend_op_name}" ];then
         CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_TILING_SINK=OFF"
     fi
 fi
-
 if [ -n "${op_build_tool}" ];then
     CUSTOM_OPTION="${CUSTOM_OPTION} -DOP_BUILD_TOOL=${op_build_tool}"
 fi
