@@ -24,7 +24,7 @@ TestCases = {
         'mask_mode': [0],
         'seqused_q': [[1]],
         'seqused_kv': [[2048]],
-        'return_softmax_lse': [True],
+        'return_softmax_lse': [1],
     },
     'Decode_Unquant_FP16_FP16_L0_1_5_1_1_2048_BNSD_000001': {
         'B': [1],
@@ -46,7 +46,7 @@ TestCases = {
         'seqused_kv': [[2048]],
         'block_table': [[[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127]]],
         'block_size': [16],
-        'return_softmax_lse': [False],
+        'return_softmax_lse': [0],
     },
     'Prefill_Unquant_BF16_BF16_L0_1_8_1_1024_1024_BNSD_000002': {
         'B': [1],
@@ -68,7 +68,7 @@ TestCases = {
         'seqused_kv': [[1024]],
         'block_table': [[[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]]],
         'block_size': [32],
-        'return_softmax_lse': [True],
+        'return_softmax_lse': [1],
     },
     'Prefill_Unquant_FP16_FP16_L0_1_5_5_1024_1024_000003': {
         'B': [1],
@@ -86,7 +86,7 @@ TestCases = {
         'v_range': [(-10, 10)],
         'scale': [0.0883883476483184],
         'mask_mode': [0],
-        'return_softmax_lse': [False],
+        'return_softmax_lse': [0],
     },
     'Decode_Unquant_BF16_BF16_L0_1_5_1_1_2048_BNSD_BSND_000004': {
         'B': [1],
@@ -108,7 +108,7 @@ TestCases = {
         'seqused_kv': [[2048]],
         'block_table': [[[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]]],
         'block_size': [64],
-        'return_softmax_lse': [True],
+        'return_softmax_lse': [1],
     },
     'Decode_Unquant_FP16_FP16_L0_1_8_1_1_2048_BNSD_BSND_000005': {
         'B': [1],
@@ -130,7 +130,7 @@ TestCases = {
         'seqused_kv': [[2048]],
         'block_table': [[[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]]],
         'block_size': [128],
-        'return_softmax_lse': [False],
+        'return_softmax_lse': [0],
     },
     'Prefill_Unquant_BF16_BF16_L0_1_5_5_1024_1024_BSND_000006': {
         'B': [1],
@@ -148,7 +148,7 @@ TestCases = {
         'v_range': [(-10, 10)],
         'scale': [0.0883883476483184],
         'mask_mode': [3],
-        'return_softmax_lse': [True],
+        'return_softmax_lse': [1],
     },
     'Prefill_Unquant_FP16_FP16_L0_1_5_1_1024_1024_BSND_000007': {
         'B': [1],
@@ -170,7 +170,7 @@ TestCases = {
         'seqused_kv': [[1024, 1024]],
         'block_table': [[[0, 1, 2, 3, 4]]],
         'block_size': [256],
-        'return_softmax_lse': [False],
+        'return_softmax_lse': [0],
     },
     'Decode_Unquant_BF16_BF16_L0_1_8_1_1_2048_BSND_000008': {
         'B': [1],
@@ -192,7 +192,7 @@ TestCases = {
         'seqused_kv': [[2048]],
         'block_table': [[[0, 1, 2, 3, 4, 5]]],
         'block_size': [384],
-        'return_softmax_lse': [True],
+        'return_softmax_lse': [1],
     },
     'Decode_Unquant_FP16_FP16_L0_2_5_5_1_2048_TND_000009': {
         'B': [2],
@@ -214,7 +214,7 @@ TestCases = {
         'seqused_kv': [[1024, 1024]],
         'cu_seqlens_q': [[1, 1025, 2049]],
         'cu_seqlens_kv': [[1, 1025, 2049]],
-        'return_softmax_lse': [False],
+        'return_softmax_lse': [0],
     },
     'Prefill_Unquant_BF16_BF16_L0_2_5_1_1024_1024_TND_000010': {
         'B': [2],
@@ -238,7 +238,7 @@ TestCases = {
         'cu_seqlens_kv': [[1, 1025, 2049]],
         'block_table': [[[0, 1, 2], [3, 4, 5]]],
         'block_size': [512],
-        'return_softmax_lse': [True],
+        'return_softmax_lse': [1],
     },
     'Prefill_Unquant_FP16_FP16_L0_2_8_1_1024_1024_TND_000011': {
         'B': [2],
@@ -262,6 +262,6 @@ TestCases = {
         'cu_seqlens_kv': [[0, 1024, 2048]],
         'block_table': [[[0, 1], [2, 3]]],
         'block_size': [1024],
-        'return_softmax_lse': [False],
+        'return_softmax_lse': [0],
     },
 }

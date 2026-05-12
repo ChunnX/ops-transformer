@@ -128,6 +128,9 @@ def tforward_normal(q, k, v, pse, **kwargs):
         k = broadcastKV(n1, n2, k, k.dtype)
         v = broadcastKV(n1, n2, v, v.dtype)
     out, x_max, x_sum = forward(q, k, v, drop_mask, atten_mask, pse_type, pse, scale, keep_prob, skip_invalid_row)
+    x_max = x_max.squeeze(-1)
+    x_sum = x_sum.squeeze(-1)
+
     return out, x_max, x_sum
 
 
