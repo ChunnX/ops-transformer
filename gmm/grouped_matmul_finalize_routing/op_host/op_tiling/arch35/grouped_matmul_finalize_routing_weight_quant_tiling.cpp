@@ -54,8 +54,9 @@ bool GMMFRWeightQuantTiling::IsCapable()
 bool GMMFRWeightQuantTiling::CheckCoreNum() const
 {
     OP_CHECK_IF(coreNum_ <= 0 || aivNum_ <= 0,
-        OP_LOGE(context_->GetNodeName(), "Invalid aicNum[%ld] or aivNum[%ld], expect greater than 0", coreNum_, aivNum_),
-        return false);
+                OP_LOGE(context_->GetNodeName(), "Invalid aicNum[%ld] or aivNum[%ld], expect greater than 0", coreNum_,
+                        aivNum_),
+                return false);
 
     OP_CHECK_IF(coreNum_ * static_cast<int64_t>(AIC_AIV_CORE_RATIO) != aivNum_,
                 OP_LOGE(context_->GetNodeName(),
@@ -76,11 +77,13 @@ ge::graphStatus GMMFRWeightQuantTiling::GetPlatformInfo()
     coreNum_ = static_cast<int64_t>(compileInfoPtr_->aicNum);
     aivNum_ = static_cast<int64_t>(compileInfoPtr_->aivNum);
 
-    OP_LOGI(context_, "Compile info: aicNum(%lu) aivNum(%lu) ubSize(%lu) l1Size(%lu) l0aSize(%lu) l0bSize(%lu) l0cSize(%lu).",
-            compileInfoPtr_->aicNum, compileInfoPtr_->aivNum, compileInfoPtr_->ubSize, compileInfoPtr_->l1Size, compileInfoPtr_->l0ASize,
-            compileInfoPtr_->l0BSize, compileInfoPtr_->l0CSize);
+    OP_LOGI(context_,
+            "Compile info: aicNum(%lu) aivNum(%lu) ubSize(%lu) l1Size(%lu) l0aSize(%lu) l0bSize(%lu) l0cSize(%lu).",
+            compileInfoPtr_->aicNum, compileInfoPtr_->aivNum, compileInfoPtr_->ubSize, compileInfoPtr_->l1Size,
+            compileInfoPtr_->l0ASize, compileInfoPtr_->l0BSize, compileInfoPtr_->l0CSize);
 
-    OP_CHECK_IF(!CheckCoreNum(), OP_LOGE(context_->GetNodeName(), "Invalid core number ratio"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(!CheckCoreNum(), OP_LOGE(context_->GetNodeName(), "Invalid core number ratio"),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
