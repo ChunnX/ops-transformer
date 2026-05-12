@@ -13,8 +13,8 @@
  * \brief
  */
 
-#include <register/op_impl_registry.h>
 #include "log/log.h"
+#include <register/op_impl_registry.h>
 
 using namespace ge;
 
