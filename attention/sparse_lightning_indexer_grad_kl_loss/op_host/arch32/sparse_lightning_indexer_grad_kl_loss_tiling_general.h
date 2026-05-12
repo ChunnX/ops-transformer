@@ -55,6 +55,8 @@ protected:
         n2Size = 0;
         s1Size = 0;
         s2Size = 0;
+        t1Size = 0;
+        t2Size = 0;
         accumS1 = 0;
         accumS2 = 0;
         sparseMode = 3;
@@ -121,6 +123,8 @@ protected:
     int32_t gSizeQueryIndex;
     int32_t s1Size;
     int32_t s2Size;
+    int32_t t1Size;
+    int32_t t2Size;
     int32_t dSizeQuery;
     int32_t dSizeQueryIndex;
     int32_t kSize;
