@@ -31,7 +31,6 @@ ge::Status QuantGroupedMatMulAlltoAllvCalcParamFunc(gert::ExeResGenerationContex
     uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
     bool isA5 = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5);
  	 
-
     if (commMode == Mc2Comm::COMM_MODE_AICPU) {
         streamType = "kfc_stream";
         serverType = "aicpu kfc server";

@@ -23,7 +23,8 @@
 using namespace AscendC;
 
 template <
-    typename X_T, const bool IS_OPT_MM, const bool IS_GMM_WEIGHT_TRANS, const bool IS_OPT_WEIGHT_TRANS, int TILINGKEY_COMM_MODE>
+    typename X_T, const bool IS_OPT_MM, const bool IS_GMM_WEIGHT_TRANS,
+    const bool IS_OPT_WEIGHT_TRANS, int TILINGKEY_COMM_MODE>
 struct GMMATAVType { // Grouped_Mat_Mul_All_To_Allv_Type
     using xType = X_T;
     static constexpr bool isOptionalMm = IS_OPT_MM;
