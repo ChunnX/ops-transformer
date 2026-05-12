@@ -15,6 +15,7 @@
 #include "common/utils/op_mc2.h"
 #include "mc2_log.h"
 #include "kc_quant_matmul_allto_all_tiling_base.h"
+#include "matmul_allto_all_fit_balance_tiling.h"
 
 using namespace Mc2Log;
 using namespace AscendC;
@@ -144,7 +145,7 @@ ge::graphStatus KcQuantMatmulAllToAllTilingBase::SetHcclTiling()
     //reducetype接口附带的数据类型优先于调用通信接口传入的数据类型，因此这里需要设置
     AscendC::Mc2CcTilingConfig allToAllTilingConfig = allToAllBuilder.
         withReduceType(opName_, AscendC::HcclReduceOp::HCCL_REDUCE_SUM, contextInfo.args_.geCType, contextInfo.args_.geCType).
-        withCommEngine(mc2tiling::A5_CCU_ENGINE).build();
+        withCommEngine(0).build();
     if (!allToAllBuilder.isSuccess()) {
         OP_LOGE(opName_, "Build hccl tiling config failed: %s", allToAllBuilder.errorMsg().c_str());
         return ge::GRAPH_FAILED;
@@ -476,6 +477,17 @@ uint64_t KcQuantMatmulAllToAllTilingBase::GetTilingKey() const
     OP_LOGD(opName_, "KCQUANTMODE,X2TRANSPOSE,DTYPEBIAS: [%d,%d,%d], TilingKey is [%lu].", KC_QUANT_MODE,
             x2TransposeFlag, biasDType, tilingKey);
     return tilingKey;
+}
+
+/**
+ * @brief 获取tiling切分结果（arch35覆盖）
+ *
+ * @return CutResult
+ */
+CutResult KcQuantMatmulAllToAllTilingBase::GetTilingResult()
+{
+    return GetArch35TilingResult(contextInfo.args_, KernelType::ALL_TO_ALL, SocVersion::SOC950, npuArch_,
+                                 QuantMode::KC_QUANT);
 }
 
 /**

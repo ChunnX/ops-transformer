@@ -90,7 +90,7 @@ inline ge::graphStatus GetCommonMatmulInputPara(const gert::OpExecuteContext* ho
 
     para.bias = host_api_ctx->GetOptionalInputTensor(INDEX_IN_BIAS);
 
-    const auto attrs = host_api_ctx->GetAttrs();
+    const gert::RuntimeAttrs* attrs = host_api_ctx->GetAttrs();
     OPS_CHECK(attrs == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "Attrs is null"), return ge::GRAPH_FAILED);
 
     para.x1Acl = ConvertMmType(x1, false);
@@ -191,7 +191,7 @@ inline ge::graphStatus GetQuantMatmulPara(const gert::OpExecuteContext* host_api
 
     const auto x2Scale = host_api_ctx->GetOptionalInputTensor(INDEX_IN_X2_SCALE);
     OPS_CHECK(x2Scale == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "x2scale is null"), return ge::GRAPH_FAILED);
-    const auto attrs = host_api_ctx->GetAttrs();
+    const gert::RuntimeAttrs* attrs = host_api_ctx->GetAttrs();
 
     // 获取x1_quant_mode和x2_quant_mode
     const int64_t* x2QuantModePtr = attrs->GetInt(INDEX_ATTR_X2_QUANT_MODE);
@@ -223,20 +223,20 @@ static ge::graphStatus MatmulAlltoAllExecuteFunc(gert::OpExecuteContext* host_ap
 {
     OPS_LOG_D(MatmulAlltoAllInfo, "Start to fallback for matmul_allto_all.");
  	OPS_ERR_IF(host_api_ctx == nullptr, OPS_LOG_E(MatmulAlltoAllInfo, "host_api_ctx is null"), return ge::GRAPH_FAILED);
+
+    const gert::RuntimeAttrs* attrs = host_api_ctx->GetAttrs();
+    OPS_CHECK(attrs == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "attrs is null"), return ge::GRAPH_FAILED);
+
     CommonMatmulParas matmulParas;
     ge::graphStatus retPara = GetCommonMatmulInputPara(host_api_ctx, matmulParas);
     OPS_CHECK(
         retPara != ge::SUCCESS, OP_LOGE(host_api_ctx->GetNodeName(), "Failed to get common matmul input paras."),
         return ge::GRAPH_FAILED);
-
     const auto output = host_api_ctx->GetOutputTensor(INDEX_OUT);
     OPS_CHECK(output == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "output is null"), return ge::GRAPH_FAILED);
-    const gert::RuntimeAttrs* attrs = host_api_ctx->GetAttrs();
-    OPS_CHECK(attrs == nullptr, OP_LOGE(host_api_ctx->GetNodeName(), "attrs is null"), return ge::GRAPH_FAILED);
     AttrParas attrParas;
     OPS_CHECK(GetAttrPara(host_api_ctx, attrs, attrParas) != ge::SUCCESS,
               OP_LOGE(host_api_ctx->GetNodeName(), "Failed to get attr paras."), return ge::GRAPH_FAILED);
-
     const auto alltoAllAxesOptional = attrs->GetListInt(INDEX_ATTR_ALL2ALL_AXES);
     std::vector<int64_t> actSeqArray;
     if(alltoAllAxesOptional != nullptr) {

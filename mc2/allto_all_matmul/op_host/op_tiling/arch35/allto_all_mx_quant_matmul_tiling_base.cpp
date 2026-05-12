@@ -249,6 +249,7 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::CheckMxQuantTensorDataType(cons
                     return ge::GRAPH_FAILED);
     if (x1Dtype == ge::DT_FLOAT4_E2M1 || x2Dtype == ge::DT_FLOAT4_E2M1) {
         isMxFp4_ = true;
+        matmulQuantType_ = QuantType::MXFP4_QUANT;
         OP_TILING_CHECK(
             (x1Dtype != x2Dtype),
             OP_LOGE(
@@ -410,6 +411,20 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::InitTilingContextParameters()
     return ge::GRAPH_SUCCESS;
 }
 
+CutResult AllToAllMxQuantMatmulTilingBase::GetCutResOfCommAndCompute()
+{
+    constexpr uint32_t COMM_RANKDIM_FOUR = 4;
+    if (contextInfo_.args_.rankDim == COMM_RANKDIM_FOUR) {
+        // 950的4卡形态使用基于拟合数据的公式化tiling
+        AlltoAllMatmulFitBalanceTiling tiling(matmulQuantType_, contextInfo_.args_, TopoType::STANDARD_CARD,
+                                              SocVersion::SOC950);
+        return tiling.GetTiling();
+    } else {
+        // 调用父类的通用实现
+        return AllToAllMatmulTilingBase::GetCutResOfCommAndCompute();
+    }
+}
+
 /**
  * @brief 主要处理逻辑，设置hccl参数；进行通算切分, 获取mm tiling等
  *
@@ -422,11 +437,6 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::DoOpTiling()
     // 参数校验通过后赋值给全局上下文变量
     GE_ASSERT_GRAPH_SUCCESS(InitTilingContextParameters());
     // 进行通算切分
-    if (isMxFp4_) {
-        matmulQuantType_ = QuantType::MXFP4_QUANT;
-    } else {
-        matmulQuantType_ = QuantType::MXFP8_QUANT;
-    }
     GE_ASSERT_GRAPH_SUCCESS(TileCommAndCompute());
     // 调用量化Matmul的tiling方法进行切分
     GE_ASSERT_GRAPH_SUCCESS(DoMxQuantMMTiling());
@@ -479,7 +489,7 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::SetHcclTiling()
     // reducetype接口附带的数据类型优先于调用通信接口传入的数据类型，因此这里需要设置
     AscendC::Mc2CcTilingConfig allToAllTilingConfig =
         allToAllMatmulBuilder.withReduceType(opName_, AscendC::HcclReduceOp::HCCL_REDUCE_SUM, hcclDtype, hcclDtype)
-            .withCommEngine(mc2tiling::A5_CCU_ENGINE)
+            .withCommEngine(0)
             .build();
     if (!allToAllMatmulBuilder.isSuccess()) {
         OP_LOGE(opName_, "Allto All Matmul build hccl tiling config failed: %s",

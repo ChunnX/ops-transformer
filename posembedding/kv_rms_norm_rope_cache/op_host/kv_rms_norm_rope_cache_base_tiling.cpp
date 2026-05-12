@@ -113,6 +113,7 @@ bool KvRmsNormRopeCacheTilingBase::CheckCosSinValid(
 {
     auto cosShapeTuple = GetShapeTuple(context, COS_INDEX);
     auto sinShapeTuple = GetShapeTuple(context, SIN_INDEX);
+    auto sinShape = context->GetInputShape(SIN_INDEX)->GetStorageShape();
     bool isValid = true;
     isValid = isValid && (std::get<SHAPE_IDX_B>(cosShapeTuple) == batchSize);
     isValid = isValid && (std::get<SHAPE_IDX_N>(cosShapeTuple) == numHead);
@@ -136,15 +137,23 @@ bool KvRmsNormRopeCacheTilingBase::CheckCosSinValid(
         OP_CHECK_NULL_WITH_CONTEXT(context_, kcacheDesc);
         ge::DataType kcacheDtype = kcacheDesc->GetDataType();
         bool isValidAlign = true;
+        std::string reasonMsg;
         if (kcacheDtype == ge::DT_INT8 || kcacheDtype == ge::DT_HIFLOAT8
             || kcacheDtype == ge::DT_FLOAT8_E5M2 || kcacheDtype == ge::DT_FLOAT8_E4M3FN) {
             isValidAlign = isValidAlign && (std::get<SHAPE_IDX_D>(sinShapeTuple) % INT8_BLOCK_ALIGN_NUM == 0);
+            reasonMsg = "The D-dimension of input sin must be exactly divisible by " +
+                std::to_string(INT8_BLOCK_ALIGN_NUM) +
+                " when the dtype of input k_cache is INT8, HIFLOAT8, FLOAT8_E5M2 or FLOAT8_E4M3FN, "
+                "where D is the 3rd axis";
         } else {
             isValidAlign = isValidAlign && (std::get<SHAPE_IDX_D>(sinShapeTuple) % FP16_BLOCK_ALIGN_NUM == 0);
+            reasonMsg = "The D-dimension of input sin must be exactly divisible by " +
+                std::to_string(FP16_BLOCK_ALIGN_NUM) +
+                " when the dtype of input k_cache is FLOAT16 or BF16, where D is the 3rd axis";
         }
         if (!isValidAlign) {
-            OP_LOGE(context_->GetNodeName(),
-            "NZ scenario, Dk must be 32B aligned. Alignment value: Quantized (32), Non-quantized(16).");
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "sin", ToString(sinShape).c_str(),
+                reasonMsg.c_str());
         }
         isValid = isValidAlign && isValid;
     }
@@ -164,15 +173,22 @@ bool KvRmsNormRopeCacheTilingBase::CheckGammaValid(const gert::TilingContext* co
         OP_CHECK_NULL_WITH_CONTEXT(context_, vcacheDesc);
         ge::DataType vcacheDtype = vcacheDesc->GetDataType();
         bool isValidAlign = true;
+        std::string reasonMsg;
         if (vcacheDtype == ge::DT_INT8 || vcacheDtype == ge::DT_HIFLOAT8
             || vcacheDtype == ge::DT_FLOAT8_E5M2 || vcacheDtype == ge::DT_FLOAT8_E4M3FN) {
             isValidAlign = isValidAlign && (gammaShapePtr->GetStorageShape().GetDim(0) % INT8_BLOCK_ALIGN_NUM == 0);
+            reasonMsg = "The 0th axis of input gamma must be exactly divisible by " +
+                std::to_string(INT8_BLOCK_ALIGN_NUM) +
+                " when the dtype of input ckv_cache is INT8, HIFLOAT8, FLOAT8_E5M2 or FLOAT8_E4M3FN";
         } else {
             isValidAlign = isValidAlign && (gammaShapePtr->GetStorageShape().GetDim(0) % FP16_BLOCK_ALIGN_NUM == 0);
+            reasonMsg = "The 0th axis of input gamma must be exactly divisible by " +
+                std::to_string(FP16_BLOCK_ALIGN_NUM) +
+                " when the dtype of input ckv_cache is FLOAT16 or BF16";
         }
         if (!isValidAlign) {
-            OP_LOGE(context_->GetNodeName(),
-            "NZ scenario, Dv must be 32B aligned. Alignment value: Quantized (32), Non-quantized(16).");
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "gamma",
+                ToString(gammaShapePtr->GetStorageShape()).c_str(), reasonMsg.c_str());
         }
         isValid = isValidAlign && isValid;
     }
@@ -216,6 +232,7 @@ bool KvRmsNormRopeCacheTilingBase::CheckKCacheValidPA(
     const gert::TilingContext* context, int64_t numHead, int64_t headSize)
 {
     auto kCacheShapeTuple = GetShapeTuple(context, K_CACHE_INDEX);
+    auto kCacheShape = context->GetInputShape(K_CACHE_INDEX)->GetStorageShape();
     bool isValid = true;
     isValid = isValid && (std::get<SHAPE_IDX_S>(kCacheShapeTuple) == numHead);
     isValid = isValid && (std::get<SHAPE_IDX_D>(kCacheShapeTuple) == headSize);
@@ -224,15 +241,23 @@ bool KvRmsNormRopeCacheTilingBase::CheckKCacheValidPA(
     OP_CHECK_NULL_WITH_CONTEXT(context_, kcacheDesc);
     ge::DataType kcacheDtype = kcacheDesc->GetDataType();
     bool isValidAlign = true;
+    std::string reasonMsg;
     if (kcacheDtype == ge::DT_INT8 || kcacheDtype == ge::DT_HIFLOAT8
         || kcacheDtype == ge::DT_FLOAT8_E5M2 || kcacheDtype == ge::DT_FLOAT8_E4M3FN) {
         isValidAlign = isValidAlign && (std::get<SHAPE_IDX_N>(kCacheShapeTuple) % INT8_BLOCK_ALIGN_NUM == 0);
+        reasonMsg = "The N-dimension of input k_cache must be exactly divisible by " +
+            std::to_string(INT8_BLOCK_ALIGN_NUM) +
+            " when the dtype of input k_cache is INT8, HIFLOAT8, FLOAT8_E5M2 or FLOAT8_E4M3FN, "
+            "where N is the 1st axis";
     } else {
         isValidAlign = isValidAlign && (std::get<SHAPE_IDX_N>(kCacheShapeTuple) % FP16_BLOCK_ALIGN_NUM == 0);
+        reasonMsg = "The N-dimension of input k_cache must be exactly divisible by " +
+            std::to_string(FP16_BLOCK_ALIGN_NUM) +
+            " when the dtype of input k_cache is FLOAT16 or BF16, where N is the 1st axis";
     }
     if (!isValidAlign) {
-        OP_LOGE(context_->GetNodeName(),
-            "PA scenario, k_cache blockSize must be 32B aligned. Alignment value: Quantized (32), Non-quantized(16).");
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "k_cache",
+            ToString(kCacheShape).c_str(), reasonMsg.c_str());
     }
     isValid = isValid && isValidAlign;
     return isValid;
@@ -242,6 +267,7 @@ bool KvRmsNormRopeCacheTilingBase::CheckVCacheValidPA(
     const gert::TilingContext* context, int64_t numHead, int64_t headSize)
 {
     auto vCacheShapeTuple = GetShapeTuple(context, V_CACHE_INDEX);
+    auto vCacheShape = context->GetInputShape(V_CACHE_INDEX)->GetStorageShape();
     bool isValid = true;
     isValid = isValid && (std::get<SHAPE_IDX_S>(vCacheShapeTuple) == numHead);
     isValid = isValid && (std::get<SHAPE_IDX_D>(vCacheShapeTuple) == headSize);
@@ -250,15 +276,23 @@ bool KvRmsNormRopeCacheTilingBase::CheckVCacheValidPA(
     OP_CHECK_NULL_WITH_CONTEXT(context_, vcacheDesc);
     ge::DataType vcacheDtype = vcacheDesc->GetDataType();
     bool isValidAlign = true;
+    std::string reasonMsg;
     if (vcacheDtype == ge::DT_INT8 || vcacheDtype == ge::DT_HIFLOAT8
         || vcacheDtype == ge::DT_FLOAT8_E5M2 || vcacheDtype == ge::DT_FLOAT8_E4M3FN) {
         isValidAlign = isValidAlign && (std::get<SHAPE_IDX_N>(vCacheShapeTuple) % INT8_BLOCK_ALIGN_NUM == 0);
+        reasonMsg = "The N-dimension of input ckv_cache must be exactly divisible by " +
+            std::to_string(INT8_BLOCK_ALIGN_NUM) +
+            " when the dtype of input ckv_cache is INT8, HIFLOAT8, FLOAT8_E5M2 or FLOAT8_E4M3FN, "
+            "where N is the 1st axis";
     } else {
         isValidAlign = isValidAlign && (std::get<SHAPE_IDX_N>(vCacheShapeTuple) % FP16_BLOCK_ALIGN_NUM == 0);
+        reasonMsg = "The N-dimension of input ckv_cache must be exactly divisible by " +
+            std::to_string(FP16_BLOCK_ALIGN_NUM) +
+            " when the dtype of input ckv_cache is FLOAT16 or BF16, where N is the 1st axis";
     }
     if (!isValidAlign) {
-        OP_LOGE(context_->GetNodeName(),
-            "PA scenario, v_cache blockSize must be 32B aligned. Alignment value: Quantized (32), Non-quantized(16).");
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "ckv_cache",
+            ToString(vCacheShape).c_str(), reasonMsg.c_str());
     }
     isValid = isValid && isValidAlign;
     return isValid;

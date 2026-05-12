@@ -401,7 +401,7 @@ def check_result(expect, result, topk_value, sparse_value, params):
         elif qk_dtype == torch.float16:
             topk_val_np = topk_selected.cpu().to(torch.float16).float().numpy().flatten()
         else:                                                                                                                                                                                                       
-        topk_val_np = topk_selected.cpu().float().numpy().flatten() 
+            topk_val_np = topk_selected.cpu().float().numpy().flatten() 
         sparse_val_np = sparse_value.cpu().float().numpy().flatten() 
         val_start = 0
         val_end = topk_val_np.size - 1

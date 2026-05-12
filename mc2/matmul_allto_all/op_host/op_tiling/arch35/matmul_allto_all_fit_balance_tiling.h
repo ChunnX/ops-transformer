@@ -18,6 +18,7 @@
 #pragma once
 #include "op_host/op_tiling/mc2_fit_based_balance_tiling.h"
 #include "../common/matmul_allto_all_util_tiling.h"
+#include "../common/allto_all_formulaic_tiling.h"
 
 namespace MC2Tiling {
 
@@ -49,6 +50,25 @@ private:
     bool isQuantMatmul_ = false;
     QuantMode quantMode_;
 };
+
+inline CutResult GetArch35TilingResult(const mc2tiling::TilingArgs &args, KernelType kernelType,
+                                       SocVersion socVersion, NpuArch npuArch, QuantMode quantMode)
+{
+    if (mc2tiling::IsStandardCard4P(args.rankDim, npuArch)) {
+        OP_LOGD("Arch35TilingResult", "Using fit balance tiling for arch35 standard card 4P");
+        MatmulAlltoAllFitBalanceTiling fitBalanceTiling(args, kernelType, TopoType::STANDARD_CARD, socVersion,
+                                                        quantMode);
+        return fitBalanceTiling.GetTiling();
+    } else if (mc2tiling::Is8P(args.rankDim, npuArch)) {
+        OP_LOGD("Arch35TilingResult", "Using fit balance tiling for arch35 and 8p");
+        MatmulAlltoAllFitBalanceTiling fitBalanceTiling(args, kernelType, TopoType::EIGHT_P, socVersion, quantMode);
+        return fitBalanceTiling.GetTiling();
+    }
+    OP_LOGD("Arch35TilingResult", "Falling back to formulaic tiling");
+    AlltoAllMM formulaicTiling(args, args.rankDim, kernelType, socVersion);
+    formulaicTiling.GetTiling();
+    return formulaicTiling.tilingM_.cutRes;
+}
 
 } // namespace MC2Tiling
 
