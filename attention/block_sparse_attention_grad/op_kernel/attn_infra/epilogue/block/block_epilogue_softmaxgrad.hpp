@@ -233,6 +233,9 @@ public:
             }
             auto eventId = ping ? EVENT_ID3 : EVENT_ID2;
 
+            set_flag(PIPE_V, PIPE_MTE2, eventId);
+            wait_flag(PIPE_V, PIPE_MTE2, eventId);
+
             // copyIn
             if (i == 0) {
                 InitIndex((startIdx + i * singleLoopNBurstNum * layoutFlag) * d,
@@ -277,6 +280,9 @@ public:
             outFp32Tensor[ping].SetShapeInfo(ShapeInfo(2, shapeArray, DataFormat::ND));
             uint32_t outShapeArray[] = {static_cast<uint32_t>(nBurst), BLOCK_BYTE_SIZE / sizeof(float)};
             softmaxGradTensor[ping].SetShapeInfo(ShapeInfo(2, outShapeArray, DataFormat::ND));
+
+            set_flag(PIPE_MTE3, PIPE_V, eventId);
+            wait_flag(PIPE_MTE3, PIPE_V, eventId);
 
             bool isBasicBlock = (nBurst % SFMG_HIGH_PERF_N_FACTOR == 0) && (dAlign % SFMG_HIGH_PERF_D_FACTOR == 0);
             if (likely(isBasicBlock)) {
