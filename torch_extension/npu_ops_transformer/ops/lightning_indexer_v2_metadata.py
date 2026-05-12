@@ -44,7 +44,7 @@ class LightningIndexerV2MetadataOpBuilder(OpBuilder):
             batch_size: Optional[int] = None, max_seqlen_q: Optional[int] = None, max_seqlen_k: Optional[int] = None,
             layout_q: Optional[str] = None, layout_k: Optional[str] = None, mask_mode: Optional[int] = None,
             cmp_ratio: Optional[int] = None):
-            return torch.empty((1024), dtype=torch.int32, device="meta")
+            return torch.empty((1024), dtype=torch.int32, device="npu")
 
 # Instantiate the builder
 lightning_indexer_v2_metadata_op_builder = LightningIndexerV2MetadataOpBuilder()

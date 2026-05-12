@@ -33,7 +33,7 @@ at::Tensor npu_lightning_indexer_v2_metadata(
     int64_t batch_size, int64_t max_seqlen_q, int64_t max_seqlen_k, c10::string_view layout_q,
     c10::string_view layout_k, int64_t mask_mode, int64_t cmp_ratio)
 {
-    const c10::string_view device = "npu:0";
+    const c10::string_view device = "npu";
     at::Device output_device = at::Device(std::string(device));
     if (cu_seqlens_q.has_value()) {
         output_device = cu_seqlens_q.value().device();
@@ -43,7 +43,10 @@ at::Tensor npu_lightning_indexer_v2_metadata(
         output_device = seqused_q.value().device();
     } else if (seqused_k.has_value()) {
         output_device = seqused_k.value().device();
+    } else if (cmp_residual_k.has_value()) {
+        output_device = cmp_residual_k.value().device();
     }
+
     at::Tensor output = torch::empty({OUTPUT_SIZE}, torch::dtype(torch::kInt32).device(output_device));
     auto cu_seqlens_q_val = li_v2_get_valid_tensor(cu_seqlens_q, output_device);
     auto cu_seqlens_k_val = li_v2_get_valid_tensor(cu_seqlens_k, output_device);
