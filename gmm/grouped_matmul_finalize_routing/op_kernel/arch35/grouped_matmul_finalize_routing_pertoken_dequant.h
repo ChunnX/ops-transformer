@@ -166,7 +166,9 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
 
         TQueBind<TPosition::VECIN, TPosition::VECOUT, 1> queBind;
         TPipe deterPipe;
-        deterPipe.InitBuffer(queBind, BUFFER_NUM, DETER_UB_SIZE);
+        if ASCEND_IS_AIV {
+            deterPipe.InitBuffer(queBind, BUFFER_NUM, DETER_UB_SIZE);
+        }
 
         uint64_t nTimes = Ceil(n, DETER_UB_SIZE / sizeof(float));
         uint64_t baseN = Ceil(Ceil(n, nTimes), 128) * 128;
