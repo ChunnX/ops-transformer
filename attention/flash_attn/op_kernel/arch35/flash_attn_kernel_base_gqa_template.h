@@ -126,6 +126,7 @@ public:
 
     // metadata
     uint32_t sectionNum_;
+    bool isFd;
     // fa metadata
     uint32_t bN2Start_;
     uint32_t bN2End_;
@@ -171,6 +172,7 @@ public:
         this->tilingData = tiling;
 
         sectionNum_ = ((__gm__ uint32_t *)fiaMetaData)[0];
+        isFd = static_cast<bool>(((__gm__ uint32_t *)fiaMetaData)[1]);
 
         faMetaDataGm.SetGlobalBuffer((__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET),
             FA_AIC_CORE_NUM * 16U * sectionNum_);
@@ -204,20 +206,22 @@ public:
         }
 
         if constexpr (FLASH_DECODE) {
-            if ASCEND_IS_AIV {
-                vecFdBlock.InitParams();
-                vecFdBlock.InitGlobalTensor(this->vecFaBlock.softmaxFDMaxGm, this->vecFaBlock.softmaxFDSumGm,
-                                            this->vecFaBlock.accumOutGm, this->vecFaBlock.attentionOutGm,
-                                            this->actualSeqLengthsGmQ, this->actualSeqLengthsGm, keyPtr, postQuantScale,
-                                            postQuantOffset);
-                if (learnableSink != nullptr) {
-                    sinkGm.SetGlobalBuffer((__gm__ INPUT_T *)learnableSink);
-                    constInfo.learnableSinkFlag = true;
-                    vecFdBlock.InitLearnableSinkGm(sinkGm);
-                }
-                if (constInfo.isSoftmaxLseEnable) {
-                    softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
-                    vecFdBlock.InitSoftmaxLseGm(softmaxLseGm);
+            if (isFd) {
+                if ASCEND_IS_AIV {
+                    vecFdBlock.InitParams();
+                    vecFdBlock.InitGlobalTensor(this->vecFaBlock.softmaxFDMaxGm, this->vecFaBlock.softmaxFDSumGm,
+                                                this->vecFaBlock.accumOutGm, this->vecFaBlock.attentionOutGm,
+                                                this->actualSeqLengthsGmQ, this->actualSeqLengthsGm, keyPtr, postQuantScale,
+                                                postQuantOffset);
+                    if (learnableSink != nullptr) {
+                        sinkGm.SetGlobalBuffer((__gm__ INPUT_T *)learnableSink);
+                        constInfo.learnableSinkFlag = true;
+                        vecFdBlock.InitLearnableSinkGm(sinkGm);
+                    }
+                    if (constInfo.isSoftmaxLseEnable) {
+                        softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
+                        vecFdBlock.InitSoftmaxLseGm(softmaxLseGm);
+                    }
                 }
             }
         }
@@ -816,15 +820,16 @@ public:
 
     __aicore__ inline void FlashDecode(uint32_t sectionIdx)
     {
+        if (!isFd) {
+            return;
+        }
+        GetFDSectionInfo(sectionIdx);
         vecFdBlock.InitBuffers(this->pipe, SharedBuffer1, SharedBuffer2, SharedBuffer3);
         AscendC::ICachePreLoad(2);
-        GetFDSectionInfo(sectionIdx);
         vecFdBlock.AllocEventID();
         vecFdBlock.InitDecodeParams();
         SyncAll();
-        if (fdParams_.fdCoreEnable) {
-            vecFdBlock.FlashDecode(fdParams_);
-        }
+        vecFdBlock.FlashDecode(fdParams_);
         SyncAll();
         vecFdBlock.FreeBuffers(SharedBuffer1, SharedBuffer2);
         vecFdBlock.FreeEventID();

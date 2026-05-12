@@ -711,6 +711,9 @@ protected:
 public:
     __aicore__ inline void FlashDecode(FDparamsX &fd)
     {
+        if (!fd.fdCoreEnable) {
+            return;
+        }
         uint32_t fdBalanceMBaseSize = 8U;
         uint32_t fdBalanceMSplitNum = (fd.mLen + fdBalanceMBaseSize - 1) / fdBalanceMBaseSize;
         uint32_t fdBalanceMTailSize =
