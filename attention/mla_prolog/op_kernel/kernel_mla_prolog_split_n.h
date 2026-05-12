@@ -2611,8 +2611,9 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::V3AndV4(AivOffset &aivOffset,
     LocalTensor<ropeOutputType> queryRopeOutputLocal = mm3ResLocal_.template ReinterpretCast<ropeOutputType>();
 
     constexpr uint64_t computeBlockAlign = (ALIGN_BLOCK_SIZE / sizeof(float));
+    constexpr uint64_t outputBlockAlign = (ALIGN_BLOCK_SIZE / sizeof(queryOutputType));
     LocalTensor<float> scaleOutputLocal = shareBuffer2_.Get<float>();
-    LocalTensor<float> scaleBrcb = scaleOutputLocal[Align(row, computeBlockAlign)];
+    LocalTensor<float> scaleBrcb = scaleOutputLocal[Align(static_cast<uint64_t>(row), computeBlockAlign)];
 
     LocalTensor<queryOutputType> queryOutputLocal = mm4ResLocal_.template ReinterpretCast<queryOutputType>();
 
@@ -2633,6 +2634,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::V3AndV4(AivOffset &aivOffset,
         numHeadOffset;
     float quantScaleCkv;
     int64_t dynamicQuantQueryResOffset;
+    DataCopyParams outParams {(uint16_t)row, (uint16_t)(baseParams_->headSizeCkv / outputBlockAlign), 0, (uint16_t)((baseParams_->headSizeCkv - baseParams_->headSizeCkv) / outputBlockAlign)};
     if constexpr (needQnDynamicQuant) {
         quantScaleCkv = quantScaleCkvGm_.GetValue(0);
         dynamicQuantQueryResOffset = (batchOffset + CeilDivT(mmQcQrParam_.m, 2U) * subBlockIdx_) *
@@ -2656,10 +2658,10 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::V3AndV4(AivOffset &aivOffset,
             AscendC::PipeBarrier<PIPE_V>();
             SetFlag<HardEvent::V_MTE3>(EVENT_ID1);
             WaitFlag<HardEvent::V_MTE3>(EVENT_ID1); // 计算是否已经完成可以搬运
-            DataCopy(mmQnResGm_[dynamicQuantQueryResOffset], queryOutputLocal, outParams);
+            DataCopy(mmQnResGm_[dynamicQuantQueryResOffset], queryOutputLocal, outputParamsRope);
             CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE3>(FINISH_VEC_QN);
 
-            Brcb(scaleBrcb, scaleOutputLocal, CeilDivT(row, computeBlockAlign), {1, computeBlockAlign});
+            Brcb(scaleBrcb, scaleOutputLocal, CeilDivT(static_cast<uint64_t>(row), computeBlockAlign), {1, computeBlockAlign});
             AscendC::PipeBarrier<PIPE_V>();
             MulQrVF(queryRopeOutputLocal, mm3ResLocal_, scaleBrcb, quantScaleCkv, row, computeBlockAlign);
         }

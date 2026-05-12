@@ -53,8 +53,6 @@ __simd_vf__ void MulQrVFImpl(__ubuf__ O * outputBuf, __ubuf__ T * inputBuf, __ub
             MicroAPI::Cast<O, T, castTraitB322B16>(vregResCast, vregRes, pregCastAll);
             MicroAPI::DataCopy<O, MicroAPI::StoreDist::DIST_PACK_B32>(outputBuf + loopOffset, vregResCast, pregCastAll);
         }
-        if 
-        
     }
 }
 
