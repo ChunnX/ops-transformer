@@ -490,7 +490,6 @@ static ge::graphStatus CheckAndSetInitTilingData(
     initTilingData.expertNum = expertNum;
     initTilingData.dropPadMode = dropPadMode;
     initTilingData.expertTokensNumFlag = expertTokensNumFlag ? 1 : 0;
-    // InitRouting对应的quantmode没有使用
     initTilingData.quantMode = OpQuantModeToInitRoutingQuantMode(quantMode);
     initTilingData.rowIdxType = rowIdxType;
 
@@ -1424,8 +1423,7 @@ static ge::graphStatus CheckInputParam(const gert::TilingContext *context, MegaM
     OP_TILING_CHECK(xDim0 < MIN_BS || xDim0 > MAX_BS,
         OP_LOGE(nodeName, "BS should in [%ld, %ld], but now BS is %ld.", MIN_BS, MAX_BS, xDim0),
         return ge::GRAPH_FAILED);
-    
-    // MXFP4情况下，输入scales的H需为偶数
+
     int64_t xDim1 = xStorageShape->GetStorageShape().GetDim(1);
     OP_TILING_CHECK(xDim1 != 4LL * H_BASE && xDim1 != 5LL * H_BASE && xDim1 != 7LL * H_BASE,
         OP_LOGE(nodeName, "H only support 4k/5k/7k, but now H is %ld.", xDim1),
