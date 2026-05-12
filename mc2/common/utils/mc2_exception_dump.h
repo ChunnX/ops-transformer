@@ -307,21 +307,27 @@ int ProcessArgs910BImpl(void* devArgsPtr, std::vector<uint8_t> &winBuf,
         uint32_t statusEntryCount = ((localMoeExpertNum + 1) * sizeof(uint32_t) + Mc2A2Kernel::UB_ALIGN - 1) /
                                     Mc2A2Kernel::UB_ALIGN * Mc2A2Kernel::UB_ALIGN;
         // Dispatch
+        OP_LOGE(OP_NAME, "dataSizePerRank_=%d", dataSizePerRank_);
         for (uint32_t rank = 0; rank < worldSize; ++rank) {
             uint32_t srcOffset = rank * dataSizePerRank_ + size / 4 * bufferId;
             uint32_t dstOffset = rank * statusEntryCount;
-            ret = aclrtMemcpy(winBuf.data() + dstOffset,
-                              Mc2A2Kernel::BUFFER_ADUMP_WIN_DISPATCH_SIZE,
-                              (const void *)statusBuffer + srcOffset,
-                              statusEntryCount,
-                              ACL_MEMCPY_DEVICE_TO_HOST);
-            if (!(ret == ACL_SUCCESS)) {
-                OP_LOGE(OP_NAME, "aclrtMemcpy win from device to host failed. ret = %d", ret);
-                return -1;
+            if (srcOffset + statusEntryCount < size / 2) {
+                ret = aclrtMemcpy(winBuf.data() + dstOffset,
+                                Mc2A2Kernel::BUFFER_ADUMP_WIN_DISPATCH_SIZE,
+                                (const void *)statusBuffer + srcOffset,
+                                statusEntryCount,
+                                ACL_MEMCPY_DEVICE_TO_HOST);
+                if (!(ret == ACL_SUCCESS)) {
+                    OP_LOGE(OP_NAME, "aclrtMemcpy win from device to host failed. ret = %d", ret);
+                    return -1;
+                }
+            } else {
+                OP_LOGE(OP_NAME, "[Dispatch] aclrtMemcpy addr is OOM, offset = %d, maxoffset=%d",
+                    srcOffset + statusEntryCount, size / 2);
+                break;
             }
         }
         // Combine
-        OP_LOGE(OP_NAME, "dataSizePerRank_=%d", dataSizePerRank_);
         for (uint32_t rank = 0; rank < worldSize; ++rank) {
             uint32_t srcOffset = rank * dataSizePerRank_ + size / 4 * (1 - bufferId);
             uint32_t dstOffset = rank * Mc2A2Kernel::UB_ALIGN * 2 + Mc2A2Kernel::BUFFER_ADUMP_WIN_DISPATCH_SIZE;
@@ -332,21 +338,27 @@ int ProcessArgs910BImpl(void* devArgsPtr, std::vector<uint8_t> &winBuf,
                               ACL_MEMCPY_DEVICE_TO_HOST);
             if (!(ret == ACL_SUCCESS)) {
                 OP_LOGE(OP_NAME, "aclrtMemcpy win from device to host failed. ret = %d", ret);
-                return -1;
+                break;
             }
             uint32_t tokenNum = 0;
             std::memcpy(&tokenNum, winBuf.data() + dstOffset, sizeof(uint32_t));
             OP_LOGE(OP_NAME, "rank=%d, tokenNum=%d", rank, tokenNum);
             srcOffset += Mc2A2Kernel::UB_ALIGN * 2 + tokenNum * axisH * sizeof(uint16_t);
             dstOffset += Mc2A2Kernel::UB_ALIGN;
-            ret = aclrtMemcpy(winBuf.data() + dstOffset,
-                              Mc2A2Kernel::BUFFER_ADUMP_WIN_COMBINE_SIZE,
-                              (const void *)statusBuffer + srcOffset,
-                              Mc2A2Kernel::UB_ALIGN,
-                              ACL_MEMCPY_DEVICE_TO_HOST);
-            if (!(ret == ACL_SUCCESS)) {
-                OP_LOGE(OP_NAME, "aclrtMemcpy win from device to host failed. ret = %d", ret);
-                return -1;
+            if (srcOffset + Mc2A2Kernel::UB_ALIGN < size / 2) {
+                ret = aclrtMemcpy(winBuf.data() + dstOffset,
+                                Mc2A2Kernel::BUFFER_ADUMP_WIN_COMBINE_SIZE,
+                                (const void *)statusBuffer + srcOffset,
+                                Mc2A2Kernel::UB_ALIGN,
+                                ACL_MEMCPY_DEVICE_TO_HOST);
+                if (!(ret == ACL_SUCCESS)) {
+                    OP_LOGE(OP_NAME, "aclrtMemcpy win from device to host failed. ret = %d", ret);
+                    return -1;
+                }
+            } else {
+                OP_LOGE(OP_NAME, "[Combine] aclrtMemcpy addr is OOM, offset = %d, maxoffset=%d",
+                    srcOffset + Mc2A2Kernel::UB_ALIGN, size / 2);
+                break;
             }
         }
     } else {
