@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -30,7 +30,6 @@ static const std::map<FaLayout, std::vector<FaAxis>> FA_LAYOUT_AXIS_MAP = {
     {FaLayout::TND, {FaAxis::T, FaAxis::N, FaAxis::D}},
     {FaLayout::PA_BBND, {FaAxis::Bn, FaAxis::Bs, FaAxis::N, FaAxis::D}},
     {FaLayout::PA_BNBD, {FaAxis::Bn, FaAxis::N, FaAxis::Bs, FaAxis::D}},
-    {FaLayout::PA_Nz, {FaAxis::Bn, FaAxis::N, FaAxis::D1, FaAxis::Bs, FaAxis::D0}},
     {FaLayout::LSE_BNS, {FaAxis::B, FaAxis::N, FaAxis::S1}},
     {FaLayout::LSE_NT, {FaAxis::N, FaAxis::T}}};
 
@@ -207,9 +206,6 @@ ge::graphStatus FaTilingShapeCompare::GetExpectedShape(gert::Shape &shapeExpecte
             break;
         case FaLayout::PA_BNBD:
             shapeExpected = gert::Shape({param.Bn, param.N, param.Bs, param.D});
-            break;
-        case FaLayout::PA_Nz:
-            shapeExpected = gert::Shape({param.Bn, param.N, param.D / param.D0, param.Bs, param.D0});
             break;
         case FaLayout::LSE_BNS:
             shapeExpected = gert::Shape({param.B, param.N, param.S1});

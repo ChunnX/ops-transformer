@@ -49,7 +49,7 @@ inline auto AlignUp(T num1, T num2) -> T
 }
 
 template <typename T>
-inline auto increGcd(T a, T b) -> T
+inline auto IncreGcd(T a, T b) -> T
 {
     if (b == 0) {
         return a;
@@ -57,7 +57,7 @@ inline auto increGcd(T a, T b) -> T
     if (a % b == 0) {
         return b;
     }
-    return increGcd(b, a % b);
+    return IncreGcd(b, a % b);
 }
 
 } // namespace optiling

@@ -9,20 +9,18 @@
  */
 
 /*!
- * \file flash_attn_tiling_impl.h
+ * \file flash_attn_tiling.h
  * \brief
  */
-#ifndef FLASH_ATTN_TILING_IMPL_H_
+#ifndef FLASH_ATTN_TILING_H_
 #define FLASH_ATTN_TILING_IMPL_H_
 
 #include "register/tilingdata_base.h"
 #include "exe_graph/runtime/tiling_context.h"
-#include "../fa_tiling_base.h"
 #include "../fa_tiling_info.h"
 #include "tiling/tiling_api.h"
 #include "../../op_kernel/arch35/flash_attn_tiling_data.h"
 // #include "../../common/op_host/split_core_v2.h"
-#include "../fa_split_core_v2.h"
 #include "../../op_kernel/arch35/flash_attn_template_tiling_key.h"
 
 namespace optiling {
@@ -58,18 +56,17 @@ struct FaPlatFormInfo {
     uint64_t defaultSysWorkspaceSize = 0;
 };
 
-class FlashAttnTilingImpl : public FaTilingBase {
+class FlashAttnTilingImpl : public FiaTilingBase {
 public:
-    explicit FlashAttnTilingImpl(gert::TilingContext *context) : FaTilingBase(context)
+    explicit FlashAttnTilingImpl(gert::TilingContext *context) : FiaTilingBase(context)
     {
     }
     ~FlashAttnTilingImpl() override = default;
 
-// protected:
-    void InitTilingInfo(TilingInfo *tilingInfo) {}
-    bool IsCapable() { return true; }
-    ge::graphStatus DoOpTiling() { return ge::GRAPH_SUCCESS; }
-    ge::graphStatus DoOpTiling(const FaTilingInfo *faInfo);
+    // protected:
+    void InitTilingInfo(TilingInfo *tilingInfo) override;
+    bool IsCapable() override;
+    ge::graphStatus DoOpTiling() override;
 
 private:
     ge::graphStatus SetPlatMemoryInfo();
@@ -90,15 +87,14 @@ private:
     void SetFATilingData();
     void AdjustSinnerAndSouter();
     void GetWinLeftsRightUp(int64_t cuSeqLength, int64_t cuSeqLengthKV, int64_t &winLeftsLeftUp,
-                                int64_t &winRightsLeftUp);
+                            int64_t &winRightsLeftUp);
     void FixParamWithRowInvalid(int64_t &cuSeqLength, int64_t cuSeqLengthKV, int64_t &winLeftsLeftUp,
                                 int64_t &winRightsLeftUp);
     void InitImplParam();
     void PrintAllTilingData();
     void CalcMaxWorkspaceSize();
     void CalcScheduleMode();
-    void CreateSplitInput(fa_split_core_v2::BaseInfo &baseInfo, fa_split_core_v2::SplitParam &splitParam);
-    void SetSplitOutput(const fa_split_core_v2::FAMetaData &splitRes);
+
     void CalcNumBlocks(uint32_t aicNum);
     void FillTiling();
     ge::graphStatus SetTilingData(FlashAttnTilingData &tilingData);
