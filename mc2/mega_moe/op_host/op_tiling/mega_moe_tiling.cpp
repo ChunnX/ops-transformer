@@ -332,7 +332,7 @@ static int64_t OpQuantModeToInitRoutingQuantMode(const int64_t opQuantMode)
     switch (opQuantMode) {
         case DISPATCH_QUANT_OUT_TYPE_E5M2: return 2LL;
         case DISPATCH_QUANT_OUT_TYPE_E4M3FN: return 3LL;
-        case DISPATCH_QUANT_OUT_TYPE_E2M1: return 9LL; // 待定，需要确认InitRouting对应的MXFP4对应枚举值
+        case DISPATCH_QUANT_OUT_TYPE_E2M1: return 9LL;
         default: return -1LL;
     }
     return -1LL;
