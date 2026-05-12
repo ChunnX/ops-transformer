@@ -124,6 +124,7 @@ aclnnStatus aclnnBandwidthTestGetWorkspaceSize(
 
     aclTensor *mc2Context = nullptr;
     aclnnStatus getWorkspaceSizesRes;
+    printf("HCOMM_VERSION_NUM = %d\n", HCOMM_VERSION_NUM);
 #if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
     uint64_t hcclBuffSize = 0;
     const char *opName = "bandwidth_test";
