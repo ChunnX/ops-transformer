@@ -266,7 +266,7 @@ private:
         // stay resident in L1 across all K iterations.
         runInfo_.baseM = runInfo_.mBaseTailSplitCnt == 1UL ? runInfo_.baseM : runInfo_.mTailMain;
         runInfo_.dbL0c =
-            runInfo_.baseM * runInfo_.baseN * DATA_SIZE_L0C * DB_SIZE <= platformInfo_.l0cSize ? DB_SIZE : 1U;
+            runInfo_.baseM * runInfo_.baseN * DATA_SIZE_L0C * DB_SIZE <= LOGICAL_L0C_SIZE ? DB_SIZE : 1U;
     }
 
     uint64_t GetDepthB1AFullLoad(const QuantMatmulArgs& args, const QuantMatmulRunInfo& runInfo,

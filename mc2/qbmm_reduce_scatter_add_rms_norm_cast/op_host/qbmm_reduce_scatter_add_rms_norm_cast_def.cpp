@@ -46,7 +46,7 @@ public:
             .Format({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Input("pertoken_scale")
             .ParamType(OPTIONAL)    // TODO:
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
+            .DataType({ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Output("y1")
             .ParamType(REQUIRED)

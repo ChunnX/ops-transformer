@@ -242,7 +242,7 @@ private:
         runInfo_.mTailSize = args_.m - (runInfo_.mBlockCnt - 1UL) * runInfo_.baseM;
         runInfo_.nTailSize = args_.n - (runInfo_.nBlockCnt - 1UL) * runInfo_.baseN;
         runInfo_.dbL0c =
-            runInfo_.baseM * runInfo_.baseN * DATA_SIZE_L0C * DB_SIZE <= platformInfo_.l0cSize ? DB_SIZE : 1U;
+            runInfo_.baseM * runInfo_.baseN * DATA_SIZE_L0C * DB_SIZE <= LOGICAL_L0C_SIZE ? DB_SIZE : 1U;
     }
 
     void OptimizeEdgeBasicBlock()
@@ -340,6 +340,20 @@ private:
 
         runInfo.depthA1 = runInfo.stepKa * DB_SIZE;
         runInfo.depthB1 = runInfo.stepKb * DB_SIZE;
+
+        // Clamp stepKa to avoid a hardware ND->NZ DMA issue on FP8 A-side tiles
+        // whose padded size fills the entire L0A (65536 elements).  The problematic
+        // case is baseM * (stepKa * baseK) >= 65536.
+        // When that happens, drop stepKa (and stepKb) by one and re-derive
+        // depth so the streaming path uses smaller K-L1 slices.
+        constexpr uint64_t L0A_FP8_CAPACITY = 64UL * 1024UL;
+        if (runInfo.stepKa > 1UL && aDataType == mm::DataType::DT_FLOAT8_E4M3FN &&
+            runInfo.baseM * runInfo.stepKa * runInfo.baseK >= L0A_FP8_CAPACITY) {
+            runInfo.stepKa -= 1UL;
+            runInfo.stepKb = std::min(runInfo.stepKa, runInfo.stepKb);
+            runInfo.depthA1 = runInfo.stepKa * DB_SIZE;
+            runInfo.depthB1 = runInfo.stepKb * DB_SIZE;
+        }
     }
 
     void CalScaleFactors(const QuantMatmulArgs& args, const QuantMatmulPlatformInfo& platformInfo,

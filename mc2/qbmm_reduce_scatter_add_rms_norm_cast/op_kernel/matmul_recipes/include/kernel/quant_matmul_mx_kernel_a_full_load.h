@@ -317,12 +317,9 @@ QuantMatmulMxKernelAFullLoad<QBMM_MX_KERNEL_A_FULL_LOAD_FUN_TEM_PARAMS>::CommPro
     // DataCopyPad uses byte-level blockLen/stride, handling both aligned and
     // non-aligned tail tiles seamlessly (32B-padding in VECIN auto-discarded).
     uint32_t blkLenBytes = static_cast<uint32_t>(singleN * sizeof(bfloat16_t));
-    uint32_t rowPadding32B = ::CeilDiv(blkLenBytes, UB_ALIGN_BYTES);
-    // VECIN row stride for sub-LocalTensor indexing (padded to 32B boundary).
-    uint32_t rowInVECINElems = rowPadding32B * (UB_ALIGN_BYTES / sizeof(bfloat16_t));
+    uint32_t rowPaddedBytes = ::CeilDiv(blkLenBytes, UB_ALIGN_BYTES) * UB_ALIGN_BYTES;
+    uint32_t rowInVECINElems = rowPaddedBytes / sizeof(bfloat16_t);
 
-    // Split the scheduler tile into sub-tiles; the two V cores alternate
-    // by index so each row is processed exactly once.
     for (int64_t st = aivIdx; st < subTileCnt; st += 2) {
         int64_t subTileM = Min(AIV_UB_TILE_M, singleM - st * AIV_UB_TILE_M);
         if (subTileM <= 0) {
@@ -330,9 +327,22 @@ QuantMatmulMxKernelAFullLoad<QBMM_MX_KERNEL_A_FULL_LOAD_FUN_TEM_PARAMS>::CommPro
         }
         int64_t globalBaseM = mPos + st * AIV_UB_TILE_M;
 
-        // Process rows grouped by destination TP domain in batches.
-        // Each batch is contiguous in both source workspace and target
-        // remote window, so a single DataCopyPad per direction suffices.
+        // 1) 整块读子 tile 到 VECIN（一次性 GM→VECIN）
+        DataCopyPadExtParams<bfloat16_t> padParams{false, 0, 0, 0};
+        LocalTensor<bfloat16_t> batchLocal = inQueue_.AllocTensor<bfloat16_t>();
+
+        DataCopyExtParams readParams{
+            static_cast<uint16_t>(subTileM),
+            blkLenBytes,
+            static_cast<uint32_t>((n - singleN) * sizeof(bfloat16_t)),
+            0,
+            0
+        };
+        DataCopyPad(batchLocal, workspaceGm[globalBaseM * n + nPos], readParams, padParams);
+        inQueue_.EnQue(batchLocal);
+        batchLocal = inQueue_.DeQue<bfloat16_t>();
+
+        // 2) 按 TP domain 分批次写远端窗口（每批一次 VECIN→GM）
         int64_t processed = 0;
         while (processed < subTileM) {
             int64_t globalRow = globalBaseM + processed;
@@ -346,22 +356,6 @@ QuantMatmulMxKernelAFullLoad<QBMM_MX_KERNEL_A_FULL_LOAD_FUN_TEM_PARAMS>::CommPro
                 break;
             }
 
-            // --- GM (workspace) -> VECIN (batch read) ---
-            DataCopyExtParams readParams{
-                static_cast<uint16_t>(rowsInBatch),
-                blkLenBytes,
-                static_cast<uint32_t>((n - singleN) * sizeof(bfloat16_t)),
-                0,   // dstStride: contiguous in VECIN (32B-padded)
-                0
-            };
-            DataCopyPadExtParams<bfloat16_t> padParams{false, 0, 0, 0};
-
-            LocalTensor<bfloat16_t> batchLocal = inQueue_.AllocTensor<bfloat16_t>();
-            DataCopyPad(batchLocal, workspaceGm[globalRow * n + nPos], readParams, padParams);
-            inQueue_.EnQue(batchLocal);
-            batchLocal = inQueue_.DeQue<bfloat16_t>();
-
-            // --- VECIN -> GM (remote window, batch write) ---
             GM_ADDR remoteWinAddr = GetWindAddrByRankId(dstRankId);
             GlobalTensor<bfloat16_t> remoteGm;
             remoteGm.SetGlobalBuffer((__gm__ bfloat16_t*)remoteWinAddr);
@@ -371,15 +365,16 @@ QuantMatmulMxKernelAFullLoad<QBMM_MX_KERNEL_A_FULL_LOAD_FUN_TEM_PARAMS>::CommPro
             DataCopyExtParams writeParams{
                 static_cast<uint16_t>(rowsInBatch),
                 blkLenBytes,
-                0,   // srcStride: VECIN contiguous (32B-padded rows)
+                0,
                 static_cast<uint32_t>((n - singleN) * sizeof(bfloat16_t)),
                 0
             };
-            DataCopyPad(remoteGm[dstBaseOffset], batchLocal, writeParams);
+            DataCopyPad(remoteGm[dstBaseOffset], batchLocal[processed * rowInVECINElems], writeParams);
 
-            inQueue_.FreeTensor(batchLocal);
             processed += rowsInBatch;
         }
+
+        inQueue_.FreeTensor(batchLocal);
     }
 }
 

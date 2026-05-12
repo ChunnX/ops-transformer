@@ -173,6 +173,17 @@ public:
         // tensors advance in a coarser cadence that matches `scaleKL1_`.
         auto curM = Get<IDX_M_TILEIDX>(singleShape);
         auto curN = Get<IDX_N_TILEIDX>(singleShape);
+
+        // if (AscendC::GetBlockIdx() == 4) {
+        //     PRINTF("singleShape: %d, %d\n", Get<MNK_M>(singleShape), Get<MNK_N>(singleShape));
+        // }
+        // DEBUG: Block 入口打印
+        if (AscendC::GetBlockIdx() == 0) {
+            PRINTF("[MMAD DBG] Block=%d curM=%d curN=%d kL1Iter=%d baseK=%d\n",
+                   AscendC::GetBlockIdx(), curM, curN, kL1Iter_, baseK_);
+        }
+
+
         uint64_t l0cOffset = (l0cPingPong_ & 1) * HALF_L0C_SIZE;
         auto layoutL0C = AscendC::Te::MakeL0CLayout(curM, curN);
         auto tensorL0C = AscendC::Te::MakeTensor(AscendC::Te::MakeL0CmemPtr<float>(l0cOffset), layoutL0C);
@@ -305,6 +316,13 @@ public:
 
                 AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0BufId);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0BufId);
+                
+                // DEBUG: MMAD 前打印
+                if (AscendC::GetBlockIdx() == 0 && iter0 == 0 && iter1 == 0) {
+                    PRINTF("[MMAD DBG] Before Mad iter0=%d iter1=%d curM=%d curKL0=%d curN=%d\n",
+                           iter0, iter1, curM, curKL0, curN);
+                }
+
                 uint8_t mmadUnitFlag =
                     (iter0 + 1 == kL1Iter_ && iter1 + 1 == kL0Iter) ? FINAL_ACCUMULATION : NON_FINAL_ACCUMULATION;
                 bool mmadCmatrixInitVal = (iter0 == 0 && iter1 == 0);
@@ -314,12 +332,18 @@ public:
                         static_cast<uint16_t>(CeilAlign(curKL0, MXFP_DIVISOR_SIZE)),
                         static_cast<uint16_t>(curN), mmadUnitFlag, false, mmadCmatrixInitVal),
                     tensorL0C, tensorAL0, tensorBL0);
+                
+                // DEBUG: MMAD 后打印
+                if (AscendC::GetBlockIdx() == 0 && iter0 == 0 && iter1 == 0) {
+                    PRINTF("[MMAD DBG] After Mad iter0=%d iter1=%d\n", iter0, iter1);
+                }
+                
                 AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0BufId);
                 l0PingPong_++;
             }
 
-            // Release the current L1 slot only after every L0 slice derived
-            // from it has completed its MMAD accumulation.
+            // // Release the current L1 slot only after every L0 slice derived
+            // // from it has completed its MMAD accumulation.
             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(l1BufId);
             if (scaleWindowIter + 1 == scaleL1Window_ || iter0 == kL1Iter_ - 1) {
                 AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(SCALE_BUFFER_FLAG_0 + scaleL1BufId);
@@ -331,12 +355,22 @@ public:
             abL1LoopCnt_++;
         }
 
+        // DEBUG: L0C → GM 前打印
+        if (AscendC::GetBlockIdx() == 0) {
+            PRINTF("[MMAD DBG] Before Fixpipe output\n");
+        }
+
         auto CopyL0C2GM = AscendC::Te::MakeCopy(AscendC::Te::CopyL0C2GM{});
         // The whole block accumulates into one L0C tile, which is flushed once
         // after all K chunks have contributed.
         AscendC::Te::Copy(CopyL0C2GM, gmC, tensorL0C, AscendC::Te::FixpipeParams{FINAL_ACCUMULATION});
         if (enableL0cPingPong_) {
             l0cPingPong_++;
+        }
+
+        // DEBUG: L0C → GM 后打印
+        if (AscendC::GetBlockIdx() == 0) {
+            PRINTF("[MMAD DBG] After Fixpipe output - Block done\n");
         }
     }
 

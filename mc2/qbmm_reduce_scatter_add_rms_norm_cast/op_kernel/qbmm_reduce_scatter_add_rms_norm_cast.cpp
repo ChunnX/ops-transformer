@@ -38,13 +38,13 @@ __global__ __aicore__ void qbmm_reduce_scatter_add_rms_norm_cast(GM_ADDR x1, GM_
 {
     REGISTER_TILING_DEFAULT(QbmmReduceScatterAddRmsNormCastTilingData);
     GET_TILING_DATA_WITH_STRUCT(QbmmReduceScatterAddRmsNormCastTilingData, tilingData, tilingGM);
-    static constexpr uint64_t Stages = 4;
+    static constexpr uint64_t Stages = 2;
     using AType = fp8_e4m3fn_t;
     using BType = fp8_e4m3fn_t;
     using CType = bfloat16_t;
 
     using layoutA = layout::RowMajor;
-    using layoutB = layout::RowMajor;
+    using layoutB = layout::ColumnMajor;  // B矩阵(K,N) ND格式，必须用ColumnMajor
     using layoutC = layout::RowMajor;
 
     using BlockScheduler = QuantMatmulMxSwatScheduler<NO_FULL_LOAD_MODE>;
@@ -59,11 +59,13 @@ __global__ __aicore__ void qbmm_reduce_scatter_add_rms_norm_cast(GM_ADDR x1, GM_
     using BlockSchedulerParams = typename QuantMatmulKernelImpl::BlockSchedulerParams;
     using QBMMTiling = typename QuantMatmulKernelImpl::QBMMTiling;
     using CommParams = typename QuantMatmulKernelImpl::CommParams;
+    using OutputParams = typename QuantMatmulKernelImpl::OutputParams;
 
     ProblemShape problemShape{tilingData.qbmmTilingdata.m, tilingData.qbmmTilingdata.n, tilingData.qbmmTilingdata.k, 1UL};
     
-    // 精度测试：quantmatmul 输出直接写入 x（xOut），跳过通信流程
-    BlockMmadParams mmadParams{x1, x2, x, dScaleA, dScaleB};  // 输出到 xOut 用于精度验证
+    // AIC 输出到 workspaceGM，AIV 从中读取做 alltoall 分发
+    BlockMmadParams mmadParams{x1, x2, workspaceGM, dScaleA, dScaleB};
+    // BlockMmadParams mmadParams{x1, x2, x, dScaleA, dScaleB};
     L1Params l1Params{
         static_cast<uint64_t>(tilingData.qbmmTilingdata.stepK) * tilingData.qbmmTilingdata.baseK,
         tilingData.qbmmTilingdata.scaleKL1};
@@ -85,37 +87,33 @@ __global__ __aicore__ void qbmm_reduce_scatter_add_rms_norm_cast(GM_ADDR x1, GM_
     CommParams commParams{
         problemShape.m / tilingData.qbmmReduceScatterAddRmsNormCastTilingInfo.rankSize,
         static_cast<int32_t>(tilingData.qbmmReduceScatterAddRmsNormCastTilingInfo.rankSize)};
+    OutputParams outputParams{y1, y2, x, y, gamma};
+    
 
+    TPipe pipe;
     TPipe *pipePtr = nullptr;
     if ASCEND_IS_AIV {
-        TPipe pipe;
         pipePtr = &pipe;
     }
 
-    Params params{problemShape, mmadParams, l1Params, schedulerParams, qbmmParams, commParams};
+    Params params{problemShape, mmadParams, l1Params, schedulerParams, qbmmParams, commParams, outputParams};
     QuantMatmulKernelImpl quantMatmulKernelImpl;
     
     
     if (TILING_KEY_IS(0)) {
         KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+        // KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIC_ONLY);
         PRINTF("enter kernel!");
 
         quantMatmulKernelImpl(params, pipePtr);
-
-        // QbmmReduceScatterAddRmsNormCastMte<fp8_e4m3fn_t, fp8_e8m0_t> impl;
-        // impl.Init(x1, x2, y, gamma, scale,  bias, perTokenScale, y1, 
-        //         y2, x, workspaceGM, pipePtr, &tilingData);
-        // impl.Process();
         return;
     }
     if (TILING_KEY_IS(1)) {
         KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
         PRINTF("enter kernel!");
-        // QbmmReduceScatterAddRmsNormCastMte<DTYPE_Y, DTYPE_SCALE, DTYPE_Y1, DTYPE_Y2, DTYPE_X, DTYPE_GAMMA, true> op;
-        // const QbmmReduceScatterAddRmsNormCastTilingData *qBmmReduceScatterAddRmsNormCastTilingData = &tilingData;
-        // op.Init(x1, x2, y, gamma, scale,  bias, perTokenScale, y1, 
-        //         y2, x, workspaceGM, &pipe, &tilingData);
-        // op.Process();
+
+        quantMatmulKernelImpl(params, pipePtr);
+        return;
     }
 }
 

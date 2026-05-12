@@ -44,6 +44,37 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
 }
 
 template<typename T>
+int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
+    aclDataType dataType, aclTensor **tensor, bool isColumnMajor = false)
+{
+    auto size = GetShapeSize(shape) * sizeof(T);
+    auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc failed. ret: %d\n", ret); return ret);
+    ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMemcpy failed. ret: %d\n", ret); return ret);
+    
+    std::vector<int64_t> strides(shape.size(), 1);
+    if (isColumnMajor) {
+        // ColumnMajor stride: [1, shape[0], shape[0]*shape[1], ...]
+        strides[0] = 1;
+        for (int64_t i = 1; i < shape.size(); i++) {
+            strides[i] = shape[i - 1] * strides[i - 1];
+        }
+        // LOG_PRINT("[DEBUG] ColumnMajor shape [%lld, %lld] → strides [%lld, %lld]\n",
+        //     shape[0], shape[1], strides[0], strides[1]);
+    } else {
+        // RowMajor stride: [shape[1], 1] for 2D
+        for (int64_t i = shape.size() - 2; i >= 0; i--) {
+            strides[i] = shape[i + 1] * strides[i + 1];
+        }
+    }
+    
+    *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
+        shape.data(), shape.size(), *deviceAddr);
+    return 0;
+}
+
+template<typename T>
 int LoadBinFile(const std::string &filename, std::vector<T> &hostData) {
     FILE* fp = fopen(filename.c_str(), "rb");
     if (!fp) {
@@ -109,17 +140,30 @@ int LaunchOneThreadQbmmReduceScatterAddRmsNormCast(Args &args)
 
     // 定义输入输出shape
     // MX 量化规则：每32个元素共享一个 scale (fp8_e8m0)
-    // Scale A shape: (M, K/32) - 用于 A 矩阵反量化
-    // Scale B shape: (K/32, N) - 用于 B 矩阵反量化
-    std::vector<int64_t> x1Shape = {128, 256};           // M x K (A矩阵)
-    std::vector<int64_t> x2Shape = {256, 512};           // K x N (B矩阵, ND格式)
-    std::vector<int64_t> yShape = {128, 512};            // residual (BF16)
-    std::vector<int64_t> gammaShape = {512};             // RMS Norm gamma
-    std::vector<int64_t> scaleShape = {8, 512};          // Scale B: (K/32, N) = (256/32, 512)
-    std::vector<int64_t> pertokenScaleShape = {128, 8};  // Scale A: (M, K/32) = (128, 256/32)
-    std::vector<int64_t> y1Shape = {128, 512};           // output float
-    std::vector<int64_t> y2Shape = {128, 512};           // output bf16
-    std::vector<int64_t> xOutShape = {128, 512};         // output bf16
+    // 注意：B矩阵存储shape是 (N, K)，与kernel期望 (K, N) 不同！
+
+
+    std::vector<int64_t> x1Shape = {256, 2560};           // M x K (A矩阵)
+    std::vector<int64_t> x2Shape = {2560, 5120};           // K x N (kernel期望shape)
+    std::vector<int64_t> yShape = {128, 5120};            // residual per rank (BF16)
+    std::vector<int64_t> gammaShape = {5120};             // RMS Norm gamma
+    std::vector<int64_t> scaleShape = {5120, 40, 2};       // Scale B: (N, ceil(K/128), 2) - 存储shape
+    std::vector<int64_t> pertokenScaleShape = {256, 40, 2}; // Scale A: (M, ceil(K/128), 2)
+    std::vector<int64_t> y1Shape = {128, 5120};           // output float
+    std::vector<int64_t> y2Shape = {128, 5120};           // output bf16
+    std::vector<int64_t> xOutShape = {128, 5120};         // output bf16
+    // std::vector<int64_t> xOutShape = {256, 5120};         // output bf16
+
+    // std::vector<int64_t> x1Shape = {128, 256};           // M x K (A矩阵)
+    // std::vector<int64_t> x2Shape = {256, 512};           // K x N (kernel期望shape)
+    // std::vector<int64_t> yShape = {64, 512};            // residual per rank (BF16)
+    // std::vector<int64_t> gammaShape = {512};             // RMS Norm gamma
+    // std::vector<int64_t> scaleShape = {512, 4, 2};       // Scale B: (N, ceil(K/128), 2) - 存储shape
+    // std::vector<int64_t> pertokenScaleShape = {128, 4, 2}; // Scale A: (M, ceil(K/128), 2)
+    // std::vector<int64_t> y1Shape = {64, 512};           // output float
+    // std::vector<int64_t> y2Shape = {64, 512};           // output bf16
+    // // std::vector<int64_t> xOutShape = {64, 512};         // output bf16
+    // std::vector<int64_t> xOutShape = {128, 512};         // output bf16
 
     void *x1DeviceAddr = nullptr;
     void *x2DeviceAddr = nullptr;
@@ -157,14 +201,21 @@ int LaunchOneThreadQbmmReduceScatterAddRmsNormCast(Args &args)
     long long x2ShapeSize = GetShapeSize(x2Shape);
     long long yShapeSize = GetShapeSize(yShape);
     long long gammaShapeSize = GetShapeSize(gammaShape);
-    long long scaleShapeSize = 4 * 2 * 512;  // = 4096 (ceil(K/64), 2, N)
-    long long pertokenScaleShapeSize = 128 * 4 * 2;  // = 1024 (M, ceil(K/64), 2)
+    long long scaleShapeSize = GetShapeSize(scaleShape);        // (4, 2, 5120) = 4096
+    long long pertokenScaleShapeSize = GetShapeSize(pertokenScaleShape);  // (256, 4, 2) = 1024
     long long y1ShapeSize = GetShapeSize(y1Shape);
     long long y2ShapeSize = GetShapeSize(y2Shape);
     long long xOutShapeSize = GetShapeSize(xOutShape);
     
     // 精度测试：从bin文件加载输入数据（而不是硬编码）
-    std::string inputDir = "../input";
+    // 支持从环境变量 INPUT_DIR 读取路径，默认 "./input"
+    std::string inputDir = "./input";
+    char* envInputDir = getenv("INPUT_DIR");
+    if (envInputDir != nullptr) {
+        inputDir = std::string(envInputDir);
+    }
+    LOG_PRINT("[INFO] rank = %d, inputDir = %s\n", args.rankId, inputDir.c_str());
+    
     std::vector<uint8_t> x1HostData;
     std::vector<uint8_t> x2HostData;
     std::vector<uint8_t> scaleHostData;
@@ -179,9 +230,13 @@ int LaunchOneThreadQbmmReduceScatterAddRmsNormCast(Args &args)
     ret = LoadBinFile(inputDir + "/input_scaleB.bin", scaleHostData);
     CHECK_RET(ret == 0, return ret);
     
-    // 其他输入用默认值（精度测试不需要）
-    std::vector<uint16_t> yHostData(yShapeSize, 0x3f80);  // bf16 1.0
-    std::vector<float> gammaHostData(gammaShapeSize, 1.0f);
+    // Load y (bf16) and gamma (fp32) from bin files
+    std::vector<uint16_t> yHostData;
+    std::vector<float> gammaHostData;
+    ret = LoadBinFile(inputDir + "/input_y.bin", yHostData);
+    CHECK_RET(ret == 0, return ret);
+    ret = LoadBinFile(inputDir + "/input_gamma.bin", gammaHostData);
+    CHECK_RET(ret == 0, return ret);
     
     // 输出初始化为0
     std::vector<float> y1HostData(y1ShapeSize, 0.0f);
@@ -191,14 +246,20 @@ int LaunchOneThreadQbmmReduceScatterAddRmsNormCast(Args &args)
     // 创建输入tensor
     ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_FLOAT8_E4M3FN, &x1);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(x2HostData, x2Shape, &x2DeviceAddr, aclDataType::ACL_FLOAT8_E4M3FN, &x2);
+    
+    // B矩阵：kernel用ColumnMajor，stride设置为 [1, K]
+    ret = CreateAclTensor(x2HostData, x2Shape, &x2DeviceAddr, aclDataType::ACL_FLOAT8_E4M3FN, &x2, true);  // ← ColumnMajor
     CHECK_RET(ret == ACL_SUCCESS, return ret);
+    
     ret = CreateAclTensor(yHostData, yShape, &yDeviceAddr, aclDataType::ACL_BF16, &y);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(gammaHostData, gammaShape, &gammaDeviceAddr, aclDataType::ACL_FLOAT, &gamma);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
+    
+    // ScaleB：shape是 (N, ceil(K/128), 2)，RowMajor stride
     ret = CreateAclTensor(scaleHostData, scaleShape, &scaleDeviceAddr, aclDataType::ACL_FLOAT8_E8M0, &scale);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
+    
     ret = CreateAclTensor(pertokenScaleHostData, pertokenScaleShape, &pertokenScaleDeviceAddr, 
                           aclDataType::ACL_FLOAT8_E8M0, &pertokenScale);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -240,28 +301,71 @@ int LaunchOneThreadQbmmReduceScatterAddRmsNormCast(Args &args)
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnQbmmReduceScatterAddRmsNormCast failed. ret = %d \n", ret); return ret);
 
     // 同步等待任务执行结束
-    ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000);
+    ret = aclrtSynchronizeStreamWithTimeout(args.stream, 60000);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
         return ret);
 
 LOG_PRINT("[INFO] rank = %d aclnnQbmmReduceScatterAddRmsNormCast execute successfully.\n", args.rankId);
 
     // === 精度测试：保存输出到bin文件 ===
+    std::string outputDir = "./output";
+    char* envOutputDir = getenv("OUTPUT_DIR");
+    if (envOutputDir != nullptr) {
+        outputDir = std::string(envOutputDir);
+    }
+    
     std::vector<uint16_t> xOutResult(xOutShapeSize);
-    ret = aclrtMemcpy(xOutResult.data(), xOutShapeSize * sizeof(uint16_t), 
-                      xOutDeviceAddr, xOutShapeSize * sizeof(uint16_t), 
+    std::vector<float> y1OutResult(y1ShapeSize);
+    std::vector<uint16_t> y2OutResult(y2ShapeSize);
+
+    // Copy xOut (bf16)
+    ret = aclrtMemcpy(xOutResult.data(), xOutShapeSize * sizeof(uint16_t),
+                      xOutDeviceAddr, xOutShapeSize * sizeof(uint16_t),
                       ACL_MEMCPY_DEVICE_TO_HOST);
-    CHECK_RET(ret == ACL_SUCCESS, 
+    CHECK_RET(ret == ACL_SUCCESS,
         LOG_PRINT("[ERROR] aclrtMemcpy xOut failed. ret = %d\n", ret); return ret);
 
-    std::string outputFile = "../output/npu_output_rank" + std::to_string(args.rankId) + ".bin";
-    ret = SaveBinFile(outputFile, xOutResult);
+    // Copy y1 (float32)
+    ret = aclrtMemcpy(y1OutResult.data(), y1ShapeSize * sizeof(float),
+                      y1DeviceAddr, y1ShapeSize * sizeof(float),
+                      ACL_MEMCPY_DEVICE_TO_HOST);
+    CHECK_RET(ret == ACL_SUCCESS,
+        LOG_PRINT("[ERROR] aclrtMemcpy y1 failed. ret = %d\n", ret); return ret);
+
+    // Copy y2 (bf16)
+    ret = aclrtMemcpy(y2OutResult.data(), y2ShapeSize * sizeof(uint16_t),
+                      y2DeviceAddr, y2ShapeSize * sizeof(uint16_t),
+                      ACL_MEMCPY_DEVICE_TO_HOST);
+    CHECK_RET(ret == ACL_SUCCESS,
+        LOG_PRINT("[ERROR] aclrtMemcpy y2 failed. ret = %d\n", ret); return ret);
+
+    // Save xOut
+    std::string xOutFile = outputDir + "/npu_xout_rank" + std::to_string(args.rankId) + ".bin";
+    ret = SaveBinFile(xOutFile, xOutResult);
     CHECK_RET(ret == 0, return ret);
-    
+
+    // Save y1 (float32)
+    std::string y1File = outputDir + "/npu_y1_rank" + std::to_string(args.rankId) + ".bin";
+    ret = SaveBinFile(y1File, y1OutResult);
+    CHECK_RET(ret == 0, return ret);
+
+    // Save y2 (bf16)
+    std::string y2File = outputDir + "/npu_y2_rank" + std::to_string(args.rankId) + ".bin";
+    ret = SaveBinFile(y2File, y2OutResult);
+    CHECK_RET(ret == 0, return ret);
+
     // 打印前10个值验证
     LOG_PRINT("[INFO] rank=%d, xOut first 10 values (bf16 hex):\n", args.rankId);
     for (int i = 0; i < 10 && i < xOutShapeSize; i++) {
         LOG_PRINT("  [%d] 0x%04x\n", i, xOutResult[i]);
+    }
+    LOG_PRINT("[INFO] rank=%d, y1 first 10 values (float):\n", args.rankId);
+    for (int i = 0; i < 10 && i < y1ShapeSize; i++) {
+        LOG_PRINT("  [%d] %f\n", i, y1OutResult[i]);
+    }
+    LOG_PRINT("[INFO] rank=%d, y2 first 10 values (bf16 hex):\n", args.rankId);
+    for (int i = 0; i < 10 && i < y2ShapeSize; i++) {
+        LOG_PRINT("  [%d] 0x%04x\n", i, y2OutResult[i]);
     }
 
     // 释放device资源
