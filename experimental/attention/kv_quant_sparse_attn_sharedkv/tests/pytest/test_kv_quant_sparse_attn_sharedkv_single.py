@@ -40,9 +40,10 @@ for _, params in enumerate(ENABLED_PARAMS):
         locals()[f"param_{key}"] = value
 
     param_names = [
-    "Testcase_Name", "layout_q", "layout_kv", "q_type", "ori_kv_type", "cmp_kv_type", "B", "S1", "S2", "N1", "N2", "D", "K",
-    "block_num1", "block_num2", "block_size1", "block_size2", "cu_seqlens_q", "seqused_kv", "softmax_scale", "cmp_ratio",
-    "ori_mask_mode", "cmp_mask_mode", "ori_win_left", "ori_win_right", "kv_quant_mode", "tile_size", "rope_head_dim", "template_run_mode", "actlen_mode","S1EQS2"
+        "Testcase_Name", "layout_q", "layout_kv", "q_type", "ori_kv_type", "cmp_kv_type", "B", "S1", "S2", "N1", "N2", "D", "K",
+        "block_num1", "block_num2", "block_size1", "block_size2", "cu_seqlens_q", "seqused_kv", "softmax_scale", "cmp_ratio",
+        "ori_mask_mode", "cmp_mask_mode", "ori_win_left", "ori_win_right", "kv_quant_mode", "tile_size", "rope_head_dim",
+        "template_run_mode", "actlen_mode", "S1EQS2",
     ]
 
     param_values = [
@@ -124,8 +125,11 @@ def sas(param_combinations):   # 初始化参数和tensor
     q_type_str = "BF16"
     if q_type == torch.float16:
         q_type_str = "FP16"
+    kv_type_str = "FP8_E4M3FN"
+    if ori_kv_type == torch.uint8:
+        kv_type_str = "HIF8"
     if Testcase_Name ==None :
-        Testcase_Name = f"kvquantSparseAttenShardkv_{template_run_mode}_{ops_mode}_{layout_q}_{q_type_str}_{B}_{N1}_{N2}_{S1}_{S2}_{D}_{K}_{rope_head_dim}_{case_id:06d}"
+        Testcase_Name = f"kvquantSparseAttenShardkv_{template_run_mode}_{ops_mode}_{layout_q}_{q_type_str}_{layout_kv}_{kv_type_str}_{B}_{N1}_{N2}_{S1}_{S2}_{D}_{K}_{rope_head_dim}_{case_id:06d}"
 
     # 生成actLen 
     QS = [0]
@@ -176,9 +180,9 @@ def sas(param_combinations):   # 初始化参数和tensor
     block_num2 = cmp_block_num_sum
     
     params = Testcase_Name, layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, N1, N2, D, K, block_num1, \
-                block_num2, block_size1, block_size2, cu_seqlens_q, seqused_kv, softmax_scale, cmp_ratio, ori_mask_mode, \
-                cmp_mask_mode, ori_win_left, ori_win_right, kv_quant_mode, tile_size, rope_head_dim, template_run_mode
-    
+             block_num2, block_size1, block_size2, cu_seqlens_q, seqused_kv, softmax_scale, cmp_ratio, ori_mask_mode, \
+             cmp_mask_mode, ori_win_left, ori_win_right, kv_quant_mode, tile_size, rope_head_dim, template_run_mode
+
     # 输入参数的合法性校验
     try:
         check_valid_param.check_valid_param(params)
