@@ -11,7 +11,7 @@
 #ifndef ASCEND_TIMER_HOST_H
 #define ASCEND_TIMER_HOST_H
 
-#include "CocTimer.hpp"
+#include "cocTimer.hpp"
 #include <vector>
 #include <iostream>
 #include <unordered_map>

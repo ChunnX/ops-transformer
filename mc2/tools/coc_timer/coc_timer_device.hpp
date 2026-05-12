@@ -6,7 +6,7 @@
 #ifndef COC_TIMER_DEVICE_H
 #define COC_TIMER_DEVICE_H
 
-#include "CocTimer.hpp"
+#include "cocTimer.hpp"
 
 // 整个 NPU 上用于存储所有核心计时数据 + 动态迭代次数的全局缓冲区总大小（单位：int64_t 个数）
 #define COC_TIMER_TOTAL_BUFFER_SIZE (CocTimer::N_TIMING_COUNTER + CocTimer::DYNAMIC_ITER_TOTAL_SIZE)
@@ -196,6 +196,7 @@ public:
     template <typename ModeTag = Accumulate>
     __aicore__ __inline__ void Tok(int32_t timing_idx)
     {
+        AscendC::PipeBarrier<PIPE_ALL>();
         int64_t end_cycle = AscendC::GetSystemCycle();
         int64_t elapsed = end_cycle - start_cycle;
         
@@ -241,7 +242,7 @@ public:
     __aicore__ __inline__ void Tok(CocTimer::DynamicTimingType type)
     {
         if (!last_timing_idx_valid) return;
-
+        AscendC::PipeBarrier<PIPE_ALL>();
         int64_t end_cycle = AscendC::GetSystemCycle();
         int timing_idx = last_timing_idx;
         int current_iter = iter_counters[(int)type];

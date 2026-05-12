@@ -37,7 +37,7 @@
 #include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/gemm_type.hpp"
 #include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm_coord.hpp"
 
-#include "../tools/coc_timer/coc_timer_host.hpp"
+#include "../tools/coc_timer/coc_timer_device.hpp"
 
 #include "gather_matmul.hpp"
 
@@ -431,7 +431,7 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::CatlassMatmul()
                                                      layoutPeerMem, reinterpret_cast<GM_ADDR>(gm_accum),
                                                      pValue,        swizzlCount,
                                                      swizzlDirect,  rankId,
-                                                     worldSize,     need_fixpipe};
+                                                     worldSize,     need_fixpipe, &timerDevice_};
                 MatmulKernel matmul_op;
                 matmul_op(params);
             } else {
@@ -448,7 +448,7 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::CatlassMatmul()
                                                      layoutPeerMem, reinterpret_cast<GM_ADDR>(gm_accum),
                                                      pValue,        swizzlCount,
                                                      swizzlDirect,  rankId,
-                                                     worldSize,     need_fixpipe};
+                                                     worldSize,     need_fixpipe, &timerDevice_};
                 MatmulKernel matmul_op;
                 matmul_op(params);
             }
@@ -484,7 +484,7 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::CatlassMatmul()
                                                      layoutPeerMem, reinterpret_cast<GM_ADDR>(gm_accum),
                                                      pValue,        swizzlCount,
                                                      swizzlDirect,  rankId,
-                                                     worldSize,     need_fixpipe};
+                                                     worldSize,     need_fixpipe, &timerDevice_};
                 MatmulKernel matmul_op;
                 matmul_op(params);
             } else {
@@ -501,7 +501,7 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::CatlassMatmul()
                                                      layoutPeerMem, reinterpret_cast<GM_ADDR>(gm_accum),
                                                      pValue,        swizzlCount,
                                                      swizzlDirect,  rankId,
-                                                     worldSize,     need_fixpipe};
+                                                     worldSize,     need_fixpipe, &timerDevice_};
                 MatmulKernel matmul_op;
                 matmul_op(params);
             }

@@ -29,7 +29,7 @@
 #include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tile_copy.hpp"
 #include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tile_mmad.hpp"
 
-#include "../tools/coc_timer/coc_timer_host.hpp"
+#include "../tools/coc_timer/coc_timer_device.hpp"
 
 using namespace AscendC;
 
@@ -81,10 +81,11 @@ public:
         int32_t rankIdx;
         int32_t rankSize;
         bool needFixpipe;
+        CocTimerDevice* timerDevice;
 
         // Methods
         CATLASS_HOST_DEVICE
-        Params()
+        Params() : timerDevice(nullptr)
         {
         }
 
@@ -92,11 +93,13 @@ public:
         Params(GemmCoord const &problemShape_, GM_ADDR ptrA_, LayoutA layoutA_, GM_ADDR ptrB_, LayoutB layoutB_,
                GM_ADDR ptrC_, LayoutC layoutC_, GM_ADDR ptrScale_, LayoutScale layoutScale_, GM_ADDR ptrPeerMem_,
                LayoutA layoutPeerMem_, GM_ADDR ptrWorkSpace_, int32_t pValue_, int32_t swizzlCount_,
-               int32_t swizzlDirect_, int32_t rankIdx_, int32_t rankSize_, bool needFixpipe_)
+               int32_t swizzlDirect_, int32_t rankIdx_, int32_t rankSize_, bool needFixpipe_,
+               CocTimerDevice* timerDevice_ = nullptr)
             : problemShape(problemShape_), ptrA(ptrA_), layoutA(layoutA_), ptrB(ptrB_), layoutB(layoutB_), ptrC(ptrC_),
               layoutC(layoutC_), ptrScale(ptrScale_), layoutScale(layoutScale_), ptrPeerMem(ptrPeerMem_),
               layoutPeerMem(layoutPeerMem_), ptrWorkSpace(ptrWorkSpace_), pValue(pValue_), swizzlCount(swizzlCount_),
-              swizzlDirect(swizzlDirect_), rankIdx(rankIdx_), rankSize(rankSize_), needFixpipe(needFixpipe_)
+              swizzlDirect(swizzlDirect_), rankIdx(rankIdx_), rankSize(rankSize_), needFixpipe(needFixpipe_),
+              timerDevice(timerDevice_)
         {
         }
     };
@@ -352,7 +355,9 @@ public:
         int32_t outputBlockSize = blockM * params.problemShape.n();
         uint64_t mnSize = params.problemShape.m() * params.problemShape.n();
         for (int32_t calIdx = 0; calIdx < calCount; calIdx++) {
-            timerDevice_.Tik(CocTimer::AIC);
+            if (params.timerDevice) {
+                params.timerDevice->Tik(CocTimer::AIC);
+            }
 
             int32_t flagIdx = calIdx % MAX_BLOCK_COUNT;
             int32_t actualPValue = params.pValue;
@@ -423,7 +428,9 @@ public:
  	            blockMmad(gmAIn[gmOffsetA], params.layoutPeerMem, gmB[gmOffsetB], params.layoutB, gmDst[gmOffsetC],
  	                    params.layoutC, gmAInNext[gmOffsetNextA], gmB[gmOffsetNextB], blockSizeCoord,
                         nextBlockSizeCoord, isFirstBlock, hasNextBlock);
-                timerDevice_.Tok<Overwrite>(CocTimer::AIC);
+                if (params.timerDevice) {
+                    params.timerDevice->template Tok<Overwrite>(CocTimer::AIC);
+                }
             }
             FFTSCrossCoreSync<PIPE_FIX, 2>(flagIdx);
         }
