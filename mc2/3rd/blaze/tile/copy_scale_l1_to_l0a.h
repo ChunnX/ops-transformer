@@ -16,7 +16,9 @@
 
 #include "include/tensor_api/tensor.h"
 #include "../utils/common_utils.h"
+#include "../utils/grouped_matmul_constant.h"
 #include "c_api/asc_simd.h"
+
 
 namespace Blaze::Gemm::Tile {
 struct CopyL12L0MxScaleA3510 {
@@ -45,10 +47,38 @@ struct CopyL12L0MxScaleA3510 {
     }
 };
 
+struct CopyL12L0MxA8W4ScaleA3510 {
+    template <typename Tp, const Tp& traits, typename T, typename U, class Coord>
+    __aicore__ inline static void Copy(const T& dst, const U& src, const Coord& coord)
+    {
+        using srcType = typename U::elementType;
+        using dstType = typename T::elementType;
+        static_assert(
+            AscendC::Std::is_one_of_v<
+                AscendC::Std::tuple<dstType, srcType>, AscendC::Std::tuple<__ca__ fp8_e8m0_t, __cbuf__ fp8_e8m0_t>>,
+            "The data type is not supported.");
+        uint16_t mStartPosition = CeilDiv(AscendC::Std::get<0>(coord), AscendC::BLOCK_CUBE);
+        uint16_t kStartPosition = CeilDiv(AscendC::Std::get<1>(coord), Blaze::Gemm::GroupedMatmulRecipe::MX_DIVISOR_SIZE);
+        auto mStep = AscendC::Std::get<1>(AscendC::Std::get<0>(dst.Layout().Shape()));
+        auto kStep = AscendC::Std::get<1>(AscendC::Std::get<1>(dst.Layout().Shape()));
+        auto srcStride = AscendC::Std::get<1>(AscendC::Std::get<0>(src.Layout().Stride())) >> 5;
+        auto dstStride = kStep;
+        uint64_t mxDstAddr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(dst.Data().Get())) >> 4;
+        asc_copy_l12l0a_mx(mxDstAddr, src.Data().Get(), mStartPosition, kStartPosition, mStep, kStep,
+            srcStride, dstStride);
+    }
+};
+
 } // namespace Blaze::Gemm::Tile
 
 template <>
 struct AscendC::Te::CopyTraits<Blaze::Gemm::Tile::CopyL12L0MxScaleA3510>
     : public CopyTraits<
           Blaze::Gemm::Tile::CopyL12L0MxScaleA3510, CopyL12L0ATraitDefault, Blaze::Gemm::Tile::CopyL12L0MxScaleA3510,
+          CopyL12L0ATraitDefault> {};
+
+template <>
+struct AscendC::Te::CopyTraits<Blaze::Gemm::Tile::CopyL12L0MxA8W4ScaleA3510>
+    : public CopyTraits<
+          Blaze::Gemm::Tile::CopyL12L0MxA8W4ScaleA3510, CopyL12L0ATraitDefault, Blaze::Gemm::Tile::CopyL12L0MxA8W4ScaleA3510,
           CopyL12L0ATraitDefault> {};
