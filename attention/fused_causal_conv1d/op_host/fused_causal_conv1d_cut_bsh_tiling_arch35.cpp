@@ -718,6 +718,13 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::GetWorkspaceSize()
 {
     workspaceSize_ = SYS_WORKSPACE_SIZE;
 
+    if (inplace_ == 1UL) {
+        constexpr uint64_t WS_ALIGN = 32UL;
+        uint64_t yBackupBytes = cuSeqLen_ * xStride_ * xDtypeSize_;
+        yBackupBytes = ((yBackupBytes + WS_ALIGN - 1) / WS_ALIGN) * WS_ALIGN;
+        workspaceSize_ += yBackupBytes;
+    }
+    
     auto workspaces = context_->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context_, workspaces);
     workspaces[0] = workspaceSize_;

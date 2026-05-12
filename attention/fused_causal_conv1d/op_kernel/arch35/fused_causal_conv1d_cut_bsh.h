@@ -72,6 +72,11 @@ private:
     // ---- APC prefix fill ----
     __aicore__ inline void FillApcBlockCaches();
 
+    // ---- inplace finalize: copy y from workspace back to xGM_ ----
+    //  仅 inplace_==true 时调用，在 FillApcBlockCaches 之后执行。
+    //  按本核 BS/Dim 切分遍历自己的 y 输出范围，借用 xQueue_ 做 UB 中转搬运。
+    __aicore__ inline void CopyYToX();
+
     // ---- Batch metadata (single source of truth) ----
     struct BatchMeta {
         int64_t readCIdx;
@@ -273,7 +278,7 @@ FusedCausalConv1dCutBSH<T>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR convStates, 
                                  GM_ADDR blockIdxFirst, GM_ADDR blockIdxLast, GM_ADDR initialStateIdx, GM_ADDR y,
                                  GM_ADDR workspace, const FusedCausalConv1dCutBSHTilingData *tiling)
 {
-    (void)workspace;
+    (void)y;  // y may be unused when inplace_==true; suppress warning
     ParseTiling(tiling);
 
     uint32_t blockIdx = GetBlockIdx();
@@ -289,9 +294,18 @@ FusedCausalConv1dCutBSH<T>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR convStates, 
     cacheStatesGM_.SetGlobalBuffer((__gm__ T *)convStates);
     seqStartIndexGM_.SetGlobalBuffer((__gm__ int32_t *)queryStartLoc, batchSize_ + 1);
 
-    // inplace: y reuses x's GM
+    // inplace=true: yGM_ 指向 workspace 上的 y backup 区（避免污染 xGM_）。
+    //   入口已通过 GetUserWorkspace() 转成 user 区起点，这里直接用 workspace
+    //   作为基地址（无需再加 SYS_WORKSPACE_SIZE 偏移）。
+    //   SyncAll 后 WriteDeferredCacheSimple/FillApcBlockCaches 读 xGM_ 得到原始 x，
+    //   最后由 CopyYToX 把 y backup 搬回 xGM_ 完成 inplace 语义。
+    // inplace=false: yGM_ 指向 y 参数原地址，走旧路径。
     uint64_t yStride = inplace_ ? static_cast<uint64_t>(xStride_) : static_cast<uint64_t>(dim_);
-    yGM_.SetGlobalBuffer((__gm__ T *)(inplace_ ? x : y), cuSeqLen * yStride);
+    if (inplace_) {
+        yGM_.SetGlobalBuffer((__gm__ T *)workspace, cuSeqLen * yStride);
+    } else {
+        yGM_.SetGlobalBuffer((__gm__ T *)y, cuSeqLen * yStride);
+    }
 
     if (apcEnabled_) {
         cacheIndices2DGM_.SetGlobalBuffer((__gm__ int32_t *)cacheIndices,
@@ -670,6 +684,14 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Process()
 
     WriteDeferredCacheSimple();
     FillApcBlockCaches();
+
+    // inplace=true：把 y workspace 搬回 xGM_ 完成 inplace 语义。
+    // 必须放在 WriteDeferredCacheSimple / FillApcBlockCaches 之后，保证它们读到
+    // 的仍是原始 x。
+    if (inplace_) {
+        SyncAll();
+        CopyYToX();
+    }
 }
 
 // ============================================================================
@@ -947,17 +969,15 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Compute(uint32_t curBsStart, 
     }
 
     // ---- Write y output (only the processed tokens, excluding K-1 overlap) ----
+    // inplace=true 时 yGM_ 指向 workspace 上的 y backup；inplace=false 时指向 y 原地址。
+    // 统一写 yGM_，保证 xGM_ 在主循环期间不被污染，SyncAll 后的读点安全。
     SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
     {
         // yGmOff: global position of the first PROCESSED token
         uint64_t yGmOff = (uint64_t)(curBsStart + iStart) * yRowStride + dimStart;
         DataCopyExtParams ycp{static_cast<uint16_t>(yOutOff), static_cast<uint16_t>(dimBlocks * ALIGN_BYTES), 0,
                               ySkip * ALIGN_BYTES, 0};
-        if (inplace_) {
-            DataCopyPad(xGM_[yGmOff], yLocal, ycp);
-        } else {
-            DataCopyPad(yGM_[yGmOff], yLocal, ycp);
-        }
+        DataCopyPad(yGM_[yGmOff], yLocal, ycp);
     }
 
     weightQueue_.FreeTensor(weightLocal);
@@ -1131,8 +1151,6 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::WriteDeferredCacheSimple()
 
     xQueue_.EnQue(tmpBuf);
     tmpBuf = xQueue_.DeQue<T>();
-
-    SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
 
     uint32_t tailRowOff = stateLen_ - totalRows;
     uint64_t csDstOff = (uint64_t)writeCIdx * cacheStride0_ + (uint64_t)tailRowOff * cacheStride1_ + dimStart;
@@ -1326,8 +1344,6 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::FillApcBlockCaches()
             xQueue_.EnQue(tmpBuf);
             tmpBuf = xQueue_.DeQue<T>();
 
-            SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
-
             uint32_t tailRowOff = (stateLen_ > chunkLen) ? (stateLen_ - chunkLen) : 0;
             uint64_t csDst = (uint64_t)cLine * cacheStride0_ + (uint64_t)tailRowOff * cacheStride1_ + dimStart;
             DataCopyExtParams wcp{static_cast<uint16_t>(chunkLen), static_cast<uint16_t>(rowBlocks * ALIGN_BYTES), 0,
@@ -1336,6 +1352,104 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::FillApcBlockCaches()
 
             xQueue_.FreeTensor(tmpBuf);
         }
+    }
+}
+
+// ============================================================================
+// CopyYToX — inplace finalize: copy y from workspace back to xGM_
+//
+// 仅 inplace_==true 时调用，在 FillApcBlockCaches 之后执行。
+//
+// 关键约束：xQueue_ 的 UB 容量按 maxUbBS × maxUbDim × sizeof(T) 初始化
+//   （见 Init 中 xBufBytes），因此搬运必须按 (BS, Dim) 二维切片，
+//   不能整行搬，否则 MTE2 写入 UB 越界触发 TRAP。
+//
+// 策略：
+//   - 每个核只搬自己 (bsIdx_, dimIdx_) 负责的 (bs, dim) 切片；
+//     同一行内不同 dim 核写 xGM_ 的区间不相交，不会冲突。
+//   - 双层循环：外层按 maxUbBS 分 BS，内层按 maxUbDim 分 Dim。
+//   - DataCopyPad srcStride = dstStride = (xStride_ - dimSize) * sizeof(T) / ALIGN_BYTES
+//     跳过同一行内其他 dim 核的数据。
+//
+// 搬运范围与 Compute 里 y 写回范围一致：
+//   首核 [bsStart, bsStart+bsBlockFactor)
+//   其他 [bsStart+(K-1), bsStart+bsBlockFactor)  跳过 overlap
+// ============================================================================
+template <typename T>
+__aicore__ inline void FusedCausalConv1dCutBSH<T>::CopyYToX()
+{
+    uint32_t K = kernelWidth_;
+    bool isBsFirstCore = (bsIdx_ == 0);
+    bool isBsTailCore  = (bsIdx_ >= bsRemainderCores_);
+    bool isDimTailCore = (dimIdx_ >= dimRemainderCores_);
+
+    // ---- 本核 BS 起点（核间 K-1 overlap）----
+    uint64_t bsStart;
+    if (!isBsTailCore) {
+        uint64_t effStep = bsBlockFactor_ - (K - 1);
+        bsStart = (uint64_t)bsIdx_ * effStep;
+    } else {
+        uint64_t effStepMain = bsBlockFactor_ - (K - 1);
+        uint64_t effStepTail = bsBlockTailFactor_ - (K - 1);
+        bsStart = (uint64_t)bsRemainderCores_ * effStepMain +
+                  (uint64_t)(bsIdx_ - bsRemainderCores_) * effStepTail;
+    }
+
+    uint32_t bsFactor = isBsTailCore ? bsBlockTailFactor_ : bsBlockFactor_;
+    uint32_t iStart = isBsFirstCore ? 0 : (K - 1);
+    if (bsFactor <= iStart) return;
+    uint32_t validRows = bsFactor - iStart;
+    uint64_t bsBase = bsStart + iStart;
+
+    // ---- 本核 Dim 起点与长度 ----
+    uint32_t dimStart, dimTotal;
+    if (!isDimTailCore) {
+        dimStart = dimIdx_ * dimBlockFactor_;
+        dimTotal = dimBlockFactor_;
+    } else {
+        dimStart = dimRemainderCores_ * dimBlockFactor_ +
+                   (dimIdx_ - dimRemainderCores_) * dimBlockTailFactor_;
+        dimTotal = dimBlockTailFactor_;
+    }
+    if (dimTotal == 0) return;
+
+    uint32_t maxUbBS  = isBsTailCore  ? tailBlockubFactorBS_  : ubFactorBS_;
+    uint32_t maxUbDim = isDimTailCore ? tailBlockubFactorDim_ : ubFactorDim_;
+    if (maxUbBS == 0 || maxUbDim == 0) return;
+
+    DataCopyPadExtParams<T> padParams{false, 0, 0, 0};
+
+    uint32_t bsDone = 0;
+    while (bsDone < validRows) {
+        uint32_t bsChunk = (validRows - bsDone > maxUbBS) ? maxUbBS : (validRows - bsDone);
+        uint64_t rowBase = bsBase + bsDone;
+
+        uint32_t dimDone = 0;
+        while (dimDone < dimTotal) {
+            uint32_t dimChunk = (dimTotal - dimDone > maxUbDim) ? maxUbDim : (dimTotal - dimDone);
+            uint32_t skipBlocks = (xStride_ - dimChunk) * sizeof(T) / ALIGN_BYTES;
+            uint32_t lineBytes  = dimChunk * sizeof(T);
+            uint64_t gmOff = rowBase * (uint64_t)xStride_ + dimStart + dimDone;
+
+            LocalTensor<T> tmpBuf = xQueue_.AllocTensor<T>();
+            DataCopyExtParams rcp{static_cast<uint16_t>(bsChunk),
+                                  static_cast<uint16_t>(lineBytes),
+                                  skipBlocks * ALIGN_BYTES,
+                                  0, 0};
+            DataCopyPad(tmpBuf, yGM_[gmOff], rcp, padParams);
+            xQueue_.EnQue(tmpBuf);
+            tmpBuf = xQueue_.DeQue<T>();
+
+            DataCopyExtParams wcp{static_cast<uint16_t>(bsChunk),
+                                  static_cast<uint16_t>(lineBytes),
+                                  0,
+                                  skipBlocks * ALIGN_BYTES, 0};
+            DataCopyPad(xGM_[gmOff], tmpBuf, wcp);
+            xQueue_.FreeTensor(tmpBuf);
+
+            dimDone += dimChunk;
+        }
+        bsDone += bsChunk;
     }
 }
 

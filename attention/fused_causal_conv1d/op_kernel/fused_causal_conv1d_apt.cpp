@@ -34,8 +34,8 @@ extern "C" __global__ __aicore__ void fused_causal_conv1d(
     GM_ADDR blockIdxFirstScheduledToken,    // 输入9: blockIdxFirstScheduledToken (optional, APC)
     GM_ADDR blockIdxLastScheduledToken,     // 输入10: blockIdxLastScheduledToken (optional, APC)
     GM_ADDR initialStateIdx,                // 输入11: initialStateIdx (optional, APC)
-    GM_ADDR y,                              // 输出0: y
-    GM_ADDR outputConvStates,              // 输出1: convStates output
+    GM_ADDR outputConvStates,               // 输出0: convStates output
+    GM_ADDR y,                              // 输出1: y
     GM_ADDR workspace,                      // workspace
     GM_ADDR tiling)                         // tiling
 {
