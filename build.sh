@@ -1287,7 +1287,6 @@ if [ -n "$KERNEL_TEMPLATE_INPUT" ]; then
         exit 1
     fi
 fi
-
 if [ -n "${vendor_name}" ];then
     CUSTOM_OPTION="${CUSTOM_OPTION} -DVENDOR_NAME=${vendor_name}"
 fi
