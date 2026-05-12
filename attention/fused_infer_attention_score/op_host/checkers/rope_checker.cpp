@@ -65,7 +65,7 @@ ge::graphStatus RopeChecker::CheckRopeDSizeSupport(const FiaTilingInfo &fiaInfo)
 
 ge::graphStatus RopeChecker::CheckQDsizeSupport(const FiaTilingInfo &fiaInfo)
 {
-    OP_CHECK_IF((fiaInfo.qkHeadDim != 128 && fiaInfo.qkHeadDim != 512),
+    OP_CHECK_IF((fiaInfo.qkHeadDim != NUM_128 && fiaInfo.qkHeadDim != NUM_512),
         OP_LOGE(fiaInfo.opName,
             "When rope exist, the d size of query and key must be 128 or 512, but current is %u.", fiaInfo.qkHeadDim),
         return ge::GRAPH_FAILED);
@@ -236,22 +236,47 @@ ge::graphStatus RopeChecker::CheckTensorlistKeyAndKeyRopeShapeConsistency(const 
     // k_s = krope_s
     const std::string inputLayout = fiaInfo.opParamInfo.layOut;
     int64_t keyRopeS = 0;
+    int64_t keyRopeN = 0;
     if (inputLayout == "BNSD" || inputLayout == "BNSD_BSND") {
         keyRopeS = keyRopeShape.GetDim(DIM_NUM_2);
+        keyRopeN = keyRopeShape.GetDim(DIM_NUM_1);
         for (uint32_t i = 0; i < fiaInfo.kCache.size(); i++) {
             const gert::Shape keyShape = fiaInfo.kCache[i]->GetStorageShape();
             OP_CHECK_IF(keyShape.GetDim(DIM_NUM_2) != keyRopeS,
                 OP_LOGE(fiaInfo.opName, "The axis S of keyRope(%ld) should be equal to key(%ld).",
                     keyRopeS, keyShape.GetDim(DIM_NUM_2)),
                 return ge::GRAPH_FAILED);
+            OP_CHECK_IF(keyShape.GetDim(DIM_NUM_1) != keyRopeN,
+                OP_LOGE(fiaInfo.opName, "The axis N of keyRope(%ld) should be equal to key(%ld).",
+                    keyRopeN, keyShape.GetDim(DIM_NUM_1)),
+                return ge::GRAPH_FAILED);
         }
-    } else {
+    } else if (inputLayout == "BSH") {
         keyRopeS = keyRopeShape.GetDim(DIM_NUM_1);
+        keyRopeN = keyRopeShape.GetDim(DIM_NUM_2) / fiaInfo.ropeHeadDim;
         for (uint32_t i = 0; i < fiaInfo.kCache.size(); i++) {
             const gert::Shape keyShape = fiaInfo.kCache[i]->GetStorageShape();
             OP_CHECK_IF(keyShape.GetDim(DIM_NUM_1) != keyRopeS,
                 OP_LOGE(fiaInfo.opName, "The axis S of keyRope(%ld) should be equal to key(%ld).",
                     keyRopeS, keyShape.GetDim(DIM_NUM_1)),
+                return ge::GRAPH_FAILED);
+            OP_CHECK_IF(keyShape.GetDim(DIM_NUM_2) / fiaInfo.qkHeadDim != keyRopeN,
+                OP_LOGE(fiaInfo.opName, "The axis N of keyRope(%ld) should be equal to key(%ld).",
+                    keyRopeN, keyShape.GetDim(DIM_NUM_2) / fiaInfo.qkHeadDim),
+                return ge::GRAPH_FAILED);
+        }
+    } else {
+        keyRopeS = keyRopeShape.GetDim(DIM_NUM_1);
+        keyRopeN = keyRopeShape.GetDim(DIM_NUM_2);
+        for (uint32_t i = 0; i < fiaInfo.kCache.size(); i++) {
+            const gert::Shape keyShape = fiaInfo.kCache[i]->GetStorageShape();
+            OP_CHECK_IF(keyShape.GetDim(DIM_NUM_1) != keyRopeS,
+                OP_LOGE(fiaInfo.opName, "The axis S of keyRope(%ld) should be equal to key(%ld).",
+                    keyRopeS, keyShape.GetDim(DIM_NUM_1)),
+                return ge::GRAPH_FAILED);
+            OP_CHECK_IF(keyShape.GetDim(DIM_NUM_2) != keyRopeN,
+                OP_LOGE(fiaInfo.opName, "The axis N of keyRope(%ld) should be equal to key(%ld).",
+                    keyRopeN, keyShape.GetDim(DIM_NUM_2)),
                 return ge::GRAPH_FAILED);
         }
     }
@@ -313,6 +338,10 @@ ge::graphStatus RopeChecker::CheckFeatureSupport(const FiaTilingInfo &fiaInfo)
         // 不支持tensorlist
         OP_CHECK_IF(fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST,
             OP_LOGE(fiaInfo.opName, "When rope exsists, tensorlist is not supported."),
+            return ge::GRAPH_FAILED);
+        // 不支持后量化
+        OP_CHECK_IF(fiaInfo.isOutQuantEnable,
+            OP_LOGE(fiaInfo.opName, "When rope exsists, postQuant is not supported."),
             return ge::GRAPH_FAILED);
     }
 

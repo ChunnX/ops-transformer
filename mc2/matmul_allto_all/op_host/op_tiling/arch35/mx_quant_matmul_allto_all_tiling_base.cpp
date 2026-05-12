@@ -15,6 +15,7 @@
 #include "common/utils/op_mc2.h"
 #include "mc2_log.h"
 #include "mx_quant_matmul_allto_all_tiling_base.h"
+#include "matmul_allto_all_fit_balance_tiling.h"
 
 using namespace Mc2Log;
 using namespace AscendC;
@@ -140,6 +141,7 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::InitTilingContextParameters()
         MatmulAlltoAllTilingUtil::SetAttrsInfo(context_, opName_, contextInfo, MATMUL_ALLTOALL_INDEX_SCHEMA));
     GE_ASSERT_GRAPH_SUCCESS(SetMxDataTypeInfo(context_, opName_, contextInfo)); 
     GE_ASSERT_GRAPH_SUCCESS(MatmulAlltoAllTilingUtil::SetShapeInfo(context_, contextInfo));
+    contextInfo.quantMode = QuantMode::MX_QUANT;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -602,7 +604,7 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::SetHcclTiling()
     AscendC::Mc2CcTilingConfig matmulAllToAllTilingConfig = 
         matmulAllToAllBuilder
             .withReduceType(opName_, AscendC::HcclReduceOp::HCCL_REDUCE_SUM, contextInfo.args_.geCType, contextInfo.args_.geCType)
-            .withCommEngine(mc2tiling::A5_CCU_ENGINE)
+            .withCommEngine(0)
             .build();
     if (!matmulAllToAllBuilder.isSuccess()) {
         OP_LOGE(opName_, "Mx quant matmul allto all build hccl tiling config failed: %s", matmulAllToAllBuilder.errorMsg().c_str());
@@ -931,6 +933,17 @@ uint64_t MxQuantMatmulAllToAllTilingBase::GetTilingKey() const
     OP_LOGD(opName_, "MXQUANTMODE,X2TRANSPOSE,DTYPEBIAS: [%d,%d,%d], TilingKey is [%lu].", MX_QUANT_MODE,
             x2TransposeFlag, biasDType, tilingKey);
     return tilingKey;
+}
+
+/**
+ * @brief 获取tiling切分结果（arch35覆盖）
+ *
+ * @return CutResult
+ */
+CutResult MxQuantMatmulAllToAllTilingBase::GetTilingResult()
+{
+    return GetArch35TilingResult(contextInfo.args_, KernelType::ALL_TO_ALL, SocVersion::SOC950, npuArch_,
+                                 QuantMode::MX_QUANT);
 }
 
 /**

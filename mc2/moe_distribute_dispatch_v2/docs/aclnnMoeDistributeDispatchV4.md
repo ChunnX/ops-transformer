@@ -37,7 +37,7 @@
     $$
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：该接口必须与`aclnnMoeDistributeCombineV4`配套使用。
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：该接口必须与`aclnnMoeDistributeCombineV4`或`aclnnMoeDistributeCombineAddRmsNormV2`配套使用。
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品/Ascend 950PR/Ascend 950DT</term>：该接口必须与`aclnnMoeDistributeCombineV4`或`aclnnMoeDistributeCombineAddRmsNormV2`配套使用。
 
   说明：`aclnnMoeDistributeCombineV4`、`aclnnMoeDistributeCombineAddRmsNormV2`算子在后续文档中统称为**CombineV4系列算子**。
 
@@ -65,7 +65,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4GetWorkspaceSize(
     int64_t          sharedExpertNum,
     int64_t          sharedExpertRankNum,
     int64_t          quantMode,
-    int64_t          globalBs,
+    int64_t          globalBS,
     int64_t          expertTokenNumsType,
     const char*      commAlg,
     int64_t          zeroExpertNum,
@@ -122,9 +122,9 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
     <td>输入</td>
     <td>本卡发送的token数据。</td>
     <td>2D Tensor。</td>
-    <td>FLOAT16、BFLOAT16</td>
+    <td>FLOAT16、BFLOAT16、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8、FLOAT4_E2M1、FLOAT4_E1M2</td>
     <td>ND</td>
-    <td><code>(Bs, H)</code>（Bs=batch size，H=hidden size）</td>
+    <td><code>(BS, H)</code>（BS=batch size，H=hidden size）</td>
     <td>√</td>
     </tr>
     <tr>
@@ -134,7 +134,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
     <td>2D Tensor。</td>
     <td>INT32</td>
     <td>ND</td>
-    <td><code>(Bs, K)</code></td>
+    <td><code>(BS, K)</code></td>
     <td>√</td>
     </tr>
     <tr>
@@ -142,7 +142,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
     <td>输入</td>
     <td>每个专家的量化平滑参数。</td>
     <td>-</td>
-    <td>FLOAT32</td>
+    <td>FLOAT32、FLOAT8_E8M0</td>
     <td>ND</td>
     <td><code>(sharedExpertNum + moeExpertNum, H)</code></td>
     <td>√</td>
@@ -164,7 +164,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
     <td>-</td>
     <td>FLOAT32</td>
     <td>ND</td>
-    <td><code>(Bs, K)</code></td>
+    <td><code>(BS, K)</code></td>
     <td>√</td>
     </tr>
     <tr>
@@ -298,10 +298,10 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
     <td>-</td>
     </tr>
     <tr>
-    <td>globalBs</td>
+    <td>globalBS</td>
     <td>输入</td>
     <td>EP域全局batch size。</td>
-    <td><br> <li> 各卡Bs一致时：<code>globalBs = Bs * epWorldSize</code> 或 0；</li> <li> 各卡Bs不一致时：<code>globalBs = maxBs * epWorldSize</code>，其中maxBs为单卡Bs最大值。</li></td>
+    <td><br> <li> 各卡BS一致时：<code>globalBS = BS * epWorldSize</code> 或 0；</li> <li> 各卡BS不一致时：<code>globalBS = maxBS * epWorldSize</code>，其中maxBS为单卡BS最大值。</li></td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
@@ -362,7 +362,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
     <td>输出</td>
     <td>根据expertIds扩展过的token特征。</td>
     <td>2D Tensor。</td>
-    <td>FLOAT16、BFLOAT16、INT8</td>
+    <td>FLOAT16、BFLOAT16、INT8、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、FLOAT4_E2M1、FLOAT4_E1M2</td>
     <td>-</td>
     <td><code>(max(tpWorldSize, 1) * A, H)</code></td>
     <td>√</td>
@@ -371,10 +371,10 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
     <td>dynamicScalesOut</td>
     <td>输出</td>
     <td>动态量化场景的缩放参数。</td>
-    <td>要求为1D Tensor。仅quantMode取值为2、3、4时有输出。</td>
+    <td>要求为1D 或2D Tensor。quantMode取值为2、3、4时有输出；quantMode取值为0且`x`的数据类型为`HIFLOAT8`、`FLOAT8_E5M2`、`FLOAT8_E4M3FN`、`FLOAT4_E2M1`、`FLOAT4_E1M2`时也有输出。</td>
     <td>FLOAT32、FLOAT8_E8M0</td>
     <td>-</td>
-    <td><code>(A,)</code></td>
+    <td>-</td>
     <td>√</td>
     </tr>
     <tr>
@@ -404,7 +404,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
     <td>1D Tensor。</td>
     <td>INT32</td>
     <td>-</td>
-    <td><code>(moeExpertNum + 2 * globalBs * K * serverNum,)</code></td>
+    <td><code>(moeExpertNum + 2 * globalBS * K * serverNum,)</code></td>
     <td>√</td>
     </tr>
     <tr>
@@ -453,15 +453,16 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
     <details>
     <summary><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：</summary>
 
+    - dynamicScalesOut 仅quantMode取值为2时有输出。
     - commAlg 支持nullptr、""、"fullmesh"、"hierarchy"；推荐配置"hierarchy"并搭配≥25.0.RC1.1版本驱动；nullptr和""依HCCL环境变量选择算法（不推荐）；"fullmesh"通过RDMA直传token；"hierarchy"经跨机、机内两次发送优化通信。
     - commAlg为"hierarchy"或HCCL_INTRA_PCIE_ENABLE=1且HCCL_INTRA_ROCE_ENABLE=0时，scalesOptional 需传nullptr；commAlg为"fullmesh"时，scalesOptional 可传有效数据或空指针。
-    - xActiveMaskOptional 依commAlg取值，"fullmesh"要求为1D Tensor，shape为(Bs, )；true需排在false前（例：{true, false, true}非法）；"hierarchy"当前版本不支持，传空指针即可。
-    - expertScalesOptional 要求为2D Tensor，shape为(Bs, K)。
+    - xActiveMaskOptional 依commAlg取值，"fullmesh"要求为1D Tensor，shape为(BS, )；true需排在false前（例：{true, false, true}非法）；"hierarchy"当前版本不支持，传空指针即可。
+    - expertScalesOptional 要求为2D Tensor，shape为(BS, K)。
     - epWorldSize 依commAlg取值，"fullmesh"支持2、3、4、5、6、7、8、16、32、64、128、192、256、384；"hierarchy"支持16、32、64。
     - moeExpertNum 取值范围(0, 512]。
     - groupTp 当前版本不支持，传空字符即可。
     - tpWorldSize、tpRankId、expertShardType、sharedExpertNum、sharedExpertRankNum 当前版本不支持，传0即可。
-    - epRecvCountsOut 的shape为(moeExpertNum + 2 * globalBs * K * serverNum,)（前moeExpertNum个为接收token数，剩余为通信前reduce相关信息）。
+    - epRecvCountsOut 的shape为(moeExpertNum + 2 * globalBS * K * serverNum,)（前moeExpertNum个为接收token数，剩余为通信前reduce相关信息）。
     - 当前不支持TP域通信。
     - expandScalesOut 要求为1D Tensor，shape为(A,)。
     - quantMode 支持0（非量化）、2（动态量化）。
@@ -469,15 +470,16 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
     - zeroExpertNum 当commAlg="fullmesh"时，取值范围:[0, MAX_INT32)，MAX_INT32 = 2^31 - 1, 合法的零专家的ID的值是[<code>moeExpertNum</code>, <code>moeExpertNum + zeroExpertNum</code>)。
     - copyExpertNum 当commAlg="fullmesh"时，取值范围:[0, MAX_INT32)，MAX_INT32 = 2^31 - 1, 合法的拷贝专家的ID的值是[<code>moeExpertNum + zeroExpertNum</code>, <code>moeExpertNum + zeroExpertNum + copyExpertNum</code>)。
     - constExpertNum 当前版本不支持，传0即可。
-    - performanceInfoOptional 可选择传入有效数据或填空指针，传入空指针时表示不使能记录通信耗时功能；当传入有效数据时，要求是一个1D的Tensor，shape为(ep\_world\_size,)，数据类型支持int64；数据格式要求为ND。
+    - performanceInfoOptional 可选择传入有效数据或填空指针，传入空指针时表示不使能记录通信耗时功能；当传入有效数据时，要求是一个1D的Tensor，shape为(epWorldSize,)，数据类型支持int64；数据格式要求为ND。
     </details>
 
     <details>
     <summary><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：</summary>
 
+    - dynamicScalesOut 仅quantMode取值为2时有输出。
     - commAlg 支持""，"fullmesh_v1"，"fullmesh_v2", "hierarchy"三种输入方式。""：默认值，不使能fullmesh_v2模板；"fullmesh_v1"：不使能fullmesh_v2模板；"fullmesh_v2"：使能fullmesh_v2模板，该模板仅支持tpWorldSize为1场景；"hierarchy": 使能跨超模板，该模板仅支持tpWorldSize为1、共享专家为0的场景，且不支持可变BS、二维mask、特殊专家、performanceInfo场景。
-    - xActiveMaskOptional 要求为1D或2D Tensor（1D时shape为(Bs, )，2D时shape为(Bs, K)）；1D时true需排在false前，2D时token对应K个值全为false则不参与通信。
-    - expertScalesOptional 当commAlg="hierarchy"场景时，要求为2D Tensor，shape为(Bs, K)；当commAlg=""，"fullmesh_v1"，"fullmesh_v2"场景时，暂不支持该参数，传空指针即可。
+    - xActiveMaskOptional 要求为1D或2D Tensor（1D时shape为(BS, )，2D时shape为(BS, K)）；1D时true需排在false前，2D时token对应K个值全为false则不参与通信。
+    - expertScalesOptional 当commAlg="hierarchy"场景时，要求为2D Tensor，shape为(BS, K)；当commAlg=""，"fullmesh_v1"，"fullmesh_v2"场景时，暂不支持该参数，传空指针即可。
     - epWorldSize 取值范围[2, 768]；当commAlg="hierarchy"场景时，取值范围为[16, 256]，且为16的整数倍。
     - moeExpertNum 取值范围(0, 1024]；当commAlg="hierarchy"场景时，取值范围为(0, 512]。
     - groupTp 字符串长度范围为[0, 128)，不能和groupEp相同，仅在无tp域通信时支持传空。
@@ -494,15 +496,16 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
     - zeroExpertNum 取值范围:[0, MAX_INT32)，MAX_INT32 = 2^31 - 1, 合法的零专家的ID的值是<code>[moeExpertNum, moeExpertNum + zeroExpertNum)</code>。
     - copyExpertNum 取值范围:[0, MAX_INT32)，MAX_INT32 = 2^31 - 1，专家ID范围<code>[moeExpertNum + zeroExpertNum, moeExpertNum + zeroExpertNum + copyExpertNum)</code>。
     - constExpertNum 取值范围:[0, MAX_INT32)，MAX_INT32 = 2^31 - 1，专家ID范围<code>[moeExpertNum + zeroExpertNum + copyExpertNum, moeExpertNum + zeroExpertNum + copyExpertNum + constExpertNum)</code>。
-    - performanceInfoOptional 可选择传入有效数据或填空指针，传入空指针时表示不使能记录通信耗时功能；当传入有效数据时，要求是一个1D的Tensor，shape为(ep\_world\_size,)，数据类型支持int64；数据格式要求为ND。
+    - performanceInfoOptional 可选择传入有效数据或填空指针，传入空指针时表示不使能记录通信耗时功能；当传入有效数据时，要求是一个1D的Tensor，shape为(epWorldSize,)，数据类型支持int64；数据格式要求为ND。
     - scalesOptional 2D Tensor，非量化场景传空指针；动态量化可传有效数据或空指针。
     </details>
 
     <details>
     <summary><term>Ascend 950PR/Ascend 950DT</term>：</summary>
 
+    - dynamicScalesOut quantMode取值为2、3、4时有输出；quantMode取值为0且`x`的数据类型为`HIFLOAT8`、`FLOAT8_E5M2`、`FLOAT8_E4M3FN`、`FLOAT4_E2M1`、`FLOAT4_E1M2`时也有输出。
     - commAlg 支持""，"fullmesh_v1"，"fullmesh_v2"三种输入方式。""：默认值，不使能fullmesh_v2模板；"fullmesh_v1"：不使能fullmesh_v2模板；"fullmesh_v2"：使能fullmesh_v2模板，其中commAlg仅支持tpWorldSize为1场景。
-    - xActiveMaskOptional 要求为1D或2D Tensor（1D时shape为(Bs, )，2D时shape为(Bs, K)）；1D时true需排在false前，2D时token对应K个值全为false则不参与通信。
+    - xActiveMaskOptional 要求为1D或2D Tensor（1D时shape为(BS, )，2D时shape为(BS, K)）；1D时true需排在false前，2D时token对应K个值全为false则不参与通信。
     - expertScalesOptional 当前版本不支持，传空指针即可。
     - epWorldSize 取值范围[2, 768]。
     - moeExpertNum 取值范围(0, 1024]。
@@ -515,13 +518,13 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
     - epRecvCountsOut 的shape为(epWorldSize * max(tpWorldSize, 1) * localExpertNum,)。
     - 有TP域通信时tpRecvCountsOut为1D shape Tensor，shape为(tpWorldSize,)。
     - expandScalesOut 当前版本不支持该输出。
-    - quantMode 支持0（非量化）、1（静态量化）、2（pertoken动态量化）、3（pergroup动态量化）、4（mxfp8动态量化）。
+    - quantMode 支持0（非量化）、1（静态量化）、2（pertoken动态量化）、3（pergroup动态量化）、4（mx动态量化）。
     - elasticInfoOptional 当前版本不支持，传空指针即可。
     - zeroExpertNum 取值范围:[0, MAX_INT32)，MAX_INT32 = 2^31 - 1, 合法的零专家的ID的值是<code>[moeExpertNum, moeExpertNum + zeroExpertNum)</code>。
     - copyExpertNum 取值范围:[0, MAX_INT32)，MAX_INT32 = 2^31 - 1，专家ID范围<code>[moeExpertNum + zeroExpertNum, moeExpertNum + zeroExpertNum + copyExpertNum)</code>。
     - constExpertNum 取值范围:[0, MAX_INT32)，MAX_INT32 = 2^31 - 1，专家ID范围<code>[moeExpertNum + zeroExpertNum + copyExpertNum, moeExpertNum + zeroExpertNum + copyExpertNum + constExpertNum)</code>。
-    - performanceInfoOptional 预留参数，当前版本不支持，传空指针即可。
-    - scalesOptional 非量化、MX量化场景传空指针；静态量化必传有效数据；pertoken、pergroup动态量化场景可传有效数据或空指针。
+    - performanceInfoOptional 可选择传入有效数据或填空指针，传入空指针时表示不使能记录通信耗时功能；当传入有效数据时，要求是一个1D的Tensor，shape为(epWorldSize,)，数据类型支持int64；数据格式要求为ND。
+    - scalesOptional quantMode取值为0时，若`x`的数据类型为`FLOAT16`或`BFLOAT16`则传空指针，若`x`的数据类型为`HIFLOAT8`、`FLOAT8_E5M2`、`FLOAT8_E4M3FN`、`FLOAT4_E2M1`、`FLOAT4_E1M2`则必传有效数据；quantMode取值为1时必传有效数据；quantMode取值为2或3时可传有效数据或空指针；quantMode取值为4时传空指针。
     </details>
 
 - **返回值**
@@ -609,8 +612,11 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
 
 ## 约束说明
 
-- 确定性计算：
+- **确定性计算**：
   - aclnnMoeDistributeDispatchV4默认确定性实现。
+
+- **驱动约束**：
+  - 算子通信域各节点的驱动版本应当相同。
 
 - **接口配套约束**：
 
@@ -618,7 +624,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
 
 - **参数一致性约束**：
 
-  - 所有卡的`groupEp`、`epWorldSize`、`moeExpertNum`、`groupTp`、`tpWorldSize`、`expertShardType`、`sharedExpertNum`、`sharedExpertRankNum`、`globalBs`、`commAlg`参数及`HCCL_BUFFSIZE`取值需保持一致，且与CombineV4系列算子对应参数一致。
+  - 所有卡的`groupEp`、`epWorldSize`、`moeExpertNum`、`groupTp`、`tpWorldSize`、`expertShardType`、`sharedExpertNum`、`sharedExpertRankNum`、`globalBS`、`commAlg`参数及`HCCL_BUFFSIZE`取值需保持一致，且与CombineV4系列算子对应参数一致。
 
 - **产品特定约束**：
 
@@ -628,28 +634,73 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
 
   | 变量         | 定义与取值范围                                                                 |
   | :----------- | :----------------------------------------------------------------------------- |
-  | A            | 表示本卡需要分发的最大token数量，取值范围如下：<ul> <li>对于共享专家，要满足A = Bs * epWorldSize * sharedExpertNum / sharedExpertRankNum。</li><li>对于MoE专家，当globalBs为0时，要满足A >= Bs * epWorldSize * min(localExpertNum, K)；当globalBs非0时，要满足A >= globalBs * min(localExpertNum, K)。</li></ul>|
-  | H（hidden size） | 表示hidden size隐藏层大小。<ul><li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：依commAlg取值，"fullmesh"支持(0, 7168]且为32的整数倍；"hierarchy"并且驱动版本≥25.0.RC1.1时支持(0, 10*1024]且为32的整数倍；</li> <li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品/Ascend 950PR/Ascend 950DT</term>：依commAlg取值，当commAlg="hierarchy"时，H取值范围为[1024, 7168]，且为32的整数倍；其余场景下取值范围[1024, 8192]。</li></ul> |
-  | Bs           | 表示本卡最终输出token数。<ul><li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：依commAlg取值，"fullmesh"取值范围为 (0 < Bs ≤ 256)；"hierarchy"并且驱动版本≥25.0.RC1.1时取值范围为 (0 < Bs ≤ 512)；</li><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品/Ascend 950PR/Ascend 950DT</term>：0 < Bs ≤512。</li></ul> |
+  | A            | 表示本卡需要分发的最大token数量，取值范围如下：<ul> <li>对于共享专家，要满足A = BS * epWorldSize * sharedExpertNum / sharedExpertRankNum。</li><li>对于MoE专家，当globalBS为0时，要满足A >= BS * epWorldSize * min(localExpertNum, K)；当globalBS非0时，要满足A >= globalBS * min(localExpertNum, K)。</li></ul>|
+  | H（hidden size） | 表示hidden size隐藏层大小。<ul><li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：依commAlg取值，"fullmesh"支持(0, 7168]且为32的整数倍；"hierarchy"并且驱动版本≥25.0.RC1.1时支持(0, 10*1024]且为32的整数倍；</li> <li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：依commAlg取值，当commAlg="hierarchy"时，H取值范围为[1024, 7168]，且为32的整数倍；其余场景下取值范围[1024, 8192]。</li><li><term>Ascend 950PR/Ascend 950DT</term>：取值范围[1024, 8192]。</li></ul> |
+  | BS           | 表示本卡最终输出token数。<ul><li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：依commAlg取值，"fullmesh"取值范围为 (0 < BS ≤ 256)；"hierarchy"并且驱动版本≥25.0.RC1.1时取值范围为 (0 < BS ≤ 512)；</li><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品/Ascend 950PR/Ascend 950DT</term>：0 < BS ≤512。</li></ul> |
   | K    | 表示选取topK个专家，取值范围为0 < K ≤16，且<code>0 < K ≤ moeExpertNum + zeroExpertNum + copyExpertNum + constExpertNum</code>。<br> <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品/Ascend 950PR/Ascend 950DT</term>：当commAlg为"fullmesh_v2"时，取值范围为0 < K ≤ 12。|
   | serverNum    | 表示服务器节点数，仅支持2、4、8。<br>Atlas A2 训练系列产品/Atlas A2 推理系列产品：仅该场景的shape使用了该变量。                                                  |
-  | localExpertNum |  本卡专家数：<ul><li>对于共享专家卡，localExpertNum = 1；</li><li>对于MoE专家卡，localExpertNum = <code>moeExpertNum/(epWorldSize-sharedExpertRankNum)</code>，localExpertNum > 1时不支持TP通信。 </li><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品/Ascend 950PR/Ascend 950DT</term>：应满足 0 < localExpertNum * epWorldSize ≤ 2048。当commAlg="hierarchy"时，需满足localExpertNum ≤ 24 且 localExpertNum * epWorldSize ≤ 512。</li></ul>|
+  | localExpertNum |  本卡专家数：<ul><li>对于共享专家卡，localExpertNum = 1；</li><li>对于MoE专家卡，localExpertNum = <code>moeExpertNum/(epWorldSize-sharedExpertRankNum)</code>，localExpertNum > 1时不支持TP通信。 </li><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品/Ascend 950PR/Ascend 950DT</term>：应满足 0 < <code>localExpertNum * epWorldSize</code> ≤ 2048。当commAlg="hierarchy"时，需满足localExpertNum ≤ 24 且 <code>localExpertNum * epWorldSize</code> ≤ 512</li><li><term>Ascend 950PR/Ascend 950DT</term>：应满足 0 < <code>localExpertNum * epWorldSize</code> ≤ 2048。</li></code>|
+
+- **quantMode相关约束**：
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+      - `quantMode`取值为0时，表示非量化场景，输入`scalesOptional`传空指针，`expandX`的数据类型支持`FLOAT16`、`BFLOAT16`。
+      - `quantMode`取值为2时，表示pertoken动态量化场景，`expandX`的数据类型支持`INT8`。
+          - 输入`scalesOptional`可传入空指针。
+          - 若输入`scalesOptional`传入有效数据时，其shape为 (`moeExpertNum`, `H`)。
+          - 输出`dynamicScalesOut`shape为 `(A, )`
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+      - `quantMode`取值为0时，表示非量化场景，输入`scalesOptional`传空指针，`expandX`的数据类型支持`FLOAT16`、`BFLOAT16`。
+      - `quantMode`取值为2时，表示pertoken动态量化场景，`expandX`的数据类型支持`INT8`。
+          - 输入`scalesOptional`可传入空指针。
+          - 若输入`scalesOptional`传入有效数据且存在共享专家卡时，其shape为 (`sharedExpertNum` + `moeExpertNum`, `H`)。
+          - 若输入`scalesOptional`传入有效数据且不存在共享专家卡时，其shape为 (`moeExpertNum`, `H`)。
+          - 输出`dynamicScalesOut`shape为 `(A, )`
+  - <term>Ascend 950PR/Ascend 950DT</term>：
+      - `quantMode`取值为0时，表示非量化场景。
+          - 当`x`的数据类型为`FLOAT16`或`BFLOAT16`时，`expandX`的数据类型可与`x`一致，也可为`HIFLOAT8`，输入`scalesOptional`必须传空指针。
+          - 当`x`的数据类型为`HIFLOAT8`、`FLOAT8_E5M2`、`FLOAT8_E4M3FN`、`FLOAT4_E2M1`、`FLOAT4_E1M2`时，输入`scalesOptional`必须传入有效数据，`expandX`的数据类型与`x`一致。
+              - `x`的数据类型为`HIFLOAT8`时，`scalesOptional`的数据类型为`FLOAT`。
+              - `x`的数据类型为`FLOAT8_E5M2`或`FLOAT8_E4M3FN`时，`scalesOptional`的数据类型为`FLOAT`或`FLOAT8_E8M0`。
+              - `x`的数据类型为`FLOAT4_E2M1`或`FLOAT4_E1M2`时，`scalesOptional`的数据类型为`FLOAT8_E8M0`，且H必须为偶数。
+              - `scalesOptional`的shape为 (`BS`, `dim1`)，其中`dim1`需满足小于等于`H`。
+      - `quantMode`取值为1时，表示静态量化场景，`expandX`的数据类型支持`INT8`、`HIFLOAT8`。
+          - `expandX`的数据类型为`INT8`时有如下场景：
+              - 输入的`scalesOptional`代表量化系数，shape为 (1, )；
+              - 输入的`scalesOptional`表示每个专家共享的平滑权重时，shape为 (`H`，)；
+              - 输入的`scalesOptional`代表融了每个专家的平滑权重的量化系数时，若有共享专家卡，其shape为 (`sharedExpertNum` + `moeExpertNum`, `H`)，若无共享专家卡，其shape为 (`moeExpertNum`, `H`)。
+          - `expandX`的数据类型为`HIFLOAT8`时，`scalesOptional`的shape必须为 (1, )。
+      - `quantMode`取值为2时，表示pertoken动态量化场景，`expandX`的数据类型支持`INT8`、`FLOAT8_E4M3FN`、`FLOAT8_E5M2`。
+          - 输入`scalesOptional`可传入空指针。
+          - 若输入`scalesOptional`传入有效数据且存在共享专家卡时，其shape为 (`sharedExpertNum` + `moeExpertNum`, `H`)。
+          - 若输入`scalesOptional`传入有效数据且不存在共享专家卡时，其shape为 (`moeExpertNum`, `H`)。
+          - 输出`dynamicScalesOut`shape为 `(A, )`
+      - `quantMode`取值为3时，表示pergroup动态量化场景，expandX的数据类型支持`FLOAT8_E4M3FN`、`FLOAT8_E5M2`。
+          - 输入`scalesOptional`可传入空指针。
+          - 若输入`scalesOptional`传入有效数据且存在共享专家卡时，其shape为 (`sharedExpertNum` + `moeExpertNum`, `H`)。
+          - 若输入`scalesOptional`传入有效数据且不存在共享专家卡时，其shape为 (`moeExpertNum`, `H`)。
+          - 输出`dynamicScalesOut`shape为 `(A, Ceil(H, 128))`，其中`Ceil(H, 128) = (H + 128 - 1) / 128`
+      - `quantMode`取值为4时，表示mx量化场景，`expandX`的数据类型支持`FLOAT8_E4M3FN`、`FLOAT8_E5M2`、`FLOAT4_E2M1`、`FLOAT4_E1M2`，输入`scalesOptional`必须传入空指针。输出`dynamicScalesOut`shape为 `(A, Ceil(H, 64))`，其中`Ceil(H, 64) = (H + 64 - 1) / 64`。当`expandX`的数据类型为`FLOAT4_E2M1`或`FLOAT4_E1M2`时，H必须为偶数。
 
 - **环境变量约束**：
   - **HCCL_BUFFSIZE**：
       调用本接口前需检查HCCL_BUFFSIZE环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。
       - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
           - commAlg配置为""或nullptr：依照HCCL_INTRA_PCIE_ENABLE和HCCL_INTRA_ROCE_ENABLE环境变量配置，选择"fullmesh"或"hierarchy"公式。
-          - commAlg配置为"fullmesh": 要求 >= 2 \* (Bs \* epWorldSize \* min(localExpertNum, K) \* H \* sizeof(uint16) + 2MB)。
-          - commAlg配置为"hierarchy": 要求 >= (`moeExpertNum` + `epWorldSize` / 4) * Align512(`maxBs` * (`H` * 2 + 16 * Align8(`K`))) * 1B + 8MB，其中Align8(x) = ((x + 8 - 1) / 8) * 8，Align512(x) = ((x + 512 - 1) / 512) * 512。
-      - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品/Ascend 950PR/Ascend 950DT</term>：
-        - 当commAlg为"fullmesh_v1"或空字符串或空指针时：要求取值满足 ≥ 2 * (localExpertNum * maxBs * epWorldSize * Align512(Align32(2 * H) + 64) + (K + sharedExpertNum) * maxBs * Align512(2 * H))。
-        - 当commAlg为"fullmesh_v2"时：要求取值满足 ≥ 2 * (localExpertNum * maxBs * epWorldSize * 480Align512(Align32(2 * H) + 64) + (K + sharedExpertNum) * maxBs * Align512(2 * H))。
+          - commAlg配置为"fullmesh": 要求 >= 2 \* (BS \* epWorldSize \* min(localExpertNum, K) \* H \* sizeof(uint16) + 2MB)。
+          - commAlg配置为"hierarchy": 要求 >= (`moeExpertNum` + `epWorldSize` / 4) * Align512(`maxBS` * (`H` * 2 + 16 * Align8(`K`))) * 1B + 8MB，其中Align8(x) = ((x + 8 - 1) / 8) * 8，Align512(x) = ((x + 512 - 1) / 512) * 512。
+      - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+        - 当commAlg为"fullmesh_v1"或空字符串或空指针时：要求取值满足 ≥ 2 * (localExpertNum * maxBS * epWorldSize * Align512(Align32(2 * H) + 64) + (K + sharedExpertNum) * maxBS * Align512(2 * H))。
+        - 当commAlg为"fullmesh_v2"时：要求取值满足 ≥ 2 * (localExpertNum * maxBS * epWorldSize * 480Align512(Align32(2 * H) + 64) + (K + sharedExpertNum) * maxBS * Align512(2 * H))。
         - 其中`480Align512(x) = ((x + 480 - 1) / 480) * 512`，`Align512(x) = ((x + 512 - 1) / 512) * 512`，`Align32(x) = ((x + 32 - 1) / 32) * 32`。
-        - 当commAlg为"hierarchy"时：要求取值满足 (moeExpertNum * maxBs * (H * 2 + (3 * (K + 7) / 8 * 8)) * 4 + 64) + 404 * 1024 * 1024。
+        - 当commAlg为"hierarchy"时：要求取值满足 (moeExpertNum * maxBS * (H * 2 + (3 * (K + 7) / 8 * 8)) * 4 + 64) + 404 * 1024 * 1024。
+      - <term>Ascend 950PR/Ascend 950DT</term>：
+        - 当commAlg为"fullmesh_v1"或空字符串或空指针时：要求取值满足 ≥ 2 * (localExpertNum * maxBS * epWorldSize * Align512(Align32(2 * H) + 64) + (K + sharedExpertNum) * maxBS * Align512(2 * H))。
+        - 当commAlg为"fullmesh_v2"时：要求取值满足 ≥ 2 * (localExpertNum * maxBS * epWorldSize * 480Align512(Align32(2 * H) + 64) + (K + sharedExpertNum) * maxBS * Align512(2 * H))。
+        - 其中`480Align512(x) = ((x + 480 - 1) / 480) * 512`，`Align512(x) = ((x + 512 - 1) / 512) * 512`，`Align32(x) = ((x + 32 - 1) / 32) * 32`。             
 
   - **HCCL_INTRA_PCIE_ENABLE**和**HCCL_INTRA_ROCE_ENABLE**：
       - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：该环境变量不再推荐使用，建议commAlg配置"hierarchy"。
+      - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品/Ascend 950PR/Ascend 950DT</term>：不支持该环境变量。
 
 - **通信域使用约束**：
   - 一个模型中的CombineV4系列算子和`aclnnMoeDistributeDispatchV4`仅支持相同EP通信域，且该通信域中不允许有其他算子。
@@ -686,6 +737,8 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
         #include <string>
         #include <cstring>
         #include <vector>
+        #include <memory>
+        #include <cstdio>
         #include "acl/acl.h"
         #include "hccl/hccl.h"
         #include "aclnn/opdev/fp16_t.h"
@@ -769,7 +822,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
                         context = %p\n", args.rankId, hcomEpName, args.dispatchV4Stream, args.combineV4Stream,                 \
                         args.context);
 
-            int64_t Bs = 32;
+            int64_t BS = 32;
             int64_t H = 7168;
             int64_t K = 8;
             int64_t expertShardType = 0;
@@ -777,7 +830,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
             int64_t sharedExpertRankNum = 0;
             int64_t moeExpertNum = 256;
             int64_t quantMode = 0;
-            int64_t globalBs = Bs * EP_WORLD_SIZE_A2;
+            int64_t globalBS = BS * EP_WORLD_SIZE_A2;
             int64_t expertTokenNumsType = 1;
             int64_t outDtype = 0;
             int64_t commQuantMode = 0;
@@ -790,10 +843,10 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
             std::string commAlg = "fullmesh";
             if (args.epRankId < sharedExpertRankNum) {
                 localExpertNum = 1;
-                A = globalBs / sharedExpertRankNum;
+                A = globalBS / sharedExpertRankNum;
             } else {
                 localExpertNum = moeExpertNum / (EP_WORLD_SIZE_A2 - sharedExpertRankNum);
-                A = globalBs * (localExpertNum < K ? localExpertNum : K);
+                A = globalBS * (localExpertNum < K ? localExpertNum : K);
             }
 
             void *xDeviceAddr = nullptr;
@@ -847,10 +900,10 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
             aclTensor *xOut = nullptr;
 
             //定义当前场景下各变量维度
-            std::vector<int64_t> xShape{Bs, H};
-            std::vector<int64_t> expertIdsShape{Bs, K};
+            std::vector<int64_t> xShape{BS, H};
+            std::vector<int64_t> expertIdsShape{BS, K};
             std::vector<int64_t> scalesShape{moeExpertNum + 1, H};
-            std::vector<int64_t> expertScalesShape{Bs, K};
+            std::vector<int64_t> expertScalesShape{BS, K};
 
             std::vector<int64_t> expandXShape{TP_WORLD_SIZE_A2 * A, H};
             std::vector<int64_t> dynamicScalesShape{TP_WORLD_SIZE_A2 * A};
@@ -860,8 +913,8 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
             std::vector<int64_t> tpRecvCountsShape{TP_WORLD_SIZE_A2};
             std::vector<int64_t> expandScalesShape{A};
 
-            std::vector<int64_t> oriXShape{Bs, H};
-            std::vector<int64_t> xOutShape{Bs, H};
+            std::vector<int64_t> oriXShape{BS, H};
+            std::vector<int64_t> xOutShape{BS, H};
             std::vector<int64_t> performanceInfoShape{EP_WORLD_SIZE_A2};
 
             int64_t xShapeSize = GetShapeSize(xShape);
@@ -951,7 +1004,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
             // 调用第一阶段接口
             ret = aclnnMoeDistributeDispatchV4GetWorkspaceSize(x, expertIds, (quantMode > 0 ? scales : nullptr), xActiveMask,
                     expertScales, elasticInfo, performanceInfo, hcomEpName, EP_WORLD_SIZE_A2, args.epRankId, moeExpertNum, "", TP_WORLD_SIZE_A2,
-                    args.tpRankId, expertShardType, sharedExpertNum,sharedExpertRankNum, quantMode, globalBs,
+                    args.tpRankId, expertShardType, sharedExpertNum,sharedExpertRankNum, quantMode, globalBS,
                     expertTokenNumsType, commAlg.c_str(), zeroExpertNum, copyExpertNum, constExpertNum, expandX, dynamicScales, assistInfoForCombine, expertTokenNums, epRecvCounts,
                     tpRecvCounts, expandScales, &dispatchWorkspaceSize, &dispatchExecutor);
 
@@ -981,7 +1034,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
                                                                 elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV, performanceInfo,
                                                                 hcomEpName, EP_WORLD_SIZE_A2, args.epRankId, moeExpertNum,
                                                                 "", TP_WORLD_SIZE_A2, args.tpRankId, expertShardType,
-                                                                sharedExpertNum, sharedExpertRankNum, globalBs, outDtype,
+                                                                sharedExpertNum, sharedExpertRankNum, globalBS, outDtype,
                                                                 commQuantMode, groupList_type, commAlg.c_str(), zeroExpertNum, copyExpertNum, constExpertNum, xOut,
                                                                 &combineWorkspaceSize, &combineExecutor);
             CHECK_RET(ret == ACL_SUCCESS,
@@ -1196,7 +1249,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
                     context = %p\n", args.rankId, hcomEpName, hcomTpName, args.dispatchStream, args.combineStream,                 \
                     args.context);
 
-        int64_t Bs = 8;
+        int64_t BS = 8;
         int64_t H = 7168;
         int64_t K = 3;
         int64_t expertShardType = 0;
@@ -1204,7 +1257,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
         int64_t sharedExpertRankNum = 1;
         int64_t moeExpertNum = 7;
         int64_t quantMode = 0;
-        int64_t globalBs = Bs * EP_WORLD_SIZE;
+        int64_t globalBS = BS * EP_WORLD_SIZE;
         int64_t expertTokenNumsType = 1;
         int64_t outDtype = 0;
         int64_t commQuantMode = 0;
@@ -1216,10 +1269,10 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
         int64_t constExpertNum = 1;
         if (args.epRankId < sharedExpertRankNum) {
             localExpertNum = 1;
-            A = globalBs / sharedExpertRankNum;
+            A = globalBS / sharedExpertRankNum;
         } else {
             localExpertNum = moeExpertNum / (EP_WORLD_SIZE - sharedExpertRankNum);
-            A = globalBs * (localExpertNum < K ? localExpertNum : K);
+            A = globalBS * (localExpertNum < K ? localExpertNum : K);
         }
 
         void *xDeviceAddr = nullptr;
@@ -1270,10 +1323,10 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
         aclTensor *xOut = nullptr;
 
         //定义当前场景下各变量维度
-        std::vector<int64_t> xShape{Bs, H};
-        std::vector<int64_t> expertIdsShape{Bs, K};
+        std::vector<int64_t> xShape{BS, H};
+        std::vector<int64_t> expertIdsShape{BS, K};
         std::vector<int64_t> scalesShape{moeExpertNum + 1, H};
-        std::vector<int64_t> expertScalesShape{Bs, K};
+        std::vector<int64_t> expertScalesShape{BS, K};
 
         std::vector<int64_t> expandXShape{TP_WORLD_SIZE * A, H};
         std::vector<int64_t> dynamicScalesShape{TP_WORLD_SIZE * A};
@@ -1282,16 +1335,16 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
         std::vector<int64_t> epRecvCountsShape{TP_WORLD_SIZE * localExpertNum * EP_WORLD_SIZE};
         std::vector<int64_t> tpRecvCountsShape{TP_WORLD_SIZE};
         std::vector<int64_t> expandScalesShape{A};
-        std::vector<int64_t> sharedExpertXShape{Bs, 1, H};
+        std::vector<int64_t> sharedExpertXShape{BS, 1, H};
 
 
         std::vector<int64_t> elasticInfoShape{4 + EP_WORLD_SIZE * 2};
-        std::vector<int64_t> oriXShape{Bs, H};
+        std::vector<int64_t> oriXShape{BS, H};
         std::vector<int64_t> constExpertAlpha1Shape{constExpertNum, H};
         std::vector<int64_t> constExpertAlpha2Shape{constExpertNum, H};
         std::vector<int64_t> constExpertVShape{constExpertNum, H};
 
-        std::vector<int64_t> xOutShape{Bs, H};
+        std::vector<int64_t> xOutShape{BS, H};
 
         int64_t xShapeSize = GetShapeSize(xShape);
         int64_t expertIdsShapeSize = GetShapeSize(expertIdsShape);
@@ -1395,7 +1448,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
         ret = aclnnMoeDistributeDispatchV4GetWorkspaceSize(x, expertIds, (quantMode > 0 ? scales : nullptr), nullptr,
                 expertScales, elasticInfo, nullptr,// performanceInfoOptional
                 hcomEpName, EP_WORLD_SIZE, args.epRankId, moeExpertNum, hcomTpName, TP_WORLD_SIZE,
-                args.tpRankId, expertShardType, sharedExpertNum,sharedExpertRankNum, quantMode, globalBs,
+                args.tpRankId, expertShardType, sharedExpertNum,sharedExpertRankNum, quantMode, globalBS,
                 expertTokenNumsType, nullptr, zeroExpertNum, copyExpertNum, constExpertNum, expandX, dynamicScales, expandIdx, expertTokenNums, epRecvCounts,
                 tpRecvCounts, expandScales, &dispatchWorkspaceSize, &dispatchExecutor);
 
@@ -1425,7 +1478,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
                                                             nullptr,// performanceInfoOptional
                                                             hcomEpName, EP_WORLD_SIZE, args.epRankId, moeExpertNum,
                                                             hcomTpName, TP_WORLD_SIZE, args.tpRankId, expertShardType,
-                                                            sharedExpertNum, sharedExpertRankNum, globalBs, outDtype,
+                                                            sharedExpertNum, sharedExpertRankNum, globalBS, outDtype,
                                                             commQuantMode, groupList_type, nullptr, zeroExpertNum, copyExpertNum, constExpertNum, xOut,
                                                             &combineWorkspaceSize, &combineExecutor);
         CHECK_RET(ret == ACL_SUCCESS,
@@ -1623,7 +1676,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
         for (int32_t epId = 0; epId < EP_WORLD_SIZE; epId++) {
             ret = HcclCommInitAll(TP_WORLD_SIZE, devicesTp[epId], commsTp[epId]);
             CHECK_RET(ret == ACL_SUCCESS,
-                        LOG_PRINT("[ERROR] HcclCommInitAll tp %d failed, ret %d\n", epId, ret); return ret);
+                        LOG_PRINT("[ERROR] HcclCommInitAll TP %d failed, ret %d\n", epId, ret); return ret);
         }
 
         Args args[DEV_NUM];

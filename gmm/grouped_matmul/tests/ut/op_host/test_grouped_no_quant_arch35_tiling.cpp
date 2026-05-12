@@ -26,94 +26,24 @@
 #include "../../../op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.h"
 #include "../../../op_kernel/arch35/grouped_matmul_tiling_data_apt.h"
 #include "tiling_case_executor.h"
+#include "gmm_csv_ge_parse_utils.h"
 
 using namespace std;
 using namespace ge;
 
 namespace {
 
-std::string GetExeDirPath()
-{
-    std::string exe_path("./");
-    char path[1024];
-    ssize_t n = readlink("/proc/self/exe", path, sizeof(path));
-    if (n > 0) {
-        path[n] = '\0';
-        exe_path.assign(path);
-        auto pos = exe_path.find_last_of('/');
-        if (pos != std::string::npos) {
-        exe_path.erase(pos + 1);
-        } else {
-        exe_path.assign("./");
-        }
-    }
-    
-    return exe_path;
-}
-
-string ToLower(string value)
-{
-    std::transform(value.begin(), value.end(), value.begin(),
-                   [](unsigned char c) { return static_cast<char>(tolower(c)); });
-    return value;
-}
-
-bool ParseBool(const string &value)
-{
-    auto lower = ToLower(value);
-    return lower == "true" || lower == "1" || lower == "yes";
-}
-
-void SplitStr2Vec(const string &input, const string &delimiter, vector<string> &output)
-{
-    auto delimiterLen = delimiter.size();
-    string::size_type currPos = 0;
-    string::size_type nextPos = input.find(delimiter, currPos);
-    while (nextPos != string::npos) {
-        output.emplace_back(input.substr(currPos, nextPos - currPos));
-        currPos = nextPos + delimiterLen;
-        nextPos = input.find(delimiter, currPos);
-    }
-
-    if (currPos <= input.size()) {
-        output.emplace_back(input.substr(currPos));
-    }
-}
+using ops::ut::ParseBool;
+using ops::ut::SplitStr2Vec;
+using ops::ut::Trim;
 
 DataType ParseDtype(const string &dtype)
 {
-    static const map<string, DataType> dtypeMap = {
-        {"FLOAT", ge::DT_FLOAT},
-        {"FLOAT16", ge::DT_FLOAT16},
-        {"BF16", ge::DT_BF16},
-        {"INT64", ge::DT_INT64},
-        {"INT8", ge::DT_INT8},
-        {"INT4", ge::DT_INT4},
-    };
-    auto it = dtypeMap.find(dtype);
-    if (it == dtypeMap.end()) {
+    const auto parsed = ops::ut::ParseGeDtype(dtype);
+    if (parsed == ge::DT_UNDEFINED) {
         cerr << "Unsupported dtype in csv: " << dtype << endl;
-        return ge::DT_UNDEFINED;
     }
-    return it == dtypeMap.end() ? ge::DT_UNDEFINED : it->second;
-}
-
-gert::Shape BuildShape(const vector<int64_t> &dims)
-{
-    gert::Shape shape;
-    shape.SetDimNum(dims.size());
-    for (size_t i = 0; i < dims.size(); ++i) {
-        shape.SetDim(i, dims[i]);
-    }
-    return shape;
-}
-
-gert::StorageShape MakeShape(const vector<int64_t> &originDims, const vector<int64_t> &storageDims)
-{
-    gert::StorageShape shape;
-    shape.MutableOriginShape() = BuildShape(originDims);
-    shape.MutableStorageShape() = BuildShape(storageDims);
-    return shape;
+    return parsed;
 }
 
 gert::StorageShape MakeEmptyShape()
@@ -170,9 +100,10 @@ public:
     void InvokeTilingFunc(optiling::GMMCompileInfo &compileInfo) const
     {
         vector<int64_t> xOriginDims = transposeX ? vector<int64_t>{k, m} : vector<int64_t>{m, k};
-        gert::StorageShape xShape = MakeShape(xOriginDims, xOriginDims);
-        gert::StorageShape biasShape = hasBias ? MakeShape({groupNum, n}, {groupNum, n}) : MakeEmptyShape();
-        gert::StorageShape groupListShape = MakeShape({groupNum}, {groupNum});
+        gert::StorageShape xShape = ops::ut::MakeGertStorageShape(xOriginDims, xOriginDims);
+        gert::StorageShape biasShape =
+            hasBias ? ops::ut::MakeGertStorageShape({groupNum, n}, {groupNum, n}) : MakeEmptyShape();
+        gert::StorageShape groupListShape = ops::ut::MakeGertStorageShape({groupNum}, {groupNum});
 
         vector<int64_t> weightOriginDims =
             transposeWeight ? vector<int64_t>{groupNum, n, k} : vector<int64_t>{groupNum, k, n};
@@ -183,7 +114,7 @@ public:
         } else {
             weightStorageDims = weightOriginDims;
         }
-        gert::StorageShape weightShape = MakeShape(weightOriginDims, weightStorageDims);
+        gert::StorageShape weightShape = ops::ut::MakeGertStorageShape(weightOriginDims, weightStorageDims);
 
         gert::TilingContextPara tilingContextPara(
             "GroupedMatmul",
@@ -198,7 +129,8 @@ public:
                 {groupListShape, ge::DT_INT64, ge::FORMAT_ND},           // groupList
                 {MakeEmptyShape(), ge::DT_FLOAT, ge::FORMAT_ND},         // perTokenScale (empty for no quant)
             },
-            {{MakeShape({m}, {n}), yDtype, ge::FORMAT_ND}}, GetGroupedNoQuantAttrs(splitItem, transposeX, transposeWeight, groupType),
+            {{ops::ut::MakeGertStorageShape({m}, {n}), yDtype, ge::FORMAT_ND}},
+            GetGroupedNoQuantAttrs(splitItem, transposeX, transposeWeight, groupType),
             &compileInfo, "3510", compileInfo.aicNum, compileInfo.ubSize);
 
         TilingInfo tilingInfo;
@@ -252,8 +184,8 @@ public:
 vector<GroupedNoQuantArch35TilingTestParam> GetParams(const string &socVersion)
 {
     vector<GroupedNoQuantArch35TilingTestParam> params;
-    std::string rootPath(GetExeDirPath() + "../../../../../");
-    std::string csvPath(rootPath + "gmm/grouped_matmul/tests/ut/op_host/test_grouped_no_quant_arch35_tiling.csv");
+    std::string csvPath = ops::ut::ResolveCsvPath("test_grouped_no_quant_arch35_tiling.csv",
+                                                  "gmm/grouped_matmul/tests/ut/op_host", __FILE__);
     ifstream csvData(csvPath, ios::in);
     if (!csvData.is_open()) {
         cout << "cannot open case file " << csvPath << ", maybe not exist" << endl;
@@ -261,7 +193,9 @@ vector<GroupedNoQuantArch35TilingTestParam> GetParams(const string &socVersion)
     }
 
     string line;
+    size_t lineNo = 0U;
     while (getline(csvData, line)) {
+        ++lineNo;
         if (line.empty() || line[0] == '#') {
             continue;
         }
@@ -272,50 +206,52 @@ vector<GroupedNoQuantArch35TilingTestParam> GetParams(const string &socVersion)
             continue;
         }
 
-        GroupedNoQuantArch35TilingTestParam param;
-        size_t idx = 0UL;
-        param.socVersion = items[idx++];
-        if (param.socVersion != socVersion) {
-            continue;
-        }
+        const string caseName = items.size() > 1U ? Trim(items[1]) : "";
+        try {
+            GroupedNoQuantArch35TilingTestParam param;
+            size_t idx = 0UL;
+            param.socVersion = items[idx++];
+            if (param.socVersion != socVersion) {
+                continue;
+            }
 
-        param.caseName = items[idx++];
-        param.enable = ParseBool(items[idx++]);
-        if (!param.enable) {
-            continue;
+            param.caseName = items[idx++];
+            param.enable = ParseBool(items[idx++]);
+            if (!param.enable) {
+                continue;
+            }
+            param.prefix = items[idx++];
+            param.coreNum = items[idx].empty() ? -1 : stoll(items[idx]);
+            idx++;
+            param.m = stoll(items[idx++]);
+            param.k = stoll(items[idx++]);
+            param.n = stoll(items[idx++]);
+            param.groupNum = stoll(items[idx++]);
+            param.transposeX = ParseBool(items[idx++]);
+            param.transposeWeight = ParseBool(items[idx++]);
+            param.groupType = stoll(items[idx++]);
+            param.splitItem = stoll(items[idx++]);
+            param.weightFormat = items[idx++];
+            param.xDtype = ParseDtype(items[idx++]);
+            param.weightDtype = ParseDtype(items[idx++]);
+            param.biasDtype = ParseDtype(items[idx++]);
+            param.yDtype = ParseDtype(items[idx++]);
+            param.hasBias = ParseBool(items[idx++]);
+            param.result = ParseBool(items[idx++]);
+            param.expectBlockDim = static_cast<uint64_t>(stoull(items[idx++]));
+            param.expectTilingKey = static_cast<uint64_t>(stoull(items[idx++]));
+            param.expectTilingData = items[idx++];
+            params.push_back(param);
+        } catch (const std::exception &error) {
+            ADD_FAILURE() << ops::ut::BuildCsvParseErrorMessage(csvPath, lineNo, caseName, error);
         }
-        param.prefix = items[idx++];
-        param.coreNum = items[idx].empty() ? -1 : stoll(items[idx]);
-        idx++;
-        param.m = stoll(items[idx++]);
-        param.k = stoll(items[idx++]);
-        param.n = stoll(items[idx++]);
-        param.groupNum = stoll(items[idx++]);
-        param.transposeX = ParseBool(items[idx++]);
-        param.transposeWeight = ParseBool(items[idx++]);
-        param.groupType = stoll(items[idx++]);
-        param.splitItem = stoll(items[idx++]);
-        param.weightFormat = items[idx++];
-        param.xDtype = ParseDtype(items[idx++]);
-        param.weightDtype = ParseDtype(items[idx++]);
-        param.biasDtype = ParseDtype(items[idx++]);
-        param.yDtype = ParseDtype(items[idx++]);
-        param.hasBias = ParseBool(items[idx++]);
-        param.result = ParseBool(items[idx++]);
-        param.expectBlockDim = static_cast<uint64_t>(stoull(items[idx++]));
-        param.expectTilingKey = static_cast<uint64_t>(stoull(items[idx++]));
-        param.expectTilingData = items[idx++];
-        params.push_back(param);
     }
     return params;
 }
 
 string MakeParamName(const testing::TestParamInfo<GroupedNoQuantArch35TilingTestParam> &info)
 {
-    string name = info.param.prefix;
-    std::transform(name.begin(), name.end(), name.begin(),
-                   [](unsigned char c) { return isalnum(c) ? static_cast<char>(c) : '_'; });
-    return name;
+    return ops::ut::MakeSafeParamName(info.param.prefix);
 }
 
 } // namespace

@@ -30,6 +30,7 @@ constexpr uint64_t SINGLE_BUFFER = 1;
 constexpr uint64_t DOUBLE_BUFFER = 2;
 constexpr uint64_t MAX_MTP = 8;
 constexpr uint64_t BF16_NUM_PER_BLOCK = 16;
+constexpr uint32_t BLOCK_SIZE_32B = 32;
 
 // BUFFER的字节数
 static constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32;
@@ -57,7 +58,7 @@ __aicore__ inline void CopySingleMatrixNDToND(LocalTensor<T> ubTensor, const Glo
 {
     constexpr uint64_t UINT16_MAX_VALUE = 65535u;
     constexpr uint64_t UINT32_MAX_VALUE = 4294967295u;
-    uint32_t blockElemNum = 32UL / sizeof(T);
+    uint32_t blockElemNum = BLOCK_SIZE_32B / sizeof(T);
     if constexpr (IsSameType<T, int4b_t>::value) {
         constexpr uint32_t HALF_SIZE_DIVISOR = 2;
         blockElemNum = blockElemNum * HALF_SIZE_DIVISOR;
@@ -258,7 +259,18 @@ private:
             CopySingleMatrixNDToND(gamaKInUb, gamaKGm_[gkGmOffset], dealRowCount, actDataLen, srcRowStride, dstRowStride);
             inputQueue1_.EnQue<float>(gamaKInUb);
             inputQueue1_.DeQue<float>();
-            DataCopy(gamaUb_, gamaKInUb, dealRowCount * dstRowStride);
+
+            if (DK_ != alignDK_) {
+                Duplicate(gamaUb_, (float)0, (tIdxEnd - tIdxStart) * alignDK_);
+                AscendC::PipeBarrier<PIPE_V>();
+            }
+            uint32_t blockElemNum = BLOCK_SIZE_32B / sizeof(float);
+            DataCopyParams repeatParams;
+            repeatParams.blockCount = static_cast<uint16_t>(dealRowCount);
+            repeatParams.blockLen = Ceil(DK_, blockElemNum);
+            repeatParams.srcStride = (dstRowStride - DK_) / blockElemNum;
+            repeatParams.dstStride = (dstRowStride - DK_) / blockElemNum;
+            DataCopy(gamaUb_, gamaKInUb, repeatParams);
             inputQueue1_.FreeTensor(gamaKInUb);
         } else {
             Duplicate(gamaUb_, (float)0, (tIdxEnd - tIdxStart) * alignDK_);
@@ -347,7 +359,7 @@ private:
         DataCopyExtParams stateOutParams;
         stateOutParams.blockCount = curSingleV;
         stateOutParams.blockLen = DK_ * sizeof(outType);
-        stateOutParams.srcStride = (alignDK_ - DK_) / (32UL / sizeof(outType));
+        stateOutParams.srcStride = (alignDK_ - DK_) / (BLOCK_SIZE_32B / sizeof(outType));
         stateOutParams.dstStride = 0;
         uint64_t outStateGmOffset = (uint64_t)ssmStateIndicesGm_.GetValue(tIdx) * NV_ * DV_ * DK_ +
                                     (uint64_t)head_i * DV_ * DK_ +

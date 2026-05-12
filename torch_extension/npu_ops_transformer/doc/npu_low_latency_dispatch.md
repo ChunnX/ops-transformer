@@ -58,7 +58,7 @@
 
          $$Moe(ori\_x)=const\_expert\_alpha\_1*ori\_x+const\_expert\_alpha\_2*const\_expert\_v$$
 
-      参数ori\_x、const\_expert\_alpha\_1、const\_expert\_alpha\_2、const\_expert\_v见[npu\_low\_latency_combine](npu\_low\_latency_combine.md)文档。
+      参数ori\_x、const\_expert\_alpha\_1、const\_expert\_alpha\_2、const\_expert\_v见[npu\_low\_latency_combine](npu_low_latency_combine.md)文档。
 
 ## 函数原型<a name="zh-cn_topic_0000002203575833_section45077510411"></a>
 

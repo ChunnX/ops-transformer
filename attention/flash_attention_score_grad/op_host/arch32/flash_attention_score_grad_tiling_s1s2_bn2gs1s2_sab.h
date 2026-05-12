@@ -16,7 +16,7 @@
 #pragma once
 
 #include "flash_attention_score_grad_tiling_common.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 
 
 using namespace Ops::Transformer::OpTiling;
@@ -162,9 +162,11 @@ protected:
     void AdjustCvInner();
     void ChooseL1Custom();
     float CalculateMaskRatio();
+    ge::graphStatus GetMaxWorkspaceFlag();
 
 private:
     SameAbFuzzyBaseInfoParams fBaseParams;
+    bool isMaxWorkspace_ = false;
 };
 
 class FlashAttentionScoreGradTilingSameABDeterministic : public FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb {

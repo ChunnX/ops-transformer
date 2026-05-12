@@ -16,7 +16,7 @@
 #pragma once
 
 #include "flash_attention_score_grad_tiling_common.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 
 using namespace Ops::Transformer::OpTiling;
 
@@ -188,9 +188,11 @@ protected:
     ge::graphStatus GetBaseShapeInfo();
     ge::graphStatus ProcessTndToBsh();
     bool tnd2bsh = false;
+    ge::graphStatus GetMaxWorkspaceFlag();
 
 private:
     FuzzyBaseInfoParams fBaseParams;
+    bool isMaxWorkspace_ = false;
 };
 
 } // namespace optiling

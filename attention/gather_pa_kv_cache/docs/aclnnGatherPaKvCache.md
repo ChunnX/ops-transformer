@@ -92,7 +92,7 @@ aclnnStatus aclnnGatherPaKvCache(
     </tr></thead>
   <tbody>
     <tr>
-      <td class="tg-0pky">keyCache(aclTensor*)</td>
+      <td class="tg-0pky">keyCache（aclTensor*）</td>
       <td class="tg-0pky">输入</td>
       <td class="tg-0pky">表示在当前层存储的key向量缓存。</td>
       <td class="tg-0pky">当cacheMode为"Norm"时，shape为[num_blocks, block_size, num_heads, head_size_k]，数据格式必须时ND。<br>当cacheMode为"PA_NZ"时，shape为[num_blocks, num_heads * head_size_k // elenum_aligned, block_size, elenum_aligned](b8场景 ：elenum_aligned=32，b16场景为16，b32场景为8。b8表示每个数据元素位宽是8bit，如INT8；b16表示每个数据元素位宽是16bit，如INT16；b32表示每个数据元素位宽是32bit，如INT32)，数据格式必须时FRACTAL_NZ。</td>
@@ -102,7 +102,7 @@ aclnnStatus aclnnGatherPaKvCache(
       <td class="tg-0pky">x</td>
     </tr>
     <tr>
-      <td class="tg-0pky">valueCache(aclTensor*)</td>
+      <td class="tg-0pky">valueCache（aclTensor*）</td>
       <td class="tg-0pky">输入</td>
       <td class="tg-0pky">表示在当前层存储的value向量缓存。</td>
       <td class="tg-0pky">当cacheMode为"Norm"时，shape为[num_blocks, block_size, num_heads, head_size_k]，数据格式必须时ND。<br>当cacheMode为"PA_NZ"时，shape为[num_blocks, num_heads * head_size_k // elenum_aligned, block_size, elenum_aligned](b8场景 ：elenum_aligned=32，b16场景为16，b32场景为8。b8表示每个数据元素位宽是8bit，如INT8；b16表示每个数据元素位宽是16bit，如INT16；b32表示每个数据元素位宽是32bit，如INT32)，数据格式必须时FRACTAL_NZ。</td>
@@ -112,7 +112,7 @@ aclnnStatus aclnnGatherPaKvCache(
       <td class="tg-0pky">x</td>
     </tr>
     <tr>
-      <td class="tg-0pky">blockTables(aclTensor*)</td>
+      <td class="tg-0pky">blockTables（aclTensor*）</td>
       <td class="tg-0pky">输入</td>
       <td class="tg-0pky">表示每个序列对应的物理块索引。</td>
       <td class="tg-0pky">shape为[batch, block_indices]，元素取值范围为[0, num_blocks)。</td>
@@ -122,7 +122,7 @@ aclnnStatus aclnnGatherPaKvCache(
       <td class="tg-0pky">x</td>
     </tr>
     <tr>
-      <td class="tg-0pky">seqLens(aclTensor*)</td>
+      <td class="tg-0pky">seqLens（aclTensor*）</td>
       <td class="tg-0pky">输入</td>
       <td class="tg-0pky">表示每个batch对应的序列长度。</td>
       <td class="tg-0pky">shape为[batch]或[batch + 1]。<br>当isSeqLensCumsum为false时，shape为[batch]。<br>当isSeqLensCumsum为true时，shape为[batch + 1]。<br>元素取值范围为[0, num_blocks)。</td>
@@ -132,7 +132,7 @@ aclnnStatus aclnnGatherPaKvCache(
       <td class="tg-0pky">x</td>
     </tr>
     <tr>
-      <td class="tg-0pky">keyRef(aclTensor*)</td>
+      <td class="tg-0pky">keyRef（aclTensor*）</td>
       <td class="tg-0pky">输入/输出</td>
       <td class="tg-0pky">表示key向量。</td>
       <td class="tg-0pky">当cacheMode为"Norm"时，shape为[num_tokens, num_heads, head_size_k]。<br>当cacheMode为"PA_NZ"时，shape为[num_tokens, num_heads * head_size_k]。</td>
@@ -142,7 +142,7 @@ aclnnStatus aclnnGatherPaKvCache(
       <td class="tg-0pky">x</td>
     </tr>
     <tr>
-      <td class="tg-0pky">valueRef(aclTensor*)</td>
+      <td class="tg-0pky">valueRef（aclTensor*）</td>
       <td class="tg-0pky">输入/输出</td>
       <td class="tg-0pky">表示value向量。</td>
       <td class="tg-0pky">当cacheMode为"Norm"时，shape为[num_tokens, num_heads, head_size_v]。<br>当cacheMode为"PA_NZ"时，shape为[num_tokens, num_heads * head_size_v]。</td>
@@ -152,7 +152,7 @@ aclnnStatus aclnnGatherPaKvCache(
       <td class="tg-0pky">x</td>
     </tr>
     <tr>
-      <td class="tg-0pky">seqOffsetOptional(aclTensor*)</td>
+      <td class="tg-0pky">seqOffsetOptional（aclTensor*）</td>
       <td class="tg-0pky">输入</td>
       <td class="tg-0pky">如果传入，表示在从blockTables获取blockId时存在首偏移（偏移量为`seqOffsetOptional[i] / block_size`，`i`表示某一个batch）；不传入表示不需要偏移。</td>
       <td class="tg-0pky">shape为[batch]。</td>
@@ -162,7 +162,7 @@ aclnnStatus aclnnGatherPaKvCache(
       <td class="tg-0pky">x</td>
     </tr>
     <tr>
-      <td class="tg-0pky">cacheMode(char*)</td>
+      <td class="tg-0pky">cacheMode（char*）</td>
       <td class="tg-0pky">输入</td>
       <td class="tg-0pky">支持["Norm", "PA_NZ"]两种模式，分别表示输入keyCache和keyCache数据格式时ND、FRACTAL_NZ。</td>
       <td class="tg-0pky">-</td>
@@ -172,7 +172,7 @@ aclnnStatus aclnnGatherPaKvCache(
       <td class="tg-0pky">-</td>
     </tr>
     <tr>
-      <td class="tg-0pky">isSeqLensCumsum(bool)</td>
+      <td class="tg-0pky">isSeqLensCumsum（bool）</td>
       <td class="tg-0pky">输入</td>
       <td class="tg-0pky">表示seqLens是否为累加和。</td>
       <td class="tg-0pky">false表示非累加和，例如seqLens为[1, 3, 5, 3, 7]。<br>true表示累加和，例如seqLens为[0, 1, 4, 9, 12, 19]，此时第0个元素必定是0。<br>累加和的`seqlens[i + 1] - seqlens[i]`等于非累加的`seqlens[i]`。</td>
@@ -182,7 +182,7 @@ aclnnStatus aclnnGatherPaKvCache(
       <td class="tg-0pky">-</td>
     </tr>
     <tr>
-      <td class="tg-0lax">workspaceSize(uint64_t*)</td>
+      <td class="tg-0lax">workspaceSize（uint64_t*）</td>
       <td class="tg-0lax">输出</td>
       <td class="tg-0lax">返回需要在Device侧申请的workspace大小。</td>
       <td class="tg-0lax">-</td>
@@ -192,7 +192,7 @@ aclnnStatus aclnnGatherPaKvCache(
       <td class="tg-0lax">-</td>
     </tr>
     <tr>
-      <td class="tg-0lax">executor(aclOpExecutor**)</td>
+      <td class="tg-0lax">executor（aclOpExecutor**）</td>
       <td class="tg-0lax">输出</td>
       <td class="tg-0lax">返回op执行器，包含了算子计算流程。</td>
       <td class="tg-0lax">-</td>
@@ -269,7 +269,7 @@ aclnnStatus aclnnGatherPaKvCache(
     <tr>
       <td>workspaceSize</td>
       <td>输入</td>
-      <td>在Device侧申请的workspace大小，由第一段接口aclnnGatherPaKvCacheGe.tWorkspaceSize获取。</td>
+      <td>在Device侧申请的workspace大小，由第一段接口aclnnGatherPaKvCacheGetWorkspaceSize获取。</td>
     </tr>
     <tr>
       <td>executor</td>

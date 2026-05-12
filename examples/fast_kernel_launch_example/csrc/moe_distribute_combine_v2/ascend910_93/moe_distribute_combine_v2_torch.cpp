@@ -18,12 +18,15 @@
 #include <vector>
 #include <torch/all.h>
 
+#include "acl/acl_prof.h"
 #include "acl/acl.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "kernel_operator.h"
 #include "moe_distribute_combine_v2_entry.h"
 #include "op_kernel/moe_distribute_combine_v2_tiling.h"
 #include "../../moe_distribute_dispatch_v2/ascend910_93/moe_distribute_dispatch_v2_torch.h"
+#include "moe_distribute_combine_v2_torch_validate.h"
+#include "../../common/inc/kernel/mc2_profiling.h"
 
 #include "torch_npu/csrc/core/npu/NPUStream.h"
 #include "torch_npu/csrc/framework/OpCommand.h"
@@ -57,6 +60,7 @@ constexpr uint64_t UB_ALIGN = 32UL;
 constexpr uint32_t DTYPE_SIZE_HALF = 2;
 constexpr uint32_t ALIGNED_LEN = 256U;
 constexpr uint32_t STATE_OFFSET = 32U;
+constexpr uint32_t AI_VECTOR_CORE = 2;
 
 static void calculate_tilingkey(int32_t &tilingKey, at::ScalarType xType, const uint32_t quantMode)
 {
@@ -140,12 +144,22 @@ void MoeDistributeCombineV2_api(aclrtStream stream,
     int32_t tilingKey = 100;
     calculate_tilingkey(tilingKey, expand_x.scalar_type(), comm_quant_mode);
 
+    aclProfTensorInfo tensorInfo;
+    INIT_ACL_PROF_TENSOR_INFO("moe_distribute_combine_v2", "MoeDistributeCombineV2", tilingData.aivNum, AI_VECTOR_CORE,
+        tensorInfo, stream,
+        INPUT(expand_x), INPUT(expert_ids), INPUT(assist_info_for_combine), INPUT(ep_send_counts), INPUT(expert_scales),
+        OUTPUT(x_out));
+    aclprofEventAttributes attrs = {1, sizeof(aclprofEventAttributes::message), 0, &tensorInfo};
+    aclprofRangePushEx(&attrs);
+
     moe_distribute_combine_v2_entry(tilingKey, tilingData.aivNum, stream, (GM_ADDR)expandX_ptr, (GM_ADDR)expertIds_ptr,
     (GM_ADDR)expandIdx_ptr, (GM_ADDR)epSendCount_ptr, (GM_ADDR)residualX_ptr,
     (GM_ADDR)gamma_ptr, (GM_ADDR)expertScales_ptr, (GM_ADDR)xActiveMask_ptr, (GM_ADDR)sharedExpertX_ptr,
     (GM_ADDR)oriX_ptr, (GM_ADDR)constExpertAlpha1_ptr, (GM_ADDR)constExpertAlpha2_ptr,
     (GM_ADDR)constExpertV_ptr, (GM_ADDR)performanceInfo_ptr, (GM_ADDR)XOut_ptr,
     (GM_ADDR)workspace_ptr, (GM_ADDR)mc2Context_ptr, tilingData);
+
+    aclprofRangePop();
 }
 
 void calculate_buffernum(MoeDistributeCombineV2Info &tilingData, const at::Tensor &expand_x, int64_t comm_quant_mode)
@@ -260,6 +274,25 @@ at::Tensor npu_moe_distribute_combine_v2(
     int64_t global_bs, int64_t comm_quant_mode,
     c10::string_view comm_alg, int64_t zero_expert_num, int64_t copy_expert_num, int64_t const_expert_num)
 {
+    MoeDistributeCombineV2ValidateParams validate_params;
+    validate_params.ep_world_size = ep_world_size;
+    validate_params.ep_rank_id = ep_rank_id;
+    validate_params.moe_expert_num = moe_expert_num;
+    validate_params.expert_shard_type = expert_shard_type;
+    validate_params.shared_expert_num = shared_expert_num;
+    validate_params.shared_expert_rank_num = shared_expert_rank_num;
+    validate_params.global_bs = global_bs;
+    validate_params.comm_quant_mode = comm_quant_mode;
+    validate_params.zero_expert_num = zero_expert_num;
+    validate_params.copy_expert_num = copy_expert_num;
+    validate_params.const_expert_num = const_expert_num;
+    
+    TORCH_CHECK(ValidateMoeDistributeCombineV2Input(expand_x, expert_ids, assist_info_for_combine, ep_send_counts,
+                                                       expert_scales, x_active_mask, shared_expert_x,
+                                                       ori_x, const_expert_alpha_1, const_expert_alpha_2,
+                                                       const_expert_v, performance_info, validate_params),
+                "Input validation failed for npu_moe_distribute_combine_v2");
+    
     auto expand_x_size = expand_x.sizes();
     auto expert_ids_size = expert_ids.sizes();
     

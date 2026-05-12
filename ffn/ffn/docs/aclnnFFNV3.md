@@ -83,7 +83,7 @@ aclnnStatus aclnnFFNV3(
 ## aclnnFFNV3GetWorkspaceSize
 
 **说明：** 下述参数说明中涉及到的变量说明  
-  M表示token个数，对应transform中的BS（B：Batch，表示输入样本批量大小。  
+  M表示token个数，对应transform中的BS（B：Batch，表示输入样本批量大小。   
   S：Seq-Length，表示输入样本序列长度）。  
   K1表示第一个matmul的输入通道数，对应transform中的H（Head-Size，表示隐藏层的大小）。  
   N1表示第一个matmul的输出通道数。  
@@ -488,7 +488,7 @@ aclnnStatus aclnnFFNV3(
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
   - 含BFLOAT16数据类型的场景仅支持Atlas 800I A2推理产品。
   - 有专家时，专家数据的总数需要与x的M保持一致。
-  - 激活层为geglu/swiglu/reglu时，仅支持无专家分组时的FLOAT16高性能场景（FLOAT16场景指类型为aclTensor的必选参数数据类型都为FLOAT16的场景），且N1=2\*K2。
+  - 激活层为geglu/swiglu/reglu时，仅支持无专家分组时的FLOAT16高性能场景（FLOAT16场景指类型为aclTensor的必选参数数据类型都为FLOAT16的场景），且N1=2*K2。
   - 激活层为gelu/fastgelu/relu/silu时，支持有专家或无专家分组的FLOAT16高精度及高性能场景、BFLOAT16场景、量化场景及伪量化场景，且N1=K2。
   - 非量化场景不能输入量化参数和伪量化参数，量化场景不能输入伪量化参数，伪量化场景不能输入量化参数。
   - 量化场景参数类型：x为INT8、weight为INT8、biasOptional为INT32、scaleOptional为FLOAT32、offsetOptional为FLOAT32，其余参数类型根据y不同分两种情况：

@@ -26,10 +26,11 @@ enum class LI_LAYOUT : uint32_t {
 
 template <typename Q_T, typename K_T, typename OUT_T, const bool PAGE_ATTENTION = false,
           LI_LAYOUT Q_LAYOUT_T = LI_LAYOUT::BSND, LI_LAYOUT K_LAYOUT_T = LI_LAYOUT::PA_BSND, 
-          typename W_T = half, typename SCALE_T = half, typename... Args>
+          typename W_T = half, typename SCALE_T = half, typename QK_T = int32_t, typename... Args>
 struct QLIType {
     using queryType = Q_T;
     using keyType = K_T;
+    using qkType = QK_T;
     using outputType = OUT_T;
     static constexpr bool pageAttention = PAGE_ATTENTION;
     static constexpr LI_LAYOUT layout = Q_LAYOUT_T;
@@ -102,8 +103,8 @@ struct ConstInfo {
     uint64_t qHeadNum = 0ULL;
     uint64_t kHeadNum;
     uint64_t headDim;
-    uint64_t keyBlockStride;
-    uint64_t keyDequantScaleBlockStride;
+    uint64_t keyStride0;
+    uint64_t keyDequantScaleStride0;
     uint64_t sparseCount;              // topK选取大小
     uint64_t kSeqSize = 0ULL;          // kv最大S长度
     uint64_t qSeqSize = 1ULL;          // q最大S长度

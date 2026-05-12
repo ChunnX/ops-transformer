@@ -20,7 +20,7 @@
 #include "tiling/tiling_api.h"
 #include "graph/utils/type_utils.h"
 #include "register/tilingdata_base.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 #include "op_host/op_tiling/mc2_opversion_manager.h"
 using namespace Ops::Transformer::OpTiling;
 
@@ -89,9 +89,6 @@ struct CombineV2Config {
     bool isMc2Context = false;
 };
 
-ge::graphStatus MoeDistributeCombineV2TilingFuncNew(gert::TilingContext* context, const CombineV2Config& config);
-
-ge::graphStatus MoeDistributeCombineV2TilingFunc(gert::TilingContext* context);
 class MoeDistributeCombineTilingHelper {
 public:
     static ge::graphStatus TilingCheckMoeDistributeCombine(gert::TilingContext *context, const char *nodeName);

@@ -8,12 +8,6 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-function(gen_common_symbol)
-  install(DIRECTORY ${OPS_TRANSFORMER_COMMON_INC_HEADERS}
-    DESTINATION ${COMMON_INC_INSTALL_DIR}
-  )
-endfunction()
-
 # ophost shared
 function(gen_ophost_symbol)
   add_library(${OPHOST_NAME} SHARED
@@ -80,8 +74,18 @@ function(gen_es_transformer_lib_builtin)
     OUTPUT_PATH ${CMAKE_BINARY_DIR}/es_packages
   )
   install(
-    DIRECTORY ${CMAKE_BINARY_DIR}/es_packages
-    DESTINATION ${VERSION_INFO_INSTALL_DIR}
+    FILES ${CMAKE_BINARY_DIR}/es_packages/lib64/libes_transformer.so
+ 	  DESTINATION ${VERSION_INFO_INSTALL_DIR}/lib64
+    OPTIONAL
+  )
+  install(
+ 	  DIRECTORY ${CMAKE_BINARY_DIR}/es_packages/include/es_transformer
+ 	  DESTINATION ${VERSION_INFO_INSTALL_DIR}/include/es
+ 	  OPTIONAL
+ 	)
+  install(
+    DIRECTORY ${CMAKE_BINARY_DIR}/es_packages/whl/
+    DESTINATION ${WHL_INSTALL_DIR}/es_packages/whl
     OPTIONAL
   )
 endfunction()
@@ -94,6 +98,8 @@ function(gen_opgraph_symbol)
 
   add_library(
     ${OPGRAPH_NAME} SHARED
+    $<$<TARGET_EXISTS:${COMMON_NAME}_fallback_obj>:$<TARGET_OBJECTS:${COMMON_NAME}_fallback_obj>>
+    $<$<TARGET_EXISTS:${OPGRAPH_NAME}_fallback_obj>:$<TARGET_OBJECTS:${OPGRAPH_NAME}_fallback_obj>>
     $<$<TARGET_EXISTS:${GRAPH_PLUGIN_NAME}_obj>:$<TARGET_OBJECTS:${GRAPH_PLUGIN_NAME}_obj>>
     $<$<TARGET_EXISTS:${OPGRAPH_NAME}_gentask_obj>:$<TARGET_OBJECTS:${OPGRAPH_NAME}_gentask_obj>>
     $<$<TARGET_EXISTS:opbase_util_objs>:$<TARGET_OBJECTS:opbase_util_objs>>
@@ -116,7 +122,7 @@ function(gen_opgraph_symbol)
             rt2_registry_static
             -Wl,--no-whole-archive
             -Wl,-Bsymbolic
-            # ge_compiler
+            ge_compiler
   )
   target_link_directories(${OPGRAPH_NAME}
     PRIVATE
@@ -130,13 +136,22 @@ function(gen_opgraph_symbol)
     get_target_property(GRAPH_SOURCE ${GRAPH_PLUGIN_NAME}_obj SOURCES)
     if(GRAPH_SOURCE)
       add_dependencies(${GRAPH_PLUGIN_NAME}_obj
+        build_es_math
         build_es_transformer
       )
       target_link_libraries(${GRAPH_PLUGIN_NAME}_obj
         PRIVATE
+        es_math
         es_transformer
       )
     endif()
+    target_link_libraries(${OPGRAPH_NAME}
+      PRIVATE
+      -Wl,--no-as-needed
+      es_math
+      es_transformer
+      -Wl,--as-needed
+    )
   endif()
   set_target_properties(${OPGRAPH_NAME} PROPERTIES OUTPUT_NAME "opgraph_transformer")
   install(TARGETS ${OPGRAPH_NAME}
@@ -265,6 +280,65 @@ function(gen_cust_proto_symbol)
   )
 endfunction()
 
+# Collects AICPU_HOST_OBJ_TARGETS (registered by add_aicpu_host_kernel_modules in obj_func.cmake)
+# and links all host OBJECT files into one SHARED library libtransformer_constant_folding_ops.so.
+function(gen_aicpu_const_symbol)
+  get_property(AICPU_HOST_OBJ_TARGETS GLOBAL PROPERTY AICPU_HOST_OBJ_TARGETS)
+  message(STATUS "All host targets: ${AICPU_HOST_OBJ_TARGETS}")
+
+  if(NOT DEFINED AICPU_HOST_OBJ_TARGETS OR "${AICPU_HOST_OBJ_TARGETS}" STREQUAL "")
+    message(STATUS "No builtin host aicpu targets found, skipping.")
+    return()
+  endif()
+
+  set(CONST_SO_OUTPUT ${CMAKE_BINARY_DIR}/libtransformer_constant_folding_ops.so)
+
+  set(ALL_OBJECTS "")
+  foreach(tgt IN LISTS AICPU_HOST_OBJ_TARGETS)
+    list(APPEND ALL_OBJECTS $<TARGET_OBJECTS:${tgt}>)
+  endforeach()
+
+  message(STATUS "Linking libtransformer_constant_folding_ops.so with host compiler")
+  message(STATUS "Objects: ${ALL_OBJECTS}")
+  message(STATUS "Output: ${CONST_SO_OUTPUT}")
+
+  set(AICPU_HOST_CONST_LIBS
+    -lc_sec
+    -lgraph
+    -lexe_graph
+    -lregister
+    -lpthread
+    -ldl
+  )
+
+  add_custom_command(
+    OUTPUT ${CONST_SO_OUTPUT}
+    COMMAND ${CMAKE_CXX_COMPILER} -shared ${ALL_OBJECTS}
+      -Wl,--whole-archive
+          ${ASCEND_DIR}/lib64/libaicpu_context_host.a
+          ${ASCEND_DIR}/lib64/libaicpu_nodedef_host.a
+          ${ASCEND_DIR}/lib64/libhost_ascend_protobuf.a
+      -Wl,--no-whole-archive
+      -Wl,-Bsymbolic
+      -Wl,--exclude-libs=libhost_ascend_protobuf.a
+      -Wl,-z,now
+      -s
+      -L${ASCEND_DIR}/lib64
+      ${AICPU_HOST_CONST_LIBS}
+      -o ${CONST_SO_OUTPUT}
+    DEPENDS ${AICPU_HOST_OBJ_TARGETS}
+    COMMENT "Linking libtransformer_constant_folding_ops.so using host compiler"
+    COMMAND_EXPAND_LISTS
+  )
+
+  add_custom_target(transformer_constant_folding_ops_builtin ALL DEPENDS ${CONST_SO_OUTPUT})
+  install(
+    FILES ${CONST_SO_OUTPUT}
+    DESTINATION ${AICPU_HOST_KERNEL_IMPL}
+    OPTIONAL
+  )
+endfunction()
+
 function(gen_cust_aicpu_json_symbol)
   get_property(ALL_AICPU_JSON_FILES GLOBAL PROPERTY AICPU_JSON_FILES)
   if(NOT ALL_AICPU_JSON_FILES)
@@ -369,8 +443,6 @@ function(gen_onnx_plugin_symbol)
 endfunction()
 
 function(gen_norm_symbol)
-  gen_common_symbol()
-
   if (ENABLE_OPS_HOST)
     gen_ophost_symbol()
     gen_opapi_symbol()
@@ -379,6 +451,7 @@ function(gen_norm_symbol)
 
   gen_opgraph_symbol()
   gen_onnx_plugin_symbol()
+  gen_aicpu_const_symbol()
 
 endfunction()
 

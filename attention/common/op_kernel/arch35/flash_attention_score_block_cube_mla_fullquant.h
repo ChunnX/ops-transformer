@@ -140,6 +140,7 @@ public:
     static constexpr bool isMlaFullQuant = (isFp8 || isInt8) && hasRope;
     static constexpr bool useDn = false;
     static constexpr bool useNz = false;
+    static constexpr bool splitD = (uint16_t)dVTemplateType > (uint16_t)DTemplateType::Aligned256;
     using ROPE_T = std::conditional_t<isMlaFullQuant, bfloat16_t, INPUT_T>;
     using MLA_FULLQUANT_MM2_T = std::conditional_t<isMlaFullQuant && isInt8, int32_t, T>;
     static constexpr TPosition bmm2OutPos = GetC2Position(dVTemplateType,
@@ -964,6 +965,7 @@ public:
     static constexpr bool useNz = FABlockCubeMlaFullquant<TEMPLATE_ARGS>::useNz;
     static constexpr TPosition bmm2OutPos = FABlockCubeMlaFullquant<TEMPLATE_ARGS>::bmm2OutPos;
     static constexpr bool bmm2Write2Ub = FABlockCubeMlaFullquant<TEMPLATE_ARGS>::bmm2Write2Ub;
+    static constexpr bool splitD = FABlockCubeMlaFullquant<TEMPLATE_ARGS>::splitD;
     __aicore__ inline FABlockCubeMlaFullquantDummy() {};
     __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> *l1BufferManagerPtr,
         __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *blockTable, 

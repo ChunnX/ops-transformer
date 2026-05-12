@@ -15,14 +15,14 @@
 #ifndef OPS_BUILT_IN_OP_TILING_RUNTIME_MOE_FINALIZE_ROUTING_V2_GRAD_TILING_H
 #define OPS_BUILT_IN_OP_TILING_RUNTIME_MOE_FINALIZE_ROUTING_V2_GRAD_TILING_H
 
-#include "log/log.h" 
-#include "register/op_impl_registry.h" 
-#include "register/tilingdata_base.h" 
-#include "tiling_base/tiling_base.h" 
-#include "tiling_base/tiling_templates_registry.h" 
-#include "util/math_util.h" 
+#include "log/log.h"
+#include "register/op_impl_registry.h"
+#include "register/tilingdata_base.h"
+#include "op_host/tiling_base.h"
+#include "op_host/tiling_templates_registry.h"
+#include "util/math_util.h"
 #include "op_common/op_host/util/platform_util.h"
-#include "tiling_base/tiling_util.h"
+#include "op_host/tiling_util.h"
 
 namespace optiling {
 // 基础tiling数据，为保证兼容性，延用旧tiling
@@ -92,8 +92,8 @@ REGISTER_TILING_DATA_CLASS(MoeFinalizeRoutingV2Grad_20012, MoeFinalizeRoutingV2G
 REGISTER_TILING_DATA_CLASS(MoeFinalizeRoutingV2Grad_20022, MoeFinalizeRoutingV2GradSplitHTilingData);
 
 struct MoeFinalizeRoutingV2GradCompileInfo {
-    int64_t totalCoreNum = 0;
-    int64_t totalUbSize = 0;
+    int64_t aivNum = 0;
+    int64_t ubSize = 0;
 };
 
 constexpr int64_t BUFFER_NUM_WITH_BIAS = 4;    // gradY + expandedX + gradExpandedX + bias

@@ -57,6 +57,7 @@ private:
     ge::graphStatus CheckPACacheShape(const FiaTilingInfo &fiaInfo, const gert::Shape tempShape,
         const std::string& inputName);
     ge::graphStatus CheckFeatureQueryS(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckFeatureInputLayoutForAntiquant(const FiaTilingInfo &fiaInfo);
 };
 
 } // namespace optiling

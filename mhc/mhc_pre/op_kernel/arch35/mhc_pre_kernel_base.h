@@ -40,7 +40,7 @@ struct InitParams {
     GM_ADDR h_pre;
     GM_ADDR workspace;
     TPipe *tPipeIn;
-    MhcPreTilingData *tilingData;
+    const MhcPreTilingData *tilingData;
 };
 
 #ifndef MHC_PRE_COMMON_DEFINED

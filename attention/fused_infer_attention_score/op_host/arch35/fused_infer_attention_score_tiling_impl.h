@@ -32,13 +32,13 @@ struct FiaTilingKeyInfo {
     uint64_t quantMode = 31;
     bool hasAttenMask = false;
     bool hasRope = false;
-    bool isPa = false;
+    // bool isPa = false;
+    uint64_t KvLayoutType = 0;
     bool isFd = false;
     bool emptyTensor = false;
-    uint64_t maskMode = 0;
-    uint64_t matmulMode = 0;
     bool enableKvPrefix = false;
     bool enableS1OutSplit = false;
+    bool isReconstructTemp = false;
 };
 
 struct FiaPlatFormInfo {
@@ -80,8 +80,6 @@ protected:
     void UpdateTilingKeyPseMode(const FiaTilingInfo &fiaInfo);
     void UpdateTilingKeyQuantMode(const FiaTilingInfo &fiaInfo);
     void UpdateTilingKeyHasRope(const FiaTilingInfo &fiaInfo);
-    void UpdateTilingKeyMaskMode(const FiaTilingInfo &fiaInfo);
-    void UpdateTilingKeyMatmulMode(const FiaTilingInfo &fiaInfo);
     ge::graphStatus UpdateTilingKeyInfo(const FiaTilingInfo &fiaInfo);
     ge::graphStatus SetWorkspaceNormal(const FiaTilingInfo &fiaInfo, int64_t &curWorkspaceSize);
     ge::graphStatus SetWorkspaceAntiQuant(const FiaTilingInfo &fiaInfo, int64_t &workspaceSize_);
@@ -103,8 +101,7 @@ protected:
     int64_t GetCutBlockNums(int64_t blockSeqLengthKV, int64_t blockSeqLength, int64_t sInner, int64_t sOuter,
                             int64_t token);
     int64_t GetCalcBlockNumsOneHead(const FiaTilingInfo &fiaInfo, int64_t actualSeqLength, int64_t actualSeqLengthKV,
-                                    uint32_t sOuterSize, uint32_t sInnerSize, int64_t preTokensLeftUp,
-                                    int64_t nextTokensLeftUp);
+                                    uint32_t sOuterSize, uint32_t sInnerSize);
     int64_t GetSInnerBlockNums(int64_t sInnerIndexStart, int64_t sInnerIndexEnd, int64_t innerBlockNums);
     void ComputeSplitNBSeq(const FiaTilingInfo &fiaInfo, const size_t tilingElementArrayLen, uint32_t sOuterSize,
                            uint32_t sInnerSize, double coreWeightTarget, uint32_t &curCore);
@@ -143,7 +140,7 @@ protected:
     void PrintAllTilingData(const FiaTilingInfo &fiaInfo);
 
     PromptFlashAttentionTilingDataV2 pfaTilingData_;
-    IncreFlashAttentionTilingData ifaTilingData_;
+    IncreFlashAttentionTilingDataRegbase ifaTilingData_;
     FlashAttentionScoreSimplifiedTilingData faRunTilingAdapter_;
     FiaTilingKeyInfo tilingKeyInfo_;
     FiaPlatFormInfo platformInfo_;
@@ -170,6 +167,7 @@ protected:
     bool isIFAFlag_ = false;
     bool needInit_ = false;
     bool enableS1OutSplit = false;
+    bool isRowInvalid_ = false;
 };
 
 }  // namespace optiling

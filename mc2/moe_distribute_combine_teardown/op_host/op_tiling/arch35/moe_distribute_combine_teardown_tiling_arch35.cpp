@@ -15,6 +15,8 @@
 
 #include "mc2_log.h"
 #include "moe_distribute_combine_teardown_tiling_arch35.h"
+#include "register/op_impl_registry.h"
+#include "op_host/tiling_templates_registry.h"
 namespace {
 constexpr uint32_t ATTR_GROUP_EP_INDEX = 0;
 constexpr uint32_t ATTR_EP_WORLD_SIZE_INDEX = 1;
@@ -59,6 +61,8 @@ struct Mc2CcTilingInner {
 } // namespace
 
 namespace MC2Tiling {
+
+REGISTER_OPS_TILING_TEMPLATE(MoeDistributeCombineTeardown, MoeDistributeCombineTeardownTilingA5, 0);
 bool MoeDistributeCombineTeardownTilingA5::IsCapable()
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
@@ -151,13 +155,11 @@ ge::graphStatus MoeDistributeCombineTeardownTilingA5::SetHcommCfg()
     uint8_t aivEngineValue = mc2tiling::AIV_ENGINE;
 
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupEp_, opType, algConfigAllToAllStr);
-    OP_TILING_CHECK(mc2CcTilingConfig.SetCommEngine(aivEngineValue) != 0,
-                    OP_LOGE(nodeName_, "mc2InitTiling SetCommEngine fail."),
-                    return ge::GRAPH_FAILED); // AIV_UB-MEM or AIV_URMA
+    mc2CcTilingConfig.SetCommEngine(aivEngineValue); // AIV_UB-MEM or AIV_URMA
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData_->mc2InitTiling) != 0,
-                    OP_LOGE(nodeName_, "mc2InitTiling compute fail."), return ge::GRAPH_FAILED);
+            OP_LOGE(nodeName_, "mc2CcTilingConfig mc2InitTiling GetTiling failed"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData_->mc2CcTiling) != 0,
-                    OP_LOGE(nodeName_, "mc2CcTiling compute fail."), return ge::GRAPH_FAILED);
+            OP_LOGE(nodeName_, "mc2CcTilingConfig mc2CcTiling1 GetTiling failed"), return ge::GRAPH_FAILED);
     reinterpret_cast<Mc2CcTilingInner *>(&tilingData_->mc2CcTiling)->protocol = 1; // 0: UB-MEM, 1: URMA
 
     return ge::GRAPH_SUCCESS;

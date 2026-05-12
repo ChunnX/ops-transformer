@@ -213,14 +213,16 @@ TEST_F(AllGatherMatmulV2InferDTypeTest, YDtypeEqualX1DtypeFp16)
     ge::DataType x1Type = ge::DT_FLOAT16;
 
     auto contextHolder = gert::InferDataTypeContextFaker()
-        .NodeIoNum(1, 2)
-        .InputDataTypes({&x1Type})
-        .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
-        .Build();
+                             .NodeIoNum(1, 2)
+                             .InputDataTypes({&x1Type})
+                             .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .Build();
 
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
-    auto inferDataTypeFunc = spaceRegistry->GetOpImpl("AllGatherMatmulV2")->infer_datatype;
+    auto opImpl = spaceRegistry->GetOpImpl("AllGatherMatmulV2");
+    ASSERT_NE(opImpl, nullptr);
+    auto inferDataTypeFunc = opImpl->infer_datatype;
     ASSERT_EQ(inferDataTypeFunc(contextHolder.GetContext<gert::InferDataTypeContext>()), ge::GRAPH_SUCCESS);
     EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(0), x1Type);
     EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(1), x1Type);
@@ -231,14 +233,16 @@ TEST_F(AllGatherMatmulV2InferDTypeTest, YDtypeEqualX1DtypeBf16)
     ge::DataType x1Type = ge::DT_BF16;
 
     auto contextHolder = gert::InferDataTypeContextFaker()
-        .NodeIoNum(1, 2)
-        .InputDataTypes({&x1Type})
-        .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
-        .Build();
+                             .NodeIoNum(1, 2)
+                             .InputDataTypes({&x1Type})
+                             .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .Build();
 
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
-    auto inferDataTypeFunc = spaceRegistry->GetOpImpl("AllGatherMatmulV2")->infer_datatype;
+    auto opImpl = spaceRegistry->GetOpImpl("AllGatherMatmulV2");
+    ASSERT_NE(opImpl, nullptr);
+    auto inferDataTypeFunc = opImpl->infer_datatype;
     ASSERT_EQ(inferDataTypeFunc(contextHolder.GetContext<gert::InferDataTypeContext>()), ge::GRAPH_SUCCESS);
     EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(0), x1Type);
     EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(1), x1Type);
@@ -249,25 +253,147 @@ TEST_F(AllGatherMatmulV2InferDTypeTest, AttrYDtype)
     ge::DataType x1Type = ge::DT_FLOAT8_E5M2;
     ge::DataType attrYDtype = ge::DT_FLOAT;
 
-    auto contextHolder = gert::InferDataTypeContextFaker()
-        .NodeIoNum(1, 2)
-        .InputDataTypes({&x1Type})
-        .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeAttrs({
-            {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclCom")},
-            {"is_trans_a", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"gather_index", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"rank_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"is_gather_out", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
-            {"is_amax_out", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int>(attrYDtype))}
-        })
-        .Build();
+    auto contextHolder =
+        gert::InferDataTypeContextFaker()
+            .NodeIoNum(1, 2)
+            .InputDataTypes({&x1Type})
+            .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeAttrs({{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclCom")},
+                        {"is_trans_a", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                        {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                        {"gather_index", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"rank_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"is_gather_out", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+                        {"is_amax_out", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                        {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int>(attrYDtype))}})
+            .Build();
+
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    auto inferDataTypeFunc = spaceRegistry->GetOpImpl("AllGatherMatmulV2")->infer_datatype;
+    ASSERT_EQ(inferDataTypeFunc(contextHolder.GetContext<gert::InferDataTypeContext>()), ge::GRAPH_SUCCESS);
+    EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(0), attrYDtype);
+    EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(1), x1Type);
+}
+
+TEST_F(AllGatherMatmulV2InferShapeTest, AmaxOutTrue)
+{
+    gert::StorageShape x1Shape = {{8192, 12288}, {}};
+    gert::StorageShape x2Shape = {{12288, 3904}, {}};
+
+    gert::InfershapeContextPara infershapeContextPara(
+        "AllGatherMatmulV2", {{x1Shape, ge::DT_FLOAT16, ge::FORMAT_ND}, {x2Shape, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{}, ge::DT_FLOAT16, ge::FORMAT_ND}, {{}, ge::DT_FLOAT16, ge::FORMAT_ND}, {{}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclCom")},
+         {"is_trans_a", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"gather_index", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"rank_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"is_gather_out", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"is_amax_out", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+         {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int>(ge::DT_FLOAT))},
+         {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}});
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+
+    std::vector<std::vector<int64_t>> expectOutputShape = {{65536, 3904}, {0}, {1}};
+    Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectOutputShape);
+}
+
+TEST_F(AllGatherMatmulV2InferShapeTest, AmaxOutTrueFP8)
+{
+    gert::StorageShape x1Shape = {{8192, 12288}, {}};
+    gert::StorageShape x2Shape = {{12288, 3904}, {}};
+    gert::StorageShape x1ScaleShape = {{1}, {}};
+    gert::StorageShape x2ScaleShape = {{1}, {}};
+
+    gert::InfershapeContextPara infershapeContextPara(
+        "AllGatherMatmulV2",
+        {
+            {x1Shape, ge::DT_FLOAT8_E5M2, ge::FORMAT_ND},
+            {x2Shape, ge::DT_FLOAT8_E5M2, ge::FORMAT_ND},
+            {{}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{x1ScaleShape}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{x2ScaleShape}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {{{}, ge::DT_FLOAT16, ge::FORMAT_ND}, {{}, ge::DT_FLOAT16, ge::FORMAT_ND}, {{}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclCom")},
+         {"is_trans_a", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"gather_index", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"rank_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"is_gather_out", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+         {"is_amax_out", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+         {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int>(ge::DT_FLOAT))},
+         {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aicpu")}});
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+
+    std::vector<std::vector<int64_t>> expectOutputShape = {{65536, 3904}, {65536, 12288}, {1}};
+    Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectOutputShape);
+}
+
+TEST_F(AllGatherMatmulV2InferDTypeTest, FP8E4M3FN)
+{
+    ge::DataType x1Type = ge::DT_FLOAT8_E4M3FN;
+    ge::DataType attrYDtype = ge::DT_FLOAT16;
+
+    auto contextHolder =
+        gert::InferDataTypeContextFaker()
+            .NodeIoNum(1, 2)
+            .InputDataTypes({&x1Type})
+            .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeAttrs({{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclCom")},
+                        {"is_trans_a", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                        {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                        {"gather_index", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"rank_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"is_gather_out", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+                        {"is_amax_out", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                        {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int>(attrYDtype))}})
+            .Build();
+
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    auto inferDataTypeFunc = spaceRegistry->GetOpImpl("AllGatherMatmulV2")->infer_datatype;
+    ASSERT_EQ(inferDataTypeFunc(contextHolder.GetContext<gert::InferDataTypeContext>()), ge::GRAPH_SUCCESS);
+    EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(0), attrYDtype);
+    EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(1), x1Type);
+}
+
+TEST_F(AllGatherMatmulV2InferDTypeTest, HIFLOAT8)
+{
+    ge::DataType x1Type = ge::DT_HIFLOAT8;
+    ge::DataType attrYDtype = ge::DT_BF16;
+
+    auto contextHolder =
+        gert::InferDataTypeContextFaker()
+            .NodeIoNum(1, 2)
+            .InputDataTypes({&x1Type})
+            .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeAttrs({{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclCom")},
+                        {"is_trans_a", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                        {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                        {"gather_index", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"rank_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                        {"is_gather_out", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+                        {"is_amax_out", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                        {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int>(attrYDtype))}})
+            .Build();
 
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     auto inferDataTypeFunc = spaceRegistry->GetOpImpl("AllGatherMatmulV2")->infer_datatype;

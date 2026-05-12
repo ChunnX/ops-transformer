@@ -280,6 +280,47 @@ aclnnStatus aclnnQuantFlashAttentionScoreGradGetWorkspaceSize(
 aclnnStatus aclnnQuantFlashAttentionScoreGrad(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                               aclrtStream stream);
 
+__attribute__((visibility("default"))) aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5GetMaxWorkspaceSize(
+    const aclTensor *query,
+    const aclTensor *queryRope,
+    const aclTensor *keyIn,
+    const aclTensor *keyInRope,
+    const aclTensor *value,
+    const aclTensor *dy,
+    const aclTensor *pseShiftOptional,
+    const aclTensor *dropMaskOptional,
+    const aclTensor *paddingMaskOptional,
+    const aclTensor *attenMaskOptional,
+    const aclTensor *softmaxMaxOptional,
+    const aclTensor *softmaxSumOptional,
+    const aclTensor *softmaxInOptional,
+    const aclTensor *attentionInOptional,
+    const aclTensor *sinkInOptional,
+    const aclIntArray *prefixOptional,
+    const aclIntArray *actualSeqQLenOptional,
+    const aclIntArray *actualSeqKvLenOptional,
+    const aclIntArray *qStartIdxOptional,
+    const aclIntArray *kvStartIdxOptional,
+    double scaleValue,
+    double keepProb, 
+    int64_t preTokens, 
+    int64_t nextTokens, 
+    int64_t headNum,
+    char *inputLayout, 
+    int64_t innerPrecise, 
+    int64_t sparseMode, 
+    int64_t pseType,
+    char *softmaxInLayout, 
+    const aclTensor *dqOut, 
+    const aclTensor *dqRopeOut, 
+    const aclTensor *dkOut, 
+    const aclTensor *dkRopeOut, 
+    const aclTensor *dvOut, 
+    const aclTensor *dpseOut,
+    const aclTensor *dsinkOut, 
+    uint64_t *workspaceSize,
+    aclOpExecutor **executor);
+
 #ifdef __cplusplus
 }
 #endif

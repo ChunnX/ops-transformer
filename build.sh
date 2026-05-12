@@ -24,7 +24,7 @@ USER_ID=$(id -u)
 PARENT_JOB="false"
 HOST_TILING="false"
 CHECK_COMPATIBLE="true"
-ASAN="true"
+ASAN="false"
 UBSAN="false"
 COV="false"
 CLANG="false"
@@ -105,6 +105,7 @@ function help_info() {
                 echo "    --cann_3rd_lib_path=<PATH>"
                 echo "                           Set ascend third_party package install path, default ./third_party"
                 echo "    --oom                  Build with oom mode on the kernel side, with options: '-g --cce-enable-oom'"
+                echo "    --asan                 Enable ASAN (Address Sanitizer) on the host side"
                 echo "    --kernel_template_input=args0,args1"
                 echo "                           Specify kernel template input arguments (comma-separated for multiple)"
                 echo "    --bisheng_flags        Specify bisheng compiler flags (comma-separated for multiple)"
@@ -124,7 +125,6 @@ function help_info() {
                 echo "    --noexec               Only compile ut, do not execute"
                 echo "    --cov                  Enable code coverage for unit tests"
                 echo "    --ops=op1,op2,...      Compile specified operators (comma-separated for multiple)"
-                echo "    --disable_asan         Disable ASAN (Address Sanitizer)"
                 echo "    --soc=soc_version      Run unit tests for specified Ascend SoC"
                 echo "    --valgrind             Run unit tests with valgrind (disables ASAN and noexec)"
                 echo "    --ophost_test          Build and run ophost unit tests"
@@ -224,7 +224,6 @@ function help_info() {
                 echo "    --noexec               Only compile ut, do not execute"
                 echo "    --cov                  Enable code coverage for unit tests"
                 echo "    --ops=op1,op2,...      Compile specified operators (comma-separated for multiple)"
-                echo "    --disable_asan         Disable ASAN (Address Sanitizer)"
                 echo "    --soc=soc_version      Run unit tests for specified Ascend SoC"
                 echo "    --valgrind             Run unit tests with valgrind (disables ASAN and noexec)"
                 echo $dotted_line
@@ -239,7 +238,6 @@ function help_info() {
                 echo "    --noexec               Only compile ut, do not execute"
                 echo "    --cov                  Enable code coverage for unit tests"
                 echo "    --ops=op1,op2,...      Compile specified operators (comma-separated for multiple)"
-                echo "    --disable_asan         Disable ASAN (Address Sanitizer)"
                 echo "    --soc=soc_version      Run unit tests for specified Ascend SoC"
                 echo "    --valgrind             Run unit tests with valgrind (disables ASAN and noexec)"
                 echo $dotted_line
@@ -254,7 +252,6 @@ function help_info() {
                 echo "    --noexec               Only compile ut, do not execute"
                 echo "    --cov                  Enable code coverage for unit tests"
                 echo "    --ops=op1,op2,...      Compile specified operators (comma-separated for multiple)"
-                echo "    --disable_asan         Disable ASAN (Address Sanitizer)"
                 echo "    --soc=soc_version      Run unit tests for specified Ascend SoC"
                 echo "    --valgrind             Run unit tests with valgrind (disables ASAN and noexec)"
                 echo $dotted_line
@@ -284,6 +281,15 @@ function help_info() {
                 echo "    bash build.sh --genop=example/add"
                 return
                 ;;
+            genop_aicpu)
+                echo "Gen Op Directory Options:"
+                echo $dotted_line
+                echo "    --genop_aicpu=op_class/op_name      Create the initial directory for op_name undef op_class"
+                echo $dotted_line
+                echo "Examples:"
+                echo "    bash build.sh --genop_aicpu=examples/add_example"
+                return
+                ;;
         esac
     fi
     echo "build script for ops-transformer repository"
@@ -311,10 +317,11 @@ function help_info() {
     echo "    --cov When building uTest locally, count the coverage."
     echo "    --noexec Only compile ut, do not execute the compiled executable file"
     echo "    --make_clean Clean build artifacts"
-    echo "    --disable_asan Disable ASAN (Address Sanitizer)"
+    echo "    --asan Enable asan on the host side"
     echo "    --valgrind run ut with valgrind. This option will disable asan, noexec and run utest by valgrind"
     echo "    --ops Compile specified operator, use snake name, like: --ops=add,add_lora, use ',' to separate different operator"
-    echo "    --soc Compile binary with specified Ascend SoC, like: --soc=ascend310p,ascend910b, use ',' to separate different SoC"
+    echo "    --soc Compile binary with specified Ascend SoC, like: --soc=ascend910b,ascend910_93,ascend950 use ',' to separate different SoC"
+    echo "    --soc supported parameters must only in [ascend910b ascend910_93 ascend950 ascend310p kirinx90 kirin9030 mc62cm12a], A3(--soc=ascedn910_93)"
     echo "    --vendor_name Specify the custom operator package vendor name, like: --vendor_name=customize, default to custom"
     echo "    --opgraph build graph_plugin_transformer.so"
     echo "    --onnxplugin build op_transformer_onnx_plugin.so"
@@ -331,6 +338,7 @@ function help_info() {
     echo "    --run_example Compile and execute the test_aclnn_xxx.cpp/test_geir_xxx.cpp"
     echo "    --simulator    Enable simulator mode for run_example (requires --soc parameter)"
     echo "    --genop Create the initial directory for op"
+    echo "    --genop_aicpu Create the initial directory for AI CPU op"
     echo "to be continued ..."
 }
 
@@ -716,7 +724,6 @@ build_static_lib() {
     echo $dotted_line
     echo "Start to build static lib."
 
-    git submodule init && git submodule update
     cd "${BUILD_PATH}" && cmake ${CUSTOM_OPTION} .. -DENABLE_STATIC=ON -DASCEND_COMPUTE_UNIT=${unit}
     local all_targets=$(cmake --build . --target help)
     rm -fr ${BUILD_PATH}/bin_tmp
@@ -838,38 +845,38 @@ function process_soc_input(){
     fi
 }
 
-  process_genop() {
+process_genop() {
     local opt_name=$1
     local genop_value=$2
 
     if [[ "$opt_name" == "genop" ]]; then
-      ENABLE_GENOP=TRUE
+        ENABLE_GENOP=TRUE
     elif [[ "$opt_name" == "genop_aicpu" ]]; then
-      ENABLE_GENOP_AICPU=TRUE
+        ENABLE_GENOP_AICPU=TRUE
     else
-      usage "genop"
-      exit 1
+        usage "genop"
+        exit 1
     fi
 
     if [[ "$genop_value" != *"/"* ]] || [[ "$genop_value" == *"/" ]]; then
-      usage "$opt_name"
-      exit 1
+        usage "$opt_name"
+        exit 1
     fi
 
     GENOP_NAME=${genop_value##*/}
     local remaining=${genop_value%/*}
 
     if [[ "$remaining" != *"/"* ]]; then
-      GENOP_TYPE=$remaining
-      GENOP_BASE=${BASE_PATH}
+        GENOP_TYPE=$remaining
+        GENOP_BASE=${BASE_PATH}
     else
-      GENOP_TYPE=${remaining##*/}
-      GENOP_BASE=${remaining%/*}
-      if [[ ! "$GENOP_BASE" =~ ^/ && ! "$GENOP_BASE" =~ ^[a-zA-Z]: ]]; then
+        GENOP_TYPE=${remaining##*/}
+        GENOP_BASE=${remaining%/*}
+        if [[ ! "$GENOP_BASE" =~ ^/ && ! "$GENOP_BASE" =~ ^[a-zA-Z]: ]]; then
         GENOP_BASE="${BASE_PATH}/${GENOP_BASE}"
-      fi
+        fi
     fi
-  }
+}
 
 gen_op() {
   if [[ -z "$GENOP_NAME" ]] || [[ -z "$GENOP_TYPE" ]]; then
@@ -891,6 +898,32 @@ gen_op() {
   if [ -n "${python_cmd}" ]; then
     ${python_cmd} "${BASE_PATH}/scripts/opgen/opgen_standalone.py" -t ${GENOP_TYPE} -n ${GENOP_NAME} -p ${GENOP_BASE}
     return $?
+  fi
+}
+
+gen_aicpu_op() {
+  if [[ -z "$GENOP_NAME" ]] || [[ -z "$GENOP_TYPE" ]]; then
+    echo "Error: op_class or op_name is not set."
+    usage "genop_aicpu"
+  fi
+
+  echo $dotted_line
+  echo "Start to create the AI CPU initial directory for ${GENOP_NAME} under ${GENOP_TYPE}"
+
+  # 检查 python 或 python3 是否存在
+  local python_cmd=""
+  if command -v python3 &>/dev/null; then
+    python_cmd="python3"
+  elif command -v python &>/dev/null; then
+    python_cmd="python"
+  fi
+
+  if [ -n "${python_cmd}" ]; then
+    ${python_cmd} "${BASE_PATH}/scripts/opgen/opgen_standalone.py" -t ${GENOP_TYPE} -n ${GENOP_NAME} -p ${GENOP_BASE} -v aicpu
+    echo "Create the AI CPU initial directory for ${GENOP_NAME} under ${GENOP_TYPE} success"
+    return $?
+  else
+    echo "Please install Python to generate op project framework."
   fi
 }
 
@@ -992,11 +1025,7 @@ parse_changed_files() {
     echo "changed files is" $PR_CHANGED_FILES
     echo $dotted_line
     cat $PR_CHANGED_FILES
-    ops_names=$(python3 scripts/ci/parse_changed_ops.py $PR_CHANGED_FILES "$ENABLE_EXPERIMENTAL")
-    if [[ -z $ops_names ]]; then
-            ops_names='fused_infer_attention_score'
-        echo "NO ops changed found,set op $ops_names as default."
-    fi
+    ops_names=$(python3 scripts/ci/parse_changed_ops.py $PR_CHANGED_FILES "$ENABLE_EXPERIMENTAL" "$ASCEND_SOC_UNITS")
 }
 set_example_opt() {
   if [[ -n $1 && $1 != -* ]]; then
@@ -1042,6 +1071,7 @@ for arg in "$@"; do
             --opgraph_test) SHOW_HELP="opgraph_test" ;;
             --run_example) SHOW_HELP="run_example" ;;
             --genop) SHOW_HELP="genop" ;;
+            --genop_aicpu) SHOW_HELP="genop_aicpu" ;;
             esac
         done
       help_info "$SHOW_HELP"
@@ -1219,8 +1249,8 @@ while [[ $# -gt 0 ]]; do
         VERBOSE="true"
         shift
         ;;
-    --disable_asan)
-        ASAN="false"
+    --asan)
+        ASAN="true"
         shift
         ;;
     --valgrind)
@@ -1358,6 +1388,11 @@ while [[ $# -gt 0 ]]; do
         process_genop "genop" "${OPTARG#*=}"
         shift
         ;;
+    --genop_aicpu=*)
+        OPTARG=$1
+        process_genop "genop_aicpu" "${OPTARG#*=}"
+        shift
+        ;;
     --make_clean)
         clean
         clean_build_out
@@ -1405,6 +1440,12 @@ if [ -n "${ascend_compute_unit}" ];then
 fi
 
 if [ -n "${ascend_op_name}" ];then
+    if [[ "${ascend_op_name}" == *"moe_distribute_combine_v2"* ]] && [[ "${ascend_op_name}" != *"moe_distribute_combine_v3"* ]]; then
+        ascend_op_name="${ascend_op_name};moe_distribute_combine_v3"
+    fi
+    if [[ "${ascend_op_name}" == *"moe_distribute_dispatch_v2"* ]] && [[ "${ascend_op_name}" != *"moe_distribute_dispatch_v3"* ]]; then
+        ascend_op_name="${ascend_op_name};moe_distribute_dispatch_v3"
+    fi
     CUSTOM_OPTION="${CUSTOM_OPTION} -DASCEND_OP_NAME=${ascend_op_name}"
     if [[ "${ascend_op_name}" != *"fused_infer_attention_score"* ]] && [[ "${ascend_op_name}" != *"incre_flash_attention"* ]]; then
         CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_TILING_SINK=OFF"
@@ -1482,6 +1523,7 @@ if [ -n "${TEST}" ];then
         CUSTOM_OPTION="${CUSTOM_OPTION} -DCMAKE_OBJCOPY=${CLANG_OBJCOPY}"
     fi
 
+    ASAN="true"
     if [ "${ASAN}" == "true" ];then
         CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_ASAN=TRUE"
     fi
@@ -1495,6 +1537,10 @@ if [ -n "${TEST}" ];then
     fi
 
     BUILD=ops_test_utest
+fi
+
+if [ "${ASAN}" == "true" ];then
+    CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_ASAN=TRUE"
 fi
 
 if [ "${COV}" == "true" ];then
@@ -1599,9 +1645,6 @@ fi
 
 if [ -n "${INPUT_JOB_NUM}" ]; then
     get_cpu_num
-    if [ ${INPUT_JOB_NUM} -gt ${CPU_NUM}  ]; then
-        INPUT_JOB_NUM=${CPU_NUM}
-    fi
     JOB_NUM="-j${INPUT_JOB_NUM}"
 fi
 
@@ -1670,7 +1713,6 @@ build_ut() {
   echo $dotted_line
   echo "Start to build ut"
 
-  git submodule init && git submodule update
   if [ ! -d "${BUILD_DIR}" ]; then
     mkdir -p "${BUILD_DIR}"
   fi
@@ -1730,10 +1772,6 @@ function build_pkg_for_single_soc() {
         CUSTOM_OPTION="${original_option}"
     fi
 }
-
-if [[ "$ENABLE_GENOP" == "TRUE" ]]; then
-    gen_op
-fi
 
 function build_example_for_ci()
 {
@@ -1850,6 +1888,13 @@ function build_pr_ut_exclude_mc2()
     build_ut ${BUILD}
 }
 
+if [[ "$ENABLE_GENOP" == "TRUE" ]]; then
+    gen_op
+fi
+if [[ "$ENABLE_GENOP_AICPU" == "TRUE" ]]; then
+    gen_aicpu_op
+fi
+
 if [[ "$ENABLE_TEST" == "TRUE" ]]; then
     if [[ "$PR_UT_FLAG" == "TRUE" ]]; then
         build_pr_ut_exclude_mc2
@@ -1931,4 +1976,4 @@ else
         build ${BUILD}
     fi
 fi
-} | gawk '{print strftime("[%Y-%m-%d %H:%M:%S]"), $0}'
+} | while IFS= read -r line; do echo "[$(date '+%Y-%m-%d %H:%M:%S')] $line"; done

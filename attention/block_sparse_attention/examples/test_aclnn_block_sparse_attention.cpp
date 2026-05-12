@@ -357,7 +357,7 @@ int main() {
         0,                     // maskType
         scaleValue,            // scaleValue
         0,                     // innerPrecise (1=fp16 softmax)
-        128,                   // blockSize
+        0,                     // blockSize
         2147483647,            // preTokens
         2147483647,            // nextTokens
         0,                     // softmaxLseFlag

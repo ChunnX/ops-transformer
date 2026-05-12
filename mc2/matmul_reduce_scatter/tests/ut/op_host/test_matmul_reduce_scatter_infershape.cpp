@@ -11,6 +11,7 @@
 #include <gtest/gtest.h>
 #include <iostream>
 #include "mc2_infer_shape_case_executor.h"
+#include "infer_datatype_context_faker.h"
 #include "base/registry/op_impl_space_registry_v2.h"
 
 class MatmulReduceScatterInfershape : public testing::Test
@@ -86,4 +87,50 @@ TEST_F(MatmulReduceScatterInfershape, EmptyTensorTest)
     };
 
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues);
+}
+
+TEST_F(MatmulReduceScatterInfershape, InferDataType_Float16)
+{
+    ge::DataType x1Type = ge::DT_FLOAT16;
+    ge::DataType x2Type = ge::DT_FLOAT16;
+    ge::DataType outputType = ge::DT_FLOAT16;
+
+    auto contextHolder = gert::InferDataTypeContextFaker()
+                             .NodeIoNum(2, 1)
+                             .InputDataTypes({&x1Type, &x2Type})
+                             .OutputDataTypes({&outputType})
+                             .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .Build();
+
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    ASSERT_NE(spaceRegistry, nullptr);
+    auto opImpl = spaceRegistry->GetOpImpl("MatmulReduceScatter");
+    ASSERT_NE(opImpl, nullptr);
+    auto inferDataTypeFunc = opImpl->infer_datatype;
+    ASSERT_NE(inferDataTypeFunc, nullptr);
+    ASSERT_EQ(inferDataTypeFunc(contextHolder.GetContext<gert::InferDataTypeContext>()), ge::GRAPH_SUCCESS);
+    EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(0), x1Type);
+}
+
+TEST_F(MatmulReduceScatterInfershape, InferDataType_Bfloat16)
+{
+    ge::DataType x1Type = ge::DT_BF16;
+    ge::DataType x2Type = ge::DT_BF16;
+    ge::DataType outputType = ge::DT_BF16;
+
+    auto contextHolder = gert::InferDataTypeContextFaker()
+                             .NodeIoNum(2, 1)
+                             .InputDataTypes({&x1Type, &x2Type})
+                             .OutputDataTypes({&outputType})
+                             .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .Build();
+
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    ASSERT_NE(spaceRegistry, nullptr);
+    auto opImpl = spaceRegistry->GetOpImpl("MatmulReduceScatter");
+    ASSERT_NE(opImpl, nullptr);
+    auto inferDataTypeFunc = opImpl->infer_datatype;
+    ASSERT_NE(inferDataTypeFunc, nullptr);
+    ASSERT_EQ(inferDataTypeFunc(contextHolder.GetContext<gert::InferDataTypeContext>()), ge::GRAPH_SUCCESS);
+    EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(0), x1Type);
 }

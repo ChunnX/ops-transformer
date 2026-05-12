@@ -14,32 +14,26 @@
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
- 
+#include "aclnnInner_attention_to_ffn.h"
+
 using namespace op;
- 
+
 #ifdef __cplusplus
 extern "C" {
 #endif
- 
+
 enum NnopbaseHcclServerType {
     NNOPBASE_HCCL_SERVER_TYPE_AICPU = 0,
     NNOPBASE_HCCL_SERVER_TYPE_MTE,
     NNOPBASE_HCCL_SERVER_TYPE_END
 };
 
-extern aclnnStatus aclnnInnerAttentionToFFNGetWorkspaceSize(const aclTensor* x, const aclTensor* sessionId, const aclTensor* microBatchId,
-                                                            const aclTensor* layerId, const aclTensor* expertIds, const aclTensor* expertRankTable,
-                                                            const aclTensor* scales, const aclTensor* activeMask, const char* group, int64_t worldSize,
-                                                            const aclIntArray *ffnTokenInfoTableShape, const aclIntArray *ffnTokenDataShape, 
-                                                            const aclIntArray *attnTokenInfoTableShape, int64_t moeExpertNum, int64_t quantMode, int64_t syncFlag, 
-                                                            int64_t ffnStartRankId,  uint64_t* workspaceSize, aclOpExecutor** executor);
-extern aclnnStatus aclnnInnerAttentionToFFN(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
- 
+
 // check nullptr
-static bool CheckNullStatus(const aclTensor* x, const aclTensor* sessionId, const aclTensor* microBatchId,
-                            const aclTensor* layerId, const aclTensor* expertIds, const aclTensor* expertRankTable,
-                            const char* group)
+static bool CheckNullStatus(const aclTensor *x, const aclTensor *sessionId, const aclTensor *microBatchId,
+                            const aclTensor *layerId, const aclTensor *expertIds, const aclTensor *expertRankTable,
+                            const char *group)
 {
     // 检查必选入参出参为非空
     OP_CHECK_NULL(x, return false);
@@ -52,42 +46,44 @@ static bool CheckNullStatus(const aclTensor* x, const aclTensor* sessionId, cons
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Required group name is Empty.");
         return false;
     }
- 
+
     return true;
 }
- 
+
 // 入参校验
-static aclnnStatus CheckParams(const aclTensor* x, const aclTensor* sessionId, const aclTensor* microBatchId,
-                               const aclTensor* layerId, const aclTensor* expertIds, const aclTensor* expertRankTable,
-                               const char* group)
+static aclnnStatus CheckParams(const aclTensor *x, const aclTensor *sessionId, const aclTensor *microBatchId,
+                               const aclTensor *layerId, const aclTensor *expertIds, const aclTensor *expertRankTable,
+                               const char *group)
 {
-    CHECK_RET(CheckNullStatus(x, sessionId, microBatchId, layerId, expertIds, expertRankTable, group), ACLNN_ERR_PARAM_NULLPTR);
- 
+    CHECK_RET(CheckNullStatus(x, sessionId, microBatchId, layerId, expertIds, expertRankTable, group),
+              ACLNN_ERR_PARAM_NULLPTR);
+
     if (strnlen(group, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Required group name exceeds %zu.", HCCL_GROUP_NAME_MAX);
         return ACLNN_ERR_PARAM_INVALID;
     }
- 
+
     return ACLNN_SUCCESS;
 }
- 
-aclnnStatus aclnnAttentionToFFNGetWorkspaceSize(const aclTensor* x, const aclTensor* sessionId, const aclTensor* microBatchId,
-                                                const aclTensor* layerId, const aclTensor* expertIds, const aclTensor* expertRankTable,
-                                                const aclTensor* scalesOptional, const aclTensor* activeMaskOptional, const char* group, int64_t worldSize,
-                                                const aclIntArray *ffnTokenInfoTableShape, const aclIntArray *ffnTokenDataShape,
-                                                const aclIntArray *attnTokenInfoTableShape, int64_t moeExpertNum, int64_t quantMode, 
-                                                int64_t syncFlag, int64_t ffnStartRankId, uint64_t* workspaceSize, aclOpExecutor** executor)
- 
+
+aclnnStatus aclnnAttentionToFFNGetWorkspaceSize(
+    const aclTensor *x, const aclTensor *sessionId, const aclTensor *microBatchId, const aclTensor *layerId,
+    const aclTensor *expertIds, const aclTensor *expertRankTable, const aclTensor *scalesOptional,
+    const aclTensor *activeMaskOptional, const char *group, int64_t worldSize,
+    const aclIntArray *ffnTokenInfoTableShape, const aclIntArray *ffnTokenDataShape,
+    const aclIntArray *attnTokenInfoTableShape, int64_t moeExpertNum, int64_t quantMode, int64_t syncFlag,
+    int64_t ffnStartRankId, uint64_t *workspaceSize, aclOpExecutor **executor)
+
 {
     auto retParam = CheckParams(x, sessionId, microBatchId, layerId, expertIds, expertRankTable, group);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
-    aclnnStatus ret = aclnnInnerAttentionToFFNGetWorkspaceSize(x, sessionId, microBatchId, layerId, expertIds, expertRankTable,
-                                                               scalesOptional, activeMaskOptional, group, worldSize, ffnTokenInfoTableShape,
-                                                               ffnTokenDataShape, attnTokenInfoTableShape, moeExpertNum,
-                                                               quantMode, syncFlag, ffnStartRankId, workspaceSize, executor); 
+    aclnnStatus ret = aclnnInnerAttentionToFFNGetWorkspaceSize(
+        x, sessionId, microBatchId, layerId, expertIds, expertRankTable, scalesOptional, activeMaskOptional,
+        const_cast<char *>(group), worldSize, ffnTokenInfoTableShape, ffnTokenDataShape, attnTokenInfoTableShape,
+        moeExpertNum, quantMode, syncFlag, ffnStartRankId, workspaceSize, executor);
     return ret;
 }
- 
+
 aclnnStatus aclnnAttentionToFFN(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
 {
     if (NnopbaseSetHcclServerType) {
@@ -96,7 +92,7 @@ aclnnStatus aclnnAttentionToFFN(void *workspace, uint64_t workspaceSize, aclOpEx
     aclnnStatus ret = aclnnInnerAttentionToFFN(workspace, workspaceSize, executor, stream);
     return ret;
 }
- 
+
 #ifdef __cplusplus
 }
 #endif

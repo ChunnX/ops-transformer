@@ -46,7 +46,7 @@ void MMAllReduceFitBalanceTiling::EstimateMMCommTime()
         rankDim_, rankTileNum_);
 }
 
-uint64_t MMAllReduceFitBalanceTiling::Align256(uint64_t value)
+uint64_t MMAllReduceFitBalanceTiling::Align256(uint64_t value) const
 {
     return ((value + 255) / 256) * 256; // 255, 256: align to 256
 }

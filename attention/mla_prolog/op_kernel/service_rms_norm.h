@@ -23,7 +23,7 @@
 #include "arch35/vf/vf_rms_norm.h"
 #include "arch35/vf/vf_dynamic_quant.h"
 #else
-#include "arch32/rms_norm.h"
+#include "arch22/rms_norm.h"
 #endif
 
 namespace MlaProlog {
@@ -93,6 +93,8 @@ __aicore__ inline void RmsNormNormal(const LocalTensor<O>& outputLocal, const Gl
         AscendC::PipeBarrier<PIPE_V>();
     }
     LocalTensor<C> rmsnormShareUB = xFp32Local[rmsNormParams.col];
+    SetFlag<HardEvent::MTE3_V>(EVENT_ID1);
+    WaitFlag<HardEvent::MTE3_V>(EVENT_ID1);
 
     if constexpr (std::is_same<C, O>::value) {
         #if __CCE_AICORE__ == 310

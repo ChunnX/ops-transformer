@@ -19,7 +19,7 @@
     相较于[GroupedMatmulV4](../grouped_matmul/docs/aclnnGroupedMatmulV4.md)接口，**此接口变化：**
     - 输入输出参数类型均为aclTensor。
     - 在GroupedMatMul计算结束后增加了InplaceAdd计算。
-    - 仅支持量化场景（1.mx量化；2.T-C量化）。量化方式请参见[量化介绍](../../docs/zh/context/量化介绍.md)。
+    - 仅支持量化场景（1.mx量化；2.T-C量化；3.T-T量化）。量化方式请参见[量化介绍](../../docs/zh/context/量化介绍.md)。
     - 仅支持x1、x2是FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8的输入。
 
 - 计算公式：
@@ -30,8 +30,8 @@
     $$
 
     其中，gsK代表K轴的量化的block size即32，$x1Slice_i$代表$x1_i$第m行长度为gsK的向量，$x2Slice_i$代表$x2_i$第n列长度为gsK的向量，K轴均从$j*gsK$起始切片，j的取值范围[0, kLoops), kLoops=ceil($K_i$ / gsK)，支持最后的切片长度不足gsK。
-    - **T-C量化：**
-    
+    - **T-T/T-C量化：**
+
     $$
      y_i=(x1_i\times x2_i) * scale2_i * scale1_i + y_i
     $$
@@ -39,7 +39,7 @@
 ## 约束说明
 
   - x1和x2的每一维大小在32字节对齐后都应小于int32的最大值2147483647，且内轴大小需小于2097152。
-    - 动态量化（T-C量化）场景支持的输入类型为：
+    - 动态量化（T-T/T-C量化）场景支持的输入类型为：
       - 不为空的参数支持的数据类型组合要满足下表：
 
         | x1       | x2  | scale2 | scale1Optional |yRef     |
@@ -51,7 +51,7 @@
         | 参数 | shape限制 |
         |:---------:| :------ |
         |scale1Optional| 2维tensor或1维tensor，shape为(g, 1)或(g,)|
-        |scale2| 2维tensor，shape为(g, N)|
+        |scale2| pertensor场景：2维tensor或1维tensor，shape为(g, 1)或(g,)；perchannel场景：2维tensor，shape为(g, N)|
 
     - 动态量化（mx量化）场景支持的数据类型为：
       - 数据类型组合要满足下表：

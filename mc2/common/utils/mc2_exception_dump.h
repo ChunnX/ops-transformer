@@ -26,8 +26,14 @@
 #include <sys/stat.h>
 #include <errno.h>
 #include <vector>
+#include "version/runtime_version.h"
+#include "version/metadef_version.h"
 
+// 支持 9.0.0 版本（90000000）, 当版本带着 beta, alpha, rc 时, rts 接口获取到的版本号会在 90000000 基础上减去一个对应的 weight 值
+// 其下限为 9.0.0-alpha, 对应版本号 90000000 - 300 = 89999700
+#define EXCEPTION_DUMP_SUPPORT_VERSION 89999700
 
+#if RUNTIME_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION && METADEF_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
 namespace Mc2Exception {
 
 const std::string OP_NAME = "Mc2Exception";
@@ -226,5 +232,6 @@ inline void Mc2ExceptionImpl(aclrtExceptionInfo *args, void *userdata, const cha
     }
 }
 } // namespace Mc2Exception
+#endif
 
 #endif

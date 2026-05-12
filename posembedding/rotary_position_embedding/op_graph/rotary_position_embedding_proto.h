@@ -21,25 +21,25 @@ namespace ge {
 /**
  * @brief Apply rotary position embedding for a single tensor.
  * @par Inputs:
- * @li x: A 4D tensor which rotary position embedding is applied, format supports ND, and data type must be float16,
- * float or bfloat16.
- * @li cos: A 4D tensor which is "cos" in rotary position embedding, format supports ND, data type must be the same as
- * "x", and shape must be the same as "sin".
- * @li sin: A 4D tensor which is "sin" in rotary position embedding, format supports ND, data type must be the same as	 
- * "x", and shape must be the same as "cos".
+ * @li x: A 3D or 4D tensor which rotary position embedding is applied, format supports ND, and data type must be
+ * float16, float or bfloat16.
+ * @li cos: A 3D or 4D tensor which is "cos" in rotary position embedding, format supports ND, data type must be
+ * the same as "x", and shape must be the same as "sin".
+ * @li sin: A 3D or 4D tensor which is "sin" in rotary position embedding, format supports ND, data type must be
+ * the same as "x", and shape must be the same as "cos".
  * @li rotate: An optional 2D tensor which is the transformation matrix for position transformation of the "x" in rotary
  * position embedding, format supports ND, data type must be the same as "x", both dimensions are the same and equal to
  * the last dimension of "x".
  * @par Outputs:
- * y: A 4D tensor which is the result of rotary position embedding, format supports ND, data type must be the same as
- * "x", and shape must be the same as "x".
+ * y: A 3D or 4D tensor which is the result of rotary position embedding, format supports ND, data type must be
+ * the same as "x", and shape must be the same as "x".
  * @par Attributes:
  * mode: An optional attribute of type int, specifying the mode of rotary position embedding, must be 0-"half",
  * 1-"interleave", 2-"quarter" or 3-"interleave-half". Defaults to 0. Atlas A2 Training Series Product/ Atlas 800I A2
  * Inference Product and Atlas A3 Training Series Product only support 0-"half" and 1-"interleave".
  * @attention Constraints:
- * Let (B, S, N, D) represents the shape of the 4-D input "x". Under this representation, the shape constraints of each
- * parameter can be described as follows:
+ * Let (B, S, N, D) represents the shape of the input "x" (4D) or (T, N, D) for 3D TND layout. Under this
+ * representation, the shape constraints of each parameter can be described as follows:
  * @li The D of "x", "cos", "sin", "rotate" and "y" must be equal. For Ascend 950 AI Processor, D should be less or
  * equal to 1024. For Atlas A2 Training Series Product/ Atlas 800I A2 Inference Product and Atlas A3 Training Series
  * Product, D should be less or equal to 896.

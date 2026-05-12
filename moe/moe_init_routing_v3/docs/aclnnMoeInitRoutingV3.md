@@ -207,17 +207,17 @@ aclnnStatus aclnnMoeInitRoutingV3(
   </thead>
   <tbody>
     <tr>
-      <td>x</td>
+      <td>x（aclTensor）</td>
       <td>输入</td>
       <td>MOE的输入，即token特征输入</td>
-      <td>shape为(NUM_ROWS, H)，quantMode=6时支持输入类型为HIFLOAT8</td>
-      <td>FLOAT16、BFLOAT16、FLOAT32、INT8、HIFLOAT8</td>
+      <td>shape为(NUM_ROWS, H)</td>
+      <td>FLOAT16、BFLOAT16、FLOAT32、INT8、HIFLOAT8、FLOAT4_E2M1、FLOAT8_E4M3FN、FLOAT8_E5M2</td>
       <td>ND</td>
       <td>2</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>expertIdx</td>
+      <td>expertIdx（aclTensor）</td>
       <td>输入</td>
       <td>每一行特征对应的K个处理专家，里面元素专家id不能超过专家数</td>
       <td>shape为(NUM_ROWS, K)</td>
@@ -227,30 +227,31 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>scaleOptional</td>
+      <td>scaleOptional（aclTensor）</td>
       <td>输入</td>
       <td>表示用于计算量化结果的参数</td>
       <td><ul>
         <li>如果不输入表示计算时不使用scale;</li>
-        <li>非量化场景下为可选输入，如果输入则要求为1D的Tensor，shape为(NUM_ROWS,);</li>
+        <li>非量化场景下为可选输入，如果输入则要求为1D的Tensor，shape为(NUM_ROWS,)，类型为FLOAT32。当输入x数据类型为FLOAT4_E2M1、FLOAT8_E4M3FN或FLOAT8_E5M2时，如果输入则要求3D的Tensor，shape为(NUM_ROWS, CeilDiv(H, 64), 2), 类型为FLOAT8_E8M0;</li>
         <li>静态量化场景必须输入，输入要求为1D的Tensor，shape为[1, ]；</li>
         <li>动态量化场景下为可选输入，如果输入则要求为2D的Tensor，shape为(expertEnd-expertStart, H)；</li>
         <li>MXFP8量化场景下（quantMode为2、3）不输入。</li>
         <li>HIF8直转和HIF8 PERTOKEN量化场景下（quantMode为6、8）不输入。</li>
         <li>HIF8 PERTENSOR量化场景下（quantMode为7）,输入要求为1D的Tensor，shape为[1, ]。</li>
+        <li>MXFP4量化场景下（quantMode为9）不输入。</li>
         </ul></td>
-      <td>FLOAT32</td>
+      <td>FLOAT32、FLOAT8_E8M0</td>
       <td>ND</td>
       <td>1-2</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>offsetOptional</td>
+      <td>offsetOptional（aclTensor）</td>
       <td>输入</td>
       <td>表示用于计算quant结果的偏移值</td>
       <td><ul>
         <li>在非量化场景下不输入;</li><li>静态量化场景必须输入，输入要求为1D的Tensor，shape为[1, ]；</li>
-        <li>动态量化、MXFP8量化、HIF8量化场景下不输入。</li>
+        <li>动态量化、MXFP8量化、HIF8量化、MXFP4量化场景下不输入。</li>
       </ul></td>
       <td>FLOAT32</td>
       <td>ND</td>
@@ -258,7 +259,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>activeNum</td>
+      <td>activeNum（int64_t）</td>
       <td>输入</td>
       <td>表示总的最大处理row数，输出expandedXOut只有这么多行是有效的</td>
       <td>入参校验需大于等于0，0表示Dropless场景，大于0时表示Active场景，约束所有专家共同处理tokens总量。</td>
@@ -268,7 +269,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>expertCapacity</td>
+      <td>expertCapacity（int64_t）</td>
       <td>输入</td>
       <td>表示每个专家能够处理的tokens数</td>
       <td>入参校验大于0小于NUM_ROWS。</td>
@@ -278,7 +279,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>expertNum</td>
+      <td>expertNum（int64_t）</td>
       <td>输入</td>
       <td>表示专家数</td>
       <td>expertTokensNumType为key_value模式时，取值范围为[0, 5120]，其它模式取值范围[0, 10240]</td>
@@ -288,7 +289,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>dropPadMode</td>
+      <td>dropPadMode（int64_t）</td>
       <td>输入</td>
       <td>表示是否为DropPad场景</td>
       <td>取值为0和1
@@ -301,7 +302,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>expertTokensNumType</td>
+      <td>expertTokensNumType（int64_t）</td>
       <td>输入</td>
       <td>表示直方图的不同模式</td>
       <td>取值为0、1和2
@@ -315,7 +316,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>expertTokensNumFlag</td>
+      <td>expertTokensNumFlag（bool）</td>
       <td>输入</td>
       <td>表示是否输出 expertTokensCountOrCumsumOut </td>
       <td>取值为false和true</td>
@@ -325,10 +326,10 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>quantMode</td>
+      <td>quantMode（int64_t）</td>
       <td>输入</td>
       <td>表示不同量化场景</td>
-      <td>取值为0、1、-1、2、3、6、7、8（不同产品支持情况有差异，见表后描述）
+      <td>取值为0、1、-1、2、3、6、7、8、9（不同产品支持情况有差异，见表后描述）
         <br>0：表示静态 quant 场景;
         <br>1：表示动态 quant 场景;
         <br>-1：表示不量化场景;
@@ -337,6 +338,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
         <br>6：表示HIF8直转量化场景，expandedXOut量化到HIFLOAT8;
         <br>7：表示HIF8 PERTENSOR量化场景，expandedXOut按照pertensor模式量化到HIFLOAT8;
         <br>8：表示HIF8 PERTOKEN量化场景，expandedXOut按照pertoken模式量化到HIFLOAT8;
+        <br>9：表示MXFP4量化场景，expandedXOut量化到FLOAT4_E2M1;
       </td>
       <td>INT64</td>
       <td>-</td>
@@ -344,7 +346,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>activeExpertRangeOptional</td>
+      <td>activeExpertRangeOptional（aclIntArray）</td>
       <td>输入</td>
       <td>表示活跃的expert范围</td>
       <td>长度为2，数组内的值为[expertStart, expertEnd]，左闭右开，要求值大于等于0，并且expertEnd不大于expertNum；Drop/Pad场景下，expertStart等于0, expertEnd等于expertNum </td>
@@ -354,7 +356,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>rowIdxType</td>
+      <td>rowIdxType（int64_t）</td>
       <td>输入</td>
       <td>表示expandedRowIdxOut使用的索引类型</td>
       <td>取值为0、1
@@ -366,22 +368,22 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>expandedXOut</td>
+      <td>expandedXOut（aclTensor）</td>
       <td>输出</td>
       <td>根据expertIdx进行扩展过的特征</td>
       <td><ul>
         <li>Dropless场景shape为[NUM_ROWS * K, H]。</li>
         <li>Active场景shape为[min(activeNum, NUM_ROWS * K), H]。</li>
         <li>Drop/Pad场景下要求是一个3D的Tensor，shape为[expertNum, expertCapacity, H]。</li>
-        <li>非量化场景下数据类型同x，量化场景quantMode为0、1时数据类型支持INT8，quantMode为2、3时数据类型分别支持FLOAT8_E5M2、FLOAT8_E4M3FN，quantMode为6、7、8时数据类型支持HIFLOAT8。</li>
+        <li>非量化场景下数据类型同x，量化场景quantMode为0、1时数据类型支持INT8，quantMode为2、3时数据类型分别支持FLOAT8_E5M2、FLOAT8_E4M3FN，quantMode为6、7、8时数据类型支持HIFLOAT8，quantMode为9时数据类型支持FLOAT4_E2M1。</li>
       </ul></td>
-      <td>FLOAT16、BFLOAT16、FLOAT32、INT8、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8</td>
+      <td>FLOAT16、BFLOAT16、FLOAT32、INT8、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8、FLOAT4_E2M1</td>
       <td>ND</td>
       <td>2</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>expandedRowIdxOut</td>
+      <td>expandedRowIdxOut（aclTensor）</td>
       <td>输出</td>
       <td>expandedXOut和x的索引映射关系</td>
       <td>输出shape为(NUM_ROWS*K, )， 前availableIdxNum个元素为有效数据，其余无效数据由rowIdxType决定：
@@ -394,7 +396,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>expertTokensCountOrCumsumOut</td>
+      <td>expertTokensCountOrCumsumOut（aclTensor）</td>
       <td>输出</td>
       <td>输出每个专家处理的token数量的统计结果或累加值</td>
       <td><ul>
@@ -408,18 +410,19 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>expandedScaleOut</td>
+      <td>expandedScaleOut（aclTensor）</td>
       <td>输出</td>
       <td>输出不同量化过程中scaleOptional的中间值。</td>
       <td> 输出shape为expandedXOut的shape去掉最后一维之后所有维度的乘积。
         <ul style="list-style-type: circle;">
-        <li>非量化场景下，当scaleOptional输入时，前availableIdxNum个元素为有效数据。</li>
+        <li>非量化场景下，当scaleOptional输入时，shape为[NUM_ROWS*K, 1]，前availableIdxNum个元素为有效数据，输出FLOAT32类型。当输入x数据类型为FLOAT4_E2M1、FLOAT8_E4M3FN或FLOAT8_E5M2时，如果scaleOptional输入，则expandedScaleOut的shape为[NUM_ROWS*K, CeilDiv(H, 64), 2]，输出FLOAT8_E8M0类型。</li>
         <li>动态量化场景下，当scaleOptional输入时，前availableIdxNum个元素为有效数据。</li>
         <li>静态量化场景下不输出。</li>
         <li>MXFP8量化场景下，输出FLOAT8_E8M0类型，Shape为[NUM_ROWS*K, M]，其中M=CeilAlign(CeilDiv(H,32),2)，NUM_ROWS*K的前availableIdxNum行为有效数据。</li>
-        <li>HIF直转8量化场景下，输出FLOAT32类型，Shape为[NUM_ROWS*K, ]，当scaleOptional输入时，前availableIdxNum个元素为有效数据。</li>
-        <li>HIF8 PERTENSOR量化场景下，expandedScaleOut不输出。</li>
-        <li>HIF8 PERTOKEN量化场景下，输出FLOAT32类型，Shape为[NUM_ROWS*K, 1]。</li></ul>
+        <li>按照直转方式量化到HIFLOAT8场景下，expandedScaleOut不输出。</li>
+        <li>按照PERTENSOR模式量化到HIFLOAT8场景下，expandedScaleOut不输出。</li>
+        <li>按照PERTOKEN模式量化到HIFLOAT8场景下，输出FLOAT32类型，Shape为[NUM_ROWS*K, 1]。</li>
+        <li>MXFP4量化场景下，输出FLOAT8_E8M0类型，Shape为[NUM_ROWS*K, M, 2]，其中M=CeilDiv(H, 64)，NUM_ROWS*K的前availableIdxNum行为有效数据。</li></ul>
       </td>
       <td>FLOAT32、FLOAT8_E8M0</td>
       <td>ND</td>
@@ -427,7 +430,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>workspaceSize</td>
+      <td>workspaceSize（uint64_t）</td>
       <td>输出</td>
       <td>返回用户需要在Device侧申请的workspace大小</td>
       <td>-</td>
@@ -437,7 +440,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>-</td>
     </tr>
     <tr>
-      <td>executor</td>
+      <td>executor（aclOpExecutor）</td>
       <td>输出</td>
       <td>返回op执行器，包含了算子计算流程</td>
       <td>-</td>
@@ -490,12 +493,12 @@ aclnnStatus aclnnMoeInitRoutingV3(
 - **不同产品支持情况差异**
   - quantMode支持情况差异：
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持-1、0、1。
-    - <term>Ascend 950PR/Ascend 950DT</term>：支持-1、1、2、3、6、7、8。
+    - <term>Ascend 950PR/Ascend 950DT</term>：支持-1、0、1、2、3、6、7、8、9。
   - <term>Ascend 950PR/Ascend 950DT</term>仅支持如下参数的值：
     - activeNum仅支持值等于NUM_ROWS*K。
     - expertCapacity仅校验其值，不使用该参数（即不限制每个专家能够处理的tokens数）。
     - dropPadMode仅支持取值为0。
-    - expertTokensNumType仅支持取值1、2。
+    - expertTokensNumType仅支持取值0、1、2。
     - expertTokensNumFlag仅支持取值为true。
     
 ## aclnnMoeInitRoutingV3

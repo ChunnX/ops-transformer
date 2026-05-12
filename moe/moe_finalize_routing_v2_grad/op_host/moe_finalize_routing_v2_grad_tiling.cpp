@@ -36,14 +36,16 @@ ge::graphStatus MoeFinalizeRoutingV2GradTiling::GetPlatformInfo()
     auto platformInfo = context_->GetPlatformInfo();
      OP_CHECK_NULL_WITH_CONTEXT(context_, platformInfo);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    aicoreParams_.numBlocks = ascendcPlatform.GetCoreNumAiv();
+    
+    auto compileInfoPtr = reinterpret_cast<const MoeFinalizeRoutingV2GradCompileInfo*>(context_->GetCompileInfo());
+    OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_, "compile info is null"), return ge::GRAPH_FAILED);
+    aicoreParams_.numBlocks = compileInfoPtr->aivNum;
+    aicoreParams_.ubSize = compileInfoPtr->ubSize;
+
      OP_CHECK_IF(
         (aicoreParams_.numBlocks <= 0), OP_LOGE(nodeName_, "get aiv core num failed."),
         return ge::GRAPH_FAILED);
 
-    uint64_t totalUbSize;
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, totalUbSize);
-    aicoreParams_.ubSize = totalUbSize;
      OP_CHECK_IF(
         (aicoreParams_.ubSize <= 0), OP_LOGE(nodeName_, "get ub size failed."),
         return ge::GRAPH_FAILED);
@@ -565,7 +567,24 @@ ge::graphStatus Tiling4MoeFinalizeRoutingV2Grad(gert::TilingContext* context)
 
 static ge::graphStatus TilingPrepare4MoeFinalizeRoutingV2Grad(gert::TilingParseContext* context)
 {
-    (void)context;
+    OP_LOGD(context, "TilingPrepareForMoeFinalizeRountingV2Grad enter.");
+    
+    auto compileInfo = context->GetCompiledInfo<MoeFinalizeRoutingV2GradCompileInfo>();
+    OP_CHECK_NULL_WITH_CONTEXT(context, compileInfo);
+    auto platformInfo = context->GetPlatformInfo();
+    OP_CHECK_NULL_WITH_CONTEXT(context, platformInfo);
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+    compileInfo->aivNum = ascendcPlatform.GetCoreNumAiv();
+    OP_CHECK_IF(
+        (compileInfo->aivNum <= 0),
+        OP_LOGE(context, "TilingPrepareForMoeFinalizeRountingV2Grad fail to get core num."), return ge::GRAPH_FAILED);
+
+    uint64_t ubSize;
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
+    compileInfo->ubSize = static_cast<int64_t>(ubSize);
+    OP_CHECK_IF(
+        (compileInfo->ubSize <= 0),
+        OP_LOGE(context, "TilingPrepareForMoeFinalizeRountingV2Grad fail to get ub size."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

@@ -260,10 +260,19 @@ public:
         } else {
             Get<0>(offset) = mOffset;
         }
-        if constexpr (!isTransB) {
-            Get<1>(offset) = nOffset;
-        } else {
-            Get<1>(offset) = nOffset * k;
+        if constexpr (layoutB == CubeFormat::NZ) {
+            if constexpr (isTransB) {
+                Get<1>(offset) = nOffset * MATMUL_MNK_ALIGN_INT8;
+            } else {
+                Get<1>(offset) = nOffset * CeilAlign(k, MATMUL_MNK_ALIGN);
+            }
+        }
+        else {
+            if constexpr (!isTransB) {
+                Get<1>(offset) = nOffset;
+            } else {
+                Get<1>(offset) = nOffset * k;
+            }
         }
         Get<5>(offset) = mOffset * n / 2 + nOffset; // 5: idx of y
         if constexpr (aQuantMode == GroupedMatmul::QuantMode::PERGROUP_MODE ||
