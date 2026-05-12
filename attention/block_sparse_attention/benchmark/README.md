@@ -36,11 +36,19 @@ are directly comparable when both are run on the same workload.
    bash build.sh --make_clean -j96 --pkg --soc=ascend910b --ops=block_sparse_attention
    ./build/cann-ops-transformer-custom_linux-aarch64.run
    ```
-2. The `bsa_npu` python extension must be installed:
+2. The `npu_ops_transformer` torch extension must be built + installed
+   (it provides the JIT-compiled Python entry point
+   `npu_ops_transformer.ops.block_sparse_attention`):
    ```bash
-   (cd attention/block_sparse_attention/torch_interface && bash build.sh custom)
+   cd torch_extension
+   python3 -m pip install -r requirements.txt
+   python3 -m build --wheel -n
+   python3 -m pip install dist/*.whl --force-reinstall --no-deps
    ```
-   See [`../torch_interface/README.md`](../torch_interface/README.md) for full build instructions.
+   First `import npu_ops_transformer` triggers a one-time ninja JIT compile
+   of the C++ wrapper (`ops/csrc/block_sparse_attention.cpp`). See
+   [`torch_extension/README.md`](../../../torch_extension/README.md) for full
+   build instructions.
 
 ## Running
 
@@ -149,7 +157,7 @@ are otherwise on the same workload.
 
 | File | Purpose |
 |---|---|
-| `benchmark.py` | The benchmark entry point. Builds the per-row sparse pattern, converts sabi → int8 block mask, times `bsa_npu.block_sparse_attention(…)` over the sparsity sweep, prints the table. |
+| `benchmark.py` | The benchmark entry point. Builds the per-row sparse pattern, converts sabi → int8 block mask, times `npu_ops_transformer.ops.block_sparse_attention(…)` over the sparsity sweep, prints the table. |
 | `util.py` | All shared helpers — `FrameWidths`, constants (`B_VALS, H_VALS, S_VALS, D_VALS, SPARSITY_VALS, BLOCK_SIZE_Q, BLOCK_SIZE_KV, FRAME, …`), pattern generators (`generate_sparse_blocks_by_row{,_per_head}`, `make_block_mask{,_per_head}`), reference implementations (`ref_attention_fp32`, `ref_attention_launcher`), timing harness (`_run_timed`, `_check_correctness`), and the sabi→int8 mask converter (`sabi_to_block_sparse_mask`). |
 | `README.md` | This file. |
 
