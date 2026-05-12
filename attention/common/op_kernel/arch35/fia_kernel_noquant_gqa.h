@@ -162,7 +162,7 @@ public:
                 actualSeqLengths, actualSeqLengthsKv, keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen);
         }
 
-        if constexpr (FLASH_DECODE) {
+        if (constInfo.isFd) {
             if ASCEND_IS_AIV {
                 vecFdBlock.InitParams();
                 vecFdBlock.InitGlobalTensor(this->vecFaBlock.softmaxFDMaxGm, this->vecFaBlock.softmaxFDSumGm,
@@ -252,6 +252,7 @@ public:
         constInfo.actualSeqLenSize = fiaBaseParams.actualSeqLengthsQSize;
         constInfo.actualSeqLenKVSize = fiaBaseParams.actualSeqLengthsKVSize;
         constInfo.scaleValue = static_cast<float>(fiaBaseParams.scaleValue);
+        constInfo.isFd = fiaBaseParams.isFd != 0;
         constInfo.isKvContinuous = fiaBaseParams.isKvContinuous != 0;
         constInfo.coreNum = fiaBaseParams.coreNum;
         constInfo.outputLayout = static_cast<FIA_LAYOUT>(fiaBaseParams.outputLayout);
@@ -873,7 +874,7 @@ public:
             CrossCoreBufferUnInit();
         }
 
-        if constexpr (FLASH_DECODE) {
+        if (constInfo.isFd) {
             if ASCEND_IS_AIV {
                 FlashDecode();
             }

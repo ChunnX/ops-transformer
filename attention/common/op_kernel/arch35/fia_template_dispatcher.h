@@ -19,7 +19,7 @@
 #include "fia_kernel_noquant_gqa.h"
 
 template <typename INPUT_T, typename OUT_T, uint8_t inOutLayoutType, uint16_t config, uint8_t pseMode,
-          uint8_t quantMode, bool hasAttenMask, bool hasRope, uint8_t KvLayoutType, bool isFd, bool emptyTensor,
+          uint8_t quantMode, bool hasAttenMask, bool hasRope, uint8_t KvLayoutType, bool emptyTensor,
           uint8_t pFAMask, uint8_t pFAMatMulType, bool enableKVPrefix, bool enableS1OutSplit>
 inline __aicore__ void run_fia_noquant_gqa_kernel(
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pseShift,
@@ -52,7 +52,7 @@ inline __aicore__ void run_fia_noquant_gqa_kernel(
     using VecFaBlock = BaseApi::FANoQuantGqaBlockVec<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
                                                      s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
                                                      static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope,
-                                                     KvLayoutType, isFd, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
+                                                     KvLayoutType, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
     using VecFdBlock = BaseApi::FiaBlockVecFlashDecode<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
                                                        s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
                                                        static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope,

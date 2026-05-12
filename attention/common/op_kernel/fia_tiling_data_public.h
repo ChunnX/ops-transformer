@@ -65,6 +65,7 @@ struct FiaBaseParams {
     uint32_t actualSeqLengthsQSize;
     uint32_t actualSeqLengthsKVSize;
     float scaleValue;
+    uint8_t isFd;
     uint8_t isActualSeqLengthsNull;   // TODO，未使用，是否要删除？
     uint8_t isActualSeqLengthsKVNull; // TODO，未使用，是否要删除？
     uint8_t isKvContinuous;
