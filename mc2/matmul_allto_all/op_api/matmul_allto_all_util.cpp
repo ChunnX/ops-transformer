@@ -94,6 +94,23 @@ bool CheckGroupLength(const char *group)
     return true;
 }
 
+// 校验通信引擎参数是否合法
+aclnnStatus CheckCommModeStr(const char *commMode)
+{
+    if (commMode == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "commMode should not be nullptr.");
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
+
+    if ((std::strcmp(commMode, "default") != 0) && (std::strcmp(commMode, "aicpu") != 0) &&
+        (std::strcmp(commMode, "ccu") != 0)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "commMode only support 'default', 'aicpu', 'ccu'.");
+        return ACLNN_ERR_PARAM_INVALID;
+    };
+
+    return ACLNN_SUCCESS;
+}
+
 // 校验输入tensor的维度
 bool CheckInputDimensions(const aclTensor* x1, const aclTensor* x2, const aclTensor* output,
                           const aclTensor* alltoAllOutOptional = nullptr)
