@@ -303,18 +303,18 @@ public:
                                          __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
                                          __gm__ uint8_t *actualSharedPrefixLen)
     {
-        if (constInfo.actualSeqLenSize != 0) {
-            actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint64_t *)actualSeqQlenAddr, constInfo.actualSeqLenSize);
+        if (constInfo.cuSeqLensQSize != 0) {
+            actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint64_t *)actualSeqQlenAddr, constInfo.cuSeqLensQSize);
         }
-        if (constInfo.actualSeqLenKVSize != 0) {
-            actualSeqLengthsGm.SetGlobalBuffer((__gm__ uint64_t *)actualSeqKvlenAddr, constInfo.actualSeqLenKVSize);
+        if (constInfo.cuSeqLensKVSize != 0) {
+            actualSeqLengthsGm.SetGlobalBuffer((__gm__ uint64_t *)actualSeqKvlenAddr, constInfo.cuSeqLensKVSize);
         }
         if constexpr (isPa) {
             blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
         }
 
         InitQBuffer(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size, constInfo.dSize,
-                    actualSeqLengthsGmQ, constInfo.actualSeqLenSize, queryGm, query);
+                    actualSeqLengthsGmQ, constInfo.cuSeqLensQSize, queryGm, query);
 
         keyPtr = key;
         valuePtr = value;
@@ -324,16 +324,16 @@ public:
             // ListTensorDesc valueListTensorDesc((__gm__ void *)(this->valuePtr));
             // __gm__ uint8_t *value_ = (__gm__ uint8_t *)valueListTensorDesc.GetDataPtr<__gm__ uint8_t>(0);
 
-            InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGm, constInfo.actualSeqLenKVSize,
+            InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGm, constInfo.cuSeqLensKVSize,
                          constInfo.n2Size, constInfo.blockSize, constInfo.dSize, keyGm, key);
-            InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGm, constInfo.actualSeqLenKVSize,
+            InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGm, constInfo.cuSeqLensKVSize,
                          constInfo.n2Size, constInfo.blockSize, constInfo.dSizeV, valueGm, value);
         }
 
         if constexpr (hasRope) {
             InitQBuffer(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size, constInfo.dSizeRope,
-                        actualSeqLengthsGmQ, constInfo.actualSeqLenSize, queryRopeGm, queryRope);
-            InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGm, constInfo.actualSeqLenKVSize,
+                        actualSeqLengthsGmQ, constInfo.cuSeqLensQSize, queryRopeGm, queryRope);
+            InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGm, constInfo.cuSeqLensKVSize,
                          constInfo.n2Size, constInfo.blockSize, constInfo.dSizeRope, keyRopeGm, keyRope);
         }
 
@@ -612,7 +612,7 @@ public:
         uint64_t s2Size = SeqLenFromTensorList<LAYOUT>(this->keyPtr, bIdx);
         keyGm.gmTensor.SetGlobalBuffer((__gm__ KV_T *)key_);
         keyGm.offsetCalculator.Init(0, constInfo.n2Size, s2Size, constInfo.dSize, actualSeqLengthsGm,
-                                    constInfo.actualSeqLenKVSize);
+                                    constInfo.cuSeqLensKVSize);
     }
 
     __aicore__ inline void UpdateValue(uint32_t bIdx)
@@ -622,7 +622,7 @@ public:
         uint64_t s2Size = SeqLenFromTensorList<LAYOUT>(valuePtr, bIdx);
         valueGm.gmTensor.SetGlobalBuffer((__gm__ KV_T *)value_);
         valueGm.offsetCalculator.Init(0, constInfo.n2Size, s2Size, constInfo.dSize, actualSeqLengthsGm,
-                                      constInfo.actualSeqLenKVSize);
+                                      constInfo.cuSeqLensKVSize);
     }
 
     __aicore__ inline void IterateBmm1(MM1_DBUF_T &outputBuf, RunInfoX &runInfo)

@@ -42,7 +42,8 @@ template <typename INPUT_T, typename OUT_T,
           bool enableKVPrefix, bool enableS1OutSplit>
 inline __aicore__ void flash_attn_kernel_run(
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-    __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *actualSeqLengthsKV,
+    __gm__ uint8_t *attenMask, __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv,
+    __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv,
     __gm__ uint8_t *blocktable, __gm__ uint8_t *learnableSink,
     __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
     __gm__ uint8_t *workspace, __gm__ uint8_t *tiling, __gm__ uint8_t *runtimeMetaData)
@@ -107,10 +108,10 @@ inline __aicore__ void flash_attn_kernel_run(
 
     TPipe tPipe;
     Kernel op;
-    op.Init(query, key, value, nullptr, attenMask, actualSeqLengths, actualSeqLengthsKV,
+    op.Init(query, key, value, nullptr, attenMask, cuSeqLensQ, cuSeqLensKv,
             blocktable, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
             nullptr, nullptr, nullptr, learnableSink, softmaxLse, attentionOut,
-            workspace, runtimeMetaData, tilingData, &tPipe);
+            workspace, runtimeMetaData, sequsedQ, sequsedKv, tilingData, &tPipe);
     op.Process();
 }
 

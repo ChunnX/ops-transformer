@@ -57,8 +57,10 @@ struct FlashAttnBaseParams {
     uint32_t dSize;
     uint32_t dSizeV;
     uint32_t dSizeRope;
-    uint32_t cuSeqLengthsQSize;
-    uint32_t cuSeqLengthsKVSize;
+    uint32_t cuSeqLensQSize;
+    uint32_t cuSeqLensKVSize;
+    uint32_t seqUsedQSize;
+    uint32_t seqUsedKvSize;
     float scaleValue;
     uint8_t iscuSeqLengthsNull;
     uint8_t iscuSeqLengthsKVNull;

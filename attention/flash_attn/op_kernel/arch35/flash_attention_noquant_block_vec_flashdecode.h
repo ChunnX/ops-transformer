@@ -224,8 +224,8 @@ public:
 
         this->keyPtr = key;
 
-        qActSeqLensParser.Init(this->actualSeqLengthsGmQ, constInfo.actualSeqLenSize, constInfo.s1Size);
-        kvActSeqLensParser.Init(this->actualSeqLengthsGm, constInfo.actualSeqLenKVSize, constInfo.s2Size);
+        qActSeqLensParser.Init(this->actualSeqLengthsGmQ, constInfo.cuSeqLensQSize, constInfo.s1Size);
+        kvActSeqLensParser.Init(this->actualSeqLengthsGm, constInfo.cuSeqLensKVSize, constInfo.s2Size);
 
         if constexpr (POST_QUANT) {
             InitPostQuant(quantScale2, quantOffset2);
@@ -377,7 +377,7 @@ protected:
             FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                              constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize,
+                                              constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.cuSeqLensQSize,
                                               constInfo.isQHasLeftPadding, constInfo.queryRightPaddingSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
@@ -386,7 +386,7 @@ protected:
             FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
-                                              constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize,
+                                              constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.cuSeqLensQSize,
                                               constInfo.isQHasLeftPadding, constInfo.queryRightPaddingSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
@@ -395,7 +395,7 @@ protected:
             FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, actualSeqLengthsGmQ,
-                                              constInfo.actualSeqLenSize);
+                                              constInfo.cuSeqLensQSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_NTD) {
@@ -403,7 +403,7 @@ protected:
             FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
             outGmTensor.gmTensor = attentionOutGm;
             outGmTensor.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, actualSeqLengthsGmQ,
-                                              constInfo.actualSeqLenSize);
+                                              constInfo.cuSeqLensQSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         }
@@ -455,7 +455,7 @@ protected:
     __aicore__ inline void CalcPreNextTokens()
     {
         actSeqLensQ = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
-        if (constInfo.actualSeqLenKVSize == 0 && !constInfo.isKvContinuous) {
+        if (constInfo.cuSeqLensKVSize == 0 && !constInfo.isKvContinuous) {
             actSeqLensKv = SeqLenFromTensorList<layout>(keyPtr, taskInfo.bIdx);
         } else {
             actSeqLensKv = kvActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);

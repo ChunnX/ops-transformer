@@ -28,8 +28,8 @@ __global__ __aicore__ void flash_attn(
     __gm__ uint8_t *key,
     __gm__ uint8_t *value,
     __gm__ uint8_t *blockTable,
-    __gm__ uint8_t *actualSeqLengthsQ,
-    __gm__ uint8_t *actualSeqLengthsKv,
+    __gm__ uint8_t *cuSeqLensQ,
+    __gm__ uint8_t *cuSeqLensKv,
     __gm__ uint8_t *sequsedQ,
     __gm__ uint8_t *sequsedKv,
     __gm__ uint8_t *sinks,
@@ -49,13 +49,13 @@ __global__ __aicore__ void flash_attn(
     flash_attn_kernel_run<bfloat16_t, bfloat16_t,
         inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType,
         isFd, emptyTensor, PFAMask, pFAMatMulType, enableKVPrefix, enableS1OutSplit>(
-        query, key, value, attnMask, actualSeqLengthsQ, actualSeqLengthsKv,
-        blockTable, sinks, attnOut, softmaxLse, user, tiling, metadata);
+        query, key, value, attnMask, cuSeqLensQ, cuSeqLensKv,
+        sequsedQ, sequsedKv, blockTable, sinks, attnOut, softmaxLse, user, tiling, metadata);
 #elif (ORIG_DTYPE_Q == DT_FLOAT16)
     flash_attn_kernel_run<half, half,
         inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType,
         isFd, emptyTensor, PFAMask, pFAMatMulType, enableKVPrefix, enableS1OutSplit>(
-        query, key, value, attnMask, actualSeqLengthsQ, actualSeqLengthsKv,
-        blockTable, sinks, attnOut, softmaxLse, user, tiling, metadata);
+        query, key, value, attnMask, cuSeqLensQ, cuSeqLensKv,
+        sequsedQ, sequsedKv, blockTable, sinks, attnOut, softmaxLse, user, tiling, metadata);
 #endif
 }
