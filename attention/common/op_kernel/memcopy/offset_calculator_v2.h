@@ -93,11 +93,6 @@ struct GmLayoutParams<GmFormat::NTD> {
 };
 
 template <>
-struct GmLayoutParams<GmFormat::TND2> {
-    static constexpr FormatCategory CATEGORY = FormatCategory::GM_V_SCALE_TND;
-};
-
-template <>
 struct GmLayoutParams<GmFormat::PA_BnBsND> {
     static constexpr FormatCategory CATEGORY = FormatCategory::GM_KV_PA_BNBD;
 };
@@ -478,7 +473,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_V_SCALE_TND, ACTLEN_T> {
 
     __aicore__ inline uint64_t GetOffset(uint32_t bIdx, uint32_t n2Idx, uint32_t s2Idx, uint32_t dIdx)
     {
-        uint64_t tIdx = ((actualSeqLensKVParser.GetTBase(bIdx) + 63) >> 6) + s2Idx;
+        uint64_t tIdx = actualSeqLensKVParser.GetMxVscaleTBase(bIdx) + s2Idx;
         uint64_t offset = tIdx * GetStrideT() + n2Idx * GetStrideN2() + dIdx * GetStrideD();
         return offset;
     }
