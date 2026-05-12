@@ -25,7 +25,7 @@ are directly comparable when both are run on the same workload.
   default (force-dense reference path). Set `RUN_REFERENCE = True` in the
   script to enable per-sparsity correctness comparison; the full dense
   `[B, H, S, S]` reference mask costs ~42 GB and OOMs at this S — see
-  `attention/block_sparse_attention/test/` (`test_attn.py`, `test_lse.py`,
+  `attention/block_sparse_attention/tests/pytest/` (`test_attn.py`, `test_lse.py`,
   `test_joint.py`) for a smaller-S pytest correctness suite.
 
 ## Prerequisites
@@ -161,7 +161,7 @@ are otherwise on the same workload.
 | `util.py` | All shared helpers — `FrameWidths`, constants (`B_VALS, H_VALS, S_VALS, D_VALS, SPARSITY_VALS, BLOCK_SIZE_Q, BLOCK_SIZE_KV, FRAME, …`), pattern generators (`generate_sparse_blocks_by_row{,_per_head}`, `make_block_mask{,_per_head}`), reference implementations (`ref_attention_fp32`, `ref_attention_launcher`), timing harness (`_run_timed`, `_check_correctness`), and the sabi→int8 mask converter (`sabi_to_block_sparse_mask`). |
 | `README.md` | This file. |
 
-The `test/` sibling directory imports from this `util.py` via a
+The `tests/pytest/` sibling directory imports from this `util.py` via a
 local `sys.path.insert(0, ../benchmark)` — that's the only intra-package
 path manipulation. **Nothing imports from `experimental/`.**
 
