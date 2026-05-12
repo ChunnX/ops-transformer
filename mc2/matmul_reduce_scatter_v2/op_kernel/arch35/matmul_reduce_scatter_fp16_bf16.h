@@ -29,13 +29,13 @@
 namespace MatmulReduceScatterV2Impl {
 using namespace AscendC;
 
-template <typename AType, typename BType, typename BiasType, typename CType>
+template <typename AType, typename BType, typename BiasType, typename CType, int TPL_COMM_MODE>
 class MatmulReduceScatterFP16BF16 {
 public:
     __aicore__ inline MatmulReduceScatterFP16BF16() {}
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR contextGM,
-                                GM_ADDR workspaceGM, Mc2Tiling::MatmulReduceScatterV2TilingData* tilingData, 
-                                __gm__ void* mc2InitTiling, __gm__ void* mc2CcTiling, TPipe* tpipe);
+                                GM_ADDR workspaceGM, Mc2Tiling::MatmulReduceScatterV2TilingData* tilingData,
+                                TPipe* tpipe);
     __aicore__ inline void Process();
 
 private:
@@ -58,18 +58,26 @@ private:
     uint32_t rankId_;
     AscendC::HcclDataType dataType_;
     uint8_t debugMode_;
-    Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;              // CCU模式
+    typename HcclTypeSelector<TPL_COMM_MODE>::type hccl_;
     AscendC::HcclHandle handles_[MAX_HANDLE];        // 最大支持64个handleId
 };
 
-template <typename AType, typename BType, typename BiasType, typename CType>
-__aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType>::Init(
+template <typename AType, typename BType, typename BiasType, typename CType, int TPL_COMM_MODE>
+__aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType, TPL_COMM_MODE>::Init(
     GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR contextGM, GM_ADDR workspaceGM,
-    Mc2Tiling::MatmulReduceScatterV2TilingData* tilingData, __gm__ void* mc2InitTiling, __gm__ void* mc2CcTiling, TPipe* tPipe) {
+    Mc2Tiling::MatmulReduceScatterV2TilingData* tilingData, TPipe* tPipe) {
     tilingData_ = tilingData;
     auto&& cfg = tilingData_->param;
-    hccl_.Init(contextGM, mc2InitTiling);
-    hccl_.SetCcTiling(mc2CcTiling);
+    const void* hcclInitTilingV2 = &(tilingData_->mc2InitTiling);
+    uint64_t hcclCcTilingOffset = offsetof(Mc2Tiling::MatmulReduceScatterV2TilingData, mc2CcTiling);
+    hccl_.InitV2(contextGM, hcclInitTilingV2);
+    hccl_.SetCcTilingV2(hcclCcTilingOffset);
+    // TODO: 测试打印，验证通信模式后删除
+    if constexpr (TPL_COMM_MODE == CCU_COMM_MODE) {
+        AscendC::PRINTF("[COMM_MODE] HCCL initialized with CCU mode for matmul_reduce_scatter_fp16_bf16.\n");
+    } else {
+        AscendC::PRINTF("[COMM_MODE] HCCL initialized with AICPU mode for matmul_reduce_scatter_fp16_bf16.\n");
+    }
     context_ = (__gm__ HcclCombinOpParam *)(contextGM);
     tPipe_ = tPipe;
     dataType_ = static_cast<AscendC::HcclDataType>(tilingData_->dataType);
@@ -84,8 +92,8 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
     gmToFloat_ = workspaceGM;
 }
 
-template <typename AType, typename BType, typename BiasType, typename CType>
-__aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType>::PostProcess()
+template <typename AType, typename BType, typename BiasType, typename CType, int TPL_COMM_MODE>
+__aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType, TPL_COMM_MODE>::PostProcess()
 {
     auto&& cfg = tilingData_->param;
     // 等待reducescatter执行完成
@@ -98,15 +106,15 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
     }
 }
 
-template <typename AType, typename BType, typename BiasType, typename CType>
-__aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType>::Process()
+template <typename AType, typename BType, typename BiasType, typename CType, int TPL_COMM_MODE>
+__aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType, TPL_COMM_MODE>::Process()
 {
     InnerProcess();
     PostProcess();
 }
 
-template <typename AType, typename BType, typename BiasType, typename CType>
-__aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType>::InnerProcess()
+template <typename AType, typename BType, typename BiasType, typename CType, int TPL_COMM_MODE>
+__aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType, TPL_COMM_MODE>::InnerProcess()
 {
     auto&& tiling = tilingData_->mC2Mmv3TileTilingData.tCubeTiling;
     auto&& cfg = tilingData_->param;
@@ -124,8 +132,8 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
     }
 }
 
-template <typename AType, typename BType, typename BiasType, typename CType>
-__aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType>::Compute(
+template <typename AType, typename BType, typename BiasType, typename CType, int TPL_COMM_MODE>
+__aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType, TPL_COMM_MODE>::Compute(
                                                    GM_ADDR cGM, Mc2MatMulV3TilingData& tiling,
                                                    uint32_t count, GM_ADDR gmToFloat, bool isLast, bool isTail)
 {
@@ -144,8 +152,8 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
     MatMulV3Compute(cGM, tiling, count, gmToFloat, isLast, isTail);
 }
 
-template <typename AType, typename BType, typename BiasType, typename CType>
-__aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType>::MatMulV3Compute(GM_ADDR cGM,
+template <typename AType, typename BType, typename BiasType, typename CType, int TPL_COMM_MODE>
+__aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType, TPL_COMM_MODE>::MatMulV3Compute(GM_ADDR cGM,
                                                    Mc2MatMulV3TilingData& tiling, 
                                                    uint32_t count, GM_ADDR gmToFloat,
                                                    bool isLast, bool isTail)
@@ -170,7 +178,7 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
         AscendC::CrossCoreSetFlag<0, PIPE_FIX>(3);
         AscendC::CrossCoreWaitFlag(3);
         recvCount = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? 1 : recvCount;
-        handles_[i + shift] = hccl_.ReduceScatter<true>(
+        handles_[i + shift] = hccl_.template ReduceScatter<true>(
             cWork, recvBuffer, recvCount, dataType_, HcclReduceOp::HCCL_REDUCE_SUM, stride, repeat);
         cWork += cOffset;
         recvBuffer += cOffset;
