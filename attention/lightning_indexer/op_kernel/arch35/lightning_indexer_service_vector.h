@@ -547,6 +547,7 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessTopK(const LIC
                     scoreOutLocal_, topkCountAlign256_);
             } else {
                 vector1::UIntToFloatReturnValue(uIntToBfloat16Local_, scoreOutLocal_, topkCountAlign256_);
+                AscendC::PipeBarrier<PIPE_ALL>();
                 Cast(valueOutLocal_, uIntToBfloat16Local_, RoundMode::CAST_RINT, topkCountAlign256_);
             }
 
