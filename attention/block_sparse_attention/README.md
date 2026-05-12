@@ -186,14 +186,19 @@ bash build.sh --make_clean -j96 --pkg --soc=ascend910b --ops=block_sparse_attent
 
 | 子目录 | 内容 |
 |---|---|
-| `torch_interface/` | Python 接口 (pybind11 + aclnn 桥接,包名 `bsa_npu`)。先编译此接口再运行测试或基准。详见 [`torch_interface/README.md`](torch_interface/README.md)。 |
 | `benchmark/` | 性能基准。`benchmark.py` 在 `[B=1, H=3, S=118806, D=128]` (BF16, BNSD) 工作负载下扫描 sparsity 0..0.9,对比 `npu_fusion_attention` 密集参考的延迟。共享工具集中在同目录的 `util.py`。详见 [`benchmark/README.md`](benchmark/README.md)。 |
 | `test/` | pytest 正确性测试套件 (3 个文件,共数百个测试用例)。 |
+
+> Python 入口由 `torch_extension/npu_ops_transformer/` 提供 — 通过
+> `npu_ops_transformer.ops.block_sparse_attention(...)` 调用。算子的 C++ 包装器
+> `ops/csrc/block_sparse_attention.cpp` 在首次 `import npu_ops_transformer` 时
+> 自动通过 ninja JIT 编译。详见
+> [`../../torch_extension/README.md`](../../torch_extension/README.md)。
 
 ### 测试套件
 
 ```bash
-# 先确保算子和 torch 接口都已编译安装 (见上方编译说明 + torch_interface/README.md)
+# 先确保算子已编译安装 (见上方编译说明) 并且 torch_extension/npu_ops_transformer 已安装
 cd attention/block_sparse_attention/test
 ASCEND_RT_VISIBLE_DEVICES=1 pytest test_attn.py test_lse.py test_joint.py -v
 ```

@@ -11,7 +11,7 @@
 test_joint.py — verifies attention_out and softmax_lse from the *same*
 block_sparse_attention call.
 
-Every test makes a single `bsa_npu.block_sparse_attention(..., softmax_lse_flag=True)`
+Every test makes a single `npu_ops_transformer.ops.block_sparse_attention(..., softmax_lse_flag=True)`
 call and asserts both outputs simultaneously:
 
   • dense  (all-ones mask)             any H, bfloat16 + float16
@@ -36,7 +36,7 @@ import sys
 import pytest
 import torch
 import torch_npu
-import bsa_npu
+import npu_ops_transformer
 
 sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "benchmark")))
 from util import create_attention_mask, FrameWidths  # noqa: E402
@@ -104,7 +104,7 @@ def _sabi_to_int8_mask(sabi, B, H, S):
 def _run_kernel(q, k, v, H, scale, S, block_mask):
     B = q.shape[0]
     actual_seq = [S] * B
-    out, lse = bsa_npu.block_sparse_attention(
+    out, lse = npu_ops_transformer.ops.block_sparse_attention(
         q, k, v,
         block_sparse_mask=block_mask,
         block_shape=[BLOCK_SIZE_Q, BLOCK_SIZE_KV],

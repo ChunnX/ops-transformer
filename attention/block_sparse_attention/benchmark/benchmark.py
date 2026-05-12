@@ -8,8 +8,9 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 """
-Benchmark driver for `attention/block_sparse_attention` via the
-`bsa_npu` python extension.
+Benchmark driver for `attention/block_sparse_attention` via
+`npu_ops_transformer.ops.block_sparse_attention` (provided by the
+`torch_extension/npu_ops_transformer/` torch extension package).
 
 Key design choices:
 - All workload helpers (`gen_pfa_inputs`, `create_attention_mask`,
@@ -37,7 +38,7 @@ from typing import Callable, List
 
 import torch
 import torch_npu  # noqa: F401  (registers the NPU backend)
-import bsa_npu
+import npu_ops_transformer
 
 # All shared workload helpers live in the local `util.py` (autonomous, no
 # cross-tree imports).
@@ -100,7 +101,7 @@ def _make_our_fn_block_sparse(sabi: torch.Tensor, h: int, scale: float,
     )
 
     def fn(q, k, v, seq, seqkv):
-        out, _ = bsa_npu.block_sparse_attention(
+        out, _ = npu_ops_transformer.ops.block_sparse_attention(
             q, k, v,
             block_sparse_mask=block_sparse_mask,
             block_shape=[BLOCK_SIZE_Q, BLOCK_SIZE_KV],
