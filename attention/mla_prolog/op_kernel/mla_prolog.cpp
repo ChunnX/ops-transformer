@@ -14,7 +14,13 @@
  */
 
 #define MLA_PROLOG_VERSION 1
-#include "kernel_mla_prolog_split_n.h"
+#if __CCE_AICORE__ == 310
+#include "arch35/kernel_mla_prolog_split_n.h"
+#elif __CCE_AICORE__ == 220
+#include "arch32/kernel_mla_prolog_split_n.h"
+#else
+#error "Unsupported ai core arch for mla_prolog"
+#endif
 using namespace MlaProlog; 
 
 template<uint8_t CacheMode, uint8_t Scenario, uint8_t QuantMode,

@@ -147,23 +147,11 @@ constexpr int FINISH_MM_QN_SPLIT_N = 0X8;
 
 class NoneType {};
 
-#if __CCE_AICORE__ == 310
     using FP8E4M3 = fp8_e4m3fn_t;
-#else
-    using FP8E4M3 = NoneType;
-#endif
 
-#if __CCE_AICORE__ == 310
     using FP8E8M0 = fp8_e8m0_t;
-#else
-    using FP8E8M0 = NoneType;
-#endif
 
-#if __CCE_AICORE__ == 310
     using HIF8 = hifloat8_t;
-#else
-    using HIF8 = NoneType;
-#endif
 
 // mte2 <> mte1
 #define SCALE_EVENT EVENT_ID3
@@ -271,7 +259,6 @@ struct MLAPType {
 };
 
 // 类模板特化，支持mxfp8/fp8全量化
-#if __CCE_AICORE__ == 310
 template <typename C_T, typename D_S, CACHE_MODE C_M, bool ENABLE_DEQUANT_OPT, bool ENABLE_GROUP_COMPUTE_OPT,
           EMPTY_TENSOR_MODE EMPTY_MODE, ACTUAL_SEQ_MODE SEQ_MODE, bool IS_PERTILE, uint32_t CV_RATIO, typename... Args>
 struct MLAPType<FP8E4M3, FP8E4M3, C_T, D_S, C_M, ENABLE_DEQUANT_OPT,
@@ -338,7 +325,6 @@ struct MLAPType<HIF8, HIF8, C_T, D_S, C_M, ENABLE_DEQUANT_OPT,
     static constexpr bool isPertile = IS_PERTILE;
     static constexpr uint32_t cvRatio = CV_RATIO; // 默认C:V 1:2
 };
-#endif
 
 struct MMParams {
   uint32_t m;
