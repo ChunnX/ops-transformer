@@ -85,7 +85,7 @@ protected:
 
     ge::graphStatus CheckInput() override;
 
-    ge::graphStatus GetWorkspaceSizeForA2ARSAG();
+    ge::graphStatus GetWorkspaceSizeInStandardCard4P();
     ge::graphStatus SetMc2HcommAllReduce(const char* groupName, const uint32_t reduceType);
     ge::graphStatus SetMc2HcommTwoShot(const char* groupName, const uint32_t reduceType);
     ge::graphStatus SetMc2Hcomm();
