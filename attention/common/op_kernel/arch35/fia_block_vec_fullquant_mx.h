@@ -619,14 +619,9 @@ public:
         }
 
         // ===================DataCopy to L1 ====================
-        this->stage1OutQue[stage1Offset].template EnQue(stage1CastTensor);
-        this->stage1OutQue[stage1Offset].template DeQue<INPUT_T>();
-        this->pScaleSubLoop0Que.template EnQue(pScaleSubLoop0Tensor);
-        this->pScaleSubLoop0Que.template DeQue<fp8_e8m0_t>();
-
-        LocalTensor<INPUT_T> mm2AL1Tensor;
-        mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
         if ((runInfo.actSingleLoopS2Size > 256) && (subLoop % 2 == 1)) {
+            this->pScaleSubLoop0Que.template EnQue(pScaleSubLoop0Tensor);
+            this->pScaleSubLoop0Que.template DeQue<fp8_e8m0_t>();
             uint32_t pScaleL1Offset = mBaseSize * s2BaseSizeCur; // PScale在L1P的偏移量（单位：元素）
             LocalTensor<fp8_e8m0_t> mm2AScaleL1Tensor;
             mm2AScaleL1Tensor = outputBuf.GetTensor<fp8_e8m0_t>(pScaleL1Offset);
@@ -636,6 +631,10 @@ public:
             this->pScaleSubLoop0Que.template FreeTensor(pScaleSubLoop0Tensor);
         }
         
+        this->stage1OutQue[stage1Offset].template EnQue(stage1CastTensor);
+        this->stage1OutQue[stage1Offset].template DeQue<INPUT_T>();
+        LocalTensor<INPUT_T> mm2AL1Tensor;
+        mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
         if (likely(runInfo.actVecMSize != 0)) {
             int64_t dstOffset =
                 constInfo.subBlockIdx * (blockBytes / sizeof(INPUT_T)) * (runInfo.actMSize - runInfo.actVecMSize) +
