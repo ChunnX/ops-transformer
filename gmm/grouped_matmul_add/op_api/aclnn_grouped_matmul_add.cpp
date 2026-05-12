@@ -61,7 +61,7 @@ static aclnnStatus CheckFormat(gmm_add_advanced::GroupedMatmulAddParams params)
                "Format of groupList should be ND, current format is invalid.");
     CHECK_COND(params.yRef->GetStorageFormat() == Format::FORMAT_ND ||
                    params.yRef->GetStorageFormat() == Format::FORMAT_NCL,
-               ACLNN_ERR_PARAM_INVALID, "Format of yRef should be ND or NCL, current format is invalid.");
+               ACLNN_ERR_PARAM_INVALID, "Format of yRef should be ND or NCL, but current format is invalid.");
     return ACLNN_SUCCESS;
 }
 
