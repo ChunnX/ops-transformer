@@ -25,18 +25,36 @@ namespace ops {
 static ge::Status AllGatherMatmulV2CalcOpParam(gert::ExeResGenerationContext *context)
 {
     if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
-        ge::AscendString commMode; 
-        std::string attr_name = "comm_mode";
-        auto result = context->GetStrAttrVal(attr_name.c_str(), commMode);
-        if (commMode == 'default') {
+        ge::AscendString commMode = "default"; 
+        const char* serverType = nullptr; 
+        const char* streamType = nullptr;
+
+        bool result = context->GetStrAttrVal("comm_mode", commMode);
+        if (commMode == "default") {
             OPS_LOG_D(context->GetNodeName(), "Do A5 default GenTask CalcOpParam");
-        } else if (commMode == 'ccu') {
+            int64_t rankSize = 0; 
+            result = context->GetIntAttrVal("rank_size", rankSize);
+            OPS_LOG_D(context->GetNodeName(), "===gentask rankSize %d", rankSize);
+            if (rankSize <= 8) {
+                serverType = "ccu server";
+                streamType = "ccu_stream";
+                OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTask CalcOpParam");
+            }else{
+                serverType = "aicpu kfc server";
+                streamType = "kfc_stream";
+                OPS_LOG_D(context->GetNodeName(), "Do A5 AICPU GenTask CalcOpParam");
+            }
+        } else if (commMode == "ccu") {
+            serverType = "ccu server";
+            streamType = "ccu_stream";
             OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTask CalcOpParam");
-            return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "ccu server", "ccu_stream");
         }else {
+            serverType = "aicpu kfc server";
+            streamType = "kfc_stream";
             OPS_LOG_D(context->GetNodeName(), "Do A5 AICPU GenTask CalcOpParam");
-            return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "aicpu kfc server", "kfc_stream");
         } 
+        return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, serverType, streamType);
+
     }
     OPS_LOG_E(context->GetNodeName(), "Only support A5");
     return ge::GRAPH_FAILED;
