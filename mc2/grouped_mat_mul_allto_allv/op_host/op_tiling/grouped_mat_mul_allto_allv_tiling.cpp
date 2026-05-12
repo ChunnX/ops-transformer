@@ -26,7 +26,7 @@
 #include "register/op_def_registry.h"
 #include "op_host/op_tiling/hccl_formulaic_tiling.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
-#include "mc2_tiling_utils.h"
+#include "mc2_comm_utils.h"
 
 using namespace AscendC;
 using namespace ge;
@@ -909,7 +909,7 @@ static void UpdateTilingKey(uint64_t& tilingKey, const GroupedMatMulAlltoAllvTil
     bool tilingkeyComputeMm = false;
     bool tilingkeyGmmTrans = false;
     bool tilingkeyMmTrans = false;
-    uint8_t commMode = mc2tiling::Mc2TilingUtils::GetCommModeFromEnv();
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
 
     if (tilingData->commonTilingInfo.isOptionalMatmul) {
         tilingkeyComputeMm = true;

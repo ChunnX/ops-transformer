@@ -19,6 +19,7 @@
 #include "quant_grouped_mat_mul_allto_allv_tiling_adapter.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include <tiling/tiling_api.h>
+#include "mc2_comm_utils.h"
 #include <numeric>
 
 using namespace Mc2Log;
@@ -671,7 +672,7 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::GetWorkspaceSize()
 
 uint64_t MxQuantGroupedMatmulAllToAllvTiling::GetTilingKey() const
 {
-    uint8_t commMode = mc2tiling::Mc2TilingUtils::GetCommModeFromEnv();
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
     const uint64_t tilingKey =
         GET_TPL_TILING_KEY(localParams_.hasSharedMm, localParams_.isGmmWeightTrans, localParams_.isMmWeightTrans,
                            commMode);
