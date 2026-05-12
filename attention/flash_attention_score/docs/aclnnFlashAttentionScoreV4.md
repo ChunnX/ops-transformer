@@ -156,7 +156,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
         <td>realShiftOptional</td>
         <td>可选输入</td>
         <td>公式中的pse。</td>
-        <td>数据类型与attentionOut的数据类型一致。</td>
+        <td>数据类型与attentionOut的数据类型一致。B轴可以是1（所有batch共享）或等于query的batchsize。pseType为2或3时，必须是1维或2维Tensor，shape为[N]或[B,N]。</td>
         <td>FLOAT16、BFLOAT16、FLOAT32</td>
         <td>ND</td>
         <td>[B,N,Sq,Skv]、[B,N,1,Skv]、[1,N,Sq,Skv]、[B,N,1024,Skv]、[1,N,1024,Skv]、[B,N]、[N]</td>
@@ -176,7 +176,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
         <td>dropMaskOptional</td>
         <td>输入</td>
         <td>公式中的Dropout。</td>
-        <td>-</td>
+        <td>数据类型必须是UINT8。元素数量必须大于等于ceil(B * N1 * Sq * Skv / 8)（UINT8类型，按bit打包）。TND格式下元素数量需大于等于ceil(N1 * Σ(Sq[i] * Skv[i]) / 8)。</td>
         <td>UINT8</td>
         <td>ND</td>
         <td>0、1</td>
@@ -186,7 +186,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
         <td>attenMaskOptional</td>
         <td>输入</td>
         <td>公式中的atten_mask。</td>
-        <td>取值为1代表该位不参与计算，为0代表该位参与计算。</td>
+        <td>取值为1代表该位不参与计算，为0代表该位参与计算。数据类型仅支持BOOL或UINT8。当使用attenMask压缩时：sparseMode=1/2/3/4时，shape必须固定为[2048,2048]；sparseMode=6（PREFIX_COMPRESS）时，shape必须固定为[3072,2048]。</td>
         <td>BOOL、UINT8</td>
         <td>ND</td>
         <td>[B,N,S,S]、[B,1,S,S]、[1,1,S,S]、[S,S]</td>
@@ -196,7 +196,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
         <td>queryRopeOptional</td>
         <td>输入</td>
         <td>Device侧的aclTensor。</td>
-        <td>数据类型与query的数据类型一致。</td>
+        <td>数据类型与query的数据类型一致。必须与keyRopeOptional同时存在或同时为空指针。inputLayout为BSH/SBH时，H轴必须是N1的整数倍。MLA concat场景仅支持dSize=128且dSizeRope=64。</td>
         <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>0、3、4</td>
@@ -206,7 +206,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
         <td>keyRopeOptional</td>
         <td>输入</td>
         <td>Device侧的aclTensor。</td>
-        <td>数据类型与key的数据类型一致。</td>
+        <td>数据类型与key的数据类型一致。必须与queryRopeOptional同时存在或同时为空指针。</td>
         <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>0、3、4</td>
@@ -216,7 +216,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
         <td>dScaleQOptional</td>
         <td>输入</td>
         <td>query的量化参数。</td>
-        <td>输入shape为[B,N1,Ceil(Sq/128),1]。</td>
+        <td>数据类型必须是FLOAT32。输入shape必须为[B,N1,Ceil(Sq/128),1]，其中B必须等于query的batchsize，N1必须等于headNum。</td>
         <td>FLOAT32</td>
         <td>ND</td>
         <td>0、3、4</td>
@@ -226,7 +226,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
         <td>dScaleKOptional</td>
         <td>输入</td>
         <td>key的量化参数。</td>
-        <td>输入shape为[B,N2,Ceil(Skv/256),1]。</td>
+        <td>数据类型必须是FLOAT32。输入shape必须为[B,N2,Ceil(Skv/256),1]，其中B必须等于query的batchsize，N2必须等于key的head数。</td>
         <td>FLOAT32</td>
         <td>ND</td>
         <td>0、3、4</td>
@@ -236,7 +236,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
         <td>dScaleVOptional</td>
         <td>输入</td>
         <td>value的量化参数。</td>
-        <td>输入shape为[B,N2,Ceil(Skv/256),1]。</td>
+        <td>数据类型必须是FLOAT32。输入shape必须为[B,N2,Ceil(Skv/512),1]，其中B必须等于query的batchsize，N2必须等于value的head数。</td>
         <td>FLOAT32</td>
         <td>ND</td>
         <td>0、3、4</td>
@@ -246,7 +246,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
         <td>sinkOptional</td>
         <td>输入</td>
         <td>公式中的sink,提供解决注意力计算集中前一部分TOKEN问题的功能。</td>
-        <td>当输入不为空指针时，仅支持一维Tensor输入。</td>
+        <td>数据类型仅支持FLOAT32。必须是1维Tensor，元素数量必须等于N1（headNum）。当sinkOptional存在时，query、key、value的数据类型仅支持FLOAT16和BFLOAT16。</td>
         <td>FLOAT32</td>
         <td>ND</td>
         <td>[N1]</td>
@@ -256,7 +256,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
         <td>prefixOptional</td>
         <td>输入</td>
         <td>代表prefix稀疏计算场景每个Batch的N值。</td>
-        <td>-</td>
+        <td>必须是1维Tensor，且长度必须等于batchsize。</td>
         <td>INT64</td>
         <td>ND</td>
         <td>0、1</td>
@@ -266,7 +266,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
         <td>actualSeqQLenOptional</td>
         <td>输入</td>
         <td>描述了每个Batch对应的query的sequence length。</td>
-        <td>-</td>
+        <td>TND格式下，必须与actualSeqKvLenOptional的长度（batch数）相等。</td>
         <td>INT64</td>
         <td>ND</td>
         <td>0、1</td>
@@ -276,7 +276,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
         <td>actualSeqKvLenOptional</td>
         <td>输入</td>
         <td>描述了每个Batch对应的key/value的sequence length。</td>
-        <td>-</td>
+        <td>TND格式下，必须与actualSeqQLenOptional的长度（batch数）相等。</td>
         <td>INT64</td>
         <td>ND</td>
         <td>0、1</td>
@@ -286,7 +286,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
         <td>qStartIdxOptional</td>
         <td>输入</td>
         <td>代表外切场景，当前分块的query的sequence在全局中的起始索引。</td>
-        <td>-</td>
+        <td>与kvStartIdxOptional的差值必须在INT32范围内（-2147483648到2147483647）。</td>
         <td>INT64</td>
         <td>ND</td>
         <td>0、1</td>
@@ -295,8 +295,8 @@ aclnnStatus aclnnFlashAttentionScoreV4(
       <tr>
         <td>kvStartIdxOptional</td>
         <td>输入</td>
-        <td>代表外切场景，当前分块的query的sequence在全局中的起始索引。</td>
-        <td>-</td>
+        <td>代表外切场景，当前分块的key/value的sequence在全局中的起始索引。</td>
+        <td>与qStartIdxOptional的差值必须在INT32范围内（-2147483648到2147483647）。</td>
         <td>INT64</td>
         <td>ND</td>
         <td>0、1</td>
@@ -326,7 +326,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
         <td>preTokens</td>
         <td>输入</td>
         <td>用于稀疏计算 ，表示sliding window的左边界。</td>
-        <td>-</td>
+        <td>超过INT32范围时将自动调整为INT32_MAX或INT32_MIN，不会报错。</td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -336,7 +336,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
         <td>nextTokens</td>
         <td>输入</td>
         <td>用于稀疏计算，表示sliding window的右边界。</td>
-        <td>-</td>
+        <td>超过INT32范围时将自动调整为INT32_MAX或INT32_MIN，不会报错。</td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -346,7 +346,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
         <td>headNum</td>
         <td>输入</td>
         <td>代表单卡的head个数，即输入query的N轴长度。</td>
-        <td>-</td>
+        <td>必须等于query的N轴大小。inputLayout为BSH/SBH时，headNum必须等于H/N2。</td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -566,38 +566,88 @@ aclnnStatus aclnnFlashAttentionScoreV4(
   - aclnnFlashAttentionScoreV4默认确定性实现。
 - 输入query、key、value的
   - B：batchsize必须相等。
-  - D：Head-Dim必须满足(qD == kD && kD >= vD)。
+  - N：N1必须是N2的整数倍，即支持GQA时N1/N2必须为整数。
+  - D：Head-Dim必须满足(qD == kD && kD >= vD)，其中value的dSize不能超过query/key的dSize。
   - inputLayout必须一致。
-- 输入queryRopeOptional与query的输入shape仅在D维度不同，其他shape参数应该相同
-- 输入keyRopeOptional与key的输入shape仅在D维度不同，其他shape参数应该相同
+- 输入queryRopeOptional与keyRopeOptional必须同时存在或同时为空指针。
+- 输入queryRopeOptional与query的输入shape仅在D维度不同，其他shape参数应该相同。
+- 输入keyRopeOptional与key的输入shape仅在D维度不同，其他shape参数应该相同。
+- MLA concat场景（queryRopeOptional和keyRopeOptional存在时），仅支持dSize=128且dSizeRope=64。
 - 关于数据shape的约束，以inputLayout的TND、BSND、BNSD为例（BSH、SBH下H=N\*D），其中：
-    - T(B*S)：取值范围为1\~1M；TND格式下actualSeqQLenOptional支持的最大长度为20000。
+    - T(B*S)：取值范围为1\~INT32_MAX（约2.1亿）；TND格式下，query的T轴大小必须大于等于所有batch的Sq之和，key的T轴大小必须大于等于所有batch的Skv之和；TND格式下actualSeqQLenOptional支持的最大长度为20000。
     - B：取值范围为1\~2M。带prefixOptional的时候B最大支持2K。
-    - N：取值范围为1\~256。
-    - S：取值范围为1\~1M。
+    - N：取值范围为1\~256。N1和N2都不能为0。
+    - S：取值范围为1\~INT32_MAX（约2.1亿）。
     - D：取值范围为1\~768。
+    - H：inputLayout为BSH/SBH时，H（Head-Size = N*D）必须大于0，且query的H轴必须是N1的整数倍。
+- TND格式下：
+    - actualSeqQLenOptional和actualSeqKvLenOptional的长度（batch数）必须相等。
+    - 至少有一个batch的Sq长度必须大于0。
+- headNum必须等于query的N轴大小。inputLayout为BSH/SBH时，headNum必须等于H/N2。
 - query、key、value数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸，且满足D=H/N。
 - innerPrecise: 当前0、1为保留配置值，2为使能无效行计算，其功能是避免在计算过程中存在整行mask进而导致精度有损失，但是该配置会导致性能下降。 如果算子可判断出存在无效行场景，会自动使能无效行计算，例如sparseMode为3，Sq > Skv场景。
+- preTokens和nextTokens超过INT32范围时将自动调整为INT32_MAX或INT32_MIN，不会报错。
+- band场景，preTokens和nextTokens之间必须要有交集。具体判断：
+    - 当preTokens < 0且nextTokens < 0时，无有效数据块，报错。
+    - 当preTokens >= 0且nextTokens >= 0时，需要满足preTokens + nextTokens >= 0。
+    - 其他情况根据具体配置判断是否有无效行，可能自动启用无效行处理模式。
+- prefixOptional稀疏计算场景：
+    - prefixOptional必须是1维Tensor，且长度必须等于batchsize。
+    - 每个batch的prefixN值必须满足：
+      - 当Sq > Skv时：prefixN在[0, Skv]范围内。
+      - 当Sq <= Skv时：prefixN在[Skv-Sq, Skv]范围内。
+      - 若prefixN=0且Sq>Skv，将自动启用无效行处理模式。
+    - TND格式下，每个batch的prefixN值根据该batch的Sq和Skv进行独立校验：
+      - 若该batch的Sq > Skv：prefixN在[0, Skv]范围内。
+      - 若该batch的Sq <= Skv：prefixN在[Skv-Sq, Skv]范围内。
+- sparseMode详细约束：
+    - 当所有的attenMaskOptional的shape小于2048且相同的时候，建议使用default模式（即sparseMode=0），来减少内存使用量。
+    - 配置为1、2、3、5时，用户配置的preTokens、nextTokens不会生效。
+    - 配置为0、4时，须保证attenMaskOptional与preTokens、nextTokens的范围一致。
+    - 用户不特意指定时建议传入0。
+    - sparse不同模式的详细说明请参见[sparse模式说明](../../../docs/zh/context/sparse_mode参数说明.md)。
+    - TND格式下不支持sparseMode=5（PREFIX模式），只支持sparseMode=6（PREFIX_COMPRESS）。
+    - 当使用attenMask压缩时：
+      - sparseMode=1/2/3/4时，attenMaskOptional的shape必须固定为[2048, 2048]。
+      - sparseMode=6（PREFIX_COMPRESS）时，attenMaskOptional的shape必须固定为[3072, 2048]。
+    - TND格式下的额外约束：
+      - sparseMode=2（RIGHT_DOWN_CAUSAL）时，每个batch的Sq长度不能超过对应的Skv长度。
+      - sparseMode=3（BAND）时，每个batch的Sq - nextTokens不能超过对应的Skv长度。
+      - sparseMode=7（RIGHT_DOWN_CAUSAL_BAND）时：
+        - preTokens必须大于等于最后一个有效batch的Skv长度。
+        - nextTokens必须小于等于0。
+        - 所有batch的Sq长度不能超过对应的Skv长度。
+      - sparseMode=8（BAND_LEFT_UP_CAUSAL）时：
+        - 第一个有效batch的Sq - nextTokens不能超过对应的Skv长度。
+        - preTokens必须大于等于第一个有效batch的Skv长度。
+- sinkOptional约束：
+    - 数据类型仅支持FLOAT32。
+    - 必须是1维Tensor，且元素数量必须等于N1（headNum）。
+    - 当sinkOptional存在时，query、key、value的数据类型仅支持FLOAT16和BFLOAT16。
+- qStartIdxOptional和kvStartIdxOptional的差值必须在INT32范围内（即kvStartIdx - qStartIdx必须在-2147483648到2147483647之间），以避免kernel侧类型转换截断。
+- HIFLOAT8数据类型输入时，仅支持以下特定配置：
+    - inputLayout必须为BSND。
+    - 不能有任何可选输入（attenMaskOptional、realShiftOptional、dropMaskOptional、queryRopeOptional、keyRopeOptional）。
+    - 支持的shape组合：
+      - query:[1, 57600, 5, 128], key:[1, 57600, 5, 128], value:[1, 57600, 5, 128]。
+      - query:[1, 7200, 40, 128], key:[1, 512, 40, 128], value:[1, 512, 40, 128]。
 - pseType 各个取值含义
 
     | pseType     | 含义                              |      备注   |
     | ----------- | --------------------------------- | ----------|
     | 0           | 调用算子时传入pse 先mul再add              | - |
     | 1           | 调用算子时传入pse 先add再mul              | 跟[FlashAttentionScore](./aclnnFlashAttentionScore.md)实现一致。 |
-    | 2           | 算子自动生成pse 先mul再add              | - |
-    | 3           | 算子自动生成pse 先mul再add再sqrt         | - |
+    | 2           | 算子自动生成pse 先mul再add              | realShiftOptional必须是1维或2维Tensor，shape为[N]或[B,N]。不支持sparseMode=7（RIGHT_DOWN_CAUSAL_BAND）。 |
+    | 3           | 算子自动生成pse 先mul再add再sqrt         | realShiftOptional必须是1维或2维Tensor，shape为[N]或[B,N]。不支持sparseMode=7（RIGHT_DOWN_CAUSAL_BAND）。 |
 
 - pseType为2或3的时候，当前只支持Sq和Skv等长。
-- sparseMode约束如下: 
-  - 当所有的attenMaskOptional的shape小于2048且相同的时候，建议使用default模式，来减少内存使用量。
-  - 配置为1、2、3、5时，用户配置的preTokens、nextTokens不会生效。
-  - 配置为0、4时，须保证attenMaskOptional与preTokens、nextTokens的范围一致。
-  - 用户不特意指定时建议传入0。
-  - sparse不同模式的详细说明请参见[sparse模式说明](../../../docs/zh/context/sparse_mode参数说明.md)。
-- 部分场景下，如果计算量过大可能会导致算子执行超时（aicore error类型报错，errorStr为：timeout or trap error），此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
-- band场景，preTokens和nextTokens之间必须要有交集。
-- prefixOptional稀疏计算场景，场景包括sequence长度相等的场景下sparseMode=5、sparseMode=6；sequence长度不相等的场景下sparseMode=6。这两种场景下，当Sq > Skv时，prefix的N值取值范围\[0, Skv\]；当Sq <= Skv时，prefix的N值取值范围\[Skv-Sq, Skv\]。当sparseModeOptional=5、prefix的N > Skv或prefixOptional不传时执行全计算，sparseModeOptional=6要求prefixOptional必传。
-- realShiftOptional：Sq大于1024时如果配置BNHS、1NHS，需要Sq和Skv等长。
+- pseType为2或3且sparseMode=8（BAND_LEFT_UP_CAUSAL）时：
+    - 第一个有效batch的actualSeqQLen + qStartIdx - actualSeqKvLen - kvStartIdx必须等于0。
+    - 所有batch的actualSeqQLen和actualSeqKvLen必须相等。
+- realShiftOptional：
+    - B轴可以是1（所有batch共享）或等于query的batchsize。
+    - Sq大于1024时如果配置BNHS、1NHS，需要Sq和Skv等长。
+    - 当s1Size > 1024且使用alibi压缩时，只支持sparseMode=1（LEFT_UP_CAUSAL）或sparseMode=3（RIGHT_DOWN_CAUSAL）的causal类型。
 - actualSeqQLenOptional输入支持某个Batch上的S长度为0，此时不支持可选输入realShiftOptional。
 - TND场景下attenMaskOptional输入不支持补pad，即attenMaskOptional中不能存在某一行全1的场景。
 - 支持actualSeqQLenOptional中某个Batch上的S长度为0；如果存在S为0的情况，不支持pse输入，
