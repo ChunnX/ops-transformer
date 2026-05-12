@@ -51,6 +51,10 @@ private:
     __aicore__ inline void ClearSumTensor();
     __aicore__ inline void ReadDataBlockReduceSum(uint64_t curXOffset, uint64_t curScaleOffset, uint32_t xNum, uint32_t scaleNum);
     __aicore__ inline void ExecuteAllReduce();
+    __aicore__ inline void ParseTilingInfo(const QuantAllReduceTilingData *tilingData);
+    __aicore__ inline void ComputeXPerBlock(const QuantAllReduceTilingData *tilingData, TPipe *tPipe);
+    __aicore__ inline void ComputeBlockDistribution(uint64_t aivNum);
+    __aicore__ inline void InitSubModules(GM_ADDR x, GM_ADDR scales, GM_ADDR output, TPipe *tPipe, uint64_t aivNum);
 
     // 数据参数
     uint64_t xSize_{0};
@@ -84,112 +88,108 @@ template <TemplateTypeClass>
 __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::Init(GM_ADDR x, GM_ADDR scales,
     GM_ADDR output, TPipe *tPipe, const QuantAllReduceTilingData *tilingData)
 {
-    // 初始化HcclContext
     mteComm_.InitHcclContext();
-
-    /* quant_all_reduce自己的数据 */
-    auto&& tiliingDatainfo = tilingData->quantAllReduceTilingInfo;
-    totalWinSize_ = tiliingDatainfo.totalWinSize;
-    xNums_ = tiliingDatainfo.bs * tiliingDatainfo.hiddenSize; // 总的x数据个数， bs * h
-    xSize_ = xNums_ * sizeof(XType); // 总的x数据量，B
-
+    ParseTilingInfo(tilingData);
     tPipe->Reset();
+    ComputeXPerBlock(tilingData, tPipe);
+    uint64_t aivNum = tilingData->quantAllReduceTilingInfo.aivNum;
+    ComputeBlockDistribution(aivNum);
+    InitSubModules(x, scales, output, tPipe, aivNum);
+}
 
-    // ============ 动态计算 UB 空间分配，最大化 xPerBlock_ ============
-    // 1. 计算固定开销（不随 xPerBlock_ 变化的 buffer）
-    // 注：mteComm_ 的 xQueue_/scaleQueue_ 改为动态分块（与 ExecuteAllReduce 一致），不再是固定开销
-    //   xQueue_ 移到 dynamic（BUFFER_NUM * sizeof(XType)）
-    //   scaleQueue_ 实际开销极小（≤ 1/16 byte/x），用 BUFFER_NUM * X_BLOCK_BYTES 上限估算放固定
-    uint64_t mteCommFixedSpace = BUFFER_NUM * X_BLOCK_BYTES +                    // scaleQueue_ 上限估算
-                                  UB_ALIGN_BYTES +                                // winFlagsBuf_
-                                  UB_ALIGN_BYTES +                                // writeStateBuf_
-                                  mteComm_.hcclContext_->rankDim * UB_ALIGN_BYTES +  // readStateBuf_
-                                  mteComm_.hcclContext_->rankDim * UB_ALIGN_BYTES;   // stateResetBuf_
+template <TemplateTypeClass>
+__aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::ParseTilingInfo(
+    const QuantAllReduceTilingData *tilingData)
+{
+    auto&& info = tilingData->quantAllReduceTilingInfo;
+    totalWinSize_ = info.totalWinSize;
+    xNums_ = info.bs * info.hiddenSize;
+    xSize_ = xNums_ * sizeof(XType);
+}
+
+template <TemplateTypeClass>
+__aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::ComputeXPerBlock(
+    const QuantAllReduceTilingData *tilingData, TPipe *tPipe)
+{
+    auto&& info = tilingData->quantAllReduceTilingInfo;
+
+    uint64_t mteCommFixedSpace = BUFFER_NUM * X_BLOCK_BYTES +
+                                  UB_ALIGN_BYTES +
+                                  UB_ALIGN_BYTES +
+                                  mteComm_.hcclContext_->rankDim * UB_ALIGN_BYTES +
+                                  mteComm_.hcclContext_->rankDim * UB_ALIGN_BYTES;
 
     uint64_t vecCompFixedSpace;
     if constexpr (AscendC::IsSameType<ScalesType, fp8_e8m0_t>::value) {
-        vecCompFixedSpace = MX_MAX_SCALE_NUM * sizeof(float) +         // castScaleBuf_
-                            MX_MAX_SCALE_NUM * sizeof(bfloat16_t);     // tempBf16ScaleBuf_
+        vecCompFixedSpace = MX_MAX_SCALE_NUM * sizeof(float) +
+                            MX_MAX_SCALE_NUM * sizeof(bfloat16_t);
     } else {
-        vecCompFixedSpace = KG_MAX_SCALE_NUM * sizeof(float);          // castScaleBuf_
+        vecCompFixedSpace = KG_MAX_SCALE_NUM * sizeof(float);
     }
 
-    uint64_t selfFixedSpace = 0;  // scaleInQue 改为动态，不算在固定开销中
+    uint64_t mteCommDynamicBytes = BUFFER_NUM * sizeof(OutputType) +
+                                    BUFFER_NUM * sizeof(XType);
+    uint64_t vecCompDynamicBytes = sizeof(float) + sizeof(float) + sizeof(bfloat16_t) + sizeof(float16_t);
 
-    // 2. 计算动态开销系数（每单位 xPerBlock_ 需要的字节）
-    uint64_t mteCommDynamicBytes = BUFFER_NUM * sizeof(OutputType) +  // xOutQueue_ (双 buffer)
-                                    BUFFER_NUM * sizeof(XType);        // xQueue_ (双 buffer，新增动态)
-    uint64_t vecCompDynamicBytes = sizeof(float) + sizeof(float) + sizeof(bfloat16_t) + sizeof(float16_t);  // brcbBuf_ + xCastBuf_ + xCastBf16Buf_ + xCastfp16Buf_
-
-    // scaleInQue动态大小：每xPerBlock_需要的scale数量
-    // MXFP: scaleNum = xPerBlock_/32, size = scaleNum*1B
-    // KG: scaleNum = xPerBlock_/128, size = scaleNum*4B = xPerBlock_/32B
-    // 两者系数一致：每增加1个x，scaleInQue增加1/32B，双buffer后为2/32=1/16B
-    uint64_t scaleInQueBytesPerX = sizeof(ScalesType) / (AscendC::IsSameType<ScalesType, fp8_e8m0_t>::value ? MX_SIZE : PER_GROUP_SIZE);
+    uint64_t scaleInQueBytesPerX = sizeof(ScalesType) /
+        (AscendC::IsSameType<ScalesType, fp8_e8m0_t>::value ? MX_SIZE : PER_GROUP_SIZE);
     uint64_t selfDynamicBytes = sizeof(float) + BUFFER_NUM * sizeof(XType) + BUFFER_NUM * scaleInQueBytesPerX;
 
+    uint64_t totalFixedSpace = mteCommFixedSpace + vecCompFixedSpace;
     uint64_t totalDynamicBytes = mteCommDynamicBytes + vecCompDynamicBytes + selfDynamicBytes;
-    uint64_t totalFixedSpace = mteCommFixedSpace + vecCompFixedSpace + selfFixedSpace;
-
-    // 3. 根据剩余 UB 空间计算最大 xPerBlock_
     uint64_t remainingSpace = TOTAL_UB_SIZE - totalFixedSpace;
     uint64_t maxXPerBlock = remainingSpace / totalDynamicBytes;
 
-    // 以 host 推荐值（基于 TARGET_ITER 公式）作为上限，kernel 端 ub_max 仍作 safety net
-    uint32_t hostRecommended = tiliingDatainfo.xPerBlock;
+    uint32_t hostRecommended = info.xPerBlock;
     if (hostRecommended != 0U && maxXPerBlock > hostRecommended) {
         maxXPerBlock = hostRecommended;
     }
 
-    // 4. 考虑数据量限制：不超过总数据量 xNums_
     xPerBlock_ = static_cast<uint32_t>(maxXPerBlock < xNums_ ? maxXPerBlock : xNums_);
 
-    // 5. 对齐到 alignBlock（从 tiling 侧传入，host/kernel 共享）
-    uint32_t alignBlock = tilingData->quantAllReduceTilingInfo.alignBlock;
+    uint32_t alignBlock = info.alignBlock;
     xPerBlock_ = FloorAlign(xPerBlock_, alignBlock);
     if (xPerBlock_ == 0) {
         xPerBlock_ = alignBlock;
     }
 
-    // 6. 计算scale数量（real 值，用于 GM 偏移与 DataCopy 字节数）
     if constexpr (AscendC::IsSameType<ScalesType, fp8_e8m0_t>::value) {
         scaleNumsPerBlock_ = xPerBlock_ / MX_SIZE;
     } else {
         scaleNumsPerBlock_ = xPerBlock_ / PER_GROUP_SIZE;
     }
-    // UB buffer 大小按 32B 对齐分配（硬件要求），但 GM 偏移与 DataCopy 用 real 值（DataCopyPad 处理 sub-32B 拷贝）
+
     uint32_t scaleAlignNum = UB_ALIGN_BYTES / sizeof(ScalesType);
     uint32_t scaleAllocCount = CeilAlignU32(scaleNumsPerBlock_, scaleAlignNum);
     uint64_t scaleInQueSize = scaleAllocCount * sizeof(ScalesType);
 
-    // 7. 分配 UB buffer
     tPipe->InitBuffer(xInQueue_, BUFFER_NUM, xPerBlock_ * sizeof(XType));
     tPipe->InitBuffer(scaleInQue, BUFFER_NUM, scaleInQueSize);
     tPipe->InitBuffer(sumBuf_, xPerBlock_ * sizeof(float));
     sumTensor_ = sumBuf_.Get<float>();
+}
 
-    // ============ 计算动态分块参数（基于xPerBlock_） ============
+template <TemplateTypeClass>
+__aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::ComputeBlockDistribution(uint64_t aivNum)
+{
     uint64_t aivId = GetBlockIdx();
-    uint64_t aivNum = tiliingDatainfo.aivNum;
-
-    totalBlockNums_ = CeilDiv(xNums_, xPerBlock_);  // 总块数
-    round_ = totalBlockNums_ / aivNum;           // 每核基础轮次
-    tailBlockNums_ = totalBlockNums_ % aivNum;   // 尾块数
+    totalBlockNums_ = CeilDiv(xNums_, xPerBlock_);
+    round_ = totalBlockNums_ / aivNum;
+    tailBlockNums_ = totalBlockNums_ % aivNum;
     assignedBlockNums_ = aivId < tailBlockNums_ ? round_ + 1 : round_;
     lastAivId_ = (round_ == 0) ? tailBlockNums_ - 1 : aivNum - 1;
 
-    // 计算当前核的起始偏移
     uint64_t blockIdx = aivId * round_ + (aivId < tailBlockNums_ ? aivId : tailBlockNums_);
     xOffset_ = blockIdx * xPerBlock_;
     scaleOffset_ = blockIdx * scaleNumsPerBlock_;
     tailXNums_ = BlockAlignMod(xNums_, xPerBlock_);
+}
 
-    // 设置vecComp的块大小
+template <TemplateTypeClass>
+__aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::InitSubModules(
+    GM_ADDR x, GM_ADDR scales, GM_ADDR output, TPipe *tPipe, uint64_t aivNum)
+{
     vecComp_.SetBlockSize(xPerBlock_);
-
-    // MTE搬运参数初始化：与 ExecuteAllReduce 用相同的动态分块策略（基于 xPerBlock_）
-    // 这样每核 CopyDataToWin 搬运的范围 = ExecuteAllReduce 读取的范围，
-    // 跨 rank 同步后每核读自己搬的数据，不会跨核读取
     mteComm_.round_ = round_;
     mteComm_.tailBlockNums_ = tailBlockNums_;
     mteComm_.ComputeTailAivId(aivNum);
