@@ -20,7 +20,7 @@
 #include "fia_kernel_fullquant_mx.h"
 
 template <typename INPUT_T, typename OUT_T, uint8_t inOutLayoutType, uint16_t config, uint8_t pseMode,
-          uint8_t quantMode, bool hasAttenMask, bool hasRope, uint8_t KvLayoutType, bool isFd, bool emptyTensor,
+          uint8_t quantMode, bool hasAttenMask, bool hasRope, uint8_t KvLayoutType, bool emptyTensor,
           bool enableKVPrefix, bool enableS1OutSplit>
 inline __aicore__ void run_fia_noquant_gqa_kernel(
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pseShift,
@@ -59,10 +59,10 @@ inline __aicore__ void run_fia_noquant_gqa_kernel(
     // VecFaBlockType
     using VecFaBlockNormal = BaseApi::FANoQuantGqaBlockVec<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
         s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, static_cast<PseTypeEnum>(pseMode),
-        hasAttenMask, false, hasRope, KvLayoutType, isFd, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
+        hasAttenMask, false, hasRope, KvLayoutType, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
     using VecFaBlockDummy = BaseApi::FANoQuantGqaBlockVecDummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
         s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, static_cast<PseTypeEnum>(pseMode), hasAttenMask,
-        false, hasRope, KvLayoutType, isFd, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
+        false, hasRope, KvLayoutType, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
     using VecFaBlock = typename std::conditional<g_coreType == AscendC::AIV, VecFaBlockNormal, VecFaBlockDummy>::type;
 
     // VecFdBlockType
@@ -90,7 +90,7 @@ inline __aicore__ void run_fia_noquant_gqa_kernel(
 }
 
 template <typename INPUT_T, typename OUT_T, uint8_t inOutLayoutType, uint16_t config, uint8_t pseMode,
-          uint8_t quantMode, bool hasAttenMask, bool hasRope, uint8_t KvLayoutType, bool isFd, bool emptyTensor,
+          uint8_t quantMode, bool hasAttenMask, bool hasRope, uint8_t KvLayoutType, bool emptyTensor,
           bool enableKVPrefix, bool enableS1OutSplit>
 inline __aicore__ void run_fia_fullquant_mx_kernel(
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pseShift,
@@ -123,11 +123,11 @@ inline __aicore__ void run_fia_fullquant_mx_kernel(
     // VecFaBlockType
     using VecFaBlockNormal = BaseApi::FAFullQuantMxBlockVec<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
         s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, static_cast<PseTypeEnum>(pseMode),
-        hasAttenMask, false, hasRope, KvLayoutType, isFd, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
+        hasAttenMask, false, hasRope, KvLayoutType, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
     using VecFaBlockDummy = BaseApi::FAFullQuantMxBlockVecDummy<
         INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
         s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, static_cast<PseTypeEnum>(pseMode), hasAttenMask,
-        false, hasRope, KvLayoutType, isFd, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
+        false, hasRope, KvLayoutType, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
     using VecFaBlock = typename std::conditional<g_coreType == AscendC::AIV, VecFaBlockNormal, VecFaBlockDummy>::type;
 
     // VecFdBlockType

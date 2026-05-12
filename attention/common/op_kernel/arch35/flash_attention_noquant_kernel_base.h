@@ -376,7 +376,6 @@ __aicore__ inline void FlashAttentionNoQuantKernelBase<ChildClass, CubeBlockType
     constInfo.dSize = sharedParams.dSize;
     constInfo.dSizeV = sharedParams.dSizeV;
     constInfo.dBasicBlock = Align64Func((uint16_t)constInfo.dSizeV);
-    constInfo.isFd = sharedParams.isFd;
     if constexpr (hasRope) {
         constInfo.dSizeRope = sharedParams.dSizeRope;
     } else {
@@ -414,6 +413,7 @@ __aicore__ inline void FlashAttentionNoQuantKernelBase<ChildClass, CubeBlockType
     constInfo.layoutType = sharedParams.layoutType;
 
     if constexpr (isInfer) {
+        constInfo.isFd = sharedParams.isFd;
         constInfo.s1D = constInfo.s1Size * constInfo.dSize;
         constInfo.gD = constInfo.gSize * constInfo.dSize;
         constInfo.n2GD = constInfo.n2Size * constInfo.gD; 
@@ -673,9 +673,6 @@ __aicore__ inline void FlashAttentionNoQuantKernelBase<ChildClass, CubeBlockType
     runInfo.taskIdMod3 = taskId % 3;
     runInfo.s2LoopLimit = s2LoopLimit;
 
-    if (constInfo.isFd) {
-        runInfo.flashDecodeS2Idx = this->aicIdx % constInfo.splitKVNum;
-    }
     runInfo.actualS1Size = runParam.actualS1Size;
     runInfo.actualS2Size = runParam.actualS2Size;
     runInfo.attentionOutOffset = runParam.attentionOutOffset;
@@ -684,6 +681,9 @@ __aicore__ inline void FlashAttentionNoQuantKernelBase<ChildClass, CubeBlockType
     if constexpr (isInfer) {
         runInfo.sOuterOffset = runParam.sOuterOffset;
         runInfo.gS1Idx = runParam.gS1Idx;
+        if (constInfo.isFd) {
+            runInfo.flashDecodeS2Idx = this->aicIdx % constInfo.splitKVNum;
+        }
     }
     this->ComputeBmm1Tail(runInfo, runParam);
     GetDerived()->InitUniqueRunInfo(runParam, runInfo);
