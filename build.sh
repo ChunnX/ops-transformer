@@ -454,6 +454,57 @@ function build_example()
         # If you need to add independent examples, you can refer to the method of adding a directory for isolation.
         files=($(find ../ -path "*/${EXAMPLE_NAME}/examples/${pattern}*.cpp"))
     fi
+
+
+    # ========= shmem 外接配置（通过环境变量 SHMEM_HOME 指定） =========
+    if [[ -z "${SHMEM_HOME}" ]]; then
+        echo "Error: 环境变量 SHMEM_HOME 未设置，请先 export SHMEM_HOME=/path/to/shmem"
+        return 1
+    fi
+
+    if [[ ! -d "${SHMEM_HOME}" ]]; then
+        echo "Error: SHMEM_HOME=${SHMEM_HOME} 不存在"
+        return 1
+    fi
+
+    # 自动判断 lib 还是 lib64
+    if [[ -d "${SHMEM_HOME}/build/lib" ]]; then
+        SHMEM_LIB_DIR="${SHMEM_HOME}/build/lib"
+    else
+        echo "Error: 在 ${SHMEM_HOME} 下未找到 lib 目录"
+        return 1
+    fi
+
+    SHMEM_INC_DIR="${SHMEM_HOME}/include"
+
+    echo "[INFO] SHMEM_HOME    = ${SHMEM_HOME}"
+    echo "[INFO] SHMEM_INC_DIR = ${SHMEM_INC_DIR}"
+    echo "[INFO] SHMEM_LIB_DIR = ${SHMEM_LIB_DIR}"
+
+    export LD_LIBRARY_PATH="${SHMEM_LIB_DIR}:${LD_LIBRARY_PATH}"
+
+    # SHMEM运行时日志开启
+    export SHMEM_LOG_LEVEL=ERROR
+    export SHMEM_LOG_TO_STDOUT=1
+
+    # 节点ID + SHMEM Master IP
+    export SHMEM_NODE_RANK=0
+    export SHMEM_UID_SESSION_ID="127.0.0.1:18899"
+
+    export PATH=${MPI_TEST_HOME}/bin:$PATH
+    export LD_LIBRARY_PATH=${MPI_TEST_HOME}/lib:$LD_LIBRARY_PATH
+    MPI_INC_DIR="${MPI_TEST_HOME}/include"
+    MPI_LIB_DIR="${MPI_TEST_HOME}/lib"
+
+    echo "====== Launch Config ======"
+    echo "SHMEM_NODE_RANK   = $SHMEM_NODE_RANK"
+    echo "MASTER_IP         = tcp://$SHMEM_UID_SESSION_ID"
+    echo "==========================="
+
+    n_pes=8
+    g_npus=8
+    pids=()
+
     # Compile and Execute
     if [[ "${EXAMPLE_MODE}" == "eager" ]]; then
         if [ -z "$files" ]; then
@@ -484,13 +535,15 @@ function build_example()
                     CUST_LIBRARY_PATH="${CUST_VENDORS_PATH}/${vendor_name}_transformer/op_api/lib"
                     CUST_INCLUDE_PATH="${CUST_VENDORS_PATH}/${vendor_name}_transformer/op_api/include"
                 fi
-                g++ ${file} -I ${CUST_INCLUDE_PATH} -I ${INCLUDE_PATH} -L ${CUST_LIBRARY_PATH} -L ${EAGER_LIBRARY_PATH} -lopapi_math -lcust_opapi -lascendcl -lnnopbase -I ${EAGER_INCLUDE_OPP_ACLNNOP_PATH} -lc_sec ${MC2_APPEND_INCLUDE_AND_LIBRARY} -o test_aclnn_${EXAMPLE_NAME} -Wl,-rpath=${CUST_LIBRARY_PATH}
+                g++ ${file} -I ${CUST_INCLUDE_PATH} -I ${INCLUDE_PATH} -I ${MPI_INC_DIR} -I ${SHMEM_INC_DIR} -L ${CUST_LIBRARY_PATH} -L ${EAGER_LIBRARY_PATH} -L ${MPI_LIB_DIR} -L ${SHMEM_LIB_DIR} -lmpi -lmpicxx -lshmem -lopapi_math -lcust_opapi -lascendcl -lnnopbase -I ${EAGER_INCLUDE_OPP_ACLNNOP_PATH} -lc_sec ${MC2_APPEND_INCLUDE_AND_LIBRARY} -o test_aclnn_${EXAMPLE_NAME} -Wl,-rpath=${CUST_LIBRARY_PATH}
             else
                 echo "Error: pkg_mode(${PKG_MODE}) must be cust."
                 help_info "run_example"
                 return 1
             fi
-            ./test_aclnn_${EXAMPLE_NAME}
+            echo "We In Mpirun ${n_pes} Processes."
+            mpirun -np ${n_pes} ./test_aclnn_${EXAMPLE_NAME} "tcp://${SHMEM_UID_SESSION_ID}" ${g_npus}
+            # ./test_aclnn_${EXAMPLE_NAME}
             run_result=$?
             if [ $run_result -ne 0 ]; then
                 echo "run test_aclnn_${EXAMPLE_NAME}, execute samples failed"

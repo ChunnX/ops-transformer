@@ -41,6 +41,8 @@ using namespace MoeDistributeDispatchV2FullMeshImpl;
 using namespace Mc2Tiling;
 using namespace AscendC;
 
+#include "shmem.h"
+
 template<bool HasTp, uint8_t QuantMode, bool ScaleMode, uint8_t FullMesh, uint8_t CommMode, uint8_t ArchTag>
 __global__ __aicore__ void moe_distribute_dispatch_v2(
     GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR expertScales, 
@@ -49,6 +51,25 @@ __global__ __aicore__ void moe_distribute_dispatch_v2(
     GM_ADDR expandScalesOut, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
 REGISTER_TILING_DEFAULT(MoeDistributeDispatchV2TilingData);
+
+AscendC::printf("====================== zzz In moe_distribute_dispatch_v2 ==========================\n");
+AscendC::printf("Shmem Interface my_pe: %d \n", aclshmem_my_pe());
+
+__gm__ ACLSHMEMAIVUDMAInfo* udmaInfo = aclshmemi_udma_qp_info_fetch();
+AscendC::printf("====================== Shmem udmaInfo address: %p ====================== \n", udmaInfo);
+
+__gm__ ACLSHMEMUDMAWQCtx* qpCtxEntry = aclshmemi_udma_get_qp_ctx(udmaInfo, aclshmem_my_pe(), 0);
+AscendC::printf("====================== Shmem udma qpCtxEntry address: %p ====================== \n", qpCtxEntry);
+
+auto wqeSize = 1 << qpCtxEntry->baseBkShift; // basebk_shift
+auto curHardwareHeadAddr = qpCtxEntry->headAddr;
+uint32_t curHead = ld_dev((__gm__ uint32_t*)(curHardwareHeadAddr), 0);
+AscendC::printf("====================== Shmem udma wqeSize: %d ====================== \n", wqeSize);
+AscendC::printf("====================== Shmem udma curHead: %d ====================== \n", curHead);
+
+__gm__ uint32_t* doorBellAddr = (__gm__ uint32_t*)qpCtxEntry->dbAddr;
+AscendC::printf("====================== Shmem udma doorBel: %d ====================== \n", (*doorBellAddr));
+
 #if defined(__DAV_C310__)
     GET_TILING_DATA_WITH_STRUCT(MoeDistributeDispatchV2TilingData, tilingData, tilingGM);
 #else

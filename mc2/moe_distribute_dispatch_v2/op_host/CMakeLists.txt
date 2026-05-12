@@ -35,6 +35,12 @@ if (BUILD_OPEN_PROJECT)  # custom
         )
     elseif("${CONDITION_UNIT}" STREQUAL "ascend950")  # 适配多版本兼容dump功能
         add_definitions(-DMC2_EXCEPTION_HANDLER)
+        add_ops_compile_options(
+            OP_NAME MoeDistributeDispatchV2
+            OPTIONS 
+                -I/home/z00699601/work_dir/shmem/include
+                -I/home/z00699601/work_dir/shmem/src/device/
+        )
     endif()
 else() # 回黄host
     add_mc2_modules_sources(OPTYPE moe_distribute_dispatch_v2 ACLNNTYPE aclnn_inner)
