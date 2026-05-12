@@ -137,7 +137,10 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::ComputeXPerBlock(
     // 动态开销系数：每增加 1 个 x 需要的 UB 字节
     uint64_t mteCommDynamicBytes = BUFFER_NUM * sizeof(OutputType) +  // xOutQueue_
                                     BUFFER_NUM * sizeof(XType);        // xQueue_
-    uint64_t vecCompDynamicBytes = sizeof(float) + sizeof(float) + sizeof(bfloat16_t) + sizeof(float16_t);
+    uint64_t vecCompDynamicBytes = sizeof(float) +       // brcbBuf_
+                                   sizeof(float) +       // xCastBuf_
+                                   sizeof(bfloat16_t) +  // xCastBf16Buf_
+                                   sizeof(float16_t);    // xCastfp16Buf_
     // MX: 每 32 个 x 有 1 个 scale (1B), KG: 每 128 个 x 有 1 个 scale (4B), 两者系数均为 x/32 B
     uint64_t scaleInQueBytesPerX = sizeof(ScalesType) /
         (AscendC::IsSameType<ScalesType, fp8_e8m0_t>::value ? MX_SIZE : PER_GROUP_SIZE);
