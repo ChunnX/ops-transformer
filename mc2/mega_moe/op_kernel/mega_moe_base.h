@@ -43,6 +43,7 @@ struct PeermemInfo {
     GM_ADDR ptrBase;
     GM_ADDR ptrTokenPerExpert;
     GM_ADDR ptrA0;      // initrouting结果，包括data+scale
+    GM_ADDR ptrA1;
     GM_ADDR ptrD;
     __aicore__ inline PeermemInfo() = default;
     __aicore__ inline PeermemInfo(GM_ADDR base, const MegaMoeTilingData *tilingData)
@@ -54,6 +55,9 @@ struct PeermemInfo {
             (int64_t)(tilingData->epWorldSize * tilingData->expertPerRank), (int64_t)ALIGN_128) * sizeof(int32_t);
         ptrA0 = base + offset;
         offset += tilingData->bs * tilingData->topK *
+            (tilingData->h + tilingData->h / MXFP_SCALE_GROUP_NUM) * sizeof(int8_t);
+        ptrA1 = base + offset;
+        offset += tilingData->bs *
             (tilingData->h + tilingData->h / MXFP_SCALE_GROUP_NUM) * sizeof(int8_t);
         ptrD = base + offset;
     }
