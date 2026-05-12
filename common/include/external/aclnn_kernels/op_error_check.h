@@ -52,8 +52,8 @@ static inline bool IsNullptr(const aclScalar *scalar, const char *name)
 static inline bool IsNullptr(const aclIntArray *intArr, const char *name)
 {
     if (intArr == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Expected a value of type List[int] for argument %s but instead found type null.",
-                name);
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Expected a value of type List[int] for argument %s but instead found type "
+                "null.", name);
         return true;
     }
     return false;
@@ -62,8 +62,8 @@ static inline bool IsNullptr(const aclIntArray *intArr, const char *name)
 static inline bool IsNullptr(const aclBoolArray *boolArr, const char *name)
 {
     if (boolArr == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Expected a value of type List[bool] for argument %s but instead found type null.",
-                name);
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Expected a value of type List[bool] for argument %s but instead found type "
+                "null.", name);
         return true;
     }
     return false;
