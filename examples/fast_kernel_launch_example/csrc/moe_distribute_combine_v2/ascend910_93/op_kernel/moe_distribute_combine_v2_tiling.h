@@ -43,9 +43,10 @@ struct MoeDistributeCombineV2Info {
     bool reserved0;
     bool reserved1;
     bool reserved2;
+    bool reserved3;
     uint64_t totalUbSize;
     uint64_t totalWinSizeEp;
-    uint32_t bufferNum;
+    uint64_t bufferNum;
 };
 
 #endif //__MOE_DISTRIBUTE_COMBINE_V2_TILING_H__

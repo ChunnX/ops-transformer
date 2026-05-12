@@ -12,7 +12,6 @@
 #include "op_kernel/moe_distribute_dispatch_v2_tiling.h"
 
 struct MoeDistributeDispatchV2SkArgs {
-    int32_t tilingKey;
     GM_ADDR x;
     GM_ADDR expertIds;
     GM_ADDR scales;

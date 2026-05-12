@@ -23,7 +23,7 @@ namespace Mc2Kernel {
 using namespace AscendC;
 using namespace MoeDistributeV2Base;
 
-template <typename XType, typename ExpandXOutType, int32_t QuantMode, bool IsSmoothScaleExist>
+template <typename XType, typename ExpandXOutType, int32_t QuantMode, bool IsSmoothScaleExist, typename TH>
 class MoeDistributeDispatchV2Quant{
 public:
     uint32_t axisH_{0};

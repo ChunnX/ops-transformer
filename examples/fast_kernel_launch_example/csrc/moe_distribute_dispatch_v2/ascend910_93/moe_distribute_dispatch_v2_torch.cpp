@@ -152,7 +152,7 @@ void calculate_tilingdata(MoeDistributeDispatchV2Info &tilingData, int64_t ep_wo
     ascendcPlatform->GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatFrom);
     // 初始化TilingData结构体的成员变量
     tilingData.epWorldSize = ep_world_size;                // epWorldSize
-    tilingData.epRankId = ep_rank_id;                   // epRankId
+    tilingData.epRankId = 0;                   // epRankId
     tilingData.expertShardType = expert_shard_type;            // expert type
     tilingData.sharedExpertNum = shared_expert_num;            // shared expert number
     tilingData.sharedExpertRankNum = shared_expert_rank_num;        // shared expert rank number
@@ -171,6 +171,8 @@ void calculate_tilingdata(MoeDistributeDispatchV2Info &tilingData, int64_t ep_wo
     tilingData.reserved0 = false;
     tilingData.reserved1 = false;
     tilingData.reserved2 = false;
+    tilingData.reserved3 = false;
+    tilingData.cumSumUBMinValue = 0;
     tilingData.totalUbSize = ubSizePlatFrom;                // epWorldSize
     tilingData.totalWinSizeEp = total_winsize_ep;
     tilingData.expertTokenNumsType = expert_token_nums_type;        // expert token nums type, support 0: cumsum mode, 1: count mode
@@ -214,7 +216,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tenso
     validate_params.zero_expert_num = zero_expert_num;
     validate_params.copy_expert_num = copy_expert_num;
     validate_params.const_expert_num = const_expert_num;
-    
+
     ValidateMoeDistributeDispatchV2Input(x, expert_ids, scales, x_active_mask, expert_scales, 
                                          performance_info, validate_params);
     

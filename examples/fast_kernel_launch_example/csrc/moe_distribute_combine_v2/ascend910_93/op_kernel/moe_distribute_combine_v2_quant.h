@@ -23,7 +23,7 @@ namespace Mc2Kernel {
 using namespace AscendC;
 using namespace MoeDistributeV2Base;
 
-template <typename ExpandXType, bool IsInt8Quant>
+template <typename ExpandXType, bool IsInt8Quant, typename TH>
 class MoeDistributeCombineQuant{
 public:
     float scaleValFloat_;

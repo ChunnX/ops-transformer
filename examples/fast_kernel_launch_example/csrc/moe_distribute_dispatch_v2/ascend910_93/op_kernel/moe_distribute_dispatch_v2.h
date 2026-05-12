@@ -28,15 +28,18 @@
 
 #include "moe_distribute_v2_base.h"
 #include "../../../common/inc/kernel/mc2_moe_context.h"
+#include "../aot_framework.h"
+#include "../aot_tiling_config.h"
 
 #define FLOAT_OVERFLOW_MODE_CTRL 60
 namespace MoeDistributeDispatchV2Impl {
-#define TemplateDispatchV2TypeClass typename XType, typename ExpandXOutType, int32_t QuantMode, bool IsSmoothScaleExist
-#define TemplateDispatchV2TypeFunc XType, ExpandXOutType, QuantMode, IsSmoothScaleExist
+#define TemplateDispatchV2TypeClass typename XType, typename ExpandXOutType, int32_t QuantMode, bool IsSmoothScaleExist, typename TH
+#define TemplateDispatchV2TypeFunc XType, ExpandXOutType, QuantMode, IsSmoothScaleExist, TH
 
 using namespace AscendC;
 using namespace MoeDistributeV2Base;
 using namespace Mc2Kernel;
+using namespace AOT;
 template <TemplateDispatchV2TypeClass>
 class MoeDistributeDispatchV2 {
 public:
@@ -256,28 +259,28 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
     tpipe_ = pipe;
     aivId_ = GetBlockIdx();
     mc2Context_ = (__gm__ Mc2MoeContext *)mc2Context;
+    const MoeDistributeDispatchV2Info *tiling = GetTiling<MoeDistributeDispatchV2Info, TH>(&tilingData);
 
-    epRankId_ = tilingData.epRankId;
-    epRankIdOriginal_ = tilingData.epRankId;
+    totalWinSizeEp_ = static_cast<uint64_t>(tiling->totalWinSizeEp);
 
-    totalWinSizeEp_ = static_cast<uint64_t>(tilingData.totalWinSizeEp);
-
-    axisBS_ = tilingData.bs;
-    axisH_ = tilingData.h;
-    epWorldSizeOriginal_ = tilingData.epWorldSize;
-    isPerformanceFlag_ = tilingData.isPerformance;
-    epWorldSize_ = tilingData.epWorldSize;
-    sharedExpertRankNum_ = tilingData.sharedExpertRankNum;
-    moeExpertNum_ = tilingData.moeExpertNum;
-    globalBS_ = tilingData.globalBs;
-    scaleInBytes_ = tilingData.scalesCol * tilingData.scalesTypeSize;
-    scalesCount_ = tilingData.scalesCount;
+    axisBS_ = tiling->bs;
+    axisH_ = tiling->h;
+    epWorldSizeOriginal_ = tiling->epWorldSize;
+    isPerformanceFlag_ = tiling->isPerformance;
+    epWorldSize_ = tiling->epWorldSize;
+    sharedExpertRankNum_ = tiling->sharedExpertRankNum;
+    moeExpertNum_ = tiling->moeExpertNum;
+    globalBS_ = tiling->globalBs;
+    scaleInBytes_ = tiling->scalesCol * tiling->scalesTypeSize;
+    scalesCount_ = tiling->scalesCount;
     TBuf<> dataStateBuf;
     tpipe_->InitBuffer(dataStateBuf, UB_ALIGN);
     uint32_t epRankIdHccl{0};
     uint32_t epWorldSizeHccl{0};
     rankIdOriginal_ = mc2Context_->epRankId;
     rankId_ = mc2Context_->epRankId;
+    epRankId_ = rankId_;
+    epRankIdOriginal_ = rankId_;
     epRankIdHccl = rankId_;
     statusDataSpaceGm_ = (GM_ADDR)(mc2Context_->epHcclBuffer[epRankIdHccl]);
     epWorldSizeHccl = epWorldSizeOriginal_;
@@ -291,19 +294,19 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
     }
 
     axisMaxBS_ = globalBS_ / epWorldSizeOriginal_;
-    sharedExpertNum_ = tilingData.sharedExpertNum;
+    sharedExpertNum_ = tiling->sharedExpertNum;
     if (sharedExpertNum_ > 0) {
         rankNumPerSharedExpert_ = sharedExpertRankNum_ / sharedExpertNum_;
     }
-    expertTokenNumsType_ = tilingData.expertTokenNumsType;
-    zeroComputeExpertNum_ = tilingData.zeroComputeExpertNum;
+    expertTokenNumsType_ = tiling->expertTokenNumsType;
+    zeroComputeExpertNum_ = tiling->zeroComputeExpertNum;
     moeExpertRankNum_ = epWorldSize_ - sharedExpertRankNum_;
     moeExpertNumPerRank_ = moeExpertNum_ / moeExpertRankNum_;
 
-    isTokenMaskFlag_ = tilingData.isTokenMask;
-    isExpertMaskFlag_ = tilingData.isExpertMask;
-    axisK_ = tilingData.k;
-    aivNum_ = tilingData.aivNum;
+    isTokenMaskFlag_ = tiling->isTokenMask;
+    isExpertMaskFlag_ = tiling->isExpertMask;
+    axisK_ = tiling->k;
+    aivNum_ = tiling->aivNum;
     xGMTensor_.SetGlobalBuffer((__gm__ XType*)x);
     xActiveMaskGMTensor_.SetGlobalBuffer((__gm__ bool*)xActiveMask);
     expertIdsGMTensor_.SetGlobalBuffer((__gm__ int32_t*)expertIds);
