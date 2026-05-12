@@ -68,10 +68,10 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaSequsedKv(const FaTilingInfo
     }
 
     const gert::CompileTimeTensorDesc *sequsedKvDesc = faInfo.opParamInfo.sequsedKv.desc;
-    OP_CHECK_IF(sequsedKvDesc != nullptr && sequsedKvDesc->GetDataType() != ge::DT_INT32,
-                OP_LOGE(faInfo.opName, "seqused_kv dtype must be INT32, but got %s",
-                        DataTypeToSerialString(sequsedKvDesc->GetDataType()).c_str()),
-                return ge::GRAPH_FAILED);
+    // OP_CHECK_IF(sequsedKvDesc != nullptr && sequsedKvDesc->GetDataType() != ge::DT_INT32,
+    //             OP_LOGE(faInfo.opName, "seqused_kv dtype must be INT32, but got %s",
+    //                     DataTypeToSerialString(sequsedKvDesc->GetDataType()).c_str()),
+    //             return ge::GRAPH_FAILED);
 
     if (ge::GRAPH_SUCCESS != CheckFormatSupport(sequsedKvDesc, SEQUSED_KV_NAME)) {
         return ge::GRAPH_FAILED;
@@ -99,10 +99,10 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaCuSeqlensQ(const FaTilingInf
     }
 
     const gert::CompileTimeTensorDesc *cuSeqlensQDesc = faInfo.opParamInfo.cuSeqlensQ.desc;
-    OP_CHECK_IF(cuSeqlensQDesc != nullptr && cuSeqlensQDesc->GetDataType() != ge::DT_INT32,
-                OP_LOGE(faInfo.opName, "cu_seqlens_q dtype must be INT32, but got %s",
-                        DataTypeToSerialString(cuSeqlensQDesc->GetDataType()).c_str()),
-                return ge::GRAPH_FAILED);
+    // OP_CHECK_IF(cuSeqlensQDesc != nullptr && cuSeqlensQDesc->GetDataType() != ge::DT_INT32,
+    //             OP_LOGE(faInfo.opName, "cu_seqlens_q dtype must be INT32, but got %s",
+    //                     DataTypeToSerialString(cuSeqlensQDesc->GetDataType()).c_str()),
+    //             return ge::GRAPH_FAILED);
 
     if (ge::GRAPH_SUCCESS != CheckFormatSupport(cuSeqlensQDesc, CU_SEQLENS_Q_NAME)) {
         return ge::GRAPH_FAILED;

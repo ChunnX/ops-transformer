@@ -37,7 +37,7 @@ void FAChecker::RegisterCheckers()
 {
     checkers_.push_back(std::make_unique<LayoutChecker>());
     checkers_.push_back(std::make_unique<ShapeChecker>());
-    // checkers_.push_back(std::make_unique<ActualSeqLenChecker>());
+    checkers_.push_back(std::make_unique<ActualSeqLenChecker>());
     checkers_.push_back(std::make_unique<PagedAttentionChecker>());
     checkers_.push_back(std::make_unique<MaskChecker>());
     checkers_.push_back(std::make_unique<SinksChecker>());
