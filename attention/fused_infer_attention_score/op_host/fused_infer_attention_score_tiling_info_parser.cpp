@@ -1275,13 +1275,18 @@ ge::graphStatus FiaInfoParser::GetPostQuantInfo()
 ge::graphStatus FiaInfoParser::GetFullQuantMode()
 {
     if (quantMode_ == FiaQuantMode::FULL_QUANT) {
-        if (opParamInfo_.deqScale1.tensor != nullptr && opParamInfo_.deqScale1.desc != nullptr) {
-            fullQuantMode_ = FiaFullQuantMode::PER_TENSOR_FULL_QUANT;
+        if (*opParamInfo_.queryQuantMode == 7 && *opParamInfo_.keyAntiquantMode == 7 &&
+            *opParamInfo_.valueAntiquantMode == 7) {
+            fullQuantMode_ = FiaFullQuantMode::PER_BLOCK_FULL_QUANT;
         } else if (*opParamInfo_.queryQuantMode == 6 && *opParamInfo_.keyAntiquantMode == 6 &&
                    *opParamInfo_.valueAntiquantMode == 8) {
             fullQuantMode_ = FiaFullQuantMode::MXFP8_FULL_QUANT;
+        } else if (ropeMode_ == RopeMode::ROPE_SPLIT &&
+                   (*opParamInfo_.queryQuantMode == 3 && *opParamInfo_.keyAntiquantMode == 0 &&
+                    *opParamInfo_.valueAntiquantMode == 0)) {
+            fullQuantMode_ = FiaFullQuantMode::PER_TOKEN_HEAD_FULL_QUANT;
         } else {
-            fullQuantMode_ = FiaFullQuantMode::PER_BLOCK_FULL_QUANT;
+            fullQuantMode_ = FiaFullQuantMode::PER_TENSOR_FULL_QUANT;
         }
     }
     return ge::GRAPH_SUCCESS;
