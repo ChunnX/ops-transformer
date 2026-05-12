@@ -142,7 +142,7 @@ private:
     __aicore__ inline int32_t GetSplitValueFromGroupList(uint32_t groupIdx);
     __aicore__ inline void UpdateMMGlobalAddr();
     __aicore__ inline void Iterate(int64_t singleCoreM, int64_t singleCoreN);
-    __aicore__ inline bool IsLastGroupAndNeedSplit(const BlockSchedulerOp &bs, uint32_t groupIdx);
+    __aicore__ inline bool IfNeedSplit(const BlockSchedulerOp &bs);
     __aicore__ inline void SetL2CacheDisableIfNeeded(int64_t mSize, int64_t curBaseM_);
 
 private:
@@ -188,7 +188,8 @@ __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::Run(const Pa
             bs.SetTailAlign(1, c0Size);
         }
     }
-    for (uint32_t loopIdx = 0; loopIdx < groupNum_; ++loopIdx) {
+    // Process all groups except the last one
+    for (uint32_t loopIdx = 0; loopIdx < groupNum_ - 1; ++loopIdx) {
         uint32_t groupIdx = loopIdx;
         if (groupListType_ == GROUP_LIST_TYPE_SPARSE) {
             groupIdx = static_cast<uint32_t>(groupListGlobal_.GetValue(loopIdx * SPARSE_GROUP_LIST_ITEM_STRIDE));
@@ -204,9 +205,22 @@ __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::Run(const Pa
 
         BaseMBalance(bs, Get<MNK_M>(problemShape_), params.gmmParams.baseM);
         bs.UpdateNextProblem(problemShape_);
+        ProcessSingleGroup<false>(params, bs, groupIdx);
+    }
+
+    // Process the last group
+    uint32_t loopIdx = groupNum_ - 1; // groupNum_ must be greater than 0
+    uint32_t groupIdx = loopIdx;
+    if (groupListType_ == GROUP_LIST_TYPE_SPARSE) {
+        groupIdx = static_cast<uint32_t>(groupListGlobal_.GetValue(loopIdx * SPARSE_GROUP_LIST_ITEM_STRIDE));
+    }
+    // Update the group-specific M/N/K values.
+    SetMNK(loopIdx);
+    if (Get<MNK_M>(problemShape_) > 0 && Get<MNK_K>(problemShape_) > 0) {
+        BaseMBalance(bs, Get<MNK_M>(problemShape_), params.gmmParams.baseM);
+        bs.UpdateNextProblem(problemShape_);
         // Further split the tail tiles of the last group to use more cores when possible.
-        bool isLastGroupAndNeedSplit = IsLastGroupAndNeedSplit(bs, loopIdx);
-        if (isLastGroupAndNeedSplit) {
+        if (IfNeedSplit(bs)) {
             bs.UpdateTailTile();
             ProcessSingleGroup<true>(params, bs, groupIdx);
         } else {
@@ -231,7 +245,6 @@ __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::Init(const P
 
     groupNum_ = gmmParams.groupNum;
     curBaseM_ = gmmParams.baseM;
-    groupType_ = gmmParams.groupType;
     groupListType_ = gmmParams.groupListType;
     isBias_ = gmmParams.isBias == 1;
     Get<MNK_M>(problemShape_) = gmmParams.m;
@@ -242,11 +255,9 @@ __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::Init(const P
             perGroupBOffset_ = gmmParams.n * gmmParams.k;
         } else {
             if constexpr (transB) {
-                perGroupBOffset_ = ((gmmParams.n + AscendC::BLOCK_CUBE - 1) & (~(AscendC::BLOCK_CUBE - 1))) *
-                                   ((gmmParams.k + c0Size - 1) & (~(c0Size - 1)));
+                perGroupBOffset_ = Align16(gmmParams.n) * (IS_FP4 ? Align64(gmmParams.k) : Align32(gmmParams.k));
             } else {
-                perGroupBOffset_ = ((gmmParams.n + c0Size - 1) & (~(c0Size - 1))) *
-                                   ((gmmParams.k + AscendC::BLOCK_CUBE - 1) & (~(AscendC::BLOCK_CUBE - 1)));
+                perGroupBOffset_ = (IS_FP4 ? Align64(gmmParams.n) : Align32(gmmParams.n)) * Align16(gmmParams.k);
             }
         }
     }
@@ -257,7 +268,7 @@ __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::Init(const P
     TupleShape l0Shape{static_cast<int64_t>(gmmParams.baseM), static_cast<int64_t>(gmmParams.baseN),
                        static_cast<int64_t>(gmmParams.baseK)};
     L1Params l1Params{static_cast<uint64_t>(gmmParams.kAL1), static_cast<uint64_t>(gmmParams.kBL1),
-                      static_cast<uint64_t>(gmmParams.scaleKAL1), 2UL}; // Enable double buffering by default.
+                      static_cast<uint64_t>(gmmParams.scaleKAL1)};
     mmadOp_.Init(problemShape_, l0Shape, l1Params, isBias_, gmmParams.dbL0C == DOUBLE_BUFFER_COUNT);
 }
 
@@ -280,17 +291,16 @@ __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::BaseMBalance
 {
     if constexpr (!transA) {
         int64_t mCnt = CeilDiv(m, baseM);
-        curBaseM_ = CeilAlign(CeilDiv(m, mCnt), AscendC::BLOCK_CUBE);
+        curBaseM_ = Align16(CeilDiv(m, mCnt)); // align to BLOCK_CUBE
         bs.UpdateBaseM(curBaseM_);
     }
 }
 
 QGMM_MX_KERNEL_CLASS_TEM_PARAMS
-__aicore__ inline bool KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::IsLastGroupAndNeedSplit(const BlockSchedulerOp &bs,
-                                                                                            uint32_t groupIdx)
+__aicore__ inline bool KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::IfNeedSplit(const BlockSchedulerOp &bs)
 {
     // Consider tail split only when at least half of the cores are still available.
-    return groupIdx == groupNum_ - 1 && (bs.GetEndBlockIdx() + 1) <= AscendC::GetBlockNum() / 2;
+    return (bs.GetEndBlockIdx() + 1) <= AscendC::GetBlockNum() / 2;
 }
 
 QGMM_MX_KERNEL_CLASS_TEM_PARAMS
@@ -378,7 +388,7 @@ QGMM_MX_KERNEL_CLASS_TEM_PARAMS
 __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::SetMNK(uint32_t groupIdx)
 {
     int32_t splitValue = GetSplitValueFromGroupList(groupIdx);
-    if (groupType_ == GMM_SPLIT_M) {
+    if constexpr (!transA) {
         Get<MNK_M>(problemShape_) = splitValue;
     } else {
         Get<MNK_K>(problemShape_) = splitValue;
