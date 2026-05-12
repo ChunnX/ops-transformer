@@ -44,7 +44,7 @@ private:
     TQue<QuePosition::VECOUT, 1> xQue_;
     TQue<QuePosition::VECOUT, 1> outQue_;
 
-    TBuf<TPosition::VECCALC> bufk0_;
+    TBuf<TPosition::VECCALC> bufk4Mask_;
     TBuf<TPosition::VECCALC> bufk1_;
     TBuf<TPosition::VECCALC> bufn2_;
     TBuf<TPosition::VECCALC> bufn3_;
@@ -68,6 +68,8 @@ private:
     int64_t curRows_ = 0;
 
     int64_t elementCountPerLoop_ = 0;
+    int64_t kAlign_ = 0; // fp32的k32字节对齐后的元素个数
+    bool isKAlign_ = true; // fp32的k是否为32字节对齐
     // int64_t blockIdx_ = 0;
     // int64_t perCoreRowCount_ = 0;
     // int64_t curCoreRowCount_ = 0;
@@ -82,12 +84,12 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::Init(GM_ADDR xNorm, GM_AD
     tilingData_ = tilingData;
     pipe_ = tPipe;
     blockIdx_ = GetBlockIdx();
-
+    kAlign_ = Align(tilingData_->k, SIZE_OF_INT32);
+    isKAlign_ = kAlign_ == tilingData_->k ? true : false;
     // 获得当前核所需要的处理的loop次数、尾loop搬入的token数。
     if (blockIdx_ == GetBlockNum() - 1) {
         loopTimes_ = tilingData_->lastLoopTimes;
         tailRows_ = tilingData_->lastTailRows;
-
     } else {
         loopTimes_ = tilingData_->perLoopTimes;
         tailRows_ = tilingData_->perTailRows;
@@ -96,23 +98,24 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::Init(GM_ADDR xNorm, GM_AD
     // init gm buf
     xNormGm_.SetGlobalBuffer((__gm__ float *)xNorm + tilingData_->perCoreRows * tilingData_->expertCount * blockIdx_);
     gradYGm_.SetGlobalBuffer((__gm__ T *)gradY + tilingData_->perCoreRows * tilingData_->k * blockIdx_);
-    expertIdx.SetGlobalBuffer((__gm__ int32_t *)expertIdx + tilingData_->perCoreRows * tilingData_->k * blockIdx_);
-    gradX.SetGlobalBuffer((__gm__ T *)gradX + tilingData_->perCoreRows * tilingData_->expertCount * blockIdx_);
+    expertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expertIdx + tilingData_->perCoreRows * tilingData_->k * blockIdx_);
+    gradXGm_.SetGlobalBuffer((__gm__ T *)gradX + tilingData_->perCoreRows * tilingData_->expertCount * blockIdx_);
 
     // init que
-    pipe_->InitBuffer(gradYQue_, NUM_TWO, AlignBytes(tilingData_->baseRows * tilingData_->k, tilingData_->gradYDtype));
-    pipe_->InitBuffer(indicesQue_, NUM_TWO, AlignBytes(tilingData_->baseRows * tilingData_->k, SIZE_OF_INT32));
+    pipe_->InitBuffer(gradYQue_, NUM_TWO, tilingData_->baseRows * AlignBytes(tilingData_->k, SIZE_OF_INT32));
+    pipe_->InitBuffer(indicesQue_, NUM_TWO, tilingData_->baseRows * AlignBytes(tilingData_->k, SIZE_OF_INT32));
     pipe_->InitBuffer(xQue_, NUM_TWO, AlignBytes(tilingData_->baseRows * tilingData_->expertCount, SIZE_OF_FLOAT32));
     pipe_->InitBuffer(outQue_, NUM_ONE, AlignBytes(tilingData_->baseRows * tilingData_->expertCount, tilingData_->gradYDtype));
     
-    pipe_->InitBuffer(bufk0_, AlignBytes(tilingData_->baseRows * tilingData_->k, SIZE_OF_FLOAT32));
-    pipe_->InitBuffer(bufk1_, AlignBytes(tilingData_->baseRows * tilingData_->k, SIZE_OF_FLOAT32));
-    pipe_->InitBuffer(bufk4Add_, AlignBytes(tilingData_->baseRows * tilingData_->k, SIZE_OF_FLOAT32));
-    pipe_->InitBuffer(bufk4Index_, AlignBytes(tilingData_->baseRows * tilingData_->k, SIZE_OF_FLOAT32));
-    pipe_->InitBuffer(bufk4RecipSumW_, AlignBytes(tilingData_->baseRows * tilingData_->k, SIZE_OF_FLOAT32));
+    pipe_->InitBuffer(bufk4Mask_, tilingData_->baseRows * AlignBytes(tilingData_->k, SIZE_OF_FLOAT32));
+    pipe_->InitBuffer(bufk1_, tilingData_->baseRows * AlignBytes(tilingData_->k, SIZE_OF_FLOAT32));
+    pipe_->InitBuffer(bufk4Add_, tilingData_->baseRows * AlignBytes(tilingData_->k, SIZE_OF_FLOAT32));
+    pipe_->InitBuffer(bufk4Index_, tilingData_->baseRows * AlignBytes(tilingData_->k, SIZE_OF_FLOAT32));
+    pipe_->InitBuffer(bufk4RecipSumW_, tilingData_->baseRows * AlignBytes(tilingData_->k, SIZE_OF_FLOAT32));
     pipe_->InitBuffer(bufn2_, AlignBytes(tilingData_->baseRows * tilingData_->expertCount, SIZE_OF_FLOAT32));
     pipe_->InitBuffer(bufn3_, AlignBytes(tilingData_->baseRows * tilingData_->expertCount, SIZE_OF_FLOAT32));
     pipe_->InitBuffer(bufs_, AlignBytes(tilingData_->baseRows * 1, SIZE_OF_FLOAT32));
+    
 }
 
 template <typename T>
@@ -137,14 +140,28 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::Process()
 template <typename T>
 __aicore__ inline void MoeGatingTopKBackwardKernel<T>::GetGatherOffsetIndex()
 {
-    LocalTensor<int32_t> bufk0 = bufk0_.Get<int32_t>();
-    LocalTensor<int32_t> bufk4Add = bufk4Add_.Get<int32_t>();
-    Arange(bufk0, static_cast<int32_t>(0), static_cast<int32_t>(tilingData_->expertCount), static_cast<int32_t>(tilingData_->baseRows));
+    LocalTensor<float> bufk1Fp32 = bufk1_.Get<float>();
+    LocalTensor<float> bufk4AddFp32 = bufk4Add_.Get<float>();
+    LocalTensor<float> bufk4Mask = bufk4Mask_.Get<float>();
+    LocalTensor<float> bufk4Tmp = bufk4Index_.Get<float>(); // 临时存储中间变量
+
+    Duplicate(bufk4Tmp, (float)0.0, static_cast<int32_t>(kAlign_));
+    PipeBarrier<PIPE_V>();
+    Duplicate(bufk4Tmp, (float)1.0, static_cast<int32_t>(tilingData_->k));
+    PipeBarrier<PIPE_V>();
+    uint32_t dstShape[NUM_TWO] = {tilingData_->baseRows, kAlign_};
+    uint32_t srcShape[NUM_TWO] = {1, kAlign_};
+    BroadCast<float, NUM_TWO, 0>(bufk4Mask, bufk4Tmp, dstShape, srcShape); // k非32字节对齐的时候会出现
+
+    Arange(bufk1Fp32, static_cast<float>(0), static_cast<float>(tilingData_->expertCount), static_cast<int32_t>(tilingData_->baseRows));
     SetWaitFlag<HardEvent::S_V>(HardEvent::S_V); // Arange中存在S和V，不同count结束的操作流不一样
     PipeBarrier<PIPE_V>();
-    uint32_t dstShape[NUM_TWO] = { tilingData_->baseRows, tilingData_->k };
-    uint32_t srcShape[NUM_TWO] = { tilingData_->baseRows, 1 };
-    BroadCast<int32_t, NUM_TWO, 1>(bufk4Add, bufk0, dstShape, srcShape); //下一次使用bufk4Add前PIPE_V
+    dstShape = {tilingData_->baseRows, kAlign_};
+    srcShape = {tilingData_->baseRows, 1};
+    BroadCast<float, NUM_TWO, 1>(bufk4AddFp32, bufk1Fp32, dstShape, srcShape); // broadcast不支持int32类型，因此先生成fp32再转换为int32
+    PipeBarrier<PIPE_V>();
+    LocalTensor<int32_t> bufk4Add = bufk4AddFp32.ReinterpretCast<int32_t>();
+    Cast(bufk4Add, bufk4AddFp32, RoundMode::CAST_RINT, tilingData_->baseRows * kAlign_);
 }
 
 template <typename T>
@@ -174,11 +191,11 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::CopyInXNorm()
     xNormLocal_ = xQue_.AllocTensor<float>();
     DataCopyExtParams copyParams;
     copyParams.blockCount = static_cast<uint16_t>(1);
-    copyParams.blockLen = static_cast<uint32_t>(curRows_ * tilingData_->expertCount * sizeof(float));
+    copyParams.blockLen = static_cast<uint32_t>(curRows_ * tilingData_->expertCount * SIZE_OF_FLOAT32);
     copyParams.srcStride = static_cast<uint32_t>(0);
     copyParams.dstStride = static_cast<uint32_t>(0);
-    DataCopyPadExtParams<float> padParams{true, 0, 0, 0}; // 不能为false？，必须填充数值0，需要计算右侧填充的元素个数吗？待测试
-    DataCopyPad(xNormLocal_, this->xNormGm_, copyParams, padParams); // init中已经给Gm设定核间偏移量了，不需要再设置
+    DataCopyPadExtParams<float> padParams{false, 0, 0, 0};
+    DataCopyPad(xNormLocal_, this->xNormGm_[tilingData_->baseRows * tilingData_->expertCount], copyParams, padParams);
 
     xQue_.EnQue(xNormLocal_);
     xNormLocal_ = xQue_.DeQue<float>();
@@ -187,11 +204,44 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::CopyInXNorm()
 template <typename T>
 __aicore__ inline void MoeGatingTopKBackwardKernel<T>::CopyInExpertIdx()
 {
+    expertIdxLocal_ = indicesQue_.AllocTensor<int32_t>();
+    DataCopyExtParams copyParams;
+    copyParams.blockCount = static_cast<uint16_t>(curRows_);
+    copyParams.blockLen = static_cast<uint32_t>(tilingData_->k * SIZE_OF_INT32);
+    copyParams.srcStride = static_cast<uint32_t>(0);
+    copyParams.dstStride = static_cast<uint32_t>(0);
+    DataCopyPadExtParams<int32_t> padParams{true, 0, kAlign_ - k, 0};
+    DataCopyPad(expertIdxLocal_, this->expertIdxGm_[tilingData_->baseRows * tilingData_->k], copyParams, padParams);
+
+    indicesQue_.EnQue(expertIdxLocal_);
+    expertIdxLocal_ = indicesQue_.DeQue<int32_t>();
 }
 
 template <typename T>
 __aicore__ inline void MoeGatingTopKBackwardKernel<T>::Sigmoid()
 {
+    PipeBarrier<PIPE_V>();
+    LocalTensor<int32_t> bufk4Index = bufk4Index_.Get<int32_t>();
+    LocalTensor<int32_t> bufk4Add = bufk4Add_.Get<int32_t>();
+    LocalTensor<float> bufk1 = bufk1_.Get<float>();
+    LocalTensor<float> bufs = bufs_.Get<float>();
+    LocalTensor<float> bufk4RecipSumW = bufk4RecipSumW_.Get<float>();
+    Add(bufk4Index, expertIdxLocal_, bufk4Add, curRows_ * kAlign_);
+    PipeBarrier<PIPE_V>();
+    Muls(bufk4Index, bufk4Index, static_cast<int32_t>(NUM_FOUR), curRows_ * kAlign_);
+    Gather(bufk1, xNormLocal_, bufk4Index, (uint32_t)0, curRows_ * kAlign_);
+    PipeBarrier<PIPE_V>();
+    uint32_t srcShape[NUM_TWO] = {tilingData_->curRows_, kAlign_};
+    ReduceSum<float, Pattern::Reduce::AR, true>(bufs, bufk1, srcShape, true);
+    PipeBarrier<PIPE_V>();
+    Adds(bufs, bufs, tilingData_->eps, curRows_ * kAlign_);
+    PipeBarrier<PIPE_V>();
+    uint32_t dstShape[NUM_TWO] = {tilingData_->baseRows, kAlign_};
+    srcShape = {tilingData_->baseRows, 1};
+    BroadCast<float, NUM_TWO, 1>(bufk4RecipSumW, bufs, dstShape, srcShape);
+    PipeBarrier<PIPE_V>();
+    Div(bufk1, bufk1, bufk4RecipSumW, curRows_ * kAlign_);
+    PipeBarrier<PIPE_V>();
 }
 
 template <typename T>
