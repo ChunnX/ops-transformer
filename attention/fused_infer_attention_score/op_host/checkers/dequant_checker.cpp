@@ -886,10 +886,10 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeMXFP8(const FiaTilingInfo 
     // decode TND场景，qscale shape为(N2,G,T,D/64,2)
     uint32_t scaleQDim = (enableMxfp8FullQuantDecode_ && fiaInfo.qLayout == FiaLayout::TND) ? 5 : 4;
     uint32_t scaleKVDim = 0;
+    OP_CHECK_IF(!fiaInfo.pageAttentionFlag,
+        OP_LOGE(fiaInfo.opName, "In MXFP8 fullquant scenario, only PA-enabled scenarios are supported."),
+        return ge::GRAPH_FAILED);
     if (enableMxfp8FullQuantPrefill_) {
-        OP_CHECK_IF(!fiaInfo.pageAttentionFlag,
-            OP_LOGE(fiaInfo.opName, "In MXFP8 fullquant scenario, only PA-enabled scenarios are supported."),
-            return ge::GRAPH_FAILED);
         scaleKVDim = fiaInfo.pageAttentionFlag ? 5 : 4;
     } else {
         scaleKVDim = fiaInfo.pageAttentionFlag ? ((fiaInfo.kvLayout == FiaLayout::NZ) ? 6 : 5) : 4;
@@ -2565,6 +2565,11 @@ ge::graphStatus DequantChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
                     "It is recommended to use mxfp8 full quantization instead.");
         } else if (fiaInfo.fullQuantMode == FiaFullQuantMode::MXFP8_FULL_QUANT) {
             enableMxfp8FullQuant_ = true;
+            if (fiaInfo.gSize * fiaInfo.s1Size <= 80) { 
+                enableMxfp8FullQuantDecode_ = true; 
+            } else { 
+                enableMxfp8FullQuantPrefill_ = true; 
+            }
         }
 
         if (ge::GRAPH_SUCCESS != CheckDequantScaleDtypeFullquant(fiaInfo) ||
