@@ -159,6 +159,7 @@ transformer-3@ops-transformer:
                 - ops/ops-transformer/attention/common/op_kernel/matmul.h
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_host/arch32
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_host/arch35
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/arch38
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_host/op_api
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_host/CMakeLists.txt
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_host/fallback_fused_infer_attention_score.cpp
@@ -212,6 +213,8 @@ transformer-5@ops-transformer:
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_host/arch35/fused_infer_attention_score_tiling_impl.h
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_host/arch35/fused_infer_attention_score_tiling_v4.cpp
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_host/arch35/fused_infer_attention_score_tiling_v4.h
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/arch38/fused_infer_attention_score_tiling_arch38.cpp
+                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/arch38/fused_infer_attention_score_tiling_arch38.h
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_host/checkers/base_checker.cpp
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_host/checkers/base_checker.h
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_host/checkers/dequant_checker.cpp
