@@ -61,20 +61,20 @@ if(NOT BUILD_OPS_RTY_KERNEL)
     ../../common/op_host/fia_tiling_info.cpp
     ../../common/op_host/split_core.cpp
     ../../common/op_host/split_core_v2.cpp
-    ../../common/op_host/arch32/fia_tiling_nonquant_mla.cpp
-    ../../common/op_host/arch32/fia_tiling_nonquant.cpp
-    ../../common/op_host/arch32/fia_tiling_empty_tensor.cpp
+    ../../common/op_host/arch22/fia_tiling_nonquant_mla.cpp
+    ../../common/op_host/arch22/fia_tiling_nonquant.cpp
+    ../../common/op_host/arch22/fia_tiling_empty_tensor.cpp
     ../../common/op_host/arch35/fia_tiling_nonquant_gqa.cpp
     ../../common/op_host/arch35/fia_tiling_fullquant_mx.cpp
     ../op_host/arch35/fused_infer_attention_score_tiling_v4.cpp
     ../op_host/arch35/fused_infer_attention_score_tiling_impl.cpp
     ../op_host/fused_infer_attention_score_tiling_info_parser.cpp
     ${ARCH35_CHECKER_SRC_FILES}
-    ../op_host/arch32/fused_infer_attention_score_tiling_v3.cpp
-    ../op_host/arch32/fused_infer_attention_score_tiling_check.cpp
-    ../op_host/arch32/fused_infer_attention_score_tiling_check_consistency.cpp
-    ../op_host/arch32/fused_infer_attention_score_tiling_check_feature.cpp
-    ../op_host/arch32/fused_infer_attention_score_tiling_check_existence.cpp
-    ../op_host/arch32/fused_infer_attention_score_tiling_check_single_para.cpp
+    ../op_host/arch22/fused_infer_attention_score_tiling_v3.cpp
+    ../op_host/arch22/fused_infer_attention_score_tiling_check.cpp
+    ../op_host/arch22/fused_infer_attention_score_tiling_check_consistency.cpp
+    ../op_host/arch22/fused_infer_attention_score_tiling_check_feature.cpp
+    ../op_host/arch22/fused_infer_attention_score_tiling_check_existence.cpp
+    ../op_host/arch22/fused_infer_attention_score_tiling_check_single_para.cpp
     )
 endif()

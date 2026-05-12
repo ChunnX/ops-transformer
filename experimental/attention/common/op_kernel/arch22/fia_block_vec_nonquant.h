@@ -216,8 +216,8 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::InitVec2GlobalTensor(GlobalTen
 
 
 template <typename FIAT>
-__aicore__ inline void FiaBlockVecNonQuant<FIAT>::InitFlashDecodeGlobalTensor(GlobalTensor<T> accumOutGm, GlobalTensor<T> lseMaxFdGm,
-        GlobalTensor<T> lseSumFdGm)
+__aicore__ inline void FiaBlockVecNonQuant<FIAT>::InitFlashDecodeGlobalTensor(GlobalTensor<T> accumOutGm,
+    GlobalTensor<T> lseMaxFdGm, GlobalTensor<T> lseSumFdGm)
 {
     this->accumOutGm = accumOutGm;
     this->lseMaxFdGm = lseMaxFdGm;
