@@ -30,6 +30,7 @@ constexpr int64_t NUM_TWO = 2;
 constexpr int64_t NUM_FOUR = 4;
 constexpr int64_t SIZE_OF_FLOAT32 = 4;
 constexpr int64_t SIZE_OF_INT32 = 4;
+constexpr int64_t BLOCK_BYTES_MINUS_ONE = 31;
 __aicore__ inline int64_t Ceil(int64_t a, int64_t b)
 {
     if (b == 0) {
@@ -38,17 +39,19 @@ __aicore__ inline int64_t Ceil(int64_t a, int64_t b)
     return (a + b - 1) / b;
 }
 
+__aicore__ inline int64_t AlignBytes(int64_t elementNum, int64_t bytes)
+{
+    return (elementNum * bytes + BLOCK_BYTES_MINUS_ONE) & ~BLOCK_BYTES_MINUS_ONE;
+    //return (elementNum * bytes + BLOCK_BYTES - 1) / BLOCK_BYTES * BLOCK_BYTES;
+}
+
 __aicore__ inline int64_t Align(int64_t elementNum, int64_t bytes)
 {
     if (bytes == 0) {
         return 0;
     }
-    return (elementNum * bytes + BLOCK_BYTES - 1) / BLOCK_BYTES * BLOCK_BYTES / bytes;
-}
-
-__aicore__ inline int64_t AlignBytes(int64_t elementNum, int64_t bytes)
-{
-    return (elementNum * bytes + BLOCK_BYTES - 1) / BLOCK_BYTES * BLOCK_BYTES;
+    return AlignBytes(int64_t elementNum, int64_t bytes) / bytes;
+    //return (elementNum * bytes + BLOCK_BYTES - 1) / BLOCK_BYTES * BLOCK_BYTES / bytes;
 }
 
 template <typename T>

@@ -44,22 +44,27 @@ const static int64_t EPS_ATTR_INDEX = 3;
 const static int64_t M_DIM_INDEX = 0;
 const static int64_t N_DIM_INDEX = 1;
 const static int64_t K_DIM_INDEX = 1;
-const static int64_t NUM_BYTES_FOUR = 4;
-const static int64_t NUM_BYTES_TWO = 2;
+
+// UB related
+const static int64_t DOUBLE_BUFFER_NUM = 2;
+const static int64_t UB_ALIGN_BYTES_MINUS_ONE = 31;
+const static int64_t UB_RESERVE_SPACE = 1024;
+const static int64_t NUM_TWO = 5;                       // 2 buffers with the same size
+const static int64_t NUM_FIVE = 5;                      // 5 buffers with the same size
 
 // Tiling keys
 const static uint64_t TILING_KEY_RENORM_SIGMOID = 1;
 
 // Data type sizes
-const static size_t SIZE_OF_FLOAT32 = 4;
+const static int64_t SIZE_OF_FLOAT32 = 4;
+const static int64_t NUM_BYTES_FOUR = 4;
+const static int64_t NUM_BYTES_TWO = 2;
 
 // Miscellaneous
 const static int64_t MAX_EXPERT_COUNT = 2048;           // max value for n
 const static int64_t MIN_EXPERT_COUNT = 2;              // min value for n
 const static int64_t MIN_K = 1;                         // min value for k
 const static int64_t DEFAULT_WORKSPACE_SIZE = 16777216; // 预留16M空间
-const static int64_t DOUBLE_BUFFER_NUM = 2;
-const static int64_t UB_ALIGN_BYTES_MINUS_ONE = 31;
 
 
 class MoeGatingTopKBackwardTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
@@ -114,8 +119,12 @@ private:
     const gert::Shape *expertIdxShape_ = nullptr;
     const gert::Shape *outputGradXShape_ = nullptr;
 
-    int64_t inputDtypeSize_;
+    // Miscellaneous
     const char *opName_ = "";
+    int64_t inputDtypeSize_;
+    ge::DataType gradYDtype_;
+
+    // Tiling data
     MoeGatingTopKBackwardTilingData MoeGatingTopKBackwardTilingData_;
 
     // Tiling data parameters
@@ -185,10 +194,10 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckGradY()
     
     auto gradYDesc = context_->GetInputDesc(GRAD_Y_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, gradYDesc);
-    auto gradYDtype = gradYDesc->GetDataType();
-    OP_CHECK_IF(gradYDtype != ge::DataType::DT_FLOAT && gradYDtype != ge::DataType::DT_FLOAT16 && gradYDtype != ge::DataType::DT_BF16,
+    gradYDtype_ = gradYDesc->GetDataType();
+    OP_CHECK_IF(gradYDtype_ != ge::DataType::DT_FLOAT && gradYDtype_ != ge::DataType::DT_FLOAT16 && gradYDtype_ != ge::DataType::DT_BF16,
         OP_LOGE(opName_, "gradY only support float32, float16 and bfloat16 now."), return ge::GRAPH_FAILED);
-    gradYDtypeSize_ = gradYDtype == ge::DataType::DT_FLOAT ? NUM_BYTES_FOUR : NUM_BYTES_TWO;
+    gradYDtypeSize_ = gradYDtype_ == ge::DataType::DT_FLOAT ? NUM_BYTES_FOUR : NUM_BYTES_TWO;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -300,16 +309,11 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckOutShape()   // lc
                 OP_LOGE(opName_, "gradX : Shape xNorm and gradX should match in dimension 1."),
                 return ge::GRAPH_FAILED);
 
-    // gradYDtype可以作为一个私有成员
-    auto gradYDesc = context_->GetInputDesc(GRAD_Y_INPUT_INDEX);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, gradYDesc);
-    auto gradYDtype = gradYDesc->GetDataType();
-
     auto gradXDesc = context_->GetOutputDesc(GRAD_X_OUTPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, gradXDesc);
     auto gradXDtype = gradXDesc->GetDataType();
 
-    OP_CHECK_IF(gradXDtype != gradYDtype, OP_LOGE(opName_, "gradX's data type must match that of gradY."),
+    OP_CHECK_IF(gradXDtype != gradYDtype_, OP_LOGE(opName_, "gradX's data type must match that of gradY."),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -331,10 +335,7 @@ int64_t MoeGatingTopKBackwardTilingBase::CalcMaxRows()
     int64_t bufk4MaskPerTokenSpace = k_ * SIZE_OF_FLOAT32;
     int64_t bufsPerTokenSpace = 1 * SIZE_OF_FLOAT32;
 
-    int64_t ubReserve = 1 * 1024; // 魔鬼数字
-    int64_t shareTmpBufSpace = 0; // shareTmpBufSpace需要具体计算BroadCast、reduceSum，先使用api把max和min打印出来
-
-    int64_t available_space = aicoreParams_.ubSize - ubReserve - shareTmpBufSpace;
+    int64_t available_space = aicoreParams_.ubSize - UB_RESERVE_SPACE;
     OP_CHECK_IF(available_space <= 0, OP_LOGE(context_,
         "Not enough space on UB, current available space is %ld.", available_space), return ge::GRAPH_FAILED);
 
@@ -345,17 +346,30 @@ int64_t MoeGatingTopKBackwardTilingBase::CalcMaxRows()
         bufk4IndexPerTokenSpace + bufk4RecipSumPerTokenSpace + bufk4MaskPerTokenSpace + bufsPerTokenSpace;
     int64_t maxRows = available_space / (quePerTokenSpace + bufPerTokenSpace);
 
-    while (maxRows > 0) { // 魔鬼数字
+    int64_t kAligned = AlignBytes_(k_ * SIZE_OF_FLOAT32) >> 2;
+    while (maxRows > 0) {
         // queSpace: gradYQueSpace == indicesQueSpace; xQueSpace; outQueSpace
         // bufSpace: bufk1Space == bufk4AddSpace == bufk4IndexSpace == bufk4RecipSumSpace == bufk4MaskSpace;
         //           bufn2Space == bufn3Space; bufsSpace
         int64_t queSpace =
-            2 * maxRows * AlignBytes_(gradYQuePerTokenSpace) + AlignBytes_(maxRows * xQuePerTokenSpace) +
+            NUM_TWO * maxRows * AlignBytes_(gradYQuePerTokenSpace) + AlignBytes_(maxRows * xQuePerTokenSpace) +
             AlignBytes_(maxRows * outQuePerTokenSpace);
         int64_t bufPerTokenSpace =
-            5 * maxRows * AlignBytes_(bufk1PerTokenSpace) + 2 * AlignBytes_(maxRows * bufn2PerTokenSpace) +
+            NUM_FIVE * maxRows * AlignBytes_(bufk1PerTokenSpace) + NUM_TWO * AlignBytes_(maxRows * bufn2PerTokenSpace) +
             maxRows * AlignBytes_(bufsPerTokenSpace);
-        int64_t usedSpace = ubReserve + shareTmpBufSpace + queSpace + bufPerTokenSpace;
+
+        uint32_t reduceSumTmpBuffSpace = 0;
+        uint32_t tmpMaxValue = 0;
+        auto shape = ge::Shape({ maxRows, kAligned });
+        GetReduceSumMaxMinTmpSize(shape, ge::DataType::DT_FLOAT, ReducePatter::AR, true, false, tmpMaxValue, reduceSumTmpBuffSpace);
+
+        auto srcShape = ge::Shape({ 1, kAligned });
+        auto platformInfo = context_->GetPlatformInfo();
+        auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+        uint32_t broadcastTmpBuffSpace = 0;
+        GetBroadCastMaxMinTmpSize(ascendcPlatform, srcShape, shape, SIZE_OF_FLOAT32, false, tmpMaxValue, broadcastTmpBuffSpace);
+
+        int64_t usedSpace = UB_RESERVE_SPACE + queSpace + bufPerTokenSpace + static_cast<int64_t>(std::max(reduceSumTmpBuffSpace, broadcastTmpBuffSpace));
 
         if (usedSpace <= aicoreParams_.ubSize) {
             break;

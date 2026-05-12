@@ -148,8 +148,8 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::GetGatherOffsetIndex()
     PipeBarrier<PIPE_V>();
     Duplicate(bufk4Tmp, (float)1.0, static_cast<int32_t>(tilingData_->k));
     PipeBarrier<PIPE_V>();
-    uint32_t dstShape[NUM_TWO] = {tilingData_->baseRows, kAlign_};
-    uint32_t srcShape[NUM_TWO] = {1, kAlign_};
+    uint32_t dstShape[] = {tilingData_->baseRows, kAlign_};
+    uint32_t srcShape[] = {1, kAlign_};
     BroadCast<float, NUM_TWO, 0>(bufk4Mask, bufk4Tmp, dstShape, srcShape); // k非32字节对齐的时候会出现
 
     Arange(bufk1Fp32, static_cast<float>(0), static_cast<float>(tilingData_->expertCount), static_cast<int32_t>(tilingData_->baseRows));
@@ -243,13 +243,13 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::Sigmoid()
 
     Mul(bufk1, bufk1, bufk4Mask, curRowsByKAlign_);
     PipeBarrier<PIPE_V>();
-    uint32_t srcShape[NUM_TWO] = {curRows_, kAlign_};
+    uint32_t srcShape[] = {curRows_, kAlign_};
     ReduceSum<float, Pattern::Reduce::AR, true>(bufs, bufk1, srcShape, true);
     PipeBarrier<PIPE_V>();
 
     Adds(bufs, bufs, tilingData_->eps, curRowsByKAlign_);
     PipeBarrier<PIPE_V>();
-    uint32_t dstShape[NUM_TWO] = {curRows_, kAlign_};
+    uint32_t dstShape[] = {curRows_, kAlign_};
     srcShape = {curRows_, 1};
     BroadCast<float, NUM_TWO, 1>(bufk4RecipSumW, bufs, dstShape, srcShape);
     PipeBarrier<PIPE_V>();
@@ -270,11 +270,12 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::GetGradXNorm()
     LocalTensor<float> bufk4Mask = bufk4Mask_.Get<float>();
     Mul(bufk1, bufk1, bufk4Mask, curRowsByKAlign_);
     PipeBarrier<PIPE_V>();
-    uint32_t reduceSumShape[NUM_TWO] = {curRows_, kAlign_};
+    
+    uint32_t reduceSumShape[] = {curRows_, kAlign_};
     ReduceSum<float, Pattern::Reduce::AR, true>(bufs, bufk1, reduceSumShape, true);
 
-    uint32_t dstShape[NUM_TWO] = {curRows_, kAlign_};
-    uint32_t srcShape[NUM_TWO] = {curRows_, 1};
+    uint32_t dstShape[] = {curRows_, kAlign_};
+    uint32_t srcShape[] = {curRows_, 1};
     Broadcast<float, NUM_TWO, 1>(bufk1, bufs, dstShape, srcShape);
     PipeBarrier<PIPE_V>();
     Sub(gradYLocal_, gradYLocal_, bufk1, curRowsByKAlign_);
