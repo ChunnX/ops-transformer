@@ -18,7 +18,7 @@
 #include <graph/utils/type_utils.h>
 #include "register/op_impl_registry.h"
 #include "log/log.h"
-#include "err/ops_err.h"
+#include "utils/ops_err.h"
 #include "op_host/tiling_base.h"
 #include "register/op_def_registry.h"
 #include "op_host/tiling_templates_registry.h"

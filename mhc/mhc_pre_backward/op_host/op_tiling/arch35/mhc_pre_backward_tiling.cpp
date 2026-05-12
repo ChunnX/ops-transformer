@@ -16,7 +16,7 @@
 #include "op_host/tiling_templates_registry.h"
 #include "register/op_def_registry.h"
 #include "platform/platform_infos_def.h"
-#include "err/ops_err.h"
+#include "utils/ops_err.h"
 
 namespace optiling {
 

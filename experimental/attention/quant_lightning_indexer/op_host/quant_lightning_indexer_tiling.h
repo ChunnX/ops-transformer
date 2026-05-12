@@ -16,7 +16,7 @@
 #ifndef QUANT_LIGHTNING_INDEXER_TILING_H
 #define QUANT_LIGHTNING_INDEXER_TILING_H
 
-#include "err/ops_err.h"
+#include "utils/ops_err.h"
 #include "exe_graph/runtime/tiling_context.h"
 #include "platform/platform_info.h"
 #include "register/op_def_registry.h"

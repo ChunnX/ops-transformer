@@ -19,7 +19,7 @@
 #include "tiling/tiling_api.h"
 #include "op_host/data_copy_transpose_tiling.h"
 #include "log/log.h"
-#include "err/ops_err.h"
+#include "utils/ops_err.h"
 #include "../op_kernel/arch35/prompt_flash_attention_template_tiling_key.h"
 #include "../op_kernel/arch35/prompt_flash_attention_tiling_regbase.h"
 #include "tiling/platform/platform_ascendc.h"

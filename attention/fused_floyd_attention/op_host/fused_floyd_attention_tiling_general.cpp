@@ -20,7 +20,7 @@
 #include "op_host/data_copy_transpose_tiling.h"
 #include "fused_floyd_attention_tiling_common.h"
 #include "fused_floyd_attention_tiling.h"
-#include "err/ops_err.h"
+#include "utils/ops_err.h"
 using namespace Ops::Transformer::OpTiling;
 
 namespace optiling {

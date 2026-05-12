@@ -15,7 +15,7 @@
 
 #include <cstdint>
 #include <string>
-#include "err/ops_err.h"
+#include "utils/ops_err.h"
 #include "graph/types.h"
 #include "graph/tensor.h"
 #include "tiling/platform/platform_ascendc.h"
