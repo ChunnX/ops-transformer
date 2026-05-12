@@ -544,7 +544,7 @@ ffn:
     ut_cov_exclude:
       - ffn/swin_transformer_ln_qkv
     test:
-      ut: False
+      ut: True
     options:
       - swin_transformer_ln_qkv
 

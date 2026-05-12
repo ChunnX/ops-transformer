@@ -12,8 +12,8 @@
  * \file swin_transformer_ln_qkv.cc
  * \brief
  */
-#include "util/shape_util.h"
 #include "register/op_impl_registry.h"
+#include "util/shape_util.h"
 #include "log/log.h"
 
 using namespace ge;
