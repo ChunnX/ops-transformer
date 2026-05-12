@@ -51,6 +51,22 @@ bool GMMFRWeightQuantTiling::IsCapable()
 }
 
 
+bool GMMFRWeightQuantTiling::CheckCoreNum() const
+{
+    OP_CHECK_IF(coreNum_ <= 0 || aivNum_ <= 0,
+                OP_LOGE(context_->GetNodeName(), "Invalid aicNum[%ld] or aivNum[%ld], expect greater than 0", coreNum_,
+                        aivNum_),
+                return false);
+
+    OP_CHECK_IF(coreNum_ * static_cast<int64_t>(AIC_AIV_CORE_RATIO) != aivNum_,
+                OP_LOGE(context_->GetNodeName(),
+                        "Invalid cube/vector core ratio. Expected cube:vector = 1:2, "
+                        "but got cube=%ld, vector=%ld",
+                        coreNum_, aivNum_),
+                return false);
+    return true;
+}
+
 ge::graphStatus GMMFRWeightQuantTiling::GetPlatformInfo()
 {
     auto compileInfoPtr = context_->GetCompileInfo<GroupedMatmulFinalizeRoutingCompileInfo>();
@@ -58,10 +74,17 @@ ge::graphStatus GMMFRWeightQuantTiling::GetPlatformInfo()
                 OPS_REPORT_CUBE_INNER_ERR("GroupedMatmulFinalizeRouting", "CompileInfo is null"),
                 return ge::GRAPH_FAILED);
     compileInfoPtr_ = compileInfoPtr;
+    coreNum_ = static_cast<int64_t>(compileInfoPtr_->aicNum);
+    aivNum_ = static_cast<int64_t>(compileInfoPtr_->aivNum);
 
-    OP_LOGI(context_, "Compile info: aicNum(%lu) ubSize(%lu) l1Size(%lu) l0aSize(%lu) l0bSize(%lu) l0cSize(%lu).",
-            compileInfoPtr_->aicNum, compileInfoPtr_->ubSize, compileInfoPtr_->l1Size, compileInfoPtr_->l0ASize,
-            compileInfoPtr_->l0BSize, compileInfoPtr_->l0CSize);
+    OP_LOGI(context_,
+            "Compile info: aicNum(%lu) aivNum(%lu) ubSize(%lu) l1Size(%lu) l0aSize(%lu) l0bSize(%lu) l0cSize(%lu).",
+            compileInfoPtr_->aicNum, compileInfoPtr_->aivNum, compileInfoPtr_->ubSize, compileInfoPtr_->l1Size,
+            compileInfoPtr_->l0ASize, compileInfoPtr_->l0BSize, compileInfoPtr_->l0CSize);
+
+    OP_CHECK_IF(!CheckCoreNum(), OP_LOGE(context_->GetNodeName(), "Invalid core number ratio"),
+                return ge::GRAPH_FAILED);
+
     return ge::GRAPH_SUCCESS;
 }
 
