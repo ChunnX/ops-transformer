@@ -153,6 +153,7 @@ python test_flash_attn.py --case_id BASE_01 --compare_mode \
 | `--visualize` | flag | 关闭 | 生成精度热力图 PNG |
 | `--viz_dir` | str | `./viz_output` | 热力图保存目录 |
 | `--meta_only` | flag | 关闭 | 只调用 metadata 算子 |
+| `--case_range` | flag | 关闭 | 1-10,给出运行用例的范围 |
 
 ---
 
