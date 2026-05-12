@@ -52,15 +52,14 @@ __aicore__ inline void CombineTokens(
         }
         auto gmRowD = gmRemoteD[gmDstOffset];
         AscendC::DataCopyPad(gmRowD, l0cOutUbGMM2[tileRow * Get<N_VALUE>(actualBlockShape)], ub2GmParams);
-        if (nLoc + Get<N_VALUE>(actualBlockShape) >= n) {
-            DataSyncBarrier<MemDsbT::DDR>();
-            __gm__ int32_t* remoteRowReady = (__gm__ int32_t*)GetRankWinAddrWithOffset(toRankId, 48 * 1024);
-            uint32_t rowIdx = tokenId * params.tilingData->topK + topkId;
-            WriteGmByPassDCache(remoteRowReady + rowIdx, 1);
-            if (rankId < 2 && tokenId < 2 && tileRow < 8) {
-                PRINTF("[AIV CombineRowReady] block=%d rank=%d group=%d toRank=%d token=%d topk=%d rowIdx=%d nLoc=%d\n",
-                    GetBlockIdx(), rankId, groupIdx, toRankId, tokenId, topkId, rowIdx, nLoc);
-            }
+        DataSyncBarrier<MemDsbT::DDR>();
+        __gm__ int32_t* remoteRowReady = (__gm__ int32_t*)GetRankWinAddrWithOffset(toRankId, 48 * 1024);
+        uint32_t rowIdx = tokenId * params.tilingData->topK + topkId;
+        AscendC::AtomicAdd(remoteRowReady + rowIdx, 1);
+        if (rankId < 2 && tokenId < 2 && tileRow < 8) {
+            PRINTF("[AIV CombineRowCount] block=%d rank=%d group=%d toRank=%d token=%d topk=%d rowIdx=%d nLoc=%d tileN=%d curCount=%d\n",
+                GetBlockIdx(), rankId, groupIdx, toRankId, tokenId, topkId, rowIdx, nLoc,
+                Get<N_VALUE>(actualBlockShape), ReadGmByPassDCache(remoteRowReady + rowIdx));
         }
     }
 }
