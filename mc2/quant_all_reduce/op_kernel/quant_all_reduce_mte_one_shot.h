@@ -113,24 +113,27 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::ComputeXPerBlock(
 {
     auto&& info = tilingData->quantAllReduceTilingInfo;
 
-    uint64_t mteCommFixedSpace = BUFFER_NUM * X_BLOCK_BYTES +
-                                  UB_ALIGN_BYTES +
-                                  UB_ALIGN_BYTES +
-                                  mteComm_.hcclContext_->rankDim * UB_ALIGN_BYTES +
-                                  mteComm_.hcclContext_->rankDim * UB_ALIGN_BYTES;
+    // 固定开销：不随 xPerBlock_ 变化的 buffer
+    // scaleQueue_ 上界用 X_BLOCK_BYTES 估算（实际开销极小，≤ 1/16 byte/x）
+    uint64_t mteCommFixedSpace = BUFFER_NUM * X_BLOCK_BYTES +      // scaleQueue_
+                                  UB_ALIGN_BYTES +                  // winFlagsBuf_
+                                  UB_ALIGN_BYTES +                  // writeStateBuf_
+                                  mteComm_.hcclContext_->rankDim * UB_ALIGN_BYTES +  // readStateBuf_
+                                  mteComm_.hcclContext_->rankDim * UB_ALIGN_BYTES;   // stateResetBuf_
 
     uint64_t vecCompFixedSpace;
     if constexpr (AscendC::IsSameType<ScalesType, fp8_e8m0_t>::value) {
-        vecCompFixedSpace = MX_MAX_SCALE_NUM * sizeof(float) +
-                            MX_MAX_SCALE_NUM * sizeof(bfloat16_t);
+        vecCompFixedSpace = MX_MAX_SCALE_NUM * sizeof(float) +       // castScaleBuf_
+                            MX_MAX_SCALE_NUM * sizeof(bfloat16_t);   // tempBf16ScaleBuf_
     } else {
-        vecCompFixedSpace = KG_MAX_SCALE_NUM * sizeof(float);
+        vecCompFixedSpace = KG_MAX_SCALE_NUM * sizeof(float);        // castScaleBuf_
     }
 
-    uint64_t mteCommDynamicBytes = BUFFER_NUM * sizeof(OutputType) +
-                                    BUFFER_NUM * sizeof(XType);
+    // 动态开销系数：每增加 1 个 x 需要的 UB 字节
+    uint64_t mteCommDynamicBytes = BUFFER_NUM * sizeof(OutputType) +  // xOutQueue_
+                                    BUFFER_NUM * sizeof(XType);        // xQueue_
     uint64_t vecCompDynamicBytes = sizeof(float) + sizeof(float) + sizeof(bfloat16_t) + sizeof(float16_t);
-
+    // MX: 每 32 个 x 有 1 个 scale (1B), KG: 每 128 个 x 有 1 个 scale (4B), 两者系数均为 x/32 B
     uint64_t scaleInQueBytesPerX = sizeof(ScalesType) /
         (AscendC::IsSameType<ScalesType, fp8_e8m0_t>::value ? MX_SIZE : PER_GROUP_SIZE);
     uint64_t selfDynamicBytes = sizeof(float) + BUFFER_NUM * sizeof(XType) + BUFFER_NUM * scaleInQueBytesPerX;
@@ -140,19 +143,23 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::ComputeXPerBlock(
     uint64_t remainingSpace = TOTAL_UB_SIZE - totalFixedSpace;
     uint64_t maxXPerBlock = remainingSpace / totalDynamicBytes;
 
+    // host 推荐值（TARGET_ITER 公式）作为上限，kernel UB 约束作为 safety net
     uint32_t hostRecommended = info.xPerBlock;
     if (hostRecommended != 0U && maxXPerBlock > hostRecommended) {
         maxXPerBlock = hostRecommended;
     }
 
+    // 数据量上限约束
     xPerBlock_ = static_cast<uint32_t>(maxXPerBlock < xNums_ ? maxXPerBlock : xNums_);
 
+    // 对齐到 alignBlock
     uint32_t alignBlock = info.alignBlock;
     xPerBlock_ = FloorAlign(xPerBlock_, alignBlock);
     if (xPerBlock_ == 0) {
         xPerBlock_ = alignBlock;
     }
 
+    // 每块 scale 数量（real 值，GM 偏移用；UB 分配按 32B 对齐）
     if constexpr (AscendC::IsSameType<ScalesType, fp8_e8m0_t>::value) {
         scaleNumsPerBlock_ = xPerBlock_ / MX_SIZE;
     } else {
@@ -169,6 +176,7 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::ComputeXPerBlock(
     sumTensor_ = sumBuf_.Get<float>();
 }
 
+// 计算多核分块参数：每核分配块数、尾块归属、起始偏移
 template <TemplateTypeClass>
 __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::ComputeBlockDistribution(uint64_t aivNum)
 {
@@ -185,6 +193,7 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::ComputeBlockDistr
     tailXNums_ = BlockAlignMod(xNums_, xPerBlock_);
 }
 
+// 初始化 vecComp、mteComm 子模块参数并分配其 UB buffer，绑定 GM Tensor
 template <TemplateTypeClass>
 __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::InitSubModules(
     GM_ADDR x, GM_ADDR scales, GM_ADDR output, TPipe *tPipe, uint64_t aivNum)
