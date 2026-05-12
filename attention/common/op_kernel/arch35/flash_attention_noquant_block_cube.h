@@ -120,9 +120,9 @@ struct L0CBuffSel {
 };
 
 /* ============确定bmm2ResBuffer的类型============= */
-template <bool useDn, bool isFp8>
+template <bool useDn, bool isFp8, bool optionalDn>
 struct Bmm2ResBuffSel {
-    using Type = std::conditional_t<(useDn && isFp8),
+    using Type = std::conditional_t<((useDn && isFp8) || optionalDn),
         BuffersPolicySingleBuffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
         BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>>;
 };
