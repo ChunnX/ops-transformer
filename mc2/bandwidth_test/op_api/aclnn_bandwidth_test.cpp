@@ -97,7 +97,7 @@ static aclnnStatus CheckParams(const aclTensor* context, const aclTensor* x, con
         return ACLNN_ERR_PARAM_INVALID;
     }
 
-    if (commAlg <= 0) {
+    if (commAlg < 0) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "commAlg must be positive, got %ld", commAlg);
         return ACLNN_ERR_PARAM_INVALID;
     }
