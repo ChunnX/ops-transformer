@@ -467,8 +467,19 @@ static ge::graphStatus RingAttentionUpdateTNDUbSizeCheck(const gert::TilingConte
     OP_LOGD(context->GetNodeName(), "headDim in TND should be aligned to 64!");
     return ge::GRAPH_FAILED;
   }
-  if (headNumLoopEach == 0 || headDim > MAX_HEAD_DIM_LIMIT_SIZE) {
+  if (headNumLoopEach == 0) {
     OP_LOGE(context->GetNodeName(), "Don't support this shape currently, please try to use smaller D!");
+    return ge::GRAPH_FAILED;
+  }
+  if (headDim > MAX_HEAD_DIM_LIMIT_SIZE) {
+    auto prevAttnOutShapePtr = context->GetInputShape(0);
+    OP_CHECK_NULL_WITH_CONTEXT(context, prevAttnOutShapePtr);
+    gert::Shape prevAttnOutShape = prevAttnOutShapePtr->GetStorageShape();
+    std::string reasonMsg = "The D-dimension of input prev_attn_out must be less than or equal to " +
+      std::to_string(MAX_HEAD_DIM_LIMIT_SIZE) +
+      ", where D is the last axis when the format of prev_attn_out is TND";
+    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "prev_attn_out",
+      ToString(prevAttnOutShape).c_str(), reasonMsg.c_str());
     return ge::GRAPH_FAILED;
   }
   if (headNum > MAX_HEAD_NUM_LIMIT_SIZE) {

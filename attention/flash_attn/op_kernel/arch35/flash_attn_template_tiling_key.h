@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -133,7 +133,8 @@ ASCENDC_TPL_ARGS_DECL(FlashAttn,
 ASCENDC_TPL_SEL(
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST,
-                            InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
+                            InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, 
+                            InOutLayoutType_TND_TND, InOutLayoutType_BNSD_BSND),
         ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST,
                             Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned64,
                             Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned128,

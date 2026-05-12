@@ -796,7 +796,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::CalcInnerSize(const FiaTilin
      */
     SetDequantBaseSize(fiaInfo);
     sInnerFactorSize_ = sInnerFactor_;
-    if (sInnerFactor_ > seqSize) {
+    if (seqSize != 0U && sInnerFactor_ > seqSize) {
         sInnerFactor_ = seqSize;
     }
     sInnerSizeAlign_ = AlignUp(sInnerFactor_, BYTE_BLOCK);  // 元素个数按照基本块大小对齐
@@ -1062,7 +1062,7 @@ void FusedInferAttentionScoreTilingImpl::DequantCubeSplitBNSeq(const FiaTilingIn
     ComputeDequantSplitNBSeq(fiaInfo, sOuterLoopTimes, sInnerLoopTimes, sInnerLoopTimesPrefix, coreWeightTarget, curIndx,
                              tilingElementArrayLen);
     int64_t sinnerBlocknum = (fiaInfo.maxActualseq + sInnerFactor_ - 1) / sInnerFactor_;
-    int64_t totalSize = (totalBlockNumsOneHead / sinnerBlocknum) * nLoopTimes_;
+    int64_t totalSize = ((sinnerBlocknum == 0) ? 0 : (totalBlockNumsOneHead / sinnerBlocknum) * nLoopTimes_);
     int64_t actualUsedCoreNum = static_cast<int64_t>((curIndx + 1));
     faRunTilingAdapter_.multiCoreParamsRegbase.set_coreNum(static_cast<int32_t>(actualUsedCoreNum));
     faRunTilingAdapter_.multiCoreParamsRegbase.set_totalSize(totalSize);

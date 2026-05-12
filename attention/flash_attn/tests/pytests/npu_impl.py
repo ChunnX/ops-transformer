@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
-# Copyright (c) 2025 Huawei Technologies Co., Ltd.
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to License for details. You may not use this file except in compliance with License.
@@ -59,7 +59,8 @@ def print_metadata(metadata):
                  "WS_NUM",   "M_START",  "M_NUM"]
 
     # Reinterpret buffer as flat uint32 array regardless of original dtype
-    arr = metadata.cpu().contiguous().view(torch.int32).numpy().view(np.uint32)
+    # arr = metadata.cpu().contiguous().view(torch.int32).numpy().view(np.uint32)
+    arr = metadata.cpu().contiguous().to(torch.int32).numpy().astype(np.uint32)
 
     section_num  = int(arr[0])
     m_base_size  = int(arr[1])

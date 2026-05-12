@@ -33,7 +33,8 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl128VF(
     const uint32_t nPadding, const uint32_t blockStride, const uint32_t repeatStride, const uint32_t oriTailN,
     const uint32_t tailN, const float dScale, uint32_t pltOriTailN, uint32_t pltTailN, float divValue, uint32_t pltN,
     const uint16_t m, const uint32_t pseStride, const float slopes, const float posShift, const T scale,
-    const float dScaleQK, const T minValue, const float deSCaleKValue = 1.0f, const float sinkValue = 0.0f, const float pScale = 1.0f)
+    const float dScaleQK, const T minValue, const float deSCaleKValue = 1.0f, const float sinkValue = 0.0f,
+    const float pScale = 1.0f)
 {
     RegTensor<float> vreg_min;
     RegTensor<float> vreg_sel;
@@ -92,7 +93,7 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl128VF(
     MaskReg preg5;
     MaskReg preg6;
 
-     //pScale
+     // pScale
     RegTensor<float> vreg_p_scale;
     RegTensor<float> vreg_ln_p_scale;
     Duplicate(vreg_p_scale, static_cast<float>(pScale));
@@ -188,7 +189,7 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl128VF(
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
                 (__ubuf__ T *&)srcUb + floatRepSize + i * s2BaseSize, vreg_sel_unroll_new, preg_tail_n);
             Max(vreg_max_tmp, vreg_sel, vreg_sel_unroll_new, preg_all);
-            //TODO: pScale,preg均需要关注
+            // TODO pScale,preg均需要关注
             Sub(vreg_max_tmp, vreg_max_tmp, vreg_ln_p_scale, preg_all);
             Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(
                 vreg_input_max, vreg_max_tmp, preg_all);
@@ -199,7 +200,7 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl128VF(
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
                 (__ubuf__ T *&)srcUb + floatRepSize + i * s2BaseSize, vreg_input_x_unroll_new, preg_tail_n);    
             Max(vreg_max_tmp, vreg_input_x, vreg_input_x_unroll_new, preg_all);
-            //TODO: pScale,preg均需要关注
+            // TODO pScale,preg均需要关注
             Sub(vreg_max_tmp, vreg_max_tmp, vreg_ln_p_scale, preg_all);
             Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(
                 vreg_input_max, vreg_max_tmp, preg_all);

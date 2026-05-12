@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -12,18 +12,6 @@
  * \file test_aclnn_flash_attn.cpp
  * \brief FlashAttn + FlashAttnMetadata 算子调用示例
  *
- * 功能对标 tests/pytests（去除画图）：
- *   1. 所有测试参数均可通过命令行配置（B/N1/N2/S1/S2/D/mask/wL/wR/qKVMin/Max等）
- *   2. 先调用 flash_attn_metadata 算子预计算 tiling metadata，形象打印后传入 flash_attn
- *   3. CPU 参考计算（支持因果掩码）+ 逐点精度对比报告
- *   4. --dump 选项：保存 npu_out/cpu_ref/prec_cmp 到 txt
- *   5. --verbose 选项：打印全部超阈值元素
- *
- * 用法示例（--help 查看完整参数表）：
- *   ./test_aclnn_flash_attn                                        # 默认参数
- *   ./test_aclnn_flash_attn --B 1 --N1 8 --N2 2 --S1 1 --S2 512   # FD+GQA
- *   ./test_aclnn_flash_attn --S1 64 --S2 256 --qMin 10 --qMax 10  # 固定值调试
- *   ./test_aclnn_flash_attn --B 4 --N1 16 --N2 4 --S1 256 --S2 256 --dump
  */
 
 #include <iostream>
