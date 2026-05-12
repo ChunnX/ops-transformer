@@ -493,6 +493,10 @@ ge::graphStatus DequantChecker::CheckExistenceMXFP8Fullquant(const FiaTilingInfo
                                                           "deqScale1") ||
         ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.deqScale2.tensor, quantModeName,
                                                           "deqScale2") ||
+        ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.quantScale2.tensor, quantModeName,
+                                                          "quantScale2") ||
+        ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.quantOffset2.tensor, quantModeName,
+                                                          "quantOffset2") ||
         ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.antiquantScale.tensor,
                                                           quantModeName, "antiquantScale") ||
         ge::GRAPH_SUCCESS != CheckTensorNotExistFullquant(fiaInfo, fiaInfo.opParamInfo.keyRopeAntiquantScale.tensor,
@@ -654,6 +658,12 @@ ge::graphStatus DequantChecker::CheckFeatureMXFP8Fullquant(const FiaTilingInfo &
     // 不支持 rope
     OP_CHECK_IF(fiaInfo.mlaMode != MlaMode::NO_MLA,
                 OP_LOGE(fiaInfo.opName, "In MXFP8 fullquant scenario, rope is not supported."),
+                return ge::GRAPH_FAILED);
+
+    // innerPrecise 仅支持 0/1
+    OP_CHECK_IF((fiaInfo.innerPrecise != HIGH_PRECISION) && (fiaInfo.innerPrecise != HIGH_PERFORMANCE),
+                OP_LOGE(fiaInfo.opName, "In MXFP8 fullquant scenario, innerPrecise(%d) only support %u or %u.",
+                        fiaInfo.innerPrecise, HIGH_PRECISION, HIGH_PERFORMANCE),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -882,6 +892,9 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeMXFP8(const FiaTilingInfo 
     // decode TND场景，qscale shape为(N2,G,T,D/64,2)
     uint32_t scaleQDim = (enableMxfp8FullQuantDecode_ && fiaInfo.qLayout == FiaLayout::TND) ? 5 : 4;
     uint32_t scaleKVDim = 0;
+    OP_CHECK_IF(!fiaInfo.pageAttentionFlag,
+        OP_LOGE(fiaInfo.opName, "In MXFP8 fullquant scenario, only PA-enabled scenarios are supported."),
+        return ge::GRAPH_FAILED);
     if (enableMxfp8FullQuantPrefill_) {
         scaleKVDim = fiaInfo.pageAttentionFlag ? 5 : 4;
     } else {
@@ -2556,9 +2569,9 @@ ge::graphStatus DequantChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
 {
     if (enableFullQuant_) {
         // 量化方式
-        if (fiaInfo.ropeMode == RopeMode::ROPE_SPLIT) {
+        if (fiaInfo.fullQuantMode == FiaFullQuantMode::PER_TOKEN_HEAD_FULL_QUANT) {
             enableIFAMLAFullQuant_ = true;
-        } else if (fiaInfo.inputQType == ge::DT_INT8) {
+        } else if (fiaInfo.fullQuantMode == FiaFullQuantMode::PER_TENSOR_FULL_QUANT) {
             enablePertensorQuant_ = true;
         } else if (fiaInfo.fullQuantMode == FiaFullQuantMode::PER_BLOCK_FULL_QUANT) { 
             enablePerblockQuant_ = true;
