@@ -62,7 +62,6 @@ find_package(metadef MODULE REQUIRED)
 find_package(runtime MODULE REQUIRED)
 find_package(nnopbase MODULE REQUIRED)
 find_package(tilingapi MODULE REQUIRED)
-find_package(ops_tensor MODULE REQUIRED)
 find_package(aicpu MODULE REQUIRED)
 
 if(BUILD_WITH_INSTALLED_DEPENDENCY_CANN_PKG)
