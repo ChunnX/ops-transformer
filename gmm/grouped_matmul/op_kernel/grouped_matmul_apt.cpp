@@ -13,6 +13,14 @@
  * \brief
  */
 
+#include <stdio.h>
+
+#if ASC_DEVKIT_MAJOR >= 9 && ASC_DEVKIT_MINOR > 0
+#define GMM_MX_IS_BLAZE 1
+#else
+#define GMM_MX_IS_BLAZE 0
+#endif
+
 #include "grouped_matmul_utils.h"
 #include "arch35/grouped_matmul_tiling_data_apt.h"
 using GMMWeightQuantTilingData = GroupedMatmulTilingData::GMMWeightQuantTilingData;
@@ -26,7 +34,7 @@ using GMMQuantBasicApiTilingData = GroupedMatmulTilingData::GMMQuantBasicApiTili
 #endif
 #if defined(V310_GMM_QUANT_MX)
 #include "arch35/quant_adaptive_sliding_window_templates/gqmm_cgmct_mx_kernel.h"
-#if __has_include("blaze/kernel/kernel_qgmm_mx.h")
+#if GMM_MX_IS_BLAZE && __has_include("blaze/kernel/kernel_qgmm_mx.h")
 #include "arch35/quant_adaptive_sliding_window_templates/gqmm_tensor_api_mx_kernel.h"
 #define GMM_MX_ENABLE_TENSOR_API 1
 #else
@@ -103,6 +111,15 @@ using weightType = MatmulType<AscendC::TPosition::GM, wFormat, DTYPE_X, trans>;
 using yType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, MM_DTYPE_Y>;
 
 using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
+
+#define GMM_MX_ROUTE_PRINT(routeName)                                                                               \
+    do {                                                                                                            \
+        if ASCEND_IS_AIC {                                                                                          \
+            if (AscendC::GetBlockIdx() == 0) {                                                                      \
+                printf("[zzzlog][grouped_matmul][gmm_mx] route=%s\n", routeName);                                   \
+            }                                                                                                       \
+        }                                                                                                           \
+    } while (0)
 
 #define INVOKE_GMM_WEIGHT_QUANT_BASIC_CONTROLLER_OP_IMPL(templateClass, ...)                                           \
     do {                                                                                                               \
@@ -215,6 +232,7 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
         GET_TILING_DATA_WITH_STRUCT(GMMQuantBasicApiTilingData, tilingData, tiling)                                    \
         GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, gmmQuantParams, gmmQuantParams_, tiling);                   \
         GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, mmTilingData, mmTilingData_, tiling);                       \
+        GMM_MX_ROUTE_PRINT("tensor_api");                                                                              \
         GmmTensorApiMxKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, float, DTYPE_Y, xLayout, wLayout,         \
                              yLayout, DTYPE_L0C_LOCAL>(x, weight, bias, scale, groupList, perTokenScale, y, user1,     \
                                                        &gmmQuantParams_, &mmTilingData_, &tPipe);                      \
@@ -225,6 +243,7 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
         GET_TILING_DATA_WITH_STRUCT(GMMQuantBasicApiTilingData, tilingData, tiling)                                    \
         GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, gmmQuantParams, gmmQuantParams_, tiling);                   \
         GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, mmTilingData, mmTilingData_, tiling);                       \
+        GMM_MX_ROUTE_PRINT("low_level_basic_api");                                                                      \
         GmmCgmctMxKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, float, DTYPE_Y, xLayout, wLayout,             \
                          yLayout, DTYPE_L0C_LOCAL>(x, weight, bias, scale, groupList, perTokenScale, y, user1,         \
                                                    &gmmQuantParams_, &mmTilingData_, &tPipe);                          \
