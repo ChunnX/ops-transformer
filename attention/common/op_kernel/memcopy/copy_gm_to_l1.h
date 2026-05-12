@@ -19,7 +19,9 @@
 #include "fa_l1_tensor.h"
 #include "gm_coord.h"
 #include "offset_calculator_v2.h"
-#include "tensor_api/include/tensor_api/tensor.h"
+#include "../../tensor_api/tensor_api/include/tensor_api/tensor.h"
+
+using namespace AscendC::Te;
 
 // ----------------------------------------------CopyQueryGmToL1--------------------------------
 template <typename T>

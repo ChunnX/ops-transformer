@@ -15,8 +15,9 @@
 #ifndef MATMUL_H
 #define MATMUL_H
 #include "buffers_policy.h"
-#include "tensor_api/include/tensor_api/tensor.h"
+#include "../tensor_api/tensor_api/include/tensor_api/tensor.h"
 using namespace AscendC;
+using namespace AscendC::Te;
 
 namespace fa_base_matmul {
 

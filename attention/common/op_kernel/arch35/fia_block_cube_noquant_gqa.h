@@ -18,12 +18,13 @@
 #include "../matmul.h"
 #include "../FixpipeOut.h"
 #include "../memory_copy_arch35.h"
-#include "tensor_api/include/tensor_api/tensor.h"
+#include "../../tensor_api/tensor_api/include/tensor_api/tensor.h"
 
 #include "infer_flash_attention_comm.h"
 #include "flash_attention_score_common_regbase.h"
 #include "kernel_operator_list_tensor_intf.h"
 using namespace AscendC;
+using namespace AscendC::Te;
 using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
 using namespace fa_base_matmul;
