@@ -19,6 +19,7 @@
 #include "common/op_host/op_api/matmul_util.h"
 #ifdef BUILD_OPEN_PROJECT
 #include "version/hcomm_version.h"
+#define HCOMM_VERSION_NUM 90000000
 #define HCCL_CHANNEL_SUPPORT_VERSION 90000000
 #if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 #include "common/op_api/mc2_context.h"
@@ -118,14 +119,12 @@ aclnnStatus aclnnBandwidthTestGetWorkspaceSize(
     uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     OP_LOGD("aclnnBandwidthTestGetWorkspaceSize start");
-    OP_LOGD("12345");
     
     auto ret_param = CheckParams(context, x, dstrankId, group, worldSize, cclBufferSize, maxBs, mode, commAlg, y, receiveCnt);
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
 
     aclTensor *mc2Context = nullptr;
     aclnnStatus getWorkspaceSizesRes;
-    OP_LOGD(HCOMM_VERSION_NUM, "HCOMM_VERSION_NUM");
 #if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
     uint64_t hcclBuffSize = 0;
     const char *opName = "bandwidth_test";
