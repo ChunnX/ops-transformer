@@ -46,7 +46,7 @@ private:
     __aicore__ inline void CopyInWeights(uint32_t globalItemIdx);
     __aicore__ inline void ComputeInitGrads();
     __aicore__ inline void CopyInTile(uint32_t globalItemIdx, uint32_t tileId);
-    __aicore__ inline void ComputeTile(uint32_t tileId);
+    __aicore__ inline void ComputeTile(uint32_t globalItemIdx, uint32_t tileId);
     __aicore__ inline void CopyOutGradHOut(uint32_t globalItemIdx, uint32_t tileId);
     __aicore__ inline void CopyOutGradX(uint32_t globalItemIdx, uint32_t tileId);
     __aicore__ inline void CopyOutWeightGrads(uint32_t globalItemIdx);
@@ -174,7 +174,7 @@ __aicore__ inline void MhcPostBackwardKernel<T>::Init(
     gradHOutGm_.SetGlobalBuffer((__gm__ T *)gradHOut, totalItems_ * D_);
     gradXGm_.SetGlobalBuffer((__gm__ T *)gradX, totalItems_ * n_ * D_);
     // Set global memory buffers for outputs (float32)
-    gradHPostGm_.SetGlobalBuffer((__gm__ float *)gradHPost, totalItems_ * n_);
+    gradHPostGm_.SetGlobalBuffer((__gm__ float *)gradHPost, totalItems_ * n_ * D_);
     gradHResGm_.SetGlobalBuffer((__gm__ float *)gradHRes, totalItems_ * n_ * n_);
 
     if ASCEND_IS_AIV {
@@ -237,7 +237,7 @@ __aicore__ inline void MhcPostBackwardKernel<T>::Process()
 
             for (uint32_t tileId = 0; tileId < nTilesD_; tileId++) {
                 CopyInTile(globalItemIdx, tileId);
-                ComputeTile(tileId);
+                ComputeTile(globalItemIdx, tileId);
                 // Split CopyOut to enable pipeline overlap
                 CopyOutGradHOut(globalItemIdx, tileId);  // Can overlap with gradX computation
                 CopyOutGradX(globalItemIdx, tileId);
@@ -327,7 +327,7 @@ __aicore__ inline void MhcPostBackwardKernel<T>::CopyInTile(uint32_t globalItemI
 }
 
 template<typename T>
-__aicore__ inline void MhcPostBackwardKernel<T>::ComputeTile(uint32_t tileId)
+__aicore__ inline void MhcPostBackwardKernel<T>::ComputeTile(uint32_t globalItemIdx, uint32_t tileId)
 {
     uint32_t actualTileD = (tileId == nTilesD_ - 1) ? lastTileD_ : tileD_;
 
@@ -358,13 +358,20 @@ __aicore__ inline void MhcPostBackwardKernel<T>::ComputeTile(uint32_t tileId)
     
     for (uint32_t i = 0; i < n_; i++) {
         Mul(tempLocal, gradOutF32[i * actualTileD], hOutF32, actualTileD);
-        float sumHPost = HierarchicalReduceSum(tempLocal, workLocal, actualTileD);
-        event_t eventVtoS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
-        SetFlag<HardEvent::V_S>(eventVtoS);
-        WaitFlag<HardEvent::V_S>(eventVtoS);
-        gradHPostTileSums.SetValue(i, sumHPost);
+        // float sumHPost = HierarchicalReduceSum(tempLocal, workLocal, actualTileD);
+        // event_t eventVtoS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
+        // SetFlag<HardEvent::V_S>(eventVtoS);
+        // WaitFlag<HardEvent::V_S>(eventVtoS);
+        event_t eventVtoMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
+        SetFlag<HardEvent::V_MTE3>(eventVtoMTE3);
+        WaitFlag<HardEvent::V_MTE3>(eventVtoMTE3);
+        DataCopy(gradHPostGm_[globalItemIdx * n_ * D_ + i * D_ + tileId * tileD_], tempLocal, actualTileD);
+        event_t eventMTE3toV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
+        SetFlag<HardEvent::MTE3_V>(eventMTE3toV);
+        WaitFlag<HardEvent::MTE3_V>(eventMTE3toV);
+        // gradHPostTileSums.SetValue(i, sumHPost);
     }
-    Add(gradHPostLocal, gradHPostLocal, gradHPostTileSums, alignedN_);
+    // Add(gradHPostLocal, gradHPostLocal, gradHPostTileSums, alignedN_);
     gradHPostQueue_.EnQue(gradHPostLocal);
 
     ComputeGradHOutTile(gradOutF32, hPostLocal, gradHOutTile, actualTileD);
@@ -585,7 +592,7 @@ __aicore__ inline void MhcPostBackwardKernel<T>::CopyOutWeightGrads(uint32_t glo
     hResQueue_.FreeTensor(hResLocal);
 
     LocalTensor<float> gradHPostLocal = gradHPostQueue_.DeQue<float>();
-    DataCopyPad(gradHPostGm_[hPostOffset], gradHPostLocal, {1, static_cast<uint16_t>(n_ * sizeof(float)), 0, 0});
+    // DataCopyPad(gradHPostGm_[hPostOffset], gradHPostLocal, {1, static_cast<uint16_t>(n_ * sizeof(float)), 0, 0});
     gradHPostQueue_.FreeTensor(gradHPostLocal);
 }
 
