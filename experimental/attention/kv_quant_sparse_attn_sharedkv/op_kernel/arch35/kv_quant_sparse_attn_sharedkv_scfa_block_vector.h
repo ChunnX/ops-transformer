@@ -91,12 +91,12 @@ private:
         Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, const RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline void CalSparseCalSize(const RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline int64_t GetkeyOffset(int64_t s2Idx, const RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void GetRealCmpS2Idx(int64_t &token0Idx, int64_t &token1Idx, int64_t s2IdxInBase,
+    __aicore__ inline void GetRealCmpS2Idx(int32_t *tokenData, int64_t s2IdxInBase,
         const RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline void CopyInKvNotSparse(LocalTensor<KV_T> kvMergUb, int64_t v0Loop, int64_t dealRow,
         int64_t s2StartIdx, const RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline uint32_t CopyInKvSparse(LocalTensor<KV_T> kvInUb , int64_t startRow, int64_t token0Idx,
-        int64_t token1Idx, const RunInfo &runInfo, ConstInfo &constInfo);
+    __aicore__ inline uint32_t CopyInKvSparse(LocalTensor<KV_T> kvInUb, int64_t startRow, int32_t *tokenData,
+        const RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline void DequantKv(LocalTensor<Q_T> antiKvTensorAsB16, LocalTensor<KV_T> srcTensor, int64_t dealRow,
         int64_t s2ProcessBaseSize, ConstInfo &constInfo);
     __aicore__ inline void CopyOutKvUb2L1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
@@ -157,10 +157,10 @@ private:
 };
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::GetRealCmpS2Idx(int64_t &token0Idx, int64_t &token1Idx,
+__aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::GetRealCmpS2Idx(int32_t *tokenData,
     int64_t s2IdxInBase, const RunInfo &runInfo, ConstInfo &constInfo)
 {
-    int64_t topkBS1Idx = 0;
+    uint64_t topkBS1Idx = 0;
     if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
         uint64_t actualSeqQPrefixSum = cuSeqlensQGm.GetValue(runInfo.boIdx);
         topkBS1Idx += (actualSeqQPrefixSum + runInfo.s1oIdx) * constInfo.sparseBlockCount; // T, N2(1), K
@@ -169,17 +169,14 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::GetRealCmpS2Idx(int64_t &tok
             runInfo.s1oIdx * constInfo.sparseBlockCount; // B, S1, N2(1), K
     }
     int64_t cmpS2LoopCnt = runInfo.s2LoopCount - runInfo.oriKvLoopEndIdx;
-    int64_t topkKIdx = s2IdxInBase + cmpS2LoopCnt * constInfo.s2BaseSize;
-    if (unlikely(topkKIdx >= constInfo.sparseBlockCount)) {
-        token0Idx = -1;
-    } else {
-        token0Idx = cmpSparseIndicesGm.GetValue(topkBS1Idx + topkKIdx) + runInfo.s2StartIdx;
-    }
-    topkKIdx += 1;
-    if (unlikely((topkKIdx >= constInfo.sparseBlockCount) || (s2IdxInBase + 1 >= sparseS2End))) {
-        token1Idx = -1;
-    } else {
-        token1Idx = cmpSparseIndicesGm.GetValue(topkBS1Idx + topkKIdx) + runInfo.s2StartIdx;
+    uint64_t topkKIdx = s2IdxInBase + cmpS2LoopCnt * constInfo.s2BaseSize;
+    for (uint64_t i = 0; i < 8; ++i) {
+        uint64_t idx = topkBS1Idx + runInfo.s2StartIdx + topkKIdx + i;
+        if (likely((topkKIdx + i < constInfo.sparseBlockCount) && (s2IdxInBase + i < sparseS2End))) {
+            tokenData[i] = cmpSparseIndicesGm.GetValue(idx);
+        } else {
+            break;
+        }
     }
 }
 
@@ -229,46 +226,51 @@ SCFABlockVec<TEMPLATE_ARGS>::CopyInSingleKv(LocalTensor<KV_T> kvInUb, int64_t st
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline uint32_t SCFABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTensor<KV_T> kvInUb , int64_t startRow,
-    int64_t token0Idx, int64_t token1Idx, const RunInfo &runInfo, ConstInfo &constInfo)
+    int32_t *tokenData, const RunInfo &runInfo, ConstInfo &constInfo)
 {
     int64_t s2IdLimit = runInfo.s2RealSize;
     s2IdLimit = (runInfo.s2RealSize - runInfo.actualS1Size + runInfo.s1oIdx + 1) / constInfo.cmpRatio;
-    int64_t keyOffset0 = GetkeyOffset(token0Idx, runInfo, constInfo);
-    int64_t keyOffset1 = GetkeyOffset(token1Idx, runInfo, constInfo);
-    if (unlikely(keyOffset0 < 0 && keyOffset1 < 0)) {
-        return 0;
-    }
-    uint32_t combineBytes = constInfo.dSizeVInput;
-    int64_t keySrcStride = (keyOffset0 > keyOffset1 ? (keyOffset0 - keyOffset1) :
-        (keyOffset1 - keyOffset0)) - combineBytes;
-    if (unlikely(keySrcStride >= INT32_MAX || keySrcStride < 0) ||
-        constInfo.sparseBlockSize > 1) {
-        // stride溢出、stride为负数、s2超长等异常场景，还原成2条搬运指令
-        CopyInSingleKv(kvInUb, startRow, keyOffset0);
-        CopyInSingleKv(kvInUb, startRow + 1, keyOffset1);
-    } else {
-        DataCopyExtParams intriParams;
-        intriParams.blockCount = (keyOffset0 >= 0) + (keyOffset1 >= 0);
-        intriParams.blockLen = combineBytes;
-        intriParams.dstStride = 0;
-        intriParams.srcStride = keySrcStride;
-        DataCopyPadExtParams<KV_T> padParams;
-
-        int64_t keyOffset = keyOffset0 > -1 ? keyOffset0 : keyOffset1;
-        if (keyOffset1 > -1 && keyOffset1 < keyOffset0) {
-            keyOffset = keyOffset1;
+    uint32_t dealRow = 0;
+    for (uint32_t i = 0; i < 8; i += 2) {
+        int64_t keyOffset0 = GetkeyOffset(tokenData[i], runInfo, constInfo);
+        int64_t keyOffset1 = GetkeyOffset(tokenData[i + 1], runInfo, constInfo);
+        if (unlikely(keyOffset0 < 0 && keyOffset1 < 0)) {
+            return dealRow;
         }
+        uint32_t combineBytes = constInfo.dSizeVInput;
+        int64_t keySrcStride = (keyOffset0 > keyOffset1 ? (keyOffset0 - keyOffset1) :
+            (keyOffset1 - keyOffset0)) - combineBytes;
+        if (unlikely(keySrcStride >= INT32_MAX || keySrcStride < 0) ||
+            constInfo.sparseBlockSize > 1) {
+            // stride溢出、stride为负数、s2超长等异常场景，还原成2条搬运指令
+            CopyInSingleKv(kvInUb, startRow, keyOffset0);
+            CopyInSingleKv(kvInUb, startRow + 1, keyOffset1);
+        } else {
+            DataCopyExtParams intriParams;
+            intriParams.blockCount = (keyOffset0 >= 0) + (keyOffset1 >= 0);
+            intriParams.blockLen = combineBytes;
+            intriParams.dstStride = 0;
+            intriParams.srcStride = keySrcStride;
+            DataCopyPadExtParams<KV_T> padParams;
 
-        // 当前仅支持COMBINE模式
-        uint32_t combineDim = combineBytes / sizeof(KV_T);
-        uint32_t combineDimAlign = CeilAlign(combineBytes, BUFFER_SIZE_BYTE_32B) / sizeof(KV_T);
-        padParams.isPad = true;
-        padParams.leftPadding = 0;
-        padParams.rightPadding = combineDimAlign - combineDim;
-        padParams.paddingValue = 0;
-        DataCopyPad(kvInUb[startRow *  combineDimAlign], keyGm[keyOffset], intriParams, padParams);
+            int64_t keyOffset = keyOffset0 > -1 ? keyOffset0 : keyOffset1;
+            if (keyOffset1 > -1 && keyOffset1 < keyOffset0) {
+                keyOffset = keyOffset1;
+            }
+
+            // 当前仅支持COMBINE模式
+            uint32_t combineDim = combineBytes / sizeof(KV_T);
+            uint32_t combineDimAlign = CeilAlign(combineBytes, BUFFER_SIZE_BYTE_32B) / sizeof(KV_T);
+            padParams.isPad = true;
+            padParams.leftPadding = 0;
+            padParams.rightPadding = combineDimAlign - combineDim;
+            padParams.paddingValue = 0;
+            DataCopyPad(kvInUb[startRow *  combineDimAlign], keyGm[keyOffset], intriParams, padParams);
+        }
+        dealRow += (keyOffset0 >= 0) + (keyOffset1 >= 0);
+        startRow += 2;
     }
-    return (keyOffset0 > -1) + (keyOffset1 > -1);
+    return dealRow;
 }
 
 // fp8->fp32
@@ -647,21 +649,22 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
     bool meetEnd = false;
     int64_t s2Start = sparseS2Start;
     int64_t s2 = sparseS2Start;
-    int64_t token0Idx, token1Idx; // 拷贝进入的两个token的index
     // 处理一个s2的base块
     while ((s2 < sparseS2End) && !meetEnd) { // 拷贝到s2End或者遇到-1
         int64_t dealRow = 0;
         // 1、copy kv in, gm ->ub
         LocalTensor<KV_T> kvInUb = stage0InQue.AllocTensor<KV_T>();
         while (dealRow < Min(16, sparseCalSize) && s2 < sparseS2End) { // 拷贝满16行或者遇到-1
-            GetRealCmpS2Idx(token0Idx, token1Idx, s2, runInfo, constInfo);
-            s2 += 2; // 每次搬运2行
-            if (token0Idx== -1 && token1Idx == -1) {
+            int32_t tokenData[8] = {-1, -1, -1, -1, -1, -1, -1, -1}; // 拷贝进入的8个token的index
+            GetRealCmpS2Idx(tokenData, s2, runInfo, constInfo);
+            s2 += 8; // 每次搬运8行
+            if (tokenData[0] == -1 && tokenData[1] == -1 && tokenData[2] == -1 && tokenData[3] == -1 &&
+                tokenData[4] == -1 && tokenData[5] == -1 && tokenData[6] == -1 && tokenData[7] == -1) {
                 meetEnd = true;
                 break;
             }
-            dealRow += CopyInKvSparse(kvInUb, dealRow, token0Idx, token1Idx, runInfo, constInfo);
-            if (token1Idx == -1) {
+            dealRow += CopyInKvSparse(kvInUb, dealRow, tokenData, runInfo, constInfo);
+            if (tokenData[7] == -1) {
                 meetEnd = true;
                 break;
             }
