@@ -41,13 +41,6 @@ __aicore__ inline uint32_t CeilDivU32(uint32_t a, uint32_t b)
     return (a + b - 1) / b;
 };
 
-// 向上对齐：将a向上对齐到b的倍数
-__aicore__ inline uint64_t CeilAlign(uint64_t a, uint32_t b)
-{
-    uint64_t bTemp = static_cast<uint64_t>(b);
-    return (bTemp == 0) ? a : CeilDiv(a, bTemp) * bTemp;
-};
-
 // uint32_t版本的向上对齐
 __aicore__ inline uint32_t CeilAlignU32(uint32_t a, uint32_t b)
 {
@@ -77,10 +70,11 @@ __aicore__ inline uint64_t FloorAlign(uint64_t a, uint32_t b)
     return (a / b) * b;
 }
 
-// MIN 宏：返回两个值中的较小值
-#ifndef MIN
-#define MIN(a, b) ((a) < (b) ? (a) : (b))
-#endif
+// 分数除法：total / (base + num/den)，避免 base + num/den 整数截断为 base
+__aicore__ inline uint64_t FracDiv(uint64_t total, uint64_t base, uint32_t num, uint32_t den)
+{
+    return total * num / (base * num + den);
+}
 
 static constexpr AscendC::MicroAPI::CastTrait castTrait = {AscendC::MicroAPI::RegLayout::ZERO,
     AscendC::MicroAPI::SatMode::NO_SAT, AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_NONE};

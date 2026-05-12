@@ -132,13 +132,11 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::ComputeXPerBlock(
 
     uint64_t remainingSpace = TOTAL_UB_SIZE - mteCommFixedSpace;
     uint64_t maxXPerBlock;
-    // scale 相关 buffer 的开销是 xPerBlock_ 的分数倍，按比例校正避免整数除法截断
-    // MX: vecComp(castScale+tempBf16Scale)=6B/32X, scaleInQue=2B/32X → 共 8/32=1/4 B per X
-    // KG: vecComp(castScale)=4B/128X, scaleInQue=8B/128X → 共 12/128=3/32 B per X
+    // scale buffer 的开销以 FracDiv 精确计入 UB 预算（避免 < 1 B per X 被整数截断）
     if constexpr (AscendC::IsSameType<ScalesType, fp8_e8m0_t>::value) {
-        maxXPerBlock = (remainingSpace * 4U) / (baseDynamic * 4U + 1U);
+        maxXPerBlock = FracDiv(remainingSpace, baseDynamic, 4U, 1U);   // + 1/4 B per X
     } else {
-        maxXPerBlock = (remainingSpace * 32U) / (baseDynamic * 32U + 3U);
+        maxXPerBlock = FracDiv(remainingSpace, baseDynamic, 32U, 3U);  // + 3/32 B per X
     }
 
     // host 推荐值（TARGET_ITER 公式）作为上限，kernel UB 约束作为 safety net
