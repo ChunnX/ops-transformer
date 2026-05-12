@@ -29,12 +29,10 @@ constexpr static uint32_t PER_GROUP_SIZE = 128U;    // KG量化时，128个x数�
 constexpr static uint32_t MX_SIZE = 32U;            // MX量化时，32个x数据共有一个scale
 constexpr static uint32_t TWO_DIMS = 2U;            // 用于scale反量化时boardcast的数组维度
 
-// 方案B：增大buffer以支持一次处理所有scale
-// 基于最大可能的xPerBlock_(约64KB=65536个元素)计算：
-// MX: 65536/32=2048个scale，取256作为合理上限（覆盖8KB的xPerBlock_）
-// KG: 65536/128=512个scale，取128作为合理上限
-constexpr static uint32_t MX_MAX_SCALE_NUM = 256U;   // MX最大scale数量（覆盖xPerBlock_=8192）
-constexpr static uint32_t KG_MAX_SCALE_NUM = 128U;   // KG最大scale数量（覆盖xPerBlock_=16384）
+// Cast/BroadCast buffer 上限（基于 UB 实际可用空间确定）
+// MX: 384 覆盖 xPerBlock_ ≤ 12288, KG: 128 覆盖 xPerBlock_ ≤ 16384
+constexpr static uint32_t MX_MAX_SCALE_NUM = 384U;
+constexpr static uint32_t KG_MAX_SCALE_NUM = 128U;
 
 #define TemplateTypeClass typename XType, typename ScalesType, typename OutputType
 #define TemplateType XType, ScalesType, OutputType
