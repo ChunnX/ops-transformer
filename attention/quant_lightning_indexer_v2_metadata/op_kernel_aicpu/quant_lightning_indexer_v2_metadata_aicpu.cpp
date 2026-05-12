@@ -19,8 +19,7 @@ using namespace optiling;
 #define KERNEL_STATUS_PARAM_INVALID 1
 
 namespace aicpu {
-uint32_t
-QuantLightningIndexerV2MetadataCpuKernel::Compute(CpuKernelContext &ctx)
+uint32_t QuantLightningIndexerV2MetadataCpuKernel::Compute(CpuKernelContext &ctx)
 {
     bool success = Prepare(ctx);
     if (!success) {
