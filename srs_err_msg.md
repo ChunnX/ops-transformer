@@ -89,11 +89,11 @@ OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
 | -- | --: | --: | -- | -- | -- |
 | gmm/grouped_matmul/op_api/aclnn_grouped_matmul.cpp | 359 | 27.1% | 公共 | - | 暂不整改 |
 | gmm/grouped_matmul/op_api/grouped_matmul.cpp | 3 | 0.2% | 公共 | - | 暂不整改 |
-| gmm/grouped_matmul/op_api/grouped_matmul_no_quant_950_checker.cpp | 3 | 0.2% | A5 | 非量化 | 整改 |
+| gmm/grouped_matmul/op_api/grouped_matmul_no_quant_950_checker.cpp | 3 | 0.2% | A5 | 非量化 | - |
 | gmm/grouped_matmul/op_api/grouped_matmul_weight_quant_950_checker.cpp | 111 | 8.4% | A5 | 伪量化 | **重点整改** |
 | gmm/grouped_matmul/op_api/grouped_matmul_950_checker.cpp | 153 | 11.5% | 公共 | - | 暂不整改 |
-| gmm/grouped_matmul/op_host/grouped_matmul_infershape_weight_quant_checker.cpp | 97 | 7.3% | A5 | 伪量化 | **重点整改** |
-| gmm/grouped_matmul/op_host/grouped_matmul_infershape.cpp | 190 | 14.3% | 公共 | - | 暂不整改 |
+| gmm/grouped_matmul/op_host/grouped_matmul_infershape_weight_quant_checker.cpp | 97 | 7.3% | - | 伪量化 | 不涉及A5，不整改 |
+| gmm/grouped_matmul/op_host/grouped_matmul_infershape.cpp | 190 | 14.3% | 公共 | - | 不涉及A5，不整改 |
 | gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp | 123 | 9.3% | A5 | 伪量化 | **重点整改** |
 | 其他文件（op_graph/op_kernel） | 18 | 1.4% | - | - | 不整改 |
 
@@ -126,11 +126,12 @@ OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
 
 | 完整路径 | 计数 | 占比 | 涉及芯片 | 整改范围 |
 | -- | --: | --: | -- | -- |
-| conversion/npu_format_cast/op_host/op_api/aclnn_npu_format_cast.cpp | 81 | 100% | 公共 | **全量整改** |
+| conversion/npu_format_cast/op_host/op_api/aclnn_npu_format_cast.cpp | 81 | 100% | 公共 | - |
 
 **重点整改文件（A5 + 伪量化）：**
 
 因为npu_format_cast都是aclnn接口，所以本次整改不涉及
+
 ---
 
 ## 4. 错误类型分类与整改策略
