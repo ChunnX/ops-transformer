@@ -72,6 +72,7 @@ constexpr uint32_t OUTPUT_TYPE_FLOAT = 2;
 constexpr uint32_t BLOCKSIZE_INDEX = 6;
 constexpr uint32_t GROUPSIZE_INDEX = 7;
 constexpr uint32_t TRANSPOSEB_INDEX = 3;
+constexpr uint32_t COMMMODE_INDEX = 10;
 }  // namespace
 
 bool QuantBmmReduceScatterTiling::IsCapable()
@@ -383,11 +384,13 @@ ge::graphStatus QuantBmmReduceScatterTiling::SetMc2Hcomm()
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(
         group, opType, rsConfig, reduceType, dataType, dataType
     );
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-    if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+    if (commMode_ == Mc2Comm::COMM_MODE_AICPU) {
         mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
+        OP_LOGD(opName_, "[COMM_MODE] Set CommEngine to AiCPU for matmul_reduce_scatter_v2");
+    } else {
+        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_CCU);
+        OP_LOGD(opName_, "[COMM_MODE] Set CommEngine to CCU for matmul_reduce_scatter_v2");
     }
-
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(quantBmmMatmulReducescatterTilingData_->mc2InitTiling) != 0,
         OP_LOGE(opName_, "mc2CcTilingConfig mc2tiling GetTiling mc2InitTiling failed"), return ge::GRAPH_FAILED);
 
@@ -485,7 +488,7 @@ uint64_t QuantBmmReduceScatterTiling::GetTilingKey() const
     uint8_t commAlg = isA2APath_ ? TPL_CCU_ALL2ALL_VEC_REDUCE : TPL_CCU_REDUCESUM;
     uint64_t tilingKey = GET_TPL_TILING_KEY(   \
         isPerBlock, args_.isATrans, args_.isBTrans, INPUT_TYPE_IS_FP8, outputType, scaleType, commAlg, \
-        Mc2Comm::GetCommModeFromEnv());
+        commMode_);
     OP_LOGD(opName_, "isPerBlock, transA, transB is: [%d, %d, %d]", isPerBlock, args_.isATrans, args_.isBTrans);
     OP_LOGD(opName_, "outputType, scaleType is: [%u, %u]", outputType, scaleType);
     return tilingKey;
