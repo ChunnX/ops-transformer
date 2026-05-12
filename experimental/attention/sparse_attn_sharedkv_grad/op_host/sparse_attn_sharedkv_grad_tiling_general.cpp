@@ -412,7 +412,8 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetBaseShapeInfo()
         OP_CHECK_IF(tmpData.n2 == 0, OP_LOGE(context_, "N2 is 0"), return ge::GRAPH_FAILED);
         tmpData.g = queryShape.GetDim(DIM_2) / tmpData.n2;
         tmpData.layout = static_cast<uint32_t>(InputLayout::BSND);
-        OP_CHECK_IF(tmpData.s1 != tmpData.s2, OP_LOGE(context_, "current op not support ori_kv!= q_s1"), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(tmpData.s1 != tmpData.s2, 
+            OP_LOGE(context_, "current op not support ori_kv!= q_s1"), return ge::GRAPH_FAILED);
     }
 
     OP_CHECK_IF(cmpRatioPtr == nullptr, OP_LOGE("SparseAttnSharedkvGrad", "cmpRatioPtr is null"), return ge::GRAPH_FAILED);
@@ -430,7 +431,8 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetBaseShapeInfo()
         } else {
             tmpData.s3 = cmpKvShape.GetDim(DIM_1);
             if (*cmpRatioPtr != 0) {
-                OP_CHECK_IF((tmpData.s1 / (*cmpRatioPtr) != tmpData.s3), OP_LOGE(context_, "current op only support ori_kv // cmpRatio == cmp_kv"), return ge::GRAPH_FAILED);
+                OP_CHECK_IF((tmpData.s1 / (*cmpRatioPtr) != tmpData.s3), 
+                    OP_LOGE(context_, "current op only support ori_kv // cmpRatio == cmp_kv"), return ge::GRAPH_FAILED);
             }
         }
     }
