@@ -45,6 +45,7 @@ struct SwaTempLoopInfo {
     int32_t actCmpS2Size = 0;
 
     bool curActSeqLenIsZero = false;
+    bool hasInvalidRow = false;
 
     uint32_t tndCoreStartKVSplitPos = 0;
     bool tndIsS2SplitCore = false;
@@ -186,7 +187,8 @@ private:
     __aicore__ inline void ComputeMm1(const RunInfo &info);
     // ================================Mm2==============================================
     __aicore__ inline void ComputeMm2(const RunInfo &info);
-    __aicore__ inline void InitAllZeroOutput(uint32_t bIdx, uint32_t s1Idx, uint32_t n2Idx);
+    __aicore__ inline void InitAllZeroOutput(uint32_t bIdx, uint32_t inValidRowS1StartIdx,
+        int32_t inValidRowCount, uint32_t n2Idx);
 };
 
 template <typename SAST>
@@ -219,9 +221,8 @@ __aicore__ inline void SparseAttnSharedkvSwa<SAST>::InitTilingData()
     constInfo.actualLenDimsKV = tilingData->baseParams.actualLenDimsKV;
 
     // innerSplitParams
-    constInfo.mBaseSize = constInfo.gSize;;
+    constInfo.mBaseSize = tilingData->baseParams.mBaseSize;
     constInfo.s2BaseSize = tilingData->baseParams.s2BaseSize;
-    // tilingData->baseParams.s2BaseSize
 
     constInfo.preLoadNum = PRELOAD_NUM;
     constInfo.nBufferMBaseSize = N_BUFFER_M_BASIC_SIZE;
@@ -279,29 +280,30 @@ SparseAttnSharedkvSwa<SAST>::InitActualSeqLen(__gm__ uint8_t *actualSeqLengthsQ,
 }
 
 template <typename SAST>
-__aicore__ inline void SparseAttnSharedkvSwa<SAST>::InitAllZeroOutput(uint32_t bIdx, uint32_t s1Idx, uint32_t n2Idx)
+__aicore__ inline void SparseAttnSharedkvSwa<SAST>::InitAllZeroOutput(uint32_t bIdx, uint32_t inValidRowS1StartIdx,
+    int32_t inValidRowCount, uint32_t n2Idx)
 {
     if (constInfo.outputLayout == SAS_LAYOUT::TND) {
         if (tempLoopInfo.actS1Size == 0) {
             return;
         }
         uint32_t tBase = actualSeqLengthsQGm.GetValue(bIdx);
-        uint64_t attenOutOffset = (tBase + s1Idx) * kvHeadNum * constInfo.gSize * headDim + // T轴、s1轴偏移
+        uint64_t attenOutOffset = (tBase + inValidRowS1StartIdx) * kvHeadNum * constInfo.gSize * headDim + // T轴、s1轴偏移
                                   n2Idx * constInfo.gSize * headDim;                        // N2轴偏移
-        uint64_t lseOffset = (tBase + s1Idx) * constInfo.gSize  + // T轴、s1轴偏移
+        uint64_t lseOffset = (tBase + inValidRowS1StartIdx) * constInfo.gSize  + // T轴、s1轴偏移
                                 n2Idx * constInfo.qSeqSize * constInfo.gSize; // N2轴偏移
-        matmul::InitOutput<OUT_T>(attentionOutGm[attenOutOffset], constInfo.gSize * headDim, 0);
+        matmul::InitOutput<OUT_T>(attentionOutGm[attenOutOffset], inValidRowCount * constInfo.gSize * headDim, 0);
         if (constInfo.returnSoftmaxLse) {
             matmul::InitOutput<T>(softmaxLseGm[lseOffset], constInfo.gSize, 0);
         }
     } else if (constInfo.outputLayout == SAS_LAYOUT::BSND) {
         uint64_t attenOutOffset = bIdx * constInfo.qSeqSize * kvHeadNum * constInfo.gSize * headDim +
-                                  s1Idx * kvHeadNum * constInfo.gSize * headDim + // B轴、S1轴偏移
+                                  inValidRowS1StartIdx * kvHeadNum * constInfo.gSize * headDim + // B轴、S1轴偏移
                                   n2Idx * constInfo.gSize * headDim;              // N2轴偏移
         uint64_t lseOffset = bIdx * constInfo.qSeqSize * constInfo.kvHeadNum * constInfo.gSize  + // B轴偏移
                     n2Idx  * constInfo.qSeqSize * constInfo.gSize + // N2轴偏移
-                    s1Idx * constInfo.gSize; // S1轴偏移
-        matmul::InitOutput<OUT_T>(attentionOutGm[attenOutOffset], constInfo.gSize * headDim, 0);
+                    inValidRowS1StartIdx * constInfo.gSize; // S1轴偏移
+        matmul::InitOutput<OUT_T>(attentionOutGm[attenOutOffset], inValidRowCount * constInfo.gSize * headDim, 0);
         if (constInfo.returnSoftmaxLse) {
             matmul::InitOutput<T>(softmaxLseGm[lseOffset], constInfo.gSize, 0);
         }
@@ -389,7 +391,7 @@ __aicore__ inline void SparseAttnSharedkvSwa<SAST>::UpdateInnerLoopCond()
         return;
     }
     tempLoopInfo.curActSeqLenIsZero = false;
-    tempLoopInfo.mBasicSizeTail = (tempLoopInfo.actS1Size * constInfo.gSize) % constInfo.mBaseSize;
+    tempLoopInfo.mBasicSizeTail = ((tempLoopInfo.s1EndIdx - tempLoopInfo.s1StartIdx + 1) * constInfo.gSize) % constInfo.mBaseSize;
     tempLoopInfo.mBasicSizeTail =
         (tempLoopInfo.mBasicSizeTail == 0) ? constInfo.mBaseSize : tempLoopInfo.mBasicSizeTail;
 }
@@ -528,6 +530,9 @@ __aicore__ inline void SparseAttnSharedkvSwa<SAST>::CalcParams(uint32_t loop, ui
     info.tndCoreStartKVSplitPos = tempLoopInfo.tndCoreStartKVSplitPos;
     info.isBmm2Output = false;
     info.actS1Size = tempLoopInfo.actS1Size;
+    info.oriDealSize = tempLoopInfo.oriMaskRight + tempLoopInfo.s1StartIdx - tempLoopInfo.oriMaskLeft - \
+        tempLoopInfo.s1EndIdx;
+    info.cmpMaskRight = tempLoopInfo.cmpMaskRight;
 
     // M方向的尾块
     info.actMBaseSize = tempLoopInfo.mBasicSizeTail;
@@ -590,8 +595,12 @@ __aicore__ inline void SparseAttnSharedkvSwa<SAST>::CalcParams(uint32_t loop, ui
         }
     }
 
+    info.inValidRowCount = info.isOri ? (tempLoopInfo.actS1Size - tempLoopInfo.actOriS2Size - tempLoopInfo.s1StartIdx) :
+        (tempLoopInfo.actS1Size - tempLoopInfo.actCmpS2Size - tempLoopInfo.s1StartIdx);
     info.actualSingleProcessSInnerSizeAlign =
         SASAlign(info.actualSingleProcessSInnerSize, SASVectorBlock<SAST>::BYTE_BLOCK);
+    info.actualSingleProcessSInnerSizeAlign16 =
+        SASAlign(info.actualSingleProcessSInnerSize, (SASVectorBlock<SAST>::BYTE_BLOCK / sizeof(Q_T)));
 }
 
 template <typename SAST>
@@ -670,18 +679,31 @@ __aicore__ inline void SparseAttnSharedkvSwa<SAST>::ProcessBalance()
     for (uint32_t bN2LoopIdx = constInfo.bN2Start; bN2LoopIdx < constInfo.bN2End; bN2LoopIdx++) {
         GetBN2Idx(bN2LoopIdx, tempLoopInfo.bIdx, tempLoopInfo.n2Idx);
         tempLoopInfo.actS1Size = GetActualSeqLenQ(tempLoopInfo.bIdx); // 获取actualSeqLength
-        bool isS1ZeroAndLastBatch = (tempLoopInfo.actS1Size == 0) && ((constInfo.outputLayout == SAS_LAYOUT::BSND) ||
-                                                                      (bN2LoopIdx + 1 == constInfo.bN2End));
-        uint32_t gS1SplitNum = CeilDiv(tempLoopInfo.actS1Size * constInfo.gSize, constInfo.mBaseSize);
+        tempLoopInfo.actOriS2Size = GetActualSeqLenKV(tempLoopInfo.bIdx); // 获取actualSeqLengthKV
+        // 判断是否存在行无效场景，直接全部刷零
+        int32_t inValidRowCount = 0;
+        int32_t inValidRowS1StartIdx = 0;
+        if (inValidRowS1StartIdx < (tempLoopInfo.actS1Size - tempLoopInfo.actOriS2Size)) {
+            inValidRowCount = tempLoopInfo.actS1Size - tempLoopInfo.actOriS2Size;
+            tempLoopInfo.hasInvalidRow = true;
+            if ASCEND_IS_AIV {
+                InitAllZeroOutput(tempLoopInfo.bIdx, inValidRowS1StartIdx, inValidRowCount, tempLoopInfo.n2Idx);
+            }
+        }
+        bool isS1S2ZeroAndLastBatch = (tempLoopInfo.actS1Size == 0 || tempLoopInfo.actOriS2Size == 0) &&
+            ((constInfo.outputLayout == SAS_LAYOUT::BSND) || (bN2LoopIdx + 1 == constInfo.bN2End));
+        uint32_t gS1SplitNum = CeilDiv((tempLoopInfo.actS1Size - inValidRowCount) * constInfo.gSize,
+            constInfo.mBaseSize); // gS1轴上有效基本块数量
 
         // 当处于最后一个BN2时, 且gS1End为0时, 说明当前BN2里的所有数据都在当前核处理
         gS1LoopEnd = (bN2LoopIdx == constInfo.bN2End - 1 && constInfo.gS1End != 0) ? constInfo.gS1End : gS1SplitNum;
         // 当处于最后一个BN2且当前S1为0时，需要进入循环计算preload导致的未完成的部分
-        gS1LoopEnd = isS1ZeroAndLastBatch ? gS1LoopEnd + 1 : gS1LoopEnd;
+        gS1LoopEnd = isS1S2ZeroAndLastBatch ? gS1LoopEnd + 1 : gS1LoopEnd;
         for (uint32_t gS1LoopIdx = constInfo.gS1Start; gS1LoopIdx < gS1LoopEnd; gS1LoopIdx++) {
             tempLoopInfo.actOriS2Size = GetActualSeqLenKV(tempLoopInfo.bIdx);
             // 对于各轴上的真实的idx, 采用左闭右闭的方案
-            tempLoopInfo.gS1Idx = gS1LoopIdx * constInfo.mBaseSize;
+            // 跳过行无效部分，从有效行开始后续计算
+            tempLoopInfo.gS1Idx = inValidRowCount * constInfo.gSize + gS1LoopIdx * constInfo.mBaseSize;
             tempLoopInfo.s1StartIdx = tempLoopInfo.gS1Idx / constInfo.gSize;
             tempLoopInfo.s1EndIdx =
                 Min((tempLoopInfo.s1StartIdx + constInfo.mBaseSize / constInfo.gSize - 1), tempLoopInfo.actS1Size - 1);
@@ -689,35 +711,29 @@ __aicore__ inline void SparseAttnSharedkvSwa<SAST>::ProcessBalance()
             tempLoopInfo.oriMaskRight = tempLoopInfo.actOriS2Size - tempLoopInfo.actS1Size +
                                         static_cast<int32_t>(tempLoopInfo.s1EndIdx) + constInfo.oriWinRight;
             tempLoopInfo.oriMaskLeft = Max(tempLoopInfo.actOriS2Size - tempLoopInfo.actS1Size +
-                                               static_cast<int32_t>(tempLoopInfo.s1EndIdx) - constInfo.oriWinLeft,
-                                           0);
+                                           static_cast<int32_t>(tempLoopInfo.s1StartIdx) - constInfo.oriWinLeft, 0);
             if (constInfo.templateMode == CFA_TEMPLATE) {
                 tempLoopInfo.cmpMaskRight = tempLoopInfo.actOriS2Size - tempLoopInfo.actS1Size;
             }
             GetSparseActualSeqLen();
             UpdateInnerLoopCond();
-            uint32_t oriSplitNum = 0;
-            uint32_t s2SplitNum = 0;
+            uint32_t oriSplitNum = CeilDiv(tempLoopInfo.oriMaskRight - tempLoopInfo.oriMaskLeft + 1, constInfo.s2BaseSize);
             bool isEnd = (bN2LoopIdx + 1 == constInfo.bN2End) && (gS1LoopIdx + 1 == gS1LoopEnd);
-            if (tempLoopInfo.curActSeqLenIsZero) {
-                if ASCEND_IS_AIV {
-                    InitAllZeroOutput(tempLoopInfo.bIdx, tempLoopInfo.s1StartIdx, tempLoopInfo.n2Idx);
-                }
-                if (!isEnd) {
-                    continue;
-                }
-            } else {
-                oriSplitNum = CeilDiv(tempLoopInfo.oriMaskRight - tempLoopInfo.oriMaskLeft + 1, constInfo.s2BaseSize);
-                s2SplitNum = oriSplitNum;
-                if (constInfo.templateMode == CFA_TEMPLATE) {
-                    uint32_t cmpSplitNum = CeilDiv(tempLoopInfo.actCmpS2Size, constInfo.s2BaseSize);
-                    s2SplitNum = oriSplitNum + cmpSplitNum;
-                    tempLoopInfo.cmpLoopTimes = cmpSplitNum;
-                }
+            if (tempLoopInfo.curActSeqLenIsZero && !isEnd) {
+                continue;
+            }
+            uint32_t s2SplitNum = oriSplitNum;
+            if (constInfo.templateMode == CFA_TEMPLATE) {
+                uint32_t cmpSplitNum = CeilDiv(tempLoopInfo.actCmpS2Size, constInfo.s2BaseSize);
+                s2SplitNum = oriSplitNum + cmpSplitNum;
+                tempLoopInfo.cmpLoopTimes = cmpSplitNum;
             }
             tempLoopInfo.s2LoopTimes = s2SplitNum;
             tempLoopInfo.oriLoopTimes = oriSplitNum;
-            uint32_t s2LoopEnd = (isEnd && constInfo.s2End != 0) ? constInfo.s2End : tempLoopInfo.s2LoopTimes;
+            uint32_t s2LoopEnd = 0;
+            if (!tempLoopInfo.curActSeqLenIsZero) {
+                s2LoopEnd = (isEnd && constInfo.s2End != 0) ? constInfo.s2End : tempLoopInfo.s2LoopTimes;
+            }
             tempLoopInfo.s2LoopTimes = s2LoopEnd;
             // 分核修改后需要打开
             // 当前s2是否被切，决定了输出是否要写到attenOut上
@@ -734,6 +750,7 @@ __aicore__ inline void SparseAttnSharedkvSwa<SAST>::ProcessBalance()
             constInfo.s2Start = 0;
         }
         constInfo.gS1Start = 0;
+        tempLoopInfo.hasInvalidRow = false;
     }
 }
 
