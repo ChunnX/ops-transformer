@@ -100,9 +100,6 @@ static void SetXPerBlock(QuantReduceScatterTilingData &tilingData,
     uint64_t xNums = tilingData.quantReduceScatterTilingInfo.bs * tilingData.quantReduceScatterTilingInfo.hiddenSize;
     uint64_t aivNum = tilingData.quantReduceScatterTilingInfo.aivNum;
     uint64_t rankSize = static_cast<uint64_t>(runInfo.rankSize);
-    if (rankSize == 0U) {
-        rankSize = 1U;
-    }
     uint64_t xSliceSizeNums = xNums / rankSize;
     uint64_t perCoreElem = (xSliceSizeNums + aivNum - 1U) / aivNum;
     uint64_t xPerBlock = (perCoreElem + TARGET_ITER - 1U) / TARGET_ITER;
