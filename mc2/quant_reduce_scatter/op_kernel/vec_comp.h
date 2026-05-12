@@ -29,11 +29,6 @@ constexpr static uint32_t PER_GROUP_SIZE = 128U;    // KG量化时，128个x数�
 constexpr static uint32_t MX_SIZE = 32U;            // MX量化时，32个x数据共有一个scale
 constexpr static uint32_t TWO_DIMS = 2U;            // 用于scale反量化时boardcast的数组维度
 
-// Cast/BroadCast buffer 上限（基于 UB 实际可用空间确定）
-// MX: 384 覆盖 xPerBlock_ ≤ 12288, KG: 128 覆盖 xPerBlock_ ≤ 16384
-constexpr static uint32_t MX_MAX_SCALE_NUM = 384U;
-constexpr static uint32_t KG_MAX_SCALE_NUM = 128U;
-
 #define TemplateTypeClass typename XType, typename ScalesType, typename OutputType
 #define TemplateType XType, ScalesType, OutputType
 
@@ -45,8 +40,10 @@ public:
     __aicore__ inline void CastToFloat(LocalTensor<XType> &xTensor, LocalTensor<ScalesType> &scaleTensor);
     __aicore__ inline void DequantReduceSum(LocalTensor<XType> &xTensor, LocalTensor<ScalesType> &scaleTensor, LocalTensor<float> &sumTensor);
     __aicore__ inline void SetBlockSize(uint32_t elementsPerBlock);
+    __aicore__ inline void SetScaleNums(uint32_t n) { scaleNumsPerBlock_ = n; }
 private:
     uint32_t xNumPerBlock_{0};
+    uint32_t scaleNumsPerBlock_{0};
 
     LocalTensor<float> scaleCalTensor_;
     LocalTensor<bfloat16_t> tempBf16Scale_;
@@ -68,13 +65,13 @@ __aicore__ inline void VectorCompute<TemplateType>::InitBuffer(TPipe *tPipe)
     tPipe->InitBuffer(xCastBf16Buf_, xNumPerBlock_ * sizeof(bfloat16_t)); // 用于 x Cast 成 bf16, 动态大小
     tPipe->InitBuffer(xCastfp16Buf_, xNumPerBlock_ * sizeof(float16_t)); // 用于 x Cast 成 fp16, 动态大小
 
-    // 方案B：增大buffer以支持一次处理所有scale
-    // 对于mx量化，fp8_e8m0_t数据类型转换成float数据类型，需要进行转换：float_e8m0_t -> bfloat16_t -> float
     if constexpr (AscendC::IsSameType<ScalesType, fp8_e8m0_t>::value) {
-        tPipe->InitBuffer(tempBf16ScaleBuf_, MX_MAX_SCALE_NUM * sizeof(bfloat16_t));  // 256*2=512B
-        tPipe->InitBuffer(castScaleBuf_, MX_MAX_SCALE_NUM * sizeof(float));          // 256*4=1024B
-    } else { // KG量化
-        tPipe->InitBuffer(castScaleBuf_, KG_MAX_SCALE_NUM * sizeof(float));          // 128*4=512B
+        // MX: fp8_e8m0 → bf16 → float
+        tPipe->InitBuffer(tempBf16ScaleBuf_, scaleNumsPerBlock_ * sizeof(bfloat16_t));
+        tPipe->InitBuffer(castScaleBuf_, scaleNumsPerBlock_ * sizeof(float));
+    } else {
+        // KG: scale 已经是 float，直接 ReinterpretCast
+        tPipe->InitBuffer(castScaleBuf_, scaleNumsPerBlock_ * sizeof(float));
     }
 }
 

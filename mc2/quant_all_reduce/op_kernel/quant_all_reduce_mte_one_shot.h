@@ -114,37 +114,32 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::ComputeXPerBlock(
     auto&& info = tilingData->quantAllReduceTilingInfo;
 
     // 固定开销：不随 xPerBlock_ 变化的 buffer
-    // scaleQueue_ 上界用 X_BLOCK_BYTES 估算（实际开销极小，≤ 1/16 byte/x）
     uint64_t mteCommFixedSpace = BUFFER_NUM * X_BLOCK_BYTES +      // scaleQueue_
                                   UB_ALIGN_BYTES +                  // winFlagsBuf_
                                   UB_ALIGN_BYTES +                  // writeStateBuf_
                                   mteComm_.hcclContext_->rankDim * UB_ALIGN_BYTES +  // readStateBuf_
                                   mteComm_.hcclContext_->rankDim * UB_ALIGN_BYTES;   // stateResetBuf_
 
-    uint64_t vecCompFixedSpace;
+    // 动态开销：每增加 1 个 x 需要的 UB 字节（整数部分，分数部分见下方比例校正）
+    uint64_t baseDynamic = BUFFER_NUM * sizeof(OutputType) +  // xOutQueue_
+                           BUFFER_NUM * sizeof(XType) +       // xQueue_
+                           sizeof(float) +                    // brcbBuf_
+                           sizeof(float) +                    // xCastBuf_
+                           sizeof(bfloat16_t) +               // xCastBf16Buf_
+                           sizeof(float16_t) +                // xCastfp16Buf_
+                           sizeof(float) +                    // sumBuf_
+                           BUFFER_NUM * sizeof(XType);        // xInQueue_
+
+    uint64_t remainingSpace = TOTAL_UB_SIZE - mteCommFixedSpace;
+    uint64_t maxXPerBlock;
+    // scale 相关 buffer 的开销是 xPerBlock_ 的分数倍，按比例校正避免整数除法截断
+    // MX: vecComp(castScale+tempBf16Scale)=6B/32X, scaleInQue=2B/32X → 共 8/32=1/4 B per X
+    // KG: vecComp(castScale)=4B/128X, scaleInQue=8B/128X → 共 12/128=3/32 B per X
     if constexpr (AscendC::IsSameType<ScalesType, fp8_e8m0_t>::value) {
-        vecCompFixedSpace = MX_MAX_SCALE_NUM * sizeof(float) +       // castScaleBuf_
-                            MX_MAX_SCALE_NUM * sizeof(bfloat16_t);   // tempBf16ScaleBuf_
+        maxXPerBlock = (remainingSpace * 4U) / (baseDynamic * 4U + 1U);
     } else {
-        vecCompFixedSpace = KG_MAX_SCALE_NUM * sizeof(float);        // castScaleBuf_
+        maxXPerBlock = (remainingSpace * 32U) / (baseDynamic * 32U + 3U);
     }
-
-    // 动态开销系数：每增加 1 个 x 需要的 UB 字节
-    uint64_t mteCommDynamicBytes = BUFFER_NUM * sizeof(OutputType) +  // xOutQueue_
-                                    BUFFER_NUM * sizeof(XType);        // xQueue_
-    uint64_t vecCompDynamicBytes = sizeof(float) +       // brcbBuf_
-                                   sizeof(float) +       // xCastBuf_
-                                   sizeof(bfloat16_t) +  // xCastBf16Buf_
-                                   sizeof(float16_t);    // xCastfp16Buf_
-    // MX: 每 32 个 x 有 1 个 scale (1B), KG: 每 128 个 x 有 1 个 scale (4B), 两者系数均为 x/32 B
-    uint64_t scaleInQueBytesPerX = sizeof(ScalesType) /
-        (AscendC::IsSameType<ScalesType, fp8_e8m0_t>::value ? MX_SIZE : PER_GROUP_SIZE);
-    uint64_t selfDynamicBytes = sizeof(float) + BUFFER_NUM * sizeof(XType) + BUFFER_NUM * scaleInQueBytesPerX;
-
-    uint64_t totalFixedSpace = mteCommFixedSpace + vecCompFixedSpace;
-    uint64_t totalDynamicBytes = mteCommDynamicBytes + vecCompDynamicBytes + selfDynamicBytes;
-    uint64_t remainingSpace = TOTAL_UB_SIZE - totalFixedSpace;
-    uint64_t maxXPerBlock = remainingSpace / totalDynamicBytes;
 
     // host 推荐值（TARGET_ITER 公式）作为上限，kernel UB 约束作为 safety net
     uint32_t hostRecommended = info.xPerBlock;
@@ -202,6 +197,7 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::InitSubModules(
     GM_ADDR x, GM_ADDR scales, GM_ADDR output, TPipe *tPipe, uint64_t aivNum)
 {
     vecComp_.SetBlockSize(xPerBlock_);
+    vecComp_.SetScaleNums(scaleNumsPerBlock_);
     mteComm_.round_ = round_;
     mteComm_.tailBlockNums_ = tailBlockNums_;
     mteComm_.ComputeTailAivId(aivNum);
