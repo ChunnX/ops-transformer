@@ -667,19 +667,14 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec1(
     if (runInfo.s2LoopCount != 0 || (runInfo.s2LoopCount == 0 && isSinks)) {
         SCFAUpdateExpSumAndExpMax<T>(sumUb, maxUb, expUb, sumUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize);
     }
-    printf("V1 : returnSoftmaxLse = %s \n", constInfo.returnSoftmaxLse ? "true" : "false");
     if (constInfo.returnSoftmaxLse && runInfo.s2LoopCount == runInfo.s2LoopLimit) {
         LocalTensor<float> outLse = this->outLseBuf[runInfo.multiCoreIdxMod2].template Get<float>();
-        DumpTensor(outLse, 111, 64);
         DataCopyExtParams dataCopyParams;
         dataCopyParams.blockCount = 1;
         dataCopyParams.blockLen = sizeof(float) * runInfo.halfMRealSize;
         dataCopyParams.srcStride = 0;
         dataCopyParams.dstStride = 0;
-        DumpTensor(sumUb, 222, 64);
-        DumpTensor(maxUb, 333, 64);
         ComputeLse(outLse, sumUb, maxUb, runInfo.halfMRealSize);
-        DumpTensor(outLse, 444, 64);
         WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
         DataCopyPad(this->softmaxLseGm[runInfo.softmaxLseOffset], outLse, dataCopyParams);
         SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
