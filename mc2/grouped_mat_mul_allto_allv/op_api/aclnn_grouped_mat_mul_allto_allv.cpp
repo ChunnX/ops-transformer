@@ -137,15 +137,16 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvGetWorkspaceSize(
 aclnnStatus aclnnGroupedMatMulAlltoAllv(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
                                         aclrtStream stream)
 {
-    constexpr char* COMM_MODE_ENV = "ENV_MC2_COMM_MODE_AICPU";
     if (NnopbaseSetHcclServerType) {
-        uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-        if (commMode == Mc2Comm::COMM_MODE_AICPU) {
-            OP_LOGD("", "aclnnGroupedMatMulAlltoAllv: ENV_MC2_COMM_MODE_AICPU set, use AICPU mode");
-            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-        } else {
-            OP_LOGD("", "aclnnGroupedMatMulAlltoAllv: ENV_MC2_COMM_MODE_AICPU not set, use CCU mode");
-            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+        if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+            uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+            if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+                OP_LOGD("GroupedMatMulAlltoAllv", "A5 platform with ENV_MC2_COMM_MODE_AICPU, use AICPU mode");
+                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+            } else {
+                OP_LOGD("GroupedMatMulAlltoAllv", "A5 platform, use CCU mode");
+                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+            }
         }
     }
     aclnnStatus ret = aclnnInnerGroupedMatMulAlltoAllv(workspace, workspaceSize, executor, stream);

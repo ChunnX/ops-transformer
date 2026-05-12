@@ -807,14 +807,15 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::SetHcclTiling()
 
     Mc2CcTilingConfig hcclCcTilingConfig(groupEpPtr, alltoAllvCmd, alltoAllvConfig, alltoAllvReduceType,
                                          alltoAllvDstDataType, alltoAllvSrcDataType);
-    uint8_t commMode = mc2tiling::Mc2TilingUtils::GetCommModeFromEnv();
-    uint8_t engineType = (commMode == mc2tiling::COMM_MODE_CCU) ? 0 : mc2tiling::AICPU_ENGINE;
-    hcclCcTilingConfig.SetCommEngine(engineType);
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+        hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
+    }
     OP_TILING_CHECK(hcclCcTilingConfig.GetTiling(localTilingData_.hcclA2avTiling.hcclInitTiling) != 0,
-                    OP_LOGE(opName_, "mc2CcTilingConfig mc2tiling GetTiling hcclInitTiling failed"),
+                    OP_LOGE(opName_, "mc2CcTilingConfig GetTiling hcclInitTiling failed"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(hcclCcTilingConfig.GetTiling(localTilingData_.hcclA2avTiling.a2avCcTiling) != 0,
-                    OP_LOGE(opName_, "mc2CcTilingConfig mc2tiling GetTiling alltoAllvCcTiling failed"),
+                    OP_LOGE(opName_, "mc2CcTilingConfig GetTiling alltoAllvCcTiling failed"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

@@ -726,14 +726,15 @@ static ge::graphStatus SetHcclTiling(const gert::TilingContext* context, Grouped
 
     Mc2CcTilingConfig hcclCcTilingConfig(groupEpPtr, alltoAllvCmd, alltoAllvConfig,
                                          alltoAllvReduceType, alltoAllvDstDataType, alltoAllvSrcDataType);
-    uint8_t commMode = mc2tiling::Mc2TilingUtils::GetCommModeFromEnv();
-    uint8_t engineType = (commMode == mc2tiling::COMM_MODE_CCU) ? 0 : mc2tiling::AICPU_ENGINE;
-    hcclCcTilingConfig.SetCommEngine(engineType);
-    OP_LOGD(context->GetNodeName(), "SetCommEngine commMode=%u engineType=%u (0=CCU/5=A5_CCU, 2=AICPU)", commMode, engineType);
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    OP_LOGD(context->GetNodeName(), "GmmAlltoAllv tiling: commMode=%u", commMode);
+    if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+        hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
+    }
     OP_TILING_CHECK(hcclCcTilingConfig.GetTiling(tilingData->hcclInitTiling) != 0,
-        OP_LOGE(C_INNER_DEBUG, "mc2CcTilingConfig mc2tiling GetTiling hcclInitTiling failed"), return ge::GRAPH_FAILED);
+        OP_LOGE(C_INNER_DEBUG, "mc2CcTilingConfig GetTiling hcclInitTiling failed"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(hcclCcTilingConfig.GetTiling(tilingData->alltoAllvCcTiling) != 0,
-        OP_LOGE(C_INNER_DEBUG, "mc2CcTilingConfig mc2tiling GetTiling alltoAllvCcTiling failed"), return ge::GRAPH_FAILED);
+        OP_LOGE(C_INNER_DEBUG, "mc2CcTilingConfig GetTiling alltoAllvCcTiling failed"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

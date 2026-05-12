@@ -27,7 +27,7 @@
 #include "matmul_formulaic_tiling.h"
 #include "platform/platform_ascendc.h"
 #include "tiling/tiling_api.h"
-#include "tiling_base/tiling_type.h"
+#include "op_host/tiling_type.h"
 #include "../../3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_base_tiling_advanced.h"
 #include "platform/soc_spec.h"
 
@@ -54,7 +54,6 @@ constexpr char HCCL_DETERMINISTIC[] = "HCCL_DETERMINISTIC";
 3：AIV 4：AIV_ONLY（A2/3支持 A5不支持） 5：CCU_MS（A2/3支持 A5不支持）
 6：CCU_SCHED（A2/3支持 A5不支持） 7：AICPU_UB/ROCE（A5不支持）
 **/
-constexpr uint8_t AICPU_ENGINE = 2;
 constexpr uint8_t AIV_ENGINE = 3;
 constexpr uint8_t A5_CCU_ENGINE = 5;
 constexpr uint8_t Y_INDEX = 3;
@@ -169,16 +168,11 @@ inline NpuArch GetNpuArch(const gert::TilingContext *context)
     return ascendcPlatform.GetCurNpuArch();
 }
 
-// 通信模式常量定义
-constexpr uint8_t COMM_MODE_CCU = 0;      // CCU通信模式
-constexpr uint8_t COMM_MODE_AICPU = 1;    // AICPU通信模式
-
 class Mc2TilingUtils {
  public:
   static uint8_t GetDebugMode();
   static uint8_t GetDebugCommAlg();
   static uint8_t GetDebugStepSize();
-  static uint8_t GetCommModeFromEnv();
   static uint32_t GetCommSets(const char *group);
   static ge::graphStatus CommonParamCheck(const gert::TilingContext *context);
   static mc2tiling::HcclDataType GetDataType(ge::DataType type);
