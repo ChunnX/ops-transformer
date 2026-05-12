@@ -530,7 +530,7 @@ ffn:
     ut_cov_exclude:
       - ffn/swin_attention_ffn
     test:
-      ut: False
+      ut: True
     options:
       - swin_attention_ffn
 
