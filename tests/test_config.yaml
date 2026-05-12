@@ -388,7 +388,7 @@ attention:
       - attention/lightning_indexer/tests
     test:
       examples: False
-      ut: False
+      ut: True
     options:
       - lightning_indexer
 
