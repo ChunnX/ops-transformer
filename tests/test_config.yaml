@@ -418,7 +418,7 @@ attention:
       - attention/quant_lightning_indexer/tests
     test:
       examples: False
-      ut: False
+      ut: True
     options:
       - quant_lightning_indexer
 
