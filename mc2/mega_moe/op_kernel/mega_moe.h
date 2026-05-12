@@ -34,8 +34,8 @@ using BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t,
                             int64_t, int64_t, int64_t, int64_t, int64_t,
                             int64_t, int64_t>;
 
-#define TemplateMegaMoeTypeClass typename XType, typename OutputType, typename TopkWeightsType, int32_t QuantMode
-#define TemplateMegaMoeTypeFunc XType, OutputType, TopkWeightsType, QuantMode
+#define TemplateMegaMoeTypeClass typename XType, typename OutputType, typename Weight1Type, typename TopkWeightsType, int32_t QuantMode
+#define TemplateMegaMoeTypeFunc XType, OutputType, Weight1Type, TopkWeightsType, QuantMode
 
 template<int32_t QuantMode>
 struct QuantTraits {
@@ -60,6 +60,9 @@ public:
         QuantOutType
     >::type;
     using QuantScaleOutType = typename std::conditional<(QuantMode >= E5M2_QUANT), fp8_e8m0_t, float>::type;
+    static constexpr bool isWeight4Bit = AscendC::IsSameType<Weight1Type, fp4x2_e2m1_t>::value;
+    static constexpr bool isQuantOutType8Bit = AscendC::IsSameType<QuantOutType, fp8_e5m2_t>::value || AscendC::IsSameType<QuantOutType, fp8_e4m3fn_t>::value;
+    static constexpr bool isQuantOutType8BitE4M3 = AscendC::IsSameType<QuantOutType, fp8_e4m3fn_t>::value;
     __aicore__ inline MegaMoe() {};
     __aicore__ inline void Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights,
         GM_ADDR weight1, GM_ADDR weight2, GM_ADDR xActiveMask, GM_ADDR weightScales1, GM_ADDR weightScales2,
@@ -552,6 +555,9 @@ __aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGroupParams(uint3
         if constexpr (QuantMode == E2M1_QUANT) {
             Get<IDX_A_OFFSET>(baseOffset_) += (m * k) / FP4_NUM;
             Get<IDX_B_OFFSET>(baseOffset_) += (n * k) / FP4_NUM;
+        } else if constexpr (QuantMode == 4U && isWeight4Bit) {
+            Get<IDX_A_OFFSET>(baseOffset_) += m * k;
+            Get<IDX_B_OFFSET>(baseOffset_) += (n * k) / FP4_NUM;
         } else {
             Get<IDX_A_OFFSET>(baseOffset_) += (m * k);
             Get<IDX_B_OFFSET>(baseOffset_) += (n * k);
@@ -598,11 +604,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMA
         gmmAddrInfo.aGlobal = params_.workspaceInfo.ptrA + Get<IDX_A_OFFSET>(baseOffset_) * sizeof(ActivationType);
         gmmAddrInfo.aScaleGlobal = params_.workspaceInfo.ptrAScale +
         Get<IDX_A_SCALE_OFFSET>(baseOffset_) * sizeof(QuantScaleOutType);
-        if constexpr(g_coreType == AIC) {
-            gmmAddrInfo.bGlobal = params_.bGmAddr + Get<IDX_B_OFFSET>(baseOffset_) * sizeof(ActivationType);
-            gmmAddrInfo.bScaleGlobal = params_.bScaleGmAddr + Get<IDX_B_SCALE_OFFSET>(baseOffset_) *
-                                        sizeof(QuantScaleOutType);
-        } else {
+
+        gmmAddrInfo.bGlobal = params_.bGmAddr + Get<IDX_B_OFFSET>(baseOffset_) * sizeof(ActivationType);
+        gmmAddrInfo.bScaleGlobal =
+            params_.bScaleGmAddr + Get<IDX_B_SCALE_OFFSET>(baseOffset_) * sizeof(QuantScaleOutType);
+        if constexpr(g_coreType == AIV) {
             AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> vecBaseOffset{
                 Get<IDX_C_OFFSET>(baseOffset_), Get<IDX_C_SCALE_OFFSET>(baseOffset_),
                 Get<IDX_FLAG_OFFSET>(baseOffset_), 0L, 0L, 0L};
@@ -764,10 +770,17 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             }
         }
 
-        if (subBlockIdx_ == 0) {
-            MegaMoeImpl::GroupMatmulSwigluQuant<
-                QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType>(
-                epilogueOp_, params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
+        SyncAll<false>();
+        if constexpr (isWeight4Bit && isQuantOutType8BitE4M3) {
+            MegaMoeImpl::GroupMatmulSwigluQuantA8W4<
+                QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
+                epilogueOp_, params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_, expertIdx);
+        } else {
+            if (subBlockIdx_ == 0) {
+                MegaMoeImpl::GroupMatmulSwigluQuant<
+                    QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType>(
+                    epilogueOp_, params_, problemShape_, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_, expertIdx);
+            }
         }
     }
     EndSync();
