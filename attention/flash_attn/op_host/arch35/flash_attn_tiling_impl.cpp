@@ -115,6 +115,15 @@ void FlashAttnTilingImpl::InitImplParam()
         cuSeqLenKVFlag_ =
             !((actSeqLenKVDims == 0) || (actSeqLenKV == nullptr) || (actSeqLenKV->GetData<int32_t>() == nullptr));
 
+    const gert::Tensor *seqUsedQ = faInfo_->opParamInfo.sequsedQ.tensor;
+    const gert::Tensor *seqUsedKv = faInfo_->opParamInfo.sequsedKv.tensor;
+    uint32_t seqUsedQDims = (seqUsedQ != nullptr) ? seqUsedQ->GetShapeSize() : 0;
+    uint32_t seqUsedKvDims = (seqUsedKv != nullptr) ? seqUsedKv->GetShapeSize() : 0;
+    seqUsedQFlag_ =
+        !((seqUsedQDims == 0) || (seqUsedQ == nullptr) || (seqUsedQ->GetData<int32_t>() == nullptr));
+    seqUsedKvFlag_ =
+        !((seqUsedKvDims == 0) || (seqUsedKv == nullptr) || (seqUsedKv->GetData<int32_t>() == nullptr));
+
     // for (uint32_t bIdx = 0; bIdx < faInfo_->bSize; bIdx++) {
     //     if (cuSeqLenQFlag_) {
     //         int64_t actSeqLenQData = 0;
@@ -711,7 +720,9 @@ void FlashAttnTilingImpl::SetFATilingData()
     tilingData_.baseTiling.flashAttnBaseParams.dSizeV = faInfo_->vHeadDim;
     tilingData_.baseTiling.flashAttnBaseParams.scaleValue = faInfo_->softmaxScale;
     tilingData_.baseTiling.flashAttnBaseParams.cuSeqLensQSize = faInfo_->qLayout == FaLayout::TND ? faInfo_->bSize : 0;
-    tilingData_.baseTiling.flashAttnBaseParams.cuSeqLensKVSize = faInfo_->qLayout == FaLayout::TND ? faInfo_->bSize : 0;
+    tilingData_.baseTiling.flashAttnBaseParams.cuSeqLensKVSize = faInfo_->kvLayout == FaLayout::TND ? faInfo_->bSize : 0;
+    tilingData_.baseTiling.flashAttnBaseParams.seqUsedQSize = seqUsedQFlag_ ? faInfo_->bSize : 0;
+    tilingData_.baseTiling.flashAttnBaseParams.seqUsedKvSize = seqUsedKvFlag_ ? faInfo_->bSize : 0;
     tilingData_.baseTiling.flashAttnBaseParams.isKvContinuous = true;
     tilingData_.baseTiling.flashAttnBaseParams.isSoftMaxLseEnable = faInfo_->softmaxLseFlag;
     tilingData_.baseTiling.flashAttnBaseParams.iscuSeqLengthsNull = !cuSeqLenQFlag_;
@@ -775,6 +786,8 @@ void FlashAttnTilingImpl::PrintAllTilingData()
     OP_LOGD(faInfo_->opName, "dSizeRope:%d", flashAttnBaseParams.dSizeRope);
     OP_LOGD(faInfo_->opName, "cuSeqLensQSize:%d", flashAttnBaseParams.cuSeqLensQSize);
     OP_LOGD(faInfo_->opName, "cuSeqLensKVSize:%d", flashAttnBaseParams.cuSeqLensKVSize);
+    OP_LOGD(faInfo_->opName, "seqUsedQSize:%d", flashAttnBaseParams.seqUsedQSize);
+    OP_LOGD(faInfo_->opName, "seqUsedKvSize:%d", flashAttnBaseParams.seqUsedKvSize);
     OP_LOGD(faInfo_->opName, "scaleValue:%f", flashAttnBaseParams.scaleValue);
     OP_LOGD(faInfo_->opName, "iscuSeqLengthsNull:%d", flashAttnBaseParams.iscuSeqLengthsNull);
     OP_LOGD(faInfo_->opName, "iscuSeqLengthsKVNull:%d", flashAttnBaseParams.iscuSeqLengthsKVNull);

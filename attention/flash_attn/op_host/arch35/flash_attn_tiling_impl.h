@@ -112,6 +112,8 @@ private:
     bool dnFlag_ = false;
     bool cuSeqLenQFlag_ = false;
     bool cuSeqLenKVFlag_ = false;
+    bool seqUsedQFlag_ = false;
+    bool seqUsedKvFlag_ = false;
     std::vector<int64_t> cuSeqLengthsQ_ = {};
     std::vector<int64_t> cuSeqLengthsKV_ = {};
     bool needInit_ = false;
