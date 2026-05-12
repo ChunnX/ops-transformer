@@ -57,11 +57,14 @@ private:
     __aicore__ inline void GetCumsumForMMAIV();
     __aicore__ inline void CrossRankSyncCntPerExpert();
     __aicore__ inline void ExpertTokenNumCopyOut();
+    __aicore__ inline void BuildRemoteTriplets();
     __aicore__ inline void DispatchTokens(GMMAddrInfo &gmmAddrInfo, uint32_t expertIdx);
     __aicore__ inline bool UpdateGroupParams(uint32_t expertIdx);
     __aicore__ inline void UpdateGlobalBuffer(GMMAddrInfo &gmmAddrInfo, uint32_t gmmIndex);
     __aicore__ inline void ArgSortExpandedRowIdx();
     __aicore__ inline void ResetTokenPerExpert();
+    __aicore__ inline void ResetTripletReadyState();
+    __aicore__ inline void ResetTokenReadyState();
     __aicore__ inline void Unpermute();
     __aicore__ inline void EndSync();
     __aicore__ inline void EndGMM2Sync();
@@ -134,6 +137,7 @@ private:
     GlobalTensor<int32_t> groupFlagListGm_;
     GlobalTensor<int32_t> groupFlagListGm2_;
     GlobalTensor<int32_t> groupList_;
+    GlobalTensor<int32_t> tripletGm_;
     GlobalTensor<int32_t> expertTokenNumsOut_;
     LocalTensor<float> topKWeightsTensor_;
 
@@ -203,6 +207,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     tokenPerExpertWin_.SetGlobalBuffer((__gm__ int32_t*)params_.peermemInfo.ptrTokenPerExpert);
     cumsumInWorkSpace_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.ptrcumsumMM));
     expertTokenNumsOut_.SetGlobalBuffer((__gm__ int32_t*)params_.expertTokenNumsOutGmAddr);
+    tripletGm_.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.ptrTriplet);
     groupList_ = cumsumInWorkSpace_[(worldSize_ - 1) * expertPerRank_];
     groupFlagListWorkSpace_.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.ptrFlagSwiGluToGmm2);
     epilogueOp_.Init({params_.workspaceInfo.ptrA2, params_.workspaceInfo.ptrA2Scale,
@@ -264,6 +269,63 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SecondBuffInit(TPipe *t
         DataCopyPad(tempLocal, topkWeightsGlobalTensor, copyParams, copyPadParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         Cast(topKWeightsTensor_, tempLocal, AscendC::RoundMode::CAST_NONE, m_ * topK_);
+    }
+}
+
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::BuildRemoteTriplets()
+{
+    if constexpr(g_coreType != AIV) {
+        return;
+    }
+    if (aivCoreIdx_ != blockAivNum_ - 1) {
+        return;
+    }
+
+    GlobalTensor<int32_t> expandedRowIdxGm;
+    expandedRowIdxGm.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.expandedRowIdx);
+    GlobalTensor<int32_t> tokenPerExpertCurRankGm;
+    tokenPerExpertCurRankGm.SetGlobalBuffer((__gm__ int32_t*)tokenPerExpertCurRankAddr_);
+    GlobalTensor<int32_t> remoteTripletGm;
+    remoteTripletGm.SetGlobalBuffer((__gm__ int32_t*)params_.peermemInfo.ptrTriplet);
+
+    int32_t rowBase = 0;
+    for (uint32_t toRankId = 0; toRankId < worldSize_; ++toRankId) {
+        for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; ++expertIdx) {
+            int32_t rowCount = tokenPerExpertCurRankGm.GetValue(toRankId * expertPerRank_ + expertIdx);
+            if (rankId_ < 2 && expertIdx < 2) {
+                PRINTF("[AIV BuildTriplet] block=%d rank=%d toRank=%d expert=%d rowBase=%d rowCount=%d\n",
+                    GetBlockIdx(), rankId_, toRankId, expertIdx, rowBase, rowCount);
+            }
+            for (int32_t rowOffset = 0; rowOffset < rowCount; ++rowOffset) {
+                int32_t expandedRow = expandedRowIdxGm.GetValue(rowBase + rowOffset);
+                uint32_t tokenId = static_cast<uint32_t>(expandedRow / static_cast<int32_t>(topK_));
+                uint32_t topkId = static_cast<uint32_t>(expandedRow % static_cast<int32_t>(topK_));
+                int32_t packedTriplet = EncodeTriplet(rankId_, tokenId, topkId);
+                remoteTripletGm.SetValue(rowBase + rowOffset, packedTriplet);
+                if (rankId_ < 2 && expertIdx < 2 && rowOffset < 4) {
+                    PRINTF("[AIV BuildTripletRow] block=%d ownerRank=%d expertRank=%d expert=%d row=%d expandedRow=%d token=%d topk=%d packed=%d\n",
+                        GetBlockIdx(), rankId_, toRankId, expertIdx, rowBase + rowOffset, expandedRow, tokenId,
+                        topkId, packedTriplet);
+                }
+            }
+            rowBase += rowCount;
+        }
+    }
+    DataSyncBarrier<MemDsbT::DDR>();
+    DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(remoteTripletGm);
+    __gm__ int32_t* tripletReady = (__gm__ int32_t*)(params_.peermemInfo.ptrBase);
+    WriteGmByPassDCache(tripletReady, 1);
+    DataSyncBarrier<MemDsbT::DDR>();
+    if (rankId_ < 2) {
+        for (int32_t debugRow = 0; debugRow < 8 && debugRow < static_cast<int32_t>(m_ * topK_); ++debugRow) {
+            int32_t packedTriplet = remoteTripletGm.GetValue(debugRow);
+            PRINTF("[AIV BuildTripletDump] block=%d rank=%d row=%d packed=%d toRank=%d token=%d topk=%d\n",
+                GetBlockIdx(), rankId_, debugRow, packedTriplet, DecodeTripletRank(packedTriplet),
+                DecodeTripletToken(packedTriplet), DecodeTripletTopk(packedTriplet));
+        }
+        PRINTF("[AIV TripletReadySet] block=%d rank=%d ready=%d\n",
+            GetBlockIdx(), rankId_, ReadGmByPassDCache(tripletReady));
     }
 }
 
@@ -482,18 +544,52 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchTokens(GMMAddrI
                 rowsPerCore = rowStartInDst + rowsCopyCnt - rowDstOffsetPerCore;
             }
             if (rowsPerCore > 0) {
-                GlobalTensor <QuantOutType> gmRemoteA, aGlobalTensor;
-                GlobalTensor <QuantScaleOutType> aScaleGlobalTensor;
+                GlobalTensor<QuantOutType> gmRemoteA, aGlobalTensor;
+                GlobalTensor<QuantScaleOutType> aScaleGlobalTensor;
+                GlobalTensor<int32_t> gmRemoteTriplet;
                 int64_t gmOffsetA = rowDstOffsetPerCore * widthA;
                 int64_t gmOffsetAScale = rowDstOffsetPerCore * widthAScale;
                 int64_t gmOffsetPeer = rowSrcOffsetPerCore * (widthA + widthAScale);
-                gmRemoteA.SetGlobalBuffer(reinterpret_cast<__gm__ QuantOutType*>(GetRankWinAddrWithOffset(dstRankIdx,
-                    PEERMEM_DATA_OFFSET + perRankStridesInTokenPerExpert_ * worldSize_ * sizeof(uint32_t))));
+                uint64_t remoteAOffset = params_.peermemInfo.ptrA0 - params_.peermemInfo.ptrBase;
+                uint64_t remoteTripletOffset = params_.peermemInfo.ptrTriplet - params_.peermemInfo.ptrBase;
+                gmRemoteA.SetGlobalBuffer(reinterpret_cast<__gm__ QuantOutType*>(
+                    GetRankWinAddrWithOffset(dstRankIdx, remoteAOffset)));
+                gmRemoteTriplet.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(
+                    GetRankWinAddrWithOffset(dstRankIdx, remoteTripletOffset)));
+                __gm__ int32_t* remoteTripletReady = (__gm__ int32_t*)GetRankWinAddrWithOffset(dstRankIdx, 0);
+                GmSignalWaitBarrier(remoteTripletReady, 1);
                 aGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ QuantOutType*>(gmmAddrInfo.aGlobal));
-                aScaleGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ QuantScaleOutType *>(
+                aScaleGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ QuantScaleOutType*>(
                     gmmAddrInfo.aScaleGlobal));
+                if (rankId_ < 2 && expertIdx < 2) {
+                    PRINTF("[AIV Dispatch] block=%d rank=%d expert=%d srcRank=%d aivIdx=%d rowStart=%d rowsCopy=%d rowSrc=%d rowDst=%d rowsPerCore=%d tripletReady=%d\n",
+                        GetBlockIdx(), rankId_, expertIdx, dstRankIdx, aivIdxInGroup, rowStartInDst, rowsCopyCnt,
+                        rowSrcOffset, rowDstOffsetPerCore, rowsPerCore, ReadGmByPassDCache(remoteTripletReady));
+                }
                 CopyGMToGMPerTokenV2(aGlobalTensor[gmOffsetA], aScaleGlobalTensor[gmOffsetAScale],
                     gmRemoteA[gmOffsetPeer], rowsPerCore, widthA, pingpongId);
+                for (int32_t rowOffset = 0; rowOffset < rowsPerCore; ++rowOffset) {
+                    int32_t packedTriplet = gmRemoteTriplet.GetValue(rowSrcOffsetPerCore + rowOffset);
+                    uint32_t localTripletRow = rowDstOffsetPerCore + rowOffset;
+                    uint32_t globalTripletRow = gmmAddrInfo.mBaseOffset + localTripletRow;
+                    tripletGm_.SetValue(globalTripletRow, packedTriplet);
+                    if (rankId_ < 2 && expertIdx < 2 && rowOffset < 8) {
+                        PRINTF("[AIV DispatchTriplet] block=%d rank=%d expert=%d groupBase=%d srcRank=%d srcRow=%d localDstRow=%d globalDstRow=%d packed=%d toRank=%d token=%d topk=%d\n",
+                            GetBlockIdx(), rankId_, expertIdx, gmmAddrInfo.mBaseOffset, dstRankIdx,
+                            rowSrcOffsetPerCore + rowOffset, localTripletRow, globalTripletRow, packedTriplet,
+                            DecodeTripletRank(packedTriplet), DecodeTripletToken(packedTriplet), DecodeTripletTopk(packedTriplet));
+                    }
+                }
+            }
+        }
+        DataSyncBarrier<MemDsbT::DDR>();
+        DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(tripletGm_);
+        if (rankId_ < 2 && expertIdx < 2 && blockIdx_ == 1) {
+            for (int32_t debugRow = 0; debugRow < 8 && debugRow < static_cast<int32_t>(maxOutputSize_); ++debugRow) {
+                int32_t packedTriplet = tripletGm_.GetValue(debugRow);
+                PRINTF("[AIV DispatchTripletDump] block=%d rank=%d expert=%d row=%d packed=%d toRank=%d token=%d topk=%d\n",
+                    GetBlockIdx(), rankId_, expertIdx, debugRow, packedTriplet, DecodeTripletRank(packedTriplet),
+                    DecodeTripletToken(packedTriplet), DecodeTripletTopk(packedTriplet));
             }
         }
         SyncFunc<AscendC::HardEvent::MTE3_S>();
@@ -547,6 +643,7 @@ __aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGroupParams(uint3
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMAddrInfo &gmmAddrInfo, uint32_t gmmIndex)
 {
+    gmmAddrInfo.mBaseOffset = Get<IDX_M_OFFSET>(baseOffset_);
     if (gmmIndex == 0) {
         gmmAddrInfo.aGlobal = params_.workspaceInfo.ptrA + Get<IDX_A_OFFSET>(baseOffset_) * sizeof(QuantOutType);
         gmmAddrInfo.aScaleGlobal = params_.workspaceInfo.ptrAScale +
@@ -608,16 +705,55 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetTokenPerExpert()
 }
 
 template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetTripletReadyState()
+{
+    if constexpr(g_coreType == AIC) {
+        return;
+    }
+    if (aivCoreIdx_ != blockAivNum_ - 1) {
+        return;
+    }
+    __gm__ int32_t* tripletReady = (__gm__ int32_t*)(params_.peermemInfo.ptrBase);
+    WriteGmByPassDCache(tripletReady, 0);
+    DataSyncBarrier<MemDsbT::DDR>();
+    if (rankId_ < 2) {
+        PRINTF("[AIV TripletReadyReset] block=%d rank=%d\n", GetBlockIdx(), rankId_);
+    }
+}
+
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetTokenReadyState()
+{
+    if constexpr(g_coreType == AIC) {
+        return;
+    }
+    int32_t coreLen, coreOffset;
+    int32_t rowReadyNum = Ops::Base::CeilAlign(static_cast<uint32_t>(m_ * topK_), static_cast<uint32_t>(ALIGN_128));
+    TilingByCore(rowReadyNum, coreLen, coreOffset, 1);
+    __gm__ int32_t* tokenReady = (__gm__ int32_t*)(params_.peermemInfo.ptrBase + 48 * 1024);
+    for (int32_t idx = 0; idx < coreLen; ++idx) {
+        WriteGmByPassDCache(tokenReady + coreOffset + idx, 0);
+    }
+    DataSyncBarrier<MemDsbT::DDR>();
+    if (rankId_ < 2 && aivCoreIdx_ == 0) {
+        PRINTF("[AIV ResetRowReady] block=%d rank=%d rowReadyNum=%d\n", GetBlockIdx(), rankId_, rowReadyNum);
+    }
+}
+
+template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
 {
     int32_t coreLen, coreOffset;
     TilingByCore(m_, coreLen, coreOffset, 1);
-    GlobalTensor<int32_t> expandedRowIdx;
-    expandedRowIdx.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.expandedRowIdxGather);
+    if (rankId_ < 2 && coreLen > 0) {
+        PRINTF("[AIV UnpermuteEnter] block=%d rank=%d aivCore=%d coreOffset=%d coreLen=%d m=%d topK=%d k=%d\n",
+            GetBlockIdx(), rankId_, aivCoreIdx_, coreOffset, coreLen, m_, topK_, k_);
+    }
     GlobalTensor<bfloat16_t> expandedX;
     expandedX.SetGlobalBuffer((__gm__ bfloat16_t*)params_.peermemInfo.ptrD);
     GlobalTensor<bfloat16_t> output;
     output.SetGlobalBuffer((__gm__ bfloat16_t*)params_.y2GmAddr);
+    __gm__ int32_t* rowReady = (__gm__ int32_t*)(params_.peermemInfo.ptrBase + 48 * 1024);
     SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
     SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
     for (int32_t tokenIdx = coreOffset; tokenIdx < coreLen + coreOffset; tokenIdx++) {
@@ -629,8 +765,17 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
         LocalTensor<float> dataIn0Fp32 = dataResFp32[k_];
         LocalTensor<float> dataIn1Fp32 = dataResFp32[k_ * 2];
         for (int32_t expId = 0; expId < topK_; ++expId) {
-            int32_t rowIdx = expandedRowIdx(tokenIdx * topK_ + expId);
+            int32_t rowIdx = tokenIdx * topK_ + expId;
             float expScale = topKWeightsTensor_.GetValue(tokenIdx * topK_ + expId);
+            if (rankId_ < 2 && coreLen > 0 && tokenIdx < 2 && expId < 6) {
+                PRINTF("[AIV RowWait] block=%d rank=%d token=%d exp=%d rowIdx=%d curReady=%d\n",
+                    GetBlockIdx(), rankId_, tokenIdx, expId, rowIdx, ReadGmByPassDCache(rowReady + rowIdx));
+            }
+            GmSignalWaitBarrier(rowReady + rowIdx, 1);
+            if (rankId_ < 2 && coreLen > 0 && tokenIdx < 2 && expId < 6) {
+                PRINTF("[AIV RowReady] block=%d rank=%d token=%d exp=%d rowIdx=%d scale=%f\n",
+                    GetBlockIdx(), rankId_, tokenIdx, expId, rowIdx, expScale);
+            }
             auto event = (expId % 2 == 0) ? EVENT_ID0 : EVENT_ID1;
             auto dataInBf16 = (expId % 2 == 0) ? dataIn0Bf16 : dataIn1Bf16;
             auto dataInFp32 = (expId % 2 == 0) ? dataIn0Fp32 : dataIn1Fp32;
@@ -657,6 +802,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
         Cast(dataResBf16, dataResFp32, AscendC::RoundMode::CAST_RINT, k_);
         SyncFunc<AscendC::HardEvent::V_MTE3>();
         DataCopy(output[tokenIdx * k_], dataResBf16, k_);
+        if (rankId_ < 2 && tokenIdx < 2) {
+            PRINTF("[AIV UnpermuteWrite] block=%d rank=%d token=%d out0=%f out1=%f out2=%f out3=%f\n",
+                GetBlockIdx(), rankId_, tokenIdx, (float)dataResFp32.GetValue(0), (float)dataResFp32.GetValue(1),
+                (float)dataResFp32.GetValue(2), (float)dataResFp32.GetValue(3));
+        }
     }
     WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
     WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
@@ -682,12 +832,17 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CrossRankSyncInWorldSiz
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 {
+    PRINTF("MegaMoe Process Start, rankId: %d, subBlockIdx: %d\n", rankId_, subBlockIdx_);
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
     // 1. moe_init_routing_v3 + 量化
     moe_init_routing_v3<bfloat16_t, QuantOutType>(params_.aGmAddr, params_.expertIdxGmAddr, nullptr, nullptr,
             params_.peermemInfo.ptrA0, params_.workspaceInfo.expandedRowIdx, tokenPerExpertCurRankAddr_, nullptr,
             params_.workspaceInfo.ptrA, &params_.tilingData->moeInitRoutingTilingData,
             params_.tilingData->moeInitRoutingTilingData.tilingKey);
+    ResetTripletReadyState();
+    PipeBarrier<PIPE_ALL>();
+    SyncAll<true>();
+    BuildRemoteTriplets();
     PipeBarrier<PIPE_ALL>();
     SyncAll<true>();
 
@@ -695,6 +850,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     TPipe firstPipe;
     FirstBuffInit(&firstPipe);
     ResetWorkSpaceFlagList();
+    ResetTokenReadyState();
+    PipeBarrier<PIPE_ALL>();
+    SyncAll<true>();
 
     // 3. cnt值全ep域内的发送以及本端接收整理
     CrossRankSyncCntPerExpert();
@@ -728,19 +886,42 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         if (aivCoreIdx_ == 1) {
             ExpertTokenNumCopyOut();
         }
+        DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(tripletGm_);
+        if (rankId_ < 2 && aivCoreIdx_ == 1) {
+            for (int32_t debugRow = 0; debugRow < 8 && debugRow < static_cast<int32_t>(maxOutputSize_); ++debugRow) {
+                int32_t packedTriplet = tripletGm_.GetValue(debugRow);
+                PRINTF("[AIV BeforeGMM2TripletDump] block=%d rank=%d row=%d packed=%d toRank=%d token=%d topk=%d\n",
+                    GetBlockIdx(), rankId_, debugRow, packedTriplet, DecodeTripletRank(packedTriplet),
+                    DecodeTripletToken(packedTriplet), DecodeTripletTopk(packedTriplet));
+            }
+        }
         if (subBlockIdx_ == 1) {
             PipeBarrier<PIPE_ALL>();
             firstPipe.Destroy();
         }
     }
+    PipeBarrier<PIPE_ALL>();
+    SyncAll<true>();
 
     // 5. for循环按照本卡专家id进行gmm2 & combine，内部gmm2与combine之间按照基本块进行流水
     preOffset_ = 0;
     vecSetSyncCom_ = 0;
     baseOffset_ = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    if (rankId_ < 2 && (GetBlockIdx() < 2 || GetBlockIdx() >= blockAivNum_ - 2)) {
+        PRINTF("[BeforeGMM2Loop] block=%d rank=%d subBlock=%d aivCore=%d expertPerRank=%d\n",
+            GetBlockIdx(), rankId_, subBlockIdx_, aivCoreIdx_, expertPerRank_);
+    }
     for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
         if (!UpdateGroupParams(expertIdx)) {
+            if (rankId_ < 2 && (GetBlockIdx() < 2 || GetBlockIdx() >= blockAivNum_ - 2)) {
+                PRINTF("[GMM2SkipExpert] block=%d rank=%d subBlock=%d aivCore=%d expert=%d\n",
+                    GetBlockIdx(), rankId_, subBlockIdx_, aivCoreIdx_, expertIdx);
+            }
             continue;
+        }
+        if (rankId_ < 2 && (GetBlockIdx() < 2 || GetBlockIdx() >= blockAivNum_ - 2)) {
+            PRINTF("[GMM2EnterExpert] block=%d rank=%d subBlock=%d aivCore=%d expert=%d\n",
+                GetBlockIdx(), rankId_, subBlockIdx_, aivCoreIdx_, expertIdx);
         }
         UpdateGlobalBuffer(gmmAddrInfo, 1);
         if (subBlockIdx_ == 0) {
@@ -749,19 +930,43 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                 rankId_);
         }
     }
+    if (rankId_ < 2 && (GetBlockIdx() < 2 || GetBlockIdx() >= blockAivNum_ - 2)) {
+        PRINTF("[AfterGMM2Loop] block=%d rank=%d subBlock=%d aivCore=%d vecSetSyncCom=%d pingpong=%d\n",
+            GetBlockIdx(), rankId_, subBlockIdx_, aivCoreIdx_, vecSetSyncCom_, gmm2PingPongIdx_);
+    }
     EndGMM2Sync();
+    if (rankId_ < 2 && subBlockIdx_ == 0) {
+        PRINTF("[AfterEndGMM2Sync] block=%d rank=%d subBlock=%d vecSetSyncCom=%d pingpong=%d\n",
+            GetBlockIdx(), rankId_, subBlockIdx_, vecSetSyncCom_, gmm2PingPongIdx_);
+    }
     PipeBarrier<PIPE_ALL>();
+    if (rankId_ < 2 && (GetBlockIdx() < 2 || GetBlockIdx() >= blockAivNum_ - 2)) {
+        PRINTF("[BeforeGMM2SyncAll] block=%d rank=%d subBlock=%d aivCore=%d\n",
+            GetBlockIdx(), rankId_, subBlockIdx_, aivCoreIdx_);
+    }
     SyncAll<true>();
+    if (rankId_ < 2 && (GetBlockIdx() < 2 || GetBlockIdx() >= blockAivNum_ - 2)) {
+        PRINTF("[AfterGMM2SyncAll] block=%d rank=%d subBlock=%d aivCore=%d\n",
+            GetBlockIdx(), rankId_, subBlockIdx_, aivCoreIdx_);
+        PRINTF("[BeforeUnpermute] block=%d rank=%d subBlock=%d aivCore=%d\n",
+            GetBlockIdx(), rankId_, subBlockIdx_, aivCoreIdx_);
+    }
     // 6. unpermute & 清理win区上放置token的位置
     if constexpr(g_coreType == AIV) {
-        ArgSortExpandedRowIdx();
         TPipe secondPipe;
         SecondBuffInit(&secondPipe);
         ResetTokenPerExpert();
-        CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
+        if (rankId_ < 2 && (GetBlockIdx() < 2 || GetBlockIdx() >= blockAivNum_ - 2)) {
+            PRINTF("[AfterResetTokenPerExpert] block=%d rank=%d subBlock=%d aivCore=%d\n",
+                GetBlockIdx(), rankId_, subBlockIdx_, aivCoreIdx_);
+        }
         Unpermute();
         PipeBarrier<PIPE_ALL>();
         secondPipe.Destroy();
+    }
+    if (rankId_ < 2 && (GetBlockIdx() < 2 || GetBlockIdx() >= blockAivNum_ - 2)) {
+        PRINTF("[MegaMoe Process End] block=%d rank=%d subBlock=%d aivCore=%d\n",
+            GetBlockIdx(), rankId_, subBlockIdx_, aivCoreIdx_);
     }
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
 }
