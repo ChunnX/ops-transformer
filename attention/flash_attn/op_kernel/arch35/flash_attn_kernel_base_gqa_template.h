@@ -213,9 +213,11 @@ public:
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND || LAYOUT_Q == LayOutTypeEnum::LAYOUT_NTD) {
                 vecFaBlock.InitVecBlock(tPipe, pse, cuSeqLensQ, cuSeqLensKv, postQuantScale, postQuantOffset,
                     attenMask, learnableSink, softmaxLse, attentionOut, workspace);
+                vecFaBlock.SetCuSeqLensParser(qCuSeqLensParser);
             } else {
                 vecFaBlock.InitVecBlock(tPipe, pse, seqUsedQ, seqUsedKv, postQuantScale, postQuantOffset,
                     attenMask, learnableSink, softmaxLse, attentionOut, workspace);
+                vecFaBlock.SetCuSeqLensParser(qSeqUsedParser);
             }
             vecFaBlock.ClearOutput();
         }

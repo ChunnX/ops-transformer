@@ -158,8 +158,8 @@ __aicore__ inline constexpr UbFormat GetPseUbFormat() {
 }
 
 // ---------------------------------------Set attention Gm To Zero--------------------------------
-template <GmFormat FORMAT, typename OUT_T>
-__aicore__ inline void DealActSeqLenIsZero(uint32_t bIdx, uint32_t n2Idx, OffsetCalculator<FORMAT> &offsetCalculator,
+template <GmFormat FORMAT, typename OUT_T, typename OffsetCalcType>
+__aicore__ inline void DealActSeqLenIsZero(uint32_t bIdx, uint32_t n2Idx, OffsetCalcType &offsetCalculator,
                                            GlobalTensor<OUT_T>& attentionOutGm)
 {  
     if constexpr (FORMAT == GmFormat::TNGD) {
