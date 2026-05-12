@@ -180,9 +180,7 @@ __aicore__ inline void KernelQGmmInplaceAddFixpipeDequant<QGMM_INPLACE_ADD_FIXPI
             mmadOp_.UpdateParamsForNextProblem(problemShape_);
         }
 
-        AscendC::Std::tuple<int64_t, int64_t, int64_t, int64_t> bsProblemShape{
-            Get<MNK_M>(problemShape_), Get<MNK_N>(problemShape_), Get<MNK_K>(problemShape_), 0L};
-        bs.UpdateNextProblem(bsProblemShape);
+        bs.UpdateNextProblem(problemShape_);
         // Further split the tail tiles of the last group to use more cores when possible.
         if (IsLastGroupAndNeedSplit(bs, loopIdx)) {
             bs.UpdateTailTile();
