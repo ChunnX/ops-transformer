@@ -257,6 +257,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
             <li>不支持空Tensor。</li>
             <li>支持per-tensor。 </li>
             <li>支持MxFP8。 </li>
+            <li>支持范围应满足[1, 448] </li>
             <li>不使用该功能时可传入nullptr。</li>
             <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
         </ul>
@@ -1698,7 +1699,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       - 不支持传入 antiquantScale、antiquantOffset
       - 不支持传入 keyRopeAntiquantScale
     - MxFP8 全量化
-      - dequantScaleQuery、keyAntiquantScale、valueAntiquantScale、quantScale1 需同时存在
+      - dequantScaleQuery、keyAntiquantScale、valueAntiquantScale 需同时存在
       - 不支持传入 keyAntiquantOffset、valueAntiquantOffset
       - 不支持传入 deqScale1、deqScale2
       - 不支持传入 antiquantScale、antiquantOffset
