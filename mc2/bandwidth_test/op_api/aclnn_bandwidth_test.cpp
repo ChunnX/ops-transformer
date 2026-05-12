@@ -19,7 +19,6 @@
 #include "common/op_host/op_api/matmul_util.h"
 #ifdef BUILD_OPEN_PROJECT
 #include "version/hcomm_version.h"
-#define HCOMM_VERSION_NUM 90000000
 #define HCCL_CHANNEL_SUPPORT_VERSION 90000000
 #if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
 #include "common/op_api/mc2_context.h"
@@ -40,7 +39,7 @@ enum NnopbaseHcclServerType {
     NNOPBASE_HCCL_SERVER_TYPE_END
 };
 
-#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+
 extern aclnnStatus aclnnInnerBandwidthTestGetWorkspaceSize(
     const aclTensor* context, const aclTensor* x, const aclTensor* dstrankId,
     const char* group, int64_t worldSize, int64_t cclBufferSize, int64_t maxBs, int64_t mode, int64_t commAlg,
@@ -49,15 +48,14 @@ extern aclnnStatus aclnnInnerBandwidthTestGetWorkspaceSize(
 
 extern aclnnStatus aclnnInnerBandwidthTest(void* workspace, uint64_t workspaceSize,
                                                     aclOpExecutor* executor, aclrtStream stream);
-#endif
+
 
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
-static bool CheckNotNull(const aclTensor* context, const aclTensor* x, const aclTensor* dstrankId, const char* group,
+static bool CheckNotNull(const aclTensor* x, const aclTensor* dstrankId, const char* group,
                          aclTensor* y, aclTensor* receiveCnt)
 {
     OP_LOGD("aclnn_bandwidth_test CheckNotNull start");
-    OP_CHECK_NULL(context, return false);
     OP_CHECK_NULL(x, return false);
     OP_CHECK_NULL(dstrankId, return false);
     OP_CHECK_NULL(y, return false);
@@ -71,20 +69,15 @@ static bool CheckNotNull(const aclTensor* context, const aclTensor* x, const acl
     return true;
 }
 
-static aclnnStatus CheckParams(const aclTensor* context, const aclTensor* x, const aclTensor* dstrankId, const char* group,
-                                int64_t worldSize, int64_t cclBufferSize, int64_t maxBs, int64_t mode, int64_t commAlg,
+static aclnnStatus CheckParams(const aclTensor* x, const aclTensor* dstrankId, const char* group,
+                                int64_t worldSize, int64_t maxBs, int64_t mode, int64_t commAlg,
                                 aclTensor* y, aclTensor* receiveCnt)
 {
     OP_LOGD("aclnn_bandwidth_test CheckParams start");
-    CHECK_RET(CheckNotNull(context, x, dstrankId, group, y, receiveCnt), ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(CheckNotNull(x, dstrankId, group, y, receiveCnt), ACLNN_ERR_PARAM_NULLPTR);
     
     if (worldSize <= 0) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "worldSize must be positive, got %ld", worldSize);
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    
-    if (cclBufferSize <= 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "cclBufferSize must be positive, got %ld", cclBufferSize);
         return ACLNN_ERR_PARAM_INVALID;
     }
     
@@ -113,14 +106,14 @@ static aclnnStatus CheckParams(const aclTensor* context, const aclTensor* x, con
 }
 
 aclnnStatus aclnnBandwidthTestGetWorkspaceSize(
-    const aclTensor* context, const aclTensor* x, const aclTensor* dstrankId,
-    const char* group, int64_t worldSize, int64_t cclBufferSize, int64_t maxBs, int64_t mode, int64_t commAlg,
+    const aclTensor* x, const aclTensor* dstrankId,
+    const char* group, int64_t worldSize, int64_t maxBs, int64_t mode, int64_t commAlg,
     aclTensor* y, aclTensor* receiveCnt,
     uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     OP_LOGD("aclnnBandwidthTestGetWorkspaceSize start");
     
-    auto ret_param = CheckParams(context, x, dstrankId, group, worldSize, cclBufferSize, maxBs, mode, commAlg, y, receiveCnt);
+    auto ret_param = CheckParams(x, dstrankId, group, worldSize, maxBs, mode, commAlg, y, receiveCnt);
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
 
     aclTensor *mc2Context = nullptr;

@@ -23,7 +23,6 @@ extern "C" {
  * 算子功能：实现BandwidthTest功能，测试带宽性能的调度算子。
  * @brief aclnnBandwidthTest的第一段接口，根据具体的计算流程，计算workspace大小。
  * @domain aclnn_ops_infer
- * @param [in] context: 计算输入，Tensor，数据类型int32，必须为1维，数据格式支持ND。通信上下文信息。
  * @param [in] x: 计算输入，Tensor，数据类型float16，必须为2维，数据格式支持ND。输入的token数据。
  * @param [in] dstrankId: 计算输入，Tensor，数据类型int32，必须为1维，数据格式支持ND。每个token的目标rank索引。
  * @param [in] group: 计算输入，str。通信域名称。
@@ -40,8 +39,8 @@ extern "C" {
  *
  */
 ACLNN_API aclnnStatus aclnnBandwidthTestGetWorkspaceSize(
-    const aclTensor* context, const aclTensor* x, const aclTensor* dstrankId,
-    const char* group, int64_t worldSize, int64_t cclBufferSize, int64_t maxBs, int64_t mode, int64_t commAlg,
+    const aclTensor* x, const aclTensor* dstrankId,
+    const char* group, int64_t worldSize, int64_t maxBs, int64_t mode, int64_t commAlg,
     aclTensor* y, aclTensor* receiveCnt,
     uint64_t* workspaceSize, aclOpExecutor** executor);
 
@@ -63,8 +62,8 @@ ACLNN_API aclnnStatus aclnnBandwidthTest(void* workspace, uint64_t workspaceSize
 #endif  // OP_API_INC_BANDWIDTH_TEST_
 
 aclnnStatus aclnnBandwidthTestGetWorkspaceSize(
-    const aclTensor* context, const aclTensor* x, const aclTensor* dstrankId,
-    const char* group, int64_t worldSize, int64_t cclBufferSize, int64_t maxBs, int64_t mode, int64_t commAlg,
+    const aclTensor* x, const aclTensor* dstrankId,
+    const char* group, int64_t worldSize, int64_t maxBs, int64_t mode, int64_t commAlg,
     aclTensor* y, aclTensor* receiveCnt,
     uint64_t* workspaceSize, aclOpExecutor** executor);
 

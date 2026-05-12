@@ -25,8 +25,8 @@ class BandwidthTestOpBuilder(OpBuilder):
 
     def schema(self) -> str:
         """PyTorch operator signature."""
-        return "npu_bandwidth_test(Tensor context, Tensor x, Tensor dstrank_id, " \
-            "str group, int world_size, int ccl_buffer_size, int max_bs, int mode, int comm_alg) " \
+        return "npu_bandwidth_test(Tensor x, Tensor dstrank_id, " \
+            "str group, int world_size, int max_bs, int mode, int comm_alg) " \
             "-> (Tensor, Tensor)"
 
     def register_meta(self):
@@ -35,7 +35,7 @@ class BandwidthTestOpBuilder(OpBuilder):
         Essential for Autograd and FakeTensor support.
         """
         @impl(AS_LIBRARY, self.name, "Meta")
-        def npu_bandwidth_test_meta(context, x, dstrank_id, group, world_size, ccl_buffer_size, max_bs, mode, comm_alg):
+        def npu_bandwidth_test_meta(x, dstrank_id, group, world_size, max_bs, mode, comm_alg):
             torch._check(
                 world_size > 0,
                 lambda: (
@@ -60,12 +60,12 @@ op_module = bandwidth_test_op_builder.load()
 
 
 @impl(AS_LIBRARY, bandwidth_test_op_builder.name, "PrivateUse1")
-def npu_bandwidth_test(context, x, dstrank_id, group, world_size, ccl_buffer_size, max_bs, mode, comm_alg):
+def npu_bandwidth_test(x, dstrank_id, group, world_size, max_bs, mode, comm_alg):
     """
     Implementation for NPU.
     'PrivateUse1' is the key for custom NPU backends.
     """
-    return op_module.npu_bandwidth_test(context, x, dstrank_id, group, world_size, ccl_buffer_size, max_bs, mode, comm_alg)
+    return op_module.npu_bandwidth_test(x, dstrank_id, group, world_size, max_bs, mode, comm_alg)
 
 
 # GE Converter for Graph Mode
@@ -87,23 +87,20 @@ if _TORCHAIR_AVAILABLE:
     ])
     @register_fx_node_ge_converter(torch.ops.npu_ops_transformer.npu_bandwidth_test.default)
     def converter_bandwidth_test(
-        context: Tensor,
         x: Tensor,
         dstrank_id: Tensor,
         group: str,
         world_size: int,
-        ccl_buffer_size: int,
         max_bs: int,
         mode: int,
         comm_alg: int,
         *,
         meta_outputs: TensorSpec = None):
-        return ge.BandwidthTest(context,
-                                        x,
-                                        dstrank_id,
-                                        group=group,
-                                        world_size=world_size,
-                                        ccl_buffer_size=ccl_buffer_size,
-                                        max_bs=max_bs,
-                                        mode=mode,
-                                        comm_alg=comm_alg)
+        return ge.BandwidthTest(
+                                x,
+                                dstrank_id,
+                                group=group,
+                                world_size=world_size,
+                                max_bs=max_bs,
+                                mode=mode,
+                                comm_alg=comm_alg)

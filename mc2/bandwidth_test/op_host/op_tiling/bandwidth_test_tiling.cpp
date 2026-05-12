@@ -85,7 +85,6 @@ constexpr uint32_t WORKSPACE_ELEMENT_OFFSET = 512UL;
 // ============ 参数范围约束 ============
 const size_t MAX_GROUP_NAME_LENGTH = 128UL;
 const int64_t MIN_WORLD_SIZE = 1;
-const int64_t MAX_WORLD_SIZE = 384;
 const int64_t MAX_BS = 512;
 const int64_t MIN_DATA_SIZE = 1024;
 const int64_t MAX_DATA_SIZE = 8192;
@@ -150,9 +149,9 @@ static ge::graphStatus CheckAttrValuesValid(gert::TilingContext *context, const 
         OP_LOGE(nodeName, "group name is invalid, length should be in (0, %zu), but got length=%zu.",
         MAX_GROUP_NAME_LENGTH, strnlen(groupPtr, MAX_GROUP_NAME_LENGTH)), return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK((*worldSizePtr < MIN_WORLD_SIZE) || (*worldSizePtr > MAX_WORLD_SIZE),
-        OP_LOGE(nodeName, "worldSize is invalid, only support [%ld, %ld], but got worldSize=%ld.",
-        MIN_WORLD_SIZE, MAX_WORLD_SIZE, *worldSizePtr), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(*worldSizePtr < 1),
+        OP_LOGE(nodeName, "worldSize should be > 0, but got worldSize=%ld.",
+        MIN_WORLD_SIZE, *worldSizePtr), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK((*cclBufferSizePtr <= 0),
         OP_LOGE(nodeName, "cclBufferSize is invalid, should be > 0, but got cclBufferSize=%ld.",

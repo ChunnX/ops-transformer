@@ -21,14 +21,12 @@ using npu_utils = at_npu::native::NpuUtils;
 using tensor_list = std::tuple<at::Tensor, at::Tensor>;
 const int DIM_TWO = 2;
 
-tensor_list npu_bandwidth_test(const at::Tensor &context, const at::Tensor &x, const at::Tensor &dstrank_id,
-                                         std::string group, int64_t world_size, int64_t ccl_buffer_size, int64_t max_bs, int64_t mode, int64_t comm_alg)
+tensor_list npu_bandwidth_test(const at::Tensor &x, const at::Tensor &dstrank_id,
+                                         std::string group, int64_t world_size, int64_t max_bs, int64_t mode, int64_t comm_alg)
 {
-    TORCH_CHECK((context.dim() == 1), "The context should be 1D");
     TORCH_CHECK((x.dim() == DIM_TWO), "The x should be 2D");
     TORCH_CHECK((dstrank_id.dim() == 1), "The expert_id should be 1D");
     TORCH_CHECK((world_size > 0), "The world_size should be greater than 0, current is: ", world_size);
-    TORCH_CHECK((ccl_buffer_size > 0), "The ccl_buffer_size should be greater than 0, current is: ", ccl_buffer_size);
     TORCH_CHECK((max_bs > 0), "The max_bs should be greater than 0, current is: ", max_bs);
     TORCH_CHECK((mode == 0 || mode == 1), "The mode should be 0 or 1, current is: ", mode);
     TORCH_CHECK((comm_alg >= 0), "The comm_alg should be >= 0, current is: ", comm_alg);
@@ -49,7 +47,7 @@ tensor_list npu_bandwidth_test(const at::Tensor &context, const at::Tensor &x, c
 
     char *group_ptr = const_cast<char *>(group.c_str());
 
-    ACLNN_CMD(aclnnBandwidthTest, context, x, dstrank_id, group_ptr, world_size, ccl_buffer_size, max_bs, mode, comm_alg, y, receive_cnt);
+    ACLNN_CMD(aclnnBandwidthTest, x, dstrank_id, group_ptr, world_size, max_bs, mode, comm_alg, y, receive_cnt);
 
     return std::tie(y, receive_cnt);
 }
