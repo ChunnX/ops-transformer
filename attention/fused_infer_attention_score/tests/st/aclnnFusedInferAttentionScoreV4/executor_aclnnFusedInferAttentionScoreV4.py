@@ -1634,8 +1634,8 @@ def _t_ifaattention_act(ifa_param, device="cpu"):
     sinner = ifa_param['sinner']
     lse_flag = ifa_param['softmax_lse_flag']
     if ifa_param['padding_flag']:
-        s_begin =int(k_tensor.shape[2] - act_seq - ifa_param['padding_size'])
-        s_end = int(k_tensor.shape[2] - ifa_param['padding_size'])
+        s_begin = k_tensor.shape[2] - act_seq - ifa_param['padding_size']
+        s_end = k_tensor.shape[2] - ifa_param['padding_size']
         print(f"left padding--- s_begin:{s_begin}, s_end:{s_end}")
 
     print(
@@ -2036,7 +2036,6 @@ def broadcast_kv_split_dequant_tensor_ptoh(tensor, numKeyValueHeads, numheads, d
 
 
 def _t_increattention_bnsd(ifa_param):
-
     batch_value = ifa_param['q_shape_bnsd'][0]
     n = ifa_param['q_shape_bnsd'][1]
     qs = ifa_param['q_shape_bnsd'][2]
@@ -2135,9 +2134,7 @@ def _t_increattention_bnsd(ifa_param):
         # kv分离伪量化处理
         if ifa_param['k_antiquant_pto_flag'] or ifa_param['k_antiquant_ptopa_flag']:
             ifa_param['k_antiquantScale_cur'] = ifa_param['k_antiquantScale'][:, b_index:(b_index + 1), :]
-            
             ifa_param['k_antiquantOffset_cur'] = ifa_param['k_antiquantOffset'][:, b_index:(b_index + 1), :]
-         
         elif ifa_param['k_antiquant_ptoh_flag'] or ifa_param['k_antiquant_ptohpa_flag']:
             ifa_param['k_antiquantScale_cur'] = ifa_param['k_antiquantScale'][b_index:(b_index + 1), :, :]
             ifa_param['k_antiquantOffset_cur'] = ifa_param['k_antiquantOffset'][b_index:(b_index + 1), :, :]
@@ -2237,7 +2234,7 @@ def cut_padding_size(tensor, list, padding_size):
     shape = tensor.shape
     ms = shape[-1]
     for i in range(len(list)):
-        cut_len = int(ms - padding_size - list[i])
+        cut_len = ms - padding_size - list[i]
         tensor[i:(i + 1), ..., :cut_len] = 1
     return tensor
 
@@ -2671,7 +2668,6 @@ def trans_int32_2_int4_tensor_bnsd(tensor_int32, shape_int32):
                         tensor_int4[Bid:Bid + 1, Nid:Nid + 1, Sid:Sid + 1, 8 * Did + i:8 * Did + i + 1] = \
                             int4_data_list[i]
     return tensor_int4, shape_int4
-
 
 
 # pertoken_pa 场景，将scale/offset从BB转为1BS
@@ -3558,7 +3554,34 @@ def aclnn_op_func_ifa_cpu(torch_tensor_list, params):
     action_type = params["action_type"]
     # >> pse 处理
     if ifa_param['p_flag']:
-        p_tensor = torch_tensor_list[3]
+        maya = get_slopes(p_shape[1])
+        maya = maya.numpy()
+        pse_shift = np.zeros(p_shape)
+        for n in range(p_shape[1]):
+            alibi_biases = np.zeros([1, p_shape[-1]])
+            for x in range(0, p_shape[-1]):
+                alibi_biases[0, x] = -1 * x
+            pse_shift[:, n:n + 1, :, :] = alibi_biases * maya[n]
+        pse_shift = pse_shift.astype(np.float32)
+
+        # 覆写
+        if action_type in ["bm_output_gold", "bm_output"]:
+            pass
+        else:
+            if params['dtype_input'][v_end_index + 1] == "fp16":
+                pse_shift = pse_shift.astype(np.float16)
+                pse_shift[pse_shift == -math.inf] = -65504
+                ifa_param['p_tensor'] = pse_shift
+                p_tensor = torch.tensor(pse_shift, dtype=torch.float16)
+            elif params['dtype_input'][v_end_index + 1] == "bf16":
+                pse_shift = pse_shift.astype(tf.bfloat16.as_numpy_dtype)
+                pse_shift[pse_shift == -math.inf] = -65504
+                ifa_param['p_tensor'] = pse_shift
+                p_tensor = torch.tensor(pse_shift.astype(np.float32), dtype=torch.bfloat16)
+            else:
+                print('[ERROR]:wrong p_tensor dtype!')
+                return torch.zeros(out_shape)
+            tools.modify_alcnn_input_file(ids=3, origin_index=[3], type='tensor', mode='rewrite', tensors=p_tensor,params=params)
 
     # >> m预处理：1、将m扩展为BN1S  2、padding场景下，偏移部分设置为1 3、针对FP16格式，将tensor转成0/1
     m_dtype = get_pt_dtype(params['dtype_input'][v_end_index + 2])
@@ -3613,6 +3636,10 @@ def aclnn_op_func_ifa_cpu(torch_tensor_list, params):
                 m_tensor = torch.where(m_tensor < 0.8, torch.tensor(0, dtype=torch.float16),
                                        torch.tensor(1, dtype=torch.float16))
                 m_rewrite_flag = True
+            if m_rewrite_flag:
+                print(f"[INFO]rewrite attenmask")
+                tools.modify_alcnn_input_file(ids=4, origin_index=[4], type='tensor', mode='rewrite',
+                                              tensors=m_tensor, params=params, data_range=[0, 2])
             ifa_param['m_tensor'] = _t_broadcast_mask_n(m_tensor, m_shape, numHeads, m_shape[0])
 
     # >> 后量化参数处理：1、给dtype赋值 2、如果是perchannel模式，要将后量化参数统一转换成1n1d格式
@@ -8957,10 +8984,10 @@ class FiaOpForward():
                 v = self._get_v_by_idx(b_idx, self.kv_s_begin, self.kv_s_end, n_idx)
                 k, v = self._process_shared_prefix(k, v, b_idx, n_idx)
                 if self.op_params.shared_prefix_flag:
-                    # if self.op_params.prefix_act_lens == 0:
-                    #     self.kv_s_end += self.op_params.k_shared_prefix.shape.S
-                    # else:
-                    self.kv_s_end += self.op_params.prefix_act_lens
+                    if self.op_params.prefix_act_lens == 0:
+                        self.kv_s_end += self.op_params.k_shared_prefix.shape.S
+                    else:
+                        self.kv_s_end += self.op_params.prefix_act_lens
                 self.mask_cur = self._get_atten_mask_cur(b_idx)
                 self.pse_cur = self._get_pse_cur(b_idx, n_idx)
                 sinks = self._get_sink_cur(n_idx)
@@ -9410,8 +9437,8 @@ def trans_input_to_params(input_data : InputDataset, is_benchmark_task, is_prepr
 
     if input_data.kwargs["keyAntiquantScaleOptional"] is not None:
         params['flaglist'][17] = 1
-        dtype_input[15] = dtype_map[input_data.kwargs["keyAntiquantScaleOptional"].dtype]
-        shape_input[15] = list(input_data.kwargs["keyAntiquantScaleOptional"].shape)
+        dtype_input[14] = dtype_map[input_data.kwargs["keyAntiquantScaleOptional"].dtype]
+        shape_input[14] = list(input_data.kwargs["keyAntiquantScaleOptional"].shape)
     
     if input_data.kwargs["keyAntiquantOffsetOptional"] is not None:
         params['flaglist'][18] = 1
@@ -9455,10 +9482,6 @@ def trans_input_to_params(input_data : InputDataset, is_benchmark_task, is_prepr
         tensor_list[25] = torch.zeros(cache_shape, dtype=input_data.kwargs["keyRopeOptional"].dtype)
 
     params["prefix_act_lens"] = list(input_data.kwargs["actualSharedPrefixLenOptional"])
-    if input_data.kwargs["actualSharedPrefixLenOptional"][0] != arr_tuple_none:
-        params['flaglist'][23] = 1
-        params["prefix_act_lens"] = list(input_data.kwargs["actualSharedPrefixLenOptional"])
-        
     params["numheads"] = input_data.kwargs["numHeads"]
     params["scalevalue"] = input_data.kwargs["scaleValue"]
     params["pretokens"] = input_data.kwargs["preTokens"]
@@ -9529,7 +9552,6 @@ class fusedInferAttentionScoreApi(BaseApi):
             return output, output_lse
         else:
             output = aclnn_op_func_fia_cpu(input_data, is_benchmark_task = True, is_preprocess=False)
-            # print("cpu output is: ", output)
             return output
 
 @register("executor_aclnn_fused_infer_attention_score_v4")
@@ -9584,5 +9606,4 @@ class aclnnFusedInferAttentionScoreApi(AclnnBaseApi):
         for output_pack in output_packages:
             temp_output_pack = self.acl_tensor_to_torch(output_pack)
             output.append(temp_output_pack)
-        # print("gloden output is: ", output)
         return output
