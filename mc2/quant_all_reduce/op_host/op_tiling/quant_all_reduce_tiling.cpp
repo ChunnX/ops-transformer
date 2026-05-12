@@ -90,19 +90,8 @@ static void SetTilingData(gert::TilingContext *context, QuantAllReduceTilingData
     tilingData.quantAllReduceTilingInfo.totalWinSize = mc2tiling::Mc2TilingUtils::GetMaxWindowSize();
 }
 
-/**
- * @brief 基于 TARGET_ITER 公式计算 host 推荐的 xPerBlock，写入 tilingData
- *        按每核迭代数自适应计算 xPerBlock
- * @param context: tiling context
- * @param tilingData: tilingData
- * @param runInfo: 含 rankSize 等运行信息
- * @return
- */
-static void SetXPerBlock(gert::TilingContext *context, QuantAllReduceTilingData &tilingData,
-                         const TilingRunInfo &runInfo)
+static void SetXPerBlock(QuantAllReduceTilingData &tilingData)
 {
-    (void)context;
-    (void)runInfo;
     constexpr uint32_t TARGET_ITER = 3U;  // T=3 命中 DoubleBuffer 甜点
     constexpr uint32_t MIN_BLOCK = 2048U;  // 与 QRS MIN 统一，QAR per_core 够大不会被 MIN 主导
     constexpr uint32_t ALIGN_BLOCK = 1024U;
@@ -158,7 +147,7 @@ static ge::graphStatus QuantAllReduceTilingFunc(gert::TilingContext *context)
     OP_TILING_CHECK(SetHcommCfg(context, tilingData, runInfo) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "SetHCommCfg failed."), return ge::GRAPH_FAILED);
     SetTilingData(context, *tilingData);
-    SetXPerBlock(context, *tilingData, runInfo);
+    SetXPerBlock(*tilingData);
     SetTilingKey(context);
     PrintTilingDataInfo(context, *tilingData);
     return ge::GRAPH_SUCCESS;
