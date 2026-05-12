@@ -214,18 +214,6 @@ __aicore__ inline void GroupMatmul2(
     const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom2, uint32_t groupIdx,
     uint16_t& pingpongIdx, int32_t rankId, LocalTensor<ElementC> combineUbTensor, uint32_t expertIdx)
 {
-
-    
-    // // [DEBUG] 刷ptrA2Scale全部为0x7F（FP8E8M0=1），验证gmm2输出是否踩了scale区
-    // // 512 tokens × 1024 cols / 32 scale_group / 2 swiglu_half = 8192 bytes
-    // constexpr uint32_t SCALE_SIZE = 512 * 1024 / 32 / 2;
-    // GlobalTensor<uint8_t> scaleBuf;
-    // scaleBuf.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(params.workspaceInfo.ptrA2Scale));
-    // for (uint32_t i = 0; i < SCALE_SIZE; i++) {
-    //     scaleBuf.SetValue(i, 0x7F);
-    // }
-    // AscendC::DataCacheCleanAndInvalid<uint8_t, AscendC::CacheLine::ENTIRE_DATA_CACHE, AscendC::DcciDst::CACHELINE_OUT>(scaleBuf);
-
     GlobalTensor<uint8_t> gmAGt, gmBGt, gmScaleAGt, gmScaleBGt;
     gmAGt.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(gmmAddrInfo.aGlobal));
     gmBGt.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(gmmAddrInfo.bGlobal));
@@ -331,23 +319,6 @@ __aicore__ inline void GroupMatmul2(
         if constexpr (g_coreType == AscendC::AIC) {
             // AIC: 执行gmm2计算
             if (loopIdx == startLoopIdx) {
-                // 打印gmm2输入数据（FP8用uint8打出，自行换算）
-
-                // AscendC::PRINTF("AIC e%d aGlobal=%p aScale=%p bGlobal=%p bScale=%p\n", expertIdx,
-                //     gmmAddrInfo.aGlobal, gmmAddrInfo.aScaleGlobal, gmmAddrInfo.bGlobal, gmmAddrInfo.bScaleGlobal);
-                // AscendC::PRINTF("AIC e%d gmA[0-7]=%x %x %x %x %x %x %x %x\n", expertIdx,
-                //     gmAGt.GetValue(0), gmAGt.GetValue(1), gmAGt.GetValue(2), gmAGt.GetValue(3),
-                //     gmAGt.GetValue(4), gmAGt.GetValue(5), gmAGt.GetValue(6), gmAGt.GetValue(7));
-                // AscendC::PRINTF("AIC e%d gmB[0-7]=%x %x %x %x %x %x %x %x\n", expertIdx,
-                //     gmBGt.GetValue(0), gmBGt.GetValue(1), gmBGt.GetValue(2), gmBGt.GetValue(3),
-                //     gmBGt.GetValue(4), gmBGt.GetValue(5), gmBGt.GetValue(6), gmBGt.GetValue(7));
-                // AscendC::PRINTF("AIC e%d scaleA[0-7]=%x %x %x %x %x %x %x %x\n", expertIdx,
-                //     gmScaleAGt.GetValue(0), gmScaleAGt.GetValue(1), gmScaleAGt.GetValue(2), gmScaleAGt.GetValue(3),
-                //     gmScaleAGt.GetValue(4), gmScaleAGt.GetValue(5), gmScaleAGt.GetValue(6), gmScaleAGt.GetValue(7));
-                // AscendC::PRINTF("AIC e%d scaleB[0-7]=%x %x %x %x %x %x %x %x\n", expertIdx,
-                //     gmScaleBGt.GetValue(0), gmScaleBGt.GetValue(1), gmScaleBGt.GetValue(2), gmScaleBGt.GetValue(3),
-                //     gmScaleBGt.GetValue(4), gmScaleBGt.GetValue(5), gmScaleBGt.GetValue(6), gmScaleBGt.GetValue(7));
-
                 BlockScheduler gmmBlockScheduler(
                     {m, k, n},
                     BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M),
@@ -379,7 +350,9 @@ __aicore__ inline void GroupMatmul2(
             typename BlockMmad::BlockShape singleShape{
                 Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape), Get<K_VALUE>(actualShape), 0};
             blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBias, gmBlockC, singleShape);
-            SyncFunc<AscendC::HardEvent::FIX_S>();
+            event_t eventIdFIX_S = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::FIX_S>());
+            SetFlag<HardEvent::FIX_S>(eventIdFIX_S);
+            WaitFlag<HardEvent::FIX_S>(eventIdFIX_S);
             AscendC::AtomicAdd((__gm__ int32_t*)rowReadyFlags.GetPhyAddr() + blockIdx, int32_t(1));
         } else {
             // AIV: 等待对应C核完成并combine发送
