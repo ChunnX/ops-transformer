@@ -17,7 +17,7 @@
 #include <tiling/tiling_api.h>
 #include "register/tilingdata_base.h"
 #include "op_host/tiling_base.h"
-#include "err/ops_err.h"
+#include "utils/ops_err.h"
 
 namespace optiling {
 BEGIN_TILING_DATA_DEF(MhcPreSinkhornBackwardTilingData)

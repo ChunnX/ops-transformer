@@ -17,7 +17,7 @@
 
 #include "grouped_matmul_swiglu_quant_v2_tiling.h"
 #include "op_host/tiling_base.h"
-#include "err/ops_err.h"
+#include "utils/ops_err.h"
 
 namespace optiling {
 namespace GroupedMatmulSwigluQuantV2Tiling {

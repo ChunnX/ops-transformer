@@ -17,7 +17,7 @@
 #include <numeric>
 #include "log/log.h"
 #include "log/error_code.h"
-#include "err/ops_err.h"
+#include "utils/ops_err.h"
 #include "flash_attn_tiling_index.h"
 #include "flash_attn_tiling_info_parser.h"
 

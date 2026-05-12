@@ -20,7 +20,7 @@
 #include "tiling/tiling_api.h"
 #include "op_host/tiling_base.h"
 #include "log/log.h"
-#include "err/ops_err.h"
+#include "utils/ops_err.h"
 #include "platform/platform_infos_def.h"
 #include "quant_grouped_matmul_dequant_tiling.h"
 
