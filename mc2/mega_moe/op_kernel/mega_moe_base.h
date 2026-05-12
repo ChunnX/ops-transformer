@@ -55,10 +55,10 @@ struct PeermemInfo {
         offset += tilingData->epWorldSize * Ops::Base::CeilAlign(
             (int64_t)(tilingData->epWorldSize * tilingData->expertPerRank), (int64_t)ALIGN_128) * sizeof(int32_t);
         ptrA0 = base + offset;
-        offset += tilingData->m * tilingData->topK *
-            (tilingData->k + tilingData->k / MXFP_SCALE_GROUP_NUM) * sizeof(int8_t);
+        offset += tilingData->bs * tilingData->topK *
+            (tilingData->h + tilingData->h / MXFP_SCALE_GROUP_NUM) * sizeof(int8_t);
         ptrTriplet = base + offset;
-        offset += tilingData->m * tilingData->topK * sizeof(int32_t);
+        offset += tilingData->bs * tilingData->topK * sizeof(int32_t);
         ptrD = base + offset;
     }
 };
