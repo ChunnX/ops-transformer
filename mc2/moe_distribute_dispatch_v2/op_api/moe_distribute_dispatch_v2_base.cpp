@@ -148,7 +148,7 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
 
     const aclTensor *performanceInfoOptionalDispatchV2Temp = performanceInfoOptional;
     aclTensor *mc2Context = nullptr;
-    aclnnStatus getWorkspaceSizesRes;
+    aclnnStatus getWorkspaceSizesRes = ACLNN_ERR_INNER;
     const char *groupTpDispatchV2Temp = groupTp;
     if (is910B) {
         groupTpDispatchV2Temp = "";
