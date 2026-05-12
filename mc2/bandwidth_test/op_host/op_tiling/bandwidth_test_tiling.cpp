@@ -149,7 +149,7 @@ static ge::graphStatus CheckAttrValuesValid(gert::TilingContext *context, const 
         OP_LOGE(nodeName, "group name is invalid, length should be in (0, %zu), but got length=%zu.",
         MAX_GROUP_NAME_LENGTH, strnlen(groupPtr, MAX_GROUP_NAME_LENGTH)), return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(*worldSizePtr < 1),
+    OP_TILING_CHECK((*worldSizePtr < 1),
         OP_LOGE(nodeName, "worldSize should be > 0, but got worldSize=%ld.",
         MIN_WORLD_SIZE, *worldSizePtr), return ge::GRAPH_FAILED);
 
