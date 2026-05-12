@@ -462,12 +462,14 @@ void FlashAttnTilingImpl::UpdateTilingKeyConfig()
 
 void FlashAttnTilingImpl::UpdateTilingKeyLayout()
 {
-    if (faInfo_->qLayout == FaLayout::BNSD) {
+    if (faInfo_->qLayout == FaLayout::BNSD and faInfo_->outLayout == FaLayout::BNSD) {
         tilingKeyInfo_.inputLayout = InOutLayoutType_BNSD_BNSD;
-    } else if (faInfo_->qLayout == FaLayout::TND) {
+    } else if (faInfo_->qLayout == FaLayout::TND and faInfo_->outLayout == FaLayout::TND) {
         tilingKeyInfo_.inputLayout = InOutLayoutType_TND_TND;
-    } else if (faInfo_->qLayout == FaLayout::BSND) {
+    } else if (faInfo_->qLayout == FaLayout::BSND and faInfo_->outLayout == FaLayout::BSND) {
         tilingKeyInfo_.inputLayout = InOutLayoutType_BSH_BSH;
+    } else if (faInfo_->qLayout == FaLayout::BNSD and faInfo_->outLayout == FaLayout::BSND) {
+        tilingKeyInfo_.inputLayout = InOutLayoutType_BNSD_BSND;
     }
 }
 

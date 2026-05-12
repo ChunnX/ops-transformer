@@ -133,7 +133,8 @@ ASCENDC_TPL_ARGS_DECL(FlashAttn,
 ASCENDC_TPL_SEL(
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST,
-                            InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
+                            InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, 
+                            InOutLayoutType_TND_TND, InOutLayoutType_BNSD_BSND),
         ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST,
                             Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned64,
                             Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned128,

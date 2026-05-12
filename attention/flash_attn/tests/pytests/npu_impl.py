@@ -59,7 +59,8 @@ def print_metadata(metadata):
                  "WS_NUM",   "M_START",  "M_NUM"]
 
     # Reinterpret buffer as flat uint32 array regardless of original dtype
-    arr = metadata.cpu().contiguous().view(torch.int32).numpy().view(np.uint32)
+    # arr = metadata.cpu().contiguous().view(torch.int32).numpy().view(np.uint32)
+    arr = metadata.cpu().contiguous().to(torch.int32).numpy().astype(np.uint32)
 
     section_num  = int(arr[0])
     m_base_size  = int(arr[1])

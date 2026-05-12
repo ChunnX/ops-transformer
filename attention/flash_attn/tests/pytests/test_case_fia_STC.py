@@ -63,7 +63,7 @@ TestCasesFIA = {
     'aclnnFusedInferAttentionScoreV5_FIA_16_8_8_4096_4096_case41': {
         'layout_q': ['BNSD'],
         'layout_kv': ['BNSD'],
-        'layout_out': ['BNSD'],
+        'layout_out': ['BSND'],
         'Dtype': ['bf16'],
         'q_range': [(-5.0, 5.0)],
         'k_range': [(-5.0, 5.0)],
@@ -206,8 +206,8 @@ TestCasesFIA = {
     },
     'aclnnFusedInferAttentionScoreV5_FIA_32_32_4_1_1600_case110': {
         'layout_q': ['BNSD'],
-        'layout_kv': ['BSND'],
-        'layout_out': ['BNSD'],
+        'layout_kv': ['BNSD'],
+        'layout_out': ['BSND'],
         'Dtype': ['fp16'],
         'q_range': [(-5.0, 5.0)],
         'k_range': [(-5.0, 5.0)],
@@ -219,8 +219,8 @@ TestCasesFIA = {
         'N1': [32],
         'S1': [1],
         'D': [128],
-        'N2': [1600],
-        'S2': [4],
+        'N2': [4],
+        'S2': [1600],
     },
     'aclnnFusedInferAttentionScoreV5_FIA_30_160_5_4_3583_case119': {
         'layout_q': ['BSND'],
