@@ -755,6 +755,7 @@ __aicore__ inline void MoeDistributeDispatchA5<TemplateMoeDistributeDispatchA5Ty
     }
 }
 
+// TODO
 template <TemplateMoeDistributeDispatchA5TypeClass>
 __aicore__ inline void MoeDistributeDispatchA5<TemplateMoeDistributeDispatchA5TypeFunc>::MoeScatter()
 {
