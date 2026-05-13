@@ -28,15 +28,12 @@
 #include <vector>
 #include "version/runtime_version.h"
 #include "version/metadef_version.h"
-<<<<<<< HEAD
 #include <dlfcn.h>
 #include <cstring>
-=======
 #include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_dispatch_tiling.h"
 #include "../../moe_distribute_combine_v2/op_kernel/moe_distribute_combine_tiling.h"
 #include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_a2_constant.h"
 #include "./mc2_hcom_topo_info.h"
->>>>>>> e31fee852 (Add ADump for Dispatch Combine A2)
 
 // 支持 9.0.0 版本（90000000）, 当版本带着 beta, alpha, rc 时, rts 接口获取到的版本号会在 90000000 基础上减去一个对应的 weight 值
 // 其下限为 9.0.0-alpha, 对应版本号 90000000 - 300 = 89999700
@@ -435,6 +432,11 @@ inline int ProcessArgs910B(void* devArgsPtr, std::vector<uint8_t> &winBuf, uint3
 inline void Mc2ExceptionImpl(aclrtExceptionInfo *args, void *userdata, const char *op)
 {
     const char* socName = aclrtGetSocName();
+    if((std::strstr(socName, "Ascend950") == nullptr) && (std::strstr(socName, "Ascend910_93") == nullptr)
+        && (std::strstr(socName, "Ascend910B") == nullptr)) { 
+        OP_LOGE(OP_NAME, "The soc version is %s, skip dump process", socName); 
+        return; 
+    }
 
     OP_LOGD(OP_NAME, "Start to handle mc2 exception and dump win info.");
 
@@ -483,7 +485,7 @@ inline void Mc2ExceptionImpl(aclrtExceptionInfo *args, void *userdata, const cha
         }
     } else if (std::strstr(socName, "Ascend950") != nullptr) {
         if (ProcessArgsForA5(argsAddr, winContent) != 0) {
-            OP_LOGE(OP_NAME, "aclrtMemcpy address of args failed. ret=%d", ret);
+            OP_LOGE(OP_NAME, "Failed to get win content.");
             return;
         }
     } else if (std::strstr(socName, "Ascend910B") != nullptr) {
@@ -492,7 +494,6 @@ inline void Mc2ExceptionImpl(aclrtExceptionInfo *args, void *userdata, const cha
             return;
         }
     }
-<<<<<<< HEAD
 
     // 获取acldumpGetPath函数指针
     auto acldumpGetPathFunc = GetAcldumpGetPathFunc();
@@ -508,8 +509,6 @@ inline void Mc2ExceptionImpl(aclrtExceptionInfo *args, void *userdata, const cha
         return;
     }
 
-=======
->>>>>>> e31fee852 (Add ADump for Dispatch Combine A2)
     // Write to bin file
     if (DumpToFile(std::string(dumpPath), GenDumpFileName(args, op), deviceId,
                    winContent.data()) != 0) {
