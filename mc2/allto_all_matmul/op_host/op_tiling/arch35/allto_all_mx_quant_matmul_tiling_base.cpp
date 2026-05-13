@@ -402,7 +402,7 @@ void AllToAllMxQuantMatmulTilingBase::FillMxTensorTiling(uint32_t blockM, Tensor
     if (out == nullptr) return;
 
     uint64_t fullN  = contextInfo.args_.nValue;
-    uint64_t fullK  = contextInfo.args_.orgKValue * contextInfo.args_.rankDim;
+    uint64_t fullK  = contextInfo.args_.orgKValue;
     uint64_t fullM  = contextInfo.args_.orgMValue;
     uint64_t aicNum = contextInfo.args_.aicCoreNum;
     if (aicNum == 0) aicNum = 1;

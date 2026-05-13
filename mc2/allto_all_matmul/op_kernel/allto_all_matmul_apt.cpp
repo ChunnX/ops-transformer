@@ -26,6 +26,8 @@
 #include "./arch35/allto_all_kc_quant_matmul_pipeline.h"
 #include "./arch35/allto_all_mx_quant_matmul_arch35.h"
 #include "./arch35/allto_all_mx_quant_matmul_pipeline.h"
+#include "./arch35/allto_all_mx_tensor_matmul_arch35.h"
+#include "./arch35/allto_all_mx_tensor_matmul_pipeline.h"
 
 using AscendC::HcclServerType;
 using AscendC::TPipe;
@@ -109,25 +111,18 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
 #ifndef ALLTO_ALL_MX_TENSOR_MATMUL_IMPL
 #define ALLTO_ALL_MX_TENSOR_MATMUL_IMPL(tilingData, pipe, commDataTypeX1)                                              \
     do {                                                                                                               \
-        DEFINE_MC2_HCCL_FOR_COMMUNICATION(false, HcclServerType::HCCL_SERVER_TYPE_CCU, MC2AlltoAllContext,             \
-                                          AlltoAllQuantMatmulTilingData, MC2AlltoAllPrimitives, 0, 1,                  \
-                                          CommunicationType);                                                          \
+        DEFINE_MC2_HCCL_FOR_COMMUNICATION(true, HcclServerType::HCCL_SERVER_TYPE_CCU, MC2AlltoAllContext,             \
+                                           AlltoAllQuantMatmulTilingData, MC2AlltoAllPrimitives, 0, 1,                  \
+                                           CommunicationType);                                                          \
         CommunicationType commImplName(&tilingData);                                                                   \
-        DEFINE_MC2_TRANSPOSE_FOR_MATH_COMPUTATION(commDataTypeX1, TransposeType);                                      \
-        TransposeType transposeImplName(&pipe);                                                                        \
-        DEFINE_MC2_TRANSPOSE_FOR_MATH_COMPUTATION(AscendC::fp8_e8m0_t, ScaleTransposeType);                            \
-        ScaleTransposeType scaleTransposeImplName(&pipe);                                                              \
         using ComputationContextType = MC2KernelTemplate::MC2MMContext<                                                \
             MC2KernelTemplate::MXQuantMMAdditionalData, TensorMatmulTilingData>;                                       \
         using ComputationType = Mc2Kernel::TensorMXQuantMatmulStage<TensorMatmulTilingData, X2TRANSPOSE>;              \
         ComputationType matmulImplName(&pipe);                                                                         \
-        using SchedulerContextType = Mc2Kernel::AlltoAllMXQmmPipelineContext<ComputationContextType>;                  \
-        using SchedulerType =                                                                                          \
-            Mc2Kernel::AlltoAllMXQuantMatmulPipeLine<CommunicationType, TransposeType, ScaleTransposeType,             \
-                                                      ComputationType, SchedulerContextType>;                           \
-        SchedulerType SchedulerImpl(&commImplName, &transposeImplName, &scaleTransposeImplName, &matmulImplName);      \
-        Mc2Kernel::AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllQuantMatmulTilingData,     \
-                                                false>                                                                  \
+        using SchedulerContextType = Mc2Kernel::AlltoAllMXTensorQmmPipelineContext<ComputationContextType>;              \
+        using SchedulerType = Mc2Kernel::AlltoAllMXTensorMatmulPipeLine<CommunicationType, ComputationType, SchedulerContextType>; \
+        SchedulerType SchedulerImpl(&commImplName, &matmulImplName);                                                   \
+        Mc2Kernel::AlltoAllMxTensorMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllQuantMatmulTilingData>    \
             op(&SchedulerImpl);                                                                                        \
         op.Init(x1, x2, bias, y, all2all_out, x1_scale, x2_scale, workspaceGM, &tilingData, &pipe);                    \
         op.Process();                                                                                                  \

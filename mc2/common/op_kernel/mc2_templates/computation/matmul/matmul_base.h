@@ -48,6 +48,12 @@ struct MC2MMContext {
     AdditionalGmAddrDataType additionalData;
     // mamtul的tiling
     TilingDataType* tilingDataPtr;
+    // rank循环stride参数（用于去除transpose优化）
+    uint32_t rankDim;
+    uint64_t globalStride;
+    uint64_t tileStride;
+    uint64_t scaleGlobalStride;
+    uint64_t scaleTileStride;
 };
 }; // namespace MC2KernelTemplate
 

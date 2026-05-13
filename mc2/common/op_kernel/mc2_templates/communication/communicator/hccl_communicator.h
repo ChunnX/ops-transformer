@@ -82,7 +82,7 @@ HcclCommunicator<AICSync, ServerType, ContextType, TilingDataType, Primitive, Se
             notifyFlag_ = true;
         }
     } else if ASCEND_IS_AIC {
-        if (AICSync && AscendC::GetBlockIdx() == 0) {
+        if (AICSync) {
             notifyFlag_ = true;
         }
     }
