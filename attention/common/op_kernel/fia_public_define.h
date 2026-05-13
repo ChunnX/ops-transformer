@@ -247,15 +247,15 @@ struct MSplitInfo {
     uint32_t vecDealM = 0U;
 };
 
-enum class TASK_DEAL_MODE : uint32_t
-{
-    DEAL_ZERO = 0,
-    SKIP = 1,
-    CREATE_TASK = 2,
-    SKIP_S1OUT = 3,
-    SKIP_ZERO = 4,
-    S2_END = 5,
-};
+// enum class TASK_DEAL_MODE : uint32_t
+// {
+//     DEAL_ZERO = 0,
+//     SKIP = 1,
+//     CREATE_TASK = 2,
+//     SKIP_S1OUT = 3,
+//     SKIP_ZERO = 4,
+//     S2_END = 5,
+// };
 
 template <FIA_LAYOUT LAYOUT_T>
 __aicore__ inline void GetGS1Idx(uint32_t gS1Idx, uint32_t &gIdx, uint32_t &s1Idx, AttentionCommon::ConstInfo &constInfo)

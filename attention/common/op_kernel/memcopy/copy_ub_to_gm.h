@@ -312,11 +312,11 @@ __aicore__ inline void DataCopySoftmaxLseNTDArch35(GlobalTensor<float> softmaxLs
 }
 
 // ----------------------------------------------Copy LSE UB To Gm arch32--------------------------------
-template <typename T, ActualSeqLensMode Q_MODE>
+template <typename T, ActualSeqLensMode Q_MODE, bool WITH_ZERO_HEAD = false, typename ACTLEN_T = uint64_t>
 __aicore__ inline void DataCopySoftmaxLseBSND(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
-                                              uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
-                                              const AttentionCommon::ConstInfo &constInfo,
-                                              ActualSeqLensParser<Q_MODE> qActSeqLensParser, uint64_t bIdx)
+                                                 uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount, 
+                                                 const AttentionCommon::ConstInfo &constInfo,
+                                                 ActualSeqLensParser<Q_MODE, ACTLEN_T, WITH_ZERO_HEAD> qActSeqLensParser, uint64_t bIdx)
 {
     uint32_t startS1Idx = mOffset / constInfo.gSize;
     uint32_t startGIdx = mOffset % constInfo.gSize;
@@ -349,11 +349,11 @@ __aicore__ inline void DataCopySoftmaxLseBSND(GlobalTensor<float> softmaxLseGm, 
     }
 }
 
-template <typename T, ActualSeqLensMode Q_MODE>
+template <typename T, ActualSeqLensMode Q_MODE, bool WITH_ZERO_HEAD = false, typename ACTLEN_T = uint64_t>
 __aicore__ inline void DataCopySoftmaxLseBNSD(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
                                             uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
                                             const AttentionCommon::ConstInfo &constInfo,
-                                            ActualSeqLensParser<Q_MODE> qActSeqLensParser, uint64_t bIdx)
+                                            ActualSeqLensParser<Q_MODE, ACTLEN_T, WITH_ZERO_HEAD> qActSeqLensParser, uint64_t bIdx)
 {
     uint64_t gOffset = mOffset / qActSeqLensParser.GetActualSeqLength(bIdx) * constInfo.qSeqSize;
     uint64_t seqOffset = mOffset % qActSeqLensParser.GetActualSeqLength(bIdx);
