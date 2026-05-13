@@ -275,8 +275,6 @@ public:
     bool isSameSeqAllKVTensor = true;
     bool isSameActualseq = true;
     uint32_t actualLenDimsKV = 0;
-    bool isActualLenDimsOriKVNull = true;
-    bool isActualLenDimsCmpKVNull = true;
     bool isCmpResidualKVNull = true;
     uint32_t actualLenDimsOriKV = 0;
     uint32_t actualLenDimsCmpKV = 0;
@@ -391,11 +389,8 @@ public:
     int64_t sparseBlockSize_ = 0;
     int64_t sparseBlockCount_ = 0;
     uint32_t maxActualseq_ = 0;
-    bool isSameSeqAllKVTensor_ = true;
+bool isSameSeqAllKVTensor_ = true;
     uint32_t actualLenDimsKV_ = 0;
-    uint32_t actualLenDimsQ_ = 0;
-    bool isActualSeqLenDimsOriKVNull_ = true;
-    bool isActualSeqLenDimsCmpKVNull_ = true;
     bool isCmpResidualKVNull_ = true;
     uint32_t actualLenDimsOriKV_ = 0;
     uint32_t actualLenDimsCmpKV_ = 0;
