@@ -819,9 +819,6 @@ ge::graphStatus MoeDistributeDispatchTeardownTilingBase::MoeDistributeDispatchTe
     }
 
     SetHcommCfg();
-    if (SetWorkSpace() != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
     SetTilingKey();
     SetPlatformInfo();
     PrintTilingDataInfo();
