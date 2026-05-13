@@ -60,13 +60,27 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
     }
 
     if (!constInfo.isActualLenDimsOriKVNull) {
-        actualS2Size = (constInfo.actualLenDimsOriKV == actualSeqKVMin) ?
-            actualSeqOriKvlenAddr[0] : actualSeqOriKvlenAddr[sIdx];
+        if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
+            actualS2Size = actualSeqOriKvlenAddr[sIdx];
+            if ((sIdx > 0) && (!isPa)) {
+                actualS2Size -= actualSeqOriKvlenAddr[sIdx - 1];
+            }
+        } else {
+            actualS2Size = (constInfo.actualLenDimsOriKV == actualSeqKVMin) ?
+                actualSeqOriKvlenAddr[0] : actualSeqOriKvlenAddr[sIdx];
+        }
     }
 
     if (!constInfo.isActualLenDimsCmpKVNull) {
-        actualS2CmpSize = (constInfo.actualLenDimsCmpKV == actualSeqKVMin) ?
-            actualSeqCmpKvlenAddr[0] : actualSeqCmpKvlenAddr[sIdx];
+        if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
+            actualS2CmpSize = actualSeqCmpKvlenAddr[sIdx];
+            if ((sIdx > 0) && (!isPa)) {
+                actualS2CmpSize -= actualSeqCmpKvlenAddr[sIdx - 1];
+            }
+        } else {
+            actualS2CmpSize = (constInfo.actualLenDimsCmpKV == actualSeqKVMin) ?
+                actualSeqCmpKvlenAddr[0] : actualSeqCmpKvlenAddr[sIdx];
+        }
     } else {
         actualS2CmpSize = actualS2Size / constInfo.cmpRatio;
     }
