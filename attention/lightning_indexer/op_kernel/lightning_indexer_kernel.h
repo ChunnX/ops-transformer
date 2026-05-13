@@ -580,8 +580,13 @@ __aicore__ inline void LIPreload<LIT>::ProcessInvalid()
 {
     if ASCEND_IS_AIV {
         uint32_t aivCoreNum = GetBlockNum() * 2; // 2 means c:v = 1:2
-        uint64_t totalOutputSize =
-            constInfo.batchSize * constInfo.qSeqSize * constInfo.kHeadNum * constInfo.sparseCount;
+        uint64_t totalOutputSize;
+        if constexpr (LAYOUT_T == LI_LAYOUT::BSND) {
+            totalOutputSize = constInfo.batchSize * constInfo.qSeqSize * constInfo.kHeadNum * constInfo.sparseCount;
+        } else {
+            uint32_t tBase = constInfo.batchSize == 0 ? 0 : actualSeqLengthsGmQ.GetValue(constInfo.batchSize - 1);
+            totalOutputSize = tBase * constInfo.kHeadNum * constInfo.sparseCount;
+        }
         uint64_t singleCoreSize =
             LICommon::Align((totalOutputSize + aivCoreNum - 1) / aivCoreNum, GM_ALIGN_BYTES / sizeof(OUT_T));
         uint64_t baseSize = tmpBlockIdx * singleCoreSize;
