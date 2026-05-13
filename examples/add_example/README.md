@@ -78,3 +78,8 @@ $$
   </tr>
 </tbody>
 </table>
+    ```bash
+    bash build.sh --run_example ${op} ${mode} [--soc=${soc_version}]
+    # 以FlashAttentionScore算子example执行为例
+    # bash build.sh --run_example flash_attention_score eager
+    ```
