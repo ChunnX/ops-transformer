@@ -71,6 +71,7 @@ constexpr uint32_t ATTR_QUERY_QUANT_MODE_INDEX = 13;
 constexpr uint32_t ATTR_PSE_TYPE_INDEX = 14;
 constexpr uint32_t ATTR_PSE_SHIFT_S1_INDEX = 2;
 constexpr uint32_t ATTR_PSE_SHIFT_S2_INDEX = 3;
+constexpr uint32_t ATTR_BLOCK_STRIDE_INDEX = 16;
 
 // Output Index
 constexpr uint32_t ATTENTION_OUT_INDEX = 0;
