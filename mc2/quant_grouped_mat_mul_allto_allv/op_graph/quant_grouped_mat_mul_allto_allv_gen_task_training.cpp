@@ -20,27 +20,49 @@
 #include "op_graph/mc2_moe_gen_task_ops_utils.h"
 #include "op_graph/mc2_gen_task_ops_utils_arch35.h"
 #include "mc2_platform_info.h"
+#include "mc2_comm_utils.h"
 
 namespace ops {
 ge::Status QuantGroupedMatMulAlltoAllvCalcParamFunc(gert::ExeResGenerationContext *context)
 {
-    if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
-        OPS_LOG_D(context->GetNodeName(), "Do A5 CCU CalcParamFunc");
-        return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "ccu server", "ccu_stream");
+    const char* serverType = nullptr;
+    const char* streamType = nullptr;
+
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    bool isArch35 = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5);
+ 	 
+    if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+        streamType = "kfc_stream";
+        serverType = "aicpu kfc server";
+        OPS_LOG_D(context->GetNodeName(), "ENV_MC2_COMM_MODE_AICPU set, force AICPU GenTask");
+    } else if (isArch35) {
+        streamType = "ccu_stream";
+        serverType = "ccu server";
+        OPS_LOG_D(context->GetNodeName(), "Arch35 platform, use CCU GenTask");
+    } else {
+        streamType = "kfc_stream";
+        serverType = "aicpu kfc server";
+        OPS_LOG_D(context->GetNodeName(), "Non-Arch35 platform, use AICPU GenTask");
     }
-    OPS_LOG_D(context->GetNodeName(), "Do A3 AICPU CalcParamFunc");
-    return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "aicpu kfc server", "kfc_stream");
+
+    return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, serverType, streamType);
 }
 
 ge::Status QuantGroupedMatMulAlltoAllvGenTaskFunc(const gert::ExeResGenerationContext *context,
                                              std::vector<std::vector<uint8_t>> &tasks)
 {
-    if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
-        OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTaskFunc");
-        return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks);
+    bool isArch35 = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5);
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    if (!isArch35) {
+        OPS_LOG_D(context->GetNodeName(), "Non-Arch35 platform, always use AICPU GenTask");
+        return Mc2MoeGenTaskOpsUtils::Mc2MoeGenTaskCallback(context, tasks);
     }
-    OPS_LOG_D(context->GetNodeName(), "Do A3 AICPU GenTaskFunc");
-    return Mc2MoeGenTaskOpsUtils::Mc2MoeGenTaskCallback(context, tasks);
+    if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+        OPS_LOG_D(context->GetNodeName(), "Arch35 platform with ENV_MC2_COMM_MODE_AICPU, use AICPU GenTask");
+        return Mc2MoeGenTaskOpsUtils::Mc2MoeGenTaskCallback(context, tasks);
+    }
+    OPS_LOG_D(context->GetNodeName(), "Arch35 platform, use CCU GenTask");
+    return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks);
 }
 
 // new ver
