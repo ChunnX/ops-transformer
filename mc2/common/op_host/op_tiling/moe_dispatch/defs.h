@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <set>
 #include "graph/utils/type_utils.h"
+#include "mc2_common_log.h"
 
 namespace moe_dispatch_defs {
 

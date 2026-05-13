@@ -62,6 +62,17 @@ public:
 
     // ========== 默认实现可 override ==========
 
+    // scales 维度数校验（参数化：不同模式要求不同）
+    // expandXDtype: expandX 输出的 dtype，用于静态量化 hif8 特殊校验
+    // 返回期望的维度数，0 表示允许多种维度（由调用方进一步校验）
+    virtual uint32_t GetExpectedScalesDimNum(ge::DataType expandXDtype) const {
+        (void)expandXDtype;
+        return moe_dispatch_defs::TWO_DIMS;  // 默认 2D
+    }
+
+    // scales 是否允许多维度（静态量化特有：允许 1D 或 2D）
+    virtual bool AllowScalesMultiDim() const { return false; }
+
     // dynamicScales 维度数
     virtual uint32_t GetDynamicScalesDimNum() const { return 0U; }
 

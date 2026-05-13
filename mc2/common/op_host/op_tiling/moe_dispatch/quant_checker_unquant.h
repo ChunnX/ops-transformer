@@ -39,6 +39,12 @@ public:
         return false;
     }
 
+    // scales 维度数校验 - 非量化模式固定 2D
+    uint32_t GetExpectedScalesDimNum(ge::DataType expandXDtype) const override {
+        (void)expandXDtype;
+        return moe_dispatch_defs::TWO_DIMS;
+    }
+
     // scales 校验
     ge::graphStatus CheckScales(
         gert::TilingContext* ctx,

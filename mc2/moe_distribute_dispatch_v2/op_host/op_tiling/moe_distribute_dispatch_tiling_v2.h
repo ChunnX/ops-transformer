@@ -32,6 +32,7 @@
 #include "moe_distribute_check_win_size.h"
 #include "mc2_exception_dump.h"
 #include "moe_distribute_dispatch_tiling_helper.h"
+#include "dispatch_v2_tiling_ctx.h"
 
 namespace optiling {
 
@@ -70,19 +71,17 @@ class MoeDistributeDispatchV2TilingFuncBase {
 public:
     ge::graphStatus MoeDistributeDispatchA3TilingFuncImplPublic(gert::TilingContext *context, DispatchV2Config &config);
     ge::graphStatus TilingCheckMoeDistributeDispatch(gert::TilingContext *context, const char *nodeName,
-        const bool isActiveMask, const bool isScales, const bool hasElasticInfo,
-        const bool isPerformance, const uint32_t quantMode,
-        const bool isLayered, DispatchV2Config &config);
+        const DispatchV2TilingCtx &tc, DispatchV2Config &config);
     bool CheckCommomOtherInputTensorDataType(const gert::TilingContext *context, const char *nodeName,
         const bool isActiveMask, const bool hasElasticInfo, const bool isPerformance, DispatchV2Config &config);
     bool CheckCommomOutputTensorDataType(const gert::TilingContext *context, const char *nodeName);
     ge::graphStatus CheckOtherAttrParams(const gert::TilingContext *context, const char *nodeName,
-        bool &isSetFullMeshV2, DispatchV2Config &config);
+        DispatchV2TilingCtx &tc, DispatchV2Config &config);
     ge::graphStatus CheckCommAttrParams(const gert::TilingContext *context, const char *nodeName,
-        std::string &groupTp, bool &isSetFullMeshV2, bool &isLayered, DispatchV2Config &config);
+        std::string &groupTp, DispatchV2TilingCtx &tc, DispatchV2Config &config);
     ge::graphStatus GetAttrAndSetTilingData(const gert::TilingContext *context, const char *nodeName,
         MoeDistributeDispatchV2TilingData &tilingData, std::string &groupEp, std::string &groupTp,
-        bool &isSetFullMeshV2, bool &isLayered, DispatchV2Config &config);
+        DispatchV2TilingCtx &tc, DispatchV2Config &config);
 
     virtual ge::graphStatus MoeDistributeDispatchV2TilingFunc(gert::TilingContext* context) = 0;
     virtual ge::graphStatus MoeDistributeDispatchTilingFuncImpl(gert::TilingContext* context) = 0;
