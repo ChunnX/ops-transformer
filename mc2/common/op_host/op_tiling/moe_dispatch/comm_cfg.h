@@ -1,0 +1,56 @@
+/**
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/*!
+ * \file comm_cfg.h
+ * \brief MOE Distribute Dispatch 通信配置统一接口
+ */
+
+#ifndef MOE_DISPATCH_COMM_CFG_H
+#define MOE_DISPATCH_COMM_CFG_H
+
+#include <string>
+#include "defs.h"
+#include "tiling/tiling_api.h"
+#include "register/tilingdata_base.h"
+
+namespace moe_dispatch_comm_cfg {
+
+// ========== EP AllToAll 配置 ==========
+// 适用于 dispatch_v2, dispatch_setup, dispatch_teardown
+void SetEpAllToAllCfg(
+    gert::TilingContext* ctx,
+    const std::string& groupEp,
+    bool isUrma,
+    bool isLayered);
+
+// ========== TP AllGather 配置 ==========
+// 仅 dispatch_v2 TP=2 场景
+void SetTpAllGatherCfg(
+    gert::TilingContext* ctx,
+    const std::string& groupTp);
+
+// ========== CCU 专用通信配置 ==========
+// 仅 dispatch_v2 arch35 CCU 模式
+void SetCcuCommCfg(
+    gert::TilingContext* ctx,
+    const std::string& groupEp);
+
+// ========== BatchWrite 配置 ==========
+// 仅 dispatch_setup A3 模式
+void SetBatchWriteCfg(
+    gert::TilingContext* ctx,
+    const std::string& groupEp,
+    uint32_t aivNum,
+    uint32_t sdmaUsedStreamPerCore);
+
+} // namespace moe_dispatch_comm_cfg
+
+#endif // MOE_DISPATCH_COMM_CFG_H
