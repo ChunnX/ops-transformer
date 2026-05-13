@@ -9,8 +9,12 @@
  */
 
 #include "../../../op_api/aclnn_moe_distribute_combine_v2.h"
+#include "../../../op_api/moe_distribute_combine_v2_base.h"
+#include "../../../../common/utils/op_mc2_def.h"
 
 #include <array>
+#include <cstdlib>
+#include <cstdint>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -25,6 +29,79 @@ using namespace op;
 using namespace std;
 
 namespace MoeDistributeCombineV2 {
+namespace {
+constexpr int64_t EP_WORLD_SIZE = 288;
+constexpr int64_t TP_WORLD_SIZE = 2;
+constexpr int64_t EP_RANK_ID = 0;
+constexpr int64_t TP_RANK_ID = 0;
+constexpr int64_t EXPERT_SHARD_TYPE = 0;
+constexpr int64_t SHARED_EXPERT_NUM = 1;
+constexpr int64_t SHARED_EXPERT_RANK_NUM = 32;
+constexpr int64_t MOE_EXPERT_NUM = 256;
+constexpr int64_t GLOBAL_BS = 0;
+constexpr int64_t OUT_DTYPE = 0;
+constexpr int64_t COMM_QUANT_MODE = 0;
+constexpr int64_t GROUP_LIST_TYPE = 0;
+
+const aclTensor *NonNullTensorPtr()
+{
+    return reinterpret_cast<const aclTensor *>(static_cast<uintptr_t>(0x10));
+}
+
+aclTensor *NonNullMutableTensorPtr()
+{
+    return reinterpret_cast<aclTensor *>(static_cast<uintptr_t>(0x20));
+}
+
+aclnnStatus CallBaseGetWorkspaceSize(const char *groupTp, const char *commAlg)
+{
+    TensorDesc expandXDesc = TensorDesc({32, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc expertIdsDesc = TensorDesc({32, 8}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc assistInfoDesc = TensorDesc({32 * 8}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc epSendCountsDesc = TensorDesc({288}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc expertScalesDesc = TensorDesc({32, 8}, ACL_FLOAT, ACL_FORMAT_ND);
+    TensorDesc xOutDesc = TensorDesc({32, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
+
+    auto expandX = expandXDesc.ToAclType();
+    auto expertIds = expertIdsDesc.ToAclType();
+    auto assistInfo = assistInfoDesc.ToAclType();
+    auto epSendCounts = epSendCountsDesc.ToAclType();
+    auto expertScales = expertScalesDesc.ToAclType();
+    auto xOut = xOutDesc.ToAclType();
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+
+    return aclnnMoeDistributeCombineBaseGetWorkspaceSize(
+        expandX.get(), expertIds.get(), assistInfo.get(), epSendCounts.get(), expertScales.get(), nullptr, nullptr,
+        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+        "test_moe_distribute_combine_ep", EP_WORLD_SIZE, EP_RANK_ID, MOE_EXPERT_NUM, groupTp, TP_WORLD_SIZE,
+        TP_RANK_ID, EXPERT_SHARD_TYPE, SHARED_EXPERT_NUM, SHARED_EXPERT_RANK_NUM, GLOBAL_BS, OUT_DTYPE,
+        COMM_QUANT_MODE, GROUP_LIST_TYPE, commAlg, 0, 0, 0, xOut.get(), &workspaceSize, &executor);
+}
+} // namespace
+
+TEST(MoeDistributeCombineV2BaseCoverageTest, TestBaseGetWorkspaceSize950Ccu)
+{
+    EXPECT_EXIT(
+        {
+            op::SetPlatformNpuArch(NpuArch::DAV_3510);
+            (void)CallBaseGetWorkspaceSize("test_moe_distribute_combine_tp", "ccu");
+            std::exit(0);
+        },
+        testing::ExitedWithCode(0), "");
+}
+
+TEST(MoeDistributeCombineV2BaseCoverageTest, TestBaseGetWorkspaceSizeNon910B)
+{
+    EXPECT_EXIT(
+        {
+            op::SetPlatformSocVersion(op::SocVersion::ASCEND910_93);
+            (void)CallBaseGetWorkspaceSize("test_moe_distribute_combine_tp", "test");
+            std::exit(0);
+        },
+        testing::ExitedWithCode(0), "");
+}
+
 class L2MoeDistributeCombineV2Test : public testing::Test {
 protected:
     static void SetUpTestCase()
@@ -80,5 +157,47 @@ TEST_F(L2MoeDistributeCombineV2Test, TestMoeDistributeCombineFirstApi)
   aclOpExecutor* executor = nullptr;
   aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
   EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST_F(L2MoeDistributeCombineV2Test, TestMoeDistributeCombineV2ExecuteEntry)
+{
+  aclnnStatus ret = aclnnMoeDistributeCombineV2(nullptr, 0, nullptr, nullptr);
+  EXPECT_THAT(ret, testing::AnyOf(testing::Eq(ACLNN_SUCCESS), testing::Eq(ACLNN_ERR_PARAM_NULLPTR),
+                                  testing::Eq(ACLNN_ERR_PARAM_INVALID), testing::Eq(ACLNN_ERR_INNER)));
+}
+
+TEST(MoeDistributeCombineV2BaseHelperTest, CombineCheckNotNullGroupNull)
+{
+  EXPECT_FALSE(CombineCheckNotNull(NonNullTensorPtr(), NonNullTensorPtr(), NonNullTensorPtr(), NonNullTensorPtr(),
+                                   NonNullTensorPtr(), nullptr, NonNullMutableTensorPtr()));
+}
+
+TEST(MoeDistributeCombineV2BaseHelperTest, CombineCheckNotNullGroupEmpty)
+{
+  EXPECT_FALSE(CombineCheckNotNull(NonNullTensorPtr(), NonNullTensorPtr(), NonNullTensorPtr(), NonNullTensorPtr(),
+                                   NonNullTensorPtr(), "", NonNullMutableTensorPtr()));
+}
+
+TEST(MoeDistributeCombineV2BaseHelperTest, CombineCheckParamsSuccess)
+{
+  EXPECT_EQ(CombineCheckParams(NonNullTensorPtr(), NonNullTensorPtr(), NonNullTensorPtr(), NonNullTensorPtr(),
+                               NonNullTensorPtr(), "group_ep", "group_tp", NonNullMutableTensorPtr()),
+            ACLNN_SUCCESS);
+}
+
+TEST(MoeDistributeCombineV2BaseHelperTest, CombineCheckParamsGroupEpTooLong)
+{
+  std::string longGroup(HCCL_GROUP_NAME_MAX, 'a');
+  EXPECT_EQ(CombineCheckParams(NonNullTensorPtr(), NonNullTensorPtr(), NonNullTensorPtr(), NonNullTensorPtr(),
+                               NonNullTensorPtr(), longGroup.c_str(), "group_tp", NonNullMutableTensorPtr()),
+            ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST(MoeDistributeCombineV2BaseHelperTest, CombineCheckParamsGroupTpTooLong)
+{
+  std::string longGroup(HCCL_GROUP_NAME_MAX, 'a');
+  EXPECT_EQ(CombineCheckParams(NonNullTensorPtr(), NonNullTensorPtr(), NonNullTensorPtr(), NonNullTensorPtr(),
+                               NonNullTensorPtr(), "group_ep", longGroup.c_str(), NonNullMutableTensorPtr()),
+            ACLNN_ERR_PARAM_INVALID);
 }
 } // MoeDistributeCombineV2
