@@ -186,7 +186,7 @@ public:
             FA_AIV_CORE_NUM * 16U * sectionNum_);
 
         InitConstInfo(queryPaddingSize, kvPaddingSize, actualSharedPrefixLen);
-        
+       
 
         keyPtr = key;
         valuePtr = value;
@@ -225,10 +225,12 @@ public:
         if ASCEND_IS_AIC {
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND || LAYOUT_Q == LayOutTypeEnum::LAYOUT_NTD) {
                 cubeBlock.InitCubeBlock(tPipe, &l1BufferManager, query, key, value, blockTable, queryRope, keyRope,
-                    cuSeqLensQ, cuSeqLensKv, keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen);
+                    qCuSeqLensParser, kvCuSeqLensParser,
+                    keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen);
             } else {
                 cubeBlock.InitCubeBlock(tPipe, &l1BufferManager, query, key, value, blockTable, queryRope, keyRope,
-                    seqUsedQ, seqUsedKv, keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen);
+                    qSeqUsedParser, kvSeqUsedParser,
+                    keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen);
             }
         }
 
