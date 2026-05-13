@@ -89,7 +89,7 @@ __aicore__ inline void SparseFlashAttentionGradPostRegbase<T1, T2, OUTDTYPE, IS_
     if (g_coreType != AIV) {
         return;
     }
-    for (int qkvIdx = 0; qkvIdx < 2; qkvIdx++) {
+    for (int qkvIdx = 0; qkvIdx < 3; qkvIdx++) {
         if (qkvIdx == 1) {
             loop = tilingData->postTilingData.kPostBlockFactor;
             inputTotalSize = tilingData->postTilingData.kPostBlockTotal;

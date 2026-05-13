@@ -164,7 +164,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
             // wait mm4 mm5 result
             CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SYNC_C5_TO_V5_FLAG);
         }
-        this->vecBlock.ScatterAdd(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm, this->dkWorkSpaceGm,
+        this->vecBlock.ScatterAdd(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm, this->dkWorkSpaceGm, this->dvWorkSpaceGm,
                                 mm1ResTensor, mm2ResTensor, this->constInfo, runInfo);
         if ASCEND_IS_AIV {
             CrossCoreSetFlag<SYNC_MODE, PIPE_MTE2>(SYNC_V5_TO_C4_FLAG[runInfo.commonRunInfo.taskIdMod2]);
@@ -227,7 +227,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
             } else {
                 CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
                 this->vecBlock.ScatterAddDeter(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm,
-                                this->dkWorkSpaceGm, this->constInfo, deterRunInfos[(sTaskId + 1) & 1]);
+                                this->dkWorkSpaceGm, this->dvWorkSpaceGm, this->constInfo, deterRunInfos[(sTaskId + 1) & 1]);
             }
         }
         sTaskId++;
@@ -243,7 +243,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
         } else {
             CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
             this->vecBlock.ScatterAddDeter(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm,
-                            this->dkWorkSpaceGm, this->constInfo, deterRunInfos[(sTaskId + 1) & 1]);
+                            this->dkWorkSpaceGm, this->dvWorkSpaceGm, this->constInfo, deterRunInfos[(sTaskId + 1) & 1]);
         }
     }
 
@@ -258,7 +258,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
             CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
             this->SetDeterRunInfo(deterRunInfos[sTaskId & 1], sTaskId);
             this->vecBlock.ScatterAddDeter(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm,
-                            this->dkWorkSpaceGm, this->constInfo, deterRunInfos[sTaskId & 1]);
+                            this->dkWorkSpaceGm, this->dvWorkSpaceGm, this->constInfo, deterRunInfos[sTaskId & 1]);
         }
     }
     this->FreeEventID();
