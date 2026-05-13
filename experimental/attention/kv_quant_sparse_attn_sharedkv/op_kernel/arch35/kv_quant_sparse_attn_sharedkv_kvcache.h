@@ -27,7 +27,8 @@ using namespace AscendC::Impl::Detail;
 
 TEMPLATE_INTF
 __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo &constInfo,
-    __gm__ int32_t *cuSeqlensQAddr, __gm__ int32_t *actualSeqQlenAddr,
+    __gm__ int32_t *cuSeqlensQAddr, __gm__ int32_t *cuSeqlensOriKvAddr, __gm__ int32_t *cuSeqlensCmpKvAddr,
+    __gm__ int32_t *actualSeqQlenAddr,
     __gm__ int32_t *actualSeqOriKvlenAddr, __gm__ int32_t *actualSeqCmpKvlenAddr, __gm__ int32_t *cmpResidualKvAddr)
 {
     int32_t actualS1Size = 0;
@@ -44,32 +45,44 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
             actualSeqQlenAddr[bIdx];
     }
 
-    if (!constInfo.isActualLenDimsOriKVNull) {
-        if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
+    if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
+        if (!constInfo.isActualLenDimsOriKVNull) {
             actualS2Size = actualSeqOriKvlenAddr[bIdx];
             if ((bIdx > 0) && (!isPa)) {
                 actualS2Size -= actualSeqOriKvlenAddr[bIdx - 1];
             }
+        } else if (cuSeqlensOriKvAddr != nullptr) {
+            actualS2Size = cuSeqlensOriKvAddr[bIdx + 1] - cuSeqlensOriKvAddr[bIdx];
         } else {
-            actualS2Size = (constInfo.actualLenDimsOriKV == actualSeqKVMin) ?
-                actualSeqOriKvlenAddr[0] : actualSeqOriKvlenAddr[bIdx];
+            actualS2Size = constInfo.s2Size;
         }
     } else {
-        actualS2Size = constInfo.s2Size;
+        if (!constInfo.isActualLenDimsOriKVNull) {
+            actualS2Size = (constInfo.actualLenDimsOriKV == actualSeqKVMin) ?
+                actualSeqOriKvlenAddr[0] : actualSeqOriKvlenAddr[bIdx];
+        } else {
+            actualS2Size = constInfo.s2Size;
+        }
     }
 
-    if (!constInfo.isActualLenDimsCmpKVNull) {
-        if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
+    if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
+        if (!constInfo.isActualLenDimsCmpKVNull) {
             actualS2CmpSize = actualSeqCmpKvlenAddr[bIdx];
             if ((bIdx > 0) && (!isPa)) {
                 actualS2CmpSize -= actualSeqCmpKvlenAddr[bIdx - 1];
             }
+        } else if (cuSeqlensCmpKvAddr != nullptr) {
+            actualS2CmpSize = cuSeqlensCmpKvAddr[bIdx + 1] - cuSeqlensCmpKvAddr[bIdx];
         } else {
-            actualS2CmpSize = (constInfo.actualLenDimsCmpKV == actualSeqKVMin) ?
-                actualSeqCmpKvlenAddr[0] : actualSeqCmpKvlenAddr[bIdx];
+            actualS2CmpSize = actualS2Size / constInfo.cmpRatio;
         }
     } else {
-        actualS2CmpSize = actualS2Size / constInfo.cmpRatio;
+        if (!constInfo.isActualLenDimsCmpKVNull) {
+            actualS2CmpSize = (constInfo.actualLenDimsCmpKV == actualSeqKVMin) ?
+                actualSeqCmpKvlenAddr[0] : actualSeqCmpKvlenAddr[bIdx];
+        } else {
+            actualS2CmpSize = actualS2Size / constInfo.cmpRatio;
+        }
     }
 
     runParam.actualS1Size = actualS1Size;
@@ -87,10 +100,11 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
 
 TEMPLATE_INTF
 __aicore__ inline void ComputeParamBatch(RunParamStr& runParam, const ConstInfo &constInfo,
-    __gm__ int32_t *cuSeqlensQAddr, __gm__ int32_t *actualSeqQlenAddr,
+    __gm__ int32_t *cuSeqlensQAddr, __gm__ int32_t *cuSeqlensOriKvAddr, __gm__ int32_t *cuSeqlensCmpKvAddr,
+    __gm__ int32_t *actualSeqQlenAddr,
     __gm__ int32_t *actualSeqOriKvlenAddr, __gm__ int32_t *actualSeqCmpKvlenAddr, __gm__ int32_t *cmpResidualKvAddr)
 {
-    GetSingleCoreParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, cuSeqlensQAddr, actualSeqQlenAddr,
+    GetSingleCoreParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, cuSeqlensQAddr, cuSeqlensOriKvAddr, cuSeqlensCmpKvAddr, actualSeqQlenAddr,
         actualSeqOriKvlenAddr, actualSeqCmpKvlenAddr, cmpResidualKvAddr);
 }
 

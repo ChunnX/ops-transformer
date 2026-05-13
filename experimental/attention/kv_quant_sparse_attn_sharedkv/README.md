@@ -34,8 +34,8 @@
 |ori_block_table|可选输入|PageAttention中oriKvCache存储使用的block映射表，shape约束见下方约束说明|INT32|ND|
 |cmp_block_table|可选输入|PageAttention中cmpKvCache存储使用的block映射表，shape约束见下方约束说明|INT32|ND|
 |cu_seqlens_q|可选输入|表示当前Batch及前序Batch中q的有效token数的累加和，维度为B+1，仅layout_q为TND场景需传入|INT32|ND|
-|cu_seqlens_ori_kv|可选输入|预留参数，当前不生效，表示当前Batch及前序Batch中ori_kv的有效token数的累加和，维度为B+1，仅layout_kv为TND场景需传入|INT32|ND|
-|cu_seqlens_cmp_kv|可选输入|预留参数，当前不生效，表示当前Batch及前序Batch中cmp_kv的有效token数的累加和，维度为B+1，仅layout_kv为TND场景需传入|INT32|ND|
+|cu_seqlens_ori_kv|可选输入|表示当前Batch及前序Batch中ori_kv的有效token数的累加和，维度为B+1，仅layout_kv为TND场景需传入|INT32|ND|
+|cu_seqlens_cmp_kv|可选输入|表示当前Batch及前序Batch中cmp_kv的有效token数的累加和，维度为B+1，仅layout_kv为TND场景需传入|INT32|ND|
 |seqused_q|可选输入|预留参数，当前不生效，表示不同Batch中q的有效token数，维度为B|INT32|ND|
 |seqused_kv|可选输入|表示不同Batch中ori_kv的有效token数，维度为B|INT32|ND|
 |sinks|可选输入|注意力下沉tensor，当前必须传入|FLOAT32|ND|
