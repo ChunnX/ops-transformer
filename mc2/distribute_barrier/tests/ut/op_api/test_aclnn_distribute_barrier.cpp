@@ -10,17 +10,40 @@
 
 #include <float.h>
 #include <array>
+#include <cstdlib>
+#include <cstdint>
+#include <string>
 #include <vector>
 #include "gtest/gtest.h"
 #include <gmock/gmock.h>
 #include "../../../op_api/aclnn_distribute_barrier.h"
 #include "../../../op_api/aclnn_distribute_barrier_v2.h"
+#include "../../../op_api/distribute_barrier_base.h"
+#include "../../../../common/utils/op_mc2_def.h"
 #include "op_api_ut_common/tensor_desc.h"
 #include "op_api_ut_common/op_api_ut.h"
 #include "opdev/platform.h"
 
 using namespace op;
 using namespace std;
+
+TEST(DistributeBarrierBase950CoverageTest, TestGetWorkspaceSizeAndExecuteOn950)
+{
+    EXPECT_EXIT(
+        {
+            op::SetPlatformNpuArch(NpuArch::DAV_3510);
+            TensorDesc xRefDesc = TensorDesc({3, 4}, ACL_FLOAT16, ACL_FORMAT_ND);
+            auto xRef = xRefDesc.ToAclType();
+            uint64_t workspaceSize = 0;
+            aclOpExecutor *executor = nullptr;
+
+            (void)aclnnDistributeBarrierGetWorkspaceSizeBase(xRef.get(), nullptr, nullptr, "test_distribute_barrier",
+                                                             16, &workspaceSize, &executor);
+            (void)aclnnDistributeBarrierBase(nullptr, workspaceSize, executor, nullptr);
+            std::exit(0);
+        },
+        testing::ExitedWithCode(0), "");
+}
 
 class L2AclnnDistributeBarrierTest : public testing::Test {
 protected:
@@ -244,4 +267,110 @@ TEST_F(L2AclnnDistributeBarrierTest, TestAclnnDistributeBarrierSecondApiTimeOutA
     if (aclRet == ACLNN_SUCCESS && executor != nullptr) {
         aclRet = aclnnDistributeBarrierV2(nullptr, workspaceSize, executor, nullptr);
     }
+}
+
+TEST_F(L2AclnnDistributeBarrierTest, TestAclnnDistributeBarrierGetWorkspaceSizeNullXRef)
+{
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet =
+        aclnnDistributeBarrierGetWorkspaceSize(nullptr, "test_distribute_barrier", 16, &workspaceSize, &executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
+}
+
+TEST_F(L2AclnnDistributeBarrierTest, TestAclnnDistributeBarrierV2GetWorkspaceSizeNullXRef)
+{
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = aclnnDistributeBarrierV2GetWorkspaceSize(nullptr, nullptr, nullptr, "test_distribute_barrier", 16,
+                                                                 &workspaceSize, &executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
+}
+
+TEST_F(L2AclnnDistributeBarrierTest, TestAclnnDistributeBarrierGetWorkspaceSizeBaseNullXRef)
+{
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = aclnnDistributeBarrierGetWorkspaceSizeBase(nullptr, nullptr, nullptr, "test_distribute_barrier",
+                                                                    16, &workspaceSize, &executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
+}
+
+TEST_F(L2AclnnDistributeBarrierTest, TestAclnnDistributeBarrierLongGroupName)
+{
+    TensorDesc xRef = TensorDesc({3, 4}, ACL_FLOAT16, ACL_FORMAT_ND);
+    int64_t worldSize = 16;
+    std::string longGroup(HCCL_GROUP_NAME_MAX, 'a');
+
+    auto ut = OP_API_UT(aclnnDistributeBarrier, INPUT(xRef, longGroup.c_str(), worldSize), OUTPUT());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST_F(L2AclnnDistributeBarrierTest, TestAclnnDistributeBarrierV2LongGroupName)
+{
+    TensorDesc xRef = TensorDesc({3, 4}, ACL_FLOAT16, ACL_FORMAT_ND);
+    int64_t worldSize = 16;
+    std::string longGroup(HCCL_GROUP_NAME_MAX, 'a');
+
+    auto ut = OP_API_UT(aclnnDistributeBarrierV2,
+                        INPUT(xRef, nullptr, nullptr, longGroup.c_str(), worldSize), OUTPUT());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST_F(L2AclnnDistributeBarrierTest, TestAclnnDistributeBarrierExecuteEntry)
+{
+    aclnnStatus ret = aclnnDistributeBarrier(nullptr, 0, nullptr, nullptr);
+    EXPECT_THAT(ret, testing::AnyOf(testing::Eq(ACLNN_SUCCESS), testing::Eq(ACLNN_ERR_PARAM_NULLPTR),
+                                    testing::Eq(ACLNN_ERR_PARAM_INVALID)));
+}
+
+TEST_F(L2AclnnDistributeBarrierTest, TestAclnnDistributeBarrierV2ExecuteEntry)
+{
+    aclnnStatus ret = aclnnDistributeBarrierV2(nullptr, 0, nullptr, nullptr);
+    EXPECT_THAT(ret, testing::AnyOf(testing::Eq(ACLNN_SUCCESS), testing::Eq(ACLNN_ERR_PARAM_NULLPTR),
+                                    testing::Eq(ACLNN_ERR_PARAM_INVALID)));
+}
+
+namespace {
+const aclTensor *NonNullTensorPtr()
+{
+    return reinterpret_cast<const aclTensor *>(static_cast<uintptr_t>(0x10));
+}
+} // namespace
+
+TEST(DistributeBarrierBaseHelperTest, BarrierCheckNullStatusXRefNull)
+{
+    EXPECT_FALSE(BarrierCheckNullStatus(nullptr, "g"));
+}
+
+TEST(DistributeBarrierBaseHelperTest, BarrierCheckNullStatusGroupNull)
+{
+    EXPECT_FALSE(BarrierCheckNullStatus(NonNullTensorPtr(), nullptr));
+}
+
+TEST(DistributeBarrierBaseHelperTest, BarrierCheckNullStatusOk)
+{
+    EXPECT_TRUE(BarrierCheckNullStatus(NonNullTensorPtr(), "g"));
+}
+
+TEST(DistributeBarrierBaseHelperTest, BarrierCheckParamsSuccess)
+{
+    EXPECT_EQ(BarrierCheckParams(NonNullTensorPtr(), "test_distribute_barrier"), ACLNN_SUCCESS);
+}
+
+TEST(DistributeBarrierBaseHelperTest, BarrierCheckParamsGroupEmpty)
+{
+    EXPECT_EQ(BarrierCheckParams(NonNullTensorPtr(), ""), ACLNN_SUCCESS);
+}
+
+TEST(DistributeBarrierBaseHelperTest, BarrierCheckParamsGroupTooLong)
+{
+    std::string longGroup(HCCL_GROUP_NAME_MAX, 'a');
+    EXPECT_EQ(BarrierCheckParams(NonNullTensorPtr(), longGroup.c_str()), ACLNN_SUCCESS);
 }
