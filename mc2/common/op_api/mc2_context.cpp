@@ -532,7 +532,7 @@ aclnnStatus Mc2Context::GetMc2ContextTensor(const char *groupEp, const char *opN
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus Mc2Context::GetMc2RankSize(const char *groupEp, uint64_t &rankSize)
+aclnnStatus Mc2Context::GetMc2RankSize(const char *groupEp, uint32_t &rankSize)
 {
     OP_LOGD("Start to get Mc2RankSize Tensor");
     auto &instance = GetInstance();
@@ -544,7 +544,7 @@ aclnnStatus Mc2Context::GetMc2RankSize(const char *groupEp, uint64_t &rankSize)
     aclnnRet = instance.GetCommHandle(groupEp, hcclHandle);
     CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
 
-    auto hcclRet = HcclGetRankSize(hcclHandle, &rankSize);
+    auto hcclRet = instance.HcclGetRankSize(hcclHandle, &rankSize);
     if (hcclRet != HCCL_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER, "Get rank size failed");
         return ACLNN_ERR_INNER;
