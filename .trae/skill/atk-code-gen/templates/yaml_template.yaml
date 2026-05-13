@@ -1,0 +1,149 @@
+# ATK用例YAML模板
+# 本模板展示各类input的写法范例，实际使用时根据算子接口替换参数名和取值
+version: v2.1
+name: {{ACLNN_API_NAME}}
+aclnn_name: {{ACLNN_API_NAME}}
+api: pytorch
+api_type: function_{{ACLNN_API_NAME}}
+dist_api_type: function_{{ACLNN_API_NAME}}
+aclnn_api_type: pyaclnn_{{ACLNN_API_NAME}}
+dtype_numbers: 20
+generate: generate_{{GENERATOR_NAME}}
+backward: false
+standard:
+    acc:
+      cv_fused_double_benchmark:
+        max_re_ratio: 5
+        avg_re_ratio: 1.5
+        root_mean_squared_ratio: 1.5
+    perf: [1, 0.95]
+inputs:
+
+  # ── 2D tensor（主输入，如x/x1） ──
+  - name: x
+    type: tensor
+    required: true
+    dtypes:
+      values: [ fp16, bf16 ]
+    ranges:
+      valid:
+        values: [ [ -5, 5 ] ]
+      invalid:
+        values: [ [ -5, 5 ] ]
+    shapes:
+      dim_numbers:
+        values: [2]
+      dim_values:
+        - values: [ [1, 10000] ]
+        - values: [ [1, 5000] ]
+      max_length: 2147483648
+
+  # ── 2D tensor（权重，如weight/x2，dtype可能与主输入不同） ──
+  - name: weight
+    type: tensor
+    required: true
+    dtypes:
+      values: [ fp16, bf16 ]
+    ranges:
+      valid:
+        values: [ [ -5, 5 ] ]
+      invalid:
+        values: [ [ -5, 5 ] ]
+    shapes:
+      dim_numbers:
+        values: [2]
+      dim_values:
+        - values: [ 128 ]
+        - values: [ [1, 10000] ]
+      max_length: 2147483648
+
+  # ── 1D tensor（如bias，1维，shape由generator约束） ──
+  - name: bias
+    type: tensor
+    required: true
+    dtypes:
+      values: [ bf16 ]
+    ranges:
+      valid:
+        values: [ [-5, 5] ]
+      invalid:
+        values: [ [-5, 5] ]
+    shapes:
+      dim_numbers:
+        values: [1]
+      dim_values:
+        values: [ 32 ]
+
+  # ── 1D tensor（如scale，仅声明dtype和shape占位，实际由generator设置） ──
+  - name: x1Scale
+    type: tensor
+    required: true
+    dtypes:
+      values: [ fp32 ]
+    ranges:
+      valid:
+        values: [ [0, 5] ]
+      invalid:
+        values: [ [0, 5] ]
+    shapes:
+      dim_numbers:
+        values: [1]
+      dim_values:
+        values: [ 32 ]
+
+  # ── 占位tensor（executor中置空，如commScale/x1Offset/x2Offset） ──
+  - name: commScale
+    type: tensor
+    required: true
+    dtypes:
+      values: [ bf16 ]
+
+  # ── attrs类型（如alltoAllAxesOptional，executor中处理为aclIntArray空链表） ──
+  - name: alltoAllAxesOptional
+    type: attrs
+    required: true
+    dtypes:
+      values: [ int64_t ]
+
+  # ── attr + string（如group，executor中重新赋值为hccl通信域） ──
+  - name: group
+    type: attr
+    required: true
+    dtypes:
+      values: [ string ]
+
+  # ── attr + bool（如transposeX2，有true/false两种取值，也可以只写一种取值） ──
+  - name: transposeX2
+    type: attr
+    required: true
+    dtypes:
+      values: [ bool ]
+    ranges:
+      valid:
+        values: [ true, false ]
+      invalid:
+        values: [ true, false ]
+
+  # ── attr + int64_t（如quantType/x1QuantMode，枚举整数值） ──
+  - name: quantType
+    type: attr
+    required: true
+    dtypes:
+      values: [ int64_t ]
+    ranges:
+      valid:
+        values: [ 0, 1, 2 ]
+      invalid:
+        values: [ 0, 1, 2 ]
+
+  # ── attr + bool（控制标志，executor中pop掉，不传入aclnn，如hasBias/hasAlltoall） ──
+  - name: hasBias
+    type: attr
+    required: true
+    dtypes:
+      values: [ bool ]
+    ranges:
+      valid:
+        values: [ true, false ]
+      invalid:
+        values: [ true, false ]

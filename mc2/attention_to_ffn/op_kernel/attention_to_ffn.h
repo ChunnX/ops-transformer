@@ -541,9 +541,9 @@ template <TemplateAttentionToFFNTypeClass>
 __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNTypeFunc>::CheckFlagAndSetTableGM(int32_t toRankId, GM_ADDR &toRankAddr,
     GlobalTensor<int32_t> &tokenInfoTableGMTensor)
 {
-    if (winContext_->userMemType == 0) {
+    if (winContext_->userMemType == 0) { //DIE 间通信，获取对端 DIE 的 peermem 窗口地址
         toRankAddr = (GM_ADDR)(((HcclRankRelationResV2 *)(winContext_->remoteRes[toRankId].nextDevicePtr))->windowsIn);
-    } else {
+    } else { //跨卡通信 （多卡场景）
         toRankAddr = (GM_ADDR)(__gm__ uint8_t*)(winContext_->userMemRes[toRankId].addr);
     }
     GM_ADDR tokenInfoTable = (__gm__ uint8_t*)(toRankAddr + winInfoTableOffset_);
@@ -551,7 +551,10 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNTypeFunc>::CheckFlag
 
     int32_t ffnFlage = 1;
     while (ffnFlage == 1) {
+        // 1. 从目标FFN卡的tokenInfoTable头部读取2个int32（flag + layerId）
         DataCopy(ffnFlagTensor_, tokenInfoTableGMTensor, STATUS_REP_STRIDE);
+        //    STATUS_REP_STRIDE=8，实际读取8个int32（32B对齐），但只关心第0个（flag）
+        // 2. 等待MTE2→S的数据搬运完成
         SyncFunc<AscendC::HardEvent::MTE2_S>();
         ffnFlage = ffnFlagTensor_.GetValue(0);
     }
@@ -663,7 +666,7 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNTypeFunc>::SendToken
         Duplicate<int32_t>(ffnStatusTensor_, static_cast<int32_t>(0), ffnNumAlignCnt_); // 初始化workSpace
     }
 
-    // 将totalSendNum_个token均匀分配给各AIV核心
+    // 将totalSendNum_个token均匀分配给各AIV核心，得到开始结束token id
     SplitToCore(totalSendNum_, aivNum_, startId, endId, sendNum_);
     // 分配statusTensor_缓冲区：每token占32B（STATUS_REP_STRIDE * sizeof(int32_t)），最少1个token的空间
     uint32_t statusCnt = sendNum_ > 0 ? sendNum_ : 1;   // buf复用
@@ -679,7 +682,7 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNTypeFunc>::SendToken
         return;
     }
 
-    // 一次性刷新expertRankTable当前层的Cache Line
+    // 一次性刷新 expertRankTable  当前层的Cache Line
     // 每16个int32（64B）刷新一次Cache Line，确保后续FindExpertRank查表时数据一致性
     for (uint32_t idx = 0; idx < Ceil(expertRankTableCnt_, EXPERT_TABLE_REP_STRIDE); ++idx) {
         DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
