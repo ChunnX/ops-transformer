@@ -46,9 +46,10 @@ inline uint64_t CalcMinBuffSize(
 // ========== 从 HCCL group 获取实际大小 ==========
 
 inline ge::graphStatus CheckBuffSizeFromContext(
-    gert::TilingContext* ctx, uint32_t groupIndex, uint64_t minRequired) {
+    gert::TilingContext* ctx, uint32_t groupIndex, uint64_t minRequired, const char* nodeName) {
 
     if (ctx == nullptr) {
+        OPS_LOG_E(nodeName, "TilingContext is null when checking HCCL buffer size.");
         return ge::GRAPH_FAILED;
     }
 
@@ -60,6 +61,8 @@ inline ge::graphStatus CheckBuffSizeFromContext(
     // actualSize = ctx->GetHcclBuffSize(groupIndex);
 
     if (actualSize < minRequired) {
+        OPS_LOG_E(nodeName, "HCCL buffer size %lu is less than required minimum %lu.",
+            actualSize, minRequired);
         return ge::GRAPH_FAILED;
     }
 
@@ -72,6 +75,8 @@ inline ge::graphStatus CheckBuffSizeFromAttr(
     uint64_t cclBufferSize, uint64_t minRequired, const char* nodeName) {
 
     if (cclBufferSize < minRequired) {
+        OPS_LOG_E(nodeName, "CCL buffer size %lu is less than required minimum %lu.",
+            cclBufferSize, minRequired);
         return ge::GRAPH_FAILED;
     }
 

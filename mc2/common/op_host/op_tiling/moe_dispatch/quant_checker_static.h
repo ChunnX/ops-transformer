@@ -31,6 +31,24 @@ public:
         return true;
     }
 
+    // scales 维度数校验（静态量化特有）
+    // expandXDtype: expandX 输出的 dtype，用于 hif8 特殊校验
+    // 返回期望的维度数：hif8 时必须为 1D，其他为 1D 或 2D
+    uint32_t GetExpectedScalesDimNum(ge::DataType expandXDtype) const {
+        if (expandXDtype == ge::DT_HIFLOAT8) {
+            return moe_dispatch_defs::ONE_DIM;  // hif8 强制 1D
+        }
+        return 0U;  // 返回 0 表示允许 1D 或 2D，由调用方进一步校验
+    }
+
+    // scales 是否允许多维度（静态量化特有：允许 1D 或 2D）
+    bool AllowScalesMultiDim() const override { return true; }
+
+    // scales 是否允许 2D（静态量化特有）
+    bool AllowScalesTwoDim(ge::DataType expandXDtype) const {
+        return expandXDtype != ge::DT_HIFLOAT8;
+    }
+
     // scales 校验
     ge::graphStatus CheckScales(
         gert::TilingContext* ctx,
@@ -46,13 +64,6 @@ public:
         ge::DataType dtype = desc->GetDataType();
         if (dtype != ge::DT_FLOAT) {
             return ge::GRAPH_FAILED;
-        }
-
-        // shape: 1D 或 2D
-        const gert::StorageShape* shape = nullptr;
-        if (ctx != nullptr) {
-            // 这里假设 scales 是输入 tensor，具体索引由调用方传入
-            // shape 校验在主流程中进行精确值校验
         }
 
         return ge::GRAPH_SUCCESS;

@@ -36,65 +36,77 @@ struct Mc2CcTilingInner {
     uint32_t reduceType;
 };
 
+// ========== 版本1：简化接口（dispatch_v2 使用）==========
 void SetEpAllToAllCfg(
-    gert::TilingContext* ctx,
+    Mc2Tiling::Mc2InitTiling& mc2InitTiling,
+    Mc2Tiling::Mc2CcTiling& mc2CcTiling,
     const std::string& groupEp,
-    bool isUrma,
     bool isLayered) {
-
-    if (ctx == nullptr) {
-        return;
-    }
 
     uint32_t opType = moe_dispatch_defs::OP_TYPE_ALL_TO_ALL;
 
     // 根据 layered 模式选择算法配置
     std::string algConfigStr;
     if (isLayered) {
-        algConfigStr = "AlltoAll=level0:fullmesh;level1:pairwise";
+        algConfigStr = "AlltoAll=level1:hierarchy";
     } else {
         algConfigStr = "AlltoAll=level0:fullmesh;level1:pairwise";
     }
 
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupEp, opType, algConfigStr);
     mc2CcTilingConfig.SetCommEngine(moe_dispatch_defs::AIV_ENGINE);
+    mc2CcTilingConfig.GetTiling(mc2InitTiling);
+    mc2CcTilingConfig.GetTiling(mc2CcTiling);
+}
 
-    auto* tilingData = ctx->GetTilingData();
-    if (tilingData != nullptr) {
-        mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling);
-        mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling);
+// ========== 版本2：完整接口（teardown/setup 使用，支持 URMA）==========
+void SetEpAllToAllCfgWithUrma(
+    Mc2Tiling::Mc2InitTiling& mc2InitTiling,
+    Mc2Tiling::Mc2CcTiling& mc2CcTiling,
+    const std::string& groupEp,
+    bool isLayered,
+    bool isUrma) {
+
+    uint32_t opType = moe_dispatch_defs::OP_TYPE_ALL_TO_ALL;
+
+    // 根据 layered 模式选择算法配置
+    std::string algConfigStr;
+    if (isLayered) {
+        algConfigStr = "AlltoAll=level1:hierarchy";
+    } else {
+        algConfigStr = "AlltoAll=level0:fullmesh;level1:pairwise";
     }
+
+    AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupEp, opType, algConfigStr);
+    mc2CcTilingConfig.SetCommEngine(moe_dispatch_defs::AIV_ENGINE);
+    mc2CcTilingConfig.GetTiling(mc2InitTiling);
+    mc2CcTilingConfig.GetTiling(mc2CcTiling);
 
     // 设置 URMA 标志
     if (isUrma) {
-        auto* inner = reinterpret_cast<Mc2CcTilingInner*>(&tilingData->mc2CcTiling);
+        auto* inner = reinterpret_cast<Mc2CcTilingInner*>(&mc2CcTiling);
         if (inner != nullptr) {
             inner->protocal = static_cast<uint8_t>(moe_dispatch_defs::URMA_COMM);
         }
     }
 }
 
+// ========== TP AllGather 配置 ==========
 void SetTpAllGatherCfg(
-    gert::TilingContext* ctx,
+    Mc2Tiling::Mc2InitTiling& mc2InitTiling,
+    Mc2Tiling::Mc2CcTiling& mc2CcTiling,
     const std::string& groupTp) {
 
-    if (ctx == nullptr) {
-        return;
-    }
-
     uint32_t opType = moe_dispatch_defs::OP_TYPE_ALL_GATHER;
-    std::string algConfigStr = "AllGather=level0:fullmesh";
+    std::string algConfigStr = "AllGather=level0:ring";
 
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupTp, opType, algConfigStr);
     mc2CcTilingConfig.SetCommEngine(moe_dispatch_defs::AIV_ENGINE);
-
-    auto* tilingData = ctx->GetTilingData();
-    if (tilingData != nullptr) {
-        mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling);
-        mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling2);
-    }
+    mc2CcTilingConfig.GetTiling(mc2InitTiling);
+    mc2CcTilingConfig.GetTiling(mc2CcTiling);
 }
 
+// ========== CCU 专用通信配置 ==========
 void SetCcuCommCfg(
     gert::TilingContext* ctx,
     const std::string& groupEp) {
@@ -103,7 +115,6 @@ void SetCcuCommCfg(
         return;
     }
 
-    // CCU 模式使用 HalfAllToAllV 算子类型
     uint32_t opType = moe_dispatch_defs::OP_TYPE_ALL_TO_ALL;
     std::string algConfigStr = "AlltoAll=level0:fullmesh;level1:pairwise";
 
@@ -118,6 +129,7 @@ void SetCcuCommCfg(
     }
 }
 
+// ========== BatchWrite 配置 ==========
 void SetBatchWriteCfg(
     gert::TilingContext* ctx,
     const std::string& groupEp,

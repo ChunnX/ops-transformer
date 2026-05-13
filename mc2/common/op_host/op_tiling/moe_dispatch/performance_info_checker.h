@@ -27,6 +27,7 @@ namespace performance_info_check {
 inline ge::graphStatus CheckCompatibility(const char* nodeName, bool isLayered) {
     // performance 与 layered 互斥
     if (isLayered) {
+        OPS_LOG_E(nodeName, "Cannot support isPerformance when comm_alg is hierarchy.");
         return ge::GRAPH_FAILED;
     }
 
@@ -40,15 +41,21 @@ inline ge::graphStatus CheckShape(
     uint32_t epWorldSize, const char* nodeName) {
     const gert::StorageShape* shape = ctx->GetOptionalInputShape(inputIndex);
     if (shape == nullptr) {
+        OPS_LOG_E(nodeName, "performanceInfo is null.");
         return ge::GRAPH_FAILED;
     }
 
     // dim0 = epWorldSize
     if (shape->GetStorageShape().GetDimNum() != moe_dispatch_defs::ONE_DIM) {
+        OPS_LOG_E(nodeName, "performanceInfo dim must be 1, but current dim num is %lu.",
+            shape->GetStorageShape().GetDimNum());
         return ge::GRAPH_FAILED;
     }
 
     if (shape->GetStorageShape().GetDim(0) != static_cast<int64_t>(epWorldSize)) {
+        OPS_LOG_E(nodeName, "performanceInfo's dim0 not equal to epWorldSize, "
+            "performanceInfo's dim0 is %ld, epWorldSize is %u.",
+            shape->GetStorageShape().GetDim(0), epWorldSize);
         return ge::GRAPH_FAILED;
     }
 
@@ -60,12 +67,15 @@ inline ge::graphStatus CheckShape(
 inline ge::graphStatus CheckDtype(
     const ge::TensorDesc* desc, const char* nodeName) {
     if (desc == nullptr) {
+        OPS_LOG_E(nodeName, "performanceInfo desc is null.");
         return ge::GRAPH_FAILED;
     }
 
     // performanceInfo dtype: float 或 int32
     ge::DataType dtype = desc->GetDataType();
     if (dtype != ge::DT_FLOAT && dtype != ge::DT_INT32) {
+        OPS_LOG_E(nodeName, "performanceInfo dtype should be float or int32, but got %s.",
+            Ops::Base::ToString(dtype).c_str());
         return ge::GRAPH_FAILED;
     }
 
