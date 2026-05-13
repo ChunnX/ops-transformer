@@ -29,6 +29,7 @@ struct CommContext {
     uint32_t epRankId;
     uint32_t rankSizePerServer;
     uint64_t kfcContextAddr; // host kfc方案中，需要传递通信API所需的地址
+    uint64_t hcclContextAddr;
     uint64_t epHcclBuffer_[HCCL_MAX_RANK_SIZE];
 };
 
@@ -56,7 +57,7 @@ static int32_t CreatMc2Context(HcclComm &comm, int64_t worldSize, int64_t &cclBu
 }
 
 static int32_t CreateHcclContext(HcclComm &commHandle, void *opArgs, int64_t worldSize, const char* groupName,
-    std::string algConfig, uint32_t opType)
+    std::string algConfig, uint32_t opType, CommContext &mc2Context)
 {
     HcclResult ret = static_cast<HcclResult>(HcclKfcOpArgsSetAlgConfigFunc(opArgs, const_cast<char *>(algConfig.c_str())));  // 设置通信类型
     TORCH_CHECK(ret == 0, "HcclKfcOpArgsSetAlgConfig failed, ret:", ret);
@@ -65,6 +66,7 @@ static int32_t CreateHcclContext(HcclComm &commHandle, void *opArgs, int64_t wor
     void *opsResCtx;
     ret = static_cast<HcclResult>(HcclCreateOpResCtxFunc(commHandle, opType, opArgs, &opsResCtx)); // 创建HcclContext
     TORCH_CHECK(ret == 0, "HcclCreateOpResCtx failed, ret:", ret);
+    mc2Context.hcclContextAddr = (uint64_t)opsResCtx;
 
     // Get Comm world Size and rank
     uint32_t rankId = 0;
@@ -90,7 +92,7 @@ static int32_t GetMc2Context(CommContext &mc2ContextHost, int64_t epWorldSize, i
     ret = static_cast<HcclResult>(HcclKfcOpArgsSetCommEngineFunc(opArgs, (uint8_t)commEngine)); // 设置通信方式
     TORCH_CHECK(ret == 0, "HcclKfcOpArgsSetCommEngine failed, ret:", ret);
     HcclComm epCommHandle;
-    int32_t contextRet = CreateHcclContext(epCommHandle, opArgs, epWorldSize, groupEpStr, EP_ALG_CONFIG, EP_OP_TYPE);
+    int32_t contextRet = CreateHcclContext(epCommHandle, opArgs, epWorldSize, groupEpStr, EP_ALG_CONFIG, EP_OP_TYPE, mc2ContextHost);
     TORCH_CHECK(contextRet == 0, "CreateHcclContext failed, ret:", contextRet);
     ret = static_cast<HcclResult>(HcclKfcFreeOpArgsFunc(opArgs)); // 释放通信配置对象
     TORCH_CHECK(ret == 0, "getHcclKfcFreeOpArgs failed, ret:", ret);
