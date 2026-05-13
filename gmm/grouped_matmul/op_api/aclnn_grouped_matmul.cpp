@@ -1154,8 +1154,10 @@ static aclnnStatus CheckA4W4ParamsShape(const gmm::GroupedMatmulParams &gmmParam
 }
 
 static aclnnStatus CheckA4W4QuantParams(const gmm::GroupedMatmulParams &gmmParams) {
-  CHECK_COND(gmmParams.groupListType == 0 || gmmParams.groupListType == 1, ACLNN_ERR_PARAM_INVALID,
-    "GMM A4W4: groupListType only support 0 or 1, but now is %ld.", gmmParams.groupListType);
+  // 0: cumsum, 1: count, 2: sparse.
+  CHECK_COND(gmmParams.groupListType == 0 || gmmParams.groupListType == 1 || gmmParams.groupListType == 2,
+             ACLNN_ERR_PARAM_INVALID,
+             "GMM A4W4: groupListType only support 0 or 1 or 2, but now is %ld.", gmmParams.groupListType);
   DataType yDtype = (*gmmParams.y)[0]->GetDataType();
   CHECK_COND(yDtype == DataType::DT_FLOAT16 || yDtype == DataType::DT_BF16, ACLNN_ERR_PARAM_INVALID,
              "GMM A4W4: output y dtype should be float16 or bfloat16, current dtype is %s.",
@@ -2489,8 +2491,6 @@ aclnnStatus CheckCommonParam(const aclTensorList *x , const aclTensorList *weigh
   if (groupListType == gmm::GROUP_LIST_SPARSE_M) {
     CHECK_COND(npuArch == NpuArch::DAV_2201 || npuArch == NpuArch::DAV_3510, ACLNN_ERR_PARAM_INVALID,
       "This platform not support groupListType is 2.");
-    CHECK_COND(groupType == gmm::SPLIT_M, ACLNN_ERR_PARAM_INVALID,
-      "When groupListType is 2 only support groupType 0, but get groupType %ld.", groupType);
   } else {
     CHECK_COND(groupListType == 0 || groupListType == 1, ACLNN_ERR_PARAM_INVALID, "groupListType shoule be 0 or 1.");
   }
