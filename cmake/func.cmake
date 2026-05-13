@@ -456,6 +456,7 @@ function(add_ops_src_copy)
         "matmul_allto_all;"
         "attention_to_ffn;"
         "ffn_to_attention;"
+        "bandwidth_test;"
     ) # mc2算子列表
 
     get_filename_component(FOLDER_NAME "${SRC_COPY_DST}" NAME_WE)
