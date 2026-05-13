@@ -25,14 +25,13 @@
 #include "opdev/format_utils.h"
 #include "common/utils/hccl_util.h"
 #include "mc2_comm_utils.h"
+#include "aclnn_matmul_allto_all_helper.h"
 
 namespace {
 
 using namespace op;
 using namespace matmul_allto_all_check;
 using namespace quant_matmul_allto_all_helper;
-
-} // namespace
 
 // L0层两段式接口Inner，根据算子原型op_graph/matmul_allto_all_proto.h，由模板自动生成。非量化L2层接口和量化L2层接口共用一套L0层接口。
 // worldSize为硬件方参数，在aclnn侧不感知。yDtype在aclnn侧不感知。这两个参数需要在Inner接口处声明，在aclnn侧通过默认值传参。
@@ -142,3 +141,4 @@ extern "C" aclnnStatus aclnnQuantMatmulAlltoAll(void *workspace, uint64_t worksp
     }
     return ACLNN_SUCCESS;
 }
+} // namespace
