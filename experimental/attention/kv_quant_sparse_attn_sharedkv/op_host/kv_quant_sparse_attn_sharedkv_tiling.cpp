@@ -648,6 +648,9 @@ ge::graphStatus KvQuantSparseAttnSharedkvTiling::DoOpTiling(KvQuantSASTilingInfo
     tilingData_.baseParams.set_sparseBlockSize(tilingInfo->sparseBlockSize);
     tilingData_.baseParams.set_dSize(tilingInfo->dSize);
     tilingData_.baseParams.set_dSizeVInput(tilingInfo->dSizeVInput);
+    tilingData_.baseParams.set_actualSeqLenSizeOriKV(tilingInfo->actualSeqLenSizeOriKV);
+    tilingData_.baseParams.set_actualSeqLenSizeCmpKV(tilingInfo->actualSeqLenSizeCmpKV);
+    tilingData_.baseParams.set_cmpResidualKVSize(tilingInfo->cmpResidualKVSize);
 
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());

@@ -178,21 +178,9 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
     constInfo.isActualLenDimsOriKVNull = (sequsedOriKv == nullptr);
     constInfo.isActualLenDimsCmpKVNull = (sequsedCmpKv == nullptr);
     constInfo.isCmpResidualKVNull = (cmpResidualKv == nullptr);
-    if (sequsedOriKv != nullptr) {
-        GlobalTensor<int32_t> sequsedOriKvGm;
-        sequsedOriKvGm.SetGlobalBuffer((__gm__ int32_t *)sequsedOriKv);
-        constInfo.actualSeqLenSizeOriKV = sequsedOriKvGm.GetShapeSize();
-    }
-    if (sequsedCmpKv != nullptr) {
-        GlobalTensor<int32_t> sequsedCmpKvGm;
-        sequsedCmpKvGm.SetGlobalBuffer((__gm__ int32_t *)sequsedCmpKv);
-        constInfo.actualSeqLenSizeCmpKV = sequsedCmpKvGm.GetShapeSize();
-    }
-    if (cmpResidualKv != nullptr) {
-        GlobalTensor<int32_t> cmpResidualKvGm;
-        cmpResidualKvGm.SetGlobalBuffer((__gm__ int32_t *)cmpResidualKv);
-        constInfo.cmpResidualKVSize = cmpResidualKvGm.GetShapeSize();
-    }
+    constInfo.actualSeqLenSizeOriKV = sparseAttnSharedkvBaseParams.actualSeqLenSizeOriKV;
+    constInfo.actualSeqLenSizeCmpKV = sparseAttnSharedkvBaseParams.actualSeqLenSizeCmpKV;
+    constInfo.cmpResidualKVSize = sparseAttnSharedkvBaseParams.cmpResidualKVSize;
 
     // pageAttention
     if constexpr (isPa) {
