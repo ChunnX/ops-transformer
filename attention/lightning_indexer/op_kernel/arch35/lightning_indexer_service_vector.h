@@ -154,9 +154,9 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::InitBuffers(TPipe *pi
     pipe->InitBuffer(resMm1Buf_, 2 * CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_ * sizeof(float));
     resMm1UB_ = resMm1Buf_.Get<float>();
     
-    pipe->InitBuffer(weightBuf_, 2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE);
+    pipe->InitBuffer(weightBuf_, 2 * CeilDiv(s1BaseSize_, 2) * gSize_ * sizeof(W_T));
     weightUB_ = weightBuf_.Get<W_T>();
-    pipe->InitBuffer(weightFloatBuf_, 2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE);
+    pipe->InitBuffer(weightFloatBuf_, 2 * CeilDiv(s1BaseSize_, 2) * gSize_ * sizeof(float));
     weightFloatUB_ = weightFloatBuf_.Get<float>();
     pipe->InitBuffer(outBuf_,
                     2 * CeilDiv(s1BaseSize_, 2) * s2BaseSize_ * sizeof(SCORE_T));      // 大小：2(开dB) * 2 * 128 * 4 = 2KB
@@ -164,7 +164,7 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::InitBuffers(TPipe *pi
 
     // Topk
     pipe->InitBuffer(mrgValueBuf_,
-                    (topkCountAlign256_ + trunkLen_) * sizeof(uint16_t));
+                    (topkCountAlign256_ + trunkLen_) * sizeof(SCORE_T));
     mrgValueLocal_ = mrgValueBuf_.Get<SCORE_T>();
     // returnvalue
     if (topkCount_ <= 2048) {
@@ -213,7 +213,8 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::InitParams(const stru
     returnValueFlag = constInfo.returnValueFlag;
     blockId_ = GetBlockIdx();
     // trunkLen_ = constInfo.sparseCount >= TOPK_LEN_4K ? TRUNK_LEN_8K : TRUNK_LEN_16K;
-    trunkLen_ = (std::is_same<SCORE_T, uint32_t>::value) ? TRUNK_LEN_8K : TRUNK_LEN_16K;
+    // trunkLen_ = (std::is_same<SCORE_T, uint32_t>::value) ? TRUNK_LEN_8K : TRUNK_LEN_16K;
+    trunkLen_ = 4096;
     topkCount_ = constInfo.sparseCount;
     topkOp_.Init(topkCount_, trunkLen_);
     topkCountAlign256_ = LICommon::Align(constInfo.sparseCount, (uint64_t)256); // topkCount对齐到256
@@ -292,7 +293,7 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec1(const LIC
 {
     if constexpr (std::is_same<SCORE_T, uint32_t>::value) {
         //CV同步
-        CrossCoreWaitFlag<LICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(LICommon::ConstInfo::CROSS_CV_EVENT + info.loop % 2);   //V核等C核计算完mm1，mm1Res已搬运到UB
+        CrossCoreWaitFlag<LICommon::ConstInfo::LI_SYNC_MODE4, PIPE_V>(LICommon::ConstInfo::CROSS_CV_EVENT + info.loop % 2);   //V核等C核计算完mm1，mm1Res已搬运到UB
         
         int64_t curS1Idx = info.gS1Idx * s1BaseSize_;	 
         int64_t curS2Idx = info.s2Idx * s2BaseSize_;	 
@@ -301,7 +302,7 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec1(const LIC
         int64_t curAivS1ProcNum = (blockId_ % 2 == 0) ? CeilDiv(curS1ProcNum, 2) : curS1ProcNum / 2; 
 
         if (curAivS1ProcNum == 0) {
-            CrossCoreSetFlag<LICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(LICommon::ConstInfo::CROSS_VC_EVENT + info.loop % 2);   //V核处理完，通知C核可以把mm1Res搬运到UB
+            CrossCoreSetFlag<LICommon::ConstInfo::LI_SYNC_MODE4, PIPE_V>(LICommon::ConstInfo::CROSS_VC_EVENT + info.loop % 2);   //V核处理完，通知C核可以把mm1Res搬运到UB
             return;
         }
         WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + (info.loop % 2));
@@ -340,7 +341,7 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec1(const LIC
         DataCopyPad(scoreGm[vec1OutGmOffset], vec1OutUB_[(info.loop % 2) * CeilDiv(s1BaseSize_, 2) * s2BaseSize_], copyOutParams);
         SetFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + (info.loop % 2));
         
-        CrossCoreSetFlag<LICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_V>(LICommon::ConstInfo::CROSS_VC_EVENT + info.loop % 2);   //V核处理完，通知C核可以把mm1Res搬运到UB
+        CrossCoreSetFlag<LICommon::ConstInfo::LI_SYNC_MODE4, PIPE_V>(LICommon::ConstInfo::CROSS_VC_EVENT + info.loop % 2);   //V核处理完，通知C核可以把mm1Res搬运到UB
     }
 }
 
@@ -495,7 +496,7 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessTopK(const LIC
         } else {
             AscendC::CreateVecIndex(indicesOutLocal_.ReinterpretCast<int32_t>(), (int32_t)zero, validS2Len);
             if (returnValueFlag) {
-                copyInParams.blockLen = LICommon::Align(validS2Len, (int32_t)32) * sizeof(uint16_t);
+                copyInParams.blockLen = LICommon::Align(validS2Len, (int32_t)32) * sizeof(SCORE_T);
                 AscendC::DataCopyPad(scoreOutLocal_,
                             scoreGm[vecOffset * LICommon::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_)],
                             copyInParams, padParams);
