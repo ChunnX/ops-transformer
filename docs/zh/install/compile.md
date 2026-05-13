@@ -1,6 +1,6 @@
 # 源码构建
 
-源码构建前，请参考本项目README完成环境准备和源码下载，此处不再赘述。
+源码构建前，请参考本项目README完成[环境部署](docs/zh/install/quick_install.md)和源码下载，此处不再赘述。
 
 ## 安装第三方依赖
 
@@ -270,3 +270,18 @@ Global Environment TearDown
 
 \$\{n\}表示执行了n个用例，\$\{m\}表示m项测试，\$\{x\}表示执行用例消耗的时间，单位为毫秒。
 > 说明：add_example算子仅是为了帮助理解如何开发算子，仅设计了ophost的ut用例，并未设计opapi和opkernel的ut用例。开发者可以参考其他算子的ut用例以实现看护。
+
+## FAQ
+
+### Q1
+
+```
+Could not fetch URL XXX (Caused by SSLError(SSLCertVerificationError))
+ERROR: Could not find a version that satisfies the requirement setuptools>=40.8.0 (from versions: none)
+ERROR: No matching distribution found for setuptools>=40.8.0
+```
+1、检查[环境部署](docs/zh/install/quick_install.md)中根目录requirements.txt中python三方库依赖是否齐全
+
+2、检查环境~/.pip/pip.conf或~/.config/pip/pip.conf 指定的pip源是否可用
+
+
