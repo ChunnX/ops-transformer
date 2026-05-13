@@ -190,8 +190,8 @@ def flash_attn_metadata_only(**kwargs):
     num_heads_q   = n1
     num_heads_kv  = n2
     head_dim      = d
-    max_seqlen_q  = sq  if sq  is not None else 0
-    max_seqlen_kv = skv if skv is not None else 0
+    max_seqlen_q  = -1
+    max_seqlen_kv = -1
 
     _print_args("Call npu_flash_attn_metadata (metadata_only)", {
         "cu_seqlens_q": cu_q,
@@ -378,8 +378,8 @@ def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
         num_heads_kv  = num_heads_kv,
         head_dim      = head_dim,
         batch_size    = batch_size,
-        max_seqlen_q  = max_seqlen_q,
-        max_seqlen_kv = max_seqlen_kv,
+        max_seqlen_q  = -1,
+        max_seqlen_kv = -1,
         mask_mode     = sparse_mode,
         win_left      = pre_tokens,
         win_right     = next_tokens,
@@ -389,10 +389,8 @@ def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
     )
     print_metadata(metadata)
 
-    # npu_flash_attn only accepts max_seqlen_q/kv for TND layout;
-    # for other layouts the default (-1) must be used, so we don't pass them.
-    max_seqlen_q  = max_seqlen_q  if layout_q == "TND" else -1
-    max_seqlen_kv = max_seqlen_kv if layout_q == "TND" else -1
+    max_seqlen_q  = -1
+    max_seqlen_kv = -1
     atten_mask1 = atten_mask1 if sparse_mode != 0 else None
     if atten_mask1 is not None and sparse_mode in (3, 4):
         atten_mask1 = atten_mask1.to(dtype=torch.int8)
