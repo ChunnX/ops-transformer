@@ -22,7 +22,7 @@
 
 namespace load_balance {
 
-/******************************** ERROR CODE ********************************/
+/******************************** RETURN CODE ********************************/
 #define SECTION_STREAM_K_SUCCESS                        0
 #define SECTION_STREAM_K_ERROR_INVALID_PARAM            1
 #define SECTION_STREAM_K_ERROR_AIV_LESS_THAN_AIC        2
@@ -40,11 +40,11 @@ struct SectionStreamKFaResult {
     std::vector<uint32_t> s2End {};                         // 每个核处理数据的S2结束点
     std::vector<uint32_t> firstFdDataWorkspaceIdx {};       // FD块在workspace中的位置
 
-    explicit SectionStreamKFaResult(uint32_t aicNum) :
-        bN2End(aicNum),
-        gS1End(aicNum),
-        s2End(aicNum),
-        firstFdDataWorkspaceIdx(aicNum) {}
+    explicit SectionStreamKFaResult(uint32_t aicNum)
+        : bN2End(aicNum),
+          gS1End(aicNum),
+          s2End(aicNum),
+          firstFdDataWorkspaceIdx(aicNum) {}
 };
 
 struct SectionStreamKFdResult {
@@ -59,14 +59,14 @@ struct SectionStreamKFdResult {
     std::vector<uint32_t> mStart {};            // 每个AIV处理的归约任务的M轴相对起点
     std::vector<uint32_t> mLen {};              // 每个AIV处理的归约任务的M轴行数
 
-    explicit SectionStreamKFdResult(uint32_t aicNum, uint32_t aivNum) :
-        bN2Idx(aicNum),
-        gS1Idx(aicNum),
-        workspaceIdx(aicNum),
-        s2SplitNum(aicNum),
-        taskIdx(aivNum),
-        mStart(aivNum),
-        mLen(aivNum) {}
+    explicit SectionStreamKFdResult(uint32_t aicNum, uint32_t aivNum)
+        : bN2Idx(aicNum),
+          gS1Idx(aicNum),
+          workspaceIdx(aicNum),
+          s2SplitNum(aicNum),
+          taskIdx(aivNum),
+          mStart(aivNum),
+          mLen(aivNum) {}
 };
 
 struct SectionStreamKResult {
