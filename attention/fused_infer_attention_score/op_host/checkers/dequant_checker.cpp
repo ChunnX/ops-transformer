@@ -700,8 +700,19 @@ ge::graphStatus DequantChecker::CheckDequantScaleQueryMLAFullquant(const FiaTili
     const uint32_t queryDimNum = queryInputShape.GetDimNum();
     const gert::Shape dequantScaleQueryShape = fiaInfo.opParamInfo.dequantScaleQuery.tensor->GetStorageShape();
     const uint32_t dequantScaleQueryDimNum = dequantScaleQueryShape.GetDimNum();
-
+    const gert::Shape keyInputShape = fiaInfo.opParamInfo.key.shape->GetStorageShape();
+    const uint32_t keyDimNum = keyInputShape.GetDimNum();
+    const gert::Shape valueInputShape = fiaInfo.opParamInfo.value.shape->GetStorageShape();
+    const uint32_t valueDimNum = valueInputShape.GetDimNum();
+    OP_LOGE(fiaInfo.opName, "[fzj] custom is working");
     if (fiaInfo.qLayout == FiaLayout::BSH) {
+        OP_LOGE(fiaInfo.opName, "[fzj] query dim = %u, key dim = %u, value dim = %u", queryDimNum, keyDimNum, valueDimNum);
+        OP_LOGE(fiaInfo.opName, "[fzj] query shape = [%ld, %ld, %ld]", queryInputShape.GetDim(DIM_NUM_0),
+                queryInputShape.GetDim(DIM_NUM_1), queryInputShape.GetDim(DIM_NUM_2));
+        OP_LOGE(fiaInfo.opName, "[fzj] key shape = [%ld, %ld, %ld, %ld, %ld]", keyInputShape.GetDim(DIM_NUM_0),
+                keyInputShape.GetDim(DIM_NUM_1), keyInputShape.GetDim(DIM_NUM_2), keyInputShape.GetDim(DIM_NUM_3), keyInputShape.GetDim(DIM_NUM_4));
+        OP_LOGE(fiaInfo.opName, "[fzj] value shape = [%ld, %ld, %ld, %ld, %ld]", valueInputShape.GetDim(DIM_NUM_0),
+                valueInputShape.GetDim(DIM_NUM_1), valueInputShape.GetDim(DIM_NUM_2), valueInputShape.GetDim(DIM_NUM_3), valueInputShape.GetDim(DIM_NUM_4));
         OP_CHECK_IF((queryDimNum != dequantScaleQueryDimNum),
                     OP_LOGE(fiaInfo.opName,
                             "In MLA fullquant scenario (layout of query is %s), "

@@ -352,7 +352,12 @@ static ge::graphStatus InferShapeFusedInferAttentionScore(gert::InferShapeContex
     GetValueD(isPageAttention, valueD, valueShape, queryShape, queryLayout, numKeyValueHeads);
 
     InferAttentionOutShape(attentionOutLayout, attentionOutShape, queryShape, valueShape, queryLayout, numHeadsPtr, valueD);
-
+    printf("[fzj] attentionOutShape dim = %ld, attentionOutShape = [%ld, %ld, %ld, %ld]", 
+            attentionOutShape->GetDimNum(), attentionOutShape->GetDim(FIA_LAYOUT_DIM0), attentionOutShape->GetDim(FIA_LAYOUT_DIM1),
+            attentionOutShape->GetDim(FIA_LAYOUT_DIM2), attentionOutShape->GetDim(FIA_LAYOUT_DIM3));
+    OP_LOGE("[fzj] FusedInferAttentionScore", "attentionOutShape dim = %ld, attentionOutShape = [%ld, %ld, %ld, %ld]", 
+            attentionOutShape->GetDimNum(), attentionOutShape->GetDim(FIA_LAYOUT_DIM0), attentionOutShape->GetDim(FIA_LAYOUT_DIM1),
+            attentionOutShape->GetDim(FIA_LAYOUT_DIM2), attentionOutShape->GetDim(FIA_LAYOUT_DIM3));
     const bool *softmaxLsePtr = attrs->GetAttrPointer<bool>(FIA_ATTR_INPUT_SOFTMAX_LSE_FLAG_INDEX);
     bool softmaxLseFlag = (softmaxLsePtr != nullptr) ? *softmaxLsePtr : false;
     if (softmaxLseFlag) {
