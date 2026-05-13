@@ -53,16 +53,13 @@ public:
 
     // ==================== Functions ======================
     __aicore__ inline SCFABlockVec() {};
-    __aicore__ inline void InitVecBlock(TPipe *pipe, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedKv,
+    __aicore__ inline void InitVecBlock(TPipe *pipe, __gm__ uint8_t *cuSeqlensQ,
         __gm__ uint8_t *sequsedOriKv, __gm__ uint8_t *sequsedCmpKv, __gm__ uint8_t *cmpResidualKv)
     {
         if ASCEND_IS_AIV {
             tPipe = pipe;
             if (cuSeqlensQ != nullptr) {
                 cuSeqlensQGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensQ);
-            }
-            if (sequsedKv != nullptr) {
-                actualSeqLengthsKVGm.SetGlobalBuffer((__gm__ int32_t *)sequsedKv);
             }
             if (sequsedOriKv != nullptr) {
                 actualSeqOriKvGm.SetGlobalBuffer((__gm__ int32_t *)sequsedOriKv);
@@ -141,7 +138,6 @@ private:
     GlobalTensor<int32_t> blockTableGm;
     GlobalTensor<T> sinksGm;
     GlobalTensor<int32_t> cuSeqlensQGm;
-    GlobalTensor<int32_t> actualSeqLengthsKVGm;
     GlobalTensor<int32_t> actualSeqOriKvGm;
     GlobalTensor<int32_t> actualSeqCmpKvGm;
     GlobalTensor<int32_t> cmpResidualKvGm;
@@ -1007,7 +1003,7 @@ public:
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV, __gm__ uint8_t *cmpSparseIndices,
         __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sinks,
         __gm__ uint8_t *sequsedOriKv, __gm__ uint8_t *sequsedCmpKv, __gm__ uint8_t *cmpResidualKv) {}
-    __aicore__ inline void InitVecBlock(TPipe *pipe, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedKv,
+    __aicore__ inline void InitVecBlock(TPipe *pipe, __gm__ uint8_t *cuSeqlensQ,
         __gm__ uint8_t *sequsedOriKv, __gm__ uint8_t *sequsedCmpKv, __gm__ uint8_t *cmpResidualKv) {};
     __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo) {}
     __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
