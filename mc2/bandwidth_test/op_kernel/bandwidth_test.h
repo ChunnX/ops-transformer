@@ -190,8 +190,8 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
     tpipe_->InitBuffer(dataStateBuf, UB_ALIGN);
     uint32_t epRankIdHccl{0};
     uint32_t epWorldSizeHccl{0};
-    statusSpaceGm_ = (GM_ADDR)(context_->epHcclBuffer_[epRankIdHccl]);
     epRankIdHccl =  context_->epRankId;
+    statusSpaceGm_ = (GM_ADDR)(context_->epHcclBuffer_[epRankIdHccl]);
     epWorldSizeHccl = epWorldSize_;
     GlobalTensor<uint32_t> selfDataStatusGMTensor;
     epRankId_ = epRankIdHccl;
