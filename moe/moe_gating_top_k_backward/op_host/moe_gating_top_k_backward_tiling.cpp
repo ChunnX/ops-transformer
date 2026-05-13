@@ -194,7 +194,7 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckGradY()
     OP_CHECK_IF(gradYShapePtr->GetOriginShape().GetDim(DIM_ZERO) != tokenCount_, OP_LOGE(opName_, "gradY : The size of the first dimension of xNorm and gradY should be the same."),
         return ge::GRAPH_FAILED);
     k_ = gradYShapePtr->GetOriginShape().GetDim(DIM_ONE);
-    OP_CHECK_IF(k_ > expertCount_ || k_ <= 0, OP_LOGE(opName_, "gradY : The size of the second dimension of gradY must be greater than 0 and less than or equal to the size of the second dimension of xNorm.."),
+    OP_CHECK_IF(k_ > expertCount_ || k_ <= 0, OP_LOGE(opName_, "gradY : The size of the second dimension of gradY must be greater than 0 and less than or equal to the size of the second dimension of xNorm."),
         return ge::GRAPH_FAILED);
     
     auto gradYDesc = context_->GetInputDesc(GRAD_Y_INPUT_INDEX);
@@ -325,9 +325,9 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckOutShape()   // lc
 
 int64_t MoeGatingTopKBackwardTilingBase::CalcMaxRows()
 {
-    int64_t gradYQuePerTokenSpace = DOUBLE_BUFFER_NUM * k_ * SIZE_OF_FLOAT32;
-    int64_t indicesQuePerTokenSpace = DOUBLE_BUFFER_NUM * k_ * SIZE_OF_FLOAT32;
-    int64_t xQuePerTokenSpace = DOUBLE_BUFFER_NUM * expertCount_ * SIZE_OF_FLOAT32;
+    int64_t gradYQuePerTokenSpace = k_ * SIZE_OF_FLOAT32;
+    int64_t indicesQuePerTokenSpace = k_ * SIZE_OF_FLOAT32;
+    int64_t xQuePerTokenSpace = expertCount_ * SIZE_OF_FLOAT32;
     int64_t outQuePerTokenSpace = expertCount_ * gradYDtypeSize_;
     
     int64_t bufk1PerTokenSpace = k_ * SIZE_OF_FLOAT32;
@@ -344,19 +344,18 @@ int64_t MoeGatingTopKBackwardTilingBase::CalcMaxRows()
         "Not enough space on UB, current available space is %ld.", available_space), return ge::GRAPH_FAILED);
 
     int64_t quePerTokenSpace =
-        gradYQuePerTokenSpace + indicesQuePerTokenSpace + xQuePerTokenSpace + outQuePerTokenSpace;
+        DOUBLE_BUFFER_NUM * (gradYQuePerTokenSpace + indicesQuePerTokenSpace + xQuePerTokenSpace) + outQuePerTokenSpace;
     int64_t bufPerTokenSpace =
         bufk1PerTokenSpace + bufn2PerTokenSpace + bufn3PerTokenSpace + bufk4AddPerTokenSpace +
         bufk4IndexPerTokenSpace + bufk4RecipSumPerTokenSpace + bufk4MaskPerTokenSpace + bufsPerTokenSpace;
     int64_t maxRows = available_space / (quePerTokenSpace + bufPerTokenSpace);
-
-    int64_t kAligned = AlignBytes_(k_ * SIZE_OF_FLOAT32) >> 2;
+    int64_t kAligned = AlignBytes_(k_ * SIZE_OF_FLOAT32) >> 2; // 16个元素
     while (maxRows > 0) {
-        // queSpace: gradYQueSpace == indicesQueSpace; xQueSpace; outQueSpace
+        // queSpace: gradYQueSpace(db) == indicesQueSpace(db); xQueSpace; outQueSpace
         // bufSpace: bufk1Space == bufk4AddSpace == bufk4IndexSpace == bufk4RecipSumSpace == bufk4MaskSpace;
         //           bufn2Space == bufn3Space; bufsSpace
         int64_t queSpace =
-            NUM_TWO * maxRows * AlignBytes_(gradYQuePerTokenSpace) + AlignBytes_(maxRows * xQuePerTokenSpace) +
+            NUM_TWO * DOUBLE_BUFFER_NUM * maxRows * AlignBytes_(gradYQuePerTokenSpace) + DOUBLE_BUFFER_NUM * AlignBytes_(maxRows * xQuePerTokenSpace) +
             AlignBytes_(maxRows * outQuePerTokenSpace);
         int64_t bufSpace =
             NUM_FIVE * maxRows * AlignBytes_(bufk1PerTokenSpace) + NUM_TWO * AlignBytes_(maxRows * bufn2PerTokenSpace) +
@@ -369,12 +368,11 @@ int64_t MoeGatingTopKBackwardTilingBase::CalcMaxRows()
 
         auto srcShape = ge::Shape({ 1, kAligned });
         auto platformInfo = context_->GetPlatformInfo();
-        auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+        auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo); // ut可能无法获取
         uint32_t broadcastTmpBuffSpace = 0;
         AscendC::GetBroadCastMaxMinTmpSize(ascendcPlatform, srcShape, shape, SIZE_OF_FLOAT32, false, tmpMaxValue, broadcastTmpBuffSpace);
-        OP_LOGI(context_, "reduceSumTmpBuffSpace = %lu. broadcastTmpBuffSpace = %lu", reduceSumTmpBuffSpace, broadcastTmpBuffSpace);
         int64_t usedSpace = UB_RESERVE_SPACE + queSpace + bufSpace + static_cast<int64_t>(std::max(reduceSumTmpBuffSpace, broadcastTmpBuffSpace));
-
+        OP_LOGD(context_, "queSpace = %ld. bufSpace = %ld. sharebuf = %ld", queSpace, bufSpace, static_cast<int64_t>(std::max(reduceSumTmpBuffSpace, broadcastTmpBuffSpace)));
         if (usedSpace <= aicoreParams_.ubSize) {
             break;
         }
