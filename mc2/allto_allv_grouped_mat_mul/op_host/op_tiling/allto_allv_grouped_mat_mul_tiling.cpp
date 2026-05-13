@@ -629,9 +629,6 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetPlatformInfo()
     if (CheckCommonPlatformInfo() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    if (CheckAttrsInfo() != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
     OP_LOGD(context_->GetNodeName(), "end GetPlatformInfo.");
     return ge::GRAPH_SUCCESS;
 }
@@ -677,12 +674,12 @@ ge::graphStatus AlltoAllvGmmTilingBase::PostTiling()
     auto attrs = context_->GetAttrs();
     auto sendCountsPtr = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_SEND_COUNTS_INDEX);
     auto recvCountsPtr = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_RECV_COUNTS_INDEX);
-    const int64_t* sendCounts = static_cast<const int64_t*>(sendCountsPtr->GetData());
-    const int64_t* recvCounts = static_cast<const int64_t*>(recvCountsPtr->GetData());
+    const int64_t* sendCountsData = static_cast<const int64_t*>(sendCountsPtr->GetData());
+    const int64_t* recvCountsData = static_cast<const int64_t*>(recvCountsPtr->GetData());
     
     for (uint32_t i = 0; i < e_ * epWorldSize_; i++) {
-        tilingData->taskTilingInfo.sendCnt[i] = sendCounts[i];
-        tilingData->taskTilingInfo.recvCnt[i] = recvCounts[i];
+        tilingData->taskTilingInfo.sendCnt[i] = sendCountsData[i];
+        tilingData->taskTilingInfo.recvCnt[i] = recvCountsData[i];
     }
     
     tilingData->isPermuteOut = permuteOutFlag_;
