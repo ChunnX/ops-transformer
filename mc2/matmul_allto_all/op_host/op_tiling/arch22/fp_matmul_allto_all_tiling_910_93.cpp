@@ -349,7 +349,7 @@ uint64_t FpMatmulAllToAllTilingBaseA3::GetTilingKey() const
         biasDType = TILINGKEY_TPL_FP32;
     }
     const uint64_t tilingKey = GET_TPL_TILING_KEY(
-        x2TransposeFlag, contextInfo.args_.isBias, 0, biasDType, SOC_ASCEND910_93);
+        x2TransposeFlag, contextInfo.args_.isBias, biasDType, SOC_ASCEND910_93);
     OP_LOGD(opName_, "x2TransposeFlag,hasBias,biasDtype is: [%d,%d,%d], and tilingKey is [%lu].",
         x2TransposeFlag, contextInfo.args_.isBias, biasDType, tilingKey);
     return tilingKey;
