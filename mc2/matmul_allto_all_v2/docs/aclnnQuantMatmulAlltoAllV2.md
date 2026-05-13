@@ -8,7 +8,7 @@
 | :----------------------------------------------------------- | :------: |
 | <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    x     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
 | <term>Atlas 推理系列产品</term>                             |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
@@ -48,6 +48,13 @@
       permutedOut = computeOut.view(BS, rankSize, H2 / rankSize).permute(1, 0, 2) \\
       output = AlltoAll(permutedOut).view(rankSize * BS, H2 / rankSize)
       $$
+
+相较于`aclnnQuantMatmulAlltoAll`接口，该接口变更如下：
+
+- 新增`commMode`参数，用户根据该参数指定芯片使用的通信引擎。
+
+  - <term>Ascend 950PR/Ascend 950DT</term>：支持`default`、`aicpu`和`ccu`。指定`default`时，根据卡数调用通信引擎：卡数小于等于8时调用CCU引擎，否则调用AICPU引擎。
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：仅支持`default`，调用`aclnnQuantMatmulAlltoAllV2`接口。
 
 ## 函数原型
 
@@ -529,7 +536,7 @@ aclnnStatus aclnnQuantMatmulAlltoAllV2(
 * 不支持跨超节点通信，只支持超节点内。
 * 通信引擎约束：
    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持MTE通信。
-   - <term>Ascend 950PR/Ascend 950DT</term>：支持CCU通信。
+   - <term>Ascend 950PR/Ascend 950DT</term>：支持CCU通信和AICPU通信。
 
 ## 调用示例
 
