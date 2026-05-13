@@ -87,12 +87,6 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::Init(
     uint64_t hcclCcTilingOffset = offsetof(Mc2Tiling::QuantBatchMatmulV3ReduceScatterTilingData, mc2CcTiling);
     hccl_.InitV2(contextGM, hcclInitTilingV2);
     hccl_.SetCcTilingV2(hcclCcTilingOffset);
-    // TODO: 测试打印，验证通信模式后删除
-    if constexpr (TPL_COMM_MODE == CCU_COMM_MODE) {
-        AscendC::PRINTF("[COMM_MODE] HCCL initialized with CCU mode for quant_bmm_reduce_scatter_fp8_hif8.\n");
-    } else {
-        AscendC::PRINTF("[COMM_MODE] HCCL initialized with AICPU mode for quant_bmm_reduce_scatter_fp8_hif8.\n");
-    }
     context_ = (__gm__ HcclCombinOpParam *)(contextGM);
     tPipe_ = tPipe;
     debugMode_ = tilingData_->debugMode;

@@ -72,12 +72,6 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
     uint64_t hcclCcTilingOffset = offsetof(Mc2Tiling::MatmulReduceScatterV2TilingData, mc2CcTiling);
     hccl_.InitV2(contextGM, hcclInitTilingV2);
     hccl_.SetCcTilingV2(hcclCcTilingOffset);
-    // TODO: 测试打印，验证通信模式后删除
-    if constexpr (TPL_COMM_MODE == CCU_COMM_MODE) {
-        AscendC::PRINTF("[COMM_MODE] HCCL initialized with CCU mode for matmul_reduce_scatter_fp16_bf16.\n");
-    } else {
-        AscendC::PRINTF("[COMM_MODE] HCCL initialized with AICPU mode for matmul_reduce_scatter_fp16_bf16.\n");
-    }
     context_ = (__gm__ HcclCombinOpParam *)(contextGM);
     tPipe_ = tPipe;
     dataType_ = static_cast<AscendC::HcclDataType>(tilingData_->dataType);
