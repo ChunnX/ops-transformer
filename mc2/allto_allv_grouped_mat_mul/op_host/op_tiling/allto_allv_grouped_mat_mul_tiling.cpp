@@ -822,7 +822,11 @@ uint64_t AlltoAllvGmmTiling::GetTilingKey(const gert::TilingContext* context) co
 {
     bool tilingekyGmmTrans = tilingData->commonTilingInfo.isGmmWeightTrans;
     bool tilingekyMmTrans = tilingData->commonTilingInfo.isMmWeightTrans;
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    // A3平台固定使用AICPU模式，A5平台根据环境变量选择
+    uint8_t commMode = Mc2Comm::COMM_MODE_AICPU;  // 默认AICPU
+    if (npuArch_ == op::NpuArch::DAV_3510) {  // A5平台
+        commMode = Mc2Comm::GetCommModeFromEnv();
+    }
     uint64_t tilingKey = GET_TPL_TILING_KEY(tilingekyGmmTrans, tilingekyMmTrans, commMode);
     OP_LOGD(A_INNER_DEBUG, "AlltoAllvGmm GetTilingKey: gmmTrans=%d, mmTrans=%d, commMode=%u, tilingKey=%lu",
             tilingekyGmmTrans, tilingekyMmTrans, commMode, tilingKey);
