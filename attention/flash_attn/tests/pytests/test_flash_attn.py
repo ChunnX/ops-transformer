@@ -8,7 +8,7 @@ import torch
 import math
 import numpy as np
 from cpu_impl import tforward
-from test_utils import (generate_qkv, generate_pse, generate_npu_mask, trans_bnsd_to_layout, get_seqlen_list,
+from test_utils import (generate_qkv, generate_pse, generate_npu_mask, trans_bnsd_to_layout,
                          data_compare_benchmark_new, Result)
 
 _DEFAULT_CASE_FILES = ["test_case", "test_case_fia_STC", "test_case_functional_single"]
@@ -107,31 +107,12 @@ def normalize_case(raw):
     c.setdefault("k_range",     None)
     c.setdefault("v_range",     None)
     if layout_q == "TND":
-        if isinstance(c.get("cu_seqlens_q"), list):
-            cum_q_full  = list(c["cu_seqlens_q"])
-            cum_kv_full = list(c.get("cu_seqlens_kv", cum_q_full))
-            def _diffs(lst): return [lst[i+1] - lst[i] for i in range(len(lst) - 1)]
-            ind_q  = list(c.get("seqused_q",  _diffs(cum_q_full)))
-            ind_kv = list(c.get("seqused_kv", _diffs(cum_kv_full)))
-            c["actual_seq_qlen"]  = cum_q_full[1:]
-            c["actual_seq_kvlen"] = cum_kv_full[1:]
-            c["seqlens_list_q"]   = cum_q_full[1:]
-            c["seqlens_list_kv"]  = cum_kv_full[1:]
-            c["_npu_cu_q"]       = cum_q_full
-            c["_npu_cu_kv"]      = cum_kv_full
-            c["_npu_seqused_q"]  = ind_q
-            c["_npu_seqused_kv"] = ind_kv
-            c["B"] = 1
-        else:
-            cu_q  = list(c.get("cu_seqused_q", []))
-            cu_kv = list(c.get("cu_seqused_kv", cu_q))
-            if cu_q  and cu_q[0]  == 0: cu_q  = cu_q[1:]
-            if cu_kv and cu_kv[0] == 0: cu_kv = cu_kv[1:]
-            c["seqlens_list_q"]  = cu_q
-            c["seqlens_list_kv"] = cu_kv
-            c["actual_seq_qlen"]  = cu_q
-            c["actual_seq_kvlen"] = cu_kv
-            c["B"] = 1
+        # test_case 中字段是嵌套列表 [[...]]，解包为平铺列表直接透传
+        c["cu_seqlens_q"] = c["cu_seqlens_q"][0]
+        c["cu_seqlens_kv"] = c["cu_seqlens_kv"][0]
+        c["seqused_q"] = c["seqused_q"][0]
+        c["seqused_kv"] = c["seqused_kv"][0]
+        c["B"] = 1
     return c
 
 def check_result(test_name, expect, result, except_label="CPU", comp_label="NPU", verbose_diff=False):
@@ -221,15 +202,15 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
     pse_b = b;  pse_s1 = sq;  pse_s2 = skv
     sq_gen = sq;  skv_gen = skv
     if input_layout == "TND":
-        sl_q  = list(kwargs.get("seqlens_list_q",  []))
-        sl_kv = list(kwargs.get("seqlens_list_kv", sl_q))
-        q_arr  = get_seqlen_list(sl_q)
-        kv_arr = get_seqlen_list(sl_kv)
-        sq     = int(q_arr.max());   skv    = int(kv_arr.max())
-        sq_gen = int(q_arr.sum());   skv_gen = int(kv_arr.sum())
+        cu_q = kwargs["cu_seqlens_q"]
+        cu_kv = kwargs["cu_seqlens_kv"]
+        sq     = max(cu_q[i+1] - cu_q[i] for i in range(len(cu_q) - 1))
+        skv    = max(cu_kv[i+1] - cu_kv[i] for i in range(len(cu_kv) - 1))
+        sq_gen = cu_q[-1]
+        skv_gen = cu_kv[-1]
         kwargs["S1"] = sq
         kwargs["S2"] = skv
-        pse_b = len(q_arr);  pse_s1 = sq;  pse_s2 = skv
+        pse_b = len(cu_q) - 1;  pse_s1 = sq;  pse_s2 = skv
         if pse_layout in ["bnhs", "1nhs"]: pse_s1 = max(1024, pse_s1)
     pse_cpu, pse_npu = generate_pse(pse_b, n1, pse_s1, pse_s2, pse_type, pse_layout,
                                     pttype, q_start_idx, kv_start_idx)

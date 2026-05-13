@@ -614,7 +614,6 @@ public:
         }
 
         if (constInfo.sparseMode == fa_base_vector::RIGHT_DOWN_CAUSAL || constInfo.sparseMode == fa_base_vector::TREE) {
-            preTokenLeftUp = static_cast<int64_t>(actSeqLensKv);
             nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ);
         } else if (constInfo.sparseMode == fa_base_vector::BAND) {
             nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ) + nextTokenLeftUp;
@@ -666,25 +665,19 @@ public:
         }
 
         // 3. trans index of token to index of block
-        uint64_t actSeqLensKvPhy = actSeqLensKv;
-        if constexpr (LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND || LAYOUT_KV == LayOutTypeEnum::LAYOUT_NTD) {
-            uint32_t bIdx = bN2Cur / constInfo.n2Size;
-            actSeqLensKvPhy = kvCuSeqLensParser.GetTBase(bIdx + 1) - kvCuSeqLensParser.GetTBase(bIdx)
-                              + constInfo.actualKVPrefixSize;
-        }
         uint32_t s2StartWithSparse = 0U;
         uint32_t s2EndWithSparse = 0U;
         int64_t s2FirstToken = s1FirstToken - preTokenLeftUp;
         int64_t s2LastToken = s1LastToken + nextTokenLeftUp;
         // no valid token
-        if (s2FirstToken >= static_cast<int64_t>(actSeqLensKvPhy) || s2LastToken < 0 || s2LastToken < s2FirstToken) {
+        if (s2FirstToken >= static_cast<int64_t>(actSeqLensKv) || s2LastToken < 0 || s2LastToken < s2FirstToken) {
             curS2Start = 0U;
             curS2End = 0U;
             return;
         }
         // get valid range
-        s2FirstToken = ClipSInnerToken(s2FirstToken, 0, static_cast<int64_t>(actSeqLensKvPhy - 1));
-        s2LastToken = ClipSInnerToken(s2LastToken, 0, static_cast<int64_t>(actSeqLensKvPhy - 1));
+        s2FirstToken = ClipSInnerToken(s2FirstToken, 0, static_cast<int64_t>(actSeqLensKv - 1));
+        s2LastToken = ClipSInnerToken(s2LastToken, 0, static_cast<int64_t>(actSeqLensKv - 1));
 
         s2StartWithSparse = static_cast<uint32_t>(s2FirstToken) / s2BaseSize;
         s2EndWithSparse = static_cast<uint32_t>(s2LastToken) / s2BaseSize + 1U;

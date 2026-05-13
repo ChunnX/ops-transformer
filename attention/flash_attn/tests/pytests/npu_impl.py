@@ -139,15 +139,10 @@ def flash_attn_metadata_only(**kwargs):
     next_tokens = kwargs.get("next_tokens", 2147483647)
     actual_seq_qlen  = kwargs.get("actual_seq_qlen",  None)
     actual_seq_kvlen = kwargs.get("actual_seq_kvlen", actual_seq_qlen)
-    _cu_q       = kwargs.get("_npu_cu_q",       None)
-    _cu_kv      = kwargs.get("_npu_cu_kv",      None)
-    _seqused_q  = kwargs.get("_npu_seqused_q",  None)
-    _seqused_kv = kwargs.get("_npu_seqused_kv", None)
-
-    cu_q  = _cu_q  if _cu_q  is not None else (actual_seq_qlen[-1]  if actual_seq_qlen  is not None else None)
-    cu_kv = _cu_kv if _cu_kv is not None else (actual_seq_kvlen[-1] if actual_seq_kvlen is not None else None)
-    seqused_q  = _seqused_q  if _seqused_q  is not None else actual_seq_qlen
-    seqused_kv = _seqused_kv if _seqused_kv is not None else actual_seq_kvlen
+    cu_q       = kwargs.get("cu_seqlens_q", None)
+    cu_kv      = kwargs.get("cu_seqlens_kv", None)
+    seqused_q  = kwargs.get("seqused_q", actual_seq_qlen)
+    seqused_kv = kwargs.get("seqused_kv", actual_seq_kvlen)
 
     # Derive actual batch_size from cu_seqlens list (B+1 elements) when new 4-param style is used.
     # B in kwargs is set to 1 for TND tensor generation and must not be used here.
@@ -248,12 +243,10 @@ def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
     next_tokens = kwargs.get("next_tokens", 2147483647)
     actual_seq_qlen  = kwargs.get("actual_seq_qlen",  None)
     actual_seq_kvlen = kwargs.get("actual_seq_kvlen", actual_seq_qlen)
-    # New 4-param style: normalize_case sets _npu_cu_q/kv (full B+1 list) and _npu_seqused_q/kv (B individual).
-    # Legacy style: these are None, fall back to last element / cumulative list.
-    _cu_q       = kwargs.get("_npu_cu_q",       None)
-    _cu_kv      = kwargs.get("_npu_cu_kv",      None)
-    _seqused_q  = kwargs.get("_npu_seqused_q",  None)
-    _seqused_kv = kwargs.get("_npu_seqused_kv", None)
+    cu_q       = kwargs.get("cu_seqlens_q", None)
+    cu_kv      = kwargs.get("cu_seqlens_kv", None)
+    seqused_q  = kwargs.get("seqused_q", actual_seq_qlen)
+    seqused_kv = kwargs.get("seqused_kv", actual_seq_kvlen)
     scale = kwargs.get("scale", 1 / (d ** 0.5))
     keep_prob = kwargs.get("keep_prob", 1)
     seed = kwargs.get("seed", 0)
@@ -273,12 +266,7 @@ def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
 
     torch.npu.manual_seed(seed)
 
-    # cuSeqlensQ/Kv: new style passes (B+1,) list; legacy passes last element as scalar
-    cu_q  = _cu_q  if _cu_q  is not None else (actual_seq_qlen[-1]  if actual_seq_qlen  is not None else None)
-    cu_kv = _cu_kv if _cu_kv is not None else (actual_seq_kvlen[-1] if actual_seq_kvlen is not None else None)
-    # seqused_q/kv: new style passes (B,) individual; legacy passes cumulative list (without leading 0)
-    seqused_q  = _seqused_q  if _seqused_q  is not None else actual_seq_qlen
-    seqused_kv = _seqused_kv if _seqused_kv is not None else actual_seq_kvlen
+    # cuSeqlensQ/Kv: for TND, normalize_case puts the full (B+1,) list; for others, None
     # The C++ operator signature is Optional[Tensor]; Python list cannot be auto-cast, convert explicitly.
     # kernel (fia_block_vec_noquant_gqa.h) reads seqlen arrays as (__gm__ uint64_t *), MUST be int64.
     def _to_u32_tensor(v):

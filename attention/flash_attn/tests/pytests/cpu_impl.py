@@ -132,33 +132,28 @@ def tforward_normal(q, k, v, pse, **kwargs):
 
 
 def tforward_tnd(q, k, v, pse, **kwargs):
-    actual_seq_qlen = list(kwargs.get("actual_seq_qlen"))
-    actual_seq_kvlen = list(kwargs.get("actual_seq_kvlen", actual_seq_qlen))
-    assert isinstance(actual_seq_qlen, list)
-    assert isinstance(actual_seq_kvlen, list)
-    seqlen_q_list = get_seqlen_list(actual_seq_qlen).numpy()
-    seqlen_k_list = get_seqlen_list(actual_seq_kvlen).numpy()
-    actual_seq_qlen.insert(0, 0)
-    actual_seq_kvlen.insert(0, 0)
-    input_layout = kwargs.get("input_layout")
+    cu_q = kwargs["cu_seqlens_q"]
+    cu_kv = kwargs["cu_seqlens_kv"]
+    seqused_q = kwargs["seqused_q"]
+    seqused_kv = kwargs["seqused_kv"]
+    b = len(cu_q) - 1
+
+    n1 = kwargs.get("N1")
+    n2 = kwargs.get("N2", n1)
+    d = kwargs.get("D")
+    d_v = kwargs.get("DV", d)
+    s1_total = cu_q[-1]
+    s2_total = cu_kv[-1]
+
+    max_seqlen_q = max(cu_q[i+1] - cu_q[i] for i in range(b))
+    max_seqlen_k = max(cu_kv[i+1] - cu_kv[i] for i in range(b))
+
     sparse_mode = kwargs.get("sparse_mode", None)
     pre_tokens = kwargs.get("pre_tokens", 2147483647)
     next_tokens = kwargs.get("next_tokens", 2147483647)
     prefix = kwargs.get("prefix", [])
     seed = kwargs.get("seed", 0)
     offset = kwargs.get("offset", 0)
-    max_seqlen_q = seqlen_q_list.max()
-    max_seqlen_k = seqlen_k_list.max()
-    qk_size = seqlen_q_list * [math.ceil(i / 16) * 16 for i in seqlen_k_list]
-    qk_pointer = get_cu_seqlens(qk_size).to(torch.int64)
-
-    b = len(seqlen_q_list)
-    n1 = kwargs.get("N1")
-    n2 = kwargs.get("N2", n1)
-    d = kwargs.get("D")
-    d_v = kwargs.get("DV", d)
-    s1 = max(actual_seq_qlen)
-    s2 = max(actual_seq_kvlen)
 
     scale = kwargs.get("scale", 1 / (d ** 0.5))
     pse_type = kwargs.get("pse_type", 1)
@@ -168,61 +163,72 @@ def tforward_tnd(q, k, v, pse, **kwargs):
     band_index = 0
     if sparse_mode == 7:
         for index in range(b - 1, -1, -1):
-            if seqlen_q_list[index] != 0:
+            if seqused_q[index] != 0:
                 band_index = index
                 break
     elif sparse_mode == 8:
         for index in range(b):
-            if seqlen_k_list[index] != 0:
+            if seqused_kv[index] != 0:
                 band_index = index
                 break
 
+    qk_size = [int(seqused_q[i] * math.ceil(seqused_kv[i] / 16) * 16) for i in range(b)]
+    qk_pointer = get_cu_seqlens(qk_size).to(torch.int64)
     if abs(1 - keep_prob) < 2e-14:
         drop_mask = None
     else:
         drop_mask = gen_dropmask_tnd(qk_pointer[-1].item() * n1, keep_prob, seed, offset)
 
-    out_golden = torch.zeros([1, n1, s1, d_v], dtype=q.dtype)
+    out_golden = torch.zeros([1, n1, s1_total, d_v], dtype=q.dtype)
     x_max = torch.empty(0)
     x_sum = torch.empty(0)
     for i in range(b):
-        if seqlen_q_list[i] != 0 and seqlen_k_list[i] != 0:
-            qi = q[:, :, actual_seq_qlen[i]:actual_seq_qlen[i + 1]]
-            ki = k[:, :, actual_seq_kvlen[i]:actual_seq_kvlen[i + 1]]
-            vi = v[:, :, actual_seq_kvlen[i]:actual_seq_kvlen[i + 1]]
+        act_q_len = seqused_q[i]
+        act_kv_len = seqused_kv[i]
+        if act_q_len == 0 or act_kv_len == 0:
+            continue
 
-            if n1 != n2:
-                ki = broadcastKV(n1, n2, ki, ki.dtype)
-                vi = broadcastKV(n1, n2, vi, vi.dtype)
+        q_start = cu_q[i]
+        q_end = cu_q[i + 1]
+        kv_start = cu_kv[i]
+        kv_end = cu_kv[i + 1]
 
-            if pse is None:
-                psei = None
-            else:
-                pse_layout = kwargs.get("pse_layout").lower()
-                assert pse_layout in ["bn", "n", "bnhs", "1nhs"]
-                if pse_layout == "bn":
-                    psei = pse[i:i + 1, :, -seqlen_q_list[i]:, -seqlen_k_list[i]:]
-                elif pse_layout == "n":
-                    psei = pse[:, :, -seqlen_q_list[i]:, -seqlen_k_list[i]:]
-                elif pse_layout == "bnhs":
-                    psei = pse[i:i + 1, :, pse_s1 - seqlen_q_list[i]:pse_s1, max_seqlen_k - seqlen_k_list[i]:max_seqlen_k]
-                elif pse_layout == "1nhs":
-                    psei = pse[:, :, pse_s1 - seqlen_q_list[i]:pse_s1, max_seqlen_k - seqlen_k_list[i]:max_seqlen_k]
+        qi = q[:, :, q_start:q_start + act_q_len]
+        ki = k[:, :, kv_start:kv_start + act_kv_len]
+        vi = v[:, :, kv_start:kv_start + act_kv_len]
 
-            if drop_mask is None:
-                drop_maski = None
-            else:
-                drop_maski = drop_mask[(qk_pointer[i] * n1):(qk_pointer[i + 1] * n1)].reshape(n1, seqlen_q_list[i], math.ceil(seqlen_k_list[i] / 16) * 16)[:, :, :seqlen_k_list[i]]
-            
-            if sparse_mode is None:
-                atten_maski = None
-            else:
-                atten_maski = generate_cpu_mask(1, seqlen_q_list[i], seqlen_k_list[i], sparse_mode, pre_tokens, next_tokens, prefix, i, band_index)
+        if n1 != n2:
+            ki = broadcastKV(n1, n2, ki, ki.dtype)
+            vi = broadcastKV(n1, n2, vi, vi.dtype)
 
-            outi, x_maxi, x_sumi = forward(qi, ki, vi, drop_maski, atten_maski, pse_type, psei, scale, keep_prob)
-            out_golden[:, :, actual_seq_qlen[i]:actual_seq_qlen[i + 1]] = outi
-            x_max = torch.cat((x_max, x_maxi.contiguous().view(-1)))
-            x_sum = torch.cat((x_sum, x_sumi.contiguous().view(-1)))
+        if pse is None:
+            psei = None
+        else:
+            pse_layout = kwargs.get("pse_layout").lower()
+            if pse_layout == "bn":
+                psei = pse[i:i + 1, :, -act_q_len:, -act_kv_len:]
+            elif pse_layout == "n":
+                psei = pse[:, :, -act_q_len:, -act_kv_len:]
+            elif pse_layout == "bnhs":
+                psei = pse[i:i + 1, :, pse_s1 - act_q_len:pse_s1, max_seqlen_k - act_kv_len:max_seqlen_k]
+            else:  # "1nhs"
+                psei = pse[:, :, pse_s1 - act_q_len:pse_s1, max_seqlen_k - act_kv_len:max_seqlen_k]
+
+        if drop_mask is None:
+            drop_maski = None
+        else:
+            drop_maski = drop_mask[(qk_pointer[i] * n1):(qk_pointer[i + 1] * n1)].reshape(
+                n1, act_q_len, math.ceil(act_kv_len / 16) * 16)[:, :, :act_kv_len]
+
+        if sparse_mode is None:
+            atten_maski = None
+        else:
+            atten_maski = generate_cpu_mask(1, act_q_len, act_kv_len, sparse_mode, pre_tokens, next_tokens, prefix, i, band_index)
+
+        outi, x_maxi, x_sumi = forward(qi, ki, vi, drop_maski, atten_maski, pse_type, psei, scale, keep_prob)
+        out_golden[:, :, q_start:q_start + act_q_len] = outi
+        x_max = torch.cat((x_max, x_maxi.contiguous().view(-1)))
+        x_sum = torch.cat((x_sum, x_sumi.contiguous().view(-1)))
     return out_golden, x_max, x_sum
 
 
