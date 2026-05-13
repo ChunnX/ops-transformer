@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file flash_attention_noquant_block_vec_base.h
+ * \file flash_attn_block_vec_noquant_gqa.h
  * \brief
  */
 #ifndef FLASH_ATTENTION_NOQUANT_GQA_BLOCK_VEC_H_
@@ -17,7 +17,7 @@
 
 #include "kernel_operator.h"
 
-#include "../utils/fa_attenmask_gs1.h"
+#include "../utils/attenmask_gs1.h"
 
 #include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
 #include "adv_api/activation/softmax.h"
@@ -34,14 +34,6 @@ using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
 using namespace AttentionCommon;
 
-/* ============确定bmm2ResBuffer的类型============= */
-template <bool useDn, bool isFp8>
-struct Bmm2ResBuffSel {
-    using Type =
-        std::conditional_t<(useDn && isFp8), BuffersPolicySingleBuffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
-                           BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>>;
-};
-
 namespace BaseApi {
 
 template <typename INPUT_T, typename T, typename OUTPUT_T,
@@ -52,7 +44,7 @@ template <typename INPUT_T, typename T, typename OUTPUT_T,
           DTemplateType dVTemplateType = DTemplateType::Aligned128, PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE,
           bool hasAtten = false, bool hasDrop = false, bool hasRope = false, uint8_t KvLayoutType = 0, bool isFd = false,
           bool enableKVPrefix = false, bool useDn = false, bool bmm2Write2Ub = true, bool splitD = false>
-class FANoQuantGqaBlockVec {
+class VecBlockBase {
 public:
     /* =================编译期常量的基本块信息================= */
     static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
@@ -61,9 +53,6 @@ public:
     static constexpr uint32_t vec1HalfS1BaseSize = mBaseSize >> 1;
     static constexpr uint32_t vec1S2CopyCountDn = mBaseSize >> 5;
     static constexpr uint32_t vec1S2strideDn = s2BaseSize * 8;
-    static constexpr uint32_t vec1ScmBlock = mBaseSize * 8;
-    static constexpr uint32_t vec1ScmBlockFp32 = mBaseSize * 4;
-    static constexpr uint32_t vec1ScmBlockFp8 = mBaseSize * 16;
     static constexpr uint32_t vec1ResOffsetDn = s2BaseSize * 32 + 64;
     static constexpr uint32_t vec1Srcstride = (mBaseSize >> 1) + 1;
     static constexpr uint32_t dTemplateAlign64 = Align64Func((uint16_t)dVTemplateType);
@@ -76,6 +65,8 @@ public:
     static constexpr uint32_t initOutputEventId = 0U;  // attenOut和lse，刷无效行会用到剩余ub，需要加同步
 
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<layout>();
+    static constexpr LAYOUT_Q MASK_LAYOUT = (layout == LayOutTypeEnum::LAYOUT_BSH ||
+        layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_SBH) ? LAYOUT_Q::SG : LAYOUT_Q::GS;
 
     static constexpr bool hasPse = pseMode != PseTypeEnum::PSE_NONE_TYPE;
     static constexpr bool hasPseOuter =
@@ -103,8 +94,71 @@ public:
 
     using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
 
-    using MM1_OUT_T = T;
-    using MM2_OUT_T = T;
+    using OUT_T = OUTPUT_T;
+
+    __aicore__ inline VecBlockBase(ConstInfoX &constInfo) {};
+};
+
+template <typename INPUT_T, typename T, typename OUTPUT_T,
+          LayOutTypeEnum layout = LayOutTypeEnum::None, LayOutTypeEnum outLayout = LayOutTypeEnum::None,
+          S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
+          S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
+          DTemplateType dTemplateType = DTemplateType::Aligned128,
+          DTemplateType dVTemplateType = DTemplateType::Aligned128, PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE,
+          bool hasAtten = false, bool hasDrop = false, bool hasRope = false, uint8_t KvLayoutType = 0, bool isFd = false,
+          bool enableKVPrefix = false, bool useDn = false, bool bmm2Write2Ub = true, bool splitD = false>
+class FANoQuantGqaBlockVec : public VecBlockBase<INPUT_T, T, OUTPUT_T, layout, outLayout, s1TemplateType, s2TemplateType, dTemplateType,
+                         dVTemplateType, pseMode, hasAtten, hasDrop, hasRope, KvLayoutType, isFd, enableKVPrefix,
+                         useDn, bmm2Write2Ub, splitD> {
+public:
+    /* =================编译期常量的基本块信息================= */
+    static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
+    static constexpr uint32_t s2BaseSize = (uint32_t)s2TemplateType;
+    static constexpr uint32_t vec1S2CopyLenDn = s2BaseSize >> 1;
+    static constexpr uint32_t vec1HalfS1BaseSize = mBaseSize >> 1;
+    static constexpr uint32_t vec1S2CopyCountDn = mBaseSize >> 5;
+    static constexpr uint32_t vec1S2strideDn = s2BaseSize * 8;
+    static constexpr uint32_t vec1ResOffsetDn = s2BaseSize * 32 + 64;
+    static constexpr uint32_t vec1Srcstride = (mBaseSize >> 1) + 1;
+    static constexpr uint32_t dTemplateAlign64 = Align64Func((uint16_t)dVTemplateType);
+
+    static constexpr uint32_t DB = 2;
+    static constexpr uint32_t PRELOAD_N = 2;  // C1 C1 C2
+    static constexpr bool HAS_MASK = hasAtten;
+    static constexpr bool FLASH_DECODE = isFd;
+
+    static constexpr uint32_t initOutputEventId = 0U;  // attenOut和lse，刷无效行会用到剩余ub，需要加同步
+
+    static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<layout>();
+    static constexpr LAYOUT_Q MASK_LAYOUT = (layout == LayOutTypeEnum::LAYOUT_BSH ||
+        layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_SBH) ? LAYOUT_Q::SG : LAYOUT_Q::GS;
+
+    static constexpr bool hasPse = pseMode != PseTypeEnum::PSE_NONE_TYPE;
+    static constexpr bool hasPseOuter =
+        (pseMode == PseTypeEnum::PSE_OUTER_ADD_MUL_TYPE) || (pseMode == PseTypeEnum::PSE_OUTER_MUL_ADD_TYPE);
+
+    static constexpr bool POST_QUANT = !IsSameType<OUTPUT_T, half>::value && !IsSameType<OUTPUT_T, bfloat16_t>::value &&
+                                       !IsSameType<OUTPUT_T, float>::value;
+    using pseShiftType = INPUT_T;
+
+    static constexpr T BOOL_ATTEN_MASK_SCALAR_VALUE = -1000000000000.0; // 用于mask为bool类型
+    uint32_t negativeIntScalar = *((uint32_t *)&BOOL_ATTEN_MASK_SCALAR_VALUE);
+
+    using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
+                                                Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
+
+    using pseGmType = typename std::conditional<hasPse, GlobalTensor<pseShiftType>, int8_t>::type;
+    using attenMaskGmType = typename std::conditional<hasAtten, GlobalTensor<uint8_t>, int8_t>::type;
+
+    using vec2ResGmType = typename std::conditional<splitD, GlobalTensor<float>, int8_t>::type;
+
+    using postQuantGmType = typename std::conditional<POST_QUANT, GlobalTensor<float>, int8_t>::type;
+    using postQuantBf16GmType = typename std::conditional<POST_QUANT, GlobalTensor<bfloat16_t>, int8_t>::type;
+
+    using flashdecodeGmType = typename std::conditional<FLASH_DECODE, GlobalTensor<float>, int8_t>::type;
+
+    using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
+
     using OUT_T = OUTPUT_T;
 
     // gm
@@ -116,7 +170,6 @@ public:
     GlobalTensor<uint64_t> actualSeqLengthsGmQ;
     ActualSeqLensParser<Q_MODE> qActSeqLensParser;
 
-    __gm__ uint8_t *pseSlope;
     pseGmType pseGm;
     attenMaskGmType attenMaskGmInt;
 
@@ -149,11 +202,8 @@ public:
     TQue<QuePosition::VECOUT, 1> maxBrdcst;
     TQue<QuePosition::VECOUT, 1> sumBrdcst;
 
-    TBuf<> lseTmpBuff;
     TQue<QuePosition::VECOUT, 1> softmaxLseQueue;
-    TQue<QuePosition::VECOUT, 1> FDResOutputQue;
-    TQue<QuePosition::VECIN, 1> accumOutInputQue;
-    TQue<QuePosition::VECIN, 1> postQuantScaleQue;; // postQuant
+    TQue<QuePosition::VECIN, 1> postQuantScaleQue;
     TQue<QuePosition::VECIN, 1> postQuantOffsetQue;; // postQuant
     TQue<QuePosition::VECIN, 1> sinkQue; // AttentionSink
 
@@ -164,12 +214,13 @@ public:
 
     static constexpr UbFormat PSE_UB_FORMAT = GetPseUbFormat<layout>();
     using PSE_T = INPUT_T;
-    FaGmTensor<PSE_T, GmFormat::BN2GS1S2> pseShiftGmTensor;
     CopyPSEGmToUb<PSE_T, GmFormat::BN2GS1S2, PSE_UB_FORMAT> copyPSEGmToUb;
-    bool pseHasBatch = true;
 
     // ==================== Functions ======================
-    __aicore__ inline FANoQuantGqaBlockVec(ConstInfoX &constInfo) : constInfo(constInfo){};
+    __aicore__ inline FANoQuantGqaBlockVec(ConstInfoX &constInfo) : VecBlockBase<INPUT_T, T, OUTPUT_T, layout, outLayout, s1TemplateType, s2TemplateType, dTemplateType,
+                                            dVTemplateType, pseMode, hasAtten, hasDrop, hasRope, KvLayoutType, isFd,
+                                            enableKVPrefix, useDn, bmm2Write2Ub, splitD>(constInfo),
+                                            constInfo(constInfo) {};
 
     __aicore__ inline void InitVecBlock(TPipe *pipe,
                                         __gm__ uint8_t *pse, __gm__ uint8_t *actualSeqQlenAddr,
@@ -206,12 +257,6 @@ public:
 
         if constexpr (hasPse) {
             pseGm.SetGlobalBuffer((__gm__ pseShiftType *)pse);
-            pseSlope = pse;
-
-            pseShiftGmTensor.gmTensor = pseGm;
-            pseShiftGmTensor.offsetCalculator.Init(constInfo.pseShiftByBatch ? constInfo.bSize : 1, constInfo.n2Size,
-                                                   constInfo.gSize, constInfo.pseS1Size, constInfo.pseS2Size,
-                                                   this->actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
         }
 
         if constexpr (hasAtten) {
@@ -422,6 +467,8 @@ public:
             }
         } else {
             if (constInfo.isSoftmaxLseEnable) {
+                AscendC::DumpTensor(sumUb, 1, 64);
+                AscendC::DumpTensor(sumUb, 1, 64);
                 SoftmaxLseCopyOut(sumUb, maxUb, runInfo);
             }
         }
@@ -449,12 +496,14 @@ public:
         softmaxLseQueue.DeQue<float>();
 
         if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
-            uint32_t prefixBS1 = qActSeqLensParser.GetTBase(runInfo.bIdx);
-            uint64_t bN2Offset = prefixBS1 * constInfo.n2Size * constInfo.gSize + runInfo.n2Idx * constInfo.gSize;
-            DataCopySoftmaxLseTNDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
+            PRINTF("========= IN TND BRANCH =========\n");
+            uint32_t prefixBS1 = qActSeqLensParser.GetTBase(runInfo.bIdx + 1);
+            uint64_t bN2Offset = prefixBS1 + runInfo.n2Idx * constInfo.gSize * constInfo.t1Size;
+            DataCopySoftmaxLseTNDtoNTArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
                                                        constInfo);
         } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
-            uint32_t prefixBS1 = qActSeqLensParser.GetTBase(runInfo.bIdx);
+            PRINTF("========= IN NTD BRANCH =========\n");
+            uint32_t prefixBS1 = qActSeqLensParser.GetTBase(runInfo.bIdx + 1);
             uint32_t s1Size = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
             uint64_t bN2Offset = prefixBS1 * constInfo.n2Size * constInfo.gSize + runInfo.n2Idx * constInfo.gSize;
             DataCopySoftmaxLseNTDArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
@@ -496,6 +545,7 @@ public:
     __aicore__ inline void Vec1SinkComputeGSFused(RunInfoX &runInfo, LocalTensor<float> &sumUb,
                                                   LocalTensor<float> &maxUb)
     {
+        // TODO  适配GS1 合轴
         CopySinkIn(runInfo);
         LocalTensor<INPUT_T> sinkUb = sinkQue.DeQue<INPUT_T>();
         SinkSubExpAddGSFusedVF<float, INPUT_T>(sinkUb, sumUb, maxUb, runInfo.actVecMSize);
@@ -504,6 +554,7 @@ public:
 
     __aicore__ inline void CopySinkIn(RunInfoX &runInfo)
     {
+        // TODO  适配GS1 合轴
         LocalTensor<INPUT_T> sinkUbBf16 = sinkQue.AllocTensor<INPUT_T>();
         int64_t sinkOffset =
             runInfo.n2Idx * constInfo.gSize + constInfo.subBlockIdx * (runInfo.actMSize - runInfo.actVecMSize);
@@ -582,6 +633,11 @@ public:
                                    .s2LeftPaddingSize = 0,
                                    .actualBIdx = runInfo.bIdx};
             bool qsEqualOne = (constInfo.s1Size == 1);
+            FaGmTensor<PSE_T, GmFormat::BN2GS1S2> pseShiftGmTensor;
+            pseShiftGmTensor.gmTensor = pseGm;
+            pseShiftGmTensor.offsetCalculator.Init(constInfo.pseShiftByBatch ? constInfo.bSize : 1, constInfo.n2Size,
+                                                   constInfo.gSize, constInfo.pseS1Size, constInfo.pseS2Size,
+                                                   this->actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
             copyPSEGmToUb(pseShiftUbTensor, pseShiftGmTensor, pseCoord, qsEqualOne);
             pseStride = constInfo.pseStride;
         }
@@ -589,6 +645,7 @@ public:
         LocalTensor<uint8_t> attenMaskUb;
         LocalTensor<uint8_t> attenMaskUbPre;
         if constexpr (hasAtten == true) {
+            // TODO，attenMaskInQue后续可以改成TBuf，用set/wait同步
             attenMaskUb = this->attenMaskInQue[runInfo.loop % DB].template AllocTensor<uint8_t>();
             AttenMaskCopyIn(attenMaskUb, 0, runInfo.actVecMSize, runInfo); // 全量拷贝
         }
@@ -782,6 +839,7 @@ public:
     {
         if (constInfo.isPostQuantPerChnl) {
             // postQuantScaleShape (N2, dV)
+            // TODO: 复用输入Buffer 重构!!!, 当前使用一个固定2K的buffer搬运Scale
 
         } else {
             // PostQuantPerTensorImpl<T, OUTPUT_T, true>(attenOut, vec2ResUb, constInfo.postQuantScaleValue,
@@ -887,7 +945,7 @@ public:
 
             // 经过了跳读，UB上每行是按照dTemplateAlign64对齐的
             int64_t vec2ResInnerOffset = mIdx * constInfo.dBasicBlock;
-            if (vec2LoopLimit > 1) { 
+            if (vec2LoopLimit > 1) { // TODO 这个分支有疑问 ！！！！！！！！！！！！！！！！
                 SetFlag<HardEvent::MTE3_MTE2>(mte3ToMte2);
                 WaitFlag<HardEvent::MTE3_MTE2>(mte3ToMte2);
                 if constexpr (useDn) {
@@ -1396,19 +1454,11 @@ public:
         maskInfo.attenMaskBatchStride = constInfo.attenMaskS1Size * constInfo.attenMaskS2Size;
         maskInfo.attenMaskS1Stride = constInfo.attenMaskS2Size;
         maskInfo.attenMaskDstStride = (s2BaseSize - Align(maskInfo.s2dealNum, 32U)) /
-                                      32; 
+                                      32; // TODO， 这里需要传一个完成的stride，要重构， 新写一个attenmask_gs1.h
         maskInfo.maskValue = negativeIntScalar;
         maskInfo.s1LeftPaddingSize = runInfo.qPaddingBeginOffset;
         maskInfo.s2LeftPaddingSize = runInfo.kvPaddingBeginOffset;
-        if (constInfo.s1Size == 1) {
-            maskInfo.layout = S1_EQUAL1;
-        } else if (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND ||
-                   layout == LayOutTypeEnum::LAYOUT_SBH) {
-            maskInfo.layout = SG;
-        } else {
-            maskInfo.layout = GS;
-        }
-
+        maskInfo.layout = MASK_LAYOUT;
         maskInfo.attenMaskType = MASK_BOOL; // compatible with int8/uint8
 
         bool IsSkipMask = IsSkipAttentionmask(maskInfo);
@@ -1420,14 +1470,14 @@ public:
         }
 
         if (!IsSkipMask) {
-            AttentionmaskCopyIn(attenMaskUb, attenMaskGmInt, maskInfo);
+            AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSize>(attenMaskUb, attenMaskGmInt, maskInfo);
         } else {
             Duplicate(attenMaskUb, static_cast<uint8_t>(0U), maskInfo.gs1dealNum * s2BaseSize);
         }
 
         if (!IsSkipMaskForPre) {
             LocalTensor<uint8_t> attenMaskUbPre = this->attenMaskInQue[1 - runInfo.loop % DB].template AllocTensor<uint8_t>();
-            AttentionmaskCopyIn(attenMaskUbPre, attenMaskGmInt, maskInfo, true);
+            AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSize>(attenMaskUbPre, attenMaskGmInt, maskInfo, true);
             MergeMask(attenMaskUb, attenMaskUbPre, maskInfo.gs1dealNum, s2BaseSize);
             this->attenMaskInQue[1 - runInfo.loop % DB].template FreeTensor(attenMaskUbPre);
         }
@@ -1435,7 +1485,31 @@ public:
 
     __aicore__ void PseCopyIn(LocalTensor<pseShiftType> pseUb, RunInfoX &runInfo)
     {
-
+#if 0 // TODO
+        FaUbTensor<PSE_T> pseShiftUbTensor {
+            .tensor = pseUb,
+            .rowCount = dealRowCount;
+            .colCount = columnCount   // 对齐后的值
+        };
+        GmPseCoord pseCoord = {
+            .bIdx = constInfo.pseShiftByBatch ? info.bIdx : 0,
+            .n2Idx = info.n2Idx,
+            .gS1Idx = info.gS1Idx + mSplitInfo.nBufferStartM + mSplitInfo.vecStartM + startRow,
+            .s2Idx = info.s2Idx,
+            .gS1DealSize = dealRowCount,
+            .s2DealSize = actualColumnCount,
+            .s1LeftPaddingSize = info.qPaddingBeginOffset,
+            .s2LeftPaddingSize = info.kvPaddingBeginOffset,
+            .actualBIdx = info.bIdx
+        };
+        bool qsEqualOne = (constInfo.s1Size == 1);
+        FaGmTensor<PSE_T, GmFormat::BN2GS1S2> pseShiftGmTensor;
+        pseShiftGmTensor.gmTensor = pseGm;
+        pseShiftGmTensor.offsetCalculator.Init(constInfo.pseShiftByBatch ? constInfo.bSize : 1, constInfo.n2Size,
+                                               constInfo.gSize, constInfo.pseS1Size, constInfo.pseS2Size,
+                                               this->actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
+        copyPSEGmToUb(pseShiftUbTensor, pseShiftGmTensor, pseCoord, qsEqualOne);
+#endif
     }
 
     __aicore__ inline void DealZeroActSeqLen(uint32_t bN2Cur)
