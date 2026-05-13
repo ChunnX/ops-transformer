@@ -69,7 +69,7 @@ static bool CheckNotNull(const aclTensor* x, const aclTensor* expertId, const ch
 }
 
 static aclnnStatus CheckParams(const aclTensor* x, const aclTensor* expertId, const char* group,
-                                int64_t worldSize, int64_t rankId, int64_t maxBs, int64_t mode,
+                                int64_t worldSize, int64_t maxBs, int64_t mode,
                                 aclTensor* y, aclTensor* receiveCnt)
 {
     OP_LOGD("aclnn_bandwidth_test CheckParams start");
@@ -77,11 +77,6 @@ static aclnnStatus CheckParams(const aclTensor* x, const aclTensor* expertId, co
     
     if (worldSize <= 0) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "worldSize must be positive, got %ld", worldSize);
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    
-    if (rankId < 0 || rankId >= worldSize) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "rankId must be in range [0, %ld), got %ld", worldSize, rankId);
         return ACLNN_ERR_PARAM_INVALID;
     }
     
@@ -111,7 +106,7 @@ aclnnStatus aclnnBandwidthTestGetWorkspaceSize(
     uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     OP_LOGD("aclnnBandwidthTestGetWorkspaceSize start");
-    auto ret_param = CheckParams(x, expertId, group, worldSize, rankId, maxBs, mode, y, receiveCnt);
+    auto ret_param = CheckParams(x, expertId, group, worldSize, maxBs, mode, y, receiveCnt);
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
     aclnnStatus aclnnRet = ACLNN_ERR_INNER;
     
