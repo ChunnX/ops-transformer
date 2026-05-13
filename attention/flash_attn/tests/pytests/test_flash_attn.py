@@ -212,7 +212,7 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
         kwargs["S2"] = skv
         pse_b = len(cu_q) - 1;  pse_s1 = sq;  pse_s2 = skv
         if pse_layout in ["bnhs", "1nhs"]: pse_s1 = max(1024, pse_s1)
-    pse_cpu, pse_npu = generate_pse(pse_b, n1, pse_s1, pse_s2, pse_type, pse_layout,
+    _, pse_npu = generate_pse(pse_b, n1, pse_s1, pse_s2, pse_type, pse_layout,
                                     pttype, q_start_idx, kv_start_idx)
     q, k, v, q_rope, k_rope, qf, kf = generate_qkv(b, n1, n2, sq_gen, skv_gen, d, d_v, d_rope,
                                                     input_layout, input_dtype,
@@ -220,7 +220,7 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
 
     # ------------------ 1. CPU Golden 计算 (总是执行) ------------------
     print(f"[{test_name}] CPU 参考计算...")
-    out_cpu, _, _ = tforward(qf, kf, v, pse_cpu, **kwargs)
+    out_cpu, _, _ = tforward(qf, kf, v, **kwargs)
     out_cpu_out_layout = trans_bnsd_to_layout(out_cpu, output_layout)
     if dump_tensors:
         dump_path = os.path.join(dump_dir, test_name)
