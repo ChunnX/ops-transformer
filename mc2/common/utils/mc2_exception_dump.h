@@ -363,10 +363,10 @@ int ProcessArgs910BImpl(void* devArgsPtr, std::vector<uint8_t> &winBuf,
             uint32_t dstOffset = rank * statusEntryCount;
             if (srcOffset + statusEntryCount < size / 2) {
                 ret = aclrtMemcpy(winBuf.data() + dstOffset,
-                                Mc2A2Kernel::BUFFER_ADUMP_WIN_DISPATCH_SIZE,
-                                (const void *)statusBuffer + srcOffset,
-                                statusEntryCount,
-                                ACL_MEMCPY_DEVICE_TO_HOST);
+                                  Mc2A2Kernel::BUFFER_ADUMP_WIN_DISPATCH_SIZE,
+                                  (const void *)statusBuffer + srcOffset,
+                                  statusEntryCount,
+                                  ACL_MEMCPY_DEVICE_TO_HOST);
                 if (!(ret == ACL_SUCCESS)) {
                     OP_LOGE(OP_NAME, "aclrtMemcpy win from device to host failed. ret = %d", ret);
                     return -1;
@@ -397,10 +397,10 @@ int ProcessArgs910BImpl(void* devArgsPtr, std::vector<uint8_t> &winBuf,
             dstOffset += Mc2A2Kernel::UB_ALIGN;
             if (srcOffset + Mc2A2Kernel::UB_ALIGN < size / 2) {
                 ret = aclrtMemcpy(winBuf.data() + dstOffset,
-                                Mc2A2Kernel::BUFFER_ADUMP_WIN_COMBINE_SIZE,
-                                (const void *)statusBuffer + srcOffset,
-                                Mc2A2Kernel::UB_ALIGN,
-                                ACL_MEMCPY_DEVICE_TO_HOST);
+                                  Mc2A2Kernel::BUFFER_ADUMP_WIN_COMBINE_SIZE,
+                                  (const void *)statusBuffer + srcOffset,
+                                  Mc2A2Kernel::UB_ALIGN,
+                                  ACL_MEMCPY_DEVICE_TO_HOST);
                 if (!(ret == ACL_SUCCESS)) {
                     OP_LOGE(OP_NAME, "aclrtMemcpy win from device to host failed. ret = %d", ret);
                     return -1;
@@ -432,10 +432,10 @@ inline int ProcessArgs910B(void* devArgsPtr, std::vector<uint8_t> &winBuf, uint3
 inline void Mc2ExceptionImpl(aclrtExceptionInfo *args, void *userdata, const char *op)
 {
     const char* socName = aclrtGetSocName();
-    if((std::strstr(socName, "Ascend950") == nullptr) && (std::strstr(socName, "Ascend910_93") == nullptr)
-        && (std::strstr(socName, "Ascend910B") == nullptr)) { 
-        OP_LOGE(OP_NAME, "The soc version is %s, skip dump process", socName); 
-        return; 
+    if((std::strstr(socName, "Ascend950") == nullptr) && (std::strstr(socName, "Ascend910_93") == nullptr) &&
+       (std::strstr(socName, "Ascend910B") == nullptr)) {
+        OP_LOGE(OP_NAME, "The soc version is %s, skip dump process", socName);
+        return;
     }
 
     OP_LOGD(OP_NAME, "Start to handle mc2 exception and dump win info.");
