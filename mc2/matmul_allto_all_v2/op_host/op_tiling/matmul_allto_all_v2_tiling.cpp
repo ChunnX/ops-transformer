@@ -14,6 +14,7 @@
  */
 #include <register/op_def_registry.h>
 #include <register/op_impl_registry.h>
+#include "op_host/tiling_templates_registry.h"
 #include "matmul_allto_all_v2_tiling_base.h"
 
 using namespace ge;
