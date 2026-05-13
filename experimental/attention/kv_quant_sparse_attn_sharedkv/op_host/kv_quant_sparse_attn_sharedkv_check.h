@@ -275,7 +275,6 @@ public:
     bool isSameSeqAllKVTensor = true;
     bool isSameActualseq = true;
     uint32_t actualLenDimsKV = 0;
-    bool isCmpResidualKVNull = true;
     uint32_t actualLenDimsOriKV = 0;
     uint32_t actualLenDimsCmpKV = 0;
     uint32_t cmpResidualKVSize = 0;
@@ -391,7 +390,6 @@ public:
     uint32_t maxActualseq_ = 0;
 bool isSameSeqAllKVTensor_ = true;
     uint32_t actualLenDimsKV_ = 0;
-    bool isCmpResidualKVNull_ = true;
     uint32_t actualLenDimsOriKV_ = 0;
     uint32_t actualLenDimsCmpKV_ = 0;
     uint32_t cmpResidualKVSize_ = 0;

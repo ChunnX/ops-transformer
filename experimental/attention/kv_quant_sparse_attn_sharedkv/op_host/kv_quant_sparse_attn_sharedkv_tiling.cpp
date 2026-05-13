@@ -440,7 +440,6 @@ ge::graphStatus KvQuantSASInfoParser::GetActualseqInfo()
         actualLenDimsCmpKV_ = opParamInfo_.sequsedCmpKv.tensor->GetShapeSize();
     }
     if (opParamInfo_.cmpResidualKv.tensor != nullptr) {
-        isCmpResidualKVNull_ = false;
         cmpResidualKVSize_ = opParamInfo_.cmpResidualKv.tensor->GetShapeSize();
     }
     return ge::GRAPH_SUCCESS;
@@ -511,7 +510,6 @@ void KvQuantSASInfoParser::GenerateInfo(KvQuantSASTilingInfo &sasInfo)
 sasInfo.actualLenDimsQ = actualLenDimsQ_;
     sasInfo.actualLenDimsKV = actualLenDimsKV_;
     sasInfo.isSameSeqAllKVTensor = isSameSeqAllKVTensor_;
-    sasInfo.isCmpResidualKVNull = isCmpResidualKVNull_;
     sasInfo.actualLenDimsOriKV = actualLenDimsOriKV_;
     sasInfo.actualLenDimsCmpKV = actualLenDimsCmpKV_;
     sasInfo.cmpResidualKVSize = cmpResidualKVSize_;
