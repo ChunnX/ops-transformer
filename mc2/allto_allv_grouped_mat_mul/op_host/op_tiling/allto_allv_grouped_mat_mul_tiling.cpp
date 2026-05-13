@@ -108,6 +108,11 @@ ge::graphStatus AlltoAllvGmmTiling::GetContextAttr(const gert::TilingContext* co
     groupPtr_ = groupEpPtr;
     epWorldSizePtr_ = epWorldSizePtr;
     
+    auto transGmmWeightPtr = attrs->GetAttrPointer<bool>(ATTR_TRANS_GMM_WEIGHT_INDEX);
+    OP_TILING_CHECK(transGmmWeightPtr == nullptr,
+        OP_LOGE(A_INNER_DEBUG, "transGmmWeightPtr is null."), return ge::GRAPH_FAILED);
+    transGmmWeight_ = *transGmmWeightPtr;
+    
     OP_LOGI(A_INNER_DEBUG, "epGroup is %s, epWorldSize is %lu.", groupPtr_, *epWorldSizePtr_);
     return ge::GRAPH_SUCCESS;
 }
@@ -280,8 +285,11 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeRelation(const gert::TilingContext
     auto gmmWeightShape = context->GetInputShape(GMM_WEIGHT_INDEX)->GetStorageShape();
     uint64_t BSK = gmmXShape.GetDim(0);
     uint64_t H1 = gmmXShape.GetDim(1);
-    uint64_t H2 = gmmWeightShape.GetDim(0);
-    uint64_t N1 = gmmWeightShape.GetDim(1);
+    uint64_t e = gmmWeightShape.GetDim(0);
+    uint64_t h1DimIndex = transGmmWeight_ ? DIM_TWO : DIM_ONE;
+    uint64_t n1DimIndex = transGmmWeight_ ? DIM_ONE : DIM_TWO;
+    uint64_t H2 = gmmWeightShape.GetDim(h1DimIndex);
+    uint64_t N1 = gmmWeightShape.GetDim(n1DimIndex);
 
     if (H1 != H2) {
         OP_LOGE(A_INNER_DEBUG, "H1 is not equal to H2.");
@@ -319,10 +327,13 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeDims(const gert::TilingContext* co
     maxK_ = gmmXShape.GetDim(1);
 
     auto gmmWeightShape = context->GetInputShape(GMM_WEIGHT_INDEX)->GetStorageShape();
-    OP_TILING_CHECK(gmmWeightShape.GetDimNum() != DIM_TWO,
-        OP_LOGE(A_INNER_DEBUG, "gmmWeight shape dim num should be 2."), return ge::GRAPH_FAILED);
-    maxK_ = gmmWeightShape.GetDim(0);
-    maxN_ = gmmWeightShape.GetDim(1);
+    OP_TILING_CHECK(gmmWeightShape.GetDimNum() != DIM_THREE,
+        OP_LOGE(A_INNER_DEBUG, "gmmWeight shape dim num should be 3."), return ge::GRAPH_FAILED);
+    e_ = gmmWeightShape.GetDim(0);
+    uint64_t h1DimIndex = transGmmWeight_ ? DIM_TWO : DIM_ONE;
+    uint64_t n1DimIndex = transGmmWeight_ ? DIM_ONE : DIM_TWO;
+    maxK_ = gmmWeightShape.GetDim(h1DimIndex);
+    maxN_ = gmmWeightShape.GetDim(n1DimIndex);
 
     mmXDataType_ = context->GetInputDesc(GMM_X_INDEX)->GetDataType();
     mmDataTypeSize = GetSizeByDataType(mmXDataType_);
@@ -551,8 +562,17 @@ ge::graphStatus AlltoAllvGmmTiling::RunFusionKernelTiling(gert::TilingContext* c
     bsk_ = gmmXShape.GetDim(0);
     h1_ = gmmXShape.GetDim(1);
 
+    auto transGmmWeightPtr = attrs->GetAttrPointer<bool>(ATTR_TRANS_GMM_WEIGHT_INDEX);
+    auto transMmWeightPtr = attrs->GetAttrPointer<bool>(ATTR_TRANS_MM_WEIGHT_INDEX);
+    OP_TILING_CHECK((transGmmWeightPtr == nullptr) || (transMmWeightPtr == nullptr),
+        OP_LOGE(A_INNER_DEBUG, "transGmmWeightPtr or transMmWeightPtr is null."), return ge::GRAPH_FAILED);
+    transGmmWeight_ = *transGmmWeightPtr;
+    transMmWeight_ = *transMmWeightPtr;
+
     auto gmmWeightShape = context->GetInputShape(GMM_WEIGHT_INDEX)->GetStorageShape();
-    n1_ = gmmWeightShape.GetDim(1);
+    e_ = gmmWeightShape.GetDim(0);
+    uint64_t n1DimIndex = transGmmWeight_ ? DIM_ONE : DIM_TWO;
+    n1_ = gmmWeightShape.GetDim(n1DimIndex);
 
     auto gmmYShape = context->GetOutputShape(OUTPUT_GMM_Y_INDEX)->GetStorageShape();
     a_ = gmmYShape.GetDim(0);
@@ -561,13 +581,6 @@ ge::graphStatus AlltoAllvGmmTiling::RunFusionKernelTiling(gert::TilingContext* c
         auto mmXShape = context->GetOptionalInputShape(MM_X_INDEX)->GetStorageShape();
         bs_ = mmXShape.GetDim(0);
     }
-
-    auto transGmmWeightPtr = attrs->GetAttrPointer<bool>(ATTR_TRANS_GMM_WEIGHT_INDEX);
-    auto transMmWeightPtr = attrs->GetAttrPointer<bool>(ATTR_TRANS_MM_WEIGHT_INDEX);
-    OP_TILING_CHECK((transGmmWeightPtr == nullptr) || (transMmWeightPtr == nullptr),
-        OP_LOGE(A_INNER_DEBUG, "transGmmWeightPtr or transMmWeightPtr is null."), return ge::GRAPH_FAILED);
-    transGmmWeight_ = *transGmmWeightPtr;
-    transMmWeight_ = *transMmWeightPtr;
 
     OP_TILING_CHECK(
         DoAiCoreTiling(context) != ge::GRAPH_SUCCESS, OP_LOGE(A_INNER_DEBUG, "GMMAlltoAllv DoAiCoreTiling failed."),
