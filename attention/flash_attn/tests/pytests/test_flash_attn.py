@@ -199,6 +199,7 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
     q_range     = kwargs.get("q_range", None)
     k_range     = kwargs.get("k_range", None)
     v_range     = kwargs.get("v_range", None)
+    lse_flag = kwargs.get("return_softmax_lse", 0)
     pse_b = b;  pse_s1 = sq;  pse_s2 = skv
     sq_gen = sq;  skv_gen = skv
     if input_layout == "TND":
@@ -220,8 +221,9 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
 
     # ------------------ 1. CPU Golden 计算 (总是执行) ------------------
     print(f"[{test_name}] CPU 参考计算...")
-    out_cpu, _, _ = tforward(qf, kf, v, **kwargs)
+    out_cpu, x_max, x_sum = tforward(qf, kf, v, **kwargs)
     out_cpu_out_layout = trans_bnsd_to_layout(out_cpu, output_layout)
+    lse_out = torch.log(x_sum) + x_max
     if dump_tensors:
         dump_path = os.path.join(dump_dir, test_name)
         os.makedirs(dump_path, exist_ok=True)
@@ -273,7 +275,7 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
         if NPU_AVAILABLE:
             print(f"[{test_name}] NPU 计算...")
             atten_mask = generate_npu_mask(b, sq, skv, sparse_mode, pre_tokens, next_tokens, prefix)
-            npu_out = flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse_npu, **kwargs)
+            npu_out, lse_npu = flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse_npu, **kwargs)
             if dump_tensors:
                 dump_path = os.path.join(dump_dir, test_name)
                 os.makedirs(dump_path, exist_ok=True)
@@ -383,7 +385,12 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
         except Exception as exc:
             print(f"[WARN] 可视化异常: {exc}")
 
-    at_least_one_pass = passed_cpu_gpu or passed_cpu_npu or passed_gpu_npu
+    passed_lse = 0
+    if lse_flag == 1:
+        print(f"\n{'='*40} 对比 lse goldem vs lse npu {'='*40}")
+        passed_lse = check_result("LSE CHECK", lse_out.float(), lse_npu.float(), except_label="lse_golden", comp_label="lse_npu", verbose_diff=verbose_diff)
+
+    at_least_one_pass = passed_cpu_gpu or passed_cpu_npu or passed_gpu_npu or passed_lse
     return at_least_one_pass
 
 

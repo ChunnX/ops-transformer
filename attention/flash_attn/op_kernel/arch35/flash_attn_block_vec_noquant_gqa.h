@@ -646,7 +646,9 @@ public:
             pseShiftGmTensor.gmTensor = pseGm;
             pseShiftGmTensor.offsetCalculator.Init(constInfo.pseShiftByBatch ? constInfo.bSize : 1, constInfo.n2Size,
                                                    constInfo.gSize, constInfo.pseS1Size, constInfo.pseS2Size,
-                                                   this->actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
+                                                   this->actualSeqLengthsGmQ,
+                                                   (layout == LayOutTypeEnum::LAYOUT_TND) ? constInfo.cuSeqLensQSize
+                                                                                           : constInfo.seqUsedQSize);
             copyPSEGmToUb(pseShiftUbTensor, pseShiftGmTensor, pseCoord, qsEqualOne);
             pseStride = constInfo.pseStride;
         }
@@ -1520,7 +1522,7 @@ public:
         pseShiftGmTensor.gmTensor = pseGm;
         pseShiftGmTensor.offsetCalculator.Init(constInfo.pseShiftByBatch ? constInfo.bSize : 1, constInfo.n2Size,
                                                constInfo.gSize, constInfo.pseS1Size, constInfo.pseS2Size,
-                                               this->actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
+                                               this->actualSeqLengthsGmQ, constInfo.seqUsedQSize);
         copyPSEGmToUb(pseShiftUbTensor, pseShiftGmTensor, pseCoord, qsEqualOne);
 #endif
     }
