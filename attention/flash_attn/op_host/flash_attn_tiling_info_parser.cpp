@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -18,7 +18,6 @@
 #include "log/log.h"
 #include "log/error_code.h"
 #include "err/ops_err.h"
-#include "flash_attn_tiling_index.h"
 #include "flash_attn_tiling_info_parser.h"
 
 using std::map;
@@ -238,8 +237,6 @@ void FaInfoParser::GetMaskParams()
     // 文档约束：不传或传入-1代表正无穷，默认值为-1
     winLeft_ = (opParamInfo_.winLeft == nullptr) ? -1 : *opParamInfo_.winLeft;
     winRight_ = (opParamInfo_.winRight == nullptr) ? -1 : *opParamInfo_.winRight;
-
-    // 文档约束：mask_mode 默认值为 0（全计算模式）
     maskMode_ = (opParamInfo_.maskMode == nullptr) ? 0 : *opParamInfo_.maskMode;
 }
 
@@ -289,7 +286,7 @@ void FaInfoParser::GetKeyTSize()
     keyTSize_ = (keyShape_->HasShapeT()) ? static_cast<uint32_t>(keyShape_->GetShapeT()) : 0;
 }
 
-ge::graphStatus FaInfoParser::GetQkHeadDim() 
+ge::graphStatus FaInfoParser::GetQkHeadDim() // TODO check/get函数区别在哪
 {
     // 获取qkHeadDim基准值
     // 以query的D维度为基准
@@ -306,7 +303,7 @@ ge::graphStatus FaInfoParser::GetS1Size()
     if (layoutQ_ == FaLayout::TND) {
         if (opParamInfo_.maxSeqlenQ != nullptr) {
             if (*opParamInfo_.maxSeqlenQ < -1) {
-                OP_LOGE(opName_, "max_seqlen_q must be >= -1, but got %ld", *opParamInfo_.maxSeqlenQ);
+                OP_LOGE(opName_, "max_seqlen_q must be >= -1, but got %lld", *opParamInfo_.maxSeqlenQ);
                 return ge::GRAPH_FAILED;
             }
             if (*opParamInfo_.maxSeqlenQ == -1) {
@@ -340,7 +337,7 @@ ge::graphStatus FaInfoParser::GetS2SizeForBatchContinuous()
     if (layoutKV_ == FaLayout::TND) {
         if (opParamInfo_.maxSeqlenKV != nullptr) {
             if (*opParamInfo_.maxSeqlenKV < -1) {
-                OP_LOGE(opName_, "max_seqlen_kv must be >= -1, but got %ld", *opParamInfo_.maxSeqlenKV);
+                OP_LOGE(opName_, "max_seqlen_kv must be >= -1, but got %lld", *opParamInfo_.maxSeqlenKV);
                 return ge::GRAPH_FAILED;
             }
             if (*opParamInfo_.maxSeqlenKV == -1) {
@@ -387,6 +384,7 @@ ge::graphStatus FaInfoParser::GetS2SizeForPageAttention()
         return ge::GRAPH_FAILED;
     }
 
+    // TODO wmk PA场景需看max seq kv
     // PA 获取不到s2的总长度, 先暂时给个int64_t最大值
     s2Size_ = std::numeric_limits<int64_t>::max();
 
@@ -418,6 +416,7 @@ ge::graphStatus FaInfoParser::GetValueHeadDim()
 
 ge::graphStatus FaInfoParser::GetInAndOutLayout()
 {
+    // TODO 加判空
     // Layout枚举很多，kernel和tiling用同一个枚举，
     auto itQ = layoutMap.find(opParamInfo_.layoutQ);
     if (itQ == layoutMap.end()) {
@@ -479,6 +478,7 @@ void FaInfoParser::SetFaShape()
 
 ge::graphStatus FaInfoParser::GetGSize()
 {
+    // TODO wmk n2 = 0校验
     // 获取G基准值
     if (n1Size_ % n2Size_ != 0U) {
         OP_LOGE(opName_, "Q numHeads(%ld) should be a multiple of Kv Heads(%ld).", n1Size_, n2Size_);
@@ -642,14 +642,9 @@ ge::graphStatus FaInfoParser::ParseFeatureInfo()
     returnSoftmaxLse_ = (opParamInfo_.returnSoftMaxLse == nullptr) ? 0 : *opParamInfo_.returnSoftMaxLse;
     softmaxLseFlag_ = (returnSoftmaxLse_ != 0);
 
-    // 公共参数组 - 属性解析
-    // 文档约束：softmax_scale 默认值为 1.0
-    softmaxScale_ = (opParamInfo_.softmaxScale == nullptr) ? 1.0f : static_cast<float>(*opParamInfo_.softmaxScale);
-    // 文档约束：deterministic 默认值为 0
+    softmaxScale_ = (opParamInfo_.softmaxScale == nullptr) ? 1.0f : *opParamInfo_.softmaxScale;
     deterministic_ = (opParamInfo_.deterministic == nullptr) ? 0 : *opParamInfo_.deterministic;
-    // 文档约束：max_seqlen_q 默认值为 -1
     maxSeqQ_ = (opParamInfo_.maxSeqlenQ == nullptr) ? -1 : *opParamInfo_.maxSeqlenQ;
-    // 文档约束：max_seqlen_kv 默认值为 -1
     maxSeqKv_ = (opParamInfo_.maxSeqlenKV == nullptr) ? -1 : *opParamInfo_.maxSeqlenKV;
 
     return ge::GRAPH_SUCCESS;

@@ -19,7 +19,7 @@
 #include "log/log.h"
 #include "log/error_code.h"
 #include "register/op_def_registry.h"
-#include "../flash_attn_tiling_constants.h"
+#include "../fa_tiling_info.h"
 #include "layout_checker.h"
 
 namespace optiling {
@@ -34,8 +34,8 @@ using namespace arch35FA;
 ge::graphStatus LayoutChecker::CheckSinglePara(const FaTilingInfo &faInfo)
 {
     const std::vector<FaLayout> supportedQLayouts = {FaLayout::BNSD, FaLayout::BSND, FaLayout::TND};
-    const std::vector<FaLayout> supportedKvLayouts = {FaLayout::BNSD,    FaLayout::BSND,    FaLayout::TND,
-                                                      FaLayout::PA_BBND, FaLayout::PA_BNBD, FaLayout::PA_Nz};
+    const std::vector<FaLayout> supportedKvLayouts = {FaLayout::BNSD, FaLayout::BSND, FaLayout::TND, FaLayout::PA_BBND,
+                                                      FaLayout::PA_BNBD};
     const std::vector<FaLayout> supportedOutLayouts = {FaLayout::BNSD, FaLayout::BSND, FaLayout::TND};
 
     OP_CHECK_IF(std::find(supportedQLayouts.begin(), supportedQLayouts.end(), faInfo.qLayout) ==
@@ -46,7 +46,7 @@ ge::graphStatus LayoutChecker::CheckSinglePara(const FaTilingInfo &faInfo)
 
     OP_CHECK_IF(std::find(supportedKvLayouts.begin(), supportedKvLayouts.end(), faInfo.kvLayout) ==
                     supportedKvLayouts.end(),
-                OP_LOGE(faInfo.opName, "layout_kv only supports BNSD/BSND/TND/PA_BBND/PA_BNBD/PA_Nz, but got %s",
+                OP_LOGE(faInfo.opName, "layout_kv only supports BNSD/BSND/TND/PA_BBND/PA_BNBD, but got %s",
                         LayoutToSerialString(faInfo.kvLayout).c_str()),
                 return ge::GRAPH_FAILED);
 
@@ -68,10 +68,9 @@ struct LayoutConstraintConfig {
 // outLayouts: BNSD queries additionally support BSND output (N/S dim transpose);
 // BSND/TND queries do NOT support output layout conversion.
 static const std::map<FaLayout, LayoutConstraintConfig> LAYOUT_CONSTRAINT_TABLE = {
-    {FaLayout::BNSD,
-     {{FaLayout::BNSD, FaLayout::PA_BBND, FaLayout::PA_BNBD, FaLayout::PA_Nz}, {FaLayout::BNSD, FaLayout::BSND}}},
-    {FaLayout::BSND, {{FaLayout::BSND, FaLayout::PA_BBND, FaLayout::PA_BNBD, FaLayout::PA_Nz}, {FaLayout::BSND}}},
-    {FaLayout::TND, {{FaLayout::TND, FaLayout::PA_BBND, FaLayout::PA_BNBD, FaLayout::PA_Nz}, {FaLayout::TND}}},
+    {FaLayout::BNSD, {{FaLayout::BNSD, FaLayout::PA_BBND, FaLayout::PA_BNBD}, {FaLayout::BNSD, FaLayout::BSND}}},
+    {FaLayout::BSND, {{FaLayout::BSND, FaLayout::PA_BBND, FaLayout::PA_BNBD}, {FaLayout::BSND}}},
+    {FaLayout::TND, {{FaLayout::TND, FaLayout::PA_BBND, FaLayout::PA_BNBD}, {FaLayout::TND}}},
 };
 
 ge::graphStatus LayoutChecker::CheckMultiPara(const FaTilingInfo &faInfo)

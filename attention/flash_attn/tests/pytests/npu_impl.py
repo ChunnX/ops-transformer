@@ -59,7 +59,8 @@ def print_metadata(metadata):
                  "WS_NUM",   "M_START",  "M_NUM"]
 
     # Reinterpret buffer as flat uint32 array regardless of original dtype
-    arr = metadata.cpu().contiguous().view(torch.int32).numpy().view(np.uint32)
+    # arr = metadata.cpu().contiguous().view(torch.int32).numpy().view(np.uint32)
+    arr = metadata.cpu().contiguous().to(torch.int32).numpy().astype(np.uint32)
 
     section_num  = int(arr[0])
     m_base_size  = int(arr[1])
@@ -136,6 +137,9 @@ def flash_attn_metadata_only(**kwargs):
     sparse_mode = kwargs.get("sparse_mode", 0)
     pre_tokens  = kwargs.get("pre_tokens",  2147483647)
     next_tokens = kwargs.get("next_tokens", 2147483647)
+    if sparse_mode in (0, 3):
+        pre_tokens = -1
+        next_tokens = -1
     actual_seq_qlen  = kwargs.get("actual_seq_qlen",  None)
     actual_seq_kvlen = kwargs.get("actual_seq_kvlen", actual_seq_qlen)
     _cu_q       = kwargs.get("_npu_cu_q",       None)
@@ -245,6 +249,9 @@ def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
     sparse_mode = kwargs.get("sparse_mode", 0)
     pre_tokens = kwargs.get("pre_tokens", 2147483647)
     next_tokens = kwargs.get("next_tokens", 2147483647)
+    if sparse_mode in (0, 3):
+        pre_tokens = -1
+        next_tokens = -1
     actual_seq_qlen  = kwargs.get("actual_seq_qlen",  None)
     actual_seq_kvlen = kwargs.get("actual_seq_kvlen", actual_seq_qlen)
     # New 4-param style: normalize_case sets _npu_cu_q/kv (full B+1 list) and _npu_seqused_q/kv (B individual).
@@ -256,6 +263,7 @@ def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
     scale = kwargs.get("scale", 1 / (d ** 0.5))
     keep_prob = kwargs.get("keep_prob", 1)
     seed = kwargs.get("seed", 0)
+    lse_flag = kwargs.get("return_softmax_lse", 0)
 
     q1 = trans_bnsd_to_layout(q, layout_q).contiguous().to(device)
     k1 = trans_bnsd_to_layout(k, layout_kv).contiguous().to(device)
@@ -383,9 +391,11 @@ def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
 
     # npu_flash_attn only accepts max_seqlen_q/kv for TND layout;
     # for other layouts the default (-1) must be used, so we don't pass them.
-    max_seqlen_q  = max_seqlen_q  if layout_q == "TND" else 1
-    max_seqlen_kv = max_seqlen_kv if layout_q == "TND" else 1
+    max_seqlen_q  = max_seqlen_q  if layout_q == "TND" else -1
+    max_seqlen_kv = max_seqlen_kv if layout_q == "TND" else -1
     atten_mask1 = atten_mask1 if sparse_mode != 0 else None
+    if atten_mask1 is not None and sparse_mode in (3, 4):
+        atten_mask1 = atten_mask1.to(dtype=torch.int8)
 
     _print_args("Call npu_flash_attn", {
         "q": q1,
@@ -408,7 +418,7 @@ def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
         "layout_out": layout_out,
     })
 
-    out, _ = npu_flash_attn(
+    out, lse_out = npu_flash_attn(
         q1, k1, v1,
         block_table   = None,
         sinks         = None,
@@ -427,8 +437,8 @@ def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
         layout_q      = layout_q,
         layout_kv     = layout_kv,
         layout_out    = layout_out,
-        return_softmax_lse = 0,
+        return_softmax_lse = lse_flag,
         deterministic = 0,
     )
     torch.npu.synchronize()
-    return out.cpu()
+    return out.cpu(), lse_out.cpu()
