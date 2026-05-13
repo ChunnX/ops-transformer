@@ -17,7 +17,9 @@
 #else
 #include "kernel_operator.h"
 #endif
-
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+#include "../moe_distribute_dispatch_v2/arch35/moe_distribute_dispatch_v2_host_kfc.h"
+#endif
 #if __has_include("../moe_distribute_dispatch_v2/moe_distribute_dispatch_v2_tiling.h")
 #include "../moe_distribute_dispatch_v2/moe_distribute_dispatch_v2.h"
 #include "../moe_distribute_dispatch_v2/moe_distribute_dispatch_v2_full_mesh.h"
