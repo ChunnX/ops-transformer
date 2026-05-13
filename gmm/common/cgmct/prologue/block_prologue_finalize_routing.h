@@ -168,6 +168,7 @@ BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PA
     if (!isDataBlockInitialized_) {
         Duplicate<DataTypeOut>(initWithZero_, 0, UB_INIT_REZO_LEN);
         isDataBlockInitialized_ = true;
+        AscendC::PipeBarrier<PIPE_ALL>();
     }
     // the baseOffset addr of cur vector core, copy out to GM
     baseOffset += outOffset;
@@ -240,6 +241,7 @@ __aicore__ inline void BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZ
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(pingPongID);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(pingPongID);
         CopyOutShareInput(*yLocal, outOffset + offset, curCount);
+        AscendC::PipeBarrier<PIPE_ALL>();
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(pingPongID);
         AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(pingPongID);
         pingPongID = (pingPongID + 1) & 1;

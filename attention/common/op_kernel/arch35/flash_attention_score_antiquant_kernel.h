@@ -25,9 +25,17 @@ const int VC_MM1RES_EVENT[2] = {8, 9};
 const int VC_MM2RES_EVENT[2] = {10, 15};
 
 #include "util_regbase.h"
+
+#if __has_include("../../../common/op_kernel/matmul.h")
 #include "../../../common/op_kernel/matmul.h"
 #include "../../../common/op_kernel/FixpipeOut.h"
 #include "../../../common/op_kernel/CopyInL1.h"
+#else
+#include "../matmul.h"
+#include "../FixpipeOut.h"
+#include "../CopyInL1.h"
+#endif
+
 #include "infer_flash_attention_comm.h"
 #include "flash_attention_score_common_regbase.h"
 #include "kernel_operator_list_tensor_intf.h"
@@ -61,8 +69,6 @@ public:
     static constexpr uint32_t kvAntiquantResSize = s2BaseSize * dTemplateAlign64 * sizeof(Q_T);
     static constexpr uint32_t mm1ResultSize = s1BaseSize / CV_RATIO * s2BaseSize * sizeof(T);
     static constexpr uint32_t mm2ResultSize = s1BaseSize / CV_RATIO * dTemplateAlign64 * sizeof(T);
-    static constexpr bool PAGE_ATTENTION_ANTIQUANT = (antiquantMode == AntiquantTypeEnum::PER_TOKEN_PAGE_ATTENTION ||
-        antiquantMode == AntiquantTypeEnum::PER_TOKEN_HEAD_PAGE_ATTENTION);
     static constexpr bool ANTIQUANT = !IsSameType<Q_T, KV_T>::value;
     static constexpr bool useDn = false;
     __aicore__ inline FlashAttentionScoreAntiquantKernel() {};
@@ -211,6 +217,7 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
     if ASCEND_IS_AIV {
         if constexpr (ANTIQUANT) {
             this->vecBlock.antiqSeqSize = inputParamsRegbase.antiquantParaSeqSize;
+            this->vecBlock.antiquantPageAttentionFlag = inputParamsRegbase.antiquantPageAttentionFlag;
             this->vecBlock.antiquantPerTensorFlag = inputParamsRegbase.antiquantPerTensorFlag;
             this->vecBlock.antiquantPerHeadFlag = inputParamsRegbase.antiquantPerHeadFlag;
         }
@@ -345,7 +352,7 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
     if constexpr (isFd) {
         this->constInfo.splitKVNum = inputParamsRegbase.kvSplitPart;
         this->constInfo.sInnerLoopSize = CeilDiv(this->constInfo.s2Size, this->constInfo.splitKVNum);
-        if constexpr (PAGE_ATTENTION_ANTIQUANT) {
+        if (inputParamsRegbase.antiquantPerTensorFlag) {
             this->constInfo.sInnerLoopSize = AlignUp32(static_cast<uint64_t>(this->constInfo.sInnerLoopSize));
         }
         if constexpr (isPa) {

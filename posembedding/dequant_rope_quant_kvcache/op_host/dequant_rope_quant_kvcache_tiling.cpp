@@ -175,6 +175,7 @@ static void DQRKPrintParam(gert::TilingContext* context, DequantRopeQuantKvcache
     OP_LOGD(nodeName, ">>> isPA:              %ld", tiling.get_isPA());
     OP_LOGD(nodeName, ">>> hasBias:              %ld", tiling.get_hasBias());
     OP_LOGD(nodeName, ">>> hasAS:              %ld", tiling.get_hasAS());
+    OP_LOGD(nodeName, ">>> batch:              %ld", tiling.get_batch());
 }
 ge::graphStatus checkOptDtype(const uint64_t index, gert::TilingContext* context, const ge::char_t* nodeName_)
 {
@@ -517,6 +518,7 @@ static ge::graphStatus TilingDequantRopeQuantKvcache(gert::TilingContext* contex
     tiling.set_isPA(tilingInfoDRQK.isPA);
     tiling.set_hasBias(tilingInfoDRQK.hasBias);
     tiling.set_hasAS(tilingInfoDRQK.hasAS);
+    tiling.set_batch(tilingInfoDRQK.batch);
     uint32_t tilingKey = tilingInfoDRQK.biasDataType;
 
     context->SetBlockDim(numBlocks);

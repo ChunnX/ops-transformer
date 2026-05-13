@@ -10,6 +10,7 @@
 
 if (BUILD_OPEN_PROJECT)
     set(grouped_matmul_finalize_routing_depends gmm/grouped_matmul CACHE INTERNAL "Dependencies for grouped_matmul_finalize_routing.")
+    set(grouped_matmul_finalize_routing_apt_depends gmm/grouped_matmul CACHE INTERNAL "Dependencies for grouped_matmul_finalize_routing_apt.")
     target_sources(op_host_aclnnExc PRIVATE
         grouped_matmul_finalize_routing_def.cpp
     )
@@ -21,5 +22,8 @@ if (BUILD_OPEN_PROJECT)
     )
 endif()
 if(NOT BUILD_OPS_RTY_KERNEL)
-    add_modules_sources(OPTYPE grouped_matmul_finalize_routing ACLNNTYPE aclnn_exclude)
+    add_modules_sources(
+        OP_API_INDEPENDENT ON
+        OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api
+        OPTYPE grouped_matmul_finalize_routing ACLNNTYPE aclnn_exclude)
 endif()

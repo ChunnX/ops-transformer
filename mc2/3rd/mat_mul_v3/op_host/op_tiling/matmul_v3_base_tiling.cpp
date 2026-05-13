@@ -19,7 +19,7 @@
 #include "matmul_v3_l2_cache.h"
 #include "util/math_util.h"
 #include "log/log.h"
-#include "tiling_base/tiling_key.h"
+#include "op_host/tiling_key.h"
 #include "mc2_log.h"
 #include "ops_legacy/op_tiling/op_cache_tiling.h"
 #include "runtime_kb_api.h"
@@ -222,7 +222,7 @@ ge::graphStatus Mc2MatmulV3BaseTiling::CheckArgs()
     }
 
     if (attrs->GetAttrNum() >= HF32_ATTR_NUM) {
-        OP_CHECK_NULL_WITH_CONTEXT(context_, attrs->GetAttrPointer<int32_t>(HF32_ATTR_INDEX - 1));
+        OP_CHECK_NULL_WITH_CONTEXT(context_, attrs->GetAttrPointer<int64_t>(HF32_ATTR_INDEX - 1));
         OP_CHECK_NULL_WITH_CONTEXT(context_, attrs->GetAttrPointer<bool>(HF32_ATTR_INDEX));
     }
     OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetOutputDesc(0));

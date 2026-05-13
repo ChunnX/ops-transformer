@@ -9,8 +9,8 @@
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|     √     |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|     √     |
 |<term>Atlas 200I/500 A2 推理产品</term>|     ×      |
-|<term>Atlas  推理系列产品</term>|     ×     |
-|<term>Atlas  训练系列产品</term>|     ×     |
+|<term>Atlas 推理系列产品</term>|     ×     |
+|<term>Atlas 训练系列产品</term>|     ×     |
 
 ## 功能说明
 
@@ -28,10 +28,9 @@
     attention\_out = einsum(weights, value1) + einsum(weights, value2)
     $$
     
-
 ## 函数原型
 
-每个算子分为[两段式接口](common/两段式接口.md)，必须先调用“aclnnFusedFloydAttentionGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFusedFloydAttention”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnFusedFloydAttentionGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFusedFloydAttention”接口执行计算。
 
 ```Cpp
 aclnnStatus aclnnFusedFloydAttentionGetWorkspaceSize(
@@ -54,9 +53,8 @@ aclnnStatus aclnnFusedFloydAttention(
     void             *workspace, 
     uint64_t          workspaceSize, 
     aclOpExecutor    *executor, 
-    const aclrtStream stream)
+    aclrtStream       stream)
 ```
-
 
 ## aclnnFusedFloydAttentionGetWorkspaceSize
 
@@ -145,7 +143,7 @@ aclnnStatus aclnnFusedFloydAttention(
           <td>√</td>
         </tr>
         <tr>
-          <td>scaleValue</td>
+          <td>scaleValueOptional</td>
           <td>输入</td>
           <td>Host侧的double，公式中的scale，代表缩放系数。</td>
           <td>-</td>
@@ -155,7 +153,7 @@ aclnnStatus aclnnFusedFloydAttention(
           <td>-</td>
         </tr>
         <tr>
-          <td>softmaxMax</td>
+          <td>softmaxMaxOut</td>
           <td>输出</td>
           <td>注意力正向计算的中间输出。</td>
           <td>输出的shape类型为[B,H,N,M,8]。</td>
@@ -165,7 +163,7 @@ aclnnStatus aclnnFusedFloydAttention(
           <td>√</td>
         </tr>
         <tr>
-          <td>softmaxSum</td>
+          <td>softmaxSumOut</td>
           <td>输出</td>
           <td>注意力正向计算的中间输出。</td>
           <td>输出的shape类型为[B,H,N,M,8]。</td>
@@ -209,7 +207,7 @@ aclnnStatus aclnnFusedFloydAttention(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](common/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
   第一段接口完成入参校验，若出现以下错误码，则对应原因为：
 
@@ -267,7 +265,7 @@ aclnnStatus aclnnFusedFloydAttention(
     <tr>
         <td>workspaceSize</td>
         <td>输入</td>
-        <td>在Device侧申请的workspace大小，由第一段接口aclnnFlashAttentionScoreGetWorkspaceSize获取。</td>
+        <td>在Device侧申请的workspace大小，由第一段接口aclnnFusedFloydAttentionGetWorkspaceSize获取。</td>
     </tr>
     <tr>
         <td>executor</td>
@@ -284,7 +282,7 @@ aclnnStatus aclnnFusedFloydAttention(
 
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](common/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明<a name="1"></a>
 
@@ -302,6 +300,7 @@ aclnnStatus aclnnFusedFloydAttention(
 - key2与value2 shape需相同。
 - softmaxMax与softmaxSum shape需相同。
 - D只支持32/64/128。
+- 由于底层指令限制，当M\*D>=65536或者K\*D>=65536时，会出现明显性能下降，此时建议使用小算子拼接替换实现。
 
 ## 调用示例
 
@@ -401,14 +400,14 @@ int main() {
   int64_t q_size = B * H * N * M * D;
   int64_t kv_size = B * H * N * K * D;
   int64_t k1v1_size = B * H * K * M * D;
-  int64_t atten_mask_size = B * H * N * M * K;
+  int64_t atten_mask_size = B * 1 * N * 1 * K;
 
   std::vector<int64_t> qShape = {B, H, N, M, D};
   std::vector<int64_t> kShape = {B, H, N, K, D};
   std::vector<int64_t> k1Shape = {B, H, K, M, D};
   std::vector<int64_t> vShape = {B, H, N, K, D};
   std::vector<int64_t> v1Shape = {B, H, K, M, D};
-  std::vector<int64_t> attenmaskShape = {B, H, N, M, K};
+  std::vector<int64_t> attenmaskShape = {B, 1, N, 1, K};
   std::vector<int64_t> attentionOutShape = {B, H, N, M, D};
   std::vector<int64_t> softmaxMaxShape = {B, H, N, M, 8};
   std::vector<int64_t> softmaxSumShape = {B, H, N, M, 8};

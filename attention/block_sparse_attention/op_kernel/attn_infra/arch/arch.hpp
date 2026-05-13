@@ -1,5 +1,5 @@
-/**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -26,29 +26,25 @@ struct AtlasA2 {
     static constexpr uint32_t L0C_SIZE = 128U * 1024U;
 };
 
-struct PositionGM {
-    static constexpr AscendC::TPosition POSITION = AscendC::TPosition::GM;
+struct AtlasA5 {
+    static constexpr uint32_t BIAS_SIZE = 4U * 1024U;
+    static constexpr uint32_t FIXBUF_SIZE = 16U * 1024U;
+    static constexpr uint32_t UB_SIZE = 256U * 1024U;
+    static constexpr uint32_t L1_SIZE = 512U * 1024U;
+    static constexpr uint32_t L0A_SIZE = 64U * 1024U;
+    static constexpr uint32_t L0B_SIZE = 64U * 1024U;
+    static constexpr uint32_t L0C_SIZE = 256U * 1024U;
 };
 
-struct PositionL1 {
-    static constexpr AscendC::TPosition POSITION = AscendC::TPosition::A1;
-};
+template <AscendC::TPosition POS>
+using PositionType = std::integral_constant<AscendC::TPosition, POS>;
 
-struct PositionL0A {
-    static constexpr AscendC::TPosition POSITION = AscendC::TPosition::A2;
-};
-
-struct PositionL0B {
-    static constexpr AscendC::TPosition POSITION = AscendC::TPosition::B2;
-};
-
-struct PositionL0C {
-    static constexpr AscendC::TPosition POSITION = AscendC::TPosition::CO1;
-};
-
-struct PositionUB {
-    static constexpr AscendC::TPosition POSITION = AscendC::TPosition::VECCALC;
-};
+using PositionGM = PositionType<AscendC::TPosition::GM>;
+using PositionL1 = PositionType<AscendC::TPosition::A1>;
+using PositionL0A = PositionType<AscendC::TPosition::A2>;
+using PositionL0B = PositionType<AscendC::TPosition::B2>;
+using PositionL0C = PositionType<AscendC::TPosition::CO1>;
+using PositionUB = PositionType<AscendC::TPosition::VECCALC>;
 
 } // namespace NpuArch::Arch
 

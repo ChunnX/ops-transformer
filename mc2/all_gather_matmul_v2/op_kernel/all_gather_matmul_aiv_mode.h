@@ -28,14 +28,14 @@
 #include "all_gather_matmul_aiv_mode_padding.h"
 #include "all_gather_matmul_aiv_mode_dequant.h"
 
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/catlass.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/arch/arch.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/layout/layout.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/gemm/block/block_mmad.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/gemm/block/block_swizzle.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/gemm/dispatch_policy.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/gemm/gemm_type.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/gemm_coord.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/arch.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/layout/layout.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/block_mmad.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/block_swizzle.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/dispatch_policy.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/gemm_type.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm_coord.hpp"
 
 #include "gather_matmul.hpp"
 
@@ -48,7 +48,6 @@ constexpr static uint32_t B32_PER_BLOCK = 8U;
 constexpr static uint32_t B64_PER_BLOCK = 4U;
 constexpr static int32_t CUBE_MATRIX_SIZE_B16 = 256;        // 16 * 16
 constexpr static int32_t L0AB_PINGPONG_BUFFER_SIZE = 32768; // 32 KB
-constexpr static int32_t MAX_BLOCK_COUNT = 2;
 constexpr static int32_t FLAG_ZERO_IDX = 0;
 constexpr static int32_t FLAG_ONE_IDX = 1;
 constexpr static int32_t FLAG_VALUE = 1;
@@ -194,6 +193,7 @@ private:
     DequantType dequantType;
     bool needPerChannel;
     bool needPerToken;
+    bool accumWorkSpacePingPong{false};
 
     __gm__ supportX1Type* gm_peer_mem;
 
@@ -237,6 +237,7 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Init(
     n_loop = tilingData.cocTiling.nLoop;
     k_loop = tilingData.cocTiling.kLoop;
     pValue = tilingData.cocTiling.pValue;
+
     max_ub_ping_pong_size = tilingData.cocTiling.ubMoveNum / MAX_BLOCK_COUNT;
     comm_npu_split = tilingData.cocTiling.commNpuSplit;   // tiling 寻优
     comm_data_split = tilingData.cocTiling.commDataSplit; // tiling 寻优
@@ -294,7 +295,10 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Init(
         }
     }
 
-    uint64_t gm_scale_workspace_st = aAlignSize + bAlignSize + m * n * worldSize * sizeof(int32_t);
+    accumWorkSpacePingPong = tilingData.allGatherMatmulInfo.accumWorkSpacePingPong;
+    int32_t workspaceM = accumWorkSpacePingPong ? m : MAX_BLOCK_COUNT * m0 * pValue;
+    uint64_t gm_scale_workspace_st = static_cast<uint64_t>(aAlignSize) + bAlignSize
+                                    + workspaceM * n * worldSize * sizeof(int32_t);
  	gm_scale_workspace = needPerToken ? workspaceGM + gm_scale_workspace_st : 0;
 
     AllGatherMatmulAIVMode<TemplateAGMMFunc>::AICInit();
@@ -421,7 +425,7 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::CatlassMatmul()
                                                      layoutPeerMem, reinterpret_cast<GM_ADDR>(gm_accum),
                                                      pValue,        swizzlCount,
                                                      swizzlDirect,  rankId,
-                                                     worldSize,     need_fixpipe};
+                                                     worldSize,     need_fixpipe, accumWorkSpacePingPong};
                 MatmulKernel matmul_op;
                 matmul_op(params);
             } else {
@@ -438,7 +442,7 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::CatlassMatmul()
                                                      layoutPeerMem, reinterpret_cast<GM_ADDR>(gm_accum),
                                                      pValue,        swizzlCount,
                                                      swizzlDirect,  rankId,
-                                                     worldSize,     need_fixpipe};
+                                                     worldSize,     need_fixpipe, accumWorkSpacePingPong};
                 MatmulKernel matmul_op;
                 matmul_op(params);
             }
@@ -474,7 +478,7 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::CatlassMatmul()
                                                      layoutPeerMem, reinterpret_cast<GM_ADDR>(gm_accum),
                                                      pValue,        swizzlCount,
                                                      swizzlDirect,  rankId,
-                                                     worldSize,     need_fixpipe};
+                                                     worldSize,     need_fixpipe, accumWorkSpacePingPong};
                 MatmulKernel matmul_op;
                 matmul_op(params);
             } else {
@@ -491,7 +495,7 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::CatlassMatmul()
                                                      layoutPeerMem, reinterpret_cast<GM_ADDR>(gm_accum),
                                                      pValue,        swizzlCount,
                                                      swizzlDirect,  rankId,
-                                                     worldSize,     need_fixpipe};
+                                                     worldSize,     need_fixpipe, accumWorkSpacePingPong};
                 MatmulKernel matmul_op;
                 matmul_op(params);
             }
@@ -583,15 +587,29 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Dequant(int32_t
     uint32_t colNum = n;
     uint32_t tileM0 = m0;
     uint32_t tileN0 = n0;
+
     uint64_t blockSt = cal_idx * m0 * pValue * n;
- 	uint64_t blockSize = m * n;
+    uint64_t blockSize = m * n;
+    uint64_t blockStInWorkspace = (cal_idx % MAX_BLOCK_COUNT) * worldSize * m0 * pValue * n;
+    uint64_t blockSizeInWorkspace = m0 * pValue * n;
+
+    if (accumWorkSpacePingPong) {
+        blockStInWorkspace = blockSt;
+        blockSizeInWorkspace = blockSize;
+    }
 
     __gm__ float32_t* perChannelScale = needPerChannel ? reinterpret_cast<__gm__ float32_t*>(x2ScaleGM_) : nullptr;
     __gm__ float32_t* perTokenScale = needPerToken ? reinterpret_cast<__gm__ float32_t*>(gm_scale_workspace) : nullptr;
     __gm__ int32_t* workspace = needPerChannel ? reinterpret_cast<__gm__ int32_t*>(gm_accum) : nullptr;
     __gm__ YType* output = reinterpret_cast<__gm__ YType*>(cGM_);
+    
+    // 当 X1Type 为 int4_t 时，只让 subblockIdx == 1 的核参与计算
+    constexpr bool isInt4Type = std::is_same_v<X1Type, AscendC::int4b_t>;
+    if (isInt4Type && aivIdx != 1) {
+        return;
+    }
+    
     dequantRunner.Run(DEQUANT_ARGS_CALL());
-    SetAndWaitAivSync(FLAG_VALUE);
 }
 
 template <TemplateAGMMClass>
@@ -828,9 +846,9 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Process()
 
                 for (int32_t cycle_idx = 0; cycle_idx < cycle_num; ++cycle_idx) {
                     int32_t s2_other_rank = blockIdx - core_count + cycle_idx * other_core_num;
-                    int32_t other_rank_offset =
+                    uint64_t other_rank_offset =
                         s2_flag_idx * gm_a_pingpong_size + s2_other_rank * pValue * m0 * k_align;
-                    int64_t dst_offset = s2_other_rank * static_cast<int64_t>(m) * k + (cal_idx - 1) * pValue * m0 * k;
+                    uint64_t dst_offset = s2_other_rank * static_cast<int64_t>(m) * k + (cal_idx - 1) * pValue * m0 * k;
                     if (s2_other_rank >= worldSize) {
                         break;
                     }
@@ -859,6 +877,11 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Process()
                 }
             }
 
+            // dequant
+            if (cal_idx >= MAX_BLOCK_COUNT) {
+                Dequant(cal_idx - MAX_BLOCK_COUNT);
+            }
+
             if (cal_idx < cal_count) {
                 SetAndWaitAivSync(flag_idx);
                 CrossRankSyncV2(FLAG_ONE_IDX, cal_idx + 1);
@@ -866,11 +889,6 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Process()
                 // 发送aic同步
                 SetAicSync(flag_idx);
             }
-
-            // dequant
- 	        if (cal_idx >= MAX_BLOCK_COUNT) {
- 	            Dequant(cal_idx - MAX_BLOCK_COUNT);
- 	        }
         }
 
         for (int32_t idx = 0; idx < num_flags; ++idx) {
@@ -891,3 +909,4 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Process()
 }
 
 } // namespace AllGatherMatmulAIVModeImpl
+

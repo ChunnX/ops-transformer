@@ -18,10 +18,10 @@
 #include "util/shape_util.h"
 #include "log/log.h"
 #include "tiling/tiling_api.h"
-#include "tiling_base/tiling_type.h"
-#include "tiling_base/tiling_util.h"
+#include "op_host/tiling_type.h"
+#include "op_host/tiling_util.h"
 #include "decode_update_tiling.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 #include "attention_update_tiling.h"
 
 namespace {
@@ -66,8 +66,8 @@ ge::graphStatus DecodeUpdateTiling(gert::TilingContext *context) {
     OP_LOGD(nodeName, "Tiling initing");
 
     auto attrs = context->GetAttrs();
-    const uint32_t* updateTypePtr = attrs->GetAttrPointer<uint32_t>(ATTR_UPDATETYPE_INDEX);
-    const uint32_t* spPtr = attrs->GetAttrPointer<uint32_t>(ATTR_SP_INDEX);
+    const int64_t* updateTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_UPDATETYPE_INDEX);
+    const int64_t* spPtr = attrs->GetAttrPointer<int64_t>(ATTR_SP_INDEX);
 
     auto updateType = *updateTypePtr;
     auto sp = *spPtr;
@@ -84,7 +84,7 @@ ge::graphStatus DecodeUpdateTiling(gert::TilingContext *context) {
     const uint32_t totalLength = lseShape.GetDim(LSE_TOTAL_LENGTH_DIM);
     const uint32_t hd = inShape.GetDim(IN_HD_DIM);
 
-    OP_LOGD(nodeName, "TotalLength of b*s*hc is %u, sp is %u, hd is %u",
+    OP_LOGD(nodeName, "TotalLength of b*s*hc is %u, sp is %ld, hd is %u",
                                             totalLength, sp, hd);
     
     uint32_t blockDims = 0;

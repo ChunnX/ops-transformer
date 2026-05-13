@@ -16,8 +16,8 @@
 #pragma once
 
 #include "flash_attention_score_grad_tiling_common.h"
-#include "tiling_base/tiling_base.h"
-#include "tiling_base/tiling_type.h"
+#include "op_host/tiling_base.h"
+#include "op_host/tiling_type.h"
 
 
 namespace optiling {
@@ -78,6 +78,7 @@ protected:
     uint64_t GetTilingKey() const override;
     ge::graphStatus GetWorkspaceSize() override;
     ge::graphStatus PostTiling() override;
+    ge::graphStatus GetMaxWorkspaceFlag();
 
 private:
     ge::graphStatus GetLayoutInfo();
@@ -140,6 +141,7 @@ private:
     int64_t attenMaskS2Size{0};
     SparseMode sparseMode = NO_MASK;
     uint64_t l2CacheSize{0};
+    bool isMaxWorkspace_ = false;
 };
 
 class FlashAttentionScoreGradTilingDeterministic : public FlashAttentionScoreGradTilingS1s2Bn2 {

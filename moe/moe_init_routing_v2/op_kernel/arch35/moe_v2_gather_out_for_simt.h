@@ -40,7 +40,6 @@ private:
 private:
     TPipe *pipe;
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, BUFFER_NUM> inputActivationsCopyInQueue;
-    TQue<QuePosition::VECIN, BUFFER_NUM> expandDstToSrcRowCopyInQueue;
     TQue<QuePosition::VECIN, BUFFER_NUM> expandedRowIdxIndexCopyInQueue;
 
     GlobalTensor<T> inputXGm;
@@ -78,11 +77,11 @@ template <typename T>
 __aicore__ inline void MoeV2GatherOutSimt<T>::CopyInIndices(int64_t progress)
 {
     this->indicesOffset = progress * this->perLoopRows;
-    LocalTensor<int32_t> indicesLocal = expandDstToSrcRowCopyInQueue.AllocTensor<int32_t>();
+    LocalTensor<int32_t> indicesLocal = expandedRowIdxIndexCopyInQueue.AllocTensor<int32_t>();
     DataCopyExtParams dataCopyParams{1, static_cast<uint32_t>(this->currentLoopRows * sizeof(int32_t)), 0, 0, 0};
     DataCopyPadExtParams<int32_t> dataCopyPadParams{false, 0, 0, 0};
     DataCopyPad(indicesLocal, expandedRowIdxGm[indicesOffset], dataCopyParams, dataCopyPadParams);
-    expandDstToSrcRowCopyInQueue.EnQue<int32_t>(indicesLocal);
+    expandedRowIdxIndexCopyInQueue.EnQue<int32_t>(indicesLocal);
 }
 
 template <typename T>
@@ -135,7 +134,7 @@ __aicore__ inline void MoeV2GatherOutSimt<T>::CopyOutZero(int64_t progress)
 template <typename T>
 __aicore__ inline void MoeV2GatherOutSimt<T>::CopyOut(int64_t progress)
 {
-    LocalTensor<int32_t> indicesLocal = expandDstToSrcRowCopyInQueue.DeQue<int32_t>();
+    LocalTensor<int32_t> indicesLocal = expandedRowIdxIndexCopyInQueue.DeQue<int32_t>();
     SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
     colsTileLength = this->perLoopCols;
     for (int64_t colsLoop = 0; colsLoop < this->colLoops; colsLoop++) {
@@ -169,7 +168,7 @@ __aicore__ inline void MoeV2GatherOutSimt<T>::CopyOut(int64_t progress)
             inputActivationsCopyInQueue.FreeTensor(inLocal);
         }
     }
-    expandDstToSrcRowCopyInQueue.FreeTensor(indicesLocal);
+    expandedRowIdxIndexCopyInQueue.FreeTensor(indicesLocal);
 }
 
 template <typename T>
@@ -226,8 +225,7 @@ __aicore__ inline void MoeV2GatherOutSimt<T>::Init(GM_ADDR inputX, GM_ADDR expan
         this->lastLoopCols = this->gatherOutTilingData->lastLoopCols;
         pipe->InitBuffer(inputActivationsCopyInQueue, BUFFER_NUM, AlignBytes(this->perLoopCols, sizeof(T)));
     }
-    pipe->InitBuffer(expandDstToSrcRowCopyInQueue, BUFFER_NUM, AlignBytes(this->perLoopRows, sizeof(int32_t)));
-    pipe->InitBuffer(expandedRowIdxIndexCopyInQueue, BUFFER_NUM, AlignBytes(this->perLoopRows + 1, sizeof(int32_t)));
+    pipe->InitBuffer(expandedRowIdxIndexCopyInQueue, BUFFER_NUM, AlignBytes(this->perLoopRows, sizeof(int32_t)));
 }
 
 template <typename T>

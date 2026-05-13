@@ -22,7 +22,7 @@
 namespace Cgmct {
 namespace Gemm {
 namespace Block {
-constexpr int64_t INNER_AXIS_MIN_SPLIT_VAL = 128; // ND2NZ cacheline 128
+constexpr int64_t INNER_AXIS_MIN_SPLIT_VAL = 128; // ND2NZ cache line size is 128.
 
 template <class ProblemShape_, class L1TileShape_, class L0TileShape_, bool TransA_, bool TransB_>
 class BlockSchedulerGmmAswtWithTailSplit {
@@ -49,7 +49,8 @@ private:
     int64_t nTailCnt_{1};
     int64_t mTailAlign_{1};
     int64_t nTailAlign_{1};
-    int64_t tailCnt_{1}; // only update when last group
+    int64_t tailCnt_{1};
+    int64_t tailBlockBase_{0};
     int64_t mainMWindow_;
     int64_t tailWindow_;
     int64_t mainRow_;
@@ -88,11 +89,11 @@ public:
         }
         roundIdx_ = 0;
         round_ = CeilDiv(totalCnt_, blockNum_);
-        // the first of blockIdx for new group
+        // The first blockIdx of the new group.
         startBlockIdx_ = endBlockIdx_ == blockNum_ - 1 ? 0 : (endBlockIdx_ + 1);
-        // the end of blockIdx for new group
+        // The last blockIdx of the new group.
         endBlockIdx_ = (totalCnt_ + startBlockIdx_ - 1) % blockNum_;
-        // calc real round for new group
+        // Calculate the actual round count for the new group.
         if (startBlockIdx_ > endBlockIdx_ && (blockIdx_ > endBlockIdx_ && blockIdx_ < startBlockIdx_)) {
             round_ -= 1;
         } else if (startBlockIdx_ <= endBlockIdx_ && (blockIdx_ > endBlockIdx_ || blockIdx_ < startBlockIdx_)) {
@@ -126,34 +127,42 @@ public:
         if (blockIdx_ > endBlockIdx_ && blockIdx_ <= newEndBlockIdx) {
             round_ += 1;
         }
-        if (blockIdx_ > newEndBlockIdx) { // no need to tail split when blockIdx is not in last round
+        if (blockIdx_ > newEndBlockIdx) {
             mTailCnt_ = 1;
             nTailCnt_ = 1;
             tailCnt_ = 1;
+            tailBlockBase_ = 0;
+        } else if (tailCnt_ > 1) {
+            // Base physical block of the original (unsplit) tail tile window.
+            // Example: endBlockIdx_=3, tailOriCnt=4, tailCnt=3 -> base=0, so cores (0,1,2),.,(9,10,11) map to 4 tiles.
+            // Example: endBlockIdx_=4, tailOriCnt=1, tailCnt=3 -> base=4, so cores 4/5/6 collaborate.
+            // Example: endBlockIdx_=4, tailOriCnt=2, tailCnt=3 -> base=3, so (3,4,5) and (6,7,8) map to 2 tiles.
+            tailBlockBase_ = endBlockIdx_ + 1 - tailOriCnt;
+        } else {
+            tailBlockBase_ = 0;
         }
         endBlockIdx_ = newEndBlockIdx;
     }
 
     __aicore__ inline void UpdateTailTile()
     {
-        // calc the splittable counr, set to 1 if no split
+        // Calculate the splittable tile count; keep 1 when no split is needed.
         int64_t remainTile = (AscendC::GetBlockNum() - endBlockIdx_ - 1) / GetTailTileCnt() + 1;
         if (remainTile <= 1) {
             return;
         }
 
-        // init minimum tile size
+        // Initialize the minimum tile sizes.
         int64_t mMin = AscendC::BLOCK_CUBE;
         int64_t nMin = AscendC::BLOCK_CUBE;
 
-        // adjust minimum tile size based on whether transA is T or transB is F.
+        // Adjust the minimum tile sizes based on the A/B transpose layout.
         if constexpr (TransA_) {
             mMin = INNER_AXIS_MIN_SPLIT_VAL;
         }
         if constexpr (!TransB_) {
             nMin = INNER_AXIS_MIN_SPLIT_VAL;
         }
-
         int64_t mTile = Min(CeilDiv(mBaseTail_, mMin), remainTile);
         int64_t nTile = Min(CeilDiv(nBaseTail_, nMin), remainTile);
         while (mTile * nTile > remainTile) {
@@ -171,13 +180,16 @@ public:
         if (round_ == 0 || roundIdx_ > round_ - 1) {
             return false;
         }
-        int64_t newBlockIdx = (roundIdx_ == round_ - 1) ? blockIdx_ / tailCnt_ : blockIdx_;
+        int64_t newBlockIdx = static_cast<int64_t>(blockIdx_);
+        if (roundIdx_ == round_ - 1 && tailCnt_ > 1) {
+            newBlockIdx = (tailBlockBase_ + ((newBlockIdx - tailBlockBase_) / tailCnt_) * tailCnt_) / tailCnt_;
+        }
         int64_t index = newBlockIdx + roundIdx_ * blockNum_;
-        // add startBlockIdx
+        // Apply the startBlockIdx offset.
         if (blockIdx_ < startBlockIdx_) {
             index += blockNum_ - startBlockIdx_;
-        } else if (endBlockIdx_ + 1 >= tailCnt_ * totalCnt_) {
-            index -= startBlockIdx_ / tailCnt_;
+        } else if (tailCnt_ > 1 && endBlockIdx_ + 1 >= tailCnt_ * totalCnt_) {
+            index -= (tailBlockBase_ + ((startBlockIdx_ - tailBlockBase_) / tailCnt_) * tailCnt_) / tailCnt_;
         } else {
             index -= startBlockIdx_;
         }
@@ -228,7 +240,7 @@ public:
         return {singleCoreM, singleCoreN, mSplitAddrOffset, nSplitAddrOffset};
     }
 
-    __aicore__ inline int64_t GetEndBlockIdx()
+    __aicore__ inline int64_t GetEndBlockIdx() const
     {
         return endBlockIdx_;
     }

@@ -22,7 +22,7 @@
 #include "../../op_kernel/arch35/quant_grouped_matmul_inplace_add_tiling_data.h"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 
 namespace optiling {
 using namespace Ops::Transformer::OpTiling;
@@ -41,6 +41,8 @@ public:
     }
 
 protected:
+    // 2、获取INPUT/OUTPUT/ATTR信息
+    ge::graphStatus GetShapeAttrsInfo() override;
     // 3、计算数据切分TilingData
     ge::graphStatus DoOpTiling() override;
     // 4、计算高阶API的TilingData
@@ -57,9 +59,6 @@ private:
     bool AnalyzeInputs() override;
     void PrintQuantParams() override;
     bool SetQuantModeForQGmmInplaceAdd();
-    bool CheckShapeForMxQuant(const gert::Shape &x1ScaleShape, const gert::Shape &x2ScaleShape);
-    bool CheckShapeForTCQuant(const gert::Shape &x1ScaleShape, const gert::Shape &x2ScaleShape);
-    bool CheckDtype();
     bool CheckCoreNum() const override;
     QuantGroupedMatmulInplaceAdd::QGmmInplaceAddTilingDataParams tilingData_;
 };

@@ -31,16 +31,17 @@ enum class ActualSeqLensMode
     ACCUM = 1,
 };
 
-template <ActualSeqLensMode MODE>
+template <ActualSeqLensMode MODE, typename ACTLEN_T = uint64_t>
 class ActualSeqLensParser {
 };
 
-template <>
-class ActualSeqLensParser<ActualSeqLensMode::ACCUM> {
+template <typename ACTLEN_T>
+class ActualSeqLensParser<ActualSeqLensMode::ACCUM, ACTLEN_T> {
 public:
     __aicore__ inline ActualSeqLensParser() = default;
 
-    __aicore__ inline void Init(GlobalTensor<uint64_t> actualSeqLengthsGm, uint32_t actualLenDims, uint64_t defaultVal = 0)
+    __aicore__ inline void Init(GlobalTensor<ACTLEN_T> actualSeqLengthsGm, uint32_t actualLenDims,
+                                uint64_t defaultVal = 0)
     {
         this->actualSeqLengthsGm = actualSeqLengthsGm;
         this->actualLenDims = actualLenDims;
@@ -52,6 +53,18 @@ public:
             return 0;
         }
         return actualSeqLengthsGm.GetValue(bIdx - 1);
+    }
+
+    __aicore__ inline uint64_t GetMxVscaleTBase(uint32_t bIdx) const
+    {
+        if (bIdx == 0) {
+            return 0;
+        }
+        uint64_t vScaleTBaseOffset = 0;
+        for (uint32_t idx = 0; idx < bIdx; idx++) {
+            vScaleTBaseOffset += ((GetActualSeqLength(idx) + 63) >> 6);
+        }
+        return vScaleTBaseOffset;
     }
 
     __aicore__ inline uint64_t GetActualSeqLength(uint32_t bIdx) const
@@ -67,16 +80,16 @@ public:
         return actualSeqLengthsGm.GetValue(actualLenDims - 1);
     }
 private:
-    GlobalTensor<uint64_t> actualSeqLengthsGm;
+    GlobalTensor<ACTLEN_T> actualSeqLengthsGm;
     uint32_t actualLenDims;
 };
 
-template <>
-class ActualSeqLensParser<ActualSeqLensMode::BY_BATCH> {
+template <typename ACTLEN_T>
+class ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, ACTLEN_T> {
 public:
     __aicore__ inline ActualSeqLensParser() = default;
 
-    __aicore__ inline void Init(GlobalTensor<uint64_t> actualSeqLengthsGm, uint32_t actualLenDims, uint64_t defaultVal)
+    __aicore__ inline void Init(GlobalTensor<ACTLEN_T> actualSeqLengthsGm, uint32_t actualLenDims, uint64_t defaultVal)
     {
         this->actualSeqLengthsGm = actualSeqLengthsGm;
         this->actualLenDims = actualLenDims;
@@ -99,9 +112,9 @@ public:
         return actualLenDims;
     }
 private:
-    GlobalTensor<uint64_t> actualSeqLengthsGm;
-    uint32_t actualLenDims;
-    uint64_t defaultVal;
+    GlobalTensor<ACTLEN_T> actualSeqLengthsGm;
+    uint32_t actualLenDims = 0;
+    uint64_t defaultVal = 0;
 };
 
 // ----------------------------------------------BlockTableParser--------------------------------

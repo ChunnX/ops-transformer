@@ -16,6 +16,8 @@
 #include "acl/acl.h"
 #include "matmul_all_reduce/op_api/matmul_all_reduce_util.h"
 
+#include <atomic>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -23,6 +25,21 @@ extern "C" {
 // MatmulAllReduceAddRmsNorm
 bool ArnCheckNotNull(const aclTensor* x1, const aclTensor* x2, const aclTensor* residual, const aclTensor* gamma);
 bool ArnCheckShape(const aclTensor* x1, const aclTensor* x2, const aclTensor* residual);
+
+#define DEPRECATED_MM_ARN_API_WARN_ONCE(oldApiName1, oldApiName2, deprecatedDate, newApiName1, newApiName2)     \
+        do {                                                                                 \
+            static std::atomic<bool> isFirstWarn = true;                                     \
+            bool expected = true;                                                            \
+            if (isFirstWarn.compare_exchange_strong(expected, false,                         \
+                    std::memory_order_relaxed, std::memory_order_relaxed)) {                 \
+                OP_LOGW("%s and %s is scheduled to be deprecated in a post-%s version update. "     \
+                        "Please migrate to %s and %s. "                                     \
+                        "We apologize for any inconvenience caused and appreciate "         \
+                        "your timely migration to the other interface.",                    \
+                        (oldApiName1), (oldApiName2), (deprecatedDate),                     \
+                        (newApiName1), (newApiName2));                                      \
+            }                                                                               \
+        } while (0)
 
 aclnnStatus InnerMatmulAllReduceAddRmsNormGetWorkspaceSize(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* antiquantScale,

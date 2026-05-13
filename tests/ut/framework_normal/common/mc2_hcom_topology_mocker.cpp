@@ -56,24 +56,37 @@ constexpr static uint64_t DEFAULT_CCL_BUFFER_SIZE = 6000ULL * 1024ULL * 1024ULL;
 // public:
 HcclResult MC2HcomTopology::CommGetInstSizeByGroup([[maybe_unused]] const char *group, uint32_t *rankNum)
 {
+    if (rankNum == nullptr) {
+        return HCCL_E_PARA;
+    }
     *rankNum = static_cast<uint32_t>(MC2HcomTopologyMocker::GetInstance().GetValue("rankNum", DEFAULT_RANK_NUM));
     return HCCL_SUCCESS;
 }
 
-HcclResult MC2HcomTopology::TryGetGroupTopoType([[maybe_unused]] const char *group, [[maybe_unused]] uint32_t *topoType)
+HcclResult MC2HcomTopology::TryGetGroupTopoType([[maybe_unused]] const char *group, uint32_t *topoType)
 {
+    if (topoType == nullptr) {
+        return HCCL_E_PARA;
+    }
+    *topoType = static_cast<uint32_t>(MC2HcomTopologyMocker::GetInstance().GetValue("topoType", 0));
     return HCCL_SUCCESS;
 }
 
 HcclResult MC2HcomTopology::CommGetCclBufferSizeByGroup([[maybe_unused]] const char *group, uint64_t *cclBufferSize, 
                                                         [[maybe_unused]] HcclComm *hcclComm)
 {
+    if (cclBufferSize == nullptr) {
+        return HCCL_E_PARA;
+    }
     *cclBufferSize = MC2HcomTopologyMocker::GetInstance().GetValue("cclBufferSize", DEFAULT_CCL_BUFFER_SIZE);
     return HCCL_SUCCESS;
 }
 
 HcclResult MC2HcomTopology::CommGetGroupLocalWindowSize([[maybe_unused]] const char *group, uint64_t* cclBufferSize)
 {
+    if (cclBufferSize == nullptr) {
+        return HCCL_E_PARA;
+    }
     *cclBufferSize = MC2HcomTopologyMocker::GetInstance().GetValue("cclBufferSize", DEFAULT_CCL_BUFFER_SIZE);
     return HCCL_SUCCESS;
 }
@@ -97,6 +110,9 @@ HcclResult MC2HcomTopology::CallHcomGetCommHandleByGroup([[maybe_unused]] const 
 
 HcclResult MC2HcomTopology::CallCommGetCCLBufSizeCfg([[maybe_unused]] HcclComm comm, uint64_t *cclBufferSize) const
 {
+    if (cclBufferSize == nullptr) {
+        return HCCL_E_PARA;
+    }
     *cclBufferSize = MC2HcomTopologyMocker::GetInstance().GetValue("cclBufferSize", DEFAULT_CCL_BUFFER_SIZE);
     return HCCL_SUCCESS;
 }

@@ -4,10 +4,12 @@
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      ×     |
-|<term>Atlas A2 训练系列产品</term>|      √     |
-|<term>Atlas A2 推理系列产品</term>|      ×     |
-
+|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
+|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
+|<term>Atlas 推理系列产品</term>|      ×     |
+|<term>Atlas 训练系列产品</term>|      ×     |
 
 ## 功能说明
 
@@ -20,8 +22,6 @@
 $$
 \tilde{K}_t^{\text{cmp}} = f_K^{\text{cmp}}(k_{:t}) = \left\{ \varphi(k_{id+1:id+l}) \bigg| 0 \leq i \leq \left\lfloor \frac{t-l}{d} \right\rfloor \right\}
 $$
-
-
 
 ## 参数说明
 
@@ -52,6 +52,4 @@ $$
 
 | 调用方式        | 调用样例        | 说明                                                 |
 |----------------|----------------|------------------------------------------------------|
-| aclnn调用 | [test_aclnn_nsa_compress](./examples/test_aclnn_nsa_compress.cpp) | 非TND场景，通过[aclnnNsaCompress](./docs/aclnnNsaCompress.md)接口方式调用NsaCompress算子。|
-
-
+| aclnn调用 | [test_aclnn_nsa_compress](./examples/test_aclnn_nsa_compress.cpp) | TND场景，通过[aclnnNsaCompress](./docs/aclnnNsaCompress.md)接口方式调用NsaCompress算子。|

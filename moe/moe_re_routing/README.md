@@ -1,6 +1,7 @@
 # MoeReRouting
 
 ## 产品支持情况
+
 |产品             |  是否支持  |
 |:-------------------------|:----------:|
 | <term>Ascend 950PR/Ascend 950DT</term> |    √    |
@@ -34,6 +35,7 @@
   - cur_expert是expert_token_num_per_rank的横轴索引，表示该token由卡上专家cur_expert计算。
 
 ## 参数说明
+
   <table style="undefined;table-layout: fixed; width: 1576px"><colgroup>
     <col style="width: 170px">
     <col style="width: 170px">
@@ -56,7 +58,7 @@
         <td>表示待重新排布的token。</td>
         <td>
         通用：FLOAT16、BF16、INT8<br>
-        <term>Ascend 950PR/Ascend 950DT</term>：FLOAT16、BF16、INT8、FLOAT8_E5M2、FLOAT8_E4M3FN
+        <term>Ascend 950PR/Ascend 950DT</term>：FLOAT16、BF16、INT8、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8、FLOAT4_E2M1、FLOAT4_E1M2
         </td>
         <td>ND</td>
       </tr>
@@ -83,7 +85,7 @@
         <td>表示重新排布后的token。</td>
         <td>
         通用：FLOAT16、BF16、INT8<br>
-        <term>Ascend 950PR/Ascend 950DT</term>：FLOAT16、BF16、INT8、FLOAT8_E5M2、FLOAT8_E4M3FN
+        <term>Ascend 950PR/Ascend 950DT</term>：FLOAT16、BF16、INT8、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8、FLOAT4_E2M1、FLOAT4_E1M2
         </td>
         <td>ND</td>
       </tr>
@@ -128,8 +130,10 @@
     </tbody>
   </table>
 
+- Kirin X90/Kirin 9030 处理器系列产品: 不支持BFLOAT16。
 
 ## 约束说明
+
 - Tensor中shape使用的变量说明：
   - A：表示token个数，取值要求Sum(expert_token_num_per_rank)=A。
   - H：表示token长度，取值要求 0 < H < 16384。

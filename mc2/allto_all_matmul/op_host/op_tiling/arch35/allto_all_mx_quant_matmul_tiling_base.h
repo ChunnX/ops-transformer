@@ -26,8 +26,10 @@
 #include "../allto_all_matmul_tiling_base.h"
 #include "quant_batch_matmul_v3/op_host/op_tiling/arch35/adaptive_sliding_window_tiling.h"
 #include "mc2/matmul_allto_all/op_host/op_tiling/common/matmul_allto_all_util_tiling.h"
+#include "./allto_all_matmul_fit_balance_tiling.h"
 
 namespace MC2Tiling {
+using QuantType = MC2Tiling::AlltoAllMatmulFitBalanceTiling::QuantType;
 using namespace optiling;
 using namespace mc2_matmul_v3_advanced;
 constexpr size_t X1_QUANTMODE_VALUES = 6;
@@ -41,6 +43,7 @@ constexpr uint64_t MX_SCALE_BLOCK_N = 1;
 constexpr uint64_t GROUP_MNK_BIT_SIZE = 0xFFFF;
 constexpr uint64_t GROUP_M_OFFSET = 32;
 constexpr uint64_t GROUP_N_OFFSET = 16;
+constexpr uint64_t BIT_NUMBER = 1;
 class AllToAllMxQuantMatmulTilingBase : public AllToAllMatmulTilingBase {
     friend class AlltoAllMxQuantMatmulHelper;
 public:
@@ -52,6 +55,7 @@ protected:
     ge::graphStatus PostTiling() override;
     ge::graphStatus GetWorkspaceSize() override;
     uint64_t GetTilingKey() const override;
+    CutResult GetCutResOfCommAndCompute() override;
     ge::graphStatus CheckMxQuantTensorDataType(const gert::TilingContext *context, const char *opName);
     ge::graphStatus CheckX2Transpose(const gert::TilingContext *context, const char *opName, const OpAttrIndexSchema &indexSchema);
     ge::graphStatus CheckMxQuantShapeInfo(const gert::TilingContext *context, const char *opName, const OpAttrIndexSchema &indexSchema);
@@ -61,15 +65,17 @@ protected:
     ge::graphStatus SetHcclTiling();
     ge::graphStatus CheckGroupSize(const gert::TilingContext *context, const char *opName, const OpAttrIndexSchema &indexSchema);
     void SetUserWorkSpace();
-    ge::graphStatus SetMxDataTypeInfo(const gert::TilingContext *context, const char *opName,
-                                                        TilingContextInfo &contextInfo);
+    ge::graphStatus CheckMxTensorFormat(const gert::TilingContext *context, const char *opName);
+    ge::graphStatus SetMxDataTypeInfo(const gert::TilingContext *context, const char *opName, TilingContextInfo &contextInfo);
     
     void SetTilingInfo(AlltoAllMatmulTilingInfo &tilingInfo) const;
     void PrintAlltoAllMxQuantMatmulTilingData(AlltoAllQuantMatmulTilingData &outTilingData);
     
 private:
     AlltoAllQuantMatmulTilingData localTilingData_;
+    bool isMxFp4_ = false;
     uint64_t mmMvalueLen_ = 0;
+    QuantType matmulQuantType_ = QuantType::MXFP8_QUANT;
     void PrintAlltoAllMxQuantMatmulTilingInfo(const std::string &opName, AlltoAllMatmulTilingInfo &tilingInfo);
     void PrintMxQuantMMV3TilingData(const std::string &opName, DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &tiling);
     void PrintExtendMatmulTiling(const std::string &opName, DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &tiling);

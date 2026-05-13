@@ -14,7 +14,12 @@
 #include "opdev/op_executor.h"
 #include "common/op_api_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
+#include "aclnnInner_moe_token_permute_grad.h"  // 该文件为自动生成，在build/autogen/inner路径下
 #include "external/aclnn_kernels/aclnn_platform.h"
+#include "aclnn_kernels/contiguous.h"
+#include "opdev/tensor_view_utils.h"
+#include "opdev/op_log.h"
+#include "moe/moe_init_routing_v2_grad/op_host/op_api/moe_init_routing_v2_grad.h"
 
 using namespace op;
 
@@ -22,49 +27,56 @@ using namespace op;
 extern "C" {
 #endif
 
-#define CHECK_LOG_RET(cond, log_func, return_expr) \
-    do {                                           \
-        if (cond) {                                \
-            log_func;                              \
-        }                                          \
-        return_expr;                               \
-    } while (0)
-
-extern aclnnStatus aclnnInnerMoeInitRoutingV2GradGetWorkspaceSize(
-    const aclTensor* gradExpandedX, const aclTensor* expandedRowIdx, int64_t topK, int64_t dropPadMode,
-    int64_t activeNum, const aclTensor* out, uint64_t* workspaceSize, aclOpExecutor** executor);
-extern aclnnStatus aclnnInnerMoeInitRoutingV2Grad(
-    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream);
-
-extern aclnnStatus aclnnInnerMoeTokenPermuteGradGetWorkspaceSize(
-    const aclTensor* permutedOutputGrad, const aclTensor* sortedIndices, int64_t numTopk, bool paddedMode,
-    aclTensor* out, uint64_t* workspaceSize, aclOpExecutor** executor);
-extern aclnnStatus aclnnInnerMoeTokenPermuteGrad(
-    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream);
-
 aclnnStatus aclnnMoeTokenPermuteGradGetWorkspaceSize(
     const aclTensor* permutedOutputGrad, const aclTensor* sortedIndices, int64_t numTopk, bool paddedMode,
     aclTensor* out, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
+    OP_CHECK_COMM_INPUT(workspaceSize, executor);
+    L2_DFX_PHASE_1(aclnnMoeTokenPermuteGrad,
+        DFX_IN(permutedOutputGrad, sortedIndices, numTopk, paddedMode),
+        DFX_OUT(out));
+
     static bool useMoeInitRoutingV2Grad = Ops::Transformer::AclnnUtil::IsRegbase();
     if (!useMoeInitRoutingV2Grad) {
         return aclnnInnerMoeTokenPermuteGradGetWorkspaceSize(
             permutedOutputGrad, sortedIndices, numTopk, paddedMode, out, workspaceSize, executor);
     }
     CHECK_RET(paddedMode == false, ACLNN_ERR_PARAM_INVALID);
+
+    // 参数检查
     OP_CHECK_NULL(permutedOutputGrad, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL(sortedIndices, return ACLNN_ERR_PARAM_NULLPTR);
+    OP_CHECK_NULL(out, return ACLNN_ERR_PARAM_NULLPTR);
+
+    // 创建OpExecutor
+    auto uniqueExecutor = CREATE_EXECUTOR();
+    CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+
+    // 固定写法，将输入转换成连续的tensor
+    auto permutedOutputGradContiguous = l0op::Contiguous(permutedOutputGrad, uniqueExecutor.get());
+    CHECK_RET(permutedOutputGradContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    auto sortedIndicesContiguous = l0op::Contiguous(sortedIndices, uniqueExecutor.get());
+    CHECK_RET(sortedIndicesContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
+    // 获取activeNum
     auto permutedOutputGradShape = permutedOutputGrad->GetViewShape();
     CHECK_RET(permutedOutputGradShape.GetDimNum() > 0, ACLNN_ERR_PARAM_INVALID);
     int64_t activeNum = permutedOutputGradShape.GetDim(0);
-    aclnnStatus ret = aclnnInnerMoeInitRoutingV2GradGetWorkspaceSize(
-        permutedOutputGrad, sortedIndices, numTopk, 0, activeNum, out, workspaceSize, executor);
-    if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(
-            ACLNN_ERR_INNER,
-            "aclnnMoeTokenPermuteGrad calls aclnnInnerMoeInitRoutingV2Grad, please refer to the document for "
-            "parameter correspondence.");
-    }
-    return ret;
+
+    // 调用l0接口进行计算
+    auto out_ = l0op::MoeInitRoutingV2Grad(permutedOutputGradContiguous, sortedIndicesContiguous,
+        numTopk, 0, activeNum,
+        out, uniqueExecutor.get());
+    CHECK_RET(out_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
+    // copyout结果，如果出参out是非连续Tensor，需要把计算完的连续Tensor转非连续
+    auto viewCopyOutResult = l0op::ViewCopy(out_, out, uniqueExecutor.get());
+    CHECK_RET(viewCopyOutResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
+    // 获取计算过程中需要使用的workspace大小
+    *workspaceSize = uniqueExecutor->GetWorkspaceSize();
+    uniqueExecutor.ReleaseTo(executor);
+    return ACLNN_SUCCESS;
 }
 
 aclnnStatus aclnnMoeTokenPermuteGrad(
@@ -74,14 +86,9 @@ aclnnStatus aclnnMoeTokenPermuteGrad(
     if (!useMoeInitRoutingV2Grad) {
         return aclnnInnerMoeTokenPermuteGrad(workspace, workspaceSize, executor, stream);
     }
-    aclnnStatus ret = aclnnInnerMoeInitRoutingV2Grad(workspace, workspaceSize, executor, stream);
-    CHECK_LOG_RET(
-        ret != ACLNN_SUCCESS,
-        OP_LOGE(
-            ACLNN_ERR_INNER,
-            "aclnnMoeTokenPermuteGrad calls aclnnInnerMoeInitRoutingV2Grad, please refer to the document for "
-            "parameter correspondence."),
-        return ret);
+
+    L2_DFX_PHASE_2(aclnnMoeTokenPermuteGrad);
+    return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }
 
 #ifdef __cplusplus

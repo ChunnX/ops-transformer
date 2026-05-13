@@ -66,6 +66,9 @@ constexpr uint64_t MLA_L0A_SIZE = 64;
 constexpr uint64_t MLA_L0B_SIZE = 64; 
 constexpr uint64_t BASE_SIZE_128 = 128;
 constexpr uint64_t FLOAT_BYTES = 4;
+constexpr uint64_t BT_PP_SIZE = 4;
+constexpr uint64_t BT_AVAL_SIZE = 16;
+constexpr uint64_t BT_BVAL_SIZE = 16;
 enum class SparseModeEnum {
     ALL = 0,
     NONE = 1,
@@ -100,7 +103,20 @@ __aicore__ constexpr uint16_t Align64Func(uint16_t data) {
 
 template <typename INPUT_T>
 __aicore__ constexpr bool IsFp8WithRope(bool hasRope) {
-    if constexpr (!IsSameType<INPUT_T, fp8_e4m3fn_t>::value) {
+    if constexpr (!IsSameType<INPUT_T, fp8_e5m2_t>::value &&
+                  !IsSameType<INPUT_T, fp8_e4m3fn_t>::value &&
+                  !IsSameType<INPUT_T, hifloat8_t>::value) {
+        return false;
+    }
+    if (hasRope) {
+        return true;
+    }
+    return false;
+}
+
+template <typename INPUT_T>
+__aicore__ constexpr bool IsInt8WithRope(bool hasRope) {
+    if constexpr (!IsSameType<INPUT_T, int8_t>::value) {
         return false;
     }
     if (hasRope) {
@@ -115,6 +131,18 @@ __aicore__ constexpr bool IsFp8OnlyWithAttenMask(
     if constexpr (!IsSameType<INPUT_T, fp8_e5m2_t>::value &&
                   !IsSameType<INPUT_T, fp8_e4m3fn_t>::value &&
                   !IsSameType<INPUT_T, hifloat8_t>::value) {
+        return false;
+    }
+    if (pseMode == regbaseutil::PseTypeEnum::PSE_NONE_TYPE && hasAtten && !hasDrop) {
+        return true;
+    }
+    return false;
+}
+
+template <typename INPUT_T>
+__aicore__ constexpr bool IsInt8OnlyWithAttenMask(
+    regbaseutil::PseTypeEnum pseMode, bool hasAtten, bool hasDrop) {
+    if constexpr (!IsSameType<INPUT_T, int8_t>::value) {
         return false;
     }
     if (pseMode == regbaseutil::PseTypeEnum::PSE_NONE_TYPE && hasAtten && !hasDrop) {
@@ -152,10 +180,10 @@ __aicore__ constexpr bool IsDn(
 template <typename INPUT_T>
 __aicore__ constexpr bool UbOutCondition(
     bool isFp32, regbaseutil::PseTypeEnum pseMode, bool hasAtten, bool hasDrop, bool hasRope, bool isS2Base64) {
-    if (IsFp8WithRope<INPUT_T>(hasRope)) {
+    if (IsFp8WithRope<INPUT_T>(hasRope) || IsInt8WithRope<INPUT_T>(hasRope)) {
         return true;
     }
-    if (IsFp8OnlyWithAttenMask<INPUT_T>(pseMode, hasAtten, hasDrop)) {
+    if (IsFp8OnlyWithAttenMask<INPUT_T>(pseMode, hasAtten, hasDrop) || IsInt8OnlyWithAttenMask<INPUT_T>(pseMode, hasAtten, hasDrop)) {
         return true;
     }
     if (!ContainOptionalInput(pseMode, hasAtten, hasDrop)) {

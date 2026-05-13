@@ -13,7 +13,6 @@
  * \brief
  */
 
-#include <map>
 #include <numeric>
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
@@ -23,9 +22,7 @@
 #include "left_padding_checker.h"
 
 namespace optiling {
-using std::map;
 using std::string;
-using std::pair;
 using namespace ge;
 using namespace AscendC;
 using namespace arch35FIA;
@@ -45,17 +42,46 @@ ge::graphStatus LeftPaddingChecker::CheckShapeSupport(const gert::Tensor *tensor
     return ge::GRAPH_SUCCESS;
 }
 
-// CheckSingle
-ge::graphStatus LeftPaddingChecker::CheckSingleDesc(const FiaTilingInfo &fiaInfo)
+// CheckSinglePara
+ge::graphStatus LeftPaddingChecker::CheckShapeAndDim(const FiaTilingInfo &fiaInfo)
+{
+    // When left-padding is enabled for Query and Key/Value,
+    // the Shape size and Dim number corresponding to the Padding size must both be 1.
+    if (fiaInfo.qPaddingSizeFlag) {
+        const std::vector<int64_t> querypaddingsizeShapeNumList = {SHAPE_NUM_ONE};
+        OP_CHECK_IF(ge::GRAPH_SUCCESS !=
+                        CheckShapeSupport(fiaInfo.opParamInfo.queryPaddingSize.tensor, querypaddingsizeShapeNumList),
+                    OP_LOGE(fiaInfo.opName, "The shape size of query paddingsize is not 1!"), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(fiaInfo.opParamInfo.queryPaddingSize.tensor->GetStorageShape().GetDimNum() != DIM_NUM_1,
+                    OP_LOGE(fiaInfo.opName, "The dim number of query paddingsize is not 1!"), return ge::GRAPH_FAILED);
+    }
+
+    if (fiaInfo.kvPaddingSizeFlag) {
+        const std::vector<int64_t> kvpaddingsizeShapeNumList = {SHAPE_NUM_ONE};
+        OP_CHECK_IF(
+            ge::GRAPH_SUCCESS != CheckShapeSupport(fiaInfo.opParamInfo.kvPaddingSize.tensor, kvpaddingsizeShapeNumList),
+            OP_LOGE(fiaInfo.opName, "The shape size of key/value paddingsize is not 1!"), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(fiaInfo.opParamInfo.kvPaddingSize.tensor->GetStorageShape().GetDimNum() != DIM_NUM_1,
+                    OP_LOGE(fiaInfo.opName, "The dim number of key/value paddingsize is not 1!"),
+                    return ge::GRAPH_FAILED);
+    }
+
+    return ge::GRAPH_SUCCESS;
+}
+
+// CheckExistence
+ge::graphStatus LeftPaddingChecker::CheckExistenceDesc(const FiaTilingInfo &fiaInfo)
 {
     if (fiaInfo.qPaddingSizeFlag) {
         OP_CHECK_IF(fiaInfo.opParamInfo.queryPaddingSize.desc == nullptr,
-                    OP_LOGE(fiaInfo.opName, "Desc of tensor query_padding_size is nullptr!"), return ge::GRAPH_FAILED);
+                    OP_LOGE(fiaInfo.opName, "The descriptor for the tensor's query padding size is nullptr!"),
+                    return ge::GRAPH_FAILED);
     }
 
     if (fiaInfo.kvPaddingSizeFlag) {
         OP_CHECK_IF(fiaInfo.opParamInfo.kvPaddingSize.desc == nullptr,
-                    OP_LOGE(fiaInfo.opName, "Desc of tensor kv_padding_size is nullptr!"), return ge::GRAPH_FAILED);
+                    OP_LOGE(fiaInfo.opName, "The descriptor for the tensor's kv padding size is nullptr!"),
+                    return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
@@ -128,7 +154,7 @@ ge::graphStatus LeftPaddingChecker::CheckFeaturePageAttention(const FiaTilingInf
 {
     // When left-padding is enabled for Query and Key/Value, PageAttention scenarios are not supported.
     if (fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag) {
-        OP_CHECK_IF(fiaInfo.pageAttentionFlag,
+        OP_CHECK_IF(fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION,
                     OP_LOGE(fiaInfo.opName, "When page attention is used, left padding is not supported!"),
                     return ge::GRAPH_FAILED);
     }
@@ -136,61 +162,68 @@ ge::graphStatus LeftPaddingChecker::CheckFeaturePageAttention(const FiaTilingInf
     return ge::GRAPH_SUCCESS;
 }
 
-// CheckMuiltPara
-ge::graphStatus LeftPaddingChecker::CheckMultiParaShapeAndDim(const FiaTilingInfo &fiaInfo)
+ge::graphStatus LeftPaddingChecker::CheckFeatureQueryS(const FiaTilingInfo &fiaInfo)
 {
-    // When left-padding is enabled for Query and Key/Value,
-    // the Shape size and Dim number corresponding to the Padding size must both be 1.
-    if (fiaInfo.qPaddingSizeFlag) {
-        const std::vector<int64_t> querypaddingsizeShapeNumList = {SHAPE_NUM_ONE};
-        OP_CHECK_IF(ge::GRAPH_SUCCESS !=
-                        CheckShapeSupport(fiaInfo.opParamInfo.queryPaddingSize.tensor, querypaddingsizeShapeNumList),
-                    OP_LOGE(fiaInfo.opName, "The shape size of query paddingsize is not 1!"), return ge::GRAPH_FAILED);
-        OP_CHECK_IF(fiaInfo.opParamInfo.queryPaddingSize.tensor->GetStorageShape().GetDimNum() != DIM_NUM_1,
-                    OP_LOGE(fiaInfo.opName, "The dim number of query paddingsize is not 1!"), return ge::GRAPH_FAILED);
+    // When antiquantMode is 0 or 1 and data type of key/value is int8 scenario, leftpadding is not supported.
+    if (fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag) {
+        if (fiaInfo.s1Size > 1) {
+            int64_t keyAntiquantMode = 0;
+            if (fiaInfo.opParamInfo.keyAntiquantMode != nullptr) {
+                keyAntiquantMode = *fiaInfo.opParamInfo.keyAntiquantMode;
+            }
+            OP_CHECK_IF(
+                (keyAntiquantMode == PER_CHANNEL_MODE || keyAntiquantMode == PER_TOKEN_MODE) &&
+                    fiaInfo.inputKvType == ge::DT_INT8,
+                OP_LOGE(fiaInfo.opName,
+                    "In keyAntiquant/valueAntiquant split mode and data type of key/value is int8 scenario, if "
+                    "keyAntiquantMode/valueAntiquantMode is 0 or 1, leftpadding is not supported!"),
+                    return ge::GRAPH_FAILED);
+        }
     }
-
-    if (fiaInfo.kvPaddingSizeFlag) {
-        const std::vector<int64_t> kvpaddingsizeShapeNumList = {SHAPE_NUM_ONE};
-        OP_CHECK_IF(
-            ge::GRAPH_SUCCESS != CheckShapeSupport(fiaInfo.opParamInfo.kvPaddingSize.tensor, kvpaddingsizeShapeNumList),
-            OP_LOGE(fiaInfo.opName, "The shape size of kv paddingsize is not 1!"), return ge::GRAPH_FAILED);
-        OP_CHECK_IF(fiaInfo.opParamInfo.kvPaddingSize.tensor->GetStorageShape().GetDimNum() != DIM_NUM_1,
-                    OP_LOGE(fiaInfo.opName, "The dim number of kv paddingsize is not 1!"), return ge::GRAPH_FAILED);
-    }
-
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus LeftPaddingChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
 {
-    if (ge::GRAPH_SUCCESS != CheckSingleDesc(fiaInfo)) {
-        return ge::GRAPH_FAILED;
+    if (enableNonQuant_) {
+        if (ge::GRAPH_SUCCESS != CheckShapeAndDim(fiaInfo)) {
+            return ge::GRAPH_FAILED;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus LeftPaddingChecker::CheckParaExistence(const FiaTilingInfo &fiaInfo)
 {
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus LeftPaddingChecker::CheckFeature(const FiaTilingInfo &fiaInfo)
-{
-    if (ge::GRAPH_SUCCESS != CheckFeatureActualLen(fiaInfo) || ge::GRAPH_SUCCESS != CheckFeatureLayout(fiaInfo) ||
-        ge::GRAPH_SUCCESS != CheckFeatureAlibiPse(fiaInfo) || ge::GRAPH_SUCCESS != CheckFeaturePageAttention(fiaInfo)) {
+    if (ge::GRAPH_SUCCESS != CheckExistenceDesc(fiaInfo)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LeftPaddingChecker::CheckMultiPara(const FiaTilingInfo &fiaInfo)
+ge::graphStatus LeftPaddingChecker::CheckCrossFeature(const FiaTilingInfo &fiaInfo)
 {
-    if (enableNonQuant_) {
-        if (ge::GRAPH_SUCCESS != CheckMultiParaShapeAndDim(fiaInfo)) {
+    if (ge::GRAPH_SUCCESS != CheckFeatureActualLen(fiaInfo) || ge::GRAPH_SUCCESS != CheckFeatureLayout(fiaInfo) ||
+        ge::GRAPH_SUCCESS != CheckFeatureAlibiPse(fiaInfo) || ge::GRAPH_SUCCESS != CheckFeaturePageAttention(fiaInfo)) {
+        return ge::GRAPH_FAILED;
+    }
+    if (enableAntiQuant_) {
+        if (ge::GRAPH_SUCCESS != CheckFeatureQueryS(fiaInfo)) {
             return ge::GRAPH_FAILED;
         }
     }
+    if (fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag) {
+        OP_CHECK_IF(
+            fiaInfo.isQKVDDifferent && fiaInfo.ropeMode == RopeMode::NO_ROPE,
+            OP_LOGE(fiaInfo.opName,
+                "In GQA scenario, not support leftpadding when query and key headdim is not equal to value headdim."),
+                return ge::GRAPH_FAILED);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus LeftPaddingChecker::CheckMultiParaConsistency(const FiaTilingInfo &fiaInfo)
+{
     return ge::GRAPH_SUCCESS;
 }
 

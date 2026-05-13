@@ -224,6 +224,7 @@ aclnnStatus aclnnMatmulAllReduce(
     <col style="width: 168px">
     <col style="width: 128px">
     <col style="width: 854px">
+    </colgroup>
     <thead>
     <tr>
         <th>参数名</th>
@@ -253,7 +254,7 @@ aclnnStatus aclnnMatmulAllReduce(
     </tr>
     </tbody></table>
 
--   **返回值**
+- **返回值**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -279,7 +280,6 @@ aclnnStatus aclnnMatmulAllReduce(
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
-
 说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy, 请参考[ <<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
@@ -289,6 +289,7 @@ aclnnStatus aclnnMatmulAllReduce(
     #include <vector>
     #include <thread>
     #include "hccl/hccl.h"
+    #include "aclnn/opdev/fp16_t.h"
     #include "aclnnop/aclnn_matmul_all_reduce.h"
 
     int ndev = 2;
@@ -374,10 +375,10 @@ aclnnStatus aclnnMatmulAllReduce(
         long long x2ShapeSize = GetShapeSize(x2Shape);
         long long biasShapeSize = GetShapeSize(biasShape);
         long long outShapeSize = GetShapeSize(outShape);
-        std::vector<int16_t> x1HostData(x1ShapeSize, 1);
-        std::vector<int16_t> x2HostData(x2ShapeSize, 1);
-        std::vector<int16_t> biasHostData(biasShapeSize, 1);
-        std::vector<int16_t> outHostData(outShapeSize, 0);
+        std::vector<op::fp16_t> x1HostData(x1ShapeSize, 1);
+        std::vector<op::fp16_t> x2HostData(x2ShapeSize, 1);
+        std::vector<op::fp16_t> biasHostData(biasShapeSize, 1);
+        std::vector<op::fp16_t> outHostData(outShapeSize, 0);
         // 创建 tensor
         ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_FLOAT16, &x1);
         CHECK_RET(ret == ACL_SUCCESS, return ret);

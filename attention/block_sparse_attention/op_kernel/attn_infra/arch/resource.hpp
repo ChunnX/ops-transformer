@@ -1,5 +1,5 @@
-/**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -18,22 +18,48 @@ namespace NpuArch::Arch
 {
 
 template<class ArchTag>
-struct Resource {
-public:
-    AscendC::TPipe pipe;
+struct Resource
+{};
 
-    LocalTensorBuffer<ArchTag, AscendC::TPosition::A1> l1Buf;
-    LocalTensorBuffer<ArchTag, AscendC::TPosition::A2> l0ABuf;
-    LocalTensorBuffer<ArchTag, AscendC::TPosition::B2> l0BBuf;
-    LocalTensorBuffer<ArchTag, AscendC::TPosition::C2> btBuf;
-    LocalTensorBuffer<ArchTag, AscendC::TPosition::CO1> l0CBuf;
-    LocalTensorBuffer<ArchTag, AscendC::TPosition::VECCALC> ubBuf;
+template<>
+struct Resource<Arch::AtlasA5> {
+public:
+    LocalTensorBuffer<Arch::AtlasA5, AscendC::TPosition::A1> l1Buf;
+    LocalTensorBuffer<Arch::AtlasA5, AscendC::TPosition::A2> l0ABuf;
+    LocalTensorBuffer<Arch::AtlasA5, AscendC::TPosition::B2> l0BBuf;
+    LocalTensorBuffer<Arch::AtlasA5, AscendC::TPosition::C2> btBuf;
+    LocalTensorBuffer<Arch::AtlasA5, AscendC::TPosition::CO1> l0CBuf;
+    LocalTensorBuffer<Arch::AtlasA5, AscendC::TPosition::VECCALC> ubBuf;
+    LocalTensorBuffer<Arch::AtlasA5, AscendC::TPosition::C2PIPE2GM> fpBuf;
 
     __aicore__ inline
     Resource()
     {
-        // The initialization of AscendC::Tpipe will insert some synchronization interfaces,
-        // which may conflict with the usage by users. Therefore, the "destroy" interface is used for releasing.
+        AscendC::InitSocState();
+    }
+
+    __aicore__ inline
+    ~Resource()
+    {
+        AscendC::InitSocState();
+    }
+};
+
+template<>
+struct Resource<Arch::AtlasA2> {
+public:
+    AscendC::TPipe pipe;
+
+    LocalTensorBuffer<Arch::AtlasA2, AscendC::TPosition::A1> l1Buf;
+    LocalTensorBuffer<Arch::AtlasA2, AscendC::TPosition::A2> l0ABuf;
+    LocalTensorBuffer<Arch::AtlasA2, AscendC::TPosition::B2> l0BBuf;
+    LocalTensorBuffer<Arch::AtlasA2, AscendC::TPosition::C2> btBuf;
+    LocalTensorBuffer<Arch::AtlasA2, AscendC::TPosition::CO1> l0CBuf;
+    LocalTensorBuffer<Arch::AtlasA2, AscendC::TPosition::VECCALC> ubBuf;
+
+    __aicore__ inline
+    Resource()
+    {
         pipe.Destroy();
     }
 };

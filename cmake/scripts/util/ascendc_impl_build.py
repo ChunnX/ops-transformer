@@ -24,6 +24,28 @@ import const_var
 
 PYF_PATH = os.path.dirname(os.path.realpath(__file__))
 
+if const_var.CHECK_ASC_DEVKIT_VERSION:
+    IMPORT_HEADER = '''
+from asc_op_compile_base.common.platform import get_soc_spec
+from asc_op_compile_base.common.utils import para_check
+from asc_op_compile_base.asc_op_compiler import compile_op, replay_op, check_op_cap, generalize_op_params, get_code_channel, OpInfo
+from asc_op_compile_base.asc_op_compiler.compile_op import CommonUtility, AscendCLogLevel
+from asc_op_compile_base.common.buildcfg import get_default_build_config
+from asc_op_compile_base.common.buildcfg import get_current_build_config
+from asc_op_compile_base.common import register as tbe_register
+__version__ = '2.0.0'
+'''
+else:
+    IMPORT_HEADER = '''
+from tbe.common.platform import get_soc_spec	 
+from tbe.common.utils import para_check	 
+from tbe.tikcpp import compile_op, replay_op, check_op_cap, generalize_op_params, get_code_channel, OpInfo	 
+from tbe.tikcpp.compile_op import CommonUtility, AscendCLogLevel	 
+from tbe.common.buildcfg import get_default_build_config	 
+from tbe.common.buildcfg import get_current_build_config	 
+import tbe.common.register as tbe_register
+'''
+
 IMPL_HEAD = '''#!/usr/bin/env python
 # -*- coding: UTF-8 -*-
 """
@@ -35,16 +57,10 @@ import os, sys
 import ctypes
 import json
 import shutil
-from asc_op_compile_base.common.platform import get_soc_spec
-from asc_op_compile_base.common.utils import para_check
-from asc_op_compile_base.asc_op_compiler import compile_op, replay_op, check_op_cap, generalize_op_params, get_code_channel, OpInfo
-from asc_op_compile_base.asc_op_compiler.compile_op import CommonUtility, AscendCLogLevel
-from asc_op_compile_base.common.buildcfg import get_default_build_config
-from asc_op_compile_base.common.buildcfg import get_current_build_config
-from asc_op_compile_base.common import register as tbe_register
-PYF_PATH = os.path.dirname(os.path.realpath(__file__))
 
-__version__ = '2.0.0'
+{}
+
+PYF_PATH = os.path.dirname(os.path.realpath(__file__))
 
 DTYPE_MAP = {{"float32": ["DT_FLOAT", "float"],
     "float16": ["DT_FLOAT16", "half"],
@@ -181,7 +197,7 @@ def {}({}, kernel_name="{}"{}):
     bisheng = os.environ.get('BISHENG_REAL_PATH')
     if bisheng is None:
         bisheng = shutil.which("bisheng")
-    if bisheng != None:
+    if bisheng is not None:
         bisheng_path = os.path.dirname(bisheng)
         tikcpp_path = os.path.realpath(os.path.join(bisheng_path, "..", "..", "tikcpp"))
     else:
@@ -529,14 +545,14 @@ class AdpBuilder(opdesc_parser.OpDesc):
         now = datetime.datetime.now()
         curr_year = now.year
         former_year = curr_year - 1
-        fd.write(IMPL_HEAD.format(former_year, curr_year, self.input_ori_name, self.output_ori_name))
+        fd.write(IMPL_HEAD.format(former_year, curr_year, IMPORT_HEADER, self.input_ori_name, self.output_ori_name))
 
     def _write_argparse(self: any, fd: object):
         args = self._build_paralist(False)
         fd.write('def _build_args({}):\n'.format(args))
         fd.write('    __inputs__ = []\n')
         fd.write('    for arg in [{}]:\n'.format(', '.join(self.input_name)))
-        fd.write('        if arg != None:\n')
+        fd.write('        if arg is not None:\n')
         fd.write('            if isinstance(arg, (list, tuple)):\n')
         fd.write('                if len(arg) == 0:\n')
         fd.write('                    continue\n')
@@ -547,7 +563,7 @@ class AdpBuilder(opdesc_parser.OpDesc):
         fd.write('            __inputs__.append(arg)\n')
         fd.write('    __outputs__ = []\n')
         fd.write('    for arg in [{}]:\n'.format(', '.join(self.output_name)))
-        fd.write('        if arg != None:\n')
+        fd.write('        if arg is not None:\n')
         fd.write('            if isinstance(arg, (list, tuple)):\n')
         fd.write('                if len(arg) == 0:\n')
         fd.write('                    continue\n')
@@ -558,7 +574,7 @@ class AdpBuilder(opdesc_parser.OpDesc):
         fd.write('            __outputs__.append(arg)\n')
         fd.write('    __attrs__ = []\n')
         for attr in self.attr_list:
-            fd.write('    if {} != None:\n'.format(attr))
+            fd.write('    if {} is not None:\n'.format(attr))
             fd.write('        attr = {}\n')
             fd.write('        attr["name"] = "{}"\n'.format(attr))
             fd.write('        attr["dtype"] = "{}"\n'.format(self.attr_val.get(attr).get('type')))

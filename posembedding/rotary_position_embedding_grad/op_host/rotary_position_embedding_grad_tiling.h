@@ -17,10 +17,10 @@
 
 #include "register/tilingdata_base.h"
 #include "register/op_def_registry.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 #include "tiling/tiling_api.h"
-#include "tiling_base/tiling_base.h"
-#include "tiling_base/tiling_util.h"
+#include "op_host/tiling_base.h"
+#include "op_host/tiling_util.h"
 #include "../op_kernel/arch35/rotary_position_embedding_grad_tiling_data.h"
 #include "platform/platform_info.h"
 #include "atvoss/reduce/reduce_tiling.h"
@@ -272,6 +272,7 @@ protected:
     int64_t dSplitCoef_;
     uint32_t dCosFlag_{0};
     bool is1snd_ = false;
+    bool isTndLayout_ = false;
 };
 
 } // namespace optiling

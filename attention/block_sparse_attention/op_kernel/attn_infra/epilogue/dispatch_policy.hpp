@@ -1,5 +1,5 @@
-/**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -32,6 +32,20 @@ struct EpilogueAtlasA2RescaleO {
     using ArchTag = Arch::AtlasA2;
     using IntermPrec = SM_DTYPE_;
     static constexpr LseMode LSE_MODE = LSE_MODE_;
+};
+
+// For AtlasA5
+struct EpilogueBsaMask2Idx {
+    static constexpr uint32_t IO_STAGES = 2;
+    using ArchTag = Arch::AtlasA5;
+};
+
+struct EpilogueOnlineSoftmaxBsa {
+    using ArchTag = Arch::AtlasA5;
+};
+
+struct EpilogueAtlasA5BsaRescaleO {
+    using ArchTag = Arch::AtlasA5;
 };
 
 }  // namespace NpuArch::Epilogue

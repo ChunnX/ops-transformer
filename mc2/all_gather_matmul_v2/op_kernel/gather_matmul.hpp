@@ -16,18 +16,18 @@
 #ifndef CATLASS_GEMM_KERNEL_ALLGATHER_MATMUL_HPP
 #define CATLASS_GEMM_KERNEL_ALLGATHER_MATMUL_HPP
 
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/catlass.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/coord.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/gemm_coord.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/matrix_coord.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/arch/resource.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/arch/cross_core_sync.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/epilogue/tile/copy_gm_to_ub.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/epilogue/tile/copy_ub_to_gm.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/gemm/kernel/padding_matmul.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/coord.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm_coord.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/matrix_coord.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/resource.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/cross_core_sync.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/copy_gm_to_ub.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/copy_ub_to_gm.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/kernel/padding_matmul.hpp"
 #include "block_mmad_preload_fixpipe.h"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/gemm/tile/tile_copy.hpp"
-#include "../3rd/template_linear_algebra/include/template_linear_algebra/gemm/tile/tile_mmad.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tile_copy.hpp"
+#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tile_mmad.hpp"
 
 using namespace AscendC;
 
@@ -79,6 +79,7 @@ public:
         int32_t rankIdx;
         int32_t rankSize;
         bool needFixpipe;
+        bool accumWorkSpacePingPong;
 
         // Methods
         CATLASS_HOST_DEVICE
@@ -90,11 +91,13 @@ public:
         Params(GemmCoord const &problemShape_, GM_ADDR ptrA_, LayoutA layoutA_, GM_ADDR ptrB_, LayoutB layoutB_,
                GM_ADDR ptrC_, LayoutC layoutC_, GM_ADDR ptrScale_, LayoutScale layoutScale_, GM_ADDR ptrPeerMem_,
                LayoutA layoutPeerMem_, GM_ADDR ptrWorkSpace_, int32_t pValue_, int32_t swizzlCount_,
-               int32_t swizzlDirect_, int32_t rankIdx_, int32_t rankSize_, bool needFixpipe_)
+               int32_t swizzlDirect_, int32_t rankIdx_, int32_t rankSize_, bool needFixpipe_,
+               bool accumWorkSpacePingPong_)
             : problemShape(problemShape_), ptrA(ptrA_), layoutA(layoutA_), ptrB(ptrB_), layoutB(layoutB_), ptrC(ptrC_),
               layoutC(layoutC_), ptrScale(ptrScale_), layoutScale(layoutScale_), ptrPeerMem(ptrPeerMem_),
               layoutPeerMem(layoutPeerMem_), ptrWorkSpace(ptrWorkSpace_), pValue(pValue_), swizzlCount(swizzlCount_),
-              swizzlDirect(swizzlDirect_), rankIdx(rankIdx_), rankSize(rankSize_), needFixpipe(needFixpipe_)
+              swizzlDirect(swizzlDirect_), rankIdx(rankIdx_), rankSize(rankSize_), needFixpipe(needFixpipe_),
+              accumWorkSpacePingPong(accumWorkSpacePingPong_)
         {
         }
     };
@@ -161,7 +164,7 @@ public:
         BlockMmad blockMmad(resource);
 
         AscendC::GlobalTensor<ElementC> gmDst = outputTypeInt32 ? gmWorkSpace : gmC;
-        int32_t dstSt = params.rankIdx * params.problemShape.m() * params.problemShape.n();
+        uint64_t dstSt = params.rankIdx * params.problemShape.m() * params.problemShape.n();
         for (int32_t loopIdx = 0; loopIdx < coreLoops; loopIdx++) {
             if (loopIdx % coreNum != coreIdx) {
                 continue;
@@ -174,9 +177,9 @@ public:
             MatrixCoord offsetA{blockLocCoord.m(), blockLocCoord.k()};
             MatrixCoord offsetB{blockLocCoord.k(), blockLocCoord.n()};
             MatrixCoord offsetC{blockLocCoord.m(), blockLocCoord.n()};
-            int64_t gmOffsetA = params.layoutA.GetOffset(offsetA);
-            int64_t gmOffsetB = params.layoutB.GetOffset(offsetB);
-            int64_t gmOffsetC = dstSt + params.layoutC.GetOffset(offsetC);
+            uint64_t gmOffsetA = params.layoutA.GetOffset(offsetA);
+            uint64_t gmOffsetB = params.layoutB.GetOffset(offsetB);
+            uint64_t gmOffsetC = dstSt + params.layoutC.GetOffset(offsetC);
 
             bool isFirstBlock = (loopIdx < coreNum);
             bool hasNextBlock = false;
@@ -195,8 +198,8 @@ public:
             }
             MatrixCoord offsetNextA{nextBlockLocCoord.m(), nextBlockLocCoord.k()};
             MatrixCoord offsetNextB{nextBlockLocCoord.k(), nextBlockLocCoord.n()};
-            int64_t gmOffsetNextA = params.layoutA.GetOffset(offsetNextA);
-            int64_t gmOffsetNextB = params.layoutB.GetOffset(offsetNextB);
+            uint64_t gmOffsetNextA = params.layoutA.GetOffset(offsetNextA);
+            uint64_t gmOffsetNextB = params.layoutB.GetOffset(offsetNextB);
 
             blockMmad(gmA[gmOffsetA], params.layoutA, gmB[gmOffsetB], params.layoutB, gmDst[gmOffsetC], params.layoutC,
                       gmA[gmOffsetNextA], gmB[gmOffsetNextB], blockSizeCoord, nextBlockSizeCoord, isFirstBlock,
@@ -209,7 +212,7 @@ public:
     {
         FixpipeBlockMmad fixpipeBlockMmad(resource);
 
-        int32_t dstSt = params.rankIdx * params.problemShape.m() * params.problemShape.n();
+        uint64_t dstSt = params.rankIdx * params.problemShape.m() * params.problemShape.n();
         for (int32_t loopIdx = 0; loopIdx < coreLoops; loopIdx++) {
             if (loopIdx % coreNum != coreIdx) {
                 continue;
@@ -222,9 +225,9 @@ public:
             MatrixCoord offsetA{blockLocCoord.m(), blockLocCoord.k()};
             MatrixCoord offsetB{blockLocCoord.k(), blockLocCoord.n()};
             MatrixCoord offsetC{blockLocCoord.m(), blockLocCoord.n()};
-            int64_t gmOffsetA = params.layoutA.GetOffset(offsetA);
-            int64_t gmOffsetB = params.layoutB.GetOffset(offsetB);
-            int64_t gmOffsetC = dstSt + params.layoutC.GetOffset(offsetC);
+            uint64_t gmOffsetA = params.layoutA.GetOffset(offsetA);
+            uint64_t gmOffsetB = params.layoutB.GetOffset(offsetB);
+            uint64_t gmOffsetC = dstSt + params.layoutC.GetOffset(offsetC);
 
             bool isFirstBlock = (loopIdx < coreNum);
             bool hasNextBlock = false;
@@ -243,10 +246,10 @@ public:
             }
             MatrixCoord offsetNextA{nextBlockLocCoord.m(), nextBlockLocCoord.k()};
             MatrixCoord offsetNextB{nextBlockLocCoord.k(), nextBlockLocCoord.n()};
-            int64_t gmOffsetNextA = params.layoutA.GetOffset(offsetNextA);
-            int64_t gmOffsetNextB = params.layoutB.GetOffset(offsetNextB);
+            uint64_t gmOffsetNextA = params.layoutA.GetOffset(offsetNextA);
+            uint64_t gmOffsetNextB = params.layoutB.GetOffset(offsetNextB);
 
-            int64_t gmOffsetScale = blockLocCoord.n();
+            uint64_t gmOffsetScale = blockLocCoord.n();
             fixpipeBlockMmad(gmAInt8[gmOffsetA], params.layoutA, gmBInt8[gmOffsetB], params.layoutB, gmCHalf[gmOffsetC],
                              params.layoutC, gmScale[gmOffsetScale], params.layoutScale, gmAInt8[gmOffsetNextA],
                              gmBInt8[gmOffsetNextB], blockSizeCoord, nextBlockSizeCoord, isFirstBlock, hasNextBlock);
@@ -261,7 +264,7 @@ public:
         int32_t blockM = params.pValue * L1TileShape::M;
         int32_t blockSize = blockM * kAlign;
         int32_t outputBlockSize = blockM * params.problemShape.n();
-        int32_t mnSize = params.problemShape.m() * params.problemShape.n();
+        uint64_t mnSize = params.problemShape.m() * params.problemShape.n();
         for (int32_t calIdx = 0; calIdx < calCount; calIdx++) {
             int32_t flagIdx = calIdx % MAX_BLOCK_COUNT;
             int32_t actualPValue = params.pValue;
@@ -290,9 +293,14 @@ public:
                 MatrixCoord offsetA{blockLocCoord.m(), blockLocCoord.k()};
                 MatrixCoord offsetB{blockLocCoord.k(), blockLocCoord.n()};
                 MatrixCoord offsetC{blockLocCoord.m(), blockLocCoord.n()};
-                int64_t gmOffsetA = pingPongSt + dstBlockIdx * blockSize + params.layoutPeerMem.GetOffset(offsetA);
-                int64_t gmOffsetB = params.layoutB.GetOffset(offsetB);
-                int64_t gmOffsetC = dstBlockIdx * mnSize + calIdx * outputBlockSize + params.layoutC.GetOffset(offsetC);
+                uint64_t gmOffsetA = pingPongSt + dstBlockIdx * blockSize + params.layoutPeerMem.GetOffset(offsetA);
+                uint64_t gmOffsetB = params.layoutB.GetOffset(offsetB);
+                int64_t gmOffsetC = static_cast<int64_t>(dstBlockIdx + flagIdx * params.rankSize) * outputBlockSize
+                                        + params.layoutC.GetOffset(offsetC);
+                
+                if (params.accumWorkSpacePingPong) {
+                    gmOffsetC = dstBlockIdx * mnSize + calIdx * outputBlockSize + params.layoutC.GetOffset(offsetC);
+                }
 
                 AscendC::GlobalTensor<ElementAInt8> gmAIn = gmPeerMemInt8;
  	            if (dstBlockIdx == params.rankIdx) { // 从gmA里面取
@@ -318,9 +326,9 @@ public:
                 }
                 MatrixCoord offsetNextA{nextBlockLocCoord.m(), nextBlockLocCoord.k()};
                 MatrixCoord offsetNextB{nextBlockLocCoord.k(), nextBlockLocCoord.n()};
-                int64_t gmOffsetNextA =
+                uint64_t gmOffsetNextA =
                     pingPongSt + nextDstBlockIdx * blockSize + params.layoutPeerMem.GetOffset(offsetNextA);
-                int64_t gmOffsetNextB = params.layoutB.GetOffset(offsetNextB);
+                uint64_t gmOffsetNextB = params.layoutB.GetOffset(offsetNextB);
 
                 AscendC::GlobalTensor<ElementAInt8> gmANextIn = gmPeerMemInt8;
  	            if (nextDstBlockIdx == params.rankIdx) { // 从gmA里面取
@@ -328,7 +336,7 @@ public:
  	                gmOffsetNextA = calIdx * blockSize + params.layoutA.GetOffset(offsetNextA);
  	            }
 
-                int64_t gmOffsetScale = blockLocCoord.n();
+                uint64_t gmOffsetScale = blockLocCoord.n();
                 fixpipeBlockMmad(gmAIn[gmOffsetA], params.layoutPeerMem, gmBInt8[gmOffsetB], params.layoutB,
  	                                gmCHalf[gmOffsetC], params.layoutC, gmScale[gmOffsetScale], params.layoutScale,
  	                                gmANextIn[gmOffsetNextA], gmBInt8[gmOffsetNextB], blockSizeCoord,
@@ -347,7 +355,7 @@ public:
         int32_t blockM = params.pValue * L1TileShape::M;
         int32_t blockSize = blockM * kAlign;
         int32_t outputBlockSize = blockM * params.problemShape.n();
-        int32_t mnSize = params.problemShape.m() * params.problemShape.n();
+        uint64_t mnSize = params.problemShape.m() * params.problemShape.n();
         for (int32_t calIdx = 0; calIdx < calCount; calIdx++) {
             int32_t flagIdx = calIdx % MAX_BLOCK_COUNT;
             int32_t actualPValue = params.pValue;
@@ -376,9 +384,14 @@ public:
                 MatrixCoord offsetA{blockLocCoord.m(), blockLocCoord.k()};
                 MatrixCoord offsetB{blockLocCoord.k(), blockLocCoord.n()};
                 MatrixCoord offsetC{blockLocCoord.m(), blockLocCoord.n()};
-                int64_t gmOffsetA = pingPongSt + dstBlockIdx * blockSize + params.layoutPeerMem.GetOffset(offsetA);
-                int64_t gmOffsetB = params.layoutB.GetOffset(offsetB);
-                int64_t gmOffsetC = dstBlockIdx * mnSize + calIdx * outputBlockSize + params.layoutC.GetOffset(offsetC);
+                uint64_t gmOffsetA = pingPongSt + dstBlockIdx * blockSize + params.layoutPeerMem.GetOffset(offsetA);
+                uint64_t gmOffsetB = params.layoutB.GetOffset(offsetB);
+                int64_t gmOffsetC = static_cast<int64_t>(dstBlockIdx + flagIdx * params.rankSize) * outputBlockSize
+                                        + params.layoutC.GetOffset(offsetC);
+                
+                if (params.accumWorkSpacePingPong) {
+                    gmOffsetC = dstBlockIdx * mnSize + calIdx * outputBlockSize + params.layoutC.GetOffset(offsetC);
+                }
 
                 AscendC::GlobalTensor<ElementA> gmAIn = gmPeerMem;
  	            if (dstBlockIdx == params.rankIdx) { // 从gmA里面取
@@ -404,9 +417,9 @@ public:
                 }
                 MatrixCoord offsetNextA{nextBlockLocCoord.m(), nextBlockLocCoord.k()};
                 MatrixCoord offsetNextB{nextBlockLocCoord.k(), nextBlockLocCoord.n()};
-                int64_t gmOffsetNextA =
+                uint64_t gmOffsetNextA =
                     pingPongSt + nextDstBlockIdx * blockSize + params.layoutPeerMem.GetOffset(offsetNextA);
-                int64_t gmOffsetNextB = params.layoutB.GetOffset(offsetNextB);
+                uint64_t gmOffsetNextB = params.layoutB.GetOffset(offsetNextB);
 
                 AscendC::GlobalTensor<ElementA> gmAInNext = gmPeerMem;
  	            if (nextDstBlockIdx == params.rankIdx) { // 从gmA里面取

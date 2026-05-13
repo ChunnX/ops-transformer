@@ -5,7 +5,7 @@
 
 |产品             |  是否支持  |
 |:-------------------------|:----------:|
-|  <term>Ascend 950PR/Ascend 950DT</term>   |     ×    |
+|  <term>Ascend 950PR/Ascend 950DT</term>   |     √    |
 |  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     √    |
 |  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |     √    |
 |  <term>Atlas 200I/500 A2 推理产品</term>    |     ×    |
@@ -34,7 +34,7 @@
 
 ## 函数原型
 
-算子执行接口为两段式接口，必须先调用“aclnnDenseLightningIndexerSoftmaxLseGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnDenseLightningIndexerSoftmaxLse”接口执行计算。
+算子执行接口为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnDenseLightningIndexerSoftmaxLseGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnDenseLightningIndexerSoftmaxLse”接口执行计算。
 
 ```c++
 aclnnStatus aclnnDenseLightningIndexerSoftmaxLseGetWorkspaceSize(
@@ -44,13 +44,13 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLseGetWorkspaceSize(
     const aclIntArray *actualSeqLengthsQueryOptional,
     const aclIntArray *actualSeqLengthsKeyOptional,
     char              *layoutOptional,
-    int64_t           sparseMode,
-    int64_t           preTokens,
-    int64_t           nextTokens,
-    const aclTensor  *softmaxMaxOut,
-    const aclTensor  *softmaxSumOut,
-    uint64_t         *workspaceSize,
-    aclOpExecutor   **executor);
+    int64_t            sparseMode,
+    int64_t            preTokens,
+    int64_t            nextTokens,
+    const aclTensor   *softmaxMaxOut,
+    const aclTensor   *softmaxSumOut,
+    uint64_t          *workspaceSize,
+    aclOpExecutor    **executor);
 ```
 
 ```c++
@@ -92,7 +92,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
       <td>queryIndex（aclTensor*）</td>
       <td>输入</td>
       <td>lightningIndexer结构的输入queryIndex。</td>
-      <td><ul><li>B：支持泛化且与query的B保持一致。</li><li>S1：支持泛化，不能为Matmul的M轴。</li><li>Nidx1：64、32、16、8。</li><li>D：128。</li><li>T1：多个Batch的S1累加。</li></ul></td>
+      <td><ul><li>B：支持泛化且与query的B保持一致。</li><li>Nidx1：64、32、16、8。</li><li>D：128。</li><li>T1：多个Batch的S1累加。</li></ul></td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>(B,S1,Nidx1,D);(T1,Nidx1,D)</td>
@@ -122,7 +122,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
       <td>actualSeqLengthsQueryOptional（aclIntArray*）</td>
       <td>输入</td>
       <td>每个Batch中，Query的有效token数</td>
-      <td><ul><li>值依赖。</li><li>长度与B保持一致。</li><li>TND格式下最后一个元素为累加和，累加和与T1保持一致。</li></ul></td>
+      <td><ul><li>值依赖。</li><li>长度与B保持一致。</li><li>TND格式下最后一个元素为累加和，累加和小于等于T1。</li></ul></td>
       <td>INT64</td>
       <td>ND</td>
       <td>(B,)</td>
@@ -132,16 +132,18 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
       <td>actualSeqLengthsKeyOptional（aclIntArray*）</td>
       <td>输入</td>
       <td>每个Batch中，Key的有效token数</td>
-      <td><ul><li>值依赖。</li><li>长度与B保持一致。</li><li>TND格式下最后一个元素为累加和，累加和与T2保持一致。</li></ul></td>
+      <td><ul><li>值依赖。</li><li>长度与B保持一致。</li><li>TND格式下最后一个元素为累加和，累加和小于等于T2。</li></ul></td>
       <td>INT64</td>
       <td>ND</td>
       <td>(B,)</td>
       <td>-</td>
      </tr>
+     <tr>
       <td>layoutOptional（char*）</td>
       <td>输入</td>
       <td>layout格式</td>
-      <td><ul><li>仅支持BSND和TND格式。</li></ul></td><td>STRING</td>
+      <td>仅支持BSND和TND格式。</td>
+      <td>STRING</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -160,7 +162,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
        <td>preTokens（int64_t）</td>
        <td>输入</td>
        <td>用于稀疏计算，表示Attention需要和前几个token计算关联</td>
-       <td><ul><li>和Attention中的preTokens定义相同，在sparseMode = 0和4的时候生效，仅支持2^63-1</a>。</li></ul></td>
+       <td>和Attention中的preTokens定义相同，在sparseMode = 0和4的时候生效，仅支持2^63-1。</td>
        <td>-</td>
        <td>-</td>
        <td>-</td>
@@ -170,7 +172,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
        <td>nextTokens（int64_t）</td>
        <td>输入</td>
        <td>用于稀疏计算，表示Attention需要和后几个token计算关联</td>
-       <td><ul><li>和Attention中的nextTokens定义相同，在sparseMode = 0和4的时候生效，仅支持2^63-1</a>。</li></ul></td>
+       <td>和Attention中的nextTokens定义相同，在sparseMode = 0和4的时候生效，仅支持2^63-1。</td>
        <td>-</td>
        <td>-</td>
        <td>-</td>
@@ -394,7 +396,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
     </tr>
     <tr>
       <td>S1、S2</td>
-      <td>1~128K</td>
+      <td>0~128K</td>
       <td>S1、S2支持不等长，当layout为BSND时，S1<=S2；layout为TND时，actualSeqLengthsQuery小于等于actualSeqLengthsKey相同索引位置的值，且相同索引位置S1<=S2。</td>
     </tr>
     <tr>

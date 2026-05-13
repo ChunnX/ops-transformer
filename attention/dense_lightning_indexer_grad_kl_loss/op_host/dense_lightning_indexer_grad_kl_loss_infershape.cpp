@@ -45,7 +45,8 @@ enum OutputIdx {
 
 ge::graphStatus InferShapeDenseLightningIndexerGradKLLoss(gert::InferShapeContext *context)
 {
-    if (context == nullptr){
+    if (context == nullptr) {
+        OP_LOGE("DenseLightningIndexerGradKLLoss", "context is nullptr!");
         return ge::GRAPH_FAILED;
     }
     
@@ -77,6 +78,8 @@ ge::graphStatus InferShapeDenseLightningIndexerGradKLLoss(gert::InferShapeContex
     *dWeightShape = *weightShape;
     *dQIndexShape = *queryIndexShape;
     *dKIndexShape = *keyIndexShape;
+    lossShape->SetDimNum(1); // 设置维度为1
+    lossShape->SetDim(0, 1); // 设置第0维数值为1
 
     OP_LOGD(context->GetNodeName(), "End to do InferShapeDenseLightningIndexerGradKLLoss");
     return GRAPH_SUCCESS;
@@ -84,12 +87,18 @@ ge::graphStatus InferShapeDenseLightningIndexerGradKLLoss(gert::InferShapeContex
 
 ge::graphStatus InferDataTypeDenseLightningIndexerGradKLLoss(gert::InferDataTypeContext *context)
 {
-    OP_LOGD(context->GetNodeName(), "Begin to do InferDataTypeDenseLightningIndexerGradKLLoss");
-    if (context == nullptr){
+    if (context == nullptr) {
+        OP_LOGE("DenseLightningIndexerGradKLLoss", "context is nullptr!");
         return ge::GRAPH_FAILED;
-    } 
+    }
+
+    OP_LOGD(context->GetNodeName(), "Begin to do InferDataTypeDenseLightningIndexerGradKLLoss");
     const auto inputDataType = context->GetInputDataType(queryEnum);
-    context->SetOutputDataType(0, inputDataType);
+    const auto inputWeightDataType = context->GetInputDataType(weightEnum);
+    context->SetOutputDataType(dQueryIndexEnum, inputDataType);
+    context->SetOutputDataType(dKeyIndexEnum, inputDataType);
+    context->SetOutputDataType(dWeightEnum, inputWeightDataType);
+    context->SetOutputDataType(lossEnum, DT_FLOAT);
 
     OP_LOGD(context->GetNodeName(), "End to do InferDataTypeDenseLightningIndexerGradKLLoss");
     return ge::GRAPH_SUCCESS;

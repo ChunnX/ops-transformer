@@ -1,5 +1,5 @@
-/**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -24,9 +24,16 @@ class BlockEpilogue {
 };
 
 }  // namespace NpuArch::Epilogue::Block
-
+#if (__CCE_AICORE__ == 220)
 #include "../../../attn_infra/epilogue/block/block_epilogue_online_softmax.hpp"
 #include "../../../attn_infra/epilogue/block/block_epilogue_online_softmax_low_prec.hpp"
 #include "../../../attn_infra/epilogue/block/block_epilogue_rescale_o.hpp"
 #include "../../../attn_infra/epilogue/block/block_epilogue_rescale_o_low_prec.hpp"
+#endif
+#if (__CCE_AICORE__ == 310)
+#include "../../../attn_infra/epilogue/block/block_epilogue_mask2idx_arch35.hpp"
+#include "../../../attn_infra/epilogue/block/block_epilogue_rescale_o_arch35_reg_high_prec.hpp"
+#include "../../../attn_infra/epilogue/block/block_epilogue_online_softmax_arch35_reg_low_prec.hpp"
+#include "../../../attn_infra/epilogue/block/block_epilogue_online_softmax_arch35_reg_low_prec_bf16.hpp"
+#endif
 #endif  // EPILOGUE_BLOCK_BLOCK_EPILOGUE_HPP

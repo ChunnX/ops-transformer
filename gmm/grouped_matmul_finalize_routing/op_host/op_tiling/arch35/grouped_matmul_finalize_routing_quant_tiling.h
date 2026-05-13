@@ -22,7 +22,7 @@
 #include "../../grouped_matmul_finalize_routing_tiling.h"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 #include <exe_graph/runtime/tiling_context.h>
 #include <graph/utils/type_utils.h>
 
@@ -79,6 +79,8 @@ public:
     }
 
 protected:
+    // 0、获取INPUT/OUTPUT/ATTR信息
+    ge::graphStatus GetShapeAttrsInfo() override;
     // 1、计算数据切分TilingData
     ge::graphStatus DoOpTiling() override;
     // 2、计算高阶API的TilingData
@@ -118,6 +120,8 @@ private:
     uint64_t rowIndex_ = 0;
     float sharedInputWeight_ = 1.0;
     uint64_t outputBs_ = 0;
+    int8_t scaleType_ = 0;
+    int8_t rowIndexType_ = 0;
 };
 } // namespace optiling
 

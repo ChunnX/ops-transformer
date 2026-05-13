@@ -75,6 +75,8 @@ class TensorDesc {
     TensorDesc& ValueFile(const std::string &binary_file);
 
     TensorDesc& ValidCount(int32_t cnt);
+    
+    const std::vector<int64_t>& GetViewDims() const;
 
   private:
     int64_t GetViewCount() const;

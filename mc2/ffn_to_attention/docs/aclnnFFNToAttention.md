@@ -17,7 +17,7 @@
 
 ## 函数原型
 
-每个算子分为两段式接口，必须先调用 “aclnnFFNToAttentionGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFFNToAttention”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用 “aclnnFFNToAttentionGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFFNToAttention”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnFFNToAttentionGetWorkspaceSize(
@@ -35,6 +35,7 @@ aclnnStatus aclnnFFNToAttentionGetWorkspaceSize(
     uint64_t          *workspaceSize,
     aclOpExecutor    **executor)
 ```
+
 ```cpp
 aclnnStatus aclnnFFNToAttention(
     void           *workspace,
@@ -94,7 +95,7 @@ aclnnStatus aclnnFFNToAttention(
       <td>microBatchIds</td>
       <td>输入</td>
       <td>每个token的microBatch索引。</td>
-      <td>shape为 <code>(Y, )</code>，取值区间为[0, MircoBatchNum-1]。</td>
+      <td>shape为 <code>(Y, )</code>，取值区间为[0, MicroBatchNum-1]。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>1</td>
@@ -164,7 +165,7 @@ aclnnStatus aclnnFFNToAttention(
       <td>tokenInfoTableShape</td>
       <td>输入</td>
       <td>Token信息列表大小。</td>
-      <td>包含microBatch的大小（MircoBatchNum）、BatchSize大小（Bs）、以及每个Token对应的Expert数量（ExpertNumPerToken）。</td>
+      <td>包含microBatch的大小（MicroBatchNum）、BatchSize大小（Bs）、以及每个Token对应的Expert数量（ExpertNumPerToken）。</td>
       <td>INT32</td>
       <td>-</td>
       <td>-</td>
@@ -174,7 +175,7 @@ aclnnStatus aclnnFFNToAttention(
       <td>tokenDataShape</td>
       <td>输入</td>
       <td>Token数据列表大小。</td>
-      <td>包含microBatch的大小（MircoBatchNum）、BatchSize大小（Bs）、每个Token对应的Expert数量(ExpertNumPerToken)、以及token和scale长度(HS)。</td>
+      <td>包含microBatch的大小（MicroBatchNum）、BatchSize大小（Bs）、每个Token对应的Expert数量(ExpertNumPerToken)、以及token和scale长度(HS)。</td>
       <td>INT32</td>
       <td>-</td>
       <td>-</td>
@@ -235,8 +236,6 @@ aclnnStatus aclnnFFNToAttention(
     </tbody>
     </table>
 
-
-
 ## aclnnFFNToAttention
 
 - **参数说明：**
@@ -277,9 +276,9 @@ aclnnStatus aclnnFFNToAttention(
     </tbody>
     </table>
 
--   **返回值：**
+- **返回值：**
 
-    返回aclnnStatus状态码，具体参见aclnn返回码。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 
 ## 约束说明
@@ -298,22 +297,20 @@ aclnnStatus aclnnFFNToAttention(
   | 变量         | 定义与取值范围                                                                           |
   | :----------- | :------------------------------------------------------------------------------------- |
   | Y            | 表示本卡需要分发的最大token数量。|
-  | Bs           | 表示各Attention节点上的发送token数。<ul></li><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：<code>0 < Bs ≤ 512 </code>。</li></ul> |
-  | H（hidden size） | 表示hidden size隐藏层大小。<ul></li> <li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：<code>1024 ≤  H ≤ 8192 </code>。</li></ul> |
-  | HS（hidden and scale size） | 表示hidden与scale 隐藏层大小。<ul></li> <li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：<code>1152 ≤  HS ≤ 8320 </code>。</li></ul>|
-  | MircoBatchNum    | 表示microBatch的大小，目前仅支持<code>MircoBatchNum = 1</code>。 |  
+  | Bs           | 表示各Attention节点上的发送token数。<ul><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：<code>0 < Bs ≤ 512 </code>。</li></ul> |
+  | H（hidden size） | 表示hidden size隐藏层大小。<ul><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：<code>1024 ≤  H ≤ 8192 </code>。</li></ul> |
+  | HS（hidden and scale size） | 表示hidden与scale 隐藏层大小。<ul><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：<code>1152 ≤  HS ≤ 8320 </code>。</li></ul>|
+  | MicroBatchNum    | 表示microBatch的大小，目前仅支持<code>MicroBatchNum = 1</code>。 |  
   | ExpertNumPerToken    | 表示每个Token对应的发送的Expert数量，<code>ExpertNumPerToken = K + sharedExpertNum</code>。 |  
   | K    | 表示选取topK个专家，取值范围为<code>0 < K ≤ 16 </code>。 |  
   | ffnRankNum    | 表示选取ffnRankNum个卡作为FFnWorker，取值范围为<code>0 < ffnRankNum < worldSize </code>。 | 
   | attnRankNum    | 表示选取attnRankNum个卡作为AttnWorker，取值范围为<code>0 < attnRankNum < worldSize </code>。 | 
   | sharedExpertNum    | 表示共享专家数量（一个共享专家可以复制部署到多个ffnRank卡上），当前取值范围[0, 4]。 |  
-
   
 - **通信域使用约束**：
   - FFNToAttention算子的通信域中不允许有其他算子。
 
 ## 调用示例
-
 
 - 文件准备：
   
@@ -321,7 +318,7 @@ aclnnStatus aclnnFFNToAttention(
 
   2.安装cann包，并根据下方指导编译运行FFNtoAttentionDemo。
 
--  FFNtoAttention.sh编译脚本
+- FFNtoAttention.sh编译脚本
 
     ```bash
     #!/bin/bash

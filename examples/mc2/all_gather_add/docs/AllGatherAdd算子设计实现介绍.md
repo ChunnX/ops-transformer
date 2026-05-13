@@ -5,14 +5,17 @@
 ## 1.算子分析
 
 ### 1.1 算子逻辑
+
 AllGatherAdd算子实现了[AllGather](https://www.hiascend.com/document/detail/zh/canncommercial/850/API/ascendcopapi/atlasascendc_api_07_0873.html)通信和[Add](https://www.hiascend.com/document/detail/zh/canncommercial/850/API/ascendcopapi/atlasascendc_api_07_0035.html)加法的融合。
 
 算子逻辑为：对通信域内所有卡的操作数a做AllGather通信，得到通信结果gather_out，即Add计算的第一个操作数，然后将gather_out和另一个输入b做Add运算得到输出c。
+
 - 对应的数学表达式为：
 
     $$
     gatherOut=AllGather(a0, a1)
     $$
+    
     $$
     c[i]=gatherOut[i] + b[i]
     $$
@@ -132,7 +135,6 @@ AllGatherAdd算子的数据在卡间进行AllGather通信，在卡内进行Add�
 
 ![AllGatherAdd通算掩盖示意图.png](figures/AllGatherAdd通算掩盖示意图.png)
 
-
 **AllGatherAdd算子计算过程示意**：（通信切分轮次为2时）
 
 1. AI Core将要执行的通信信息写入Global Memory中的消息区，实现任务下发。消息区是特定地址的Global Memory，AI Core和AI CPU通过向其写入和轮询读取来实现消息在两者间的传递，这些操作统一封装于[Hccl](https://www.hiascend.com/document/detail/zh/canncommercial/850/API/ascendcopapi/atlasascendc_api_07_0869.html)高阶API中。
@@ -162,9 +164,9 @@ AllGatherAdd算子的数据在卡间进行AllGather通信，在卡内进行Add�
 ## 算子原型定义
 
 相比于一般算子，通算融合算子在实现[算子原型定义](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850/opdevg/Ascendcopdevg/atlas_ascendc_10_0062.html)时，有如下约束：
+
 - 必须定义至少一个表示算子通信域名称的属性，该属性的数量与算子所在通信域数量一致。通信域是集合通信执行的上下文，管理对应的通信实体（例如一个NPU就是一个通信实体）和通信所需的资源。
 - 必须通过原型注册中的[MC2](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850/API/ascendcopapi/atlasascendc_api_07_0954.html)接口注册该算子为通算融合算子，并通过[HcclGroup](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850/API/ascendcopapi/atlasascendc_api_07_1002.html)接口配置该算子的通信域名称。
-
 
 AllGatherAdd算子原型定义如下：
 
@@ -208,13 +210,16 @@ OP_ADD(AllGatherAdd);
 ## Tiling实现
 
 通算融合算子Tiling策略的设计主要包括通信切分策略和Add多核切分策略。
+
 - 通信切分策略：每轮通信数据块的大小，对通算融合算子的性能有较大影响。本样例为了向通算融合算子的初次使用者清晰展示通信计算掩盖的流程，将通信切分为两轮进行，第二轮通信和前一轮通信结果的Add计算进行掩盖。具体场景中如何切分使得性能最优，请参考[《Ascend C最佳实践》](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850/opdevg/Ascendcopdevg/atlas_ascendc_map_10_0002.html)中的优秀实践：[MC²算子性能调优案例](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850/opdevg/Ascendcopdevg/atlas_ascendc_best_practices_10_0043.html)。
 - Add多核切分: 根据当前核数(rank_size = 2)，对输入shape的Y轴进行多核切分，得到单核内shape的大小。
 
 本样例中计算数据量为x2的数据量，即 480 * 256 * sizeof (float16) = 480 * 256 * （2 bytes/1024） KB = 240KB。当AIV核数为48时，单核计算量为5KB，当AIV核数为40时，单核计算量为6KB，两种情况均小于最大可分配Unified Buffer（AIV的[统一缓冲区](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850/opdevg/Ascendcopdevg/atlas_ascendc_10_0008.html)，向量和标量计算的输入和输出）大小192KB，进行Add计算时需要均分给三个操作数，因此每个操作数有64KB最大可用片上UB（开启[Double Buffer](https://www.hiascend.com/document/detail/zh/canncommercial/850/opdevg/Ascendcopdevg/atlas_ascendc_10_0090.html)时最大可用32KB），因此不需要核内切分。
 
 下面给出本样例Tiling实现关键步骤：
+
 - **定义AllGatherAdd算子的Tiling结构体**：
+
     通信和Add计算融合得到的通算融合算子的Tiling结构体如下两个部分：
     - [Hccl高阶API的Tiling结构体](https://www.hiascend.com/document/detail/zh/canncommercial/850/API/ascendcopapi/atlasascendc_api_07_10048.html)。定义Mc2InitTiling和Mc2CcTiling参数。Mc2InitTiling参数用于初始化通信任务配置，必须定义为算子Tiling结构体的第一个参数。Mc2CcTiling为具体每个通信任务的参数配置，由于AllGatherAdd算子中只有AllGather一个通信任务，因此仅需定义一个Mc2CcTiling参数。
     - AllGatherAdd算子额外需要的自定义信息。
@@ -234,6 +239,7 @@ OP_ADD(AllGatherAdd);
         uint32_t addCoresPerRank;
     };
     ```
+
     - commTurn: 通信切分轮次，在实际业务场景中是对通算融合掩盖程度重要影响因素，参考[通算融合基础知识](https://www.hiascend.com/document/detail/zh/canncommercial/850/opdevg/Ascendcopdevg/atlas_ascendc_10_10033.html)。
     - tileNum: 计算切分轮次。在本节Tiling实现分析中可知单轮计算UB无溢出风险，该值为1。
     - totalElemNum: 总计算数，其值为输入b的ShapeSize，即480。
@@ -247,6 +253,7 @@ OP_ADD(AllGatherAdd);
     ```cpp
     AllGatherAddTilingData* tilingData = context->GetTilingData<AllGatherAddTilingData>();
     ```
+
     context为[TilingContext](https://www.hiascend.com/document/detail/zh/canncommercial/850/API/basicdataapi/atlasopapi_07_00555.html)的对象指针，该指针由[all_gather_add_tiling.cpp](../op_host/op_tiling/all_gather_add_tiling.cpp)文件的Tiling入口函数AllGatherAddTilingFunc传入，用于保存算子Tiling计算的上下文。在AllGatherAdd算子的Tiling实现中，通过该上下文context获取计算Tiling所需要的输入输出shape、输入属性等参数，然后将Tiling结果（例如TilingKey、TilingData）保存至上下文中，供后续算子执行时使用。
 
 - **设置算子自定义的Tiling结构体参数**：
@@ -280,9 +287,9 @@ OP_ADD(AllGatherAdd);
 ## Kernel实现
 
 在AllGatherAdd算子的Kernel实现中，需要按照通信切分轮次对所有卡的数据执行AllGather通信计算，同时需要对每轮的通信数据进行Add运算。多轮通信场景下，多张卡的数据拼接到一张卡时，相邻数据块地址并不连续，而每轮Add运算仅对上一轮的通信结果进行计算，因此需要考虑Add计算所需的基本信息：
+
 - 输入a、b操作数和输出c的地址。
 - gather_out、b操作数在核间切分的策略。
-
 
 **首先介绍AllGatherAdd算子核函数的主流程**：
 
@@ -299,6 +306,7 @@ extern "C" __global__ __aicore__ void all_gather_add(GM_ADDR aGM, GM_ADDR bGM, G
     ```cpp
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIV_1_0);
     ```
+
 - 注册算子Tiling结构体、获取Tiling，并初始化TPipe。
 
     ```cpp
@@ -309,6 +317,7 @@ extern "C" __global__ __aicore__ void all_gather_add(GM_ADDR aGM, GM_ADDR bGM, G
     ```
 
 - 初始化AllGatherAdd类，进行AllGatherAdd计算流程。
+
     ```cpp
     AllGatherAdd allGatherAdd;
     allGatherAdd.Init(aGM, bGM, cGM, gatherGM, &tilingData, &pipe);
@@ -366,6 +375,7 @@ extern "C" __global__ __aicore__ void all_gather_add(GM_ADDR aGM, GM_ADDR bGM, G
         HcclFinalize();
     }
     ```
+
     Process函数操作算子通信和计算的过程。
     首先，HcclPrepare()函数调用AllGather接口下发通信任务。需要注意通信多轮切分时，strideCount、repeat参数需要配合使用：
 
@@ -419,6 +429,7 @@ https://gitcode.com/cann/ops-transformer/blob/master/examples/mc2/all_gather_add
 本节介绍[op_host](../op_host/op_api/)目录下如何对API生成的两段式aclnn接口进行封装，并在examples目录下的[test_aclnn_all_gather_add.cpp](../examples/test_aclnn_all_gather_add.cpp)文件中完成算子调用执行。
 
 首先，对框架自动生成的aclnnInnerAllGatherAddGetWorkspaceSize和aclnnInnerAllGatherAdd函数进行封装：
+
 - 在调用aclnnInnerAllGatherAddGetWorkspaceSize函数计算本次API调用过程中需要多少npu内存之前，先对入参进行校验（包括非空、数据类型、shape等），记录日志：
 
   ```cpp
@@ -441,7 +452,6 @@ https://gitcode.com/cann/ops-transformer/blob/master/examples/mc2/all_gather_add
   }
 
   ```
-
 
 - 在调用aclnnInnerAllGatherAdd函数执行算子计算时，MC2算子需要设置[HcclServerType](https://www.hiascend.com/document/detail/zh/canncommercial/850/API/ascendcopapi/atlasascendc_api_07_00149.html)，同时对接口返回值记录日志：
 
@@ -501,7 +511,7 @@ https://gitcode.com/cann/ops-transformer/blob/master/examples/mc2/all_gather_add
     args[rankId].rankId = rankId;
     args[rankId].hcclComm = comms[rankId];
     args[rankId].stream = stream[rankId];
-    threads[rankId].reset(new(std::nothrow) std::thread(&LaunchOneThreadAllGatherAdd, std::ref(args [rankId]), std::ref(testData)));
+    threads[rankId].reset(new(std::nothrow) std::thread(&LaunchOneThreadAllGatherAdd, std::ref(args[rankId]), std::ref(testData)));
     }
     // 5.将host侧数据copy到device侧
     ret = CreateAclTensor(aHostData, aShape, &aDeviceAddr, aclDataType::ACL_FLOAT16, &a);
@@ -558,8 +568,8 @@ https://gitcode.com/cann/ops-transformer/blob/master/examples/mc2/all_gather_add
 
     ```
 
-
 - 释放资源：
+
     ```cpp
     // 8.释放资源
     // 释放hccl资源
@@ -584,5 +594,3 @@ https://gitcode.com/cann/ops-transformer/blob/master/examples/mc2/all_gather_add
     ret = aclrtResetDevice(args.rankId);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtResetDevice failed. ret = %d \n", ret); return ret);
     ```
-
-

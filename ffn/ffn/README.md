@@ -36,7 +36,7 @@
     y=activation(x * ((W1 + antiquantOffset1) * antiquantScale1) + b1) * ((W2 + antiquantOffset2) * antiquantScale2) + b2
 	$$
 
-## 参数说明：
+## 参数说明
 
 <table style="undefined;table-layout: fixed; width: 1050px"><colgroup>
 <col style="width: 150px">
@@ -155,7 +155,9 @@
 </tbody>
 </table>
 
-## 约束说明
+
+
+  ## 约束说明
 
 - 有专家时，专家数据的总数需要与x的M保持一致。
 - 激活层为geglu/swiglu/reglu时，仅支持无专家分组时的FLOAT16高性能场景（FLOAT16场景指类型为aclTensor的必选参数数据类型都为FLOAT16的场景），且N1=2\*K2。

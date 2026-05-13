@@ -14,6 +14,7 @@
  */
 #ifndef FLASH_ATTENTION_SCORE_GRAD_S1S2_BNGS1S2_POST_KERNEL_REGBASE_H_
 #define FLASH_ATTENTION_SCORE_GRAD_S1S2_BNGS1S2_POST_KERNEL_REGBASE_H_
+#include "vector_api/vf_post_reduce_sink.h"
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
 #else
@@ -21,9 +22,11 @@
 #endif
 
 #define FAG_POST_CLASS_TEMPLATE                                                                                             \
-    template <typename T1, typename T2, typename OUTDTYPE=T1, const uint8_t SPLIT_AXIS = 0, const bool IS_ROPE = false, const uint8_t DETER_SPARSE_TYPE = 0, const bool IS_TND = 0, const bool IS_TND_SWIZZLE = 0> 
+    template <typename T1, typename T2, typename OUTDTYPE=T1, const uint8_t SPLIT_AXIS = 0, const bool IS_ROPE = false,     \
+        const uint8_t DETER_SPARSE_TYPE = 0, const bool IS_TND = 0, const bool IS_TND_SWIZZLE = 0>
 #define FAG_POST_FUNCTION_TEMPLATE                                                                                          \
-    template <typename T1, typename T2, typename OUTDTYPE, const uint8_t SPLIT_AXIS, bool IS_ROPE, const uint8_t DETER_SPARSE_TYPE, const bool IS_TND, const bool IS_TND_SWIZZLE>
+    template <typename T1, typename T2, typename OUTDTYPE, const uint8_t SPLIT_AXIS, bool IS_ROPE,                          \
+        const uint8_t DETER_SPARSE_TYPE, const bool IS_TND, const bool IS_TND_SWIZZLE>
 #define FAG_POST_FUNCTION_PARAMS_TEMPLATE T1, T2, OUTDTYPE, SPLIT_AXIS, IS_ROPE, DETER_SPARSE_TYPE, IS_TND, IS_TND_SWIZZLE
 
 FAG_POST_CLASS_TEMPLATE 
@@ -31,10 +34,12 @@ class FlashAttentionScoreGradS1S2BNGS1S2PostRegbase {
 public:
     __aicore__ inline FlashAttentionScoreGradS1S2BNGS1S2PostRegbase(){};
     __aicore__ inline void Init(__gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv, __gm__ uint8_t *dqRope,
-                                __gm__ uint8_t *dkRope,__gm__ uint8_t *workspace,
+                                __gm__ uint8_t *dkRope, __gm__ uint8_t *dsink, __gm__ uint8_t *workspace,
                                 FagTilingType ordTilingData,
                                 TPipe *pipe_in);
     __aicore__ inline void Process();
+    __aicore__ inline void ProcessSink();
+    __aicore__ inline void ProcessDqkv();
     __aicore__ inline void ProcessBNS2Deter();
 
     constexpr static uint32_t ADDR_ALIGN_SIZE = 512;
@@ -51,17 +56,25 @@ public:
     GlobalTensor<OUTDTYPE> dqkv[3];
     GlobalTensor<OUTDTYPE> dqkRope[2];
     GlobalTensor<float> dqkvWorkspace[3];
+    GlobalTensor<float> dsinkWorkspace;
+    GlobalTensor<float> dsinkGm;
     GlobalTensor<float> deterGm[2];
+    TBuf<> dsinkResBuf;
     uint32_t vBlockIdx;
     uint64_t loop;
     uint64_t inputTotalSize;
     uint64_t qPostTailNum;
+    uint32_t isSink = 0;
+    uint64_t sinkPostTailNum = 0;
+    uint64_t bSinkSize = 0;
+    uint64_t s1SinkOuter = 0;
+    uint64_t s2SinkOuter = 0;
 };
 
 FAG_POST_FUNCTION_TEMPLATE
 __aicore__ inline void FlashAttentionScoreGradS1S2BNGS1S2PostRegbase<FAG_POST_FUNCTION_PARAMS_TEMPLATE>::Init(
     __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv, __gm__ uint8_t *dqRope,
-    __gm__ uint8_t *dkRope, __gm__ uint8_t *workspace,
+    __gm__ uint8_t *dkRope, __gm__ uint8_t *dsink,  __gm__ uint8_t *workspace,
     FagTilingType ordTilingData, TPipe *pipe_in)
 {
     vBlockIdx = GetBlockIdx();
@@ -87,6 +100,17 @@ __aicore__ inline void FlashAttentionScoreGradS1S2BNGS1S2PostRegbase<FAG_POST_FU
         REGBASE_POST_BASE = POST_S_BASE * (ROPE_DIM + VALUE_DIM);
     }
 
+    isSink = tilingData->s1s2BNGS1S2BaseParams.sinkOptional;
+    if (unlikely(isSink)) {
+        dsinkWorkspace.SetGlobalBuffer(
+            (__gm__ float *)workspace + tilingData->postTilingData.dsinkWorkSpaceOffset / sizeof(float));
+        dsinkGm.SetGlobalBuffer((__gm__ float *)dsink);
+        s1SinkOuter = tilingData->s1s2BNGS1S2BaseParams.s1SinkOuter;
+        s2SinkOuter = tilingData->s1s2BNGS1S2BaseParams.s2SinkOuter;
+        bSinkSize = tilingData->s1s2BNGS1S2BaseParams.b;
+        pipe->InitBuffer(dsinkResBuf, sizeof(float));
+    }
+
     pipe->InitBuffer(inQueuePing, 1, REGBASE_POST_BASE * sizeof(T2));
     pipe->InitBuffer(outQueuePing, 1, REGBASE_POST_BASE * sizeof(OUTDTYPE));
     pipe->InitBuffer(inQueuePong, 1, REGBASE_POST_BASE * sizeof(T2));
@@ -94,11 +118,94 @@ __aicore__ inline void FlashAttentionScoreGradS1S2BNGS1S2PostRegbase<FAG_POST_FU
 }
 
 FAG_POST_FUNCTION_TEMPLATE
-__aicore__ inline void FlashAttentionScoreGradS1S2BNGS1S2PostRegbase<FAG_POST_FUNCTION_PARAMS_TEMPLATE>::Process()
+__aicore__ inline void FlashAttentionScoreGradS1S2BNGS1S2PostRegbase<FAG_POST_FUNCTION_PARAMS_TEMPLATE>::ProcessSink()
 {
-    if (g_coreType != AIV) {
-        return;
+    event_t eventIDVToSPing = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
+    event_t eventIDVToSPong = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
+    event_t eventIDSToMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_MTE3));
+    event_t eventIDMte3ToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_S));
+    inputTotalSize = tilingData->postTilingData.sinkPostBlockTotal;
+    loop = tilingData->postTilingData.sinkPostBlockFactor;
+    sinkPostTailNum = tilingData->postTilingData.sinkPostTailNum;
+    uint64_t sinkReduceAxis = tilingData->postTilingData.sinkReduceAxis;
+    uint64_t begin = vBlockIdx * loop;
+    uint64_t end = begin + loop;
+    if (end > inputTotalSize) {
+        end = inputTotalSize;
     }
+    GM_ADDR baseAddr = (__gm__ uint8_t *)dsinkWorkspace.GetPhyAddr();
+    for (uint64_t nIdx = begin; nIdx < end; nIdx++) {
+        SetFlag<HardEvent::MTE3_S>(eventIDMte3ToS);
+        WaitFlag<HardEvent::MTE3_S>(eventIDMte3ToS);
+        float dsinkAccu = 0.0;
+        uint64_t dsinkBaseOffset = nIdx * bSinkSize * s1SinkOuter * s2SinkOuter;
+        for (uint64_t pingIdx = 0; pingIdx < sinkReduceAxis;
+            pingIdx = pingIdx + (REGBASE_POST_BASE << 1)) {
+            LocalTensor<float> vecInPing = inQueuePing.AllocTensor<float>();
+            uint64_t pongIdx = pingIdx + REGBASE_POST_BASE;
+            uint64_t pingSize = pongIdx < sinkReduceAxis ? REGBASE_POST_BASE : sinkPostTailNum;
+            DataCopyExtParams copyParams;
+            copyParams.blockCount = 1;
+            copyParams.blockLen = pingSize * sizeof(float);
+            copyParams.srcStride = 0;
+            copyParams.dstStride = 0;
+            copyParams.rsv = 0;
+            DataCopyPadExtParams<float> copyPadParams;
+            copyPadParams.isPad = ((pingSize % 8) == 0) ? false : true;
+            copyPadParams.leftPadding = 0;
+            copyPadParams.rightPadding = 8 - (pingSize % 8);
+            copyPadParams.paddingValue = 0.0;
+            DataCopyPad(vecInPing, dsinkWorkspace[dsinkBaseOffset + pingIdx], copyParams, copyPadParams);
+            inQueuePing.EnQue(vecInPing);
+            inQueuePing.DeQue<float>();
+            LocalTensor<float> vecOutPing = outQueuePing.AllocTensor<float>();
+            ReduceSink<float>(vecOutPing, vecInPing, pingSize);
+            uint64_t pongSize = 0;
+            LocalTensor<float> vecInPong;
+            bool neeedPong = pongIdx < sinkReduceAxis;
+            if (neeedPong) {
+                vecInPong = inQueuePong.AllocTensor<float>();
+                pongSize = pongIdx + REGBASE_POST_BASE < sinkReduceAxis ? REGBASE_POST_BASE : sinkPostTailNum;
+                copyParams.blockLen = pongSize * sizeof(float);
+                copyPadParams.isPad = ((pongSize % 8) == 0) ? false : true;
+                copyPadParams.rightPadding = 8 - (pongSize % 8);
+                DataCopyPad(vecInPong, dsinkWorkspace[dsinkBaseOffset + pongIdx], copyParams, copyPadParams);
+            }
+            SetFlag<HardEvent::V_S>(eventIDVToSPing);
+            WaitFlag<HardEvent::V_S>(eventIDVToSPing);
+            dsinkAccu += vecOutPing.GetValue(0);
+            outQueuePing.EnQue(vecOutPing);
+            outQueuePing.DeQue<float>();
+            inQueuePing.FreeTensor(vecInPing);
+            outQueuePing.FreeTensor(vecOutPing);
+            LocalTensor<float> vecOutPong;
+            if (neeedPong) {
+                inQueuePong.EnQue(vecInPong);
+                inQueuePong.DeQue<float>();
+                vecOutPong = outQueuePong.AllocTensor<float>();
+                ReduceSink<float>(vecOutPong, vecInPong, pongSize);
+                SetFlag<HardEvent::V_S>(eventIDVToSPong);
+                WaitFlag<HardEvent::V_S>(eventIDVToSPong);
+                dsinkAccu += vecOutPong.GetValue(0);
+                outQueuePong.EnQue(vecOutPong);
+                outQueuePong.DeQue<float>();
+                inQueuePong.FreeTensor(vecInPong);
+                outQueuePong.FreeTensor(vecOutPong);
+            }
+        }
+        dsinkAccu = -dsinkAccu;
+        LocalTensor<float> dsinkResTensor = dsinkResBuf.Get<float>();
+        dsinkResTensor.SetValue(0, dsinkAccu);
+        SetFlag<HardEvent::S_MTE3>(eventIDSToMte3);
+        WaitFlag<HardEvent::S_MTE3>(eventIDSToMte3);
+        DataCopyPad(dsinkGm[nIdx], dsinkResTensor,
+                    {1, static_cast<uint32_t>(sizeof(float)), 0, 0, 0});
+    }
+}
+
+FAG_POST_FUNCTION_TEMPLATE
+__aicore__ inline void FlashAttentionScoreGradS1S2BNGS1S2PostRegbase<FAG_POST_FUNCTION_PARAMS_TEMPLATE>::ProcessDqkv()
+{
     for (int qkvIdx = 0; qkvIdx < 3; qkvIdx++) {
         if (qkvIdx == 1) {
             loop = tilingData->postTilingData.kPostBlockFactor;
@@ -208,6 +315,20 @@ __aicore__ inline void FlashAttentionScoreGradS1S2BNGS1S2PostRegbase<FAG_POST_FU
         if constexpr (SPLIT_AXIS == 5) {
             break;
         }
+    }
+}
+
+FAG_POST_FUNCTION_TEMPLATE
+__aicore__ inline void FlashAttentionScoreGradS1S2BNGS1S2PostRegbase<FAG_POST_FUNCTION_PARAMS_TEMPLATE>::Process()
+{
+    if (g_coreType != AIV) {
+        return;
+    }
+    if constexpr (SPLIT_AXIS != BN2 && !IsSameType<T1, float>::value) {
+        ProcessDqkv();
+    }
+    if (unlikely(isSink)) {
+        ProcessSink();
     }
 }
 

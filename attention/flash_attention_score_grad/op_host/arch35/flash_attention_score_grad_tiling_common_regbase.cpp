@@ -66,6 +66,52 @@ ge::graphStatus CheckSoftmaxSumShape(gert::TilingContext *context, int64_t b, in
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus CheckSoftmaxMaxSumTndShape(gert::TilingContext *context, int64_t t1, int64_t n1)
+{
+    if (context->GetAttrs()->GetAttrNum() > static_cast<size_t>(AttrIndex::TND_SOFTMAX_IN)) {
+        // read 13th attr softmax_out_layout
+        const char *softmaxInLayout =
+            context->GetAttrs()->GetAttrPointer<char>(static_cast<size_t>(AttrIndex::TND_SOFTMAX_IN));
+        if (strcmp(softmaxInLayout, "same_as_input") != 0) {
+            // check whether softmax_out_layout is TND
+            return ge::GRAPH_SUCCESS;
+        }
+    } else {
+        return ge::GRAPH_SUCCESS;
+    }
+    auto softmaxSumShape = context->GetOptionalInputShape(static_cast<size_t>(InputIndex::SOFTMAX_SUM));
+    auto softmaxMaxShape = context->GetOptionalInputShape(static_cast<size_t>(InputIndex::SOFTMAX_MAX));
+    if (softmaxMaxShape != nullptr) {
+        auto softmaxMaxShapeDim = softmaxMaxShape->GetStorageShape().GetDimNum();
+        if (softmaxMaxShapeDim != DIM_3) { // softmax TND only support 3 dimensions
+            OP_LOGE(context, "The shape of softmaxMax is invalid, got %lu dimensions", softmaxMaxShapeDim);
+            return ge::GRAPH_FAILED;
+        }
+        auto dim0 = softmaxMaxShape->GetStorageShape().GetDim(DIM_0); // 0:t1
+        auto dim1 = softmaxMaxShape->GetStorageShape().GetDim(DIM_1); // 1:n1
+        auto dim2 = softmaxMaxShape->GetStorageShape().GetDim(DIM_2); // 2:8
+        OP_CHECK_IF((dim0 != t1 || dim1 != n1 || dim2 != BIT_NUMS),
+                    OP_LOGE(context, "The shape of softmaxMax is invalid, got (%ld,%ld,%ld), should be (%ld,%ld,%ld)",
+                            dim0, dim1, dim2, t1, n1, BIT_NUMS),
+                    return ge::GRAPH_FAILED);
+    }
+    if (softmaxSumShape != nullptr) {
+        auto softmaxSumShapeDim = softmaxSumShape->GetStorageShape().GetDimNum();
+        if (softmaxSumShapeDim != DIM_3) { // softmax TND only support 3 dimensions
+            OP_LOGE(context, "The shape of softmaxSum is invalid, got %lu dimensions", softmaxSumShapeDim);
+            return ge::GRAPH_FAILED;
+        }
+        auto dim0 = softmaxSumShape->GetStorageShape().GetDim(DIM_0); // 0:t1
+        auto dim1 = softmaxSumShape->GetStorageShape().GetDim(DIM_1); // 1:n1
+        auto dim2 = softmaxSumShape->GetStorageShape().GetDim(DIM_2); // 2:8
+        OP_CHECK_IF((dim0 != t1 || dim1 != n1 || dim2 != BIT_NUMS),
+                    OP_LOGE(context, "The shape of softmaxSum is invalid, got (%ld,%ld,%ld), should be (%ld,%ld,%ld)",
+                            dim0, dim1, dim2, t1, n1, BIT_NUMS),
+                    return ge::GRAPH_FAILED);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus CheckAttentionInShape(gert::TilingContext *context)
 {
     auto attentionInShape = context->GetOptionalInputShape(static_cast<size_t>(InputIndex::ATTENTION_IN));
@@ -121,6 +167,11 @@ ge::graphStatus CheckTndShapeValid(gert::TilingContext *context, int64_t t1, int
               return ge::GRAPH_FAILED);
 
     auto ret = CheckAttentionInShape(context);
+    if (ret != ge::GRAPH_SUCCESS) {
+        return ret;
+    }
+
+    ret = CheckSoftmaxMaxSumTndShape(context, t1, n1);
     if (ret != ge::GRAPH_SUCCESS) {
         return ret;
     }
@@ -616,13 +667,9 @@ void CalcleBandDeterParam(FuzzyBaseInfoParamsRegbase& fBaseParams)
 {
     int64_t m{fBaseParams.s1Outer}, n{fBaseParams.s2Outer}, k{static_cast<int64_t>(fBaseParams.aicNum)}, b{fBaseParams.b * fBaseParams.n2};
     int64_t actualCalcS1Token{fBaseParams.s1Token}, actualCalcS2Token{fBaseParams.s2Token};
-    if (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL) ||
-        fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::BAND)) {
-        actualCalcS1Token = actualCalcS1Token + fBaseParams.s1 - fBaseParams.s2;
-        actualCalcS2Token = actualCalcS2Token - fBaseParams.s1 + fBaseParams.s2;
-    }
     int64_t p = CeilDivideBy(actualCalcS1Token, fBaseParams.s1Inner * fBaseParams.s1CvRatio) + 1;
     int64_t q = CeilDivideBy(actualCalcS2Token, fBaseParams.s2Inner * fBaseParams.s2CvRatio) + 1;
+
     q = q > n ? n : q;
     p = p > m ? m : p;
 
@@ -672,8 +719,8 @@ void CalcleCausalDeterParam(FuzzyBaseInfoParamsRegbase& fBaseParams)
     if (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL) && m > n) {
         int64_t skipM = (fBaseParams.s1 - fBaseParams.s2) / (fBaseParams.s1Inner * fBaseParams.s1CvRatio);
         m -= skipM;
-    } else if (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::NO_MASK) ||
-               (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::LEFT_UP_CAUSAL) && n > m)) {
+    } else if ((fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::NO_MASK) ||
+               fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::LEFT_UP_CAUSAL)) && n > m) {
         n = m;
     } else if (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL) && m < n) {
         fBaseParams.deterSparseType = static_cast<uint32_t>(DeterSparseType::DETER_BAND);
@@ -867,6 +914,34 @@ void CalcleActualToken(FuzzyBaseInfoParamsRegbase& fBaseParams, int64_t batchIdx
     }
 }
 
+ge::graphStatus ProcessSinkInfo(
+    gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams)
+{
+    auto sinkShape = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::SINK_IDX));
+    if (sinkShape == nullptr || sinkShape->GetStorageShape().GetDimNum() == 0) {
+        OP_LOGD(context_, "ProcessSinkInfo, sinkShape is null : %d", sinkShape == nullptr);
+        fBaseParams.sinkOptional = EMPTY_TENSOR;
+        return ge::GRAPH_SUCCESS;
+    }
+    OP_CHECK_IF((sinkShape->GetStorageShape().GetDimNum() != 1 ||
+        sinkShape->GetStorageShape().GetDim(0) != fBaseParams.n1),
+        OP_LOGE(context_, "FAG sink, the dimension of sink must be 1 and value must be equal to Nq."),
+        return ge::GRAPH_FAILED);
+    auto sinkInput = context_->GetOptionalInputDesc(static_cast<size_t>(InputIndex::SINK_IDX));
+    if (sinkInput != nullptr) {
+        auto sinkDtype = sinkInput->GetDataType();
+        OP_CHECK_IF(sinkDtype != ge::DT_FLOAT,
+            OP_LOGE(context_, "FAG sink, sinkDtype only supports fp32."),
+            return ge::GRAPH_FAILED);
+    }
+
+    OP_CHECK_IF(!(fBaseParams.queryType == ge::DT_FLOAT16 || fBaseParams.queryType == ge::DT_BF16),
+            OP_LOGE(context_, "FAG sink, other tensor's dtype only supports fp16 or bf16."),
+            return ge::GRAPH_FAILED);
+    fBaseParams.sinkOptional = NORMAL_TENSOR;
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus ProcessOptionalInput(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase& fBaseParams)
 {    
     const char *inputLayout = context_->GetAttrs()->GetAttrPointer<char>(LAYOUT_ATTR_IDX);
@@ -882,6 +957,17 @@ ge::graphStatus ProcessOptionalInput(gert::TilingContext *context_, FuzzyBaseInf
         fBaseParams.vSize = static_cast<uint64_t>(fBaseParams.b) * fBaseParams.n2 * 1 * fBaseParams.s2 * fBaseParams.d1;
         fBaseParams.dropMaskSize =
             static_cast<uint64_t>(fBaseParams.b) * fBaseParams.n2 * fBaseParams.g * fBaseParams.s2 * fBaseParams.s1;
+    }
+
+    // process tnd softmax layout
+    if (context_->GetAttrs()->GetAttrNum() > static_cast<size_t>(AttrIndex::TND_SOFTMAX_IN)) {
+        const char *tndMaxSumLayout =
+            context_->GetAttrs()->GetAttrPointer<char>(static_cast<size_t>(AttrIndex::TND_SOFTMAX_IN));
+        if (strcmp(inputLayout, "TND") == 0 && strcmp(tndMaxSumLayout, "same_as_input") == 0) {
+            fBaseParams.tndMaxSumLayout = 1;
+        }
+        OP_LOGD("TND Max Sum Layout", "FAG tndMaxSumLayout = %d, tndMaxSumLayout = %s.", fBaseParams.tndMaxSumLayout,
+                tndMaxSumLayout);
     }
 
     // mBaseParams is used for matmal tiling module
@@ -940,6 +1026,11 @@ ge::graphStatus ProcessOptionalInput(gert::TilingContext *context_, FuzzyBaseInf
         OP_LOGD("Sparse FLAG", "Set sparse_mode from PREFIX to ALL_MASK because of empty or nullptr prefixN.");
         fBaseParams.sparseMode = static_cast<uint32_t>(SparseMode::ALL_MASK);
  	}
+
+    ret = ProcessSinkInfo(context_, fBaseParams);
+    if (ret != ge::GRAPH_SUCCESS) {
+        return ret;
+    }
 
     if (CheckAttenMaskShape(fBaseParams) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -1174,11 +1265,13 @@ ge::graphStatus ProcessSparseModeInfo(const gert::TilingContext *context_, Fuzzy
 
     auto attenMask = context_->GetOptionalInputDesc(INPUT_IDX_ATTEN_MASK);
     if (attenMask != nullptr) {
-        if (attenMask->GetDataType() == fBaseParams.queryType) {
-            fBaseParams.attenMaskDtype = static_cast<uint32_t>(AttenDataType::ATTEN_MASK_TYPE_SAME);
-        } else {
-            fBaseParams.attenMaskDtype = static_cast<uint32_t>(AttenDataType::ATTEN_MASK_TYPE_U8_BOOL);
-        }
+        auto attenMaskType = attenMask->GetDataType();
+        OP_CHECK_IF(attenMaskType != ge::DT_BOOL && attenMaskType != ge::DT_UINT8,
+                    OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(),
+                                                "invalid attenMask dtype[%s], only support bool or uint8.",
+                                                ge::TypeUtils::DataTypeToSerialString(attenMaskType).c_str()),
+                    return ge::GRAPH_FAILED);
+        fBaseParams.attenMaskDtype = static_cast<uint32_t>(AttenDataType::ATTEN_MASK_TYPE_U8_BOOL);
     }
 
     fBaseParams.bandIdx = FindBandIdx(fBaseParams);
@@ -1322,8 +1415,27 @@ ge::graphStatus ProcessPseNormal(gert::TilingContext *context_, FuzzyBaseInfoPar
     } else if (isAlibiBNHS) {
         fBaseParams.pseShapeType = static_cast<uint32_t>(PseShapeType::PSE_SHAPE_TYPE_BNHS);
     } else {
-        OP_LOGE(context_, "The shape of pse[%ld,%ld,%ld,%ld] is invalid or tocken[%ld,%ld] not casual", dim0, dim1,
-                  dim2, dim3, fBaseParams.s1Token, fBaseParams.s2Token);
+        if (isTndPse) {
+            OP_LOGE(context_, "The shape of pse[%ld,%ld,%ld,%ld] is invalid or tocken[%ld,%ld] not casual, support "
+                    "shape of pse[1,%ld,1024,%ld] or [%ld,%ld,1024,%ld]", dim0, dim1, dim2, dim3, fBaseParams.s1Token,
+                    fBaseParams.s2Token, fBaseParams.n1, fBaseParams.s2, fBaseParams.b, fBaseParams.n1, fBaseParams.s2);
+        } else if (isPse && !isTnd) {
+            OP_LOGE(context_, "The shape of pse[%ld,%ld,%ld,%ld] is invalid or tocken[%ld,%ld] not casual, support "
+                    "shape of pse[1,%ld,1024,%ld] or [%ld,%ld,1024,%ld] or [%ld,%ld,1,%ld] or [%ld,%ld,%ld,%ld] or "
+                    "[1,%ld,%ld,%ld]", dim0, dim1, dim2, dim3, fBaseParams.s1Token, fBaseParams.s2Token, fBaseParams.n1,
+                    fBaseParams.s2, fBaseParams.b, fBaseParams.n1, fBaseParams.s2, fBaseParams.b, fBaseParams.n1,
+                    fBaseParams.s2, fBaseParams.b, fBaseParams.n1, fBaseParams.s1, fBaseParams.s2, fBaseParams.n1,
+                    fBaseParams.s1, fBaseParams.s2);
+        } else if (!isTnd) {
+            OP_LOGE(context_, "The shape of pse[%ld,%ld,%ld,%ld] is invalid or tocken[%ld,%ld] not casual, support "
+                    "shape of pse[%ld,%ld,1,%ld] or [%ld,%ld,%ld,%ld] or [1,%ld,%ld,%ld]", dim0, dim1, dim2, dim3,
+                    fBaseParams.s1Token, fBaseParams.s2Token, fBaseParams.b, fBaseParams.n1, fBaseParams.s2,
+                    fBaseParams.b, fBaseParams.n1, fBaseParams.s1, fBaseParams.s2, fBaseParams.n1, fBaseParams.s1,
+                    fBaseParams.s2);
+        } else {
+            OP_LOGE(context_, "In the TND, pse is supported only when s1>=1024, s1==s2 in length for each batch, and "
+                    "the sparseMode is 0,2,3(lower triangular mask scenarios).");
+        }
         return ge::GRAPH_PARAM_INVALID;
     }
     return ge::GRAPH_SUCCESS;

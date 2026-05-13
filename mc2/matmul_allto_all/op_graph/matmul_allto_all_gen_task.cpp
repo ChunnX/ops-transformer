@@ -16,27 +16,32 @@
 #include <platform/platform_info.h>
 #include "common/utils/op_mc2.h"
 
-#ifdef BUILD_OPEN_PROJECT
 #include "op_graph/mc2_gen_task_ops_utils.h"
 #include "register/op_impl_registry.h"
 #include "op_graph/mc2_gen_task_ops_utils_arch35.h"
 #include "mc2_log.h"
-#endif
+#include "mc2_platform_info.h"
+#include "mc2_comm_utils.h"
 
 namespace ops {
 
-#ifdef BUILD_OPEN_PROJECT
-
-ge::Status MatmulAlltoAllGenTaskCallback(const gert::ExeResGenerationContext *context, std::vector<std::vector<uint8_t>> &tasks)
+ge::Status MatmulAlltoAllGenTaskCallback(const gert::ExeResGenerationContext *context,
+                                         std::vector<std::vector<uint8_t>> &tasks)
 {
     return Mc2GenTaskOpsUtils::CommonKFCMc2GenTask(context, tasks);
 }
 
 static ge::Status MatmulAlltoAllCalcOpParamFunc(gert::ExeResGenerationContext *context)
 {
-    if (Mc2GenTaskOpsUtils::IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
-        OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTask CalcOpParam");
-        return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "ccu server", "ccu_stream");
+    if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
+        uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+        if (commMode == Mc2Comm::COMM_MODE_CCU) {
+            OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTask CalcOpParam");
+            return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "ccu server", "ccu_stream");
+        } else {
+            OPS_LOG_D(context->GetNodeName(), "Do A5 AICPU GenTask CalcOpParam");
+            return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "aicpu kfc server", "kfc_stream");
+        }
     }
     return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "aicpu kfc server", "kfc_stream");
 }
@@ -44,14 +49,19 @@ static ge::Status MatmulAlltoAllCalcOpParamFunc(gert::ExeResGenerationContext *c
 static ge::Status MatmulAlltoAllGenTaskFunc(const gert::ExeResGenerationContext *context,
                                             std::vector<std::vector<uint8_t>> &tasks)
 {
-    if (Mc2GenTaskOpsUtils::IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
-        OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTaskFunc");
-        return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks);
+    if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
+        uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+        if (commMode == Mc2Comm::COMM_MODE_CCU) {
+            OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTaskFunc");
+            return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks);
+        } else {
+            OPS_LOG_D(context->GetNodeName(), "Do A5 AICPU GenTaskFunc");
+            return MatmulAlltoAllGenTaskCallback(context, tasks);
+        }
     }
+
     return MatmulAlltoAllGenTaskCallback(context, tasks);
 }
 
 IMPL_OP(MatmulAlltoAll).CalcOpParam(MatmulAlltoAllCalcOpParamFunc).GenerateTask(MatmulAlltoAllGenTaskFunc);
- 	 
-#endif
-}
+} // namespace ops

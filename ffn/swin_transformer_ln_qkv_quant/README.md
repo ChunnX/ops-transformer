@@ -14,19 +14,23 @@
 | <term>Kirin 9030 处理器系列产品</term> | √ |
 
 ## 功能说明
+
 - 算子功能：Swin Transformer 网络模型 完成 Q、K、V 的计算。  
 - 计算公式：  
 
-  q/k/v = (Quant(Layernorm(x).transpose)  * weight).dequant.transpose.split
+    $$
+    (Q,K,V)=(Quant(Layernorm(x).transpose()) * weight).dequant().transpose().split()
+    $$  
+
   其中，weight 是 Q、K、V 三个矩阵权重的拼接。
 
 ## 参数说明
 
-<table style="undefined;table-layout: fixed; width: 1050px"><colgroup>
+<table style="undefined;table-layout: fixed; width: 1100px"><colgroup>
 <col style="width: 150px">
-<col style="width: 300px">
 <col style="width: 200px">
-<col style="width: 300px">
+<col style="width: 450px">
+<col style="width: 200px">
 <col style="width: 100px">
 </colgroup>
 <thead>
@@ -175,9 +179,9 @@
 </table>
 
 ## 约束说明
+
 - seqLength只支持32/64。
 - oriHeight*oriWeight=输入x Tensor的第二维度，且oriHeight为hWinSize的整数倍，oriWeight为wWinSize的整数倍。
 - hWinSize和wWinSize范围只支持7~32。
 - 输入x Tensor的第一维度B只支持1~32。
 - weight需要转置。
-

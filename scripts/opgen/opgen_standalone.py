@@ -19,14 +19,18 @@ import logging
 class OpGenerator:
     """算子工程生成器"""
 
-    def __init__(self, op_type, op_name, output_path):
+    def __init__(self, op_type, op_name, output_path, template_variant):
         self.op_type = op_type
         self.op_name = op_name
         self.output_path = output_path
         self.template_name = "add_example"
 
         self.script_dir = os.path.dirname(os.path.abspath(__file__))
-        self.template_dir = os.path.abspath(os.path.join(self.script_dir, 'template', 'add'))
+        if template_variant == "aicpu":
+            self.template_dir = os.path.abspath(os.path.join(self.script_dir, 'template', 'add_example_aicpu'))
+        else:
+            self.template_dir = os.path.abspath(os.path.join(self.script_dir, 'template', 'add_example'))
+
         self.dest_dir = os.path.abspath(os.path.join(self.output_path, self.op_type, self.op_name))
 
     def run(self):
@@ -37,8 +41,6 @@ class OpGenerator:
         self._replace_content()
         logging.info(f"成功为 {self.op_type}/{self.op_name} 创建算子工程！")
         logging.info(f"工程路径: {self.dest_dir}")
-        logging.info(f"Create the initial directory for {self.op_name} under {self.op_type} success")
-        
 
     def _validate_inputs(self):
         """校验输入参数的有效性和安全性"""
@@ -58,14 +60,10 @@ class OpGenerator:
         """复制模板文件到目标目录"""
         logging.info(f"使用模板在 '{self.dest_dir}' 创建算子工程...")
         if not os.path.exists(self.template_dir):
-            raise FileNotFoundError(f"找不到模板目录 '{self.template_dir}'。请确保 'template/add' 目录存在。")
+            raise FileNotFoundError(f"找不到模板目录 '{self.template_dir}'。请确保模板目录存在。")
         
         try:
             shutil.copytree(self.template_dir, self.dest_dir)
-            if not os.path.isfile(os.path.join(os.path.dirname(self.dest_dir), "CMakeLists.txt")):
-                cmake_src = os.path.join(os.path.dirname(self.template_dir), "CMakeLists.txt")
-                cmake_dest = os.path.join(os.path.dirname(self.dest_dir), "CMakeLists.txt")
-                shutil.copy2(cmake_src, cmake_dest)
         except OSError as e:
             raise OSError(f"复制模板文件失败: {e}") from e
 
@@ -131,7 +129,8 @@ def execute(args):
     generator = OpGenerator(
         op_type=args.op_type,
         op_name=args.op_name,
-        output_path=args.output_path
+        output_path=args.output_path,
+        template_variant=args.template_variant
     )
     generator.run()
 
@@ -142,6 +141,10 @@ def register_parser(subparsers):
     parser_opgen.add_argument('--op_type', '-t', required=True, help='算子分类，例如 math')
     parser_opgen.add_argument('--op_name', '-n', required=True, help='新算子的名称，例如 asinh')
     parser_opgen.add_argument('--output_path', '-p', default='.', help='生成工程的根路径')
+    parser_opgen.add_argument(
+        '--template_variant', '-v',
+        choices=['default', 'aicpu'], default='default', help='选择模板变种'
+    )
     parser_opgen.set_defaults(func=execute)
 
 
@@ -153,6 +156,7 @@ def main():
     parser.add_argument('--op_type', '-t', required=True, help='算子分类，例如 math')
     parser.add_argument('--op_name', '-n', required=True, help='新算子的名称，例如 asinh')
     parser.add_argument('--output_path', '-p', default='.', help='生成工程的根路径')
+    parser.add_argument('--template_variant', '-v', choices=['default', 'aicpu'], default='default', help='选择模板变种')
     
     args = parser.parse_args()
 

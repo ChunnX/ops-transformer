@@ -43,18 +43,26 @@ __aicore__ inline constexpr GmFormat GetQueryGmFormat() {
     }
 }
 
-template <LayOutTypeEnum LAYOUT>
+template <LayOutTypeEnum LAYOUT, uint8_t KvLayoutType=0, bool isPa=false>
 __aicore__ inline constexpr GmFormat GetKVGmFormat() {
-    if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH) {
-        return GmFormat::BSND;
-    } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_SBH) {
-        return GmFormat::SBND;
-    } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BNSD) {
-        return GmFormat::BNSD;
-    } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
-        return GmFormat::TND;
-    } else {
-        return GmFormat::NTD;
+    if constexpr (KvLayoutType == 0) { // KvLayoutType_NO_PA
+        if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH) {
+            return GmFormat::BSND;
+        } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_SBH) {
+            return GmFormat::SBND;
+        } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BNSD) {
+            return GmFormat::BNSD;
+        } else if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_TND) {
+            return GmFormat::TND;
+        } else {
+            return GmFormat::NTD;
+        }
+    } else if constexpr (KvLayoutType == 1) { // KvLayoutType_PA_BBH
+        return GmFormat::PA_BnBsND;
+    } else if constexpr (KvLayoutType == 2) { // KvLayoutType_PA_BNBD
+        return GmFormat::PA_BnNBsD;
+    } else { // KvLayoutType_PA_NZ
+        return GmFormat::PA_NZ;
     }
 }
 

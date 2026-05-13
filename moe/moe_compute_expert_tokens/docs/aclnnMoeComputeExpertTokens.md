@@ -26,7 +26,6 @@
   out_{i}=BinarySearch(sortedExperts, i)
   $$
 
-
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeComputeExpertTokensGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeComputeExpertTokens”接口执行计算。
@@ -39,6 +38,7 @@ aclnnStatus aclnnMoeComputeExpertTokensGetWorkspaceSize(
     uint64_t        *workspaceSize,
     aclOpExecutor  **executor)
 ```
+
 ```c++
 aclnnStatus aclnnMoeComputeExpertTokens(
     void          *workspace,
@@ -88,7 +88,7 @@ aclnnStatus aclnnMoeComputeExpertTokens(
       <td>输入</td>
       <td>表示总专家数。</td>
       <td>需要大于0，但不能超过2048。</td>
-      <td>-</td>
+      <td>INT64</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -209,7 +209,6 @@ aclnnStatus aclnnMoeComputeExpertTokens(
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
-
 
 - 确定性计算：
   - aclnnMoeComputeExpertTokens默认确定性实现。
@@ -374,4 +373,3 @@ int main()
     return 0;
 }
 ```
-

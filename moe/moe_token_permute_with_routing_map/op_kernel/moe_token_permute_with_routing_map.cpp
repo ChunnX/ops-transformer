@@ -24,6 +24,7 @@
 
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
 #include "arch35/gather_v2_simd_two_dim.h"
+#include "arch35/gather_v2_simt_two_dim.h"
 #endif
 
 #if !defined(DTYPE_TOKENS)
@@ -70,19 +71,35 @@ using namespace MoeTokenPermute;
     } while (0)                                                                  \
 
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-#define GATHER_IMPL()                                                            \
-    do {                                                                         \
-        AscendC::SyncAll();                                                      \
-        TPipe MoeindexCopyPipe;                                                  \
-        gatherv2::Gatherv2SimdTwoDim<int32_t> gatherv2Op(&MoeindexCopyPipe);     \
-        gatherv2Op.Init(tokens, sortedIndices, permuteTokens, t);                \
-        gatherv2Op.Process();                                                    \
+#define GENERAL_PAD_OP_IMPL_3510(sortClass1, sortClass2, indexCopyClass, ...)                                          \
+    do {                                                                                                               \
+        TPipe sortPipe2;                                                                                               \
+        MoeSortMultiLastDimCore<uint8_t> op;                                                                           \
+        op.Init(routingMap, sortedIndices, userWS, t, &sortPipe2);                                                     \
+        op.Process();                                                                                                  \
+        sortPipe2.Destroy();                                                                                           \
+        if (hasProb) {                                                                                                 \
+            AscendC::SyncAll();                                                                                        \
+            gatherv2::Gatherv2SimtTwoDim<DTYPE_PERMUTE_PROBS, int32_t, uint32_t> gatherv2Op;                           \
+            gatherv2Op.Init(probs, sortedIndices, permuteProbs, t, true);                                              \
+            gatherv2Op.ProbProcess();                                                                                  \
+        }                                                                                                              \
+    } while (0)
+
+#define GATHER_IMPL()                                                                                                  \
+    do {                                                                                                               \
+        AscendC::SyncAll();                                                                                            \
+        TPipe MoeindexCopyPipe;                                                                                        \
+        gatherv2::Gatherv2SimdTwoDim<int32_t> gatherv2Op(&MoeindexCopyPipe);                                           \
+        gatherv2Op.Init(tokens, sortedIndices, permuteTokens, t);                                                      \
+        gatherv2Op.Process();                                                                                          \
     } while (0)
 #endif
 
-extern "C" __global__ __aicore__ void moe_token_permute_with_routing_map(
-    GM_ADDR tokens, GM_ADDR routingMap, GM_ADDR probs, GM_ADDR permuteTokens, GM_ADDR permuteProbs,
-    GM_ADDR sortedIndices, GM_ADDR workspace, GM_ADDR tiling)
+extern "C" __global__ __aicore__ void moe_token_permute_with_routing_map(GM_ADDR tokens, GM_ADDR routingMap,
+                                                                         GM_ADDR probs, GM_ADDR permuteTokens,
+                                                                         GM_ADDR permuteProbs, GM_ADDR sortedIndices,
+                                                                         GM_ADDR workspace, GM_ADDR tiling)
 {
     if (g_coreType == AIC) {
         return;
@@ -117,9 +134,21 @@ extern "C" __global__ __aicore__ void moe_token_permute_with_routing_map(
     } else if (TILING_KEY_IS(8)) {
         GENERAL_OP_IMPL(MoeSortMultiCore, MoeSortMultiCore, MoeindexCopySplitDOp, DTYPE_TOKENS, true);
     } else if (TILING_KEY_IS(9)) {
-        GENERAL_PAD_OP_IMPL(MoeSortMultiCore, MoeSortMultiCore, MoeindexCopySplitDOp, DTYPE_TOKENS, true);
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-        GATHER_IMPL(); // __NPU_ARCH__ == 3510 上在算子内部进行gather
+        GENERAL_PAD_OP_IMPL_3510(MoeSortMultiCore, MoeSortMultiCore, MoeindexCopySplitDOp, DTYPE_TOKENS, true);
+        AscendC::SyncAll();
+        TPipe MoeindexCopyPipe;
+        gatherv2::Gatherv2SimdTwoDim<int32_t> gatherTokenOp(&MoeindexCopyPipe);
+        gatherTokenOp.Init(tokens, sortedIndices, permuteTokens, t);
+        gatherTokenOp.Process();
+    } else if (TILING_KEY_IS(19)) {
+        GENERAL_PAD_OP_IMPL_3510(MoeSortMultiCore, MoeSortMultiCore, MoeindexCopySplitDOp, DTYPE_TOKENS, true);
+        AscendC::SyncAll();
+        gatherv2::Gatherv2SimtTwoDim<DTYPE_TOKENS, int32_t, uint32_t> gatherTokenOp;
+        gatherTokenOp.Init(tokens, sortedIndices, permuteTokens, t, false);
+        gatherTokenOp.Process();
+#else
+        GENERAL_PAD_OP_IMPL(MoeSortMultiCore, MoeSortMultiCore, MoeindexCopySplitDOp, DTYPE_TOKENS, true);
 #endif
     }
 }

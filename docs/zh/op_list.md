@@ -1,8 +1,11 @@
 # 算子列表
 
 > 说明：
+
 > - **算子目录**：目录名为算子名小写下划线形式，每个目录承载该算子所有交付件，包括代码实现、examples、文档等，目录介绍参见[项目目录](./install/dir_structure.md)。
+
 > - **算子执行硬件单元**：大部分算子运行在AI Core，少部分算子运行在AI CPU。默认情况下，项目中提到的算子一般指AI Core算子。关于AI Core和AI CPU详细介绍参见[《Ascend C算子开发》](https://hiascend.com/document/redirect/CannCommunityOpdevAscendC)，其中版本号大于等于8.5.0中对应章节为“硬件实现”，其余版本中对应章节为“概念原理和术语 > 硬件架构与数据处理原理”。
+
 > - **算子接口列表**：为方便调用算子，CANN提供一套C API执行算子，一般以aclnn为前缀，全量接口参见[aclnn列表](op_api_list.md)。
 
 项目提供的所有算子分类和算子列表如下：
@@ -46,6 +49,26 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/block_sparse_attention_grad/README.md">block_sparse_attention_grad</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>训练场景下计算注意力的反向输出，即BlockSparseAttention的反向计算。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/chunk_gated_delta_rule/README.md">chunk_gated_delta_rule</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>推理场景下线性注意力Gated Delta Rule的chunk版本，用于prefill节点。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/flash_attention_score/README.md">flash_attention_score</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -63,6 +86,26 @@
     <td>✗</td>
     <td>AI Core</td>
     <td>训练场景下计算注意力的反向输出，即FlashAttentionScore的反向计算。</td>
+  </tr>
+    <tr>
+    <td>attention</td>
+    <td><a href="../../attention/fused_floyd_attention/README.md">fused_floyd_attention</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>训练场景下，使用FloydAttention算法实现多维自注意力的计算。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/fused_floyd_attention_grad/README.md">fused_floyd_attention_grad</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>训练场景下，计算Floyd注意力的反向输出，FloydAttn相较于传统FA主要是计算qk/pv注意力时会额外将seq作为batch轴从而转换为batchMatmul。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -114,6 +157,26 @@
     <td>AI Core</td>
     <td>基于一系列操作得到每一个token对应的Top-k个位置。</td>
   </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/masked_causal_conv1d/README.md">masked_causal_conv1d</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>对hidden层的token之间进行带mask的因果一维分组卷积操作。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/masked_causal_conv1d_backward/README.md">masked_causal_conv1d_backward</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>对hidden层的token之间进行一维分组卷积操作的反向梯度计算。</td>
+  </tr>
     <tr>
     <td>attention</td>
     <td><a href="../../attention/mla_preprocess/README.md">mla_preprocess</a></td>
@@ -163,6 +226,16 @@
     <td>✗</td>
     <td>AI Core</td>
     <td>训练场景下，使用NSA Compress算法减轻long-context的注意力计算，实现在KV序列维度进行压缩。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/fused_causal_conv1d/README.md">fused_causal_conv1d</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>对序列执行因果一维卷积，沿序列维度使用缓存数据（长度为卷积核宽减1）对各序列头部进行padding，确保输出依赖当前及历史输入；卷积完成后，将当前序列尾部的数据（长度为卷积核宽减1）更新到缓存；在因果一维卷积输出的基础上，将原始输入加到输出上以实现残差连接。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -223,6 +296,16 @@
     <td>✗</td>
     <td>AI Core</td>
     <td>训练场景下，实现NativeSparseAttention算法中selected-attention（选择注意力）的计算。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/sparse_lightning_indexer_grad_kl_loss/README.md">sparse_lightning_indexer_grad_kl_loss</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>SparselightningIndexerGradKlLoss算子是LightningIndexer的反向算子，再额外融合了Loss计算功能输出。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -323,6 +406,16 @@
     <td>✗</td>
     <td>AI CPU</td>
     <td>Attention和FFN分离场景下，FFN侧数据扫描算子。</td>
+  </tr>
+  <tr>
+    <td>ffn</td>
+    <td><a href="../../ffn/ffn_worker_batching/README.md">ffn_worker_batching</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>Attention和FFN分离场景下，FFN侧数据扫描及token重排。</td>
   </tr>
   <tr>
     <td>ffn</td>
@@ -553,6 +646,16 @@
     <td>✓</td>
     <td>AI Core</td>
     <td>完成mm + reduce_scatter_base计算。</td>
+  </tr>
+  <tr>
+    <td>mc2</td>
+    <td><a href="../../mc2/mega_moe/README.md">mega_moe</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>完成dispatch + group_matmul1 + swiglu_quant + group_matmul2 + combine的端到端融合计算。</td>
   </tr>
   <tr>
     <td>mc2</td>
@@ -896,6 +999,16 @@
   </tr>
   <tr>
     <td>mhc</td>
+    <td><a href="../../mhc/mhc_sinkhorn_backward/README.md">mhc_sinkhorn_backward</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>mhc_sinkhorn的反向算子</td>
+  </tr>
+  <tr>
+    <td>mhc</td>
     <td><a href="../../mhc/mhc_post/README.md">mhc_post</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -903,6 +1016,36 @@
     <td>✓</td>
     <td>AI Core</td>
     <td>基于一系列计算对mHC架构中上一层输出进行Post Mapping，对上一层的输入进行Res Mapping，然后对二者进行残差连接，得到下一层的输入</td>
+  </tr>
+   <tr>
+    <td>mhc</td>
+    <td><a href="../../mhc/mhc_post_backward/README.md">mhc_post_backward</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>mhc_post基于一系列计算对mHC架构中上一层输出进行Post Mapping，对上一层的输入进行Res Mapping，然后对二者进行残差连接，得到下一层的输入。该算子实现前述过程的反向</td>
+  </tr>
+  <tr>
+    <td>mhc</td>
+    <td><a href="../../mhc/mhc_pre/README.md">mhc_pre</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>基于一系列计算得到MHC架构中hidden层的$H^{res}$和$H^{post}$投影矩阵以及Attention或MLP层的输入矩阵$h^{in}$。</td>
+  </tr>
+  <tr>
+    <td>mhc</td>
+    <td><a href="../../mhc/mhc_pre_backward/README.md">mhc_pre_backward</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>mhc_pre算子的反向传播，基于一系列计算得到MHC架构中hidden层的梯度。</td>
   </tr>
   <tr>
     <td>posembedding</td>
@@ -983,6 +1126,16 @@
     <td>✓</td>
     <td>AI Core</td>
     <td>执行单路旋转位置编码的反向计算。</td>
+  </tr>
+  <tr>
+    <td>posembedding</td>
+    <td><a href="../../posembedding/kv_rms_norm_rope_cache/README.md">kv_rms_norm_rope_cache</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>对输入张量(kv)的尾轴，拆分出左半边用于rms_norm计算，右半边用于rope计算，再将计算结果分别scatter到两块cache中。</td>
   </tr>
 </tbody>
 </table>

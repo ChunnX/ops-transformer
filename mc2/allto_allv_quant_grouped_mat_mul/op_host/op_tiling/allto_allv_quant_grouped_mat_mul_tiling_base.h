@@ -1,14 +1,14 @@
-/**
-* Copyright (c) 2025-2026 Huawei Technologies Co., Ltd.
-* This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-* CANN Open Software License Agreement Version 2.0 (the "License").
-* Please refer to the License for details. You may not use this file except in compliance with the License.
-* THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-* INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
-* See LICENSE in the root of the software repository for the full text of the License.
-*/
+/* *
+ * Copyright (c) 2025-2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
-/*!
+/* !
  * \file allto_allv_quant_grouped_mat_mul_tiling_base.h
  * \brief
  */
@@ -16,7 +16,7 @@
 
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 #include "op_host/op_tiling/mc2_tiling_struct.h"
 #include "op_host/op_tiling/matmul_formulaic_tiling.h"
 #include "mat_mul_v3/op_host/op_tiling/matmul_v3_tiling.h"
@@ -28,12 +28,12 @@ namespace optiling {
 // input
 constexpr uint32_t GMM_X_INDEX = 0U;
 constexpr uint32_t GMM_WEIGHT_INDEX = 1U;
-constexpr uint32_t SEND_COUNTS_TENSOR_INDEX = 2U;
-constexpr uint32_t RECV_COUNTS_TENSOR_INDEX = 3U;
-constexpr uint32_t MM_X_INDEX = 4U;
-constexpr uint32_t MM_WEIGHT_INDEX = 5U;
-constexpr uint32_t GMM_X_SCALE_INDEX = 6U;
-constexpr uint32_t GMM_WEIGHT_SCALE_INDEX = 7U;
+constexpr uint32_t GMM_X_SCALE_INDEX = 2U;
+constexpr uint32_t GMM_WEIGHT_SCALE_INDEX = 3U;
+constexpr uint32_t SEND_COUNTS_TENSOR_INDEX = 4U;
+constexpr uint32_t RECV_COUNTS_TENSOR_INDEX = 5U;
+constexpr uint32_t MM_X_INDEX = 6U;
+constexpr uint32_t MM_WEIGHT_INDEX = 7U;
 constexpr uint32_t MM_X_SCALE_INDEX = 8U;
 constexpr uint32_t MM_WEIGHT_SCALE_INDEX = 9U;
 // output
@@ -45,11 +45,11 @@ constexpr uint32_t ATTR_GROUP_INDEX = 0;
 constexpr uint32_t ATTR_EP_WORLD_SIZE_INDEX = 1;
 constexpr uint32_t ATTR_SEND_COUNTS_INDEX = 2;
 constexpr uint32_t ATTR_RECV_COUNTS_INDEX = 3;
-constexpr uint32_t ATTR_TRANS_GMM_WEIGHT_INDEX = 4;
-constexpr uint32_t ATTR_TRANS_MM_WEIGHT_INDEX = 5;
-constexpr uint32_t ATTR_PERMUTE_OUT_FLAG_INDEX = 6;
-constexpr uint32_t ATTR_GMM_X_QUANT_MODE_INDEX = 7;
-constexpr uint32_t ATTR_GMM_WEIGHT_QUANT_MODE_INDEX = 8;
+constexpr uint32_t ATTR_GMM_X_QUANT_MODE_INDEX = 4;
+constexpr uint32_t ATTR_GMM_WEIGHT_QUANT_MODE_INDEX = 5;
+constexpr uint32_t ATTR_TRANS_GMM_WEIGHT_INDEX = 6;
+constexpr uint32_t ATTR_TRANS_MM_WEIGHT_INDEX = 7;
+constexpr uint32_t ATTR_PERMUTE_OUT_FLAG_INDEX = 8;
 constexpr uint32_t ATTR_MM_X_QUANT_MODE_INDEX = 9;
 constexpr uint32_t ATTR_MM_WEIGHT_QUANT_MODE_INDEX = 10;
 constexpr uint32_t ATTR_GROUP_SIZE_INDEX = 11;
@@ -60,6 +60,7 @@ constexpr uint32_t DIM_ZERO = 0;
 constexpr uint32_t DIM_ONE = 1;
 constexpr uint32_t DIM_TWO = 2;
 constexpr uint32_t DIM_THREE = 3;
+constexpr uint32_t DIM_FOUR = 4;
 // input data range
 constexpr uint64_t BSK_MIN_VALUE = 0;
 constexpr uint64_t BSK_MAX_VALUE = 52428800;
@@ -86,13 +87,15 @@ constexpr uint32_t COMM_MAX_SIZE = 100 * 1024 * 1024;
 // cube compute
 constexpr uint64_t DOUBLE_BUFFER = 2;
 constexpr uint64_t CUBE_BLOCK = 16;
+constexpr uint64_t L1_ALIGN_SIZE = 32;
 // quant mode
 constexpr uint64_t NO_QUANT_MODE = 0;
 constexpr uint64_t PERTENSOR_QUANT_MODE = 1;
+constexpr uint64_t MX_QUANT_MODE = 6;
 
-class AlltoAllvGmmTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
+class AlltoAllvQuantGmmTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit AlltoAllvGmmTilingBase(gert::TilingContext *context)
+    explicit AlltoAllvQuantGmmTilingBase(gert::TilingContext *context)
         : Ops::Transformer::OpTiling::TilingBaseClass(context){};
 
 protected:

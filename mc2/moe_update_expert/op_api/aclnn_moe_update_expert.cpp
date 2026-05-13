@@ -13,20 +13,13 @@
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
+#include "aclnnInner_moe_update_expert.h"
 
 using namespace op;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-extern aclnnStatus aclnnInnerMoeUpdateExpertGetWorkspaceSize(
-    const aclTensor* expertIds, const aclTensor* eplbTable, const aclTensor* expertScales,
-    const aclTensor* pruningThreshold, const aclTensor* activeMask, int64_t localRankId, int64_t worldSize,
-    int64_t balanceMode, aclTensor* balancedExpertIds, aclTensor* balancedActiveMask, uint64_t* workspaceSize,
-    aclOpExecutor** executor);
-extern aclnnStatus aclnnInnerMoeUpdateExpert(
-    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream);
 
 aclnnStatus aclnnMoeUpdateExpertGetWorkspaceSize(
     const aclTensor* expertIds, const aclTensor* eplbTable, const aclTensor* expertScalesOptional,

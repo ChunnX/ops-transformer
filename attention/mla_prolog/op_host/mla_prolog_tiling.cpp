@@ -23,7 +23,6 @@
 #include "mla_prolog_tiling_check.h"
 #include "mla_prolog_tiling.h"
 using namespace ge;
-using namespace AscendC;
 namespace optiling {
 
 const std::unordered_map<ge::DataType, uint32_t> DTYPE_TO_SIZE {
@@ -32,6 +31,7 @@ const std::unordered_map<ge::DataType, uint32_t> DTYPE_TO_SIZE {
     {ge::DT_INT8, 1},
     {ge::DT_FLOAT8_E4M3FN, 1},
     {ge::DT_FLOAT8_E8M0, 1},
+    {ge::DT_HIFLOAT8, 1},
     {ge::DT_INT32, 4},
     {ge::DT_FLOAT, 4}};
 
@@ -42,7 +42,8 @@ const std::unordered_map<ge::DataType, matmul_tiling::DataType> GE_TO_MM_DTYPE {
     {ge::DT_INT4, matmul_tiling::DataType::DT_INT4},
     {ge::DT_FLOAT, matmul_tiling::DataType::DT_FLOAT},
     {ge::DT_FLOAT8_E4M3FN, matmul_tiling::DataType::DT_FLOAT8_E4M3FN},
-    {ge::DT_FLOAT8_E8M0, matmul_tiling::DataType::DT_FLOAT8_E8M0}};
+    {ge::DT_FLOAT8_E8M0, matmul_tiling::DataType::DT_FLOAT8_E8M0},
+    {ge::DT_HIFLOAT8, matmul_tiling::DataType::DT_HIFLOAT8}};
 
 template <typename T>
 inline auto CeilDiv(T a, T b) -> T
@@ -138,8 +139,48 @@ QUANT_MODE MlaPrologTiling::GetQuantizationModeV3Mxfp8() const
                 return QUANT_MODE::PARTIAL_QUANT_KV_NO_QUANT;
         } else if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_CHANNEL)) {
                 return QUANT_MODE::PARTIAL_QUANT_KV_QUANT_PER_CHANNEL;
+        } else if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_TILE)) {
+                return QUANT_MODE::PARTIAL_QUANT_KV_QUANT_PER_TILE;
         } else {
-            OP_LOGE(context_->opName, "When weightQuantMode == 1, kvQuantMode must be within {0, 2}, actually is %d.", *(context_->kvQuantMode));
+            OP_LOGE(context_->opName,
+                "When weightQuantMode == 1, kvQuantMode must be within {0, 2, 3}, actually is %d.",
+                *(context_->kvQuantMode));
+        }
+    } else if (*(context_->weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::FULL_QUANT)) {
+        if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::NO_QUANT)) {
+                return QUANT_MODE::FULL_QUANT_KV_NO_QUANT;
+        } else if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_TENSOR)) {
+                return QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TENSOR;
+        } else if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_TILE)) {
+                return QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TILE;
+        } else {
+            OP_LOGE(context_->opName,
+                "When weightQuantMode == 2, kvQuantMode must be within {0, 1, 3}, actually is %d.",
+                *(context_->kvQuantMode)); 
+        }
+    } else if (*(context_->weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::FP8_FULL_QUANT)) {
+        if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::NO_QUANT)) {
+                return QUANT_MODE::FP8_FULL_QUANT_KV_NO_QUANT;
+        } else if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_TENSOR)) {
+                return QUANT_MODE::FP8_FULL_QUANT_KV_QUANT_PER_TENSOR;
+        } else if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_TILE)) {
+                return QUANT_MODE::FP8_FULL_QUANT_KV_QUANT_PER_TILE;
+        } else {
+            OP_LOGE(context_->opName,
+                "When weightQuantMode == 4, kvQuantMode must be within {0, 1, 3}, actually is %d.",
+                *(context_->kvQuantMode)); 
+        }
+    } else if (*(context_->weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::HIF8_FULL_QUANT)) {
+        if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::NO_QUANT)) {
+                return QUANT_MODE::HIF8_FULL_QUANT_KV_NO_QUANT;
+        } else if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_TENSOR)) {
+                return QUANT_MODE::HIF8_FULL_QUANT_KV_QUANT_PER_TENSOR;
+        } else if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_TILE)) {
+                return QUANT_MODE::HIF8_FULL_QUANT_KV_QUANT_PER_TILE;
+        } else {
+            OP_LOGE(context_->opName,
+                "When weightQuantMode == 5, kvQuantMode must be within {0, 1, 3}, actually is %d.",
+                *(context_->kvQuantMode)); 
         }
     } else if (*(context_->weightQuantMode) == static_cast<int>(WEIGHT_QUANT_MODE::MXFP8_FULL_QUANT)) {
         if (*(context_->kvQuantMode) == static_cast<int>(KV_QUANT_MODE::NO_QUANT)) {
@@ -152,7 +193,9 @@ QUANT_MODE MlaPrologTiling::GetQuantizationModeV3Mxfp8() const
             OP_LOGE(context_->opName, "When weightQuantMode == 3, kvQuantMode must be within {0, 1, 3}, actually is %d.", *(context_->kvQuantMode));
         }
     } else {
-        OP_LOGE(context_->opName, "weightQuantMode must be within {0, 3}, actually is %d.", *(context_->weightQuantMode)); 
+        OP_LOGE(context_->opName,
+            "weightQuantMode must be within {0, 1, 2, 3, 4, 5}, actually is %d.",
+            *(context_->weightQuantMode)); 
     }
     return QUANT_MODE::ERROR_MODE;
 }
@@ -276,10 +319,18 @@ ge::graphStatus MlaPrologTiling::SetScenarioInfo()
     } else {
         scenarioInfo_.actualSeqMode_ = ACTUAL_SEQ_MODE::DISABLED;
     }
-
-    // 当前不支持切M模板，全部路由到切N模板
+    uint32_t cvRatio = aivNum_ / aicNum_;
+    // 当前仅在BS>=8K且数据类型为MXFP8时路由到切M模板，其他情况均路由到切N模板
     scenarioInfo_.splitMFlag_ = 0U;
-
+    if ((scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_NO_QUANT ||
+        scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR ||
+        scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TILE) &&
+        baseShapeInfo_.tSize >= 8192 && cvRatio == 2) {
+        if ((baseShapeInfo_.heSize == 7168 || baseShapeInfo_.heSize == 7680) &&
+            baseShapeInfo_.nSize == 128) { // 后续泛化放开限制
+                scenarioInfo_.splitMFlag_ = 1U;
+        }
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -326,11 +377,16 @@ uint32_t MlaPrologTiling::CalcSingleCoreN(uint32_t n, uint32_t coreNum, uint32_t
 // mm1.baseK = 256
 ge::graphStatus MlaPrologTiling::FillMatmul1Tiling()
 {
-    auto dataType = context_->weightDq.desc->GetDataType();
-    singlecoreHeadSizeCq_ =
-        CalcSingleCoreN(baseShapeInfo_.hcqSize, aicNum_, BLOCK_SIZE / DTYPE_TO_SIZE.at(dataType));
-    singlecoreHeadSizeCq_ = std::max(singlecoreHeadSizeCq_, 64U); // 64：最大使用24核
-    mm1BlockNum_ = CeilDiv(baseShapeInfo_.hcqSize, singlecoreHeadSizeCq_);
+    if (scenarioInfo_.splitMFlag_ == 1U) {
+        singlecoreHeadSizeCq_ = baseShapeInfo_.hcqSize;
+        mm1BlockNum_ = aicNum_;
+    } else {
+        auto dataType = context_->weightDq.desc->GetDataType();
+        singlecoreHeadSizeCq_ =
+            CalcSingleCoreN(baseShapeInfo_.hcqSize, aicNum_, BLOCK_SIZE / DTYPE_TO_SIZE.at(dataType));
+        singlecoreHeadSizeCq_ = std::max(singlecoreHeadSizeCq_, 64U); // 64：最大使用24核
+        mm1BlockNum_ = CeilDiv(baseShapeInfo_.hcqSize, singlecoreHeadSizeCq_);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -442,8 +498,9 @@ ge::graphStatus MlaPrologTiling::ProcessBaseInputs()
         aivNum_ = 32U;
         aicNum_ = 16U;
     } else if ((context_->weightUqQr.desc->GetDataType() == ge::DT_INT8 &&
-                baseShapeInfo_.nSize >= GROUP_COMPUTE_N_SIZE) ||
-                context_->weightUqQr.desc->GetDataType() == ge::DT_FLOAT8_E4M3FN) {
+        baseShapeInfo_.nSize >= GROUP_COMPUTE_N_SIZE) ||
+        context_->weightUqQr.desc->GetDataType() == ge::DT_FLOAT8_E4M3FN ||
+        context_->weightUqQr.desc->GetDataType() == ge::DT_HIFLOAT8) {
         // 场景1：INT8全量化且N大于等于8；场景2：MXFP8全量化场景
         // 通过切N处理MM3，MM4之后的操作例如Rope，DynamicQuant等会有性能收益
         enableDequantOpt_ = true;
@@ -515,42 +572,53 @@ ge::graphStatus MlaPrologTiling::FillTiling()
 ge::graphStatus MlaPrologTiling::CalcWorkSpace()
 {
     workspaceSize_ = libapiSize_;
+    uint32_t mm1Mult = (scenarioInfo_.splitMFlag_ == 1U) ? mm1BlockNum_ : 1U;
+    uint32_t mm2Mult = (scenarioInfo_.splitMFlag_ == 1U) ? mm2BlockNum_ : 1U;
+    uint32_t mm3Mult = (scenarioInfo_.splitMFlag_ == 1U) ? mm3BlockNum_ : 1U;
+    uint32_t mm4Mult = (scenarioInfo_.splitMFlag_ == 1U) ? mm4BlockNum_ : 1U;
+    uint32_t dequantScaleMult = (scenarioInfo_.splitMFlag_ == 1U) ? static_cast<uint32_t>(aicNum_) : 1U;
     if (scenarioInfo_.quantMode_ == QUANT_MODE::FULL_QUANT_KV_NO_QUANT ||
         scenarioInfo_.quantMode_ == QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TENSOR ||
         scenarioInfo_.quantMode_ == QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TILE ||
         scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_NO_QUANT ||
         scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR ||
-        scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TILE) {
+        scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TILE ||
+        scenarioInfo_.quantMode_ == QUANT_MODE::FP8_FULL_QUANT_KV_NO_QUANT ||
+        scenarioInfo_.quantMode_ == QUANT_MODE::FP8_FULL_QUANT_KV_QUANT_PER_TENSOR ||
+        scenarioInfo_.quantMode_ == QUANT_MODE::HIF8_FULL_QUANT_KV_NO_QUANT ||
+        scenarioInfo_.quantMode_ == QUANT_MODE::HIF8_FULL_QUANT_KV_QUANT_PER_TENSOR ||
+        scenarioInfo_.quantMode_ == QUANT_MODE::FP8_FULL_QUANT_KV_QUANT_PER_TILE ||
+        scenarioInfo_.quantMode_ == QUANT_MODE::HIF8_FULL_QUANT_KV_QUANT_PER_TILE) {
         workspaceSize_ += static_cast<size_t>(stepBatchSize_) * static_cast<size_t>(baseShapeInfo_.hcqSize) *
-                          static_cast<size_t>(NUM_BYTES_INT32);
+                          mm1Mult * static_cast<size_t>(NUM_BYTES_INT32);
         workspaceSize_ += static_cast<size_t>(stepBatchSize_) * static_cast<size_t>(baseShapeInfo_.hcqSize) *
-                          static_cast<size_t>(NUM_BYTES_BF16);
+                          mm1Mult * static_cast<size_t>(NUM_BYTES_BF16);
         workspaceSize_ += static_cast<size_t>(stepBatchSize_) *
                           static_cast<size_t>(baseShapeInfo_.hckvSize + baseShapeInfo_.drSize) *
-                          static_cast<size_t>(NUM_BYTES_INT32);
+                          mm2Mult * static_cast<size_t>(NUM_BYTES_INT32);
         if (scenarioInfo_.quantMode_ == QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TENSOR ||
-            scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_NO_QUANT ||
             scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR ||
-            scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TILE) {
+            scenarioInfo_.quantMode_ == QUANT_MODE::FP8_FULL_QUANT_KV_QUANT_PER_TENSOR ||
+            scenarioInfo_.quantMode_ == QUANT_MODE::HIF8_FULL_QUANT_KV_QUANT_PER_TENSOR) {
             // 全量化场景mmQnRes输出到workspace, B, S1, N, Hckv, BF16
             workspaceSize_ += static_cast<size_t>(stepBatchSize_) * static_cast<size_t>(baseShapeInfo_.nSize) * 
-                              static_cast<size_t>(baseShapeInfo_.hckvSize) * static_cast<size_t>(NUM_BYTES_BF16);
+                static_cast<size_t>(baseShapeInfo_.hckvSize) * mm4Mult * static_cast<size_t>(NUM_BYTES_BF16);
         }
     } else {
         workspaceSize_ += static_cast<size_t>(stepBatchSize_) * static_cast<size_t>(baseShapeInfo_.hcqSize) *
-                          static_cast<size_t>(NUM_BYTES_BF16) * static_cast<size_t>(2);  // 2: double
+                          mm1Mult * static_cast<size_t>(NUM_BYTES_BF16) * static_cast<size_t>(2);  // 2: double
         workspaceSize_ += static_cast<size_t>(stepBatchSize_) *
                           static_cast<size_t>(baseShapeInfo_.hckvSize + baseShapeInfo_.drSize) *
-                          static_cast<size_t>(NUM_BYTES_BF16);
+                          mm2Mult * static_cast<size_t>(NUM_BYTES_BF16);
     }
     workspaceSize_ += static_cast<size_t>(stepBatchSize_) *
         static_cast<size_t>(baseShapeInfo_.headSizeQc + baseShapeInfo_.headSizeQr) *
-        static_cast<size_t>(NUM_BYTES_INT32);
+        mm3Mult * static_cast<size_t>(NUM_BYTES_INT32);
     workspaceSize_ += static_cast<size_t>(stepBatchSize_) * static_cast<size_t>(baseShapeInfo_.nSize) * 
-        static_cast<size_t>(baseShapeInfo_.dSize) * static_cast<size_t>(NUM_BYTES_BF16);
+        static_cast<size_t>(baseShapeInfo_.dSize) * mm3Mult * static_cast<size_t>(NUM_BYTES_BF16);
 
     if (enableGroupComputeOpt_ || enableDequantOpt_) {
-        workspaceSize_ += static_cast<size_t>(stepBatchSize_) * static_cast<size_t>(BLOCK_SIZE);
+        workspaceSize_ += static_cast<size_t>(stepBatchSize_) * dequantScaleMult * static_cast<size_t>(BLOCK_SIZE);
     }
     if (context_->workSpaces) {
         context_->workSpaces[0] = workspaceSize_;

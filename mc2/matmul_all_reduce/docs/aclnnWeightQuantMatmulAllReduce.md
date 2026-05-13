@@ -13,7 +13,6 @@
 | <term>Atlas 推理系列产品</term>                             |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
 
-
 **说明：** 使用该接口时，请确保驱动固件包和CANN包都为配套的8.0.RC2版本或者配套的更高版本，否则将会引发报错，比如BUS ERROR等。
 
 ## 功能说明
@@ -47,6 +46,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceGetWorkspaceSize(
     uint64_t        *workspaceSize,
     aclOpExecutor **executor)
 ```
+
 ```cpp
 aclnnStatus aclnnWeightQuantMatmulAllReduce(
     void             *workspace,
@@ -86,7 +86,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
           <td>MatMul计算的左矩阵，即计算公式中的x1。</td>
           <td><ul><li>当前版本仅支持二维或者三维输入。</li><li>支持不转置场景。</li></ul></td>
           <td>BFLOAT16、FLOAT16</td>
-          <td>参见<a href="#约束说明" target="_blank">约束说明。</td>
+          <td>参见<a href="#约束说明">约束说明</a>。</td>
           <td>2-3</td>
           <td>×</td>
         </tr>
@@ -94,8 +94,8 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
           <td>x2</td>
           <td>输入</td>
           <td>MatMul计算的右矩阵，即计算公式中的x2。</td>
-          <td><ul><li>当前版本仅支持二维输入。</li><li>支持转置/不转置场景。</li><li>ND格式下支持最后两轴转置情况下的非连续的tensor，其他非连续tensor不支持</li></ul></td>
-          <td>参见<a href="#约束说明" target="_blank">约束说明。</td>
+          <td><ul><li>当前版本仅支持二维输入。</li><li>支持转置/不转置场景。</li><li>ND格式下支持最后两轴转置情况下的非连续的tensor，其他非连续tensor不支持。</li></ul></td>
+          <td>参见<a href="#约束说明">约束说明</a>。</td>
           <td>ND、FRACTAL_NZ</td>
           <td>2</td>
           <td>×</td>
@@ -105,7 +105,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
           <td>输入</td>
           <td>对应计算公式中bias偏移，即计算公式中的bias。</td>
           <td><ul><li>支持传入空指针，非空时当前版本仅支持一维输入。</li></ul></td>
-          <td>参见<a href="#约束说明" target="_blank">约束说明。</td>
+          <td>参见<a href="#约束说明">约束说明</a>。</td>
           <td>ND</td>
           <td>1</td>
           <td>√</td>
@@ -135,7 +135,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
           <td>输入</td>
           <td>MatMul计算后的add计算，即计算公式中的x3。</td>
           <td><ul><li>支持传入空指针，非空时shape与mm计算后的shape相同。</li></ul></td>
-          <td>参见<a href="#约束说明" target="_blank">约束说明。</td>
+          <td>参见<a href="#约束说明">约束说明</a>。</td>
           <td>ND</td>
           <td>2-3</td>
           <td>√</td>
@@ -268,6 +268,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
     <col style="width: 168px">
     <col style="width: 128px">
     <col style="width: 854px">
+    </colgroup>
     <thead>
     <tr>
         <th>参数名</th>
@@ -297,7 +298,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
     </tr>
     </tbody></table>
 
--   **返回值**
+- **返回值**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -328,6 +329,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
   - 仅支持k为0的场景，输出为bias + x3，不支持bs/m/n为0的空tensor输入。
 
 输入和输出支持以下数据类型组合：
+
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
 
   <table style="undefined;table-layout: fixed; width: 600px">
@@ -455,6 +457,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
   #include <thread>
   #include <string.h>
   #include "hccl/hccl.h"
+  #include "aclnn/opdev/fp16_t.h"
   #include "aclnnop/aclnn_weight_quant_matmul_all_reduce.h"
 
   int ndev = 2;
@@ -553,13 +556,13 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
       long long antiquantOffsetShapeSize = GetShapeSize(antiquantOffsetShape);
       long long x3ShapeSize = GetShapeSize(x3Shape);
       long long outShapeSize = GetShapeSize(outShape);
-      std::vector<int16_t> x1HostData(x1ShapeSize, 1);
+      std::vector<op::fp16_t> x1HostData(x1ShapeSize, 1);
       std::vector<int8_t> x2HostData(x2ShapeSize, 1);
-      std::vector<int16_t> biasHostData(biasShapeSize, 1);
-      std::vector<int16_t> antiquantScaleHostData(antiquantScaleShapeSize, 1);
-      std::vector<int16_t> antiquantOffsetHostData(antiquantOffsetShapeSize, 1);
-      std::vector<int16_t> x3HostData(x3ShapeSize, 1);
-      std::vector<int16_t> outHostData(outShapeSize, 0);
+      std::vector<op::fp16_t> biasHostData(biasShapeSize, 1);
+      std::vector<op::fp16_t> antiquantScaleHostData(antiquantScaleShapeSize, 1);
+      std::vector<op::fp16_t> antiquantOffsetHostData(antiquantOffsetShapeSize, 1);
+      std::vector<op::fp16_t> x3HostData(x3ShapeSize, 1);
+      std::vector<op::fp16_t> outHostData(outShapeSize, 0);
       // 创建 tensor
       ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_FLOAT16, &x1);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -683,7 +686,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
           args[rankId].stream = stream[rankId];
           args[rankId].context = context[rankId];
           threads[rankId].reset(
-                  new(std::nothrow) std::thread(&launchOneThreadweightQuantmatmulAllReduce, std::ref(args [rankId])));
+                  new(std::nothrow) std::thread(&launchOneThreadweightQuantmatmulAllReduce, std::ref(args[rankId])));
       }
       for (uint32_t rankId = 0; rankId < ndev; rankId++) {
           threads[rankId]->join();

@@ -57,8 +57,6 @@
   dK=\frac{(\hat{(dS)}^T*\hat{Q})}{\sqrt{d}} * (dS_{ds} * dS_q)
   $$
   
-    
-
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnQuantFlashAttentionScoreGradGetWorkspace”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnQuantFlashAttentionScoreGrad”接口执行计算。
@@ -79,13 +77,13 @@ aclnnStatus aclnnQuantFlashAttentionScoreGradGetWorkspace(
   const aclTensor   *dScaleDy, 
   const aclTensor   *dsScale, 
   const aclTensor   *pScale,
-  double             scaleValueOptional, 
-  int64_t 			 preTokensOptional,
-  int64_t            nextTokensOptional,
+  double             scaleValue, 
+  int64_t 			     preTokens,
+  int64_t            nextTokens,
   int64_t            headNum, 
   char              *inputLayout,
-  int64_t           sparseModeOptional,
-  int64_t            outDtypeOptional, 
+  int64_t           sparseMode,
+  int64_t            outDtype, 
   aclTensor         *dqOut, 
   aclTensor         *dkOut, 
   aclTensor         *dvOut, 
@@ -270,7 +268,7 @@ aclnnStatus aclnnQuantFlashAttentionScoreGrad(
       <td>√</td>
     </tr>
     <tr>
-      <td>scaleValueOptional</td>
+      <td>scaleValue</td>
       <td>输入</td>
       <td>公式中的scale缩放系数，默认值为1。</td>
       <td>-</td>
@@ -280,7 +278,7 @@ aclnnStatus aclnnQuantFlashAttentionScoreGrad(
       <td>-</td>
     </tr>
       <tr>
-      <td>preTokensOptional</td>
+      <td>preTokens</td>
       <td>可选输入</td>
       <td>暂不使用。</td>
       <td>-</td>
@@ -290,7 +288,7 @@ aclnnStatus aclnnQuantFlashAttentionScoreGrad(
       <td>-</td>
     </tr>
         <tr>
-      <td>nextTokensOptional</td>
+      <td>nextTokens</td>
       <td>可选输入</td>
       <td>暂不使用。</td>
       <td>-</td>
@@ -320,7 +318,7 @@ aclnnStatus aclnnQuantFlashAttentionScoreGrad(
       <td>-</td>
     </tr>
      <tr>
-      <td>sparseModeOptional</td>
+      <td>sparseMode</td>
       <td>可选输入</td>
       <td>暂不使用。</td>
       <td>-</td>
@@ -330,7 +328,7 @@ aclnnStatus aclnnQuantFlashAttentionScoreGrad(
       <td>-</td>
     </tr>
     <tr>
-      <td>outDtypeOptional</td>
+      <td>outDtype</td>
       <td>输入</td>
       <td>值为0表示dqOut等输出是FLOAT16，为1表示是BFLOAT16。</td>
       <td>-</td>
@@ -391,7 +389,6 @@ aclnnStatus aclnnQuantFlashAttentionScoreGrad(
     </tr>
   </tbody>
   </table>
-  
   
 - **返回值：**
 
@@ -463,6 +460,7 @@ aclnnStatus aclnnQuantFlashAttentionScoreGrad(
     </tr>
   </tbody>
   </table>
+  
 - **返回值：**
   
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -526,7 +524,7 @@ aclnnStatus aclnnQuantFlashAttentionScoreGrad(
     </tbody>
     </table>
 
-- 部分场景下，如果计算量过大可能会导致算子执行超时(aicore error类型报错，errorStr为：timeout or trap error)，此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
+- 部分场景下，如果计算量过大可能会导致算子执行超时（aicore error类型报错，errorStr为：timeout or trap error），此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
 
 - 关于softmaxMax与softmaxSum参数的约束：输入格式固定为\[B, N, S, 1\]。
 
@@ -536,7 +534,7 @@ aclnnStatus aclnnQuantFlashAttentionScoreGrad(
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
-```Cpp#include
+```C++
 #include <iostream>
 #include <vector>
 #include <cstdint>
@@ -610,7 +608,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1. （固定写法）device/stream初始化，参考AscendCL对外接口列表
+  // 1. （固定写法）device/stream初始化，参考acl API手册
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;

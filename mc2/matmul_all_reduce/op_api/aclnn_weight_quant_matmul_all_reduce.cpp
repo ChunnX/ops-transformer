@@ -10,6 +10,7 @@
 
 #include "aclnn_weight_quant_matmul_all_reduce.h"
 
+#include "aclnnInner_matmul_all_reduce.h"
 #include "opdev/tensor_view_utils.h"
 #include "matmul_all_reduce_util.h"
 
@@ -21,15 +22,6 @@ extern "C" {
 
 static constexpr int64_t ANTIQUANT_GROUP_SIZE_MIN_VALUE = 32;
 
-extern aclnnStatus aclnnInnerMatmulAllReduceGetWorkspaceSize(
-    const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* x3,
-    const aclTensor* antiquantScale, const aclTensor* antiquantOffset, const aclTensor* dequantScale,
-    const aclTensor* pertokenScale, const aclTensor* commQuantScale1, const aclTensor* commQuantScale2,
-    const char* group, const char* reduceOp, bool transposeX1, bool transposeX2, int64_t commTurn,
-    int64_t antiquantGroupSize, int64_t groupSize, int64_t yDtype, int64_t commQuantMode, const aclTensor* output,
-    uint64_t* workspaceSize, aclOpExecutor** executor);
-extern aclnnStatus aclnnInnerMatmulAllReduce(
-    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream);
 extern "C" uint64_t NnopbaseMsprofSysTime();
 extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId& dfxId);
 extern "C" aclnnStatus __attribute__((weak)) NnopbaseDisableOptionalInput(void* executor, const size_t irIndex);
@@ -318,7 +310,17 @@ static aclnnStatus CheckParams(
     CHECK_RET(
         CheckShape(x1, x2, bias, antiquantScale, antiquantOffset, x3, output, antiquantGroupSize),
         ACLNN_ERR_PARAM_INVALID);
-    // 5. 检查连续性
+
+    // 5.【A2】检查x2、antiquantScale、antiquantOffset矩阵在非转置的情况下是否连续
+    if (op::GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B &&
+        !MatmulAllReduceCheckValidEmptyTensor(x1, x2)) {
+        CHECK_RET(MatmulAllReduceCheckValidContiguous(x2, "x2"), ACLNN_ERR_PARAM_INVALID);
+        CHECK_RET(MatmulAllReduceCheckValidContiguous(antiquantScale, "antiquantScale"), ACLNN_ERR_PARAM_INVALID);
+        if (antiquantOffset != nullptr) {
+            CHECK_RET(MatmulAllReduceCheckValidContiguous(antiquantOffset, "antiquantOffset"), ACLNN_ERR_PARAM_INVALID);
+        }
+    }
+    // 6. 检查连续性
     CHECK_RET(ContiguousCheckImpl::CheckContiguous(x2, antiquantScale, antiquantOffset), ACLNN_ERR_PARAM_INVALID);
     return ACLNN_SUCCESS;
 }
@@ -383,7 +385,8 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceGetWorkspaceSize(
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
     aclnnStatus ret = aclnnInnerMatmulAllReduceGetWorkspaceSize(
         x1, tempX2, bias, x3, antiquantScale, antiquantOffset, dequantScale, pertokenScale, commQuantScale1,
-        commQuantScale2, group, reduceOp, transposeX1, transposeX2, commTurn, antiquantGroupSize, 0, yDtype, 0, output,
+        commQuantScale2, const_cast<char*>(group), const_cast<char*>(reduceOp),
+        transposeX1, transposeX2, commTurn, antiquantGroupSize, 0, yDtype, 0, output,
         workspaceSize, executor);
     OP_LOGD("WeightQuantMatmulAllReduce, aclnnMatmulAllReduceGetWorkspaceSize ret %d", ret);
 #ifdef MC2_UT

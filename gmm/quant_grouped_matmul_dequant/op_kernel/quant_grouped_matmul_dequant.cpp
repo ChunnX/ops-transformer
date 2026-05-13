@@ -20,7 +20,7 @@ extern "C" __global__ __aicore__ void quant_grouped_matmul_dequant(GM_ADDR x, GM
                                                            GM_ADDR y, GM_ADDR usrworkspace, GM_ADDR qmmTiling) {
   SetAtomicNone();
   GET_TILING_DATA(tiling_data, qmmTiling);
-  QuantGroupedMatmulDequantTilingData* __restrict tilingData = const_cast<QuantGroupedMatmulDequantTilingData *> (&tiling_data);
+  QuantMatmulDequantTilingData* __restrict tilingData = const_cast<QuantMatmulDequantTilingData *> (&tiling_data);
   if (TILING_KEY_IS(10000003)) {
     QuantMatmulDequantGrouped handle;
     handle.Init(x, quantized_weight, weight_scale, group_list, bias, x_scale, x_offset, smooth_scale, y, usrworkspace, tilingData);
