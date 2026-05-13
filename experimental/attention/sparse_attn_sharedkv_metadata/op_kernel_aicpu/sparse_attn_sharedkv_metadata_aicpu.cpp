@@ -364,9 +364,9 @@ int64_t SparseAttnSharedkvMetadataCpuKernel::CmpCalcCost(uint32_t basicM, uint32
     uint32_t cmpAlignBasicS2 = (basicS2 + cmpAlignCoefS2 - 1U) >> 6U;   // 按alignCoefS2对齐，向上取整，6：移位操作实现除64
     if (isSCFA) {
         if (queryHeadNum_ == 128) {
-            return static_cast<int64_t>(30U * winAlignBasicS2 + 135u);
+            return static_cast<int64_t>(42U * cmpAlignBasicS2 + 18u);
         } else if (queryHeadNum_ == 64) {
-            return static_cast<int64_t>(20U * winAlignBasicS2 + 80u);
+            return static_cast<int64_t>(20U * cmpAlignBasicS2 + 80u);
         }
     }
     return static_cast<int64_t>(6U * cmpAlignBasicM + 10U * cmpAlignBasicS2);                 // 6：M轴系数，10：S2轴系数
