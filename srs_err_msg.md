@@ -89,8 +89,8 @@ OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
 | -- | --: | --: | -- | -- | -- |
 | gmm/grouped_matmul/op_api/aclnn_grouped_matmul.cpp | 359 | 27.1% | 公共 | - | 暂不整改 |
 | gmm/grouped_matmul/op_api/grouped_matmul.cpp | 3 | 0.2% | 公共 | - | 暂不整改 |
-| gmm/grouped_matmul/op_api/grouped_matmul_no_quant_950_checker.cpp | 3 | 0.2% | A5 | 非量化 | - |
-| gmm/grouped_matmul/op_api/grouped_matmul_weight_quant_950_checker.cpp | 111 | 8.4% | A5 | 伪量化 | **重点整改** |
+| gmm/grouped_matmul/op_api/grouped_matmul_no_quant_950_checker.cpp | 3 | 0.2% | 公共 | 非量化 | - |
+| gmm/grouped_matmul/op_api/grouped_matmul_weight_quant_950_checker.cpp | 111 | 8.4% | 公共 | 伪量化 | 区分场景 |
 | gmm/grouped_matmul/op_api/grouped_matmul_950_checker.cpp | 153 | 11.5% | 公共 | - | 暂不整改 |
 | gmm/grouped_matmul/op_host/grouped_matmul_infershape_weight_quant_checker.cpp | 97 | 7.3% | - | 伪量化 | 不涉及A5，不整改 |
 | gmm/grouped_matmul/op_host/grouped_matmul_infershape.cpp | 190 | 14.3% | 公共 | - | 不涉及A5，不整改 |
@@ -101,7 +101,7 @@ OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
 
 | 文件 | 计数 | 整改策略 |
 | -- | --: | -- |
-| grouped_matmul_infershape_weight_quant_checker.cpp | 97 | 参数验证错误全量整改 |
+| grouped_matmul_infershape_weight_quant_checker.cpp | 97 | 区分场景 |
 | grouped_weight_quant_batch_matmul_tiling.cpp | 123 | 参数验证错误全量整改 |
 
 ### 3.2 GMMFR 算子文件清单
