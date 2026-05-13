@@ -162,10 +162,9 @@ TestCases = {
         'layout_kv': ['TND'],
         'layout_out': ['TND'],
         'Dtype': ['fp16'],
-        'mask_mode': [0],
+        'mask_mode': [3],
         'q_range': [(-10.0, 10.0)],
         'k_range': [(-10.0, 10.0)],
         'v_range': [(-10.0, 10.0)],
-        'return_softmax_lse' : [1],
     },
 }

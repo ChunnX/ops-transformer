@@ -45,17 +45,22 @@ __global__ __aicore__ void flash_attn(
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 
     // dtype 分发 → flash_attn_kernel_run (类型推导 + kernel实例化执行)
-#if (ORIG_DTYPE_Q == DT_BF16)
-    flash_attn_kernel_run<bfloat16_t, bfloat16_t,
-        inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType,
-        isFd, emptyTensor, PFAMask, pFAMatMulType, enableKVPrefix, enableS1OutSplit>(
-        query, key, value, attnMask, cuSeqLensQ, cuSeqLensKv,
-        sequsedQ, sequsedKv, blockTable, sinks, attnOut, softmaxLse, user, tiling, metadata);
-#elif (ORIG_DTYPE_Q == DT_FLOAT16)
-    flash_attn_kernel_run<half, half,
-        inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType,
-        isFd, emptyTensor, PFAMask, pFAMatMulType, enableKVPrefix, enableS1OutSplit>(
-        query, key, value, attnMask, cuSeqLensQ, cuSeqLensKv,
-        sequsedQ, sequsedKv, blockTable, sinks, attnOut, softmaxLse, user, tiling, metadata);
-#endif
+    if constexpr (inOutLayoutType == InOutLayoutType_TND_TND) {
+        dc_preload(reinterpret_cast<__gm__ uint64_t*>(actualSeqLengthsQ), 0);
+        dc_preload(reinterpret_cast<__gm__ uint64_t*>(actualSeqLengthsKv), 0);
+    }
+    
+    #if (ORIG_DTYPE_Q == DT_BF16)
+        flash_attn_kernel_run<bfloat16_t, bfloat16_t,
+            inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType,
+            isFd, emptyTensor, PFAMask, pFAMatMulType, enableKVPrefix, enableS1OutSplit>(
+            query, key, value, attnMask, cuSeqLensQ, cuSeqLensKv,
+            sequsedQ, sequsedKv, blockTable, sinks, attnOut, softmaxLse, user, tiling, metadata);
+    #elif (ORIG_DTYPE_Q == DT_FLOAT16)
+        flash_attn_kernel_run<half, half,
+            inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType,
+            isFd, emptyTensor, PFAMask, pFAMatMulType, enableKVPrefix, enableS1OutSplit>(
+            query, key, value, attnMask, cuSeqLensQ, cuSeqLensKv,
+            sequsedQ, sequsedKv, blockTable, sinks, attnOut, softmaxLse, user, tiling, metadata);
+    #endif
 }
