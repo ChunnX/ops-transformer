@@ -466,6 +466,8 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl256Mxfp8FullquantVFSubloop1(
     MaskReg preg_all_b8 = CreateMask<T2, MaskPattern::ALL>();
     uint32_t maskLen = 128;
     MaskReg preg_all_b8_128 = UpdateMask<T2>(maskLen);
+    uint32_t pScaleMaskLen = 8;
+    MaskReg preg_all_b8_8 = UpdateMask<fp8_e8m0_t>(pScaleMaskLen);
     RegTensor<uint8_t> vreg_exp_merge_f8e4m3_indexes;
     // pScale
     RegTensor<float> vreg_p_scale;
@@ -727,15 +729,15 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl256Mxfp8FullquantVFSubloop1(
     RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0_0;
     RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0_1;
     Cast<bfloat16_t, T, castTraitRintZero>(vreg_p_scale_bf16_0, vreg_p_scale, preg_all);
-    Cast<fp8_e8m0_t, bfloat16_t, castTraitRintZero>(vreg_p_scale_f8e8m0_0, vreg_p_scale_bf16_0, preg_all);
+    Cast<fp8_e8m0_t, bfloat16_t, castTraitNoneZero>(vreg_p_scale_f8e8m0_0, vreg_p_scale_bf16_0, preg_all_b16);
     Cast<bfloat16_t, T, castTraitRintOne>(vreg_p_scale_bf16_1, vreg_p_scale, preg_all);
-    Cast<fp8_e8m0_t, bfloat16_t, castTraitRintZero>(vreg_p_scale_f8e8m0_1, vreg_p_scale_bf16_1, preg_all);
+    Cast<fp8_e8m0_t, bfloat16_t, castTraitNoneZero>(vreg_p_scale_f8e8m0_1, vreg_p_scale_bf16_1, preg_all_b16);
     Or((RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_0, (RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_0,
                (RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_1, preg_all_b8);
     Gather(vreg_p_scale_f8e8m0_0, vreg_p_scale_f8e8m0_0, vreg_exp_merge_f8e4m3_indexes);
     for (uint16_t i = 0; i < 4; ++i) {
         StoreAlign<fp8_e8m0_t, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-            ((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0), vreg_p_scale_f8e8m0_0, blockStride, repeatStride, preg_all_b8_128);
+            ((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0), vreg_p_scale_f8e8m0_0, blockStride, repeatStride, preg_all_b8_8);
     }
 }
 
