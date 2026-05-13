@@ -199,6 +199,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4GetWorkspaceSize(
     if (retView == ACL_SUCCESS && stridesValue != nullptr && stridesNum >= 1) {
         blockStride = stridesValue[0];
     }
+    delete[] stridesValue;
 
     aclnnStatus ret = aclnnInnerFusedInferAttentionScoreGetWorkspaceSize(
         query, tensorListKey, tensorListValue, pseShiftOptional, attenMaskOptional, actualSeqLengthsOptional,
