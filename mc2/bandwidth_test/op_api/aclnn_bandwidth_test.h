@@ -39,8 +39,8 @@ extern "C" {
  */
 ACLNN_API aclnnStatus aclnnBandwidthTestGetWorkspaceSize(
     const aclTensor* x, const aclTensor* expertId,
-    const char* group, int64_t worldSize, int64_t rankId, int64_t maxBs, int64_t mode,
-    aclTensor* y, aclTensor* receiveCnt,
+    const char* group, int64_t worldSize, int64_t maxBs, int64_t mode,
+    const char *commAlg, aclTensor* y, aclTensor* receiveCnt,
     uint64_t* workspaceSize, aclOpExecutor** executor);
 
 /**
@@ -53,23 +53,7 @@ ACLNN_API aclnnStatus aclnnBandwidthTestGetWorkspaceSize(
  */
 ACLNN_API aclnnStatus aclnnBandwidthTest(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
                                                   aclrtStream stream);
-
 #ifdef __cplusplus
 }
 #endif
-
 #endif  // OP_API_INC_BANDWIDTH_TEST_
-
-aclnnStatus aclnnBandwidthTestGetWorkspaceSize(
-    const aclTensor* x, const aclTensor* expertId,
-    const char* group, int64_t worldSize, int64_t maxBs, int64_t mode,
-    const char *commAlg, aclTensor* y, aclTensor* receiveCnt,
-    uint64_t* workspaceSize, aclOpExecutor** executor);
-
-aclnnStatus aclnnBandwidthTest(
-    void* workspace, uint64_t workspaceSize,
-    aclOpExecutor* executor, aclrtStream stream);
-
-#ifdef __cplusplus
-
-#endif
