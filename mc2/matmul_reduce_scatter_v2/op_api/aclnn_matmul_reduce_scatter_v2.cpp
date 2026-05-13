@@ -17,6 +17,7 @@
 #include "common/utils/op_mc2.h"
 #include "common/utils/op_mc2_def.h"
 #include "common/utils/hccl_util.h"
+#include "mc2_comm_utils.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/common_types.h"
 #include "opdev/make_op_executor.h"
@@ -71,6 +72,25 @@ static aclTensor* CreateWinTensor(const int64_t* dims, uint64_t dimNum, aclDataT
 static inline bool IsAscend950(void)
 {
     return op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
+}
+
+static void SetNnopbaseHcclServerTypeByArch(aclOpExecutor *executor)
+{
+    if ((executor == nullptr) || (NnopbaseSetHcclServerType == nullptr)) {
+        return;
+    }
+
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
+        NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
+    } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+        NnopbaseHcclServerType serverType = (commMode == Mc2Comm::COMM_MODE_AICPU)
+            ? NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU
+            : NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU;
+        OP_LOGD("[COMM_MODE] Set HcclServerType to %s for DAV_3510.",
+                (commMode == Mc2Comm::COMM_MODE_AICPU) ? "AICPU" : "CCU");
+        NnopbaseSetHcclServerType(executor, serverType);
+    }
 }
 
 // 检查入参是否为nullptr
@@ -334,6 +354,9 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeCcuMode(const aclTensor* x1, co
             *workspaceSize = 0;
         }
         uniqueExecutor.ReleaseTo(executor);
+        if ((executor != nullptr) && (*executor != nullptr)) {
+            SetNnopbaseHcclServerTypeByArch(*executor);
+        }
         return ACLNN_SUCCESS;
     }
     OP_LOGD("X1 is %s. X2 is %s.", x1->ToString().GetString(), x2->ToString().GetString());
@@ -370,6 +393,9 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeCcuMode(const aclTensor* x1, co
         x1, transX2, bias, x1Scale, transX2Scale, quantScale, const_cast<char*>(group), const_cast<char*>(reduceOp),
         transposeX1, transposeX2, commTurn, rankSize, blockSize, groupSize, isAmaxOut, yDtype,
         const_cast<char*>(commMode), output, amaxOutOptional, workspaceSize, executor);
+    if ((ret == ACLNN_SUCCESS) && (executor != nullptr) && (*executor != nullptr)) {
+        SetNnopbaseHcclServerTypeByArch(*executor);
+    }
     OP_LOGD("MatmulReduceScatterV2, end ret %d.", ret);
     static NnopbaseDfxId dfxId = {0x60000, __func__, false};
     NnopbaseReportApiInfo(timeStamp, dfxId);
@@ -425,6 +451,9 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeAivMode(const aclTensor* x1, co
     aclnnStatus ret = aclnnInnerMatmulReduceScatterV2GetWorkspaceSize(x1, x2, bias, x1Scale, x2Scale, quantScale,
         const_cast<char*>(group), const_cast<char*>(reduceOp), transposeX1, transposeX2, commTurn, rankSize, blockSize,
         groupSize, isAmaxOut, yDtype, const_cast<char*>(commMode), output, amaxOutOptional, workspaceSize, executor);
+    if ((ret == ACLNN_SUCCESS) && (executor != nullptr) && (*executor != nullptr)) {
+        SetNnopbaseHcclServerTypeByArch(*executor);
+    }
     OP_LOGD("MatmulReduceScatterV2AivMode, aclnnInnerGetWorkspaceSize ret = %d.", ret);
     return ret;
 }
@@ -456,13 +485,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(void* workspace, uint64_t workspaceSize, 
         return ACLNN_SUCCESS;
     }
 
-    if (NnopbaseSetHcclServerType) {
-        if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
-            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
-        } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
-        }
-    }
+    SetNnopbaseHcclServerTypeByArch(executor);
 
     aclnnStatus ret = aclnnInnerMatmulReduceScatterV2(workspace, workspaceSize, executor, stream);
     if (ret != 0) {
