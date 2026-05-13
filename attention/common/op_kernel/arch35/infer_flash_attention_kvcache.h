@@ -611,8 +611,8 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr<isInfer>& runParam, cons
                     runParam.softmaxLseOffset = softmaxLseSeqOffset + runParam.queryLeftPaddingSize * constInfo.n2G +
                         runParam.sOuterOffset / constInfo.gSize * constInfo.n2G + runParam.n2oIdx * constInfo.gSize;
                 } else {
-                    runParam.attentionOutOffset = attentionOutSeqOffset + runParam.n2oIdx * constInfo.gSize * actualSeqLen +
-                        runParam.sOuterOffset;
+                    runParam.softmaxLseOffset = softmaxLseSeqOffset +
+                        runParam.n2oIdx * constInfo.gSize * actualSeqLen + runParam.sOuterOffset;
                 }
             } else if (constInfo.isGqa) {
                 runParam.softmaxLseOffset = softmaxLseSeqOffset + runParam.n2oIdx * constInfo.gSize * actualSeqLen +
