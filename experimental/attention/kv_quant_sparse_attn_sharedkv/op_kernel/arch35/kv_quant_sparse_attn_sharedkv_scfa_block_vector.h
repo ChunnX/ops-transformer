@@ -321,8 +321,9 @@ __aicore__ inline void CastScale(LocalTensor<float>& outputUb,  LocalTensor<KV_T
 }
 
 template <typename Q_T, typename KV_T>
-__simd_vf__ void AntiquantVFImplFp8D448(__ubuf__ int8_t* ubSrcAddr, __ubuf__ Q_T* ubDstAddr, // output first
-    __ubuf__ float* ubScaleSrcAddr, uint32_t dealRowCount)
+__simd_vf__ void AntiquantVFImplFp8D448(__ubuf__ Q_T* ubKRopeNzAddr, __ubuf__ int8_t* ubSrcAddr,
+    __ubuf__ Q_T* ubDstAddr, __ubuf__ float* ubScaleSrcAddr, __ubuf__ int8_t* ubKRopeAddr,
+    uint32_t dealRowCount)
 {
     uint32_t combineDim = 640; // 128对齐
     MicroAPI::RegTensor<KV_T> vKvData0;
@@ -339,9 +340,11 @@ __simd_vf__ void AntiquantVFImplFp8D448(__ubuf__ int8_t* ubSrcAddr, __ubuf__ Q_T
     MicroAPI::RegTensor<Q_T> vCastRes1;
     MicroAPI::RegTensor<Q_T> vCastResPack0;
     MicroAPI::RegTensor<Q_T> vCastResPack1;
+    MicroAPI::RegTensor<int8_t> vKvRope;
 
     MicroAPI::MaskReg kvTypeMaskAll = MicroAPI::CreateMask<KV_T, MicroAPI::MaskPattern::ALL>();
     MicroAPI::MaskReg kvRopeTypeMaskAll = MicroAPI::CreateMask<Q_T, MicroAPI::MaskPattern::ALL>();
+    MicroAPI::MaskReg kvRopeTypeMaskHalf = MicroAPI::CreateMask<Q_T, MicroAPI::MaskPattern::H>();
     MicroAPI::MaskReg fp32MaskAll = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
     uint32_t blockStride = 17; // +1 to solve bank confict
     uint32_t repeatStride = 1;
@@ -386,9 +389,11 @@ __simd_vf__ void AntiquantVFImplFp8D448(__ubuf__ int8_t* ubSrcAddr, __ubuf__ Q_T
     uint16_t lastLoopOffset = nopeDim / kvNumPerLoop; // 偏移已经处理的循环次数
     __ubuf__ int8_t* ubSrcTemp = ubSrcAddr + lastLoopOffset * kvNumPerLoop; 
     __ubuf__ float* ubScaleSrcAddrTemp = ubScaleSrcAddr + lastLoopOffset * scaleNumPerLoop; 
-    __ubuf__ Q_T* ubDstAddrTmp = ubDstAddr + lastLoopOffset * kvNumPerLoop * blockStride; 
+    __ubuf__ Q_T* ubDstAddrTmp = ubDstAddr + lastLoopOffset * kvNumPerLoop * blockStride;
     MicroAPI::Duplicate(vCastRes1, 0.0);
     for (uint16_t i = 0; i < static_cast<uint16_t>(dealRowCount); i++) {
+        MicroAPI::LoadAlign<int8_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_NORM>(
+            (MicroAPI::RegTensor<int8_t>&)vKvRope, ubKRopeAddr, combineDim);
         // load scale
         MicroAPI::LoadAlign<int8_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_UNPACK4_B8>(
             (MicroAPI::RegTensor<int8_t>&)vKvData0, ubSrcTemp, combineDim);
@@ -400,19 +405,24 @@ __simd_vf__ void AntiquantVFImplFp8D448(__ubuf__ int8_t* ubSrcAddr, __ubuf__ Q_T
         MicroAPI::DeInterleave(vCastResPack0, vCastResPack1, vCastRes0, vCastRes1);
 
         MicroAPI::StoreAlign<Q_T, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-            ubDstAddrTmp, vCastResPack0, blockStride, repeatStride, kvRopeTypeMaskAll);
+            ubDstAddrTmp, vCastResPack0, blockStride, repeatStride, kvRopeTypeMaskHalf);
+        MicroAPI::StoreAlign<Q_T, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+            ubKRopeNzAddr, (MicroAPI::RegTensor<Q_T>&)vKvRope, blockStride, repeatStride, kvRopeTypeMaskHalf);
     }
 }
 
 template <typename Q_T, typename KV_T>
-__aicore__ inline void AntiquantVFFp8D448(LocalTensor<Q_T>& outputUb,  LocalTensor<KV_T>& inputUb,
-    LocalTensor<float>& scaleUb, uint32_t dealRowCount)
+__aicore__ inline void AntiquantVFFp8D448(LocalTensor<Q_T>& kRopeUbNz, LocalTensor<Q_T>& outputUb,
+    LocalTensor<KV_T>& inputUb, LocalTensor<float>& scaleUb, LocalTensor<int8_t>& kRopeUb,
+    uint32_t dealRowCount)
 {
     __ubuf__ int8_t* ubSrcAddr = (__ubuf__ int8_t*)(inputUb[64 * sizeof(Q_T)].GetPhyAddr());
+    __ubuf__ int8_t* ubKRopeAddr = (__ubuf__ int8_t*)(kRopeUb.GetPhyAddr());
     __ubuf__ Q_T* ubDstAddr = (__ubuf__ Q_T*)(outputUb.GetPhyAddr());
+    __ubuf__ Q_T* ubKRopeNzAddr = (__ubuf__ Q_T*)(kRopeUbNz.GetPhyAddr());
     __ubuf__ float* ubScaleAddr = (__ubuf__ float*)(scaleUb.GetPhyAddr());
 
-    AntiquantVFImplFp8D448<Q_T, KV_T>(ubSrcAddr, ubDstAddr, ubScaleAddr, dealRowCount);
+    AntiquantVFImplFp8D448<Q_T, KV_T>(ubKRopeNzAddr, ubSrcAddr, ubDstAddr, ubScaleAddr, ubKRopeAddr, dealRowCount);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -421,20 +431,10 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::DequantKv(LocalTensor<Q_T> a
 {
     // srcTensor是rope(448) + nope(64) + scale + pad, dstTensor是nope(448) + rope(64)
     LocalTensor<float> floatScale = dequantScaleBuff.Get<float>();
-    CastScale<Q_T, KV_T>(floatScale, srcTensor, dealRow);
-    AntiquantVFFp8D448<Q_T, KV_T>(antiKvTensorAsB16, srcTensor, floatScale, dealRow);
-
-    LocalTensor<Q_T> kRopeUb = srcTensor.template ReinterpretCast<Q_T>();
+    LocalTensor<int8_t> kRopeUb = srcTensor.template ReinterpretCast<int8_t>();
     LocalTensor<Q_T> kRopeUbNz = antiKvTensorAsB16[constInfo.dSizeNope * (16 + 1)]; // V0单次处理16行数据
-    Copy(kRopeUbNz, kRopeUb,
-        constInfo.dSizeRope, // mask 处理多少列数据
-        static_cast<uint8_t>(dealRow), // repeatTime, 每次处理多少个block
-        {
-            17, // dst stride
-            1, // src stride
-            1, // dst repeat stride
-            20 // src repeat stride, 640 / 32
-        });
+    CastScale<Q_T, KV_T>(floatScale, srcTensor, dealRow);
+    AntiquantVFFp8D448<Q_T, KV_T>(kRopeUbNz, antiKvTensorAsB16, srcTensor, floatScale, kRopeUb, dealRow);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
