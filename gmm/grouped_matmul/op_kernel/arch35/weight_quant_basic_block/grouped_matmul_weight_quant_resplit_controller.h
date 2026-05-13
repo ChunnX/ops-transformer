@@ -226,17 +226,16 @@ __aicore__ inline void GMM_WQ_RESPLIT_CONTROLLER_CLASS::SplitNByMultiCore(
                  offsetParam[ctrlParam.processId].nL1Size <= MX_A8W4_L1_K_DYNAMIC_CONFIG_N_THRESHOLD) ?
                     MX_A8W4_L1_K_CONFIG_512 :
                     MX_A8W4_L1_K_CONFIG_256;
-            if (offsetParam[ctrlParam.processId].mL1Size < offsetParam[ctrlParam.processId].nL1Size) {
-                // L1的空间，在有Bias时，预留124 Kb, 其他场景预留128 Kb
-                uint64_t aL1Size = gmmBaseTiling_->hasBias ? 124 * GetKBUnit<xType>() : 128 * GetKBUnit<xType>();
-                uint64_t mL1Align = CeilAlign(offsetParam[ctrlParam.processId].mL1Size, BLOCK_CUBE);
-                // 当前切分mL1比nL1小的场景，可以尝试L1上多倍载入kaL1,提升A矩阵载入效率 
-                offsetParam[ctrlParam.processId].kaL1Size = aL1Size /
-                                                            (mL1Align * offsetParam[ctrlParam.processId].kbL1Size) *
-                                                            offsetParam[ctrlParam.processId].kbL1Size;
-            } else {
-                offsetParam[ctrlParam.processId].kaL1Size = offsetParam[ctrlParam.processId].kbL1Size;
+            uint64_t mL1Align = CeilAlign(offsetParam[ctrlParam.processId].mL1Size, BLOCK_CUBE);
+            // 实际A矩阵通过ND2NZ搬运实现，B矩阵通过MOVE_ALIGN搬运实现，两者效率不同。为了平衡两者的搬运效率，折算系数2简化计算。
+            uint64_t kaDepth = CeilDivide(offsetParam[ctrlParam.processId].nL1Size, mL1Align * 2);
+            // L1的空间，给A矩阵预留80 Kb
+            uint64_t aL1Size = 80 * GetKBUnit<xType>(); 
+            uint64_t maxKaDepth = aL1Size / (mL1Align * offsetParam[ctrlParam.processId].kbL1Size);
+            if (kaDepth > maxKaDepth) {
+                kaDepth = maxKaDepth;
             }
+            offsetParam[ctrlParam.processId].kaL1Size = kaDepth * offsetParam[ctrlParam.processId].kbL1Size;
         }
         basicBlock_.ComputeBasicBlock(offsetParam[ctrlParam.processId], offsetParam[GetSwitchedProcessId(ctrlParam)]);
         ctrlParam.processId = GetSwitchedProcessId(ctrlParam);
@@ -281,27 +280,30 @@ __aicore__ inline void GMM_WQ_RESPLIT_CONTROLLER_CLASS::PrefetchA(uint64_t mSize
     if ASCEND_IS_AIV {
         return;
     }
-    if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
-        // mxA8W4场景，Dn2nz严重阻塞流水，在weight较小的时候不启用prefetch策略
-        if (gmmBaseTiling_->mainBlockCount == 0 &&
-            gmmBaseTiling_->firstTailBlockCount + gmmBaseTiling_->secondTailBlockCount <
-                gmmBaseTiling_->cubeNumBlocksN) {
-            return;
-        }
-    }
-    uint64_t aSize = mSize * kSize * sizeof(xType);
-
     /*
      * 准入条件：
      * 1. m <= 512
      * 2. A的大小在cubeNumBlocksN上可被一条mte2指令均分载入
      * 3. 核数是N分核数的倍数
      */
+
+    uint64_t aSize = mSize * kSize * sizeof(xType);
+    if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
+        // mxA8W4场景，L1
+        if (mSize <= 512 && aSize <= static_cast<uint64_t>(gmmBaseTiling_->cubeNumBlocksN) * A_L1_MAX_SIZE_WITH_BIAS_QUANT &&
+            (gmmBaseTiling_->coreNum % gmmBaseTiling_->cubeNumBlocksN == 0)) {
+            uint64_t aPrefetchSize =
+                CeilAlign(CeilDivide(mSize * kSize, static_cast<uint64_t>(gmmBaseTiling_->cubeNumBlocksN)),
+                        64UL); // 64 表示128B的cacheline对齐
+            basicBlock_.PrefetchA(aPrefetchSize, mSize * kSize);
+        }
+    }
+    constexpr static uint64_t MAX_L1_PREFETCH_SIZE = IsMxA8W4<xType, wqmmConfig.antiQuantType>() ? 88 * 1024 : A_L1_MAX_SIZE_WITH_BIAS_QUANT;
     if (mSize <= 512 && aSize <= static_cast<uint64_t>(gmmBaseTiling_->cubeNumBlocksN) * A_L1_MAX_SIZE_WITH_BIAS_QUANT &&
         (gmmBaseTiling_->coreNum % gmmBaseTiling_->cubeNumBlocksN == 0)) {
         uint64_t aPrefetchSize =
             CeilAlign(CeilDivide(mSize * kSize, static_cast<uint64_t>(gmmBaseTiling_->cubeNumBlocksN)),
-                      64UL); // 64 表示128B的cacheline对齐
+                      128 / sizeof(xType)); // prefetch需要保证128B的cacheline对齐
         basicBlock_.PrefetchA(aPrefetchSize, mSize * kSize);
     }
 }

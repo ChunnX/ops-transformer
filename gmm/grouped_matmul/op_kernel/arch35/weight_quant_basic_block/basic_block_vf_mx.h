@@ -400,5 +400,28 @@ __simd_vf__ inline void AntiQuantMxA8W4NzNkVf(MxA8W4NzParams<xType, wType, biasT
         }
     }
 }
+
+template <uint16_t groupNumDefaultLen, uint16_t dstInnerStride>
+__simd_vf__ inline void TransMxScaleNdToDnVf(__ubuf__ uint16_t *scaleInAddr, __ubuf__ uint16_t *scaleOutAddr,
+                                             __ubuf__ uint16_t *transIdAddr, uint16_t nCount, uint16_t groupNumCount,
+                                             uint16_t nStride)
+{
+    MicroAPI::RegTensor<uint16_t> scaleVreg;
+    MicroAPI::RegTensor<uint16_t> ubTransIdVreg;
+    MicroAPI::LoadAlign(ubTransIdVreg, transIdAddr); // 0, 127,256,...1,128,...
+    MicroAPI::MaskReg maskAll = MicroAPI::CreateMask<uint16_t, AscendC::MicroAPI::MaskPattern::ALL>();
+    for (uint16_t nIdx = 0; nIdx < nCount; nIdx++) {
+        for (uint16_t groupNumIdx = 0; groupNumIdx < groupNumCount; groupNumIdx++) {
+            MicroAPI::Gather(scaleVreg, scaleInAddr + nIdx * BLOCK_CUBE * groupNumDefaultLen + groupNumIdx * 8,
+                             ubTransIdVreg, maskAll);
+
+            MicroAPI::AddrReg aregScaleOut =
+                MicroAPI::CreateAddrReg<uint16_t>(nIdx, nStride, groupNumIdx, dstInnerStride);
+            MicroAPI::StoreAlign<uint16_t, MicroAPI::StoreDist::DIST_NORM_B16>(scaleOutAddr, scaleVreg, aregScaleOut,
+                                                                               maskAll);
+        }
+    }
+}
+
 }  // namespace WeightQuantBatchMatmulV2::Arch35
 #endif  // GROUPED_MATMUL_WEIGHT_QUANT_BASIC_BLOCK_VF_MX_H

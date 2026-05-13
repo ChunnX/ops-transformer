@@ -99,11 +99,14 @@ protected:
         cubeCompute_;
 
     uint64_t cvLoopIdx_ = 0;
+    uint64_t mxScaleBufIdx_ = 0;
 
     LocalTensor<xType> weightL1_;
     LocalTensor<biasType> biasL1_;
+    LocalTensor<fp8_e8m0_t> mxScaleBL1_;
     uint64_t weightL1DbOffset_;
     uint64_t biasL1DbOffset_;
+    uint64_t mxScaleBL1DbOffset_;
     bool hasBias_;
 };
 
@@ -128,8 +131,17 @@ __aicore__ inline void GMM_WQ_BASIC_BLOCK_CLASS::Init(bool hasBias, uint64_t ant
             l1StartSize += MX_BIAS_L1_SIZE;
         }
 
+        static constexpr uint64_t MX_SCALE_L1_SIZE = 32 * GetKBUnit<xType>() * sizeof(xType);
+        uint64_t mxScaleAL1L1StartSize = l1StartSize;
+        uint64_t mxScaleAL1L1RemainSize = l1RemainSize;
+        l1RemainSize -= DOUBLE_BUFFER_NUM * MX_SCALE_L1_SIZE;
+        l1StartSize += MX_SCALE_L1_SIZE;
+        mxScaleBL1_ = LocalTensor<fp8_e8m0_t>(TPosition::TSCM, l1StartSize, l1RemainSize / sizeof(fp8_e8m0_t));
+        mxScaleBL1DbOffset_ = (l1RemainSize - MX_SCALE_L1_SIZE) / sizeof(fp8_e8m0_t);
+
         if ASCEND_IS_AIC {
-            cubeCompute_.MxA8W4Init(aPrefetchSize, l1RemainSize, l1StartSize, biasL1DbOffset_, matmulTiling, biasL1_);
+            cubeCompute_.MxA8W4Init(aPrefetchSize, mxScaleAL1L1RemainSize, mxScaleAL1L1StartSize, biasL1DbOffset_,
+                                    matmulTiling, biasL1_, mxScaleBL1DbOffset_, mxScaleBL1_);
         } else {
             vectorCompute_.Init(tPipe, hasBias_);
         }
@@ -278,17 +290,44 @@ __aicore__ inline void GMM_WQ_BASIC_BLOCK_CLASS::ComputeBasicBlockAivNdKnNzNk(co
                              : l1ConsumeConfig.l1RealExternalLen > kMte2BaseSize
                                  ? l1ConsumeConfig.l1RealExternalLen - kMte2BaseSize
                                  : 0;
-        
+        if (cvLoopIdx_ > 1) {
+            WaitAicToAiv();
+        }
+        if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
+            if (kMte2Offset % MX_SCALE_K_L1_SIZE == 0) {
+                uint64_t mxScaleKSize = (kMte2Offset + MX_SCALE_K_L1_SIZE) > offsetParam.kSize ?
+                                            offsetParam.kSize - kMte2Offset :
+                                            MX_SCALE_K_L1_SIZE;
+                uint64_t mxScaleNSize0 = offsetParam.nL1Size > 16 ?
+                                             CeilAlign(offsetParam.nL1Size >> 1, static_cast<uint64_t>(16)) :
+                                             offsetParam.nL1Size;
+                uint64_t mxScaleNSize = (GetSubBlockIdx() == 0) ? mxScaleNSize0 : (offsetParam.nL1Size - mxScaleNSize0);
+                uint64_t mxScaleNOffset = GetSubBlockIdx() * mxScaleNSize0;
+                uint64_t mxScaleL1NOffset = GetSubBlockIdx() * mxScaleNSize0;
+
+                uint64_t mxScaleMxGroupNum = CeilDivide(offsetParam.kSize, MX_GROUPSIZE);
+                uint64_t mxScaleRealGroupNum = CeilDivide(mxScaleKSize, MX_GROUPSIZE);
+
+                vectorCompute_.WaitVToMTE2();
+                vectorCompute_.CopyWeightMxScaleGmToUb(offsetParam.nOffset + mxScaleNOffset, mxScaleNSize,
+                                                       kMte2Offset, mxScaleKSize,
+                                                       mxScaleMxGroupNum, mxScaleRealGroupNum);
+                vectorCompute_.TransWeightMxScale(mxScaleNSize, mxScaleKSize);
+                auto mxScaleBL1Current = mxScaleBL1_[(mxScaleBufIdx_ & 1) * mxScaleBL1DbOffset_];
+                auto mxScaleBL1CurrentU16 = mxScaleBL1Current.template ReinterpretCast<uint16_t>();
+                vectorCompute_.CopyWeightMxScaleUbToL1(mxScaleBL1CurrentU16,
+                                                      mxScaleL1NOffset, mxScaleNSize, mxScaleKSize);
+                vectorCompute_.SetVToMTE2();
+                mxScaleBufIdx_++;
+            }
+        }
+
         vectorCompute_.WaitVToMTE2();
         if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
             mxBiasSetParamAndGmtoUb(offsetParam, l1ConsumeConfig, ubConsumeConfig, kMte2Offset, mte2RealK);
         }
         vectorCompute_.CopyGmToUb(offsetParam.nL1Size, mte2RealK, offsetParam.nOffset,
                                   kMte2Offset + GetSubBlockIdx() * kMte2BaseSize, offsetParam);
-
-        if (cvLoopIdx_ > 1) {
-            WaitAicToAiv();
-        }
         ubConsumeConfig.l1RequireVfComputeRealK = mte2RealK;
         if constexpr (wqmmConfig.weightFormat == CubeFormat::NZ) {
             vectorCompute_.WeightAntiQuantComputeNzNk(ubConsumeConfig, weightL1_[(cvLoopIdx_ & 1) * weightL1DbOffset_],

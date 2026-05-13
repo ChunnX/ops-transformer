@@ -71,6 +71,9 @@ public:
                                    const LocalTensor<xType> &ubHighBitTotalBuffer, uint64_t highBitUbOffset);
     __aicore__ inline void WaitVToMTE2();
     __aicore__ inline void SetVToMTE2();
+    __aicore__ inline void CopyWeightMxScaleGmToUb(uint64_t nOffset, uint64_t nL1Size, uint64_t kOffset, uint64_t kSize, uint64_t mxGroupNum, uint64_t realGroupNum);
+    __aicore__ inline void TransWeightMxScale(uint64_t nSize, uint64_t kSize);
+    __aicore__ inline void CopyWeightMxScaleUbToL1(LocalTensor<uint16_t> &scaleL1, uint64_t l1NOffset, uint64_t nSize, uint64_t kSize);
     __aicore__ inline void CopyGmToUb(uint64_t ubMte2NSize, uint64_t ubMte2KSize, uint64_t ubMte2NOffset,
                                       uint64_t ubMte2KOffset, const BasicBlockOffsetParam &offsetParam);
     __aicore__ inline void CopyMxBiasGmToUb(uint64_t ubMte2MxBiasNSize, uint64_t ubMte2MxBiasNOffset);
@@ -141,6 +144,8 @@ private:
 
     TEventID vecEventIdVToMte2_[QUADRUPLE_BUFFER_NUM];
     TEventID vecEventIdMte3ToV_[QUADRUPLE_BUFFER_NUM];
+    TEventID vecEventIdTransScaleMte3ToV_[DOUBLE_BUFFER_NUM];
+    uint64_t ubTransScaleLoopIdx_ = 0;
 
     xType scaleValue_;
     xType offsetValue_;
@@ -164,6 +169,8 @@ private:
     LocalTensor<float> ubAntiQuantYBiasTotalBuffer_;
     LocalTensor<biasType> ubBiasTotalBuffer_;
     LocalTensor<biasType> ubBiasOutTotalBuffer_;
+    LocalTensor<uint16_t> transIdBuffer_;
+    LocalTensor<uint16_t> transScaleBuffer_;
 
     LocalTensor<uint64_t> ubAntiQuantScaleMaskBuffer_;
 
@@ -196,6 +203,10 @@ private:
     constexpr static VfConfig VF_CONFIG = GetVfConfig<xType, wqmmConfig, vecConfig>();
 
     constexpr static uint64_t ANTIQUANT_Y_STANDARD_N_SIZE = VECTOR_REG_WIDTH / sizeof(int32_t);
+    
+    constexpr static uint64_t TRANS_SCALE_SINGLE_BUF_SIZE = 16 * GetKBUnit<uint16_t>();
+    constexpr static uint16_t GROUP_NUM_DEFAULT_LEN = MX_SCALE_K_L1_SIZE / MX_GROUPSIZE;
+    constexpr static uint16_t MX_SCALE_BANK_CONFLICT_OFFSET = 32;
 };
 
 GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_TEMPLATE_PARAM
@@ -268,11 +279,44 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::InitMx()
     } else if constexpr (IsSameType<xType, fp8_e4m3fn_t>::value) {
         // MxA8W4
         ubWeightInputLowBitTotalBuffer_ = LocalTensor<int8_t>(TPosition::LCM, 0, UB_BUFFER_INFO.weightInputLowbitUbTotalSize); // 16KB * 4 = 64KB
-        ubHighBitTotalBuffer_ = LocalTensor<xType>(TPosition::LCM, 64 * GetKBUnit<int8_t>(), UB_BUFFER_INFO.highBitDataUbTotalSize);  // 32KB * 4 = 128KB
+        ubHighBitTotalBuffer_ = LocalTensor<xType>(TPosition::LCM, 80 * GetKBUnit<int8_t>(), UB_BUFFER_INFO.highBitDataUbTotalSize);  // 32KB * 4 = 128KB
         if (hasBias_) {
-            ubBiasTotalBuffer_ = LocalTensor<biasType>(TPosition::LCM, 192 * GetKBUnit<int8_t>(), UB_BUFFER_INFO.biasUbTotalSize);  // 2KB
-            ubBiasOutTotalBuffer_ = LocalTensor<biasType>(TPosition::LCM, 194 * GetKBUnit<int8_t>(), UB_BUFFER_INFO.biasReducedUbTotalSize); // 2KB
+            ubBiasTotalBuffer_ = LocalTensor<biasType>(TPosition::LCM, 208 * GetKBUnit<int8_t>(), UB_BUFFER_INFO.biasUbTotalSize);  // 2KB
+            ubBiasOutTotalBuffer_ = LocalTensor<biasType>(TPosition::LCM, 210 * GetKBUnit<int8_t>(), UB_BUFFER_INFO.biasReducedUbTotalSize); // 2KB
         }
+        transIdBuffer_ = LocalTensor<uint16_t>(TPosition::LCM, 212 * GetKBUnit<int8_t>(), GetKBUnit<uint16_t>()); // 1KB
+        for (uint64_t i = 0; i < 8; i++) {
+            for(uint64_t j = 0; j < 16; j++){
+                transIdBuffer_.SetValue(i * 16 + j, i + j * 80);
+            }
+        }
+        transScaleBuffer_ = LocalTensor<uint16_t>(TPosition::LCM, 213 * GetKBUnit<int8_t>(), DOUBLE_BUFFER_NUM * TRANS_SCALE_SINGLE_BUF_SIZE); // 32KB
+        for (uint16_t i = 0; i < DOUBLE_BUFFER_NUM; ++i) {
+            vecEventIdTransScaleMte3ToV_[i] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
+            SetFlag<HardEvent::MTE3_V>(vecEventIdTransScaleMte3ToV_[i]);
+        }
+        /*
+        transIdBuffer_.template ReinterpretCast<wType>()
+        // i=0 时，4 个 uint64_t 的基值（每列对应 j 的 4 个连续值）
+uint64_t base[4] = {
+    0x0180010000800000ULL,  // j=0,1,2,3
+    0x0380030002800200ULL,  // j=4,5,6,7
+    0x0580050004800400ULL,  // j=8,9,10,11
+    0x0780070006800600ULL,  // j=12,13,14,15
+};
+
+// 每行 i 增加 1，相当于 4 个 uint16 各加 1
+// 0x0001_0001_0001_0001 = 每个 uint16 分量 +1
+uint64_t inc = 0x0001000100010001ULL;
+
+for (uint64_t i = 0; i < 8; i++) {
+    uint64_t row = i * inc;
+    #pragma unroll
+    for (uint64_t c = 0; c < 4; c++) {
+        p[i * 4 + c] = base[c] + row;
+    }
+}
+    */
     } else {
         ubWeightInputLowBitTotalBuffer_ = LocalTensor<int8_t>(TPosition::LCM, 0, UB_BUFFER_INFO.weightInputLowbitUbTotalSize);  // 16KB * 4 = 64KB
         ubHighBitTotalBuffer_ = LocalTensor<xType>(TPosition::LCM, 64 * GetKBUnit<int8_t>(), UB_BUFFER_INFO.highBitDataUbTotalSize);  // 128KB
@@ -653,6 +697,65 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::WeightAnt
             ubComputeLoopIdx_++;
         }
     }
+}
+
+GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_TEMPLATE_PARAM
+__aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::CopyWeightMxScaleGmToUb(
+    uint64_t nOffset, uint64_t nL1Size, uint64_t kOffset, uint64_t kSize, uint64_t mxGroupNum, uint64_t realGroupNum)
+{
+
+    DataCopyPad2D(ubWeightInputLowBitTotalBuffer_[(ubMte2LoopIdx_ % vecConfig.ubMte2BufferNum) *
+                                                          UB_BUFFER_INFO.weightInputLowBitUbSingleBufferSize]
+                    .template ReinterpretCast<antiQuantScaleType>(),
+                    antiQuantScaleGlobal_[nOffset * mxGroupNum + CeilDivide<uint64_t>(kOffset, MX_GROUPSIZE)],
+                    nL1Size, realGroupNum,
+                    GROUP_NUM_DEFAULT_LEN + MX_SCALE_BANK_CONFLICT_OFFSET, mxGroupNum);
+
+    event_t eventIdMTE2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID<HardEvent::MTE2_V>());
+    SetFlag<HardEvent::MTE2_V>(eventIdMTE2ToV);
+    WaitFlag<HardEvent::MTE2_V>(eventIdMTE2ToV);
+    ubMte2LoopIdx_++;
+}
+
+GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_TEMPLATE_PARAM
+__aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::TransWeightMxScale(uint64_t nSize, uint64_t kSize)
+{
+    WaitFlag<HardEvent::MTE3_V>(
+        vecEventIdTransScaleMte3ToV_[ubTransScaleLoopIdx_ & (DOUBLE_BUFFER_NUM - 1)]);
+    AscendC::VF_CALL<TransMxScaleNdToDnVf<((GROUP_NUM_DEFAULT_LEN + MX_SCALE_BANK_CONFLICT_OFFSET)>> 1), VEC_MAX_ELEM_B16>>(
+        (__ubuf__ uint16_t *)ubWeightInputLowBitTotalBuffer_.GetPhyAddr(
+            ((ubMte2LoopIdx_ - 1) & (vecConfig.ubMte2BufferNum - 1)) * UB_BUFFER_INFO.weightInputLowBitUbSingleBufferSize),
+        (__ubuf__ uint16_t *)transScaleBuffer_.GetPhyAddr(
+            (ubTransScaleLoopIdx_ & (DOUBLE_BUFFER_NUM - 1)) * TRANS_SCALE_SINGLE_BUF_SIZE),
+        (__ubuf__ uint16_t *)transIdBuffer_.GetPhyAddr(), CeilDivide<uint64_t>(nSize, BLOCK_CUBE),
+        CeilDivide<uint64_t>(CeilDivide<uint64_t>(kSize, MX_GROUPSIZE) >> 1, 8),
+        (GROUP_NUM_DEFAULT_LEN * BLOCK_CUBE)>> 1);
+}
+
+GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_TEMPLATE_PARAM
+__aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::CopyWeightMxScaleUbToL1(
+    LocalTensor<uint16_t> &scaleL1, uint64_t l1NOffset, uint64_t nSize, uint64_t kSize)
+{
+    static constexpr uint16_t GROUP_NUM_DEFAULT_LEN = MX_SCALE_K_L1_SIZE / MX_GROUPSIZE;
+    
+    event_t eventIdVToMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID<HardEvent::V_MTE3>());
+    SetFlag<HardEvent::V_MTE3>(eventIdVToMTE3);
+    WaitFlag<HardEvent::V_MTE3>(eventIdVToMTE3);
+
+    DataCopyParams params;
+    params.blockCount = CeilDivide<uint64_t>(nSize, BLOCK_CUBE) * GROUP_NUM_DEFAULT_LEN / 16;
+    params.blockLen = VEC_MAX_ELEM_B16 / BLOCK_CUBE;
+    params.srcStride = 0;
+    params.dstStride = 0;
+
+    DataCopy(scaleL1[l1NOffset * GROUP_NUM_DEFAULT_LEN / 2],
+             transScaleBuffer_[(ubTransScaleLoopIdx_ & (DOUBLE_BUFFER_NUM - 1)) * TRANS_SCALE_SINGLE_BUF_SIZE]
+                 .template ReinterpretCast<uint16_t>(),
+             params);
+
+    SetFlag<HardEvent::MTE3_V>(
+        vecEventIdTransScaleMte3ToV_[ubTransScaleLoopIdx_ & (DOUBLE_BUFFER_NUM - 1)]);
+    ubTransScaleLoopIdx_++;
 }
 
 GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_TEMPLATE_PARAM
@@ -1229,6 +1332,10 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::End()
     TEventID vecEventIdAntiQuantYVToMte2[UB_ANTI_QUANT_Y_BUFFER_NUM] = {vecEventIdAntiQuantYVToMte2_[0],
                                                                         vecEventIdAntiQuantYVToMte2_[1]};
 
+    for (uint16_t idx = 0; idx < ubTransScaleLoopIdx_ && idx < DOUBLE_BUFFER_NUM; idx++) {
+        WaitFlag<HardEvent::MTE3_V>(vecEventIdTransScaleMte3ToV_[idx]);
+    }
+
     for (uint16_t idx = 0; idx < ubComputeLoopIdx_ && idx < UB_BUFFER_INFO.ubWeightOutputHighBitBufferNum; idx++) {
         WaitFlag<HardEvent::MTE3_V>(vecEventIdMte3ToV[idx]);
     }
@@ -1245,6 +1352,10 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::End()
 
     for (uint16_t idx = 0; idx < vecConfig.ubMte2BufferNum; idx++) {
         GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE2>(vecEventIdVToMte2[idx]);
+    }
+
+    for (uint16_t idx = 0; idx < DOUBLE_BUFFER_NUM; idx++) {
+        GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(vecEventIdTransScaleMte3ToV_[idx]);
     }
 
     for (uint16_t idx = 0; idx < UB_BUFFER_INFO.ubWeightOutputHighBitBufferNum; idx++) {
