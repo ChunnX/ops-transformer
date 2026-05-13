@@ -81,21 +81,6 @@ bool LightningIndexerV2MetadataCpuKernel::CheckTensorData()
         return false;
     }
     if (isValid(seqUsedQ_) && seqUsedQ_->GetData() == nullptr) {
-        if (seqUsedQ_ == nullptr) {
-            KERNEL_LOG_ERROR("seqUsedQ_ is nullptr!");
-        } else {
-            KERNEL_LOG_ERROR("seqUsedQ_ is not nullptr!");
-        }
-
-        if (seqUsedQ_->GetTensorShape() == nullptr) {
-            KERNEL_LOG_ERROR("seqUsedQ_->GetTensorShape() is nullptr!");
-        } else {
-            KERNEL_LOG_ERROR("seqUsedQ_->GetTensorShape() is not nullptr!");
-            KERNEL_LOG_ERROR("seqUsedQ_->GetTensorShape()->GetDimSize(0) is %d!",
-                seqUsedQ_->GetTensorShape()->GetDimSize(0));
-        }
-
-
         KERNEL_LOG_ERROR("The data of seqused_q is nullptr!");
         return false;
     }

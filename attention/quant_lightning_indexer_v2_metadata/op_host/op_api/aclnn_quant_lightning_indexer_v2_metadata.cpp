@@ -311,10 +311,11 @@ aclnnStatus aclnnQuantLightningIndexerV2MetadataGetWorkspaceSize(
     const std::string socVersion = npuInfo.GetSocLongVersion();
 
     auto ret = ParamsCheckQliV2(cuSeqlensQOptional, cuSeqlensKOptional, sequsedQOptional, sequsedKOptional,
-                           cmpResidualKOptional,
-                           numHeadsQ, numHeadsK, topk, qQuantMode, kQuantMode, batchSizeOptional, maxSeqlenQOptional,
-                           maxSeqlenKOptional, layoutQOptional, layoutKOptional, maskModeOptional, cmpRatioOptional,
-                           aicCoreNum, aivCoreNum, socVersion);
+                                cmpResidualKOptional,
+                                numHeadsQ, numHeadsK, topk, qQuantMode, kQuantMode, batchSizeOptional,
+                                maxSeqlenQOptional, maxSeqlenKOptional, layoutQOptional, layoutKOptional,
+                                maskModeOptional, cmpRatioOptional,
+                                aicCoreNum, aivCoreNum, socVersion);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     const aclTensor *cuSeqlensQOptionalContiguous = nullptr;

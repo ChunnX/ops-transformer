@@ -18,7 +18,7 @@
 extern "C" {
 #endif
 
-__attribute__((visibility("default"))) 
+__attribute__((visibility("default")))
 aclnnStatus aclnnQuantLightningIndexerV2MetadataGetWorkspaceSize(
     const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKOptional, const aclTensor *sequsedQOptional,
     const aclTensor *sequsedKOptional, const aclTensor *cmpResidualKOptional,
@@ -27,7 +27,7 @@ aclnnStatus aclnnQuantLightningIndexerV2MetadataGetWorkspaceSize(
     char *layoutKOptional, int64_t maskModeOptional, int64_t cmpRatioOptional,
     const aclTensor *metaData, uint64_t *workspaceSize, aclOpExecutor **executor);
 
-__attribute__((visibility("default"))) 
+__attribute__((visibility("default")))
 aclnnStatus aclnnQuantLightningIndexerV2Metadata(void* workspace, uint64_t workspaceSize, aclOpExecutor *executor,
     aclrtStream stream);
 

@@ -43,4 +43,3 @@ if _TORCHAIR_AVAILABLE:
         cmp_ratio: Optional[int] = None,
         meta_outputs: TensorSpec = None):
         raise RuntimeError("GE converter doesn't support op: 'npu_quant_lightning_indexer_v2_metadata'")
-        return None

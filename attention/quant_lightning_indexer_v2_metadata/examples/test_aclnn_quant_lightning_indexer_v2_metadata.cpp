@@ -29,6 +29,36 @@
         }                                           \
     } while (0)
 
+// 参考 quant_lightning_indexer_v2_metadata.h
+constexpr uint32_t AIC_CORE_NUM = 36;
+constexpr uint32_t AIV_CORE_NUM = 72;
+constexpr uint32_t QLI_V2_METADATA_SIZE = 8;
+constexpr uint32_t QLD_V2_METADATA_SIZE = 8;
+
+// QLI Metadata Index Definitions
+constexpr uint32_t QLI_V2_CORE_ENABLE_INDEX = 0;
+constexpr uint32_t QLI_V2_BN2_START_INDEX = 1;
+constexpr uint32_t QLI_V2_M_START_INDEX = 2;
+constexpr uint32_t QLI_V2_S2_START_INDEX = 3;
+constexpr uint32_t QLI_V2_BN2_END_INDEX = 4;
+constexpr uint32_t QLI_V2_M_END_INDEX = 5;
+constexpr uint32_t QLI_V2_S2_END_INDEX = 6;
+constexpr uint32_t QLI_V2_FIRST_QLD_V2_DATA_WORKSPACE_IDX_INDEX = 7;
+
+// QLD Metadata Index Definitions
+constexpr uint32_t QLD_V2_CORE_ENABLE_INDEX = 0;
+constexpr uint32_t QLD_V2_BN2_IDX_INDEX = 1;
+constexpr uint32_t QLD_V2_M_IDX_INDEX = 2;
+constexpr uint32_t QLD_V2_WORKSPACE_IDX_INDEX = 3;
+constexpr uint32_t QLD_V2_WORKSPACE_NUM_INDEX = 4;
+constexpr uint32_t QLD_V2_M_START_INDEX = 5;
+constexpr uint32_t QLD_V2_M_NUM_INDEX = 6;
+
+struct QliV2MetaData {
+    uint32_t faData[AIC_CORE_NUM][QLI_V2_METADATA_SIZE];
+    uint32_t fdData[AIV_CORE_NUM][QLD_V2_METADATA_SIZE];
+};
+
 struct ScopeGuard
 {
     explicit ScopeGuard(std::function<void()> onExitScope) : m_exitFunc(std::move(onExitScope)),
@@ -272,6 +302,33 @@ int main() {
     // 4. （固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclrtSynchronizeStream failed. ERROR: %d\n", ret);
+
+    // 5. 打印输出
+    QliV2MetaData result {};
+    ret = aclrtMemcpy(&result, sizeof(result), context.metaData.deviceAddr, sizeof(result), ACL_MEMCPY_DEVICE_TO_HOST);
+    CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclrtMemcpy failed. ERROR: %d\n", ret);
+
+    for (uint32_t i = 0; i < AIC_CORE_NUM; ++i) {
+        printf("AIC Core%u\n", i);
+        printf("    Core Enable : %u\n", result.faData[i][QLI_V2_CORE_ENABLE_INDEX]);
+        printf("    Start BN2   : %u\n", result.faData[i][QLI_V2_BN2_START_INDEX]);
+        printf("    Start M     : %u\n", result.faData[i][QLI_V2_M_START_INDEX]);
+        printf("    Start S2    : %u\n", result.faData[i][QLI_V2_S2_START_INDEX]);
+        printf("    End BN2     : %u\n", result.faData[i][QLI_V2_BN2_END_INDEX]);
+        printf("    End M       : %u\n", result.faData[i][QLI_V2_M_END_INDEX]);
+        printf("    End S2      : %u\n", result.faData[i][QLI_V2_S2_END_INDEX]);
+        printf("    First Worksapce Index : %u\n", result.faData[i][QLI_V2_FIRST_QLD_V2_DATA_WORKSPACE_IDX_INDEX]);
+    }
+    for (uint32_t i = 0; i < AIV_CORE_NUM; ++i) {
+        printf("AIV Core%u\n", i);
+        printf("    Core Enable             : %u\n", result.fdData[i][QLD_V2_CORE_ENABLE_INDEX]);
+        printf("    FD Task BN2 Idx         : %u\n", result.fdData[i][QLD_V2_BN2_IDX_INDEX]);
+        printf("    FD Task M Idx           : %u\n", result.fdData[i][QLD_V2_M_IDX_INDEX]);
+        printf("    FD Task S2 Idx          : %u\n", result.fdData[i][QLD_V2_WORKSPACE_IDX_INDEX]);
+        printf("    FD Task Workspace Num   : %u\n", result.fdData[i][QLD_V2_WORKSPACE_NUM_INDEX]);
+        printf("    FD Subtask M Start      : %u\n", result.fdData[i][QLD_V2_M_START_INDEX]);
+        printf("    FD Subtask M Num        : %u\n", result.fdData[i][QLD_V2_M_NUM_INDEX]);
+    }
 
     return 0;
 }
