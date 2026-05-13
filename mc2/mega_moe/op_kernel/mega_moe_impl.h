@@ -354,12 +354,10 @@ __aicore__ inline void GroupMatmul2(
 
         if constexpr (g_coreType == AscendC::AIV) {
             WaitForCube(pingpongIdx);
-            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
-            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
+            PipeBarrier<PIPE_ALL>();
             MegaMoeCombineImpl::CombineTokens<ElementC, decltype(actualShape)>(
                 mLoc, nLoc, n, groupIdx, rankId, gmmAddrInfo.mBaseOffset, l0cOutUbGMM2, actualShape, params);
-            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
+            PipeBarrier<PIPE_ALL>();
             NotifyCube(pingpongIdx);
         }
         pingpongIdx = 1 - pingpongIdx;

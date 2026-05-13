@@ -59,6 +59,7 @@ private:
     __aicore__ inline void ExpertTokenNumCopyOut();
     __aicore__ inline void BuildRemoteTriplets();
     __aicore__ inline void DispatchTokens(GMMAddrInfo &gmmAddrInfo, uint32_t expertIdx);
+    __aicore__ inline int32_t GetRemoteTripletRowOffset(uint32_t srcRankIdx, uint32_t expertIdx);
     __aicore__ inline bool UpdateGroupParams(uint32_t expertIdx);
     __aicore__ inline void UpdateGlobalBuffer(GMMAddrInfo &gmmAddrInfo, uint32_t gmmIndex);
     __aicore__ inline void ArgSortExpandedRowIdx();
@@ -303,11 +304,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::BuildRemoteTriplets()
                 uint32_t topkId = static_cast<uint32_t>(expandedRow % static_cast<int32_t>(topK_));
                 int32_t packedTriplet = EncodeTriplet(rankId_, tokenId, topkId);
                 remoteTripletGm.SetValue(rowBase + rowOffset, packedTriplet);
-                if (rankId_ < 2 && expertIdx < 2 && rowOffset < 4) {
-                    PRINTF("[AIV BuildTripletRow] block=%d ownerRank=%d expertRank=%d expert=%d row=%d expandedRow=%d token=%d topk=%d packed=%d\n",
-                        GetBlockIdx(), rankId_, toRankId, expertIdx, rowBase + rowOffset, expandedRow, tokenId,
-                        topkId, packedTriplet);
-                }
             }
             rowBase += rowCount;
         }
@@ -518,6 +514,22 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CopyGMToGMPerTokenV2(
 }
 
 template <TemplateMegaMoeTypeClass>
+__aicore__ inline int32_t MegaMoe<TemplateMegaMoeTypeFunc>::GetRemoteTripletRowOffset(
+    uint32_t srcRankIdx, uint32_t expertIdx)
+{
+    int32_t rowOffset = 0;
+    for (uint32_t toRank = 0; toRank < rankId_; ++toRank) {
+        for (uint32_t expIdx = 0; expIdx < expertPerRank_; ++expIdx) {
+            rowOffset += tokenPerExpertWin_(TokenPerExpertLayout(srcRankIdx, toRank, expIdx));
+        }
+    }
+    for (uint32_t prevExpert = 0; prevExpert < expertIdx; ++prevExpert) {
+        rowOffset += tokenPerExpertWin_(TokenPerExpertLayout(srcRankIdx, rankId_, prevExpert));
+    }
+    return rowOffset;
+}
+
+template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchTokens(GMMAddrInfo &gmmAddrInfo, uint32_t expertIdx)
 {
     int64_t widthA = Get<K_VALUE>(problemShape_); // H 长度
@@ -532,14 +544,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchTokens(GMMAddrI
             cumsumInWorkSpace_((dstRankIdx - 1) * expertPerRank_ + expertIdx));
         if (rowStartInDst < maxOutputSize_) {
             int32_t rowsCopyCnt = tokenPerExpertWin_(TokenPerExpertLayout(dstRankIdx, rankId_, expertIdx));
+            int32_t rowSrcBase = GetRemoteTripletRowOffset(dstRankIdx, expertIdx);
             if (rowStartInDst + rowsCopyCnt > maxOutputSize_) {
                 rowsCopyCnt = maxOutputSize_ - rowStartInDst;
             }
-            int32_t rowSrcOffset = prevSum_;
-            prevSum_ += rowsCopyCnt;
             int32_t rowsPerCore = Ops::Base::CeilDiv(rowsCopyCnt, static_cast<int32_t>(dispatchBlockNumPerEP_));
             int32_t rowDstOffsetPerCore = rowStartInDst + aivIdxInGroup * rowsPerCore;
-            int32_t rowSrcOffsetPerCore = rowSrcOffset + aivIdxInGroup * rowsPerCore;
+            int32_t rowSrcOffsetPerCore = rowSrcBase + aivIdxInGroup * rowsPerCore;
             if (rowDstOffsetPerCore + rowsPerCore > rowStartInDst + rowsCopyCnt) {
                 rowsPerCore = rowStartInDst + rowsCopyCnt - rowDstOffsetPerCore;
             }
@@ -558,13 +569,15 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchTokens(GMMAddrI
                     GetRankWinAddrWithOffset(dstRankIdx, remoteTripletOffset)));
                 __gm__ int32_t* remoteTripletReady = (__gm__ int32_t*)GetRankWinAddrWithOffset(dstRankIdx, 0);
                 GmSignalWaitBarrier(remoteTripletReady, 1);
+                DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(gmRemoteTriplet);
+                DataCacheCleanAndInvalid<QuantOutType, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(gmRemoteA);
                 aGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ QuantOutType*>(gmmAddrInfo.aGlobal));
                 aScaleGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ QuantScaleOutType*>(
                     gmmAddrInfo.aScaleGlobal));
                 if (rankId_ < 2 && expertIdx < 2) {
-                    PRINTF("[AIV Dispatch] block=%d rank=%d expert=%d srcRank=%d aivIdx=%d rowStart=%d rowsCopy=%d rowSrc=%d rowDst=%d rowsPerCore=%d tripletReady=%d\n",
+                    PRINTF("[AIV Dispatch] block=%d rank=%d expert=%d srcRank=%d aivIdx=%d rowStart=%d rowsCopy=%d rowSrcBase=%d rowDst=%d rowsPerCore=%d tripletReady=%d\n",
                         GetBlockIdx(), rankId_, expertIdx, dstRankIdx, aivIdxInGroup, rowStartInDst, rowsCopyCnt,
-                        rowSrcOffset, rowDstOffsetPerCore, rowsPerCore, ReadGmByPassDCache(remoteTripletReady));
+                        rowSrcBase, rowDstOffsetPerCore, rowsPerCore, ReadGmByPassDCache(remoteTripletReady));
                 }
                 CopyGMToGMPerTokenV2(aGlobalTensor[gmOffsetA], aScaleGlobalTensor[gmOffsetAScale],
                     gmRemoteA[gmOffsetPeer], rowsPerCore, widthA, pingpongId);
@@ -572,26 +585,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchTokens(GMMAddrI
                     int32_t packedTriplet = gmRemoteTriplet.GetValue(rowSrcOffsetPerCore + rowOffset);
                     uint32_t localTripletRow = rowDstOffsetPerCore + rowOffset;
                     uint32_t globalTripletRow = gmmAddrInfo.mBaseOffset + localTripletRow;
-                    tripletGm_.SetValue(globalTripletRow, packedTriplet);
-                    if (rankId_ < 2 && expertIdx < 2 && rowOffset < 8) {
-                        PRINTF("[AIV DispatchTriplet] block=%d rank=%d expert=%d groupBase=%d srcRank=%d srcRow=%d localDstRow=%d globalDstRow=%d packed=%d toRank=%d token=%d topk=%d\n",
-                            GetBlockIdx(), rankId_, expertIdx, gmmAddrInfo.mBaseOffset, dstRankIdx,
-                            rowSrcOffsetPerCore + rowOffset, localTripletRow, globalTripletRow, packedTriplet,
-                            DecodeTripletRank(packedTriplet), DecodeTripletToken(packedTriplet), DecodeTripletTopk(packedTriplet));
-                    }
+                    WriteGmByPassDCache((__gm__ int32_t*)params_.workspaceInfo.ptrTriplet + globalTripletRow,
+                        packedTriplet);
                 }
             }
         }
         DataSyncBarrier<MemDsbT::DDR>();
-        DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(tripletGm_);
-        if (rankId_ < 2 && expertIdx < 2 && blockIdx_ == 1) {
-            for (int32_t debugRow = 0; debugRow < 8 && debugRow < static_cast<int32_t>(maxOutputSize_); ++debugRow) {
-                int32_t packedTriplet = tripletGm_.GetValue(debugRow);
-                PRINTF("[AIV DispatchTripletDump] block=%d rank=%d expert=%d row=%d packed=%d toRank=%d token=%d topk=%d\n",
-                    GetBlockIdx(), rankId_, expertIdx, debugRow, packedTriplet, DecodeTripletRank(packedTriplet),
-                    DecodeTripletToken(packedTriplet), DecodeTripletTopk(packedTriplet));
-            }
-        }
         SyncFunc<AscendC::HardEvent::MTE3_S>();
         AtomicAdd((__gm__ int32_t*)(groupFlagListGm2_.GetPhyAddr()), int32_t(1));
     }
@@ -769,20 +768,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
         for (int32_t expId = 0; expId < topK_; ++expId) {
             int32_t rowIdx = tokenIdx * topK_ + expId;
             float expScale = topKWeightsTensor_.GetValue(tokenIdx * topK_ + expId);
-            if (rankId_ < 2 && coreLen > 0 && tokenIdx < 2 && expId < 6) {
-                PRINTF("[AIV RowWait] block=%d rank=%d token=%d exp=%d rowIdx=%d curCnt=%d expectCnt=%d\n",
-                    GetBlockIdx(), rankId_, tokenIdx, expId, rowIdx,
-                    ReadGmByPassDCache(rowReady + rowIdx), expectedRowTileCount);
-            }
             int32_t curTileCount = ReadGmByPassDCache(rowReady + rowIdx);
             while (curTileCount < expectedRowTileCount) {
                 PipeBarrier<PIPE_ALL>();
                 curTileCount = ReadGmByPassDCache(rowReady + rowIdx);
             }
-            if (rankId_ < 2 && coreLen > 0 && tokenIdx < 2 && expId < 6) {
-                PRINTF("[AIV RowReady] block=%d rank=%d token=%d exp=%d rowIdx=%d finalCnt=%d scale=%f\n",
-                    GetBlockIdx(), rankId_, tokenIdx, expId, rowIdx, curTileCount, expScale);
-            }
+            DataCacheCleanAndInvalid<bfloat16_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(expandedX);
             auto event = (expId % 2 == 0) ? EVENT_ID0 : EVENT_ID1;
             auto dataInBf16 = (expId % 2 == 0) ? dataIn0Bf16 : dataIn1Bf16;
             auto dataInFp32 = (expId % 2 == 0) ? dataIn0Fp32 : dataIn1Fp32;
@@ -809,11 +800,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
         Cast(dataResBf16, dataResFp32, AscendC::RoundMode::CAST_RINT, k_);
         SyncFunc<AscendC::HardEvent::V_MTE3>();
         DataCopy(output[tokenIdx * k_], dataResBf16, k_);
-        if (rankId_ < 2 && tokenIdx < 2) {
-            PRINTF("[AIV UnpermuteWrite] block=%d rank=%d token=%d out0=%f out1=%f out2=%f out3=%f\n",
-                GetBlockIdx(), rankId_, tokenIdx, (float)dataResFp32.GetValue(0), (float)dataResFp32.GetValue(1),
-                (float)dataResFp32.GetValue(2), (float)dataResFp32.GetValue(3));
-        }
     }
     WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
     WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
