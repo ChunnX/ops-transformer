@@ -289,9 +289,9 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::ProcessToke
     xTmpTensor_ = xQueue_.DeQue<XType>();
 
     SyncFunc<AscendC::HardEvent::MTE3_S>();
-    LocalTensor<int32_t> xOutTint32 = xTmpTensor_.template ReinterpretCast<int32_t>();
-    xOutTint32(axisH_) = epRankId_;       // 记录源rank
-    xOutTint32(axisH_ + 1) = tokenIndex;  // 记录token索引
+    // LocalTensor<int32_t> xOutTint32 = xTmpTensor_.template ReinterpretCast<int32_t>();
+    // xOutTint32(axisH_) = epRankId_;       // 记录源rank
+    // xOutTint32(axisH_ + 1) = tokenIndex;  // 记录token索引
     SyncFunc<AscendC::HardEvent::S_MTE3>();
 
     // 写入目标rank的窗口
