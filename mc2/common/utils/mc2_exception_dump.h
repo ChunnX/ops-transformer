@@ -432,6 +432,11 @@ inline int ProcessArgs910B(void* devArgsPtr, std::vector<uint8_t> &winBuf, uint3
 inline void Mc2ExceptionImpl(aclrtExceptionInfo *args, void *userdata, const char *op)
 {
     const char* socName = aclrtGetSocName();
+    if((std::strstr(socName, "Ascend950") == nullptr) && (std::strstr(socName, "Ascend910_93") == nullptr)
+        && (std::strstr(socName, "Ascend910B") == nullptr)) { 
+        OP_LOGE(OP_NAME, "The soc version is %s, skip dump process", socName); 
+        return; 
+    }
 
     OP_LOGD(OP_NAME, "Start to handle mc2 exception and dump win info.");
 
