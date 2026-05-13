@@ -1009,7 +1009,7 @@ ge::graphStatus CheckKVNzShape(const gert::TilingContext *context)
                         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
                             "The first dimension of kv should to be :%ld.", numBlocks),
                                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF((tempK->GetStorageShape().GetDim(DIM_4) != 16) || (tempV->GetStorageShape().GetDim(DIM_0) != 16),
+    OP_CHECK_IF((tempK->GetStorageShape().GetDim(DIM_4) != 16) || (tempV->GetStorageShape().GetDim(DIM_4) != 16),
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "The last dimension of kv should to be 16."),
             return ge::GRAPH_FAILED);
     OP_CHECK_IF((tempK->GetStorageShape().GetDim(DIM_3) != blockSize) ||
