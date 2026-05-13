@@ -60,8 +60,8 @@ using namespace ge;
 namespace optiling {
 
 // ============ 输入输出索引常量 ============
-constexpr uint32_t INPUT_X_INDEX = 0U;          // 输入x的索引
-constexpr uint32_t INPUT_EXPERT_ID_INDEX = 1U;  // 输入expert_id的索引
+constexpr uint32_t INPUT_X_INDEX = 1U;          // 输入x的索引
+constexpr uint32_t INPUT_EXPERT_ID_INDEX = 2U;  // 输入expert_id的索引
 constexpr uint32_t OUTPUT_Y_INDEX = 0U;         // 输出y的索引
 constexpr uint32_t OUTPUT_RECEIVE_CNT_INDEX = 1U; // 输出receive_cnt的索引
 
