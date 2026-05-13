@@ -84,7 +84,7 @@ private:
     __aicore__ inline GM_ADDR GetWindAddrByRankId(const int32_t rankId)
     {
         //return Mc2Kernel::GetBaseWindAddrByRankId(winContext_, rankId, epRankId_) + winDataSizeOffset_;
-        return (GM_ADDR)context_->epHcclBuffer_[rankId] + STATE_SIZE + winDataSizeOffset;
+        return (GM_ADDR)context_->epHcclBuffer_[rankId] + STATE_SIZE + winDataSizeOffset_;
     }
 
     // 获取指定 rank 的通信窗口状态区地址
