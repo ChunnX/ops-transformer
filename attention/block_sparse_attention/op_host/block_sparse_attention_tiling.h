@@ -186,6 +186,7 @@ private:
     ge::graphStatus ValidateKDequantScale(gert::TilingContext *bsaContext);
     ge::graphStatus ValidateVDequantScale(gert::TilingContext *bsaContext);
     ge::graphStatus CheckBlockShapeQuantContraint(gert::TilingContext *bsaContext);
+    ge::graphStatus CheckAllInputShape(gert::TilingContext *bsaContext);
     ge::graphStatus ValidateTNDSeqlenSum(gert::TilingContext *bsaContext);
     // 950 exclusive
     uint32_t GetCurQSTileNum950(int64_t curQSeqlen);
