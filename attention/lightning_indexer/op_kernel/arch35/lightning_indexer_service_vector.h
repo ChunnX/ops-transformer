@@ -154,9 +154,9 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::InitBuffers(TPipe *pi
     pipe->InitBuffer(resMm1Buf_, 2 * CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_ * sizeof(float));
     resMm1UB_ = resMm1Buf_.Get<float>();
     
-    pipe->InitBuffer(weightBuf_, LICommon::Align(2 * CeilDiv(s1BaseSize_, 2) * gSize_ * sizeof(W_T), (uint64_t)32));
+    pipe->InitBuffer(weightBuf_, LICommon::Align((uint64_t)(2 * CeilDiv(s1BaseSize_, 2) * gSize_ * sizeof(W_T)), (uint64_t)32));
     weightUB_ = weightBuf_.Get<W_T>();
-    pipe->InitBuffer(weightFloatBuf_, LICommon::Align(2 * CeilDiv(s1BaseSize_, 2) * gSize_ * sizeof(float), (uint64_t)32));
+    pipe->InitBuffer(weightFloatBuf_, LICommon::Align((uint64_t)(2 * CeilDiv(s1BaseSize_, 2) * gSize_ * sizeof(float)), (uint64_t)32));
     weightFloatUB_ = weightFloatBuf_.Get<float>();
     pipe->InitBuffer(outBuf_,
                     2 * CeilDiv(s1BaseSize_, 2) * s2BaseSize_ * sizeof(SCORE_T));      // 大小：2(开dB) * 2 * 128 * 4 = 2KB
@@ -314,16 +314,16 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec1(const LIC
         qwDataCopyExtParams.blockLen = curAivS1ProcNum * gSize_* sizeof(W_T);
         qwDataCopyExtParams.srcStride = 0;
         qwDataCopyExtParams.dstStride = 0;
-        DataCopyPad(weightUB_[LICommon::Align((info.loop % 2) * CeilDiv(s1BaseSize_, 2) * gSize_, (uint64_t)32)], 
+        DataCopyPad(weightUB_[LICommon::Align((uint64_t)((info.loop % 2) * CeilDiv(s1BaseSize_, 2) * gSize_), (uint64_t)32)], 
                     weightsGm[weightGmOffset], qwDataCopyExtParams, padWeightsParams);
 
         SetFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + (info.loop % 2));
         WaitFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + (info.loop % 2));
         WaitFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + (info.loop % 2));
         for (int64_t s1IdxTmp = 0; s1IdxTmp < curAivS1ProcNum; s1IdxTmp++) {
-            vector1::MulWeightAndReduceSum(vec1OutUB_[LICommon::Align((info.loop % 2) * CeilDiv(s1BaseSize_, 2) * s2BaseSize_ + s1IdxTmp * s2BaseSize_, (uint64_t)32)], 
-                                    resMm1UB_[LICommon::Align((info.loop % 2) * CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_ + s1IdxTmp * gSize_ * s2BaseSize_, (uint64_t)32)], 
-                                    weightUB_[LICommon::Align((info.loop % 2) * CeilDiv(s1BaseSize_, 2) * gSize_ + s1IdxTmp * gSize_, (uint64_t)32)], 
+            vector1::MulWeightAndReduceSum(vec1OutUB_[LICommon::Align((uint64_t)((info.loop % 2) * CeilDiv(s1BaseSize_, 2) * s2BaseSize_ + s1IdxTmp * s2BaseSize_), (uint64_t)32)], 
+                                    resMm1UB_[LICommon::Align((uint64_t)((info.loop % 2) * CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_ + s1IdxTmp * gSize_ * s2BaseSize_), (uint64_t)32)], 
+                                    weightUB_[LICommon::Align((uint64_t)((info.loop % 2) * CeilDiv(s1BaseSize_, 2) * gSize_ + s1IdxTmp * gSize_), (uint64_t)32)], 
                                     gSize_);
         }
         SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + (info.loop % 2));
