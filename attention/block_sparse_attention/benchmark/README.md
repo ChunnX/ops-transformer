@@ -104,13 +104,12 @@ dumps below).
 ### Run 1 — `block_shape=[128, 128]`
 
 ```
-============================================================================================
+==========================================================================================
   KERNEL=block_sparse_attention  DTYPE=torch.bfloat16  INPUT_LAYOUT='BNSD'
-  BLOCK_SIZE_Q=128  BLOCK_SIZE_KV=128  SABI_SORTED=True
+  BLOCK_SIZE_Q=128  BLOCK_SIZE_KV=128
   FrameWidths(left_cols=29, right_cols=1, top_rows=29, bottom_rows=1)
   TORCH_REFERENCE='npu_fusion_attention'
-  (atten_mask=nullptr — intra-block masking dropped; sparsity 0 row will diverge from ref)
-============================================================================================
+==========================================================================================
   H   B    s_q   s_kv    D  sparsity   Outputs_equal Ref_Latency_[usec] Our_Latency_[usec]
 --------------------------------------------------------------------------------------------
   3   1 118806 118806  128      0.00             yes          157260.96          149960.13
@@ -139,13 +138,12 @@ sparsity 0.9 feasible (was infeasible with `FrameWidths(29,1,29,1)` at
 this granularity).
 
 ```
-============================================================================================
+==========================================================================================
   KERNEL=block_sparse_attention  DTYPE=torch.bfloat16  INPUT_LAYOUT='BNSD'
-  BLOCK_SIZE_Q=128  BLOCK_SIZE_KV=512  SABI_SORTED=True  (KV overridden via BSA_BLOCK_SIZE_KV=512)
-  FrameWidths(left_cols=8, right_cols=1, top_rows=29, bottom_rows=1)  (overridden via BSA_FRAME)
+  BLOCK_SIZE_Q=128  BLOCK_SIZE_KV=512
+  FrameWidths(left_cols=29, right_cols=1, top_rows=29, bottom_rows=1)
   TORCH_REFERENCE='npu_fusion_attention'
-  (atten_mask=nullptr — intra-block masking dropped; sparsity 0 row will diverge from ref)
-============================================================================================
+==========================================================================================
   H   B    s_q   s_kv    D  sparsity   Outputs_equal Ref_Latency_[usec] Our_Latency_[usec]
 --------------------------------------------------------------------------------------------
   3   1 118806 118806  128      0.00             yes          157377.81          150151.43
