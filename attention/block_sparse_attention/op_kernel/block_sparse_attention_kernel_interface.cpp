@@ -203,11 +203,11 @@ __global__ __aicore__ void BsaInferInterfaceFullQuant(
     using ElementSparseMask = uint8_t;
     using ElementSparseIdx = int32_t;
     using ElementSparseCount = int32_t;
-    using ElementQ = InDtype;    // float8_e4m3_t
-    using ElementK = InDtype;    // float8_e4m3_t
-    using ElementV = InDtype;    // float8_e4m3_t
+    using ElementQ = InDtype;    // fp8_e4m3fn_t
+    using ElementK = InDtype;    // fp8_e4m3fn_t
+    using ElementV = InDtype;    // fp8_e4m3fn_t
     using ElementS = SMDtype;    // half/bloat16_t
-    using ElementP = InDtype;    // float8_e4m3_t
+    using ElementP = InDtype;    // fp8_e4m3fn_t
     using ElementO = SMDtype;    // half/bloat16_t
     using ElementOTmp = REDtype; // float
     // layout tags

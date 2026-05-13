@@ -28,13 +28,13 @@ class BsaFullQuantKernelArch35 {
 public:
     using ArchTag = typename BlockMmadPV::ArchTag;
     
-    using ElementQ = typename BlockMmadQK::ElementA;
-    using ElementK = typename BlockMmadQK::ElementB;
-    using ElementS = typename EpilogueOnlineSoftmax::ElementInput;
-    using ElementP = typename BlockMmadPV::ElementA;
-    using ElementV = typename BlockMmadPV::ElementB;
-    using ElementOTmp = typename BlockMmadPV::ElementC;
-    using ElementO = typename BlockMmadQK::ElementA;
+    using ElementQ = typename BlockMmadQK::ElementA; // fp8_e4m3fn_t
+    using ElementK = typename BlockMmadQK::ElementB; // fp8_e4m3fn_t
+    using ElementS = typename EpilogueOnlineSoftmax::ElementInput; // half/bloat16_t
+    using ElementP = typename BlockMmadPV::ElementA; // fp8_e4m3fn_t
+    using ElementV = typename BlockMmadPV::ElementB; // fp8_e4m3fn_t
+    using ElementOTmp = typename BlockMmadPV::ElementC; // float
+    using ElementO = typename EpilogueOnlineSoftmax::ElementInput; // half/bloat16_t
     using ElementSparseMask = typename EpilogueMask2Idx::ElementSparseMask;
     using ElementSparseIdx = typename EpilogueMask2Idx::ElementSparseIdx;
     using ElementSparseCount = typename EpilogueMask2Idx::ElementSparseCount;
