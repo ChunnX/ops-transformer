@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file load_balance_common.h
+ * \file stream_k.h
  * \brief
  */
 
@@ -180,9 +180,7 @@ static Layout ConvertToLayout(const std::string &layoutStr)
         { "NBSD",  Layout::NBSD },
         { "TND",   Layout::TND },
         { "NTD",   Layout::NTD },
-        { "PA_NZ", Layout::PA_NZ },
-        { "PA_BBND", Layout::PA_BBND },
-        { "PA_BNBD", Layout::PA_BNBD }
+        { "PA_NZ", Layout::PA_NZ }
     };
     if (layoutTable.find(layoutStr) != layoutTable.end()) {
         return layoutTable[layoutStr];
