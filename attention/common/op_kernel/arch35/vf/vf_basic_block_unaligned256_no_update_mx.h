@@ -745,6 +745,7 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl256Mxfp8FullquantVFSubloop1(
     Add(vreg_exp_sum3, first_loop_sum, vreg_exp_sum_brc, preg_all);
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)expSumUb, vreg_exp_sum3, preg_all);
     // todo pscale
+    Duplicate(vreg_p_scale, static_cast<float>(1.0f));
     Mul(vreg_p_scale, vreg_exp_max, vreg_p_scale, preg_all);
     RegTensor<bfloat16_t> vreg_p_scale_bf16_0;
     RegTensor<bfloat16_t> vreg_p_scale_bf16_1;
