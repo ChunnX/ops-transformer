@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-# This file is a part of the CANN Open Software.
-# Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
-# BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, 
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
-# Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 """
 Benchmark driver for `attention/block_sparse_attention` via
 `npu_ops_transformer.ops.block_sparse_attention` (provided by the
@@ -65,7 +64,7 @@ from util import (
 BLOCK_SIZE_KV = int(os.environ.get("BSA_BLOCK_SIZE_KV", _DEFAULT_BLOCK_SIZE_KV))
 
 # Allow overriding the frame widths from the environment.
-# Format: "left,right,top,bottom" (e.g. BSA_FRAME=8,1,29,1).
+# Format "left,right,top,bottom" (e.g. BSA_FRAME=8,1,29,1).
 # Frame widths are in BLOCK units. When the KV block size grows the same
 # left/right "block count" covers more KV tokens — so to keep the per-row
 # token coverage comparable across granularities, scale left/right
@@ -73,7 +72,8 @@ BLOCK_SIZE_KV = int(os.environ.get("BSA_BLOCK_SIZE_KV", _DEFAULT_BLOCK_SIZE_KV))
 _BSA_FRAME_ENV = os.environ.get("BSA_FRAME")
 if _BSA_FRAME_ENV is not None:
     _parts = [int(x.strip()) for x in _BSA_FRAME_ENV.split(",")]
-    assert len(_parts) == 4, f"BSA_FRAME must be 4 comma-separated ints, got {_BSA_FRAME_ENV!r}"
+    if len(_parts) != 4:
+        raise ValueError(f"BSA_FRAME must be 4 comma-separated ints, got {_BSA_FRAME_ENV!r}")
     FRAME = FrameWidths(left_cols=_parts[0], right_cols=_parts[1],
                         top_rows=_parts[2], bottom_rows=_parts[3])
 else:
@@ -85,20 +85,12 @@ logger = logging.getLogger(__name__)
 RUN_REFERENCE = False  # set True to enable per-row correctness comparison
 
 
-def _make_our_fn_block_sparse(sabi: torch.Tensor, h: int, scale: float,
-                               b: int, s_q: int, s_kv: int):
+def _make_our_fn_block_sparse(block_sparse_mask: torch.Tensor, h: int, scale: float):
     """Build the closure that the benchmark timing harness invokes.
 
-    sabi is converted to the kernel's int8 block mask ONCE outside the timed
-    closure; the timed call only invokes the kernel.
+    The int8 block mask is built ONCE by the caller (outside the timed
+    closure); the timed call here only invokes the kernel.
     """
-    q_blocks = (s_q + BLOCK_SIZE_Q - 1) // BLOCK_SIZE_Q
-    kv_blocks = (s_kv + BLOCK_SIZE_KV - 1) // BLOCK_SIZE_KV
-
-    block_sparse_mask = sabi_to_block_sparse_mask(
-        sabi, b, h, q_blocks, kv_blocks, device=DEVICE
-    )
-
     def fn(q, k, v, seq, seqkv):
         out, _ = npu_ops_transformer.ops.block_sparse_attention(
             q, k, v,
@@ -133,23 +125,14 @@ def _make_ref_fn(h, scale, atten_mask, run_ref_sparsity_0):
     return fn
 
 
-def benchmark_block_sparse_attention():
-    run_our = True
-    run_ref = RUN_REFERENCE
-    n_warmup = N_WARMUP
-    n_repeat = N_REPEATS
-
-    if not run_our and not run_ref:
-        logger.info("Nothing to run.")
-        return
-
+def _print_header():
+    kv_note = (f"  (KV overridden via BSA_BLOCK_SIZE_KV={BLOCK_SIZE_KV})"
+               if BLOCK_SIZE_KV != _DEFAULT_BLOCK_SIZE_KV else "")
+    frame_note = "  (overridden via BSA_FRAME)" if _BSA_FRAME_ENV is not None else ""
     logger.info("=" * 90)
     logger.info(f"  KERNEL=block_sparse_attention  {DTYPE=}  {INPUT_LAYOUT=}")
-    logger.info(f"  BLOCK_SIZE_Q={BLOCK_SIZE_Q}  BLOCK_SIZE_KV={BLOCK_SIZE_KV}"
-                + (f"  (KV overridden via BSA_BLOCK_SIZE_KV={BLOCK_SIZE_KV})"
-                   if BLOCK_SIZE_KV != _DEFAULT_BLOCK_SIZE_KV else ""))
-    logger.info(f"  {FRAME}"
-                + ("  (overridden via BSA_FRAME)" if _BSA_FRAME_ENV is not None else ""))
+    logger.info(f"  BLOCK_SIZE_Q={BLOCK_SIZE_Q}  BLOCK_SIZE_KV={BLOCK_SIZE_KV}{kv_note}")
+    logger.info(f"  {FRAME}{frame_note}")
     logger.info(f"  {TORCH_REFERENCE=}")
     logger.info("=" * 90)
     logger.info(
@@ -158,22 +141,34 @@ def benchmark_block_sparse_attention():
     )
     logger.info("-" * 90)
 
+
+def _print_row(h, b, s_q, s_kv, d, sparsity, equal, ref_us, our_us):
+    logger.info(
+        f"{h:>3} {b:>3} {s_q:>6} {s_kv:>6} {d:>4} {sparsity:>9.2f} {equal:>15} "
+        f"{_fmt_or_na(ref_us, 18)} {_fmt_or_na(our_us, 18)}"
+    )
+
+
+def benchmark_block_sparse_attention():
+    run_ref = RUN_REFERENCE
+    n_warmup = N_WARMUP
+    n_repeat = N_REPEATS
+
+    _print_header()
+
     for b, h, s_kv, d, sparsity in itertools.product(B_VALS, H_VALS, S_VALS, D_VALS, SPARSITY_VALS):
         s_q = s_kv
 
-        # Infeasible (sparsity, frame, S, block_size) combinations raise inside
-        # generate_sparse_blocks_by_row — catch + skip.
         try:
             pfa_atten_mask, sabi, scale = create_attention_mask(
                 b, h, s_q, s_kv, d, sparsity, frame=FRAME,
                 block_size_q=BLOCK_SIZE_Q, block_size_kv=BLOCK_SIZE_KV,
                 device=DEVICE, emit_atten_mask=run_ref,
             )
-        except ValueError as e:
-            logger.info(
-                f"{h:>3} {b:>3} {s_q:>6} {s_kv:>6} {d:>4} {sparsity:>9.2f} {'INFEASIBLE':>15} "
-                f"{'N/A':>18} {'N/A':>18}"
-            )
+        except ValueError:
+            # Infeasible (sparsity, frame, S, block_size) — frame forces a higher
+            # density than the target sparsity allows.
+            _print_row(h, b, s_q, s_kv, d, sparsity, "INFEASIBLE", None, None)
             continue
 
         if PRINT_MASK and pfa_atten_mask is not None:
@@ -181,31 +176,27 @@ def benchmark_block_sparse_attention():
             logger.info(pfa_atten_mask.shape)
 
         run_ref_sparsity_0 = sparsity == 0
+        q_blocks = (s_q + BLOCK_SIZE_Q - 1) // BLOCK_SIZE_Q
+        kv_blocks = (s_kv + BLOCK_SIZE_KV - 1) // BLOCK_SIZE_KV
+        block_sparse_mask = sabi_to_block_sparse_mask(
+            sabi, b, h, q_blocks, kv_blocks, device=DEVICE
+        )
 
-        our_fn = _make_our_fn_block_sparse(sabi, h, scale, b, s_q, s_kv)
+        our_fn = _make_our_fn_block_sparse(block_sparse_mask, h, scale)
         ref_fn = _make_ref_fn(h, scale, pfa_atten_mask, run_ref_sparsity_0)
 
-        # Optional correctness check
         are_equal_ref = "N/A"
-        if (run_our and run_ref) or run_ref_sparsity_0:
+        if run_ref or run_ref_sparsity_0:
             are_equal_ref = _check_correctness(our_fn, ref_fn, b, h, s_q, s_kv, d, device=DEVICE)
 
-        # Timing
         inputs = [gen_pfa_inputs(b, h, s_q, s_kv, d, device=DEVICE, dtype=DTYPE)
                   for _ in range(n_warmup + n_repeat)]
-
-        our_duration = None
-        if run_our:
-            our_duration = _run_timed(our_fn, inputs, n_warmup, n_repeat)
-
+        our_duration = _run_timed(our_fn, inputs, n_warmup, n_repeat)
         ref_duration = None
         if run_ref or run_ref_sparsity_0:
             ref_duration = _run_timed(ref_fn, inputs, n_warmup, n_repeat)
 
-        logger.info(
-            f"{h:>3} {b:>3} {s_q:>6} {s_kv:>6} {d:>4} {sparsity:>9.2f} {are_equal_ref:>15} "
-            f"{_fmt_or_na(ref_duration, 18)} {_fmt_or_na(our_duration, 18)}"
-        )
+        _print_row(h, b, s_q, s_kv, d, sparsity, are_equal_ref, ref_duration, our_duration)
 
     logger.info("=" * 90)
 
