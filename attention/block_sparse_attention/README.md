@@ -170,66 +170,8 @@ KV方向: ceil(1024/128)=8块 [0, 1, 2, 3, 4, 5, 6, 7]
 算子编译集成在ops-transformer的统一编译流程中:
 
 ```bash
-bash build.sh --make_clean -j96 --pkg --soc=ascend910b --ops=block_sparse_attention
-./build/cann-ops-transformer-custom_linux-aarch64.run
+bash build.sh
 ```
-
-**注意**: 此算子位于 `attention/` 目录(非 `experimental/`),编译时**请勿使用**
-`--experimental` 选项 — 该选项会过滤掉此算子。
-
-## 测试与性能基准 (Python pytest + benchmark)
-
-仓库提供了基于 PyTorch / `torch_npu` 的 Python 测试套件和性能基准,完整自包含
-于本目录,可作为独立 cherry-pick 特性发布。
-
-### 目录结构
-
-| 子目录 | 内容 |
-|---|---|
-| `benchmark/` | 性能基准。`benchmark.py` 在 `[B=1, H=3, S=118806, D=128]` (BF16, BNSD) 工作负载下扫描 sparsity 0..0.9,对比 `npu_fusion_attention` 密集参考的延迟。共享工具集中在同目录的 `util.py`。详见 [`benchmark/README.md`](benchmark/README.md)。 |
-| `tests/pytest/` | pytest 正确性测试套件 (3 个文件,共数百个测试用例)。 |
-
-> Python 入口由 `torch_extension/npu_ops_transformer/` 提供 — 通过
-> `npu_ops_transformer.ops.block_sparse_attention(...)` 调用。算子的 C++ 包装器
-> `ops/csrc/block_sparse_attention.cpp` 在首次 `import npu_ops_transformer` 时
-> 自动通过 ninja JIT 编译。详见
-> [`../../torch_extension/README.md`](../../torch_extension/README.md)。
-
-### 测试套件
-
-```bash
-# 先确保算子已编译安装 (见上方编译说明) 并且 torch_extension/npu_ops_transformer 已安装
-cd attention/block_sparse_attention/tests/pytest
-ASCEND_RT_VISIBLE_DEVICES=1 pytest test_attn.py test_lse.py test_joint.py -v
-```
-
-| 文件 | 覆盖内容 | 参考 |
-|---|---|---|
-| `test_attn.py` | 注意力输出 (attention_out) 在 `H ∈ {1,2,3,4}, S=24000, D=128, BF16, BNSD`, 2 种边框 (无边框/`FrameWidths(2,1,3,1)`),10 个 sparsity 级别 (0.0..0.9) 下的正确性。共 80 个测试用例。 | `npu_fusion_attention` (PFA),`sparse_mode=0` (sparsity=0) 或 `sparse_mode=1` + 每 token 的 `pfa_atten_mask` (sparsity>0)。 |
-| `test_lse.py` | `softmax_lse` 输出: 密集 LSE vs FIAS, 稀疏 H=1 LSE vs FIAS (含定义差异), 多头稀疏 LSE vs Python float32 参考, 零输入 LSE = log(S), shape/dtype 检查 ([B,H,S,1] 4-D float32), 关闭 LSE 时返回空张量。涵盖 bfloat16 + float16。 | `npu_fused_infer_attention_score` (FIAS) + Python float32 实现 (`_lse_reference_sparse`)。 |
-| `test_joint.py` | 同一次 `softmax_lse_flag=True` 调用同时返回的两个输出 (attention_out + softmax_lse) 的联合验证: 密集 (BF16 + FP16) 对 FIAS, 稀疏 H=1 BF16 (attention_out 对 PFA, LSE 对 Python 参考)。 | FIAS / PFA / Python float32 参考。 |
-
-#### 容差与已知差异
-
-- **attention_out**: 在所有测试 sparsity 下严格满足 `rtol=0.01, atol=0.001`。
-- **softmax_lse 密集**: 严格满足 `rtol=1e-3, atol=1e-4`。
-- **softmax_lse 稀疏 vs FIAS**: 存在 ~0.06–0.16 的偏差 (sparsity 0.5/0.8/0.9),
-  属定义差异 (FIAS `sparse_mode=1` 与本算子在求和位置上不一致)。`test_lse.py` 中
-  以 `SPARSE_FIAS_LSE_ATOL=0.25` 记录此偏差区间。
-- **softmax_lse 稀疏 vs Python 参考**: 严格满足 `atol=5e-2` (BF16 矩阵乘累加误差预算)。
-  通过此项即可证明算子 LSE 在自身定义下正确。
-
-### 性能基准
-
-```bash
-cd attention/block_sparse_attention/benchmark
-# 默认: 128×128 块粒度
-python benchmark.py
-# 或: 128×512 块粒度 + token 对齐的边框
-BSA_BLOCK_SIZE_KV=512 BSA_FRAME=8,1,29,1 python benchmark.py
-```
-
-完整的基准方法、表格、对照数据见 [`benchmark/README.md`](benchmark/README.md)。
 
 ## 版本历史
 

@@ -222,8 +222,8 @@ def test_joint_sparse(shape, sparsity):
     dtype = torch.bfloat16
     scale = 1.0 / math.sqrt(D)
 
-    pfa_atten_mask, _, sabi, *_ = create_attention_mask(
-        B, H, S, S, D, sparsity, "blocks_optimized_batched",
+    pfa_atten_mask, sabi, _ = create_attention_mask(
+        B, H, S, S, D, sparsity,
         block_size_q=BLOCK_SIZE_Q, block_size_kv=BLOCK_SIZE_KV,
         frame=NO_FRAME, device="cpu", emit_atten_mask=True,
     )

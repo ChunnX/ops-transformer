@@ -116,8 +116,8 @@ def test_block_sparse_attention_correctness(torch_ref, shape, frame, sparsity):
     # Build sabi + per-token reference mask. The kernel uses only the block-level
     # sabi (converted to int8 inside _run_block_sparse_attention); the reference
     # uses the per-token pfa_atten_mask (block-aligned via make_block_mask_per_head).
-    pfa_atten_mask, _, sabi, _, scale, _, _ = create_attention_mask(
-        b, h, s_q, s_kv, d, sparsity, "blocks_optimized_batched", frame=frame,
+    pfa_atten_mask, sabi, scale = create_attention_mask(
+        b, h, s_q, s_kv, d, sparsity, frame=frame,
         block_size_q=BLOCK_SIZE_Q, block_size_kv=BLOCK_SIZE_KV,
         device=DEVICE, emit_atten_mask=True,
     )
