@@ -34,14 +34,6 @@ using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
 using namespace AttentionCommon;
 
-/* ============确定bmm2ResBuffer的类型============= */
-template <bool useDn, bool isFp8>
-struct Bmm2ResBuffSel {
-    using Type =
-        std::conditional_t<(useDn && isFp8), BuffersPolicySingleBuffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
-                           BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>>;
-};
-
 namespace BaseApi {
 
 template <typename INPUT_T, typename T, typename OUTPUT_T,
@@ -61,9 +53,6 @@ public:
     static constexpr uint32_t vec1HalfS1BaseSize = mBaseSize >> 1;
     static constexpr uint32_t vec1S2CopyCountDn = mBaseSize >> 5;
     static constexpr uint32_t vec1S2strideDn = s2BaseSize * 8;
-    static constexpr uint32_t vec1ScmBlock = mBaseSize * 8;
-    static constexpr uint32_t vec1ScmBlockFp32 = mBaseSize * 4;
-    static constexpr uint32_t vec1ScmBlockFp8 = mBaseSize * 16;
     static constexpr uint32_t vec1ResOffsetDn = s2BaseSize * 32 + 64;
     static constexpr uint32_t vec1Srcstride = (mBaseSize >> 1) + 1;
     static constexpr uint32_t dTemplateAlign64 = Align64Func((uint16_t)dVTemplateType);
@@ -76,6 +65,8 @@ public:
     static constexpr uint32_t initOutputEventId = 0U;  // attenOut和lse，刷无效行会用到剩余ub，需要加同步
 
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<layout>();
+    static constexpr LAYOUT_Q MASK_LAYOUT = (layout == LayOutTypeEnum::LAYOUT_BSH ||
+        layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_SBH) ? LAYOUT_Q::SG : LAYOUT_Q::GS;
 
     static constexpr bool hasPse = pseMode != PseTypeEnum::PSE_NONE_TYPE;
     static constexpr bool hasPseOuter =
@@ -103,8 +94,6 @@ public:
 
     using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
 
-    using MM1_OUT_T = T;
-    using MM2_OUT_T = T;
     using OUT_T = OUTPUT_T;
 
     __aicore__ inline VecBlockBase(ConstInfoX &constInfo) {};
@@ -129,9 +118,6 @@ public:
     static constexpr uint32_t vec1HalfS1BaseSize = mBaseSize >> 1;
     static constexpr uint32_t vec1S2CopyCountDn = mBaseSize >> 5;
     static constexpr uint32_t vec1S2strideDn = s2BaseSize * 8;
-    static constexpr uint32_t vec1ScmBlock = mBaseSize * 8;
-    static constexpr uint32_t vec1ScmBlockFp32 = mBaseSize * 4;
-    static constexpr uint32_t vec1ScmBlockFp8 = mBaseSize * 16;
     static constexpr uint32_t vec1ResOffsetDn = s2BaseSize * 32 + 64;
     static constexpr uint32_t vec1Srcstride = (mBaseSize >> 1) + 1;
     static constexpr uint32_t dTemplateAlign64 = Align64Func((uint16_t)dVTemplateType);
@@ -144,6 +130,8 @@ public:
     static constexpr uint32_t initOutputEventId = 0U;  // attenOut和lse，刷无效行会用到剩余ub，需要加同步
 
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<layout>();
+    static constexpr LAYOUT_Q MASK_LAYOUT = (layout == LayOutTypeEnum::LAYOUT_BSH ||
+        layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_SBH) ? LAYOUT_Q::SG : LAYOUT_Q::GS;
 
     static constexpr bool hasPse = pseMode != PseTypeEnum::PSE_NONE_TYPE;
     static constexpr bool hasPseOuter =
@@ -171,8 +159,6 @@ public:
 
     using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
 
-    using MM1_OUT_T = T;
-    using MM2_OUT_T = T;
     using OUT_T = OUTPUT_T;
 
     // gm
@@ -184,7 +170,6 @@ public:
     GlobalTensor<uint64_t> actualSeqLengthsGmQ;
     ActualSeqLensParser<Q_MODE> qActSeqLensParser;
 
-    __gm__ uint8_t *pseSlope;
     pseGmType pseGm;
     attenMaskGmType attenMaskGmInt;
 
@@ -217,11 +202,8 @@ public:
     TQue<QuePosition::VECOUT, 1> maxBrdcst;
     TQue<QuePosition::VECOUT, 1> sumBrdcst;
 
-    TBuf<> lseTmpBuff;
     TQue<QuePosition::VECOUT, 1> softmaxLseQueue;
-    TQue<QuePosition::VECOUT, 1> FDResOutputQue;
-    TQue<QuePosition::VECIN, 1> accumOutInputQue;
-    TQue<QuePosition::VECIN, 1> postQuantScaleQue;; // postQuant
+    TQue<QuePosition::VECIN, 1> postQuantScaleQue;
     TQue<QuePosition::VECIN, 1> postQuantOffsetQue;; // postQuant
     TQue<QuePosition::VECIN, 1> sinkQue; // AttentionSink
 
@@ -232,9 +214,7 @@ public:
 
     static constexpr UbFormat PSE_UB_FORMAT = GetPseUbFormat<layout>();
     using PSE_T = INPUT_T;
-    FaGmTensor<PSE_T, GmFormat::BN2GS1S2> pseShiftGmTensor;
     CopyPSEGmToUb<PSE_T, GmFormat::BN2GS1S2, PSE_UB_FORMAT> copyPSEGmToUb;
-    bool pseHasBatch = true;
 
     // ==================== Functions ======================
     __aicore__ inline FANoQuantGqaBlockVec(ConstInfoX &constInfo) : VecBlockBase<INPUT_T, T, OUTPUT_T, layout, outLayout, s1TemplateType, s2TemplateType, dTemplateType,
@@ -277,12 +257,6 @@ public:
 
         if constexpr (hasPse) {
             pseGm.SetGlobalBuffer((__gm__ pseShiftType *)pse);
-            pseSlope = pse;
-
-            pseShiftGmTensor.gmTensor = pseGm;
-            pseShiftGmTensor.offsetCalculator.Init(constInfo.pseShiftByBatch ? constInfo.bSize : 1, constInfo.n2Size,
-                                                   constInfo.gSize, constInfo.pseS1Size, constInfo.pseS2Size,
-                                                   this->actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
         }
 
         if constexpr (hasAtten) {
@@ -659,6 +633,11 @@ public:
                                    .s2LeftPaddingSize = 0,
                                    .actualBIdx = runInfo.bIdx};
             bool qsEqualOne = (constInfo.s1Size == 1);
+            FaGmTensor<PSE_T, GmFormat::BN2GS1S2> pseShiftGmTensor;
+            pseShiftGmTensor.gmTensor = pseGm;
+            pseShiftGmTensor.offsetCalculator.Init(constInfo.pseShiftByBatch ? constInfo.bSize : 1, constInfo.n2Size,
+                                                   constInfo.gSize, constInfo.pseS1Size, constInfo.pseS2Size,
+                                                   this->actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
             copyPSEGmToUb(pseShiftUbTensor, pseShiftGmTensor, pseCoord, qsEqualOne);
             pseStride = constInfo.pseStride;
         }
@@ -1479,15 +1458,7 @@ public:
         maskInfo.maskValue = negativeIntScalar;
         maskInfo.s1LeftPaddingSize = runInfo.qPaddingBeginOffset;
         maskInfo.s2LeftPaddingSize = runInfo.kvPaddingBeginOffset;
-        if (constInfo.s1Size == 1) {
-            maskInfo.layout = S1_EQUAL1;
-        } else if (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND ||
-                   layout == LayOutTypeEnum::LAYOUT_SBH) {
-            maskInfo.layout = SG;
-        } else {
-            maskInfo.layout = GS;
-        }
-
+        maskInfo.layout = MASK_LAYOUT;
         maskInfo.attenMaskType = MASK_BOOL; // compatible with int8/uint8
 
         bool IsSkipMask = IsSkipAttentionmask(maskInfo);
@@ -1499,14 +1470,14 @@ public:
         }
 
         if (!IsSkipMask) {
-            AttentionmaskCopyIn(attenMaskUb, attenMaskGmInt, maskInfo);
+            AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSize>(attenMaskUb, attenMaskGmInt, maskInfo);
         } else {
             Duplicate(attenMaskUb, static_cast<uint8_t>(0U), maskInfo.gs1dealNum * s2BaseSize);
         }
 
         if (!IsSkipMaskForPre) {
             LocalTensor<uint8_t> attenMaskUbPre = this->attenMaskInQue[1 - runInfo.loop % DB].template AllocTensor<uint8_t>();
-            AttentionmaskCopyIn(attenMaskUbPre, attenMaskGmInt, maskInfo, true);
+            AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSize>(attenMaskUbPre, attenMaskGmInt, maskInfo, true);
             MergeMask(attenMaskUb, attenMaskUbPre, maskInfo.gs1dealNum, s2BaseSize);
             this->attenMaskInQue[1 - runInfo.loop % DB].template FreeTensor(attenMaskUbPre);
         }
@@ -1532,6 +1503,11 @@ public:
             .actualBIdx = info.bIdx
         };
         bool qsEqualOne = (constInfo.s1Size == 1);
+        FaGmTensor<PSE_T, GmFormat::BN2GS1S2> pseShiftGmTensor;
+        pseShiftGmTensor.gmTensor = pseGm;
+        pseShiftGmTensor.offsetCalculator.Init(constInfo.pseShiftByBatch ? constInfo.bSize : 1, constInfo.n2Size,
+                                               constInfo.gSize, constInfo.pseS1Size, constInfo.pseS2Size,
+                                               this->actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
         copyPSEGmToUb(pseShiftUbTensor, pseShiftGmTensor, pseCoord, qsEqualOne);
 #endif
     }
