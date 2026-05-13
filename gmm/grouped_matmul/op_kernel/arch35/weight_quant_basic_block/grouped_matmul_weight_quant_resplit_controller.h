@@ -288,18 +288,8 @@ __aicore__ inline void GMM_WQ_RESPLIT_CONTROLLER_CLASS::PrefetchA(uint64_t mSize
      */
 
     uint64_t aSize = mSize * kSize * sizeof(xType);
-    if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
-        // mxA8W4场景，L1
-        if (mSize <= 512 && aSize <= static_cast<uint64_t>(gmmBaseTiling_->cubeNumBlocksN) * A_L1_MAX_SIZE_WITH_BIAS_QUANT &&
-            (gmmBaseTiling_->coreNum % gmmBaseTiling_->cubeNumBlocksN == 0)) {
-            uint64_t aPrefetchSize =
-                CeilAlign(CeilDivide(mSize * kSize, static_cast<uint64_t>(gmmBaseTiling_->cubeNumBlocksN)),
-                        64UL); // 64 表示128B的cacheline对齐
-            basicBlock_.PrefetchA(aPrefetchSize, mSize * kSize);
-        }
-    }
     constexpr static uint64_t MAX_L1_PREFETCH_SIZE = IsMxA8W4<xType, wqmmConfig.antiQuantType>() ? 88 * 1024 : A_L1_MAX_SIZE_WITH_BIAS_QUANT;
-    if (mSize <= 512 && aSize <= static_cast<uint64_t>(gmmBaseTiling_->cubeNumBlocksN) * A_L1_MAX_SIZE_WITH_BIAS_QUANT &&
+    if (mSize <= 512 && aSize <= static_cast<uint64_t>(gmmBaseTiling_->cubeNumBlocksN) * MAX_L1_PREFETCH_SIZE &&
         (gmmBaseTiling_->coreNum % gmmBaseTiling_->cubeNumBlocksN == 0)) {
         uint64_t aPrefetchSize =
             CeilAlign(CeilDivide(mSize * kSize, static_cast<uint64_t>(gmmBaseTiling_->cubeNumBlocksN)),
