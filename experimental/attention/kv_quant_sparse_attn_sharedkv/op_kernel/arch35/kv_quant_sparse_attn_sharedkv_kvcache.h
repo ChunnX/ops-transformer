@@ -33,7 +33,6 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
     int32_t actualS1Size = 0;
     int32_t actualS2Size = 0;
     int32_t actualS2CmpSize = 0;
-    int32_t cmpResidual = 0;
     int32_t actualSeqMin = 1;
     int32_t actualSeqKVMin = 1;
     int32_t bIdx = runParam.boIdx;
@@ -85,12 +84,10 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
         actualS2CmpSize = actualS2Size / constInfo.cmpRatio;
     }
 
-    cmpResidual = cmpResidualKvAddr[bIdx];
-
     runParam.actualS1Size = actualS1Size;
     runParam.actualS2Size = actualS2Size;
     runParam.actualS2CmpSize = actualS2CmpSize;
-    runParam.cmpResidual = cmpResidual;
+    runParam.cmpResidual = cmpResidualKvAddr[bIdx];
     runParam.nextTokensPerBatch = runParam.actualS2Size - runParam.actualS1Size;
     if (constInfo.oriWinLeft == -1) {
         runParam.preTokensPerBatch = runParam.actualS1Size;
