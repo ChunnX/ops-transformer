@@ -549,14 +549,14 @@ public:
                 actSeqLensKv = SeqLenFromTensorList<LAYOUT_KV>(keyPtr, bIdx);
             } else {
                 if constexpr (LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND || LAYOUT_KV == LayOutTypeEnum::LAYOUT_NTD) {
-                    actSeqLensKv = kvCuSeqLensParser.GetActualSeqLength(bIdx);
+                    actSeqLensKv = kvCuSeqLensParser.GetTBase(bIdx + 1) - kvCuSeqLensParser.GetTBase(bIdx);
                 } else {
                     actSeqLensKv = kvSeqUsedParser.GetActualSeqLength(bIdx);
                 }
             }
             actSeqLensKv += constInfo.actualKVPrefixSize;
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND || LAYOUT_Q == LayOutTypeEnum::LAYOUT_NTD) {
-                actSeqLensQ = qCuSeqLensParser.GetActualSeqLength(bIdx);
+                actSeqLensQ = qCuSeqLensParser.GetTBase(bIdx + 1) - qCuSeqLensParser.GetTBase(bIdx);
             } else {
                 actSeqLensQ = qSeqUsedParser.GetActualSeqLength(bIdx);
             }
