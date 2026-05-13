@@ -40,14 +40,13 @@
 #include "adv_api/hccl/hccl.h"
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
+#include "../common/op_kernel/mc2_moe_context.h"
 
 #if __has_include("../moe_distribute_dispatch_v2/moe_distribute_v2_base.h")
 #include "../moe_distribute_dispatch_v2/moe_distribute_v2_base.h"
-#include "../moe_distribute_dispatch_v2/check_winsize.h"
 #include "../moe_distribute_dispatch_v2/moe_distribute_v2_constant.h"
 #else
 #include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_v2_base.h"
-#include "../../moe_distribute_dispatch_v2/op_kernel/check_winsize.h"
 #include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_v2_constant.h"
 #endif
 
@@ -55,6 +54,7 @@ namespace BandwidthTestImpl {
 
 using namespace AscendC;
 using namespace Mc2Kernel;
+using namespace Mc2Aclnn;
 
 #define TemplateBandwidthTestTypeClass \
     typename XType, \
@@ -65,7 +65,7 @@ template <TemplateBandwidthTestTypeClass>
 class BandwidthTest {
 public:
     __aicore__ inline BandwidthTest() {};
-    __aicore__ inline void Init(GM_ADDR x, GM_ADDR expertId, GM_ADDR y, GM_ADDR receiveCnt,
+    __aicore__ inline void Init(GM_ADDR context, GM_ADDR x, GM_ADDR expertId, GM_ADDR y, GM_ADDR receiveCnt,
         GM_ADDR workspaceGM, TPipe *pipe, const BandwidthTestTilingData *tilingData);
     __aicore__ inline void Process();
 
@@ -83,13 +83,15 @@ private:
     // 获取指定 rank 的通信窗口数据区地址
     __aicore__ inline GM_ADDR GetWindAddrByRankId(const int32_t rankId)
     {
-        return Mc2Kernel::GetBaseWindAddrByRankId(winContext_, rankId, epRankId_) + winDataSizeOffset_;
+        //return Mc2Kernel::GetBaseWindAddrByRankId(winContext_, rankId, epRankId_) + winDataSizeOffset_;
+        return (GM_ADDR)context_->epHcclBuffer_[rankId] + STATE_SIZE + winDataSizeOffset;
     }
 
     // 获取指定 rank 的通信窗口状态区地址
     __aicore__ inline GM_ADDR GetWindStateAddrByRankId(const int32_t rankId)
     {
-        return Mc2Kernel::GetBaseWindStateAddrByRankId(winContext_, rankId, epRankId_) + dataState_ * WIN_STATE_OFFSET;
+        // return Mc2Kernel::GetBaseWindStateAddrByRankId(winContext_, rankId, epRankId_) + dataState_ * WIN_STATE_OFFSET;
+        return (GM_ADDR)context_->epHcclBuffer_[rankId] + dataState_ * WIN_STATE_OFFSET;
     }
 
     TPipe *tpipe_{nullptr};
@@ -124,6 +126,7 @@ private:
 
     // ==================== HCCL通信上下文 ====================
     __gm__ Mc2Kernel::HcclOpParam *winContext_{nullptr}; // HCCL窗口上下文
+    __gm__ Mc2MoeContext* context_{nullptr};
 
     uint32_t axisBS_{0};       // batch size (token数量)
     uint32_t axisH_{0};        // hidden size (特征维度)
@@ -159,7 +162,7 @@ private:
 
 template <TemplateBandwidthTestTypeClass>
 __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
-    GM_ADDR x, GM_ADDR expertId, GM_ADDR y, GM_ADDR receiveCnt,
+    GM_ADDR context, GM_ADDR x, GM_ADDR expertId, GM_ADDR y, GM_ADDR receiveCnt,
     GM_ADDR workspaceGM, TPipe *pipe, const BandwidthTestTilingData *tilingData)
 {
     tpipe_ = pipe;
@@ -168,8 +171,9 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
 
     // ============ HCCL窗口初始化 ============
     totalWinSizeEp_ = tilingData->total_win_size;
-    winContext_ = (__gm__ Mc2Kernel::HcclOpParam*)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
-    CheckWindowSize(totalWinSizeEp_, Mc2Kernel::GetWinSize(winContext_), tpipe_, y);
+    context_ = (__gm__ Mc2MoeContext *)context;
+    // winContext_ = (__gm__ Mc2Kernel::HcclOpParam*)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
+    // CheckWindowSize(totalWinSizeEp_, Mc2Kernel::GetWinSize(winContext_), tpipe_, y);
 
     // ============ 从tiling获取配置参数 ============
     totalUbSize_ = static_cast<uint32_t>(tilingData->total_ub_size);
@@ -186,9 +190,9 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
     tpipe_->InitBuffer(dataStateBuf, UB_ALIGN);
     uint32_t epRankIdHccl{0};
     uint32_t epWorldSizeHccl{0};
-    statusSpaceGm_ = Mc2Kernel::GetStatusDataSpaceGm(winContext_);
-    epRankIdHccl = Mc2Kernel::GetRankId(winContext_);
-    epWorldSizeHccl = Mc2Kernel::GetRankDim(winContext_);
+    statusSpaceGm_ = (GM_ADDR)(context_->epHcclBuffer_[epRankIdHccl]);
+    epRankIdHccl =  context_->epRankId;;
+    epWorldSizeHccl = epWorldSize_;
     GlobalTensor<uint32_t> selfDataStatusGMTensor;
     selfDataStatusGMTensor.SetGlobalBuffer((__gm__ uint32_t*)(statusSpaceGm_ + DISPATCH_STATE_WIN_OFFSET + aivId_ * WIN_ADDR_ALIGN));
     dataState_ = MoeDistributeV2Base::InitWinState(selfDataStatusGMTensor, epRankIdHccl, epWorldSizeHccl,

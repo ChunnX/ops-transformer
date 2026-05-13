@@ -18,6 +18,14 @@
 #include "opdev/common_types.h"
 #include "common/op_host/op_api/matmul_util.h"
 
+#ifdef BUILD_OPEN_PROJECT
+#include "version/hcomm_version.h"
+#define HCCL_CHANNEL_SUPPORT_VERSION 90000000
+#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+#include "common/op_api/mc2_context.h"
+#endif
+#endif
+
 using namespace Ops::Transformer;
 using namespace op;
 
@@ -33,8 +41,8 @@ enum NnopbaseHcclServerType {
 };
 
 extern aclnnStatus aclnnInnerBandwidthTestGetWorkspaceSize(
-    const aclTensor* x, const aclTensor* expertId,
-    const char* group, int64_t worldSize, int64_t rankId, int64_t maxBs, int64_t mode,
+    const aclTensor* context, const aclTensor* x, const aclTensor* expertId,
+    const char* group, int64_t worldSize, int64_t maxBs, int64_t mode, int64_t cclBufferSize, const char *commAlg,
     aclTensor* y, aclTensor* receiveCnt,
     uint64_t* workspaceSize, aclOpExecutor** executor);
 
@@ -98,21 +106,27 @@ static aclnnStatus CheckParams(const aclTensor* x, const aclTensor* expertId, co
 
 aclnnStatus aclnnBandwidthTestGetWorkspaceSize(
     const aclTensor* x, const aclTensor* expertId,
-    const char* group, int64_t worldSize, int64_t rankId, int64_t maxBs, int64_t mode,
-    aclTensor* y, aclTensor* receiveCnt,
+    const char* group, int64_t worldSize, int64_t maxBs, int64_t mode,
+    const char *commAlg, aclTensor* y, aclTensor* receiveCnt,
     uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     OP_LOGD("aclnnBandwidthTestGetWorkspaceSize start");
-    
     auto ret_param = CheckParams(x, expertId, group, worldSize, rankId, maxBs, mode, y, receiveCnt);
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
+    aclnnStatus aclnnRet = ACLNN_ERR_INNER;
     
-    aclnnStatus ret = aclnnInnerBandwidthTestGetWorkspaceSize(
-        x, expertId, group, worldSize, rankId, maxBs, mode,
-        y, receiveCnt, workspaceSize, executor);
-    
+    #if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+        aclTensor *mc2Context = nullptr;
+        uint64_t hcclBuffSize = 0;
+        const char *opName = "bandwidth_test";
+        auto ret = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(group, opName, hcclBuffSize, mc2Context);
+        CHECK_RET(ret == ACLNN_SUCCESS, ret);
+        aclnnRet = aclnnInnerBandwidthTestGetWorkspaceSize(
+            mc2Context, x, expertId, group, worldSize, maxBs, mode, hcclBuffSize, commAlg,
+            y, receiveCnt, workspaceSize, executor);
+    #endif
     OP_LOGD("aclnnBandwidthTestGetWorkspaceSize end");
-    return ret;
+    return aclnnRet;
 }
 
 aclnnStatus aclnnBandwidthTest(void* workspace, uint64_t workspaceSize,
@@ -121,11 +135,7 @@ aclnnStatus aclnnBandwidthTest(void* workspace, uint64_t workspaceSize,
     OP_LOGD("aclnnBandwidthTest start");
     
     if (NnopbaseSetHcclServerType) {
-        if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B) {
-            NnopbaseSetHcclServerType(executor, NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-        } else {
-            NnopbaseSetHcclServerType(executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
-        }
+        NnopbaseSetHcclServerType(executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
     }
     
     aclnnStatus ret = aclnnInnerBandwidthTest(workspace, workspaceSize, executor, stream);
