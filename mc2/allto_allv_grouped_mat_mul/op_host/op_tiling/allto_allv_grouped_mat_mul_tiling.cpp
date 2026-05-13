@@ -701,7 +701,10 @@ ge::graphStatus AlltoAllvGmmTiling::SetHcclTiling(const gert::TilingContext* con
 
     Mc2CcTilingConfig hcclCcTilingConfig(epGroup_, alltoAllvCmd, alltoAllvConfig,
                                          alltoAllvReduceType, alltoAllvDstDataType, alltoAllvSrcDataType);
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    uint8_t commMode = Mc2Comm::COMM_MODE_AICPU;  // A3默认AICPU
+    if (npuArch_ == NpuArch::DAV_3510) {  // A5平台
+        commMode = Mc2Comm::GetCommModeFromEnv();
+    }
     OP_LOGD(context->GetNodeName(), "AlltoAllvGmm tiling: commMode=%u", commMode);
     if (commMode == Mc2Comm::COMM_MODE_AICPU) {
         hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
@@ -824,7 +827,7 @@ uint64_t AlltoAllvGmmTiling::GetTilingKey(const gert::TilingContext* context) co
     bool tilingekyMmTrans = tilingData->commonTilingInfo.isMmWeightTrans;
     // A3平台固定使用AICPU模式，A5平台根据环境变量选择
     uint8_t commMode = Mc2Comm::COMM_MODE_AICPU;  // 默认AICPU
-    if (npuArch_ == op::NpuArch::DAV_3510) {  // A5平台
+    if (npuArch_ == NpuArch::DAV_3510) {  // A5平台
         commMode = Mc2Comm::GetCommModeFromEnv();
     }
     uint64_t tilingKey = GET_TPL_TILING_KEY(tilingekyGmmTrans, tilingekyMmTrans, commMode);
