@@ -85,6 +85,7 @@ private:
     void UpdateTilingKeyMatmulMode();
     void UpdateTilingKeyInfo();
     void SetFATilingData();
+    void AdjustSinnerAndSouter();
     void GetWinLeftsRightUp(int64_t cuSeqLength, int64_t cuSeqLengthKV, int64_t &winLeftsLeftUp,
                             int64_t &winRightsLeftUp);
     void FixParamWithRowInvalid(int64_t &cuSeqLength, int64_t cuSeqLengthKV, int64_t &winLeftsLeftUp,
