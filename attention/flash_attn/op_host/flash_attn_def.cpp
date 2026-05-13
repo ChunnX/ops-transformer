@@ -27,7 +27,8 @@ public:
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
+            .UnknownShapeFormat({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Input("k")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16})
@@ -42,52 +43,62 @@ public:
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
+            .UnknownShapeFormat({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Input("cu_seqlens_q")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
+            .UnknownShapeFormat({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Input("cu_seqlens_kv")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
+            .UnknownShapeFormat({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Input("seqused_q")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
+            .UnknownShapeFormat({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Input("seqused_kv")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
+            .UnknownShapeFormat({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Input("sinks")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
+            .UnknownShapeFormat({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Input("attn_mask")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT8})
             .FormatList({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
+            .UnknownShapeFormat({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Input("metadata")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
+            .UnknownShapeFormat({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Output("attn_out")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
+            .UnknownShapeFormat({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Output("softmax_lse")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND});
+            .UnknownShapeFormat({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Attr("softmax_scale").AttrType(OPTIONAL).Float(0.0f);
         this->Attr("mask_mode").AttrType(OPTIONAL).Int(0);
         this->Attr("win_left").AttrType(OPTIONAL).Int(-1);

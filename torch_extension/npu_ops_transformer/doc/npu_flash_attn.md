@@ -110,7 +110,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
                 <li>(Q_T, Q_N, D)</li>
             </ul>      
         </td>
-        <td>×</td>
+        <td>✓</td>
     </tr>
     <tr>
         <td>k</td>
@@ -153,7 +153,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>INT32</td>
         <td>ND</td>
         <td>(B, max_num_blocks_per_seq)</td>
-        <td>×</td>
+        <td>✓</td>
     </tr>
     <tr>
         <td>cu_seqlens_q</td>
@@ -162,7 +162,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>INT32</td>
         <td>ND</td>
         <td>(B+1,)</td>
-        <td>×</td>
+        <td>✓</td>
     </tr>
     <tr>
         <td>cu_seqlens_kv</td>
@@ -171,7 +171,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>INT32</td>
         <td>ND</td>
         <td>(B+1,)</td>
-        <td>×</td>
+        <td>✓</td>
     </tr>
     <tr>
         <td>seqused_q</td>
@@ -180,7 +180,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>INT32</td>
         <td>ND</td>
         <td>(B,)</td>
-        <td>×</td>
+        <td>✓</td>
     </tr>
     <tr>
         <td>seqused_kv</td>
@@ -189,7 +189,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>INT32</td>
         <td>ND</td>
         <td>(B,)</td>
-        <td>×</td>
+        <td>✓</td>
     </tr>
     <tr>
         <td>sinks</td>
@@ -198,7 +198,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>FLOAT32</td>
         <td>ND</td>
         <td>(Q_N,)</td>
-        <td>×</td>
+        <td>✓</td>
     </tr>
     <tr>
         <td>metadata</td>
@@ -207,7 +207,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>INT32</td>
         <td>ND</td>
         <td>(max_schedule_size,)</td>
-        <td>×</td>
+        <td>✓</td>
     </tr>
     <tr>
         <td>softmax_scale</td>
@@ -234,7 +234,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>INT8</td>
         <td>ND</td>
         <td>(2048, 2048)</td>
-        <td>×</td>
+        <td>✓</td>
     </tr>
     <tr>
         <td>win_left</td>
@@ -357,7 +357,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
                 <li>(Q_T, Q_N, D)</li>
             </ul>      
         </td>
-        <td>×</td>
+        <td>✓</td>
     </tr>
     <tr>
         <td>softmax_lse</td>
@@ -371,7 +371,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
                 <li>(Q_N, Q_T)</li>
             </ul>      
         </td>
-        <td>×</td>
+        <td>✓</td>
     </tr>
 </tbody>
 </table>
