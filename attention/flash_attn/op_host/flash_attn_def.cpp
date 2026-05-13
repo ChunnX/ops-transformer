@@ -148,8 +148,7 @@ public:
             .PrecisionReduceFlag(true)
             .ExtendCfgInfo("prebuildPattern.value", "Opaque")
             .ExtendCfgInfo("coreType.value", "AiCore")
-            .ExtendCfgInfo("opFile.value", "flash_attn")
-            .ExtendCfgInfo("jitCompile.flag", "static_false,dynamic_false");
+            .ExtendCfgInfo("opFile.value", "flash_attn");
 
         this->AICore().AddConfig("ascend950", aicore_config_95);
     }
