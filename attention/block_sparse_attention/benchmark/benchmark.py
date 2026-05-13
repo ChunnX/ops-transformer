@@ -46,10 +46,9 @@ from util import (
     DEVICE, DTYPE, INPUT_LAYOUT,
     B_VALS, H_VALS, S_VALS, D_VALS,
     N_REPEATS, N_WARMUP,
-    ATTENTION_MATRIX, SPARSITY_VALS,
+    SPARSITY_VALS,
     BLOCK_SIZE_Q,
     BLOCK_SIZE_KV as _DEFAULT_BLOCK_SIZE_KV,
-    SABI_SORTED,
     FRAME as _DEFAULT_FRAME,
     PRINT_MASK,
     TORCH_REFERENCE,
@@ -144,16 +143,14 @@ def benchmark_block_sparse_attention():
         logger.info("Nothing to run.")
         return
 
-    # Header — same format as BSA's benchmark.py for direct comparison
     logger.info("=" * 90)
-    logger.info(f"  KERNEL=block_sparse_attention  {DTYPE=}  {INPUT_LAYOUT=}  {ATTENTION_MATRIX=}")
-    logger.info(f"  BLOCK_SIZE_Q={BLOCK_SIZE_Q}  BLOCK_SIZE_KV={BLOCK_SIZE_KV}  {SABI_SORTED=}"
+    logger.info(f"  KERNEL=block_sparse_attention  {DTYPE=}  {INPUT_LAYOUT=}")
+    logger.info(f"  BLOCK_SIZE_Q={BLOCK_SIZE_Q}  BLOCK_SIZE_KV={BLOCK_SIZE_KV}"
                 + (f"  (KV overridden via BSA_BLOCK_SIZE_KV={BLOCK_SIZE_KV})"
                    if BLOCK_SIZE_KV != _DEFAULT_BLOCK_SIZE_KV else ""))
     logger.info(f"  {FRAME}"
                 + ("  (overridden via BSA_FRAME)" if _BSA_FRAME_ENV is not None else ""))
     logger.info(f"  {TORCH_REFERENCE=}")
-    logger.info(f"  (atten_mask=nullptr — intra-block masking dropped; sparsity 0 row will diverge from ref)")
     logger.info("=" * 90)
     logger.info(
         f"{'H':>3} {'B':>3} {'s_q':>6} {'s_kv':>6} {'D':>4} {'sparsity':>9} {'Outputs_equal':>15} "
@@ -164,11 +161,11 @@ def benchmark_block_sparse_attention():
     for b, h, s_kv, d, sparsity in itertools.product(B_VALS, H_VALS, S_VALS, D_VALS, SPARSITY_VALS):
         s_q = s_kv
 
-        # Reuse BSA's mask + sabi generator. Infeasible (sparsity, frame, S, block_size)
-        # combinations raise inside generate_sparse_blocks_by_row — catch + skip.
+        # Infeasible (sparsity, frame, S, block_size) combinations raise inside
+        # generate_sparse_blocks_by_row — catch + skip.
         try:
-            pfa_atten_mask, bsa_atten_mask, sabi, sm, scale, pre_tok, post_tok = create_attention_mask(
-                b, h, s_q, s_kv, d, sparsity, ATTENTION_MATRIX, frame=FRAME,
+            pfa_atten_mask, sabi, scale = create_attention_mask(
+                b, h, s_q, s_kv, d, sparsity, frame=FRAME,
                 block_size_q=BLOCK_SIZE_Q, block_size_kv=BLOCK_SIZE_KV,
                 device=DEVICE, emit_atten_mask=run_ref,
             )

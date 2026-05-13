@@ -133,8 +133,8 @@ SPARSE_REF_ATOL = 0.05
 
 def _build_sparse_masks(B, H, S, sparsity, frame):
     """Return (sabi, pfa_atten_mask) on DEVICE, built on CPU first."""
-    pfa_atten_mask, _, sabi, _, _, _, _ = create_attention_mask(
-        B, H, S, S, 128, sparsity, "blocks_optimized_batched",
+    pfa_atten_mask, sabi, _ = create_attention_mask(
+        B, H, S, S, 128, sparsity,
         block_size_q=BLOCK_SIZE_Q, block_size_kv=BLOCK_SIZE_KV,
         frame=frame, device="cpu", emit_atten_mask=True,
     )
