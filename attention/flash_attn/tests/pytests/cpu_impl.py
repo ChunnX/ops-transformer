@@ -11,8 +11,6 @@
 
 import torch
 import math
-import numpy as np
-import random
 from test_utils import *
 
 
@@ -89,48 +87,6 @@ def broadcastKV(n1, n2, kv_tensor, dtype):
     return kv_res
 
 
-def tforward_normal(q, k, v, pse, **kwargs):
-    b = kwargs.get("B")
-    n1 = kwargs.get("N1")
-    n2 = kwargs.get("N2", n1)
-    s1 = kwargs.get("S1")
-    s2 = kwargs.get("S2", s1)
-    d = kwargs.get("D")
-    sparse_mode = kwargs.get("sparse_mode", None)
-    pre_tokens = kwargs.get("pre_tokens", 2147483647)
-    next_tokens = kwargs.get("next_tokens", 2147483647)
-    prefix = kwargs.get("prefix", [])
-    seed = kwargs.get("seed", 0)
-    offset = kwargs.get("offset", 0)
-
-    scale = kwargs.get("scale", 1 / (d ** 0.5))
-    pse_type = kwargs.get("pse_type", 1)
-    keep_prob = kwargs.get("keep_prob", 1)
-
-    if abs(1 - keep_prob) < 2e-14:
-        drop_mask = None
-    else:
-        drop_mask = gen_dropmask(b, n1, s1, s2, keep_prob, seed, offset)
-
-    atten_mask = generate_cpu_mask(b, s1, s2, sparse_mode, pre_tokens, next_tokens, prefix)
-    skip_invalid_row = False
-    if atten_mask is not None:
-        if sparse_mode == 0:
-            skip_invalid_row = next_tokens < 0 or pre_tokens + s2 < s1
-        elif sparse_mode == 3:
-            skip_invalid_row = s1 > s2
-        elif sparse_mode == 4:
-            skip_invalid_row = pre_tokens < 0 or next_tokens + s2 < s1
-        elif sparse_mode in [5, 6]:
-            skip_invalid_row = True if 0 in prefix else False
-
-    if n1 != n2:
-        k = broadcastKV(n1, n2, k, k.dtype)
-        v = broadcastKV(n1, n2, v, v.dtype)
-    out, x_max, x_sum = forward(q, k, v, drop_mask, atten_mask, pse_type, pse, scale, keep_prob, skip_invalid_row)
-    return out, x_max, x_sum
-
-
 def tforward_tnd(q, k, v, pse, **kwargs):
     cu_q = kwargs["cu_seqlens_q"]
     cu_kv = kwargs["cu_seqlens_kv"]
@@ -145,8 +101,8 @@ def tforward_tnd(q, k, v, pse, **kwargs):
     s1_total = cu_q[-1]
     s2_total = cu_kv[-1]
 
-    max_seqlen_q = max(cu_q[i+1] - cu_q[i] for i in range(b))
-    max_seqlen_k = max(cu_kv[i+1] - cu_kv[i] for i in range(b))
+    max_seqlen_q = max(cu_q[i + 1] - cu_q[i] for i in range(b))
+    max_seqlen_k = max(cu_kv[i + 1] - cu_kv[i] for i in range(b))
 
     sparse_mode = kwargs.get("sparse_mode", None)
     pre_tokens = kwargs.get("pre_tokens", 2147483647)
@@ -189,9 +145,7 @@ def tforward_tnd(q, k, v, pse, **kwargs):
             continue
 
         q_start = cu_q[i]
-        q_end = cu_q[i + 1]
         kv_start = cu_kv[i]
-        kv_end = cu_kv[i + 1]
 
         qi = q[:, :, q_start:q_start + act_q_len]
         ki = k[:, :, kv_start:kv_start + act_kv_len]
@@ -204,15 +158,18 @@ def tforward_tnd(q, k, v, pse, **kwargs):
         if pse is None:
             psei = None
         else:
-            pse_layout = kwargs.get("pse_layout").lower()
-            if pse_layout == "bn":
-                psei = pse[i:i + 1, :, -act_q_len:, -act_kv_len:]
-            elif pse_layout == "n":
-                psei = pse[:, :, -act_q_len:, -act_kv_len:]
+            pse_layout = kwargs.get("pse_layout", "").lower()
+            if pse_layout in ("bnss", "bn1s", "1nss"):
+                psei = pse[i:i + 1, :, :act_q_len, :act_kv_len] if pse_layout.startswith("bn") else \
+                       pse[:, :, :act_q_len, :act_kv_len]
             elif pse_layout == "bnhs":
                 psei = pse[i:i + 1, :, pse_s1 - act_q_len:pse_s1, max_seqlen_k - act_kv_len:max_seqlen_k]
-            else:  # "1nhs"
+            elif pse_layout == "1nhs":
                 psei = pse[:, :, pse_s1 - act_q_len:pse_s1, max_seqlen_k - act_kv_len:max_seqlen_k]
+            elif pse_layout == "bn":
+                psei = pse[i:i + 1, :, -act_q_len:, -act_kv_len:]
+            else:  # "n"
+                psei = pse[:, :, -act_q_len:, -act_kv_len:]
 
         if drop_mask is None:
             drop_maski = None
@@ -233,8 +190,33 @@ def tforward_tnd(q, k, v, pse, **kwargs):
 
 
 def tforward(q, k, v, pse, **kwargs):
-    input_layout=kwargs.get("input_layout")
-    if input_layout == "TND":
-        return tforward_tnd(q, k, v, pse, **kwargs)
-    else:
-        return tforward_normal(q, k, v, pse, **kwargs)
+    input_layout = kwargs.get("input_layout")
+    if input_layout != "TND":
+        b = kwargs.get("B")
+        n1 = kwargs.get("N1")
+        n2 = kwargs.get("N2", n1)
+        s1 = kwargs.get("S1")
+        s2 = kwargs.get("S2", s1)
+
+        # 将 BNSD 压平为虚拟 TND: (B, N, S, D) -> (1, N, B*S, D)
+        q = q.reshape(1, n1, b * s1, q.shape[-1])
+        k = k.reshape(1, n2, b * s2, k.shape[-1])
+        v = v.reshape(1, n2, b * s2, v.shape[-1])
+
+        cu_q = [i * s1 for i in range(b + 1)]
+        cu_kv = [i * s2 for i in range(b + 1)]
+
+        kwargs["cu_seqlens_q"] = cu_q
+        kwargs["cu_seqlens_kv"] = cu_kv
+        kwargs.setdefault("seqused_q", [s1] * b)
+        kwargs.setdefault("seqused_kv", [s2] * b)
+
+    out, x_max, x_sum = tforward_tnd(q, k, v, pse, **kwargs)
+
+    if input_layout != "TND":
+        b = kwargs.get("B")
+        s1 = kwargs.get("S1")
+        n1 = kwargs.get("N1")
+        out = out.reshape(b, n1, s1, out.shape[-1])
+
+    return out, x_max, x_sum

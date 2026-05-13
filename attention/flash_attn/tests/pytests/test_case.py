@@ -54,6 +54,8 @@ TestCases = {
         'layout_out': ['BNSD'],
         'Dtype': ['fp16'],
         'mask_mode': [0],
+        'seqused_q': [[640, 640, 640, 640]],
+        'seqused_kv': [[1024, 1024, 1024, 1024]],
         'q_range': [(-10, 10)],
         'k_range': [(-10, 10)],
         'v_range': [(-10, 10)],

@@ -107,11 +107,11 @@ def normalize_case(raw):
     c.setdefault("k_range",     None)
     c.setdefault("v_range",     None)
     if layout_q == "TND":
-        # test_case 中字段是嵌套列表 [[...]]，解包为平铺列表直接透传
-        c["cu_seqlens_q"] = c["cu_seqlens_q"][0]
-        c["cu_seqlens_kv"] = c["cu_seqlens_kv"][0]
-        c["seqused_q"] = c["seqused_q"][0]
-        c["seqused_kv"] = c["seqused_kv"][0]
+        # load_case_modules 已通过 itertools.product 解包，字段已是平铺列表
+        c.setdefault("seqused_q", [c["cu_seqlens_q"][i+1] - c["cu_seqlens_q"][i]
+                                    for i in range(len(c["cu_seqlens_q"]) - 1)])
+        c.setdefault("seqused_kv", [c["cu_seqlens_kv"][i+1] - c["cu_seqlens_kv"][i]
+                                     for i in range(len(c["cu_seqlens_kv"]) - 1)])
         c["B"] = 1
     return c
 
