@@ -78,3 +78,9 @@ $$
   </tr>
 </tbody>
 </table>
+    ```bash
+    cd example/add_example
+    # 假设已准备好环境变量
+    bash build.sh --soc=${soc_version} --ops=add_example
+    bash build.sh --run_example add_example eager cus
+    ```
