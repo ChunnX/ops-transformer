@@ -901,8 +901,8 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
                     dispatchQuantOutType != (DISPATCH_QUANT_OUT_TYPE_E4M3FN + DISPATCH_QUANT_OUT_TYPE_OFFSET) &&
                     dispatchQuantOutType != (DISPATCH_QUANT_OUT_TYPE_FP4_E2M1),
         OP_LOGE(nodeName,
-            "Invalid dispatchQuantOutType, only support fp8_e5m2(23), fp8_e4m3fn(24) and fp4_e2m1(293), but now is %ld.",
-            dispatchQuantOutType),
+            "Invalid dispatchQuantOutType, only support fp8_e5m2(23), fp8_e4m3fn(24) and fp4_e2m1(293), "
+            "but now is %ld.", dispatchQuantOutType),
         return ge::GRAPH_FAILED);
 
     auto weightOneDesc = context->GetDynamicInputDesc(config.weightOneIndex, 0);
@@ -1292,16 +1292,16 @@ static ge::graphStatus CheckTensorDataType(const gert::TilingContext *context,
         (weightOneDesc->GetDataType() != ge::DT_FLOAT8_E4M3FN) &&
         (weightOneDesc->GetDataType() != ge::DT_FLOAT4_E2M1)),
         OP_LOGE(nodeName,
-            "weightOne dataType is invalid, dataType should be DT_FLOAT8_E5M2 or DT_FLOAT8_E4M3FN or DT_FLOAT4_E2M1, but is %s.",
-        Ops::Base::ToString(weightOneDesc->GetDataType()).c_str()), return ge::GRAPH_FAILED);
+            "weightOne dataType is invalid, dataType should be DT_FLOAT8_E5M2 or DT_FLOAT8_E4M3FN or DT_FLOAT4_E2M1, "
+            "but is %s.", Ops::Base::ToString(weightOneDesc->GetDataType()).c_str()), return ge::GRAPH_FAILED);
     
     OP_TILING_CHECK((
         (weightTwoDesc->GetDataType() != ge::DT_FLOAT8_E5M2) &&
         (weightTwoDesc->GetDataType() != ge::DT_FLOAT8_E4M3FN) &&
         (weightTwoDesc->GetDataType() != ge::DT_FLOAT4_E2M1)),
         OP_LOGE(nodeName,
-            "weightTwo dataType is invalid, dataType should be DT_FLOAT8_E5M2 or DT_FLOAT8_E4M3FN or DT_FLOAT4_E2M1, but is %s.",
-        Ops::Base::ToString(weightTwoDesc->GetDataType()).c_str()), return ge::GRAPH_FAILED);
+            "weightTwo dataType is invalid, dataType should be DT_FLOAT8_E5M2 or DT_FLOAT8_E4M3FN or DT_FLOAT4_E2M1, "
+            "but is %s.", Ops::Base::ToString(weightTwoDesc->GetDataType()).c_str()), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(weightOneDesc->GetDataType() != weightTwoDesc->GetDataType(),
         OP_LOGE(nodeName,

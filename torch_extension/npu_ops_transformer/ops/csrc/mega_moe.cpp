@@ -62,7 +62,7 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
             weight_scales1_dtype = aclDataType::ACL_FLOAT8_E8M0;
         } else {
             weight_scales1_dtype = aclDataType::ACL_FLOAT;
-        }   
+        }
     } else {
         weight_scales1_dtype = aclDataType::ACL_FLOAT;
     }
@@ -75,7 +75,7 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
             weight_scales2_dtype = aclDataType::ACL_FLOAT8_E8M0;
         } else {
             weight_scales2_dtype = aclDataType::ACL_FLOAT;
-        }   
+        }
     } else {
         weight_scales2_dtype = aclDataType::ACL_FLOAT;
     }
