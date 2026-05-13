@@ -106,6 +106,7 @@ __aicore__ inline void MNBlockIdxCompute(MNConfig &mnConfig, const uint32_t curB
             LeastCommonMultiple(curThresholdM, curThresholdN)) % curThresholdN + relativeBlock %
             thresholdM_dimN / curThresholdM_thresholdN * thresholdBlockNum;
     }
+    printf("ljm MNBlockIdxCompute mnConfig.mIdx%ld mnConfig.nIdx%ld", mnConfig.mIdx, mnConfig.nIdx);
 }
 
 /** @brief GroupMatmul operator Class
@@ -150,6 +151,8 @@ class GMMProcess {
     __aicore__ inline void SetMKN(const int32_t splitValue, const uint32_t groupIdx, MNConfig &mnConfig);
 
     __aicore__ inline void UpdateMnConfig(MNConfig &mnConfig);
+
+    __aicore__ inline bool UpdateMnConfigForGroupListMSparse(MNConfig &mnConfig, uint32_t splitValue, uint32_t groupIdx);
 };
 
 template <typename ComputeType>
@@ -248,6 +251,29 @@ __aicore__ inline void GMMProcess<ComputeType>::UpdateMnConfig(MNConfig &mnConfi
 }
 
 template <typename ComputeType>
+__aicore__ inline bool GMMProcess<ComputeType>::UpdateMnConfigForGroupListMSparse(MNConfig &mnConfig, uint32_t splitValue, uint32_t groupIdx)
+{
+    mnConfig.mAxisBaseOffset += mnConfig.m;
+    mnConfig.xBaseOffset += mnConfig.m * mnConfig.k;
+    mnConfig.yBaseOffset += mnConfig.m * mnConfig.n;
+    mnConfig.scaleIndex++;
+    printf("ljm UpdateMnConfigForGroupListSparse mAxisBaseOffset%ld, xBaseOffset%ld, yBaseOffset%ld, scaleIndex%ld",mnConfig.mAxisBaseOffset, mnConfig.xBaseOffset, mnConfig.yBaseOffset, mnConfig.scaleIndex);
+    SetMNConfig(splitValue, groupIdx, mnConfig);
+    if (mnConfig.m <= 0 || mnConfig.k <= 0 || mnConfig.n <= 0) {
+        return true; // skip
+    }
+
+    mnConfig.nAxisBaseOffset = groupIdx * mnConfig.n;
+    if constexpr (GMMProcess<ComputeType>::B::format == CubeFormat::NZ) {
+        mnConfig.wBaseOffset = AlignUp<16>(mnConfig.k) * AlignUp<16>(mnConfig.nAxisBaseOffset);
+    } else {
+        mnConfig.wBaseOffset = mnConfig.k * mnConfig.nAxisBaseOffset;
+    }
+    printf("ljm UpdateMnConfigForGroupListSparse mnConfig.nAxisBaseOffset%ld, mnConfig.wBaseOffset%ld",mnConfig.nAxisBaseOffset, mnConfig.wBaseOffset);
+    return false; // no skip
+}
+
+template <typename ComputeType>
 __aicore__ inline void GMMProcess<ComputeType>::Process() {
     MNConfig mnConfig;
     if (gmmBaseParams->groupType != -1) {  // -1: no split
@@ -310,23 +336,15 @@ public:
             }
 
             uint32_t groupIdx = static_cast<int32_t>(this->groupListGm.GetValue(loop));
-            mnConfig.mAxisBaseOffset += mnConfig.m;
-            mnConfig.xBaseOffset += mnConfig.m * mnConfig.k;
-            mnConfig.yBaseOffset += mnConfig.m * mnConfig.n;
-            this->SetMNConfig(splitValue, groupIdx, mnConfig);
-            if (mnConfig.m <= 0 || mnConfig.k <= 0 || mnConfig.n <= 0) {
+            printf("ljm GMMGroupMSparseProcess splitval:%ld, groupIdx:%ld", splitValue, groupIdx);
+            bool skip = this->UpdateMnConfigForGroupListMSparse(mnConfig, splitValue, groupIdx);
+            if (skip) {
                 continue;
-            }
-            mnConfig.nAxisBaseOffset = groupIdx * mnConfig.n;
-            if constexpr (GMMProcess<ComputeType>::B::format == CubeFormat::NZ) {
-                // 16: nz format last two dim size
-                mnConfig.wBaseOffset = AlignUp<16>(mnConfig.k) * AlignUp<16>(mnConfig.nAxisBaseOffset);
-            } else {
-                mnConfig.wBaseOffset = mnConfig.k * mnConfig.nAxisBaseOffset;
             }
 
             mnConfig.blockDimM = Ceil(mnConfig.m, mnConfig.singleM);
             mnConfig.blockDimN = Ceil(mnConfig.n, mnConfig.singleN);
+            printf("ljm GMMGroupMSparseProcess blockDimM:%ld, blockDimN:%ld", mnConfig.blockDimM, mnConfig.blockDimN);
 
             uint32_t curCount = count + mnConfig.blockDimM * mnConfig.blockDimN;
             uint32_t curBlock = this->coreIdx >= count ? this->coreIdx : this->coreIdx + this->gmmBaseParams->coreNum;
@@ -345,7 +363,6 @@ public:
         AscendC::SetNextTaskStart();
     }
 };
-
 
 /** @brief intenal computation class
 */
@@ -509,6 +526,8 @@ __aicore__ inline GlobalTensor<typename mmType::BT::T> GMMCompute<mmType, sync>:
     if (mnConfig.blockDimM == 1) {
         weightGmLocal.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
     }
+    printf("ljm weight addr: %p, tailN: %ld, wBaseOffset: %ld\n", 
+       (void*)&weightGmLocal, tailN, mnConfig.wBaseOffset);
     #endif
     return weightGmLocal;
 #endif
@@ -519,15 +538,18 @@ __aicore__ inline void GMMCompute<mmType, sync>::MMCompute(uint32_t groupIdx, MN
     if (subBlockIdx != 0) {
         return;
     }
+    printf("ljm MMCompute start\n");
     uint32_t tailN = mnConfig.nIdx * mnConfig.singleN;
     uint32_t curSingleN = mnConfig.nIdx < mnConfig.blockDimN - 1 ? mnConfig.singleN : mnConfig.n - tailN;
     uint32_t curSingleM = mnConfig.mIdx < mnConfig.blockDimM - 1 ? mnConfig.singleM
                                                                  : mnConfig.m - mnConfig.mIdx * mnConfig.singleM;
     uint64_t xOffset = mnConfig.mIdx * mnConfig.singleM * mnConfig.k;
+    printf("ljm MMCompute curSingleN%ld, curSingleM%ld, xOffset%ld",curSingleN,curSingleM, xOffset);
     if constexpr (transposeX) {
         xOffset = mnConfig.mIdx * mnConfig.singleM;
     }
     uint64_t outOffset = mnConfig.mIdx * mnConfig.singleM * mnConfig.n + tailN;
+    printf("ljm MMCompute outOffset%ld, mnConfig.m%ld, mnConfig.n%ld, mnConfig.k%ld",outOffset, mnConfig.m,mnConfig.n,mnConfig.k);
     // init global buffer
     if (singleX == 0) {
         xGm.SetGlobalBuffer(GetTensorAddr<AT>(groupIdx, xTensorPtr));
@@ -558,6 +580,7 @@ __aicore__ inline void GMMCompute<mmType, sync>::MMCompute(uint32_t groupIdx, MN
         mmWaitStatus = true;
     #else
         mm.template IterateAll<sync>(yGm[outOffset], 0);
+        printf("ljm MMCompute yGm[outOffset]%ld", yGm[outOffset]);
     #endif
 }
 

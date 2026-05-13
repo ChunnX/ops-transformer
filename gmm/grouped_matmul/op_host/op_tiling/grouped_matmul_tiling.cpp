@@ -873,7 +873,7 @@ ge::graphStatus GMMTiling::RunFusionKernelTiling(gert::TilingContext* context) {
   if (aicNum == 0U) {  // invaild value
     return ge::GRAPH_FAILED;
   }
-  usedCoreNum_ = aicNum;
+  usedCoreNum_ = 6;
 
   OP_CHECK_IF(CalMMTiling(context, compileInfoPtr) != ge::GRAPH_SUCCESS,
              OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "GMM CalMMTiling failed"), return ge::GRAPH_FAILED);
@@ -905,31 +905,31 @@ ge::graphStatus GMMTiling::RunFusionKernelTiling(gert::TilingContext* context) {
 }
 
 void GMMTiling::PrintTilingInfo(gert::TilingContext *context) {
-  OP_LOGD(context->GetNodeName(), "End Run GMM Tiling");
-  OP_LOGD(context->GetNodeName(), "GMM_tiling_new: usedCoreNum is %d.", tilingData.mmTilingData.get_usedCoreNum());
-  OP_LOGD(context->GetNodeName(), "GMM_tiling_new: bestSingleN is %u.", tilingData.gmmBaseParams.get_singleN());
-  OP_LOGD(context->GetNodeName(), "GMM_tiling_new: with_offset is %d.", tilingData.gmmBaseParams.get_withOffset());
-  OP_LOGD(context->GetNodeName(), "GMM_tiling_new: tuning_config is %ld.", tuningConfig_);
-  OP_LOGD(context->GetNodeName(), "GMM_tiling_new: Ka is %d.", tilingData.mmTilingData.get_Ka());
-  OP_LOGD(context->GetNodeName(), "GMM_tiling_new: Kb is %d.", tilingData.mmTilingData.get_Kb());
-  OP_LOGD(context->GetNodeName(), "GMM_tiling_new: baseM is %d.", tilingData.mmTilingData.get_baseM());
-  OP_LOGD(context->GetNodeName(), "GMM_tiling_new: baseN is %d.", tilingData.mmTilingData.get_baseN());
-  OP_LOGD(context->GetNodeName(), "GMM_tiling_new: baseK is %d.", tilingData.mmTilingData.get_baseK());
-  OP_LOGD(context->GetNodeName(), "GMM_tiling_new: depthA1 is %d.", tilingData.mmTilingData.get_depthA1());
-  OP_LOGD(context->GetNodeName(), "GMM_tiling_new: depthB1 is %d.", tilingData.mmTilingData.get_depthB1());
-  OP_LOGD(context->GetNodeName(), "GMM_tiling_new: stepKa is %d.", tilingData.mmTilingData.get_stepKa());
-  OP_LOGD(context->GetNodeName(), "GMM_tiling_new: stepKb is %d.", tilingData.mmTilingData.get_stepKb());
-  OP_LOGD(context->GetNodeName(), "GMM_tiling_new: stepM is %d.", tilingData.mmTilingData.get_stepM());
-  OP_LOGD(context->GetNodeName(), "GMM_tiling_new: stepN is %d.", tilingData.mmTilingData.get_stepN());
-  OP_LOGD(context->GetNodeName(), "GMM_tiling_new: isBias is %d.", tilingData.mmTilingData.get_isBias());
-  OP_LOGD(context->GetNodeName(), "GMM_tiling_new: transLength is %d.", tilingData.mmTilingData.get_transLength());
-  OP_LOGD(context->GetNodeName(), "GMM_tiling_new: iterateOrder is %d.", tilingData.mmTilingData.get_iterateOrder());
-  OP_LOGD(context->GetNodeName(), "GMM_tiling_new: dbL0A is %d.", tilingData.mmTilingData.get_dbL0A());
-  OP_LOGD(context->GetNodeName(), "GMM_tiling_new: dbL0B is %d.", tilingData.mmTilingData.get_dbL0B());
-  OP_LOGD(context->GetNodeName(), "GMM_tiling_new: dbL0C is %d.", tilingData.mmTilingData.get_dbL0C());
-  OP_LOGD(context->GetNodeName(), "GMM_tiling_new: usedL1Size is %d.", tilingData.mmTilingData.get_shareL1Size());
-  OP_LOGD(context->GetNodeName(), "GMM_tiling_new: usedUBSize is %d.", tilingData.mmTilingData.get_shareUbSize());
-  OP_LOGD(context->GetNodeName(), "GMM_tiling_new: isOutputDisableL2Cache is %d.", tilingData.gmmBaseParams.get_isOutputDisableL2Cache());
+  OP_LOGE(context->GetNodeName(), "ljm End Run GMM Tiling");
+  OP_LOGE(context->GetNodeName(), "GMM_tiling_new: usedCoreNum is %d.", tilingData.mmTilingData.get_usedCoreNum());
+  OP_LOGE(context->GetNodeName(), "GMM_tiling_new: bestSingleN is %u.", tilingData.gmmBaseParams.get_singleN());
+  OP_LOGE(context->GetNodeName(), "GMM_tiling_new: with_offset is %d.", tilingData.gmmBaseParams.get_withOffset());
+  OP_LOGE(context->GetNodeName(), "GMM_tiling_new: tuning_config is %ld.", tuningConfig_);
+  OP_LOGE(context->GetNodeName(), "GMM_tiling_new: Ka is %d.", tilingData.mmTilingData.get_Ka());
+  OP_LOGE(context->GetNodeName(), "GMM_tiling_new: Kb is %d.", tilingData.mmTilingData.get_Kb());
+  OP_LOGE(context->GetNodeName(), "GMM_tiling_new: baseM is %d.", tilingData.mmTilingData.get_baseM());
+  OP_LOGE(context->GetNodeName(), "GMM_tiling_new: baseN is %d.", tilingData.mmTilingData.get_baseN());
+  OP_LOGE(context->GetNodeName(), "GMM_tiling_new: baseK is %d.", tilingData.mmTilingData.get_baseK());
+  OP_LOGE(context->GetNodeName(), "GMM_tiling_new: depthA1 is %d.", tilingData.mmTilingData.get_depthA1());
+  OP_LOGE(context->GetNodeName(), "GMM_tiling_new: depthB1 is %d.", tilingData.mmTilingData.get_depthB1());
+  OP_LOGE(context->GetNodeName(), "GMM_tiling_new: stepKa is %d.", tilingData.mmTilingData.get_stepKa());
+  OP_LOGE(context->GetNodeName(), "GMM_tiling_new: stepKb is %d.", tilingData.mmTilingData.get_stepKb());
+  OP_LOGE(context->GetNodeName(), "GMM_tiling_new: stepM is %d.", tilingData.mmTilingData.get_stepM());
+  OP_LOGE(context->GetNodeName(), "GMM_tiling_new: stepN is %d.", tilingData.mmTilingData.get_stepN());
+  OP_LOGE(context->GetNodeName(), "GMM_tiling_new: isBias is %d.", tilingData.mmTilingData.get_isBias());
+  OP_LOGE(context->GetNodeName(), "GMM_tiling_new: transLength is %d.", tilingData.mmTilingData.get_transLength());
+  OP_LOGE(context->GetNodeName(), "GMM_tiling_new: iterateOrder is %d.", tilingData.mmTilingData.get_iterateOrder());
+  OP_LOGE(context->GetNodeName(), "GMM_tiling_new: dbL0A is %d.", tilingData.mmTilingData.get_dbL0A());
+  OP_LOGE(context->GetNodeName(), "GMM_tiling_new: dbL0B is %d.", tilingData.mmTilingData.get_dbL0B());
+  OP_LOGE(context->GetNodeName(), "GMM_tiling_new: dbL0C is %d.", tilingData.mmTilingData.get_dbL0C());
+  OP_LOGE(context->GetNodeName(), "GMM_tiling_new: usedL1Size is %d.", tilingData.mmTilingData.get_shareL1Size());
+  OP_LOGE(context->GetNodeName(), "GMM_tiling_new: usedUBSize is %d.", tilingData.mmTilingData.get_shareUbSize());
+  OP_LOGE(context->GetNodeName(), "GMM_tiling_new: isOutputDisableL2Cache is %d.", tilingData.gmmBaseParams.get_isOutputDisableL2Cache());
   auto buf = (uint32_t *)context->GetRawTilingData()->GetData();
   auto bufLen = context->GetRawTilingData()->GetDataSize();
   std::ostringstream oss;
@@ -1171,6 +1171,7 @@ ge::graphStatus GMMTiling::GMMGetAttrs(const gert::TilingContext* context) {
   splitItem_ = splitItemPtr != nullptr ? *splitItemPtr : 0U;  // 0: 默认split_item
   actType_ = actTypePtr != nullptr ? *actTypePtr : 0;
   groupListType_ = groupListTypePtr != nullptr ? *groupListTypePtr : 0;
+  std::cout << "ljm GMMGetAttrs gListType " << groupListType_ << std::endl;
 
   auto xDesc = context->GetDynamicInputDesc(X_INDEX, 0);
   OP_CHECK_NULL_WITH_CONTEXT(context, xDesc);  // check xDesc is not null
@@ -1194,21 +1195,21 @@ ge::graphStatus GMMTiling::GMMGetAttrs(const gert::TilingContext* context) {
   isA4W4_ = xDType_ == ge::DT_INT4 && weightDtype_ == ge::DT_INT4;
   isA16W16_ = (xDType_ == ge::DT_FLOAT16 && weightDtype_ == ge::DT_FLOAT16) || (xDType_ == ge::DT_BF16 && weightDtype_ == ge::DT_BF16);
   auto compileInfoPtr = context->GetCompileInfo<GMMCompileInfo>();
+  // bool isFormatValid = (wFormat_ == matmul_tiling::CubeFormat::NZ);
   OP_CHECK_NULL_WITH_CONTEXT(context, compileInfoPtr);  // check compileInfoPtr is not null
   if (groupListType_ == GROUP_LIST_SPARSE_M) {
-    OP_CHECK_IF((!(compileInfoPtr->socVersion == platform_ascendc::SocVersion::ASCEND910B ||
+      OP_CHECK_IF((!(compileInfoPtr->socVersion == platform_ascendc::SocVersion::ASCEND910B ||
                   compileInfoPtr->socVersion == platform_ascendc::SocVersion::ASCEND910_93)),
-                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "This platform not support groupListType is 2"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!isA8W8_,
-               OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-                                           "Only both x and weight dtype are int8 support groupListType is 2"),
-               return ge::GRAPH_FAILED);
-    OP_CHECK_IF(groupType_ != SPLIT_M,
-               OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-                                           "When groupListType is 2 only support groupType 0, but get groupType %ld",
-                                           groupType_),
-               return ge::GRAPH_FAILED);
+                  OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "This platform not support groupListType is 2"),
+                  return ge::GRAPH_FAILED);
+      OP_CHECK_IF(isA8W4FakeA8W8_,
+                  OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+                  "A8W4 quantization mode does not support groupListType is 2"),
+                  return ge::GRAPH_FAILED);
+      // a4w4不支持，后续已经拦截
+      // OP_CHECK_IF(isA4W4_ && !isFormatValid && transposeWeight_,
+      //           OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "A4W4 trans B nd does not support groupListType is 2"),
+      //           return ge::GRAPH_FAILED);
   }
 
   auto perTokenScalePtr = context->GetOptionalInputTensor(PER_TOKEN_SCALE_INDEX);
