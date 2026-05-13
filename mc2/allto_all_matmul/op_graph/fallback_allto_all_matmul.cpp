@@ -86,7 +86,7 @@ struct AttrParas {
 * @param host_api_ctx
 * @param para
 */
-inline ge::graphStatus GetCommonMatmulInputPara(const gert::OpExecuteContext* host_api_ctx,
+static ge::graphStatus GetCommonMatmulInputPara(const gert::OpExecuteContext* host_api_ctx,
                                                 const gert::RuntimeAttrs* attrs, CommonMatmulParas& para)
 {
     const auto x1 = host_api_ctx->GetInputTensor(INDEX_IN_X1);
@@ -139,7 +139,7 @@ static ge::graphStatus ParseRecvCounts(
 * @param host_api_ctx
 * @param para
 */
-inline ge::graphStatus GetAttrPara(const gert::OpExecuteContext* host_api_ctx,
+static ge::graphStatus GetAttrPara(const gert::OpExecuteContext* host_api_ctx,
                                    const gert::RuntimeAttrs* attrs, AttrParas& para)
 {
     para.group = attrs->GetStr(INDEX_ATTR_GROUP);
@@ -191,7 +191,7 @@ inline ge::graphStatus GetAttrPara(const gert::OpExecuteContext* host_api_ctx,
 * @param host_api_ctx
 * @param para
 */
-inline ge::graphStatus GetQuantMatmulPara(const gert::OpExecuteContext* host_api_ctx,
+static ge::graphStatus GetQuantMatmulPara(const gert::OpExecuteContext* host_api_ctx,
                                           const gert::RuntimeAttrs* attrs, QuantMatmulParas& para)
 {
     const auto x1Scale = host_api_ctx->GetOptionalInputTensor(INDEX_IN_X1_SCALE);
