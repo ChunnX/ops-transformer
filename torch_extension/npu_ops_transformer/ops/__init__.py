@@ -17,8 +17,10 @@ from .mega_moe import (
     npu_get_mega_moe_ccl_buffer_size
 )
 from .deep_ep import MoeDistributeBuffer
+from .moe_dispatch_normal import npu_moe_dispatch_normal
 from .graph_convert.graph_convert_moe_distribute_dispatch_v3 import converter_moe_distribute_dispatch_v3
 from .graph_convert.graph_convert_moe_distribute_combine_v3 import convert_npu_moe_distribute_combine_v3
 from .graph_convert.graph_convert_mega_moe import convert_npu_mega_moe
+from .graph_convert.graph_convert_moe_dispatch_normal import convert_npu_moe_dispatch_normal
 from .flash_attn import npu_flash_attn
 from .flash_attn_metadata import npu_flash_attn_metadata
