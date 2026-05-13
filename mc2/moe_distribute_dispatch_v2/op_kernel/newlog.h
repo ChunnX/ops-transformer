@@ -1,0 +1,511 @@
+namespace MoeDispatchLog_NEW {
+
+template<typename T>
+constexpr bool is_decimal_integer_v =
+    std::is_same_v<T, int8_t> ||
+    std::is_same_v<T, int16_t> ||
+    std::is_same_v<T, int32_t> ||
+    std::is_same_v<T, int64_t>;
+
+
+template<typename T>
+constexpr bool is_unsigned_integer_v =
+    std::is_same_v<T, bool> ||
+    std::is_same_v<T, uint8_t> ||
+    std::is_same_v<T, uint16_t> ||
+    std::is_same_v<T, uint32_t> ||
+    std::is_same_v<T, uint64_t>;
+
+
+template<typename T>
+constexpr bool is_fp_point_v =
+    std::is_same_v<T, float> ||
+    std::is_same_v<T, half> ||
+    std::is_same_v<T, bfloat16_t>;
+
+using namespace AscendC;
+class Log {
+public:
+
+    __aicore__ inline void Init(TPipe * tpipe_,int32_t rankId);
+
+    template<typename T>
+    __aicore__ inline void print_value(const T& val);
+    __aicore__ inline void LogInfo(const uint32_t line, const __gm__ char *msg, const GM_ADDR addr);
+    __aicore__ inline void LogInfo(const uint32_t line, const __gm__ char *msg);
+    template<typename T>
+    __aicore__ inline void LogInfo(const uint32_t line, const __gm__ char *msg,   const T num);
+
+    template<typename T>
+    __aicore__ inline uint32_t GetElementWidth(T val);
+
+    template<typename T, size_t N>
+    __aicore__  inline void PrintLevel(const LocalTensor<T>& tensor, size_t actual_size,
+                       const uint32_t (&shape)[N], const int (&strides)[N],
+                       uint32_t max_element_width);
+
+    template<typename T, size_t N>
+    __aicore__ inline  void PrintValue(const LocalTensor<T>& tensor, const uint32_t (&shape)[N]);
+
+    template<typename T, size_t N>
+    __aicore__  inline void PrintLevel(const GlobalTensor<T>& tensor, size_t actual_size,
+                        const uint32_t (&shape)[N], const int (&strides)[N],
+                        uint32_t max_element_width);
+    
+
+    template<typename T, size_t N>
+    __aicore__ inline void PrintValue(const GlobalTensor<T>& tensor, const uint32_t (&shape)[N]);
+    
+    template <typename T,size_t N>
+    __aicore__ inline void LogInfo(uint32_t line, const __gm__ char *msg, LocalTensor<T>& tensor,const uint32_t (&shape)[N]); //按指定shap打
+
+    template <typename T,size_t N>
+    __aicore__ inline void LogInfo(uint32_t line, const __gm__ char *msg, GlobalTensor<T>& tensor,const uint32_t (&shape)[N]); //按指定shap打
+
+private:
+    int32_t rankId_ = -1;
+    uint32_t aivId_ = GetBlockIdx();
+    TPipe * tpipe_ = nullptr;
+};
+
+template<typename T>
+__aicore__ inline void Log::print_value(const T& val) {
+    if constexpr (is_decimal_integer_v<T>) {
+        printf("%d", val);
+    }
+    else if constexpr (is_unsigned_integer_v<T>) {
+        printf("%u",val);
+    }
+    else if constexpr (is_fp_point_v<T>) {
+        printf("%f", val);
+    }
+}
+
+__aicore__ inline void Log::Init(TPipe * tpipe,int32_t rankId) {
+    tpipe_ = tpipe;
+    rankId_ =rankId;
+}
+
+__aicore__ inline void Log::LogInfo(const uint32_t line, const __gm__ char *msg, const GM_ADDR addr){
+    const __gm__ void * addrtemp = static_cast<const __gm__ void*>(addr);
+    printf("[rankId: %d][aivId: %d][line: %d]", rankId_, aivId_, line);
+    printf("%s: %p\n", msg, addrtemp);
+}
+__aicore__ inline void Log::LogInfo(const uint32_t line, const __gm__ char *msg){
+    printf("[rankId: %d][aivId: %d][line: %d]%s\n", rankId_, aivId_, line, msg);
+}
+
+template<typename T>
+__aicore__ inline void Log::LogInfo(const uint32_t line, const __gm__ char *msg,   const T num){
+    printf("[rankId: %d][aivId: %d][line: %d]%s: ", rankId_, aivId_, line, msg);
+    print_value(num);
+    printf("\n");
+}
+
+template<typename T>
+__aicore__ inline uint32_t Log::GetElementWidth(T val) {
+    float32_t d_val{0};
+    if constexpr ( is_fp_point_v<T> && std::is_same_v<T, bfloat16_t>){
+        d_val = AscendC::ToFloat(val);
+    }
+    else{
+       d_val = static_cast<float32_t>(val);
+    }
+     
+    uint32_t length = 0;
+    if(d_val < 0) {
+        length++;
+        d_val = -d_val;
+    }
+    long long int_part = static_cast<long long>(d_val);
+    if(int_part == 0){
+        length++;
+    } else {
+        uint64_t temp = int_part;
+        while(temp > 0){
+            temp = temp / 10;
+            length++;
+        }
+    }
+
+    if(std::is_floating_point<T>::value) {
+        length +=7;
+    }
+
+    return length;
+}
+
+template<typename T, size_t N>
+__aicore__  inline void Log::PrintLevel(const LocalTensor<T>& tensor, size_t actual_size,
+                       const uint32_t (&shape)[N], const int (&strides)[N],
+                       uint32_t max_element_width) {
+    struct State {
+        int dim;
+        int pos;
+        size_t offset;
+    };
+
+    State stack[8];
+    int top = 0;
+    stack[0] = {0, 0, 0};
+    printf("[");
+
+    while (top >= 0) {
+        State& s = stack[top];
+
+        if (s.dim == N - 1) {
+            size_t elem_offset = s.offset + s.pos * strides[s.dim];
+            bool is_last = (s.pos == shape[s.dim] - 1);
+
+            int current_printed = 0;
+            if (elem_offset < actual_size) {
+                // 打印数值
+                T val = tensor(elem_offset);
+                current_printed = GetElementWidth(val);
+                print_value(val);
+            } else {
+                // 打印占位符，并记录其宽度为 1
+                printf("-");
+                current_printed = 1;
+            }
+
+            // 打印逗号
+            if (!is_last) {
+                printf(",");
+                current_printed += 1;
+            }
+
+            // 计算补白：确保 "-" 和数字占据相同的总宽度
+            // 补白 = (最大宽度 + 逗号位) - 当前已打印长度 + 额外间距
+            int padding = (max_element_width + (is_last ? 0 : 1)) - current_printed + 1;
+            for (int i = 0; i < padding; ++i){ // 增加 +1，保持间隔
+                printf(" ");
+            }
+
+            if (is_last) {
+                printf("]");
+                top--;
+                if (top >= 0) {
+                    stack[top].pos++;
+                    if (stack[top].pos < shape[stack[top].dim]) {
+                        printf("\n");
+                        for (int i = 0; i <= top; ++i) printf(" ");
+                    }
+                }
+            } else {
+                s.pos++;
+            }
+        } else {
+            if (s.pos < shape[s.dim]) {
+                size_t next_offset = s.offset + s.pos * strides[s.dim];
+                top++;
+                stack[top] = {(int)s.dim + 1, 0, next_offset};
+                printf("[");
+            } else {
+                printf("]");
+                top--;
+                if (top >= 0) {
+                    stack[top].pos++;
+                    if (stack[top].pos < shape[stack[top].dim]) {
+                        printf(",\n");
+                        for (int i = 0; i <= top; ++i){
+                            printf(" ");
+                        }
+                    }
+                }
+            }
+        }
+    }
+    printf("\n");
+}
+
+
+template<typename T, size_t N>
+__aicore__ inline void Log::PrintValue(const LocalTensor<T>& tensor, const uint32_t (&shape)[N]) {
+    PipeBarrier<PIPE_ALL>();
+    size_t actual_size = tensor.GetSize();
+
+    uint32_t max_w = 0;
+    for (uint32_t index = 0; index < actual_size; index++) {
+        T val = tensor(index);
+        uint32_t len = GetElementWidth(val);
+        max_w = max_w > len? max_w : len;
+    }
+
+    int strides[N];
+    strides[N-1] = 1;
+    for (int i = (int)N - 2; i >= 0; --i) {
+        strides[i] = strides[i+1] * shape[i+1];
+    } 
+
+    PrintLevel(tensor, actual_size, shape, strides, max_w);
+    printf("\n");
+}
+
+
+template <typename T,size_t N>
+__aicore__ inline void Log::LogInfo(const uint32_t line, const __gm__ char *msg, LocalTensor<T>& tensor,const uint32_t (&shape)[N]) {//按指定shap打
+    printf("[rankId: %d][aivId: %d][line: %d]", rankId_, aivId_, line);
+    printf("%s\n", msg);
+    if(tensor.GetSize() == 0){
+        printf("tensor is empty\n");
+        return;
+    }
+    bool cast = !is_decimal_integer_v<T> && !is_unsigned_integer_v<T> && !is_fp_point_v<T>;
+    if (cast) {
+        printf("[ERROR][printf only support float, int, uint, bool .. plese read document and cast data type]\n");
+        return ;
+    }
+    PrintValue(tensor, shape);
+}
+
+template<typename T, size_t N>
+__aicore__  inline void Log::PrintLevel(const GlobalTensor<T>& tensor, size_t actual_size,
+                       const uint32_t (&shape)[N], const int (&strides)[N],
+                       uint32_t max_element_width) {
+    struct State {
+        int dim;
+        int pos;
+        size_t offset;
+    };
+
+    State stack[8];
+    int top = 0;
+    stack[0] = {0, 0, 0};
+    printf("[");
+
+    while (top >= 0) {
+        State& s = stack[top];
+
+        if (s.dim == N - 1) {
+            size_t elem_offset = s.offset + s.pos * strides[s.dim];
+            bool is_last = (s.pos == shape[s.dim] - 1);
+
+            int current_printed = 0;
+            if (elem_offset < actual_size) {
+                // 打印数值
+                T val = tensor(elem_offset);
+                current_printed = GetElementWidth(val);
+                print_value(val);
+            } else {
+                // 打印占位符，并记录其宽度为 1
+                printf("-");
+                current_printed = 1;
+            }
+
+            // 打印逗号
+            if (!is_last) {
+                printf(",");
+                current_printed += 1;
+            }
+
+            // 计算补白：确保 "-" 和数字占据相同的总宽度
+            // 补白 = (最大宽度 + 逗号位) - 当前已打印长度 + 额外间距
+            int padding = (max_element_width + (is_last ? 0 : 1)) - current_printed + 1;
+            for (int i = 0; i < padding; ++i){ // 保留 +1，间距隔开
+                printf(" ");
+            }
+
+            if (is_last) {
+                printf("]");
+                top--;
+                if (top >= 0) {
+                    stack[top].pos++;
+                    if (stack[top].pos < shape[stack[top].dim]) {
+                        printf("\n");
+                        for (int i = 0; i <= top; ++i) printf(" ");
+                    }
+                }
+            } else {
+                s.pos++;
+            }
+        } else {
+            if (s.pos < shape[s.dim]) {
+                size_t next_offset = s.offset + s.pos * strides[s.dim];
+                top++;
+                stack[top] = {(int)s.dim + 1, 0, next_offset};
+                printf("[");
+            } else {
+                printf("]");
+                top--;
+                if (top >= 0) {
+                    stack[top].pos++;
+                    if (stack[top].pos < shape[stack[top].dim]) {
+                        printf(",\n");
+                        for (int i = 0; i <= top; ++i){
+                            printf(" ");
+                        }
+                    }
+                }
+            }
+        }
+    }
+    printf("\n");
+}
+
+template<typename T, size_t N>
+__aicore__  inline void Log::PrintValue(const GlobalTensor<T>& tensor, const uint32_t (&shape)[N]) {
+    PipeBarrier<PIPE_ALL>();
+    size_t actual_size = tensor.GetSize();
+
+    // 预扫描获取最大元素宽度
+    uint32_t max_w = 0;
+    for (uint32_t index = 0; index < actual_size; index++) {
+        T val = tensor(index);
+        uint32_t len = GetElementWidth(val);
+        max_w = max_w > len? max_w : len;
+    }
+
+    int strides[N];
+    strides[N-1] = 1;
+    for (int i = (int)N - 2; i >= 0; --i) {
+        strides[i] = strides[i+1] * shape[i+1];
+    } 
+
+    PrintLevel(tensor, actual_size, shape, strides, max_w);
+    printf("\n");
+}
+
+template <typename T,size_t N>
+__aicore__ inline void Log::LogInfo(const uint32_t line, const __gm__ char *msg, GlobalTensor<T>& tensor,const uint32_t (&shape)[N]) {//按指定shap打
+    printf("[rankId: %d][aivId: %d][line: %d]", rankId_, aivId_, line);
+    printf("%s\n", msg);
+    bool cast = !is_decimal_integer_v<T> && !is_unsigned_integer_v<T> && !is_fp_point_v<T>;
+    if (cast) {
+        printf("[ERROR][printf only support float, int, uint, bool.. plese read document and cast data type]\n");
+        return ; 
+    }
+    uint64_t elemNum = 1;
+    for (uint32_t i = 0; i < N; i++) {
+        elemNum = elemNum * shape[i];
+    }
+    if(elemNum == 0) {
+        printf("tensor is empty\n");
+        return;
+    }
+    GlobalTensor<T> tempTensor;
+    tempTensor.SetGlobalBuffer(const_cast<__gm__ T*>(tensor.GetPhyAddr()),elemNum);
+    PrintValue(tempTensor, shape);
+}
+//用法，在类中定义logger，然后在需要打印的地方调用LOG_INFO(...)
+//在最开始定义LOG_INIT(...)，
+//#define DEBUG 1
+//#if DEBUG
+//#define LOG_INFO(...) this->logger.LogInfo(__LINE__,__VA_ARGS__)
+//#define LOG_INIT(...) this->logger.Init(__VA_ARGS__)
+//#else
+//#define LOG_INFO(...) 
+//#define LOG_INIT(...) 
+//#endif
+
+}
+
+
+
+
+// template <TemplateDispatchKFCTypeClass>
+// __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::CalTokenSendExpertOffset() // todo:需要把activeMaskBsCnt_改为uint32_t
+// {
+//     uint64_t starttime = GetSystemCycle();
+//     TBuf<> tempBuf;
+//     TBuf<> sharedTmpBuf;
+//     uint32_t startExpertId , endExpertId, sendExpertNum;
+//     SplitToCore(moeExpertNum_, 1, startExpertId, endExpertId, sendExpertNum); //todo: 后续在测试。错误的，需要修改
+//     LOG_INFO("moeExpertNum_",moeExpertNum_);
+//     LOG_INFO("startExpertId",startExpertId);
+//     LOG_INFO("endExpertId",endExpertId);
+//     LOG_INFO("sendExpertNum",sendExpertNum);
+//     if(startExpertId >= endExpertId || sendExpertNum == 0) {
+//         return ;
+//     }
+//     uint32_t activeBsCnt = activeMaskBsCnt_;
+//     uint32_t calCnt = isTokenMaskFlag_? activeBsCnt * axisK_ : expertIdsCnt_; // 二维mask时，为了对齐需要全部读取expertID
+//     uint32_t inner = Ceil(activeBsCnt * sizeof(half), UB_ALIGN) * UB_ALIGN / sizeof(half);
+//     uint32_t expertNumAlign256 = Ceil(calCnt * sizeof(half), ALIGNED_LEN_256) * ALIGNED_LEN_256 / sizeof(half);
+//     uint32_t tokenCntAlign256 = Ceil(activeBsCnt * sizeof(half),ALIGNED_LEN_256) * ALIGNED_LEN_256 / sizeof(half);
+//     uint64_t sendNumperExpert = 0;
+
+//     tpipe_->InitBuffer(tempBuf, expertNumAlign256 * sizeof(int16_t));
+//     tpipe_->InitBuffer(sharedTmpBuf, 128 * activeBsCnt); // TODO:: 这理需要从tiling获取
+
+
+//     LocalTensor<uint8_t> gatherMaskTensorInt8 = gatherMaskTBuf_.Get<uint8_t>();
+//     LocalTensor<int32_t> expertsIndexTensor = subExpBuf_.Get<int32_t>();
+//     LocalTensor<int32_t> validExpertIndexTensor = tempBuf.Get<int32_t>(); // 这里有效的index一定小于等于activeMaskBsCnt_;
+
+//     LocalTensor<float32_t> dstExpIdTensorFP32 = dstExpBuf_.Get<float32_t>();
+//     LocalTensor<float32_t> tempTensorFp32 = subExpBuf_.Get<float32_t>();
+//     LocalTensor<float32_t> sharedTensorFp32 = sharedTmpBuf.Get<float32_t>();
+//     LocalTensor<int32_t> tempTensorInt32 = subExpBuf_.Get<int32_t>();
+//     LocalTensor<int32_t> dstExpIdTensorInt32 = dstExpBuf_.Get<int32_t>();
+//     LocalTensor<uint32_t> dstOffset = subExpBuf_.Get<uint32_t>();
+//     LocalTensor<int16_t> dstExpIdTensorInt16 = dstExpBuf_.Get<int16_t>();
+//     LocalTensor<int16_t> tempTensorInt16 = subExpBuf_.Get<int16_t>();
+//     LocalTensor<int16_t> compareInt16 = tempBuf.Get<int16_t>();
+//     LocalTensor<half> compareFp16 = tempBuf.Get<half>();
+//     LocalTensor<uint8_t> sharedTensorInt8 = sharedTmpBuf.Get<uint8_t>();
+//     Duplicate<int32_t>(expertOffsetCntTensor_, 0, expertIdsCnt_); //TOken * moeId
+
+
+//     for(uint32_t Index = 0; Index < sendExpertNum; Index++) { //TODO:需要考虑二维mask影响
+//         uint32_t dstExpertId = startExpertId + Index;
+//         Duplicate<int32_t>(tempTensorInt32, dstExpertId, calCnt);
+//         PipeBarrier<PIPE_V>();
+//         Sub(dstExpIdTensorInt32, expertIdsTensor_, tempTensorInt32, calCnt);
+//         PipeBarrier<PIPE_V>();
+//         Abs(dstExpIdTensorFP32, dstExpIdTensorFP32, calCnt);
+//         PipeBarrier<PIPE_V>();
+//         Mins(dstExpIdTensorInt32, dstExpIdTensorInt32, 1, calCnt);
+//         PipeBarrier<PIPE_V>();
+//         Cast(dstExpIdTensorInt16, dstExpIdTensorInt32, RoundMode::CAST_NONE, calCnt);
+//         Duplicate<int16_t>(tempTensorInt16, 1, calCnt); 
+//         PipeBarrier<PIPE_V>();
+//         Xor(compareInt16, dstExpIdTensorInt16, tempTensorInt16, sharedTensorInt8, calCnt);
+//         PipeBarrier<PIPE_V>();
+//         if(isExpertMaskFlag_) {
+//             LocalTensor<int8_t> maskInputInt8Tensor = expertMaskInputTensor_.ReinterpretCast<int8_t>();
+//             Cast(tempTensorInt16, maskInputInt8Tensor, RoundMode::CAST_NONE, calCnt);
+//             Mul(compareInt16, compareInt16, tempTensorInt16, calCnt); //这里需要于mask相乘，且需要保留 ，TODO：这里的转换是否允许？
+//             PipeBarrier<PIPE_V>(); 
+//         }
+//         Duplicate<uint32_t>(gatherMaskTensor_, 0,
+//                         Ceil(calCnt, ALIGNED_LEN_256) * ALIGNED_LEN_256 / BITS_PER_BYTE / sizeof(uint32_t)); // 获取索引需要放在这里，因为需要256对齐
+//         Cast(compareFp16, compareInt16, RoundMode::CAST_RINT, calCnt); // 得到对应的结果  TODO:这里需要确认全局变量gatherMaskTensor_
+//         CreateVecIndex(expertsIndexTensor, 0, calCnt);  // TODO：这个需要单独放
+//         PipeBarrier<PIPE_V>();
+//         CompareScalar(gatherMaskTensorInt8, compareFp16, static_cast<half>(1), AscendC::CMPMODE::EQ, expertNumAlign256);
+//         Cast(dstExpIdTensorFP32, compareFp16, RoundMode::CAST_NONE, calCnt);//这里是 0 1 结果
+//         PipeBarrier<PIPE_V>();
+//         GatherMask(validExpertIndexTensor, expertsIndexTensor, gatherMaskTensor_, true, calCnt, {1, 1, 0, 0},
+//                 sendNumperExpert); // 当前需要发送的专家的索引以及需要发送的有效专家总数
+//         PipeBarrier<PIPE_V>();
+//         uint32_t srcShape[2] = {activeBsCnt, axisK_};
+//         ReduceSum<float32_t, Pattern::Reduce::AR, true>(tempTensorFp32, dstExpIdTensorFP32, sharedTensorInt8, srcShape, false);
+//         PipeBarrier<PIPE_V>();
+//         const AscendC::CumSumInfo CumSumInfo{1, inner};
+//         CumSum(dstExpIdTensorFP32, sharedTensorFp32, tempTensorFp32, sharedTensorInt8, CumSumInfo); //这里不输出最后一行，因此复用buf
+//         PipeBarrier<PIPE_V>();
+//         Adds(dstExpIdTensorFP32, dstExpIdTensorFP32, static_cast<float32_t>(-1.0), activeBsCnt); // 相对偏移量，最终结果
+//         PipeBarrier<PIPE_V>();
+//         Mul(dstExpIdTensorFP32, dstExpIdTensorFP32, tempTensorFp32, activeBsCnt);
+//         Duplicate<uint32_t>(gatherMaskTensor_, 0,
+//                         Ceil(activeBsCnt, ALIGNED_LEN_256) * ALIGNED_LEN_256 / BITS_PER_BYTE / sizeof(uint32_t)); // 获取索引需要放在这里，因为需要256对齐 TODO:这里注意gatherMaskTensor_，必须分配
+//         PipeBarrier<PIPE_V>();
+//         CompareScalar(gatherMaskTensorInt8, tempTensorFp32, static_cast<float32_t>(1), AscendC::CMPMODE::EQ, tokenCntAlign256); //
+//         PipeBarrier<PIPE_V>();
+//         GatherMask(dstExpIdTensorFP32, dstExpIdTensorFP32, gatherMaskTensor_, true, activeBsCnt, {1, 1, 0, 0},
+//                 sendNumperExpert); // 当前需要发送的专家的偏移量
+//         PipeBarrier<PIPE_V>();
+//         Cast(dstExpIdTensorInt32, dstExpIdTensorFP32, RoundMode::CAST_TRUNC, calCnt); // 这里是最终结果,累加和
+//         PipeBarrier<PIPE_V>();
+//         Muls(validExpertIndexTensor, validExpertIndexTensor, static_cast<int32_t>(sizeof(int32_t)), static_cast<uint32_t>(sendNumperExpert));
+//         PipeBarrier<PIPE_V>();
+//         LocalTensor<uint32_t> dstoffset = validExpertIndexTensor.ReinterpretCast<uint32_t>();
+//         Scatter(expertOffsetCntTensor_, dstExpIdTensorInt32, dstoffset, 0, static_cast<uint32_t>(sendNumperExpert));
+//         PipeBarrier<PIPE_V>();
+//     }
+//     uint64_t endtime = GetSystemCycle();
+//     uint64_t usetime = endtime -starttime;
+//     LOG_INFO("CalTokenSendExpertOffset use time",usetime);
+//     LOG_INFO("expertOffsetCntTensor_",expertOffsetCntTensor_,{activeBsCnt, axisK_});
+// }
