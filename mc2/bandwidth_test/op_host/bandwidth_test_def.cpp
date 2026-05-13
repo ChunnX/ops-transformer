@@ -14,6 +14,11 @@ namespace ops {
 class BandwidthTest : public OpDef {
 public:
   explicit BandwidthTest(const char* name) : OpDef(name) {
+    this->Input("context")
+        .ParamType(REQUIRED)
+        .DataTypeList({ge::DT_INT32})
+        .FormatList({ge::FORMAT_ND})
+        .AutoContiguous();
     this->Input("x")
         .ParamType(REQUIRED)
         .DataType({ge::DT_FLOAT16})
@@ -36,9 +41,10 @@ public:
 
     this->Attr("group").AttrType(REQUIRED).String();
     this->Attr("world_size").AttrType(REQUIRED).Int();
-    this->Attr("rank_id").AttrType(REQUIRED).Int();
     this->Attr("max_bs").AttrType(REQUIRED).Int();
     this->Attr("mode").AttrType(REQUIRED).Int();
+    this->Attr("ccl_buffer_size").AttrType(REQUIRED).Int();
+    this->Attr("comm_alg").AttrType(OPTIONAL).String("");
 
     OpAICoreConfig aicore_config;
     aicore_config.DynamicCompileStaticFlag(true)
@@ -52,7 +58,6 @@ public:
         .ExtendCfgInfo("jitCompile.flag", "static_false");
 
     this->AICore().AddConfig("ascend950", aicore_config);
-    this->MC2().HcclGroup({"group"});
   }
 };
 
