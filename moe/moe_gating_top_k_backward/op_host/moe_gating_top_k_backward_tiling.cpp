@@ -358,7 +358,7 @@ int64_t MoeGatingTopKBackwardTilingBase::CalcMaxRows()
         int64_t queSpace =
             NUM_TWO * maxRows * AlignBytes_(gradYQuePerTokenSpace) + AlignBytes_(maxRows * xQuePerTokenSpace) +
             AlignBytes_(maxRows * outQuePerTokenSpace);
-        bufPerTokenSpace =
+        int64_t bufSpace =
             NUM_FIVE * maxRows * AlignBytes_(bufk1PerTokenSpace) + NUM_TWO * AlignBytes_(maxRows * bufn2PerTokenSpace) +
             maxRows * AlignBytes_(bufsPerTokenSpace);
 
@@ -373,7 +373,7 @@ int64_t MoeGatingTopKBackwardTilingBase::CalcMaxRows()
         uint32_t broadcastTmpBuffSpace = 0;
         AscendC::GetBroadCastMaxMinTmpSize(ascendcPlatform, srcShape, shape, SIZE_OF_FLOAT32, false, tmpMaxValue, broadcastTmpBuffSpace);
         OP_LOGI(context_, "reduceSumTmpBuffSpace = %lu. broadcastTmpBuffSpace = %lu", reduceSumTmpBuffSpace, broadcastTmpBuffSpace);
-        int64_t usedSpace = UB_RESERVE_SPACE + queSpace + bufPerTokenSpace + static_cast<int64_t>(std::max(reduceSumTmpBuffSpace, broadcastTmpBuffSpace));
+        int64_t usedSpace = UB_RESERVE_SPACE + queSpace + bufSpace + static_cast<int64_t>(std::max(reduceSumTmpBuffSpace, broadcastTmpBuffSpace));
 
         if (usedSpace <= aicoreParams_.ubSize) {
             break;
