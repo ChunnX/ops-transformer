@@ -396,11 +396,6 @@ __aicore__ inline void LIVector<LIT>::ProcessVec(const LICommon::RunInfo &info)
                             PipeBarrier<PIPE_V>();
                         }
                     }
-                    if (isS2End) {
-                        SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
-                        reduceOutInner.SetValue(cuS2Len - 1, MAX_LOGITS);
-                        SetWaitFlag<HardEvent::S_V>(HardEvent::S_V);
-                    }
                 }
             }
 
