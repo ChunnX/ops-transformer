@@ -838,13 +838,14 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
                 maskInfo.s2LeftPaddingSize = runInfo.kvLeftPaddingSize;
 
                 attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template AllocTensor<uint8_t>();
-                AttentionmaskCopyGS1(attenMaskUb, this->attenMaskGmInt, maskInfo, false);
+                AttentionmaskCopyGS1<uint8_t, false, s2BaseSize>(attenMaskUb, this->attenMaskGmInt, maskInfo, false);
                 this->attenMaskInQue[runInfo.taskIdMod2].template EnQue(attenMaskUb);
                 this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
                 if (attenMaskInfoPtr->compressMode == static_cast<uint8_t>(AttenMaskCompressMode::BAND_MODE)) {
                     LocalTensor<uint8_t> preAttenMaskUb;
                     preAttenMaskUb = this->attenMaskInQue[1 - runInfo.taskIdMod2].template AllocTensor<uint8_t>();
-                    AttentionmaskCopyGS1(preAttenMaskUb, this->attenMaskGmInt, maskInfo, true);
+                    AttentionmaskCopyGS1<uint8_t, false, s2BaseSize>(preAttenMaskUb, this->attenMaskGmInt,
+                        maskInfo, true);
                     this->attenMaskInQue[1 - runInfo.taskIdMod2].template EnQue(preAttenMaskUb);
                     this->attenMaskInQue[1 - runInfo.taskIdMod2].template DeQue<uint8_t>();
                     MergeBandModeMask<hasAtten>(preAttenMaskUb, attenMaskUb, runInfo.halfS1RealSize, s2BaseSize);
@@ -1581,7 +1582,8 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::RowInvalid(Loc
     int64_t vec2S1Idx, RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo, int64_t dSizeAligned64)
 {
     if constexpr (isInfer && hasAtten) {
-        if (!(isMlaFullQuant || isMlaNoQuant) && !constInfo.isRowInvalid) {
+        if (!(isMlaFullQuant || isMlaNoQuant) && (!constInfo.isRowInvalid ||
+            attenMaskInfoPtr->compressMode != static_cast<uint8_t>(AttenMaskCompressMode::NO_COMPRESS_MODE))) {
             return;
         }
         if (isMlaFullQuant && attenMaskInfoPtr->compressMode == static_cast<uint8_t>(AttenMaskCompressMode::NO_COMPRESS_MODE)) {

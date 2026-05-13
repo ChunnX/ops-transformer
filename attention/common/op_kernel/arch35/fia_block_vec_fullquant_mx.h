@@ -76,6 +76,9 @@ public:
     static constexpr uint32_t initOutputEventId = 0U; // attenOut和lse，刷无效行会用到剩余ub，需要加同步
 
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<layout>();
+    static constexpr LAYOUT_Q MASK_LAYOUT = (layout == LayOutTypeEnum::LAYOUT_BSH ||
+        layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_SBH) ? LAYOUT_Q::SG : LAYOUT_Q::GS;
+
     static constexpr bool USE_DN = useDn;
 
     static constexpr bool POST_QUANT = !IsSameType<OUTPUT_T, half>::value && !IsSameType<OUTPUT_T, bfloat16_t>::value &&
@@ -504,14 +507,14 @@ public:
         if (runInfo.isFirstS2Loop) {
             if (likely(s2CalcSize == 128)) {
                 ProcessVec1VfMxfp8<T, INPUT_T, pseShiftType, false, mBaseSize, s2BaseSizeCur, EQ_128, HAS_MASK, pseMode,
-                                   hasDrop, false, false, false, false>(
+                              hasDrop, false, false, false, false>(
                     stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
                     pseUb, dropMaskUb, apiTmpBuffer, pScaleUb, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop,
                     runInfo.actVecMSize, s2CalcSize, pseStride, slopes, posShift, static_cast<T>(constInfo.scaleValue),
                     descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue, pScaleValue);
             } else if (s2CalcSize <= 64) {
                 ProcessVec1VfMxfp8<T, INPUT_T, pseShiftType, false, mBaseSize, s2BaseSizeCur, GT_0_AND_LTE_64, HAS_MASK,
-                                   pseMode, hasDrop, false, false, false, false>(
+                              pseMode, hasDrop, false, false, false, false>(
                     stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
                     pseUb, dropMaskUb, apiTmpBuffer, pScaleUb, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop,
                     runInfo.actVecMSize, s2CalcSize, pseStride, slopes, posShift, static_cast<T>(constInfo.scaleValue),
@@ -537,14 +540,14 @@ public:
         } else {
             if (likely(s2CalcSize == 128)) {
                 ProcessVec1VfMxfp8<T, INPUT_T, pseShiftType, true, mBaseSize, s2BaseSizeCur, EQ_128, HAS_MASK, pseMode,
-                                   hasDrop, false, false, false, false>(
+                              hasDrop, false, false, false, false>(
                     stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
                     pseUb, dropMaskUb, apiTmpBuffer, pScaleUb, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop,
                     runInfo.actVecMSize, s2CalcSize, pseStride, slopes, posShift, static_cast<T>(constInfo.scaleValue),
                     descaleQK, negativeFloatScalar, 0.0F, queryScaleUb, deSCaleKValue, pScaleValue);
             } else if (s2CalcSize <= 64) {
                 ProcessVec1VfMxfp8<T, INPUT_T, pseShiftType, true, mBaseSize, s2BaseSizeCur, GT_0_AND_LTE_64, HAS_MASK,
-                                   pseMode, hasDrop, false, false, false, false>(
+                              pseMode, hasDrop, false, false, false, false>(
                     stage1CastTensor, this->vselrIndexesBuf, sumUb, maxUb, mmRes, expUb, sumUb, maxUb, attenMaskUb,
                     pseUb, dropMaskUb, apiTmpBuffer, pScaleUb, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop,
                     runInfo.actVecMSize, s2CalcSize, pseStride, slopes, posShift, static_cast<T>(constInfo.scaleValue),
@@ -966,7 +969,7 @@ public:
                                            uint32_t vecMIdx, uint32_t mDealSize, RunInfoX &runInfo, uint32_t subLoop)
     {
         uint32_t s2RealSize = runInfo.actSingleLoopS2Size;
-        uint32_t s2BaseSizeCur = s2BaseSize >> 1;
+        constexpr uint32_t s2BaseSizeCur = s2BaseSize >> 1;
         if (runInfo.actSingleLoopS2Size > 256) {
             s2RealSize = subLoop == 0 ? 256 : runInfo.actSingleLoopS2Size - 256;
         }
@@ -990,14 +993,7 @@ public:
         maskInfo.maskValue = negativeIntScalar;
         maskInfo.s1LeftPaddingSize = runInfo.qPaddingBeginOffset;
         maskInfo.s2LeftPaddingSize = runInfo.kvPaddingBeginOffset;
-        if (constInfo.s1Size == 1) {
-            maskInfo.layout = S1_EQUAL1;
-        } else if (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND ||
-                   layout == LayOutTypeEnum::LAYOUT_SBH) {
-            maskInfo.layout = SG;
-        } else {
-            maskInfo.layout = GS;
-        }
+        maskInfo.layout = MASK_LAYOUT;
         maskInfo.attenMaskType = MASK_BOOL; // compatible with int8/uint8
 
         bool IsSkipMask = IsSkipAttentionmask(maskInfo);
@@ -1008,14 +1004,15 @@ public:
         }
 
         if (!IsSkipMask) {
-            AttentionmaskCopyIn(attenMaskUb, attenMaskGmInt, maskInfo);
+            AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSizeCur>(attenMaskUb, attenMaskGmInt, maskInfo);
         } else {
             Duplicate(attenMaskUb, static_cast<uint8_t>(0U), maskInfo.gs1dealNum * s2BaseSizeCur);
         }
 
         if (!IsSkipMaskForPre) {
             LocalTensor<uint8_t> attenMaskUbPre = this->attenMaskInQue[0].template AllocTensor<uint8_t>();
-            AttentionmaskCopyIn(attenMaskUbPre, attenMaskGmInt, maskInfo, true);
+            AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSizeCur>(attenMaskUbPre, attenMaskGmInt,
+                maskInfo, true);
             MergeMask(attenMaskUb, attenMaskUbPre, maskInfo.gs1dealNum, s2BaseSizeCur);
             this->attenMaskInQue[0].template FreeTensor(attenMaskUbPre);
         }
@@ -1027,7 +1024,7 @@ public:
         uint32_t bIdx = bN2Cur / constInfo.n2Size;
         // 对整个batch的结果置0
         if constexpr (POST_QUANT) { // out int8
-            // vectorService.DealZeroActSeqLenWithPostQuant(bIdx, n2Idx);
+                // vectorService.DealZeroActSeqLenWithPostQuant(bIdx, n2Idx);
         } else {
             if (constInfo.outputLayout == FIA_LAYOUT::BSH) {
                 OffsetCalculator<GmFormat::BSNGD> offsetCalculator;
