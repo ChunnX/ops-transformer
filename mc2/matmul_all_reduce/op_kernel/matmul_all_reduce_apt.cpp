@@ -122,11 +122,11 @@ __global__ __aicore__ void quant_matmul_all_reduce(
     if constexpr (COMMDTPYE == COMMDTPYE_DEFAULT && KERNEL_TYPE == VEC_EPILOGUE_WITH_MMAPI) {
         INVOKE_BATCH_MATMUL_QUANT_PERTOKEN_IMPL(
             Mc2QuantBatchMatmulV3::Mc2QuantBmmPertokenRegbaseKernel, Mc2CoreType::ON_CUBE_AND_VECTOR, \
-            APT_A2A_RS_AG, DTYPE_Y, false, TPL_TRANS_B, APT_COMM_MODE);
+            APT_A2A_RS_AG, APT_COMM_MODE, DTYPE_Y, false, TPL_TRANS_B);
     } else if constexpr (COMMDTPYE == COMMDTPYE_INT8 && KERNEL_TYPE == VEC_EPILOGUE_WITH_MMAPI) {
         INVOKE_BATCH_MATMUL_QUANT_PERTOKEN_COMM_INT8_IMPL(
-            Mc2QuantBatchMatmulV3::Mc2QuantBmmPertokenRegbaseKernel, Mc2CoreType::ON_CUBE_AND_VECTOR, \
-            DTYPE_Y, false, TPL_TRANS_B, APT_COMM_MODE);
+            Mc2QuantBatchMatmulV3::Mc2QuantBmmPertokenRegbaseKernel, Mc2CoreType::ON_CUBE_AND_VECTOR, APT_COMM_MODE, \
+            DTYPE_Y, false, TPL_TRANS_B);
     }
 #elif ((ORIG_DTYPE_X1 == DT_FLOAT4_E2M1) && (ORIG_DTYPE_X2 == DT_FLOAT4_E2M1))
 // fp8,hif8和mixfp的场景，bias都是float
