@@ -137,6 +137,9 @@ def flash_attn_metadata_only(**kwargs):
     sparse_mode = kwargs.get("sparse_mode", 0)
     pre_tokens  = kwargs.get("pre_tokens",  2147483647)
     next_tokens = kwargs.get("next_tokens", 2147483647)
+    if sparse_mode in (0, 3):
+        pre_tokens = -1
+        next_tokens = -1
     actual_seq_qlen  = kwargs.get("actual_seq_qlen",  None)
     actual_seq_kvlen = kwargs.get("actual_seq_kvlen", actual_seq_qlen)
     _cu_q       = kwargs.get("_npu_cu_q",       None)
@@ -246,6 +249,9 @@ def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
     sparse_mode = kwargs.get("sparse_mode", 0)
     pre_tokens = kwargs.get("pre_tokens", 2147483647)
     next_tokens = kwargs.get("next_tokens", 2147483647)
+    if sparse_mode in (0, 3):
+        pre_tokens = -1
+        next_tokens = -1
     actual_seq_qlen  = kwargs.get("actual_seq_qlen",  None)
     actual_seq_kvlen = kwargs.get("actual_seq_kvlen", actual_seq_qlen)
     # New 4-param style: normalize_case sets _npu_cu_q/kv (full B+1 list) and _npu_seqused_q/kv (B individual).
