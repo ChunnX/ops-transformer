@@ -927,9 +927,10 @@ static void UpdateTilingKey(uint64_t& tilingKey, const GroupedMatMulAlltoAllvTil
         tilingkeyMmTrans = false;
     }
     
-    bool isA5 = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5);
-    if (!isA5) {
-        OPS_LOG_D(context->GetNodeName(), "Non-A5 platform, always use AICPU");
+    auto platformInfo = context->GetPlatformInfo();
+    platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
+    NpuArch npuArch = ascendcPlatform.GetCurNpuArch();
+    if (npuArch != NpuArch::DAV_3510) {
         commMode = Mc2Comm::COMM_MODE_AICPU;
     }
 
