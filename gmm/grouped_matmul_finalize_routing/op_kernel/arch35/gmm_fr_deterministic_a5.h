@@ -65,7 +65,7 @@ __aicore__ inline void FRDeterministicA5(
     uint32_t n,
     uint64_t globalRowOffset = 0)
 {
-    if ASCEND_IS_AIC {
+    if (g_coreType == AIC) {
         SyncAll();
         SyncAll();
         return;
@@ -73,7 +73,7 @@ __aicore__ inline void FRDeterministicA5(
 
     SyncAll();  // Ensure workspace writes complete
 
-    uint64_t totalM = syncConfig.curM;
+    uint64_t totalM = syncConfig.curM - (syncConfig.lowBoundM - syncConfig.windowSize);
     uint64_t coreNumVec = coreNum * GetTaskRation();
     uint64_t baseOffset = globalRowOffset;
 

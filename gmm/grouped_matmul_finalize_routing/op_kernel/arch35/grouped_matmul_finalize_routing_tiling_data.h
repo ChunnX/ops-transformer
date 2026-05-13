@@ -38,8 +38,6 @@ struct GMMFinalizeRoutingDataParams {
     uint32_t reserved2 = 0;
     uint32_t deterministicFlag = 0;      // 0=非确定性, 1=确定性
     uint32_t deterWorkspaceSize = 0;     // 确定性 workspace 大小（字节）
-    uint32_t windowSize = 0;             // 滑动窗口大小（行数）
-    uint32_t totalM = 0;                 // 所有 group 总 M 行数
 };
 #pragma pack(pop)
 
