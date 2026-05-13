@@ -339,8 +339,11 @@ __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::ProcessSingl
     CoordClass coord(Get<MNK_M>(problemShape_), Get<MNK_N>(problemShape_), Get<MNK_K>(problemShape_),
                      static_cast<int64_t>(curBaseM_), params.gmmParams.baseN, params.gmmParams.baseK);
     BlockCoord tileIdx;
+    if (!bs.GetTileIdx(tileIdx)) {
+        return;
+    }
     bool firstValidTile = true;
-    while (bs.GetTileIdx(tileIdx)) {
+    do {
         BlockShape singleShape = bs.GetBlockShape(tileIdx);
         if (Get<MNK_M>(singleShape) <= 0 || Get<MNK_N>(singleShape) <= 0) {
             return;
@@ -360,7 +363,7 @@ __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::ProcessSingl
             Get<IDX_M_TILEIDX>(tileIdx), Get<IDX_N_TILEIDX>(tileIdx), Get<IDX_M_TAIL_SPLIT_TILEIDX>(singleShape),
             Get<IDX_N_TAIL_SPLIT_TILEIDX>(singleShape));
         Iterate(Get<MNK_M>(singleShape), Get<MNK_N>(singleShape));
-    }
+    } while (bs.GetTileIdx(tileIdx));
 }
 
 QGMM_MX_KERNEL_CLASS_TEM_PARAMS
