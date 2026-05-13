@@ -622,16 +622,27 @@ bool AlltoAllvGmmTilingStruct::IsCapable()
 
 ge::graphStatus AlltoAllvGmmTilingBase::GetPlatformInfo()
 {
-    auto platformInfo = context_->GetPlatformInfo();
-    OP_TILING_CHECK(
-        platformInfo == nullptr, VECTOR_INNER_ERR_REPORT_TILING(A_INNER_DEBUG, "fail to get platform info"),
-        return ge::GRAPH_FAILED);
-
+    OP_LOGD(context_->GetNodeName(), "start GetPlatformInfo.");
+    if (GetCommonPlatformInfo() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (CheckCommonPlatformInfo() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (CheckAttrsInfo() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    OP_LOGD(context_->GetNodeName(), "end GetPlatformInfo.");
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus AlltoAllvGmmTilingBase::GetShapeAttrsInfo()
 {
+    OP_LOGD(context_->GetNodeName(), "start GetShapeAttrsInfo.");
+    if (GetCommonShapeAttrsInfo() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    OP_LOGD(context_->GetNodeName(), "end GetShapeAttrsInfo.");
     return ge::GRAPH_SUCCESS;
 }
 
