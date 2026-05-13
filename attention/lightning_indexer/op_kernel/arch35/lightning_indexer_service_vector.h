@@ -541,6 +541,7 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessTopK(const LIC
         
         // 是否返回Value值
         if (returnValueFlag) {
+            WaitFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
             // uint16_t -> bfloat16
             if (std::is_same_v<K_T, bfloat16_t>) {
                 vector1::UIntToFloatReturnValue(valueOutLocal_.template ReinterpretCast<bfloat16_t>(),
@@ -563,6 +564,7 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessTopK(const LIC
                 Duplicate(valueOutLocal_.template ReinterpretCast<uint16_t>()[validS2Len / 16 * 16 + 64],
                             constInfo_.INVALID_VAL, topkCount_ - (validS2Len / 16 * 16 + 64));
             }
+            SetFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
             SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
             WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
             AscendC::DataCopyParams copyOutValueParams;
