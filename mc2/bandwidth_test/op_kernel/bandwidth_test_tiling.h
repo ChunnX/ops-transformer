@@ -22,8 +22,8 @@
 
 struct BandwidthTestTilingData {
     // ============ HCCL通信相关Tiling ============
-    Mc2InitTiling mc2InitTiling;  // MC2初始化Tiling数据
-    Mc2CcTiling mc2CcTiling;      // MC2集合通信Tiling数据
+    // Mc2InitTiling mc2InitTiling;  // MC2初始化Tiling数据
+    // Mc2CcTiling mc2CcTiling;      // MC2集合通信Tiling数据
 
     int32_t data_size;    // hidden size，即特征维度大小
     int32_t world_size;   // EP世界大小，即参与通信的rank总数
