@@ -12,8 +12,8 @@
  * \file chunk_gated_delta_rule_neumann_stage1.h
  * \brief
  */
-#ifndef CHUNK_GATED_DELTA_RULE_NEUMANN_P8AFULLOCAL_STAGE1_H
-#define CHUNK_GATED_DELTA_RULE_NEUMANN_P8AFULLOCAL_STAGE1_H
+#ifndef CHUNK_GATED_DELTA_RULE_NEUMANN_PACKED64LOCAL_STAGE1_H
+#define CHUNK_GATED_DELTA_RULE_NEUMANN_PACKED64LOCAL_STAGE1_H
 
 #include "kernel_tiling/kernel_tiling.h"
 #include "../chunk_gated_delta_rule_neumann_utils.h"
@@ -74,7 +74,7 @@ constexpr uint32_t C64_DIAG_IDENTITY_COPY_BLOCKS = RAW_FRACTAL_BYTES / BLOCK_SIZ
 constexpr uint32_t C64_DIAG_IDENTITY_DST_GAP_BLOCKS =
     (C64_DIAG_NZ_OFFSET1 - C64_DIAG_NZ_OFFSET0 - RAW_HALF_FRACTAL_ELEMS) * sizeof(half) / BLOCK_SIZE;
 constexpr uint32_t C64_DIAG_L0_LOAD_DST_GAP_FRACTALS = C64_DIAG_NZ_STRIDE_FRACTALS - 1;
-constexpr uint32_t C64_P8_PAIR_L0_LOAD_DST_GAP_FRACTALS =
+constexpr uint32_t C64_ODD_EVEN_PAIR_L0_LOAD_DST_GAP_FRACTALS =
     (C64_DIAG_NZ_OFFSET2 - C64_DIAG_NZ_OFFSET0) / RAW_HALF_FRACTAL_ELEMS - 1;
 constexpr uint32_t C64_FULL_L0_BLOCK_DST_GAP_FRACTALS = C64_PACKED_BLOCK_COUNT - 1;
 constexpr uint32_t C32_PACKED_SIZE_U32 = 32;
@@ -1556,37 +1556,37 @@ private:
         LoadData(l0[dstOffset], l1[srcOffset0], loadParams);
     }
 
-    __aicore__ inline void LoadP8FirstLayerLowerToFull64L0A(LocalTensor<half> l0)
+    __aicore__ inline void LoadOddLowerBlocksToFull64L0A(LocalTensor<half> l0)
     {
         LoadPacked16PairToL0OffsetWithGap(aicHalfL1Scratch_, l0, INVERSE_SHAPE, 0,
                                           C64_BLOCK32 + INVERSE_SHAPE, C64_BLOCK32,
                                           chunkSize_, RAW_HALF_FRACTAL_ELEMS,
-                                          C64_P8_PAIR_L0_LOAD_DST_GAP_FRACTALS, false);
+                                          C64_ODD_EVEN_PAIR_L0_LOAD_DST_GAP_FRACTALS, false);
     }
 
-    __aicore__ inline void LoadP8FirstLayerTopInvToFull64L0B(LocalTensor<half> l0)
+    __aicore__ inline void LoadEvenDiagonalInvBlocksToFull64L0B(LocalTensor<half> l0)
     {
         LoadPacked16PairToL0OffsetWithGap(aicHalfL1P3Result_, l0, 0, 0,
                                           C64_BLOCK32, C64_BLOCK32,
                                           chunkSize_, C64_DIAG_NZ_OFFSET0,
-                                          C64_P8_PAIR_L0_LOAD_DST_GAP_FRACTALS, true);
+                                          C64_ODD_EVEN_PAIR_L0_LOAD_DST_GAP_FRACTALS, true);
     }
 
-    __aicore__ inline void LoadP8FirstLayerBottomInvToFull64L0A(LocalTensor<half> l0)
+    __aicore__ inline void LoadOddDiagonalInvBlocksToFull64L0A(LocalTensor<half> l0)
     {
         LoadPacked16PairToL0OffsetWithGap(aicHalfL1P3Result_, l0, INVERSE_SHAPE, INVERSE_SHAPE,
                                           C64_BLOCK32 + INVERSE_SHAPE,
                                           C64_BLOCK32 + INVERSE_SHAPE,
                                           chunkSize_, C64_DIAG_NZ_OFFSET1,
-                                          C64_P8_PAIR_L0_LOAD_DST_GAP_FRACTALS, false);
+                                          C64_ODD_EVEN_PAIR_L0_LOAD_DST_GAP_FRACTALS, false);
     }
 
-    __aicore__ inline void LoadP8FirstLayerTmpToFull64L0B(LocalTensor<half> tmp64, LocalTensor<half> l0)
+    __aicore__ inline void LoadOddLowerTmpBlocksToFull64L0B(LocalTensor<half> tmp64, LocalTensor<half> l0)
     {
         LoadPacked16PairToL0OffsetWithGap(tmp64, l0, INVERSE_SHAPE, 0,
                                           C64_BLOCK32 + INVERSE_SHAPE, C64_BLOCK32,
                                           chunkSize_, RAW_HALF_FRACTAL_ELEMS,
-                                          C64_P8_PAIR_L0_LOAD_DST_GAP_FRACTALS, true);
+                                          C64_ODD_EVEN_PAIR_L0_LOAD_DST_GAP_FRACTALS, true);
     }
 
     __aicore__ inline void CopyPackedHalfL1RectToL0(LocalTensor<half> l1, LocalTensor<half> l0,
@@ -1812,40 +1812,40 @@ private:
         PipeBarrier<PIPE_M>();
     }
 
-    __aicore__ inline void RawMmadP8FirstLayerLowerTopFull64(LocalTensor<float> cTile,
-                                                             bool initCMatrix,
-                                                             uint8_t unitFlag)
+    __aicore__ inline void RawMmadOddLowerEvenInvFull64(LocalTensor<float> cTile,
+                                                        bool initCMatrix,
+                                                        uint8_t unitFlag)
     {
         SyncMToMte1();
         CopyHalfL1MatrixToL0A(aicHalfL1Zero_, aicHalfL0A_, C64_PACKED_SIZE_U32);
         CopyHalfL1MatrixToL0B(aicHalfL1Zero_, aicHalfL0B_, C64_PACKED_SIZE_U32);
-        LoadP8FirstLayerLowerToFull64L0A(aicHalfL0A_);
+        LoadOddLowerBlocksToFull64L0A(aicHalfL0A_);
         SyncMte1ToM();
         SyncMToMte1();
-        LoadP8FirstLayerTopInvToFull64L0B(aicHalfL0B_);
+        LoadEvenDiagonalInvBlocksToFull64L0B(aicHalfL0B_);
         SyncMte1ToM();
         MmadPacked64DiagOnly(cTile, aicHalfL0A_, aicHalfL0B_, initCMatrix, unitFlag);
     }
 
-    __aicore__ inline void RawMmadP8FirstLayerBottomTmpFull64(LocalTensor<half> tmp64,
-                                                              LocalTensor<float> cTile,
+    __aicore__ inline void RawMmadOddInvOddTmpFull64(LocalTensor<half> tmp64,
+                                                     LocalTensor<float> cTile,
+                                                     bool initCMatrix,
+                                                     uint8_t unitFlag)
+    {
+        SyncMToMte1();
+        CopyHalfL1MatrixToL0A(aicHalfL1Zero_, aicHalfL0A_, C64_PACKED_SIZE_U32);
+        CopyHalfL1MatrixToL0B(aicHalfL1Zero_, aicHalfL0B_, C64_PACKED_SIZE_U32);
+        LoadOddDiagonalInvBlocksToFull64L0A(aicHalfL0A_);
+        SyncMte1ToM();
+        SyncMToMte1();
+        LoadOddLowerTmpBlocksToFull64L0B(tmp64, aicHalfL0B_);
+        SyncMte1ToM();
+        MmadPacked64DiagOnly(cTile, aicHalfL0A_, aicHalfL0B_, initCMatrix, unitFlag);
+    }
+
+    __aicore__ inline void RawMmadOdd32LowerEven32InvPacked32(LocalTensor<float> cTile,
                                                               bool initCMatrix,
                                                               uint8_t unitFlag)
-    {
-        SyncMToMte1();
-        CopyHalfL1MatrixToL0A(aicHalfL1Zero_, aicHalfL0A_, C64_PACKED_SIZE_U32);
-        CopyHalfL1MatrixToL0B(aicHalfL1Zero_, aicHalfL0B_, C64_PACKED_SIZE_U32);
-        LoadP8FirstLayerBottomInvToFull64L0A(aicHalfL0A_);
-        SyncMte1ToM();
-        SyncMToMte1();
-        LoadP8FirstLayerTmpToFull64L0B(tmp64, aicHalfL0B_);
-        SyncMte1ToM();
-        MmadPacked64DiagOnly(cTile, aicHalfL0A_, aicHalfL0B_, initCMatrix, unitFlag);
-    }
-
-    __aicore__ inline void RawMmadP8SecondLayerLowerTopPacked32(LocalTensor<float> cTile,
-                                                                bool initCMatrix,
-                                                                uint8_t unitFlag)
     {
         SyncMToMte1();
         LoadPacked32BlockToL0Fixed<C64_BLOCK32, 0, C64_PACKED_SIZE_U32, false>(
@@ -1856,10 +1856,10 @@ private:
         MmadPacked32(cTile, aicHalfL0A_, aicHalfL0B_, initCMatrix, unitFlag);
     }
 
-    __aicore__ inline void RawMmadP8SecondLayerBottomTmpPacked32(LocalTensor<half> tmp32,
-                                                                 LocalTensor<float> cTile,
-                                                                 bool initCMatrix,
-                                                                 uint8_t unitFlag)
+    __aicore__ inline void RawMmadOdd32InvOdd32TmpPacked32(LocalTensor<half> tmp32,
+                                                           LocalTensor<float> cTile,
+                                                           bool initCMatrix,
+                                                           uint8_t unitFlag)
     {
         SyncMToMte1();
         LoadPacked32BlockToL0Fixed<C64_BLOCK32, C64_BLOCK32, C64_PACKED_SIZE_U32, false>(
@@ -1870,57 +1870,57 @@ private:
         MmadPacked32(cTile, aicHalfL0A_, aicHalfL0B_, initCMatrix, unitFlag);
     }
 
-    __aicore__ inline void LoadP8SecondLayerLowerToFull64L0A(LocalTensor<half> l0)
+    __aicore__ inline void LoadOdd32LowerToFull64L0A(LocalTensor<half> l0)
     {
         LoadPacked32BlockToFull64L0(aicHalfL1Scratch_, l0, C64_BLOCK32, 0,
                                     C64_BLOCK32, 0, C64_PACKED_SIZE_U32, false);
     }
 
-    __aicore__ inline void LoadP8SecondLayerTopInvToFull64L0B(LocalTensor<half> l0)
+    __aicore__ inline void LoadEven32InvToFull64L0B(LocalTensor<half> l0)
     {
         LoadPacked32BlockToFull64L0(aicHalfL1P3Result_, l0, 0, 0,
                                     0, 0, C64_PACKED_SIZE_U32, true);
     }
 
-    __aicore__ inline void LoadP8SecondLayerBottomInvToFull64L0A(LocalTensor<half> l0)
+    __aicore__ inline void LoadOdd32InvToFull64L0A(LocalTensor<half> l0)
     {
         LoadPacked32BlockToFull64L0(aicHalfL1P3Result_, l0, C64_BLOCK32, C64_BLOCK32,
                                     C64_BLOCK32, C64_BLOCK32, C64_PACKED_SIZE_U32, false);
     }
 
-    __aicore__ inline void LoadP8SecondLayerTmpToFull64L0B(LocalTensor<half> tmp64, LocalTensor<half> l0)
+    __aicore__ inline void LoadOdd32TmpToFull64L0B(LocalTensor<half> tmp64, LocalTensor<half> l0)
     {
         LoadPacked32BlockToFull64L0(tmp64, l0, C64_BLOCK32, 0,
                                     C64_BLOCK32, 0, C64_PACKED_SIZE_U32, true);
     }
 
-    __aicore__ inline void RawMmadP8SecondLayerLowerTopFull64(LocalTensor<float> cTile,
-                                                              bool initCMatrix,
-                                                              uint8_t unitFlag)
+    __aicore__ inline void RawMmadOdd32LowerEven32InvFull64(LocalTensor<float> cTile,
+                                                            bool initCMatrix,
+                                                            uint8_t unitFlag)
     {
         SyncMToMte1();
         CopyHalfL1MatrixToL0A(aicHalfL1Zero_, aicHalfL0A_, C64_PACKED_SIZE_U32);
         CopyHalfL1MatrixToL0B(aicHalfL1Zero_, aicHalfL0B_, C64_PACKED_SIZE_U32);
-        LoadP8SecondLayerLowerToFull64L0A(aicHalfL0A_);
+        LoadOdd32LowerToFull64L0A(aicHalfL0A_);
         SyncMte1ToM();
         SyncMToMte1();
-        LoadP8SecondLayerTopInvToFull64L0B(aicHalfL0B_);
+        LoadEven32InvToFull64L0B(aicHalfL0B_);
         SyncMte1ToM();
         MmadPacked64DiagOnly(cTile, aicHalfL0A_, aicHalfL0B_, initCMatrix, unitFlag);
     }
 
-    __aicore__ inline void RawMmadP8SecondLayerBottomTmpFull64(LocalTensor<half> tmp64,
-                                                               LocalTensor<float> cTile,
-                                                               bool initCMatrix,
-                                                               uint8_t unitFlag)
+    __aicore__ inline void RawMmadOdd32InvOdd32TmpFull64(LocalTensor<half> tmp64,
+                                                         LocalTensor<float> cTile,
+                                                         bool initCMatrix,
+                                                         uint8_t unitFlag)
     {
         SyncMToMte1();
         CopyHalfL1MatrixToL0A(aicHalfL1Zero_, aicHalfL0A_, C64_PACKED_SIZE_U32);
         CopyHalfL1MatrixToL0B(aicHalfL1Zero_, aicHalfL0B_, C64_PACKED_SIZE_U32);
-        LoadP8SecondLayerBottomInvToFull64L0A(aicHalfL0A_);
+        LoadOdd32InvToFull64L0A(aicHalfL0A_);
         SyncMte1ToM();
         SyncMToMte1();
-        LoadP8SecondLayerTmpToFull64L0B(tmp64, aicHalfL0B_);
+        LoadOdd32TmpToFull64L0B(tmp64, aicHalfL0B_);
         SyncMte1ToM();
         MmadPacked64DiagOnly(cTile, aicHalfL0A_, aicHalfL0B_, initCMatrix, unitFlag);
     }
@@ -2075,7 +2075,7 @@ private:
         packed64IdentityPrepared_ = true;
     }
 
-    __aicore__ inline void P7Packed64DiagonalNeumannOneShotToResult()
+    __aicore__ inline void InvertPacked64DiagonalNeumannToResult()
     {
         ZeroPacked64DiagOnlyL0Operands();
         LocalTensor<float> cInv = aicL0C_;
@@ -2110,16 +2110,16 @@ private:
         SyncFixToMte1();
     }
 
-    __aicore__ inline void P7HalfL1DiagonalNeumannBlock(uint32_t blockSize)
+    __aicore__ inline void InvertHalfL1DiagonalNeumannBlock(uint32_t blockSize)
     {
-        P7HalfL1DiagonalNeumannBlockWithBuffers(aicHalfL1TileInv_, aicHalfL1TilePower_,
-                                                aicHalfL1Scratch_, blockSize);
+        InvertHalfL1DiagonalNeumannBlockWithBuffers(aicHalfL1TileInv_, aicHalfL1TilePower_,
+                                                    aicHalfL1Scratch_, blockSize);
     }
 
-    __aicore__ inline void P7HalfL1DiagonalNeumannBlockWithBuffers(LocalTensor<half> inv,
-                                                                   LocalTensor<half> power,
-                                                                   LocalTensor<half> scratch,
-                                                                   uint32_t blockSize)
+    __aicore__ inline void InvertHalfL1DiagonalNeumannBlockWithBuffers(LocalTensor<half> inv,
+                                                                       LocalTensor<half> power,
+                                                                       LocalTensor<half> scratch,
+                                                                       uint32_t blockSize)
     {
         PrepareHalfL1IdentityByMmad(blockSize);
         LocalTensor<float> cInv = aicL0C_;
@@ -2177,7 +2177,7 @@ private:
 
         LoadGmHalfDiagonalBlockToPackedL1(paraIdx, base, 0, INVERSE_SHAPE);
         PrepareHalfL1IdentityByMmad(INVERSE_SHAPE);
-        P7HalfL1DiagonalNeumannBlock(INVERSE_SHAPE);
+        InvertHalfL1DiagonalNeumannBlock(INVERSE_SHAPE);
         CopyHalfL1PackedBlockToCompact(aicHalfL1TileInv_, aicHalfL1P3Result_,
                                        INVERSE_SHAPE, chunkSize_,
                                        0, 0, base, base, INVERSE_SHAPE);
@@ -2239,7 +2239,7 @@ private:
         }
     }
 
-    __aicore__ inline void P7SolvePacked64DiagonalBlockToResult(uint32_t base)
+    __aicore__ inline void InvertPacked64DiagonalBlockToResult(uint32_t base)
     {
         LocalTensor<half> compactPower = aicHalfL1Scratch_;
         LocalTensor<half> compactScratch = aicHalfL1TileInv_[
@@ -2255,8 +2255,8 @@ private:
         CopyHalfL1PackedBlockToCompact(aicHalfL1TilePower_, compactPower,
                                        chunkSize_, INVERSE_SHAPE,
                                        base, base, 0, 0, INVERSE_SHAPE);
-        P7HalfL1DiagonalNeumannBlockWithBuffers(aicHalfL1TileInv_, compactPower,
-                                                compactScratch, INVERSE_SHAPE);
+        InvertHalfL1DiagonalNeumannBlockWithBuffers(aicHalfL1TileInv_, compactPower,
+                                                    compactScratch, INVERSE_SHAPE);
         CopyHalfL1PackedBlockToCompact(aicHalfL1TileInv_, aicHalfL1P3Result_,
                                        INVERSE_SHAPE, chunkSize_,
                                        0, 0, base, base, INVERSE_SHAPE);
@@ -2280,7 +2280,7 @@ private:
         }
     }
 
-    __aicore__ inline void P7PackedDiagonalNeumannGroupToP3Result(uint32_t paraIdx, uint32_t groupBase,
+    __aicore__ inline void InvertPackedDiagonalNeumannGroupToResult(uint32_t paraIdx, uint32_t groupBase,
                                                                   uint32_t groupSize)
     {
         if (validLenBatch_[paraIdx] <= groupBase + INVERSE_SHAPE) {
@@ -2296,7 +2296,7 @@ private:
         LoadGmHalfDiagonalBlockToPackedL1(paraIdx, groupBase + INVERSE_SHAPE,
                                           INVERSE_SHAPE, groupSize);
 
-        P7HalfL1DiagonalNeumannBlock(INVERSE_SHAPE);
+        InvertHalfL1DiagonalNeumannBlock(INVERSE_SHAPE);
         CopyHalfL1PackedBlockToCompact(aicHalfL1TileInv_, aicHalfL1P3Result_,
                                        INVERSE_SHAPE, chunkSize_,
                                        0, 0, groupBase, groupBase, INVERSE_SHAPE);
@@ -2309,14 +2309,14 @@ private:
                                        groupSize, INVERSE_SHAPE,
                                        INVERSE_SHAPE, INVERSE_SHAPE, 0, 0,
                                        INVERSE_SHAPE);
-        P7HalfL1DiagonalNeumannBlock(INVERSE_SHAPE);
+        InvertHalfL1DiagonalNeumannBlock(INVERSE_SHAPE);
         CopyHalfL1PackedBlockToCompact(aicHalfL1TileInv_, aicHalfL1P3Result_,
                                        INVERSE_SHAPE, chunkSize_,
                                        0, 0, groupBase + INVERSE_SHAPE,
                                        groupBase + INVERSE_SHAPE, INVERSE_SHAPE);
     }
 
-    __aicore__ inline void P8Compose32From16SingleDirect(uint32_t paraIdx, uint64_t base)
+    __aicore__ inline void ComposeOddEvenLower16To32SingleDirect(uint32_t paraIdx, uint64_t base)
     {
         (void)paraIdx;
         uint64_t top = base;
@@ -2346,27 +2346,27 @@ private:
         SyncFixToMte1();
     }
 
-    __aicore__ inline void P8ComposeFirstLayerAccumFull64(uint32_t paraIdx)
+    __aicore__ inline void ComposeOddEvenLower16To32AccumFull64(uint32_t paraIdx)
     {
         (void)paraIdx;
         LocalTensor<float> cInv = aicL0C_;
         LocalTensor<float> cTmp = aicL0C_[C64_L0C_TILE_ELEMS];
         LocalTensor<half> tmp64 = aicHalfL1TileInv_;
 
-        RawMmadP8FirstLayerLowerTopFull64(cTmp, RAW_MMAD_INIT_C, RAW_MMAD_FINAL_UNIT_FLAG);
+        RawMmadOddLowerEvenInvFull64(cTmp, RAW_MMAD_INIT_C, RAW_MMAD_FINAL_UNIT_FLAG);
         SyncMToFix();
         FixpipePacked64FullToHalfL1(tmp64, cTmp, RAW_MMAD_FINAL_UNIT_FLAG);
         SyncFixToMte1();
 
-        RawMmadP8FirstLayerBottomTmpFull64(tmp64, cInv,
-                                           RAW_MMAD_ACCUMULATE_C, RAW_MMAD_FINAL_UNIT_FLAG);
+        RawMmadOddInvOddTmpFull64(tmp64, cInv,
+                                  RAW_MMAD_ACCUMULATE_C, RAW_MMAD_FINAL_UNIT_FLAG);
         SyncMToFix();
         FixpipePacked64FullToHalfL1(aicHalfL1P3Result_, cInv, RAW_MMAD_FINAL_UNIT_FLAG);
         SyncFixToM();
         SyncFixToMte1();
     }
 
-    __aicore__ inline void LoadP8LowerLeftToLowerWork64(uint32_t paraIdx, uint32_t rowBase,
+    __aicore__ inline void LoadLowerLeftToLowerWork64(uint32_t paraIdx, uint32_t rowBase,
                                                         uint32_t colBase, uint32_t blockSize)
     {
         uint64_t offset = paraIdx * ccOffset_ + MatrixOffset(rowBase, colBase);
@@ -2374,33 +2374,33 @@ private:
                                       rowBase, colBase, blockSize, chunkSize_);
     }
 
-    __aicore__ inline void PreloadP8LowerLeftBlocksToLowerWork64Sync(uint32_t paraIdx)
+    __aicore__ inline void PreloadLowerLeftBlocksToLowerWork64Sync(uint32_t paraIdx)
     {
         ZeroHalfL1(aicHalfL1Scratch_, chunkSize_ * chunkSize_);
         if (validLenBatch_[paraIdx] > INVERSE_SHAPE) {
-            LoadP8LowerLeftToLowerWork64(paraIdx, INVERSE_SHAPE, 0, INVERSE_SHAPE);
+            LoadLowerLeftToLowerWork64(paraIdx, INVERSE_SHAPE, 0, INVERSE_SHAPE);
         }
         if (validLenBatch_[paraIdx] > C64_BLOCK32 + INVERSE_SHAPE) {
-            LoadP8LowerLeftToLowerWork64(paraIdx, C64_BLOCK32 + INVERSE_SHAPE,
+            LoadLowerLeftToLowerWork64(paraIdx, C64_BLOCK32 + INVERSE_SHAPE,
                                          C64_BLOCK32, INVERSE_SHAPE);
         }
         if (validLenBatch_[paraIdx] > C64_BLOCK32) {
-            LoadP8LowerLeftToLowerWork64(paraIdx, C64_BLOCK32, 0, C64_BLOCK32);
+            LoadLowerLeftToLowerWork64(paraIdx, C64_BLOCK32, 0, C64_BLOCK32);
         }
     }
 
-    __aicore__ inline void P8Compose64From32Direct32(uint32_t paraIdx)
+    __aicore__ inline void ComposeOddEvenLower32To64Direct32(uint32_t paraIdx)
     {
         (void)paraIdx;
 
-        RawMmadP8SecondLayerLowerTopPacked32(aicL0C_,
+        RawMmadOdd32LowerEven32InvPacked32(aicL0C_,
                                              RAW_MMAD_INIT_C, RAW_MMAD_FINAL_UNIT_FLAG);
         SyncMToFix();
         CopyL0CMatrixToHalfL1(aicHalfL1TileInv_, aicL0C_,
                               C64_BLOCK32, C64_BLOCK32, RAW_MMAD_FINAL_UNIT_FLAG);
         SyncFixToMte1();
 
-        RawMmadP8SecondLayerBottomTmpPacked32(aicHalfL1TileInv_, aicL0C_,
+        RawMmadOdd32InvOdd32TmpPacked32(aicHalfL1TileInv_, aicL0C_,
                                               RAW_MMAD_INIT_C, RAW_MMAD_FINAL_UNIT_FLAG);
         SyncMToFix();
         CopyL0CMatrixToPackedHalfL1(aicHalfL1P3Result_, aicL0C_, C64_BLOCK32, 0,
@@ -2410,7 +2410,7 @@ private:
         SyncFixToMte1();
     }
 
-    __aicore__ inline void P8Compose64From32AccumFull64(uint32_t paraIdx)
+    __aicore__ inline void ComposeOddEvenLower32To64AccumFull64(uint32_t paraIdx)
     {
         LocalTensor<float> cInv = aicL0C_;
         LocalTensor<float> cTmp = aicL0C_[C64_L0C_TILE_ELEMS];
@@ -2418,12 +2418,12 @@ private:
         LocalTensor<half> resident = aicHalfL1ResidentInv_[
             static_cast<uint32_t>(paraIdx * AIC_LOW_L1_TILE_ELEMS)];
 
-        RawMmadP8SecondLayerLowerTopFull64(cTmp, RAW_MMAD_INIT_C, RAW_MMAD_FINAL_UNIT_FLAG);
+        RawMmadOdd32LowerEven32InvFull64(cTmp, RAW_MMAD_INIT_C, RAW_MMAD_FINAL_UNIT_FLAG);
         SyncMToFix();
         FixpipePacked64FullToHalfL1(tmp64, cTmp, RAW_MMAD_FINAL_UNIT_FLAG);
         SyncFixToMte1();
 
-        RawMmadP8SecondLayerBottomTmpFull64(tmp64, cInv,
+        RawMmadOdd32InvOdd32TmpFull64(tmp64, cInv,
                                             RAW_MMAD_ACCUMULATE_C, RAW_MMAD_FINAL_UNIT_FLAG);
         SyncMToFix();
         FixpipePacked64FullToHalfL1(resident, cInv, RAW_MMAD_FINAL_UNIT_FLAG);
@@ -2454,28 +2454,28 @@ private:
 
         if (ENABLE_STRICT_PACKED64_ONESHOT && validLenBatch_[paraIdx] >= chunkSize_ &&
             paraIdx < paraNum_) {
-            P7Packed64DiagonalNeumannOneShotToResult();
-            P8ComposeFirstLayerAccumFull64(paraIdx);
-            P8Compose64From32AccumFull64(paraIdx);
+            InvertPacked64DiagonalNeumannToResult();
+            ComposeOddEvenLower16To32AccumFull64(paraIdx);
+            ComposeOddEvenLower32To64AccumFull64(paraIdx);
             return;
         } else {
-            PreloadP8LowerLeftBlocksToLowerWork64Sync(paraIdx);
-            P7SolvePacked64DiagonalBlockToResult(0);
+            PreloadLowerLeftBlocksToLowerWork64Sync(paraIdx);
+            InvertPacked64DiagonalBlockToResult(0);
             if (validLenBatch_[paraIdx] > INVERSE_SHAPE) {
-                P7SolvePacked64DiagonalBlockToResult(INVERSE_SHAPE);
+                InvertPacked64DiagonalBlockToResult(INVERSE_SHAPE);
             }
             if (validLenBatch_[paraIdx] > INVERSE_SHAPE) {
-                P8Compose32From16SingleDirect(paraIdx, 0);
+                ComposeOddEvenLower16To32SingleDirect(paraIdx, 0);
             }
             if (validLenBatch_[paraIdx] > C64_BLOCK32 + INVERSE_SHAPE) {
-                P7SolvePacked64DiagonalBlockToResult(C64_BLOCK32);
-                P7SolvePacked64DiagonalBlockToResult(C64_BLOCK32 + INVERSE_SHAPE);
-                P8Compose32From16SingleDirect(paraIdx, C64_BLOCK32);
+                InvertPacked64DiagonalBlockToResult(C64_BLOCK32);
+                InvertPacked64DiagonalBlockToResult(C64_BLOCK32 + INVERSE_SHAPE);
+                ComposeOddEvenLower16To32SingleDirect(paraIdx, C64_BLOCK32);
             } else if (validLenBatch_[paraIdx] > C64_BLOCK32) {
-                P7SolvePacked64DiagonalBlockToResult(C64_BLOCK32);
+                InvertPacked64DiagonalBlockToResult(C64_BLOCK32);
             }
             if (validLenBatch_[paraIdx] > C64_BLOCK32) {
-                P8Compose64From32Direct32(paraIdx);
+                ComposeOddEvenLower32To64Direct32(paraIdx);
             }
         }
         StorePackedL1InverseToResidentL1(paraIdx);
@@ -2701,4 +2701,4 @@ private:
     LocalTensor<float> fp32InLocal_;
 };
 } // namespace ChunkGatedDeltaRuleNeumann
-#endif // CHUNK_GATED_DELTA_RULE_NEUMANN_P8AFULLOCAL_STAGE1_H
+#endif // CHUNK_GATED_DELTA_RULE_NEUMANN_PACKED64LOCAL_STAGE1_H

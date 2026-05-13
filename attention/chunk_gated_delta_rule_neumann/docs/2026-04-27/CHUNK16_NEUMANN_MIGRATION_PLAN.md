@@ -1,5 +1,11 @@
 # ChunkGatedDeltaRuleNeumann CHUNK=16 + Neumann 求逆迁移计划
 
+## 失败处理规则
+
+- 精度不过时，必须先在当前优化点上正向定位和修复；不能把回滚到 PASS baseline 当成任务完成。
+- 不能在失败候选上继续叠加下一项优化。需要恢复 baseline 时，只能作为明确放弃候选或重建干净工作面的动作，并记录失败现象、根因假设和下一步正向修复入口。
+
+
 ## 一、修改目标
 
 将 `chunk_gated_delta_rule_neumann` 算子的两个核心参数修改：

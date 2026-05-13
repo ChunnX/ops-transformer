@@ -60,6 +60,7 @@
 
 ## 本次只读分析记录
 
+- 已完成 C64_3232 与当前 C64_1616 的只读对比，结论是 32x32 Neumann 应基于当前 C64_1616 的全 AIC inverse/sync 结构改造，而不是直接沿用 C64_3232 旧 AIV 加法协同。
 - 已完成 AscendC FP16/half A/B 输入、FP32 C 输出 matmul 写法检索。
 - 推荐参考 `posembedding/rotary_position_embedding` 的 kernel `MatmulType<half, half, float>` 和 host `DT_FLOAT16/DT_FLOAT16/DT_FLOAT` 配置。
 - 当前算子仍是 FP32 A/B/C matmul；若切换到 half A/B，需要新增 half GM workspace 或在进入 cube 前完成 GM dtype 转换。
@@ -348,3 +349,102 @@ python3 run_chunk_gdr_performance_msprof.py --output ./prof_out/chunk_gdr_prefil
 | ratio 字段收敛 | 已完成 | 仅保留 `aic_mac_ratio` 与 `aiv_vec_ratio` |
 | 现有结果重汇总 | 已完成 | `full`、`s16_s64`、`smoke` 三个已跟踪 profiling 目录均已重生成 CSV |
 | 静态校验 | 已通过 | `py_compile` 与 header 检查通过 |
+
+## 协作规则与批测范围
+
+| 项目 | 状态 | 说明 |
+|---|---|---|
+| 自动推送规则 | 已更新 | 除非用户明确要求，不再自行 `git push` |
+| `S=16/S=64` 批测范围 | 已确认 | 已纳入默认性能 paramset，后续随 full prefill shapes 一起测试 |
+
+## profiling compare 三行表状态
+
+| 项目 | 状态 | 说明 |
+|---|---|---|
+| compare long format | 已完成 | 每个 case 输出 normal、neumann、`neumann/normal` 三行 |
+| 全 shape 总表 | 已完成 | `chunk_gdr_prefill_all_shapes/performance_compare.csv` 包含 32 case × 3 行 |
+| 分目录重汇总 | 已完成 | `full`、`s16_s64`、`smoke` 均按三行格式重生成 |
+| 字段校验 | 已通过 | 无 `prof_dir`，无 normal/neumann 同行展开字段，ratio 仅保留 `aic_mac_ratio/aiv_vec_ratio` |
+| 推送状态 | 未推送 | 按用户规则，未明确要求时不执行 push |
+
+## prof_out 清理与算子修改讨论入口
+
+| 项目 | 状态 | 说明 |
+|---|---|---|
+| `prof_out` 清理 | 已完成 | `tests/pytest/prof_out/*` 已清空，保留空目录 |
+| 推送状态 | 未推送 | 按用户规则未执行 `git push` |
+| 后续讨论重点 | 待决策 | AIC atomic add、`S<=16` AIV inverse 特化、C64 Neumann 方案 |
+
+## 方案A：C16 AIC-only Neumann 累加
+
+| 项目 | 状态 | 说明 |
+|---|---|---|
+| FP32 C16 旧版保存 | 已清理 | 全量精度通过后已按用户要求删除基线副本 |
+| AIC-only 累加实现 | 已完成 | `INV @ L_pow` 通过 matmul atomic add 直接累加到 `INVWsGm_` |
+| AIV 三轮 add 移除 | 已完成 | 主流程不再执行 `NeumannAddCompute()` 三轮等待/通知 |
+| 构建验证 | 已通过 | 临时切 selector 后双算子包 `ascend910_93` 构建通过 |
+| 精度 smoke | 已通过 | `B=1,S=64,nk=4,nv=4,dk=dv=64` 三方对比 PASS |
+| 全量精度 | 已通过 | `bash test_run.sh compare`，20 case 全部 PASS |
+| 全量性能 | 待执行 | 需跑包含 `S=16/S=64` 的 32 shape msprof 批测 |
+| 关键风险 | 精度已验证 | 同址 atomic add 全量精度已过；性能与 profiling 仍待验证 |
+
+### 当前判断
+
+方案A能直接攻击 S=16 慢点中的 AIC/AIV 往返累加、AIV MTE2、AIV vec 和同步开销，并允许 AIV 的 `GBKCompute()`/`VBetaCompute()` 与 AIC Neumann 求逆重叠。该方案不会减少 Neumann tiny matmul 次数，所以如果 profiling 仍慢，下一步应转向减少 matmul 调用数或恢复 C64 chunk 方案。
+
+
+## 方案A全量精度后状态
+
+| 项目 | 状态 | 说明 |
+|---|---|---|
+| selector 切换 | 已完成 | 当前默认 include `stage1_C16_FP32_CVInverse.h` |
+| 双算子构建安装 | 已完成 | `ascend910_93` 双算子包构建并安装成功 |
+| 全量三方精度 | 已通过 | `20 passed in 5.96s` |
+| 基线副本清理 | 已完成 | `stage1_C16_FP32_CVInverse_AIVAddBaseline_20260429.h` 已删除 |
+| 性能验证 | 待执行 | 需跑含 `S=16/S=64` 的 32 shape msprof |
+
+### 当前判断
+
+方案A的同址 matmul atomic add 在现有 20 个三方精度 case 下稳定。下一步不应继续纠结精度，应该直接跑 msprof 对比，验证是否真正降低 AIC/AIV 同步、AIV MTE2/vec 与端到端耗时。
+
+## 方案A 32-shape 性能验证结果
+
+| 项目 | 状态 | 说明 |
+|---|---|---|
+| 32-shape msprof | 已完成 | 结果在 `tests/pytest/prof_out/chunk_gdr_prefill_all_shapes_aic_accum/` |
+| `S=16` 性能 | 已改善 | Neumann/normal 平均 `0.994x`，从之前 `1.119x` 慢改善到基本持平/略优 |
+| `S=64` 性能 | 未达标 | Neumann/normal 平均 `2.130x`，仍明显慢于 normal |
+| 全量性能 | 未达标 | 32 case 平均 Neumann/normal `3.015x`；29/32 case normal 更快 |
+| AIV vec 开销 | 已改善 | `S=16` ratio `0.179x`，`S=64` ratio `0.646x` |
+| AIC 固定开销 | 仍是主因 | `S=64` AIC scalar ratio `3.888x`，FixPipe ratio `2.684x` |
+
+### 当前判断
+
+方案A验证了将 `INV += tmp` 搬到 AIC atomic add 是正确方向：`S=16` 已经不再慢。但 `S>=64` 的主矛盾变成 C16 chunk 数放大导致的 tiny matmul 调度、AIC scalar、FixPipe、MTE 开销。下一步应减少 Neumann matmul 调用次数或采用 C64 分块求逆方案，单纯继续削 AIV 累加收益有限。
+
+## C16 剩余性能收益点
+
+| 项目 | 状态 | 说明 |
+|---|---|---|
+| `tmpWsGm_` 清理 | 待实现 | 方案A后主流程不再使用，可删除成员、workspace 第三块和旧 `NeumannAddCompute()` |
+| `query/key` 连续化搬运 | 待评估 | 当前 AIV BF16→FP32 写 GM，AIC 再读；若 AIC 直接 BF16/half 输入可减少重复搬运 |
+| `gBK/vBeta` 中间 GM | 暂不优先 | AIV 生成、AIC 消费，是当前架构硬依赖，短期难删 |
+| Stage3 qkt mask 链路 | 待评估 | `qkt` GM→AIV mask→`tmpGM`→AIC，存在跨 stage 重复搬运但改动风险较高 |
+| 无 g fast path | 待评估 | 当前性能脚本带 g；无 g 场景可跳过 Stage2 state 乘 1 写回 |
+
+### 当前判断
+
+当前 C16 方案可做的低风险收益主要是清理未使用 workspace；真正可能带来中高收益的是减少 `query/key` 连续化 GM 往返、减少 C16 chunk 数或降低 Neumann tiny matmul 调度次数。因此下一步更推荐推进 C64 分块求逆或 BF16/half 输入 AIC，而不是继续只在 AIV 搬运上做小修。
+
+## S=64 MAC 计算量结论
+
+| 项目 | 状态 | 说明 |
+|---|---|---|
+| 求逆 MAC | 已确认 | Neumann 为 normal 的 `1.5x`：`4*3*2*16^3 / (2*32^3)` |
+| Stage1 总 MAC | 已确认 | Neumann 为 normal 的 `0.324x`，不是理论总 MAC 增多 |
+| 全算子总 MAC | 已确认 | Neumann 为 normal 的 `0.561x`，每 `B,Nv` 计算后乘 `B*Nv` 比例不变 |
+| profiling MAC time | 已解释 | `S=64` 实测 `aic_mac_time_us` 约 `1.724x`，来自 tiny matmul 低效率和调用次数放大 |
+
+### 当前判断
+
+`S=64` 的新算子不是数学 MAC 总量更多，而是 MAC 被切碎：normal 每 `B,Nv` 约 10 次 matmul，Neumann 每 `B,Nv` 约 56 次 matmul，其中包含 24 次 `16×16×16` Neumann tiny matmul。profiling 的 `aic_mac_time_us` 反映的是执行效率而非单纯理论 MAC 数。

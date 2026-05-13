@@ -12,13 +12,13 @@ Chunk Gated Delta Rule Neumann attention operator for Ascend NPU. This file is a
 - 你目前的性能小shape已经1.x但是大shape只有2.x这证明肯定有一些冗余操作导致在大shape堆积越来越多进而显现，看看有什么能够应该长周期复用的没有复用，应该搬运的却选择了计算加搬运，有没有多余写入写出计算。如果没有想法可以采用仿真分析或者msprof分析流水。你定位出来后必须正向解决
 ## Current Scope
 
-Current focus is strict packed64 `p3l1_p8a/C64_1616_FP16` with host `chunkSize=64`.
+Current focus is strict packed64 `packed64local/C64_1616_FP16` with host `chunkSize=64`.
 
 - Active selector:
   - `op_kernel/selected/stage1_selected.h`
   - `op_kernel/selected/stage1_selected_config.h`
 - Active Stage1 file:
-  - `op_kernel/p8afullocal/chunk_gated_delta_rule_neumann_stage1.h`
+  - `op_kernel/packed64local/chunk_gated_delta_rule_neumann_stage1.h`
 - Current allowed modification area:
   - Stage1 inverse path only: FP16 `L/INV`, diagonal inverse, compose, inverse writeback.
 - Do not modify:
@@ -28,14 +28,14 @@ Current focus is strict packed64 `p3l1_p8a/C64_1616_FP16` with host `chunkSize=6
   - RHS operands remain `gBKHalfWsGm_` / `vBetaHalfWsGm_`
   - do not change Stage2/Stage3/QK/`gBK/vBeta` generation or final RHS math while optimizing inverse/writeback
 
-For the current P7/P8 phase, test only 64-aligned sequence lengths. Tail/non-64 cases may stay in files, but should remain commented until tail support is explicitly restored.
+For the current packed64 inverse phase, test only 64-aligned sequence lengths. Tail/non-64 cases may stay in files, but should remain commented until tail support is explicitly restored.
 
 ## Target Discipline
 
 Do not downgrade the implementation target to get an easier pass.
 
 - If the target is packed/resident/merged MMAD, do not replace it with GM fallback, single-block loops, 32+32 grouping, or conservative writeback unless the user explicitly asks for a temporary fallback.
-- Packed MMAD itself is the target, not a redundancy. Treat redundant per-`16x16` movement, copy-out, layout-copy, or identity generation as optimization targets, but keep P7 and P8 moving toward packed-MMAD execution.
+- Packed MMAD itself is the target, not a redundancy. Treat redundant per-`16x16` movement, copy-out, layout-copy, or identity generation as optimization targets, but keep diagonal inverse and lower compose moving toward packed-MMAD execution.
 - `identity64` reuse must be a real lifecycle design. A simple "first time generate, later reuse" flag is valid only after proving the L1 storage survives the raw-MMAD local buffer epoch and `pipe_->Reset()` boundaries; otherwise regenerate once per validated epoch.
 - If target implementation fails, debug forward within the same target shape: load/layout/Fixpipe/cache/sync/math order and lifecycle. Precision failure is not a default rollback-complete state.
 - Do not move to the next optimization while the current optimization is precision-failing. First identify the concrete cause and fix it on the target path, or explicitly document why that optimization is abandoned.
@@ -47,12 +47,12 @@ Do not downgrade the implementation target to get an easier pass.
 
 Current target details:
 
-- P7 must be `64x64` packed block-diagonal.
+- Diagonal inverse must be `64x64` packed block-diagonal.
   - Pack four `16x16` diagonal blocks into `(0,0)/(16,16)/(32,32)/(48,48)`.
   - Source blocks come from `aicHalfL1TileInv_` / `aicHalfL1TilePower_`.
   - L0 diagonal copy should correspond to `ref/ref.cpp::CopyDiagonalFractalsL1ToL0()`.
   - One packed MMAD direction should cover the four diagonal Neumann subproblems.
-- P8 must follow lower-triangular compose, not the reference upper-triangular MBH formula:
+- Lower compose must follow lower-triangular math, not the reference upper-triangular MBH formula:
   - `tmp = lower @ topInv`
   - `out = bottomInv @ tmp`
   - Later odd/even packed copy should reference `ref/ref.cpp::CopyOddOrEvenBlocksL1ToL0()` only for packing layout, not for formula direction.
@@ -89,14 +89,14 @@ CGDR_GOLDEN_CHUNK_SIZE=64 TORCH_EXTENSIONS_DIR=/tmp/cgdr_torch_ext ASCEND_CUSTOM
   - `op_kernel/selected/stage1_selected.h`
   - `op_kernel/selected/stage1_selected_config.h`
 - Active C64 FP16 Stage1:
-  - `op_kernel/p8afullocal/chunk_gated_delta_rule_neumann_stage1.h`
+  - `op_kernel/packed64local/chunk_gated_delta_rule_neumann_stage1.h`
 - Saved baselines:
   - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA116_dead_resident_rowprefix_cleanup_baseline.h`
 - Reference code:
   - `ref/ref.cpp`
   - `ref/ref.md`
 - Current plan:
-  - `docs/2026-05-08/P7_P8_LOWER_TRIANGULAR_REFERENCE_ADAPTATION_PLAN.md`
+  - `docs/2026-05-13/PACKED64_LIFECYCLE_AND_REDUNDANCY_PLAN.md`
 - Daily status should be recorded in:
   - `docs/YYYY-MM-DD/WORK_LOG.md`
   - `docs/YYYY-MM-DD/PROGRESS_AND_ISSUES.md`
@@ -104,7 +104,7 @@ CGDR_GOLDEN_CHUNK_SIZE=64 TORCH_EXTENSIONS_DIR=/tmp/cgdr_torch_ext ASCEND_CUSTOM
 ## Stage1 Version Policy
 
 - `op_kernel/baseline/`: only precision-passed clean baselines.
-- `op_kernel/p8afullocal/`: current active strict packed64 Stage1 implementation.
+- `op_kernel/packed64local/`: current active strict packed64 Stage1 implementation.
 - `op_kernel/selected/`: only selector entrypoint. Do not include concrete variants directly from the generic Stage1 header.
 
 未通过精度的实验文件不得保存为 baseline；未通过的 helper 可以保留为诊断代码，但不能被描述成 active 目标完成。

@@ -483,3 +483,186 @@ bash test_run.sh compare
 - 三个已跟踪 profiling 目录重新 summarize 通过。
 - 检查确认所有 `performance_compare.csv` 均不含 `prof_dir` 字段。
 - 检查确认 ratio 字段只包含 `aic_mac_ratio` 和 `aiv_vec_ratio`。
+
+## 协作规则更新
+
+**用户要求**:
+1. 后续除非用户明确说要推送，否则不再自行 `git push`。
+2. 后续性能批测中，`S=16`、`S=64` 要随原有 full prefill shape 一起测试。
+
+**执行记录**:
+- 当前仅更新本地文档，不执行 push。
+- `S=16/S=64` 已在 `tests/pytest/compare_chunk_gdr_performance_paramset.py` 纳入默认 `PERFORMANCE_CASES`，后续执行 `run_chunk_gdr_performance_msprof.py` 会和原有 shape 一起跑。
+
+## profiling compare CSV 改为每 case 三行
+
+**用户要求**:
+- 不要把同一 case 的 normal/neumann 两个算子放在一行。
+- 每个 case 输出三行：normal 一行、neumann 一行、第三行给出 `neumann/normal` 比值。
+- 所有 shape 放在一起输出总表。
+
+**实现动作**:
+- 修改 `tests/pytest/summarize_chunk_gdr_performance_msprof.py`：
+  - `performance_compare.csv` 改为 long format。
+  - 新增 `row_type` 和 `ops` 字段。
+  - `row_type=measurement, ops=normal`：普通算子实测值。
+  - `row_type=measurement, ops=neumann`：Neumann 算子实测值。
+  - `row_type=ratio_neumann_over_normal, ops=neumann/normal`：逐指标比值。
+  - 支持 `--extra-root` 和 `--output-root`，用于把多个 profiling 根目录合并成一个总表。
+- 用现有 profiling 重新汇总：
+  - `tests/pytest/prof_out/chunk_gdr_prefill_full/performance_compare.csv`：24 case × 3 行 = 72 行。
+  - `tests/pytest/prof_out/chunk_gdr_prefill_s16_s64/performance_compare.csv`：8 case × 3 行 = 24 行。
+  - `tests/pytest/prof_out/chunk_gdr_prefill_smoke/performance_compare.csv`：1 case × 3 行 = 3 行。
+  - `tests/pytest/prof_out/chunk_gdr_prefill_all_shapes/performance_compare.csv`：32 case × 3 行 = 96 行，包含原 full shapes 与 `S=16/S=64`。
+
+**验证**:
+- `python3 -m py_compile summarize_chunk_gdr_performance_msprof.py` 通过。
+- 检查确认每个 case 都正好三行。
+- 检查确认 compare CSV 不含 `prof_dir` 字段。
+- 检查确认 compare CSV 不再有 `normal_*`/`neumann_*` 同行展开字段。
+- 检查确认 ratio 字段仍只保留 `aic_mac_ratio` 与 `aiv_vec_ratio`。
+
+**注意**:
+- 按用户最新协作规则，本次只做本地修改，不执行 `git push`。
+
+## 清理 prof_out 并准备讨论算子修改
+
+**用户要求**:
+- 清空 `tests/pytest/prof_out` 目录。
+- 接下来讨论如何修改算子。
+
+**执行动作**:
+- 已执行 `rm -rf tests/pytest/prof_out/*`，保留 `tests/pytest/prof_out/` 空目录。
+- 清理前目录约 `73M`，清理后为空目录约 `4.0K`。
+- 按用户协作规则，本次未执行 `git push`。
+
+**当前代码讨论重点**:
+- `S=16` 反常慢点已经定位：Neumann MAC 降低，但 6 次 tiny matmul + 3 轮 AIC/AIV `INV += tmp` 往返导致 scalar/sync/GM 开销压过收益。
+- 优先讨论修改方向：
+  1. 将 `INV += tmp` 从 AIV 移到 AIC/FixPipe atomic add。
+  2. 评估 `S<=16` 走 AIV 直接 inverse 特化，避免 tiny matmul 调度。
+  3. 评估回到 C64 的分块 Neumann 方案，降低 chunk 数放大。
+
+## 方案A：C16 FP32 Neumann 累加移入 AIC
+
+**用户目标**:
+- 先保存 `chunk_gated_delta_rule_neumann_stage1_C16_FP32_CVInverse.h` 当前版本。
+- 再在该文件内修改：除初始矩阵生成继续用 AIV 外，后续 Neumann 求逆累加完全在 AIC 内完成。
+- 同时分析该方案的性能收益点。
+
+**执行动作**:
+- 新增基线副本：`op_kernel/chunk_gated_delta_rule_neumann_stage1_C16_FP32_CVInverse_AIVAddBaseline_20260429.h`。
+- 修改 `op_kernel/chunk_gated_delta_rule_neumann_stage1_C16_FP32_CVInverse.h`：
+  - AIV 仍负责 `InverseCompute()`，写出 `L_powWsGm_ = L` 和 `INVWsGm_ = I-L`。
+  - AIC 三轮改为 `NeumannMmulAddCompute()`，通过 `mmFp32.IterateAll(INVWsGm_, 1)` 将 `INV @ L_pow` 直接 atomic add 到 `INVWsGm_`。
+  - 移除主流程中三轮 AIC↔AIV add 同步：`0x1/0x2`、`0x3/0x4`、`0xa/0xb`。
+- 新增方案文档：`docs/2026-04-29/C16_AIC_ONLY_NEUMANN_ACCUMULATION_PLAN.md`。
+
+**验证**:
+- 临时切 selector 到 `C16_FP32_CVInverse` 后构建双算子包通过：`bash build.sh --pkg --soc=ascend910_93 --ops=chunk_gated_delta_rule,chunk_gated_delta_rule_neumann -j16`。
+- 安装后执行三方 smoke：`python3 compare_chunk_gdr_three_way.py --batch-size 1 --seqlen 64 --nk 4 --nv 4 --dk 64 --dv 64`，结果 PASS。
+- smoke 中 CPU vs Neumann out/state 均 PASS；ChunkGDR vs Neumann out/state `max_abs=2.441406e-04`。
+
+**性能收益判断**:
+- 直接收益是去掉三轮 AIC→GM→AIV→GM→AIC 的累加往返，减少 flag 同步、AIV vec、AIV MTE2 和 GM 读写。
+- AIV 不再等待三轮 tmp，可在 `InverseCompute()` 后立即计算 `GBKCompute()`/`VBetaCompute()`，与 AIC Neumann matmul 重叠。
+- 方案不会减少 Neumann matmul 调用次数，收益重点应体现在 scalar/sync/MTE 和端到端流水重叠，而不是 AIC MAC time 大幅下降。
+
+**风险**:
+- 当前使用 `INVWsGm_` 同时作为 matmul 输入和 atomic add 输出；C16 smoke 已通过，但仍需全量精度和 msprof 验证所有 shape 稳定性。
+- selector 已恢复到当前默认 `C16_FP16_CVInverse`，本次只修改实验文件；正式验证需显式切 selector。
+
+
+## 方案A全量精度验证与基线清理
+
+**执行动作**:
+- 正式将 `op_kernel/chunk_gated_delta_rule_neumann_stage1.h` selector 切到 `chunk_gated_delta_rule_neumann_stage1_C16_FP32_CVInverse.h`。
+- 重新构建并安装双算子包：`bash build.sh --pkg --soc=ascend910_93 --ops=chunk_gated_delta_rule,chunk_gated_delta_rule_neumann -j16`。
+- 执行全量三方精度：`cd tests/pytest && bash test_run.sh compare`。
+- 全量精度通过后，按用户要求删除基线副本 `op_kernel/chunk_gated_delta_rule_neumann_stage1_C16_FP32_CVInverse_AIVAddBaseline_20260429.h`。
+
+**验证结果**:
+- `compare_chunk_gdr_three_way.py` 共 20 个 pytest case 全部 PASS。
+- pytest 汇总：`20 passed in 5.96s`。
+- 覆盖了 `S=5/16/31/48/64/80/96/128/129/160/257`、变量长度、GQA、`dk/dv=32/64/128` 和多 batch/head 组合。
+
+**当前状态**:
+- 方案A已成为当前默认 stage1 实现。
+- 下一个必要验证是 32 shape msprof 性能批测，重点观察 AIV vec/MTE2、AIC scalar/FixPipe 和端到端耗时。
+
+## 方案A 32-shape msprof 性能结果
+
+**执行动作**:
+- 执行包含 `S=16/S=64` 的 32 个 prefill shape 批测：`python3 run_chunk_gdr_performance_msprof.py --output ./prof_out/chunk_gdr_prefill_all_shapes_aic_accum`。
+- 结果保存到 `tests/pytest/prof_out/chunk_gdr_prefill_all_shapes_aic_accum/performance_compare.csv` 和 `performance_raw.csv`。
+- 输出格式为每 case 三行：`normal`、`neumann`、`ratio_neumann_over_normal`。
+
+**总体现象**:
+- 32 个 shape 中，Neumann 仅在 3 个 `S=16` case 更快；其余 29 个 case 普通 `ChunkGDR` 更快。
+- 全量平均 `task_duration_us`：normal `11996.635us`，neumann `44766.741us`，Neumann/normal 平均约 `3.015x`。
+- `S=16` 平均：normal `2275.980us`，neumann `2270.590us`，Neumann/normal 平均 `0.994x`，基本持平且略优。
+- `S=64` 平均：normal `2363.630us`，neumann `5044.865us`，Neumann/normal 平均 `2.130x`，仍明显更慢。
+
+**关键指标**:
+- `S=16`：AIV vec 平均 ratio `0.179x`，说明 AIC atomic add 方案确实消掉了大部分 AIV add vec 开销；但 AIC scalar 平均 ratio `1.207x`，收益基本被 tiny matmul 固定开销抵消。
+- `S=64`：AIV vec 平均 ratio `0.646x`，仍有改善；但 AIC scalar 平均 ratio `3.888x`、AIC fixpipe 平均 ratio `2.684x`，端到端被 4 个 C16 chunk 的 matmul 调度/FixPipe/MTE 放大主导。
+- `S>=128`：Neumann/normal task ratio 约 `2.4x~4.0x`，随序列增长接近 4 倍 chunk 数放大上限。
+
+**结论**:
+- 方案A正确降低了 AIV 累加开销，并让 `S=16` 从之前平均 `1.119x` 慢变为平均 `0.994x` 基本持平/略优。
+- 方案A没有减少 Neumann tiny matmul 调用次数；当 `S>=64` 时，C16 chunk 数放大带来的 AIC scalar、FixPipe、MTE 开销仍是主因。
+- 下一步优化不应继续只搬 AIV add；应优先减少 matmul 调用/固定调度次数，或切到 C64 block inverse 方案。
+
+## C16 当前方案剩余性能收益点分析
+
+**用户问题**:
+- 当前方案还能否通过减少重复搬运等方式获得性能收益。
+
+**分析结论**:
+- 当前 AIC atomic add 已经有效降低 AIV vec 开销，但 `S>=64` 的主要慢点仍是 C16 chunk 数放大后的 AIC scalar、AIC MTE2、FixPipe 和 tiny matmul 调度。
+- 低风险清理项：方案A后 `tmpWsGm_` 不再被主流程使用，但 kernel 和 host tiling 仍按 `L_pow + tmp + INV` 分配三块 Neumann workspace；可以删除 `tmpWsGm_`、未调用的 `NeumannAddCompute()`，并把 workspace 从 `3*C*C` 改为 `2*C*C`。
+- 最大 stage1 内部重复搬运：AIV 将 `query/key` 从 BF16 cast 为 FP32 后写 `queryContinousGm_`/`keyContinousGm_`，AIC 再读 FP32 GM 做 `K@K^T` 和 `Q@K^T`。若能改成 AIC 直接吃 BF16/half 输入、FP32 输出，可删除两块连续化 GM 和对应 AIV cast/write。
+- 仍然保留的硬依赖：`gBKWsGm_`、`vBetaWsGm_` 是 AIV 生成、AIC matmul 消费，短期难删；`L_powWsGm_`/`INVWsGm_` 是 Neumann matmul 的 GM 输入/输出，也不能直接删除。
+- 跨 stage 大搬运链路：Stage1 写 `outQkGm_`，Stage3 AIV 读后乘 scale/gamma/mask，再写 `tmpGM_`，Stage3 AIC 再读。可考虑前移 scale 或融合 masked qkt，但风险高于 stage1 内部清理。
+
+**新增文档**:
+- `docs/2026-04-29/C16_REMAINING_PERFORMANCE_OPPORTUNITIES.md`
+
+**推荐顺序**:
+1. P0：删除 `tmpWsGm_` / `NeumannAddCompute()` / workspace 第三块，低风险清理。
+2. P1：优先推进 C64 分块求逆或 BF16/half 输入 AIC，真正减少 chunk 数、tiny matmul 调度或重复 GM 搬运。
+3. P2：再考虑 Stage3 qkt mask 链路融合或 scale 前移。
+
+## S=64 MAC 计算量分析
+
+**用户问题**:
+- `S=64` 时为什么新算子的 Matmul/MAC 看起来更多，需要把变量、求逆轮次全部乘上解释。
+
+**结论**:
+- 求逆子项确实更多：normal 为 `2*32^3=65,536`，Neumann 为 `4 chunks * 3 rounds * 2 * 16^3=98,304`，即 `1.5x`。
+- 但全 Stage1 理论 MAC 并没有更多：normal `1,114,112`，Neumann `360,448`，ratio `0.324x`。
+- 全算子理论 MAC 也没有更多：normal `2,162,688`，Neumann `1,212,416`，ratio `0.561x`，这里是每 `B,Nv` 的计算量，乘 `B*Nv` 后比例不变。
+- profiling 中 `S=64` 的 `aic_mac_time_us` 稳定为约 `1.724x`，原因不是理论 MAC 总量增加，而是 C16 将 matmul 调用次数从每 `B,Nv` 约 `10` 次放大到约 `56` 次，且新增 `24` 次 `16×16×16` tiny matmul，Cube 利用率和调度摊销很差。
+
+**新增文档**:
+- `docs/2026-04-29/S64_MAC_ANALYSIS.md`
+
+---
+
+## 只读分析：C64_3232 / C64_1616 推导 32x32 Neumann 方案
+
+**用户请求**: C64_1616 全量 msprof 并行期间，只读分析 `stage1_C64_3232_FP32_CVInverse.h` 与当前 C64_1616，实现 32x32 Neumann 方案的最小改造点、数学公式、matmul 次数、tail/validLen 建议，以及 C/AIC 全程完成的风险点。
+
+**静态结论**:
+- `C64_3232` 文件当前仍是旧版整 `64x64` Neumann + AIV `NeumannAddCompute()` 三轮加法，并不是完整 32x32 分块实现。
+- 当前 `C64_1616` 已具备更接近目标的结构：AIV 仅生成初始 `L_pow=L` 和 `INV=I-L`，AIC 完成 inverse 数学，并增加 `SyncFixToMte2()` 与 chunk workspace 读完同步 `0xc`。
+- 32x32 Neumann 最小方案应以当前 `C64_1616` 为基底：新增 `INVERSE_SHAPE=32` 或独立 `NEUMANN_BLOCK=32`，实现两个 32x32 对角块 Neumann，再用一次 64-from-32 block compose。
+- 理论调用次数：每个 32x32 对角块 5 轮倍增，每轮 `Lpow` + `INV@Lpow` 共 10 次；两个对角块共 20 次；64-from-32 compose 2 次；总 inverse 22 次，比 16x16 方案的 30 次少 8 次，但单次 32x32 MM 更大。
+- tail/validLen 应保留当前分段保护：`validLen<=32` 只算上半 32x32；`validLen>32` 再算下半并 compose；尾块无效行依赖已有 AIV zero padding 和 mask，AIC 不应读取未初始化有效范围之外的数学贡献。
+
+**关键证据**:
+- `C64_3232` 旧三轮 AIC/AIV 协同：`op_kernel/chunk_gated_delta_rule_neumann_stage1_C64_3232_FP32_CVInverse.h:315`
+- `C64_3232` 旧 `NeumannMmulCompute()` 写 `tmpWsGm_`：`op_kernel/chunk_gated_delta_rule_neumann_stage1_C64_3232_FP32_CVInverse.h:809`
+- 当前 `C64_1616` 全 AIC inverse 入口：`op_kernel/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP32_CVInverse.h:317`
+- 当前 `C64_1616` 16x16 block inverse/compose：`op_kernel/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP32_CVInverse.h:789`
+- 当前 tail gating：`op_kernel/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP32_CVInverse.h:847`

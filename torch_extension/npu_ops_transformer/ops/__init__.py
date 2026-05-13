@@ -16,6 +16,7 @@ _EXPORTS = {
     "npu_moe_distribute_combine_v3": ".moe_distribute_combine_v3",
     "npu_chunk_gated_delta_rule": ".chunk_gated_delta_rule",
     "npu_chunk_gated_delta_rule_neumann": ".chunk_gated_delta_rule_neumann",
+    "npu_tri_inverse": ".tri_inverse",
     "MoeDistributeBuffer": ".deep_ep",
     "converter_moe_distribute_dispatch_v3": ".graph_convert.graph_convert_moe_distribute_dispatch_v3",
     "convert_npu_moe_distribute_combine_v3": ".graph_convert.graph_convert_moe_distribute_combine_v3",

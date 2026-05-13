@@ -551,14 +551,16 @@ function build_example()
             files=($(find ../ -path "*/${EXAMPLE_NAME}/examples/${pattern}*.cpp"))
         fi
     else
-        # Except for ascend950/ascend950, the examples of other soc units are temporarily shared. 
-        # If you need to add independent examples, you can refer to the method of adding a directory for isolation.
+        # Search examples first, fallback to tests directory
         files=($(find ../ -path "*/${EXAMPLE_NAME}/examples/${pattern}*.cpp"))
+        if [ -z "$files" ]; then
+            files=($(find ../ -path "*/${EXAMPLE_NAME}/tests/${pattern}*.cpp"))
+        fi
     fi
     # Compile and Execute
     if [[ "${EXAMPLE_MODE}" == "eager" ]]; then
         if [ -z "$files" ]; then
-            echo "${EXAMPLE_NAME} do not have eager example"
+            echo "${EXAMPLE_NAME} do not have eager or test example"
             return 2
         fi
         ABSOLUTE_MC2_PATH=$(realpath ${BUILD_PATH}/../mc2) # mc2目录绝对路径

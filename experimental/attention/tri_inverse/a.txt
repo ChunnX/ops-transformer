@@ -1,0 +1,17 @@
+
+  1. 16x16 求逆仍有冗余。现在不是“4 个 16x16 一次打包成 64x64 求逆”，而是组装成两个 32x32 diagonal solve：top32 和 bottom32。HalfL1InvAddBlock32() 里确实用 L0C 做了局部累加：先 inv @ I 初始化 L0C，再 inv @ power 累加。但它不是完整 L0C 常驻累加，很多中间 power/inv 仍 Fixpipe 回
+     L1，最终 inv32 @ identity32 还 replay 两次。
+  2. DataCopy 有反复/绕路：
+      - AIV 把输入 BF16 cast 成 FP16 后写到 ccOut GM scratch，AIC 再从 GM 搬到 L1。
+      - subBlock0 为了 bottom diag 又读一次 bottom half，subBlock1 也会读 bottom half。
+      - compose32 lowerWork 先由 AIV 写 GM，再由 AIC LoadCompose32LowerToL1() 读回。
+      - diagonal/compose 结果现在同时写 L1 和 GM，且部分地方靠重新 MMAD replay 生成第二份输出。
+  3. 识别出的主要优化点：
+      - 先消掉 diagonal final INV32 @ I32 replay，用同一个 L0C 结果服务 L1/GM。
+      - 再处理 compose final replay。
+      - identity32 不应每 tile 走 AIV->GM->AIC，应该在 AIC L1 侧一次性准备并复用。
+      - bottom diag scratch 可改由 subBlock1 写，去掉 subBlock0 的 bottom half 二次搬入。
+      - 更大一步才是 L0C 常驻累加，减少每轮 inv @ I copy，但这比 replay 合并风险更高。
+  4. I 矩阵目前不是全局只生成/搬运一次。Phase16 只是做到“每 tile 生成一次、AIC 每 tile 加载一次，然后 top/bottom 两个 32x32 solve 复用”。文件里的 TRI_INV_IDENTITY16_NZ 静态 GM 常量目前没有被当前 active 路径使用。
+  5. 数据同时放 L1 和 GM 的原因分两类：L1 是给后续 compose/RHS 用的内部结果；GM 是 standalone tri_inverse 当前 pytest/golden 要看的 cc_out。另外一部分 GM 不是最终输出，而是 AIV 到 AIC 的 scratch 通道。融合进后续算子后，这些 GM 输出很多可以删除，但 standalone 验证阶段还必须保留
+     最终 BF16 GM 输出。当前确实还有冗余，下一步我会先做 diagonal replay 合并，不动 lower-left compose。

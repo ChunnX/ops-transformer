@@ -1,0 +1,3 @@
+scheme,source_dir,cases,neumann_faster_cases,avg_neumann_over_normal,min_neumann_over_normal,max_neumann_over_normal,avg_aic_mac_ratio,avg_aic_scalar_ratio,avg_aic_mte2_ratio,avg_aic_fixpipe_ratio,avg_aiv_vec_ratio
+C64_1616_sync_reduced,tests/pytest/prof_out/chunk_gdr_c64_1616_sync_reduced_all_shapes,32,4,2.3387724748643,0.9213629152482921,3.009941534596057,1.4940478726307935,3.0816886232493212,2.604430931934578,2.060989331762083,0.4033652344270874
+C64_3232_hybrid,tests/pytest/prof_out/chunk_gdr_c64_3232_hybrid_all_shapes,32,3,1.7782046342977946,0.9805814143393762,2.1983783897452227,1.3817689736921621,2.201644921562425,1.9786107282518262,1.6384146640548587,0.4038173982544389
