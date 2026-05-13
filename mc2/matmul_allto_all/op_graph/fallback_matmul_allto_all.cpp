@@ -251,6 +251,11 @@ static ge::graphStatus MatmulAlltoAllExecuteFunc(gert::OpExecuteContext* host_ap
     OP_LOGE(host_api_ctx->GetNodeName(), "in fallback, attrParas.groupSize is: %ld", attrParas.groupSize);
     OP_LOGE(host_api_ctx->GetNodeName(), "in fallback, 222");
 
+    const int64_t* groupSize_ptr = attrs->GetInt(INDEX_ATTR_GROUP_SIZE);
+    OP_LOGE(host_api_ctx->GetNodeName(), "in fallback, 333 groupSize_ptr is: %ld", *groupSize_ptr);
+    int64_t groupSize = (groupSize_ptr != nullptr ? *groupSize_ptr : 0);
+    OP_LOGE(host_api_ctx->GetNodeName(), "in fallback, 444 groupSize is: %ld", groupSize);
+
     const auto alltoAllAxesOptional = attrs->GetListInt(INDEX_ATTR_ALL2ALL_AXES);
     std::vector<int64_t> actSeqArray;
     if(alltoAllAxesOptional != nullptr) {
@@ -279,7 +284,7 @@ static ge::graphStatus MatmulAlltoAllExecuteFunc(gert::OpExecuteContext* host_ap
             return ge::GRAPH_FAILED);
         const auto ret = EXEC_OPAPI_CMD(aclnnQuantMatmulAlltoAll, matmulParas.x1Acl, matmulParas.x2Acl, matmulParas.bias, quantMatmulParas.x1ScaleAcl, quantMatmulParas.x2ScaleAcl,
                                         attrParas.commScaleOptional, attrParas.x1OffsetOptional, attrParas.x2OffsetOptional, actSeqArray, attrParas.group,
-                                        x1QuantMode, x2QuantMode, attrParas.commQuantMode, attrParas.commQuantDtype, attrParas.groupSize, attrParas.transposeX1, attrParas.transposeX2,
+                                        x1QuantMode, x2QuantMode, attrParas.commQuantMode, attrParas.commQuantDtype, groupSize, attrParas.transposeX1, attrParas.transposeX2,
                                         output);
         OPS_ERR_IF(ret != ge::GRAPH_SUCCESS,
                    OPS_LOG_E(MatmulAlltoAllInfo, "Aclnn quant matmul allto all api error code %d", ret),
