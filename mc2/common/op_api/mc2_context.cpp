@@ -501,7 +501,7 @@ aclnnStatus Mc2Context::CheckProtocolSupport(const HcclComm &hcclHandle, uint32_
                     OP_LOGD("protocol is UB_MEM, but no available HCCL links found, set protocol to ROCE_DPU");
                     continue; 
                 }
-                OP_LOGE("No available HCCL links found, layer is %u, protocol is %s", layerList[layerIndex], protocol);
+                OP_LOGE("No available HCCL links found, layer is %u, protocol is %u", layerList[layerIndex], protocol);
                 return ACLNN_ERR_INNER; //  如果已经是ROCE协议，且没有链接，返回错误
             }
             if (CheckLinks(netLinkNum, linksList, protocol) != ACLNN_SUCCESS) {
@@ -595,6 +595,7 @@ aclnnStatus Mc2Context::GetMc2ContextTensor(const char *groupEp, const char *opN
     void *ctx = nullptr;
     CommProtocol protocol;
     std::string mc2ContextTag = std::string(groupEp) + std::string(opName);
+    CommEngine engine = CommEngine::COMM_ENGINE_AIV; // 目前DPU与MTE通信仅支持AIV引擎
 
     aclnnRet = instance.ValidateContextTag(mc2ContextTag);
     CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
@@ -612,7 +613,6 @@ aclnnStatus Mc2Context::GetMc2ContextTensor(const char *groupEp, const char *opN
         return ACLNN_SUCCESS;
     }   
 
-    CommEngine engine = CommEngine::COMM_ENGINE_AIV; // 目前DPU与MTE通信仅支持AIV引擎
     aclnnRet = instance.GetCommProtocol(hcclHandle, protocol);
     CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
 
