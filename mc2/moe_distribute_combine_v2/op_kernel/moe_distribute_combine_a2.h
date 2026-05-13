@@ -464,10 +464,10 @@ MoeDistributeCombineA2<TemplateMC2TypeA2Func>::MultiServerDispatch(LocalTensor<E
         bufferIdGlobal_(0) = bufferId_ ^ 1;
     }
     if (rankId_ >= worldSizeTaskInfo_.startTaskId && rankId_ < worldSizeTaskInfo_.endTaskId) {
-        GlobalTensor<uint32_t> tokenNumInWindow;
-        LocalTensor<uint32_t> tokenNumTensor = aDumpTensor_.ReinterpretCast<uint32_t>();
         localOutWindow_.SetGlobalBuffer((__gm__ ExpandXType *)(windowOutGM_ + dataOffsetOnWin_ + TOKEN_OFFSET));
         localInWindow_.SetGlobalBuffer((__gm__ ExpandXType *)(windowInGM_ + dataOffsetOnWin_ + TOKEN_OFFSET));
+        GlobalTensor<uint32_t> tokenNumInWindow;
+        LocalTensor<uint32_t> tokenNumTensor = aDumpTensor_.ReinterpretCast<uint32_t>();
         tokenNumInWindow.SetGlobalBuffer((__gm__ uint32_t *)(windowInGM_ + dataOffsetOnWin_));
         uint32_t rankIdOffset = rankId_ - worldSizeTaskInfo_.startTaskId;
         uint64_t rankTokenNum =
