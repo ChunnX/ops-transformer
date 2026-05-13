@@ -46,7 +46,7 @@ constexpr uint32_t SWIGLU_N_HALF = 2U;
 constexpr int32_t MXFP_DIVISOR_SIZE = 64;
 constexpr int32_t MXFP_SCALE_GROUP_NUM = 32;
 constexpr int32_t MXFP_MULTI_BASE_SIZE = 2;
-constexpr int64_t PEERMEM_DATA_OFFSET = 1024 * 60LL;
+constexpr int32_t PEERMEM_DATA_OFFSET = 1024 * 60;
 constexpr int64_t SIMT_THREAD_NUM = 2048;
 constexpr int64_t ALIGN_32 = 32LL;
 constexpr int64_t ALIGN_128 = 128LL;
@@ -65,6 +65,7 @@ struct WorkspaceInfo {
     GM_ADDR gmCtx;
     GM_ADDR ptrA;
     GM_ADDR ptrAScale;
+    GM_ADDR ptrTriplet;
     GM_ADDR ptrA2;
     GM_ADDR ptrA2Scale;
     GM_ADDR ptrcumsumMM;
@@ -83,6 +84,8 @@ struct WorkspaceInfo {
         ptrAScale = base + workspaceSize;
         workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->h /
             MXFP_SCALE_GROUP_NUM, ALIGN_512);
+        ptrTriplet = base + workspaceSize;
+        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_32 * tilingData->maxOutputSize, ALIGN_512);
         ptrA2 = base + workspaceSize;
         workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize *
             tilingData->hiddenDim / SWIGLU_N_HALF, ALIGN_512);

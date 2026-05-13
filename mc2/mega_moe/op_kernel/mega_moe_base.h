@@ -35,6 +35,7 @@ struct GMMAddrInfo {
     GM_ADDR bGlobal;
     GM_ADDR aScaleGlobal;
     GM_ADDR bScaleGlobal;
+    uint32_t mBaseOffset;
     __gm__ int32_t* groupFlagList;
     __gm__ int32_t* groupFlagList2;
 };
@@ -43,6 +44,7 @@ struct PeermemInfo {
     GM_ADDR ptrBase;
     GM_ADDR ptrTokenPerExpert;
     GM_ADDR ptrA0;      // initrouting结果，包括data+scale
+    GM_ADDR ptrTriplet; // 与ptrA0逐行对齐的(to_rank, token_id, topk_id)
     GM_ADDR ptrD;
     __aicore__ inline PeermemInfo() = default;
     __aicore__ inline PeermemInfo(GM_ADDR base, const MegaMoeTilingData *tilingData)
@@ -55,9 +57,31 @@ struct PeermemInfo {
         ptrA0 = base + offset;
         offset += tilingData->bs * tilingData->topK *
             (tilingData->h + tilingData->h / MXFP_SCALE_GROUP_NUM) * sizeof(int8_t);
+        ptrTriplet = base + offset;
+        offset += tilingData->bs * tilingData->topK * sizeof(int32_t);
         ptrD = base + offset;
     }
 };
+
+__aicore__ inline int32_t EncodeTriplet(uint32_t rankId, uint32_t tokenId, uint32_t topkId)
+{
+    return static_cast<int32_t>((rankId << 20) | (tokenId << 4) | topkId);
+}
+
+__aicore__ inline uint32_t DecodeTripletRank(int32_t packedTriplet)
+{
+    return static_cast<uint32_t>(packedTriplet) >> 20;
+}
+
+__aicore__ inline uint32_t DecodeTripletToken(int32_t packedTriplet)
+{
+    return (static_cast<uint32_t>(packedTriplet) & 0xFFFF0) >> 4;
+}
+
+__aicore__ inline uint32_t DecodeTripletTopk(int32_t packedTriplet)
+{
+    return static_cast<uint32_t>(packedTriplet) & 0xFU;
+}
 
 struct Params {
     GM_ADDR aGmAddr;
