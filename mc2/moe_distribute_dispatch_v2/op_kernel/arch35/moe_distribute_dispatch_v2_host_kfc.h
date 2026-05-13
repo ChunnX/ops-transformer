@@ -37,7 +37,6 @@
 #else 
 #include "../../common/inc/kernel/moe_distribute_base.h"
 #endif
-#include "../log.h"
 #include "../newlog.h"
 
 namespace MoeDistributeDispatchV2HostKfcImpl {
