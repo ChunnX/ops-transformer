@@ -31,7 +31,8 @@ namespace AllGatherMatmulImpl
 using namespace AscendC;
 constexpr uint64_t PERBLOCK_BLOCK_SIZE = 128;
 constexpr uint32_t MAX_RANK_DIM = 64;
-template <typename AType, typename CType, Mc2CoreType CoreType>
+template <typename AType, typename CType, Mc2CoreType CoreType,
+          HcclServerType ServerType = HcclServerType::HCCL_SERVER_TYPE_CCU>
 class AllGatherMatmulBase
 {
 public:
@@ -39,6 +40,7 @@ public:
                                           Mc2Tiling::AllGatherMatmulTilingDataFp8* tilingData, GM_ADDR contextGM, TPipe* tPipe)
         : addrs_(addrs), quantAddrs_(quantAddrs), tPipe_(tPipe)
     {
+        tilingData_ = tilingData;
         paramInTiling_ = &tilingData->param;
         dataType_ = static_cast<AscendC::HcclDataType>(tilingData->dataType);
         debugMode_ = tilingData->debugMode;
@@ -46,9 +48,9 @@ public:
     }
     __aicore__ inline void Init(__gm__ void* mc2InitTiling, __gm__ void* mc2CcTiling)
     {
-        hccl_.Init(context_, mc2InitTiling);
-        hccl_.SetCcTiling(mc2CcTiling);
-        rankId_ = ((__gm__ HcclCombinOpParam*)context_)->rankId;
+        hccl_.InitV2(context_, tilingData_);
+        hccl_.SetCcTilingV2(offsetof(Mc2Tiling::AllGatherMatmulTilingDataFp8, mc2CcTiling));
+        rankId_ = hccl_.GetRankId();
         // 计算scale1的数据个数及地址偏移
         nBlockSizeCnt_ = (tileInfo_.mmTiling->matmulTiling.Ka + PERBLOCK_BLOCK_SIZE - 1) / PERBLOCK_BLOCK_SIZE;
         oneCommBlockSizeOffset_ = static_cast<uint64_t>(tileInfo_.mmTiling->matmulTiling.M / PERBLOCK_BLOCK_SIZE) * 
@@ -143,7 +145,7 @@ protected:
     Mc2Tiling::MC2TileInfo localInfo_;
     Mc2Tiling::MC2TileInfo tileInfo_;
     Mc2Tiling::MC2TileInfo tailInfo_;
-    Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;
+    Hccl<ServerType> hccl_;
     AscendC::HcclDataType dataType_;
     GM_ADDR context_;
     bool notifyFlag_;
@@ -159,6 +161,7 @@ protected:
     GM_ADDR gatherScaleAddr_;
     AscendC::HcclHandle hcclHandleIdList[MAX_HANDLE_WITH_SCALE1]; /* hccl handle */
     uint32_t batchWeight_[MAX_RANK_DIM] = {0};
+    Mc2Tiling::AllGatherMatmulTilingDataFp8* tilingData_;
 
 private:
     __aicore__ inline void UpdateNotifyFlag()

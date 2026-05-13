@@ -29,14 +29,15 @@ namespace AllGatherMatmulImpl
 {
 using namespace AscendC;
 
-template <typename AType, typename BType, typename CType, class MmType, Mc2CoreType CoreType>
-class AllGatherQuantPerBlock : public AllGatherMatmulBase<AType, CType, CoreType>
+template <typename AType, typename BType, typename CType, class MmType, Mc2CoreType CoreType,
+          HcclServerType ServerType = HcclServerType::HCCL_SERVER_TYPE_CCU>
+class AllGatherQuantPerBlock : public AllGatherMatmulBase<AType, CType, CoreType, ServerType>
 {
 public:
     __aicore__ inline AllGatherQuantPerBlock(MC2GmAddrs* addrs, QuantGmAddrs* quantAddrs,
                                              Mc2Tiling::AllGatherMatmulTilingDataFp8* tilingData, GM_ADDR contextGM, 
                                              __gm__ void* mc2InitTiling, __gm__ void* mc2CcTiling, TPipe* tPipe)
-        : AllGatherMatmulBase<AType, CType, CoreType>(addrs, quantAddrs, tilingData, contextGM, tPipe)
+        : AllGatherMatmulBase<AType, CType, CoreType, ServerType>(addrs, quantAddrs, tilingData, contextGM, tPipe)
     {
         tilingData_ = tilingData;
         this->localInfo_.mmTiling = &tilingData_->quantBmmv3LocalTiling;
@@ -59,8 +60,8 @@ private:
  * @brief allgather quant bmm perblock 主流程：通信+计算整块+计算尾块+后处理
  * @return void
  */
-template <typename AType, typename BType, typename CType, class MmType, Mc2CoreType CoreType>
-__aicore__ inline void AllGatherQuantPerBlock<AType, BType, CType, MmType, CoreType>::Process()
+template <typename AType, typename BType, typename CType, class MmType, Mc2CoreType CoreType, HcclServerType ServerType>
+__aicore__ inline void AllGatherQuantPerBlock<AType, BType, CType, MmType, CoreType, ServerType>::Process()
 {
     // 开启通信
     this->HcclStart();
@@ -74,8 +75,8 @@ __aicore__ inline void AllGatherQuantPerBlock<AType, BType, CType, MmType, CoreT
  * @brief allgather quant bmm 计算流程
  * @return void
  */
-template <typename AType, typename BType, typename CType, class MmType, Mc2CoreType CoreType>
-__aicore__ inline void AllGatherQuantPerBlock<AType, BType, CType, MmType, CoreType>::QuantMatmulCompute()
+template <typename AType, typename BType, typename CType, class MmType, Mc2CoreType CoreType, HcclServerType ServerType>
+__aicore__ inline void AllGatherQuantPerBlock<AType, BType, CType, MmType, CoreType, ServerType>::QuantMatmulCompute()
 {
     // 计算本片的块
     QuantMatmulLocalCompute();
@@ -105,8 +106,8 @@ __aicore__ inline void AllGatherQuantPerBlock<AType, BType, CType, MmType, CoreT
  * @brief 本地块计算流程
  * @return void
  */
-template <typename AType, typename BType, typename CType, class MmType, Mc2CoreType CoreType>
-__aicore__ inline void AllGatherQuantPerBlock<AType, BType, CType, MmType, CoreType>::QuantMatmulLocalCompute()
+template <typename AType, typename BType, typename CType, class MmType, Mc2CoreType CoreType, HcclServerType ServerType>
+__aicore__ inline void AllGatherQuantPerBlock<AType, BType, CType, MmType, CoreType, ServerType>::QuantMatmulLocalCompute()
 {
     // 本卡位置与rankId一致，C矩阵本卡矩阵首地址为rankid*cSize
     GM_ADDR cGM =
@@ -130,8 +131,8 @@ __aicore__ inline void AllGatherQuantPerBlock<AType, BType, CType, MmType, CoreT
  * @param isTail: 当前块是否为尾块
  * @return void
  */
-template <typename AType, typename BType, typename CType, class MmType, Mc2CoreType CoreType>
-__aicore__ inline void AllGatherQuantPerBlock<AType, BType, CType, MmType, CoreType>::QuantMatmulGatherCompute(
+template <typename AType, typename BType, typename CType, class MmType, Mc2CoreType CoreType, HcclServerType ServerType>
+__aicore__ inline void AllGatherQuantPerBlock<AType, BType, CType, MmType, CoreType, ServerType>::QuantMatmulGatherCompute(
     MmType& mmOp, uint32_t count, const Mc2Tiling::MC2TileInfo& tileInfo, bool isTail)
 {
     uint32_t strideCount = this->paramInTiling_->rankM;
@@ -154,7 +155,7 @@ __aicore__ inline void AllGatherQuantPerBlock<AType, BType, CType, MmType, CoreT
     }
 }
 
-#define INVOKE_ALL_GATHER_QUANT_BATCHMATMUL_PERBLOCK_OP_IMPL(templateClass, CoreType, isTransA, isTransB, ...)     \
+#define INVOKE_ALL_GATHER_QUANT_BATCHMATMUL_PERBLOCK_OP_IMPL(templateClass, CoreType, hcclCommType, isTransA, isTransB, ...)     \
     do {                                                                                                           \
         REGISTER_TILING_DEFAULT(Mc2Tiling::AllGatherMatmulTilingDataFp8);                                                      \
         auto tiling = (__gm__ Mc2Tiling::AllGatherMatmulTilingDataFp8*)tilingGM;                                                \
@@ -165,7 +166,7 @@ __aicore__ inline void AllGatherQuantPerBlock<AType, BType, CType, MmType, CoreT
         QuantGmAddrs quantAddrs = {scaleInv2, scaleInv1, scale};                                                   \
         using opType = templateClass<DTYPE_X1, DTYPE_X2, DTYPE_BIAS, DTYPE_Y, CubeFormat::ND, CubeFormat::ND,      \
                                      CubeFormat::ND, isTransA, isTransB>;                                          \
-        AllGatherQuantPerBlock<DTYPE_X1, DTYPE_X2, DTYPE_Y, opType, CoreType> op(&addrs, &quantAddrs, &tilingData, \
+        AllGatherQuantPerBlock<DTYPE_X1, DTYPE_X2, DTYPE_Y, opType, CoreType, hcclCommType> op(&addrs, &quantAddrs, &tilingData, \
                                                                                  (__gm__ uint8_t*)context,          \
                                                                                  mc2InitTiling, mc2CcTiling, &pipe); \
         op.Init(mc2InitTiling, mc2CcTiling);                                                                         \
