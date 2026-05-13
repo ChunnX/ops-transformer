@@ -25,12 +25,12 @@ namespace NpuArch::Epilogue::Block {
 template <typename DefaultType>
 struct ElementPTmpTypeLookup {
     using type = DefaultType;
-}
+};
 
 template <> 
 struct ElementPTmpTypeLookup<float8_e4m3_t> {
     using type = half;
-}
+};
 
 enum class KvBaseTileRegSplitStages {
     ONE,
@@ -213,8 +213,8 @@ public:
         __ubuf__ ElementInput *nowMaxAddr = (__ubuf__ ElementInput*) lmUbTensor.GetPhyAddr();
         __ubuf__ ElementInput *nowSumAddr = (__ubuf__ ElementInput*) llUbTensor.GetPhyAddr();
         __ubuf__ float *expMaxUbAddr = (__ubuf__ float *)dmUbTensor[l1PBufId * DM_UB_GLOBAL_ELEM_NUM].GetPhyAddr();
-        __ubuf__ float *queryQuantScaleAddr = (__ubuf__ float*) quantUbTensor[ubSBufId].GetPhyAddr();
-        __ubuf__ float *keyQuantScaleAddr = (__ubuf__ float*) quantUbTensor[ubSBufId].GetPhyAddr();
+        //__ubuf__ float *queryQuantScaleAddr = (__ubuf__ float*) quantUbTensor[ubSBufId].GetPhyAddr();
+        //__ubuf__ float *keyQuantScaleAddr = (__ubuf__ float*) quantUbTensor[ubSBufId].GetPhyAddr();
 
         // wait QK Fixpipe finsh
         WaitCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
@@ -245,7 +245,7 @@ public:
             }
             AscendC::SetFlag<AscendC::HardEvent::S_V>(0);
             AscendC::WaitFlag<AscendC::HardEvent::S_V>(0);
-            DequantRes<ElementInput>(nullptr, nullptr, sAddr, m, nLoops, tailN, nRound, qscale[0],
+            DequantRes<ElementInput>(sAddr, m, nLoops, tailN, nRound, qscale[0],
                 kscale[0],
                 kscale[1],
                 kscale[2],
@@ -286,7 +286,7 @@ public:
         SetCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
 
         auto ubPLayoutTla = tla::MakeLayout<ElementOutput, LayoutOutput>(mRound, nRound);
-        auto ubPTensorTla = tla::MakeTensor(lpUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM].template ReinterpretCase<ElementOutput>(),
+        auto ubPTensorTla = tla::MakeTensor(lpUbTensor[ubSBufId * MAX_UB_S_ELEM_NUM].template ReinterpretCast<ElementOutput>(),
             ubPLayoutTla, Arch::PositionUB{});
         auto ubPTensorTlaTile = GetTile(ubPTensorTla,
                 tla::MakeCoord(0, 0), tla::MakeShape(m, n));
@@ -313,7 +313,7 @@ public:
 private:
     ElementInput scaleValue;
     AscendC::LocalTensor<ElementInput> lsUbTensor;
-    AscendC::LocalTensor<ElementOutput> lpUbTensor;
+    AscendC::LocalTensor<ElementOutputTmp> lpUbTensor;
     AscendC::LocalTensor<float> gmUbTensor;
     AscendC::LocalTensor<float> glUbTensor;
     AscendC::LocalTensor<float> dmUbTensor;
@@ -542,13 +542,13 @@ private:
             Or((RegTensor<uint8_t>&)fp8Reg0, (RegTensor<uint8_t>&)fp8Reg0, (RegTensor<uint8_t>&)fp8Reg1, pregAllFp8);
             Pack((RegTensor<uint16_t>&)fp16Reg0, (RegTensor<uint32_t>&)fp8Reg0);
             StoreAlign<float8_e4m3_t, DataCopyMode::DATA_BLOCK_COPY>(
-                pAddrFp8 + i * FP8_ELE_NUM_PER_C0 + j * blockStride * HALF_REP_SIZE,
+                pAddrFp8 + i * FP8_ELE_NUM_PER_C0 + nLoops * blockStride * HALF_REP_SIZE,
                 (RegTensor<float8_e4m3_t>&)fp16Reg0, blockStride, pregHalfFp8);
             ReduceSum(expSumVreg, expSumVreg, pregFull);
             StoreUnAlign<ElementS, PostLiteral::POST_MODE_UPDATE>(expSumUb, expSumVreg, expSumUreg, 1);
 
         }
-        vstat(expSumUreg, expSumUb, 0, POST_UPDATE);
+        vstas(expSumUreg, expSumUb, 0, POST_UPDATE);
 
 
     }
@@ -756,7 +756,7 @@ private:
      * @param S2BaseSize    每行元素数（nRound，用于地址计算）
      */
     template <typename ElementS>
-    __simd_vf__ inline void DequantRes(__ubuf__ float *queryScaleUb, __ubuf__ float *valueScaleUb, __ubuf__ ElementS *srcUb,
+    __simd_vf__ inline void DequantRes(__ubuf__ ElementS *srcUb,
         uint16_t m, uint16_t nLoops, uint32_t tailN, uint16_t S2BaseSize, float qscale, float valueScale0, float valueScale1, float valueScale2, float valueScale3)
     {
         using namespace AscendC::MicroAPI;

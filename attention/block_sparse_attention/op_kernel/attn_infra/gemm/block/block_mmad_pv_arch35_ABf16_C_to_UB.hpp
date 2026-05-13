@@ -256,6 +256,7 @@ public:
                     uint32_t gatheredKvSTileIdx, uint32_t kvSeqlen,
                     uint32_t kvSBaseTile, uint32_t blockShapeY,
                     uint32_t yBlockNumAval, uint32_t yBlockNumRsvd,
+                    uint64_t prefixSumL0AStages, uint64_t prefixSumL0BStages,
                     Arch::CrossCoreFlag smToMm2Flag, Arch::CrossCoreFlag mm2ToReFlag)
     {
         struct EmptyTensor {};
@@ -263,7 +264,7 @@ public:
         this->operator()<0>(gBTensor, ubCTensor, dummyVS, gSparseBlockIdx,
                             actualOriShape, gatheredKvSTileIdx, kvSeqlen,
                             kvSBaseTile, blockShapeY, yBlockNumAval, 
-                            yBlockNumRsvd, smToMm2Flag, mm2ToReFlag);
+                            yBlockNumRsvd, prefixSumL0AStages, prefixSumL0BStages, smToMm2Flag, mm2ToReFlag);
     }
 
 
@@ -275,6 +276,7 @@ public:
                     uint32_t gatheredKvSTileIdx, uint32_t kvSeqlen,
                     uint32_t kvSBaseTile, uint32_t blockShapeY,
                     uint32_t yBlockNumAval, uint32_t yBlockNumRsvd,
+                    uint64_t prefixSumL0AStages, uint64_t prefixSumL0BStages,
                     Arch::CrossCoreFlag smToMm2Flag, Arch::CrossCoreFlag mm2ToReFlag)
     {
         using CopyL0CToDst = typename TileCopy_::template CopyL0CToDst<TensorC>;
@@ -374,10 +376,10 @@ public:
                         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
                     }
 
-                    if constexpr (quant_mdoe == 1) {
+                    if constexpr (quant_mode == 1) {
                         if (mL0Itr == 0 && kL0Itr == kL0LoopNum - 1){
                             AscendC::WaitFlag<AscendC::HardEvent::FIX_MTE2>(0);
-                            DataCopy(l1VSDBTensor[l1VSdbsel], gVSTensor.data[nL0Itr * L0_TILE_N], l0TileNAct);
+                            DataCopy(l1VSDBTensor[l1VSdbSel], gVSTensor.data()[nL0Itr * L0_TILE_N], l0TileNAct);
                             AscendC::SetFlag<AscendC::HardEvent::MTE2_FIX>(0);
                             AscendC::WaitFlag<AscendC::HardEvent::MTE2_FIX>(0);
                         }
@@ -414,7 +416,7 @@ public:
             } else if constexpr (quant_mode == 1){
                 copyL0CToDst(ubCTensorTlaTile, l0CTensorTla, l1VSDBTensor[l1VSdbSel]);
                 AscendC::SetFlag<AscendC::HardEvent::FIX_MTE2>(0);
-                l1VSdbsel = (l1VSdbsel + 1) % VSDB_BUF_NUM;
+                l1VSdbSel = (l1VSdbSel + 1) % VSDB_BUF_NUM;
             }
             AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
         }
@@ -426,7 +428,7 @@ protected:
     /// Data members
     AscendC::LocalTensor<ElementA> l1ATensor[MAX_L1_STAGES];
     AscendC::LocalTensor<ElementB> l1BTensor[MAX_L1_STAGES];
-    AscendC::Localtensor<uint64_t> l1VSDBTensor[VSDB_BUF_NUM];
+    AscendC::LocalTensor<uint64_t> l1VSDBTensor[VSDB_BUF_NUM];
     AscendC::LocalTensor<ElementA> l0ATensor[L0_STAGES];
     AscendC::LocalTensor<ElementB> l0BTensor[L0_STAGES];
     AscendC::LocalTensor<ElementAccumulator> l0CTensor[L0_STAGES];

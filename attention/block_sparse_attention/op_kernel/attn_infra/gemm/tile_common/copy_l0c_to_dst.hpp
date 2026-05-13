@@ -47,14 +47,16 @@ struct CopyL0CToDstQuantMode<
 };
 
 // CopyL0CToGm fp32 to fp32
-template <class ArchTag>
+template <>
 struct CopyL0CToDstQuantMode<
-    ArchTag,
+    NpuArch::Arch::AtlasA5,
     float, float,
     ScaleGranularity::PER_CHANNEL
 > {
     static constexpr auto VALUE = QuantMode_t::VQF322F32_PRE;
 };
+
+
 
 // CopyL0CToGm cast fp32 to fp16
 template <class ArchTag>

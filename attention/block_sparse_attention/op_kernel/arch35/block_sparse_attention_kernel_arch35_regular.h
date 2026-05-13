@@ -60,6 +60,7 @@ public:
     __aicore__ inline
     BsaRegularKernelArch35() {}
 
+    template<int quant_mode=0>
     __aicore__ inline
     void operator()(BsaKernelParamsArch35 const &params)
     {
@@ -404,6 +405,7 @@ public:
                             actualBlockShapePV,
                             gatheredKvSTileIdxDe, kvSeqlen,
                             kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
+                            prefixSumL0AStages, prefixSumL0BStages,
                             smToMm2Flag, mm2ToReFlag);
                     } else {
                         blockMmadPV(

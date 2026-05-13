@@ -280,11 +280,13 @@ public:
                     uint32_t gatheredKvSTileIdx, uint32_t kvSeqlen,
                     uint32_t kvSBaseTile, uint32_t blockShapeY,
                     uint32_t yBlockNumAval, uint32_t yBlockNumRsvd,
+                    uint64_t prefixSumL0AStages, uint64_t prefixSumL0BStages,
                     Arch::CrossCoreFlag mm1ToSmFlag,
                     float scaleValue = 0.0f){
         this->operator()<0>(gBTensor, ubCTensor, gSparseBlockIdx,
                 actualOriShape, gatheredKvSTileIdx, kvSeqlen,
                 kvSBaseTile, blockShapeY, yBlockNumAval, yBlockNumRsvd,
+                prefixSumL0AStages, prefixSumL0BStages,
                mm1ToSmFlag, scaleValue);
     }
 
@@ -296,6 +298,7 @@ public:
                     uint32_t gatheredKvSTileIdx, uint32_t kvSeqlen,
                     uint32_t kvSBaseTile, uint32_t blockShapeY,
                     uint32_t yBlockNumAval, uint32_t yBlockNumRsvd,
+                    uint64_t prefixSumL0AStages, uint64_t prefixSumL0BStages,
                     Arch::CrossCoreFlag mm1ToSmFlag,
                     float scaleValue = 0.0f)
     {
