@@ -781,7 +781,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
 
 - <term>Ascend 950PR/Ascend 950DT</term>：
 
-  - MxFP8数据流示例：
+  - Pertoken量化数据流示例：
 
   ```Cpp
   #include <iostream>
@@ -1026,7 +1026,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       CHECK_FREE_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret);
                     return ret);
       for (int64_t i = 0; i < size; i++) {
-          LOG_PRINT("result[%lld] is: %f\n", i, resultData[i]);
+          LOG_PRINT("result[%lld] is: %f\n", static_cast<long long>(i), resultData[i]);
       }
 
       // 6. 释放aclTensor资源，需要根据具体API的接口定义修改
