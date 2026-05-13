@@ -101,4 +101,92 @@ bool IsAll2AllOut(const aclTensor *alltoAllOut);
 aclTensor *TransX2Tensor(const aclTensor *x2);
 } // namespace matmul_allto_all_check
 
-#endif //CHECKER_H
+
+namespace matmul_allto_all_helper {
+
+// 检查必要输入是否为空，必须非空
+static bool CheckNotNull(const aclTensor *x1, const aclTensor *x2, const aclTensor *output);
+
+// 检查是否有空tensor
+// 950 非量化场景支持x1的m轴为0，即token提示词为空
+static bool CheckNotEmptyTensor(const aclTensor *x1, const aclTensor *x2, bool transposeX2);
+
+// 非量化场景下，校验所有输入的参数类型是否正确（A5）
+static bool CheckAllDtypesValid(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
+                                const aclTensor *output);
+
+// 910B在输入为bfloat16时，bias不支持bfloat16，只能为float32
+static bool CheckAllDtypesValid910B(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
+                                    const aclTensor *output);
+
+// 检查所有要用到的输入format是否为ND，不支持私有格式，如果内部不为ND格式，会打印warning日志，并将format转换为ND格式
+static bool CheckFormat(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
+                        const aclTensor *output);
+
+// 兼容性处理，非ND格式转换为ND格式
+static bool ReFormatNotND(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
+                          const aclTensor *output);
+
+static aclnnStatus CheckAndHandleParams(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
+                                        const aclIntArray *alltoAllAxesOptional, const char *group, bool transposeX1,
+                                        bool transposeX2, const aclTensor *output);
+
+static aclnnStatus DealWithEmptyTensor(uint64_t *workspaceSize, aclOpExecutor **executor);
+} // namespace matmul_allto_all_helper
+
+
+namespace quant_matmul_allto_all_helper {
+
+constexpr size_t THREE_DIMS = 3U;
+
+// 检查必要输入是否为空，必须非空
+static bool CheckNotNull(const aclTensor *x1, const aclTensor *x2, const aclTensor *bias, const aclTensor *x1Scale,
+                         const aclTensor *x2Scale, const aclTensor *output);
+
+// 检查是否有空tensor
+static bool CheckNotEmptyTensor(const aclTensor *x1, const aclTensor *x2, bool transposeX2);
+
+// 校验Scale为1D时的shape（KC量化）
+static bool Check1DScaleShape(const aclTensor *x1, const aclTensor *x2, const aclTensor *x1Scale,
+                              const aclTensor *x2Scale, bool transposeX2);
+
+// 校验Scale为3D时的shape（MX量化）
+static bool Check3DScaleShape(const aclTensor *x1, const aclTensor *x2, const aclTensor *x1Scale,
+                              const aclTensor *x2Scale, bool transposeX2);
+
+// 校验输入Scaleshape
+static bool CheckScaleShape(const aclTensor *x1, const aclTensor *x2, const aclTensor *x1Scale,
+                            const aclTensor *x2Scale, int64_t x1QuantMode, int64_t x2QuantMode, bool transposeX2);
+
+static bool CheckKCBiasDtypesValid(const aclTensor *x1, const aclTensor *x2, const aclTensor *x1Scale,
+                                   const aclTensor *x2Scale, const aclTensor *bias, const aclTensor *y);
+
+// KC量化场景下，校验所有输入的参数类型是否正确(A5)
+static bool CheckKCQuantDtypesValidA5(const aclTensor *x1, const aclTensor *x2, const aclTensor *x1Scale,
+                                      const aclTensor *x2Scale, const aclTensor *biasOptional, const aclTensor *output);
+
+// MX量化场景下，校验所有输入的参数类型是否正确(A5)
+static bool CheckMXQuantDtypesValidA5(const aclTensor *x1, const aclTensor *x2, const aclTensor *x1Scale,
+                                      const aclTensor *x2Scale, const aclTensor *biasOptional, const aclTensor *output);
+
+// 校验所有场景的数据类型是否在各自的支持列表中
+static bool CheckDtypesValid(const aclTensor *x1, const aclTensor *x2, const int64_t x1QuantMode,
+                             const int64_t x2QuantMode, const aclTensor *x1Scale, const aclTensor *x2Scale,
+                             const aclTensor *biasOptional, const aclTensor *output);
+
+// 检查所有要用到的输入format是否为ND，不支持私有格式，如果内部不为ND格式，会打印warning日志，并将format转换为ND格式
+static bool CheckFormat(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
+                        const aclTensor *x1Scale, const aclTensor *x2Scale, const aclTensor *output);
+
+// 兼容性处理，非ND格式转换为ND格式
+static bool ReFormatNotND(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
+                          const aclTensor *x1Scale, const aclTensor *x2Scale, const aclTensor *output);
+
+static aclnnStatus CheckAndHandleParams(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
+                                        const aclTensor *x1Scale, const aclTensor *x2Scale, const char *group,
+                                        const aclIntArray *alltoAllAxesOptional, int64_t x1QuantMode,
+                                        int64_t x2QuantMode, bool transposeX1, bool transposeX2,
+                                        const aclTensor *output);
+} // namespace quant_matmul_allto_all_helper
+
+#endif // CHECKER_H
