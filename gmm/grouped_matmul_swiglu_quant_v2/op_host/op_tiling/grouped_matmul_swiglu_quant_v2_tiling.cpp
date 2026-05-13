@@ -24,6 +24,8 @@
 #include "op_host/tiling_templates_registry.h"
 #include "grouped_matmul_swiglu_quant_v2_fusion_tiling.h"
 #include "grouped_matmul_swiglu_quant_v2_base_tiling.h"
+#include "arch35/grouped_matmul_swiglu_quant_v2_basic_tiling.h"
+#include "arch35/grouped_matmul_swiglu_quant_v2_weight_quant_tiling.h"
 #include "platform/platform_infos_def.h"
 
 using namespace ge;
@@ -35,6 +37,8 @@ namespace optiling {
 
 REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuantV2FusionTiling, 0);
 REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuantV2BaseTiling, 1);
+REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuantV2Tiling950, 2);
+REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuantV2WeightQuantTiling, 3);
 
 static ge::graphStatus GroupedMatmulSwigluQuantV2TilingFunc(gert::TilingContext *context)
 {
