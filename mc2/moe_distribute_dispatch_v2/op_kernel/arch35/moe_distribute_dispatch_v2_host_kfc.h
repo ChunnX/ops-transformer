@@ -86,6 +86,7 @@ constexpr uint32_t EXPERT_CNT_FLAG_SPACE = 0; // 专家结果flag全部顺序存
 constexpr uint8_t UB_ALIGN_DATA_COUNT = 8U; // 8 = UB_ALIGN / sizeof(float) = UB_ALIGN / sizeof(int32_t)
 constexpr uint32_t SERVER_ADDR_OFFSET_ONE = 1U;
 constexpr uint32_t SERVER_ADDR_OFFSET_ZERO = 0U;
+constexpr uint32_t HCCL_MAX_SERVER_SIZE = 512;
 constexpr uint32_t ONE = 1U;
 constexpr uint32_t TWO = 2U;
 
@@ -207,19 +208,24 @@ private:
     __aicore__ inline uint32_t CheckDataArriveWithFlagInServer(uint32_t srcExpDataIdx, int32_t beginIdx, int32_t copyCnt);
     __aicore__ inline void CopyOut(LocalTensor<int32_t> xOutInt32Tensor, GM_ADDR wAddr, uint32_t index, uint32_t dstPosition, uint32_t arriveCount);
     __aicore__ inline void WaitAndFormatOutput(uint32_t validNum);
+    
+    __aicore__ inline uint32_t GetServerCommHandleIndex(const int32_t dstServerId)
+    {
+        return dstServerId > localServerId_? dstServerId -1 : dstServerId;
+    }
 
     __aicore__ inline GM_ADDR GetServerRemoteBaseAddr(const int32_t dstServerId)
     {
-        uint32_t curServerIndex = dstServerId > localServerId_? dstServerId -1 : dstServerId;
-        __gm__ ChannelEntity* serverEntity = reinterpret_cast<__gm__ ChannelEntity*>(mc2Context_->dpuCommHandle_[curServerIndex]);
+        uint32_t curServerIndex = GetServerCommHandleIndex(dstServerId);
+        __gm__ ChannelEntity* serverEntity = reinterpret_cast<__gm__ ChannelEntity*>(dpuCommHandle_[curServerIndex]);
         __gm__ ProtectionInfo* protectionInfo = reinterpret_cast<__gm__ ProtectionInfo*>(serverEntity->remoteBufferAddr);
         return reinterpret_cast<GM_ADDR>(protectionInfo->addr);
     }
 
     __aicore__ inline GM_ADDR GetServerLocalBaseAddr(const int32_t dstServerId)
     {
-        uint32_t curServerIndex = dstServerId > localServerId_? dstServerId -1 : dstServerId;
-        __gm__ ChannelEntity* serverEntity = reinterpret_cast<__gm__ ChannelEntity*>(mc2Context_->dpuCommHandle_[curServerIndex]);
+        uint32_t curServerIndex = GetServerCommHandleIndex(dstServerId);
+        __gm__ ChannelEntity* serverEntity = reinterpret_cast<__gm__ ChannelEntity*>(dpuCommHandle_[curServerIndex]);
         __gm__ ProtectionInfo* protectionInfo = reinterpret_cast<__gm__ ProtectionInfo*>(serverEntity->localBufferAddr);
         return reinterpret_cast<GM_ADDR>(protectionInfo->addr);
     }
@@ -228,7 +234,7 @@ private:
     __aicore__ inline GM_ADDR GetReadAddrFromRemoteServer(const int32_t dstServerId)
     {
         GM_ADDR baseAddr = GetServerRemoteBaseAddr(dstServerId);
-        constexpr if (mode == ExecutMode::CUMSUM){
+        constexpr if (mode == ExecutMode::CUMSUM) {
             return baseAddr + serverWinDataSizeOffset_ + CumSumWinSizePerServer_ * SERVER_ADDR_OFFSET_ZERO;
         } else {
             return baseAddr + serverWinDataSizeOffset_ + CumSumWinSizePerServer_ * TWO + 
@@ -240,7 +246,7 @@ private:
     __aicore__ inline GM_ADDR GetReadAddrFromLocalServer(const int32_t dstServerId)
     {
         GM_ADDR baseAddr = GetServerLocalBaseAddr(dstServerId);
-        constexpr if (mode == ExecutMode::CUMSUM){
+        constexpr if (mode == ExecutMode::CUMSUM) {
             return baseAddr + serverWinDataSizeOffset_ + CumSumWinSizePerServer_ * SERVER_ADDR_OFFSET_ONE;
         } else {
             return baseAddr + serverWinDataSizeOffset_ + CumSumWinSizePerServer_ * TWO + 
@@ -395,6 +401,7 @@ private:
     LocalTensor<int32_t> tokenNumToExpertTensor_;
     LocalTensor<float> expertScalesTensor_;
     LocalTensor<uint3_t> dpuInitBufferTensor_;
+    LocalTensor<uint3_t> waitWriteTensor_;
 
     TBuf<> expertScalesBuf_;
     TBuf<> expertIdsBuf_;
@@ -421,6 +428,7 @@ private:
     TBuf<> expertOffsetCntBuf_;
     TBuf<> xSendBuf_;
     TBuf<> flagBuf_;
+    TBuf<> waitWriteBuf_;
 
     TQue<QuePosition::VECIN, 1> tokenInQueue_; // token输入队列
     TQue<QuePosition::VECIN, 1> xInQueue_;     // 量化使用，量化前的输入
@@ -552,7 +560,7 @@ private:
 
     __gm__ HcclOpParam *winContext_[COMM_NUM]{nullptr, nullptr};
     __gm__ Mc2MoeContext* mc2Context_{nullptr};
-    __gm__ ChannelEntity* dpuCommHandle_{nullptr};
+    __gm__ ChannelEntity* dpuCommHandle_[HCCL_MAX_SERVER_SIZE]{nullptr};
 
     DataCopyParams xCopyParams_;
     DataCopyExtParams hCommuCopyOutParams_;
@@ -631,7 +639,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         startMoeExpertId_ = 0;
     } else { // 只有moe专家
         shareRankNumInServer_ = 0;
-        startMoeExpertId_ = (startRankId_ - sharedExpertRankNum_) * moeExpertNumPerRank_;
+        startMoeExpertId_ = (startRankId_ - sharedExpertRankNum_) * moeExpertNumPerRank_; // 本server的第一个moe专家的索引
     }
     expertNumInServer_ = shareRankNumInServer_ + (rankSizePerServer_ - shareRankNumInServer_) * moeExpertNumPerRank_;
     recvCntWorkspaceGM_ = workspaceGM_ + epWorldSize_ * expertNumInServer_ * UB_ALIGN;
@@ -789,9 +797,11 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     tpipe_->InitBuffer(serverCountBuf_, serverBuferLength * sizeof(uint32_t));
     tpipe_->InitBuffer(serverMapBuf_, serverMapLength); // max server = 8, per server = 2K
     tpipe_->InitBuffer(expertOffsetCntBuf_, expertOffsetCntSize); // 16K
-    tpipe_->InitBuffer(flagBuf_, commFlagSize);
+    tpipe_->InitBuffer(flagBuf_, commFlagSize); // 16K
+    tpipe_->InitBuffer(waitWriteBuf_, UB_ALIGN); // 32B
 
-    serverCountTensor_ = serverCountBuf_.Get<uint32_t>();
+    serverCountTensor_ = serverCountBuf_.Get<uint32_t>(); // 16K
+    waitWriteTensor_ = waitWriteBuf_.Get<uint32_t>(); // 32B
     tokenSendMap_ = serverMapBuf_.Get<int32_t>();
     expertOffsetCntTensor_ = expertOffsetCntBuf_.Get<int16_t>();  // TODO :
     commFlagTensor_ = flagBuf_.Get<uint32_t>();
@@ -821,6 +831,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     dataState_ = InitWinState(selfDataStatusGMTensor_, epRankIdHccl, epWorldSizeOriginal_, epRankIdOriginal_, moeExpertNum_,
                               epWorldSizeOriginal_, globalBS_, dataStateBuf);            
     statusSpaceGm_ = GetWindStateAddrByRankId(COMM_EP_IDX, epRankIdOriginal_);
+    for (uint32_t i = 0; i < serverNum_; i++) {
+        dpuCommHandle_[i] = reinterpret_cast<__gm__ ChannelEntity *>(mc2Context_->dpuCommHandle_[i]); 
+    }
 }
 
 template <TemplateDispatchKFCTypeClass>
@@ -1470,7 +1483,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 
     CalServerSplitCore(serverNum_, aivUsedCumSum_ + aivUsedRemotComm_, aivUsedScatter_, 
                        startServerId, endServerId, useAivPerServer, firstAivId);
-    if (useAivPerServer == 0 || startServerId >= endServerId) { // 出现serverNum比核数大的情况
+    if (useAivPerServer == 0 || startServerId >= endServerId) { // 出现serverNum比核数大的情况(TODO：需要确认是否需要)
         return ;
     }
     LOG_INFO("[ScatterTokenToRemote] serverNum_",serverNum_);
@@ -1483,10 +1496,10 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         if (serverCountTensor_.GetValue(serverIndex) == 0){
             continue;
         }
-        // if (serverIndex == localServerId_) {
-        //     SendTokenToLocalServer(firstAivId, useAivPerServer);
-        //     continue;
-        // }
+        if (serverIndex == localServerId_) {
+            SendTokenToLocalServer(firstAivId, useAivPerServer);
+            continue;
+        }
         LOG_INFO("[ScatterTokenToRemote] OUT continue");
         SendTokenToRemoteServer(serverIndex, firstAivId, useAivPerServer);
     }
@@ -1902,19 +1915,26 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     InitStatusTensor();
     
     for(int serverIdx = startServerId; serverIdx < endServerId; serverIdx++) {
-        GM_ADDR serverRcvAddr = reinterpret_cast<GM_ADDR>(GetReceiveStatusAddrBetweenServer(COMM_EP_IDX, localServerId_) +
-                                                          blockCntExpertPerServer_ * SERVER_STATE_ALIGN * serverIdx);
-        GM_ADDR flagAddr = reinterpret_cast<GM_ADDR>(serverRcvAddr + SPLIT_BLOCK_DATA_SIZE);
-        
-        GlobalTensor<uint32_t> statusWinGMTensor;
-        statusWinGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(serverRcvAddr));
-
-        WaitFlag<true>(flagAddr, flagRecvTensor_, COMM_FLAG_COPY_STRIDE, blockCntExpertPerServer_);
-        LocalTensor<uint32_t> rcvExpertCntTensor = flagRecvTensor_.template ReinterpretCast<uint32_t>(); // buf复用
-        ReadDataFromWindows<uint32_t>(serverRcvAddr, blockCntExpertPerServer_, rcvExpertCntTensor);
-        SyncFunc<AscendC::HardEvent::MTE2_S>(); 
+        if (serverIdx != localServerId_) {
+            GM_ADDR serverRcvAddr = GetReadAddrFromLocalServer(serverIdx);
+            GM_ADDR flagAddr = reinterpret_cast<GM_ADDR>(serverRcvAddr + SPLIT_BLOCK_DATA_SIZE);
+            WaitFlag<true>(flagAddr, flagRecvTensor_, COMM_FLAG_COPY_STRIDE, blockCntExpertPerServer_);
+            LocalTensor<uint32_t> rcvExpertCntTensor = flagRecvTensor_.template ReinterpretCast<uint32_t>(); // buf复用
+            ReadDataFromWindows<uint32_t>(serverRcvAddr, blockCntExpertPerServer_, rcvExpertCntTensor);
+            SyncFunc<AscendC::HardEvent::MTE2_S>(); 
+        }
         for (uint32_t expertIndex = 0; expertIndex < expertNumInServer_; expertIndex ++) {
-            statusTensor_(expertIndex * 8 + 1) = rcvExpertCntTensor(expertIndex);
+            if(serverIdx != localServerId_) {
+                statusTensor_(expertIndex * 8 + 1) = rcvExpertCntTensor(expertIndex);
+            } else {
+                if (expertIndex < shareRankNumInServer_) { // 共享专家
+                    statusTensor_(expertIndex * 8 + 1) = serverCountTensor_.GetValue(localServerId_);
+                } else { // moe专家
+                    uint32_t moeExpertIndex = startMoeExpertId_ + expertIndex - shareRankNumInServer_;
+                    statusTensor_(expertIndex * 8 + 1) = tokenNumToExpertTensor_.GetValue(moeExpertIndex);
+                }
+            }
+            
         }
         //LOG_INFO("[statusTensor_]",statusTensor_,{moeExpertNum_,8});
         PipeBarrier<PIPE_ALL>(); //todo: 优化PIPE_ALL
@@ -1930,7 +1950,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
                 offset += ((expertIndex - shareRankNumInServer_) % moeExpertNumPerRank_ * epWorldSize_ * stateOffset_);
             }
             GM_ADDR rankGM =
-               reinterpret_cast<GM_ADDR>(GetWindStateAddrByRankId(COMM_EP_IDX, dstRankId) + offset); // 计算地址偏移
+                reinterpret_cast<GM_ADDR>(GetWindStateAddrByRankId(COMM_EP_IDX, dstRankId) + offset); // 计算地址偏移
             rankGMTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(rankGM));
             DataCopy<int32_t>(rankGMTensor, statusTensor_[expertIndex * 8], 8UL);
             // //LOG_INFO("[rankGM]", rankGM);
@@ -2181,6 +2201,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     DataCopyPad(expertTokenNumsOutGMTensor_, expertTokenNumsLocalTensor, expertTokenNumsCopyParams);
 }
 
+
 template <TemplateDispatchKFCTypeClass>
 __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::SendExpertCnt()
 {
@@ -2224,17 +2245,16 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
             uint32_t dst = moeOffset + moeIndex - moeIdstart;
             sendTokenNumToexpert.SetValue(dst, tokenNumToExpertTensor_.GetValue(moeIndex));
         }
-
-        uint32_t dstOffset = serverIndex * blockCntExpertPerServer_ *  SERVER_STATE_ALIGN;
-        GM_ADDR rankGM = (GetSendStatusAddrBetweenServer(COMM_EP_IDX, serverIndex) + dstOffset);
-        WriteDataToWinOut(sendTokenNumToexpert, rankGM, blockCntExpertPerServer_);
-        //PipeBarrier<PIPE_MTE3>();todo应该等谁？
         if (serverIndex == localServerId_) {
             continue;
         }
-        // uint32_t handleindex = serverIndex > localServerId_? serverIndex - 1 : serverIndex;
-        // GM_ADDR dstGM = (GetSendStatusAddrBetweenServer(COMM_EP_IDX, serverIndex) + dstOffset); //todo:怎么拿到地址？
-        // WriteNbi(dpuCommHandle_[handleindex],rankGM, dstGM, blockCntExpertPerServer_ * SERVER_STATE_ALIGN);// todo: todo: 
+
+        GM_ADDR localWriteGM = reinterpret_cast<GM_ADDR>((GetDataWriteAddrFromLocalServer<ExecutMode::CUMSUM>(serverIndex)));
+        WriteDataToWinOut(sendTokenNumToexpert, localWriteGM, blockCntExpertPerServer_);
+        SyncFunc<AscendC::HardEvent::MTE3_S>();
+        waitWriteTensor_.SetValue(0, 1); // TODO：目前临时使用这种方式来等待写入完成，后续需要优化为其他方式
+        GM_ADDR remoteWriteGM = reinterpret_cast<GM_ADDR>((GetDataWriteAddrFromRemoteServer<ExecutMode::CUMSUM>(serverIndex)));
+        WriteNbi(dpuCommHandle_[GetServerCommHandleIndex(serverIndex)], localWriteGM, remoteWriteGM, blockCntExpertPerServer_ * SERVER_STATE_ALIGN); 
     }
 }
 
