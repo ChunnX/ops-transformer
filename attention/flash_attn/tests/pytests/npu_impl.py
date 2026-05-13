@@ -394,6 +394,8 @@ def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
     max_seqlen_q  = max_seqlen_q  if layout_q == "TND" else -1
     max_seqlen_kv = max_seqlen_kv if layout_q == "TND" else -1
     atten_mask1 = atten_mask1 if sparse_mode != 0 else None
+    if atten_mask1 is not None and sparse_mode in (3, 4):
+        atten_mask1 = atten_mask1.to(dtype=torch.int8)
 
     _print_args("Call npu_flash_attn", {
         "q": q1,
