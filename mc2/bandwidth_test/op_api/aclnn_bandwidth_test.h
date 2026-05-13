@@ -64,7 +64,7 @@ aclnnStatus aclnnBandwidthTestGetWorkspaceSize(
     const aclTensor* x, const aclTensor* expertId,
     const char* group, int64_t worldSize, int64_t maxBs, int64_t mode,
     const char *commAlg, aclTensor* y, aclTensor* receiveCnt,
-    uint64_t* workspaceSize, aclOpExecutor** executor)
+    uint64_t* workspaceSize, aclOpExecutor** executor);
 
 aclnnStatus aclnnBandwidthTest(
     void* workspace, uint64_t workspaceSize,
