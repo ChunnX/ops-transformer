@@ -119,28 +119,28 @@ public:
     ge::DataType outputType_ = ge::DT_FLOAT16;
 
     // mask 信息
-    int32_t winLeft_ = 0;
-    int32_t winRight_ = 0;
-    int32_t maskMode_ = 0;
+    int64_t winLeft_ = 0;
+    int64_t winRight_ = 0;
+    int64_t maskMode_ = 0;
 
     // Sinks 信息
     bool sinksFlag_ = false;
 
     // SoftmaxLSE 信息
     bool softmaxLseFlag_ = false;
-    int32_t returnSoftmaxLse_ = 0;
+    int64_t returnSoftmaxLse_ = 0;
 
     // 其他属性信息
     float softmaxScale_ = 1.0;
-    int32_t deterministic_ = 0;
+    int64_t deterministic_ = 0;
 
     // seqLen信息
     int64_t seqLenQDims_ = 0;
     int64_t seqLenKvDims_ = 0;
     int64_t cuseqLenQDims_ = 0;
     int64_t cuseqLenKvDims_ = 0;
-    int32_t maxSeqQ_ = -1;
-    int32_t maxSeqKv_ = -1;
+    int64_t maxSeqQ_ = -1;
+    int64_t maxSeqKv_ = -1;
 
     // Empty Tensor
     bool emptyTensorFlag_ = false;

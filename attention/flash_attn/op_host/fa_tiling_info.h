@@ -193,16 +193,16 @@ struct FAParaInfo {
     FAOptionalParaInfo attnMask = {nullptr, nullptr};
 
     const float *softmaxScale = nullptr;
-    const int32_t *maskMode = nullptr;
-    const int32_t *winLeft = nullptr;
-    const int32_t *winRight = nullptr;
-    const int32_t *maxSeqlenQ = nullptr;
-    const int32_t *maxSeqlenKV = nullptr;
+    const int64_t *maskMode = nullptr;
+    const int64_t *winLeft = nullptr;
+    const int64_t *winRight = nullptr;
+    const int64_t *maxSeqlenQ = nullptr;
+    const int64_t *maxSeqlenKV = nullptr;
     const char *layoutQ = nullptr;
     const char *layoutKV = nullptr;
     const char *layoutOut = nullptr;
-    const int32_t *returnSoftMaxLse = nullptr;
-    const int32_t *deterministic = nullptr;
+    const int64_t *returnSoftMaxLse = nullptr;
+    const int64_t *deterministic = nullptr;
 
     FARequiredParaInfo attnOut = {nullptr, nullptr};
     FARequiredParaInfo lseOut = {nullptr, nullptr};
@@ -244,11 +244,11 @@ public:
     // Q seq_lens
     int64_t seqUsedQDims = 0;
     int64_t cuSeqLenQDims = 0;
-    int32_t maxSeqQ = 0;
-    int32_t maxSeqKv = 0;
-    int32_t maskMode = 0;
-    int32_t winLeft = 0;
-    int32_t winRight = 0;
+    int64_t maxSeqQ = 0;
+    int64_t maxSeqKv = 0;
+    int64_t maskMode = 0;
+    int64_t winLeft = 0;
+    int64_t winRight = 0;
 
     // Others Flag
     bool batchContinuousFlag = true;
