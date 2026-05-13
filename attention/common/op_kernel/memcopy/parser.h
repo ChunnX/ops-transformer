@@ -35,41 +35,6 @@ template <ActualSeqLensMode MODE, typename ACTLEN_T = uint64_t>
 class ActualSeqLensParser {
 };
 
-// ----------------------------------------------TNDSeqLensParser--------------------------------
-template <typename ACTLEN_T = uint64_t>
-class TNDSeqLensParser {
-public:
-    __aicore__ inline TNDSeqLensParser() = default;
-
-    __aicore__ inline void Init(GlobalTensor<ACTLEN_T> actualSeqLengthsGm, uint32_t actualLenDims,
-                                uint64_t defaultVal = 0)
-    {
-        this->actualSeqLengthsGm = actualSeqLengthsGm;
-        this->actualLenDims = actualLenDims;
-    }
-
-    __aicore__ inline uint64_t GetTBase(uint32_t bIdx) const
-    {
-        if (bIdx == 0) {
-            return 0;
-        }
-        return actualSeqLengthsGm.GetValue(bIdx);
-    }
-
-    __aicore__ inline uint64_t GetActualSeqLength(uint32_t bIdx) const
-    {
-        return (actualSeqLengthsGm.GetValue(bIdx + 1) - actualSeqLengthsGm.GetValue(bIdx));
-    }
-
-    __aicore__ inline uint64_t GetTSize() const
-    {
-        return actualSeqLengthsGm.GetValue(actualLenDims);
-    }
-private:
-    GlobalTensor<ACTLEN_T> actualSeqLengthsGm;
-    uint32_t actualLenDims;
-};
-
 template <typename ACTLEN_T>
 class ActualSeqLensParser<ActualSeqLensMode::ACCUM, ACTLEN_T> {
 public:

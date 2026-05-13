@@ -253,7 +253,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_Q_OUT_BNGSD, ACTLEN_T> {
 template <GmFormat FORMAT, typename ACTLEN_T>
 struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_Q_OUT_TND, ACTLEN_T> {
     GmLayout<FORMAT> gmLayout;
-    TNDSeqLensParser<ACTLEN_T> actualSeqLensQParser;
+    ActualSeqLensParser<ActualSeqLensMode::ACCUM, ACTLEN_T> actualSeqLensQParser;
 
     __aicore__ inline OffsetCalculatorImpl() = default;
 
@@ -401,7 +401,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_BNSD, ACTLEN_T> {
 template <GmFormat FORMAT, typename ACTLEN_T>
 struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_TND, ACTLEN_T> {
     GmLayout<FORMAT> gmLayout;
-    TNDSeqLensParser<ACTLEN_T> actualSeqLensKVParser;
+    ActualSeqLensParser<ActualSeqLensMode::ACCUM, ACTLEN_T> actualSeqLensKVParser;
 
     __aicore__ inline OffsetCalculatorImpl() = default;
 
