@@ -166,7 +166,7 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
 
         TQueBind<TPosition::VECIN, TPosition::VECOUT, 1> queBind;
         TPipe deterPipe;
-        if (g_coreType == AIV) {
+        if ASCEND_IS_AIV {
             deterPipe.InitBuffer(queBind, BUFFER_NUM, DETER_UB_SIZE);
         }
 
