@@ -68,9 +68,9 @@ constexpr uint32_t OUTPUT_RECEIVE_CNT_INDEX = 1U; // 输出receive_cnt的索引
 // ============ 属性索引常量 ============
 constexpr uint32_t ATTR_GROUP_INDEX = 0U;      // 通信组名称
 constexpr uint32_t ATTR_WORLD_SIZE_INDEX = 1U; // 世界大小
-constexpr uint32_t ATTR_RANK_ID_INDEX = 2U;    // 当前rank ID
-constexpr uint32_t ATTR_MAX_BS_INDEX = 3U;     // 最大batch size
-constexpr uint32_t ATTR_MODE_INDEX = 4U;       // 执行模式
+// constexpr uint32_t ATTR_RANK_ID_INDEX = 2U;    // 当前rank ID
+constexpr uint32_t ATTR_MAX_BS_INDEX = 2U;     // 最大batch size
+constexpr uint32_t ATTR_MODE_INDEX = 3U;       // 执行模式
 
 // ============ 其他常量 ============
 constexpr uint32_t TWO_DIMS = 2U;
@@ -110,7 +110,7 @@ static ge::graphStatus CheckAttrPointersNotNull(gert::TilingContext *context, co
     auto attrs = context->GetAttrs();
     auto groupPtr = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_GROUP_INDEX));
     auto worldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_WORLD_SIZE_INDEX);
-    auto rankIdPtr = attrs->GetAttrPointer<int64_t>(ATTR_RANK_ID_INDEX);
+    // auto rankIdPtr = attrs->GetAttrPointer<int64_t>(ATTR_RANK_ID_INDEX);
     auto maxBsPtr = attrs->GetAttrPointer<int64_t>(ATTR_MAX_BS_INDEX);
     auto modePtr = attrs->GetAttrPointer<int64_t>(ATTR_MODE_INDEX);
 
@@ -118,8 +118,8 @@ static ge::graphStatus CheckAttrPointersNotNull(gert::TilingContext *context, co
         OP_LOGE(nodeName, "groupPtr is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(worldSizePtr == nullptr,
         OP_LOGE(nodeName, "worldSizePtr is null."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(rankIdPtr == nullptr,
-        OP_LOGE(nodeName, "rankIdPtr is null."), return ge::GRAPH_FAILED);
+    // OP_TILING_CHECK(rankIdPtr == nullptr,
+    //     OP_LOGE(nodeName, "rankIdPtr is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(maxBsPtr == nullptr,
         OP_LOGE(nodeName, "maxBsPtr is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(modePtr == nullptr,
@@ -134,7 +134,7 @@ static ge::graphStatus CheckAttrValuesValid(gert::TilingContext *context, const 
     auto attrs = context->GetAttrs();
     auto groupPtr = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_GROUP_INDEX));
     auto worldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_WORLD_SIZE_INDEX);
-    auto rankIdPtr = attrs->GetAttrPointer<int64_t>(ATTR_RANK_ID_INDEX);
+    // auto rankIdPtr = attrs->GetAttrPointer<int64_t>(ATTR_RANK_ID_INDEX);
     auto maxBsPtr = attrs->GetAttrPointer<int64_t>(ATTR_MAX_BS_INDEX);
     auto modePtr = attrs->GetAttrPointer<int64_t>(ATTR_MODE_INDEX);
 
@@ -147,9 +147,9 @@ static ge::graphStatus CheckAttrValuesValid(gert::TilingContext *context, const 
         OP_LOGE(nodeName, "worldSize is invalid, only support [%ld, %ld], but got worldSize=%ld.",
         MIN_WORLD_SIZE, MAX_WORLD_SIZE, *worldSizePtr), return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK((*rankIdPtr < 0) || (*rankIdPtr >= *worldSizePtr),
-        OP_LOGE(nodeName, "rankId is invalid, only support [0, %ld), but got rankId=%ld.",
-        *worldSizePtr, *rankIdPtr), return ge::GRAPH_FAILED);
+    // OP_TILING_CHECK((*rankIdPtr < 0) || (*rankIdPtr >= *worldSizePtr),
+    //     OP_LOGE(nodeName, "rankId is invalid, only support [0, %ld), but got rankId=%ld.",
+    //     *worldSizePtr, *rankIdPtr), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK((*maxBsPtr <= 0) || (*maxBsPtr > MAX_BS),
         OP_LOGE(nodeName, "maxBs is invalid, only support (0, %ld], but got maxBs=%ld.",
@@ -178,19 +178,19 @@ static ge::graphStatus GetAttrAndSetTilingData(gert::TilingContext *context, con
 
     auto groupPtr = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_GROUP_INDEX));
     auto worldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_WORLD_SIZE_INDEX);
-    auto rankIdPtr = attrs->GetAttrPointer<int64_t>(ATTR_RANK_ID_INDEX);
+    // auto rankIdPtr = attrs->GetAttrPointer<int64_t>(ATTR_RANK_ID_INDEX);
     auto maxBsPtr = attrs->GetAttrPointer<int64_t>(ATTR_MAX_BS_INDEX);
     auto modePtr = attrs->GetAttrPointer<int64_t>(ATTR_MODE_INDEX);
 
     group = std::string(groupPtr);
     tilingData.world_size = static_cast<int32_t>(*worldSizePtr);
-    tilingData.rank_id = static_cast<int32_t>(*rankIdPtr);
+    // tilingData.rank_id = static_cast<int32_t>(*rankIdPtr);
     tilingData.max_bs = static_cast<int32_t>(*maxBsPtr);
     tilingData.mode = static_cast<int32_t>(*modePtr);
 
     OP_LOGD(nodeName, "group = %s", groupPtr);
     OP_LOGD(nodeName, "worldSize = %ld", *worldSizePtr);
-    OP_LOGD(nodeName, "rankId = %ld", *rankIdPtr);
+    // OP_LOGD(nodeName, "rankId = %ld", *rankIdPtr);
     OP_LOGD(nodeName, "maxBs = %ld", *maxBsPtr);
     OP_LOGD(nodeName, "mode = %ld", *modePtr);
 

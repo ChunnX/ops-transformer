@@ -167,7 +167,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
 {
     tpipe_ = pipe;
     aivId_ = GetBlockIdx();          // 获取当前核ID
-    epRankId_ = tilingData->rank_id; // 获取当前rank ID
+    // epRankId_ = tilingData->rank_id; // 获取当前rank ID
 
     // ============ HCCL窗口初始化 ============
     totalWinSizeEp_ = tilingData->total_win_size;
@@ -191,9 +191,10 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
     uint32_t epRankIdHccl{0};
     uint32_t epWorldSizeHccl{0};
     statusSpaceGm_ = (GM_ADDR)(context_->epHcclBuffer_[epRankIdHccl]);
-    epRankIdHccl =  context_->epRankId;;
+    epRankIdHccl =  context_->epRankId;
     epWorldSizeHccl = epWorldSize_;
     GlobalTensor<uint32_t> selfDataStatusGMTensor;
+    epRankId_ = epRankIdHccl;
     selfDataStatusGMTensor.SetGlobalBuffer((__gm__ uint32_t*)(statusSpaceGm_ + DISPATCH_STATE_WIN_OFFSET + aivId_ * WIN_ADDR_ALIGN));
     dataState_ = MoeDistributeV2Base::InitWinState(selfDataStatusGMTensor, epRankIdHccl, epWorldSizeHccl,
                                                     epRankId_, epWorldSize_, epWorldSize_, globalBS_, dataStateBuf);
