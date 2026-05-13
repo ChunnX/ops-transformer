@@ -776,7 +776,8 @@ ge::graphStatus MoeDistributeDispatchTeardownTilingBase::SetWorkSpace()
 {
     size_t* workSpaces = context_->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(nodeName_, "workSpaces is nullptr."), return ge::GRAPH_FAILED);
-    workSpaces[0] = static_cast<uint64_t>(SYSTEM_NEED_WORKSPACE + tilingData_->moeDistributeDispatchTeardownInfo.aivNum * ALIGN_512);
+    workSpaces[0] = static_cast<uint64_t>(SYSTEM_NEED_WORKSPACE + 
+                                        tilingData_->moeDistributeDispatchTeardownInfo.aivNum * ALIGN_512);
     return ge::GRAPH_SUCCESS;
 }
 
