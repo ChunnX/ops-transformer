@@ -57,6 +57,7 @@ __aicore__ inline constexpr uint32_t GetVRegSizeDispatch()
 #endif
 }
 
+// [Doing]
 template<typename T>
 __aicore__ inline void ComputeMaxExp(__ubuf__ T* srcAddr, __ubuf__ uint16_t* maxExpAddr, uint32_t totalCountInUB)
 {
@@ -132,6 +133,7 @@ __aicore__ inline void ComputeMaxExp(__ubuf__ T* srcAddr, __ubuf__ uint16_t* max
     }
 }
 
+// [Doing]
 template<typename T>
 __aicore__ inline void ComputeScale(__ubuf__ uint16_t* maxExpAddr, __ubuf__ uint16_t* mxScaleLocalAddr,
     __ubuf__ uint16_t* halfScaleLocalAddr, uint32_t totalScaleInUB)
@@ -205,6 +207,7 @@ __aicore__ inline void ComputeScale(__ubuf__ uint16_t* maxExpAddr, __ubuf__ uint
     }
 }
 
+// [Doing]
 template <typename T, typename U, RoundMode toBf16RoundMode, RoundMode roundMode>
 __aicore__ inline void ComputeFp8Data(__ubuf__ T* srcAddr, __ubuf__ uint16_t* halfScaleLocalAddr,
     __ubuf__ int8_t* outLocalAddr, uint32_t totalCountInUB)
@@ -338,6 +341,7 @@ __aicore__ inline void FP16Convert(
     }
 }
 
+// [Doing]
 template <typename T, typename U, RoundMode toBf16RoundMode, RoundMode roundMode>
 __aicore__ inline void ComputeFp4Data(__ubuf__ T* srcAddr, __ubuf__ uint16_t* halfScaleLocalAddr,
     __ubuf__ int8_t* outLocalAddr, uint32_t totalCountInUB)
@@ -401,6 +405,7 @@ __aicore__ inline void ComputeFp4Data(__ubuf__ T* srcAddr, __ubuf__ uint16_t* ha
     }
 }
 
+// TODO
 template <typename T, typename U, RoundMode RMode, bool HasSmooth>
 __aicore__ inline void ComputePerTileDynamic(__ubuf__ T* srcAddr, __ubuf__ float* smoothLocalAddr,
     __ubuf__ float* scaleOutLocalAddr, __ubuf__ int8_t* outLocalAddr, uint32_t totalCountInUB)
