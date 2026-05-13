@@ -54,28 +54,24 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
         weight_scales2_ref = at::TensorList();
     }
 
+    aclDataType weight1_ref_dtype = weight1_type.has_value() ? GetAclDataType(weight1_type.value())
+        : ConvertToAclDataType(weight1_ref[0].scalar_type());
     aclDataType weight_scales1_dtype;
-    if (weight1_type.has_value()) {
-        if (weight1_type.value() == static_cast<int64_t>(DType::FLOAT4_E2M1) ||
-            weight1_type.value() == static_cast<int64_t>(DType::FLOAT8_E4M3FN) ||
-            weight1_type.value() == static_cast<int64_t>(DType::FLOAT8_E5M2)) {
-            weight_scales1_dtype = aclDataType::ACL_FLOAT8_E8M0;
-        } else {
-            weight_scales1_dtype = aclDataType::ACL_FLOAT;
-        }
+    if (weight1_ref_dtype == aclDataType::ACL_FLOAT8_E5M2 ||
+        weight1_ref_dtype == aclDataType::ACL_FLOAT8_E4M3FN ||
+        weight1_ref_dtype == aclDataType::ACL_FLOAT4_E2M1) {
+        weight_scales1_dtype = aclDataType::ACL_FLOAT8_E8M0;
     } else {
         weight_scales1_dtype = aclDataType::ACL_FLOAT;
     }
 
+    aclDataType weight2_ref_dtype = weight2_type.has_value() ? GetAclDataType(weight2_type.value())
+        : ConvertToAclDataType(weight2_ref[0].scalar_type());
     aclDataType weight_scales2_dtype;
-    if (weight2_type.has_value()) {
-        if (weight2_type.value() == static_cast<int64_t>(DType::FLOAT4_E2M1) ||
-            weight2_type.value() == static_cast<int64_t>(DType::FLOAT8_E4M3FN) ||
-            weight2_type.value() == static_cast<int64_t>(DType::FLOAT8_E5M2)) {
-            weight_scales2_dtype = aclDataType::ACL_FLOAT8_E8M0;
-        } else {
-            weight_scales2_dtype = aclDataType::ACL_FLOAT;
-        }
+    if (weight2_ref_dtype == aclDataType::ACL_FLOAT8_E5M2 ||
+        weight2_ref_dtype == aclDataType::ACL_FLOAT8_E4M3FN ||
+        weight2_ref_dtype == aclDataType::ACL_FLOAT4_E2M1) {
+        weight_scales2_dtype = aclDataType::ACL_FLOAT8_E8M0;
     } else {
         weight_scales2_dtype = aclDataType::ACL_FLOAT;
     }
@@ -106,12 +102,8 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
     at::Tensor y;
     y = at::empty({bs, h}, topk_ids.options().dtype(x.scalar_type()));
 
-    TensorListWrapper weight1_wrapper = {weight1_ref,
-        weight1_type.has_value() ? GetAclDataType(weight1_type.value())
-        : ConvertToAclDataType(weight1_ref[0].scalar_type())};
-    TensorListWrapper weight2_wrapper = {weight2_ref,
-        weight2_type.has_value() ? GetAclDataType(weight2_type.value())
-        : ConvertToAclDataType(weight2_ref[0].scalar_type())};
+    TensorListWrapper weight1_wrapper = {weight1_ref, weight1_ref_dtype};
+    TensorListWrapper weight2_wrapper = {weight2_ref, weight2_ref_dtype};
     TensorListWrapper weight_scales1_wrapper = {weight_scales1_ref, weight_scales1_dtype};
     TensorListWrapper weight_scales2_wrapper = {weight_scales2_ref, weight_scales2_dtype};
     ACLNN_CMD(aclnnMegaMoe, context, x, topk_ids, topk_weights, weight1_wrapper,
