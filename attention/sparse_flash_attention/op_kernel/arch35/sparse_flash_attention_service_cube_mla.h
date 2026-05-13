@@ -70,7 +70,7 @@ public:
     static constexpr uint32_t dBaseMatmulSize = 128;
 
     __aicore__ inline SFAMatmulService() {};
-    __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> *l1BufferManagerPtr,
+    __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> &l1BuffMgr,
                                          __gm__ uint8_t *query, __gm__ uint8_t *queryRope);
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *key, __gm__ uint8_t *keyRope, __gm__ uint8_t *sparseIndices,
                         __gm__ uint8_t *blockTable, __gm__ uint8_t *actualSeqLengthsQ, const ConstInfo& constInfo);
@@ -85,7 +85,7 @@ public:
         ConstInfo &constInfo);
 
 private:
-    __aicore__ inline void InitLocalBuffer();
+    __aicore__ inline void InitLocalBuffer(BufferManager<BufferType::L1> &l1BuffMgr);
     __aicore__ inline void InitGmTensor(__gm__ uint8_t *cuSeqlensQ, const ConstInfo& constInfo);
 
     __aicore__ inline void IterateBmm1SFA(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
@@ -116,7 +116,6 @@ private:
     TEventID mte2ToMte1Id[3];
 
     /* =====================LocalBuffer变量==================== */
-    BufferManager<BufferType::L1> *l1BufferManagerPtr;
     BufferManager<BufferType::L0A> l0aBufferManager;
     BufferManager<BufferType::L0B> l0bBufferManager;
     BufferManager<BufferType::L0C> l0cBufferManager;
@@ -136,14 +135,13 @@ private:
 };
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAMatmulService<TEMPLATE_ARGS>::InitCubeBlock(
-    TPipe *pipe, BufferManager<BufferType::L1> *l1BuffMgr, __gm__ uint8_t *query, __gm__ uint8_t *queryRope)
+    TPipe *pipe, BufferManager<BufferType::L1> &l1BuffMgr, __gm__ uint8_t *query, __gm__ uint8_t *queryRope)
 {
     if ASCEND_IS_AIC {
         tPipe = pipe;
-        l1BufferManagerPtr = l1BuffMgr;
         this->queryGm.gmTensor.SetGlobalBuffer((__gm__ Q_T *)query);
         this->queryRopeGm.gmTensor.SetGlobalBuffer((__gm__ Q_T *)queryRope);
-        InitLocalBuffer();
+        InitLocalBuffer(l1BuffMgr);
     }
 }
 
@@ -153,26 +151,24 @@ __aicore__ inline void SFAMatmulService<TEMPLATE_ARGS>::InitCubeInput(__gm__ uin
     const ConstInfo& constInfo)
 {
     if ASCEND_IS_AIC {
-        if constexpr (IS_SPLIT_G) {
-            mte1ToMte2Id[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE1>();
-            mte1ToMte2Id[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE1>();
-            mte1ToMte2Id[2] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE1>();
-            mte2ToMte1Id[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE1_MTE2>();
-            mte2ToMte1Id[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE1_MTE2>();
-            mte2ToMte1Id[2] = GetTPipePtr()->AllocEventID<HardEvent::MTE1_MTE2>();
-        }
+        mte1ToMte2Id[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE1>();
+        mte1ToMte2Id[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE1>();
+        mte1ToMte2Id[2] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE1>();
+        mte2ToMte1Id[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE1_MTE2>();
+        mte2ToMte1Id[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE1_MTE2>();
+        mte2ToMte1Id[2] = GetTPipePtr()->AllocEventID<HardEvent::MTE1_MTE2>();
         InitGmTensor(actualSeqLengthsQ, constInfo);
     }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void
-SFAMatmulService<TEMPLATE_ARGS>::InitLocalBuffer()
+SFAMatmulService<TEMPLATE_ARGS>::InitLocalBuffer(BufferManager<BufferType::L1> &l1BuffMgr)
 {
     constexpr uint32_t mm1LeftSize = s1BaseSize * dBaseSize * sizeof(Q_T);
     constexpr uint32_t mm1RightSize = dBaseSize * s2BaseSize * sizeof(Q_T);
-    l1QBuffers.Init((*l1BufferManagerPtr), mm1LeftSize);
-    l1KBuffers.Init((*l1BufferManagerPtr), mm1RightSize);
+    l1QBuffers.Init(l1BuffMgr, mm1LeftSize);
+    l1KBuffers.Init(l1BuffMgr, mm1RightSize);
 
     // L0A B C 当前写死，能否通过基础api获取
     l0aBufferManager.Init(tPipe, L0AB_SHARED_SIZE_64K);
@@ -355,7 +351,7 @@ class SFAMatmulServiceDummy {
 public:
     __aicore__ inline SFAMatmulServiceDummy() {};
     __aicore__ inline void InitCubeBlock(TPipe *pipe,
-        BufferManager<BufferType::L1> *l1BufferManagerPtr, __gm__ uint8_t *query, __gm__ uint8_t *queryRope) {}
+        BufferManager<BufferType::L1> &l1BuffMgr, __gm__ uint8_t *query, __gm__ uint8_t *queryRope) {}
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *key, __gm__ uint8_t *keyRope,
         __gm__ uint8_t *sparseIndices, __gm__ uint8_t *blockTable,
         __gm__ uint8_t *actualSeqLengthsQ, const ConstInfo& constInfo) {}
