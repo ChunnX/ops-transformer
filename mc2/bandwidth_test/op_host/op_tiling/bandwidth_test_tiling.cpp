@@ -96,7 +96,7 @@ static void PrintTilingDataInfo(const char *nodeName, BandwidthTestTilingData &t
 {
     OP_LOGD(nodeName, "data_size is %d.", tilingData.data_size);
     OP_LOGD(nodeName, "world_size is %d.", tilingData.world_size);
-    OP_LOGD(nodeName, "rank_id is %d.", tilingData.rank_id);
+    // OP_LOGD(nodeName, "rank_id is %d.", tilingData.rank_id);
     OP_LOGD(nodeName, "max_bs is %d.", tilingData.max_bs);
     OP_LOGD(nodeName, "mode is %d.", tilingData.mode);
     OP_LOGD(nodeName, "aiv_num is %d.", tilingData.aiv_num);
