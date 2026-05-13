@@ -113,7 +113,6 @@ private:
     bool needInit_ = false;
     bool enableS1OutSplit = false;
     uint64_t tilingKey_ = 0;
-    uint64_t MAX_VAL = 65536;
     uint64_t workspaceSize_ = 0;
     ScheduleMode scheduleMode_ = ScheduleMode::BATCH_MODE;
     uint32_t numBlocks_ = 0;

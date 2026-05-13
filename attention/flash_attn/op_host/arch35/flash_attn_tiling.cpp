@@ -181,9 +181,10 @@ void FlashAttnTilingImpl::AdjustSinnerAndSouter()
         int64_t maskMode = faInfo_->maskMode;
         int64_t winLefts = faInfo_->winLeft;
         int64_t winRights = faInfo_->winRight;
-        if (maskMode == 0 || maskMode == 3) {
-            winLefts = MAX_VAL;  // 请将 MAX_VAL 替换为实际的最大值
-            winRights = MAX_VAL; // 请将 MAX_VAL 替换为实际的最大值
+        if (maskMode == 0) {
+            winLefts = (winLefts > 0) ? 0 : winLefts;
+        } else if (maskMode == 4) {
+            winRights = (winRights > 0) ? 0 : winRights;
         }
         bool checkmaskMode = (maskMode != 2 && winLefts + winRights > 128);
         // if (checkDtype && checkQueryAndValueS && checkmaskMode && faInfo_->mlaMode != MlaMode::ROPE_SPLIT_D128) {

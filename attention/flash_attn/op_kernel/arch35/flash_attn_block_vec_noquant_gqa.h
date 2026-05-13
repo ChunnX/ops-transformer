@@ -522,11 +522,13 @@ public:
         softmaxLseQueue.DeQue<float>();
 
         if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
+            PRINTF("========= IN TND BRANCH =========\n");
             uint32_t prefixBS1 = qActSeqLensParser.GetTBase(runInfo.bIdx + 1);
             uint64_t bN2Offset = prefixBS1 + runInfo.n2Idx * constInfo.gSize * constInfo.t1Size;
             DataCopySoftmaxLseTNDtoNTArch35<T, ConstInfoX>(softmaxLseGm, lseUb, bN2Offset, vecMIdx, runInfo.actVecMSize,
                                                        constInfo);
         } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
+            PRINTF("========= IN NTD BRANCH =========\n");
             uint32_t prefixBS1 = qActSeqLensParser.GetTBase(runInfo.bIdx + 1);
             uint32_t s1Size = qActSeqLensParser.GetActualSeqLength(runInfo.bIdx);
             uint64_t bN2Offset = prefixBS1 * constInfo.n2Size * constInfo.gSize + runInfo.n2Idx * constInfo.gSize;

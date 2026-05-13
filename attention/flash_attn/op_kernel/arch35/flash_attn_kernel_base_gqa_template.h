@@ -346,6 +346,19 @@ public:
             }
         }
 
+        // constInfo.s1OuterSize = multiCoreParamsRegbase.s1OuterSize;
+
+        // if ASCEND_IS_AIC {
+        //     printf("aicIdx:%d\n", constInfo.aicIdx);
+        // } else {
+        //     printf("aivIdx:%d\n", constInfo.aivIdx);
+        //     printf("aicIdx:%d\n", constInfo.aicIdx);
+        //     printf("subBlockIdx:%d\n", constInfo.subBlockIdx);
+        // }
+        // printf("(%d, %d, %d) -> (%d, %d, %d)\n",
+        //     bN2Start_, gS1OStart_, s2OStart_,
+        //     bN2End_, gS1OEnd_, s2OEnd_);
+
         if (constInfo.isQHasLeftPadding) {
             constInfo.queryRightPaddingSize = ((__gm__ int64_t *)queryPaddingSize)[0];
             if (constInfo.queryRightPaddingSize < 0) {
