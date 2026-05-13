@@ -22,36 +22,32 @@ namespace ge {
 * @brief BandwidthTest operator for testing NPU communication bandwidth.
 
 * @par Inputs
-* Three inputs, including:
-* @li context: A tensor. Support dtype: int32. Shape supports (world_size), support format: ND.
-* @li x: A tensor. Support dtype: float16. Shape supports (BS, H), support format: ND.
-* @li dstrank_id: A tensor. Support dtype: int32, indicates target rank for each token. Shape supports (BS, ), support format: ND.
+* Two inputs, including:
+ * @li x: A tensor. Support dtype: float16, bfloat16. Shape supports (BS, H), support format: ND.
+* @li expert_id: A tensor. Support dtype: int32, indicates target rank for each token. Shape supports (BS, ), support format: ND.
 
 * @par Attributes
 * @li group: Required. Communication group name, dtype: String.
 * @li world_size: Required. Number of ranks in the group, dtype: Int.
-* @li ccl_buffer_size: Required. CCL buffer size, dtype: Int.
-* @li max_bs: Optional. Maximum batch size per rank, dtype: Int.
-* @li mode: Optional. mode, dtype: Int.
-* @li comm_alg: Optional. Communication type, dtype: Int.
+* @li rank_id: Required. Current rank ID, dtype: Int.
+ * @li max_bs: Required. Maximum batch size per rank, dtype: Int.
+ * @li mode: Required. mode, dtype: Int.
 
-* @par Outputs
+ * @par Outputs
 * Two outputs, including:
-* @li y: A tensor. Received data. Support dtype: float16. Shape supports (max_recv_cnt, H), support format: ND.
+ * @li y: A tensor. Received data. Support dtype: float16, bfloat16, float32. Shape supports (max_recv_cnt, H), support format: ND.
 * @li receive_cnt: A tensor. Received token count from each rank. Support dtype: int32, support format: ND.
 */
 REG_OP(BandwidthTest)
-    .INPUT(context, TensorType({DT_INT32}))
     .INPUT(x, TensorType({DT_FLOAT16}))
-    .INPUT(dstrank_id, TensorType({DT_INT32}))
+    .INPUT(expert_id, TensorType({DT_INT32}))
     .OUTPUT(y, TensorType({DT_FLOAT16}))
     .OUTPUT(receive_cnt, TensorType({DT_INT32}))
     .REQUIRED_ATTR(group, String)
     .REQUIRED_ATTR(world_size, Int)
-    .REQUIRED_ATTR(ccl_buffer_size, Int)
-    .ATTR(max_bs, Int, 0)
-    .ATTR(mode, Int, 0)
-    .ATTR(comm_alg, Int, 0)
+    .REQUIRED_ATTR(rank_id, Int)
+    .REQUIRED_ATTR(max_bs, Int)
+    .REQUIRED_ATTR(mode, Int)
     .OP_END_FACTORY_REG(BandwidthTest)
 
 }  // namespace ge
