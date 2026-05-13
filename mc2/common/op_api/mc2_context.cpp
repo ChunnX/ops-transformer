@@ -501,7 +501,7 @@ aclnnStatus Mc2Context::CheckProtocolSupport(const HcclComm &hcclHandle, uint32_
                     OP_LOGD("protocol is UB_MEM, but no available HCCL links found, set protocol to ROCE_DPU");
                     continue; 
                 }
-                OP_LOGE("No available HCCL links found, layer is %u, protocol is %u", layerList[layerIndex], protocol);
+                OP_LOGE("No available HCCL links found, layer is %u, protocol is %d", layerList[layerIndex], protocol);
                 return ACLNN_ERR_INNER; //  如果已经是ROCE协议，且没有链接，返回错误
             }
             if (CheckLinks(netLinkNum, linksList, protocol) != ACLNN_SUCCESS) {
