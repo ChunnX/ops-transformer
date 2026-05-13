@@ -45,7 +45,7 @@ import torch_npu
 import npu_ops_transformer
 
 sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "..", "benchmark")))
-from util import create_attention_mask, FrameWidths  # noqa: E402
+from util import create_attention_mask, FrameWidths, WorkloadShape  # noqa: E402
 
 SEED = 42
 DEVICE = "npu:0"
@@ -133,10 +133,9 @@ SPARSE_REF_ATOL = 0.05
 
 def _build_sparse_masks(B, H, S, sparsity, frame):
     """Return (sabi, pfa_atten_mask) on DEVICE, built on CPU first."""
+    workload = WorkloadShape(B, H, S, S, 128, BLOCK_SIZE_Q, BLOCK_SIZE_KV)
     pfa_atten_mask, sabi, _ = create_attention_mask(
-        B, H, S, S, 128, sparsity,
-        block_size_q=BLOCK_SIZE_Q, block_size_kv=BLOCK_SIZE_KV,
-        frame=frame, device="cpu", emit_atten_mask=True,
+        workload, sparsity, frame, "cpu", emit_atten_mask=True,
     )
     return sabi.to(DEVICE), pfa_atten_mask.to(DEVICE)
 

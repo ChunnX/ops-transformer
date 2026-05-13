@@ -43,7 +43,7 @@ import npu_ops_transformer
 
 sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "..", "benchmark")))
 from util import (  # noqa: E402
-    gen_pfa_inputs, create_attention_mask, FrameWidths,
+    gen_pfa_inputs, create_attention_mask, FrameWidths, WorkloadShape,
     ref_attention_launcher,
     sabi_to_block_sparse_mask,
 )
@@ -83,7 +83,7 @@ def _run_block_sparse_attention(q, k, v, h, scale, s_q, s_kv, sabi):
     b = q.shape[0]
     q_blocks = (s_q + BLOCK_SIZE_Q - 1) // BLOCK_SIZE_Q
     kv_blocks = (s_kv + BLOCK_SIZE_KV - 1) // BLOCK_SIZE_KV
-    block_mask = sabi_to_block_sparse_mask(sabi, b, h, q_blocks, kv_blocks, device=DEVICE)
+    block_mask = sabi_to_block_sparse_mask(sabi, (b, h, q_blocks, kv_blocks), device=DEVICE)
 
     actual_seq = [s_q] * b
     actual_seq_kv = [s_kv] * b
@@ -112,17 +112,16 @@ def test_block_sparse_attention_correctness(torch_ref, shape, frame, sparsity):
     torch.manual_seed(SEED)
     b, h, s_kv, d = shape
     s_q = s_kv
+    workload = WorkloadShape(b, h, s_q, s_kv, d, BLOCK_SIZE_Q, BLOCK_SIZE_KV)
 
     # Build sabi + per-token reference mask. The kernel uses only the block-level
     # sabi (converted to int8 inside _run_block_sparse_attention); the reference
     # uses the per-token pfa_atten_mask (block-aligned via make_block_mask_per_head).
     pfa_atten_mask, sabi, scale = create_attention_mask(
-        b, h, s_q, s_kv, d, sparsity, frame=frame,
-        block_size_q=BLOCK_SIZE_Q, block_size_kv=BLOCK_SIZE_KV,
-        device=DEVICE, emit_atten_mask=True,
+        workload, sparsity, frame, DEVICE, emit_atten_mask=True,
     )
 
-    q, k, v, _, _ = gen_pfa_inputs(b, h, s_q, s_kv, d, device=DEVICE, dtype=DTYPE)
+    q, k, v, _, _ = gen_pfa_inputs(workload, device=DEVICE, dtype=DTYPE)
 
     out_our = _run_block_sparse_attention(q, k, v, h, scale, s_q, s_kv, sabi)
 
@@ -132,7 +131,7 @@ def test_block_sparse_attention_correctness(torch_ref, shape, frame, sparsity):
         force_dense_sm=(sparsity == 0),
     )
 
-    if not torch.allclose(out_our.cpu(), out_ref.cpu(), rtol=0.01, atol=0.001):
+    if not torch.allclose(out_our.cpu(), out_ref.cpu(), rtol=0.005, atol=0.001):
         max_diff = (out_our.cpu() - out_ref.cpu()).abs().max().item()
         pytest.fail(
             f"Outputs don't match for b={b}, h={h}, s_q={s_q}, s_kv={s_kv}, "

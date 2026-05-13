@@ -52,6 +52,7 @@ from util import (
     PRINT_MASK,
     TORCH_REFERENCE,
     FrameWidths,
+    WorkloadShape,
     gen_pfa_inputs,
     create_attention_mask,
     ref_attention_launcher,
@@ -63,8 +64,8 @@ from util import (
 
 BLOCK_SIZE_KV = int(os.environ.get("BSA_BLOCK_SIZE_KV", _DEFAULT_BLOCK_SIZE_KV))
 
-# Allow overriding the frame widths from the environment.
-# Format "left,right,top,bottom" (e.g. BSA_FRAME=8,1,29,1).
+# Allow overriding the frame widths via the BSA_FRAME env var.
+# Format: four comma-separated integers — left,right,top,bottom (example "8,1,29,1").
 # Frame widths are in BLOCK units. When the KV block size grows the same
 # left/right "block count" covers more KV tokens — so to keep the per-row
 # token coverage comparable across granularities, scale left/right
@@ -136,16 +137,16 @@ def _print_header():
     logger.info(f"  {TORCH_REFERENCE=}")
     logger.info("=" * 90)
     logger.info(
-        f"{'H':>3} {'B':>3} {'s_q':>6} {'s_kv':>6} {'D':>4} {'sparsity':>9} {'Outputs_equal':>15} "
+        f"{'B':>3} {'H':>3} {'s_q':>6} {'s_kv':>6} {'D':>4} {'sparsity':>9} {'Outputs_equal':>15} "
         f"{'Ref_Latency_[usec]':>18} {'Our_Latency_[usec]':>18}"
     )
     logger.info("-" * 90)
 
 
-def _print_row(h, b, s_q, s_kv, d, sparsity, equal, ref_us, our_us):
+def _print_row(shape: WorkloadShape, sparsity, equal, ref_us, our_us):
     logger.info(
-        f"{h:>3} {b:>3} {s_q:>6} {s_kv:>6} {d:>4} {sparsity:>9.2f} {equal:>15} "
-        f"{_fmt_or_na(ref_us, 18)} {_fmt_or_na(our_us, 18)}"
+        f"{shape.b:>3} {shape.h:>3} {shape.s_q:>6} {shape.s_kv:>6} {shape.d:>4} "
+        f"{sparsity:>9.2f} {equal:>15} {_fmt_or_na(ref_us, 18)} {_fmt_or_na(our_us, 18)}"
     )
 
 
@@ -158,17 +159,16 @@ def benchmark_block_sparse_attention():
 
     for b, h, s_kv, d, sparsity in itertools.product(B_VALS, H_VALS, S_VALS, D_VALS, SPARSITY_VALS):
         s_q = s_kv
+        shape = WorkloadShape(b, h, s_q, s_kv, d, BLOCK_SIZE_Q, BLOCK_SIZE_KV)
 
         try:
             pfa_atten_mask, sabi, scale = create_attention_mask(
-                b, h, s_q, s_kv, d, sparsity, frame=FRAME,
-                block_size_q=BLOCK_SIZE_Q, block_size_kv=BLOCK_SIZE_KV,
-                device=DEVICE, emit_atten_mask=run_ref,
+                shape, sparsity, FRAME, DEVICE, emit_atten_mask=run_ref,
             )
         except ValueError:
             # Infeasible (sparsity, frame, S, block_size) — frame forces a higher
             # density than the target sparsity allows.
-            _print_row(h, b, s_q, s_kv, d, sparsity, "INFEASIBLE", None, None)
+            _print_row(shape, sparsity, "INFEASIBLE", None, None)
             continue
 
         if PRINT_MASK and pfa_atten_mask is not None:
@@ -179,7 +179,7 @@ def benchmark_block_sparse_attention():
         q_blocks = (s_q + BLOCK_SIZE_Q - 1) // BLOCK_SIZE_Q
         kv_blocks = (s_kv + BLOCK_SIZE_KV - 1) // BLOCK_SIZE_KV
         block_sparse_mask = sabi_to_block_sparse_mask(
-            sabi, b, h, q_blocks, kv_blocks, device=DEVICE
+            sabi, (b, h, q_blocks, kv_blocks), device=DEVICE,
         )
 
         our_fn = _make_our_fn_block_sparse(block_sparse_mask, h, scale)
@@ -187,16 +187,16 @@ def benchmark_block_sparse_attention():
 
         are_equal_ref = "N/A"
         if run_ref or run_ref_sparsity_0:
-            are_equal_ref = _check_correctness(our_fn, ref_fn, b, h, s_q, s_kv, d, device=DEVICE)
+            are_equal_ref = _check_correctness(our_fn, ref_fn, shape, DEVICE)
 
-        inputs = [gen_pfa_inputs(b, h, s_q, s_kv, d, device=DEVICE, dtype=DTYPE)
+        inputs = [gen_pfa_inputs(shape, device=DEVICE, dtype=DTYPE)
                   for _ in range(n_warmup + n_repeat)]
         our_duration = _run_timed(our_fn, inputs, n_warmup, n_repeat)
         ref_duration = None
         if run_ref or run_ref_sparsity_0:
             ref_duration = _run_timed(ref_fn, inputs, n_warmup, n_repeat)
 
-        _print_row(h, b, s_q, s_kv, d, sparsity, are_equal_ref, ref_duration, our_duration)
+        _print_row(shape, sparsity, are_equal_ref, ref_duration, our_duration)
 
     logger.info("=" * 90)
 

@@ -39,7 +39,7 @@ import torch_npu
 import npu_ops_transformer
 
 sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "..", "benchmark")))
-from util import create_attention_mask, FrameWidths  # noqa: E402
+from util import create_attention_mask, FrameWidths, WorkloadShape  # noqa: E402
 
 SEED = 42
 DEVICE = "npu:0"
@@ -192,7 +192,7 @@ def test_joint_dense(shape, dtype):
     assert our_lse.shape == torch.Size([B, H, S]), f"lse shape wrong: {our_lse.shape}"
     assert our_lse.dtype == torch.float32,         f"lse dtype wrong: {our_lse.dtype}"
 
-    if not torch.allclose(our_out.cpu(), ref_out.cpu(), rtol=0.01, atol=OUT_ATOL):
+    if not torch.allclose(our_out.cpu(), ref_out.cpu(), rtol=0.005, atol=OUT_ATOL):
         max_diff = (our_out.cpu() - ref_out.cpu()).abs().max().item()
         pytest.fail(f"attention_out: shape={shape} dtype={dtype} "
                     f"max_diff={max_diff:.5f} > atol={OUT_ATOL}")
@@ -222,10 +222,9 @@ def test_joint_sparse(shape, sparsity):
     dtype = torch.bfloat16
     scale = 1.0 / math.sqrt(D)
 
+    workload = WorkloadShape(B, H, S, S, D, BLOCK_SIZE_Q, BLOCK_SIZE_KV)
     pfa_atten_mask, sabi, _ = create_attention_mask(
-        B, H, S, S, D, sparsity,
-        block_size_q=BLOCK_SIZE_Q, block_size_kv=BLOCK_SIZE_KV,
-        frame=NO_FRAME, device="cpu", emit_atten_mask=True,
+        workload, sparsity, NO_FRAME, "cpu", emit_atten_mask=True,
     )
     sabi_cpu = sabi
     sabi_dev = sabi.to(DEVICE)
@@ -243,7 +242,7 @@ def test_joint_sparse(shape, sparsity):
     assert our_lse.shape == torch.Size([B, H, S]), f"lse shape wrong: {our_lse.shape}"
     assert our_lse.dtype == torch.float32,         f"lse dtype wrong: {our_lse.dtype}"
 
-    if not torch.allclose(our_out.cpu(), pfa_out.cpu(), rtol=0.01, atol=SPARSE_OUT_ATOL):
+    if not torch.allclose(our_out.cpu(), pfa_out.cpu(), rtol=0.005, atol=SPARSE_OUT_ATOL):
         max_diff = (our_out.cpu() - pfa_out.cpu()).abs().max().item()
         pytest.fail(f"attention_out: shape={shape} sparsity={sparsity} "
                     f"max_diff={max_diff:.5f} > atol={SPARSE_OUT_ATOL}")
