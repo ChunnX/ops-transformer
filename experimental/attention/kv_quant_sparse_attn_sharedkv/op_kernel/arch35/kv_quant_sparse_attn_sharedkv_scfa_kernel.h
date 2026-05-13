@@ -176,8 +176,6 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
     constInfo.sparseBlockSize = 1;
     constInfo.actualSeqLenSize = constInfo.bSize + 1;
 
-    constInfo.isActualLenDimsOriKVNull = (sequsedOriKv == nullptr);
-    constInfo.isActualLenDimsCmpKVNull = (sequsedCmpKv == nullptr);
     constInfo.actualLenDimsOriKV = sparseAttnSharedkvBaseParams.actualLenDimsOriKV;
     constInfo.actualLenDimsCmpKV = sparseAttnSharedkvBaseParams.actualLenDimsCmpKV;
     constInfo.cmpResidualKVSize = sparseAttnSharedkvBaseParams.cmpResidualKVSize;
@@ -191,7 +189,7 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
     }
 
     constInfo.needInit = 0;
-    if (!constInfo.isActualLenDimsOriKVNull) {
+    if (sequsedOriKv != nullptr) {
         for (uint32_t bIdx = 0; bIdx < constInfo.bSize; bIdx++) {
             int64_t s2Size;
             GlobalTensor<int32_t> actualSeqLengthsOriKvGm;

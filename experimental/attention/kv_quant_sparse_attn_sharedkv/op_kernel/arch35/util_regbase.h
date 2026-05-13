@@ -194,8 +194,6 @@ struct RunInfo {
     /* 推理 */ \
     bool isActualLenDimsNull; /* 判断是否有actualseq */ \
     bool isSoftmaxLseEnable; \
-    bool isActualLenDimsOriKVNull; /* 判断是否有seqused_ori_kv */ \
-    bool isActualLenDimsCmpKVNull; /* 判断是否有seqused_cmp_kv */ \
     uint32_t sparseBlockCount; \
     uint32_t actualSeqLenSize; /* 用户输入的actualseq的长度 */ \
     uint32_t actualLenDimsOriKV; /* seqused_ori_kv的维度 */ \
