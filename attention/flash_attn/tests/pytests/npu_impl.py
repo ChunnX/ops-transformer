@@ -63,8 +63,9 @@ def print_metadata(metadata):
     arr = metadata.cpu().contiguous().to(torch.int32).numpy().astype(np.uint32)
 
     section_num  = int(arr[0])
-    m_base_size  = int(arr[1])
-    s2_base_size = int(arr[2])
+    is_FD  = int(arr[1])
+    m_base_size  = int(arr[2])
+    s2_base_size = int(arr[3])
 
     SEP  = "=" * 78
     DASH = "-" * 78
@@ -72,6 +73,7 @@ def print_metadata(metadata):
     print(f"\n{SEP}")
     print(f"  [Metadata Header]")
     print(f"  sectionNum  = {section_num}")
+    print(f"  isFD   = {is_FD}")
     print(f"  mBaseSize   = {m_base_size}")
     print(f"  s2BaseSize  = {s2_base_size}")
 
