@@ -53,13 +53,14 @@ class GMMAntiquantProcess : public GMMProcess<ComputeType>{
 
     __aicore__ inline void Process();
 
- private:
+ protected:
+    __aicore__ inline void ProcessCommon(
+        MNConfig &mnConfig, CastWeightConfig &castConfig, uint32_t groupIdx, uint32_t &count, uint32_t coreNum);
     __aicore__ inline void SetAntiquantMNConfig(const uint64_t singleWorkSpaceSize, const uint32_t curBlock, bool& validCore,
                                                 CastWeightConfig& castConfig, MNConfig &mnConfig);
-
     __aicore__ inline void SetAntiquantCastConfig(uint32_t& curCount, MNConfig mnConfig,
                                                   CastWeightConfig& castConfig);
-      __aicore__ inline void AntiquantUpdateSingleM(MNConfig& mnConfig, uint32_t& dimM, uint32_t dimN);
+    __aicore__ inline void AntiquantUpdateSingleM(MNConfig& mnConfig, uint32_t& dimM, uint32_t dimN);
 };
 
 template <typename ComputeType>
@@ -113,54 +114,66 @@ template <typename ComputeType>
 __aicore__ inline void GMMAntiquantProcess<ComputeType>::Process() {
     MNConfig mnConfig;
     CastWeightConfig castConfig;
-    castConfig.coreNum = this->gmmBaseParams->coreNum;
-    bool validCore = true;
-    uint64_t singleWorkSpaceSize = this->gmmBaseParams->workspaceSize / 2;  // 2: antiQuantNormal use 2 block workspace
+    uint32_t coreNum = this->gmmBaseParams->coreNum;
+    castConfig.coreNum = coreNum;
+
     if (this->gmmBaseParams->groupType != -1) {  // -1: no need to split
         this->preOffset = 0;
         if (unlikely(this->groupListPtr == nullptr)) {this->groupNum = 0;}  // not continue Process
     }
     for (uint32_t groupIdx = 0, count = 0; groupIdx < this->groupNum; ++groupIdx) {
         int32_t splitValue = GetSplitValueFromGroupList(groupIdx, this->preOffset, this->gmmBaseParams, this->groupListGm);
+        printf("ljm antiquant process splitValue%ld groupIdx%ld", splitValue, groupIdx);
         this->SetMNConfig(splitValue, groupIdx, mnConfig);
-        uint32_t dimM = Ceil(mnConfig.m, mnConfig.singleM);
-        uint32_t dimN = Ceil(mnConfig.n, mnConfig.singleN);
-        if constexpr (!antiquantPerformance) {
-            AntiquantUpdateSingleM(mnConfig, dimM, dimN);
-        }
-        mnConfig.blockDimM = dimM;
-        mnConfig.blockDimN = dimN;
-        uint32_t curCount = count + dimM * dimN;
-        uint32_t curBlock = this->coreIdx >= count ? this->coreIdx : this->coreIdx + this->gmmBaseParams->coreNum;
-        uint32_t thresholdM_dimN = thresholdBlockNum * dimN;
-
-        if constexpr (antiquantPerformance) {
-            SetAntiquantCastConfig(curCount, mnConfig, castConfig);
-        }
-
-        while (curBlock < curCount) {
-            if constexpr (antiquantPerformance) {  // performance verison, will split dimN
-                SetAntiquantMNConfig(singleWorkSpaceSize, curBlock, validCore, castConfig, mnConfig);
-            } else {
-                mnConfig.workSpaceOffset = mnConfig.wBaseOffset;
-                MNBlockIdxCompute(mnConfig, curBlock, count, thresholdM_dimN);
-            }
-            this->computeOp.PreCompute(groupIdx, this->coreIdx, mnConfig, castConfig);
-            this->computeOp.MMSync();
-            if (validCore) {
-                mnConfig.workSpaceOffset += mnConfig.nIdx * mnConfig.singleN;
-                if constexpr (antiquantPerformance) {
-                    mnConfig.nIdx += castConfig.castRoundIdx * castConfig.nUsedCore;
-                }
-                this->computeOp.MMCompute(groupIdx, mnConfig, this->coreIdx);
-            }
-            curBlock += this->gmmBaseParams->coreNum;
-        }
+        ProcessCommon(mnConfig, castConfig, groupIdx, count, coreNum);
         this->UpdateMnConfig(mnConfig);
-        count = curCount % this->gmmBaseParams->coreNum;
     }
 }
 
+// for split core
+template <typename ComputeType>
+__aicore__ inline void GMMAntiquantProcess<ComputeType>::ProcessCommon(
+    MNConfig &mnConfig, CastWeightConfig &castConfig, uint32_t groupIdx, uint32_t &count, uint32_t coreNum)
+{
+    bool validCore = true;
+    uint64_t singleWorkSpaceSize = this->gmmBaseParams->workspaceSize / 2;  // 2: antiQuantNormal use 2 block workspace
+
+    uint32_t dimM = Ceil(mnConfig.m, mnConfig.singleM);
+    uint32_t dimN = Ceil(mnConfig.n, mnConfig.singleN);
+    if constexpr (!antiquantPerformance) {
+        AntiquantUpdateSingleM(mnConfig, dimM, dimN);
+    }
+    
+    printf("ljm processcom antiquant dimM%ld dimN%ld", dimM, dimN);
+    mnConfig.blockDimM = dimM;
+    mnConfig.blockDimN = dimN;
+    uint32_t curCount = count + dimM * dimN;
+    uint32_t curBlock = this->coreIdx >= count ? this->coreIdx : this->coreIdx + coreNum;
+    uint32_t thresholdM_dimN = thresholdBlockNum * dimN;
+    if constexpr (antiquantPerformance) {
+        SetAntiquantCastConfig(curCount, mnConfig, castConfig);
+    }
+    printf("ljm processcom antiquant curCount%ld curBlock%ld antiquantPerformance%ld", curCount, curBlock, antiquantPerformance);
+    while (curBlock < curCount) {
+        if constexpr (antiquantPerformance) {  // performance verison, will split dimN
+            SetAntiquantMNConfig(singleWorkSpaceSize, curBlock, validCore, castConfig, mnConfig);
+        } else {
+            mnConfig.workSpaceOffset = mnConfig.wBaseOffset;
+            MNBlockIdxCompute(mnConfig, curBlock, count, thresholdM_dimN);
+        }
+        this->computeOp.PreCompute(groupIdx, this->coreIdx, mnConfig, castConfig);
+        this->computeOp.MMSync();
+        if (validCore) {
+            mnConfig.workSpaceOffset += mnConfig.nIdx * mnConfig.singleN;
+            if constexpr (antiquantPerformance) {
+                mnConfig.nIdx += castConfig.castRoundIdx * castConfig.nUsedCore;
+            }
+            this->computeOp.MMCompute(groupIdx, mnConfig, this->coreIdx);
+        }
+        curBlock += coreNum;
+    }
+    count = curCount % coreNum;
+}
 
 /** @brief intenal computation class
 */
@@ -270,6 +283,7 @@ __aicore__ inline void GMMAntiquantCompute<mmType, sync, antiquantPerformance>::
     mnConfig.wOutOffset = mnConfig.workSpaceOffset;
     castConfig.tailN = 0;
     if constexpr (antiquantPerformance) {  // antiquant normal version
+        printf("ljm precompute performance\n");
         uint32_t blockDimK = Min<uint32_t>(this->coreNum, Ceil(mnConfig.k, CAST_MIN_SINGLE_K));
         if (coreIdx >= blockDimK) { return; }
         castConfig.curSingleK = Ceil(mnConfig.k, blockDimK);
@@ -293,6 +307,8 @@ __aicore__ inline void GMMAntiquantCompute<mmType, sync, antiquantPerformance>::
         if (mnConfig.nIdx == mnConfig.blockDimN - 1) {
             castConfig.curSingleN = mnConfig.n - mnConfig.nIdx * mnConfig.singleN;
         }
+        printf("ljm precompute curSingleN%ld, curSingleK%ld, tailN%ld, wInNOffset%ld ,wOutOffset%ld", castConfig.curSingleN, castConfig.curSingleK, castConfig.tailN,
+        castConfig.wInNOffset, mnConfig.wOutOffset);
     }
     SetAntiQuantGlobalBuffer(groupIdx, mnConfig);
     CastWeightProcess(mnConfig, castConfig);
@@ -323,6 +339,7 @@ GMMAntiquantCompute<mmType, sync, antiquantPerformance>::SetAntiQuantGlobalBuffe
         if (isPerGroup) {
             antiquantParamsOffset *= (mnConfig.k / perGroupSize);
         }
+        printf("ljm SetAntiQuantGlobalBuffer antiquantParamsOffset%ld, isPerGroup%ld", antiquantParamsOffset, isPerGroup);
         antiScaleGM.SetGlobalBuffer(GetTensorAddr<AT>(0, antiScaleTensorPtr) + antiquantParamsOffset);
         antiOffsetGM.SetGlobalBuffer(GetTensorAddr<AT>(0, antiOffsetTensorPtr) + antiquantParamsOffset);
     }
@@ -366,6 +383,8 @@ __aicore__ inline void GMMAntiquantCompute<mmType, sync, antiquantPerformance>::
     uint32_t newBaseK = this->ubBaseK;
     uint32_t newBaseN = this->ubBaseN;
     uint32_t usedGroupSize = mnConfig.k;
+    printf("ljm CastWeightProcess wInOffset%ld, curSingleK%ld, curSingleN%ld, scaleOffset%ld, newBaseK%ld, newBaseN%ld, usedGroupSize%ld", wInOffset, curSingleK, curSingleN,
+    scaleOffset, newBaseK, newBaseN, usedGroupSize);
     if (isPerGroup) {
         newBaseK = Min(this->ubBaseK, perGroupSize);
         if (!transposeW && newBaseK < perGroupSize && newBaseK > perGroupSize / 2 && mnConfig.n % newBaseN != 0) {
@@ -377,6 +396,7 @@ __aicore__ inline void GMMAntiquantCompute<mmType, sync, antiquantPerformance>::
             }
         }
         usedGroupSize = perGroupSize + AlignDown(castConfig.wInKOffset, perGroupSize);
+        printf("ljm CastWeightProcess1 newBaseK%ld, newBaseN%ld, usedGroupSize%ld", newBaseK, newBaseN, usedGroupSize);
     }
     DataCopyPadExtParams<int8_t> padParams;
     for (uint32_t offsetN(0), curBaseN(newBaseN), nCount(0); offsetN < curSingleN; offsetN += newBaseN) {
@@ -392,8 +412,10 @@ __aicore__ inline void GMMAntiquantCompute<mmType, sync, antiquantPerformance>::
         bool firstKLoop = true;
         int32_t prePergroupIdx = -1;
         int32_t curPergroupIdx = 0;
+        printf("ljm CastWeightProcess2 newBaseK%ld, newBaseN%ld, usedGroupSize%ld", newBaseK, newBaseN, usedGroupSize);
         for (uint32_t offsetK(0), subCoreCount(nCount); offsetK < curSingleK; offsetK += curBaseK) {
             ComputeUbBaseK(curSingleK, offsetK, newBaseK, curUsedGroupSize, curBaseK);
+            printf("ljm CastWeightProcess3 curBaseK%ld, curUsedGroupSize%ld", curBaseK, curUsedGroupSize);
             if constexpr (antiquantPerformance) {
                 if (this->subBlockIdx == (++subCoreCount) % 2) {  // 2: two vectors
                     continue;
@@ -407,12 +429,14 @@ __aicore__ inline void GMMAntiquantCompute<mmType, sync, antiquantPerformance>::
                     prePergroupIdx = curPergroupIdx;
                 }
             }
+            printf("ljm curPergroupIdx%ld", curPergroupIdx);
             LocalTensor<int8_t> inLocal = vecInQueue.AllocTensor<int8_t>();
             DataCopyExtParams gmToUbIntriParams;
             SetGmToUbDataCopyParams(curBaseN, curBaseK, mnConfig, gmToUbIntriParams);
             uint64_t weightInOffset = transposeW ? offsetK + static_cast<uint64_t>(offsetN) * mnConfig.k :
                                       static_cast<uint64_t>(offsetK) * mnConfig.n + offsetN;
             DataCopyPad(inLocal, weightAntiQuantGm[(weightInOffset + wInOffset) * GetTypeBits<WT>() / INT8_BITS], gmToUbIntriParams, padParams);
+            printf("ljm weightInOffset%ld wInOffset%ld",weightInOffset, wInOffset);
             vecInQueue.EnQue(inLocal);
 
             DataCopyExtParams ubToGmIntriParams;
@@ -431,6 +455,7 @@ __aicore__ inline void GMMAntiquantCompute<mmType, sync, antiquantPerformance>::
                                        mnConfig.wOutOffset + offsetK * mnConfig.n + offsetN;
             DataCopyPad(this->weightGm[weightOutOffset], wResUb, ubToGmIntriParams);
             vecOutQueue.FreeTensor(wResUb);
+            printf("ljm weightOutOffset%ld", weightOutOffset);
         }
         nCount = nCount == 0 ? 1: 0;
         if (!(isPerGroup && firstKLoop)) {
@@ -539,6 +564,47 @@ GMMAntiquantCompute<mmType, sync, antiquantPerformance>::DataCopyScaleAndOffset(
     scaleInUb.SetSize(alignBaseN);
     offsetInUb = offsetInQueue.DeQue<BT>();
     offsetInUb.SetSize(alignBaseN);
+}
+
+/** @brief GroupMatmul Antiquant Sparse operator Class (for groupListType=2)
+ */
+template <typename ComputeType>
+class GMMAntiquantSparseProcess : public GMMAntiquantProcess<ComputeType> {
+ public:
+    /** @brief constructor */
+    __aicore__ inline GMMAntiquantSparseProcess(ComputeType& computeOp_) :
+        GMMAntiquantProcess<ComputeType>(computeOp_) {};
+
+    __aicore__ inline void Process();
+};
+
+template <typename ComputeType>
+__aicore__ inline void GMMAntiquantSparseProcess<ComputeType>::Process()
+{
+    MNConfig mnConfig;
+    CastWeightConfig castConfig;
+    uint32_t coreNum = this->gmmBaseParams->coreNum;
+    castConfig.coreNum = coreNum;
+
+    if (this->gmmBaseParams->groupType != -1) {
+        if (unlikely(this->groupListPtr == nullptr)) { this->groupNum = 0; }
+    }
+
+    uint32_t groupListSplitValueOffset = 1;
+    uint32_t groupListInnerShape = 2u; // groupList shape: [e, 2]
+    uint32_t groupListShapeSize = this->groupNum * groupListInnerShape;
+
+    for (uint32_t loop = 0, count = 0; loop < groupListShapeSize; loop += groupListInnerShape) {
+        int32_t splitValue = static_cast<int32_t>(this->groupListGm.GetValue(loop + groupListSplitValueOffset));
+        if (splitValue <= 0) { break; }
+        uint32_t groupIdx = static_cast<uint32_t>(this->groupListGm.GetValue(loop));
+        bool skip = this->UpdateMnConfigForGroupListMSparse(mnConfig, splitValue, groupIdx);
+        if (skip) {
+            continue;
+        }
+
+        this->ProcessCommon(mnConfig, castConfig, groupIdx, count, coreNum);;
+    }
 }
 
 template <class mmType, bool sync = false>

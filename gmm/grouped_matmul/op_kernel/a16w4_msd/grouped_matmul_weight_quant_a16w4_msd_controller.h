@@ -27,6 +27,9 @@ namespace GROUPED_MATMUL::A16W4Msd {
     template <typename xType, typename wType, typename biasType, int groupListType>
 
 #define GMM_WQ_A16W4_MSD_CONTROLLER_CLASS GMMWeightQuantA16W4MsdController<xType, wType, biasType, groupListType>
+#define GMM_WQ_A16W4_MSD_CONTROLLER_CLASS_M_SPARSE GMMWeightQuantA16W4MsdControllerMSparse<xType, wType, biasType, groupListType>
+constexpr uint32_t SPARSE_GROUP_LIST_SPLIT = 2;
+constexpr uint32_t SPARSE_GROUP_LIST_SPLIT_VALUE_OFFSET = 1;
 
 GMM_WQ_A16W4_MSD_CONTROLLER_TEMPLATE_PARAM
 class GMMWeightQuantA16W4MsdController {
@@ -36,7 +39,7 @@ public:
                                 GM_ADDR y, const GMMBaseParams *__restrict baseTiling);
     __aicore__ inline void Process(GM_ADDR workspace, TPipe *tPipe);
 
-private:
+protected:
     __aicore__ inline void PreProcess(const A16W4MsdConstParam &constParams,
                                       WeightQuantA16W4MsdBasicBlock<xType, wType, biasType> &basicBlock);
     __aicore__ inline void InitConstParam(A16W4MsdConstParam &constParams);
@@ -53,6 +56,7 @@ private:
     __gm__ int8_t *aUnfoldS8WsAddr_;
     __gm__ float *aMaxWs_;
     __gm__ wType *weightGm_;
+    // __gm__ wType *weightGmUpdate_; // for groupListType = 2
     __gm__ xType *antiquantScaleGm_;
     __gm__ biasType *biasGm_;
     __gm__ xType *yGm_;
@@ -77,6 +81,7 @@ __aicore__ inline void GMM_WQ_A16W4_MSD_CONTROLLER_CLASS::Init(GM_ADDR x, GM_ADD
 
     xGm_ = GetTensorAddr<xType>(0, x);
     weightGm_ = GetTensorAddr<wType>(0, weight);
+    // weightGmLocal_ = GetTensorAddr<wType>(0, weight);
     antiquantScaleGm_ = GetTensorAddr<xType>(0, antiquantScale);
     biasGm_ = GetTensorAddr<biasType>(0, bias);
     yGm_ = GetTensorAddr<xType>(0, y);
@@ -190,7 +195,11 @@ __aicore__ inline void GMM_WQ_A16W4_MSD_CONTROLLER_CLASS::PreProcess(
     GlobalTensor<int8_t> aUnfoldGlobal;
     aUnfoldGlobal.SetGlobalBuffer(aUnfoldS8WsAddr_);
     uint64_t preSum = 0;
-    for (uint32_t groupIdx = 0, startBasicBlockId = 0; groupIdx < gmmBaseTiling_->groupNum; ++groupIdx) {
+    // 2: groupList shape: [e, 2]; 1: groupList shape: [e]
+    uint32_t groupListInnerShape = groupListType == SPARSE_GROUP_LIST_SPLIT ? 2 : 1;
+    uint32_t groupSize = gmmBaseTiling_->groupNum;
+    uint32_t groupListShapeSize = groupSize * groupListInnerShape;
+    for (uint32_t groupIdx = 0, startBasicBlockId = 0; groupIdx < groupSize; groupIdx += groupListInnerShape) {
         uint64_t mSize = GetSplitValueFromGroupList(groupIdx);
         if (mSize > 0) {
             xGlobal.SetGlobalBuffer(xGm_);
@@ -246,10 +255,128 @@ __aicore__ inline uint64_t GMM_WQ_A16W4_MSD_CONTROLLER_CLASS::GetSplitValueFromG
         uint64_t offset = static_cast<uint64_t>(groupListGm_.GetValue(groupIdx));
         splitValue = offset - preOffset_;
         preOffset_ = offset;
-    } else {
+    } else if (groupListType == 1) {
+        // 1: count mode
         splitValue = static_cast<uint64_t>(groupListGm_.GetValue(groupIdx));
+    } else {
+        splitValue = static_cast<int32_t>(groupListGm_.GetValue(groupIdx + SPARSE_GROUP_LIST_SPLIT_VALUE_OFFSET));
     }
     return splitValue;
+}
+
+GMM_WQ_A16W4_MSD_CONTROLLER_TEMPLATE_PARAM
+class GMMWeightQuantA16W4MsdControllerMSparse : public GMM_WQ_A16W4_MSD_CONTROLLER_CLASS{
+public:
+    __aicore__ inline GMMWeightQuantA16W4MsdControllerMSparse() : GMM_WQ_A16W4_MSD_CONTROLLER_CLASS() {};
+    __aicore__ inline void Process(GM_ADDR workspace, TPipe *tPipe);
+private:
+    __aicore__ inline void PreUpdateGmAddrForSparse(GlobalTensor<wType> &weightGmUpdate,
+                                                    GlobalTensor<xType> &antiquantScaleGmUpdate,
+                                                    GlobalTensor<biasType> &biasGmUpdate,
+                                                    uint64_t mSize, uint64_t kSize,
+                                                    uint64_t nSize, uint32_t expertIdx);
+    __aicore__ inline void PostUpdateGmAddrForSparse(uint64_t mSize, uint64_t kSize, uint64_t nSize);
+
+    static constexpr uint64_t BASIC_BLOCK_PROCESS_NUM = 2;
+    static constexpr uint64_t BASE_ML1_SIZE = 32;
+    static constexpr uint64_t GROUP_SIZE = 32;
+};
+
+GMM_WQ_A16W4_MSD_CONTROLLER_TEMPLATE_PARAM
+__aicore__ inline void GMM_WQ_A16W4_MSD_CONTROLLER_CLASS_M_SPARSE::Process(GM_ADDR workspace, TPipe *tPipe)
+{
+    uint32_t cubeBlockIdx = GetBlockIdx();
+    if ASCEND_IS_AIV {
+        cubeBlockIdx = GetBlockIdx() >> 1;
+    }
+    A16W4MsdConstParam constParams;
+    this->InitConstParam(constParams);
+
+    WeightQuantA16W4MsdBasicBlock<xType, wType, biasType> basicBlock;
+    basicBlock.InitPreProcess(tPipe);
+
+    this->InitWorkspaceSize(cubeBlockIdx, workspace);
+    this->PreProcess(constParams, basicBlock);
+    SyncAll();
+
+    basicBlock.InitMsd(this->weightS8WsAddr_, this->aUnfoldS8WsAddr_, this->cF32WsAddr_, GROUP_SIZE, tPipe);
+
+    A16W4MsdBasicBlockOffsetParam offsetParam[BASIC_BLOCK_PROCESS_NUM];
+    GlobalTensor<wType> weightGmUpdate;
+    GlobalTensor<xType> antiquantScaleGmUpdate;
+    GlobalTensor<biasType> biasGmUpdate;
+    uint64_t processId = 0;
+
+    uint32_t groupListSplitValueOffset = 1;
+    uint32_t groupListInnerShape = 2u; // groupList shape: [e, 2]
+    uint32_t groupListShapeSize = this->gmmBaseTiling_->groupNum * groupListInnerShape;
+    for (uint32_t loop = 0, startBasicBlockId = 0; loop < groupListShapeSize; loop += groupListInnerShape) {
+        uint64_t mSize = this->GetSplitValueFromGroupList(loop);
+        printf("ljm A16w4 Process splitvalue%ld", mSize);
+        if (mSize == 0) {
+            // all tokens have be processed
+            break;
+        }
+        uint32_t expertIdx = static_cast<uint32_t>(this->groupListGm_.GetValue(loop));
+        if (mSize > 0) {
+            PreUpdateGmAddrForSparse(weightGmUpdate, antiquantScaleGmUpdate, biasGmUpdate,
+                                     mSize, constParams.kSize, constParams.nSize, expertIdx);
+            basicBlock.UpdateGlobalAddr(this->aUnfoldS8WsAddr_, (__gm__ wType *)weightGmUpdate.GetPhyAddr(),
+                                        (__gm__ xType *)antiquantScaleGmUpdate.GetPhyAddr(),
+                                        (__gm__ biasType *)biasGmUpdate.GetPhyAddr(),
+                                        this->yGm_, this->aMaxWs_, this->gmmBaseTiling_->withOffset);
+
+            uint32_t mBlockNum = A16W4Msd::CeilDiv(mSize, BASE_ML1_SIZE);
+            uint32_t nBlockNum = A16W4Msd::CeilDiv(constParams.nSize, constParams.nL1BaseSize);
+
+            uint32_t totalBasicBlockCount = startBasicBlockId + mBlockNum * nBlockNum;
+            uint32_t curCoreStartBlockId =
+                cubeBlockIdx >= startBasicBlockId ? cubeBlockIdx : cubeBlockIdx + this->gmmBaseTiling_->coreNum;
+
+            while (curCoreStartBlockId < totalBasicBlockCount) {
+                for (uint64_t kOffset = 0; kOffset < constParams.kSize; kOffset += BASE_KUB_SIZE) {
+                    this->SetOffsetParam(mSize, ((curCoreStartBlockId - startBasicBlockId) / nBlockNum) * BASE_ML1_SIZE,
+                                   ((curCoreStartBlockId - startBasicBlockId) % nBlockNum) * constParams.nL1BaseSize,
+                                   kOffset, constParams, offsetParam[processId]);
+                    basicBlock.ComputeBasicBlock(constParams, offsetParam[processId], offsetParam[1 - processId]);
+                    processId = 1 - processId;
+                }
+                curCoreStartBlockId += this->gmmBaseTiling_->coreNum;
+            }
+            startBasicBlockId = totalBasicBlockCount % this->gmmBaseTiling_->coreNum;
+        }
+        PostUpdateGmAddrForSparse(mSize, constParams.kSize, constParams.nSize);
+    }
+
+    basicBlock.EndMsd(constParams, offsetParam[1 - processId]);
+}
+
+GMM_WQ_A16W4_MSD_CONTROLLER_TEMPLATE_PARAM
+__aicore__ inline void GMM_WQ_A16W4_MSD_CONTROLLER_CLASS_M_SPARSE::PreUpdateGmAddrForSparse(
+    GlobalTensor<wType> &weightGmUpdate,
+    GlobalTensor<xType> &antiquantScaleGmUpdate,
+    GlobalTensor<biasType> &biasGmUpdate,
+    uint64_t mSize, uint64_t kSize, uint64_t nSize, uint32_t expertIdx)
+{
+    uint32_t wBaseOffset = 0;
+    if constexpr (IsSameType<wType, int4b_t>::value) {
+        wBaseOffset = (expertIdx * nSize * kSize) >> 1;
+    } else {
+        wBaseOffset = expertIdx * nSize * kSize;
+    }
+    printf("ljm A16w4 Process wbaseoffset%ld", wBaseOffset);
+    weightGmUpdate.SetGlobalBuffer(this->weightGm_ + wBaseOffset);
+    antiquantScaleGmUpdate.SetGlobalBuffer(this->antiquantScaleGm_ + expertIdx * nSize * this->gmmBaseTiling_->quantGroupNum);
+    biasGmUpdate.SetGlobalBuffer(this->biasGm_ + expertIdx * nSize);
+}
+
+GMM_WQ_A16W4_MSD_CONTROLLER_TEMPLATE_PARAM
+__aicore__ inline void GMM_WQ_A16W4_MSD_CONTROLLER_CLASS_M_SPARSE::PostUpdateGmAddrForSparse(
+    uint64_t mSize, uint64_t kSize, uint64_t nSize)
+{
+    this->aUnfoldS8WsAddr_ += 2 * mSize * kSize;
+    this->aMaxWs_ += mSize * 8;
+    this->yGm_ += mSize * nSize;
 }
 }  // namespace GROUPED_MATMUL::A16W4Msd
 

@@ -873,7 +873,7 @@ ge::graphStatus GMMTiling::RunFusionKernelTiling(gert::TilingContext* context) {
   if (aicNum == 0U) {  // invaild value
     return ge::GRAPH_FAILED;
   }
-  usedCoreNum_ = aicNum;
+  usedCoreNum_ = 6;
 
   OP_CHECK_IF(CalMMTiling(context, compileInfoPtr) != ge::GRAPH_SUCCESS,
              OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "GMM CalMMTiling failed"), return ge::GRAPH_FAILED);
@@ -1171,6 +1171,7 @@ ge::graphStatus GMMTiling::GMMGetAttrs(const gert::TilingContext* context) {
   splitItem_ = splitItemPtr != nullptr ? *splitItemPtr : 0U;  // 0: 默认split_item
   actType_ = actTypePtr != nullptr ? *actTypePtr : 0;
   groupListType_ = groupListTypePtr != nullptr ? *groupListTypePtr : 0;
+  std::cout << "ljm GMMGetAttrs gListType " << groupListType_ << std::endl;
 
   auto xDesc = context->GetDynamicInputDesc(X_INDEX, 0);
   OP_CHECK_NULL_WITH_CONTEXT(context, xDesc);  // check xDesc is not null
@@ -1196,19 +1197,14 @@ ge::graphStatus GMMTiling::GMMGetAttrs(const gert::TilingContext* context) {
   auto compileInfoPtr = context->GetCompileInfo<GMMCompileInfo>();
   OP_CHECK_NULL_WITH_CONTEXT(context, compileInfoPtr);  // check compileInfoPtr is not null
   if (groupListType_ == GROUP_LIST_SPARSE_M) {
-    OP_CHECK_IF((!(compileInfoPtr->socVersion == platform_ascendc::SocVersion::ASCEND910B ||
+      OP_CHECK_IF((!(compileInfoPtr->socVersion == platform_ascendc::SocVersion::ASCEND910B ||
                   compileInfoPtr->socVersion == platform_ascendc::SocVersion::ASCEND910_93)),
-                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "This platform not support groupListType is 2"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!isA8W8_,
-               OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-                                           "Only both x and weight dtype are int8 support groupListType is 2"),
-               return ge::GRAPH_FAILED);
-    OP_CHECK_IF(groupType_ != SPLIT_M,
-               OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-                                           "When groupListType is 2 only support groupType 0, but get groupType %ld",
-                                           groupType_),
-               return ge::GRAPH_FAILED);
+                  OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "This platform not support groupListType is 2"),
+                  return ge::GRAPH_FAILED);
+      OP_CHECK_IF(isA8W4FakeA8W8_,
+                  OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+                  "A8W4 quantization mode does not support groupListType is 2"),
+                  return ge::GRAPH_FAILED);
   }
 
   auto perTokenScalePtr = context->GetOptionalInputTensor(PER_TOKEN_SCALE_INDEX);

@@ -71,7 +71,9 @@ __aicore__ inline void DataCopyPad2DA4W4(const LocalTensor<T> dst, const GlobalT
         GM_ADDR perTokenScale, GM_ADDR y, GM_ADDR workspace, const GMMBaseParams* __restrict gmmBaseParams,
         const TCubeTiling* __restrict mmTilingData, TPipe* tPipe);
     __aicore__ inline void Process();
- private:
+ protected:
+    __aicore__ inline void ProcessCommon(
+        MNConfig &mnConfig, uint32_t splitValue, uint32_t groupIdx, uint32_t &preCount);
     __aicore__ inline void InitUbBuffer();
     __aicore__ inline void MMCompute(uint32_t groupIdx, MNConfig& mnConfig);
     __aicore__ inline void MMComputePerGroup(uint32_t groupIdx, MNConfig& mnConfig, uint32_t curSingleM, uint32_t curSingleN,
@@ -86,7 +88,7 @@ __aicore__ inline void DataCopyPad2DA4W4(const LocalTensor<T> dst, const GlobalT
     __aicore__ inline void DataCopyPerTokenScaleAndBrcb(MNConfig& mnConfig, uint32_t curBaseM, uint32_t alignBaseN,
                                                         uint32_t offsetM);
 
- private:
+ protected:
      typename mmType::MT& mm;
      const uint32_t HALF_ALIGN = 16;
      GlobalTensor<DTYPE_X_A4W4> xGm;
@@ -173,46 +175,57 @@ __aicore__ inline void DataCopyPad2DA4W4(const LocalTensor<T> dst, const GlobalT
  template <typename mmType>
  __aicore__ inline void GMMA4W4Compute<mmType>::Process()
  {
-     MNConfig mnConfig;
-     mnConfig.baseM = mmTilingData->baseM;
-     mnConfig.baseN = mmTilingData->baseN;
-     mnConfig.singleM = mnConfig.baseM;
-     //仅Perchannel模式使能singleN动态调整，其他情况singleN等于baseN
-     if(tiling->quantGroupNum == 1 && tiling->singleN != 0){
+    MNConfig mnConfig;
+    mnConfig.baseM = mmTilingData->baseM;
+    mnConfig.baseN = mmTilingData->baseN;
+    mnConfig.singleM = mnConfig.baseM;
+    // 仅Perchannel模式使能singleN动态调整，其他情况singleN等于baseN
+    if(tiling->quantGroupNum == 1 && tiling->singleN != 0){
         mnConfig.singleN = tiling->singleN;
-     } else {
+    } else {
         mnConfig.singleN = mnConfig.baseN;
-     }
-     mnConfig.blockDimN = Ceil(tiling->n, mnConfig.singleN);
-     int32_t preOffset = 0;
-     for (uint32_t groupIdx = 0, preCount = 0; groupIdx < tiling->groupNum; ++groupIdx) {
-         int32_t m = GetSplitValueFromGroupList(groupIdx, preOffset, tiling, groupListGm);
-         if (m <= 0) {
-             continue;
-          }
-         mnConfig.m = static_cast<uint32_t>(m);
-         mnConfig.blockDimM = Ceil(mnConfig.m, mnConfig.singleM);
-         mm.SetOrgShape(mnConfig.m, tiling->n, tiling->k);
-         uint32_t curCount = preCount + mnConfig.blockDimN * mnConfig.blockDimM;
-         uint32_t curBlock = coreIdx >= preCount ? coreIdx : coreIdx + tiling->coreNum;
-         uint32_t thresholdM_dimN = thresholdBlockNum * mnConfig.blockDimN;
+    }
+    printf("ljm a4w4 compute baseM%ld singleN%ld", mnConfig.baseM,  mnConfig.singleN);
+    mnConfig.blockDimN = Ceil(tiling->n, mnConfig.singleN);
+    int32_t preOffset = 0;
+    for (uint32_t groupIdx = 0, preCount = 0; groupIdx < tiling->groupNum; ++groupIdx) {
+        int32_t splitValue = GetSplitValueFromGroupList(groupIdx, preOffset, tiling, groupListGm);
+        if (splitValue <= 0) {
+            continue;
+        }
+        ProcessCommon(mnConfig, splitValue, groupIdx, preCount);
+    }
+}
 
-         while (curBlock < curCount) {
-             MNBlockIdxCompute(mnConfig, curBlock, preCount, thresholdM_dimN);
-             MMCompute(groupIdx, mnConfig);
-             if ASCEND_IS_AIV {
-                VectorCompute(groupIdx, mnConfig);
-             }
-             curBlock += tiling->coreNum;
-         }
-         preCount = curCount % tiling->coreNum;
-         mnConfig.offsetM += mnConfig.m;
-     }
- }
+template <typename mmType>
+__aicore__ inline void GMMA4W4Compute<mmType>::ProcessCommon(MNConfig &mnConfig, uint32_t splitValue, uint32_t groupIdx, uint32_t &preCount)
+{
+    uint32_t coreNum = tiling->coreNum;
+    mnConfig.m = static_cast<uint32_t>(splitValue);
+    mnConfig.blockDimM = Ceil(mnConfig.m, mnConfig.singleM);
+    mm.SetOrgShape(mnConfig.m, tiling->n, tiling->k);
+    printf("ljm process common splitval%ld, blockNum%ld, tiling->n%ld, tiling->k%ld", splitValue, mnConfig.blockDimM, tiling->n, tiling->k);
+    uint32_t curCount = preCount + mnConfig.blockDimN * mnConfig.blockDimM;
+    uint32_t curBlock = coreIdx >= preCount ? coreIdx : coreIdx + coreNum;
+    uint32_t thresholdM_dimN = thresholdBlockNum * mnConfig.blockDimN;
+    printf("ljm process common curCount%ld, curBlock%ld",curCount, curBlock);
+    while (curBlock < curCount) {
+        MNBlockIdxCompute(mnConfig, curBlock, preCount, thresholdM_dimN);
+        MMCompute(groupIdx, mnConfig);
+        if ASCEND_IS_AIV {
+            printf("ljm VectorCompute");
+            VectorCompute(groupIdx, mnConfig);
+        }
+        curBlock += coreNum;
+    }
+    preCount = curCount % coreNum;
+    mnConfig.offsetM += mnConfig.m;
+}
 
  template <typename mmType>
  __aicore__ inline void GMMA4W4Compute<mmType>::MMComputePerChannel(uint32_t groupIdx, MNConfig& mnConfig, uint32_t curSingleM, uint32_t curSingleN,
     uint64_t xOffset, uint64_t weightOffset, uint32_t tailN){
+        printf("ljm MMComputePerChannel start");
         mm.SetSingleShape(curSingleM, curSingleN, quantGroupSize_);
         GlobalTensor<DTYPE_WEIGHT_A4W4> weightSlice;
         mm.SetTensorA(xGm[xOffset]);
@@ -222,6 +235,7 @@ __aicore__ inline void DataCopyPad2DA4W4(const LocalTensor<T> dst, const GlobalT
         }
         mm.SetTensorB(weightSlice, mmType::BT::isTrans);
         mm.SetQuantVector(scaleGm[groupIdx * tiling->n * tiling->quantGroupNum + tailN]);
+        printf("ljm MMComputePerChannel end");
         #ifndef __CCE_KT_TEST__
         while(mm.Iterate()) {
             mnConfig.workSpaceOffset = mmBaseBlockOffset_ * \
@@ -239,6 +253,7 @@ __aicore__ inline void DataCopyPad2DA4W4(const LocalTensor<T> dst, const GlobalT
  template <typename mmType>
   __aicore__ inline void GMMA4W4Compute<mmType>::MMComputePerGroup(uint32_t groupIdx, MNConfig& mnConfig, uint32_t curSingleM, uint32_t curSingleN,
     uint64_t xOffset, uint64_t weightOffset, uint32_t tailN){
+        printf("ljm MMComputePerGroup start");
         mnConfig.workSpaceOffset = mmBaseBlockOffset_ * \
                                    (coreIdx + (cubeCount % PARALL_NUM) * tiling->coreNum);
         if (cubeCount >= PARALL_NUM) {
@@ -267,6 +282,7 @@ __aicore__ inline void DataCopyPad2DA4W4(const LocalTensor<T> dst, const GlobalT
         }
         CrossCoreSetFlag<2, PIPE_FIX>(SYNC_AIC_TO_AIV);  // 2: mode为2, group内同步
         cubeCount++;
+        printf("ljm MMComputePerGroup end");
     }
 
 
@@ -290,8 +306,10 @@ __aicore__ inline void GMMA4W4Compute<mmType>::MMCompute(uint32_t groupIdx, MNCo
         } else if constexpr (mmType::BT::format == CubeFormat::NZ && mmType::BT::isTrans == false) {
             weightOffset = groupIdx * tiling->n * tiling->k + tailN * tiling->k; 
         } else {
+            // B trans and nd do not support groupListType = 2, refuse in tiling process.
             weightOffset = groupIdx * tiling->n * tiling->k + tailN; 
         }
+        printf("ljm mmcompute xOffset%ld, curSingleN%ld, curSingleM%ld weightOffset%ld", xOffset, curSingleN, curSingleM, weightOffset);
         if(tiling->quantGroupNum == 1) {
             MMComputePerChannel(groupIdx, mnConfig, curSingleM, curSingleN, xOffset, weightOffset, tailN);
         } else {
@@ -320,6 +338,7 @@ __aicore__ inline void GMMA4W4Compute<mmType>::VectorCompute(uint32_t groupIdx, 
     uint32_t vecBaseM;
     VectorTilingCalc(mnConfig, curCubeSingleN, curCubeSingleM, vecBaseM);
     uint32_t mGlobalOffset = mnConfig.offsetM + mnConfig.mIdx * mnConfig.singleM; // 2: 2 lines int4 to 1 line int8
+    printf("ljm curCubeSingleN%ld, curCubeSingleM%ld, vecBaseM%ld",curCubeSingleN,curCubeSingleM,vecBaseM);
 
     uint64_t outOffset = mGlobalOffset * tiling->n + mnConfig.nIdx * mnConfig.singleN;
     uint32_t curVecBaseN = mnConfig.baseN;
@@ -398,6 +417,44 @@ __aicore__ inline void GMMA4W4Compute<mmType>::DataCopyPerTokenScaleAndBrcb(MNCo
     const uint32_t broadCastSrc[2] = {curBaseM, 1};
     BroadCast<float, 2, 1>(pertokenBrcbLocal, perTokenScaleLocal, broadCastDst, broadCastSrc, calcTmpBuf);
     perTokenScaleInQueue.FreeTensor(perTokenScaleLocal);
+}
+
+// GroupMatmul A4W4 Sparse operator Class (for groupListType=2)
+template <class mmType>
+class GMMA4W4SparseCompute : public GMMA4W4Compute<mmType> {
+public:
+    __aicore__ inline GMMA4W4SparseCompute(typename mmType::MT &matmul) : GMMA4W4Compute<mmType>(matmul) {}
+    __aicore__ inline void Process();
+};
+
+template <typename mmType>
+__aicore__ inline void GMMA4W4SparseCompute<mmType>::Process()
+{
+    MNConfig mnConfig;
+    mnConfig.baseM = this->mmTilingData->baseM;
+    mnConfig.baseN = this->mmTilingData->baseN;
+    mnConfig.singleM = mnConfig.baseM;
+    //仅Perchannel模式使能singleN动态调整，其他情况singleN等于baseN
+    if(this->tiling->quantGroupNum == 1 && this->tiling->singleN != 0){
+        mnConfig.singleN = this->tiling->singleN;
+    } else {
+        mnConfig.singleN = mnConfig.baseN;
+    }
+    mnConfig.blockDimN = Ceil(this->tiling->n, mnConfig.singleN);
+    int32_t preOffset = 0;
+
+    uint32_t groupListSplitValueOffset = 1;
+    uint32_t groupListInnerShape = 2u; // groupList shape: [e, 2]
+    uint32_t groupListShapeSize = this->tiling->groupNum * groupListInnerShape;
+    for (uint32_t loop = 0, preCount = 0; loop < groupListShapeSize; loop += groupListInnerShape) {
+        int32_t splitValue = static_cast<int32_t>(this->groupListGm.GetValue(loop + groupListSplitValueOffset));
+        if (splitValue <= 0) {
+            break;
+        }
+        uint32_t groupIdx = static_cast<uint32_t>(this->groupListGm.GetValue(loop));
+        printf("ljm GMMA4W4SparseCompute<mmType>::Process() splitval%d groupIdx%ld",splitValue, groupIdx);
+        this->ProcessCommon(mnConfig, splitValue, groupIdx, preCount);
+    }
 }
 
  } // namespace GROUPED_MATMUL
