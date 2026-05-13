@@ -236,7 +236,7 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::Sigmoid()
     Add(bufk4Index, expertIdxLocal_, bufk4Add, curRowsByKAlign_);
     indicesQue_.FreeTensor(expertIdxLocal_);
     PipeBarrier<PIPE_V>();
-    Muls(bufk4Index, bufk4Index, static_cast<int32_t>(NUM_FOUR), curRowsByKAlign_);
+    Muls(bufk4Index, bufk4Index, static_cast<int32_t>(SIZE_OF_INT32), curRowsByKAlign_);
     PipeBarrier<PIPE_V>();
     Gather(bufk1, xNormLocal_, bufk4Index, (uint32_t)0, curRowsByKAlign_);
     PipeBarrier<PIPE_V>();
@@ -247,7 +247,7 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::Sigmoid()
     ReduceSum<float, Pattern::Reduce::AR, true>(bufs, bufk1, srcShape, true);
     PipeBarrier<PIPE_V>();
 
-    Adds(bufs, bufs, tilingData_->eps, curRowsByKAlign_);
+    Adds(bufs, bufs, tilingData_->eps, curRows_);
     PipeBarrier<PIPE_V>();
     uint32_t dstShape[] = {curRows_, kAlign_};
     srcShape = {curRows_, 1};
@@ -290,7 +290,7 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::GetGradXNorm()
     SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
     for (int64_t i = 0; i < curRowsByKAlign_; ++i) {
         if (i % kAlign_ < tilingData_->k) {
-            uint32_t index = static_cast<uint32_t>(bufk4Index.GetValue(i) / 4);
+            uint32_t index = static_cast<uint32_t>(bufk4Index.GetValue(i) / SIZE_OF_INT32);
             float value = gradYLocal_.GetValue(i);
             bufn3.SetValue(index, value);
         }
@@ -333,5 +333,5 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::CopyOut(int64_t loopIdx)
     outQue_.FreeTensor(gradXOutTensor_);
 }
 
-} // namespace MoeGatingTopK
-#endif // MOE_GATING_TOP_K_E_K_GENERALIZED_H
+} // namespace MoeGatingTopKBackward
+#endif // MOE_GATING_TOP_K_BACKWARD_H

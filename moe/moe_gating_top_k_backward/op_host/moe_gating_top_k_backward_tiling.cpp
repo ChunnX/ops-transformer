@@ -211,7 +211,6 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckExpertIdx()
 
     OP_CHECK_IF(expertIdxShapePtr->GetOriginShape().GetDim(DIM_ZERO) != tokenCount_, OP_LOGE(opName_, "expertIdx : The size of the first dimension of xNorm and expertIdx should be the same."),
         return ge::GRAPH_FAILED);
-    k_ = expertIdxShapePtr->GetOriginShape().GetDim(DIM_ONE);
     OP_CHECK_IF(expertIdxShapePtr->GetOriginShape().GetDim(DIM_ONE) != k_, OP_LOGE(opName_, "expertIdx : The size of the second dimension of xNorm and expertIdx should be the same."),
         return ge::GRAPH_FAILED);
     
