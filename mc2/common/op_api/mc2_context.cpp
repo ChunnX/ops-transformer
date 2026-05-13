@@ -211,7 +211,7 @@ aclnnStatus Mc2Context::InitHcclChannel(const HcclComm &hcclHandle, uint32_t src
         CommLink *links = nullptr;
         layerId = netLayerNum == 1 ?
                       netLayerList[HCCL_COMM_LAYERS_UB_MEM] :
-                      layerMap[dstRank]; // 如果只有一层通信，直接使用该层；如果有多层通信，使用之前记录的通信层
+                      layerUBMEMMap_[dstRank]; // 如果只有一层通信，直接使用该层；如果有多层通信，使用之前记录的通信层
         ret = GetHcclCommLink(hcclHandle, layerId, srcRankId, dstRank, CommProtocol::COMM_PROTOCOL_UB_MEM, links);
         if (ret != ACLNN_SUCCESS) {
             return ret;
@@ -265,7 +265,7 @@ aclnnStatus Mc2Context::GetHcclCommChannel(const HcclComm &hcclHandle, uint32_t 
         channelDesc[INIT_CHANNEL_NUM_TWO].resize(roceChannelArrNum);
     }
 
-    ret = InitHcclChannel(hcclHandle, srcRankId, protocol, channelDesc);
+    auto ret = InitHcclChannel(hcclHandle, srcRankId, protocol, channelDesc);
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }
@@ -294,6 +294,7 @@ aclnnStatus Mc2Context::GetHcclCommResource(const HcclComm &hcclHandle, const Co
     uint32_t rankId = mc2ContextStruct->epRankId;
     uint32_t relativeIndex = rankId % rankNumPerUbDomain_;
     std::vector<std::vector<ChannelHandle>> Channels;
+    HcclResult hcclRet;
 
     auto ret = GetHcclCommChannel(hcclHandle, rankId, protocol, engine, Channels);
     if (ret != ACLNN_SUCCESS) {
@@ -304,7 +305,6 @@ aclnnStatus Mc2Context::GetHcclCommResource(const HcclComm &hcclHandle, const Co
     for (uint32_t i = 0; i < rankNumPerUbDomain_; ++i) {
         void *tempBuffer = nullptr;
         uint64_t bufSize = 0;
-        HcclResult hcclRet;
 
         if (i == relativeIndex) {
             hcclRet = HcclGetHcclBuffer(hcclHandle, &tempBuffer, &hcclBuffSize_);
@@ -469,7 +469,7 @@ aclnnStatus Mc2Context::CheckProtocolSupport(const HcclComm &hcclHandle, uint32_
 
     for (uint32_t layerIndex = 0; layerIndex < layerNum; ++layerIndex) {
         OP_LOGD("CheckProtocolSupport Check layer %u", layerList[layerIndex]);
-        hcclRet = HcclRankGraphGetRanksByLayer(hcclHandle, layerList[layerIndex], &rankIdLists, &rankNumInLayer);
+        auto hcclRet = HcclRankGraphGetRanksByLayer(hcclHandle, layerList[layerIndex], &rankIdLists, &rankNumInLayer);
         if (hcclRet != HCCL_SUCCESS) {
             OP_LOGE(ACLNN_ERR_INNER, "Get rank IDs by layer failed");
             return ACLNN_ERR_INNER;
@@ -501,11 +501,11 @@ aclnnStatus Mc2Context::CheckProtocolSupport(const HcclComm &hcclHandle, uint32_
                     OP_LOGD("protocol is UB_MEM, but no available HCCL links found, set protocol to ROCE_DPU");
                     continue; 
                 }
-                OP_LOGE("No available HCCL links found, layer is %d, protocol is %s", layerList[layerIndex], protocol);
+                OP_LOGE("No available HCCL links found, layer is %u, protocol is %s", layerList[layerIndex], protocol);
                 return ACLNN_ERR_INNER; //  如果已经是ROCE协议，且没有链接，返回错误
             }
             if (CheckLinks(netLinkNum, linksList, protocol) != ACLNN_SUCCESS) {
-                OP_LOGE(ACLNN_ERR_INNER, "No HCCL links support %s, srcRankID %d, dstRankID %d layer is %d",
+                OP_LOGE(ACLNN_ERR_INNER, "No HCCL links support %s, srcRankID %u, dstRankID %u, layer is %u",
                         protocol == CommProtocol::COMM_PROTOCOL_UB_MEM ? "UB_MEM" : "ROCE_DPU",
                         epRankId_, rankIdLists[rankId], layerList[layerIndex]);
                 return ACLNN_ERR_INNER;
@@ -575,7 +575,7 @@ aclnnStatus Mc2Context::CheckHcclContext(const HcclComm &hcclHandle, const std::
     auto hcclRet = HcclEngineCtxGet(hcclHandle, mc2ContextTag.c_str(), engine, &ctx, &ctxSize);
     if (hcclRet == HCCL_SUCCESS) {
         auto aclnnRet = GetHcclBufferSize(hcclHandle, hcclBuffSize);
-        CHECK_RET(aclnnRet == ACLNN_SUCCESS, return aclnnRet);
+        CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
         return ACLNN_SUCCESS;
     }
     hcclBuffSize = 0; // 为了做一个标志位，表示是否需要创建Mc2ContextTensor
@@ -590,39 +590,39 @@ aclnnStatus Mc2Context::GetMc2ContextTensor(const char *groupEp, const char *opN
     auto &instance = GetInstance();
 
     auto aclnnRet = instance.LoadHcclSymbols();
-    CHECK_RET(aclnnRet == ACLNN_SUCCESS, return aclnnRet);
+    CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
 
     void *ctx = nullptr;
     CommProtocol protocol;
     std::string mc2ContextTag = std::string(groupEp) + std::string(opName);
 
     aclnnRet = instance.ValidateContextTag(mc2ContextTag);
-    CHECK_RET(aclnnRet == ACLNN_SUCCESS, return aclnnRet);
+    CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
 
     HcclComm hcclHandle;
     aclnnRet = instance.GetCommHandle(groupEp, hcclHandle);
-    CHECK_RET(aclnnRet == ACLNN_SUCCESS, return aclnnRet);
+    CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
 
     aclnnRet = instance.CheckHcclContext(hcclHandle, mc2ContextTag, engine, ctx, hcclBuffSize);
-    CHECK_RET(aclnnRet == ACLNN_SUCCESS, return aclnnRet);
+    CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
     if (hcclBuffSize != 0) { // 如果有缓存，直接创建Mc2ContextTensor
         aclnnRet = instance.CreatMc2ContextTensor(ctx, mc2Context);
-        CHECK_RET(aclnnRet == ACLNN_SUCCESS, return aclnnRet);
+        CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
         OP_LOGD("Found context cache, Get Mc2MoeContext Tensor Success");
         return ACLNN_SUCCESS;
     }   
 
     CommEngine engine = CommEngine::COMM_ENGINE_AIV; // 目前DPU与MTE通信仅支持AIV引擎
     aclnnRet = instance.GetCommProtocol(hcclHandle, protocol);
-    CHECK_RET(aclnnRet == ACLNN_SUCCESS, return aclnnRet);
+    CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
 
     Mc2MoeContext mc2ContextStruct;
     auto aclnnRet = instance.CreateMc2Context(hcclHandle, mc2ContextTag, engine, protocol, ctx, &mc2ContextStruct,
                                               hcclBuffSize);
-    CHECK_RET(aclnnRet == ACLNN_SUCCESS, return aclnnRet);
+    CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
     
     aclnnRet = instance.CreatMc2ContextTensor(ctx, mc2Context);
-    CHECK_RET(aclnnRet == ACLNN_SUCCESS, return aclnnRet);
+    CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
 
     OP_LOGD("Create Mc2MoeContext Tensor Success");
     return ACLNN_SUCCESS;
