@@ -593,22 +593,15 @@ public:
     __aicore__ inline void CopyOut(const AscendC::LocalTensor<CType> &cLocal,
                                    const AscendC::LocalTensor<float> &c1Local, uint64_t baseM, uint64_t baseN)
     {
-        AscendC::DataCopyCO12DstParams intriParams;
-        intriParams.nSize = baseN;
-        intriParams.mSize = baseM;
-        intriParams.dstStride = baseN;
-        intriParams.srcStride = Cgmct::Gemm::Align(baseM, AscendC::BLOCK_CUBE);
-        if constexpr (AscendC::IsSameType<CType, bfloat16_t>::value) {
-            intriParams.quantPre = QuantMode_t::F322BF16;
-        } else if (AscendC::IsSameType<CType, half>::value) {
-            intriParams.quantPre = QuantMode_t::F322F16;
-        } else if (AscendC::IsSameType<CType, float>::value) {
-            intriParams.quantPre = QuantMode_t::NoQuant;
-        }
-        intriParams.nz2ndEn = true;
-        intriParams.unitFlag = FINAL_ACCUMULATION;
-        AscendC::SetFixpipeNz2ndFlag(1, 1, 1);
-        AscendC::DataCopy(cLocal, c1Local, intriParams);
+        AscendC::FixpipeParamsC310<AscendC::CO2Layout::ROW_MAJOR> fixpipeParams;
+        fixpipeParams.mSize = static_cast<uint16_t>(Cgmct::Gemm::Align(baseM, EVEN_FACTOR));
+        fixpipeParams.nSize = static_cast<uint16_t>(baseN);
+        fixpipeParams.srcStride = static_cast<uint16_t>(Cgmct::Gemm::Align(baseM, AscendC::BLOCK_CUBE));
+        fixpipeParams.dstStride = baseN;
+        fixpipeParams.dualDstCtl = static_cast<uint8_t>(AscendC::McgShfMode::DUAL_DST_SPLIT_M);
+        fixpipeParams.subBlockId = 0;
+        fixpipeParams.unitFlag = FINAL_ACCUMULATION;
+        AscendC::Fixpipe<CType, CType, AscendC::Impl::CFG_ROW_MAJOR_UB>(cLocal, c1Local, fixpipeParams);
     }
 
     __aicore__ inline void UpdateKAL1(TileL1L0Param &tileL1L0Param, uint64_t offsetKAL1)
