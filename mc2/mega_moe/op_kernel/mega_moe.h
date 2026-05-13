@@ -795,7 +795,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             if (subBlockIdx_ == 0) {
                 MegaMoeImpl::GroupMatmul2<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
                     params_, problemShape_, waveGmmInfo, startBlockIdx_, vecSetSyncCom_, expertIdx, gmm2PingPongIdx_,
-                    rankId_, combineUbTensor_, expertIdx);
+                    rankId_, combineUbTensor_, expertIdx,
+                    static_cast<uint64_t>(waveIdx) * static_cast<uint64_t>(L1_TILE_M));
             }
         }
         Get<M_VALUE>(problemShape_) = m_i;

@@ -41,13 +41,14 @@ __aicore__ inline void CopyTileFromGM(
 }
 
 // 从UB发送到远端GM（复用stepOne的CombineTokens逻辑）
+// expertMLoc: 当前 tile 第一行在 expert 内部的行号（= wave_row_offset + 调度器内 mLoc）
 template <typename ElementMMadOut2, typename BlockShape>
 __aicore__ inline void CombineTokens(
-    uint32_t mLoc, uint32_t nLoc, uint32_t n, uint32_t groupIdx, uint32_t rankId,
+    uint32_t expertMLoc, uint32_t nLoc, uint32_t n, uint32_t groupIdx, uint32_t rankId,
     LocalTensor<ElementMMadOut2>& l0cOutUbGMM2, BlockShape& actualBlockShape, const Params& params)
 {
     int32_t lenTile = Get<M_VALUE>(actualBlockShape);
-    int32_t stTile = mLoc;
+    int32_t stTile = expertMLoc;
     int32_t edTile = stTile + lenTile;
     int32_t preSumRankInExpert = 0;
     int32_t tileOffset = 0;
@@ -109,11 +110,14 @@ __aicore__ inline void CombineTokens(
 }
 
 // CombineTile = CopyTileFromGM + CombineTokens
+// mLoc: 调度器内的 wave 内部行号，用来从 wave-base 的 gmm2OutAddr 读取 UB tile
+// waveRowOffset: 当前 wave 在 expert 内的起始行，用于把 mLoc 翻译成 expert 内部行号
 template <typename ElementMMadOut2, typename BlockShape>
 __aicore__ inline void CombineTile(
     uint32_t groupIdx, uint32_t mLoc, uint32_t nLoc, uint32_t n, uint32_t rankId,
     GM_ADDR gmm2OutAddr, const Params& params,
-    LocalTensor<ElementMMadOut2>& ubBuffer, BlockShape& actualBlockShape)
+    LocalTensor<ElementMMadOut2>& ubBuffer, BlockShape& actualBlockShape,
+    uint64_t waveRowOffset)
 {
     GlobalTensor<ElementMMadOut2> gmm2OutGm;
     gmm2OutGm.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMMadOut2*>(gmm2OutAddr));
@@ -145,8 +149,10 @@ __aicore__ inline void CombineTile(
     //         ubBuffer.GetValue(6), ubBuffer.GetValue(7));
     // }
 
-    // 第二步：从UB发送到远端GM
-    CombineTokens(mLoc, nLoc, n, groupIdx, rankId, ubBuffer, actualBlockShape, params);
+    // 第二步：从UB发送到远端GM。CombineTokens 需要 expert 粒度的行号，否则 wave>0 时
+    // 会把数据按 wave 内 [0, waveM) 去匹配 rank 边界，导致写到错误的远端位置。
+    uint32_t expertMLoc = mLoc + static_cast<uint32_t>(waveRowOffset);
+    CombineTokens(expertMLoc, nLoc, n, groupIdx, rankId, ubBuffer, actualBlockShape, params);
 }
 }  // namespace MegaMoeCombineImpl
 

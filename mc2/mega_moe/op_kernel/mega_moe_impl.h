@@ -212,7 +212,8 @@ template <typename ElementA, typename ElementB, typename ElementC, typename Elem
 __aicore__ inline void GroupMatmul2(
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
     const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom2, uint32_t groupIdx,
-    uint16_t& pingpongIdx, int32_t rankId, LocalTensor<ElementC> combineUbTensor, uint32_t expertIdx)
+    uint16_t& pingpongIdx, int32_t rankId, LocalTensor<ElementC> combineUbTensor, uint32_t expertIdx,
+    uint64_t waveRowOffset)
 {
     GlobalTensor<uint8_t> gmAGt, gmBGt, gmScaleAGt, gmScaleBGt;
     gmAGt.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(gmmAddrInfo.aGlobal));
@@ -366,7 +367,7 @@ __aicore__ inline void GroupMatmul2(
             LocalTensor<bfloat16_t> ubBuffer = LocalTensor<bfloat16_t>(TPosition::VECIN, ubOffset, L1_TILE_M * L1_TILE_N);
             MegaMoeCombineImpl::CombineTile<bfloat16_t, decltype(actualShape)>(
                 groupIdx, mLoc, nLoc, n, rankId,
-                gmmAddrInfo.gmm2OutGlobal, params, ubBuffer, actualShape);
+                gmmAddrInfo.gmm2OutGlobal, params, ubBuffer, actualShape, waveRowOffset);
         }
     }
 
