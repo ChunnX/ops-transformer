@@ -18,9 +18,29 @@
 
 #include "kernel_operator.h"
 #include "mega_moe_base.h"
+#include "../../common/op_kernel/mc2_kernel_utils.h"
 using namespace AscendC;
 
 namespace MegaMoeCombineImpl {
+
+// 一次性从GM搬整个tile到UB（gmNStride为layout对齐后的真实行跨度）
+template <typename ElementMMadOut2>
+__aicore__ inline void CopyTileFromGM(
+    LocalTensor<ElementMMadOut2>& ubDst,
+    GlobalTensor<ElementMMadOut2>& gmSrc,
+    uint32_t rowStart, uint32_t rowCount, uint32_t colStart, uint32_t colCount, uint32_t gmNStride)
+{
+    // 从GM读取tile数据到UB
+    DataCopyPadExtParams<ElementMMadOut2> copyPadParams{false, 0U, 0U, 0U};
+    AscendC::DataCopyExtParams gm2UbParams{
+        static_cast<uint16_t>(rowCount),
+        static_cast<uint32_t>(colCount * sizeof(ElementMMadOut2)),
+        static_cast<uint16_t>((gmNStride - colCount) * sizeof(ElementMMadOut2)),
+        0, 0};
+    AscendC::DataCopyPad(ubDst, gmSrc[rowStart * gmNStride + colStart], gm2UbParams, copyPadParams);
+}
+
+// 从UB发送到远端GM（复用stepOne的CombineTokens逻辑）
 template <typename ElementMMadOut2, typename BlockShape>
 __aicore__ inline void CombineTokens(
     uint32_t mLoc, uint32_t nLoc, uint32_t n, uint32_t groupIdx, uint32_t rankId,
@@ -35,10 +55,16 @@ __aicore__ inline void CombineTokens(
     tokenPerExpertWin.SetGlobalBuffer((__gm__ int32_t*)params.peermemInfo.ptrTokenPerExpert);
     preSumBeforeRankWorkSpace.SetGlobalBuffer((__gm__ int32_t*)params.workspaceInfo.ptrSumBeforeRank);
     for (int32_t dstEpIdx = 0; dstEpIdx < params.tilingData->epWorldSize; dstEpIdx++) {
-        int32_t lenRankInExpert = tokenPerExpertWin(dstEpIdx * Ops::Base::CeilAlign(
-            static_cast<uint32_t>(params.tilingData->epWorldSize * params.tilingData->expertPerRank),
-            static_cast<uint32_t>(ALIGN_128)) + rankId * params.tilingData->expertPerRank + groupIdx);
-        int32_t dstExpertOffset = preSumBeforeRankWorkSpace(dstEpIdx * params.tilingData->expertPerRank + groupIdx);
+        // int32_t lenRankInExpert = tokenPerExpertWin(dstEpIdx * Ops::Base::CeilAlign(
+        //     static_cast<uint32_t>(params.tilingData->epWorldSize * params.tilingData->expertPerRank),
+        //     static_cast<uint32_t>(ALIGN_128)) + rankId * params.tilingData->expertPerRank + groupIdx);
+        // int32_t dstExpertOffset = preSumBeforeRankWorkSpace(dstEpIdx * params.tilingData->expertPerRank + groupIdx);
+        __gm__ int32_t* tokenPerExpertWinAddr = (__gm__ int32_t*)tokenPerExpertWin.GetPhyAddr() +
+            (dstEpIdx * Ops::Base::CeilAlign(
+                static_cast<uint32_t>(params.tilingData->epWorldSize * params.tilingData->expertPerRank),
+                static_cast<uint32_t>(ALIGN_128)) + rankId * params.tilingData->expertPerRank + groupIdx);
+        __gm__ int32_t* preSumBeforeRankWorkSpaceAddr = (__gm__ int32_t*)preSumBeforeRankWorkSpace.GetPhyAddr() +
+            (dstEpIdx * params.tilingData->expertPerRank + groupIdx);
         int32_t stRankInExpert = preSumRankInExpert;
         int32_t edRankInExpert = stRankInExpert + lenRankInExpert;
         preSumRankInExpert += lenRankInExpert;
@@ -75,9 +101,50 @@ __aicore__ inline void CombineTokens(
         ub2GmParams.blockLen = Get<N_VALUE>(actualBlockShape) * sizeof(ElementMMadOut2);
         ub2GmParams.dstStride = (n - Get<N_VALUE>(actualBlockShape)) * sizeof(ElementMMadOut2);
 
-        AscendC::DataCopyPad(gmTileD, l0cOutUbGMM2[tileOffset *  Get<N_VALUE>(actualBlockShape)], ub2GmParams);
+        AscendC::DataCopyPad(gmTileD, l0cOutUbGMM2[tileOffset * Get<N_VALUE>(actualBlockShape)], ub2GmParams);
         tileOffset += lenData;
     }
+}
+
+// CombineTile = CopyTileFromGM + CombineTokens
+template <typename ElementMMadOut2, typename BlockShape>
+__aicore__ inline void CombineTile(
+    uint32_t groupIdx, uint32_t mLoc, uint32_t nLoc, uint32_t n, uint32_t rankId,
+    GM_ADDR gmm2OutAddr, const Params& params,
+    LocalTensor<ElementMMadOut2>& ubBuffer, BlockShape& actualBlockShape)
+{
+    GlobalTensor<ElementMMadOut2> gmm2OutGm;
+    gmm2OutGm.SetGlobalBuffer(reinterpret_cast<__gm__ ElementMMadOut2*>(gmm2OutAddr));
+
+    uint32_t rowCount = Get<M_VALUE>(actualBlockShape);
+    uint32_t colCount = Get<N_VALUE>(actualBlockShape);
+
+    // // 第一步：从GM一次性搬整个tile到UB
+    // if (mLoc < 2 && nLoc < 4) {
+    //     PipeBarrier<PIPE_ALL>();
+    //     AscendC::DataCacheCleanAndInvalid<ElementMMadOut2, AscendC::CacheLine::ENTIRE_DATA_CACHE, AscendC::DcciDst::CACHELINE_OUT>(gmm2OutGm);
+    //     uint32_t base = mLoc * n + nLoc;
+    //     AscendC::PRINTF("COMB GM e%d mLoc=%u nLoc=%u row=%u col=%u n=%u GM[0-7]=%f %f %f %f %xf %f %f %f\n",
+    //         groupIdx, mLoc, nLoc, rowCount, colCount, n,
+    //         gmm2OutGm.GetValue(base + 0), gmm2OutGm.GetValue(base + 1),
+    //         gmm2OutGm.GetValue(base + 2), gmm2OutGm.GetValue(base + 3),
+    //         gmm2OutGm.GetValue(base + 4), gmm2OutGm.GetValue(base + 5),
+    //         gmm2OutGm.GetValue(base + 6), gmm2OutGm.GetValue(base + 7));
+    // }
+    SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
+    CopyTileFromGM(ubBuffer, gmm2OutGm, mLoc, rowCount, nLoc, colCount, n);
+    SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
+    // if (mLoc < 2 && nLoc < 4) {
+    //     PipeBarrier<PIPE_ALL>();
+    //     AscendC::PRINTF("COMB UB e%d mLoc=%u nLoc=%u UB[0-7]=%f %f %f %f %f %f %f %f\n", groupIdx, mLoc, nLoc,
+    //         ubBuffer.GetValue(0), ubBuffer.GetValue(1),
+    //         ubBuffer.GetValue(2), ubBuffer.GetValue(3),
+    //         ubBuffer.GetValue(4), ubBuffer.GetValue(5),
+    //         ubBuffer.GetValue(6), ubBuffer.GetValue(7));
+    // }
+
+    // 第二步：从UB发送到远端GM
+    CombineTokens(mLoc, nLoc, n, groupIdx, rankId, ubBuffer, actualBlockShape, params);
 }
 }  // namespace MegaMoeCombineImpl
 

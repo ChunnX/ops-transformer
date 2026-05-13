@@ -945,8 +945,8 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
         tilingData->bs * tilingData->epWorldSize *
         std::min(tilingData->topK, tilingData->expertPerRank);
     tilingData->blockNumPerEP = std::max(static_cast<uint32_t>(1), aicNum / tilingData->epWorldSize);
+    tilingData->blockNum = aicNum;
     tilingData->dispatchRows = 2;
-
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1478,8 +1478,8 @@ static ge::graphStatus CheckAndSetInput(const gert::TilingContext *context, Mega
     OP_TILING_CHECK(TilingCheckMegaMoe(context, config, nodeName) == ge::GRAPH_FAILED,
         OP_LOGE(nodeName, "check input failed."), return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(CheckInputParam(context, config, nodeName) == ge::GRAPH_FAILED,
-        OP_LOGE(nodeName, "check input param failed."), return ge::GRAPH_FAILED);
+    // OP_TILING_CHECK(CheckInputParam(context, config, nodeName) == ge::GRAPH_FAILED,
+    //     OP_LOGE(nodeName, "check input param failed."), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(SetInputParam(context, tilingData, config) == ge::GRAPH_FAILED,
         OP_LOGE(nodeName, "set input param failed."), return ge::GRAPH_FAILED);
