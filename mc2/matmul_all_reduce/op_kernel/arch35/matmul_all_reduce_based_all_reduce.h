@@ -16,8 +16,8 @@
 #define MATMUL_ALL_REDUCE_BASED_ALL_REDUCE_H
 #include "matmul_all_reduce_base.h"
 namespace MatmulAllReduceImpl {
-template <typename XType, typename YType, Mc2CoreType CoreType>
-class MatmulAllReduceBase<XType, YType, CoreType, false>
+template <typename XType, typename YType, Mc2CoreType CoreType, int commMode>
+class MatmulAllReduceBase<XType, YType, CoreType, false, commMode>
 {
 public:
     __aicore__ inline MatmulAllReduceBase(
@@ -148,7 +148,7 @@ protected:
     MC2TileInfo tileInfo_, tailInfo_;
     MC2TilingHeader* tilingData_;
     TPipe* tPipe_;
-    Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;
+    typename HcclTypeSelector<commMode>::type hccl_;
     bool notifyFlag_;
     bool addFlag_;
     bool tailFlag_;
