@@ -91,6 +91,16 @@ HcclResult MC2HcomTopology::CommGetGroupLocalWindowSize([[maybe_unused]] const c
     return HCCL_SUCCESS;
 }
 
+HcclResult MC2HcomTopology::CommGetHcclBufferByGroup([[maybe_unused]] const char *group,
+                                                     [[maybe_unused]] void **buffer,
+                                                     [[maybe_unused]] uint64_t *size)
+{
+    if (buffer == nullptr || size == nullptr) {
+        return HCCL_E_PARA;
+    }
+    return HCCL_SUCCESS;
+}
+
 // private:
 MC2HcomTopology &MC2HcomTopology::GetInstance()
 {
