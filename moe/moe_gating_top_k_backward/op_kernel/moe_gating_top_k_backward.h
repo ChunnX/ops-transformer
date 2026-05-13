@@ -61,6 +61,7 @@ private:
     LocalTensor<float> xNormLocal_;
     LocalTensor<float> gradYLocal_;
     LocalTensor<int32_t> expertIdxLocal_;
+    LocalTensor<uint32_t> expertIdxLocalUint32_;
     LocalTensor<T> gradXOutTensor_;
 
     int64_t blockIdx_ = 0;
@@ -148,16 +149,15 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::GetGatherOffsetIndex()
     PipeBarrier<PIPE_V>();
     Duplicate(bufk4Tmp, (float)1.0, static_cast<int32_t>(tilingData_->k));
     PipeBarrier<PIPE_V>();
-    uint32_t dstShape[] = {tilingData_->baseRows, kAlign_};
-    uint32_t srcShape[] = {1, kAlign_};
+    uint32_t dstShape[NUM_TWO] = {static_cast<uint32_t>(tilingData_->baseRows), static_cast<uint32_t>(kAlign_)};
+    uint32_t srcShape[NUM_TWO] = {1, static_cast<uint32_t>(kAlign_)};
     BroadCast<float, NUM_TWO, 0>(bufk4Mask, bufk4Tmp, dstShape, srcShape); // k非32字节对齐的时候会出现
 
     Arange(bufk1Fp32, static_cast<float>(0), static_cast<float>(tilingData_->expertCount), static_cast<int32_t>(tilingData_->baseRows));
     SetWaitFlag<HardEvent::S_V>(HardEvent::S_V); // Arange中存在S和V，不同count结束的操作流不一样
     PipeBarrier<PIPE_V>();
-    dstShape = {tilingData_->baseRows, kAlign_};
-    srcShape = {tilingData_->baseRows, 1};
-    BroadCast<float, NUM_TWO, 1>(bufk4AddFp32, bufk1Fp32, dstShape, srcShape); // broadcast不支持int32类型，因此先生成fp32再转换为int32
+    uint32_t srcShapeAdd[NUM_TWO] = {tilingData_->baseRows, 1};
+    BroadCast<float, NUM_TWO, 1>(bufk4AddFp32, bufk1Fp32, dstShape, srcShapeAdd); // broadcast不支持int32类型，因此先生成fp32再转换为int32
     PipeBarrier<PIPE_V>();
     LocalTensor<int32_t> bufk4Add = bufk4AddFp32.ReinterpretCast<int32_t>();
     Cast(bufk4Add, bufk4AddFp32, RoundMode::CAST_RINT, tilingData_->baseRows * kAlign_);
@@ -173,7 +173,7 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::CopyInGradY(int64_t loopI
     copyParams.blockLen = static_cast<uint32_t>(tilingData_->k) * static_cast<uint32_t>(sizeof(T));
     copyParams.srcStride = static_cast<uint32_t>(0);
     copyParams.dstStride = static_cast<uint32_t>(0);
-    DataCopyPadExtParams<T> padParams{true, 0, kAlign_ - tilingData_->k, 0};
+    DataCopyPadExtParams<T> padParams{true, 0, static_cast<uint8_t>(kAlign_ - tilingData_->k), 0};
     if constexpr (IsSameType<T, float>::value) {
         DataCopyPad(gradYLocal_, gradYGm_[loopIdx * tilingData_->baseRows * tilingData_->k], copyParams, padParams);
         gradYQue_.EnQue(gradYLocal_);
@@ -183,7 +183,7 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::CopyInGradY(int64_t loopI
                     gradYGm_[loopIdx * tilingData_->baseRows * tilingData_->k], copyParams, padParams);
         
         gradYQue_.EnQue(gradYLocal_);
-        gradYLocal_ = gradYQue_.DeQue<T>();
+        gradYLocal_ = gradYQue_.DeQue<float>();
         Cast(gradYLocal_, gradYLocal_[tilingData_->baseRows * kAlign_].ReinterpretCast<T>(), RoundMode::CAST_NONE,
              elementCountPerLoop_);
         PipeBarrier<PIPE_V>();
@@ -215,7 +215,7 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::CopyInExpertIdx(int64_t l
     copyParams.blockLen = static_cast<uint32_t>(tilingData_->k * SIZE_OF_INT32);
     copyParams.srcStride = static_cast<uint32_t>(0);
     copyParams.dstStride = static_cast<uint32_t>(0);
-    DataCopyPadExtParams<int32_t> padParams{true, 0, kAlign_ - tilingData_->k, 0};
+    DataCopyPadExtParams<int32_t> padParams{true, 0, static_cast<uint8_t>(kAlign_ - tilingData_->k), 0};
     DataCopyPad(expertIdxLocal_, expertIdxGm_[loopIdx * tilingData_->baseRows * tilingData_->k], copyParams, padParams);
 
     indicesQue_.EnQue(expertIdxLocal_);
@@ -238,20 +238,21 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::Sigmoid()
     PipeBarrier<PIPE_V>();
     Muls(bufk4Index, bufk4Index, static_cast<int32_t>(SIZE_OF_INT32), curRowsByKAlign_);
     PipeBarrier<PIPE_V>();
-    Gather(bufk1, xNormLocal_, bufk4Index, (uint32_t)0, curRowsByKAlign_);
+    LocalTensor<uint32_t> bufk4IndexUint32 = bufk4Index.ReinterpretCast<uint32_t>();
+    Gather(bufk1, xNormLocal_, bufk4IndexUint32, (uint32_t)0, curRowsByKAlign_);
     PipeBarrier<PIPE_V>();
 
     Mul(bufk1, bufk1, bufk4Mask, curRowsByKAlign_);
     PipeBarrier<PIPE_V>();
-    uint32_t srcShape[] = {curRows_, kAlign_};
+    uint32_t srcShape[NUM_TWO] = {static_cast<uint32_t>(curRows_), static_cast<uint32_t>(kAlign_)};
     ReduceSum<float, Pattern::Reduce::AR, true>(bufs, bufk1, srcShape, true);
     PipeBarrier<PIPE_V>();
 
     Adds(bufs, bufs, tilingData_->eps, curRows_);
     PipeBarrier<PIPE_V>();
-    uint32_t dstShape[] = {curRows_, kAlign_};
-    srcShape = {curRows_, 1};
-    BroadCast<float, NUM_TWO, 1>(bufk4RecipSumW, bufs, dstShape, srcShape);
+    uint32_t dstShapeSumW[NUM_TWO] = {static_cast<uint32_t>(curRows_), static_cast<uint32_t>(kAlign_)};
+    uint32_t srcShapeSumW[NUM_TWO] = {static_cast<uint32_t>(curRows_), 1};
+    BroadCast<float, NUM_TWO, 1>(bufk4RecipSumW, bufs, dstShapeSumW, srcShapeSumW);
     PipeBarrier<PIPE_V>();
     Div(bufk1, bufk1, bufk4RecipSumW, curRowsByKAlign_);
     PipeBarrier<PIPE_V>();
@@ -260,7 +261,7 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::Sigmoid()
 template <typename T>
 __aicore__ inline void MoeGatingTopKBackwardKernel<T>::GetGradXNorm()
 {
-    Muls(gradYLocal_, gradYLocal_, tilingData_->routedScalingFactor_, curRowsByKAlign_);
+    Muls(gradYLocal_, gradYLocal_, tilingData_->routedScalingFactor, curRowsByKAlign_);
     PipeBarrier<PIPE_V>();
     LocalTensor<float> bufk1 = bufk1_.Get<float>();
     Mul(bufk1, gradYLocal_, bufk1, curRowsByKAlign_);
@@ -271,11 +272,11 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::GetGradXNorm()
     Mul(bufk1, bufk1, bufk4Mask, curRowsByKAlign_);
     PipeBarrier<PIPE_V>();
     
-    uint32_t reduceSumShape[] = {curRows_, kAlign_};
+    uint32_t reduceSumShape[NUM_TWO] = {static_cast<uint32_t>(curRows_), static_cast<uint32_t>(kAlign_)};
     ReduceSum<float, Pattern::Reduce::AR, true>(bufs, bufk1, reduceSumShape, true);
 
-    uint32_t dstShape[] = {curRows_, kAlign_};
-    uint32_t srcShape[] = {curRows_, 1};
+    uint32_t dstShape[NUM_TWO] = {static_cast<uint32_t>(curRows_), static_cast<uint32_t>(kAlign_)};
+    uint32_t srcShape[NUM_TWO] = {static_cast<uint32_t>(curRows_), 1};
     Broadcast<float, NUM_TWO, 1>(bufk1, bufs, dstShape, srcShape);
     PipeBarrier<PIPE_V>();
     Sub(gradYLocal_, gradYLocal_, bufk1, curRowsByKAlign_);
@@ -286,7 +287,7 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::GetGradXNorm()
     LocalTensor<float> bufn3 = bufn3_.Get<float>();
     Duplicate<float>(bufn3, 0.0f, curRowsByKAlign_);
 
-    LocalTensor<float> bufk4Index = bufk4Index_.Get<float>();
+    LocalTensor<int32_t> bufk4Index = bufk4Index_.Get<int32_t>();
     SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
     for (int64_t i = 0; i < curRowsByKAlign_; ++i) {
         if (i % kAlign_ < tilingData_->k) {
