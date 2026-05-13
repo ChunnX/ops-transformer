@@ -485,7 +485,7 @@ inline void Mc2ExceptionImpl(aclrtExceptionInfo *args, void *userdata, const cha
         }
     } else if (std::strstr(socName, "Ascend950") != nullptr) {
         if (ProcessArgsForA5(argsAddr, winContent) != 0) {
-            OP_LOGE(OP_NAME, "aclrtMemcpy address of args failed. ret=%d", ret);
+            OP_LOGE(OP_NAME, "Failed to get win content.");
             return;
         }
     } else if (std::strstr(socName, "Ascend910B") != nullptr) {
