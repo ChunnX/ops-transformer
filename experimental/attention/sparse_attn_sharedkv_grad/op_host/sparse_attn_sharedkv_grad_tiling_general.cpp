@@ -373,6 +373,12 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetBaseShapeInfo()
         return ge::GRAPH_FAILED;
     }
     int64_t N2 = oriKvShape.GetDim(dimSize - 2);
+
+    if (strcmp(inputLayout, TND_STR) == 0) {
+        OP_LOGE(context_, "SparseAttnSharedkvGrad not support TND layout");
+        return ge::GRAPH_FAILED;
+    }
+    
     if (strcmp(inputLayout, TND_STR) != 0 && strcmp(inputLayout, BSND_STR) != 0) {
         OP_LOGE(context_, "SparseAttnSharedkvGrad only support TND or BSND layout, now layout is %s.", inputLayout);
         return ge::GRAPH_FAILED;
@@ -406,8 +412,11 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetBaseShapeInfo()
         OP_CHECK_IF(tmpData.n2 == 0, OP_LOGE(context_, "N2 is 0"), return ge::GRAPH_FAILED);
         tmpData.g = queryShape.GetDim(DIM_2) / tmpData.n2;
         tmpData.layout = static_cast<uint32_t>(InputLayout::BSND);
+        OP_CHECK_IF(tmpData.s1 != tmpData.s2,
+            OP_LOGE(context_, "current op not support ori_kv!= q_s1"), return ge::GRAPH_FAILED);
     }
 
+    OP_CHECK_IF(cmpRatioPtr == nullptr, OP_LOGE("SparseAttnSharedkvGrad", "cmpRatioPtr is null"), return ge::GRAPH_FAILED);
     if (cmpKvTensor != nullptr) {
         const gert::Shape &cmpKvShape = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::CMP_KV))->GetStorageShape();
         int64_t dimCmpKv = cmpKvShape.GetDim(dimSize - 1);
@@ -421,10 +430,13 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetBaseShapeInfo()
             tmpData.s3 = tmpData.t3;
         } else {
             tmpData.s3 = cmpKvShape.GetDim(DIM_1);
+            if (*cmpRatioPtr != 0) {
+                OP_CHECK_IF((tmpData.s1 / (*cmpRatioPtr) != tmpData.s3),
+                    OP_LOGE(context_, "current op only support ori_kv // cmpRatio == cmp_kv"), return ge::GRAPH_FAILED);
+            }
         }
     }
 
-    OP_CHECK_IF(cmpRatioPtr == nullptr, OP_LOGE("SparseAttnSharedkvGrad", "cmpRatioPtr is null"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(oriWinLeftPtr == nullptr, OP_LOGE("SparseAttnSharedkvGrad", "oriWinLeftPtr is null"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(oriWinRightPtr == nullptr, OP_LOGE("SparseAttnSharedkvGrad", "oriWinRightPtr is null"), return ge::GRAPH_FAILED);
 
