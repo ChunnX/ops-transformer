@@ -635,15 +635,15 @@ public:
             uint64_t l0Offset = IS_FP4 ? (HALF_L0_SIZE << 1) * (l0PingPong_ & 0x1) : HALF_L0_SIZE * (l0PingPong_ & 0x1);
             AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0PingPong_ & 0x1);
             uint64_t offsetScaleL1 = AscendC::BLOCK_CUBE * ((kL0Offset % scaleKL1_) / MXFP_GROUP_SIZE);
+            CopyInL0B(l0bLocal_[l0Offset], bL1Local_[l1BufferBOffset_[bl1BufId]],
+                      scaleBL1Local_[l1BufferScaleBOffset_[scaleL1BufId] + offsetScaleL1], tileL1L0Param,
+                      kL0L1Off + kbL1Offset);
             CopyInL0A(l0aLocal_[l0Offset], aL1Local_[l1BufferAOffset_[al1BufId]],
                       scaleAL1Local_[l1BufferScaleAOffset_[scaleL1BufId] + offsetScaleL1], tileL1L0Param,
                       kL0L1Off + kaL1Offset);
             // copy bias to bt
             CopyInC2(biasL1Local_[l1BufferBiasOffset_[biasBufId_] / sizeof(BiasType)], biasBt_[baseN_ * biasBufId_],
                      Align16(mmadParams.n), NeedBias(kL0Offset));
-            CopyInL0B(l0bLocal_[l0Offset], bL1Local_[l1BufferBOffset_[bl1BufId]],
-                      scaleBL1Local_[l1BufferScaleBOffset_[scaleL1BufId] + offsetScaleL1], tileL1L0Param,
-                      kL0L1Off + kbL1Offset);
             AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0PingPong_ & 0x1);
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0PingPong_ & 0x1);
             mmadParams.k = Align64(tileL1L0Param.curKL0);
@@ -702,36 +702,46 @@ public:
                                       const AscendC::GlobalTensor<fp8_e8m0_t> &scaleBGlobal,
                                       const AscendC::GlobalTensor<BiasType> &biasGlobal)
     {
-        for (uint64_t kOuter = 0; kOuter < k_; kOuter += kAL1_) {
-            uint64_t scaleL1BufId = scaleLoopCnt_ & 1;
+        for (uint64_t kOuter = 0; kOuter < k_; kOuter += kBL1_) {
+            uint64_t aChunkStart = (kOuter / kAL1_) * kAL1_;
             uint64_t aL1BufId = aL1LoopCnt_ & (DOUBLE_BUFFER_COUNT - 1);
-            CopyScalesInL1(scaleAGlobal, scaleBGlobal, tileL1L0Param, kOuter, scaleL1BufId);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(aL1BufId);
-            biasBufId_ = scaleL1BufId;
-            UpdateKAL1(tileL1L0Param, kOuter);
-            CopyAInL1(aGlobal, tileL1L0Param, aL1BufId, kOuter);
-            if (isBias_ && kOuter == 0) {
-                CopyInBias(biasGlobal, biasL1Local_[l1BufferBiasOffset_[biasBufId_] / sizeof(BiasType)],
-                           tileL1L0Param.curN);
+            uint64_t scaleL1BufId = scaleLoopCnt_ & 1;
+            uint64_t bL1BufId = bL1LoopCnt_ & (DOUBLE_BUFFER_COUNT - 1);
+
+            // Copy B first
+            AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_2 + bL1BufId);
+            UpdateKBL1(tileL1L0Param, kOuter);
+            CopyBInL1(bGlobal, tileL1L0Param, bL1BufId, kOuter);
+
+            // Copy A and scales at the start of each A chunk
+            if (kOuter % kAL1_ == 0) {
+                CopyScalesInL1(scaleAGlobal, scaleBGlobal, tileL1L0Param, kOuter, scaleL1BufId);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(aL1BufId);
+                biasBufId_ = scaleL1BufId;
+                UpdateKAL1(tileL1L0Param, kOuter);
+                CopyAInL1(aGlobal, tileL1L0Param, aL1BufId, kOuter);
+                if (isBias_ && kOuter == 0) {
+                    CopyInBias(biasGlobal, biasL1Local_[l1BufferBiasOffset_[biasBufId_] / sizeof(BiasType)],
+                               tileL1L0Param.curN);
+                }
             }
-            for (uint64_t kInner = kOuter; kInner < Min(kOuter + kAL1_, k_); kInner += kBL1_) {
-                uint64_t bL1BufId = bL1LoopCnt_ & (DOUBLE_BUFFER_COUNT - 1);
-                AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_2 + bL1BufId);
-                UpdateKBL1(tileL1L0Param, kInner);
-                CopyBInL1(bGlobal, tileL1L0Param, bL1BufId, kInner);
-                AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(bL1BufId);
-                AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(bL1BufId);
-                Iterate(tileL1L0Param, mmadParams, kInner, aL1BufId, bL1BufId, scaleL1BufId, l0cOffset, kInner - kOuter,
-                        0);
-                AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_2 + bL1BufId);
-                bL1LoopCnt_++;
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(bL1BufId);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(bL1BufId);
+
+            Iterate(tileL1L0Param, mmadParams, kOuter, aL1BufId, bL1BufId, scaleL1BufId, l0cOffset, kOuter - aChunkStart,
+                    0);
+            AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_2 + bL1BufId);
+            bL1LoopCnt_++;
+
+            // A and scale post-processing at end of A chunk
+            if ((kOuter + kBL1_) % kAL1_ == 0 || kOuter + kBL1_ >= k_) {
+                AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(aL1BufId);
+                if ((kOuter + kBL1_) % scaleKL1_ == 0 || kOuter + kBL1_ >= k_) {
+                    AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(SCALE_BUFFER_FLAG_0 + scaleL1BufId);
+                    scaleLoopCnt_++;
+                }
+                aL1LoopCnt_++;
             }
-            AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(aL1BufId);
-            if ((kOuter + kAL1_) % scaleKL1_ == 0 || kOuter + kAL1_ >= k_) {
-                AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(SCALE_BUFFER_FLAG_0 + (scaleL1BufId));
-                scaleLoopCnt_++;
-            }
-            aL1LoopCnt_++;
         }
     }
 
