@@ -235,7 +235,7 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData* tilingData, const char *nod
 
     OP_LOGD(nodeName, "BS is %u", tilingData->bs);
     OP_LOGD(nodeName, "H is %u", tilingData->h);
-    OP_LOGD(nodeName, "N is %u", tilingData->hiddenDim);
+    OP_LOGD(nodeName, "hiddenDim is %u", tilingData->hiddenDim);
 
     OP_LOGD(nodeName, "topK is %u", tilingData->topK);
     OP_LOGD(nodeName, "expertPerRank is %u", tilingData->expertPerRank);
@@ -1446,7 +1446,7 @@ static ge::graphStatus CheckInputParam(const gert::TilingContext *context, MegaM
     OP_TILING_CHECK(weightOneDim1 != 1LL * HIDDEN_DIM_BASE && weightOneDim1 != 2LL * HIDDEN_DIM_BASE &&
                     weightOneDim1 != 3LL * HIDDEN_DIM_BASE && weightOneDim1 != 4LL * HIDDEN_DIM_BASE &&
                     weightOneDim1 != 7LL * HIDDEN_DIM_BASE,
-        OP_LOGE(nodeName, "N only support 1k/2k/3k/4k/7k, but now N is %ld.", weightOneDim1),
+        OP_LOGE(nodeName, "hiddenDim only support 1k/2k/3k/4k/7k, but now hiddenDim is %ld.", weightOneDim1),
         return ge::GRAPH_FAILED);
     
     return ge::GRAPH_SUCCESS;
