@@ -28,6 +28,7 @@
 #include "common/op_api/mc2_aclnn_util.h"
 #include "aclnn_matmul_reduce_scatter_v2.h"
 #include "aclnnInner_matmul_reduce_scatter_v2.h"
+#include "mc2_comm_utils.h"
 
 using namespace op;
 
@@ -71,6 +72,25 @@ static aclTensor* CreateWinTensor(const int64_t* dims, uint64_t dimNum, aclDataT
 static inline bool IsAscend950(void)
 {
     return op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
+}
+
+static void SetNnopbaseHcclServerTypeByArch(aclOpExecutor *executor)
+{
+    if ((executor == nullptr) || (NnopbaseSetHcclServerType == nullptr)) {
+        return;
+    }
+
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
+        NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
+    } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+        NnopbaseHcclServerType serverType = (commMode == Mc2Comm::COMM_MODE_AICPU)
+            ? NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU
+            : NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU;
+        OP_LOGD("[COMM_MODE] Set HcclServerType to %s for DAV_3510.",
+                (commMode == Mc2Comm::COMM_MODE_AICPU) ? "AICPU" : "CCU");
+        NnopbaseSetHcclServerType(executor, serverType);
+    }
 }
 
 // 检查入参是否为nullptr
@@ -456,13 +476,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(void* workspace, uint64_t workspaceSize, 
         return ACLNN_SUCCESS;
     }
 
-    if (NnopbaseSetHcclServerType) {
-        if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
-            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
-        } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
-        }
-    }
+    SetNnopbaseHcclServerTypeByArch(executor);
 
     aclnnStatus ret = aclnnInnerMatmulReduceScatterV2(workspace, workspaceSize, executor, stream);
     if (ret != 0) {

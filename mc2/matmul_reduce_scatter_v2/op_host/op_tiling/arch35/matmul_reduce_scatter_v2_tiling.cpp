@@ -26,6 +26,7 @@
 #include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
+#include "mc2_comm_utils.h"
 #include "op_host/op_tiling/new_mc2_tiling_utils.h"
 #include "op_host/tiling_templates_registry.h"
 #include "reduce_scatter_fit_balance_tiling.h"
@@ -110,6 +111,10 @@ ge::graphStatus MatmulReduceScatterV2Tiling::SetMc2Hcomm()
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(
         group, opType, rsConfig, reduceType, dataType, dataType
     );
+    uint8_t commEngine = (Mc2Comm::GetCommModeFromEnv() == Mc2Comm::COMM_MODE_AICPU) ? Mc2Comm::ENGINE_AICPU : mc2tiling::A5_CCU_ENGINE;
+    mc2CcTilingConfig.SetCommEngine(commEngine);
+    OP_LOGD(opName_, "[COMM_MODE] Set CommEngine to %d (AICPU=%d, CCU=%d) for matmul_reduce_scatter_v2.",
+            commEngine, Mc2Comm::ENGINE_AICPU, mc2tiling::A5_CCU_ENGINE);
 
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(matmulReduceScatterV2TilingData_->mc2InitTiling) != 0,
         OP_LOGE(opName_, "mc2CcTilingConfig GetTiling mc2InitTiling failed"), return ge::GRAPH_FAILED);
