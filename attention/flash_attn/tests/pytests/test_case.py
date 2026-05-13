@@ -91,7 +91,7 @@ TestCases = {
         'layout_kv': ['BNSD'],
         'layout_out': ['BNSD'],
         'Dtype': ['fp16'],
-        'mask_mode': [1],
+        'mask_mode': [0],
         'q_range': [(-10, 10)],
         'k_range': [(-10, 10)],
         'v_range': [(-10, 10)],
