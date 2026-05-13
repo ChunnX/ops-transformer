@@ -422,16 +422,16 @@ template <TemplateMC2TypeA2Class>
 __aicore__ inline void
 MoeDistributeCombineA2<TemplateMC2TypeA2Func>::ConstructBatchWriteInfo(LocalTensor<ExpandIdxType> &sendCountInfo)
 {
-    GlobalTensor<uint32_t> tokenNumInWindow;
+    GlobalTensor<uint32_t> tokenNumOutWindow;
     LocalTensor<uint32_t> tokenNumTensor = aDumpTensor_.ReinterpretCast<uint32_t>();
     for (uint32_t dstRankId = worldSizeTaskInfo_.startTaskId; dstRankId < worldSizeTaskInfo_.endTaskId; ++dstRankId) {
         localOutWindow_.SetGlobalBuffer((__gm__ ExpandXType *)(windowOutGM_ + dstRankId * rankSizeOnWin_ + TOKEN_OFFSET));
-        tokenNumInWindow.SetGlobalBuffer((__gm__ uint32_t *)(windowOutGM_ + dstRankId * rankSizeOnWin_));
+        tokenNumOutWindow.SetGlobalBuffer((__gm__ uint32_t *)(windowOutGM_ + dstRankId * rankSizeOnWin_));
         uint32_t rankTokenNum = GetRankTokenNumAndDataCopy2WindowOut(sendCountInfo, localOutWindow_, dstRankId);
         SyncFunc<HardEvent::MTE3_S>();
         tokenNumTensor(B32_PER_BLOCK) = rankTokenNum;
         SyncFunc<HardEvent::S_MTE3>();
-        CopyUb2Gm(tokenNumInWindow, tokenNumTensor[B32_PER_BLOCK], 1);
+        CopyUb2Gm(tokenNumOutWindow, tokenNumTensor[B32_PER_BLOCK], 1);
         flagGlobal_.SetGlobalBuffer(
             (__gm__ uint32_t *)(localOutWindow_.GetPhyAddr(rankTokenNum * axisH_) + SKIP_OFFSET / sizeof(ExpandXType)));
         flagGlobal_(0) = FLAG_VALUE;
@@ -439,7 +439,7 @@ MoeDistributeCombineA2<TemplateMC2TypeA2Func>::ConstructBatchWriteInfo(LocalTens
             flagGlobal_);
 
         uint32_t rankIdOffset = dstRankId - worldSizeTaskInfo_.startTaskId;
-        batchWriteU64Local_(rankIdOffset * U64_PER_ITEM) = (uint64_t)(localOutWindow_.GetPhyAddr());
+        batchWriteU64Local_(rankIdOffset * U64_PER_ITEM) = (uint64_t)(tokenNumOutWindow.GetPhyAddr());
         batchWriteU64Local_(rankIdOffset * U64_PER_ITEM + 1) =
             (uint64_t)(hccl_.GetWindowsInAddr(dstRankId) + halfWinSize_ * bufferId_ + dataOffsetOnWin_);
         batchWriteU64Local_(rankIdOffset * U64_PER_ITEM + 2) =
