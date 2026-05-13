@@ -30,7 +30,8 @@
 
 namespace MatmulAllReduceImpl {
 using namespace AscendC;
-template <typename XType, typename WType, typename YType, class MmType, Mc2CoreType CoreType, bool basedA2aRsAg, int commMode>
+template <typename XType, typename WType, typename YType, 
+            class MmType, Mc2CoreType CoreType, bool basedA2aRsAg, int commMode>
 class MatmulAllReduceQuantPerBlock : public MatmulAllReduceBase<XType, YType, CoreType, basedA2aRsAg, commMode>
 {
 public:

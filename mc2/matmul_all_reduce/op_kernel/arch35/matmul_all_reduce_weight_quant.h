@@ -31,7 +31,8 @@ namespace MatmulAllReduceImpl {
 using namespace AscendC;
 using Mc2WeightQuantBatchMatmulV2::Mc2QuantType;
 template <typename XType, typename WType, typename YType, class MmType, bool basedA2aRsAg, int commMode>
-class MatmulAllReduceWeightQuantRegBase : public MatmulAllReduceBase<XType, YType, Mc2CoreType::ON_CUBE_AND_VECTOR, basedA2aRsAg, commMode>
+class MatmulAllReduceWeightQuantRegBase : public MatmulAllReduceBase<
+    XType, YType, Mc2CoreType::ON_CUBE_AND_VECTOR, basedA2aRsAg, commMode>
 {
 public:
     __aicore__ inline MatmulAllReduceWeightQuantRegBase(
