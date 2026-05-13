@@ -64,6 +64,14 @@ static constexpr int64_t BIAS_L1_SIZE = 4;
 static constexpr uint64_t A_L1_MAX_SIZE_WITH_BIAS_QUANT = 240UL * 1024UL;
 static constexpr uint64_t MX_BIAS_SINGLE_VECTOR_SIZE = 128;
 static constexpr uint64_t MX_SCALE_K_L1_SIZE = 4096;
+static constexpr uint64_t PREFETCH_A_MAX_M_SIZE = 512;
+static constexpr uint64_t MX_A8W4_L1_PREFETCH_SIZE_KB = 88;
+static constexpr uint64_t CACHE_LINE_SIZE = 128;
+static constexpr uint64_t MX_A8W4_A_L1_RESERVED_KB = 80;
+static constexpr uint64_t A_B_BALANCE_FACTOR = 2;
+static constexpr uint64_t MX_SCALE_L1_SIZE_KB = 32;
+static constexpr uint64_t VEC_CORE_MIN_N_SPLIT = 16;
+static constexpr uint64_t VEC_CORE_NUM = 2;
 
 // 控制参数定义
 static constexpr int32_t BASIC_BLOCK_PROCESS_NUM = 2;

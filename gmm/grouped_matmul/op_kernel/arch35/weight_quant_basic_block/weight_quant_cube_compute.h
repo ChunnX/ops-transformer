@@ -91,7 +91,7 @@ private:
     bool isBias_;
     uint64_t quantScaleValue_;
     static constexpr uint32_t KB_UNIT = GetKBUnit<xType>();
-    static constexpr uint64_t MX_SCALE_L1_SIZE = 32 * GetKBUnit<xType>() * sizeof(xType); // scaleA/B单块分配空间
+    static constexpr uint64_t MX_SCALE_L1_SIZE = MX_SCALE_L1_SIZE_KB * GetKBUnit<xType>() * sizeof(xType); // scaleA/B单块分配空间
 
     MatmulImplType mmObj_;
 
@@ -501,9 +501,9 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::MxA8W4Init(uint64_t aPrefetchSi
     l1StartSize += MX_SCALE_L1_SIZE;
 
     aL1_ = LocalTensor<xType>(TPosition::TSCM, l1StartSize, l1RemainSize);
-    aL1DbOffset_ = l1RemainSize - 80 * 1024;
-    l1RemainSize -= DOUBLE_BUFFER_NUM * 80 * 1024;
-    l1StartSize += 80 * 1024;
+    aL1DbOffset_ = l1RemainSize - MX_A8W4_A_L1_RESERVED_KB * 1024;
+    l1RemainSize -= DOUBLE_BUFFER_NUM * MX_A8W4_A_L1_RESERVED_KB * 1024;
+    l1StartSize += MX_A8W4_A_L1_RESERVED_KB * 1024;
     prefetchL1_ = LocalTensor<xType>(TPosition::TSCM, l1StartSize, l1RemainSize);
 
     mmObj_.Init();

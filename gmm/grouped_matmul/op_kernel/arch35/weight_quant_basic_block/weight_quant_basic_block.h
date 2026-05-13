@@ -131,7 +131,7 @@ __aicore__ inline void GMM_WQ_BASIC_BLOCK_CLASS::Init(bool hasBias, uint64_t ant
             l1StartSize += MX_BIAS_L1_SIZE;
         }
 
-        static constexpr uint64_t MX_SCALE_L1_SIZE = 32 * GetKBUnit<xType>() * sizeof(xType);
+        static constexpr uint64_t MX_SCALE_L1_SIZE = MX_SCALE_L1_SIZE_KB * GetKBUnit<xType>() * sizeof(xType);
         uint64_t mxScaleAL1L1StartSize = l1StartSize;
         uint64_t mxScaleAL1L1RemainSize = l1RemainSize;
         l1RemainSize -= DOUBLE_BUFFER_NUM * MX_SCALE_L1_SIZE;
@@ -185,7 +185,7 @@ __aicore__ inline void GMM_WQ_BASIC_BLOCK_CLASS::ComputeBasicBlockAivNdNkNzKn(co
     l1ConsumeConfig.l1RealExternalLen = offsetParam.nL1Size;
 
     // 初值为一半的nl1
-    uint64_t curVecCoreMte2RealN = offsetParam.nL1Size >> 1;
+    uint64_t curVecCoreMte2RealN = offsetParam.nL1Size / VEC_CORE_NUM;
     if constexpr (wqmmConfig.weightFormat == CubeFormat::NZ) {
         curVecCoreMte2RealN = offsetParam.nL1Size > BLOCK_CUBE
                                   ? CeilAlign(curVecCoreMte2RealN, static_cast<uint64_t>(BLOCK_CUBE))
@@ -267,7 +267,7 @@ GMM_WQ_BASIC_BLOCK_TEMPLATE_PARAM
 __aicore__ inline void GMM_WQ_BASIC_BLOCK_CLASS::ComputeBasicBlockAivNdKnNzNk(const BasicBlockOffsetParam &offsetParam)
 {
     // c:v为1：2, cube所需数据由两个v提供
-    uint64_t kMte2BaseSize = offsetParam.kbL1Size >> 1;
+    uint64_t kMte2BaseSize = offsetParam.kbL1Size / VEC_CORE_NUM;
 
     UbConsumeConfig ubConsumeConfig;
     L1ConsumeConfig l1ConsumeConfig;
@@ -298,8 +298,8 @@ __aicore__ inline void GMM_WQ_BASIC_BLOCK_CLASS::ComputeBasicBlockAivNdKnNzNk(co
                 uint64_t mxScaleKSize = (kMte2Offset + MX_SCALE_K_L1_SIZE) > offsetParam.kSize ?
                                             offsetParam.kSize - kMte2Offset :
                                             MX_SCALE_K_L1_SIZE;
-                uint64_t mxScaleNSize0 = offsetParam.nL1Size > 16 ?
-                                             CeilAlign(offsetParam.nL1Size >> 1, static_cast<uint64_t>(16)) :
+                uint64_t mxScaleNSize0 = offsetParam.nL1Size > VEC_CORE_MIN_N_SPLIT ?
+                                             CeilAlign(offsetParam.nL1Size / VEC_CORE_NUM, static_cast<uint64_t>(VEC_CORE_MIN_N_SPLIT)) :
                                              offsetParam.nL1Size;
                 uint64_t mxScaleNSize = (GetSubBlockIdx() == 0) ? mxScaleNSize0 : (offsetParam.nL1Size - mxScaleNSize0);
                 uint64_t mxScaleNOffset = GetSubBlockIdx() * mxScaleNSize0;

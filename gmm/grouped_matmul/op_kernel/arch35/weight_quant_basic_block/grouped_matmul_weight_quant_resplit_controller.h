@@ -19,12 +19,17 @@
 #include "../grouped_matmul_tiling_data_apt.h"
 
 using WeightQuantBatchMatmulV2::Arch35::A_L1_MAX_SIZE_WITH_BIAS_QUANT;
+using WeightQuantBatchMatmulV2::Arch35::A_B_BALANCE_FACTOR;
 using WeightQuantBatchMatmulV2::Arch35::BASIC_BLOCK_PROCESS_NUM;
 using WeightQuantBatchMatmulV2::Arch35::BasicBlockControlParam;
 using WeightQuantBatchMatmulV2::Arch35::BasicBlockOffsetParam;
+using WeightQuantBatchMatmulV2::Arch35::CACHE_LINE_SIZE;
 using WeightQuantBatchMatmulV2::Arch35::CeilDivide;
 using WeightQuantBatchMatmulV2::Arch35::DOUBLE_BUFFER_NUM;
 using WeightQuantBatchMatmulV2::Arch35::IsMxA8W4;
+using WeightQuantBatchMatmulV2::Arch35::MX_A8W4_A_L1_RESERVED_KB;
+using WeightQuantBatchMatmulV2::Arch35::MX_A8W4_L1_PREFETCH_SIZE_KB;
+using WeightQuantBatchMatmulV2::Arch35::PREFETCH_A_MAX_M_SIZE;
 using WeightQuantBatchMatmulV2::Arch35::QUADRUPLE_BUFFER_NUM;
 using WeightQuantBatchMatmulV2::Arch35::QuantType;
 using WeightQuantBatchMatmulV2::Arch35::SCALE_FACTOR_B_BIT;
@@ -132,10 +137,10 @@ __aicore__ inline void GMM_WQ_RESPLIT_CONTROLLER_CLASS::Process()
     BasicBlockOffsetParam offsetParam[BASIC_BLOCK_PROCESS_NUM];
     InitOffsetParam(offsetParam);
 
-    bool isCacheLineUnaligned = offsetParam[0].kSize % 128 != 0;  // 缓存大小128B，对应8bit为128个元素
+    bool isCacheLineUnaligned = offsetParam[0].kSize % CACHE_LINE_SIZE != 0;  // 缓存大小128B，对应8bit为128个元素
     if constexpr (IsSameType<wType, int4b_t>::value || IsSameType<wType, fp4x2_e2m1_t>::value ||
                   IsSameType<wType, fp4x2_e1m2_t>::value) {
-        isCacheLineUnaligned = offsetParam[0].kSize % 256 != 0;  // 缓存大小128B，对应4bit为256个元素
+        isCacheLineUnaligned = offsetParam[0].kSize % (CACHE_LINE_SIZE * 2) != 0;  // 缓存大小128B，对应4bit为256个元素
     }
 
     BasicBlockControlParam ctrlParam;
@@ -228,9 +233,9 @@ __aicore__ inline void GMM_WQ_RESPLIT_CONTROLLER_CLASS::SplitNByMultiCore(
                     MX_A8W4_L1_K_CONFIG_256;
             uint64_t mL1Align = CeilAlign(offsetParam[ctrlParam.processId].mL1Size, BLOCK_CUBE);
             // 实际A矩阵通过ND2NZ搬运实现，B矩阵通过MOVE_ALIGN搬运实现，两者效率不同。为了平衡两者的搬运效率，折算系数2简化计算。
-            uint64_t kaDepth = CeilDivide(offsetParam[ctrlParam.processId].nL1Size, mL1Align * 2);
+            uint64_t kaDepth = CeilDivide(offsetParam[ctrlParam.processId].nL1Size, mL1Align * A_B_BALANCE_FACTOR);
             // L1的空间，给A矩阵预留80 Kb
-            uint64_t aL1Size = 80 * GetKBUnit<xType>(); 
+            uint64_t aL1Size = MX_A8W4_A_L1_RESERVED_KB * GetKBUnit<xType>(); 
             uint64_t maxKaDepth = aL1Size / (mL1Align * offsetParam[ctrlParam.processId].kbL1Size);
             if (kaDepth > maxKaDepth) {
                 kaDepth = maxKaDepth;
@@ -288,12 +293,12 @@ __aicore__ inline void GMM_WQ_RESPLIT_CONTROLLER_CLASS::PrefetchA(uint64_t mSize
      */
 
     uint64_t aSize = mSize * kSize * sizeof(xType);
-    constexpr static uint64_t MAX_L1_PREFETCH_SIZE = IsMxA8W4<xType, wqmmConfig.antiQuantType>() ? 88 * 1024 : A_L1_MAX_SIZE_WITH_BIAS_QUANT;
-    if (mSize <= 512 && aSize <= static_cast<uint64_t>(gmmBaseTiling_->cubeNumBlocksN) * MAX_L1_PREFETCH_SIZE &&
+    constexpr static uint64_t MAX_L1_PREFETCH_SIZE = IsMxA8W4<xType, wqmmConfig.antiQuantType>() ? MX_A8W4_L1_PREFETCH_SIZE_KB * 1024 : A_L1_MAX_SIZE_WITH_BIAS_QUANT;
+    if (mSize <= PREFETCH_A_MAX_M_SIZE && aSize <= static_cast<uint64_t>(gmmBaseTiling_->cubeNumBlocksN) * MAX_L1_PREFETCH_SIZE &&
         (gmmBaseTiling_->coreNum % gmmBaseTiling_->cubeNumBlocksN == 0)) {
         uint64_t aPrefetchSize =
             CeilAlign(CeilDivide(mSize * kSize, static_cast<uint64_t>(gmmBaseTiling_->cubeNumBlocksN)),
-                      128 / sizeof(xType)); // prefetch需要保证128B的cacheline对齐
+                      CACHE_LINE_SIZE / sizeof(xType)); // prefetch需要保证128B的cacheline对齐
         basicBlock_.PrefetchA(aPrefetchSize, mSize * kSize);
     }
 }
