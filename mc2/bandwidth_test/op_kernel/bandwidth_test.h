@@ -286,17 +286,10 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::ProcessToke
     // 从GM读取token到UB
     xTmpTensor_ = xQueue_.AllocTensor<XType>();
     DataCopyPad(xTmpTensor_, xGMTensor_[tokenIndex * axisH_], xCopyParams, padParams);
-    // PipeBarrier<PIPE_V>();
-    // DumpTensor(xTmpTensor_, 1, 4);
-    // PipeBarrier<PIPE_V>();
     xQueue_.EnQue(xTmpTensor_);
     xTmpTensor_ = xQueue_.DeQue<XType>();
 
     SyncFunc<AscendC::HardEvent::MTE3_S>();
-    // LocalTensor<int32_t> xOutTint32 = xTmpTensor_.template ReinterpretCast<int32_t>();
-    // xOutTint32(axisH_) = epRankId_;       // 记录源rank
-    // xOutTint32(axisH_ + 1) = tokenIndex;  // 记录token索引
-    SyncFunc<AscendC::HardEvent::S_MTE3>();
 
     // 写入目标rank的窗口
     DataCopyPad(outTokenGT, xTmpTensor_, hCommuCopyOutParams);
@@ -320,9 +313,6 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::SendToMoeEx
         startTokenId += remainder;
     }
     uint32_t endTokenId = startTokenId + sendTokenNumPerCore;
-
-    // PRINTF("AIV-%u: startTokenId=%u, endTokenId=%u, axisBS_=%u\n", 
-    //    aivId_, startTokenId, endTokenId, axisBS_);
 
     if (startTokenId >= axisBS_) { return; }
 
@@ -373,13 +363,8 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::SendToMoeEx
             }
         }
 
-        //PRINTF("========dstRankId============:%u\n", dstRankId);
-
-        // 获取当前已发送到dstRankId的token计数
         SyncFunc<AscendC::HardEvent::S_V>();
-        //uint32_t curSendCnt = sendCntTensor.GetValue(dstRankId);
-        //PRINTF("========curSendCnt============:%u\n", curExpertCnt);
-        
+
         // 计算目标窗口地址:
         // 目标rank窗口基地址 + 当前rank的偏移(每个rank发来的数据独立存储) + 当前token偏移
         GM_ADDR rankGM = (__gm__ uint8_t*)(GetWindAddrByRankId(dstRankId) +
@@ -388,8 +373,6 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::SendToMoeEx
         dstWinGMTensor.SetGlobalBuffer((__gm__ XType*)rankGM);
         GlobalTensor<XType> tempTensor = dstWinGMTensor[0];
         ProcessToken(tempTensor, tokenIndex);
-
-        //PRINTF("AIV-%u: dataState_=%u, winDataSizeOffset=%lu\n", aivId_, dataState_, winDataSizeOffset_);
 
         // 更新发送计数
         //sendCntTensor.SetValue(dstRankId, curSendCnt + 1);
@@ -451,7 +434,6 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::SetStatus()
         SyncFunc<AscendC::HardEvent::V_S>();
 
         curExpertCnt = dstExpIdTensor(0);
-        //PRINTF("==========curExpertCnt===========:%u\n",curExpertCnt);
         statusTensor_((curExpertId - startExpertId) * 8 + 1) = curExpertCnt; // 存储到位置1
         //DumpTensor(statusTensor_,2,8);
     }
@@ -512,17 +494,14 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::WaitDispatc
     }
 
     uint32_t pollBufSize = Ceil(recStatusNumPerCore_ * sizeof(float), UB_ALIGN) * UB_ALIGN;
-    //PRINTF("===========pollBufSize==========:%u\n",pollBufSize);
     tpipe_->InitBuffer(waitStatusBuf_, pollBufSize);
     LocalTensor<float> pollFlags = waitStatusBuf_.Get<float>();
     LocalTensor<float> sumOut = scalarBuf_.Get<float>();
     float targetSum = sumTarget_ * recStatusNumPerCore_;
-    //PRINTF("===========targetSum==========:%f\n",targetSum);
     float currentSum = -1.0f;
 
     // 起始 flag 的 GlobalTensor（从该偏移开始）
     uint32_t srcBaseOffset = startStatusIndex_ * stateOffset_ / sizeof(float);
-    //PRINTF("===========srcBaseOffset==========:%u\n",srcBaseOffset);
     GlobalTensor<float> srcFlags = windowInStatusFp32Tensor_[srcBaseOffset];
 
     DataCopyParams flagParams;
@@ -537,7 +516,6 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::WaitDispatc
         ReduceSum(sumOut, pollFlags, gatherMaskOutBuf_.Get<float>(), 1, recStatusNumPerCore_, 1);
         SyncFunc<AscendC::HardEvent::V_S>();
         currentSum = sumOut.GetValue(0);
-        PRINTF("===========currentSum==========:%f\n",currentSum);
     }
 
     // 清零 flag（复用 pollFlags 缓冲区存放零值）
@@ -558,7 +536,6 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::LocalWindow
     // 批量读取状态区（每个 rank 32 字节）到 statusTensor_
     uint32_t totalStates = epWorldSize_ * 8;  // 每个 rank 8 个 int32
     uint32_t statusCopyCount = Ceil(totalStates, UB_ALIGN / sizeof(int32_t)) * (UB_ALIGN / sizeof(int32_t));
-    //PRINTF("===========statusCopyCount==========:%u\n",statusCopyCount);
     tpipe_->InitBuffer(statusBuf_, statusCopyCount * sizeof(int32_t));
     statusTensor_ = statusBuf_.Get<int32_t>();
     DataCopyParams statusParams{static_cast<uint16_t>(epWorldSize_), 8, 0, 0};
@@ -569,29 +546,20 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::LocalWindow
 
     // 计算前缀和
     uint32_t preCnt = 0;
-    //PRINTF("===========startExpertId_==========:%u\n",startExpertId_);
     for (uint32_t i = 0; i < startExpertId_; ++i) {
         preCnt += statusTensor_(i * 8 + 1);
     }
-    PRINTF("===========preCnt==========:%u\n",preCnt);
 
     // 数据拷贝队列
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> tripleQueue;
-    PRINTF("===========totalUbSize_==========:%u\n",totalUbSize_);
     uint32_t leftUBSize = ((totalUbSize_ - totalUsedUB_) / UB_ALIGN) * UB_ALIGN;
-    PRINTF("===========leftUBSize==========:%u\n",leftUBSize);
     uint32_t dataSize = leftUBSize / BUFFER_NUM;
     tpipe_->InitBuffer(tripleQueue, BUFFER_NUM, dataSize);
     uint32_t countPerDataSize = dataSize / hOutAlignUbSize_;
-    PRINTF("===========countPerDataSize==========:%u\n",countPerDataSize);
     uint32_t beginIdx = preCnt;
-
-    PRINTF("===========startExpertId_==========:%u\n",startExpertId_);
-    PRINTF("===========endExpertId_==========:%u\n",endExpertId_);
 
     for (uint32_t idx = startExpertId_; idx < endExpertId_; ++idx) {
         uint32_t count = statusTensor_(idx * 8 + 1);
-        PRINTF("===========count==========:%u\n",count);
         if (count == 0) continue;
 
         GM_ADDR wAddr = (__gm__ uint8_t*)(windowGM_) + idx * expertPerSizeOnWin_;
@@ -599,9 +567,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::LocalWindow
         srcGt.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
 
         uint32_t loopTimes = Ceil(count, countPerDataSize);
-        PRINTF("===========loopTimes==========:%u\n",loopTimes);
         uint32_t lastCount = count - countPerDataSize * (loopTimes - 1);
-        PRINTF("===========lastCount==========:%u\n",lastCount);
         for (uint32_t loop = 0; loop < loopTimes; ++loop) {
             uint32_t copied = countPerDataSize * loop;
             srcGt.SetGlobalBuffer((__gm__ YType*)(wAddr + copied * hAlignWinSize_));
