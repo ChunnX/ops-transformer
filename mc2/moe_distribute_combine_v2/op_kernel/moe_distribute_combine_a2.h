@@ -607,9 +607,8 @@ __aicore__ inline void MoeDistributeCombineA2<TemplateMC2TypeA2Func>::WaitDispat
                 RecordRankCommDuration(performanceInfoI32Local_, rankId, startTime);
             }
             aDump_.UpdateFullmeshEpRankSendOrRecv(rankId, Mc2A2Kernel::IS_RECV);
-            aDump_.UpdateFullmeshTokenSendOrRecv(rankId, recvCountLocal_(tokenIdx) +
-                                                 expertWindowOffsetLocal_(tokenIdx),
-                                                 Mc2A2Kernel::IS_RECV);
+            aDump_.UpdateFullmeshTokenSendOrRecv(rankId,
+                numRecvTokensPerRankLocal_(rankId - worldSizeTaskInfo_.startTaskId), Mc2A2Kernel::IS_RECV);
         }
     }
     if (unlikely(needPerformanceInfo_) && worldSizeTaskInfo_.taskNum > 0) {
