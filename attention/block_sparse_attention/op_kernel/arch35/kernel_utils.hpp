@@ -41,6 +41,9 @@ struct BsaKernelParamsArch35 {
     GM_ADDR v;
     GM_ADDR mask;
     GM_ADDR blockTables;
+    GM_ADDR query_scale;
+    GM_ADDR key_scale;
+    GM_ADDR value_scale;
     GM_ADDR actualQseqlen;
     GM_ADDR actualKvseqlen;
     GM_ADDR blockSparseMask;
@@ -53,9 +56,11 @@ struct BsaKernelParamsArch35 {
     BsaKernelParamsArch35() {}
     __aicore__ inline
     BsaKernelParamsArch35(GM_ADDR q_, GM_ADDR k_, GM_ADDR v_, GM_ADDR mask_, GM_ADDR blockTables_,
+        GM_ADDR query_scale_, GM_ADDR key_scale_, GM_ADDR value_scale_,
         GM_ADDR actualQseqlen_, GM_ADDR actualKvseqlen_, GM_ADDR blockSparseMask_, GM_ADDR o_,
         GM_ADDR workSpace_, GM_ADDR tiling_)
         : q(q_), k(k_), v(v_), mask(mask_), blockTables(blockTables_), actualQseqlen(actualQseqlen_),
+        query_scale(query_scale_), key_scale(key_scale_), value_scale(value_scale_),
         actualKvseqlen(actualKvseqlen_), blockSparseMask(blockSparseMask_), o(o_),
         workSpace(workSpace_), tiling(tiling_) {}
 };

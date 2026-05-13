@@ -13,6 +13,7 @@
 
 #include <array>
 #include "opdev/op_executor.h"
+#include "opdev/common_types.h"
 
 namespace l0op {
 
@@ -26,6 +27,9 @@ const std::array<const aclTensor *, 2> BlockSparseAttention(
     const aclIntArray *actualSeqLengthsOptional,
     const aclIntArray *actualSeqLengthsKvOptional,
     const aclTensor *blockTableOptional,
+    const aclTensor *queryScaleOptional,
+    const aclTensor *keyScaleOptional,
+    const aclTensor *valueScaleOptional,
     const char *qInputLayout,
     const char *kvInputLayout,
     int64_t numKeyValueHeads,
@@ -36,7 +40,8 @@ const std::array<const aclTensor *, 2> BlockSparseAttention(
     int64_t preTokens,
     int64_t nextTokens,
     int64_t softmaxLseFlag,
-    aclOpExecutor *executor);
+    aclOpExecutor *executor,
+    op::DataType outDType);
 
 } // namespace l0op
 

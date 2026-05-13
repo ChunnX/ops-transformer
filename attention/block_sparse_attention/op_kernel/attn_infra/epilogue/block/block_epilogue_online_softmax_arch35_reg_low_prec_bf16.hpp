@@ -149,12 +149,29 @@ public:
             Arch::CrossCoreWaitFlag<MODE, PIPE>(crossCoreFlag);
         }
     }
-    
+
     template <class TensorP>
     __aicore__ inline
     void operator()(TensorP &l1PTensorTla, GemmCoord actualBlockShape,
         uint32_t isFirstKvSTile, uint32_t ubSBufId, uint32_t l1PBufId,
-        Arch::CrossCoreFlag mm1ToSmFlag, Arch::CrossCoreFlag smToMm2Flag)
+         Arch::CrossCoreFlag mm1ToSmFlag, Arch::CrossCoreFlag smToMm2Flag){
+        
+        struct EmptyTensor {};
+        EmptyTensor dummyQS;
+        EmptyTensor dummyKS;
+        operator()<0>(l1PTensorTla, dummyQS, dummyKS, 
+                        actualBlockShape,
+                        isFirstKvSTile, ubSBufId, l1PBufId,
+                        mm1ToSmFlag, smToMm2Flag, AscendC::GlobalTensor<int32_t>());
+    }
+    
+    template <int quant_mode, class TensorP, class TensorQS, class TensorKS, typename ElementIndex>
+    __aicore__ inline
+    void operator()(TensorP &l1PTensorTla, TensorQS &gmQSTensorTla, TensorKS &gmKSTensorTla,
+         GemmCoord actualBlockShape,
+        uint32_t isFirstKvSTile, uint32_t ubSBufId, uint32_t l1PBufId,
+         Arch::CrossCoreFlag mm1ToSmFlag, Arch::CrossCoreFlag smToMm2Flag,
+        AscendC::GlobalTensor<ElementIndex> sparseIndex, int blockNum=0)
     {
         uint32_t mCopyOffset = RoundUp(actualBlockShape.m(), 8) / 2;
         uint32_t m = actualBlockShape.m() < mCopyOffset ? actualBlockShape.m() : mCopyOffset;

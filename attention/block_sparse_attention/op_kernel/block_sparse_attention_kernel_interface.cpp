@@ -37,6 +37,9 @@ __global__ __aicore__ void BlockSparseAttentionInfer(
     GM_ADDR blockSparseMask,
     GM_ADDR mask,
     GM_ADDR blockTables,
+    GM_ADDR query_scale,
+    GM_ADDR key_scale,
+    GM_ADDR value_scale,
     GM_ADDR o,
     GM_ADDR actualQseqlen,
     GM_ADDR actualKvseqlen,
@@ -116,11 +119,59 @@ __global__ __aicore__ void BlockSparseAttentionInfer(
 #endif
 #if (__CCE_AICORE__ == 310)
 
+// Lookup helper for ElementP type selection based on ElementQ and ElementV
+template <typename QType, typename VType, typename DefaultType>
+struct ElementPTypeLookup {
+    using type = DefaultType;
+};
+
+template <typename DefaultType>
+struct ElementPTypeLookup<int8_t, float8_e4m3_t, DefaultType> {
+    using type = float8_e4m3_t;
+};
+
+template <typename QType, typename KType, typename VType, typename OUTPODType>
+struct GetQuantMode {
+    static constexpr int value = 0;
+};
+
+template <>
+struct GetQuantMode<int8_t, int8_t, float8_e4m3_t, bfloat16_t> {
+    static constexpr int value = 1;
+};
+
+template <>
+struct GetQuantMode<int8_t, int8_t, float8_e4m3_t, half> {
+    static constexpr int value = 1;
+};
+
+
+template <int quantMode>
+struct QKScaleGranularitySelector {
+    static constexpr NpuArch::Gemm::Tile::ScaleGranularity value = NpuArch::Gemm::Tile::ScaleGranularity::NO_QUANT;
+};
+
+template <>
+struct QKScaleGranularitySelector<1> {
+    static constexpr NpuArch::Gemm::Tile::ScaleGranularity value = NpuArch::Gemm::Tile::ScaleGranularity::PER_TENSOR;
+};
+
+template <int quantMode>
+struct PVScaleGranularitySelector {
+    static constexpr NpuArch::Gemm::Tile::ScaleGranularity value = NpuArch::Gemm::Tile::ScaleGranularity::NO_QUANT;
+};
+
+template <>
+struct PVScaleGranularitySelector<1> {
+    static constexpr NpuArch::Gemm::Tile::ScaleGranularity value = NpuArch::Gemm::Tile::ScaleGranularity::PER_CHANNEL;
+};
+
 using namespace BsaKernelArch35;
 
-template <class InDtype, class SMDtype, class REDtype, Format qFormat, Format kvFormat>
+template <class InQKDtype, class InVDtype, class OUTPODType, class SMDtype, class REDtype, Format qFormat, Format kvFormat>
 __global__ __aicore__ void BsaInferIntfRegular(
     GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mask, GM_ADDR blockTables,
+    GM_ADDR query_scale, GM_ADDR key_scale, GM_ADDR value_scale,
     GM_ADDR o, GM_ADDR actualQseqlen, GM_ADDR actualKvseqlen,
     GM_ADDR blockSparseMask, GM_ADDR workspace,
     GM_ADDR tiling
@@ -129,12 +180,12 @@ __global__ __aicore__ void BsaInferIntfRegular(
     using ElementSparseMask = uint8_t;
     using ElementSparseIdx = int32_t;
     using ElementSparseCount = int32_t;
-    using ElementQ = InDtype;
-    using ElementK = InDtype;
-    using ElementV = InDtype;
+    using ElementQ = InQKDtype;
+    using ElementK = InQKDtype;
+    using ElementV = InVDtype;
     using ElementS = SMDtype;
-    using ElementP = InDtype;
-    using ElementO = InDtype;
+    using ElementP = typename ElementPTypeLookup<ElementQ, ElementV, OUTPODType>::type;
+    using ElementO = OUTPODType;
     using ElementOTmp = REDtype;
     // layout tags
     using LayoutQ = layout::RowMajor;
@@ -159,7 +210,7 @@ __global__ __aicore__ void BsaInferIntfRegular(
     using DispatchPolicyQK = Gemm::MmadAtlasA5BsaQK;
     using TileCopyQK = Gemm::Tile::PackedTileCopyTlaToUB<
         ArchTag, ElementQ, LayoutQ, ElementK, LayoutK, ElementS, LayoutS,
-        void, Gemm::Tile::CopyL0CToUBMode::NO_SPLIT>;
+        void, Gemm::Tile::CopyL0CToUBMode::NO_SPLIT, false, QKScaleGranularitySelector<GetQuantMode<ElementQ, ElementK, ElementV, OUTPODType>::value>::value>;
     using BlockMmadQK = Gemm::Block::BlockMmadTla<
         DispatchPolicyQK, L1TileShapeQK, L0TileShapeQK, ElementQ, ElementK, ElementS, void, TileCopyQK>;
    // online softmax
@@ -173,7 +224,7 @@ __global__ __aicore__ void BsaInferIntfRegular(
     using DispatchPolicyPV = Gemm::MmadAtlasA5BsaPV;
     using TileCopyPV = Gemm::Tile::PackedTileCopyTlaToUB<
         ArchTag, ElementP, LayoutPDummy, ElementV, LayoutV, ElementOTmp, LayoutOTmp,
-        void, Gemm::Tile::CopyL0CToUBMode::SPLIT_M>;
+        void, Gemm::Tile::CopyL0CToUBMode::SPLIT_M, false, PVScaleGranularitySelector<GetQuantMode<ElementQ, ElementK, ElementV, OUTPODType>::value>::value>;
     using BlockMmadPV = Gemm::Block::BlockMmadTla<
         DispatchPolicyPV, L1TileShapePV, L0TileShapePV, ElementP, ElementV, ElementOTmp, void, TileCopyPV>;
     // rescale O
@@ -185,9 +236,9 @@ __global__ __aicore__ void BsaInferIntfRegular(
 
     using BsaRegularKernelArch35 = BsaRegularKernelArch35<
         EpilogueMask2Idx, BlockMmadQK, EpilogueOnlineSoftmax, BlockMmadPV, EpilogueRescaleO, qFormat, kvFormat>;
-    BsaKernelParamsArch35 params{q, k, v, mask, blockTables,
+    BsaKernelParamsArch35 params{q, k, v, mask, blockTables, query_scale, key_scale, value_scale,
         actualQseqlen, actualKvseqlen, blockSparseMask, o, workspace, tiling};
     BsaRegularKernelArch35 bsaRegularKernelArch35;
-    bsaRegularKernelArch35(params);
+    bsaRegularKernelArch35.template operator()<GetQuantMode<ElementQ, ElementK, ElementV, OUTPODType>::value>(params);
 }
 #endif

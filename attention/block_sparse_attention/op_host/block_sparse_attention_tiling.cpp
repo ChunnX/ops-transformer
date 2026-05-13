@@ -202,15 +202,28 @@ ge::graphStatus BSATiling::CheckQKVDtype(gert::TilingContext *bsaContext)
     OP_CHECK_NULL_WITH_CONTEXT(bsaContext, vInputDesc);
     dataType_ = qInputDesc->GetDataType();
     auto kDataType = kInputDesc->GetDataType();
-    auto vDataType = vInputDesc->GetDataType();
-    if (dataType_ != ge::DT_FLOAT16 && dataType_ != ge::DT_BF16) {
-        OP_LOGE(bsaContext->GetNodeName(), "The supported dtype of query/key/value is float16 or bfloat16.");
+    vDataType_ = vInputDesc->GetDataType();
+
+    // 原有FP16/BF16校验保留
+    if (dataType_ != ge::DT_FLOAT16 && dataType_ != ge::DT_BF16 && dataType_ != ge::DT_INT8) {
+        OP_LOGE(bsaContext->GetNodeName(), 
+            "The supported dtype of query/key is float16, bfloat16 or int8.");
         return ge::GRAPH_FAILED;
     }
-    if (dataType_ != kDataType || dataType_ != vDataType) {
-        OP_LOGE(bsaContext->GetNodeName(), "Tensor query/key/value must have consistent dtype with each other.");
+    
+    // 950 混合精度特判：Q/K=int8, V=FLOAT8_E4M3FN
+    if (socVer_ == SOC_VER_950_CODE && 
+        dataType_ == ge::DT_INT8 && 
+        kDataType == ge::DT_INT8 &&
+        vDataType_ == ge::DT_FLOAT8_E4M3FN) {
+        return ge::GRAPH_SUCCESS;
+    } else if (dataType_ != kDataType || dataType_ != vDataType_) {
+        // 非混合精度场景保持原有严格一致性校验
+        OP_LOGE(bsaContext->GetNodeName(), 
+            "Tensor query/key/value must have consistent dtype, or use 950 mixed prec (Q/K=int8, V=fp8).");
         return ge::GRAPH_FAILED;
     }
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -836,6 +849,8 @@ uint64_t BSATiling::GenerateTilingKey(gert::TilingContext *bsaContext)
         tilingKey += 0;  // 00 for FP16
     } else if (dataType_ == ge::DT_BF16) {
         tilingKey += 22220ULL;  // 22 for BF16 -> 9000000030000002 + 22220 = 9000000030022222
+    } else if (dataType_ == ge::DT_INT8) {
+        tilingKey += 44440ULL;    // 4444 for INT8 (新增)
     }
     
     // [位11-13] KV Layout（十亿位）
@@ -876,6 +891,15 @@ uint64_t BSATiling::GenerateTilingKey(gert::TilingContext *bsaContext)
     if (softmaxLseFlag_) {
         tilingKey += 100000000ULL; // 1 for lse out
     }
+
+    constexpr uint64_t V_DTYPE_OFFSET = 10000000000ULL;  // 10^10
+    if (vDataType_ == ge::DT_FLOAT8_E4M3FN) {
+        tilingKey += V_DTYPE_OFFSET * 1ULL;
+    } else if (vDataType_ == ge::DT_FLOAT8_E5M2) {
+        tilingKey += V_DTYPE_OFFSET * 2ULL;
+    }
+    // vDataType 与 Q/K 相同时，加 0，保持兼容
+  
     
     return tilingKey;
 }

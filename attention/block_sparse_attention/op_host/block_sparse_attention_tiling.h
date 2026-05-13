@@ -273,6 +273,8 @@ private:
     uint32_t pL1BufNum_;
     
     ge::DataType dataType_ = ge::DT_FLOAT16;
+    // 在 dataType_ 声明附近添加：
+    ge::DataType vDataType_ = ge::DT_FLOAT16;  // 新增：记录V的独立dtype
 
     BlockSparseAttentionTilingData *tilingData_ = nullptr;
 };

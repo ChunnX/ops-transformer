@@ -35,6 +35,16 @@
 namespace NpuArch::Gemm::Block {
 ////////////////////////////////////////////////////////////////////
 
+
+template <class T>
+struct HasParams {
+    template <class U>
+    static char test(typename U::Params*);
+    template <class U>
+    static int test(...);
+    static constexpr bool value = sizeof(test<T>(0)) == sizeof(char);
+};
+
 struct Mm1L1TileHelper {
     uint32_t mm1L1TileM;
     uint32_t mm1L1TileN;
@@ -270,12 +280,34 @@ public:
                     uint32_t gatheredKvSTileIdx, uint32_t kvSeqlen,
                     uint32_t kvSBaseTile, uint32_t blockShapeY,
                     uint32_t yBlockNumAval, uint32_t yBlockNumRsvd,
-                    uint64_t prefixSumL0AStages, uint64_t prefixSumL0BStages,
-                    Arch::CrossCoreFlag mm1ToSmFlag)
+                    Arch::CrossCoreFlag mm1ToSmFlag,
+                    float scaleValue = 0.0f){
+        this->operator()<0>(gBTensor, ubCTensor, gSparseBlockIdx,
+                actualOriShape, gatheredKvSTileIdx, kvSeqlen,
+                kvSBaseTile, blockShapeY, yBlockNumAval, yBlockNumRsvd,
+               mm1ToSmFlag, scaleValue);
+    }
+
+    template <int quant_mode, class TensorB, class TensorC>
+    __aicore__ inline
+    void operator()(TensorB &gBTensor, TensorC &ubCTensor,
+                    AscendC::GlobalTensor<int32_t> gSparseBlockIdx,
+                    GemmCoord actualOriShape,
+                    uint32_t gatheredKvSTileIdx, uint32_t kvSeqlen,
+                    uint32_t kvSBaseTile, uint32_t blockShapeY,
+                    uint32_t yBlockNumAval, uint32_t yBlockNumRsvd,
+                    Arch::CrossCoreFlag mm1ToSmFlag,
+                    float scaleValue = 0.0f)
     {
         using CopyL0CToDst = typename TileCopy_::template CopyL0CToDst<TensorC>;
         CopyL0CToDst copyL0CToDstSub0;
         CopyL0CToDst copyL0CToDstSub1;
+        /*
+        if constexpr (HasParams<CopyL0CToDst>::value && quant_mode == 1) {
+            using DstParams = typename CopyL0CToDst::Params;
+            CopyL0CToDstSub0 = CopyL0CToDst(DstParams{scaleValue});
+            CopyL0CToDstSub1 = CopyL0CToDst(DstParams{scaleValue});
+        }*/
 
         uint32_t rowNum = actualOriShape[0];
         uint32_t embed = actualOriShape[2];

@@ -113,6 +113,8 @@ public:
 
     static constexpr uint32_t MAX_L1_STAGES = 3; // 编译期常量，为静态L1Tensor数组开辟准备。取一个buffer份数的极大值
     static constexpr uint32_t V0_V1_FLAG_ID_OFFSET = 16; // 核间同步mode4，AIC侧需要两个flagId分别对应两个AIV
+    static constexpr uint32_t VSDB_BUF_NUM = 2; 
+    static constexpr uint32_t VSDB_BUF_SIZE = 256 * sizeof(uint64_t); 
 
     __aicore__ inline
     BlockMmadTla(Arch::Resource<ArchTag> &resource, uint32_t l1BufAddrStart, Mm2L1TileHelper &mm2L1TileHelper)
@@ -139,6 +141,11 @@ public:
                 L0B_PINGPONG_BUF_SIZE * i);
             l0CTensor[i] = resource.l0CBuf.template GetBufferByByte<ElementAccumulator>(
                 L0C_HALF_BUF_SIZE + L0C_PINGPONG_BUF_SIZE * i);
+        }
+        uint32_t vsdbL1AddrStart = ArchTag::L1_SIZE - VSDB_BUF_NUM * VSDB_BUF_SIZE;
+        for (uint32_t i = 0; i < VSDB_BUF_NUM; i++) {
+            l1VSDBTensor[i] = resource.l1Buf.template GetBufferByByte<uint64_t>(
+                vsdbL1AddrStart + VSDB_BUF_SIZE * i);
         }
     }
 
@@ -239,6 +246,8 @@ public:
         }
     }
 
+    
+
     template <class TensorB, class TensorC>
     __aicore__ inline
     void operator()(TensorB &gBTensor, TensorC &ubCTensor,
@@ -247,7 +256,25 @@ public:
                     uint32_t gatheredKvSTileIdx, uint32_t kvSeqlen,
                     uint32_t kvSBaseTile, uint32_t blockShapeY,
                     uint32_t yBlockNumAval, uint32_t yBlockNumRsvd,
-                    uint64_t prefixSumL0AStages, uint64_t prefixSumL0BStages,
+                    Arch::CrossCoreFlag smToMm2Flag, Arch::CrossCoreFlag mm2ToReFlag)
+    {
+        struct EmptyTensor {};
+        EmptyTensor dummyVS;
+        this->operator()<0>(gBTensor, ubCTensor, dummyVS, gSparseBlockIdx,
+                            actualOriShape, gatheredKvSTileIdx, kvSeqlen,
+                            kvSBaseTile, blockShapeY, yBlockNumAval, 
+                            yBlockNumRsvd, smToMm2Flag, mm2ToReFlag);
+    }
+
+
+    template <int quant_mode, class TensorB, class TensorC, class TensorVS>
+    __aicore__ inline
+    void operator()(TensorB &gBTensor, TensorC &ubCTensor, TensorVS &gVSTensor,
+                    AscendC::GlobalTensor<int32_t> gSparseBlockIdx,
+                    GemmCoord actualOriShape,
+                    uint32_t gatheredKvSTileIdx, uint32_t kvSeqlen,
+                    uint32_t kvSBaseTile, uint32_t blockShapeY,
+                    uint32_t yBlockNumAval, uint32_t yBlockNumRsvd,
                     Arch::CrossCoreFlag smToMm2Flag, Arch::CrossCoreFlag mm2ToReFlag)
     {
         using CopyL0CToDst = typename TileCopy_::template CopyL0CToDst<TensorC>;
@@ -346,6 +373,15 @@ public:
                     if (mL0Itr == 0 && kL0Itr == 0) {
                         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
                     }
+
+                    if constexpr (quant_mdoe == 1) {
+                        if (mL0Itr == 0 && kL0Itr == kL0LoopNum - 1){
+                            AscendC::WaitFlag<AscendC::HardEvent::FIX_MTE2>(0);
+                            DataCopy(l1VSDBTensor[l1VSdbsel], gVSTensor.data[nL0Itr * L0_TILE_N], l0TileNAct);
+                            AscendC::SetFlag<AscendC::HardEvent::MTE2_FIX>(0);
+                            AscendC::WaitFlag<AscendC::HardEvent::MTE2_FIX>(0);
+                        }
+                    }
                     tileMmad(
                         l0CTensorTlaTile,
                         l0ATensorTla,
@@ -373,7 +409,13 @@ public:
             uint32_t nFixPAligned8 = RoundUp(l0TileNAct, 8);
             auto ubCTensorTlaTile = GetTile(ubCTensor,
                 tla::MakeCoord(0, nL0Itr * L0_TILE_N), tla::MakeShape(mFixPAligned8, nFixPAligned8));
-            copyL0CToDst(ubCTensorTlaTile, l0CTensorTla);
+            if constexpr (quant_mode == 0){
+                copyL0CToDst(ubCTensorTlaTile, l0CTensorTla);
+            } else if constexpr (quant_mode == 1){
+                copyL0CToDst(ubCTensorTlaTile, l0CTensorTla, l1VSDBTensor[l1VSdbSel]);
+                AscendC::SetFlag<AscendC::HardEvent::FIX_MTE2>(0);
+                l1VSdbsel = (l1VSdbsel + 1) % VSDB_BUF_NUM;
+            }
             AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
         }
         // crossCoreSync after all fixPipe move
@@ -384,6 +426,7 @@ protected:
     /// Data members
     AscendC::LocalTensor<ElementA> l1ATensor[MAX_L1_STAGES];
     AscendC::LocalTensor<ElementB> l1BTensor[MAX_L1_STAGES];
+    AscendC::Localtensor<uint64_t> l1VSDBTensor[VSDB_BUF_NUM];
     AscendC::LocalTensor<ElementA> l0ATensor[L0_STAGES];
     AscendC::LocalTensor<ElementB> l0BTensor[L0_STAGES];
     AscendC::LocalTensor<ElementAccumulator> l0CTensor[L0_STAGES];
@@ -398,6 +441,7 @@ protected:
     uint32_t l1BTileK;
     uint32_t l1ABufNum;
     uint32_t l1BBufNum;
+    uint32_t l1VSdbSel = 0;
 };
 ////////////////////////////////////////////////////////////////////
 

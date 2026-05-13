@@ -41,9 +41,11 @@ static bool CheckDataType(const aclTensor *query,
     const DataType kDtype = key->GetDataType();
     const DataType vDtype = value->GetDataType();
 
+
     static const std::unordered_map<DataType, std::vector<DataType>> validKvType = {
         {DataType::DT_FLOAT16, {DataType::DT_FLOAT16}},
         {DataType::DT_BF16, {DataType::DT_BF16}},
+        {DataType::DT_INT8, {DataType::DT_INT8, DataType::DT_FLOAT8_E4M3FN}}
     };
 
     auto iter = validKvType.find(qDtype);
@@ -151,6 +153,9 @@ static aclnnStatus MakeContiguous(const aclTensor *&query,
                                   const aclTensor *&blockSparseMaskOptional,
                                   const aclTensor *&attenMaskOptional,
                                   const aclTensor *&blockTableOptional,
+                                  const aclTensor *&queryScaleOptional,
+                                  const aclTensor *&keyScaleOptional,
+                                  const aclTensor *&valueScaleOptional,
                                   aclOpExecutor *executor)
 {
     query = l0op::Contiguous(query, executor);
@@ -181,6 +186,21 @@ static aclnnStatus MakeContiguous(const aclTensor *&query,
     if (blockTableOptional != nullptr) {
         blockTableOptional = l0op::Contiguous(blockTableOptional, executor);
         CHECK_RET(blockTableOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+
+    if (queryScaleOptional != nullptr) {
+        queryScaleOptional = l0op::Contiguous(queryScaleOptional, executor);
+        CHECK_RET(queryScaleOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+
+    if (keyScaleOptional != nullptr) {
+        keyScaleOptional = l0op::Contiguous(keyScaleOptional, executor);
+        CHECK_RET(keyScaleOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+
+    if (valueScaleOptional != nullptr) {
+        valueScaleOptional = l0op::Contiguous(valueScaleOptional, executor);
+        CHECK_RET(valueScaleOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
 
     return ACLNN_SUCCESS;
@@ -221,6 +241,9 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGetW
     const aclIntArray *actualSeqLengthsOptional,
     const aclIntArray *actualSeqLengthsKvOptional,
     const aclTensor *blockTableOptional,
+    const aclTensor *queryScaleOptional,
+    const aclTensor *keyScaleOptional,
+    const aclTensor *valueScaleOptional,
     char *qInputLayout,
     char *kvInputLayout,
     int64_t numKeyValueHeads,
@@ -249,6 +272,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGetW
     //去掉了idx ,idxnums
     L2_DFX_PHASE_1(aclnnBlockSparseAttention,
                    DFX_IN(query, key, value, blockSparseMask, attenMaskOptional, blockShape, actualSeqLengthsOptional,
+                          queryScaleOptional, keyScaleOptional, valueScaleOptional,
                           actualSeqLengthsKvOptional, blockTableOptional, qInputLayout, qInputLayout, numKeyValueHeads,
                           maskType, scaleValue, innerPrecise, blockSize, preTokens, nextTokens, softmaxLseFlag),
                    DFX_OUT(attentionOut, softmaxLseOptional));
@@ -257,7 +281,8 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGetW
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto *executorImpl = uniqueExecutor.get();
     //新增blockSparseMaskOptional参数
-    ret = MakeContiguous(query, key, value, blockSparseMask, attenMaskOptional, blockTableOptional,
+    ret = MakeContiguous(query, key, value, blockSparseMask, attenMaskOptional, blockTableOptional, 
+                         queryScaleOptional, keyScaleOptional, valueScaleOptional,
                          executorImpl);
     if (ret != ACLNN_SUCCESS) {
         return ret;
@@ -269,8 +294,10 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGetW
     auto outputs = l0op::BlockSparseAttention(query, key, value,
                                              blockSparseMask, attenMaskOptional, blockShape, actualSeqLengthsOptional, 
                                              actualSeqLengthsKvOptional, blockTableOptional,
+                                             queryScaleOptional, keyScaleOptional, valueScaleOptional,
                                              qInputLayoutStr.c_str(), kvInputLayoutStr.c_str(), numKeyValueHeads,
-                                             maskType, scaleValue, innerPrecise, blockSize, preTokens, nextTokens, softmaxLseFlag, executorImpl);
+                                             maskType, scaleValue, innerPrecise, blockSize, preTokens, nextTokens, softmaxLseFlag, executorImpl,
+                                             attentionOut->GetDataType());
     if (outputs[0] == nullptr || outputs[1] == nullptr) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "BlockSparseAttention returned nullptr outputs.");
         return ACLNN_ERR_INNER_NULLPTR;
