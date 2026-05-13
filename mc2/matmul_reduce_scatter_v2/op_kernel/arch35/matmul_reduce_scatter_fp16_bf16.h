@@ -147,10 +147,11 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
 }
 
 template <typename AType, typename BType, typename BiasType, typename CType, int TPL_COMM_MODE>
-__aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType, TPL_COMM_MODE>::MatMulV3Compute(GM_ADDR cGM,
-                                                   Mc2MatMulV3TilingData& tiling, 
-                                                   uint32_t count, GM_ADDR gmToFloat,
-                                                   bool isLast, bool isTail)
+__aicore__ inline void
+MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType, TPL_COMM_MODE>::MatMulV3Compute(
+    GM_ADDR cGM, Mc2MatMulV3TilingData& tiling,
+    uint32_t count, GM_ADDR gmToFloat,
+    bool isLast, bool isTail)
 {
     using cDataType = typename CType::T;
     auto&& cfg = tilingData_->param;

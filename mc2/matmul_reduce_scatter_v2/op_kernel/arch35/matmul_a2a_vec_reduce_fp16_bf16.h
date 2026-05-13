@@ -27,7 +27,8 @@
 #include "matmul_reduce_scatter_v2_c_tiling.h"
 #include "../../common/op_kernel/reduce_sum_cast_fp32.h"
 
-#define TEMPLATE_CLASS_PARAMS template <typename AType, typename BType, typename BiasType, typename CType, int TPL_COMM_MODE>
+#define TEMPLATE_CLASS_PARAMS \
+    template <typename AType, typename BType, typename BiasType, typename CType, int TPL_COMM_MODE>
 #define TEMPLATE_FUNC_PARAMS AType, BType, BiasType, CType, TPL_COMM_MODE
 
 namespace MatmulReduceScatterV2Impl {
