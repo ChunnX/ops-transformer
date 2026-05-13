@@ -32,6 +32,7 @@
 #include "platform/soc_spec.h"
 
 namespace mc2tiling {
+
 constexpr uint32_t STANDARD_CARD_4P = 4;
 constexpr uint32_t EIGHT_P_8P = 8;  // 8P场景（POD8P/Server8P）
 constexpr uint32_t COMM_MESH = 0b1U;
