@@ -651,7 +651,7 @@ ge::graphStatus BSATiling::CheckAllInputShape(gert::TilingContext *bsaContext)
         auto parameterShape = bsaContext->GetInputShape(parameterIndex);
         int64_t parameterDimNum = parameterShape->GetStorageShape().GetDimNum();
         std::cout << "tkd parameter index: " << parameterIndex << " dimNum" << parameterDimNum << std::endl;
-        for (uint32_t dimIndex = = 0; dimIndex < parameterDimNum; dimIndex++) {
+        for (uint32_t dimIndex = 0; dimIndex < parameterDimNum; dimIndex++) {
             std::cout << "tkd dimIndex " << dimIndex << " " << parameterShape->GetStorageShape().GetDim(dimIndex)
                       << std::endl;
         }
