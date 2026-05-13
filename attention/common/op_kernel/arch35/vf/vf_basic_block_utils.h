@@ -34,6 +34,13 @@ constexpr float floatEps = 2.220446049250313e-16;
  * ************************************************************************************************* */
 using namespace MicroAPI;
 
+constexpr static AscendC::MicroAPI::CastTrait castTraitNoneZero = {
+    AscendC::MicroAPI::RegLayout::ZERO,
+    AscendC::MicroAPI::SatMode::UNKNOWN,
+    AscendC::MicroAPI::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::CAST_NONE,
+};
+
 constexpr static AscendC::MicroAPI::CastTrait castTraitZero = {
     AscendC::MicroAPI::RegLayout::ZERO,
     AscendC::MicroAPI::SatMode::SAT,
