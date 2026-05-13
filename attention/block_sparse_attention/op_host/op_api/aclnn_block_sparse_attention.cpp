@@ -268,7 +268,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGetW
         query, key, value, blockSparseMask, attenMaskOptional, blockShape, actualSeqLengthsOptional,
         actualSeqLengthsKvOptional, blockTableOptional, nullptr, nullptr, nullptr, qInputLayoutStr.c_str(),
         kvInputLayoutStr.c_str(), numKeyValueHeads, maskType, scaleValue, innerPrecise, blockSize, preTokens,
-        nextTokens, softmaxLseFlag, executorImpl);
+        nextTokens, softmaxLseFlag, attentionOut, executorImpl);
     if (outputs[0] == nullptr || outputs[1] == nullptr) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "BlockSparseAttention returned nullptr outputs.");
         return ACLNN_ERR_INNER_NULLPTR;

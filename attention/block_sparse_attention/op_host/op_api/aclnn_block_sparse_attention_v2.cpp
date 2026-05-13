@@ -171,7 +171,7 @@ static aclnnStatus MakeContiguous(const aclTensor *&query,
         blockSparseMaskOptional = l0op::Contiguous(blockSparseMaskOptional, executor);
         CHECK_RET(blockSparseMaskOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
         if (blockSparseMaskOptional->GetStorageShape().GetDimNum() != 4) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "blockSparseMask must be 4D tensor");
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "blockSparseMask must be 4D tensor.");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -189,16 +189,28 @@ static aclnnStatus MakeContiguous(const aclTensor *&query,
     if (qDequantScaleOptional != nullptr) {
         qDequantScaleOptional = l0op::Contiguous(qDequantScaleOptional, executor);
         CHECK_RET(qDequantScaleOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        if (qDequantScaleOptional->GetStorageShape().GetDimNum() != 4) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "qDequantScaleOptional must be 4D tensor.");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
     }
 
     if (kDequantScaleOptional != nullptr) {
         kDequantScaleOptional = l0op::Contiguous(kDequantScaleOptional, executor);
         CHECK_RET(kDequantScaleOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        if (kDequantScaleOptional->GetStorageShape().GetDimNum() != 4) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "kDequantScaleOptional must be 4D tensor.");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
     }
 
     if (vDequantScaleOptional != nullptr) {
         vDequantScaleOptional = l0op::Contiguous(vDequantScaleOptional, executor);
         CHECK_RET(vDequantScaleOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
+        if (vDequantScaleOptional->GetStorageShape().GetDimNum() != 4) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "vDequantScaleOptional must be 4D tensor.");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
     }
 
     return ACLNN_SUCCESS;
@@ -293,7 +305,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionV2Ge
         query, key, value, blockSparseMask, attenMaskOptional, blockShape, actualSeqLengthsOptional,
         actualSeqLengthsKvOptional, blockTableOptional, qDequantScaleOptional, kDequantScaleOptional,
         vDequantScaleOptional, qInputLayoutStr.c_str(), kvInputLayoutStr.c_str(), numKeyValueHeads, maskType,
-        scaleValue, innerPrecise, blockSize, preTokens, nextTokens, softmaxLseFlag, executorImpl);
+        scaleValue, innerPrecise, blockSize, preTokens, nextTokens, softmaxLseFlag, attentionOut, executorImpl);
     if (outputs[0] == nullptr || outputs[1] == nullptr) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "BlockSparseAttention returned nullptr outputs.");
         return ACLNN_ERR_INNER_NULLPTR;

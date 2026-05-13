@@ -63,6 +63,7 @@ const std::array<const aclTensor *, 2> BlockSparseAttention(
     int64_t preTokens,
     int64_t nextTokens,
     int64_t softmaxLseFlag,
+    const aclTensor *attentionOut,
     aclOpExecutor *executor)
 {
     const char *safeKvInputLayout = (kvInputLayout != nullptr) ? kvInputLayout : qInputLayout;
@@ -85,7 +86,7 @@ const std::array<const aclTensor *, 2> BlockSparseAttention(
         actualSeqKvTensor = ConvertIntArrayToTensor(actualSeqLengthsKvOptional, executor, DataType::DT_INT64);
     }
 
-    auto attentionOutTensor = executor->AllocTensor(query->GetDataType(), Format::FORMAT_ND, Format::FORMAT_ND);
+    auto attentionOutTensor = executor->AllocTensor(attentionOut->GetDataType(), Format::FORMAT_ND, Format::FORMAT_ND);
     auto softmaxLseTensor = executor->AllocTensor(DataType::DT_FLOAT, Format::FORMAT_ND, Format::FORMAT_ND);
 
     // scaleValue is already float type, no need for cast
