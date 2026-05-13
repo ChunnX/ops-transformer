@@ -301,25 +301,25 @@ static uint64_t CalTilingKey()
 
 // 设置HCCL通信配置
 // 使用AlltoAll fullmesh算法，AIV引擎
-static ge::graphStatus SetHcommCfg(const gert::TilingContext *context, BandwidthTestTilingData *tiling,
-    const std::string group)
-{
-    const char *nodeName = context->GetNodeName();
-    OP_LOGD(nodeName, "BandwidthTest group = %s", group.c_str());
+// static ge::graphStatus SetHcommCfg(const gert::TilingContext *context, BandwidthTestTilingData *tiling,
+//     const std::string group)
+// {
+//     const char *nodeName = context->GetNodeName();
+//     OP_LOGD(nodeName, "BandwidthTest group = %s", group.c_str());
 
-    uint32_t opType = OP_TYPE_ALL_TO_ALL;
-    std::string algConfigStr = "AlltoAll=level0:fullmesh;level1:pairwise";
+//     uint32_t opType = OP_TYPE_ALL_TO_ALL;
+//     std::string algConfigStr = "AlltoAll=level0:fullmesh;level1:pairwise";
 
-    AscendC::Mc2CcTilingConfig mc2CcTilingConfig(group, opType, algConfigStr);
-    mc2CcTilingConfig.SetCommEngine(mc2tiling::AIV_ENGINE);
+//     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(group, opType, algConfigStr);
+//     mc2CcTilingConfig.SetCommEngine(mc2tiling::AIV_ENGINE);
 
-    OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tiling->mc2InitTiling) != 0,
-        OP_LOGE(nodeName, "mc2CcTilingConfig GetTiling mc2InitTiling failed"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tiling->mc2CcTiling) != 0,
-        OP_LOGE(nodeName, "mc2CcTilingConfig GetTiling mc2CcTiling failed"), return ge::GRAPH_FAILED);
+//     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tiling->mc2InitTiling) != 0,
+//         OP_LOGE(nodeName, "mc2CcTilingConfig GetTiling mc2InitTiling failed"), return ge::GRAPH_FAILED);
+//     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tiling->mc2CcTiling) != 0,
+//         OP_LOGE(nodeName, "mc2CcTilingConfig GetTiling mc2CcTiling failed"), return ge::GRAPH_FAILED);
 
-    return ge::GRAPH_SUCCESS;
-}
+//     return ge::GRAPH_SUCCESS;
+// }
 
 // 设置Workspace大小
 static ge::graphStatus SetWorkSpace(gert::TilingContext *context, BandwidthTestTilingData *tilingData,
