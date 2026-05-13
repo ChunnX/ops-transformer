@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file grouped_matmul_finalize_routing_pertoken_dequant.h
@@ -98,162 +98,69 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
     constexpr uint32_t BUFFER_NUM = 2;
 
     if (gmmFinalizeRoutingQuantParams_.deterministicFlag == 1) {
-        // Deterministic per-group mode (W8A8 INT8 only):
-        //   Process each group individually (groupNum=1 per kernel call).
-        //   This avoids cross-group state issues in the Cgmct kernel.
-        //   Phase 1 (first group): Prologue zeros yGm + writes residual -> yGm
+        // Deterministic mode (W8A8 INT8 only):
+        //   Phase 1: Prologue zeros yGm + writes residual -> yGm
         //   Phase 2: SequentialWrite epilogue writes dequant -> workspace (no race)
-        //   Phase 3: FRDeterministicA5 aggregates workspace -> yGm via AtomicAdd
-        //   Repeat phases 2-3 for subsequent groups (prologue skipped).
+        //   Phase 3: FRDeterministicA5 aggregates workspace -> yGm via AtomicAdd (one writer per outRow)
 
         constexpr uint64_t SYS_WORKSPACE_SIZE = 16UL * 1024 * 1024;
         GM_ADDR deterBuffer = workspaceGM + SYS_WORKSPACE_SIZE;
 
-        uint32_t groupNum = gmmFinalizeRoutingQuantParams_.groupNum;
-        uint8_t groupListType = gmmFinalizeRoutingQuantParams_.groupListType;
-        int32_t n = matmulTiling_.N;
-        int32_t k = matmulTiling_.Ka;
-        constexpr bool isTransB = BlockMmadBuilder::transB;
+        // Must use GmmKernelDeterministic's own GMMTiling type (different kernel instantiations have incompatible nested types)
+        using GMMTilingDeterministic = typename GmmKernelDeterministic::GMMTiling;
 
-        // NZ format: single group weight size
-        constexpr uint32_t WEIGHT_TILE_K_LARGE = 32U;
-        constexpr uint32_t WEIGHT_TILE_N_LARGE = 32U;
-        constexpr uint32_t WEIGHT_TILE_K_SMALL = 16U;
-        constexpr uint32_t WEIGHT_TILE_N_SMALL = 16U;
-        constexpr uint32_t WEIGHT_TILE_CAPACITY = 512U;
-        uint64_t singleGroupWeightNZ = 0;
-        if constexpr (BlockMmadBuilder::formatB == CubeFormat::NZ) {
-            if (isTransB) {
-                singleGroupWeightNZ = CeilDiv(static_cast<uint64_t>(k), WEIGHT_TILE_K_LARGE)
-                                    * CeilDiv(static_cast<uint64_t>(n), WEIGHT_TILE_N_SMALL)
-                                    * WEIGHT_TILE_CAPACITY;
-            } else {
-                singleGroupWeightNZ = CeilDiv(static_cast<uint64_t>(n), WEIGHT_TILE_N_LARGE)
-                                    * CeilDiv(static_cast<uint64_t>(k), WEIGHT_TILE_K_SMALL)
-                                    * WEIGHT_TILE_CAPACITY;
-            }
-        }
+        GMMTilingDeterministic gmmParamsDeter{gmmFinalizeRoutingQuantParams_.groupNum,
+                                              gmmFinalizeRoutingQuantParams_.groupListType,
+                                              matmulTiling_.baseM,
+                                              matmulTiling_.baseN,
+                                              matmulTiling_.baseK,
+                                              gmmFinalizeRoutingQuantParams_.hasBias};
 
-        // Prepare global tensors
-        GlobalTensor<rowIndexType> rowIndexGm;
-        rowIndexGm.SetGlobalBuffer(reinterpret_cast<__gm__ rowIndexType*>(row_index));
-        GlobalTensor<int64_t> groupListFullGm;
-        groupListFullGm.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t*>(group_list));
+        gmmParamsDeter.matmulTiling = &matmulTiling_;
+
+        ParamsDeterministic params = {
+            {1, 1, 1, 1},
+            {x, w, deterBuffer, bias, group_list},              // BlockMmad: c -> workspace
+            {share_input, y,                                     // Prologue: zeros + residual -> yGm
+             gmmFinalizeRoutingQuantParams_.sharedInputOffset,
+             gmmFinalizeRoutingQuantParams_.sharedInputLen, matmulTiling_.N,
+             gmmFinalizeRoutingQuantParams_.batch,
+             gmmFinalizeRoutingQuantParams_.residualScale},
+            {deterBuffer, w_scale, x_scale, bias, logit, row_index,  // Epilogue: dequant -> workspace
+             matmulTiling_.baseM, matmulTiling_.baseN},
+            gmmParamsDeter};
+
+        GmmKernelDeterministic gmm;
+        gmm(params);
+
+        // Aggregation: workspace -> yGm via rowIndex mapping + AtomicAdd
         GlobalTensor<float> deterBufferGm;
         deterBufferGm.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(deterBuffer));
         GlobalTensor<float> yGm;
         yGm.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(y));
+        GlobalTensor<rowIndexType> rowIndexGm;
+        rowIndexGm.SetGlobalBuffer(reinterpret_cast<__gm__ rowIndexType*>(row_index));
 
         TQueBind<TPosition::VECIN, TPosition::VECOUT, 1> queBind;
         TPipe deterPipe;
-        if ASCEND_IS_AIV {
-            deterPipe.InitBuffer(queBind, BUFFER_NUM, DETER_UB_SIZE);
-        }
+        deterPipe.InitBuffer(queBind, BUFFER_NUM, DETER_UB_SIZE);
 
-        uint64_t nTimes = Ceil(n, DETER_UB_SIZE / sizeof(float));
-        uint64_t baseN = Ceil(Ceil(n, nTimes), 128) * 128;
+        uint32_t coreNumVec = matmulTiling_.usedCoreNum * GetTaskRation();
+        uint64_t nTimes = Ceil(matmulTiling_.N, DETER_UB_SIZE / sizeof(float));
+        uint64_t baseN = Ceil(Ceil(matmulTiling_.N, nTimes), 128) * 128;
 
-        using GMMTilingDeterministic = typename GmmKernelDeterministic::GMMTiling;
+        // totalM = total input rows across all groups
+        uint64_t totalM = static_cast<uint64_t>(matmulTiling_.M);
 
-        uint64_t globalRowOffset = 0;
-        uint64_t xRowOffset = 0;
-        uint64_t wGroupOffset = 0;
-        bool isFirstGroup = true;
+        GMMFRDeterministic::SyncConfig syncConfig{};
+        syncConfig.curM = totalM;
+        syncConfig.lowBoundM = totalM;
+        syncConfig.windowSize = totalM;
+        syncConfig.baseN = baseN;
 
-        // Per-group loop: each group processed as a separate kernel invocation (groupNum=1)
-        for (uint32_t gi = 0; gi < groupNum; gi++) {
-            // Get this group's M from groupList
-            int32_t groupM = 0;
-            int32_t preOffsetInit = 0;
-            if (groupListType == 1) {
-                groupM = static_cast<int32_t>(groupListFullGm.GetValue(gi));
-            } else {
-                // cumulative mode
-                int32_t val = static_cast<int32_t>(groupListFullGm.GetValue(gi));
-                if (gi == 0) {
-                    groupM = val;
-                } else {
-                    int32_t prev = static_cast<int32_t>(groupListFullGm.GetValue(gi - 1));
-                    groupM = val - prev;
-                    preOffsetInit = prev;
-                }
-            }
-
-            // Skip groups with M=0 but maintain SyncAll count
-            if (groupM == 0) {
-                if (singleGroupWeightNZ > 0) {
-                    wGroupOffset += singleGroupWeightNZ;
-                } else {
-                    wGroupOffset += static_cast<uint64_t>(n) * k;
-                }
-                SyncAll();
-                GMMFRDeterministic::SyncConfig emptyConfig{};
-                emptyConfig.curM = 0;
-                emptyConfig.baseN = baseN;
-                GMMFRDeterministic::FRDeterministicA5<float, rowIndexType>(
-                    emptyConfig, deterBufferGm, yGm, rowIndexGm, queBind,
-                    matmulTiling_.usedCoreNum, static_cast<uint32_t>(n), globalRowOffset);
-                continue;
-            }
-
-            // Per-group matmulTiling: override M to this group's M
-            TCubeTiling singleGroupTiling = matmulTiling_;
-            singleGroupTiling.M = static_cast<uint64_t>(groupM);
-
-            GMMTilingDeterministic gmmParamsSingle{1, groupListType,
-                                                   matmulTiling_.baseM, matmulTiling_.baseN, matmulTiling_.baseK,
-                                                   gmmFinalizeRoutingQuantParams_.hasBias};
-            gmmParamsSingle.matmulTiling = &singleGroupTiling;
-            gmmParamsSingle.preOffsetInit = preOffsetInit;
-
-            // Per-group addresses
-            GM_ADDR xGroup = x + xRowOffset * k;
-            GM_ADDR wGroup = w + wGroupOffset;
-            GM_ADDR biasGroup = bias + static_cast<uint64_t>(gi) * n * sizeof(bfloat16_t);
-            GM_ADDR groupListSingle = group_list + gi * sizeof(int64_t);
-            GM_ADDR wScaleGroup = w_scale + static_cast<uint64_t>(gi) * n * sizeof(float);
-            GM_ADDR xScaleGroup = x_scale + xRowOffset * sizeof(float);
-            GM_ADDR logitGroup = logit + xRowOffset * sizeof(float);
-
-            uint32_t prologueBatch = isFirstGroup ? gmmFinalizeRoutingQuantParams_.batch : 0;
-            uint32_t prologueSharedInputOffset = isFirstGroup ? gmmFinalizeRoutingQuantParams_.sharedInputOffset : 0;
-            uint32_t prologueSharedInputLen = isFirstGroup ? gmmFinalizeRoutingQuantParams_.sharedInputLen : 0;
-
-            ParamsDeterministic singleParams = {
-                {1, 1, 1, 1},
-                {xGroup, wGroup, deterBuffer, biasGroup, groupListSingle},
-                {share_input, y,
-                 prologueSharedInputOffset,
-                 prologueSharedInputLen, n,
-                 prologueBatch,
-                 gmmFinalizeRoutingQuantParams_.residualScale},
-                {deterBuffer, wScaleGroup, xScaleGroup, biasGroup, logitGroup, row_index,
-                 matmulTiling_.baseM, matmulTiling_.baseN},
-                gmmParamsSingle};
-
-            GmmKernelDeterministic gmm;
-            gmm(singleParams);
-            SyncAll();
-
-            // Aggregate this group's workspace data -> yGm
-            GMMFRDeterministic::SyncConfig syncConfig{};
-            syncConfig.curM = static_cast<uint64_t>(groupM);
-            syncConfig.baseN = baseN;
-
-            GMMFRDeterministic::FRDeterministicA5<float, rowIndexType>(
-                syncConfig, deterBufferGm, yGm, rowIndexGm, queBind,
-                matmulTiling_.usedCoreNum, static_cast<uint32_t>(n), globalRowOffset);
-
-            // Update offsets
-            globalRowOffset += static_cast<uint64_t>(groupM);
-            xRowOffset += static_cast<uint64_t>(groupM);
-            if (singleGroupWeightNZ > 0) {
-                wGroupOffset += singleGroupWeightNZ;
-            } else {
-                wGroupOffset += static_cast<uint64_t>(n) * k;
-            }
-            isFirstGroup = false;
-        }
+        GMMFRDeterministic::FRDeterministicA5<float, rowIndexType>(
+            syncConfig, deterBufferGm, yGm, rowIndexGm, queBind,
+            matmulTiling_.usedCoreNum, static_cast<uint32_t>(matmulTiling_.N));
 
     } else {
         // Non-deterministic mode
