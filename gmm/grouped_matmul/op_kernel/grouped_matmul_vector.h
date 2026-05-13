@@ -49,12 +49,15 @@ __aicore__ inline void EmptyTensorCompute(GM_ADDR groupListPtr, GM_ADDR y, const
     if (coreRation > 1) {
         coreIdx /= coreRation;
     }
-
-    for (uint32_t groupIdx = 0; groupIdx < gmmBaseParams->groupNum; ++groupIdx) {
+    // 2: groupList shape: [e, 2]; 1: groupList shape: [e]
+    uint32_t groupListInnerShape = gmmBaseParams->groupListType == GROUP_LIST_TYPE_SPARSE ? 2 : 1;
+    uint32_t groupListShapeSize = gmmBaseParams->groupNum * groupListInnerShape;
+    for (uint32_t groupIdx = 0; groupIdx < groupListShapeSize; groupIdx += groupListInnerShape) {
         int32_t splitValue = GetSplitValueFromGroupList(groupIdx, preOffset, gmmBaseParams, groupListGm);
-        uint32_t m = isAllSingleTensor && gmmBaseParams->groupType == 2 ? *ubM : *(ubM + groupIdx);
-        uint32_t k = *ubK < 0 && gmmBaseParams->groupType == 2 ? splitValue : *(ubK + groupIdx);
-        uint32_t n = isAllSingleTensor ? *ubN : *(ubN + groupIdx);
+        uint32_t m = isAllSingleTensor && gmmBaseParams->groupType == 2 ?
+            *ubM : *(ubM + groupIdx / groupListInnerShape);
+        uint32_t k = *ubK < 0 && gmmBaseParams->groupType == 2 ? splitValue : *(ubK + groupIdx / groupListInnerShape);
+        uint32_t n = isAllSingleTensor ? *ubN : *(ubN + groupIdx / groupListInnerShape);
 
         if (k == 0) {
             uint32_t singleM = Ceil(m, gmmBaseParams->coreNum);
