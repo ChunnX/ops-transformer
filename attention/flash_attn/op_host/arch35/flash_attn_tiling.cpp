@@ -15,6 +15,7 @@
 
 #include "flash_attn_tiling.h"
 #include "../flash_attn_tiling.h"
+#include "../fa_adjust_sinner_souter.h"
 #include <map>
 #include <vector>
 #include <numeric>
@@ -167,57 +168,6 @@ void FlashAttnTilingImpl::InitImplParam()
     // }
 }
 
-void FlashAttnTilingImpl::AdjustSinnerAndSouter()
-{
-    uint32_t softmaxSOuterFactor = optiling::arch35FA::SOUTER_64;
-    sOuterFactor_ = optiling::arch35FA::SOUTER_64;
-    sInnerFactor_ = optiling::arch35FA::SINNER_128;
-
-    // if (faInfo_->vHeadDim <= optiling::arch35FA::DSIZE_128 && faInfo_->mlaMode != MlaMode::ROPE_COMBINE_D128) {
-    if (faInfo_->vHeadDim <= optiling::arch35FA::DSIZE_128) {
-        // bool checkDtype = faInfo_->quantMode == FaQuantMode::NO_QUANT;
-        bool checkQueryAndValueS =
-            faInfo_->s1Size <= optiling::arch35FA::SOUTER_64 && faInfo_->s2Size > optiling::arch35FA::SINNER_128;
-        int64_t maskMode = faInfo_->maskMode;
-        int64_t winLefts = faInfo_->winLeft;
-        int64_t winRights = faInfo_->winRight;
-        if (maskMode == 0) {
-            winLefts = (winLefts > 0) ? 0 : winLefts;
-        } else if (maskMode == 4) {
-            winRights = (winRights > 0) ? 0 : winRights;
-        }
-        bool checkmaskMode = (maskMode != 2 && winLefts + winRights > 128);
-        // if (checkDtype && checkQueryAndValueS && checkmaskMode && faInfo_->mlaMode != MlaMode::ROPE_SPLIT_D128) {
-        if (checkQueryAndValueS && checkmaskMode) {
-            sOuterFactor_ = optiling::arch35FA::SOUTER_32;
-            sInnerFactor_ = optiling::arch35FA::SINNER_256;
-            softmaxSOuterFactor = optiling::arch35FA::SOUTER_32;
-        } else if ((faInfo_->qLayout == FaLayout::BSND) || (faInfo_->qLayout == FaLayout::TND)) {
-            sOuterFactor_ = optiling::arch35FA::SOUTER_32;
-            sInnerFactor_ = optiling::arch35FA::SINNER_256;
-        }
-        // } else if (faInfo_->vHeadDim > optiling::arch35FA::DSIZE_128 && faInfo_->mlaMode != MlaMode::ROPE_SPLIT_D512
-        // && faInfo_->s1Size != 1) {
-    } else if (faInfo_->vHeadDim > optiling::arch35FA::DSIZE_128 && faInfo_->s1Size != 1) {
-        if (((faInfo_->qLayout == FaLayout::BSND) || (faInfo_->qLayout == FaLayout::TND)) &&
-            faInfo_->vHeadDim <= optiling::arch35FA::DSIZE_256) { // 256 : D size
-            sOuterFactor_ = optiling::arch35FA::SOUTER_32;
-            sInnerFactor_ = optiling::arch35FA::SINNER_256;
-        } else {
-            sOuterFactor_ = optiling::arch35FA::SOUTER_64;
-            sInnerFactor_ = optiling::arch35FA::SINNER_128;
-        }
-        softmaxSOuterFactor = optiling::arch35FA::SOUTER_32;
-    } else if (faInfo_->s1Size == 1 && faInfo_->vHeadDim > optiling::arch35FA::DSIZE_128) { // IFA VD > 128
-        sOuterFactor_ = optiling::arch35FA::SOUTER_64;
-        sInnerFactor_ = optiling::arch35FA::SINNER_128;
-        softmaxSOuterFactor = optiling::arch35FA::SOUTER_64;
-    }
-
-    OP_LOGI(faInfo_->opName, "Souter:%u SInner:%u softmaxSOuterFactor %u", sOuterFactor_, sInnerFactor_,
-            softmaxSOuterFactor);
-}
-
 void FlashAttnTilingImpl::GetWinLeftsRightUp(int64_t cuSeqLength, int64_t cuSeqLengthKV, int64_t &winLeftsLeftUp,
                                              int64_t &winRightsLeftUp)
 {
@@ -297,7 +247,17 @@ void FlashAttnTilingImpl::SplitOutSeq()
 
 void FlashAttnTilingImpl::SplitPolicy()
 {
-    AdjustSinnerAndSouter(); // 确定tiling切块
+    int64_t winLefts = faInfo_->winLeft;
+    int64_t winRights = faInfo_->winRight;
+    if (faInfo_->maskMode == 0 || faInfo_->maskMode == 3) {
+        winLefts = MASK_MODE_INT_MAX;
+        winRights = MASK_MODE_INT_MAX;
+    }
+    uint32_t qLayout = static_cast<uint32_t>(faInfo_->qLayout);
+    fa_tiling_util::AdjustSinnerAndSouter(
+        static_cast<uint32_t>(faInfo_->vHeadDim), static_cast<uint32_t>(faInfo_->s1Size), faInfo_->s2Size,
+        static_cast<int32_t>(faInfo_->maskMode), winLefts, winRights, qLayout, sOuterFactor_, sInnerFactor_);
+    OP_LOGI(faInfo_->opName, "Souter:%u SInner:%u", sOuterFactor_, sInnerFactor_);
 
     enableS1OutSplit = CheckS1OutSplit();
     if (false) {
@@ -663,6 +623,10 @@ void FlashAttnTilingImpl::SetFATilingData()
 
     tilingData_.baseTiling.flashAttnAttenMaskParams.winLefts = faInfo_->winLeft;
     tilingData_.baseTiling.flashAttnAttenMaskParams.winRights = faInfo_->winRight;
+    if (faInfo_->maskMode == 0 || faInfo_->maskMode == 3) {
+        tilingData_.baseTiling.flashAttnAttenMaskParams.winLefts = MASK_MODE_INT_MAX;
+        tilingData_.baseTiling.flashAttnAttenMaskParams.winRights = MASK_MODE_INT_MAX;
+    }
 
     // tilingData_.baseTiling.flashAttnLeftPaddingParams.isQHasLeftPadding = faInfo_->qPaddingSizeFlag;  // TODO
     // 是否有用，faInfo中已删除 tilingData_.baseTiling.flashAttnLeftPaddingParams.isKVHasLeftPadding =
