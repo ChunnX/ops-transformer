@@ -781,7 +781,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
     sharedParams.oriWinRight = 0;
     sharedParams.layoutType = sparseAttnSharedkvBaseParams.outputLayout;
     sharedParams.dSizeRope = 64;
-    sharedParams.softmaxScale = 0.0416666666666667;
+    sharedParams.softmaxScale = sparseAttnSharedkvBaseParams.scaleValue;
     sharedParams.dSize = 512;
     sharedParams.dSizeVInput = 512;
     sharedParams.usedCoreNum = this->tilingData->singleCoreParams.usedCoreNum;
