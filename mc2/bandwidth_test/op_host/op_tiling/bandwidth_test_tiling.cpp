@@ -51,7 +51,7 @@
 #include "register/tilingdata_base.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "tiling/tiling_api.h"
-#include "op_host/tiling_templates_registry.h"
+#include "tiling_base/tiling_templates_registry.h"
 
 using namespace BandwidthTestTiling;
 using namespace AscendC;
@@ -60,19 +60,17 @@ using namespace ge;
 namespace optiling {
 
 // ============ 输入输出索引常量 ============
-constexpr uint32_t INPUT_CONTEXT_INDEX = 0U;       // 输入context的索引
-constexpr uint32_t INPUT_X_INDEX = 1U;              // 输入x的索引
-constexpr uint32_t INPUT_DST_RANK_ID_INDEX = 2U;    // 输入dstrank_id的索引
-constexpr uint32_t OUTPUT_Y_INDEX = 0U;             // 输出y的索引
-constexpr uint32_t OUTPUT_RECEIVE_CNT_INDEX = 1U;   // 输出receive_cnt的索引
+constexpr uint32_t INPUT_X_INDEX = 0U;          // 输入x的索引
+constexpr uint32_t INPUT_EXPERT_ID_INDEX = 1U;  // 输入expert_id的索引
+constexpr uint32_t OUTPUT_Y_INDEX = 0U;         // 输出y的索引
+constexpr uint32_t OUTPUT_RECEIVE_CNT_INDEX = 1U; // 输出receive_cnt的索引
 
 // ============ 属性索引常量 ============
-constexpr uint32_t ATTR_GROUP_INDEX = 0U;           // 通信组名称
-constexpr uint32_t ATTR_WORLD_SIZE_INDEX = 1U;      // 世界大小
-constexpr uint32_t ATTR_CCL_BUFFER_SIZE_INDEX = 2U; // CCL缓冲区大小
-constexpr uint32_t ATTR_MAX_BS_INDEX = 3U;          // 最大batch size
-constexpr uint32_t ATTR_MODE_INDEX = 4U;            // 执行模式
-constexpr uint32_t ATTR_COMM_ALG_INDEX = 5U;        // 通信算法类型
+constexpr uint32_t ATTR_GROUP_INDEX = 0U;      // 通信组名称
+constexpr uint32_t ATTR_WORLD_SIZE_INDEX = 1U; // 世界大小
+constexpr uint32_t ATTR_RANK_ID_INDEX = 2U;    // 当前rank ID
+constexpr uint32_t ATTR_MAX_BS_INDEX = 3U;     // 最大batch size
+constexpr uint32_t ATTR_MODE_INDEX = 4U;       // 执行模式
 
 // ============ 其他常量 ============
 constexpr uint32_t TWO_DIMS = 2U;
@@ -85,6 +83,7 @@ constexpr uint32_t WORKSPACE_ELEMENT_OFFSET = 512UL;
 // ============ 参数范围约束 ============
 const size_t MAX_GROUP_NAME_LENGTH = 128UL;
 const int64_t MIN_WORLD_SIZE = 1;
+const int64_t MAX_WORLD_SIZE = 384;
 const int64_t MAX_BS = 512;
 const int64_t MIN_DATA_SIZE = 1024;
 const int64_t MAX_DATA_SIZE = 8192;
@@ -97,10 +96,9 @@ static void PrintTilingDataInfo(const char *nodeName, BandwidthTestTilingData &t
 {
     OP_LOGD(nodeName, "data_size is %d.", tilingData.data_size);
     OP_LOGD(nodeName, "world_size is %d.", tilingData.world_size);
-    OP_LOGD(nodeName, "ccl_buffer_size is %d.", tilingData.ccl_buffer_size);
+    OP_LOGD(nodeName, "rank_id is %d.", tilingData.rank_id);
     OP_LOGD(nodeName, "max_bs is %d.", tilingData.max_bs);
     OP_LOGD(nodeName, "mode is %d.", tilingData.mode);
-    OP_LOGD(nodeName, "comm_alg is %d.", tilingData.comm_alg);
     OP_LOGD(nodeName, "aiv_num is %d.", tilingData.aiv_num);
     OP_LOGD(nodeName, "total_ub_size is %lu.", tilingData.total_ub_size);
     OP_LOGD(nodeName, "total_win_size is %lu.", tilingData.total_win_size);
@@ -112,23 +110,20 @@ static ge::graphStatus CheckAttrPointersNotNull(gert::TilingContext *context, co
     auto attrs = context->GetAttrs();
     auto groupPtr = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_GROUP_INDEX));
     auto worldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_WORLD_SIZE_INDEX);
-    auto cclBufferSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_CCL_BUFFER_SIZE_INDEX);
+    auto rankIdPtr = attrs->GetAttrPointer<int64_t>(ATTR_RANK_ID_INDEX);
     auto maxBsPtr = attrs->GetAttrPointer<int64_t>(ATTR_MAX_BS_INDEX);
     auto modePtr = attrs->GetAttrPointer<int64_t>(ATTR_MODE_INDEX);
-    auto commAlgPtr = attrs->GetAttrPointer<int64_t>(ATTR_COMM_ALG_INDEX);
 
     OP_TILING_CHECK(groupPtr == nullptr,
         OP_LOGE(nodeName, "groupPtr is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(worldSizePtr == nullptr,
         OP_LOGE(nodeName, "worldSizePtr is null."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(cclBufferSizePtr == nullptr,
-        OP_LOGE(nodeName, "cclBufferSizePtr is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(rankIdPtr == nullptr,
+        OP_LOGE(nodeName, "rankIdPtr is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(maxBsPtr == nullptr,
         OP_LOGE(nodeName, "maxBsPtr is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(modePtr == nullptr,
         OP_LOGE(nodeName, "modePtr is null."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(commAlgPtr == nullptr,
-        OP_LOGE(nodeName, "commAlgPtr is null."), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -139,23 +134,22 @@ static ge::graphStatus CheckAttrValuesValid(gert::TilingContext *context, const 
     auto attrs = context->GetAttrs();
     auto groupPtr = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_GROUP_INDEX));
     auto worldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_WORLD_SIZE_INDEX);
-    auto cclBufferSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_CCL_BUFFER_SIZE_INDEX);
+    auto rankIdPtr = attrs->GetAttrPointer<int64_t>(ATTR_RANK_ID_INDEX);
     auto maxBsPtr = attrs->GetAttrPointer<int64_t>(ATTR_MAX_BS_INDEX);
     auto modePtr = attrs->GetAttrPointer<int64_t>(ATTR_MODE_INDEX);
-    auto commAlgPtr = attrs->GetAttrPointer<int64_t>(ATTR_COMM_ALG_INDEX);
 
     OP_TILING_CHECK((strnlen(groupPtr, MAX_GROUP_NAME_LENGTH) == 0) ||
         (strnlen(groupPtr, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH),
         OP_LOGE(nodeName, "group name is invalid, length should be in (0, %zu), but got length=%zu.",
         MAX_GROUP_NAME_LENGTH, strnlen(groupPtr, MAX_GROUP_NAME_LENGTH)), return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK((*worldSizePtr < 1),
-        OP_LOGE(nodeName, "worldSize should be > 0, but got worldSize=%ld.",
-        MIN_WORLD_SIZE, *worldSizePtr), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((*worldSizePtr < MIN_WORLD_SIZE) || (*worldSizePtr > MAX_WORLD_SIZE),
+        OP_LOGE(nodeName, "worldSize is invalid, only support [%ld, %ld], but got worldSize=%ld.",
+        MIN_WORLD_SIZE, MAX_WORLD_SIZE, *worldSizePtr), return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK((*cclBufferSizePtr <= 0),
-        OP_LOGE(nodeName, "cclBufferSize is invalid, should be > 0, but got cclBufferSize=%ld.",
-        *cclBufferSizePtr), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((*rankIdPtr < 0) || (*rankIdPtr >= *worldSizePtr),
+        OP_LOGE(nodeName, "rankId is invalid, only support [0, %ld), but got rankId=%ld.",
+        *worldSizePtr, *rankIdPtr), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK((*maxBsPtr <= 0) || (*maxBsPtr > MAX_BS),
         OP_LOGE(nodeName, "maxBs is invalid, only support (0, %ld], but got maxBs=%ld.",
@@ -164,10 +158,6 @@ static ge::graphStatus CheckAttrValuesValid(gert::TilingContext *context, const 
     OP_TILING_CHECK((*modePtr < 0) || (*modePtr > 1),
         OP_LOGE(nodeName, "mode is invalid, should be 0 or 1, but got mode=%ld.",
         *modePtr), return ge::GRAPH_FAILED);
-
-    OP_TILING_CHECK((*commAlgPtr < 0),
-        OP_LOGE(nodeName, "commAlg is invalid, should be >= 0, but got commAlg=%ld.",
-        *commAlgPtr), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -188,43 +178,30 @@ static ge::graphStatus GetAttrAndSetTilingData(gert::TilingContext *context, con
 
     auto groupPtr = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_GROUP_INDEX));
     auto worldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_WORLD_SIZE_INDEX);
-    auto cclBufferSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_CCL_BUFFER_SIZE_INDEX);
+    auto rankIdPtr = attrs->GetAttrPointer<int64_t>(ATTR_RANK_ID_INDEX);
     auto maxBsPtr = attrs->GetAttrPointer<int64_t>(ATTR_MAX_BS_INDEX);
     auto modePtr = attrs->GetAttrPointer<int64_t>(ATTR_MODE_INDEX);
-    auto commAlgPtr = attrs->GetAttrPointer<int64_t>(ATTR_COMM_ALG_INDEX);
 
     group = std::string(groupPtr);
     tilingData.world_size = static_cast<int32_t>(*worldSizePtr);
-    tilingData.ccl_buffer_size = static_cast<int32_t>(*cclBufferSizePtr);
+    tilingData.rank_id = static_cast<int32_t>(*rankIdPtr);
     tilingData.max_bs = static_cast<int32_t>(*maxBsPtr);
     tilingData.mode = static_cast<int32_t>(*modePtr);
-    tilingData.comm_alg = static_cast<int32_t>(*commAlgPtr);
 
     OP_LOGD(nodeName, "group = %s", groupPtr);
     OP_LOGD(nodeName, "worldSize = %ld", *worldSizePtr);
-    OP_LOGD(nodeName, "cclBufferSize = %ld", *cclBufferSizePtr);
+    OP_LOGD(nodeName, "rankId = %ld", *rankIdPtr);
     OP_LOGD(nodeName, "maxBs = %ld", *maxBsPtr);
     OP_LOGD(nodeName, "mode = %ld", *modePtr);
-    OP_LOGD(nodeName, "commAlg = %ld", *commAlgPtr);
 
     return ge::GRAPH_SUCCESS;
 }
 
 // 校验输入tensor shape
-// context: [world_size], x: [bs, data_size], dstrank_id: [bs]
+// x: [bs, data_size], expert_id: [bs]
 static ge::graphStatus CheckInputTensorShape(gert::TilingContext *context, const char *nodeName,
     BandwidthTestTilingData &tilingData)
 {
-    const gert::StorageShape *contextStorageShape = context->GetInputShape(INPUT_CONTEXT_INDEX);
-    OP_TILING_CHECK(contextStorageShape == nullptr,
-        OP_LOGE(nodeName, "contextStorageShape is nullptr."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(contextStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-        OP_LOGE(nodeName, "context dims is invalid, should be 1, but got %zu.",
-        contextStorageShape->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
-
-    const int64_t contextDim0 = contextStorageShape->GetStorageShape().GetDim(0);
-    OP_LOGD(nodeName, "context dim0 = %ld", contextDim0);
-
     const gert::StorageShape *xStorageShape = context->GetInputShape(INPUT_X_INDEX);
     OP_TILING_CHECK(xStorageShape == nullptr,
         OP_LOGE(nodeName, "xStorageShape is nullptr."), return ge::GRAPH_FAILED);
@@ -245,17 +222,17 @@ static ge::graphStatus CheckInputTensorShape(gert::TilingContext *context, const
     tilingData.max_bs = static_cast<int32_t>(xDim0);
     tilingData.data_size = static_cast<int32_t>(xDim1);
 
-    const gert::StorageShape *dstRankIdStorageShape = context->GetInputShape(INPUT_DST_RANK_ID_INDEX);
-    OP_TILING_CHECK(dstRankIdStorageShape == nullptr,
-        OP_LOGE(nodeName, "dstRankIdStorageShape is nullptr."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(dstRankIdStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
-        OP_LOGE(nodeName, "dstrank_id dims is invalid, should be 1, but got %zu.",
-        dstRankIdStorageShape->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
+    const gert::StorageShape *expertIdStorageShape = context->GetInputShape(INPUT_EXPERT_ID_INDEX);
+    OP_TILING_CHECK(expertIdStorageShape == nullptr,
+        OP_LOGE(nodeName, "expertIdStorageShape is nullptr."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(expertIdStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
+        OP_LOGE(nodeName, "expert_id dims is invalid, should be 1, but got %zu.",
+        expertIdStorageShape->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
 
-    const int64_t dstRankIdDim0 = dstRankIdStorageShape->GetStorageShape().GetDim(0);
-    OP_TILING_CHECK(dstRankIdDim0 != xDim0,
-        OP_LOGE(nodeName, "dstrank_id dim0 should equal to x dim0, but got dstrank_id dim0=%ld, x dim0=%ld.",
-        dstRankIdDim0, xDim0), return ge::GRAPH_FAILED);
+    const int64_t expertIdDim0 = expertIdStorageShape->GetStorageShape().GetDim(0);
+    OP_TILING_CHECK(expertIdDim0 != xDim0,
+        OP_LOGE(nodeName, "expert_id dim0 should equal to x dim0, but got expert_id dim0=%ld, x dim0=%ld.",
+        expertIdDim0, xDim0), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
