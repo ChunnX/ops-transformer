@@ -24,20 +24,23 @@
 #include <cstdint>
 #include <vector>
 
-#include "mc2_hcom_topo_info.h"
-#include "op_host/op_tiling/matmul_formulaic_tiling.h"
-#include "graph/utils/type_utils.h"
-#include "register/op_def_registry.h"
-#include "mc2_log.h"
-#include "op_host/op_tiling/new_mc2_tiling_utils.h"
 #include "all_gather_matmul_tiling_v2.h"
 #include "all_gather_fit_balance_tiling.h"
+#include "graph/utils/type_utils.h"
+#include "mc2_hcom_topo_info.h"
+#include "mc2_comm_utils.h"
+#include "mc2_log.h"
+#include "op_host/op_tiling/matmul_formulaic_tiling.h"
+#include "op_host/op_tiling/new_mc2_tiling_utils.h"
+#include "register/op_def_registry.h"
 
 using namespace Mc2Log;
 using namespace AscendC;
 using namespace Mc2Tiling;
 
 namespace optiling {
+constexpr uint64_t COMMMODE_INDEX = 11;
+
 bool AllGatherMatmulTilingV2::IsCapable()
 {
     if ((npuArch_ == NpuArch::DAV_3510) && inputIsBf16Fp16_) {
@@ -204,6 +207,11 @@ ge::graphStatus AllGatherMatmulTilingV2::SetMc2Hcomm(Mc2Tiling::RCSTiling& rcsCf
         algConfig, 0,
         static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType)),
         static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType)));
+    // Set hccl comm engine with environment variable
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
+    }
     uint8_t skipBufferWindowCopy = (allGatherMatmulTilingDataV2_->param.gatherLen == 0) ?
         static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_DEFAULT) :
         static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_OUTPUT);
