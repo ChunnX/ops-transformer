@@ -241,7 +241,7 @@ __global__ __aicore__ void matmul_all_reduce(
     TPipe tPipe;
 
     if constexpr (APT_MM_TYPE == MMTYPE_FP_NULL_TENSOR || APT_MM_TYPE == MMTYPE_WEIQUANT_NULL_TENSOR) {
-        INVOKE_MC2_EMPTY_TENSOR_OP_IMPL();
+        INVOKE_MC2_EMPTY_TENSOR_OP_IMPL(APT_COMM_MODE);
     } else if constexpr (APT_MM_TYPE == MMTYPE_FP_MM) {
         fp_matmul_all_reduce<APT_PARAMS_FP_MM, APT_A2A_RS_AG, APT_COMM_MODE>(
             aGM, bGM, biasGM, addGM, antiquantScaleGM, antiquantOffsetGM, dequantGM, pertokenGM,

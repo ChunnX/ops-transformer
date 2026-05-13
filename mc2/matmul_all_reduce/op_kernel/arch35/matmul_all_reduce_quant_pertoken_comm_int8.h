@@ -186,30 +186,30 @@ __aicore__ inline void MatmulAllReduceQuantPertokenCommInt8<xType, WType, YType,
         uint32_t numN = (mc2Tiling.tileCnt + mc2Tiling.tailCnt) / NUM_TWO_PERTOKEN;
         uint32_t numReN = (mc2Tiling.tileCnt + mc2Tiling.tailCnt) % NUM_TWO_PERTOKEN;
         for (uint32_t i = 0U; i < numN; ++i) { // 按总核数下发
-            reduceScatterHandleId_[nowReduceScatterIdx] = hccl_.ReduceScatter<false>(
+            reduceScatterHandleId_[nowReduceScatterIdx] = hccl_.template ReduceScatter<false>(
                 reduceScatterSendGM_[nowReduceScatterIdx], reduceScatterRecvGM_[nowReduceScatterIdx],
                 SendCountCheck(nowReduceScatterIdx), AscendC::HCCL_DATA_TYPE_INT8, HcclReduceOp::HCCL_REDUCE_SUM, 0, 1);
             nowReduceScatterIdx++;
-            reduceScatterHandleId_[nowReduceScatterIdx] = hccl_.ReduceScatter<false>(
+            reduceScatterHandleId_[nowReduceScatterIdx] = hccl_.template ReduceScatter<false>(
                 reduceScatterSendGM_[nowReduceScatterIdx], reduceScatterRecvGM_[nowReduceScatterIdx],
                 SendCountCheck(nowReduceScatterIdx), AscendC::HCCL_DATA_TYPE_INT8, HcclReduceOp::HCCL_REDUCE_SUM, 0, 1);
             nowReduceScatterIdx++;
-            allGatherHandleId_[nowAllGatherIdx] = hccl_.AllGather<false>(
+            allGatherHandleId_[nowAllGatherIdx] = hccl_.template AllGather<false>(
                 allGatherSendGM_[nowAllGatherIdx], allGatherRecvGM_[nowAllGatherIdx], SendCountCheck(nowAllGatherIdx),
                 AscendC::HCCL_DATA_TYPE_INT8, 0);
             nowAllGatherIdx++;
-            allGatherHandleId_[nowAllGatherIdx] = hccl_.AllGather<false>(
+            allGatherHandleId_[nowAllGatherIdx] = hccl_.template AllGather<false>(
                 allGatherSendGM_[nowAllGatherIdx], allGatherRecvGM_[nowAllGatherIdx], SendCountCheck(nowAllGatherIdx),
                 AscendC::HCCL_DATA_TYPE_INT8, 0);
             nowAllGatherIdx++;
         }
 
         if (numReN != 0U) { // 余数下发
-            reduceScatterHandleId_[nowReduceScatterIdx] = hccl_.ReduceScatter<false>(
+            reduceScatterHandleId_[nowReduceScatterIdx] = hccl_.template ReduceScatter<false>(
                 reduceScatterSendGM_[nowReduceScatterIdx], reduceScatterRecvGM_[nowReduceScatterIdx],
                 SendCountCheck(nowReduceScatterIdx), AscendC::HCCL_DATA_TYPE_INT8, HcclReduceOp::HCCL_REDUCE_SUM, 0, 1);
             nowReduceScatterIdx++;
-            allGatherHandleId_[nowAllGatherIdx] = hccl_.AllGather<false>(
+            allGatherHandleId_[nowAllGatherIdx] = hccl_.template AllGather<false>(
                 allGatherSendGM_[nowAllGatherIdx], allGatherRecvGM_[nowAllGatherIdx], SendCountCheck(nowAllGatherIdx),
                 AscendC::HCCL_DATA_TYPE_INT8, 0);
             nowAllGatherIdx++;
@@ -252,13 +252,13 @@ __aicore__ inline void MatmulAllReduceQuantPertokenCommInt8<xType, WType, YType,
             }
             SyncAll();
             if (isTailFlag && (i == 0U)) {
-                MatmulAllReduceQuantMulCastCommInt8<YType>(
+                MatmulAllReduceQuantMulCastCommInt8<YType, commMode>(
                     reduceScatterOutGM_, commQuantScale1GM_, commQuantScale2GM_, allGatherInGM_, tilePadM_,
                     mmTiling->matmulTiling.N, tPipe_, hccl_);
                 reduceScatterOutGM_ += tilePadM_ * mmTiling->matmulTiling.N * sizeof(float);
                 allGatherInGM_ += tilePadM_ * mmTiling->matmulTiling.N * sizeof(int8_t);
             } else {
-                MatmulAllReduceQuantMulCastCommInt8<YType>(
+                MatmulAllReduceQuantMulCastCommInt8<YType, commMode>(
                     reduceScatterOutGM_, commQuantScale1GM_, commQuantScale2GM_, allGatherInGM_, padM,
                     mmTiling->matmulTiling.N, tPipe_, hccl_);
                 reduceScatterOutGM_ += padM * mmTiling->matmulTiling.N * sizeof(float);
@@ -306,7 +306,7 @@ __aicore__ inline void MatmulAllReduceQuantPertokenCommInt8<xType, WType, YType,
             padM = tailPadM_;
             lastN = tilingData_->tailmatmulTiling.matmulTiling.N;
         }
-        MatmulAllReduceQuantMulCastCommInt8<YType>(
+        MatmulAllReduceQuantMulCastCommInt8<YType, commMode>(
             reduceScatterOutGM_, commQuantScale1GM_, commQuantScale2GM_, allGatherInGM_, padM, lastN, tPipe_, hccl_);
         SyncAll();
         hccl_.Commit(allGatherHandleId_[reduceScatterWaitIdx_]);

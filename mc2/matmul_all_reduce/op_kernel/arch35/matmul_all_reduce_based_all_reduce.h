@@ -73,12 +73,12 @@ public:
         }
 
         if (notifyFlag_) {
-            tileInfo_.hcclHandleId = hccl_.AllReduce(
+            tileInfo_.hcclHandleId = hccl_.template AllReduce(
                 addrs_->cGM, addrs_->outputGM, tileInfo_.cOffset, HCCL_DATA_TYPE, AscendC::HCCL_REDUCE_SUM,
                 paramInTiling_->tileCnt);
             if (tailFlag_) {
                 const uint64_t offset = tileInfo_.cAddrOffset * paramInTiling_->tileCnt;
-                tailInfo_.hcclHandleId = hccl_.AllReduce(
+                tailInfo_.hcclHandleId = hccl_.template AllReduce(
                     addrs_->cGM + offset, addrs_->outputGM + offset, tailInfo_.cOffset, HCCL_DATA_TYPE,
                     AscendC::HCCL_REDUCE_SUM, paramInTiling_->tailCnt);
             }

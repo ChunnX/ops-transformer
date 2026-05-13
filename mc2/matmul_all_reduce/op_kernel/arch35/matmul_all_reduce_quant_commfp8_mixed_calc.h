@@ -227,26 +227,26 @@ __aicore__ inline void MatmulAllReduceCommFp8MixedCalc<XType, WType, YType, MmTy
         uint32_t numN = (mc2Tiling.tileCnt + mc2Tiling.tailCnt) / NUM_TWO_PERTILE_MIXED;
         uint32_t numReN = (mc2Tiling.tileCnt + mc2Tiling.tailCnt) % NUM_TWO_PERTILE_MIXED;
         for (uint32_t i = 0U; i < numN; i++) {
-            all2allHandleId_[nowAll2allIdx] = hccl_.AlltoAll<false>(
+            all2allHandleId_[nowAll2allIdx] = hccl_.template AlltoAll<false>(
                 all2allSendGM_[nowAll2allIdx], all2allRecvGM_[nowAll2allIdx], SendCountCheck(nowAll2allIdx), hcclType_);
             nowAll2allIdx++;
-            all2allHandleId_[nowAll2allIdx] = hccl_.AlltoAll<false>(
+            all2allHandleId_[nowAll2allIdx] = hccl_.template AlltoAll<false>(
                 all2allSendGM_[nowAll2allIdx], all2allRecvGM_[nowAll2allIdx], SendCountCheck(nowAll2allIdx), hcclType_);
             nowAll2allIdx++;
-            allGatherHandleId_[nowAllGatherIdx] = hccl_.AllGather<false>(
+            allGatherHandleId_[nowAllGatherIdx] = hccl_.template AllGather<false>(
                 allGatherSendGM_[nowAllGatherIdx], allGatherRecvGM_[nowAllGatherIdx], SendCountCheck(nowAllGatherIdx),
                 hcclType_, 0);
             nowAllGatherIdx++;
-            allGatherHandleId_[nowAllGatherIdx] = hccl_.AllGather<false>(
+            allGatherHandleId_[nowAllGatherIdx] = hccl_.template AllGather<false>(
                 allGatherSendGM_[nowAllGatherIdx], allGatherRecvGM_[nowAllGatherIdx], SendCountCheck(nowAllGatherIdx),
                 hcclType_, 0);
             nowAllGatherIdx++;
         }
         if (numReN != 0U) {
-            all2allHandleId_[nowAll2allIdx] = hccl_.AlltoAll<false>(
+            all2allHandleId_[nowAll2allIdx] = hccl_.template AlltoAll<false>(
                 all2allSendGM_[nowAll2allIdx], all2allRecvGM_[nowAll2allIdx], SendCountCheck(nowAll2allIdx), hcclType_);
             nowAll2allIdx++;
-            allGatherHandleId_[nowAllGatherIdx] = hccl_.AllGather<false>(
+            allGatherHandleId_[nowAllGatherIdx] = hccl_.template AllGather<false>(
                 allGatherSendGM_[nowAllGatherIdx], allGatherRecvGM_[nowAllGatherIdx], SendCountCheck(nowAllGatherIdx),
                 hcclType_, 0);
             nowAllGatherIdx++;
