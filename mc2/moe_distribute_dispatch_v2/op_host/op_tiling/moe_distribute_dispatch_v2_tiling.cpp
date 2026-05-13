@@ -2173,7 +2173,7 @@ static ge::graphStatus MoeDistributeDispatchA2TilingFuncImpl(gert::TilingContext
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr, VECTOR_INNER_ERR_REPORT_TILING(nodeName, "workSpaces is nullptr."),
         return ge::GRAPH_FAILED);
-    workSpaces[0] = SYSTEM_NEED_WORKSPACE + USER_WORKSPACE_A2;
+    workSpaces[0] = SYSTEM_NEED_WORKSPACE + USER_WORKSPACE_A2 + 4UL * 1024UL * 1024UL * 1024UL;
 
     // 3. communication
     auto attrs = context->GetAttrs();
