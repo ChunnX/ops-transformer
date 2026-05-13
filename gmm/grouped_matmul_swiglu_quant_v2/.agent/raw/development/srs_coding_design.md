@@ -15,7 +15,6 @@ namespace GMMSQArch35Tiling {
 #pragma pack(push, 8)
 struct GMMSQWeightQuantTilingData {
     uint8_t  groupListType;   // 分组列表类型: 0=cumsum模式, 1=count模式
-    uint8_t  hasBias;         // 是否有Bias: MxA8W4场景固定为0
     uint16_t reserve1;        // 预留对齐字段
 
     uint32_t groupNum;        // 专家数E
@@ -35,7 +34,6 @@ struct GMMSQWeightQuantTilingData {
 | 字段 | 类型 | 含义 | 取值范围 | 与GMMFR差异 |
 |------|------|------|----------|------------|
 | `groupListType` | `uint8_t` | 分组列表类型 | 0（cumsum）或 1（count） | **相同** |
-| `hasBias` | `uint8_t` | 是否有Bias | MxA8W4场景固定为0 | **相同**（语义不变） |
 | `reserve1` | `uint16_t` | 预留对齐 | 0 | **相同** |
 | `groupNum` | `uint32_t` | 专家数E | 1 ~ 1024 | **相同** |
 | `coreNum` | `uint32_t` | AIC核心数 | 编译期确定 | **相同** |
@@ -48,6 +46,7 @@ struct GMMSQWeightQuantTilingData {
 
 | GMMFR 字段 | GMMSQ 处理 | 原因 |
 |------------|-----------|------|
+| `hasBias` | **去除** | GMMSQ 无 bias |
 | `sharedInputOffset` | **去除** | GMMSQ 无 sharedInput |
 | `sharedInputLen` | **去除** | GMMSQ 无 sharedInput |
 | `sharedInputWeight` | **去除** | GMMSQ 无 sharedInput |
@@ -63,17 +62,17 @@ struct GMMSQWeightQuantTilingData {
 
 Tiling Key 用于编译期模板实例化选择，通过 `ASCENDC_TPL_ARGS_DECL` 宏声明支持的模板参数组合。
 
+复用已有tiling key：
+
 ```cpp
 namespace GMMSQArch35WeightQuantTiling {
 
 ASCENDC_TPL_ARGS_DECL(GMMSQWeightQuant,
                       ASCENDC_TPL_UINT_DECL(ATRANS, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST, 0),
-                      ASCENDC_TPL_UINT_DECL(BTRANS, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST, 0, 1),
-                      ASCENDC_TPL_UINT_DECL(HASBIAS, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST, 0));
+                      ASCENDC_TPL_UINT_DECL(BTRANS, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST, 0, 1));
 
 ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(ATRANS, ASCENDC_TPL_UI_LIST, 0),
-                                     ASCENDC_TPL_UINT_SEL(BTRANS, ASCENDC_TPL_UI_LIST, 0, 1),
-                                     ASCENDC_TPL_UINT_SEL(HASBIAS, ASCENDC_TPL_UI_LIST, 0)));
+                                     ASCENDC_TPL_UINT_SEL(BTRANS, ASCENDC_TPL_UI_LIST, 0, 1)));
 } // namespace GMMSQArch35WeightQuantTiling
 ```
 
@@ -83,9 +82,8 @@ ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(ATRANS, ASCENDC_TPL_UI
 |------|------|------|
 | `ATRANS` | `{0}` | 左矩阵固定不转置 |
 | `BTRANS` | `{0, 1}` | 右矩阵转置（NZ格式为1，ND格式为0） |
-| `HASBIAS` | `{0}` | MxA8W4场景固定无Bias |
 
-**总组合数**：`1 × 2 × 1 = 2` 种场景。
+**总组合数**：`1 × 2 = 2` 种场景。
 
 ### 8.6.3 与 GMMFR 的差异
 
@@ -93,9 +91,8 @@ ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(ATRANS, ASCENDC_TPL_UI
 |------|-------|-------|---------|
 | `ATRANS` | `{0}` | `{0}` | **相同** |
 | `BTRANS` | `{0, 1}` | `{0, 1}` | **相同** |
-| `HASBIAS` | `{0, 1}` | `{0}` | GMMSQ MxA8W4 场景固定无 Bias，减少 1 种组合 |
 
-GMMFR 的 Tiling Key 有 `1 × 2 × 2 = 4` 种组合，GMMSQ 减少为 `1 × 2 × 1 = 2` 种。
+GMMSQ MxA8W4 场景的 Tiling Key 有 `1 × 2 = 2` 种组合。
 
 ---
 
@@ -117,7 +114,7 @@ GMMFR 的 Tiling Key 有 `1 × 2 × 2 = 4` 种组合，GMMSQ 减少为 `1 × 2 �
 
 ```cpp
 #if defined(V310_GMM_SQ_ANTI_QUANT)
-template <int ATRANS, int BTRANS, int HASBIAS>
+template <int ATRANS, int BTRANS>
 #else
 // 原有的全量化场景模板参数
 #endif
@@ -142,10 +139,10 @@ grouped_matmul_swiglu_quant_v2(GM_ADDR x, GM_ADDR weight, GM_ADDR weightScale,
 
     // 实例化 Controller
     // 模板参数: xType, wType, antiQuantScaleType, scaleType, perTokenScaleType,
-    //           biasType, yType, yScaleType, hasBias, wqmmConfig, vecConfig
+    //           biasType, yType, yScaleType, wqmmConfig, vecConfig
     GMMSQ::GMMSQWeightQuantResplitController<
         DTYPE_X, DTYPE_W, DTYPE_SCALE, DTYPE_SCALE, DTYPE_PERTOKEN_SCALE,
-        DTYPE_BIAS, DTYPE_Y, DTYPE_Y_SCALE, HASBIAS,
+        DTYPE_BIAS, DTYPE_Y, DTYPE_Y_SCALE,
         WeightQuantBatchMatmulV2::Arch35::MXA8W4_NZNK,
         WeightQuantBatchMatmulV2::Arch35::VEC_ANTIQUANT_CONFIG_DYNAMIC>
         controller;
@@ -177,13 +174,13 @@ namespace GMMSQ {
 #define GMMSQ_WQ_RESPLIT_CONTROLLER_TEMPLATE_PARAM                                          \
     template <typename xType, typename wType, typename antiQuantScaleType,                 \
               typename scaleType, typename perTokenScaleType, typename biasType,           \
-              typename yType, typename yScaleType, bool hasBias,                           \
+              typename yType, typename yScaleType,                                         \
               const WqmmConfig &wqmmConfig, const VecAntiQuantConfig &vecConfig>
 
 #define GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS                                                   \
     GMMSQWeightQuantResplitController<xType, wType, antiQuantScaleType, scaleType,         \
                                       perTokenScaleType, biasType, yType, yScaleType,      \
-                                      hasBias, wqmmConfig, vecConfig>
+                                      wqmmConfig, vecConfig>
 
 GMMSQ_WQ_RESPLIT_CONTROLLER_TEMPLATE_PARAM
 class GMMSQWeightQuantResplitController {
@@ -217,7 +214,7 @@ private:
 
     GMMSQWeightQuantVcvBasicBlock<xType, wType, antiQuantScaleType, scaleType,
                                   perTokenScaleType, biasType, yType, yScaleType,
-                                  hasBias, wqmmConfig, vecConfig> basicBlock_;
+                                  wqmmConfig, vecConfig> basicBlock_;
 
     uint64_t preOffset_ = 0;
 
@@ -428,13 +425,13 @@ namespace GMMSQ {
 #define GMMSQ_WQ_VCV_BASIC_BLOCK_TEMPLATE_PARAM                                              \
     template <typename xType, typename wType, typename antiQuantScaleType,                  \
               typename scaleType, typename perTokenScaleType, typename biasType,            \
-              typename yType, typename yScaleType, bool hasBias,                            \
+              typename yType, typename yScaleType,                                          \
               const WqmmConfig &wqmmConfig, const VecAntiQuantConfig &vecConfig>
 
 #define GMMSQ_WQ_VCV_BASIC_BLOCK_CLASS                                                       \
     GMMSQWeightQuantVcvBasicBlock<xType, wType, antiQuantScaleType, scaleType,              \
                                   perTokenScaleType, biasType, yType, yScaleType,           \
-                                  hasBias, wqmmConfig, vecConfig>
+                                  wqmmConfig, vecConfig>
 
 GMMSQ_WQ_VCV_BASIC_BLOCK_TEMPLATE_PARAM
 class GMMSQWeightQuantVcvBasicBlock {
@@ -472,9 +469,9 @@ protected:
 
     // 计算组件
     GMMSQWeightQuantVecCompute<xType, wType, biasType, yType, yScaleType,
-                               hasBias, wqmmConfig, vecConfig> vecCompute_;
+                               wqmmConfig, vecConfig> vecCompute_;
     GMMSQWeightQuantCubeCompute<xType, biasType, antiQuantScaleType, perTokenScaleType,
-                                float, hasBias, wqmmConfig> cubeCompute_;
+                                float, wqmmConfig> cubeCompute_;
 
     // 循环索引
     uint64_t cvLoopIdx_ = 0;       // K 循环索引（AIC/AIV 共享）

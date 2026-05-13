@@ -282,7 +282,6 @@ Tiling Data 结构：
 | outputBs | int64_t | 输出batch size |
 | initSize | int64_t | 初始化大小 = (outputBS - sharedInputLen) * nSize |
 | groupSize | uint32_t | MX分组大小 = 32 |
-| hasBias | bool | 是否有bias |
 | groupListType | uint32_t | 分组列表类型 |
 
 动态K维度切分：
@@ -299,7 +298,7 @@ uint64_t ChooseKbL1Size(uint64_t mL1Size, uint64_t nL1Size) {
 
 #### 8.2.3 Tiling Key
 
-当前支持：`ATRANS=0, BTRANS=1, hasBias`
+当前支持：`ATRANS=0, BTRANS=1`
 
 #### 8.2.4 Workspace
 
@@ -431,7 +430,6 @@ ge::graphStatus DoOpTiling() {
     tilingData.nSize = inputParams.nSize;
     tilingData.groupSize = MX_BLOCK_SIZE;  // 32
     tilingData.initSize = (inputParams.outputBS - inputParams.sharedInputLen) * inputParams.nSize;
-    tilingData.hasBias = inputParams.hasBias;
     tilingData.groupListType = inputParams.groupListType;
     return SUCCESS;
 }

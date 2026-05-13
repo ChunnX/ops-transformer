@@ -24,6 +24,8 @@
 #include "op_host/tiling_templates_registry.h"
 #include "grouped_matmul_swiglu_quant_v2_fusion_tiling.h"
 #include "grouped_matmul_swiglu_quant_v2_base_tiling.h"
+#include "arch35/grouped_matmul_swiglu_quant_v2_basic_tiling.h"
+#include "arch35/grouped_matmul_swiglu_quant_v2_weight_quant_tiling.h"
 #include "platform/platform_infos_def.h"
 
 using namespace ge;
@@ -33,8 +35,15 @@ using namespace Ops::Transformer::OpTiling;
 
 namespace optiling {
 
+namespace {
+    constexpr int32_t GMMSQ_X_INDEX = 0;
+    constexpr int32_t GMMSQ_W_INDEX = 1;
+}
+
 REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuantV2FusionTiling, 0);
 REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuantV2BaseTiling, 1);
+REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuantV2Tiling950, 2);
+REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuantV2WeightQuantTiling, 3);
 
 static ge::graphStatus GroupedMatmulSwigluQuantV2TilingFunc(gert::TilingContext *context)
 {
@@ -43,6 +52,18 @@ static ge::graphStatus GroupedMatmulSwigluQuantV2TilingFunc(gert::TilingContext 
             return ge::GRAPH_FAILED);
     auto compileInfoPtr = context->GetCompileInfo<GMMSwigluV2CompileInfo>();
     if (compileInfoPtr->supportL12BtBf16) {
+        // MxA8W4场景: x=FP8_E4M3FN, w=FP4_E2M1
+        auto xDesc = context->GetInputDesc(GMMSQ_X_INDEX);
+        auto wDesc = context->GetInputDesc(GMMSQ_W_INDEX);
+        if (xDesc != nullptr && wDesc != nullptr) {
+            ge::DataType xDtype = xDesc->GetDataType();
+            ge::DataType wDtype = wDesc->GetDataType();
+            if (xDtype == ge::DT_FLOAT8_E4M3FN && wDtype == ge::DT_FLOAT4_E2M1) {
+                std::vector<int32_t> registerList = {3};
+                OP_LOGD("GroupedMatmulSwigluQuantV2TilingFunc", "Using the weight quant tiling for MxA8W4");
+                return TilingRegistry::GetInstance().DoTilingImpl(context, registerList);
+            }
+        }
         std::vector<int32_t> registerList = {2};
         OP_LOGD("GroupedMatmulSwigluQuantV2TilingFunc", "Using the tiling strategy in the mxfp8");
         return TilingRegistry::GetInstance().DoTilingImpl(context, registerList);
