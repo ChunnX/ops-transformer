@@ -120,6 +120,10 @@ aclnnStatus aclnnBandwidthTestGetWorkspaceSize(
             mc2Context, x, expertId, group, worldSize, maxBs, mode, hcclBuffSize, commAlg,
             y, receiveCnt, workspaceSize, executor);
     #endif
+    if (NnopbaseSetHcclServerType) {
+        NnopbaseSetHcclServerType(executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
+    }
+
     OP_LOGD("aclnnBandwidthTestGetWorkspaceSize end");
     return aclnnRet;
 }
@@ -128,10 +132,6 @@ aclnnStatus aclnnBandwidthTest(void* workspace, uint64_t workspaceSize,
                                         aclOpExecutor* executor, aclrtStream stream)
 {
     OP_LOGD("aclnnBandwidthTest start");
-    
-    if (NnopbaseSetHcclServerType) {
-        NnopbaseSetHcclServerType(executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
-    }
     
     aclnnStatus ret = aclnnInnerBandwidthTest(workspace, workspaceSize, executor, stream);
     OP_LOGD("aclnnBandwidthTest end");
