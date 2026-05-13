@@ -36,7 +36,7 @@ def skip_invalid_row(b, n, sq, softmax_res, x_max, x_sum):
     return softmax_res, x_max, x_sum
 
 
-def forward(q, k, v, drop_mask, atten_mask, pse_type, pse, scale, keep_prob, skip_invalid_row=False):
+def forward(q, k, v, drop_mask, atten_mask, pse_type, pse, scale, keep_prob, do_skip=False):
     q = q.float()
     k = k.float()
     v = v.float()
@@ -53,7 +53,7 @@ def forward(q, k, v, drop_mask, atten_mask, pse_type, pse, scale, keep_prob, ski
         qk = qk.masked_fill_(atten_mask.cpu().bool(), value=torch.tensor(-40000))
     softmax_res, x_max, x_sum = tsoftmax(qk)
 
-    if skip_invalid_row:
+    if do_skip:
         b, n, sq, _ = softmax_res.shape
         softmax_res, x_max, x_sum = skip_invalid_row(b, n, sq, softmax_res, x_max, x_sum)
 
@@ -67,6 +67,7 @@ def forward(q, k, v, drop_mask, atten_mask, pse_type, pse, scale, keep_prob, ski
     # x_max = x_max.broadcast_to(-1, -1, -1, 8)
     # x_sum = x_sum.broadcast_to(-1, -1, -1, 8)
     return out, x_max, x_sum
+
 
 
 def get_cu_seqlens(seqlens_list):
@@ -222,7 +223,18 @@ def tforward_tnd(q, k, v, pse, **kwargs):
             else:
                 atten_maski = generate_cpu_mask(1, seqlen_q_list[i], seqlen_k_list[i], sparse_mode, pre_tokens, next_tokens, prefix, i, band_index)
 
-            outi, x_maxi, x_sumi = forward(qi, ki, vi, drop_maski, atten_maski, pse_type, psei, scale, keep_prob)
+            do_skip_i = False
+            if atten_maski is not None:
+                if sparse_mode == 0:
+                    do_skip_i = next_tokens < 0 or pre_tokens + seqlen_k_list[i] < seqlen_q_list[i]
+                elif sparse_mode == 3:
+                    do_skip_i = seqlen_q_list[i] > seqlen_k_list[i]
+                elif sparse_mode == 4:
+                    do_skip_i = pre_tokens < 0 or next_tokens + seqlen_k_list[i] < seqlen_q_list[i]
+                elif sparse_mode in [5, 6]:
+                    do_skip_i = True if 0 in prefix else False
+
+            outi, x_maxi, x_sumi = forward(qi, ki, vi, drop_maski, atten_maski, pse_type, psei, scale, keep_prob, do_skip_i)
             out_golden[:, :, actual_seq_qlen[i]:actual_seq_qlen[i + 1]] = outi
             x_max[:, actual_seq_qlen[i]:actual_seq_qlen[i + 1]] = x_maxi.squeeze(0).squeeze(-1)
             x_sum[:, actual_seq_qlen[i]:actual_seq_qlen[i + 1]] = x_sumi.squeeze(0).squeeze(-1)
