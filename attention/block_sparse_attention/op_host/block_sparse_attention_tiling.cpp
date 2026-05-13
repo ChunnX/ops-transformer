@@ -535,6 +535,7 @@ ge::graphStatus BSATiling::ParseBlockTable(gert::TilingContext *bsaContext)
 
 ge::graphStatus BSATiling::ValidateGenericDequantScale(gert::TilingContext *bsaContext, const int parameterIndex)
 {
+    printf("tkd parameterIndex: %d\n", parameterIndex);
     std::string parameterName;
     switch (parameterIndex) {
         case Q_DEQUANT_SCALE_INDEX:
@@ -643,6 +644,22 @@ ge::graphStatus BSATiling::CheckBlockShapeQuantContraint(gert::TilingContext *bs
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus BSATiling::CheckAllInputShape(gert::TilingContext *bsaContext)
+{
+    int parameterNum = 9;
+    for (uint32_t parameterIndex = 0; parameterIndex < parameterNum; parameterIndex++) {
+        auto parameterShape = bsaContext->GetInputShape(parameterIndex);
+        int64_t parameterDimNum = parameterShape->GetStorageShape().GetDimNum();
+        std::cout << "tkd parameter index: " << parameterIndex << " dimNum" << parameterDimNum << std::endl;
+        for (uint32_t dimIndex = = 0; dimIndex < parameterDimNum; dimIndex++) {
+            std::cout << "tkd dimIndex " << dimIndex << " " << parameterShape->GetStorageShape().GetDim(dimIndex)
+                      << std::endl;
+        }
+        printf("tkd ===============================\n");
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus BSATiling::ParseOptionalTensors(gert::TilingContext *bsaContext)
 {
     if (ParseSeqlens(bsaContext) != ge::GRAPH_SUCCESS ||
@@ -652,6 +669,7 @@ ge::graphStatus BSATiling::ParseOptionalTensors(gert::TilingContext *bsaContext)
         return ge::GRAPH_FAILED;
     }
 
+    CheckAllInputShape(bsaContext);
     if (socVer_ == SOC_VER_950_CODE) {
         printf("tkd ParseOptionalTensors if (socVer_ == SOC_VER_950_CODE)\n");
         if (ValidateQDequantScale(bsaContext) != ge::GRAPH_SUCCESS ||
@@ -1066,7 +1084,7 @@ uint64_t BSATiling::GenerateTilingKey(gert::TilingContext *bsaContext)
     if (softmaxLseFlag_) {
         tilingKey += 100000000ULL; // 1 for lse out
     }
-    printf("tkd tilingKey: %lu", tilingKey);
+    printf("tkd tilingKey: %lu\n", tilingKey);
     
     return tilingKey;
 }
