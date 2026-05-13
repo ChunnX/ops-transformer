@@ -257,6 +257,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
             <li>不支持空Tensor。</li>
             <li>支持per-tensor。 </li>
             <li>支持MxFP8。 </li>
+            <li>支持范围应满足[1, 448]。 </li>
             <li>不使用该功能时可传入nullptr。</li>
             <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
         </ul>

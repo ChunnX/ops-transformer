@@ -658,6 +658,12 @@ ge::graphStatus DequantChecker::CheckFeatureMXFP8Fullquant(const FiaTilingInfo &
     // 不支持 rope
     OP_CHECK_IF(fiaInfo.mlaMode != MlaMode::NO_MLA,
                 OP_LOGE(fiaInfo.opName, "In MXFP8 fullquant scenario, rope is not supported."),
+                return ge::GRAPH_FAILED);   
+    
+    // innerPrecise 仅支持 0/1
+    OP_CHECK_IF((fiaInfo.innerPrecise != HIGH_PRECISION) && (fiaInfo.innerPrecise != HIGH_PERFORMANCE),
+                OP_LOGE(fiaInfo.opName, "In MXFP8 fullquant scenario, innerPrecise(%d) only support %u or %u.",
+                        fiaInfo.innerPrecise, HIGH_PRECISION, HIGH_PERFORMANCE),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
