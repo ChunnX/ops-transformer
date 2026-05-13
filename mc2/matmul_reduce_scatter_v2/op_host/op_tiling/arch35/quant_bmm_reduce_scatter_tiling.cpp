@@ -396,10 +396,12 @@ ge::graphStatus QuantBmmReduceScatterTiling::SetMc2Hcomm()
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(
         group, opType, rsConfig, reduceType, dataType, dataType
     );
-    uint8_t commEngine = (Mc2Comm::GetCommModeFromEnv() == Mc2Comm::COMM_MODE_AICPU) ? Mc2Comm::ENGINE_AICPU : Mc2Comm::ENGINE_CCU;
-    mc2CcTilingConfig.SetCommEngine(commEngine);
-    OP_LOGD(opName_, "[COMM_MODE] Set CommEngine to %d (AICPU=%d, CCU=%d) for quant_bmm_reduce_scatter.",
-            commEngine, Mc2Comm::ENGINE_AICPU, Mc2Comm::ENGINE_CCU);
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    OP_LOGD(opName_, "[COMM_MODE] Set CommEngine to %d (AICPU=%d, CCU=default) for quant_bmm_reduce_scatter.",
+            commMode, Mc2Comm::ENGINE_AICPU);
+    if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+        mc2CcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
+    }
 
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(quantBmmMatmulReducescatterTilingData_->mc2InitTiling) != 0,
         OP_LOGE(opName_, "mc2CcTilingConfig mc2tiling GetTiling mc2InitTiling failed"), return ge::GRAPH_FAILED);
