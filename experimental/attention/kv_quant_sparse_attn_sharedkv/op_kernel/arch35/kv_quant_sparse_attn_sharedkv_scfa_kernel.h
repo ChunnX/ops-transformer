@@ -241,9 +241,7 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
         actualSeqCmpKvlenAddr = (__gm__ int32_t *)sequsedCmpKv;
     }
 
-    if (cmpResidualKv != nullptr) {
-        cmpResidualKvAddr = (__gm__ int32_t *)cmpResidualKv;
-    }
+    cmpResidualKvAddr = (__gm__ int32_t *)cmpResidualKv;
 
     vecBlock.InitGlobalBuffer(oriKV, cmpKV, cmpSparseIndices, oriBlockTable, cmpBlockTable, sequsedQ, sinks,
         sequsedOriKv, sequsedCmpKv, cmpResidualKv);

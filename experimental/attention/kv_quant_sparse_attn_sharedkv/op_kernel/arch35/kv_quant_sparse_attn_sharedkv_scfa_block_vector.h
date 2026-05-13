@@ -70,9 +70,7 @@ public:
             if (sequsedCmpKv != nullptr) {
                 actualSeqCmpKvGm.SetGlobalBuffer((__gm__ int32_t *)sequsedCmpKv);
             }
-            if (cmpResidualKv != nullptr) {
-                cmpResidualKvGm.SetGlobalBuffer((__gm__ int32_t *)cmpResidualKv);
-            }
+            cmpResidualKvGm.SetGlobalBuffer((__gm__ int32_t *)cmpResidualKv);
             this->GetExtremeValue(this->negativeFloatScalar);
         }
     }
