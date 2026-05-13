@@ -569,7 +569,7 @@ ge::graphStatus BSATiling::ValidateGenericDequantScale(gert::TilingContext *bsaC
         auto dequantScaleShape = bsaContext->GetInputShape(parameterIndex);
         int64_t dequantScaleDimNum = dequantScaleShape->GetStorageShape().GetDimNum();
         if (dequantScaleDimNum != DIM_NUM_4) {
-            OP_LOGE(bsaContext->GetNodeName(), "The expected shape dim of %s must be 4, but now it is %ld.",
+            OP_LOGE(bsaContext->GetNodeName(), "The expected shape dim of %s is 4, but now it is %ld.",
                     parameterName.c_str(), dequantScaleDimNum);
             return ge::GRAPH_FAILED;
         }
@@ -596,7 +596,7 @@ ge::graphStatus BSATiling::ValidateGenericDequantScale(gert::TilingContext *bsaC
         }
     } else {
         if (dequantScaleTensor != nullptr) {
-            OP_LOGE(bsaContext->GetNodeName(), "Parameter %s should be nullptr when the dtype is not float8_e4m3fn.",
+            OP_LOGE(bsaContext->GetNodeName(), "Parameter %s must be nullptr when the dtype is not float8_e4m3fn.",
                     parameterName.c_str());
             return ge::GRAPH_FAILED;
         }
