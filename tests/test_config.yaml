@@ -114,7 +114,7 @@ attention:
     ut_cov_exclude:
       - attention/fused_infer_attention_score/op_kernel
       - attention/fused_infer_attention_score/tests
-      - attention/fused_infer_attention_score/op_host/arch32
+      - attention/fused_infer_attention_score/op_host/arch22
     test:
       ut: True
       examples: False
