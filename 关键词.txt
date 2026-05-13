@@ -15,3 +15,4 @@ aclnn独有:
 ops-transformer没有：
     OPS_LOG_E(
     OP_TILING_CHECK(
+    CUBE_INNER_ERR_REPORT(

@@ -30,14 +30,11 @@ static const std::map<ge::DataType, std::unordered_set<ge::DataType>> BIAS_TYPE_
 bool GroupedWeightQuantBatchMatmulTiling::CheckCoreNum(const gert::TilingContext *context) const
 {
     OP_CHECK_IF(coreNum_ <= 0 || aivNum_ <= 0,
-        OP_LOGE(context->GetNodeName(), "Invalid aicNum[%u] or aivNum[%u], expect greater than 0", coreNum_, aivNum_),
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context->GetNodeName(), "aicNum, aivNum", std::to_string(coreNum_) + ", " + std::to_string(aivNum_), "aicNum and aivNum must be greater than 0"),
         return false);
     
     OP_CHECK_IF(coreNum_ * AIC_AIV_CORE_RATIO != aivNum_,
-                OP_LOGE(context->GetNodeName(),
-                        "Invalid cube/vector core ratio. Expected cube:vector = 1:2, "
-                        "but got cube=%u, vector=%u",
-                        coreNum_, aivNum_),
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context->GetNodeName(), "cubeNum, vectorNum", std::to_string(coreNum_) + ", " + std::to_string(aivNum_), "cube:vector ratio must be 1:2"),
                 return false);
     return true;
 }
@@ -84,8 +81,7 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckTensorListSize(const gert::Tiling
 {
     OP_CHECK_IF(
         numX_ >= GroupedMatmul::MAX_TENSOR_CONT,
-        OP_LOGE(context->GetNodeName(),
-                "In multi/multi/multi Scenario, tensorlist's length cannot exceed 128, but it is more than 128"),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "tensorlist_length", std::to_string(numX_), "tensorlist length must not exceed 128"),
         return false);
     if (groupType_ == static_cast<int64_t>(GroupType::NO_SPLIT)) {
         OP_CHECK_IF(
