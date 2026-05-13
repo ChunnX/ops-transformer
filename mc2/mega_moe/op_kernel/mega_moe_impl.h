@@ -197,7 +197,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
                 mLoc * outputN + nLoc,
                 mLoc * CeilDiv(outputN, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE +
                     CeilDiv(nLoc, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE,
-                0, 0, 0, 0};
+                0, mLoc, 0, 0};
             WaitForCube();
             AscendC::SetCtrlSpr<60, 60>(0);
             epilogueOp(epilogueShape, epilogueOffset);

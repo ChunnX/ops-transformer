@@ -52,13 +52,13 @@ constexpr int64_t ALIGN_32 = 32LL;
 constexpr int64_t ALIGN_128 = 128LL;
 constexpr int64_t ALIGN_256 = 256LL;
 constexpr int64_t ALIGN_512 = 512LL;
-constexpr int32_t INT_CACHELINE = 16;
-constexpr int32_t MAX_AICORE_NUM = 36;
+    constexpr int32_t MAX_AICORE_NUM = 36;
 constexpr uint32_t BUFFER_ALIGN = 96U * 1024U * 2U;
 constexpr uint32_t HCCL_MAX_RANK_SIZE = 1024U;
 constexpr uint32_t UNPERMUTE_LIST_NUM = 3U;
 constexpr int64_t SIZE_INT_8 = 1U;
 constexpr int64_t SIZE_INT_32 = 4U;
+constexpr int64_t L1_TILE_M = 128LL;
 } // namespace
 
 struct WorkspaceInfo {
@@ -100,10 +100,13 @@ struct WorkspaceInfo {
         ptrSumBeforeRank = base + workspaceSize;
         workspaceSize += SIZE_INT_32 * Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->epWorldSize) *
             tilingData->expertPerRank, ALIGN_128);
+        int64_t maxWavesPerExpert = (tilingData->maxOutputSize + L1_TILE_M - 1) / L1_TILE_M;
+        int64_t swigluElems = tilingData->expertPerRank * maxWavesPerExpert;
+        int64_t dispatchElems = tilingData->expertPerRank;
+        int64_t totalFlagElems = Ops::Base::CeilAlign(static_cast<uint64_t>(swigluElems + dispatchElems), static_cast<uint64_t>(8));
         ptrFlagSwiGluToGmm2 = base + workspaceSize;
-        workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * INT_CACHELINE;
-        ptrFlagDispatchToGmm1 = base + workspaceSize;
-        workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * INT_CACHELINE;
+        ptrFlagDispatchToGmm1 = base + workspaceSize + SIZE_INT_32 * swigluElems;
+        workspaceSize += SIZE_INT_32 * totalFlagElems;
         ptrGmmOut = base + workspaceSize;
         workspaceSize += Ops::Base::CeilAlign(
             static_cast<int64_t>(2 * tilingData->maxOutputSize * tilingData->k),

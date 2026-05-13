@@ -13,8 +13,8 @@ from torch.library import impl
 from torch_npu.utils._error_code import ErrCode, ops_error
 from npu_ops_transformer.op_builder.builder import OpBuilder
 from npu_ops_transformer.op_builder.builder import AS_LIBRARY
-from .moe_distribute_combine_v3 import npu_moe_distribute_combine_v3
-from .moe_distribute_dispatch_v3 import npu_moe_distribute_dispatch_v3
+# from .moe_distribute_combine_v3 import npu_moe_distribute_combine_v3
+# from .moe_distribute_dispatch_v3 import npu_moe_distribute_dispatch_v3
 from .update_context import update_context
 
 

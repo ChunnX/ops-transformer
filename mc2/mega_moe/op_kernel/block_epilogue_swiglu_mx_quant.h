@@ -46,6 +46,7 @@ namespace {
 constexpr uint32_t Y_IDX = 0;
 constexpr uint32_t Y_SCALE_IDX = 1;
 constexpr uint32_t GROUP_FLAG_IDX = 2;
+constexpr uint32_t WAVE_IDX = 3;
 constexpr uint32_t BLOCK_SIZE = 32;
 constexpr uint32_t MAX_SINGLE_MN = 128 * 256;
 constexpr uint16_t MAX_EXP_FOR_BF16 = 0x7f80;
@@ -164,8 +165,6 @@ private:
     __aicore__ inline void CopyOutputFromUb2Gm(uint64_t blockCount, uint64_t offset, AscendC::LocalTensor<int8_t> &src);
 
     __aicore__ inline void CopyScaleFromUb2Gm(uint64_t blockCount, uint64_t offset, AscendC::LocalTensor<int8_t> &src);
-
-    __aicore__ inline void AddFlagFromUb2Gm(AscendC::GlobalTensor<uint32_t> &dst, uint32_t flag);
     // GM ADDR
     AscendC::GlobalTensor<int8_t> quantOutputGlobal_;
     AscendC::GlobalTensor<int8_t> quantScaleGlobal_;
@@ -244,7 +243,7 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::UpdateGlob
         quantOutputGlobal_.SetGlobalBuffer((__gm__ int8_t *)params_->yGmAddr + Get<Y_IDX>(baseOffset));
         quantScaleGlobal_.SetGlobalBuffer((__gm__ int8_t *)params_->yScaleGmAddr + Get<Y_SCALE_IDX>(baseOffset));
         groupFlagListGmAddr_ = (__gm__ int32_t *)params_->groupFlagListGmAddr +
-        Get<GROUP_FLAG_IDX>(baseOffset) * INT_CACHELINE;
+        Get<GROUP_FLAG_IDX>(baseOffset);
     }
 }
 
@@ -285,13 +284,6 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
     ub2GmParams.blockCount = blockCount; // 128
     ub2GmParams.dstStride = (scaleN_ - blockScaleN) * sizeof(int8_t);
     AscendC::DataCopyPad(quantScaleGlobal_[offset], src, ub2GmParams);
-}
-
-BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
-__aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::AddFlagFromUb2Gm(
-    AscendC::GlobalTensor<uint32_t> &dst, uint32_t flag)
-{
-    AscendC::AtomicAdd((__gm__ uint32_t*)dst.GetPhyAddr(), flag);
 }
 
 BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
@@ -693,7 +685,9 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::operator()
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
     AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(0);
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(0);
-    AscendC::AtomicAdd(groupFlagListGmAddr_, 1);
+    uint64_t mLoc = Get<WAVE_IDX>(blockCoord);
+    uint32_t waveIdx = static_cast<uint32_t>(mLoc / L1_TILE_M);
+    AscendC::AtomicAdd((__gm__ int32_t*)(groupFlagListGmAddr_ + waveIdx), 1);
     return;
 }
 
