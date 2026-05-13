@@ -27,7 +27,6 @@ extern "C" {
  * @param [in] dstrankId: 计算输入，Tensor，数据类型int32，必须为1维，数据格式支持ND。每个token的目标rank索引。
  * @param [in] group: 计算输入，str。通信域名称。
  * @param [in] worldSize: 计算输入，int。通信域size。
- * @param [in] cclBufferSize: 计算输入，int。CCL缓冲区大小。
  * @param [in] maxBs: 计算输入，int。最大batch size大小。
  * @param [in] mode: 计算输入，int。模式，0表示精度模式，1表示纯发模式。
  * @param [in] commAlg: 计算输入，int。通信类型。
