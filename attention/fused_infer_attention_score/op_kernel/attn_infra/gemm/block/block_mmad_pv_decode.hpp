@@ -145,7 +145,6 @@ public:
             } else {
                 kOffset = blockTableId * blockSize * strideKV;
             }
-            
         } else {
             kOffset = nowNIdx * blockSize * strideKV;
         }

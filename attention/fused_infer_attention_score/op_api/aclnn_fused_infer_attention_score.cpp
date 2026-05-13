@@ -50,8 +50,8 @@ aclnnStatus aclnnFusedInferAttentionScoreGetWorkspaceSize(
         quantScale2, quantOffset2, antiquantScale, antiquantOffset, blockTable, queryPaddingSize, kvPaddingSize,
         nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
         numHeads, scaleValue, preTokens, nextTokens,
-        inputLayout, numKeyValueHeads, sparseMode, innerPrecise, blockSize, antiquantMode, softmaxLseFlag, 0, 0, 0, 0, 0, 0,
-        attentionOut, placeHolder, workspaceSize, executor);
+        inputLayout, numKeyValueHeads, sparseMode, innerPrecise, blockSize, antiquantMode, softmaxLseFlag,
+        0, 0, 0, 0, 0, 0, attentionOut, placeHolder, workspaceSize, executor);
     if (softmaxLseFlag == false) {
         aclDestroyTensor(tempTensor);
     }

@@ -130,7 +130,8 @@ aclnnStatus aclnnFusedInferAttentionScoreV4GetMaxWorkspaceSize(
         keyRopeOptional, keyRopeAntiquantScaleOptional, dequantScaleQueryOptional, learnableSinkOptional, nullptr, nullptr,
         numHeads, scaleValue, preTokens, nextTokens,
         inputLayout, numKeyValueHeads, sparseMode, innerPrecise, blockSize, antiquantMode, softmaxLseFlag,
-        keyAntiquantMode, valueAntiquantMode, queryQuantMode, 0, 0, 0, attentionOut, placeHolder, workspaceSize, executor);
+        keyAntiquantMode, valueAntiquantMode, queryQuantMode, 0, 0, 0, attentionOut, placeHolder,
+        workspaceSize, executor);
     if (softmaxLseFlag == false) {
         aclDestroyTensor(tempTensor);
     }
@@ -193,7 +194,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4GetWorkspaceSize(
 
     int64_t *stridesValue = nullptr;
     uint64_t stridesNum = 0;
-    auto retView = aclGetViewStrides( (*key)[0], &stridesValue, &stridesNum );
+    auto retView = aclGetViewStrides((*key)[0], &stridesValue, &stridesNum);
     int64_t blockStride = 0;
     if (retView == ACL_SUCCESS && stridesValue != nullptr && stridesNum >= 1) {
         blockStride = stridesValue[0];
@@ -209,7 +210,8 @@ aclnnStatus aclnnFusedInferAttentionScoreV4GetWorkspaceSize(
         keyRopeOptional, keyRopeAntiquantScaleOptional, dequantScaleQueryOptional, learnableSinkOptional, nullptr, nullptr,
         numHeads, scaleValue, preTokens, nextTokens,
         inputLayout, numKeyValueHeads, sparseMode, innerPrecise, blockSize, antiquantMode, softmaxLseFlag,
-        keyAntiquantMode, valueAntiquantMode, queryQuantMode, 0, 0, blockStride, attentionOut, placeHolder, workspaceSize, executor);
+        keyAntiquantMode, valueAntiquantMode, queryQuantMode, 0, 0, blockStride, attentionOut, placeHolder,
+        workspaceSize, executor);
     if (softmaxLseFlag == false) {
         aclDestroyTensor(tempTensor);
     }

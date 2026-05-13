@@ -193,7 +193,8 @@ public:
         for (uint32_t nL1Idx = 0; nL1Idx < nL1Loop; ++nL1Idx) {
             uint32_t nowNIdx = nIdx + nL1Idx / tileNNumPerBaseBlock;
             getBlockShape(actualShape, nL1Idx, nL1Loop, stackSeqTile);
-            getKVOffset(gBlockTable, gBOffset, nowNIdx, nL1Idx % tileNNumPerBaseBlock, strideKV, blockSize, blockStride);
+            getKVOffset(gBlockTable, gBOffset, nowNIdx, nL1Idx % tileNNumPerBaseBlock,
+                strideKV, blockSize, blockStride);
             uint32_t mActual = actualShape.m();
             uint32_t kActual = actualShape.k();
             uint32_t nActual = actualShape.n();
