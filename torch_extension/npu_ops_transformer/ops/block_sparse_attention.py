@@ -79,12 +79,12 @@ class BlockSparseAttentionOpBuilder(OpBuilder):
                   pre_tokens, next_tokens, softmax_lse_flag):
             attn = torch.empty_like(query)
             if softmax_lse_flag:
-                # LSE_DIM_D=1 in the kernel's infershape → [B, H, S, 1] float32.
+                # LSE_DIM_D=1 in the kernel's infershape → [b, n, s, 1] float32.
                 # Assumes BNSD layout (validated by the C++ wrapper).
-                B = query.size(0)
-                N = num_heads
-                S = query.size(2)
-                lse = query.new_empty((B, N, S, 1), dtype=torch.float32)
+                b = query.size(0)
+                n = num_heads
+                s = query.size(2)
+                lse = query.new_empty((b, n, s, 1), dtype=torch.float32)
             else:
                 lse = query.new_empty((0,), dtype=torch.float32)
             return attn, lse
