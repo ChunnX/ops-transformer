@@ -31,7 +31,7 @@ using namespace AscendC;
         GET_TILING_DATA_WITH_STRUCT(tilingdataClass, tilingDataIn, tiling);                       \
         const tilingdataClass *__restrict tilingData = &tilingDataIn;                             \
         op.Init(query, oriKV, cmpKV, cmpSparseIndices, oriBlockTable, cmpBlockTable, cuSeqlensQ,  \
-            seqUsedQ, seqUsedKV, sequsedOriKv, sequsedCmpKv, cmpResidualKv, sinks, metadata,      \
+            cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedQ, sequsedOriKv, sequsedCmpKv, cmpResidualKv, sinks, metadata,      \
             attentionOut, user, tilingData, &tPipe);                                              \
         op.Process();                                                                             \
     } while (0)
