@@ -24,6 +24,7 @@
 #include "mega_moe_workspace_info.h"
 #include "block_epilogue_swiglu_mx_quant.h"
 #include "mega_moe_impl.h"
+#include "../../moe_distribute_dispatch_v2/op_kernel/quantize_functions.h"
 
 
 using namespace AscendC;
@@ -69,6 +70,7 @@ private:
     __aicore__ inline void CopyGMToGMPerTokenV2(GlobalTensor<QuantOutType> dst,
                 GlobalTensor<QuantScaleOutType> dstScale, GlobalTensor<QuantOutType> src,
                 int32_t rows, int32_t hiddenSize, int32_t& pingpongId);
+    __aicore__ inline void DispatchMXQuant();
 
     __aicore__ inline void TilingByCore(int32_t totalLen, int32_t &coreLen,
         int32_t& coreOffset, int32_t align = ALIGN_32)
@@ -119,6 +121,9 @@ private:
     TBuf<> DataResFp32Buf_;
     TBuf<> ResetTokenBuf_;
     TBuf<> topKWeightsBuf_;
+    TQue<QuePosition::VECIN, 1> xInQueue_;
+    TBuf<> xQuantOutBuf_;
+    TBuf<> mxTempBuf_;
 
     __gm__ Mc2MoeContext* mc2Context_{nullptr};
     Params params_{};
@@ -230,6 +235,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::FirstBuffInit(TPipe *tP
     uint32_t maxResetBufAlign = Ops::Base::CeilDiv(
         static_cast<int32_t>(expertPerRank_ * INT_CACHELINE * sizeof(int32_t) * 2), static_cast<int32_t>(ALIGN_32));
     tPipe->InitBuffer(ResetFlagBuf_, maxResetBufAlign);
+    uint32_t xInAlign = Ops::Base::CeilAlign(k_, static_cast<uint32_t>(ALIGN_128)) * sizeof(bfloat16_t);
+    uint32_t xOutAlign = Ops::Base::CeilAlign(k_, static_cast<uint32_t>(ALIGN_256)) +
+        Ops::Base::CeilDiv(k_, static_cast<uint32_t>(ALIGN_32));
+    tPipe->InitBuffer(xInQueue_, 1, xInAlign);
+    tPipe->InitBuffer(xQuantOutBuf_, xOutAlign);
+    tPipe->InitBuffer(mxTempBuf_, 2 * 1024);
 }
 
 template <TemplateMegaMoeTypeClass>
@@ -680,6 +691,65 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CrossRankSyncInWorldSiz
 }
 
 template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchMXQuant()
+{
+    if constexpr (g_coreType != AIV) {
+        return;
+    }
+    if (aivCoreIdx_ != 0) {
+        return;
+    }
+
+    const uint32_t H = k_;
+    const uint32_t mxScaleNum = Ops::Base::CeilDiv(H, static_cast<uint32_t>(ALIGN_32));
+    const uint32_t dataBytes = Ops::Base::CeilAlign(H, static_cast<uint32_t>(ALIGN_256)) * sizeof(QuantOutType);
+    const uint32_t scaleBytes = mxScaleNum * sizeof(uint8_t);
+    const uint32_t tokenBytes = Ops::Base::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32));
+
+    GlobalTensor<bfloat16_t> xGm;
+    xGm.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(params_.aGmAddr));
+
+    GlobalTensor<uint8_t> xQuantGm;
+    xQuantGm.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(params_.peermemInfo.ptrA1));
+
+    LocalTensor<uint16_t> mxTemp = mxTempBuf_.Get<uint16_t>();
+
+    DataCopyExtParams xInParams = {
+        1U, static_cast<uint32_t>(H * sizeof(bfloat16_t)), 0U, 0U, 0U};
+    DataCopyPadExtParams<bfloat16_t> xInPad{true, 0, 0, 0};
+    DataCopyExtParams xOutParams = {
+        1U, static_cast<uint32_t>(dataBytes + scaleBytes), 0U, 0U, 0U};
+    
+    for (uint32_t tokenIdx = 0; tokenIdx < m_; ++tokenIdx) {
+        LocalTensor<bfloat16_t> xIn = xInQueue_.AllocTensor<bfloat16_t>();
+        DataCopyPad(xIn, xGm[tokenIdx * H], xInParams, xInPad);
+        xInQueue_.EnQue(xIn);
+        xIn = xInQueue_.DeQue<bfloat16_t>();
+
+        LocalTensor<QuantOutType> xOut = xQuantOutBuf_.Get<QuantOutType>();
+
+        __ubuf__ bfloat16_t* srcAddr = (__ubuf__ bfloat16_t*)xIn.GetPhyAddr();
+        __ubuf__ uint16_t* maxExpAddr = (__ubuf__ uint16_t*)mxTemp.GetPhyAddr();
+        __ubuf__ uint16_t* halfScaleAddr = (__ubuf__ uint16_t*)mxTemp[Ops::Base::CeilAlign(mxScaleNum, static_cast<uint32_t>(ALIGN_32))].GetPhyAddr();
+        __ubuf__ int8_t* outDataAddr = (__ubuf__ int8_t*)xOut.GetPhyAddr();
+        __ubuf__ uint16_t* mxScaleAddr = (__ubuf__ uint16_t*)xOut[Ops::Base::CeilAlign(H, static_cast<uint32_t>(ALIGN_256))].GetPhyAddr();
+
+        quant::ComputeMaxExp(srcAddr, maxExpAddr, H); // 计算最大Exp
+        // 计算scales并填充f
+        quant::ComputeScale<QuantOutType>(maxExpAddr, mxScaleAddr, halfScaleAddr, mxScaleNum);
+        quant::ComputeFp8Data<bfloat16_t, QuantOutType, AscendC::RoundMode::CAST_TRUNC,
+            AscendC::RoundMode::CAST_RINT>(srcAddr, halfScaleAddr, outDataAddr, H);
+
+        xInQueue_.FreeTensor(xIn);
+
+        SyncFunc<AscendC::HardEvent::V_MTE3>();
+        auto xOutBytes = xOut.template ReinterpretCast<uint8_t>();
+        DumpTensor(xOutBytes, 0, H);
+        DataCopyPad(xQuantGm[tokenIdx * tokenBytes], xOutBytes, xOutParams);
+    }
+}
+
+template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 {
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
@@ -695,6 +765,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     TPipe firstPipe;
     FirstBuffInit(&firstPipe);
     ResetWorkSpaceFlagList();
+    
+    // dispatch mx 量化入口
+    DispatchMXQuant();
+    PipeBarrier<PIPE_ALL>();
+    SyncAll<true>();
+    return;
 
     // 3. cnt值全ep域内的发送以及本端接收整理
     CrossRankSyncCntPerExpert();
