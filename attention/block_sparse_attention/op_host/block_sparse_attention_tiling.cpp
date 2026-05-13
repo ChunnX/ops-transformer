@@ -648,11 +648,15 @@ ge::graphStatus BSATiling::CheckAllInputShape(gert::TilingContext *bsaContext)
 {
     int parameterNum = 9;
     for (uint32_t parameterIndex = 0; parameterIndex < parameterNum; parameterIndex++) {
+        auto parameterTensor = bsaContext->GetOptionalInputTensor(parameterIndex);
+        bool isParameterNull = parameterTensor == nullptr;
+        std::string isParameterNullString =  isParameterNull? "is null":"is not null";
+        std::cout<< "tkd parameter index: " << parameterIndex << " " << isParameterNullString << std::endl;
         auto parameterShape = bsaContext->GetInputShape(parameterIndex);
         int64_t parameterDimNum = parameterShape->GetStorageShape().GetDimNum();
-        std::cout << "tkd parameter index: " << parameterIndex << " dimNum" << parameterDimNum << std::endl;
+        std::cout << "tkd parameter index: " << parameterIndex << " ,dimNum: " << parameterDimNum << std::endl;
         for (uint32_t dimIndex = 0; dimIndex < parameterDimNum; dimIndex++) {
-            std::cout << "tkd dimIndex " << dimIndex << " " << parameterShape->GetStorageShape().GetDim(dimIndex)
+            std::cout << "tkd dimIndex " << dimIndex << ": " << parameterShape->GetStorageShape().GetDim(dimIndex)
                       << std::endl;
         }
         printf("tkd ===============================\n");
