@@ -223,6 +223,8 @@ bool SparseLightningIndexerGradKLLossTilingBase::AnalyzeDimLayout(const gert::Sh
     // dRopeSize的确定，有queryRopeShape 和 keyRopeShape
     if (layoutLen == 3UL) {
         if (inputLayout[0] == 'T' && inputLayout[1] == 'N' && inputLayout[2] == 'D') {
+            OP_CHECK_IF(true,
+                OP_LOGE(opName, "op current not support tnd layout"), return false);
             int64_t actualSeqQLen = 0;
             int64_t actualSeqKLen = 0;
             int64_t t1Size = queryShape.GetDim(0); // TND只有三个数值 T:0 N:1 D:2
@@ -235,12 +237,6 @@ bool SparseLightningIndexerGradKLLossTilingBase::AnalyzeDimLayout(const gert::Sh
             OP_CHECK_IF(actualSeqQLen != actualSeqKLen,
                 OP_LOGE(opName, "VarLen scene, q[%ld] is not equal k[%ld].", actualSeqQLen, actualSeqKLen), return false);
             // 校验actualQ 对应每一个元素是否大于 actualK ，大于则拦截
-            for (int i=0;i<actualSeqQLen;i++) {
-                OP_CHECK_IF(actualSeqLenData[i] > actualSeqLenKData[i],
-                    OP_LOGE(opName, "Every element of actualSeqLenData must be less than every element of actualSeqLenKData,\
-                        but actualSeqLenData[%d]:[%d] is larger than actualSeqLenKData[%d]:[%d].", i, actualSeqLenData[i],
-                        i, actualSeqLenKData[i]), return false);
-            }
             bSize = actualSeqQLen;
             accumS1 = std::accumulate(actualSeqLenData.begin(), actualSeqLenData.begin() + actualSeqQLen, 0LL);
             accumS2 = std::accumulate(actualSeqLenKData.begin(), actualSeqLenKData.begin() + actualSeqKLen, 0LL);
@@ -250,13 +246,6 @@ bool SparseLightningIndexerGradKLLossTilingBase::AnalyzeDimLayout(const gert::Sh
                     opName,
                     "Query Tsize(%ld) and key Tsize(%ld) must be equal to sum of seqQLen(%ld) and seqkLen(%ld), respectively.",
                     t1Size, t2Size, accumS1, accumS2),
-                return false);
-            OP_CHECK_IF(
-                s1Size > s2Size || t1Size > t2Size || accumS1 > accumS2,
-                OP_LOGE(
-                    opName,
-                    "Query s1Size(%ld), t1Size(%ld) and the sum of seqQLen(%ld) must be small than Key s2Size(%ld), t2Size(%ld) and seqkLen(%ld), respectively.",
-                    s1Size, t1Size, accumS1, s2Size, t2Size, accumS2),
                 return false);
             maxS1Val = *std::max_element(actualSeqLenData.begin(), actualSeqLenData.end());
             maxS2Val = *std::max_element(actualSeqLenKData.begin(), actualSeqLenKData.end());
@@ -302,6 +291,13 @@ bool SparseLightningIndexerGradKLLossTilingBase::AnalyzeDimLayout(const gert::Sh
                         opName,
                         "Query s1Size(%ld) must be small than Key s2Size(%ld).",
                         s1Size, s2Size),
+                    return false);
+            } else {
+                OP_CHECK_IF(
+                    s1Size / cmpRatio != s2Size,
+                    OP_LOGE(
+                        opName,
+                        "current op only support ori_kv = q_s1"),
                     return false);
             }
             OP_CHECK_IF(n2Size == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "N2 is zero."), return false);

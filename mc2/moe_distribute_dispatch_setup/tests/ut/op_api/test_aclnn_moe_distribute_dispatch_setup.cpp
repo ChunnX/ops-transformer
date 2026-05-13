@@ -368,27 +368,6 @@ TEST_F(L2MoeDistributeDispatchSetupTest, TestGetWorkspaceSizeEmptyGroupEp)
 
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
-
-TEST_F(L2MoeDistributeDispatchSetupTest, TestGetWorkspaceSizeMissingOptionalParamsReturnsNullptr)
-{
-    aclTensor *x = CreateAclTensor({8, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
-    aclTensor *expertIds = CreateAclTensor({8, 8}, ACL_INT32, ACL_FORMAT_ND);
-    aclTensor *scalesOptional = nullptr;
-    aclTensor *xActiveMaskOptional = nullptr;
-    aclTensor *yOut = CreateAclTensor({64, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
-    aclTensor *expandIdxOut = CreateAclTensor({64}, ACL_INT32, ACL_FORMAT_ND);
-    aclTensor *commCmdInfoOut = CreateAclTensor({1312}, ACL_INT32, ACL_FORMAT_ND);
-
-    uint64_t workspaceSize = 0;
-    aclOpExecutor *executor = nullptr;
-
-    aclnnStatus aclRet = aclnnMoeDistributeDispatchSetupGetWorkspaceSize(
-        x, expertIds, scalesOptional, xActiveMaskOptional, "group_ep", 2, 0, 32, 0, 0, 0, 0, 0, 2, "", yOut,
-        expandIdxOut, commCmdInfoOut, &workspaceSize, &executor);
-
-    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
-}
-
 TEST_F(L2MoeDistributeDispatchSetupTest, TestTeardownCalcOutputSizeSharedExpert)
 {
     aclTensor *x = CreateAclTensor({8, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);

@@ -55,7 +55,7 @@ TEST_F(DistributeBarrierExtendArch35TilingTest, TestTiling)
     uint64_t ubSize = 196608;
     gert::TilingContextPara tilingContextPara("DistributeBarrierExtend",
         {
-            {{{1, 2052}, {1, 2052}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{2052}, {2052}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         },
         {{{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND}, },
@@ -78,7 +78,7 @@ TEST_F(DistributeBarrierExtendArch35TilingTest, TestTilingWorldSize1)
     uint64_t ubSize = 196608;
     gert::TilingContextPara tilingContextPara("DistributeBarrierExtend",
         {
-            {{{1, 2052}, {1, 2052}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{2052}, {2052}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         },
         {{{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND}, },
@@ -96,7 +96,7 @@ TEST_F(DistributeBarrierExtendArch35TilingTest, TestTilingWorldSize385)
     uint64_t ubSize = 196608;
     gert::TilingContextPara tilingContextPara("DistributeBarrierExtend",
         {
-            {{{1, 2052}, {1, 2052}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{2052}, {2052}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         },
         {{{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND}, },
@@ -114,7 +114,7 @@ TEST_F(DistributeBarrierExtendArch35TilingTest, TestTilingTimeOut)
     uint64_t ubSize = 196608;
     gert::TilingContextPara tilingContextPara("DistributeBarrierExtend",
         {
-            {{{1, 2052}, {1, 2052}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{2052}, {2052}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
         },
@@ -138,7 +138,7 @@ TEST_F(DistributeBarrierExtendArch35TilingTest, TestTilingElasticInfo)
     uint64_t ubSize = 196608;
     gert::TilingContextPara tilingContextPara("DistributeBarrierExtend",
         {
-            {{{1, 2052}, {1, 2052}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{2052}, {2052}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{}, ge::DT_INT32, ge::FORMAT_ND},
             {{{36}, {36}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -163,7 +163,7 @@ TEST_F(DistributeBarrierExtendArch35TilingTest, TestTilingTimeOutElasticInfo)
     uint64_t ubSize = 196608;
     gert::TilingContextPara tilingContextPara("DistributeBarrierExtend",
         {
-            {{{1, 2052}, {1, 2052}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{2052}, {2052}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{3, 4}, {3, 4}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{36}, {36}}, ge::DT_INT32, ge::FORMAT_ND},

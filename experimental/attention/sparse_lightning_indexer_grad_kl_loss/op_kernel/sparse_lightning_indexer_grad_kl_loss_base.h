@@ -430,21 +430,33 @@ __aicore__ inline void SparseLightningIndexerGradKLLossBase<SLIT>::Process()
         if (lastB) {
             extraLoopTimes = 2;// 最后一个Batch需要额外循环两次，因为preload方式会产生尾巴
         }
-        // todo 
-        // if (constInfo.cmpRatio == 4 && s1StartIdxThisBatch < constInfo.cmpRatio - 1) {
-        //     int64_t s1Offset = 0;
-        //     if constexpr (LAYOUT_T == SLILayout::TND) {
-        //         s1Offset = accumS1Len;
-        //     } else if constexpr (LAYOUT_T == SLILayout::BSND) {
-        //         s1Offset = bIdx * constInfo.s1Size;
-        //     }
-        //     int64_t qBaseOffset = constInfo.gSizeQuery * constInfo.dSizeQuery;
-        //     int64_t s1Len = min(constInfo.cmpRatio - 1, s1EndIdxThisBatch) - s1StartIdxThisBatch;
-        //     AscendC::InitOutput(dQueryIndexGm[s1Offset * qBaseOffset], qBaseOffset * s1Len, static_cast<T>(0));
-        //     AscendC::InitOutput(dWeightGm[s1Offset * constInfo.gSizeQuery], constInfo.gSizeQuery * s1Len, static_cast<T>(0));
-        // }
 
-        s1StartIdxThisBatch = max(constInfo.cmpRatio - 1, s1StartIdxThisBatch);
+        if (constInfo.cmpRatio == 4) {
+            int32_t realKvLen = 0;
+            if constexpr (LAYOUT_T == SLILayout::TND) {
+                realKvLen = GetS2SparseLen(s1StartIdxThisBatch, actualSeqLensQ, actualSeqLensK, constInfo.sparseMode);
+            } else {
+                realKvLen = GetS2SparseLen(s1StartIdxThisBatch, constInfo.s1Size, constInfo.s2Size, constInfo.sparseMode);
+            }
+
+            if (realKvLen <= 0 && s1StartIdxThisBatch < constInfo.cmpRatio - 1) {
+                // init invalid s1 loop output[s1StartIdxThisBatch, cmpRatio - 1]
+                int64_t s1Offset = 0;
+                if constexpr (LAYOUT_T == SLILayout::TND) {
+                    s1Offset = accumS1Len;
+                } else if constexpr (LAYOUT_T == SLILayout::BSND) {
+                    s1Offset = bIdx * constInfo.s1Size;
+                }
+                int64_t qBaseOffset = constInfo.gSizeQuery * constInfo.dSizeQuery;
+                int64_t s1CleanLen = Min(constInfo.cmpRatio - 1, s1EndIdxThisBatch) - s1StartIdxThisBatch;
+                AscendC::InitOutput(dQueryIndexGm[(s1Offset + s1StartIdxThisBatch) * qBaseOffset], qBaseOffset * s1CleanLen, static_cast<OUT_T>(0));
+                AscendC::InitOutput(dWeightGm[(s1Offset + s1StartIdxThisBatch) * constInfo.gSizeQuery], constInfo.gSizeQuery * s1CleanLen, static_cast<OUT_T>(0));
+            
+                // skip invalid s1 loop
+                s1StartIdxThisBatch = Min(s1EndIdxThisBatch, constInfo.cmpRatio - 1);
+            }   
+        }
+
         for (int64_t s1Idx = s1StartIdxThisBatch; s1Idx < s1EndIdxThisBatch + extraLoopTimes; s1Idx++) {
             SLIGradKLLossRunInfo &runInfoNeg2 = runInfos[(taskId + 1) % 3];       // 上2轮
             SLIGradKLLossRunInfo &runInfoNeg1 = runInfos[(taskId + 2) % 3];       // 上1轮
@@ -562,7 +574,7 @@ __aicore__ inline int32_t SparseLightningIndexerGradKLLossBase<SLIT>::GetS2Spars
 {
     if (sparseMode == SLISparseMode::RightDown) {
         if (constInfo.cmpRatio != 0) { 
-            return (s1Idx + 1) / constInfo.cmpRatio;
+            return (actualSeqLensK * constInfo.cmpRatio - actualSeqLensQ + s1Idx + 1) / constInfo.cmpRatio;
         } else {
             return Max(actualSeqLensK - actualSeqLensQ + s1Idx + 1, 0);
         }

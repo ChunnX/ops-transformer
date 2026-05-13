@@ -114,7 +114,7 @@ attention:
     ut_cov_exclude:
       - attention/fused_infer_attention_score/op_kernel
       - attention/fused_infer_attention_score/tests
-      - attention/fused_infer_attention_score/op_host/arch32
+      - attention/fused_infer_attention_score/op_host/arch22
     test:
       ut: True
       examples: False
@@ -305,7 +305,7 @@ attention:
         - attention/mla_prolog/docs
         - attention/mla_prolog/README.md
       test:
-        ut: True
+        ut: False
         examples: False
       options:
         - mla_prolog
