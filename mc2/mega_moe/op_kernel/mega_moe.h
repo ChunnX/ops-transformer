@@ -110,15 +110,24 @@ private:
         } while (true);
     }
 
-    TBuf<> CrossRankSyncBuf_;
-    TBuf<> PrevSumBuf_;
-    TBuf<> CopyTempBuf_;
-    TBuf<> CumsumBuf_;
-    TBuf<> ResetFlagBuf_;
-    TBuf<> DataResBuf_;
-    TBuf<> DataResFp32Buf_;
-    TBuf<> ResetTokenBuf_;
-    TBuf<> topKWeightsBuf_;
+    uint32_t crossRankSyncAddr_ = 0;
+    uint32_t prevSumAddr_ = 0;
+    uint32_t cumsumAddr_ = 0;
+    uint32_t copyTempAddr_ = 0;
+    uint32_t resetFlagAddr_ = 0;
+    uint32_t crossRankSyncSize_ = 0;
+    uint32_t prevSumSize_ = 0;
+    uint32_t cumsumSize_ = 0;
+    uint32_t copyTempSize_ = 0;
+    uint32_t resetFlagSize_ = 0;
+    uint32_t dataResAddr_ = 0;
+    uint32_t resetTokenAddr_ = 0;
+    uint32_t dataResFp32Addr_ = 0;
+    uint32_t topKWeightsAddr_ = 0;
+    uint32_t dataResSize_ = 0;
+    uint32_t resetTokenSize_ = 0;
+    uint32_t dataResFp32Size_ = 0;
+    uint32_t topKWeightsSize_ = 0;
 
     __gm__ Mc2MoeContext* mc2Context_{nullptr};
     Params params_{};
@@ -216,20 +225,26 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::FirstBuffInit(TPipe *tPipe)
 {
-    // 对CrossRankSync、Dispatch、GetCumSum过程涉及到的LocalTensor初始化管理
     uint32_t syncBufAlign = Ops::Base::CeilAlign(
         static_cast<uint32_t>(worldSize_ * expertPerRank_), static_cast<uint32_t>(ALIGN_128)) * sizeof(int32_t);
     uint32_t prevSumBufAlign = Ops::Base::CeilAlign(
         static_cast<uint32_t>(worldSize_ * expertPerRank_), static_cast<uint32_t>(ALIGN_128))
         * sizeof(int32_t) * expertPerRank_;
-    tPipe->InitBuffer(CrossRankSyncBuf_, syncBufAlign);
-    tPipe->InitBuffer(PrevSumBuf_, prevSumBufAlign);
     uint32_t getCumsumBufAlign = (AlignUp(worldSize_ * expertPerRank_, ALIGN_128)) * worldSize_ * sizeof(int32_t);
-    tPipe->InitBuffer(CumsumBuf_, getCumsumBufAlign);
-    tPipe->InitBuffer(CopyTempBuf_, BUFFER_ALIGN * sizeof(QuantOutType));
+    uint32_t copyTempBufAlign = BUFFER_ALIGN * sizeof(QuantOutType);
     uint32_t maxResetBufAlign = Ops::Base::CeilDiv(
         static_cast<int32_t>(expertPerRank_ * INT_CACHELINE * sizeof(int32_t) * 2), static_cast<int32_t>(ALIGN_32));
-    tPipe->InitBuffer(ResetFlagBuf_, maxResetBufAlign);
+
+    crossRankSyncAddr_ = 0;
+    crossRankSyncSize_ = syncBufAlign / sizeof(int32_t);
+    prevSumAddr_ = crossRankSyncAddr_ + syncBufAlign;
+    prevSumSize_ = prevSumBufAlign / sizeof(int32_t);
+    cumsumAddr_ = prevSumAddr_ + prevSumBufAlign;
+    cumsumSize_ = getCumsumBufAlign / sizeof(int32_t);
+    copyTempAddr_ = cumsumAddr_ + getCumsumBufAlign;
+    copyTempSize_ = copyTempBufAlign / sizeof(QuantOutType);
+    resetFlagAddr_ = copyTempAddr_ + copyTempBufAlign;
+    resetFlagSize_ = maxResetBufAlign / sizeof(int32_t);
 }
 
 template <TemplateMegaMoeTypeClass>
@@ -237,14 +252,24 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SecondBuffInit(TPipe *t
 {
     uint32_t dataResBufAlign = Ops::Base::CeilAlign(
         static_cast<uint32_t>(UNPERMUTE_LIST_NUM * k_ * sizeof(bfloat16_t)), static_cast<uint32_t>(ALIGN_32));
-    tPipe->InitBuffer(DataResBuf_, dataResBufAlign);
     int32_t num = worldSize_ * Ops::Base::CeilAlign(
         static_cast<uint32_t>(worldSize_ * expertPerRank_), static_cast<uint32_t>(ALIGN_128)) * sizeof(int32_t);
-    tPipe->InitBuffer(ResetTokenBuf_, num);
-    tPipe->InitBuffer(DataResFp32Buf_, dataResBufAlign * 2);
-    tPipe->InitBuffer(topKWeightsBuf_, Ops::Base::CeilAlign(
-        static_cast<uint32_t>(m_ * topK_ * sizeof(float)), static_cast<uint32_t>(ALIGN_32)));
-    topKWeightsTensor_ = topKWeightsBuf_.Get<float>();
+    uint32_t dataResFp32BufAlign = dataResBufAlign * 2;
+    uint32_t topKWeightsBufAlign = Ops::Base::CeilAlign(
+        static_cast<uint32_t>(m_ * topK_ * sizeof(float)), static_cast<uint32_t>(ALIGN_32));
+    uint32_t tempBufAlign = Ops::Base::CeilAlign(
+        static_cast<uint32_t>(m_ * topK_ * sizeof(bfloat16_t)), uint32_t(ALIGN_32));
+
+    dataResAddr_ = 0;
+    dataResSize_ = dataResBufAlign / sizeof(bfloat16_t);
+    resetTokenAddr_ = dataResAddr_ + dataResBufAlign;
+    resetTokenSize_ = num / sizeof(int32_t);
+    dataResFp32Addr_ = resetTokenAddr_ + num;
+    dataResFp32Size_ = dataResFp32BufAlign / sizeof(float);
+    topKWeightsAddr_ = dataResFp32Addr_ + dataResFp32BufAlign;
+    topKWeightsSize_ = topKWeightsBufAlign / sizeof(float);
+
+    topKWeightsTensor_ = LocalTensor<float>(TPosition::VECCALC, topKWeightsAddr_, topKWeightsSize_);
     if constexpr (Std::IsSame<TopkWeightsType, float>::value) {
         GlobalTensor<float> topKWeightsGlobalTensor_;
         topKWeightsGlobalTensor_.SetGlobalBuffer((__gm__ float*)params_.probsGmAddr);
@@ -253,10 +278,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SecondBuffInit(TPipe *t
         DataCopyPad(topKWeightsTensor_, topKWeightsGlobalTensor_, copyParams, copyPadParams);
     }
     if constexpr (Std::IsSame<TopkWeightsType, bfloat16_t>::value) {
-        TBuf<> tempBuf;
-        tPipe->InitBuffer(tempBuf, Ops::Base::CeilAlign(
-            static_cast<uint32_t>(m_ * topK_ * sizeof(bfloat16_t)), uint32_t(ALIGN_32)));
-        LocalTensor<bfloat16_t> tempLocal = tempBuf.Get<bfloat16_t>();
+        uint32_t tempAddr = topKWeightsAddr_ + topKWeightsBufAlign;
+        uint32_t tempSize = tempBufAlign / sizeof(bfloat16_t);
+        LocalTensor<bfloat16_t> tempLocal(TPosition::VECCALC, tempAddr, tempSize);
         GlobalTensor<bfloat16_t> topkWeightsGlobalTensor;
         topkWeightsGlobalTensor.SetGlobalBuffer((__gm__ bfloat16_t*)params_.probsGmAddr);
         DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(m_ * topK_ * sizeof(bfloat16_t)), 0U, 0U, 0U};
@@ -276,7 +300,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetWorkSpaceFlagList(
         int32_t flagNum = expertPerRank_ * INT_CACHELINE * 2;
         int32_t coreLen, coreOffset;
         TilingByCore(flagNum, coreLen, coreOffset);
-        LocalTensor<int32_t> initTensor = ResetFlagBuf_.Get<int32_t>();
+        LocalTensor<int32_t> initTensor(TPosition::VECCALC, resetFlagAddr_, resetFlagSize_);
         if (coreLen != 0) {
             Duplicate(initTensor, 0, coreLen);
             SyncFunc<AscendC::HardEvent::V_MTE3>();
@@ -289,7 +313,7 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GetCumsumForMMAIV()
 {
     int32_t expertPerRankAligned = (expertPerRank_ + 8 - 1) / 8 * 8;
-    LocalTensor<int32_t> tmpBuffer1 = CumsumBuf_.Get<int32_t>();
+    LocalTensor<int32_t> tmpBuffer1(TPosition::VECCALC, cumsumAddr_, cumsumSize_);
     DataCopyPad(tmpBuffer1, tokenPerExpertWin_[rankId_ * expertPerRank_],
         {static_cast<uint16_t>(worldSize_), static_cast<uint16_t>(expertPerRank_ * sizeof(int32_t)),
          static_cast<uint16_t>((AlignUp(worldSize_ * expertPerRank_, ALIGN_128)
@@ -311,7 +335,7 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ExpertTokenNumCopyOut()
 {
     int32_t copyNum = Ops::Base::CeilAlign(static_cast<uint32_t>(expertPerRank_), static_cast<uint32_t>(ALIGN_32));
-    LocalTensor<int32_t> tmpCopyBuffer = CrossRankSyncBuf_.Get<int32_t>();
+    LocalTensor<int32_t> tmpCopyBuffer(TPosition::VECCALC, crossRankSyncAddr_, crossRankSyncSize_);
     DataCopy(tmpCopyBuffer, groupList_, copyNum);
     SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
     DataCopy(expertTokenNumsOut_, tmpCopyBuffer, copyNum);
@@ -352,8 +376,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CrossRankSyncCntPerExpe
     }
     uint32_t numPerCore = Ops::Base::CeilAlign(static_cast<uint32_t>(worldSize_ * expertPerRank_),
             static_cast<uint32_t>(ALIGN_128));
-    LocalTensor<int32_t> tmpBuffer = CrossRankSyncBuf_.Get<int32_t>();
-    LocalTensor<int32_t> prevSumBuf = PrevSumBuf_.Get<int32_t>();
+    LocalTensor<int32_t> tmpBuffer(TPosition::VECCALC, crossRankSyncAddr_, crossRankSyncSize_);
+    LocalTensor<int32_t> prevSumBuf(TPosition::VECCALC, prevSumAddr_, prevSumSize_);
     // 给对端发送
     uint64_t offsetInDstWinAddr = perRankStridesInTokenPerExpert_ * sizeof(int32_t) * rankId_ + PEERMEM_DATA_OFFSET;
     for (int32_t dstRankIdx = aivCoreIdx_; dstRankIdx < worldSize_; dstRankIdx += blockAivNum_) {
@@ -421,7 +445,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CopyGMToGMPerTokenV2(
     int32_t rows, int32_t hiddenSize, int32_t& pingpongId)
 {
     constexpr int32_t BufferNum = 2;
-    LocalTensor<QuantOutType> tmpBuffer1 = CopyTempBuf_.Get<QuantOutType>();
+    LocalTensor<QuantOutType> tmpBuffer1(TPosition::VECCALC, copyTempAddr_, copyTempSize_);
     LocalTensor<QuantOutType> tmpBuffer2 = tmpBuffer1[96 * 1024];
     uint32_t scaleLen = Ops::Base::CeilDiv(static_cast<int32_t>(hiddenSize),
         static_cast<int32_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
@@ -601,7 +625,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetTokenPerExpert()
     int32_t num = worldSize_ * Ops::Base::CeilAlign(
             static_cast<uint32_t>(worldSize_ * expertPerRank_), static_cast<uint32_t>(ALIGN_128));
     SyncFunc<AscendC::HardEvent::MTE3_V>();
-    LocalTensor<int32_t> tmp = ResetTokenBuf_.Get<int32_t>();
+    LocalTensor<int32_t> tmp(TPosition::VECCALC, resetTokenAddr_, resetTokenSize_);
     Duplicate(tmp, 0, num);
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     DataCopy(tokenPerExpertWin_, tmp, num);
@@ -622,10 +646,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
     SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
     for (int32_t tokenIdx = coreOffset; tokenIdx < coreLen + coreOffset; tokenIdx++) {
         SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
-        LocalTensor<bfloat16_t> dataResBf16 = DataResBuf_.Get<bfloat16_t>();
+        LocalTensor<bfloat16_t> dataResBf16(TPosition::VECCALC, dataResAddr_, dataResSize_);
         LocalTensor<bfloat16_t> dataIn0Bf16 = dataResBf16[k_];
         LocalTensor<bfloat16_t> dataIn1Bf16 = dataResBf16[k_ * 2];
-        LocalTensor<float> dataResFp32 = DataResFp32Buf_.Get<float>();
+        LocalTensor<float> dataResFp32(TPosition::VECCALC, dataResFp32Addr_, dataResFp32Size_);
         LocalTensor<float> dataIn0Fp32 = dataResFp32[k_];
         LocalTensor<float> dataIn1Fp32 = dataResFp32[k_ * 2];
         for (int32_t expId = 0; expId < topK_; ++expId) {
