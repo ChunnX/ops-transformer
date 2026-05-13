@@ -46,11 +46,13 @@ public:
 
     static constexpr bool USE_DN = CubeBlockType::USE_DN;
     static constexpr bool BMM2_TOUB = CubeBlockType::BMM2_TOUB;
+    static constexpr bool SPLITD = CubeBlockType::SPLITD;
     static constexpr bool HAS_PREFIX = CubeBlockType::HAS_PREFIX;
     static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
 
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C1 C2
     static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N + 1;
+
 
     static constexpr bool PAGE_ATTENTION = CubeBlockType::PAGE_ATTENTION;
     static constexpr bool HAS_ROPE = CubeBlockType::HAS_ROPE;
@@ -829,6 +831,9 @@ public:
 
     __aicore__ inline void FlashDecode()
     {
+#ifdef SKIP_FD
+        return;
+#endif
         vecFdBlock.InitBuffers(this->pipe);
         AscendC::ICachePreLoad(2);
         uint32_t fdCoreEnable = fiaMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FD_CORE_ENABLE_INDEX));
@@ -841,6 +846,7 @@ public:
 
         FDparamsX fdParams = {fdCoreEnable, fdBN2Idx, fdMIdx, fdS2SplitNum, mStart, mLen, fdWorkspaceIdx};
         vecFdBlock.AllocEventID();
+        vecFdBlock.InitDecodeParams();
         SyncAll();
         vecFdBlock.FlashDecode(fdParams);
         vecFdBlock.FreeEventID();

@@ -475,6 +475,8 @@ void FiaTilingNonQuantMlaArch35::SetFATilingData()
     tilingData_.baseTiling.fiaBaseParams.actualSeqLengthsKVSize = fiaInfo_->actualLenDims;
     tilingData_.baseTiling.fiaBaseParams.isKvContinuous = fiaInfo_->kvStorageMode != KvStorageMode::TENSOR_LIST;
     tilingData_.baseTiling.fiaBaseParams.isSoftMaxLseEnable = fiaInfo_->softmaxLseFlag;
+    tilingData_.baseTiling.fiaBaseParams.isActualSeqLengthsNull = !actualSeqLenQFlag_;
+    tilingData_.baseTiling.fiaBaseParams.isActualSeqLengthsKVNull = !actualSeqLenKVFlag_;
 
     tilingData_.baseTiling.fiaAttenMaskParams.preTokens = fiaInfo_->preToken;
     tilingData_.baseTiling.fiaAttenMaskParams.nextTokens = fiaInfo_->nextToken;
@@ -540,6 +542,8 @@ void FiaTilingNonQuantMlaArch35::PrintAllTilingData()
     OP_LOGD(fiaInfo_->opName, "actualSeqLengthsQSize:%d", fiaBaseParams.actualSeqLengthsQSize);
     OP_LOGD(fiaInfo_->opName, "actualSeqLengthsKVSize:%d", fiaBaseParams.actualSeqLengthsKVSize);
     OP_LOGD(fiaInfo_->opName, "scaleValue:%f", fiaBaseParams.scaleValue);
+    OP_LOGD(fiaInfo_->opName, "isActualSeqLengthsNull:%d", fiaBaseParams.isActualSeqLengthsNull);
+    OP_LOGD(fiaInfo_->opName, "isActualSeqLengthsKVNull:%d", fiaBaseParams.isActualSeqLengthsKVNull);
     OP_LOGD(fiaInfo_->opName, "isKvContinuous:%d", fiaBaseParams.isKvContinuous);
     OP_LOGD(fiaInfo_->opName, "isSoftMaxLseEnable:%d", fiaBaseParams.isSoftMaxLseEnable);
 
