@@ -526,43 +526,43 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessTopK(const LIC
                              indicesOutLocal_.ReinterpretCast<int32_t>(), copyOutParams);
 
         
-        // 是否返回Value值
-        if (returnValueFlag) {
-            // uint16_t -> bfloat16
-            LocalTensor<uint16_t> scoreOutLocal1_ = scoreOutLocal_.template ReinterpretCast<uint16_t>();
-            if (std::is_same_v<K_T, bfloat16_t>) {
-                vector1::UIntToFloatReturnValue(valueOutLocal_.template ReinterpretCast<bfloat16_t>(),
-                    scoreOutLocal1_, topkCountAlign256_);
-            } else {
-                vector1::UIntToFloatReturnValue(uIntToBfloat16Local_, scoreOutLocal1_, topkCountAlign256_);
-                Cast(valueOutLocal_, uIntToBfloat16Local_, RoundMode::CAST_RINT, topkCountAlign256_);
-            }
+        // // 是否返回Value值
+        // if (returnValueFlag) {
+        //     // uint16_t -> bfloat16
+        //     LocalTensor<uint16_t> scoreOutLocal1_ = scoreOutLocal_.template ReinterpretCast<uint16_t>();
+        //     if (std::is_same_v<K_T, bfloat16_t>) {
+        //         vector1::UIntToFloatReturnValue(valueOutLocal_.template ReinterpretCast<bfloat16_t>(),
+        //             scoreOutLocal1_, topkCountAlign256_);
+        //     } else {
+        //         vector1::UIntToFloatReturnValue(uIntToBfloat16Local_, scoreOutLocal1_, topkCountAlign256_);
+        //         Cast(valueOutLocal_, uIntToBfloat16Local_, RoundMode::CAST_RINT, topkCountAlign256_);
+        //     }
 
-            if (validS2Len < topkCount_) {
-                uint64_t mask[1];
-                mask[0] = ~0;
-                mask[0] = mask[0] << (validS2Len % 16);
-                PipeBarrier<PIPE_V>();
-                Duplicate(valueOutLocal_.template ReinterpretCast<uint16_t>()[validS2Len / 16 * 16],
-                            constInfo_.INVALID_VAL, mask, 1, 1, 0);
-            }
-            if (validS2Len / 16 * 16 + 64 < topkCount_) {
-                PipeBarrier<PIPE_V>();
-                Duplicate(valueOutLocal_.template ReinterpretCast<uint16_t>()[validS2Len / 16 * 16 + 64],
-                            constInfo_.INVALID_VAL, topkCount_ - (validS2Len / 16 * 16 + 64));
-            }
-            SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-            WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-            AscendC::DataCopyParams copyOutValueParams;
-            copyOutValueParams.blockCount = 1;
-            copyOutValueParams.blockLen = topkCount_ * sizeof(K_T); // bytes
-            copyOutValueParams.srcStride = 0;
-            copyOutValueParams.dstStride = 0;
-            // 搬运到GM
-            AscendC::DataCopyPad(
-                valueOutGm[info.valueOutOffset + (curS1Idx + rowIdx) * topkCount_],
-                valueOutLocal_, copyOutValueParams);
-        }
+        //     if (validS2Len < topkCount_) {
+        //         uint64_t mask[1];
+        //         mask[0] = ~0;
+        //         mask[0] = mask[0] << (validS2Len % 16);
+        //         PipeBarrier<PIPE_V>();
+        //         Duplicate(valueOutLocal_.template ReinterpretCast<uint16_t>()[validS2Len / 16 * 16],
+        //                     constInfo_.INVALID_VAL, mask, 1, 1, 0);
+        //     }
+        //     if (validS2Len / 16 * 16 + 64 < topkCount_) {
+        //         PipeBarrier<PIPE_V>();
+        //         Duplicate(valueOutLocal_.template ReinterpretCast<uint16_t>()[validS2Len / 16 * 16 + 64],
+        //                     constInfo_.INVALID_VAL, topkCount_ - (validS2Len / 16 * 16 + 64));
+        //     }
+        //     SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+        //     WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+        //     AscendC::DataCopyParams copyOutValueParams;
+        //     copyOutValueParams.blockCount = 1;
+        //     copyOutValueParams.blockLen = topkCount_ * sizeof(K_T); // bytes
+        //     copyOutValueParams.srcStride = 0;
+        //     copyOutValueParams.dstStride = 0;
+        //     // 搬运到GM
+        //     AscendC::DataCopyPad(
+        //         valueOutGm[info.valueOutOffset + (curS1Idx + rowIdx) * topkCount_],
+        //         valueOutLocal_, copyOutValueParams);
+        // }
         SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
     }
 }
