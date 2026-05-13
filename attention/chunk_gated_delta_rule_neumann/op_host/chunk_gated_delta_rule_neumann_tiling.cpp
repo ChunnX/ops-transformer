@@ -54,12 +54,10 @@ constexpr int64_t SYS_WORKSPACE_SIZE = 16777216;
 constexpr uint32_t MATMUL_BASE_M = 128;
 constexpr uint32_t MATMUL_BASE_K = 128;
 constexpr uint32_t MATMUL_BASE_N = 128;
-constexpr uint32_t MATMUL_MICRO_C16 = 16;
-constexpr uint32_t MATMUL_MICRO_C32 = 32;
-constexpr uint32_t MATMUL_MICRO_C64 = 64;
 
 constexpr uint32_t STAGE_ONE_TWO = 2;
 constexpr uint32_t STAGE_ONE_THREE = 3;
+constexpr uint32_t STAGE_ONE_PARA_NUM = 4;
 constexpr uint32_t MASK_NUM = 4;
 constexpr int64_t P_NUM = 2;
 
@@ -118,39 +116,38 @@ ge::graphStatus ChunkGatedDeltaRuleNeumannTiling::DoOpTiling()
     int64_t p = P_NUM; // 一个 chunk 组中，单核最大处理 chunk 数
     tilingData_.chunkSize = c;
     tilingData_.maxGroupLength = p * tilingData_.aiCoreNum * tilingData_.chunkSize;
-    tilingData_.stageOneParaNum = STAGE_ONE_TWO; // stage1 并行数
+    tilingData_.stageOneParaNum = STAGE_ONE_PARA_NUM; // stage1 并行数
 
     tilingData_.interWorkspaceSz = 0;
     int64_t sizeHigh = ge::GetSizeByDataType(ge::DT_FLOAT);
+    int64_t sizeLow = ge::GetSizeByDataType(ge::DT_BF16);
     int64_t nv = tilingData_.nv;
     int64_t dv = tilingData_.dv;
     int64_t dk = tilingData_.dk;
     int64_t s = tilingData_.maxGroupLength;
-    int64_t b = tilingData_.b;
     tilingData_.interWorkspaceSz += sizeHigh * nv * s;                                   // gCumExp
-    tilingData_.interWorkspaceSz += sizeHigh * nv * s * dk;                              // kCumDecay
-    tilingData_.interWorkspaceSz += sizeHigh * nv * s * dv;                              // vInner
-    tilingData_.interWorkspaceSz += sizeHigh * nv * s * dk;                              // qPrime
-    tilingData_.interWorkspaceSz += sizeHigh * nv * s * dv;                              // attnInter
-    tilingData_.interWorkspaceSz += sizeHigh * nv * s * dk;                              // kg
-    tilingData_.interWorkspaceSz += sizeHigh * nv * s * c;                               // qkt
-    tilingData_.interWorkspaceSz += sizeHigh * b * nv * dv * dk;                         // highState
+    tilingData_.interWorkspaceSz += sizeLow * nv * s * dk;                               // kCumDecay
+    tilingData_.interWorkspaceSz += sizeLow * nv * s * dv;                               // vInner
+    tilingData_.interWorkspaceSz += sizeLow * nv * s * dk;                               // qPrime
+    tilingData_.interWorkspaceSz += sizeLow * nv * s * dv;                               // attnInter
+    tilingData_.interWorkspaceSz += sizeLow * nv * s * dk;                               // kg
+    tilingData_.interWorkspaceSz += sizeLow * nv * s * c;                                // qkt
     tilingData_.interWorkspaceSz += sizeHigh * c * c * tilingData_.aiCoreNum * MASK_NUM; // mask
 
     // stage1 临时变量空间
     tilingData_.stageWorkspaceSz =
-        sizeHigh * c * (STAGE_ONE_TWO * c + STAGE_ONE_THREE * dk + dv) * tilingData_.stageOneParaNum;
+        sizeLow * c * (STAGE_ONE_TWO * c + STAGE_ONE_THREE * dk + dv) * tilingData_.stageOneParaNum;
     tilingData_.stageWorkspaceSz *= tilingData_.aiCoreNum;
 
-    // Neumann 求逆 workspace: L_pow + tmp + INV (每个 core 各一份)
-    int64_t neumannWsSz = sizeHigh * tilingData_.aiCoreNum * c * c * 3;
+    // Active inverse workspace: FP16 L_pow + FP16 initial/final INV + FP32 identity tmp.
+    int64_t sizeHalf = ge::GetSizeByDataType(ge::DT_FLOAT16);
+    int64_t neumannMatrixCount = tilingData_.aiCoreNum * tilingData_.stageOneParaNum * c * c;
+    int64_t neumannWsSz = neumannMatrixCount * (sizeHalf * 2 + sizeHigh);
     tilingData_.stageWorkspaceSz += neumannWsSz;
 
-    // Raw MMAD scratch is reused by inverse accumulation and final-output probes.
-    int64_t rhsMax = dk > dv ? dk : dv;
-    int64_t rawScratchCols = rhsMax > c ? rhsMax : c;
-    int64_t rawFinalScratchSz = sizeHigh * tilingData_.aiCoreNum * c * rawScratchCols;
-    tilingData_.stageWorkspaceSz += rawFinalScratchSz;
+    int64_t rhsHalfWsSz = tilingData_.aiCoreNum * tilingData_.stageOneParaNum *
+                          sizeHalf * c * (dk + dv);
+    tilingData_.stageWorkspaceSz += rhsHalfWsSz;
 
     PrintTilingData();
     return ge::GRAPH_SUCCESS;
@@ -205,75 +202,9 @@ ge::graphStatus ChunkGatedDeltaRuleNeumannTiling::DoMatmulTiling()
     };
 
     if (getTiling(MATMUL_BASE_M, MATMUL_BASE_N, MATMUL_BASE_K,
-                  matmul_tiling::DataType::DT_FLOAT, matmul_tiling::DataType::DT_FLOAT,
-                  matmul_tiling::DataType::DT_FLOAT, true, true,
-                  tilingData_.matmulTilingFp32) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
-    if (getTiling(MATMUL_MICRO_C16, MATMUL_MICRO_C16, MATMUL_MICRO_C16,
-                  matmul_tiling::DataType::DT_FLOAT, matmul_tiling::DataType::DT_FLOAT,
-                  matmul_tiling::DataType::DT_FLOAT, true, true,
-                  tilingData_.matmulTilingFp32C16) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
-    if (getTiling(MATMUL_MICRO_C32, MATMUL_MICRO_C32, MATMUL_MICRO_C32,
-                  matmul_tiling::DataType::DT_FLOAT, matmul_tiling::DataType::DT_FLOAT,
-                  matmul_tiling::DataType::DT_FLOAT, true, true,
-                  tilingData_.matmulTilingFp32C32) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
-    if (getTiling(MATMUL_MICRO_C64, MATMUL_MICRO_C64, MATMUL_MICRO_C64,
-                  matmul_tiling::DataType::DT_FLOAT, matmul_tiling::DataType::DT_FLOAT,
-                  matmul_tiling::DataType::DT_FLOAT, true, true,
-                  tilingData_.matmulTilingFp32C64) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
-    if (getTiling(MATMUL_BASE_M, MATMUL_BASE_N, MATMUL_BASE_K,
-                  matmul_tiling::DataType::DT_FLOAT16, matmul_tiling::DataType::DT_FLOAT16,
-                  matmul_tiling::DataType::DT_FLOAT, false, false,
-                  tilingData_.matmulTilingFp16Out) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
-    if (getTiling(MATMUL_BASE_M, MATMUL_BASE_N, MATMUL_BASE_K,
-                  matmul_tiling::DataType::DT_FLOAT16, matmul_tiling::DataType::DT_FLOAT16,
-                  matmul_tiling::DataType::DT_FLOAT, false, false,
-                  tilingData_.matmulTilingFp16L1Out,
-                  matmul_tiling::TPosition::TSCM, matmul_tiling::TPosition::GM,
-                  matmul_tiling::TPosition::GM,
-                  matmul_tiling::CubeFormat::NZ, matmul_tiling::CubeFormat::ND,
-                  matmul_tiling::CubeFormat::ND) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
-    if (getTiling(MATMUL_MICRO_C16, MATMUL_MICRO_C16, MATMUL_MICRO_C16,
-                  matmul_tiling::DataType::DT_FLOAT16, matmul_tiling::DataType::DT_FLOAT16,
-                  matmul_tiling::DataType::DT_FLOAT16, false, false,
-                  tilingData_.matmulTilingFp16C16) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
-    if (getTiling(MATMUL_MICRO_C32, MATMUL_MICRO_C32, MATMUL_MICRO_C32,
-                  matmul_tiling::DataType::DT_FLOAT16, matmul_tiling::DataType::DT_FLOAT16,
-                  matmul_tiling::DataType::DT_FLOAT16, false, false,
-                  tilingData_.matmulTilingFp16C32) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
-    if (getTiling(MATMUL_MICRO_C16, MATMUL_MICRO_C16, MATMUL_MICRO_C16,
-                  matmul_tiling::DataType::DT_FLOAT16, matmul_tiling::DataType::DT_FLOAT16,
-                  matmul_tiling::DataType::DT_FLOAT16, false, false,
-                  tilingData_.matmulTilingFp16C16L1,
-                  matmul_tiling::TPosition::TSCM, matmul_tiling::TPosition::TSCM,
-                  matmul_tiling::TPosition::TSCM,
-                  matmul_tiling::CubeFormat::NZ, matmul_tiling::CubeFormat::NZ,
-                  matmul_tiling::CubeFormat::NZ) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
-    if (getTiling(MATMUL_MICRO_C32, MATMUL_MICRO_C32, MATMUL_MICRO_C32,
-                  matmul_tiling::DataType::DT_FLOAT16, matmul_tiling::DataType::DT_FLOAT16,
-                  matmul_tiling::DataType::DT_FLOAT16, false, false,
-                  tilingData_.matmulTilingFp16C32L1,
-                  matmul_tiling::TPosition::TSCM, matmul_tiling::TPosition::TSCM,
-                  matmul_tiling::TPosition::TSCM,
-                  matmul_tiling::CubeFormat::NZ, matmul_tiling::CubeFormat::NZ,
-                  matmul_tiling::CubeFormat::NZ) != ge::GRAPH_SUCCESS) {
+                  matmul_tiling::DataType::DT_BFLOAT16, matmul_tiling::DataType::DT_BFLOAT16,
+                  matmul_tiling::DataType::DT_BFLOAT16, true, true,
+                  tilingData_.matmulTilingBf16) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

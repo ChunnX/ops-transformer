@@ -36,16 +36,7 @@ namespace ChunkGatedDeltaRuleNeumann {
         int64_t stageWorkspaceSz;
         int64_t stageOneParaNum;
         float scale;
-        AscendC::tiling::TCubeTiling matmulTilingFp32;     // for general MT_FP32: fp32 -> fp32
-        AscendC::tiling::TCubeTiling matmulTilingFp32C16;  // for 16x16x16 inverse micro matmul
-        AscendC::tiling::TCubeTiling matmulTilingFp32C32;  // for 32x32x32 inverse/compose micro matmul
-        AscendC::tiling::TCubeTiling matmulTilingFp32C64;  // reserved for 64x64x64 stage1 micro matmul
-        AscendC::tiling::TCubeTiling matmulTilingFp16Out;  // fp16/fp16 -> fp32, final inverse @ rhs
-        AscendC::tiling::TCubeTiling matmulTilingFp16C16;  // fp16/fp16 -> fp16, 16x16 inverse micro matmul
-        AscendC::tiling::TCubeTiling matmulTilingFp16C32;  // fp16/fp16 -> fp16, 32x32 compose micro matmul
-        AscendC::tiling::TCubeTiling matmulTilingFp16L1Out;  // fp16 L1/fp16 GM -> fp32 GM, final inverse @ rhs
-        AscendC::tiling::TCubeTiling matmulTilingFp16C16L1;  // fp16/fp16 -> fp16, C output in L1/TSCM
-        AscendC::tiling::TCubeTiling matmulTilingFp16C32L1;  // fp16/fp16 -> fp16, C output in L1/TSCM
+        AscendC::tiling::TCubeTiling matmulTilingBf16;     // for BF16 GM matmul: bf16 x bf16 -> bf16
     };
     #pragma pack(pop)
 

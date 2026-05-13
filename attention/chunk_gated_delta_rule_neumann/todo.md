@@ -1,0 +1,982 @@
+# 任务：strict packed64 one-shot 继续优化
+
+## 当前状态
+
+- Current live source after A106:
+  - SHA256 `a08e61279067653747e67dda533bbbb50e306e051d20acdcb6729df92aefa9d8`; verify before use with `sha256sum`.
+  - baseline `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA106_drop_all_dcci_baseline.h`.
+  - A106 removes all active explicit `DataCacheCleanAndInvalid` wrappers/calls from the p3l1_p8a Stage1 file:
+    - inverse scratch `L_powHalfWsGm_` / `INVInitHalfWsGm_` write-after flush and read-before clean;
+    - `gBKHalfWsGm_` / `vBetaHalfWsGm_` RHS scratch write-after flush and read-before clean;
+    - BF16 output/workspace flush calls;
+    - old float/half helper clean/flush calls and dead helper definitions.
+  - Sync/order boundaries remain: `SyncMte3ToMte2`, `SyncFixToMte2`, `SyncFixToS`, cross-core flags, and Fixpipe/MTE waits were not removed.
+  - Gate PASS: isolated build/install, `S=64/256/1024`, full compare `16 passed in 6.17s`.
+  - A106 performance ratios `S=64/512/2048/10240 = 0.892 / 0.864 / 0.926 / 0.928`.
+  - Important failure note: an intermediate "delete DCCI plus sync" candidate passed `S=64/256` but failed `S=1024`; do not delete the sync waits under the DCCI-cleanup label.
+
+- Active selector: `p3l1_p8a / C64_1616_FP16`。
+- Active selector files:
+  - `op_kernel/selected/stage1_selected.h`
+  - `op_kernel/selected/stage1_selected_config.h`
+- Active Stage1:
+  - `op_kernel/p8afullocal/chunk_gated_delta_rule_neumann_stage1.h`
+- Current live source after A102:
+  - SHA256 `9cd969fc8edef610266c2dd974b70bb214eeb6c9f3d3ebfd758607736d50ac01`.
+  - continuation baseline `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA102_raw_epoch_auxiliary_tiles_baseline.h`.
+  - A100 gate PASS: build/install, `S=64/256/1024`, full compare `16 passed in 6.64s`.
+  - A100 keeps A82 sync boundary and merges lower BF16 materialization for rows `0/16/32/48` into row-prefix rectangles.
+  - BF16 GM Fixpipe writeback itself remains; RHS still consumes `aicHalfL1ResidentInv_`.
+  - A100 performance ratios `1.173 / 1.448 / 2.190 / 2.225`.
+  - Compared with A99 `1.162 / 1.544 / 2.288 / 2.330`, A100 gives a small `S=64` rollback but clearly improves `S=512/2048/10240`; Neumann absolute task time drops on all four profiled sizes versus A99.
+  - A101 gate PASS: build/install, `S=64/256/1024`, full compare `16 passed in 6.17s`.
+  - A101 removes the dead per-`16x16` BF16 lower block fallback and the unused active helper after A100 made all four rows row-prefix.
+  - A101 performance ratios `1.118 / 1.455 / 2.185 / 2.200`; compared with A100 it improves `S=64/2048/10240`, with `S=512` only a small noise-scale rollback.
+  - A102 gate PASS after clean rebuild + isolated OPP install, `S=64/256/1024`, full compare `16 passed in 6.20s`.
+  - A102 moves raw-MMAD auxiliary tile preparation into `InitRawMmadLocalBuffers()`: `zero64` and `identity64` are prepared once per raw-MMAD local buffer epoch by `PrepareRawMmadAuxiliaryTiles()`, and active helpers no longer lazily regenerate them.
+  - A102 performance ratios `1.082 / 1.434 / 2.182 / 2.209`; compared with A101 it improves `S=64/512/2048`, with `S=10240` a small rollback in this run.
+  - build hygiene: do not chain `build.sh --make_clean` with the real build; manually clear `../../build` and `../../build_out` or verify `CMakeCache.txt` and package payload.
+- A94 result:
+  - candidate SHA256 `4eede660d86bcdb61bdf24f4059a9ca484ce1a14532f534183ff1fa4a708f43f`.
+  - correctness PASS: `S=64/256/1024` and full compare `16 passed in 6.14s`.
+  - performance FAIL: ratios `1.228 / 1.603 / 2.317 / 2.344`, worse than A82 on all profiled sizes.
+  - no baseline saved; active restored to A82 SHA256 `ba186210c7ef75bcb7ef3c62a38fdb8e0ac3822906f0e02691d55d5edb2aedca`.
+  - do not retry exact RHS full-tile zero-init skip without a materially different lifecycle proof.
+- A76 result:
+  - correctness-safe, but performance-regressed.
+  - performance ratios `1.200 / 1.654 / 2.416 / 2.456`; do not continue from A76 as preferred performance surface.
+- 当前 latest correctness-safe baseline:
+  - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA106_drop_all_dcci_baseline.h`
+  - source SHA256: `a08e61279067653747e67dda533bbbb50e306e051d20acdcb6729df92aefa9d8`
+- 当前 preferred performance baseline:
+  - continuation surface: A106, ratios `0.892 / 0.864 / 0.926 / 0.928`.
+  - A105 reference: ratios `1.016 / 1.308 / 2.076 / 2.103`.
+  - A103b reference: ratios `1.035 / 1.359 / 2.169 / 2.190`.
+  - A102 reference: ratios `1.082 / 1.434 / 2.182 / 2.209`.
+  - A101 remains a large-sequence reference, ratios `1.118 / 1.455 / 2.185 / 2.200`.
+  - small sequence reference: A77, ratios `1.147 / 1.663 / 2.409 / 2.433`.
+  - small sequence reference: A75, ratios `1.166 / 1.662 / 2.410 / 2.446`.
+  - large sequence reference: A68, ratios `1.175 / 1.662 / 2.399 / 2.437`.
+  - A67 remains important at `S=512`, ratios `1.181 / 1.635 / 2.425 / 2.456`.
+- 当前 active/source/installed 需要逐次核对，不能把 installed 结果归因到 source：
+  - 2026-05-12 latest correctness-safe baseline 是 A66，SHA256: `db0db360181e0a48f1005469ea2c9b348330419cb9aca19e5e8be0011a1cb2d1`
+  - 2026-05-12 recheck live active Stage1 source SHA256: `db0db360181e0a48f1005469ea2c9b348330419cb9aca19e5e8be0011a1cb2d1`，当前 active 已对齐 A66 baseline。
+  - A59 candidate SHA256 `4ce3769b1b2ba8849461cfb8a837052f562134d7a61c23e4ea041d3db039cdcf` 已验证失败：`S=64/256` PASS，`S=1024` FAIL；不得保存为 baseline，不得继续删除 `RawMmadPackedHalfL1AccumulateTile()` 内的 local HF32 setup。
+  - 后续代码优化默认从 A66 latest correctness/performance baseline 起步；若按全局性能主线改回 A63a/A65a 或其他旧 surface，phase 记录必须写清理由。
+  - A66 baseline SHA256: `db0db360181e0a48f1005469ea2c9b348330419cb9aca19e5e8be0011a1cb2d1`
+  - A65a baseline SHA256: `180e49f446c2df5a92da333e7b895949e1c0b313cec13c2cabd8aacd67aa26d8`
+  - A64 baseline SHA256: `9db43aa3868a7e2c9384b58b328dd4e4b8ed19a5b061a761b529d2abd97d0a2c`
+  - A63a baseline SHA256: `ca6bc32ca4f80bc093a0b293c0bbd20dcf5b24f3a88a7dc0c594b2804f8a66b5`
+  - A61a baseline SHA256: `dfa33e483b0661626f4835a388546b425581ff0455aed3d6cf2efbed7b4b01ac`
+  - A58 baseline SHA256: `4a26eba55d45a58eb8933e01fd9f908744b7a93b099256b1ca4d4fee9b83f76a`
+  - A57 baseline SHA256: `6a8ad59ee6bfd4cd4edfc8750b7bd6f7ab81e7ffd8182731ad0be3a4ad9d98d9`
+  - A56 baseline SHA256: `5646df25a94ee35f030bff0ef756c284738927fb7fe212afe5ae51dbe94c6bfb`
+  - A55 baseline SHA256: `ca7b044e48fd7c3d1553fe60479e6b9684369847963335eacd8eb14bfc8c4aac`
+  - A54 baseline SHA256: `f22f56f3f2b1251cfb52c70f2d54a5eac21221bbfe5471c9b46024cee2e7c2bf`
+  - A53 baseline SHA256: `92dfb07d69755d1cbbde3ffbb8ced6489c6ace95714cc4f0975af6e4945ef334`
+  - A52 baseline SHA256: `30eda4660a3bb8fcf9475a7dc532211b7552784c0fd5acc6bed14ece727ab3cd`
+  - A51b baseline SHA256: `50c079ec6ee5dc32deb7f353c038e71ddd131716845d98d85605ac18950fdd24`
+  - A50 baseline SHA256: `4c995b59523e8e87069da1a38692567d0eee99ac9a8a30ee1cec8f83d6f6208a`
+  - A49 baseline SHA256: `337b86df5435578536c3b95ce38423aaf4f0592e223456a8f8a9382e2743d149`
+  - A48 baseline SHA256: `5c6eb8a8b8e2431b23b69e37be56959b364fb36103e3a6201a39eb49ca557b73`
+  - A47 baseline SHA256: `46ef5fc3b9a9663a8b4c55f13abf1401934153d368d04c165a279d5070472bd2`
+  - A46 baseline SHA256: `c8079697775d384bb5fe7c293b2e9279665c48f3be7be1d2c500574354e8f18d`
+  - A44 baseline SHA256: `d5f12a0737537235f964f9ef8f15515c0fbb5ae2b2bf8b9388f5bc22965249c9`
+  - A41 baseline SHA256: `23c9fd8d466aa10b711a12028835388dd9b31b5662fa3ee5c26689b4b0edc0aa`
+  - A49 is correctness-safe but performance-regressed, A50 fixes the large A49 regression, and A51b/A52/A53/A54/A55/A56/A57/A58 are mixed on performance.
+  - A67 remains the preferred all-shape performance surface. A67 ratios are `1.181 / 1.635 / 2.425 / 2.456`; compared with A66 `1.244 / 1.778 / 2.528 / 2.561`, it improves all four profiled sizes.
+  - A68 is correctness-safe and has the best `S=64/2048/10240` among A67/A68/A69 in the current records: ratios `1.175 / 1.662 / 2.399 / 2.437`.
+  - A69 is the latest correctness continuation surface after second-layer `cInv/cTmp` accumulation: ratios `1.250 / 1.657 / 2.438 / 2.469`; it regresses `S=64/2048/10240` versus A68 and all four sizes versus A67 except `S=512` versus A68.
+  - After any new code change, rerun build/install and full gate before attributing results to the new source.
+  - 当前 default custom install path 出现多层 `vendors/custom_transformer` 残留：顶层 `op_api/lib/libcust_opapi.so` 缺少 `aclnnChunkGatedDeltaRule*` 符号，嵌套层有符号；A61a performance CSV 为空且不可信。精度 gate 仍以 build/install + smoke/compare 为准，性能结论需清理/隔离 OPP 后补测。
+  - installed package payload may only keep kernel json/object under the op kernel directory; it does not reliably keep a same-name `p8afullocal/...p3l1_p8a.h` header.
+  - after any code change, rerun build/install and record source/object/result before attributing smoke results to that source.
+  - previous A42 failing candidate SHA256: `f1eba202336d9ee4582d5fb00df18bf372b4036584f8fa2b41d149b90b4e40da`
+  - A42 failing shape: P7 中四处 full `64x64` Fixpipe 写回被替换为四个 diagonal `16x16` Fixpipe 写回；`S=64` timeout。
+  - A42 仍是未解决优化点，但 L0C copy-out 已允许后置；后续非 L0C 优化必须从 A41 或更新后的 PASS baseline 干净工作面开始，不能在 A42 诊断候选上叠加。
+- `op_kernel/p8afullocal/` 在此 worktree 里是 untracked，不能只看 `git diff`；每次继续前必须核对 active Stage1、最新 baseline、build/install 产物状态。
+- 当前安装包 payload 不保留 `p8afullocal/...p3l1_p8a.h` 原路径，可能只安装通用 `CVInverse` 头和 kernel object；installed 核对不能再假设存在同名 active 头文件，要结合包内容、kernel object、安装时间和 smoke/compare 结果。
+- Phase 10/A34/A38-forward/A41/A44/A48/A49/A50/A51b/A52/A53/A54/A55/A56/A57/A58/A60/A61a/A63a/A64/A65a/A65b/A66/A67 都是 correctness-safe 回退点，不是最终目标；A59 是失败候选，不是回退点；A49/A50 的 BF16 lower row-prefix 方向不作为默认性能主线；A67 是当前 latest correctness/performance baseline；当前主线继续做 packed64/P7/P8 优化，A42 L0C copy-out 作为后置未解决项保留。
+
+## 必须遵守的失败处理规则
+
+- 每个 phase 只改一个优化点；精度不过时，必须先在当前优化点上正向定位和修复。
+- 不允许把“回滚到上一个 PASS baseline”当成该任务的完成方式；回滚只能用于明确放弃该候选后的工作面恢复，或用户明确要求恢复。
+- 精度失败后不能继续叠加下一项优化，必须先记录失败现象、根因假设、下一步正向修复入口。
+- 若需要临时恢复 A34 或其他 PASS baseline，恢复后也要把原优化点留在 todo 里，下一步继续围绕根因修正，而不是跳过。
+- 若某个优化点被硬件/API 边界卡住，可记录边界并后置，但不能描述成 PASS；后续仍要回到该点正向解决或明确放弃。
+
+## A34 实现摘要
+
+- P7: `P7Packed64DiagonalNeumannOneShotToResult()` 是 strict packed `64x64` diagonal-only one-shot active path，不退回四个 `16x16` 求解。
+- P7 identity: A38-forward 后当前 `EnsurePacked64Identity()` 已改成 static GM `CGDR_IDENTITY16_NZ4` 加一次 strided `DataCopy` 到四个 packed64 diagonal offset；不再走 GM 写/载 I16 加 4 次 `BuildPacked64IdentityDiag16()`。后续冗余主要是 identity64 生命周期和更直接的 L1 materialization，而不是重复 A38 exact scalar NZ writer。
+- P8 first-layer: `(16,0)` 和 `(48,32)` 两个 independent `16x16` compose 已打包成 packed32；A34 的新增点是 first-layer 入口只清一次 `32x32` L0A/L0B。
+- P8 second-layer: `P8Compose64From32Direct32()` 已是一个真实 `32x32` compose：
+  - `tmp = lowerWork64[(32,0)] @ result64[(0,0)]`
+  - `out = result64[(32,32)] @ tmp`
+  - 它不是四个 `16x16` 回退；不要照搬 first-layer independent-lane 打包方式。
+- RHS: `FusedRhsAICProcess()` 数学输入是 `aicHalfL1ResidentInv_`，不是 `attnWsGm_`。
+- BF16 GM inverse writeback 当前仍保留，因为它携带未拆出的同步/可见性边界；它不是 RHS 数学需求。
+
+## 已验证
+
+- A38-forward gate:
+  - build PASS
+  - install PASS
+  - source/installed Stage1 SHA 对齐
+  - `S=64/256/1024` smoke PASS
+  - full compare PASS: `16 passed in 6.34s`
+  - performance:
+    - `tests/pytest/prof_out/packed64_phaseA38_identity_static_gm_datacopy_20260511/performance_compare.csv`
+    - neumann/normal 约 `1.340 / 2.013 / 2.846 / 2.891`
+- A38-forward 比 A34 改善 `S=64/512/2048`，`S=10240` 基本持平略差；仍慢于 Phase 10：
+  - Phase 10 neumann/normal 约 `1.379 / 2.001 / 2.760 / 2.824`
+- A39 gate:
+  - build PASS
+  - install PASS
+  - active/baseline SHA 对齐
+  - `S=64/256/1024` smoke PASS
+  - full compare PASS: `16 passed in 6.24s`
+  - baseline:
+    - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA39_p7_diag_gm_to_l1_coalesced_baseline.h`
+    - SHA256: `57ed59cf35ce8c7c9e941361729837d427413d2cf68f001f8c44c0bddb579e9f`
+  - performance:
+    - `tests/pytest/prof_out/packed64_phaseA39_p7_diag_gm_to_l1_coalesced_20260511/performance_compare.csv`
+    - neumann/normal: `1.234 / 1.979 / 2.872`
+    - `S=10240` profiling row is not trusted in this run because both normal and neumann warmup hit `libopapi.so` symbol lookup errors.
+- A40 gate:
+  - build PASS
+  - install PASS
+  - active/source/installed/baseline SHA 对齐
+  - `S=64/256/1024` smoke PASS
+  - full compare PASS: `16 passed in 6.17s`
+  - baseline:
+    - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA40_p7_diag_l1_to_l0_paired_baseline.h`
+    - SHA256: `fcd1ea657d4d1fcacd36979e12557dd04b195234dc968097f6247baece0362eb`
+  - performance:
+    - `tests/pytest/prof_out/packed64_phaseA40_p7_diag_l1_to_l0_paired_20260511/performance_compare.csv`
+    - trustworthy neumann/normal: `S=64 1.271` / `S=512 1.932` / `S=2048 2.778`
+    - `S=10240` row is not trusted because both ops failed warmup with package/symbol lookup errors.
+- A41 gate:
+  - build PASS
+  - install PASS
+  - seed40 PASS
+  - `S=64/256/1024` smoke PASS
+  - full compare PASS: `16 passed in 6.17s`
+  - baseline:
+    - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA41_p8_first_layer_l1_to_l0_paired_sync_baseline.h`
+    - SHA256: `23c9fd8d466aa10b711a12028835388dd9b31b5662fa3ee5c26689b4b0edc0aa`
+  - implementation:
+    - P8 first-layer four paired `LoadPacked16PairToL0Offset()` helpers retained.
+    - L0A/L0B paired loads keep `SyncMte1ToM(); SyncMToMte1();` between producer/consumer directions.
+- A44 gate:
+  - source SHA256: `d5f12a0737537235f964f9ef8f15515c0fbb5ae2b2bf8b9388f5bc22965249c9`
+  - build artifact installed from `../../build_out/cann-ops-transformer-cgdrverify_linux-aarch64.run`
+  - install PASS
+  - `S=64/256/1024` smoke PASS
+  - full compare PASS: `16 passed in 6.21s`
+  - baseline:
+    - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA44_identity_epoch_after_preload_baseline.h`
+    - SHA256: `d5f12a0737537235f964f9ef8f15515c0fbb5ae2b2bf8b9388f5bc22965249c9`
+  - implementation:
+    - `EnsurePacked64IdentityForInverseEpoch()` is called after `PreloadP8LowerLeftBlocksToLowerWork64NoWaitFull64(paraIdx)` and before `P7Packed64DiagonalNeumannOneShotToResult()`.
+    - `P7Packed64DiagonalNeumannOneShotToResult()` no longer performs a hidden identity ensure.
+    - invalidation boundaries remain `Init()`, `InitRawMmadLocalBuffers()`, `RestoreStage1MatmulLocalBuffers()`, and the current `ParaChunkAIC()` inverse-window boundary.
+    - this is an epoch-safe correctness baseline, not the final operator-lifetime-once identity solution.
+  - performance:
+    - `tests/pytest/prof_out/packed64_phaseA44_identity_epoch_after_preload_20260512/performance_compare.csv`
+    - neumann/normal: `1.315 / 1.971 / 2.824 / 2.860`
+- A46 gate:
+  - source SHA256: `c8079697775d384bb5fe7c293b2e9279665c48f3be7be1d2c500574354e8f18d`
+  - isolated package: `/tmp/cgdr_a46b_20260512_103555.run`
+  - package SHA256: `fda7b80be692b2510ca3df7dbd7f039877c179a5a6ca3181e9cf98cb3ff18773`
+  - isolated OPP root: `/tmp/cgdr_a46b_opp_20260512_103555/vendors/custom_transformer`
+  - installed Neumann object SHA256: `31c71f307df98a44e6df979976c8ebda5cc3fd6a82597b3cab5907ae1df7c137`
+  - installed sanity: only `aclnnChunkGatedDeltaRule*` / `aclnnChunkGatedDeltaRuleNeumann*`, no `aclnnTriInverse`.
+  - `S=64/256/1024` smoke PASS.
+  - full compare PASS: `16 passed in 6.56s`.
+  - baseline:
+    - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA46_p8_first_layer_lower_left_pair_preload_sync_baseline.h`
+    - SHA256: `c8079697775d384bb5fe7c293b2e9279665c48f3be7be1d2c500574354e8f18d`
+  - implementation:
+    - `LoadP8FirstLayerLowerLeftPairToLowerWork64NoWait(paraIdx)` merges only first-layer lower-left `(16,0)` and `(48,32)` into one `Nd2NzParams DataCopy`.
+    - `(32,0) 32x32` second-layer lower input remains a separate preload.
+    - A46b fix adds `SyncMte2ToMte1()` between the paired first-layer preload and the separate `(32,0)` preload; this fixes the A46 initial `S=1024` out near-zero failure.
+  - performance:
+    - `tests/pytest/prof_out/packed64_phaseA46_p8_first_layer_lower_left_pair_preload_sync_20260512/performance_compare.csv`
+    - neumann/normal: `1.318 / 1.976 / 2.778 / 2.840`
+- A47 gate:
+  - source SHA256: `46ef5fc3b9a9663a8b4c55f13abf1401934153d368d04c165a279d5070472bd2`
+  - isolated package: `/tmp/cgdr_a47_20260512_105036.run`
+  - package SHA256: `ebc908b67cd83a3576ce4238d6945d47da381af9e0ac50b1483278d4ad5751bb`
+  - isolated OPP root: `/tmp/cgdr_a47_opp_20260512_105036/vendors/custom_transformer`
+  - installed Neumann object SHA256: `9df044696fc5c1fedf1035a5eec9047708b600a45bc96e66569fa68278affe48`
+  - installed sanity: only `aclnnChunkGatedDeltaRule*` / `aclnnChunkGatedDeltaRuleNeumann*`, no `aclnnTriInverse`.
+  - `S=64/256/1024` smoke PASS.
+  - full compare PASS: `16 passed in 6.18s`.
+  - baseline:
+    - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA47_p8_second_layer_fixed_load_baseline.h`
+    - SHA256: `46ef5fc3b9a9663a8b4c55f13abf1401934153d368d04c165a279d5070472bd2`
+  - implementation:
+    - `P8Compose64From32Direct32()` remains packed `32x32`.
+    - formula unchanged: `tmp = lowerWork64[(32,0)] @ result64[(0,0)]`; `out = result64[(32,32)] @ tmp`.
+    - added fixed `32x32` packed L1->L0 load helpers for this second-layer compose only; tmp L1 lifetime, result64 writeback, BF16/resident/RHS are unchanged.
+  - performance:
+    - `tests/pytest/prof_out/packed64_phaseA47_p8_second_layer_fixed_load_20260512/performance_compare.csv`
+    - neumann/normal: `1.368 / 1.995 / 2.797 / 2.807`
+    - comparison vs A46: small/medium ratios are slightly worse; `S=10240` improves from `2.840` to `2.807`.
+
+## 不要重复
+
+- A30: 不直接删除 `ParaChunkAIC()` 的 `packed64IdentityPrepared_ = false;`；`S=1024` FAIL，out/state actual 接近 0。
+- A31: 不重试 same-GM-region full64 identity reload；`S=64` FAIL。
+- A32: 不重试普通 direct full64 identity generation；`S=64` FAIL。
+- A35: 不删除 `P8ComposeFirstLayerPacked32Direct()` 末尾 `SyncFixToMte1()`；`S=1024` FAIL，out 局部接近 0。
+- A36: 不删除 `P8Compose64From32Direct32()` final writeback 后的 `SyncFixToM()`；smoke PASS 但 full compare seed40 FAIL。
+- A37: 不绕开旧 `validLenBatch_` diagonal input loader 做 strict full64 专用 loader；`S=1024` FAIL，out/state actual 接近 0。
+- A38: 不重试 exact scalar direct NZ identity64 writer；`S=64` FAIL，已回滚 A34。
+- A44 failed pre-gen candidates:
+  - 不重试 `db993914...`：在 `ParaChunkAIC()` loop 前预生成 identity 并移除 P7 内 ensure，`S=64/256` PASS，`S=1024` out/state FAIL。
+  - 不重试 `19d4ccf...`：预生成加 first-use sync，`S=64/256` PASS，`S=1024` out FAIL、state PASS。
+- 不直接删除 BF16 pre-RHS GM writeback。
+- 不跳过 BF16 upper-zero writeback。
+- 不跳过 RHS operand L1 zero-init。
+- 不直接删除 `RestoreRawMmadState()`。
+- 不重试 A26 direct resident copy / identity-once resident copy。
+- 不重试 A27 same-L0C dual Fixpipe to BF16 GM + resident。
+- 不直接删除 `PrepareHalfL1IdentityByMmad()` cache-hit 的 `SyncFixToMte1()` / `SyncMte2ToMte1()`。
+- 不复用 A15 writeback identity cache 作为性能方向。
+- A51 failed candidates:
+  - 不重试 A51 initial `27a94981...`：`CopyPackedHalfL1BlockToGmBf16()` 全 block 复用 identity64，`S=64/256` PASS，`S=1024` out/state FAIL，actual 接近 0。
+  - 不重试 A51a `09e7a24...`：补 `SyncFixToMte1(); SyncMte2ToMte1();` 后 `S=64/256` PASS，`S=1024` out FAIL、state PASS。
+
+## 当前冗余清单和删除方向
+
+- 同 stride packed 搬运/写回类冗余。
+  - 判断标准：同一源张量、同一目的张量，多个 `16x16` / NZ fractal 的源起点间隔和目的起点间隔恒定时，应优先用单次 `DataCopy` / `LoadData` / `Fixpipe` 表达。
+  - 不能把不同 GM 源或不同 L1 目的强行合成；例如 P7 的 `L_powHalfWsGm_ -> aicHalfL1TilePower_` 和 `INVInitHalfWsGm_ -> aicHalfL1P3Result_` 至少仍是两次搬运。
+  - 每个合并点必须单独 phase、单独 gate；不能和 identity64 构造、prepared flag 生命周期、P7/P8 公式、BF16/resident/RHS 语义一起改。
+- Packed MMAD 不是冗余。
+  - P7/P8 的计算方向仍应继续走 packed-MMAD；要删的是重复搬运、重复 copy-out、layout-copy helper、identity 构造和不必要同步，不是把 packed MMAD 退回四个单独 `16x16`。
+  - P8 first-layer 已有 packed32 MMAD；后续 P8 也要继续按 packed-MMAD / ref-style packed layout 方向优化 output、preload、load 和 tmp lifetime。
+- P7 diagonal GM->packed64 L1 搬入冗余。
+  - 当前 `LoadPacked64DiagonalInputsToL1()` 对 base `0/16/32/48` 分别调用 `LoadPacked64DiagonalInputBlock()`。
+  - full64 下每个 base 内又搬 `L_pow` 和 `INVInit`，所以是 4 个 diagonal block * 2 个张量 = 8 次 `DataCopy` helper。
+  - 对单个张量，源 GM 起点间隔为 `MatrixOffset(16,16)`，目的 packed64 diagonal NZ 起点间隔为 `(C64_PACKED_BLOCK_COUNT + 1) * RAW_HALF_FRACTAL_ELEMS`，理论上应合并为一次 `Nd2NzParams` `DataCopy`，两个张量合计两次。
+  - tail/non-full64 先不启用；当前 P7/P8 phase 只测 64-aligned 序列。
+- P8 lower-left GM->lowerWork64 L1 搬入冗余。
+  - full64 strict path 当前 `PreloadP8LowerLeftBlocksToLowerWork64NoWaitFull64()` 搬 `(16,0) 16x16`、`(48,32) 16x16`、`(32,0) 32x32` 三块。
+  - 这三块不是同一种固定 stride 序列，不能和 P7 四个 diagonal 一样一次合并；但两个 independent first-layer lower blocks `(16,0)` 和 `(48,32)` 具有相同形状与相同 packed32 lane 关系，可作为单独合并候选。
+  - `(32,0) 32x32` 是 second-layer compose 输入，单独处理，不能混入 first-layer 合并。
+- packed diagonal L1->L0 装载冗余。
+  - A40 已完成：L0B transpose path 使用一次 coalesced load；L0A no-transpose path 使用两次 paired load。
+  - 结论不是“四个 diagonal packed offsets 必然等价为一条 load”，而是 `ifTranspose=false/true` 必须分开验证。
+  - 已隔离：`ifTranspose=true` 的 L0B 一次 `repeatTimes=4` coalesced load 在 `S=1024` PASS；`ifTranspose=false` 的 L0A 一次 `repeatTimes=4` coalesced load 在 `S=1024` 仍 FAIL。
+  - 后续不要再把 L0A/L0B 混为同一等价布局。
+  - L0A 两次 paired load 只是 A40 的 correctness-safe 中间形态，不是最终目标；后续必须单独继续优化 L0A no-transpose load，先查 `dstGap/startIndex/addrMode` 或 L0A 目标排布是否可改成一条合法 coalesced load。
+- P8 first-layer packed32 L1->L0 装载冗余。
+  - A41 已完成：`LoadP8FirstLayerLowerToPacked32L0A()`、`LoadP8FirstLayerTopInvToPacked32L0B()`、`LoadP8FirstLayerBottomInvToPacked32L0A()`、`LoadPacked32DiagOnlyToL0B()` 都使用 paired lane helper。
+  - 修复结论：paired offsets 有效，但 L0A/L0B load 之间必须保留 MTE1/M visibility ordering。
+- P7 diagonal-only Fixpipe copy-out 冗余。
+  - `HalfL1PowerPacked64DiagOnlyOnC()` 和 P7 result update 现在用 `FixpipePacked64FullToHalfL1()` 写完整 `64x64` packed tile。
+  - 这些 MMAD 输入只装载四个 diagonal fractal，off-diagonal L0C 只用于保持 zero；后续 P7 也只通过 `LoadPacked64DiagOnlyToL0()` 读取四个 diagonal。
+  - 旧 A42 exact four-diagonal candidate `f1eba202...` 失败：build/install PASS，`S=64` timeout。
+  - API 结论：DAV220 L0C->L1 `Fixpipe<..., CFG_NZ>` / `DataCopyCO12DstParams` 都落到 `copy_matrix_cc_to_cbuf(... dstStride, srcStride, unitFlag, ...)`，没有 L0C->GM row-major 那种 `ndNum/srcNdStride/dstNdStride` scatter 路径；不能把四个 diagonal packed offsets 直接宣称为一条多 ND L0C->L1 copy。
+  - 正向方向：仍在 A42 内解决 copy-out，但必须使用硬件支持的矩形/分组形态，并确认 L0C source offset 与 `srcStride` 是 full packed64 C-tile stride，而不是把 L1 packed NZ offset/16x16 stride 直接套到 L0C source 上。
+- Generic compact/packed rect L1->L0 搬运循环冗余。
+  - `CopyHalfL1MatrixToL0A()` / `CopyHalfL1MatrixToL0B()` 对 compact square 每个 row-block 各发一次 `LoadData()`；`CopyPackedHalfL1BlockToL0()` / `CopyPackedHalfL1RectToL0()` 对 packed rect 也按 row-block 循环发 `LoadData()`。
+  - 这类 helper 在 `16x16` 时不是问题，在 `32x32/64x64` 时可能形成同 stride 冗余；但 A40 已证明 L0A no-transpose 和 L0B transpose 不能简单按同一公式合并。
+  - 后续只能按具体消费者拆 phase：P8 second-layer `32x32` load、generic pack/compact copy helper、BF16/resident row-prefix，各自单独验证；不能一次性全局替换。
+- P8 first-layer packed32 Fixpipe/output copy-out 冗余。
+  - first-layer `tmp = lower @ topInv` 当前 `CopyL0CMatrixToHalfL1(tmp32, 32, 32)` 写完整 `32x32`，下一步只用 `LoadPacked32DiagOnlyToL0B()` 读取两个 diagonal lane。
+  - first-layer final result 当前先写完整 packed32 到 `aicHalfL1TilePower_`，再两次 `CopyHalfL1PackedBlockToCompact()` 搬到 result64 的 `(16,0)` 和 `(48,32)`。
+  - 候选方向是 packed32 两个 lane 的 strided Fixpipe copy-out，或直接 Fixpipe 到 result64 两个 fixed-offset lane；这要作为 P8 first-layer output phase，不能混到 A41 的 L1->L0 load phase。
+- P8 lower-left first-layer GM->lowerWork64 搬入冗余。
+  - `PreloadP8LowerLeftBlocksToLowerWork64NoWaitFull64()` 中 `(16,0)` 和 `(48,32)` 两个 `16x16` first-layer lower blocks 具有固定源/目的 stride，可作为后续 GM->L1 合并候选。
+  - `(32,0) 32x32` 是 second-layer 输入，不能并入这个 two-lane first-layer copy。
+- P8 second-layer tmp/result copy-out 当前不归入 same-stride 冗余。
+  - `P8Compose64From32Direct32()` 的 first MMAD 写 `32x32 tmp`，second MMAD 会完整消费该 `32x32 tmp`；这不是只读 diagonal lane 的场景。
+  - second MMAD 写回 result64 的 `(32,0) 32x32` lower block，是最终 inverse lower-left 结果；后续若优化，应围绕 tmp lifetime / L0C residency，而不是按 first-layer 两 lane copy-out 合并。
+- P3/fallback diagonal store-to-GM copy-out 冗余。
+  - `StoreP3DiagonalResultsToGm()` 逐个 diagonal `16x16` 调 `StorePackedL1DiagonalBlockToGmHalfFrom()`。
+  - 每个 block 先 `CopyHalfL1PackedBlockToCompact()`，再 `CopyHalfL1MatrixToGmHalfByMmad()`，本质也是 `X @ I16` 伪搬运 + GM half writeback。
+  - strict full64 P7/P8 当前不应回到这条路径；若后续恢复 tail/non-64 或优化 fallback，应作为独立 phase 做 diagonal row-prefix / direct layout-copy 设计。
+- BF16 GM inverse writeback / resident exposure copy-out 冗余。
+  - `StorePackedL1InverseToBf16Attn()` 当前遍历 16 个 `16x16` blocks，lower 10 个用 `CopyPackedHalfL1BlockToGmBf16()`，upper 6 个写 zero；每个 block 内又通过 `X @ I16` + Fixpipe 完成 copy-out。
+  - lower 10 个不是全等距连续矩形；可拆为 row prefix 候选：row0 写 `16x16`，row16 写 `16x32`，row32 写 `16x48`，row48 写 `16x64`。BF16 需要 half->bf16 转换，不能直接用 same-dtype `DataCopy` 替代。
+  - A51b 已证明现有 per-`16x16` block 写回里 rows `0/16/32` 可复用 `identity64`，但 row `48` 保持旧 `I16` 路径；完整 block 写回复用 identity64 仍会在 `S=1024` 失败。
+  - upper-zero 仍受 BF16 同步/可见性边界约束，不直接删除；若合并，也应按 row suffix 或 materialization 同步/可见性单独 phase 验证。
+  - `StorePackedL1InverseToResidentL1()` 当前 zero resident 后逐个 lower block `CopyHalfL1PackedBlockToCompact()`；每个 row 的 lower prefix 也可作为 resident copy-out 合并候选。这里是 RHS 真输入，必须先确认 L1->L1 direct copy/Fixpipe 可见性，不复用 A26/A27 的失败方案。
+  - A26/A27 已证明 resident/BF16 写回融合或 prepared-identity 绕行不安全，后续必须先做可见性设计，不能复用失败方案。
+- GM copy-out side-effect 类冗余。
+  - `CopyHalfL1MatrixToGmHalfByMmad()` / `CopyHalfL1MatrixToGmBf16ByMmad()` / `CopyPackedHalfL1BlockToGmBf16()` 都是 `X @ I16` 后用 row-major Fixpipe 写 GM，本质是 layout-copy/convert。
+  - BF16/half GM writeback 不能只按数学删除，因为已有失败证明它们还承担 cache flush、workspace materialization 或可见性边界。
+  - 后续修改顺序必须是先拆同步/可见性边界，再把相同 row-prefix 或同 stride copy-out 合并。
+- Generic `X @ I16` layout-copy helper 冗余。
+  - `CopyHalfL1CompactBlock()`、`CopyHalfL1PackedBlockToCompact()`、`CopyHalfL1MatrixToGmHalfByMmad()`、`CopyHalfL1MatrixToGmBf16ByMmad()` 都把 MMAD 当 copy/layout/convert movement 使用。
+  - 后续不能一次性替换所有调用点；必须按消费者拆 phase：P3/fallback、P8 first-layer output、BF16 GM materialization、resident RHS exposure 分别 gate。
+- `identity64` 构造冗余。
+  - 当前路径：`WriteIdentityBlockGm(tmpWsGm_, 16)` -> `LoadGmFloatBlockToHalfL1ByMmad(..., aicHalfL1TileInv_, 16)` -> `ZeroHalfL1(aicHalfL1Identity64_, 64*64)` -> 4 次 `BuildPacked64IdentityDiag16()` Fixpipe 到 `(0,0)/(16,16)/(32,32)/(48,48)`。
+  - 理论上可以把 `16x16 identity` 直接放到 packed64 L1 的四个 diagonal 对应位置，跳过 GM reload 和 4 次 `I16 @ I16` 生成。
+  - 直接落 L1 必须按 NZ packed layout 写 exact diagonal fractal offset，并保证 off-diagonal 清零、MTE1 可见性、`pipe_->Reset()` 后生命周期正确。
+  - A38 exact scalar direct NZ writer 已失败：只 zero `aicHalfL1Identity64_` 并在 `C64_DIAG_NZ_OFFSET0/1/2/3` 写 diagonal `half(1.0f)`，`S=64` FAIL。
+  - 后续若继续 identity64 构造，必须先证明新 writer 复现当前 MMAD/Fixpipe 的 NZ fractal 内容和可见性语义，不重复 A38 写法。
+- `identity64` 生命周期冗余。
+  - 当前 `aicHalfL1Identity64_` 是 `aicHalfL1Buff_` 中的一个 tile，不是真正独立常驻 L1 buffer。
+  - `InitRawMmadLocalBuffers()` 和 `RestoreStage1MatmulLocalBuffers()` 都会 `pipe_->Reset()`；`ParaChunkAIC()` 还会显式清 `packed64IdentityPrepared_`。因此当前实现是 raw-MMAD local buffer epoch 内的 identity tile，而不是算子生命周期常驻 identity。
+  - 用户确认的目标是“申请一块 L1 buffer 一直存放 identity64”。正确方向是把 identity64 做成不参与 scratch/reuse 的独立常驻 L1 buffer：每个 AIC core 各自生成一次，P7/P8 后续只读；该 buffer 不能被 `pipe_->Reset()` 后的 `InitBuffer()` 覆盖，或必须从 raw-MMAD reset 域中拆出来。
+  - 不再接受只延长 `packed64IdentityPrepared_` 生命周期的 A30 式重试；下一次 identity64 lifecycle phase 要说明这块常驻 L1 buffer 的分配、生成点、复用范围、reset/InitBuffer 覆盖关系和验证方法。
+- `16x16` half identity 搬运替身冗余。
+  - `PrepareHalfL1IdentityByMmad()` 仍用于 BF16 writeback、resident copy、pack/compact copy。
+  - 这些本质是 `X @ I16` 做 copy/layout movement；最终应改为直接搬运或专门 layout-copy。
+  - 过渡期如果还必须 MMAD-copy，应从常驻 `identity64` diagonal fractal 派生 `I16`，不要再通过 GM 写/载生成单独 `I16`。
+- `StorePackedL1InverseToResidentL1()` 冗余。
+  - 当前先 `ZeroHalfL1(resident, 64*64)`，再对 lower-triangular 10 个 `16x16` block 逐个 `CopyHalfL1PackedBlockToCompact()`，内部仍是 `X @ I16`。
+  - 这是 RHS 真正输入路径，不能删除功能；但实现方式需要新的同步/可见性设计后再替换。
+- BF16 `attnWsGm_` pre-RHS materialization 冗余。
+  - RHS 不读它做数学输入；删除失败说明它携带同步/可见性边界。
+  - 后续应拆同步/可见性：分别验证 `SyncFixToMte2()`、`FlushBf16MatrixCacheLines()`、workspace 清零、cross-core 顺序或隐藏 consumer，而不是再次直接删整段写回。
+- BF16 upper-zero writeback 冗余。
+  - lower-triangular inverse 数学上不需要 upper zero；它属于 GM materialization 同步/可见性清理边界。
+  - 必须等 BF16 pre-RHS 同步/可见性边界拆清后再删除。
+- RHS operand L1 zero-init 冗余候选。
+  - `FusedRhsAICProcess()` 每个 RHS tile 都 `ZeroHalfL1(aicHalfL1TilePower_, 64*64)`；full tile 理论上会被 GM operand 覆盖。
+  - Phase 12 证明不能直接跳过；后续要拆“zero 内容”和“同步/可见性”两个作用。
+- L0 operand 清零搬运冗余候选。
+  - `ZeroPacked64DiagOnlyL0Operands()` 和 P8 first-layer L0 zero-once 都通过 `EnsureHalfL1Zero()` + full L1->L0 copy 清满 L0A/L0B。
+  - A28/A29 已经把重复清零收敛为一次性清零；后续如果继续优化，应单独验证 InitConstValue 直写 L0 或 diagonal/packed32 局部清零，不能混入 load/Fixpipe copy-out phase。
+- P8 compose 同步冗余候选。
+  - A35/A36 证明不能直接删同步。
+  - 后续只能按 producer/consumer 拆：tmp 写回可见性、result64 写回可见性、MTE1 读取、M pipeline 读取分别验证。
+- P8 second-layer 装载/布局冗余候选。
+  - 它已经是 `32x32` compose，不是四个 `16x16` 回退。
+  - 可继续看 `lowerWork64[(32,0)]`、`result64[(0,0)]`、`result64[(32,32)]`、`tmp32` 的 L0 load、Fixpipe、tmp lifetime 是否还能减少中间落 L1 或同步。
+- `RestoreRawMmadState()` 状态恢复冗余候选。
+  - 它不是 inverse 数学步骤。
+  - 不能整段删；后续拆成 `SetAtomicNone()`、`SetNdParaImpl()`、`SetHF32Mode()`、`SetHF32TransMode()`、`SetMMLayoutTransform()` 单项验证。
+
+## 下一步
+
+- [x] A38-forward: static GM constant + one strided DataCopy identity64 writer。
+  - 当前候选 SHA256: `d533cb22580c67d5c1996c97ede5313854b255d61f8412c0d1fa1614f3948fcf`
+  - 已完成：build PASS、install PASS、source/installed SHA 对齐、`S=64/256/1024` smoke PASS、full compare PASS。
+  - baseline:
+    - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA38_identity_static_gm_datacopy_baseline.h`
+    - SHA256: `d533cb22580c67d5c1996c97ede5313854b255d61f8412c0d1fa1614f3948fcf`
+  - performance:
+    - `tests/pytest/prof_out/packed64_phaseA38_identity_static_gm_datacopy_20260511/performance_compare.csv`
+    - neumann/normal: `1.340 / 2.013 / 2.846 / 2.891`
+- [x] A39: P7 diagonal GM->packed64 L1 input 合并搬运。
+  - 目标：full64 path 中把四个 diagonal `16x16` 的 `L_pow` 搬入合成一次 `Nd2NzParams DataCopy`，把四个 diagonal `16x16` 的 `INVInit` 搬入合成一次 `Nd2NzParams DataCopy`。
+  - 不改 P7/P8 公式，不改 identity64 生命周期，不改 BF16/resident/RHS。
+  - 已完成：build/install PASS、`S=64/256/1024` smoke PASS、full compare PASS，baseline SHA256 `57ed59cf35ce8c7c9e941361729837d427413d2cf68f001f8c44c0bddb579e9f`。
+- [x] A40: P7 packed64 diagonal L1->L0 四 fractal load 合并。
+  - 目标：替换 `LoadPacked64DiagOnlyToL0()` 中四次 `LoadData()`；已确认 `LoadData2DParams` 中 `srcStride` 为 fractal 数、`dstGap` 为相邻 repeat 之间的 512B gap。
+  - 对 packed64 diagonal，offset gap 是 `C64_DIAG_NZ_OFFSET1 - C64_DIAG_NZ_OFFSET0 = 5 * RAW_HALF_FRACTAL_ELEMS`，单次 load 候选为 `repeatTimes=4`、`srcStride=5`、`dstGap=4`。
+  - 最终通过形态：L0A no-transpose 用两次 paired load，L0B transpose 用一次 coalesced load，中间保留 `SyncMte1ToM(); SyncMToMte1();`。
+  - 已完成：build/install PASS、`S=64/256/1024` smoke PASS、full compare PASS，baseline SHA256 `fcd1ea657d4d1fcacd36979e12557dd04b195234dc968097f6247baece0362eb`。
+- [x] A41: P8 first-layer packed32 paired L1->L0 load 合并。
+  - 目标：两个 independent `16x16` lane 的 paired loads 合并。
+  - 不触碰 P8 second-layer `32x32` compose。
+  - 先只改 L1->L0 load helper，不改 P8 first-layer output copy-out/Fixpipe。
+  - 已完成：build/install PASS、seed40 PASS、`S=64/256/1024` smoke PASS、full compare PASS。
+  - 修复结论：paired offsets 本身有效；失败来自 A/B paired load 之间的 MTE1/M 可见性/ordering。保留四个 `LoadPacked16PairToL0Offset()` helper，并在 L0A 与 L0B 装载之间保留 `SyncMte1ToM(); SyncMToMte1();`。
+  - baseline SHA256: `23c9fd8d466aa10b711a12028835388dd9b31b5662fa3ee5c26689b4b0edc0aa`。
+- [ ] A42-deferred: P7 diagonal-only Fixpipe copy-out 合并。
+  - 目标：把 P7 中只消费 diagonal fractal 的 full `64x64` Fixpipe 写回，改成 diagonal fractal strided/paired copy-out。
+  - 2026-05-12 recheck: current active source is clean A41 SHA256 `23c9fd8d466aa10b711a12028835388dd9b31b5662fa3ee5c26689b4b0edc0aa`, not an A42 diagnostic candidate.
+  - A41 clean baseline SHA256: `23c9fd8d466aa10b711a12028835388dd9b31b5662fa3ee5c26689b4b0edc0aa` 仅作为后续 phase 工作面，不代表 A42 完成。
+  - 旧失败候选 SHA256: `f1eba202336d9ee4582d5fb00df18bf372b4036584f8fa2b41d149b90b4e40da`。
+  - 已知结果：build/install PASS，但 `S=64` timeout；first-three non-final + last final 仍 timeout。
+  - two-`32x32` quadrant 已知失败候选：`4f1a5fc6683eac14a81c83f28f1c1dd63e315c9062f1b5d0a2b4d7b202a4eb40`，`S=64` timeout。
+  - two-`32x32` sequencing 修正版：`f0ccb89b549afc7c031e9e3f13076554526e92c67232ecf651a0b63ddba1f660`，第一段 non-final、第二段 final，`S=64` timeout。
+  - 诊断版：`23d7915d4c2c9475a43043595b78d06035e68ee7182c2ee096756cb615a438dc`，第一段 `32x32` non-final、第二段恢复 full64 final，`S=64` PASS；结论是多个 Fixpipe + non-final/final 顺序本身可用，非零 L0C source offset 的 `CFG_NZ` L0C->L1 Fixpipe 高疑。
+  - 候选 `756d8e90aceb04d615a1e0906fe39f3cab495834e32cdf5bc6ce3f70877c33f8`：`base2` 32x32 non-final + `base0` 32x32 final；build/install PASS，`S=64` 90s timeout。
+  - 结论：把 final 放在 L0C source 起点 0 仍不能避免 timeout；继续查 `CFG_NZ` 非零 L0C source offset / partial rectangle 支持边界。
+  - 当前诊断候选：`b9c8df4462b0560f8faedf13a937591551381d64e699f2546affe91b0d7c8535`，只写 `base0` 32x32 partial final；build/install object SHA 均为 `2ac1e134ad90aeaff67ce2db867422ac9808a8227e22519be2113a61eef44cf3`，尚未保存 baseline。
+  - 旧 `767e463b...` 进一步尝试 top-left `32x32` partial copy-out；未保存 baseline，当前 active 已恢复到 A41。
+  - API 结论：DAV220 L0C->L1 `Fixpipe<..., CFG_NZ>` 最终调用 `copy_matrix_cc_to_cbuf(dst, src, ..., nSize, mSize, dstStride, srcStride, unitFlag, ...)`，没有像 L0C->GM row-major 路径那样下发 `ndNum/srcNdStride/dstNdStride` 的 scatter 参数；不能把四个 diagonal packed offset 直接写成一条多 ND L0C->L1 Fixpipe。
+  - 后置规则：L0C copy-out 可以最后解决。如果当前候选继续 timeout，记录为 A42-deferred 并恢复 A41 clean surface；后续先推进其他非 L0C 单点优化，但不得在 A42 诊断候选上叠加。
+  - 正向修复入口：从 A41 clean baseline 重新设计 A42 为硬件支持的 copy-out 形态。第一候选验证正确 L0C source offset + full64 `srcStride` 的 diagonal submatrix Fixpipe；若 exact diagonal scatter 不支持，则记录 unsupported boundary，再选合法矩形/分组形态。该项后续仍要解决或明确放弃。
+- [ ] A43: P7 L0A no-transpose diagonal load 继续合并。
+  - 目标：把 A40 暂时保留的 L0A 两条 paired load 继续收敛，优先查清一条 `repeatTimes=4` load 失败的真实原因。
+  - 不改 L0B，不改 P7/P8 公式，不改 copy-out，不改 BF16/resident/RHS。
+  - 只允许围绕 `LoadPacked64DiagOnlyToL0A()` 的 `LoadData2DParams`、L0A 目标 offset/gap、必要同步做单点验证。
+- [x] A44: identity64 生命周期 epoch 复用设计。
+  - 完成形态：`EnsurePacked64IdentityForInverseEpoch()` 在 P8 lower-left preload 后、P7 one-shot 前显式调用，P7 helper 内不再隐藏触发 identity 准备。
+  - 有效复用范围：当前 raw-MMAD inverse-window epoch。保留 `ParaChunkAIC()` 入口 reset，避免重试 A30 的跨窗口裸 flag；`Init()` / `InitRawMmadLocalBuffers()` / `RestoreStage1MatmulLocalBuffers()` 仍显式失效。
+  - gate：install PASS、`S=64/256/1024` smoke PASS、full compare `16 passed in 6.21s`。
+  - baseline：`op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA44_identity_epoch_after_preload_baseline.h`，SHA256 `d5f12a0737537235f964f9ef8f15515c0fbb5ae2b2bf8b9388f5bc22965249c9`。
+  - 注意：这不是最终“算子生命周期只生成一次”的完成态；后续 identity64 生命周期收口应改为独立常驻 L1 buffer 设计，而不是继续延长 prepared flag。
+- [ ] A45: P8 first-layer packed32 output copy-out 合并。
+  - 目标：减少 packed32 tmp/full result 中只使用两个 lane 的 full Fixpipe 和两次 result64 搬出。
+  - 不触碰 P8 second-layer `32x32` compose。
+  - 失败候选 direct L0C copy-out SHA256: `55422221d4be3edb9722a0e7225cc98724f53961d52fde692825a82dcff863cb`。
+  - 失败结果：build/install PASS，`S=64` 90s timeout，退出码 `124`；未跑 `S=256/1024`，未保存 baseline。
+  - 失败判断：两个 direct `Fixpipe<..., CFG_NZ>` 从 compact32 L0C 非零 source offset 写到 result64 固定 lane，风险与 A42 非零 L0C source offset/partial copy-out 一致。
+  - A45a scalar L1 sub-block copy 候选 SHA256: `424fa16e0f2b0a99435076fef184bb4781707e73b24972b7bc32854eb32ca6b2`；build/install PASS，`S=64/256` PASS，`S=1024` FAIL，out/state actual 接近 0，未保存 baseline。
+  - A45a2 packed64 scratch source 候选 SHA256: `43d60696d792c9819cfa3971708ffa9543844f3909f6dad27047fa8011a6d61c`；build/install PASS，`S=1024` FAIL，现象与 A45a 基本一致，未保存 baseline。
+  - A45a3 top-left direct L0C copy-out 候选 SHA256: `e42e13abbacc8103ddee99fb3e1e24c408e84aa6b6aa3f8abbfacc643963baac`。
+    - 变更：只把 second MMAD L0C top-left `16x16` 直接 Fixpipe 到 result64 `(16,0)`，并保留 full `32x32` L0C->L1 writeback与第二条旧 `CopyHalfL1PackedBlockToCompact()`。
+    - build/install PASS，`S=64/256/1024` PASS。
+    - full compare FAIL：`15 passed, 1 failed`，失败 case `b2_t256_h32_h8_d64`；`out` worst actual 约 `3.017e-07`、expect 约 `1.160e-01`，`state` PASS。
+    - 判断：top-left direct L0C copy-out 的 non-final 写 result64 可见性仍不稳定；A45a3 不是 baseline。
+  - A45b final+sync top-left direct L0C copy-out 候选 SHA256: `36e201ac34295257a5a8918982d337bfa5bd3e04128fcb0e386244b88f4fc17e`。
+    - 正确 CGDR package SHA256: `a6d8ed0a182cf7336a4fda007facd74bf9029dc84f39a2e9615de9291e7a61c9`；installed `libcust_opapi.so` SHA256 `9721ca309f1a7e65fe3e835088e91037f3f7a36f6431827fa90c8a42e18c0752`。
+    - build/install PASS，`S=1024` 120s timeout，退出码 `124`；未保存 baseline。
+    - 结论：direct L0C top-left partial copy-out 即使用 final flag + immediate sync 仍不安全，后续 A45 不再沿 direct L0C partial copy-out 修。
+  - A45c L1->UB->L1 packed32 two-lane copy-out 候选 SHA256: `7bd77182344d14e6787b14079ff257a12c275c46d19bf279483dbbc99f7bcb37`。
+    - 变更：新增 VECCALC UB copy buffer，把 packed32 output 的两个 diagonal lane 从 `aicHalfL1TilePower_` 经 `DataCopy` L1->UB->L1 写到 result64 `(16,0)` 和 `(48,32)`，替换两次 `CopyHalfL1PackedBlockToCompact()`。
+    - build PASS；重新安装前发现并等待 concurrent `tri_inverse` 安装/测试进程，随后安装 CGDR 双算子包。
+    - CGDR package SHA256: `42bb850654d1a0b21e5fd8ef37a9e1615c7ac0db0521c3a80bf7e7c86266d0eb`；installed `libcust_opapi.so` SHA256 `9721ca309f1a7e65fe3e835088e91037f3f7a36f6431827fa90c8a42e18c0752`。
+    - installed sanity：只导出 `aclnnChunkGatedDeltaRule*` / `aclnnChunkGatedDeltaRuleNeumann*`，kernel 目录只含 CGDR/Neumann。
+    - `S=64` 90s timeout，退出码 `124`；未跑 `S=256/1024`，未保存 baseline。
+    - 结论：A45 的 direct L0C partial、scalar L1 sub-block、L1->UB->L1 three directions 都已失败；A45 暂时 deferred 到后置 copy-out 专项。恢复 active Stage1 到 A44 clean baseline 后再继续 A46。
+- [x] A46: P8 lower-left first-layer GM->lowerWork64 搬入合并。
+  - 目标：只合并 `(16,0)` 和 `(48,32)` 两个 first-layer `16x16` lower blocks；`(32,0) 32x32` second-layer 输入仍单独搬入。
+  - 不改 P8 公式，不改 P7，不改 BF16/resident/RHS。
+  - 起点是 A44 clean source SHA256 `d5f12a0737537235f964f9ef8f15515c0fbb5ae2b2bf8b9388f5bc22965249c9`；没有在 A45c SHA `7bd771...` 上叠加。
+  - 初版 A46：pair preload 后直接接 `(32,0)` no-wait preload，`S=64/256` PASS，`S=1024` FAIL，out 近 0、state PASS；未保存 baseline。
+  - A46b 修复：在 pair preload 和 `(32,0)` preload 之间加入 `SyncMte2ToMte1()`，避免 MTE2 同 epoch 写 lowerWork64 的可见性/排序问题。
+  - gate：build/install PASS，`S=64/256/1024` smoke PASS，full compare PASS `16 passed in 6.56s`。
+  - baseline：`op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA46_p8_first_layer_lower_left_pair_preload_sync_baseline.h`，SHA256 `c8079697775d384bb5fe7c293b2e9279665c48f3be7be1d2c500574354e8f18d`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA46_p8_first_layer_lower_left_pair_preload_sync_20260512/performance_compare.csv`，neumann/normal `1.318 / 1.976 / 2.778 / 2.840`。
+- [x] A47: P8 second-layer packed-MMAD load/tmp lifetime 继续优化。
+  - 目标：保持 `P8Compose64From32Direct32()` 的 packed `32x32` 计算方向，检查 `lowerWork64[(32,0)]`、`result64[(0,0)]`、`result64[(32,32)]`、`tmp32` 的 L1->L0 load、Fixpipe 和 tmp lifetime 是否还能减少中间落 L1 或同步。
+  - 这不是把 second-layer 拆回四个 `16x16`；packed MMAD 是目标，不是冗余。
+  - 不改公式：仍是 `tmp = lower @ topInv`，`out = bottomInv @ tmp`。
+  - 起点是 A46 clean source SHA256 `c8079697775d384bb5fe7c293b2e9279665c48f3be7be1d2c500574354e8f18d`。
+  - 完成单点：只把 second-layer 两个 `32x32` MMAD 的 L1->L0 extraction 专门化为 fixed `32x32` packed helper，减少 generic runtime loop/offset；没有改 tmp 落 L1、result64 写回或同步。
+  - gate：build/install PASS，`S=64/256/1024` smoke PASS，full compare PASS `16 passed in 6.18s`。
+  - baseline：`op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA47_p8_second_layer_fixed_load_baseline.h`，SHA256 `46ef5fc3b9a9663a8b4c55f13abf1401934153d368d04c165a279d5070472bd2`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA47_p8_second_layer_fixed_load_20260512/performance_compare.csv`，neumann/normal `1.368 / 1.995 / 2.797 / 2.807`；相比 A46，小/中尺寸略差，`S=10240` 改善。
+- [x] A48: BF16 upper-zero row-suffix 合并。
+  - 起点是 A47 clean source SHA256 `46ef5fc3b9a9663a8b4c55f13abf1401934153d368d04c165a279d5070472bd2`。
+  - 完成单点：`StorePackedL1InverseToBf16Attn()` 中 lower 10 个真实 inverse block 保持逐 `16x16` 写回；upper 6 个 zero block 改为每行一次 row-suffix zero 矩形写回。
+  - 修复点：row-suffix zero helper 内保留 `PrepareHalfL1IdentityByMmad(INVERSE_SHAPE)`，补回 MMAD/Fixpipe 可见性边界；没有修改 resident/RHS 或 P7/P8 公式。
+  - gate：build/install PASS，`S=64/256/1024` smoke PASS，full compare PASS `16 passed in 6.27s`。
+  - baseline：`op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA48_bf16_upper_zero_rowsuffix_baseline.h`，SHA256 `5c6eb8a8b8e2431b23b69e37be56959b364fb36103e3a6201a39eb49ca557b73`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA48_bf16_upper_zero_rowsuffix_20260512/performance_compare.csv`，neumann/normal `1.278 / 1.960 / 2.745 / 2.778`；相比 A47 四个点均改善。
+- [x] A49: BF16 lower true-inverse row-prefix 合并到 `cols<=48`。
+  - 起点是 A48 clean source SHA256 `5c6eb8a8b8e2431b23b69e37be56959b364fb36103e3a6201a39eb49ca557b73`。
+  - 完成单点：`StorePackedL1InverseToBf16Attn()` 中 lower row-prefix 的 `cols=16/32/48` 走一次矩形 BF16 writeback；`rowBase=48, cols=64` 保留旧逐 `16x16` 写回。
+  - 修复点：helper 末尾保留 `PrepareHalfL1IdentityByMmad(INVERSE_SHAPE)`，否则 `S=1024` 失败。
+  - failure boundary：完整 `cols=64` row-prefix 在 `S=1024` FAIL，先不重试；`cols<=48` PASS。
+  - gate：build/install PASS，`S=64/256/1024` smoke PASS，full compare PASS `16 passed in 6.21s`。
+  - baseline：`op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA49_bf16_lower_rowprefix48_baseline.h`，SHA256 `337b86df5435578536c3b95ce38423aaf4f0592e223456a8f8a9382e2743d149`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA49_bf16_lower_rowprefix_20260512/performance_compare.csv`，neumann/normal `2.196 / 4.441 / 5.804 / 5.900`。
+  - 结论：A49 是 correctness-safe baseline，但 `PrepareHalfL1IdentityByMmad(cols)` 为 `I32/I48` 反复写 GM + MMAD 搬回，scalar 开销严重放大，不作为默认性能主线。
+- [x] A50: A49 row-prefix 改用 packed64 identity64 RHS。
+  - 起点是 A49 clean source SHA256 `337b86df5435578536c3b95ce38423aaf4f0592e223456a8f8a9382e2743d149`。
+  - 完成单点：`CopyPackedHalfL1RowPrefixToGmBf16()` 保留 row-prefix MMAD-copy，但 RHS 从 `aicHalfL1Identity_ / cols` 改为 `aicHalfL1Identity64_ / chunkSize_`，并调用 `EnsurePacked64Identity()`；不改 resident/RHS，不改 P7/P8 公式。
+  - build：第一次 FATBIN 因 kernel_meta 临时对象目录缺失失败；清理生成残留后第二次 build PASS，判定为 build 目录残留/竞态，不是代码编译错误。
+  - gate：build/install PASS，`S=64/256/1024` smoke PASS，full compare PASS `16 passed in 6.16s`。
+  - baseline：`op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA50_bf16_rowprefix_identity64_baseline.h`，SHA256 `4c995b59523e8e87069da1a38692567d0eee99ac9a8a30ee1cec8f83d6f6208a`。
+  - artifacts：package `/tmp/cgdr_a50_identity64_rowprefix_20260512_124019.run` SHA256 `0b7308bff932c3c2eb5cb932fee76654b7386fcefc9a2a8cff800edd5967dbf1`；isolated OPP `/tmp/cgdr_a50_identity64_rowprefix_opp_20260512_124019/vendors/custom_transformer`；installed object SHA256 `b26efc75e743a2f161d260b7abd03701da39814bb5a9ae75ef30d583c9f98d12`；op_api SHA256 `9721ca309f1a7e65fe3e835088e91037f3f7a36f6431827fa90c8a42e18c0752`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA50_bf16_rowprefix_identity64_20260512/performance_compare.csv`，neumann/normal `1.275 / 1.965 / 2.768 / 2.804`。
+  - 结论：A50 修掉 A49 的大退化；相比 A48 `1.278 / 1.960 / 2.745 / 2.778`，只 `S=64` 略好，长序列略差。后续不在 A50 上叠加 resident/BF16 copy-out；默认回到 A48 preferred performance baseline 开 A51。
+- [x] A51b: A48 block BF16 writeback 部分复用 identity64。
+  - 起点是 A48 preferred performance baseline SHA256 `5c6eb8a8b8e2431b23b69e37be56959b364fb36103e3a6201a39eb49ca557b73`。
+  - A51 initial：全 block 写回使用 `aicHalfL1Identity64_ / chunkSize_`，`S=64/256` PASS，`S=1024` out/state FAIL，未保存 baseline。
+  - A51a：补 identity64 后同步，`S=64/256` PASS，`S=1024` out FAIL、state PASS，未保存 baseline。
+  - A51b 完成单点：`CopyPackedHalfL1BlockToGmBf16()` 仅 rows `0/16/32` 使用 `aicHalfL1Identity64_ / chunkSize_`；row `48` 保持 A48 旧 `I16` 路径。未引入 A49/A50 row-prefix 写回形态，不改 P7/P8/resident/RHS。
+  - gate：build/install PASS，installed active header SHA256 对齐，`S=64/256/1024` smoke PASS，full compare PASS `16 passed in 6.20s`。
+  - baseline：`op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA51b_bf16_blockwrite_partial_identity64_baseline.h`，SHA256 `50c079ec6ee5dc32deb7f353c038e71ddd131716845d98d85605ac18950fdd24`。
+  - artifacts：package `/tmp/cgdr_a51b_identity64_blockwrite_partial_20260512_131120.run` SHA256 `c958109eedf875798f3fe0624369d690bae3394875f0d595a06161c2e21ac6e9`；isolated OPP `/tmp/cgdr_a51b_identity64_blockwrite_partial_20260512_131120_opp/vendors/custom_transformer`；installed active header SHA256 `50c079ec6ee5dc32deb7f353c038e71ddd131716845d98d85605ac18950fdd24`；op_api SHA256 `9721ca309f1a7e65fe3e835088e91037f3f7a36f6431827fa90c8a42e18c0752`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA51b_identity64_blockwrite_partial_20260512/performance_compare.csv`，neumann/normal `1.317 / 1.935 / 2.743 / 2.792`。
+  - 结论：A51b 是 correctness-safe baseline；相比 A48 `1.278 / 1.960 / 2.745 / 2.778`，`S=512/2048` 小幅改善，`S=64/10240` 退化。A48 仍是 preferred performance baseline。
+- [x] A52: `RestoreRawMmadState()` HF32 单字段清理。
+  - 起点是 A48 preferred performance baseline SHA256 `5c6eb8a8b8e2431b23b69e37be56959b364fb36103e3a6201a39eb49ca557b73`。
+  - 完成单点：只删除 `RestoreRawMmadState()` 中的 `SetHF32Mode(HF32Mode::DISABLE);`；其它 raw-MMAD state restore 字段保持不变，不改 P7/P8、BF16/resident/RHS、Stage2/Stage3/QK、`gBK/vBeta`。
+  - gate：build/install PASS，installed active header SHA256 对齐，`S=64/256/1024` smoke PASS，full compare PASS `16 passed in 7.07s`。
+  - baseline：`op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA52_restore_hf32_singlefield_baseline.h`，SHA256 `30eda4660a3bb8fcf9475a7dc532211b7552784c0fd5acc6bed14ece727ab3cd`。
+  - artifacts：package `/tmp/cgdr_a52_restore_hf32_singlefield_20260512_132350.run`；isolated OPP `/tmp/cgdr_a52_restore_hf32_singlefield_20260512_132350_opp/vendors/custom_transformer`；installed active header SHA256 `30eda4660a3bb8fcf9475a7dc532211b7552784c0fd5acc6bed14ece727ab3cd`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA52_restore_hf32_singlefield_20260512/performance_compare.csv`，neumann/normal `1.299 / 1.945 / 2.749 / 2.793`。
+  - 结论：A52 是 correctness-safe baseline；相比 A48 `1.278 / 1.960 / 2.745 / 2.778`，只 `S=512` 小幅改善，`S=64/2048/10240` 轻微退化。A48 仍是 preferred performance baseline。
+- [x] A53: `RestoreRawMmadState()` HF32Trans 单字段清理。
+  - 起点是 A52 clean source SHA256 `30eda4660a3bb8fcf9475a7dc532211b7552784c0fd5acc6bed14ece727ab3cd`。
+  - 完成单点：只删除 `RestoreRawMmadState()` 中的 `SetHF32TransMode(HF32TransMode::NEAREST_EVEN);`；其它 raw-MMAD state restore 字段保持不变，不改 P7/P8、BF16/resident/RHS、Stage2/Stage3/QK、`gBK/vBeta`。
+  - gate：build/install PASS，installed active header SHA256 对齐，`S=64/256/1024` 顺序 smoke PASS，full compare PASS `16 passed in 6.15s`。
+  - baseline：`op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA53_restore_hf32trans_singlefield_baseline.h`，SHA256 `92dfb07d69755d1cbbde3ffbb8ced6489c6ace95714cc4f0975af6e4945ef334`。
+  - artifacts：package `/tmp/cgdr_a53_restore_hf32trans_singlefield_20260512_133249.run` SHA256 `0a3524996f5992c9fb45f54d772b0ddd611c891654ab9a4e9be572273db630c0`；isolated OPP `/tmp/cgdr_a53_restore_hf32trans_singlefield_20260512_133249_opp/vendors/custom_transformer`；installed active header SHA256 `92dfb07d69755d1cbbde3ffbb8ced6489c6ace95714cc4f0975af6e4945ef334`；installed object SHA256 `385528d2d67a980b21168cad83519be4f8dac2f6c8e5656e228f2cafefcaca7c`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA53_restore_hf32trans_singlefield_20260512/performance_compare.csv`，neumann/normal `1.271 / 1.955 / 2.755 / 2.789`。
+  - 结论：A53 是 correctness-safe baseline；相比 A52 `1.299 / 1.945 / 2.749 / 2.793`，`S=64/10240` 改善，`S=512/2048` 退化；相比 A48 `1.278 / 1.960 / 2.745 / 2.778`，只 `S=64/512` 小幅改善，长序列退化。A48 仍是 preferred performance baseline。
+- [x] A54: `RestoreRawMmadState()` MMLayoutTransform 单字段清理。
+  - 起点是 A53 clean source SHA256 `92dfb07d69755d1cbbde3ffbb8ced6489c6ace95714cc4f0975af6e4945ef334`。
+  - 完成单点：只删除 `RestoreRawMmadState()` 中的 `SetMMLayoutTransform(false);`；当前 restore 只剩 `SetAtomicNone(); SetNdParaImpl(0x1);`，不改 `PrepareRawMmadState()`。
+  - gate：build/install PASS，installed active header SHA256 对齐，`S=64/256/1024` 顺序 smoke PASS，full compare PASS `16 passed in 6.19s`。
+  - baseline：`op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA54_restore_mmlayout_singlefield_baseline.h`，SHA256 `f22f56f3f2b1251cfb52c70f2d54a5eac21221bbfe5471c9b46024cee2e7c2bf`。
+  - artifacts：package `/tmp/cgdr_a54_restore_mmlayout_singlefield_20260512_134540.run` SHA256 `05ac1c2cb82891ce4161220a104a1f6811fd30c49eb78f279fc11dfae9e8e1bd`；isolated OPP `/tmp/cgdr_a54_restore_mmlayout_singlefield_20260512_134540_opp/vendors/custom_transformer`；installed active header SHA256 `f22f56f3f2b1251cfb52c70f2d54a5eac21221bbfe5471c9b46024cee2e7c2bf`；installed object SHA256 `fd914a7d6249a1298896cf0e421a073e486b8164d3178d94457aef835816350a`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA54_restore_mmlayout_singlefield_20260512/performance_compare.csv`，neumann/normal `1.322 / 1.915 / 2.746 / 2.778`。
+  - 结论：A54 是 correctness-safe baseline；相比 A53 `1.271 / 1.955 / 2.755 / 2.789`，`S=512/2048/10240` 改善、`S=64` 退化；相比 A48 `1.278 / 1.960 / 2.745 / 2.778`，只 `S=512` 改善，`S=2048/10240` 基本持平，`S=64` 退化。A48 仍是 preferred performance baseline。
+- [x] A55: `RestoreRawMmadState()` NdPara 单字段清理。
+  - 起点是 A54 clean source SHA256 `f22f56f3f2b1251cfb52c70f2d54a5eac21221bbfe5471c9b46024cee2e7c2bf`。
+  - 完成单点：只删除 `RestoreRawMmadState()` 中的 `SetNdParaImpl(0x1);`；当前 restore 只剩 `SetAtomicNone();`，不改 `PrepareRawMmadState()`。
+  - gate：build/install PASS，installed object SHA256 对齐，`S=64/256/1024` 顺序 smoke PASS，full compare PASS `16 passed in 6.15s`。
+  - baseline：`op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA55_restore_ndpara_singlefield_baseline.h`，SHA256 `ca7b044e48fd7c3d1553fe60479e6b9684369847963335eacd8eb14bfc8c4aac`。
+  - artifacts：package `/tmp/cgdr_a55_restore_ndpara_singlefield_20260512_135630.run` SHA256 `4d4a92c144f536398cf6fbeb096a3983f32f937ca363ed7f635630ac939805a4`；isolated OPP `/tmp/cgdr_a55_restore_ndpara_singlefield_20260512_135630_opp/vendors/custom_transformer`；installed object SHA256 `dec83cd36b255e0dc93bdf99a543f93818a0e7d68a72662786c7db5bdf3c0689`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA55_restore_ndpara_singlefield_retry1_20260512/performance_compare.csv`，neumann/normal `1.291 / 1.925 / 2.750 / 2.802`。
+  - 结论：A55 是 correctness-safe baseline；相比 A54 `1.322 / 1.915 / 2.746 / 2.778`，`S=64` 改善、`S=512/2048/10240` 退化；相比 A48 `1.278 / 1.960 / 2.745 / 2.778`，只 `S=512` 改善。A48 仍是 preferred performance baseline。
+- [x] A56: `RestoreRawMmadState()` AtomicNone 单字段清理。
+  - 起点是 A55 clean source SHA256 `ca7b044e48fd7c3d1553fe60479e6b9684369847963335eacd8eb14bfc8c4aac`。
+  - 完成单点：只删除 `RestoreRawMmadState()` 中的 `SetAtomicNone();`；当前 restore 是空函数，不改 `PrepareRawMmadState()`。
+  - gate：build/install PASS，`S=64/256/1024` 顺序 smoke PASS，full compare PASS `16 passed in 6.16s`。
+  - baseline：`op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA56_restore_atomicnone_singlefield_baseline.h`，SHA256 `5646df25a94ee35f030bff0ef756c284738927fb7fe212afe5ae51dbe94c6bfb`。
+  - artifacts：package `/tmp/cgdr_a56_restore_atomicnone_singlefield_20260512_141651.run` SHA256 `61fc3e1f4f27a9cb581290686980e58d4feebd5d8904c91c4ed5714fa8cfce27`；isolated OPP `/tmp/cgdr_a56_restore_atomicnone_singlefield_20260512_141651_opp/vendors/custom_transformer`；installed object SHA256 `3ec083c63e026930057e19f40c2dde3e8a697724d621bd12546ee03d6647f87c`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA56_restore_atomicnone_singlefield_20260512/performance_compare.csv`，neumann/normal `1.335 / 1.945 / 2.743 / 2.791`。
+  - 结论：A56 是 correctness-safe baseline；相比 A55 `1.291 / 1.925 / 2.750 / 2.802`，长序列改善但 `S=64/512` 退化；相比 A48 `1.278 / 1.960 / 2.745 / 2.778`，`S=512/2048` 小幅改善但 `S=64/10240` 退化。A48 仍是 preferred performance baseline。
+- [x] A57: P7 packed64 diagonal MMAD HF32 set cleanup。
+  - 起点是 A56 correctness-safe source SHA256 `5646df25a94ee35f030bff0ef756c284738927fb7fe212afe5ae51dbe94c6bfb`。
+  - 完成单点：只删除 `MmadPacked64DiagOnly()` 内每次 packed64 diagonal MMAD 前重复的 `SetHF32Mode(HF32Mode::DISABLE);`。
+  - 依据：`C64InverseBy16x16Neumann()` 入口已调用 `PrepareRawMmadState()`，其中仍设置 `SetHF32Mode(HF32Mode::DISABLE);`；本 phase 不删除其它 helper 内的 HF32 设置。
+  - 不改 P7/P8 公式，不改 packed layout，不改 BF16/resident/RHS，不改 Stage2/Stage3/QK/`gBK/vBeta`。
+  - gate：build/install PASS，trusted package/install SHA 对齐，`S=64/256/1024` smoke PASS，full compare PASS `16 passed in 6.21s`。
+  - baseline：`op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA57_p7_diag_mmad_no_hf32_baseline.h`，SHA256 `6a8ad59ee6bfd4cd4edfc8750b7bd6f7ab81e7ffd8182731ad0be3a4ad9d98d9`。
+  - artifacts：package `/tmp/cgdr_a57_p7_diag_mmad_no_hf32_cgdrpkg_20260512_143719.run` SHA256 `a498e72d04e2547a28c3de28c452a390674f20441604bda1ac588948c4c8accb`；isolated OPP `/tmp/cgdr_a57_p7_diag_mmad_no_hf32_cgdrpkg_20260512_143719_opp/vendors/cgdr_a57_transformer`；installed active header SHA256 `6a8ad59ee6bfd4cd4edfc8750b7bd6f7ab81e7ffd8182731ad0be3a4ad9d98d9`；installed Neumann object SHA256 `b66226f1ab02bd3c903edf05600a8b08b72a866cf46e83e666ee466545061fea`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA57_p7_diag_mmad_no_hf32_20260512/performance_compare.csv`，neumann/normal `1.293 / 1.920 / 2.746 / 2.800`。
+  - 结论：A57 是 correctness-safe baseline；相比 A56 `1.335 / 1.945 / 2.743 / 2.791`，`S=64/512` 改善、`S=2048/10240` 轻微退化。A48 仍是 preferred performance baseline。
+- [x] A58: P8 packed32 MMAD HF32 set cleanup。
+  - 起点是 A57 clean source SHA256 `6a8ad59ee6bfd4cd4edfc8750b7bd6f7ab81e7ffd8182731ad0be3a4ad9d98d9`。
+  - 完成单点：只删除 `MmadPacked32()` 内每次 P8 packed32 MMAD 前重复的 `SetHF32Mode(HF32Mode::DISABLE);`。
+  - 依据：`C64InverseBy16x16Neumann()` 入口已调用 `PrepareRawMmadState()`，其中仍设置 `SetHF32Mode(HF32Mode::DISABLE);`；本 phase 不删除 generic copy/layout helper 内的 HF32 设置。
+  - 不改 P7/P8 公式，不改 packed layout，不改 BF16/resident/RHS，不改 Stage2/Stage3/QK/`gBK/vBeta`。
+  - build：第一次 FATBIN 因 kernel_meta 临时对象 rename/缺失失败；`bash ../../build.sh --make_clean` 后第二次 build PASS，判定为 build 目录残留/竞态，不是代码编译错误。
+  - gate：build/install PASS，installed active header SHA256 对齐，`S=64/256/1024` smoke PASS，full compare PASS `16 passed in 6.41s`。
+  - baseline：`op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA58_p8_packed32_mmad_no_hf32_baseline.h`，SHA256 `4a26eba55d45a58eb8933e01fd9f908744b7a93b099256b1ca4d4fee9b83f76a`。
+  - artifacts：package `/tmp/cgdr_a58_p8_packed32_mmad_no_hf32_20260512_145328.run` SHA256 `fd1a01aeaec2823ad0229b41a7e88f27085466ed01f4a56975bae95985a3694c`；isolated OPP `/tmp/cgdr_a58_p8_packed32_mmad_no_hf32_20260512_145328_opp/vendors/cgdr_a58_transformer`；installed active header SHA256 `4a26eba55d45a58eb8933e01fd9f908744b7a93b099256b1ca4d4fee9b83f76a`；installed object SHA256 `482d1ea374283b43900330f48ffc1fe80a8513e260179e162e19869befda48f3`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA58_p8_packed32_mmad_no_hf32_20260512/performance_compare.csv`，neumann/normal `1.313 / 1.905 / 2.737 / 2.776`。
+  - 结论：A58 是 correctness-safe baseline；相比 A57 `1.293 / 1.920 / 2.746 / 2.800`，`S=512/2048/10240` 改善、`S=64` 退化。相比 A48 `1.278 / 1.960 / 2.745 / 2.778`，`S=512/2048/10240` 小幅改善，`S=64` 退化。
+- [x] A59 failed: `RawMmadPackedHalfL1AccumulateTile()` HF32 set cleanup。
+  - 起点是 A58 clean source SHA256 `4a26eba55d45a58eb8933e01fd9f908744b7a93b099256b1ca4d4fee9b83f76a`。
+  - 候选 SHA256 `4ce3769b1b2ba8849461cfb8a837052f562134d7a61c23e4ea041d3db039cdcf`。
+  - 变更：只删除 `RawMmadPackedHalfL1AccumulateTile()` 内的 `SetHF32Mode(HF32Mode::DISABLE);`。
+  - gate：build/install PASS，installed active header SHA256 对齐，`S=64/256` PASS，`S=1024` FAIL。
+  - 失败现象：CPU vs ChunkGDRNeumann out max_abs `9.486666e-02`，worst actual `-6.97374344e-06` vs expect `9.48596820e-02`；state PASS。
+  - 结论：该 generic copy/layout helper 的 local HF32 setup 仍需保留；未保存 baseline，active source 已恢复到 A58。
+- [x] A60: P7/P8 `result64/input64` zero 范围收缩。
+  - 目标：继承 `tri_inverse` Phase25/26 的单点思路，只收缩必要 zero 范围，先从 `aicHalfL1P3Result_` / packed64 result scratch 的 full64 zero 入手。
+  - 起点建议：A58 latest correctness-safe baseline SHA256 `4a26eba55d45a58eb8933e01fd9f908744b7a93b099256b1ca4d4fee9b83f76a`；若改为 A48 preferred performance baseline，phase 记录必须写清理由。
+  - 完成单点：只改 `LoadPacked64DiagonalInputsToL1()` 的 strict full64 分支；把 `aicHalfL1P3Result_` 整块 `64x64` zero 收缩为 `ZeroPacked64UpperTriangularBlocks()`，只清 upper triangular 6 个 `16x16` fractal；tail/non-full64 分支继续整块清零。
+  - 不改 BF16 upper-zero row-suffix，不改 resident zero，不改 P7/P8 公式，不改 L0C copy-out。
+  - gate：build/install PASS，`S=64/256/1024` smoke PASS，full compare PASS `16 passed in 6.12s`。
+  - baseline：`op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA60_result64_upper_zero_only_baseline.h`，SHA256 `5d2cfb3d95a6974f92b4f4d37be3e17c421ea0115ec3f4e1d498d9201f54c773`。
+  - artifacts：package `../../build_out/cann-ops-transformer-custom_linux-aarch64.run` SHA256 `4622ffd0df85c6780245fd24809700307b870b908a82b78c1b42602982e38160`；installed Neumann object SHA256 `fabad3def2466c4da32e191d205838c9721327101dcebae81ffacdbc3e49b8c3`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA60_result64_upper_zero_only_20260512/performance_compare.csv`，neumann/normal `1.314 / 1.888 / 2.736 / 2.780`。
+  - 结论：A60 是 correctness-safe baseline；相比 A58 `1.313 / 1.905 / 2.737 / 2.776`，`S=512` 改善，`S=2048` 基本持平，`S=64/10240` 轻微退化。A48 仍是 preferred small-sequence surface；A60 是新的 latest correctness continuation surface。
+- [x] A61 audit + A61a: packed32/P8 first-layer direct L0 zero。
+  - A61 audit：P8 first-layer packed32 `tmp32` L1 预清零已在 A19 删除；P8 first-layer L0 重复清零已在 A29 收敛为一次；当前没有剩余的 P8 first-layer L1 tmp/result 预清零可安全删除。
+  - A61a 完成单点：只改 `P8ComposeFirstLayerPacked32Direct()` 入口，把 `EnsureHalfL1Zero(C32*C32) + CopyHalfL1MatrixToL0A/B()` 替换为 `ZeroHalfL0(aicHalfL0A_, C32)` 和 `ZeroHalfL0(aicHalfL0B_, C32)`。
+  - 不改 P8 first-layer output placement，不改 direct resident，不改 partial L0C copy-out，不改 BF16/resident/RHS/P7/P8 公式。
+  - gate：build/install PASS，`S=64/256/1024` smoke PASS，full compare PASS `16 passed in 6.16s`。
+  - baseline：`op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA61a_p8_first_layer_direct_l0_zero_baseline.h`，SHA256 `dfa33e483b0661626f4835a388546b425581ff0455aed3d6cf2efbed7b4b01ac`。
+  - package：`../../build_out/cann-ops-transformer-custom_linux-aarch64.run` 当前 SHA256 `b07f852ba5ac7df1dc4a1cd0a42f5aa54bd7241881d7ad70f9453104f47d4da9`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA61a_p8_first_layer_direct_l0_zero_20260512/` 和 `tests/pytest/prof_out/packed64_phaseA61a_p8_first_layer_direct_l0_zero_ld_20260512/` 生成空 CSV；原因是 default install path 中顶层/嵌套 `libcust_opapi.so` 符号不一致，performance payload 找不到 `aclnnChunkGatedDeltaRule*`，本阶段不记录性能比值。
+  - 结论：A61a 是 correctness-safe baseline；A48 仍是 preferred small-sequence performance surface。
+- [ ] A62: identity64 独立常驻 L1 lifecycle。
+  - 目标：继承 `tri_inverse` Phase27，把 identity64 设计成每个 AIC core 一份、在有效 L1/raw-MMAD 生命周期内复用的常驻 buffer。
+  - 这不是 A30 式延长 `packed64IdentityPrepared_` flag；必须先说明独立 L1 buffer 的分配、生成点、复用范围、`pipe_->Reset()` / `InitBuffer()` 覆盖关系。
+  - 不改 P7/P8 公式，不改 BF16/resident/RHS。
+- [x] A63a: AIV scratch GM 写回范围收缩。
+  - 目标：对照 `tri_inverse` Phase19，确认 `L_powHalfWsGm_` / `INVInitHalfWsGm_` 是否只是 AIV->AIC 交接，是否还有 bottom/top 半块 reload/cast 或 GM roundtrip 可删。
+  - 完成单点：只收缩 AIV scratch 写回矩形范围，不改 P7/P8 公式、BF16/resident/RHS、identity lifecycle。
+  - `L_powHalfWsGm_` 从每个 AIV half 的 `32x64` 改为只写 diagonal half `32x32`。
+  - `INVInitHalfWsGm_` 写回变为 subBlock0 `32x32`、subBlock1 `32x64`。
+  - 修复点：`DataCopyExtParams::srcStride` 是 UB 侧 32B 单位，`dstStride` 是 GM 侧 byte 单位；错误 byte `srcStride` 版本 SHA `60e326...` 在 `S=64` 失败，不得重试。
+  - gate：build/install PASS，isolated OPP PASS，`S=64/256/1024` smoke PASS，full compare PASS `16 passed in 6.28s`。
+  - baseline：`op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA63a_aiv_scratch_rect_write_baseline.h`，SHA256 `ca6bc32ca4f80bc093a0b293c0bbd20dcf5b24f3a88a7dc0c594b2804f8a66b5`。
+  - artifacts：package `/tmp/cgdr_a63a_srcstride_20260512_171721.run` SHA256 `0f3a4aa4a99edfb102738feaf6da48cd64fd7c55375bd19cc82fcb344d51d96c`；isolated OPP `/tmp/cgdr_a63a_srcstride_20260512_171721_opp/vendors/custom_transformer`；installed Neumann object SHA256 `920bacc66168f28101c2e1fedc38fd609c3f4abdf1e8b94f816b34a07f5cc833`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA63a_aiv_scratch_rect_write_20260512/performance_compare.csv`，neumann/normal `1.244 / 1.948 / 2.710 / 2.775`。
+  - 结论：A63a 是当前 latest correctness-safe baseline，也是当前 preferred performance baseline；相比 A48 `1.278 / 1.960 / 2.745 / 2.778` 四个点均改善。
+- [x] A64: resident L1 upper-zero 范围收缩。
+  - 目标：从 late `StorePackedL1InverseToResidentL1()` 向 P8 final output 落点迁移，逐步减少 zero resident + 10 个 lower `16x16` `X @ I16` layout-copy。
+  - 完成单点：只把 `StorePackedL1InverseToResidentL1()` 开头的 full `64x64` zero 改为 `ZeroPacked64UpperTriangularBlocks(resident)`，只清 upper 6 个 `16x16` blocks；lower 10 个 blocks 仍由现有 `CopyHalfL1PackedBlockToCompact()` 覆盖。
+  - 不改 `FusedRhsAICProcess()` 输入，不改 P8 final output 落点，不重试 A26/A27 direct resident copy 或 BF16+resident 双写。
+  - gate：build/install PASS，isolated OPP PASS，`S=64/256/1024` smoke PASS，full compare PASS `16 passed in 6.20s`。
+  - baseline：`op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA64_resident_upper_zero_only_baseline.h`，SHA256 `9db43aa3868a7e2c9384b58b328dd4e4b8ed19a5b061a761b529d2abd97d0a2c`。
+  - artifacts：package `/tmp/cgdr_a64_resident_upper_zero_20260512_173829.run` SHA256 `aee16480d5a94585956bb1aa619f91bb4f1287ef4743c299e75b228ff400f0a0`；isolated OPP `/tmp/cgdr_a64_resident_upper_zero_20260512_173829_opp/vendors/custom_transformer`；installed Neumann object SHA256 `a76ef23e33a9d81859e5ce9c5ddc781413078f20a89a41005190a1b1d43327ec`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA64_resident_upper_zero_only_20260512/performance_compare.csv`，neumann/normal `1.239 / 1.916 / 2.740 / 2.786`。
+  - 结论：A64 是 latest correctness-safe baseline；相比 A63a `1.244 / 1.948 / 2.710 / 2.775`，`S=64/512` 改善但 `S=2048/10240` 回退，因此 A63a 仍是 all-shape preferred performance baseline。
+- [x] A65a: resident upper-zero single-sync。
+  - 起点是 A64 clean baseline SHA256 `9db43aa3868a7e2c9384b58b328dd4e4b8ed19a5b061a761b529d2abd97d0a2c`。
+  - 完成单点：`ZeroHalfL1()` 拆出 `ZeroHalfL1NoSync()`，新增 `ZeroPacked64UpperTriangularBlocksSingleSync()`；仅 `StorePackedL1InverseToResidentL1()` 的 upper 6 block zero 使用三次 no-sync zero + 一次 `SyncMToMte1()`。
+  - 不改 `ZeroHalfL1()` 其它调用点，不改 BF16 GM materialization、resident lower 10 block copy、RHS、P7/P8 公式、Stage2/Stage3/QK/`gBK/vBeta`。
+  - gate：build PASS，isolated install PASS，source/installed header SHA256 对齐，`S=64/256/1024` smoke PASS，full compare PASS `16 passed in 6.22s`。
+  - baseline：`op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA65a_resident_upper_zero_single_sync_baseline.h`，SHA256 `180e49f446c2df5a92da333e7b895949e1c0b313cec13c2cabd8aacd67aa26d8`。
+  - artifacts：package `/tmp/cgdr_a65a_20260512_175433.run` SHA256 `25f6075f3e5904f539bb5658bdf83fd8821deddf513b97ebf21da61db19da2a3`；isolated OPP `/tmp/cgdr_a65a_opp_20260512_175433/vendors/custom_transformer`；installed Neumann object SHA256 `caefe7792d2b894839b0fad4bc251579495a89956cf6491a3f444cddd8dca7ab`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA65a_resident_upper_zero_single_sync_20260512/performance_compare.csv`，neumann/normal `1.209 / 1.881 / 2.734 / 2.787`。
+  - 结论：A65a 是 latest correctness-safe baseline；相比 A64 `1.239 / 1.916 / 2.740 / 2.786`，`S=64/512/2048` 改善，`S=10240` 基本持平略差。A63a 仍是 all-shape preferred performance baseline，A65a 作为下一步 correctness continuation surface。
+- [x] A65b: result64 upper-zero single-sync。
+  - 目标：复用 A65a 已验证的 same-shape single-sync upper-zero helper，把 `LoadPacked64DiagonalInputsToL1()` strict full64 分支中 `aicHalfL1P3Result_` 的 upper 6 block zero 从三次 sync 收缩为一次 sync。
+  - 不改 resident lower copy、BF16 GM materialization、RHS、P7/P8 公式、Stage2/Stage3/QK/`gBK/vBeta`。
+  - gate：build/install PASS，`S=64/256/1024` smoke PASS，full compare PASS。
+  - baseline：`op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA65b_result64_upper_zero_single_sync_baseline.h`，SHA256 `8883db05bb1a0ce4c642bb3637429b20339e5d1e15c43954a6ffd3619c340c55`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA65b_result64_upper_zero_single_sync_20260512/performance_compare.csv`，neumann/normal `1.258 / 1.911 / 2.742 / 2.785`。
+  - 结论：A65b correctness-safe 但相比 A65a `1.209 / 1.881 / 2.734 / 2.787` 在 `S=64/512/2048` 回退；active 已恢复到 A65a SHA256 `180e49f446c2df5a92da333e7b895949e1c0b313cec13c2cabd8aacd67aa26d8`，不要默认从 A65b 继续。
+- [x] A66: I16 identity cache keep across materialization。
+  - 起点是 A65a clean baseline SHA256 `180e49f446c2df5a92da333e7b895949e1c0b313cec13c2cabd8aacd67aa26d8`。
+  - 完成单点：删除 `P8ComposeFirstLayerPacked32Direct()` 末尾和 `StorePackedL1InverseToBf16Attn()` 前的两个 `preparedHalfIdentityBlockSize_ = 0`；保留 `StorePackedL1InverseToResidentL1()` 后最终 reset。
+  - 目标：让同一 raw-MMAD inverse epoch 内的 `I16` half identity cache 连续服务 P8 packed32 output copy、BF16 materialization、resident materialization，减少 GM scratch 写 I16 与 MMAD 重建。
+  - 不改 P7/P8 公式，不改 BF16/resident writeback 形态，不改 final RHS、Stage2/Stage3/QK/`gBK/vBeta`。
+  - gate：build PASS，isolated install PASS，`S=64/256/1024` smoke PASS，full compare PASS `16 passed in 6.17s`。
+  - baseline：`op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA66_identity16_cache_keep_baseline.h`，SHA256 `db0db360181e0a48f1005469ea2c9b348330419cb9aca19e5e8be0011a1cb2d1`。
+  - artifacts：package `/tmp/packed64_phaseA66_identity16_cache_keep_20260512_185151.run` SHA256 `7613b0fffd744f4b15c37c3d7d108fdf7c47f2ad49303311f6cd1f98e4e47cae`；isolated OPP `/tmp/packed64_phaseA66_identity16_cache_keep_20260512_185151_opp/vendors/custom_transformer`；installed Neumann object SHA256 `7613edee5a2f3301813a0e8641940ae26400e9d14a90947bf03290f7e1a8bd0a`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA66_identity16_cache_keep_20260512/performance_compare.csv`，neumann/normal `1.244 / 1.778 / 2.528 / 2.561`。
+  - 结论：A66 是当前 latest correctness-safe baseline，也成为 all-shape preferred performance baseline；相比 A65a `1.209 / 1.881 / 2.734 / 2.787`，`S=64` 回退但中长序列明显改善。
+- [x] A67: I16 identity cache keep across paraIdx。
+  - 起点是 A66 clean baseline SHA256 `db0db360181e0a48f1005469ea2c9b348330419cb9aca19e5e8be0011a1cb2d1`。
+  - 完成单点：删除 `C64InverseBy16x16Neumann()` 末尾最终的 `preparedHalfIdentityBlockSize_ = 0`。
+  - 目标：让同一 `ParaChunkAIC()` inverse loop 内多个 `paraIdx` 共享 `I16` half identity cache；仍保留 `ParaChunkAIC()` inverse-window start、`InitRawMmadLocalBuffers()`、`RestoreStage1MatmulLocalBuffers()` 的失效边界。
+  - 不改 P7/P8 公式，不改 BF16/resident writeback 形态，不改 final RHS、Stage2/Stage3/QK/`gBK/vBeta`。
+  - gate：build PASS，isolated install PASS，`S=64/256/1024` smoke PASS，full compare PASS `16 passed in 6.18s`。
+  - baseline：`op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA67_identity16_cross_para_keep_baseline.h`，SHA256 `146d13040989a98f23436a083769b1a925fc8f91e9e0c25691f993c479acfbfe`。
+  - artifacts：package `/tmp/packed64_phaseA67_identity16_cross_para_keep_20260512_190504.run` SHA256 `7d7f48185a28b9038506e7087e262a49d9b0a39f69de1f3cddf05997fd0e4560`；isolated OPP `/tmp/packed64_phaseA67_identity16_cross_para_keep_20260512_190504_opp/vendors/custom_transformer`；installed Neumann object SHA256 `edcae896cbcaf76bda7ce5730eac6c58fad9c7619c57e98c4b5d50528a3b87bb`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA67_identity16_cross_para_keep_20260512/performance_compare.csv` SHA256 `8de471eab5f6c91e5529f5628c0d61ff46c6e23086a05d16bdd3a02a21e7d08e`；raw CSV `tests/pytest/prof_out/packed64_phaseA67_identity16_cross_para_keep_20260512/performance_raw.csv` SHA256 `70ca0b4d650bd8136f8017d38f4043dd9c614cdc98226299da137fb1c5237262`；neumann/normal `1.181 / 1.635 / 2.425 / 2.456`；归档说明 `docs/2026-05-12/A67_PERFORMANCE_BASELINE.md`。
+  - 结论：A67 是当前 latest correctness-safe baseline，也成为 all-shape preferred performance baseline；相比 A66 `1.244 / 1.778 / 2.528 / 2.561` 四档均改善。
+- [ ] A65: BF16 GM materialization replay / row-prefix 合并。
+  - 目标：只保留必要 standalone/visibility 边界，继续降低 lower true-inverse `X @ I16` replay 和 row-prefix 写回开销。
+  - 不在 A49/A50 性能退化路径上直接叠加；若从 A48 或 A58 开，必须逐项 gate。
+  - upper-zero row-suffix A48 已完成；不要把 upper-zero 删除和 lower true-inverse 合并混做。
+- [ ] A66-deferred: P7 L0A no-transpose diagonal load 继续合并。
+  - 目标：把 A40 保留的 L0A 两条 paired load继续查清，但不要重试“单条 coalesced L0A no-transpose load”旧方向。
+  - L0B transpose 一条 coalesced load 已 PASS；不要把 L0A/L0B 当成同一等价布局。
+  - 已证伪方向：A40/A66 的 L0A no-transpose one-shot `repeatTimes=4, srcStride=5, dstGap=4` 在 `S=1024` 失败；当前安全形态仍是 L0A two paired loads + L0B one coalesced load。
+  - 不改 copy-out、resident/BF16、identity lifecycle。
+- [ ] A68: P8 first-layer cInv/cTmp accumulate，降低 first-layer `X @ I16` replay。
+  - 方案已落盘：`docs/2026-05-12/P8_FIRST_LAYER_CINV_CTMP_ACCUMULATE_PLAN.md`。
+  - 起点 active source SHA256 `1d23b34e174e24287b4046054bd6bce35fd68da23f18c031e45a55028b5bc328`；A67 validated baseline SHA256 `146d13040989a98f23436a083769b1a925fc8f91e9e0c25691f993c479acfbfe`。
+  - 当前只做 Phase 1：first-layer 用 `cTmp = aicL0C_[C64_L0C_TILE_ELEMS]` 算 `tmp = lowerNeg @ topInv`，再在 `cInv = aicL0C_` 上 `RAW_MMAD_ACCUMULATE_C` 累加 `bottomInv @ tmp`。
+  - 结束时 full64 Fixpipe `cInv -> aicHalfL1P3Result_`，让现有 second-layer 继续从 L1 读取。
+  - 不加负号；`INVInit` lower 已经是 `-L`。
+  - 不做 partial L0C copy-out；A42/A45 的 direct partial `CFG_NZ` copy-out 路径继续后置。
+  - 不改 second-layer、BF16/resident/RHS、Stage2/Stage3/QK/`gBK/vBeta`。
+- [x] A68: P8 first-layer cInv/cTmp accumulate，降低 first-layer `X @ I16` replay。
+  - 方案落盘：`docs/2026-05-12/P8_FIRST_LAYER_CINV_CTMP_ACCUMULATE_PLAN.md`。
+  - 起点是 A67 validated baseline SHA256 `146d13040989a98f23436a083769b1a925fc8f91e9e0c25691f993c479acfbfe`。
+  - 完成 Phase 1：P7 后保留 `cInv = aicL0C_`，用 `cTmp = aicL0C_[C64_L0C_TILE_ELEMS]` 计算 first-layer tmp，并用 `RAW_MMAD_ACCUMULATE_C` 累加 first-layer lower true-inverse 到 `cInv`。
+  - 不加负号；`INVInit` lower 已经是 `-L`。
+  - 不做 partial L0C copy-out；full64 Fixpipe 写回给旧 second-layer 使用。
+  - gate：build PASS，isolated install PASS，`S=64/256/1024` PASS，full compare PASS `16 passed in 6.16s`。
+  - baseline：`op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA68_p8_first_layer_cinv_ctmp_accum_baseline.h`，SHA256 `f94c7bbf54186327dcf09d711a30a76152974312b52dc2ce80848fb78ddb8586`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA68_p8_first_layer_cinv_ctmp_accum_20260512/performance_compare.csv`，neumann/normal `1.175 / 1.662 / 2.399 / 2.437`。
+- [x] A69: P8 second-layer cInv/cTmp accumulate，完成 second-layer `X @ I16` replay 降低。
+  - 起点是 A68 clean baseline SHA256 `f94c7bbf54186327dcf09d711a30a76152974312b52dc2ce80848fb78ddb8586`。
+  - 完成 Phase 2：strict full64 branch 调用 `P8Compose64From32AccumFull64(paraIdx)`；`cTmp` 计算 `tmp64 = lowerNeg32 @ B0`，`cInv` 累加 `B1 @ tmp64`，最终 full64 Fixpipe 写回 `aicHalfL1P3Result_`。
+  - `P8Compose64From32Direct32()` 保留给 tail/non-full64 fallback。
+  - 不加负号，不改 BF16/resident/RHS/Stage2/Stage3/QK/`gBK/vBeta`，不做 partial L0C copy-out。
+  - gate：build PASS，isolated install PASS，`S=64/256/1024` PASS，full compare PASS `16 passed in 6.22s`。
+  - package：`/tmp/cgdr_a69_20260512_220105.run`，SHA256 `f85b7864e3c757df74d01f2eae656dd88068302c04dc59180989fafdeb28acee`。
+  - isolated OPP：`/tmp/cgdr_a69_opp_20260512_220105/vendors/custom_transformer`；installed object SHA256 `2db6ce2a99cc7a55cbc8ed39fd94a6be09dccbbc3648554c61bf84a7ef85b280`。
+  - baseline：`op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA69_p8_second_layer_cinv_ctmp_accum_baseline.h`，SHA256 `c135346911ae7915a4cb6ba272d997289bd19e54f774f4f21fac987d4441a4ea`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA69_p8_second_layer_cinv_ctmp_accum_20260512/performance_compare.csv`，SHA256 `484718014cde93891a68d633eb1f275afcd1d1a5323f346367437b4e7738ec56`；raw CSV SHA256 `787211d7a3245f4ff9d27c5c6cd5f1fbc308d43cbaaeca524e219a6a54de836b`；neumann/normal `1.250 / 1.657 / 2.438 / 2.469`。
+  - 结论：A69 是 latest correctness-safe baseline，但不是 preferred performance baseline；后续性能导向 phase 需要同时对比 A68/A67。
+- [x] A70: direct L0 zero 候选失败并恢复 PASS 工作面。
+  - 候选 SHA256 `1237de47447c1530b2068f21677c16d9569d39317ce3f9ba33f1d626a2617985`。
+  - 变化：尝试用 direct `ZeroHalfL0Pair()` 替换 L1-zero-to-L0 clear。
+  - 结果：build PASS，`S=64` AIC exception `507015`，`load2d instruction write address greater than max destination address`。
+  - 结论：当前 L0 half view 上的 `InitConstValue` direct-zero 不合法；不要原样重试。
+  - 恢复：回到 `SyncMToMte1() + EnsureHalfL1Zero(...) + CopyHalfL1MatrixToL0A/B(aicHalfL1Zero_, ...)`，删除无用 direct-L0-zero helper。
+  - active source SHA256 `a39847a6f7b05bc5911cb2bf13cd76bf264a5123ce6842ac55332dac4a248552`。
+  - recovery gate：`S=64/256/1024` PASS，full compare PASS `16 passed in 6.14s`。
+- [ ] A71: BF16 upper-zero 矩形写回去掉无用 I16 生成。
+  - 起点：A70 recovery SHA256 `a39847a6f7b05bc5911cb2bf13cd76bf264a5123ce6842ac55332dac4a248552`。
+  - 只改 `CopyZeroHalfL1RectToGmBf16ByMmad()`。
+  - 当前计算是 `aicHalfL1Zero_ @ aicHalfL1Zero_`，`PrepareHalfL1IdentityByMmad(INVERSE_SHAPE)` 不是数据依赖，只保留了历史同步边界。
+  - 候选：用显式 `SyncFixToMte1(); SyncMte2ToMte1();` 替代该 identity prepare。
+  - 不删 `StorePackedL1InverseToBf16Attn()`，不改 resident/RHS/P7/P8/Stage2/Stage3/QK/`gBK/vBeta`。
+- [x] A71: BF16 upper-zero 矩形写回去掉无用 I16 生成。
+  - 单点：`CopyZeroHalfL1RectToGmBf16ByMmad()` 去掉 `PrepareHalfL1IdentityByMmad(INVERSE_SHAPE)`，替换为 `SyncFixToMte1(); SyncMte2ToMte1();`。
+  - 不删 BF16 GM upper-zero writeback，不改 resident/RHS/P7/P8/Stage2/Stage3/QK/`gBK/vBeta`。
+  - gate：build PASS，isolated install PASS，`S=64/256/1024` PASS，full compare PASS `16 passed in 6.19s`。
+  - package：`/tmp/packed64_phaseA71_bf16_zero_rect_no_identity_20260512_230955.run`，SHA256 `206f54f91e67badecf0574f4fe663e5e602bc58d4853ede5d8bd612e6a88755b`。
+  - isolated OPP：`/tmp/packed64_phaseA71_bf16_zero_rect_no_identity_20260512_230955_opp/vendors/custom_transformer`；installed Neumann object SHA256 `669e476bed89f2ea91bfaba812d869ef476926b90b1b871c0d3de74f48edda7c`。
+  - baseline：`op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA71_bf16_zero_rect_no_identity_baseline.h`，SHA256 `3f5e0b61eff7faa38b292312cb1b91f861fcb7db30b6f7fd2a6b00bd835ffa47`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA71_bf16_zero_rect_no_identity_20260512/performance_compare.csv`，SHA256 `c33234973be135ed09f66a90dbfe4df276e3eee9f4cf8d2e65a341520214fa4b`；raw CSV SHA256 `dabe527e6705c72ccb67097ef901745d5d61776da5be92d9615d8c2443b029c1`；neumann/normal `1.260 / 1.680 / 2.424 / 2.444`。
+  - 结论：A71 correctness-safe；长序列比 A69/A67 好，但 `S=64/512` 退化，整体不是 performance-preferred。
+- [ ] A72: 删除 BF16 writeback 入口未消费的 16x16 zero prepare。
+  - 起点：A71 SHA256 `3f5e0b61eff7faa38b292312cb1b91f861fcb7db30b6f7fd2a6b00bd835ffa47`。
+  - 只改 `StorePackedL1InverseToBf16Attn()` 开头的 `EnsureHalfL1ZeroForMte1(INVERSE_SHAPE * INVERSE_SHAPE)`。
+  - 保留 `CopyZeroHalfL1RectToGmBf16ByMmad()` 内部 full64 zero prepare；不删 BF16 GM writeback。
+  - 不改 resident/RHS/P7/P8/Stage2/Stage3/QK/`gBK/vBeta`。
+- [x] A72: 删除 BF16 writeback 入口未消费的 16x16 zero prepare。
+  - 单点：删除 `StorePackedL1InverseToBf16Attn()` 开头的 `EnsureHalfL1ZeroForMte1(INVERSE_SHAPE * INVERSE_SHAPE)`。
+  - 保留 `CopyZeroHalfL1RectToGmBf16ByMmad()` 内部 full64 zero prepare；不删 BF16 GM writeback。
+  - gate：build PASS，isolated install PASS，`S=64/256/1024` PASS，full compare PASS `16 passed in 6.23s`。
+  - package：`/tmp/packed64_phaseA72_bf16_entry_zero_prepare_drop_20260512_232147.run`，SHA256 `35113258c7c862c6d461f908c9a15891123d9e5c7b1b142b1651b56ee2135ec6`。
+  - isolated OPP：`/tmp/packed64_phaseA72_bf16_entry_zero_prepare_drop_20260512_232147_opp/vendors/custom_transformer`；installed Neumann object SHA256 `6926db661d6d448d162643ebd113a58dac25c1706f4789d5bccdad38bab7f9b1`。
+  - baseline：`op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA72_bf16_entry_zero_prepare_drop_baseline.h`，SHA256 `deb987f598b383bcc73b7d18dc846f78fc3fb120970382b214ee84b7ec006520`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA72_bf16_entry_zero_prepare_drop_20260512/performance_compare.csv`，SHA256 `33b4d071bae64d0c5530eb099a5d692e6b49ef50f59df6269295dbce2ca2e253`；raw CSV SHA256 `0ad976c1adfde92c180374c741aa6dd9991059f3bd729751e1f86c3a4b9b6199`；neumann/normal `1.225 / 1.659 / 2.397 / 2.456`。
+  - 结论：A72 correctness-safe，较 A71 全尺寸改善；`S=2048` 已略好于 A68，但 `S=64/512/10240` 仍不是最好记录。
+- [ ] A73: zero-rect BF16 写回删除冗余 `SyncFixToMte1()`。
+  - 起点：A72 SHA256 `deb987f598b383bcc73b7d18dc846f78fc3fb120970382b214ee84b7ec006520`。
+  - 只改 `CopyZeroHalfL1RectToGmBf16ByMmad()`，删除 `EnsureHalfL1ZeroForMte1(...)` 后的 `SyncFixToMte1()`。
+  - 保留 `SyncMte2ToMte1()`；不删 BF16 GM writeback。
+  - 理由：zero source 由 M pipe 生成并通过 `SyncMToMte1()` 可见，cached zero 也不是 FIX 产物；旧 `SyncFixToMte1()` 来自 identity-cache 边界，不是 `zero @ zero` 数据依赖。
+  - 不改 resident/RHS/P7/P8/Stage2/Stage3/QK/`gBK/vBeta`。
+- [x] A80: BF16 zero-rect 写回删除 `SyncMte2ToMte1()`。
+  - 单点：只删除 `CopyZeroHalfL1RectToGmBf16ByMmad()` 末尾 `SyncMte2ToMte1()`，保留 `SyncFixToM()` / `SyncFixToMte2()` / `SyncFixToS()`。
+  - 不删 BF16 GM writeback，不改 resident/RHS/P7/P8/Stage2/Stage3/QK/`gBK/vBeta`。
+  - gate：build PASS，isolated install PASS，`S=64/256/1024` PASS，full compare PASS `16 passed in 7.04s`。
+  - baseline：`op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA80_bf16_zero_rect_drop_mte2_mte1_sync_baseline.h`，SHA256 `26bee7c03e242f5fa9ebcc9be94a3a4028c623c15b764f281acc7c3388b52708`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA80_bf16_zero_rect_drop_mte2_mte1_sync_20260513/performance_compare.csv`，neumann/normal `1.151 / 1.642 / 2.378 / 2.425`。
+- [x] A81: BF16 GM materialization 删除显式 DCCI flush。
+  - 起点：A80 baseline SHA256 `26bee7c03e242f5fa9ebcc9be94a3a4028c623c15b764f281acc7c3388b52708`。
+  - 单点：只删除 `CopyZeroHalfL1RectToGmBf16ByMmad()` 和 `CopyPackedHalfL1BlockToGmBf16()` 末尾的 `FlushBf16MatrixCacheLines()`。
+  - 保留 BF16 GM Fixpipe 写回和 `SyncFixToM()` / `SyncFixToMte2()` / `SyncFixToS()`；RHS 继续消费 `aicHalfL1ResidentInv_`。
+  - package：`/tmp/packed64_phaseA81_bf16_materialization_drop_flush_rebuild_20260513_030246.run`，SHA256 `6179a43418b470afce102e1be3cd3f93fc28bd46936ca81a1ffed2b8842c655b`。
+  - isolated OPP：`/tmp/packed64_phaseA81_bf16_materialization_drop_flush_rebuild_20260513_030246_opp/vendors/custom_transformer`；`libcust_opapi.so` exports both normal and Neumann aclnn symbols.
+  - gate：clean build PASS，isolated install PASS，`S=64/256/1024` PASS，full compare PASS `16 passed in 6.12s`。
+  - baseline：`op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA81_bf16_materialization_drop_flush_baseline.h`，SHA256 `7a2ed0e4b1f0653004ef8ce5dec2dc851bb4c8479ef98c5101fc7e4922cf6575`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA81_bf16_materialization_drop_flush_20260513/performance_compare.csv`，SHA256 `7ff5b7c567bd799e4354b933c76802c8871162c36ede254b7b09e4c24c018fe4`；raw CSV SHA256 `7c69ecff8b510e808973c96481cfb59cdaa958adb7694df8eb33ce081bbbccf0`；neumann/normal `1.239 / 1.620 / 2.329 / 2.376`。
+  - 结论：A81 correctness-safe；中大序列优于 A80/A78/A67，但 `S=64` 退化，small-shape 仍以 A77 作参考。
+- [x] A82: BF16 lower block materialization 删除 `SyncFixToMte2()`。
+  - 起点：A81 SHA256 `7a2ed0e4b1f0653004ef8ce5dec2dc851bb4c8479ef98c5101fc7e4922cf6575`。
+  - 单点：只删除 `CopyPackedHalfL1BlockToGmBf16()` 末尾的 `SyncFixToMte2()`。
+  - 保留 lower BF16 block Fixpipe GM 写回、`SyncFixToM()`、`SyncFixToS()`；zero-rect helper 不动。
+  - package：`/tmp/packed64_phaseA82_bf16_lower_block_drop_fix_mte2_sync_20260513_031638.run`，SHA256 `7543e7163cbaa270ded92d3947e9b370f64ffe7ecefa7135b25ce456af9d0224`。
+  - isolated OPP：`/tmp/packed64_phaseA82_bf16_lower_block_drop_fix_mte2_sync_20260513_031638_opp/vendors/custom_transformer`。
+  - gate：clean build PASS，isolated install PASS，`S=64/256/1024` PASS，full compare PASS `16 passed in 6.18s`。
+  - baseline：`op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA82_bf16_lower_block_drop_fix_mte2_sync_baseline.h`，SHA256 `ba186210c7ef75bcb7ef3c62a38fdb8e0ac3822906f0e02691d55d5edb2aedca`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA82_bf16_lower_block_drop_fix_mte2_sync_20260513/performance_compare.csv`，SHA256 `08a272e9c3bf34b43e01f24346e08fd67b68ef706fe255d97a36d4a0ef261a4f`；raw CSV SHA256 `62dffa9240b7625b962f938b7a4a9dc79d8ce38e843bc4d6230c3c3da2953eaf`；neumann/normal `1.191 / 1.544 / 2.313 / 2.332`。
+  - 结论：A82 correctness-safe，并较 A81 四档均改善；继续按 BF16 materialization 同步拆分推进。
+- [x] A83-candidate: BF16 zero-rect materialization 删除 `SyncFixToMte2()`，精度 PASS 但性能退化，不采纳为 continuation baseline。
+  - 起点：A82 SHA256 `ba186210c7ef75bcb7ef3c62a38fdb8e0ac3822906f0e02691d55d5edb2aedca`。
+  - 单点：只删除 `CopyZeroHalfL1RectToGmBf16ByMmad()` 末尾的 `SyncFixToMte2()`。
+  - 保留 zero-rect BF16 GM Fixpipe 写回、`SyncFixToM()`、`SyncFixToS()`；lower block helper 不再改。
+  - 不删整段 BF16 GM writeback。
+  - 不改 resident/RHS/P7/P8/Stage2/Stage3/QK/`gBK/vBeta`。
+  - package：`/tmp/packed64_phaseA83_bf16_zero_rect_drop_fix_mte2_sync_20260513_032803.run`，SHA256 `d04c61ef0694a5aebd7824bdc49478e71f9c6f9fb48e314f95e0be5785194890`。
+  - isolated OPP：`/tmp/packed64_phaseA83_bf16_zero_rect_drop_fix_mte2_sync_20260513_032803_opp/vendors/custom_transformer`；`libcust_opapi.so` SHA256 `9721ca309f1a7e65fe3e835088e91037f3f7a36f6431827fa90c8a42e18c0752`。
+  - gate：build PASS，isolated install PASS，`S=64/256/1024` PASS，full compare PASS `16 passed in 6.17s`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA83_bf16_zero_rect_drop_fix_mte2_sync_20260513/performance_compare.csv`，SHA256 `55b5897b4d2128c460ee2d0e18c334e9e830a0792c403b0fc20b4faa2bf96948`；raw CSV SHA256 `d26a2e06c416eec2fdd87441c62d23455219dbf1050ae5616bf1c8e3c416e943`；neumann/normal `1.141 / 1.589 / 2.340 / 2.342`。
+  - 结论：A83 improves only `S=64` but regresses `S=512/2048/10240` versus A82 `1.191 / 1.544 / 2.313 / 2.332`; active source restored to A82 SHA256 `ba186210c7ef75bcb7ef3c62a38fdb8e0ac3822906f0e02691d55d5edb2aedca` and `cmp` matches A82 baseline.
+- [x] A84-failed: lower true-inverse BF16 block 删除 `SyncFixToS()`。
+  - 起点：A82 SHA256 `ba186210c7ef75bcb7ef3c62a38fdb8e0ac3822906f0e02691d55d5edb2aedca`。
+  - 单点：只删除 `CopyPackedHalfL1BlockToGmBf16()` 末尾的 `SyncFixToS()`；保留 `SyncFixToM()`，不改 zero-rect helper、resident/RHS、P7/P8、Stage2/Stage3/QK、`gBK/vBeta`。
+  - candidate source SHA256 `59c935cba6a1f44cf0185c7745a24a2e65867e0467b4d773aaf9921fcd17a145`。
+  - package：`/tmp/packed64_phaseA84_bf16_lower_block_drop_fix_to_scalar_sync_20260513_034419.run`，SHA256 `5dde9b2aabda5aeaab28bd893c716df7e9b92db8c656d714ef186dc05fb2e348`。
+  - gate：build PASS，isolated install PASS，`S=64/256` PASS，`S=1024` FAIL。
+  - failure：`CPU vs ChunkGDRNeumann out max_abs=1.576879e-01`，`state max_abs=1.081070e-01`；do not save baseline.
+  - conclusion：lower BF16 GM materialization 的 `SyncFixToS()` 仍携带长序列可见性/顺序边界；active source restored to A82 SHA256 `ba186210c7ef75bcb7ef3c62a38fdb8e0ac3822906f0e02691d55d5edb2aedca` and `cmp` matches A82 baseline.
+- [x] A85-candidate: BF16 zero-rect materialization 删除 `SyncFixToS()`，精度 PASS 但性能退化，不采纳为 continuation baseline。
+  - 起点：A82 SHA256 `ba186210c7ef75bcb7ef3c62a38fdb8e0ac3822906f0e02691d55d5edb2aedca`。
+  - 单点：只删除 `CopyZeroHalfL1RectToGmBf16ByMmad()` 末尾的 `SyncFixToS()`。
+  - 保留 zero-rect BF16 GM Fixpipe 写回、`SyncFixToM()`、`SyncFixToMte2()`；lower block helper 不改。
+  - 首次安装误用了 stale/tri_inverse-only package，因缺少 `aclnnChunkGatedDeltaRule*` 符号失败；清理 `../../build` 和 `../../build_out` 后重建目标双算子包再验证。
+  - candidate source SHA256 `6655407d2f58f8e8c3ec42b685725c87f801211660d68fe94bc9e0933bf54837`。
+  - package：`/tmp/packed64_phaseA85_bf16_zero_rect_drop_fix_to_scalar_sync_rebuild_20260513_035737.run`，SHA256 `7f85be22009244d29b51ae98117592c919096fde76ecb0237988f87ef5314577`。
+  - isolated OPP：`/tmp/packed64_phaseA85_bf16_zero_rect_drop_fix_to_scalar_sync_rebuild_opp_20260513_035737/vendors/custom_transformer`。
+  - gate：clean build PASS，isolated install PASS，`S=64/256/1024` PASS，full compare PASS `16 passed in 6.20s`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA85_bf16_zero_rect_drop_fix_to_scalar_sync_20260513/performance_compare.csv`，SHA256 `eeccfeace4ac5c4a381541634492f527bd2dae018db522803a0778d8e0179624`；raw CSV SHA256 `c945009aee9e3e3bafe5172bb6b4a7f0d2cdbb5e45bf32f7d1da70fd6814cadb`；neumann/normal `1.161 / 1.603 / 2.329 / 2.368`。
+  - 结论：A85 improves `S=64` but regresses `S=512/2048/10240` versus A82 `1.191 / 1.544 / 2.313 / 2.332`; active source restored to A82 SHA256 `ba186210c7ef75bcb7ef3c62a38fdb8e0ac3822906f0e02691d55d5edb2aedca` and `cmp` matches A82 baseline.
+- [x] A86-candidate: BF16 zero-rect materialization 删除 `SyncFixToM()`，精度 PASS 但性能退化，不采纳为 continuation baseline。
+  - 起点：A82 SHA256 `ba186210c7ef75bcb7ef3c62a38fdb8e0ac3822906f0e02691d55d5edb2aedca`。
+  - 单点：只删除 `CopyZeroHalfL1RectToGmBf16ByMmad()` 末尾的 `SyncFixToM()`。
+  - 保留 zero-rect BF16 GM Fixpipe 写回、`SyncFixToMte2()`、`SyncFixToS()`；lower block helper 不改。
+  - gate：build PASS，isolated install PASS，`S=64/256/1024` PASS，full compare PASS `16 passed in 6.16s`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA86_bf16_zero_rect_drop_fix_to_m_sync_20260513/performance_compare.csv`，SHA256 `d8e13c1db71abb740555dc933dd663c71924a547b2ca69a6aed301d7ff068eb1`；raw CSV SHA256 `7020804e7e820f59403765b78097c4b8cc4c3c58d737c4bf321a090ac19a0aef`；neumann/normal `1.194 / 1.566 / 2.334 / 2.344`。
+  - 结论：A86 比 A82 `1.191 / 1.544 / 2.313 / 2.332` 四档均退化；active source restored to A82 SHA256 `ba186210c7ef75bcb7ef3c62a38fdb8e0ac3822906f0e02691d55d5edb2aedca`。
+- [x] A87-candidate: `RawMmadPackedHalfL1AccumulateRect()` 删除本地 `SetHF32Mode(HF32Mode::DISABLE)`，精度 PASS 但性能退化，不采纳为 continuation baseline。
+  - 起点：A82 SHA256 `ba186210c7ef75bcb7ef3c62a38fdb8e0ac3822906f0e02691d55d5edb2aedca`。
+  - 单点：只删除 `RawMmadPackedHalfL1AccumulateRect()` 内 MMAD 前的本地 `SetHF32Mode(HF32Mode::DISABLE)`。
+  - 保留 `PrepareRawMmadState()` 的 canonical HF32 设置；不改 `RawMmadPackedHalfL1AccumulateTile()`，A59 已证明 tile helper 本地 HF32 不能删。
+  - package：`/tmp/packed64_phaseA87_rect_mmad_no_hf32_20260513_042328.run`，SHA256 `e0bd99157b0effd9ac3bffed35cf92f9fb78040523bd58ac168fa732b2a0d437`。
+  - isolated OPP：`/tmp/packed64_phaseA87_rect_mmad_no_hf32_20260513_042328_opp/vendors/custom_transformer`。
+  - gate：clean build PASS，isolated install PASS，`S=64/256/1024` PASS，full compare PASS `16 passed in 6.27s`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA87_rect_mmad_no_hf32_20260513/performance_compare.csv`，SHA256 `8303844589804f39385234aa211ed7e42164011f340719f72e6e2dabdf015831`；raw CSV SHA256 `291654487de6c62377429ceaecd1a3f54f8d2005c361600b930fe247296a1b51`；neumann/normal `1.195 / 1.585 / 2.322 / 2.366`。
+  - 结论：A87 比 A82 `1.191 / 1.544 / 2.313 / 2.332` 四档均退化；active source restored to A82 SHA256 `ba186210c7ef75bcb7ef3c62a38fdb8e0ac3822906f0e02691d55d5edb2aedca`。
+- [x] A88-candidate: P7 diagonal load 删除一条 `SyncMToMte1()`，精度 PASS 但性能退化，不采纳为 continuation baseline。
+  - 起点：A82 SHA256 `ba186210c7ef75bcb7ef3c62a38fdb8e0ac3822906f0e02691d55d5edb2aedca`。
+  - 单点：只删除 `RawMmadPacked64DiagOnly()` 中 L0A diagonal load 后、L0B diagonal load 前的一条 `SyncMToMte1()`。
+  - gate：build/install PASS，`S=64/256/1024` PASS，full compare PASS `16 passed in 7.01s`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA88_p7_diag_drop_m_mte1_sync_20260513/performance_compare.csv`；neumann/normal `1.166 / 1.597 / 2.322 / 2.347`。
+  - 结论：只改善 `S=64`，`S=512/2048/10240` 比 A82 退化；active source restored to A82 SHA256 `ba186210c7ef75bcb7ef3c62a38fdb8e0ac3822906f0e02691d55d5edb2aedca`。
+- [x] A89-candidate: BF16 GM materialization 后移到 K-RHS 后，精度 PASS 但性能退化，不采纳为 continuation baseline。
+  - 起点：A82 SHA256 `ba186210c7ef75bcb7ef3c62a38fdb8e0ac3822906f0e02691d55d5edb2aedca`。
+  - 单点：`C64InverseBy16x16Neumann()` 末尾不再写 BF16 GM；K-RHS `FusedRhsAICProcess()` 后再从 per-para resident 调 `StorePackedL1InverseToBf16Attn()`。
+  - rejected stale package：第一次 build_out 的 `libcust_opapi.so` 不导出 CGDR/Neumann 符号，清理 `../../build` 和 `../../build_out` 后重建。
+  - trusted package：`/tmp/packed64_phaseA89_defer_bf16_after_k_rhs_rebuild_20260513_045536.run`，SHA256 `13503115dd958cebf89f3d58cd855e0f265fdd90ea2e0a5eaa058d645648d272`。
+  - isolated OPP：`/tmp/packed64_phaseA89_defer_bf16_after_k_rhs_rebuild_20260513_045536_opp/vendors/custom_transformer`；installed Neumann object SHA256 `874cd6a65ea37f4644601c3c8637abe77965a5c724e3cb227431d42bbfa620c3`。
+  - gate：clean build/install PASS，`S=64/256/1024` PASS，full compare PASS `16 passed in 6.23s`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA89_defer_bf16_after_k_rhs_20260513/performance_compare.csv`，SHA256 `33b794614ec26bb304f093e632d97644a7bbbe287c731ced4b7ec0ff73f7d467`；raw CSV SHA256 `cf89be1075778f9ffe61cad88c9066ecd2c9231bd93185a3a1f2f21aa9c8fc7e`；neumann/normal `1.174 / 1.615 / 2.454 / 2.475`。
+  - 结论：只改善 `S=64`，`S=512/2048/10240` 比 A82 退化；active source restored to A82 SHA256 `ba186210c7ef75bcb7ef3c62a38fdb8e0ac3822906f0e02691d55d5edb2aedca`。
+- [x] A90-candidate: inverse window 只准备一次 `PrepareRawMmadState()`，精度 PASS 但性能退化，不采纳为 continuation baseline。
+  - 起点：A82 SHA256 `ba186210c7ef75bcb7ef3c62a38fdb8e0ac3822906f0e02691d55d5edb2aedca`。
+  - 单点：`ParaChunkAIC()` 在 inverse loop 前执行 `EnsureAicLocalBuffers(); PrepareRawMmadState();`，删除 `C64InverseBy16x16Neumann()` 内重复 `PrepareRawMmadState()`。
+  - RHS `FusedRhsAICProcess()` 的 `PrepareRawMmadState()` 保留；不改 P7/P8 公式、BF16/resident writeback shape、Stage2/Stage3/QK、`gBK/vBeta`。
+  - package：`../../build_out/cann-ops-transformer-custom_linux-aarch64.run`，SHA256 `6180c7d9c363571eca5eb2c99b1a98b4a60e73bf0f6f035b8f88da8436017863`。
+  - isolated OPP：`/tmp/packed64_phaseA90_prepare_raw_state_once_20260513_051359_opp/vendors/custom_transformer`；`libcust_opapi.so` SHA256 `9721ca309f1a7e65fe3e835088e91037f3f7a36f6431827fa90c8a42e18c0752`。
+  - gate：clean build PASS，isolated install PASS，`S=64/256/1024` PASS，full compare PASS `16 passed in 6.85s`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA90_prepare_raw_state_once_20260513/performance_compare.csv`；neumann/normal `1.116 / 1.560 / 2.332 / 2.351`。
+  - 结论：只改善 `S=64`，`S=512/2048/10240` 比 A82 退化；active source restored to A82 SHA256 `ba186210c7ef75bcb7ef3c62a38fdb8e0ac3822906f0e02691d55d5edb2aedca`。
+- [x] A91-candidate: resident L1 写回提前到 BF16 GM 写回之前，精度 PASS 但性能退化，不采纳为 continuation baseline。
+  - 起点：A82 SHA256 `ba186210c7ef75bcb7ef3c62a38fdb8e0ac3822906f0e02691d55d5edb2aedca`。
+  - 单点：只交换 `C64InverseBy16x16Neumann()` 末尾 `StorePackedL1InverseToBf16Attn(paraIdx)` 和 `StorePackedL1InverseToResidentL1(paraIdx)` 的顺序。
+  - candidate source SHA256：`fedb261b7ea0269c495aa38f3c9a79ce73f84a15c8575e48fde207af11b51001`。
+  - package：`/tmp/packed64_phaseA91_resident_before_bf16_20260513_053115.run`，SHA256 `ba571da00e49ccacd88955cdeba6e73d849178d7b29f3986e29ce6d8324d60df`。
+  - isolated OPP：`/tmp/packed64_phaseA91_resident_before_bf16_20260513_053115_opp/vendors/custom_transformer`；`libcust_opapi.so` SHA256 `9721ca309f1a7e65fe3e835088e91037f3f7a36f6431827fa90c8a42e18c0752`。
+  - gate：clean build PASS，isolated install PASS，`S=64/256/1024` PASS，full compare PASS `16 passed in 6.20s`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA91_resident_before_bf16_20260513/performance_compare.csv`，SHA256 `c1305a5f080d6ec14f14f2ae1f0fc122b56cb7114624d4d2ec35ac55602f2a0c`；raw CSV SHA256 `c22123487582fb8c82a641bf2061f49ed1da5320d48260b8a17732cb23e9fd51`；neumann/normal `1.255 / 1.595 / 2.326 / 2.370`。
+  - 结论：四档均比 A82 `1.191 / 1.544 / 2.313 / 2.332` 退化；active source restored to A82 SHA256 `ba186210c7ef75bcb7ef3c62a38fdb8e0ac3822906f0e02691d55d5edb2aedca`。
+- [x] A92-candidate: resident row-prefix identity ensure hoist，精度 PASS 但性能退化，不采纳为 continuation baseline。
+  - 起点：A82 SHA256 `ba186210c7ef75bcb7ef3c62a38fdb8e0ac3822906f0e02691d55d5edb2aedca`。
+  - 单点：`CopyPackedHalfL1RowPrefixToPackedHalfL1()` 内不再每次 `EnsurePacked64Identity()`，改为 `StorePackedL1InverseToResidentL1()` strict loop 前确保一次。
+  - gate：clean `-j1` build/install PASS，`S=64/256/1024` PASS，full compare PASS `16 passed in 6.49s`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA92_resident_identity_ensure_hoist_20260513/performance_compare.csv`，SHA256 `5c6c66e447c8a596950e3b7bc3ce08475ebde5600310544020fcf823937b95a9`；neumann/normal `1.248 / 1.592 / 2.334 / 2.356`。
+  - 结论：四档均比 A82 `1.191 / 1.544 / 2.313 / 2.332` 退化；active source restored to A82 SHA256 `ba186210c7ef75bcb7ef3c62a38fdb8e0ac3822906f0e02691d55d5edb2aedca`。
+- [x] A93-candidate: second-layer lower preload wait 延后到 first-layer P8 后，精度 PASS 但性能退化，不采纳为 continuation baseline。
+  - 起点：A82 SHA256 `ba186210c7ef75bcb7ef3c62a38fdb8e0ac3822906f0e02691d55d5edb2aedca`。
+  - 单点：只移动 strict path 中 `P7Packed64DiagonalNeumannOneShotToResult()` 后的一条 `SyncMte2ToMte1()` 到 `P8ComposeFirstLayerAccumFull64()` 后；保留 A46b 内部 pair preload 和 `(32,0)` preload 之间的同步。
+  - gate：clean build/install PASS after one transient FATBIN retry，`S=64/256/1024` PASS，full compare PASS `16 passed in 6.22s`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA93_p8_second_lower_wait_after_first_layer_20260513/performance_compare.csv`，SHA256 `66e80b8ccb9b0379c29cf841079432a5713ed4dac0c847f9043214b5a051746f`；neumann/normal `1.217 / 1.587 / 2.301 / 2.344`。
+  - 结论：只改善 `S=2048`，`S=64/512/10240` 比 A82 退化；active source restored to A82 SHA256 `ba186210c7ef75bcb7ef3c62a38fdb8e0ac3822906f0e02691d55d5edb2aedca`。
+- [x] A94: RHS full-tile zero-init skip，精度 PASS 但性能退化，不采纳为 continuation baseline。
+  - 起点：A82 SHA256 `ba186210c7ef75bcb7ef3c62a38fdb8e0ac3822906f0e02691d55d5edb2aedca`。
+  - 单点：只跳过 RHS full-tile `aicHalfL1TilePower_` zero-init；不改 P7/P8、BF16/resident/RHS 数学。
+  - gate：build/install PASS，`S=64/256/1024` PASS，full compare PASS `16 passed in 6.14s`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA94_rhs_fulltile_sync_20260513/performance_compare.csv`；neumann/normal `1.228 / 1.603 / 2.317 / 2.344`。
+  - 结论：四档均比 A82 `1.191 / 1.544 / 2.313 / 2.332` 退化；active source restored to A82 SHA256 `ba186210c7ef75bcb7ef3c62a38fdb8e0ac3822906f0e02691d55d5edb2aedca`。
+- [x] A95-candidate: P7 diagonal preload 删除 AIC-side cache clean，精度 PASS 但性能退化，不采纳为 continuation baseline。
+  - 起点：A82 SHA256 `ba186210c7ef75bcb7ef3c62a38fdb8e0ac3822906f0e02691d55d5edb2aedca`。
+  - 单点：只删除 strict P7 diagonal GM->L1 preload 前的 AIC-side `CleanHalfMatrixCacheLines()`。
+  - package：`/tmp/packed64_phaseA95_p7_diag_preload_drop_aic_clean_20260513_0642.run`，SHA256 `d4c49fa33938b5e1057b49f0e70008783c6666ed1ea30a3579344aad5f3464c2`。
+  - gate：clean build/install PASS，`S=64/256/1024` PASS，full compare PASS `16 passed in 6.53s`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA95_p7_diag_preload_drop_aic_clean_20260513/performance_compare.csv`；neumann/normal `1.244 / 1.610 / 2.298 / 2.335`。
+  - 结论：只改善 `S=2048`，`S=64/512/10240` 比 A82 退化；不保存 baseline，active restored to A82 SHA256 `ba186210c7ef75bcb7ef3c62a38fdb8e0ac3822906f0e02691d55d5edb2aedca`。
+  - 不重试 exact AIC clean deletion；继续从 A82 clean surface 做 profiling-guided 单点。
+- [x] A96-candidate: P7 第一处中间 `cInv` Fixpipe 后删除 `SyncFixToMte1()`，精度 PASS 但性能退化，不采纳为 continuation baseline。
+  - 起点：A82 SHA256 `ba186210c7ef75bcb7ef3c62a38fdb8e0ac3822906f0e02691d55d5edb2aedca`。
+  - 单点：只删除 `P7Packed64DiagonalNeumannOneShotToResult()` 里第一次 `FixpipePacked64FullToHalfL1(aicHalfL1P3Result_, cInv, ...)` 后紧跟的 `SyncFixToMte1()`。
+  - 理由：下一步先算 `diagScratch64 @ diagScratch64 -> aicHalfL1TilePower_`，不读取刚写出的 `aicHalfL1P3Result_`；后续重新读取 result64 前会经过 power 写回自己的 `SyncFixToMte1()`。
+  - 不改三次 full64 Fixpipe 写回本身，不改 P7/P8 公式，不改 BF16 GM writeback，不改 resident/RHS、Stage2/Stage3/QK、`gBK/vBeta`。
+  - source SHA256：`426b67b8aad6f326bcb9b19a0ba86cde2960ede208c853fc13913ac3055f4b04`。
+  - package：`/tmp/packed64_phaseA96_p7_first_cinv_drop_fix_mte1_sync_20260513_0657.run`，SHA256 `168721cd43945e94108c3f3de25498c621c98592932517ddc94db586731effa2`。
+  - installed Neumann object SHA256 `3fd3835934722a4abb0b3663010ad6e31fb945787150f44b96d8d7ede7b3cdd7`；opapi 只导出 CGDR/Neumann，无 TriInverse。
+  - gate：clean build/install PASS，`S=64/256/1024` PASS，full compare PASS `16 passed in 6.16s`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA96_p7_first_cinv_drop_fix_mte1_sync_20260513/performance_compare.csv`；neumann/normal `1.140 / 1.582 / 2.322 / 2.363`。
+  - 结论：只改善 `S=64`，`S=512/2048/10240` 比 A82 退化；不保存 baseline，active restored to A82 SHA256 `ba186210c7ef75bcb7ef3c62a38fdb8e0ac3822906f0e02691d55d5edb2aedca`。
+  - 不重试 exact 第一处 P7 intermediate sync 删除；这仍然是 small-shape-only win。
+- [x] A97-candidate: P7 第二处中间 `cInv` Fixpipe 后删除 `SyncFixToMte1()`，精度 PASS 但性能不采纳。
+  - 起点：A82 SHA256 `ba186210c7ef75bcb7ef3c62a38fdb8e0ac3822906f0e02691d55d5edb2aedca`。
+  - 单点：只删除 `P7Packed64DiagonalNeumannOneShotToResult()` 里第二次 `FixpipePacked64FullToHalfL1(aicHalfL1P3Result_, cInv, ...)` 后紧跟的 `SyncFixToMte1()`。
+  - 不改三次 full64 Fixpipe 写回本身，不改 P7/P8 公式，不改 BF16 GM writeback，不改 resident/RHS、Stage2/Stage3/QK、`gBK/vBeta`。
+  - candidate source SHA256：`823fb2ef4bff2816dc67e98d84e1081b49a601ff751742fbd7bf31b27eaa3e3b`。
+  - package：`/tmp/packed64_phaseA97_p7_second_cinv_drop_fix_mte1_sync_20260513_072024.run`。
+  - installed Neumann object SHA256 `179afb94331dd7467e97f37195e2a8fd6d95fb2007c79f2e3edf1f09e3848a68`。
+  - gate：clean build/install PASS，`S=64/256/1024` PASS，full compare PASS `16 passed in 6.14s`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA97_p7_second_cinv_drop_fix_mte1_sync_20260513/performance_compare.csv`；neumann/normal `1.204 / 1.564 / 2.327 / 2.336`。
+  - 结论：四档均比 A82 `1.191 / 1.544 / 2.313 / 2.332` 退化；不保存 baseline，active restored to A82 SHA256 `ba186210c7ef75bcb7ef3c62a38fdb8e0ac3822906f0e02691d55d5edb2aedca`。
+  - 不重试 exact 第二处 P7 intermediate sync 删除。
+- [x] A98-candidate: P7 最后一处 `cInv` Fixpipe 后删除 `SyncFixToMte1()`，精度 PASS 但性能不采纳。
+  - 起点：A82 SHA256 `ba186210c7ef75bcb7ef3c62a38fdb8e0ac3822906f0e02691d55d5edb2aedca`。
+  - 单点：只删除 `P7Packed64DiagonalNeumannOneShotToResult()` 里最后一次 `FixpipePacked64FullToHalfL1(aicHalfL1P3Result_, cInv, ...)` 后紧跟的 `SyncFixToMte1()`。
+  - 不改 P7/P8 公式、不删除 full64 Fixpipe 写回、不改 BF16 GM/resident/RHS。
+  - source SHA256：`b5ec48ce2b5bf5e3a2a23e3a0d5627d233103baf8b85912f65fa0fa6895dd164`。
+  - package：`../../build_out/cann-ops-transformer-custom_linux-aarch64.run`，SHA256 `da8a331b44a40e6722df0518a6ffc0e399235a441738f22388ad7a48e76352ad`。
+  - isolated OPP：`/tmp/packed64_phaseA98_p7_final_cinv_drop_fix_mte1_sync_20260513_0735_opp/vendors/custom_transformer`。
+  - installed Neumann object SHA256 `7ab48f6743467d9f41555d7005ebf81b86accad15e27dba85ade521a5819d91c`。
+  - gate：clean build/install PASS，`S=64/256/1024` PASS，full compare PASS `16 passed in 6.15s`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA98_p7_final_cinv_drop_fix_mte1_sync_20260513/performance_compare.csv`，SHA256 `ea7b74157db18c6b7eff9e1008c19d744452e41c0c1dcb7caceba609c3d3295f`；raw CSV SHA256 `76ce078d513d81fce737b6f783ce8dd5a2060693532e3f9206b5b8d91002f341`；neumann/normal `1.166 / 1.572 / 2.326 / 2.355`。
+  - 结论：只改善 `S=64`，`S=512/2048/10240` 比 A82 `1.191 / 1.544 / 2.313 / 2.332` 退化；不保存 baseline，active restored to A82 SHA256 `ba186210c7ef75bcb7ef3c62a38fdb8e0ac3822906f0e02691d55d5edb2aedca`。
+  - A96/A97/A98 合起来证明 P7 三处 `cInv` Fix-to-MTE1 sync deletion 都不是 medium/large 性能方向。
+- [x] A99: BF16 lower row-prefix materialization 回到 A82 sync boundary。
+  - 起点：A82 SHA256 `ba186210c7ef75bcb7ef3c62a38fdb8e0ac3822906f0e02691d55d5edb2aedca`。
+  - 单点：新增 `CopyPackedHalfL1RowPrefixToGmBf16()`，`StorePackedL1InverseToBf16Attn()` 中 rows `0/16/32` lower 区域改为 row-prefix rectangle 写回，row `48` 保持旧逐 `16x16` block 写回。
+  - 同步边界沿用 A82 lower-block 方案：保留 `SyncFixToM()` / `SyncFixToS()`，不恢复 `SyncFixToMte2()` 和 flush。
+  - source SHA256：`4669f1ee6ccd59704173fe0389702cdc067e8762188c232158d74cd7f291a393`。
+  - package：`../../build_out/cann-ops-transformer-custom_linux-aarch64.run`，SHA256 `b1269e1030235783fdafa96a311f3a2d17cbc9ca903f6e7f6324175a5d3baa09`。
+  - isolated OPP：`/tmp/packed64_phaseA99_bf16_rowprefix_a82_sync_20260513_0752_opp/vendors/custom_transformer`。
+  - installed Neumann object SHA256 `819eebfffbcc475c36f09d6fd6be426ac96b75013028e9e8645aba5afde64e24`。
+  - gate：build/install PASS，`S=64/256/1024` PASS，full compare PASS `16 passed in 6.77s`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA99_bf16_rowprefix_a82_sync_20260513/performance_compare.csv`，SHA256 `8a8673781684d79818790a3dd749f05fed7eb07d0af1197be38fd2de61097567`；raw CSV SHA256 `c162ad26ab051f9c8a01aef817944d88b2fe1e6092de8c75b5e1fb6579015a44`；neumann/normal `1.162 / 1.544 / 2.288 / 2.330`。
+  - 结论：A99 采用。相对 A82 `1.191 / 1.544 / 2.313 / 2.332`，`S=64/2048/10240` 改善，`S=512` 仅噪声级回摆；Neumann 绝对 task time 四档都下降。
+- [x] A100: BF16 lower row-prefix 扩到 `rowBase=48, cols=64`。
+  - 单点：`StorePackedL1InverseToBf16Attn()` 中 row `48` lower 区域改为 row-prefix rectangle 写回； rows `0/16/32` 保持 A99。
+  - source SHA256 `cde4220b86133c50e19d73fdf6c8b38200d5ff7f068d26078dca536bc6984b6f`。
+  - baseline：`op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA100_bf16_rowprefix64_a99_sync_baseline.h`。
+  - gate：build/install PASS，`S=64/256/1024` PASS，full compare `16 passed in 6.64s`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA100_bf16_rowprefix64_a99_sync_20260513/performance_compare.csv`；neumann/normal `1.173 / 1.448 / 2.190 / 2.225`。
+  - 结论：A100 采用。相对 A99，medium/large 明显下降，Neumann 绝对 task time 四档均下降。
+- [x] A101: 删除 A100 后 BF16 lower block fallback 死分支。
+  - 单点：`StorePackedL1InverseToBf16Attn()` lower 区域固定走 row-prefix；删除不再可达的 per-`16x16` lower block fallback，以及当前 active file 中唯一依赖的 `CopyPackedHalfL1BlockToGmBf16()` helper。
+  - 不改 upper-zero rect、不改 resident/RHS、不改 P7/P8 公式、不改 BF16 GM materialization 的保留边界。
+  - source SHA256 `09b97b6ea9fde5086a25918444d2d7d99c20f634f49de8e92a4d120955ccdaf2`。
+  - package：`../../build_out/cann-ops-transformer-custom_linux-aarch64.run`，SHA256 `bdbbacab10392e574e8e53b29ac38d7e8d99e15c76220be48a4f00e3bebd8140`。
+  - isolated OPP：`/tmp/packed64_phaseA101_bf16_lower_deadbranch_cleanup_20260513_0816_opp/vendors/custom_transformer`；installed Neumann object SHA256 `0663db279808d62d4d28df413cc690af02cc410a927a5bcfc9146b630f29c24f`。
+  - baseline：`op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA101_bf16_lower_deadbranch_cleanup_baseline.h`。
+  - gate：build/install PASS，`S=64/256/1024` PASS，full compare `16 passed in 6.17s`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA101_bf16_lower_deadbranch_cleanup_20260513/performance_compare.csv`，SHA256 `e95ce451738b7bb2c616f77af9a2141c5953fcb0905c30da15e7e3381fe88516`；raw CSV SHA256 `f97642656967f27cc76750a57082eb0fea70b99be345d47745611711153add93`；neumann/normal `1.118 / 1.455 / 2.185 / 2.200`。
+  - 结论：A101 采用。相对 A100 改善 `S=64/2048/10240`，`S=512` 仅小幅回摆。
+  - 不再删除 lower BF16 block 的 `SyncFixToS()`；A84 已证明该方向 S=1024 FAIL。
+  - A83/A85/A86 证明 zero-rect 的 `SyncFixToMte2()` / `SyncFixToS()` / `SyncFixToM()` 都不是 medium/large 性能方向。
+  - A87 证明 `RawMmadPackedHalfL1AccumulateRect()` 本地 HF32 删除不是性能方向；A59 证明 `RawMmadPackedHalfL1AccumulateTile()` 本地 HF32 删除不是精度安全方向。
+  - A88 证明删除 P7 diagonal L0A/L0B 之间的 `SyncMToMte1()` 不是 medium/large 性能方向。
+  - A89 证明 BF16 GM materialization 后移到 K-RHS 后不能隐藏 medium/large 成本。
+  - A90 证明 inverse-window hoist `PrepareRawMmadState()` 只改善 small shape，不是 medium/large 性能方向。
+  - A91 证明仅交换 resident/BF16 最终 materialization 顺序会全档退化。
+  - A92 证明 resident row-prefix identity ensure 纯 hoist 会全档退化。
+  - A93 证明只延后 second-layer lower preload wait 不是稳定性能方向。
+  - A94 证明 RHS full-tile zero-init skip 全档退化。
+  - A95 证明 P7 diagonal preload AIC clean deletion不是稳定性能方向。
+  - A96/A97/A98 证明 P7 三处 `cInv` Fix-to-MTE1 sync 删除不是 medium/large 性能方向。
+  - 优先从 A99 新 profile 指向的 BF16 materialization replay 与合法 P7 copy-out 形态继续，不改变 P7/P8 公式、不改变 resident RHS、不删除 BF16 GM writeback整段。
+- [x] A102: raw-MMAD epoch 级 L1 resident `zero64/identity64` 辅助 tile。
+  - 单点：`InitRawMmadLocalBuffers()` 建立 raw-MMAD local buffer epoch 后立即调用 `PrepareRawMmadAuxiliaryTiles()`。
+  - 实现：`PrepareRawMmadAuxiliaryTiles()` 只做一次 `EnsureHalfL1Zero(C64_PACKED_SIZE_U32 * C64_PACKED_SIZE_U32)` 和 `EnsurePacked64Identity()`； active full64 helper 不再各自 lazy 生成 zero/identity。
+  - 生命周期边界：这是 raw-MMAD local buffer epoch 级，不是整算子 lifetime。`RestoreStage1MatmulLocalBuffers()` / `pipe_->Reset()` 后仍需重新建立。
+  - 删除无用 helper：`EnsureHalfL1ZeroForMte1()` 和 `EnsurePacked64IdentityForInverseEpoch()`。
+  - source SHA256 `9cd969fc8edef610266c2dd974b70bb214eeb6c9f3d3ebfd758607736d50ac01`。
+  - baseline：`op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA102_raw_epoch_auxiliary_tiles_baseline.h`。
+  - rebuild/install 归因：发现默认 `custom_transformer` 和一次 `build_out` 被并发/错包污染后，已移动 misaligned `../../build*`，从当前 source clean rebuild。
+  - package SHA256 `e4b17d8eba153286e381f42310274ab2a5a3f4531ab8aade1a59b1af0a6044c6`。
+  - isolated OPP：`/tmp/cgdr_a102_opp_20260513_1006/vendors/custom_transformer`；installed active header SHA256 `9cd969fc8edef610266c2dd974b70bb214eeb6c9f3d3ebfd758607736d50ac01`；installed Neumann object SHA256 `4b9f6bf5e43c02df16cf5a52ccacc107d819e5ec65fcb239631d44b520c6a450`。
+  - gate：isolated build/install PASS，`S=64/256/1024` PASS，full compare PASS `16 passed in 6.20s`。
+  - performance：`tests/pytest/prof_out/packed64_phaseA102_raw_epoch_auxiliary_tiles_valid_20260513/performance_compare.csv`，SHA256 `4e3578020edf0d838cc7bf636da08040445144322f3fd0033844b0f08eca6747`；raw CSV SHA256 `0b18e82b6950a50c4e16117ee19bda409be0b698e75a5611a4df978e605d8c45`；neumann/normal `1.082 / 1.434 / 2.182 / 2.209`。
+  - 结论：A102 采用。相比 A101 `1.118 / 1.455 / 2.185 / 2.200`，改善 `S=64/512/2048`，`S=10240` 小幅回摆；从当前队列继续。
+  - 注意：`tests/pytest/prof_out/packed64_phaseA102_raw_epoch_auxiliary_tiles_20260513/` 是符号污染下的无效 profiling 目录，不用于性能结论。
+- [x] A103: 删除 BF16 `attnWsGm_` 真实数据写出。
+  - 计划文档：`docs/2026-05-13/PACKED64_LIFECYCLE_AND_REDUNDANCY_PLAN.md`。
+  - 背景：当前 RHS 数学只消费 `aicHalfL1ResidentInv_`；`attnWsGm_` 没有 dedicated arrival flag，也不是 `0x6/0x5` 等 cross-core flag 的等待对象。
+  - 单点：只处理 `StorePackedL1InverseToBf16Attn()` 的真实 BF16 GM materialization；不改 P7/P8 公式、不改 `StorePackedL1InverseToResidentL1()`、不改 `FusedRhsAICProcess()`、不改 Stage2/Stage3/QK/`gBK/vBeta`。
+  - A103a：先删除真实 GM 数据写；只在有明确 producer/consumer 需要时保留本地 ordering/sync 骨架。
+  - A103b：A103a PASS 后再拆剩余空同步，每次只删一类 sync。
+  - 失败定位：若 precision fail，定位 BF16 materialization 携带的是 Fixpipe 可见性、M/S ordering、workspace 清零还是隐藏 consumer；不得把 `attnWsGm_` 重新描述成 RHS 数学输入。
+- [x] A104: full `INVInit` CC L1 preload。
+  - 正确性 PASS 但性能未采纳；A105/A106 后不再从 A104 per-line clean 方案继续。
+- [x] A105: 删除 inverse scratch DCCI。
+  - 正确性 PASS，性能 ratios `1.016 / 1.308 / 2.076 / 2.103`。
+- [x] A106: 删除 active Stage1 里所有显式 DCCI clean/flush。
+  - 正确性 PASS，性能 ratios `0.892 / 0.864 / 0.926 / 0.928`。
+  - 删除对象是 DCCI helper/calls；同步保留。不要把 `Sync*` 删除并入本优化。
+- [ ] A107: 后置 L0C copy-out 专项。
+  - 回到 A42-deferred/A45-deferred 的 partial L0C->L1 Fixpipe support matrix。
+  - 不在 A103-A106 上叠加；若 DAV220 `CFG_NZ` partial/nonzero source offset 不支持 diagonal scatter，记录 unsupported boundary，再选择合法矩形或保留 full64 copy-out。
+- [ ] A-last: 回到 L0C copy-out / 其他后置项收口。
+  - 目标：重新处理 A42-deferred 和任何前面记录为 unsupported/pending 的 copy-out、identity、resident/BF16 side-effect 项。
+  - L0C 若此前未解决，最后必须从 clean PASS baseline 单独开 phase 正向解决，或写明硬件/API 不支持的证据和保留 full64 copy-out 的原因。
+- [ ] A-final: 保存收口 baseline 后继续寻找新优化点。
+  - 前面计划全部完成并通过 gate 后，先保存一个新的 correctness baseline。
+  - 再通过 `msprof` 实测数据或 simulator/仿真分析寻找新的瓶颈和优化点。
+  - 新发现的优化点仍按“一次只改一个优化点 + build/install + S=64/256/1024 smoke + compare + baseline”的规则推进。
+
+## 验证门槛
+
+每个 phase 只改一个优化点。通过以下 gate 后才能继续下一步并保存 baseline：
+
+```bash
+bash ../../build.sh --pkg --soc=ascend910_93 --ops=chunk_gated_delta_rule,chunk_gated_delta_rule_neumann -j16
+../../build_out/cann-ops-transformer-custom_linux-aarch64.run --quiet --install-path=/home/developer/Ascend/cann-9.0.0/opp
+timeout 90s env CGDR_GOLDEN_CHUNK_SIZE=64 TORCH_EXTENSIONS_DIR=/tmp/cgdr_torch_ext ASCEND_CUSTOM_OPP_PATH=/home/developer/Ascend/cann-9.0.0/opp/vendors/custom_transformer python3 tests/pytest/compare_chunk_gdr_three_way.py --seed 0 --batch-size 1 --seqlen 64 --nk 4 --nv 4 --dk 64 --dv 64
+timeout 90s env CGDR_GOLDEN_CHUNK_SIZE=64 TORCH_EXTENSIONS_DIR=/tmp/cgdr_torch_ext ASCEND_CUSTOM_OPP_PATH=/home/developer/Ascend/cann-9.0.0/opp/vendors/custom_transformer python3 tests/pytest/compare_chunk_gdr_three_way.py --seed 0 --batch-size 1 --seqlen 256 --nk 4 --nv 4 --dk 64 --dv 64
+timeout 120s env CGDR_GOLDEN_CHUNK_SIZE=64 TORCH_EXTENSIONS_DIR=/tmp/cgdr_torch_ext ASCEND_CUSTOM_OPP_PATH=/home/developer/Ascend/cann-9.0.0/opp/vendors/custom_transformer python3 tests/pytest/compare_chunk_gdr_three_way.py --seed 0 --batch-size 1 --seqlen 1024 --nk 4 --nv 4 --dk 64 --dv 64
+timeout 240s env CGDR_GOLDEN_CHUNK_SIZE=64 TORCH_EXTENSIONS_DIR=/tmp/cgdr_torch_ext ASCEND_CUSTOM_OPP_PATH=/home/developer/Ascend/cann-9.0.0/opp/vendors/custom_transformer bash tests/pytest/test_run.sh compare
+```
+
+只有 compare PASS 后再跑 performance，并保存阶段 baseline。失败候选不得进 `op_kernel/baseline/`。精度失败时必须先正向定位和修复当前优化点；恢复 PASS baseline 只用于清理工作面，不能替代根因修复。
+
+## 参考文档
+
+- `docs/2026-05-11/WORK_LOG.md`
+- `docs/2026-05-11/PROGRESS_AND_ISSUES.md`
+- `docs/2026-05-10/STRICT_PACKED64_ONESHOT_PROGRESSIVE_OPTIMIZATION_PLAN.md`
+- `docs/2026-05-10/PACKED64_DIAGONAL_INVERSE_PROGRESSIVE_PLAN.md`
+- `docs/2026-05-09/P3_L1_P8A_PROGRESSIVE_FUSION_PLAN.md`
