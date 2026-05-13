@@ -19,7 +19,7 @@
 #include "err/ops_err.h"
 #include "tiling/tiling_api.h"
 #include "platform/platform_info.h"
-#include "arch32/fused_infer_attention_score_tiling_v3.h"
+#include "arch22/fused_infer_attention_score_tiling_v3.h"
 #include "arch35/fused_infer_attention_score_tiling_v4.h"
 
 

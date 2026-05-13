@@ -90,6 +90,18 @@ public:
         return actualSeqLengthsGm.GetValue(bIdx - 1);
     }
 
+    __aicore__ inline uint64_t GetMxVscaleTBase(uint32_t bIdx) const
+    {
+        if (bIdx == 0) {
+            return 0;
+        }
+        uint64_t vScaleTBaseOffset = 0;
+        for (uint32_t idx = 0; idx < bIdx; idx++) {
+            vScaleTBaseOffset += ((GetActualSeqLength(idx) + 63) >> 6);
+        }
+        return vScaleTBaseOffset;
+    }
+
     __aicore__ inline uint64_t GetActualSeqLength(uint32_t bIdx) const
     {
         if (bIdx == 0) {
