@@ -174,8 +174,7 @@ public:
     static constexpr uint32_t dVBaseSize = (uint32_t)dVTemplateType;
     static constexpr uint32_t l1BaseD = 128;
     static constexpr LayOutTypeEnum LAYOUT = layout;
-    static constexpr bool isPa = (KvLayoutType > 0);
-    static constexpr bool PAGE_ATTENTION = isPa;
+    static constexpr bool PAGE_ATTENTION = (KvLayoutType > 0);
     static constexpr bool HAS_ROPE = hasRope;
     static constexpr bool HAS_PREFIX = enableKVPrefix;
     static constexpr bool BMM2_TOUB = bmm2Write2Ub;
@@ -185,7 +184,7 @@ public:
     static constexpr FixpipeConfig BMM2_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, bmm2Write2Ub};
     static constexpr GmFormat Q_FORMAT = GetQueryGmFormat<layout>();
     // static constexpr GmFormat KV_FORMAT = GetKVGmFormat<layout, KvLayoutType>();
-    static constexpr GmFormat KV_FORMAT = GetKVGmFormat<layout, KvLayoutType, isPa>();
+    static constexpr GmFormat KV_FORMAT = GetKVGmFormat<layout, KvLayoutType, PAGE_ATTENTION>();
 
     using ROPE_T = INPUT_T;
     using Q_T = INPUT_T;
@@ -258,8 +257,7 @@ public:
     static constexpr uint32_t dVBaseSize = (uint32_t)dVTemplateType;
     static constexpr uint32_t l1BaseD = 128;
     static constexpr LayOutTypeEnum LAYOUT = layout;
-    static constexpr bool isPa = (KvLayoutType > 0);
-    static constexpr bool PAGE_ATTENTION = isPa;
+    static constexpr bool PAGE_ATTENTION = (KvLayoutType > 0);
     static constexpr bool HAS_ROPE = hasRope;
     static constexpr bool HAS_PREFIX = enableKVPrefix;
     static constexpr bool BMM2_TOUB = bmm2Write2Ub;
@@ -269,7 +267,7 @@ public:
     static constexpr FixpipeConfig BMM2_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, bmm2Write2Ub};
     static constexpr GmFormat Q_FORMAT = GetQueryGmFormat<layout>();
     // static constexpr GmFormat KV_FORMAT = GetKVGmFormat<layout, KvLayoutType>();
-    static constexpr GmFormat KV_FORMAT = GetKVGmFormat<layout, KvLayoutType, isPa>();
+    static constexpr GmFormat KV_FORMAT = GetKVGmFormat<layout, KvLayoutType, PAGE_ATTENTION>();
 
     using ROPE_T = INPUT_T;
     using Q_T = INPUT_T;
@@ -395,7 +393,7 @@ public:
         if (constInfo.actualSeqLenKVSize != 0) {
             actualSeqLengthsGm.SetGlobalBuffer((__gm__ uint64_t *)actualSeqKvlenAddr, constInfo.actualSeqLenKVSize + 1);
         }
-        if constexpr (isPa) {
+        if constexpr (PAGE_ATTENTION) {
             blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
         }
 
@@ -424,7 +422,7 @@ public:
         }
 
         if constexpr (HAS_PREFIX) {
-            static_assert(!isPa);
+            static_assert(!PAGE_ATTENTION);
             static_assert(GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD);
 
             keyPrefixGm.gmTensor.SetGlobalBuffer((__gm__ KV_T *)keySharedPrefix);

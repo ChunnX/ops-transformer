@@ -35,8 +35,8 @@ struct MegaMoeConfig {
     uint32_t weightScalesTwoIndex = 7U;
     uint32_t xActiveMaskIndex = 8U;
     uint32_t scalesIndex = 9U;
-    uint32_t yIndex = 10U;
-    uint32_t expertTokenNumsIndex = 11U;
+    uint32_t yIndex = 0U;
+    uint32_t expertTokenNumsIndex = 1U;
     uint32_t attrMoeExpertNumIndex = 0U;
     uint32_t attrEpWorldSizeIndex = 1U;
     uint32_t attrCclBufferSizeIndex = 2U;

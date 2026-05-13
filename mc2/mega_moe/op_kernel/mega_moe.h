@@ -170,8 +170,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     GM_ADDR xActiveMask, GM_ADDR weightScales1, GM_ADDR weightScales2, GM_ADDR scales, GM_ADDR yOut,
     GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, MegaMoeTilingData *tilingData)
 {
-    m_ = tilingData->m;
-    k_ = tilingData->k;
+    m_ = tilingData->bs;
+    k_ = tilingData->h;
     topK_ = tilingData->topK;
     worldSize_ = tilingData->epWorldSize;
     expertPerRank_ = tilingData->expertPerRank;
@@ -179,7 +179,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     dispatchRows_ = tilingData->dispatchRows;
     groupListType_ = tilingData->groupListType;
     maxOutputSize_ = tilingData->maxOutputSize;
-    Get<N_VALUE>(problemShape_) = tilingData->n;
+    Get<N_VALUE>(problemShape_) = tilingData->hiddenDim;
     Get<K_VALUE>(problemShape_) = k_;
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext*>(context);
     rankId_ = mc2Context_->epRankId;

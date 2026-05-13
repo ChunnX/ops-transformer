@@ -182,7 +182,7 @@ __aicore__ inline void LoadDataToL0AMx(LocalTensor<U>& aL0Tensor, const LocalTen
     loadData2DMxParamsA.xStartPosition = 0;
     loadData2DMxParamsA.yStartPosition = 0;
     loadData2DMxParamsA.xStep = ((mSplitSize + 15) >> 4 << 4) >> 4;
-    loadData2DMxParamsA.yStep = (kSplitSize + 63) / 32 / 2;
+    loadData2DMxParamsA.yStep = (kSplitSize + 63) >> 5 >> 1;
     loadData2DMxParamsA.srcStride = loadData2DMxParamsA.yStep;
     loadData2DMxParamsA.dstStride = loadData2DMxParamsA.yStep;
     if (mmParam.realM != 0) {
@@ -202,11 +202,13 @@ __aicore__ inline void LoadDataToL0AMx(LocalTensor<U>& aL0Tensor, const LocalTen
             for (uint32_t idx = 0; idx < l0bLoop; ++idx) {
                 loadData2DParamsA.mStartPosition = oriMStep + M_STEP_ALIGN_BASE * idx;
                 loadData2DMxParamsA.xStartPosition = oriMScaleStep + M_STEP_ALIGN_BASE * idx;
-                LoadData(aL0Tensor[dstOffset], aL1Tensor[L1Aoffset], aScaleL1Tensor[L1Aoffset / 32 ], loadData2DParamsA, loadData2DMxParamsA);
+                LoadData(aL0Tensor[dstOffset], aL1Tensor[L1Aoffset], aScaleL1Tensor[L1Aoffset >> 5], loadData2DParamsA,
+                         loadData2DMxParamsA);
                 dstOffset += dstAddrStride;
             }
         } else {
-            LoadData(aL0Tensor, aL1Tensor[L1Aoffset], aScaleL1Tensor[L1Aoffset / 32 ], loadData2DParamsA, loadData2DMxParamsA);
+            LoadData(aL0Tensor, aL1Tensor[L1Aoffset], aScaleL1Tensor[L1Aoffset >> 5], loadData2DParamsA,
+                     loadData2DMxParamsA);
         }
     } else {
         LoadData(aL0Tensor, aL1Tensor[L1Aoffset], loadData2DParamsA);
@@ -306,7 +308,7 @@ __aicore__ inline void LoadDataToL0BMx(LocalTensor<U>& bL0Tensor, const LocalTen
         loadData2DMxParamsB.xStartPosition = 0;
         loadData2DMxParamsB.yStartPosition = 0;
         loadData2DMxParamsB.xStep = ((nSplitSize + 15) >> 4 << 4) >> 4;
-        loadData2DMxParamsB.yStep = (kSplitSize + 63) / 32 / 2;
+        loadData2DMxParamsB.yStep = (kSplitSize + 63)  >> 5 >> 1;
         loadData2DMxParamsB.srcStride = loadData2DMxParamsB.yStep;
         loadData2DMxParamsB.dstStride = loadData2DMxParamsB.yStep;
         if (loadData2DParamsB.ifTranspose && (loadData2DParamsB.dstStride & 1)) {
@@ -320,11 +322,13 @@ __aicore__ inline void LoadDataToL0BMx(LocalTensor<U>& bL0Tensor, const LocalTen
             for (uint32_t idx = 0; idx < l0bLoop; ++idx) {
                 loadData2DParamsB.mStartPosition = oriMStep + M_STEP_ALIGN_BASE * idx;
                 loadData2DMxParamsB.xStartPosition = oriMScaleStep + M_STEP_ALIGN_BASE * idx;
-                LoadData(bL0Tensor[dstOffset], bL1Tensor[L1Boffset], bScaleL1Tensor[L1Boffset / 32 ], loadData2DParamsB, loadData2DMxParamsB);
+                LoadData(bL0Tensor[dstOffset], bL1Tensor[L1Boffset], bScaleL1Tensor[L1Boffset >> 5], loadData2DParamsB,
+                         loadData2DMxParamsB);
                 dstOffset += dstAddrStride;
             }
         } else {
-            LoadData(bL0Tensor, bL1Tensor[L1Boffset], bScaleL1Tensor[L1Boffset / 32 ], loadData2DParamsB, loadData2DMxParamsB);
+            LoadData(bL0Tensor, bL1Tensor[L1Boffset], bScaleL1Tensor[L1Boffset >> 5], loadData2DParamsB,
+                     loadData2DMxParamsB);
         }
     } else if constexpr (IsSameType<T, fp4x2_e2m1_t>::value) {
         if (loadData2DParamsB.ifTranspose) {
@@ -678,7 +682,7 @@ __aicore__ inline void MatmulFull(const LocalTensor<A> &aL1Tensor,
     Buffer<BufferType::L0B> l0bBuffer = bL0BuffsDb.Get();
     l0bBuffer.Wait<HardEvent::M_MTE1>();
     LocalTensor<L0BDType> L0BTensor = l0bBuffer.GetTensor<L0BDType>();
-#if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__))
+#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
     if constexpr (IsSameType<L0BDType, mx_fp8_e4m3_t>::value) {
         LoadDataToL0BMx<B, L0BDType>(L0BTensor, bL1Tensor, bScaleL1Tensor, param, 0, param.singleK, param.singleN);
     } else
@@ -746,7 +750,7 @@ __aicore__ inline void MatmulK(const LocalTensor<A> &aL1Tensor,
         Buffer<BufferType::L0A> l0aBuffer = aL0BuffsDb.Get();
         l0aBuffer.Wait<HardEvent::M_MTE1>(); // mte1等Matmul：上一轮matmul完成后才能搬运新数据到L0A
         LocalTensor<L0ADType> L0ATensor = l0aBuffer.GetTensor<L0ADType>();
-#if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__))
+#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
         if constexpr (IsSameType<L0ADType, mx_fp8_e4m3_t>::value) {
             LoadDataToL0AMx<A, L0ADType>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, k * L1Aoffset, tileK, param.singleM); // s2,
         } else
@@ -759,7 +763,7 @@ __aicore__ inline void MatmulK(const LocalTensor<A> &aL1Tensor,
         l0bBuffer.Wait<HardEvent::M_MTE1>(); // mte1等Matmul：上一轮matmul完成后才能搬运新数据到L0B
         LocalTensor<L0BDType> L0BTensor = l0bBuffer.GetTensor<L0BDType>();
         uint64_t loopNum = param.isRightTranspose ? 1 : kLoops;
-#if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__))
+#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
         if constexpr (IsSameType<L0BDType, mx_fp8_e4m3_t>::value) {
             LoadDataToL0BMx<B, L0BDType>(L0BTensor, bL1Tensor, bScaleL1Tensor, param, k * L1Boffset, tileK, param.singleN, loopNum); // tileK.D
         } else
@@ -897,7 +901,7 @@ __aicore__ inline void MatmulN(const LocalTensor<A> &aL1Tensor,
     Buffer<BufferType::L0A> l0aBuffer = aL0BuffsDb.Get();
     l0aBuffer.Wait<HardEvent::M_MTE1>(); // mte1等Matmul：上一轮matmul完成后才能搬运新数据到L0A
     LocalTensor<L0ADType> L0ATensor = l0aBuffer.GetTensor<L0ADType>();
-#if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__))
+#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
     if constexpr (IsSameType<L0ADType, mx_fp8_e4m3_t>::value) {
         LoadDataToL0AMx<A, L0ADType>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, 0, param.singleK, param.singleM); // d,s2
     } else
@@ -912,7 +916,7 @@ __aicore__ inline void MatmulN(const LocalTensor<A> &aL1Tensor,
         l0bBuffer.Wait<HardEvent::M_MTE1>(); // mte1等Matmul：上一轮matmul完成后才能搬运新数据到L0B
         LocalTensor<L0BDType> L0BTensor = l0bBuffer.GetTensor<L0BDType>();
         uint64_t loopNum = param.isRightTranspose ? nLoops : 1;
-#if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__))
+#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
         if constexpr (IsSameType<L0BDType, mx_fp8_e4m3_t>::value) {
             LoadDataToL0BMx<B, L0BDType>(L0BTensor, bL1Tensor, bScaleL1Tensor, param, n * L1Boffset, param.singleK, tileN, loopNum); // tileK.D
         } else

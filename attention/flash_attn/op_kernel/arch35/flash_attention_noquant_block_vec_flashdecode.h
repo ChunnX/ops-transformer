@@ -326,8 +326,8 @@ protected:
     }
     __aicore__ inline void CopyLseIn(uint32_t startRow, uint32_t dealRowCount, uint64_t baseOffset, uint32_t cntM)
     {
-        LocalTensor<T> lseSum = cntM % 2 == 0 ? fdSumBuf1 : fdSumBuf2;
-        LocalTensor<T> lseMax = cntM % 2 == 0 ? fdMaxBuf1 : fdMaxBuf2;
+        LocalTensor<T> lseSum = (cntM & 1) == 0 ? fdSumBuf1 : fdSumBuf2;
+        LocalTensor<T> lseMax = (cntM & 1) == 0 ? fdMaxBuf1 : fdMaxBuf2;
 
         uint64_t combineLseOffset = (baseOffset + startRow) * FP32_BLOCK_ELEMENT_NUM;
         uint64_t combineLoopOffset = s1BaseSize * FP32_BLOCK_ELEMENT_NUM;
@@ -344,12 +344,12 @@ protected:
     __aicore__ inline void ComputeScaleValue(LocalTensor<T> &lseExp, uint32_t dealRowCount,
                                              uint32_t actualCombineLoopSize, uint32_t cntM, uint32_t startRow)
     {
-        LocalTensor<T> lseSum = cntM % 2 == 0 ? fdSumBuf1 : fdSumBuf2;
-        LocalTensor<T> lseMax = cntM % 2 == 0 ? fdMaxBuf1 : fdMaxBuf2;
+        LocalTensor<T> lseSum = (cntM & 1) == 0 ? fdSumBuf1 : fdSumBuf2;
+        LocalTensor<T> lseMax = (cntM & 1) == 0 ? fdMaxBuf1 : fdMaxBuf2;
         if (unlikely(learnableSinkFlag)) {
             SinkMax(startRow, dealRowCount);
         }
-        LocalTensor<T> lseMaxUb = cntM % 2 == 0 ? fdLseMaxUbBuf1 : fdLseMaxUbBuf2;
+        LocalTensor<T> lseMaxUb = (cntM & 1) == 0 ? fdLseMaxUbBuf1 : fdLseMaxUbBuf2;
 
         LocalTensor<T> sinkExpBuf = fdSinkExpBuf;
         LocalTensor<T> maxLseUb = fdLseUbBuf;
@@ -480,21 +480,21 @@ protected:
     __aicore__ inline void CopySinkIn(uint32_t cntM)
     {
         // LocalTensor<SINK_T> sinkCopyInBuf =
-        //     fdSinkCopyInBuf.GetWithOffset<SINK_T>(BUFFER_SIZE_BYTE_1K, (cntM % 2) * BUFFER_SIZE_BYTE_1K);
+        //     fdSinkCopyInBuf.GetWithOffset<SINK_T>(BUFFER_SIZE_BYTE_1K, (cntM & 1) * BUFFER_SIZE_BYTE_1K);
         // uint32_t copySize = Align(constInfo.gSize, static_cast<uint32_t>(BYTE_BLOCK / sizeof(SINK_T))); // DataCopy函数搬运量要求是32字节整数倍，不对齐时，将向下取整，因此该处32
         //                                                                                                 // byte对齐
         // uint64_t sinkGmOffset = taskInfo.n2Idx * constInfo.gSize;
 
-        // WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_SINK_BUF1_FLAG + cntM % 2);
+        // WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_SINK_BUF1_FLAG + (cntM & 1));
         // DataCopy(sinkCopyInBuf, sinkGm[sinkGmOffset], copySize);
-        // SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_SINK_BUF1_FLAG + cntM % 2);
-        // WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_SINK_BUF1_FLAG + cntM % 2);
+        // SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_SINK_BUF1_FLAG + (cntM & 1));
+        // WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_SINK_BUF1_FLAG + (cntM & 1));
 
         // LocalTensor<T> tmpSinkCastBuf = fdSinkTmpBuf.Get<T>();
         // Cast(tmpSinkCastBuf, sinkCopyInBuf, AscendC::RoundMode::CAST_NONE, constInfo.gSize);
         // AscendC::PipeBarrier<PIPE_V>();
 
-        // SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_SINK_BUF1_FLAG + cntM % 2);
+        // SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_SINK_BUF1_FLAG + (cntM & 1));
 
         // LocalTensor<T> sinkBrcbBuf = fdSinkValueBuf.Get<T>();
         // Brcb(sinkBrcbBuf, tmpSinkCastBuf, (constInfo.gSize + BLOCK_ELEMENT_NUM - 1) / BLOCK_ELEMENT_NUM,
@@ -556,7 +556,7 @@ protected:
         if (constInfo.sparseMode != DEFAULT_MASK && constInfo.sparseMode != ALL_MASK) {
             return;
         }
-        LocalTensor<T> lseMaxUb = cntM % 2 == 0 ? fdLseMaxUbBuf1 : fdLseMaxUbBuf2;
+        LocalTensor<T> lseMaxUb = (cntM & 1) == 0 ? fdLseMaxUbBuf1 : fdLseMaxUbBuf2;
 
         // 这里要找到lseMaxUb 最大值为-inf 与 attenOutUb的对应位置之间的关系
         // 由于到这里的lseMaxUb 和 attenOutUb都是经过偏移后的，所以offset = 0
@@ -653,50 +653,50 @@ protected:
         // if (isQuant2Bf16) {
         //     uint32_t computeSize = dealRowCount * columnCount;
         //     // LocalTensor<T> tempFp32Ub = quant2TmpBuf2.Get<T>(computeSize);
-        //     LocalTensor<bfloat16_t> quantScale2Ub = (cntM % 2 == 0) ? fdMm2ResBuf1.Get<bfloat16_t>() : fdMm2ResBuf2.Get<bfloat16_t>();
-        //     WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + cntM % 2);
+        //     LocalTensor<bfloat16_t> quantScale2Ub = (cntM & 1) == 0 ? fdMm2ResBuf1.Get<bfloat16_t>() : fdMm2ResBuf2.Get<bfloat16_t>();
+        //     WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + (cntM & 1));
         //     CopyParamsGmToUb<bfloat16_t,PostQuant_FORMAT,UB_FORMAT>(quantScale2Ub, quantScale2Bf16GmTensor, postQuantInfo);
         //     if(isQuantOffset2Exit){
-        //         LocalTensor<bfloat16_t> quantOffset2Ub = (cntM % 2 == 0) ? fdMm2ResBuf1.Get<bfloat16_t>() : fdMm2ResBuf2.Get<bfloat16_t>();
+        //         LocalTensor<bfloat16_t> quantOffset2Ub = (cntM & 1) == 0 ? fdMm2ResBuf1.Get<bfloat16_t>() : fdMm2ResBuf2.Get<bfloat16_t>();
         //         AscendC::PipeBarrier<PIPE_MTE2>();
         //         CopyParamsGmToUb<bfloat16_t,PostQuant_FORMAT,UB_FORMAT>(quantOffset2Ub, quantOffset2Bf16GmTensor, postQuantInfo);
-        //         SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + cntM % 2);
-        //         WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + cntM % 2);
+        //         SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + (cntM & 1));
+        //         WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + (cntM & 1));
         //         AscendC::PipeBarrier<PIPE_V>();
         //         FaVectorApi::PostQuantPerChnlOffsetImpl<T,OUTPUT_T, bfloat16_t, isS1G>(
         //                 tmpBmm2ResCastTensor, bmm2ResUb, quantScale2Ub, quantOffset2Ub, postQuantInfo);
         //     }
         //     else {
-        //         SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + cntM % 2);
-        //         WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + cntM % 2);
+        //         SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + (cntM & 1));
+        //         WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + (cntM & 1));
         //         AscendC::PipeBarrier<PIPE_V>();
         //         FaVectorApi::PostQuantPerChnlNoOffsetImpl<T, OUTPUT_T, bfloat16_t, isS1G>(tmpBmm2ResCastTensor, bmm2ResUb, quantScale2Ub, postQuantInfo);
         //     }
-        //     SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + cntM % 2);
+        //     SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + (cntM & 1));
         //     AscendC::PipeBarrier<PIPE_V>();
         // } else {
-        //     LocalTensor<T> quantScale2Ub = (cntM % 2 == 0) ? fdMm2ResBuf1 : fdMm2ResBuf2;
-        //     WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + cntM % 2);
+        //     LocalTensor<T> quantScale2Ub = ((cntM & 1) == 0) ? fdMm2ResBuf1 : fdMm2ResBuf2;
+        //     WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + (cntM & 1));
         //     CopyParamsGmToUb<T,PostQuant_FORMAT,UB_FORMAT>(quantScale2Ub, quantScale2GmTensor, postQuantInfo);
         //     if(isQuantOffset2Exit){
-        //         LocalTensor<T> quantOffset2Ub = (cntM % 2 == 0) ? fdMm2ResBuf1 : fdMm2ResBuf2;
+        //         LocalTensor<T> quantOffset2Ub = ((cntM & 1) == 0) ? fdMm2ResBuf1 : fdMm2ResBuf2;
         //         AscendC::PipeBarrier<PIPE_MTE2>();
         //         CopyParamsGmToUb<T,PostQuant_FORMAT,UB_FORMAT>(quantOffset2Ub, quantOffset2GmTensor, postQuantInfo);
-        //         SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + cntM % 2);
-        //         WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + cntM % 2);
+        //         SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + (cntM & 1));
+        //         WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + (cntM & 1));
         //         AscendC::PipeBarrier<PIPE_V>();
         //         PostQuantPerChnlOffsetImpl< T, OUTPUT_T, T, isS1G>(tmpBmm2ResCastTensor, bmm2ResUb, quantScale2Ub,
         //                                                                 quantOffset2Ub, postQuantInfo);
                 
         //     }
         //     else {
-        //         SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + cntM % 2);
-        //         WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + cntM % 2);
+        //         SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + (cntM & 1));
+        //         WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + (cntM & 1));
         //         AscendC::PipeBarrier<PIPE_V>();
         //         PostQuantPerChnlNoOffsetImpl<T, OUTPUT_T, T, isS1G>(tmpBmm2ResCastTensor, bmm2ResUb,
         //                                                                     quantScale2Ub, postQuantInfo);
         //     }
-        //     SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + cntM % 2);
+        //     SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + (cntM & 1));
         //     AscendC::PipeBarrier<PIPE_V>();
         // }
     }
@@ -741,25 +741,25 @@ public:
 
             LocalTensor<T> lseExp = fdLseExpBuf;
             LocalTensor<T> reduceOut = fdReduceBuf;
-            WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_MAX_SUM_BUF1_FLAG + reduceMLoop % 2);
+            WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_MAX_SUM_BUF1_FLAG + (reduceMLoop & 1));
             CopyLseIn(startRow, actualGSplitSize, taskOffset, reduceMLoop);
-            SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_LSE_MAX_SUM_BUF1_FLAG + reduceMLoop % 2);
-            WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_LSE_MAX_SUM_BUF1_FLAG + reduceMLoop % 2);
+            SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_LSE_MAX_SUM_BUF1_FLAG + (reduceMLoop & 1));
+            WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_LSE_MAX_SUM_BUF1_FLAG + (reduceMLoop & 1));
             if (unlikely(learnableSinkFlag)) {
                 CopySinkIn(reduceMLoop);
             }
             for (uint32_t preLoadIdx = 0; preLoadIdx < preLoadNum; preLoadIdx++) {
-                LocalTensor<T> mm2Res = (reduceGlobaLoop + preLoadIdx) % 2 == 0 ? fdMm2ResBuf1 : fdMm2ResBuf2;
-                WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + (reduceGlobaLoop + preLoadIdx) % 2);
+                LocalTensor<T> mm2Res = (((reduceGlobaLoop + preLoadIdx) & 1) == 0) ? fdMm2ResBuf1 : fdMm2ResBuf2;
+                WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + ((reduceGlobaLoop + preLoadIdx) & 1));
                 CopyAccumOutIn(mm2Res, preLoadIdx, taskOffset + startRow, actualGSplitSize);
-                SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + (reduceGlobaLoop + preLoadIdx) % 2);
+                SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + ((reduceGlobaLoop + preLoadIdx) & 1));
             }
             ComputeScaleValue(lseExp, actualGSplitSize, taskInfo.actualCombineLoopSize, reduceMLoop, startRow);
             CalcPreNextTokens();
             if (constInfo.isSoftmaxLseEnable) {
                 // lse行无效在ComputeScaleValue的VF计算时已经进行了赋值inf处理
 
-                // LocalTensor<T> lseMaxUb = reduceMLoop % 2 == 0 ? fdLseMaxUbBuf1 : fdLseMaxUbBuf2;
+                // LocalTensor<T> lseMaxUb = (reduceMLoop & 1) == 0 ? fdLseMaxUbBuf1 : fdLseMaxUbBuf2;
                 // 新增 计算规约后的max和sum
                 // WaitFlag<HardEvent::MTE3_V>(SYNC_LSEOUTPUT_BUF_FLAG);
                 LocalTensor<T> maxLseUb = fdLseUbBuf;
@@ -815,18 +815,18 @@ public:
                 }
                 // SetFlag<HardEvent::MTE3_V>(SYNC_LSEOUTPUT_BUF_FLAG);
             }
-            SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_MAX_SUM_BUF1_FLAG + reduceMLoop % 2);
+            SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_MAX_SUM_BUF1_FLAG + (reduceMLoop & 1));
 
             for (uint32_t i = 0; i < taskInfo.actualCombineLoopSize; i++) {
-                LocalTensor<T> mm2Res = reduceGlobaLoop % 2 == 0 ? fdMm2ResBuf1 : fdMm2ResBuf2;
+                LocalTensor<T> mm2Res = (reduceGlobaLoop & 1) == 0 ? fdMm2ResBuf1 : fdMm2ResBuf2;
                 if (i >= preLoadNum) {
-                    WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + reduceGlobaLoop % 2);
+                    WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + (reduceGlobaLoop & 1));
                     CopyAccumOutIn(mm2Res, i, taskOffset + startRow, actualGSplitSize);
-                    SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + reduceGlobaLoop % 2);
+                    SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + (reduceGlobaLoop & 1));
                 }
-                WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + reduceGlobaLoop % 2);
+                WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_MM2RES_BUF1_FLAG + (reduceGlobaLoop & 1));
                 ReduceFinalRes(reduceOut, mm2Res, lseExp, i, actualGSplitSize);
-                SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + reduceGlobaLoop % 2);
+                SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_MM2RES_BUF1_FLAG + (reduceGlobaLoop & 1));
                 reduceGlobaLoop += 1;
             }
             CopyFinalResOut(reduceOut, startRow, actualGSplitSize, reduceMLoop);
