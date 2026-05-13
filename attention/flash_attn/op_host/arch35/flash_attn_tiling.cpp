@@ -178,9 +178,9 @@ void FlashAttnTilingImpl::AdjustSinnerAndSouter()
         // bool checkDtype = faInfo_->quantMode == FaQuantMode::NO_QUANT;
         bool checkQueryAndValueS =
             faInfo_->s1Size <= optiling::arch35FA::SOUTER_64 && faInfo_->s2Size > optiling::arch35FA::SINNER_128;
-        uint32_t maskMode = faInfo_->maskMode;
-        int64_t winLefts = static_cast<int64_t>(faInfo_->winLeft);   // TODO 改成winLeft
-        int64_t winRights = static_cast<int64_t>(faInfo_->winRight); // TODO 改成winRight
+        int64_t maskMode = faInfo_->maskMode;
+        int64_t winLefts = faInfo_->winLeft;
+        int64_t winRights = faInfo_->winRight;
         if (maskMode == 0) {
             winLefts = (winLefts > 0) ? 0 : winLefts;
         } else if (maskMode == 4) {

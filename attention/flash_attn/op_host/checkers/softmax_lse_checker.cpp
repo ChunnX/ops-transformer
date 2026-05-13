@@ -35,10 +35,11 @@ ge::graphStatus SoftmaxLSEChecker::CheckSinglePara(const FaTilingInfo &faInfo)
 {
     auto &returnSoftmaxLse = faInfo.opParamInfo.returnSoftMaxLse;
     if (returnSoftmaxLse != nullptr) {
-        int32_t returnSoftmaxLseVal = *returnSoftmaxLse;
-        OP_CHECK_IF(returnSoftmaxLseVal != 0 && returnSoftmaxLseVal != 1,
-                    OP_LOGE(faInfo.opName, "return_softmax_lse only supports 0 or 1, but got %d.", returnSoftmaxLseVal),
-                    return ge::GRAPH_FAILED);
+        int64_t returnSoftmaxLseVal = *returnSoftmaxLse;
+        OP_CHECK_IF(
+            returnSoftmaxLseVal != 0 && returnSoftmaxLseVal != 1,
+            OP_LOGE(faInfo.opName, "return_softmax_lse only supports 0 or 1, but got %ld.", returnSoftmaxLseVal),
+            return ge::GRAPH_FAILED);
     }
 
     if (!faInfo.softmaxLseFlag) {

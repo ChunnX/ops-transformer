@@ -479,7 +479,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
             <li>KV_N > 0</li>
             <li>Q_S > 0</li>
             <li>KV_S > 0</li>
-            <li>D = 128</li>li>
+            <li>D = 128</li>
             <li>Q_N % KV_N == 0 且 Q_N / KV_N > 0</li>
         </td>
     </tr>

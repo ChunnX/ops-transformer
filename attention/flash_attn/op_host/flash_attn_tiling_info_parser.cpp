@@ -200,19 +200,19 @@ ge::graphStatus FaInfoParser::GetAttrParaInfo()
     opParamInfo_.softmaxScale = attrs->GetAttrPointer<float>(ATTR_SOFTMAX_SCALE_INDEX);
 
     // 索引1: mask_mode (Int)
-    opParamInfo_.maskMode = attrs->GetAttrPointer<int32_t>(ATTR_MASK_MODE_INDEX);
+    opParamInfo_.maskMode = attrs->GetAttrPointer<int64_t>(ATTR_MASK_MODE_INDEX);
 
     // 索引2: win_left (Int)
-    opParamInfo_.winLeft = attrs->GetAttrPointer<int32_t>(ATTR_WIN_LEFT_INDEX);
+    opParamInfo_.winLeft = attrs->GetAttrPointer<int64_t>(ATTR_WIN_LEFT_INDEX);
 
     // 索引3: win_right (Int)
-    opParamInfo_.winRight = attrs->GetAttrPointer<int32_t>(ATTR_WIN_RIGHT_INDEX);
+    opParamInfo_.winRight = attrs->GetAttrPointer<int64_t>(ATTR_WIN_RIGHT_INDEX);
 
     // 索引4: max_seqlen_q (Int)
-    opParamInfo_.maxSeqlenQ = attrs->GetAttrPointer<int32_t>(ATTR_MAX_SEQLEN_Q_INDEX);
+    opParamInfo_.maxSeqlenQ = attrs->GetAttrPointer<int64_t>(ATTR_MAX_SEQLEN_Q_INDEX);
 
     // 索引5: max_seqlen_kv (Int)
-    opParamInfo_.maxSeqlenKV = attrs->GetAttrPointer<int32_t>(ATTR_MAX_SEQLEN_KV_INDEX);
+    opParamInfo_.maxSeqlenKV = attrs->GetAttrPointer<int64_t>(ATTR_MAX_SEQLEN_KV_INDEX);
 
     // 索引6: layout_q (String)
     opParamInfo_.layoutQ = attrs->GetStr(ATTR_LAYOUT_Q_INDEX);
@@ -224,10 +224,10 @@ ge::graphStatus FaInfoParser::GetAttrParaInfo()
     opParamInfo_.layoutOut = attrs->GetStr(ATTR_LAYOUT_OUT_INDEX);
 
     // 索引9: return_softmax_lse (Int)
-    opParamInfo_.returnSoftMaxLse = attrs->GetAttrPointer<int32_t>(ATTR_RETURN_LSE_INDEX);
+    opParamInfo_.returnSoftMaxLse = attrs->GetAttrPointer<int64_t>(ATTR_RETURN_LSE_INDEX);
 
     // 索引10: deterministic (Int)
-    opParamInfo_.deterministic = attrs->GetAttrPointer<int32_t>(ATTR_DETERMINISTIC_INDEX);
+    opParamInfo_.deterministic = attrs->GetAttrPointer<int64_t>(ATTR_DETERMINISTIC_INDEX);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -303,7 +303,7 @@ ge::graphStatus FaInfoParser::GetS1Size()
     if (layoutQ_ == FaLayout::TND) {
         if (opParamInfo_.maxSeqlenQ != nullptr) {
             if (*opParamInfo_.maxSeqlenQ < -1) {
-                OP_LOGE(opName_, "max_seqlen_q must be >= -1, but got %d", *opParamInfo_.maxSeqlenQ);
+                OP_LOGE(opName_, "max_seqlen_q must be >= -1, but got %lld", *opParamInfo_.maxSeqlenQ);
                 return ge::GRAPH_FAILED;
             }
             if (*opParamInfo_.maxSeqlenQ == -1) {
@@ -337,7 +337,7 @@ ge::graphStatus FaInfoParser::GetS2SizeForBatchContinuous()
     if (layoutKV_ == FaLayout::TND) {
         if (opParamInfo_.maxSeqlenKV != nullptr) {
             if (*opParamInfo_.maxSeqlenKV < -1) {
-                OP_LOGE(opName_, "max_seqlen_kv must be >= -1, but got %d", *opParamInfo_.maxSeqlenKV);
+                OP_LOGE(opName_, "max_seqlen_kv must be >= -1, but got %lld", *opParamInfo_.maxSeqlenKV);
                 return ge::GRAPH_FAILED;
             }
             if (*opParamInfo_.maxSeqlenKV == -1) {

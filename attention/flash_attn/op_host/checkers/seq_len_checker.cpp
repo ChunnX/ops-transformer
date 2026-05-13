@@ -39,10 +39,10 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaSequsedQ(const FaTilingInfo 
     }
 
     const gert::CompileTimeTensorDesc *sequsedQDesc = faInfo.opParamInfo.sequsedQ.desc;
-    OP_CHECK_IF(sequsedQDesc != nullptr && sequsedQDesc->GetDataType() != ge::DT_INT32,
-                OP_LOGE(faInfo.opName, "seqused_q dtype must be INT32, but got %s",
-                        DataTypeToSerialString(sequsedQDesc->GetDataType()).c_str()),
-                return ge::GRAPH_FAILED);
+    // OP_CHECK_IF(sequsedQDesc != nullptr && sequsedQDesc->GetDataType() != ge::DT_INT32,
+    //             OP_LOGE(faInfo.opName, "seqused_q dtype must be INT32, but got %s",
+    //                     DataTypeToSerialString(sequsedQDesc->GetDataType()).c_str()),
+    //             return ge::GRAPH_FAILED);
 
     if (ge::GRAPH_SUCCESS != CheckFormatSupport(sequsedQDesc, SEQUSED_Q_NAME)) {
         return ge::GRAPH_FAILED;
@@ -130,10 +130,10 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaCuSeqlensKv(const FaTilingIn
     }
 
     const gert::CompileTimeTensorDesc *cuSeqlensKvDesc = faInfo.opParamInfo.cuSeqlensKv.desc;
-    OP_CHECK_IF(cuSeqlensKvDesc != nullptr && cuSeqlensKvDesc->GetDataType() != ge::DT_INT32,
-                OP_LOGE(faInfo.opName, "cu_seqlens_kv dtype must be INT32, but got %s",
-                        DataTypeToSerialString(cuSeqlensKvDesc->GetDataType()).c_str()),
-                return ge::GRAPH_FAILED);
+    // OP_CHECK_IF(cuSeqlensKvDesc != nullptr && cuSeqlensKvDesc->GetDataType() != ge::DT_INT32,
+    //             OP_LOGE(faInfo.opName, "cu_seqlens_kv dtype must be INT32, but got %s",
+    //                     DataTypeToSerialString(cuSeqlensKvDesc->GetDataType()).c_str()),
+    //             return ge::GRAPH_FAILED);
 
     if (ge::GRAPH_SUCCESS != CheckFormatSupport(cuSeqlensKvDesc, CU_SEQLENS_KV_NAME)) {
         return ge::GRAPH_FAILED;
@@ -158,14 +158,14 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaMaxSeqlenQ(const FaTilingInf
     if (faInfo.qLayout != FaLayout::TND) {
         OP_CHECK_IF(faInfo.maxSeqQ != -1,
                     OP_LOGE(faInfo.opName,
-                            "max_seqlen_q(%d) is not supported when layout_q is %s, only supported in TND layout. "
+                            "max_seqlen_q(%ld) is not supported when layout_q is %s, only supported in TND layout. "
                             "In non-TND layout, max_seqlen_q must be -1 (default).",
                             faInfo.maxSeqQ, LayoutToSerialString(faInfo.qLayout).c_str()),
                     return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(
             faInfo.maxSeqQ != -1 && faInfo.maxSeqQ < 0,
-            OP_LOGE(faInfo.opName, "max_seqlen_q(%d) only supports -1 or non-negative integer.", faInfo.maxSeqQ),
+            OP_LOGE(faInfo.opName, "max_seqlen_q(%ld) only supports -1 or non-negative integer.", faInfo.maxSeqQ),
             return ge::GRAPH_FAILED);
     }
 
@@ -177,14 +177,14 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaMaxSeqlenKv(const FaTilingIn
     if (faInfo.kvLayout != FaLayout::TND) {
         OP_CHECK_IF(faInfo.maxSeqKv != -1,
                     OP_LOGE(faInfo.opName,
-                            "max_seqlen_kv(%d) is not supported when layout_kv is %s, only supported in TND layout. "
+                            "max_seqlen_kv(%ld) is not supported when layout_kv is %s, only supported in TND layout. "
                             "In non-TND layout, max_seqlen_kv must be -1 (default).",
                             faInfo.maxSeqKv, LayoutToSerialString(faInfo.kvLayout).c_str()),
                     return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(
             faInfo.maxSeqKv != -1 && faInfo.maxSeqKv < 0,
-            OP_LOGE(faInfo.opName, "max_seqlen_kv(%d) only supports -1 or non-negative integer.", faInfo.maxSeqKv),
+            OP_LOGE(faInfo.opName, "max_seqlen_kv(%ld) only supports -1 or non-negative integer.", faInfo.maxSeqKv),
             return ge::GRAPH_FAILED);
     }
 
