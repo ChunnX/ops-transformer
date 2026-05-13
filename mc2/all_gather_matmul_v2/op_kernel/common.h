@@ -44,6 +44,13 @@ constexpr uint8_t MC2_DEBUG_ONLY_AICPU = 4; // 只通信不计算
 constexpr uint32_t MX_BLOCK_SIZE = 32;
 constexpr uint64_t EVEN_ALIGN = 2;
 
+#ifndef HCCL_COMM_MODE_CCU
+#define HCCL_COMM_MODE_CCU 0
+#endif
+#ifndef HCCL_COMM_MODE_AICPU
+#define HCCL_COMM_MODE_AICPU 1
+#endif
+
 template <class T>
 struct BiasType {
     using type = float;
