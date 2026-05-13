@@ -517,7 +517,9 @@ uint64_t AlltoAllvGmmTiling::GetTilingKey() const
 {
     // A3平台固定使用AICPU模式，A5平台根据环境变量选择
     uint8_t commMode = Mc2Comm::COMM_MODE_AICPU;  // 默认AICPU
-    if (npuArch == op::NpuArch::DAV_3510) {  // A5平台
+    auto platformInfo = context_->GetPlatformInfo();
+    platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
+    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {  // A5平台
         commMode = Mc2Comm::GetCommModeFromEnv();
     }
     bool tilingekyGmmTrans = transGmmWeight_;
