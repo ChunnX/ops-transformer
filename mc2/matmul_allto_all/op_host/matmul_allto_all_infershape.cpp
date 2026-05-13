@@ -188,6 +188,11 @@ static ge::graphStatus InferShapeMatmulAlltoAll(gert::InferShapeContext* context
               CUBE_INNER_ERR_REPORT(context->GetNodeName(), "Failed to check allto_all axes for matmul allto all"),
               return ge::GRAPH_FAILED);
 
+    OP_LOGE(INNER_DEBUG, "in infershape, 111");
+    const int64_t* groupSizePtr = attrs->GetAttrPointer<int64_t>(10);
+    OP_LOGE(INNER_DEBUG, "in infershape, groupSizePtr is: %ld", *groupSizePtr);
+    OP_LOGE(INNER_DEBUG, "in infershape, 222");
+
     auto shapeOut = context->GetOutputShape(INDEX_OUT);
     OPS_CHECK_NULL_WITH_CONTEXT(context, shapeOut);
     shapeOut->SetDimNum(OUTPUT_INFER_SHAPE);

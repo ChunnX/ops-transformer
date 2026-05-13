@@ -370,9 +370,11 @@ static ge::fusion::GraphUniqPtr BuildReplaceGraph(const std::vector<ge::fusion::
     // 移除Transpose节点后，transpose x2 attr 置反
     transposeX2 = !transposeX2;
 
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "in fusion, before");
     int64_t groupSize = 0;
     OP_LOGE_IF(mc2Node.GetAttr("group_size", groupSize) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
                "Get Attr group_size failed.");
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "in fusion, groupSize is: %ld", groupSize);
     auto mc2 =
         ge::es::MatmulAlltoAll(inputTensors.rX1, inputTensors.rX2, inputTensors.rBias, inputTensors.rX1Scale,
                                inputTensors.rX2Scale, inputTensors.rCommScale, inputTensors.rX1Offset,
