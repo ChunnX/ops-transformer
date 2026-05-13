@@ -17,7 +17,6 @@
 #include <tiling/tiling_api.h>
 #include "register/tilingdata_base.h"
 #include "tiling_base/tiling_base.h"
-#include "err/ops_err.h"
 #include "../op_kernel/recurrent_gated_delta_rule_tiling_data.h"
 
 namespace optiling {
@@ -66,6 +65,25 @@ protected:
     void InitCompileInfo();
     void PrintTilingData();
 
+    //Host tiling rule-chain engine: compose shape/UB steps by ordered rules.
+    using HostRuleFn = ge::graphStatus (RecurrentGatedDeltaRuleTiling::*)();
+    struct UbCalcContext {
+        int64_t ubSize = 0;
+        int64_t aNv = 0;
+        int64_t aDv = 0;
+        int64_t aDk = 0;
+        int64_t fixedUbBytes = 0;
+        int64_t workingUbBytes = 0;
+        int64_t coeff = 0;
+    };
+    struct BufferProfile {
+        uint32_t stateOutBufferNum = 1;
+        uint32_t attnOutBufferNum = 1;
+        uint32_t vStep = 0;
+        uint32_t repeatTime = 0;
+        bool valid = false;
+    };
+
     ge::graphStatus CheckContext();
     ge::graphStatus AnalyzeDtype();
     ge::graphStatus AnalyzeShapes();
@@ -73,6 +91,31 @@ protected:
     ge::graphStatus GetScale();
     ge::graphStatus GetOptionalInput();
     ge::graphStatus AnalyzeFormat();
+    //Host tiling refactor helpers: split shape validation/fill and UB calculation.
+    ge::graphStatus CheckShapeDimAndRelation(const gert::Shape &queryShape, const gert::Shape &keyShape,
+                                             const gert::Shape &valueShape, const gert::Shape &betaShape,
+                                             const gert::Shape &stateShape, const gert::Shape &cuSeqlensShape,
+                                             const gert::Shape &ssmStateShape);
+    void FillTilingShapeData(const gert::Shape &queryShape, const gert::Shape &valueShape, const gert::Shape &stateShape,
+                             const gert::Shape &cuSeqlensShape);
+    ge::graphStatus CheckShapeValueRangeAndRule();
+    void UpdateDynamicBlockDimByTaskUnits();
+    int64_t CalcFixedUbBytes(int64_t aNv, int64_t aDv, int64_t aDk) const;
+    int64_t CalcWorkingUbBytes(int64_t aNv, int64_t aDv, int64_t aDk) const;
+    int64_t CalcVStepCoeff(int64_t aDk, uint32_t stateOutBufferNum, uint32_t attnOutBufferNum) const;
+    bool EvaluateBufferProfile(int64_t ubSize, int64_t usedUbBytes, int64_t aDk, uint32_t stateOutBufferNum,
+                               uint32_t attnOutBufferNum, BufferProfile &profile) const;
+    bool IsBetterProfile(const BufferProfile &candidate, const BufferProfile &current) const;
+    ge::graphStatus FinalizeVStepFromUb(int64_t ubSize, int64_t usedUbBytes, int64_t coeff);
+    ge::graphStatus RuleCheckShapeDimAndRelation();
+    ge::graphStatus RuleFillTilingShapeData();
+    ge::graphStatus RuleCheckShapeValueRangeAndRule();
+    ge::graphStatus RuleUpdateDynamicBlockDimByTaskUnits();
+    ge::graphStatus RuleInitUbCalcContext();
+    ge::graphStatus RuleCalcFixedUbBytes();
+    ge::graphStatus RuleCalcWorkingUbBytes();
+    ge::graphStatus RuleCalcVStepCoeff();
+    ge::graphStatus RuleFinalizeVStepFromUb();
 
     bool CheckDimEqual(const gert::Shape a, const int64_t dimA, gert::Shape b, const int64_t dimB, const std::string &nameA,
                        const std::string &nameB, const std::string &dimDesc);
@@ -82,6 +125,9 @@ protected:
     RecurrentGatedDeltaRuleCompileInfo compileInfo_;
     RecurrentGatedDeltaRuleTilingData tilingData_;
     RecurrentGatedDeltaRuleInfo inputParams_;
+    UbCalcContext ubCalcCtx_;
+    ge::DataType inputDtype_{ge::DT_BF16};
+    int64_t inTypeSize_{2}; // sizeof(inType): 2 for fp16/bf16, 4 for fp32
 };
 
 } // namespace optiling

@@ -35,7 +35,7 @@ const aclTensor *RecurrentGatedDeltaRule(const aclTensor *query, const aclTensor
     L0_DFX(RecurrentGatedDeltaRule, query, key, value, beta, stateRef, actualSeqLengths, ssmStateIndices, g, gk,
            numAcceptedTokens, scaleValue);
 
-    DataType outType = DataType::DT_BF16;
+    DataType outType = query->GetDataType();
     Format format = Format::FORMAT_ND;
 
     auto out = executor->AllocTensor(outType, format, format);
