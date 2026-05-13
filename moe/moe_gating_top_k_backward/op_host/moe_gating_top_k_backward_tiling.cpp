@@ -66,6 +66,10 @@ const static int64_t MIN_EXPERT_COUNT = 2;              // min value for n
 const static int64_t MIN_K = 1;                         // min value for k
 const static int64_t DEFAULT_WORKSPACE_SIZE = 16777216; // 预留16M空间
 
+// dim size
+const static int64_t DIM_ZERO = 0;
+const static int64_t DIM_ONE = 1;
+
 
 class MoeGatingTopKBackwardTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
@@ -111,7 +115,8 @@ private:
     ge::graphStatus CheckAttr();
     ge::graphStatus CheckOutShape();
     int64_t CalcMaxRows();
-    void SplitRows();
+    ge::graphStatus SplitRows();
+    void DumpTiling();
 
     // Shapes
     const gert::Shape *xNormShape_ = nullptr;
@@ -163,7 +168,7 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckXNorm()
     const gert::StorageShape* xNormShapePtr = context_->GetInputShape(X_NORM_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, xNormShapePtr);
     auto xNormDimSize = xNormShapePtr->GetOriginShape().GetDimNum();
-    OP_CHECK_IF(xNormDimSize != X_NORM_INPUT_DIMS, OP_LOGE(opName_, " xNorm : the number of dimensions must be 2, but got %ld.", xNormDimSize),
+    OP_CHECK_IF(xNormDimSize != X_NORM_INPUT_DIMS, OP_LOGE(opName_, " xNorm : the number of dimensions must be 2, but got %lu.", xNormDimSize),
         return ge::GRAPH_FAILED);
     
     tokenCount_ = xNormShapePtr->GetOriginShape().GetDim(DIM_ZERO);
@@ -183,7 +188,7 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckGradY()
     const gert::StorageShape* gradYShapePtr = context_->GetInputShape(GRAD_Y_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, gradYShapePtr);
     auto gradYDimSize = gradYShapePtr->GetOriginShape().GetDimNum();
-    OP_CHECK_IF(gradYDimSize != GRAD_Y_INPUT_DIMS, OP_LOGE(opName_, "gradY : the number of dimensions must be 2, but got %ld.", gradYDimSize),
+    OP_CHECK_IF(gradYDimSize != GRAD_Y_INPUT_DIMS, OP_LOGE(opName_, "gradY : the number of dimensions must be 2, but got %lu.", gradYDimSize),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(gradYShapePtr->GetOriginShape().GetDim(DIM_ZERO) != tokenCount_, OP_LOGE(opName_, "gradY : The size of the first dimension of xNorm and gradY should be the same."),
@@ -206,7 +211,7 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckExpertIdx()
     const gert::StorageShape* expertIdxShapePtr = context_->GetInputShape(EXPERT_IDX_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, expertIdxShapePtr);
     auto expertIdxDimSize = expertIdxShapePtr->GetOriginShape().GetDimNum();
-    OP_CHECK_IF(expertIdxDimSize != EXPERT_IDX_INPUT_DIMS, OP_LOGE(opName_, "expertIdx : the number of dimensions must be 2, but got %ld.", expertIdxDimSize),
+    OP_CHECK_IF(expertIdxDimSize != EXPERT_IDX_INPUT_DIMS, OP_LOGE(opName_, "expertIdx : the number of dimensions must be 2, but got %lu.", expertIdxDimSize),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(expertIdxShapePtr->GetOriginShape().GetDim(DIM_ZERO) != tokenCount_, OP_LOGE(opName_, "expertIdx : The size of the first dimension of xNorm and expertIdx should be the same."),
@@ -297,7 +302,7 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckOutShape()   // lc
     OP_CHECK_NULL_WITH_CONTEXT(context_, gradXShapePtr);
     auto gradXDimSize = gradXShapePtr->GetOriginShape().GetDimNum();
     OP_CHECK_IF(gradXDimSize != GRAD_Y_INPUT_DIMS,
-                OP_LOGE(opName_, "gradX : the number of dimensions must be 2, but got %ld.", gradXDimSize),
+                OP_LOGE(opName_, "gradX : the number of dimensions must be 2, but got %lu.", gradXDimSize),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(gradXShapePtr->GetOriginShape().GetDim(DIM_ZERO) != tokenCount_,
@@ -353,21 +358,21 @@ int64_t MoeGatingTopKBackwardTilingBase::CalcMaxRows()
         int64_t queSpace =
             NUM_TWO * maxRows * AlignBytes_(gradYQuePerTokenSpace) + AlignBytes_(maxRows * xQuePerTokenSpace) +
             AlignBytes_(maxRows * outQuePerTokenSpace);
-        int64_t bufPerTokenSpace =
+        bufPerTokenSpace =
             NUM_FIVE * maxRows * AlignBytes_(bufk1PerTokenSpace) + NUM_TWO * AlignBytes_(maxRows * bufn2PerTokenSpace) +
             maxRows * AlignBytes_(bufsPerTokenSpace);
 
         uint32_t reduceSumTmpBuffSpace = 0;
         uint32_t tmpMaxValue = 0;
         auto shape = ge::Shape({ maxRows, kAligned });
-        GetReduceSumMaxMinTmpSize(shape, ge::DataType::DT_FLOAT, ReducePatter::AR, true, false, tmpMaxValue, reduceSumTmpBuffSpace);
+        AscendC::GetReduceSumMaxMinTmpSize(shape, ge::DataType::DT_FLOAT, AscendC::ReducePattern::AR, true, false, tmpMaxValue, reduceSumTmpBuffSpace);
 
         auto srcShape = ge::Shape({ 1, kAligned });
         auto platformInfo = context_->GetPlatformInfo();
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
         uint32_t broadcastTmpBuffSpace = 0;
-        GetBroadCastMaxMinTmpSize(ascendcPlatform, srcShape, shape, SIZE_OF_FLOAT32, false, tmpMaxValue, broadcastTmpBuffSpace);
-
+        AscendC::GetBroadCastMaxMinTmpSize(ascendcPlatform, srcShape, shape, SIZE_OF_FLOAT32, false, tmpMaxValue, broadcastTmpBuffSpace);
+        OP_LOGI(context_, "reduceSumTmpBuffSpace = %lu. broadcastTmpBuffSpace = %lu", reduceSumTmpBuffSpace, broadcastTmpBuffSpace);
         int64_t usedSpace = UB_RESERVE_SPACE + queSpace + bufPerTokenSpace + static_cast<int64_t>(std::max(reduceSumTmpBuffSpace, broadcastTmpBuffSpace));
 
         if (usedSpace <= aicoreParams_.ubSize) {
@@ -428,6 +433,7 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::DoOpTiling()
     MoeGatingTopKBackwardTilingData_.set_normType(normType_);
     MoeGatingTopKBackwardTilingData_.set_routedScalingFactor(routedScalingFactor_);
     MoeGatingTopKBackwardTilingData_.set_eps(eps_);
+    DumpTiling();
     return ge::GRAPH_SUCCESS;
 }
 
@@ -465,7 +471,7 @@ void MoeGatingTopKBackwardTilingBase::Reset()
     return;
 }
 
-void MoeGatingTopKBackwardTilingBase::DumpTilingInfo()
+void MoeGatingTopKBackwardTilingBase::DumpTiling()
 {
     OP_LOGD(context_->GetNodeName(), "ubSize:  %ld", aicoreParams_.ubSize);
     OP_LOGD(context_->GetNodeName(), "numBlocks:  %ld", aicoreParams_.numBlocks);

@@ -50,7 +50,7 @@ __aicore__ inline int64_t Align(int64_t elementNum, int64_t bytes)
     if (bytes == 0) {
         return 0;
     }
-    return AlignBytes(int64_t elementNum, int64_t bytes) / bytes;
+    return AlignBytes(elementNum, bytes) / bytes;
     //return (elementNum * bytes + BLOCK_BYTES - 1) / BLOCK_BYTES * BLOCK_BYTES / bytes;
 }
 
