@@ -515,14 +515,17 @@ private:
             FusedExpSub(expDstFloatVreg1, expFloatVreg1, maxVreg, pregtailNOdd);
             Add<float, MaskMergeMode::MERGING>(expSumVreg, expSumVreg, expDstFloatVreg0, pregtailNEven);
             Add<float, MaskMergeMode::MERGING>(expSumVreg, expSumVreg, expDstFloatVreg1, pregtailNOdd);
+            if constexpr (AscendC::IsSameType<ElementOutput, fp8_e4m3fn_t>::value) {
+                constexpr float staticScale = 448.0f;
+                Muls(expDstFloatVreg0, expDstFloatVreg0, staticScale, pregtailNEven);
+                Muls(expDstFloatVreg1, expDstFloatVreg1, staticScale, pregtailNOdd);
+            }
             Cast<ElementInput, float, castTraitZeroDown>(expDstVreg0, expDstFloatVreg0, pregFloatFull);
             Cast<ElementInput, float, castTraitOneDown>(expDstVreg1, expDstFloatVreg1, pregFloatFull);
             Or((RegTensor<uint16_t>&)expDstVreg,
                 (RegTensor<uint16_t>&)expDstVreg0, (RegTensor<uint16_t>&)expDstVreg1,
                 pregFull);
             if constexpr (AscendC::IsSameType<ElementOutput, fp8_e4m3fn_t>::value) {
-                constexpr bfloat16_t staticScale = static_cast<bfloat16_t>(448.0f);
-                Muls(expDstVreg, expDstVreg, staticScale, pregTailN);
                 Cast<ElementOutput, ElementInput, castTraitZeroDown>(pVreg, expDstVreg, pregTailN);
                 StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(expUb + i * ELE_NUM_PER_C0_FLOAT8, pVreg,
                                                                          blockStride, pregTailN);
@@ -617,6 +620,13 @@ private:
             Add<float, MaskMergeMode::MERGING>(expSumVreg, expSumVreg, expDstFloatVreg1, pregFloatFull);
             Add<float, MaskMergeMode::MERGING>(expSumVreg, expSumVreg, expDstFloatVreg2, pregtailNEven);
             Add<float, MaskMergeMode::MERGING>(expSumVreg, expSumVreg, expDstFloatVreg3, pregtailNOdd);
+            if constexpr (AscendC::IsSameType<ElementOutput, fp8_e4m3fn_t>::value) {
+                constexpr float staticScale = 448.0f;
+                Muls(expDstFloatVreg0, expDstFloatVreg0, staticScale, pregFloatFull);
+                Muls(expDstFloatVreg1, expDstFloatVreg1, staticScale, pregFloatFull);
+                Muls(expDstFloatVreg2, expDstFloatVreg2, staticScale, pregtailNEven);
+                Muls(expDstFloatVreg3, expDstFloatVreg3, staticScale, pregtailNOdd);
+            }
             Cast<ElementInput, float, castTraitZeroDown>(expDstVreg0, expDstFloatVreg0, pregFloatFull);
             Cast<ElementInput, float, castTraitOneDown>(expDstVreg1, expDstFloatVreg1, pregFloatFull);
             Cast<ElementInput, float, castTraitZeroDown>(expDstVreg2, expDstFloatVreg2, pregFloatFull);
@@ -628,9 +638,6 @@ private:
                 (RegTensor<uint16_t>&)expDstVreg2, (RegTensor<uint16_t>&)expDstVreg3,
                 pregFull);
             if constexpr (AscendC::IsSameType<ElementOutput, fp8_e4m3fn_t>::value) {
-                constexpr bfloat16_t staticScale = static_cast<bfloat16_t>(448.0f);
-                Muls(expOutVreg0, expOutVreg0, staticScale, pregFull);
-                Muls(expOutVreg1, expOutVreg1, staticScale, pregTailN);
                 Cast<ElementOutput, ElementInput, castTraitZeroDown>(pVreg0, expOutVreg0, pregFull);
                 Cast<ElementOutput, ElementInput, castTraitZeroDown>(pVreg1, expOutVreg1, pregTailN);
                 StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(expUb + i * ELE_NUM_PER_C0_FLOAT8, pVreg0,

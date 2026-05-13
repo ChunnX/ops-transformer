@@ -407,6 +407,7 @@ private:
         RegTensor<ElementInput> maxVreg;
 
         RegTensor<ElementInput> expDstVreg;
+        RegTensor<ElementInput> expDstVregResult;
         RegTensor<ElementOutput> pVreg;
 
         UnalignReg expSumUreg;
@@ -416,7 +417,8 @@ private:
             LoadAlign<ElementInput, LoadDist::DIST_BRC_B16>(maxVreg, nowMaxUb + i);
             LoadAlign(expVreg, srcUb + i * S2BaseSize);
             Sub(expDstVreg, expVreg, maxVreg, pregTailN);
-            Exp(expDstVreg, expDstVreg, pregTailN);
+            Exp(expDstVregResult, expDstVreg, pregTailN);
+            // Exp(expDstVreg, expDstVreg, pregTailN);
             if constexpr (AscendC::IsSameType<ElementOutput, fp8_e4m3fn_t>::value) {
                 constexpr half staticScale = static_cast<half>(448.0f);
                 Muls(expDstVreg, expDstVreg, staticScale, pregTailN);
@@ -427,7 +429,8 @@ private:
                 StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(expUb + i * ELE_NUM_PER_C0, expDstVreg,
                                                                          blockStride, pregTailN);
             }
-            ReduceSum(expSumVreg, expDstVreg, pregTailN);
+            ReduceSum(expSumVreg, expDstVregResult, pregTailN);
+            // ReduceSum(expSumVreg, expDstVreg, pregTailN);
             StoreUnAlign<ElementInput, PostLiteral::POST_MODE_UPDATE>(expSumUb, expSumVreg, expSumUreg, 1);
         }
         vstas(expSumUreg, expSumUb, 0, POST_UPDATE);
@@ -453,6 +456,7 @@ private:
 
         RegTensor<ElementInput> expDstVreg0;
         RegTensor<ElementInput> expDstVreg1;
+        RegTensor<ElementInput> expDstVregResult;
 
         RegTensor<ElementOutput> pVreg0;
         RegTensor<ElementOutput> pVreg1;
@@ -470,6 +474,7 @@ private:
             Sub(expDstVreg1, expVreg1, maxVreg, pregTailN);
             Exp(expDstVreg0, expDstVreg0, pregFull);
             Exp(expDstVreg1, expDstVreg1, pregTailN);
+            Add<ElementInput, MaskMergeMode::MERGING>(expDstVregResult, expDstVreg0, expDstVreg1, pregTailN);
             if constexpr (AscendC::IsSameType<ElementOutput, fp8_e4m3fn_t>::value) {
                 constexpr half staticScale = static_cast<half>(448.0f);
                 Muls(expDstVreg0, expDstVreg0, staticScale, pregFull);
@@ -481,7 +486,6 @@ private:
                 StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(
                     expUb + i * ELE_NUM_PER_C0_FLOAT8 + blockStride * ELE_NUM_PER_C0_FLOAT8 * BLOCK_REP_SIZE,
                     pVreg1, blockStride, pregTailN);
-
             } else {
                 StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(expUb + i * ELE_NUM_PER_C0, expDstVreg0,
                                                                          blockStride, pregFull);
@@ -489,9 +493,9 @@ private:
                     expUb + i * ELE_NUM_PER_C0 + blockStride * ELE_NUM_PER_C0 * BLOCK_REP_SIZE, expDstVreg1,
                     blockStride, pregTailN);
             }
-            Add<ElementOutput, MaskMergeMode::MERGING>(expDstVreg0, expDstVreg1, expDstVreg0, pregTailN);
-
-            ReduceSum(expSumVreg, expDstVreg0, pregFull);
+            // Add<ElementInput, MaskMergeMode::MERGING>(expDstVreg0, expDstVreg0, expDstVreg1, pregTailN);
+            // ReduceSum(expSumVreg, expDstVreg0, pregFull);
+            ReduceSum(expSumVreg, expDstVregResult, pregFull);
             StoreUnAlign<ElementInput, PostLiteral::POST_MODE_UPDATE>(expSumUb, expSumVreg, expSumUreg, 1);
         }
         vstas(expSumUreg, expSumUb, 0, POST_UPDATE);
