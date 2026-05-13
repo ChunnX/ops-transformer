@@ -668,7 +668,7 @@ public:
         }
         Buffer<BufferType::L1> mm1A;
         uint32_t qScaleOffset =
-            ((runInfo.actS1Size + 31) >> 5 << 5) * constInfo.dSize; // QScale在mm1A的偏移量（单位：元素）
+            ((runInfo.actMSize + 31) >> 5 << 5) * constInfo.dSize; // QScale在mm1A的偏移量（单位：元素）
         if (unlikely(runInfo.isFirstS2Loop && subLoop == 0)) {
             mm1A = l1QBuffers.Get();
             mm1A.Wait<HardEvent::MTE1_MTE2>();
