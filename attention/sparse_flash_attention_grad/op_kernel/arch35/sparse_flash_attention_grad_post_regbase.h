@@ -98,6 +98,7 @@ __aicore__ inline void SparseFlashAttentionGradPostRegbase<T1, T2, OUTDTYPE, IS_
             loop = tilingData->postTilingData.vPostBlockFactor;
             inputTotalSize = tilingData->postTilingData.vPostBlockTotal;
             qPostTailNum = tilingData->postTilingData.vPostTailNum;
+            REGBASE_POST_BASE = tilingData->postTilingData.vPostTailNum;
         }
         uint64_t blockCore = loop * REGBASE_POST_BASE;
         uint64_t begin = vBlockIdx * blockCore;
