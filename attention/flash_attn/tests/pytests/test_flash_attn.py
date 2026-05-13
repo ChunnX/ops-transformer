@@ -392,6 +392,7 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
         else:
             print(f"[{test_name}] 缺少 GPU 或 NPU 结果，跳过 GPU vs NPU 对比。")
     
+    passed_lse = 0
     if lse_flag == 1:
         print(f"\n{'='*40} 对比 lse goldem vs lse npu {'='*40}")
         passed_lse = check_result("LSE CHECK", lse_out.float(), lse_npu.float(), except_label="lse_golden", comp_label="lse_npu", verbose_diff=verbose_diff)
