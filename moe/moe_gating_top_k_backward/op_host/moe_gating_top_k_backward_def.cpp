@@ -45,7 +45,7 @@ public:
         this->Attr("renorm").AttrType(OPTIONAL).Int(0);
         this->Attr("norm_type").AttrType(OPTIONAL).Int(0);
         this->Attr("routed_scaling_factor").AttrType(OPTIONAL).Float(1.0);
-        this->Attr("eps").AttrType(OPTIONAL).Float(1e-20);
+        this->Attr("eps").AttrType(OPTIONAL).Float(1e-20f);
 
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)

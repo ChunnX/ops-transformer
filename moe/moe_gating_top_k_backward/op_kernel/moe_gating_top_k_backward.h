@@ -156,7 +156,7 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::GetGatherOffsetIndex()
     Arange(bufk1Fp32, static_cast<float>(0), static_cast<float>(tilingData_->expertCount), static_cast<int32_t>(tilingData_->baseRows));
     SetWaitFlag<HardEvent::S_V>(HardEvent::S_V); // Arange中存在S和V，不同count结束的操作流不一样
     PipeBarrier<PIPE_V>();
-    uint32_t srcShapeAdd[NUM_TWO] = {tilingData_->baseRows, 1};
+    uint32_t srcShapeAdd[NUM_TWO] = {static_cast<uint32_t>(tilingData_->baseRows), 1};
     BroadCast<float, NUM_TWO, 1>(bufk4AddFp32, bufk1Fp32, dstShape, srcShapeAdd); // broadcast不支持int32类型，因此先生成fp32再转换为int32
     PipeBarrier<PIPE_V>();
     LocalTensor<int32_t> bufk4Add = bufk4AddFp32.ReinterpretCast<int32_t>();
