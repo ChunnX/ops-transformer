@@ -85,11 +85,14 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
         actualS2CmpSize = actualS2Size / constInfo.cmpRatio;
     }
 
-    if (!constInfo.isCmpResidualKVNull) {
+    if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
+        cmpResidual = cmpResidualKvAddr[sIdx];
+        if ((sIdx > 0) && (!isPa)) {
+            cmpResidual -= cmpResidualKvAddr[sIdx - 1];
+        }
+    } else {
         cmpResidual = (constInfo.cmpResidualKVSize == actualSeqKVMin) ?
             cmpResidualKvAddr[0] : cmpResidualKvAddr[sIdx];
-    } else {
-        cmpResidual = actualS2Size % constInfo.cmpRatio;
     }
 
     runParam.actualS1Size = actualS1Size;

@@ -289,6 +289,16 @@ ge::graphStatus KvQuantSASTilingCheck::CheckSingleParaSparseBlockSize() const
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus KvQuantSASTilingCheck::CheckSingleParaCmpResidualKv() const
+{
+    if (*opParamInfo_.cmpMaskMode == 3 && *opParamInfo_.cmpRatio != 1) {
+        OP_CHECK_IF(opParamInfo_.cmpResidualKv.tensor == nullptr,
+            OP_LOGE(opName_, "cmp_residual_kv is required when cmp_mask_mode=3 and cmp_ratio!=1"),
+            return ge::GRAPH_FAILED);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus KvQuantSASTilingCheck::CheckSingleParaCmpSparseIndices() const
 {
     const std::vector<size_t> cmpSparseIndicesDimNumList = {DIM_NUM_FOUR, DIM_NUM_THREE};
@@ -409,6 +419,7 @@ ge::graphStatus KvQuantSASTilingCheck::CheckSinglePara() const
     if (ge::GRAPH_SUCCESS != CheckSingleParaQuery() ||
         ge::GRAPH_SUCCESS != CheckSingleParaKey() ||
         ge::GRAPH_SUCCESS != CheckSingleParaCmpSparseIndices() ||
+        ge::GRAPH_SUCCESS != CheckSingleParaCmpResidualKv() ||
         ge::GRAPH_SUCCESS != CheckSingleParaNumHeads() ||
         ge::GRAPH_SUCCESS != CheckSingleParaKvHeadNums() ||
         ge::GRAPH_SUCCESS != CheckSingleParaSparseMode() ||
