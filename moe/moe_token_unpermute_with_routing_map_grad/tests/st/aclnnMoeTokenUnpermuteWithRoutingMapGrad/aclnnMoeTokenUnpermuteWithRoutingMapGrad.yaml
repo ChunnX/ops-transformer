@@ -1,0 +1,150 @@
+api: pytorch
+api_type: ascend_aclnn_moe_token_unpermute_with_routing_map_grad
+aclnn_api_type: AclnnBaseApi_aclnn_moe_token_unpermute_with_routing_map_grad
+version: v2.1
+name: aclnn.MoeTokenUnpermuteWithRoutingMapGrad
+aclnn_name: MoeTokenUnpermuteWithRoutingMapGrad
+generate: ascend_generate_moe_token_unpermute_with_routing_map_grad
+dtype_numbers: 70
+extra_numbers: 0
+backward: false
+standard:
+  acc:
+    cv_fused_double_benchmark:
+      max_re_ratio: 5
+      avg_re_ratio: 1.5
+      root_mean_squared_ratio: 1.5
+  perf: [0.95,0.95]
+inputs:
+  - name: unpermutedTokensGrad
+    type: tensor
+    required: true
+    dtypes:
+      values: [ fp16, fp32, bf16 ]
+    ranges:
+      valid:
+        values: [ [ -1, 1] ]
+      invalid:
+        values: []
+    shapes:
+      dim_numbers:
+        values: [ 2 ]
+      dim_values:
+        values: [ [ 1, 100 ], [ 1, 100 ] ]
+  - name: outIndex
+    type: tensor
+    required: true
+    dtypes:
+      values: [ int32 ]
+    ranges:
+      valid:
+        values: [ [ 1, 100 ] ]
+      invalid:
+        values: []
+    shapes:
+      dim_numbers:
+        values: [ 1 ]
+      dim_values:
+        values: [ [ 1, 100 ] ]
+  - name: permuteTokenId
+    type: tensor
+    required: true
+    dtypes:
+      values: [ int32 ]
+    ranges:
+      valid:
+        values: [ [ 1, 100 ] ]
+      invalid:
+        values: []
+    shapes:
+      dim_numbers:
+        values: [ 1 ]
+      dim_values:
+        values: [ [ 1, 100 ] ]
+  - name: routingMapOptional
+    type: tensor
+    required: false
+    dtypes:
+      values: [ bool, int8 ]
+    ranges:
+      valid:
+        values: [ [ 0, 1 ] ]
+      invalid:
+        values: []
+    shapes:
+      dim_numbers:
+        values: [ 2 ]
+      dim_values:
+        values: [ [ 1, 100 ], [ 1, 100 ]  ]
+  - name: permutedTokensOptional
+    type: tensor
+    required: false
+    dtypes:
+      values: [ fp16, fp32, bf16 ]
+    ranges:
+      valid:
+        values: [ [ -1, 1] ]
+      invalid:
+        values: []
+    shapes:
+      dim_numbers:
+        values: [ 2 ]
+      dim_values:
+        values: [ [ 1, 100 ], [ 1, 100 ] ]
+  - name: probsOptional
+    type: tensor
+    required: false
+    dtypes:
+      values: [ fp16, fp32, bf16 ]
+    ranges:
+      valid:
+        values: [ [ -1, 1] ]
+      invalid:
+        values: []
+    shapes:
+      dim_numbers:
+        values: [ 2 ]
+      dim_values:
+        values: [ [ 1, 100 ], [ 1, 100 ] ]
+  - name: padded_mode
+    type: attr
+    required: true
+    dtypes:
+      values: [ bool ]
+    ranges:
+      valid:
+        values: [ false, true ]
+      invalid:
+        values: []
+  - name: restore_shape
+    type: attr_tuple
+    required: false
+    tuple_numbers:
+      values: [ 2 ]
+    dtypes:
+      values: [ int ]
+    ranges:
+      valid:
+        values: [ 1 ]
+      invalid:
+        values: []
+  - name: is_mix
+    type: attr
+    required: true
+    dtypes:
+      values: [ bool ]
+    ranges:
+      valid:
+        values: [ false, true ]
+      invalid:
+        values: []
+  - name: token_type
+    type: attr
+    required: true
+    dtypes:
+      values: [ string ]
+    ranges:
+      valid:
+        values: [ "fp16", "fp32", "bf16" ]
+      invalid:
+        values: []
