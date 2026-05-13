@@ -150,6 +150,8 @@ class GMMProcess {
     __aicore__ inline void SetMKN(const int32_t splitValue, const uint32_t groupIdx, MNConfig &mnConfig);
 
     __aicore__ inline void UpdateMnConfig(MNConfig &mnConfig);
+
+    __aicore__ inline bool UpdateMnConfigForGroupListMSparse(MNConfig &mnConfig, uint32_t splitValue, uint32_t groupIdx);
 };
 
 template <typename ComputeType>
@@ -248,6 +250,27 @@ __aicore__ inline void GMMProcess<ComputeType>::UpdateMnConfig(MNConfig &mnConfi
 }
 
 template <typename ComputeType>
+__aicore__ inline bool GMMProcess<ComputeType>::UpdateMnConfigForGroupListMSparse(MNConfig &mnConfig, uint32_t splitValue, uint32_t groupIdx)
+{
+    mnConfig.mAxisBaseOffset += mnConfig.m;
+    mnConfig.xBaseOffset += mnConfig.m * mnConfig.k;
+    mnConfig.yBaseOffset += mnConfig.m * mnConfig.n;
+    mnConfig.scaleIndex++;
+    SetMNConfig(splitValue, groupIdx, mnConfig);
+    if (mnConfig.m <= 0 || mnConfig.k <= 0 || mnConfig.n <= 0) {
+        return true; // skip
+    }
+
+    mnConfig.nAxisBaseOffset = groupIdx * mnConfig.n;
+    if constexpr (GMMProcess<ComputeType>::B::format == CubeFormat::NZ) {
+        mnConfig.wBaseOffset = AlignUp<16>(mnConfig.k) * AlignUp<16>(mnConfig.nAxisBaseOffset);
+    } else {
+        mnConfig.wBaseOffset = mnConfig.k * mnConfig.nAxisBaseOffset;
+    }
+    return false; // no skip
+}
+
+template <typename ComputeType>
 __aicore__ inline void GMMProcess<ComputeType>::Process() {
     MNConfig mnConfig;
     if (gmmBaseParams->groupType != -1) {  // -1: no split
@@ -257,9 +280,16 @@ __aicore__ inline void GMMProcess<ComputeType>::Process() {
         preOffset = 0;
     }
     AscendC::WaitPreTaskEnd();
-    for (uint32_t groupIdx = 0, count = 0; groupIdx < groupNum; ++groupIdx) {
+    // 2: groupList shape: [e, 2]; 1: groupList shape: [e]
+    uint32_t groupListType = gmmBaseParams->groupListType;
+    uint32_t groupListInnerShape = groupListType == GROUP_LIST_TYPE_SPARSE ? 2 : 1;
+    uint32_t groupListShapeSize = groupNum * groupListInnerShape;
+    for (uint32_t groupIdx = 0, count = 0; groupIdx < groupListShapeSize; groupIdx += groupListInnerShape) {
         UpdateMnConfig(mnConfig);
         int32_t splitValue = GetSplitValueFromGroupList(groupIdx, preOffset, gmmBaseParams, groupListGm);
+        if (groupListType == GROUP_LIST_TYPE_SPARSE && splitValue <= 0) {
+            break;
+        }
         SetMNConfig(splitValue, groupIdx, mnConfig);
         if (mnConfig.m <= 0 || mnConfig.k <= 0 || mnConfig.n <= 0) {
             continue;
@@ -310,19 +340,9 @@ public:
             }
 
             uint32_t groupIdx = static_cast<int32_t>(this->groupListGm.GetValue(loop));
-            mnConfig.mAxisBaseOffset += mnConfig.m;
-            mnConfig.xBaseOffset += mnConfig.m * mnConfig.k;
-            mnConfig.yBaseOffset += mnConfig.m * mnConfig.n;
-            this->SetMNConfig(splitValue, groupIdx, mnConfig);
-            if (mnConfig.m <= 0 || mnConfig.k <= 0 || mnConfig.n <= 0) {
+            bool skip = this->UpdateMnConfigForGroupListMSparse(mnConfig, splitValue, groupIdx);
+            if (skip) {
                 continue;
-            }
-            mnConfig.nAxisBaseOffset = groupIdx * mnConfig.n;
-            if constexpr (GMMProcess<ComputeType>::B::format == CubeFormat::NZ) {
-                // 16: nz format last two dim size
-                mnConfig.wBaseOffset = AlignUp<16>(mnConfig.k) * AlignUp<16>(mnConfig.nAxisBaseOffset);
-            } else {
-                mnConfig.wBaseOffset = mnConfig.k * mnConfig.nAxisBaseOffset;
             }
 
             mnConfig.blockDimM = Ceil(mnConfig.m, mnConfig.singleM);
@@ -345,7 +365,6 @@ public:
         AscendC::SetNextTaskStart();
     }
 };
-
 
 /** @brief intenal computation class
 */
