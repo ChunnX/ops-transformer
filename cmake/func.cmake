@@ -433,6 +433,7 @@ function(add_ops_src_copy)
         "allto_allv_quant_grouped_mat_mul;"
         "allto_all_all_gather_batch_mat_mul;"
         "distribute_barrier;"
+        "distribute_barrier_extend;"
         "moe_distribute_combine_add_rms_norm;"
         "moe_distribute_dispatch;"
         "moe_distribute_combine;"
