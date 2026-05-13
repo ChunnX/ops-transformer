@@ -346,13 +346,13 @@ int64_t SparseAttnSharedkvMetadataCpuKernel::WinCalcCost(uint32_t basicM, uint32
     uint32_t winAlignCoefS2 = 64U;
     uint32_t winAlignBasicM = (basicM + winAlignCoefM - 1U) >> 4U;      // 按alignCoefM对齐，向上取整，4：移位操作实现除16
     uint32_t winAlignBasicS2 = (basicS2 + winAlignCoefS2 - 1U) >> 6U;   // 按alignCoefS2对齐，向上取整，6：移位操作实现除64
-    if (isSCFA) {
-        if (queryHeadNum_ == 128) {
-            return static_cast<int64_t>(4U * winAlignBasicS2 + 113u);
-        } else if (queryHeadNum_ == 64) {
-            return static_cast<int64_t>(5U * winAlignBasicS2 + 65u);
-        }
-    }
+    //if (isSCFA) {
+    //    if (queryHeadNum_ == 128) {
+    //        return static_cast<int64_t>(4U * winAlignBasicS2 + 113u);
+    //    } else if (queryHeadNum_ == 64) {
+    //        return static_cast<int64_t>(5U * winAlignBasicS2 + 65u);
+    //    }
+    //}
     return static_cast<int64_t>(6U * winAlignBasicM + 10U * winAlignBasicS2);                 // 6：M轴系数，10：S2轴系数
 }
 
@@ -362,14 +362,14 @@ int64_t SparseAttnSharedkvMetadataCpuKernel::CmpCalcCost(uint32_t basicM, uint32
     uint32_t cmpAlignCoefS2 = 64U;
     uint32_t cmpAlignBasicM = (basicM + cmpAlignCoefM - 1U) >> 4U;      // 按alignCoefM对齐，向上取整，4：移位操作实现除16
     uint32_t cmpAlignBasicS2 = (basicS2 + cmpAlignCoefS2 - 1U) >> 6U;   // 按alignCoefS2对齐，向上取整，6：移位操作实现除64
-    if (isSCFA) {
-        if (queryHeadNum_ == 128) {
-            return static_cast<int64_t>(16U * cmpAlignBasicS2 + 292u);
-        } else if (queryHeadNum_ == 64) {
-            return static_cast<int64_t>(20U * cmpAlignBasicS2 + 80u);
-        }
-    }
-    return static_cast<int64_t>(6U * cmpAlignBasicM + 10U * cmpAlignBasicS2);                 // 6：M轴系数，10：S2轴系数
+    //if (isSCFA) {
+    //    if (queryHeadNum_ == 128) {
+    //        return static_cast<int64_t>(16U * cmpAlignBasicS2 + 292u);
+    //    } else if (queryHeadNum_ == 64) {
+    //        return static_cast<int64_t>(20U * cmpAlignBasicS2 + 80u);
+    //    }
+    //}
+    return static_cast<int64_t>(6U * cmpAlignBasicM + 10U * cmpAlignBasicS2 + 245U);                 // 6：M轴系数，10：S2轴系数
 }
 
 void SparseAttnSharedkvMetadataCpuKernel::CalcCostTable(uint32_t s1NormalSize,
@@ -858,6 +858,9 @@ void SparseAttnSharedkvMetadataCpuKernel::AssignBlocksToCore(const SplitContext 
         assignContext.coreCache.costLimit = std::max(avgCost, costInfo.maxS1GCost);
     } else {
         assignContext.coreCache.costLimit = avgCost;
+    }
+    if (isSCFA && assignContext.curCoreIdx == 0) {
+        assignContext.coreCache.costLimit = static_cast<int64_t>(assignContext.coreCache.costLimit * 1.28);
     }
     // 1、按整batch分配
     AssignByBatch(splitContext, assignContext);
