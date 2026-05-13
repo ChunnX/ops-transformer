@@ -899,7 +899,7 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
                     dispatchQuantOutType != (static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN)) &&
                     dispatchQuantOutType != (static_cast<int64_t>(ge::DT_FLOAT4_E2M1)),
         OP_LOGE(nodeName,
-            "Invalid dispatchQuantOutType, only support fp8_e5m2(23), fp8_e4m3fn(24) and fp4_e2m1(293), "
+            "Invalid dispatchQuantOutType, only support fp8_e5m2, fp8_e4m3fn and fp4_e2m1, "
             "but now is %ld.", dispatchQuantOutType),
         return ge::GRAPH_FAILED);
 
