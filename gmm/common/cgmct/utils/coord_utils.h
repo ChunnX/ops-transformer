@@ -250,7 +250,8 @@ public:
 
     template <GroupedMatmul::QuantMode aQuantMode>
     __aicore__ inline AscendC::Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t>
-    GetQuantIOOffset(int64_t mTileIdx, int64_t nTileIdx, int64_t mSplitOffset = 0, int64_t nSplitOffset = 0)
+    GetQuantIOOffset(int64_t mTileIdx, int64_t nTileIdx, int64_t mSplitOffset = 0, int64_t nSplitOffset = 0,
+                     int64_t bC0Align = MATMUL_MNK_ALIGN_INT8)
     {
         int64_t mOffset = mTileIdx * l1M + mSplitOffset;
         int64_t nOffset = nTileIdx * l1N + nSplitOffset;
@@ -262,9 +263,12 @@ public:
         }
         if constexpr (layoutB == CubeFormat::NZ) {
             if constexpr (isTransB) {
-                Get<1>(offset) = nOffset * MATMUL_MNK_ALIGN_INT8;
+                Get<1>(offset) = nOffset * bC0Align;
             } else {
                 Get<1>(offset) = nOffset * CeilAlign(k, MATMUL_MNK_ALIGN);
+                if (bC0Align == MATMUL_MNK_ALIGN_INT4) {
+                    Get<1>(offset) >>= 1;
+                }
             }
         }
         else {
