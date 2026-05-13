@@ -617,7 +617,7 @@ aclnnStatus Mc2Context::GetMc2ContextTensor(const char *groupEp, const char *opN
     CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
 
     Mc2MoeContext mc2ContextStruct;
-    auto aclnnRet = instance.CreateMc2Context(hcclHandle, mc2ContextTag, engine, protocol, ctx, &mc2ContextStruct,
+    aclnnRet = instance.CreateMc2Context(hcclHandle, mc2ContextTag, engine, protocol, ctx, &mc2ContextStruct,
                                               hcclBuffSize);
     CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
     
