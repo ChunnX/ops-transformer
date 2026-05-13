@@ -1,4 +1,4 @@
-/**
+/* *
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -6,12 +6,12 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+  */
 
-/*!
-* \file fused_infer_attention_score.cpp
-* \brief
-*/
+/* !
+ * \file fused_infer_attention_score.cpp
+ * \brief
+ */
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_vec_intf.h"
 #include "kernel_cube_intf.h"
@@ -22,6 +22,24 @@
 #include "kernel_operator_list_tensor_intf.h"
 // ifa must include before pfa
 #define FIA_ENABLE_MLA
+
+#include "fused_infer_attention_score_tilingkey.h"
+
+#if (__NPU_ARCH__ == 5102)
+#ifdef NOT_DYNAMIC_COMPILE
+#if __has_include("../../prompt_flash_attention/op_kernel/arch38/prompt_flash_attention_entry_regbase.h")
+#include "../../prompt_flash_attention/op_kernel/arch38/prompt_flash_attention_entry_regbase.h"
+#include "../../incre_flash_attention/op_kernel/incre_flash_attention.cpp"
+#else
+#include "../prompt_flash_attention/arch38/prompt_flash_attention_entry_regbase.h"
+#include "../incre_flash_attention/incre_flash_attention.cpp"
+#endif
+#else
+#include "../prompt_flash_attention/arch38/prompt_flash_attention_entry_regbase.h"
+#include "../incre_flash_attention/incre_flash_attention.cpp"
+#endif
+
+#else
 #ifdef NOT_DYNAMIC_COMPILE
 #include "../../incre_flash_attention/op_kernel/incre_flash_attention_arch22.h"
 #include "../../prompt_flash_attention/op_kernel/prompt_flash_attention_arch22.h"
@@ -29,9 +47,9 @@
 #include "../incre_flash_attention/incre_flash_attention.cpp"
 #include "../prompt_flash_attention/prompt_flash_attention.cpp"
 #endif
-#include "fused_infer_attention_score_tilingkey.h"
 #include "fused_infer_attention_score_v3.cpp"
 #include "flash_attention_interface.cpp"
+#endif
 
 #define FullQuantTiling 15
 extern "C" __global__ __aicore__ void fused_infer_attention_score(__gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value,
@@ -50,6 +68,13 @@ extern "C" __global__ __aicore__ void fused_infer_attention_score(__gm__ uint8_t
                                                                 __gm__ uint8_t* learnableSink, __gm__ uint8_t* qStartIdx, __gm__ uint8_t* kvStartIdx,
                                                                 __gm__ uint8_t* attentionOut, __gm__ uint8_t* softmaxLse, __gm__ uint8_t* workspace, __gm__ uint8_t* tiling)
 {
+#if (__NPU_ARCH__ == 5102)
+    prompt_flash_attention_FIAS_regbase(query, key, value, pse_shift, attenMask, actualSeqLengths, actualSeqLengthsKV,
+        deq_scale1, quant_scale1, deq_scale2, quant_scale2, quant_offset2, antiquantScale, antiquantOffset, blocktable,
+        queryPaddingSize, kvPaddingSize, keyAntiquantScale, keyAntiquantOffset, valueAntiquantScale,
+        valueAntiquantOffset, keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen, queryRope, keyRope,
+        dequantScaleQuery, attentionOut, softmaxLse, workspace, tiling);
+#else
     if (TILING_KEY_VAR >= FAI_FLAG_TILING) {
         __gm__ uint8_t *user = GetUserWorkspace(workspace);
         KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
@@ -665,4 +690,5 @@ extern "C" __global__ __aicore__ void fused_infer_attention_score(__gm__ uint8_t
                                 keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen, queryRope, keyRope, keyRopeAntiquantScale, dequantScaleQuery,
                                 attentionOut, softmaxLse, workspace, tiling);
     }
+#endif
 }
