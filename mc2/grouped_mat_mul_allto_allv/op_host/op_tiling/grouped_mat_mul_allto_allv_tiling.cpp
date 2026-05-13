@@ -926,6 +926,12 @@ static void UpdateTilingKey(uint64_t& tilingKey, const GroupedMatMulAlltoAllvTil
     } else {
         tilingkeyMmTrans = false;
     }
+    
+    bool isA5 = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5);
+    if (!isA5) {
+        OPS_LOG_D(context->GetNodeName(), "Non-A5 platform, always use AICPU");
+        commMode = Mc2Comm::COMM_MODE_AICPU;
+    }
 
     tilingKey = GET_TPL_TILING_KEY(tilingkeyComputeMm, tilingkeyGmmTrans, tilingkeyMmTrans, commMode);
     return;
