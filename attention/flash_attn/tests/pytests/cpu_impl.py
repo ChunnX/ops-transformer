@@ -224,8 +224,8 @@ def tforward_tnd(q, k, v, pse, **kwargs):
 
             outi, x_maxi, x_sumi = forward(qi, ki, vi, drop_maski, atten_maski, pse_type, psei, scale, keep_prob)
             out_golden[:, :, actual_seq_qlen[i]:actual_seq_qlen[i + 1]] = outi
-            x_max[:, actual_seq_qlen[i]:actual_seq_qlen[i + 1]] = x_maxi.squeeze()
-            x_sum[:, actual_seq_qlen[i]:actual_seq_qlen[i + 1]] = x_sumi.squeeze()
+            x_max[:, actual_seq_qlen[i]:actual_seq_qlen[i + 1]] = x_maxi.squeeze(0).squeeze(-1)
+            x_sum[:, actual_seq_qlen[i]:actual_seq_qlen[i + 1]] = x_sumi.squeeze(0).squeeze(-1)
     print("cpu max:", x_max)
     print("cpu sum:", x_sum)
     return out_golden, x_max, x_sum
