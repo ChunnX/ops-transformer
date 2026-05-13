@@ -11,7 +11,7 @@
 /*!
  * \file aclnn_flash_attn.h
  * \brief
-*/
+ */
 
 #ifndef OP_API_INC_LEVEL2_ACLNN_FLASH_ATTN_H_
 #define OP_API_INC_LEVEL2_ACLNN_FLASH_ATTN_H_
@@ -74,32 +74,13 @@ extern "C" {
  * @return aclnnStatus 执行状态。ACLNN_SUCCESS表示成功。
  */
 aclnnStatus aclnnFlashAttnGetWorkspaceSize(
-    const aclTensor *q,
-    const aclTensor *k,
-    const aclTensor *v,
-    const aclTensor *blockTableOptional,
-    const aclTensor *cuSeqlensQOptional,
-    const aclTensor *cuSeqlensKvOptional,
-    const aclTensor *sequsedQOptional,
-    const aclTensor *sequsedKvOptional,
-    const aclTensor *sinksOptional,
-    const aclTensor *attnMaskOptional,
-    const aclTensor *metadataOptional,
-    double softmaxScale,
-    int32_t maskMode,
-    int32_t winLeft,
-    int32_t winRight,
-    int32_t maxSeqlenQ,
-    int32_t maxSeqlenKV,
-    const char *layoutQ,
-    const char *layoutKv,
-    const char *layoutOut,
-    int32_t returnSoftmaxLse,
-    int32_t deterministic,
-    const aclTensor *attnOut,
-    const aclTensor *softmaxLseOptional,
-    uint64_t *workspaceSize,
-    aclOpExecutor **executor);
+    const aclTensor *q, const aclTensor *k, const aclTensor *v, const aclTensor *blockTableOptional,
+    const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional, const aclTensor *sequsedQOptional,
+    const aclTensor *sequsedKvOptional, const aclTensor *sinksOptional, const aclTensor *attnMaskOptional,
+    const aclTensor *metadataOptional, double softmaxScale, int64_t maskMode, int64_t winLeft, int64_t winRight,
+    int64_t maxSeqlenQ, int64_t maxSeqlenKV, const char *layoutQ, const char *layoutKv, const char *layoutOut,
+    int64_t returnSoftmaxLse, int64_t deterministic, const aclTensor *attnOut, const aclTensor *softmaxLseOptional,
+    uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**
  * @brief aclnnFlashAttn的第二段接口，用于执行计算。
@@ -109,14 +90,10 @@ aclnnStatus aclnnFlashAttnGetWorkspaceSize(
  * @param stream          [IN] 用于执行计算的acl stream。
  * @return aclnnStatus 执行状态。
  */
-aclnnStatus aclnnFlashAttn(
-    void *workspace,
-    uint64_t workspaceSize,
-    aclOpExecutor *executor,
-    const aclrtStream stream);
+aclnnStatus aclnnFlashAttn(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, const aclrtStream stream);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif  // OP_API_INC_LEVEL2_ACLNN_FLASH_ATTN_H_
+#endif // OP_API_INC_LEVEL2_ACLNN_FLASH_ATTN_H_

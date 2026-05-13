@@ -1,17 +1,17 @@
-/**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
-*/
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You can not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file flash_attn_tiling_info_parser.h
  * \brief
-*/
+ */
 
 #pragma once
 
@@ -19,7 +19,6 @@
 #include "fa_tiling_shape.h"
 
 namespace optiling {
-constexpr int64_t MASK_MODE_INT_MAX = 2147483647;
 class FaInfoParser {
 public:
     explicit FaInfoParser(const gert::TilingContext *context) : context_(context)
@@ -122,7 +121,7 @@ public:
     // mask 信息
     int64_t winLeft_ = 0;
     int64_t winRight_ = 0;
-    int32_t maskMode_ = 0;
+    int64_t maskMode_ = 0;
 
     // Sinks 信息
     bool sinksFlag_ = false;
