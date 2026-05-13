@@ -49,7 +49,7 @@ const static int64_t K_DIM_INDEX = 1;
 const static int64_t DOUBLE_BUFFER_NUM = 2;
 const static int64_t UB_ALIGN_BYTES_MINUS_ONE = 31;
 const static int64_t UB_RESERVE_SPACE = 1024;
-const static int64_t NUM_TWO = 5;                       // 2 buffers with the same size
+const static int64_t NUM_TWO = 2;                       // 2 buffers with the same size
 const static int64_t NUM_FIVE = 5;                      // 5 buffers with the same size
 
 // Tiling keys

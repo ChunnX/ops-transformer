@@ -88,7 +88,7 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::Init(GM_ADDR xNorm, GM_AD
     blockIdx_ = GetBlockIdx();
     kAlign_ = Align(tilingData_->k, SIZE_OF_INT32);
     // 获得当前核所需要的处理的loop次数、尾loop搬入的token数。
-    if (blockIdx_ == GetBlockNum() - 1) {
+    if (blockIdx_ ==  tilingData_->needCoreNum - 1) {
         loopTimes_ = tilingData_->lastLoopTimes;
         tailRows_ = tilingData_->lastTailRows;
     } else {
@@ -179,13 +179,13 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::CopyInGradY(int64_t loopI
         gradYQue_.EnQue(gradYLocal_);
         gradYLocal_ = gradYQue_.DeQue<float>();
     } else {
-        DataCopyPad(gradYLocal_[tilingData_->baseRows * kAlign_].ReinterpretCast<T>(),
+        DataCopyPad(gradYLocal_[tilingData_->baseRows * kAlign_ / NUM_TWO].ReinterpretCast<T>(),
                     gradYGm_[loopIdx * tilingData_->baseRows * tilingData_->k], copyParams, padParams);
         
         gradYQue_.EnQue(gradYLocal_);
         gradYLocal_ = gradYQue_.DeQue<float>();
         Cast(gradYLocal_, gradYLocal_[tilingData_->baseRows * kAlign_].ReinterpretCast<T>(), RoundMode::CAST_NONE,
-             elementCountPerLoop_);
+             curRowsByKAlign_);
         PipeBarrier<PIPE_V>();
     }
 }
