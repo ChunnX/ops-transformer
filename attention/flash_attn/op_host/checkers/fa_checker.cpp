@@ -20,7 +20,6 @@
 #include "log/error_code.h"
 #include "register/op_def_registry.h"
 #include "../fa_tiling_info.h"
-#include "../flash_attn_tiling_constants.h"
 #include "fa_checker.h"
 
 namespace optiling {
@@ -104,7 +103,7 @@ ge::graphStatus FAChecker::Process(const FaTilingInfo &faInfo)
     if (ge::GRAPH_SUCCESS != CheckMultiPara(faInfo)) {
         return ge::GRAPH_FAILED;
     }
-    
+
     return ge::GRAPH_SUCCESS;
 }
 

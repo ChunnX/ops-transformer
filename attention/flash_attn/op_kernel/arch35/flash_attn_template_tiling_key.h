@@ -20,6 +20,11 @@
 #include "../utils/flash_attn_common_def.h"
 #include "../../../incre_flash_attention/op_kernel/arch35/incre_flash_attention_tiling_regbase.h"
 #include "flash_attn_tiling_data.h"
+// #else
+// #include "../prompt_flash_attention/arch35/prompt_flash_attention_template_tiling_key_enum.h"
+// #include "../prompt_flash_attention/arch35/prompt_flash_attention_tiling_regbase.h"
+// #include "../incre_flash_attention/arch35/incre_flash_attention_tiling_regbase.h"
+// #endif
 
 #ifndef ORIG_DTYPE_QUERY
 #define ORIG_DTYPE_QUERY (DT_BF16)
@@ -128,7 +133,8 @@ ASCENDC_TPL_ARGS_DECL(FlashAttn,
 ASCENDC_TPL_SEL(
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST,
-                            InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND),
+                            InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, 
+                            InOutLayoutType_TND_TND, InOutLayoutType_BNSD_BSND),
         ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST,
                             Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned64,
                             Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned128,

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file flash_attention_noquant_block_cube.h
+ * \file flash_attn_block_cube_noquant_gqa.h
  * \brief
  */
 #ifndef FLASH_ATTENTION_NOQUANT_GQA_BLOCK_CUBE_H_
@@ -134,7 +134,7 @@ template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::
           DTemplateType dTemplateType = DTemplateType::Aligned128,
           DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasRope = false, uint8_t KvLayoutType = 0,
           bool enableKVPrefix = false, bool useDn = false, bool bmm2Write2Ub = true, bool splitD = false>
-class FANoQuantGqaBlockCube {
+class CubeBlockBase {
 public:
     template <uint32_t dBaseSize>
     struct QL1BuffSel {
@@ -174,8 +174,7 @@ public:
     static constexpr uint32_t dVBaseSize = (uint32_t)dVTemplateType;
     static constexpr uint32_t l1BaseD = 128;
     static constexpr LayOutTypeEnum LAYOUT = layout;
-    static constexpr bool isPa = (KvLayoutType > 0);
-    static constexpr bool PAGE_ATTENTION = isPa;
+    static constexpr bool PAGE_ATTENTION = (KvLayoutType > 0);
     static constexpr bool HAS_ROPE = hasRope;
     static constexpr bool HAS_PREFIX = enableKVPrefix;
     static constexpr bool BMM2_TOUB = bmm2Write2Ub;
@@ -185,7 +184,90 @@ public:
     static constexpr FixpipeConfig BMM2_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, bmm2Write2Ub};
     static constexpr GmFormat Q_FORMAT = GetQueryGmFormat<layout>();
     // static constexpr GmFormat KV_FORMAT = GetKVGmFormat<layout, KvLayoutType>();
-    static constexpr GmFormat KV_FORMAT = GetKVGmFormat<layout, KvLayoutType, isPa>();
+    static constexpr GmFormat KV_FORMAT = GetKVGmFormat<layout, KvLayoutType, PAGE_ATTENTION>();
+
+    using ROPE_T = INPUT_T;
+    using Q_T = INPUT_T;
+    using KV_T = INPUT_T;
+    using MM_T = T;
+    using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
+                                                Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
+
+    using MM1_DBUF_T = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
+    using MM2_ABUF_POLICY_T = BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
+    using MM2_ABUF_T = Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
+    using MM2_DBUF_T = mm2ResPos;
+
+    using L1KvType = typename KVL1BuffSel<s2BaseSize, dBaseSize>::Type;
+    using L1QType = typename QL1BuffSel<dBaseSize>::Type;
+    using L0AType = typename L0ABuffSel::Type;
+    using L0BType = typename L0BBuffSel<s2BaseSize, dBaseSize>::Type;
+    using L0CType = typename L0CBuffSel<mBaseSize, s2BaseSize, dVBaseSize>::Type;
+
+    using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
+
+    __aicore__ inline CubeBlockBase(ConstInfoX &constInfo) {};
+
+};
+
+template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::None,
+          S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
+          S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
+          DTemplateType dTemplateType = DTemplateType::Aligned128,
+          DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasRope = false, uint8_t KvLayoutType = 0,
+          bool enableKVPrefix = false, bool useDn = false, bool bmm2Write2Ub = true, bool splitD = false>
+class FANoQuantGqaBlockCube : public CubeBlockBase<INPUT_T, T, layout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+                         hasRope, KvLayoutType, enableKVPrefix, useDn, bmm2Write2Ub, splitD> {
+public:
+    template <uint32_t dBaseSize>
+    struct QL1BuffSel {
+        using Type = std::conditional_t<(dBaseSize > 256), BuffersPolicySingleBuffer<BufferType::L1>,
+                                        BuffersPolicyDB<BufferType::L1>>;
+    };
+
+    /* ============确定Key的L1类型============= */
+    template <uint32_t s2BaseSize, uint32_t dBaseSize>
+    struct KVL1BuffSel {
+        using Type = std::conditional_t<(s2BaseSize == 256 && dBaseSize > 128),
+                                        BuffersPolicySingleBuffer<BufferType::L1>, BuffersPolicyDB<BufferType::L1>>;
+    };
+
+    /* ============确定L0A的类型============= */
+    struct L0ABuffSel {
+        using Type = BuffersPolicyDB<BufferType::L0A>;
+    };
+    /* ============确定L0B的类型============= */
+    template <uint32_t s2BaseSize, uint32_t dBaseSize>
+    struct L0BBuffSel {
+        using Type = std::conditional_t<(s2BaseSize == 256 && dBaseSize > 128),
+                                        BuffersPolicySingleBuffer<BufferType::L0B>, BuffersPolicyDB<BufferType::L0B>>;
+    };
+
+    /* ============确定L0C的类型============= */
+    template <uint32_t mBaseSize, uint32_t s2BaseSize, uint32_t dVBaseSize>
+    struct L0CBuffSel {
+        using Type = std::conditional_t<(mBaseSize * s2BaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4 &&
+                                         mBaseSize * dVBaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4),
+                                        BuffersPolicy4buff<BufferType::L0C>, BuffersPolicyDB<BufferType::L0C>>;
+    };
+
+    static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
+    static constexpr uint32_t s2BaseSize = (uint32_t)s2TemplateType;
+    static constexpr uint32_t dBaseSize = (uint32_t)dTemplateType;
+    static constexpr uint32_t dVBaseSize = (uint32_t)dVTemplateType;
+    static constexpr uint32_t l1BaseD = 128;
+    static constexpr LayOutTypeEnum LAYOUT = layout;
+    static constexpr bool PAGE_ATTENTION = (KvLayoutType > 0);
+    static constexpr bool HAS_ROPE = hasRope;
+    static constexpr bool HAS_PREFIX = enableKVPrefix;
+    static constexpr bool BMM2_TOUB = bmm2Write2Ub;
+    static constexpr bool USE_DN = useDn;
+    static constexpr bool SPLITD = splitD;
+
+    static constexpr FixpipeConfig BMM2_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, bmm2Write2Ub};
+    static constexpr GmFormat Q_FORMAT = GetQueryGmFormat<layout>();
+    // static constexpr GmFormat KV_FORMAT = GetKVGmFormat<layout, KvLayoutType>();
+    static constexpr GmFormat KV_FORMAT = GetKVGmFormat<layout, KvLayoutType, PAGE_ATTENTION>();
 
     using ROPE_T = INPUT_T;
     using Q_T = INPUT_T;
@@ -244,7 +326,9 @@ public:
     const ConstInfoX &constInfo;
 
     /*============================================================================== */
-    __aicore__ inline FANoQuantGqaBlockCube(ConstInfoX &constInfo) : constInfo(constInfo){};
+    __aicore__ inline FANoQuantGqaBlockCube(ConstInfoX &constInfo)
+        : CubeBlockBase<INPUT_T, T, layout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+                    hasRope, KvLayoutType, enableKVPrefix, useDn, bmm2Write2Ub, splitD>(constInfo), constInfo(constInfo) {};
 
     __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> *l1BuffMgr,
                                          __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
@@ -304,12 +388,12 @@ public:
                                          __gm__ uint8_t *actualSharedPrefixLen)
     {
         if (constInfo.actualSeqLenSize != 0) {
-            actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint64_t *)actualSeqQlenAddr, constInfo.actualSeqLenSize);
+            actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint64_t *)actualSeqQlenAddr, constInfo.actualSeqLenSize + 1);
         }
         if (constInfo.actualSeqLenKVSize != 0) {
-            actualSeqLengthsGm.SetGlobalBuffer((__gm__ uint64_t *)actualSeqKvlenAddr, constInfo.actualSeqLenKVSize);
+            actualSeqLengthsGm.SetGlobalBuffer((__gm__ uint64_t *)actualSeqKvlenAddr, constInfo.actualSeqLenKVSize + 1);
         }
-        if constexpr (isPa) {
+        if constexpr (PAGE_ATTENTION) {
             blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
         }
 
@@ -338,7 +422,7 @@ public:
         }
 
         if constexpr (HAS_PREFIX) {
-            static_assert(!isPa);
+            static_assert(!PAGE_ATTENTION);
             static_assert(GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD);
 
             keyPrefixGm.gmTensor.SetGlobalBuffer((__gm__ KV_T *)keySharedPrefix);
@@ -717,6 +801,7 @@ public:
                     param);
             }
         } else {
+            // TODO 整改 内部IF分支太多
             MatmulBase<Q_T, KV_T, T, 128, 128, dBaseSize, ABLayout::MK, ABLayout::KN>(
                 mm1A.GetTensor<Q_T>(), mm1B.GetTensor<KV_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(),
                 param);
@@ -969,6 +1054,7 @@ public:
             Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
             mm2ResL0C.Wait<HardEvent::FIX_M>();
 
+            // TODO： DN 场景V1输出梳理
             MMParam param = MakeMMParam((uint32_t)mBaseSize, (uint32_t)realN, (uint32_t)(runInfo.actSingleLoopS2Size),
                                         useDn, false);
             if constexpr (!useDn) {
