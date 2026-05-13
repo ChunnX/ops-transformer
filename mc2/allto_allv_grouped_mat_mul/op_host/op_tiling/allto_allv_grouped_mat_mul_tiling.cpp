@@ -639,6 +639,15 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetShapeAttrsInfo()
     if (GetCommonShapeAttrsInfo() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
+    // 补充：非量化算子需要额外读取transGmmWeight_/transMmWeight_属性
+    auto attrs = context_->GetAttrs();
+    auto transGmmWeightPtr = attrs->GetAttrPointer<bool>(ATTR_TRANS_GMM_WEIGHT_INDEX);
+    auto transMmWeightPtr = attrs->GetAttrPointer<bool>(ATTR_TRANS_MM_WEIGHT_INDEX);
+    OP_TILING_CHECK((transGmmWeightPtr == nullptr) || (transMmWeightPtr == nullptr),
+        OP_LOGE(A_INNER_DEBUG, "transGmmWeightPtr or transMmWeightPtr is null."), return ge::GRAPH_FAILED);
+    transGmmWeight_ = *transGmmWeightPtr;
+    transMmWeight_ = *transMmWeightPtr;
+    
     OP_LOGD(context_->GetNodeName(), "end GetShapeAttrsInfo.");
     return ge::GRAPH_SUCCESS;
 }
