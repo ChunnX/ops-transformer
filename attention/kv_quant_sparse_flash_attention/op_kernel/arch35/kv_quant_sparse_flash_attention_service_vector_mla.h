@@ -786,7 +786,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
     sharedParams.maskMode = sparseAttnSharedkvBaseParams.sparseMode;
     sharedParams.layoutType = sparseAttnSharedkvBaseParams.outputLayout; 
     sharedParams.dSizeRope = 64;
-    sharedParams.softmaxScale = SOFTMAX_SCALE;
+    sharedParams.softmaxScale = sparseAttnSharedkvBaseParams.scaleValue;
     sharedParams.dSize = 576;
     sharedParams.dSizeVInput = sparseAttnSharedkvBaseParams.dSizeVInput;
     sharedParams.usedCoreNum = this->tilingData->singleCoreParams.usedCoreNum;
