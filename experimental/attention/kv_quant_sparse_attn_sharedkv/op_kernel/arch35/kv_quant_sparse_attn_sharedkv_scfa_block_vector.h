@@ -242,16 +242,6 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline uint32_t SCFABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTensor<KV_T> kvInUb , int64_t startRow,
     int32_t *tokenData, const RunInfo &runInfo, ConstInfo &constInfo)
 {
-    int64_t s2IdLimit = runInfo.s2RealSize;
-    int64_t accessible_kv = runInfo.s2RealSize - runInfo.actualS1Size + runInfo.s1oIdx + 1;
-    int64_t cmpResidual = runInfo.cmpResidual;
-    int64_t actualS2CmpSize = runInfo.actualS2CmpSize;
-    if (accessible_kv <= cmpResidual) {
-        s2IdLimit = 0;
-    } else {
-        s2IdLimit = (accessible_kv - cmpResidual) / constInfo.cmpRatio;
-    }
-    s2IdLimit = Min(s2IdLimit, actualS2CmpSize);
     uint32_t dealRow = 0;
     for (uint32_t i = 0; i < 8; i += 2) {
         int64_t keyOffset0 = GetkeyOffset(tokenData[i], runInfo, constInfo);
@@ -1017,8 +1007,10 @@ public:
     __aicore__ inline SCFABlockVecDummy() {};
     __aicore__ inline void CleanOutput(__gm__ uint8_t *attentionOut, ConstInfo &constInfo) {}
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV, __gm__ uint8_t *cmpSparseIndices,
-        __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sinks) {}
-    __aicore__ inline void InitVecBlock(TPipe *pipe, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedKv) {};
+        __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sinks,
+        __gm__ uint8_t *sequsedOriKv, __gm__ uint8_t *sequsedCmpKv, __gm__ uint8_t *cmpResidualKv) {}
+    __aicore__ inline void InitVecBlock(TPipe *pipe, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedKv,
+        __gm__ uint8_t *sequsedOriKv, __gm__ uint8_t *sequsedCmpKv, __gm__ uint8_t *cmpResidualKv) {};
     __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo) {}
     __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
         Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo &runInfo,

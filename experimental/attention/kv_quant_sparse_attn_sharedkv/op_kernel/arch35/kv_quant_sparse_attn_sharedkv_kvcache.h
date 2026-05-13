@@ -60,12 +60,12 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
     }
 
     if (!constInfo.isActualLenDimsOriKVNull) {
-        actualS2Size = (constInfo.actualSeqLenSizeOriKV == actualSeqKVMin) ?
+        actualS2Size = (constInfo.actualLenDimsOriKV == actualSeqKVMin) ?
             actualSeqOriKvlenAddr[0] : actualSeqOriKvlenAddr[sIdx];
     }
 
     if (!constInfo.isActualLenDimsCmpKVNull) {
-        actualS2CmpSize = (constInfo.actualSeqLenSizeCmpKV == actualSeqKVMin) ?
+        actualS2CmpSize = (constInfo.actualLenDimsCmpKV == actualSeqKVMin) ?
             actualSeqCmpKvlenAddr[0] : actualSeqCmpKvlenAddr[sIdx];
     } else {
         actualS2CmpSize = actualS2Size / constInfo.cmpRatio;

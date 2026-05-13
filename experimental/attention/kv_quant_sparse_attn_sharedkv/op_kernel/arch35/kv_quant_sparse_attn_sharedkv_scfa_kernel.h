@@ -178,8 +178,8 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
     constInfo.isActualLenDimsOriKVNull = (sequsedOriKv == nullptr);
     constInfo.isActualLenDimsCmpKVNull = (sequsedCmpKv == nullptr);
     constInfo.isCmpResidualKVNull = (cmpResidualKv == nullptr);
-    constInfo.actualSeqLenSizeOriKV = sparseAttnSharedkvBaseParams.actualSeqLenSizeOriKV;
-    constInfo.actualSeqLenSizeCmpKV = sparseAttnSharedkvBaseParams.actualSeqLenSizeCmpKV;
+    constInfo.actualLenDimsOriKV = sparseAttnSharedkvBaseParams.actualLenDimsOriKV;
+    constInfo.actualLenDimsCmpKV = sparseAttnSharedkvBaseParams.actualLenDimsCmpKV;
     constInfo.cmpResidualKVSize = sparseAttnSharedkvBaseParams.cmpResidualKVSize;
 
     // pageAttention

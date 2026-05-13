@@ -435,11 +435,11 @@ ge::graphStatus KvQuantSASInfoParser::GetActualseqInfo()
     }
     if (opParamInfo_.sequsedOriKv.tensor != nullptr) {
         isActualSeqLenDimsOriKVNull_ = false;
-        actualSeqLenSizeOriKV_ = opParamInfo_.sequsedOriKv.tensor->GetShapeSize();
+        actualLenDimsOriKV_ = opParamInfo_.sequsedOriKv.tensor->GetShapeSize();
     }
     if (opParamInfo_.sequsedCmpKv.tensor != nullptr) {
         isActualSeqLenDimsCmpKVNull_ = false;
-        actualSeqLenSizeCmpKV_ = opParamInfo_.sequsedCmpKv.tensor->GetShapeSize();
+        actualLenDimsCmpKV_ = opParamInfo_.sequsedCmpKv.tensor->GetShapeSize();
     }
     if (opParamInfo_.cmpResidualKv.tensor != nullptr) {
         isCmpResidualKVNull_ = false;
@@ -510,16 +510,14 @@ void KvQuantSASInfoParser::GenerateInfo(KvQuantSASTilingInfo &sasInfo)
     sasInfo.oriMaxBlockNumPerBatch = oriMaxBlockNumPerBatch_;
     sasInfo.cmpMaxBlockNumPerBatch = cmpMaxBlockNumPerBatch_;
 
-    sasInfo.actualLenDimsQ = actualLenDimsQ_;
+sasInfo.actualLenDimsQ = actualLenDimsQ_;
     sasInfo.actualLenDimsKV = actualLenDimsKV_;
-    sasInfo.maxActualseq = maxActualseq_;
-    sasInfo.actualSeqLenFlag = (opParamInfo_.sequsedKv.tensor != nullptr);
     sasInfo.isSameSeqAllKVTensor = isSameSeqAllKVTensor_;
     sasInfo.isActualLenDimsOriKVNull = isActualSeqLenDimsOriKVNull_;
     sasInfo.isActualLenDimsCmpKVNull = isActualSeqLenDimsCmpKVNull_;
     sasInfo.isCmpResidualKVNull = isCmpResidualKVNull_;
-    sasInfo.actualSeqLenSizeOriKV = actualSeqLenSizeOriKV_;
-    sasInfo.actualSeqLenSizeCmpKV = actualSeqLenSizeCmpKV_;
+    sasInfo.actualLenDimsOriKV = actualLenDimsOriKV_;
+    sasInfo.actualLenDimsCmpKV = actualLenDimsCmpKV_;
     sasInfo.cmpResidualKVSize = cmpResidualKVSize_;
 
     sasInfo.kvQuantMode = *opParamInfo_.kvQuantMode;
@@ -648,8 +646,8 @@ ge::graphStatus KvQuantSparseAttnSharedkvTiling::DoOpTiling(KvQuantSASTilingInfo
     tilingData_.baseParams.set_sparseBlockSize(tilingInfo->sparseBlockSize);
     tilingData_.baseParams.set_dSize(tilingInfo->dSize);
     tilingData_.baseParams.set_dSizeVInput(tilingInfo->dSizeVInput);
-    tilingData_.baseParams.set_actualSeqLenSizeOriKV(tilingInfo->actualSeqLenSizeOriKV);
-    tilingData_.baseParams.set_actualSeqLenSizeCmpKV(tilingInfo->actualSeqLenSizeCmpKV);
+    tilingData_.baseParams.set_actualLenDimsOriKV(tilingInfo->actualLenDimsOriKV);
+    tilingData_.baseParams.set_actualLenDimsCmpKV(tilingInfo->actualLenDimsCmpKV);
     tilingData_.baseParams.set_cmpResidualKVSize(tilingInfo->cmpResidualKVSize);
 
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());

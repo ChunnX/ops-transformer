@@ -278,8 +278,8 @@ public:
     bool isActualLenDimsOriKVNull = true;
     bool isActualLenDimsCmpKVNull = true;
     bool isCmpResidualKVNull = true;
-    uint32_t actualSeqLenSizeOriKV = 0;
-    uint32_t actualSeqLenSizeCmpKV = 0;
+    uint32_t actualLenDimsOriKV = 0;
+    uint32_t actualLenDimsCmpKV = 0;
     uint32_t cmpResidualKVSize = 0;
 
     int64_t kvQuantMode = 0;
@@ -397,8 +397,8 @@ public:
     bool isActualSeqLenDimsOriKVNull_ = true;
     bool isActualSeqLenDimsCmpKVNull_ = true;
     bool isCmpResidualKVNull_ = true;
-    uint32_t actualSeqLenSizeOriKV_ = 0;
-    uint32_t actualSeqLenSizeCmpKV_ = 0;
+    uint32_t actualLenDimsOriKV_ = 0;
+    uint32_t actualLenDimsCmpKV_ = 0;
     uint32_t cmpResidualKVSize_ = 0;
     uint32_t dSizeQ_ = 0;
     uint32_t dSizeKV_ = 0;
