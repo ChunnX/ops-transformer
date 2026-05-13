@@ -75,8 +75,6 @@ namespace {
     const static int64_t MAX_EP_WORLD_SIZE = 768LL;
     const static int64_t MAX_MOE_EXPERT_NUM = 1024LL;
     const static int64_t DISABLE_EXPERT_CAPACITY = -1LL;
-    const static int64_t DISPATCH_QUANT_OUT_TYPE_OFFSET = 20LL;
-    const static int64_t DISPATCH_QUANT_OUT_TYPE_FP4_E2M1 = 296LL;
     const static int64_t INPUT_WEIGHT_SCALES_CEIL_ALIGN = 64LL;
     const static int64_t RESERVED_WORKSPACE_SIZE = 1024 * 1024 * 50LL;
 }
@@ -357,9 +355,9 @@ static int64_t GetOpQuantModeByAttrDispatchOutType(const gert::TilingContext *co
     int64_t dispatchQuantOutType = static_cast<int64_t>(*dispatchQuantOutTypePtr);
 
     int64_t opQuantMode;
-    if (dispatchQuantOutType == (DISPATCH_QUANT_OUT_TYPE_E5M2 + DISPATCH_QUANT_OUT_TYPE_OFFSET)) {
+    if (dispatchQuantOutType == static_cast<int64_t>(ge::DT_FLOAT8_E5M2)) {
         opQuantMode = DISPATCH_QUANT_OUT_TYPE_E5M2;
-    } else if (dispatchQuantOutType == (DISPATCH_QUANT_OUT_TYPE_E4M3FN + DISPATCH_QUANT_OUT_TYPE_OFFSET)) {
+    } else if (dispatchQuantOutType == static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN)) {
         opQuantMode = DISPATCH_QUANT_OUT_TYPE_E4M3FN;
     } else {
         opQuantMode = DISPATCH_QUANT_OUT_TYPE_E2M1;
@@ -897,9 +895,9 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
 
     auto dispatchQuantOutTypePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantOutTypeIndex));
     int64_t dispatchQuantOutType = static_cast<int64_t>(*dispatchQuantOutTypePtr);
-    OP_TILING_CHECK(dispatchQuantOutType != (DISPATCH_QUANT_OUT_TYPE_E5M2 + DISPATCH_QUANT_OUT_TYPE_OFFSET) &&
-                    dispatchQuantOutType != (DISPATCH_QUANT_OUT_TYPE_E4M3FN + DISPATCH_QUANT_OUT_TYPE_OFFSET) &&
-                    dispatchQuantOutType != (DISPATCH_QUANT_OUT_TYPE_FP4_E2M1),
+    OP_TILING_CHECK(dispatchQuantOutType != (static_cast<int64_t>(ge::DT_FLOAT8_E5M2)) &&
+                    dispatchQuantOutType != (static_cast<int64_t>(ge::DT_FLOAT8_E4M3FN)) &&
+                    dispatchQuantOutType != (static_cast<int64_t>(ge::DT_FLOAT4_E2M1)),
         OP_LOGE(nodeName,
             "Invalid dispatchQuantOutType, only support fp8_e5m2(23), fp8_e4m3fn(24) and fp4_e2m1(293), "
             "but now is %ld.", dispatchQuantOutType),

@@ -97,7 +97,9 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
     std::string comm_alg_str = std::string(comm_alg);
     char *comm_alg_ptr = const_cast<char *>(comm_alg.c_str());
 
-    int64_t dispatch_quant_result_type = dispatch_quant_out_type.value_or(28);
+    int64_t dispatch_quant_result_type = dispatch_quant_out_type.has_value()
+        ? static_cast<int64_t>(GetAclDataType(dispatch_quant_out_type.value()))
+        : 28;
 
     at::Tensor y;
     y = at::empty({bs, h}, topk_ids.options().dtype(x.scalar_type()));
