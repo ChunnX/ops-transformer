@@ -29,20 +29,20 @@ ge::Status QuantGroupedMatMulAlltoAllvCalcParamFunc(gert::ExeResGenerationContex
     const char* streamType = nullptr;
 
     uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-    bool isA5 = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5);
+    bool isArch35 = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5);
  	 
     if (commMode == Mc2Comm::COMM_MODE_AICPU) {
         streamType = "kfc_stream";
         serverType = "aicpu kfc server";
         OPS_LOG_D(context->GetNodeName(), "ENV_MC2_COMM_MODE_AICPU set, force AICPU GenTask");
-    } else if (isA5) {
+    } else if (isArch35) {
         streamType = "ccu_stream";
         serverType = "ccu server";
-        OPS_LOG_D(context->GetNodeName(), "A5 platform, use CCU GenTask");
+        OPS_LOG_D(context->GetNodeName(), "Arch35 platform, use CCU GenTask");
     } else {
         streamType = "kfc_stream";
         serverType = "aicpu kfc server";
-        OPS_LOG_D(context->GetNodeName(), "Non-A5 platform, use AICPU GenTask");
+        OPS_LOG_D(context->GetNodeName(), "Non-Arch35 platform, use AICPU GenTask");
     }
 
     return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, serverType, streamType);
@@ -51,17 +51,17 @@ ge::Status QuantGroupedMatMulAlltoAllvCalcParamFunc(gert::ExeResGenerationContex
 ge::Status QuantGroupedMatMulAlltoAllvGenTaskFunc(const gert::ExeResGenerationContext *context,
                                              std::vector<std::vector<uint8_t>> &tasks)
 {
-    bool isA5 = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5);
+    bool isArch35 = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5);
     uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-    if (!isA5) {
-        OPS_LOG_D(context->GetNodeName(), "Non-A5 platform, always use AICPU GenTask");
+    if (!isArch35) {
+        OPS_LOG_D(context->GetNodeName(), "Non-Arch35 platform, always use AICPU GenTask");
         return Mc2MoeGenTaskOpsUtils::Mc2MoeGenTaskCallback(context, tasks);
     }
     if (commMode == Mc2Comm::COMM_MODE_AICPU) {
-        OPS_LOG_D(context->GetNodeName(), "A5 platform with ENV_MC2_COMM_MODE_AICPU, use AICPU GenTask");
+        OPS_LOG_D(context->GetNodeName(), "Arch35 platform with ENV_MC2_COMM_MODE_AICPU, use AICPU GenTask");
         return Mc2MoeGenTaskOpsUtils::Mc2MoeGenTaskCallback(context, tasks);
     }
-    OPS_LOG_D(context->GetNodeName(), "A5 platform, use CCU GenTask");
+    OPS_LOG_D(context->GetNodeName(), "Arch35 platform, use CCU GenTask");
     return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks);
 }
 
