@@ -26,6 +26,7 @@
 #include "register/op_def_registry.h"
 #include "op_host/op_tiling/hccl_formulaic_tiling.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
+#include "mc2_comm_utils.h"
 
 using namespace AscendC;
 using namespace ge;
@@ -725,10 +726,15 @@ static ge::graphStatus SetHcclTiling(const gert::TilingContext* context, Grouped
 
     Mc2CcTilingConfig hcclCcTilingConfig(groupEpPtr, alltoAllvCmd, alltoAllvConfig,
                                          alltoAllvReduceType, alltoAllvDstDataType, alltoAllvSrcDataType);
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    OP_LOGD(context->GetNodeName(), "GmmAlltoAllv tiling: commMode=%u", commMode);
+    if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+        hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
+    }
     OP_TILING_CHECK(hcclCcTilingConfig.GetTiling(tilingData->hcclInitTiling) != 0,
-        OP_LOGE(C_INNER_DEBUG, "mc2CcTilingConfig mc2tiling GetTiling hcclInitTiling failed"), return ge::GRAPH_FAILED);
+        OP_LOGE(C_INNER_DEBUG, "mc2CcTilingConfig GetTiling hcclInitTiling failed"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(hcclCcTilingConfig.GetTiling(tilingData->alltoAllvCcTiling) != 0,
-        OP_LOGE(C_INNER_DEBUG, "mc2CcTilingConfig mc2tiling GetTiling alltoAllvCcTiling failed"), return ge::GRAPH_FAILED);
+        OP_LOGE(C_INNER_DEBUG, "mc2CcTilingConfig GetTiling alltoAllvCcTiling failed"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -903,6 +909,7 @@ static void UpdateTilingKey(uint64_t& tilingKey, const GroupedMatMulAlltoAllvTil
     bool tilingkeyComputeMm = false;
     bool tilingkeyGmmTrans = false;
     bool tilingkeyMmTrans = false;
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
 
     if (tilingData->commonTilingInfo.isOptionalMatmul) {
         tilingkeyComputeMm = true;
@@ -919,9 +926,15 @@ static void UpdateTilingKey(uint64_t& tilingKey, const GroupedMatMulAlltoAllvTil
     } else {
         tilingkeyMmTrans = false;
     }
+    
+    auto platformInfo = context->GetPlatformInfo();
+    platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
+    NpuArch npuArch = ascendcPlatform.GetCurNpuArch();
+    if (npuArch != NpuArch::DAV_3510) {
+        commMode = Mc2Comm::COMM_MODE_AICPU;
+    }
 
-    tilingKey = GET_TPL_TILING_KEY(tilingkeyComputeMm,
-                                    tilingkeyGmmTrans, tilingkeyMmTrans);
+    tilingKey = GET_TPL_TILING_KEY(tilingkeyComputeMm, tilingkeyGmmTrans, tilingkeyMmTrans, commMode);
     return;
 }
 

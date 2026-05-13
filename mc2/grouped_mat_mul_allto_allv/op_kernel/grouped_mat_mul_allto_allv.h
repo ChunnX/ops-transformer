@@ -29,8 +29,22 @@
 #endif
 #include "grouped_mat_mul_allto_allv_tiling.h"
 
+constexpr int CCU_COMM_MODE = 0;
+constexpr int AICPU_COMM_MODE = 1;
+
 namespace AscendC {
 using namespace ALLTO_ALLV_GMM;
+
+template<int commMode = CCU_COMM_MODE>
+struct HcclTypeSelector {
+    using type = Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU>;
+};
+
+template<>
+struct HcclTypeSelector<AICPU_COMM_MODE> {
+    using type = Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU>;
+};
+
 template <typename GMMATAV>
 class GroupedMatmulAlltoAllv
 {
@@ -47,6 +61,7 @@ public:
     static constexpr bool NEED_MM = GMMATAV::isOptionalMm;
     static constexpr bool NEED_GMMW_TRANS = GMMATAV::isGmmWeightTrans;
     static constexpr bool NEED_MMW_TRANS = GMMATAV::isOptWeightTrans;
+    static constexpr bool COMM_MODE = GMMATAV::commMode;
 
     using aType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, X_T, false>;
     using gmmBType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, X_T, NEED_GMMW_TRANS>;
@@ -93,11 +108,7 @@ private:
     static constexpr uint64_t TOTAL_UBSIZE = static_cast<uint64_t>(190U * 1024U / 2U);
     static constexpr uint64_t MAX_AIV_NUM = 48U;
     static constexpr uint64_t MAX_HANDLE_ID_NUM = 64U;
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-    Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;
-#else
-    Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;
-#endif
+    typename HcclTypeSelector<COMM_MODE>::type hccl_;
     HcclHandle allGatherHandleId_{INVALID_HANDLE_ID};
     HcclHandle alltoAllvHandleId_[MAX_HANDLE_ID_NUM] = {INVALID_HANDLE_ID};
     HcclDataType hcclDataType_;
@@ -308,7 +319,7 @@ __aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::HcclAlltoAllvPrepare()
                 }
             }
 
-            alltoAllvHandleId_[e] = hccl_.AlltoAllV<false>(
+            alltoAllvHandleId_[e] = hccl_.template AlltoAllV<false>(
                 (__gm__ uint8_t*)gmmOutGMTensor_.GetPhyAddr(), alltoAllvSendCnt, alltoAllvSendOffset, hcclDataType_,
                 (__gm__ uint8_t*)yOutGMTensor_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset, hcclDataType_);
         }
