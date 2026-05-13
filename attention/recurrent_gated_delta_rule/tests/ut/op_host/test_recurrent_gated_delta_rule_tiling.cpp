@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -24,6 +24,7 @@
 using namespace std;
 using namespace ge;
 using namespace optiling;
+using namespace RecurrentGatedDeltaRule;
 
 class RecurrentGatedDeltaRuleTilingTest : public testing::Test
 {
@@ -41,7 +42,7 @@ protected:
 
 TEST_F(RecurrentGatedDeltaRuleTilingTest, Test0)
 {
-    optiling::RecurrentGatedDeltaRuleCompileInfo compileinfo = {48, 196608}; // aivNum、ubSize
+    optiling::RecurrentGatedDeltaRuleCompileInfo compileinfo = {48, 196608}; // aivNum銆乽bSize
 
     int t = 128;
     int nk = 4;
@@ -78,7 +79,7 @@ TEST_F(RecurrentGatedDeltaRuleTilingTest, Test0)
             {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
         },
         {
-            {"sacle_value", Ops::Transformer::AnyValue::CreateFrom<float>(1.0)},
+            {"scale_value", Ops::Math::AnyValue::CreateFrom<float>(1.0)},
 
         },
         &compileinfo
@@ -89,4 +90,57 @@ TEST_F(RecurrentGatedDeltaRuleTilingTest, Test0)
     TilingInfo tilingInfo;
     ExecuteTiling(tilingContextPara, tilingInfo);
     EXPECT_EQ(tilingInfo.tilingKey, expectTilingKey);
+}
+
+TEST_F(RecurrentGatedDeltaRuleTilingTest, SelectsDoubleOutputBufferProfile)
+{
+    optiling::RecurrentGatedDeltaRuleCompileInfo compileinfo = {48, 196608};
+
+    int t = 128;
+    int nk = 4;
+    int dk = 128;
+    int nv = 8;
+    int dv = 128;
+    int sBlockNum = 128;
+    int b = 64;
+
+    gert::StorageShape queryShape = {{t, nk, dk}, {t, nk, dk}};
+    gert::StorageShape keyShape = {{t, nk, dk}, {t, nk, dk}};
+    gert::StorageShape valueShape = {{t, nv, dv}, {t, nv, dv}};
+    gert::StorageShape betaShape = {{t, nv}, {t, nv}};
+    gert::StorageShape stateShape = {{sBlockNum, nv, dv, dk}, {sBlockNum, nv, dv, dk}};
+    gert::StorageShape seqLengthsShape = {{b}, {b}};
+    gert::StorageShape ssmStateIndicesShape = {{t}, {t}};
+    gert::StorageShape gShape = {{t, nv}, {t, nv}};
+
+    gert::TilingContextPara tilingContextPara("RecurrentGatedDeltaRule",
+        {
+            {queryShape, ge::DT_BF16, ge::FORMAT_ND},
+            {keyShape, ge::DT_BF16, ge::FORMAT_ND},
+            {valueShape, ge::DT_BF16, ge::FORMAT_ND},
+            {betaShape, ge::DT_BF16, ge::FORMAT_ND},
+            {stateShape, ge::DT_BF16, ge::FORMAT_ND},
+            {seqLengthsShape, ge::DT_INT32, ge::FORMAT_ND},
+            {ssmStateIndicesShape, ge::DT_INT32, ge::FORMAT_ND},
+            {gShape, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
+        },
+        {
+            {"scale_value", Ops::Math::AnyValue::CreateFrom<float>(1.0)},
+        },
+        &compileinfo
+    );
+
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
+    ASSERT_EQ(tilingInfo.tilingDataSize, sizeof(RecurrentGatedDeltaRuleTilingData));
+
+    auto *tilingData = reinterpret_cast<const RecurrentGatedDeltaRuleTilingData *>(tilingInfo.tilingData.get());
+    ASSERT_NE(tilingData, nullptr);
+    EXPECT_EQ(tilingData->stateOutBufferNum, 2U);
+    EXPECT_EQ(tilingData->attnOutBufferNum, 2U);
+    EXPECT_EQ(tilingData->vStep, 64U);
 }

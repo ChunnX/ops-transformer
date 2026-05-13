@@ -22,7 +22,6 @@
 #include "exe_graph/runtime/storage_shape.h"
 #include "register/op_impl_registry.h"
 #include "log/log.h"
-#include "err/ops_err.h"
 
 using namespace gert;
 namespace ops {
@@ -77,8 +76,9 @@ static ge::graphStatus InferShapeRecurrentGatedDeltaRule(InferShapeContext *cont
 
 static ge::graphStatus InferDataTypeRecurrentGatedDeltaRule(gert::InferDataTypeContext *context)
 {
-    context->SetOutputDataType(0, ge::DT_BF16);
-    context->SetOutputDataType(1, ge::DT_BF16);
+    auto dt = context->GetInputDataType(0);
+    context->SetOutputDataType(0, dt);
+    context->SetOutputDataType(1, dt);
     return ge::GRAPH_SUCCESS;
 }
 

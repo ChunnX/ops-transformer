@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -71,7 +71,7 @@ TEST_F(RecurrentGatedDeltaRuleTest, Test0)
             {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
         },
         {
-            {"sacle_value", Ops::Transformer::AnyValue::CreateFrom<float>(1.0)},
+            {"scale_value", Ops::Math::AnyValue::CreateFrom<float>(1.0)},
         }
     );
 
