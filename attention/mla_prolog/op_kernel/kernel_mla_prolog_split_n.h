@@ -2435,17 +2435,15 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::M3AndM4(AicOffset &aicOffset)
         INT8_AFULLLOAD_MAX_MSIZE : BF16_AFULLLOAD_MAX_MSIZE;
     bool isAFullLoad = (mmQcQrParam_.m <= fullLoadMAxMSize) ? true : false;
 
-    using O_L0C = typename std::conditional<std::is_same<rmsNormCqOutputType, int8_t>::value, int32_t, float>::type;
-    using T = mmQcQrInputType;
+    // using O_L0C = typename std::conditional<std::is_same<rmsNormCqOutputType, int8_t>::value, int32_t, float>::type;
+    // using T = mmQcQrInputType;
     uint32_t nInput = mmQcQrParam_.n;
     uint32_t nL1SplitSize = mmQcQrParam_.baseN;
     uint32_t nL1loops = CeilDivT(nInput, nL1SplitSize);
     uint32_t mSize = Align(mmQcQrParam_.m, BLOCK_CUBE_SIZE);
-    constexpr uint32_t aL1Offset = L1_A_SIZE / sizeof(T);
-    constexpr uint32_t bL1Offset = L1_B_SIZE / sizeof(T);
     if (isAFullLoad) {
         if constexpr (std::is_same<mmQcQrInputType, FP8E4M3>::value && isFp8E8m0) {
-            uint64_t offsetL1A = L1_A_SIZE / 2 / sizeof(T); // 2表示scale起始地址固定从L1A上ping的64k开始
+            uint64_t offsetL1A = L1_A_SIZE / 2 / sizeof(mmQcQrInputType); // 2表示scale起始地址固定从L1A上ping的64k开始
             LoadL1AAndScale<rmsNormCqOutputType, dequantScaleType, false, true>(
                 rmsNormCqResGm_[aicOffset.rmsNormCqResOffset],
                 dequantTool_.deQuantScaleCqGm_[aicOffset.dequantScaleCqOffset], mmQcQrParam_.m, mmQcQrParam_.k,
@@ -2456,9 +2454,18 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::M3AndM4(AicOffset &aicOffset)
         }
         WaitFlag<HardEvent::MTE2_MTE1>(A_EVENT0 + (bufParam_.aL1BufIter & 1u));
     }
-    mmLocalTensors<T, O_L0C> localTensors;
-    localTensors.Init(bufParam_);
-    LocalTensor<O_L0C> cL0;
+    constexpr uint32_t mm3AL1Offset = L1_A_SIZE / sizeof(mmQcQrInputType);
+    constexpr uint32_t mm3BL1Offset = L1_B_SIZE / sizeof(mmQcQrInputType);
+    constexpr uint32_t mm4AL1Offset = L1_A_SIZE / sizeof(mmQnInputType);
+    constexpr uint32_t mm4BL1Offset = L1_B_SIZE / sizeof(mmQnInputType);
+    using MM3_O_L0C = typename std::conditional<std::is_same<mmQcQrInputType, int8_t>::value, int32_t, float>::type;
+    using MM4_O_L0C = typename std::conditional<std::is_same<mmQnInputType, int8_t>::value, int32_t, float>::type;
+    mmLocalTensors<mmQcQrInputType, MM3_O_L0C> mm3LocalTensors;
+    mmLocalTensors<mmQnInputType, MM4_O_L0C> mm4LocalTensors;
+    mm3LocalTensors.Init(bufParam_);
+    mm4LocalTensors.Init(bufParam_);
+    LocalTensor<MM3_O_L0C> mm3CL0;
+    LocalTensor<MM4_O_L0C> mm4CL0;
     uint64_t qnResOffset = aicOffset.qnResOffset;
     uint64_t weightUkOffset = aicOffset.weightUkOffset;
     for (uint32_t nL1 = 0; nL1 < nL1loops; nL1++) {
@@ -2493,11 +2500,11 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::M3AndM4(AicOffset &aicOffset)
             }
         }
         // 待处理get tensor C参数
-        cL0 = localTensors.cL0Tensor[(bufParam_.cL0BufIter & 1u) * (L0C_PP_SIZE / sizeof(O_L0C))];
+        mm3CL0 = mm3LocalTensors.cL0Tensor[(bufParam_.cL0BufIter & 1u) * (L0C_PP_SIZE / sizeof(MM3_O_L0C))];
         uint64_t mm3ResOffset = 0;
         uint32_t mm4AL1BufIter = isAFullLoad ? bufParam_.aL1BufIter + 1 : bufParam_.aL1BufIter;
-        LocalTensor<T> aL1 = localTensors.aL1Tensor[(mm4AL1BufIter & 1u) * aL1Offset];
-        LocalTensor<T> bL1 = localTensors.bL1Tensor[(bufParam_.bL1BufIter & 1u) * bL1Offset];
+        LocalTensor<mmQcQrInputType> mm4AL1 = mm3LocalTensors.aL1Tensor[(mm4AL1BufIter & 1u) * mm3AL1Offset];
+        LocalTensor<mmQcQrInputType> mm4BL1 = mm3LocalTensors.bL1Tensor[(bufParam_.bL1BufIter & 1u) * mm3BL1Offset];
         if constexpr (std::is_same<mmQcQrInputType, int8_t>::value || std::is_same<mmQcQrInputType, HIF8>::value ||
                       (std::is_same<mmQcQrInputType, FP8E4M3>::value && !isFp8E8m0)) {
             // GetTensorCToUb<T>(mm3ResLocal_, cL0, mmQcQrParam_.m, baseParams_->dimHeadSizeQc, mSize,
@@ -2505,7 +2512,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::M3AndM4(AicOffset &aicOffset)
             // CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_FIX>(FINISH_MM_QCQR_SPLIT_N);
             // mm3ResOffset += mmQcQrParam_.m * baseParams_->dimHeadSizeQc;
         } else {
-            GetTensorCToL1(aL1, cL0, mmQcQrParam_.m, baseParams_->dimHeadSizeQc, mSize,
+            GetTensorCToL1(mm4AL1, mm3CL0, mmQcQrParam_.m, baseParams_->dimHeadSizeQc, mSize,
                     mSize, bufParam_);
             SetFlag<HardEvent::FIX_MTE1>(L0A_EVENT0 + (mm4AL1BufIter & 1u));  
             WaitFlag<HardEvent::FIX_MTE1>(L0A_EVENT0 + (mm4AL1BufIter & 1u)); 
@@ -2517,7 +2524,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::M3AndM4(AicOffset &aicOffset)
 
         CrossCoreWaitFlag(FINISH_VEC_QR);
         // TODO：此处偏移需要修改
-        GetTensorCToUb(mm3ResLocal_, cL0[baseParams_->dimHeadSizeQc * mSize], mmQcQrParam_.m, baseParams_->dimHeadRope, mSize,
+        GetTensorCToUb(mm3ResLocal_, mm3CL0[baseParams_->dimHeadSizeQc * mSize], mmQcQrParam_.m, baseParams_->dimHeadRope, mSize,
                 baseParams_->dimHeadRope, bufParam_);
         CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_FIX>(FINISH_MM_QCQR_SPLIT_N);
         SetFlag<HardEvent::FIX_M>(L0C_EVENT0 + (bufParam_.cL0BufIter & 1u));
@@ -2552,18 +2559,18 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::M3AndM4(AicOffset &aicOffset)
             }
 
             WaitFlag<HardEvent::FIX_M>(L0C_EVENT0 + (bufParam_.cL0BufIter & 1u));
-            cL0 = localTensors.cL0Tensor[(bufParam_.cL0BufIter & 1u) * (L0C_PP_SIZE / sizeof(O_L0C))];
-            MatmulL0<T, O_L0C, dequantScaleType>(bufParam_, aL1, bL1[mmQnParam_.k * mmQnParam_.baseN * n], localTensors.aL0Tensor,
-                localTensors.bL0Tensor, cL0, mmadParams, mmQnParam_.kL1StepSize);
+            mm4CL0 = localTensors.cL0Tensor[(bufParam_.cL0BufIter & 1u) * (L0C_PP_SIZE / sizeof(MM4_O_L0C))];
+            MatmulL0<mmQnInputType, MM4_O_L0C, dequantScaleType>(bufParam_, mm4AL1, mm4BL1[mmQnParam_.k * mmQnParam_.baseN * n], localTensors.aL0Tensor,
+                localTensors.bL0Tensor, mm4CL0, mmadParams, mmQnParam_.kL1StepSize);
 
             if constexpr (needQnDynamicQuant) {
                 if (n == 0) {
                     CrossCoreWaitFlag(FINISH_VEC_QN);
                 }
-                GetTensorCToUb(mm4ResLocal_[n * mmQnParam_.baseN], cL0, mmQnParam_.m, mmQnParam_.baseN, mSize, baseParams_->headSizeCkv,
+                GetTensorCToUb(mm4ResLocal_[n * mmQnParam_.baseN], mm4CL0, mmQnParam_.m, mmQnParam_.baseN, mSize, baseParams_->headSizeCkv,
                                                     bufParam_);
             } else {
-                GetTensorC<T>(mmQnResGm_[qnResOffset + n * mmQnParam_.baseN], cL0, mmQnParam_.m, mmQnParam_.baseN, mSize, mmQnParam_.orgKc,
+                GetTensorC<mmQnInputType>(mmQnResGm_[qnResOffset + n * mmQnParam_.baseN], mm4CL0, mmQnParam_.m, mmQnParam_.baseN, mSize, mmQnParam_.orgKc,
                                                     bufParam_);
             }
             SetFlag<HardEvent::FIX_M>(L0C_EVENT0 + (bufParam_.cL0BufIter & 1u));
@@ -2661,9 +2668,9 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::V3AndV4(AivOffset &aivOffset,
                 CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE3>(FINISH_VEC_QN);
             }
 
-            Brcb(scaleBrcb, scaleOutputLocal, CeilDivT(static_cast<uint64_t>(row), computeBlockAlign), {1, computeBlockAlign});
-            AscendC::PipeBarrier<PIPE_V>();
-            MulQrVF(queryRopeOutputLocal, mm3ResLocal_, scaleBrcb, quantScaleCkv, row, computeBlockAlign);
+            // Brcb(scaleBrcb, scaleOutputLocal, CeilDivT(static_cast<uint64_t>(row), computeBlockAlign), {1, computeBlockAlign});
+            // AscendC::PipeBarrier<PIPE_V>();
+            MulQrVF(queryRopeOutputLocal, mm3ResLocal_, scaleBrcb, quantScaleCkv, row * baseParams_->headSizeCkv, 1);
         }
         PipeBarrier<PIPE_V>();
         SetFlag<HardEvent::V_MTE3>(EVENT_ID1);
