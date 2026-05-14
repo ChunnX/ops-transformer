@@ -212,7 +212,8 @@ __aicore__ inline void MatmulAllReduceQuantCommInt8<XType, WType, YType, MmType,
 }
 
 template <typename XType, typename WType, typename YType, class MmType, Mc2CoreType CoreType, int commMode>
-__aicore__ inline void MatmulAllReduceQuantCommInt8<XType, WType, YType, MmType, CoreType, commMode>::InnerProcess(
+__aicore__ inline void MatmulAllReduceQuantCommInt8<
+    XType, WType, YType, MmType, CoreType, commMode>::InnerProcess(
     MmType& mmOp, uint32_t tileCnt, DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams* mmTiling, uint32_t isAdd,
     uint32_t needUbBuffer, uint32_t curPadM, bool isTailFlag)
 {
