@@ -57,6 +57,9 @@ constexpr int64_t TEMPLATE_ALIBI = 3;
 constexpr int64_t TEMPLATE_OMNI = 4;
 constexpr int64_t TEMPLATE_NZ = 5;
 constexpr int64_t TEMPLATE_NCT = 6;
+constexpr int64_t TEMPLATE_NORMAL_CONTIGUOUS = 7;
+constexpr int64_t TEMPLATE_NZ_CONTIGUOUS = 8;
+
 
 
 constexpr uint64_t INPUT_CACHE_MODE_INDEX = 0;
@@ -785,6 +788,78 @@ ge::graphStatus ScatterPaKvCacheTiling::GetTensorInfo(gert::Shape &shape, gert::
     return ge::GRAPH_SUCCESS;
 }
 
+bool ScatterPaKvCacheTiling::IsAxesContiguous(const gert::Stride &stride, const gert::Shape &shape,
+                                               int64_t startAxis, int64_t endAxis)
+{
+    if (startAxis < 0 || endAxis < 0 || startAxis >= endAxis) {
+        return false;
+    }
+
+    int64_t dimNum = static_cast<int64_t>(shape.GetDimNum());
+    if (endAxis > dimNum) {
+        return false;
+    }
+
+    int64_t validStride = 1;
+    for (int64_t i = endAxis - 1; i >= startAxis; i--) {
+        if (shape.GetDim(i) == 1) {
+            continue;
+        }
+        if (stride.GetStride(i) != validStride) {
+            return false;
+        }
+        validStride *= shape.GetDim(i);
+    }
+    return true;
+}
+
+bool ScatterPaKvCacheTiling::IsLastAxisContiguous(const gert::Stride &stride, const gert::Shape &shape)
+{
+    int64_t dimNum = static_cast<int64_t>(shape.GetDimNum());
+    if (dimNum < 1) {
+        return false;
+    }
+
+    bool lastAxisContiguous = (stride.GetStride(dimNum - 1) == 1);
+    bool otherAxesNonContiguous = false;
+
+    if (dimNum > 1) {
+        otherAxesNonContiguous = !IsAxesContiguous(stride, shape, 0, dimNum - 1);
+    }
+
+    return lastAxisContiguous && (dimNum == 1 || otherAxesNonContiguous);
+}
+
+bool ScatterPaKvCacheTiling::IsNonContiguous()
+{
+    bool keyLastAxisContiguous = IsLastAxisContiguous(keyStride_, inputKeyShape_);
+    bool keyCacheLastAxisContiguous = IsLastAxisContiguous(keyCacheStride_, inputKeyCacheInShape_);
+    bool valueLastAxisContiguous = true;
+    bool valueCacheLastAxisContiguous = true;
+
+    if (inOutMode_ == DUAL_IN_OUT) {
+        valueLastAxisContiguous = IsLastAxisContiguous(valueStride_, inputValueShape_);
+        valueCacheLastAxisContiguous = IsLastAxisContiguous(valueCacheStride_, inputValueCacheInShape_);
+    }
+
+    bool allLastAxisContiguous = keyLastAxisContiguous && keyCacheLastAxisContiguous &&
+                                  valueLastAxisContiguous && valueCacheLastAxisContiguous;
+
+    bool anyNonContiguous = !IsAxesContiguous(keyStride_, inputKeyShape_, 0,
+                                               static_cast<int64_t>(inputKeyShape_.GetDimNum())) ||
+                             !IsAxesContiguous(keyCacheStride_, inputKeyCacheInShape_, 0,
+                                               static_cast<int64_t>(inputKeyCacheInShape_.GetDimNum()));
+    if (inOutMode_ == DUAL_IN_OUT) {
+        anyNonContiguous = anyNonContiguous ||
+                           !IsAxesContiguous(valueStride_, inputValueShape_, 0,
+                                             static_cast<int64_t>(inputValueShape_.GetDimNum())) ||
+                           !IsAxesContiguous(valueCacheStride_, inputValueCacheInShape_, 0,
+                                             static_cast<int64_t>(inputValueCacheInShape_.GetDimNum()));
+    }
+
+    return allLastAxisContiguous && anyNonContiguous;
+}
+
 ge::graphStatus ScatterPaKvCacheTiling::GetShapeAttrsInfo()
 {
     SetInputPos();
@@ -815,6 +890,7 @@ ge::graphStatus ScatterPaKvCacheTiling::GetShapeAttrsInfo()
     }
     OP_CHECK_IF(inputKeyDimNum != static_cast<size_t>(DIM3) && inputKeyDimNum != static_cast<size_t>(DIM4),
                 OP_LOGE(context_, "the dim num of inputKey must be 3 or 4."), return ge::GRAPH_FAILED;);
+
     if (templateType_ == TEMPLATE_NCT) {
         auto attrs = context_->GetAttrs();
         OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);

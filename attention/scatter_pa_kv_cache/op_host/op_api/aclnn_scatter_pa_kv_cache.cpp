@@ -63,11 +63,11 @@ static aclnnStatus CheckNullptr(
     CHECK_RET(slotMapping != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(workspaceSize != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(executor != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-    
+
     if (value != nullptr) {
         CHECK_RET(valueCacheRef != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     }
-    
+
     return ACLNN_SUCCESS;
 }
 
@@ -176,7 +176,7 @@ static aclnnStatus CheckFormat(
 {
     auto keyFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(key->GetStorageFormat()));
     auto slotMappingFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(slotMapping->GetStorageFormat()));
-    
+
     if (keyFormat != ge::FORMAT_ND) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                 "key format[%s] is not supported, only support ND.",
@@ -539,7 +539,7 @@ aclnnStatus aclnnScatterPaKvCacheGetWorkspaceSize(
     }
 
     CHECK_RET(CheckShape(key, value) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
-    
+
     CHECK_RET(CheckFormat(key, keyCacheRef, slotMapping, value, valueCacheRef) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_INVALID);
 

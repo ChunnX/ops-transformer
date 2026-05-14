@@ -116,6 +116,9 @@ protected:
     ge::graphStatus CheckSlotMappingShape(int64_t requiredDimNum);
     int64_t RoundUp(int64_t x, int64_t dtypeSize);
     void GenTilingKey();
+    bool IsNonContiguous();
+    bool IsAxesContiguous(const gert::Stride &stride, const gert::Shape &shape, int64_t startAxis, int64_t endAxis);
+    bool IsLastAxisContiguous(const gert::Stride &stride, const gert::Shape &shape);
 
 private:
     platform_ascendc::SocVersion socVersion_;
