@@ -38,7 +38,10 @@
 
 #include "kernel_operator.h"
 #include "fused_causal_conv1d_cut_bh_struct.h"
-#include "vf/compute.h"
+#include "vf/fused_causal_conv1d_state.h"
+#include "vf/fused_causal_conv1d_no_state_single_tail.h"
+#include "vf/fused_causal_conv1d_no_state_double_tail.h"
+
 
 using namespace AscendC;
 
@@ -46,7 +49,7 @@ using namespace AscendC;
 constexpr int32_t DOUBLE_BUFFER = 2;  // 双Buffer数量，用于重叠数据搬运和计算
 constexpr int32_t ALIGN_BYTES = 32;   // 32字节对齐，用于DataCopyParams的stride和对齐计算
 constexpr int32_t MAX_SEQUENCE_LEN = 8;  // F4: m最大为7，seqLen最大为m+1=8
-constexpr int32_t FOUR_BUFFER = 4;
+constexpr int32_t CAST_REP_SIZE = 64;
 
 // TilingData结构定义在Host侧：op_host/fused_causal_conv1d_cut_bh_tiling_arch35.h
 // 核间切分策略：二维切分（Dim方向 × Batch方向）
@@ -138,6 +141,8 @@ private:
     TQue<QuePosition::VECIN, 1> cacheQueueIn;
     TQue<QuePosition::VECOUT, 1> cacheQueueOut;
     TQue<QuePosition::VECIN, 1> xWeightQueue;  // x和weight合并队列（前半段x，后半段weight）
+    // TQue<QuePosition::VECIN, 1> xQueue;  // x和weight合并队列（前半段x，后半段weight）
+    // TQue<QuePosition::VECIN, 1> weightQueue;
     TQue<QuePosition::VECOUT, 1> yQueue;
     TQue<QuePosition::VECIN, 1> indicesQueue;  // APC 2D indices 专用队列（DB，消除数据竞争）
     // 常驻固定 buffer
@@ -155,7 +160,7 @@ private:
     // 核间切分参数
     int64_t dimCoreCnt_;      // dim方向的核数
     int64_t dimMainCoreCnt_;  // dim方向的主核个数
-    int64_t mainCoredimLen_;  // 主核处理的Dim大小（128对齐）
+    int64_t mainCoredimLen_;  // 主核处理的Dim大小（128对齐），尾核可能含不足128的余数元素
     int64_t tailCoredimLen_;  // 尾核处理的Dim大小
 
     int64_t batchMainCoreCnt_;  // batch方向的主核个数
@@ -311,19 +316,39 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::InitParams(const FusedCausalCo
     blockIdx_ = GetBlockIdx();
     batchIdx_ = blockIdx_ / dimCoreCnt_;            // Batch方向索引
     dimIdx_ = blockIdx_ - batchIdx_ * dimCoreCnt_;  // Dim方向索引
+
+    // dim 方向：多主核/多尾核策略
+    //   dimIdx_ < dimMainCoreCnt_  → 大核（每核 mainCoredimLen_ 元素）
+    //   dimIdx_ >= dimMainCoreCnt_ → 小核（每核 tailCoredimLen_ 元素）
+    //   dimIdx_ == dimCoreCnt_-1   → 最后一个 dim 核，额外处理 dimRemainderElems 余数元素
+    bool isLastDimCore = (dimIdx_ == dimCoreCnt_ - 1);
     if (dimIdx_ < dimMainCoreCnt_) {
+        // 大核
         loopNumDim_ = tilingData->loopNumDim;
         coreDimLen_ = mainCoredimLen_;
         ubMainFactorDim_ = tilingData->ubMainFactorDim;
         ubTailFactorDim_ = tilingData->ubTailFactorDim;
         dimOffset_ = dimIdx_ * mainCoredimLen_;
     } else {
+        // 小核：偏移 = 所有大核占用的 dim 量 + 当前小核在小核中的序号 × tailCoredimLen_
+        int64_t tailIdx = dimIdx_ - dimMainCoreCnt_;
         loopNumDim_ = tilingData->tailBlockloopNumDim;
         coreDimLen_ = tailCoredimLen_;
         ubMainFactorDim_ = tilingData->tailBlockubFactorDim;
         ubTailFactorDim_ = tilingData->tailBlockubTailFactorDim;
-        dimOffset_ = dimMainCoreCnt_ * mainCoredimLen_ + (dimIdx_ - dimMainCoreCnt_) * tailCoredimLen_;
+        dimOffset_ = dimMainCoreCnt_ * mainCoredimLen_ + tailIdx * tailCoredimLen_;
     }
+    // 最后一个 dim 核：在普通 dim 大小基础上追加余数元素，使用专用 UB 参数
+    if (isLastDimCore && tilingData->dimRemainderElems > 0) {
+        coreDimLen_ += tilingData->dimRemainderElems;
+        loopNumDim_ = tilingData->lastCoreloopNumDim;
+        ubMainFactorDim_ = tilingData->lastCoreubMainFactorDim;
+        ubTailFactorDim_ = tilingData->lastCoreubTailFactorDim;
+    }
+
+    // batch 方向：多主核/多尾核策略
+    //   batchIdx_ < batchMainCoreCnt_  → 大核（每核 mainCoreBatchNum_ 个 batch）
+    //   batchIdx_ >= batchMainCoreCnt_ → 小核（每核 tailCoreBatchNum_ 个 batch）
     if (batchIdx_ < batchMainCoreCnt_) {
         loopNumBS_ = tilingData->loopNumBS;
         ubMainFactorBS_ = tilingData->ubMainFactorBS;
@@ -331,11 +356,12 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::InitParams(const FusedCausalCo
         coreBatchNum_ = mainCoreBatchNum_;
         firstBatchIdx_ = batchIdx_ * mainCoreBatchNum_;
     } else {
+        int64_t batchTailIdx = batchIdx_ - batchMainCoreCnt_;
         loopNumBS_ = tilingData->tailBlockloopNumBS;
         ubMainFactorBS_ = tilingData->tailBlockubFactorBS;
         ubTailFactorBS_ = tilingData->tailBlockubTailFactorBS;
         coreBatchNum_ = tailCoreBatchNum_;
-        firstBatchIdx_ = batchMainCoreCnt_ * mainCoreBatchNum_ + (batchIdx_ - batchMainCoreCnt_) * tailCoreBatchNum_;
+        firstBatchIdx_ = batchMainCoreCnt_ * mainCoreBatchNum_ + batchTailIdx * tailCoreBatchNum_;
     }
 }
 
@@ -351,6 +377,7 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::InitQueues()
     xPartSize_ = xQueueSize / sizeof(T);
     xWeightQueueSize_ = xQueueSize + weightQueueSize;
     pipe_->InitBuffer(xWeightQueue, 1, xWeightQueueSize_);
+    // pipe_->InitBuffer(WeightQueue, 1, weightQueueSize);
     pipe_->InitBuffer(yQueue, 1, xQueueSize);
 
     // cacheQueue: 存储cache state（stateLen行）
@@ -459,8 +486,8 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Process()
     SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
 
     // === 主双重循环（BS方向 × Dim方向）===
+    // printf("loopNumBS_ %d, loopNumDim_ %d", loopNumBS_, loopNumDim_);
     for (int32_t batchLoop = 0; batchLoop < loopNumBS_; batchLoop++) {
-
         for (int32_t dimLoop = 0; dimLoop < loopNumDim_; dimLoop++) {
             batchNumInLoop_ = (batchLoop == loopNumBS_ - 1) ? ubTailFactorBS_ : ubMainFactorBS_;
             dimSizeInLoop_ = (dimLoop == loopNumDim_ - 1) ? ubTailFactorDim_ : ubMainFactorDim_;
@@ -492,6 +519,9 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::CopyIn(
     LocalTensor<T> xWeightLocal = xWeightQueue.AllocTensor<T>();
     LocalTensor<T> xLocal = xWeightLocal[0];
     LocalTensor<T> weightLocal = xWeightLocal[xPartSize_];
+    // LocalTensor<T> xLocal = xQueue.AllocTensor<T>();
+    // LocalTensor<T> weightLocal = weightQueue.AllocTensor<T>();
+    // printf("xOffset %d, blockCount %d, dimSizeInLoop_ %d", xOffset, blockCount, dimSizeInLoop_);
 
     // === 拷贝x数据：[blockCount, dimSizeInLoop] ===
     DataCopyPadParams padParams{false, 0, 0, 0};
@@ -512,6 +542,8 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::CopyIn(
     DataCopyPad(weightLocal, weightGm[weightOffset], weightCopyParams, padParams);
 
     xWeightQueue.EnQue(xWeightLocal);
+    // xQueue.EnQue(xLocal);
+    // weightQueue.EnQue(weightLocal);
 }
 
 template <typename T>
@@ -528,6 +560,8 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Compute(int32_t batchLoop, int
     LocalTensor<T> xWeightLocal = xWeightQueue.DeQue<T>();
     LocalTensor<T> xLocal = xWeightLocal[0];
     LocalTensor<T> weightLocal = xWeightLocal[xPartSize_];
+    // LocalTensor<T> xLocal = xQueue.AllocTensor<T>();
+    // LocalTensor<T> weightLocal = weightQueue.AllocTensor<T>();
     LocalTensor<T> yLocal = yQueue.AllocTensor<T>();
 
     int32_t batchNumPerLoop = batchLoop * ubMainFactorBS_;
@@ -649,13 +683,19 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Compute(int32_t batchLoop, int
         LocalTensor<T> y1Slice = yLocal[yUbOffset];
         LocalTensor<T> convStatesSlice = (numComputed == 0) ? convStatesLocalIn : convStatesLocalIn[offset * dimSizeInLoop_];
         Conv1dNeedStateBH(xSlice, weightLocal, convStatesSlice, y1Slice, dimSizeInLoop_, isResidualConnection_);
+        PipeBarrier<PIPE_ALL>();
         cacheQueueIn.FreeTensor<T>(convStatesLocalIn);
 
         int16_t blockCount = curBatchSeq - kernelSize_ + 1;
         if (blockCount > 0) {
             uint8_t xSLen = static_cast<uint8_t>(blockCount);
             LocalTensor<T> y2Slice = yLocal[yUbOffset + (kernelSize_ - 1) * dimSizeInLoop_];
-            Conv1dNoNeedState(xSlice, weightLocal, y2Slice, xSLen, dimSizeInLoop_, isResidualConnection_);
+            uint16_t dimRem = dimSizeInLoop_ - dimSizeInLoop_ / (CAST_REP_SIZE * 2) * (CAST_REP_SIZE * 2);
+            if(dimRem > CAST_REP_SIZE || dimRem == 0) {
+                Conv1dNoStateDoubleTail(xSlice, weightLocal, y2Slice, xSLen, dimSizeInLoop_, isResidualConnection_);
+            } else {
+                Conv1dNoStateSingleTail(xSlice, weightLocal, y2Slice, xSLen, dimSizeInLoop_, isResidualConnection_);
+            }
         }
 
         // ========== F3 convMode: Pangu v2 前 width-1 token 置零 ==========
@@ -663,7 +703,11 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Compute(int32_t batchLoop, int
             int32_t lastResetIdx = (kernelSize_ - 1) - numComputed;
             if (lastResetIdx > 0) {
                 lastResetIdx = lastResetIdx < curBatchSeq ? lastResetIdx : curBatchSeq;
-                Duplicate(yLocal[yUbOffset], static_cast<T>(0), lastResetIdx * dimSizeInLoop_);
+                if(isResidualConnection_ == 1)
+                    Adds(yLocal[yUbOffset], static_cast<T>(0), xLocal[yUbOffset],lastResetIdx * dimSizeInLoop_);
+                else{
+                    Duplicate(yLocal[yUbOffset], static_cast<T>(0), lastResetIdx * dimSizeInLoop_);
+                }
             }
         }
 
@@ -671,6 +715,7 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Compute(int32_t batchLoop, int
     }
 
     // === 写出 yLocal ===
+    PipeBarrier<PIPE_ALL>();
     yQueue.EnQue<T>(yLocal);
     yLocal = yQueue.DeQue<T>();
 
@@ -682,12 +727,6 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Compute(int32_t batchLoop, int
 
     // 写 y GM
     DataCopyPad(yGm[yOffset], yLocal, yParams);
-
-    // F3: inplace 写回 xGm
-    if (inplace_) {
-        yParams.dstStride = (dimSum_ - dimSizeInLoop_) * sizeof(T);
-        DataCopyPad(xGm[xOffset], yLocal, yParams);
-    }
 
     xWeightQueue.FreeTensor(xWeightLocal);
     yQueue.FreeTensor(yLocal);

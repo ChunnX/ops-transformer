@@ -92,7 +92,7 @@ constexpr int64_t COARSE_GRAIN_ELEMENT = 1024;   // 粗粒度模式下每块的�
 constexpr int64_t COARSE_GRAIN_SIZE = COARSE_GRAIN_ELEMENT * 2;  // 粗粒度块字节数（fp16/bf16）
 constexpr int64_t DIM_ALIGN_SIZE = 256;       // 细粒度对齐块的字节数（128 元素 × 2 字节）
 constexpr int64_t ALIGN_BYTES = 32;           // NPU 内存地址基本对齐要求（32 字节）
-constexpr int64_t MIN_DIM = 128;              // dim 下限
+constexpr int64_t MIN_DIM = 64;               // dim 下限（16 的倍数，最小 64）
 constexpr int64_t MAX_DIM = 16384;            // dim 上限
 constexpr int64_t MIN_BATCH = 1;              // batch 下限
 constexpr int64_t MAX_BATCH = 256;            // batch 上限
@@ -280,6 +280,12 @@ private:
     int64_t tailBlockubTailFactorBS_ = 0;   // 小核 batch 方向尾块大小
     int64_t tailBlockubFactorDim_ = 0;      // 小核每次 UB 循环处理的 dim 元素数（主块大小）
     int64_t tailBlockubTailFactorDim_ = 0;  // 小核 dim 方向尾块大小
+    // ---- 最后一个 dim 核（last dim core）UB 参数 ----
+    // 最后一个 dim 核在普通 tail core 参数基础上额外处理 dimRemainderElems_ 个余数元素
+    int64_t dimRemainderElems_ = 0;             // dim % 128，最后一个 dim 核额外处理的余数元素数
+    int64_t lastCoreloopNumDim_ = 0;            // 最后一个 dim 核的 dim 方向循环次数
+    int64_t lastCoreubMainFactorDim_ = 0;       // 最后一个 dim 核的 UB 主块 dim 大小
+    int64_t lastCoreubTailFactorDim_ = 0;       // 最后一个 dim 核的 UB 尾块 dim 大小
 
     // ---- 传递给 kernel 的 tiling 数据结构 ----
     FusedCausalConv1dCutBHTilingData tilingData_;

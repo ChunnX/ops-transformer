@@ -279,9 +279,9 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetAttrInfo()
     }
 
     // 原地更新开关：属性值 0 → inplace_=1（原地），非 0 → inplace_=0（非原地）
-    const int64_t *inplacePtr = attrs->GetAttrPointer<int64_t>(ATTR_INPLACE_INDEX);
+    const bool *inplacePtr = attrs->GetAttrPointer<bool>(ATTR_INPLACE_INDEX);
     if (inplacePtr != nullptr) {
-        inplace_ = (*inplacePtr == 0) ? 1 : 0;
+        inplace_ = (*inplacePtr) ? 1 : 0;
     }
 
     // APC 开启时 blockSize 必须有效
@@ -350,7 +350,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetStrideInfo()
 //   - batch 范围：[MIN_BATCH, MAX_BATCH]
 //   - 3D 模式：seqLen = m+1，m ∈ [MIN_M, MAX_M]
 //   - 2D 模式：max_query_len ∈ [1, MAX_M+1]
-//   - dim 范围：[MIN_DIM, MAX_DIM]，且必须是 128 的倍数
+//   - dim 范围：[MIN_DIM, MAX_DIM]，且必须是 16 的倍数（余数元素由 dim 尾核承担）
 // =========================================================================
 ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateXShape()
 {
@@ -378,13 +378,13 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateXShape()
             return ge::GRAPH_FAILED);
     }
 
-    // dim 必须在合法范围内，且为 128 的整数倍（满足向量计算对齐要求）
+    // dim 必须在合法范围内，且为 16 的整数倍（不足 128 的余数元素由 dim 尾核承担）
     OP_CHECK_IF(dim_ < MIN_DIM || dim_ > MAX_DIM,
         OP_LOGE(context_->GetNodeName(), "X dimension must be in [%ld, %ld], but got %ld", MIN_DIM, MAX_DIM, dim_),
         return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(dim_ % DIM_ALIGN_ELEMENT != 0,
-        OP_LOGE(context_->GetNodeName(), "The dimension of x must be a multiple of 128, but got %ld", dim_),
+    OP_CHECK_IF(dim_ % 16 != 0,
+        OP_LOGE(context_->GetNodeName(), "The dimension of x must be a multiple of 16, but got %ld", dim_),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -733,32 +733,39 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::DoOpTiling()
 // =========================================================================
 // ComputeInterCoreSplit（细粒度核间切分）
 //
-// 策略：2D 非均匀切分（dim × batch）
-//   1. 将 dim 划分为 N = dim/128 个对齐块
+// 策略：2D 多主核/多尾核切分（dim × batch）
+//   1. 将 dim 划分为 N = dim/128 个对齐块，余数 dimRemainder = dim % 128
 //   2. 贪心搜索使 dimCoreCnt × batchCoreCnt 最大的 (dc, bc) 组合
-//   3. 对 dim 和 batch 两个方向各自做非均匀切分：
-//      - 前 remainder 个核为"大核"，多分 1 块
-//      - 其余为"小核"，分基础数量
+//   3. dim 方向多主核/多尾核切分：
+//      - blockRemainder = N % dimCoreCnt 个大核，每核 (base+1)*128 元素
+//      - (dimCoreCnt - blockRemainder) 个小核，每核 base*128 元素
+//      - 最后一个 dim 核额外承担 dimRemainder 余数元素（存入 dimRemainderElems_）
+//   4. batch 方向多主核/多尾核切分：bsRemainder 个大核，其余为小核
 // =========================================================================
 ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeInterCoreSplit()
 {
-    // N = dim / 128，即 dim 方向可用的对齐块数
+    // N = dim / 128，即 dim 方向可用的对齐块数；dimRemainder 为不足 128 的余数元素
     int64_t N = dim_ / DIM_ALIGN_ELEMENT;
-    if (N <= 0) {
-        OP_LOGE(context_->GetNodeName(), "dim %ld is smaller than DIM_ALIGN_ELEMENT %ld", dim_, DIM_ALIGN_ELEMENT);
+    dimRemainderElems_ = dim_ % DIM_ALIGN_ELEMENT;
+    if (dim_ <= 0) {
+        OP_LOGE(context_->GetNodeName(), "dim %ld is invalid", dim_);
         return ge::GRAPH_FAILED;
     }
+    // dim < 128 时（如 dim=64），N=0，dimRemainderElems_=dim_
+    // 贪心搜索时用 searchN=1 代替 N=0，让 batch 方向能正常分核
+    // 切分结果里 mainCoredimLen_ = base*128 = 0，最后一个核完全靠 dimRemainderElems_ 处理
+    int64_t searchN = (N > 0) ? N : 1;
 
     // 根据数据量计算可用核数上限
     limitedCoreNum_ = CalculateLimitedCoreNum();
     int64_t maxCoresAvailable = std::min<int64_t>(totalCoreNum_, limitedCoreNum_);
 
-    // 贪心搜索：从 N 到 1 遍历 dim 方向核数 dc，
+    // 贪心搜索：从 searchN 到 1 遍历 dim 方向核数 dc，
     // 找使 dc × actualBS 最大的组合（优先总利用率高，相同时 dc 更大）
     int64_t bestDimCores = 1;
     int64_t bestBSCores = 1;
     int64_t bestUsed = 1;
-    for (int64_t dc = N; dc >= 1; --dc) {
+    for (int64_t dc = searchN; dc >= 1; --dc) {
         int64_t maxAllowedBSByCore = maxCoresAvailable / dc;
         if (maxAllowedBSByCore == 0)
             continue;
@@ -776,26 +783,28 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeInterCoreSplit()
         }
     }
 
-    // dim 方向非均匀切分：base = N / dc，前 remainder 个核多分 1 块
+    // dim 方向多主核/多尾核切分：
+    //   blockRemainder 个大核（每核 (base+1)*128 元素），其余为小核（每核 base*128 元素）
+    //   最后一个 dim 核额外承担 dimRemainderElems_ 个余数元素（通过 lastCore* 参数传递）
     int64_t base      = N / bestDimCores;
     int64_t remainder = N % bestDimCores;
 
     dimCoreCnt_ = bestDimCores;
     if (remainder == 0) {
-        // 整除：所有核同样大小，统一归为"主核"
+        // 完全整除：所有核均等，无尾核
         dimMainCoreCnt_ = bestDimCores;
         dimTailCoreCnt_ = 0;
         mainCoredimLen_ = base * DIM_ALIGN_ELEMENT;
-        tailCoredimLen_ = base * DIM_ALIGN_ELEMENT;  // 与主核相同，供后续 UB 计算使用
+        tailCoredimLen_ = base * DIM_ALIGN_ELEMENT;
     } else {
-        // 不整除：前 remainder 个为大核（base+1 块），其余为小核（base 块）
+        // 有块余数：remainder 个大核，其余为小核
         dimMainCoreCnt_ = remainder;
         dimTailCoreCnt_ = bestDimCores - remainder;
         mainCoredimLen_ = (base + 1) * DIM_ALIGN_ELEMENT;
         tailCoredimLen_ = base * DIM_ALIGN_ELEMENT;
     }
 
-    // batch 方向非均匀切分：bsBase = batch / bc，前 bsRemainder 个核多分 1 个 batch
+    // batch 方向多主核/多尾核切分：bsRemainder 个大核，其余为小核
     batchCoreCnt_ = bestBSCores;
     int64_t bsBase      = batchSize_ / batchCoreCnt_;
     int64_t bsRemainder = batchSize_ % batchCoreCnt_;
@@ -863,15 +872,17 @@ void FusedCausalConv1dCutBHTiling::ComputeUbFor(int64_t coreDimElems, int64_t co
         outUbBS  = coreBS;
         outUbDim = std::min(maxUbDim, coreDimElems);
         outUbDim = (outUbDim / DIM_ALIGN_ELEMENT) * DIM_ALIGN_ELEMENT;
-        if (outUbDim == 0) outUbDim = DIM_ALIGN_ELEMENT; //若对齐为0，强制设为DIM_ALIGN_ELEMENT
+        if (outUbDim == 0) outUbDim = DIM_ALIGN_ELEMENT;
+        // 尾核 coreDimElems 可能不足 128（dim % 128 != 0），outUbDim 不能超过实际 dim 大小
+        outUbDim = std::min(outUbDim, coreDimElems);
     } else {
-        // UB 不足：固定 dim=128，尽量多放 batch
-        outUbDim = DIM_ALIGN_ELEMENT;
+        // UB 不足：固定 dim=128（或 coreDimElems 若更小），尽量多放 batch
+        outUbDim = std::min(DIM_ALIGN_ELEMENT, coreDimElems);
         int64_t weightConvStatesSize = weightConvStatesCoeffPerDim * outUbDim;
-        int64_t availableForX        = availableUbSize - weightConvStatesSize; //保证x核state能载入
+        int64_t availableForX        = availableUbSize - weightConvStatesSize;
         int64_t xSizePerBatch        = seqLen_ * outUbDim * DTYPE_SIZE * 2;
-        outUbBS = (xSizePerBatch > 0) ? (availableForX / xSizePerBatch) : 0; //多余的ub空间放x
-        outUbBS = std::max<int64_t>(outUbBS, 1);   // 至少处理 1 个 batch
+        outUbBS = (xSizePerBatch > 0) ? (availableForX / xSizePerBatch) : 0;
+        outUbBS = std::max<int64_t>(outUbBS, 1);
         outUbBS = std::min(outUbBS, coreBS);
     }
 
@@ -925,26 +936,65 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeIntraCoreUbTiling()
     // 扣除系统预留和固定占用后的可用 UB
     int64_t availableUbSize = static_cast<int64_t>(ubSize_ - SYSTEM_RESERVED_UB_SIZE) - fixedUBSize;
 
+    // 最后一个 dim 核的实际 dim 大小（基础块 + 余数）
+    int64_t lastBaseDimLen = (dimTailCoreCnt_ > 0) ? tailCoredimLen_ : mainCoredimLen_;
+    int64_t lastCoreDimLen = lastBaseDimLen + dimRemainderElems_;
+
+    if (mainCoredimLen_ == 0) {
+        ComputeUbFor(lastCoreDimLen, mainCoreBatchNum_, availableUbSize,
+            lastCoreubMainFactorDim_, ubMainFactorBS_,
+            lastCoreloopNumDim_, loopNumBS_,
+            lastCoreubTailFactorDim_, ubTailFactorBS_);
+        // 主核和尾核参数均复制 lastCore 参数（kernel 里这些核实际走 lastCore 分支）
+        ubMainFactorDim_ = lastCoreubMainFactorDim_;
+        ubTailFactorDim_ = lastCoreubTailFactorDim_;
+        loopNumDim_      = lastCoreloopNumDim_;
+        tailBlockubFactorDim_     = lastCoreubMainFactorDim_;
+        tailBlockubTailFactorDim_ = lastCoreubTailFactorDim_;
+        tailBlockloopNumDim_      = lastCoreloopNumDim_;
+        tailBlockubFactorBS_      = ubMainFactorBS_;
+        tailBlockubTailFactorBS_  = ubTailFactorBS_;
+        tailBlockloopNumBS_       = loopNumBS_;
+        return ge::GRAPH_SUCCESS;
+    }
+
     // 主核 UB 参数
     ComputeUbFor(mainCoredimLen_, mainCoreBatchNum_, availableUbSize,
         ubMainFactorDim_, ubMainFactorBS_, loopNumDim_, loopNumBS_, ubTailFactorDim_, ubTailFactorBS_);
-
+    
     // 尾核 UB 参数（存在尾核时才单独计算；否则复制主核参数保持一致）
     if (dimTailCoreCnt_ > 0 || batchTailCoreCnt_ > 0) {
-        // 小核负责的 dim 大小：优先取 tailCoredimLen_，若无 dim 小核则与大核相同
-        int64_t tailCoreDim = (dimMainCoreCnt_ > 0 ? tailCoredimLen_ : mainCoredimLen_);
-        ComputeUbFor(tailCoreDim, tailCoreBatchNum_, availableUbSize,
+        // 多主核/多尾核策略：
+        //   dim 尾核的 dim 大小取 tailCoredimLen_（若无 dim 尾核则与主核相同）
+        //   batch 尾核的 batch 数取 tailCoreBatchNum_（若无 batch 尾核则与主核相同）
+        int64_t tailCoreDim = (dimTailCoreCnt_ > 0) ? tailCoredimLen_ : mainCoredimLen_;
+        int64_t tailCoreBS  = (batchTailCoreCnt_ > 0) ? tailCoreBatchNum_ : mainCoreBatchNum_;
+        ComputeUbFor(tailCoreDim, tailCoreBS, availableUbSize,
             tailBlockubFactorDim_, tailBlockubFactorBS_,
             tailBlockloopNumDim_, tailBlockloopNumBS_,
             tailBlockubTailFactorDim_, tailBlockubTailFactorBS_);
     } else {
-        // 无小核：直接复制大核参数，确保 kernel 逻辑无需区分大小核分支
+        // 无尾核：直接复制主核参数，确保 kernel 逻辑无需区分主/尾核分支
         tailBlockubFactorDim_     = ubMainFactorDim_;
         tailBlockubFactorBS_      = ubMainFactorBS_;
         tailBlockloopNumDim_      = loopNumDim_;
         tailBlockloopNumBS_       = loopNumBS_;
         tailBlockubTailFactorDim_ = ubTailFactorDim_;
         tailBlockubTailFactorBS_  = ubTailFactorBS_;
+    }
+
+    // 最后一个 dim 核 UB 参数
+    // dimRemainderElems_>0：lastCoreDimLen = 基础块 + 余数，需单独计算
+    // dimRemainderElems_=0：最后一个 dim 核与普通尾核参数相同
+    if (dimRemainderElems_ > 0) {
+        ComputeUbFor(lastCoreDimLen, mainCoreBatchNum_, availableUbSize,
+            lastCoreubMainFactorDim_, tailBlockubFactorBS_,
+            lastCoreloopNumDim_, tailBlockloopNumBS_,
+            lastCoreubTailFactorDim_, tailBlockubTailFactorBS_);
+    } else {
+        lastCoreloopNumDim_      = tailBlockloopNumDim_;
+        lastCoreubMainFactorDim_ = tailBlockubFactorDim_;
+        lastCoreubTailFactorDim_ = tailBlockubTailFactorDim_;
     }
 
     return ge::GRAPH_SUCCESS;
@@ -1062,6 +1112,12 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::PostTiling()
     tilingData_.convMode           = convMode_;
     tilingData_.hasNumComputedTokens = hasNumComputedTokens_;
 
+    // ---- dimRemainder（last dim core）相关字段 ----
+    tilingData_.dimRemainderElems       = dimRemainderElems_;
+    tilingData_.lastCoreloopNumDim      = lastCoreloopNumDim_;
+    tilingData_.lastCoreubMainFactorDim = lastCoreubMainFactorDim_;
+    tilingData_.lastCoreubTailFactorDim = lastCoreubTailFactorDim_;
+
     // 将 tilingData_ 序列化到 RawTilingData（供 kernel 侧反序列化）
     auto tilingDataSize = sizeof(FusedCausalConv1dCutBHTilingData);
     errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(),
@@ -1141,6 +1197,11 @@ void FusedCausalConv1dCutBHTiling::DumpTilingInfo()
     OP_LOGI(context_->GetNodeName(), "convMode: %ld",           tilingData_.convMode);
     OP_LOGI(context_->GetNodeName(), "hasNumComputedTokens: %ld", tilingData_.hasNumComputedTokens);
     OP_LOGI(context_->GetNodeName(), "maxQueryLen: %ld", maxQueryLen_);
+    // dimRemainder（last dim core）相关字段
+    OP_LOGI(context_->GetNodeName(), "dimRemainderElems: %ld",       tilingData_.dimRemainderElems);
+    OP_LOGI(context_->GetNodeName(), "lastCoreloopNumDim: %ld",      tilingData_.lastCoreloopNumDim);
+    OP_LOGI(context_->GetNodeName(), "lastCoreubMainFactorDim: %ld", tilingData_.lastCoreubMainFactorDim);
+    OP_LOGI(context_->GetNodeName(), "lastCoreubTailFactorDim: %ld", tilingData_.lastCoreubTailFactorDim);
 }
 
 // =========================================================================
@@ -1172,16 +1233,18 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetWorkspaceSize()
 // 策略：
 //   1. 将 dim 划分为 coarseBlocks = dim/1024 个粗块
 //   2. 余数 remainder = dim % 1024，再细分为 fineBlocks = remainder/128 个对齐块
-//   3. 将 fineBlocks 平均分给各 dim 核（非均匀：前 fineRemainder 个核多分 1 个细块）
-//      大核 = 1024 + (fineBase+1)*128 元素；小核 = 1024 + fineBase*128 元素
-//   4. batch 方向：剩余核数均分 batch（非均匀切分与细粒度相同）
+//      以及 dimRemainder = remainder % 128 个不足 128 的余数元素
+//   3. 将 fineBlocks 平均分给各 dim 核（多主核/多尾核：fineRemainder 个大核，其余为小核）
+//      最后一个 dim 核额外承担 dimRemainder 余数元素（存入 dimRemainderElems_）
+//   4. batch 方向：剩余核数均分 batch（多主核/多尾核切分与细粒度相同）
 // =========================================================================
 ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeInterCoreSplitCoarse()
 {
     // 计算粗粒度块数和余数细块数
-    int64_t coarseBlocks = dim_ / COARSE_GRAIN_ELEMENT;  // 1024 元素块数
-    int64_t remainder    = dim_ % COARSE_GRAIN_ELEMENT;   // 不足 1024 的余数元素
-    int64_t fineBlocks   = remainder / DIM_ALIGN_ELEMENT; // 将余数划分为 128 元素细块
+    int64_t coarseBlocks  = dim_ / COARSE_GRAIN_ELEMENT;  // 1024 元素块数
+    int64_t remainder     = dim_ % COARSE_GRAIN_ELEMENT;   // 不足 1024 的余数元素
+    int64_t fineBlocks    = remainder / DIM_ALIGN_ELEMENT; // 将余数划分为 128 元素细块
+    dimRemainderElems_    = remainder % DIM_ALIGN_ELEMENT; // 不足 128 的余数元素
 
     limitedCoreNum_ = CalculateLimitedCoreNumCoarse();
     int64_t maxCoresAvailable = std::min<int64_t>(totalCoreNum_, limitedCoreNum_);
@@ -1194,18 +1257,18 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeInterCoreSplitCoarse()
         return ge::GRAPH_FAILED;
     }
 
-    // 将余数细块平均分给各 dim 核
+    // 将余数细块平均分给各 dim 核（多主核/多尾核）
     int64_t fineBase      = fineBlocks / dimCoreCnt_;
     int64_t fineRemainder = fineBlocks % dimCoreCnt_;
 
     if (fineRemainder == 0) {
-        // 整除：所有 dim 核负责相同大小
+        // 完全整除：所有 dim 核负责相同大小，无尾核
         dimMainCoreCnt_ = dimCoreCnt_;
         dimTailCoreCnt_ = 0;
         mainCoredimLen_ = COARSE_GRAIN_ELEMENT + fineBase * DIM_ALIGN_ELEMENT;
         tailCoredimLen_ = mainCoredimLen_;
     } else {
-        // 不整除：前 fineRemainder 个核多分 1 个细块
+        // 有细块余数：fineRemainder 个大核，其余为小核
         dimMainCoreCnt_ = fineRemainder;
         dimTailCoreCnt_ = dimCoreCnt_ - fineRemainder;
         mainCoredimLen_ = COARSE_GRAIN_ELEMENT + (fineBase + 1) * DIM_ALIGN_ELEMENT;
@@ -1217,7 +1280,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeInterCoreSplitCoarse()
     batchCoreCnt_ = std::min(batchSize_, remainingCores);
     batchCoreCnt_ = std::max(batchCoreCnt_, static_cast<int64_t>(1));
 
-    // batch 非均匀切分（与细粒度相同逻辑）
+    // batch 多主核/多尾核切分（与细粒度相同逻辑）
     int64_t bsBase      = batchSize_ / batchCoreCnt_;
     int64_t bsRemainder = batchSize_ % batchCoreCnt_;
     if (bsRemainder == 0) {
@@ -1265,9 +1328,11 @@ void FusedCausalConv1dCutBHTiling::ComputeUbForCoarse(int64_t coreDimElems, int6
         outUbDim = std::min(maxUbDim, coreDimElems);
         outUbDim = (outUbDim / COARSE_GRAIN_ELEMENT) * COARSE_GRAIN_ELEMENT;
         if (outUbDim == 0) outUbDim = COARSE_GRAIN_ELEMENT;
+        // 尾核 coreDimElems 可能含 dimRemainder（不足 1024），outUbDim 不能超过实际 dim 大小
+        outUbDim = std::min(outUbDim, coreDimElems);
     } else {
-        // UB 不足：固定 dim=1024，减小 batch
-        outUbDim = COARSE_GRAIN_ELEMENT;
+        // UB 不足：固定 dim=1024（或 coreDimElems 若更小），减小 batch
+        outUbDim = std::min(COARSE_GRAIN_ELEMENT, coreDimElems);
         int64_t weightConvStatesSize = weightConvStatesCoeffPerDim * outUbDim;
         int64_t availableForX        = availableUbSize - weightConvStatesSize;
         int64_t xSizePerBatch        = seqLen_ * outUbDim * DTYPE_SIZE * 2;
@@ -1322,21 +1387,39 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeIntraCoreUbTilingCoarse()
     ComputeUbForCoarse(mainCoredimLen_, mainCoreBatchNum_, availableUbSize,
         ubMainFactorDim_, ubMainFactorBS_, loopNumDim_, loopNumBS_, ubTailFactorDim_, ubTailFactorBS_);
 
-    // 小核 UB 参数（粗粒度版本）
+    // 尾核 UB 参数（粗粒度版本）
     if (dimTailCoreCnt_ > 0 || batchTailCoreCnt_ > 0) {
-        int64_t tailCoreDim = (dimMainCoreCnt_ > 0) ? tailCoredimLen_ : mainCoredimLen_;
-        ComputeUbForCoarse(tailCoreDim, tailCoreBatchNum_, availableUbSize,
+        // 多主核/多尾核策略：
+        //   dim 尾核的 dim 大小取 tailCoredimLen_（若无 dim 尾核则与主核相同）
+        //   batch 尾核的 batch 数取 tailCoreBatchNum_（若无 batch 尾核则与主核相同）
+        int64_t tailCoreDim = (dimTailCoreCnt_ > 0) ? tailCoredimLen_ : mainCoredimLen_;
+        int64_t tailCoreBS  = (batchTailCoreCnt_ > 0) ? tailCoreBatchNum_ : mainCoreBatchNum_;
+        ComputeUbForCoarse(tailCoreDim, tailCoreBS, availableUbSize,
             tailBlockubFactorDim_, tailBlockubFactorBS_,
             tailBlockloopNumDim_, tailBlockloopNumBS_,
             tailBlockubTailFactorDim_, tailBlockubTailFactorBS_);
     } else {
-        // 无小核：复制大核参数
+        // 无尾核：复制主核参数
         tailBlockubFactorDim_     = ubMainFactorDim_;
         tailBlockubFactorBS_      = ubMainFactorBS_;
         tailBlockloopNumDim_      = loopNumDim_;
         tailBlockloopNumBS_       = loopNumBS_;
         tailBlockubTailFactorDim_ = ubTailFactorDim_;
         tailBlockubTailFactorBS_  = ubTailFactorBS_;
+    }
+
+    // 最后一个 dim 核 UB 参数（含 dimRemainderElems_ 余数元素，粗粒度版本）
+    if (dimRemainderElems_ > 0) {
+        int64_t lastBaseDimLen = (dimTailCoreCnt_ > 0) ? tailCoredimLen_ : mainCoredimLen_;
+        int64_t lastCoreDimLen = lastBaseDimLen + dimRemainderElems_;
+        ComputeUbForCoarse(lastCoreDimLen, mainCoreBatchNum_, availableUbSize,
+            lastCoreubMainFactorDim_, tailBlockubFactorBS_,
+            lastCoreloopNumDim_, tailBlockloopNumBS_,
+            lastCoreubTailFactorDim_, tailBlockubTailFactorBS_);
+    } else {
+        lastCoreloopNumDim_      = tailBlockloopNumDim_;
+        lastCoreubMainFactorDim_ = tailBlockubFactorDim_;
+        lastCoreubTailFactorDim_ = tailBlockubTailFactorDim_;
     }
 
     return ge::GRAPH_SUCCESS;
