@@ -100,7 +100,7 @@ enum class ExecutMode
 {
     CUMSUM = 0, // 做cumsum发送
     COMM = 1   // 做通信发送
-}
+};
 
 #define TemplateDispatchKFCTypeClass                                                                                           \
     typename XType, typename ExpandXOutType, int32_t QuantMode, bool IsSmoothScaleExist, bool IsNeedAllgather
