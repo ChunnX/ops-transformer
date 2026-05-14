@@ -32,7 +32,6 @@ constexpr uint32_t AICPU_MAX_RANK_NUM = 128 * 1024;
 constexpr uint32_t TIME_CYCLE = 50; // 系统cycle数转换成时间的基准单位，固定为50
 constexpr uint32_t MAX_RANK_NUM_A3 = 768;
 constexpr uint32_t MAX_MODULE_DEVICE_NUM = 32;
-constexpr uint32_t EP_RANK_OFFSET_STEP = 512;
 
 namespace Mc2Kernel {
 constexpr uint64_t A5_MTE_STATE_WIN_SIZE = 1024UL * 1024UL;
@@ -469,17 +468,17 @@ __aicore__ inline uint64_t GetWinSize(__gm__ HcclOpParam * winContext)
 
 __aicore__ inline GM_ADDR GetStatusDataSpaceGm(__gm__ HcclOpParam * winContext)
 {
-    return (GM_ADDR)(winContext->windowsIn[winContext->rankId] + winContext->rankId * EP_RANK_OFFSET_STEP);
+    return (GM_ADDR)(winContext->windowsIn[winContext->rankId]);
 }
 
 __aicore__ inline GM_ADDR GetBaseWindAddrByRankId(__gm__ HcclOpParam * winContext, const int32_t rankId, const int32_t curRankId)
 {
-    return (GM_ADDR)(winContext->windowsIn[rankId] + A5_MTE_STATE_WIN_SIZE + rankId * EP_RANK_OFFSET_STEP);
+    return (GM_ADDR)(winContext->windowsIn[rankId] + A5_MTE_STATE_WIN_SIZE);
 }
 
 __aicore__ inline GM_ADDR GetBaseWindStateAddrByRankId(__gm__ HcclOpParam * winContext, const int32_t rankId, const int32_t curRankId)
 {
-    return (GM_ADDR)(winContext->windowsIn[rankId] + rankId * EP_RANK_OFFSET_STEP);
+    return (GM_ADDR)(winContext->windowsIn[rankId]);
 }
 #else // A3 implementation
 using HcclOpParam = HcclOpResParam;
