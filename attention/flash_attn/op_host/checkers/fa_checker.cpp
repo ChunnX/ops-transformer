@@ -21,6 +21,7 @@
 #include "register/op_def_registry.h"
 #include "../fa_tiling_info.h"
 #include "fa_checker.h"
+#include "attr_checker.h"
 
 namespace optiling {
 namespace flash_attn {
@@ -43,6 +44,7 @@ void FAChecker::RegisterCheckers()
     checkers_.push_back(std::make_unique<SinksChecker>());
     checkers_.push_back(std::make_unique<MetadataChecker>());
     checkers_.push_back(std::make_unique<SoftmaxLSEChecker>());
+    checkers_.push_back(std::make_unique<AttrChecker>());
 }
 
 ge::graphStatus FAChecker::Init(const FaTilingInfo &faInfo)
