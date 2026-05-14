@@ -412,7 +412,7 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CalcMaxRows()
     }
 
     baseRows_ = maxRows;
-    return ge::GRAPH_SUCCESS
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus MoeGatingTopKBackwardTilingBase::SplitRows() // lc
