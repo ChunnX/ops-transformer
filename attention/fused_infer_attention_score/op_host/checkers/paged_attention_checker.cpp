@@ -282,7 +282,7 @@ ge::graphStatus PagedAttentionChecker::CheckPACacheShape(const FiaTilingInfo &fi
                     OP_LOGE(fiaInfo.opName, "When PA_NZ enable, if input kv dataType is INT32, "
                         "the last dim of kvCache(%u) should be %u; "
                         "if input kv dataType is INT4, the last dim of %s(%u) should be %u",
-                        inputName.c_str(), tempD0/NUM8, d0Size/NUM8, tempD0, d0Size),
+                        tempD0/NUM8, d0Size/NUM8, inputName.c_str(), tempD0, d0Size),
                     return ge::GRAPH_FAILED);
             } else {
                 OP_CHECK_IF(tempD0 != d0Size,

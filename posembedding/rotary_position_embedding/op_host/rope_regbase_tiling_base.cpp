@@ -200,6 +200,7 @@ ge::graphStatus RopeRegBaseTilingClass::CheckShape()
             "The shapes of input x and output y should be the same");
         return ge::GRAPH_FAILED;
     }
+    isTndLayout_ = (xShape.GetDimNum() == DIM_NUM_TND);
     int64_t xLastDim = isTndLayout_ ? xShape.GetDim(DIM_2) : xShape.GetDim(DIM_3);
     int64_t cosLastDim = isTndLayout_ ? cosShape.GetDim(DIM_2) : cosShape.GetDim(DIM_3);
     if (cosLastDim != xLastDim) {

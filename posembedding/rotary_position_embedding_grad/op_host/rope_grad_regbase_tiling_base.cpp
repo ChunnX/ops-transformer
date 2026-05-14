@@ -328,7 +328,7 @@ ge::graphStatus RopeGradRegBaseTilingClass::CheckShape()
     OP_CHECK_IF(
         CheckShapeLimit() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "CheckShapeLimit fail."),
         return ge::GRAPH_FAILED);
-
+    isTndLayout_ = (dyShape.GetDimNum() == DIM_NUM_TND);
     int64_t dyLastDim = isTndLayout_ ? dyShape.GetDim(DIM_2) : dyShape.GetDim(DIM_3);
     int64_t cosLastDim = isTndLayout_ ? cosShape.GetDim(DIM_2) : cosShape.GetDim(DIM_3);
     if (cosLastDim != dyLastDim) {

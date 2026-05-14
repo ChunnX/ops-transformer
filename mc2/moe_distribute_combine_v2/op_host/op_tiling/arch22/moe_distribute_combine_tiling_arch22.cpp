@@ -51,9 +51,9 @@ namespace {
     // A2
     constexpr int32_t MAX_EP_WORLD_SIZE_A2 = 384;
     constexpr int32_t MAX_EP_WORLD_SIZE_A2_LAYERED = 64;
-    constexpr int32_t MAX_MOE_EXPERT_NUMS_A2 = 512;
-    constexpr uint32_t MAX_HIDDEN_SIZE_A2 = 7168;
-    constexpr uint32_t LAYERED_MAX_HIDDEN_SIZE_A2 = 10240;
+    constexpr int32_t MAX_MOE_EXPERT_NUMS_A2_FULLMESH = 1024;
+    constexpr int32_t MAX_MOE_EXPERT_NUMS_A2_HIERARCHY = 512;
+    constexpr uint32_t MAX_HIDDEN_SIZE_A2 = 10240;
     constexpr uint32_t MAX_BATCH_SIZE_A2 = 256;
     constexpr uint32_t LAYERED_MAX_BATCH_SIZE_A2 = 512;
     constexpr uint32_t RANK_NUM_PER_NODE_A2 = 8;
@@ -255,7 +255,8 @@ static ge::graphStatus MoeDistributeCombineA2CheckAttrAndSetTiling(const gert::T
         OP_LOGE(K_INNER_DEBUG, "epWorldSize is invalid."), return GRAPH_FAILED);
     OP_TILING_CHECK(epRankIdPtr == nullptr || *epRankIdPtr < 0 || *epRankIdPtr >= *epWorldSizePtr,
         OP_LOGE(K_INNER_DEBUG, "epRankId is invalid."), return GRAPH_FAILED);
-    OP_TILING_CHECK(moeExpertNumPtr == nullptr || *moeExpertNumPtr <= 0 || *moeExpertNumPtr > MAX_MOE_EXPERT_NUMS_A2 ||
+    int32_t maxMoeExpertNums = isLayered ? MAX_MOE_EXPERT_NUMS_A2_HIERARCHY : MAX_MOE_EXPERT_NUMS_A2_FULLMESH;
+    OP_TILING_CHECK(moeExpertNumPtr == nullptr || *moeExpertNumPtr <= 0 || *moeExpertNumPtr > maxMoeExpertNums ||
         *moeExpertNumPtr % *epWorldSizePtr != 0,
         OP_LOGE(K_INNER_DEBUG, "moeExpertNum is invalid."), return GRAPH_FAILED);
     OP_TILING_CHECK(tpWorldSizePtr == nullptr,
@@ -343,8 +344,7 @@ static ge::graphStatus MoeDistributeCombineA2CheckShapeAndSetTiling(const gert::
     OP_TILING_CHECK(expandXStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
         OP_LOGE(K_INNER_DEBUG, "expandXshape is invalid"), return GRAPH_FAILED);
     uint32_t h = expandXStorageShape->GetStorageShape().GetDim(1);
-    uint32_t maxHiddenSizeA2 = isLayered ? LAYERED_MAX_HIDDEN_SIZE_A2 : MAX_HIDDEN_SIZE_A2;
-    OP_TILING_CHECK(h == 0 || h > maxHiddenSizeA2 || h % BLOCK_SIZE_A2 != 0,
+    OP_TILING_CHECK(h == 0 || h > MAX_HIDDEN_SIZE_A2 || h % BLOCK_SIZE_A2 != 0,
         OP_LOGE(K_INNER_DEBUG, "hiddensize is invalid."), return GRAPH_FAILED);
     OP_TILING_CHECK(expertIdStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
         OP_LOGE(K_INNER_DEBUG, "expertIdshape is invalid"), return GRAPH_FAILED);
