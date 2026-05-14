@@ -34,10 +34,15 @@ using BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t,
                             int64_t, int64_t, int64_t, int64_t, int64_t,
                             int64_t, int64_t>;
 
-#define TemplateMegaMoeTypeClass typename XType, typename OutputType, typename TopkWeightsType, int32_t QuantMode
-#define TemplateMegaMoeTypeFunc XType, OutputType, TopkWeightsType, QuantMode
+// IsInterleaved 默认 false 走老路径；为 true 时 GMM1 的右矩阵 B 是预先交织的
+// （每 256 列 = 128 列 gate + 128 列 up），GMM1 内每 tile 只做 1 次 mmad。
+// 默认值只放在类声明，成员函数定义用不带默认的 macro，避免 C++ "default argument redefinition" 报错。
+#define TemplateMegaMoeTypeClass typename XType, typename OutputType, typename TopkWeightsType, \
+                                 int32_t QuantMode, bool IsInterleaved
+#define TemplateMegaMoeTypeFunc XType, OutputType, TopkWeightsType, QuantMode, IsInterleaved
 
-template <TemplateMegaMoeTypeClass>
+template <typename XType, typename OutputType, typename TopkWeightsType, int32_t QuantMode,
+          bool IsInterleaved = false>
 class MegaMoe {
 public:
     using QuantOutType = typename std::conditional<((QuantMode >= 3) && (QuantMode != 4)),
@@ -167,7 +172,9 @@ private:
     bool coreActive_ = true;
     bool anyWaveDone_ = false;  // 本核是否做过任意 wave，决定 expert loop 结束后是否需消费最后一发 NotifyCube
 
-    using BlockEpilogue = BlockEpilogueSwigluMxQuant<QuantOutType, float, QuantScaleOutType, QuantScaleOutType, true>;
+    // 把 IsInterleaved 透传给 epilogue：true 时 epilogue 在同 UB 内读 gate / up 半，输出宽 = singleN_
+    using BlockEpilogue = BlockEpilogueSwigluMxQuant<QuantOutType, float, QuantScaleOutType, QuantScaleOutType,
+                                                    true, IsInterleaved>;
     BlockEpilogue epilogueOp_;
 };
 
@@ -360,7 +367,23 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::EndSync()
         return;
     }
     if constexpr(g_coreType == AIC) {
-        WaitForVector();
+        if constexpr (IsInterleaved) {
+            // 交织+pingpong 末尾仍有未消费 NotifyCube：
+            //   vecSetSyncCom_ == 1 → 仅 flag 0 留一发（iter 0 的 NotifyCube(0)）
+            //   vecSetSyncCom_ >= 2 → 两块 flag 各留一发，FIFO 中 head 的 flag = vecSetSyncCom_ % 2
+            //                          （循环结束时 pingpongIdx_after = N%2，head 就是它）
+            // CrossCoreWaitFlag 底层是 FIFO，wait 顺序必须按 NotifyCube 实际发出顺序，
+            // 否则 wait 头部不匹配的那一发会死等（参考老 GMM2 pingpong 写法）。
+            if (vecSetSyncCom_ == 1) {
+                WaitForVector(0);
+            } else {
+                uint16_t firstPendingIdx = static_cast<uint16_t>(vecSetSyncCom_ & 1U);
+                WaitForVector(firstPendingIdx);
+                WaitForVector(static_cast<uint16_t>(1U - firstPendingIdx));
+            }
+        } else {
+            WaitForVector();
+        }
     }
 }
 
@@ -757,9 +780,16 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     //    真正需要的同步是同核相邻 wave 之间的 UB 屏障：上一 wave AIV combine 的 MTE3 未
     //    结束时 AIC 已经开始下一 wave GMM1 fixpipe 写 UB，会破坏 combine 读出的数据。
     //    见下面 wave 末的 SyncFunc<MTE3_V> + NotifyCube。
-    uint64_t outputN_const = Get<N_VALUE>(problemShape_) / SWIGLU_N_HALF;
+    // 交织：GMM1 scheduler 走全 B 宽 n（每 tile 1 次 mmad）→ tileNum = n / L1_TILE_N
+    // 非交织：GMM1 scheduler 走 swiglu 输出 N = n/2（每 tile 2 次 mmad）→ tileNum = (n/2) / L1_TILE_N
+    uint64_t schedulerN_const;
+    if constexpr (IsInterleaved) {
+        schedulerN_const = Get<N_VALUE>(problemShape_);
+    } else {
+        schedulerN_const = Get<N_VALUE>(problemShape_) / SWIGLU_N_HALF;
+    }
     uint32_t tileNumGmm1 = static_cast<uint32_t>(
-        (outputN_const + static_cast<uint64_t>(L1_TILE_N) - 1UL) / static_cast<uint64_t>(L1_TILE_N));
+        (schedulerN_const + static_cast<uint64_t>(L1_TILE_N) - 1UL) / static_cast<uint64_t>(L1_TILE_N));
     if (tileNumGmm1 < 1U) {
         tileNumGmm1 = 1U;
     }
@@ -835,7 +865,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             // GMM1 + SwiGLUQuant for this wave
             if (subBlockIdx_ == 0) {
                 MegaMoeImpl::GroupMatmulSwigluQuant<
-                    QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType>(
+                    QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType, IsInterleaved>(
                     epilogueOp_, params_, problemShape_, waveGmmInfo, coreInGroup_, coresPerWave_,
                     vecSetSyncCom_);
             }
@@ -853,11 +883,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             // AIC 与 AIV 的配对仍按 blockIdx 一致（AIV 的 GetTaskRation()=2，所以 AIV index 1
             // 与 AIC 0 同 pair，AIV index 3 与 AIC 1 同 pair…），rowReadyFlags 用 blockIdx 索引也对得上。
             if constexpr(g_coreType == AscendC::AIC) {
-                MegaMoeImpl::GroupMatmul2<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
+                MegaMoeImpl::GroupMatmul2<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
+                                          IsInterleaved>(
                     params_, problemShape_, waveGmmInfo, coreInGroup_, coresPerWave_, expertIdx, rankId_,
                     static_cast<uint64_t>(waveIdx) * static_cast<uint64_t>(L1_TILE_M));
             } else if (subBlockIdx_ == 1) {
-                MegaMoeImpl::GroupMatmul2<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
+                MegaMoeImpl::GroupMatmul2<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
+                                          IsInterleaved>(
                     params_, problemShape_, waveGmmInfo, coreInGroup_, coresPerWave_, expertIdx, rankId_,
                     static_cast<uint64_t>(waveIdx) * static_cast<uint64_t>(L1_TILE_M));
             }
