@@ -130,7 +130,8 @@ if(UT_TEST_ALL OR OP_API_UT)
     endif()
     target_sources(${OP_API_MODULE_NAME}_cases_obj PRIVATE
                       ${UT_PATH}/op_api/stub/opdev/platform.cpp
-                      ${UT_PATH}/op_api/stub/opdev/nnopbase.cpp)
+                      ${UT_PATH}/op_api/stub/opdev/nnopbase.cpp
+                      ${UT_PATH}/op_api/stub/opdev/aclnn_inner_distribute_barrier_extend_stub.cpp)
     target_include_directories(
       ${OP_API_MODULE_NAME}_cases_obj
       PRIVATE ${JSON_INCLUDE_DIR} ${HI_PYTHON_INC_TEMP} ${UT_PATH}/op_api/stub ${OP_API_UT_COMMON_INC}
