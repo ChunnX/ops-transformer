@@ -16,6 +16,7 @@
 #define __ALL_GATHER_MATMUL_TILING_arch35_H_
 
 #include "kernel_tiling/kernel_tiling.h"
+#include "../all_gather_matmul_aiv_mode_tiling.h"
 #include "../../common/op_kernel/mc2_tiling_struct.h"
 #include "../../3rd/quant_batch_matmul_v3/op_kernel/arch35/quant_batch_matmul_v3_tiling_data.h"
 #include "../../3rd/mat_mul_v3/op_kernel/arch35/mat_mul_tiling_data.h"
@@ -44,8 +45,15 @@ struct AllGatherMatmulTilingDataFp8 {
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams quantBmmv3TailTiling;
 };
 
-#if (((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_HIFLOAT8)) ||       \
-     ((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) && \
+struct AllGatherMatmulTilingDataInt8 {
+    Mc2InitTiling mc2InitTiling;
+    Mc2CcTiling mc2CcTiling;
+    AllGatherMatmulAIVModeInfo allGatherMatmulInfo;
+    CoCTiling cocTiling;
+};
+
+#if (((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_HIFLOAT8)) ||                                           \
+     ((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) &&                                     \
          ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2)))
 struct MC2TileInfo {
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams* mmTiling;
@@ -55,5 +63,5 @@ struct MC2TileInfo {
     uint64_t cAddrOffset;
 };
 #endif
-}
+} // namespace Mc2Tiling
 #endif

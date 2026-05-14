@@ -266,6 +266,23 @@ struct HcclA2CombineOpParam {
   uint64_t aiRMAInfo;        // HcclAiRMAInfo* 单个结构体指针
 };
 
+// A5 HCCL Context
+struct HcclA5CombineOpParam {
+    uint64_t workSpace; // client和server之间通信的地址
+    uint64_t workSpaceSize; // client和server之间通信的空间大小
+    uint32_t rankId; // 当前卡rankId
+    uint32_t rankDim; // 总卡数
+    uint64_t winSize; // ccu不使用
+    uint64_t windowsIn[LOCAL_NOTIFY_MAX_NUM]; // ccu不使用, MTE 数据区
+    uint64_t windowsOut[LOCAL_NOTIFY_MAX_NUM]; // ccu不使用，MTE 状态区
+
+    // for ccu
+    uint64_t xnAddr; // Xn寄存器起始地址
+    uint64_t ckeAddr; // CKE寄存器起始地址
+    uint64_t msAddr; // MS地址，预留
+    uint64_t msSize; // 可写的MS个数，预留
+};
+
 enum class DBMode : int32_t { INVALID_DB = -1, HW_DB = 0, SW_DB };
 
 struct HcclAiRMAWQ {

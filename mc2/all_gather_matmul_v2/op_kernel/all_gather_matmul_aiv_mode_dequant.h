@@ -16,6 +16,23 @@
 #ifndef CATLASS_GEMM_KERNEL_TEMPLATE_DEQUANT_HPP
 #define CATLASS_GEMM_KERNEL_TEMPLATE_DEQUANT_HPP
 
+#if __has_include("../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp")
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/cross_core_sync.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/resource.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/coord.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/layout/layout.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/detail/callback.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm_coord.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/matrix_coord.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/block/block_epilogue.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_broadcast_mul.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_broadcast_one_blk.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_swizzle.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/block_mmad.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/block_swizzle.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/gemm_type.hpp"
+#else
 #include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
 #include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/cross_core_sync.hpp"
 #include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/resource.hpp"
@@ -31,6 +48,7 @@
 #include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/block_mmad.hpp"
 #include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/block_swizzle.hpp"
 #include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/gemm_type.hpp"
+#endif
 #include "all_gather_matmul_aiv_mode_block_epilogue_dequant.h"
 
 #define DEQUANT_ARGS_CALL() \

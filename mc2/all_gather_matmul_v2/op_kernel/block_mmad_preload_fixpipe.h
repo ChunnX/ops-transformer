@@ -17,6 +17,17 @@
 
 #include "copy_gm_to_l1.h"
 #include "copy_l0c_to_gm.h"
+#if __has_include("../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp")
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/resource.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/coord.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm_coord.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/dispatch_policy.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/helper.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tile_copy.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tile_mmad.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/copy_gm_to_l1.hpp"
+#else
 #include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
 #include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/resource.hpp"
 #include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/coord.hpp"
@@ -26,6 +37,7 @@
 #include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tile_copy.hpp"
 #include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tile_mmad.hpp"
 #include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/copy_gm_to_l1.hpp"
+#endif
 
 namespace Catlass::Gemm::Block {
 
