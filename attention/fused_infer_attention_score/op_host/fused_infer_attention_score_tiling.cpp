@@ -1000,7 +1000,7 @@ ge::graphStatus CheckKVNzShape(const gert::TilingContext *context)
     auto attrs = context->GetAttrs();
     int32_t blockSize = static_cast<int32_t>(*(attrs->GetAttrPointer<int64_t>(ATTR_BLOCK_SIZE_INDEX)));
     auto blockTable = context->GetOptionalInputShape(BLOCK_TABLE_INDEX);
-    uint32_t numBlocks = blockTable->GetStorageShape().GetDim(DIM_1);
+    uint32_t numBlocks = blockTable->GetStorageShape().GetDim(DIM_0);
     auto tempK = context->GetInputShape(KEY_INDEX);
     auto tempV = context->GetInputShape(VALUE_INDEX);
 
