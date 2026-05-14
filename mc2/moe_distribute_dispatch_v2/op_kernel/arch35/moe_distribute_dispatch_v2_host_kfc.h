@@ -118,6 +118,22 @@ using namespace MoeDispatchLog_NEW;
 template <TemplateDispatchKFCTypeClass>
 class MoeDistributeDispatchV2HostKfc {
 public:
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    using XInType = typename std::conditional<
+            (Std::IsSame<XType, fp4x2_e2m1_t>::value) || (Std::IsSame<XType, fp4x2_e1m2_t>::value),
+            uint8_t,
+            XType
+        >::type;
+    using XOutType = typename std::conditional<
+            (Std::IsSame<ExpandXOutType, fp4x2_e2m1_t>::value) || (Std::IsSame<ExpandXOutType, fp4x2_e1m2_t>::value),
+            uint8_t,
+            ExpandXOutType
+        >::type;
+#else
+    using XInType = XType;
+    using XOutType = ExpandXOutType;
+#endif
+#define TemplateDispatchQuant XInType, ExpandXOutType, XOutType,  QuantMode, IsSmoothScaleExist, IsNeedAllgather
     __aicore__ inline MoeDistributeDispatchV2HostKfc(){};
     __aicore__ inline void Init(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, 
                                 GM_ADDR expertScales, GM_ADDR elasticInfo,GM_ADDR expandXOut, GM_ADDR dynamicScalesOut,
@@ -179,7 +195,7 @@ private:
     __aicore__ inline void InitExtraInfo();
     __aicore__ inline void InitMaskInfo();
     __aicore__ inline void InitSetWindows(const MoeDistributeDispatchV2TilingData *tilingData);
-    __aicore__ inline void InitRecieveTilingContext(Tipe *pipe, const MoeDistributeDispatchV2TilingData *tilingData);
+    __aicore__ inline void InitRecieveTilingContext(TPipe *pipe, const MoeDistributeDispatchV2TilingData *tilingData);
     __aicore__ inline void WaitDispatch();
     __aicore__ inline bool IsInSameServer(uint32_t targetRankId);
     __aicore__ inline void GetCumSum(LocalTensor<int32_t> &outLocal, uint32_t totalCount);
@@ -347,8 +363,8 @@ private:
     LocalTensor<uint32_t> expertMapTensor_;
     LocalTensor<int32_t> tokenNumToExpertTensor_;
     LocalTensor<float> expertScalesTensor_;
-    LocalTensor<uint3_t> dpuInitBufferTensor_;
-    LocalTensor<uint3_t> waitWriteTensor_;
+    LocalTensor<uint32_t> dpuInitBufferTensor_;
+    LocalTensor<uint32_t> waitWriteTensor_;
 
     TBuf<> expertScalesBuf_;
     TBuf<> expertIdsBuf_;
@@ -513,7 +529,7 @@ private:
     DataCopyExtParams hCommuCopyOutParams_;
     DataCopyParams doWindowCopyOutParams_;
 
-    MoeDistributeDispatchV2Quant<TemplateDispatchKFCTypeFunc> quantInst_;
+    MoeDistributeDispatchV2Quant<TemplateDispatchQuant> quantInst_;
 
     MoeDispatchLog_NEW::Log logger;
 };
