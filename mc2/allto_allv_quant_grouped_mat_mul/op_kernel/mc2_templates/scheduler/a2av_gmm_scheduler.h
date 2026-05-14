@@ -138,14 +138,30 @@ private:
         }
     }
 
-    __aicore__ inline void ProcessCommRoundMode()
+__aicore__ inline void ProcessCommRoundMode()
     {
-        AscendC::printf("AGENT ProcessCommRoundMode: e=%u\n", e_);
-        for (uint32_t expertIdx = 0; expertIdx < e_; expertIdx++) {
-            AscendC::printf("AGENT ProcessCommRoundMode: Launch expertIdx=%u\n", expertIdx);
-            if constexpr (MX_QUANT_MODE) {
-                commOp.LaunchScaleBeforeCompute(expertIdx, 1);
-            }
+        AscendC::printf("AGENT ProcessCommRoundMode: e=%u START\n", e_);
+        // STEP 1: 先注释掉所有通信和计算，看是否能运行到这里
+        // for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
+        //     AscendC::printf("AGENT ProcessCommRoundMode: Launch expertIdx=%u\n", expertIdx);
+        //     if constexpr (MX_QUANT_MODE) {
+        //         commOp.LaunchScaleBeforeCompute(expertIdx, 1);
+        //     }
+        //     commOp.Launch(expertIdx, 1);
+        // }
+        // for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
+        //     if constexpr (MX_QUANT_MODE) {
+        //         commOp.WaitScale(expertIdx);
+        //     }
+        //     AscendC::printf("AGENT ProcessCommRoundMode: Wait expertIdx=%u\n", expertIdx);
+        //     commOp.Wait(expertIdx);
+        //     SyncAll<false>();
+        //     AscendC::printf("AGENT ProcessCommRoundMode: Compute expertIdx=%u, H1=%u, N1=%u\n", 
+        //                     expertIdx, tilingData_->taskTilingInfo.H1, tilingData_->taskTilingInfo.N1);
+        //     computeOp.Process(expertIdx);
+        // }
+        AscendC::printf("AGENT ProcessCommRoundMode: e=%u END\n", e_);
+    }
             commOp.Launch(expertIdx, 1);
         }
         for (uint32_t expertIdx = 0; expertIdx < e_; expertIdx++) {
