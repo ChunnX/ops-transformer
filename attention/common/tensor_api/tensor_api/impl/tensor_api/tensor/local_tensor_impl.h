@@ -140,26 +140,6 @@ struct LocalTensor<TensorAttribute<EngineType, LayoutType>> {
  	    return TensorType<decltype(sliceEngine), decltype(coordLayout)>{sliceEngine, coordLayout};
   	}
 
-    template <typename... Layouts>
-    __aicore__ inline constexpr auto Compose(const Layouts&... layouts) {
-        return MakeTensor(Data(), Layout().Compose(layouts...));
-    }
-
-    template <typename... Layouts>
-    __aicore__ inline constexpr auto Compose(const Layouts&... layouts) const {
-        return MakeTensor(Data(), Layout().Compose(layouts...));
-    }
-
-    template <typename... Layouts>
-    __aicore__ inline constexpr auto Tile(const Layouts&... layouts) {
-        return MakeTensor(Data(), Layout().Tile(layouts...));
-    }
-
-    template <typename... Layouts>
-    __aicore__ inline constexpr auto Tile(const Layouts&... layouts) const {
-        return MakeTensor(Data(), Layout().Tile(layouts...));
-    }
-
     __aicore__ inline constexpr void SetL2CacheHint(CacheMode mode) {
         Engine().SetCacheMode(mode);
     }
@@ -180,7 +160,7 @@ struct IsAttrTensor<LocalTensor<TensorAttribute<Engine,Layout>>> : Std::true_typ
 template <typename T>
 constexpr bool IsAttrTensorV = IsAttrTensor<Std::remove_cvref_t<T>>::value;
 
-// make_tensor.h
+// tensor construction
 template <typename T, typename = void>
 struct HasDereference : Std::false_type {};
 

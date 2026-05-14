@@ -19,39 +19,39 @@
 * \file mmad_traits_impl.h
 * \brief
 */
-#ifndef IMPL_TENSOR_API_ATOM_MAD_TRAITS_IMPL_H
-#define IMPL_TENSOR_API_ATOM_MAD_TRAITS_IMPL_H
+#ifndef IMPL_TENSOR_API_ATOM_MMAD_TRAITS_IMPL_H
+#define IMPL_TENSOR_API_ATOM_MMAD_TRAITS_IMPL_H
 
 #include "../utils/utils_impl.h"
 
 namespace AscendC {
 namespace Te {
 
-template <typename MmaOperation, typename... MmaOpArgs>
+template <typename MmadOperation, typename... MmadOpArgs>
 struct MmadTraits{};
 
-template <typename MmaOp, typename MmaTraits, typename MmaOpWith, typename MmaTraitsWith>
-struct MmadTraits<MmaOp, MmaTraits, MmaOpWith, MmaTraitsWith>
+template <typename MmadOp, typename MmadTraitsType, typename MmadOpWith, typename MmadTraitsWith>
+struct MmadTraits<MmadOp, MmadTraitsType, MmadOpWith, MmadTraitsWith>
 {
-    using TraitType = typename MmaTraits::TraitType;
-    static constexpr const TraitType defaultTrait = MmaTraits::value;
+    using TraitType = typename MmadTraitsType::TraitType;
+    static constexpr const TraitType defaultTrait = MmadTraitsType::value;
 
     template <typename... Args>
-    __aicore__ inline constexpr MmadTraits<MmaOpWith, MmaTraitsWith>
+    __aicore__ inline constexpr MmadTraits<MmadOpWith, MmadTraitsWith>
     with(const Args& ...args) const {
         return {args...};
     }
 
     template <const TraitType& trait = defaultTrait, typename... Args>
     __aicore__ inline void MmadUnpack(const Args& ...args) const {
-        MmaOp::template Mmad<TraitType, trait, Args...>(args...);
+        MmadOp::template Mmad<TraitType, trait, Args...>(args...);
     }
 };
 
 }
 }
 
-#endif // IMPL_TENSOR_API_ATOM_COPY_TRAITS_IMPL_H
+#endif // IMPL_TENSOR_API_ATOM_MMAD_TRAITS_IMPL_H
 
 #if defined(UNDEF_ASCENDC_TENSOR_API_INCLUDE_COMPILER_INTERNAL_HEADERS_ASCENDC)
 #undef ASCENDC_TENSOR_API_INCLUDE_COMPILER_INTERNAL_HEADERS

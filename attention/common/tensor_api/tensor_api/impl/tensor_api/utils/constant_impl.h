@@ -59,8 +59,6 @@ namespace CopyMode {
     struct TRANS_B8B4_COORD {};
 };
 
-enum class LayoutFormat : uint8_t { NZ, ZN, ZZ, DN, ND, NN};
-
 namespace Location {
     struct INVALID {};
     struct GM {};
@@ -71,6 +69,7 @@ namespace Location {
     struct L0C {};
     struct BIAS {};
     struct FIXBUF {};
+    struct SSBUF {};
 }
 
 template <typename TupleType>

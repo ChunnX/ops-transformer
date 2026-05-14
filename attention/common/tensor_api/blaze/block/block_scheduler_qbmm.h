@@ -80,9 +80,9 @@ public:
 public:
     __aicore__ inline BlockSchedulerQuantBatchMatmulV3(const ProblemShape& shape, const Params& params)
     {
-        m_ = shape.m;
-        n_ = shape.n;
-        k_ = shape.k;
+        m_ = AscendC::Te::Get<MNK_M>(shape);
+        n_ = AscendC::Te::Get<MNK_N>(shape);
+        k_ = AscendC::Te::Get<MNK_K>(shape);
         baseM_ = static_cast<int64_t>(params.baseM);
         baseN_ = static_cast<int64_t>(params.baseN);
         mCnt_ = Blaze::Gemm::CeilDiv(m_, baseM_);
