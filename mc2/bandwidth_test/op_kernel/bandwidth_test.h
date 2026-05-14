@@ -235,7 +235,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
 
     // ============ 初始化状态缓冲区 ============
     uint32_t statusBufCntAlign = Ceil(Ceil(epWorldSize_, aivNum_), 8) * 8;
-    uint32_t statusBufSize = statusBufCntAlign * UB_ALIGN *2;
+    uint32_t statusBufSize = statusBufCntAlign * UB_ALIGN;
     tpipe_->InitBuffer(statusBuf_, statusBufSize);
     totalUsedUB_ += statusBufSize;
     statusTensor_ = statusBuf_.Get<int32_t>();
@@ -518,31 +518,31 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::LocalWindow
     if (startExpertId_ >= rscvStatusNum_) { return; }
 
     // ============ 读取状态数据 ============
-    // TBuf<> localStatusBuf;
-    // // 状态区包含 world_size 个状态块，每个块 8 个 int32 (32B)
-    // const uint32_t statusCopySize = Ceil(epWorldSize_ * 8 * sizeof(int32_t), UB_ALIGN);
-    // tpipe_->InitBuffer(localStatusBuf, statusCopySize);
-    // // 获取状态张量（int32 视图）
-    // LocalTensor<int32_t> localStatusTensor = localStatusBuf.Get<int32_t>();
+    TBuf<> localStatusBuf;
+    // 状态区包含 world_size 个状态块，每个块 8 个 int32 (32B)
+    const uint32_t statusCopySize = Ceil(epWorldSize_ * 8 * sizeof(int32_t), UB_ALIGN);
+    tpipe_->InitBuffer(localStatusBuf, statusCopySize);
+    // 获取状态张量（int32 视图）
+    LocalTensor<int32_t> localStatusTensor = localStatusBuf.Get<int32_t>();
 
-    statusTensor_ = statusBuf_.Get<int32_t>();
-    GlobalTensor<int32_t> srcStatus = windowInStatusFp32Tensor_.ReinterpretCast<int32_t>();
-    DataCopyParams statusCopyParams{static_cast<uint16_t>(epWorldSize_), 8, 0, 0};
-    DataCopy(statusTensor_, srcStatus, statusCopyParams);
-    SyncFunc<AscendC::HardEvent::MTE2_S>();
-
-    // // 从窗口状态区读取所有状态
+    // statusTensor_ = statusBuf_.Get<int32_t>();
     // GlobalTensor<int32_t> srcStatus = windowInStatusFp32Tensor_.ReinterpretCast<int32_t>();
     // DataCopyParams statusCopyParams{static_cast<uint16_t>(epWorldSize_), 8, 0, 0};
-    // DataCopy(localStatusTensor, srcStatus, statusCopyParams);
+    // DataCopy(statusTensor_, srcStatus, statusCopyParams);
     // SyncFunc<AscendC::HardEvent::MTE2_S>();
+
+    // // 从窗口状态区读取所有状态
+    GlobalTensor<int32_t> srcStatus = windowInStatusFp32Tensor_.ReinterpretCast<int32_t>();
+    DataCopyParams statusCopyParams{static_cast<uint16_t>(epWorldSize_), 8, 0, 0};
+    DataCopy(localStatusTensor, srcStatus, statusCopyParams);
+    SyncFunc<AscendC::HardEvent::MTE2_S>();
 
     // 计算前缀和：当前核之前所有核收到的token总数
     uint32_t preCnt = 0;
     for (uint32_t i = 0; i < startExpertId_; i++) {
-        uint32_t value = statusTensor_(i * 8 + 1);
+        uint32_t value = localStatusTensor(i * 8 + 1);
         preCnt += value; // token数量存储在位置1
-        statusTensor_.SetValue(i * 8, value);
+        localStatusTensor.SetValue(i * 8, value);
     }
 
     uint32_t hOutElemCount = hOutSize_ / sizeof(XType);
@@ -561,7 +561,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::LocalWindow
     // ============ 遍历每个rank，从窗口拷贝数据到输出 ============
     for (uint32_t index = startExpertId_; index < endExpertId_; index++) {
         uint32_t i = index - startExpertId_;
-        uint32_t count = statusTensor_.GetValue(index * 8 + 1); // 从该rank收到的token数量
+        uint32_t count = localStatusTensor.GetValue(index * 8 + 1); // 从该rank收到的token数量
         
         // 计算窗口中该rank数据的起始地址
         GM_ADDR wAddr = (__gm__ uint8_t*)(windowGM_) + index * expertPerSizeOnWin_;
@@ -602,7 +602,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::LocalWindow
     
     // 写入接收计数
     SyncFunc<AscendC::HardEvent::S_MTE3>();
-    DataCopyPad(receiveCntGMTensor_[startExpertId_], statusTensor_[startExpertId_ * 8], dataCopyOutParams);
+    DataCopyPad(receiveCntGMTensor_[startExpertId_], localStatusTensor[startExpertId_ * 8], dataCopyOutParams);
 }
 
 template <TemplateBandwidthTestTypeClass>
