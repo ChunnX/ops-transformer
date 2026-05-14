@@ -1,12 +1,12 @@
 /* *
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
-  */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file pipeline_template_comm_compute.h
@@ -17,6 +17,11 @@
 #define MC2_PIPELINE_TEMPLATE_COMM_COMPUTE_H
 
 #include "../a2av_gmm_utils.h"
+
+#ifndef ENABLE_SMALL_SHAPE_MODE
+#define ENABLE_SMALL_SHAPE_MODE false
+#endif
+
 #include "kernel_tiling/kernel_tiling.h"
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
@@ -98,11 +103,17 @@ public:
         if constexpr (MX_QUANT_MODE) {
             if (isScaleBatchMode_) {
                 ProcessScaleCommBatchMode();
+            } else if constexpr (ENABLE_SMALL_SHAPE_MODE) {
+                ProcessCommRankWiseMode();
             } else {
                 ProcessCommRoundMode();
             }
         } else {
-            ProcessCommRoundMode();
+            if constexpr (ENABLE_SMALL_SHAPE_MODE) {
+                ProcessCommRankWiseMode();
+            } else {
+                ProcessCommRoundMode();
+            }
         }
         this->End();
     }
@@ -148,6 +159,23 @@ private:
             commOp.Wait(expertIdx);
             SyncAll<false>();
             computeOp.Process(expertIdx);
+        }
+    }
+
+    __aicore__ inline void ProcessCommRankWiseMode()
+    {
+        uint32_t rankDim = commOp.GetRankDim();
+        for (uint32_t rankIdx = 0U; rankIdx < rankDim; rankIdx++) {
+            for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
+                commOp.LaunchCommRankWise(rankIdx, expertIdx);
+            }
+        }
+        for (uint32_t rankIdx = 0U; rankIdx < rankDim; rankIdx++) {
+            for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
+                commOp.WaitRankWise(rankIdx, expertIdx);
+                SyncAll<false>();
+                computeOp.Process(expertIdx);
+            }
         }
     }
 
