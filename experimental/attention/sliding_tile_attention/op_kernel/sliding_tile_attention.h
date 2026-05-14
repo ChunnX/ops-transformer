@@ -34,6 +34,7 @@ constexpr int64_t VECTOR_ALIGN_ELEMS = 16;
 constexpr int64_t VECTOR_FP32_BLOCK_ELEMS = 8;
 constexpr int64_t BUFFER_NUM = 2;
 constexpr int64_t KV_BLOCK_NUM = 128;
+constexpr int64_t IMAGE_TILE_KV_BLOCKS = 3;
 constexpr int64_t SCORE_HANDOFF_UB_OFFSET = 128 * 1024;
 constexpr uint64_t SYNC_AIV_TO_AIC_0 = 3;
 constexpr uint64_t SYNC_AIV_TO_AIC_1 = 7;
@@ -598,25 +599,21 @@ private:
         ++tileLoop;
     }
 
-    __aicore__ inline void ProcessImageQueryImageKvRange(int64_t seq, int64_t qCount, int64_t kvBegin,
-                                                         int64_t kvEnd, int64_t &tileLoop,
-                                                         LocalTensor<float> &maxLocal,
-                                                         LocalTensor<float> &denomLocal)
+    __aicore__ inline void ProcessImageQueryImageTile(int64_t seq, int64_t qCount, int64_t &tileLoop,
+                                                      LocalTensor<float> &maxLocal,
+                                                      LocalTensor<float> &denomLocal)
     {
-        for (int64_t kvSeq = kvBegin; kvSeq < kvEnd; kvSeq += tiling_->kvBlock) {
-            const int64_t kvCount = MinInt64(tiling_->kvBlock, kvEnd - kvSeq);
-            ProcessVisibleKvBlock(seq, qCount, kvCount, tileLoop, maxLocal, denomLocal);
+        for (int64_t block = 0; block < IMAGE_TILE_KV_BLOCKS; ++block) {
+            ProcessVisibleKvBlock(seq, qCount, KV_BLOCK_NUM, tileLoop, maxLocal, denomLocal);
         }
     }
 
-    __aicore__ inline void ProcessTextQueryImageKvRange(int64_t seq, int64_t qCount, int64_t kvBegin,
-                                                        int64_t kvEnd, int64_t &tileLoop,
-                                                        LocalTensor<float> &maxLocal,
-                                                        LocalTensor<float> &denomLocal)
+    __aicore__ inline void ProcessTextQueryImageTile(int64_t seq, int64_t qCount, int64_t &tileLoop,
+                                                     LocalTensor<float> &maxLocal,
+                                                     LocalTensor<float> &denomLocal)
     {
-        for (int64_t kvSeq = kvBegin; kvSeq < kvEnd; kvSeq += tiling_->kvBlock) {
-            const int64_t kvCount = MinInt64(tiling_->kvBlock, kvEnd - kvSeq);
-            ProcessVisibleKvBlock(seq, qCount, kvCount, tileLoop, maxLocal, denomLocal);
+        for (int64_t block = 0; block < IMAGE_TILE_KV_BLOCKS; ++block) {
+            ProcessVisibleKvBlock(seq, qCount, KV_BLOCK_NUM, tileLoop, maxLocal, denomLocal);
         }
     }
 
@@ -642,9 +639,7 @@ private:
         }
         if ((tiling_->hasText != 0) && (seq >= tiling_->imageSeqLen)) {
             for (int64_t kvTileId = 0; kvTileId < tiling_->imageTileNum; ++kvTileId) {
-                const int64_t kvBegin = kvTileId * tiling_->tileTokenNum;
-                const int64_t kvEnd = MinInt64(kvBegin + tiling_->tileTokenNum, tiling_->imageSeqLen);
-                ProcessTextQueryImageKvRange(seq, qCount, kvBegin, kvEnd, tileLoop, maxLocal, denomLocal);
+                ProcessTextQueryImageTile(seq, qCount, tileLoop, maxLocal, denomLocal);
             }
             return;
         }
@@ -662,10 +657,7 @@ private:
         for (int64_t tileT = tBegin; tileT < tEnd; ++tileT) {
             for (int64_t tileH = hBegin; tileH < hEnd; ++tileH) {
                 for (int64_t tileW = wBegin; tileW < wEnd; ++tileW) {
-                    const int64_t kvTileId = TileLinearId(tileT, tileH, tileW);
-                    const int64_t kvBegin = kvTileId * tiling_->tileTokenNum;
-                    const int64_t kvEnd = MinInt64(kvBegin + tiling_->tileTokenNum, tiling_->imageSeqLen);
-                    ProcessImageQueryImageKvRange(seq, qCount, kvBegin, kvEnd, tileLoop, maxLocal, denomLocal);
+                    ProcessImageQueryImageTile(seq, qCount, tileLoop, maxLocal, denomLocal);
                 }
             }
         }
@@ -1029,34 +1021,42 @@ private:
         }
     }
 
+    __aicore__ inline void ProcessCubeVisibleKvBlock(int64_t taskIdx, int64_t kvSeq, int64_t kvCount,
+                                                     int64_t &tileLoop)
+    {
+        const uint32_t bufferIdx = static_cast<uint32_t>(tileLoop % BUFFER_NUM);
+        if (tileLoop >= BUFFER_NUM) {
+            CrossCoreWaitFlag(AivToAicSyncFlag(bufferIdx));
+        }
+        ComputeScoreTileTask(taskIdx, kvSeq, kvCount, bufferIdx);
+        CrossCoreSetFlag<2, PIPE_FIX>(AicToAivSyncFlag(bufferIdx));
+        CrossCoreWaitFlag(AivProbToAicSyncFlag(bufferIdx));
+        ComputeValueTileTask(taskIdx, kvSeq, kvCount, bufferIdx);
+        CrossCoreSetFlag<2, PIPE_FIX>(AicOutToAivSyncFlag(bufferIdx));
+        ++tileLoop;
+    }
+
     __aicore__ inline void ProcessCubeVisibleKvRange(int64_t taskIdx, int64_t kvBegin, int64_t kvEnd,
                                                      int64_t &tileLoop)
     {
         for (int64_t kvSeq = kvBegin; kvSeq < kvEnd; kvSeq += tiling_->kvBlock) {
             const int64_t kvCount = MinInt64(tiling_->kvBlock, kvEnd - kvSeq);
-            const uint32_t bufferIdx = static_cast<uint32_t>(tileLoop % BUFFER_NUM);
-            if (tileLoop >= BUFFER_NUM) {
-                CrossCoreWaitFlag(AivToAicSyncFlag(bufferIdx));
-            }
-            ComputeScoreTileTask(taskIdx, kvSeq, kvCount, bufferIdx);
-            CrossCoreSetFlag<2, PIPE_FIX>(AicToAivSyncFlag(bufferIdx));
-            CrossCoreWaitFlag(AivProbToAicSyncFlag(bufferIdx));
-            ComputeValueTileTask(taskIdx, kvSeq, kvCount, bufferIdx);
-            CrossCoreSetFlag<2, PIPE_FIX>(AicOutToAivSyncFlag(bufferIdx));
-            ++tileLoop;
+            ProcessCubeVisibleKvBlock(taskIdx, kvSeq, kvCount, tileLoop);
         }
     }
 
-    __aicore__ inline void ProcessCubeImageQueryImageKvRange(int64_t taskIdx, int64_t kvBegin, int64_t kvEnd,
-                                                             int64_t &tileLoop)
+    __aicore__ inline void ProcessCubeImageQueryImageTile(int64_t taskIdx, int64_t kvBegin, int64_t &tileLoop)
     {
-        ProcessCubeVisibleKvRange(taskIdx, kvBegin, kvEnd, tileLoop);
+        for (int64_t block = 0; block < IMAGE_TILE_KV_BLOCKS; ++block) {
+            ProcessCubeVisibleKvBlock(taskIdx, kvBegin + block * KV_BLOCK_NUM, KV_BLOCK_NUM, tileLoop);
+        }
     }
 
-    __aicore__ inline void ProcessCubeTextQueryImageKvRange(int64_t taskIdx, int64_t kvBegin, int64_t kvEnd,
-                                                            int64_t &tileLoop)
+    __aicore__ inline void ProcessCubeTextQueryImageTile(int64_t taskIdx, int64_t kvBegin, int64_t &tileLoop)
     {
-        ProcessCubeVisibleKvRange(taskIdx, kvBegin, kvEnd, tileLoop);
+        for (int64_t block = 0; block < IMAGE_TILE_KV_BLOCKS; ++block) {
+            ProcessCubeVisibleKvBlock(taskIdx, kvBegin + block * KV_BLOCK_NUM, KV_BLOCK_NUM, tileLoop);
+        }
     }
 
     __aicore__ inline void ProcessCubeTextKvRange(int64_t taskIdx, int64_t seq, int64_t kvBegin, int64_t kvEnd,
@@ -1076,8 +1076,7 @@ private:
         if ((tiling_->hasText != 0) && (seq >= tiling_->imageSeqLen)) {
             for (int64_t kvTileId = 0; kvTileId < tiling_->imageTileNum; ++kvTileId) {
                 const int64_t kvBegin = kvTileId * tiling_->tileTokenNum;
-                const int64_t kvEnd = MinInt64(kvBegin + tiling_->tileTokenNum, tiling_->imageSeqLen);
-                ProcessCubeTextQueryImageKvRange(taskIdx, kvBegin, kvEnd, tileLoop);
+                ProcessCubeTextQueryImageTile(taskIdx, kvBegin, tileLoop);
             }
             return;
         }
@@ -1097,8 +1096,7 @@ private:
                 for (int64_t tileW = wBegin; tileW < wEnd; ++tileW) {
                     const int64_t kvTileId = TileLinearId(tileT, tileH, tileW);
                     const int64_t kvBegin = kvTileId * tiling_->tileTokenNum;
-                    const int64_t kvEnd = MinInt64(kvBegin + tiling_->tileTokenNum, tiling_->imageSeqLen);
-                    ProcessCubeImageQueryImageKvRange(taskIdx, kvBegin, kvEnd, tileLoop);
+                    ProcessCubeImageQueryImageTile(taskIdx, kvBegin, tileLoop);
                 }
             }
         }
