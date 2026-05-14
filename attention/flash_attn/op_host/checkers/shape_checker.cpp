@@ -118,7 +118,7 @@ ge::graphStatus ShapeChecker::CheckNonQuantHeadNum(const FaTilingInfo &faInfo)
         return ge::GRAPH_FAILED;
     }
 
-    OP_CHECK_IF((faInfo.n2Size != 0) && (faInfo.n1Size % faInfo.n2Size != 0),
+    OP_CHECK_IF(faInfo.n1Size % faInfo.n2Size != 0,
                 OPS_REPORT_VECTOR_INNER_ERR(faInfo.opName,
                                             "numHeads(%ld) should be an integer multiple of numKeyValueHeads(%ld)!",
                                             faInfo.n1Size, faInfo.n2Size),
@@ -282,11 +282,16 @@ ge::graphStatus ShapeChecker::CheckKVShape(const FaTilingInfo &faInfo) const
     }
 
     // PA layout
-    if (faInfo.pageAttentionFlag) {
-        return CheckKVShapeForPageAttention(faInfo);
+    if (faInfo.kvLayout == FaLayout::PA_BBND || faInfo.kvLayout == FaLayout::PA_BNBD) {
+        if (faInfo.pageAttentionFlag) {
+            return CheckKVShapeForPageAttention(faInfo);
+        }
+        OP_LOGE(faInfo.opName, "kv_layout %s requires PagedAttention enabled (block_table must be provided).",
+                LayoutToSerialString(faInfo.kvLayout).c_str());
+        return ge::GRAPH_FAILED;
     }
 
-    OP_LOGE(faInfo.opName, "kv_layout %d is not supported.", static_cast<int>(faInfo.kvLayout));
+    OP_LOGE(faInfo.opName, "kv_layout %s is not supported.", LayoutToSerialString(faInfo.kvLayout).c_str());
     return ge::GRAPH_FAILED;
 }
 

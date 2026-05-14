@@ -35,6 +35,7 @@ private:
     ge::graphStatus CheckSingleParaMaskMode(const FaTilingInfo &faInfo);
     ge::graphStatus CheckSingleParaAttnMask(const FaTilingInfo &faInfo);
     ge::graphStatus CheckSingleParaWindowParams(const FaTilingInfo &faInfo);
+    ge::graphStatus CheckSingleParaDeterministic(const FaTilingInfo &faInfo);
 };
 
 } // namespace flash_attn

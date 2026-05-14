@@ -15,6 +15,7 @@
 
 #include <map>
 #include <numeric>
+#include <vector>
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
 #include "log/error_code.h"
@@ -84,10 +85,24 @@ ge::graphStatus MaskChecker::CheckSingleParaWindowParams(const FaTilingInfo &faI
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus MaskChecker::CheckSingleParaDeterministic(const FaTilingInfo &faInfo)
+{
+    const int64_t *deterministic = faInfo.opParamInfo.deterministic;
+    if (deterministic == nullptr) {
+        return ge::GRAPH_SUCCESS;
+    }
+    const std::vector<int64_t> validList = {0, 1};
+    OP_CHECK_IF(ge::GRAPH_SUCCESS != CheckValueSupport(*deterministic, validList),
+                OP_LOGE(faInfo.opName, "deterministic only supports 0 or 1, but got %ld", *deterministic),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus MaskChecker::CheckSinglePara(const FaTilingInfo &faInfo)
 {
     if (CheckSingleParaMaskMode(faInfo) != ge::GRAPH_SUCCESS || CheckSingleParaAttnMask(faInfo) != ge::GRAPH_SUCCESS ||
-        CheckSingleParaWindowParams(faInfo) != ge::GRAPH_SUCCESS) {
+        CheckSingleParaWindowParams(faInfo) != ge::GRAPH_SUCCESS ||
+        CheckSingleParaDeterministic(faInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
