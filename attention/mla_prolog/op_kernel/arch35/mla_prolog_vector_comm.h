@@ -8,31 +8,29 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
- /*!
-  * \file mla_prolog_comm.h
-  * \brief 存放各种vector的公共组件
-  */
+/*!
+ * \file mla_prolog_comm.h
+ * \brief 存放各种vector的公共组件
+ */
 
 #ifndef MLA_PROLOG_VECTOR_COMM_H
 #define MLA_PROLOG_VECTOR_COMM_H
 
-#if __CCE_AICORE__ == 310
-#include "arch35/vf/vf_quant_pertensor.h"
-#include "arch35/vf/vf_quant_perchannel.h"
-#include "arch35/vf/vf_dynamic_quant.h"
-#include "arch35/vf/vf_dequant.h"
-#endif
+#include "vf/vf_quant_pertensor.h"
+#include "vf/vf_quant_perchannel.h"
+#include "vf/vf_dynamic_quant.h"
+#include "vf/vf_dequant.h"
 
 #include "mla_prolog_comm.h"
 namespace MlaProlog {
 
-struct Rectangle{
+struct Rectangle {
     uint32_t row;
     uint32_t col;
     uint32_t stride;
 };
 
-struct RmsNormParam{
+struct RmsNormParam {
     float reciprocal;
     float epsilon;
     uint32_t row;
@@ -60,7 +58,7 @@ struct PerTileQuantParams {
           stride 一行的真实长度
  */
 __aicore__ inline void VecMulMat(LocalTensor<float> dstUb, LocalTensor<float> src0Ub, LocalTensor<float> src1Ub,
-                                const Rectangle& rectangleParams)
+                                 const Rectangle &rectangleParams)
 {
     uint32_t mask = FP32_REPEAT_ELEMENT_NUM;
     uint32_t columnLoopCount = rectangleParams.col / mask;
@@ -108,7 +106,7 @@ __aicore__ inline void VecMulMat(LocalTensor<float> dstUb, LocalTensor<float> sr
  */
 template <typename T>
 __aicore__ inline void RowMuls(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, LocalTensor<T> src1Ub,
-                               const Rectangle& rectangleParams)
+                               const Rectangle &rectangleParams)
 {
     uint32_t repeatElementNum = FP32_REPEAT_ELEMENT_NUM;
     uint32_t blockElementNum = FP32_BLOCK_ELEMENT_NUM;
@@ -116,7 +114,7 @@ __aicore__ inline void RowMuls(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, Loca
     if constexpr (std::is_same<T, half>::value) {
         // 此限制由于每个repeat至多连续读取256B数据
         repeatElementNum = FP32_REPEAT_ELEMENT_NUM * 2; // 256/4 * 2 = 128
-        blockElementNum = FP32_BLOCK_ELEMENT_NUM * 2; // 32/4 * 2 = 16
+        blockElementNum = FP32_BLOCK_ELEMENT_NUM * 2;   // 32/4 * 2 = 16
     }
 
     // 每次只能连续读取256B的数据进行计算，故每次只能处理256B/sizeof(dType)=
@@ -126,8 +124,12 @@ __aicore__ inline void RowMuls(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, Loca
     // REPEAT_STRIDE_UP_BOUND=256，此限制由于src0RepStride数据类型为uint8至多256个datablock间距
     if (rectangleParams.stride < REPEAT_STRIDE_UP_BOUND * blockElementNum) {
         // dstBlkStrideIn src0BlkStrideIn  src1BlkStrideIn dstRepStrideIn src0RepStrideIn src1RepStrideIn
-        BinaryRepeatParams repeatParams{1, 1, 0, (uint8_t)(rectangleParams.stride / blockElementNum), 
-                                        (uint8_t)(rectangleParams.stride / blockElementNum), 1};
+        BinaryRepeatParams repeatParams{1,
+                                        1,
+                                        0,
+                                        (uint8_t)(rectangleParams.stride / blockElementNum),
+                                        (uint8_t)(rectangleParams.stride / blockElementNum),
+                                        1};
 
         // 如果以列为repeat所处理的次数小于行处理次数，则以列方式处理。反之则以行进行repeat处理
         if (dLoop <= rectangleParams.row) {
@@ -141,8 +143,8 @@ __aicore__ inline void RowMuls(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, Loca
             repeatParams.src1RepStride = 0;
             repeatParams.dstRepStride = 8; // 列方向上两次repeat起始地址间隔dtypeMask=64个元素，即8个block
             for (uint32_t i = 0; i < rectangleParams.row; i++) {
-                Mul(dstUb[i * rectangleParams.stride], src0Ub[i * rectangleParams.stride], src1Ub[i * blockElementNum], repeatElementNum,
-                    dLoop, repeatParams);
+                Mul(dstUb[i * rectangleParams.stride], src0Ub[i * rectangleParams.stride], src1Ub[i * blockElementNum],
+                    repeatElementNum, dLoop, repeatParams);
             }
         }
 
@@ -163,8 +165,9 @@ __aicore__ inline void RowMuls(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, Loca
                 repeatElementNum, dLoop, repeatParams);
             // 计算一行中的尾块
             if (dRemain > 0) {
-                Mul(dstUb[i * rectangleParams.stride + dLoop * repeatElementNum], src0Ub[i * rectangleParams.stride + dLoop * repeatElementNum],
-                    src1Ub[i * blockElementNum], dRemain, 1, repeatParams);
+                Mul(dstUb[i * rectangleParams.stride + dLoop * repeatElementNum],
+                    src0Ub[i * rectangleParams.stride + dLoop * repeatElementNum], src1Ub[i * blockElementNum], dRemain,
+                    1, repeatParams);
             }
         }
     }
@@ -198,8 +201,9 @@ __aicore__ inline void RowMax(LocalTensor<float> &dstUb, LocalTensor<float> &src
         AscendC::PipeBarrier<PIPE_V>();
     }
 
-    for (uint32_t columnLoopCount = blockCount >> 1; columnLoopCount > 0; columnLoopCount = blockCount >> 1) { // 2: 每次处理2个block
-        blockCount = (blockCount + 1) >> 1; // 2: 每次处理2个block
+    for (uint32_t columnLoopCount = blockCount >> 1; columnLoopCount > 0;
+         columnLoopCount = blockCount >> 1) { // 2: 每次处理2个block
+        blockCount = (blockCount + 1) >> 1;   // 2: 每次处理2个block
         for (uint32_t j = 0; j < columnLoopCount; j++) {
             Max(srcUb[j * dtypeMask], srcUb[j * dtypeMask], srcUb[(j + blockCount) * dtypeMask], dtypeMask,
                 rectangleParams.row, repeatParamsMax);
@@ -207,8 +211,9 @@ __aicore__ inline void RowMax(LocalTensor<float> &dstUb, LocalTensor<float> &src
         AscendC::PipeBarrier<PIPE_V>();
     }
 
-    WholeReduceMax(dstUb, srcUb, (rectangleParams.col < dtypeMask) ? rectangleParams.col : dtypeMask, rectangleParams.row, 1, 1,
-                   rectangleParams.stride / FP32_BLOCK_ELEMENT_NUM, ReduceOrder::ORDER_ONLY_VALUE);
+    WholeReduceMax(dstUb, srcUb, (rectangleParams.col < dtypeMask) ? rectangleParams.col : dtypeMask,
+                   rectangleParams.row, 1, 1, rectangleParams.stride / FP32_BLOCK_ELEMENT_NUM,
+                   ReduceOrder::ORDER_ONLY_VALUE);
 }
 
 /**
@@ -224,19 +229,12 @@ __aicore__ inline void RowMax(LocalTensor<float> &dstUb, LocalTensor<float> &src
           stride 一行的真实长度
  */
 template <typename T>
-__aicore__ inline void Dequant(const LocalTensor<float> &outputLocal, const LocalTensor<T> &inputLocal, const LocalTensor<float> &scaleLocal,
-                               const LocalTensor<float> &scale2Local, const Rectangle& rectangleParams)
+__aicore__ inline void Dequant(const LocalTensor<float> &outputLocal, const LocalTensor<T> &inputLocal,
+                               const LocalTensor<float> &scaleLocal, const LocalTensor<float> &scale2Local,
+                               const Rectangle &rectangleParams)
 {
-#if __CCE_AICORE__ == 310
-    DequantVf(outputLocal, inputLocal, scaleLocal, scale2Local, rectangleParams.row, rectangleParams.col, rectangleParams.stride);
-#else
-    uint64_t cnt = rectangleParams.col * rectangleParams.row;
-    Cast(outputLocal, inputLocal, RoundMode::CAST_RINT, cnt);
-    AscendC::PipeBarrier<PIPE_V>();
-    RowMuls(outputLocal, outputLocal, scale2Local, rectangleParams);
-    AscendC::PipeBarrier<PIPE_V>();
-    VecMulMat(outputLocal, scaleLocal, outputLocal, rectangleParams);
-#endif
+    DequantVf(outputLocal, inputLocal, scaleLocal, scale2Local, rectangleParams.row, rectangleParams.col,
+              rectangleParams.stride);
 }
 
 /**
@@ -266,9 +264,9 @@ __aicore__ inline void CastFP32ToINT8(const LocalTensor<O> outLocal, const Local
 // dstUb[i, (j * 8) : (j * 8 + 7)] = src0Ub[i, (j * 8) : (j * 8 + 7)] / src1Ub[i, 0 : 7]
 // src0Ub:[dealRowCount, columnCount], src1Ub:[dealRowCount, FP32_BLOCK_ELEMENT_NUM] dstUb:[dealRowCount,
 // columnCount]
-__aicore__ inline void RowClips(LocalTensor<float>& dstUb, const LocalTensor<float>& src0Ub,
-    const LocalTensor<float>& maxUb, const LocalTensor<float>& minUb,
-    uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+__aicore__ inline void RowClips(LocalTensor<float> &dstUb, const LocalTensor<float> &src0Ub,
+                                const LocalTensor<float> &maxUb, const LocalTensor<float> &minUb, uint32_t dealRowCount,
+                                uint32_t columnCount, uint32_t actualColumnCount)
 {
     uint32_t dtypeMask = FP32_REPEAT_ELEMENT_NUM;
     uint32_t dLoop = actualColumnCount / dtypeMask;
@@ -297,12 +295,10 @@ __aicore__ inline void RowClips(LocalTensor<float>& dstUb, const LocalTensor<flo
     }
 }
 
-__aicore__ inline void PerTileClipWithAlpha(LocalTensor<float>& dstClipUb,
-                                            LocalTensor<float>& aMax,
-                                            LocalTensor<float>& aMaxBrcb,
-                                            const LocalTensor<float>& srcUb,
-                                            const LocalTensor<uint8_t>& shareTmpUb,
-                                            const PerTileQuantParams& perTileQuantParams)
+__aicore__ inline void PerTileClipWithAlpha(LocalTensor<float> &dstClipUb, LocalTensor<float> &aMax,
+                                            LocalTensor<float> &aMaxBrcb, const LocalTensor<float> &srcUb,
+                                            const LocalTensor<uint8_t> &shareTmpUb,
+                                            const PerTileQuantParams &perTileQuantParams)
 {
     constexpr uint32_t brcnNum = 8; // brcn一次性处理8个数据
     uint32_t srcSize = perTileQuantParams.row * perTileQuantParams.col;
@@ -311,11 +307,11 @@ __aicore__ inline void PerTileClipWithAlpha(LocalTensor<float>& dstClipUb,
     LocalTensor<float> absSrcUb = shareTmpUb.template ReinterpretCast<float>();
     LocalTensor<float> maxAlpha = absSrcUb[Align(srcSize, FP32_BLOCK_ELEMENT_NUM)];
     LocalTensor<float> minAlpha = maxAlpha[Align(maxAlphaSize, FP32_BLOCK_ELEMENT_NUM)];
-    
+
     Abs(absSrcUb, srcUb, srcSize);
     PipeBarrier<PIPE_V>();
 
-    Rectangle rectangleParams {
+    Rectangle rectangleParams{
         static_cast<uint32_t>(perTileQuantParams.row * perTileQuantParams.tileNum),
         static_cast<uint32_t>(perTileQuantParams.tileSize),
         static_cast<uint32_t>(perTileQuantParams.tileSize) // columnStride
@@ -330,7 +326,7 @@ __aicore__ inline void PerTileClipWithAlpha(LocalTensor<float>& dstClipUb,
     PipeBarrier<PIPE_V>();
 
     RowClips(dstClipUb, srcUb, maxAlpha, minAlpha, perTileQuantParams.row * perTileQuantParams.tileNum,
-        perTileQuantParams.tileSize, perTileQuantParams.tileSize);
+             perTileQuantParams.tileSize, perTileQuantParams.tileSize);
     PipeBarrier<PIPE_V>();
 }
 
@@ -345,15 +341,10 @@ __aicore__ inline void PerTileClipWithAlpha(LocalTensor<float>& dstClipUb,
  * @param row 待处理的行数
  * @param col 待处理的列数
  */
-__aicore__ inline void DynamicQuant(const LocalTensor<float> &outputLocal,
-                                    const LocalTensor<float> &scale,
-                                    const LocalTensor<float> &inputLocal,
-                                    const LocalTensor<float> &aMax,
-                                    const LocalTensor<float> &rowMaxBrcb,
-                                    const LocalTensor<uint8_t> &shareTmpUb,
-                                    float alpha,
-                                    uint64_t row,
-                                    uint64_t col)
+__aicore__ inline void DynamicQuant(const LocalTensor<float> &outputLocal, const LocalTensor<float> &scale,
+                                    const LocalTensor<float> &inputLocal, const LocalTensor<float> &aMax,
+                                    const LocalTensor<float> &rowMaxBrcb, const LocalTensor<uint8_t> &shareTmpUb,
+                                    float alpha, uint64_t row, uint64_t col)
 {
     constexpr float maxInt8 = 127.0f;
     int32_t aMaxSizeAlign = Align(static_cast<uint32_t>(row), FP32_BLOCK_ELEMENT_NUM);
@@ -387,18 +378,13 @@ __aicore__ inline void DynamicQuant(const LocalTensor<float> &outputLocal,
           col 列数
           stride 一行的真实长度
  */
-template<typename T, typename C, typename O>
+template <typename T, typename C, typename O>
 __aicore__ inline void QuantPerChannel(const LocalTensor<O> &outLocal, const LocalTensor<T> &inputLocal,
-            const LocalTensor<C> &quantScaleLocal, const LocalTensor<uint8_t> &shareTmpUb,
-            const Rectangle& rectangleParams)
+                                       const LocalTensor<C> &quantScaleLocal, const LocalTensor<uint8_t> &shareTmpUb,
+                                       const Rectangle &rectangleParams)
 {
-#if __CCE_AICORE__ == 310
-    QuantPerChannelVf(outLocal, inputLocal, quantScaleLocal, rectangleParams.row, rectangleParams.col, rectangleParams.stride);
-#else
-    VecMulMat(inputLocal, quantScaleLocal, inputLocal, rectangleParams);
-    AscendC::PipeBarrier<PIPE_V>();
-    CastFP32ToINT8(outLocal, inputLocal, shareTmpUb, rectangleParams.row * rectangleParams.col);
-#endif
+    QuantPerChannelVf(outLocal, inputLocal, quantScaleLocal, rectangleParams.row, rectangleParams.col,
+                      rectangleParams.stride);
 }
 
 /**
@@ -413,18 +399,12 @@ __aicore__ inline void QuantPerChannel(const LocalTensor<O> &outLocal, const Loc
           col 列数
           stride 一行的真实长度
  */
-template<typename T, typename C, typename O>
+template <typename T, typename C, typename O>
 __aicore__ inline void QuantPerTensor(const LocalTensor<O> &outLocal, const LocalTensor<T> &inputLocal,
-        const LocalTensor<C> &quantScaleLocal, const LocalTensor<uint8_t> &shareTmpUb,
-        const Rectangle& rectangleParams)
+                                      const LocalTensor<C> &quantScaleLocal, const LocalTensor<uint8_t> &shareTmpUb,
+                                      const Rectangle &rectangleParams)
 {
-#if __CCE_AICORE__ == 310
     QuantPerTensorVF(outLocal, inputLocal, quantScaleLocal, rectangleParams.row, rectangleParams.col);
-#else
-    RowMuls(inputLocal, inputLocal, quantScaleLocal, rectangleParams);
-    AscendC::PipeBarrier<PIPE_V>();
-    CastFP32ToINT8(outLocal, inputLocal, shareTmpUb, rectangleParams.row * rectangleParams.col);
-#endif
 }
 
 /**
@@ -438,12 +418,12 @@ __aicore__ inline void QuantPerTensor(const LocalTensor<O> &outLocal, const Loca
           col 列数
           stride 一行的真实长度
  */
-__aicore__ inline void QuantPerTensorToFP8e4m3(const LocalTensor<FP8E4M3> &outLocal, const LocalTensor<float> &inputLocal, 
-                                               const LocalTensor<float> &quantScaleLocal, const Rectangle& rectangleParams)
+__aicore__ inline void QuantPerTensorToFP8e4m3(const LocalTensor<FP8E4M3> &outLocal,
+                                               const LocalTensor<float> &inputLocal,
+                                               const LocalTensor<float> &quantScaleLocal,
+                                               const Rectangle &rectangleParams)
 {
-#if __CCE_AICORE__ == 310
     QuantPerTensorVF(outLocal, inputLocal, quantScaleLocal, rectangleParams.row, rectangleParams.col);
-#endif
 }
 
 /**
@@ -460,28 +440,26 @@ __aicore__ inline void QuantPerTensorToFP8e4m3(const LocalTensor<FP8E4M3> &outLo
  *          row 待处理的行数
  *          col 待处理的列数 （col = tileSize * tileNum）
  */
-template<typename O>
-__aicore__ inline void QuantPerTile8Bit(const LocalTensor<O> &outLocal,
-                                    const LocalTensor<float> &inputLocal,
-                                    const PerTileQuantParams& perTileQuantParams)
+template <typename O>
+__aicore__ inline void QuantPerTile8Bit(const LocalTensor<O> &outLocal, const LocalTensor<float> &inputLocal,
+                                        const PerTileQuantParams &perTileQuantParams)
 {
-#if __CCE_AICORE__ == 310
-    LocalTensor<float> quantScaleLocal = outLocal[perTileQuantParams.row * perTileQuantParams.col].template ReinterpretCast<float>();
-    QuantPerTileVF<float, float, O>(outLocal, inputLocal, quantScaleLocal, perTileQuantParams.row, perTileQuantParams.col, perTileQuantParams.tileSize);
-#endif
+    LocalTensor<float> quantScaleLocal =
+        outLocal[perTileQuantParams.row * perTileQuantParams.col].template ReinterpretCast<float>();
+    QuantPerTileVF<float, float, O>(outLocal, inputLocal, quantScaleLocal, perTileQuantParams.row,
+                                    perTileQuantParams.col, perTileQuantParams.tileSize);
 }
 
-__aicore__ inline void QuantPerTile(const LocalTensor<int8_t> &outLocal,
-                                    const LocalTensor<float> &inputLocal,
+__aicore__ inline void QuantPerTile(const LocalTensor<int8_t> &outLocal, const LocalTensor<float> &inputLocal,
                                     const LocalTensor<uint8_t> &shareTmpUb,
-                                    const PerTileQuantParams& perTileQuantParams)
+                                    const PerTileQuantParams &perTileQuantParams)
 {
     LocalTensor<float> scale =
         outLocal[perTileQuantParams.row * perTileQuantParams.col].template ReinterpretCast<float>();
 
     LocalTensor<float> clipOut = inputLocal;
-    uint32_t aMaxSizeAlign = Align(static_cast<uint32_t>(perTileQuantParams.row * perTileQuantParams.tileNum),
-        FP32_BLOCK_ELEMENT_NUM);
+    uint32_t aMaxSizeAlign =
+        Align(static_cast<uint32_t>(perTileQuantParams.row * perTileQuantParams.tileNum), FP32_BLOCK_ELEMENT_NUM);
     uint32_t aMaxBrcbSize = perTileQuantParams.row * perTileQuantParams.tileNum * FP32_BLOCK_ELEMENT_NUM;
     LocalTensor<float> aMax = shareTmpUb.template ReinterpretCast<float>();
     LocalTensor<float> aMaxBrcb = aMax[aMaxSizeAlign];
@@ -490,11 +468,8 @@ __aicore__ inline void QuantPerTile(const LocalTensor<int8_t> &outLocal,
     PerTileClipWithAlpha(clipOut, aMax, aMaxBrcb, inputLocal, sharedBuf, perTileQuantParams);
 
     LocalTensor<float> quantOut = clipOut;
-    DynamicQuant(quantOut, scale, clipOut,
-                 aMax, aMaxBrcb, sharedBuf,
-                 perTileQuantParams.alpha,
-                 perTileQuantParams.row * perTileQuantParams.tileNum,
-                 perTileQuantParams.tileSize);
+    DynamicQuant(quantOut, scale, clipOut, aMax, aMaxBrcb, sharedBuf, perTileQuantParams.alpha,
+                 perTileQuantParams.row * perTileQuantParams.tileNum, perTileQuantParams.tileSize);
     PipeBarrier<PIPE_V>();
     CastFP32ToINT8(outLocal, quantOut, sharedBuf, perTileQuantParams.row * perTileQuantParams.col);
 }
@@ -505,12 +480,15 @@ __aicore__ inline void QuantPerTile(const LocalTensor<int8_t> &outLocal,
  * @param inputLocal 输入tensor [row , col]
  * @param scale 输出每行的反量化系数 [1 , row]
  * @param maxInt8Tensor [1 , row] 元素均为int8的最大值127
- * @param shareTmpUb 临时buffer 内部需要的空间为 [(Align(row * col, 8) + Align(row , 8) * ALIGN_BLOCK_SIZE) * sizeof(float)]
+ * @param shareTmpUb 临时buffer 内部需要的空间为 [(Align(row * col, 8) + Align(row , 8) * ALIGN_BLOCK_SIZE) *
+ * sizeof(float)]
  * @param row 待处理的行数
  * @param col 待处理的列数
  */
-__aicore__ inline void DynamicQuant(const LocalTensor<float> &outputLocal, const LocalTensor<float> &scale, const LocalTensor<float> &inputLocal,
-                                    const LocalTensor<float> &maxInt8Tensor, const LocalTensor<uint8_t> &shareTmpUb, uint64_t row, uint64_t col) {
+__aicore__ inline void DynamicQuant(const LocalTensor<float> &outputLocal, const LocalTensor<float> &scale,
+                                    const LocalTensor<float> &inputLocal, const LocalTensor<float> &maxInt8Tensor,
+                                    const LocalTensor<uint8_t> &shareTmpUb, uint64_t row, uint64_t col)
+{
     constexpr uint64_t brcnNum = 8; // brcb一次处理8个数据
     uint64_t computeSize = row * col;
     LocalTensor<float> inputCopy = shareTmpUb.ReinterpretCast<float>();
@@ -518,10 +496,9 @@ __aicore__ inline void DynamicQuant(const LocalTensor<float> &outputLocal, const
     // abs(x)
     Abs(inputCopy, inputLocal, computeSize);
     AscendC::PipeBarrier<PIPE_V>();
-    Rectangle rectangleParams {
-        (uint32_t)row,
-        (uint32_t)col,
-        (uint32_t)col //columnStride
+    Rectangle rectangleParams{
+        (uint32_t)row, (uint32_t)col,
+        (uint32_t)col // columnStride
     };
     // rowMax(abs(x))
     RowMax(inputCopy, inputCopy, rectangleParams);
@@ -535,12 +512,12 @@ __aicore__ inline void DynamicQuant(const LocalTensor<float> &outputLocal, const
     Div(inputCopy, maxInt8Tensor, inputCopy, row);
     AscendC::PipeBarrier<PIPE_V>();
 
-    Brcb(rowMaxBrcb, inputCopy, static_cast<uint8_t> (CeilDivT(row, brcnNum)), {1, brcnNum});
+    Brcb(rowMaxBrcb, inputCopy, static_cast<uint8_t>(CeilDivT(row, brcnNum)), {1, brcnNum});
     AscendC::PipeBarrier<PIPE_V>();
 
     // x * 1 / scaleOut
     RowMuls(outputLocal, inputLocal, rowMaxBrcb, rectangleParams);
 }
 
-}
+} // namespace MlaProlog
 #endif // MLA_PROLOG_VECTOR_COMM_H
