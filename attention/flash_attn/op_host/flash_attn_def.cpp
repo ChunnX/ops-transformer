@@ -33,14 +33,12 @@ public:
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND})
-            .AutoContiguous();
+            .UnknownShapeFormat({ge::FORMAT_ND});
         this->Input("v")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND})
-            .AutoContiguous();
+            .UnknownShapeFormat({ge::FORMAT_ND});
         this->Input("block_table")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})

@@ -155,39 +155,19 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaCuSeqlensKv(const FaTilingIn
 
 ge::graphStatus ActualSeqLenChecker::CheckSingleParaMaxSeqlenQ(const FaTilingInfo &faInfo)
 {
-    if (faInfo.qLayout != FaLayout::TND) {
-        OP_CHECK_IF(faInfo.maxSeqQ != -1,
-                    OP_LOGE(faInfo.opName,
-                            "max_seqlen_q(%ld) is not supported when layout_q is %s, only supported in TND layout. "
-                            "In non-TND layout, max_seqlen_q must be -1 (default).",
-                            faInfo.maxSeqQ, LayoutToSerialString(faInfo.qLayout).c_str()),
-                    return ge::GRAPH_FAILED);
-    } else {
-        OP_CHECK_IF(
-            faInfo.maxSeqQ != -1 && faInfo.maxSeqQ < 0,
-            OP_LOGE(faInfo.opName, "max_seqlen_q(%ld) only supports -1 or non-negative integer.", faInfo.maxSeqQ),
-            return ge::GRAPH_FAILED);
-    }
-
+    OP_CHECK_IF(
+        faInfo.maxSeqQ != -1,
+        OP_LOGE(faInfo.opName, "max_seqlen_q(%ld) is currently not effective, only -1 is supported.", faInfo.maxSeqQ),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus ActualSeqLenChecker::CheckSingleParaMaxSeqlenKv(const FaTilingInfo &faInfo)
 {
-    if (faInfo.kvLayout != FaLayout::TND) {
-        OP_CHECK_IF(faInfo.maxSeqKv != -1,
-                    OP_LOGE(faInfo.opName,
-                            "max_seqlen_kv(%ld) is not supported when layout_kv is %s, only supported in TND layout. "
-                            "In non-TND layout, max_seqlen_kv must be -1 (default).",
-                            faInfo.maxSeqKv, LayoutToSerialString(faInfo.kvLayout).c_str()),
-                    return ge::GRAPH_FAILED);
-    } else {
-        OP_CHECK_IF(
-            faInfo.maxSeqKv != -1 && faInfo.maxSeqKv < 0,
-            OP_LOGE(faInfo.opName, "max_seqlen_kv(%ld) only supports -1 or non-negative integer.", faInfo.maxSeqKv),
-            return ge::GRAPH_FAILED);
-    }
-
+    OP_CHECK_IF(
+        faInfo.maxSeqKv != -1,
+        OP_LOGE(faInfo.opName, "max_seqlen_kv(%ld) is currently not effective, only -1 is supported.", faInfo.maxSeqKv),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

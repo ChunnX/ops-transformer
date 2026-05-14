@@ -391,10 +391,8 @@ def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
     )
     print_metadata(metadata)
 
-    # npu_flash_attn only accepts max_seqlen_q/kv for TND layout;
-    # for other layouts the default (-1) must be used, so we don't pass them.
-    max_seqlen_q  = max_seqlen_q  if layout_q == "TND" else -1
-    max_seqlen_kv = max_seqlen_kv if layout_q == "TND" else -1
+    max_seqlen_q  = -1
+    max_seqlen_kv = -1
     atten_mask1 = atten_mask1 if sparse_mode != 0 else None
     if atten_mask1 is not None and sparse_mode in (3, 4):
         atten_mask1 = atten_mask1.to(dtype=torch.int8)
