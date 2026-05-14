@@ -106,8 +106,8 @@ extern "C" __global__ __aicore__ void block_sparse_attention(
     // 全量化FP8场景
     TILING_KEY_IS(QF8_KVF8_OF16_QTND_KVTND_NOCACHE_SMF16_REF32_NOMASK_KEY);
     TILING_KEY_IS(QF8_KVF8_OF16_QBNSD_KVBNSD_NOCACHE_SMF16_REF32_NOMASK_KEY);
-    TILING_KEY_IS(QF8_KVF8_OBF16_QTND_KVTND_NOCACHE_SMF16_REF32_NOMASK_KEY);
-    TILING_KEY_IS(QF8_KVF8_OBF16_QBNSD_KVBNSD_NOCACHE_SMF16_REF32_NOMASK_KEY);
+    TILING_KEY_IS(QF8_KVF8_OBF16_QTND_KVTND_NOCACHE_SMBF16_REF32_NOMASK_KEY);
+    TILING_KEY_IS(QF8_KVF8_OBF16_QBNSD_KVBNSD_NOCACHE_SMBF16_REF32_NOMASK_KEY);
 
     #if TILING_KEY_VAR == QF16_KVF16_QTND_KVTND_NOCACHE_SMF16_REF32_NOMASK_KEY
         BsaInferIntfRegular<
@@ -140,12 +140,12 @@ extern "C" __global__ __aicore__ void block_sparse_attention(
             fp8_e4m3fn_t, half, float, BsaKernelArch35::Format::BNSD, BsaKernelArch35::Format::BNSD>(
                 query, key, value, blockSparseMask, mask, blockTable, actualSeqLengths, actualSeqLengthsKv,
                 qDequantScale, kDequantScale, vDequantScale, attentionOut, user, tiling);
-    #elif TILING_KEY_VAR == QF8_KVF8_OBF16_QTND_KVTND_NOCACHE_SMF16_REF32_NOMASK_KEY
+    #elif TILING_KEY_VAR == QF8_KVF8_OBF16_QTND_KVTND_NOCACHE_SMBF16_REF32_NOMASK_KEY
         BsaInferInterfaceFullQuant<
             fp8_e4m3fn_t, bfloat16_t, float, BsaKernelArch35::Format::TND, BsaKernelArch35::Format::TND>(
                 query, key, value, blockSparseMask, mask, blockTable, actualSeqLengths, actualSeqLengthsKv,
                 qDequantScale, kDequantScale, vDequantScale, attentionOut, user, tiling);
-    #elif TILING_KEY_VAR == QF8_KVF8_OBF16_QBNSD_KVBNSD_NOCACHE_SMF16_REF32_NOMASK_KEY
+    #elif TILING_KEY_VAR == QF8_KVF8_OBF16_QBNSD_KVBNSD_NOCACHE_SMBF16_REF32_NOMASK_KEY
         BsaInferInterfaceFullQuant<
             fp8_e4m3fn_t, bfloat16_t, float, BsaKernelArch35::Format::BNSD, BsaKernelArch35::Format::BNSD>(
                 query, key, value, blockSparseMask, mask, blockTable, actualSeqLengths, actualSeqLengthsKv,
