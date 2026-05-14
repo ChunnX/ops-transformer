@@ -17,8 +17,6 @@
 
 - 接口功能：完成量化的Matmul计算、Permute（保证通信后地址连续）和AlltoAll通信的融合，**先计算后通信**，支持K-C量化、mx[量化模式](../../../docs/zh/context/量化介绍.md)。
 
-  - <term>Ascend 950PR/Ascend 950DT</term>：新增`commMode`参数，根据该参数指定通信类型。
-
 - 计算公式：假设x1的shape为(BS, H1)，x2的shape为(H1, H2)，rankSize为NPU卡数。
 
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
