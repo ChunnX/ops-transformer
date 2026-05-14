@@ -504,6 +504,7 @@ gmm:
       - gmm/grouped_matmul_finalize_routing/op_kernel
     options:
       - grouped_matmul_finalize_routing
+
 ffn:
   ffn:
     module: True

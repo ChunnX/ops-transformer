@@ -386,19 +386,6 @@ public:
             }
         }
 
-        // constInfo.s1OuterSize = multiCoreParamsRegbase.s1OuterSize;
-
-        // if ASCEND_IS_AIC {
-        //     printf("aicIdx:%d\n", constInfo.aicIdx);
-        // } else {
-        //     printf("aivIdx:%d\n", constInfo.aivIdx);
-        //     printf("aicIdx:%d\n", constInfo.aicIdx);
-        //     printf("subBlockIdx:%d\n", constInfo.subBlockIdx);
-        // }
-        // printf("(%d, %d, %d) -> (%d, %d, %d)\n",
-        //     bN2Start_, gS1OStart_, s2OStart_,
-        //     bN2End_, gS1OEnd_, s2OEnd_);
-
         if (constInfo.isQHasLeftPadding) {
             constInfo.queryRightPaddingSize = ((__gm__ int64_t *)queryPaddingSize)[0];
             if (constInfo.queryRightPaddingSize < 0) {
@@ -912,9 +899,6 @@ public:
         fdParams_.fdWorkspaceIdx = fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_WORKSPACE_IDX_INDEX, sectionIdx));
         fdParams_.fdS2SplitNum =fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_WORKSPACE_NUM_INDEX, sectionIdx));
         fdParams_.mStart =fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_M_START_INDEX, sectionIdx));
-        // FDparamsX fdParams = {fdCoreEnable, fdBN2Idx, fdMIdx, fdS2SplitNum, mStart, mLen, fdWorkspaceIdx};
-        // PRINTF("ori fdParams_.fdBN2Idx is %d, fdParams_.fdMIdx is %d, fdParams_.fdWorkspaceIdx is %d, fdParams_.fdS2SplitNum is %d\n", fdParams_.fdBN2Idx, fdParams_.fdMIdx, fdParams_.fdWorkspaceIdx, fdParams_.fdS2SplitNum);
-        // PRINTF("ori fdParams_.mStart is %d, fdParams_.mLen is %d\n", fdParams_.mStart, fdParams_.mLen);
     }
 
 

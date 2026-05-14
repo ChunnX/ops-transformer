@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -31,13 +31,10 @@ public:
     CommonChecker() = default;
     ~CommonChecker() override = default;
 
-    // === SinglePara: layout enum validation + deterministic ===
     ge::graphStatus CheckSinglePara(const FaTilingInfo &faInfo) override;
 
-    // === ParaExistence: null pointer checks on Q/K/V/attnOut ===
     ge::graphStatus CheckParaExistence(const FaTilingInfo &faInfo) override;
 
-    // === MultiPara: layout constraint table + shape/dt consistency ===
     ge::graphStatus CheckMultiPara(const FaTilingInfo &faInfo) override;
 
     void SetFaShapeCompare(const FaTilingInfo &faInfo);
