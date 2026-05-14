@@ -74,17 +74,17 @@ template <typename LayoutPattern, typename TraitType = LayoutTraitDefault<>,
 __aicore__ inline decltype(auto) MakeFrameLayout(const Args&... args) {
     static_assert(IsFrameLayoutTraitV<TraitType>,
         "MakeFrameLayout<LayoutPattern, TraitType>(...) expects TraitType to define type and C0_ELEMENT.");
-    using GetLayoutMakeFun = typename LayoutFormatSet::template Get<LayoutPattern>;
-    static_assert(!Std::is_same_v<GetLayoutMakeFun, EmptyValue>, "Unsupported layout pattern.");
-    return GetLayoutMakeFun::template Make<TraitType>(args...);
+    using LayoutMaker = typename LayoutFormatSet::template Get<LayoutPattern>;
+    static_assert(!Std::is_same_v<LayoutMaker, EmptyValue>, "Unsupported layout pattern.");
+    return LayoutMaker::template Make<TraitType>(args...);
 }
 
 template <typename LayoutPattern, typename IntType,
     Std::enable_if_t<IsIntegralConstantV<IntType>, int> = 0, typename... Args>
 __aicore__ inline decltype(auto) MakeFrameLayout(const Args&... args) {
-    using GetLayoutMakeFun = typename LayoutFormatSet::template Get<LayoutPattern>;
-    static_assert(!Std::is_same_v<GetLayoutMakeFun, EmptyValue>, "Unsupported layout pattern.");
-    return GetLayoutMakeFun::template Make<LayoutTraitDefault<uint16_t, IntType::value>>(args...);
+    using LayoutMaker = typename LayoutFormatSet::template Get<LayoutPattern>;
+    static_assert(!Std::is_same_v<LayoutMaker, EmptyValue>, "Unsupported layout pattern.");
+    return LayoutMaker::template Make<LayoutTraitDefault<uint16_t, IntType::value>>(args...);
 }
 
 template <typename LayoutPattern, typename TraitType = LayoutTraitDefault<>>

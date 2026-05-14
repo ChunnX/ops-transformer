@@ -19,10 +19,10 @@
 * \file mmad_atom_impl.h
 * \brief
 */
-#ifndef IMPL_TENSOR_API_DETAIL_ATOM_MAD_ATOM_IMPL_H
-#define IMPL_TENSOR_API_DETAIL_ATOM_MAD_ATOM_IMPL_H
+#ifndef IMPL_TENSOR_API_ATOM_MMAD_ATOM_IMPL_H
+#define IMPL_TENSOR_API_ATOM_MMAD_ATOM_IMPL_H
 
-#include "compute/mmad.h"
+#include "cube/mmad.h"
 #include "mmad_traits_impl.h"
 
 namespace AscendC {
@@ -31,24 +31,24 @@ namespace Te {
 template <typename... Args>
 struct MmadAtom;
 
-template <typename MmaOperation>
-struct MmadAtom<MmaOperation> : MmadAtom<MmadTraits<MmaOperation>> {};
+template <typename MmadOperation>
+struct MmadAtom<MmadOperation> : MmadAtom<MmadTraits<MmadOperation>> {};
 
-template <typename MmaOperation, typename... Args>
-struct MmadAtom<MmadTraits<MmaOperation, Args...>> : MmadTraits<MmaOperation, Args...>
+template <typename MmadOperation, typename... Args>
+struct MmadAtom<MmadTraits<MmadOperation, Args...>> : MmadTraits<MmadOperation, Args...>
 {
-    using MmaTraitType = MmadTraits<MmaOperation, Args...>;
-    using TraitType = typename MmaTraitType::TraitType;
-    static constexpr const TraitType defaultTrait = MmaTraitType::defaultTrait;
+    using MmadTraitType = MmadTraits<MmadOperation, Args...>;
+    using TraitType = typename MmadTraitType::TraitType;
+    static constexpr const TraitType defaultTrait = MmadTraitType::defaultTrait;
 
     template <const TraitType& traits = defaultTrait, typename... Params>
     __aicore__ inline void Call(const Params& ...params) const {
-        MmaTraitType::template MmadUnpack<traits>(params...);
+        MmadTraitType::template MmadUnpack<traits>(params...);
     }
 
     template <typename... TraitsArgs>
     __aicore__ inline auto with(TraitsArgs&&... args) const {
-        auto traits = MmaTraitType::with(static_cast<TraitsArgs&&>(args)...);
+        auto traits = MmadTraitType::with(static_cast<TraitsArgs&&>(args)...);
         return MmadAtom<decltype(traits)>{traits};
     }
 };
@@ -56,7 +56,7 @@ struct MmadAtom<MmadTraits<MmaOperation, Args...>> : MmadTraits<MmaOperation, Ar
 }
 }
 
-#endif // IMPL_TENSOR_API_DETAIL_ATOM_MAD_ATOM_IMPL_H
+#endif // IMPL_TENSOR_API_ATOM_MMAD_ATOM_IMPL_H
 
 #if defined(UNDEF_ASCENDC_TENSOR_API_INCLUDE_COMPILER_INTERNAL_HEADERS_ASCENDC)
 #undef ASCENDC_TENSOR_API_INCLUDE_COMPILER_INTERNAL_HEADERS

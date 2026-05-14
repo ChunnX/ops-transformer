@@ -27,8 +27,6 @@
 #include "block_mmad.h"
 #include "../../tensor_api/include/tensor_api/tensor.h"
 #include "../tile/tile_mmad_mx.h"
-#include "../tile/copy_scale_l1_to_l0a.h"
-#include "../tile/copy_scale_l1_to_l0b.h"
 #include "../tile/pad_mx_kl1.h"
 
 namespace Blaze {
@@ -57,7 +55,7 @@ public:
     using MxL0BType = typename AscendC::GetL0DataType<BType, true>::Type;
     using BiasType = BiasType_;
     using DispatchPolicy = DispatchPolicy_;
-    using TupleShape = AscendC::Te::Shape<int64_t, int64_t, int64_t>;
+    using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
     using BlockShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
     uint64_t m_;
     uint64_t n_;
@@ -127,6 +125,8 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(SCALE_BUFFER_FLAG_1);
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(INPUT_BUFFER_FLAG_0);
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(INPUT_BUFFER_FLAG_1);
+        AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(M_MTE1_FLAG_0);
+        AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(M_MTE1_FLAG_1);
         AscendC::SetMMLayoutTransform(true); // true means column first when fixpipe_l0c2out
     }
 
@@ -140,12 +140,14 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(SCALE_BUFFER_FLAG_1);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(INPUT_BUFFER_FLAG_0);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(INPUT_BUFFER_FLAG_1);
+        AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(M_MTE1_FLAG_0);
+        AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(M_MTE1_FLAG_1);
         AscendC::SetMMLayoutTransform(false); // false means row first when fixpipe_l0c2out
     }
 
 public:
     __aicore__ inline void Init(
-        const TupleShape& problemShape, const BlockShape& l0TileShape, const L1Params& l1Params, bool isBias,
+        const ProblemShape& problemShape, const BlockShape& l0TileShape, const L1Params& l1Params, bool isBias,
         bool dbL0C)
     {
         m_ = AscendC::Te::Get<IDX_M_IDX>(problemShape);
@@ -318,7 +320,8 @@ public:
                               baseK_;
             // Load data to L0 and open DB
             uint64_t l0Offset = HALF_L0_SIZE * (l0PingPong_ & 0x1);
-            AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0PingPong_ & 0x1);
+            uint16_t mte1WaitMFlag = (l0PingPong_ & 0x1) + M_MTE1_FLAG_0;
+            AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(mte1WaitMFlag);
 
             // A, ScaleA L1->L0
             auto layoutAL0 = AscendC::Te::MakeFrameLayout<AscendC::Te::NZLayoutPtn, AscendC::Std::Int<C0_SIZE>>(
@@ -334,9 +337,8 @@ public:
                 tileL1L0Param.curM, Blaze::Gemm::CeilDiv(curKL0, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE);
             auto tensorScaleAL0 =
                 AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<Location::L0A, fp8_e8m0_t>(l0Offset), layoutScaleAL0);
-            auto CopyL12L0MxScaleA3510 = AscendC::Te::MakeCopy(Blaze::Gemm::Tile::CopyL12L0MxScaleA3510{});
             AscendC::Te::Copy(
-                CopyL12L0MxScaleA3510, tensorScaleAL0, tensorBlockScaleAL1,
+                CopyL12L0A, tensorScaleAL0, tensorBlockScaleAL1,
                 AscendC::Te::MakeCoord(
                     0, iter1 * Blaze::Gemm::CeilDiv(baseK_, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE));
 
@@ -364,9 +366,8 @@ public:
                 Blaze::Gemm::CeilDiv(curKL0, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE, tileL1L0Param.curN);
             auto tensorScaleBL0 =
                 AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<Location::L0B, fp8_e8m0_t>(l0Offset), layoutScaleBL0);
-            auto CopyL12L0MxScaleB3510 = AscendC::Te::MakeCopy(Blaze::Gemm::Tile::CopyL12L0MxScaleB3510{});
             AscendC::Te::Copy(
-                CopyL12L0MxScaleB3510, tensorScaleBL0, tensorBlockScaleBL1,
+                CopyL12L0B, tensorScaleBL0, tensorBlockScaleBL1,
                 AscendC::Te::MakeCoord(
                     iter1 * Blaze::Gemm::CeilDiv(baseK_, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE, 0));
 
@@ -374,7 +375,7 @@ public:
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0PingPong_ & 0x1);
 
             Mmad(tileL1L0Param, iter0, iter1, kL0Iter, curKL0, tensorAL0, tensorBL0, tensorBt);
-            AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0PingPong_ & 0x1);
+            AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(mte1WaitMFlag);
             l0PingPong_++;
         }
     }
@@ -401,7 +402,7 @@ public:
             CopyScalesInL1(gmScaleA, gmScaleB, tileL1L0Param, scaleL1BufId, iter0);
 
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(l1BufId);
-            biasBufId_ = abL1LoopCnt_ & 1;
+            biasBufId_ = scaleL1BufId;
             tileL1L0Param.curGmBKL1 = (iter0 + 1 == kL1Iter_) ? (k_ - iter0 * kL1_) : kL1_;
             tileL1L0Param.curPadBKL1 =
                 Blaze::Gemm::CeilAlign(tileL1L0Param.curGmBKL1, MXFP_DIVISOR_SIZE); // pad to 64 align
@@ -443,9 +444,15 @@ public:
             }
             abL1LoopCnt_++;
         }
-        // C L0C->GM
-        auto CopyL0C2GM = AscendC::Te::MakeCopy(AscendC::Te::CopyL0C2GM{});
-        AscendC::Te::Copy(CopyL0C2GM, gmC, tensorL0C, AscendC::Te::FixpipeParams{3});
+        if constexpr (AscendC::Std::is_same_v<AscendC::Te::GetMemLocation<TensorC>, AscendC::Te::Location::UB>) {
+            // C L0C->UB
+            auto CopyL0C2UB = AscendC::Te::MakeCopy(AscendC::Te::CopyL0C2UB{});
+            AscendC::Te::Copy(CopyL0C2UB, gmC, tensorL0C, AscendC::Te::FixpipeParams{3});
+        } else {
+            // C L0C->GM
+            auto CopyL0C2GM = AscendC::Te::MakeCopy(AscendC::Te::CopyL0C2GM{});
+            AscendC::Te::Copy(CopyL0C2GM, gmC, tensorL0C, AscendC::Te::FixpipeParams{3});
+        }
         if (enableL0cPingPong_) {
             l0cPingPong_++;
         }
@@ -483,6 +490,9 @@ private:
 
     constexpr static uint16_t SCALE_BUFFER_FLAG_0 = 4;
     constexpr static uint16_t SCALE_BUFFER_FLAG_1 = 5;
+    constexpr static uint16_t M_MTE1_FLAG_0 = 4;
+    constexpr static uint16_t M_MTE1_FLAG_1 = 5;
+
     uint16_t biasBufId_ = 0;
     uint64_t biasL1OneBuffer_ = 0UL;
     uint64_t aL1OneBuffer_ = 0UL;

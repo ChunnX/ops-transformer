@@ -329,6 +329,19 @@ public:
     }
 
     template <typename T, typename U>
+    __aicore__ inline static constexpr void CheckL12L0ScaleADataType()
+    {
+        using srcDataType = typename U::elementType;
+        using dstDataType = typename T::elementType;
+
+#if defined(__NPU_ARCH__) && __NPU_ARCH__ == 3510
+        static_assert(
+            Std::is_one_of_v<Std::tuple<dstDataType, srcDataType>, Std::tuple<__ca__ fp8_e8m0_t, __cbuf__ fp8_e8m0_t>>,
+            "The data type is not supported.");
+#endif
+    }
+
+    template <typename T, typename U>
     __aicore__ inline static constexpr void CheckL12L0BDataType()
     {
         using srcDataType = typename U::elementType;
@@ -347,6 +360,19 @@ public:
                 Std::tuple<__cb__ fp4x2_e2m1_t, __cbuf__ fp4x2_e2m1_t>,
                 Std::tuple<__cb__ fp4x2_e1m2_t, __cbuf__ fp4x2_e1m2_t>,
                 Std::tuple<__cb__ hifloat8_t, __cbuf__ hifloat8_t>>,
+            "The data type is not supported.");
+#endif
+    }
+
+   template <typename T, typename U>
+    __aicore__ inline static constexpr void CheckL12L0ScaleBDataType()
+    {
+        using srcDataType = typename U::elementType;
+        using dstDataType = typename T::elementType;
+
+#if defined(__NPU_ARCH__) && __NPU_ARCH__ == 3510
+        static_assert(
+            Std::is_one_of_v<Std::tuple<dstDataType, srcDataType>, Std::tuple<__cb__ fp8_e8m0_t, __cbuf__ fp8_e8m0_t>>,
             "The data type is not supported.");
 #endif
     }

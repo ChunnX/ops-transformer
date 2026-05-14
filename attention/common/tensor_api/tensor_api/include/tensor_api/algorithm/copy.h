@@ -18,8 +18,8 @@
 * \file copy.h
 * \brief
 */
-#ifndef INCLUDE_TENSOR_API_ALGORITHM_CPOY_H
-#define INCLUDE_TENSOR_API_ALGORITHM_CPOY_H
+#ifndef INCLUDE_TENSOR_API_ALGORITHM_COPY_H
+#define INCLUDE_TENSOR_API_ALGORITHM_COPY_H
 
 #include "../../../impl/tensor_api/algorithm/copy_impl.h"
 
@@ -38,7 +38,7 @@ __aicore__ inline auto MakeCopy(const Args& ...traits);
 }
 }
 
-#endif // EXPERIMENTAL_TENSOR_API_ALGORITHM_CPOY_H
+#endif // INCLUDE_TENSOR_API_ALGORITHM_COPY_H
 
 #if defined(UNDEF_ASCENDC_TENSOR_API_INCLUDE_COMPILER_INTERNAL_HEADERS_ASCENDC_TENSOR_API_H)
 #undef ASCENDC_TENSOR_API_INCLUDE_COMPILER_INTERNAL_HEADERS

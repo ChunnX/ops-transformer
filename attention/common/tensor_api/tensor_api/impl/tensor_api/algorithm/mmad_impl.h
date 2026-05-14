@@ -19,8 +19,8 @@
 * \file mmad_impl.h
 * \brief
 */
-#ifndef IMPL_TENSOR_API_ALGORITHM_MAD_IMPL_H
-#define IMPL_TENSOR_API_ALGORITHM_MAD_IMPL_H
+#ifndef IMPL_TENSOR_API_ALGORITHM_MMAD_IMPL_H
+#define IMPL_TENSOR_API_ALGORITHM_MMAD_IMPL_H
 
 #include "../atom/mmad_atom_impl.h"
 
@@ -47,7 +47,7 @@ __aicore__ inline auto MakeMmad(const Args& ...traits) {
 }
 }
 
-#endif // IMPL_TENSOR_API_ALGORITHM_MAD_IMPL_H
+#endif // IMPL_TENSOR_API_ALGORITHM_MMAD_IMPL_H
 
 #if defined(UNDEF_ASCENDC_TENSOR_API_INCLUDE_COMPILER_INTERNAL_HEADERS_ASCENDC)
 #undef ASCENDC_TENSOR_API_INCLUDE_COMPILER_INTERNAL_HEADERS

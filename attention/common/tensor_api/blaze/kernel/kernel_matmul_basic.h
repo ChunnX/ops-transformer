@@ -26,7 +26,7 @@
 
 #include "../epilogue/block_epilogue_empty.h"
 #include "../block/block_mmad.h"
-#include "../block/block_mmad_pingpong_basic.h"
+#include "../block/block_mmad_basic.h"
 #include "../utils/common_utils.h"
 
 #include "../../tensor_api/include/tensor_api/tensor.h"
