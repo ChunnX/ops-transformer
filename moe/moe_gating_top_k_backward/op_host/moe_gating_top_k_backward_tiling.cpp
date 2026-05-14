@@ -218,7 +218,7 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckGradY()
                         ge::TypeUtils::DataTypeToSerialString(ge::DataType::DT_FLOAT).c_str(),
                         ge::TypeUtils::DataTypeToSerialString(ge::DataType::DT_FLOAT16).c_str(),
                         ge::TypeUtils::DataTypeToSerialString(ge::DataType::DT_BF16).c_str(),
-                        ge::TypeUtils::DataTypeToSerialString(gradYDtype_).c_str(), ),
+                        ge::TypeUtils::DataTypeToSerialString(gradYDtype_).c_str()),
                 return ge::GRAPH_FAILED);
     gradYDtypeSize_ = gradYDtype_ == ge::DataType::DT_FLOAT ? NUM_BYTES_FOUR : NUM_BYTES_TWO;
     return ge::GRAPH_SUCCESS;
@@ -476,7 +476,7 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::DoOpTiling()
     MoeGatingTopKBackwardTilingData_.set_eps(eps_);
 
     DumpTiling();
-    
+
     return ge::GRAPH_SUCCESS;
 }
 
