@@ -9,9 +9,9 @@
  */
 
 /*!
- * \file lightning_indexer_grad_service_vector_pre.h
- * \brief
- */
+* \file lightning_indexer_grad_service_vector_pre.h
+* \brief
+*/
 #ifndef LIGHTNING_INDEXER_GRAD_SERVICE_VECTOR_PRE_H
 #define LIGHTNING_INDEXER_GRAD_SERVICE_VECTOR_PRE_H
 
@@ -34,10 +34,14 @@ public:
     using dataType = typename LIGT::dataType;
     
     __aicore__ inline LIGVectorPre(){};
-    __aicore__ inline void Init(TPipe *pipe_in, __gm__ uint8_t *dk, __gm__ uint8_t *workspace, const LIGTilingData *__restrict orgTilingData);
+    __aicore__ inline void Init(TPipe *pipe_in, __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dweights,
+                                __gm__ uint8_t *workspace, const LIGTilingData *__restrict orgTilingData,
+                                __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengthsK);
     __aicore__ inline void Process();
     __aicore__ inline void SyncALLCores();
-
+    __aicore__ inline void DoSplitPadding(uint32_t totalLen, uint32_t coreIdx, uint32_t coreNum, uint32_t &outBegin, uint32_t &outLen);
+    
+    using D_T = typename LIGT::dataType;
 protected:
     TPipe *pipe;
     GlobalTensor<float> dkWorkSpaceGm;
@@ -51,10 +55,39 @@ protected:
     uint32_t kPreBlockTail;
     int64_t initdkSize;
     int64_t dkOffset;
+    
+    __gm__ uint8_t *dqPtr = nullptr;
+    __gm__ uint8_t *dkPtr = nullptr;
+    __gm__ uint8_t *dweightsPtr = nullptr;
+    GlobalTensor<uint32_t> actualSeqLengthsGmQ;
+    GlobalTensor<uint32_t> actualSeqLengthsGmK;
 };
 
 template <typename LIGT>
-__aicore__ inline void LIGVectorPre<LIGT>::Init(TPipe *pipe_in, __gm__ uint8_t *dk, __gm__ uint8_t *workspace, const LIGTilingData *__restrict orgTilingData)
+__aicore__ inline void LIGVectorPre<LIGT>::DoSplitPadding(uint32_t totalLen, uint32_t coreIdx, uint32_t coreNum, uint32_t &outBegin, uint32_t &outLen)
+{
+    uint64_t base = totalLen / coreNum;
+    uint64_t remainder = totalLen % coreNum;
+    if (coreIdx < remainder) {
+        outLen = base + 1;
+        outBegin = coreIdx * (base + 1);
+    } else {
+        outLen = base;
+        outBegin = remainder * (base + 1) + (coreIdx - remainder) * base;
+    }
+
+    if (outBegin >= totalLen) {
+        outBegin = totalLen;
+        outLen = 0;
+    } else if (outBegin + outLen > totalLen) {
+        outLen = totalLen - outBegin;
+    }
+}
+
+template <typename LIGT>
+__aicore__ inline void LIGVectorPre<LIGT>::Init(TPipe *pipe_in, __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dweights,
+                                            __gm__ uint8_t *workspace, const LIGTilingData *__restrict orgTilingData,
+                                            __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengthsK)
 {
     cBlockIdx = GetBlockIdx();
     pipe = pipe_in;
@@ -73,6 +106,17 @@ __aicore__ inline void LIGVectorPre<LIGT>::Init(TPipe *pipe_in, __gm__ uint8_t *
 
     initdkSize = cBlockIdx == kPreBlockTotal - 1 ? kPreBlockTail : kPreBlockFactor;
     dkOffset = ((int64_t)cBlockIdx) * kPreBlockFactor;
+
+    dqPtr = dq;
+    dkPtr = dk;
+    dweightsPtr = dweights;
+
+    if (actualSeqLengthsQ != nullptr) {
+        actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint32_t *)actualSeqLengthsQ, tilingData->batch);
+    }
+    if (actualSeqLengthsK != nullptr) {
+        actualSeqLengthsGmK.SetGlobalBuffer((__gm__ uint32_t *)actualSeqLengthsK, tilingData->batch);
+    }
 }
 
 template <typename LIGT> 
@@ -81,6 +125,56 @@ __aicore__ inline void LIGVectorPre<LIGT>::Process()
     // process clear dk workspace
     if (g_coreType == AIV && cBlockIdx < kPreBlockTotal) {
         InitOutput<float>(dkWorkSpaceGm[dkOffset], initdkSize, 0);
+    }    
+    // TND layout: process clear dq, dk, dweights's padding
+    if constexpr (LIGT::layout == LIG_LAYOUT::TND) {
+        if (g_coreType == AIV) {
+            uint32_t batch = tilingData->batch;
+            uint32_t seqlenQ = tilingData->seqlenQ;
+            uint32_t seqlenK = tilingData->seqlenK;
+            uint32_t actualTotalLenQ = 0;
+            uint32_t actualTotalLenK = 0;
+            uint32_t headNumQ = tilingData->headNumQ;
+            uint32_t headNumK = tilingData->headNumK;
+            uint32_t headDim = tilingData->headDim;
+            uint32_t usedCoreNum = tilingData->usedCoreNum;
+            if (batch > 0) {
+                actualTotalLenQ = actualSeqLengthsGmQ.GetValue(batch - 1);
+                actualTotalLenK = actualSeqLengthsGmK.GetValue(batch - 1);
+            }
+
+            // Output GlobalTensor
+            GlobalTensor<D_T> dqGm;
+            GlobalTensor<D_T> dkGm;
+            GlobalTensor<D_T> dweightsGm;
+
+            // init output global tensor
+            dqGm.SetGlobalBuffer((__gm__ D_T *)dqPtr);
+            dkGm.SetGlobalBuffer((__gm__ D_T *)dkPtr);
+            dweightsGm.SetGlobalBuffer((__gm__ D_T *)dweightsPtr);
+            
+            // process padding dq, dweights
+            if (actualTotalLenQ < seqlenQ) {
+                uint32_t padLenQ = seqlenQ - actualTotalLenQ;
+                uint32_t beginPadQ = 0;
+                uint32_t lenPadQ = 0;
+                DoSplitPadding(padLenQ, cBlockIdx, usedCoreNum, beginPadQ, lenPadQ);
+                if (lenPadQ > 0) {
+                    InitOutput<D_T>(dqGm[(actualTotalLenQ + beginPadQ) * headNumQ * headDim], headNumQ * headDim, 0);
+                    InitOutput<D_T>(dweightsGm[(actualTotalLenQ + beginPadQ) * headNumQ], headNumQ, 0);
+                }
+            }
+            // process padding dk
+            if (actualTotalLenK < seqlenK) {
+                uint32_t padLenK = seqlenK - actualTotalLenK;
+                uint32_t beginPadK = 0;
+                uint32_t lenPadK = 0;
+                DoSplitPadding(padLenK, cBlockIdx, usedCoreNum, beginPadK, lenPadK);
+                if (lenPadK > 0) {
+                    InitOutput<D_T>(dkGm[(actualTotalLenK + beginPadK) * headNumK * headDim], headNumK * headDim, 0);
+                }
+            }
+        }
     }
 }
 
