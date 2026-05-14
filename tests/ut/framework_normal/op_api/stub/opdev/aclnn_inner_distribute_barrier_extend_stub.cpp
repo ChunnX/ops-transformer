@@ -17,17 +17,4 @@ aclnnStatus aclnnInnerDistributeBarrierExtend(void * /* workspace */, uint64_t /
 {
     return ACLNN_SUCCESS;
 }
-
-aclnnStatus aclnnInnerDistributeBarrierExtendGetWorkspaceSize(const aclTensor * /* context */,
-    const aclTensor * /* xRef */, const aclTensor * /* timeOut */, const aclTensor * /* elasticInfo */,
-    const char * /* group */, int64_t /* worldSize */, uint64_t *workspaceSize, aclOpExecutor **executor)
-{
-    if (workspaceSize != nullptr) {
-        *workspaceSize = 0;
-    }
-    if (executor != nullptr) {
-        *executor = nullptr;
-    }
-    return ACLNN_SUCCESS;
-}
 }
