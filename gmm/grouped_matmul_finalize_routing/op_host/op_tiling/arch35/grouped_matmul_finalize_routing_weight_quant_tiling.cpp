@@ -554,8 +554,7 @@ bool CheckMxA8W4AttrWithInput(gert::TilingContext *contex)
         OP_CHECK_IF((*shareInputOffsetPtr) < 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(contex->GetNodeName(), "shareInputOffset", std::to_string(*shareInputOffsetPtr), "shareInputOffset should be >=0"),
                     return false);
         OP_CHECK_IF((*shareInputOffsetPtr) + sharedInputStorageShape->GetOriginShape().GetDim(0) > outputBS,
-                    OP_LOGE(contex->GetNodeName(), "Attr shareInputOffset[%lu] should less or equal to outputBS[%ld].",
-                            (*shareInputOffsetPtr), outputBS),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(contex->GetNodeName(), "shareInputOffset", std::to_string(*shareInputOffsetPtr), "shareInputOffset should less or equal to outputBS"),
                     return false);
     }
 
