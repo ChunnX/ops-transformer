@@ -954,7 +954,7 @@ public:
         
         int64_t gmOffset; 
 
-        if (vCacheIdx >= 0) {
+        if (vCacheIdx >= 0 && vCacheIdx < tilingData_->indexUpperBound) {
             if (tilingData_->cacheMode == NORM_CACHE_MODE) {
                 gmOffset = (batchIdx * tilingData_->seqLength + vCacheIdx) * tilingData_->dv + this->ubFactor * ubIdx;
                 if constexpr (IsSameType<T_V_CACHE, int8_t>::value || IsSameType<T_V_CACHE, hifloat8_t>::value ||
@@ -1013,7 +1013,7 @@ public:
         
         int64_t gmOffset;
 
-        if (vCacheIdx >= 0) {
+        if (vCacheIdx >= 0 && vCacheIdx < tilingData_->indexUpperBound) {
             if (tilingData_->cacheMode == PA_BLK_BNSD_CACHE_MODE) {
                 int64_t blockOffset = vCacheIdx / tilingData_->blockSize;
                 int64_t rowOffset = seqIdx % tilingData_->blockSize;
@@ -1816,7 +1816,7 @@ public:
         WaitFlag<HardEvent::S_MTE3>(eventIDSToMTE3);
         int64_t gmOffset1, gmOffset2; 
 
-        if (kCacheIdx >= 0) {
+        if (kCacheIdx >= 0 && kCacheIdx < tilingData_->indexUpperBound) {
             if (tilingData_->cacheMode == NORM_CACHE_MODE) {
                 gmOffset1 = (batchIdx * tilingData_->seqLength + kCacheIdx) * tilingData_->dk + this->ubFactor * ubIdx / 2;
                 gmOffset2 = gmOffset1 + tilingData_->dk / 2;
@@ -1884,7 +1884,7 @@ public:
 
         int64_t gmOffset1, gmOffset2;
 
-        if (kCacheIdx >= 0) {
+        if (kCacheIdx >= 0 && kCacheIdx < tilingData_->indexUpperBound) {
             if (tilingData_->cacheMode == PA_BLK_BNSD_CACHE_MODE) {
                 int64_t blockOffset = kCacheIdx / tilingData_->blockSize;
                 int64_t rowOffset = seqIdx % tilingData_->blockSize;

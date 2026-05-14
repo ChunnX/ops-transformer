@@ -318,6 +318,7 @@ ge::graphStatus KvRmsNormRopeCacheRegbaseFullLoadTiling::DoOpTiling()
     int64_t dvB8Align = CeilAlign(dvAlign, static_cast<int64_t>(ubBlockSize_ / sizeof(int8_t)));
     tilingData_.set_dvB8Align(dvB8Align);
     tilingData_.set_blockSize(blockSize_);
+    tilingData_.set_indexUpperBound(indexUpperBound_);
     tilingData_.set_reciprocal(reciprocal_);
     tilingData_.set_epsilon(epsilon_);
     tilingData_.set_cosSinNeedBrc(cosSinNeedBrc_);
