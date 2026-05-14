@@ -392,10 +392,9 @@ public:
 
                 SyncAll();
                 // FRDeterministicA5 is called without ASCEND_IS_AIV guard so that
-                // both AIC and AIV enter the function. Inside, AIC executes 2x SyncAll
-                // and returns; AIV performs the actual aggregation with 2x SyncAll.
-                // This keeps SyncAll counts matched (AIC: 2 outer + 2 inner = 4,
-                // AIV: 2 outer + 2 inner = 4).
+                // both AIC and AIV enter the function. Inside, AIC executes 1x SyncAll
+                // and returns; AIV performs the actual aggregation with 2x SyncAll
+                // (AIV cores are 2x AIC due to GetTaskRation).
                 GMMFRDeterministic::SyncConfig syncConfig{};
                 syncConfig.curM = workspaceBaseRow;
                 syncConfig.lowBoundM = workspaceBaseRow;

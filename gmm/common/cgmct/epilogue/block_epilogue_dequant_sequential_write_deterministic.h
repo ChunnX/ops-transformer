@@ -44,6 +44,9 @@ constexpr uint32_t DET_SEQ_LOGIT_INDEXS = 4U;
 constexpr uint32_t DET_SEQ_MAX_SINGLE_MNS = 128 * 256U;
 constexpr uint32_t DET_SEQ_HALF_DB_MAX_SINGLE_MNS = 32 * 256U;
 constexpr uint32_t DET_SEQ_BLOCKS_BYTES = 256U;
+constexpr uint32_t DET_SEQ_AGG_UB_SIZE = 12 * 1024;
+constexpr uint32_t DET_SEQ_AGG_BUFFER_NUM = 2;
+constexpr uint32_t DET_SEQ_AGG_RESERVED = DET_SEQ_AGG_UB_SIZE * DET_SEQ_AGG_BUFFER_NUM;
 constexpr uint64_t DET_SEQ_MAX_OUTPUT_M_UBS = 32UL;
 constexpr uint64_t DET_SEQ_BLOCK_ELEMENTS_FP32S = 8UL;
 } // namespace
@@ -138,8 +141,8 @@ private:
     AscendC::GlobalTensor<DataTypeOut> yGlobal_;
 
     // UB ADDR
-    AscendC::LocalTensor<DataTypeIn> l0cOutUb_{AscendC::TPosition::VECIN, 0, DET_SEQ_MAX_SINGLE_MNS};
-    AscendC::LocalTensor<float> l0cOutUbFloat_{AscendC::TPosition::VECIN, 0, DET_SEQ_MAX_SINGLE_MNS};
+    AscendC::LocalTensor<DataTypeIn> l0cOutUb_{AscendC::TPosition::VECIN, DET_SEQ_AGG_RESERVED, DET_SEQ_MAX_SINGLE_MNS};
+    AscendC::LocalTensor<float> l0cOutUbFloat_{AscendC::TPosition::VECIN, DET_SEQ_AGG_RESERVED, DET_SEQ_MAX_SINGLE_MNS};
     AscendC::LocalTensor<float> logitUbPing_;
     AscendC::LocalTensor<float> logitUbPong_;
     AscendC::LocalTensor<DataTypeX2Scale> x2ScaleUbPing_;
@@ -200,7 +203,7 @@ BlockEpilogueDequantSequentialWriteDeterministic<GMM_BLOCK_EPILOGUE_DEQUANT_SEQU
     }
     params_ = &params;
     yGlobal_.SetGlobalBuffer((__gm__ DataTypeOut *)params_->yGMAddr);
-    uint32_t afterFirstIn = DET_SEQ_MAX_SINGLE_MNS * sizeof(DataTypeOut);
+    uint32_t afterFirstIn = DET_SEQ_AGG_RESERVED + DET_SEQ_MAX_SINGLE_MNS * sizeof(DataTypeOut);
     logitUbPing_ = AscendC::LocalTensor<float>(AscendC::TPosition::VECIN, afterFirstIn, DET_SEQ_BLOCKS_BYTES);
     uint32_t afterSecondIn = afterFirstIn + DET_SEQ_BLOCKS_BYTES * sizeof(float);
     logitUbPong_ = AscendC::LocalTensor<float>(AscendC::TPosition::VECIN, afterSecondIn, DET_SEQ_BLOCKS_BYTES);
