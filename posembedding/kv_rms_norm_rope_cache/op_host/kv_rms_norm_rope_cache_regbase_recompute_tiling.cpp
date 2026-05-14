@@ -328,6 +328,7 @@ ge::graphStatus KvRmsNormRopeCacheRegbaseRecomputeTiling::DoOpTiling()
     tilingData_.set_dk(dk_);
     tilingData_.set_dv(dv_);
     tilingData_.set_blockSize(blockSize_);
+    tilingData_.set_indexUpperBound(indexUpperBound_);
     tilingData_.set_reciprocal(reciprocal_);
     tilingData_.set_epsilon(epsilon_);
     tilingData_.set_cosSinNeedBrc(cosSinNeedBrc_);

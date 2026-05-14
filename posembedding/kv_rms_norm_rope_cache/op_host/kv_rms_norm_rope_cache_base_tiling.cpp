@@ -386,6 +386,14 @@ ge::graphStatus KvRmsNormRopeCacheTilingBase::GetShapeAttrsInfo()
     int64_t seqLen = std::get<SHAPE_IDX_S>(kvShapeTuple);
     cacheLength_ = std::get<SHAPE_IDX_S>(kCacheShapeTuple);
     blockSize_ = std::get<SHAPE_IDX_BLOCK_SIZE>(kCacheShapeTuple);
+    
+    if (currentCacheMode_ == CacheMode::Norm) {
+        indexUpperBound_ = cacheLength_;
+    } else {
+        int64_t blockNum = std::get<SHAPE_IDX_B>(kCacheShapeTuple);
+        indexUpperBound_ = blockNum * blockSize_;
+    }
+    
     isMTP_ = (seqLen > 1);
     auto kvStorageShape = context_->GetInputShape(KV_INDEX)->GetStorageShape();
     std::string kvStorageShapeStr = ToString(kvStorageShape);
