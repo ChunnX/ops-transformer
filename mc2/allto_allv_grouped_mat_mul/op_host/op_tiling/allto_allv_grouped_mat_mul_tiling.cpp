@@ -518,7 +518,7 @@ uint64_t AlltoAllvGmmTiling::GetTilingKey() const
     uint8_t commMode = Mc2Comm::COMM_MODE_AICPU;
     auto platformInfo = context_->GetPlatformInfo();
     platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
-    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {  // A5平台
+    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
         commMode = Mc2Comm::GetCommModeFromEnv();
     }
     bool tilingekyGmmTrans = transGmmWeight_;
