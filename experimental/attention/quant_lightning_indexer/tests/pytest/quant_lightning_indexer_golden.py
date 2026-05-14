@@ -691,8 +691,8 @@ def qli_output_single(params):
     
     if qk_dtype == torch.uint8:
         hifp8mode = 1
-        query_dtype = 34 # ACL_HIFLOAT8
-        key_dtype = 34   # ACL_HIFLOAT8
+        query_dtype = torch_npu.hifloat8 # ACL_HIFLOAT8
+        key_dtype = torch_npu.hifloat8   # ACL_HIFLOAT8
     else:
         hifp8mode = 0
 
