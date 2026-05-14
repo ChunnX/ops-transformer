@@ -826,7 +826,7 @@ mask_mode参数解释
             无
         </td>
         <td>
-            无
+            暂不支持
         </td>
     </tr>
 </tbody>
