@@ -29,7 +29,6 @@ tensor_list npu_bandwidth_test(const at::Tensor &x, const at::Tensor &dstrank_id
     TORCH_CHECK((world_size > 0), "The world_size should be greater than 0, current is: ", world_size);
     TORCH_CHECK((max_bs > 0), "The max_bs should be greater than 0, current is: ", max_bs);
     TORCH_CHECK((mode == 0 || mode == 1), "The mode should be 0 or 1, current is: ", mode);
-    TORCH_CHECK((comm_alg >= 0), "The comm_alg should be >= 0, current is: ", comm_alg);
 
     auto x_size = x.sizes();
     int64_t h = x_size[1];
