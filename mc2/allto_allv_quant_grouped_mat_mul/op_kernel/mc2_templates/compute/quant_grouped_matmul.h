@@ -98,8 +98,8 @@ public:
         if (!isLocal && expertTokenNum_[expertIdx] == 0) {
             return ;
         }
-        AscendC::printf("QuantGroupedMatmul::Process: expertIdx=%u, expertTokenNum=%u, isLocal=%d, isFp16=%d\n",
-                        expertIdx, expertTokenNum_[expertIdx], isLocal, isFp16);
+        AscendC::printf("QuantGroupedMatmul::Process: expertIdx=%u, expertTokenNum=%u, isLocal=%d, \n",
+                        expertIdx, expertTokenNum_[expertIdx], isLocal);
         this->UpdateAddr(expertIdx);
         AscendC::printf("QuantGroupedMatmul::Process: after UpdateAddr, xAddr=%p, wAddr=%p, yAddr=%p\n",
                         reinterpret_cast<__gm__ uint8_t *>(xGM_),
