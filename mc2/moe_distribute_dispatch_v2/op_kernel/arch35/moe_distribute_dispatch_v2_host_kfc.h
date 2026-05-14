@@ -108,7 +108,6 @@ enum class ExecutMode
 
 using namespace AscendC;
 using namespace MoeDistributeV2Base;
-using namespace MoeDispatchLog;
 using namespace Mc2Aclnn;
 
 using namespace MoeDispatchLog_NEW;
