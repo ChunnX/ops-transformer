@@ -1243,6 +1243,7 @@ uint64_t MoeDistributeDispatchV2TilingFuncA5::CalTilingKey(const bool isScales, 
     bool scaleMode = false;
     uint64_t tilingKey;
     uint32_t commMode = TILINGKEY_TPL_MTE;
+    commMode = TILINGKEY_TPL_ROCE; // 暂时默认 AIV_DIRECT_ROCE
     if (isScales) {
         scaleMode = true;
     }

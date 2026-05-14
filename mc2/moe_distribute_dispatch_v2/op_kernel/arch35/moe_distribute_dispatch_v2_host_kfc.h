@@ -316,7 +316,6 @@ private:
     GlobalTensor<int64_t> expertTokenNumsOutGMTensor_;
     GlobalTensor<float> windowInstatusFp32Tensor_;
     GlobalTensor<bool> xActiveMaskGMTensor_;
-    GlobalTensor<int32_t> sendCountGMTensor_;
     GlobalTensor<float> fpWinTpGatherOutGMTensor_;
     GlobalTensor<int32_t> winTpEpCntGMTensor_;
     GlobalTensor<int32_t> expandIdxGMTensor_;
@@ -362,6 +361,7 @@ private:
     LocalTensor<float> expertScalesTensor_;
     LocalTensor<uint32_t> dpuInitBufferTensor_;
     LocalTensor<uint32_t> waitWriteTensor_;
+    LocalTensor<uint8_t> dpuCommInitBufTensor_;
 
     TBuf<> expertScalesBuf_;
     TBuf<> expertIdsBuf_;
@@ -389,6 +389,7 @@ private:
     TBuf<> xSendBuf_;
     TBuf<> flagBuf_;
     TBuf<> waitWriteBuf_;
+    TBuf<> dpuCommInitBufBuf_;
 
     TQue<QuePosition::VECIN, 1> tokenInQueue_; // token输入队列
     TQue<QuePosition::VECIN, 1> xInQueue_;     // 量化使用，量化前的输入
@@ -795,6 +796,9 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         uint64_t dpuCommHandleAddr = reinterpret_cast<uint64_t>(mc2Context_->dpuCommHandle_[i]);
         dpuCommHandle_[i] = reinterpret_cast<__gm__ ChannelEntity *>(dpuCommHandleAddr); // todo:需要确认
     }
+    tpipe_->InitBuffer(dpuCommInitBufBuf_, SIZE_ALIGN_256);
+    dpuCommInitBufTensor_ = dpuCommInitBufBuf_.Get<uint8_t>();
+    Init(dpuCommInitBufTensor_.GetPhyAddr(),SIZE_ALIGN_256, -1);
 }
 
 template <TemplateDispatchKFCTypeClass>
@@ -819,7 +823,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     sendCountsOutGM_ = sendCountsOut; // 无GlobalTensor
     sendTpCountOutGM_ = tpSendCountsOut;
     mc2Context_ = (__gm__ Mc2MoeContext *)mc2Context;
-    sendCountGMTensor_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(workspaceGM_));
     if constexpr (IsSmoothScaleExist) {
         scalesGMTensor_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(scales));
     }
