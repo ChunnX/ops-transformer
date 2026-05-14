@@ -24,11 +24,11 @@
 
 #include "kernel_utils/common_utils.h"
 #include "kernel_utils/tuple_utils.h"
-#include "tensor.h"
+#include "include/tensor_api/tensor.h"
 
 #include "../block/quant_matmul_mx_block_mmad_swat.h"
 #include "../block/quant_matmul_mx_block_scheduler_swat.h"
-#include "../utils/quant_matmul_constant.h"
+#include "../utils/constant.h"
 #include "adv_api/hccl/hccl.h"
 #include "../../common/op_kernel/moe_distribute_base.h"
 
@@ -75,27 +75,28 @@ public:
 
     static constexpr bool transA = BlockMmad::transA;
     static constexpr bool transB = BlockMmad::transB;
+    using AType = typename BlockMmad::AType;
+    using BType = typename BlockMmad::BType;
+    using ScaleAType = typename BlockMmad::ScaleAType;
+    using ScaleBType = typename BlockMmad::ScaleBType;
+    using CType = typename BlockMmad::CType;
 
     // The kernel layer does not own a scheduling policy itself; it selects the
     // concrete scheduler from the block pipeline traits.
     using BlockSchedulerOp =
-        typename Block::BlockSchedulerSelector<ProblemShape, BlockScheduler, transA, transB>::SchedulerOp;
+        typename Block::BlockSchedulerSelector<ProblemShape, BlockScheduler, transA, transB, AType>::SchedulerOp;
 
     using BlockMmadParams = typename BlockMmad::Params;
     using L1Params = typename BlockMmad::L1Params;
-    using AType = typename BlockMmad::AType;
-    using BType = typename BlockMmad::BType;
-    using CType = typename BlockMmad::CType;
-
     using TupleShape = AscendC::Shape<int64_t, int64_t, int64_t>;
     using BlockShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
     using BlockCoord = AscendC::Coord<int64_t, int64_t, int64_t, int64_t>;
     using BlockSchedulerParams = typename BlockSchedulerOp::Params;
 
-    using MakeLayoutA = AscendC::Te::NDLayoutFormat<AType>;
-    using MakeLayoutB = AscendC::Te::DNLayoutFormat<BType>;
-    using MakeLayoutScaleA = AscendC::Te::ScaleANDLayoutFormat<fp8_e8m0_t>;
-    using MakeLayoutScaleB = AscendC::Te::ScaleBDNLayoutFormat<fp8_e8m0_t>;
+    using MakeLayoutA = typename BlockMmad::LayoutA;
+    using MakeLayoutB = typename BlockMmad::LayoutB;
+    using MakeLayoutScaleA = typename BlockMmad::LayoutScaleA;
+    using MakeLayoutScaleB = typename BlockMmad::LayoutScaleB;
 
     struct QBMMTiling {
         // Base tile shape and L0C buffering mode selected by host tiling.
@@ -122,6 +123,9 @@ public:
     };
 
     struct Params {
+        // Translate the serialized tiling payload once at the launcher
+        // boundary, then keep the kernel, scheduler, and block MMAD layers on
+        // their own typed parameter bundles.
         ProblemShape problemShape;
         BlockMmadParams mmadParams;
         L1Params l1Params;
@@ -142,6 +146,10 @@ private:
     // Wrap the full GM tensors and repeatedly slice them into per-block views
     // according to the scheduler output.
     __aicore__ inline void Process(const Params& params, BlockSchedulerOp& bs);
+
+    template <typename TensorB, typename TensorScaleB>
+    __aicore__ inline void SetL2Cache(
+        const ProblemShape& problemShape, uint64_t curBaseM, uint64_t baseN, TensorB& gmB, TensorScaleB& gmScaleB);
 
     // `ProblemShape` stays generic at the template boundary, but the block
     // MMAD operator consumes a fixed 3D tuple internally.
@@ -331,6 +339,30 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_NO_FULL_LOAD_FUN_T
 }
 
 QBMM_MX_KERNEL_NO_FULL_LOAD_CLASS_TEM_PARAMS
+template <typename TensorB, typename TensorScaleB>
+__aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_NO_FULL_LOAD_FUN_TEM_PARAMS>::SetL2Cache(
+    const ProblemShape& problemShape, uint64_t curBaseM, uint64_t baseN, TensorB& gmB, TensorScaleB& gmScaleB)
+{
+    if constexpr (transB) {
+        if (curBaseM >= problemShape.m && (problemShape.k & 0xff) == 0) {
+            gmB.SetL2CacheHint(AscendC::Te::CacheMode::CACHE_MODE_DISABLE);
+            gmScaleB.SetL2CacheHint(AscendC::Te::CacheMode::CACHE_MODE_DISABLE);
+        } else {
+            gmB.SetL2CacheHint(AscendC::Te::CacheMode::CACHE_MODE_NORMAL);
+            gmScaleB.SetL2CacheHint(AscendC::Te::CacheMode::CACHE_MODE_NORMAL);
+        }
+    } else {
+        if (curBaseM >= problemShape.m && (problemShape.n & 0xff) == 0 && (baseN & 0xff) == 0) {
+            gmB.SetL2CacheHint(AscendC::Te::CacheMode::CACHE_MODE_DISABLE);
+            gmScaleB.SetL2CacheHint(AscendC::Te::CacheMode::CACHE_MODE_DISABLE);
+        } else {
+            gmB.SetL2CacheHint(AscendC::Te::CacheMode::CACHE_MODE_NORMAL);
+            gmScaleB.SetL2CacheHint(AscendC::Te::CacheMode::CACHE_MODE_NORMAL);
+        }
+    }
+}
+
+QBMM_MX_KERNEL_NO_FULL_LOAD_CLASS_TEM_PARAMS
 __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_NO_FULL_LOAD_FUN_TEM_PARAMS>::Process(
     const Params& params, BlockSchedulerOp& bs)
 {
@@ -342,24 +374,18 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_NO_FULL_LOAD_FUN_T
     auto layoutScaleA = MakeLayoutScaleA{}(params.problemShape.m, kScaleSize);
     auto layoutB = MakeLayoutB{}(params.problemShape.k, params.problemShape.n);
     auto layoutScaleB = MakeLayoutScaleB{}(kScaleSize, params.problemShape.n);
-    auto layoutC = AscendC::Te::MakeNDLayout<CType>(params.problemShape.m, params.problemShape.n);
+    auto layoutC = AscendC::Te::MakeFrameLayout<AscendC::Te::NDExtLayoutPtn>(params.problemShape.m, params.problemShape.n);
 
-    auto gmA = AscendC::Te::MakeTensor(AscendC::Te::MakeGMmemPtr(aGmAddr_), layoutA);
-    auto gmScaleA = AscendC::Te::MakeTensor(AscendC::Te::MakeGMmemPtr(scaleAGmAddr_), layoutScaleA);
-    auto gmB = AscendC::Te::MakeTensor(AscendC::Te::MakeGMmemPtr(bGmAddr_), layoutB);
-    auto gmScaleB = AscendC::Te::MakeTensor(AscendC::Te::MakeGMmemPtr(scaleBGmAddr_), layoutScaleB);
-    auto gmC = AscendC::Te::MakeTensor(AscendC::Te::MakeGMmemPtr(cGmAddr_), layoutC);
+    auto gmA = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(aGmAddr_), layoutA);
+    auto gmScaleA = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(scaleAGmAddr_), layoutScaleA);
+    auto gmB = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(bGmAddr_), layoutB);
+    auto gmScaleB = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(scaleBGmAddr_), layoutScaleB);
+    auto gmC = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(cGmAddr_), layoutC);
 
     BlockCoord blockIdx;
     constexpr int64_t kPos = 0L;
-    bool isBMatrixOnlyNeedLoadOnce = params.problemShape.m <= params.qbmmParams.baseM && (params.problemShape.k & 0xff) == 0;
-    if (isBMatrixOnlyNeedLoadOnce) {
-        gmB.SetL2CacheHint(AscendC::Te::CacheMode::CACHE_MODE_DISABLE);
-        gmScaleB.SetL2CacheHint(AscendC::Te::CacheMode::CACHE_MODE_DISABLE);
-    } else {
-        gmB.SetL2CacheHint(AscendC::Te::CacheMode::CACHE_MODE_NORMAL);
-        gmScaleB.SetL2CacheHint(AscendC::Te::CacheMode::CACHE_MODE_NORMAL);
-    }
+    SetL2Cache(params.problemShape, params.qbmmParams.baseM, params.qbmmParams.baseN, gmB, gmScaleB);
+    
     // debug
     GlobalTensor<bfloat16_t> workspaceGm;
     workspaceGm.SetGlobalBuffer(cGmAddr_);
@@ -381,15 +407,15 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_NO_FULL_LOAD_FUN_T
 
         // `blockIdx` now carries both GM origin and logical tile metadata.
         auto gmBlockA =
-            gmA(AscendC::Te::MakeCoord(mPos, kPos), AscendC::Te::MakeShape(Get<MNK_M>(singleShape), params.problemShape.k));
+            gmA.Slice(AscendC::Te::MakeCoord(mPos, kPos), AscendC::Te::MakeShape(Get<MNK_M>(singleShape), params.problemShape.k));
         auto gmBlockScaleA =
-            gmScaleA(AscendC::Te::MakeCoord(mPos, kPos), AscendC::Te::MakeShape(Get<MNK_M>(singleShape), kScaleSize));
+            gmScaleA.Slice(AscendC::Te::MakeCoord(mPos, kPos), AscendC::Te::MakeShape(Get<MNK_M>(singleShape), kScaleSize));
         auto gmBlockB =
-            gmB(AscendC::Te::MakeCoord(kPos, nPos), AscendC::Te::MakeShape(params.problemShape.k, Get<MNK_N>(singleShape)));
+            gmB.Slice(AscendC::Te::MakeCoord(kPos, nPos), AscendC::Te::MakeShape(params.problemShape.k, Get<MNK_N>(singleShape)));
         auto gmBlockScaleB =
-            gmScaleB(AscendC::Te::MakeCoord(kPos, nPos), AscendC::Te::MakeShape(kScaleSize, Get<MNK_N>(singleShape)));
+            gmScaleB.Slice(AscendC::Te::MakeCoord(kPos, nPos), AscendC::Te::MakeShape(kScaleSize, Get<MNK_N>(singleShape)));
         auto gmBlockC =
-            gmC(AscendC::Te::MakeCoord(mPos, nPos),
+            gmC.Slice(AscendC::Te::MakeCoord(mPos, nPos),
                 AscendC::Te::MakeShape(Get<MNK_M>(singleShape), Get<MNK_N>(singleShape)));
 
         // The block MMAD layer owns all data movement below GM granularity and

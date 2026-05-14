@@ -16,9 +16,6 @@
 
 #include <cstdint>
 
-// Tag for kernels that split work along K while still carrying dedicated
-// scaleA and scaleB tensors through the pipeline.
-struct KernelMultiBlockOnKAxisWithScale {};
 
 /**
  * @brief Dispatch tag for MX quantized matmul kernels that use the SWAT
@@ -29,7 +26,6 @@ struct KernelMultiBlockOnKAxisWithScale {};
  */
 template <uint64_t FULL_LOAD_MODE_, uint64_t STAGES_>
 struct QuantMatmulMxMultiBlockWithSwat {
-    using ScheduleType = KernelMultiBlockOnKAxisWithScale;
     static constexpr uint64_t fullLoadMode = FULL_LOAD_MODE_;
     static constexpr uint64_t stages = STAGES_;
 };
@@ -45,3 +41,9 @@ template <uint64_t FULL_LOAD_MODE_>
 struct MatmulA16W16MultiBlockWithSwat {
     static constexpr uint64_t fullLoadMode = FULL_LOAD_MODE_;
 };
+
+/**
+ * @brief Dispatch tag for MatmulA16W16 matmul kernels that use the StreamK
+ *        scheduling family.
+ */
+struct MatmulA16W16MultiBlockWithStreamK {};

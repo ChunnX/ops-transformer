@@ -25,13 +25,15 @@ if (BUILD_OPEN_PROJECT)  # custom
     if("${CONDITION_UNIT}" STREQUAL "ascend950")
         add_ops_compile_options(
             OP_NAME QbmmReduceScatterAddRmsNormCast
-            # COMPUTE_UNIT Ascend950PR_9599
+            COMPUTE_UNIT Ascend950PR_9599
             OPTIONS --cce-auto-sync=off
-                    # -mllvm
-                    # -cce-aicore-dcci-before-kernel-end=false
-                    # -DENABLE_CV_COMM_VIA_SSBUF=true
+                    -mllvm
+                    -cce-aicore-dcci-before-kernel-end=false
+                    -DENABLE_CV_COMM_VIA_SSBUF=true
                     -I${CMAKE_CURRENT_SOURCE_DIR}/../../3rd/tensor_api/
                     -I${CMAKE_CURRENT_SOURCE_DIR}/../../3rd/tensor_api/include/
+                    -I${CMAKE_CURRENT_SOURCE_DIR}/../../3rd/tensor_api/impl/tensor_api
+                    -I${CMAKE_CURRENT_SOURCE_DIR}/../../3rd/tensor_api/include/tensor_api/
                     -I${CMAKE_CURRENT_SOURCE_DIR}/../op_kernel/matmul_recipes/include/
                     -I${CMAKE_CURRENT_SOURCE_DIR}/../op_kernel/matmul_recipes/common/
         )

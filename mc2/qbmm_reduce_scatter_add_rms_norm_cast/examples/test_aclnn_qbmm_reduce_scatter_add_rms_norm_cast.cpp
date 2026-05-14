@@ -16,6 +16,8 @@
 #include <iostream>
 #include <vector>
 #include <thread>
+#include <mutex>
+#include <condition_variable>
 #include "hccl/hccl.h"
 #include "aclnnop/aclnn_qbmm_reduce_scatter_add_rms_norm_cast.h"
 
@@ -33,6 +35,16 @@
 
 constexpr int DEV_NUM = 2;
 constexpr int RANK_SIZE = DEV_NUM;
+static bool gPerfMode = false;
+constexpr int PERF_LOOP_COUNT = 20;
+static std::mutex barrierMtx;
+static std::condition_variable barrierCv;
+static int barrierCount = 0;
+
+// Setup barrier: ensures all ranks complete MC2 setup before any launches kernel
+static std::mutex setupMtx;
+static std::condition_variable setupCv;
+static int setupCount = 0;
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
 {
@@ -152,18 +164,6 @@ int LaunchOneThreadQbmmReduceScatterAddRmsNormCast(Args &args)
     std::vector<int64_t> y1Shape = {128, 5120};           // output float
     std::vector<int64_t> y2Shape = {128, 5120};           // output bf16
     std::vector<int64_t> xOutShape = {128, 5120};         // output bf16
-    // std::vector<int64_t> xOutShape = {256, 5120};         // output bf16
-
-    // std::vector<int64_t> x1Shape = {128, 256};           // M x K (A矩阵)
-    // std::vector<int64_t> x2Shape = {256, 512};           // K x N (kernel期望shape)
-    // std::vector<int64_t> yShape = {64, 512};            // residual per rank (BF16)
-    // std::vector<int64_t> gammaShape = {512};             // RMS Norm gamma
-    // std::vector<int64_t> scaleShape = {512, 4, 2};       // Scale B: (N, ceil(K/128), 2) - 存储shape
-    // std::vector<int64_t> pertokenScaleShape = {128, 4, 2}; // Scale A: (M, ceil(K/128), 2)
-    // std::vector<int64_t> y1Shape = {64, 512};           // output float
-    // std::vector<int64_t> y2Shape = {64, 512};           // output bf16
-    // // std::vector<int64_t> xOutShape = {64, 512};         // output bf16
-    // std::vector<int64_t> xOutShape = {128, 512};         // output bf16
 
     void *x1DeviceAddr = nullptr;
     void *x2DeviceAddr = nullptr;
@@ -276,36 +276,53 @@ int LaunchOneThreadQbmmReduceScatterAddRmsNormCast(Args &args)
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     LOG_PRINT("[INFO] rank = %d, Before aclnnQbmmReduceScatterAddRmsNormCastGetWorkspaceSize\n", args.rankId);
+    
+    // // Setup barrier: wait for all ranks to finish MC2 setup before launching kernels
+    // {
+    //     std::unique_lock<std::mutex> lock(setupMtx);
+    //     setupCount++;
+    //     if (setupCount >= static_cast<int>(DEV_NUM)) {
+    //         setupCv.notify_all();
+    //     } else {
+    //         setupCv.wait(lock, [&]() { return setupCount >= static_cast<int>(DEV_NUM); });
+    //     }
+    // }
 
-    // 调用第一阶段接口
-    ret = aclnnQbmmReduceScatterAddRmsNormCastGetWorkspaceSize(
-        x1, x2, y, gamma, scale, bias, pertokenScale,
-        hcomName, RANK_SIZE, transposeX2, dtype, epsilon,
-        y1, y2, xOut,
-        &workspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS,
-        LOG_PRINT("[ERROR] aclnnQbmmReduceScatterAddRmsNormCastGetWorkspaceSize failed. ret = %d \n", ret); return ret);
+    // 性能测试模式：通过环境变量 PERF_MODE=1 开启，默认执行 1 次
+    gPerfMode = (getenv("PERF_MODE") != nullptr);
+    int loopCount = gPerfMode ? PERF_LOOP_COUNT : 1;
+    for (int i = 0; i < loopCount; i++) {
+        // 调用第一阶段接口
+        ret = aclnnQbmmReduceScatterAddRmsNormCastGetWorkspaceSize(
+            x1, x2, y, gamma, scale, bias, pertokenScale,
+            hcomName, RANK_SIZE, transposeX2, dtype, epsilon,
+            y1, y2, xOut,
+            &workspaceSize, &executor);
+        CHECK_RET(ret == ACL_SUCCESS,
+            LOG_PRINT("[ERROR] aclnnQbmmReduceScatterAddRmsNormCastGetWorkspaceSize failed. ret = %d \n", ret); return ret);
 
-    LOG_PRINT("[INFO] rank = %d, workspaceSize = %lu\n", args.rankId, workspaceSize);
+        LOG_PRINT("[INFO] rank = %d, workspaceSize = %lu\n", args.rankId, workspaceSize);
 
-    // 根据第一阶段接口计算出的workspaceSize申请device内存
-    if (workspaceSize > 0) {
-        ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc workspace failed. ret = %d \n", ret); return ret);
+        // 根据第一阶段接口计算出的workspaceSize申请device内存
+        if (workspaceSize > 0) {
+            ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+            CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc workspace failed. ret = %d \n", ret); return ret);
+        }
+
+        LOG_PRINT("[INFO] rank = %d, Before aclnnQbmmReduceScatterAddRmsNormCast\n", args.rankId);
+
+    
+        // 调用第二阶段接口
+        ret = aclnnQbmmReduceScatterAddRmsNormCast(workspaceAddr, workspaceSize, executor, args.stream);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnQbmmReduceScatterAddRmsNormCast failed. ret = %d \n", ret); return ret);
+
+        // 同步等待任务执行结束
+        ret = aclrtSynchronizeStreamWithTimeout(args.stream, 30000);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
+            return ret);
     }
 
-    LOG_PRINT("[INFO] rank = %d, Before aclnnQbmmReduceScatterAddRmsNormCast\n", args.rankId);
-
-    // 调用第二阶段接口
-    ret = aclnnQbmmReduceScatterAddRmsNormCast(workspaceAddr, workspaceSize, executor, args.stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnQbmmReduceScatterAddRmsNormCast failed. ret = %d \n", ret); return ret);
-
-    // 同步等待任务执行结束
-    ret = aclrtSynchronizeStreamWithTimeout(args.stream, 60000);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
-        return ret);
-
-LOG_PRINT("[INFO] rank = %d aclnnQbmmReduceScatterAddRmsNormCast execute successfully.\n", args.rankId);
+    LOG_PRINT("[INFO] rank = %d aclnnQbmmReduceScatterAddRmsNormCast execute successfully. loops=%d\n", args.rankId, loopCount);
 
     // === 精度测试：保存输出到bin文件 ===
     std::string outputDir = "./output";
@@ -408,6 +425,17 @@ LOG_PRINT("[INFO] rank = %d aclnnQbmmReduceScatterAddRmsNormCast execute success
     if (workspaceSize > 0 && workspaceAddr != nullptr) {
         aclrtFree(workspaceAddr);
     }
+
+    // // Wait for all ranks to complete kernel execution before destroying HCCL comm
+    // {
+    //     std::unique_lock<std::mutex> lock(barrierMtx);
+    //     barrierCount++;
+    //     if (barrierCount >= static_cast<int>(DEV_NUM)) {
+    //         barrierCv.notify_all();
+    //     } else {
+    //         barrierCv.wait(lock, [&]() { return barrierCount >= static_cast<int>(DEV_NUM); });
+    //     }
+    // }
 
     ret = HcclCommDestroy(args.hcclComm);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclCommDestroy failed. ret = %d \n", ret); return ret);
