@@ -19,7 +19,9 @@
 #define FUSED_CAUSAL_CONV1D_CUT_BSH_H
 
 #include "kernel_operator.h"
-#include "./vf/compute.h"
+#include "./vf/fused_causal_conv1d_state.h"
+#include "./vf/fused_causal_conv1d_no_state_single_tail.h"
+#include "./vf/fused_causal_conv1d_no_state_double_tail.h"
 #include "fused_causal_conv1d_cut_bsh_struct.h"
 
 namespace FusedCausalConv1dCutBSHNs {
@@ -110,6 +112,40 @@ private:
             cacheIndices2DGM_.GetValue(static_cast<uint64_t>(batchIdx) * maxNumBlocks_ + blockIdx));
     }
 
+    // ---- Helpers: dim-core 参数 ----
+    // v2.1：三级 dim 核（主核/尾核/last core）的 dim 起点、dim 长度、UB 主块 dim 大小统一封装。
+    //   调用前置条件：bsIdx_/dimIdx_ 已赋值，且三个核分类成员（isBsTailCore_/isDimTailCore_/
+    //   isLastDimCore_）已在 Init 开头计算。
+    //
+    // GetDimStart：本核在 GM 上的 dim 起点偏移（元素单位）。主核/尾核/last core 共用同一公式，
+    //   因为 last core 就是最后一个尾核，起点按尾核公式累加即可。
+    __aicore__ inline uint32_t GetDimStart() const
+    {
+        if (dimIdx_ < dimRemainderCores_) {
+            return dimIdx_ * dimBlockFactor_;
+        }
+        return dimRemainderCores_ * dimBlockFactor_ + (dimIdx_ - dimRemainderCores_) * dimBlockTailFactor_;
+    }
+
+    // GetDimTotal：本核负责的 dim 总长度（元素单位）。last core 额外承担 dimRemainderElems_。
+    __aicore__ inline uint32_t GetDimTotal() const
+    {
+        uint32_t dimSize = isDimTailCore_ ? dimBlockTailFactor_ : dimBlockFactor_;
+        if (isLastDimCore_)
+            dimSize += dimRemainderElems_;
+        return dimSize;
+    }
+
+    // GetMaxUbDim：本核的 UB 主块 dim 大小（用于 buffer 容量与 UB 循环切分）。
+    __aicore__ inline uint32_t GetMaxUbDim() const
+    {
+        if (isLastDimCore_)
+            return lastCoreubFactorDim_;
+        if (isDimTailCore_)
+            return tailBlockubFactorDim_;
+        return ubFactorDim_;
+    }
+
     // ======================== Members ========================
 
     // ---- Tiling params ----
@@ -131,6 +167,13 @@ private:
     uint32_t tailBlockubTailFactorBS_;
     uint32_t tailBlockubFactorDim_;
     uint32_t tailBlockubTailFactorDim_;
+
+    // v2.1: last dim core 参数（支持 dim % 128 != 0 场景）
+    // dimRemainderElems_ == 0 时等价于普通尾核参数（向后兼容）
+    uint32_t dimRemainderElems_;
+    uint32_t lastCoreloopNumDim_;
+    uint32_t lastCoreubFactorDim_;
+    uint32_t lastCoreubTailFactorDim_;
 
     uint32_t dimCoreNum_;
     uint32_t dimRemainderCores_;
@@ -163,6 +206,15 @@ private:
     // Runtime core index
     uint32_t bsIdx_;
     uint32_t dimIdx_;
+
+    // v2.1：三级 dim 核分类（在 Init 开头计算一次，全局复用）
+    //   - isDimTailCore_: 是否"尾核或 last core"（dimIdx_ >= dimRemainderCores_）
+    //   - isLastDimCore_: 是否 last core（最后一个 dim 核，承担 dim % 128 余数元素）
+    //   - isBsTailCore_:  是否 BS 尾核（bsIdx_ >= bsRemainderCores_）
+    //   注：isLastDimCore_ 蕴含 isDimTailCore_（除 dim<128 场景外）
+    bool isBsTailCore_;
+    bool isDimTailCore_;
+    bool isLastDimCore_;
 
     // ---- Pipeline & GM ----
     TPipe pipe_;
@@ -238,6 +290,12 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::ParseTiling(const FusedCausal
     tailBlockubFactorDim_ = tiling->tailBlockubFactorDim;
     tailBlockubTailFactorDim_ = tiling->tailBlockubTailFactorDim;
 
+    // v2.1: last dim core 参数
+    dimRemainderElems_ = static_cast<uint32_t>(tiling->dimRemainderElems);
+    lastCoreloopNumDim_ = static_cast<uint32_t>(tiling->lastCoreloopNumDim);
+    lastCoreubFactorDim_ = static_cast<uint32_t>(tiling->lastCoreubFactorDim);
+    lastCoreubTailFactorDim_ = static_cast<uint32_t>(tiling->lastCoreubTailFactorDim);
+
     dimCoreNum_ = tiling->dimCoreNum;
     dimRemainderCores_ = tiling->dimRemainderCores;
     dimBlockFactor_ = tiling->dimBlockFactor;
@@ -278,13 +336,18 @@ FusedCausalConv1dCutBSH<T>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR convStates, 
                                  GM_ADDR blockIdxFirst, GM_ADDR blockIdxLast, GM_ADDR initialStateIdx, GM_ADDR y,
                                  GM_ADDR workspace, const FusedCausalConv1dCutBSHTilingData *tiling)
 {
-    (void)y;  // y may be unused when inplace_==true; suppress warning
+    (void)y; // y may be unused when inplace_==true; suppress warning
     ParseTiling(tiling);
 
     uint32_t blockIdx = GetBlockIdx();
     uint32_t dimCN = (dimCoreNum_ == 0) ? 1 : dimCoreNum_;
     bsIdx_ = blockIdx / dimCN;
     dimIdx_ = blockIdx - bsIdx_ * dimCN;
+
+    // v2.1：三级 dim 核分类一次性计算，供 InitQueues/Process/WriteDeferred/FillApc/CopyYToX 共用
+    isBsTailCore_ = (bsIdx_ >= bsRemainderCores_);
+    isDimTailCore_ = (dimIdx_ >= dimRemainderCores_);
+    isLastDimCore_ = (dimIdx_ == dimCoreNum_ - 1) && (dimRemainderElems_ > 0);
 
     // ---- GM binding ----
     uint64_t cuSeqLen = tiling->cuSeqLen;
@@ -350,10 +413,8 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::InitQueues()
 {
     uint32_t K = kernelWidth_;
 
-    bool isBsTailCore = (bsIdx_ >= bsRemainderCores_);
-    bool isDimTailCore = (dimIdx_ >= dimRemainderCores_);
-    uint32_t maxUbBS = isBsTailCore ? tailBlockubFactorBS_ : ubFactorBS_;
-    uint32_t maxUbDim = isDimTailCore ? tailBlockubFactorDim_ : ubFactorDim_;
+    uint32_t maxUbBS = isBsTailCore_ ? tailBlockubFactorBS_ : ubFactorBS_;
+    uint32_t maxUbDim = GetMaxUbDim();
 
     uint32_t weightBufBytes = AlignUp(K * maxUbDim * sizeof(T), ALIGN_BYTES);
     uint32_t cacheBufBytes = AlignUp(stateLen_ * maxUbDim * sizeof(T), ALIGN_BYTES);
@@ -557,25 +618,28 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Process()
     }
 
     // ---- Compute dimStart ----
-    uint64_t dimStart;
-    if (dimIdx_ < dimRemainderCores_) {
-        dimStart = (uint64_t)dimIdx_ * dimBlockFactor_;
-    } else {
-        dimStart = (uint64_t)dimRemainderCores_ * dimBlockFactor_ +
-                   (uint64_t)(dimIdx_ - dimRemainderCores_) * dimBlockTailFactor_;
-    }
+    uint64_t dimStart = GetDimStart();
 
     // ---- Tail core adjustments ----
-    bool isBsTailCore = (bsIdx_ >= bsRemainderCores_);
-    bool isDimTailCore = (dimIdx_ >= dimRemainderCores_);
+    // 直接使用 Init 期缓存的核分类成员
+    uint32_t loopBS = isBsTailCore_ ? tailBlockloopNumBS_ : loopNumBS_;
+    uint32_t factBS = isBsTailCore_ ? tailBlockubFactorBS_ : ubFactorBS_;
+    uint32_t tailBS = isBsTailCore_ ? tailBlockubTailFactorBS_ : ubTailFactorBS_;
 
-    uint32_t loopBS = isBsTailCore ? tailBlockloopNumBS_ : loopNumBS_;
-    uint32_t factBS = isBsTailCore ? tailBlockubFactorBS_ : ubFactorBS_;
-    uint32_t tailBS = isBsTailCore ? tailBlockubTailFactorBS_ : ubTailFactorBS_;
-
-    uint32_t loopDim = isDimTailCore ? tailBlockloopNumDim_ : loopNumDim_;
-    uint32_t factDim = isDimTailCore ? tailBlockubFactorDim_ : ubFactorDim_;
-    uint32_t tailDim = isDimTailCore ? tailBlockubTailFactorDim_ : ubTailFactorDim_;
+    uint32_t loopDim, factDim, tailDim;
+    if (isLastDimCore_) {
+        loopDim = lastCoreloopNumDim_;
+        factDim = lastCoreubFactorDim_;
+        tailDim = lastCoreubTailFactorDim_;
+    } else if (isDimTailCore_) {
+        loopDim = tailBlockloopNumDim_;
+        factDim = tailBlockubFactorDim_;
+        tailDim = tailBlockubTailFactorDim_;
+    } else {
+        loopDim = loopNumDim_;
+        factDim = ubFactorDim_;
+        tailDim = ubTailFactorDim_;
+    }
 
     // ---- BS-dim step for inner loop (K-1 overlap within a core) ----
     uint16_t step = (factBS > K - 1) ? (factBS - (K - 1)) : 1;
@@ -688,6 +752,13 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Process()
     // inplace=true：把 y workspace 搬回 xGM_ 完成 inplace 语义。
     // 必须放在 WriteDeferredCacheSimple / FillApcBlockCaches 之后，保证它们读到
     // 的仍是原始 x。
+    //
+    // 额外的 SyncAll：CopyYToX 会对 xGM_ 做 MTE3 写，而 FillApc/WriteDeferred
+    // 对 xGM_ 做 MTE2 读。这两条是独立流水，若只靠程序顺序发射，MTE3 写可能
+    // 抢在 MTE2 读完成之前（跨函数 WAR hazard），导致上游读到 y 值写入
+    // cacheStatesGM_（output 0 错）。SyncAll 同时排空本核所有已发射指令，
+    // 消除此 hazard。PipeBarrier<PIPE_ALL> 不保证已发射未完成指令落地，
+    // 不能替代 SyncAll。
     if (inplace_) {
         SyncAll();
         CopyYToX();
@@ -884,7 +955,11 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::Compute(uint32_t curBsStart, 
             LocalTensor<T> xSlice = xLocal[xStartIdx * dimSize];
             LocalTensor<T> ySlice = yLocal[(yOutOff + needCacheTokens) * dimSize];
             SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
-            Conv1dNoNeedState(xSlice, weightLocal, ySlice, noCacheTokens, dimSize, residualConnection_);
+            if (dimSize % 128 == 0 || dimSize % 128 > 64) {
+                Conv1dNoStateDoubleTail(xSlice, weightLocal, ySlice, noCacheTokens, dimSize, residualConnection_);
+            } else {
+                Conv1dNoStateSingleTail(xSlice, weightLocal, ySlice, noCacheTokens, dimSize, residualConnection_);
+            }
         }
 
         // ---- conv_mode==1 zero fill (partial, non-useZeroCache case) ----
@@ -1087,14 +1162,8 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::WriteDeferredCacheSimple()
     uint32_t batchIdx = deferred_.batchIdx;
     int64_t writeCIdx = deferred_.writeCIdx;
 
-    uint32_t dimStart, dimSize;
-    if (dimIdx_ < dimRemainderCores_) {
-        dimStart = dimIdx_ * dimBlockFactor_;
-        dimSize = dimBlockFactor_;
-    } else {
-        dimStart = dimRemainderCores_ * dimBlockFactor_ + (dimIdx_ - dimRemainderCores_) * dimBlockTailFactor_;
-        dimSize = dimBlockTailFactor_;
-    }
+    uint32_t dimStart = GetDimStart();
+    uint32_t dimSize = GetDimTotal();
 
     uint64_t bSt = (uint64_t)seqStartLocal_.GetValue(batchIdx);
     uint64_t bEnd = (uint64_t)seqStartLocal_.GetValue(batchIdx + 1);
@@ -1206,14 +1275,8 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::FillApcBlockCaches()
         coreBsEnd = (uint64_t)seqStartLocal_.GetValue(batchSize_);
     }
 
-    uint32_t dimStart, dimSize;
-    if (dimIdx_ < dimRemainderCores_) {
-        dimStart = dimIdx_ * dimBlockFactor_;
-        dimSize = dimBlockFactor_;
-    } else {
-        dimStart = dimRemainderCores_ * dimBlockFactor_ + (dimIdx_ - dimRemainderCores_) * dimBlockTailFactor_;
-        dimSize = dimBlockTailFactor_;
-    }
+    uint32_t dimStart = GetDimStart();
+    uint32_t dimSize = GetDimTotal();
 
     uint32_t rowBlocks = dimSize * sizeof(T) / ALIGN_BYTES;
     uint32_t cacheSkip = (cacheStride1_ - dimSize) * sizeof(T) / ALIGN_BYTES;
@@ -1380,42 +1443,35 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::CopyYToX()
 {
     uint32_t K = kernelWidth_;
     bool isBsFirstCore = (bsIdx_ == 0);
-    bool isBsTailCore  = (bsIdx_ >= bsRemainderCores_);
-    bool isDimTailCore = (dimIdx_ >= dimRemainderCores_);
 
     // ---- 本核 BS 起点（核间 K-1 overlap）----
     uint64_t bsStart;
-    if (!isBsTailCore) {
+    if (!isBsTailCore_) {
         uint64_t effStep = bsBlockFactor_ - (K - 1);
         bsStart = (uint64_t)bsIdx_ * effStep;
     } else {
         uint64_t effStepMain = bsBlockFactor_ - (K - 1);
         uint64_t effStepTail = bsBlockTailFactor_ - (K - 1);
-        bsStart = (uint64_t)bsRemainderCores_ * effStepMain +
-                  (uint64_t)(bsIdx_ - bsRemainderCores_) * effStepTail;
+        bsStart = (uint64_t)bsRemainderCores_ * effStepMain + (uint64_t)(bsIdx_ - bsRemainderCores_) * effStepTail;
     }
 
-    uint32_t bsFactor = isBsTailCore ? bsBlockTailFactor_ : bsBlockFactor_;
+    uint32_t bsFactor = isBsTailCore_ ? bsBlockTailFactor_ : bsBlockFactor_;
     uint32_t iStart = isBsFirstCore ? 0 : (K - 1);
-    if (bsFactor <= iStart) return;
+    if (bsFactor <= iStart)
+        return;
     uint32_t validRows = bsFactor - iStart;
     uint64_t bsBase = bsStart + iStart;
 
     // ---- 本核 Dim 起点与长度 ----
-    uint32_t dimStart, dimTotal;
-    if (!isDimTailCore) {
-        dimStart = dimIdx_ * dimBlockFactor_;
-        dimTotal = dimBlockFactor_;
-    } else {
-        dimStart = dimRemainderCores_ * dimBlockFactor_ +
-                   (dimIdx_ - dimRemainderCores_) * dimBlockTailFactor_;
-        dimTotal = dimBlockTailFactor_;
-    }
-    if (dimTotal == 0) return;
+    uint32_t dimStart = GetDimStart();
+    uint32_t dimTotal = GetDimTotal();
+    if (dimTotal == 0)
+        return;
 
-    uint32_t maxUbBS  = isBsTailCore  ? tailBlockubFactorBS_  : ubFactorBS_;
-    uint32_t maxUbDim = isDimTailCore ? tailBlockubFactorDim_ : ubFactorDim_;
-    if (maxUbBS == 0 || maxUbDim == 0) return;
+    uint32_t maxUbBS = isBsTailCore_ ? tailBlockubFactorBS_ : ubFactorBS_;
+    uint32_t maxUbDim = GetMaxUbDim();
+    if (maxUbBS == 0 || maxUbDim == 0)
+        return;
 
     DataCopyPadExtParams<T> padParams{false, 0, 0, 0};
 
@@ -1428,21 +1484,17 @@ __aicore__ inline void FusedCausalConv1dCutBSH<T>::CopyYToX()
         while (dimDone < dimTotal) {
             uint32_t dimChunk = (dimTotal - dimDone > maxUbDim) ? maxUbDim : (dimTotal - dimDone);
             uint32_t skipBlocks = (xStride_ - dimChunk) * sizeof(T) / ALIGN_BYTES;
-            uint32_t lineBytes  = dimChunk * sizeof(T);
+            uint32_t lineBytes = dimChunk * sizeof(T);
             uint64_t gmOff = rowBase * (uint64_t)xStride_ + dimStart + dimDone;
 
             LocalTensor<T> tmpBuf = xQueue_.AllocTensor<T>();
-            DataCopyExtParams rcp{static_cast<uint16_t>(bsChunk),
-                                  static_cast<uint16_t>(lineBytes),
-                                  skipBlocks * ALIGN_BYTES,
-                                  0, 0};
+            DataCopyExtParams rcp{static_cast<uint16_t>(bsChunk), static_cast<uint16_t>(lineBytes),
+                                  skipBlocks * ALIGN_BYTES, 0, 0};
             DataCopyPad(tmpBuf, yGM_[gmOff], rcp, padParams);
             xQueue_.EnQue(tmpBuf);
             tmpBuf = xQueue_.DeQue<T>();
 
-            DataCopyExtParams wcp{static_cast<uint16_t>(bsChunk),
-                                  static_cast<uint16_t>(lineBytes),
-                                  0,
+            DataCopyExtParams wcp{static_cast<uint16_t>(bsChunk), static_cast<uint16_t>(lineBytes), 0,
                                   skipBlocks * ALIGN_BYTES, 0};
             DataCopyPad(xGM_[gmOff], tmpBuf, wcp);
             xQueue_.FreeTensor(tmpBuf);
