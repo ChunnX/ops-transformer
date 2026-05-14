@@ -606,8 +606,9 @@ void AlltoAllvGmmTiling::SetGMMQuantParams(Mc2GroupedMatmulTilingData::GMMQuantT
 {
     gmmQuantTilingData.gmmQuantParams.groupNum = SINGLE_GROUP_NUM;
     gmmQuantTilingData.gmmQuantParams.activeType = GMM_ACT_TYPE_NONE;
-    gmmQuantTilingData.gmmQuantParams.aQuantMode = PERTENSOR_QUANT_MODE;
-    gmmQuantTilingData.gmmQuantParams.bQuantMode = PERTENSOR_QUANT_MODE;
+    // Non-quant: no scale input, use DEFAULT(0) to skip scale processing in kernel
+    gmmQuantTilingData.gmmQuantParams.aQuantMode = 0;  // DEFAULT, not PERTENSOR
+    gmmQuantTilingData.gmmQuantParams.bQuantMode = 0;  // DEFAULT, not PERTENSOR
     gmmQuantTilingData.gmmQuantParams.singleX = 0;
     gmmQuantTilingData.gmmQuantParams.singleW = 0;
     gmmQuantTilingData.gmmQuantParams.singleY = 0;
