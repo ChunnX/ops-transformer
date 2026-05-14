@@ -293,7 +293,9 @@ python3 "$PACKAGE_SCRIPT" \
     --pkg-output-dir "${WORKDIR}/$PKG_OUTPUT_DIR" \
     --independent_pkg \
     --chip_name "$SOC" \
-    --os_arch linux-"$OS_ARCH"
+    --os_arch linux-"$OS_ARCH"\
+    --delivery_dir "${WORKDIR}/build" \
+    --source_dir "${WORKDIR}"
 
 log "Packaging completed successfully!"
 
