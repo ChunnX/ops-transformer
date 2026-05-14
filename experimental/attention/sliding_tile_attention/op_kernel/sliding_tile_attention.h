@@ -711,15 +711,21 @@ private:
         PipeBarrier<PIPE_V>();
         const bool hasTail = kvCount < static_cast<int64_t>(calcCount);
         if (hasTail) {
-            for (int64_t i = kvCount; i < static_cast<int64_t>(calcCount); ++i) {
-                scoreLocal.SetValue(i, NEG_INF);
-            }
+            Duplicate(scoreLocal[kvCount], NEG_INF, calcCount - static_cast<uint32_t>(kvCount));
         }
 
         if (!isFullVisible) {
-            for (int64_t i = 0; i < kvCount; ++i) {
-                if (!IsKvVisible(head, querySeq, kvSeqStart + i, isTextQuery)) {
-                    scoreLocal.SetValue(i, NEG_INF);
+            const int64_t kvSeqEnd = kvSeqStart + kvCount;
+            const bool isSingleImageTile =
+                !isTextQuery && kvSeqStart < tiling_->imageSeqLen && kvSeqEnd <= tiling_->imageSeqLen &&
+                (kvSeqStart / tiling_->tileTokenNum == (kvSeqEnd - 1) / tiling_->tileTokenNum);
+            if (isSingleImageTile && !IsKvVisible(head, querySeq, kvSeqStart, isTextQuery)) {
+                Duplicate(scoreLocal, NEG_INF, static_cast<uint32_t>(kvCount));
+            } else {
+                for (int64_t i = 0; i < kvCount; ++i) {
+                    if (!IsKvVisible(head, querySeq, kvSeqStart + i, isTextQuery)) {
+                        scoreLocal.SetValue(i, NEG_INF);
+                    }
                 }
             }
         }
@@ -753,9 +759,7 @@ private:
         Exp(weightLocal, weightLocal, calcCount);
         PipeBarrier<PIPE_V>();
         if (hasTail) {
-            for (int64_t i = kvCount; i < static_cast<int64_t>(calcCount); ++i) {
-                weightLocal.SetValue(i, 0.0F);
-            }
+            Duplicate(weightLocal[kvCount], 0.0F, calcCount - static_cast<uint32_t>(kvCount));
         }
         PipeBarrier<PIPE_V>();
         StoreProbRow(rowInBlock, weightLocal, bufferIdx);
