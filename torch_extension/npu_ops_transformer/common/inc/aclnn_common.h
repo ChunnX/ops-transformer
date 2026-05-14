@@ -110,14 +110,38 @@ extern thread_local int g_hashOffset;
     _(at::ScalarType::Int6, ACL_DT_UNDEFINED)                                                                          \
     _(at::ScalarType::Int7, ACL_DT_UNDEFINED)                                                                          \
     _(at::ScalarType::Float8_e8m0fnu, ACL_FLOAT8_E8M0)                                                                \
+    _(at::ScalarType::Float4_e2m1fn_x2, ACL_FLOAT4_E2M1)                                                              \
     _(at::ScalarType::Undefined, ACL_DT_UNDEFINED)                                                                     \
     _(at::ScalarType::NumOptions, ACL_DT_UNDEFINED)
 
-constexpr aclDataType kATenScalarTypeToAclDataTypeTable[] = {
+constexpr aclDataType kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(at::ScalarType::NumOptions) + 3] = {
 #define DEFINE_ENUM(_1, n) n,
     AT_ALL_SCALAR_TYPE_AND_ACL_DATATYPE_PAIR(DEFINE_ENUM)
 #undef DEFINE_ENUM
 };
+
+typedef struct {
+    const at::Tensor& tensor_;
+    aclDataType dtype;
+} TensorWrapper;
+
+TensorWrapper make_wrapper(const at::Tensor &tensor, const int64_t real_dtype)
+{
+    TensorWrapper wrapper = {tensor, ACL_DT_UNDEFINED};
+    int64_t temp = static_cast<int64_t>(tensor.scalar_type());
+    if (kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(tensor.scalar_type())] == ACL_UINT8) {
+        if (real_dtype == 296) {
+            wrapper.dtype = ACL_FLOAT4_E2M1;
+        } else if (real_dtype == 293) {
+            wrapper.dtype = ACL_FLOAT8_E8M0;
+        } else if (real_dtype == 290) {
+            wrapper.dtype = ACL_HIFLOAT8;
+        }
+    } else {
+        wrapper.dtype = kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(tensor.scalar_type())];
+    }
+    return wrapper;
+}
 
 enum QuantMode {
     QUANT_MODE_NO_QUANT = 0,
@@ -339,6 +363,50 @@ inline aclTensor *ConvertType(const at::Tensor &at_tensor)
     return acl_tensor;
 }
 
+inline aclTensor *ConvertType(const TensorWrapper &wrapper)
+{
+    static const auto aclCreateTensor = GET_OP_API_FUNC(aclCreateTensor);
+    if (aclCreateTensor == nullptr) {
+        return nullptr;
+    }
+    c10::SmallVector<int64_t, 5> storageDims;
+    // if acl_data_type is ACL_STRING, storageDims is empty.
+    auto itemsize = wrapper.tensor_.itemsize();
+    if (itemsize == 0) {
+        AT_ERROR("When ConvertType, tensor item size of cannot be zero.");
+        return nullptr;
+    }
+    if (wrapper.dtype != ACL_STRING) {
+        storageDims.push_back(wrapper.tensor_.storage().nbytes() / itemsize);
+    }
+
+    const auto dimNum = wrapper.tensor_.sizes().size();
+    aclFormat format = ACL_FORMAT_ND;
+    switch (dimNum) {
+        case 3:
+            format = ACL_FORMAT_NCL;
+            break;
+        case 4:
+            format = ACL_FORMAT_NCHW;
+            break;
+        case 5:
+            format = ACL_FORMAT_NCDHW;
+            break;
+        default:
+            format = ACL_FORMAT_ND;
+    }
+    auto acl_tensor = aclCreateTensor(wrapper.tensor_.sizes().data(),
+        wrapper.tensor_.sizes().size(),
+        wrapper.dtype,
+        wrapper.tensor_.strides().data(),
+                        wrapper.tensor_.storage_offset(),
+        format,
+        storageDims.data(),
+        storageDims.size(),
+                        const_cast<void *>(wrapper.tensor_.storage().data()));
+    return acl_tensor;
+}
+
 inline aclScalar *ConvertType(const at::Scalar &at_scalar)
 {
     static const auto aclCreateScalar = GET_OP_API_FUNC(aclCreateScalar);
@@ -414,7 +482,7 @@ inline aclBoolArray *ConvertType(const at::ArrayRef<bool> &value)
 
 inline aclTensorList *ConvertType(const at::TensorList &at_tensor_list)
 {
-    if (at_tensor_list.size() == 0) {
+if (at_tensor_list.size() == 0) {
         return nullptr;
     }
     static const auto aclCreateTensorList = GET_OP_API_FUNC(aclCreateTensorList);
