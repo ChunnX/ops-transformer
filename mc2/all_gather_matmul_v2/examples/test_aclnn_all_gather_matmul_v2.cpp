@@ -105,13 +105,13 @@ int LaunchOneThreadAllGatherMmV2(Args &args)
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetCommName failed. ret: %d\n", ret); return -1);
     LOG_PRINT("[INFO] rank = %d, hcomName = %s, stream = %p, context = %p\n", args.rankId, hcomName,
     args.stream, args.context);
-    std::vector<int64_t> x1Shape = {32, 256};
-    std::vector<int64_t> x2Shape = {256, 128};
-    std::vector<int64_t> x1ScaleShape = {32, 1};
-    std::vector<int64_t> x2ScaleShape = {1, 128};
-    std::vector<int64_t> biasShape = {128};
-    std::vector<int64_t> outShape = {32 * DEV_NUM, 128};
-    std::vector<int64_t> gatherOutShape = {32 * DEV_NUM, 256};
+    std::vector<int64_t> x1Shape = {9750, 5120};
+    std::vector<int64_t> x2Shape = {5120, 5120};
+    std::vector<int64_t> x1ScaleShape = {9750, 1};
+    std::vector<int64_t> x2ScaleShape = {1, 5120};
+    std::vector<int64_t> biasShape = {5120};
+    std::vector<int64_t> outShape = {9750 * DEV_NUM, 5120};
+    std::vector<int64_t> gatherOutShape = {9750 * DEV_NUM, 5120};
     void *x1DeviceAddr = nullptr;
     void *x2DeviceAddr = nullptr;
     void *x1ScaleDeviceAddr = nullptr;
