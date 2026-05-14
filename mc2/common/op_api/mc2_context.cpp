@@ -501,7 +501,7 @@ aclnnStatus Mc2Context::GetOrCreateMc2Context(const HcclComm &hcclHandle, const 
 aclnnStatus Mc2Context::GetMc2ContextTensor(const char *groupEp, const char *opName, uint64_t &hcclBuffSize,
                                             aclTensor *&mc2Context)
 {
-    OP_LOGD("Start to get Mc2MoeContext Tensor");
+    OP_LOGD("Start to get Mc2Context Tensor");
     auto &instance = GetInstance();
 
     auto aclnnRet = instance.LoadHcclSymbols();
