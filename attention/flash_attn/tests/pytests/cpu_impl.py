@@ -172,9 +172,9 @@ def tforward(q, k, v, **kwargs):
         s1 = kwargs.get("S1")
         s2 = kwargs.get("S2", s1)
 
-        q = q.reshape(1, n1, b * s1, q.shape[-1])
-        k = k.reshape(1, n2, b * s2, k.shape[-1])
-        v = v.reshape(1, n2, b * s2, v.shape[-1])
+        q = q.reshape(1, b, n1, s1, q.shape[-1]).transpose(1, 2).reshape(1, n1, b * s1, q.shape[-1])
+        k = k.reshape(1, b, n2, s2, k.shape[-1]).transpose(1, 2).reshape(1, n2, b * s2, k.shape[-1])
+        v = v.reshape(1, b, n2, s2, v.shape[-1]).transpose(1, 2).reshape(1, n2, b * s2, v.shape[-1])
 
         cu_q = [i * s1 for i in range(b + 1)]
         cu_kv = [i * s2 for i in range(b + 1)]
@@ -190,7 +190,8 @@ def tforward(q, k, v, **kwargs):
         b = kwargs.get("B")
         s1 = kwargs.get("S1")
         n1 = kwargs.get("N1")
-        out = out.reshape(b, n1, s1, out.shape[-1])
+        # 1 n t d  ->  b n s d 
+        out = out.reshape(n1, b, s1, out.shape[-1]).transpose(0, 1)
         x_max = x_max.reshape(n1, b, s1).transpose(1, 0)
         x_sum = x_sum.reshape(n1, b, s1).transpose(1, 0)
 
