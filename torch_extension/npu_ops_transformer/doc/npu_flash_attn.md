@@ -216,7 +216,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>FLOAT32</td>
         <td>N/A</td>
         <td>-</td>
-        <td>×</td>
+        <td>-</td>
     </tr>
     <tr>
         <td>mask_mode</td>
