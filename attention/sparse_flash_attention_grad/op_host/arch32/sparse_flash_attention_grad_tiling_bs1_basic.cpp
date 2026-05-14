@@ -270,7 +270,6 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::DoSftTiling()
     /*
      * softmax tiling切分策略
      */
-    constexpr int32_t maxProcessDataSize = 8 * 1024;
 
     uint32_t sftBaseN = tmpData.singleN;
     uint32_t sftBaseM = 16;
