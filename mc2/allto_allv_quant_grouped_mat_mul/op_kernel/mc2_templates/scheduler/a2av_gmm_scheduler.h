@@ -18,9 +18,6 @@
 
 #include "../a2av_gmm_utils.h"
 
-#ifndef ENABLE_SMALL_SHAPE_MODE
-#define ENABLE_SMALL_SHAPE_MODE false
-#endif
 
 #include "kernel_tiling/kernel_tiling.h"
 #if ASC_DEVKIT_MAJOR >= 9
@@ -103,13 +100,13 @@ public:
         if constexpr (MX_QUANT_MODE) {
             if (isScaleBatchMode_) {
                 ProcessScaleCommBatchMode();
-            } else if constexpr (ENABLE_SMALL_SHAPE_MODE) {
+            } else if (tilingData_->taskTilingInfo.isSmallShapeMode) {
                 ProcessCommRankWiseMode();
             } else {
                 ProcessCommRoundMode();
             }
         } else {
-            if constexpr (ENABLE_SMALL_SHAPE_MODE) {
+            if (tilingData_->taskTilingInfo.isSmallShapeMode) {
                 ProcessCommRankWiseMode();
             } else {
                 ProcessCommRoundMode();
