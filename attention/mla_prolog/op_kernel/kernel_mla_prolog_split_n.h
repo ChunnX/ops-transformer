@@ -1543,6 +1543,8 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RmsNormAndScatterCkv(LocalTen
         
         SetFlag<HardEvent::V_MTE2>(EVENT_ID0);
         WaitFlag<HardEvent::V_MTE2>(EVENT_ID0);
+        SetFlag<HardEvent::MTE3_V>(EVENT_ID1);
+        WaitFlag<HardEvent::MTE3_V>(EVENT_ID1);
         float kNopeClipAlpha = kNopeClipAlphaGm_.GetValue(0);
 
         if constexpr (isPertile) {
