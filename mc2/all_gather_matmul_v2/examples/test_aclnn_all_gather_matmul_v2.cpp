@@ -75,7 +75,7 @@ void ExportTimeCsv(int rankId, void* timerBufferDeviceAddr) {
         return;
     }
     std::string csvFilePath = outDir + "/timer_rank_" + std::to_string(rankId) + ".csv";
-    auto timeResult = CocTimer::GetTimingResult(timerBufferDeviceAddr);
+    auto timeResult = CocTimer::GetTimeResult(timerBufferDeviceAddr);
     std::string dataDir = outDir + "/data";
     ret = mkdir(dataDir.c_str(), 0777);
     if (ret != 0 && errno != EEXIST) {
@@ -147,9 +147,7 @@ int LaunchOneThreadAllGatherMmV2(Args &args)
     long long biasShapeSize = GetShapeSize(biasShape);
     long long outShapeSize = GetShapeSize(outShape);
     long long gatherOutShapeSize = GetShapeSize(gatherOutShape);
-    int coreCount = 20;
-    CocTimer::setCoreCount(coreCount);
-    long long timerBufferSize = CocTimer::GetTimerBufferSize();
+    long long timerBufferSize = CocTimer::GetTotalTimerBufferSize();
     std::vector<int64_t> timerBufferShape = {timerBufferSize, 1};
 
     std::vector<int8_t> x1HostData(x1ShapeSize, 0);
