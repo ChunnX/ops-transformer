@@ -758,12 +758,17 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     SyncAll<false>();
 
     // 4. for循环: per-expert Dispatch + 并行 wave GMM1→GMM2 流水
-    //    GMM1 需要多少 tile，就用多少核：
-    //    - tileNumGmm1 = ceil(outputN / L1_TILE_N)
-    //    - coresPerWave = min(tileNumGmm1, blockNum_)
-    //    - wavesParallel = blockNum_ / coresPerWave
-    //    例：BS=512, outputN=4096, L1_TILE_M=128, L1_TILE_N=256 → tileNumGmm1=16,
-    //        coresPerWave=16, wavesParallel=2，32 个 AIC 分两组同时跑两个 wave。
+    //    分核策略（每 expert 重新决定一次，因 waveCnt 取决于 m_i）：
+    //    - tileNumGmm1 = ceil(outputN / L1_TILE_N)            // GMM1 在 N 方向需多少 tile
+    //    - wavesParallel = min(waveCnt, blockNum / tileNumGmm1) // 并行 wave 数，最多 waveCnt
+    //    - coresPerWave  = blockNum / wavesParallel             // 每组分到的核数
+    //    用 waveCnt 当上限保证不会出现"空 group"，coresPerWave 经常会 >= tileNumGmm1。
+    //    GMM1 多出来的核（coreInGroup >= tileNumGmm1）在 GMM1 阶段空闲；
+    //    但 GMM2 的 tileNum (k_orig / L1_TILE_N) 通常远大于 tileNumGmm1，那些核能在 GMM2 阶段干活。
+    //    例：BS=512, outputN=1536, waveCnt=4, blockNum=32 →
+    //        tileNumGmm1=6, wavesParallel=min(4, 5)=4, coresPerWave=8
+    //        GMM1：每 wave 6 个核干 1 tile，2 个 idle；4 wave 并行 = 24 核活跃。
+    //        GMM2：每 wave 8 个核分 28 tile，4 wave 并行 = 32 核全部满载。
     //    cube/vec 信号是 per-pair（同 blockIdx 的 AIC/AIV 共享一个 flag 通道），不同 pair
     //    之间天然隔离，多组并行不需要再按 group 区分 flag value。
     //    真正需要的同步是同核相邻 wave 之间的 UB 屏障：上一 wave AIV combine 的 MTE3 未
@@ -772,17 +777,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     uint64_t outputN_const = Get<N_VALUE>(problemShape_) / SWIGLU_N_HALF;
     uint32_t tileNumGmm1 = static_cast<uint32_t>(
         (outputN_const + static_cast<uint64_t>(L1_TILE_N) - 1UL) / static_cast<uint64_t>(L1_TILE_N));
-    coresPerWave_ = (tileNumGmm1 < blockNum_) ? tileNumGmm1 : blockNum_;
-    if (coresPerWave_ < 1U) {
-        coresPerWave_ = 1U;
+    if (tileNumGmm1 < 1U) {
+        tileNumGmm1 = 1U;
     }
-    wavesParallel_ = blockNum_ / coresPerWave_;
-    if (wavesParallel_ < 1U) {
-        wavesParallel_ = 1U;
-    }
-    coreInGroup_ = blockIdx_ % coresPerWave_;
-    coreGroupId_ = blockIdx_ / coresPerWave_;
-    coreActive_ = (coreGroupId_ < wavesParallel_);
 
     GMMAddrInfo gmmAddrInfo;
     for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
@@ -791,6 +788,20 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         }
         uint64_t m_i = Get<M_VALUE>(problemShape_);
         uint64_t waveCnt = (m_i + L1_TILE_M - 1) / L1_TILE_M;
+
+        // 按本 expert 的 waveCnt 决定分组：让 wavesParallel 尽量等于 waveCnt
+        uint32_t maxGroups = blockNum_ / tileNumGmm1;
+        if (maxGroups < 1U) {
+            maxGroups = 1U;
+        }
+        wavesParallel_ = (static_cast<uint32_t>(waveCnt) < maxGroups) ? static_cast<uint32_t>(waveCnt) : maxGroups;
+        if (wavesParallel_ < 1U) {
+            wavesParallel_ = 1U;
+        }
+        coresPerWave_ = blockNum_ / wavesParallel_;
+        coreInGroup_ = blockIdx_ % coresPerWave_;
+        coreGroupId_ = blockIdx_ / coresPerWave_;
+        coreActive_ = (coreGroupId_ < wavesParallel_);
 
         // Dispatch (per-expert, skip wave pipelining for dispatch→GMM1)
         UpdateGlobalBuffer(gmmAddrInfo, 0);
