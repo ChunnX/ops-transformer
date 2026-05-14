@@ -206,7 +206,7 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckGradY()
     k_ = gradYShapePtr->GetOriginShape().GetDim(DIM_ONE);
     OP_CHECK_IF(
         k_ > expertCount_ || k_ <= 0,
-        OP_LOGE(context_, "gradY: Dimension 1 (K) must be in the range of (0, %ld], but got %ld.", expertCount_, k_),
+        OP_LOGE(context_, "gradY: Dimension 1 (K) must be in the range of (0, %ld (N)], but got %ld.", expertCount_, k_),
         return ge::GRAPH_FAILED);
 
     auto gradYDesc = context_->GetInputDesc(GRAD_Y_INPUT_INDEX);
