@@ -123,10 +123,12 @@ public:
         if ASCEND_IS_AIV {
             return ;
         }
-        // 从 recvCnt 获取当前 (rankIdx, expertIdx) 的数据量
-        // recvCnt 存储顺序：[expertIdx + rankIdx * e_]
+        // 接收方收到所有srcRank发来的expertIdx数据总和
         const auto *recvCnt = &tilingData_->taskTilingInfo.recvCnt[0];
-        uint64_t tokenNum = static_cast<uint64_t>(recvCnt[expertIdx + rankIdx * expertNumInOneRank_]);
+        uint64_t tokenNum = 0UL;
+        for (uint32_t r = 0U; r < epWorldSize_; r++) {
+            tokenNum += static_cast<uint64_t>(recvCnt[expertIdx + r * expertNumInOneRank_]);
+        }
         if (!isLocal && tokenNum == 0) {
             return ;
         }

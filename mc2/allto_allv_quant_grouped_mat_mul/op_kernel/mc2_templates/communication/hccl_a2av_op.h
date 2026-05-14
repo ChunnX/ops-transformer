@@ -254,9 +254,7 @@ public:
         hccl_.Wait(alltoAllvHandleId_[startExpertIdx]);
     }
 
-    // 小shape模式：每轮只和一个卡通信一个专家的数据
-    // 通过设置其他rank的sendCnt/recvCnt为0实现卡级流水
-// 小shape模式：每轮一个专家 + 一个接收方
+    // 小shape模式：每轮一个专家 + 一个接收方
     // 接收方从所有源卡接收该专家的数据
     // sendCnt[expertIdx + tgtRank * e_] = 本卡发给tgtRank的expertIdx数据量
     // recvCounts_[expertIdx + srcRank * e_] = 本卡从srcRank接收的expertIdx数据量
@@ -286,44 +284,35 @@ public:
         // 接收方设置recvCnt：从所有srcRank接收expertIdx的数据
         if (isReceiver) {
             for (uint32_t srcRank = 0U; srcRank < rankDim_; srcRank++) {
-                // 接收顺序从自己开始循环
-                uint32_t recvSrcRank = (tgtRank + srcRank) % rankDim_;
-                alltoAllvRecvCnt[recvSrcRank] = static_cast<uint64_t>(recvCounts_[expertIdx + recvSrcRank * e_]) * axis;
+                alltoAllvRecvCnt[srcRank] = static_cast<uint64_t>(recvCounts_[expertIdx + srcRank * e_]) * axis;
             }
         }
         
         // 发送方设置sendCnt：非接收方发送expertIdx数据给tgtRank
         // sendCnt[expertIdx + tgtRank * e_] = 本卡发给tgtRank的expertIdx数据量
-        // 默认初始化sendOffset（发送方才需要正确计算）
-        alltoAllvSendOffset[0] = 0UL;
-        
+        // 发送方设置sendCnt
         bool isSender = (rankId_ != tgtRank);
         if (isSender) {
             alltoAllvSendCnt[tgtRank] = static_cast<uint64_t>(sendCnt[expertIdx + tgtRank * e_]) * axis;
-            
-            // 计算sendOffset（发送方视角）
-            // 发送数据在sendBuffer的位置：累计之前发给tgtRank的所有专家
+        }
+        
+        // 计算sendOffset：标准前缀和 offset[i] = sum(sendCnt[0..i-1])
+        // 发送方的数据在sendBuffer中的位置 = 之前发给tgtRank的所有expertIdx数据之和
+        alltoAllvSendOffset[0] = 0UL;
+        if (isSender) {
             for (uint32_t j = 0U; j < expertIdx; j++) {
                 alltoAllvSendOffset[0] += static_cast<uint64_t>(sendCnt[j + tgtRank * e_]) * axis;
             }
         }
         for (uint32_t i = 1U; i < rankDim_; i++) {
-            alltoAllvSendOffset[i] = alltoAllvSendOffset[i - 1];
+            alltoAllvSendOffset[i] = alltoAllvSendOffset[i - 1U] + alltoAllvSendCnt[i - 1U];
         }
         
-        // 计算recvOffset（接收方视角）
-        // 接收数据在recvBuffer的位置：累计之前所有接收的数据
+        // 计算recvOffset：标准前缀和 offset[i] = sum(recvCnt[0..i-1])
+        // 接收方的数据在recvBuffer中的位置 = 之前所有接收的数据累积
         alltoAllvRecvOffset[0] = 0UL;
-        if (isReceiver) {
-            // 按expertIdx顺序排列：先expertIdx之前的所有数据
-            for (uint32_t e = 0U; e < expertIdx; e++) {
-                for (uint32_t r = 0U; r < rankDim_; r++) {
-                    alltoAllvRecvOffset[0] += static_cast<uint64_t>(recvCounts_[e + r * e_]) * axis;
-                }
-            }
-        }
         for (uint32_t i = 1U; i < rankDim_; i++) {
-            alltoAllvRecvOffset[i] = alltoAllvRecvOffset[i - 1];
+            alltoAllvRecvOffset[i] = alltoAllvRecvOffset[i - 1U] + alltoAllvRecvCnt[i - 1U];
         }
         
         // 存储handle
