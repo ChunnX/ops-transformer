@@ -1,3 +1,18 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/*!
+ * \file flash_attn_metadata_check.h
+ * \brief
+ */
+
 #include "opdev/format_utils.h"
 #include "opdev/op_log.h"
 #include "opdev/data_type_utils.h"
@@ -116,52 +131,52 @@ static aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTen
     }
 
     bool isQ_TND = (strcmp(layoutQ, "TND") == 0);
-    
     if (isQ_TND) {
         // layoutQ为TND时，cuSeqlensQOptional、maxSeqlenQ、sequsedQOptional至少传一个
         bool hasQParam = (cuSeqlensQOptional != nullptr) || (maxSeqlenQ != -1) || (sequsedQOptional != nullptr);
         if (!hasQParam) {
-            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, 
-                    "When layoutQ is TND, at least one of cuSeqlensQOptional, maxSeqlenQ, sequsedQOptional must be provided");
+            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR,
+                    "When layoutQ is TND, at least one of cuSeqlensQOptional, "
+                    "maxSeqlenQ, sequsedQOptional must be provided");
             return ACLNN_ERR_PARAM_INVALID;
         }
     } else {
         // layoutQ不为TND时，不应该传入cuSeqlensQOptional
         if (cuSeqlensQOptional != nullptr) {
-            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, 
+            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR,
                     "When layoutQ is not TND, cuSeqlensQOptional should not be provided, but got non-null");
             return ACLNN_ERR_PARAM_INVALID;
         }
         // maxSeqlenQ和sequsedQOptional必须有一个（-1表示不传）
         bool hasQParam = (maxSeqlenQ != -1) || (sequsedQOptional != nullptr);
         if (!hasQParam) {
-            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, 
+            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR,
                     "When layoutQ is not TND, at least one of maxSeqlenQ or sequsedQOptional must be provided");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
 
     bool isKv_TND = (strcmp(layoutKv, "TND") == 0);
-    
     if (isKv_TND) {
         // layoutKv为TND时，cuSeqlensKvOptional、maxSeqlenKv、sequsedKvOptional至少传一个
         bool hasKvParam = (cuSeqlensKvOptional != nullptr) || (maxSeqlenKv != -1) || (sequsedKvOptional != nullptr);
         if (!hasKvParam) {
-            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, 
-                    "When layoutKv is TND, at least one of cuSeqlensKvOptional, maxSeqlenKv, sequsedKvOptional must be provided");
+            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR,
+                    "When layoutKv is TND, at least one of cuSeqlensKvOptional, "
+                    "maxSeqlenKv, sequsedKvOptional must be provided");
             return ACLNN_ERR_PARAM_INVALID;
         }
     } else {
         // layoutKv不为TND时，不应该传入cuSeqlensKvOptional
         if (cuSeqlensKvOptional != nullptr) {
-            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, 
+            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR,
                     "When layoutKv is not TND, cuSeqlensKvOptional should not be provided, but got non-null");
             return ACLNN_ERR_PARAM_INVALID;
         }
         // maxSeqlenKv和sequsedKvOptional必须有一个（-1表示不传）
         bool hasKvParam = (maxSeqlenKv != -1) || (sequsedKvOptional != nullptr);
         if (!hasKvParam) {
-            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, 
+            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR,
                     "When layoutKv is not TND, at least one of maxSeqlenKv or sequsedKvOptional must be provided");
             return ACLNN_ERR_PARAM_INVALID;
         }
