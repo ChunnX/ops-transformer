@@ -21,8 +21,8 @@
 #include <register/op_impl_registry.h>
 #include <tiling/tiling_api.h>
 #include "log/log.h"
-#include "../../op_kernel/arch32/flash_attention_score_grad_tiling.h"
-#include "../../op_kernel/arch32/flash_attention_score_grad_template_tiling_key.h"
+#include "../../op_kernel/arch22/flash_attention_score_grad_tiling.h"
+#include "../../op_kernel/arch22/flash_attention_score_grad_template_tiling_key.h"
 
 namespace optiling {
 
