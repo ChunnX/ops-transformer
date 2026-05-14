@@ -443,10 +443,14 @@ uint64_t MoeInitRoutingV3Arch35TilingClass::GetTilingKey() const
     OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::GetTilingKey()");
     int64_t quantModeFactor = quantMode_ + 1;
 
-    if (isFullload_  && IsSupportFullloadQuantMode()) {
+    if (isFullload_ && IsSupportFullloadQuantMode()) {
+        // MXFP8两种格式统一使用quantModeFactor=3，与分载模板保持一致
+        if (quantMode_ == QUANT_MODE_MXFP8_E5M2 || quantMode_ == QUANT_MODE_MXFP8_E4M3FN) {
+            quantModeFactor = QUANT_MODE_MXFP8_E5M2 - QUANT_MODE_UNQUANT; // = 3
+        }
         return static_cast<uint64_t>(FULLLOAD_TILINGKEY_BASE + quantModeFactor * QUANT_MODE_TILINGKEY_BASE);
     }
-    
+
     if (quantMode_ == QUANT_MODE_MXFP8_E5M2 || quantMode_ == QUANT_MODE_MXFP8_E4M3FN ||
         quantMode_ == QUANT_MODE_MXFP4_E2M1) {
         // 对于MXFP8量化，两种模式在TilingKey体现的QuantMode都为3。
@@ -1376,8 +1380,9 @@ PerLoopParams MoeInitRoutingV3Arch35TilingClass::GetPerLoopParams(MultipleParams
                                                              MXFPX_SCALE_BLOCK_SIZE);
             perLoopParams.perLoopMaxIndicesElements =
                 (availUbSize_ - Align(perLoopParams.perLoopCols, inputXDtypeSize_) * multipleParams.colMultiple -
-                Align(perLoopParams.perLoopCols / SCALE_FACTOR_WITH_X, inputScaleDTypeSize_) * inputScaleDTypeSize_ *
-                NUM_TWO) / multipleParams.rowMultiple / static_cast<int64_t>(sizeof(int32_t));
+                 Align(perLoopParams.perLoopCols / SCALE_FACTOR_WITH_X, inputScaleDTypeSize_) * inputScaleDTypeSize_ *
+                     NUM_TWO) /
+                multipleParams.rowMultiple / static_cast<int64_t>(sizeof(int32_t));
         }
     } else {
         perLoopParams.perLoopMaxIndicesElements =
@@ -1574,6 +1579,20 @@ bool MoeInitRoutingV3Arch35TilingClass::IsFullLoad()
         int64_t quantSpace = xAlignedCount * DYNAMIC_QUANT_FULLLOAD_COLS_BUFFER;
         int64_t scaleOutSpace = UB_BLOCK_SIZE * NUM_TWO;
         remainUb -= (quantSpace + scaleOutSpace);
+    } else if (quantMode_ == QUANT_MODE_MXFP8_E5M2 || quantMode_ == QUANT_MODE_MXFP8_E4M3FN) {
+        int64_t mxQuantBlockNum = Ops::Base::CeilDiv(cols_, MX_QUANT_BLOCK_SIZE);
+        int64_t scaleCols = Ops::Base::CeilAlign(mxQuantBlockNum, NUM_TWO); // 与kernel侧scaleCols_对齐方式一致
+        int64_t xInputSpace = AlignBytes(cols_ * sizeof(half), UB_BLOCK_SIZE) * perCoreTokens;
+        int64_t maxExpSpace = AlignBytes(scaleCols * sizeof(uint16_t), UB_BLOCK_SIZE);
+        int64_t invScaleSpace = AlignBytes(scaleCols * sizeof(uint16_t), UB_BLOCK_SIZE) * NUM_THREE;
+        int64_t xQuantSpace = AlignBytes(cols_ * sizeof(int8_t), UB_BLOCK_SIZE) * perCoreTokens;
+        int64_t scaleOutSpace = AlignBytes(scaleCols * sizeof(int8_t), UB_BLOCK_SIZE) * NUM_TWO;
+        int64_t quantSpace = xInputSpace + maxExpSpace + invScaleSpace + xQuantSpace + scaleOutSpace;
+        remainUb -= (gatherSpace + quantSpace);
+        OP_LOGD(context_,
+                "MXFP8 FullLoad UB check: sortSpace=%ld, rowIdxSpace=%ld, expertSpace=%ld, "
+                "gatherSpace=%ld, quantSpace=%ld, remainUb=%ld",
+                sortSpace, rowIdxSpace, expertSpace, gatherSpace, quantSpace, remainUb);
     }
 
     return remainUb > 0;
