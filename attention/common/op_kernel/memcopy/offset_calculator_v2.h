@@ -93,6 +93,11 @@ struct GmLayoutParams<GmFormat::NTD> {
 };
 
 template <>
+struct GmLayoutParams<GmFormat::TND2> {
+    static constexpr FormatCategory CATEGORY = FormatCategory::GM_V_SCALE_TND;
+};
+
+template <>
 struct GmLayoutParams<GmFormat::PA_BnBsND> {
     static constexpr FormatCategory CATEGORY = FormatCategory::GM_KV_PA_BNBD;
 };
