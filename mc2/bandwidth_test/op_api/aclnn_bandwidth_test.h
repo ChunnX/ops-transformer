@@ -24,12 +24,12 @@ extern "C" {
  * @brief aclnnBandwidthTest的第一段接口，根据具体的计算流程，计算workspace大小。
  * @domain aclnn_ops_infer
  * @param [in] x: 计算输入，Tensor，数据类型float16，bfloat16，float32，必须为2维，数据格式支持ND。输入的token数据。
- * @param [in] expertId: 计算输入，Tensor，数据类型int32，必须为1维，数据格式支持ND。每个token的目标rank索引。
+ * @param [in] dstRankId: 计算输入，Tensor，数据类型int32，必须为1维，数据格式支持ND。每个token的目标rank索引。
  * @param [in] group: 计算输入，str。通信域名称。
  * @param [in] worldSize: 计算输入，int。通信域size。
- * @param [in] rankId: 计算输入，int。本卡Id。
  * @param [in] maxBs: 计算输入，int。最大batch size大小。
  * @param [in] mode: 计算输入，int。模式，0表示精度模式，1表示纯发模式。
+ * @param [in] commAlg: 计算输入，str。通信方式名称。
  * @param [out] y: 计算输出，Tensor，必选输出，数据类型float16, bfloat16, float32，仅支持2维，数据格式支持ND。输出的token数据。
  * @param [out] receiveCnt: 计算输出，Tensor，必选输出，数据类型int32，仅支持1维，数据格式支持ND。从各rank接收的token数。
  * @param [out] workspaceSize: 出参，返回需要在npu device侧申请的workspace大小。
@@ -38,7 +38,7 @@ extern "C" {
  *
  */
 ACLNN_API aclnnStatus aclnnBandwidthTestGetWorkspaceSize(
-    const aclTensor* x, const aclTensor* expertId,
+    const aclTensor* x, const aclTensor* dstRankId,
     const char* group, int64_t worldSize, int64_t maxBs, int64_t mode,
     const char *commAlg, aclTensor* y, aclTensor* receiveCnt,
     uint64_t* workspaceSize, aclOpExecutor** executor);

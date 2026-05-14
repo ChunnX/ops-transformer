@@ -24,7 +24,7 @@ public:
         .DataType({ge::DT_FLOAT16})
         .Format({ge::FORMAT_ND})
         .AutoContiguous();
-    this->Input("expert_id")
+    this->Input("dstrank_id")
         .ParamType(REQUIRED)
         .DataType({ge::DT_INT32})
         .Format({ge::FORMAT_ND})
@@ -42,8 +42,8 @@ public:
     this->Attr("group").AttrType(REQUIRED).String();
     this->Attr("world_size").AttrType(REQUIRED).Int();
     this->Attr("max_bs").AttrType(REQUIRED).Int();
-    this->Attr("mode").AttrType(REQUIRED).Int();
     this->Attr("ccl_buffer_size").AttrType(REQUIRED).Int();
+    this->Attr("mode").AttrType(OPTIONAL).Int(0);
     this->Attr("comm_alg").AttrType(OPTIONAL).String("");
 
     OpAICoreConfig aicore_config;

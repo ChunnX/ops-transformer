@@ -67,10 +67,11 @@ constexpr uint32_t OUTPUT_RECEIVE_CNT_INDEX = 1U; // 输出receive_cnt的索引
 
 // ============ 属性索引常量 ============
 constexpr uint32_t ATTR_GROUP_INDEX = 0U;      // 通信组名称
-constexpr uint32_t ATTR_WORLD_SIZE_INDEX = 1U; // 世界大小
-// constexpr uint32_t ATTR_RANK_ID_INDEX = 2U;    // 当前rank ID
+constexpr uint32_t ATTR_WORLD_SIZE_INDEX = 1U; // 卡数
 constexpr uint32_t ATTR_MAX_BS_INDEX = 2U;     // 最大batch size
-constexpr uint32_t ATTR_MODE_INDEX = 3U;       // 执行模式
+constexpr uint32_t ATTR_CCL_BUFFER_SIZE_INDEX = 3U;       // cclBufferSize大小
+constexpr uint32_t ATTR_MODE_INDEX = 4U;       // 执行模式
+constexpr uint32_t ATTR_COMM_ALG_INDEX = 5U;   // 通信方式
 
 // ============ 其他常量 ============
 constexpr uint32_t TWO_DIMS = 2U;
@@ -96,7 +97,6 @@ static void PrintTilingDataInfo(const char *nodeName, BandwidthTestTilingData &t
 {
     OP_LOGD(nodeName, "data_size is %d.", tilingData.data_size);
     OP_LOGD(nodeName, "world_size is %d.", tilingData.world_size);
-    // OP_LOGD(nodeName, "rank_id is %d.", tilingData.rank_id);
     OP_LOGD(nodeName, "max_bs is %d.", tilingData.max_bs);
     OP_LOGD(nodeName, "mode is %d.", tilingData.mode);
     OP_LOGD(nodeName, "aiv_num is %d.", tilingData.aiv_num);
@@ -110,20 +110,17 @@ static ge::graphStatus CheckAttrPointersNotNull(gert::TilingContext *context, co
     auto attrs = context->GetAttrs();
     auto groupPtr = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_GROUP_INDEX));
     auto worldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_WORLD_SIZE_INDEX);
-    // auto rankIdPtr = attrs->GetAttrPointer<int64_t>(ATTR_RANK_ID_INDEX);
     auto maxBsPtr = attrs->GetAttrPointer<int64_t>(ATTR_MAX_BS_INDEX);
-    auto modePtr = attrs->GetAttrPointer<int64_t>(ATTR_MODE_INDEX);
+    auto cclBufferSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_CCL_BUFFER_SIZE_INDEX);
 
     OP_TILING_CHECK(groupPtr == nullptr,
         OP_LOGE(nodeName, "groupPtr is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(worldSizePtr == nullptr,
         OP_LOGE(nodeName, "worldSizePtr is null."), return ge::GRAPH_FAILED);
-    // OP_TILING_CHECK(rankIdPtr == nullptr,
-    //     OP_LOGE(nodeName, "rankIdPtr is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(maxBsPtr == nullptr,
         OP_LOGE(nodeName, "maxBsPtr is null."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(modePtr == nullptr,
-        OP_LOGE(nodeName, "modePtr is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(cclBufferSizePtr == nullptr,
+        OP_LOGE(nodeName, "cclBufferSizePtr is null."), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -134,7 +131,6 @@ static ge::graphStatus CheckAttrValuesValid(gert::TilingContext *context, const 
     auto attrs = context->GetAttrs();
     auto groupPtr = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_GROUP_INDEX));
     auto worldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_WORLD_SIZE_INDEX);
-    // auto rankIdPtr = attrs->GetAttrPointer<int64_t>(ATTR_RANK_ID_INDEX);
     auto maxBsPtr = attrs->GetAttrPointer<int64_t>(ATTR_MAX_BS_INDEX);
     auto modePtr = attrs->GetAttrPointer<int64_t>(ATTR_MODE_INDEX);
 
@@ -146,10 +142,6 @@ static ge::graphStatus CheckAttrValuesValid(gert::TilingContext *context, const 
     OP_TILING_CHECK((*worldSizePtr < MIN_WORLD_SIZE) || (*worldSizePtr > MAX_WORLD_SIZE),
         OP_LOGE(nodeName, "worldSize is invalid, only support [%ld, %ld], but got worldSize=%ld.",
         MIN_WORLD_SIZE, MAX_WORLD_SIZE, *worldSizePtr), return ge::GRAPH_FAILED);
-
-    // OP_TILING_CHECK((*rankIdPtr < 0) || (*rankIdPtr >= *worldSizePtr),
-    //     OP_LOGE(nodeName, "rankId is invalid, only support [0, %ld), but got rankId=%ld.",
-    //     *worldSizePtr, *rankIdPtr), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK((*maxBsPtr <= 0) || (*maxBsPtr > MAX_BS),
         OP_LOGE(nodeName, "maxBs is invalid, only support (0, %ld], but got maxBs=%ld.",
@@ -178,7 +170,6 @@ static ge::graphStatus GetAttrAndSetTilingData(gert::TilingContext *context, con
 
     auto groupPtr = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_GROUP_INDEX));
     auto worldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_WORLD_SIZE_INDEX);
-    // auto rankIdPtr = attrs->GetAttrPointer<int64_t>(ATTR_RANK_ID_INDEX);
     auto maxBsPtr = attrs->GetAttrPointer<int64_t>(ATTR_MAX_BS_INDEX);
     auto modePtr = attrs->GetAttrPointer<int64_t>(ATTR_MODE_INDEX);
 
@@ -190,7 +181,6 @@ static ge::graphStatus GetAttrAndSetTilingData(gert::TilingContext *context, con
 
     OP_LOGD(nodeName, "group = %s", groupPtr);
     OP_LOGD(nodeName, "worldSize = %ld", *worldSizePtr);
-    // OP_LOGD(nodeName, "rankId = %ld", *rankIdPtr);
     OP_LOGD(nodeName, "maxBs = %ld", *maxBsPtr);
     OP_LOGD(nodeName, "mode = %ld", *modePtr);
 
@@ -299,28 +289,6 @@ static uint64_t CalTilingKey()
     return tilingKey;
 }
 
-// 设置HCCL通信配置
-// 使用AlltoAll fullmesh算法，AIV引擎
-// static ge::graphStatus SetHcommCfg(const gert::TilingContext *context, BandwidthTestTilingData *tiling,
-//     const std::string group)
-// {
-//     const char *nodeName = context->GetNodeName();
-//     OP_LOGD(nodeName, "BandwidthTest group = %s", group.c_str());
-
-//     uint32_t opType = OP_TYPE_ALL_TO_ALL;
-//     std::string algConfigStr = "AlltoAll=level0:fullmesh;level1:pairwise";
-
-//     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(group, opType, algConfigStr);
-//     mc2CcTilingConfig.SetCommEngine(mc2tiling::AIV_ENGINE);
-
-//     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tiling->mc2InitTiling) != 0,
-//         OP_LOGE(nodeName, "mc2CcTilingConfig GetTiling mc2InitTiling failed"), return ge::GRAPH_FAILED);
-//     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tiling->mc2CcTiling) != 0,
-//         OP_LOGE(nodeName, "mc2CcTilingConfig GetTiling mc2CcTiling failed"), return ge::GRAPH_FAILED);
-
-//     return ge::GRAPH_SUCCESS;
-// }
-
 // 设置Workspace大小
 static ge::graphStatus SetWorkSpace(gert::TilingContext *context, BandwidthTestTilingData *tilingData,
     const char *nodeName)
@@ -379,14 +347,8 @@ static ge::graphStatus BandwidthTestTilingCheckAttr(gert::TilingContext *context
     OP_TILING_CHECK(CheckTensorShape(context, nodeName, *tilingData) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Check tensor shape failed."), return ge::GRAPH_FAILED);
 
-    // OP_TILING_CHECK(CheckWinSize(context, tilingData, nodeName) != ge::GRAPH_SUCCESS,
-    //     OP_LOGE(nodeName, "Tiling check window size failed."), return ge::GRAPH_FAILED);
-
     OP_TILING_CHECK(SetWorkSpace(context, tilingData, nodeName) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Tiling set workspace failed."), return ge::GRAPH_FAILED);
-
-    // OP_TILING_CHECK(SetHcommCfg(context, tilingData, group) != ge::GRAPH_SUCCESS,
-    //     OP_LOGE(nodeName, "SetHcommCfg failed."), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
