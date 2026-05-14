@@ -124,7 +124,6 @@ public:
     __aicore__ __inline__ void zero(int32_t timing_idx)
     {
         if (timing_idx * 2 >= CocTimer::N_TIMING_COUNTER_PER_CORE_ALIGN) {
-            AscendC::printf("[WARNING] NPU端计时索引 %d 越界\n", timing_idx);
             return;
         }
         int32_t adjusted_idx = calculate_index(timing_idx);
