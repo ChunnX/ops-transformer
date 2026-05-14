@@ -890,8 +890,10 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Process()
 
             // dequant
  	        if (cal_idx >= MAX_BLOCK_COUNT) {
+                timerDevice_.Tik(CocTimer::AIV_DQ);
  	            Dequant(cal_idx - MAX_BLOCK_COUNT);
                 SetAndWaitAivSync(FLAG_VALUE);
+                timerDevice_.Tok<Overwrite>(CocTimer::AIV_DQ);
  	        }
         }
 
