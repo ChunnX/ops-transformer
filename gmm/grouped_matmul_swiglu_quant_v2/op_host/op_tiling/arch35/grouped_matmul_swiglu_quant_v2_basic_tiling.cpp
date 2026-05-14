@@ -166,9 +166,6 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeDtype()
     auto weightFormat = wDesc->GetFormat().GetStorageFormat();
     if (weightFormat == ge::FORMAT_FRACTAL_NZ) {
         const gert::Shape &wStorageShapeNz = wStorageShape->GetStorageShape();
-        OP_CHECK_IF(wStorageShapeNz.GetDimNum() != 5,
-                    OP_LOGE(context_->GetNodeName(), "NZ weight storage shape must be 5."),
-                    return false);
 
         OP_CHECK_IF(!(inputParams_.aDtype == ge::DT_FLOAT8_E4M3FN &&
                     inputParams_.bDtype == ge::DT_FLOAT8_E4M3FN),
