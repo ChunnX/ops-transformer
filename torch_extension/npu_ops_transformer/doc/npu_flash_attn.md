@@ -750,7 +750,7 @@ mask_mode参数解释
 </table>
 
 #### Paged Attention参数组
-当layout_kv为PA_BBND或PA_BNBD时，使能Paged Attention
+当block_table不为空时，使能Paged Attention
 <table style="undefined;table-layout: fixed; width:1625px"><colgroup>
 <col style="width: 147px">
 <col style="width: 232px">
