@@ -844,15 +844,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         uint64_t waveStart = coreActive_ ? static_cast<uint64_t>(coreGroupId_) : waveCnt;
         constexpr uint16_t WAVE_BARRIER_FLAG = 1U;
         for (uint64_t waveIdx = waveStart; waveIdx < waveCnt; waveIdx += wavesParallel_) {
-            // 等待本核上一 wave 的 AIV1 combine 释放 UB，再让 AIC 写 mmad 输出。
-            // 信号来自 AIV1（subBlock 1），AIC 这边要按 AIV1→AIC 的 +16 flag 偏移等待，
-            // 否则 WaitForVector(WAVE_BARRIER_FLAG) 实际等的是 AIV0 的 flag，永远不会触发，
-            // 导致 AIC 直接卡死（dispatch+combine 同核时这个 deadlock 就是这么来的）。
-            if (anyWaveDone_) {
-                if constexpr(g_coreType == AIC) {
-                    WaitForVectorFromAIV1(WAVE_BARRIER_FLAG);
-                }
-            }
+            // [EXP-A] 关闭 wave-end 屏障 AIC 等待端，用于 profile 定位 AIC wait 是否主要来自这里。
+            // 关闭后 UB race 会让精度挂掉，正确性会丢，**只用于 timeline 分析**。
+            // if (anyWaveDone_) {
+            //     if constexpr(g_coreType == AIC) {
+            //         WaitForVectorFromAIV1(WAVE_BARRIER_FLAG);
+            //     }
+            // }
 
             uint64_t waveM = (waveIdx == waveCnt - 1 && m_i % L1_TILE_M != 0) ?
                              m_i % L1_TILE_M : L1_TILE_M;
@@ -894,27 +892,26 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                     static_cast<uint64_t>(waveIdx) * static_cast<uint64_t>(L1_TILE_M));
             }
 
-            // wave 末屏障：AIV combine 现在在 subBlock 1，由 subBlock 1 等本轮 MTE3 写完
-            // 再 NotifyCube；同 pair 的 AIC 进入下一 wave GMM1 前 WaitForVector 拿到信号
-            if constexpr(g_coreType == AscendC::AIV) {
-                if (subBlockIdx_ == 1) {
-                    SyncFunc<AscendC::HardEvent::MTE3_V>();
-                    NotifyCube(WAVE_BARRIER_FLAG);
-                }
-            }
+            // [EXP-A] 关闭 wave-end 屏障 AIV1 发送端，与 AIC 等待端配对一起关。
+            // 留着 anyWaveDone_=true 不动（drain 也需要看这个，下面 drain 也要一起关）。
+            // if constexpr(g_coreType == AscendC::AIV) {
+            //     if (subBlockIdx_ == 1) {
+            //         SyncFunc<AscendC::HardEvent::MTE3_V>();
+            //         NotifyCube(WAVE_BARRIER_FLAG);
+            //     }
+            // }
             anyWaveDone_ = true;
         }
         Get<M_VALUE>(problemShape_) = m_i;
     }
 
-    // 排空 wave 末屏障最后一发 NotifyCube（每核最多一次），避免泄漏到下一轮 kernel
-    // 同上：信号源是 AIV1，AIC 要按 +16 偏移等待。
-    if (anyWaveDone_) {
-        if constexpr(g_coreType == AIC) {
-            constexpr uint16_t WAVE_BARRIER_FLAG = 1U;
-            WaitForVectorFromAIV1(WAVE_BARRIER_FLAG);
-        }
-    }
+    // [EXP-A] 关闭 wave-end 屏障 drain，与上面发送端 + 等待端配对关。
+    // if (anyWaveDone_) {
+    //     if constexpr(g_coreType == AIC) {
+    //         constexpr uint16_t WAVE_BARRIER_FLAG = 1U;
+    //         WaitForVectorFromAIV1(WAVE_BARRIER_FLAG);
+    //     }
+    // }
 
     if (subBlockIdx_ == 0) {
         PipeBarrier<PIPE_ALL>();
