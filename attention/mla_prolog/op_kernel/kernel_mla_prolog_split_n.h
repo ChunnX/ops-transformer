@@ -2639,7 +2639,10 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::V3AndV4(AivOffset &aivOffset,
         numHeadOffset;
     float quantScaleCkv;
     int64_t dynamicQuantQueryResOffset;
-    DataCopyParams outParams {(uint16_t)row, (uint16_t)(baseParams_->headSizeCkv / outputBlockAlign), 0, (uint16_t)((baseParams_->headSizeCkv - baseParams_->headSizeCkv) / outputBlockAlign)};
+    DataCopyParams outParams{
+        (uint16_t)row, (uint16_t)(baseParams_->headSizeCkv / outputBlockAlign), 0,
+        (uint16_t)((baseParams_->numHeadSize * baseParams_->headSizeCkv - baseParams_->headSizeCkv) /
+                   outputBlockAlign)};
     if constexpr (needQnDynamicQuant) {
         quantScaleCkv = quantScaleCkvGm_.GetValue(0);
         dynamicQuantQueryResOffset = (batchOffset + CeilDivT(mmQcQrParam_.m, 2U) * subBlockIdx_) *
@@ -2668,9 +2671,9 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::V3AndV4(AivOffset &aivOffset,
                 CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE3>(FINISH_VEC_QN);
             }
 
-            // Brcb(scaleBrcb, scaleOutputLocal, CeilDivT(static_cast<uint64_t>(row), computeBlockAlign), {1, computeBlockAlign});
-            // AscendC::PipeBarrier<PIPE_V>();
-            MulQrVF(queryRopeOutputLocal, mm3ResLocal_, scaleBrcb, quantScaleCkv, row * baseParams_->headSizeCkv, 1);
+            Brcb(scaleBrcb, scaleOutputLocal, CeilDivT(static_cast<uint64_t>(row), computeBlockAlign), {1, computeBlockAlign});
+            AscendC::PipeBarrier<PIPE_V>();
+            MulQrVF(queryRopeOutputLocal, mm3ResLocal_, scaleBrcb, quantScaleCkv, row * baseParams_->headSizeCkv, computeBlockAlign);
         }
         PipeBarrier<PIPE_V>();
         SetFlag<HardEvent::V_MTE3>(EVENT_ID1);
@@ -2686,6 +2689,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::V3AndV4(AivOffset &aivOffset,
             DataCopyPad(dequantScaleQNopeGm_[scaleQueryNopeOffset], scaleBrcb, scaleOutCopyParams);
             SetFlag<HardEvent::MTE3_V>(EVENT_ID3);
             dynamicQuantQueryResOffset += static_cast<int64_t>(baseParams_->headSizeCkv);
+            scaleQueryNopeOffset++;
         }
         ropeQrResOffset += baseParams_->dimHeadRope;
     }
