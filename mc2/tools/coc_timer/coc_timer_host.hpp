@@ -21,6 +21,15 @@
 #include <algorithm>
 #include <sstream>
 #include "acl/acl_rt.h"
+#if __has_include("tiling/platform/platform_ascendc.h")
+#ifdef ASCENDC_ASSERT
+#undef ASCENDC_ASSERT
+#endif
+#include "tiling/platform/platform_ascendc.h"
+#define COC_TIMER_HAS_PLATFORM_ASCENDC 1
+#else
+#define COC_TIMER_HAS_PLATFORM_ASCENDC 0
+#endif
 
 class CocTimerHost
 {
@@ -29,11 +38,44 @@ public:
     static constexpr float kCycleToTimeBase = 50.0f;           // 周期转微秒的基准值
     static constexpr int kCoresPerGroup = 3;                   // 每组的核数
     static constexpr int kSubGroupIdForAIC = 0;                // AIC 的子组 ID
+    static inline int runtimePlatformCoreNum_ = BLOCK_NUM;     // GetCoreNum() 返回值，等价于原 BLOCK_NUM
 
     // ========== 1. 总缓冲区大小计算 ==========
+    static inline int GetPlatformCoreNum()
+    {
+#if COC_TIMER_HAS_PLATFORM_ASCENDC
+        auto platform = platform_ascendc::PlatformAscendCManager::GetInstance();
+        if (platform != nullptr) {
+            int coreNum = static_cast<int>(platform->GetCoreNum());
+            if (coreNum > 0) return coreNum;
+        }
+#endif
+        return static_cast<int>(BLOCK_NUM);
+    }
+
+    static inline void ConfigureCoreNum(int coreNum)
+    {
+        runtimePlatformCoreNum_ = coreNum > 0 ? coreNum : static_cast<int>(BLOCK_NUM);
+    }
+
+    static inline int GetTimerCoreCount()
+    {
+        return CocTimer::GetTimerCoreCount(runtimePlatformCoreNum_);
+    }
+
+    static inline int GetTimingCounterSize()
+    {
+        return CocTimer::GetTimingCounterSize(runtimePlatformCoreNum_);
+    }
+
+    static inline int GetDynamicIterTotalSize()
+    {
+        return CocTimer::GetDynamicIterTotalSize(runtimePlatformCoreNum_);
+    }
+
     static inline int GetTotalTimerBufferSize()
     {
-        return CocTimer::N_TIMING_COUNTER + CocTimer::DYNAMIC_ITER_TOTAL_SIZE;
+        return CocTimer::GetTotalBufferSize(runtimePlatformCoreNum_);
     }
 
     // ========== 2. 名称映射表 ==========
@@ -97,6 +139,9 @@ public:
     // ========== 4. 计时结果结构体 ==========
     struct TimerResult
     {
+        int coreCount = CocTimer::N_CORE_COUNT;              // 实际导出的 AIC+AIV 总核数
+        int timingCounterSize = CocTimer::N_TIMING_COUNTER;  // baseCycleData 的实际大小
+        int dynamicIterTotalSize = CocTimer::DYNAMIC_ITER_TOTAL_SIZE;
         std::vector<int64_t> baseCycleData;            // 基础计时数据（N_TIMING_COUNTER）
         std::vector<int64_t> dynamicActualIterPerCore; // 每核动态迭代次数（DYNAMIC_ITER_TOTAL_SIZE）
         std::vector<int64_t> dynamicActualIterMax;     // 每个动态项的全局最大迭代次数（DYNAMIC_TYPE_COUNT）
@@ -166,6 +211,9 @@ public:
     static inline TimerResult GetTimeResult(void *deviceAddr)
     {
         TimerResult result;
+        result.coreCount = GetTimerCoreCount();
+        result.timingCounterSize = GetTimingCounterSize();
+        result.dynamicIterTotalSize = GetDynamicIterTotalSize();
         int totalBufferSize = GetTotalTimerBufferSize();
         std::vector<int64_t> allData(totalBufferSize, 0);
 
@@ -180,14 +228,14 @@ public:
             return result;
         }
 
-        result.baseCycleData = std::vector<int64_t>(allData.begin(), allData.begin() + CocTimer::N_TIMING_COUNTER);
-        result.dynamicActualIterPerCore = std::vector<int64_t>(allData.begin() + CocTimer::N_TIMING_COUNTER, allData.end());
+        result.baseCycleData = std::vector<int64_t>(allData.begin(), allData.begin() + result.timingCounterSize);
+        result.dynamicActualIterPerCore = std::vector<int64_t>(allData.begin() + result.timingCounterSize, allData.end());
 
         // 计算每个动态项的全局最大迭代次数
         result.dynamicActualIterMax.resize(CocTimer::DYNAMIC_TYPE_COUNT, 0);
         result.isAccumulate.resize(CocTimer::DYNAMIC_TYPE_COUNT, false); // 初始化
 
-        for (int coreId = 0; coreId < CocTimer::N_CORE_COUNT; ++coreId)
+        for (int coreId = 0; coreId < result.coreCount; ++coreId)
         {
             int coreOffset = coreId * CocTimer::DYNAMIC_ITER_PER_CORE_ALIGN;
             for (int type = 0; type < CocTimer::DYNAMIC_TYPE_COUNT; ++type)
@@ -244,7 +292,7 @@ public:
         }
         outfile << std::endl;
 
-        for (int i = 0; i < CocTimer::N_CORE_COUNT; i++) {
+        for (int i = 0; i < timerResult.coreCount; i++) {
             int groupId = i / kCoresPerGroup;
             int subGroupId = i % kCoresPerGroup;
             std::string coreType = (subGroupId == kSubGroupIdForAIC) ? "AIC" : "AIV";
@@ -271,7 +319,7 @@ public:
                 }
 
                 // 越界检查
-                if (elementIdx < 0 || elementIdx + 1 >= CocTimer::N_TIMING_COUNTER) {
+                if (elementIdx < 0 || elementIdx + 1 >= timerResult.timingCounterSize) {
                     outfile << ",0,0,0";
                 } else {
                     int64_t start_cycles = cycleResult[elementIdx];
@@ -290,7 +338,7 @@ public:
             for (int t = 0; t < CocTimer::DYNAMIC_TYPE_COUNT; ++t) {
                 if (t < dynamicMaxIter.size() && dynamicMaxIter[t] <= 0) continue;
                 int idxIter = i * CocTimer::DYNAMIC_ITER_PER_CORE_ALIGN + t;
-                outfile << "," << (t < dynamicMaxIter.size() ? timerResult.dynamicActualIterPerCore[idxIter] : 0);
+                outfile << "," << (idxIter < timerResult.dynamicActualIterPerCore.size() ? timerResult.dynamicActualIterPerCore[idxIter] : 0);
             }
             outfile << std::endl;
         }
@@ -321,7 +369,7 @@ public:
         }
         outfile << std::endl;
 
-        for (int i = 0; i < CocTimer::N_CORE_COUNT; i++) {
+        for (int i = 0; i < timerResult.coreCount; i++) {
             int groupId = i / kCoresPerGroup;
             int subGroupId = i % kCoresPerGroup;
             std::string coreType = (subGroupId == kSubGroupIdForAIC) ? "AIC" : "AIV";
@@ -347,7 +395,7 @@ public:
                     }
                 }
 
-                if (elementIdx < 0 || elementIdx + 1 >= CocTimer::N_TIMING_COUNTER) {
+                if (elementIdx < 0 || elementIdx + 1 >= timerResult.timingCounterSize) {
                     outfile << ",0";
                 } else {
                     int64_t start_cycles = cycleResult[elementIdx];
@@ -365,7 +413,7 @@ public:
             for (int t = 0; t < CocTimer::DYNAMIC_TYPE_COUNT; ++t) {
                 if (t < dynamicMaxIter.size() && dynamicMaxIter[t] <= 0) continue;
                 int idxIter = i * CocTimer::DYNAMIC_ITER_PER_CORE_ALIGN + t;
-                outfile << "," << (t < dynamicMaxIter.size() ? timerResult.dynamicActualIterPerCore[idxIter] : 0);
+                outfile << "," << (idxIter < timerResult.dynamicActualIterPerCore.size() ? timerResult.dynamicActualIterPerCore[idxIter] : 0);
             }
             outfile << std::endl;
         }
