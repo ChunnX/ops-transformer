@@ -209,10 +209,10 @@ private:
     __aicore__ inline void SyncCntOnCore(LocalTensor<float> &gatherMaskOutTensor,
                                          LocalTensor<uint32_t> &gatherTmpTensor,
                                          LocalTensor<float> &statusSumOutTensor);
-    __aicore__ inline GM_ADDR GetBaseWindOutAddrByServer(__gm__ HcclOpParam *addr, const int32_t serverId,
-                                                         const int32_t curRankId);
-    __aicore__ inline GM_ADDR GetBaseWindInAddrByServer(__gm__ HcclOpParam *addr, const int32_t serverId,
-                                                        const int32_t curRankId);
+    // __aicore__ inline GM_ADDR GetBaseWindOutAddrByServer(__gm__ HcclOpParam *addr, const int32_t serverId,
+    //                                                      const int32_t curRankId);
+    // __aicore__ inline GM_ADDR GetBaseWindInAddrByServer(__gm__ HcclOpParam *addr, const int32_t serverId,
+    //                                                     const int32_t curRankId);
     __aicore__ inline void GatherSumRecvCnt(LocalTensor<float> &gatherMaskOutTensor, LocalTensor<uint32_t> &gatherTmpTensor,
                                             LocalTensor<float> &statusSumOutTensor);
     __aicore__ inline void CalRecvAndSetFlag();
@@ -234,16 +234,14 @@ private:
     {
         uint32_t curServerIndex = GetServerCommHandleIndex(dstServerId);
         __gm__ ChannelEntity* serverEntity = reinterpret_cast<__gm__ ChannelEntity*>(dpuCommHandle_[curServerIndex]);
-        __gm__ ProtectionInfo* protectionInfo = reinterpret_cast<__gm__ ProtectionInfo*>(serverEntity->remoteBufferAddr);
-        return reinterpret_cast<GM_ADDR>(protectionInfo->addr);
+        return reinterpret_cast<GM_ADDR>(serverEntity->remoteBufferAddr->addr);
     }
 
     __aicore__ inline GM_ADDR GetServerLocalBaseAddr(const int32_t dstServerId)
     {
         uint32_t curServerIndex = GetServerCommHandleIndex(dstServerId);
         __gm__ ChannelEntity* serverEntity = reinterpret_cast<__gm__ ChannelEntity*>(dpuCommHandle_[curServerIndex]);
-        __gm__ ProtectionInfo* protectionInfo = reinterpret_cast<__gm__ ProtectionInfo*>(serverEntity->localBufferAddr);
-        return reinterpret_cast<GM_ADDR>(protectionInfo->addr);
+        return reinterpret_cast<GM_ADDR>(serverEntity->localBufferAddr->addr);
     }
 
     template <ExecutMode mode>
