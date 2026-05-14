@@ -224,7 +224,7 @@ __aicore__ inline void UIntToFloatReturnValue(const LocalTensor<half> &out_,
                                      RoundMode::CAST_RINT};
         
         for (uint16_t i = 0; i < topkLoopNum; ++i) {
-            AscendC::MicroAPI::LoadAlign<uint16_t>(regIn, inBuf + i * 128);
+            AscendC::MicroAPI::LoadAlign<uint16_t>(regIn, inBuf + i * repeatSize16);
 
             UIntSortConstCtx<bfloat16_t> uint16Ctx;
             InitUIntSortConstCtx(uint16Ctx, maskAllB16);
@@ -234,7 +234,7 @@ __aicore__ inline void UIntToFloatReturnValue(const LocalTensor<half> &out_,
             AscendC::MicroAPI::Cast<half, bfloat16_t, castTraitBF16ToHalf>(regOutHalf, regOut, maskAllB16);
 
             AscendC::MicroAPI::StoreAlign<half, AscendC::MicroAPI::StoreDist::DIST_NORM>(
-                outBuf + i * 128,
+                outBuf + i * repeatSize16,
                 regOutHalf,
                 maskAllHalf);
         }
