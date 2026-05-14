@@ -22,8 +22,10 @@ namespace ops
 {
 static const size_t INDEX_IN_GMM_X = 0;
 static const size_t INDEX_IN_GMM_WEIGHT = 1;
+static const size_t INDEX_IN_GMM_WEIGHT_SCALE = 3;
 static const size_t INDEX_IN_MM_X = 6;
 static const size_t INDEX_IN_MM_WEIGHT = 7;
+static const size_t INDEX_IN_MM_WEIGHT_SCALE = 9;
 static const size_t INDEX_OUT_GMM_Y = 0;
 static const size_t INDEX_OUT_MM_Y = 1;
 static const size_t INDEX_ATTR_EP_WORLD_SIZE = 1;
@@ -43,6 +45,14 @@ static constexpr size_t DIM_NUM_2 = 2;
 static constexpr size_t DIM_NUM_3 = 3;
 
 static constexpr int64_t FIRST_ELE_SIZE = -1;
+
+static void wkcPrintTensorShape(const char *nodeName, const gert::Shape *shape, const char *shapeName)
+{
+    for (size_t i = 0; i < shape->GetDimNum(); i++) {
+        OPS_LOG_E(nodeName, "%s %lu is %ld.", shapeName, i, shape->GetDim(i));
+    }
+    return;
+}
 
 static graphStatus CheckDims(const gert::InferShapeContext* context, const gert::Shape* gmmXShape,
                              const gert::Shape* gmmWeightShape, bool transGmmWeight)
@@ -136,11 +146,31 @@ static ge::graphStatus InferMMOutputShape(
 static ge::graphStatus InferShapeGroupedMatMulAlltoAllv(gert::InferShapeContext* context)
 {
     auto* gmmXShape = context->GetInputShape(INDEX_IN_GMM_X);
-    auto* gmmWeightShape = context->GetInputShape(INDEX_IN_GMM_WEIGHT);
+    const gert::Shape *gmmWeightShape = context->GetInputShape(INDEX_IN_GMM_WEIGHT);
+    const gert::Shape *gmmWeightScaleShape = context->GetOptionalInputShape(INDEX_IN_GMM_WEIGHT_SCALE);
     auto* mmXShape = context->GetOptionalInputShape(INDEX_IN_MM_X);
-    auto* mmWeightShape = context->GetOptionalInputShape(INDEX_IN_MM_WEIGHT);
+    const gert::Shape *mmWeightShape = context->GetOptionalInputShape(INDEX_IN_MM_WEIGHT);
+    const gert::Shape *mmWeightScaleShape = context->GetOptionalInputShape(INDEX_IN_MM_WEIGHT_SCALE);
     auto* gmmYShape = context->GetOutputShape(INDEX_OUT_GMM_Y);
     auto* mmYShape = context->GetOutputShape(INDEX_OUT_MM_Y);
+
+    // Print shapes for debugging
+    const char* nodeName = "QuantGroupedMatMulAlltoAllvInfershape";
+    OPS_LOG_E(nodeName, "Begin to print gmmWeight shape");
+    wkcPrintTensorShape(nodeName, gmmWeightShape, "gmmWeightShape");
+    
+    OPS_LOG_E(nodeName, "Begin to print gmmWeightScale shape");
+    wkcPrintTensorShape(nodeName, gmmWeightScaleShape, "gmmWeightScaleShape");
+    
+    if (mmWeightShape != nullptr) {
+        OPS_LOG_E(nodeName, "Begin to print mmWeight shape");
+        wkcPrintTensorShape(nodeName, mmWeightShape, "mmWeightShape");
+    }
+    
+    if (mmWeightScaleShape != nullptr) {
+        OPS_LOG_E(nodeName, "Begin to print mmWeightScale shape");
+        wkcPrintTensorShape(nodeName, mmWeightScaleShape, "mmWeightScaleShape");
+    }
 
     auto* attrs = context->GetAttrs();
     auto* epWorldSizePtr = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_EP_WORLD_SIZE);
