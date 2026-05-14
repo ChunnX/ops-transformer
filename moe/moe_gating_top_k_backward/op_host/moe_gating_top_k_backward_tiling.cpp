@@ -76,15 +76,8 @@ public:
     explicit MoeGatingTopKBackwardTilingBase(gert::TilingContext *context)
         : Ops::Transformer::OpTiling::TilingBaseClass(context)
     {
-        Reset();
     }
     ~MoeGatingTopKBackwardTilingBase() override = default;
-
-    void Reset(gert::TilingContext *context) override
-    {
-        TilingBaseClass::Reset(context);
-        Reset();
-    }
 
 protected:
     bool IsCapable() override
@@ -105,7 +98,6 @@ protected:
     ge::graphStatus GetWorkspaceSize() override;
     // 7、保存Tiling数据
     ge::graphStatus PostTiling() override;
-    void Reset();
 
 private:
     ge::graphStatus CheckInputShape();
@@ -125,7 +117,6 @@ private:
     const gert::Shape *outputGradXShape_ = nullptr;
 
     // Miscellaneous
-    const char *opName_ = "";
     int64_t inputDtypeSize_;
     ge::DataType gradYDtype_;
 
@@ -296,7 +287,6 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckAttr() // lc
 
 ge::graphStatus MoeGatingTopKBackwardTilingBase::GetShapeAttrsInfo()
 {
-    opName_ = context_->GetNodeName();
     return ge::GRAPH_SUCCESS;
 }
 
@@ -365,10 +355,6 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CalcMaxRows()
     int64_t bufsPerTokenSpace = 1 * SIZE_OF_FLOAT32;
 
     int64_t available_space = aicoreParams_.ubSize - UB_RESERVE_SPACE;
-    OP_CHECK_IF(available_space <= 0,
-                OP_LOGE(context_, "UB space is insufficient, current available space is %ld.", available_space),
-                return ge::GRAPH_FAILED);
-
     int64_t quePerTokenSpace =
         DOUBLE_BUFFER_NUM * (gradYQuePerTokenSpace + indicesQuePerTokenSpace + xQuePerTokenSpace) + outQuePerTokenSpace;
     int64_t bufPerTokenSpace = bufk1PerTokenSpace + bufn2PerTokenSpace + bufn3PerTokenSpace + bufk4AddPerTokenSpace +
@@ -426,12 +412,8 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::SplitRows() // lc
         return ret;
     }
 
-    OP_CHECK_IF(
-        baseRows_ <= 0,
-        OP_LOGE(context_,
-                "baseRows should be greater than zero, current value is %ld. Check if N and K are within valid ranges.",
-                baseRows_),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(baseRows_ <= 0, OP_LOGE(context_, "baseRows must be > 0, but got %ld.", baseRows_),
+                return ge::GRAPH_FAILED);
 
     perLoopTimes_ = (perCoreRows_ + baseRows_ - 1) / baseRows_;
     perTailRows_ = perCoreRows_ - (perLoopTimes_ - 1) * baseRows_;
@@ -511,12 +493,6 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::PostTiling()
 uint64_t MoeGatingTopKBackwardTilingBase::GetTilingKey() const
 {
     return TILING_KEY_RENORM_SIGMOID;
-}
-
-void MoeGatingTopKBackwardTilingBase::Reset()
-{
-    opName_ = nullptr;
-    return;
 }
 
 void MoeGatingTopKBackwardTilingBase::DumpTiling()

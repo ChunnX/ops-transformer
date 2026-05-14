@@ -637,7 +637,7 @@ TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_16)
         },
         &compileInfo,
         "Ascend910B",
-        8192,
+        32,
         8192,
         4096);
     uint64_t expectTilingKey = 10000;
