@@ -622,6 +622,54 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::CheckMxfp4SpecificConstrain
 
 ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::CheckAndSetInputOutputInfo()
 {
+    const gert::RuntimeAttrs *attrs = context_->GetAttrs();
+    const gert::StorageShape *gmmWeightShape = context_->GetRequiredInputShape(1);
+    const gert::StorageShape *gmmWeightScaleShape = context_->GetRequiredInputShape(3);
+    const gert::StorageShape *mmWeightShape = context_->GetOptionalInputShape(7);
+    const gert::StorageShape *mmWeightScaleShape = context_->GetOptionalInputShape(9);
+    const bool *transGmmWeightPtr = attrs->GetAttrPointer<bool>(6);
+    const bool *transMmWeightPtr = attrs->GetAttrPointer<bool>(7);
+
+    // Print shapes for debugging
+    const char* nodeName = "QuantGroupedMatMulAlltoAllvMXTiling";
+    OPS_LOG_E(nodeName, "Begin to print gmmWeight shape");
+    OPS_LOG_E(nodeName, "%s %lu is %ld.", "gmmWeightShape", 0, gmmWeightShape->GetStorageShape().GetDim(0));
+    OPS_LOG_E(nodeName, "%s %lu is %ld.", "gmmWeightShape", 1, gmmWeightShape->GetStorageShape().GetDim(1));
+    OPS_LOG_E(nodeName, "%s %lu is %ld.", "gmmWeightShape", 2, gmmWeightShape->GetStorageShape().GetDim(2));
+    
+    OPS_LOG_E(nodeName, "Begin to print gmmWeightScale shape");
+    // wkcPrintTensorShape(nodeName, gmmWeightScaleShape->GetStorageShape(), "gmmWeightScaleShape");
+    OPS_LOG_E(nodeName, "%s %lu is %ld.", "gmmWeightScaleShape", 0, gmmWeightScaleShape->GetStorageShape().GetDim(0));
+    OPS_LOG_E(nodeName, "%s %lu is %ld.", "gmmWeightScaleShape", 1, gmmWeightScaleShape->GetStorageShape().GetDim(1));
+    OPS_LOG_E(nodeName, "%s %lu is %ld.", "gmmWeightScaleShape", 2, gmmWeightScaleShape->GetStorageShape().GetDim(2));
+    OPS_LOG_E(nodeName, "%s %lu is %ld.", "gmmWeightScaleShape", 3, gmmWeightScaleShape->GetStorageShape().GetDim(3));
+    
+    if (mmWeightShape != nullptr) {
+        OPS_LOG_E(nodeName, "Begin to print mmWeight shape");
+        OPS_LOG_E(nodeName, "%s %lu is %ld.", "mmWeightShape", 0, mmWeightShape->GetStorageShape().GetDim(0));
+        OPS_LOG_E(nodeName, "%s %lu is %ld.", "mmWeightShape", 1, mmWeightShape->GetStorageShape().GetDim(1));
+        // wkcPrintTensorShape(nodeName, mmWeightShape->GetStorageShape(), "mmWeightShape");
+    }
+    
+    if (mmWeightScaleShape != nullptr) {
+        OPS_LOG_E(nodeName, "Begin to print mmWeightScale shape");
+        // wkcPrintTensorShape(nodeName, mmWeightScaleShape->GetStorageShape(), "mmWeightScaleShape");
+        OPS_LOG_E(nodeName, "%s %lu is %ld.", "mmWeightScaleShape", 0, mmWeightScaleShape->GetStorageShape().GetDim(0));
+        OPS_LOG_E(nodeName, "%s %lu is %ld.", "mmWeightScaleShape", 1, mmWeightScaleShape->GetStorageShape().GetDim(1));
+        OPS_LOG_E(nodeName, "%s %lu is %ld.", "mmWeightScaleShape", 2, mmWeightScaleShape->GetStorageShape().GetDim(2));
+    }
+
+    if (transGmmWeightPtr != nullptr) {
+        OPS_LOG_E(nodeName, "transGmmWeightPtr is: %d", *transGmmWeightPtr);
+    } else {
+        OPS_LOG_E(nodeName, "transGmmWeightPtr is nullptr!!!");
+    }
+    if (transMmWeightPtr != nullptr) {
+        OPS_LOG_E(nodeName, "transMmWeightPtr is: %d", *transMmWeightPtr);
+    } else {
+        OPS_LOG_E(nodeName, "transMmWeightPtr is nullptr!!!");
+    }
+
     auto status = CheckOpInputSingleParamsTensor();
     if (status != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;

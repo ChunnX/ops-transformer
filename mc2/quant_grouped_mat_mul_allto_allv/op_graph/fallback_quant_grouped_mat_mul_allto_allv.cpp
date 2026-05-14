@@ -223,7 +223,6 @@ static ge::graphStatus ExecuteQuantGroupedMatMulAlltoAllv(
 
 static ge::graphStatus QuantGroupedMatMulAlltoAllvExecuteFunc(gert::OpExecuteContext* host_api_ctx)
 {
-    OPS_LOG_D("QuantGroupedMatMulAlltoAllvFallback", "Start QuantGroupedMatMulAlltoAllvFallback.");
     OPS_ERR_IF(host_api_ctx == nullptr, OP_LOGE("QuantGroupedMatMulAlltoAllvFallback", "host_api_ctx is null"),
                return ge::GRAPH_FAILED);
 
