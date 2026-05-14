@@ -1044,7 +1044,7 @@ mc2:
         - mc2/all_gather_matmul_v2/op_graph
         - mc2/all_gather_matmul_v2/op_kernel
       test:
-        examples: False
+        examples: True
       options:
         - all_gather_matmul_v2
 
