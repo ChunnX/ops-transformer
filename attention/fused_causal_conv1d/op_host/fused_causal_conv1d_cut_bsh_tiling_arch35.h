@@ -133,6 +133,13 @@ private:
     uint64_t tailBlockubFactorDim_ = 0;
     uint64_t tailBlockubTailFactorDim_ = 0;
 
+    // 核内切分信息 - 最后一个 dim 核 (处理 dim % 128 != 0 场景的余数元素)
+    // 当 dim % 128 == 0 时，这些字段等同普通尾核参数（兜底保证向后兼容）
+    uint64_t dimRemainderElems_ = 0;         // dim % 128
+    uint64_t lastCoreloopNumDim_ = 0;        // 最后一个 dim 核 Dim 方向循环次数
+    uint64_t lastCoreubFactorDim_ = 0;       // 最后一个 dim 核 UB 主块 dim 大小
+    uint64_t lastCoreubTailFactorDim_ = 0;   // 最后一个 dim 核 UB 尾块 dim 大小
+
     gert::Shape xShape_;
     gert::Shape weightShape_;
     gert::Shape cacheStatesShape_;

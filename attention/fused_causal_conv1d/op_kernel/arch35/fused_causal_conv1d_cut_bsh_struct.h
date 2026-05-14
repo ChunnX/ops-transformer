@@ -64,6 +64,17 @@ struct FusedCausalConv1dCutBSHTilingData {
     uint64_t hasAcceptTokenNum;  // 是否提供 num_accepted_tokens（MTP）
     uint64_t hasNumComputedTokens; // 是否提供 num_computed_tokens（cache 零初始化判断）
     uint64_t hasCacheIndices;    // 是否提供 cache_indices（为0时用 batch_idx 作为 cache line）
+
+    // ===== v2.1 新增字段：last dim core（dim % 128 != 0 场景支持） =====
+    // 语义：放宽 dim 必须被 128 整除的约束到仅需 dim % 16 == 0。
+    //   - 当 dim % 128 == 0 时，dimRemainderElems = 0，last core 参数等同普通尾核，
+    //     kernel 行为与旧版本完全一致（向后兼容）。
+    //   - 当 dim % 128 != 0 时，由 dimIdx == dimCoreNum - 1 的核（即最后一个 dim 核）
+    //     在尾核 dim 长度基础上额外承担 dimRemainderElems 个余数元素。
+    uint64_t dimRemainderElems;       // dim % 128，最后一个 dim 核额外承担的余数元素数
+    uint64_t lastCoreloopNumDim;      // 最后一个 dim 核 Dim 方向循环次数
+    uint64_t lastCoreubFactorDim;     // 最后一个 dim 核 UB 主块 dim 大小
+    uint64_t lastCoreubTailFactorDim; // 最后一个 dim 核 UB 尾块 dim 大小
 };
 
 #endif
