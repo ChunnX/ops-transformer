@@ -455,7 +455,7 @@ ge::graphStatus BSATiling::ParseSeqlens(gert::TilingContext *bsaContext)
 
 ge::graphStatus BSATiling::CheckSparsePattern(gert::TilingContext *bsaContext, const int64_t defaultShape)
 {
-    const auto *blockSparseMaskShape = bsaContext->GetInputShape(BLOCK_SPARSE_MASK_INDEX);
+    const auto *blockSparseMaskShape = bsaContext->GetOptionalInputShape(BLOCK_SPARSE_MASK_INDEX);
     if (blockShapeX_ <= 0 || blockShapeY_ <= 0) {
         OP_LOGE(bsaContext->GetNodeName(), "BlockShape elems must be greater than 0, "
             "but got elem0: %ld, elem1: %ld.", blockShapeX_, blockShapeY_);
@@ -575,14 +575,14 @@ ge::graphStatus BSATiling::ValidateGenericDequantScale(gert::TilingContext *bsaC
             return ge::GRAPH_FAILED;
         }
 
-        auto dequantScaleDType = bsaContext->GetInputDesc(parameterIndex)->GetDataType();
+        auto dequantScaleDType = bsaContext->GetOptionalInputDesc(parameterIndex)->GetDataType();
         if (dequantScaleDType != ge::DT_FLOAT) {
             OP_LOGE(bsaContext->GetNodeName(), "The supported dtype of %s is float32, but now it is %s.",
                     parameterName.c_str(), DataTypeToString(dequantScaleDType).c_str());
             return ge::GRAPH_FAILED;
         }
 
-        auto dequantScaleShape = bsaContext->GetInputShape(parameterIndex);
+        auto dequantScaleShape = bsaContext->GetOptionalInputShape(parameterIndex);
         int64_t dequantScaleDimNum = dequantScaleShape->GetStorageShape().GetDimNum();
         if (dequantScaleDimNum != DIM_NUM_4) {
             OP_LOGE(bsaContext->GetNodeName(), "The expected shape dim of %s is 4, but now it is %ld.",
@@ -667,10 +667,10 @@ ge::graphStatus BSATiling::CheckAllInputInfo(gert::TilingContext *bsaContext)
         bool isParameterNull = parameterTensor == nullptr;
         std::string isParameterNullString = isParameterNull ? "is null" : "is not null";
         std::cout << "tkd parameter index: " << parameterIndex << " " << isParameterNullString << std::endl;
-        auto parameterDtype = bsaContext->GetInputDesc(parameterIndex)->GetDataType();
+        auto parameterDtype = bsaContext->GetOptionalInputDesc(parameterIndex)->GetDataType();
         std::cout << "tkd parameter index: " << parameterIndex << " ,dtype: " << DataTypeToString(parameterDtype)
                   << std::endl;
-        auto parameterShape = bsaContext->GetInputShape(parameterIndex);
+        auto parameterShape = bsaContext->GetOptionalInputShape(parameterIndex);
         int64_t parameterDimNum = parameterShape->GetStorageShape().GetDimNum();
         std::cout << "tkd parameter index: " << parameterIndex << " ,dimNum: " << parameterDimNum << std::endl;
         for (uint32_t dimIndex = 0; dimIndex < parameterDimNum; dimIndex++) {
