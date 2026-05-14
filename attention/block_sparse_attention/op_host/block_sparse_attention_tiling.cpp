@@ -494,13 +494,8 @@ ge::graphStatus BSATiling::ParseSparsePattern(gert::TilingContext *bsaContext)
     blockShapeX_ = DEFAULT_BLOCK_SHAPE;
     blockShapeY_ = DEFAULT_BLOCK_SHAPE;
     const auto *blockSparseMaskTensor = bsaContext->GetInputTensor(BLOCK_SPARSE_MASK_INDEX);
-    const auto *blockShapeTensor = bsaContext->GetInputTensor(BLOCK_SHAPE_INDEX);
-    
-    printf("tkd BLOCK_SPARSE_MASK_INDEX: %d\n", BLOCK_SPARSE_MASK_INDEX);
-    printf("tkd blockSparseMask is null: %d\n", static_cast<int>(blockSparseMaskTensor == nullptr));
+    const auto *blockShapeTensor = bsaContext->GetOptionalInputTensor(BLOCK_SHAPE_INDEX);
 
-    printf("tkd BLOCK_SHAPE_INDEX: %d\n", BLOCK_SHAPE_INDEX);
-    printf("tkd blockShape is null: %d\n", static_cast<int>(blockShapeTensor == nullptr));
     if (blockSparseMaskTensor == nullptr) {
         OP_LOGE(bsaContext->GetNodeName(), "BlockSparseMask should be provided so far.");
         return ge::GRAPH_FAILED;
