@@ -374,15 +374,18 @@ static ge::graphStatus DispatchFFNCombineTilingFuncImpl(gert::TilingContext *con
     // The output layout produced by MoeInitRoutingV2 differs between the
     // quant and non-quant variants (different gather/srcToDst sizes because
     // quant emits INT8 tokens + per-token scale while non-quant just emits
-    // BF16/FP16 tokens). We dispatch on `info.isQuantRouting`, set
-    // dispatch-time earlier from the `weight1` data type, and populate the
-    // corresponding field on `cocTiling`.
-    // We instantiate `MoeInitRoutingQuantV2TilingBase` in both cases (it is
-    // the only concrete subclass of `InnerMoeInitRoutingV2TilingBase` we
-    // currently ship), but pass `quantMode = 0` to make the routing kernel
-    // emit the non-quant gather layout when needed.
+    // BF16/FP16 tokens). We dispatch on `info.isQuantRouting` (decided
+    // earlier from the `weight1` data type) and instantiate the matching
+    // tiling class:
+    //   - Quant     : `MoeInitRoutingQuantV2TilingBase` -> writes into
+    //                 `cocTiling.moeInitRoutingQuantV2TilingData`.
+    //   - Non-quant : `MoeInitRoutingV2TilingBase` (concrete subclass of
+    //                 `InnerMoeInitRoutingV2TilingBase`) -> writes into
+    //                 `cocTiling.moeInitRoutingV2TilingData`.
+    // Both classes produce a tilingKey that the kernel-side dispatcher in
+    // `moe_init_routing_quant_v2.cpp` / `moe_init_routing_v2.cpp` already
+    // understands (20000 / 10000 / 10010 / 10100 / 10110 family).
     // ------------------------------------------------------------------
-    optiling::MoeInitRoutingQuantV2TilingBase moeInitRoutingV2TilingBase;
     int64_t inuptXDtypeSize = sizeof(int16_t);
     int64_t scaleDim0 = 0;
     int64_t ubSize = 196352;
@@ -392,53 +395,38 @@ static ge::graphStatus DispatchFFNCombineTilingFuncImpl(gert::TilingContext *con
     int64_t dropPadMode = 0;
     int64_t expertTokensCountOrCumsumFlag = 2;
     bool expertTokensBeforeCapacityFlag = false;
-    int64_t quantMode = (info.isQuantRouting != 0U) ? 1 : 0;
     uint32_t aivNumInitRouting = 2 * BLOCK_NUM;
-    moeInitRoutingV2TilingBase.DoTiling(info.M, info.K, info.topK, expertCapacity, expertNum, activeNum,
-        dropPadMode, expertTokensCountOrCumsumFlag, expertTokensBeforeCapacityFlag,
-        inuptXDtypeSize, quantMode, scaleDim0, aivNumInitRouting, ubSize);
-    uint64_t initRoutingQuantTilingKey = moeInitRoutingV2TilingBase.tilingKey_;
-    size_t initRoutingWorkspace = moeInitRoutingV2TilingBase.workspaceSize_;
 
-    auto &quantTd = moeInitRoutingV2TilingBase.quantTilingData;
+    uint64_t initRoutingQuantTilingKey = 0;
+    size_t initRoutingWorkspace = 0;
+
     if (info.isQuantRouting != 0U) {
-        // Quant path: directly copy the full `MoeInitRoutingQuantV2TilingData`.
-        tilingData->cocTiling.moeInitRoutingQuantV2TilingData = quantTd;
-        tilingData->cocTiling.moeInitRoutingQuantV2TilingData.vbsComputeParamsOp =
-            quantTd.vbsComputeParamsOp;
-        tilingData->cocTiling.moeInitRoutingQuantV2TilingData.vmsMiddleComputeParamsOp =
-            quantTd.vmsMiddleComputeParamsOp;
-        tilingData->cocTiling.moeInitRoutingQuantV2TilingData.sortOutComputeParamsOp =
-            quantTd.sortOutComputeParamsOp;
-        tilingData->cocTiling.moeInitRoutingQuantV2TilingData.srcToDstComputeParamsOp =
-            quantTd.srcToDstComputeParamsOp;
-        tilingData->cocTiling.moeInitRoutingQuantV2TilingData.srcToDstCapacityComputeParamsOp =
-            quantTd.srcToDstCapacityComputeParamsOp;
-        tilingData->cocTiling.moeInitRoutingQuantV2TilingData.gatherOutComputeParamsOp =
-            quantTd.gatherOutComputeParamsOp;
+        // Quant path: full `MoeInitRoutingQuantV2TilingData` (with smoothType
+        // and quant-aware gather layout) is consumed by the kernel.
+        optiling::MoeInitRoutingQuantV2TilingBase moeInitRoutingQuantV2TilingBase;
+        int64_t quantMode = 1;
+        moeInitRoutingQuantV2TilingBase.DoTiling(info.M, info.K, info.topK, expertCapacity, expertNum, activeNum,
+            dropPadMode, expertTokensCountOrCumsumFlag, expertTokensBeforeCapacityFlag,
+            inuptXDtypeSize, quantMode, scaleDim0, aivNumInitRouting, ubSize);
+        initRoutingQuantTilingKey = moeInitRoutingQuantV2TilingBase.tilingKey_;
+        initRoutingWorkspace = moeInitRoutingQuantV2TilingBase.workspaceSize_;
+        tilingData->cocTiling.moeInitRoutingQuantV2TilingData = moeInitRoutingQuantV2TilingBase.quantTilingData;
     } else {
-        // Non-quant path: lift only the InnerMoeInitRoutingV2TilingData subset
-        // (the leading non-smoothType fields are layout-compatible).
-        auto &nonQuantTd = tilingData->cocTiling.moeInitRoutingV2TilingData;
-        nonQuantTd.coreNum = quantTd.coreNum;
-        nonQuantTd.n = quantTd.n;
-        nonQuantTd.cols = quantTd.cols;
-        nonQuantTd.k = quantTd.k;
-        nonQuantTd.expertCapacity = quantTd.expertCapacity;
-        nonQuantTd.expertNum = quantTd.expertNum;
-        nonQuantTd.dropPadMode = quantTd.dropPadMode;
-        nonQuantTd.expertTokensCountOrCumsumFlag = quantTd.expertTokensCountOrCumsumFlag;
-        nonQuantTd.expertTokensBeforeCapacityFlag = quantTd.expertTokensBeforeCapacityFlag;
-        nonQuantTd.vbsComputeParamsOp = quantTd.vbsComputeParamsOp;
-        nonQuantTd.vmsMiddleComputeParamsOp = quantTd.vmsMiddleComputeParamsOp;
-        nonQuantTd.sortOutComputeParamsOp = quantTd.sortOutComputeParamsOp;
-        nonQuantTd.srcToDstComputeParamsOp = quantTd.srcToDstComputeParamsOp;
-        nonQuantTd.srcToDstCapacityComputeParamsOp = quantTd.srcToDstCapacityComputeParamsOp;
-        nonQuantTd.gatherOutComputeParamsOp = quantTd.gatherOutComputeParamsOp;
+        // Non-quant path: BF16/FP16 X is forwarded as-is. We use the concrete
+        // `MoeInitRoutingV2TilingBase` (ported from the standalone BF16 op),
+        // which writes its `InnerMoeInitRoutingV2TilingData` directly.
+        optiling::MoeInitRoutingV2TilingBase moeInitRoutingV2TilingBase;
+        int64_t quantMode = 0;
+        moeInitRoutingV2TilingBase.DoTiling(info.M, info.K, info.topK, expertCapacity, expertNum, activeNum,
+            dropPadMode, expertTokensCountOrCumsumFlag, expertTokensBeforeCapacityFlag,
+            inuptXDtypeSize, quantMode, scaleDim0, aivNumInitRouting, ubSize);
+        initRoutingQuantTilingKey = moeInitRoutingV2TilingBase.tilingKey_;
+        initRoutingWorkspace = moeInitRoutingV2TilingBase.workspaceSize_;
+        tilingData->cocTiling.moeInitRoutingV2TilingData = moeInitRoutingV2TilingBase.moeInitRoutingTilingData;
     }
     tilingData->cocTiling.initRoutingQuantTilingKey = initRoutingQuantTilingKey;
-    OP_LOGD(K_INNER_DEBUG, "initRoutingQuantTilingKey=%lu (quantMode=%ld, isQuantRouting=%u)",
-            initRoutingQuantTilingKey, quantMode, info.isQuantRouting);
+    OP_LOGD(K_INNER_DEBUG, "initRoutingQuantTilingKey=%lu (isQuantRouting=%u)",
+            initRoutingQuantTilingKey, info.isQuantRouting);
 
     uint64_t maxWindowSize = GetMaxWindowSize();
     uint64_t actualSize = static_cast<uint64_t>(info.M) * info.topK * info.K * sizeof(int8_t) * 3 + 10 * MB_SIZE;
