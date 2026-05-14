@@ -385,13 +385,14 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
         except Exception as exc:
             print(f"[WARN] 可视化异常: {exc}")
 
-    passed_lse = 0
+    passed_lse = 1
     if lse_flag == 1:
+        passed_lse = 0
         print(f"\n{'='*40} 对比 lse goldem vs lse npu {'='*40}")
         passed_lse = check_result("LSE CHECK", lse_out.float(), lse_npu.float(), except_label="lse_golden", comp_label="lse_npu", verbose_diff=verbose_diff)
 
-    at_least_one_pass = passed_cpu_gpu or passed_cpu_npu or passed_gpu_npu or passed_lse
-    return at_least_one_pass
+    at_least_one_pass = passed_cpu_gpu or passed_cpu_npu or passed_gpu_npu
+    return at_least_one_pass and passed_lse
 
 
 def resolve_case_ids(case_id_arg, all_cases):

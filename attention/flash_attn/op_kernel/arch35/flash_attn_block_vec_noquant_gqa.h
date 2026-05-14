@@ -830,13 +830,8 @@ public:
 
         attenOut.SetAddr(vec2ResUb.address_);
 
-        if constexpr (!POST_QUANT) {
-            RowInvalid(vec2ResUb, mStartVec, mDealSize, runInfo, dSizeAligned64);
-            Cast(attenOut, vec2ResUb, RoundMode::CAST_ROUND, mDealSize * dSizeAligned64);
-        } else {
-            PostQuant(runInfo, attenOut, vec2ResUb, mStartVec, mDealSize, dSizeAligned64);
-            RowInvalid(vec2ResUb, mStartVec, mDealSize, runInfo, dSizeAligned64);
-        }
+        RowInvalid(vec2ResUb, mStartVec, mDealSize, runInfo, dSizeAligned64);
+        Cast(attenOut, vec2ResUb, RoundMode::CAST_ROUND, mDealSize * dSizeAligned64);
         SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
         WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
 
@@ -1075,29 +1070,19 @@ public:
             int64_t s1LastValidToken = Min(Max(runInfo.preTokensLeftUp + runInfo.actS2Size, 0), runInfo.actS1Size);
             s1LastValidToken = Max(s1LastValidToken - 1, 0);
             bool hasValidRow = (s1FirstValidToken > 0) || (s1LastValidToken < runInfo.actS1Size);
-            bool batchNeedRowInvalid = constInfo.isRowInvalidOpen || // 手动开启行无效
-                                       ((constInfo.sparseMode != SparseMode::LEFT_UP_CAUSAL) &&
+            bool batchNeedRowInvalid = ((constInfo.sparseMode != SparseMode::LEFT_UP_CAUSAL) &&
                                         hasValidRow); // sparse = 0 or 3 or 4，preToekens or nextTokens负数
             if (!batchNeedRowInvalid) {
                 return;
             }
 
             bool blockNeedRowInvalid = CalcBlockNeedRowInvalid(runInfo, s1FirstValidToken, s1LastValidToken);
-            blockNeedRowInvalid = blockNeedRowInvalid || constInfo.isRowInvalidOpen;
 
             if (blockNeedRowInvalid) {
                 LocalTensor<float> maxTensor =
                     softmaxMaxBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>()[mStartVec];
-                if constexpr (!POST_QUANT) {
-                    RowInvalidUpdateVF<float>(vec2ResUb, maxTensor, mDealSize, constInfo.dSizeV,
-                                              static_cast<uint32_t>(dSizeAligned64));
-                } else {
-                    uint32_t dStride =
-                        CeilDiv(static_cast<uint32_t>(static_cast<uint32_t>(dSizeAligned64)), sizeof(float));
-                    uint16_t dSize = CeilDiv(constInfo.dSizeV, sizeof(float)); // w8后量化后的处理长度
-                    RowInvalidUpdateVF<float>(*((LocalTensor<float> *)&vec2ResUb), maxTensor, mDealSize, dSize,
-                                              dStride);
-                }
+                RowInvalidUpdateVF<float>(vec2ResUb, maxTensor, mDealSize, constInfo.dSizeV,
+                                          static_cast<uint32_t>(dSizeAligned64));
             }
         }
     }
