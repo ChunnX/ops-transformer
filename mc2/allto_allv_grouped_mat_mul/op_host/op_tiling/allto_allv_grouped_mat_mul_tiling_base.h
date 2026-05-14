@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2025-2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -25,6 +25,13 @@
 #include "../../allto_allv_quant_grouped_mat_mul/op_host/op_tiling/allto_allv_quant_grouped_mat_mul_tiling_base.h"
 
 namespace optiling {
+// Non-quant input indexes (6 inputs: gmm_x=0, gmm_weight=1, send_counts=2, recv_counts=3, mm_x=4, mm_weight=5)
+constexpr uint32_t NON_QUANT_MM_X_INDEX = 4U;
+constexpr uint32_t NON_QUANT_MM_WEIGHT_INDEX = 5U;
+// Non-quant attr indexes (7 attrs: group=0, ep_world_size=1, send_counts=2, recv_counts=3, trans_gmm_weight=4, trans_mm_weight=5, permute_out_flag=6)
+constexpr uint32_t NON_QUANT_ATTR_TRANS_GMM_WEIGHT_INDEX = 4;
+constexpr uint32_t NON_QUANT_ATTR_TRANS_MM_WEIGHT_INDEX = 5;
+constexpr uint32_t NON_QUANT_ATTR_PERMUTE_OUT_FLAG_INDEX = 6;
 
 struct SetMMTilingParams {
     matmul_tiling::DataType matmulDtype;

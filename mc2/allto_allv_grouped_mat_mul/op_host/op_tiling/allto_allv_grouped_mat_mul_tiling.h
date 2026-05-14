@@ -74,6 +74,9 @@ protected:
     ge::graphStatus SetHcclTiling(const gert::TilingContext* context) const;
 
     ge::graphStatus DoAiCoreTiling(const gert::TilingContext* context);
+    void SetGMMQuantParams(Mc2GroupedMatmulTilingData::GMMQuantTilingData &gmmQuantTilingData) const;
+    void SetTilingArray(Mc2GroupedMatmulTilingData::GMMQuantTilingData &gmmQuantTilingData, uint64_t M, uint64_t N, uint64_t K) const;
+    void SetTilingParams(Mc2GroupedMatmulTilingData::GMMQuantTilingData &gmmQuantTilingData, uint64_t M, uint64_t N, uint64_t K, bool transB) const;
     uint64_t GetTilingKey() const override;
     ge::graphStatus setNumBlocks(gert::TilingContext* context);
 

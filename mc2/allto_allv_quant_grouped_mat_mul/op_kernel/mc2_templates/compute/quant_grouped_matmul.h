@@ -98,7 +98,13 @@ public:
         if (!isLocal && expertTokenNum_[expertIdx] == 0) {
             return ;
         }
+        AscendC::printf("AGENT QuantGroupedMatmul::Process: expertIdx=%u, expertTokenNum=%u, isLocal=%d, \n",
+                        expertIdx, expertTokenNum_[expertIdx], isLocal);
         this->UpdateAddr(expertIdx);
+        AscendC::printf("AGENT QuantGroupedMatmul::Process: after UpdateAddr, xAddr=%p, wAddr=%p, yAddr=%p\n",
+                        reinterpret_cast<__gm__ uint8_t *>(xGM_),
+                        reinterpret_cast<__gm__ uint8_t *>(wGM_),
+                        reinterpret_cast<__gm__ uint8_t *>(yGM_));
         // 3. 计算偏移后地址
         __gm__ uint8_t *xAddr = reinterpret_cast<__gm__ uint8_t *>(xGM_);
         __gm__ uint8_t *yAddr = reinterpret_cast<__gm__ uint8_t *>(yGM_);
@@ -109,16 +115,22 @@ GM_ADDR xPtr = BuildPtrTable(reinterpret_cast<GM_ADDR>(xAddr), 0);
         GM_ADDR scaleBPtr = (weightScaleGM_ != nullptr) ? BuildPtrTable(weightScaleGM_, 2) : nullptr;
         GM_ADDR perTokenScalePtr = (xScaleGM_ != nullptr) ? BuildPtrTable(xScaleGM_, 4) : nullptr;
         GM_ADDR yPtr = BuildPtrTable(reinterpret_cast<GM_ADDR>(yAddr), 3);
+        AscendC::printf("AGENT QuantGroupedMatmul::Process: scaleBPtr=%p, perTokenScalePtr=%p (non-quant should be null)\n",
+                        scaleBPtr, perTokenScalePtr);
 
         uint64_t groupListToken = isLocal ? bs_ : expertTokenNum_[expertIdx];
         groupListGlobalBuffer_.SetValue(GROUP_LIST_INDEX, groupListToken);
         AscendC::DataCacheCleanAndInvalid<int64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
             AscendC::DcciDst::CACHELINE_OUT>(groupListGlobalBuffer_);
+        AscendC::printf("AGENT QuantGroupedMatmul::Process: groupListToken=%lu, aTrans=%d, bTrans=%d\n",
+                        groupListToken, aTrans, bTrans);
         Mc2GroupedMatmul::Mc2GmmASWKernel<xType, wType, biasType, scaleType, yType, wFormat, aTrans, bTrans> gmmASWKernel;
         tPipe_->Reset();
         gmmASWKernel.Init(xPtr, wPtr, nullptr, scaleBPtr, groupListGm_, perTokenScalePtr, yPtr, workspaceGM_,
             &gmmTilingData_->gmmQuantParams, &gmmTilingData_->mmTilingData, gmmArrayAddrIn_, tPipe_);
+        AscendC::printf("AGENT QuantGroupedMatmul::Process: before gmmASWKernel.Process()\n");
         gmmASWKernel.Process();
+        AscendC::printf("AGENT QuantGroupedMatmul::Process: after gmmASWKernel.Process()\n");
     }
 
     __aicore__ inline void End() {
