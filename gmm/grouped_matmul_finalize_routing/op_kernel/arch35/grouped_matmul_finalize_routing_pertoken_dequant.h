@@ -135,7 +135,7 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
 
         typename CyclingKernel::CyclingParams cyclingParams{
             y, row_index,
-            matmulTiling_.usedCoreNum,
+            static_cast<uint32_t>(matmulTiling_.usedCoreNum),
             static_cast<uint32_t>(matmulTiling_.N),
             baseN, windowSizeRows};
 
