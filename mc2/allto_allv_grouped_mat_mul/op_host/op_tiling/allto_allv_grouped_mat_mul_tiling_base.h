@@ -25,6 +25,9 @@
 #include "../../allto_allv_quant_grouped_mat_mul/op_host/op_tiling/allto_allv_quant_grouped_mat_mul_tiling_base.h"
 
 namespace optiling {
+constexpr uint32_t NON_QUANT_ATTR_TRANS_GMM_WEIGHT_INDEX = 4;
+constexpr uint32_t NON_QUANT_ATTR_TRANS_MM_WEIGHT_INDEX = 5;
+constexpr uint32_t NON_QUANT_ATTR_PERMUTE_OUT_FLAG_INDEX = 6;
 
 struct SetMMTilingParams {
     matmul_tiling::DataType matmulDtype;

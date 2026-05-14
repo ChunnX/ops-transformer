@@ -108,7 +108,7 @@ ge::graphStatus AlltoAllvGmmTiling::GetContextAttr(const gert::TilingContext* co
     groupPtr_ = groupEpPtr;
     epWorldSizePtr_ = epWorldSizePtr;
     
-    auto transGmmWeightPtr = attrs->GetAttrPointer<bool>(ATTR_TRANS_GMM_WEIGHT_INDEX);
+    auto transGmmWeightPtr = attrs->GetAttrPointer<bool>(NON_QUANT_ATTR_TRANS_GMM_WEIGHT_INDEX);
     OP_TILING_CHECK(transGmmWeightPtr == nullptr,
         OP_LOGE(A_INNER_DEBUG, "transGmmWeightPtr is null."), return ge::GRAPH_FAILED);
     transGmmWeight_ = *transGmmWeightPtr;
@@ -515,8 +515,7 @@ ge::graphStatus AlltoAllvGmmTiling::Init()
 
 uint64_t AlltoAllvGmmTiling::GetTilingKey() const
 {
-    // A3平台固定使用AICPU模式，A5平台根据环境变量选择
-    uint8_t commMode = Mc2Comm::COMM_MODE_AICPU;  // 默认AICPU
+    uint8_t commMode = Mc2Comm::COMM_MODE_AICPU;
     auto platformInfo = context_->GetPlatformInfo();
     platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
     if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {  // A5平台
@@ -564,8 +563,8 @@ ge::graphStatus AlltoAllvGmmTiling::RunFusionKernelTiling(gert::TilingContext* c
     bsk_ = gmmXShape.GetDim(0);
     h1_ = gmmXShape.GetDim(1);
 
-    auto transGmmWeightPtr = attrs->GetAttrPointer<bool>(ATTR_TRANS_GMM_WEIGHT_INDEX);
-    auto transMmWeightPtr = attrs->GetAttrPointer<bool>(ATTR_TRANS_MM_WEIGHT_INDEX);
+    auto transGmmWeightPtr = attrs->GetAttrPointer<bool>(NON_QUANT_ATTR_TRANS_GMM_WEIGHT_INDEX);
+    auto transMmWeightPtr = attrs->GetAttrPointer<bool>(NON_QUANT_ATTR_TRANS_MM_WEIGHT_INDEX);
     OP_TILING_CHECK((transGmmWeightPtr == nullptr) || (transMmWeightPtr == nullptr),
         OP_LOGE(A_INNER_DEBUG, "transGmmWeightPtr or transMmWeightPtr is null."), return ge::GRAPH_FAILED);
     transGmmWeight_ = *transGmmWeightPtr;
@@ -636,18 +635,36 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetPlatformInfo()
 ge::graphStatus AlltoAllvGmmTilingBase::GetShapeAttrsInfo()
 {
     OP_LOGD(context_->GetNodeName(), "start GetShapeAttrsInfo.");
-    if (GetCommonShapeAttrsInfo() != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
-    // 补充：非量化算子需要额外读取transGmmWeight_/transMmWeight_属性
     auto attrs = context_->GetAttrs();
-    auto transGmmWeightPtr = attrs->GetAttrPointer<bool>(ATTR_TRANS_GMM_WEIGHT_INDEX);
-    auto transMmWeightPtr = attrs->GetAttrPointer<bool>(ATTR_TRANS_MM_WEIGHT_INDEX);
-    OP_TILING_CHECK((transGmmWeightPtr == nullptr) || (transMmWeightPtr == nullptr),
-        OP_LOGE(A_INNER_DEBUG, "transGmmWeightPtr or transMmWeightPtr is null."), return ge::GRAPH_FAILED);
-    transGmmWeight_ = *transGmmWeightPtr;
-    transMmWeight_ = *transMmWeightPtr;
-    
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(A_INNER_DEBUG, "GetAttrs returned null."), return ge::GRAPH_FAILED);
+    groupPtr_ = attrs->GetAttrPointer<char>(ATTR_GROUP_INDEX);
+    OP_TILING_CHECK(groupPtr_ == nullptr, OP_LOGE(A_INNER_DEBUG, "group attr can not be null."),
+        return ge::GRAPH_FAILED);
+    group_ = groupPtr_;
+    epWorldSizePtr_ = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
+    OP_TILING_CHECK(epWorldSizePtr_ == nullptr, OP_LOGE(A_INNER_DEBUG, "epWorldSize attr can not be null."),
+        return ge::GRAPH_FAILED);
+    epWorldSize_ = *epWorldSizePtr_;
+    sendCountsPtr_ = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_SEND_COUNTS_INDEX);
+    OP_TILING_CHECK(sendCountsPtr_ == nullptr, OP_LOGE(A_INNER_DEBUG, "sendCounts attr can not be null."),
+        return ge::GRAPH_FAILED);
+    sendCounts = static_cast<const int64_t*>(sendCountsPtr_->GetData());
+    recvCountsPtr_ = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_RECV_COUNTS_INDEX);
+    OP_TILING_CHECK(recvCountsPtr_ == nullptr, OP_LOGE(A_INNER_DEBUG, "recvCounts attr can not be null."),
+        return ge::GRAPH_FAILED);
+    recvCounts = static_cast<const int64_t*>(recvCountsPtr_->GetData());
+    transGmmWeightPtr_ = attrs->GetAttrPointer<bool>(NON_QUANT_ATTR_TRANS_GMM_WEIGHT_INDEX);
+    if (transGmmWeightPtr_ != nullptr) {
+        transGmmWeight_ = *transGmmWeightPtr_;
+    }
+    transMmWeightPtr_ = attrs->GetAttrPointer<bool>(NON_QUANT_ATTR_TRANS_MM_WEIGHT_INDEX);
+    if (transMmWeightPtr_ != nullptr) {
+        transMmWeight_ = *transMmWeightPtr_;
+    }
+    permuteOutFlagPtr_ = attrs->GetAttrPointer<bool>(NON_QUANT_ATTR_PERMUTE_OUT_FLAG_INDEX);
+    if (permuteOutFlagPtr_ != nullptr) {
+        permuteOutFlag_ = *permuteOutFlagPtr_;
+    }
     OP_LOGD(context_->GetNodeName(), "end GetShapeAttrsInfo.");
     return ge::GRAPH_SUCCESS;
 }
