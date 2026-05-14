@@ -645,7 +645,7 @@ TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_grad_y
             {{{16, 8}, {16, 8}}, ge::DT_INT32, ge::FORMAT_ND},
         },
         {
-            {{{16, 256}, {16, 256}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{16, 256}, {16, 256}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"renorm", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
@@ -694,7 +694,7 @@ TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_grad_x
         {
             {{{16, 256}, {16, 256}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{16, 8}, {16, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{16, 8}, {16, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{16, 8}, {16, 8}}, ge::DT_INT32, ge::FORMAT_ND},
         },
         {
             {{{16, 256}, {16, 256}}, ge::DT_FLOAT16, ge::FORMAT_ND},
