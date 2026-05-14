@@ -735,7 +735,7 @@ void FusedInferAttentionScoreTilingImpl::SplitNBSeq(const FiaTilingInfo &fiaInfo
     uint32_t actualCoreNums = (curIndx + 1) * CV_RATIO;
     pfaTilingData_.promptAttentionSingleCoreParams.set_actualCoreNums(actualCoreNums);
     int64_t sinnerBlocknum = (fiaInfo.s2Size + sInnerSize - 1) / sInnerSize;
-    int64_t totalSize = (totalBlockNumsOneHead / sinnerBlocknum) * nLoopTimes_;
+    int64_t totalSize = (sinnerBlocknum == 0) ? 0 : (totalBlockNumsOneHead / sinnerBlocknum) * nLoopTimes_;
     int64_t aicUsedCoreNum = curIndx + 1;
 
     faRunTilingAdapter_.multiCoreParamsRegbase.set_coreNum(static_cast<int32_t>(aicUsedCoreNum));
