@@ -1202,6 +1202,7 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncA5::MoeDistributeDispatchTiling
     config.attrConstExpertNumIndex = 16; // 16: 根据dispatchV2算子原型标志位初始化constExpertNumIndex索引
     config.isMc2Context = false;
     // MTE 调用 A3 tiling 实现
+    OP_LOGD(nodeName, "lijd");
     return MoeDistributeDispatchA3TilingFuncImplPublic(context, config);
 }
 
