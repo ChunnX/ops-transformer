@@ -799,6 +799,12 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetShapeAttrsInfo()
 
 ge::graphStatus AlltoAllvGmmTilingBase::DoLibApiTiling()
 {
+    OP_LOGD(context_->GetNodeName(), "AGENT start DoLibApiTiling.");
+    if (GetShapeInfo() != ge::GRAPH_SUCCESS) {
+        OP_LOGE(context_->GetNodeName(), "GetShapeInfo failed.");
+        return ge::GRAPH_FAILED;
+    }
+    OP_LOGD(context_->GetNodeName(), "AGENT end DoLibApiTiling.");
     return ge::GRAPH_SUCCESS;
 }
 
