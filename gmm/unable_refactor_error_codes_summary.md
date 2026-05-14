@@ -161,9 +161,10 @@
 | Input sharedInputStorageShape should not be nullptr. | grouped_matmul_finalize_routing_weight_quant_tiling.cpp | 554,730 | sharedInputStorageShape空指针检查（2处） |
 | Input shareInputWeightPtr should not be nullptr. | grouped_matmul_finalize_routing_weight_quant_tiling.cpp | 559 | shareInputWeightPtr空指针检查 |
 | Input shareInputOffsetPtr should not be nullptr. | grouped_matmul_finalize_routing_weight_quant_tiling.cpp | 563 | shareInputOffsetPtr空指针检查 |
-| Attr shareInputOffset[%lu] should less or equal to outputBS[%ld]. | grouped_matmul_finalize_routing_weight_quant_tiling.cpp | 568 | 属性值约束检查（标注为空指针错误，实为值约束） |
 
-**数量统计：** 32处
+**数量统计：** 31处
+
+**备注：** 第568行"Attr shareInputOffset[%lu] should less or equal to outputBS[%ld]."原标注为EZ0035空指针错误，已修正为EZ0026值约束错误（可整改）。
 
 **整改建议：** 使用 `OP_LOGE_FOR_NULLPTR(opName, paramName)` 宏进行整改
 
@@ -223,8 +224,8 @@
 | 算子名称 | EZ0035 | EZ0037 | EZ0039 | EZ0042 | 总计 |
 |---------|--------|--------|--------|--------|------|
 | grouped_weight_quant_batch_matmul | 25 | 3 | 1 | 43 | 72 |
-| grouped_matmul_finalize_routing | 32 | 6 | 1 | 11 | 50 |
-| **合计** | **57** | **9** | **2** | **54** | **122** |
+| grouped_matmul_finalize_routing | 31 | 6 | 1 | 11 | 49 |
+| **合计** | **56** | **9** | **2** | **54** | **121** |
 
 ## 六、无法整改原因分类
 
@@ -285,3 +286,11 @@
 - EZ0043 (Internal_Error_Platform) 在本次分析的两个算子中未出现
 
 这些错误码预留用于其他场景，如内存分配失败、注册失败、上下文错误、平台不支持等。
+
+## 九、标注错误修正
+
+**修正项：**
+- `grouped_matmul_finalize_routing` 第568行：`Attr shareInputOffset[%lu] should less or equal to outputBS[%ld].`
+  - 原标注：EZ0035（空指针错误）、无法整改
+  - 修正为：EZ0026（值约束错误）、可整改
+  - 原因：该错误消息描述的是属性值约束关系，而非空指针检查
