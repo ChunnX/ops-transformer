@@ -254,7 +254,7 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckTensorDimMultiXMultiWeightMultiY(
 
     if (hasBias_) {
         OP_CHECK_IF(!CheckTensorDimEqualTarget(context, BIAS_IDX, idx, 1, "bias"),
-                    OP_LOGE(context->GetNodeName(), "Invalid bias dimension. "), return false);
+                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context->GetNodeName(), "bias[" + std::to_string(idx) + "]", "actual_dim", "dimension must be 1"), return false);
     }
     if (hasAntiquantOffset_) {
         OP_CHECK_IF(!CheckTensorDimEqualTarget(context, ANTIQUANT_OFFSET_IDX, idx, 1, "antiquantOffset"),
@@ -788,15 +788,12 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckPerTokenScale(const gert::TilingC
                     return false);
         gert::Shape perTokenScaleShape = perTokenScaleShapePtr->GetStorageShape();
         int64_t perTokenScaleDimNum = perTokenScaleShape.GetDimNum();
-        OP_CHECK_IF(perTokenScaleDimNum != 3, OP_LOGE(context->GetNodeName(), "perTokenScaleShapeDimNum should be 3."),
+        OP_CHECK_IF(perTokenScaleDimNum != 3, OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context->GetNodeName(), "perTokenScale", std::to_string(perTokenScaleDimNum), "dimension must be 3"),
                     return false);
         OP_CHECK_IF(perTokenScaleShape.GetDim(0) != static_cast<int64_t>(mSize_) ||
                         perTokenScaleShape.GetDim(1) != static_cast<int64_t>(kSize_) / (MX_GROUP_SIZE * 2) ||
                         perTokenScaleShape.GetDim(2) != 2UL,
-                    OP_LOGE(context->GetNodeName(),
-                            "Expected shape of perTokenScale to be [%lu, %lu, 2], but actual shape is [%lu, %lu, %lu].",
-                            static_cast<int64_t>(mSize_), static_cast<int64_t>(kSize_) / (MX_GROUP_SIZE * 2),
-                            perTokenScaleShape.GetDim(0), perTokenScaleShape.GetDim(1), perTokenScaleShape.GetDim(2)),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "perTokenScale_shape", "[" + std::to_string(perTokenScaleShape.GetDim(0)) + ", " + std::to_string(perTokenScaleShape.GetDim(1)) + ", " + std::to_string(perTokenScaleShape.GetDim(2)) + "]", "shape must be [" + std::to_string(mSize_) + ", " + std::to_string(kSize_ / (MX_GROUP_SIZE * 2)) + ", 2]"),
                     return false);
     }
     return true;
@@ -807,12 +804,9 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckBiasDtype(const gert::TilingConte
     if (IsA16W4ND()) {
         if (hasBias_) {
             OP_CHECK_IF(BIAS_TYPE_SUPPORT_MAP.find(xDType_) == BIAS_TYPE_SUPPORT_MAP.end(),
-                        OP_LOGE(context->GetNodeName(), "Cannot find bias dtype match with xDtype."), return false);
+                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context->GetNodeName(), "bias", "unknown", "cannot find bias dtype match with xDtype " + std::string(ge::TypeUtils::DataTypeToSerialString(xDType_).c_str())), return false);
             OP_CHECK_IF(BIAS_TYPE_SUPPORT_MAP.at(xDType_).find(biasDtype_) == BIAS_TYPE_SUPPORT_MAP.at(xDType_).end(),
-                        OP_LOGE(context->GetNodeName(),
-                                "Data type [%s] is not supported for bias, when xDtype is [%s].",
-                                ge::TypeUtils::DataTypeToSerialString(biasDtype_).c_str(),
-                                ge::TypeUtils::DataTypeToSerialString(xDType_).c_str()),
+                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context->GetNodeName(), "bias", ge::TypeUtils::DataTypeToSerialString(biasDtype_).c_str(), "dtype is not supported when xDtype is " + std::string(ge::TypeUtils::DataTypeToSerialString(xDType_).c_str())),
                         return false);
         }
     }
@@ -859,7 +853,7 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckEmptyTensor(const gert::TilingCon
         auto xShape = xShapePtr->GetStorageShape();
         size_t xDimNum = xShape.GetDimNum();
         OP_CHECK_IF(xDimNum < MIN_X_DIM || xDimNum > MAX_X_DIM,
-                    OP_LOGE(context->GetNodeName(), "Invalid x dimension, expect 2-6, actual %zu", xDimNum),
+                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context->GetNodeName(), "x", std::to_string(xDimNum), "dimension must be 2-6"),
                     return false);
         // -1含义为(K, M)场景M索引，-2含义为(M, K)场景M索引
         int64_t m = transA_ ? xShape.GetDim(xDimNum - 1) : xShape.GetDim(xDimNum - 2);
@@ -877,7 +871,7 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckEmptyTensor(const gert::TilingCon
         auto wShape = wShapePtr->GetOriginShape();
         size_t wDimNum = wShape.GetDimNum();
         OP_CHECK_IF(wDimNum < GroupedMatmul::MIN_ND_DIM,
-                    OP_LOGE(context->GetNodeName(), "Invalid weight dimension, expect >= 2, actual %zu", wDimNum),
+                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context->GetNodeName(), "weight", std::to_string(wDimNum), "dimension must be >= 2"),
                     return false);
         // -2含义为(N, K)场景N索引，-1含义为(K, N)场景N索引
         int64_t n = transB_ ? wShape.GetDim(wDimNum - 2) : wShape.GetDim(wDimNum - 1);
@@ -885,7 +879,7 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckEmptyTensor(const gert::TilingCon
     }
 
     OP_CHECK_IF(!zeroM && !zeroN && zeroK,
-                OP_LOGE(context->GetNodeName(), " GroupedMatmul does not support input K being 0 unless all M/N is 0"),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "K", "0", "GroupedMatmul does not support input K being 0 unless all M/N is 0"),
                 return false);
     return true;
 }
