@@ -247,7 +247,7 @@ private:
     __aicore__ inline GM_ADDR GetReadAddrFromRemoteServer(const int32_t dstServerId)
     {
         GM_ADDR baseAddr = GetServerRemoteBaseAddr(dstServerId);
-        constexpr if (mode == ExecutMode::CUMSUM) {
+        if constexpr (mode == ExecutMode::CUMSUM) {
             return baseAddr + serverWinDataSizeOffset_ + CumSumWinSizePerServer_ * SERVER_ADDR_OFFSET_ZERO;
         } else {
             return baseAddr + serverWinDataSizeOffset_ + CumSumWinSizePerServer_ * TWO + 
@@ -259,7 +259,7 @@ private:
     __aicore__ inline GM_ADDR GetReadAddrFromLocalServer(const int32_t dstServerId)
     {
         GM_ADDR baseAddr = GetServerLocalBaseAddr(dstServerId);
-        constexpr if (mode == ExecutMode::CUMSUM) {
+        if constexpr (mode == ExecutMode::CUMSUM) {
             return baseAddr + serverWinDataSizeOffset_ + CumSumWinSizePerServer_ * SERVER_ADDR_OFFSET_ONE;
         } else {
             return baseAddr + serverWinDataSizeOffset_ + CumSumWinSizePerServer_ * TWO + 
@@ -271,7 +271,7 @@ private:
     __aicore__ inline GM_ADDR GetDataWriteAddrFromRemoteServer(const int32_t dstServerId)
     {
         GM_ADDR baseAddr = GetServerRemoteBaseAddr(dstServerId);
-        constexpr if (mode == ExecutMode::CUMSUM){
+        if constexpr (mode == ExecutMode::CUMSUM){
             return baseAddr + serverWinDataSizeOffset_ + CumSumWinSizePerServer_ * SERVER_ADDR_OFFSET_ONE;
         } else {
             return baseAddr + serverWinDataSizeOffset_ + CumSumWinSizePerServer_ * TWO + 
@@ -283,7 +283,7 @@ private:
     __aicore__ inline GM_ADDR GetDataWriteAddrFromLocalServer(const int32_t dstServerId)
     {
         GM_ADDR baseAddr = GetServerLocalBaseAddr(dstServerId);
-        constexpr if (mode == ExecutMode::CUMSUM){
+        if constexpr (mode == ExecutMode::CUMSUM){
             return baseAddr + serverWinDataSizeOffset_ + CumSumWinSizePerServer_ * SERVER_ADDR_OFFSET_ZERO;
         } else {
             return baseAddr + serverWinDataSizeOffset_ + CumSumWinSizePerServer_ * TWO + 
