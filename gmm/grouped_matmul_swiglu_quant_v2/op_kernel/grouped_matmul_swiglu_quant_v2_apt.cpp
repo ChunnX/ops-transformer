@@ -44,15 +44,19 @@ constexpr CubeFormat wFormat = CubeFormat::ND;
 __aicore__ inline void ExampleCallMxVecCompute(GmmSwigluQuantMxA8W4::GmmSwigluQuantMxVecCompute<float, fp8_e4m3fn_t, float> &mxCompute,
                                                uint16_t mSize, uint16_t nSize)
 {
-    constexpr uint64_t mxUbMaxSize = 244 * 1024;
+    // constexpr uint64_t mxUbMaxSize = 244 * 1024;
+    constexpr uint64_t KB_8bit = 1024;
     AscendC::LocalTensor<float> l0cOutUbFirst;
     l0cOutUbFirst = AscendC::LocalTensor<float>(
-        AscendC::TPosition::VECCALC, mxUbMaxSize,
-        mSize * nSize);
+        AscendC::TPosition::VECCALC, KB_8bit * 64,
+        KB_8bit * 64);
     AscendC::LocalTensor<float> l0cOutUbSecond;
     l0cOutUbSecond = AscendC::LocalTensor<float>(
-        AscendC::TPosition::VECCALC, mxUbMaxSize + mSize * nSize * sizeof(float),
-        mSize * nSize);
+        AscendC::TPosition::VECCALC, KB_8bit * 128,
+        KB_8bit * 128);
+
+    AscendC::Duplicate<float>(l0cOutUbFirst, static_cast<float>(1), KB_8bit * 64);
+    AscendC::Duplicate<float>(l0cOutUbSecond, static_cast<float>(1), KB_8bit * 128);
 
     mxCompute.VFDoSwigluAndQuantForMX(l0cOutUbFirst, l0cOutUbSecond, mSize, nSize);
 }
