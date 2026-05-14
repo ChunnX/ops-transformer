@@ -117,42 +117,6 @@ public:
         gmmASWKernel.Process();
     }
 
-    // 小shape模式：每轮计算一个rank的一个expert数据
-    __aicore__ inline void ProcessRankWise(uint32_t rankIdx, uint32_t expertIdx)
-    {
-        if ASCEND_IS_AIV {
-            return ;
-        }
-        // 接收方收到所有srcRank发来的expertIdx数据总和
-        const auto *recvCnt = &tilingData_->taskTilingInfo.recvCnt[0];
-        uint64_t tokenNum = 0UL;
-        for (uint32_t r = 0U; r < epWorldSize_; r++) {
-            tokenNum += static_cast<uint64_t>(recvCnt[expertIdx + r * expertNumInOneRank_]);
-        }
-        if (!isLocal && tokenNum == 0) {
-            return ;
-        }
-        this->UpdateAddrRankWise(rankIdx, expertIdx, tokenNum);
-        // 构建指针表
-        __gm__ uint8_t *xAddr = reinterpret_cast<__gm__ uint8_t *>(xGM_);
-        __gm__ uint8_t *yAddr = reinterpret_cast<__gm__ uint8_t *>(yGM_);
-        __gm__ uint8_t *wAddr = reinterpret_cast<__gm__ uint8_t *>(wGM_);
-        GM_ADDR xPtr = BuildPtrTable(reinterpret_cast<GM_ADDR>(xAddr), 0);
-        GM_ADDR wPtr = BuildPtrTable(reinterpret_cast<GM_ADDR>(wAddr), 1);
-        GM_ADDR scaleBPtr = BuildPtrTable(weightScaleGM_, 2);
-        GM_ADDR yPtr = BuildPtrTable(reinterpret_cast<GM_ADDR>(yAddr), 3);
-
-        uint64_t groupListToken = isLocal ? bs_ : tokenNum;
-        groupListGlobalBuffer_.SetValue(GROUP_LIST_INDEX, groupListToken);
-        AscendC::DataCacheCleanAndInvalid<int64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
-            AscendC::DcciDst::CACHELINE_OUT>(groupListGlobalBuffer_);
-        Mc2GroupedMatmul::Mc2GmmASWKernel<xType, wType, biasType, scaleType, yType, wFormat, aTrans, bTrans> gmmASWKernel;
-        tPipe_->Reset();
-        gmmASWKernel.Init(xPtr, wPtr, nullptr, scaleBPtr, groupListGm_, xScaleGM_, yPtr, workspaceGM_,
-            &gmmTilingData_->gmmQuantParams, &gmmTilingData_->mmTilingData, gmmArrayAddrIn_, tPipe_);
-        gmmASWKernel.Process();
-    }
-
     __aicore__ inline void End() {
         if ASCEND_IS_AIV {
             return ;
@@ -179,23 +143,6 @@ protected:
         }
 
         expertTokenOffset_ += expertTokenNum_[expertIdx];
-    }
-
-    // 小shape模式：按(rankIdx, expertIdx)顺序更新地址偏移
-    __aicore__ inline void UpdateAddrRankWise(uint32_t rankIdx, uint32_t expertIdx, uint64_t tokenNum)
-    {
-        xGM_ = (GM_ADDR)xGlobalBuffer_.GetPhyAddr(expertTokenOffsetRankWise_ * h1_);
-        wGM_ = (GM_ADDR)wGlobalBuffer_.GetPhyAddr(expertIdx * h1_ * n1_);
-        yGM_ = (GM_ADDR)yGlobalBuffer_.GetPhyAddr(expertTokenOffsetRankWise_ * n1_);
-
-        if constexpr (Mc2QuantUtils::IsMxType<scaleType>()) {
-            uint64_t scaleK = Mc2QuantUtils::MXFP_MULTI_BASE_SIZE *
-                Mc2QuantUtils::CeilDiv(h1_, static_cast<uint64_t>(Mc2QuantUtils::MXFP_DIVISOR_SIZE));
-            xScaleGM_ = (GM_ADDR)xScaleGlobalBuffer_.GetPhyAddr(expertTokenOffsetRankWise_ * scaleK);
-            weightScaleGM_ = (GM_ADDR)wScaleGlobalBuffer_.GetPhyAddr(expertIdx * n1_ * scaleK);
-        }
-
-        expertTokenOffsetRankWise_ += tokenNum;
     }
 
     /**
@@ -234,7 +181,6 @@ private:
     TPipe *tPipe_;
     uint64_t expertTokenNum_[32] = {0};
     uint64_t expertTokenOffset_ = 0;
-    uint64_t expertTokenOffsetRankWise_ = 0;  // 小shape模式专用offset
     uint64_t expertNumInOneRank_ = 0;
     uint64_t epWorldSize_ = 0;
     uint64_t h1_;
