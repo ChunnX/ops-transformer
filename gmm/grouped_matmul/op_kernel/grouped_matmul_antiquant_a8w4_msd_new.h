@@ -149,6 +149,10 @@ private:
     uint32_t cubeCount = 0;
     uint32_t cubeId = 0;
     uint32_t vecCount = 0;
+    int64_t isSingleTensor = 0;
+    GM_ADDR weightTensorPtr;
+    GM_ADDR scaleTensorPtr;
+    GM_ADDR biasTensorPtr;
     TPipe *pipe;
     const GMMBaseParams *tiling;
     const TCubeTiling* mmTilingData;
@@ -170,6 +174,10 @@ __aicore__ inline void GMMA8W4MSDComputeNew<mmType>::Init(GM_ADDR x, GM_ADDR wei
 
     tiling = tilingData;
     this->mmTilingData = mmTilingData;
+    isSingleTensor = tiling->isSingleTensor;
+    weightTensorPtr = weight;
+    scaleTensorPtr = scale;
+    biasTensorPtr = bias;
     quantGroupSize = tiling->k / tiling->quantGroupNum;  // 约束为整除关系
     subBlockIdx = GetSubBlockIdx();
     coreIdx = GetBlockIdx();
@@ -267,10 +275,19 @@ __aicore__ inline void GMMA8W4MSDComputeNew<mmType>::MMCompute(uint32_t groupIdx
     }
     if ASCEND_IS_AIC {
         xOffset = (mnConfig.offsetM + mnConfig.mIdx * mnConfig.singleM) * tiling->k;
-        if constexpr (mmType::BT::format == CubeFormat::NZ) {
-            weightOffset = groupIdx * tiling->n * tiling->k + tailN * tiling->k;
+        if (isSingleTensor == 0) {
+            weightGm.SetGlobalBuffer(GetTensorAddr<DTYPE_WEIGHT_DEV_A8W4MSD_NEW>(groupIdx, weightTensorPtr));
+            if constexpr (mmType::BT::format == CubeFormat::NZ) {
+                weightOffset = tailN * tiling->k;
+            } else {
+                weightOffset = tailN;
+            }
         } else {
-            weightOffset = groupIdx * tiling->n * tiling->k + tailN;
+            if constexpr (mmType::BT::format == CubeFormat::NZ) {
+                weightOffset = groupIdx * tiling->n * tiling->k + tailN * tiling->k;
+            } else {
+                weightOffset = groupIdx * tiling->n * tiling->k + tailN;
+            }
         }
 
         mm.SetSingleShape(curSingleM, curSingleN, tiling->k);
@@ -340,13 +357,23 @@ __aicore__ inline void GMMA8W4MSDComputeNew<mmType>::VectorCompute(uint32_t grou
         vecBaseM = vecBaseM / 2 + subBlockIdx;
     }
     uint64_t outOffset = mGlobalOffset * tiling->n + nGlobalOffset + tailN + subBlockIdx * vec0offsetM * tiling->n;
-    uint64_t scaleOffset = groupIdx * tiling->n + tailN + nGlobalOffset;
+    uint64_t scaleOffset;
+    uint64_t dequantScaleOffset;
+    if (isSingleTensor == 0) {
+        biasGm.SetGlobalBuffer(GetTensorAddr<DTYPE_BIAS_A8W4MSD_NEW>(groupIdx, biasTensorPtr));
+        scaleGm.SetGlobalBuffer(GetTensorAddr<DTYPE_SCALE_DEV_A8W4MSD_NEW>(groupIdx, scaleTensorPtr));
+        scaleOffset = nGlobalOffset + tailN;
+        dequantScaleOffset = loopK * tiling->n + nGlobalOffset + tailN;
+    } else {
+        scaleOffset = groupIdx * tiling->n + tailN + nGlobalOffset;
+        dequantScaleOffset = groupIdx * tiling->n * tiling->quantGroupNum + loopK * tiling->n + nGlobalOffset + tailN;
+    }
     CrossCoreWaitFlag(SYNC_AIC_TO_AIV_NEW);
     uint32_t alignBaseN = Ceil(curVecBaseN, uint32_t(8)) * 8;  //  8: num int32_t in 32B ub block
     if (isLastBlock) {
         DataCopyScaleBias(curVecBaseN, alignBaseN, scaleOffset);
     }
-    DataCopyScaleDequant(curVecBaseN, alignBaseN, groupIdx * tiling->n * tiling->quantGroupNum + loopK * tiling->n + nGlobalOffset+ tailN);
+    DataCopyScaleDequant(curVecBaseN, alignBaseN, dequantScaleOffset);
     uint32_t curVecBaseM = vecBaseM;
     uint64_t mmOutOffset = workspaceOffset + subBlockIdx * vec0offsetM * curVecBaseN * 2;
     LocalTensor<cT::T> mmOutLocal = vecInQueue.AllocTensor<cT::T>();
