@@ -574,7 +574,7 @@ moe:
     ut_cov_exclude:
       - moe/moe_finalize_routing_v2
     test:
-      examples: False # aclnn_util.h报错
+      examples: True
     options:
       - moe_finalize_routing_v2
       - moe_token_unpermute
