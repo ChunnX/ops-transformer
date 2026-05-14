@@ -274,6 +274,7 @@ public:
         if ASCEND_IS_AIC {
             return;
         }
+        SyncAll<false>();
         hccl_.Finalize();
     }
 
