@@ -676,20 +676,26 @@ ge::graphStatus BSATiling::CheckAllInputInfo(gert::TilingContext *bsaContext)
     }
 
     int optionalParameterNum = 12;
-    for (uint32_t parameterIndex = 3; parameterIndex < parameterNum; parameterIndex++) {
+    for (uint32_t parameterIndex = 3; parameterIndex < optionalParameterNum; parameterIndex++) {
         auto parameterTensor = bsaContext->GetOptionalInputTensor(parameterIndex);
         bool isParameterNull = parameterTensor == nullptr;
         std::string isParameterNullString = isParameterNull ? "is null" : "is not null";
         std::cout << "tkd optional parameter index: " << parameterIndex << " " << isParameterNullString << std::endl;
-        auto parameterDtype = bsaContext->GetOptionalInputDesc(parameterIndex)->GetDataType();
-        std::cout << "tkd optional parameter index: " << parameterIndex << " ,dtype: " << DataTypeToString(parameterDtype)
-                  << std::endl;
+        auto parameterDesc = bsaContext->GetOptionalInputDesc(parameterIndex);
+        if (parameterDesc != nullptr) {
+            auto parameterDtype = parameterDesc->GetDataType();
+            std::cout << "tkd optional parameter index: " << parameterIndex
+                      << " ,dtype: " << DataTypeToString(parameterDtype) << std::endl;
+        }
         auto parameterShape = bsaContext->GetOptionalInputShape(parameterIndex);
-        int64_t parameterDimNum = parameterShape->GetStorageShape().GetDimNum();
-        std::cout << "tkd optional parameter index: " << parameterIndex << " ,dimNum: " << parameterDimNum << std::endl;
-        for (uint32_t dimIndex = 0; dimIndex < parameterDimNum; dimIndex++) {
-            std::cout << "tkd dimIndex " << dimIndex << ": " << parameterShape->GetStorageShape().GetDim(dimIndex)
+        if (parameterShape != nullptr) {
+            int64_t parameterDimNum = parameterShape->GetStorageShape().GetDimNum();
+            std::cout << "tkd optional parameter index: " << parameterIndex << " ,dimNum: " << parameterDimNum
                       << std::endl;
+            for (uint32_t dimIndex = 0; dimIndex < parameterDimNum; dimIndex++) {
+                std::cout << "tkd dimIndex " << dimIndex << ": " << parameterShape->GetStorageShape().GetDim(dimIndex)
+                          << std::endl;
+            }
         }
         printf("tkd ===============================\n");
     }
