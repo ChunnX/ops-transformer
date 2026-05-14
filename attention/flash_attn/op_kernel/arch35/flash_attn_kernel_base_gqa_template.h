@@ -208,6 +208,25 @@ public:
         InitQCuSeqLensParser();
         InitKvCuSeqLensParser();
 
+        if (constInfo.sequsedQSize > 0 && sequsedQ != nullptr) {
+            sequsedGmQ.SetGlobalBuffer((__gm__ uint64_t *)sequsedQ, constInfo.sequsedQSize);
+        }
+        if (constInfo.sequsedKvSize > 0 && sequsedKv != nullptr) {
+            sequsedGmKv.SetGlobalBuffer((__gm__ uint64_t *)sequsedKv, constInfo.sequsedKvSize);
+        }
+
+        // When seqused_q is provided but cu_seqlens_q is not (BNSD with variable Q length),
+        // reuse seqused_q as actualSeqLengths so that offset calculators in Q-copy and
+        // Output-copy use per-batch actSeqLensQ for correct GS1 decomposition.
+        if (constInfo.sequsedQSize > 0 && sequsedQ != nullptr && constInfo.actualSeqLenSize == 0) {
+            actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint64_t *)sequsedQ, constInfo.sequsedQSize);
+            constInfo.actualSeqLenSize = constInfo.sequsedQSize;
+            qActSeqLensParser.Init(actualSeqLengthsGmQ, constInfo.actualSeqLenSize, constInfo.s1Size);
+        }
+
+        // Use seqused_q pointer as effective Q seq-len address when cu_seqlens_q is absent
+        __gm__ uint8_t *effectiveQSeqAddr = (cuSeqLengths != nullptr) ? cuSeqLengths : sequsedQ;
+
         InitMMResBuf(workspace);
 
         if ASCEND_IS_AIV {
@@ -319,18 +338,6 @@ public:
             constInfo.aicIdx = GetBlockIdx() / GetSubBlockNum();
             constInfo.subBlockIdx = GetSubBlockIdx();
         }
-
-        // auto fiaBaseParams = this->tilingData->flashAttnBaseParams;
-        // auto fiaAttenMaskParams = this->tilingData->flashAttnAttenMaskParams;
-        // auto fiaPseParams = this->tilingData->flashAttnPseParams;
-        // auto fiaSystemPrefixParams = this->tilingData->flashAttnSystemPrefixParams;
-        // auto fiaPageAttentionParams = this->tilingData->flashAttnPageAttentionParams;
-        // auto fiaLeftPaddingParams = this->tilingData->flashAttnLeftPaddingParams;
-        // auto fiaPostQuantParams = this->tilingData->flashAttnPostQuantParams;
-        // auto fiaWorkspaceParams = this->tilingData->flashAttnWorkspaceParams;
-        // auto fiaS1OuterSplitCoreParams = this->tilingData->flashAttnS1OuterSplitCoreParams;
-        // auto fiaEmptyTensorParams = this->tilingData->flashAttnEmptyTensorParams;
-
         constInfo.bSize = this->tilingData->flashAttnBaseParams.bSize;
         constInfo.t1Size = this->tilingData->flashAttnBaseParams.t1Size;
         constInfo.t2Size = this->tilingData->flashAttnBaseParams.t2Size;

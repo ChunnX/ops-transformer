@@ -384,11 +384,8 @@ ge::graphStatus FaInfoParser::GetS2SizeForPageAttention()
     if (GetBlockNum() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-
-    // TODO wmk PA场景需看max seq kv
-    // PA 获取不到s2的总长度, 先暂时给个int64_t最大值
-    s2Size_ = std::numeric_limits<int64_t>::max();
-
+    maxBlockNumPerBatch_ = opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(1);
+    s2Size_ = static_cast<int64_t>(maxBlockNumPerBatch_) * blockSize_;
     return ge::GRAPH_SUCCESS;
 }
 

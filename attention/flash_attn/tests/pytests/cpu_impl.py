@@ -15,7 +15,7 @@ from test_utils import *
 
 
 def tsoftmax(x):
-    x_max = torch.max(x, dim=-1, keepdims=True)[0]
+    x_max = x.max(dim=-1, keepdim=True).values
     x_sub = x.sub(x_max)
     y = torch.exp(x_sub)
     x_sum = y.sum(dim=-1, keepdims=True)
@@ -43,7 +43,16 @@ def _attend(q, k, v, drop_mask, atten_mask, scale, keep_prob, need_fix_invalid):
     qk = torch.matmul(q, k.permute(0, 1, 3, 2)).mul(scale)
     if atten_mask is not None:
         qk = qk.masked_fill_(atten_mask.cpu().bool(), value=torch.tensor(-40000))
-    softmax_res, x_max, x_sum = tsoftmax(qk)
+    
+    if qk.shape[-1] == 0:
+        b, n, sq, _ = qk.shape
+        softmax_res = torch.zeros((b, n, sq, 0), dtype=qk.dtype)
+        x_max       = torch.zeros(b, n, sq, 1)  # torch.finfo(torch.float).min
+        x_sum       = torch.zeros(b, n, sq, 1)  # torch.finfo(torch.float).max
+    else:
+        softmax_res, x_max, x_sum = tsoftmax(qk)
+
+    # softmax_res, x_max, x_sum = tsoftmax(qk)
 
     if need_fix_invalid:
         softmax_res, x_max, x_sum = _fix_invalid_rows(softmax_res, x_max, x_sum)
@@ -105,7 +114,7 @@ def tforward_tnd(q, k, v, **kwargs):
     s1_total = cu_q[-1]
 
     sparse_mode = kwargs.get("sparse_mode", None)
-    pre_tokens = kwargs.get("pre_tokens", 2147483647)
+    pre_tokens  = kwargs.get("pre_tokens", 2147483647)
     next_tokens = kwargs.get("next_tokens", 2147483647)
     prefix = kwargs.get("prefix", [])
     seed = kwargs.get("seed", 0)
