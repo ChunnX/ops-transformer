@@ -16,14 +16,14 @@
 #ifndef __ALL_GATHER_MATMUL_AIV_MODE_TILING_H__
 #define __ALL_GATHER_MATMUL_AIV_MODE_TILING_H__
 
-constexpr static int32_t MAX_BLOCK_COUNT = 2;
-
 enum DequantType : int {
     DEQUANT_TYPE_UNDEFINED = -1,
     PER_CHANNEL = 0,
     PER_TOKEN = 1,
     DEQUANT_TYPE_MAX = 2,
 };
+
+constexpr static int32_t MAX_BLOCK_COUNT = 2;
 
 #pragma once
 struct AllGatherMatmulAIVModeInfo {

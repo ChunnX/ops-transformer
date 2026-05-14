@@ -16,7 +16,11 @@
 #ifndef CATLASS_GEMM_TILE_COPY_L0C_TO_GM_EXPAND_H
 #define CATLASS_GEMM_TILE_COPY_L0C_TO_GM_EXPAND_H
 
+#if __has_include("../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/copy_l0c_to_gm.hpp")
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/copy_l0c_to_gm.hpp"
+#else
 #include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/copy_l0c_to_gm.hpp"
+#endif
 
 namespace Catlass::Gemm::Tile {
 

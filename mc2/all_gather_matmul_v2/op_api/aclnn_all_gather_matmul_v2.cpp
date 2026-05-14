@@ -66,7 +66,7 @@ static bool CheckNotNull(const aclTensor* x1, const aclTensor* x2, const aclTens
 // 根据API定义，需要列出所能支持的所有dtype
 static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST = {
   op::DataType::DT_FLOAT16, op::DataType::DT_BF16, op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_FLOAT8_E5M2,
-  op::DataType::DT_HIFLOAT8
+  op::DataType::DT_HIFLOAT8, op::DataType::DT_INT8
 };
 
 static const std::initializer_list<op::DataType> BIAS_DTYPE_SUPPORT_LIST = {
@@ -412,7 +412,7 @@ static bool checkInputEmptyTensor(const aclTensor *x1, const aclTensor *x2) {
   return false;
 }
 
-aclnnStatus allGatherMatmulV2GetWorkspaceSizeCCUMode(const aclTensor* x1, const aclTensor* x2, const aclTensor* bias,
+aclnnStatus allGatherMatmulV2GetWorkspaceSizeA5Mode(const aclTensor* x1, const aclTensor* x2, const aclTensor* bias,
                                                    const aclTensor* x1Scale, const aclTensor* x2Scale,
                                                    const aclTensor* quantScale, int64_t blockSize, const char* group,
                                                    int64_t gatherIndex, int64_t commTurn, int64_t streamMode,
@@ -521,11 +521,21 @@ aclnnStatus aclnnAllGatherMatmulV2GetWorkspaceSize(const aclTensor* x1, const ac
 {
     aclnnStatus ret = ACLNN_SUCCESS;
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        ret = allGatherMatmulV2GetWorkspaceSizeCCUMode(x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, group, gatherIndex, commTurn,
+        ret = allGatherMatmulV2GetWorkspaceSizeA5Mode(x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, group, gatherIndex, commTurn,
                                                        streamMode, groupSize, commMode, output, gatherOut, amaxOut, workspaceSize, executor);
+        if (NnopbaseSetHcclServerType) {
+            if (x1->GetDataType() == op::DataType::DT_INT8) {
+                NnopbaseSetHcclServerType(*executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
+            } else {
+                NnopbaseSetHcclServerType(*executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+            }
+        }
     } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
         ret = allGatherMatmulV2GetWorkspaceSizeAIVMode(x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, group, gatherIndex, commTurn,
                                                        streamMode, groupSize, commMode, output, gatherOut, amaxOut, workspaceSize, executor);
+        if (NnopbaseSetHcclServerType) {
+            NnopbaseSetHcclServerType(*executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
+        }
     } else {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Unsupported npuArch");
         return ACLNN_ERR_PARAM_INVALID;
@@ -540,15 +550,6 @@ aclnnStatus aclnnAllGatherMatmulV2(void* workspace, uint64_t workspaceSize, aclO
     OP_LOGD("Skip the api for empty tensor, workspace size %lu.", workspaceSize);
     return ACLNN_SUCCESS;
   }
-
-  if (NnopbaseSetHcclServerType) {
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-      NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
-    } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
-      NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
-    }
-  }
-
   return aclnnInnerAllGatherMatmulV2(workspace, workspaceSize, executor, stream);
 }
 

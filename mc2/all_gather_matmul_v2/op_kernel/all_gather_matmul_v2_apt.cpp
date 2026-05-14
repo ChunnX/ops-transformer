@@ -19,16 +19,22 @@
 
 #if ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && ((ORIG_DTYPE_X1 == DT_FLOAT16) || (ORIG_DTYPE_X1 == DT_BF16)))
 #include "arch35/all_gather_matmul_fp16_bf16.h"
+using namespace AllGatherMatmulImpl;
 #endif
 #if (((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_HIFLOAT8)) ||       \
      ((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) && \
          ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2)))
 #include "arch35/all_gather_quant_bmm.h"
 #include "arch35/all_gather_quant_bmm_perblock.h"
+using namespace AllGatherMatmulImpl;
+#endif
+#if ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_INT8))
+#include "arch35/all_gather_matmul_quant_int8.h"
+using namespace AllGatherMatmulImpl;
 #endif
 
 using namespace Mc2Tiling;
-using namespace AllGatherMatmulImpl;
+using namespace AscendC;
 
 #define INVOKE_ALLGATHERMM_FP16_BF16_V2_OP_IMPL(templateClass, isTransB, ...)                                     \
     do {                                                                                                          \
@@ -73,6 +79,19 @@ using namespace AllGatherMatmulImpl;
         op.Process();                                                                                                 \
     } while (0)
 
+#define INVOKE_ALL_GATHER_INT8_QUANT_OP_IMPL(templateClass, ...)                                                       \
+    do {                                                                                                               \
+        REGISTER_TILING_DEFAULT(Mc2Tiling::AllGatherMatmulTilingDataInt8);                                             \
+        auto tiling = (__gm__ Mc2Tiling::AllGatherMatmulTilingDataInt8 *)tilingGM;                                     \
+        __gm__ void *mc2InitTiling = (__gm__ void *)(&(tiling->mc2InitTiling));                                        \
+        __gm__ void *mc2CcTiling = (__gm__ void *)(&(tiling->mc2CcTiling));                                            \
+        GET_TILING_DATA(tilingData, tilingGM);                                                                         \
+        templateClass<DTYPE_X1, DTYPE_X2, DTYPE_BIAS, DTYPE_X2_SCALE, DTYPE_Y, __VA_ARGS__> op;                        \
+        op.Init(aGM, bGM, scaleInv1, scaleInv2, biasGM, cGM, gatherOut, workspaceGM, (__gm__ uint8_t *)context,        \
+                &tilingData, mc2InitTiling, mc2CcTiling, &pipe);                                                       \
+        op.Process();                                                                                                  \
+    } while (0)
+
 template<TPL_PARAMS_COMM, TPL_QUANT_BMM_PARAMS_COMM>
 __global__ __aicore__ void all_gather_matmul_v2(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR scaleInv1,
                                                 GM_ADDR scaleInv2, GM_ADDR scale, GM_ADDR cGM,
@@ -86,12 +105,12 @@ __global__ __aicore__ void all_gather_matmul_v2(GM_ADDR aGM, GM_ADDR bGM, GM_ADD
 #if (((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_HIFLOAT8)) ||       \
      ((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) && \
          ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2)))
-        // MX
-        #if (ORIG_DTYPE_X1 != DT_HIFLOAT8)
-            if constexpr (SCALETYPE == SCALE_TYPE_IS_MX && !INPUT_IS_BF16FP16 && QUANTMMMODE == TPL_DEFAULT_MODE) {
-                INVOKE_ALL_GATHER_QUANT_BATCHMATMUL_MX_OP_IMPL(AllGatherQuantBmm, false, TRANS_B);
-            }
-        #endif
+// MX
+#if (ORIG_DTYPE_X1 != DT_HIFLOAT8)
+    if constexpr (SCALETYPE == SCALE_TYPE_IS_MX && !INPUT_IS_BF16FP16 && QUANTMMMODE == TPL_DEFAULT_MODE) {
+        INVOKE_ALL_GATHER_QUANT_BATCHMATMUL_MX_OP_IMPL(AllGatherQuantBmm, false, TRANS_B);
+    }
+#endif
     if constexpr (SCALETYPE == SCALE_TYPE_NOT_IS_MX && !INPUT_IS_BF16FP16 && QUANTMMMODE == TPL_DEFAULT_MODE) {
         INVOKE_ALL_GATHER_QUANT_BATCHMATMUL_OP_IMPL(AllGatherQuantBmm, false, TRANS_B);
     } else if constexpr (SCALETYPE == SCALE_TYPE_NOT_IS_MX && !INPUT_IS_BF16FP16 && QUANTMMMODE == TPL_PERBLOCK_MODE) {
@@ -103,5 +122,7 @@ __global__ __aicore__ void all_gather_matmul_v2(GM_ADDR aGM, GM_ADDR bGM, GM_ADD
                 OUTPUTDTYPE == OUTPUT_TYPE_IS_FP16_BF16) {    // full mesh+ no nd2nz +biasNoNeedCast
         INVOKE_ALLGATHERMM_FP16_BF16_V2_OP_IMPL(AllGatherMatmulFP16BF16, TRANS_B);
     }
+#elif ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_INT8))
+    INVOKE_ALL_GATHER_INT8_QUANT_OP_IMPL(AllGatherMatmulQuantInt8, false, false, TRANS_B);
 #endif
 }

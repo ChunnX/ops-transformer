@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file all_gather_matmul_aiv_mode.h
@@ -27,7 +27,18 @@
 #include "all_gather_matmul_aiv_mode_util.h"
 #include "all_gather_matmul_aiv_mode_padding.h"
 #include "all_gather_matmul_aiv_mode_dequant.h"
+#include "arch35/all_gather_matmul_tiling_arch35.h"
 
+#if __has_include("../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp")
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/arch.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/layout/layout.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/block_mmad.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/block_swizzle.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/dispatch_policy.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/gemm_type.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm_coord.hpp"
+#else
 #include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
 #include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/arch.hpp"
 #include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/layout/layout.hpp"
@@ -36,6 +47,7 @@
 #include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/dispatch_policy.hpp"
 #include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/gemm_type.hpp"
 #include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm_coord.hpp"
+#endif
 
 #include "gather_matmul.hpp"
 
@@ -95,7 +107,7 @@ template <TemplateAGMMClass>
 class AllGatherMatmulAIVMode
 {
     constexpr static bool quantFlag = (std::is_same<X1Type, int8_t>::value && std::is_same<X2Type, int8_t>::value) ||
-    (std::is_same<X1Type, AscendC::int4b_t>::value && std::is_same<X2Type, AscendC::int4b_t>::value);
+        (std::is_same<X1Type, AscendC::int4b_t>::value && std::is_same<X2Type, AscendC::int4b_t>::value);
     using supportX1Type = supportTypeForDataCopy<X1Type>;
     using supportX2Type = supportTypeForDataCopy<X2Type>;
     constexpr static uint32_t UB_OFFSET = Catlass::BytesToBits(97440) / Catlass::SizeOfBits<supportX1Type>::value; // 2 是 size of T
@@ -108,6 +120,10 @@ public:
     __aicore__ inline void Process();
 
 private:
+    __aicore__ inline void CrossRankSyncV1(int32_t flag_idx, int32_t flag_data);
+    __aicore__ inline void CrossRankSyncV2(int32_t flag_idx, int32_t flag_data);
+
+protected:
     __aicore__ inline void AIVInit();
     __aicore__ inline void AICInit();
     __aicore__ inline void Padding();
@@ -117,14 +133,12 @@ private:
     __aicore__ inline void MoveWithSplit(__gm__ supportX1Type* gm_src, int32_t rank_offset, int32_t len);
     __aicore__ inline void MoveToOtherRankWithSkip(
         __gm__ supportX1Type* gm_src, int32_t rank_offset, int32_t len, int32_t rank_st, int32_t skip_num, int32_t group_num,
-        int32_t rank_scope);
+                                                   int32_t rank_scope);
     __aicore__ inline void MoveResultFromPeerMemToOut(__gm__ supportX1Type* gm_src, __gm__ supportX1Type* gm_dst, int32_t actual_m);
     __aicore__ inline void MoveResultToDst(__gm__ supportX1Type* gm_src, __gm__ supportX1Type* gm_dst, int32_t len);
     __aicore__ inline void MoveResultFromSrcToDst(__gm__ supportX1Type* gm_src, __gm__ supportX1Type* gm_dst, int32_t len);
-    __aicore__ inline void CrossRankSyncV1(int32_t flag_idx, int32_t flag_data);
-    __aicore__ inline void CrossRankSyncV2(int32_t flag_idx, int32_t flag_data);
 
-private:
+protected:
     GlobalTensor<X1Type> aGMTensor_;
     GlobalTensor<X2Type> bGMTensor_;
     GlobalTensor<YType> cGMTensor_;
@@ -267,13 +281,13 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Init(
     n_align = Block512B<X1Type>::AlignUp(n);
     aligned_a = hasAAlign;
     aligned_b = hasBAlign;
-    
+
     isX2ScaleTypeInt64 = tilingData.allGatherMatmulInfo.isX2ScaleTypeInt64;
     dequantType = tilingData.allGatherMatmulInfo.dequantType;
     needAivDequant = quantFlag && (dequantType == PER_TOKEN || std::is_same<YType, bfloat16_t>::value);
     bool needPerChannelA8W8 = quantFlag && !(isX2ScaleTypeInt64 && std::is_same<YType, float16_t>::value);
     needPerChannel = std::is_same_v<X1Type, AscendC::int4b_t> || needPerChannelA8W8;
- 	needPerToken = quantFlag && dequantType == PER_TOKEN;
+    needPerToken = quantFlag && dequantType == PER_TOKEN;
 
     bool is910C = tilingData.allGatherMatmulInfo.is910C;
     if(is910C){
@@ -299,7 +313,7 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Init(
     int32_t workspaceM = accumWorkSpacePingPong ? m : MAX_BLOCK_COUNT * m0 * pValue;
     uint64_t gm_scale_workspace_st = static_cast<uint64_t>(aAlignSize) + bAlignSize
                                     + workspaceM * n * worldSize * sizeof(int32_t);
- 	gm_scale_workspace = needPerToken ? workspaceGM + gm_scale_workspace_st : 0;
+    gm_scale_workspace = needPerToken ? workspaceGM + gm_scale_workspace_st : 0;
 
     AllGatherMatmulAIVMode<TemplateAGMMFunc>::AICInit();
 
@@ -337,7 +351,7 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::CrossRankSyncV2
     if (aivIdx == 0 && blockIdx == rankId) {
         CheckBuffFlag(
             (__gm__ int32_t*)stateAddrPerRank[rankId] + FLAG_OFFSET + flag_idx, uBuf_,
-            FLAG_VALUE * worldSize * flag_data);
+                      FLAG_VALUE * worldSize * flag_data);
     }
 }
 
@@ -547,8 +561,8 @@ template <TemplateAGMMClass>
 __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::AllGatherPerTokenScale(int32_t buff_st)
 {
     if (!needPerToken) {
- 	    return;
- 	}
+        return;
+    }
 
     int32_t multi = sizeof(float32_t) / sizeof(supportX1Type);
     int32_t scale_size = m * multi;
@@ -568,7 +582,7 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::AllGatherPerTok
     if (aivIdx == 0 && blockIdx < worldSize) {
         MoveResultFromSrcToDst(
             reinterpret_cast<__gm__ supportX1Type*>(stateAddrPerRank[blockIdx]) + buff_st + scale_st,
-            scaleOut + scale_st, scale_size);
+                               scaleOut + scale_st, scale_size);
     }
     SetAndWaitAivSync(FLAG_VALUE);
     CrossRankSyncV2(FLAG_THREE_IDX, FLAG_VALUE);
@@ -602,13 +616,13 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Dequant(int32_t
     __gm__ float32_t* perTokenScale = needPerToken ? reinterpret_cast<__gm__ float32_t*>(gm_scale_workspace) : nullptr;
     __gm__ int32_t* workspace = needPerChannel ? reinterpret_cast<__gm__ int32_t*>(gm_accum) : nullptr;
     __gm__ YType* output = reinterpret_cast<__gm__ YType*>(cGM_);
-    
+
     // 当 X1Type 为 int4_t 时，只让 subblockIdx == 1 的核参与计算
     constexpr bool isInt4Type = std::is_same_v<X1Type, AscendC::int4b_t>;
     if (isInt4Type && aivIdx != 1) {
         return;
     }
-    
+
     dequantRunner.Run(DEQUANT_ARGS_CALL());
 }
 
@@ -688,8 +702,8 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::MoveResultFromP
                 gm_src_offset_k_align = gm_src_offset_k_align / 2;
             }
             CopyGmToUbuf(ub_buff_st, gm_src + gm_src_offset_k_align, actual_move_m,
-                    actual_k_move_num_in_peer_mem * Catlass::SizeOfBits<X1Type>::value / (8 * 32),
-                    (k_align - actual_k_move_num_in_peer_mem) * Catlass::SizeOfBits<X1Type>::value / (8 * 32), 0);
+                         actual_k_move_num_in_peer_mem * Catlass::SizeOfBits<X1Type>::value / (8 * 32),
+                         (k_align - actual_k_move_num_in_peer_mem) * Catlass::SizeOfBits<X1Type>::value / (8 * 32), 0);
             SetFlag<HardEvent::MTE2_MTE3>(event_id);
             WaitFlag<HardEvent::MTE2_MTE3>(event_id);
             int32_t gm_src_offset = move_idx * max_move_m * k + k_move_idx * max_move_k;
@@ -697,9 +711,9 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::MoveResultFromP
                 gm_src_offset = gm_src_offset / 2;
             }
             CopyUbufToGmAlignB16(gm_dst + gm_src_offset, ub_buff_st, actual_move_m,
-                    actual_k_move_num_in_out * Catlass::SizeOfBits<X1Type>::value / 8,
+                                 actual_k_move_num_in_out * Catlass::SizeOfBits<X1Type>::value / 8,
                     (actual_k_move_num_in_peer_mem - actual_k_move_num_in_out) * Catlass::SizeOfBits<X1Type>::value / (8 * 32),
-                    (k - actual_k_move_num_in_out) * Catlass::SizeOfBits<X1Type>::value / (8 * 32));
+                                 (k - actual_k_move_num_in_out) * Catlass::SizeOfBits<X1Type>::value / (8 * 32));
             SetFlag<HardEvent::MTE3_MTE2>(event_id);
         }
     }
@@ -808,9 +822,9 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Process()
             }
 
             if (cal_idx == 1) {
- 	            // 聚合perToken scale
- 	            AllGatherPerTokenScale(gm_a_pingpong_size);
- 	        }
+                // 聚合perToken scale
+                AllGatherPerTokenScale(gm_a_pingpong_size);
+            }
 
             // wait aic
             if (cal_idx >= MAX_BLOCK_COUNT) {
