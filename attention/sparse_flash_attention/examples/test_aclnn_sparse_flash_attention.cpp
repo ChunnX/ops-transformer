@@ -20,6 +20,7 @@
 #include "securec.h"
 #include "acl/acl.h"
 #include "aclnnop/aclnn_sparse_flash_attention.h"
+#include "aclnn/opdev/fp16_t.h"
 
 using namespace std;
 
@@ -62,7 +63,7 @@ int32_t Init(int32_t deviceId, aclrtStream* stream) {
 template <typename T>
 int32_t CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& shape, void** deviceAddr,
                     aclDataType dataType, aclTensor** tensor) {
-  auto size = GetShapeSize(shape) * sizeof(T);
+  auto size = GetShapeSize(shape) * aclDataTypeSize(dataType);
   auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
   if (!CHECK_RET(ret == ACL_SUCCESS)) {
     LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); 
@@ -108,15 +109,15 @@ struct TensorResources {
 };
 
 int32_t InitializeTensors(TensorResources& resources) {
-    std::vector<int64_t> queryShape = {1, 2, 1, 512};
-    std::vector<int64_t> keyShape = {1, 2, 1, 512};
-    std::vector<int64_t> valueShape = {1, 2, 1, 512};
-    std::vector<int64_t> sparseIndicesShape = {1, 2, 1, 2};
-    std::vector<int64_t> attentionOutShape = {1, 2, 1, 512};
-    std::vector<int64_t> softmaxMaxShape = {1, 2, 1, 16};
-    std::vector<int64_t> softmaxSumShape = {1, 2, 1, 16};
-    std::vector<int64_t> queryRopeShape = {1, 2, 1, 64};
-    std::vector<int64_t> keyRopeShape = {1, 2, 1, 64};
+    std::vector<int64_t> queryShape = {1, 2, 64, 512};
+    std::vector<int64_t> keyShape = {1, 1024, 1, 512};
+    std::vector<int64_t> valueShape = {1, 1024, 1, 512};
+    std::vector<int64_t> sparseIndicesShape = {1, 2, 1, 512};
+    std::vector<int64_t> attentionOutShape = {1, 2, 64, 512};
+    std::vector<int64_t> softmaxMaxShape = {1, 1, 2, 512};
+    std::vector<int64_t> softmaxSumShape = {1, 1, 2, 512};
+    std::vector<int64_t> queryRopeShape = {1, 2, 64, 64};
+    std::vector<int64_t> keyRopeShape = {1, 1024, 1, 64};
 
     int64_t queryShapeSize = GetShapeSize(queryShape);
     int64_t keyShapeSize = GetShapeSize(keyShape);
@@ -128,15 +129,15 @@ int32_t InitializeTensors(TensorResources& resources) {
     int64_t queryRopeShapeSize = GetShapeSize(queryRopeShape);
     int64_t keyRopeShapeSize = GetShapeSize(keyRopeShape);
 
-    std::vector<float> queryHostData(queryShapeSize, 1);
-    std::vector<float> keyHostData(keyShapeSize, 1);
-    std::vector<float> valueHostData(valueShapeSize, 1);
+    std::vector<op::fp16_t> queryHostData(queryShapeSize, 1);
+    std::vector<op::fp16_t> keyHostData(keyShapeSize, 1);
+    std::vector<op::fp16_t> valueHostData(valueShapeSize, 1);
     std::vector<int32_t> sparseIndicesHostData(sparseIndicesShapeSize, 1);
-    std::vector<float> attentionOutHostData(attentionOutShapeSize, 1);
+    std::vector<op::fp16_t> attentionOutHostData(attentionOutShapeSize, 1);
     std::vector<float> softmaxMaxHostData(softmaxMaxShapeSize, 1);
     std::vector<float> softmaxSumHostData(softmaxSumShapeSize, 1);
-    std::vector<float> queryRopeHostData(queryRopeShapeSize, 1);
-    std::vector<float> keyRopeHostData(keyRopeShapeSize, 1);
+    std::vector<op::fp16_t> queryRopeHostData(queryRopeShapeSize, 1);
+    std::vector<op::fp16_t> keyRopeHostData(keyRopeShapeSize, 1);
 
     // Create query aclTensor.
     int32_t ret = CreateAclTensor(queryHostData, queryShape, &resources.queryDeviceAddr, 
@@ -206,9 +207,9 @@ int32_t InitializeTensors(TensorResources& resources) {
 
 int32_t ExecuteSparseFlashAttention(TensorResources& resources, aclrtStream stream, 
                               void** workspaceAddr, uint64_t* workspaceSize) {
-    int64_t d = 2;
-    double scaleValue = 1 / sqrt(d);
-    int64_t sparseBlockSize = 64;
+    int64_t dCombine = 576; // dCombine = dNope + dRope
+    double scaleValue = 1 / sqrt(dCombine);
+    int64_t sparseBlockSize = 1;
     constexpr const char layerOutStr[] = "BSND";
     constexpr size_t layerOutLen = sizeof(layerOutStr);
     char layoutQuery[layerOutLen];
@@ -349,9 +350,9 @@ int32_t main()
     TensorResources resources = {};
     void* workspaceAddr = nullptr;
     uint64_t workspaceSize = 0;
-    std::vector<int64_t> attentionOutShape = {1, 2, 1, 16};
-    std::vector<int64_t> softmaxMaxShape = {1, 2, 1, 16};
-    std::vector<int64_t> softmaxSumShape = {1, 2, 1, 16}; 
+    std::vector<int64_t> attentionOutShape = {1, 2, 64, 512};
+    std::vector<int64_t> softmaxMaxShape = {1, 1, 2, 512};
+    std::vector<int64_t> softmaxSumShape = {1, 1, 2, 512}; 
     int32_t ret = ACL_SUCCESS;
 
     // 1. Initialize device and stream
