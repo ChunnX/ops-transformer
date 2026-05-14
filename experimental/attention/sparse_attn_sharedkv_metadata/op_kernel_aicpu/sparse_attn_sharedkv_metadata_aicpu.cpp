@@ -303,6 +303,8 @@ void SparseAttnSharedkvMetadataCpuKernel::CalcSplitInfo(SplitContext &splitConte
     for (uint32_t bIdx = 0; bIdx < batchSize_; bIdx++) {
         uint32_t s1Size = GetS1SeqSize(bIdx);
         uint32_t s2Size = GetS2SeqSize(bIdx);
+        querySeqSize_ = s1Size;
+        kvSeqSize_ = s2Size;
         splitInfo.s1GBaseNum[bIdx] = (s1Size * groupSize_ + (mBaseSize_ - 1U)) / mBaseSize_;
         splitInfo.s1GTailSize[bIdx] = (s1Size * groupSize_) % mBaseSize_;
         splitInfo.s2BaseNum[bIdx] = (s2Size + s2BaseSize_ - 1U) / s2BaseSize_;
@@ -369,7 +371,11 @@ int64_t SparseAttnSharedkvMetadataCpuKernel::CmpCalcCost(uint32_t basicM, uint32
     //        return static_cast<int64_t>(20U * cmpAlignBasicS2 + 80u);
     //    }
     //}
-    return static_cast<int64_t>(6U * cmpAlignBasicM + 10U * cmpAlignBasicS2 + 20U);                 // 6：M轴系数，10：S2轴系数
+    if (isSCFA && querySeqSize_ == kvSeqSize_) {
+        return static_cast<int64_t>(6U * cmpAlignBasicM + 10U * cmpAlignBasicS2 + 20U);                 // 6：M轴系数，10：S2轴系数
+    } else {
+        return static_cast<int64_t>(6U * cmpAlignBasicM + 10U * cmpAlignBasicS2);                 // 6：M轴系数，10：S2轴系数
+    }
 }
 
 void SparseAttnSharedkvMetadataCpuKernel::CalcCostTable(uint32_t s1NormalSize,
@@ -859,7 +865,7 @@ void SparseAttnSharedkvMetadataCpuKernel::AssignBlocksToCore(const SplitContext 
     } else {
         assignContext.coreCache.costLimit = avgCost;
     }
-    if (isSCFA && assignContext.curCoreIdx == 0) {
+    if (assignContext.curCoreIdx == 0 && isSCFA && querySeqSize_ == kvSeqSize_) {
         assignContext.coreCache.costLimit = static_cast<int64_t>(assignContext.coreCache.costLimit * 1.29);
     }
     // 1、按整batch分配
