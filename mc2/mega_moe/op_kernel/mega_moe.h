@@ -803,15 +803,18 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         }
 
         // Wave loop: 本核所在组负责 waveIdx ∈ {coreGroupId_, coreGroupId_ + wavesParallel_, ...}
-        // 同一个核连续做相邻 wave 时，上一 wave AIV 的 combine MTE3 (UB→远端 GM) 还没结束，
-        // AIC 已经开始下一 wave GMM1 mmad 的 fixpipe 写 UB[0..128KB]，会与 AIV 的 ubBuffer (UB[0..64KB])
-        // 直接冲突。旧 wave-serial 靠 startBlockIdx 轮转，让同核在相邻 wave 中跳过一次 GMM1，
-        // 自然把这段错开；wave-parallel 同核连续做相邻 wave，这个 race 暴露出来，约 4-5% 行错乱。
-        // 这里在 wave 末做一次 cube↔vec 屏障：
-        //   AIV combine MTE3 完成后 NotifyCube → AIC 进入下一 wave GMM1 前 WaitForVector。
-        // 信号是 per-pair 的，所以所有 pair 共用同一个 flag value 不会互相干扰；
-        // 这里 value=1，落到 flag id (AIV_SYNC_AIC_FLAG+1)，与 GMM1 epilogue 用的 AIV_SYNC_AIC_FLAG
-        // 错开一个独立通道，避免与 GMM1 内部的 NotifyCube/WaitForVector 计数混在一起。
+        // 子块分工（每个 cube + 2 个 vec subBlock 一组）：
+        //   - AIC      ：GMM1 mmad，GMM2 mmad
+        //   - subBlock 0：GMM1 epilogue (swiglu+quant)
+        //   - subBlock 1：dispatch（每 expert 一次，wave loop 之前）+ GMM2 combine（每 wave）
+        // 这样 GMM1 epilogue 和 GMM2 combine 跑在不同 vec subBlock，可以并行重叠。
+        //
+        // 同一核连续做相邻 wave 时，上一 wave subBlock 1 的 combine MTE3 (UB→远端 GM) 还没结束
+        // 时，AIC 已经开始下一 wave GMM1 mmad 的 fixpipe 写 UB，会与 combine 用的 UB 冲突。
+        // 在 wave 末做一次 cube↔vec 屏障：subBlock 1 combine MTE3 完成后 NotifyCube → AIC 进入
+        // 下一 wave GMM1 前 WaitForVector。flag value=1 落到 (AIV_SYNC_AIC_FLAG+1)，与 GMM1
+        // epilogue 用的 flag 6 错开一个独立通道，互不干扰；信号是 per-pair 的，不同 pair 之间
+        // 天然隔离，所以 group 之间也无需再分 flag。
         uint64_t waveStart = coreActive_ ? static_cast<uint64_t>(coreGroupId_) : waveCnt;
         constexpr uint16_t WAVE_BARRIER_FLAG = 1U;
         for (uint64_t waveIdx = waveStart; waveIdx < waveCnt; waveIdx += wavesParallel_) {
@@ -845,16 +848,27 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             groupFlagListGm_.SetGlobalBuffer(waveGmmInfo.groupFlagList);
 
             // GMM2 + Combine for this wave（GMM2 不用 cube/vec 信号，靠 rowReadyFlags 每核计数器）
-            if (subBlockIdx_ == 0) {
+            // AIC 始终参与（mmad），combine 这次切到 AIV subBlock 1：
+            //   - subBlock 0 专心做 GMM1 epilogue (swiglu+quant)
+            //   - subBlock 1 在 dispatch 之外还接管 GMM2 combine
+            // AIC 与 AIV 的配对仍按 blockIdx 一致（AIV 的 GetTaskRation()=2，所以 AIV index 1
+            // 与 AIC 0 同 pair，AIV index 3 与 AIC 1 同 pair…），rowReadyFlags 用 blockIdx 索引也对得上。
+            if constexpr(g_coreType == AscendC::AIC) {
+                MegaMoeImpl::GroupMatmul2<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
+                    params_, problemShape_, waveGmmInfo, coreInGroup_, coresPerWave_, vecSetSyncCom_, expertIdx,
+                    gmm2PingPongIdx_, rankId_, combineUbTensor_, expertIdx,
+                    static_cast<uint64_t>(waveIdx) * static_cast<uint64_t>(L1_TILE_M));
+            } else if (subBlockIdx_ == 1) {
                 MegaMoeImpl::GroupMatmul2<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
                     params_, problemShape_, waveGmmInfo, coreInGroup_, coresPerWave_, vecSetSyncCom_, expertIdx,
                     gmm2PingPongIdx_, rankId_, combineUbTensor_, expertIdx,
                     static_cast<uint64_t>(waveIdx) * static_cast<uint64_t>(L1_TILE_M));
             }
 
-            // wave 末屏障：AIV 等本轮 combine 的 MTE3 真正写完，再通知 AIC 下一 wave 可以写 UB
+            // wave 末屏障：AIV combine 现在在 subBlock 1，由 subBlock 1 等本轮 MTE3 写完
+            // 再 NotifyCube；同 pair 的 AIC 进入下一 wave GMM1 前 WaitForVector 拿到信号
             if constexpr(g_coreType == AscendC::AIV) {
-                if (subBlockIdx_ == 0) {
+                if (subBlockIdx_ == 1) {
                     SyncFunc<AscendC::HardEvent::MTE3_V>();
                     NotifyCube(WAVE_BARRIER_FLAG);
                 }
