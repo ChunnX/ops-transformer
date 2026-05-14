@@ -797,7 +797,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     }
     tpipe_->InitBuffer(dpuCommInitBufBuf_, SIZE_ALIGN_256);
     dpuCommInitBufTensor_ = dpuCommInitBufBuf_.Get<uint8_t>();
-    hcommHandle_.Init(reinterpret_cast<__ub__ uint8_t *>(dpuCommInitBufTensor_.GetPhyAddr()),SIZE_ALIGN_256); // todo:需要确认
+    hcommHandle_.Init(reinterpret_cast<uint8_t *>(dpuCommInitBufTensor_.GetPhyAddr()),SIZE_ALIGN_256); // todo:需要确认
 }
 
 template <TemplateDispatchKFCTypeClass>
