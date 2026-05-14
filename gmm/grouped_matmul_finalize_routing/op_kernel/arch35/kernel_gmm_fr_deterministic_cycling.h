@@ -357,10 +357,8 @@ public:
             epilogueDequantOp_.Init(params.epilogueParams);
         }
         TQueBind<TPosition::VECIN, TPosition::VECOUT, 1> aggQueBind;
-        if ASCEND_IS_AIV {
-            TPipe aggPipe;
-            aggPipe.InitBuffer(aggQueBind, 2, 12 * 1024);
-        }
+        TPipe aggPipe;
+        aggPipe.InitBuffer(aggQueBind, 2, 12 * 1024);
         uint32_t groupNum = params.gmmParams.groupNum;
         if constexpr (formatB == CubeFormat::NZ) {
             if constexpr (transB) {
@@ -379,25 +377,23 @@ public:
             isVecSetSyncCom_ = false;
             epilogueDequantOp_.ResetWorkspaceOffset();
             SyncAll();
-            if ASCEND_IS_AIV {
-                uint64_t curM = static_cast<uint64_t>(Get<MNK_M>(problemShape_));
-                GlobalTensor<float> deterBufferGm;
-                deterBufferGm.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(params.epilogueParams.yGMAddr));
-                GlobalTensor<float> yGm;
-                yGm.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(params.cyclingParams.yGmAddr));
-                GlobalTensor<typename BlockEpilogueDequantFinalizeRouting::DataTypeRowIndex> rowIndexGm;
-                rowIndexGm.SetGlobalBuffer(reinterpret_cast<__gm__ typename BlockEpilogueDequantFinalizeRouting::DataTypeRowIndex*>(params.cyclingParams.rowIndexAddr));
+            uint64_t curM = static_cast<uint64_t>(Get<MNK_M>(problemShape_));
+            GlobalTensor<float> deterBufferGm;
+            deterBufferGm.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(params.epilogueParams.yGMAddr));
+            GlobalTensor<float> yGm;
+            yGm.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(params.cyclingParams.yGmAddr));
+            GlobalTensor<typename BlockEpilogueDequantFinalizeRouting::DataTypeRowIndex> rowIndexGm;
+            rowIndexGm.SetGlobalBuffer(reinterpret_cast<__gm__ typename BlockEpilogueDequantFinalizeRouting::DataTypeRowIndex*>(params.cyclingParams.rowIndexAddr));
 
-                GMMFRDeterministic::SyncConfig syncConfig{};
-                syncConfig.curM = curM;
-                syncConfig.lowBoundM = curM;
-                syncConfig.windowSize = curM;
-                syncConfig.baseN = params.cyclingParams.baseN;
+            GMMFRDeterministic::SyncConfig syncConfig{};
+            syncConfig.curM = curM;
+            syncConfig.lowBoundM = curM;
+            syncConfig.windowSize = curM;
+            syncConfig.baseN = params.cyclingParams.baseN;
 
-                GMMFRDeterministic::FRDeterministicA5<float, typename BlockEpilogueDequantFinalizeRouting::DataTypeRowIndex>(
-                    syncConfig, deterBufferGm, yGm, rowIndexGm, aggQueBind,
-                    params.cyclingParams.coreNum, params.cyclingParams.n, globalRowOffset);
-            }
+            GMMFRDeterministic::FRDeterministicA5<float, typename BlockEpilogueDequantFinalizeRouting::DataTypeRowIndex>(
+                syncConfig, deterBufferGm, yGm, rowIndexGm, aggQueBind,
+                params.cyclingParams.coreNum, params.cyclingParams.n, globalRowOffset);
             globalRowOffset += static_cast<uint64_t>(Get<MNK_M>(problemShape_));
             SyncAll();
         }
