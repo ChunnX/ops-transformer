@@ -71,13 +71,8 @@ ge::graphStatus CommonChecker::CheckSingleParaLayout(const FaTilingInfo &faInfo)
 
 ge::graphStatus CommonChecker::CheckSingleParaDeterministic(const FaTilingInfo &faInfo)
 {
-    const int64_t *deterministic = faInfo.opParamInfo.deterministic;
-    if (deterministic == nullptr) {
-        return ge::GRAPH_SUCCESS;
-    }
-    const std::vector<int64_t> validList = {0, 1};
-    OP_CHECK_IF(ge::GRAPH_SUCCESS != CheckValueSupport(*deterministic, validList),
-                OP_LOGE(faInfo.opName, "deterministic only supports 0 or 1, but got %ld", *deterministic),
+    OP_CHECK_IF(faInfo.deterministicFlag,
+                OP_LOGE(faInfo.opName, "deterministic currently only supports 0, but got non-zero"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -114,10 +109,10 @@ ge::graphStatus CommonChecker::CheckParaExistence(const FaTilingInfo &faInfo)
 
 ge::graphStatus CommonChecker::CheckNonQuantDataType(const FaTilingInfo &faInfo)
 {
-    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(faInfo.opParamInfo.query.desc, QUERY_NAME) ||
-        ge::GRAPH_SUCCESS != CheckDtypeSupport(faInfo.opParamInfo.key.desc, KEY_NAME) ||
-        ge::GRAPH_SUCCESS != CheckDtypeSupport(faInfo.opParamInfo.value.desc, VALUE_NAME) ||
-        ge::GRAPH_SUCCESS != CheckDtypeSupport(faInfo.opParamInfo.attnOut.desc, ATTN_OUT_NAME) ||
+    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(faInfo.inputQType, QUERY_NAME) ||
+        ge::GRAPH_SUCCESS != CheckDtypeSupport(faInfo.inputKvType, KEY_NAME) ||
+        ge::GRAPH_SUCCESS != CheckDtypeSupport(faInfo.inputKvType, VALUE_NAME) ||
+        ge::GRAPH_SUCCESS != CheckDtypeSupport(faInfo.outputType, ATTN_OUT_NAME) ||
         ge::GRAPH_SUCCESS != CheckFormatSupport(faInfo.opParamInfo.query.desc, QUERY_NAME) ||
         ge::GRAPH_SUCCESS != CheckFormatSupport(faInfo.opParamInfo.key.desc, KEY_NAME) ||
         ge::GRAPH_SUCCESS != CheckFormatSupport(faInfo.opParamInfo.value.desc, VALUE_NAME) ||
@@ -129,38 +124,16 @@ ge::graphStatus CommonChecker::CheckNonQuantDataType(const FaTilingInfo &faInfo)
 
 ge::graphStatus CommonChecker::CheckDtypeConsistency(const FaTilingInfo &faInfo)
 {
-    const gert::CompileTimeTensorDesc *queryDesc = faInfo.opParamInfo.query.desc;
-    const gert::CompileTimeTensorDesc *keyDesc = faInfo.opParamInfo.key.desc;
-    const gert::CompileTimeTensorDesc *valueDesc = faInfo.opParamInfo.value.desc;
-    const gert::CompileTimeTensorDesc *attnOutDesc = faInfo.opParamInfo.attnOut.desc;
-
-    ge::DataType queryDtype = queryDesc->GetDataType();
-
-    if (keyDesc != nullptr) {
-        OP_CHECK_IF(keyDesc->GetDataType() != queryDtype,
-                    OPS_REPORT_VECTOR_INNER_ERR(faInfo.opName,
-                                                "key dtype(%s) should be consistent with query dtype(%s).",
-                                                DataTypeToSerialString(keyDesc->GetDataType()).c_str(),
-                                                DataTypeToSerialString(queryDtype).c_str()),
-                    return ge::GRAPH_FAILED);
+    if (faInfo.inputKvType != faInfo.inputQType) {
+        OP_LOGE(faInfo.opName, "key dtype(%s) should be consistent with query dtype(%s).",
+                DataTypeToSerialString(faInfo.inputKvType).c_str(), DataTypeToSerialString(faInfo.inputQType).c_str());
+        return ge::GRAPH_FAILED;
     }
 
-    if (valueDesc != nullptr) {
-        OP_CHECK_IF(valueDesc->GetDataType() != queryDtype,
-                    OPS_REPORT_VECTOR_INNER_ERR(faInfo.opName,
-                                                "value dtype(%s) should be consistent with query dtype(%s).",
-                                                DataTypeToSerialString(valueDesc->GetDataType()).c_str(),
-                                                DataTypeToSerialString(queryDtype).c_str()),
-                    return ge::GRAPH_FAILED);
-    }
-
-    if (attnOutDesc != nullptr) {
-        OP_CHECK_IF(attnOutDesc->GetDataType() != queryDtype,
-                    OPS_REPORT_VECTOR_INNER_ERR(faInfo.opName,
-                                                "attentionOut dtype(%s) should be consistent with query dtype(%s).",
-                                                DataTypeToSerialString(attnOutDesc->GetDataType()).c_str(),
-                                                DataTypeToSerialString(queryDtype).c_str()),
-                    return ge::GRAPH_FAILED);
+    if (faInfo.outputType != faInfo.inputQType) {
+        OP_LOGE(faInfo.opName, "attentionOut dtype(%s) should be consistent with query dtype(%s).",
+                DataTypeToSerialString(faInfo.outputType).c_str(), DataTypeToSerialString(faInfo.inputQType).c_str());
+        return ge::GRAPH_FAILED;
     }
 
     return ge::GRAPH_SUCCESS;
@@ -320,7 +293,7 @@ ge::graphStatus CommonChecker::CheckKVShapeForContinuous(const FaTilingInfo &faI
 
 ge::graphStatus CommonChecker::CheckKVShapeForPageAttention(const FaTilingInfo &faInfo) const
 {
-    ge::DataType kvDtype = faInfo.opParamInfo.key.desc->GetDataType();
+    ge::DataType kvDtype = faInfo.inputKvType;
     uint32_t kvBlockElemNum = 32 / FABaseChecker::GetTypeSize(kvDtype);
 
     if (faInfo.blockSize % kvBlockElemNum != 0) {
