@@ -1000,15 +1000,9 @@ ge::graphStatus CheckKVNzShape(const gert::TilingContext *context)
     auto attrs = context->GetAttrs();
     int32_t blockSize = static_cast<int32_t>(*(attrs->GetAttrPointer<int64_t>(ATTR_BLOCK_SIZE_INDEX)));
     auto blockTable = context->GetOptionalInputShape(BLOCK_TABLE_INDEX);
-    uint32_t numBlocks = blockTable->GetStorageShape().GetDim(DIM_0);
     auto tempK = context->GetInputShape(KEY_INDEX);
     auto tempV = context->GetInputShape(VALUE_INDEX);
 
-    OP_CHECK_IF((tempK->GetStorageShape().GetDim(DIM_0) != numBlocks) ||
-                    (tempV->GetStorageShape().GetDim(DIM_0) != numBlocks),
-                        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-                            "The first dimension of kv should to be :%ld.", numBlocks),
-                                return ge::GRAPH_FAILED);
     OP_CHECK_IF((tempK->GetStorageShape().GetDim(DIM_4) != 16) || (tempV->GetStorageShape().GetDim(DIM_4) != 16),
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "The last dimension of kv should to be 16."),
             return ge::GRAPH_FAILED);
