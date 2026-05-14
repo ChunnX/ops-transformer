@@ -27,7 +27,7 @@ using namespace AscendC;
 
 template<uint8_t ArchTag>
 __global__ __aicore__ void bandwidth_test(
-    GM_ADDR context, GM_ADDR x, GM_ADDR expertId, GM_ADDR y, GM_ADDR receiveCnt,
+    GM_ADDR context, GM_ADDR x, GM_ADDR dstRankId, GM_ADDR y, GM_ADDR receiveCnt,
     GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(BandwidthTestTilingData);
@@ -38,7 +38,7 @@ __global__ __aicore__ void bandwidth_test(
     if constexpr (ArchTag == TILINGKEY_TPL_A5) {
         GET_TILING_DATA_WITH_STRUCT(BandwidthTestTilingData, tilingData, tilingGM);
         BandwidthTest<DTYPE_X, DTYPE_Y> op;
-        op.Init(context, x, expertId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
+        op.Init(context, x, dstRankId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
         op.Process();
     }
 }
