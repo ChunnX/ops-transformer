@@ -377,6 +377,7 @@ uint32_t MlaPrologTiling::CalcSingleCoreN(uint32_t n, uint32_t coreNum, uint32_t
 // mm1.baseK = 256
 ge::graphStatus MlaPrologTiling::FillMatmul1Tiling()
 {
+    auto dataType = context_->weightDq.desc->GetDataType();
     if (scenarioInfo_.splitMFlag_ == 1U) {
         singlecoreHeadSizeCq_ = baseShapeInfo_.hcqSize;
         mm1BlockNum_ = aicNum_;
@@ -386,6 +387,19 @@ ge::graphStatus MlaPrologTiling::FillMatmul1Tiling()
             CalcSingleCoreN(baseShapeInfo_.hcqSize, aicNum_, BLOCK_SIZE / DTYPE_TO_SIZE.at(dataType));
         singlecoreHeadSizeCq_ = std::max(singlecoreHeadSizeCq_, 64U); // 64：最大使用24核
         mm1BlockNum_ = CeilDiv(baseShapeInfo_.hcqSize, singlecoreHeadSizeCq_);
+
+        singlecoreHeadSizeCq_ =
+            CalcSingleCoreN(baseShapeInfo_.hcqSize, aicNum_, BLOCK_SIZE / DTYPE_TO_SIZE.at(dataType));
+        singlecoreHeadSizeCq_ = std::max(singlecoreHeadSizeCq_, 64U); // 64：最大使用24核
+        mm1BlockNum_ = CeilDiv(baseShapeInfo_.hcqSize, singlecoreHeadSizeCq_);
+        if (GetCurNpuArch() == NpuArch::DAV_3510 && aicNum_ >= 24 && !enableGroupComputeOpt_ &&
+            aivNum_ == 2 * aicNum_ && baseShapeInfo_.dSize == 128 && baseShapeInfo_.hcqSize == 1536) {
+            mm1KnNGroupSize_ = 8;
+            mm1KnKGroupSize_ = aicNum_ / mm1KnNGroupSize_;
+        } else {
+            mm1KnNGroupSize_ = mm1BlockNum_;
+            mm1KnKGroupSize_ = 1;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -404,15 +418,25 @@ ge::graphStatus MlaPrologTiling::FillMatmul2Tiling()
     if (scenarioInfo_.splitMFlag_ == 1U) {
         singlecoreHeadSizeCkvKr_ = baseShapeInfo_.hckvSize + baseShapeInfo_.drSize;
         mm2BlockNum_ = aicNum_;
-    } else if (aicNum_ >= 9U) { // 9是经验值
-        uint32_t baseN = 64U;
-        mm2BlockNum_ = (baseShapeInfo_.hckvSize + baseShapeInfo_.drSize) / baseN;
-        singlecoreHeadSizeCkvKr_ = baseN;
     } else {
-        auto dataType = context_->weightDkvKr.desc->GetDataType();
-        singlecoreHeadSizeCkvKr_ = CalcSingleCoreN(baseShapeInfo_.hckvSize + baseShapeInfo_.drSize, aicNum_,
-                                                   BLOCK_SIZE / DTYPE_TO_SIZE.at(dataType));
-        mm2BlockNum_ = CeilDiv(baseShapeInfo_.hckvSize + baseShapeInfo_.drSize, singlecoreHeadSizeCkvKr_);
+        if (aicNum_ >= 9U) { // 9是经验值
+            uint32_t baseN = 64U;
+            mm2BlockNum_ = (baseShapeInfo_.hckvSize + baseShapeInfo_.drSize) / baseN;
+            singlecoreHeadSizeCkvKr_ = baseN;
+        } else {
+            auto dataType = context_->weightDkvKr.desc->GetDataType();
+            singlecoreHeadSizeCkvKr_ = CalcSingleCoreN(baseShapeInfo_.hckvSize + baseShapeInfo_.drSize, aicNum_,
+                                                       BLOCK_SIZE / DTYPE_TO_SIZE.at(dataType));
+            mm2BlockNum_ = CeilDiv(baseShapeInfo_.hckvSize + baseShapeInfo_.drSize, singlecoreHeadSizeCkvKr_);
+        }
+        if (GetCurNpuArch() == NpuArch::DAV_3510 && aicNum_ >= 24 && !enableGroupComputeOpt_ &&
+            aivNum_ == 2 * aicNum_ && baseShapeInfo_.dSize == 128 && baseShapeInfo_.hcqSize == 1536) {
+            mm2KnNGroupSize_ = 3;
+            mm2KnKGroupSize_ = aicNum_ / mm2KnNGroupSize_;
+        } else {
+            mm2KnNGroupSize_ = mm2BlockNum_;
+            mm2KnKGroupSize_ = 1;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -566,6 +590,12 @@ ge::graphStatus MlaPrologTiling::FillTiling()
         baseParams_->isKcScaleEnable = 0U;
     }
 
+    // Split-KN parameters for Ascend 950
+    baseParams_->mm1KnNGroupSize = mm1KnNGroupSize_;
+    baseParams_->mm1KnKGroupSize = mm1KnKGroupSize_;
+    baseParams_->mm2KnNGroupSize = mm2KnNGroupSize_;
+    baseParams_->mm2KnKGroupSize = mm2KnKGroupSize_;
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -619,6 +649,18 @@ ge::graphStatus MlaPrologTiling::CalcWorkSpace()
 
     if (enableGroupComputeOpt_ || enableDequantOpt_) {
         workspaceSize_ += static_cast<size_t>(stepBatchSize_) * dequantScaleMult * static_cast<size_t>(BLOCK_SIZE);
+    }
+    // Split-KN workspace: partial sum buffers for Ascend 950
+    if (GetCurNpuArch() == NpuArch::DAV_3510 && baseParams_->mm1KnKGroupSize > 0) {
+        // MM1 Cq partials: k_groups × stepBS × Hcq × sizeof(float)
+        workspaceSize_ += static_cast<uint64_t>(baseParams_->mm1KnKGroupSize)
+                        * stepBatchSize_ * baseShapeInfo_.hcqSize * sizeof(float);
+    }
+    if (GetCurNpuArch() == NpuArch::DAV_3510 && baseParams_->mm2KnKGroupSize > 0) {
+        // MM2 CkvKr partials: k_groups × stepBS × (Hckv+Dr) × sizeof(float)
+        workspaceSize_ += static_cast<uint64_t>(baseParams_->mm2KnKGroupSize)
+                        * stepBatchSize_
+                        * (baseShapeInfo_.hckvSize + baseShapeInfo_.drSize) * sizeof(float);
     }
     if (context_->workSpaces) {
         context_->workSpaces[0] = workspaceSize_;

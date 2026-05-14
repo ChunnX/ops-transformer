@@ -41,6 +41,13 @@ __aicore__ inline T Align(T num, T rnd)
     return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd) * (rnd)));
 }
 
+template <HardEvent EVENT_TYPE>
+__aicore__ inline void SetWitFlag(event_t eventId)
+{
+    SetFlag<EVENT_TYPE>(eventId);
+    WaitFlag<EVENT_TYPE>(eventId);
+}
+
 enum class CACHE_MODE : std::uint8_t {
     ND = static_cast<std::uint8_t>(0), // BSND or TND
     PA_BSND = static_cast<std::uint8_t>(1),
@@ -105,7 +112,11 @@ constexpr uint32_t REPEAT_STRIDE_UP_BOUND = 256;  // repeat stride 不能超过2
 constexpr uint32_t FP32_BLOCK_ELEMENT_NUM = ALIGN_BLOCK_SIZE / sizeof(float);
 constexpr uint32_t FP16_BLOCK_ELEMENT_NUM = ALIGN_BLOCK_SIZE / sizeof(half);
 constexpr uint32_t FP32_REPEAT_ELEMENT_NUM = REPEAT_BLOCK_BYTE / sizeof(float);
-constexpr uint32_t MAX_UB_SIZE = 192 * 1024; // 最大的UB大小
+#if __CCE_AICORE__ == 310
+constexpr uint32_t MAX_UB_SIZE = 248 * 1024; // A5最大的UB大小(需要预留8KB)
+#else
+constexpr uint32_t MAX_UB_SIZE = 192 * 1024; // A3最大的UB大小
+#endif
 constexpr uint32_t DIM_HEAD_SIZE_QCQR = 192;  // 算力分组方案D + Dr = 192
 constexpr uint32_t QC_CORE_NUM = 8; // 算力分组方案QC占用8核
 constexpr uint32_t QR_CORE_NUM = 4; // 算力分组方案QR占用4核
@@ -138,12 +149,32 @@ constexpr int FINISH_VEC_ALL = 0x7;
 constexpr int FINISH_MM_QCQR_SPLIT_N = 0X6;
 constexpr int FINISH_VEC_DEQUANT_QC_SPLIT_N = 0X7;
 constexpr int FINISH_MM_QN_SPLIT_N = 0X8;
+constexpr int FINISH_VEC_QR = 0X5;
+constexpr int FINISH_VEC_QN = 0X6;
+
+// Split-KN sync flags (Ascend 950 only)
+#if __CCE_AICORE__ == 310
+constexpr int FINISH_MM_CQ_KN = 0x3;
+constexpr int FINISH_MM_CKVKR_KN = 0x4;
+#endif
 
 #ifdef ENABLE_DUMP_DATA
 #define DO_DUMP_DATA(srcTensor, id, len) AscendC::DumpTensor(srcTensor, id, len)
 #else
 #define DO_DUMP_DATA(srcTensor, id, len)
 #endif
+
+constexpr uint8_t UNIT_FLAG_DISABLE = 0;  // 0: disable: 不配置unitFlag
+constexpr uint8_t UNIT_FLAG_CHECK = 0b10; // 2: enable: 将mmadParams.unitFlag设置为 0b10
+constexpr uint8_t UNIT_FLAG_SET = 0b11;   // 3: enable: 在k的最后一轮循环，会将mmadParams.unitFlag设置为 0b11
+constexpr uint8_t SINGL_TARGET_MODE = 0;  // 
+constexpr uint8_t DUAL_TARGET_MODE_SPLIT_M = 0b01;
+constexpr uint8_t DUAL_TARGET_MODE_SPLIT_N = 0b10;
+
+constexpr FixpipeConfig MLA_PROLOG_CFG_ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR, true}; // ROW_MAJOR: 使能NZ2ND，输出数据格式为ND格式; true: 用于用户指定目的地址的位置是否是UB
+constexpr FixpipeConfig MLA_PROLOG_CFG_ROW_MAJOR_GM = {CO2Layout::ROW_MAJOR, false}; // ROW_MAJOR: 使能NZ2ND，输出数据格式为ND格式; true: 用于用户指定目的地址的位置是否是UB
+constexpr FixpipeConfig MLA_PROLOG_CFG_NZ_UB = {CO2Layout::NZ, true}; // 不使能NZ2ND，输出数据格式为NZ格式; true: 用于用户指定目的地址的位置是UB
+constexpr FixpipeConfig MLA_PROLOG_CFG_NZ_L1 = {CO2Layout::NZ, false}; // 不使能NZ2ND，输出数据格式为NZ格式; false: 用于用户指定目的地址的位置不是UB
 
 class NoneType {};
 
@@ -186,7 +217,12 @@ constexpr uint32_t L1_A_SIZE = 128 * 1024; // 512 / 4
 constexpr uint32_t L1_B_SIZE = 128 * 1024; // 512 / 4
 constexpr uint32_t L0A_PP_SIZE = 32 * 1024;
 constexpr uint32_t L0B_PP_SIZE = 32 * 1024;
+#if __CCE_AICORE__ == 310
+constexpr uint32_t L0C_PP_SIZE = 128 * 1024;
+#else
 constexpr uint32_t L0C_PP_SIZE = 64 * 1024;
+#endif
+
 
 
 /*
@@ -260,6 +296,8 @@ struct MLAPType {
     using dequantScaleQNopeType = float;      // dequantScaleQNope的类型
     using dequantScaleQNormType = float;      // dequantScaleQNorm的类型
     using dequantScaleType = float;
+    using mmCqAccumType = typename std::conditional<std::is_same<X_T, int8_t>::value, int32_t, float>::type;
+    using mmCkvKrAccumType = typename std::conditional<std::is_same<X_T, int8_t>::value, int32_t, float>::type;
 
     static constexpr CACHE_MODE cacheMode = C_M;
     static constexpr bool enableDequantOpt = ENABLE_DEQUANT_OPT;
@@ -293,6 +331,8 @@ struct MLAPType<FP8E4M3, FP8E4M3, C_T, D_S, C_M, ENABLE_DEQUANT_OPT,
     using kvCacheType = C_T;           // kvcache的类型
     using krCacheType = bfloat16_t;        // krcache的类型
     using dequantScaleQNopeType = float;      // dequantScaleQNope的类型
+    using mmCqAccumType = float;
+    using mmCkvKrAccumType = float;
     using dequantScaleQNormType = D_S;      // dequantScaleQNormType的类型
     using dequantScaleType = D_S;
 
@@ -327,6 +367,8 @@ struct MLAPType<HIF8, HIF8, C_T, D_S, C_M, ENABLE_DEQUANT_OPT,
     using kvCacheType = C_T;           // kvcache的类型
     using krCacheType = bfloat16_t;        // krcache的类型
     using dequantScaleQNopeType = float;      // dequantScaleQNope的类型
+    using mmCqAccumType = float;
+    using mmCkvKrAccumType = float;
     using dequantScaleQNormType = float;      // dequantScaleQNormType的类型
     using dequantScaleType = float;
 
@@ -353,9 +395,11 @@ struct MMParams {
   uint32_t baseN;
   uint32_t baseK;
   uint32_t stepK;
+  uint32_t stepKMax;
   uint32_t needSetOrgShape;
   uint32_t kL1StepSize;
   uint32_t kScale;
+  uint64_t kStart;
 };
 
 struct MMBufParams {
@@ -492,5 +536,6 @@ __aicore__ inline void WaitAllCore(uint16_t flagId) {
   CrossCoreSetFlag<modeId, pipe>(flagId);
   CrossCoreWaitFlag(flagId);
 }
+
 }
 #endif

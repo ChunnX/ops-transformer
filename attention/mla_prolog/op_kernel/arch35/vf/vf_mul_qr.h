@@ -16,20 +16,25 @@
  #ifndef VF_MUL_QR_H
  #define VF_MUL_QR_H
 
+#include "vf_comm.h"
+
 namespace MlaProlog{
-template <typename T>
-__simd_vf__ void MulQrVFImpl(__ubuf__ T * inputBuf, __ubuf__ T * outputBuf, __ubuf__ T * dequantScaleBrcbBuf, 
+template <typename O, typename T>
+__simd_vf__ void MulQrVFImpl(__ubuf__ O * outputBuf, __ubuf__ T * inputBuf, __ubuf__ T * dequantScaleBrcbBuf, 
                               const uint16_t floatRepSize, uint16_t repeatTimes, float quantScaleCkvRope, 
                               uint64_t computeBlockAlign)
 {
     MicroAPI::MaskReg pregAll = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::ALL>();
+    MicroAPI::MaskReg pregCastAll = MicroAPI::CreateMask<O, MicroAPI::MaskPattern::ALL>();
+    
+    MicroAPI::RegTensor<T> vregSrc;
+    MicroAPI::RegTensor<T> vregQuantScale;
+    MicroAPI::RegTensor<T> vregDequantScaleVrcb;
+    MicroAPI::RegTensor<T> vregMulScale;
+    MicroAPI::RegTensor<T> vregRes;
+    MicroAPI::RegTensor<O> vregResCast;
     
     for(uint16_t i = 0; i < repeatTimes; i++) {
-        MicroAPI::RegTensor<T> vregSrc;
-        MicroAPI::RegTensor<T> vregQuantScale;
-        MicroAPI::RegTensor<T> vregDequantScaleVrcb;
-        MicroAPI::RegTensor<T> vregMulScale;
-        MicroAPI::RegTensor<T> vregRes;
         uint16_t loopOffset = i * floatRepSize; // 计算数据偏移
         uint16_t dequantLoopOffset = i * computeBlockAlign; // 动态量化参数偏移
 
@@ -42,7 +47,12 @@ __simd_vf__ void MulQrVFImpl(__ubuf__ T * inputBuf, __ubuf__ T * outputBuf, __ub
 
         MicroAPI::Mul<T, MicroAPI::MaskMergeMode::ZEROING>(vregRes, vregSrc, vregMulScale, pregAll);
 
-        MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_NORM>(outputBuf + loopOffset, vregRes, pregAll);
+        if constexpr (std::is_same<T, O>::value) {
+            MicroAPI::StoreAlign<O, MicroAPI::StoreDist::DIST_NORM>(outputBuf + loopOffset, vregRes, pregAll);
+        } else {
+            MicroAPI::Cast<O, T, castTraitB322B16>(vregResCast, vregRes, pregCastAll);
+            MicroAPI::DataCopy<O, MicroAPI::StoreDist::DIST_PACK_B32>(outputBuf + loopOffset, vregResCast, pregCastAll);
+        }
     }
 }
 
@@ -55,16 +65,16 @@ __simd_vf__ void MulQrVFImpl(__ubuf__ T * inputBuf, __ubuf__ T * outputBuf, __ub
  * @param computeSizeRope 输入参数的大小 subRow * colRope
  * @param computeBlockAlign 输入动态量化参数的单个数据块存放多少个动态量化参数
  */
-template <typename T>
-__aicore__ inline void MulQrVF(const LocalTensor<T> &outputLocal, const LocalTensor<T> &inputLocal, const LocalTensor<T> &dequantScaleBrcbLocal,
+template <typename O, typename T>
+__aicore__ inline void MulQrVF(const LocalTensor<O> &outputLocal, const LocalTensor<T> &inputLocal, const LocalTensor<T> &dequantScaleBrcbLocal,
                                 float quantScaleCkvRope, uint64_t computeSizeRope, uint64_t computeBlockAlign) {
     const uint16_t floatRepSize = 64; // 一个寄存器能够存放64个FP32
     uint16_t repeatTimes = (computeSizeRope + floatRepSize - 1) / floatRepSize; // 对尾块处理的扩展，循环处理的次数
     
     __ubuf__ T * inputBuf = (__ubuf__ T *)inputLocal.GetPhyAddr();
-    __ubuf__ T * outputBuf = (__ubuf__ T *)outputLocal.GetPhyAddr();
+    __ubuf__ O * outputBuf = (__ubuf__ O *)outputLocal.GetPhyAddr();
     __ubuf__ T * dequantScaleBrcbBuf = (__ubuf__ T *)dequantScaleBrcbLocal.GetPhyAddr();
-    MulQrVFImpl<T>(inputBuf, outputBuf, dequantScaleBrcbBuf, floatRepSize, repeatTimes, quantScaleCkvRope, computeBlockAlign);
+    MulQrVFImpl(outputBuf, inputBuf, dequantScaleBrcbBuf, floatRepSize, repeatTimes, quantScaleCkvRope, computeBlockAlign);
 }
 } // namespace MlaProlog
  #endif

@@ -361,6 +361,11 @@ private:
     uint32_t singlecoreHeadSizeCkvKr_ = 0;
     uint32_t singlecoreNumHeadSize_ = 0;
 
+    uint32_t mm1KnNGroupSize_ = 0;
+    uint32_t mm1KnKGroupSize_ = 0;
+    uint32_t mm2KnNGroupSize_ = 0;
+    uint32_t mm2KnKGroupSize_ = 0;
+
     float reciprocalCq_ = 0.00001f;
     float epsilonCq_ = 1.0f;
     float reciprocalCkv_ = 0.00001f;

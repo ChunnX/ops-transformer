@@ -249,8 +249,8 @@ __aicore__ inline void DynamicQuantQnWithMulQr(
     DataCopyPad(scaleOutputGm, scaleBrcb, scaleOutCopyParams);
 
     // qr rope 后的乘法
-    MulQr(outputGmRope, inputGmRope,  outputLocalRope, qrInputLocal, qrFp32Local, reciprocalLocal, scaleBrcb, row, colRope,
-          subRowRope, qrOutputStrideRope, quantScaleCkvRope, MUL_QR_INPUT_COPY_READY, MUL_QR);
+    MulQr(outputGmRope, inputGmRope, outputLocalRope, qrInputLocal, qrFp32Local, reciprocalLocal, scaleBrcb, row,
+          colRope, subRowRope, qrOutputStrideRope, quantScaleCkvRope, MUL_QR_INPUT_COPY_READY, MUL_QR);
 
     SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
     WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
