@@ -345,7 +345,7 @@ TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_05)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
-// Boundary case 5: M mismatch - expert_idx M != grad_y M
+// Boundary case 6: M mismatch - expert_idx M != grad_y M
 TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_06)
 {
     optiling::MoeGatingTopKBackwardCompileInfo compileInfo = {};
@@ -372,7 +372,7 @@ TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_06)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
-// Boundary case 6: K mismatch - expert_idx K != grad_y K
+// Boundary case 7: K mismatch - expert_idx K != grad_y K
 TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_07)
 {
     optiling::MoeGatingTopKBackwardCompileInfo compileInfo = {};
@@ -399,7 +399,7 @@ TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_07)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
-// Boundary case 7: k <= 0
+// Boundary case 8: k <= 0
 TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_08)
 {
     optiling::MoeGatingTopKBackwardCompileInfo compileInfo = {};
@@ -426,7 +426,7 @@ TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_08)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
-// Boundary case 8: k > expertNum
+// Boundary case 9: k > expertNum
 TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_09)
 {
     optiling::MoeGatingTopKBackwardCompileInfo compileInfo = {};
@@ -453,7 +453,7 @@ TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_09)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
-// Boundary case 9: expertNum > 2048
+// Boundary case 10: expertNum > 2048
 TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_10)
 {
     optiling::MoeGatingTopKBackwardCompileInfo compileInfo = {};
@@ -480,7 +480,7 @@ TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_10)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
-// Boundary case 10: renorm != 0
+// Boundary case 11: renorm != 0
 TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_11)
 {
     optiling::MoeGatingTopKBackwardCompileInfo compileInfo = {};
@@ -507,7 +507,7 @@ TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_11)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
-// Boundary case 11: normType != 1
+// Boundary case 12: normType != 1
 TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_12)
 {
     optiling::MoeGatingTopKBackwardCompileInfo compileInfo = {};
@@ -534,7 +534,7 @@ TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_12)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
-// Boundary case 12: x_norm dtype != FP32
+// Boundary case 13: x_norm dtype != FP32
 TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_13)
 {
     optiling::MoeGatingTopKBackwardCompileInfo compileInfo = {};
@@ -561,7 +561,7 @@ TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_13)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
-// Boundary case 13: grad_y dtype invalid
+// Boundary case 14: grad_y dtype invalid
 TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_14)
 {
     optiling::MoeGatingTopKBackwardCompileInfo compileInfo = {};
@@ -588,7 +588,7 @@ TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_14)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
-// Boundary case 14: expert_idx dtype != INT32
+// Boundary case 15: expert_idx dtype != INT32
 TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_15)
 {
     optiling::MoeGatingTopKBackwardCompileInfo compileInfo = {};
@@ -615,7 +615,7 @@ TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_15)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
-// Boundary case 15: UB space insufficient (maxRows <= 0)
+// Boundary case 16: UB space insufficient (maxRows <= 0)
 TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_16)
 {
     optiling::MoeGatingTopKBackwardCompileInfo compileInfo = {};
