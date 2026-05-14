@@ -19,6 +19,8 @@
 
 namespace moe_dispatch_comm_cfg {
 
+using namespace optiling;
+
 // ========== 内部结构体定义（与框架兼容）==========
 struct Mc2CcTilingInner {
     uint8_t skipLocalRankCopy;
@@ -38,8 +40,8 @@ struct Mc2CcTilingInner {
 
 // ========== 版本1：简化接口（dispatch_v2 使用）==========
 void SetEpAllToAllCfg(
-    Mc2Tiling::Mc2InitTiling& mc2InitTiling,
-    Mc2Tiling::Mc2CcTiling& mc2CcTiling,
+    Mc2InitTiling& mc2InitTiling,
+    Mc2CcTiling& mc2CcTiling,
     const std::string& groupEp,
     bool isLayered) {
 
@@ -61,8 +63,8 @@ void SetEpAllToAllCfg(
 
 // ========== 版本2：完整接口（teardown/setup 使用，支持 URMA）==========
 void SetEpAllToAllCfgWithUrma(
-    Mc2Tiling::Mc2InitTiling& mc2InitTiling,
-    Mc2Tiling::Mc2CcTiling& mc2CcTiling,
+    Mc2InitTiling& mc2InitTiling,
+    Mc2CcTiling& mc2CcTiling,
     const std::string& groupEp,
     bool isLayered,
     bool isUrma) {
@@ -93,8 +95,8 @@ void SetEpAllToAllCfgWithUrma(
 
 // ========== TP AllGather 配置 ==========
 void SetTpAllGatherCfg(
-    Mc2Tiling::Mc2InitTiling& mc2InitTiling,
-    Mc2Tiling::Mc2CcTiling& mc2CcTiling,
+    Mc2InitTiling& mc2InitTiling,
+    Mc2CcTiling& mc2CcTiling,
     const std::string& groupTp) {
 
     uint32_t opType = moe_dispatch_defs::OP_TYPE_ALL_GATHER;

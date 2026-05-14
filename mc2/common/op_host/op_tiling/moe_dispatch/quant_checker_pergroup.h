@@ -30,17 +30,16 @@ public:
     // dynamicScales 校验
     ge::graphStatus CheckDynamicScales(
         gert::TilingContext* ctx,
-        const ge::TensorDesc* desc,
+        const ScalesTensorInfo& info,
         uint32_t expectedDim0,
         uint32_t h) const override {
         // PerGroup 必须有 dynamicScales
-        if (desc == nullptr) {
+        if (info.dtype == ge::DT_UNDEFINED) {
             return ge::GRAPH_FAILED;
         }
 
         // dtype: float
-        ge::DataType dtype = desc->GetDataType();
-        if (dtype != ge::DT_FLOAT) {
+        if (info.dtype != ge::DT_FLOAT) {
             return ge::GRAPH_FAILED;
         }
 

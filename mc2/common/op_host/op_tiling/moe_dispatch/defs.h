@@ -79,14 +79,22 @@ constexpr int64_t MAX_K_DEFAULT = 16;
 constexpr int64_t FULLMESH_K_MAX = 12;
 constexpr int64_t MAX_SHARED_EXPERT_NUM = 4;
 constexpr int64_t MIN_EP_WORLD_SIZE = 2;
+constexpr int64_t MAX_EP_WORLD_SIZE = 768;            // A3/A5 上界（dispatch_v2）
 constexpr int64_t MAX_EP_WORLD_SIZE_V2 = 768;
 constexpr int64_t MAX_EP_WORLD_SIZE_LAYERED = 256;
 constexpr int64_t MAX_EP_WORLD_SIZE_SETUP_TD = 384;
+constexpr int64_t MAX_TP_WORLD_SIZE = 2;              // TP 世界大小上界
+constexpr int64_t MAX_TP_WORLD_SIZE_LAYERED = 2;
 constexpr int64_t MAX_GROUP_NAME_LENGTH = 128;
 constexpr int64_t MAX_MOE_EXPERT_NUM = 512;
 constexpr int64_t MAX_MOE_EXPERT_NUM_V2 = 1024;
 constexpr int64_t MAX_MOE_EXPERT_NUM_LAYERED = 512;
 constexpr int64_t MAX_LOCAL_EXPERT_NUM = 2048;
+
+// ========== 别名常量（兼容算子层命名）==========
+constexpr int64_t H_MIN = MIN_H_DEFAULT;         // h 最小值
+constexpr int64_t K_MAX = MAX_K_DEFAULT;         // k 最大值
+constexpr uint32_t SIZE_OF_HALF = 2U;            // sizeof(float16)
 
 // ========== 其他公共常量 ==========
 constexpr uint32_t MX_BLOCK_SIZE = 32U;
