@@ -17,7 +17,7 @@
 #endif
 
 #ifndef STA_USE_VECIN_PROB_OUT_HANDOFF
-#define STA_USE_VECIN_PROB_OUT_HANDOFF 1
+#define STA_USE_VECIN_PROB_OUT_HANDOFF 0
 #endif
 
 namespace SlidingTileAttentionKernel {
