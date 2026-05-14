@@ -797,7 +797,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     }
     tpipe_->InitBuffer(dpuCommInitBufBuf_, SIZE_ALIGN_256);
     dpuCommInitBufTensor_ = dpuCommInitBufBuf_.Get<uint8_t>();
-    hcommHandle_.Init(dpuCommInitBufTensor_.GetPhyAddr(),SIZE_ALIGN_256); // todo:需要确认
+    hcommHandle_.Init(reinterpret_cast<uint8_t *>(dpuCommInitBufTensor_.GetPhyAddr()),SIZE_ALIGN_256); // todo:需要确认
 }
 
 template <TemplateDispatchKFCTypeClass>
@@ -1558,7 +1558,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     flagRecvTensor_ = tokenFlagBuf.Get<float32_t>();
     statusCleanFp32Tensor_ = cleanBuf.Get<float32_t>();
 
-    Init(dpuInitBufferTensor_.GetPhyAddr(), SIZE_ALIGN_256, -1);// 初始化DPU通信
     Duplicate<uint32_t>(commFlagTensor_, 0x3F800000, mask, commRepeatTime, uint16_t(1), uint8_t(8)); // 0x3F800000是float的1
     Duplicate<float32_t>(statusCleanFp32Tensor_, float32_t(0), mask, tokenRepeatTime, uint16_t(1), uint8_t(8));
 }
