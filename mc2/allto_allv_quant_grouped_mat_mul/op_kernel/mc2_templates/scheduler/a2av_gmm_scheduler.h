@@ -97,18 +97,28 @@ public:
         if (tilingData_->isNeedMM != 0) {
             localComputeOp.Process(0);
         }
+        // Debug: print small shape mode status
+        AscendC::printf("Process: isSmallShapeMode=%d, isNeedMM=%d, e=%d\n",
+                       tilingData_->taskTilingInfo.isSmallShapeMode,
+                       tilingData_->isNeedMM,
+                       tilingData_->taskTilingInfo.e);
         if constexpr (MX_QUANT_MODE) {
             if (isScaleBatchMode_) {
+                AscendC::printf("Process: entering ProcessScaleCommBatchMode\n");
                 ProcessScaleCommBatchMode();
             } else if (tilingData_->taskTilingInfo.isSmallShapeMode) {
+                AscendC::printf("Process: entering ProcessCommRankWiseMode (small shape)\n");
                 ProcessCommRankWiseMode();
             } else {
+                AscendC::printf("Process: entering ProcessCommRoundMode (normal)\n");
                 ProcessCommRoundMode();
             }
         } else {
             if (tilingData_->taskTilingInfo.isSmallShapeMode) {
+                AscendC::printf("Process: entering ProcessCommRankWiseMode (small shape, no MX)\n");
                 ProcessCommRankWiseMode();
             } else {
+                AscendC::printf("Process: entering ProcessCommRoundMode (normal, no MX)\n");
                 ProcessCommRoundMode();
             }
         }
