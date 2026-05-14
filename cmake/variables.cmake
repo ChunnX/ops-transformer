@@ -236,6 +236,7 @@ set(OP_PROTO_INCLUDE
    ${OPS_TRANSFORMER_DIR}/mc2/common
    ${OPS_TRANSFORMER_DIR}/mc2/common/utils
    ${OPS_TRANSFORMER_DIR}/mc2/common/op_kernel
+   ${OPS_TRANSFORMER_DIR}/mc2/common/op_graph
    ${OPS_TRANSFORMER_DIR}/mc2/3rd
    ${OPS_TRANSFORMER_DIR}/mc2
 )
