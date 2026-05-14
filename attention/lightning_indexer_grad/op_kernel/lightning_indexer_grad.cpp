@@ -27,7 +27,7 @@ using namespace LigKernel;
         LIG_COPY_TILING_DATA(tiling);                                                                                  \
         TPipe pipePre;                                                                                                 \
         LIGVectorPre<LIGType<__VA_ARGS__>> opPre;                                                                      \
-        opPre.Init(&pipePre, dk, user, tilingData);                                                                    \
+        opPre.Init(&pipePre, dq, dk, dweights, user, tilingData, actual_seq_lengths_query, actual_seq_lengths_key);    \
         opPre.Process();                                                                                               \
         opPre.SyncALLCores();                                                                                          \
         pipePre.Destroy();                                                                                             \
