@@ -799,7 +799,6 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Process()
         PipeBarrier<PIPE_ALL>();
 
         for (int32_t cal_idx = 0; cal_idx < cal_count + MAX_BLOCK_COUNT; ++cal_idx) {
-            timerDevice_.Tik(CocTimer::AIV);
             
             uint64_t flag_idx = cal_idx % MAX_BLOCK_COUNT;
 
@@ -825,6 +824,7 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Process()
             }
 
             if (cal_idx < cal_count && aivIdx == 0 && blockIdx < core_count) {
+                timerDevice_.Tik(CocTimer::AIV_AG);
                 int64_t gm_rank_offset = flag_idx * gm_a_pingpong_size + rank_offset;
                 if constexpr (std::is_same_v<X1Type, AscendC::int4b_t>) {
                     MoveWithSplit(
@@ -834,10 +834,12 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Process()
                         reinterpret_cast<__gm__ X1Type*>(gm_a_src) + src_offset, gm_rank_offset, num_per_rank_move);
                 }
                 src_offset += num_per_rank_move;
+                timerDevice_.Tok<Overwrite>(CocTimer::AIV_AG);
             } else if (
                 cal_idx > 0 && cal_idx < cal_count + 1 && aivIdx == 1 && blockIdx >= core_count &&
                 blockIdx < worldSize + core_count) { // peermem to out
                 // 如果剩余的core数不够，则循环搬运
+                timerDevice_.Tik(CocTimer::AIV_GO);
                 int32_t other_core_num = coreNum - core_count;                         // 剩余的core数
                 int32_t cycle_num = (other_core_num + worldSize - 1) / other_core_num; // 循环次数
                 uint64_t s2_flag_idx = (cal_idx - 1) % MAX_BLOCK_COUNT;
@@ -875,6 +877,7 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Process()
                         }
                     }
                 }
+                timerDevice_.Tok<Overwrite>(CocTimer::AIV_GO);
             }
 
             if (cal_idx < cal_count) {
@@ -890,7 +893,6 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Process()
  	            Dequant(cal_idx - MAX_BLOCK_COUNT);
                 SetAndWaitAivSync(FLAG_VALUE);
  	        }
-            timerDevice_.Tok<Overwrite>(CocTimer::AIV);
         }
 
         for (int32_t idx = 0; idx < num_flags; ++idx) {

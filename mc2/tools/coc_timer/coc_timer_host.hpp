@@ -3,15 +3,15 @@
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef ASCEND_TIMER_HOST_H
-#define ASCEND_TIMER_HOST_H
+#ifndef COC_TIMER_HOST_H
+#define COC_TIMER_HOST_H
 
-#include "cocTimer.hpp"
+#include "coc_timer.hpp"
 #include <vector>
 #include <iostream>
 #include <unordered_map>
@@ -36,9 +36,33 @@ public:
         return CocTimer::N_TIMING_COUNTER + CocTimer::DYNAMIC_ITER_TOTAL_SIZE;
     }
 
-    // ========== 2. 动态项名称解析 ==========
+    // ========== 2. 名称映射表 ==========
+    static inline const std::unordered_map<int, std::string> fixedNameMap = {
+        #define X(name) {CocTimer::name, #name},
+        COC_TIMER_FIXED_LIST
+        #undef X
+    };
+
+    static inline const std::unordered_map<CocTimer::DynamicTimingType, std::string> dynamicNameMap = {
+        #define X(name) {CocTimer::name, #name},
+        COC_TIMER_DYNAMIC_LIST
+        #undef X
+    };
+
+    // ========== 3. 动态项名称解析 ==========
     static inline bool ParseDynamicName(const std::string &name, CocTimer::DynamicTimingType &type, int &iter)
     {
+        // 优先进行全名匹配
+        for (const auto &pair : dynamicNameMap)
+        {
+            if (pair.second == name)
+            {
+                type = pair.first;
+                iter = 0; // 累加模式的数据固定去读取 0 号槽位
+                return true;
+            }
+        }
+
         size_t lastUnderscore = name.find_last_of('_');
         if (lastUnderscore == std::string::npos)
         {
@@ -57,6 +81,7 @@ public:
             return false;
         }
 
+        // 验证前缀是否在映射表中
         for (const auto &pair : dynamicNameMap)
         {
             if (pair.second == prefix)
@@ -69,22 +94,13 @@ public:
         return false;
     }
 
-    // ========== 3. 名称映射表 ==========
-    static inline const std::unordered_map<int, std::string> fixedNameMap = {
-        {CocTimer::KERNEL_TIMING_IDX, "KERNEL_TIMING"},
-    };
-
-    static inline const std::unordered_map<CocTimer::DynamicTimingType, std::string> dynamicNameMap = {
-        {CocTimer::AIV, "AIV"},
-        {CocTimer::AIC, "AIC"},
-    };
-
     // ========== 4. 计时结果结构体 ==========
     struct TimerResult
     {
         std::vector<int64_t> baseCycleData;            // 基础计时数据（N_TIMING_COUNTER）
         std::vector<int64_t> dynamicActualIterPerCore; // 每核动态迭代次数（DYNAMIC_ITER_TOTAL_SIZE）
         std::vector<int64_t> dynamicActualIterMax;     // 每个动态项的全局最大迭代次数（DYNAMIC_TYPE_COUNT）
+        std::vector<bool> isAccumulate;                // 新增：记录该类型是否为累加模式
     };
 
     // ========== 5. 动态项索引计算 ==========
@@ -107,7 +123,8 @@ public:
     }
 
     // ========== 6. 计时项名称获取 ==========
-    static inline std::vector<std::string> GetTimingNames(const std::vector<int64_t> &dynamicActualIterMax)
+    // 只返回实际有数据的计时项，Accumulate模式去除_0后缀
+    static inline std::vector<std::string> GetTimingNames(const TimerResult &timerResult)
     {
         std::vector<std::string> names;
         const auto &fixedMap = fixedNameMap;
@@ -119,32 +136,30 @@ public:
             names.push_back(it != fixedMap.end() ? it->second : "UNKNOWN_FIXED_" + std::to_string(i));
         }
 
-        // 动态项名称
+        // 动态项名称：仅输出有实际迭代数据的类型
         for (int t = 0; t < CocTimer::DYNAMIC_TYPE_COUNT; ++t)
         {
             auto type = static_cast<CocTimer::DynamicTimingType>(t);
             if (!dynamicNameMap.count(type))
                 continue;
 
-            const std::string &prefix = dynamicNameMap.at(type);
-            int64_t actualMaxIter = CocTimer::MAX_DYNAMIC_ITER;
-            if (t < dynamicActualIterMax.size() && dynamicActualIterMax[t] > 0)
-            {
-                actualMaxIter = dynamicActualIterMax[t];
-            }
+            int64_t actualMaxIter = t < timerResult.dynamicActualIterMax.size() ? timerResult.dynamicActualIterMax[t] : 0;
+            if (actualMaxIter <= 0)
+                continue;
 
-            for (int iter = 0; iter < actualMaxIter; ++iter)
-            {
-                names.push_back(prefix + "_" + std::to_string(iter));
+            const std::string &prefix = dynamicNameMap.at(type);
+
+            // 🌟 判断：如果是 Accumulate 模式，只输出一个单纯的列名
+            if (timerResult.isAccumulate.size() > t && timerResult.isAccumulate[t]) {
+                names.push_back(prefix); // 输出如 "SYNPIC_TIME" (没有 _0)
+            } else {
+                for (int iter = 0; iter < actualMaxIter; ++iter) {
+                    names.push_back(prefix + "_" + std::to_string(iter));
+                }
             }
         }
 
         return names;
-    }
-
-    static inline std::vector<std::string> GetTimingNames()
-    {
-        return GetTimingNames(std::vector<int64_t>());
     }
 
     // ========== 7. 从Device拷贝计时结果 ==========
@@ -170,6 +185,8 @@ public:
 
         // 计算每个动态项的全局最大迭代次数
         result.dynamicActualIterMax.resize(CocTimer::DYNAMIC_TYPE_COUNT, 0);
+        result.isAccumulate.resize(CocTimer::DYNAMIC_TYPE_COUNT, false); // 初始化
+
         for (int coreId = 0; coreId < CocTimer::N_CORE_COUNT; ++coreId)
         {
             int coreOffset = coreId * CocTimer::DYNAMIC_ITER_PER_CORE_ALIGN;
@@ -178,9 +195,19 @@ public:
                 int idx = coreOffset + type;
                 if (idx >= result.dynamicActualIterPerCore.size())
                     continue;
-                if (result.dynamicActualIterPerCore[idx] > result.dynamicActualIterMax[type])
+
+                int64_t val = result.dynamicActualIterPerCore[idx];
+
+                // 🌟 接收到设备端发来的 Accumulate 负数暗号！
+                if (val < 0) {
+                    result.isAccumulate[type] = true;
+                    val = -val;
+                    result.dynamicActualIterPerCore[idx] = val; // 恢复为正数，供 IterCount 列输出
+                }
+
+                if (val > result.dynamicActualIterMax[type])
                 {
-                    result.dynamicActualIterMax[type] = result.dynamicActualIterPerCore[idx];
+                    result.dynamicActualIterMax[type] = val;
                 }
             }
         }
@@ -200,7 +227,7 @@ public:
         std::ofstream outfile(filename);
         if (!outfile.is_open()) return false;
 
-        const auto &timingNames = GetTimingNames(timerResult.dynamicActualIterMax);
+        const auto &timingNames = GetTimingNames(timerResult);
         const int totalItems = timingNames.size();
         const auto &cycleResult = timerResult.baseCycleData;
         const auto &dynamicMaxIter = timerResult.dynamicActualIterMax;
@@ -209,7 +236,9 @@ public:
         for (const auto &name : timingNames) {
             outfile << "," << name << "_start_cycle," << name << "_end_cycle," << name << "_duration_us";
         }
+        // _IterCount 列也只输出有数据的类型
         for (int t = 0; t < CocTimer::DYNAMIC_TYPE_COUNT; ++t) {
+            if (t < dynamicMaxIter.size() && dynamicMaxIter[t] <= 0) continue;
             auto type = static_cast<CocTimer::DynamicTimingType>(t);
             if (dynamicNameMap.count(type)) outfile << "," << dynamicNameMap.at(type) << "_IterCount";
         }
@@ -231,7 +260,7 @@ public:
                 int elementIdx = -1;
 
                 if (nameIdx < CocTimer::FIXED_TIMING_COUNT) {
-                    elementIdx = baseIndex + nameIdx * 2; // 正确：只乘事件索引
+                    elementIdx = baseIndex + nameIdx * 2;
                 } else {
                     CocTimer::DynamicTimingType dynType;
                     int iter;
@@ -241,19 +270,25 @@ public:
                     }
                 }
 
-                // 越界检查：判断绝对索引
+                // 越界检查
                 if (elementIdx < 0 || elementIdx + 1 >= CocTimer::N_TIMING_COUNTER) {
                     outfile << ",0,0,0";
                 } else {
                     int64_t start_cycles = cycleResult[elementIdx];
                     int64_t end_cycles = cycleResult[elementIdx + 1];
-                    float duration_us = (end_cycles > start_cycles) ? CycleToTime(end_cycles - start_cycles) : 0.0f;
-                    // Raw 输出三个值
+                    // 如果是0基准(Accumulate模式)，耗时就是end_cycles，否则正常相减
+                    float duration_us = 0.0f;
+                    if (start_cycles == 0) {
+                        duration_us = CycleToTime(end_cycles);
+                    } else if (end_cycles > start_cycles) {
+                        duration_us = CycleToTime(end_cycles - start_cycles);
+                    }
                     outfile << "," << start_cycles << "," << end_cycles << "," << duration_us;
                 }
             }
 
             for (int t = 0; t < CocTimer::DYNAMIC_TYPE_COUNT; ++t) {
+                if (t < dynamicMaxIter.size() && dynamicMaxIter[t] <= 0) continue;
                 int idxIter = i * CocTimer::DYNAMIC_ITER_PER_CORE_ALIGN + t;
                 outfile << "," << (t < dynamicMaxIter.size() ? timerResult.dynamicActualIterPerCore[idxIter] : 0);
             }
@@ -269,7 +304,7 @@ public:
         std::ofstream outfile(filename);
         if (!outfile.is_open()) return false;
 
-        const auto &timingNames = GetTimingNames(timerResult.dynamicActualIterMax);
+        const auto &timingNames = GetTimingNames(timerResult);
         const int totalItems = timingNames.size();
         const auto &cycleResult = timerResult.baseCycleData;
         const auto &dynamicMaxIter = timerResult.dynamicActualIterMax;
@@ -278,7 +313,9 @@ public:
         for (const auto &name : timingNames) {
             outfile << "," << name << "_duration(us)";
         }
+        // _IterCount 列也只输出有数据的类型
         for (int t = 0; t < CocTimer::DYNAMIC_TYPE_COUNT; ++t) {
+            if (t < dynamicMaxIter.size() && dynamicMaxIter[t] <= 0) continue;
             auto type = static_cast<CocTimer::DynamicTimingType>(t);
             if (dynamicNameMap.count(type)) outfile << "," << dynamicNameMap.at(type) << "_IterCount";
         }
@@ -311,18 +348,22 @@ public:
                 }
 
                 if (elementIdx < 0 || elementIdx + 1 >= CocTimer::N_TIMING_COUNTER) {
-                    // Duration 只补一个 0
                     outfile << ",0";
                 } else {
                     int64_t start_cycles = cycleResult[elementIdx];
                     int64_t end_cycles = cycleResult[elementIdx + 1];
-                    float duration_us = (end_cycles > start_cycles) ? CycleToTime(end_cycles - start_cycles) : 0.0f;
-                    // Duration 只输出一个 us 数据
+                    float duration_us = 0.0f;
+                    if (start_cycles == 0) {
+                        duration_us = CycleToTime(end_cycles);
+                    } else if (end_cycles > start_cycles) {
+                        duration_us = CycleToTime(end_cycles - start_cycles);
+                    }
                     outfile << "," << duration_us;
                 }
             }
 
             for (int t = 0; t < CocTimer::DYNAMIC_TYPE_COUNT; ++t) {
+                if (t < dynamicMaxIter.size() && dynamicMaxIter[t] <= 0) continue;
                 int idxIter = i * CocTimer::DYNAMIC_ITER_PER_CORE_ALIGN + t;
                 outfile << "," << (t < dynamicMaxIter.size() ? timerResult.dynamicActualIterPerCore[idxIter] : 0);
             }
@@ -340,4 +381,4 @@ public:
     }
 };
 
-#endif // ASCEND_TIMER_HOST_H
+#endif // COC_TIMER_HOST_H
