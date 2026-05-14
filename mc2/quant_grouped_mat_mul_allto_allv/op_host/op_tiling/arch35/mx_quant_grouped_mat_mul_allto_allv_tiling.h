@@ -58,6 +58,7 @@ private:
     ge::graphStatus CheckMxQuantGmmScaleShapes();
     ge::graphStatus CheckMxQuantMmScaleShapes();
     ge::graphStatus CheckMxQuantDtypeConstraints();
+    void wkcPrintTensorShape(const char *nodeName, const gert::Shape *shape, const char *shapeName);
 
     ge::graphStatus CheckMxfp4SpecificConstraints(); // MXFP4 约束校验
 };

@@ -63,6 +63,14 @@ struct QuantGroupedMatMulAlltoAllvInputs {
     const gert::Tensor* commQuantScale;
 };
 
+static void wkcPrintTensorShape(const char *nodeName, const gert::Shape *shape, const char *shapeName)
+{
+    for (size_t i = 0; i < shape->GetDimNum(); i++) {
+        OPS_LOG_E(nodeName, "%s %lu is %ld.", shapeName, i, shape->GetDim(i));
+    }
+    return;
+}
+
 struct QuantGroupedMatMulAlltoAllvAttrs {
     const char* group;
     const int64_t* epWorldSize;
@@ -209,6 +217,31 @@ static ge::graphStatus ExecuteQuantGroupedMatMulAlltoAllv(
     const gert::Tensor* y,
     const gert::Tensor* mmY)
 {
+    // Print shapes after entering ExecuteQuantGroupedMatMulAlltoAllv
+    OPS_LOG_E("QuantGroupedMatMulAlltoAllvFallback", "Begin to print gmmWeight shape after entering ExecuteQuantGroupedMatMulAlltoAllv");
+    wkcPrintTensorShape("QuantGroupedMatMulAlltoAllvFallback", &(inputs.gmmWeight->GetStorageShape()), "gmmWeight");
+    
+    if (inputs.gmmWeightScale != nullptr) {
+        OPS_LOG_E("QuantGroupedMatMulAlltoAllvFallback", "Begin to print gmmWeightScale shape after entering ExecuteQuantGroupedMatMulAlltoAllv");
+        wkcPrintTensorShape("QuantGroupedMatMulAlltoAllvFallback", &(inputs.gmmWeightScale->GetStorageShape()), "gmmWeightScale");
+    }
+    
+    if (inputs.mmWeight != nullptr) {
+        OPS_LOG_E("QuantGroupedMatMulAlltoAllvFallback", "Begin to print mmWeight shape after entering ExecuteQuantGroupedMatMulAlltoAllv");
+        wkcPrintTensorShape("QuantGroupedMatMulAlltoAllvFallback", &(inputs.mmWeight->GetStorageShape()), "mmWeight");
+    }
+    
+    if (inputs.mmWeightScale != nullptr) {
+        OPS_LOG_E("QuantGroupedMatMulAlltoAllvFallback", "Begin to print mmWeightScale shape after entering ExecuteQuantGroupedMatMulAlltoAllv");
+        wkcPrintTensorShape("QuantGroupedMatMulAlltoAllvFallback", &(inputs.mmWeightScale->GetStorageShape()), "mmWeightScale");
+    }
+    if (attrsData.transGmmWeight != nullptr) {
+        OPS_LOG_E("QuantGroupedMatMulAlltoAllvFallback", "transGmmWeight after entering ExecuteQuantGroupedMatMulAlltoAllv: %s", *attrsData.transGmmWeight);
+    }
+    if (attrsData.transMmWeight != nullptr) {
+        OPS_LOG_E("QuantGroupedMatMulAlltoAllvFallback", "transMmWeight after entering ExecuteQuantGroupedMatMulAlltoAllv: %s", *attrsData.transMmWeight);
+    }
+    
     const auto apiRet = EXEC_OPAPI_CMD(
         aclnnQuantGroupedMatMulAlltoAllv, inputs.gmmX, inputs.gmmWeight, inputs.gmmXScale, inputs.gmmWeightScale,
         inputs.sendCountsTensor, inputs.recvCountsTensor, inputs.mmX, inputs.mmWeight, inputs.mmXScale,
@@ -223,7 +256,7 @@ static ge::graphStatus ExecuteQuantGroupedMatMulAlltoAllv(
 
 static ge::graphStatus QuantGroupedMatMulAlltoAllvExecuteFunc(gert::OpExecuteContext* host_api_ctx)
 {
-    OPS_LOG_D("QuantGroupedMatMulAlltoAllvFallback", "Start QuantGroupedMatMulAlltoAllvFallback.");
+    OPS_LOG_E("QuantGroupedMatMulAlltoAllvFallback", "Start QuantGroupedMatMulAlltoAllvFallback.");
     OPS_ERR_IF(host_api_ctx == nullptr, OP_LOGE("QuantGroupedMatMulAlltoAllvFallback", "host_api_ctx is null"),
                return ge::GRAPH_FAILED);
 
@@ -266,6 +299,31 @@ static ge::graphStatus QuantGroupedMatMulAlltoAllvExecuteFunc(gert::OpExecuteCon
     ret = CheckOutputTensors(y, mmY);
     if (ret != ge::GRAPH_SUCCESS) {
         return ret;
+    }
+
+    // Print shapes before calling ExecuteQuantGroupedMatMulAlltoAllv
+    OPS_LOG_E("QuantGroupedMatMulAlltoAllvFallback", "Begin to print gmmWeight shape before ExecuteQuantGroupedMatMulAlltoAllv");
+    wkcPrintTensorShape("QuantGroupedMatMulAlltoAllvFallback", &(inputs.gmmWeight->GetStorageShape()), "gmmWeight");
+    
+    if (inputs.gmmWeightScale != nullptr) {
+        OPS_LOG_E("QuantGroupedMatMulAlltoAllvFallback", "Begin to print gmmWeightScale shape before ExecuteQuantGroupedMatMulAlltoAllv");
+        wkcPrintTensorShape("QuantGroupedMatMulAlltoAllvFallback", &(inputs.gmmWeightScale->GetStorageShape()), "gmmWeightScale");
+    }
+    
+    if (inputs.mmWeight != nullptr) {
+        OPS_LOG_E("QuantGroupedMatMulAlltoAllvFallback", "Begin to print mmWeight shape before ExecuteQuantGroupedMatMulAlltoAllv");
+        wkcPrintTensorShape("QuantGroupedMatMulAlltoAllvFallback", &(inputs.mmWeight->GetStorageShape()), "mmWeight");
+    }
+    
+    if (inputs.mmWeightScale != nullptr) {
+        OPS_LOG_E("QuantGroupedMatMulAlltoAllvFallback", "Begin to print mmWeightScale shape before ExecuteQuantGroupedMatMulAlltoAllv");
+        wkcPrintTensorShape("QuantGroupedMatMulAlltoAllvFallback", &(inputs.mmWeightScale->GetStorageShape()), "mmWeightScale");
+    }
+    if (attrsData.transGmmWeight != nullptr) {
+        OPS_LOG_E("QuantGroupedMatMulAlltoAllvFallback", "transGmmWeight before entering ExecuteQuantGroupedMatMulAlltoAllv: %s", *attrsData.transGmmWeight);
+    }
+    if (attrsData.transMmWeight != nullptr) {
+        OPS_LOG_E("QuantGroupedMatMulAlltoAllvFallback", "transMmWeight before entering ExecuteQuantGroupedMatMulAlltoAllv: %s", *attrsData.transMmWeight);
     }
 
     return ExecuteQuantGroupedMatMulAlltoAllv(host_api_ctx, inputs, attrsData, actSendCountsSeqArray, actRecvCountsSeqArray, y, mmY);
