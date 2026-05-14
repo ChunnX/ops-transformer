@@ -166,7 +166,8 @@ static ge::graphStatus SlidingTileAttentionTilingFunc(gert::TilingContext *conte
     tiling->qBlock = CUBE_Q_BLOCK;
     tiling->kvBlock = CUBE_KV_BLOCK;
     tiling->headDimAlign = ((headDim + 15) / 16) * 16;
-    tiling->cubeTaskNum = batch * headNum * ((seqLen + CUBE_Q_BLOCK - 1) / CUBE_Q_BLOCK);
+    tiling->seqBlockNum = (seqLen + CUBE_Q_BLOCK - 1) / CUBE_Q_BLOCK;
+    tiling->cubeTaskNum = batch * headNum * tiling->seqBlockNum;
     tiling->aicCoreNum = aicCoreNum;
     tiling->aivCoreNum = aivCoreNum;
     const int64_t scoreBlockElems = CUBE_Q_BLOCK * CUBE_KV_BLOCK;
@@ -186,6 +187,9 @@ static ge::graphStatus SlidingTileAttentionTilingFunc(gert::TilingContext *conte
     tiling->tileNumT = seqT / DEFAULT_TILE_T;
     tiling->tileNumH = seqH / DEFAULT_TILE_H;
     tiling->tileNumW = seqW / DEFAULT_TILE_W;
+    tiling->tileNumHW = tiling->tileNumH * tiling->tileNumW;
+    tiling->imageTileNum = (imageSeqLen + tiling->tileTokenNum - 1) / tiling->tileTokenNum;
+    tiling->validSeqLen = imageSeqLen + textLength;
     tiling->totalQueryNum = batch * headNum * seqLen;
 
     OP_CHECK_IF(FillWindow(attrs, context, tiling, headNum) != ge::GRAPH_SUCCESS,
