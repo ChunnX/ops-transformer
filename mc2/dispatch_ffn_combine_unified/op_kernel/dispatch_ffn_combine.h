@@ -104,17 +104,7 @@ private:
     int32_t rankSize;
     int32_t aivNum;
 
-    int32_t m0;
-    int32_t k0;
-    int32_t n0;
-    int32_t swizzlOffset;
-    int32_t swizzlDirect;
-    int32_t ubMoveNum;
-    int32_t pValue;
-
-    int32_t commNpuSplit;
-    int32_t commDataSplit;
-    int32_t lenPerLoop;
+    static constexpr int32_t UB_MOVE_NUM = 16 * 1024;
 
     int32_t m;
     int32_t k;
@@ -125,16 +115,9 @@ private:
     int32_t EP;
     int32_t listLen;
 
-    // Both routing-tiling variants are forwarded from the host:
-    //   - quant variant: used when DTYPE_WEIGHT1 ∈ {INT4, INT8, INT32}
-    //   - non-quant variant: used when DTYPE_WEIGHT1 ∈ {FP16, BF16}
-    // The host sets `isQuantRouting` accordingly; only the matching field
-    // carries meaningful values, but both are present so the wire layout of
-    // `DispatchFFNCombineTilingData` stays stable.
     optiling::MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData;
     optiling::InnerMoeInitRoutingV2TilingData moeInitRoutingV2TilingData;
     uint64_t initRoutingQuantTilingKey;
-    uint32_t isQuantRouting;
 };
 
 
@@ -144,9 +127,9 @@ __aicore__ inline void DispatchFFNCombine<TemplateMMA2ACFunc>::Init(
     GM_ADDR weight1GM, GM_ADDR weight2GM, GM_ADDR weightScales1GM, GM_ADDR weightScales2GM,
     GM_ADDR yGM, GM_ADDR expertTokenNumsGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
-    REGISTER_TILING_DEFAULT(DispatchFFNCombineTilingData);
-    auto tiling = (__gm__ DispatchFFNCombineTilingData*)tilingGM;
-    GET_TILING_DATA(tilingData, tilingGM);
+    constexpr bool kRoutingIsQuant = std::is_same_v<BType_, AscendC::int4b_t> ||
+                                     std::is_same_v<BType_, int32_t> ||
+                                     std::is_same_v<BType_, int8_t>;
 
     contextGM_ = contextGM;
     xGM_ = xGM;
@@ -160,35 +143,39 @@ __aicore__ inline void DispatchFFNCombine<TemplateMMA2ACFunc>::Init(
     gmExpertTokenNums_ = expertTokenNumsGM;
     workspaceGM_ = workspaceGM;
 
-    // Tiling fields are populated by the host tiling in the order declared by the
-    // unified op def: shape inputs (M/K/N from x and weight) followed by the
-    // attributes (moe_expert_num / ep_world_size / ccl_buffer_size /
-    // max_recv_token_num / transpose_weight1 / transpose_weight2 / ...).
-    aivNum = tilingData.dispatchFFNCombineInfo.aivNum;
+    if constexpr (kRoutingIsQuant) {
+        auto tiling = (__gm__ DispatchFFNCombineTilingDataQuant *)tilingGM;
+        GET_TILING_DATA_WITH_STRUCT(DispatchFFNCombineTilingDataQuant, tilingData, tilingGM);
 
-    m = tilingData.dispatchFFNCombineInfo.M;
-    k = tilingData.dispatchFFNCombineInfo.K;
-    n = tilingData.dispatchFFNCombineInfo.N;
-    EP = tilingData.dispatchFFNCombineInfo.worldSize;
-    topK = tilingData.dispatchFFNCombineInfo.topK;
-    expertPerRank = tilingData.dispatchFFNCombineInfo.expertPerRank;
-    maxOutputSize = tilingData.dispatchFFNCombineInfo.maxRecvTokenNum;
-    listLen = tilingData.dispatchFFNCombineInfo.listLen;
+        aivNum = tilingData.dispatchFFNCombineInfo.common.aivNum;
+        m = tilingData.dispatchFFNCombineInfo.common.M;
+        k = tilingData.dispatchFFNCombineInfo.common.K;
+        n = tilingData.dispatchFFNCombineInfo.common.N;
+        EP = tilingData.dispatchFFNCombineInfo.common.worldSize;
+        topK = tilingData.dispatchFFNCombineInfo.common.topK;
+        expertPerRank = tilingData.dispatchFFNCombineInfo.common.expertPerRank;
+        maxOutputSize = tilingData.dispatchFFNCombineInfo.common.maxRecvTokenNum;
+        listLen = tilingData.dispatchFFNCombineInfo.common.listLen;
 
-    m0 = tilingData.cocTiling.m0;
-    k0 = tilingData.cocTiling.k0;
-    n0 = tilingData.cocTiling.n0;
-    swizzlDirect = tilingData.cocTiling.swizzleDirect;
-    swizzlOffset = tilingData.cocTiling.swizzleOffset;
-    ubMoveNum = tilingData.cocTiling.ubMoveNum;
-    pValue = tilingData.cocTiling.pValue;
-    commNpuSplit = tilingData.cocTiling.commNpuSplit;
-    commDataSplit = tilingData.cocTiling.commDataSplit;
-    lenPerLoop = tilingData.cocTiling.lenPerLoop;
-    moeInitRoutingQuantV2TilingData = tilingData.cocTiling.moeInitRoutingQuantV2TilingData;
-    moeInitRoutingV2TilingData = tilingData.cocTiling.moeInitRoutingV2TilingData;
-    initRoutingQuantTilingKey = tilingData.cocTiling.initRoutingQuantTilingKey;
-    isQuantRouting = tilingData.dispatchFFNCombineInfo.isQuantRouting;
+        moeInitRoutingQuantV2TilingData = tilingData.dispatchFFNCombineInfo.moeInitRoutingQuantV2TilingData;
+        initRoutingQuantTilingKey = tilingData.dispatchFFNCombineInfo.common.initRoutingQuantTilingKey;
+    } else {
+        auto tiling = (__gm__ DispatchFFNCombineTilingDataNonQuant *)tilingGM;
+        GET_TILING_DATA_WITH_STRUCT(DispatchFFNCombineTilingDataNonQuant, tilingData, tilingGM);
+
+        aivNum = tilingData.dispatchFFNCombineInfo.common.aivNum;
+        m = tilingData.dispatchFFNCombineInfo.common.M;
+        k = tilingData.dispatchFFNCombineInfo.common.K;
+        n = tilingData.dispatchFFNCombineInfo.common.N;
+        EP = tilingData.dispatchFFNCombineInfo.common.worldSize;
+        topK = tilingData.dispatchFFNCombineInfo.common.topK;
+        expertPerRank = tilingData.dispatchFFNCombineInfo.common.expertPerRank;
+        maxOutputSize = tilingData.dispatchFFNCombineInfo.common.maxRecvTokenNum;
+        listLen = tilingData.dispatchFFNCombineInfo.common.listLen;
+
+        moeInitRoutingV2TilingData = tilingData.dispatchFFNCombineInfo.moeInitRoutingV2TilingData;
+        initRoutingQuantTilingKey = tilingData.dispatchFFNCombineInfo.common.initRoutingQuantTilingKey;
+    }
 
     // The unified op exposes `context` as the first kernel input which represents
     // the HCCL group descriptor. The actual HCCL window context is still resolved
@@ -380,25 +367,46 @@ __aicore__ inline void DispatchFFNCombine<TemplateMMA2ACFunc>::Process()
         epilogueGranularity = (expertPerRank > 1) ? static_cast<uint32_t>(expertPerRank - 2) : 0U;
     }
 
-    // The unified op def removed the legacy `bias1` / `bias2` inputs (only
-    // `weight_scales1` / `weight_scales2` are kept). The kernel's Params no
-    // longer has `ptrMAux*` slots, so we only forward the scale tensors.
-    typename MatmulKernel::Params params{
-        problemShape, static_cast<uint32_t>(EP), static_cast<uint32_t>(listLen),
-        static_cast<uint32_t>(expertPerRank), static_cast<uint32_t>(maxOutputSize),
-        static_cast<uint32_t>(rank), static_cast<uint32_t>(rankSize),
-        static_cast<uint32_t>(topK), initRoutingQuantTilingKey,
-        epilogueCoreNum,
-        xGM_, layoutA1, layoutA2,
-        weight1GM_, layoutB1,
-        weight2GM_, layoutB2,
-        weightScales1GM_, layoutScale1,
-        weightScales2GM_, layoutScale2,
-        yGM_, layoutD1, layoutD2,
-        topkIdsGM_, moeInitRoutingQuantV2Scale, moeInitRoutingQuantV2Offset,
-        expertTokensBeforeCapacity, topkWeightsGM_,
-        workspaceGM_, gmExpertTokenNums_, ubMoveNum, moeInitRoutingQuantV2TilingData,
-        epilogueGranularity};
+    constexpr bool kRoutingIsQuant = std::is_same_v<BType_, AscendC::int4b_t> ||
+                                     std::is_same_v<BType_, int32_t> ||
+                                     std::is_same_v<BType_, int8_t>;
+
+    typename MatmulKernel::Params params;
+    if constexpr (kRoutingIsQuant) {
+        params = typename MatmulKernel::Params{
+            problemShape, static_cast<uint32_t>(EP), static_cast<uint32_t>(listLen),
+            static_cast<uint32_t>(expertPerRank), static_cast<uint32_t>(maxOutputSize),
+            static_cast<uint32_t>(rank), static_cast<uint32_t>(rankSize),
+            static_cast<uint32_t>(topK), initRoutingQuantTilingKey,
+            epilogueCoreNum,
+            xGM_, layoutA1, layoutA2,
+            weight1GM_, layoutB1,
+            weight2GM_, layoutB2,
+            weightScales1GM_, layoutScale1,
+            weightScales2GM_, layoutScale2,
+            yGM_, layoutD1, layoutD2,
+            topkIdsGM_, moeInitRoutingQuantV2Scale, moeInitRoutingQuantV2Offset,
+            expertTokensBeforeCapacity, topkWeightsGM_,
+            workspaceGM_, gmExpertTokenNums_, UB_MOVE_NUM, moeInitRoutingQuantV2TilingData,
+            epilogueGranularity};
+    } else {
+        params = typename MatmulKernel::Params{
+            problemShape, static_cast<uint32_t>(EP), static_cast<uint32_t>(listLen),
+            static_cast<uint32_t>(expertPerRank), static_cast<uint32_t>(maxOutputSize),
+            static_cast<uint32_t>(rank), static_cast<uint32_t>(rankSize),
+            static_cast<uint32_t>(topK), initRoutingQuantTilingKey,
+            epilogueCoreNum,
+            xGM_, layoutA1, layoutA2,
+            weight1GM_, layoutB1,
+            weight2GM_, layoutB2,
+            weightScales1GM_, layoutScale1,
+            weightScales2GM_, layoutScale2,
+            yGM_, layoutD1, layoutD2,
+            topkIdsGM_, moeInitRoutingQuantV2Scale, moeInitRoutingQuantV2Offset,
+            expertTokensBeforeCapacity, topkWeightsGM_,
+            workspaceGM_, gmExpertTokenNums_, UB_MOVE_NUM, moeInitRoutingV2TilingData,
+            epilogueGranularity};
+    }
 
     MatmulKernel kernel(params);
     kernel(params);

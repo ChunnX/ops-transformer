@@ -53,10 +53,7 @@ const char *K_INNER_DEBUG = "DispatchFFNCombine Tiling Debug";
 constexpr uint32_t BLOCK_NUM = 20;
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16 * 1024 * 1024;
 constexpr uint64_t MB_SIZE = 1024 * 1024UL;
-constexpr uint32_t RANK_NUM_PER_NODE_A2 = 8;
 
-// String-to-code mapping for the `comm_alg` attribute. Kernel-side numeric
-// codes are defined as `DispatchFFNCombineCommAlgCode` in the tiling header.
 static uint32_t ParseCommAlgCode(const char *commAlg)
 {
     if (commAlg == nullptr || commAlg[0] == '\0') {
@@ -154,7 +151,7 @@ static std::string DispatchFFNCombineA2GetAlgConfig(int32_t epWorldSize, bool is
 }
 
 static ge::graphStatus DispatchFFNCombineCheckAttrAndSetTiling(gert::TilingContext *context,
-                                                                DispatchFFNCombineInfo &info,
+                                                                DispatchFFNCombineInfoCommon &info,
                                                                 const DispatchFFNCombineConfig &config)
 {
     auto attrs = context->GetAttrs();
@@ -220,7 +217,7 @@ static ge::graphStatus DispatchFFNCombineCheckAttrAndSetTiling(gert::TilingConte
 }
 
 static ge::graphStatus DispatchFFNCombineCheckShapeAndSetTiling(gert::TilingContext *context,
-                                                                DispatchFFNCombineInfo &info,
+                                                                DispatchFFNCombineInfoCommon &info,
                                                                 const DispatchFFNCombineConfig &config)
 {
     const char *nodeName = context->GetNodeName();
@@ -291,7 +288,7 @@ static ge::graphStatus DispatchFFNCombineCheckShapeAndSetTiling(gert::TilingCont
 }
 
 static ge::graphStatus DispatchFFNCombineGetPlatformInfoAndSetTiling(gert::TilingContext *context,
-                                                                     DispatchFFNCombineInfo &info)
+                                                                     DispatchFFNCombineInfoCommon &info)
 {
     auto platformInfo = context->GetPlatformInfo();
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
@@ -312,47 +309,33 @@ static ge::graphStatus DispatchFFNCombineGetPlatformInfoAndSetTiling(gert::Tilin
     return ge::GRAPH_SUCCESS;
 }
 
-void SetTilingData(CoCTiling &cocTilingData, DispatchFFNCombineInfo &info)
-{
-    cocTilingData.m0 = 128;
-    cocTilingData.k0 = 256;
-    cocTilingData.n0 = 256;
-    cocTilingData.swizzleDirect = 1;
-    cocTilingData.swizzleOffset = 7;
-    cocTilingData.ubMoveNum = 16 * 1024;
-    cocTilingData.pValue = 1;
-    cocTilingData.commNpuSplit = info.worldSize;
-    cocTilingData.commDataSplit = 1;
-    cocTilingData.lenPerLoop = cocTilingData.m0 * cocTilingData.n0 / 2;
-}
-
 static ge::graphStatus DispatchFFNCombineTilingFuncImpl(gert::TilingContext *context)
 {
     const char *nodeName = context->GetNodeName();
     OP_LOGI(nodeName, "Enter DispatchFFNCombine tiling func.");
 
-    // Local config carries all per-op input/attr indices, mirroring
-    // `MegaMoeConfig`. The default values match the unified def order.
     DispatchFFNCombineConfig config;
 
-    DispatchFFNCombineTilingData *tilingData = context->GetTilingData<DispatchFFNCombineTilingData>();
-    OP_TILING_CHECK(tilingData == nullptr, OP_LOGE(nodeName, "tilingData is nullptr."),
-                    return ge::GRAPH_FAILED);
-    OP_LOGI(nodeName, "DispatchFFNCombine get tilingData.");
-    DispatchFFNCombineInfo &info = tilingData->dispatchFFNCombineInfo;
-    OP_LOGI(nodeName, "DispatchFFNCombine get tilingData info.");
+    // First pass: read attributes and shape to determine isQuantRouting,
+    // then acquire the correct tiling data struct.
+    DispatchFFNCombineInfoCommon infoCommon{};
+    {
+        DispatchFFNCombineTilingDataQuant *tilingDataQuant = context->GetTilingData<DispatchFFNCombineTilingDataQuant>();
+        OP_TILING_CHECK(tilingDataQuant == nullptr, OP_LOGE(nodeName, "tilingData is nullptr."),
+                        return ge::GRAPH_FAILED);
+        DispatchFFNCombineInfoCommon &info = tilingDataQuant->dispatchFFNCombineInfo.common;
 
-    OP_TILING_CHECK(DispatchFFNCombineCheckAttrAndSetTiling(context, info, config) != ge::GRAPH_SUCCESS,
-        OP_LOGE(context->GetNodeName(), "DispatchFFNCombine CheckAttrAndSetTiling Failed"),
-        return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(DispatchFFNCombineCheckShapeAndSetTiling(context, info, config) != ge::GRAPH_SUCCESS,
-        OP_LOGE(context->GetNodeName(), "DispatchFFNCombine CheckShapeAndSetTiling Failed"),
-        return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(DispatchFFNCombineGetPlatformInfoAndSetTiling(context, info) != ge::GRAPH_SUCCESS,
-        OP_LOGE(context->GetNodeName(), "DispatchFFNCombine GetPlatformInfoAndSetTiling Failed"),
-        return ge::GRAPH_FAILED);
-
-    SetTilingData(tilingData->cocTiling, info);
+        OP_TILING_CHECK(DispatchFFNCombineCheckAttrAndSetTiling(context, info, config) != ge::GRAPH_SUCCESS,
+            OP_LOGE(context->GetNodeName(), "DispatchFFNCombine CheckAttrAndSetTiling Failed"),
+            return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(DispatchFFNCombineCheckShapeAndSetTiling(context, info, config) != ge::GRAPH_SUCCESS,
+            OP_LOGE(context->GetNodeName(), "DispatchFFNCombine CheckShapeAndSetTiling Failed"),
+            return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(DispatchFFNCombineGetPlatformInfoAndSetTiling(context, info) != ge::GRAPH_SUCCESS,
+            OP_LOGE(context->GetNodeName(), "DispatchFFNCombine GetPlatformInfoAndSetTiling Failed"),
+            return ge::GRAPH_FAILED);
+        infoCommon = info;
+    }
 
     uint32_t blockDim = 1U;
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
@@ -361,37 +344,32 @@ static ge::graphStatus DispatchFFNCombineTilingFuncImpl(gert::TilingContext *con
     blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum);
     context->SetBlockDim(blockDim);
 
+    uint32_t quantMode = infoCommon.isQuantRouting != 0U
+        ? (infoCommon.dispatchQuantMode == DISPATCH_FFN_COMBINE_QUANT_MODE_INT8
+            ? DISPATCH_FFN_COMBINE_QUANT_MODE_INT8
+            : DISPATCH_FFN_COMBINE_QUANT_MODE_W4A8)
+        : DISPATCH_FFN_COMBINE_QUANT_MODE_NO_QUANT;
+    uint32_t quantOutType = static_cast<uint32_t>(infoCommon.dispatchQuantOutType) == static_cast<uint32_t>(ge::DT_UNDEFINED)
+        ? DISPATCH_FFN_COMBINE_QUANT_OUT_TYPE_UNDEFINED
+        : DISPATCH_FFN_COMBINE_QUANT_OUT_TYPE_E4M3FN;
+    uint32_t archCode = infoCommon.isA2 ? SOC_ASCEND910B : SOC_ASCEND910_93;
+
     uint64_t tilingKey = GET_TPL_TILING_KEY(
-        static_cast<int64_t>(info.isTransposeW1),
-        static_cast<int64_t>(info.isTransposeW2),
-        static_cast<int64_t>(info.isA2));
+        static_cast<int64_t>(infoCommon.isTransposeW1),
+        static_cast<int64_t>(infoCommon.isTransposeW2),
+        static_cast<int64_t>(quantMode),
+        static_cast<int64_t>(quantOutType),
+        static_cast<int64_t>(archCode));
     context->SetTilingKey(tilingKey);
 
     OP_LOGD(K_INNER_DEBUG, "tilingKey=%lu", tilingKey);
 
-    // ------------------------------------------------------------------
-    // MoeInitRoutingV2 tiling.
-    // The output layout produced by MoeInitRoutingV2 differs between the
-    // quant and non-quant variants (different gather/srcToDst sizes because
-    // quant emits INT8 tokens + per-token scale while non-quant just emits
-    // BF16/FP16 tokens). We dispatch on `info.isQuantRouting` (decided
-    // earlier from the `weight1` data type) and instantiate the matching
-    // tiling class:
-    //   - Quant     : `MoeInitRoutingQuantV2TilingBase` -> writes into
-    //                 `cocTiling.moeInitRoutingQuantV2TilingData`.
-    //   - Non-quant : `MoeInitRoutingV2TilingBase` (concrete subclass of
-    //                 `InnerMoeInitRoutingV2TilingBase`) -> writes into
-    //                 `cocTiling.moeInitRoutingV2TilingData`.
-    // Both classes produce a tilingKey that the kernel-side dispatcher in
-    // `moe_init_routing_quant_v2.cpp` / `moe_init_routing_v2.cpp` already
-    // understands (20000 / 10000 / 10010 / 10100 / 10110 family).
-    // ------------------------------------------------------------------
     int64_t inuptXDtypeSize = sizeof(int16_t);
     int64_t scaleDim0 = 0;
     int64_t ubSize = 196352;
     int64_t expertCapacity = 0;
-    int64_t expertNum = info.expertPerRank * info.worldSize;
-    int64_t activeNum = info.M * info.topK;
+    int64_t expertNum = infoCommon.expertPerRank * infoCommon.worldSize;
+    int64_t activeNum = infoCommon.M * infoCommon.topK;
     int64_t dropPadMode = 0;
     int64_t expertTokensCountOrCumsumFlag = 2;
     bool expertTokensBeforeCapacityFlag = false;
@@ -400,86 +378,97 @@ static ge::graphStatus DispatchFFNCombineTilingFuncImpl(gert::TilingContext *con
     uint64_t initRoutingQuantTilingKey = 0;
     size_t initRoutingWorkspace = 0;
 
-    if (info.isQuantRouting != 0U) {
-        // Quant path: full `MoeInitRoutingQuantV2TilingData` (with smoothType
-        // and quant-aware gather layout) is consumed by the kernel.
+    if (infoCommon.isQuantRouting != 0U) {
+        DispatchFFNCombineTilingDataQuant *tilingData = context->GetTilingData<DispatchFFNCombineTilingDataQuant>();
+        OP_TILING_CHECK(tilingData == nullptr, OP_LOGE(nodeName, "tilingData is nullptr."),
+                        return ge::GRAPH_FAILED);
+        tilingData->dispatchFFNCombineInfo.common = infoCommon;
+
         optiling::MoeInitRoutingQuantV2TilingBase moeInitRoutingQuantV2TilingBase;
-        int64_t quantMode = 1;
-        moeInitRoutingQuantV2TilingBase.DoTiling(info.M, info.K, info.topK, expertCapacity, expertNum, activeNum,
+        int64_t quantModeRouting = 1;
+        moeInitRoutingQuantV2TilingBase.DoTiling(infoCommon.M, infoCommon.K, infoCommon.topK, expertCapacity, expertNum, activeNum,
             dropPadMode, expertTokensCountOrCumsumFlag, expertTokensBeforeCapacityFlag,
-            inuptXDtypeSize, quantMode, scaleDim0, aivNumInitRouting, ubSize);
+            inuptXDtypeSize, quantModeRouting, scaleDim0, aivNumInitRouting, ubSize);
         initRoutingQuantTilingKey = moeInitRoutingQuantV2TilingBase.tilingKey_;
         initRoutingWorkspace = moeInitRoutingQuantV2TilingBase.workspaceSize_;
-        tilingData->cocTiling.moeInitRoutingQuantV2TilingData = moeInitRoutingQuantV2TilingBase.quantTilingData;
+        tilingData->dispatchFFNCombineInfo.moeInitRoutingQuantV2TilingData = moeInitRoutingQuantV2TilingBase.quantTilingData;
+        tilingData->dispatchFFNCombineInfo.common.initRoutingQuantTilingKey = initRoutingQuantTilingKey;
     } else {
-        // Non-quant path: BF16/FP16 X is forwarded as-is. We use the concrete
-        // `MoeInitRoutingV2TilingBase` (ported from the standalone BF16 op),
-        // which writes its `InnerMoeInitRoutingV2TilingData` directly.
+        DispatchFFNCombineTilingDataNonQuant *tilingData = context->GetTilingData<DispatchFFNCombineTilingDataNonQuant>();
+        OP_TILING_CHECK(tilingData == nullptr, OP_LOGE(nodeName, "tilingData is nullptr."),
+                        return ge::GRAPH_FAILED);
+        tilingData->dispatchFFNCombineInfo.common = infoCommon;
+
         optiling::MoeInitRoutingV2TilingBase moeInitRoutingV2TilingBase;
-        int64_t quantMode = 0;
-        moeInitRoutingV2TilingBase.DoTiling(info.M, info.K, info.topK, expertCapacity, expertNum, activeNum,
+        int64_t quantModeRouting = 0;
+        moeInitRoutingV2TilingBase.DoTiling(infoCommon.M, infoCommon.K, infoCommon.topK, expertCapacity, expertNum, activeNum,
             dropPadMode, expertTokensCountOrCumsumFlag, expertTokensBeforeCapacityFlag,
-            inuptXDtypeSize, quantMode, scaleDim0, aivNumInitRouting, ubSize);
+            inuptXDtypeSize, quantModeRouting, scaleDim0, aivNumInitRouting, ubSize);
         initRoutingQuantTilingKey = moeInitRoutingV2TilingBase.tilingKey_;
         initRoutingWorkspace = moeInitRoutingV2TilingBase.workspaceSize_;
-        tilingData->cocTiling.moeInitRoutingV2TilingData = moeInitRoutingV2TilingBase.moeInitRoutingTilingData;
+        tilingData->dispatchFFNCombineInfo.moeInitRoutingV2TilingData = moeInitRoutingV2TilingBase.moeInitRoutingTilingData;
+        tilingData->dispatchFFNCombineInfo.common.initRoutingQuantTilingKey = initRoutingQuantTilingKey;
     }
-    tilingData->cocTiling.initRoutingQuantTilingKey = initRoutingQuantTilingKey;
+
     OP_LOGD(K_INNER_DEBUG, "initRoutingQuantTilingKey=%lu (isQuantRouting=%u)",
-            initRoutingQuantTilingKey, info.isQuantRouting);
+            initRoutingQuantTilingKey, infoCommon.isQuantRouting);
 
     uint64_t maxWindowSize = GetMaxWindowSize();
-    uint64_t actualSize = static_cast<uint64_t>(info.M) * info.topK * info.K * sizeof(int8_t) * 3 + 10 * MB_SIZE;
+    uint64_t actualSize = static_cast<uint64_t>(infoCommon.M) * infoCommon.topK * infoCommon.K * sizeof(int8_t) * 3 + 10 * MB_SIZE;
     OP_TILING_CHECK((actualSize > maxWindowSize),
         OP_LOGE(nodeName, "HCCL_BUFFSIZE is too SMALL, m = %u, k = %u, topK = %u"
             " expected HCCL_BUFFSIZE is ((m * k * topK * sizeof(int8_t)) * 3 + 10MB)= %luMB, HCCL_BUFFSIZE=%luMB.",
-            info.M, info.K, info.topK, (actualSize + MB_SIZE - 1) / MB_SIZE, maxWindowSize / MB_SIZE),
+            infoCommon.M, infoCommon.K, infoCommon.topK, (actualSize + MB_SIZE - 1) / MB_SIZE, maxWindowSize / MB_SIZE),
         return ge::GRAPH_FAILED);
 
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(nodeName, "workSpaces is nullptr."),
                     return ge::GRAPH_FAILED);
 
-    uint32_t n2 = info.K;
-    uint32_t k2 = info.N / 2;
+    uint32_t n2 = infoCommon.K;
+    uint32_t k2 = infoCommon.N / 2;
 
-    uint64_t cocWorkspace = (info.M + 256 - 1) / 256 * 256 * info.topK * sizeof(int32_t) +
-                            info.worldSize * info.worldSize * info.expertPerRank * sizeof(int32_t) * 3 +
-                            info.maxRecvTokenNum * sizeof(float) * 2 +
-                            info.maxRecvTokenNum * info.N * sizeof(int16_t) * 2 +
-                            info.maxRecvTokenNum * n2 * sizeof(int16_t) * 2 +
-                            info.maxRecvTokenNum * info.K * sizeof(int8_t) +
-                            info.maxRecvTokenNum * k2 * sizeof(int8_t) +
-                            info.worldSize * sizeof(int32_t) * 16 +
-                            (info.expertPerRank + info.worldSize) * sizeof(int32_t) * 16;
+    uint64_t cocWorkspace = (infoCommon.M + 256 - 1) / 256 * 256 * infoCommon.topK * sizeof(int32_t) +
+                            infoCommon.worldSize * infoCommon.worldSize * infoCommon.expertPerRank * sizeof(int32_t) * 3 +
+                            infoCommon.maxRecvTokenNum * sizeof(float) * 2 +
+                            infoCommon.maxRecvTokenNum * infoCommon.N * sizeof(int16_t) * 2 +
+                            infoCommon.maxRecvTokenNum * n2 * sizeof(int16_t) * 2 +
+                            infoCommon.maxRecvTokenNum * infoCommon.K * sizeof(int8_t) +
+                            infoCommon.maxRecvTokenNum * k2 * sizeof(int8_t) +
+                            infoCommon.worldSize * sizeof(int32_t) * 16 +
+                            (infoCommon.expertPerRank + infoCommon.worldSize) * sizeof(int32_t) * 16;
 
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + std::max(cocWorkspace, initRoutingWorkspace);
 
-    // Default `algConfig` is derived from platform (A2 vs A3). If the user
-    // explicitly passes a non-empty `comm_alg` attribute, we honor it: the
-    // raw attr string is forwarded to `Mc2CcTilingConfig` while the numeric
-    // code is also stored in `info.commAlgCode` for the kernel.
-    uint32_t opType = 0u;
-    std::string algConfig;
-    if (info.isA2) {
-        opType = 18u;
-        algConfig = DispatchFFNCombineA2GetAlgConfig(static_cast<int32_t>(info.worldSize), true);
-    } else {
-        opType = 8U;
-        algConfig = "AlltoAll=level0:fullmesh;level1:pairwise";
-    }
-    auto attrsForAlg = context->GetAttrs();
-    if (attrsForAlg != nullptr) {
-        auto commAlgPtr = attrsForAlg->GetAttrPointer<char>(static_cast<int>(config.attrCommAlgIndex));
-        if (commAlgPtr != nullptr && commAlgPtr[0] != '\0') {
-            algConfig = std::string(commAlgPtr);
-        }
-    }
-    auto contextTensor = context->GetInputTensor(static_cast<int>(config.contextIndex));
-    auto group = (contextTensor != nullptr) ? static_cast<const char *>(contextTensor->GetData()) : nullptr;
-    AscendC::Mc2CcTilingConfig mc2CcTilingConfig(group, opType, algConfig);
-    mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling);
-    mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling);
+    // uint32_t opType = 0u;
+    // std::string algConfig;
+    // if (infoCommon.isA2) {
+    //     opType = 18u;
+    //     algConfig = DispatchFFNCombineA2GetAlgConfig(static_cast<int32_t>(infoCommon.worldSize), true);
+    // } else {
+    //     opType = 8U;
+    //     algConfig = "AlltoAll=level0:fullmesh;level1:pairwise";
+    // }
+    // auto attrsForAlg = context->GetAttrs();
+    // if (attrsForAlg != nullptr) {
+    //     auto commAlgPtr = attrsForAlg->GetAttrPointer<char>(static_cast<int>(config.attrCommAlgIndex));
+    //     if (commAlgPtr != nullptr && commAlgPtr[0] != '\0') {
+    //         algConfig = std::string(commAlgPtr);
+    //     }
+    // }
+    // auto contextTensor = context->GetInputTensor(static_cast<int>(config.contextIndex));
+    // auto group = (contextTensor != nullptr) ? static_cast<const char *>(contextTensor->GetData()) : nullptr;
+    // AscendC::Mc2CcTilingConfig mc2CcTilingConfig(group, opType, algConfig);
+
+    // if (infoCommon.isQuantRouting != 0U) {
+    //     DispatchFFNCombineTilingDataQuant *tilingData = context->GetTilingData<DispatchFFNCombineTilingDataQuant>();
+    //     mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling);
+    //     mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling);
+    // } else {
+    //     DispatchFFNCombineTilingDataNonQuant *tilingData = context->GetTilingData<DispatchFFNCombineTilingDataNonQuant>();
+    //     mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling);
+    //     mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling);
+    // }
 
     OP_LOGI(nodeName, "Leave DispatchFFNCombine tiling func.");
     return ge::GRAPH_SUCCESS;

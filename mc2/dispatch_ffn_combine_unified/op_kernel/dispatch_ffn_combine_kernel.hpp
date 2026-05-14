@@ -48,6 +48,7 @@ namespace Catlass::Gemm::Kernel {
 
 constexpr uint16_t SYNCFLAGC2V = 9;
 constexpr uint16_t SYNCFLAGV2C = 10;
+constexpr int32_t UB_MOVE_NUM = 16 * 1024;
 
 // Unified kernel class.
 //
@@ -121,7 +122,6 @@ public:
         uint32_t maxOutputSize;
         uint32_t rank;
         uint32_t rankSize;
-        int32_t ubMoveNum;
         GM_ADDR symmetricPtr;
         //--------------
         GM_ADDR expertIdx;
@@ -140,7 +140,10 @@ public:
         // behavior (no special throttling). INT8 path historically uses
         // `expertPerRank - 1`; BF16 path historically uses `expertPerRank - 2`.
         uint32_t epilogueGranularity{0};
-        optiling::MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData;
+        union {
+            optiling::MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData;
+            optiling::InnerMoeInitRoutingV2TilingData moeInitRoutingV2TilingData;
+        };
         //--------------
 
         // Methods
@@ -157,7 +160,7 @@ public:
                GM_ADDR ptrOutput_, LayoutD2 layoutD1_, LayoutD2 layoutD2_, GM_ADDR expertIdx_,
                GM_ADDR moeInitRoutingQuantV2Scale_, GM_ADDR moeInitRoutingQuantV2Offset_,
                GM_ADDR expertTokensBeforeCapacity_, GM_ADDR probs_, GM_ADDR ptrWorkspace_, GM_ADDR gmExpertTokenNums_,
-               int32_t ubMoveNum_, optiling::MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData_,
+               optiling::MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData_,
                uint32_t epilogueGranularity_ = 0,
                GM_ADDR symmetricPtr_ = nullptr)
             : problemShape(problemShape_),
@@ -192,7 +195,6 @@ public:
               probs(probs_),
               ptrWorkspace(ptrWorkspace_),
               ptrExpertTokenNums(gmExpertTokenNums_),
-              ubMoveNum(ubMoveNum_),
               symmetricPtr(symmetricPtr_),
               moeInitRoutingQuantV2TilingData(moeInitRoutingQuantV2TilingData_)
         {
@@ -207,6 +209,56 @@ public:
                 moeInitRoutingQuantV2TilingData_.srcToDstCapacityComputeParamsOp;
             moeInitRoutingQuantV2TilingData.gatherOutComputeParamsOp =
                 moeInitRoutingQuantV2TilingData_.gatherOutComputeParamsOp;
+        }
+
+        CATLASS_HOST_DEVICE
+        Params(GemmCoord problemShape_, uint32_t EP_, uint32_t listLen_,
+               uint32_t expertPerRank_, uint32_t maxOutputSize_, uint32_t rank_,
+               uint32_t rankSize_, int64_t topK_, uint64_t initRoutingQuantTilingKey_, uint32_t epilogueCoreNum_,
+               GM_ADDR ptrA_, LayoutA layoutA_, LayoutA layoutA2_, GM_ADDR ptrB1_,
+               LayoutB1 layoutB1_, GM_ADDR ptrB2_, LayoutB2 layoutB2_,
+               GM_ADDR ptrScale1_, LayoutScale layoutScale1_, GM_ADDR ptrScale2_, LayoutScale layoutScale2_,
+               GM_ADDR ptrOutput_, LayoutD2 layoutD1_, LayoutD2 layoutD2_, GM_ADDR expertIdx_,
+               GM_ADDR moeInitRoutingQuantV2Scale_, GM_ADDR moeInitRoutingQuantV2Offset_,
+               GM_ADDR expertTokensBeforeCapacity_, GM_ADDR probs_, GM_ADDR ptrWorkspace_, GM_ADDR gmExpertTokenNums_,
+               optiling::InnerMoeInitRoutingV2TilingData moeInitRoutingV2TilingData_,
+               uint32_t epilogueGranularity_ = 0,
+               GM_ADDR symmetricPtr_ = nullptr)
+            : problemShape(problemShape_),
+              EP(EP_),
+              listLen(listLen_),
+              expertPerRank(expertPerRank_),
+              maxOutputSize(maxOutputSize_),
+              rank(rank_),
+              rankSize(rankSize_),
+              topK(topK_),
+              initRoutingQuantTilingKey(initRoutingQuantTilingKey_),
+              epilogueCoreNum(epilogueCoreNum_),
+              epilogueGranularity(epilogueGranularity_),
+              ptrA(reinterpret_cast<__gm__ ElementABefore *>(ptrA_)),
+              layoutA(layoutA_),
+              layoutA2(layoutA2_),
+              ptrB1(reinterpret_cast<__gm__ ElementB *>(ptrB1_)),
+              layoutB1(layoutB1_),
+              ptrB2(reinterpret_cast<__gm__ ElementB *>(ptrB2_)),
+              layoutB2(layoutB2_),
+              ptrScale1(reinterpret_cast<__gm__ ElementScale *>(ptrScale1_)),
+              layoutScale1(layoutScale1_),
+              ptrScale2(reinterpret_cast<__gm__ ElementScale *>(ptrScale2_)),
+              layoutScale2(layoutScale2_),
+              ptrOutput(reinterpret_cast<__gm__ ElementD2 *>(ptrOutput_)),
+              layoutD1(layoutD1_),
+              layoutD2(layoutD2_),
+              expertIdx(expertIdx_),
+              moeInitRoutingQuantV2Scale(moeInitRoutingQuantV2Scale_),
+              moeInitRoutingQuantV2Offset(moeInitRoutingQuantV2Offset_),
+              expertTokensBeforeCapacity(expertTokensBeforeCapacity_),
+              probs(probs_),
+              ptrWorkspace(ptrWorkspace_),
+              ptrExpertTokenNums(gmExpertTokenNums_),
+              symmetricPtr(symmetricPtr_),
+              moeInitRoutingV2TilingData(moeInitRoutingV2TilingData_)
+        {
         }
     };
 
@@ -1229,7 +1281,7 @@ private:
         ExpertTokenNums.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.ptrExpertTokenNums));
         if (coreIdx == 0) {
             CopyGMToGM(ExpertTokenNums, cumsumMM[(params.EP - 1) * params.expertPerRank], params.expertPerRank,
-                       params.ubMoveNum);
+                       UB_MOVE_NUM);
         }
         uint16_t syncgmm1Idx = 0;
         AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(syncgmm1Idx / CROSS_CORE_FLAG_MAX_SET_COUNT);
