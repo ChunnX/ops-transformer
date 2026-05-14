@@ -144,6 +144,7 @@ private:
     GlobalTensor<int32_t> blockTableGm;
     GlobalTensor<T> sinksGm;
     GlobalTensor<int32_t> cuSeqlensQGm;
+    GlobalTensor<int32_t> cuSeqlensKvGm;
     GlobalTensor<int32_t> cuSeqlensOriKvGm;
     GlobalTensor<int32_t> cuSeqlensCmpKvGm;
     GlobalTensor<int32_t> actualSeqOriKvGm;
@@ -209,8 +210,13 @@ __aicore__ inline int64_t SCFABlockVec<TEMPLATE_ARGS>::GetkeyOffset(int64_t s2Id
         int64_t paBlockStride = runInfo.isCmp ? constInfo.cmpKvStride : constInfo.oriKvStride;
         realkeyOffset = blockTableGm.GetValue(runInfo.boIdx * maxBlockNumPerBatch + blkTableIdx) *
             paBlockStride + blkTableOffset * constInfo.dSizeVInput; // BlockNum, BlockSize, N(1), D
-    } else {
-        realkeyOffset = runInfo.boIdx * constInfo.s2Size + s2Idx; // BSN(1)D
+    } else {    
+        if constexpr (LAYOUT_T == SFA_LAYOUT::BSND) {
+            realkeyOffset = runInfo.boIdx * constInfo.s2Size + s2Idx; // BSN(1)D
+        } else if constexpr (LAYOUT_T == SFA_LAYOUT::TND) {
+            int64_t batchKvStart = (runInfo.boIdx == 0) ? 0 : actualSeqLengthsKVGm.GetValue(runInfo.boIdx - 1);
+            realkeyOffset = (batchKvStart + s2Idx);
+        }
     }
     return realkeyOffset;
 }
@@ -565,7 +571,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CopyInKvNotSparse(LocalTenso
             curSequence += copyElmenCnt;
         }
     } else {
-        DataCopyPad(kvMergUb, keyGm[s2Idx * combineDim], intriParams, padParams);
+        DataCopyPad(kvMergUb, keyGm[(cuSeqlensKvGm.GetValue(runInfo.boIdx) + s2Idx) * constInfo.n2Size * combineDim], intriParams, padParams);
     }
 }
 
@@ -614,11 +620,13 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec0(
     bool isCmp = runInfo.s2LoopCount >= runInfo.oriKvLoopEndIdx;
     if (isCmp) {
         keyGm = cmpKVGm;
+        cuSeqlensKvGm = cuSeqlensOriKvGm;
         blockTableGm = cmpBlockTableGm;
         blockSize = constInfo.cmpBlockSize;
         maxBlockNumPerBatch = constInfo.cmpMaxBlockNumPerBatch;
     } else {
         keyGm = oriKVGm;
+        cuSeqlensKvGm = cuSeqlensCmpKvGm;
         blockTableGm = oriBlockTableGm;
         blockSize = constInfo.oriBlockSize;
         maxBlockNumPerBatch = constInfo.oriMaxBlockNumPerBatch;

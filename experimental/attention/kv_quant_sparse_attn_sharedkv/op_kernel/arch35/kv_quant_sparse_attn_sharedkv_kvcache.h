@@ -32,7 +32,7 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
     __gm__ int32_t *actualSeqOriKvlenAddr, __gm__ int32_t *actualSeqCmpKvlenAddr, __gm__ int32_t *cmpResidualKvAddr)
 {
     int32_t actualS1Size = 0;
-    int32_t actualS2Size = 0;
+    int32_t actualS2OriSize = 0;
     int32_t actualS2CmpSize = 0;
     int32_t actualSeqMin = 1;
     int32_t actualSeqKVMin = 1;
@@ -45,47 +45,48 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
             actualSeqQlenAddr[bIdx];
     }
 
-    if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
+    if constexpr (KV_LAYOUT_T == SAS_LAYOUT::TND) {
         if (actualSeqOriKvlenAddr != nullptr) {
-            actualS2Size = actualSeqOriKvlenAddr[bIdx];
-            if ((bIdx > 0) && (!isPa)) {
-                actualS2Size -= actualSeqOriKvlenAddr[bIdx - 1];
+            actualS2OriSize = actualSeqOriKvlenAddr[bIdx];
+            if (bIdx > 0) {
+                actualS2OriSize -= actualSeqOriKvlenAddr[bIdx - 1];
             }
         } else if (cuSeqlensOriKvAddr != nullptr) {
-            actualS2Size = cuSeqlensOriKvAddr[bIdx + 1] - cuSeqlensOriKvAddr[bIdx];
+            actualS2OriSize = cuSeqlensOriKvAddr[bIdx + 1] - cuSeqlensOriKvAddr[bIdx];
         } else {
-            actualS2Size = constInfo.s2Size;
+            actualS2OriSize = constInfo.s2Size;
         }
     } else {
-        actualS2Size = (actualSeqOriKvlenAddr == nullptr) ? constInfo.s2Size :
+        actualS2OriSize = (actualSeqOriKvlenAddr == nullptr) ? constInfo.s2Size :
             (constInfo.actualLenDimsOriKV == actualSeqKVMin) ? actualSeqOriKvlenAddr[0] : actualSeqOriKvlenAddr[bIdx];
     }
 
     if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
         if (actualSeqCmpKvlenAddr != nullptr) {
             actualS2CmpSize = actualSeqCmpKvlenAddr[bIdx];
-            if ((bIdx > 0) && (!isPa)) {
+            if (bIdx > 0) {
                 actualS2CmpSize -= actualSeqCmpKvlenAddr[bIdx - 1];
             }
         } else if (cuSeqlensCmpKvAddr != nullptr) {
             actualS2CmpSize = cuSeqlensCmpKvAddr[bIdx + 1] - cuSeqlensCmpKvAddr[bIdx];
         } else {
-            actualS2CmpSize = actualS2Size / constInfo.cmpRatio;
+            actualS2CmpSize = actualS2OriSize / constInfo.cmpRatio;
         }
     } else {
-        actualS2CmpSize = (actualSeqCmpKvlenAddr == nullptr) ? (actualS2Size / constInfo.cmpRatio) :
+        actualS2CmpSize = (actualSeqCmpKvlenAddr == nullptr) ? (actualS2OriSize / constInfo.cmpRatio) :
             (constInfo.actualLenDimsCmpKV == actualSeqKVMin) ? actualSeqCmpKvlenAddr[0] : actualSeqCmpKvlenAddr[bIdx];
     }
 
     runParam.actualS1Size = actualS1Size;
-    runParam.actualS2Size = actualS2Size;
+    runParam.actualS2OriSize = actualS2OriSize;
     runParam.actualS2CmpSize = actualS2CmpSize;
     runParam.cmpResidual = cmpResidualKvAddr[bIdx];
-    runParam.nextTokensPerBatch = runParam.actualS2Size - runParam.actualS1Size;
+    runParam.nextTokensPerBatchOri = runParam.actualS2OriSize - runParam.actualS1Size;
+    runParam.nextTokensPerBatchCmp = runParam.actualS2CmpSize - runParam.actualS1Size / constInfo.cmpRatio;
     if (constInfo.oriWinLeft == -1) {
         runParam.preTokensPerBatch = runParam.actualS1Size;
     } else {
-        runParam.preTokensPerBatch = -(runParam.actualS2Size - runParam.actualS1Size - constInfo.oriWinLeft);
+        runParam.preTokensPerBatch = -(runParam.actualS2OriSize - runParam.actualS1Size - constInfo.oriWinLeft);
     }
     runParam.preTokensPerBatch = Min(runParam.preTokensPerBatch, runParam.actualS1Size);
 }
@@ -108,8 +109,8 @@ __aicore__ inline void ComputeS1LoopInfo(RunParamStr& runParam, const ConstInfo 
     runParam.qSNumInOneBlock = (constInfo.gSize <= 64) ? \
         (constInfo.s1BaseSize / constInfo.gSize) : 1;
     runParam.gs1LoopStartIdx = gS1StartIdx;
-    if (runParam.nextTokensPerBatch < 0) {
-        int64_t gs1LoopStartIdx = runParam.nextTokensPerBatch * (-1) / runParam.qSNumInOneBlock * runParam.qSNumInOneBlock;
+    if (runParam.nextTokensPerBatchOri < 0) {
+        int64_t gs1LoopStartIdx = runParam.nextTokensPerBatchOri * (-1) / runParam.qSNumInOneBlock * runParam.qSNumInOneBlock;
         if (gs1LoopStartIdx > gS1StartIdx) {
             runParam.gs1LoopStartIdx = gs1LoopStartIdx;
         }
@@ -199,8 +200,8 @@ TEMPLATE_INTF
 __aicore__ inline bool ComputeParamS1(RunParamStr& runParam, const ConstInfo &constInfo,
     uint32_t sOuterLoopIdx, __gm__ int32_t *cuSeqlensQAddr)
 {
-    if (runParam.nextTokensPerBatch < 0) {
-        if (runParam.s1oIdx < (runParam.nextTokensPerBatch * (-1)) / runParam.qSNumInOneBlock * runParam.qSNumInOneBlock) {
+    if (runParam.nextTokensPerBatchOri < 0) {
+        if (runParam.s1oIdx < (runParam.nextTokensPerBatchOri * (-1)) / runParam.qSNumInOneBlock * runParam.qSNumInOneBlock) {
             return true;
         }
     }
@@ -234,7 +235,7 @@ __aicore__ inline int64_t ClipSInnerTokenCube(int64_t sInnerToken, int64_t minVa
 TEMPLATE_INTF
 __aicore__ inline bool ComputeS2LoopInfo(RunParamStr& runParam, const ConstInfo &constInfo)
 {
-    if (runParam.actualS2Size == 0) {
+    if (runParam.actualS2OriSize == 0) {
         runParam.oriKvLoopEndIdx = 0;
         runParam.cmpKvLoopEndIdx = 0;
         runParam.s2LoopEndIdx = 0;
@@ -243,18 +244,22 @@ __aicore__ inline bool ComputeS2LoopInfo(RunParamStr& runParam, const ConstInfo 
     uint32_t s2BaseSize = constInfo.s2BaseSize;
 
     runParam.s2LineStartIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(runParam.cubeSOuterOffset - runParam.preTokensPerBatch,
-        0, runParam.actualS2Size);
-    runParam.s2LineEndIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(runParam.cubeSOuterOffset + runParam.nextTokensPerBatch +
-        runParam.s1RealSize, 0, runParam.actualS2Size);
-    runParam.oriKvLoopEndIdx = (runParam.s2LineEndIdx - runParam.s2LineStartIdx + s2BaseSize - 1) / s2BaseSize;
+        0, runParam.actualS2OriSize);
+    runParam.s2LineOriEndIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(runParam.cubeSOuterOffset + runParam.nextTokensPerBatchOri +
+        runParam.s1RealSize, 0, runParam.actualS2OriSize);
+    runParam.oriKvLoopEndIdx = (runParam.s2LineOriEndIdx - runParam.s2LineStartIdx + s2BaseSize - 1) / s2BaseSize;
+
+    runParam.s2LineCmpEndIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(
+        (runParam.cubeSOuterOffset + runParam.s1RealSize + runParam.cmpResidual) / constInfo.cmpRatio +
+        runParam.nextTokensPerBatchCmp, 0, runParam.actualS2CmpSize);
     if constexpr (TEMPLATE_MODE == SASTemplateMode::SWA_TEMPLATE_MODE) {
         runParam.cmpKvLoopEndIdx = 0;
         runParam.s2CmpLineEndIdx = 0;
     } else if constexpr (TEMPLATE_MODE == SASTemplateMode::CFA_TEMPLATE_MODE) {
-        runParam.s2CmpLineEndIdx = Min(runParam.s2LineEndIdx / constInfo.cmpRatio, runParam.actualS2CmpSize);
+        runParam.s2CmpLineEndIdx = Min(runParam.s2LineCmpEndIdx, runParam.actualS2CmpSize);
         runParam.cmpKvLoopEndIdx = (runParam.s2CmpLineEndIdx + s2BaseSize - 1) / s2BaseSize;
     } else { // SCFA_TEMPLATE_MODE
-        runParam.s2CmpLineEndIdx = Min(runParam.s2LineEndIdx / constInfo.cmpRatio, constInfo.sparseBlockCount);
+        runParam.s2CmpLineEndIdx = Min(runParam.s2LineCmpEndIdx, constInfo.sparseBlockCount);
         runParam.s2CmpLineEndIdx = Min(runParam.s2CmpLineEndIdx, runParam.actualS2CmpSize);
         runParam.cmpKvLoopEndIdx = (runParam.s2CmpLineEndIdx + s2BaseSize - 1) / s2BaseSize;
     }
@@ -267,9 +272,9 @@ __aicore__ inline void InitTaskParamByRun(const RunParamStr& runParam, RunInfo &
 {
     runInfo.boIdx = runParam.boIdx;
     runInfo.preTokensPerBatch = runParam.preTokensPerBatch;
-    runInfo.nextTokensPerBatch = runParam.nextTokensPerBatch;
+    runInfo.nextTokensPerBatchOri = runParam.nextTokensPerBatchOri;
     runInfo.actualS1Size = runParam.actualS1Size;
-    runInfo.actualS2Size = runParam.actualS2Size;
+    runInfo.actualS2OriSize = runParam.actualS2OriSize;
     runInfo.actualS2CmpSize = runParam.actualS2CmpSize;
     runInfo.cmpResidual = runParam.cmpResidual;
     runInfo.softmaxLseOffset = runParam.softmaxLseOffset;

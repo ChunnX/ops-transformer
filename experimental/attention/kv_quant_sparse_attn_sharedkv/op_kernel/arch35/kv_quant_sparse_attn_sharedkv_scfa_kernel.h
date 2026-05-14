@@ -52,8 +52,7 @@ public:
     __aicore__ inline void Process();
 private:
     __aicore__ inline void ProcessMainLoop();
-    __aicore__ inline void ParseTilingData(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *cuSeqlensCmpKv,
-        __gm__ uint8_t *sequsedOriKv, __gm__ uint8_t *sequsedCmpKv, __gm__ uint8_t *cmpResidualKv);
+    __aicore__ inline void ParseTilingData(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *sequsedOriKv);
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV, __gm__ uint8_t *cmpSparseIndices,
         __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *cuSeqlensCmpKv,
         __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedOriKv,
@@ -137,7 +136,7 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
     constInfo.s2BaseSize = 128;
 
     this->pipe = tPipe;
-    this->ParseTilingData(cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, sequsedOriKv, sequsedCmpKv, cmpResidualKv);
+    this->ParseTilingData(cuSeqlensQ, cuSeqlensOriKv, sequsedOriKv);
     vecBlock.InitVecBlock(tPipe, cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, sequsedOriKv, sequsedCmpKv, cmpResidualKv);
     vecBlock.CleanOutput(attentionOut, constInfo);
     /* cube侧不依赖sharedParams的scalar前置 */
@@ -151,8 +150,7 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType>::ParseTilingData(
-    __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *cuSeqlensCmpKv,
-    __gm__ uint8_t *sequsedOriKv, __gm__ uint8_t *sequsedCmpKv, __gm__ uint8_t *cmpResidualKv)
+    __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv, __gm__ uint8_t *sequsedOriKv)
 {
     auto &sparseAttnSharedkvBaseParams = this->tilingData->baseParams;
     constInfo.bSize = sparseAttnSharedkvBaseParams.batchSize;
@@ -187,27 +185,33 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
         constInfo.oriMaxBlockNumPerBatch = sparseAttnSharedkvBaseParams.oriMaxBlockNumPerBatch;
         constInfo.cmpMaxBlockNumPerBatch = sparseAttnSharedkvBaseParams.cmpMaxBlockNumPerBatch;
     }
+    
+    // actQ->TND, actKV pa场景任意layout均有
+    constInfo.isActualLenDimsKVNull = false;
 
     constInfo.needInit = 0;
-    if (sequsedOriKv != nullptr) {
-        for (uint32_t bIdx = 0; bIdx < constInfo.bSize; bIdx++) {
-            int64_t s2Size;
-            GlobalTensor<int32_t> actualSeqLengthsOriKvGm;
-            actualSeqLengthsOriKvGm.SetGlobalBuffer((__gm__ int32_t *)sequsedOriKv);
-            s2Size = actualSeqLengthsOriKvGm.GetValue(bIdx);
-        
-            int64_t s1Size;
-            if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
-                GlobalTensor<int32_t> cuSeqlensQGm;
-                cuSeqlensQGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensQ);
-                s1Size = cuSeqlensQGm.GetValue(bIdx + 1) - cuSeqlensQGm.GetValue(bIdx);
-            } else {
-                s1Size = constInfo.s1Size;
-            }
-            if (s1Size > s2Size) {
-                constInfo.needInit = 1;
-                break;
-            }
+    for (uint32_t bIdx = 0; bIdx < constInfo.bSize; bIdx++) {
+        int64_t s2Size;
+        if constexpr (KV_LAYOUT_T == SAS_LAYOUT::TND) {
+            GlobalTensor<int32_t> cuSeqlensOriKvGm;
+            cuSeqlensOriKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensOriKv);
+            s2Size = cuSeqlensOriKvGm.GetValue(bIdx + 1) - cuSeqlensOriKvGm.GetValue(bIdx);
+        } else {
+            GlobalTensor<int32_t> actualSeqLengthsKVGm;
+            actualSeqLengthsKVGm.SetGlobalBuffer((__gm__ int32_t *)sequsedOriKv);
+            s2Size = actualSeqLengthsKVGm.GetValue(bIdx);
+        }        
+        int64_t s1Size;
+        if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
+            GlobalTensor<int32_t> cuSeqlensQGm;
+            cuSeqlensQGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensQ);
+            s1Size = cuSeqlensQGm.GetValue(bIdx + 1) - cuSeqlensQGm.GetValue(bIdx);
+        } else {
+            s1Size = constInfo.s1Size;
+        }
+        if (s1Size > s2Size) {
+            constInfo.needInit = 1;
+            break;
         }
     }
 }
@@ -509,7 +513,7 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
     runInfo.s2LoopLimit = s2LoopLimit;
 
     runInfo.actualS1Size = runParam.actualS1Size;
-    runInfo.actualS2Size = runParam.actualS2Size;
+    runInfo.actualS2OriSize = runParam.actualS2OriSize;
     runInfo.attentionOutOffset = runParam.attentionOutOffset;
     runInfo.sOuterOffset = runParam.sOuterOffset;
     this->ComputeBmm1Tail(runInfo, runParam);
