@@ -65,6 +65,8 @@ struct TaskTilingInfo {
     // 通信参数（对应sendCounts和recvCounts）
     int32_t sendCnt[MAX_EXPERT_SIZE];  // 每个expert的发送计数
     int32_t recvCnt[MAX_EXPERT_SIZE];  // 每个expert的接收计数
+    
+    bool isSmallShapeMode = false;
 };
 
 }

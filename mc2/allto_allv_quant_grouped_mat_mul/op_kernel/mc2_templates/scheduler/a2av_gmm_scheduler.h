@@ -1,12 +1,12 @@
 /* *
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
-  */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file pipeline_template_comm_compute.h
@@ -17,6 +17,8 @@
 #define MC2_PIPELINE_TEMPLATE_COMM_COMPUTE_H
 
 #include "../a2av_gmm_utils.h"
+
+
 #include "kernel_tiling/kernel_tiling.h"
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
@@ -79,6 +81,16 @@ public:
             commOp.InitScaleBuffer(gmmxScaleGm_, gmmxScaleCommOutGm_, gmmxScalePermuteOutGm_);
             computeScaleGm_ = gmmxScalePermuteOutGm_;
         }
+        // gmmX permute: 小shape模式下将gmmX通信输出重排为专家序，消除per-expert框架开销
+        bool isGmmPermMode = tilingData_->taskTilingInfo.isSmallShapeMode;
+        if (isGmmPermMode) {
+            uint64_t commOutLen =
+                Align(CeilDiv((tilingData_->taskTilingInfo.A) * (tilingData_->taskTilingInfo.H1), PACK_FACTOR),
+                      TENSOR_LIST_SIZE);
+            gmmxPermuteOutGm_ = workspaceGM + workspaceOffset;
+            workspaceOffset += commOutLen;
+            commOp.InitGmmPermBuffer(commOutGm_, gmmxPermuteOutGm_);
+        }
         // 计算类使用的workspace起始地址（偏移后的workspace）
         computeWorkspaceGm_ = workspaceGM + workspaceOffset;
         if (tilingData_->isNeedMM != 0) {
@@ -86,7 +98,8 @@ public:
                                 computeWorkspaceGm_, tilingData_, &tilingData_->mmQuantTilingData, mmArrayAddrIn, tPipe,
                                 isA2avGmmFlag);
         }
-        computeOp.Init(commOutGm_, gmmweightGM, computeScaleGm_, gmmWeightScaleGM, gmmyGM, computeWorkspaceGm_,
+        computeOp.Init(isGmmPermMode ? gmmxPermuteOutGm_ : commOutGm_, gmmweightGM, computeScaleGm_, gmmWeightScaleGM,
+                       gmmyGM, computeWorkspaceGm_,
                        tilingData_, &tilingData_->gmmQuantTilingData, gmmArrayAddrIn, tPipe, isA2avGmmFlag);
     }
 
@@ -98,11 +111,17 @@ public:
         if constexpr (MX_QUANT_MODE) {
             if (isScaleBatchMode_) {
                 ProcessScaleCommBatchMode();
+            } else if (tilingData_->taskTilingInfo.isSmallShapeMode) {
+                ProcessGmmPermBatchMode();
             } else {
                 ProcessCommRoundMode();
             }
         } else {
-            ProcessCommRoundMode();
+            if (tilingData_->taskTilingInfo.isSmallShapeMode) {
+                ProcessGmmPermBatchMode();
+            } else {
+                ProcessCommRoundMode();
+            }
         }
         this->End();
     }
@@ -151,6 +170,29 @@ private:
         }
     }
 
+    __aicore__ inline void ProcessGmmPermBatchMode()
+    {
+        constexpr uint32_t BATCH_SIZE = 2U;
+        for (uint32_t batchStart = 0U; batchStart < e_; batchStart += BATCH_SIZE) {
+            uint32_t batchCount = (batchStart + BATCH_SIZE <= e_) ? BATCH_SIZE : (e_ - batchStart);
+            if constexpr (MX_QUANT_MODE) {
+                commOp.LaunchScaleBeforeCompute(batchStart, batchCount);
+                commOp.WaitScale(batchStart);
+            }
+            commOp.Launch(batchStart, batchCount);
+            commOp.Wait(batchStart);
+            SyncAll<false>();
+            if constexpr (MX_QUANT_MODE) {
+                commOp.PermuteScale();
+            }
+            commOp.PermuteGmmX(batchStart, batchCount);
+            SyncAll<false>();
+            for (uint32_t i = 0U; i < batchCount; i++) {
+                computeOp.Process(batchStart + i);
+            }
+        }
+    }
+
     CommOpType commOp;
     ComputeOpType computeOp;
     LocalComputeOpType localComputeOp;
@@ -158,6 +200,7 @@ private:
     GM_ADDR gmmxScaleGm_ = nullptr;
     GM_ADDR gmmxScalePermuteOutGm_ = nullptr;
     GM_ADDR gmmxScaleCommOutGm_ = nullptr;
+    GM_ADDR gmmxPermuteOutGm_ = nullptr;
     GM_ADDR computeScaleGm_ = nullptr;
     GM_ADDR computeWorkspaceGm_ = nullptr;
     const TilingDataType *tilingData_ = nullptr;

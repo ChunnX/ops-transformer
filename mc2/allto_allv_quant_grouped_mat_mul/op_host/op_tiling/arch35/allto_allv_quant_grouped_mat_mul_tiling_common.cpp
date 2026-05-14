@@ -22,6 +22,9 @@ using namespace Ops::Transformer::OpTiling;
 
 namespace optiling {
 
+constexpr uint64_t SMALL_SHAPE_THRESHOLD_WITH_MM = 16384;
+constexpr uint64_t SMALL_SHAPE_THRESHOLD_NO_MM = 14336;
+
 ge::graphStatus AlltoAllvQuantGmmTilingCommon::GetPlatformInfo()
 {
     OP_LOGD(context_->GetNodeName(), "start quant GetPlatformInfo.");
@@ -160,6 +163,13 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::PostTiling()
     tilingData->taskTilingInfo.tailLoopExpertNum = 0;
     tilingData->taskTilingInfo.totalLoopCount = e_;
     tilingData->isNeedMM = hasSharedExpertFlag_;
+    constexpr uint32_t SMALL_SHAPE_MAX_ROUNDS = 63U;
+    bool rankExpertLimitOk = (epWorldSize_ * e_) <= SMALL_SHAPE_MAX_ROUNDS;
+    if (hasSharedExpertFlag_) {
+        tilingData->taskTilingInfo.isSmallShapeMode = (bsk_ < SMALL_SHAPE_THRESHOLD_WITH_MM) && rankExpertLimitOk;
+    } else {
+        tilingData->taskTilingInfo.isSmallShapeMode = (bsk_ < SMALL_SHAPE_THRESHOLD_NO_MM) && rankExpertLimitOk;
+    }
     for (uint32_t i = 0; i < e_ * epWorldSize_; i++) {
         tilingData->taskTilingInfo.sendCnt[i] = sendCounts[i];
         tilingData->taskTilingInfo.recvCnt[i] = recvCounts[i];
