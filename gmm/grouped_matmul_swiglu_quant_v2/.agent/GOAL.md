@@ -1,6 +1,6 @@
 # GOAL - GMMSQ算子开发
 
-> 总体目标导向文档，牵引总体方向不偏离
+> 总体目标导向文档，牵引总体方向不偏离，保证跨会话目标一致。
 
 ## 项目背景
 
@@ -10,11 +10,13 @@ GroupedMatmulSwigluQuantV2算子，在已有全量化基础上支持MxA8W4的伪
 
 GroupedMatmulSwigluQuantV2算子支持MxA8W4数据流，tiling拦截校验正确、kernel精度正确，且不影响原有全量化数据流功能。
 
-## 阶段一：代码走读与文档输出 ✅ 已完成
+## 目标拆解
+
+### 阶段一：代码走读与文档输出 ✅ 已完成
 
 基于 GMMFR (GroupedMatmulFinalizeRouting) 算子的 MxA8W4 数据流实现，完成全面代码走读并撰写走读文档，为后续 GMMSQ 改写提供完整参考。
 
-### 阶段一交付物
+#### 阶段一交付物
 
 - [x] `docs/01_gmmfr_architecture.md`: GMMFR架构总览与数据流 (760行)
 - [x] `docs/02_gmmfr_controller.md`: Controller层代码走读 (550行)
@@ -26,9 +28,9 @@ GroupedMatmulSwigluQuantV2算子支持MxA8W4数据流，tiling拦截校验正确
 - [x] `docs/08_gmmsq_impl_plan.md`: GMMSQ实现详细规划 (816行)
 - [x] `development/srs_chapter8_encoding_plan.md`: SRS第8章节详细编码方案 (1776行)
 
-## 阶段二：框架搭建与代码实现（当前阶段）
+### 阶段二：框架搭建与代码实现（当前阶段）
 
-### 阶段二-Part1: 框架搭建（当前）
+#### 阶段二-Part1: 框架搭建（当前）
 基于新算子开发适配工程指南，完成MxA8W4数据流的框架支持：
 - Tiling Key扩展
 - Tiling Data定义
@@ -36,27 +38,28 @@ GroupedMatmulSwigluQuantV2算子支持MxA8W4数据流，tiling拦截校验正确
 - Kernel入口分支
 - Stub kernel保证框架调用正常
 
-### 阶段二-Part2: Tiling实现（后续）
+#### 阶段二-Part2: Tiling实现（后续）
 基于走读文档和编码方案，完成GMMSQ MxA8W4数据流的Tiling代码开发：
 - 基于STC进行tiling用例设计
 - 适配测试用例代码
 - 编译执行UT验证tiling
 - 测试驱动开发，通过闭环工作流完成验证+代码完善工作
 
-### 阶段二-Part3: Kernel实现（后续）
+#### 阶段二-Part3: Kernel实现（后续）
 基于走读文档和编码方案，完成GMMSQ MxA8W4数据流的kernel代码开发：
 - Controller层改写
 - BasicBlock层改写
 - VecCompute层改写（SwiGLU+Quant）
 - CubeCompute层改写
 
-## 阶段三：测试验证（待阶段二完成后启动）
+### 阶段三：测试验证（待阶段二完成后启动）
 
 完成精度测试、性能测试，确保算子正确性和性能达标。
 
 ## 相关链接
 
-- GMMFR Kernel入口: `gmm/grouped_matmul_finalize_routing/op_kernel/grouped_matmul_finalize_routing_apt.cpp`
-- GMMFR Controller: `gmm/grouped_matmul_finalize_routing/op_kernel/arch35/weight_quant_basic_block/gmm_fr_weight_quant_resplit_controller.h`
-- GMMSQ 设计文档: `gmm/grouped_matmul_swiglu_quant_v2/.agent/raw/design/`
-- 适配工程指南: `~/Code/asc-wiki/ops-dev-wiki/raw/docs/`
+- [用户计划](./NEXT_STEPS.md)
+- [实现规划](./PLAN.md)
+- [检查清单](./CHECKLIST.md)
+- [变更记录](./CHANGELIST.md)
+- [设计指南](./DESIGN.md)
