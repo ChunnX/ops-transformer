@@ -178,7 +178,7 @@ ge::graphStatus FpMatmulAlltoAllV2TilingBase::SetHcclTiling()
 
     // 获取commMode
     uint8_t commMode = 0;
-    if (MatmulAlltoAllV2TilingUtil::GetEngineTypeFromAttr(context, opName_, contextInfo, commMode) !=
+    if (MatmulAlltoAllV2TilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo, commMode) !=
         ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
@@ -275,7 +275,7 @@ uint64_t FpMatmulAlltoAllV2TilingBase::GetTilingKey() const
     }
 
     uint8_t commMode = 0;
-    if (MatmulAlltoAllV2TilingUtil::GetEngineTypeFromAttr(context, opName_, contextInfo, commMode) !=
+    if (MatmulAlltoAllV2TilingUtil::GetAndConvertCommMode(context_, opName_, contextInfo, commMode) !=
         ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }

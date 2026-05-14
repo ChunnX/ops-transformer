@@ -147,7 +147,7 @@ public:
     static ge::graphStatus GetAndValidateRankSize(const gert::TilingContext *context, const char *opName,
                                                   const char *group, int64_t &rankDim);
     static ge::graphStatus GetAndConvertCommMode(const gert::TilingContext *context, const char *opName,
-                                             TilingContextInfo &contextInfo, uint8_t &commMode);
+                                            const TilingContextInfo &contextInfo, uint8_t &commMode);
     static void GetMatrix2DShapes(const gert::TilingContext *context, Matrix2DShapes &shapes);
     static ge::graphStatus CheckAttrsInfo(const gert::TilingContext *context, const char *opName,
                                           const OpAttrIndexSchema &indexSchema);
