@@ -179,13 +179,13 @@ void FlashAttnTilingImpl::InitImplParam()
 
 void FlashAttnTilingImpl::AdjustSinnerAndSouter()
 {
-    uint32_t softmaxSOuterFactor = optiling::arch35FA::SOUTER_64;
-    sOuterFactor_ = optiling::arch35FA::SOUTER_64;
-    sInnerFactor_ = optiling::arch35FA::SINNER_128;
+    uint32_t softmaxSOuterFactor = arch35FA::SOUTER_64;
+    sOuterFactor_ = arch35FA::SOUTER_64;
+    sInnerFactor_ = arch35FA::SINNER_128;
 
-    if (faInfo_->vHeadDim <= optiling::arch35FA::DSIZE_128) {
+    if (faInfo_->vHeadDim <= arch35FA::DSIZE_128) {
         bool checkQueryAndValueS =
-            faInfo_->s1Size <= optiling::arch35FA::SOUTER_64 && faInfo_->s2Size > optiling::arch35FA::SINNER_128;
+            faInfo_->s1Size <= arch35FA::SOUTER_64 && faInfo_->s2Size > arch35FA::SINNER_128;
         int64_t maskMode = faInfo_->maskMode;
         int64_t winLefts = faInfo_->winLeft;
         int64_t winRights = faInfo_->winRight;
@@ -199,27 +199,27 @@ void FlashAttnTilingImpl::AdjustSinnerAndSouter()
         }
         bool checkmaskMode = (maskMode != 2 && winLefts + winRights > 128);
         if (checkQueryAndValueS && checkmaskMode) {
-            sOuterFactor_ = optiling::arch35FA::SOUTER_32;
-            sInnerFactor_ = optiling::arch35FA::SINNER_256;
-            softmaxSOuterFactor = optiling::arch35FA::SOUTER_32;
+            sOuterFactor_ = arch35FA::SOUTER_32;
+            sInnerFactor_ = arch35FA::SINNER_256;
+            softmaxSOuterFactor = arch35FA::SOUTER_32;
         } else if ((faInfo_->qLayout == FaLayout::BSND) || (faInfo_->qLayout == FaLayout::TND)) {
-            sOuterFactor_ = optiling::arch35FA::SOUTER_32;
-            sInnerFactor_ = optiling::arch35FA::SINNER_256;
+            sOuterFactor_ = arch35FA::SOUTER_32;
+            sInnerFactor_ = arch35FA::SINNER_256;
         }
-    } else if (faInfo_->vHeadDim > optiling::arch35FA::DSIZE_128 && faInfo_->s1Size != 1) {
+    } else if (faInfo_->vHeadDim > arch35FA::DSIZE_128 && faInfo_->s1Size != 1) {
         if (((faInfo_->qLayout == FaLayout::BSND) || (faInfo_->qLayout == FaLayout::TND)) &&
-            faInfo_->vHeadDim <= optiling::arch35FA::DSIZE_256) {
-            sOuterFactor_ = optiling::arch35FA::SOUTER_32;
-            sInnerFactor_ = optiling::arch35FA::SINNER_256;
+            faInfo_->vHeadDim <= arch35FA::DSIZE_256) {
+            sOuterFactor_ = arch35FA::SOUTER_32;
+            sInnerFactor_ = arch35FA::SINNER_256;
         } else {
-            sOuterFactor_ = optiling::arch35FA::SOUTER_64;
-            sInnerFactor_ = optiling::arch35FA::SINNER_128;
+            sOuterFactor_ = arch35FA::SOUTER_64;
+            sInnerFactor_ = arch35FA::SINNER_128;
         }
-        softmaxSOuterFactor = optiling::arch35FA::SOUTER_32;
-    } else if (faInfo_->s1Size == 1 && faInfo_->vHeadDim > optiling::arch35FA::DSIZE_128) {
-        sOuterFactor_ = optiling::arch35FA::SOUTER_64;
-        sInnerFactor_ = optiling::arch35FA::SINNER_128;
-        softmaxSOuterFactor = optiling::arch35FA::SOUTER_64;
+        softmaxSOuterFactor = arch35FA::SOUTER_32;
+    } else if (faInfo_->s1Size == 1 && faInfo_->vHeadDim > arch35FA::DSIZE_128) {
+        sOuterFactor_ = arch35FA::SOUTER_64;
+        sInnerFactor_ = arch35FA::SINNER_128;
+        softmaxSOuterFactor = arch35FA::SOUTER_64;
     }
 
     OP_LOGI(faInfo_->opName, "Souter:%u SInner:%u softmaxSOuterFactor %u", sOuterFactor_, sInnerFactor_,
@@ -281,7 +281,7 @@ bool FlashAttnTilingImpl::CheckS1OutSplit()
 void FlashAttnTilingImpl::SplitOutSeq()
 {
     uint32_t curCoreNum = platformInfo_.aicNum;
-    uint32_t sOuterSize = sOuterFactor_ * optiling::arch35FA::CV_RATIO;
+    uint32_t sOuterSize = sOuterFactor_ * arch35FA::CV_RATIO;
     int64_t totalSize = 0;
     for (uint32_t bIdx = 0; bIdx < faInfo_->bSize; bIdx++) {
         int64_t cuSeqLengthsTmp = cuSeqLengthsQ_[bIdx]; // 用于存放减去行无效后，真实的actseqlen
@@ -331,79 +331,79 @@ void FlashAttnTilingImpl::UpdateTilingKeyConfig()
     auto dSize = faInfo_->qkHeadDim;
     auto dVsize = faInfo_->vHeadDim;
 
-    if (dSize <= optiling::arch35FA::DSIZE_64)
-        dSize = optiling::arch35FA::DSIZE_64;
-    else if (dSize <= optiling::arch35FA::DSIZE_128)
-        dSize = optiling::arch35FA::DSIZE_128;
-    else if (dSize <= optiling::arch35FA::DSIZE_256)
-        dSize = optiling::arch35FA::DSIZE_256;
-    else if (dSize <= optiling::arch35FA::DSIZE_512)
-        dSize = optiling::arch35FA::DSIZE_512;
-    else if (dSize <= optiling::arch35FA::DSIZE_576)
-        dSize = optiling::arch35FA::DSIZE_576;
+    if (dSize <= arch35FA::DSIZE_64)
+        dSize = arch35FA::DSIZE_64;
+    else if (dSize <= arch35FA::DSIZE_128)
+        dSize = arch35FA::DSIZE_128;
+    else if (dSize <= arch35FA::DSIZE_256)
+        dSize = arch35FA::DSIZE_256;
+    else if (dSize <= arch35FA::DSIZE_512)
+        dSize = arch35FA::DSIZE_512;
+    else if (dSize <= arch35FA::DSIZE_576)
+        dSize = arch35FA::DSIZE_576;
 
-    if (dVsize <= optiling::arch35FA::DSIZE_64)
-        dVsize = optiling::arch35FA::DSIZE_64;
-    else if (dVsize <= optiling::arch35FA::DSIZE_128)
-        dVsize = optiling::arch35FA::DSIZE_128;
-    else if (dVsize <= optiling::arch35FA::DSIZE_256)
-        dVsize = optiling::arch35FA::DSIZE_256;
-    else if (dVsize <= optiling::arch35FA::DSIZE_512)
-        dVsize = optiling::arch35FA::DSIZE_512;
+    if (dVsize <= arch35FA::DSIZE_64)
+        dVsize = arch35FA::DSIZE_64;
+    else if (dVsize <= arch35FA::DSIZE_128)
+        dVsize = arch35FA::DSIZE_128;
+    else if (dVsize <= arch35FA::DSIZE_256)
+        dVsize = arch35FA::DSIZE_256;
+    else if (dVsize <= arch35FA::DSIZE_512)
+        dVsize = arch35FA::DSIZE_512;
 
-    if (sOuter == optiling::arch35FA::SOUTER_64 && sInner == optiling::arch35FA::SINNER_64 &&
-        dSize == optiling::arch35FA::DSIZE_256 && dVsize == optiling::arch35FA::DSIZE_256) {
+    if (sOuter == arch35FA::SOUTER_64 && sInner == arch35FA::SINNER_64 &&
+        dSize == arch35FA::DSIZE_256 && dVsize == arch35FA::DSIZE_256) {
         tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned64_DAligned256_DVAligned256;
-    } else if (sOuter == optiling::arch35FA::SOUTER_64 && sInner == optiling::arch35FA::SINNER_64 &&
-               dSize == optiling::arch35FA::DSIZE_512 && dVsize == optiling::arch35FA::DSIZE_512) {
+    } else if (sOuter == arch35FA::SOUTER_64 && sInner == arch35FA::SINNER_64 &&
+               dSize == arch35FA::DSIZE_512 && dVsize == arch35FA::DSIZE_512) {
         tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned64_DAligned512_DVAligned512;
-    } else if (sOuter == optiling::arch35FA::SOUTER_64 && sInner == optiling::arch35FA::SINNER_256 &&
-               dSize == optiling::arch35FA::DSIZE_64 && dVsize == optiling::arch35FA::DSIZE_64) {
+    } else if (sOuter == arch35FA::SOUTER_64 && sInner == arch35FA::SINNER_256 &&
+               dSize == arch35FA::DSIZE_64 && dVsize == arch35FA::DSIZE_64) {
         tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned64;
-    } else if (sOuter == optiling::arch35FA::SOUTER_64 && sInner == optiling::arch35FA::SINNER_256 &&
-               dSize == optiling::arch35FA::DSIZE_128 && dVsize == optiling::arch35FA::DSIZE_128) {
+    } else if (sOuter == arch35FA::SOUTER_64 && sInner == arch35FA::SINNER_256 &&
+               dSize == arch35FA::DSIZE_128 && dVsize == arch35FA::DSIZE_128) {
         tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned128;
-    } else if (sOuter == optiling::arch35FA::SOUTER_128 && sInner == optiling::arch35FA::SINNER_128 &&
-               dSize == optiling::arch35FA::DSIZE_64 && dVsize == optiling::arch35FA::DSIZE_64) {
+    } else if (sOuter == arch35FA::SOUTER_128 && sInner == arch35FA::SINNER_128 &&
+               dSize == arch35FA::DSIZE_64 && dVsize == arch35FA::DSIZE_64) {
         tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned64;
-    } else if (sOuter == optiling::arch35FA::SOUTER_128 && sInner == optiling::arch35FA::SINNER_128 &&
-               dSize == optiling::arch35FA::DSIZE_128 && dVsize == optiling::arch35FA::DSIZE_128) {
+    } else if (sOuter == arch35FA::SOUTER_128 && sInner == arch35FA::SINNER_128 &&
+               dSize == arch35FA::DSIZE_128 && dVsize == arch35FA::DSIZE_128) {
         tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned128;
-    } else if (sOuter == optiling::arch35FA::SOUTER_128 && sInner == optiling::arch35FA::SINNER_128 &&
-               dSize == optiling::arch35FA::DSIZE_192 && dVsize == optiling::arch35FA::DSIZE_128) {
+    } else if (sOuter == arch35FA::SOUTER_128 && sInner == arch35FA::SINNER_128 &&
+               dSize == arch35FA::DSIZE_192 && dVsize == arch35FA::DSIZE_128) {
         tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned128;
-    } else if (sOuter == optiling::arch35FA::SOUTER_128 && sInner == optiling::arch35FA::SINNER_128 &&
-               dSize == optiling::arch35FA::DSIZE_256 && dVsize == optiling::arch35FA::DSIZE_128) {
+    } else if (sOuter == arch35FA::SOUTER_128 && sInner == arch35FA::SINNER_128 &&
+               dSize == arch35FA::DSIZE_256 && dVsize == arch35FA::DSIZE_128) {
         tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned128;
-    } else if (sOuter == optiling::arch35FA::SOUTER_128 && sInner == optiling::arch35FA::SINNER_128 &&
-               dSize == optiling::arch35FA::DSIZE_256 && dVsize == optiling::arch35FA::DSIZE_256) {
+    } else if (sOuter == arch35FA::SOUTER_128 && sInner == arch35FA::SINNER_128 &&
+               dSize == arch35FA::DSIZE_256 && dVsize == arch35FA::DSIZE_256) {
         tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned256;
-    } else if (sOuter == optiling::arch35FA::SOUTER_128 && sInner == optiling::arch35FA::SINNER_128 &&
-               dSize == optiling::arch35FA::DSIZE_512 && dVsize == optiling::arch35FA::DSIZE_512) {
+    } else if (sOuter == arch35FA::SOUTER_128 && sInner == arch35FA::SINNER_128 &&
+               dSize == arch35FA::DSIZE_512 && dVsize == arch35FA::DSIZE_512) {
         tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned512_DVAligned512;
-    } else if (sOuter == optiling::arch35FA::SOUTER_128 && sInner == optiling::arch35FA::SINNER_256 &&
-               dSize == optiling::arch35FA::DSIZE_64 && dVsize == optiling::arch35FA::DSIZE_64) {
+    } else if (sOuter == arch35FA::SOUTER_128 && sInner == arch35FA::SINNER_256 &&
+               dSize == arch35FA::DSIZE_64 && dVsize == arch35FA::DSIZE_64) {
         tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned256_DAligned64_DVAligned64;
-    } else if (sOuter == optiling::arch35FA::SOUTER_64 && sInner == optiling::arch35FA::SINNER_128 &&
-               dSize == optiling::arch35FA::DSIZE_576 && dVsize == optiling::arch35FA::DSIZE_512) {
+    } else if (sOuter == arch35FA::SOUTER_64 && sInner == arch35FA::SINNER_128 &&
+               dSize == arch35FA::DSIZE_576 && dVsize == arch35FA::DSIZE_512) {
         tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned128_DAligned576_DVAligned512;
-    } else if (sOuter == optiling::arch35FA::SOUTER_64 && sInner == optiling::arch35FA::SINNER_256 &&
-               dSize == optiling::arch35FA::DSIZE_256 && dVsize == optiling::arch35FA::DSIZE_256) {
+    } else if (sOuter == arch35FA::SOUTER_64 && sInner == arch35FA::SINNER_256 &&
+               dSize == arch35FA::DSIZE_256 && dVsize == arch35FA::DSIZE_256) {
         tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned256_DVAligned256;
-    } else if (sOuter == optiling::arch35FA::SOUTER_128 && sInner == optiling::arch35FA::SINNER_256 &&
-               dSize == optiling::arch35FA::DSIZE_128 && dVsize == optiling::arch35FA::DSIZE_128) {
+    } else if (sOuter == arch35FA::SOUTER_128 && sInner == arch35FA::SINNER_256 &&
+               dSize == arch35FA::DSIZE_128 && dVsize == arch35FA::DSIZE_128) {
         tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128;
-    } else if (sOuter == optiling::arch35FA::SOUTER_128 && sInner == optiling::arch35FA::SINNER_128 &&
-               dSize == optiling::arch35FA::DSIZE_128 && dVsize == optiling::arch35FA::DSIZE_64) {
+    } else if (sOuter == arch35FA::SOUTER_128 && sInner == arch35FA::SINNER_128 &&
+               dSize == arch35FA::DSIZE_128 && dVsize == arch35FA::DSIZE_64) {
         tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned64; // qkvd不等长
-    } else if (sOuter == optiling::arch35FA::SOUTER_128 && sInner == optiling::arch35FA::SINNER_128 &&
-               dSize == optiling::arch35FA::DSIZE_64 && dVsize == optiling::arch35FA::DSIZE_128) {
+    } else if (sOuter == arch35FA::SOUTER_128 && sInner == arch35FA::SINNER_128 &&
+               dSize == arch35FA::DSIZE_64 && dVsize == arch35FA::DSIZE_128) {
         tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned128; // qkvd不等长
-    } else if (sOuter == optiling::arch35FA::SOUTER_64 && sInner == optiling::arch35FA::SINNER_256 &&
-               dSize == optiling::arch35FA::DSIZE_128 && dVsize == optiling::arch35FA::DSIZE_64) {
+    } else if (sOuter == arch35FA::SOUTER_64 && sInner == arch35FA::SINNER_256 &&
+               dSize == arch35FA::DSIZE_128 && dVsize == arch35FA::DSIZE_64) {
         tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned128_DVAligned64; // qkvd不等长
-    } else if (sOuter == optiling::arch35FA::SOUTER_64 && sInner == optiling::arch35FA::SINNER_256 &&
-               dSize == optiling::arch35FA::DSIZE_64 && dVsize == optiling::arch35FA::DSIZE_128) {
+    } else if (sOuter == arch35FA::SOUTER_64 && sInner == arch35FA::SINNER_256 &&
+               dSize == arch35FA::DSIZE_64 && dVsize == arch35FA::DSIZE_128) {
         tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned128; // qkvd不等长
     } else {
     }
@@ -501,14 +501,14 @@ void FlashAttnTilingImpl::CalcWorkspaceSize()
     uint32_t mSize = sOuterFactor_ * platformInfo_.cvRatio;
     uint32_t dSize = faInfo_->vHeadDim;
     uint32_t dVBasicBlock = 0;
-    if (dSize <= optiling::arch35FA::DSIZE_64) {
-        dVBasicBlock = optiling::arch35FA::DSIZE_64;
-    } else if (dSize <= optiling::arch35FA::DSIZE_128) {
-        dVBasicBlock = optiling::arch35FA::DSIZE_128;
-    } else if (dSize <= optiling::arch35FA::DSIZE_256) {
-        dVBasicBlock = optiling::arch35FA::DSIZE_256;
-    } else if (dSize <= optiling::arch35FA::DSIZE_512) {
-        dVBasicBlock = optiling::arch35FA::DSIZE_512;
+    if (dSize <= arch35FA::DSIZE_64) {
+        dVBasicBlock = arch35FA::DSIZE_64;
+    } else if (dSize <= arch35FA::DSIZE_128) {
+        dVBasicBlock = arch35FA::DSIZE_128;
+    } else if (dSize <= arch35FA::DSIZE_256) {
+        dVBasicBlock = arch35FA::DSIZE_256;
+    } else if (dSize <= arch35FA::DSIZE_512) {
+        dVBasicBlock = arch35FA::DSIZE_512;
     }
 
     workspaceSize_ = sysWorkspaceSize;
@@ -517,12 +517,12 @@ void FlashAttnTilingImpl::CalcWorkspaceSize()
     int64_t bmm2Bytes = 0;
     int64_t vec2Bytes = 0;
     int64_t bmm2ResBlockSize = dVBasicBlock;
-    if (dVBasicBlock > optiling::arch35FA::DSIZE_256) {
-        bmm2ResBlockSize = optiling::arch35FA::DSIZE_512;
+    if (dVBasicBlock > arch35FA::DSIZE_256) {
+        bmm2ResBlockSize = arch35FA::DSIZE_512;
     }
-    if ((!dnFlag_ && dSize > optiling::arch35FA::DSIZE_128) || (dnFlag_ && dSize > optiling::arch35FA::DSIZE_192)) {
+    if ((!dnFlag_ && dSize > arch35FA::DSIZE_128) || (dnFlag_ && dSize > arch35FA::DSIZE_192)) {
         bmm2Bytes = mSize * bmm2ResBlockSize * sizeof(float);
-        if (dVBasicBlock > optiling::arch35FA::DSIZE_256) {
+        if (dVBasicBlock > arch35FA::DSIZE_256) {
             vec2Bytes = mSize * dVBasicBlock * sizeof(float);
         }
     }
