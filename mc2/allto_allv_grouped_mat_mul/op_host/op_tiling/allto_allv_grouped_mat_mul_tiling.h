@@ -32,7 +32,6 @@
 #include "op_host/tiling_templates_registry.h"
 #include "context_util.h"
 #include "../../op_kernel/allto_allv_grouped_mat_mul_tiling_key.h"
-#include "../../allto_allv_quant_grouped_mat_mul/op_host/op_tiling/arch35/allto_allv_quant_grouped_mat_mul_tiling_common.h"
 #include "allto_allv_grouped_mat_mul_tiling_base.h"
 
 namespace optiling {

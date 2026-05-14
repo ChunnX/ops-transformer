@@ -18,6 +18,18 @@
 #include "../../op_kernel/allto_allv_grouped_mat_mul_tiling_key.h"
 #include "mc2_comm_utils.h"
 
+namespace optiling {
+// Constants for SetTilingParams (copied from quant tiling_common.h)
+constexpr uint32_t DATA_SIZE_L0C = 4;
+constexpr uint64_t CUBE_REDUCE_BLOCK = 32;
+constexpr uint32_t BASIC_BLOCK_SIZE_512 = 512;
+constexpr uint32_t BASIC_BLOCK_SIZE_256 = 256;
+constexpr uint32_t BASIC_BLOCK_SIZE_128 = 128;
+constexpr uint32_t SINGLE_GROUP_NUM = 1;
+constexpr uint32_t GMM_ACT_TYPE_NONE = 0;
+constexpr uint64_t DB_SIZE = 2UL;
+}  // namespace optiling
+
 using namespace ge;
 using namespace AscendC;
 using namespace Ops::Transformer::OpTiling;
