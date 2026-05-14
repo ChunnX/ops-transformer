@@ -175,7 +175,7 @@ __aicore__ inline void QLIMatmul<QLIT>::ComputeMm1(const QLICommon::RunInfo &run
                 queryL1Mte2BufIdx_++;
                 queryL1Mte1BufIdx_ = queryL1Mte2BufIdx_;
                 WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + queryL1Mte2BufIdx_ % QUERY_BUF_NUM);
-                QueryNd2Nz(s1gL1SizeAlign2G, s1gGmOffset, runInfo);
+                QueryNd2Nz(s1gL1RealSize, s1gGmOffset, runInfo);
                 SetFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
                 WaitFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
             } else {
