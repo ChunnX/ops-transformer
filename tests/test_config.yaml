@@ -855,7 +855,7 @@ moe:
       - moe/moe_token_unpermute/op_graph
       - moe/moe_token_unpermute/op_kernel
     test:
-      examples: False # aclnn_util.h报错
+      examples: True
     options:
       - moe_token_unpermute
       - moe_token_permute_with_routing_map_grad
@@ -1769,5 +1769,5 @@ mhc:
       - mhc/mhc_post_backward/examples
       - mhc/mhc_post_backward/tests
     test:
-      examples: False
+      examples: True
       ut: True
