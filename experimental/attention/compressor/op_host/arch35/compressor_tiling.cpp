@@ -121,7 +121,6 @@ ge::graphStatus CompressorTiling::GetNpuInfo()
 
     aivNum_ = ascendcPlatform.GetCoreNumAiv();
     aicNum_ = ascendcPlatform.GetCoreNumAic();
-
     OP_CHECK_IF(aicNum_ == 0 || aivNum_ == 0,
                 OPS_REPORT_VECTOR_INNER_ERR(context_->opName, "num of core obtained is 0."), return GRAPH_FAILED);
 
@@ -218,15 +217,26 @@ ge::graphStatus CompressorTiling::SetInnerSplitInfo()
         baseParams_->kBaseNum = 1;
         baseParams_->kBaseSize = baseParams_->hiddenSize;
         if ((dBaseNum * mBaseNum) < baseParams_->usedCoreNum) {
+            uint32_t kAlignSize = 0;
             baseParams_->kBaseNum = baseParams_->usedCoreNum / dBaseNum;
-            baseParams_->kBaseSize = (baseParams_->hiddenSize + baseParams_->kBaseNum - 1) / baseParams_->kBaseNum;
+            kAlignSize = (baseParams_->hiddenSize + baseParams_->kBaseNum - 1) / baseParams_->kBaseNum;
+            baseParams_->kBaseSize = kAlignSize / 16 * 16; // 切k的size需要16对齐
         }
         for (uint32_t i = 0; i < baseParams_->usedCoreNum; i++) {
             baseParams_->splitCoreParam[i].nStart = (i % dBaseNum) * innerSplitParams_->dBaseSize;
             baseParams_->splitCoreParam[i].nEnd = baseParams_->splitCoreParam[i].nStart + innerSplitParams_->dBaseSize;
             if (baseParams_->kBaseNum > 1) {
-                baseParams_->splitCoreParam[i].kStart = (i / dBaseNum) * baseParams_->kBaseSize;
-                baseParams_->splitCoreParam[i].kEnd = baseParams_->splitCoreParam[i].kStart + baseParams_->kBaseSize;
+                uint32_t kStartIdx = i / dBaseNum;
+                if (kStartIdx + 1 < baseParams_->coreGroupNum) {
+                    uint32_t dealKSize = baseParams_->kBaseSize;
+                    baseParams_->splitCoreParam[i].kStart = kStartIdx * baseParams_->kBaseSize;
+                    baseParams_->splitCoreParam[i].kEnd = baseParams_->splitCoreParam[i].kStart + dealKSize;
+                } else {
+                    uint32_t dealKSize = kStartIdx < baseParams_->coreGroupNum ?
+                                        baseParams_->hiddenSize - kStartIdx * baseParams_->kBaseSize : 0;
+                    baseParams_->splitCoreParam[i].kStart = kStartIdx * baseParams_->kBaseSize;
+                    baseParams_->splitCoreParam[i].kEnd = baseParams_->splitCoreParam[i].kStart + dealKSize;
+                }
                 baseParams_->splitCoreParam[i].mStart = 0;
                 baseParams_->splitCoreParam[i].mEnd = baseParams_->tokenSize;
                 baseParams_->mLoopNum = 1;
