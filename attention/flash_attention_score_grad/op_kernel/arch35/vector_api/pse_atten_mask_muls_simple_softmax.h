@@ -228,7 +228,7 @@ CalculatePseMulsSelSimpleSoftMax(FagConstInfo &constInfo, FagRunInfo &runInfo, P
                 pseInfo.kvStartIdx = 0;
         }
         ComputeInnerPseOffset<T2, T1, IS_PSE>(slopes, posShift, runInfo.commonRunInfo, constInfo.commonConstInfo, pseInfo, pseSlope);
-        LocalTensor<T1> pseTensor = pseInQue.DeQue<T1>();
+        pseTensor = (pseInfo.pseType == 0 || pseInfo.pseType == 1) ? pseInQue.DeQue<T1>() : pseInQue.AllocTensor<T1>();
         if (IS_FP8_INPUT) {
             AscendC::MulsSelSimpleSoftMaxAligned256<T1, T2, CONVERT_VECTOR_BASEN, IS_ATTEN_MASK, IS_PSE, IS_DETER_OLD>(
             dstTensor, maxSumTensor, maxSumTensor[VECTOR_BASEM * MAX_SUM_REDUCE_AXIS_SIZE / sizeof(T2)], srcTensor, pseTensor,
