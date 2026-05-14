@@ -23,11 +23,11 @@
 #define BLOCK_EPILOGUE_DEQUANT_SEQUENTIAL_WRITE_CYCLING_H
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
 #include "kernel_basic_intf.h"
-#include "../utils/common_utils.h"
-#include "../utils/device_utils.h"
-#include "../utils/status_utils.h"
-#include "../utils/tensor_utils.h"
-#include "../tile/tile_copy_policy.h"
+#include "cgmct/utils/common_utils.h"
+#include "cgmct/utils/device_utils.h"
+#include "cgmct/utils/status_utils.h"
+#include "cgmct/utils/tensor_utils.h"
+#include "cgmct/tile/tile_copy_policy.h"
 
 namespace Cgmct {
 namespace Gemm {

@@ -19,20 +19,20 @@
 #include "kernel_operator_list_tensor_intf.h"
 #include "lib/matmul_intf.h"
 
-#include "../utils/common_utils.h"
-#include "../utils/layout_utils.h"
-#include "../utils/tuple_utils.h"
-#include "../utils/coord_utils.h"
-#include "../utils/tensor_utils.h"
-#include "../utils/status_utils.h"
+#include "cgmct/utils/common_utils.h"
+#include "cgmct/utils/layout_utils.h"
+#include "cgmct/utils/tuple_utils.h"
+#include "cgmct/utils/coord_utils.h"
+#include "cgmct/utils/tensor_utils.h"
+#include "cgmct/utils/status_utils.h"
 
-#include "../block/block_mmad_builder.h"
+#include "cgmct/block/block_mmad_builder.h"
 #include "block_epilogue_dequant_sequential_write_cycling.h"
-#include "../prologue/block_prologue_finalize_routing.h"
-#include "./semaphore.h"
+#include "cgmct/prologue/block_prologue_finalize_routing.h"
+#include "cgmct/kernel/semaphore.h"
 
-#include "../block/block_scheduler_utils.h"
-#include "../block/block_scheduler_gmm_aswt_with_tail_split.h"
+#include "cgmct/block/block_scheduler_utils.h"
+#include "cgmct/block/block_scheduler_gmm_aswt_with_tail_split.h"
 
 #include "gmm_fr_deterministic_a5.h"
 
