@@ -81,6 +81,16 @@ public:
             commOp.InitScaleBuffer(gmmxScaleGm_, gmmxScaleCommOutGm_, gmmxScalePermuteOutGm_);
             computeScaleGm_ = gmmxScalePermuteOutGm_;
         }
+        // gmmX permute: 小shape模式下将gmmX通信输出重排为专家序，消除per-expert框架开销
+        bool isGmmPermMode = tilingData_->taskTilingInfo.isSmallShapeMode;
+        if (isGmmPermMode) {
+            uint64_t commOutLen =
+                Align(CeilDiv((tilingData_->taskTilingInfo.A) * (tilingData_->taskTilingInfo.H1), PACK_FACTOR),
+                      TENSOR_LIST_SIZE);
+            gmmxPermuteOutGm_ = workspaceGM + workspaceOffset;
+            workspaceOffset += commOutLen;
+            commOp.InitGmmPermBuffer(commOutGm_, gmmxPermuteOutGm_);
+        }
         // 计算类使用的workspace起始地址（偏移后的workspace）
         computeWorkspaceGm_ = workspaceGM + workspaceOffset;
         if (tilingData_->isNeedMM != 0) {
@@ -88,7 +98,8 @@ public:
                                 computeWorkspaceGm_, tilingData_, &tilingData_->mmQuantTilingData, mmArrayAddrIn, tPipe,
                                 isA2avGmmFlag);
         }
-        computeOp.Init(commOutGm_, gmmweightGM, computeScaleGm_, gmmWeightScaleGM, gmmyGM, computeWorkspaceGm_,
+        computeOp.Init(isGmmPermMode ? gmmxPermuteOutGm_ : commOutGm_, gmmweightGM, computeScaleGm_, gmmWeightScaleGM,
+                       gmmyGM, computeWorkspaceGm_,
                        tilingData_, &tilingData_->gmmQuantTilingData, gmmArrayAddrIn, tPipe, isA2avGmmFlag);
     }
 
@@ -107,16 +118,16 @@ public:
                 AscendC::printf("Process: entering ProcessScaleCommBatchMode\n");
                 ProcessScaleCommBatchMode();
             } else if (tilingData_->taskTilingInfo.isSmallShapeMode) {
-                AscendC::printf("Process: entering ProcessCommRankWiseMode (small shape)\n");
-                ProcessCommRankWiseMode();
+                AscendC::printf("Process: entering ProcessGmmPermBatchMode (small shape)\n");
+                ProcessGmmPermBatchMode();
             } else {
                 AscendC::printf("Process: entering ProcessCommRoundMode (normal)\n");
                 ProcessCommRoundMode();
             }
         } else {
             if (tilingData_->taskTilingInfo.isSmallShapeMode) {
-                AscendC::printf("Process: entering ProcessCommRankWiseMode (small shape, no MX)\n");
-                ProcessCommRankWiseMode();
+                AscendC::printf("Process: entering ProcessGmmPermBatchMode (small shape, no MX)\n");
+                ProcessGmmPermBatchMode();
             } else {
                 AscendC::printf("Process: entering ProcessCommRoundMode (normal, no MX)\n");
                 ProcessCommRoundMode();
@@ -169,55 +180,26 @@ private:
         }
     }
 
-// 小shape模式：每轮一个专家 + 一个接收方，自适应SyncAll批处理
-    // BSK < 2048：整卡批处理（rankDim个rank共用一个SyncAll），最小化barrier开销
-    // 2048 ≤ BSK < 4096：半分批处理（rankDim/2个rank共用一个SyncAll）
-    // BSK ≥ 4096：逐rank处理（当前行为），最大化流水重叠
-    __aicore__ inline void ProcessCommRankWiseMode()
+    // 小shape模式gmmX批处理+重排：合并e次AlltoAllV为1次+PermuteGmmX，SyncAll从2+e次降至2次
+    __aicore__ inline void ProcessGmmPermBatchMode()
     {
-        uint32_t rankDim = commOp.GetRankDim();
-        uint32_t myRank = commOp.GetMyRankId();
-        uint64_t bsk = tilingData_->taskTilingInfo.BSK;
-        
-        // 自适应批大小：BSK越小批越大（减少SyncAll开销）
-        uint32_t ranksPerSync = 1U;
-        if (bsk < 2048U) {
-            ranksPerSync = rankDim;                     // 1个SyncAll覆盖所有rank
-        } else if (bsk < 4096U) {
-            ranksPerSync = (rankDim > 2U) ? (rankDim / 2U) : 1U;  // 2个SyncAll
+        AscendC::printf("ProcessGmmPermBatchMode: e=%d\n", e_);
+        if constexpr (MX_QUANT_MODE) {
+            commOp.LaunchScaleBeforeCompute(0, e_);
         }
-        
-        AscendC::printf("ProcessCommRankWiseMode: rankDim=%d, e=%d, myRank=%d, BSK=%llu, ranksPerSync=%d\n",
-                        rankDim, e_, myRank, bsk, ranksPerSync);
-        
-        // Launch通信：expert × tgtRank（全部发射）
-        for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
-            for (uint32_t tgtRank = 0U; tgtRank < rankDim; tgtRank++) {
-                uint32_t roundIdx = expertIdx * rankDim + tgtRank;
-                commOp.LaunchCommRankWise(tgtRank, expertIdx, roundIdx);
-            }
+        commOp.Launch(0, e_);
+        if constexpr (MX_QUANT_MODE) {
+            commOp.WaitScale(0);
         }
-        
-        // Wait批处理 + SyncAll批处理 + Compute
+        commOp.Wait(0);
+        SyncAll<false>();
+        if constexpr (MX_QUANT_MODE) {
+            commOp.PermuteScale();
+        }
+        commOp.PermuteGmmX();
+        SyncAll<false>();
         for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
-            uint32_t tgtStart = 0U;
-            while (tgtStart < rankDim) {
-                uint32_t batchEnd = (tgtStart + ranksPerSync < rankDim) ? (tgtStart + ranksPerSync) : rankDim;
-                // 等待当前批次所有round完成
-                for (uint32_t tgtRank = tgtStart; tgtRank < batchEnd; tgtRank++) {
-                    uint32_t roundIdx = expertIdx * rankDim + tgtRank;
-                    commOp.WaitRankWise(roundIdx);
-                }
-                // 批次内共用一个SyncAll
-                SyncAll<false>();
-                // 只有接收方才计算
-                for (uint32_t tgtRank = tgtStart; tgtRank < batchEnd; tgtRank++) {
-                    if (myRank == tgtRank) {
-                        computeOp.ProcessRankWise(tgtRank, expertIdx);
-                    }
-                }
-                tgtStart = batchEnd;
-            }
+            computeOp.Process(expertIdx);
         }
     }
 
@@ -228,6 +210,7 @@ private:
     GM_ADDR gmmxScaleGm_ = nullptr;
     GM_ADDR gmmxScalePermuteOutGm_ = nullptr;
     GM_ADDR gmmxScaleCommOutGm_ = nullptr;
+    GM_ADDR gmmxPermuteOutGm_ = nullptr;
     GM_ADDR computeScaleGm_ = nullptr;
     GM_ADDR computeWorkspaceGm_ = nullptr;
     const TilingDataType *tilingData_ = nullptr;

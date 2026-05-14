@@ -107,6 +107,15 @@ public:
         pipe->InitBuffer(scaleTBuf_, taskTilingInfo_->ubSize);
     }
 
+    // gmmX permute buffer: commOutBuffer为AlltoAllV通信输出(按rank排列), permuteOutBuffer为按专家排列输出
+    __aicore__ inline void InitGmmPermBuffer(GM_ADDR commOutBuffer, GM_ADDR permuteOutBuffer)
+    {
+        recvGlobalBuffer_.SetGlobalBuffer((__gm__ hcclDataType *)commOutBuffer);
+        gmmxPermuteOutBuffer_.SetGlobalBuffer((__gm__ hcclDataType *)permuteOutBuffer);
+        TPipe *pipe = GetTPipePtr();
+        pipe->InitBuffer(gmmxPermuteTBuf_, taskTilingInfo_->ubSize);
+    }
+
     // PermuteScale: 将scaleCommOutBuffer（按rank排列）重排到recvScaleGlobalBuffer（按专家排列）
     __aicore__ inline void PermuteScale()
     {
@@ -169,6 +178,74 @@ public:
                     WaitFlag<HardEvent::MTE2_MTE3>(eventID_);
                     // 写入permuteOutBuffer（按专家排列）UB->GM
                     DataCopyPad(scalePermuteOutBuffer_[dstOffset + tile * scaleUbSize], scaleUbTensor, dataCopyParams);
+                    eventID_ = static_cast<int32_t>(permutePipe->FetchEventID<HardEvent::MTE3_MTE2>());
+                    SetFlag<HardEvent::MTE3_MTE2>(eventID_);
+                    WaitFlag<HardEvent::MTE3_MTE2>(eventID_);
+                }
+            }
+        }
+    }
+
+    // PermuteGmmX: 将gmmX通信输出(按rank排列)重排到按专家排列，消除后续计算中的偏移查找
+    __aicore__ inline void PermuteGmmX()
+    {
+        if ASCEND_IS_AIC {
+            return;
+        }
+        if ASCEND_IS_AIV {
+            if (GetBlockIdx() != 0) {
+                return;
+            }
+        }
+
+        uint64_t axis = CeilDiv(H1_, PACK_FACTOR);
+        uint64_t gmmUbSize = taskTilingInfo_->ubSize;
+        uint64_t recvSumCntBefore[MAX_EXPERT_SIZE] = {0UL};
+        uint64_t recvSumCntAfter[MAX_EXPERT_SIZE] = {0UL};
+
+        for (uint32_t rankIndex = 0U; rankIndex < rankDim_; rankIndex++) {
+            for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
+                uint32_t posBefore = rankIndex * e_ + expertIdx;
+                recvSumCntBefore[posBefore] = static_cast<uint64_t>(recvCounts_[posBefore]);
+                if (posBefore != 0U) {
+                    recvSumCntBefore[posBefore] += recvSumCntBefore[posBefore - 1U];
+                }
+            }
+        }
+
+        for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
+            for (uint32_t rankIndex = 0U; rankIndex < rankDim_; rankIndex++) {
+                uint32_t posAfter = expertIdx * rankDim_ + rankIndex;
+                recvSumCntAfter[posAfter] = static_cast<uint64_t>(recvCounts_[rankIndex * e_ + expertIdx]);
+                if (posAfter != 0U) {
+                    recvSumCntAfter[posAfter] += recvSumCntAfter[posAfter - 1U];
+                }
+            }
+        }
+
+        TPipe *permutePipe = GetTPipePtr();
+        LocalTensor<hcclDataType> gmmUbTensor = gmmxPermuteTBuf_.Get<hcclDataType>();
+        for (uint32_t rankIndex = 0U; rankIndex < rankDim_; rankIndex++) {
+            for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
+                uint32_t posBefore = rankIndex * e_ + expertIdx;
+                uint32_t posAfter = expertIdx * rankDim_ + rankIndex;
+                uint64_t srcOffset = (posBefore == 0U) ? 0UL : recvSumCntBefore[posBefore - 1U] * axis;
+                uint64_t dstOffset = (posAfter == 0U) ? 0UL : recvSumCntAfter[posAfter - 1U] * axis;
+                uint64_t totalCnt = static_cast<uint64_t>(recvCounts_[posBefore]) * axis;
+                uint64_t tileNum = CeilDiv(totalCnt, gmmUbSize);
+                for (uint64_t tile = 0UL; tile < tileNum; tile++) {
+                    uint64_t realLength = gmmUbSize;
+                    if (tile == tileNum - 1UL) {
+                        realLength = totalCnt - tile * gmmUbSize;
+                    }
+                    DataCopyParams dataCopyParams{1U, static_cast<uint16_t>(realLength), 0U, 0U};
+                    DataCopyPadParams dataCopyPadParams{false, 0U, 0U, 0U};
+                    DataCopyPad(gmmUbTensor, recvGlobalBuffer_[srcOffset + tile * gmmUbSize], dataCopyParams,
+                                dataCopyPadParams);
+                    eventID_ = static_cast<int32_t>(permutePipe->FetchEventID<HardEvent::MTE2_MTE3>());
+                    SetFlag<HardEvent::MTE2_MTE3>(eventID_);
+                    WaitFlag<HardEvent::MTE2_MTE3>(eventID_);
+                    DataCopyPad(gmmxPermuteOutBuffer_[dstOffset + tile * gmmUbSize], gmmUbTensor, dataCopyParams);
                     eventID_ = static_cast<int32_t>(permutePipe->FetchEventID<HardEvent::MTE3_MTE2>());
                     SetFlag<HardEvent::MTE3_MTE2>(eventID_);
                     WaitFlag<HardEvent::MTE3_MTE2>(eventID_);
@@ -466,7 +543,11 @@ private:
     GlobalTensor<fp8_e8m0_t> recvScaleGlobalBuffer_;
     GlobalTensor<fp8_e8m0_t> scalePermuteOutBuffer_;
 
+    // gmmX permute: 将通信输出（按rank排列）重排到按专家排列
+    GlobalTensor<hcclDataType> gmmxPermuteOutBuffer_;
+
     TBuf<QuePosition::VECIN> scaleTBuf_;
+    TBuf<QuePosition::VECIN> gmmxPermuteTBuf_;
 
     int32_t eventID_ = 0;
 
