@@ -70,13 +70,34 @@ static constexpr int MAX_DYNAMIC_ITER = 150;
 static constexpr int BLOCK_NUM = 24;
 static constexpr int N_TIMING_COUNTER_PER_CORE = FIXED_TIMING_COUNT * 2 + DYNAMIC_TYPE_COUNT_ENUM * MAX_DYNAMIC_ITER * 2;
 static constexpr int N_TIMING_COUNTER_PER_CORE_ALIGN = (N_TIMING_COUNTER_PER_CORE + 15) / 16 * 16;
-static constexpr int N_CORE_COUNT = BLOCK_NUM * 3;                                     // AIC+AIV 核心总数（A2=60, A3 需调整）
+static constexpr int N_CORE_COUNT = BLOCK_NUM * 3;                         // GetCoreNum 不可用时的兼容 fallback
 static constexpr int N_TIMING_COUNTER = N_TIMING_COUNTER_PER_CORE_ALIGN * N_CORE_COUNT;
+
+static inline int GetTimerCoreCount(int platformCoreNum)
+{
+    int blockNum = platformCoreNum > 0 ? platformCoreNum : static_cast<int>(BLOCK_NUM);
+    return blockNum * 3;
+}
+
+static inline int GetTimingCounterSize(int platformCoreNum)
+{
+    return N_TIMING_COUNTER_PER_CORE_ALIGN * GetTimerCoreCount(platformCoreNum);
+}
 
 // 动态迭代次数存储区对齐配置
 static constexpr int DYNAMIC_TYPE_COUNT = DYNAMIC_TYPE_COUNT_ENUM;
 static constexpr int DYNAMIC_ITER_PER_CORE_ALIGN = (DYNAMIC_TYPE_COUNT + 15) / 16 * 16;
 static constexpr int DYNAMIC_ITER_TOTAL_SIZE = DYNAMIC_ITER_PER_CORE_ALIGN * N_CORE_COUNT;
+
+static inline int GetDynamicIterTotalSize(int platformCoreNum)
+{
+    return DYNAMIC_ITER_PER_CORE_ALIGN * GetTimerCoreCount(platformCoreNum);
+}
+
+static inline int GetTotalBufferSize(int platformCoreNum)
+{
+    return GetTimingCounterSize(platformCoreNum) + GetDynamicIterTotalSize(platformCoreNum);
+}
 
 } // namespace CocTimer
 

@@ -38,6 +38,9 @@ public:
     int group_id;   // 组 ID
     int subblockid; // 子块 ID (仅 AIV 有效)
     int core_id;    // 映射后的全局物理核心 ID
+    int core_count; // 实际 launch 对应的 AIC+AIV 总核数
+    int timing_counter_size;
+    int total_buffer_size;
 
     // ========== 3. 构造函数 ==========
     __aicore__ inline CocTimerDevice()
@@ -49,6 +52,9 @@ public:
         group_id = 0;
         subblockid = 0;
         core_id = 0;
+        core_count = CocTimer::N_CORE_COUNT;
+        timing_counter_size = CocTimer::N_TIMING_COUNTER;
+        total_buffer_size = COC_TIMER_TOTAL_BUFFER_SIZE;
         last_timing_idx = 0;
         for (int i = 0; i < CocTimer::DYNAMIC_TYPE_COUNT; i++) {
             iter_counters[i] = 0;
@@ -72,6 +78,9 @@ public:
         group_id = other.group_id;
         subblockid = other.subblockid;
         core_id = other.core_id;
+        core_count = other.core_count;
+        timing_counter_size = other.timing_counter_size;
+        total_buffer_size = other.total_buffer_size;
     }
 
     // ========== 5. 生命周期初始化 (Init) ==========
@@ -82,6 +91,9 @@ public:
         r = AscendC::GetTaskRation();
         group_id = block_id;
         core_id = block_id;
+        core_count = static_cast<int>(AscendC::GetBlockNum()) * 3;
+        timing_counter_size = CocTimer::N_TIMING_COUNTER_PER_CORE_ALIGN * core_count;
+        total_buffer_size = timing_counter_size + CocTimer::DYNAMIC_ITER_PER_CORE_ALIGN * core_count;
         last_timing_idx = 0;
 
         // 异构核心身份计算
@@ -142,14 +154,14 @@ public:
 
     __aicore__ __inline__ void zeroDynamicActualIterAll()
     {
-        if (core_id < 0 || core_id >= CocTimer::N_CORE_COUNT) {
+        if (core_id < 0 || core_id >= core_count) {
             return;
         }
-        int32_t coreOffset = CocTimer::N_TIMING_COUNTER + core_id * CocTimer::DYNAMIC_ITER_PER_CORE_ALIGN;
+        int32_t coreOffset = timing_counter_size + core_id * CocTimer::DYNAMIC_ITER_PER_CORE_ALIGN;
 
         for (int type = 0; type < CocTimer::DYNAMIC_TYPE_COUNT; ++type) {
             int32_t idx = coreOffset + type;
-            if (idx >= COC_TIMER_TOTAL_BUFFER_SIZE) break;
+            if (idx >= total_buffer_size) break;
 
             AscendC::GlobalTensor<int64_t> iterTensor;
             iterTensor.SetGlobalBuffer((__gm__ int64_t *)t_addr);
@@ -265,8 +277,8 @@ public:
             }
 
             iter_counters[(int)type] = current_iter + 1;
-            int32_t iter_idx = CocTimer::N_TIMING_COUNTER + core_id * CocTimer::DYNAMIC_ITER_PER_CORE_ALIGN + (int)type;
-            if (iter_idx < COC_TIMER_TOTAL_BUFFER_SIZE) {
+            int32_t iter_idx = timing_counter_size + core_id * CocTimer::DYNAMIC_ITER_PER_CORE_ALIGN + (int)type;
+            if (iter_idx < total_buffer_size) {
                 AscendC::GlobalTensor<int64_t> iterTensor;
                 iterTensor.SetGlobalBuffer((__gm__ int64_t *)t_addr);
                 iterTensor(iter_idx) = -(current_iter + 1);
@@ -281,8 +293,8 @@ public:
             }
 
             iter_counters[(int)type] = current_iter + 1;
-            int32_t iter_idx = CocTimer::N_TIMING_COUNTER + core_id * CocTimer::DYNAMIC_ITER_PER_CORE_ALIGN + (int)type;
-            if (iter_idx < COC_TIMER_TOTAL_BUFFER_SIZE) {
+            int32_t iter_idx = timing_counter_size + core_id * CocTimer::DYNAMIC_ITER_PER_CORE_ALIGN + (int)type;
+            if (iter_idx < total_buffer_size) {
                 AscendC::GlobalTensor<int64_t> iterTensor;
                 iterTensor.SetGlobalBuffer((__gm__ int64_t *)t_addr);
                 iterTensor(iter_idx) = current_iter + 1;
@@ -311,7 +323,7 @@ private:
         }
 
         int32_t final_idx = base_element_offset + idx * 2;
-        return (final_idx >= CocTimer::N_TIMING_COUNTER) ? 0 : final_idx;
+        return (final_idx >= timing_counter_size) ? 0 : final_idx;
     }
 
     __aicore__ __inline__ void accumulate_time(int32_t idx, int64_t time)
