@@ -38,7 +38,7 @@ T(V, N, env, op) = T_base(N, env, op) + V / BW_eff(N, env, op)
 | **POD 8p** | 8 | 单机 8 卡，高速互联 | 开发调试 |
 | **Server 8p** | 8 | 多节点/跨 socket | **正式验收** |
 
-Server 比 POD 整体慢 ~22%（每 MB 时间成本 +26%），根源在 Server 多 socket 拓扑下 MTE 跨 socket 访问 Win 区延迟较高，非算子代码。
+Server 比 POD 整体慢 ~22%（每 MB 时间成本 +26%），差异来自环境硬件拓扑不同，非算子代码。
 
 ---
 
@@ -117,7 +117,7 @@ T(V) = −41.3 + 67.5 × V           [V > 6 MB]
 | slope hi-V | 67.5 us/MB | 58.9 (+15%) |
 | lo→hi 跳变 | +14% | +31% |
 
-Server 上 all2all 退化比例更小（14% vs 31%），因为基线传输已慢，all2all 额外写开销被「淹没」。
+Server 上 all2all 退化比例更小（14% vs 31%），表现为 lo-V 段 slope 已经较高，hi-V 段增量相对有限。
 
 ---
 
