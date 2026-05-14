@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2025-2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -306,11 +306,6 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeRelation(const gert::TilingContext
 
         if (H != H2MM) {
             OP_LOGE(A_INNER_DEBUG, "mmX H is not equal to mmWeight H2.");
-            return ge::GRAPH_FAILED;
-        }
-
-        if (N1 != H) {
-            OP_LOGE(A_INNER_DEBUG, "N1 is not equal to mmX H.");
             return ge::GRAPH_FAILED;
         }
     }
