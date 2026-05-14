@@ -13,18 +13,25 @@
  * \brief Workspace cycling kernel for A5 GMMFR deterministic mode.
  *
  * Based on: common/cgmct/kernel/kernel_gmm_finalize_routing_pertoken_dequant.h
- * Key change: tile-level workspace flow control with cycling.
- *   Monitors cyclingRowOffset after each tile's pre-write check. When
- *   cyclingRowOffset + tileRows > windowSizeRows, pauses matmul, aggregates
- *   workspace -> yGm via FRDeterministicA5, resets cyclingRowOffset to 0,
- *   and continues processing tiles.
+ * Key change: group-boundary workspace flow control with cycling.
+ *   At each group boundary, checks if adding the group's M rows would overflow
+ *   the workspace window. If so, aggregates workspace -> yGm via FRDeterministicA5,
+ *   resets workspaceBaseRow to 0, and continues processing remaining groups.
  *
- * Address model (v2 -- fixes 3 Critical issues):
+ * Why group-boundary (not tile-level) cycling:
+ *   SyncAll is a global barrier requiring ALL cores to call it simultaneously.
+ *   Tile-level cycling checks are per-core (different cores process different tiles),
+ *   causing cores to disagree on when to enter SyncAll -> deadlock.
+ *   Group M is identical across all cores (from tiling data), so group-boundary
+ *   checks are globally consistent -> all cores reach SyncAll together.
+ *
+ * Address model (v3 -- group-boundary cycling):
  *   - LOGIT_OFFSETS: cumulative global offset for logit/rowIndex reads (never reset)
- *   - cyclingRowOffset: workspace window write offset (reset to 0 after each aggregation)
+ *   - workspaceBaseRow: workspace window write offset (reset to 0 after each aggregation)
  *   - Epilogue elem[4]: group-inner mOffset (for logit/x1Scale reads)
- *   - Epilogue elem[5]: cyclingRowOffset (for workspace write addressing)
- *   - Pre-write check ensures workspace never overflows before tile processing
+ *   - Epilogue elem[5]: workspaceBaseRow (for workspace write addressing)
+ *   - Pre-group check ensures workspace never overflows before group processing
+ *   - Prerequisite: single group M <= windowSizeRows
  */
 
 #ifndef KERNEL_GMM_FR_DETERMINISTIC_H
@@ -250,7 +257,7 @@ public:
 
     // UpdateGlobalBuffer with cyclingBase parameter.
     // elem[4] = LOGIT_OFFSETS (global, for logit/rowIndex/x1Scale reads -- never reset)
-    // elem[5] = cyclingBase (workspace write base row, from cyclingRowOffset)
+    // elem[5] = cyclingBase (workspace write base row, from workspaceBaseRow)
     __aicore__ inline void UpdateGlobalBuffer(const Params &params, uint64_t cyclingBase)
     {
         if ASCEND_IS_AIC {
@@ -264,7 +271,7 @@ public:
                 Get<DET_IDX_X2SCALE_OFFSETS>(baseOffset_),
                 Get<DET_IDX_X1SCALE_OFFSETS>(baseOffset_),
                 Get<DET_IDX_LOGIT_OFFSETS>(baseOffset_),    // 4: logit/rowIndex global offset
-                static_cast<int64_t>(cyclingBase)};         // 5: workspace write base (cyclingRowOffset)
+                static_cast<int64_t>(cyclingBase)};         // 5: workspace write base (workspaceBaseRow)
             epilogueDequantOp_.UpdateGlobalAddr(vecBaseOffset);
         }
     }
@@ -342,7 +349,7 @@ public:
 
         // === Cycling state ===
         uint64_t windowSizeRows = params.cyclingParams.windowSizeRows;
-        uint64_t cyclingRowOffset = 0;   // workspace window rows used (reset after aggregation)
+        uint64_t workspaceBaseRow = 0;   // workspace window rows used (reset after aggregation)
         uint64_t globalRowOffset = 0;    // global rows already aggregated (for rowIndex lookup)
 
         // Prepare aggregation tensors (AIV side)
@@ -356,22 +363,65 @@ public:
                 params.cyclingParams.rowIndexAddr));
         }
 
-        // === Main loop: group + tile (inline, tile-level flow control) ===
+        // === Main loop: group-boundary cycling ===
+        // Cycling check is at group boundary, NOT tile level.
+        // Rationale: SyncAll is a global barrier requiring ALL cores to call it
+        // simultaneously. groupM is identical across all cores (from tiling data),
+        // so the overflow decision is globally consistent. Tile-level checks are
+        // per-core (different cores process different tiles) and cause SyncAll
+        // divergence -> deadlock.
+        // Prerequisite: single group M <= windowSizeRows.
         uint32_t groupNum = params.gmmParams.groupNum;
         for (uint32_t groupIdx = 0; groupIdx < groupNum; groupIdx++) {
             if (!UpdateGroupParams(params, groupIdx)) {
                 continue;
             }
 
+            int64_t groupM = Get<MNK_M>(problemShape_);
+
+            // === Group-boundary pre-write check ===
+            // All cores compute identical workspaceBaseRow + groupM, so the
+            // branch decision is uniform across all cores -> SyncAll is safe.
+            if (workspaceBaseRow + static_cast<uint64_t>(groupM) > windowSizeRows) {
+                // Drain pending pipeline before aggregation
+                if ASCEND_IS_AIC {
+                    if (isVecSetSyncCom_) {
+                        WaitForVector();
+                    }
+                }
+
+                SyncAll();
+                // FRDeterministicA5 is called without ASCEND_IS_AIV guard so that
+                // both AIC and AIV enter the function. Inside, AIC executes 2x SyncAll
+                // and returns; AIV performs the actual aggregation with 2x SyncAll.
+                // This keeps SyncAll counts matched (AIC: 2 outer + 2 inner = 4,
+                // AIV: 2 outer + 2 inner = 4).
+                GMMFRDeterministic::SyncConfig syncConfig{};
+                syncConfig.curM = workspaceBaseRow;
+                syncConfig.lowBoundM = workspaceBaseRow;
+                syncConfig.windowSize = workspaceBaseRow;
+                syncConfig.baseN = params.cyclingParams.baseN;
+
+                GMMFRDeterministic::FRDeterministicA5<float,
+                    typename BlockEpilogueDequantFinalizeRouting::DataTypeRowIndex>(
+                    syncConfig, deterBufferGm, yGmAgg, rowIndexGm, aggQueBind,
+                    params.cyclingParams.coreNum, params.cyclingParams.n,
+                    globalRowOffset);
+                SyncAll();
+
+                globalRowOffset += workspaceBaseRow;
+                workspaceBaseRow = 0;
+                isVecSetSyncCom_ = false;
+            }
+
             // --- Inline ProcessSingleGroup tile loop ---
-            int64_t m = Get<MNK_M>(problemShape_);
             int64_t n = Get<MNK_N>(problemShape_);
             int64_t k = Get<MNK_K>(problemShape_);
-            TupleShape resProblemShape{m, n, k, 0};
+            TupleShape resProblemShape{groupM, n, k, 0};
             bs.UpdateNextProblem(resProblemShape);
             epilogueDequantOp_.UpdateNextProblem(resProblemShape);
-            UpdateGlobalBuffer(params, cyclingRowOffset);
-            CoordClass coord(m, n, k, params.gmmParams.baseM, params.gmmParams.baseN, params.gmmParams.baseK);
+            UpdateGlobalBuffer(params, workspaceBaseRow);
+            CoordClass coord(groupM, n, k, params.gmmParams.baseM, params.gmmParams.baseN, params.gmmParams.baseK);
 
             BlockCoord tileIdx;
             while (bs.GetTileIdx(tileIdx)) {
@@ -381,44 +431,6 @@ public:
                     Get<DET_IDX_M_TILEIDXS>(tileIdx), Get<DET_IDX_N_TILEIDXS>(tileIdx),
                     Get<DET_IDX_M_TAIL_SPLIT_TILEIDXS>(singleShape),
                     Get<DET_IDX_N_TAIL_SPLIT_TILEIDXS>(singleShape));
-
-                uint64_t tileRows = static_cast<uint64_t>(Get<MNK_M>(singleShape));
-
-                // === Pre-write check (Critical 3 fix) ===
-                // Check BEFORE processing tile to prevent workspace overflow
-                if (cyclingRowOffset + tileRows > windowSizeRows) {
-                    // Aggregate already-written data, then reset cycling window
-                    if ASCEND_IS_AIC {
-                        if (isVecSetSyncCom_) {
-                            WaitForVector();
-                        }
-                    }
-
-                    SyncAll();
-                    // FRDeterministicA5 is called without ASCEND_IS_AIV guard so that
-                    // both AIC and AIV enter the function. Inside, AIC executes 2x SyncAll
-                    // and returns; AIV performs the actual aggregation with 2x SyncAll.
-                    // This keeps SyncAll counts matched (AIC: 2 outer + 2 inner = 4,
-                    // AIV: 2 outer + 2 inner = 4).
-                    GMMFRDeterministic::SyncConfig syncConfig{};
-                    syncConfig.curM = cyclingRowOffset;
-                    syncConfig.lowBoundM = cyclingRowOffset;
-                    syncConfig.windowSize = cyclingRowOffset;
-                    syncConfig.baseN = params.cyclingParams.baseN;
-
-                    GMMFRDeterministic::FRDeterministicA5<float,
-                        typename BlockEpilogueDequantFinalizeRouting::DataTypeRowIndex>(
-                        syncConfig, deterBufferGm, yGmAgg, rowIndexGm, aggQueBind,
-                        params.cyclingParams.coreNum, params.cyclingParams.n,
-                        globalRowOffset);
-                    SyncAll();
-
-                    globalRowOffset += cyclingRowOffset;
-                    cyclingRowOffset = 0;
-                    isVecSetSyncCom_ = false;
-                    // Notify Epilogue of the new cycling base (0)
-                    UpdateGlobalBuffer(params, cyclingRowOffset);
-                }
 
                 // AIC: MMAD
                 if ASCEND_IS_AIC {
@@ -443,22 +455,23 @@ public:
                     int64_t nOffset = y - groupInnerMOffset * n;
                     // epilogueOffset:
                     //   elem[4] = groupInnerMOffset (for logit/x1Scale reads)
-                    //   elem[5] = cyclingRowOffset (workspace write base row)
+                    //   elem[5] = workspaceBaseRow (workspace write base row)
                     AscendC::Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t>
                         epilogueOffset{nOffset,
                             Get<DET_IDX_BIAS_OFFSETS>(blockOffset_),
                             Get<DET_IDX_X2SCALE_OFFSETS>(blockOffset_),
                             Get<DET_IDX_X1SCALE_OFFSETS>(blockOffset_),
                             groupInnerMOffset,
-                            static_cast<int64_t>(cyclingRowOffset)};
+                            static_cast<int64_t>(workspaceBaseRow)};
                     WaitForCube();
                     epilogueDequantOp_(epilogueShape, epilogueOffset);
                     NotifyCube();
                 }
-
-                cyclingRowOffset += tileRows;
             }
             // --- tile loop end ---
+
+            // Advance workspace offset by the full group M (identical across all cores)
+            workspaceBaseRow += static_cast<uint64_t>(groupM);
         }
 
         // === Final aggregation (remaining rows) ===
@@ -466,13 +479,14 @@ public:
         End();
         isVecSetSyncCom_ = false;
 
-        if (cyclingRowOffset > 0) {
-            SyncAll();
-            // FRDeterministicA5 called without ASCEND_IS_AIV guard for SyncAll pairing.
+        // Final aggregation: all cores must participate (SyncAll is global barrier).
+        // FRDeterministicA5 handles curM=0 gracefully (AIV inner loop body is skipped).
+        SyncAll();
+        {
             GMMFRDeterministic::SyncConfig syncConfig{};
-            syncConfig.curM = cyclingRowOffset;
-            syncConfig.lowBoundM = cyclingRowOffset;
-            syncConfig.windowSize = cyclingRowOffset;
+            syncConfig.curM = workspaceBaseRow;
+            syncConfig.lowBoundM = workspaceBaseRow;
+            syncConfig.windowSize = workspaceBaseRow;
             syncConfig.baseN = params.cyclingParams.baseN;
 
             GMMFRDeterministic::FRDeterministicA5<float,
@@ -480,8 +494,8 @@ public:
                 syncConfig, deterBufferGm, yGmAgg, rowIndexGm, aggQueBind,
                 params.cyclingParams.coreNum, params.cyclingParams.n,
                 globalRowOffset);
-            SyncAll();
         }
+        SyncAll();
     }
 };
 } // namespace Kernel
