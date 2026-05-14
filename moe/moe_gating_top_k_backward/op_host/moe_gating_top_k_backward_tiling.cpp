@@ -191,7 +191,7 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckGradY()
                 OP_LOGE(context_, "gradY: Rank must be 2, but got %lu.", gradYDimSize), return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(gradYShapePtr->GetOriginShape().GetDim(DIM_ZERO) != tokenCount_,
-                OP_LOGE(context_, "gradY: Must match xNorm on dimension 0, but got %lu vs %ld",
+                OP_LOGE(context_, "gradY: Must match xNorm on dimension 0, but got %lu vs %ld.",
                         gradYShapePtr->GetOriginShape().GetDim(DIM_ZERO), tokenCount_),
                 return ge::GRAPH_FAILED);
     k_ = gradYShapePtr->GetOriginShape().GetDim(DIM_ONE);
@@ -317,22 +317,24 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckOutShape() // lc
 
     auto gradXDimSize = gradXShapePtr->GetOriginShape().GetDimNum();
     OP_CHECK_IF(gradXDimSize != GRAD_Y_INPUT_DIMS,
-                OP_LOGE(context_, "gradX : the number of dimensions must be 2, but got %lu.", gradXDimSize),
+                OP_LOGE(context_, "gradX: Rank must be 2, but got %lu.", gradXDimSize),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(gradXShapePtr->GetOriginShape().GetDim(DIM_ZERO) != tokenCount_,
-                OP_LOGE(context_, "gradX : Shape xNorm and gradX should match in dimension 0."),
+                OP_LOGE(context_, "gradX: Must match xNorm on dimension 0, but got %lu vs %ld.", gradXShapePtr->GetOriginShape().GetDim(DIM_ZERO), tokenCount_),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(gradXShapePtr->GetOriginShape().GetDim(DIM_ONE) != expertCount_,
-                OP_LOGE(context_, "gradX : Shape xNorm and gradX should match in dimension 1."),
+                OP_LOGE(context_, "gradX: Must match xNorm on dimension 1, but got %lu vs %ld.", gradXShapePtr->GetOriginShape().GetDim(DIM_ONE), expertCount_),
                 return ge::GRAPH_FAILED);
 
     auto gradXDesc = context_->GetOutputDesc(GRAD_X_OUTPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, gradXDesc);
     auto gradXDtype = gradXDesc->GetDataType();
 
-    OP_CHECK_IF(gradXDtype != gradYDtype_, OP_LOGE(context_, "gradX's data type must match that of gradY."),
+    OP_CHECK_IF(gradXDtype != gradYDtype_, OP_LOGE(context_, "expertIdx: Mismatched data type. Expected %s, but got %s.",
+                        ge::TypeUtils::DataTypeToSerialString(gradYDtype_).c_str(),
+                        ge::TypeUtils::DataTypeToSerialString(gradXDtype).c_str()),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -361,7 +363,7 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CalcMaxRows()
                                bufk4IndexPerTokenSpace + bufk4RecipSumPerTokenSpace + bufk4MaskPerTokenSpace +
                                bufsPerTokenSpace;
     int64_t maxRows = available_space / (quePerTokenSpace + bufPerTokenSpace);
-    int64_t kAligned = AlignBytes_(k_ * SIZE_OF_FLOAT32) >> 2; // 16个元素
+    int64_t kAligned = AlignBytes_(k_ * SIZE_OF_FLOAT32) >> NUM_TWO;  // "x >> NUM_TWO" == "x / SIZE_OF_FLOAT32"
     while (maxRows > 0) {
         // queSpace: gradYQueSpace(db) == indicesQueSpace(db); xQueSpace; outQueSpace
         // bufSpace: bufk1Space == bufk4AddSpace == bufk4IndexSpace == bufk4RecipSumSpace == bufk4MaskSpace;

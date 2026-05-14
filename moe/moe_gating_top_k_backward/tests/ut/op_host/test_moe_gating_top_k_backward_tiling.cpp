@@ -237,8 +237,8 @@ TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_empty_
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
-// Boundary case 2: x_norm dim != 2
-TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_02)
+// Boundary cases 2: tensor dimension mismatch
+TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_dim_x_norm_01)
 {
     optiling::MoeGatingTopKBackwardCompileInfo compileInfo = {};
     gert::TilingContextPara tilingContextPara(
@@ -264,8 +264,7 @@ TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_02)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
-// Boundary case 3: grad_y dim != 2
-TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_03)
+TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_dim_grad_y_01)
 {
     optiling::MoeGatingTopKBackwardCompileInfo compileInfo = {};
     gert::TilingContextPara tilingContextPara(
@@ -291,8 +290,7 @@ TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_03)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
-// Boundary case 4: expert_idx dim != 2
-TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_04)
+TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_dim_expert_idx_01)
 {
     optiling::MoeGatingTopKBackwardCompileInfo compileInfo = {};
     gert::TilingContextPara tilingContextPara(
@@ -318,8 +316,34 @@ TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_04)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
-// Boundary case 5: M mismatch - grad_y M != x_norm M
-TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_05)
+TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_grad_x_dim_01)
+{
+    optiling::MoeGatingTopKBackwardCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara(
+        "MoeGatingTopKBackward",
+        {
+            {{{16, 256}, {16, 256}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{16, 8}, {16, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{16}, {16}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {
+            {{{256}, {256}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {"renorm", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"norm_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"routed_scaling_factor", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+            {"eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-20f)},
+        },
+        &compileInfo);
+    uint64_t expectTilingKey = 10000;
+    string expectTilingData = "";
+    std::vector<size_t> expectWorkspaces = {16777216};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+}
+
+// Boundary cases 3 : tensor shape mismatch
+TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_grad_y_x_norm_m_01)
 {
     optiling::MoeGatingTopKBackwardCompileInfo compileInfo = {};
     gert::TilingContextPara tilingContextPara(
@@ -345,8 +369,7 @@ TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_05)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
-// Boundary case 6: M mismatch - expert_idx M != grad_y M
-TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_06)
+TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_expert_idx_grad_y_m_01)
 {
     optiling::MoeGatingTopKBackwardCompileInfo compileInfo = {};
     gert::TilingContextPara tilingContextPara(
@@ -372,8 +395,7 @@ TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_06)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
-// Boundary case 7: K mismatch - expert_idx K != grad_y K
-TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_07)
+TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_expert_idx_grad_y_k_01)
 {
     optiling::MoeGatingTopKBackwardCompileInfo compileInfo = {};
     gert::TilingContextPara tilingContextPara(
@@ -399,8 +421,60 @@ TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_07)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
-// Boundary case 8: k <= 0
-TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_08)
+TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_grad_x_grad_y_m_01)
+{
+    optiling::MoeGatingTopKBackwardCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara(
+        "MoeGatingTopKBackward",
+        {
+            {{{16, 256}, {16, 256}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{16, 8}, {16, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{16, 8}, {16, 8}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {
+            {{{8, 256}, {16, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {"renorm", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"norm_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"routed_scaling_factor", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+            {"eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-20f)},
+        },
+        &compileInfo);
+    uint64_t expectTilingKey = 10000;
+    string expectTilingData = "";
+    std::vector<size_t> expectWorkspaces = {16777216};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+}
+
+TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_grad_x_grad_y_n_01)
+{
+    optiling::MoeGatingTopKBackwardCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara(
+        "MoeGatingTopKBackward",
+        {
+            {{{16, 256}, {16, 256}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{16, 8}, {16, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{16, 8}, {16, 8}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {
+            {{{16, 8}, {16, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {"renorm", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"norm_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"routed_scaling_factor", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+            {"eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-20f)},
+        },
+        &compileInfo);
+    uint64_t expectTilingKey = 10000;
+    string expectTilingData = "";
+    std::vector<size_t> expectWorkspaces = {16777216};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+}
+
+// Boundary cases 4: k not in valid range
+TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_k_01)
 {
     optiling::MoeGatingTopKBackwardCompileInfo compileInfo = {};
     gert::TilingContextPara tilingContextPara(
@@ -426,8 +500,7 @@ TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_08)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
-// Boundary case 9: k > expertNum
-TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_09)
+TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_k_02)
 {
     optiling::MoeGatingTopKBackwardCompileInfo compileInfo = {};
     gert::TilingContextPara tilingContextPara(
@@ -453,8 +526,8 @@ TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_09)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
-// Boundary case 10: expertNum > 2048
-TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_10)
+// Boundary case 5: expertNum not in valid range
+TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_n_01)
 {
     optiling::MoeGatingTopKBackwardCompileInfo compileInfo = {};
     gert::TilingContextPara tilingContextPara(
@@ -480,8 +553,8 @@ TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_10)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
-// Boundary case 11: renorm != 0
-TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_11)
+// Boundary case 6: renorm != 0
+TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_renorm_01)
 {
     optiling::MoeGatingTopKBackwardCompileInfo compileInfo = {};
     gert::TilingContextPara tilingContextPara(
@@ -507,8 +580,8 @@ TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_11)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
-// Boundary case 12: normType != 1
-TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_12)
+// Boundary case 7: normType != 1
+TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_norm_type_01)
 {
     optiling::MoeGatingTopKBackwardCompileInfo compileInfo = {};
     gert::TilingContextPara tilingContextPara(
@@ -534,8 +607,8 @@ TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_12)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
-// Boundary case 13: x_norm dtype != FP32
-TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_13)
+// Boundary cases 8: data type mismatch
+TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_x_norm_dtype_01)
 {
     optiling::MoeGatingTopKBackwardCompileInfo compileInfo = {};
     gert::TilingContextPara tilingContextPara(
@@ -561,8 +634,7 @@ TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_13)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
-// Boundary case 14: grad_y dtype invalid
-TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_14)
+TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_grad_y_dtype_01)
 {
     optiling::MoeGatingTopKBackwardCompileInfo compileInfo = {};
     gert::TilingContextPara tilingContextPara(
@@ -588,8 +660,7 @@ TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_14)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
-// Boundary case 15: expert_idx dtype != INT32
-TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_15)
+TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_expert_idx_dtype_01)
 {
     optiling::MoeGatingTopKBackwardCompileInfo compileInfo = {};
     gert::TilingContextPara tilingContextPara(
@@ -615,8 +686,34 @@ TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_15)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
-// Boundary case 16: UB space insufficient (maxRows <= 0)
-TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_16)
+TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_grad_x_dtype_01)
+{
+    optiling::MoeGatingTopKBackwardCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara(
+        "MoeGatingTopKBackward",
+        {
+            {{{16, 256}, {16, 256}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{16, 8}, {16, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{16, 8}, {16, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {{{16, 256}, {16, 256}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"renorm", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"norm_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"routed_scaling_factor", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+            {"eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-20f)},
+        },
+        &compileInfo);
+    uint64_t expectTilingKey = 10000;
+    string expectTilingData = "";
+    std::vector<size_t> expectWorkspaces = {16777216};
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+}
+
+// Boundary case 9: UB space insufficient (maxRows <= 0)
+TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_ub_space_01)
 {
     optiling::MoeGatingTopKBackwardCompileInfo compileInfo = {};
     gert::TilingContextPara tilingContextPara(
