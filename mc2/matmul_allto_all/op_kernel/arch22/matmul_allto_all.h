@@ -138,7 +138,7 @@ __aicore__ inline void MatmulAlltoAll<TemplateMMA2AFunc>::CatlassMatmul()
         using ElementC = cType;
         using ElementBias = BiasType;
         using LayoutA = layout::RowMajor;
-        // 支持B转置场景 
+        // 支持B转置场景
         using LayoutB = typename std::conditional<TB, layout::ColumnMajor, layout::RowMajor>::type;
         using LayoutBias = layout::VectorLayout;
 
