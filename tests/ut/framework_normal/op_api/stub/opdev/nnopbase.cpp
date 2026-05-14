@@ -22,4 +22,19 @@ aclnnStatus NnopbaseSetHcomGroup(void *const executor, char *const group) {
 aclnnStatus NnopbaseDisableOptionalInput(void *executor, const size_t irIndex) {
     return OK;
 }
+
+aclnnStatus aclnnInnerDistributeBarrierExtend(void * /* workspace */, uint64_t /* workspaceSize */,
+    aclOpExecutor * /* executor */, aclrtStream /* stream */)
+{
+    return OK;
 }
+
+aclnnStatus aclnnInnerDistributeBarrierExtendGetWorkspaceSize(const aclTensor * /* context */,
+    const aclTensor * /* xRef */, const aclTensor * /* timeOut */, const aclTensor * /* elasticInfo */,
+    const char * /* group */, int64_t /* worldSize */, uint64_t * /* workspaceSize */,
+    aclOpExecutor ** /* executor */)
+{
+    return OK;
+}
+}
+
