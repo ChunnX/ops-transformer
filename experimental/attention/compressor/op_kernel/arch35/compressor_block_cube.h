@@ -228,6 +228,7 @@ __aicore__ inline void CompressorBlockCube<COMP>::CopyXGmToL1(const RunInfo &inf
 {
     uint32_t tStart = tools_.GetTIdxByBatch(info.bStart) + info.sStart; // 此基本块在整个序列中的位置
     uint32_t copySeqCnt = info.dealSeqCnt; // 此基本块处理的长度
+    printf("CopyX--copySeqCnt[%u]--tStart[%u]\n",copySeqCnt,tStart);
 
     uint32_t xL1Offset = 0 * (32 / sizeof(X_T));
     uint64_t sIdx = tStart;    // 起始s在整个T的起始点
@@ -325,14 +326,18 @@ __aicore__ inline void CompressorBlockCube<COMP>::CopyOutMm1Res(const RunInfo &i
     uint64_t gmOffset = constInfo_.dIdx * constInfo_.dBaseSize + coffId * constInfo_.headDim + mStart * fixParams.dstStride + dbOffset;
     uint32_t kvOffset = (mDealSize + 15) / 16 * 16 * nStart;
     uint32_t scoreOffset = (mDealSize + 15) / 16 * 16 * ((nStart + constInfo_.dBaseSize) % (2 * constInfo_.dBaseSize));
-
+    printf("nStart[%u] -- nDealSize[%u] -- constInfo_.dBaseSize[%u]\n",nStart, nDealSize, constInfo_.dBaseSize);
     if (nStart < constInfo_.dBaseSize) {
         fixParams.nSize = min(constInfo_.dBaseSize - nStart, nDealSize);
         Fixpipe(kvMm1ResGm[gmOffset], cL0Tensor[kvOffset], fixParams);
+        printf("kv--gmOffset[%u]\n",gmOffset);
+        DumpTensorForDim2(kvMm1ResGm[gmOffset],1,fixParams.mSize*fixParams.nSize,fixParams.mSize,fixParams.nSize);
     }
     if (nStart + nDealSize > constInfo_.dBaseSize) {
         fixParams.nSize = min(nStart + nDealSize - constInfo_.dBaseSize, nDealSize);
         Fixpipe(scoreMm1ResGm[gmOffset], cL0Tensor[scoreOffset], fixParams);
+        printf("score--gmOffset[%u]\n",gmOffset);
+        DumpTensorForDim2(scoreMm1ResGm[gmOffset],2,fixParams.mSize*fixParams.nSize,fixParams.mSize,fixParams.nSize);
     }
 }
 
@@ -352,12 +357,15 @@ __aicore__ inline void CompressorBlockCube<COMP>::ComputeMm1(const RunInfo &info
     uint32_t nCoff = (uint32_t)COMP::coff;
 
     // hSize为K_SIZE=512的倍数
-    uint32_t hStart = info.kStartIdx * info.dealKSize;
+    // uint32_t hStart = info.kStartIdx * info.dealKSize;
+    uint32_t hStart = info.hStart;
     uint32_t hSize = info.dealKSize;
     uint32_t hIdxStart = (constInfo_.aiCoreIdx % constInfo_.dBasicBlockNum) * K_L1_BASE; // 每组核内的h循环起始不同
     uint32_t kSize = K_L1_BASE;
+    
     for (uint32_t h = 0; h < hSize; h += kSize) {
-        uint32_t hIdx = (h + hIdxStart) % hSize; // h方向错位搬运
+        // uint32_t hIdx = (h + hIdxStart) % hSize; // h方向错位搬运
+        uint32_t hIdx = h;
         if (hIdx + K_L1_BASE > hSize) {
             kSize = hSize - hIdx;
         } else {
@@ -365,6 +373,7 @@ __aicore__ inline void CompressorBlockCube<COMP>::ComputeMm1(const RunInfo &info
         }
         bool isFirst = (h == 0);
         bool isLast = (h + kSize >= hSize);
+        printf("hStar[%u]--hSize[%u]--hIdxStart[%u]--kSize[%u]--hIdx[%u]\n",hStart,hSize,hIdxStart,kSize,hIdx);
         WaitFlag<HardEvent::MTE1_MTE2>(X_EVENT0 + xBufId);
         LocalTensor<X_T> xL1Tensor = xBufL1.GetWithOffset<X_T>(L1_X_SIZE / sizeof(X_T), xBufId * L1_X_SIZE);
         CopyXGmToL1(info, xL1Tensor, hStart + hIdx, kSize);
@@ -381,12 +390,14 @@ __aicore__ inline void CompressorBlockCube<COMP>::ComputeMm1(const RunInfo &info
 
             uint32_t mSize = GetMSize(info, coffId);
             uint32_t actMDealSize = M_L0_BASE;
+            printf("mSize[%u]\n",mSize);
             for (uint32_t mL0 = 0; mL0 < mSize; mL0 += M_L0_BASE) {
                 if (mL0 + M_L0_BASE > mSize) {
                     actMDealSize = mSize - mL0;
                 }
                 uint32_t nDealSize = 2 * constInfo_.dBaseSize; // 2: wkv和wgate各搬运dBaseSize行, dBaseSize需保证8的倍数
                 uint32_t actNDealSize = N_L0_BASE;
+                printf("nDealSize[%u]\n",nDealSize);
                 for (uint32_t nL0 = 0; nL0 < nDealSize; nL0 += N_L0_BASE) {
                     if (nL0 + N_L0_BASE > nDealSize) {
                         actNDealSize = nDealSize - nL0;

@@ -233,6 +233,7 @@ struct RunInfo {
 
     uint32_t kStartIdx = 0;
     uint32_t dealKSize = 0;
+    uint32_t hStart = 0;
 
     uint32_t bEnd = 0;
     uint32_t sEnd = 0;
@@ -410,7 +411,7 @@ __aicore__ inline void DumpTensorForDim2(GlobalTensor<T> tensor, uint32_t desc, 
 {
     uint32_t array2[] = {static_cast<uint32_t>(row), static_cast<uint32_t>(col)};
     AscendC::ShapeInfo shapeInfo(2, array2);
-    // AscendC::DumpTensor(tensor, desc, dumpSize, shapeInfo);
+    AscendC::DumpTensor(tensor, desc, dumpSize, shapeInfo);
 }
 
 template <typename T>
@@ -419,7 +420,7 @@ __aicore__ inline void DumpTensorForDim2(LocalTensor<T> tensor, uint32_t desc, u
 {
     uint32_t array2[] = {static_cast<uint32_t>(row), static_cast<uint32_t>(col)};
     AscendC::ShapeInfo shapeInfo(2, array2);
-    // AscendC::DumpTensor(tensor, desc, dumpSize, shapeInfo);
+    AscendC::DumpTensor(tensor, desc, dumpSize, shapeInfo);
 }
 
 template <typename T>
@@ -428,7 +429,7 @@ __aicore__ inline void DumpTensorForDim2(LocalTensor<T> tensor, uint32_t desc, u
     uint32_t col = 32 / sizeof(T);
     uint32_t array2[] = {static_cast<uint32_t>(dumpSize / col), static_cast<uint32_t>(col)};
     AscendC::ShapeInfo shapeInfo(2, array2);
-    // AscendC::DumpTensor(tensor, desc, dumpSize, shapeInfo);
+    AscendC::DumpTensor(tensor, desc, dumpSize, shapeInfo);
 }
 
 template <typename T>
@@ -437,7 +438,7 @@ __aicore__ inline void DumpTensorForDim2(GlobalTensor<T> tensor, uint32_t desc, 
     uint32_t col = 32 / sizeof(T);
     uint32_t array2[] = {static_cast<uint32_t>(dumpSize / col), static_cast<uint32_t>(col)};
     AscendC::ShapeInfo shapeInfo(2, array2);
-    // AscendC::DumpTensor(tensor, desc, dumpSize, shapeInfo);
+    AscendC::DumpTensor(tensor, desc, dumpSize, shapeInfo);
 }
 
 } // namespace Compressor

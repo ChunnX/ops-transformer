@@ -120,6 +120,7 @@ private:
     uint32_t vec2Loop = 0;
     uint32_t kStartIdx_ = 0;
     uint32_t dealKSize_ = 0;
+    uint32_t hStart_ = 0;
     bool isFirstUpdateCurGroup = true;
 };
 
@@ -224,27 +225,36 @@ __aicore__ inline void CompressorKernel<COMP>::SplitK()
         // 获取m大小
         mSize += bSeqUsed;
     }
+
     uint32_t mBaseNum = CeilDivT(mSize, constInfo.mBaseSize);
+        printf("mSize[%u] constInfo.mBaseSize[%u]  mBaseNum[%u] constInfo.usedCoreNum[%u]  constInfo.dBasicBlockNum[%u]\n",mSize,constInfo.mBaseSize,mBaseNum,constInfo.usedCoreNum, constInfo.dBasicBlockNum);
     if (constInfo.dBasicBlockNum * mBaseNum < constInfo.usedCoreNum) {
-        constInfo.kBaseNum = CeilDivT(constInfo.usedCoreNum, constInfo.dBasicBlockNum);
+        // constInfo.kBaseNum = CeilDivT(constInfo.usedCoreNum, constInfo.dBasicBlockNum);
+        constInfo.kBaseNum = constInfo.usedCoreNum / constInfo.dBasicBlockNum;
         constInfo.kBaseSize  = CeilDivT(Align(constInfo.hSize, static_cast<uint32_t>(32 / sizeof(X_T))), constInfo.kBaseNum);
+        printf("constInfo.kBaseNum[%u] constInfo.kBaseSize[%u] constInfo.hSize[%u]\n",constInfo.kBaseNum, constInfo.kBaseSize,constInfo.hSize);
         // 当切m轴无法满足开满核时，不切m轴(切m处理有点复杂)
         constInfo.mGroupNum = 1;        // 在m轴处理上所有核当一个组
         constInfo.mCurGroupIdx = 0;     // 只有一个组
     }
-
+    printf("constInfo.aiCoreIdx[%u] constInfo.curGroupIdx[%u] constInfo.coreGroupNum[%u]\n",constInfo.aiCoreIdx, constInfo.curGroupIdx, constInfo.coreGroupNum);
     // 每轮固定不变，预计算后主循环直接复用
     if (constInfo.kBaseNum > 1) {
         kStartIdx_ = constInfo.aiCoreIdx / constInfo.dBasicBlockNum;
         if (constInfo.curGroupIdx + 1 < constInfo.coreGroupNum) {
             dealKSize_ = constInfo.kBaseSize;
+            hStart_ = kStartIdx_ * dealKSize_;
         } else {
-            dealKSize_ = constInfo.hSize - kStartIdx_ * constInfo.kBaseSize;
+            dealKSize_ = kStartIdx_ < constInfo.coreGroupNum ? constInfo.hSize - kStartIdx_ * constInfo.kBaseSize : 0;
+            hStart_ = kStartIdx_ * constInfo.kBaseSize;
             }
     } else {
         kStartIdx_ = 0;
         dealKSize_ = constInfo.hSize;
+        hStart_ = kStartIdx_ * dealKSize_;
     }
+
+    printf("dealKSize_[%u]---hStart_[%u]\n",dealKSize_,hStart_);
  }
 
 template <typename COMP>
@@ -523,6 +533,7 @@ __aicore__ inline void CompressorKernel<COMP>::CalcC1V1Params(RunInfo &info, Vec
     info.sStart = basicBlockInfo.sIdx;
     info.kStartIdx = kStartIdx_;
     info.dealKSize = dealKSize_;
+    info.hStart = hStart_;
     vec1Info.dealTcNum = basicBlockInfo.dealTcNum;
     vec1Info.dealScSize = basicBlockInfo.compressedTcNum;
     allCompressedTcNum_ += basicBlockInfo.compressedTcNum;
