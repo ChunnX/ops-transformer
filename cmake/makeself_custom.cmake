@@ -21,12 +21,8 @@ if(NOT DEFINED CPACK_MAKESELF_PATH)
     message(FATAL_ERROR "CPACK_MAKESELF_PATH is not defined!")
 endif()
 
-if(NOT EXISTS ${MAKESELF_EXE})
-    message(FATAL_ERROR "makeself.sh not found at: ${MAKESELF_EXE}")
-endif()
-
-if(NOT EXISTS ${MAKESELF_HEADER_EXE})
-    message(FATAL_ERROR "makeself-header.sh not found at: ${MAKESELF_HEADER_EXE}")
+if(NOT EXISTS ${MAKESELF_EXE} OR NOT EXISTS ${MAKESELF_HEADER_EXE})
+    include(cmake/third_party/makeself-fetch.cmake)
 endif()
 
 execute_process(COMMAND bash ${MAKESELF_EXE}
