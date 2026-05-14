@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef FLASH_ATTN_TILING_REGBASE_H_
-#define FLASH_ATTN_TILING_REGBASE_H_
+#ifndef FLASH_ATTN_TILING_DATA_H_
+#define FLASH_ATTN_TILING_DATA_H_
 
 
 namespace optiling {

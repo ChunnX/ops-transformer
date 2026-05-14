@@ -28,6 +28,7 @@
 using namespace ge;
 using namespace AscendC;
 namespace optiling {
+namespace flash_attn {
 constexpr uint64_t PRE_LOAD_NUM_GQA_ARCH35 = 3;
 
 // void FlashAttnTilingImpl::CalcMaxWorkspaceSize()
@@ -789,6 +790,10 @@ void FlashAttnTilingImpl::PrintAllTilingData()
     int64_t cap = context_->GetRawTilingData()->GetCapacity();
     OP_LOGD(faInfo_->opName, "Tiling Data context_ GetCapacity: %lu.", cap);
 }
+
+} // namespace flash_attn
+
+using flash_attn::FlashAttnTilingImpl;
 
 // 值越小表示优先级越高
 REGISTER_TILING_TEMPLATE_FIA(FlashAttn, FlashAttnTilingImpl,

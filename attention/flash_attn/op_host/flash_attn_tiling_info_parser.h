@@ -19,6 +19,7 @@
 #include "fa_tiling_shape.h"
 
 namespace optiling {
+namespace flash_attn {
 class FaInfoParser {
 public:
     explicit FaInfoParser(const gert::TilingContext *context) : context_(context)
@@ -150,4 +151,5 @@ public:
     std::shared_ptr<FaTilingShape> keyShape_ = nullptr;
     std::shared_ptr<FaTilingShape> valueShape_ = nullptr;
 };
+} // namespace flash_attn
 } // namespace optiling

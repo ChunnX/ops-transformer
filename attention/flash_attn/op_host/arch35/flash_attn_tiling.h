@@ -12,7 +12,7 @@
  * \file flash_attn_tiling.h
  * \brief
  */
-#ifndef FLASH_ATTN_TILING_H_
+#ifndef FLASH_ATTN_TILING_IMPL_H_
 #define FLASH_ATTN_TILING_IMPL_H_
 
 #include "register/tilingdata_base.h"
@@ -24,6 +24,7 @@
 #include "../../op_kernel/arch35/flash_attn_template_tiling_key.h"
 
 namespace optiling {
+namespace flash_attn {
 // constexpr int64_t MASK_MODE_INT_MAX = 2147483647;
 
 struct FaTilingKeyInfo {
@@ -122,5 +123,6 @@ private:
     FaTilingInfo *faInfo_ = nullptr;
 };
 
+} // namespace flash_attn
 } // namespace optiling
 #endif // FLASH_ATTN_TILING_IMPL_H_

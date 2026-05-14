@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef FA_TILING_INFO_H
-#define FA_TILING_INFO_H
+#ifndef FLASH_ATTN_FA_TILING_INFO_H
+#define FLASH_ATTN_FA_TILING_INFO_H
 
 #include <map>
 #include <set>
@@ -24,6 +24,7 @@
 #include "../../common/op_host/fia_tiling_base.h"
 
 namespace optiling {
+namespace flash_attn {
 // ============================================================
 // String name constants for tensor and attribute parameters
 // ============================================================
@@ -419,5 +420,6 @@ const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
 const std::set<ge::Format> FORMAT_SUPPORT_SET = {ge::FORMAT_ND};
 } // namespace arch35FA
 
+} // namespace flash_attn
 } // namespace optiling
-#endif // FA_TILING_INFO_H
+#endif // FLASH_ATTN_FA_TILING_INFO_H

@@ -26,6 +26,7 @@ using std::string;
 using namespace ge;
 // using namespace AscendC;
 namespace optiling {
+namespace flash_attn {
 
 ge::graphStatus FaInfoParser::GetEmptyTensorFlag()
 {
@@ -649,4 +650,5 @@ ge::graphStatus FaInfoParser::ParseFeatureInfo()
 
     return ge::GRAPH_SUCCESS;
 }
+} // namespace flash_attn
 } // namespace optiling

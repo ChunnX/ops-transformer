@@ -17,6 +17,7 @@
 #define FLASH_ATTN_TILING_UTILS_H
 
 namespace optiling {
+namespace flash_attn {
 template <typename T>
 inline auto CeilDivision(T num1, T num2) -> T
 {
@@ -60,6 +61,7 @@ inline auto IncreGcd(T a, T b) -> T
     return IncreGcd(b, a % b);
 }
 
+} // namespace flash_attn
 } // namespace optiling
 
 #endif // FLASH_ATTN_TILING_UTILS_H

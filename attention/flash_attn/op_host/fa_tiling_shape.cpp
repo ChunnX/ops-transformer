@@ -19,6 +19,7 @@
 #include "fa_tiling_shape.h"
 
 namespace optiling {
+namespace flash_attn {
 
 // ============================================================================
 // 静态常量定义
@@ -288,4 +289,5 @@ ge::graphStatus FaTilingShapeCompare::CompareShape(FaTilingShapeCompareParam &pa
     return ge::GRAPH_SUCCESS;
 }
 
+} // namespace flash_attn
 } // namespace optiling

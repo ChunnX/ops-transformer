@@ -17,6 +17,7 @@
 
 
 namespace optiling {
+namespace flash_attn {
 
 std::string LayoutToSerialString(FaLayout layout)
 {
@@ -65,4 +66,5 @@ std::string AxisToSerialString(FaAxis axis)
     }
 }
 
+} // namespace flash_attn
 } // namespace optiling
