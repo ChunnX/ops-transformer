@@ -257,6 +257,7 @@ public:
     void set_blockOuter(uint32_t val) { blockOuter = val; }
     void set_maxValidBBLen(uint32_t val) { maxValidBBLen = val; }
     void set_noNeedDeter(uint32_t val) { noNeedDeter = val; }
+    void set_reserved1(uint32_t val) { reserved1 = val; }
     void set_bandIdx(int64_t val) { bandIdx = val; }
     void set_deterMaxRound(int64_t value) { deterMaxRound = value; }
     void set_dqIsNeedDeter(const uint64_t* val) { 
@@ -416,6 +417,9 @@ public:
     void set_normalCoreNBurstNums(int64_t val) { normalCoreNBurstNums = val; }
     void set_tailCoreNBurstNums(int64_t val) { tailCoreNBurstNums = val; }
     void set_normalAxisSize(int64_t val) { normalAxisSize = val; }
+    void set_reserved1(uint8_t val) { reserved1 = val; }
+    void set_reserved2(uint8_t val) { reserved2 = val; }
+    void set_reserved3(uint8_t val) { reserved3 = val; }
 };
 
 class PostParamsRegbase {
@@ -562,6 +566,10 @@ public:
         }
     }
     void set_deterPrefix2(int index, int64_t val) { deterPrefix2[index] = val; }
+    void set_reserved1(uint8_t value) { reserved1 = value; }
+    void set_reserved2(uint8_t value) { reserved2 = value; }
+    void set_reserved3(uint8_t value) { reserved3 = value; }
+    void set_reserved4(uint32_t value) { reserved4 = value; }
 };
 
 class TndParamRegbase {
