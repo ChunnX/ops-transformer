@@ -162,9 +162,9 @@ public:
             case SparseMode::LEFT_UP_CAUSAL:
                 return nextToken;
             case SparseMode::RIGHT_DOWN_CAUSAL:
-                return static_cast<int64_t>(querySeq) - static_cast<int64_t>(kvSeq);
+                return static_cast<int64_t>(kvSeq) - static_cast<int64_t>(querySeq);
             case SparseMode::BAND:
-                return static_cast<int64_t>(querySeq) - static_cast<int64_t>(kvSeq) + nextToken;
+                return static_cast<int64_t>(kvSeq) - static_cast<int64_t>(querySeq) + nextToken;
             default:
                 return nextToken;
         }
