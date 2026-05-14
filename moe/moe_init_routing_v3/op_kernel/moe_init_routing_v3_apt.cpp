@@ -31,6 +31,7 @@
 #include "arch35/moe_v3_full_load_unquantized.h"
 #include "arch35/moe_v3_full_load_dynamic_quant.h"
 #include "arch35/moe_v3_full_load_static_quant.h"
+#include "arch35/moe_v3_full_load_mxfp8_quant.h"
 
 /*
  * 非量化
@@ -100,13 +101,14 @@
 #define MOE_INIT_ROUTING_V3_SORTONECORE_MXFP4QUANT_SCATTER 9011000   // 单核排序、MXFP4量化、SCATTER索引
 #define MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP4QUANT_GATHER 9110000  // 多核排序、MXFP4量化、GATHER索引
 #define MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP4QUANT_SCATTER 9111000 // 多核排序、MXFP4量化、SCATTER索引
- 
+
 /*
  * 全载模版
  */
-#define MOE_INIT_ROUTING_V3_FULLLOAD_UNQUANTIZED 200000 // 全载、非量化
-#define MOE_INIT_ROUTING_V3_FULLLOAD_STATIC_QUANT 210000 // 全载、静态量化
+#define MOE_INIT_ROUTING_V3_FULLLOAD_UNQUANTIZED 200000   // 全载、非量化
+#define MOE_INIT_ROUTING_V3_FULLLOAD_STATIC_QUANT 210000  // 全载、静态量化
 #define MOE_INIT_ROUTING_V3_FULLLOAD_DYNAMIC_QUANT 220000 // 全载、动态量化
+#define MOE_INIT_ROUTING_V3_FULLLOAD_MXFP8_QUANT 230000   // 全载、MXFP8量化（E5M2/E4M3FN统一）
 
 using namespace AscendC;
 using namespace MoeInitRoutingV3;
@@ -174,6 +176,22 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
             MoeV3FullLoadStaticQuant<DTYPE_X> fullLoadOp;
             fullLoadOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale,
                             userWS, offset, t, &fullLoadPipe);
+            fullLoadOp.Process();
+            fullLoadPipe.Destroy();
+        }
+
+#if (__NPU_ARCH__ == 3510)
+        SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+#endif
+        return;
+    } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_FULLLOAD_MXFP8_QUANT)) {
+        if constexpr ((IsSameType<DTYPE_X, half>::value || IsSameType<DTYPE_X, bfloat16_t>::value) &&
+                      (IsSameType<DTYPE_EXPANDED_X, fp8_e5m2_t>::value ||
+                       IsSameType<DTYPE_EXPANDED_X, fp8_e4m3fn_t>::value)) {
+            TPipe fullLoadPipe;
+            MoeV3FullLoadMxfp8Quant<DTYPE_X, DTYPE_EXPANDED_X> fullLoadOp;
+            fullLoadOp.Init(x, expertIdx, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale, userWS,
+                            t, &fullLoadPipe);
             fullLoadOp.Process();
             fullLoadPipe.Destroy();
         }
