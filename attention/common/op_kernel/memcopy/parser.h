@@ -75,6 +75,11 @@ public:
         return (actualSeqLengthsGm.GetValue(bIdx) - actualSeqLengthsGm.GetValue(bIdx - 1));
     }
 
+    __aicore__ inline uint64_t GetFullActualSeqLength(uint32_t bIdx) const
+    {
+        return GetActualSeqLength(bIdx);
+    }
+
     __aicore__ inline uint64_t GetTSize() const
     {
         return actualSeqLengthsGm.GetValue(actualLenDims - 1);

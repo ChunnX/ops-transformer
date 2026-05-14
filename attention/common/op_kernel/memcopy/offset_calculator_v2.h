@@ -262,23 +262,10 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_Q_OUT_BNGSD, ACTLEN_T> {
     }
 };
 
-template <typename ACTLEN_T, bool WITH_ZERO_HEAD>
-struct TNDSeqLensParserHelper;
-
-template <typename ACTLEN_T>
-struct TNDSeqLensParserHelper<ACTLEN_T, false> {
-    typedef ActualSeqLensParser<ActualSeqLensMode::ACCUM, ACTLEN_T, true> type;
-};
-
-template <typename ACTLEN_T>
-struct TNDSeqLensParserHelper<ACTLEN_T, true> {
-    typedef ActualSeqLensParser<ActualSeqLensMode::ACCUM, ACTLEN_T, true> type;
-};
-
 template <GmFormat FORMAT, typename ACTLEN_T, bool WITH_ZERO_HEAD>
 struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_Q_OUT_TND, ACTLEN_T, WITH_ZERO_HEAD> {
     GmLayout<FORMAT> gmLayout;
-    using SeqLensQParserType = typename TNDSeqLensParserHelper<ACTLEN_T, WITH_ZERO_HEAD>::type;
+    using SeqLensQParserType = ActualSeqLensParser<ActualSeqLensMode::ACCUM, ACTLEN_T, WITH_ZERO_HEAD>;
     SeqLensQParserType actualSeqLensQParser;
 
     __aicore__ inline OffsetCalculatorImpl() = default;
@@ -286,7 +273,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_Q_OUT_TND, ACTLEN_T, WITH
     __aicore__ inline void Init(uint32_t n2, uint32_t g, uint32_t d, GlobalTensor<ACTLEN_T> actualSeqLengthsGmQ,
                                 uint32_t actualLenQDims)
     {
-        actualSeqLensQParser.Init(actualSeqLengthsGmQ, actualSeqLengthsGmQ, actualLenQDims, 0);
+        actualSeqLensQParser.Init(actualSeqLengthsGmQ, actualLenQDims);
         gmLayout.MakeLayout(actualSeqLensQParser.GetTSize(), n2, g, d);
     }
 
@@ -438,7 +425,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_BNSD, ACTLEN_T> {
 template <GmFormat FORMAT, typename ACTLEN_T, bool WITH_ZERO_HEAD>
 struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_TND, ACTLEN_T, WITH_ZERO_HEAD> {
     GmLayout<FORMAT> gmLayout;
-    using SeqLensKVParserType = typename TNDSeqLensParserHelper<ACTLEN_T, WITH_ZERO_HEAD>::type;
+    using SeqLensKVParserType = ActualSeqLensParser<ActualSeqLensMode::ACCUM, ACTLEN_T, WITH_ZERO_HEAD>;
     SeqLensKVParserType actualSeqLensKVParser;
 
     __aicore__ inline OffsetCalculatorImpl() = default;
@@ -446,7 +433,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_TND, ACTLEN_T, WITH_ZE
     __aicore__ inline void Init(uint32_t n2, uint32_t d, GlobalTensor<ACTLEN_T> actualSeqLengthsGmKV,
                                 uint32_t actualLenKVDims)
     {
-        actualSeqLensKVParser.Init(actualSeqLengthsGmKV, actualSeqLengthsGmKV, actualLenKVDims, 0);
+        actualSeqLensKVParser.Init(actualSeqLengthsGmKV, actualLenKVDims);
         gmLayout.MakeLayout(actualSeqLensKVParser.GetTSize(), n2, d);
     }
 
