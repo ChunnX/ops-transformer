@@ -163,8 +163,8 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::PostTiling()
     tilingData->taskTilingInfo.tailLoopExpertNum = 0;
     tilingData->taskTilingInfo.totalLoopCount = e_;
     tilingData->isNeedMM = hasSharedExpertFlag_;
-    constexpr uint32_t SMALL_SHAPE_RANK_EXPERT_LIMIT = 31U;
-    bool rankExpertLimitOk = (epWorldSize_ * e_) <= SMALL_SHAPE_RANK_EXPERT_LIMIT;
+    constexpr uint32_t SMALL_SHAPE_MAX_ROUNDS = 63U;
+    bool rankExpertLimitOk = (epWorldSize_ * e_) <= SMALL_SHAPE_MAX_ROUNDS;
     if (hasSharedExpertFlag_) {
         tilingData->taskTilingInfo.isSmallShapeMode = (bsk_ < SMALL_SHAPE_THRESHOLD_WITH_MM) && rankExpertLimitOk;
     } else {
