@@ -184,7 +184,7 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::CopyInGradY(int64_t loopI
         
         gradYQue_.EnQue(gradYLocal_);
         gradYLocal_ = gradYQue_.DeQue<float>();
-        Cast(gradYLocal_, gradYLocal_[tilingData_->baseRows * kAlign_].ReinterpretCast<T>(), RoundMode::CAST_NONE,
+        Cast(gradYLocal_, gradYLocal_[tilingData_->baseRows * kAlign_ / NUM_TWO].ReinterpretCast<T>(), RoundMode::CAST_NONE,
              curRowsByKAlign_);
         PipeBarrier<PIPE_V>();
     }
@@ -285,7 +285,7 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::GetGradXNorm()
     Div(gradYLocal_, gradYLocal_, bufk4RecipSumW, curRowsByKAlign_);
     PipeBarrier<PIPE_V>();
     LocalTensor<float> bufn3 = bufn3_.Get<float>();
-    Duplicate<float>(bufn3, 0.0f, curRowsByKAlign_);
+    Duplicate<float>(bufn3, 0.0f, elementCountPerLoop_);
 
     LocalTensor<int32_t> bufk4Index = bufk4Index_.Get<int32_t>();
     SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
