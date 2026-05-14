@@ -17,5 +17,11 @@ extern "C" {
 aclnnStatus NnopbaseRunForWorkspace(void *executor, uint64_t *workspaceLen);
 aclnnStatus NnopbaseSetHcomGroup(void *const executor, char *const group);
 aclnnStatus NnopbaseDisableOptionalInput(void *executor, const size_t irIndex);
+
+aclnnStatus aclnnInnerDistributeBarrierExtend(void *workspace, uint64_t workspaceSize,
+    aclOpExecutor *executor, aclrtStream stream);
+aclnnStatus aclnnInnerDistributeBarrierExtendGetWorkspaceSize(const aclTensor *context, const aclTensor *xRef,
+    const aclTensor *timeOut, const aclTensor *elasticInfo, const char *group, int64_t worldSize,
+    uint64_t *workspaceSize, aclOpExecutor **executor);
 }
 #endif // OPS_TRANSFORMER_DEV_TESTS_UT_OP_API_STUB_OPDEV_NNOPBASE_H
