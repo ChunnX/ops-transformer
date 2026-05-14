@@ -23,7 +23,7 @@ using WeightQuantBatchMatmulV2::Arch35::A_B_BALANCE_FACTOR;
 using WeightQuantBatchMatmulV2::Arch35::BASIC_BLOCK_PROCESS_NUM;
 using WeightQuantBatchMatmulV2::Arch35::BasicBlockControlParam;
 using WeightQuantBatchMatmulV2::Arch35::BasicBlockOffsetParam;
-using WeightQuantBatchMatmulV2::Arch35::CACHE_LINE_SIZE;
+using WeightQuantBatchMatmulV2::Arch35::GMM_CACHE_LINE_SIZE;
 using WeightQuantBatchMatmulV2::Arch35::CeilDivide;
 using WeightQuantBatchMatmulV2::Arch35::DOUBLE_BUFFER_NUM;
 using WeightQuantBatchMatmulV2::Arch35::IsMxA8W4;
@@ -137,10 +137,10 @@ __aicore__ inline void GMM_WQ_RESPLIT_CONTROLLER_CLASS::Process()
     BasicBlockOffsetParam offsetParam[BASIC_BLOCK_PROCESS_NUM];
     InitOffsetParam(offsetParam);
 
-    bool isCacheLineUnaligned = offsetParam[0].kSize % CACHE_LINE_SIZE != 0;  // 缓存大小128B，对应8bit为128个元素
+    bool isCacheLineUnaligned = offsetParam[0].kSize % GMM_CACHE_LINE_SIZE != 0;  // 缓存大小128B，对应8bit为128个元素
     if constexpr (IsSameType<wType, int4b_t>::value || IsSameType<wType, fp4x2_e2m1_t>::value ||
                   IsSameType<wType, fp4x2_e1m2_t>::value) {
-        isCacheLineUnaligned = offsetParam[0].kSize % (CACHE_LINE_SIZE * 2) != 0;  // 缓存大小128B，对应4bit为256个元素
+        isCacheLineUnaligned = offsetParam[0].kSize % (GMM_CACHE_LINE_SIZE * 2) != 0;  // 缓存大小128B，对应4bit为256个元素
     }
 
     BasicBlockControlParam ctrlParam;
@@ -298,7 +298,7 @@ __aicore__ inline void GMM_WQ_RESPLIT_CONTROLLER_CLASS::PrefetchA(uint64_t mSize
         (gmmBaseTiling_->coreNum % gmmBaseTiling_->cubeNumBlocksN == 0)) {
         uint64_t aPrefetchSize =
             CeilAlign(CeilDivide(mSize * kSize, static_cast<uint64_t>(gmmBaseTiling_->cubeNumBlocksN)),
-                      CACHE_LINE_SIZE / sizeof(xType)); // prefetch需要保证128B的cacheline对齐
+                      GMM_CACHE_LINE_SIZE / sizeof(xType)); // prefetch需要保证128B的cacheline对齐
         basicBlock_.PrefetchA(aPrefetchSize, mSize * kSize);
     }
 }
