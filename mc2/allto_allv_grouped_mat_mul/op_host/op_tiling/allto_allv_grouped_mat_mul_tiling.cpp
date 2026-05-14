@@ -102,11 +102,16 @@ ge::graphStatus AlltoAllvGmmTiling::GetContextAttr(const gert::TilingContext* co
     OP_TILING_CHECK((groupEpPtr == nullptr) || (epWorldSizePtr == nullptr),
         OP_LOGE(A_INNER_DEBUG, "groupEpPtr or epWorldSizePtr is null."), return ge::GRAPH_FAILED);
     
-    auto mmXStorageShape = context->GetOptionalInputShape(MM_X_INDEX);
+    auto mmXStorageShape = context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX);
     tilingData->isPermuteOut = (mmXStorageShape != nullptr);
     
     groupPtr_ = groupEpPtr;
     epWorldSizePtr_ = epWorldSizePtr;
+    
+    auto transGmmWeightPtr = attrs->GetAttrPointer<bool>(NON_QUANT_ATTR_TRANS_GMM_WEIGHT_INDEX);
+    OP_TILING_CHECK(transGmmWeightPtr == nullptr,
+        OP_LOGE(A_INNER_DEBUG, "transGmmWeightPtr is null."), return ge::GRAPH_FAILED);
+    transGmmWeight_ = *transGmmWeightPtr;
     
     OP_LOGI(A_INNER_DEBUG, "epGroup is %s, epWorldSize is %lu.", groupPtr_, *epWorldSizePtr_);
     return ge::GRAPH_SUCCESS;
@@ -132,7 +137,7 @@ ge::graphStatus AlltoAllvGmmTiling::CheckMKN(const gert::TilingContext* context)
     OP_TILING_CHECK(
         maxM_ > maxMKN || maxN_ > maxMKN || maxK_ > maxMKN,
         OP_LOGE(A_INNER_DEBUG, "32B-aligned m, n or k axis for gmm is out of range int32!"), return ge::GRAPH_FAILED);
-    if (context->GetOptionalInputShape(MM_X_INDEX) != nullptr) {
+    if (context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX) != nullptr) {
         OP_TILING_CHECK(
             maxMForMM_ > maxMKN || maxNForMM_ > maxMKN || maxKForMM_ > maxMKN,
             OP_LOGE(A_INNER_DEBUG, "32B-aligned m, n or k axis for mm is out of range int32!"),
@@ -280,8 +285,11 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeRelation(const gert::TilingContext
     auto gmmWeightShape = context->GetInputShape(GMM_WEIGHT_INDEX)->GetStorageShape();
     uint64_t BSK = gmmXShape.GetDim(0);
     uint64_t H1 = gmmXShape.GetDim(1);
-    uint64_t H2 = gmmWeightShape.GetDim(0);
-    uint64_t N1 = gmmWeightShape.GetDim(1);
+    uint64_t e = gmmWeightShape.GetDim(0);
+    uint64_t h1DimIndex = transGmmWeight_ ? DIM_TWO : DIM_ONE;
+    uint64_t n1DimIndex = transGmmWeight_ ? DIM_ONE : DIM_TWO;
+    uint64_t H2 = gmmWeightShape.GetDim(h1DimIndex);
+    uint64_t N1 = gmmWeightShape.GetDim(n1DimIndex);
 
     if (H1 != H2) {
         OP_LOGE(A_INNER_DEBUG, "H1 is not equal to H2.");
@@ -289,8 +297,8 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeRelation(const gert::TilingContext
     }
 
     if (tilingData->isPermuteOut) {
-        auto mmXShape = context->GetOptionalInputShape(MM_X_INDEX)->GetStorageShape();
-        auto mmWeightShape = context->GetInputShape(MM_WEIGHT_INDEX)->GetStorageShape();
+        auto mmXShape = context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX)->GetStorageShape();
+        auto mmWeightShape = context->GetInputShape(NON_QUANT_MM_WEIGHT_INDEX)->GetStorageShape();
         uint64_t BS = mmXShape.GetDim(0);
         uint64_t H = mmXShape.GetDim(1);
         uint64_t H2MM = mmWeightShape.GetDim(0);
@@ -319,22 +327,26 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeDims(const gert::TilingContext* co
     maxK_ = gmmXShape.GetDim(1);
 
     auto gmmWeightShape = context->GetInputShape(GMM_WEIGHT_INDEX)->GetStorageShape();
-    OP_TILING_CHECK(gmmWeightShape.GetDimNum() != DIM_TWO,
-        OP_LOGE(A_INNER_DEBUG, "gmmWeight shape dim num should be 2."), return ge::GRAPH_FAILED);
-    maxK_ = gmmWeightShape.GetDim(0);
-    maxN_ = gmmWeightShape.GetDim(1);
+    OP_TILING_CHECK(gmmWeightShape.GetDimNum() != DIM_THREE,
+        OP_LOGE(A_INNER_DEBUG, "gmmWeight shape dim num should be 3."), return ge::GRAPH_FAILED);
+    e_ = gmmWeightShape.GetDim(0);
+    uint64_t h1DimIndex = transGmmWeight_ ? DIM_TWO : DIM_ONE;
+    uint64_t n1DimIndex = transGmmWeight_ ? DIM_ONE : DIM_TWO;
+    maxK_ = gmmWeightShape.GetDim(h1DimIndex);
+    maxN_ = gmmWeightShape.GetDim(n1DimIndex);
 
     mmXDataType_ = context->GetInputDesc(GMM_X_INDEX)->GetDataType();
+    gmmXDataType_ = context->GetInputDesc(GMM_X_INDEX)->GetDataType();
     mmDataTypeSize = GetSizeByDataType(mmXDataType_);
 
-    if (context->GetOptionalInputShape(MM_X_INDEX) != nullptr) {
-        auto mmXShape = context->GetOptionalInputShape(MM_X_INDEX)->GetStorageShape();
+    if (context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX) != nullptr) {
+        auto mmXShape = context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX)->GetStorageShape();
         OP_TILING_CHECK(mmXShape.GetDimNum() != DIM_TWO,
             OP_LOGE(A_INNER_DEBUG, "mmX shape dim num should be 2."), return ge::GRAPH_FAILED);
         maxMForMM_ = mmXShape.GetDim(0);
         maxKForMM_ = mmXShape.GetDim(1);
 
-        auto mmWeightShape = context->GetInputShape(MM_WEIGHT_INDEX)->GetStorageShape();
+        auto mmWeightShape = context->GetInputShape(NON_QUANT_MM_WEIGHT_INDEX)->GetStorageShape();
         OP_TILING_CHECK(mmWeightShape.GetDimNum() != DIM_TWO,
             OP_LOGE(A_INNER_DEBUG, "mmWeight shape dim num should be 2."), return ge::GRAPH_FAILED);
         maxKForMM_ = mmWeightShape.GetDim(0);
@@ -359,9 +371,9 @@ ge::graphStatus AlltoAllvGmmTiling::CheckDType(const gert::TilingContext* contex
         return ge::GRAPH_FAILED;
     }
 
-    if (context->GetOptionalInputShape(MM_X_INDEX) != nullptr) {
-        ge::DataType mmXDtype = context->GetInputDesc(MM_X_INDEX)->GetDataType();
-        ge::DataType mmWeightDtype = context->GetInputDesc(MM_WEIGHT_INDEX)->GetDataType();
+    if (context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX) != nullptr) {
+        ge::DataType mmXDtype = context->GetInputDesc(NON_QUANT_MM_X_INDEX)->GetDataType();
+        ge::DataType mmWeightDtype = context->GetInputDesc(NON_QUANT_MM_WEIGHT_INDEX)->GetDataType();
 
         if (mmXDtype != mmWeightDtype) {
             OP_LOGE(A_INNER_DEBUG, "mmXDtype is not equal to mmWeightDtype.");
@@ -460,8 +472,8 @@ ge::graphStatus AlltoAllvGmmTiling::Init()
         GetContextAttr(context_) != ge::GRAPH_SUCCESS, OP_LOGE(A_INNER_DEBUG, "Get context attr failed!"),
         return ge::GRAPH_FAILED);
 
-    if (context_->GetOptionalInputShape(MM_X_INDEX) != nullptr) {
-        OP_TILING_CHECK(context_->GetOptionalInputShape(MM_X_INDEX) == nullptr,
+    if (context_->GetOptionalInputShape(NON_QUANT_MM_X_INDEX) != nullptr) {
+        OP_TILING_CHECK(context_->GetOptionalInputShape(NON_QUANT_MM_X_INDEX) == nullptr,
             OP_LOGE(A_INNER_DEBUG, "GetOptionalInputShape of mm_x returns null."),
             return ge::GRAPH_FAILED);
         OP_TILING_CHECK(context_->GetOutputShape(OUTPUT_MM_Y_INDEX) == nullptr,
@@ -504,7 +516,12 @@ ge::graphStatus AlltoAllvGmmTiling::Init()
 
 uint64_t AlltoAllvGmmTiling::GetTilingKey() const
 {
-    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    uint8_t commMode = Mc2Comm::COMM_MODE_AICPU;
+    auto platformInfo = context_->GetPlatformInfo();
+    platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
+    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
+        commMode = Mc2Comm::GetCommModeFromEnv();
+    }
     bool tilingekyGmmTrans = transGmmWeight_;
     bool tilingekyMmTrans = transMmWeight_;
     
@@ -547,23 +564,25 @@ ge::graphStatus AlltoAllvGmmTiling::RunFusionKernelTiling(gert::TilingContext* c
     bsk_ = gmmXShape.GetDim(0);
     h1_ = gmmXShape.GetDim(1);
 
-    auto gmmWeightShape = context->GetInputShape(GMM_WEIGHT_INDEX)->GetStorageShape();
-    n1_ = gmmWeightShape.GetDim(1);
-
-    auto gmmYShape = context->GetOutputShape(OUTPUT_GMM_Y_INDEX)->GetStorageShape();
-    a_ = gmmYShape.GetDim(0);
-
-    if (context->GetOptionalInputShape(MM_X_INDEX) != nullptr) {
-        auto mmXShape = context->GetOptionalInputShape(MM_X_INDEX)->GetStorageShape();
-        bs_ = mmXShape.GetDim(0);
-    }
-
-    auto transGmmWeightPtr = attrs->GetAttrPointer<bool>(ATTR_TRANS_GMM_WEIGHT_INDEX);
-    auto transMmWeightPtr = attrs->GetAttrPointer<bool>(ATTR_TRANS_MM_WEIGHT_INDEX);
+    auto transGmmWeightPtr = attrs->GetAttrPointer<bool>(NON_QUANT_ATTR_TRANS_GMM_WEIGHT_INDEX);
+    auto transMmWeightPtr = attrs->GetAttrPointer<bool>(NON_QUANT_ATTR_TRANS_MM_WEIGHT_INDEX);
     OP_TILING_CHECK((transGmmWeightPtr == nullptr) || (transMmWeightPtr == nullptr),
         OP_LOGE(A_INNER_DEBUG, "transGmmWeightPtr or transMmWeightPtr is null."), return ge::GRAPH_FAILED);
     transGmmWeight_ = *transGmmWeightPtr;
     transMmWeight_ = *transMmWeightPtr;
+
+    auto gmmWeightShape = context->GetInputShape(GMM_WEIGHT_INDEX)->GetStorageShape();
+    e_ = gmmWeightShape.GetDim(0);
+    uint64_t n1DimIndex = transGmmWeight_ ? DIM_ONE : DIM_TWO;
+    n1_ = gmmWeightShape.GetDim(n1DimIndex);
+
+    auto gmmYShape = context->GetOutputShape(OUTPUT_GMM_Y_INDEX)->GetStorageShape();
+    a_ = gmmYShape.GetDim(0);
+
+    if (context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX) != nullptr) {
+        auto mmXShape = context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX)->GetStorageShape();
+        bs_ = mmXShape.GetDim(0);
+    }
 
     OP_TILING_CHECK(
         DoAiCoreTiling(context) != ge::GRAPH_SUCCESS, OP_LOGE(A_INNER_DEBUG, "GMMAlltoAllv DoAiCoreTiling failed."),
@@ -603,16 +622,51 @@ bool AlltoAllvGmmTilingStruct::IsCapable()
 
 ge::graphStatus AlltoAllvGmmTilingBase::GetPlatformInfo()
 {
-    auto platformInfo = context_->GetPlatformInfo();
-    OP_TILING_CHECK(
-        platformInfo == nullptr, VECTOR_INNER_ERR_REPORT_TILING(A_INNER_DEBUG, "fail to get platform info"),
-        return ge::GRAPH_FAILED);
-
+    OP_LOGD(context_->GetNodeName(), "start GetPlatformInfo.");
+    if (GetCommonPlatformInfo() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (CheckCommonPlatformInfo() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    OP_LOGD(context_->GetNodeName(), "end GetPlatformInfo.");
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus AlltoAllvGmmTilingBase::GetShapeAttrsInfo()
 {
+    OP_LOGD(context_->GetNodeName(), "start GetShapeAttrsInfo.");
+    auto attrs = context_->GetAttrs();
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(A_INNER_DEBUG, "GetAttrs returned null."), return ge::GRAPH_FAILED);
+    groupPtr_ = attrs->GetAttrPointer<char>(ATTR_GROUP_INDEX);
+    OP_TILING_CHECK(groupPtr_ == nullptr, OP_LOGE(A_INNER_DEBUG, "group attr can not be null."),
+        return ge::GRAPH_FAILED);
+    group_ = groupPtr_;
+    epWorldSizePtr_ = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
+    OP_TILING_CHECK(epWorldSizePtr_ == nullptr, OP_LOGE(A_INNER_DEBUG, "epWorldSize attr can not be null."),
+        return ge::GRAPH_FAILED);
+    epWorldSize_ = *epWorldSizePtr_;
+    sendCountsPtr_ = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_SEND_COUNTS_INDEX);
+    OP_TILING_CHECK(sendCountsPtr_ == nullptr, OP_LOGE(A_INNER_DEBUG, "sendCounts attr can not be null."),
+        return ge::GRAPH_FAILED);
+    sendCounts = static_cast<const int64_t*>(sendCountsPtr_->GetData());
+    recvCountsPtr_ = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_RECV_COUNTS_INDEX);
+    OP_TILING_CHECK(recvCountsPtr_ == nullptr, OP_LOGE(A_INNER_DEBUG, "recvCounts attr can not be null."),
+        return ge::GRAPH_FAILED);
+    recvCounts = static_cast<const int64_t*>(recvCountsPtr_->GetData());
+    transGmmWeightPtr_ = attrs->GetAttrPointer<bool>(NON_QUANT_ATTR_TRANS_GMM_WEIGHT_INDEX);
+    if (transGmmWeightPtr_ != nullptr) {
+        transGmmWeight_ = *transGmmWeightPtr_;
+    }
+    transMmWeightPtr_ = attrs->GetAttrPointer<bool>(NON_QUANT_ATTR_TRANS_MM_WEIGHT_INDEX);
+    if (transMmWeightPtr_ != nullptr) {
+        transMmWeight_ = *transMmWeightPtr_;
+    }
+    permuteOutFlagPtr_ = attrs->GetAttrPointer<bool>(NON_QUANT_ATTR_PERMUTE_OUT_FLAG_INDEX);
+    if (permuteOutFlagPtr_ != nullptr) {
+        permuteOutFlag_ = *permuteOutFlagPtr_;
+    }
+    OP_LOGD(context_->GetNodeName(), "end GetShapeAttrsInfo.");
     return ge::GRAPH_SUCCESS;
 }
 
@@ -647,12 +701,12 @@ ge::graphStatus AlltoAllvGmmTilingBase::PostTiling()
     auto attrs = context_->GetAttrs();
     auto sendCountsPtr = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_SEND_COUNTS_INDEX);
     auto recvCountsPtr = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_RECV_COUNTS_INDEX);
-    const int64_t* sendCounts = static_cast<const int64_t*>(sendCountsPtr->GetData());
-    const int64_t* recvCounts = static_cast<const int64_t*>(recvCountsPtr->GetData());
+    const int64_t* sendCountsData = static_cast<const int64_t*>(sendCountsPtr->GetData());
+    const int64_t* recvCountsData = static_cast<const int64_t*>(recvCountsPtr->GetData());
     
     for (uint32_t i = 0; i < e_ * epWorldSize_; i++) {
-        tilingData->taskTilingInfo.sendCnt[i] = sendCounts[i];
-        tilingData->taskTilingInfo.recvCnt[i] = recvCounts[i];
+        tilingData->taskTilingInfo.sendCnt[i] = sendCountsData[i];
+        tilingData->taskTilingInfo.recvCnt[i] = recvCountsData[i];
     }
     
     tilingData->isPermuteOut = permuteOutFlag_;
