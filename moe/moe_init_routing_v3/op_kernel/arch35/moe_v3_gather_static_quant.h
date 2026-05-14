@@ -80,6 +80,7 @@ private:
     int64_t expertNum_;
     int64_t actualExpertNum_;
     int64_t expertTotalCount_;
+    int64_t outputRows_;
     int64_t totalLength_;
     int64_t rowIdxType_;
     int64_t perCoreRow_;
@@ -164,7 +165,7 @@ template <typename T>
 __aicore__ inline void MoeV3GatherStaticQuant<T>::CopyXOut(int64_t xDstOffset, int64_t curLoopCols)
 {
     LocalTensor<int8_t> outLocal = inputXCopyOutQueue_.DeQue<int8_t>();
-    if (xDstOffset >= n_ * cols_) {
+    if (xDstOffset >= outputRows_ * cols_) {
         inputXCopyOutQueue_.FreeTensor(outLocal);
         return;
     }
@@ -186,7 +187,7 @@ __aicore__ inline void MoeV3GatherStaticQuant<T>::ScatterCopyOut(int64_t progres
         int64_t xDstOffset = (rowOffset + indicesIndex) * cols_;
         int64_t curLoopCols = perLoopCols_;
 
-        if (activateRows_ > 0 && dropPadMode_ == DROPLESS_MODE && (rowOffset + indicesIndex) >= activateRows_) {
+        if (dropPadMode_ == DROPLESS_MODE && (rowOffset + indicesIndex) >= outputRows_) {
             break;
         }
 
@@ -268,11 +269,22 @@ __aicore__ inline void MoeV3GatherStaticQuant<T>::Init(GM_ADDR inputX, GM_ADDR s
         expertTotalCountGm_);
     expertTotalCount_ = expertTotalCountGm_.GetValue(0);
 
-    if (rowIdxType_ == GATHER) {
-        // GATHER模式：根据expertTotalCount_动态计算每核处理的有效行数
-        perCoreRow_ = Ceil(expertTotalCount_, tilingData->coreNum);
-        needCoreNum_ = Ceil(expertTotalCount_, perCoreRow_);
-        int64_t lastCoreIndicesElements = expertTotalCount_ - (needCoreNum_ - 1) * perCoreRow_;
+    outputRows_ = expertTotalCount_;
+    if (activateRows_ > 0 && dropPadMode_ == DROPLESS_MODE) {
+        outputRows_ = Min(outputRows_, activateRows_);
+    }
+
+    if (outputRows_ <= 0) {
+        needCoreNum_ = 0;
+        coreRows_ = 0;
+        perCoreRow_ = 1;
+        perLoopRows_ = 1;
+        lastLoopRows_ = 0;
+        rowLoops_ = 0;
+    } else {
+        perCoreRow_ = Ceil(outputRows_, tilingData->coreNum);
+        needCoreNum_ = Ceil(outputRows_, perCoreRow_);
+        int64_t lastCoreIndicesElements = outputRows_ - (needCoreNum_ - 1) * perCoreRow_;
 
         int64_t originPerLoopElements;
         if (blockIdx_ != needCoreNum_ - 1) {
@@ -285,21 +297,6 @@ __aicore__ inline void MoeV3GatherStaticQuant<T>::Init(GM_ADDR inputX, GM_ADDR s
         perLoopRows_ = Min(coreRows_, originPerLoopElements);
         rowLoops_ = Ceil(coreRows_, perLoopRows_);
         lastLoopRows_ = coreRows_ - (rowLoops_ - 1) * perLoopRows_;
-    } else {
-        // SCATTER模式：按totalLength_切分
-        perCoreRow_ = Ceil(totalLength_, tilingData->coreNum);
-        needCoreNum_ = gatherOutTilingData_->needCoreNum;
-        if (blockIdx_ == needCoreNum_ - 1) {
-            coreRows_ = gatherOutTilingData_->lastCoreIndicesElements;
-            perLoopRows_ = gatherOutTilingData_->lastCorePerLoopIndicesElements;
-            lastLoopRows_ = gatherOutTilingData_->lastCoreLastLoopIndicesElements;
-            rowLoops_ = gatherOutTilingData_->lastCoreIndicesLoops;
-        } else {
-            coreRows_ = gatherOutTilingData_->perCoreIndicesElements;
-            perLoopRows_ = gatherOutTilingData_->perCorePerLoopIndicesElements;
-            lastLoopRows_ = gatherOutTilingData_->perCoreLastLoopIndicesElements;
-            rowLoops_ = gatherOutTilingData_->perCoreIndicesLoops;
-        }
     }
 
     perLoopCols_ = gatherOutTilingData_->perLoopCols;
@@ -307,7 +304,7 @@ __aicore__ inline void MoeV3GatherStaticQuant<T>::Init(GM_ADDR inputX, GM_ADDR s
     colLoops_ = gatherOutTilingData_->colsLoops;
 
     inputXGm_.SetGlobalBuffer((__gm__ T *)inputX, n_ * cols_);
-    expandedXGm_.SetGlobalBuffer((__gm__ int8_t *)expandedX, n_ * cols_);
+    expandedXGm_.SetGlobalBuffer((__gm__ int8_t *)expandedX, outputRows_ * cols_);
 
     if (rowIdxType_ == SCATTER) {
         // SCATTER模式：从expandedRowIdx参数中读取输出位置索引
