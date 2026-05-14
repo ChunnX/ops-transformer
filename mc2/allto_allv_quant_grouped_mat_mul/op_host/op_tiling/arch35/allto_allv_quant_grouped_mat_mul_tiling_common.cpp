@@ -164,13 +164,11 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::PostTiling()
     tilingData->taskTilingInfo.totalLoopCount = e_;
     tilingData->isNeedMM = hasSharedExpertFlag_;
     constexpr uint32_t SMALL_SHAPE_MAX_ROUNDS = 63U;
-    // 每个rank-expert的数据量太小，AlltoAllV高阶API开销大于通信收益时，不启用小shape模式
-    constexpr uint32_t SMALL_SHAPE_MIN_BSK = 4096U;
     bool rankExpertLimitOk = (epWorldSize_ * e_) <= SMALL_SHAPE_MAX_ROUNDS;
     if (hasSharedExpertFlag_) {
-        tilingData->taskTilingInfo.isSmallShapeMode = (bsk_ >= SMALL_SHAPE_MIN_BSK) && (bsk_ < SMALL_SHAPE_THRESHOLD_WITH_MM) && rankExpertLimitOk;
+        tilingData->taskTilingInfo.isSmallShapeMode = (bsk_ < SMALL_SHAPE_THRESHOLD_WITH_MM) && rankExpertLimitOk;
     } else {
-        tilingData->taskTilingInfo.isSmallShapeMode = (bsk_ >= SMALL_SHAPE_MIN_BSK) && (bsk_ < SMALL_SHAPE_THRESHOLD_NO_MM) && rankExpertLimitOk;
+        tilingData->taskTilingInfo.isSmallShapeMode = (bsk_ < SMALL_SHAPE_THRESHOLD_NO_MM) && rankExpertLimitOk;
     }
     for (uint32_t i = 0; i < e_ * epWorldSize_; i++) {
         tilingData->taskTilingInfo.sendCnt[i] = sendCounts[i];

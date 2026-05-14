@@ -169,16 +169,28 @@ private:
         }
     }
 
-// 小shape模式：每轮一个专家 + 一个接收方
-    // 接收方从自己开始循环接收所有卡的数据
-    // 总轮次：e × rankDim
+// 小shape模式：每轮一个专家 + 一个接收方，自适应SyncAll批处理
+    // BSK < 2048：整卡批处理（rankDim个rank共用一个SyncAll），最小化barrier开销
+    // 2048 ≤ BSK < 4096：半分批处理（rankDim/2个rank共用一个SyncAll）
+    // BSK ≥ 4096：逐rank处理（当前行为），最大化流水重叠
     __aicore__ inline void ProcessCommRankWiseMode()
     {
         uint32_t rankDim = commOp.GetRankDim();
         uint32_t myRank = commOp.GetMyRankId();
-        AscendC::printf("ProcessCommRankWiseMode: rankDim=%d, e=%d, myRank=%d\n", rankDim, e_, myRank);
+        uint64_t bsk = tilingData_->taskTilingInfo.BSK;
         
-        // Launch通信：expert × tgtRank
+        // 自适应批大小：BSK越小批越大（减少SyncAll开销）
+        uint32_t ranksPerSync = 1U;
+        if (bsk < 2048U) {
+            ranksPerSync = rankDim;                     // 1个SyncAll覆盖所有rank
+        } else if (bsk < 4096U) {
+            ranksPerSync = (rankDim > 2U) ? (rankDim / 2U) : 1U;  // 2个SyncAll
+        }
+        
+        AscendC::printf("ProcessCommRankWiseMode: rankDim=%d, e=%d, myRank=%d, BSK=%llu, ranksPerSync=%d\n",
+                        rankDim, e_, myRank, bsk, ranksPerSync);
+        
+        // Launch通信：expert × tgtRank（全部发射）
         for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
             for (uint32_t tgtRank = 0U; tgtRank < rankDim; tgtRank++) {
                 uint32_t roundIdx = expertIdx * rankDim + tgtRank;
@@ -186,16 +198,25 @@ private:
             }
         }
         
-        // Wait + Compute：同Launch顺序
+        // Wait批处理 + SyncAll批处理 + Compute
         for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
-            for (uint32_t tgtRank = 0U; tgtRank < rankDim; tgtRank++) {
-                uint32_t roundIdx = expertIdx * rankDim + tgtRank;
-                commOp.WaitRankWise(roundIdx);
+            uint32_t tgtStart = 0U;
+            while (tgtStart < rankDim) {
+                uint32_t batchEnd = (tgtStart + ranksPerSync < rankDim) ? (tgtStart + ranksPerSync) : rankDim;
+                // 等待当前批次所有round完成
+                for (uint32_t tgtRank = tgtStart; tgtRank < batchEnd; tgtRank++) {
+                    uint32_t roundIdx = expertIdx * rankDim + tgtRank;
+                    commOp.WaitRankWise(roundIdx);
+                }
+                // 批次内共用一个SyncAll
                 SyncAll<false>();
                 // 只有接收方才计算
-                if (myRank == tgtRank) {
-                    computeOp.ProcessRankWise(tgtRank, expertIdx);
+                for (uint32_t tgtRank = tgtStart; tgtRank < batchEnd; tgtRank++) {
+                    if (myRank == tgtRank) {
+                        computeOp.ProcessRankWise(tgtRank, expertIdx);
+                    }
                 }
+                tgtStart = batchEnd;
             }
         }
     }
