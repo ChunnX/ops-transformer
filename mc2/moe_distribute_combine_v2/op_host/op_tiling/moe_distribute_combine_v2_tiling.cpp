@@ -1596,7 +1596,6 @@ ge::graphStatus MoeDistributeCombineV2TilingFuncBase::MoeDistributeCombineV2Tili
     ge::graphStatus ret;
 
     ret = MoeDistributeCombineTilingFuncImpl(context, config);
-
     return ret;
 }
 

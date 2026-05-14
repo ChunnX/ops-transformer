@@ -46,22 +46,31 @@ const uint32_t MS_PER_S = 1000U;
 const mode_t FILE_MODE = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
 constexpr size_t MAX_GROUP_NAME_LENGTH = 128UL;
 
-static std::string g_groupNameFor910B;
-
-inline void SetGroupNameFor910B(const char* groupName)
-{
-    if (groupName == nullptr || strnlen(groupName, MAX_GROUP_NAME_LENGTH) == 0 ||
-        strnlen(groupName, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH) {    
-        OP_LOGE(OP_NAME, "groupName is invalid.");
-        return;
+class MC2GroupNameManager {
+public:
+    static MC2GroupNameManager& GetInstance()
+    {
+        static MC2GroupNameManager instance;
+        return instance;
     }
-    g_groupNameFor910B = std::string(groupName);
-}
+    void SetGroupNameFor910B(const char* groupName)
+    {
+        if (groupName == nullptr || strnlen(groupName, MAX_GROUP_NAME_LENGTH) == 0 ||
+            strnlen(groupName, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH) {    
+            OP_LOGE(OP_NAME, "groupName is invalid.");
+            return;
+        }
+        groupNameFor910B_ = std::string(groupName);
+    }
+    const char* GetGroupNameFor910B()
+    {
+        return groupNameFor910B_.empty() ? nullptr : groupNameFor910B_.c_str();
+    }
 
-inline const char* GetGroupNameFor910B()
-{
-    return g_groupNameFor910B.empty() ? nullptr : g_groupNameFor910B.c_str();
-}
+private:
+    MC2GroupNameManager() = default;
+    std::string groupNameFor910B_;
+};
 
 // 函数指针类型定义
 typedef aclError (*aclrtGetArgsFromExceptionInfo_t)(aclrtExceptionInfo *info, void **args, uint32_t *argsSize);
@@ -257,7 +266,7 @@ inline int ProcessArgs910B(const char* groupName, std::vector<uint8_t> &winBuf)
         OP_LOGE(OP_NAME, "Get win addr failed.");
         return -1;
     }
-    ret = aclrtMemcpy(winBuf.data(), WIN_SIZE, winAddr, WIN_SIZE, ACL_MEMCPY_DEVICE_TO_HOST);
+    auto ret = aclrtMemcpy(winBuf.data(), WIN_SIZE, winAddr, WIN_SIZE, ACL_MEMCPY_DEVICE_TO_HOST);
     if (ret != ACL_SUCCESS) {
         OP_LOGE(OP_NAME, "aclrtMemcpy win from device to host failed. ret = %d", ret);
         return -1;
@@ -325,7 +334,7 @@ inline void Mc2ExceptionImpl(aclrtExceptionInfo *args, void *userdata, const cha
             return;
         }
     } else if (std::strstr(socName, "Ascend910B") != nullptr) {
-        const char *groupName = GetGroupNameFor910B();
+        const char *groupName = MC2GroupNameManager::GetInstance().GetGroupNameFor910B();
         if (ProcessArgs910B(groupName, winContent) != 0) {
             OP_LOGE(OP_NAME, "Failed to get win content.");
             return;
