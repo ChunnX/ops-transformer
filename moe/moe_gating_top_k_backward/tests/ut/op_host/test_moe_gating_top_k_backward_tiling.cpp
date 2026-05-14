@@ -622,12 +622,12 @@ TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_16)
     gert::TilingContextPara tilingContextPara(
         "MoeGatingTopKBackward",
         {
-            {{{16, 2048}, {16, 2048}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{16, 12345678}, {16, 12345678}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{16, 2048}, {16, 2048}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{16, 2048}, {16, 2048}}, ge::DT_INT32, ge::FORMAT_ND},
         },
         {
-            {{{16, 2048}, {16, 2048}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{16, 12345678}, {16, 12345678}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
         {
             {"renorm", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
