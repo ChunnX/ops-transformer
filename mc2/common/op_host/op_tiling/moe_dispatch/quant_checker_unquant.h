@@ -48,17 +48,16 @@ public:
     // scales 校验
     ge::graphStatus CheckScales(
         gert::TilingContext* ctx,
-        const ge::TensorDesc* desc,
+        const ScalesTensorInfo& info,
         uint32_t expectedDim0,
         uint32_t h) const override {
         // scales 可选，如果存在则校验 dtype
-        if (desc == nullptr) {
+        if (info.dtype == ge::DT_UNDEFINED) {
             return ge::GRAPH_SUCCESS;  // 允许不存在
         }
 
         // dtype: float 或 e8m0
-        ge::DataType dtype = desc->GetDataType();
-        if (dtype != ge::DT_FLOAT && dtype != ge::DT_FLOAT8_E8M0) {
+        if (info.dtype != ge::DT_FLOAT && info.dtype != ge::DT_FLOAT8_E8M0) {
             return ge::GRAPH_FAILED;
         }
 
@@ -68,7 +67,7 @@ public:
     // dynamicScales 校验
     ge::graphStatus CheckDynamicScales(
         gert::TilingContext* ctx,
-        const ge::TensorDesc* desc,
+        const ScalesTensorInfo& info,
         uint32_t expectedDim0,
         uint32_t h) const override {
         // Unquant 模式不需要 dynamicScales

@@ -61,12 +61,6 @@ ge::graphStatus CheckTensorRules(
                 return ge::GRAPH_FAILED;
             }
         }
-
-        // 检查 format（非 FRACTAL_NZ）
-        if (CheckTensorNotFractalNZ(desc) != ge::GRAPH_SUCCESS) {
-            OPS_LOG_E("CheckTensorRules", "tensor %s format check failed (FRACTAL_NZ not allowed).", rule.name);
-            return ge::GRAPH_FAILED;
-        }
     }
 
     return ge::GRAPH_SUCCESS;

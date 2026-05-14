@@ -40,11 +40,11 @@ public:
     // scales 校验 - MX quant 不允许 scales
     ge::graphStatus CheckScales(
         gert::TilingContext* ctx,
-        const ge::TensorDesc* desc,
+        const ScalesTensorInfo& info,
         uint32_t expectedDim0,
         uint32_t h) const override {
         // MX quant 不允许 scales
-        if (desc != nullptr) {
+        if (info.dtype != ge::DT_UNDEFINED) {
             return ge::GRAPH_FAILED;
         }
         return ge::GRAPH_SUCCESS;
@@ -53,17 +53,16 @@ public:
     // dynamicScales 校验
     ge::graphStatus CheckDynamicScales(
         gert::TilingContext* ctx,
-        const ge::TensorDesc* desc,
+        const ScalesTensorInfo& info,
         uint32_t expectedDim0,
         uint32_t h) const override {
         // MX 必须有 dynamicScales
-        if (desc == nullptr) {
+        if (info.dtype == ge::DT_UNDEFINED) {
             return ge::GRAPH_FAILED;
         }
 
         // dtype: 由构造参数决定
-        ge::DataType dtype = desc->GetDataType();
-        if (dtype != dynScalesDtype_) {
+        if (info.dtype != dynScalesDtype_) {
             return ge::GRAPH_FAILED;
         }
 

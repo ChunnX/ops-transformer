@@ -43,17 +43,16 @@ public:
     // scales 校验
     ge::graphStatus CheckScales(
         gert::TilingContext* ctx,
-        const ge::TensorDesc* desc,
+        const ScalesTensorInfo& info,
         uint32_t expectedDim0,
         uint32_t h) const override {
         // scales 可选
-        if (desc == nullptr) {
+        if (info.dtype == ge::DT_UNDEFINED) {
             return ge::GRAPH_SUCCESS;
         }
 
         // dtype: float
-        ge::DataType dtype = desc->GetDataType();
-        if (dtype != ge::DT_FLOAT) {
+        if (info.dtype != ge::DT_FLOAT) {
             return ge::GRAPH_FAILED;
         }
 

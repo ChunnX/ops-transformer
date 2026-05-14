@@ -109,16 +109,6 @@ inline ge::graphStatus CheckTensorDtypeIn(
     return ge::GRAPH_FAILED;
 }
 
-inline ge::graphStatus CheckTensorNotFractalNZ(const ge::TensorDesc* desc) {
-    if (desc == nullptr) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GetPrimaryFormat(desc->GetStorageFormat()) == ge::FORMAT_FRACTAL_NZ) {
-        return ge::GRAPH_FAILED;
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
 // ========== 属性范围校验 ==========
 
 inline ge::graphStatus CheckAttrRangeU32(

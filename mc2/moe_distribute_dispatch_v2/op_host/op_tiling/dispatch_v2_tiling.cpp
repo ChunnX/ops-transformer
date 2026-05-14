@@ -9,8 +9,8 @@
  */
 
 /*!
- * \file moe_distribute_dispatch_v2_tiling.cpp
- * \brief
+ * \file dispatch_v2_tiling.cpp
+ * \brief MOE Distribute Dispatch V2 A3/A5 MTE 主流程
  */
 
 #include <queue>
@@ -36,16 +36,17 @@
 #include "moe_dispatch/performance_info_checker.h"
 #include "moe_dispatch/fullmesh_checker.h"
 #include "moe_dispatch/comm_cfg.h"
-// TilingCtx 中间值传递
-#include "dispatch_v2_tiling_ctx.h"
+// Layout + TilingCtx
+#include "dispatch_v2_layout.h"
 
 using namespace Mc2Tiling;
 using namespace AscendC;
 using namespace ge;
+using namespace moe_dispatch_defs;  // 公共层常量命名空间
 namespace {
-    // ========== A3/A5 特化常量（与 defs.h 不同的部分）==========
-    constexpr int64_t MAX_EP_WORLD_SIZE = 768L;           // A3/A5 上界，A2 为 384
-    constexpr int64_t MAX_EP_WORLD_SIZE_LAYERED = 256;    // A3/A5 分层上界
+    // ========== A3/A5 特化常量（公共层 defs.h 中没有的部分）==========
+    // 注：MAX_EP_WORLD_SIZE, MAX_EP_WORLD_SIZE_LAYERED 等已在 defs.h 定义
+    //     这里仅保留算子特有的常量
     constexpr int64_t MOE_EXPERT_MAX_NUM = 1024;          // A3/A5 上界，A2 为 512
     constexpr int64_t MOE_EXPERT_MAX_NUM_LAYERED = 512;
     constexpr int64_t H_MAX = 8192;                       // A3/A5 上界，A2 为 7168
@@ -85,12 +86,8 @@ namespace {
     constexpr int32_t HCCL_BUFFER_SIZE_DEFAULT = 200 * 1024 * 1024;
     constexpr uint64_t STATIC_SCALE_DIM_0 = 1;
     constexpr uint64_t ONE_DIM_SCALE_COL_NUM = 1;
-    constexpr uint32_t TP_WORLD_SIZE_TWO = 2U;
+    // 注：MAX_TP_WORLD_SIZE, MAX_TP_WORLD_SIZE_LAYERED 使用公共层 defs.h 的定义
 }
-
-// Supported x datatype in nonquant mode, the same as expandX
-static const std::set<ge::DataType> NON_QUANT_DTYPE = {
-    ge::DT_FLOAT16, ge::DT_BF16, ge::DT_HIFLOAT8, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2};
 
 namespace optiling {
 static void PrintTilingDataInfo(const char *nodeName, MoeDistributeDispatchV2TilingData &tilingData)
@@ -245,7 +242,7 @@ static bool CheckCommonOutputTensorDim(const gert::TilingContext *context, const
     OP_LOGD(nodeName, "expandX dim0 = %ld", expandXStorageShape->GetStorageShape().GetDim(0));
     OP_LOGD(nodeName, "expandX dim1 = %ld", expandXStorageShape->GetStorageShape().GetDim(1));
 
-    if ((quantMode != static_cast<uint32_t>(moe_dispatch_defs::QuantMode::NON_QUANT)) && (quantMode != static_cast<uint32_t>(moe_dispatch_defs::QuantMode::STATIC_QUANT))) {
+    if ((quantMode != static_cast<uint32_t>(moe_dispatch_defs::QuantMode::UNQUANT)) && (quantMode != static_cast<uint32_t>(moe_dispatch_defs::QuantMode::STATIC_QUANT))) {
         OP_TILING_CHECK(!CheckDynamicScalesDim(context, nodeName, quantMode),OP_LOGE(nodeName, "CheckDynamicScalesDim failed."), return false);
     }
 
@@ -351,16 +348,31 @@ static ge::graphStatus CheckQuantModeAndScales(const gert::TilingContext *contex
         return ge::GRAPH_FAILED;
     }
 
-    // 获取 scales tensor 描述进行校验
-    auto scalesDesc = context->GetOptionalInputDesc(config.scalesIndex);
-    ge::graphStatus status = checker->CheckScales(const_cast<gert::TilingContext*>(context), scalesDesc, 0, 0);
-    if (status != ge::GRAPH_SUCCESS) {
-        if (isScales) {
-            OP_LOGE(nodeName, "The scales should be nullptr when quantMode is %u.", quantMode);
-        } else {
-            OP_LOGE(nodeName, "Scales tensor validation failed for quantMode %u.", quantMode);
-        }
+    // 非量化模式下 scales 必须为空
+    if (!shouldHaveScales && isScales) {
+        OP_LOGE(nodeName, "The scales should be nullptr when quantMode is %u.", quantMode);
         return ge::GRAPH_FAILED;
+    }
+
+    // 如果 scales 存在，使用公共层 CheckScales 校验
+    if (isScales) {
+        auto scalesShape = context->GetOptionalInputShape(config.scalesIndex);
+        OP_TILING_CHECK(scalesShape == nullptr,
+            OP_LOGE(nodeName, "scalesShape is null."), return ge::GRAPH_FAILED);
+        auto scalesDesc = context->GetOptionalInputDesc(config.scalesIndex);
+
+        // 构造 ScalesTensorInfo
+        moe_dispatch::ScalesTensorInfo info;
+        info.dtype = scalesDesc != nullptr ? scalesDesc->GetDataType() : ge::DT_UNDEFINED;
+        info.dimNum = static_cast<uint32_t>(scalesShape->GetStorageShape().GetDimNum());
+        info.dim0 = scalesShape->GetStorageShape().GetDim(0);
+        info.dim1 = info.dimNum > 1U ? scalesShape->GetStorageShape().GetDim(1) : 0UL;
+
+        ge::graphStatus status = checker->CheckScales(
+            const_cast<gert::TilingContext*>(context), info, 0, 0);
+        OP_TILING_CHECK(status != ge::GRAPH_SUCCESS,
+            OP_LOGE(nodeName, "Scales tensor validation failed for quantMode %u.", quantMode),
+            return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
@@ -489,8 +501,8 @@ static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context, c
 
     if (!config.isMc2Context) {
         auto groupEpPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrGroupEpIndex));
-        OP_TILING_CHECK((groupEpPtr == nullptr) || (strnlen(groupEpPtr, MAX_GROUP_NAME_LENGTH) == 0) ||
-            (strnlen(groupEpPtr, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH),
+        OP_TILING_CHECK((groupEpPtr == nullptr) || (strnlen(groupEpPtr, moe_dispatch_defs::MAX_GROUP_NAME_LENGTH) == 0) ||
+            (strnlen(groupEpPtr, moe_dispatch_defs::MAX_GROUP_NAME_LENGTH) == moe_dispatch_defs::MAX_GROUP_NAME_LENGTH),
             OP_LOGE(nodeName, "groupEpPtr is null."), return ge::GRAPH_FAILED);
         groupEp = std::string(groupEpPtr);
     }
@@ -548,9 +560,9 @@ static ge::graphStatus CheckGroupAttrParams(const gert::TilingContext *context, 
     tc.isLayered = strcmp(commAlgPtr, "hierarchy") == 0; // isLayered赋值
     int64_t maxEpworldsize = tc.isLayered ? MAX_EP_WORLD_SIZE_LAYERED : MAX_EP_WORLD_SIZE;
     int64_t maxTpworldsize = tc.isLayered ? MAX_TP_WORLD_SIZE_LAYERED : MAX_TP_WORLD_SIZE;
-    OP_TILING_CHECK((epWorldSize < MIN_EP_WORLD_SIZE) || (epWorldSize > maxEpworldsize),
+    OP_TILING_CHECK((epWorldSize < moe_dispatch_defs::MIN_EP_WORLD_SIZE) || (epWorldSize > maxEpworldsize),
         OP_LOGE(nodeName, "epWorldSize is invalid, only support [%ld, %ld], but got epWorldSize=%ld.",
-        MIN_EP_WORLD_SIZE, maxEpworldsize, epWorldSize), return ge::GRAPH_FAILED);
+        moe_dispatch_defs::MIN_EP_WORLD_SIZE, maxEpworldsize, epWorldSize), return ge::GRAPH_FAILED);
     OP_TILING_CHECK((tc.isLayered && (epWorldSize % RANK_NUM_PER_NODE != 0)),     // 校验epWorldSize是否是16整数倍
         OP_LOGE(nodeName, "epWorldSize should be %u Aligned, but got %ld.", RANK_NUM_PER_NODE, epWorldSize), return ge::GRAPH_FAILED);
     OP_TILING_CHECK((*tpWorldSizePtr < 0) || (*tpWorldSizePtr > maxTpworldsize),
@@ -564,8 +576,8 @@ static ge::graphStatus CheckGroupAttrParams(const gert::TilingContext *context, 
         OP_TILING_CHECK((*tpRankIdPtr < 0) || (*tpRankIdPtr >= *tpWorldSizePtr),
             OP_LOGE(nodeName, "tpRankId is invalid, only support [0, %ld), but got tpRankId=%ld.",
             *tpWorldSizePtr, *tpRankIdPtr), return ge::GRAPH_FAILED);
-        OP_TILING_CHECK((groupTpPtr == nullptr) || (strnlen(groupTpPtr, MAX_GROUP_NAME_LENGTH) == 0) ||
-            (strnlen(groupTpPtr, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH),
+        OP_TILING_CHECK((groupTpPtr == nullptr) || (strnlen(groupTpPtr, moe_dispatch_defs::MAX_GROUP_NAME_LENGTH) == 0) ||
+            (strnlen(groupTpPtr, moe_dispatch_defs::MAX_GROUP_NAME_LENGTH) == moe_dispatch_defs::MAX_GROUP_NAME_LENGTH),
             OP_LOGE(nodeName, "groupTpPtr is null."), return ge::GRAPH_FAILED);
         groupTp = std::string(groupTpPtr);
     } else {
@@ -664,9 +676,9 @@ static ge::graphStatus CheckExpertAttrParams(const gert::TilingContext *context,
             OP_LOGE(nodeName, "sharedExpertNum is invalid in hierarchy mode, only support 0, but got sharedExpertNum=%ld, sharedExpertRankNum=%ld",
             *sharedExpertNumPtr, sharedExpertRankNum), return ge::GRAPH_FAILED);
     } else {
-        OP_TILING_CHECK((*sharedExpertNumPtr < 0) || (*sharedExpertNumPtr > MAX_SHARED_EXPERT_NUM),
+        OP_TILING_CHECK((*sharedExpertNumPtr < 0) || (*sharedExpertNumPtr > moe_dispatch_defs::MAX_SHARED_EXPERT_NUM),
             OP_LOGE(nodeName, "sharedExpertNum is invalid, only support [0, %ld], but got sharedExpertNum=%ld.",
-            MAX_SHARED_EXPERT_NUM, *sharedExpertNumPtr), return ge::GRAPH_FAILED);
+            moe_dispatch_defs::MAX_SHARED_EXPERT_NUM, *sharedExpertNumPtr), return ge::GRAPH_FAILED);
         OP_TILING_CHECK((sharedExpertRankNum < 0) || (sharedExpertRankNum >= epWorldSize),
             OP_LOGE(nodeName, "sharedExpertRankNum is invalid, only support [0, %ld), but got sharedExpertRankNum=%ld.",
             epWorldSize, sharedExpertRankNum), return ge::GRAPH_FAILED);
@@ -1009,7 +1021,7 @@ static ge::graphStatus CheckTensorShape(const gert::TilingContext *context, cons
                     scalesDim0), return ge::GRAPH_FAILED);
             scalesCol = ONE_DIM_SCALE_COL_NUM;
             scalesCount = static_cast<uint64_t>(scalesDim0);
-        } else if (tc.quantMode == static_cast<uint32_t>(moe_dispatch_defs::QuantMode::NON_QUANT)) {
+        } else if (tc.quantMode == static_cast<uint32_t>(moe_dispatch_defs::QuantMode::UNQUANT)) {
             const int64_t scalesDim1 = scalesStorageShape->GetStorageShape().GetDim(1);
             OP_TILING_CHECK(scalesDim0 != bs,
                 OP_LOGE(nodeName, "The expected scalesDim0 is %u when scales is not null in non-quant, but got %ld",
@@ -1049,7 +1061,7 @@ static ge::graphStatus CheckTensorShape(const gert::TilingContext *context, cons
     if (tc.isSharedRank) { // 本卡为共享专家
         A = maxBs * maxSharedGroupNum;
     } else {     // 本卡为moe专家
-        A = globalBs * std::min(tc.localExpertNum, expertIdsDim1);
+        A = globalBs * static_cast<uint32_t>(std::min(static_cast<int64_t>(tc.localExpertNum), expertIdsDim1));
     }
 
     // 使用公共层 elastic_info_check 校验 elasticInfo 维度精确值
@@ -1060,7 +1072,8 @@ static ge::graphStatus CheckTensorShape(const gert::TilingContext *context, cons
         OP_TILING_CHECK(ret != ge::GRAPH_SUCCESS,
             OP_LOGE(nodeName, "elasticInfo shape check failed, expected dim0 = 4 + 2 * epWorldSize."),
             return ge::GRAPH_FAILED);
-        A = std::max( static_cast<int64_t>(maxBs * maxSharedGroupNum) , globalBs * std::min(tc.localExpertNum, expertIdsDim1));
+        A = std::max(static_cast<int64_t>(maxBs * maxSharedGroupNum),
+            globalBs * std::min(static_cast<int64_t>(tc.localExpertNum), expertIdsDim1));
     }
     tilingData.moeDistributeDispatchV2Info.a = A;
     tc.A = A;
@@ -1087,7 +1100,7 @@ static ge::graphStatus CheckTensorShape(const gert::TilingContext *context, cons
         "xShape's dim1 is %ld, expandX's dim1 is %ld.", xDim1, expandXDim1), return ge::GRAPH_FAILED);
 
     // 校验dynamicScales的维度
-    if ((tc.quantMode != static_cast<uint32_t>(moe_dispatch_defs::QuantMode::NON_QUANT)) && (tc.quantMode != static_cast<uint32_t>(moe_dispatch_defs::QuantMode::STATIC_QUANT))) {
+    if ((tc.quantMode != static_cast<uint32_t>(moe_dispatch_defs::QuantMode::UNQUANT)) && (tc.quantMode != static_cast<uint32_t>(moe_dispatch_defs::QuantMode::STATIC_QUANT))) {
         // Dim0
         const gert::StorageShape *dynamicScalesStorageShape = context->GetOutputShape(OUTPUT_DYNAMIC_SCALES_INDEX);
         const int64_t dynamicScalesDim0 = dynamicScalesStorageShape->GetStorageShape().GetDim(0);
@@ -1098,15 +1111,18 @@ static ge::graphStatus CheckTensorShape(const gert::TilingContext *context, cons
         if (tc.quantMode != static_cast<uint32_t>(moe_dispatch_defs::QuantMode::PERTOKEN_DYNAMIC_QUANT)) {
             const uint64_t dynamicScalesDim1 = static_cast<uint64_t>(dynamicScalesStorageShape->GetStorageShape().GetDim(1));
             OP_TILING_CHECK((tc.quantMode == static_cast<uint32_t>(moe_dispatch_defs::QuantMode::MX_QUANT))
-                && (dynamicScalesDim1 != ops::CeilAlign(static_cast<uint64_t>(ops::CeilDiv(h, MX_BLOCK_SIZE)), EVEN_ALIGN)),
+                && (dynamicScalesDim1 != ops::CeilAlign(ops::CeilDiv(h, static_cast<uint64_t>(MX_BLOCK_SIZE)),
+                    static_cast<uint64_t>(EVEN_ALIGN))),
                 OP_LOGE(nodeName, "dynamicScales's dim1 should be equal to %lu and even when quantMode=%u, but got %lu.",
-                ops::CeilAlign(static_cast<uint64_t>(ops::CeilDiv(h, MX_BLOCK_SIZE)), EVEN_ALIGN),
+                ops::CeilAlign(ops::CeilDiv(h, static_cast<uint64_t>(MX_BLOCK_SIZE)),
+                    static_cast<uint64_t>(EVEN_ALIGN)),
                     tc.quantMode, dynamicScalesDim1),
                     return ge::GRAPH_FAILED);
-            OP_TILING_CHECK((dynamicScalesDim1 != ops::CeilDiv(h, PERGROUP_BLOCK_SIZE)) &&
+            OP_TILING_CHECK((dynamicScalesDim1 != ops::CeilDiv(h, static_cast<uint64_t>(PERGROUP_BLOCK_SIZE))) &&
                 (tc.quantMode == static_cast<uint32_t>(moe_dispatch_defs::QuantMode::PERGROUP_DYNAMIC_QUANT)),
                 OP_LOGE(nodeName, "dynamicScales's dim1 should be equal to %lu when quantMode=%u, but got %lu.",
-                ops::CeilDiv(h, PERGROUP_BLOCK_SIZE), tc.quantMode, dynamicScalesDim1), return ge::GRAPH_FAILED);
+                ops::CeilDiv(h, static_cast<uint64_t>(PERGROUP_BLOCK_SIZE)), tc.quantMode, dynamicScalesDim1),
+                return ge::GRAPH_FAILED);
         }
     }
 
@@ -1343,9 +1359,9 @@ static uint32_t AllToAllBasicUsedBuffer(const gert::TilingContext *context, cons
 
     const gert::StorageShape *scalesStorageShape = context->GetOptionalInputShape(SCALES_INDEX);
     bool isScales = (scalesStorageShape != nullptr);
-    uint32_t hOutSize = (quantMode == static_cast<uint32_t>(moe_dispatch_defs::QuantMode::NON_QUANT)) ? hSize * SIZE_OF_UNQUANT : hSize;
+    uint32_t hOutSize = (quantMode == static_cast<uint32_t>(moe_dispatch_defs::QuantMode::UNQUANT)) ? hSize * SIZE_OF_UNQUANT : hSize;
     hOutSizeAlign = Ceil(hOutSize, UB_ALIGN, nodeName);
-    if ((quantMode == static_cast<uint32_t>(moe_dispatch_defs::QuantMode::NON_QUANT)) && isScales) {
+    if ((quantMode == static_cast<uint32_t>(moe_dispatch_defs::QuantMode::UNQUANT)) && isScales) {
         uint32_t scaleInBytes = tilingData.moeDistributeDispatchV2Info.scalesCol *
                     tilingData.moeDistributeDispatchV2Info.scalesTypeSize;
         hOutSizeAlign += scaleInBytes;
@@ -1398,7 +1414,7 @@ static ge::graphStatus CheckUBSize(const gert::TilingContext *context, MoeDistri
     maxSizeForUbBuffer = maxSizeForUbBuffer > xActivateMaskSize ? maxSizeForUbBuffer : xActivateMaskSize;
     maxSizeForUbBuffer = maxSizeForUbBuffer > bsKAlign256 ? maxSizeForUbBuffer : bsKAlign256;
     tilingData.moeDistributeDispatchV2Info.maxSizeForUbBuffer = maxSizeForUbBuffer;
-    if (quantMode > static_cast<uint32_t>(moe_dispatch_defs::QuantMode::NON_QUANT)) {
+    if (quantMode > static_cast<uint32_t>(moe_dispatch_defs::QuantMode::UNQUANT)) {
         uint32_t hOutAlignUbSize = Ceil(hOutSizeAlign, UB_ALIGN, nodeName);
         ubSize = ubSize + hOutAlignUbSize;
         ubSize = ubSize + BUFFER_NUM * maxSizeForUbBuffer; // receiveDataCastFloatBuf smoothScalesBuf

@@ -23,6 +23,14 @@
 
 namespace moe_dispatch {
 
+// ========== Tensor 信息结构体（解耦对 TensorDesc 类型依赖）==========
+struct ScalesTensorInfo {
+    ge::DataType dtype;
+    uint32_t dimNum;
+    uint64_t dim0;
+    uint64_t dim1;
+};
+
 class QuantCheckerBase {
 public:
     explicit QuantCheckerBase(moe_dispatch_defs::QuantMode mode) : mode_(mode) {}
@@ -46,14 +54,14 @@ public:
     // scales 完整校验（dim + dtype + shape）
     virtual ge::graphStatus CheckScales(
         gert::TilingContext* ctx,
-        const ge::TensorDesc* desc,
+        const ScalesTensorInfo& info,
         uint32_t expectedDim0,
         uint32_t h) const = 0;
 
     // dynamicScales 完整校验
     virtual ge::graphStatus CheckDynamicScales(
         gert::TilingContext* ctx,
-        const ge::TensorDesc* desc,
+        const ScalesTensorInfo& info,
         uint32_t expectedDim0,
         uint32_t h) const = 0;
 
