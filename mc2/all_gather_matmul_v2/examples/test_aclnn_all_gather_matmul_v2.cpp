@@ -16,8 +16,14 @@
 #include <iostream>
 #include <vector>
 #include <thread>
+#include <sys/stat.h>
+#include <errno.h>
+#include <cstring>
+#include <unistd.h>
+#include <limits.h>
 #include "hccl/hccl.h"
 #include "aclnnop/aclnn_all_gather_matmul_v2.h"
+#include "../../tools/coc_timer/coc_timer_host.hpp"
 
 #define CHECK_RET(cond, return_expr) \
     do {                             \
@@ -60,6 +66,29 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
     return 0;
 }
 
+void ExportTimeCsv(int rankId, void* timerBufferDeviceAddr) {
+    std::string outDir = "output_timer";
+    std::cout << "Trying to create: " << outDir << std::endl;
+    int ret = mkdir(outDir.c_str(), 0777);
+    if (ret != 0 && errno != EEXIST) {
+        LOG_PRINT("[ERROR] mkdir failed. ret: %d, errno: %d, %s\n", ret, errno, strerror(errno));
+        return;
+    }
+    std::string csvFilePath = outDir + "/timer_rank_" + std::to_string(rankId) + ".csv";
+    auto timeResult = CocTimer::GetTimingResult(timerBufferDeviceAddr);
+    std::string dataDir = outDir + "/data";
+    ret = mkdir(dataDir.c_str(), 0777);
+    if (ret != 0 && errno != EEXIST) {
+        LOG_PRINT("[ERROR] mkdir failed. ret: %d, errno: %d, %s\n", ret, errno, strerror(errno));
+        return;
+    }
+    std::string rawCsvFilePath = dataDir + "/timer_rank_" + std::to_string(rankId) + "_timeline.csv";
+    std::string durCsvFilePath = outDir + "/timer_rank_" + std::to_string(rankId) + ".csv";
+    CocTimerHost::WriteAllTimerResults(rawCsvFilePath, durCsvFilePath, timeResult);
+    std::cerr << "[Timer] Raw CSV:" << rawCsvFilePath << std::endl;
+    std::cerr << "[Timer] Duration CSV:" << durCsvFilePath << std::endl;
+}
+
 struct Args {
     int rankId;
     HcclComm hcclComm;
@@ -90,6 +119,7 @@ int LaunchOneThreadAllGatherMmV2(Args &args)
     void *biasDeviceAddr = nullptr;
     void *outDeviceAddr = nullptr;
     void *gatherOutDeviceAddr = nullptr;
+    void *timerBufferDeviceAddr = nullptr;
     aclTensor *x1 = nullptr;
     aclTensor *x2 = nullptr;
     aclTensor *x1Scale = nullptr;
@@ -99,6 +129,7 @@ int LaunchOneThreadAllGatherMmV2(Args &args)
     aclTensor *out = nullptr;
     aclTensor *gatherOut = nullptr;
     aclTensor *amax = nullptr;
+    aclTensor *timerBuffer = nullptr;
 
     int64_t gatherIndex = 0;
     int64_t commTurn = 0;
@@ -116,6 +147,10 @@ int LaunchOneThreadAllGatherMmV2(Args &args)
     long long biasShapeSize = GetShapeSize(biasShape);
     long long outShapeSize = GetShapeSize(outShape);
     long long gatherOutShapeSize = GetShapeSize(gatherOutShape);
+    int coreCount = 20;
+    CocTimer::setCoreCount(coreCount);
+    long long timerBufferSize = CocTimer::GetTimerBufferSize();
+    std::vector<int64_t> timerBufferShape = {timerBufferSize, 1};
 
     std::vector<int8_t> x1HostData(x1ShapeSize, 0);
     std::vector<int8_t> x2HostData(x2ShapeSize, 0);
@@ -124,6 +159,7 @@ int LaunchOneThreadAllGatherMmV2(Args &args)
     std::vector<int32_t> biasHostData(biasShapeSize, 0);
     std::vector<int16_t> outHostData(outShapeSize, 0);
     std::vector<int8_t> gatherOutHostData(gatherOutShapeSize, 0);
+    std::vector<int64_t> timerBufferHostData(timerBufferSize, 0);
 
     ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_INT8, &x1);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -137,11 +173,13 @@ int LaunchOneThreadAllGatherMmV2(Args &args)
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(gatherOutHostData, gatherOutShape, &gatherOutDeviceAddr,
                           aclDataType::ACL_INT8, &gatherOut);
+    ret = CreateAclTensor(timerBufferHostData, timerBufferShape, &timerBufferDeviceAddr,
+                          aclDataType::ACL_INT64, &timerBuffer);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     // 调用第一阶段接口
     ret = aclnnAllGatherMatmulV2GetWorkspaceSize(
-        x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, hcomName, gatherIndex, commTurn, streamMode, groupSize, "aiv",
+        x1, x2, bias, x1Scale, x2Scale, quantScale, timerBuffer, blockSize, hcomName, gatherIndex, commTurn, streamMode, groupSize, "aiv",
         out, gatherOut, amax, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS,
         LOG_PRINT("[ERROR] aclnnAllGatherMatmulV2GetWorkspaceSize failed. ret = %d \n", ret); return ret);
@@ -186,6 +224,9 @@ int LaunchOneThreadAllGatherMmV2(Args &args)
     if (amax != nullptr) {
         aclDestroyTensor(amax);
     }
+    if (timerBuffer != nullptr) {
+        aclDestroyTensor(timerBuffer);
+    }
     if (x1DeviceAddr != nullptr) {
         aclrtFree(x1DeviceAddr);
     }
@@ -197,6 +238,10 @@ int LaunchOneThreadAllGatherMmV2(Args &args)
     }
     if (x2ScaleDeviceAddr != nullptr) {
         aclrtFree(x2ScaleDeviceAddr);
+    }
+    ExportTimeCsv(args.rankId, timerBufferDeviceAddr);
+    if (timerBufferDeviceAddr != nullptr) {
+        aclrtFree(timerBufferDeviceAddr);
     }
     if (biasDeviceAddr != nullptr) {
         aclrtFree(biasDeviceAddr);
