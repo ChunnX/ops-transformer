@@ -19,9 +19,6 @@
 #include "fa_l1_tensor.h"
 #include "gm_coord.h"
 #include "offset_calculator_v2.h"
-#include "../../tensor_api/tensor_api/include/tensor_api/tensor.h"
-
-using namespace AscendC::Te;
 
 // ----------------------------------------------CopyQueryGmToL1--------------------------------
 template <typename T>
@@ -45,10 +42,7 @@ __aicore__ inline void CopySingleMatrixNDToNZ(LocalTensor<T> l1Tensor, const Glo
         nd2nzPara.dstNzNStride = 1;
         nd2nzPara.srcNdMatrixStride = 0;
         nd2nzPara.dstNzMatrixStride = 0;
-        // DataCopy(l1Tensor, gmTensor, nd2nzPara);
-        /* --------------------------------- Tensor API ------------------------------------ */
-        auto copyGm2L1 = AscendC::Te::MakeCopy(AscendC::Te::copyGm2L1{});
-        AscendC::Te::Copy(copyGm2L1, l1Tensor, gmTensor, nd2nzPara);
+        DataCopy(l1Tensor, gmTensor, nd2nzPara);
     } else {
         uint64_t l1Offset = 0;
         uint64_t gmOffset = 0;
@@ -72,10 +66,7 @@ __aicore__ inline void CopySingleMatrixNDToNZ(LocalTensor<T> l1Tensor, const Glo
             nd2nzPara.dstNzNStride = 1;
             nd2nzPara.srcNdMatrixStride = 0;
             nd2nzPara.dstNzMatrixStride = 0;
-            // DataCopy(l1Tensor[l1Offset], gmTensor[gmOffset], nd2nzPara);
-            /* --------------------------------- Tensor API ------------------------------------ */
-            auto copyGm2L1 = AscendC::Te::MakeCopy(AscendC::Te::copyGm2L1{});
-            AscendC::Te::Copy(copyGm2L1, l1Tensor[l1Offset], gmTensor[gmOffset], nd2nzPara);
+            DataCopy(l1Tensor[l1Offset], gmTensor[gmOffset], nd2nzPara);
             gmOffset += srcNdMatrixStride;
             l1Offset += dstNzMatrixStride;
         }
@@ -113,10 +104,7 @@ __aicore__ inline void CopyMultiMatrixNDToNZ(LocalTensor<T> l1Tensor, const Glob
         nd2nzPara.dstNzNStride = 1;
         nd2nzPara.srcNdMatrixStride = srcNdMatrixStride;
         nd2nzPara.dstNzMatrixStride = dstNzMatrixStride;
-        // DataCopy(l1Tensor, gmTensor, nd2nzPara);
-        /* --------------------------------- Tensor API ------------------------------------ */
-        auto copyGm2L1 = AscendC::Te::MakeCopy(AscendC::Te::copyGm2L1{});
-        AscendC::Te::Copy(copyGm2L1, l1Tensor, gmTensor, nd2nzPara);        
+        DataCopy(l1Tensor, gmTensor, nd2nzPara);     
     }
 }
 
