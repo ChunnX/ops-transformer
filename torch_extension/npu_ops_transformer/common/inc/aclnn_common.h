@@ -31,7 +31,7 @@
 #include "torch_npu/csrc/aten/NPUNativeFunctions.h"
 #include "torch_npu/csrc/core/npu/DeviceUtils.h"
 #if __has_include("torch_npu/csrc/flopcount/FlopCount.h")
-    #include "torch_npu/csrc/flopcount/FlopCount.h"
+#include "torch_npu/csrc/flopcount/FlopCount.h"
 #endif
 #define NPU_NAME_SPACE at_npu::native
 
@@ -44,7 +44,7 @@ using aclBoolArray = struct aclBoolArray;
 using aclTensorList = struct aclTensorList;
 
 using _aclCreateTensor = aclTensor *(*)(const int64_t *view_dims, uint64_t view_dims_num, aclDataType data_type,
-    const int64_t *stride, int64_t offset, aclFormat format, const int64_t *storage_dims, uint64_t storage_dims_num,
+                                        const int64_t *stride, int64_t offset, aclFormat format, const int64_t *storage_dims, uint64_t storage_dims_num,
     void *tensor_data);
 using _aclCreateScalar = aclScalar *(*)(void *value, aclDataType data_type);
 using _aclCreateIntArray = aclIntArray *(*)(const int64_t *value, uint64_t size);
@@ -113,7 +113,7 @@ extern thread_local int g_hashOffset;
     _(at::ScalarType::Undefined, ACL_DT_UNDEFINED)                                                                     \
     _(at::ScalarType::NumOptions, ACL_DT_UNDEFINED)
 
-constexpr aclDataType kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(at::ScalarType::NumOptions) + 1] = {
+constexpr aclDataType kATenScalarTypeToAclDataTypeTable[] = {
 #define DEFINE_ENUM(_1, n) n,
     AT_ALL_SCALAR_TYPE_AND_ACL_DATATYPE_PAIR(DEFINE_ENUM)
 #undef DEFINE_ENUM
@@ -319,11 +319,11 @@ inline aclTensor *ConvertType(const at::Tensor &at_tensor)
         return aclCreateTensor(aclInput.sizes().data(),
             aclInput.sizes().size(),
             acl_data_type,
-            aclInput.strides().data(),
+                               aclInput.strides().data(),
             aclInput.storage_offset(),
             format,
             storageDims.data(),
-            storageDims.size(),
+                               storageDims.size(),
             const_cast<void *>(aclInput.storage().data()));
     }
 
@@ -331,11 +331,11 @@ inline aclTensor *ConvertType(const at::Tensor &at_tensor)
         at_tensor.sizes().size(),
         acl_data_type,
         at_tensor.strides().data(),
-        at_tensor.storage_offset(),
+                        at_tensor.storage_offset(),
         format,
         storageDims.data(),
         storageDims.size(),
-        const_cast<void *>(at_tensor.storage().data()));
+                        const_cast<void *>(at_tensor.storage().data()));
     return acl_tensor;
 }
 
@@ -353,25 +353,25 @@ inline aclScalar *ConvertType(const at::Scalar &at_scalar)
     aclScalar *acl_scalar = nullptr;
     switch (scalar_data_type) {
         case at::ScalarType::Double: {
-            double value = at_scalar.toDouble();
-            acl_scalar = aclCreateScalar(&value, acl_data_type);
-            break;
-        }
+                double value = at_scalar.toDouble();
+                acl_scalar = aclCreateScalar(&value, acl_data_type);
+                break;
+            }
         case at::ScalarType::Long: {
-            int64_t value = at_scalar.toLong();
-            acl_scalar = aclCreateScalar(&value, acl_data_type);
-            break;
-        }
+                int64_t value = at_scalar.toLong();
+                acl_scalar = aclCreateScalar(&value, acl_data_type);
+                break;
+            }
         case at::ScalarType::Bool: {
-            bool value = at_scalar.toBool();
-            acl_scalar = aclCreateScalar(&value, acl_data_type);
-            break;
-        }
+                bool value = at_scalar.toBool();
+                acl_scalar = aclCreateScalar(&value, acl_data_type);
+                break;
+            }
         case at::ScalarType::ComplexDouble: {
-            auto value = at_scalar.toComplexDouble();
-            acl_scalar = aclCreateScalar(&value, acl_data_type);
-            break;
-        }
+                auto value = at_scalar.toComplexDouble();
+                acl_scalar = aclCreateScalar(&value, acl_data_type);
+                break;
+            }
         default:
             acl_scalar = nullptr;
             break;
@@ -457,6 +457,11 @@ inline aclScalar *ConvertType(const c10::optional<at::Scalar> &opt_scalar)
 inline aclDataType ConvertType(const at::ScalarType scalarType)
 {
     return kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(scalarType)];
+}
+
+inline const char* ConvertType(const string& str)
+{
+    return str.c_str();
 }
 
 template <typename T>
@@ -627,7 +632,7 @@ template <std::size_t I = 0, typename...Ts>
 typename std::enable_if<I == sizeof...(Ts), void>::type GetFirstTensor(const std::tuple<Ts...>& t, at::Tensor& res) {}
 
 template <std::size_t I = 0, typename... Ts>
-typename std::enable_if < I<sizeof...(Ts), void>::type GetFirstTensor(const std::tuple<Ts...> &t, at::Tensor &res)
+    typename std::enable_if < I<sizeof...(Ts), void>::type GetFirstTensor(const std::tuple<Ts...> &t, at::Tensor &res)
 {
     if constexpr (is_at_tensor<typename std::tuple_element<I, std::tuple<Ts...>>::type>::value) {
         res = std::get<I>(t);
@@ -683,7 +688,7 @@ auto DecodeDevice(Ts&... args) -> at::Device
         static auto getWorkspaceSizeFunc = ConvertToOpApiFunc(converted_params, getWorkspaceSizeFuncAddr);  \
         auto workspace_status = call(getWorkspaceSizeFunc, converted_params);                               \
         TORCH_CHECK(workspace_status == 0, "call " #aclnn_api " failed, detail:", aclGetRecentErrMsg());    \
-        at::Tensor workspace_tensor;                                                                        \
+        at::Tensor workspace_tensor;                                                              \
         void *workspace_addr = nullptr;                                                                     \
         if (workspace_size != 0) {                                                                          \
             at::TensorOptions options = at::TensorOptions(torch_npu::utils::get_npu_device_type());         \
@@ -708,5 +713,5 @@ auto DecodeDevice(Ts&... args) -> at::Device
         cmd.Run();                                                                                          \
         if (unInitMemFunc) {                                                                                \
             unInitMemFunc(nullptr, false);                                                                  \
-        }                                                                                                   \
+        }                                                                                                   \ 
     } while (false)

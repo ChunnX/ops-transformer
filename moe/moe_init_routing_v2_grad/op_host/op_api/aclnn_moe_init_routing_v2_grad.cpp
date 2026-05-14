@@ -15,11 +15,51 @@
 #include "common/op_api_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "aclnn_kernels/contiguous.h"
+#include "external/aclnn_kernels/aclnn_platform.h"
 #include "opdev/tensor_view_utils.h"
 #include "opdev/op_log.h"
 #include "moe_init_routing_v2_grad.h"
 
 using namespace op;
+
+namespace MoeInitRoutingV2GradCheck {
+
+static const std::initializer_list<op::DataType> MOE_INIT_ROUTING_V2_GRAD_DTYPE_SUPPORT_LIST_GRAD_X = {
+    DataType::DT_FLOAT16, DataType::DT_BF16, DataType::DT_FLOAT};
+static const std::initializer_list<op::DataType> MOE_INIT_ROUTING_V2_GRAD_DTYPE_SUPPORT_LIST_ROW_IDX = {
+    DataType::DT_INT32};
+
+static inline bool CheckNotNull(const aclTensor *gradExpandedX, const aclTensor *expandedRowIdx, const aclTensor *out)
+{
+    OP_CHECK_NULL(gradExpandedX, return false);
+    OP_CHECK_NULL(expandedRowIdx, return false);
+    OP_CHECK_NULL(out, return false);
+    return true;
+}
+
+static inline bool CheckDtypeValid(const aclTensor *gradExpandedX, const aclTensor *expandedRowIdx,
+                                   const aclTensor *out)
+{
+    if (gradExpandedX != nullptr && gradExpandedX->GetViewShape().GetShapeSize() != 0) {
+        OP_CHECK_DTYPE_NOT_SUPPORT(gradExpandedX, MOE_INIT_ROUTING_V2_GRAD_DTYPE_SUPPORT_LIST_GRAD_X, return false);
+    }
+    if (expandedRowIdx != nullptr && expandedRowIdx->GetViewShape().GetShapeSize() != 0) {
+        OP_CHECK_DTYPE_NOT_SUPPORT(expandedRowIdx, MOE_INIT_ROUTING_V2_GRAD_DTYPE_SUPPORT_LIST_ROW_IDX, return false);
+    }
+    if (out != nullptr && out->GetViewShape().GetShapeSize() != 0) {
+        OP_CHECK_DTYPE_NOT_SUPPORT(out, MOE_INIT_ROUTING_V2_GRAD_DTYPE_SUPPORT_LIST_GRAD_X, return false);
+    }
+    return true;
+}
+
+static aclnnStatus CheckParams(const aclTensor *gradExpandedX, const aclTensor *expandedRowIdx, const aclTensor *out)
+{
+    CHECK_RET(CheckNotNull(gradExpandedX, expandedRowIdx, out), ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(CheckDtypeValid(gradExpandedX, expandedRowIdx, out), ACLNN_ERR_PARAM_INVALID);
+    return ACLNN_SUCCESS;
+}
+
+} // namespace MoeInitRoutingV2GradCheck
 
 #ifdef __cplusplus
 extern "C" {
@@ -32,16 +72,13 @@ ACLNN_API aclnnStatus aclnnMoeInitRoutingV2GradGetWorkspaceSize(
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
     L2_DFX_PHASE_1(aclnnMoeInitRoutingV2Grad,
         DFX_IN(gradExpandedX, expandedRowIdx, topK, dropPadMode, activeNum),
-        DFX_OUT(out));
+                   DFX_OUT(out));
 
-    // 参数检查
-    OP_CHECK_NULL(gradExpandedX, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(expandedRowIdx, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(out, return ACLNN_ERR_PARAM_NULLPTR);
-
-    // 创建OpExecutor
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+
+    aclnnStatus ret = MoeInitRoutingV2GradCheck::CheckParams(gradExpandedX, expandedRowIdx, out);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     // 固定写法，将输入转换成连续的tensor
     auto gradExpandedXContiguous = l0op::Contiguous(gradExpandedX, uniqueExecutor.get());

@@ -637,31 +637,6 @@ function build_example()
     return 0
 }
 
-function gen_bisheng(){
-    local ccache_program=$1
-    local gen_bisheng_dir=${BUILD_DIR}/gen_bisheng_dir
-
-    if [ ! -d "${gen_bisheng_dir}" ];then
-        mkdir -p ${gen_bisheng_dir}
-    fi
-
-    pushd ${gen_bisheng_dir}
-    $(> bisheng)
-    echo "#!/bin/bash" >> bisheng
-    echo "ccache_args=""\"""${ccache_program} ${BISHENG_REAL_PATH}""\"" >> bisheng
-    echo "args=""$""@" >> bisheng
-
-    if [ "${VERBOSE}" == "true" ];then
-        echo "echo ""\"""$""{ccache_args} ""$""args""\"" >> bisheng
-    fi
-
-    echo "eval ""\"""$""{ccache_args} ""$""args""\"" >> bisheng
-    chmod +x bisheng
-
-    export PATH=${gen_bisheng_dir}:$PATH
-    popd
-}
-
 function build_package(){
     build package
 }
@@ -1025,11 +1000,7 @@ parse_changed_files() {
     echo "changed files is" $PR_CHANGED_FILES
     echo $dotted_line
     cat $PR_CHANGED_FILES
-    ops_names=$(python3 scripts/ci/parse_changed_ops.py $PR_CHANGED_FILES "$ENABLE_EXPERIMENTAL")
-    if [[ -z $ops_names ]]; then
-            ops_names='nsa_compress_attention_infer'
-        echo "NO ops changed found,set op $ops_names as default."
-    fi
+    ops_names=$(python3 scripts/ci/parse_changed_ops.py $PR_CHANGED_FILES "$ENABLE_EXPERIMENTAL" "$ASCEND_SOC_UNITS")
 }
 set_example_opt() {
   if [[ -n $1 && $1 != -* ]]; then
@@ -1450,6 +1421,9 @@ if [ -n "${ascend_op_name}" ];then
     if [[ "${ascend_op_name}" == *"moe_distribute_dispatch_v2"* ]] && [[ "${ascend_op_name}" != *"moe_distribute_dispatch_v3"* ]]; then
         ascend_op_name="${ascend_op_name};moe_distribute_dispatch_v3"
     fi
+    if [[ "${ascend_op_name}" == *"distribute_barrier"* ]] && [[ "${ascend_op_name}" != *"distribute_barrier_extend"* ]]; then
+ 	    ascend_op_name="${ascend_op_name};distribute_barrier_extend"
+    fi
     CUSTOM_OPTION="${CUSTOM_OPTION} -DASCEND_OP_NAME=${ascend_op_name}"
     if [[ "${ascend_op_name}" != *"fused_infer_attention_score"* ]] && [[ "${ascend_op_name}" != *"incre_flash_attention"* ]]; then
         CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_TILING_SINK=OFF"
@@ -1527,7 +1501,6 @@ if [ -n "${TEST}" ];then
         CUSTOM_OPTION="${CUSTOM_OPTION} -DCMAKE_OBJCOPY=${CLANG_OBJCOPY}"
     fi
 
-    ASAN="true"
     if [ "${ASAN}" == "true" ];then
         CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_ASAN=TRUE"
     fi
@@ -1701,14 +1674,14 @@ if [ -n "${CCACHE_PROGRAM}" ]; then
         CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_CCACHE=OFF"
     elif [ -f "${CCACHE_PROGRAM}" ];then
         CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_CCACHE=ON -DCUSTOM_CCACHE=${CCACHE_PROGRAM}"
-        gen_bisheng ${CCACHE_PROGRAM}
+        export ASCENDC_CCACHE_EXECUTABLE=${CCACHE_PROGRAM}
     fi
 else
     # 判断有无默认的ccache 如果有则使用
     ccache_system=$(which ccache || true)
     if [ -n "${ccache_system}" ];then
         CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_CCACHE=ON -DCUSTOM_CCACHE=${ccache_system}"
-        gen_bisheng ${ccache_system}
+        export ASCENDC_CCACHE_EXECUTABLE=${ccache_system}
     fi
 fi
 build_ut() {
@@ -1980,4 +1953,4 @@ else
         build ${BUILD}
     fi
 fi
-} | gawk '{print strftime("[%Y-%m-%d %H:%M:%S]"), $0}'
+} | while IFS= read -r line; do echo "[$(date '+%Y-%m-%d %H:%M:%S')] $line"; done

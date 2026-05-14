@@ -14,7 +14,7 @@
  */
 
 #include "grouped_mat_mul_allto_allv_tiling_a3.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 
 using namespace AscendC;
 using namespace ge;

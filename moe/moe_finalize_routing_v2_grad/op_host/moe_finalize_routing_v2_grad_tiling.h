@@ -15,14 +15,14 @@
 #ifndef OPS_BUILT_IN_OP_TILING_RUNTIME_MOE_FINALIZE_ROUTING_V2_GRAD_TILING_H
 #define OPS_BUILT_IN_OP_TILING_RUNTIME_MOE_FINALIZE_ROUTING_V2_GRAD_TILING_H
 
-#include "log/log.h" 
-#include "register/op_impl_registry.h" 
-#include "register/tilingdata_base.h" 
-#include "tiling_base/tiling_base.h" 
-#include "tiling_base/tiling_templates_registry.h" 
-#include "util/math_util.h" 
+#include "log/log.h"
+#include "register/op_impl_registry.h"
+#include "register/tilingdata_base.h"
+#include "op_host/tiling_base.h"
+#include "op_host/tiling_templates_registry.h"
+#include "util/math_util.h"
 #include "op_common/op_host/util/platform_util.h"
-#include "tiling_base/tiling_util.h"
+#include "op_host/tiling_util.h"
 
 namespace optiling {
 // 基础tiling数据，为保证兼容性，延用旧tiling
