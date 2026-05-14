@@ -22,21 +22,21 @@
 #ifndef IMPL_TENSOR_API_ATOM_COPY_ATOM_IMPL_H
 #define IMPL_TENSOR_API_ATOM_COPY_ATOM_IMPL_H
 
-#include "datamove/copy_gm2l1.h"
+#include "cube/copy_gm2l1.h"
 
-#include "datamove/copy_l0c2gm.h"
-#include "datamove/copy_l0c2ub.h"
-#include "datamove/copy_l12ub.h"
+#include "cube/copy_l0c2gm.h"
+#include "cube/copy_l0c2ub.h"
+#include "cube/copy_l12ub.h"
 
-#include "datamove/copy_gm2ub.h"
-#include "datamove/copy_ub2gm.h"
-#include "datamove/copy_ub2l1.h"
+#include "vector/copy_gm2ub.h"
+#include "vector/copy_ub2gm.h"
+#include "vector/copy_ub2l1.h"
 
-#include "datamove/copy_l12bt.h"
-#include "datamove/copy_l12fb.h"
+#include "cube/copy_l12bt.h"
+#include "cube/copy_l12fb.h"
 
-#include "datamove/copy_l12l0a.h"
-#include "datamove/copy_l12l0b.h"
+#include "cube/copy_l12l0a.h"
+#include "cube/copy_l12l0b.h"
 
 namespace AscendC {
 namespace Te {

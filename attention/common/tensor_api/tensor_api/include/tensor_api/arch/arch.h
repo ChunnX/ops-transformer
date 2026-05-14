@@ -17,13 +17,14 @@
 * \file arch.h
 * \brief
 */
-#ifndef include_TENSOR_API_ARCH_ARCH_H
-#define include_TENSOR_API_ARCH_ARCH_H
+#ifndef INCLUDE_TENSOR_API_ARCH_ARCH_H
+#define INCLUDE_TENSOR_API_ARCH_ARCH_H
 
-#include "cube_compute/mmad_op.h"
-#include "cube_datamove/copy_op.h"
+#include "cube/mmad_op.h"
+#include "cube/copy_op.h"
+#include "vector/copy_op.h"
 
-#endif // include_TENSOR_API_ARCH_ARCH_H
+#endif // INCLUDE_TENSOR_API_ARCH_ARCH_H
 
 #if defined(UNDEF_ASCENDC_TENSOR_API_INCLUDE_COMPILER_INTERNAL_HEADERS_ASCENDC_TENSOR_API_H)
 #undef ASCENDC_TENSOR_API_INCLUDE_COMPILER_INTERNAL_HEADERS

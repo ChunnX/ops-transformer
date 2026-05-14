@@ -27,6 +27,7 @@
 #include "extra_impl.h"
 #include "macro_impl.h"
 #include "map_impl.h"
+#include "location_impl.h"
 
 #endif // IMPL_TENSOR_API_UTILS_UTILS_IMPL_H
 

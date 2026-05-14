@@ -27,10 +27,10 @@ namespace AscendC {
 namespace Te {
 
 template <typename Tp, const Tp& traits, typename T, typename... Params>
-__aicore__ inline void Mmad(const MmadAtom<T>& atomMad, const Params& ...params);
+__aicore__ inline void Mmad(const MmadAtom<T>& atomMmad, const Params& ...params);
 
 template <typename T, typename... Params>
-__aicore__ inline void Mmad(const MmadAtom<T>& atomMad, const Params& ...params);
+__aicore__ inline void Mmad(const MmadAtom<T>& atomMmad, const Params& ...params);
 
 template <typename... Args>
 __aicore__ inline auto MakeMmad(const Args& ...traits);
