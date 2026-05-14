@@ -759,22 +759,24 @@ public:
         MM2_ABUF_T mm2A = inputBuf.Get();
         mm2A.WaitCrossCore();
 
-        Buffer<BufferType::L1> mm2AScale = PScaleBuffers.Get();
-        if (unlikely(runInfo.isFirstS2Loop)) {
-            mm2AScale.Wait<HardEvent::MTE1_MTE2>(); // 占用L1B
-            LocalTensor<int16_t> mm2AScaleTensor = mm2AScale.GetTensor<int16_t>();
-            InitConstValue(mm2AScaleTensor, {1, mBaseSize * s2BaseSize / MXFP_GROUP_SIZE * sizeof(SCALE_T) / 32, 0,
-                                             0x7f7f}); // 构造假的全1P_SCALE传给MX接口
-            mm2AScale.Set<HardEvent::MTE2_MTE1>();
-        } else {
-            mm2AScale = PScaleBuffers.GetPre();
-            mm2AScale.Set<HardEvent::MTE2_MTE1>();
-        }
-        LocalTensor<SCALE_T> mm2AScaleFakeTensor = mm2AScale.GetTensor<SCALE_T>();
+        // Buffer<BufferType::L1> mm2AScale = PScaleBuffers.Get();
+        // if (unlikely(runInfo.isFirstS2Loop)) {
+        //     mm2AScale.Wait<HardEvent::MTE1_MTE2>(); // 占用L1B
+        //     LocalTensor<int16_t> mm2AScaleTensor = mm2AScale.GetTensor<int16_t>();
+        //     InitConstValue(mm2AScaleTensor, {1, mBaseSize * s2BaseSize / MXFP_GROUP_SIZE * sizeof(SCALE_T) / 32, 0,
+        //                                      0x7f7f}); // 构造假的全1P_SCALE传给MX接口
+        //     mm2AScale.Set<HardEvent::MTE2_MTE1>();
+        // } else {
+        //     mm2AScale = PScaleBuffers.GetPre();
+        //     mm2AScale.Set<HardEvent::MTE2_MTE1>();
+        // }
+        // LocalTensor<SCALE_T> mm2AScaleFakeTensor = mm2AScale.GetTensor<SCALE_T>();
+        uint32_t vScaleOffset = runInfo.actMSize * runInfo.actSingleLoopS2Size; // VScale在mm1B的偏移量（单位：元素）
+        LocalTensor<SCALE_T> mm2AScaleFakeTensor = mm2A.GetTensor<SCALE_T>(vScaleOffset);
 
         Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
         mm2ResL0C.Wait<HardEvent::FIX_M>();
-        mm2AScale.Wait<HardEvent::MTE2_MTE1>();
+        // mm2AScale.Wait<HardEvent::MTE2_MTE1>();
 
         constexpr uint32_t baseK = s2SplitSize;
         uint64_t l1BaseKOffset = baseK * mBaseSize;
@@ -810,9 +812,9 @@ public:
                 mm2AScaleFakeTensor, mm2BScaleTensor);
             mm2B.Set<HardEvent::MTE1_MTE2>();
         }
-        if (unlikely(runInfo.isLastS2Loop)) {
-            mm2AScale.Set<HardEvent::MTE1_MTE2>();
-        }
+        // if (unlikely(runInfo.isLastS2Loop)) {
+        //     mm2AScale.Set<HardEvent::MTE1_MTE2>();
+        // }
         mm2ResL0C.Set<HardEvent::M_FIX>();
         mm2ResL0C.Wait<HardEvent::M_FIX>();
 
