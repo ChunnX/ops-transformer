@@ -39,6 +39,7 @@ static constexpr uint32_t BUFFER_SIZE_BYTE_8K = 8 * 1024;
 static constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32 * 1024;
 static constexpr uint32_t BUFFER_SIZE_BYTE_33K = 33 * 1024;
 static constexpr uint32_t BUFFER_SIZE_BYTE_128K = 128 * 1024;
+static constexpr uint32_t BUFFER_SIZE_BYTE_512K = 512 * 1024;
 
 static constexpr uint32_t NQUERY_SIZE_8   = 8;
 static constexpr uint32_t NQUERY_SIZE_16  = 16;
@@ -389,8 +390,8 @@ bool SparseLightningIndexerGradKLLossTilingBaseRegbase::AnalyzeDimLayout(const g
                 OP_LOGE(opName,"Query s1Size should be range in 1~8K, but got %ld.", s1Size),
                 return false);
             OP_CHECK_IF(
-                s2Size < SIZE_1 ||  s2Size > BUFFER_SIZE_BYTE_128K,
-                OP_LOGE(opName,"Query s2Size should be range in 1~128K, but got %ld.", s2Size),
+                s2Size < SIZE_1 || s2Size > BUFFER_SIZE_BYTE_512K,
+                OP_LOGE(opName, "Query s2Size should be range in 1~512K, but got %ld.", s2Size),
                 return false);
             OP_CHECK_IF(n2Size == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "N2 is zero."), return false);
             gSizeQuery = queryShape.GetDim(2) / n2Size;
