@@ -705,6 +705,14 @@ ge::graphStatus AlltoAllvGmmTilingBase::PostTiling()
     }
     
     tilingData->isPermuteOut = permuteOutFlag_;
+
+    OP_LOGI(context_->GetNodeName(), "Precision debug: BSK=%lu, BS=%lu, H1=%lu, A=%lu, N1=%lu, e=%lu, epWorldSize=%lu, ubSize=%lu.", 
+        bsk_, bs_, h1_, a_, n1_, e_, epWorldSize_, ubSize_);
+    OP_LOGI(context_->GetNodeName(), "Precision debug: gmmX dtype=%s, mmX dtype=%s.", 
+        ge::TypeUtils::DataTypeToSerialString(gmmXDataType_).c_str(), 
+        ge::TypeUtils::DataTypeToSerialString(mmXDataType_).c_str());
+    OP_LOGI(context_->GetNodeName(), "Precision debug: transGmmWeight=%d, transMmWeight=%d, permuteOutFlag=%d.", 
+        transGmmWeight_, transMmWeight_, permuteOutFlag_);
     
     OP_LOGD(context_->GetNodeName(), "end PostTiling.");
     return ge::GRAPH_SUCCESS;
