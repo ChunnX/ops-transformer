@@ -9,9 +9,56 @@
 # -----------------------------------------------------------------------------------------------------------
 # makeself_custom.cmake - 自定义 makeself 打包脚本
 
+set(MAKESELF_NAME "makeself")
+set(MAKESELF_PATH ${CANN_3RD_LIB_PATH}/makeself)
+set(MAKESELF_VERSION_PKG makeself-release-2.5.0-patch1.tar.gz)
+
+message(STATUS "[DEBUGGING] Inside makeself_custom.cmake, CANN_3RD_LIB_PATH: ${CANN_3RD_LIB_PATH}")
+
+
+if (POLICY CMP0135)
+    cmake_policy(SET CMP0135 NEW)
+endif()
+
+# 默认配置的makeself还是不存在则下载
+if (NOT EXISTS "${MAKESELF_PATH}/makeself-header.sh" OR NOT EXISTS "${MAKESELF_PATH}/makeself.sh")
+    # 优先查找本地压缩包
+    if(EXISTS "${CANN_3RD_LIB_PATH}/pkg/${MAKESELF_VERSION_PKG}")
+        set(REQ_URL "file://${CANN_3RD_LIB_PATH}/pkg/${MAKESELF_VERSION_PKG}")
+        message(STATUS "[ThirdPartyLib][makeself] found in ${REQ_URL}.")
+    elseif(EXISTS "${CANN_3RD_LIB_PATH}/${MAKESELF_VERSION_PKG}")
+        set(REQ_URL "file://${CANN_3RD_LIB_PATH}/${MAKESELF_VERSION_PKG}")
+        message(STATUS "[ThirdPartyLib][makeself] found in ${REQ_URL}.")
+    else()
+        set(REQ_URL "https://gitcode.com/cann-src-third-party/makeself/releases/download/release-2.5.0-patch1.0/makeself-release-2.5.0-patch1.tar.gz")
+        message(STATUS "[ThirdPartyLib][makeself] ${REQ_URL} not found, need download.")
+    endif()
+
+    include(FetchContent)
+    FetchContent_Declare(
+        ${MAKESELF_NAME}
+        URL ${REQ_URL}
+        URL_HASH SHA256=bfa730a5763cdb267904a130e02b2e48e464986909c0733ff1c96495f620369a
+        SOURCE_DIR "${MAKESELF_PATH}"  # 直接解压到此目录
+    )
+    FetchContent_MakeAvailable(${MAKESELF_NAME})
+    execute_process(
+        COMMAND chmod 700 "${CMAKE_BINARY_DIR}/makeself/makeself.sh"
+        COMMAND chmod 700 "${CMAKE_BINARY_DIR}/makeself/makeself-header.sh"
+        -E env
+        CMAKE_TLS_VERIFY=0
+        RESULT_VARIABLE CHMOD_RESULT
+        ERROR_VARIABLE CHMOD_ERROR
+    )
+endif()
+
 # 设置 makeself 路径
-set(MAKESELF_EXE ${CPACK_MAKESELF_PATH}/makeself.sh)
-set(MAKESELF_HEADER_EXE ${CPACK_MAKESELF_PATH}/makeself-header.sh)
+# set(MAKESELF_EXE ${CPACK_MAKESELF_PATH}/makeself.sh)
+# set(MAKESELF_HEADER_EXE ${CPACK_MAKESELF_PATH}/makeself-header.sh)
+
+set(MAKESELF_EXE ${CMAKE_BINARY_DIR}/makeself/makeself.sh)
+set(MAKESELF_HEADER_EXE ${CMAKE_BINARY_DIR}/makeself/makeself-header.sh)
+message(STATUS "[DEBUGGING] Inside makeself_custom.cmake, CMAKE_BINARY_DIR: ${CMAKE_BINARY_DIR}")
 
 message(STATUS "[DEBUGGING] Inside makeself_custom.cmake, CPACK_MAKESELF_PATH: ${CPACK_MAKESELF_PATH}")
 message(STATUS "[DEBUGGING] Inside makeself_custom.cmake, CPACK_EXTERNAL_BUILT_PACKAGES: ${CPACK_EXTERNAL_BUILT_PACKAGES}")
@@ -19,9 +66,9 @@ message(STATUS "[DEBUGGING] Inside makeself_custom.cmake, CPACK_TEMPORARY_DIRECT
 message(STATUS "[DEBUGGING] Inside makeself_custom.cmake, CPACK_INSTALL_PREFIX: ${CPACK_INSTALL_PREFIX}")
 message(STATUS "[DEBUGGING] Inside makeself_custom.cmake, CPACK_PACKAGE_FILE_NAME: ${CPACK_PACKAGE_FILE_NAME}")
 
-if (NOT EXISTS MAKESELF_EXE OR NOT EXISTS MAKESELF_EXE)
-    include(cmake/third_party/makeself-fetch.cmake)
-endif()
+# if (NOT EXISTS MAKESELF_EXE OR NOT EXISTS MAKESELF_EXE)
+#     include(cmake/third_party/makeself-fetch.cmake)
+# endif()
 
 execute_process(COMMAND bash ${MAKESELF_EXE}
                         --header ${MAKESELF_HEADER_EXE}
