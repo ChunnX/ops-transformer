@@ -318,6 +318,8 @@ private:
 
     __aicore__ inline void LaunchCommAfterCompute(uint32_t startExpertIdx, uint32_t expertNum)
     {
+        AscendC::printf("LaunchCommAfterCompute: startExpertIdx=%u, expertNum=%u, N1=%u, rankDim=%u\n",
+                        startExpertIdx, expertNum, N1_, rankDim_);
         const auto *sendCnt = &taskTilingInfo_->sendCnt[0];
         uint64_t axis = N1_;
         for (uint64_t i = 0UL; i < rankDim_; i++) {
@@ -327,6 +329,8 @@ private:
                 alltoAllvSendCnt[i] += static_cast<uint64_t>(sendCnt[expertIdx + i * e_]) * axis;
                 alltoAllvRecvCnt[i] += static_cast<uint64_t>(recvCounts_[expertIdx + i * e_]) * axis;
             }
+            AscendC::printf("LaunchCommAfterCompute: rank=%lu, sendCnt=%lu, recvCnt=%lu\n",
+                            i, alltoAllvSendCnt[i], alltoAllvRecvCnt[i]);
         }
         uint64_t expertOffset = 0UL;
         for (uint64_t i = 0UL; i < startExpertIdx; i++) {
@@ -335,6 +339,8 @@ private:
             }
         }
         alltoAllvSendOffset[0] = expertOffset * N1_;
+        AscendC::printf("LaunchCommAfterCompute: expertOffset=%lu, sendOffset[0]=%lu\n",
+                        expertOffset, alltoAllvSendOffset[0]);
         for (uint64_t i = 1UL; i < rankDim_; i++) {
             alltoAllvSendOffset[i] = alltoAllvSendOffset[i - 1];
             for (uint64_t expertIdx = startExpertIdx; expertIdx < startExpertIdx + expertNum; expertIdx++) {
@@ -345,6 +351,7 @@ private:
         for (uint64_t i = 0UL; i < startExpertIdx; i++) {
             alltoAllvRecvOffset[0] += static_cast<uint64_t>(recvCounts_[i]) * N1_;
         }
+        AscendC::printf("LaunchCommAfterCompute: recvOffset[0]=%lu\n", alltoAllvRecvOffset[0]);
         for (uint64_t i = 1UL; i < rankDim_; i++) {
             alltoAllvRecvOffset[i] = alltoAllvRecvOffset[i - 1];
             for (uint64_t j = 0UL; j < e_; j++) {

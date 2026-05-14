@@ -92,8 +92,12 @@ public:
 
     __aicore__ inline void Process()
     {
+        AscendC::printf("A2avGmmScheduler::Process: isNeedMM=%d, MX_QUANT_MODE=%d, e=%u\n", 
+                        tilingData_->isNeedMM, MX_QUANT_MODE, e_);
         if (tilingData_->isNeedMM != 0) {
+            AscendC::printf("A2avGmmScheduler::Process: before localComputeOp.Process(0)\n");
             localComputeOp.Process(0);
+            AscendC::printf("A2avGmmScheduler::Process: after localComputeOp.Process(0)\n");
         }
         if constexpr (MX_QUANT_MODE) {
             if (isScaleBatchMode_) {
@@ -102,6 +106,7 @@ public:
                 ProcessCommRoundMode();
             }
         } else {
+            AscendC::printf("A2avGmmScheduler::Process: non-quant path, calling ProcessCommRoundMode\n");
             ProcessCommRoundMode();
         }
         this->End();
@@ -135,7 +140,9 @@ private:
 
     __aicore__ inline void ProcessCommRoundMode()
     {
+        AscendC::printf("ProcessCommRoundMode: e=%u, commBeforeComputeFlag=%d\n", e_, commBeforeComputeFlag);
         for (uint32_t expertIdx = 0; expertIdx < e_; expertIdx++) {
+            AscendC::printf("ProcessCommRoundMode: Launch expertIdx=%u\n", expertIdx);
             if constexpr (MX_QUANT_MODE) {
                 commOp.LaunchScaleBeforeCompute(expertIdx, 1);
             }
@@ -145,8 +152,11 @@ private:
             if constexpr (MX_QUANT_MODE) {
                 commOp.WaitScale(expertIdx);
             }
+            AscendC::printf("ProcessCommRoundMode: Wait expertIdx=%u\n", expertIdx);
             commOp.Wait(expertIdx);
             SyncAll<false>();
+            AscendC::printf("ProcessCommRoundMode: Compute expertIdx=%u, H1=%u, N1=%u\n", 
+                            expertIdx, tilingData_->taskTilingInfo.H1, tilingData_->taskTilingInfo.N1);
             computeOp.Process(expertIdx);
         }
     }
