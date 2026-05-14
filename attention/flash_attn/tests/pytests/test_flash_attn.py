@@ -120,6 +120,7 @@ def normalize_case(raw):
     c.setdefault("v_range",     None)
     if layout_q == "TND":
         # load_case_modules 已通过 itertools.product 解包，字段已是平铺列表
+        # c.setdefault("cu_seqlens_kv", c["cu_seqlens_q"])
         c.setdefault("seqused_q", [c["cu_seqlens_q"][i+1] - c["cu_seqlens_q"][i]
                                     for i in range(len(c["cu_seqlens_q"]) - 1)])
         c.setdefault("seqused_kv", [c["cu_seqlens_kv"][i+1] - c["cu_seqlens_kv"][i]
@@ -130,7 +131,7 @@ def normalize_case(raw):
         c.setdefault("block_table_shape", c.get("block_table_shape"))
         block_size = c.get("block_size", 1)
         block_table_shape = c.get("block_table_shape", [])
-        seqused_kv = c.get("seqused_kv",)
+        seqused_kv = c.get("seqused_kv")
         if ("block_table" in c.keys()) and (c.get("block_table") is not None):
             block_table_list = c.get("block_table")
             block_table = torch.tensor(block_table_list, dtype=torch.int32)

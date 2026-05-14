@@ -210,12 +210,12 @@ ge::graphStatus ActualSeqLenChecker::CheckParaExistence(const FaTilingInfo &faIn
         OP_CHECK_IF(cuSeqlensKvTensor == nullptr,
                     OP_LOGE(faInfo.opName, "cu_seqlens_kv must be provided when layout_kv is TND."),
                     return ge::GRAPH_FAILED);
-    } else {
-        OP_CHECK_IF(cuSeqlensKvTensor != nullptr,
-                    OP_LOGE(faInfo.opName,
-                            "cu_seqlens_kv should not be provided when layout_kv is %s, only supported in TND layout.",
-                            LayoutToSerialString(faInfo.kvLayout).c_str()),
-                    return ge::GRAPH_FAILED);
+    // } else {
+    //     OP_CHECK_IF(cuSeqlensKvTensor != nullptr,
+    //                 OP_LOGE(faInfo.opName,
+    //                         "cu_seqlens_kv should not be provided when layout_kv is %s, only supported in TND layout.",
+    //                         LayoutToSerialString(faInfo.kvLayout).c_str()),
+    //                 return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
