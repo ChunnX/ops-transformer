@@ -26,7 +26,7 @@ class BandwidthTestOpBuilder(OpBuilder):
     def schema(self) -> str:
         """PyTorch operator signature."""
         return "npu_bandwidth_test(Tensor x, Tensor dstrank_id, " \
-            "str group, int world_size, int max_bs, int mode, int comm_alg) " \
+            "str group, int world_size, int max_bs, int mode, str comm_alg) " \
             "-> (Tensor, Tensor)"
 
     def register_meta(self):
@@ -93,7 +93,7 @@ if _TORCHAIR_AVAILABLE:
         world_size: int,
         max_bs: int,
         mode: int,
-        comm_alg: int,
+        comm_alg: str,
         *,
         meta_outputs: TensorSpec = None):
         return ge.BandwidthTest(

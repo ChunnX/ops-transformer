@@ -22,7 +22,7 @@ using tensor_list = std::tuple<at::Tensor, at::Tensor>;
 const int DIM_TWO = 2;
 
 tensor_list npu_bandwidth_test(const at::Tensor &x, const at::Tensor &dstrank_id,
-                                         std::string group, int64_t world_size, int64_t max_bs, int64_t mode, int64_t comm_alg)
+                                         std::string group, int64_t world_size, int64_t max_bs, int64_t mode, std::string comm_alg)
 {
     TORCH_CHECK((x.dim() == DIM_TWO), "The x should be 2D");
     TORCH_CHECK((dstrank_id.dim() == 1), "The expert_id should be 1D");
