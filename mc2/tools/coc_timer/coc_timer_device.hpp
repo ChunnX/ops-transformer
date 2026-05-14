@@ -293,11 +293,11 @@ public:
     }
 
     // ========== 10. 调试信息 ==========
-    __aicore__ __inline__ void print()
-    {
-        AscendC::printf("CocTimer: core_id=%d, block_id=%d, group_id=%d, subblockid=%d, t_addr=%p\n",
-                        core_id, block_id, group_id, subblockid, t_addr);
-    }
+    // __aicore__ __inline__ void print()
+    // {
+    //     AscendC::printf("CocTimer: core_id=%d, block_id=%d, group_id=%d, subblockid=%d, t_addr=%p\n",
+    //                     core_id, block_id, group_id, subblockid, t_addr);
+    // }
 
 private:
     // ========== 11. 内部辅助函数 ==========
