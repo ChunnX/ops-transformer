@@ -154,8 +154,8 @@ __aicore__ inline void MatmulAllReduceCommFp8MixedCalc<XType, WType, YType, MmTy
 }
 
 template <typename XType, typename WType, typename YType, class MmType, Mc2CoreType CoreType, int commMode>
-__aicore__ inline uint32_t MatmulAllReduceCommFp8MixedCalc<XType, WType, YType, MmType, CoreType, commMode>::SendCountCheck(
-    uint32_t prepareIndex)
+__aicore__ inline uint32_t MatmulAllReduceCommFp8MixedCalc<
+    XType, WType, YType, MmType, CoreType, commMode>::SendCountCheck(uint32_t prepareIndex)
 {
     uint32_t sendCount = (tilePadDataCnt_ * sizeof(XType) + tileScaleCnt_ * sizeof(float)) / sizeof(XType);
     if (prepareIndex >= tilingData_->param.tileCnt) {
@@ -397,7 +397,7 @@ __aicore__ inline void MatmulAllReduceCommFp8MixedCalc<XType, WType, YType, MmTy
     }
 }
 
-#define INVOKE_MC2_COMM_FP8_MIXED_CALC_910_OP_IMPL(templateClass, coreType, commMode, isATrans, isBTrans...)                     \
+#define INVOKE_MC2_COMM_FP8_MIXED_CALC_910_OP_IMPL(templateClass, coreType, commMode, isATrans, isBTrans...)           \
     do {                                                                                                               \
         GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::QuantMatmulAllReduceTilingDataA5, tilingData, tilingGM);                \
         MC2GmAddrs addrs = {aGM, bGM, biasGM, addGM, cGM, workspaceGM, cGM};                                           \
@@ -405,7 +405,7 @@ __aicore__ inline void MatmulAllReduceCommFp8MixedCalc<XType, WType, YType, MmTy
         using OpType = templateClass<DTYPE_X1, DTYPE_X2, float, DTYPE_BIAS, float, float, X1_FORMAT, X2_FORMAT,        \
                                      Y_FORMAT, isATrans, isBTrans, DTYPE_LOC_LOCAL,                                    \
                                      Mc2QuantBatchMatmulV3::Mc2QuantBmmAswBlock, MM_CFG_NO_PRELOAD_OPEN_UNIT_FLAG>;    \
-        MatmulAllReduceCommFp8MixedCalc<DTYPE_X1, DTYPE_X2, DTYPE_Y, OpType, coreType, commMode> op;                             \
+        MatmulAllReduceCommFp8MixedCalc<DTYPE_X1, DTYPE_X2, DTYPE_Y, OpType, coreType, commMode> op;                   \
         op.Init(aGM, bGM, biasGM, addGM, dequantGM, pertokenGM, commQuantScale1GM, commQuantScale2GM, cGM, userWS,     \
                 &tilingData, &tPipe);                                                                                  \
         op.Process();                                                                                                  \

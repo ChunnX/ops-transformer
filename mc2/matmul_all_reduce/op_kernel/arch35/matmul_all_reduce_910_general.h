@@ -28,14 +28,15 @@
 
 namespace MatmulAllReduceImpl {
 using namespace AscendC;
-template <typename XType, typename WType, typename YType, 
+template <typename XType, typename WType, typename YType,
             class MmType, Mc2CoreType CoreType, bool basedA2aRsAg, int commMode>
 class MatmulAllReduce910General : public MatmulAllReduceBase<XType, YType, CoreType, basedA2aRsAg, commMode>
 {
 public:
     __aicore__ inline MatmulAllReduce910General(
         MC2GmAddrs* addrs, ArnGmAddrs* arnAddrs, MC2TilingHeader* tilingData, TPipe* tPipe)
-        : MatmulAllReduceBase<XType, YType, CoreType, basedA2aRsAg, commMode>(addrs, nullptr, arnAddrs, tilingData, tPipe)
+        : MatmulAllReduceBase<
+            XType, YType, CoreType, basedA2aRsAg, commMode>(addrs, nullptr, arnAddrs, tilingData, tPipe)
     {
         mc2TilingData_ = (Mc2Tiling::MatmulAllReduce910TilingDataA5*)tilingData;
         this->tileInfo_.mmTiling = &mc2TilingData_->mC2Mmv3TileTilingData.tCubeTiling;
@@ -82,7 +83,7 @@ private:
     Mc2Tiling::MatmulAllReduce910TilingDataA5* mc2TilingData_;
 };
 
-#define INVOKE_MC2_910_OP_IMPL_HELPER(opTemplateClass, bTransFlag, coreType, basedA2aRsAg, commMode)                          \
+#define INVOKE_MC2_910_OP_IMPL_HELPER(opTemplateClass, bTransFlag, coreType, basedA2aRsAg, commMode)             \
     do {                                                                                                         \
         using AType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X1, false>;                       \
         using BType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_X2, bTransFlag>;                  \

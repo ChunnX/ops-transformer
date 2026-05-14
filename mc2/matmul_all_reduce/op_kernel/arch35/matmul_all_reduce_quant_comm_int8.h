@@ -126,8 +126,8 @@ __aicore__ inline void MatmulAllReduceQuantCommInt8<XType, WType, YType, MmType,
 }
 
 template <typename XType, typename WType, typename YType, class MmType, Mc2CoreType CoreType, int commMode>
-__aicore__ inline uint32_t MatmulAllReduceQuantCommInt8<XType, WType, YType, MmType, CoreType, commMode>::SendCountCheck(
-    uint32_t prepareIndex)
+__aicore__ inline uint32_t MatmulAllReduceQuantCommInt8<
+    XType, WType, YType, MmType, CoreType, commMode>::SendCountCheck(uint32_t prepareIndex)
 {
     uint32_t sendCount = tilePadDataCnt_ / tilingData_->param.rankDim;
     if (prepareIndex >= tilingData_->param.tileCnt) {
@@ -213,8 +213,8 @@ __aicore__ inline void MatmulAllReduceQuantCommInt8<XType, WType, YType, MmType,
 
 template <typename XType, typename WType, typename YType, class MmType, Mc2CoreType CoreType, int commMode>
 __aicore__ inline void MatmulAllReduceQuantCommInt8<XType, WType, YType, MmType, CoreType, commMode>::InnerProcess(
-    MmType& mmOp, uint32_t tileCnt, DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams* mmTiling, uint32_t isAdd, uint32_t needUbBuffer,
-    uint32_t curPadM, bool isTailFlag)
+    MmType& mmOp, uint32_t tileCnt, DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams* mmTiling, uint32_t isAdd,
+    uint32_t needUbBuffer, uint32_t curPadM, bool isTailFlag)
 {
     const uint64_t aOffset = CalcShapeOffset(sizeof(XType), mmTiling->matmulTiling.M, mmTiling->matmulTiling.Ka);
     const uint64_t cOffset = CalcShapeOffset(sizeof(YType), mmTiling->matmulTiling.M, mmTiling->matmulTiling.N);
@@ -331,14 +331,14 @@ __aicore__ inline void MatmulAllReduceQuantCommInt8<XType, WType, YType, MmType,
     }
 }
 
-#define INVOKE_MC2_QUANT_COMM_INT8_910_OP_IMPL(templateClass, coreType, commMode, scaleType, ...)                         \
+#define INVOKE_MC2_QUANT_COMM_INT8_910_OP_IMPL(templateClass, coreType, commMode, scaleType, ...)              \
     do {                                                                                                       \
         GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::QuantMatmulAllReduceTilingDataA5, tilingData, tilingGM);        \
         MC2GmAddrs addrs = {aGM, bGM, biasGM, addGM, cGM, workspaceGM, cGM};                                   \
         QuantGmAddrs quantAddrs = {nullptr, nullptr, nullptr, dequantGM, pertokenGM};                          \
         using OpType = templateClass<                                                                          \
-            DTYPE_X1, DTYPE_X2, scaleType, DTYPE_BIAS, DTYPE_Y, X1_FORMAT, X2_FORMAT, Y_FORMAT, __VA_ARGS__>;   \
-        MatmulAllReduceQuantCommInt8<DTYPE_X1, DTYPE_X2, DTYPE_Y, OpType, coreType, commMode> op;                        \
+            DTYPE_X1, DTYPE_X2, scaleType, DTYPE_BIAS, DTYPE_Y, X1_FORMAT, X2_FORMAT, Y_FORMAT, __VA_ARGS__>;  \
+        MatmulAllReduceQuantCommInt8<DTYPE_X1, DTYPE_X2, DTYPE_Y, OpType, coreType, commMode> op;              \
         op.Init(                                                                                               \
             aGM, bGM, biasGM, addGM, dequantGM, pertokenGM, commQuantScale1GM, commQuantScale2GM, cGM, userWS, \
             &tilingData, &tPipe);                                                                              \

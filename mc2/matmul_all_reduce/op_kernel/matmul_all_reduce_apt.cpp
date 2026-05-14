@@ -236,7 +236,7 @@ __global__ __aicore__ void weight_quant_matmul_allreduce(
 #endif
 }
 
-template<uint8_t APT_MM_TYPE, TPL_APT_PARAMS_COMM, TPL_APT_A2A_RS_AG, 
+template<uint8_t APT_MM_TYPE, TPL_APT_PARAMS_COMM, TPL_APT_A2A_RS_AG,
             TPL_APT_COMM_MODE, TPL_APT_PARAMS_FP_MM, TPL_APT_PARAMS_QUANT_MM, TPL_APT_PARAMS_WEIGHT_QUANT_MM>
 __global__ __aicore__ void matmul_all_reduce(
     GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR addGM, GM_ADDR antiquantScaleGM, GM_ADDR antiquantOffsetGM,

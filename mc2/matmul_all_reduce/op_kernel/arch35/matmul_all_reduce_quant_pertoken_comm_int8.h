@@ -134,8 +134,8 @@ __aicore__ inline void MatmulAllReduceQuantPertokenCommInt8<xType, WType, YType,
 }
 
 template <typename xType, typename WType, typename YType, class MmType, Mc2CoreType CoreType, int commMode>
-__aicore__ inline uint32_t MatmulAllReduceQuantPertokenCommInt8<xType, WType, YType, MmType, CoreType, commMode>::SendCountCheck(
-    uint32_t prepareIndex)
+__aicore__ inline uint32_t MatmulAllReduceQuantPertokenCommInt8<
+    xType, WType, YType, MmType, CoreType, commMode>::SendCountCheck(uint32_t prepareIndex)
 {
     uint32_t sendCount = tilePadDataCnt_ / tilingData_->param.rankDim;
     if (prepareIndex >= tilingData_->param.tileCnt) {
@@ -145,7 +145,8 @@ __aicore__ inline uint32_t MatmulAllReduceQuantPertokenCommInt8<xType, WType, YT
 }
 
 template <typename xType, typename WType, typename YType, class MmType, Mc2CoreType CoreType, int commMode>
-__aicore__ inline void MatmulAllReduceQuantPertokenCommInt8<xType, WType, YType, MmType, CoreType, commMode>::PrepareInit()
+__aicore__ inline void MatmulAllReduceQuantPertokenCommInt8<
+    xType, WType, YType, MmType, CoreType, commMode>::PrepareInit()
 {
     auto&& mc2Tiling = tilingData_->param;
     uint32_t rankNum = mc2Tiling.rankDim;
@@ -342,15 +343,16 @@ __aicore__ inline void MatmulAllReduceQuantPertokenCommInt8<xType, WType, YType,
     }
 }
 
-#define INVOKE_BATCH_MATMUL_QUANT_PERTOKEN_COMM_INT8_IMPL(templateClass, coreType, commMode, scaleType, isATrans, isBTrans, ...)            \
+#define INVOKE_BATCH_MATMUL_QUANT_PERTOKEN_COMM_INT8_IMPL(                                                             \
+    templateClass, coreType, commMode, scaleType, isATrans, isBTrans, ...)                                             \
     do {                                                                                                               \
         GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::QuantMatmulAllReduceTilingDataA5, tilingData, tilingGM);                \
         MC2GmAddrs addrs = {aGM, bGM, biasGM, addGM, cGM, workspaceGM, cGM};                                           \
         QuantGmAddrs quantAddrs = {nullptr, nullptr, nullptr, dequantGM, pertokenGM};                                  \
         using OpType = templateClass<                                                                                  \
             DTYPE_X1, DTYPE_X2, scaleType, DTYPE_BIAS, float, DTYPE_Y, X1_FORMAT, X2_FORMAT, Y_FORMAT, isATrans, isBTrans, \
-            DTYPE_LOC_LOCAL, Mc2QuantBatchMatmulV3::Mc2QuantBmmAswBlock, MM_CFG_NO_PRELOAD_OPEN_UNIT_FLAG>;                  \
-        MatmulAllReduceQuantPertokenCommInt8<DTYPE_X1, DTYPE_X2, DTYPE_Y, OpType, coreType, commMode> op;                        \
+            DTYPE_LOC_LOCAL, Mc2QuantBatchMatmulV3::Mc2QuantBmmAswBlock, MM_CFG_NO_PRELOAD_OPEN_UNIT_FLAG>;            \
+        MatmulAllReduceQuantPertokenCommInt8<DTYPE_X1, DTYPE_X2, DTYPE_Y, OpType, coreType, commMode> op;              \
         op.Init(                                                                                                       \
             aGM, bGM, biasGM, addGM, dequantGM, pertokenGM, commQuantScale1GM, commQuantScale2GM, cGM, userWS,         \
             &tilingData, &tPipe);                                                                                      \
