@@ -55,7 +55,8 @@ public:
     __aicore__ inline void ProcessVec4(Buffer<BufferType::L1, SyncType::NO_SYNC> &dstBuffer, LocalTensor<CALC_TYPE> &mm2ResTensor,
                                        FagConstInfo &constInfo, FagRunInfo &runInfo);
     __aicore__ inline void ScatterAdd(const GlobalTensor<CALC_TYPE> &mm4ResWorkSpaceGm, const GlobalTensor<CALC_TYPE> &mm5ResWorkSpaceGm,
-                                      const GlobalTensor<CALC_TYPE> &dkWorkSpaceGm, const GlobalTensor<CALC_TYPE> &dvWorkSpaceGm, LocalTensor<CALC_TYPE> &dkInTensor, LocalTensor<CALC_TYPE> &dvInTensor,
+                                      const GlobalTensor<CALC_TYPE> &dkWorkSpaceGm, const GlobalTensor<CALC_TYPE> &dvWorkSpaceGm,
+                                      LocalTensor<CALC_TYPE> &dkInTensor, LocalTensor<CALC_TYPE> &dvInTensor,
                                       FagConstInfo &constInfo, FagRunInfo &runInfo);
     __aicore__ inline void ScatterAddDeter(const GlobalTensor<CALC_TYPE> &mm4ResWorkSpaceGm,
                                            const GlobalTensor<CALC_TYPE> &mm5ResWorkSpaceGm,
@@ -510,7 +511,8 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAdd(const GlobalTensor
                 SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
                 WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
                 DataCopy(dkOutGm[s2Idx * HEAD_DIM_ALIGN], dkInTensor[row * HEAD_DIM_ALIGN], HEAD_DIM_ALIGN);
-                DataCopy(dvOutGm[s2Idx * constInfo.commonConstInfo.dSizeV], dvInTensor[row * constInfo.commonConstInfo.dSizeV], constInfo.commonConstInfo.dSizeV);
+                DataCopy(dvOutGm[s2Idx * constInfo.commonConstInfo.dSizeV], dvInTensor[row * constInfo.commonConstInfo.dSizeV],
+                         constInfo.commonConstInfo.dSizeV);
             }
         }
         SetFlag<HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
@@ -533,7 +535,8 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAdd(const GlobalTensor
             SetFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
             WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
             DataCopy(dkOutGm[s2Idx * HEAD_DIM_ALIGN], dkInTensor[row * HEAD_DIM_ALIGN], HEAD_DIM_ALIGN);
-            DataCopy(dvOutGm[s2Idx * constInfo.commonConstInfo.dSizeV], dvInTensor[row * constInfo.commonConstInfo.dSizeV], constInfo.commonConstInfo.dSizeV);
+            DataCopy(dvOutGm[s2Idx * constInfo.commonConstInfo.dSizeV], dvInTensor[row * constInfo.commonConstInfo.dSizeV],
+                     constInfo.commonConstInfo.dSizeV);
         }
     }
     SetFlag<HardEvent::MTE3_MTE2>(eventIDMTE3ToMTE2);
@@ -628,7 +631,8 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ScatterAddDeter(const GlobalT
                     WaitFlag<HardEvent::V_MTE3>(eventIDVToMTE3);
                     DataCopy(dkWorkSpaceGm[runInfo.keyOffsetWithRope + s2Idx * HEAD_DIM_ALIGN],
                              dkInTensor[row * HEAD_DIM_ALIGN], HEAD_DIM_ALIGN);
-                    DataCopy(dvWorkSpaceGm[runInfo.commonRunInfo.valueOffset + s2Idx * constInfo.commonConstInfo.dSizeV],
+                    int64_t dvOffset = runInfo.commonRunInfo.valueOffset + s2Idx * constInfo.commonConstInfo.dSizeV;
+                    DataCopy(dvWorkSpaceGm[dvOffset],
                              dvInTensor[row * constInfo.commonConstInfo.dSizeV], constInfo.commonConstInfo.dSizeV);
                 }
             }
@@ -748,7 +752,8 @@ public:
                                                                      PseInfo &pseInfo){};
     __aicore__ inline void GatherKV(const GlobalTensor<INPUT_TYPE> &selectedKWorkSpaceGm, FagConstInfo &constInfo, FagRunInfo &runInfo){};
     __aicore__ inline void ScatterAdd(const GlobalTensor<CALC_TYPE> &mm4ResWorkSpaceGm, const GlobalTensor<CALC_TYPE> &mm5ResWorkSpaceGm,
-                                      const GlobalTensor<CALC_TYPE> &dkWorkSpaceGm, const GlobalTensor<CALC_TYPE> &dvWorkSpaceGm, LocalTensor<CALC_TYPE> &dkInTensor, LocalTensor<CALC_TYPE> &dvInTensor,
+                                      const GlobalTensor<CALC_TYPE> &dkWorkSpaceGm, const GlobalTensor<CALC_TYPE> &dvWorkSpaceGm,
+                                      LocalTensor<CALC_TYPE> &dkInTensor, LocalTensor<CALC_TYPE> &dvInTensor,
                                       FagConstInfo &constInfo, FagRunInfo &runInfo){};
     __aicore__ inline void ProcessVec1(FagConstInfo &constInfo, FagRunInfo &runInfo){};
     __aicore__ inline void ProcessVec2(LocalTensor<CALC_TYPE> &mm2ResTensor, FagConstInfo &constInfo,
