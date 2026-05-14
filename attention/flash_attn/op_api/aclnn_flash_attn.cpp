@@ -44,7 +44,7 @@ aclnnStatus aclnnFlashAttnGetWorkspaceSize(
 
     const aclTensor *placeHolder = nullptr;
     const aclTensor *tempTensor = nullptr;
-    // todo:check and set  预留
+
     FlashAttnProcessSoftmaxLse(returnSoftmaxLse, softmaxLseOptional, tempTensor, placeHolder);
 
     aclnnStatus ret = aclnnInnerFlashAttnGetWorkspaceSize(
