@@ -690,7 +690,7 @@ public:
                                       FaGmTensor<V_SCALE_T, GM_FORMAT> &srcTensor, GmKvCoord &gmCoord)
     {
         if constexpr (GM_FORMAT == GmFormat::BNSD || GM_FORMAT == GmFormat::BSND ||
-                      GM_FORMAT == GmFormat::NTD || GM_FORMAT == GmFormat::TND) {
+                      GM_FORMAT == GmFormat::NTD || GM_FORMAT == GmFormat::TND || GM_FORMAT == GmFormat::TND2) {
             ProcessContinuousOrTensorlist(dstTensor, srcTensor, gmCoord);
         } else if constexpr (GM_FORMAT == GmFormat::PA_BnBsND || GM_FORMAT == GmFormat::PA_BnNBsD ||
                              GM_FORMAT == GmFormat::PA_NZ) {
