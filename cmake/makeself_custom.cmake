@@ -13,6 +13,16 @@
 set(MAKESELF_EXE ${CPACK_MAKESELF_PATH}/makeself.sh)
 set(MAKESELF_HEADER_EXE ${CPACK_MAKESELF_PATH}/makeself-header.sh)
 
+message(STATUS "[DEBUGGING] Inside makeself_custom.cmake, CPACK_MAKESELF_PATH: ${CPACK_MAKESELF_PATH}")
+message(STATUS "[DEBUGGING] Inside makeself_custom.cmake, CPACK_EXTERNAL_BUILT_PACKAGES: ${CPACK_EXTERNAL_BUILT_PACKAGES}")
+message(STATUS "[DEBUGGING] Inside makeself_custom.cmake, CPACK_TEMPORARY_DIRECTORY: ${CPACK_TEMPORARY_DIRECTORY}")
+message(STATUS "[DEBUGGING] Inside makeself_custom.cmake, CPACK_INSTALL_PREFIX: ${CPACK_INSTALL_PREFIX}")
+message(STATUS "[DEBUGGING] Inside makeself_custom.cmake, CPACK_PACKAGE_FILE_NAME: ${CPACK_PACKAGE_FILE_NAME}")
+
+if (NOT EXISTS MAKESELF_EXE OR NOT EXISTS MAKESELF_EXE)
+  include()
+endif()
+
 execute_process(COMMAND bash ${MAKESELF_EXE}
                         --header ${MAKESELF_HEADER_EXE}
                         --help-header ./help.info --tar-format posix
