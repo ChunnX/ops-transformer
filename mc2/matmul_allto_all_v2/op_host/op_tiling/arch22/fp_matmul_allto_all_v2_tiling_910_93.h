@@ -48,6 +48,7 @@ protected:
 
     ge::graphStatus CheckA3NonQuantTensorDataType(const gert::TilingContext *context, const char *opName);
     ge::graphStatus CheckOpInputInfo();
+    ge::graphStatus CheckBsRankSizeRange();
     ge::graphStatus InitTilingContextParameters();
     ge::graphStatus DoMMTiling();
 
