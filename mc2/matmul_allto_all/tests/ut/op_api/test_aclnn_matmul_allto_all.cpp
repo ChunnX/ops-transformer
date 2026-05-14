@@ -412,11 +412,11 @@ static MatmulAlltoAllAclnnTestParam g_casesParams910B[] = {
     {"AclnnMatmulAlltoAll-910B-reformat_x1_fractal_nz-14", 2, {256, 128}, {128, 256}, {256}, {512, 128},
         ACL_BF16, ACL_BF16, ACL_BF16, ACL_BF16,
         ACL_FORMAT_FRACTAL_NZ, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        {-1, -2}, "ut_test_matmul_allto_all", false, false, ACLNN_SUCCESS},
+        {-1, -2}, "ut_test_matmul_allto_all", false, false, ACLNN_ERR_PARAM_INVALID},
     {"AclnnMatmulAlltoAll-910B-reformat_x2_fractal_nz-15", 2, {256, 128}, {128, 256}, {256}, {512, 128},
         ACL_BF16, ACL_BF16, ACL_BF16, ACL_BF16,
         ACL_FORMAT_ND, ACL_FORMAT_FRACTAL_NZ, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        {-1, -2}, "ut_test_matmul_allto_all", false, false, ACLNN_SUCCESS}
+        {-1, -2}, "ut_test_matmul_allto_all", false, false, ACLNN_ERR_PARAM_INVALID}
 };
 
 TEST_F(TestAclnnMatmulAlltoAll, CasesParamsTest910B)
