@@ -14,14 +14,14 @@
 
 ## 2. 性能模型
 
-QAR kernel 时间由三部分组成：
+QAR 算子通信基于 MTE 引擎直读 Win 区（`SetCommEngine(3)`），不经过 HCCL 传输层。Kernel 时间由三部分组成：
 
 ```
 T_kernel = T_sync  +  T_mte  +  T_compute
            └同步┘    └数据搬运┘  └反量化+规约┘
 ```
 
-- **T_sync**：ReadStatus 软同步，等待 N 个 rank 完成 Win 区数据写入。开销 ∝ N
+- **T_sync**：ReadStatus 软同步，AIV 核忙等 N 个 rank 完成 Win 区数据写入。开销 ∝ N
 - **T_mte**：MTE 引擎从各 rank Win 区读取量化数据（x + scale）到 UB。数据量 ∝ V × N
 - **T_compute**：AIV 核执行反量化（dequant）+ ReduceSum 累加。计算量 ∝ V × N
 
@@ -42,7 +42,7 @@ T_kernel(V, N) = T₀(N) + V / BW_eff(N)
 | 参数 | 物理来源 | 估算方法 |
 |------|---------|---------|
 | T₀ | kernel launch（~5 us）+ ReadStatus 忙等 N 个 rank 状态位（~2-3 us/rank） | 理论：5 + 3×N |
-| BW_eff | MTE 读带宽受 AIV 核数、反量化计算吞吐、HCCL 传输层延迟共同限制 | 上限 ≤ min(MTE_peak, AIV_compute_throughput) = 56 GB/s |
+| BW_eff | 综合等效带宽：受 MTE 读带宽、AIV 反量化计算吞吐、多核并发效率、ReadStatus 同步开销共同限制 | 上限 ≤ min(MTE_peak, AIV_throughput, memory_BW) = 56 GB/s |
 
 ---
 
@@ -58,7 +58,7 @@ BW_eff_ref = 21.0 GB/s
 | 项 | 值 | 依据 |
 |----|----|------|
 | T₀ | 20 us | kernel launch ~5 us + ReadStatus(8 rank) ~15 us |
-| BW_eff | 21.0 GB/s | Server HCCL 传输层延迟较高，等效带宽约为 MTE 峰值的 37% |
+| BW_eff | 21.0 GB/s | Server 多 socket 拓扑下 MTE 跨 socket 读 Win 区延迟较高，综合等效带宽约为 MTE 峰值的 37% |
 
 ### 3.2 开发自测环境
 
