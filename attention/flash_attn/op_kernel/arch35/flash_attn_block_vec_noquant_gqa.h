@@ -478,8 +478,8 @@ public:
             }
         } else {
             if (constInfo.isSoftmaxLseEnable) {
-                AscendC::DumpTensor(sumUb, 1, 64);
-                AscendC::DumpTensor(sumUb, 1, 64);
+                // AscendC::DumpTensor(sumUb, 1, 64);
+                // AscendC::DumpTensor(sumUb, 1, 64);
                 SoftmaxLseCopyOut(sumUb, maxUb, runInfo);
             }
         }
