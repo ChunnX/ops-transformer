@@ -208,12 +208,14 @@ __aicore__ inline void GroupMatmulSwigluQuant(
 }
 
 // GroupMatmul2 - GMM2矩阵乘法，直接输出到GM（参考kernel_qbmm_mx.h的做法）
+//   coreInGroup / coresPerWave 控制本核在 wave 内的分片任务；
+//   groupIdx 即 expertIdx，传给 CombineTile 用于查 tokenPerExpert；
+//   waveRowOffset 是本 wave 在 expert 内的起始行，用于把 wave 内 mLoc 翻译成 expert 内行号。
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB>
 __aicore__ inline void GroupMatmul2(
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
-    const GMMAddrInfo& gmmAddrInfo, uint32_t coreInGroup, uint32_t coresPerWave, int32_t& vecSetSyncCom2,
-    uint32_t groupIdx, uint16_t& pingpongIdx, int32_t rankId, LocalTensor<ElementC> combineUbTensor,
-    uint32_t expertIdx, uint64_t waveRowOffset)
+    const GMMAddrInfo& gmmAddrInfo, uint32_t coreInGroup, uint32_t coresPerWave,
+    uint32_t groupIdx, int32_t rankId, uint64_t waveRowOffset)
 {
     GlobalTensor<uint8_t> gmAGt, gmBGt, gmScaleAGt, gmScaleBGt;
     gmAGt.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(gmmAddrInfo.aGlobal));
@@ -266,7 +268,6 @@ __aicore__ inline void GroupMatmul2(
     auto layoutScaleB = MakeLayoutScaleB{}(scaleK, n);
     auto layoutBias = Te::MakeFrameLayout<LayoutBias>(1U, n);
     auto layoutC = MakeLayoutC{}(m, n);  // 使用完整m,n而不是tile大小
-    auto layoutCTile = MakeLayoutC{}(L1_TILE_M, L1_TILE_N);
 
     using BiasType = float;
     using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<>;
@@ -282,11 +283,6 @@ __aicore__ inline void GroupMatmul2(
     typename BlockMmad::BlockShape l0TileShape{L1_TILE_M, L1_TILE_N, L0_TILE_K, 0};
     typename BlockMmad::TupleShape matmulShape{m, n, k};
     blockMmad.Init(matmulShape, l0TileShape, l1Params, false, enableL0CPingPong);
-
-    // 用旧pong buffer的UB做对比：先声明裸LocalTensor，再包MakeTensor（完全对齐commit前写法）
-    constexpr uint32_t UB_PONG_OFFSET = MAX_SINGLE_MN_ALIGN32_NUM * sizeof(ElementC);
-    LocalTensor<ElementC> l0cOutUbGMM2Pong = LocalTensor<ElementC>(TPosition::VECIN, UB_PONG_OFFSET, L1_TILE_M * L1_TILE_N);
-    auto l0cOutUbPong = Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(UB_PONG_OFFSET), layoutCTile);
 
     auto gmC = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementC*>(gmmAddrInfo.gmm2OutGlobal)), layoutC);

@@ -65,7 +65,6 @@ private:
     __aicore__ inline void ResetTokenPerExpert();
     __aicore__ inline void Unpermute();
     __aicore__ inline void EndSync();
-    __aicore__ inline void EndGMM2Sync();
     __aicore__ inline void CrossRankSyncInWorldSize();
     __aicore__ inline void CopyGMToGMPerTokenV2(GlobalTensor<QuantOutType> dst,
                 GlobalTensor<QuantScaleOutType> dstScale, GlobalTensor<QuantOutType> src,
@@ -137,7 +136,6 @@ private:
     GlobalTensor<int32_t> groupList_;
     GlobalTensor<int32_t> expertTokenNumsOut_;
     LocalTensor<float> topKWeightsTensor_;
-    LocalTensor<bfloat16_t> combineUbTensor_;
 
     uint32_t m_ = 0;
     uint32_t k_ = 0;
@@ -151,7 +149,6 @@ private:
     int32_t prevSum_ = 0;
     int32_t dispatchRows_ = 0;
     int32_t vecSetSyncCom_ = 0;
-    uint32_t startBlockIdx_ = 0;
     uint32_t dispatchBlockNumPerEP_ = 2;
     int32_t perRankStridesInTokenPerExpert_ = 0;
     uint32_t blockNum_ = GetBlockNum();
@@ -161,7 +158,6 @@ private:
     uint32_t subBlockIdx_ = GetSubBlockIdx();
 
     uint64_t preOffset_ = 0;
-    uint16_t gmm2PingPongIdx_ = 0;
 
     // 当前 expert 的 wave 并行分组信息（每张 expert 复用，由 Process 计算后填入）
     uint32_t coresPerWave_ = 0;
@@ -249,7 +245,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::FirstBuffInit(TPipe *tP
         static_cast<int32_t>(ALIGN_32));
     maxResetBufAlign = max(maxResetBufAlign, blockNumAlignBytes);
     tPipe->InitBuffer(ResetFlagBuf_, maxResetBufAlign);
-    combineUbTensor_ = CopyTempBuf_.Get<bfloat16_t>();
 }
 
 template <TemplateMegaMoeTypeClass>
@@ -366,22 +361,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::EndSync()
     }
     if constexpr(g_coreType == AIC) {
         WaitForVector();
-    }
-}
-
-template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::EndGMM2Sync()
-{
-    if constexpr(g_coreType == AIV) {
-        return;
-    }
-    if (vecSetSyncCom_ <= 0) {
-        return;
-    } else if (vecSetSyncCom_ == 1) {
-        WaitForVector();
-    } else {
-        WaitForVector(gmm2PingPongIdx_);
-        WaitForVector(1 - gmm2PingPongIdx_);
     }
 }
 
@@ -875,13 +854,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             // 与 AIC 0 同 pair，AIV index 3 与 AIC 1 同 pair…），rowReadyFlags 用 blockIdx 索引也对得上。
             if constexpr(g_coreType == AscendC::AIC) {
                 MegaMoeImpl::GroupMatmul2<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
-                    params_, problemShape_, waveGmmInfo, coreInGroup_, coresPerWave_, vecSetSyncCom_, expertIdx,
-                    gmm2PingPongIdx_, rankId_, combineUbTensor_, expertIdx,
+                    params_, problemShape_, waveGmmInfo, coreInGroup_, coresPerWave_, expertIdx, rankId_,
                     static_cast<uint64_t>(waveIdx) * static_cast<uint64_t>(L1_TILE_M));
             } else if (subBlockIdx_ == 1) {
                 MegaMoeImpl::GroupMatmul2<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
-                    params_, problemShape_, waveGmmInfo, coreInGroup_, coresPerWave_, vecSetSyncCom_, expertIdx,
-                    gmm2PingPongIdx_, rankId_, combineUbTensor_, expertIdx,
+                    params_, problemShape_, waveGmmInfo, coreInGroup_, coresPerWave_, expertIdx, rankId_,
                     static_cast<uint64_t>(waveIdx) * static_cast<uint64_t>(L1_TILE_M));
             }
 
