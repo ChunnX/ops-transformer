@@ -1,6 +1,6 @@
 # aclnnWeightQuantMatmulAllReduceAddRmsNorm
 
-**须知：该接口后续版本会废弃，请使用aclnnWeightQuantMatmulAllReduce和aclnnAddRmsNorm替代本接口。**
+**须知：该接口后续版本会废弃，请使用[aclnnWeightQuantMatmulAllReduce](../../matmul_all_reduce/docs/aclnnWeightQuantMatmulAllReduce.md)和[aclnnRmsNorm](https://gitcode.com/cann/ops-nn/blob/master/norm/add_rms_norm/docs/aclnnAddRmsNorm.md)。替代本接口。**
 
 [📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/mc2/matmul_all_reduce_add_rms_norm)
 
