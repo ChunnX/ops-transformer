@@ -46,7 +46,9 @@ constexpr uint32_t MAX_SINGLE_MN = 128 * 256;
 constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM = (MAX_SINGLE_MN + 31U) / ALIGN32 * ALIGN32;
 
 // GroupMatmulSwigluQuant - GMM1 + SwiGLU + Quant
-// coreInGroup / coresPerWave 控制本核在当前 wave 内的分片任务；多组核之间可并行处理不同的 wave
+// coreInGroup / coresPerWave 控制本核在当前 wave 内的分片任务；多组核之间并行处理不同的 wave。
+// cube↔vec 信号是 per-pair 的（同 blockIdx 的 AIC 与 AIV 共享一个 flag 通道），不同 pair
+// 之间天然隔离，所以这里无需再用 coreGroupId 区分 flag value。
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB>
 __aicore__ inline void GroupMatmulSwigluQuant(
     BlockEpilogueSwigluMxQuant<ElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true>& epilogueOp,

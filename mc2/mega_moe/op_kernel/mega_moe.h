@@ -163,6 +163,14 @@ private:
     uint64_t preOffset_ = 0;
     uint16_t gmm2PingPongIdx_ = 0;
 
+    // 当前 expert 的 wave 并行分组信息（每张 expert 复用，由 Process 计算后填入）
+    uint32_t coresPerWave_ = 0;
+    uint32_t wavesParallel_ = 1;
+    uint32_t coreInGroup_ = 0;
+    uint32_t coreGroupId_ = 0;
+    bool coreActive_ = true;
+    bool anyWaveDone_ = false;  // 本核是否做过任意 wave，决定 expert loop 结束后是否需消费最后一发 NotifyCube
+
     using BlockEpilogue = BlockEpilogueSwigluMxQuant<QuantOutType, float, QuantScaleOutType, QuantScaleOutType, true>;
     BlockEpilogue epilogueOp_;
 };
@@ -750,23 +758,31 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     SyncAll<false>();
 
     // 4. for循环: per-expert Dispatch + 并行 wave GMM1→GMM2 流水
-    //    每个 wave 内部按 tile 在一组 AIC 上并行，wave 之间也并行：
+    //    GMM1 需要多少 tile，就用多少核：
     //    - tileNumGmm1 = ceil(outputN / L1_TILE_N)
-    //    - coresPerWave = (tileNumGmm1 < blockNum_) ? 16 : blockNum_
+    //    - coresPerWave = min(tileNumGmm1, blockNum_)
     //    - wavesParallel = blockNum_ / coresPerWave
     //    例：BS=512, outputN=4096, L1_TILE_M=128, L1_TILE_N=256 → tileNumGmm1=16,
     //        coresPerWave=16, wavesParallel=2，32 个 AIC 分两组同时跑两个 wave。
+    //    cube/vec 信号是 per-pair（同 blockIdx 的 AIC/AIV 共享一个 flag 通道），不同 pair
+    //    之间天然隔离，多组并行不需要再按 group 区分 flag value。
+    //    真正需要的同步是同核相邻 wave 之间的 UB 屏障：上一 wave AIV combine 的 MTE3 未
+    //    结束时 AIC 已经开始下一 wave GMM1 fixpipe 写 UB，会破坏 combine 读出的数据。
+    //    见下面 wave 末的 SyncFunc<MTE3_V> + NotifyCube。
     uint64_t outputN_const = Get<N_VALUE>(problemShape_) / SWIGLU_N_HALF;
     uint32_t tileNumGmm1 = static_cast<uint32_t>(
         (outputN_const + static_cast<uint64_t>(L1_TILE_N) - 1UL) / static_cast<uint64_t>(L1_TILE_N));
-    uint32_t coresPerWave = (tileNumGmm1 < blockNum_) ? 16U : blockNum_;
-    uint32_t wavesParallel = blockNum_ / coresPerWave;
-    if (wavesParallel < 1U) {
-        wavesParallel = 1U;
+    coresPerWave_ = (tileNumGmm1 < blockNum_) ? tileNumGmm1 : blockNum_;
+    if (coresPerWave_ < 1U) {
+        coresPerWave_ = 1U;
     }
-    uint32_t coreInGroup = blockIdx_ % coresPerWave;
-    uint32_t coreGroupId = blockIdx_ / coresPerWave;
-    bool coreActive = (coreGroupId < wavesParallel);
+    wavesParallel_ = blockNum_ / coresPerWave_;
+    if (wavesParallel_ < 1U) {
+        wavesParallel_ = 1U;
+    }
+    coreInGroup_ = blockIdx_ % coresPerWave_;
+    coreGroupId_ = blockIdx_ / coresPerWave_;
+    coreActive_ = (coreGroupId_ < wavesParallel_);
 
     GMMAddrInfo gmmAddrInfo;
     for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
@@ -786,9 +802,26 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             }
         }
 
-        // Wave loop: 本核所在组负责 waveIdx ∈ {coreGroupId, coreGroupId + wavesParallel, ...}
-        uint64_t waveStart = coreActive ? static_cast<uint64_t>(coreGroupId) : waveCnt;
-        for (uint64_t waveIdx = waveStart; waveIdx < waveCnt; waveIdx += wavesParallel) {
+        // Wave loop: 本核所在组负责 waveIdx ∈ {coreGroupId_, coreGroupId_ + wavesParallel_, ...}
+        // 同一个核连续做相邻 wave 时，上一 wave AIV 的 combine MTE3 (UB→远端 GM) 还没结束，
+        // AIC 已经开始下一 wave GMM1 mmad 的 fixpipe 写 UB[0..128KB]，会与 AIV 的 ubBuffer (UB[0..64KB])
+        // 直接冲突。旧 wave-serial 靠 startBlockIdx 轮转，让同核在相邻 wave 中跳过一次 GMM1，
+        // 自然把这段错开；wave-parallel 同核连续做相邻 wave，这个 race 暴露出来，约 4-5% 行错乱。
+        // 这里在 wave 末做一次 cube↔vec 屏障：
+        //   AIV combine MTE3 完成后 NotifyCube → AIC 进入下一 wave GMM1 前 WaitForVector。
+        // 信号是 per-pair 的，所以所有 pair 共用同一个 flag value 不会互相干扰；
+        // 这里 value=1，落到 flag id (AIV_SYNC_AIC_FLAG+1)，与 GMM1 epilogue 用的 AIV_SYNC_AIC_FLAG
+        // 错开一个独立通道，避免与 GMM1 内部的 NotifyCube/WaitForVector 计数混在一起。
+        uint64_t waveStart = coreActive_ ? static_cast<uint64_t>(coreGroupId_) : waveCnt;
+        constexpr uint16_t WAVE_BARRIER_FLAG = 1U;
+        for (uint64_t waveIdx = waveStart; waveIdx < waveCnt; waveIdx += wavesParallel_) {
+            // 等待本核上一 wave 的 AIV combine 释放 UB，再让 AIC 写 mmad 输出
+            if (anyWaveDone_) {
+                if constexpr(g_coreType == AIC) {
+                    WaitForVector(WAVE_BARRIER_FLAG);
+                }
+            }
+
             uint64_t waveM = (waveIdx == waveCnt - 1 && m_i % L1_TILE_M != 0) ?
                              m_i % L1_TILE_M : L1_TILE_M;
             Get<M_VALUE>(problemShape_) = waveM;
@@ -801,7 +834,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             if (subBlockIdx_ == 0) {
                 MegaMoeImpl::GroupMatmulSwigluQuant<
                     QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType>(
-                    epilogueOp_, params_, problemShape_, waveGmmInfo, coreInGroup, coresPerWave, vecSetSyncCom_);
+                    epilogueOp_, params_, problemShape_, waveGmmInfo, coreInGroup_, coresPerWave_,
+                    vecSetSyncCom_);
             }
             EndSync();
             vecSetSyncCom_ = 0;
@@ -810,15 +844,32 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             UpdateGlobalBuffer(waveGmmInfo, 1, waveIdx);
             groupFlagListGm_.SetGlobalBuffer(waveGmmInfo.groupFlagList);
 
-            // GMM2 + Combine for this wave
+            // GMM2 + Combine for this wave（GMM2 不用 cube/vec 信号，靠 rowReadyFlags 每核计数器）
             if (subBlockIdx_ == 0) {
                 MegaMoeImpl::GroupMatmul2<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
-                    params_, problemShape_, waveGmmInfo, coreInGroup, coresPerWave, vecSetSyncCom_, expertIdx,
+                    params_, problemShape_, waveGmmInfo, coreInGroup_, coresPerWave_, vecSetSyncCom_, expertIdx,
                     gmm2PingPongIdx_, rankId_, combineUbTensor_, expertIdx,
                     static_cast<uint64_t>(waveIdx) * static_cast<uint64_t>(L1_TILE_M));
             }
+
+            // wave 末屏障：AIV 等本轮 combine 的 MTE3 真正写完，再通知 AIC 下一 wave 可以写 UB
+            if constexpr(g_coreType == AscendC::AIV) {
+                if (subBlockIdx_ == 0) {
+                    SyncFunc<AscendC::HardEvent::MTE3_V>();
+                    NotifyCube(WAVE_BARRIER_FLAG);
+                }
+            }
+            anyWaveDone_ = true;
         }
         Get<M_VALUE>(problemShape_) = m_i;
+    }
+
+    // 排空 wave 末屏障最后一发 NotifyCube（每核最多一次），避免泄漏到下一轮 kernel
+    if (anyWaveDone_) {
+        if constexpr(g_coreType == AIC) {
+            constexpr uint16_t WAVE_BARRIER_FLAG = 1U;
+            WaitForVector(WAVE_BARRIER_FLAG);
+        }
     }
 
     if (subBlockIdx_ == 0) {
