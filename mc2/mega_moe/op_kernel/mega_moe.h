@@ -812,16 +812,21 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         // 同一核连续做相邻 wave 时，上一 wave subBlock 1 的 combine MTE3 (UB→远端 GM) 还没结束
         // 时，AIC 已经开始下一 wave GMM1 mmad 的 fixpipe 写 UB，会与 combine 用的 UB 冲突。
         // 在 wave 末做一次 cube↔vec 屏障：subBlock 1 combine MTE3 完成后 NotifyCube → AIC 进入
-        // 下一 wave GMM1 前 WaitForVector。flag value=1 落到 (AIV_SYNC_AIC_FLAG+1)，与 GMM1
-        // epilogue 用的 flag 6 错开一个独立通道，互不干扰；信号是 per-pair 的，不同 pair 之间
-        // 天然隔离，所以 group 之间也无需再分 flag。
+        // 下一 wave GMM1 前 WaitForVectorFromAIV1。
+        //   - AIV1 端：SetFlag(AIV_SYNC_AIC_FLAG + WAVE_BARRIER_FLAG) = 7
+        //   - AIC 端：WaitFlag 必须用 7 + 16 = 23（AIV1→AIC 的 flag id 偏移 +16）
+        // 与 GMM1 epilogue(AIV0)→AIC 用的 flag 6 自动错开。
+        // 信号是 per-pair 的，不同 pair 之间天然隔离，所以 group 之间也无需再分 flag。
         uint64_t waveStart = coreActive_ ? static_cast<uint64_t>(coreGroupId_) : waveCnt;
         constexpr uint16_t WAVE_BARRIER_FLAG = 1U;
         for (uint64_t waveIdx = waveStart; waveIdx < waveCnt; waveIdx += wavesParallel_) {
-            // 等待本核上一 wave 的 AIV combine 释放 UB，再让 AIC 写 mmad 输出
+            // 等待本核上一 wave 的 AIV1 combine 释放 UB，再让 AIC 写 mmad 输出。
+            // 信号来自 AIV1（subBlock 1），AIC 这边要按 AIV1→AIC 的 +16 flag 偏移等待，
+            // 否则 WaitForVector(WAVE_BARRIER_FLAG) 实际等的是 AIV0 的 flag，永远不会触发，
+            // 导致 AIC 直接卡死（dispatch+combine 同核时这个 deadlock 就是这么来的）。
             if (anyWaveDone_) {
                 if constexpr(g_coreType == AIC) {
-                    WaitForVector(WAVE_BARRIER_FLAG);
+                    WaitForVectorFromAIV1(WAVE_BARRIER_FLAG);
                 }
             }
 
@@ -879,10 +884,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     }
 
     // 排空 wave 末屏障最后一发 NotifyCube（每核最多一次），避免泄漏到下一轮 kernel
+    // 同上：信号源是 AIV1，AIC 要按 +16 偏移等待。
     if (anyWaveDone_) {
         if constexpr(g_coreType == AIC) {
             constexpr uint16_t WAVE_BARRIER_FLAG = 1U;
-            WaitForVector(WAVE_BARRIER_FLAG);
+            WaitForVectorFromAIV1(WAVE_BARRIER_FLAG);
         }
     }
 
