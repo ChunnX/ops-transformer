@@ -75,7 +75,7 @@ struct MatmulAlltoAllShapeInfo {
 
 static ge::graphStatus CheckAllToAllAxesShapeForMatmulAlltoAll(const gert::InferShapeContext* context)
 {
-    const auto attrs = context->GetAttrs();
+    const gert::RuntimeAttrs* attrs = context->GetAttrs();
     const auto alltoAllAxesPtr = attrs->GetAttrPointer<gert::ContinuousVector>(INDEX_ATTR_ALLTO_ALL_AXES);
     if (alltoAllAxesPtr != nullptr) {
         OPS_CHECK((alltoAllAxesPtr->GetSize() != DIM_TWO), CUBE_INNER_ERR_REPORT(INNER_DEBUG,
@@ -109,7 +109,7 @@ static ge::graphStatus CheckAxisKShapeForMatmulAlltoAll(const gert::InferShapeCo
 static ge::graphStatus GetMatmulAxisInfoForMatmulAlltoAll(const gert::InferShapeContext* context,
                                                           MatmulAlltoAllShapeInfo& shape)
 {
-    const auto attrs = context->GetAttrs();
+    const gert::RuntimeAttrs* attrs = context->GetAttrs();
     const char* groupStr = attrs->GetAttrPointer<char>(INDEX_ATTR_GROUP);
     OPS_CHECK(groupStr == nullptr, CUBE_INNER_ERR_REPORT(context->GetNodeName(),
               "Get matmul allto all group failed."), return ge::GRAPH_FAILED);
@@ -148,7 +148,7 @@ static ge::graphStatus GetMatmulAxisInfoForMatmulAlltoAll(const gert::InferShape
 static ge::graphStatus CheckRankDimForMatmulAlltoAll(gert::InferShapeContext* context,
                                                      MatmulAlltoAllShapeInfo& shape)
 {
-    const auto attrs = context->GetAttrs();
+    const gert::RuntimeAttrs* attrs = context->GetAttrs();
     const int64_t* rankDim = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_WORLD_SIZE);
     OPS_CHECK(rankDim == nullptr,
         CUBE_INNER_ERR_REPORT(context->GetNodeName(), "Rank number is null in matmul allto all."),
@@ -174,7 +174,7 @@ static ge::graphStatus InferShapeMatmulAlltoAll(gert::InferShapeContext* context
     OPS_CHECK_NULL_WITH_CONTEXT(context, x2Shape);
     const auto x1Shape = context->GetInputShape(INDEX_IN_X1);
     OPS_CHECK_NULL_WITH_CONTEXT(context, x1Shape);
-    const auto attrs = context->GetAttrs();
+    const gert::RuntimeAttrs* attrs = context->GetAttrs();
     OPS_CHECK_NULL_WITH_CONTEXT(context, attrs);
 
     MatmulAlltoAllShapeInfo shape;
@@ -215,7 +215,7 @@ static ge::graphStatus InferDataTypeMatmulAlltoAll(gert::InferDataTypeContext* c
     OPS_CHECK(context == nullptr, OP_LOGE(INNER_DEBUG, "Context is null."), return ge::GRAPH_FAILED);
     OP_LOGD(INNER_DEBUG, "Start to infer datatype of matmul allto all.");
 
-    const auto attrs = context->GetAttrs();
+    const gert::RuntimeAttrs* attrs = context->GetAttrs();
     OPS_CHECK_NULL_WITH_CONTEXT(context, attrs);
     const int64_t* x1QuantMode = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_X1_QUANT_MODE);
     const int64_t* x2QuantMode = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_X2_QUANT_MODE);
@@ -224,7 +224,7 @@ static ge::graphStatus InferDataTypeMatmulAlltoAll(gert::InferDataTypeContext* c
                && !(*x1QuantMode == X1_MXFP8_QUANT_NUM && *x2QuantMode == X2_MXFP8_QUANT_NUM),
                OP_LOGE(INNER_DEBUG,
                        "The x1 or x2 quant mode is invalid, x1QuantMode is: %ld, x2QuantMode is: %ld",
-                       x1QuantMode, x1QuantMode),
+                       *x1QuantMode, *x2QuantMode),
                return ge::GRAPH_FAILED);
 
     auto yType = ge::DataType::DT_UNDEFINED;

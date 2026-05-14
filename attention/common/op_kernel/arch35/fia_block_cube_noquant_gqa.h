@@ -76,8 +76,7 @@ public:
     static constexpr uint32_t dVBaseSize = (uint32_t)dVTemplateType;
     static constexpr uint32_t l1BaseD = 128;
     static constexpr LayOutTypeEnum LAYOUT = layout;
-    static constexpr bool isPa = (KvLayoutType > 0);
-    static constexpr bool PAGE_ATTENTION = isPa;
+    static constexpr bool PAGE_ATTENTION = (KvLayoutType > 0);
     static constexpr bool HAS_ROPE = hasRope;
     static constexpr bool HAS_PREFIX = enableKVPrefix;
     static constexpr bool BMM2_TOUB = bmm2Write2Ub;
@@ -87,7 +86,7 @@ public:
     static constexpr FixpipeConfig BMM2_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, bmm2Write2Ub};
     static constexpr GmFormat Q_FORMAT = GetQueryGmFormat<layout>();
     // static constexpr GmFormat KV_FORMAT = GetKVGmFormat<layout, KvLayoutType>();
-    static constexpr GmFormat KV_FORMAT = GetKVGmFormat<layout, KvLayoutType, isPa>();
+    static constexpr GmFormat KV_FORMAT = GetKVGmFormat<layout, KvLayoutType, PAGE_ATTENTION>();
 
     using ROPE_T = INPUT_T;
     using Q_T = INPUT_T;
@@ -99,7 +98,6 @@ public:
     using MM1_DBUF_T = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
     using MM2_ABUF_POLICY_T = BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
     using MM2_ABUF_T = Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
-    using MM2_DBUF_T = mm2ResPos;
 
     using L1KvType = typename KVL1BuffSel<s2BaseSize, dBaseSize>::Type;
     using L1QType = typename QL1BuffSel<dBaseSize>::Type;
@@ -108,6 +106,9 @@ public:
     using L0CType = typename L0CBuffSel<mBaseSize, s2BaseSize, dVBaseSize>::Type;
 
     using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
+
+    TPipe *tPipe;
+
     /* =====================GM变量(with layout)==================== */
     FaGmTensor<Q_T, Q_FORMAT> queryGm;
     FaGmTensor<KV_T, KV_FORMAT> keyGm;
@@ -145,13 +146,20 @@ public:
     /*============================================================================== */
     __aicore__ inline FANoQuantGqaBlockCube(ConstInfoX &constInfo) : constInfo(constInfo){};
 
-    __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> *l1BuffMgr)
+    __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> *l1BuffMgr,
+                                         __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
+                                         __gm__ uint8_t *blockTable, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
+                                         __gm__ uint8_t *actualSeqQlenAddr, __gm__ uint8_t *actualSeqKvlenAddr,
+                                         __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
+                                         __gm__ uint8_t *actualSharedPrefixLen)
     {
+        tPipe = pipe;
         l1BufferManagerPtr = l1BuffMgr;
-        InitLocalBuffer(pipe);
+        InitCubeInput(query, key, value, blockTable, queryRope, keyRope, actualSeqQlenAddr, actualSeqKvlenAddr,
+            keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen);
     }
 
-    __aicore__ inline void InitLocalBuffer(TPipe *tPipe)
+    __aicore__ inline void InitBuffers()
     {
         if constexpr (dBaseSize > 256) {
             /* D大于256的其他dtype场景，Bmm1左矩阵不开DB + 驻留 + 复用 + L1切K
@@ -201,7 +209,7 @@ public:
         if (constInfo.actualSeqLenKVSize != 0) {
             actualSeqLengthsGm.SetGlobalBuffer((__gm__ uint64_t *)actualSeqKvlenAddr, constInfo.actualSeqLenKVSize);
         }
-        if constexpr (isPa) {
+        if constexpr (PAGE_ATTENTION) {
             blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
         }
 
@@ -229,8 +237,9 @@ public:
                          constInfo.n2Size, constInfo.blockSize, constInfo.dSizeRope, keyRopeGm, keyRope);
         }
 
+
         if constexpr (HAS_PREFIX) {
-            static_assert(!isPa);
+            static_assert(!PAGE_ATTENTION);
             static_assert(GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD);
 
             keyPrefixGm.gmTensor.SetGlobalBuffer((__gm__ KV_T *)keySharedPrefix);
@@ -276,6 +285,21 @@ public:
         } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_TND) {
             kvGmTensor.offsetCalculator.Init(n2Size, headDim, actualSeqLengthsGm, actualLenDims);
         }
+    }
+
+    __aicore__ inline void AllocEventID()
+    {
+        // InitBuffers阶段已完成eventId申请和SetFlag，这里为空实现
+    }
+
+    __aicore__ inline void FreeEventID()
+    {
+        l1QBuffers.Uninit((*l1BufferManagerPtr));
+        l1KBuffers.Uninit((*l1BufferManagerPtr));
+        l1VBuffers.Uninit((*l1BufferManagerPtr));
+        mmL0ABuffers.Uninit(l0aBufferManager);
+        mmL0BBuffers.Uninit(l0bBufferManager);
+        mmL0CBuffers.Uninit(l0cBufferManager);
     }
 
     // copy query with full s1g and split D
@@ -938,6 +962,42 @@ public:
     }
 
 }; // FANoQuantGqaBlockCube
+
+template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::None,
+          S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
+          S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
+          DTemplateType dTemplateType = DTemplateType::Aligned128,
+          DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasRope = false, uint8_t KvLayoutType = 0,
+          bool enableKVPrefix = false, bool useDn = false, bool bmm2Write2Ub = true, bool splitD = false>
+class FANoQuantGqaBlockCubeDummy {
+public:
+    static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
+    static constexpr uint32_t s2BaseSize = (uint32_t)s2TemplateType;
+    static constexpr uint32_t dBaseSize = (uint32_t)dTemplateType;
+    static constexpr uint32_t dVBaseSize = (uint32_t)dVTemplateType;
+    // static constexpr uint32_t l1BaseD = 128;
+    static constexpr LayOutTypeEnum LAYOUT = layout;
+    static constexpr bool PAGE_ATTENTION = (KvLayoutType > 0);
+    static constexpr bool HAS_ROPE = hasRope;
+    static constexpr bool HAS_PREFIX = enableKVPrefix;
+    static constexpr bool BMM2_TOUB = bmm2Write2Ub;
+    static constexpr bool USE_DN = useDn;
+
+    using ROPE_T = INPUT_T;
+    using Q_T = INPUT_T;
+    using KV_T = INPUT_T;
+    using MM_T = T;
+    using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
+                                                Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
+
+    using MM1_DBUF_T = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
+    using MM2_ABUF_POLICY_T = BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
+    using MM2_ABUF_T = Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
+
+    using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
+    __aicore__ inline FANoQuantGqaBlockCubeDummy(ConstInfoX &constInfo) {};
+};
+
 } // namespace BaseApi
 
 #endif // FLASH_ATTENTION_NOQUANT_BLOCK_CUBE_H_

@@ -22,8 +22,8 @@
 
 #include "log/log.h"
 #include "log/error_code.h"
-#include "tiling_base/tiling_templates_registry.h"
-#include "tiling_base/tiling_type.h"
+#include "op_host/tiling_templates_registry.h"
+#include "op_host/tiling_type.h"
 #include "../../../op_kernel/arch35/quant_adaptive_sliding_window_templates/gqmm_tiling_key.h"
 using namespace Ops::Transformer::OpTiling;
 using namespace GroupedMatmul;
@@ -344,15 +344,17 @@ actual is %zu",
     auto wScaleLastDim = static_cast<uint64_t>(wScaleShape.GetDim(wScaleDimNum - 1));
     auto xScaleLastDim = static_cast<uint64_t>(xScaleShape.GetDim(xScaleDimNum - 1));
     auto expectedKDimValue = CeilDiv(inputParams_.kSize, MXFP_BASEK_FACTOR);
-    OP_CHECK_IF(
-        wScaleEDim != inputParams_.groupNum || wScaleKDim != expectedKDimValue || wScaleNDim != inputParams_.nSize ||
-            wScaleLastDim != MXFP_MULTI_BASE_SIZE,
-        OP_LOGE(inputParams_.opName,
-                "When split m in mx quant mode, the expected shape of scale is (%lu,%lu,%lu,2), but the actual \
+    if (wScaleKDim != 1 && wScaleNDim != 1) {
+        OP_CHECK_IF(
+            wScaleEDim != inputParams_.groupNum || wScaleKDim != expectedKDimValue ||
+                wScaleNDim != inputParams_.nSize || wScaleLastDim != MXFP_MULTI_BASE_SIZE,
+            OP_LOGE(inputParams_.opName,
+                    "When split m in mx quant mode, the expected shape of scale is (%lu,%lu,%lu,2), but the actual \
 is (%lu,%lu,%lu,%lu).",
-                inputParams_.groupNum, inputParams_.nSize, expectedKDimValue, wScaleEDim, wScaleNDim, wScaleKDim,
-                wScaleLastDim),
-        return false);
+                    inputParams_.groupNum, inputParams_.nSize, expectedKDimValue, wScaleEDim, wScaleNDim, wScaleKDim,
+                    wScaleLastDim),
+            return false);
+    }
     OP_CHECK_IF(
         xScaleMDim != inputParams_.mSize || xScaleKDim != expectedKDimValue || xScaleLastDim != MXFP_MULTI_BASE_SIZE,
         OP_LOGE(inputParams_.opName,
@@ -390,17 +392,21 @@ actual is %zu",
     auto wScaleKDim = static_cast<uint64_t>(
         inputParams_.transB ? wScaleShape.GetDim(wScaleDimNum - LAST_SECOND_DIM_INDEX) : wScaleShape.GetDim(0));
     auto expectedKDimValue = inputParams_.kSize / MXFP_BASEK_FACTOR + inputParams_.groupNum;
-    OP_CHECK_IF(!inputParams_.transA || inputParams_.transB,
-                OP_LOGE(inputParams_.opName, "When split m in mx quant mode, the expected transpose attrs of x and \
-weight are true and false, but the actual transpose attrs of x and weight are %d and %d.",
-                        inputParams_.transA, inputParams_.transB),
-                return false);
-    OP_CHECK_IF(
-        xScaleLastDim != MXFP_MULTI_BASE_SIZE || xScaleKDim != expectedKDimValue || xScaleMDim != inputParams_.mSize,
-        OP_LOGE(inputParams_.opName, "When split k in mx quant mode, the expected shape of pertokenScale is \
+    if (xScaleKDim != 1 && xScaleMDim != 1) {
+        OP_CHECK_IF(!inputParams_.transA || inputParams_.transB,
+                    OP_LOGE(inputParams_.opName, "When split k in mx quant mode, the expected transpose attrs of x and \
+    weight are true and false, but the actual transpose attrs of x and weight are %d and %d.",
+                            inputParams_.transA, inputParams_.transB),
+                    return false);
+        OP_CHECK_IF(
+            xScaleLastDim != MXFP_MULTI_BASE_SIZE || xScaleKDim != expectedKDimValue ||
+                xScaleMDim != inputParams_.mSize,
+            OP_LOGE(inputParams_.opName,
+                    "When split k in mx quant mode, the expected shape of pertokenScale is \
 (%lu,%lu,%lu), but the actual is (%lu,%lu,%lu).",
-                expectedKDimValue, inputParams_.mSize, MXFP_MULTI_BASE_SIZE, xScaleKDim, xScaleMDim, xScaleLastDim),
-        return false);
+                    expectedKDimValue, inputParams_.mSize, MXFP_MULTI_BASE_SIZE, xScaleKDim, xScaleMDim, xScaleLastDim),
+            return false);
+    }
     OP_CHECK_IF(
         wScaleLastDim != MXFP_MULTI_BASE_SIZE || wScaleKDim != expectedKDimValue || wScaleNDim != inputParams_.nSize,
         OP_LOGE(inputParams_.opName, "When split k in mx quant mode, the expected shape of scale is (%lu,%lu,%lu), \
@@ -769,9 +775,9 @@ bool GroupedQmmTiling::SetQuantMode(const gert::Shape &wScaleShape, const gert::
         auto &xScaleShape = xScaleStorageShape->GetStorageShape();
         auto xScaleDims = xScaleShape.GetDimNum();
         if (inputParams_.aDtype != ge::DT_INT8 &&
-            ((xScaleDims == 2 && xScaleShape[xScaleDims - 1] == 1) || // 2:（g,1) 2维
+            ((xScaleDims == 2 && xScaleShape[xScaleDims - 1] == 1) ||  // 2:（g,1) 2维
              (xScaleDims == 1 && static_cast<uint64_t>(xScaleShape[0]) == inputParams_.groupNum &&
-              inputParams_.groupNum != inputParams_.mSize))) {
+              (inputParams_.groupType == SPLIT_K || inputParams_.groupNum != inputParams_.mSize)))) {
             inputParams_.aQuantMode = optiling::QuantMode::PERTENSOR_MODE;
         } else {
             inputParams_.aQuantMode = optiling::QuantMode::PERTOKEN_MODE;

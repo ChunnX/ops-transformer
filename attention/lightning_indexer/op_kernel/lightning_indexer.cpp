@@ -21,7 +21,7 @@
     #include "arch35/lightning_indexer_kernel.h"
 
 #else
-    #include "arch32/lightning_indexer_kernel.h"
+    #include "arch22/lightning_indexer_kernel.h"
 #endif
 
 using namespace LIKernel;

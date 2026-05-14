@@ -89,8 +89,8 @@ public:
     static constexpr bool transA = TagToTrans<LayoutA>::value;
     static constexpr bool transB = TagToTrans<LayoutB>::value;
     static constexpr CubeFormat formatB = TagToFormat<LayoutB>::format;
-    static constexpr bool IS_FP4 = AscendC::IsSameType<AType, fp4x2_e2m1_t>::value ||
-                                   AscendC::IsSameType<AType, fp4x2_e1m2_t>::value;
+    static constexpr bool IS_FP4 =
+        AscendC::IsSameType<AType, fp4x2_e2m1_t>::value || AscendC::IsSameType<AType, fp4x2_e1m2_t>::value;
     static constexpr uint64_t MIN_STEP = IS_FP4 ? B4_MIN_STEP : B8_MIN_STEP;
     constexpr static uint64_t HALF_L0_SIZE = L0A_SIZE / DOUBLE_BUFFER_COUNT;
     constexpr static int32_t C0_SIZE = AscendC::AuxGetC0Size<AType>();
@@ -169,17 +169,16 @@ public:
         for (int32_t bufferId = 0; bufferId < l1BufNum_; bufferId++) {
             // 2 buffer: L1 space is : A0|B0|AScale0|BScale0|bias0|...|A1|B1|AScale1|BScale1|bias1|...
             // l1Offset represents element count
-            uint64_t l1Offset = IS_FP4
-                                    ? AscendC::TOTAL_L1_SIZE * (bufferId & 1)
-                                    : (AscendC::TOTAL_L1_SIZE >> 1) * (bufferId & 1);
+            uint64_t l1Offset =
+                IS_FP4 ? AscendC::TOTAL_L1_SIZE * (bufferId & 1) : (AscendC::TOTAL_L1_SIZE >> 1) * (bufferId & 1);
             l1BufferAOffset_[bufferId] = l1Offset + aL1OneBuffer_ * (bufferId >> 1);
             l1BufferBOffset_[bufferId] = l1Offset + aL1OneBuffer_ * (l1BufNum_ >> 1) + bL1OneBuffer_ * (bufferId >> 1);
         }
         for (int32_t bufferId = 0; bufferId < SCALE_BUFFER_NUM; bufferId++) {
             // l1BufferScaleAOffset_[bufferId]: byte count when B8, element count when B4
-            l1BufferScaleAOffset_[bufferId] = IS_FP4
-                ? ((l1BufferBOffset_[bufferId] + bL1OneBuffer_ * (l1BufNum_ >> 1)) >> 1)
-                : (l1BufferBOffset_[bufferId] + bL1OneBuffer_ * (l1BufNum_ >> 1));
+            l1BufferScaleAOffset_[bufferId] =
+                IS_FP4 ? ((l1BufferBOffset_[bufferId] + bL1OneBuffer_ * (l1BufNum_ >> 1)) >> 1) :
+                         (l1BufferBOffset_[bufferId] + bL1OneBuffer_ * (l1BufNum_ >> 1));
             l1BufferScaleBOffset_[bufferId] = l1BufferScaleAOffset_[bufferId] + scaleAL1OneBuffer_;
             l1BufferBiasOffset_[bufferId] = l1BufferScaleBOffset_[bufferId] + scaleBL1OneBuffer_;
         }
@@ -244,10 +243,6 @@ public:
                                             const AscendC::LocalTensor<BType> &bl1Local,
                                             const TileL1L0Param &tileL1L0Param)
     {
-        AscendC::GlobalTensor<uint8_t> bGlobalUInt8;
-        bGlobalUInt8.SetGlobalBuffer((__gm__ uint8_t *)bGlobal.GetPhyAddr());
-        auto bl1LocalUint8 = bl1Local.template ReinterpretCast<uint8_t>();
-
         AscendC::DataCopyExtParams dataCopyParams;
         AscendC::DataCopyPadExtParams<uint8_t> padParams;
         if constexpr (transB) {
@@ -275,7 +270,8 @@ public:
             }
             dataCopyParams.dstStride = tileL1L0Param.curPadBKL1 - curGmBKL1NZ;
         }
-        AscendC::DataCopyPad(bl1LocalUint8, bGlobalUInt8, dataCopyParams, padParams);
+        AscendC::DataCopyPad(bl1Local.template ReinterpretCast<uint8_t>(), bGlobal.template ReinterpretCast<uint8_t>(),
+                             dataCopyParams, padParams);
     }
 
     __aicore__ inline void InitA1(const AscendC::LocalTensor<AType> &al1Local, const TileL1L0Param &tileL1L0Param)
@@ -469,9 +465,8 @@ public:
         } else {
             loadDataParams.mStartPosition = Cgmct::Gemm::CeilDiv(kL0L1Off, AscendC::BLOCK_CUBE);
             loadDataParams.kStartPosition = 0;
-            if (((m1 & 1) == 0 && !(IS_FP4)) || \
-                     (IS_FP4 &&
-                      (Cgmct::Gemm::CeilDiv(tileL1L0Param.curM, AscendC::BLOCK_CUBE) & (B4_MIN_STEP - 1)) == 0)) {
+            if (((m1 & 1) == 0 && !(IS_FP4)) ||
+                (IS_FP4 && (Cgmct::Gemm::CeilDiv(tileL1L0Param.curM, AscendC::BLOCK_CUBE) & (B4_MIN_STEP - 1)) == 0)) {
                 loadDataParams.mStep = Cgmct::Gemm::CeilAlign(
                     Cgmct::Gemm::CeilDiv(tileL1L0Param.curKL0, AscendC::BLOCK_CUBE), MXFP_MULTI_BASE_SIZE);
             } else {
@@ -490,16 +485,14 @@ public:
         loadData2DMxParams.dstStride = loadData2DMxParams.yStep;
         AscendC::LoadData(l0aLocal, al1Local, scaleAl1Local, loadDataParams, loadData2DMxParams);
         if constexpr (transA) {
-            if (((m1 & 1) != 0 && !(IS_FP4)) || \
-                     (IS_FP4 &&
-                      (Cgmct::Gemm::CeilDiv(tileL1L0Param.curM, AscendC::BLOCK_CUBE) & (B4_MIN_STEP - 1)) != 0)) {
+            if (((m1 & 1) != 0 && !(IS_FP4)) ||
+                (IS_FP4 && (Cgmct::Gemm::CeilDiv(tileL1L0Param.curM, AscendC::BLOCK_CUBE) & (B4_MIN_STEP - 1)) != 0)) {
                 AscendC::PipeBarrier<PIPE_MTE1>();
                 AscendC::LocalTensor<AType> l0a = l0aLocal.template ReinterpretCast<AType>();
                 uint64_t loadTimes =
                     Cgmct::Gemm::CeilDiv(Cgmct::Gemm::CeilDiv(tileL1L0Param.curKL0, AscendC::BLOCK_CUBE), MIN_STEP);
                 for (uint64_t i = 1; i < loadTimes; i++) {
-                    loadDataParams.mStartPosition =
-                        MIN_STEP * i + Cgmct::Gemm::CeilDiv(kL0L1Off, AscendC::BLOCK_CUBE);
+                    loadDataParams.mStartPosition = MIN_STEP * i + Cgmct::Gemm::CeilDiv(kL0L1Off, AscendC::BLOCK_CUBE);
                     AscendC::LoadData(l0a[i * m1 * AscendC::BLOCK_CUBE * C0_SIZE], al1Local, loadDataParams);
                     AscendC::PipeBarrier<PIPE_MTE1>();
                 }
@@ -526,9 +519,8 @@ public:
         } else {
             loadDataParams.mStartPosition = Cgmct::Gemm::CeilDiv(kL0L1Off, AscendC::BLOCK_CUBE);
             loadDataParams.kStartPosition = 0;
-            if (((n1 & 1) == 0 && !(IS_FP4)) || \
-                     (IS_FP4 &&
-                      (Cgmct::Gemm::CeilDiv(tileL1L0Param.curN, AscendC::BLOCK_CUBE) & (B4_MIN_STEP - 1)) == 0)) {
+            if (((n1 & 1) == 0 && !(IS_FP4)) ||
+                (IS_FP4 && (Cgmct::Gemm::CeilDiv(tileL1L0Param.curN, AscendC::BLOCK_CUBE) & (B4_MIN_STEP - 1)) == 0)) {
                 loadDataParams.mStep = Cgmct::Gemm::CeilAlign(
                     Cgmct::Gemm::CeilDiv(tileL1L0Param.curKL0, AscendC::BLOCK_CUBE), EVEN_FACTOR);
             } else {
@@ -547,16 +539,14 @@ public:
         loadData2DMxParams.dstStride = loadData2DMxParams.yStep;
         AscendC::LoadData(l0bLocal, bl1Local, scaleBl1Local, loadDataParams, loadData2DMxParams);
         if constexpr (!transB) {
-            if (((n1 & 1) != 0 && !(IS_FP4)) || \
-                     (IS_FP4 &&
-                      (Cgmct::Gemm::CeilDiv(tileL1L0Param.curN, AscendC::BLOCK_CUBE) & (B4_MIN_STEP - 1)) != 0)) {
+            if (((n1 & 1) != 0 && !(IS_FP4)) ||
+                (IS_FP4 && (Cgmct::Gemm::CeilDiv(tileL1L0Param.curN, AscendC::BLOCK_CUBE) & (B4_MIN_STEP - 1)) != 0)) {
                 AscendC::PipeBarrier<PIPE_MTE1>();
                 AscendC::LocalTensor<BType> l0b = l0bLocal.template ReinterpretCast<BType>();
                 uint64_t loadTimes =
                     Cgmct::Gemm::CeilDiv(Cgmct::Gemm::CeilDiv(tileL1L0Param.curKL0, AscendC::BLOCK_CUBE), MIN_STEP);
                 for (uint64_t i = 1; i < loadTimes; i++) {
-                    loadDataParams.mStartPosition =
-                        MIN_STEP * i + Cgmct::Gemm::CeilDiv(kL0L1Off, AscendC::BLOCK_CUBE);
+                    loadDataParams.mStartPosition = MIN_STEP * i + Cgmct::Gemm::CeilDiv(kL0L1Off, AscendC::BLOCK_CUBE);
                     AscendC::LoadData(l0b[i * n1 * AscendC::BLOCK_CUBE * C0_SIZE], bl1Local, loadDataParams);
                     AscendC::PipeBarrier<PIPE_MTE1>();
                 }
@@ -651,8 +641,8 @@ public:
             InitB1(bL1Local_[l1BufferBOffset_[l1BufId]], tileL1L0Param);
         }
         if constexpr (formatB == CubeFormat::NZ) {
-            uint64_t offsetB =
-                transB ? kL1Offset * Cgmct::Gemm::CeilAlign(n_, AscendC::BLOCK_CUBE) : kL1Offset * C0_SIZE;
+            uint64_t offsetB = transB ? kL1Offset * ((n_ + AscendC::BLOCK_CUBE - 1) & (~(AscendC::BLOCK_CUBE - 1))) :
+                                        kL1Offset * C0_SIZE;
             CopyInB1WeightNz(bGlobal[offsetB], bL1Local_[l1BufferBOffset_[l1BufId]], tileL1L0Param);
         } else {
             uint64_t offsetB = transB ? kL1Offset : kL1Offset * n_;

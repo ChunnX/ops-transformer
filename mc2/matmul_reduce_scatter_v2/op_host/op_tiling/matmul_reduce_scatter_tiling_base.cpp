@@ -186,10 +186,10 @@ void MatmulReduceScatterTilingBase::SetStorageAWorkSpaceSize(Mc2Tiling::RCSTilin
         mmResultLen_ = static_cast<uint64_t>(rcsCfg.rankM) * static_cast<uint64_t>(rcsCfg.rankN) *
                                              static_cast<uint64_t>(args_.outputDtypeSize);
         mmResultLen_ = mc2tiling::AlignUp<uint64_t>(mmResultLen_, 512); // 512 is used to get gm
-        OP_LOGD("MatmulReduceScatter", " reduce scatter gmcFloat size %lu", mmResultLen_);
+        OP_LOGD("MatmulReduceScatter", "reduce scatter gmcFloat size %lu", mmResultLen_);
         rcsCfg.nd2NzWorkLen = 0;
         rcsCfg.cToFloatLen = mmResultLen_;
-        OP_LOGD("MatmulReduceScatter", " reduce scatter storage_a size %lu", mmResultLen_);
+        OP_LOGD("MatmulReduceScatter", "reduce scatter storage_a size %lu", mmResultLen_);
     }
 
     rcsCfg.biasLen = 0;

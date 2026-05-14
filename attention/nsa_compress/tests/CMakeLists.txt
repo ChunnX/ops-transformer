@@ -30,7 +30,7 @@ set(_NSA_OpTilingPrivateIncludesExt)
 
 set(_NSA_OpKernelTilingDataDefH
         # 公共
-        ${OPS_TRANSFORMER_DIR}/common/include/tiling_base/data_copy_transpose_tiling_def.h
+        ${OPS_TRANSFORMER_DIR}/common/include/op_host/data_copy_transpose_tiling_def.h
         # NSA
         ${OPS_TRANSFORMER_DIR}/attention/nsa_compress/op_host/nsa_compress_tiling.h
 )

@@ -49,6 +49,7 @@ public:
     __aicore__ inline void Process();
 private:
     __aicore__ inline void ProcessMainLoop();
+    __aicore__ inline void ParseTilingData(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedKv);
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV, __gm__ uint8_t *cmpSparseIndices,
         __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *cuSeqlensQ,
         __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv, __gm__ uint8_t *sinks, __gm__ uint8_t *workspace,
@@ -78,7 +79,6 @@ private:
     BufferManager<BufferType::L1> l1BufferManager;
     BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers;
     BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1RightBuffers;
-    CVSharedParams sharedParams;
     /* GM信息 */
     GlobalTensor<uint32_t> metadataGm;
     __gm__ int32_t *cuSeqlensQAddr = nullptr;
@@ -110,6 +110,7 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
     if ASCEND_IS_AIC {
         this->aicIdx = GetBlockIdx();
         constInfo.aivIdx = 0;
+        this->tilingData = tiling;
     } else {
         constInfo.aivIdx = GetBlockIdx();
         this->aicIdx = constInfo.aivIdx >> 1;
@@ -125,32 +126,76 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
     constInfo.s2BaseSize = 128;
 
     this->pipe = tPipe;
-    vecBlock.InitVecBlock(tPipe, this->tilingData, this->sharedParams, this->aicIdx, constInfo.subBlockIdx, cuSeqlensQ, sequsedKv);
-    if ASCEND_IS_AIV {
-        constInfo.bSize = this->sharedParams.bSize;
-        constInfo.gSize = this->sharedParams.gSize;
-        constInfo.s1Size = this->sharedParams.s1Size;
-        constInfo.dSizeV = this->sharedParams.dSize;
-        constInfo.needInit = this->sharedParams.needInit;
-    }
+    this->ParseTilingData(cuSeqlensQ, sequsedKv);
+    vecBlock.InitVecBlock(tPipe, cuSeqlensQ, sequsedKv);
     vecBlock.CleanOutput(attentionOut, constInfo);
     /* cube侧不依赖sharedParams的scalar前置 */
     InitMMResBuf(workspace);
-    if ASCEND_IS_AIC {
-        cubeBlock.InitCubeBlock(pipe, &l1BufferManager, query);
-        /* wait kfc message */
-        CrossCoreWaitFlag<SYNC_MODE, PIPE_S>(15);
-        auto tempTilingSSbuf = reinterpret_cast<__ssbuf__ uint32_t*>(0); // 从ssbuf的0地址开始拷贝
-        auto tempTiling = reinterpret_cast<uint32_t *>(&sharedParams);
-        #pragma unroll
-        for (int i = 0; i < sizeof(CVSharedParams) / sizeof(uint32_t); ++i, ++tempTilingSSbuf, ++tempTiling) {
-            *tempTiling = *tempTilingSSbuf;
-        }
-    }
+    cubeBlock.InitCubeBlock(pipe, l1BufferManager, query);
     this->ComputeConstexpr();
     this->InitGlobalBuffer(query, oriKV, cmpKV, cmpSparseIndices, oriBlockTable, cmpBlockTable, cuSeqlensQ, sequsedQ, sequsedKv, sinks,
         workspace, tiling, tPipe); // gm设置
     this->InitLocalBuffer();
+}
+
+template <typename CubeBlockType, typename VecBlockType>
+__aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType>::ParseTilingData(
+    __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedKv)
+{
+    auto &sparseAttnSharedkvBaseParams = this->tilingData->baseParams;
+    constInfo.bSize = sparseAttnSharedkvBaseParams.batchSize;
+    constInfo.n2Size = 1;
+    constInfo.gSize = sparseAttnSharedkvBaseParams.nNumOfQInOneGroup;
+    constInfo.s1Size = sparseAttnSharedkvBaseParams.qSeqSize;
+    constInfo.s2Size = sparseAttnSharedkvBaseParams.kvSeqSize;
+    constInfo.sparseBlockCount = sparseAttnSharedkvBaseParams.sparseBlockCount;
+    constInfo.cmpRatio = sparseAttnSharedkvBaseParams.cmpRatio;
+    constInfo.oriWinLeft = sparseAttnSharedkvBaseParams.oriWinLeft;
+    constInfo.oriWinRight = sparseAttnSharedkvBaseParams.oriWinRight;
+    constInfo.tileSize = sparseAttnSharedkvBaseParams.tileSize;
+    constInfo.dSizeRope = sparseAttnSharedkvBaseParams.ropeHeadDim;
+    constInfo.softmaxScale = sparseAttnSharedkvBaseParams.softmaxScale;
+    constInfo.oriKvStride = sparseAttnSharedkvBaseParams.oriKvStride;
+    constInfo.cmpKvStride = sparseAttnSharedkvBaseParams.cmpKvStride;
+    constInfo.dSize = sparseAttnSharedkvBaseParams.dSize;
+    constInfo.dSizeV = constInfo.dSize;
+    constInfo.dSizeVInput = sparseAttnSharedkvBaseParams.dSizeVInput;
+    constInfo.dSizeNope = constInfo.dSize - constInfo.dSizeRope;
+    constInfo.sparseBlockSize = 1;
+    constInfo.actualSeqLenSize = constInfo.bSize + 1;
+    constInfo.actualSeqLenKVSize = constInfo.bSize;
+
+    // pageAttention
+    if constexpr (isPa) {
+        constInfo.oriBlockSize = sparseAttnSharedkvBaseParams.paOriBlockSize;
+        constInfo.cmpBlockSize = sparseAttnSharedkvBaseParams.paCmpBlockSize;
+        constInfo.oriMaxBlockNumPerBatch = sparseAttnSharedkvBaseParams.oriMaxBlockNumPerBatch;
+        constInfo.cmpMaxBlockNumPerBatch = sparseAttnSharedkvBaseParams.cmpMaxBlockNumPerBatch;
+    }
+    
+    // actQ->TND, actKV pa场景任意layout均有
+    constInfo.isActualLenDimsKVNull = false;
+
+    constInfo.needInit = 0;
+    for (uint32_t bIdx = 0; bIdx < constInfo.bSize; bIdx++) {
+        int64_t s2Size;
+        GlobalTensor<int32_t> actualSeqLengthsKVGm;
+        actualSeqLengthsKVGm.SetGlobalBuffer((__gm__ int32_t *)sequsedKv);
+        s2Size = actualSeqLengthsKVGm.GetValue(bIdx);
+    
+        int64_t s1Size;
+        if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
+            GlobalTensor<int32_t> cuSeqlensQGm;
+            cuSeqlensQGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensQ);
+            s1Size = cuSeqlensQGm.GetValue(bIdx + 1) - cuSeqlensQGm.GetValue(bIdx);
+        } else {
+            s1Size = constInfo.s1Size;
+        }
+        if (s1Size > s2Size) {
+            constInfo.needInit = 1;
+            break;
+        }
+    }
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -215,26 +260,6 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType>::ComputeConstexpr()
 {
-    // 计算轴的乘积
-    if ASCEND_IS_AIC {
-        constInfo.bSize = this->sharedParams.bSize;
-        constInfo.gSize = this->sharedParams.gSize;
-        constInfo.s1Size = this->sharedParams.s1Size;
-        constInfo.dSizeV = this->sharedParams.dSize;
-        constInfo.needInit = this->sharedParams.needInit;
-    }
-    constInfo.n2Size = sharedParams.n2Size;
-    constInfo.s2Size = sharedParams.s2Size;
-    constInfo.dSize = sharedParams.dSize;
-    constInfo.dSizeVInput = sharedParams.dSizeVInput;
-    constInfo.dSizeRope = sharedParams.dSizeRope;
-    constInfo.dSizeNope = constInfo.dSize - constInfo.dSizeRope;
-    constInfo.tileSize = sharedParams.tileSize;
-    constInfo.sparseBlockCount = sharedParams.sparseBlockCount;
-    constInfo.sparseBlockSize = 1;
-    constInfo.cmpRatio = sharedParams.cmpRatio;
-    constInfo.oriWinLeft = sharedParams.oriWinLeft;
-    constInfo.oriWinRight = sharedParams.oriWinRight;
     constInfo.s1S2 = constInfo.s1Size * constInfo.s2Size;
     constInfo.gS1 = constInfo.gSize * constInfo.s1Size;
     constInfo.n2G = constInfo.n2Size * constInfo.gSize;
@@ -265,32 +290,13 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
             constInfo.attentionOutStride = (constInfo.n2G - constInfo.gSize) * constInfo.dSizeV * sizeof(OUTPUT_T);
         }
     }
-    if ASCEND_IS_AIV {
-        constInfo.softmaxScale = sharedParams.softmaxScale;
-        constInfo.oriKvStride = sharedParams.oriKvStride; 
-        constInfo.cmpKvStride = sharedParams.cmpKvStride; 
-        constInfo.oriBlockSize = sharedParams.oriBlockSize;
-        constInfo.cmpBlockSize = sharedParams.cmpBlockSize;
-        constInfo.oriMaxBlockNumPerBatch = sharedParams.oriMaxBlockNumPerBatch;
-        constInfo.cmpMaxBlockNumPerBatch = sharedParams.cmpMaxBlockNumPerBatch;
-    }
-
-    InitUniqueConstInfo();
-}
-
-template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType>::InitUniqueConstInfo()
-{
-    this->constInfo.actualSeqLenSize = this->sharedParams.bSize + 1;
-    this->constInfo.actualSeqLenKVSize = this->sharedParams.bSize;
-    this->constInfo.isActualLenDimsKVNull = static_cast<bool>(this->sharedParams.isActualSeqLengthsKVNull);
 }
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType>::Process()
 {
     // SyncAll Cube和Vector都需要调用
-    if (this->sharedParams.needInit) {
+    if (this->constInfo.needInit) {
         SyncAll<false>();
     }
     ProcessMainLoop();
