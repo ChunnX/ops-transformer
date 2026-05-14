@@ -46,8 +46,8 @@ __global__ __aicore__ void flash_attn(
 
     // dtype 分发 → flash_attn_kernel_run (类型推导 + kernel实例化执行)
     if constexpr (inOutLayoutType == InOutLayoutType_TND_TND) {
-        dc_preload(reinterpret_cast<__gm__ uint64_t*>(actualSeqLengthsQ), 0);
-        dc_preload(reinterpret_cast<__gm__ uint64_t*>(actualSeqLengthsKv), 0);
+        dc_preload(reinterpret_cast<__gm__ uint64_t*>(cuSeqLensQ), 0);
+        dc_preload(reinterpret_cast<__gm__ uint64_t*>(cuSeqLensKv), 0);
     }
     
     #if (ORIG_DTYPE_Q == DT_BF16)
