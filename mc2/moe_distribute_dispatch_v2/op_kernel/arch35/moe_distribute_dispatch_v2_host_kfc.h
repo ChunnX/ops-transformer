@@ -26,7 +26,8 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "moe_distribute_dispatch_v2_tiling.h"
 #include "moe_distribute_v2_constant.h"
-#include "moe_distribute_dispatch_v2_quant.h"
+#include "moe_distribute_quant_layout.h"
+#include "moe_distribute_quant_kernel.h"
 #include "moe_distribute_elastic.h"
 
 #include "moe_distribute_v2_base.h"
@@ -83,6 +84,7 @@ enum class CommMode {
 using namespace AscendC;
 using namespace MoeDistributeV2Base;
 using namespace Mc2Kernel;
+using namespace Mc2Kernel::MoeDistributeQuant;
 
 #define TemplateDispatchKFCTypeClass                                                                                   \
     typename XType, typename ExpandXOutType, int32_t QuantMode, bool IsSmoothScaleExist, bool IsNeedAllgather
@@ -101,7 +103,6 @@ public:
     using XInType = XType;
     using XOutType = ExpandXOutType;
 #endif
-#define TemplateDispatchKFCQuantArgs XInType, ExpandXOutType, XOutType, QuantMode, IsSmoothScaleExist, IsNeedAllgather
     __aicore__ inline MoeDistributeDispatchV2HostKfc(){};
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR expertScales,
                                 GM_ADDR elasticInfo, GM_ADDR expandXOut, GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut,
@@ -425,8 +426,6 @@ private:
     DataCopyParams xCopyParams_;
     DataCopyExtParams hCommuCopyOutParams_;
     DataCopyParams doWindowCopyOutParams_;
-
-    MoeDistributeDispatchV2Quant<TemplateDispatchKFCQuantArgs> quantInst_;
 };
 
 template <TemplateDispatchKFCTypeClass>
@@ -588,8 +587,20 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
 {
     // 量化使用
     hOutSize_ = axisH_ * sizeof(ExpandXOutType);
-    quantInst_.QuantInit(hAlignSize_, hOutSize_, scaleInBytes_, tokenQuantAlign_, hScaleIdxSize_, scaleOutBytes_,
-                         axisH_);
+
+    using QLayout = QuantLayout<XInType, XOutType, QuantMode, IsSmoothScaleExist>;
+    uint32_t outTokenBytes = QLayout::OutTokenBytes(axisH_);
+    uint32_t outScaleBytes;
+    if constexpr (QuantMode == UNQUANT && IsSmoothScaleExist) {
+        outScaleBytes = scaleInBytes_;
+    } else {
+        outScaleBytes = QLayout::OutScaleBytes(axisH_);
+    }
+    hAlignSize_ = Ceil(axisH_ * sizeof(XInType), UB_ALIGN) * UB_ALIGN;
+    hOutSizeAlign_ = Ceil(outTokenBytes + outScaleBytes, UB_ALIGN) * UB_ALIGN;
+    tokenQuantAlign_ = hOutSizeAlign_ / sizeof(int32_t);
+    hScaleIdxSize_ = hOutSizeAlign_ + EXPAND_IDX_INFO * sizeof(int32_t);
+    scaleOutBytes_ = outScaleBytes;
 
     hScaleIdxSize_ = Ceil(hScaleIdxSize_, UB_ALIGN) * UB_ALIGN;
     expertScaleAlign_ = hScaleIdxSize_ / sizeof(uint32_t);
@@ -1444,7 +1455,6 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         floatLocalTemp_ = receiveDataCastFloatBuf_.Get<float>();
         smoothScalesTensor_ = smoothScalesBuf_.Get<float>();
     }
-    quantInst_.SetQuantInitParams(floatLocalTemp_, smoothScalesTensor_, smoothScalesBuf_, dynamicScalesOutGMTensor_);
 }
 
 template <TemplateDispatchKFCTypeClass>
@@ -1580,7 +1590,19 @@ MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFunc>::ProcessToken(GM_ADD
     insertFlagTensor_ = xTempQueue_.DeQue<ExpandXOutType>();
     if constexpr (QuantMode > UNQUANT) { // 如果是量化模式
         xOutTensor_ = xOutQueue_.AllocTensor<ExpandXOutType>();
-        quantInst_.QuantProcess(xOutTensor_, tokenData_, expertIndex, scalesCount_, scalesGMTensor_); // 量化
+        LocalTensor<uint8_t> workUb = smoothScalesTensor_.template ReinterpretCast<uint8_t>();
+        LocalTensor<uint8_t> outScaleUb = xOutTensor_.template ReinterpretCast<uint8_t>();
+
+        QuantArgs args{
+            .expertIndex = expertIndex,
+            .scalesCount = scalesCount_,
+            .currentTokenIndex = tokenIndex,
+            .scalesInGM = scalesGMTensor_,
+            .dynamicScalesOutGM = dynamicScalesOutGMTensor_,
+        };
+
+        QuantKernel<XInType, XOutType, ExpandXOutType, QuantMode, IsSmoothScaleExist>::Process(
+            xOutTensor_, outScaleUb, tokenData_, workUb, args, axisH_);
         xOutQueue_.EnQue(xOutTensor_);
         xOutTensor_ = xOutQueue_.DeQue<ExpandXOutType>();
         FillTriple(xOutTensor_, srcRankIndex, tokenIndex, topKIndex, expertScale);
@@ -2081,7 +2103,15 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     DataCopyPad(xTmpTensor_, dataFlagGlobal[expertFinishNumTensor_(index) * hCommuSize_ / sizeof(ExpandXOutType)],
                 srcTokenCopyParams, srcTokenPadParams);
     SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
-    quantInst_.CopyScalesToOut(dstPosition, scaleOutBytes_, xTmpTensor_, scalesCopyParams);
+    QuantArgs argsScale{
+        .expertIndex = 0,
+        .scalesCount = scalesCount_,
+        .currentTokenIndex = dstPosition,
+        .scalesInGM = scalesGMTensor_,
+        .dynamicScalesOutGM = dynamicScalesOutGMTensor_,
+    };
+    QuantKernel<XInType, XOutType, ExpandXOutType, QuantMode, IsSmoothScaleExist>::WriteScaleToGM(
+        dynamicScalesOutGMTensor_, xTmpTensor_, dstPosition, argsScale, axisH_, scaleOutBytes_, scalesCopyParams);
     DataCopyPad(expandXOutGlobal, xTmpTensor_, tokenCopyParams); // 拷贝token数据
     DataCopyPad(expandIdxGMTensor_[dstPosition * EXPAND_IDX_INFO], xOutInt32Tensor[tokenQuantAlign_],
                 expandIdxCopyParams); // 拷贝三元组信息
