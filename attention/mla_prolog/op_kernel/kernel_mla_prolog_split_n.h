@@ -1541,6 +1541,8 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::RmsNormAndScatterCkv(LocalTen
             inputLocal, mmCkvKrResGm_[rmsNormAndScatterCkvParams.offset], rmsnormGammaCkvLocal_, dequantScaleWDkvKrLocal_,
             dequantScaleXLocal, sharedBuf, rmsNormParams);
         
+        SetFlag<HardEvent::MTE3_V>(EVENT_ID1);
+        WaitFlag<HardEvent::MTE3_V>(EVENT_ID1);
         SetFlag<HardEvent::V_MTE2>(EVENT_ID0);
         WaitFlag<HardEvent::V_MTE2>(EVENT_ID0);
         float kNopeClipAlpha = kNopeClipAlphaGm_.GetValue(0);
