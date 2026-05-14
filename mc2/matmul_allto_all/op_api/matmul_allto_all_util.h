@@ -83,9 +83,6 @@ bool CheckTransposeX1(bool transposeX1);
 // 校验通信域名的字符串长度是否符合要求
 bool CheckGroupLength(const char *group);
 
-// 校验通信引擎参数是否合法
-aclnnStatus CheckCommModeStr(const char *commMode);
-
 // 校验MatmulAlltoAll和QuantMatmulAlltoAll输入属性shape
 bool CheckShapeMMAA(const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional, bool transposeX2, const aclTensor* output);
 // 校验AlltoAllMatmul和AlltoAllQuantMatmul输入属性shape
