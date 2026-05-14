@@ -23,10 +23,6 @@
 
 using namespace op;
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 namespace {
 
 template <bool IsInplace>
@@ -141,6 +137,10 @@ aclnnStatus InplaceFusedCausalConv1dCommonProcess(
 }
 
 } // namespace
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 // ============================================
 // Non-inplace L2 two-phase APIs
