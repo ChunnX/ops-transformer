@@ -30,6 +30,7 @@ extern "C" {
  * @param [in] biasOptional: 可选输入张量，偏置项。
  * @param [in] alltoAllAxesOptional: all2all做数据交换的方向。
  * @param [in] group: 通信域标识，用于标识不同的通信组。
+ * @param [in] commMode: 通信引擎参数。
  * @param [in] transposeX1: 是否对x1转置。
  * @param [in] transposeX2: 是否对x2转置。
  * @param [out] output: 矩阵乘法的输出结果。
@@ -40,7 +41,7 @@ extern "C" {
  */
 __attribute__((visibility("default"))) aclnnStatus aclnnMatmulAlltoAllV2GetWorkspaceSize(
     const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
-    const aclIntArray* alltoAllAxesOptional, const char *group,
+    const aclIntArray* alltoAllAxesOptional, const char *group, const char *commMode,
     bool transposeX1, bool transposeX2, const aclTensor *output,
     uint64_t *workspaceSize, aclOpExecutor **executor);
 
