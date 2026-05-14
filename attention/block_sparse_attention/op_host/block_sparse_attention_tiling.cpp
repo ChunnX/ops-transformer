@@ -104,9 +104,15 @@ std::unordered_map<std::string, std::string> inputLayoutMapQ2Kv = {
 
 std::unordered_map<ge::DataType, std::string> DataTypeToStringMap = {
     {ge::DT_FLOAT8_E4M3FN, "ge::DT_FLOAT8_E4M3FN"},
-    {ge::DT_BF16, "DT_BF16"},
+    {ge::DT_BF16, "DT_BFLOAT16"},
     {ge::DT_FLOAT16, "DT_FLOAT16"},
-    {ge::DT_FLOAT, "DT_FLOAT"}
+    {ge::DT_FLOAT, "DT_FLOAT"},
+    {ge::DT_INT8, "DT_INT8"},
+    {ge::DT_INT16, "DT_INT16"},
+    {ge::DT_INT32, "DT_INT32"},
+    {ge::DT_INT64, "DT_INT64"},
+    {ge::DT_BOOL, "DT_BOOL"},
+    {ge::DT_DOUBLE, "DT_DOUBLE"}
 };
 
 static std::string DataTypeToString(ge::DataType dataType)
@@ -653,14 +659,17 @@ ge::graphStatus BSATiling::CheckBlockShapeQuantContraint(gert::TilingContext *bs
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus BSATiling::CheckAllInputShape(gert::TilingContext *bsaContext)
+ge::graphStatus BSATiling::CheckAllInputInfo(gert::TilingContext *bsaContext)
 {
     int parameterNum = 9;
     for (uint32_t parameterIndex = 0; parameterIndex < parameterNum; parameterIndex++) {
         auto parameterTensor = bsaContext->GetOptionalInputTensor(parameterIndex);
         bool isParameterNull = parameterTensor == nullptr;
-        std::string isParameterNullString =  isParameterNull? "is null":"is not null";
-        std::cout<< "tkd parameter index: " << parameterIndex << " " << isParameterNullString << std::endl;
+        std::string isParameterNullString = isParameterNull ? "is null" : "is not null";
+        std::cout << "tkd parameter index: " << parameterIndex << " " << isParameterNullString << std::endl;
+        auto parameterDtype = bsaContext->GetInputDesc(parameterIndex)->GetDataType();
+        std::cout << "tkd parameter index: " << parameterIndex << " ,dtype: " << DataTypeToStringMap(parameterDtype)
+                  << std::endl;
         auto parameterShape = bsaContext->GetInputShape(parameterIndex);
         int64_t parameterDimNum = parameterShape->GetStorageShape().GetDimNum();
         std::cout << "tkd parameter index: " << parameterIndex << " ,dimNum: " << parameterDimNum << std::endl;
@@ -682,7 +691,7 @@ ge::graphStatus BSATiling::ParseOptionalTensors(gert::TilingContext *bsaContext)
         return ge::GRAPH_FAILED;
     }
 
-    CheckAllInputShape(bsaContext);
+    CheckAllInputInfo(bsaContext);
     if (socVer_ == SOC_VER_950_CODE) {
         printf("tkd ParseOptionalTensors if (socVer_ == SOC_VER_950_CODE)\n");
         if (ValidateQDequantScale(bsaContext) != ge::GRAPH_SUCCESS ||
