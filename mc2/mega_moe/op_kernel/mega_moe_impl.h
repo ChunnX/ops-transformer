@@ -46,11 +46,12 @@ constexpr uint32_t MAX_SINGLE_MN = 128 * 256;
 constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM = (MAX_SINGLE_MN + 31U) / ALIGN32 * ALIGN32;
 
 // GroupMatmulSwigluQuant - GMM1 + SwiGLU + Quant
+// coreInGroup / coresPerWave 控制本核在当前 wave 内的分片任务；多组核之间可并行处理不同的 wave
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB>
 __aicore__ inline void GroupMatmulSwigluQuant(
     BlockEpilogueSwigluMxQuant<ElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true>& epilogueOp,
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
-    const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom)
+    const GMMAddrInfo& gmmAddrInfo, uint32_t coreInGroup, uint32_t coresPerWave, int32_t& vecSetSyncCom)
 {
     uint32_t m = Get<M_VALUE>(problemShape);
     uint32_t n = Get<N_VALUE>(problemShape);
@@ -59,8 +60,6 @@ __aicore__ inline void GroupMatmulSwigluQuant(
 
     epilogueOp.UpdateNextProblem({m, outputN, k, 0});
 
-    uint32_t blockNum = GetBlockNum();
-    uint32_t blockIdx = GetBlockIdx() / GetTaskRation();
     uint32_t dispatchBlockNumPerEP = params.tilingData->blockNumPerEP;
 
     GlobalTensor<int32_t> groupFlagListGm2;
@@ -135,9 +134,9 @@ __aicore__ inline void GroupMatmulSwigluQuant(
         {m, outputN, k},
         BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M), static_cast<int64_t>(L1_TILE_N))});
     uint32_t tileNum = scheduler.GetTileNum();
-    uint32_t startLoopIdx = (blockIdx < startBlockIdx ? blockIdx + blockNum : blockIdx) - startBlockIdx;
 
-    for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += blockNum) {
+    // 本核负责本 wave 内 loopIdx ∈ {coreInGroup, coreInGroup + coresPerWave, ...} 的 tile
+    for (uint32_t loopIdx = coreInGroup; loopIdx < tileNum; loopIdx += coresPerWave) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
         auto actualShape = scheduler.GetBlockShape(blockCoord);
 
@@ -146,7 +145,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
         uint32_t kLoc = Get<K_VALUE>(blockCoord);
 
         if constexpr (g_coreType == AscendC::AIC) {
-            if (loopIdx == startLoopIdx) {
+            if (loopIdx == coreInGroup) {
                 uint32_t targetValue = params.tilingData->epWorldSize * dispatchBlockNumPerEP;
                 __gm__ int32_t* flagValueAddr = (__gm__ int32_t*)groupFlagListGm2.GetPhyAddr();
                 while (targetValue != AscendC::ReadGmByPassDCache(flagValueAddr)) {
@@ -204,16 +203,15 @@ __aicore__ inline void GroupMatmulSwigluQuant(
             NotifyCube();
         }
     }
-    startBlockIdx = (startBlockIdx + tileNum) % blockNum;
 }
 
 // GroupMatmul2 - GMM2矩阵乘法，直接输出到GM（参考kernel_qbmm_mx.h的做法）
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB>
 __aicore__ inline void GroupMatmul2(
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
-    const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom2, uint32_t groupIdx,
-    uint16_t& pingpongIdx, int32_t rankId, LocalTensor<ElementC> combineUbTensor, uint32_t expertIdx,
-    uint64_t waveRowOffset)
+    const GMMAddrInfo& gmmAddrInfo, uint32_t coreInGroup, uint32_t coresPerWave, int32_t& vecSetSyncCom2,
+    uint32_t groupIdx, uint16_t& pingpongIdx, int32_t rankId, LocalTensor<ElementC> combineUbTensor,
+    uint32_t expertIdx, uint64_t waveRowOffset)
 {
     GlobalTensor<uint8_t> gmAGt, gmBGt, gmScaleAGt, gmScaleBGt;
     gmAGt.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(gmmAddrInfo.aGlobal));
@@ -225,7 +223,7 @@ __aicore__ inline void GroupMatmul2(
     uint32_t n = Get<K_VALUE>(problemShape);
     uint32_t k = Get<N_VALUE>(problemShape) / SWIGLU_N_HALF;
 
-    uint32_t blockNum = GetBlockNum();
+    // 绝对的 cube 核 id，用于 rowReadyFlags 这种逐核计数器
     uint32_t blockIdx = GetBlockIdx() / GetTaskRation();
 
     GlobalTensor<int32_t> groupFlagListGm;
@@ -306,10 +304,10 @@ __aicore__ inline void GroupMatmul2(
     BlockScheduler scheduler(
         {m, n, k},
         BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M), static_cast<int64_t>(L1_TILE_N))});
-    uint32_t startLoopIdx = (blockIdx < startBlockIdx ? blockIdx + blockNum : blockIdx) - startBlockIdx;
     uint32_t tileNum = scheduler.GetTileNum();
 
-    for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += blockNum) {
+    // 本核负责本 wave 内 loopIdx ∈ {coreInGroup, coreInGroup + coresPerWave, ...} 的 tile
+    for (uint32_t loopIdx = coreInGroup; loopIdx < tileNum; loopIdx += coresPerWave) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
         auto actualShape = scheduler.GetBlockShape(blockCoord);
 
@@ -319,7 +317,7 @@ __aicore__ inline void GroupMatmul2(
 
         if constexpr (g_coreType == AscendC::AIC) {
             // AIC: 执行gmm2计算
-            if (loopIdx == startLoopIdx) {
+            if (loopIdx == coreInGroup) {
                 BlockScheduler gmmBlockScheduler(
                     {m, k, n},
                     BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M),
@@ -370,8 +368,6 @@ __aicore__ inline void GroupMatmul2(
                 gmmAddrInfo.gmm2OutGlobal, params, ubBuffer, actualShape, waveRowOffset);
         }
     }
-
-    startBlockIdx = (startBlockIdx + tileNum) % blockNum;
 }
 
 } // namespace MegaMoeImpl

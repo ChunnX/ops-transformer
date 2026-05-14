@@ -749,7 +749,25 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     // }
     SyncAll<false>();
 
-    // 4. for循环: per-expert Dispatch + per-wave GMM1→GMM2 流水
+    // 4. for循环: per-expert Dispatch + 并行 wave GMM1→GMM2 流水
+    //    每个 wave 内部按 tile 在一组 AIC 上并行，wave 之间也并行：
+    //    - tileNumGmm1 = ceil(outputN / L1_TILE_N)
+    //    - coresPerWave = (tileNumGmm1 < blockNum_) ? 16 : blockNum_
+    //    - wavesParallel = blockNum_ / coresPerWave
+    //    例：BS=512, outputN=4096, L1_TILE_M=128, L1_TILE_N=256 → tileNumGmm1=16,
+    //        coresPerWave=16, wavesParallel=2，32 个 AIC 分两组同时跑两个 wave。
+    uint64_t outputN_const = Get<N_VALUE>(problemShape_) / SWIGLU_N_HALF;
+    uint32_t tileNumGmm1 = static_cast<uint32_t>(
+        (outputN_const + static_cast<uint64_t>(L1_TILE_N) - 1UL) / static_cast<uint64_t>(L1_TILE_N));
+    uint32_t coresPerWave = (tileNumGmm1 < blockNum_) ? 16U : blockNum_;
+    uint32_t wavesParallel = blockNum_ / coresPerWave;
+    if (wavesParallel < 1U) {
+        wavesParallel = 1U;
+    }
+    uint32_t coreInGroup = blockIdx_ % coresPerWave;
+    uint32_t coreGroupId = blockIdx_ / coresPerWave;
+    bool coreActive = (coreGroupId < wavesParallel);
+
     GMMAddrInfo gmmAddrInfo;
     for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
         if (!UpdateGroupParams(expertIdx)) {
@@ -768,8 +786,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             }
         }
 
-        // Wave loop: GMM1 → GMM2 per wave
-        for (uint64_t waveIdx = 0; waveIdx < waveCnt; waveIdx++) {
+        // Wave loop: 本核所在组负责 waveIdx ∈ {coreGroupId, coreGroupId + wavesParallel, ...}
+        uint64_t waveStart = coreActive ? static_cast<uint64_t>(coreGroupId) : waveCnt;
+        for (uint64_t waveIdx = waveStart; waveIdx < waveCnt; waveIdx += wavesParallel) {
             uint64_t waveM = (waveIdx == waveCnt - 1 && m_i % L1_TILE_M != 0) ?
                              m_i % L1_TILE_M : L1_TILE_M;
             Get<M_VALUE>(problemShape_) = waveM;
@@ -782,7 +801,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             if (subBlockIdx_ == 0) {
                 MegaMoeImpl::GroupMatmulSwigluQuant<
                     QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType>(
-                    epilogueOp_, params_, problemShape_, waveGmmInfo, startBlockIdx_, vecSetSyncCom_);
+                    epilogueOp_, params_, problemShape_, waveGmmInfo, coreInGroup, coresPerWave, vecSetSyncCom_);
             }
             EndSync();
             vecSetSyncCom_ = 0;
@@ -794,8 +813,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             // GMM2 + Combine for this wave
             if (subBlockIdx_ == 0) {
                 MegaMoeImpl::GroupMatmul2<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType>(
-                    params_, problemShape_, waveGmmInfo, startBlockIdx_, vecSetSyncCom_, expertIdx, gmm2PingPongIdx_,
-                    rankId_, combineUbTensor_, expertIdx,
+                    params_, problemShape_, waveGmmInfo, coreInGroup, coresPerWave, vecSetSyncCom_, expertIdx,
+                    gmm2PingPongIdx_, rankId_, combineUbTensor_, expertIdx,
                     static_cast<uint64_t>(waveIdx) * static_cast<uint64_t>(L1_TILE_M));
             }
         }
