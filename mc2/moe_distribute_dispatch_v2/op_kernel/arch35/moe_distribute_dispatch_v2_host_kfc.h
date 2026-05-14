@@ -24,7 +24,6 @@
 #include "adv_api/math/xor.h"
 #include "adv_api/reduce/sum.h"
 #include "adv_api/hcomm/hcomm.h"
-#include "hcomm/hcomm_res_entity_defs.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "../moe_distribute_dispatch_v2_tiling.h"
 #include "../moe_distribute_v2_constant.h"
