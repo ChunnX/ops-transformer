@@ -229,7 +229,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::Process(
             bool isNeedCompute = true;
             GetTndSeqLen(actual_seq_qlen, actual_seq_kvlen, t1Index, bIndex, isNeedCompute);
             if (!isNeedCompute) {
-                continue;
+                break;
             }
             for (n2Index = 0; n2Index < dimN2; n2Index++) {
                 isLastBlockSelected = false;
@@ -308,7 +308,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::Process(
             bool isNeedCompute = true;
             GetTndSeqLen(actual_seq_qlen, actual_seq_kvlen, t1Index, bIndex, isNeedCompute);
             if (!isNeedCompute) {
-                continue;
+                break;
             }
             for (n2Index = 0; n2Index < dimN2; n2Index++) {
                 isLastBlockSelected = false;
@@ -612,9 +612,10 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::SaveLastInfo()
 }
 
 template <typename SFAGT>
-__aicore__ inline void SelectedAttentionGradBasic<SFAGT>::GetActualSeqLen(GM_ADDR actual_seq_qlen, GM_ADDR actual_seq_kvlen)
+__aicore__ inline void SelectedAttentionGradBasic<SFAGT>::GetActualSeqLen(GM_ADDR actual_seq_qlen,
+                                                                        GM_ADDR actual_seq_kvlen)
 {
-    if constexpr (IS_BSND == false){
+    if constexpr (IS_BSND == false) {
         for (int64_t i = 0; i < dimB; i++) {
             int64_t seqS1Len = 0;
             int64_t seqS2Len = 0;
@@ -630,7 +631,6 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::GetActualSeqLen(GM_ADD
         }
     }
 }
-
 
 template <typename SFAGT>
 __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::GetTndSeqLenScatter(const GM_ADDR actual_seq_qlen_addr,
@@ -666,7 +666,8 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::GetTndSeqLenScatter(co
 template <typename SFAGT>
 __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::GetTndSeqLen(const GM_ADDR actual_seq_qlen_addr,
                                                                        const GM_ADDR actual_seq_kvlen_addr,
-                                                                       const int64_t t1Idx, int64_t &bIdx, bool &isNeedCompute)
+                                                                       const int64_t t1Idx, int64_t &bIdx,
+                                                                       bool &isNeedCompute)
 {
     if constexpr (IS_BSND == false) {
         int64_t curT1 = ((__gm__ int32_t *)actual_seq_qlen_addr)[bIndex];
@@ -687,7 +688,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::GetTndSeqLen(const GM_
         }
 
         s1Index = t1Idx - t1Offset;
-        if (unlikely(t1Idx >= validT1 || t2Offset >= validT2)) {
+        if (unlikely(t1Idx >= validT1)) {
             isNeedCompute = false;
         }
     } else {
