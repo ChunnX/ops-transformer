@@ -178,7 +178,7 @@ private:
     __aicore__ inline void WaitStatusFlag(uint32_t dstServerId, TBuf<> &serverFlagBuf, uint32_t &rcvTokenCnt);
     __aicore__ inline void WaitToken(uint32_t tokenCnt, uint32_t serverIdx, uint32_t startTokenIdx);
     __aicore__ inline void CopyInAndOut(uint32_t serverIdx, uint32_t dstPosition, uint32_t processTokenNum);
-    __aicore__ inline void SetServerFlag(int32_t dstServerId);
+    __aicore__ inline void SetServerFlag(uint32_t dstServerId);
     __aicore__ inline void SendTokenToRemoteServer(uint32_t serverIndex, uint32_t firstAivId, uint32_t usedAivNum);
     __aicore__ inline void QuantProcess(uint32_t expertIndex);
     __aicore__ inline void ProcessToken(GM_ADDR rankGM, uint32_t tokenIndex,uint32_t topKIndex,
