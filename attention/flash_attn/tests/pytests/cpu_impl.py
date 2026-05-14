@@ -52,8 +52,8 @@ def _attend(q, k, v, drop_mask, atten_mask, scale, keep_prob, need_fix_invalid):
         softmax_res = softmax_res * drop_mask * (1.0 / keep_prob)
 
     out = torch.matmul(softmax_res, v)
-    x_max = x_max.broadcast_to(-1, -1, -1, 8)
-    x_sum = x_sum.broadcast_to(-1, -1, -1, 8)
+    x_max = x_max
+    x_sum = x_sum
     return out, x_max, x_sum
 
 
@@ -165,10 +165,11 @@ def tforward_tnd(q, k, v, **kwargs):
             atten_maski = generate_cpu_mask(1, act_q_len, act_kv_len, sparse_mode, pre_tokens, next_tokens, prefix, i, band_index)
 
         need_fix = _should_fix_invalid_rows(sparse_mode, pre_tokens, next_tokens, act_q_len, act_kv_len, prefix)
+
         outi, x_maxi, x_sumi = _attend(qi, ki, vi, drop_maski, atten_maski, scale, keep_prob, need_fix)
         out_golden[:, :, q_start:q_start + act_q_len] = outi
-        x_max = torch.cat((x_max, x_maxi.contiguous().view(-1)))
-        x_sum = torch.cat((x_sum, x_sumi.contiguous().view(-1)))
+        x_max[:, q_start:q_start + act_q_len] = x_maxi.squeeze(0).squeeze(-1)	 
+        x_sum[:, q_start:q_start + act_q_len] = x_sumi.squeeze(0).squeeze(-1)
     return out_golden, x_max, x_sum
 
 
@@ -200,5 +201,7 @@ def tforward(q, k, v, **kwargs):
         s1 = kwargs.get("S1")
         n1 = kwargs.get("N1")
         out = out.reshape(b, n1, s1, out.shape[-1])
+        x_max = x_max.reshape(n1, b, s1).transpose(1, 0, 2)
+        x_sum = x_sum.reshape(n1, b, s1).transpose(1, 0, 2)
 
     return out, x_max, x_sum

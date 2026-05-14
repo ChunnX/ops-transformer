@@ -423,35 +423,19 @@ protected:
     __aicore__ inline void CopyFinalResOut(LocalTensor<T> &accumOutLocal, uint32_t startRow, uint32_t dealRowCount,
                                            uint32_t cntM)
     {
-        if constexpr (POST_QUANT) {
-            if (isQuant2PerChn) {
-                DealPostQuantOutPerChn(accumOutLocal, startRow, dealRowCount, this->dSizeV_Align, cntM);
-                AscendC::PipeBarrier<PIPE_V>();
-            } else {
-                DealPostQuantOutPerTensor(accumOutLocal, startRow, dealRowCount, this->dSizeV_Align);
-                AscendC::PipeBarrier<PIPE_V>();
-            }
-        }
         LocalTensor<OUTPUT_T> tmpBmm2ResCastTensor = fdOutputBuf;
         AscendC::PipeBarrier<PIPE_V>();
-        if constexpr (POST_QUANT) {
-            DealInvalidRows(tmpBmm2ResCastTensor, startRow, dealRowCount, this->dSizeV_Align);
-            DealInvalidMaskRows(tmpBmm2ResCastTensor, startRow, dealRowCount, this->dSizeV_Align, cntM);
-        } else {
-            DealInvalidRows(accumOutLocal, startRow, dealRowCount, this->dSizeV_Align);
-            DealInvalidMaskRows(accumOutLocal, startRow, dealRowCount, this->dSizeV_Align, cntM);
-        }
+        DealInvalidRows(accumOutLocal, startRow, dealRowCount, this->dSizeV_Align);
+        DealInvalidMaskRows(accumOutLocal, startRow, dealRowCount, this->dSizeV_Align, cntM);
         WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_FDOUTPUT_BUF_FLAG);
-        if constexpr (!POST_QUANT) {
-            uint32_t shapeArray[] = {dealRowCount, (uint32_t)constInfo.dSizeV};
-            tmpBmm2ResCastTensor.SetShapeInfo(ShapeInfo(2, shapeArray, DataFormat::ND));
-            if constexpr (IsSameType<OUTPUT_T, bfloat16_t>::value) { // bf16 采取四舍六入五成双模式
-                Cast(tmpBmm2ResCastTensor, accumOutLocal, AscendC::RoundMode::CAST_RINT,
-                     dealRowCount * this->dSizeV_Align);
-            } else {
-                Cast(tmpBmm2ResCastTensor, accumOutLocal, AscendC::RoundMode::CAST_ROUND,
-                     dealRowCount * this->dSizeV_Align);
-            }
+        uint32_t shapeArray[] = {dealRowCount, (uint32_t)constInfo.dSizeV};
+        tmpBmm2ResCastTensor.SetShapeInfo(ShapeInfo(2, shapeArray, DataFormat::ND));
+        if constexpr (IsSameType<OUTPUT_T, bfloat16_t>::value) { // bf16 采取四舍六入五成双模式
+            Cast(tmpBmm2ResCastTensor, accumOutLocal, AscendC::RoundMode::CAST_RINT,
+                 dealRowCount * this->dSizeV_Align);
+        } else {
+            Cast(tmpBmm2ResCastTensor, accumOutLocal, AscendC::RoundMode::CAST_ROUND,
+                 dealRowCount * this->dSizeV_Align);
         }
         SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_FDOUTPUT_BUF_FLAG);
         WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_FDOUTPUT_BUF_FLAG);
@@ -557,7 +541,7 @@ protected:
     __aicore__ inline void DealInvalidMaskRows(LocalTensor<UBOUT_T> &attenOutUb, uint32_t startRow,
                                                uint32_t dealRowCount, uint32_t columnCount, uint32_t cntM)
     {
-        if (!constInfo.isRowInvalidOpen || !attenMaskFlag) {
+        if (!attenMaskFlag) {
             return;
         }
         if (constInfo.sparseMode != DEFAULT_MASK && constInfo.sparseMode != ALL_MASK) {

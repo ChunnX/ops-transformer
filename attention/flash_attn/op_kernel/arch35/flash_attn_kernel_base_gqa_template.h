@@ -361,7 +361,6 @@ public:
         constInfo.attenMaskBatch = this->tilingData->flashAttnAttenMaskParams.attenMaskBatch;
         constInfo.attenMaskS1Size = this->tilingData->flashAttnAttenMaskParams.attenMaskS1Size;
         constInfo.attenMaskS2Size = this->tilingData->flashAttnAttenMaskParams.attenMaskS2Size;
-        constInfo.isRowInvalidOpen = this->tilingData->flashAttnAttenMaskParams.isRowInvalidOpen;
         constInfo.isExistRowInvalid = this->tilingData->flashAttnAttenMaskParams.isExistRowInvalid;
         // }
 

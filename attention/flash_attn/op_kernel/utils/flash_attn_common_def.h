@@ -325,7 +325,6 @@ struct CommonConstInfo {
     uint32_t attenMaskS2Size;
     int64_t preTokens;
     int64_t nextTokens;
-    bool isRowInvalidOpen;
     bool isExistRowInvalid;
     float scaleValue;
 

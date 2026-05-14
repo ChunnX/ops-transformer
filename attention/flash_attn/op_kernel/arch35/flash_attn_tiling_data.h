@@ -77,7 +77,6 @@ struct FlashAttnAttenMaskParams {
     uint32_t attenMaskBatch = 0;
     uint32_t attenMaskS1Size;
     uint32_t attenMaskS2Size;
-    uint8_t isRowInvalidOpen = 0;
     uint8_t isExistRowInvalid = 0;
 };
 
