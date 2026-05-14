@@ -430,6 +430,15 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::CheckMxQuantDtypeConstraint
     return ge::GRAPH_SUCCESS;
 }
 
+void MxQuantGroupedMatmulAllToAllvTiling::wkcPrintTensorShape(const char *nodeName, const gert::Shape *shape, const char *shapeName)
+{
+    for (size_t i = 0; i < shape->GetDimNum(); i++) {
+        OPS_LOG_E(nodeName, "%s %lu is %ld.", shapeName, i, shape->GetDim(i));
+    }
+    return;
+}
+
+
 ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::CheckMxQuantGmmScaleShapes()
 {
     bool TransGmmWeightFlag = false;
@@ -622,6 +631,43 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::CheckMxfp4SpecificConstrain
 
 ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::CheckAndSetInputOutputInfo()
 {
+    const gert::RuntimeAttrs *attrs = context_->GetAttrs();
+    const gert::Shape *gmmWeightShape = context_->GetInputShape(1);
+    const gert::Shape *gmmWeightScaleShape = context_->GetOptionalInputShape(3);
+    const gert::Shape *mmWeightShape = context_->GetOptionalInputShape(7);
+    const gert::Shape *mmWeightScaleShape = context_->GetOptionalInputShape(9);
+    const bool *transGmmWeightPtr = attrs->GetAttrPointer<bool>(6);
+    const bool *transMmWeightPtr = attrs->GetAttrPointer<bool>(7);
+
+    // Print shapes for debugging
+    const char* nodeName = "QuantGroupedMatMulAlltoAllvMXTiling";
+    OPS_LOG_E(nodeName, "Begin to print gmmWeight shape");
+    wkcPrintTensorShape(nodeName, gmmWeightShape, "gmmWeightShape");
+    
+    OPS_LOG_E(nodeName, "Begin to print gmmWeightScale shape");
+    wkcPrintTensorShape(nodeName, gmmWeightScaleShape, "gmmWeightScaleShape");
+    
+    if (mmWeightShape != nullptr) {
+        OPS_LOG_E(nodeName, "Begin to print mmWeight shape");
+        wkcPrintTensorShape(nodeName, mmWeightShape, "mmWeightShape");
+    }
+    
+    if (mmWeightScaleShape != nullptr) {
+        OPS_LOG_E(nodeName, "Begin to print mmWeightScale shape");
+        wkcPrintTensorShape(nodeName, mmWeightScaleShape, "mmWeightScaleShape");
+    }
+
+    if (transGmmWeightPtr != nullptr) {
+        OPS_LOG_E(nodeName, "transGmmWeightPtr is: %d", *transGmmWeightPtr);
+    } else {
+        OPS_LOG_E(nodeName, "transGmmWeightPtr is nullptr!!!");
+    }
+    if (transMmWeightPtr != nullptr) {
+        OPS_LOG_E(nodeName, "transMmWeightPtr is: %d", *transMmWeightPtr);
+    } else {
+        OPS_LOG_E(nodeName, "transMmWeightPtr is nullptr!!!");
+    }
+
     auto status = CheckOpInputSingleParamsTensor();
     if (status != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
