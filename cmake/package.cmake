@@ -13,7 +13,8 @@
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/runtimeKB.cmake)
 
 function(pack_custom)
-  add_cann_third_party(makeself-fetch)
+  # download makeself package 
+  include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/third_party/makeself-fetch.cmake)
   message(STATUS "System processor: ${CMAKE_SYSTEM_PROCESSOR}")
   if (CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64")
       message(STATUS "Detected architecture: x86_64")
