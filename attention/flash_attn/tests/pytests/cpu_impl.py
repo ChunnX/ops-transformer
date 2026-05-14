@@ -191,7 +191,7 @@ def tforward(q, k, v, **kwargs):
         s1 = kwargs.get("S1")
         n1 = kwargs.get("N1")
         out = out.reshape(b, n1, s1, out.shape[-1])
-        x_max = x_max.reshape(n1, b, s1).transpose(1, 0, 2)
-        x_sum = x_sum.reshape(n1, b, s1).transpose(1, 0, 2)
+        x_max = x_max.reshape(n1, b, s1).transpose(1, 0)
+        x_sum = x_sum.reshape(n1, b, s1).transpose(1, 0)
 
     return out, x_max, x_sum
