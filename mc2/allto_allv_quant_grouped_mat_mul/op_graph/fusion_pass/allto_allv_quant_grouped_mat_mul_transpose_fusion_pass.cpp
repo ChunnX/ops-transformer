@@ -206,6 +206,7 @@ static ge::fusion::PatternUniqPtr MakePatternForTransposeD(uint32_t inputIdx, co
     }
     
     auto mc2 = ge::es::AlltoAllvQuantGroupedMatMul(
+        gmmX,
         inputIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT) ? transposeInput : gmmWeight,
         gmmXScale,
         inputIdx == static_cast<uint32_t>(MC2InputIdx::K_GMM_WEIGHT_SCALE) ? transposeInput : gmmWeightScale,
@@ -218,9 +219,9 @@ static ge::fusion::PatternUniqPtr MakePatternForTransposeD(uint32_t inputIdx, co
         gmmXQuantMode, gmmWeightQuantMode, false, false, permuteOutFlag,
         mmXQuantMode, mmWeightQuantMode, groupSize, yDtype, mmDtype);
     
-    auto graph = graphBuilder.BuildAndReset({mc2});
+    auto graph = graphBuilder.BuildAndReset({mc2.gmm_y});
     auto pattern = std::make_unique<ge::fusion::Pattern>(std::move(*graph));
-    pattern->CaptureTensor({*mc2.GetProducer(), 0});
+    pattern->CaptureTensor({*mc2.gmm_y.GetProducer(), 0});
     return pattern;
 }
 

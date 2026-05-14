@@ -228,9 +228,9 @@ static ge::fusion::PatternUniqPtr MakePatternForTransposeD(uint32_t inputIdx, co
         mmXQuantMode, mmWeightQuantMode, commQuantMode,
         groupSize, yDtype, mmDtype, commQuantDtype);
     
-    auto graph = graphBuilder.BuildAndReset({mc2});
+    auto graph = graphBuilder.BuildAndReset({mc2.y});
     auto pattern = std::make_unique<ge::fusion::Pattern>(std::move(*graph));
-    pattern->CaptureTensor({*mc2.GetProducer(), 0});
+    pattern->CaptureTensor({*mc2.y.GetProducer(), 0});
     return pattern;
 }
 
