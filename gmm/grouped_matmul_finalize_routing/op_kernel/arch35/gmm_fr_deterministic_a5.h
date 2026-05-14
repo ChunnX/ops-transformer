@@ -82,7 +82,8 @@ __aicore__ inline void FRDeterministicA5(
         auto outRow = static_cast<uint64_t>(tokenRanksGm.GetValue(globalRowOffset + mOffset));
 
         // Row ownership: only the core matching outRow % coreNumVec handles this row
-        if (outRow % coreNumVec != GetBlockIdx()) {
+        uint64_t myVecId = GetBlockIdx() * GetTaskRation() + GetSubBlockIdx();
+        if (outRow % coreNumVec != myVecId) {
             continue;
         }
 

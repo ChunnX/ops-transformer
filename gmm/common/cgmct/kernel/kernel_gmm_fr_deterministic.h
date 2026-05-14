@@ -395,19 +395,22 @@ public:
                     }
 
                     SyncAll();
-                    if ASCEND_IS_AIV {
-                        GMMFRDeterministic::SyncConfig syncConfig{};
-                        syncConfig.curM = cyclingRowOffset;
-                        syncConfig.lowBoundM = cyclingRowOffset;
-                        syncConfig.windowSize = cyclingRowOffset;
-                        syncConfig.baseN = params.cyclingParams.baseN;
+                    // FRDeterministicA5 is called without ASCEND_IS_AIV guard so that
+                    // both AIC and AIV enter the function. Inside, AIC executes 2x SyncAll
+                    // and returns; AIV performs the actual aggregation with 2x SyncAll.
+                    // This keeps SyncAll counts matched (AIC: 2 outer + 2 inner = 4,
+                    // AIV: 2 outer + 2 inner = 4).
+                    GMMFRDeterministic::SyncConfig syncConfig{};
+                    syncConfig.curM = cyclingRowOffset;
+                    syncConfig.lowBoundM = cyclingRowOffset;
+                    syncConfig.windowSize = cyclingRowOffset;
+                    syncConfig.baseN = params.cyclingParams.baseN;
 
-                        GMMFRDeterministic::FRDeterministicA5<float,
-                            typename BlockEpilogueDequantFinalizeRouting::DataTypeRowIndex>(
-                            syncConfig, deterBufferGm, yGmAgg, rowIndexGm, aggQueBind,
-                            params.cyclingParams.coreNum, params.cyclingParams.n,
-                            globalRowOffset);
-                    }
+                    GMMFRDeterministic::FRDeterministicA5<float,
+                        typename BlockEpilogueDequantFinalizeRouting::DataTypeRowIndex>(
+                        syncConfig, deterBufferGm, yGmAgg, rowIndexGm, aggQueBind,
+                        params.cyclingParams.coreNum, params.cyclingParams.n,
+                        globalRowOffset);
                     SyncAll();
 
                     globalRowOffset += cyclingRowOffset;
@@ -465,19 +468,18 @@ public:
 
         if (cyclingRowOffset > 0) {
             SyncAll();
-            if ASCEND_IS_AIV {
-                GMMFRDeterministic::SyncConfig syncConfig{};
-                syncConfig.curM = cyclingRowOffset;
-                syncConfig.lowBoundM = cyclingRowOffset;
-                syncConfig.windowSize = cyclingRowOffset;
-                syncConfig.baseN = params.cyclingParams.baseN;
+            // FRDeterministicA5 called without ASCEND_IS_AIV guard for SyncAll pairing.
+            GMMFRDeterministic::SyncConfig syncConfig{};
+            syncConfig.curM = cyclingRowOffset;
+            syncConfig.lowBoundM = cyclingRowOffset;
+            syncConfig.windowSize = cyclingRowOffset;
+            syncConfig.baseN = params.cyclingParams.baseN;
 
-                GMMFRDeterministic::FRDeterministicA5<float,
-                    typename BlockEpilogueDequantFinalizeRouting::DataTypeRowIndex>(
-                    syncConfig, deterBufferGm, yGmAgg, rowIndexGm, aggQueBind,
-                    params.cyclingParams.coreNum, params.cyclingParams.n,
-                    globalRowOffset);
-            }
+            GMMFRDeterministic::FRDeterministicA5<float,
+                typename BlockEpilogueDequantFinalizeRouting::DataTypeRowIndex>(
+                syncConfig, deterBufferGm, yGmAgg, rowIndexGm, aggQueBind,
+                params.cyclingParams.coreNum, params.cyclingParams.n,
+                globalRowOffset);
             SyncAll();
         }
     }
