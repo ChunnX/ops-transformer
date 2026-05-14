@@ -235,7 +235,7 @@ ge::graphStatus AlltoAllvGmmTiling::CheckAttrsShapeSize(const gert::TilingContex
     uint64_t recvCountsSize = recvCountsPtr->GetSize();
 
     if (sendCountsSize != recvCountsSize) {
-        OP_LOGE(A_INNER_DEBUG, "sendCountsSize is not equal to recvCountsSize.");
+        OP_LOGE(A_INNER_DEBUG, "SendCountsSize[%lu] is not equal to RecvCountsSize[%lu].", sendCountsSize, recvCountsSize);
         return ge::GRAPH_FAILED;
     }
 
@@ -292,7 +292,7 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeRelation(const gert::TilingContext
     uint64_t N1 = gmmWeightShape.GetDim(n1DimIndex);
 
     if (H1 != H2) {
-        OP_LOGE(A_INNER_DEBUG, "H1 is not equal to H2.");
+        OP_LOGE(A_INNER_DEBUG, "H1[%lu] is not equal to H2[%lu].", H1, H2);
         return ge::GRAPH_FAILED;
     }
 
@@ -305,7 +305,7 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeRelation(const gert::TilingContext
         uint64_t N2 = mmWeightShape.GetDim(1);
 
         if (H != H2MM) {
-            OP_LOGE(A_INNER_DEBUG, "mmX H is not equal to mmWeight H2.");
+            OP_LOGE(A_INNER_DEBUG, "MmX H[%lu] is not equal to MmWeight H2[%lu].", H, H2MM);
             return ge::GRAPH_FAILED;
         }
     }
@@ -317,13 +317,13 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeDims(const gert::TilingContext* co
 {
     auto gmmXShape = context->GetInputShape(GMM_X_INDEX)->GetStorageShape();
     OP_TILING_CHECK(gmmXShape.GetDimNum() != DIM_TWO,
-        OP_LOGE(A_INNER_DEBUG, "gmmX shape dim num should be 2."), return ge::GRAPH_FAILED);
+        OP_LOGE(A_INNER_DEBUG, "GmmX shape dim num[%lu] should be 2.", gmmXShape.GetDimNum()), return ge::GRAPH_FAILED);
     maxM_ = gmmXShape.GetDim(0);
     maxK_ = gmmXShape.GetDim(1);
 
     auto gmmWeightShape = context->GetInputShape(GMM_WEIGHT_INDEX)->GetStorageShape();
     OP_TILING_CHECK(gmmWeightShape.GetDimNum() != DIM_THREE,
-        OP_LOGE(A_INNER_DEBUG, "gmmWeight shape dim num should be 3."), return ge::GRAPH_FAILED);
+        OP_LOGE(A_INNER_DEBUG, "GmmWeight shape dim num[%lu] should be 3.", gmmWeightShape.GetDimNum()), return ge::GRAPH_FAILED);
     e_ = gmmWeightShape.GetDim(0);
     uint64_t h1DimIndex = transGmmWeight_ ? DIM_TWO : DIM_ONE;
     uint64_t n1DimIndex = transGmmWeight_ ? DIM_ONE : DIM_TWO;
@@ -337,13 +337,13 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeDims(const gert::TilingContext* co
     if (context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX) != nullptr) {
         auto mmXShape = context->GetOptionalInputShape(NON_QUANT_MM_X_INDEX)->GetStorageShape();
         OP_TILING_CHECK(mmXShape.GetDimNum() != DIM_TWO,
-            OP_LOGE(A_INNER_DEBUG, "mmX shape dim num should be 2."), return ge::GRAPH_FAILED);
+            OP_LOGE(A_INNER_DEBUG, "MmX shape dim num[%lu] should be 2.", mmXShape.GetDimNum()), return ge::GRAPH_FAILED);
         maxMForMM_ = mmXShape.GetDim(0);
         maxKForMM_ = mmXShape.GetDim(1);
 
         auto mmWeightShape = context->GetInputShape(NON_QUANT_MM_WEIGHT_INDEX)->GetStorageShape();
         OP_TILING_CHECK(mmWeightShape.GetDimNum() != DIM_TWO,
-            OP_LOGE(A_INNER_DEBUG, "mmWeight shape dim num should be 2."), return ge::GRAPH_FAILED);
+            OP_LOGE(A_INNER_DEBUG, "MmWeight shape dim num[%lu] should be 2.", mmWeightShape.GetDimNum()), return ge::GRAPH_FAILED);
         maxKForMM_ = mmWeightShape.GetDim(0);
         maxNForMM_ = mmWeightShape.GetDim(1);
     }
@@ -357,12 +357,12 @@ ge::graphStatus AlltoAllvGmmTiling::CheckDType(const gert::TilingContext* contex
     ge::DataType gmmWeightDtype = context->GetInputDesc(GMM_WEIGHT_INDEX)->GetDataType();
 
     if (gmmXDtype != gmmWeightDtype) {
-        OP_LOGE(A_INNER_DEBUG, "gmmXDtype is not equal to gmmWeightDtype.");
+        OP_LOGE(A_INNER_DEBUG, "GmmX dtype[%s] is not equal to GmmWeight dtype[%s].", ge::TypeUtils::DataTypeToSerialString(gmmXDtype).c_str(), ge::TypeUtils::DataTypeToSerialString(gmmWeightDtype).c_str());
         return ge::GRAPH_FAILED;
     }
 
     if (gmmXDtype != ge::DT_FLOAT16 && gmmXDtype != ge::DT_BF16) {
-        OP_LOGE(A_INNER_DEBUG, "gmmXDtype should be FP16 or BF16.");
+        OP_LOGE(A_INNER_DEBUG, "GmmX dtype[%s] should be FP16 or BF16.", ge::TypeUtils::DataTypeToSerialString(gmmXDtype).c_str());
         return ge::GRAPH_FAILED;
     }
 
@@ -371,17 +371,17 @@ ge::graphStatus AlltoAllvGmmTiling::CheckDType(const gert::TilingContext* contex
         ge::DataType mmWeightDtype = context->GetInputDesc(NON_QUANT_MM_WEIGHT_INDEX)->GetDataType();
 
         if (mmXDtype != mmWeightDtype) {
-            OP_LOGE(A_INNER_DEBUG, "mmXDtype is not equal to mmWeightDtype.");
+            OP_LOGE(A_INNER_DEBUG, "MmX dtype[%s] is not equal to MmWeight dtype[%s].", ge::TypeUtils::DataTypeToSerialString(mmXDtype).c_str(), ge::TypeUtils::DataTypeToSerialString(mmWeightDtype).c_str());
             return ge::GRAPH_FAILED;
         }
 
         if (mmXDtype != ge::DT_FLOAT16 && mmXDtype != ge::DT_BF16) {
-            OP_LOGE(A_INNER_DEBUG, "mmXDtype should be FP16 or BF16.");
+            OP_LOGE(A_INNER_DEBUG, "MmX dtype[%s] should be FP16 or BF16.", ge::TypeUtils::DataTypeToSerialString(mmXDtype).c_str());
             return ge::GRAPH_FAILED;
         }
 
         if (gmmXDtype != mmXDtype) {
-            OP_LOGE(A_INNER_DEBUG, "gmmXDtype is not equal to mmXDtype.");
+            OP_LOGE(A_INNER_DEBUG, "GmmX dtype[%s] is not equal to MmX dtype[%s].", ge::TypeUtils::DataTypeToSerialString(gmmXDtype).c_str(), ge::TypeUtils::DataTypeToSerialString(mmXDtype).c_str());
             return ge::GRAPH_FAILED;
         }
     }
