@@ -1885,11 +1885,11 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     InitStatusTensor();
     
     for(int serverIdx = startServerId; serverIdx < endServerId; serverIdx++) {
+        LocalTensor<uint32_t> rcvExpertCntTensor = flagRecvTensor_.template ReinterpretCast<uint32_t>(); // buf复用
         if (serverIdx != localServerId_) {
             GM_ADDR serverRcvAddr = GetReadAddrFromLocalServer(serverIdx);
             GM_ADDR flagAddr = reinterpret_cast<GM_ADDR>(serverRcvAddr + SPLIT_BLOCK_DATA_SIZE);
             WaitFlag<true>(flagAddr, flagRecvTensor_, COMM_FLAG_COPY_STRIDE, blockCntExpertPerServer_);
-            LocalTensor<uint32_t> rcvExpertCntTensor = flagRecvTensor_.template ReinterpretCast<uint32_t>(); // buf复用
             ReadDataFromWindows<uint32_t>(serverRcvAddr, blockCntExpertPerServer_, rcvExpertCntTensor);
             SyncFunc<AscendC::HardEvent::MTE2_S>(); 
         }
