@@ -119,8 +119,10 @@ ge::graphStatus CompressorTiling::GetNpuInfo()
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, l0cSize_);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_B, l0bSize_);
 
-    aivNum_ = ascendcPlatform.GetCoreNumAiv();
-    aicNum_ = ascendcPlatform.GetCoreNumAic();
+    aivNum_ = ascendcPlatform.GetCoreNumAiv() / 8 * 8;
+    aicNum_ = ascendcPlatform.GetCoreNumAic() / 8 * 8;
+    // aivNum_ = 56;
+    // aicNum_ = 28;
 
     OP_CHECK_IF(aicNum_ == 0 || aivNum_ == 0,
                 OPS_REPORT_VECTOR_INNER_ERR(context_->opName, "num of core obtained is 0."), return GRAPH_FAILED);
