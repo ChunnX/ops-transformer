@@ -406,6 +406,20 @@ private:
                kvTileW >= wBegin && kvTileW < wEnd;
     }
 
+    __aicore__ inline bool IsImageTileVisibleByCoord(int64_t head, int64_t querySeq, int64_t kvTileT,
+                                                     int64_t kvTileH, int64_t kvTileW) const
+    {
+        int64_t tBegin = 0;
+        int64_t tEnd = 0;
+        int64_t hBegin = 0;
+        int64_t hEnd = 0;
+        int64_t wBegin = 0;
+        int64_t wEnd = 0;
+        GetImageWindowRange(head, querySeq, tBegin, tEnd, hBegin, hEnd, wBegin, wEnd);
+        return kvTileT >= tBegin && kvTileT < tEnd && kvTileH >= hBegin && kvTileH < hEnd &&
+               kvTileW >= wBegin && kvTileW < wEnd;
+    }
+
     __aicore__ inline bool IsKvBlockRelevant(int64_t head, int64_t querySeqBegin, int64_t qCount,
                                              int64_t kvSeqBegin, int64_t kvCount) const
     {
@@ -719,7 +733,8 @@ private:
     __aicore__ inline void AccumulateAicScoreBlock(LocalTensor<float> &accLocal, int64_t batch, int64_t head,
                                                    int64_t querySeq, int64_t kvSeqStart, int64_t kvCount,
                                                    uint32_t rowInBlock, float &maxScore, float &denom,
-                                                   bool isTextQuery, bool isFullVisible, uint32_t bufferIdx)
+                                                   bool isTextQuery, bool isFullVisible, bool isSingleImageKvTile,
+                                                   uint32_t bufferIdx)
     {
         const uint32_t calcCount =
             static_cast<uint32_t>(AlignUpInt64(tiling_->kvBlock, VECTOR_FP32_BLOCK_ELEMS));
@@ -734,11 +749,7 @@ private:
         DuplicateTailFp32(scoreLocal, kvCount, calcCount, NEG_INF);
 
         if (!isFullVisible) {
-            const int64_t kvSeqEnd = kvSeqStart + kvCount;
-            const bool isSingleImageTile =
-                !isTextQuery && kvSeqStart < tiling_->imageSeqLen && kvSeqEnd <= tiling_->imageSeqLen &&
-                (kvSeqStart / tiling_->tileTokenNum == (kvSeqEnd - 1) / tiling_->tileTokenNum);
-            if (isSingleImageTile && !IsKvVisible(head, querySeq, kvSeqStart, isTextQuery)) {
+            if (isSingleImageKvTile) {
                 Duplicate(scoreLocal, NEG_INF, static_cast<uint32_t>(kvCount));
             } else {
                 for (int64_t i = 0; i < kvCount; ++i) {
@@ -809,7 +820,7 @@ private:
                 float maxScore = maxLocal.GetValue(row);
                 float denom = denomLocal.GetValue(row);
                 AccumulateAicScoreBlock(accRow, batch, head, querySeq, kvSeq, kvCount, static_cast<uint32_t>(row),
-                                        maxScore, denom, isTextQuery, isFullVisible, bufferIdx);
+                                        maxScore, denom, isTextQuery, isFullVisible, false, bufferIdx);
                 maxLocal.SetValue(row, maxScore);
                 denomLocal.SetValue(row, denom);
             }
@@ -832,8 +843,18 @@ private:
                                                  int64_t kvBegin, int64_t kvEnd, int64_t &tileLoop,
                                                  LocalTensor<float> &maxLocal, LocalTensor<float> &denomLocal)
     {
+        const bool isSingleImageQueryTile =
+            seq < tiling_->imageSeqLen && seq + qCount <= tiling_->imageSeqLen &&
+            (seq / tiling_->tileTokenNum == (seq + qCount - 1) / tiling_->tileTokenNum);
         for (int64_t kvSeq = kvBegin; kvSeq < kvEnd; kvSeq += tiling_->kvBlock) {
             const int64_t kvCount = MinInt64(tiling_->kvBlock, kvEnd - kvSeq);
+            const int64_t kvTileId = kvSeq / tiling_->tileTokenNum;
+            int64_t kvTileT = 0;
+            int64_t kvTileH = 0;
+            int64_t kvTileW = 0;
+            DecodeTileCoord(kvTileId, kvTileT, kvTileH, kvTileW);
+            const bool blockImageTileVisible =
+                isSingleImageQueryTile && IsImageTileVisibleByCoord(head, seq, kvTileT, kvTileH, kvTileW);
             const uint32_t bufferIdx = static_cast<uint32_t>(tileLoop % BUFFER_NUM);
             CrossCoreWaitFlag(AicToAivSyncFlag(bufferIdx));
             for (int64_t row = GetSubBlockIdxValue(); row < qCount; row += GetTaskRatioValue()) {
@@ -843,12 +864,16 @@ private:
                 }
                 const bool isTextQuery = (tiling_->hasText != 0) && (querySeq >= tiling_->imageSeqLen) &&
                                          (querySeq < tiling_->imageSeqLen + tiling_->textLength);
-                const bool isFullVisible = IsKvBlockFullyVisible(head, querySeq, kvSeq, kvCount, isTextQuery);
+                const bool isFullVisible =
+                    isTextQuery ||
+                    (isSingleImageQueryTile
+                         ? blockImageTileVisible
+                         : IsImageTileVisibleByCoord(head, querySeq, kvTileT, kvTileH, kvTileW));
                 LocalTensor<float> accRow = GetAccTileRow(static_cast<uint32_t>(row));
                 float maxScore = maxLocal.GetValue(row);
                 float denom = denomLocal.GetValue(row);
                 AccumulateAicScoreBlock(accRow, batch, head, querySeq, kvSeq, kvCount, static_cast<uint32_t>(row),
-                                        maxScore, denom, isTextQuery, isFullVisible, bufferIdx);
+                                        maxScore, denom, isTextQuery, isFullVisible, !isTextQuery, bufferIdx);
                 maxLocal.SetValue(row, maxScore);
                 denomLocal.SetValue(row, denom);
             }
