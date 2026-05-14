@@ -232,15 +232,15 @@ private:
     __aicore__ inline GM_ADDR GetServerRemoteBaseAddr(const int32_t dstServerId)
     {
         uint32_t curServerIndex = GetServerCommHandleIndex(dstServerId);
-        __gm__ ChannelEntity* serverEntity = reinterpret_cast<__gm__ ChannelEntity*>(dpuCommHandle_[curServerIndex]);
-        return reinterpret_cast<GM_ADDR>(serverEntity->remoteBufferAddr->addr);
+        // __gm__ ChannelEntity* serverEntity = reinterpret_cast<__gm__ ChannelEntity*>(dpuCommHandle_[curServerIndex]);
+        return reinterpret_cast<GM_ADDR>(dpuCommHandle_[curServerIndex]->remoteBufferAddr->addr);
     }
 
     __aicore__ inline GM_ADDR GetServerLocalBaseAddr(const int32_t dstServerId)
     {
         uint32_t curServerIndex = GetServerCommHandleIndex(dstServerId);
-        __gm__ ChannelEntity* serverEntity = reinterpret_cast<__gm__ ChannelEntity*>(dpuCommHandle_[curServerIndex]);
-        return reinterpret_cast<GM_ADDR>(serverEntity->localBufferAddr->addr);
+        // __gm__ ChannelEntity* serverEntity = reinterpret_cast<__gm__ ChannelEntity*>(dpuCommHandle_[curServerIndex]);
+        return reinterpret_cast<GM_ADDR>(dpuCommHandle_[curServerIndex]->localBufferAddr->addr);
     }
 
     template <ExecutMode mode>
@@ -521,7 +521,7 @@ private:
 
     __gm__ HcclOpParam *winContext_[COMM_NUM]{nullptr, nullptr};
     __gm__ Mc2MoeContext* mc2Context_{nullptr};
-    ChannelEntity dpuCommHandle_[HCCL_MAX_SERVER_SIZE];
+    ChannelEntity* dpuCommHandle_[HCCL_MAX_SERVER_SIZE];
 
     DataCopyParams xCopyParams_;
     DataCopyExtParams hCommuCopyOutParams_;
@@ -793,7 +793,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
                               epWorldSizeOriginal_, globalBS_, dataStateBuf);            
     statusSpaceGm_ = GetWindStateAddrByRankId(COMM_EP_IDX, epRankIdOriginal_);
     for (uint32_t i = 0; i < serverNum_; i++) {
-        dpuCommHandle_[i] = reinterpret_cast<ChannelEntity>(mc2Context_->dpuCommHandle_[i]); // todo:需要确认
+        dpuCommHandle_[i] = reinterpret_cast<ChannelEntity *>(mc2Context_->dpuCommHandle_[i]); // todo:需要确认
     }
     tpipe_->InitBuffer(dpuCommInitBufBuf_, SIZE_ALIGN_256);
     dpuCommInitBufTensor_ = dpuCommInitBufBuf_.Get<uint8_t>();
