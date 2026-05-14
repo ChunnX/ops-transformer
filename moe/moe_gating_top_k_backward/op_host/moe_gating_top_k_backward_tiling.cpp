@@ -114,7 +114,7 @@ private:
     ge::graphStatus CheckExpertIdx();
     ge::graphStatus CheckAttr();
     ge::graphStatus CheckOutShape();
-    int64_t CalcMaxRows();
+    ge::graphStatus CalcMaxRows();
     ge::graphStatus SplitRows();
     void DumpTiling();
 
