@@ -158,6 +158,11 @@ __aicore__ inline void LightningIndexerKernel<LIT>::InitTilingData(const LITilin
     constInfo.maxBlockNumPerBatch = tilingData->maxBlockNumPerBatch;
     constInfo.sparseCount = tilingData->sparseCount;
     constInfo.outputLayout = LAYOUT_T;  // 输出和输入形状一致
+    if constexpr (std::is_same_v<K_T, float16_t>) {
+        constInfo.INVALID_VAL = 0xFC00;
+    }else {
+        constInfo.INVALID_VAL = 0xFF80;
+    }
     if constexpr (LAYOUT_T == LI_LAYOUT::TND) {
         constInfo.isAccumSeqS1 = true;
     }
@@ -168,7 +173,7 @@ __aicore__ inline void LightningIndexerKernel<LIT>::InitTilingData(const LITilin
     constInfo.kHeadNum = K_HEAD_NUM;
     constInfo.headDim = HEAD_DIM;
 
-    if (constInfo.gSize == 64) {
+    if (constInfo.sparseCount > 2048) {
         constInfo.mBaseSize = S1_BASE_SIZE_SMALL * constInfo.gSize;
         constInfo.s1BaseSize = S1_BASE_SIZE_SMALL;
     } else {
@@ -177,6 +182,7 @@ __aicore__ inline void LightningIndexerKernel<LIT>::InitTilingData(const LITilin
     }
     constInfo.s2BaseSize = S2_BASE_SIZE;
     constInfo.returnValueFlag = tilingData->returnValue;
+    constInfo.splitMFlag = (constInfo.gSize == 64 && constInfo.sparseCount <= 2048);
 }
 
 template <typename LIT>
@@ -596,21 +602,10 @@ __aicore__ inline void LightningIndexerKernel<LIT>::ProcessInvalid()
             GlobalTensor<OUT_T> output = indiceOutGm[baseSize];
             AscendC::InitGlobalMemory(output, dealSize, constInfo.INVALID_IDX);
             if (constInfo.returnValueFlag) {
-                event_t eventIDMTE3ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
-                SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
-                WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
-                
                 GlobalTensor<uint16_t> valueOutGmTmp;
                 valueOutGmTmp.SetGlobalBuffer((__gm__ uint16_t *)valueOutGm.GetPhyAddr());
                 GlobalTensor<uint16_t> valueOut = valueOutGmTmp[baseSize];
-
-                uint16_t negInf = 0;
-                if constexpr (std::is_same_v<K_T, float16_t>) {
-                    negInf = 0xFC00;
-                }else {
-                    negInf = 0xFF80;
-                }
-                AscendC::InitGlobalMemory(valueOut, dealSize, negInf);
+                AscendC::InitGlobalMemory(valueOut, dealSize, constInfo.INVALID_VAL);
             }
         }
     }

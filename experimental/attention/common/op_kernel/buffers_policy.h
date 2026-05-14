@@ -23,6 +23,34 @@
 // Q复用 KV复用
 // 申请单块buffer
 namespace fa_base_matmul {
+template<BufferType bufferType, SyncType syncType = SyncType::INNER_CORE_SYNC>
+class BuffersPolicySingleBuffer {
+public:
+    __aicore__ inline void Init(BufferManager<bufferType> &bufferManager, uint32_t size){
+        buffer_ = bufferManager.template AllocBuffer<syncType>(size);
+        buffer_.Init();
+    }
+ 
+    __aicore__ inline void Uninit(BufferManager<bufferType> &bufferManager){
+        buffer_.UnInit();
+        bufferManager.FreeBuffer(buffer_);
+    }
+ 
+    __aicore__ inline Buffer<bufferType, syncType> &Get(){
+        return buffer_;
+    }
+ 
+    __aicore__ inline Buffer<bufferType, syncType> &GetPre(){
+        return Get();
+    }
+ 
+    __aicore__ inline Buffer<bufferType, syncType> &GetReused(){
+        return Get();
+    }
+private:
+    Buffer<bufferType, syncType> buffer_;
+};
+
 // 申请2个buffer，乒乓轮转
 template<BufferType bufferType, SyncType syncType = SyncType::INNER_CORE_SYNC>
 class BuffersPolicyDB {
@@ -188,6 +216,77 @@ private:
     uint32_t flag1_vec1_ = 0;
     uint32_t flag1_bmm2_ = 0;
     uint32_t flag2_ = 0;
+};
+
+// 申请4个buffer + kv复用
+template<BufferType bufferType, SyncType syncType = SyncType::INNER_CORE_SYNC>
+class BuffersPolicy4buff {
+public:
+    __aicore__ inline void Init(BufferManager<bufferType> &bufferManager, uint32_t size) {
+        a_ = bufferManager.template AllocBuffer<syncType>(size);
+        b_ = bufferManager.template AllocBuffer<syncType>(size);
+        c_ = bufferManager.template AllocBuffer<syncType>(size);
+        d_ = bufferManager.template AllocBuffer<syncType>(size);
+ 
+        a_.Init();
+        b_.Init();
+        c_.Init();
+        d_.Init();
+    }
+ 
+    __aicore__ inline void Uninit(BufferManager<bufferType> &bufferManager) {
+        a_.UnInit();
+        b_.UnInit();
+        c_.UnInit();
+        d_.UnInit();
+ 
+        bufferManager.FreeBuffer(a_);
+        bufferManager.FreeBuffer(b_);
+        bufferManager.FreeBuffer(c_);
+        bufferManager.FreeBuffer(d_);
+    }
+ 
+    __aicore__ inline Buffer<bufferType, syncType> &Get(uint32_t id) {
+        uint32_t flag = id % 4;
+        if (flag == 0) {
+            return a_;
+        } else if (flag == 1) {
+            return b_;
+        } else if (flag == 2) { // 2:c_
+            return c_;
+        } else {
+            return d_;
+        }
+    }
+ 
+    __aicore__ inline Buffer<bufferType, syncType> &Get() {
+        auto& buffer = Get(head_);
+        head_++;
+        return buffer;
+    }
+ 
+    __aicore__ inline Buffer<bufferType, syncType> &GetReused() {
+        auto& buffer = Get(used_);
+        used_ = (used_ - tail_ + 1) % (head_ - tail_) + tail_;
+        return buffer;
+    }
+ 
+    __aicore__ inline Buffer<bufferType, syncType> &GetFree() {
+        if (tail_ == used_) {
+            used_++;
+        }
+        auto& buffer = Get(tail_);
+        tail_++;
+        return buffer;
+    }
+private:
+    Buffer<bufferType, syncType> a_;
+    Buffer<bufferType, syncType> b_;
+    Buffer<bufferType, syncType> c_;
+    Buffer<bufferType, syncType> d_;
+    uint32_t tail_ = 0; // 表示当前正在使用的buffer队列队尾
+    uint32_t head_ = 0; // 表示当前正在使用的buffer队列队首+1
+    uint32_t used_ = 0; // 表示当前正在使用的buffer，于首尾间，左闭右开
 };
 
 template<BufferType bufferType, SyncType syncType = SyncType::INNER_CORE_SYNC>

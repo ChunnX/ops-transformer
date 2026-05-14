@@ -24,7 +24,7 @@ USER_ID=$(id -u)
 PARENT_JOB="false"
 HOST_TILING="false"
 CHECK_COMPATIBLE="true"
-ASAN="true"
+ASAN="false"
 UBSAN="false"
 COV="false"
 CLANG="false"
@@ -105,6 +105,7 @@ function help_info() {
                 echo "    --cann_3rd_lib_path=<PATH>"
                 echo "                           Set ascend third_party package install path, default ./third_party"
                 echo "    --oom                  Build with oom mode on the kernel side, with options: '-g --cce-enable-oom'"
+                echo "    --asan                 Enable ASAN (Address Sanitizer) on the host side"
                 echo "    --kernel_template_input=args0,args1"
                 echo "                           Specify kernel template input arguments (comma-separated for multiple)"
                 echo "    --bisheng_flags        Specify bisheng compiler flags (comma-separated for multiple)"
@@ -124,7 +125,6 @@ function help_info() {
                 echo "    --noexec               Only compile ut, do not execute"
                 echo "    --cov                  Enable code coverage for unit tests"
                 echo "    --ops=op1,op2,...      Compile specified operators (comma-separated for multiple)"
-                echo "    --disable_asan         Disable ASAN (Address Sanitizer)"
                 echo "    --soc=soc_version      Run unit tests for specified Ascend SoC"
                 echo "    --valgrind             Run unit tests with valgrind (disables ASAN and noexec)"
                 echo "    --ophost_test          Build and run ophost unit tests"
@@ -224,7 +224,6 @@ function help_info() {
                 echo "    --noexec               Only compile ut, do not execute"
                 echo "    --cov                  Enable code coverage for unit tests"
                 echo "    --ops=op1,op2,...      Compile specified operators (comma-separated for multiple)"
-                echo "    --disable_asan         Disable ASAN (Address Sanitizer)"
                 echo "    --soc=soc_version      Run unit tests for specified Ascend SoC"
                 echo "    --valgrind             Run unit tests with valgrind (disables ASAN and noexec)"
                 echo $dotted_line
@@ -239,7 +238,6 @@ function help_info() {
                 echo "    --noexec               Only compile ut, do not execute"
                 echo "    --cov                  Enable code coverage for unit tests"
                 echo "    --ops=op1,op2,...      Compile specified operators (comma-separated for multiple)"
-                echo "    --disable_asan         Disable ASAN (Address Sanitizer)"
                 echo "    --soc=soc_version      Run unit tests for specified Ascend SoC"
                 echo "    --valgrind             Run unit tests with valgrind (disables ASAN and noexec)"
                 echo $dotted_line
@@ -254,7 +252,6 @@ function help_info() {
                 echo "    --noexec               Only compile ut, do not execute"
                 echo "    --cov                  Enable code coverage for unit tests"
                 echo "    --ops=op1,op2,...      Compile specified operators (comma-separated for multiple)"
-                echo "    --disable_asan         Disable ASAN (Address Sanitizer)"
                 echo "    --soc=soc_version      Run unit tests for specified Ascend SoC"
                 echo "    --valgrind             Run unit tests with valgrind (disables ASAN and noexec)"
                 echo $dotted_line
@@ -320,10 +317,11 @@ function help_info() {
     echo "    --cov When building uTest locally, count the coverage."
     echo "    --noexec Only compile ut, do not execute the compiled executable file"
     echo "    --make_clean Clean build artifacts"
-    echo "    --disable_asan Disable ASAN (Address Sanitizer)"
+    echo "    --asan Enable asan on the host side"
     echo "    --valgrind run ut with valgrind. This option will disable asan, noexec and run utest by valgrind"
     echo "    --ops Compile specified operator, use snake name, like: --ops=add,add_lora, use ',' to separate different operator"
-    echo "    --soc Compile binary with specified Ascend SoC, like: --soc=ascend310p,ascend910b, use ',' to separate different SoC"
+    echo "    --soc Compile binary with specified Ascend SoC, like: --soc=ascend910b,ascend910_93,ascend950 use ',' to separate different SoC"
+    echo "    --soc supported parameters must only in [ascend910b ascend910_93 ascend950 ascend310p kirinx90 kirin9030 mc62cm12a], A3(--soc=ascedn910_93)"
     echo "    --vendor_name Specify the custom operator package vendor name, like: --vendor_name=customize, default to custom"
     echo "    --opgraph build graph_plugin_transformer.so"
     echo "    --onnxplugin build op_transformer_onnx_plugin.so"
@@ -637,31 +635,6 @@ function build_example()
         return 1
     fi
     return 0
-}
-
-function gen_bisheng(){
-    local ccache_program=$1
-    local gen_bisheng_dir=${BUILD_DIR}/gen_bisheng_dir
-
-    if [ ! -d "${gen_bisheng_dir}" ];then
-        mkdir -p ${gen_bisheng_dir}
-    fi
-
-    pushd ${gen_bisheng_dir}
-    $(> bisheng)
-    echo "#!/bin/bash" >> bisheng
-    echo "ccache_args=""\"""${ccache_program} ${BISHENG_REAL_PATH}""\"" >> bisheng
-    echo "args=""$""@" >> bisheng
-
-    if [ "${VERBOSE}" == "true" ];then
-        echo "echo ""\"""$""{ccache_args} ""$""args""\"" >> bisheng
-    fi
-
-    echo "eval ""\"""$""{ccache_args} ""$""args""\"" >> bisheng
-    chmod +x bisheng
-
-    export PATH=${gen_bisheng_dir}:$PATH
-    popd
 }
 
 function build_package(){
@@ -1027,11 +1000,7 @@ parse_changed_files() {
     echo "changed files is" $PR_CHANGED_FILES
     echo $dotted_line
     cat $PR_CHANGED_FILES
-    ops_names=$(python3 scripts/ci/parse_changed_ops.py $PR_CHANGED_FILES "$ENABLE_EXPERIMENTAL")
-    if [[ -z $ops_names ]]; then
-            ops_names='fused_infer_attention_score'
-        echo "NO ops changed found,set op $ops_names as default."
-    fi
+    ops_names=$(python3 scripts/ci/parse_changed_ops.py $PR_CHANGED_FILES "$ENABLE_EXPERIMENTAL" "$ASCEND_SOC_UNITS")
 }
 set_example_opt() {
   if [[ -n $1 && $1 != -* ]]; then
@@ -1255,8 +1224,8 @@ while [[ $# -gt 0 ]]; do
         VERBOSE="true"
         shift
         ;;
-    --disable_asan)
-        ASAN="false"
+    --asan)
+        ASAN="true"
         shift
         ;;
     --valgrind)
@@ -1452,6 +1421,9 @@ if [ -n "${ascend_op_name}" ];then
     if [[ "${ascend_op_name}" == *"moe_distribute_dispatch_v2"* ]] && [[ "${ascend_op_name}" != *"moe_distribute_dispatch_v3"* ]]; then
         ascend_op_name="${ascend_op_name};moe_distribute_dispatch_v3"
     fi
+    if [[ "${ascend_op_name}" == *"distribute_barrier"* ]] && [[ "${ascend_op_name}" != *"distribute_barrier_extend"* ]]; then
+ 	    ascend_op_name="${ascend_op_name};distribute_barrier_extend"
+    fi
     CUSTOM_OPTION="${CUSTOM_OPTION} -DASCEND_OP_NAME=${ascend_op_name}"
     if [[ "${ascend_op_name}" != *"fused_infer_attention_score"* ]] && [[ "${ascend_op_name}" != *"incre_flash_attention"* ]]; then
         CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_TILING_SINK=OFF"
@@ -1542,6 +1514,10 @@ if [ -n "${TEST}" ];then
     fi
 
     BUILD=ops_test_utest
+fi
+
+if [ "${ASAN}" == "true" ];then
+    CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_ASAN=TRUE"
 fi
 
 if [ "${COV}" == "true" ];then
@@ -1698,14 +1674,14 @@ if [ -n "${CCACHE_PROGRAM}" ]; then
         CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_CCACHE=OFF"
     elif [ -f "${CCACHE_PROGRAM}" ];then
         CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_CCACHE=ON -DCUSTOM_CCACHE=${CCACHE_PROGRAM}"
-        gen_bisheng ${CCACHE_PROGRAM}
+        export ASCENDC_CCACHE_EXECUTABLE=${CCACHE_PROGRAM}
     fi
 else
     # 判断有无默认的ccache 如果有则使用
     ccache_system=$(which ccache || true)
     if [ -n "${ccache_system}" ];then
         CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_CCACHE=ON -DCUSTOM_CCACHE=${ccache_system}"
-        gen_bisheng ${ccache_system}
+        export ASCENDC_CCACHE_EXECUTABLE=${ccache_system}
     fi
 fi
 build_ut() {
@@ -1977,4 +1953,4 @@ else
         build ${BUILD}
     fi
 fi
-} | gawk '{print strftime("[%Y-%m-%d %H:%M:%S]"), $0}'
+} | while IFS= read -r line; do echo "[$(date '+%Y-%m-%d %H:%M:%S')] $line"; done

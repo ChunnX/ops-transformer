@@ -9,12 +9,15 @@
  */
 
 #include "matmul_all_to_all_transpose_a5_fusion_pass.h"
+
+#if CANN_VERSION_NUM >= GRAPH_FUSION_SUPPORT_VERSION
 #include "es_MatmulAlltoAll.h" // es autogen header
 #include "es_TransposeD.h"     // es autogen header for stub op
 #include "es_math_ops.h"       // math ops stub
 #include "mc2_platform_info.h"
 #include "mc2_common_log.h"
 #include "ge/ge_utils.h"
+#include <dlfcn.h> // dlopen 动态加载
 
 namespace ops {
 const std::string FUSION_PASS_NAME = "MatmulAllToAllTransposeA5FusionPass";
@@ -44,6 +47,36 @@ struct ReplaceGraphInputs {
     ge::es::EsTensorHolder rX2Offset;
 };
 
+// 加载 EsTranspose 符号
+namespace {
+    typedef EsCTensorHolder* (*EsTransposeFunc)(EsCTensorHolder*, EsCTensorHolder*);
+    
+    EsTransposeFunc GetEsTransposeFunc()
+    {
+        void* handle = dlopen("libes_math.so", RTLD_LAZY | RTLD_GLOBAL);
+        if (!handle) {
+            OPS_LOG_E("MatmulAllToAllTransposeA5FusionPass", "dlopen failed: %s", dlerror());
+            return nullptr;
+        }
+        dlerror();
+        auto func = reinterpret_cast<EsTransposeFunc>(dlsym(handle, "EsTranspose"));
+        if (dlerror() != nullptr) {
+            OPS_LOG_E("MatmulAllToAllTransposeA5FusionPass", "dlsym EsTranspose failed");
+            return nullptr;
+        }
+        return func;
+    }
+    
+    ge::es::EsTensorHolder TransposeDL(const ge::es::EsTensorLike& x, const ge::es::EsTensorLike& perm)
+    {
+        static EsTransposeFunc func = GetEsTransposeFunc();
+        auto* builder = ge::es::ResolveBuilder(x, perm);
+        auto result = func(x.ToTensorHolder(builder).GetCTensorHolder(),
+            perm.ToTensorHolder(builder).GetCTensorHolder());
+        return result;
+    }
+}
+
 static ge::fusion::PatternUniqPtr MakePatternForTranspose(bool hasBias)
 {
     std::string patternName = FUSION_PASS_NAME + PATTERN_TRANSPOSE;
@@ -52,7 +85,7 @@ static ge::fusion::PatternUniqPtr MakePatternForTranspose(bool hasBias)
     }
     auto graphBuilder = ge::es::EsGraphBuilder(patternName.c_str());
     auto [x1, x2, bias, x1Scale, x2Scale] = graphBuilder.CreateInputs<5>();
-    auto transpose = ge::es::Transpose(x2, ge::es::EsTensorLike(std::vector<int64_t>{1, 0}));
+    auto transpose = TransposeDL(x2, ge::es::EsTensorLike(std::vector<int64_t>{1, 0}));
     // 必选attr 设置默认值
     std::string group = std::string("");
     int64_t worldSize = 0;
@@ -415,3 +448,4 @@ MatmulAllToAllTransposeA5FusionPass::Replacement(const std::unique_ptr<ge::fusio
 REG_FUSION_PASS(MatmulAllToAllTransposeA5FusionPass)
     .Stage(ge::CustomPassStage::kCompatibleInherited); // 兼容性场景下指定stage
 } // namespace ops
+#endif // GRAPH_FUSION_SUPPORT_VERSION

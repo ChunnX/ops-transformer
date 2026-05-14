@@ -595,17 +595,6 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckPermuteOutShapeInfo()
             context_->GetOutputShape(OUTPUT_PERMUTE_OUT_INDEX)->GetStorageShape().GetDimNum());
         return ge::GRAPH_FAILED;
     }
-    // check A\H1 equal
-    uint64_t permuteA = context_->GetOutputShape(OUTPUT_PERMUTE_OUT_INDEX)->GetStorageShape().GetDim(DIM_ZERO);
-    uint64_t permuteH1 = context_->GetOutputShape(OUTPUT_PERMUTE_OUT_INDEX)->GetStorageShape().GetDim(DIM_ONE);
-    OP_TILING_CHECK(h1_ != permuteH1,
-        OP_LOGE(context_->GetNodeName(),
-        "The H1 %lu of gmmX(BSK, H1) should be equal to the H1 %lu of permuteOut(A, H1)!", h1_, permuteH1),
-        return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(a_ != permuteA,
-        OP_LOGE(context_->GetNodeName(), "The A %lu of gmmY(A, H1) should be equal to the A %lu of permuteOut(A, H1)!",
-        a_, permuteA),
-        return ge::GRAPH_FAILED);
     OP_LOGD(context_->GetNodeName(), "end CheckPermuteOutShapeInfo.");
     return ge::GRAPH_SUCCESS;
 }

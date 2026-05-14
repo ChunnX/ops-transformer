@@ -32,8 +32,9 @@ using namespace AscendC;
     } while (0)
 
 template <
-    int D_T_MM, bool TILINGKEY_MM, bool TILINGKEY_GMM_WEIGHT_TRANSPOSE, 
-    bool TILINGKEY_MM_WEIGHT_TRANSPOSE>
+    bool TILINGKEY_GMM_WEIGHT_TRANSPOSE,
+    bool TILINGKEY_MM_WEIGHT_TRANSPOSE,
+    int TILINGKEY_COMM_MODE>
 __global__ __aicore__ void allto_allv_grouped_mat_mul(
     GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR sendCountsTensorOptionalGM, GM_ADDR recvCountsTensorOptionalGM,
     GM_ADDR mmxOptionalGM, GM_ADDR mmweightOptionalGM, GM_ADDR gmmyGM, GM_ADDR mmyOptionalGM,
@@ -50,17 +51,14 @@ __global__ __aicore__ void allto_allv_grouped_mat_mul(
     TPipe pipe;
     GM_ADDR contextGM = GetHcclContext<HCCL_GROUP_ID_0>();
 
-if (D_T_MM == ADD_TPL_BP16) {
-    AlltoAllvGmmCoarseGrained<bfloat16_t, TILINGKEY_MM, TILINGKEY_GMM_WEIGHT_TRANSPOSE,
-                                TILINGKEY_MM_WEIGHT_TRANSPOSE> op;
-    INVOKE_ALLTOALLV_GROUPED_MATMUL_OP_IMPL();
-    return;
-}
+    if (!tilingData.commonTilingInfo.isFp16) {
+        AlltoAllvGmmCoarseGrained<bfloat16_t, TILINGKEY_GMM_WEIGHT_TRANSPOSE,
+                                    TILINGKEY_MM_WEIGHT_TRANSPOSE, TILINGKEY_COMM_MODE> op;
+        INVOKE_ALLTOALLV_GROUPED_MATMUL_OP_IMPL();
+        return;
+    }
 
-if (D_T_MM == ADD_TPL_FP16) {
-    AlltoAllvGmmCoarseGrained<half, TILINGKEY_MM, TILINGKEY_GMM_WEIGHT_TRANSPOSE,
-                                TILINGKEY_MM_WEIGHT_TRANSPOSE> op;
+    AlltoAllvGmmCoarseGrained<half, TILINGKEY_GMM_WEIGHT_TRANSPOSE,
+                                TILINGKEY_MM_WEIGHT_TRANSPOSE, TILINGKEY_COMM_MODE> op;
     INVOKE_ALLTOALLV_GROUPED_MATMUL_OP_IMPL();
-    return;
-}
 }

@@ -27,7 +27,7 @@
 #include "matmul_formulaic_tiling.h"
 #include "platform/platform_ascendc.h"
 #include "tiling/tiling_api.h"
-#include "tiling_base/tiling_type.h"
+#include "op_host/tiling_type.h"
 #include "../../3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_base_tiling_advanced.h"
 #include "platform/soc_spec.h"
 
@@ -55,7 +55,7 @@ constexpr char HCCL_DETERMINISTIC[] = "HCCL_DETERMINISTIC";
 6：CCU_SCHED（A2/3支持 A5不支持） 7：AICPU_UB/ROCE（A5不支持）
 **/
 constexpr uint8_t AIV_ENGINE = 3;
-constexpr uint8_t A5_CCU_ENGINE = 5;
+constexpr uint8_t A5_CCU_ENGINE = 0;
 constexpr uint8_t Y_INDEX = 3;
 constexpr uint8_t COMM_ALG_DEFAULT = 0;
 constexpr uint8_t COMM_ALG_FULL_MESH = 1;
@@ -258,7 +258,8 @@ inline ge::graphStatus GetEpWinSize(const gert::TilingContext *context, const ch
     auto attrs = context->GetAttrs();
     if (mc2tiling::GetNpuArch(context) == NpuArch::DAV_3510) {
         // A5 暂不支持 Hccl CommGetBufSizeCfg 接口，此处暂作规避
-        hcclBufferSizeEp = mc2tiling::Mc2TilingUtils::GetMaxWindowSize();
+        // A5 实际物理分配为 HCCL_BUFFSIZE 的 2 倍
+        hcclBufferSizeEp = mc2tiling::Mc2TilingUtils::GetMaxWindowSize() * 2UL;
         // A5 上前 1MB 作为状态区，剩余空间用作数据区
         maxWindowSizeEp = hcclBufferSizeEp - MTE_STATE_ZONE_SIZE;
     } else {

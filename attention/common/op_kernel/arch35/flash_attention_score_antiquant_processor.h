@@ -23,11 +23,10 @@ using namespace fa_base_matmul;
 
 enum class AntiquantTypeEnum : uint8_t {
     PER_CHANNEL = 0, // enable per-channel antiquant mode，include per-tensor
-    PER_TOKEN = 1,  // enable per-token antiquant mode
     K_PER_CHANNEL_V_PER_TOKEN = 2, // enable split antiquant mode, k per-channel and v per-token
-    PER_TOKEN_HEAD = 3, // enable both per-token and per-head antiquant mode
     PER_TOKEN_PAGE_ATTENTION = 4, // enable per-token antiquant mode, and enable PA for memory management
     PER_TOKEN_HEAD_PAGE_ATTENTION = 5, // enable both per-token and per-head antiquant mode, and enable PA for memory management
+    K_PER_TOKEN = 6, // 表示其他伪量化类型
 };
 
 enum class KvCacheLayout : uint32_t {
@@ -72,6 +71,7 @@ struct AntiquantTaskParamBaseAPI {
     uint32_t flashDecodeS2Idx;
     uint32_t sInnerLoopSize;
     uint32_t antiqSeqSize;
+    bool isPageAttentionAntiquant;
     bool isPertensor;
     bool isPerHead;
     bool isKvCacheNz;
@@ -92,8 +92,6 @@ public:
     static constexpr bool FLASH_DECODE = isFd;
     static constexpr bool KVFP4 = (IsSameType<KV_T, fp4x2_e1m2_t>::value || IsSameType<KV_T, fp4x2_e2m1_t>::value);
     static constexpr bool KVINT4 = IsSameType<KV_T, int4b_t>::value;
-    static constexpr bool PAGE_ATTENTION_ANTIQUANT = (antiquantMode == AntiquantTypeEnum::PER_TOKEN_PAGE_ATTENTION ||
-        antiquantMode == AntiquantTypeEnum::PER_TOKEN_HEAD_PAGE_ATTENTION);
     using ANTIQ_PARAMS_T = typename std::conditional<ANTIQUANT_PER_TOKEN, T, Q_T>::type;
     static constexpr uint32_t dBaseSize = (uint32_t)dTemplateType;
 
@@ -354,8 +352,9 @@ __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQU
     copyInParams.blockLen = taskParam.copyTotalS * sizeof(ANTIQ_PARAMS_T);
     copyInParams.srcStride = 0;
     LocalTensor<ANTIQ_PARAMS_T> antiqScaleTmpUb = antiqScaleInputQue.template AllocTensor<ANTIQ_PARAMS_T>();
-    if constexpr (PAGE_ATTENTION_ANTIQUANT) {
-        CopyAntiquantParamsPageAttention(antiqScaleTmpUb, antiqScaleGm, blockTableGm, taskParam, copyInParams, copyInPadParams);
+    if (taskParam.isPageAttentionAntiquant) {
+        CopyAntiquantParamsPageAttention(
+            antiqScaleTmpUb, antiqScaleGm, blockTableGm, taskParam, copyInParams, copyInPadParams);
     } else {
         DataCopyPad(antiqScaleTmpUb, antiqScaleGm[scaleOffset], copyInParams, copyInPadParams);
     }
@@ -370,8 +369,9 @@ __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQU
 
     if (taskParam.isExistOffset) {
         LocalTensor<ANTIQ_PARAMS_T> antiqOffsetTmpUb = antiqOffsetInputQue.template AllocTensor<ANTIQ_PARAMS_T>();
-        if constexpr (PAGE_ATTENTION_ANTIQUANT) {
-            CopyAntiquantParamsPageAttention(antiqOffsetTmpUb, antiqOffsetGm, blockTableGm, taskParam, copyInParams, copyInPadParams);
+        if (taskParam.isPageAttentionAntiquant) {
+            CopyAntiquantParamsPageAttention(
+                antiqOffsetTmpUb, antiqOffsetGm, blockTableGm, taskParam, copyInParams, copyInPadParams);
         } else {
             DataCopyPad(antiqOffsetTmpUb, antiqOffsetGm[scaleOffset], copyInParams, copyInPadParams);
         }

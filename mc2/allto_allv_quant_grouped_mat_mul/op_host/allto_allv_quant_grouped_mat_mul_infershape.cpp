@@ -9,17 +9,20 @@
   */
 
 /* !
- * \file allto_allv_quant_grouped_mat_mul_infershape.cc
+ * \file allto_allv_quant_grouped_mat_mul_infershape.cpp
  * \brief
  */
 #include "mc2_log.h"
 #include "platform/platform_info.h"
 #include "register/op_impl_registry.h"
 #include "graph/utils/type_utils.h"
+#include "util/math_util.h"
 
 using namespace ge;
-
 namespace ops {
+
+using Ops::Base::CeilDiv;
+
 // output index
 static const size_t INDEX_OUT_GMM_Y = 0;
 static const size_t INDEX_OUT_MM_Y = 1;
@@ -47,11 +50,13 @@ static const size_t INDEX_ATTR_MM_DTYPE_INDEX = 13;
 static constexpr size_t DIM_0 = 0;
 static constexpr size_t DIM_1 = 1;
 static constexpr size_t DIM_2 = 2;
+static constexpr size_t UNDEFINED_VALUE = 28;
 
 static constexpr int64_t FIRST_ELE_SIZE = -1;
+static constexpr int64_t MXFP4_PACK_FACTOR = 2;
 
-static graphStatus CheckDims(const gert::InferShapeContext *context, const gert::Shape *gmmXShape,
-    const gert::Shape *gmmWeightShape, bool transGmmWeight)
+static graphStatus CheckRequiredDims(const gert::InferShapeContext *context, const gert::Shape *gmmXShape,
+                                     const gert::Shape *gmmWeightShape)
 {
     auto result = ge::GRAPH_SUCCESS;
 
@@ -68,15 +73,14 @@ static graphStatus CheckDims(const gert::InferShapeContext *context, const gert:
     return result;
 }
 
-static graphStatus CheckDimsOptional(const gert::InferShapeContext *context, const gert::Shape *mmXShape,
-    const gert::Shape *mmWeightShape, bool transMmWeight)
+static graphStatus CheckOptionalDims(const gert::InferShapeContext *context, const gert::Shape *mmXShape,
+                                     const gert::Shape *mmWeightShape)
 {
     auto result = ge::GRAPH_SUCCESS;
-
-    auto xDimNum = mmXShape->GetDimNum();
+    auto mmXDimNum = mmXShape->GetDimNum();
     auto mmWeightDimNum = mmWeightShape->GetDimNum();
-    if (xDimNum != DIM_NUM_2) {
-        VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(), "Only x with dim 2 is supported.");
+    if (mmXDimNum != DIM_NUM_2) {
+        VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(), "Only mmX with dim 2 is supported.");
         result = ge::GRAPH_FAILED;
     }
     if (mmWeightDimNum != DIM_NUM_2) {
@@ -118,11 +122,7 @@ static ge::graphStatus InferMMOutputShape(const gert::InferShapeContext *context
     OPS_ERR_IF(mmYShape == nullptr, VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(),
         "the shape of output mm_y is nullptr."), return ge::GRAPH_FAILED);
     mmYShape->SetDimNum(DIM_NUM_0);
-    if ((mmXShape != nullptr) && (mmWeightShape != nullptr) &&
-        (mmYShape != nullptr) && (transMmWeightPtr != nullptr)) {
-        OPS_ERR_IF(CheckDimsOptional(context, mmXShape, mmWeightShape,
-            *transMmWeightPtr) != ge::GRAPH_SUCCESS, VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(),
-            "CheckDimsOptional failed."), return ge::GRAPH_FAILED);
+    if ((mmXShape != nullptr) && (mmWeightShape != nullptr) && (transMmWeightPtr != nullptr)) {
         int64_t bs = mmXShape->GetDim(DIM_0);
         mmYShape->SetDimNum(DIM_NUM_2);
         if (bs == FIRST_ELE_SIZE) {
@@ -140,18 +140,27 @@ static ge::graphStatus InferMMOutputShape(const gert::InferShapeContext *context
 static ge::graphStatus InferPermuteOutputShape(const gert::InferShapeContext *context, const bool *permuteOutFlagPtr,
     const int64_t e, const int64_t a, const int64_t h, gert::Shape *permuteOutShape)
 {
+    ge::DataType gmmXDtype = context->GetInputDesc(INDEX_IN_GMM_X)->GetDataType();
     OPS_ERR_IF(permuteOutShape == nullptr,
         VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(), 
         "the shape of output permute_out is nullptr."), return ge::GRAPH_FAILED);
     permuteOutShape->SetDimNum(DIM_NUM_0);
-    if ((permuteOutShape != nullptr) && (permuteOutFlagPtr != nullptr) && (*permuteOutFlagPtr == true)) {
+    if ((permuteOutFlagPtr != nullptr) && (*permuteOutFlagPtr == true)) {
         permuteOutShape->SetDimNum(DIM_NUM_2);
         if (e == FIRST_ELE_SIZE) {
             permuteOutShape->SetDim(DIM_0, FIRST_ELE_SIZE);
             permuteOutShape->SetDim(DIM_1, FIRST_ELE_SIZE);
         } else {
             permuteOutShape->SetDim(DIM_0, a);
-            permuteOutShape->SetDim(DIM_1, h);
+            int64_t fixFp4 = h;
+            if (gmmXDtype == ge::DataType::DT_FLOAT4_E2M1 || gmmXDtype == ge::DataType::DT_FLOAT4_E1M2) {
+                OPS_CHECK(fixFp4 % MXFP4_PACK_FACTOR != 0,
+                          CUBE_INNER_ERR_REPORT(context->GetNodeName(),
+                          "In mxfp4, the second dim of gmm_x should be divisible by 2, but got %ld.", fixFp4),
+                          return ge::GRAPH_FAILED);
+                fixFp4 = static_cast<int64_t>(CeilDiv(h, MXFP4_PACK_FACTOR));
+            }
+            permuteOutShape->SetDim(DIM_1, fixFp4);
         }
     }
     return ge::GRAPH_SUCCESS;
@@ -174,7 +183,6 @@ static ge::graphStatus InferShapeAlltoAllvGroupedMatMul(gert::InferShapeContext 
     auto *transGmmWeightPtr = attrs->GetAttrPointer<bool>(INDEX_ATTR_TRANS_GMM_WEIGHT_INDEX);
     auto *transMmWeightPtr = attrs->GetAttrPointer<bool>(INDEX_ATTR_TRANS_MM_WEIGHT_INDEX);
     auto *permuteOutFlagPtr = attrs->GetAttrPointer<bool>(INDEX_ATTR_PERMUTE_OUT_FLAG_INDEX);
-
     OPS_CHECK_NULL_WITH_CONTEXT(context, recvCountsPtr);
     OPS_CHECK_NULL_WITH_CONTEXT(context, sendCountsPtr);
     OPS_CHECK_NULL_WITH_CONTEXT(context, transGmmWeightPtr);
@@ -182,20 +190,29 @@ static ge::graphStatus InferShapeAlltoAllvGroupedMatMul(gert::InferShapeContext 
     OPS_CHECK_NULL_WITH_CONTEXT(context, gmmWeightShape);
     OPS_CHECK_NULL_WITH_CONTEXT(context, gmmYShape);
     OPS_CHECK_NULL_WITH_CONTEXT(context, epWorldSizePtr);
-    OPS_ERR_IF(CheckDims(context, gmmXShape, gmmWeightShape, *transGmmWeightPtr) != ge::GRAPH_SUCCESS,
-        VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(), "CheckDims failed."), return ge::GRAPH_FAILED);
+
+    OPS_ERR_IF(CheckRequiredDims(context, gmmXShape, gmmWeightShape) != ge::GRAPH_SUCCESS,
+               VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(), "CheckRequiredDims failed."),
+               return ge::GRAPH_FAILED);
 
     int64_t e = gmmWeightShape->GetDim(DIM_0);
     int64_t a = 0;
     int64_t h = gmmXShape->GetDim(DIM_1);
     int64_t n1 = *transGmmWeightPtr ? gmmWeightShape->GetDim(DIM_1) : gmmWeightShape->GetDim(DIM_2);
-
     if (InferGMMOutputShape(context, gmmYShape, epWorldSizePtr, recvCountsPtr, sendCountsPtr, e, a, n1) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    if (InferMMOutputShape(context, mmXShape, mmWeightShape, transMmWeightPtr, mmYShape) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
+
+    if ((mmXShape != nullptr) && (mmWeightShape != nullptr)) {
+        OPS_CHECK_NULL_WITH_CONTEXT(context, transMmWeightPtr);
+        OPS_ERR_IF(CheckOptionalDims(context, mmXShape, mmWeightShape) != ge::GRAPH_SUCCESS,
+                   VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(),
+                   "CheckOptionalDims failed."), return ge::GRAPH_FAILED);
+        if (InferMMOutputShape(context, mmXShape, mmWeightShape, transMmWeightPtr, mmYShape) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
     }
+
     if (InferPermuteOutputShape(context, permuteOutFlagPtr, e, a, h, permuteOutShape) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
@@ -214,9 +231,10 @@ static ge::graphStatus InferDataTypeAlltoAllvGroupedMatMul(gert::InferDataTypeCo
     if (attrs->GetAttrNum() > INDEX_ATTR_MM_DTYPE_INDEX) {
         mmDtypePtr = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_MM_DTYPE_INDEX);
     }
-    ge::DataType yDataType = (yDtypePtr == nullptr || *yDtypePtr == 28) ? dType : static_cast<ge::DataType>(*yDtypePtr);
+    ge::DataType yDataType =
+        (yDtypePtr == nullptr || *yDtypePtr == UNDEFINED_VALUE) ? dType : static_cast<ge::DataType>(*yDtypePtr);
     ge::DataType mmDataType =
-        (mmDtypePtr == nullptr || *mmDtypePtr == 28) ? dType : static_cast<ge::DataType>(*mmDtypePtr);
+        (mmDtypePtr == nullptr || *mmDtypePtr == UNDEFINED_VALUE) ? dType : static_cast<ge::DataType>(*mmDtypePtr);
     context->SetOutputDataType(INDEX_OUT_MM_Y, mmDataType);
     OP_LOGD(context->GetNodeName(), "infershape mmY data type: %s.",
         TypeUtils::DataTypeToAscendString(mmDataType).GetString());

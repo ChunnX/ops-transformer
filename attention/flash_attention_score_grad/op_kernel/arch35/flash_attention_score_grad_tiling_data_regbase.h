@@ -120,9 +120,12 @@ public:
     uint8_t isSplitByBlockIdx;
     uint8_t dropMaskOuter;
     uint8_t sparseType;
-    uint8_t reserved2;  // tilingData需要8字节对齐
+    bool enablePreSfmg;
     uint64_t s1SinkOuter;
     uint64_t s2SinkOuter;
+    uint64_t qSize;
+    uint64_t kSize;
+    uint64_t vSize;
 
     int64_t get_coreNum() const {return coreNum;}
     int64_t get_b() const {return b;}
@@ -155,9 +158,13 @@ public:
     uint8_t get_isSplitByBlockIdx() const {return isSplitByBlockIdx;}
     int64_t get_totalPerBatchNum() const {return totalPerBatchNum;}
     uint8_t get_sparseType() const {return sparseType;}
+    bool get_enablePreSfmg() const {return enablePreSfmg;}
     uint32_t get_sinkOptional() const {return sinkOptional;}
     uint64_t get_s1SinkOuter() const {return s1SinkOuter;}
     uint64_t get_s2SinkOuter() const {return s2SinkOuter;}
+    uint64_t get_qSize() const {return qSize;}
+    uint64_t get_kSize() const {return kSize;}
+    uint64_t get_vSize() const {return vSize;}
 
     void set_coreNum(int64_t coreNumParam) { this->coreNum = coreNumParam; }
     void set_b(int64_t bParam) { this->b = bParam; }
@@ -193,9 +200,13 @@ public:
     void set_isSplitByBlockIdx(uint8_t isSplitByBlockIdxParam) { this->isSplitByBlockIdx = isSplitByBlockIdxParam; }
     void set_totalPerBatchNum(int64_t totalPerBatchNumParam) { this->totalPerBatchNum = totalPerBatchNumParam; }
     void set_sparseType(uint8_t sparseTypeParam) { this->sparseType = sparseTypeParam; }
+    void set_enablePreSfmg(uint8_t enablePreSfmgParam) { this->enablePreSfmg = enablePreSfmgParam; }
     void set_sinkOptional(uint32_t sinkOptionalParam) { this->sinkOptional = sinkOptionalParam; }
     void set_s1SinkOuter(uint64_t s1SinkOuterParam) { this->s1SinkOuter = s1SinkOuterParam; }
     void set_s2SinkOuter(uint64_t s2SinkOuterParam) { this->s2SinkOuter = s2SinkOuterParam; }
+    void set_qSize(uint64_t qSizeParam) { this->qSize = qSizeParam; }
+    void set_kSize(uint64_t kSizeParam) { this->kSize = kSizeParam; }
+    void set_vSize(uint64_t vSizeParam) { this->vSize = vSizeParam; }
 };
 
 class FlashAttentionScoreGradS1S2BNGS1S2SplitCoreParamsRegbase {

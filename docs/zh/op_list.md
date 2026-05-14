@@ -59,6 +59,16 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/chunk_gated_delta_rule/README.md">chunk_gated_delta_rule</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>推理场景下线性注意力Gated Delta Rule的chunk版本，用于prefill节点。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/flash_attention_score/README.md">flash_attention_score</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -76,6 +86,26 @@
     <td>✗</td>
     <td>AI Core</td>
     <td>训练场景下计算注意力的反向输出，即FlashAttentionScore的反向计算。</td>
+  </tr>
+    <tr>
+    <td>attention</td>
+    <td><a href="../../attention/fused_floyd_attention/README.md">fused_floyd_attention</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>训练场景下，使用FloydAttention算法实现多维自注意力的计算。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/fused_floyd_attention_grad/README.md">fused_floyd_attention_grad</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>训练场景下，计算Floyd注意力的反向输出，FloydAttn相较于传统FA主要是计算qk/pv注意力时会额外将seq作为batch轴从而转换为batchMatmul。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -269,6 +299,16 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/sparse_lightning_indexer_grad_kl_loss/README.md">sparse_lightning_indexer_grad_kl_loss</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>SparselightningIndexerGradKlLoss算子是LightningIndexer的反向算子，再额外融合了Loss计算功能输出。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/nsa_selected_attention_grad/README.md">nsa_selected_attention_grad</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -366,6 +406,16 @@
     <td>✗</td>
     <td>AI CPU</td>
     <td>Attention和FFN分离场景下，FFN侧数据扫描算子。</td>
+  </tr>
+  <tr>
+    <td>ffn</td>
+    <td><a href="../../ffn/ffn_worker_batching/README.md">ffn_worker_batching</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>Attention和FFN分离场景下，FFN侧数据扫描及token重排。</td>
   </tr>
   <tr>
     <td>ffn</td>
@@ -596,6 +646,16 @@
     <td>✓</td>
     <td>AI Core</td>
     <td>完成mm + reduce_scatter_base计算。</td>
+  </tr>
+  <tr>
+    <td>mc2</td>
+    <td><a href="../../mc2/mega_moe/README.md">mega_moe</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>完成dispatch + group_matmul1 + swiglu_quant + group_matmul2 + combine的端到端融合计算。</td>
   </tr>
   <tr>
     <td>mc2</td>
@@ -939,6 +999,16 @@
   </tr>
   <tr>
     <td>mhc</td>
+    <td><a href="../../mhc/mhc_sinkhorn_backward/README.md">mhc_sinkhorn_backward</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>mhc_sinkhorn的反向算子</td>
+  </tr>
+  <tr>
+    <td>mhc</td>
     <td><a href="../../mhc/mhc_post/README.md">mhc_post</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -946,6 +1016,16 @@
     <td>✓</td>
     <td>AI Core</td>
     <td>基于一系列计算对mHC架构中上一层输出进行Post Mapping，对上一层的输入进行Res Mapping，然后对二者进行残差连接，得到下一层的输入</td>
+  </tr>
+   <tr>
+    <td>mhc</td>
+    <td><a href="../../mhc/mhc_post_backward/README.md">mhc_post_backward</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>mhc_post基于一系列计算对mHC架构中上一层输出进行Post Mapping，对上一层的输入进行Res Mapping，然后对二者进行残差连接，得到下一层的输入。该算子实现前述过程的反向</td>
   </tr>
   <tr>
     <td>mhc</td>

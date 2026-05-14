@@ -14,9 +14,9 @@
 #include <numeric>
 #include <alog_pub.h>
 #include <tiling/tiling_api.h>
-#include "tiling_base/tiling_base.h"
-#include "tiling_base/tiling_templates_registry.h"
-#include "tiling_base/tiling_type.h"
+#include "op_host/tiling_base.h"
+#include "op_host/tiling_templates_registry.h"
+#include "op_host/tiling_type.h"
 #include "../../op_kernel/arch35/flash_attention_score_template_tiling_key.h"
 #include "../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h"
 #include "err/ops_err.h"
@@ -80,6 +80,7 @@ static const int64_t D_V_SCALE_INDEX = 14L;
 static const int64_t QUERY_ROPE_INDEX = 15L;
 static const int64_t KEY_ROPE_INDEX = 16L;
 static const int64_t SINK_INPUT_INDEX = 17L;
+static const int64_t P_SCALE_INDEX = 18L;
 static const int64_t D_SCALE_DIM_NUM_4 = 4L;
 static const int64_t D_SCALE_DIM_NUM_0 = 0L;
 static const int64_t D_SCALE_DIM_NUM_1 = 1L;

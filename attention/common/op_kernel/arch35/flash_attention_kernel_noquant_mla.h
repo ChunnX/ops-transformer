@@ -446,7 +446,7 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::Process(
                 gS1Index, actualSeqQlenAddr, this->pseInfo);
             bool s2NoNeedCalc = ComputeS2LoopInfo<CHILD_SPEC_TEMPLATE_ARGS, useDn, enableKVPrefix>(runParam, constInfo);
             bool lastLoopThisCore = lastBN && (gS1Index == runParam.s1LoopTimes - 1);
-            bool lastBnNoNeedCalc = ComputeLastBN<CHILD_SPEC_TEMPLATE_ARGS, useDn, enableKVPrefix>(runParam,
+            bool lastBnNoNeedCalc = ComputeLastBN<CHILD_SPEC_TEMPLATE_ARGS, useDn, enableKVPrefix>(runParam, constInfo,
                 actualSeqQlenAddr);
             if (((s1NoNeedCalc || s2NoNeedCalc) && !lastLoopThisCore) || lastBnNoNeedCalc) {
                 continue;
@@ -608,7 +608,9 @@ __aicore__ inline bool FAKernelNoquantMla<CubeBlockType, VecBlockType>::IsLastBN
         } else {
             for (uint32_t bnIdx = bnStartIdx + 1; bnIdx < bnEndIdx; bnIdx++) {
                 uint32_t boIdx = bnIdx / constInfo.n2Size;
-                if (actualSeqQlenAddr[boIdx] != 0) {
+                if (constInfo.actualSeqLenSize == 1 && actualSeqQlenAddr[0] != 0) {
+                    return false;
+                } else if (actualSeqQlenAddr[boIdx] != 0) {
                     return false;
                 }
             }
