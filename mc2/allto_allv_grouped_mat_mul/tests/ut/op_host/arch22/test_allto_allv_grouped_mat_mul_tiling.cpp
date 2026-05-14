@@ -252,7 +252,7 @@ TEST_P(AlltoAllvGroupedMatMulArch22TilingTest, ShapeSize)
     if (testParam.status == ge::GRAPH_FAILED) {
         Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
     } else {
-        uint64_t expectTilingKey = 0UL;
+        uint64_t expectTilingKey = 4UL;
         Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
     }
 }
