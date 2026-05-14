@@ -526,8 +526,8 @@ private:
     DataCopyParams xCopyParams_;
     DataCopyExtParams hCommuCopyOutParams_;
     DataCopyParams doWindowCopyOutParams_;
-
     MoeDistributeDispatchV2Quant<TemplateDispatchQuant> quantInst_;
+    AscendC::Hcomm hcommHandle_;
 
     MoeDispatchLog_NEW::Log logger;
 };
@@ -797,7 +797,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     }
     tpipe_->InitBuffer(dpuCommInitBufBuf_, SIZE_ALIGN_256);
     dpuCommInitBufTensor_ = dpuCommInitBufBuf_.Get<uint8_t>();
-    Init(dpuCommInitBufTensor_.GetPhyAddr(),SIZE_ALIGN_256, -1); // todo:需要确认
+    hcommHandle_.Init(dpuCommInitBufTensor_.GetPhyAddr(),SIZE_ALIGN_256); // todo:需要确认
 }
 
 template <TemplateDispatchKFCTypeClass>
@@ -1140,7 +1140,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         GM_ADDR flagAddr = reinterpret_cast<GM_ADDR>(localReadGM + SPLIT_BLOCK_DATA_SIZE);
         bool isSendComplete = WaitFlag<false>(flagAddr, flagRecvTensor_, COMM_FLAG_COPY_STRIDE, blockCntPerToken_);
         if (isSendComplete) {
-            WriteNbi(dpuCommHandle_[GetServerCommHandleIndex(dstServerId)], remoteWriteGM, localReadGM, SERVER_STATE_ALIGN);
+            hcommHandle_.WriteNbi(dpuCommHandle_[GetServerCommHandleIndex(dstServerId)], remoteWriteGM, localReadGM, SERVER_STATE_ALIGN);
             tokenSendMapTensor.SetValue(tokenIndex, 1);
             tokenIndex = (tokenIndex + 1) % serverTokenNum;
             completeTokenNum++;
@@ -1216,7 +1216,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     DataCopy(dstStateGMTensor, outTensor, SERVER_STATE_ALIGN/sizeof(uint32_t));
     SyncFunc<AscendC::HardEvent::MTE3_S>();
     waitWriteTensor_.SetValue(0, 1); // TODO：目前临时使用这种方式来等待写入完成，后续需要优化为其他方式
-    WriteNbi(dpuCommHandle_[GetServerCommHandleIndex(dstServerId)], remoteWriteGM, localWriteGM, SERVER_STATE_ALIGN); 
+    hcommHandle_.WriteNbi(dpuCommHandle_[GetServerCommHandleIndex(dstServerId)], remoteWriteGM, localWriteGM, SERVER_STATE_ALIGN); 
     LOG_INFO("SetServerFlag end");
 }
 
@@ -2226,7 +2226,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         SyncFunc<AscendC::HardEvent::MTE3_S>();
         waitWriteTensor_.SetValue(0, 1); // TODO：目前临时使用这种方式来等待写入完成，后续需要优化为其他方式
         GM_ADDR remoteWriteGM = reinterpret_cast<GM_ADDR>((GetDataWriteAddrFromRemoteServer<ExecutMode::CUMSUM>(serverIndex)));
-        WriteNbi(dpuCommHandle_[GetServerCommHandleIndex(serverIndex)], remoteWriteGM, localWriteGM, blockCntExpertPerServer_ * SERVER_STATE_ALIGN); 
+        hcommHandle_.WriteNbi(dpuCommHandle_[GetServerCommHandleIndex(serverIndex)], remoteWriteGM, localWriteGM, blockCntExpertPerServer_ * SERVER_STATE_ALIGN); 
     }
 }
 
