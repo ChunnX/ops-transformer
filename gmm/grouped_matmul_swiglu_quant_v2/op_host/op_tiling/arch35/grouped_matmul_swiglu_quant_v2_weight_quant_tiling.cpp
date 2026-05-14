@@ -27,6 +27,7 @@ constexpr uint32_t GROUPLIST_INDEX = 2;
 constexpr uint32_t W_INDEX = 3;
 constexpr uint32_t SCALE_INDEX = 4;
 constexpr uint32_t BIAS_INDEX = 6;
+constexpr uint32_t Y_SCALE_INDEX = 5;
 
 constexpr uint32_t ATTR_INDEX_TRANS_X = 0;
 constexpr uint32_t ATTR_INDEX_TRANS_W = 1;
@@ -40,6 +41,7 @@ constexpr uint32_t MX_SCALE_BLOCK_SIZE = 64;
 constexpr uint32_t ALIGN_SIZE_KN = 32;
 constexpr int64_t MIN_KN_SIZE = 32;
 constexpr uint32_t DIM_NUM_WEIGHT_NZ = 5;
+constexpr int64_t MAX_GROUP_NUM = 1024;
 
 bool GroupedMatmulSwigluQuantV2WeightQuantTiling::IsCapable()
 {
@@ -287,6 +289,33 @@ bool GroupedMatmulSwigluQuantV2WeightQuantTiling::CheckShapeForMxQuant(const ger
     return true;
 }
 
+bool GroupedMatmulSwigluQuantV2WeightQuantTiling::CheckGroupNum()
+{
+    if (inputParams_.groupNum > MAX_GROUP_NUM) {
+        OP_LOGE(inputParams_.opName, "groupNum %ld exceeds max %ld.", inputParams_.groupNum, MAX_GROUP_NUM);
+        return false;
+    }
+    if (inputParams_.groupNum <= 0) {
+        OP_LOGE(inputParams_.opName, "groupNum %ld must be positive.", inputParams_.groupNum);
+        return false;
+    }
+    return true;
+}
+
+bool GroupedMatmulSwigluQuantV2WeightQuantTiling::CheckScaleShapes()
+{
+    auto wScaleShapePtr = context_->GetInputShape(SCALE_INDEX);
+    auto xScaleShapePtr = context_->GetInputShape(X_SCALE_INDEX);
+
+    OP_CHECK_IF(wScaleShapePtr == nullptr || xScaleShapePtr == nullptr,
+                OP_LOGE(inputParams_.opName, "Scale input shape is nullptr."), return false);
+
+    const gert::Shape &wScaleShape = wScaleShapePtr->GetOriginShape();
+    const gert::Shape &xScaleShape = xScaleShapePtr->GetOriginShape();
+
+    return CheckShapeForMxQuant(wScaleShape, xScaleShape);
+}
+
 bool GroupedMatmulSwigluQuantV2WeightQuantTiling::RunCheckFunc()
 {
     for (auto &checkFunc : checkConditionFuncs_) {
@@ -308,6 +337,8 @@ bool GroupedMatmulSwigluQuantV2WeightQuantTiling::SetMxA8W4NzInputFunc()
     checkConditionFuncs_.push_back([this](gert::TilingContext *context) { return AnalyzeDtype(); });
     checkConditionFuncs_.push_back([this](gert::TilingContext *context) { return AnalyzeInputs(); });
     checkConditionFuncs_.push_back([this](gert::TilingContext *context) { return CheckBiasEmpty(); });
+    checkConditionFuncs_.push_back([this](gert::TilingContext *context) { return CheckGroupNum(); });
+    checkConditionFuncs_.push_back([this](gert::TilingContext *context) { return CheckScaleShapes(); });
     return true;
 }
 

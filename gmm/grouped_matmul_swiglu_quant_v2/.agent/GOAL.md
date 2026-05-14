@@ -36,7 +36,14 @@ GroupedMatmulSwigluQuantV2算子支持MxA8W4数据流，tiling拦截校验正确
 - Kernel入口分支
 - Stub kernel保证框架调用正常
 
-### 阶段二-Part2: Kernel实现（后续）
+### 阶段二-Part2: Tiling实现（后续）
+基于走读文档和编码方案，完成GMMSQ MxA8W4数据流的Tiling代码开发：
+- 基于STC进行tiling用例设计
+- 适配测试用例代码
+- 编译执行UT验证tiling
+- 测试驱动开发，通过闭环工作流完成验证+代码完善工作
+
+### 阶段二-Part3: Kernel实现（后续）
 基于走读文档和编码方案，完成GMMSQ MxA8W4数据流的kernel代码开发：
 - Controller层改写
 - BasicBlock层改写

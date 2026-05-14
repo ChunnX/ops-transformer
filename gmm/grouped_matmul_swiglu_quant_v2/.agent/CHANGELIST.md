@@ -53,3 +53,16 @@
   - BIAS_INDEX = 6
 - 更新InferScenario中变量名：pertokenScaleDesc → xScaleDesc
 - xScale从OptionalInput改为必选Input（GetInputDesc而非GetOptionalInputDesc）
+
+### 2026-05-14: 阶段二-Part2 Tiling测试验证及代码完善
+
+#### Tiling测试验证（🟡 进行中）
+- 新增8个MxA8W4 CSV测试用例到`tests/ut/op_host/test_grouped_matmul_swiglu_quant_v2_tiling.csv`：
+  - 正常用例：wTrans=false/true各1个
+  - 边界用例：min K=32, min N=128, large E=64
+  - 非法用例：K未对齐、bias提供、grouplisttype=cumsum
+- 完善tiling校验逻辑（`op_host/op_tiling/arch35/grouped_matmul_swiglu_quant_v2_weight_quant_tiling.cpp`）：
+  - 新增`CheckGroupNum()`：校验groupNum <= 1024且为正数
+  - 新增`CheckScaleShapes()`：校验wscale为4D、xscale为3D
+  - 注册到validation chain
+- 编译运行UT进行用例验证（待进行）

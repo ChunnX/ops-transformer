@@ -89,6 +89,8 @@ private:
     bool AnalyzeDtype();
     bool AnalyzeInputs();
     bool CheckBiasEmpty();
+    bool CheckGroupNum();
+    bool CheckScaleShapes();
     bool CheckShapeForMxQuant(const gert::Shape &wScaleShape, const gert::Shape &xScaleShape);
 
     int64_t coreNum_ = 0;
