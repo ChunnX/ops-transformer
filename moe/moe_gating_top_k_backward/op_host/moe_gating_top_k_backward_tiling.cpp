@@ -204,10 +204,10 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckGradY()
                         gradYShapePtr->GetOriginShape().GetDim(DIM_ZERO), tokenCount_),
                 return ge::GRAPH_FAILED);
     k_ = gradYShapePtr->GetOriginShape().GetDim(DIM_ONE);
-    OP_CHECK_IF(
-        k_ > expertCount_ || k_ <= 0,
-        OP_LOGE(context_, "gradY: Dimension 1 (K) must be in the range of (0, %ld (N)], but got %ld.", expertCount_, k_),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(k_ > expertCount_ || k_ <= 0,
+                OP_LOGE(context_, "gradY: Dimension 1 (K) must be in the range of (0, %ld (N)], but got %ld.",
+                        expertCount_, k_),
+                return ge::GRAPH_FAILED);
 
     auto gradYDesc = context_->GetInputDesc(GRAD_Y_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, gradYDesc);
@@ -348,7 +348,7 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckOutShape() // lc
     return ge::GRAPH_SUCCESS;
 }
 
-int64_t MoeGatingTopKBackwardTilingBase::CalcMaxRows()
+ge::graphStatus MoeGatingTopKBackwardTilingBase::CalcMaxRows()
 {
     int64_t gradYQuePerTokenSpace = k_ * SIZE_OF_FLOAT32;
     int64_t indicesQuePerTokenSpace = k_ * SIZE_OF_FLOAT32;
@@ -411,7 +411,8 @@ int64_t MoeGatingTopKBackwardTilingBase::CalcMaxRows()
         maxRows--;
     }
 
-    return maxRows;
+    baseRows_ = maxRows;
+    return ge::GRAPH_SUCCESS
 }
 
 ge::graphStatus MoeGatingTopKBackwardTilingBase::SplitRows() // lc
@@ -420,7 +421,11 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::SplitRows() // lc
     needCoreNum_ = Ops::Base::CeilDiv(tokenCount_, perCoreRows_);
     lastCoreRows_ = tokenCount_ % perCoreRows_ == 0 ? perCoreRows_ : tokenCount_ % perCoreRows_;
 
-    baseRows_ = CalcMaxRows();
+    auto ret = CalcMaxRows();
+    if (ret != ge::GRAPH_SUCCESS) {
+        return ret;
+    }
+
     OP_CHECK_IF(
         baseRows_ <= 0,
         OP_LOGE(context_,
