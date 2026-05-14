@@ -1067,6 +1067,7 @@ ge::graphStatus SparseLightningIndexerGradKLLossTilingBaseRegbase::DoOpTiling()
     uint32_t pKTotalSize = gSizeQuery == NQUERY_SIZE_48 ? 12288 : 16384;
     SetMultiCoreParamsRegbase(totalSize, static_cast<int64_t>(aicNum), syKTotalSize, pKTotalSize);
     context_->SetBlockDim(sliGradkllossMultiCoreParams_->get_coreNum()); // 使用的核数确定
+    context_->SetScheduleMode(1);
 
     std::vector<int64_t> shapeVec = {1, kSize};
     ge::Shape srcShape(shapeVec);
