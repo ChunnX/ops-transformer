@@ -455,7 +455,7 @@ ge::graphStatus BSATiling::ParseSeqlens(gert::TilingContext *bsaContext)
 
 ge::graphStatus BSATiling::CheckSparsePattern(gert::TilingContext *bsaContext, const int64_t defaultShape)
 {
-    const auto *blockSparseMaskShape = bsaContext->GetOptionalInputShape(BLOCK_SPARSE_MASK_INDEX);
+    const auto *blockSparseMaskShape = bsaContext->GetInputShape(BLOCK_SPARSE_MASK_INDEX);
     if (blockShapeX_ <= 0 || blockShapeY_ <= 0) {
         OP_LOGE(bsaContext->GetNodeName(), "BlockShape elems must be greater than 0, "
             "but got elem0: %ld, elem1: %ld.", blockShapeX_, blockShapeY_);
@@ -493,8 +493,8 @@ ge::graphStatus BSATiling::ParseSparsePattern(gert::TilingContext *bsaContext)
     constexpr int64_t DEFAULT_BLOCK_SHAPE = 128;
     blockShapeX_ = DEFAULT_BLOCK_SHAPE;
     blockShapeY_ = DEFAULT_BLOCK_SHAPE;
-    const auto *blockSparseMaskTensor = bsaContext->GetOptionalInputTensor(BLOCK_SPARSE_MASK_INDEX);
-    const auto *blockShapeTensor = bsaContext->GetOptionalInputTensor(BLOCK_SHAPE_INDEX);
+    const auto *blockSparseMaskTensor = bsaContext->GetInputTensor(BLOCK_SPARSE_MASK_INDEX);
+    const auto *blockShapeTensor = bsaContext->GetInputTensor(BLOCK_SHAPE_INDEX);
     
     printf("tkd BLOCK_SPARSE_MASK_INDEX: %d\n", BLOCK_SPARSE_MASK_INDEX);
     printf("tkd blockSparseMask is null: %d\n", static_cast<int>(blockSparseMaskTensor == nullptr));
@@ -659,28 +659,28 @@ ge::graphStatus BSATiling::CheckBlockShapeQuantContraint(gert::TilingContext *bs
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus BSATiling::CheckAllInputInfo(gert::TilingContext *bsaContext)
-{
-    int parameterNum = 9;
-    for (uint32_t parameterIndex = 0; parameterIndex < parameterNum; parameterIndex++) {
-        auto parameterTensor = bsaContext->GetOptionalInputTensor(parameterIndex);
-        bool isParameterNull = parameterTensor == nullptr;
-        std::string isParameterNullString = isParameterNull ? "is null" : "is not null";
-        std::cout << "tkd parameter index: " << parameterIndex << " " << isParameterNullString << std::endl;
-        auto parameterDtype = bsaContext->GetOptionalInputDesc(parameterIndex)->GetDataType();
-        std::cout << "tkd parameter index: " << parameterIndex << " ,dtype: " << DataTypeToString(parameterDtype)
-                  << std::endl;
-        auto parameterShape = bsaContext->GetOptionalInputShape(parameterIndex);
-        int64_t parameterDimNum = parameterShape->GetStorageShape().GetDimNum();
-        std::cout << "tkd parameter index: " << parameterIndex << " ,dimNum: " << parameterDimNum << std::endl;
-        for (uint32_t dimIndex = 0; dimIndex < parameterDimNum; dimIndex++) {
-            std::cout << "tkd dimIndex " << dimIndex << ": " << parameterShape->GetStorageShape().GetDim(dimIndex)
-                      << std::endl;
-        }
-        printf("tkd ===============================\n");
-    }
-    return ge::GRAPH_SUCCESS;
-}
+// ge::graphStatus BSATiling::CheckAllInputInfo(gert::TilingContext *bsaContext)
+// {
+//     int parameterNum = 9;
+//     for (uint32_t parameterIndex = 0; parameterIndex < parameterNum; parameterIndex++) {
+//         auto parameterTensor = bsaContext->GetOptionalInputTensor(parameterIndex);
+//         bool isParameterNull = parameterTensor == nullptr;
+//         std::string isParameterNullString = isParameterNull ? "is null" : "is not null";
+//         std::cout << "tkd parameter index: " << parameterIndex << " " << isParameterNullString << std::endl;
+//         auto parameterDtype = bsaContext->GetOptionalInputDesc(parameterIndex)->GetDataType();
+//         std::cout << "tkd parameter index: " << parameterIndex << " ,dtype: " << DataTypeToString(parameterDtype)
+//                   << std::endl;
+//         auto parameterShape = bsaContext->GetOptionalInputShape(parameterIndex);
+//         int64_t parameterDimNum = parameterShape->GetStorageShape().GetDimNum();
+//         std::cout << "tkd parameter index: " << parameterIndex << " ,dimNum: " << parameterDimNum << std::endl;
+//         for (uint32_t dimIndex = 0; dimIndex < parameterDimNum; dimIndex++) {
+//             std::cout << "tkd dimIndex " << dimIndex << ": " << parameterShape->GetStorageShape().GetDim(dimIndex)
+//                       << std::endl;
+//         }
+//         printf("tkd ===============================\n");
+//     }
+//     return ge::GRAPH_SUCCESS;
+// }
 
 ge::graphStatus BSATiling::ParseOptionalTensors(gert::TilingContext *bsaContext)
 {
@@ -691,7 +691,7 @@ ge::graphStatus BSATiling::ParseOptionalTensors(gert::TilingContext *bsaContext)
         return ge::GRAPH_FAILED;
     }
 
-    CheckAllInputInfo(bsaContext);
+    // CheckAllInputInfo(bsaContext);
     if (socVer_ == SOC_VER_950_CODE) {
         printf("tkd ParseOptionalTensors if (socVer_ == SOC_VER_950_CODE)\n");
         if (ValidateQDequantScale(bsaContext) != ge::GRAPH_SUCCESS ||
