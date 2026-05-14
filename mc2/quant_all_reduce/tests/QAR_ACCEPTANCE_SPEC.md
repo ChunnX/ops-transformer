@@ -106,13 +106,13 @@ BW_actual ≥ BW_min  →  ACCEPT
 
 | 项目 | 要求 |
 |------|------|
-| **数据类型** | int8（sizeof=1B）；hif8 / fp8 可复用同标准 |
+| **数据类型** | int8 / hif8 / fp8_e4m3fn / fp8_e5m2（sizeof=1B），均复用同标准 |
+| **Scale 类型** | fp32（per-128-group）或 fp8_e8m0（MXFP，per-32-group），实测验证两者性能等同 |
 | **V 覆盖范围** | 0.01 ~ 12 MB，至少覆盖 L0-L5 各档一个点（见附录 A） |
 | **采集方式** | `torch_npu.profiler.profile`，10 轮迭代，warmup=0，active=1 |
 | **T_kernel 取值** | 从 `op_summary.csv` 取非 AI_CPU 任务 Task Duration 平均值 |
 | **环境变量** | `HCCL_BUFFSIZE=2048` |
 | **前置条件** | 被测 NPU 无其他进程占用 |
-| **Scale 类型** | fp32（per-128-group）；fp8_e8m0（MXFP，per-32-group）需单独验证 |
 
 ---
 

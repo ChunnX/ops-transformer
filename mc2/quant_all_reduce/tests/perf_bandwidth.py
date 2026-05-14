@@ -53,13 +53,17 @@ PAYLOAD_SPECS = [
 ]
 
 
-def derive_shapes(world_size, op='both'):
-    """Return [(op_name, [bs, h])], bs aligned to world_size."""
+def derive_shapes(world_size, op='both', dtype='int8'):
+    """Return [(op_name, [bs, h])], bs aligned to world_size.
+    Note: V calculation uses sizeof=1B for both int8 and MXFP (fp8).
+    """
     tasks = []
     seen = set()
 
+    bytes_per_elem = 1  # int8 and fp8 both 1B
+
     for v_mb, h in PAYLOAD_SPECS:
-        v_elems = int(v_mb * 1024 * 1024)  # bytes → elements (int8=1B)
+        v_elems = int(v_mb * 1024 * 1024 / bytes_per_elem)
 
         if op in ('qar', 'both'):
             bs = max(1, round(v_elems / h))
@@ -83,11 +87,22 @@ def derive_shapes(world_size, op='both'):
 
 # ── helpers ──────────────────────────────────────────────────
 
-def build_case(op_name, shape, world_size):
+def build_case(op_name, shape, world_size, dtype='int8'):
     """Build a case dict matching what MC2_OP / op classes expect."""
     bs = int(np.prod(shape[:-1]))
     h = shape[-1]
-    case_name = f"bw_{op_name}_{bs}x{h}_int8"
+    tag = 'mxfp' if dtype == 'mxfp' else 'int8'
+    case_name = f"bw_{op_name}_{bs}x{h}_{tag}"
+
+    is_mxfp = (dtype == 'mxfp')
+    if is_mxfp:
+        x_dtype = 'fp8_e4m3fn'
+        scales_dtype = 'fp8_e8m0'
+        scales_shape = [bs, h // 32, 2]
+    else:
+        x_dtype = 'int8'
+        scales_dtype = 'fp32'
+        scales_shape = [bs, h // 128]
 
     return {
         'case_name': case_name,
@@ -95,9 +110,9 @@ def build_case(op_name, shape, world_size):
         'op_name': op_name,
         'input_tensor_shape': shape,
         'input_tensor_range': (-1.0, 1.0),
-        'input_tensor_dtype': 'int8',
-        'scales_shape': [bs, h // 128],
-        'scales_dtype': 'fp32',
+        'input_tensor_dtype': x_dtype,
+        'scales_shape': scales_shape,
+        'scales_dtype': scales_dtype,
         'scales_range': (-1.0, 1.0),
         'outdtype': 'fp16',
         'world_size': world_size,
@@ -148,7 +163,7 @@ def read_perf_from_csv(csv_path, case_name):
 
 # ── batch worker ─────────────────────────────────────────────
 
-def batch_worker(rank, world_size, tasks, shared_counters, lock, results_out):
+def batch_worker(rank, world_size, tasks, shared_counters, lock, results_out, dtype='int8'):
     """One rank: init hccl → loop all shapes → profile → sync."""
     try:
         torch_npu.npu.set_device(rank)
@@ -162,7 +177,7 @@ def batch_worker(rank, world_size, tasks, shared_counters, lock, results_out):
         )
 
         for idx, (op_name, shape) in enumerate(tasks):
-            case = build_case(op_name, shape, world_size)
+            case = build_case(op_name, shape, world_size, dtype)
             case_name = case['case_name']
             profiling_dir = f"Profiling_Result_mc2_{case_name}"
             csv_path = f"mc2_{op_name}_pro_result.csv"
@@ -220,13 +235,17 @@ def main():
     parser = argparse.ArgumentParser(description="QAR/QRS bandwidth measurement (batch)")
     parser.add_argument('--op', choices=['qar', 'qrs', 'both'], default='both')
     parser.add_argument('--world_size', type=int, default=4)
+    parser.add_argument('--dtype', choices=['int8', 'mxfp'], default='int8',
+                        help='int8=fp32 per-128-group, mxfp=fp8_e4m3fn+fp8_e8m0 per-32-group')
     parser.add_argument('--dry_run', action='store_true')
     args = parser.parse_args()
 
     world_size = args.world_size
-    tasks = derive_shapes(world_size, args.op)
+    dtype = args.dtype
+    tasks = derive_shapes(world_size, args.op, dtype)
 
-    print(f"world_size={world_size}  PEAK_MTE_BW={PEAK_MTE_BW_GBs} GB/s")
+    dtype_tag = 'fp8_e4m3fn+fp8_e8m0' if dtype == 'mxfp' else 'int8'
+    print(f"world_size={world_size}  dtype={dtype_tag}  PEAK_MTE_BW={PEAK_MTE_BW_GBs} GB/s")
     print(f"Shapes: {len(tasks)}")
     print(f"QAR V = bs*h*1B    QRS V = bs*h/{world_size}*1B\n")
 
@@ -261,7 +280,7 @@ def main():
     procs = []
     for rank in range(world_size):
         p = ctx.Process(target=batch_worker,
-                        args=(rank, world_size, tasks, shared_counters, lock, results_out))
+                        args=(rank, world_size, tasks, shared_counters, lock, results_out, dtype))
         p.start()
         procs.append(p)
 
@@ -276,7 +295,7 @@ def main():
 
     # write CSV
     results = list(results_out)
-    csv_path = f"bw_perf_results_w{world_size}.csv"
+    csv_path = f"bw_perf_results_w{world_size}_{dtype}.csv"
     with open(csv_path, 'w', newline='') as f:
         writer = csv.writer(f)
         writer.writerow(['operator', 'input_shape', 'V_MB', 'T_kernel_us', 'BW_GBs', 'Util_pct'])
