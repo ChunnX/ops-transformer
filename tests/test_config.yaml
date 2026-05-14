@@ -828,7 +828,7 @@ moe:
     options:
       - moe_token_permute_with_routing_map
     test:
-      examples: False
+      examples: True
 
   moe_token_permute_with_routing_map_grad:
     module: True
@@ -1730,7 +1730,7 @@ mhc:
       - mhc/mhc_post/examples
       - mhc/mhc_post/tests
     test:
-      examples: False
+      examples: True
       ut: True
   mhc_pre:
     module: True
