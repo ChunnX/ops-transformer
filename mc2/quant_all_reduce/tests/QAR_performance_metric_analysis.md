@@ -27,7 +27,7 @@ T(V, N, env, op) = T_base(N, env, op) + V / BW_eff(N, env, op)
 ```
 
 - `T_base` — ReadStatus 软同步 + kernel 启动
-- `BW_eff` — 等效带宽（含 MTE + 反量化 + 流水线 + 环境传输层）
+- `BW_eff` — 等效带宽（含 MTE 读带宽 + 反量化计算 + 流水线开销 + 环境 MTE 延迟差异）
 
 ### 2.1 环境差异
 
@@ -38,7 +38,7 @@ T(V, N, env, op) = T_base(N, env, op) + V / BW_eff(N, env, op)
 | **POD 8p** | 8 | 单机 8 卡，高速互联 | 开发调试 |
 | **Server 8p** | 8 | 多节点/跨 socket | **正式验收** |
 
-Server 比 POD 整体慢 ~22%（每 MB 时间成本 +26%），根源在 HCCL 传输层，非算子代码。
+Server 比 POD 整体慢 ~22%（每 MB 时间成本 +26%），根源在 Server 多 socket 拓扑下 MTE 跨 socket 访问 Win 区延迟较高，非算子代码。
 
 ---
 
