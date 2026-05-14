@@ -668,7 +668,7 @@ ge::graphStatus BSATiling::CheckAllInputInfo(gert::TilingContext *bsaContext)
         std::string isParameterNullString = isParameterNull ? "is null" : "is not null";
         std::cout << "tkd parameter index: " << parameterIndex << " " << isParameterNullString << std::endl;
         auto parameterDtype = bsaContext->GetInputDesc(parameterIndex)->GetDataType();
-        std::cout << "tkd parameter index: " << parameterIndex << " ,dtype: " << DataTypeToStringMap(parameterDtype)
+        std::cout << "tkd parameter index: " << parameterIndex << " ,dtype: " << DataTypeToString(parameterDtype)
                   << std::endl;
         auto parameterShape = bsaContext->GetInputShape(parameterIndex);
         int64_t parameterDimNum = parameterShape->GetStorageShape().GetDimNum();

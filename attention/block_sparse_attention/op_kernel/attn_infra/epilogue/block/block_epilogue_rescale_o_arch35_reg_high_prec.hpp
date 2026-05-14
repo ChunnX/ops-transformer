@@ -254,7 +254,7 @@ public:
         }
         // release lo buf
         SetCrossCoreSync<4, PIPE_V>(mm2ToReFlag);
-        if () {
+        if (isLastKvSTile) {
             AscendC::PipeBarrier<PIPE_V>();
             if (dStages == 1) {
                 ScaleO<DRegSplitStages::ONE>(goUb, rowNumCurSubCore, colStrideCurSubCore, colTail, vlElemNum,
