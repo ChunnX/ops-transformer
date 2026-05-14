@@ -26,6 +26,13 @@
 #include "mc2/matmul_allto_all/op_api/matmul_allto_all_util.h"
 #include "mc2/matmul_allto_all/op_api/aclnn_matmul_allto_all_helper.h"
 
+#ifdef BUILD_OPEN_PROJECT
+#include "version/hcomm_version.h"
+#define HCCL_CHANNEL_SUPPORT_VERSION 90000000
+#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+#include "common/op_api/mc2_context.h"
+#endif
+#endif
 
 namespace {
 
@@ -126,18 +133,11 @@ extern "C" aclnnStatus aclnnMatmulAlltoAllV2GetWorkspaceSize(const aclTensor *x1
                                               transposeX2, commMode, output, workspaceSize, executor);
 
     // 获取卡数
-    HcclComm hcclHandle;
     uint32_t rankSize = 0;
-    auto hcclRet = HcomGetCommHandleByGroup(group, &hcclHandle);
-    if (hcclRet != HCCL_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER, "Get HCCL handle failed, group: %s", group);
-        return ACLNN_ERR_INNER;
-    }
-    hcclRet = HcclGetRankSize(hcclHandle, &rankSize);
-    if (hcclRet != HCCL_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER, "Get rank size failed");
-        return ACLNN_ERR_INNER;
-    }
+#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+    auto aclnnRet = Mc2Aclnn::Mc2Context::GetMc2RankSize(group, rankSize);
+    CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
+#endif
 
     if (ret == ACLNN_SUCCESS && *executor != nullptr && (NnopbaseSetHcclServerType)) {
         OP_LOGD("[MatmulAlltoAllV2] Execute commMode=%s", commMode);
