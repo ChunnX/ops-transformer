@@ -208,25 +208,6 @@ public:
         InitQCuSeqLensParser();
         InitKvCuSeqLensParser();
 
-        if (constInfo.sequsedQSize > 0 && sequsedQ != nullptr) {
-            sequsedGmQ.SetGlobalBuffer((__gm__ uint64_t *)sequsedQ, constInfo.sequsedQSize);
-        }
-        if (constInfo.sequsedKvSize > 0 && sequsedKv != nullptr) {
-            sequsedGmKv.SetGlobalBuffer((__gm__ uint64_t *)sequsedKv, constInfo.sequsedKvSize);
-        }
-
-        // When seqused_q is provided but cu_seqlens_q is not (BNSD with variable Q length),
-        // reuse seqused_q as actualSeqLengths so that offset calculators in Q-copy and
-        // Output-copy use per-batch actSeqLensQ for correct GS1 decomposition.
-        if (constInfo.sequsedQSize > 0 && sequsedQ != nullptr && constInfo.actualSeqLenSize == 0) {
-            actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint64_t *)sequsedQ, constInfo.sequsedQSize);
-            constInfo.actualSeqLenSize = constInfo.sequsedQSize;
-            qActSeqLensParser.Init(actualSeqLengthsGmQ, constInfo.actualSeqLenSize, constInfo.s1Size);
-        }
-
-        // Use seqused_q pointer as effective Q seq-len address when cu_seqlens_q is absent
-        __gm__ uint8_t *effectiveQSeqAddr = (cuSeqLengths != nullptr) ? cuSeqLengths : sequsedQ;
-
         InitMMResBuf(workspace);
 
         if ASCEND_IS_AIV {

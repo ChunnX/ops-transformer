@@ -129,14 +129,15 @@ def normalize_case(raw):
         c.setdefault("block_table_shape", c.get("block_table_shape"))
         block_size = c.get("block_size", 1)
         block_table_shape = c.get("block_table_shape", [])
-        c["actual_b"] = block_table.shape[0]
+        seqused_kv = c.get("seqused_kv",)
         if ("block_table" in c.keys()) and (c.get("block_table") is not None):
             block_table_list = c.get("block_table")
             block_table = torch.tensor(block_table_list, dtype=torch.int32)
             c["block_table"] = block_table
         else:
-            block_table = gen_block_table(c.get("B"), se_kv, block_size, block_table_shape)
+            block_table = gen_block_table(c.get("B"), seqused_kv, block_size, block_table_shape)
             c["block_table"]        = block_table
+        c["actual_b"] = block_table.shape[0]
     return c
 
 def check_result(test_name, expect, result, except_label="CPU", comp_label="NPU", verbose_diff=False):
