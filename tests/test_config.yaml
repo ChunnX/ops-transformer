@@ -117,7 +117,7 @@ attention:
       - attention/fused_infer_attention_score/op_host/arch22
     test:
       ut: True
-      examples: False
+      examples: True
     options:
       - incre_flash_attention
       - fused_infer_attention_score
@@ -133,7 +133,7 @@ attention:
     ut_cov_exclude:
       - attention/incre_flash_attention/op_kernel
     test:
-      examples: False
+      examples: True
       ut: True
     options:
       - incre_flash_attention
@@ -271,7 +271,7 @@ attention:
       - attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_arch38.h   # arch38 tiling 目前UT框架不支持（会被高级api拦截走不进去tiling，后续打通后开放）
       - attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_arch38.cpp
     test:
-      examples: False
+      examples: True
       ut: True
     options:
       - fused_infer_attention_score
