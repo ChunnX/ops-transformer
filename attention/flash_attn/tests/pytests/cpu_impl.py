@@ -115,16 +115,6 @@ def tforward_tnd(q, k, v, **kwargs):
     keep_prob = kwargs.get("keep_prob", 1)
 
     band_index = 0
-    if sparse_mode == 7:
-        for index in range(b - 1, -1, -1):
-            if seqused_q[index] != 0:
-                band_index = index
-                break
-    elif sparse_mode == 8:
-        for index in range(b):
-            if seqused_kv[index] != 0:
-                band_index = index
-                break
 
     qk_size = [int(seqused_q[i] * math.ceil(seqused_kv[i] / 16) * 16) for i in range(b)]
     qk_pointer = get_cu_seqlens(qk_size).to(torch.int64)
@@ -134,8 +124,8 @@ def tforward_tnd(q, k, v, **kwargs):
         drop_mask = gen_dropmask_tnd(qk_pointer[-1].item() * n1, keep_prob, seed, offset)
 
     out_golden = torch.zeros([1, n1, s1_total, d_v], dtype=q.dtype)
-    x_max = torch.empty(0)
-    x_sum = torch.empty(0)
+    x_max = torch.zeros([n1, s1_total], dtype=q.dtype)	 
+    x_sum = torch.zeros([n1, s1_total], dtype=q.dtype)
     for i in range(b):
         act_q_len = seqused_q[i]
         act_kv_len = seqused_kv[i]
