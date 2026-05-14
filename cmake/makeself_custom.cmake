@@ -20,7 +20,7 @@ message(STATUS "[DEBUGGING] Inside makeself_custom.cmake, CPACK_INSTALL_PREFIX: 
 message(STATUS "[DEBUGGING] Inside makeself_custom.cmake, CPACK_PACKAGE_FILE_NAME: ${CPACK_PACKAGE_FILE_NAME}")
 
 if (NOT EXISTS MAKESELF_EXE OR NOT EXISTS MAKESELF_EXE)
-  include()
+    include(cmake/third_party/makeself-fetch.cmake)
 endif()
 
 execute_process(COMMAND bash ${MAKESELF_EXE}
