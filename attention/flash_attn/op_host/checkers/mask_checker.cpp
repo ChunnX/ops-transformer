@@ -15,6 +15,7 @@
 
 #include <map>
 #include <numeric>
+#include <vector>
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
 #include "log/error_code.h"

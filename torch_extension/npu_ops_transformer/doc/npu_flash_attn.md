@@ -194,7 +194,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
     <tr>
         <td>sinks</td>
         <td>可选输入</td>
-        <td>提供解决注意力计算中集中前置一部分token问题的功能</td>
+        <td>暂不支持</td>
         <td>FLOAT32</td>
         <td>ND</td>
         <td>(Q_N,)</td>
@@ -216,7 +216,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>FLOAT32</td>
         <td>N/A</td>
         <td>-</td>
-        <td>×</td>
+        <td>-</td>
     </tr>
     <tr>
         <td>mask_mode</td>
@@ -432,7 +432,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
 
 #### 公共参数组
 - 确定性计算：
-  - npu_flash_attn通过可选参数deterministic控制是否开启确定性计算，1代表开启确定性计算，0代表关闭确定性计算。
+  - npu_flash_attn通过可选参数deterministic控制是否开启确定性计算，暂不支持确定性计算，仅支持传入0。
 - 入参为空的场景处理：
     - 空Tensor指必选输入和输出的shape size为0, 即有任意轴为0。
     - 触发空tensor的用例将全部拦截报错。
@@ -750,7 +750,7 @@ mask_mode参数解释
 </table>
 
 #### Paged Attention参数组
-当layout_kv为PA_BBND或PA_BNBD时，使能Paged Attention
+当block_table不为空时，使能Paged Attention
 <table style="undefined;table-layout: fixed; width:1625px"><colgroup>
 <col style="width: 147px">
 <col style="width: 232px">
@@ -816,8 +816,7 @@ mask_mode参数解释
         <td>sinks</td>
         <td>
             <ul>
-                <li>tensor_type仅支持FLOAT32</li>
-                <li>tensor_shape为(Q_N,)</li>
+                <li>暂不支持</li>
             </ul>
         </td>
         <td>
@@ -827,7 +826,7 @@ mask_mode参数解释
             无
         </td>
         <td>
-            无
+            暂不支持
         </td>
     </tr>
 </tbody>

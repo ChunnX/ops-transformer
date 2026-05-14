@@ -23,12 +23,11 @@
 #include "base_checker.h"
 
 #include "./seq_len_checker.h"
-#include "./layout_checker.h"
+#include "./common_checker.h"
 #include "./mask_checker.h"
 #include "./metadata_checker.h"
 #include "./paged_attention_checker.h"
 #include "./sinks_checker.h"
-#include "./shape_checker.h"
 #include "./softmax_lse_checker.h"
 
 namespace optiling {
