@@ -24,7 +24,6 @@ constexpr uint64_t MAX_CONTEXT_TAG_SIZE = 255;
 constexpr uint32_t HCCL_COMM_LAYERS_MTE_CCU = 1;
 constexpr uint32_t HCCL_COMM_LAYERS_UB_MEM = 0;
 constexpr uint32_t GET_LOCAL_SERVER_RANK_SIZE_LAYER = 0;
-constexpr uint32_t EP_RANK_OFFSET_STEP = 512;
 } // namespace
 
 namespace Mc2Aclnn {
@@ -299,7 +298,7 @@ aclnnStatus Mc2Context::GetHcclCommResource(const HcclComm &hcclHandle, const Co
             return ACLNN_ERR_INNER;
         }
 
-        mc2ContextStruct->epHcclBuffer_[i] = reinterpret_cast<uint64_t>(tempBuffer) + i * EP_RANK_OFFSET_STEP;
+        mc2ContextStruct->epHcclBuffer_[i] = reinterpret_cast<uint64_t>(tempBuffer);
     }
     OP_LOGD("Get HCCL CommResource success");
     return ACLNN_SUCCESS;
