@@ -793,8 +793,7 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
                               epWorldSizeOriginal_, globalBS_, dataStateBuf);            
     statusSpaceGm_ = GetWindStateAddrByRankId(COMM_EP_IDX, epRankIdOriginal_);
     for (uint32_t i = 0; i < serverNum_; i++) {
-        uint64_t dpuCommHandleAddr = reinterpret_cast<uint64_t>(mc2Context_->dpuCommHandle_[i]);
-        dpuCommHandle_[i] = reinterpret_cast<__gm__ ChannelEntity *>(dpuCommHandleAddr); // todo:需要确认
+        dpuCommHandle_[i] = reinterpret_cast<__gm__ ChannelEntity *>(mc2Context_->dpuCommHandle_[i]); // todo:需要确认
     }
     tpipe_->InitBuffer(dpuCommInitBufBuf_, SIZE_ALIGN_256);
     dpuCommInitBufTensor_ = dpuCommInitBufBuf_.Get<uint8_t>();
