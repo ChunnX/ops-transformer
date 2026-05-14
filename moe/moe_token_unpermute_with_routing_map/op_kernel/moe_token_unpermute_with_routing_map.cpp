@@ -62,6 +62,7 @@ extern "C" __global__ __aicore__ void moe_token_unpermute_with_routing_map(GM_AD
   GET_TILING_DATA(tilingData, tiling);
   //==================================BF16==================================
   if (TILING_KEY_IS(1000)) {
+    
     MoeTokenUnpermuteWithRoutingMap::KernelMoeTokenUnpermuteWithRoutingMapPad<DTYPE_PERMUTE_PROBS> op;                             
     op.Init(sorted_indices, probs, permute_probs, tilingData);          
     op.Process(); 

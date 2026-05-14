@@ -28,6 +28,7 @@ extern "C" __global__ __aicore__ void moe_token_unpermute(
     GM_ADDR permuted_tokens, GM_ADDR sorted_indices, GM_ADDR probs, GM_ADDR unpermuted_tokens, GM_ADDR workspace,
     GM_ADDR tiling)
 {
+    
     TPipe pipe;
 #if __CCE_AICORE__ == 200
     if (TILING_KEY_IS(2)) {

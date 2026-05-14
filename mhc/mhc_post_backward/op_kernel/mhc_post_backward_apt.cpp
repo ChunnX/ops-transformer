@@ -39,6 +39,7 @@ __global__ __aicore__ void mhc_post_backward(
     if (userWS == nullptr) {
         return;
     }
+    
     TPipe tPipe;
     MhcPostBackwardKernel<DTYPE_GRAD_Y> op;
     op.Init(gradOutput, x, hRes, hOut, hPost, gradX, gradHRes, gradHOut, gradHPost, userWS, &tilingData, &tPipe);

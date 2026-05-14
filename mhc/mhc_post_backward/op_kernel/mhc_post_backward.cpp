@@ -26,6 +26,7 @@ __global__ __aicore__ void mhc_post_backward(
     GM_ADDR grad_x, GM_ADDR grad_h_res, GM_ADDR grad_h_out, GM_ADDR grad_h_post,
     GM_ADDR workspace, GM_ADDR tiling)
 {
+    
     TPipe pipe;
     REGISTER_TILING_DEFAULT(MhcPostBackwardTilingDataArch22);
     GET_TILING_DATA(tiling_data, tiling);
