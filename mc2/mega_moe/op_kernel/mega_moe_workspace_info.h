@@ -62,47 +62,39 @@ constexpr int64_t SIZE_INT_32 = 4U;
 } // namespace
 
 struct WorkspaceInfo {
-    GM_ADDR gmCtx;
-    GM_ADDR ptrA;
-    GM_ADDR ptrAScale;
-    GM_ADDR ptrA2;
-    GM_ADDR ptrA2Scale;
-    GM_ADDR ptrcumsumMM;
-    GM_ADDR expandedRowIdx;
-    GM_ADDR expandedRowIdxGather;
-    GM_ADDR ptrSumBeforeRank;
-    GM_ADDR ptrFlagSwiGluToGmm2;
-    GM_ADDR ptrFlagDispatchToGmm1;
+    GM_ADDR dispatchRevDataPtr;
+    GM_ADDR dispatchRevScalePtr;
+    GM_ADDR swigluQuantDataPtr;
+    GM_ADDR swigluQuantScalePtr;
+    GM_ADDR expertRevTokenNumsPtr;
+    GM_ADDR tripleInfoPtr;
+    GM_ADDR flagSwiGluToGmm2Ptr;
+    GM_ADDR flagDispatchToGmm1Ptr;
     int64_t workspaceSize;
     HOST_DEVICE WorkspaceInfo() = default;
     HOST_DEVICE WorkspaceInfo(GM_ADDR base, const MegaMoeTilingData *tilingData)
     {
         workspaceSize = 0;
-        ptrA = base;
-        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->h, ALIGN_512);
-        ptrAScale = base + workspaceSize;
-        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->h /
+        dispatchRevDataPtr = base;
+        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->k, ALIGN_512);
+        dispatchRevScalePtr = base + workspaceSize;
+        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->k /
             MXFP_SCALE_GROUP_NUM, ALIGN_512);
-        ptrA2 = base + workspaceSize;
+        swigluQuantDataPtr = base + workspaceSize;
         workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize *
-            tilingData->hiddenDim / SWIGLU_N_HALF, ALIGN_512);
-        ptrA2Scale = base + workspaceSize;
-        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->hiddenDim /
+            tilingData->n / SWIGLU_N_HALF, ALIGN_512);
+        swigluQuantScalePtr = base + workspaceSize;
+        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * tilingData->n /
             SWIGLU_N_HALF / MXFP_SCALE_GROUP_NUM, ALIGN_512);
-        ptrcumsumMM = base + workspaceSize;
-        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_32 * tilingData->epWorldSize *
-            tilingData->expertPerRank, ALIGN_512);
-        expandedRowIdx = base + workspaceSize;
-        workspaceSize += SIZE_INT_32 * Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->bs), ALIGN_256) *
-            tilingData->topK;
-        ptrSumBeforeRank = base + workspaceSize;
-        workspaceSize += SIZE_INT_32 * Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->epWorldSize) *
-            tilingData->expertPerRank, ALIGN_128);
-        ptrFlagSwiGluToGmm2 = base + workspaceSize;
+        
+        expertRevTokenNumsPtr = base + workspaceSize;
+        workspaceSize += SIZE_INT_32 * Ops::Base::CeilAlign(tilingData->expertPerRank * ALIGN_32 * tilingData->aicNum, ALIGN_512);
+        tripleInfoPtr = base + workspaceSize;
+        workspaceSize += SIZE_INT_32 * Ops::Base::CeilAlign(tilingData->maxOutputSize * ALIGN_32, ALIGN_512);
+        flagSwiGluToGmm2Ptr = base + workspaceSize;
         workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * INT_CACHELINE;
-        ptrFlagDispatchToGmm1 = base + workspaceSize;
+        flagDispatchToGmm1Ptr = base + workspaceSize;
         workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * INT_CACHELINE;
-        expandedRowIdxGather = ptrA;
     }
 };
 #endif // MEGA_MOE_WORKSPACE_INFO_H
