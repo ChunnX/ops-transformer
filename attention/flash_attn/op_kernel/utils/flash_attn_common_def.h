@@ -305,8 +305,10 @@ struct CommonConstInfo {
     uint32_t n2Size;
     uint64_t s1Size; /* s1总大小 */
     uint64_t s2Size; /* s2总大小 */
-    uint64_t actualSeqLenSize;   /* 用户输入的actualseq的长度 */
-    uint64_t actualSeqLenKVSize; /* 用户输入的actualseq_kv的长度 */
+    uint64_t cuSeqLensQSize;   /* 用户输入的actualseq的长度 */
+    uint64_t cuSeqLensKVSize; /* 用户输入的actualseq_kv的长度 */
+    uint64_t seqUsedQSize;       /* 用户输入的seq used q的长度 */
+    uint64_t seqUsedKvSize;      /* 用户输入的seq used kv的长度 */
 
     /* FA kernel meta */
     uint32_t bN2Start;

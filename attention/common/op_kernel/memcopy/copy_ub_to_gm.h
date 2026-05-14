@@ -49,12 +49,13 @@ public:
             DataCopyPad(gmTensor, ubTensor, dataCopyParams);
         }
     }
-    __aicore__ inline void operator()(FaGmTensor<OUT_T, GM_FORMAT> &dstTensor,
+    template <typename FaGmTensorType>
+    __aicore__ inline void operator()(FaGmTensorType &dstTensor,
                                       FaUbTensor<OUT_T> &srcTensor,
                                       GmCoord &gmCoord)
     {
         if constexpr (UB_FORMAT == UbFormat::GS1) {
-            OffsetCalculator<GM_FORMAT> &offsetCalculator = dstTensor.offsetCalculator;
+            auto &offsetCalculator = dstTensor.offsetCalculator;
             uint32_t s1Size = 0;
             if constexpr (GmLayoutParams<GM_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND) {
                 s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
@@ -109,7 +110,7 @@ public:
                 }
             }
         } else if constexpr (UB_FORMAT == UbFormat::S1G) {
-            OffsetCalculator<GM_FORMAT> &offsetCalculator = dstTensor.offsetCalculator;
+            auto &offsetCalculator = dstTensor.offsetCalculator;
             uint32_t s1IdxStart = gmCoord.gS1Idx / offsetCalculator.GetDimG();
             uint32_t gIdxStart = gmCoord.gS1Idx % offsetCalculator.GetDimG();
             uint32_t s1IdxEnd = (gmCoord.gS1Idx + gmCoord.gS1DealSize) / offsetCalculator.GetDimG();

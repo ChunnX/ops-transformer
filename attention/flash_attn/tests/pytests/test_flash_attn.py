@@ -8,7 +8,7 @@ import torch
 import math
 import numpy as np
 from cpu_impl import tforward
-from test_utils import (generate_qkv, generate_pse, generate_npu_mask, trans_bnsd_to_layout, get_seqlen_list,
+from test_utils import (generate_qkv, generate_pse, generate_npu_mask, trans_bnsd_to_layout,
                          data_compare_benchmark_new, Result)
 
 _DEFAULT_CASE_FILES = ["test_case", "test_case_fia_STC", "test_case_functional_single"]
@@ -107,31 +107,12 @@ def normalize_case(raw):
     c.setdefault("k_range",     None)
     c.setdefault("v_range",     None)
     if layout_q == "TND":
-        if isinstance(c.get("cu_seqlens_q"), list):
-            cum_q_full  = list(c["cu_seqlens_q"])
-            cum_kv_full = list(c.get("cu_seqlens_kv", cum_q_full))
-            def _diffs(lst): return [lst[i+1] - lst[i] for i in range(len(lst) - 1)]
-            ind_q  = list(c.get("seqused_q",  _diffs(cum_q_full)))
-            ind_kv = list(c.get("seqused_kv", _diffs(cum_kv_full)))
-            c["actual_seq_qlen"]  = cum_q_full[1:]
-            c["actual_seq_kvlen"] = cum_kv_full[1:]
-            c["seqlens_list_q"]   = cum_q_full[1:]
-            c["seqlens_list_kv"]  = cum_kv_full[1:]
-            c["_npu_cu_q"]       = cum_q_full
-            c["_npu_cu_kv"]      = cum_kv_full
-            c["_npu_seqused_q"]  = ind_q
-            c["_npu_seqused_kv"] = ind_kv
-            c["B"] = 1
-        else:
-            cu_q  = list(c.get("cu_seqused_q", []))
-            cu_kv = list(c.get("cu_seqused_kv", cu_q))
-            if cu_q  and cu_q[0]  == 0: cu_q  = cu_q[1:]
-            if cu_kv and cu_kv[0] == 0: cu_kv = cu_kv[1:]
-            c["seqlens_list_q"]  = cu_q
-            c["seqlens_list_kv"] = cu_kv
-            c["actual_seq_qlen"]  = cu_q
-            c["actual_seq_kvlen"] = cu_kv
-            c["B"] = 1
+        # load_case_modules 已通过 itertools.product 解包，字段已是平铺列表
+        c.setdefault("seqused_q", [c["cu_seqlens_q"][i+1] - c["cu_seqlens_q"][i]
+                                    for i in range(len(c["cu_seqlens_q"]) - 1)])
+        c.setdefault("seqused_kv", [c["cu_seqlens_kv"][i+1] - c["cu_seqlens_kv"][i]
+                                     for i in range(len(c["cu_seqlens_kv"]) - 1)])
+        c["B"] = 1
     return c
 
 def check_result(test_name, expect, result, except_label="CPU", comp_label="NPU", verbose_diff=False):
@@ -222,17 +203,17 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
     pse_b = b;  pse_s1 = sq;  pse_s2 = skv
     sq_gen = sq;  skv_gen = skv
     if input_layout == "TND":
-        sl_q  = list(kwargs.get("seqlens_list_q",  []))
-        sl_kv = list(kwargs.get("seqlens_list_kv", sl_q))
-        q_arr  = get_seqlen_list(sl_q)
-        kv_arr = get_seqlen_list(sl_kv)
-        sq     = int(q_arr.max());   skv    = int(kv_arr.max())
-        sq_gen = int(q_arr.sum());   skv_gen = int(kv_arr.sum())
+        cu_q = kwargs["cu_seqlens_q"]
+        cu_kv = kwargs["cu_seqlens_kv"]
+        sq     = max(cu_q[i+1] - cu_q[i] for i in range(len(cu_q) - 1))
+        skv    = max(cu_kv[i+1] - cu_kv[i] for i in range(len(cu_kv) - 1))
+        sq_gen = cu_q[-1]
+        skv_gen = cu_kv[-1]
         kwargs["S1"] = sq
         kwargs["S2"] = skv
-        pse_b = len(q_arr);  pse_s1 = sq;  pse_s2 = skv
+        pse_b = len(cu_q) - 1;  pse_s1 = sq;  pse_s2 = skv
         if pse_layout in ["bnhs", "1nhs"]: pse_s1 = max(1024, pse_s1)
-    pse_cpu, pse_npu = generate_pse(pse_b, n1, pse_s1, pse_s2, pse_type, pse_layout,
+    _, pse_npu = generate_pse(pse_b, n1, pse_s1, pse_s2, pse_type, pse_layout,
                                     pttype, q_start_idx, kv_start_idx)
     q, k, v, q_rope, k_rope, qf, kf = generate_qkv(b, n1, n2, sq_gen, skv_gen, d, d_v, d_rope,
                                                     input_layout, input_dtype,
@@ -240,7 +221,7 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
 
     # ------------------ 1. CPU Golden 计算 (总是执行) ------------------
     print(f"[{test_name}] CPU 参考计算...")
-    out_cpu, x_max, x_sum = tforward(qf, kf, v, pse_cpu, **kwargs)
+    out_cpu, x_max, x_sum = tforward(qf, kf, v, **kwargs)
     out_cpu_out_layout = trans_bnsd_to_layout(out_cpu, output_layout)
     lse_out = torch.log(x_sum) + x_max
     if dump_tensors:
@@ -391,11 +372,6 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
             passed_gpu_npu = check_result(test_name + "_GPU_vs_NPU", gpu_out.float(), npu_out.float(), except_label="GPU", comp_label="NPU", verbose_diff=verbose_diff)
         else:
             print(f"[{test_name}] 缺少 GPU 或 NPU 结果，跳过 GPU vs NPU 对比。")
-    
-    passed_lse = 0
-    if lse_flag == 1:
-        print(f"\n{'='*40} 对比 lse goldem vs lse npu {'='*40}")
-        passed_lse = check_result("LSE CHECK", lse_out.float(), lse_npu.float(), except_label="lse_golden", comp_label="lse_npu", verbose_diff=verbose_diff)
 
     if visualize:
         try:
@@ -408,6 +384,11 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
             print("[WARN] precision_visual 导入失败，请确认 matplotlib 已安装")
         except Exception as exc:
             print(f"[WARN] 可视化异常: {exc}")
+
+    passed_lse = 0
+    if lse_flag == 1:
+        print(f"\n{'='*40} 对比 lse goldem vs lse npu {'='*40}")
+        passed_lse = check_result("LSE CHECK", lse_out.float(), lse_npu.float(), except_label="lse_golden", comp_label="lse_npu", verbose_diff=verbose_diff)
 
     at_least_one_pass = passed_cpu_gpu or passed_cpu_npu or passed_gpu_npu or passed_lse
     return at_least_one_pass

@@ -81,8 +81,10 @@ public:
     BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm2Buffers;
     BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers;
 
-    GlobalTensor<uint64_t> actualSeqLengthsGmQ;
-    GlobalTensor<uint64_t> actualSeqLengthsGm;
+    GlobalTensor<uint64_t> cuSeqLensGmQ;
+    GlobalTensor<uint64_t> cuSeqLensGm;
+    GlobalTensor<uint64_t> seqUsedGmQ;
+    GlobalTensor<uint64_t> seqUsedGmKv;
     GlobalTensor<uint32_t> faMetaDataGm;
     GlobalTensor<uint32_t> fdMetaDataGm;
     GlobalTensor<float> softmaxLseGm;
@@ -142,29 +144,34 @@ public:
     TQue<QuePosition::VECIN, 1> SharedBuffer2[2];  // 共用
     TBuf<> SharedBuffer3; // 共用
 
+    // 非tnd时不使用cuSeqLens，这里保证定义
     typename std::conditional<
         (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND || LAYOUT_Q == LayOutTypeEnum::LAYOUT_NTD),
-        TNDSeqLensParser<uint64_t>,
+        ActualSeqLensParser<Q_MODE, uint64_t, true>,
         ActualSeqLensParser<Q_MODE>
-    >::type qActSeqLensParser;
+    >::type qCuSeqLensParser;
     
     typename std::conditional<
         (LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND || LAYOUT_KV == LayOutTypeEnum::LAYOUT_NTD),
-        TNDSeqLensParser<uint64_t>,
+        ActualSeqLensParser<KV_MODE, uint64_t, true>,
         ActualSeqLensParser<KV_MODE>
-    >::type kvActSeqLensParser;
+    >::type kvCuSeqLensParser;
+
+    ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, uint64_t> qSeqUsedParser;
+    ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, uint64_t> kvSeqUsedParser;
 
     // ==============================fuction=======================================================
     __aicore__ inline FlashAttentionNoQuantGqaKernel() : cubeBlock(constInfo), vecFaBlock(constInfo), vecFdBlock(constInfo){};
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pse,
-                                __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengths,
-                                __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *blockTable,
+                                __gm__ uint8_t *attenMask, __gm__ uint8_t *cuSeqLensQ,
+                                __gm__ uint8_t *cuSeqLensKv, __gm__ uint8_t *blockTable,
                                 __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
                                 __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset,
                                 __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
                                 __gm__ uint8_t *actualSharedPrefixLen, __gm__ uint8_t *queryRope,
                                 __gm__ uint8_t *keyRope, __gm__ uint8_t *learnableSink, __gm__ uint8_t *softmaxLse,
                                 __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace, __gm__ uint8_t *fiaMetaData,
+                                __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKv,
                                 const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tiling, TPipe *tPipe)
     {
         this->pipe = tPipe;
@@ -180,47 +187,74 @@ public:
             FA_AIV_CORE_NUM * 16U * sectionNum_);
 
         InitConstInfo(queryPaddingSize, kvPaddingSize, actualSharedPrefixLen);
-        
+       
 
         keyPtr = key;
         valuePtr = value;
 
-        actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint64_t *)actualSeqLengths, constInfo.actualSeqLenSize + 1);
-        qActSeqLensParser.Init(actualSeqLengthsGmQ, constInfo.actualSeqLenSize, constInfo.s1Size);
+        if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND || LAYOUT_Q == LayOutTypeEnum::LAYOUT_NTD) {
+            cuSeqLensGmQ.SetGlobalBuffer((__gm__ uint64_t *)cuSeqLensQ, constInfo.cuSeqLensQSize + 1);
+            seqUsedGmQ.SetGlobalBuffer((__gm__ uint64_t *)seqUsedQ, constInfo.seqUsedQSize);
+        } else {
+            seqUsedGmQ.SetGlobalBuffer((__gm__ uint64_t *)seqUsedQ, constInfo.seqUsedQSize);
+        }
+        if constexpr (LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND || LAYOUT_KV == LayOutTypeEnum::LAYOUT_NTD) {
+            cuSeqLensGm.SetGlobalBuffer((__gm__ uint64_t *)cuSeqLensKv, constInfo.cuSeqLensKVSize + 1);
+            seqUsedGmKv.SetGlobalBuffer((__gm__ uint64_t *)seqUsedKv, constInfo.seqUsedKvSize);
+        } else {
+            seqUsedGmKv.SetGlobalBuffer((__gm__ uint64_t *)seqUsedKv, constInfo.seqUsedKvSize);
+        }
 
-        actualSeqLengthsGm.SetGlobalBuffer((__gm__ uint64_t *)actualSeqLengthsKv, constInfo.actualSeqLenKVSize + 1);
-        kvActSeqLensParser.Init(actualSeqLengthsGm, constInfo.actualSeqLenKVSize, constInfo.s2Size);
+        InitQCuSeqLensParser();
+        InitKvCuSeqLensParser();
 
         InitMMResBuf(workspace);
 
         if ASCEND_IS_AIV {
-            vecFaBlock.InitVecBlock(tPipe, pse, actualSeqLengths, actualSeqLengthsKv, postQuantScale, postQuantOffset,
-                attenMask, learnableSink, softmaxLse, attentionOut, workspace);
+            if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND || LAYOUT_Q == LayOutTypeEnum::LAYOUT_NTD) {
+                vecFaBlock.InitVecBlock(tPipe, pse, cuSeqLensQ, cuSeqLensKv, postQuantScale, postQuantOffset,
+                    attenMask, learnableSink, softmaxLse, attentionOut, workspace);
+                vecFaBlock.SetCuSeqLensParser(qCuSeqLensParser);
+            } else {
+                vecFaBlock.InitVecBlock(tPipe, pse, seqUsedQ, seqUsedKv, postQuantScale, postQuantOffset,
+                    attenMask, learnableSink, softmaxLse, attentionOut, workspace);
+                vecFaBlock.SetCuSeqLensParser(qSeqUsedParser);
+            }
             vecFaBlock.ClearOutput();
         }
 
         if ASCEND_IS_AIC {
-            cubeBlock.InitCubeBlock(tPipe, &l1BufferManager, query, key, value, blockTable, queryRope, keyRope,
-                actualSeqLengths, actualSeqLengthsKv, keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen);
+            if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND || LAYOUT_Q == LayOutTypeEnum::LAYOUT_NTD) {
+                cubeBlock.InitCubeBlock(tPipe, &l1BufferManager, query, key, value, blockTable, queryRope, keyRope,
+                    qCuSeqLensParser, kvCuSeqLensParser,
+                    keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen);
+            } else {
+                cubeBlock.InitCubeBlock(tPipe, &l1BufferManager, query, key, value, blockTable, queryRope, keyRope,
+                    qSeqUsedParser, kvSeqUsedParser,
+                    keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen);
+            }
         }
 
         if constexpr (FLASH_DECODE) {
-            if (isFd) {
-                if ASCEND_IS_AIV {
-                    vecFdBlock.InitParams();
-                    vecFdBlock.InitGlobalTensor(this->vecFaBlock.softmaxFDMaxGm, this->vecFaBlock.softmaxFDSumGm,
-                                                this->vecFaBlock.accumOutGm, this->vecFaBlock.attentionOutGm,
-                                                this->actualSeqLengthsGmQ, this->actualSeqLengthsGm, keyPtr, postQuantScale,
-                                                postQuantOffset);
-                    if (learnableSink != nullptr) {
-                        sinkGm.SetGlobalBuffer((__gm__ INPUT_T *)learnableSink);
-                        constInfo.learnableSinkFlag = true;
-                        vecFdBlock.InitLearnableSinkGm(sinkGm);
-                    }
-                    if (constInfo.isSoftmaxLseEnable) {
-                        softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
-                        vecFdBlock.InitSoftmaxLseGm(softmaxLseGm);
-                    }
+            if ASCEND_IS_AIV {
+                vecFdBlock.InitParams();
+                vecFdBlock.InitGlobalTensor(this->vecFaBlock.softmaxFDMaxGm, this->vecFaBlock.softmaxFDSumGm,
+                                            this->vecFaBlock.accumOutGm, this->vecFaBlock.attentionOutGm,
+                                            this->seqUsedGmQ, this->seqUsedGmKv, keyPtr, postQuantScale,
+                                            postQuantOffset);
+                if (learnableSink != nullptr) {
+                    sinkGm.SetGlobalBuffer((__gm__ INPUT_T *)learnableSink);
+                    constInfo.learnableSinkFlag = true;
+                    vecFdBlock.InitLearnableSinkGm(sinkGm);
+                }
+                if (constInfo.isSoftmaxLseEnable) {
+                    softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
+                    vecFdBlock.InitSoftmaxLseGm(softmaxLseGm);
+                }
+                if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND || LAYOUT_Q == LayOutTypeEnum::LAYOUT_NTD) {
+                    vecFdBlock.SetCuSeqLensParsers(qCuSeqLensParser, kvCuSeqLensParser);
+                } else {
+                    vecFdBlock.SetCuSeqLensParsers(qSeqUsedParser, kvSeqUsedParser);
                 }
             }
         }
@@ -254,6 +288,24 @@ public:
             gmBufferManager.Init(workspace + prevCoretotalOffset * sizeof(T));
             bmm2ResGmBuffers.Init(gmBufferManager, mm2ResultSize * sizeof(T));
             workspace = workspace + constInfo.coreNum * 3 * mm2ResultSize * sizeof(T);
+        }
+    }
+
+    __aicore__ inline void InitQCuSeqLensParser()
+    {
+        if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND || LAYOUT_Q == LayOutTypeEnum::LAYOUT_NTD) {
+            qCuSeqLensParser.Init(cuSeqLensGmQ, seqUsedGmQ, constInfo.cuSeqLensQSize, constInfo.seqUsedQSize);
+        } else {
+            qSeqUsedParser.Init(seqUsedGmQ, constInfo.seqUsedQSize, constInfo.s1Size);
+        }
+    }
+
+    __aicore__ inline void InitKvCuSeqLensParser()
+    {
+        if constexpr (LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND || LAYOUT_KV == LayOutTypeEnum::LAYOUT_NTD) {
+            kvCuSeqLensParser.Init(cuSeqLensGm, seqUsedGmKv, constInfo.cuSeqLensKVSize, constInfo.seqUsedKvSize);
+        } else {
+            kvSeqUsedParser.Init(seqUsedGmKv, constInfo.seqUsedKvSize, constInfo.s2Size);
         }
     }
 
@@ -293,8 +345,10 @@ public:
         } else {
             constInfo.dSizeRope = 0;
         }
-        constInfo.actualSeqLenSize = this->tilingData->flashAttnBaseParams.cuSeqLengthsQSize;
-        constInfo.actualSeqLenKVSize = this->tilingData->flashAttnBaseParams.cuSeqLengthsKVSize;
+        constInfo.cuSeqLensQSize = this->tilingData->flashAttnBaseParams.cuSeqLensQSize;
+        constInfo.cuSeqLensKVSize = this->tilingData->flashAttnBaseParams.cuSeqLensKVSize;
+        constInfo.seqUsedQSize = this->tilingData->flashAttnBaseParams.seqUsedQSize;
+        constInfo.seqUsedKvSize = this->tilingData->flashAttnBaseParams.seqUsedKvSize;
         constInfo.scaleValue = static_cast<float>(this->tilingData->flashAttnBaseParams.scaleValue);
         constInfo.isKvContinuous = this->tilingData->flashAttnBaseParams.isKvContinuous != 0;
         constInfo.coreNum = this->tilingData->flashAttnBaseParams.coreNum;
@@ -491,13 +545,22 @@ public:
         uint32_t bIdx = bN2Cur / constInfo.n2Size;
         if (isFirstTask || prevBIdx != bIdx) {
             prevBIdx = bIdx;
-            if (constInfo.actualSeqLenKVSize == 0 && !constInfo.isKvContinuous) {
+            if (constInfo.cuSeqLensKVSize == 0 && constInfo.seqUsedKvSize == 0 &&
+                !constInfo.isKvContinuous) {
                 actSeqLensKv = SeqLenFromTensorList<LAYOUT_KV>(keyPtr, bIdx);
             } else {
-                actSeqLensKv = kvActSeqLensParser.GetActualSeqLength(bIdx);
+                if constexpr (LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND || LAYOUT_KV == LayOutTypeEnum::LAYOUT_NTD) {
+                    actSeqLensKv = kvCuSeqLensParser.GetActualSeqLength(bIdx);
+                } else {
+                    actSeqLensKv = kvSeqUsedParser.GetActualSeqLength(bIdx);
+                }
             }
             actSeqLensKv += constInfo.actualKVPrefixSize;
-            actSeqLensQ = qActSeqLensParser.GetActualSeqLength(bIdx);
+            if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND || LAYOUT_Q == LayOutTypeEnum::LAYOUT_NTD) {
+                actSeqLensQ = qCuSeqLensParser.GetActualSeqLength(bIdx);
+            } else {
+                actSeqLensQ = qSeqUsedParser.GetActualSeqLength(bIdx);
+            }
         }
         uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
         uint64_t gS1Size = actSeqLensQ * constInfo.gSize;

@@ -137,11 +137,10 @@ def flash_attn_gpu(
     
     # ================== TND 变长序列处理 ==================
     if input_layout == "TND":
-        # 参数名兼容：支持 _npu_cu_q（normalize_case 传入）和 cu_seqlens_q（直接传入）
-        cu_seqlens_q = kwargs.get("_npu_cu_q") or kwargs.get("cu_seqlens_q")
-        cu_seqlens_kv = kwargs.get("_npu_cu_kv") or kwargs.get("cu_seqlens_kv")
+        cu_seqlens_q = kwargs.get("cu_seqlens_q") or kwargs.get("_npu_cu_q")
+        cu_seqlens_kv = kwargs.get("cu_seqlens_kv") or kwargs.get("_npu_cu_kv")
         if not cu_seqlens_q or not cu_seqlens_kv:
-            raise ValueError("TND layout 需要提供 cu_seqlens_q 和 cu_seqlens_kv (或 _npu_cu_q/kv)")
+            raise ValueError("TND layout 需要提供 cu_seqlens_q 和 cu_seqlens_kv")
 
         # 将 BNSD (B=1, N, total_tokens, D) 转换为 TND: (total_tokens, N, D)
         # q 的形状：(1, N, total_q_tokens, D) -> (total_q_tokens, N, D)
