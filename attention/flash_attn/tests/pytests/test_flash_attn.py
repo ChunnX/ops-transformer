@@ -1,3 +1,14 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# ======================================================================================================================
+
 import os
 import sys
 import argparse
@@ -9,7 +20,7 @@ import math
 import numpy as np
 from cpu_impl import tforward
 from test_utils import (generate_qkv, generate_pse, generate_npu_mask, trans_bnsd_to_layout,
-                         data_compare_benchmark_new, Result)
+                         data_compare_benchmark_new, Result, gen_block_table)
 
 _DEFAULT_CASE_FILES = ["test_case", "test_case_fia_STC", "test_case_functional_single"]
 
@@ -84,6 +95,7 @@ def normalize_case(raw):
     """将 test_case.py 字段转换为 call_flash_attn 所需 kwargs 格式。"""
     c = dict(raw)
     layout_q = c.get("layout_q", "BNSD")
+    layout_kv = c.get("layout_kv", layout_q)
     c["input_layout"] = layout_q
     c.setdefault("layout_kv",   c.get("layout_kv",  layout_q))
     c.setdefault("layout_out",  c.get("layout_out", layout_q))
@@ -108,11 +120,26 @@ def normalize_case(raw):
     c.setdefault("v_range",     None)
     if layout_q == "TND":
         # load_case_modules 已通过 itertools.product 解包，字段已是平铺列表
+        # c.setdefault("cu_seqlens_kv", c["cu_seqlens_q"])
         c.setdefault("seqused_q", [c["cu_seqlens_q"][i+1] - c["cu_seqlens_q"][i]
                                     for i in range(len(c["cu_seqlens_q"]) - 1)])
         c.setdefault("seqused_kv", [c["cu_seqlens_kv"][i+1] - c["cu_seqlens_kv"][i]
                                      for i in range(len(c["cu_seqlens_kv"]) - 1)])
         c["B"] = 1
+    if layout_kv in ("PA_BBND", "PA_BNBD", "PA_NZ"):
+        c.setdefault("block_size", c.get("block_size"))
+        c.setdefault("block_table_shape", c.get("block_table_shape"))
+        block_size = c.get("block_size", 1)
+        block_table_shape = c.get("block_table_shape", [])
+        seqused_kv = c.get("seqused_kv")
+        if ("block_table" in c.keys()) and (c.get("block_table") is not None):
+            block_table_list = c.get("block_table")
+            block_table = torch.tensor(block_table_list, dtype=torch.int32)
+            c["block_table"] = block_table
+        else:
+            block_table = gen_block_table(c.get("B"), seqused_kv, block_size, block_table_shape)
+            c["block_table"]        = block_table
+        c["actual_b"] = block_table.shape[0]
     return c
 
 def check_result(test_name, expect, result, except_label="CPU", comp_label="NPU", verbose_diff=False):
@@ -230,7 +257,7 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
     # ------------------ 1. CPU Golden 计算 (总是执行) ------------------
     print(f"[{test_name}] CPU 参考计算...")
     out_cpu, x_max, x_sum = tforward(qf, kf, v, **kwargs)
-    out_cpu_out_layout = trans_bnsd_to_layout(out_cpu, output_layout)
+    out_cpu_out_layout = trans_bnsd_to_layout(out_cpu, output_layout, **kwargs)
     lse_out = torch.log(x_sum) + x_max
     if dump_tensors:
         dump_path = os.path.join(dump_dir, test_name)
@@ -260,7 +287,7 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
             mask_gpu = atten_mask.cuda(device) if atten_mask is not None else None
             pse_gpu = pse_npu.cuda(device) if pse_npu is not None else None
             gpu_out_bnsd = flash_attn_gpu(q_gpu, k_gpu, v_gpu, q_rope_gpu, k_rope_gpu, mask_gpu, pse_gpu, **kwargs)
-            gpu_out = trans_bnsd_to_layout(gpu_out_bnsd, output_layout).cpu()
+            gpu_out = trans_bnsd_to_layout(gpu_out_bnsd, output_layout, **kwargs).cpu()
             if dump_tensors:
                 dump_path = os.path.join(dump_dir, test_name)
                 os.makedirs(dump_path, exist_ok=True)

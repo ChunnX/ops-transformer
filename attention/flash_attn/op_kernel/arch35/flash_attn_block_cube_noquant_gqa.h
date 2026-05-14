@@ -301,8 +301,11 @@ public:
 
     using KvSeqParserType = typename std::conditional<
         IS_TND_LAYOUT,
-        ActualSeqLensParser<ActualSeqLensMode::ACCUM, uint64_t, true>,
-        ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, uint64_t>
+        typename std::conditional<
+            PAGE_ATTENTION,
+            ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, uint64_t, true>,
+            ActualSeqLensParser<ActualSeqLensMode::ACCUM, uint64_t, true>
+    >::type, ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, uint64_t>
     >::type;
 
     using FaGmTensorQ = FaGmTensor<Q_T, Q_FORMAT, uint64_t, Q_NEEDS_WZH>;

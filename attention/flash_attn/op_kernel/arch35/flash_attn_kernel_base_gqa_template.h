@@ -319,18 +319,6 @@ public:
             constInfo.aicIdx = GetBlockIdx() / GetSubBlockNum();
             constInfo.subBlockIdx = GetSubBlockIdx();
         }
-
-        // auto fiaBaseParams = this->tilingData->flashAttnBaseParams;
-        // auto fiaAttenMaskParams = this->tilingData->flashAttnAttenMaskParams;
-        // auto fiaPseParams = this->tilingData->flashAttnPseParams;
-        // auto fiaSystemPrefixParams = this->tilingData->flashAttnSystemPrefixParams;
-        // auto fiaPageAttentionParams = this->tilingData->flashAttnPageAttentionParams;
-        // auto fiaLeftPaddingParams = this->tilingData->flashAttnLeftPaddingParams;
-        // auto fiaPostQuantParams = this->tilingData->flashAttnPostQuantParams;
-        // auto fiaWorkspaceParams = this->tilingData->flashAttnWorkspaceParams;
-        // auto fiaS1OuterSplitCoreParams = this->tilingData->flashAttnS1OuterSplitCoreParams;
-        // auto fiaEmptyTensorParams = this->tilingData->flashAttnEmptyTensorParams;
-
         constInfo.bSize = this->tilingData->flashAttnBaseParams.bSize;
         constInfo.t1Size = this->tilingData->flashAttnBaseParams.t1Size;
         constInfo.t2Size = this->tilingData->flashAttnBaseParams.t2Size;

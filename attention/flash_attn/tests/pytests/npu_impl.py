@@ -232,20 +232,20 @@ def flash_attn_metadata_only(**kwargs):
 
 
 def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
-    input_layout = kwargs.get("input_layout", "BNSD")
-    layout_q   = kwargs.get("layout_q",   input_layout)
-    layout_kv  = kwargs.get("layout_kv",  input_layout)
-    layout_out = kwargs.get("layout_out", input_layout)
-    n1 = kwargs.get("N1")
-    n2 = kwargs.get("N2", n1)
-    b  = kwargs.get("B",  1)
-    d = kwargs.get("D")
-    sq  = kwargs.get("S1", None)
-    skv = kwargs.get("S2", sq)
-    d_rope = kwargs.get("DRope", 0)
-    sparse_mode = kwargs.get("sparse_mode", 0)
-    pre_tokens = kwargs.get("pre_tokens", 2147483647)
-    next_tokens = kwargs.get("next_tokens", 2147483647)
+    input_layout        = kwargs.get("input_layout", "BNSD")
+    layout_q            = kwargs.get("layout_q",   input_layout)
+    layout_kv           = kwargs.get("layout_kv",  input_layout)
+    layout_out          = kwargs.get("layout_out", input_layout)
+    n1                  = kwargs.get("N1")
+    n2                  = kwargs.get("N2", n1)
+    b                   = kwargs.get("B",  1)
+    d                   = kwargs.get("D")
+    sq                  = kwargs.get("S1", None)
+    skv                 = kwargs.get("S2", sq)
+    d_rope              = kwargs.get("DRope", 0)
+    sparse_mode         = kwargs.get("sparse_mode", 0)
+    pre_tokens          = kwargs.get("pre_tokens", 2147483647)
+    next_tokens         = kwargs.get("next_tokens", 2147483647)
     if sparse_mode in (0, 3):
         pre_tokens = -1
         next_tokens = -1
@@ -260,13 +260,32 @@ def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
     seed = kwargs.get("seed", 0)
     lse_flag = kwargs.get("return_softmax_lse", 0)
 
-    q1 = trans_bnsd_to_layout(q, layout_q).contiguous().to(device)
-    k1 = trans_bnsd_to_layout(k, layout_kv).contiguous().to(device)
-    v1 = trans_bnsd_to_layout(v, layout_kv).contiguous().to(device)
+    # q1 = trans_bnsd_to_layout(q, layout_q).contiguous().to(device)
+    # k1 = trans_bnsd_to_layout(k, layout_kv).contiguous().to(device)
+    # v1 = trans_bnsd_to_layout(v, layout_kv).contiguous().to(device)
+
+
+    # actual_seq_qlen     = kwargs.get("actual_seq_qlen",  None)
+    # actual_seq_kvlen    = kwargs.get("actual_seq_kvlen", actual_seq_qlen)
+    # # New 4-param style: normalize_case sets _npu_cu_q/kv (full B+1 list) and _npu_seqused_q/kv (B individual).
+    # # Legacy style: these are None, fall back to last element / cumulative list.
+    # _cu_q               = kwargs.get("_npu_cu_q",       None)
+    # _cu_kv              = kwargs.get("_npu_cu_kv",      None)
+    # _seqused_q          = kwargs.get("_npu_seqused_q",  None)
+    # _seqused_kv         = kwargs.get("_npu_seqused_kv", None)
+    # scale               = kwargs.get("scale", 1 / (d ** 0.5))
+    # keep_prob           = kwargs.get("keep_prob", 1)
+    # seed                = kwargs.get("seed", 0)
+    # lse_flag            = kwargs.get("return_softmax_lse", 0)
+    block_table         = kwargs.get("block_table")
+
+    q1 = trans_bnsd_to_layout(q, layout_q, **kwargs).contiguous().to(device)
+    k1 = trans_bnsd_to_layout(k, layout_kv, **kwargs).contiguous().to(device)
+    v1 = trans_bnsd_to_layout(v, layout_kv, **kwargs).contiguous().to(device)
 
     if d_rope != 0:
-        query_rope = trans_bnsd_to_layout(q_rope, layout_q).contiguous().to(device)
-        key_rope   = trans_bnsd_to_layout(k_rope, layout_kv).contiguous().to(device)
+        query_rope = trans_bnsd_to_layout(q_rope, layout_q, **kwargs).contiguous().to(device)
+        key_rope   = trans_bnsd_to_layout(k_rope, layout_kv, **kwargs).contiguous().to(device)
     else:
         query_rope = None
         key_rope   = None
@@ -339,6 +358,14 @@ def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
         head_dim      = d
         max_seqlen_q  = q1.shape[1]
         max_seqlen_kv = k1.shape[1]
+    
+    block_table_ = None
+    # PA
+    if layout_kv in ["PA_BBND", "PA_BNBD", "PA_NZ"]:
+        block_table_  = block_table.to(device)
+        num_heads_kv  = kwargs.get("N2")
+        head_dim      = d
+        max_seqlen_kv = max(seqused_kv)
 
     _print_args("Call npu_flash_attn_metadata", {
         "cu_seqlens_q": cu_q_meta,
@@ -389,6 +416,7 @@ def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
         "q": q1,
         "k": k1,
         "v": v1,
+        "block_table": block_table_,
         "attn_mask": atten_mask1,
         "metadata": metadata,
         "cu_seqlens_q": cu_q_u64,
@@ -408,7 +436,7 @@ def flash_attn_npu(q, k, v, q_rope, k_rope, atten_mask, pse, **kwargs):
 
     out, lse_out = npu_flash_attn(
         q1, k1, v1,
-        block_table   = None,
+        block_table   = block_table_,
         sinks         = None,
         attn_mask     = atten_mask1,
         metadata      = metadata,
