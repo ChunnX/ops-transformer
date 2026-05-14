@@ -15,6 +15,7 @@
 #include "mc2_common_log.h"
 #include "fallback/fallback.h"
 #include "common/utils/op_mc2.h"
+#include "common/utils/mc2_moe_utils.h"
 
 namespace fallback
 {
@@ -209,6 +210,25 @@ static ge::graphStatus ExecuteQuantGroupedMatMulAlltoAllv(
     const gert::Tensor* y,
     const gert::Tensor* mmY)
 {
+    // Print shapes after entering ExecuteQuantGroupedMatMulAlltoAllv
+    OPS_LOG_D("QuantGroupedMatMulAlltoAllvFallback", "Begin to print gmmWeight shape after entering ExecuteQuantGroupedMatMulAlltoAllv");
+    Mc2Moe::PrintTensorShape("QuantGroupedMatMulAlltoAllvFallback", &(inputs.gmmWeight->GetStorageShape()), "gmmWeight");
+    
+    if (inputs.gmmWeightScale != nullptr) {
+        OPS_LOG_D("QuantGroupedMatMulAlltoAllvFallback", "Begin to print gmmWeightScale shape after entering ExecuteQuantGroupedMatMulAlltoAllv");
+        Mc2Moe::PrintTensorShape("QuantGroupedMatMulAlltoAllvFallback", &(inputs.gmmWeightScale->GetStorageShape()), "gmmWeightScale");
+    }
+    
+    if (inputs.mmWeight != nullptr) {
+        OPS_LOG_D("QuantGroupedMatMulAlltoAllvFallback", "Begin to print mmWeight shape after entering ExecuteQuantGroupedMatMulAlltoAllv");
+        Mc2Moe::PrintTensorShape("QuantGroupedMatMulAlltoAllvFallback", &(inputs.mmWeight->GetStorageShape()), "mmWeight");
+    }
+    
+    if (inputs.mmWeightScale != nullptr) {
+        OPS_LOG_D("QuantGroupedMatMulAlltoAllvFallback", "Begin to print mmWeightScale shape after entering ExecuteQuantGroupedMatMulAlltoAllv");
+        Mc2Moe::PrintTensorShape("QuantGroupedMatMulAlltoAllvFallback", &(inputs.mmWeightScale->GetStorageShape()), "mmWeightScale");
+    }
+    
     const auto apiRet = EXEC_OPAPI_CMD(
         aclnnQuantGroupedMatMulAlltoAllv, inputs.gmmX, inputs.gmmWeight, inputs.gmmXScale, inputs.gmmWeightScale,
         inputs.sendCountsTensor, inputs.recvCountsTensor, inputs.mmX, inputs.mmWeight, inputs.mmXScale,
@@ -266,6 +286,25 @@ static ge::graphStatus QuantGroupedMatMulAlltoAllvExecuteFunc(gert::OpExecuteCon
     ret = CheckOutputTensors(y, mmY);
     if (ret != ge::GRAPH_SUCCESS) {
         return ret;
+    }
+
+    // Print shapes before calling ExecuteQuantGroupedMatMulAlltoAllv
+    OPS_LOG_D("QuantGroupedMatMulAlltoAllvFallback", "Begin to print gmmWeight shape before ExecuteQuantGroupedMatMulAlltoAllv");
+    Mc2Moe::PrintTensorShape("QuantGroupedMatMulAlltoAllvFallback", &(inputs.gmmWeight->GetStorageShape()), "gmmWeight");
+    
+    if (inputs.gmmWeightScale != nullptr) {
+        OPS_LOG_D("QuantGroupedMatMulAlltoAllvFallback", "Begin to print gmmWeightScale shape before ExecuteQuantGroupedMatMulAlltoAllv");
+        Mc2Moe::PrintTensorShape("QuantGroupedMatMulAlltoAllvFallback", &(inputs.gmmWeightScale->GetStorageShape()), "gmmWeightScale");
+    }
+    
+    if (inputs.mmWeight != nullptr) {
+        OPS_LOG_D("QuantGroupedMatMulAlltoAllvFallback", "Begin to print mmWeight shape before ExecuteQuantGroupedMatMulAlltoAllv");
+        Mc2Moe::PrintTensorShape("QuantGroupedMatMulAlltoAllvFallback", &(inputs.mmWeight->GetStorageShape()), "mmWeight");
+    }
+    
+    if (inputs.mmWeightScale != nullptr) {
+        OPS_LOG_D("QuantGroupedMatMulAlltoAllvFallback", "Begin to print mmWeightScale shape before ExecuteQuantGroupedMatMulAlltoAllv");
+        Mc2Moe::PrintTensorShape("QuantGroupedMatMulAlltoAllvFallback", &(inputs.mmWeightScale->GetStorageShape()), "mmWeightScale");
     }
 
     return ExecuteQuantGroupedMatMulAlltoAllv(host_api_ctx, inputs, attrsData, actSendCountsSeqArray, actRecvCountsSeqArray, y, mmY);

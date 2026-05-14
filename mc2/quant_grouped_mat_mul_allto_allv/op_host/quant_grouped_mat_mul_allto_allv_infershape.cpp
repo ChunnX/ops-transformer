@@ -22,8 +22,10 @@ namespace ops
 {
 static const size_t INDEX_IN_GMM_X = 0;
 static const size_t INDEX_IN_GMM_WEIGHT = 1;
+static const size_t INDEX_IN_GMM_WEIGHT_SCALE = 3;
 static const size_t INDEX_IN_MM_X = 6;
 static const size_t INDEX_IN_MM_WEIGHT = 7;
+static const size_t INDEX_IN_MM_WEIGHT_SCALE = 9;
 static const size_t INDEX_OUT_GMM_Y = 0;
 static const size_t INDEX_OUT_MM_Y = 1;
 static const size_t INDEX_ATTR_EP_WORLD_SIZE = 1;
@@ -137,10 +139,30 @@ static ge::graphStatus InferShapeGroupedMatMulAlltoAllv(gert::InferShapeContext*
 {
     auto* gmmXShape = context->GetInputShape(INDEX_IN_GMM_X);
     auto* gmmWeightShape = context->GetInputShape(INDEX_IN_GMM_WEIGHT);
+    auto* gmmWeightScaleShape = context->GetOptionalInputShape(INDEX_IN_GMM_WEIGHT_SCALE);
     auto* mmXShape = context->GetOptionalInputShape(INDEX_IN_MM_X);
     auto* mmWeightShape = context->GetOptionalInputShape(INDEX_IN_MM_WEIGHT);
+    auto* mmWeightScaleShape = context->GetOptionalInputShape(INDEX_IN_MM_WEIGHT_SCALE);
     auto* gmmYShape = context->GetOutputShape(INDEX_OUT_GMM_Y);
     auto* mmYShape = context->GetOutputShape(INDEX_OUT_MM_Y);
+
+    // Print shapes for debugging
+    const char* nodeName = "QuantGroupedMatMulAlltoAllvInfershape";
+    OPS_LOG_D(nodeName, "Begin to print gmmWeight shape");
+    Mc2Moe::PrintTensorShape(nodeName, gmmWeightShape, "gmmWeightShape");
+    
+    OPS_LOG_D(nodeName, "Begin to print gmmWeightScale shape");
+    Mc2Moe::PrintTensorShape(nodeName, gmmWeightScaleShape, "gmmWeightScaleShape");
+    
+    if (mmWeightShape != nullptr) {
+        OPS_LOG_D(nodeName, "Begin to print mmWeight shape");
+        Mc2Moe::PrintTensorShape(nodeName, mmWeightShape, "mmWeightShape");
+    }
+    
+    if (mmWeightScaleShape != nullptr) {
+        OPS_LOG_D(nodeName, "Begin to print mmWeightScale shape");
+        Mc2Moe::PrintTensorShape(nodeName, mmWeightScaleShape, "mmWeightScaleShape");
+    }
 
     auto* attrs = context->GetAttrs();
     auto* epWorldSizePtr = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_EP_WORLD_SIZE);
