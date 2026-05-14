@@ -267,7 +267,7 @@ struct TNDSeqLensParserHelper;
 
 template <typename ACTLEN_T>
 struct TNDSeqLensParserHelper<ACTLEN_T, false> {
-    typedef TNDSeqLensParser<ACTLEN_T> type;
+    typedef ActualSeqLensParser<ActualSeqLensMode::ACCUM, ACTLEN_T, true> type;
 };
 
 template <typename ACTLEN_T>
@@ -286,7 +286,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_Q_OUT_TND, ACTLEN_T, WITH
     __aicore__ inline void Init(uint32_t n2, uint32_t g, uint32_t d, GlobalTensor<ACTLEN_T> actualSeqLengthsGmQ,
                                 uint32_t actualLenQDims)
     {
-        actualSeqLensQParser.Init(actualSeqLengthsGmQ, actualLenQDims);
+        actualSeqLensQParser.Init(actualSeqLengthsGmQ, actualSeqLengthsGmQ, actualLenQDims, 0);
         gmLayout.MakeLayout(actualSeqLensQParser.GetTSize(), n2, g, d);
     }
 
@@ -446,7 +446,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_TND, ACTLEN_T, WITH_ZE
     __aicore__ inline void Init(uint32_t n2, uint32_t d, GlobalTensor<ACTLEN_T> actualSeqLengthsGmKV,
                                 uint32_t actualLenKVDims)
     {
-        actualSeqLensKVParser.Init(actualSeqLengthsGmKV, actualLenKVDims);
+        actualSeqLensKVParser.Init(actualSeqLengthsGmKV, actualSeqLengthsGmKV, actualLenKVDims, 0);
         gmLayout.MakeLayout(actualSeqLensKVParser.GetTSize(), n2, d);
     }
 
