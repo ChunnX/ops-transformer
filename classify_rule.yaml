@@ -37,6 +37,18 @@ AA_David@ops-transformer:
                 - ops/ops-transformer/attention/common/op_kernel/arch35/infer_flash_attention_comm.h  
                 - ops/ops-transformer/attention/common/op_kernel/arch35/pse.h  
                 - ops/ops-transformer/attention/common/op_kernel/arch35/util_regbase.h  
+                - ops/ops-transformer/attention/common/op_kernel/arch38/vf/vf_div_cast.h  
+                - ops/ops-transformer/attention/common/op_kernel/arch38/vf/vf_flashupdate_new_regbase_v2.h  
+                - ops/ops-transformer/attention/common/op_kernel/arch38/vf/vf_mul_sel_softmaxflashv2_cast_nz_dn_regbase_v2.h  
+                - ops/ops-transformer/attention/common/op_kernel/arch38/vf/vf_mul_sel_softmaxflashv2_cast_nz_regbase_v2.h  
+                - ops/ops-transformer/attention/common/op_kernel/arch38/vf/vf_flash_decode.h  
+                - ops/ops-transformer/attention/common/op_kernel/arch38/vf/vf_post_quant.h  
+                - ops/ops-transformer/attention/common/op_kernel/arch38/attenmask.h  
+                - ops/ops-transformer/attention/common/op_kernel/arch38/flash_attention_score_block_vec_base.h  
+                - ops/ops-transformer/attention/common/op_kernel/arch38/flash_attention_score_kernel_base.h  
+                - ops/ops-transformer/attention/common/op_kernel/arch38/infer_flash_attention_comm.h  
+                - ops/ops-transformer/attention/common/op_kernel/arch38/pse.h  
+                - ops/ops-transformer/attention/common/op_kernel/arch38/util_regbase.h  
                 - ops/ops-transformer/attention/common/op_kernel/offset_calculator.h  
             opensource_style: null    
             kernel_style: null            
@@ -74,6 +86,7 @@ transformer-1@ops-transformer:
                 - ops/ops-transformer/attention/common/op_host/fia_tiling_shape.cpp
                 - ops/ops-transformer/attention/common/op_host/fia_tiling_templates_registry.h
                 - ops/ops-transformer/attention/common/op_kernel/arch22/
+                - ops/ops-transformer/attention/common/op_kernel/arch38/
                 - ops/ops-transformer/attention/common/op_kernel/buffers_policy.h
                 - ops/ops-transformer/attention/common/op_kernel/buffer_manager.h
                 - ops/ops-transformer/attention/common/op_kernel/buffer.h
@@ -82,6 +95,10 @@ transformer-1@ops-transformer:
                 - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_score_block_vec_infer.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/infer_flash_attention_kvcache.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_score_kernel_infer.h
+                - ops/ops-transformer/attention/common/op_kernel/arch38/infer_flash_attention_sparse.h
+                - ops/ops-transformer/attention/common/op_kernel/arch38/flash_attention_score_block_vec_infer.h
+                - ops/ops-transformer/attention/common/op_kernel/arch38/infer_flash_attention_kvcache.h
+                - ops/ops-transformer/attention/common/op_kernel/arch38/flash_attention_score_kernel_infer_regbase_v2.h
             opensource_style: null  
             kernel_style: null  
         unrelease:
@@ -102,6 +119,8 @@ transformer-2@ops-transformer:
                 - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_score_common_regbase.h
                 - ops/ops-transformer/attention/common/op_kernel/arch35/vf/
                 - ops/ops-transformer/attention/common/op_kernel/arch35/flash_attention_score_tiling_regbase.h
+                - ops/ops-transformer/attention/common/op_kernel/arch38/flash_attention_score_common_regbase.h
+                - ops/ops-transformer/attention/common/op_kernel/arch38/flash_attention_score_tiling_regbase.h
                 - ops/ops-transformer/attention/common/op_kernel/vector_common.h
                 - ops/ops-transformer/attention/prompt_flash_attention/docs/aclnnPromptFlashAttentionV3.md
                 - ops/ops-transformer/attention/prompt_flash_attention/docs/PFA算子设计介绍.md
@@ -129,6 +148,7 @@ transformer-2@ops-transformer:
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch22/pfa_service_matmul_kv_nd.h
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/prompt_flash_attention_tilingkey.h
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch35/
+                - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch38/
                 - ops/ops-transformer/attention/prompt_flash_attention/tests/
                 - ops/ops-transformer/attention/prompt_flash_attention/README.md
                 - ops/ops-transformer/attention/prompt_flash_attention/CMakeLists.txt
