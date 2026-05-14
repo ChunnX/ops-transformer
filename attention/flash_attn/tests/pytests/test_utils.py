@@ -133,20 +133,105 @@ def gen_dropmask_tnd(length, keep_prob=0.8, seed=2, offset=0):
     return drop_mask
 
 
-def trans_bnsd_to_layout(tensor, input_layout):
+def gen_block_table(b, act_seq_lens_kv, block_size, block_table_shape=[]):
+    s2_max = max(act_seq_lens_kv)
+    max_block_num_per_batch = (s2_max + block_size - 1) // block_size
+    # if block_table_shape provided
+    if block_table_shape:
+        print(f"generating block_table, the block_table_shape is {block_table_shape}")
+        b = block_table_shape[0]
+        max_block_num_per_batch = block_table_shape[1]
+    block_table = torch.full((b, max_block_num_per_batch), -1, dtype=torch.int32)
+    # get block_num
+    block_num = 0
+    for i in range(b):
+        b_seq = act_seq_lens_kv[i] if len(act_seq_lens_kv) > 1 else act_seq_lens_kv[0]
+        block_num += (b_seq + block_size - 1) // block_size
+    # page cache
+    block_id_array = torch.randperm(block_num, dtype=torch.int32)
+    index = 0
+    for i in range(b):
+        b_seq = act_seq_lens_kv[i] if len(act_seq_lens_kv) > 1 else act_seq_lens_kv[0]
+        b_block_num = (b_seq + block_size - 1) // block_size
+        for j in range(b_block_num):
+            block_table[i][j] = block_id_array[index]
+            index = index + 1
+    return block_table
+
+
+def page_attn_for_bnsd(bnsd_tensor, b, act_seq_lens_kv, block_table, block_size):
+    block_num = int(block_table.max()) + 1
+    kv_cache_bnsd_shape = (block_num, bnsd_tensor.shape[1], block_size, bnsd_tensor.shape[3])
+    page_cache_tensor = torch.zeros(size=kv_cache_bnsd_shape, dtype=bnsd_tensor.dtype)
+    actual_b = block_table.shape[0]
+    is_tnd = (b == 1 and actual_b > 1)
+    cum_kv_offset = 0
+    for i in range(actual_b):
+        b_seq = act_seq_lens_kv[i] if len(act_seq_lens_kv) > i else act_seq_lens_kv[0]
+        b_block_num = (b_seq + block_size - 1) // block_size
+        if is_tnd:
+            batch_dim = 0
+            seq_offset = cum_kv_offset
+        else:
+            batch_dim = i
+            seq_offset = 0
+        for j in range(b_block_num):
+            # 最后一个block填不满时，只填充实际数据部分，多余部分保持初始化值
+            start_idx = seq_offset + j * block_size
+            end_idx = seq_offset + min((j + 1) * block_size, b_seq)
+            actual_size = end_idx - start_idx
+            slice_data = bnsd_tensor[batch_dim, :, start_idx:end_idx, :]
+            page_cache_tensor[block_table[i][j], :, :actual_size, :] = slice_data
+        cum_kv_offset += b_seq
+    return page_cache_tensor
+
+
+def dtype_sizeof(data_type):
+    if data_type == 'fp16' or data_type == 'bf16':
+        return 2
+    elif data_type == 'int8' or data_type == 'fp8':
+        return 1
+
+
+def rearrange_by_block_table(bnsd_tensor, block_table, block_size, b, act_seq_lens_kv, kv_storage_mode, kv_dtype):
+    page_cache_tensor = page_attn_for_bnsd(bnsd_tensor, b, act_seq_lens_kv, block_table, block_size)
+    if kv_storage_mode == "PA_BBND":
+        return page_cache_tensor.permute(0, 2, 1, 3) # BNSD->BSND
+    elif kv_storage_mode == "PA_BNBD":
+        return page_cache_tensor
+    elif kv_storage_mode == "PA_NZ":
+        blk_elem = 32 // dtype_sizeof(kv_dtype)
+        page_cache_tensor = page_cache_tensor.reshape(page_cache_tensor.shape[0],
+                                                     page_cache_tensor.shape[1],
+                                                     page_cache_tensor.shape[2],
+                                                     page_cache_tensor.shape[3] // blk_elem,
+                                                     blk_elem).permute(0, 1, 3, 2, 4)
+        return page_cache_tensor
+    else:
+        return None
+
+
+def trans_bnsd_to_layout(tensor, layout_type, **kwargs):
+    b               = kwargs.get("B")
+    block_size      = kwargs.get("block_size")
+    block_table     = kwargs.get("block_table")
+    seqused_kv      = kwargs.get("seqused_kv")
+    dtype           = kwargs.get("Dtype", "bf16")
+
     if tensor is None:
         return None
     else:
-        if input_layout == "BSH":
+        if layout_type == "BSH":
             return rearrange(tensor.clone(), 'b n s d -> b s (n d)')
-        elif input_layout == "SBH":
+        elif layout_type == "SBH":
             return rearrange(tensor.clone(), 'b n s d -> s b (n d)')
-        elif input_layout == "BSND":
+        elif layout_type == "BSND":
             return rearrange(tensor.clone(), 'b n s d -> b s n d')
-        elif input_layout == "TND":
+        elif layout_type == "TND":
             return rearrange(tensor.clone(), '1 n s d -> s n d')
-        else:
-            return tensor.clone()
+        elif layout_type == "PA_BBND" or layout_type == "PA_BNBD" or layout_type == "PA_NZ":
+            return rearrange_by_block_table(tensor, block_table, block_size, b, seqused_kv, layout_type, dtype)
+        return tensor.clone()
 
 
 def get_seqlen_list(actual_seqlen):
@@ -265,7 +350,7 @@ def generate_cpu_mask(b, s1, s2, sparse_mode, pre_tokens, next_tokens, prefix=No
 
 def generate_qkv(b, n1, n2, s1, s2, d, d_v, d_rope, input_layout, dtype,
                  q_range=None, k_range=None, v_range=None):
-    """生成 Q/K/V tensor。
+    """生成BNSD排布的 Q/K/V tensor。
     value_range 为 (low, high) 时使用均匀分布随机值；省略则保持原有全10固定值（调试用）。
     """
     def _make_tensor(shape, seed, value_range):

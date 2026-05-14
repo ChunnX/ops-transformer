@@ -234,7 +234,8 @@ public:
 
     __aicore__ inline void InitVecBlock(TPipe *pipe,
                                         __gm__ uint8_t *pse, __gm__ uint8_t *actualSeqQlenAddr,
-                                        __gm__ uint8_t *actualSeqKvlenAddr, __gm__ uint8_t *postQuantScale,
+                                        __gm__ uint8_t *actualSeqKvlenAddr, __gm__ uint8_t *sequsedQAddr,
+                                        __gm__ uint8_t *sequsedKvAddr, __gm__ uint8_t *postQuantScale,
                                         __gm__ uint8_t *postQuantOffset, __gm__ uint8_t *attenMask,
                                         __gm__ uint8_t *learnableSink, __gm__ uint8_t *softmaxLse,
                                         __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace)
@@ -243,12 +244,13 @@ public:
         uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32;
         this->negativeFloatScalar = *((T *)&tmp1);
 
-        InitVecInput(pse, actualSeqQlenAddr, actualSeqKvlenAddr, postQuantScale, postQuantOffset,
+        InitVecInput(pse, actualSeqQlenAddr, actualSeqKvlenAddr, sequsedQAddr, sequsedKvAddr, postQuantScale, postQuantOffset,
             attenMask, learnableSink, softmaxLse, attentionOut, workspace);
     }
 
     __aicore__ inline void InitVecInput(__gm__ uint8_t *pse, __gm__ uint8_t *actualSeqQlenAddr,
-                                        __gm__ uint8_t *actualSeqKvlenAddr, __gm__ uint8_t *postQuantScale,
+                                        __gm__ uint8_t *actualSeqKvlenAddr, __gm__ uint8_t *sequsedQAddr,
+                                        __gm__ uint8_t *sequsedKvAddr, __gm__ uint8_t *postQuantScale,
                                         __gm__ uint8_t *postQuantOffset, __gm__ uint8_t *attenMask,
                                         __gm__ uint8_t *learnableSink, __gm__ uint8_t *softmaxLse,
                                         __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace)
@@ -265,6 +267,10 @@ public:
         uint64_t actualLenQSize = (layout == LayOutTypeEnum::LAYOUT_TND) ? constInfo.cuSeqLensQSize
                                                                           : constInfo.seqUsedQSize;
         actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint64_t *)actualSeqQlenAddr, actualLenQSize);
+
+        if (constInfo.sequsedQSize > 0 && sequsedQAddr != nullptr) {
+            sequsedGmQ.SetGlobalBuffer((__gm__ uint64_t *)sequsedQAddr, constInfo.sequsedQSize);
+        }
 
         if constexpr (hasPse) {
             pseGm.SetGlobalBuffer((__gm__ pseShiftType *)pse);
@@ -478,8 +484,6 @@ public:
             }
         } else {
             if (constInfo.isSoftmaxLseEnable) {
-                AscendC::DumpTensor(sumUb, 1, 64);
-                AscendC::DumpTensor(sumUb, 1, 64);
                 SoftmaxLseCopyOut(sumUb, maxUb, runInfo);
             }
         }

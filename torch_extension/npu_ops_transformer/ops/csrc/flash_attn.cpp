@@ -44,17 +44,17 @@ npu_flash_attn(const at::Tensor &q, const at::Tensor &k, const at::Tensor &v,
     if (layout_q == "TND") {
         tSize = q.size(0);
         nSize = q.size(1);
-        dSize = v.size(2);
+        dSize = q.size(2);
     } else if (layout_q == "BSND") {
         bSize = q.size(0);
         sSize = q.size(1);
         nSize = q.size(2);
-        dSize = v.size(3);
+        dSize = q.size(3);
     } else {
         bSize = q.size(0);
         nSize = q.size(1);
         sSize = q.size(2);
-        dSize = v.size(3);
+        dSize = q.size(3);
     }
     if (return_softmax_lse) {
         if (q.dim() == DIM_THREE) {

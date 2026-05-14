@@ -118,7 +118,8 @@ void FlashAttnTilingImpl::InitImplParam()
     uint32_t actSeqLenKVDims = 0;
     actSeqLenQDims = (actSeqLenQ != nullptr) ? actSeqLenQ->GetShapeSize() : 0;
     actSeqLenKVDims = (actSeqLenKV != nullptr) ? actSeqLenKV->GetShapeSize() : 0;
-    cuSeqLenQFlag_ = !((actSeqLenQDims == 0) || (actSeqLenQ == nullptr) || (actSeqLenQ->GetData<int32_t>() == nullptr));
+    cuSeqLenQFlag_ =
+        !((actSeqLenQDims == 0) || (actSeqLenQ == nullptr) || (actSeqLenQ->GetData<int32_t>() == nullptr));
     cuSeqLenKVFlag_ =
         !((actSeqLenKVDims == 0) || (actSeqLenKV == nullptr) || (actSeqLenKV->GetData<int32_t>() == nullptr));
 
@@ -421,6 +422,17 @@ void FlashAttnTilingImpl::UpdateTilingKeyLayout()
     }
 }
 
+void FlashAttnTilingImpl::UpdateTilingKeyKvLayout()
+{
+    if (faInfo_->kvLayout == FaLayout::PA_BBND) {
+        tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_BBH;
+    } else if (faInfo_->kvLayout == FaLayout::PA_BNBD) {
+        tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_BNBD;
+    } else if (faInfo_->kvLayout == FaLayout::PA_Nz) {
+        tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_NZ;
+    }
+}
+
 void FlashAttnTilingImpl::UpdateTilingKeyMaskMode()
 {
     tilingKeyInfo_.maskMode = 0;
@@ -445,7 +457,7 @@ void FlashAttnTilingImpl::UpdateTilingKeyInfo()
         tilingKeyInfo_.isFd = flashDecodeFlag_;
         // tilingKeyInfo_.hasAttenMask = faInfo_->attnMaskFlag;
         // UpdateTilingKeyHasRope();
-        // TODO:kvLayoutType需要赋值
+        UpdateTilingKeyKvLayout();
         // tilingKeyInfo_.isPa = faInfo_->pageAttentionFlag;
         // tilingKeyInfo_.emptyTensor = faInfo_->emptyTensorFlag;
         UpdateTilingKeyMaskMode();
@@ -635,12 +647,11 @@ void FlashAttnTilingImpl::ComputeTilingData()
     // }
 
     if (faInfo_->pageAttentionFlag) {
-        uint32_t keyCacheDimNum = faInfo_->opParamInfo.key.shape->GetStorageShape().GetDimNum();
-        if (keyCacheDimNum == 3) { // 3: BBH
+        if (faInfo_->kvLayout == FaLayout::PA_BBND) {
             tilingData_.baseTiling.flashAttnPageAttentionParams.paLayoutType = 1;
-        } else if (keyCacheDimNum == 4) { // 4: BNBD
+        } else if (faInfo_->kvLayout == FaLayout::PA_BNBD) {
             tilingData_.baseTiling.flashAttnPageAttentionParams.paLayoutType = 0;
-        } else if (keyCacheDimNum == 5) { // 5: PA NZ
+        } else if (faInfo_->kvLayout == FaLayout::PA_Nz) {
             tilingData_.baseTiling.flashAttnPageAttentionParams.paLayoutType = 2;
         }
     }
@@ -682,9 +693,9 @@ void FlashAttnTilingImpl::SetFATilingData()
     tilingData_.baseTiling.flashAttnLeftPaddingParams.isKVHasLeftPadding = 0;
     tilingData_.baseTiling.flashAttnPageAttentionParams.blockSize = faInfo_->blockSize;
     uint32_t maxBlockNumPerBatch = 0;
-    // if (faInfo_->pageAttentionFlag) {
-    //     maxBlockNumPerBatch = faInfo_->opParamInfo.blockTable.tensor->GetStorageShape().GetDim(1);
-    // }
+    if (faInfo_->pageAttentionFlag) {
+        maxBlockNumPerBatch = faInfo_->opParamInfo.blockTable.tensor->GetStorageShape().GetDim(1);
+    }
     tilingData_.baseTiling.flashAttnPageAttentionParams.maxBlockNumPerBatch = maxBlockNumPerBatch;
 
     int64_t outSize = faInfo_->opParamInfo.attnOut.shape->GetStorageShape().GetShapeSize();

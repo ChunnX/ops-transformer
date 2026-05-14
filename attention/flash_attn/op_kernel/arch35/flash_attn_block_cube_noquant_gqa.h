@@ -767,7 +767,6 @@ public:
 
         mm1ResL0C.Wait<HardEvent::M_FIX>(); // 等待L0C
         FixpipeMm1(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(), runInfo);
-
         mm1ResL0C.Set<HardEvent::FIX_M>(); // 释放
         outputBuf.SetCrossCore();
     }
@@ -817,7 +816,6 @@ public:
 
         outputBuf.WaitCrossCore();
         FixpipeMm1Dn(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(), runInfo);
-
         mm1ResL0C.Set<HardEvent::FIX_M>();
         outputBuf.SetCrossCore();
     }
@@ -1030,7 +1028,6 @@ public:
         }
 
         FixpipeMm2PartialN(outputBuf.template GetTensor<T>(), mm2ResL0C.GetTensor<T>(), constInfo.dSizeV, runInfo);
-
         mm2ResL0C.Set<HardEvent::FIX_M>(); // 释放
         outputBuf.SetCrossCore();
     }
