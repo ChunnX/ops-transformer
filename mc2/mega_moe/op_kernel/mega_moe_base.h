@@ -75,6 +75,16 @@ struct Params {
     MegaMoeTilingData *tilingData;
 };
 
+// AscendC cube/vec 信号在 AIV0 / AIV1 上 flag id 映射不对称：
+//   AIV0 SetFlag(N)        ↔ AIC  WaitFlag(N)
+//   AIV1 SetFlag(N)        ↔ AIC  WaitFlag(N + 16)
+//   AIC  SetFlag(N)        ↔ AIV0 WaitFlag(N)
+//   AIC  SetFlag(N + 16)   ↔ AIV1 WaitFlag(N)
+// 下面的 NotifyCube/WaitForVector/NotifyVector/WaitForCube 默认按 AIV0 ↔ AIC 这一组。
+// 涉及 AIV1 的同步必须用带 AIV1 前/后缀的版本，否则 AIC 等不到 AIV1 的信号。
+constexpr uint16_t AIV1_TO_AIC_FLAG_OFFSET = 16U;
+constexpr uint16_t AIC_TO_AIV1_FLAG_OFFSET = 16U;
+
 __aicore__ inline void NotifyCube(uint16_t value = 0)
 {
     CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_V>(AIV_SYNC_AIC_FLAG + value);
@@ -85,6 +95,12 @@ __aicore__ inline void WaitForVector(uint16_t value = 0)
     CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIV_SYNC_AIC_FLAG + value);
 }
 
+// AIV1 SetFlag(AIV_SYNC_AIC_FLAG + value) 在 AIC 端要 wait (AIV_SYNC_AIC_FLAG + value + 16)
+__aicore__ inline void WaitForVectorFromAIV1(uint16_t value = 0)
+{
+    CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIV_SYNC_AIC_FLAG + value + AIV1_TO_AIC_FLAG_OFFSET);
+}
+
 __aicore__ inline void NotifyVector(uint16_t value = 0)
 {
     CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIC_SYNC_AIV_FLAG + value);
@@ -93,6 +109,12 @@ __aicore__ inline void NotifyVector(uint16_t value = 0)
 __aicore__ inline void WaitForCube(uint16_t value = 0)
 {
     CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_V>(AIC_SYNC_AIV_FLAG + value);
+}
+
+// AIC 想通知 AIV1 时要把 flag id +16，AIV1 自己 wait 时还是用原 value
+__aicore__ inline void NotifyVectorAIV1(uint16_t value = 0)
+{
+    CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIC_SYNC_AIV_FLAG + value + AIC_TO_AIV1_FLAG_OFFSET);
 }
 
 inline GM_ADDR winRankAddr_[HCCL_MAX_RANK_SIZE];
