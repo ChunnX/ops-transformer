@@ -13,18 +13,6 @@
 set(MAKESELF_EXE ${CPACK_MAKESELF_PATH}/makeself.sh)
 set(MAKESELF_HEADER_EXE ${CPACK_MAKESELF_PATH}/makeself-header.sh)
 
-message(STATUS "CPACK_MAKESELF_PATH: ${CPACK_MAKESELF_PATH}")
-message(STATUS "MAKESELF_EXE: ${MAKESELF_EXE}")
-message(STATUS "MAKESELF_HEADER_EXE: ${MAKESELF_HEADER_EXE}")
-
-if(NOT DEFINED CPACK_MAKESELF_PATH)
-    message(FATAL_ERROR "CPACK_MAKESELF_PATH is not defined!")
-endif()
-
-if(NOT EXISTS ${MAKESELF_EXE} OR NOT EXISTS ${MAKESELF_HEADER_EXE})
-    include(cmake/third_party/makeself-fetch.cmake)
-endif()
-
 execute_process(COMMAND bash ${MAKESELF_EXE}
                         --header ${MAKESELF_HEADER_EXE}
                         --help-header ./help.info --tar-format posix
