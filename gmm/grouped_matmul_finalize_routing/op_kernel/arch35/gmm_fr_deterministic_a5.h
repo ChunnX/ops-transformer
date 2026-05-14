@@ -62,7 +62,8 @@ __aicore__ inline void FRDeterministicA5(
     GlobalTensor<ROW_INDEX_DTYPE>& tokenRanksGm,
     TQueBind<TPosition::VECIN, TPosition::VECOUT, 1>& queBind,
     uint32_t coreNum,
-    uint32_t n)
+    uint32_t n,
+    uint64_t globalRowOffset = 0)
 {
     if (g_coreType == AIC) {
         // A5 SyncAll requires all cores to participate; AIC cores only sync
@@ -73,13 +74,12 @@ __aicore__ inline void FRDeterministicA5(
 
     SyncAll();  // Ensure workspace writes complete
 
-    uint64_t totalM = syncConfig.curM - (syncConfig.lowBoundM - syncConfig.windowSize);
+    uint64_t totalM = syncConfig.curM;
     uint64_t coreNumVec = coreNum * GetTaskRation();
-    uint64_t baseOffset = syncConfig.lowBoundM - syncConfig.windowSize;
 
     // Read workspace by mOffset, AtomicAdd to yGm by outRow (one writer per outRow)
     for (uint64_t mOffset = 0; mOffset < totalM; mOffset++) {
-        auto outRow = static_cast<uint64_t>(tokenRanksGm.GetValue(baseOffset + mOffset));
+        auto outRow = static_cast<uint64_t>(tokenRanksGm.GetValue(globalRowOffset + mOffset));
 
         // Row ownership: only the core matching outRow % coreNumVec handles this row
         if (outRow % coreNumVec != GetBlockIdx()) {

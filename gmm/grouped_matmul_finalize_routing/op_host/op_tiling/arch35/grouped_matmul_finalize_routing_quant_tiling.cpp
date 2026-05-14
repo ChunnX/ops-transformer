@@ -468,19 +468,7 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::DoOpTiling()
         constexpr uint32_t DETER_WORK_SPACE_LOWER_SIZE = 64UL * 1024 * 1024;
         deterWorkspaceSize_ = l2Size > DETER_WORK_SPACE_SIZE
                               ? DETER_WORK_SPACE_SIZE : DETER_WORK_SPACE_LOWER_SIZE;
-        // 溢出保护：检查所需确定性 buffer 是否在 workspace 范围内
-        uint64_t requiredDeterSize = inputParams_.mSize * inputParams_.nSize * sizeof(float);
-        if (requiredDeterSize > deterWorkspaceSize_) {
-            OP_LOGW(context_->GetNodeName(),
-                    "Deterministic buffer overflow: required %lu bytes but only %u available, "
-                    "deterministic mode disabled.",
-                    requiredDeterSize, deterWorkspaceSize_);
-            deterministicFlag_ = 0;
-            tilingData_.gmmFinalizeRoutingDataParams.deterministicFlag = 0;
-            tilingData_.gmmFinalizeRoutingDataParams.deterWorkspaceSize = 0;
-        } else {
-            tilingData_.gmmFinalizeRoutingDataParams.deterWorkspaceSize = deterWorkspaceSize_;
-        }
+        tilingData_.gmmFinalizeRoutingDataParams.deterWorkspaceSize = deterWorkspaceSize_;
     }
 
     PrintQuantParams();
