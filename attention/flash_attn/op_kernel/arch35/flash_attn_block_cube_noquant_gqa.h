@@ -17,8 +17,8 @@
 
 #include "../../../common/op_kernel/offset_calculator.h"
 #include "../../../common/op_kernel/matmul.h"
-#include "../../../common/op_kernel/FixpipeOut.h"        // PFA_CFG_ROW_MAJOR_UB
-#include "../../../common/op_kernel/memory_copy_arch35.h"    // SeqLenFromTensorList
+#include "../../../common/op_kernel/FixpipeOut.h"         // PFA_CFG_ROW_MAJOR_UB
+#include "../../../common/op_kernel/memory_copy_arch35.h" // SeqLenFromTensorList
 #include "../../../common/op_kernel/arch35/infer_flash_attention_comm.h"
 #include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
 #include "kernel_operator_list_tensor_intf.h"
@@ -46,8 +46,9 @@ __aicore__ inline constexpr GmFormat GetQueryGmFormat()
     }
 }
 
-template <LayOutTypeEnum LAYOUT, uint8_t KvLayoutType=0, bool isPa=false>
-__aicore__ inline constexpr GmFormat GetKVGmFormat() {
+template <LayOutTypeEnum LAYOUT, uint8_t KvLayoutType = 0, bool isPa = false>
+__aicore__ inline constexpr GmFormat GetKVGmFormat()
+{
     if constexpr (KvLayoutType == 0) { // KvLayoutType_NO_PA
         if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH) {
             return GmFormat::BSND;
@@ -67,65 +68,50 @@ __aicore__ inline constexpr GmFormat GetKVGmFormat() {
     } else { // KvLayoutType_PA_NZ
         return GmFormat::PA_NZ;
     }
- 
 }
 
 /* ============确定Query的L1类型============= */
 template <typename INPUT_T, uint32_t dBaseSize>
 struct QL1BuffSel {
-    using Type = std::conditional_t<
-        std::is_same_v<INPUT_T, float> ||
-        (!(std::is_same_v<INPUT_T, fp8_e4m3fn_t> ||
-           std::is_same_v<INPUT_T, fp8_e5m2_t> ||
-           std::is_same_v<INPUT_T, hifloat8_t>) && dBaseSize > 256),
-        BuffersPolicySingleBuffer<BufferType::L1>,
-        BuffersPolicyDB<BufferType::L1>>;
+    using Type = std::conditional_t<std::is_same_v<INPUT_T, float> || (!(std::is_same_v<INPUT_T, fp8_e4m3fn_t> ||
+                                                                         std::is_same_v<INPUT_T, fp8_e5m2_t> ||
+                                                                         std::is_same_v<INPUT_T, hifloat8_t>) &&
+                                                                       dBaseSize > 256),
+                                    BuffersPolicySingleBuffer<BufferType::L1>, BuffersPolicyDB<BufferType::L1>>;
 };
 
 /* ============确定Key的L1类型============= */
 template <typename INPUT_T, uint32_t s2BaseSize, uint32_t dBaseSize>
 struct KVL1BuffSel {
-    constexpr static bool isFP8DType =  
-            std::is_same_v<INPUT_T, fp8_e4m3fn_t> ||
-           std::is_same_v<INPUT_T, fp8_e5m2_t> ||
-           std::is_same_v<INPUT_T, hifloat8_t>;
+    constexpr static bool isFP8DType = std::is_same_v<INPUT_T, fp8_e4m3fn_t> || std::is_same_v<INPUT_T, fp8_e5m2_t> ||
+                                       std::is_same_v<INPUT_T, hifloat8_t>;
     using Type = std::conditional_t<
-            (isFP8DType && s2BaseSize == 128 && dBaseSize == 576),
-            BuffersPolicy4buff<BufferType::L1>,
-            std::conditional_t<
-                (!(isFP8DType) && s2BaseSize == 256 && dBaseSize > 128),
-                BuffersPolicySingleBuffer<BufferType::L1>,
-                BuffersPolicyDB<BufferType::L1>
-            >
-        >;
+        (isFP8DType && s2BaseSize == 128 && dBaseSize == 576), BuffersPolicy4buff<BufferType::L1>,
+        std::conditional_t<(!(isFP8DType) && s2BaseSize == 256 && dBaseSize > 128),
+                           BuffersPolicySingleBuffer<BufferType::L1>, BuffersPolicyDB<BufferType::L1>>>;
 };
 
 /* ============确定L0A的类型============= */
 template <typename INPUT_T>
 struct L0ABuffSel {
-    using Type = std::conditional_t<
-        std::is_same_v<INPUT_T, float>,
-        BuffersPolicySingleBuffer<BufferType::L0A>,
-        BuffersPolicyDB<BufferType::L0A>>;
+    using Type = std::conditional_t<std::is_same_v<INPUT_T, float>, BuffersPolicySingleBuffer<BufferType::L0A>,
+                                    BuffersPolicyDB<BufferType::L0A>>;
 };
 /* ============确定L0B的类型============= */
 template <typename INPUT_T, uint32_t s2BaseSize, uint32_t dBaseSize>
 struct L0BBuffSel {
-    using Type = std::conditional_t<
-        std::is_same_v<INPUT_T, float> || (s2BaseSize == 256 && dBaseSize > 128 && 
-        !(std::is_same_v<INPUT_T, fp8_e4m3fn_t> ||
-           std::is_same_v<INPUT_T, fp8_e5m2_t> ||
-           std::is_same_v<INPUT_T, hifloat8_t>)),
-        BuffersPolicySingleBuffer<BufferType::L0B>,
-        BuffersPolicyDB<BufferType::L0B>>;
+    using Type = std::conditional_t<std::is_same_v<INPUT_T, float> ||
+                                        (s2BaseSize == 256 && dBaseSize > 128 &&
+                                         !(std::is_same_v<INPUT_T, fp8_e4m3fn_t> ||
+                                           std::is_same_v<INPUT_T, fp8_e5m2_t> || std::is_same_v<INPUT_T, hifloat8_t>)),
+                                    BuffersPolicySingleBuffer<BufferType::L0B>, BuffersPolicyDB<BufferType::L0B>>;
 };
 /* ============确定L0C的类型============= */
 template <typename INPUT_T, uint32_t s1BaseSize, uint32_t s2BaseSize, uint32_t dVBaseSize>
 struct L0CBuffSel {
-    using Type = std::conditional_t<
-        (s1BaseSize * s2BaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4 && s1BaseSize * dVBaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4),
-        BuffersPolicy4buff<BufferType::L0C>,
-        BuffersPolicyDB<BufferType::L0C>>;
+    using Type = std::conditional_t<(s1BaseSize * s2BaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4 &&
+                                     s1BaseSize * dVBaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4),
+                                    BuffersPolicy4buff<BufferType::L0C>, BuffersPolicyDB<BufferType::L0C>>;
 };
 
 template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::None,
@@ -206,8 +192,7 @@ public:
 
     using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
 
-    __aicore__ inline CubeBlockBase(ConstInfoX &constInfo) {};
-
+    __aicore__ inline CubeBlockBase(ConstInfoX &constInfo){};
 };
 
 template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::None,
@@ -216,8 +201,9 @@ template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::
           DTemplateType dTemplateType = DTemplateType::Aligned128,
           DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasRope = false, uint8_t KvLayoutType = 0,
           bool enableKVPrefix = false, bool useDn = false, bool bmm2Write2Ub = true, bool splitD = false>
-class FANoQuantGqaBlockCube : public CubeBlockBase<INPUT_T, T, layout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-                         hasRope, KvLayoutType, enableKVPrefix, useDn, bmm2Write2Ub, splitD> {
+class FANoQuantGqaBlockCube
+    : public CubeBlockBase<INPUT_T, T, layout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, hasRope,
+                           KvLayoutType, enableKVPrefix, useDn, bmm2Write2Ub, splitD> {
 public:
     template <uint32_t dBaseSize>
     struct QL1BuffSel {
@@ -289,27 +275,25 @@ public:
 
     using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
 
-    static constexpr bool IS_TND_LAYOUT = (LAYOUT == LayOutTypeEnum::LAYOUT_TND || LAYOUT == LayOutTypeEnum::LAYOUT_NTD);
+    static constexpr bool IS_TND_LAYOUT =
+        (LAYOUT == LayOutTypeEnum::LAYOUT_TND || LAYOUT == LayOutTypeEnum::LAYOUT_NTD);
     static constexpr bool Q_NEEDS_WZH = (GmLayoutParams<Q_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND);
     static constexpr bool KV_NEEDS_WZH = (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_TND);
 
-    using QSeqParserType = typename std::conditional<
-        IS_TND_LAYOUT,
-        ActualSeqLensParser<ActualSeqLensMode::ACCUM, uint64_t, true>,
-        ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, uint64_t>
-    >::type;
+    using QSeqParserType =
+        typename std::conditional<IS_TND_LAYOUT, ActualSeqLensParser<ActualSeqLensMode::ACCUM, uint64_t, true>,
+                                  ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, uint64_t>>::type;
 
-    using KvSeqParserType = typename std::conditional<
-        IS_TND_LAYOUT,
-        ActualSeqLensParser<ActualSeqLensMode::ACCUM, uint64_t, true>,
-        ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, uint64_t>
-    >::type;
+    static constexpr ActualSeqLensMode KV_PARSER_MODE = GetKvActSeqMode<LAYOUT, PAGE_ATTENTION>();
+    using KvSeqParserType =
+        typename std::conditional<IS_TND_LAYOUT, ActualSeqLensParser<KV_PARSER_MODE, uint64_t, true>,
+                                  ActualSeqLensParser<KV_PARSER_MODE, uint64_t>>::type;
 
     using FaGmTensorQ = FaGmTensor<Q_T, Q_FORMAT, uint64_t, Q_NEEDS_WZH>;
     using FaGmTensorKV = FaGmTensor<KV_T, KV_FORMAT, uint64_t, KV_NEEDS_WZH>;
 
     TPipe *tPipe;
-    
+
     /* =====================GM变量(with layout)==================== */
     FaGmTensorQ queryGm;
     FaGmTensorKV keyGm;
@@ -332,7 +316,7 @@ public:
     BufferManager<BufferType::L0B> l0bBufferManager;
     BufferManager<BufferType::L0C> l0cBufferManager;
 
-    L1QType  l1QBuffers;
+    L1QType l1QBuffers;
     L1KvType l1KBuffers;
     L1KvType l1VBuffers;
 
@@ -347,22 +331,22 @@ public:
 
     /*============================================================================== */
     __aicore__ inline FANoQuantGqaBlockCube(ConstInfoX &constInfo)
-        : CubeBlockBase<INPUT_T, T, layout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-                    hasRope, KvLayoutType, enableKVPrefix, useDn, bmm2Write2Ub, splitD>(constInfo), constInfo(constInfo) {};
+        : CubeBlockBase<INPUT_T, T, layout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, hasRope,
+                        KvLayoutType, enableKVPrefix, useDn, bmm2Write2Ub, splitD>(constInfo),
+          constInfo(constInfo){};
 
-    __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> *l1BuffMgr,
-                                         __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                                         __gm__ uint8_t *blockTable, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
-                                         QSeqParserType &qParser, KvSeqParserType &kvParser,
-                                         __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
-                                         __gm__ uint8_t *actualSharedPrefixLen)
+    __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> *l1BuffMgr, __gm__ uint8_t *query,
+                                         __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *blockTable,
+                                         __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope, QSeqParserType &qParser,
+                                         KvSeqParserType &kvParser, __gm__ uint8_t *keySharedPrefix,
+                                         __gm__ uint8_t *valueSharedPrefix, __gm__ uint8_t *actualSharedPrefixLen)
     {
         tPipe = pipe;
         l1BufferManagerPtr = l1BuffMgr;
         this->qSeqParserPtr = &qParser;
         this->kvSeqParserPtr = &kvParser;
-        InitCubeInput(query, key, value, blockTable, queryRope, keyRope,
-            keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen);
+        InitCubeInput(query, key, value, blockTable, queryRope, keyRope, keySharedPrefix, valueSharedPrefix,
+                      actualSharedPrefixLen);
     }
 
     __aicore__ inline void InitBuffers()
@@ -412,23 +396,21 @@ public:
             blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
         }
 
-        InitQBuffer(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size, constInfo.dSize,
-                    queryGm, query);
+        InitQBuffer(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size, constInfo.dSize, queryGm,
+                    query);
 
         keyPtr = key;
         valuePtr = value;
         if (constInfo.isKvContinuous) {
-            InitKVBuffer(constInfo.bSize, constInfo.s2Size,
-                         constInfo.n2Size, constInfo.blockSize, constInfo.dSize, keyGm, key);
-            InitKVBuffer(constInfo.bSize, constInfo.s2Size,
-                         constInfo.n2Size, constInfo.blockSize, constInfo.dSizeV, valueGm, value);
+            InitKVBuffer(constInfo.bSize, constInfo.s2Size, constInfo.n2Size, constInfo.blockSize, constInfo.dSize,
+                         keyGm, key);
+            InitKVBuffer(constInfo.bSize, constInfo.s2Size, constInfo.n2Size, constInfo.blockSize, constInfo.dSizeV,
+                         valueGm, value);
         }
-
     }
 
     __aicore__ inline void InitQBuffer(uint32_t batchSize, uint32_t n2Size, uint32_t gSize, uint32_t qSeqSize,
-                                       uint32_t headDim, FaGmTensorQ &qGmTensor,
-                                       __gm__ uint8_t *gm)
+                                       uint32_t headDim, FaGmTensorQ &qGmTensor, __gm__ uint8_t *gm)
     {
         qGmTensor.gmTensor.SetGlobalBuffer((__gm__ Q_T *)gm);
         if constexpr (Q_NEEDS_WZH) {
@@ -440,9 +422,9 @@ public:
         }
     }
 
-    __aicore__ inline void InitKVBuffer(uint32_t batchSize, uint32_t kvSeqSize,
-                                        uint32_t n2Size, uint32_t kvCacheBlockSize, uint32_t headDim,
-                                        FaGmTensorKV &kvGmTensor, __gm__ uint8_t *gm)
+    __aicore__ inline void InitKVBuffer(uint32_t batchSize, uint32_t kvSeqSize, uint32_t n2Size,
+                                        uint32_t kvCacheBlockSize, uint32_t headDim, FaGmTensorKV &kvGmTensor,
+                                        __gm__ uint8_t *gm)
     {
         kvGmTensor.gmTensor.SetGlobalBuffer((__gm__ KV_T *)gm);
 
@@ -550,7 +532,6 @@ public:
                               .dDealSize = nopeDealSize};
             copyKvGmToL1(l1Tensor, keyGm, gmCoord);
         }
-
     }
 
     // copy key with full s2 and split D
@@ -641,7 +622,7 @@ public:
         // 源NZ矩阵中相邻Z排布的起始地址偏移
         fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16;
         fixpipeParams.dstStride = s2BaseSize; // mmResUb上两行之间的间隔，单位：element
-        fixpipeParams.dualDstCtl = 1; // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
+        fixpipeParams.dualDstCtl = 1;         // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;

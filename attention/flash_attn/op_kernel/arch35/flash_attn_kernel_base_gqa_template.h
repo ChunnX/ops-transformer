@@ -17,14 +17,14 @@
 #define FLASH_ATTENTION_NOQUANT_GQA_KERNEL_H_
 
 #include "../../../common/op_kernel/fia_public_define.h"
-#include "kernel_operator_list_tensor_intf.h"    //  TensorDesc
+#include "kernel_operator_list_tensor_intf.h" //  TensorDesc
 #include "../utils/flash_attn_common_def.h"
 #include "../utils/flash_attn_utils.h"
 
 #include "flash_attn_block_cube_noquant_gqa.h"
 #include "flash_attn_block_vec_noquant_gqa.h"
 #include "../../../common/op_kernel/memory_copy_arch35.h"
-#include "flash_attention_noquant_block_vec_flashdecode.h"    // FiaBlockVecFlashDecode
+#include "flash_attention_noquant_block_vec_flashdecode.h" // FiaBlockVecFlashDecode
 
 
 #if ASC_DEVKIT_MAJOR >= 9
@@ -61,7 +61,7 @@ public:
     static constexpr bool PAGE_ATTENTION = CubeBlockType::PAGE_ATTENTION;
     static constexpr bool HAS_ROPE = CubeBlockType::HAS_ROPE;
     static constexpr bool FLASH_DECODE = VecFaBlockType::FLASH_DECODE;
- 
+
     static constexpr LayOutTypeEnum LAYOUT_Q = CubeBlockType::LAYOUT; // V100 只支持一种??
     static constexpr LayOutTypeEnum LAYOUT_KV = CubeBlockType::LAYOUT;
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<LAYOUT_Q>();
@@ -140,38 +140,34 @@ public:
     FDparamsX fdParams_;
 
     //  Shared buffer between fa and fd
-    TQue<QuePosition::VECOUT, 1> SharedBuffer1[2];  // 共用
+    TQue<QuePosition::VECOUT, 1> SharedBuffer1[2]; // 共用
     TQue<QuePosition::VECIN, 1> SharedBuffer2[2];  // 共用
-    TBuf<> SharedBuffer3; // 共用
+    TBuf<> SharedBuffer3;                          // 共用
 
     // 非tnd时不使用cuSeqLens，这里保证定义
-    typename std::conditional<
-        (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND || LAYOUT_Q == LayOutTypeEnum::LAYOUT_NTD),
-        ActualSeqLensParser<Q_MODE, uint64_t, true>,
-        ActualSeqLensParser<Q_MODE>
-    >::type qCuSeqLensParser;
-    
-    typename std::conditional<
-        (LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND || LAYOUT_KV == LayOutTypeEnum::LAYOUT_NTD),
-        ActualSeqLensParser<KV_MODE, uint64_t, true>,
-        ActualSeqLensParser<KV_MODE>
-    >::type kvCuSeqLensParser;
+    typename std::conditional<(LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND || LAYOUT_Q == LayOutTypeEnum::LAYOUT_NTD),
+                              ActualSeqLensParser<Q_MODE, uint64_t, true>, ActualSeqLensParser<Q_MODE>>::type
+        qCuSeqLensParser;
+
+    typename std::conditional<(LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND || LAYOUT_KV == LayOutTypeEnum::LAYOUT_NTD),
+                              ActualSeqLensParser<KV_MODE, uint64_t, true>, ActualSeqLensParser<KV_MODE>>::type
+        kvCuSeqLensParser;
 
     ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, uint64_t> qSeqUsedParser;
     ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, uint64_t> kvSeqUsedParser;
 
     // ==============================fuction=======================================================
-    __aicore__ inline FlashAttentionNoQuantGqaKernel() : cubeBlock(constInfo), vecFaBlock(constInfo), vecFdBlock(constInfo){};
+    __aicore__ inline FlashAttentionNoQuantGqaKernel()
+        : cubeBlock(constInfo), vecFaBlock(constInfo), vecFdBlock(constInfo){};
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pse,
-                                __gm__ uint8_t *attenMask, __gm__ uint8_t *cuSeqLensQ,
-                                __gm__ uint8_t *cuSeqLensKv, __gm__ uint8_t *blockTable,
-                                __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
-                                __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset,
-                                __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
-                                __gm__ uint8_t *actualSharedPrefixLen, __gm__ uint8_t *queryRope,
-                                __gm__ uint8_t *keyRope, __gm__ uint8_t *learnableSink, __gm__ uint8_t *softmaxLse,
-                                __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace, __gm__ uint8_t *fiaMetaData,
-                                __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKv,
+                                __gm__ uint8_t *attenMask, __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv,
+                                __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize,
+                                __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *postQuantScale,
+                                __gm__ uint8_t *postQuantOffset, __gm__ uint8_t *keySharedPrefix,
+                                __gm__ uint8_t *valueSharedPrefix, __gm__ uint8_t *actualSharedPrefixLen,
+                                __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope, __gm__ uint8_t *learnableSink,
+                                __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
+                                __gm__ uint8_t *fiaMetaData, __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKv,
                                 const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tiling, TPipe *tPipe)
     {
         this->pipe = tPipe;
@@ -181,13 +177,14 @@ public:
         isFd = static_cast<bool>(((__gm__ uint32_t *)fiaMetaData)[1]);
 
         faMetaDataGm.SetGlobalBuffer((__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET),
-            FA_AIC_CORE_NUM * 16U * sectionNum_);
-        fdMetaDataGm.SetGlobalBuffer((__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET +
-            FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM * sectionNum_ * sizeof(uint32_t)),
+                                     FA_AIC_CORE_NUM * 16U * sectionNum_);
+        fdMetaDataGm.SetGlobalBuffer(
+            (__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET +
+                                FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM * sectionNum_ * sizeof(uint32_t)),
             FA_AIV_CORE_NUM * 16U * sectionNum_);
 
         InitConstInfo(queryPaddingSize, kvPaddingSize, actualSharedPrefixLen);
-       
+
 
         keyPtr = key;
         valuePtr = value;
@@ -212,12 +209,12 @@ public:
 
         if ASCEND_IS_AIV {
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND || LAYOUT_Q == LayOutTypeEnum::LAYOUT_NTD) {
-                vecFaBlock.InitVecBlock(tPipe, pse, cuSeqLensQ, cuSeqLensKv, postQuantScale, postQuantOffset,
-                    attenMask, learnableSink, softmaxLse, attentionOut, workspace);
+                vecFaBlock.InitVecBlock(tPipe, pse, cuSeqLensQ, cuSeqLensKv, postQuantScale, postQuantOffset, attenMask,
+                                        learnableSink, softmaxLse, attentionOut, workspace);
                 vecFaBlock.SetCuSeqLensParser(qCuSeqLensParser);
             } else {
-                vecFaBlock.InitVecBlock(tPipe, pse, seqUsedQ, seqUsedKv, postQuantScale, postQuantOffset,
-                    attenMask, learnableSink, softmaxLse, attentionOut, workspace);
+                vecFaBlock.InitVecBlock(tPipe, pse, seqUsedQ, seqUsedKv, postQuantScale, postQuantOffset, attenMask,
+                                        learnableSink, softmaxLse, attentionOut, workspace);
                 vecFaBlock.SetCuSeqLensParser(qSeqUsedParser);
             }
             vecFaBlock.ClearOutput();
@@ -226,12 +223,12 @@ public:
         if ASCEND_IS_AIC {
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND || LAYOUT_Q == LayOutTypeEnum::LAYOUT_NTD) {
                 cubeBlock.InitCubeBlock(tPipe, &l1BufferManager, query, key, value, blockTable, queryRope, keyRope,
-                    qCuSeqLensParser, kvCuSeqLensParser,
-                    keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen);
+                                        qCuSeqLensParser, kvCuSeqLensParser, keySharedPrefix, valueSharedPrefix,
+                                        actualSharedPrefixLen);
             } else {
                 cubeBlock.InitCubeBlock(tPipe, &l1BufferManager, query, key, value, blockTable, queryRope, keyRope,
-                    qSeqUsedParser, kvSeqUsedParser,
-                    keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen);
+                                        qSeqUsedParser, kvSeqUsedParser, keySharedPrefix, valueSharedPrefix,
+                                        actualSharedPrefixLen);
             }
         }
 
@@ -355,7 +352,8 @@ public:
         constInfo.outputLayout = static_cast<FA_LAYOUT>(this->tilingData->flashAttnBaseParams.outputLayout);
 
         // if constexpr (HAS_MASK) {
-        constInfo.sparseMode = this->tilingData->flashAttnAttenMaskParams.sparseMode;       // TODO，后续sparseType、attenMaskCompressMode引用全部改成sparseMode
+        constInfo.sparseMode = this->tilingData->flashAttnAttenMaskParams
+                                   .sparseMode; // TODO，后续sparseType、attenMaskCompressMode引用全部改成sparseMode
         constInfo.preTokens = this->tilingData->flashAttnAttenMaskParams.winLefts;
         constInfo.nextTokens = this->tilingData->flashAttnAttenMaskParams.winRights;
         constInfo.attenMaskBatch = this->tilingData->flashAttnAttenMaskParams.attenMaskBatch;
@@ -391,8 +389,10 @@ public:
         constInfo.isSoftmaxLseEnable = this->tilingData->flashAttnBaseParams.isSoftMaxLseEnable;
         // prefix
         if constexpr (HAS_PREFIX) {
-            constInfo.isActualSharedPrefixLenNull = this->tilingData->flashAttnSystemPrefixParams.isActualSharedPrefixLenNull;
-            constInfo.actualKVPrefixSize = constInfo.kvPrefixSize = this->tilingData->flashAttnSystemPrefixParams.prefixSeqInnerSize;
+            constInfo.isActualSharedPrefixLenNull =
+                this->tilingData->flashAttnSystemPrefixParams.isActualSharedPrefixLenNull;
+            constInfo.actualKVPrefixSize = constInfo.kvPrefixSize =
+                this->tilingData->flashAttnSystemPrefixParams.prefixSeqInnerSize;
             if (!constInfo.isActualSharedPrefixLenNull) {
                 constInfo.actualKVPrefixSize = ((__gm__ int64_t *)actualSharedPrefixLen)[0];
             }
@@ -426,6 +426,37 @@ public:
         }
 
         constInfo.dBasicBlock = Align64Func((uint16_t)constInfo.dSizeV);
+
+        printf("[constInfo] aicIdx:%d aivIdx:%d subBlockIdx:%d\n", constInfo.aicIdx, constInfo.aivIdx,
+               constInfo.subBlockIdx);
+        printf("[constInfo] bSize:%u t1Size:%u t2Size:%u n2Size:%u gSize:%u\n", constInfo.bSize, constInfo.t1Size,
+               constInfo.t2Size, constInfo.n2Size, constInfo.gSize);
+        printf("[constInfo] s1Size:%u s2Size:%u dSize:%u dSizeV:%u dSizeRope:%u\n", constInfo.s1Size, constInfo.s2Size,
+               constInfo.dSize, constInfo.dSizeV, constInfo.dSizeRope);
+        printf("[constInfo] cuSeqLensQSize:%u cuSeqLensKVSize:%u seqUsedQSize:%u seqUsedKvSize:%u\n",
+               constInfo.cuSeqLensQSize, constInfo.cuSeqLensKVSize, constInfo.seqUsedQSize, constInfo.seqUsedKvSize);
+        printf("[constInfo] scaleValue:%.6f isKvContinuous:%d coreNum:%u outputLayout:%d\n", constInfo.scaleValue,
+               constInfo.isKvContinuous, constInfo.coreNum, constInfo.outputLayout);
+        printf("[constInfo] sparseMode:%d preTokens:%d nextTokens:%d attenMaskBatch:%u attenMaskS1Size:%u "
+               "attenMaskS2Size:%u\n",
+               constInfo.sparseMode, constInfo.preTokens, constInfo.nextTokens, constInfo.attenMaskBatch,
+               constInfo.attenMaskS1Size, constInfo.attenMaskS2Size);
+        printf("[constInfo] isRowInvalidOpen:%d isExistRowInvalid:%d\n", constInfo.isRowInvalidOpen,
+               constInfo.isExistRowInvalid);
+        printf("[constInfo] isQHasLeftPadding:%d isKVHasLeftPadding:%d queryRightPaddingSize:%d "
+               "kvRightPaddingSize:%d\n",
+               constInfo.isQHasLeftPadding, constInfo.isKVHasLeftPadding, constInfo.queryRightPaddingSize,
+               constInfo.kvRightPaddingSize);
+        printf("[constInfo] isSoftmaxLseEnable:%d isPostQuantPerChnl:%d isPostQuantBF16:%d\n",
+               constInfo.isSoftmaxLseEnable, constInfo.isPostQuantPerChnl, constInfo.isPostQuantBF16);
+        printf("[constInfo] accumOutSize:%u logSumExpSize:%u dBasicBlock:%u\n", constInfo.accumOutSize,
+               constInfo.logSumExpSize, constInfo.dBasicBlock);
+        printf("[tile] mBaseSize:%u s2BaseSize:%u dBaseSize:%u dVBaseSize:%u\n", mBaseSize, s2BaseSize, dBaseSize,
+               dVBaseSize);
+        printf("[cap] USE_DN:%d BMM2_TOUB:%d HAS_PREFIX:%d HAS_MASK:%d HAS_ROPE:%d FLASH_DECODE:%d PAGE_ATTENTION:%d\n",
+               USE_DN, BMM2_TOUB, HAS_PREFIX, HAS_MASK, HAS_ROPE, FLASH_DECODE, PAGE_ATTENTION);
+        printf("[layout] LAYOUT_Q:%d LAYOUT_KV:%d Q_MODE:%d KV_MODE:%d\n", static_cast<int>(LAYOUT_Q),
+               static_cast<int>(LAYOUT_KV), static_cast<int>(Q_MODE), static_cast<int>(KV_MODE));
     }
 
     __aicore__ inline uint32_t GetFAMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
@@ -434,10 +465,10 @@ public:
         // Kernel field constants ( FLASH_ATTN_BN2_START_INDEX=1, etc.) are 1-based, so subtract 1.
         return FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM * sectionIdx + 16U * coreIdx + metaIdx;
     }
-    //TODO 适配metadata
+    // TODO 适配metadata
     __aicore__ inline uint32_t GetFDMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
     {
-        return FA_FD_METADATA_SIZE * FA_AIV_CORE_NUM * sectionIdx + FA_FD_METADATA_SIZE * coreIdx + metaIdx ;
+        return FA_FD_METADATA_SIZE * FA_AIV_CORE_NUM * sectionIdx + FA_FD_METADATA_SIZE * coreIdx + metaIdx;
     }
 
     __aicore__ inline void CrossCoreBufferInit()
@@ -539,13 +570,11 @@ public:
 
     __aicore__ inline TASK_DEAL_MODE GetTaskDealMode(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
     {
-        bool isFirstTask =
-            (bN2Cur == bN2Start_) && (gS1Cur == gS1OStart_) && (s2Cur == s2OStart_);
+        bool isFirstTask = (bN2Cur == bN2Start_) && (gS1Cur == gS1OStart_) && (s2Cur == s2OStart_);
         uint32_t bIdx = bN2Cur / constInfo.n2Size;
         if (isFirstTask || prevBIdx != bIdx) {
             prevBIdx = bIdx;
-            if (constInfo.cuSeqLensKVSize == 0 && constInfo.seqUsedKvSize == 0 &&
-                !constInfo.isKvContinuous) {
+            if (constInfo.cuSeqLensKVSize == 0 && constInfo.seqUsedKvSize == 0 && !constInfo.isKvContinuous) {
                 actSeqLensKv = SeqLenFromTensorList<LAYOUT_KV>(keyPtr, bIdx);
             } else {
                 if constexpr (LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND || LAYOUT_KV == LayOutTypeEnum::LAYOUT_NTD) {
@@ -593,7 +622,7 @@ public:
         if (s2Cur < curS2Start || s2Cur >= curS2End) {
             return TASK_DEAL_MODE::SKIP;
         }
-        
+
         if (s2Cur == curS2Start) {
             mloop++;
         }
@@ -646,7 +675,8 @@ public:
         // 2. calc index of s2FirstToken, s2LastToken by index of s1GFirstToken, s1GLastToken
         int64_t s1GFirstToken = static_cast<int64_t>(gS1Cur) * static_cast<int64_t>(mBaseSize);
         int64_t s1GLastToken = Min(s1GFirstToken + static_cast<int64_t>(mBaseSize),
-                                   static_cast<int64_t>(actSeqLensQ) * static_cast<int64_t>(constInfo.gSize)) - 1;
+                                   static_cast<int64_t>(actSeqLensQ) * static_cast<int64_t>(constInfo.gSize)) -
+                               1;
         int64_t s1FirstToken = 0;
         int64_t s1LastToken = 0;
         if constexpr (GetOutUbFormat<LAYOUT_Q>() == UbFormat::S1G) {
@@ -856,8 +886,7 @@ public:
             return;
         }
 
-        if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK ||
-            taskDealMode == TASK_DEAL_MODE::S2_END ||
+        if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK || taskDealMode == TASK_DEAL_MODE::S2_END ||
             taskDealMode == TASK_DEAL_MODE::SKIP_S1OUT) {
             accGS1Loops++;
         }
@@ -869,8 +898,7 @@ public:
             return;
         }
 
-        if ((taskDealMode == TASK_DEAL_MODE::DEAL_ZERO ||
-             taskDealMode == TASK_DEAL_MODE::SKIP_ZERO)) {
+        if ((taskDealMode == TASK_DEAL_MODE::DEAL_ZERO || taskDealMode == TASK_DEAL_MODE::SKIP_ZERO)) {
             accGS1Loops++;
         }
 
@@ -905,11 +933,9 @@ public:
         gS1OEnd_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_M_END_INDEX, sectionIdx));
         s2OEnd_ = faMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_S2_END_INDEX, sectionIdx));
         coreFirstTmpOutWsPos_ = faMetaDataGm.GetValue(
-            GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, sectionIdx)
-        );
+            GetFAMetaDataIndex(constInfo.aicIdx, FLASH_ATTN_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, sectionIdx));
         // PRINTF("ori bN2Start_ is %d, gS1OStart_ is %d, s2OStart_ is %d\n", bN2Start_, gS1OStart_, s2OStart_);
         // PRINTF("ori bN2End_ is %d, gS1OEnd_ is %d, s2OEnd_ is %d\n", bN2End_, gS1OEnd_, s2OEnd_);
-
     }
 
     __aicore__ inline void GetFDSectionInfo(uint32_t sectionIdx)
@@ -919,14 +945,19 @@ public:
         if (!fdParams_.fdCoreEnable) {
             return;
         }
-        fdParams_.fdBN2Idx = fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_BN2_IDX_INDEX, sectionIdx));
+        fdParams_.fdBN2Idx =
+            fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_BN2_IDX_INDEX, sectionIdx));
         fdParams_.fdMIdx = fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_M_IDX_INDEX, sectionIdx));
-        fdParams_.fdWorkspaceIdx = fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_WORKSPACE_IDX_INDEX, sectionIdx));
-        fdParams_.fdS2SplitNum =fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_WORKSPACE_NUM_INDEX, sectionIdx));
-        fdParams_.mStart =fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_M_START_INDEX, sectionIdx));
+        fdParams_.fdWorkspaceIdx =
+            fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_WORKSPACE_IDX_INDEX, sectionIdx));
+        fdParams_.fdS2SplitNum =
+            fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_WORKSPACE_NUM_INDEX, sectionIdx));
+        fdParams_.mStart = fdMetaDataGm.GetValue(GetFDMetaDataIndex(constInfo.aivIdx, FA_FD_M_START_INDEX, sectionIdx));
         // FDparamsX fdParams = {fdCoreEnable, fdBN2Idx, fdMIdx, fdS2SplitNum, mStart, mLen, fdWorkspaceIdx};
-        // PRINTF("ori fdParams_.fdBN2Idx is %d, fdParams_.fdMIdx is %d, fdParams_.fdWorkspaceIdx is %d, fdParams_.fdS2SplitNum is %d\n", fdParams_.fdBN2Idx, fdParams_.fdMIdx, fdParams_.fdWorkspaceIdx, fdParams_.fdS2SplitNum);
-        // PRINTF("ori fdParams_.mStart is %d, fdParams_.mLen is %d\n", fdParams_.mStart, fdParams_.mLen);
+        // PRINTF("ori fdParams_.fdBN2Idx is %d, fdParams_.fdMIdx is %d, fdParams_.fdWorkspaceIdx is %d,
+        // fdParams_.fdS2SplitNum is %d\n", fdParams_.fdBN2Idx, fdParams_.fdMIdx, fdParams_.fdWorkspaceIdx,
+        // fdParams_.fdS2SplitNum); PRINTF("ori fdParams_.mStart is %d, fdParams_.mLen is %d\n", fdParams_.mStart,
+        // fdParams_.mLen);
     }
 
 
