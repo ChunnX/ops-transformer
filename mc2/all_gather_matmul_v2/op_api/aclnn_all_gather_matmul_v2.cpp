@@ -414,7 +414,7 @@ static bool checkInputEmptyTensor(const aclTensor *x1, const aclTensor *x2) {
 
 aclnnStatus allGatherMatmulV2GetWorkspaceSizeCCUMode(const aclTensor* x1, const aclTensor* x2, const aclTensor* bias,
                                                    const aclTensor* x1Scale, const aclTensor* x2Scale,
-                                                   const aclTensor* quantScale, int64_t blockSize, const char* group,
+                                                   const aclTensor* quantScale, const aclTensor* timerBuffer, int64_t blockSize, const char* group,
                                                    int64_t gatherIndex, int64_t commTurn, int64_t streamMode,
                                                    int64_t groupSize, const char* commMode, aclTensor* output, aclTensor* gatherOut,
                                                    aclTensor* amaxOut, uint64_t* workspaceSize,
