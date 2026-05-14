@@ -53,8 +53,11 @@ struct PeermemInfo {
         offset += tilingData->epWorldSize * 
             Ops::Base::CeilAlign((int64_t)(tilingData->m * tilingData->topK * sizeof(int32_t)), (int64_t)ALIGN_512);
         quantTokenScalePtr = base + offset;
-        offset += Ops::Base::CeilAlign(tilingData->m *
-            (tilingData->k + tilingData->k / MXFP_SCALE_GROUP_NUM) * sizeof(int8_t), (int64_t)ALIGN_512);
+        uint32_t mxScaleNum = Ops::Base::CeilDiv(tilingData->k, static_cast<uint32_t>(ALIGN_32));
+        uint32_t dataBytes = Ops::Base::CeilAlign(tilingData->k, static_cast<uint32_t>(ALIGN_256)) * sizeof(int8_t);
+        uint32_t scaleBytes = mxScaleNum * sizeof(uint8_t);
+        uint32_t tokenBytes = Ops::Base::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32));
+        offset += Ops::Base::CeilAlign((int64_t)(tilingData->m * tokenBytes * sizeof(int8_t)), (int64_t)ALIGN_512);
         combineSendPtr = base + offset;
     }
 };

@@ -24,6 +24,7 @@ using namespace AscendC;
 
 struct MegaMoeTilingData {
     MoeInitRoutingV3Arch35TilingData moeInitRoutingTilingData;
+    int32_t aicNum;
     uint32_t expertPerRank;
     uint32_t m;
     uint32_t k;
