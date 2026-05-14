@@ -294,13 +294,15 @@ public:
         
         // 发送方设置sendCnt：非接收方发送expertIdx数据给tgtRank
         // sendCnt[expertIdx + tgtRank * e_] = 本卡发给tgtRank的expertIdx数据量
+        // 默认初始化sendOffset（发送方才需要正确计算）
+        alltoAllvSendOffset[0] = 0UL;
+        
         bool isSender = (rankId_ != tgtRank);
         if (isSender) {
             alltoAllvSendCnt[tgtRank] = static_cast<uint64_t>(sendCnt[expertIdx + tgtRank * e_]) * axis;
             
             // 计算sendOffset（发送方视角）
             // 发送数据在sendBuffer的位置：累计之前发给tgtRank的所有专家
-            alltoAllvSendOffset[0] = 0UL;
             for (uint32_t j = 0U; j < expertIdx; j++) {
                 alltoAllvSendOffset[0] += static_cast<uint64_t>(sendCnt[j + tgtRank * e_]) * axis;
             }
