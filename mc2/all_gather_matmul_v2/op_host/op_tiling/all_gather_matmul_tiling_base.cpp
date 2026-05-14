@@ -23,15 +23,16 @@
 #include <cmath>
 #include <cstdint>
 
-#include "mc2_hcom_topo_info.h"
-#include "mc2_log.h"
-#include "graph/utils/type_utils.h"
-#include "register/op_def_registry.h"
-#include "op_host/op_tiling/mc2_tiling_utils.h"
-#include "util/math_util.h"
 #include "all_gather_formulaic_tiling.h"
 #include "all_gather_matmul_tiling_base.h"
 #include "../../op_kernel/all_gather_matmul_v2_apt_tiling_key.h"
+#include "graph/utils/type_utils.h"
+#include "mc2_comm_utils.h"
+#include "mc2_hcom_topo_info.h"
+#include "mc2_log.h"
+#include "op_host/op_tiling/mc2_tiling_utils.h"
+#include "register/op_def_registry.h"
+#include "util/math_util.h"
 
 using namespace AscendC;
 using namespace ge;
@@ -721,10 +722,16 @@ ge::graphStatus AllGatherMatmulTilingBase::GetWorkspaceSize()
 uint64_t AllGatherMatmulTilingBase::GetTilingKey() const
 {
     uint8_t outputType = (outputIsFp8_) ? static_cast<uint8_t>(1) : static_cast<uint8_t>(0);
+    uint8_t commMode = (Mc2Comm::GetCommModeFromEnv() == Mc2Comm::COMM_MODE_AICPU)?
+                        Mc2Comm::COMM_MODE_AICPU : Mc2Comm::COMM_MODE_CCU;
+    // Non-A5 platform must use AICPU mode
+    if (npuArch_ != NpuArch::DAV_3510) {
+        commMode = Mc2Comm::COMM_MODE_AICPU;
+    }
     const uint64_t tilingKey = GET_TPL_TILING_KEY(
-        inputIsBf16Fp16_, args_.isBTrans, outputType, TPL_DEFAULT_MODE, SCALE_TYPE_NOT_IS_MX);
-    OP_LOGD(opName_, "AllGatherMatmulV2, inputIsBf16Fp16_, args_.isBTrans, outputType: [%d,%d,%u]",   \
-        inputIsBf16Fp16_, args_.isBTrans, outputType);
+        inputIsBf16Fp16_, args_.isBTrans, outputType, TPL_DEFAULT_MODE, SCALE_TYPE_NOT_IS_MX, commMode);
+    OP_LOGD(opName_, "AllGatherMatmulV2, inputIsBf16Fp16_, args_.isBTrans, outputType, commMode: [%d,%d,%u,%u]",   \
+        inputIsBf16Fp16_, args_.isBTrans, outputType, commMode);
     OP_LOGD(opName_, "tilingKey=%lu", tilingKey);
     return tilingKey;
 }
