@@ -608,9 +608,11 @@ __aicore__ inline bool FAKernelNoquantMla<CubeBlockType, VecBlockType>::IsLastBN
         } else {
             for (uint32_t bnIdx = bnStartIdx + 1; bnIdx < bnEndIdx; bnIdx++) {
                 uint32_t boIdx = bnIdx / constInfo.n2Size;
-                if (constInfo.actualSeqLenSize == 1 && actualSeqQlenAddr[0] != 0) {
-                    return false;
-                } else if (actualSeqQlenAddr[boIdx] != 0) {
+                int64_t actualSeqLenQ = constInfo.actualSeqLenSize == 1 ?
+                    actualSeqQlenAddr[0] : actualSeqQlenAddr[boIdx];
+                int64_t actualSeqLenKv = constInfo.actualSeqLenKVSize == 1 ?
+                    actualSeqKvlenAddr[0] : actualSeqKvlenAddr[boIdx];
+                if (actualSeqLenQ != 0 && actualSeqLenKv != 0) {
                     return false;
                 }
             }
@@ -622,7 +624,11 @@ __aicore__ inline bool FAKernelNoquantMla<CubeBlockType, VecBlockType>::IsLastBN
         for (uint32_t bnIdx = bnStartIdx + 1; bnIdx < bnEndIdx; bnIdx++) {
             uint32_t boIdx = bnIdx / constInfo.n2Size;
             uint32_t boStart = bnStartIdx / constInfo.n2Size;
-            if (actualSeqQlenAddr[boIdx] != actualSeqQlenAddr[boStart]) {
+            int64_t actualSeqLenQ = boIdx == 0 ? actualSeqQlenAddr[boIdx] :
+                actualSeqQlenAddr[boIdx] - actualSeqQlenAddr[boIdx-1];
+            int64_t actualSeqLenKv = (boIdx == 0 || isPa) ? actualSeqKvlenAddr[boIdx] :
+                actualSeqKvlenAddr[boIdx] - actualSeqKvlenAddr[boIdx-1];
+            if (actualSeqLenQ != 0 && actualSeqLenKv != 0) {
                 return false;
             }
         }
