@@ -115,8 +115,9 @@ enum class FaLayout : uint32_t {
     TND = 2,
     PA_BBND = 3,
     PA_BNBD = 4,
-    LSE_BNS = 5,
-    LSE_NT = 6
+    PA_Nz = 5,
+    LSE_BNS = 6,
+    LSE_NT = 7
 };
 
 const std::map<std::string, FaLayout> layoutMap = {{"BSND", FaLayout::BSND},

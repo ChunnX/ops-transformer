@@ -1,3 +1,14 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# ======================================================================================================================
+
 import os
 import sys
 import argparse
@@ -9,7 +20,7 @@ import math
 import numpy as np
 from cpu_impl import tforward
 from test_utils import (generate_qkv, generate_pse, generate_npu_mask, trans_bnsd_to_layout,
-                         data_compare_benchmark_new, Result)
+                         data_compare_benchmark_new, Result, gen_block_table)
 
 _DEFAULT_CASE_FILES = ["test_case", "test_case_fia_STC", "test_case_functional_single"]
 
@@ -113,6 +124,19 @@ def normalize_case(raw):
         c.setdefault("seqused_kv", [c["cu_seqlens_kv"][i+1] - c["cu_seqlens_kv"][i]
                                      for i in range(len(c["cu_seqlens_kv"]) - 1)])
         c["B"] = 1
+    if layout_kv in ("PA_BBND", "PA_BNBD", "PA_NZ"):
+        c.setdefault("block_size", c.get("block_size"))
+        c.setdefault("block_table_shape", c.get("block_table_shape"))
+        block_size = c.get("block_size", 1)
+        block_table_shape = c.get("block_table_shape", [])
+        c["actual_b"] = block_table.shape[0]
+        if ("block_table" in c.keys()) and (c.get("block_table") is not None):
+            block_table_list = c.get("block_table")
+            block_table = torch.tensor(block_table_list, dtype=torch.int32)
+            c["block_table"] = block_table
+        else:
+            block_table = gen_block_table(c.get("B"), se_kv, block_size, block_table_shape)
+            c["block_table"]        = block_table
     return c
 
 def check_result(test_name, expect, result, except_label="CPU", comp_label="NPU", verbose_diff=False):
@@ -165,15 +189,7 @@ def check_result(test_name, expect, result, except_label="CPU", comp_label="NPU"
                 print(f"│  {i:>8}  {ef.reshape(-1)[i].item():>+14.8f}  {rf.reshape(-1)[i].item():>+14.8f}"
                       f"  {diff.reshape(-1)[i].item():>12.8f}  {rel_err.reshape(-1)[i].item():>10.6f}")
     print(f"└{SEP}┘")
-    stats = {
-        "passed": passed,
-        "max_abs": max_abs,
-        "mean_abs": mean_abs,
-        "fail_cnt": fail_cnt,
-        "total": total,
-        "fail_ratio": fail_ratio,
-    }
-    return stats
+    return passed
 
 
 
@@ -230,7 +246,7 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
     # ------------------ 1. CPU Golden 计算 (总是执行) ------------------
     print(f"[{test_name}] CPU 参考计算...")
     out_cpu, x_max, x_sum = tforward(qf, kf, v, **kwargs)
-    out_cpu_out_layout = trans_bnsd_to_layout(out_cpu, output_layout)
+    out_cpu_out_layout = trans_bnsd_to_layout(out_cpu, output_layout, **kwargs)
     lse_out = torch.log(x_sum) + x_max
     if dump_tensors:
         dump_path = os.path.join(dump_dir, test_name)
@@ -260,7 +276,7 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
             mask_gpu = atten_mask.cuda(device) if atten_mask is not None else None
             pse_gpu = pse_npu.cuda(device) if pse_npu is not None else None
             gpu_out_bnsd = flash_attn_gpu(q_gpu, k_gpu, v_gpu, q_rope_gpu, k_rope_gpu, mask_gpu, pse_gpu, **kwargs)
-            gpu_out = trans_bnsd_to_layout(gpu_out_bnsd, output_layout).cpu()
+            gpu_out = trans_bnsd_to_layout(gpu_out_bnsd, output_layout, **kwargs).cpu()
             if dump_tensors:
                 dump_path = os.path.join(dump_dir, test_name)
                 os.makedirs(dump_path, exist_ok=True)
@@ -394,38 +410,13 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
             print(f"[WARN] 可视化异常: {exc}")
 
     passed_lse = 1
-    if lse_flag == 1 and npu_out is not None:
+    if lse_flag == 1:
         passed_lse = 0
         print(f"\n{'='*40} 对比 lse goldem vs lse npu {'='*40}")
         passed_lse = check_result("LSE CHECK", lse_out.float(), lse_npu.float(), except_label="lse_golden", comp_label="lse_npu", verbose_diff=verbose_diff)
-    elif lse_flag == 1:
-        print(f"[{test_name}] 缺少 NPU 结果，跳过 LSE 对比。")
 
-    # collect structured results
-    def _to_stats(val):
-        """Convert check_result return (dict) or bool/int to stats dict."""
-        if isinstance(val, dict):
-            return val
-        if val:
-            return {"passed": True, "max_abs": 0.0, "mean_abs": 0.0,
-                    "fail_cnt": 0, "total": 0, "fail_ratio": 0.0}
-        return None
-
-    attn_stats = _to_stats(passed_cpu_npu) or _to_stats(passed_cpu_gpu)
-    if attn_stats is None:
-        attn_stats = {"passed": False, "max_abs": float('nan'), "mean_abs": float('nan'),
-                      "fail_cnt": -1, "total": -1, "fail_ratio": float('nan')}
-
-    if lse_flag != 1:
-        lse_stats = {"passed": True, "max_abs": 0.0, "mean_abs": 0.0,
-                     "fail_cnt": 0, "total": 0, "fail_ratio": 0.0}
-    else:
-        lse_stats = _to_stats(passed_lse)
-        if lse_stats is None:
-            lse_stats = {"passed": False, "max_abs": float('nan'), "mean_abs": float('nan'),
-                         "fail_cnt": -1, "total": -1, "fail_ratio": float('nan')}
-
-    return {"attn": attn_stats, "lse": lse_stats}
+    at_least_one_pass = passed_cpu_gpu or passed_cpu_npu or passed_gpu_npu
+    return at_least_one_pass and passed_lse
 
 
 def resolve_case_ids(case_id_arg, all_cases):
@@ -562,39 +553,23 @@ if __name__ == "__main__":
             import traceback
             print(f"[ERROR] {name} 运行异常: {e}")
             traceback.print_exc()
-            passed = {"attn": {"passed": False, "max_abs": float('nan'), "mean_abs": float('nan'),
-                               "fail_cnt": -1, "total": -1, "fail_ratio": float('nan')},
-                      "lse":  {"passed": False, "max_abs": float('nan'), "mean_abs": float('nan'),
-                               "fail_cnt": -1, "total": -1, "fail_ratio": float('nan')}}
+            passed = False
         results[name] = passed
 
     # 汇总表格
-    SEP = "─" * 120
+    SEP = "─" * 50
     print(f"\n┌{SEP}┐")
     print(f"│  汇总结果  ({len(run_cases)} cases)")
     print(f"├{SEP}┤")
     max_name_len = max((len(n) for n in results.keys()), default=28)
-    hdr = (f"│  {'Case':<{max_name_len}}  "
-           f"{'Attn':>8}  {'MaxAbsErr':>12}  {'FailRatio':>10}  │  "
-           f"{'LSE':>8}  {'MaxAbsErr':>12}  {'FailRatio':>10}  │")
-    print(hdr)
+    print(f"│  {'Case':<{max_name_len}}  {'Result':>8}  │")
     print(f"├{SEP}┤")
     pass_cnt = fail_cnt = 0
-    for name, res in results.items():
-        a = res["attn"]
-        l = res["lse"]
-        a_tag = "✓ PASS" if a["passed"] else "✗ FAIL"
-        l_tag = "✓ PASS" if l["passed"] else "✗ FAIL"
-        a_max = f"{a['max_abs']:.6f}" if a['total'] > 0 else "N/A"
-        a_fr  = f"{a['fail_ratio']*100:.4f}%" if a['total'] > 0 else "N/A"
-        l_max = f"{l['max_abs']:.6f}" if l['total'] > 0 else "---"
-        l_fr  = f"{l['fail_ratio']*100:.4f}%" if l['total'] > 0 else "---"
-        print(f"│  {name:<{max_name_len}}  "
-              f"{a_tag:>8}  {a_max:>12}  {a_fr:>10}  │  "
-              f"{l_tag:>8}  {l_max:>12}  {l_fr:>10}  │")
-        both_pass = a["passed"] and l["passed"]
-        if both_pass: pass_cnt += 1
-        else:         fail_cnt += 1
+    for name, ok in results.items():
+        tag = "✓ PASS" if ok else "✗ FAIL"
+        print(f"│  {name:<{max_name_len}}  {tag:>8}  │")
+        if ok: pass_cnt += 1
+        else:  fail_cnt += 1
     print(f"├{SEP}┤")
     print(f"│  通过: {pass_cnt}   失败: {fail_cnt}   共: {len(run_cases)}")
     print(f"└{SEP}┘")
