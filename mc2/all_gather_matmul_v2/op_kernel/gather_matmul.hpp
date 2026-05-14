@@ -355,9 +355,6 @@ public:
         int32_t outputBlockSize = blockM * params.problemShape.n();
         uint64_t mnSize = params.problemShape.m() * params.problemShape.n();
         for (int32_t calIdx = 0; calIdx < calCount; calIdx++) {
-            if (params.timerDevice) {
-                params.timerDevice->Tik(CocTimer::AIC);
-            }
 
             int32_t flagIdx = calIdx % MAX_BLOCK_COUNT;
             int32_t actualPValue = params.pValue;
@@ -367,6 +364,10 @@ public:
             }
 
             WaitEvent(flagIdx);
+
+            if (params.timerDevice) {
+                params.timerDevice->Tik(CocTimer::AIC);
+            }
 
             int32_t pingPongSt = flagIdx * pingPongSize;
             int32_t loopNumInOtherRank = actualPValue * otherRankNum * nLoops;
