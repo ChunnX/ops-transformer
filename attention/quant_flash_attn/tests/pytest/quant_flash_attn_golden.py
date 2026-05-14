@@ -560,7 +560,7 @@ def cpu_golden_qkv_mxfp4_attn(query, key, value,
     #     softmax_scale = scale,)
     attn_out = attention_cpu_golden_varlen(query_bsnd, key_bsnd, value_bsnd,
         cu_seqlens_q, cu_seqlens_kv, seqlens_q, seqlens_kv,
-        softmax_scale = scale, quantize=False, quantize_p=False,)
+        softmax_scale = scale, quantize=True, quantize_p=True,)
 
     return attn_out.reshape(b, s1, n1, qk_d).permute(1, 0, 2, 3).to(src_date_type), None
 
@@ -592,7 +592,7 @@ def cpu_golden_qkv_mxfp4_flash_attn(query, key, value,
     #     softmax_scale = scale, block_q = block_q, block_kv = block_kv,)
     attn_out = flash_attention_cpu_golden_varlen(query_bsnd, key_bsnd, value_bsnd,
         cu_seqlens_q, cu_seqlens_kv, seqlens_q, seqlens_kv,
-        softmax_scale = scale, quantize=False, quantize_p=False, block_q=block_q, block_kv=block_kv,)
+        softmax_scale = scale, quantize=True, quantize_p=True, block_q=block_q, block_kv=block_kv,)
 
     return attn_out.reshape(b, s1, n1, qk_d).permute(1, 0, 2, 3).to(src_date_type), None
 

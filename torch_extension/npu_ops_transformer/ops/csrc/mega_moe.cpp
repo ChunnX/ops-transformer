@@ -25,7 +25,7 @@ typedef struct {
     aclDataType dtype;
 } TensorListWrapper;
 
-constexpr aclDataType kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(at::ScalarType::NumOptions) + 1] = {
+constexpr aclDataType kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(at::ScalarType::NumOptions) + 3] = {
 #define DEFINE_ENUM(_1, n) n,
     AT_ALL_SCALAR_TYPE_AND_ACL_DATATYPE_PAIR(DEFINE_ENUM)
 #undef DEFINE_ENUM
@@ -34,7 +34,7 @@ constexpr aclDataType kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(at:
 aclDataType ConvertToAclDataType(const at::ScalarType &data_type)
 {
     int64_t dtype_index = static_cast<int64_t>(data_type);
-    TORCH_CHECK(dtype_index >= 0 && dtype_index < static_cast<int64_t>(at::ScalarType::NumOptions) + 1,
+    TORCH_CHECK(dtype_index >= 0 && dtype_index < static_cast<int64_t>(at::ScalarType::NumOptions) + 3,
                 "data_type enum value (",
                 dtype_index,
                 ") is out of range: [0, ",
