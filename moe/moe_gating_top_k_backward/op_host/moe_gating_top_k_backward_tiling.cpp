@@ -266,7 +266,7 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckAttr() // lc
     OP_LOGI(context_, "Attr renorm: %ld.", renorm_);
 
     OP_CHECK_IF(renorm_ != RENORM_TYPE_ZERO,
-                OP_LOGE(context_, "Attr renorm: expected %ld, but got %ld.", renorm_, RENORM_TYPE_ZERO),
+                OP_LOGE(context_, "Attr renorm: expected %ld, but got %ld.", RENORM_TYPE_ZERO, renorm_),
                 return ge::GRAPH_FAILED);
 
     const int64_t *normTypePtr = attrs->GetAttrPointer<int64_t>(NORM_TYPE_ATTR_INDEX);
@@ -276,7 +276,7 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckAttr() // lc
     OP_LOGI(context_, "Attr normType: %ld.", normType_);
 
     OP_CHECK_IF(normType_ != NORM_TYPE_SIGMOID,
-                OP_LOGE(context_, "Attr normType: expected %ld, but got %ld.", normType_, NORM_TYPE_SIGMOID),
+                OP_LOGE(context_, "Attr normType: expected %ld, but got %ld.", NORM_TYPE_SIGMOID, normType_),
                 return ge::GRAPH_FAILED);
 
     const float *routedScalingFactorPtr = attrs->GetAttrPointer<float>(ROUTED_SCALING_FACTOR_ATTR_INDEX);
