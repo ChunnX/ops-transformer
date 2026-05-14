@@ -385,8 +385,9 @@ def call_flash_attn(test_name, dump_tensors=False, dump_dir="./dump_output",
         except Exception as exc:
             print(f"[WARN] 可视化异常: {exc}")
 
-    passed_lse = 0
+    passed_lse = 1
     if lse_flag == 1:
+        passed_lse = 0
         print(f"\n{'='*40} 对比 lse goldem vs lse npu {'='*40}")
         passed_lse = check_result("LSE CHECK", lse_out.float(), lse_npu.float(), except_label="lse_golden", comp_label="lse_npu", verbose_diff=verbose_diff)
 
