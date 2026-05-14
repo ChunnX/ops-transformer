@@ -2503,11 +2503,10 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::M3AndM4(AicOffset &aicOffset)
         mm3CL0 = mm3LocalTensors.cL0Tensor[(bufParam_.cL0BufIter & 1u) * (L0C_PP_SIZE / sizeof(MM3_O_L0C))];
         uint64_t mm3ResOffset = 0;
         uint32_t mm4AL1BufIter = isAFullLoad ? bufParam_.aL1BufIter + 1 : bufParam_.aL1BufIter;
-        LocalTensor<mmQcQrInputType> mm4AL1 = mm3LocalTensors.aL1Tensor[(mm4AL1BufIter & 1u) * mm3AL1Offset];
-        LocalTensor<mmQcQrInputType> mm4BL1 = mm3LocalTensors.bL1Tensor[(bufParam_.bL1BufIter & 1u) * mm3BL1Offset];
+        LocalTensor<mmQnInputType> mm4AL1 = mm4LocalTensors.aL1Tensor[(mm4AL1BufIter & 1u) * mm4AL1Offset];
+        LocalTensor<mmQnInputType> mm4BL1 = mm4LocalTensors.bL1Tensor[(bufParam_.bL1BufIter & 1u) * mm4BL1Offset];
         if constexpr (std::is_same<mmQcQrInputType, int8_t>::value || std::is_same<mmQcQrInputType, HIF8>::value ||
                       (std::is_same<mmQcQrInputType, FP8E4M3>::value && !isFp8E8m0)) {
-<<<<<<< Updated upstream
             // GetTensorCToUb<T>(mm3ResLocal_, cL0, mmQcQrParam_.m, baseParams_->dimHeadSizeQc, mSize,
             //         mmQcQrParam_.orgKc, bufParam_);
             // CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_FIX>(FINISH_MM_QCQR_SPLIT_N);
@@ -2517,34 +2516,17 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::M3AndM4(AicOffset &aicOffset)
                     mSize, bufParam_);
             SetFlag<HardEvent::FIX_MTE1>(L0A_EVENT0 + (mm4AL1BufIter & 1u));  
             WaitFlag<HardEvent::FIX_MTE1>(L0A_EVENT0 + (mm4AL1BufIter & 1u)); 
-=======
-            GetTensorCToUb<T>(mm3ResLocal_, cL0, mmQcQrParam_.m, baseParams_->dimHeadSizeQc,
-                              Align(mmQcQrParam_.m, BLOCK_CUBE_SIZE), mmQcQrParam_.orgKc, bufParam_);
-            CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_FIX>(FINISH_MM_QCQR_SPLIT_N);
-            mm3ResOffset += mmQcQrParam_.m * baseParams_->dimHeadSizeQc;
-        } else {
-            GetTensorCToL1<T>(localTensors.aL1Tensor[(mm4AL1BufIter & 1u) * aL1Offset], cL0, mmQcQrParam_.m,
-                              baseParams_->dimHeadSizeQc, Align(mmQcQrParam_.m, BLOCK_CUBE_SIZE), mmQcQrParam_.orgKc,
-                              bufParam_);
-            SetFlag<HardEvent::FIX_MTE1>(L0A_EVENT0 + (mm4AL1BufIter & 1u));
->>>>>>> Stashed changes
         }
         
         LoadL1B<mmQnInputType, DataFormat::ND, false>(weightUkGm_[weightUkOffset], 
             mmQnParam_.n, mmQnParam_.n, mmQnParam_.k, mmQnParam_.k, bufParam_);
         WaitFlag<HardEvent::MTE2_MTE1>(B_EVENT0 + (bufParam_.bL1BufIter & 1u));
 
-<<<<<<< Updated upstream
         CrossCoreWaitFlag(FINISH_VEC_QR);
         // TODO：此处偏移需要修改
         GetTensorCToUb(mm3ResLocal_, mm3CL0[baseParams_->dimHeadSizeQc * mSize], mmQcQrParam_.m, baseParams_->dimHeadRope, mSize,
                 baseParams_->dimHeadRope, bufParam_);
         CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_FIX>(FINISH_MM_QCQR_SPLIT_N);
-=======
-        GetTensorCToUb<T>(mm3ResLocal_[mm3ResOffset], cL0[baseParams_->dimHeadSizeQc], mmQcQrParam_.m,
-                          baseParams_->dimHeadRope, Align(mmQcQrParam_.m, BLOCK_CUBE_SIZE), mmQcQrParam_.orgKc,
-                          bufParam_);
->>>>>>> Stashed changes
         SetFlag<HardEvent::FIX_M>(L0C_EVENT0 + (bufParam_.cL0BufIter & 1u));
         bufParam_.cL0BufIter++;
 
@@ -2577,9 +2559,9 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::M3AndM4(AicOffset &aicOffset)
             }
 
             WaitFlag<HardEvent::FIX_M>(L0C_EVENT0 + (bufParam_.cL0BufIter & 1u));
-            mm4CL0 = localTensors.cL0Tensor[(bufParam_.cL0BufIter & 1u) * (L0C_PP_SIZE / sizeof(MM4_O_L0C))];
-            MatmulL0<mmQnInputType, MM4_O_L0C, dequantScaleType>(bufParam_, mm4AL1, mm4BL1[mmQnParam_.k * mmQnParam_.baseN * n], localTensors.aL0Tensor,
-                localTensors.bL0Tensor, mm4CL0, mmadParams, mmQnParam_.kL1StepSize);
+            mm4CL0 = mm4LocalTensors.cL0Tensor[(bufParam_.cL0BufIter & 1u) * (L0C_PP_SIZE / sizeof(MM4_O_L0C))];
+            MatmulL0<mmQnInputType, MM4_O_L0C, dequantScaleType>(bufParam_, mm4AL1, mm4BL1[mmQnParam_.k * mmQnParam_.baseN * n], mm4LocalTensors.aL0Tensor,
+                mm4LocalTensors.bL0Tensor, mm4CL0, mmadParams, mmQnParam_.kL1StepSize);
 
             if constexpr (needQnDynamicQuant) {
                 if (n == 0) {
