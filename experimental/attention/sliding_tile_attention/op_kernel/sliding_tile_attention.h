@@ -89,6 +89,28 @@ __aicore__ inline int64_t AlignUpInt64(int64_t value, int64_t align)
     return ((value + align - 1) / align) * align;
 }
 
+__aicore__ inline void DuplicateTailFp32(LocalTensor<float> &tensor, int64_t begin, uint32_t end, float value)
+{
+    if (begin >= static_cast<int64_t>(end)) {
+        return;
+    }
+
+    int64_t offset = begin;
+    const int64_t lane = offset % VECTOR_FP32_BLOCK_ELEMS;
+    if (lane != 0) {
+        const int64_t alignedOffset = offset - lane;
+        const uint32_t firstCount =
+            static_cast<uint32_t>(MinInt64(VECTOR_FP32_BLOCK_ELEMS - lane, static_cast<int64_t>(end) - offset));
+        uint64_t mask[2] = {((1ULL << firstCount) - 1ULL) << static_cast<uint32_t>(lane), 0};
+        Duplicate(tensor[alignedOffset], value, mask, 1, 1, VECTOR_FP32_BLOCK_ELEMS);
+        offset += firstCount;
+    }
+
+    if (offset < static_cast<int64_t>(end)) {
+        Duplicate(tensor[offset], value, end - static_cast<uint32_t>(offset));
+    }
+}
+
 __aicore__ inline int64_t ClampStart(int64_t center, int64_t window, int64_t limit)
 {
     if (limit <= window) {
@@ -709,10 +731,7 @@ private:
 #endif
         Muls(scoreLocal, scoreLocal, scale_, calcCount);
         PipeBarrier<PIPE_V>();
-        const bool hasTail = kvCount < static_cast<int64_t>(calcCount);
-        if (hasTail) {
-            Duplicate(scoreLocal[kvCount], NEG_INF, calcCount - static_cast<uint32_t>(kvCount));
-        }
+        DuplicateTailFp32(scoreLocal, kvCount, calcCount, NEG_INF);
 
         if (!isFullVisible) {
             const int64_t kvSeqEnd = kvSeqStart + kvCount;
@@ -757,10 +776,6 @@ private:
         Adds(weightLocal, scoreLocal, -maxScore, calcCount);
         PipeBarrier<PIPE_V>();
         Exp(weightLocal, weightLocal, calcCount);
-        PipeBarrier<PIPE_V>();
-        if (hasTail) {
-            Duplicate(weightLocal[kvCount], 0.0F, calcCount - static_cast<uint32_t>(kvCount));
-        }
         PipeBarrier<PIPE_V>();
         StoreProbRow(rowInBlock, weightLocal, bufferIdx);
 
