@@ -29,7 +29,6 @@ constexpr uint64_t WIN_ADDR_ALIGN = 512UL;
 constexpr uint64_t FULL_MESH_DATA_ALIGN = 480UL;
 constexpr uint64_t UB_ALIGN = 32UL;
 constexpr uint64_t SCALE_EXPAND_IDX_BUFFER = 44UL; // scale32B + 3*4expandIdx
-constexpr uint32_t EP_RANK_OFFSET_STEP = 512;
 }
 
 namespace Mc2Tiling {
@@ -89,7 +88,7 @@ static ge::graphStatus CheckActualWinSize(const char *nodeName, const CheckWinSi
     uint64_t actualSize = winSizeData.isLayered ? (static_cast<uint64_t>(winSizeData.moeExpertNum) * maxBs * (h *
         MAX_OUT_DTYPE_SIZE + (3 * (k + 7) / 8 * 8) * sizeof(uint32_t) + 64) + 404 * MB_SIZE) : ((maxBs *
         tokenNeedSizeDispatch * epWorldSize * static_cast<uint64_t>(winSizeData.localMoeExpertNum)) + (maxBs *
-        tokenNeedSizeCombine * (k + sharedExpertNum))) * DOUBLE_DATA_BUFFER + epWorldSize * EP_RANK_OFFSET_STEP;
+        tokenNeedSizeCombine * (k + sharedExpertNum))) * DOUBLE_DATA_BUFFER;
     if (winSizeData.isMc2Context) {
         actualSize += MB_SIZE;  // V3流程加1M状态区
     };
@@ -108,7 +107,7 @@ static ge::graphStatus CheckActualWinSize(const char *nodeName, const CheckWinSi
         OP_LOGE(nodeName, "HCCL_BUFFSIZE_EP is too SMALL, maxBs = %lu, h = %lu, epWorldSize = %lu,"
             " localMoeExpertNum = %u, sharedExpertNum = %lu, tokenNeedSizeDispatch = %lu, tokenNeedSizeCombine = %lu,"
             " k = %lu, NEEDED_HCCL_BUFFSIZE(((maxBs * tokenNeedSizeDispatch * epWorldSize * localMoeExpertNum) +"
-            " (maxBs * tokenNeedSizeCombine * (k + sharedExpertNum))) * 2 + epWorldSize * 512) = %luMB,"
+            " (maxBs * tokenNeedSizeCombine * (k + sharedExpertNum))) * 2) = %luMB,"
             " HCCL_BUFFSIZE=%luMB.", maxBs, h, epWorldSize, winSizeData.localMoeExpertNum, sharedExpertNum,
             tokenNeedSizeDispatch, tokenNeedSizeCombine, winSizeData.k, actualSize / MB_SIZE + 1UL,
             hcclBufferSizeEp / MB_SIZE), return ge::GRAPH_FAILED);
@@ -146,7 +145,7 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, const ch
     OP_TILING_CHECK(CheckActualWinSize(nodeName, winSizeData, maxWindowSizeEp, hcclBufferSizeEp,
         tokenNeedSizeDispatch, tokenNeedSizeCombine) != ge::GRAPH_SUCCESS, OP_LOGE(nodeName,
         "Tiling check actual window size failed."), return ge::GRAPH_FAILED);
-    winSizeData.totalWinSizeEp = (maxWindowSizeEp - winSizeData.epWorldSize * EP_RANK_OFFSET_STEP);
+    winSizeData.totalWinSizeEp = maxWindowSizeEp;
     OP_LOGD(nodeName, "windowSize = %lu", maxWindowSizeEp);
     OP_TILING_CHECK(CheckTpWinSize(context, nodeName, tokenNeedSizeDispatch, tokenNeedSizeCombine, winSizeData
         ) != ge::GRAPH_SUCCESS, OP_LOGE(nodeName, "Tiling check Tp window size failed."), return ge::GRAPH_FAILED);
