@@ -394,20 +394,6 @@ static MatmulAlltoAllAclnnTestParam g_casesParams910B[] = {
         ACL_FORMAT_FRACTAL_Z, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
         {-1, -2}, "ut_test_matmul_allto_all", false, false, ACLNN_ERR_PARAM_INVALID},
 
-    // ========================CheckNotNull 覆盖（3条）========================
-    {"error-AclnnMatmulAlltoAll-910B-x1_nullptr-11", 2, {256, 128}, {128, 256}, {256}, {512, 128},
-        ACL_BF16, ACL_BF16, ACL_BF16, ACL_BF16,
-        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        {-1, -2}, "ut_test_matmul_allto_all", false, false, ACLNN_ERR_PARAM_NULLPTR, true, false, false},
-    {"error-AclnnMatmulAlltoAll-910B-x2_nullptr-12", 2, {256, 128}, {128, 256}, {256}, {512, 128},
-        ACL_BF16, ACL_BF16, ACL_BF16, ACL_BF16,
-        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        {-1, -2}, "ut_test_matmul_allto_all", false, false, ACLNN_ERR_PARAM_NULLPTR, false, true, false},
-    {"error-AclnnMatmulAlltoAll-910B-output_nullptr-13", 2, {256, 128}, {128, 256}, {256}, {512, 128},
-        ACL_BF16, ACL_BF16, ACL_BF16, ACL_BF16,
-        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        {-1, -2}, "ut_test_matmul_allto_all", false, false, ACLNN_ERR_PARAM_NULLPTR, false, false, true},
-
     // ========================ReFormatNotND 覆盖（2条）========================
     {"AclnnMatmulAlltoAll-910B-reformat_x1_fractal_nz-14", 2, {256, 128}, {128, 256}, {256}, {512, 128},
         ACL_BF16, ACL_BF16, ACL_BF16, ACL_BF16,
@@ -428,4 +414,40 @@ TEST_F(TestAclnnMatmulAlltoAll, CasesParamsTest910B)
             TestOneParamCase(g_casesParams910B[idx]);
         }
     }
+}
+
+TEST_F(TestAclnnMatmulAlltoAll, CasesCheckNotNullX1)
+{
+    op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
+    MatmulAlltoAllAclnnTestParam param = {
+        "error-AclnnMatmulAlltoAll-910B-x1_nullptr", 2, {256, 128}, {128, 256}, {256}, {512, 128},
+        ACL_BF16, ACL_BF16, ACL_BF16, ACL_BF16,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        {-1, -2}, "ut_test_matmul_allto_all", false, false, ACLNN_ERR_PARAM_NULLPTR, true, false, false
+    };
+    TestOneParamCase(param);
+}
+
+TEST_F(TestAclnnMatmulAlltoAll, CasesCheckNotNullX2)
+{
+    op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
+    MatmulAlltoAllAclnnTestParam param = {
+        "error-AclnnMatmulAlltoAll-910B-x2_nullptr", 2, {256, 128}, {128, 256}, {256}, {512, 128},
+        ACL_BF16, ACL_BF16, ACL_BF16, ACL_BF16,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        {-1, -2}, "ut_test_matmul_allto_all", false, false, ACLNN_ERR_PARAM_NULLPTR, false, true, false
+    };
+    TestOneParamCase(param);
+}
+
+TEST_F(TestAclnnMatmulAlltoAll, CasesCheckNotNullOutput)
+{
+    op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
+    MatmulAlltoAllAclnnTestParam param = {
+        "error-AclnnMatmulAlltoAll-910B-output_nullptr", 2, {256, 128}, {128, 256}, {256}, {512, 128},
+        ACL_BF16, ACL_BF16, ACL_BF16, ACL_BF16,
+        ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+        {-1, -2}, "ut_test_matmul_allto_all", false, false, ACLNN_ERR_PARAM_NULLPTR, false, false, true
+    };
+    TestOneParamCase(param);
 }
