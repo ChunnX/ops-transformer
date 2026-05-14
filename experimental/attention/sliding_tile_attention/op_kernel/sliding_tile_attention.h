@@ -29,8 +29,6 @@ constexpr int64_t VECTOR_HEAD_DIM_LIMIT = 128;
 constexpr int64_t VECTOR_ALIGN_ELEMS = 16;
 constexpr int64_t VECTOR_FP32_BLOCK_ELEMS = 8;
 constexpr int64_t BUFFER_NUM = 2;
-constexpr int64_t KV_BLOCK_NUM = 128;
-constexpr int64_t IMAGE_TILE_KV_BLOCKS = 3;
 constexpr int64_t SCORE_HANDOFF_UB_OFFSET = 128 * 1024;
 constexpr uint64_t SYNC_AIV_TO_AIC_0 = 3;
 constexpr uint64_t SYNC_AIV_TO_AIC_1 = 7;
@@ -137,7 +135,7 @@ public:
         scale_ = tiling_->scale;
 
         const int64_t cubeCoreIdx = GetCubeCoreIdx();
-        const int64_t scoreElems = tiling_->qBlock * tiling_->kvBlock;
+        const int64_t scoreElems = tiling_->qBlock * tiling_->maxKvBlock;
         const int64_t outElems = tiling_->qBlock * tiling_->headDimAlign;
         __gm__ uint8_t *base = (__gm__ uint8_t *)workspace + cubeCoreIdx * tiling_->cubeWorkspacePerCore;
         scoreGm_.SetGlobalBuffer((__gm__ float *)base, scoreElems * BUFFER_NUM);
@@ -147,14 +145,14 @@ public:
                                outElems * BUFFER_NUM);
 
         pipe_.InitBuffer(yDataBuf_, BUFFER_NUM * VECTOR_HEAD_DIM_LIMIT * sizeof(DataType));
-        pipe_.InitBuffer(probDataBuf_, BUFFER_NUM * KV_BLOCK_NUM * sizeof(DataType));
+        pipe_.InitBuffer(probDataBuf_, BUFFER_NUM * tiling_->maxKvBlock * sizeof(DataType));
         pipe_.InitBuffer(tmpFloatBuf_, BUFFER_NUM * VECTOR_HEAD_DIM_LIMIT * sizeof(float));
         pipe_.InitBuffer(accFloatBuf_, BUFFER_NUM * VECTOR_HEAD_DIM_LIMIT * sizeof(float));
         pipe_.InitBuffer(accTileFloatBuf_, tiling_->qBlock * VECTOR_HEAD_DIM_LIMIT * sizeof(float));
-        pipe_.InitBuffer(reduceFloatBuf_, BUFFER_NUM * VECTOR_HEAD_DIM_LIMIT * sizeof(float));
-        pipe_.InitBuffer(reduceWorkBuf_, BUFFER_NUM * VECTOR_HEAD_DIM_LIMIT * sizeof(float));
-        pipe_.InitBuffer(scoreFloatBuf_, BUFFER_NUM * KV_BLOCK_NUM * sizeof(float));
-        pipe_.InitBuffer(weightFloatBuf_, BUFFER_NUM * KV_BLOCK_NUM * sizeof(float));
+        pipe_.InitBuffer(reduceFloatBuf_, BUFFER_NUM * tiling_->maxKvBlock * sizeof(float));
+        pipe_.InitBuffer(reduceWorkBuf_, BUFFER_NUM * tiling_->maxKvBlock * sizeof(float));
+        pipe_.InitBuffer(scoreFloatBuf_, BUFFER_NUM * tiling_->maxKvBlock * sizeof(float));
+        pipe_.InitBuffer(weightFloatBuf_, BUFFER_NUM * tiling_->maxKvBlock * sizeof(float));
         pipe_.InitBuffer(maxFloatBuf_, tiling_->qBlock * sizeof(float));
         pipe_.InitBuffer(denomFloatBuf_, tiling_->qBlock * sizeof(float));
     }
@@ -223,7 +221,7 @@ private:
     __aicore__ inline LocalTensor<T> GetKvBlockSlice(TBuf<QuePosition::VECCALC> &buf, uint32_t bufferIdx)
     {
         LocalTensor<T> local = buf.Get<T>();
-        return local[bufferIdx * KV_BLOCK_NUM];
+        return local[bufferIdx * tiling_->maxKvBlock];
     }
 
     __aicore__ inline void StoreFloatRow(int64_t offset, LocalTensor<float> &floatLocal, uint32_t bufferIdx)
@@ -295,10 +293,10 @@ private:
     __aicore__ inline void CopyScoreRowToLocal(LocalTensor<float> &scoreLocal, uint32_t rowInBlock,
                                                int64_t kvCount, uint32_t bufferIdx)
     {
-        const int64_t scoreOffset = static_cast<int64_t>(bufferIdx) * tiling_->qBlock * tiling_->kvBlock +
-                                    static_cast<int64_t>(rowInBlock) * tiling_->kvBlock;
+        const int64_t scoreOffset = static_cast<int64_t>(bufferIdx) * tiling_->qBlock * tiling_->maxKvBlock +
+                                    static_cast<int64_t>(rowInBlock) * tiling_->maxKvBlock;
         const uint32_t copyCount =
-            static_cast<uint32_t>(AlignUpInt64(tiling_->kvBlock, VECTOR_FP32_BLOCK_ELEMS));
+            static_cast<uint32_t>(AlignUpInt64(kvCount, VECTOR_FP32_BLOCK_ELEMS));
         DataCopyExtParams copyParams{1, static_cast<uint32_t>(copyCount * sizeof(float)), 0, 0, 0};
         DataCopyPadExtParams<float> padParams{false, 0, 0, 0.0F};
         DataCopyPad(scoreLocal, scoreGm_[scoreOffset], copyParams, padParams);
@@ -308,15 +306,15 @@ private:
 
     __aicore__ inline LocalTensor<float> GetScoreHandoffTensor(uint32_t bufferIdx) const
     {
-        const int64_t scoreElems = tiling_->qBlock * tiling_->kvBlock;
+        const int64_t scoreElems = tiling_->qBlock * tiling_->maxKvBlock;
         const int64_t offset = SCORE_HANDOFF_UB_OFFSET + static_cast<int64_t>(bufferIdx) * scoreElems * sizeof(float);
         return LocalTensor<float>(TPosition::VECIN, offset, scoreElems);
     }
 
     __aicore__ inline LocalTensor<DataType> GetProbHandoffTensor(uint32_t bufferIdx) const
     {
-        const int64_t scoreElems = tiling_->qBlock * tiling_->kvBlock;
-        const int64_t probElems = tiling_->qBlock * tiling_->kvBlock;
+        const int64_t scoreElems = tiling_->qBlock * tiling_->maxKvBlock;
+        const int64_t probElems = tiling_->qBlock * tiling_->maxKvBlock;
         const int64_t offset = SCORE_HANDOFF_UB_OFFSET + BUFFER_NUM * scoreElems * sizeof(float) +
                                static_cast<int64_t>(bufferIdx) * probElems * sizeof(DataType);
         return LocalTensor<DataType>(TPosition::VECIN, offset, probElems);
@@ -324,8 +322,8 @@ private:
 
     __aicore__ inline LocalTensor<float> GetOutHandoffTensor(uint32_t bufferIdx) const
     {
-        const int64_t scoreElems = tiling_->qBlock * tiling_->kvBlock;
-        const int64_t probElems = tiling_->qBlock * tiling_->kvBlock;
+        const int64_t scoreElems = tiling_->qBlock * tiling_->maxKvBlock;
+        const int64_t probElems = tiling_->qBlock * tiling_->maxKvBlock;
         const int64_t outElems = tiling_->qBlock * tiling_->headDimAlign;
         const int64_t offset = SCORE_HANDOFF_UB_OFFSET + BUFFER_NUM * scoreElems * sizeof(float) +
                                BUFFER_NUM * probElems * sizeof(DataType) +
@@ -336,15 +334,16 @@ private:
     __aicore__ inline LocalTensor<float> GetScoreHandoffRow(uint32_t rowInBlock, int64_t kvCount,
                                                             uint32_t bufferIdx) const
     {
+        (void)kvCount;
         LocalTensor<float> scoreTensor = GetScoreHandoffTensor(bufferIdx);
-        const int64_t rowStride = AlignUpInt64(kvCount, VECTOR_FP32_BLOCK_ELEMS);
+        const int64_t rowStride = tiling_->maxKvBlock;
         return scoreTensor[static_cast<int64_t>(rowInBlock) * rowStride];
     }
 
     __aicore__ inline LocalTensor<DataType> GetProbHandoffRow(uint32_t rowInBlock, uint32_t bufferIdx) const
     {
         LocalTensor<DataType> probTensor = GetProbHandoffTensor(bufferIdx);
-        return probTensor[static_cast<int64_t>(rowInBlock) * tiling_->kvBlock];
+        return probTensor[static_cast<int64_t>(rowInBlock) * tiling_->maxKvBlock];
     }
 
     __aicore__ inline LocalTensor<float> GetOutHandoffRow(uint32_t rowInBlock, uint32_t bufferIdx) const
@@ -357,34 +356,36 @@ private:
                                                       int64_t kvCount, uint32_t bufferIdx)
     {
         const uint32_t copyCount =
-            static_cast<uint32_t>(AlignUpInt64(tiling_->kvBlock, VECTOR_FP32_BLOCK_ELEMS));
+            static_cast<uint32_t>(AlignUpInt64(kvCount, VECTOR_FP32_BLOCK_ELEMS));
         LocalTensor<float> scoreHandoff = GetScoreHandoffRow(rowInBlock, kvCount, bufferIdx);
         DataCopy(scoreLocal, scoreHandoff, copyCount);
         SetFlag<HardEvent::MTE2_V>(EVENT_ID0 + bufferIdx);
         WaitFlag<HardEvent::MTE2_V>(EVENT_ID0 + bufferIdx);
     }
 
-    __aicore__ inline void StoreProbRow(uint32_t rowInBlock, LocalTensor<float> &weightLocal, uint32_t bufferIdx)
+    __aicore__ inline void StoreProbRow(uint32_t rowInBlock, LocalTensor<float> &weightLocal, int64_t kvCount,
+                                        uint32_t bufferIdx)
     {
         LocalTensor<DataType> probLocal = GetKvBlockSlice<DataType>(probDataBuf_, bufferIdx);
+        const uint32_t copyCount = static_cast<uint32_t>(AlignUpInt64(kvCount, VECTOR_ALIGN_ELEMS));
         if constexpr (IS_BF16) {
-            Cast(probLocal, weightLocal, RoundMode::CAST_RINT, static_cast<uint32_t>(tiling_->kvBlock));
+            Cast(probLocal, weightLocal, RoundMode::CAST_RINT, copyCount);
         } else {
-            Cast(probLocal, weightLocal, RoundMode::CAST_ROUND, static_cast<uint32_t>(tiling_->kvBlock));
+            Cast(probLocal, weightLocal, RoundMode::CAST_ROUND, copyCount);
         }
         PipeBarrier<PIPE_V>();
 #if STA_USE_VECIN_PROB_OUT_HANDOFF
         LocalTensor<DataType> probHandoff = GetProbHandoffRow(rowInBlock, bufferIdx);
         SetFlag<HardEvent::V_MTE3>(EVENT_ID2 + bufferIdx);
         WaitFlag<HardEvent::V_MTE3>(EVENT_ID2 + bufferIdx);
-        DataCopy(probHandoff, probLocal, static_cast<uint32_t>(tiling_->kvBlock));
+        DataCopy(probHandoff, probLocal, copyCount);
         SetFlag<HardEvent::MTE3_V>(EVENT_ID2 + bufferIdx);
         WaitFlag<HardEvent::MTE3_V>(EVENT_ID2 + bufferIdx);
 #else
-        const int64_t probOffset = static_cast<int64_t>(bufferIdx) * tiling_->qBlock * tiling_->kvBlock +
-                                   static_cast<int64_t>(rowInBlock) * tiling_->kvBlock;
+        const int64_t probOffset = static_cast<int64_t>(bufferIdx) * tiling_->qBlock * tiling_->maxKvBlock +
+                                   static_cast<int64_t>(rowInBlock) * tiling_->maxKvBlock;
         DataCopyExtParams copyParams{
-            1, static_cast<uint32_t>(tiling_->kvBlock * sizeof(DataType)), 0, 0, 0};
+            1, static_cast<uint32_t>(copyCount * sizeof(DataType)), 0, 0, 0};
         SetFlag<HardEvent::V_MTE3>(EVENT_ID2 + bufferIdx);
         WaitFlag<HardEvent::V_MTE3>(EVENT_ID2 + bufferIdx);
         DataCopyPad(probGm_[probOffset], probLocal, copyParams);
@@ -430,9 +431,9 @@ private:
         return expLocal.GetValue(0);
     }
 
-    __aicore__ inline uint32_t ScoreCalcCount() const
+    __aicore__ inline uint32_t ScoreCalcCount(int64_t kvCount) const
     {
-        return static_cast<uint32_t>(AlignUpInt64(tiling_->kvBlock, VECTOR_FP32_BLOCK_ELEMS));
+        return static_cast<uint32_t>(AlignUpInt64(kvCount, VECTOR_ALIGN_ELEMS));
     }
 
     __aicore__ inline void LoadScaledScoreRow(LocalTensor<float> &scoreLocal, int64_t kvCount,
@@ -443,7 +444,7 @@ private:
 #else
         CopyScoreRowToLocal(scoreLocal, rowInBlock, kvCount, bufferIdx);
 #endif
-        const uint32_t calcCount = ScoreCalcCount();
+        const uint32_t calcCount = ScoreCalcCount(kvCount);
         const uint32_t validCalcCount =
             static_cast<uint32_t>(AlignUpInt64(kvCount, VECTOR_FP32_BLOCK_ELEMS));
         Muls(scoreLocal, scoreLocal, scale_, validCalcCount);
@@ -456,12 +457,12 @@ private:
                                                        uint32_t rowInBlock, float &maxScore, float &denom,
                                                        uint32_t bufferIdx)
     {
-        const uint32_t calcCount = ScoreCalcCount();
+        const uint32_t calcCount = ScoreCalcCount(kvCount);
         LocalTensor<float> scoreLocal = GetKvBlockSlice<float>(scoreFloatBuf_, bufferIdx);
         LoadScaledScoreRow(scoreLocal, kvCount, rowInBlock, bufferIdx);
 
-        LocalTensor<float> reduceLocal = GetBufferSlice<float>(reduceFloatBuf_, bufferIdx);
-        LocalTensor<float> reduceWorkLocal = GetBufferSlice<float>(reduceWorkBuf_, bufferIdx);
+        LocalTensor<float> reduceLocal = GetKvBlockSlice<float>(reduceFloatBuf_, bufferIdx);
+        LocalTensor<float> reduceWorkLocal = GetKvBlockSlice<float>(reduceWorkBuf_, bufferIdx);
         ReduceMax(reduceLocal, scoreLocal, reduceWorkLocal, calcCount, false);
         SetFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
         WaitFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
@@ -470,7 +471,7 @@ private:
             LocalTensor<float> weightLocal = GetKvBlockSlice<float>(weightFloatBuf_, bufferIdx);
             Duplicate(weightLocal, 0.0F, calcCount);
             PipeBarrier<PIPE_V>();
-            StoreProbRow(rowInBlock, weightLocal, bufferIdx);
+            StoreProbRow(rowInBlock, weightLocal, kvCount, bufferIdx);
             return;
         }
 
@@ -487,7 +488,7 @@ private:
         PipeBarrier<PIPE_V>();
         Exp(weightLocal, weightLocal, calcCount);
         PipeBarrier<PIPE_V>();
-        StoreProbRow(rowInBlock, weightLocal, bufferIdx);
+        StoreProbRow(rowInBlock, weightLocal, kvCount, bufferIdx);
 
         ReduceSum(reduceLocal, weightLocal, reduceWorkLocal, calcCount);
         SetFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
@@ -531,18 +532,14 @@ private:
                                                       LocalTensor<float> &maxLocal,
                                                       LocalTensor<float> &denomLocal)
     {
-        for (int64_t block = 0; block < IMAGE_TILE_KV_BLOCKS; ++block) {
-            ProcessVisibleKvBlock(seq, qCount, KV_BLOCK_NUM, tileLoop, maxLocal, denomLocal);
-        }
+        ProcessVisibleKvBlock(seq, qCount, tiling_->tileTokenNum, tileLoop, maxLocal, denomLocal);
     }
 
     __aicore__ inline void ProcessTextQueryImageTile(int64_t seq, int64_t qCount, int64_t &tileLoop,
                                                      LocalTensor<float> &maxLocal,
                                                      LocalTensor<float> &denomLocal)
     {
-        for (int64_t block = 0; block < IMAGE_TILE_KV_BLOCKS; ++block) {
-            ProcessVisibleKvBlock(seq, qCount, KV_BLOCK_NUM, tileLoop, maxLocal, denomLocal);
-        }
+        ProcessVisibleKvBlock(seq, qCount, tiling_->tileTokenNum, tileLoop, maxLocal, denomLocal);
     }
 
     __aicore__ inline void ProcessTextKvRange(int64_t seq, int64_t qCount, int64_t kvBegin, int64_t kvEnd,
@@ -701,7 +698,7 @@ public:
         vDataGm_.SetGlobalBuffer((__gm__ DataType *)v, total);
 
         const int64_t coreOffset = static_cast<int64_t>(GetBlockIdx()) * tiling_->cubeWorkspacePerCore;
-        const int64_t scoreElems = tiling_->qBlock * tiling_->kvBlock;
+        const int64_t scoreElems = tiling_->qBlock * tiling_->maxKvBlock;
         const int64_t outElems = tiling_->qBlock * tiling_->headDimAlign;
         __gm__ uint8_t *base = (__gm__ uint8_t *)workspace + coreOffset;
         scoreGm_.SetGlobalBuffer((__gm__ float *)base, scoreElems * BUFFER_NUM);
@@ -823,16 +820,12 @@ private:
 
     __aicore__ inline void ProcessCubeImageQueryImageTile(int64_t taskIdx, int64_t kvBegin, int64_t &tileLoop)
     {
-        for (int64_t block = 0; block < IMAGE_TILE_KV_BLOCKS; ++block) {
-            ProcessCubeVisibleKvBlock(taskIdx, kvBegin + block * KV_BLOCK_NUM, KV_BLOCK_NUM, tileLoop);
-        }
+        ProcessCubeVisibleKvBlock(taskIdx, kvBegin, tiling_->tileTokenNum, tileLoop);
     }
 
     __aicore__ inline void ProcessCubeTextQueryImageTile(int64_t taskIdx, int64_t kvBegin, int64_t &tileLoop)
     {
-        for (int64_t block = 0; block < IMAGE_TILE_KV_BLOCKS; ++block) {
-            ProcessCubeVisibleKvBlock(taskIdx, kvBegin + block * KV_BLOCK_NUM, KV_BLOCK_NUM, tileLoop);
-        }
+        ProcessCubeVisibleKvBlock(taskIdx, kvBegin, tiling_->tileTokenNum, tileLoop);
     }
 
     __aicore__ inline void ProcessCubeTextKvRange(int64_t taskIdx, int64_t seq, int64_t kvBegin, int64_t kvEnd,
@@ -880,15 +873,15 @@ private:
 
     __aicore__ inline LocalTensor<float> GetScoreHandoffTensor(uint32_t bufferIdx) const
     {
-        const int64_t scoreElems = tiling_->qBlock * tiling_->kvBlock;
+        const int64_t scoreElems = tiling_->qBlock * tiling_->maxKvBlock;
         const int64_t offset = SCORE_HANDOFF_UB_OFFSET + static_cast<int64_t>(bufferIdx) * scoreElems * sizeof(float);
         return LocalTensor<float>(TPosition::VECIN, offset, scoreElems);
     }
 
     __aicore__ inline LocalTensor<DataType> GetProbHandoffTensor(uint32_t bufferIdx) const
     {
-        const int64_t scoreElems = tiling_->qBlock * tiling_->kvBlock;
-        const int64_t probElems = tiling_->qBlock * tiling_->kvBlock;
+        const int64_t scoreElems = tiling_->qBlock * tiling_->maxKvBlock;
+        const int64_t probElems = tiling_->qBlock * tiling_->maxKvBlock;
         const int64_t offset = SCORE_HANDOFF_UB_OFFSET + BUFFER_NUM * scoreElems * sizeof(float) +
                                static_cast<int64_t>(bufferIdx) * probElems * sizeof(DataType);
         return LocalTensor<DataType>(TPosition::VECIN, offset, probElems);
@@ -896,8 +889,8 @@ private:
 
     __aicore__ inline LocalTensor<float> GetOutHandoffTensor(uint32_t bufferIdx) const
     {
-        const int64_t scoreElems = tiling_->qBlock * tiling_->kvBlock;
-        const int64_t probElems = tiling_->qBlock * tiling_->kvBlock;
+        const int64_t scoreElems = tiling_->qBlock * tiling_->maxKvBlock;
+        const int64_t probElems = tiling_->qBlock * tiling_->maxKvBlock;
         const int64_t outElems = tiling_->qBlock * tiling_->headDimAlign;
         const int64_t offset = SCORE_HANDOFF_UB_OFFSET + BUFFER_NUM * scoreElems * sizeof(float) +
                                BUFFER_NUM * probElems * sizeof(DataType) +
@@ -920,7 +913,7 @@ private:
         const int64_t qBase = TensorOffset(batch, head, seq, 0);
         const int64_t kvBase = TensorOffset(batch, head, kvBegin, 0);
 
-        qkMatmul_.SetOrgShape(qCount, kvCount, tiling_->headDim, tiling_->headDim, tiling_->kvBlock);
+        qkMatmul_.SetOrgShape(qCount, kvCount, tiling_->headDim, tiling_->headDim, tiling_->maxKvBlock);
         qkMatmul_.SetTail(qCount, kvCount, tiling_->headDim);
         qkMatmul_.SetTensorA(qDataGm_[qBase]);
         qkMatmul_.SetTensorB(kDataGm_[kvBase], true);
@@ -928,7 +921,7 @@ private:
         LocalTensor<float> scoreLocal = GetScoreHandoffTensor(bufferIdx);
         qkMatmul_.template IterateAll<false>(scoreLocal, 0);
 #else
-        const int64_t scoreOffset = static_cast<int64_t>(bufferIdx) * tiling_->qBlock * tiling_->kvBlock;
+        const int64_t scoreOffset = static_cast<int64_t>(bufferIdx) * tiling_->qBlock * tiling_->maxKvBlock;
         qkMatmul_.template IterateAll<false>(scoreGm_[scoreOffset], false, false, true);
 #endif
         qkMatmul_.WaitIterateAll();
@@ -948,7 +941,7 @@ private:
         }
 
         const int64_t kvBase = TensorOffset(batch, head, kvBegin, 0);
-        pvMatmul_.SetOrgShape(qCount, tiling_->headDim, kvCount, tiling_->kvBlock, tiling_->headDim);
+        pvMatmul_.SetOrgShape(qCount, tiling_->headDim, kvCount, tiling_->maxKvBlock, tiling_->headDim);
         pvMatmul_.SetTail(qCount, tiling_->headDim, kvCount);
 #if STA_USE_VECIN_PROB_OUT_HANDOFF
         LocalTensor<DataType> probLocal = GetProbHandoffTensor(bufferIdx);
@@ -957,7 +950,7 @@ private:
         pvMatmul_.SetTensorB(vDataGm_[kvBase]);
         pvMatmul_.template IterateAll<false>(outLocal, 0);
 #else
-        const int64_t probOffset = static_cast<int64_t>(bufferIdx) * tiling_->qBlock * tiling_->kvBlock;
+        const int64_t probOffset = static_cast<int64_t>(bufferIdx) * tiling_->qBlock * tiling_->maxKvBlock;
         const int64_t outOffset = static_cast<int64_t>(bufferIdx) * tiling_->qBlock * tiling_->headDimAlign;
         pvMatmul_.SetTensorA(probGm_[probOffset]);
         pvMatmul_.SetTensorB(vDataGm_[kvBase]);

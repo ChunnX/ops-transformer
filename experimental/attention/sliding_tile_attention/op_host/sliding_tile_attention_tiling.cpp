@@ -170,10 +170,6 @@ static ge::graphStatus SlidingTileAttentionTilingFunc(gert::TilingContext *conte
     tiling->cubeTaskNum = batch * headNum * tiling->seqBlockNum;
     tiling->aicCoreNum = aicCoreNum;
     tiling->aivCoreNum = aivCoreNum;
-    const int64_t scoreBlockElems = CUBE_Q_BLOCK * CUBE_KV_BLOCK;
-    const int64_t outBlockElems = CUBE_Q_BLOCK * tiling->headDimAlign;
-    tiling->cubeWorkspacePerCore =
-        CUBE_WORKSPACE_DOUBLE_BUFFER * (scoreBlockElems * 2 + outBlockElems) * static_cast<int64_t>(sizeof(float));
     tiling->imageSeqLen = imageSeqLen;
     tiling->textLength = textLength;
     tiling->hasText = hasText ? 1 : 0;
@@ -184,6 +180,11 @@ static ge::graphStatus SlidingTileAttentionTilingFunc(gert::TilingContext *conte
     tiling->tileH = DEFAULT_TILE_H;
     tiling->tileW = DEFAULT_TILE_W;
     tiling->tileTokenNum = DEFAULT_TILE_T * DEFAULT_TILE_H * DEFAULT_TILE_W;
+    tiling->maxKvBlock = std::max(CUBE_KV_BLOCK, tiling->tileTokenNum);
+    const int64_t scoreBlockElems = CUBE_Q_BLOCK * tiling->maxKvBlock;
+    const int64_t outBlockElems = CUBE_Q_BLOCK * tiling->headDimAlign;
+    tiling->cubeWorkspacePerCore =
+        CUBE_WORKSPACE_DOUBLE_BUFFER * (scoreBlockElems * 2 + outBlockElems) * static_cast<int64_t>(sizeof(float));
     tiling->tileNumT = seqT / DEFAULT_TILE_T;
     tiling->tileNumH = seqH / DEFAULT_TILE_H;
     tiling->tileNumW = seqW / DEFAULT_TILE_W;
