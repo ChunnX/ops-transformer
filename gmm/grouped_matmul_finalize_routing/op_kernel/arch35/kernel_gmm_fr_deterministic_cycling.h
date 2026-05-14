@@ -40,28 +40,8 @@ namespace Cgmct {
 namespace Gemm {
 namespace Kernel {
 
-namespace {
-constexpr uint64_t IDX_A_OFFSETS = 0UL;
-constexpr uint64_t IDX_B_OFFSETS = 1UL;
-constexpr uint64_t IDX_X1SCALE_OFFSETS = 2UL;
-constexpr uint64_t IDX_X2SCALE_OFFSETS = 3UL;
-constexpr uint64_t IDX_BIAS_OFFSETS = 4UL;
-constexpr uint64_t IDX_C_OFFSETS = 5UL;
-constexpr uint64_t IDX_LOGIT_OFFSETS = 6UL;
-constexpr uint64_t IDX_M_TILEIDXS = 0UL;
-constexpr uint64_t IDX_N_TILEIDXS = 1UL;
-constexpr uint64_t IDX_M_TAIL_SPLIT_TILEIDXS = 2UL;
-constexpr uint64_t IDX_N_TAIL_SPLIT_TILEIDXS = 3UL;
-constexpr uint8_t SYNC_AIC_AIV_MODES = 4U;
-constexpr uint16_t FLAG_ID_MAXS = 16U;
-constexpr uint16_t AIC_SYNC_AIV_FLAGS = 4U;
-constexpr uint16_t AIV_SYNC_AIC_FLAGS = 6U;
-constexpr uint32_t WEIGHT_TILE_K_SMALL = 16U;
-constexpr uint32_t WEIGHT_TILE_N_SMALL = 16U;
-constexpr uint32_t WEIGHT_TILE_K_LARGE = 32U;
-constexpr uint32_t WEIGHT_TILE_N_LARGE = 32U;
-constexpr uint32_t WEIGHT_TILE_CAPACITY = 512U;
-} // namespace
+// IDX_* OFFSETS, SYNC flags, and WEIGHT_TILE constants are inherited from
+// cgmct/kernel/kernel_gmm_finalize_routing_pertoken_dequant.h (included via entry file)
 
 using namespace AscendC;
 template <class ProblemShape_, class BlockMmadBuilder_, class BlockPrologue_,
