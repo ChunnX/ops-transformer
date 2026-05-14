@@ -27,6 +27,7 @@
 #define GMM_SWIGLU_QUANT_WEIGHT_QUANT
 // 伪量化MxA8W4场景识别宏：x=FP8_E4M3FN, w=FP4_E2M1
     #include "arch35/weight_quant_basic_block/grouped_matmul_swiglu_quant_v2_weight_quant_tiling_data.h"
+    #include "arch35/weight_quant_basic_block/gmmsq_weight_quant_resplit_controller.h"
 #else
 // 全量化Mx量化
     #include "arch35/grouped_matmul_swiglu_quant_v2_mxquant.h"
@@ -66,15 +67,22 @@ __global__ __aicore__ void grouped_matmul_swiglu_quant_v2(GM_ADDR x, GM_ADDR xSc
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(0);
 
 #if defined(GMM_SWIGLU_QUANT_WEIGHT_QUANT)
-    // MxA8W4场景：stub kernel，后续补充完整Controller实现
+    // MxA8W4场景：完整Controller实现
     AscendC::InitSocState();
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     REGISTER_TILING_DEFAULT(GMMSQArch35Tiling::GMMSQWeightQuantTilingData);
     GET_TILING_DATA_WITH_STRUCT(GMMSQArch35Tiling::GMMSQWeightQuantTilingData, tilingDataIn, tiling);
-    // TODO: 后续补充完整的Controller调用
-    // GMMSQ::GMMSQWeightQuantResplitController<...> controller;
-    // controller.Init(x, weight, weightScale, nullptr, groupList, xScale, y, yScale, tiling);
-    // controller.Process();
+
+    using namespace WeightQuantBatchMatmulV2::Arch35;
+    GMMSQ::GMMSQWeightQuantResplitController<
+        fp8_e4m3fn_t, fp4x2_e2m1_t, fp8_e8m0_t, fp8_e8m0_t, fp8_e8m0_t,
+        float, fp8_e4m3fn_t, fp8_e8m0_t, false,
+        MXA8W4_NZNK,
+        VEC_ANTIQUANT_CONFIG_DYNAMIC>
+        controller;
+
+    controller.Init(x, weight, weightScale, nullptr, groupList, nullptr, y, yScale, &tilingDataIn);
+    controller.Process();
 #else
     TPipe tPipe;
     GM_ADDR userWorkspace = GetUserWorkspace(workspace);

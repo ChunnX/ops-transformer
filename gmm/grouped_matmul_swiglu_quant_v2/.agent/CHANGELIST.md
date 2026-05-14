@@ -66,3 +66,33 @@
   - 新增`CheckScaleShapes()`：校验wscale为4D、xscale为3D
   - 注册到validation chain
 - 编译运行UT进行用例验证（待进行）
+
+### 2026-05-14: 阶段二-Part3 Kernel代码开发
+
+#### Kernel代码开发（🟡 进行中）
+- 新增文件（6个kernel头文件）：
+  - `op_kernel/arch35/weight_quant_basic_block/gmmsq_weight_quant_cube_compute_tools.h` — Cube工具函数（从GMMFR复制）
+  - `op_kernel/arch35/weight_quant_basic_block/gmmsq_mx_a8w4_vf.h` — VF函数（反量化+SwiGLU+Quant）
+  - `op_kernel/arch35/weight_quant_basic_block/gmmsq_weight_quant_vec_compute.h` — VecCompute层
+  - `op_kernel/arch35/weight_quant_basic_block/gmmsq_weight_quant_cube_compute.h` — CubeCompute层
+  - `op_kernel/arch35/weight_quant_basic_block/gmmsq_weight_quant_vcv_basic_block.h` — BasicBlock层
+  - `op_kernel/arch35/weight_quant_basic_block/gmmsq_weight_quant_resplit_controller.h` — Controller层
+- 新增文件（3个common头文件，从GMMFR复制）：
+  - `op_kernel/arch35/common/basic_block_config.h`
+  - `op_kernel/arch35/common/basic_block_vf_mx.h`
+  - `op_kernel/arch35/common/tool.h`
+- 修改文件：
+  - `op_kernel/grouped_matmul_swiglu_quant_v2_apt.cpp` — 替换stub为完整Controller实例化调用
+
+#### 编译错误修复（多轮迭代）
+- Namespace解析问题 → 所有kernel文件添加`using WeightQuantBatchMatmulV2::Arch35::...`声明
+- 模板参数缺失 → 添加`hasBias`模板参数到vcv_basic_block和resplit_controller
+- `MX_SCALE_K_L1_SIZE` → 修正为正确的常量名
+- `CeilDivide`歧义 → 使用`WeightQuantBatchMatmulV2::Arch35::CeilDivide`
+- `DataCopyPad2D`未声明 → 添加using声明
+- `yScaleGmAddr`不存在 → 从BasicBlockOffsetParam引用中移除
+- `GetGMMSQMxA8W4BufferInfo`命名空间错误 → 修正为GMMSQ namespace
+- MicroAPI Cast trait → 添加`CAST_B16_TO_B32_TRAIT`参数
+
+#### 待解决问题
+- VF函数中MicroAPI调用（ShiftRight with uint32_t, FP8 Cast）与AscendC 9.1.0 API签名不匹配，需要参考官方文档修正

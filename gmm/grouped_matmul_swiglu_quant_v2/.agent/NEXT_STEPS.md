@@ -25,3 +25,11 @@
 **简要说明**：开发grouped_matmul_swiglu_quant_v2算子的tiling部分代码，基于测试驱动开发完善代码，直到所有host侧tiling UT全部通过。
 
 **任务详情**：[grouped_matmul_swiglu_quant_v2 MxA8W4算子tiling部分测试验证及实现完善](./raw/next_steps/2-grouped_matmul_swiglu_quant_v2的MxA8W4算子tiling部分测试验证及实现完善.md)
+
+## 任务3：grouped_matmul_swiglu_quant_v2 MxA8W4算子kernel部分代码开发
+
+**任务状态**：进行中
+
+**简要说明**：开发grouped_matmul_swiglu_quant_v2算子的kernel部分代码，编写完成后编译kernel二进制验证是否存在编译错误，直到所有代码完成并编译成功即通过。
+
+**任务详情**：[grouped_matmul_swiglu_quant_v2 MxA8W4算子kernel部分代码开发](./raw/next_steps/3-grouped_matmul_swiglu_quant_v2的MxA8W4算子kernel部分代码开发.md)
