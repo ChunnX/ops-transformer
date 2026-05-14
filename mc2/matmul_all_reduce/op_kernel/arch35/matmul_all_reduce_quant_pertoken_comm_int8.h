@@ -219,9 +219,10 @@ __aicore__ inline void MatmulAllReduceQuantPertokenCommInt8<
 }
 
 template <typename xType, typename WType, typename YType, class MmType, Mc2CoreType CoreType, int commMode>
-__aicore__ inline void MatmulAllReduceQuantPertokenCommInt8<xType, WType, YType, MmType, CoreType, commMode>::InnerProcess(
-    MmType& mmOp, uint32_t tileCnt, DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams* mmTiling, uint32_t isAdd, uint32_t needUbBuffer,
-    uint32_t padM, bool isTailFlag)
+__aicore__ inline void MatmulAllReduceQuantPertokenCommInt8<
+    xType, WType, YType, MmType, CoreType, commMode>::InnerProcess(
+    MmType& mmOp, uint32_t tileCnt, DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams* mmTiling, uint32_t isAdd,
+    uint32_t needUbBuffer, uint32_t padM, bool isTailFlag)
 {
     const uint64_t aOffset = CalcShapeOffset(sizeof(xType), mmTiling->matmulTiling.M, mmTiling->matmulTiling.Ka);
     const uint64_t cOffset = CalcShapeOffset(sizeof(YType), mmTiling->matmulTiling.M, mmTiling->matmulTiling.N);
