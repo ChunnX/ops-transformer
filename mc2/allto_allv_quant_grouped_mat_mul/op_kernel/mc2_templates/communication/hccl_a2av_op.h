@@ -256,7 +256,11 @@ public:
 
     // 小shape模式：每轮只和一个卡通信一个专家的数据
     // 通过设置其他rank的sendCnt/recvCnt为0实现卡级流水
-    __aicore__ inline void LaunchCommRankWise(uint32_t rankIdx, uint32_t expertIdx)
+// 小shape模式：每轮一个专家 + 一个接收方
+    // 接收方从所有源卡接收该专家的数据
+    // sendCnt[expertIdx + tgtRank * e_] = 本卡发给tgtRank的expertIdx数据量
+    // recvCounts_[expertIdx + srcRank * e_] = 本卡从srcRank接收的expertIdx数据量
+    __aicore__ inline void LaunchCommRankWise(uint32_t tgtRank, uint32_t expertIdx, uint32_t roundIdx)
     {
         if ASCEND_IS_AIC {
             return;
@@ -266,6 +270,10 @@ public:
                 return;
             }
         }
+        
+        // 本卡角色判断
+        bool isReceiver = (rankId_ == tgtRank);
+        
         const auto *sendCnt = &taskTilingInfo_->sendCnt[0];
         uint64_t axis = CeilDiv(H1_, PACK_FACTOR);
         
@@ -275,49 +283,51 @@ public:
             alltoAllvRecvCnt[i] = 0UL;
         }
         
-        // 只设置当前rankIdx的sendCnt/recvCnt
-        alltoAllvSendCnt[rankIdx] = static_cast<uint64_t>(sendCnt[expertIdx + rankIdx * e_]) * axis;
-        alltoAllvRecvCnt[rankIdx] = static_cast<uint64_t>(recvCounts_[expertIdx + rankIdx * e_]) * axis;
-        
-        // 计算sendOffset: 累计之前所有专家+所有rank的数据
-        alltoAllvSendOffset[0] = 0UL;
-        for (uint32_t i = 0U; i < rankIdx; i++) {
-            for (uint32_t j = 0U; j < e_; j++) {
-                alltoAllvSendOffset[0] += static_cast<uint64_t>(sendCnt[j + i * e_]) * axis;
+        // 接收方设置recvCnt：从所有srcRank接收expertIdx的数据
+        if (isReceiver) {
+            for (uint32_t srcRank = 0U; srcRank < rankDim_; srcRank++) {
+                // 接收顺序从自己开始循环
+                uint32_t recvSrcRank = (tgtRank + srcRank) % rankDim_;
+                alltoAllvRecvCnt[recvSrcRank] = static_cast<uint64_t>(recvCounts_[expertIdx + recvSrcRank * e_]) * axis;
             }
         }
-        for (uint32_t j = 0U; j < expertIdx; j++) {
-            alltoAllvSendOffset[0] += static_cast<uint64_t>(sendCnt[j + rankIdx * e_]) * axis;
-        }
         
-        // 其他rank的sendOffset设置为当前rank的前面
+        // 发送方设置sendCnt：发送expertIdx数据给tgtRank
+        // sendCnt[expertIdx + tgtRank * e_] = 本卡发给tgtRank的expertIdx数据量
+        alltoAllvSendCnt[tgtRank] = static_cast<uint64_t>(sendCnt[expertIdx + tgtRank * e_]) * axis;
+        
+        // 计算sendOffset（发送方视角）
+        // 发送数据在sendBuffer的位置：累计之前发给tgtRank的所有专家
+        alltoAllvSendOffset[0] = 0UL;
+        for (uint32_t j = 0U; j < expertIdx; j++) {
+            alltoAllvSendOffset[0] += static_cast<uint64_t>(sendCnt[j + tgtRank * e_]) * axis;
+        }
         for (uint32_t i = 1U; i < rankDim_; i++) {
             alltoAllvSendOffset[i] = alltoAllvSendOffset[i - 1];
         }
         
-        // 计算recvOffset: 累计之前所有专家+所有rank的数据（按专家顺序排列）
+        // 计算recvOffset（接收方视角）
+        // 接收数据在recvBuffer的位置：累计之前所有接收的数据
         alltoAllvRecvOffset[0] = 0UL;
-        for (uint32_t j = 0U; j < expertIdx; j++) {
-            for (uint32_t i = 0U; i < rankDim_; i++) {
-                alltoAllvRecvOffset[0] += static_cast<uint64_t>(recvCounts_[j + i * e_]) * axis;
+        if (isReceiver) {
+            // 按expertIdx顺序排列：先expertIdx之前的所有数据
+            for (uint32_t e = 0U; e < expertIdx; e++) {
+                for (uint32_t r = 0U; r < rankDim_; r++) {
+                    alltoAllvRecvOffset[0] += static_cast<uint64_t>(recvCounts_[e + r * e_]) * axis;
+                }
             }
         }
-        for (uint32_t i = 0U; i < rankIdx; i++) {
-            alltoAllvRecvOffset[0] += static_cast<uint64_t>(recvCounts_[expertIdx + i * e_]) * axis;
-        }
-        
-        // 其他rank的recvOffset设置为当前rank的前面
         for (uint32_t i = 1U; i < rankDim_; i++) {
             alltoAllvRecvOffset[i] = alltoAllvRecvOffset[i - 1];
         }
         
-        // 存储handle，使用二维索引：rankIdx * MAX_EXPERT_SIZE + expertIdx
-        uint32_t handleIdx = rankIdx * MAX_EXPERT_SIZE + expertIdx;
-        alltoAllvRankWiseHandleId_[handleIdx] = hccl_.template AlltoAllV<true>(
+        // 存储handle
+        alltoAllvRankWiseHandleId_[roundIdx] = hccl_.template AlltoAllV<true>(
             (__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), alltoAllvSendCnt, alltoAllvSendOffset, hcclDataType_,
             (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset, hcclDataType_);
     }
-    __aicore__ inline void WaitRankWise(uint32_t rankIdx, uint32_t expertIdx)
+
+__aicore__ inline void WaitRankWise(uint32_t roundIdx)
     {
         if ASCEND_IS_AIC {
             return;
@@ -327,8 +337,7 @@ public:
                 return;
             }
         }
-        uint32_t handleIdx = rankIdx * MAX_EXPERT_SIZE + expertIdx;
-        hccl_.Wait(alltoAllvRankWiseHandleId_[handleIdx]);
+        hccl_.Wait(alltoAllvRankWiseHandleId_[roundIdx]);
     }
 
     __aicore__ inline void WaitAll(uint32_t allNum)
@@ -358,6 +367,12 @@ public:
     {
         return rankDim_;
     }
+__aicore__ inline uint32_t GetMyRankId()
+    {
+        return rankId_;
+    }
+
+    
 
 private:
     __aicore__ inline void LaunchCommBeforeCompute(uint32_t startExpertIdx, uint32_t expertNum)

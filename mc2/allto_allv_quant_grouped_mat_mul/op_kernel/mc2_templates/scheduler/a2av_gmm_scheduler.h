@@ -169,19 +169,33 @@ private:
         }
     }
 
+// 小shape模式：每轮一个专家 + 一个接收方
+    // 接收方从自己开始循环接收所有卡的数据
+    // 总轮次：e × rankDim
     __aicore__ inline void ProcessCommRankWiseMode()
     {
         uint32_t rankDim = commOp.GetRankDim();
-        for (uint32_t rankIdx = 0U; rankIdx < rankDim; rankIdx++) {
-            for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
-                commOp.LaunchCommRankWise(rankIdx, expertIdx);
+        uint32_t myRank = commOp.GetMyRankId();
+        AscendC::printf("ProcessCommRankWiseMode: rankDim=%d, e=%d, myRank=%d\n", rankDim, e_, myRank);
+        
+        // Launch通信：expert × tgtRank
+        for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
+            for (uint32_t tgtRank = 0U; tgtRank < rankDim; tgtRank++) {
+                uint32_t roundIdx = expertIdx * rankDim + tgtRank;
+                commOp.LaunchCommRankWise(tgtRank, expertIdx, roundIdx);
             }
         }
-        for (uint32_t rankIdx = 0U; rankIdx < rankDim; rankIdx++) {
-            for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
-                commOp.WaitRankWise(rankIdx, expertIdx);
+        
+        // Wait + Compute：同Launch顺序
+        for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
+            for (uint32_t tgtRank = 0U; tgtRank < rankDim; tgtRank++) {
+                uint32_t roundIdx = expertIdx * rankDim + tgtRank;
+                commOp.WaitRankWise(roundIdx);
                 SyncAll<false>();
-                computeOp.Process(expertIdx);
+                // 只有接收方才计算
+                if (myRank == tgtRank) {
+                    computeOp.ProcessRankWise(tgtRank, expertIdx);
+                }
             }
         }
     }
