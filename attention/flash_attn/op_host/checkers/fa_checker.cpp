@@ -21,7 +21,7 @@
 #include "register/op_def_registry.h"
 #include "../fa_tiling_info.h"
 #include "fa_checker.h"
-#include "attr_checker.h"
+#include "common_checker.h"
 
 namespace optiling {
 namespace flash_attn {
@@ -36,15 +36,13 @@ using namespace arch35FA;
 // 新增 checker 时在此方法中添加: checkers_.push_back(std::make_unique<XxxChecker>());
 void FAChecker::RegisterCheckers()
 {
-    checkers_.push_back(std::make_unique<LayoutChecker>());
-    checkers_.push_back(std::make_unique<ShapeChecker>());
+    checkers_.push_back(std::make_unique<CommonChecker>());
     checkers_.push_back(std::make_unique<ActualSeqLenChecker>());
     checkers_.push_back(std::make_unique<PagedAttentionChecker>());
     checkers_.push_back(std::make_unique<MaskChecker>());
     checkers_.push_back(std::make_unique<SinksChecker>());
     checkers_.push_back(std::make_unique<MetadataChecker>());
     checkers_.push_back(std::make_unique<SoftmaxLSEChecker>());
-    checkers_.push_back(std::make_unique<AttrChecker>());
 }
 
 ge::graphStatus FAChecker::Init(const FaTilingInfo &faInfo)
