@@ -27,20 +27,12 @@ namespace optiling {
 namespace flash_attn {
 // constexpr int64_t MASK_MODE_INT_MAX = 2147483647;
 
+// key.txt 4字段 tiling key
 struct FaTilingKeyInfo {
     uint64_t inputLayout = 0;
-    uint64_t config = 0;
-    uint64_t pseMode = 0;
-    uint64_t quantMode = 31;
-    bool hasAttenMask = false;
-    bool hasRope = false;
     uint64_t kvLayoutType = 0;
-    bool isFd = false;
-    bool emptyTensor = false;
-    uint64_t maskMode = 0;
-    uint64_t matmulMode = 0;
-    bool enableKvPrefix = false;
-    bool enableS1OutSplit = false;
+    bool hasAttenMask = false;
+    uint64_t config = 0;
 };
 
 struct FaPlatFormInfo {
@@ -82,8 +74,6 @@ private:
     // void UpdateTilingKeyPseMode();
     // void UpdateTilingKeyQuantMode();
     // void UpdateTilingKeyHasRope();
-    void UpdateTilingKeyMaskMode();
-    void UpdateTilingKeyMatmulMode();
     void UpdateTilingKeyInfo();
     void SetFATilingData();
     void AdjustSinnerAndSouter();
