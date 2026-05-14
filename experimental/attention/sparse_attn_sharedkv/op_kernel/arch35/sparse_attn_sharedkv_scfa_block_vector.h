@@ -155,6 +155,10 @@ private:
     TBuf<> stage2OutBuf;
     TEventID mte3ToVId[2]; // 存放MTE3_V的eventId, 2份表示可能存在pingpong
     TEventID vToMte3Id[2]; // 存放V_MTE3的eventId, 2份表示可能存在pingpong
+    TEventID mte3ToVAttnOutId; // 存放MTE3_V的eventId, 用于V2 attentionOut拷出阶段的同步
+ 	TEventID vToMte3AttnOutId; // 存放V_MTE3的eventId, 用于V2 attentionOut拷出阶段的同步
+ 	TEventID mte3ToVLseOutId; // 存放MTE3_V的eventId, 用于V1 LSE拷出阶段的同步
+ 	TEventID vToMte3LseOutId; // 存放V_MTE3的eventId, 用于V1 LSE拷出阶段的同步
     TEventID mte2ToMte3[2];
     TEventID mte3ToMte2[2];
     TEventID sToMte3Id[3];
@@ -674,10 +678,12 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec1(
         dataCopyParams.blockLen = sizeof(float) * runInfo.halfMRealSize;
         dataCopyParams.srcStride = 0;
         dataCopyParams.dstStride = 0;
+        WaitFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
         ComputeLse(outLse, sumUb, maxUb, runInfo.halfMRealSize);
-        WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        SetFlag<HardEvent::V_MTE3>(vToMte3LseOutId);
+ 	    WaitFlag<HardEvent::V_MTE3>(vToMte3LseOutId);
         DataCopyPad(this->softmaxLseGm[runInfo.softmaxLseOffset], outLse, dataCopyParams);
-        SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        SetFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
     }
 }
 
@@ -696,7 +702,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec2(
     int64_t vec2CalcSize = runInfo.vec2MRealSize * dTemplateAlign64;
     LocalTensor<T> vec2ResUb = this->stage2OutBuf.template Get<T>();
     LocalTensor<T> mmRes = bmm2ResBuf.template GetTensor<T>();
-    WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+    WaitFlag<HardEvent::MTE3_V>(mte3ToVAttnOutId);
     if (unlikely(runInfo.s2LoopCount == 0)) {
         DataCopy(vec2ResUb, mmRes, vec2CalcSize);
     } else {
@@ -726,7 +732,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec2(
 
         this->CopyOutAttentionOut(runInfo, constInfo, vec2ResUb, 0, vec2CalcSize);
     }
-    SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+    SetFlag<HardEvent::MTE3_V>(mte3ToVAttnOutId);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -898,9 +904,12 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe,
     tPipe->InitBuffer(stage1OutQue[1], 1, vec1Srcstride * s2BaseSize * sizeof(Q_T));
     tPipe->InitBuffer(stage2OutBuf, (s1BaseSize / CV_RATIO) * dTemplateAlign64 * sizeof(T));
 
-    mte3ToVId[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
-    vToMte3Id[0] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
-    SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+    mte3ToVAttnOutId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
+    mte3ToVLseOutId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
+    SetFlag<HardEvent::MTE3_V>(mte3ToVAttnOutId);
+    SetFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
+    vToMte3AttnOutId = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
+    vToMte3LseOutId = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
     mte3ToMte2[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>();
     mte3ToMte2[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>();
     SetFlag<HardEvent::MTE3_MTE2>(mte3ToMte2[0]);
