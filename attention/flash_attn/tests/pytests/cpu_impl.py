@@ -124,8 +124,8 @@ def tforward_tnd(q, k, v, **kwargs):
         drop_mask = gen_dropmask_tnd(qk_pointer[-1].item() * n1, keep_prob, seed, offset)
 
     out_golden = torch.zeros([1, n1, s1_total, d_v], dtype=q.dtype)
-    x_max = torch.zeros([n1, s1_total], dtype=q.dtype)	 
-    x_sum = torch.zeros([n1, s1_total], dtype=q.dtype)
+    x_max = torch.zeros([n1, s1_total], dtype=torch.float32)
+    x_sum = torch.zeros([n1, s1_total], dtype=torch.float32)
     for i in range(b):
         act_q_len = seqused_q[i]
         act_kv_len = seqused_kv[i]

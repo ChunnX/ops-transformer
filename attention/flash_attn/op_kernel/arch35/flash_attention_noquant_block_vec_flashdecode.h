@@ -772,8 +772,8 @@ public:
                 if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
                     uint32_t prefixBS1 = qActSeqLensParser->GetTBase(taskInfo.bIdx);
                     uint64_t bN2Offset =
-                        prefixBS1 * constInfo.gSize * constInfo.n2Size + taskInfo.n2Idx * constInfo.gSize;
-                    DataCopySoftmaxLseTNDArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize, constInfo);
+                        taskInfo.n2Idx * constInfo.gSize * constInfo.t1Size + prefixBS1;
+                    DataCopySoftmaxLseTNDtoNTArch35<T, ConstInfoX>(softmaxLseGm, maxLseUb, bN2Offset, mOffset, actualGSplitSize, constInfo);
                 } else if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
                     uint32_t prefixBS1 = qActSeqLensParser->GetTBase(taskInfo.bIdx);
                     uint32_t s1Size = qActSeqLensParser->GetActualSeqLength(taskInfo.bIdx);
