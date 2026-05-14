@@ -520,7 +520,7 @@ private:
 
     __gm__ HcclOpParam *winContext_[COMM_NUM]{nullptr, nullptr};
     __gm__ Mc2MoeContext* mc2Context_{nullptr};
-    __gm__ ChannelEntity* dpuCommHandle_[HCCL_MAX_SERVER_SIZE]{nullptr};
+    ChannelEntity* dpuCommHandle_[HCCL_MAX_SERVER_SIZE]{nullptr};
 
     DataCopyParams xCopyParams_;
     DataCopyExtParams hCommuCopyOutParams_;
