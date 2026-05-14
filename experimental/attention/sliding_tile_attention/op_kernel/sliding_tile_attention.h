@@ -25,10 +25,6 @@ using namespace AscendC;
 using namespace matmul;
 
 constexpr float NEG_INF = -3.4028234663852886e+38F;
-constexpr float EXP_LOWER_BOUND = -80.0F;
-constexpr float EXP_UPPER_BOUND = 80.0F;
-constexpr float LN2 = 0.6931471805599453F;
-constexpr float INV_LN2 = 1.4426950408889634F;
 constexpr int64_t VECTOR_HEAD_DIM_LIMIT = 128;
 constexpr int64_t VECTOR_ALIGN_ELEMS = 16;
 constexpr int64_t VECTOR_FP32_BLOCK_ELEMS = 8;
@@ -121,53 +117,6 @@ __aicore__ inline int64_t ClampStart(int64_t center, int64_t window, int64_t lim
     start = MaxInt64(start, 0);
     start = MinInt64(start, limit - window);
     return start;
-}
-
-__aicore__ inline float Pow2Int(int64_t exponent)
-{
-    float result = 1.0F;
-    if (exponent >= 0) {
-        for (int64_t i = 0; i < exponent; ++i) {
-            result *= 2.0F;
-        }
-    } else {
-        for (int64_t i = 0; i < -exponent; ++i) {
-            result *= 0.5F;
-        }
-    }
-    return result;
-}
-
-__aicore__ inline float FloorFloat(float value)
-{
-    int64_t intValue = static_cast<int64_t>(value);
-    if (static_cast<float>(intValue) > value) {
-        --intValue;
-    }
-    return static_cast<float>(intValue);
-}
-
-__aicore__ inline float ExpApprox(float value)
-{
-    if (value <= EXP_LOWER_BOUND) {
-        return 0.0F;
-    }
-    if (value >= EXP_UPPER_BOUND) {
-        value = EXP_UPPER_BOUND;
-    }
-
-    const float exponentFloat = FloorFloat(value * INV_LN2);
-    const int64_t exponent = static_cast<int64_t>(exponentFloat);
-    const float reduced = value - exponentFloat * LN2;
-    const float reduced2 = reduced * reduced;
-    const float reduced3 = reduced2 * reduced;
-    const float reduced4 = reduced3 * reduced;
-    const float reduced5 = reduced4 * reduced;
-    const float reduced6 = reduced5 * reduced;
-    const float expReduced = 1.0F + reduced + 0.5F * reduced2 + 0.1666666667F * reduced3 +
-                             0.0416666667F * reduced4 + 0.0083333333F * reduced5 +
-                             0.0013888889F * reduced6;
-    return Pow2Int(exponent) * expReduced;
 }
 
 template <bool IS_BF16>
@@ -514,6 +463,17 @@ private:
         return accTile[static_cast<int64_t>(rowInBlock) * VECTOR_HEAD_DIM_LIMIT];
     }
 
+    __aicore__ inline float ExpScalarWithVector(float value, uint32_t bufferIdx)
+    {
+        LocalTensor<float> expLocal = GetBufferSlice<float>(tmpFloatBuf_, bufferIdx);
+        Duplicate(expLocal, value, VECTOR_FP32_BLOCK_ELEMS);
+        PipeBarrier<PIPE_V>();
+        Exp(expLocal, expLocal, VECTOR_FP32_BLOCK_ELEMS);
+        SetFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
+        WaitFlag<HardEvent::V_S>(EVENT_ID1 + bufferIdx);
+        return expLocal.GetValue(0);
+    }
+
     __aicore__ inline void AccumulateVisibleScoreBlock(LocalTensor<float> &accLocal, int64_t kvCount,
                                                        uint32_t rowInBlock, float &maxScore, float &denom,
                                                        uint32_t bufferIdx)
@@ -546,7 +506,7 @@ private:
         }
 
         if (blockMaxScore > maxScore) {
-            const float oldScale = ExpApprox(maxScore - blockMaxScore);
+            const float oldScale = ExpScalarWithVector(maxScore - blockMaxScore, bufferIdx);
             Muls(accLocal, accLocal, oldScale, AlignedHeadDim());
             PipeBarrier<PIPE_V>();
             denom *= oldScale;
@@ -733,7 +693,7 @@ private:
         }
 
         if (blockMaxScore > maxScore) {
-            const float oldScale = ExpApprox(maxScore - blockMaxScore);
+            const float oldScale = ExpScalarWithVector(maxScore - blockMaxScore, bufferIdx);
             Muls(accLocal, accLocal, oldScale, AlignedHeadDim());
             PipeBarrier<PIPE_V>();
             denom *= oldScale;
