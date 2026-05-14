@@ -66,16 +66,19 @@ const std::array<const aclTensor *, 4> MoeInitRoutingV2(
             expert_tokens_before_capacity_out->GetDataType(), op::Format::FORMAT_ND);
     }
 
-    auto ret = ADD_TO_LAUNCHER_LIST_AICORE(MoeInitRoutingV2,
-        OP_INPUT(x, expert_idx),
-        OP_OUTPUT(expanded_x, expanded_row_idx, expert_tokens_count_or_cumsum,
-            expert_tokens_before_capacity),
-        OP_ATTR(active_num, expert_capacity, expert_num, drop_pad_mode,
-            expert_tokens_count_or_cumsum_flag, expert_tokens_before_capacity_flag));
+    if (!(expanded_x->IsEmpty() && expanded_row_idx->IsEmpty()
+        && expert_tokens_count_or_cumsum->IsEmpty() && expert_tokens_before_capacity->IsEmpty())) {
+        auto ret = ADD_TO_LAUNCHER_LIST_AICORE(MoeInitRoutingV2,
+            OP_INPUT(x, expert_idx),
+            OP_OUTPUT(expanded_x, expanded_row_idx, expert_tokens_count_or_cumsum,
+                expert_tokens_before_capacity),
+            OP_ATTR(active_num, expert_capacity, expert_num, drop_pad_mode,
+                expert_tokens_count_or_cumsum_flag, expert_tokens_before_capacity_flag));
 
-    const std::array<const aclTensor *, 4> errorReturn = {nullptr, nullptr, nullptr, nullptr};
-    OP_CHECK_ADD_TO_LAUNCHER_LIST_AICORE(ret != ACLNN_SUCCESS, return errorReturn,
-                                         "MoeInitRoutingV2AiCore ADD_TO_LAUNCHER_LIST_AICORE failed.");
+        const std::array<const aclTensor *, 4> errorReturn = {nullptr, nullptr, nullptr, nullptr};
+        OP_CHECK_ADD_TO_LAUNCHER_LIST_AICORE(ret != ACLNN_SUCCESS, return errorReturn,
+                                            "MoeInitRoutingV2AiCore ADD_TO_LAUNCHER_LIST_AICORE failed.");
+    }
 
     return {expanded_x, expanded_row_idx, expert_tokens_count_or_cumsum, expert_tokens_before_capacity};
 }
