@@ -140,7 +140,7 @@ private:
 
     __aicore__ inline void ProcessCommRoundMode()
     {
-        AscendC::printf("ProcessCommRoundMode: e=%u, commBeforeComputeFlag=%d\n", e_, commBeforeComputeFlag);
+        AscendC::printf("ProcessCommRoundMode: e=%u\n", e_);
         for (uint32_t expertIdx = 0; expertIdx < e_; expertIdx++) {
             AscendC::printf("ProcessCommRoundMode: Launch expertIdx=%u\n", expertIdx);
             if constexpr (MX_QUANT_MODE) {
