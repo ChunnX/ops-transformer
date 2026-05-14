@@ -935,7 +935,6 @@ public:
             Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
             mm2ResL0C.Wait<HardEvent::FIX_M>();
 
-            // TODO： DN 场景V1输出梳理
             MMParam param = MakeMMParam((uint32_t)mBaseSize, (uint32_t)realN, (uint32_t)(runInfo.actSingleLoopS2Size),
                                         useDn, false);
             if constexpr (!useDn) {

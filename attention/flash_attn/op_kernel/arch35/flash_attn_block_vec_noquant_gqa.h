@@ -548,7 +548,6 @@ public:
     __aicore__ inline void Vec1SinkComputeGSFused(RunInfoX &runInfo, LocalTensor<float> &sumUb,
                                                   LocalTensor<float> &maxUb)
     {
-        // TODO  适配GS1 合轴
         CopySinkIn(runInfo);
         LocalTensor<INPUT_T> sinkUb = sinkQue.DeQue<INPUT_T>();
         SinkSubExpAddGSFusedVF<float, INPUT_T>(sinkUb, sumUb, maxUb, runInfo.actVecMSize);
@@ -557,7 +556,6 @@ public:
 
     __aicore__ inline void CopySinkIn(RunInfoX &runInfo)
     {
-        // TODO  适配GS1 合轴
         LocalTensor<INPUT_T> sinkUbBf16 = sinkQue.AllocTensor<INPUT_T>();
         int64_t sinkOffset =
             runInfo.n2Idx * constInfo.gSize + constInfo.subBlockIdx * (runInfo.actMSize - runInfo.actVecMSize);
@@ -900,7 +898,7 @@ public:
 
             // 经过了跳读，UB上每行是按照dTemplateAlign64对齐的
             int64_t vec2ResInnerOffset = mIdx * constInfo.dBasicBlock;
-            if (vec2LoopLimit > 1) { // TODO 这个分支有疑问 ！！！！！！！！！！！！！！！！
+            if (vec2LoopLimit > 1) { 
                 SetFlag<HardEvent::MTE3_MTE2>(mte3ToMte2);
                 WaitFlag<HardEvent::MTE3_MTE2>(mte3ToMte2);
                 if constexpr (useDn) {
@@ -1412,31 +1410,7 @@ public:
 
     __aicore__ void PseCopyIn(LocalTensor<pseShiftType> pseUb, RunInfoX &runInfo)
     {
-#if 0 // TODO
-        FaUbTensor<PSE_T> pseShiftUbTensor {
-            .tensor = pseUb,
-            .rowCount = dealRowCount;
-            .colCount = columnCount   // 对齐后的值
-        };
-        GmPseCoord pseCoord = {
-            .bIdx = constInfo.pseShiftByBatch ? info.bIdx : 0,
-            .n2Idx = info.n2Idx,
-            .gS1Idx = info.gS1Idx + mSplitInfo.nBufferStartM + mSplitInfo.vecStartM + startRow,
-            .s2Idx = info.s2Idx,
-            .gS1DealSize = dealRowCount,
-            .s2DealSize = actualColumnCount,
-            .s1LeftPaddingSize = info.qPaddingBeginOffset,
-            .s2LeftPaddingSize = info.kvPaddingBeginOffset,
-            .actualBIdx = info.bIdx
-        };
-        bool qsEqualOne = (constInfo.s1Size == 1);
-        FaGmTensor<PSE_T, GmFormat::BN2GS1S2> pseShiftGmTensor;
-        pseShiftGmTensor.gmTensor = pseGm;
-        pseShiftGmTensor.offsetCalculator.Init(constInfo.pseShiftByBatch ? constInfo.bSize : 1, constInfo.n2Size,
-                                               constInfo.gSize, constInfo.pseS1Size, constInfo.pseS2Size,
-                                               this->actualSeqLengthsGmQ, constInfo.seqUsedQSize);
-        copyPSEGmToUb(pseShiftUbTensor, pseShiftGmTensor, pseCoord, qsEqualOne);
-#endif
+
     }
 
     __aicore__ inline void DealZeroActSeqLen(uint32_t bN2Cur)

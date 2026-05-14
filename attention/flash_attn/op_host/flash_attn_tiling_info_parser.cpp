@@ -287,7 +287,7 @@ void FaInfoParser::GetKeyTSize()
     keyTSize_ = (keyShape_->HasShapeT()) ? static_cast<uint32_t>(keyShape_->GetShapeT()) : 0;
 }
 
-ge::graphStatus FaInfoParser::GetQkHeadDim() // TODO check/get函数区别在哪
+ge::graphStatus FaInfoParser::GetQkHeadDim() 
 {
     // 获取qkHeadDim基准值
     // 以query的D维度为基准
@@ -414,7 +414,6 @@ ge::graphStatus FaInfoParser::GetValueHeadDim()
 
 ge::graphStatus FaInfoParser::GetInAndOutLayout()
 {
-    // TODO 加判空
     // Layout枚举很多，kernel和tiling用同一个枚举，
     auto itQ = layoutMap.find(opParamInfo_.layoutQ);
     if (itQ == layoutMap.end()) {
@@ -476,7 +475,6 @@ void FaInfoParser::SetFaShape()
 
 ge::graphStatus FaInfoParser::GetGSize()
 {
-    // TODO wmk n2 = 0校验
     // 获取G基准值
     if (n1Size_ % n2Size_ != 0U) {
         OP_LOGE(opName_, "Q numHeads(%ld) should be a multiple of Kv Heads(%ld).", n1Size_, n2Size_);

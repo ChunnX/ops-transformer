@@ -52,8 +52,6 @@ ge::graphStatus FlashAttnTilingImpl::DoOpTiling()
     OP_CHECK_IF(SetPlatMemoryInfo() != ge::GRAPH_SUCCESS, OP_LOGE(faInfo_->opName, "Set plat memory info fail."),
                 return ge::GRAPH_FAILED);
 
-    // TODO，增加空tensor、路径6 STC验证用例
-
     InitImplParam();
     SplitPolicy();
     FillTiling();
@@ -235,7 +233,7 @@ void FlashAttnTilingImpl::SplitPolicy()
         SplitOutSeq();
     } else {
         CalcNumBlocks(platformInfo_.aicNum);
-        flashDecodeFlag_ = true; // TODO 原本是根据分核，当前先写死
+        flashDecodeFlag_ = true; 
     }
 }
 

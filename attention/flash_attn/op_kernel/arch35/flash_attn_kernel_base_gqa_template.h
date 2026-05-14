@@ -269,7 +269,6 @@ public:
         constexpr uint32_t mm2LeftSize = mBaseSize * s2BaseSize * sizeof(INPUT_T);
         l1BufferManager.Init(pipe, 524288); // 512 * 1024
         // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
-        // TODO，共享buffer初始化放到block层
         l1PBuffers.Init(l1BufferManager, mm2LeftSize);
         if constexpr (BMM2_TOUB) {
             ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize * 2);
@@ -409,7 +408,6 @@ public:
         // Kernel field constants ( FLASH_ATTN_BN2_START_INDEX=1, etc.) are 1-based, so subtract 1.
         return FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM * sectionIdx + 16U * coreIdx + metaIdx;
     }
-    //TODO 适配metadata
     __aicore__ inline uint32_t GetFDMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
     {
         return FA_FD_METADATA_SIZE * FA_AIV_CORE_NUM * sectionIdx + FA_FD_METADATA_SIZE * coreIdx + metaIdx ;
