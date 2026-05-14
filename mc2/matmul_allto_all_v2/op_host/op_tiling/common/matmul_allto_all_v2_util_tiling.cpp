@@ -65,7 +65,7 @@ ge::graphStatus MatmulAlltoAllV2TilingUtil::GetAndValidateRankSize(const gert::T
  * @return ge::graphStatus
  */
 ge::graphStatus MatmulAlltoAllV2TilingUtil::GetAndConvertCommMode(const gert::TilingContext *context,
-                                                                  const char *opName, TilingContextInfo &contextInfo,
+                                                                  const char *opName, const TilingContextInfo &contextInfo,
                                                                   uint8_t &commMode)
 {
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
@@ -85,7 +85,7 @@ ge::graphStatus MatmulAlltoAllV2TilingUtil::GetAndConvertCommMode(const gert::Ti
         } else {
             commMode = Mc2Comm::COMM_MODE_AICPU;
         }
-        OP_LOGI(opName, "commMode is default, and rankDim is %d, will use commMode: %d." rankDim, commMode);
+        OP_LOGI(opName, "commMode is default, and rankDim is %d, will use commMode: %d.", rankDim, commMode);
     } else {
         OP_LOGE(opName, "The input attr comm_mode only support 'default', 'aicpu', 'ccu'.");
         return ge::GRAPH_FAILED;
