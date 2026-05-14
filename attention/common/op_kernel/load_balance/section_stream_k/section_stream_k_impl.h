@@ -237,7 +237,14 @@ SectionStreamKImpl::Compute(const DeviceInfo &deviceInfo, const IBaseInfo &baseI
         return result;
     }
     CalcCostInfo(computeContext);
-
+    if (computeContext.costInfo.blockNum == 0U) {
+        SectionStreamKImplResult result{deviceInfo.aicCoreMaxNum, deviceInfo.aivCoreMaxNum};
+        result.usedCoreNum = 1U;
+        result.bN2End[0] = NumToIndex(baseInfo.GetBatchSize() * baseInfo.GetQueryHeadNum());
+        result.gS1End[0] = 0U;
+        result.s2End[0] = 0U;
+        return result;
+    }
     return ScheduleSection(computeContext);
 }
 

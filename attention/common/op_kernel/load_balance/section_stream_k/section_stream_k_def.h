@@ -22,7 +22,7 @@
 
 namespace load_balance {
 
-/******************************** ERROR CODE ********************************/
+/******************************** RETURN CODE ********************************/
 #define SECTION_STREAM_K_SUCCESS                        0
 #define SECTION_STREAM_K_ERROR_INVALID_PARAM            1
 #define SECTION_STREAM_K_ERROR_AIV_LESS_THAN_AIC        2

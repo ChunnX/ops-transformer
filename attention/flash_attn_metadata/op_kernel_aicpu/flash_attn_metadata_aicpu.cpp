@@ -66,7 +66,6 @@ bool FlashAttnMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     GetAttrValueOpt(ctx, "layout_kv", layoutKv_);
     GetAttrValueOpt(ctx, "layout_out", layoutOut_);
     return ParamsInit();
-    // return true;
 }
 
 std::vector<int64_t> FlashAttnMetadataCpuKernel::GetTensorDataAsInt64(Tensor *tensor, size_t size)
@@ -142,7 +141,6 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
     deviceInfo.aicCoreMinNum = aicCoreNum_;
     deviceInfo.aivCoreMinNum = aivCoreNum_;
     deviceInfo.cvRadio = aivCoreNum_ / aicCoreNum_;
-    // deviceInfo.socVersion = socVersion_;
     // baseInfo
     // actual seq size
     baseInfo.isCumulativeQuerySeq = layoutQ_ == "TND" || layoutQ_ == "NTD";
@@ -209,14 +207,14 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
     baseInfo.kvHeadNum = numHeadsKv_;
     baseInfo.kvSeqSize = maxSeqlenKv_;
     baseInfo.headDim = headDim_;
-    baseInfo.attenMaskFlag = maskMode_ = true; // todo
-    baseInfo.sparseMode = maskMode_;
+    baseInfo.attenMaskFlag = true;
+    baseInfo.sparseMode = 0;
     baseInfo.preToken = winLeft_ == -1 ? std::numeric_limits<uint32_t>::max() : winLeft_;
     baseInfo.nextToken = winRight_ == -1 ? std::numeric_limits<uint32_t>::max() : winRight_;
     baseInfo.layoutQuery = ConvertToLayout(layoutQ_);
     baseInfo.layoutKv = ConvertToLayout(layoutKv_);
-    baseInfo.queryType = load_balance::DataType::FP16; // todo
-    baseInfo.kvType = load_balance::DataType::FP16; // todo
+    baseInfo.queryType = load_balance::DataType::FP16; // noquant
+    baseInfo.kvType = load_balance::DataType::FP16; // noquant
     // param
     if (numHeadsKv_ == 0) {
         numHeadsKv_ = numHeadsQ_;
@@ -236,7 +234,6 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
     mBaseSize_ = mBaseSize_ * deviceInfo.cvRadio; // CV_Radio
     param.mBaseSize = mBaseSize_;
     param.s2BaseSize = s2BaseSize_;
-    // param.l2Byte = 0U;
     return true;
 }
 
@@ -247,10 +244,15 @@ bool FlashAttnMetadataCpuKernel::BalanceSchedule(SectionStreamKResult &splitRes)
 
 bool FlashAttnMetadataCpuKernel::GenMetaData(SectionStreamKResult &splitRes)
 {
+    if (metaData_ == nullptr || metaData_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("metadata is empty");
+        return false;
+    }
     detail::FaMetaData faMetadata(metaData_->GetData());
     uint32_t* ptr = (uint32_t*)metaData_->GetData();
-    ptr[1] = mBaseSize_;
-    ptr[2] = s2BaseSize_;
+    ptr[1] = splitRes.sectionFdResult.usedVecNum > 0 ? 1 : 0;
+    ptr[2] = mBaseSize_;
+    ptr[3] = s2BaseSize_;
     for (uint32_t i = 0; i < AIC_CORE_NUM; ++i) {
         faMetadata.setFaMetadata(i, optiling::FA_BN2_START_INDEX, 0U);
         faMetadata.setFaMetadata(i, optiling::FA_M_START_INDEX, 0U);

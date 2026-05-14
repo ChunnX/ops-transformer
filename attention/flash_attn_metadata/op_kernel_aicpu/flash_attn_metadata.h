@@ -69,8 +69,8 @@ __aicore__ inline uint32_t GetAttrAbsIndex(uint32_t idx, uint32_t coreIdx,
 
 namespace detail {
 struct FaMetaData {
-    uint32_t *faMetadata; // [sectionNum][AIC_CORE_NUM][FA_METADATA_SIZE];
-    uint32_t *fdMetadata; // [sectionNum][AIV_CORE_NUM][FD_METADATA_SIZE];
+    uint32_t *faMetadata; // [AIC_CORE_NUM][FA_METADATA_SIZE];
+    uint32_t *fdMetadata; // [AIV_CORE_NUM][FD_METADATA_SIZE];
     FaMetaData(void *metadataPtr)
         : faMetadata(static_cast<uint32_t*>(metadataPtr) + 16U),
           fdMetadata(static_cast<uint32_t*>(metadataPtr) + 16U + AIC_CORE_NUM * FA_METADATA_SIZE)
