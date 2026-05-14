@@ -527,7 +527,7 @@ private:
     DataCopyExtParams hCommuCopyOutParams_;
     DataCopyParams doWindowCopyOutParams_;
     MoeDistributeDispatchV2Quant<TemplateDispatchQuant> quantInst_;
-    AscendC::Hcomm hcommHandle_;
+    AscendC::Hcomm<CommEngine::AIV, CommProtocol::ROCE> hcommHandle_;
 
     MoeDispatchLog_NEW::Log logger;
 };
