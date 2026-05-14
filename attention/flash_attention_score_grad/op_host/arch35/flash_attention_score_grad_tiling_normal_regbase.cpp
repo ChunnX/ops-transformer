@@ -1020,6 +1020,9 @@ void FlashAttentionScoreGradTilingNormalRegbase::DoPreTiling()
     preTilingData_->set_dropoutIsDivisibleBy8(fBaseParams.dropoutIsDivisibleBy8);
     preTilingData_->set_maskPreBlockTotal(maskPreBlockTotal);
     preTilingData_->set_sValueZeroUnderTND(fBaseParams.sValueZeroUnderTND);
+    preTilingData_->set_reserved1(0);
+    preTilingData_->set_reserved2(0);
+    preTilingData_->set_reserved3(0);
 }
 
 void FlashAttentionScoreGradTilingNormalRegbase::DoPostTiling()
@@ -1651,6 +1654,7 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::SaveToTilingData()
     s1s2BNGS1S2SplitCoreParams_->set_blockOuter(fBaseParams.blockOuter);
     s1s2BNGS1S2SplitCoreParams_->set_maxValidBBLen(fBaseParams.maxValidBBLen);
     s1s2BNGS1S2SplitCoreParams_->set_noNeedDeter(fBaseParams.noNeedDeter);
+    s1s2BNGS1S2SplitCoreParams_->set_reserved1(0);
     s1s2BNGS1S2SplitCoreParams_->set_deterMaxRound(fBaseParams.deterMaxRound);
     if ((fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND) ||
          fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE)) &&
@@ -1669,6 +1673,10 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::SaveToTilingData()
         deterParam->set_deterPrefix0(fBaseParams.deterPrefix0);
         deterParam->set_deterPrefix1(fBaseParams.deterPrefix1);
         deterParam->set_deterPrefix2(fBaseParams.deterPrefix2);
+        deterParam->set_reserved1(0);
+        deterParam->set_reserved2(0);
+        deterParam->set_reserved3(0);
+        deterParam->set_reserved4(0);
     } else if (tndBaseInfo.isTndSwizzle && tndSwizzleParam_ != nullptr) {
         tndSwizzleParam_->set_tndS2BlockPrefixSum(tndBaseInfo.tndS2BlockPrefixSum);
         tndSwizzleParam_->set_tndSwizzleS1S2PrefixSum(tndBaseInfo.tndSwizzleS1S2PrefixSum);
