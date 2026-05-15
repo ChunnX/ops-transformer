@@ -97,7 +97,7 @@ def _run_block_sparse_attention(q, k, v, h, scale, s_q, s_kv, sabi):
         q_input_layout=INPUT_LAYOUT, kv_input_layout=INPUT_LAYOUT,
         mask_type=0, scale_value=float(scale),
         inner_precise=0,                  # fp32 softmax (high precision)
-        block_size=BLOCK_SIZE_Q,
+        block_size=0,                     # paged cache not yet supported by kernel; must be 0
         pre_tokens=2147483647, next_tokens=2147483647,
         softmax_lse_flag=False,
     )

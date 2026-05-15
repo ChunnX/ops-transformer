@@ -95,7 +95,10 @@ def _sabi_to_int8_mask(sabi, B, H, S):
     sabi_i32 = sabi.to(torch.int32)
     valid = (sabi_i32 != _SABI_PAD)
     sabi_long = sabi_i32.long()
-    sabi_safe = torch.where(valid, sabi_long, torch.zeros_like(sabi_long))
+    # Use torch.zeros (not zeros_like) so torch_npu doesn't try to inherit the
+    # source's internal memory format and warn under allow_internel_format=False.
+    zeros = torch.zeros(sabi_long.shape, dtype=sabi_long.dtype, device=sabi_long.device)
+    sabi_safe = torch.where(valid, sabi_long, zeros)
     m = torch.zeros(B, H, q_blocks, kv_blocks, dtype=torch.int32, device=sabi.device)
     m.scatter_add_(3, sabi_safe, valid.to(torch.int32))
     return (m > 0).to(torch.int8).contiguous()
@@ -112,7 +115,8 @@ def _run_kernel(q, k, v, H, scale, S, block_mask):
         num_heads=H, num_key_value_heads=H,
         q_input_layout=INPUT_LAYOUT, kv_input_layout=INPUT_LAYOUT,
         mask_type=0, scale_value=float(scale),
-        inner_precise=0, block_size=BLOCK_SIZE_Q,
+        inner_precise=0, 
+        block_size=0,  # paged cache not yet supported by kernel; must be 0
         pre_tokens=2147483647, next_tokens=2147483647,
         softmax_lse_flag=True,
     )
