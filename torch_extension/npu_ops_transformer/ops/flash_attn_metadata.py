@@ -60,7 +60,7 @@ class FlashAttnMetadataOpBuilder(OpBuilder):
                                           win_right: Optional[int] = None, layout_q: Optional[str] = None,
                                           layout_kv: Optional[str] = None, layout_out: Optional[str] = None):
             metadataSize = _calculate_metadata_size(batch_size, num_heads_kv)
-            return torch.empty((metadataSize,), dtype=torch.int32, device="meta")
+            return torch.empty((metadataSize,), dtype=torch.int32, device="npu")
 
 # Instantiate the builder
 flash_attn_metadata_op_builder = FlashAttnMetadataOpBuilder()

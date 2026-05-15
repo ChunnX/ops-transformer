@@ -182,6 +182,8 @@ struct SLIGradKLLossPRunInfo {
 
 constexpr uint8_t SYNC_GATHER_TO_MM12_FLAG[2] = {9, 10};
 constexpr uint8_t SYNC_MM2_TO_V1_FLAG[2] = {0, 1};
+constexpr uint8_t SYNC_AIV_INNER_FLAG1 = 7;
+constexpr uint8_t SYNC_AIV_INNER_FLAG2 = 11;
 constexpr uint8_t SYNC_V6_TO_C3_FLAG = 8;
 constexpr uint8_t SYNC_C3_TO_V7_FLAG[2] = {3, 4};
 

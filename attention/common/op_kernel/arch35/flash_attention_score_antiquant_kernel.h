@@ -545,7 +545,11 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
                                         this->constInfo.sInnerLoopSize :
                                         tailSInnerLoopSize;
             }
-            runParam.s1LoopTimes = CeilDiv(runParam.actualS1Size, s1BaseSize);
+            if (constInfo.isGqa) {
+                runParam.s1LoopTimes = CeilDiv(runParam.actualS1Size * constInfo.gSize, s1BaseSize);
+            } else {
+                runParam.s1LoopTimes = CeilDiv(runParam.actualS1Size, s1BaseSize);
+            }
         }
         int64_t tempGS1End = lastBN ? (runParam.s1LoopTimes + 2) : runParam.s1LoopTimes;
         for (int64_t gS1Index = gS1StartIdx; gS1Index < tempGS1End; ++gS1Index) {

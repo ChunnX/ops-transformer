@@ -117,7 +117,7 @@ attention:
       - attention/fused_infer_attention_score/op_host/arch22
     test:
       ut: True
-      examples: False
+      examples: True
     options:
       - incre_flash_attention
       - fused_infer_attention_score
@@ -133,7 +133,7 @@ attention:
     ut_cov_exclude:
       - attention/incre_flash_attention/op_kernel
     test:
-      examples: False
+      examples: True
       ut: True
     options:
       - incre_flash_attention
@@ -271,7 +271,7 @@ attention:
       - attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_arch38.h   # arch38 tiling 目前UT框架不支持（会被高级api拦截走不进去tiling，后续打通后开放）
       - attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_arch38.cpp
     test:
-      examples: False
+      examples: True
       ut: True
     options:
       - fused_infer_attention_score
@@ -585,7 +585,7 @@ moe:
     ut_cov_exclude:
       - moe/moe_finalize_routing_v2
     test:
-      examples: False # aclnn_util.h报错
+      examples: True
     options:
       - moe_finalize_routing_v2
       - moe_token_unpermute
@@ -839,7 +839,7 @@ moe:
     options:
       - moe_token_permute_with_routing_map
     test:
-      examples: False
+      examples: True
 
   moe_token_permute_with_routing_map_grad:
     module: True
@@ -1039,6 +1039,8 @@ mc2:
         - mc2/all_gather_matmul/README.md
       ut_cov_exclude:
         - mc2/all_gather_matmul
+      test:
+        examples: False
       options:
         - all_gather_matmul
 
@@ -1229,6 +1231,7 @@ mc2:
         - mc2/matmul_all_reduce/op_kernel
       test:
         ut: False
+        examples: False
       options:
         - matmul_all_reduce
 
@@ -1245,6 +1248,8 @@ mc2:
       ut_cov_exclude:
         - mc2/matmul_all_reduce_add_rms_norm/op_graph
         - mc2/matmul_all_reduce_add_rms_norm/op_kernel
+      test:
+        examples: False
       options:
         - matmul_all_reduce_add_rms_norm
 
@@ -1261,6 +1266,8 @@ mc2:
       ut_cov_exclude:
         - mc2/matmul_reduce_scatter/op_graph
         - mc2/matmul_reduce_scatter/op_kernel
+      test:
+        examples: False
       options:
         - matmul_reduce_scatter
 
@@ -1275,6 +1282,8 @@ mc2:
         - mc2/matmul_allto_all/README.md
       ut_cov_exclude:
         - mc2/matmul_allto_all
+      test:
+        examples: False
       options:
         - matmul_allto_all
 
@@ -1741,7 +1750,7 @@ mhc:
       - mhc/mhc_post/examples
       - mhc/mhc_post/tests
     test:
-      examples: False
+      examples: True
       ut: True
   mhc_pre:
     module: True

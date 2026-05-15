@@ -59,7 +59,7 @@
 
   说明：对每个 Token $i$，根据排序后的路由索引 $\pi(i,k)$ 从聚合后的专家结果中取出对应行，按 `topkWeights` 中的权重逐元素加权累加，得到最终输出 $Y$。
 
-  其中，$X$ 表示参数 `x`，$W$ 表示参数 `topkWeights`，$W_1$ 表示参数 `weight1`，$W_2$ 表示参数 `weight2`，$Y$ 表示参数 `y`，$E_{\text{local}}$ 表示属性 `moeExpertNum / epWorldSize`（每个 Rank 的专家数），$K$ 表示 `topkIds` 的第二维度（top-K 值，取值 6 或 8）。
+  其中，$X$ 表示参数 `x`，$W$ 表示参数 `topkWeights`，$W_1$ 表示参数 `weight1`，$W_2$ 表示参数 `weight2`，$Y$ 表示参数 `y`，$E_{\text{local}}$ 表示属性 `moeExpertNum / epWorldSize`（每个 Rank 的专家数），$K$ 表示 `topkIds` 的第二维度（top-K 值，取值 6 或 8），$N$ 表示 `hiddenDim（weight1.dim1）`。
 
   局部变量说明：
   - $\mathcal{T}_e$：被路由到专家 $e$ 的 Token 索引集合，由 `topkIds` 排序后确定。
@@ -190,7 +190,7 @@
   <tr>
    <td>max_recv_token_num</td>
    <td>可选属性</td>
-   <td>每个 Rank 最大可接收 Token 数，默认值为 0 表示自动计算。默认值按最大值 bs*ep_world_size*min(topK,expertPerRank)。</td>
+   <td>每个 Rank 最大可接收 Token 数。默认值为0。该值为0时，会按最大值 bs*ep_world_size*min(topK,expertPerRank) 预留内存大小；不为0时，将按照输入值大小预留内存，该场景下需用户保证填入值大于等于每个rank最大可接收的 Token 数。</td>
    <td>INT64</td>
    <td></td>
   </tr>
@@ -261,7 +261,7 @@
   - H（x.dim1）仅支持 4096、5120、7168。
   - topK（topkIds.dim1）仅支持 6 或 8。
   - expertPerRank（weight1.dim0）范围 [1, 16]。
-  - N（weight1.dim1）仅支持 1024、2048、3072、4096、7168。
+  - hiddenDim（weight1.dim1）仅支持 1024、2048、3072、4096、7168。
   - epWorldSize 范围 [2, 768]。
   - moeExpertNum 范围 [epWorldSize, 1024]，且 moeExpertNum % epWorldSize == 0。
   - maxRecvTokenNum 范围 [0, BS × epWorldSize × min(topK, expertPerRank)]。
@@ -270,13 +270,13 @@
   - 当前版本仅支持 MXFP 量化模式（dispatchQuantMode = 4），dispatch 阶段使用 MX 逐组量化（group size = 32），量化缩放因子类型为 FLOAT8_E8M0。
   - combineQuantMode 必须为 0，commAlg 必须为空字符串 ""。
   - y 的数据类型与 x 相同。
-  - weight1 的 dim1（N）必须等于 weight2 的 dim2 的二倍，这是因为 SwiGLU 激活需要将中间维度从 N 减半为 N/2。
+  - weight1 的 dim1（hiddenDim）必须等于 weight2 的 dim2 的二倍，这是因为 SwiGLU 激活需要将中间维度从 hiddenDim 减半为 hiddenDim/2。
   - expertPerRank = moeExpertNum / epWorldSize，必须为整数且在 [1, 16] 范围内。
 
 - **MXFP量化场景约束**：
-    - weight1 shape 为 (expertPerRank, N, H)，weight2 shape 为 (expertPerRank, H, N/2)。
-    - weightScales1 shape 为 (expertPerRank, N, CeilDiv(H, 64), 2)，其中 CeilDiv(H, 64) = (H + 63) / 64。
-    - weightScales2 shape 为 (expertPerRank, H, CeilDiv(N/2, 64), 2)，其中 CeilDiv(N/2, 64) = (N/2 + 63) / 64。
+    - weight1 shape 为 (expertPerRank, hiddenDim, H)，weight2 shape 为 (expertPerRank, H, hiddenDim/2)。
+    - weightScales1 shape 为 (expertPerRank, hiddenDim, CeilDiv(H, 64), 2)，其中 CeilDiv(H, 64) = (H + 63) / 64。
+    - weightScales2 shape 为 (expertPerRank, H, CeilDiv(hiddenDim/2, 64), 2)，其中 CeilDiv(hiddenDim/2, 64) = (hiddenDim/2 + 63) / 64。
     - weightScales1 的 dim3 和 weightScales2 的 dim3 必须等于 2。
     - MXFP 场景下，dispatchQuantOutType=23 时 weight1 和 weight2 必须为 FLOAT8_E5M2，dispatchQuantOutType=24 时必须为 FLOAT8_E4M3FN。
 

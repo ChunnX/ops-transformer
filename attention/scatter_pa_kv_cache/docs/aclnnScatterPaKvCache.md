@@ -27,8 +27,15 @@
     valueCache:[num_blocks, num_head * v_head_size // last_dim_v, block_size, last_dim_v]/[num_blocks, num_head, v_head_size // last_dim_v, block_size, last_dim_v]
     slotMapping:[batch * seq_len]
     cacheMode:"PA_NZ"
-    ```  
-    
+
+    last_dim_k = 32 / sizeof(dtypeKey)
+    last_dim_v = 32 / sizeof(dtypeValue)
+    (k_head_size * sizeof(dtypeKey)) % 32 == 0
+    (v_head_size * sizeof(dtypeValue)) % 32 == 0
+    ```
+
+    其中key和value的type可以相同，也可以不同
+
   - 场景二：
 
     ```
@@ -315,6 +322,8 @@ aclnnStatus aclnnScatterPaKvCache(
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
 
     - 输入key、keyCacheRef、value、valueCacheRef不支持FLOAT、UINT8、INT16、UINT16、INT32、UINT32、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E1M2、FLOAT4_E2M1数据类型。
+
+  - <term>Ascend 950PR/Ascend 950DT</term>：仅场景一、场景二scatter_mode为None时支持FLOAT4_E1M2、FLOAT4_E2M1。
 
 - **返回值：**
 
