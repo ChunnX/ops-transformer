@@ -505,7 +505,7 @@ public:
             if (gS1Cur == 0 && s2Cur == 0) {
                 return TASK_DEAL_MODE::DEAL_ZERO;
             }
-            return TASK_DEAL_MODE::SKIP_ZERO;
+            return TASK_DEAL_MODE::DEAL_ZERO;
         }
         // 对paddingSize设置不合理的任务结果置0
         if ((constInfo.isQHasLeftPadding && (actSeqLensQ + constInfo.queryRightPaddingSize > constInfo.s1Size)) ||
@@ -523,12 +523,16 @@ public:
             prevGS1Idx = gS1Cur;
         }
 
-        if (curS2Start < curS2End && s2Cur >= curS2End) {
-            return TASK_DEAL_MODE::S2_END;
+        if (curS2Start >= curS2End) {
+            return TASK_DEAL_MODE::SKIP;
         }
 
-        if (s2Cur < curS2Start || s2Cur >= curS2End) {
-            return TASK_DEAL_MODE::SKIP;
+        if (s2Cur < curS2Start) {
+            return TASK_DEAL_MODE::NOT_START;
+        }
+
+        if (s2Cur >= curS2End) {
+            return TASK_DEAL_MODE::S2_END;
         }
 
         if (SkipForS1OutSplit()) {
@@ -790,27 +794,25 @@ public:
     __aicore__ inline void UpdateAxisInfo(TASK_DEAL_MODE taskDealMode, uint32_t &bN2Cur, uint32_t &gS1Cur,
                                           uint32_t &s2Cur)
     {
-        uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
-        uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
-        uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
-
-        // 当前S2未处理完
-        if (s2Cur + 1 < s2LoopTimes) {
+        if (taskDealMode == TASK_DEAL_MODE::NOT_START) {
+            s2Cur = curS2Start;
+            return;
+        } else if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK) {
             s2Cur++;
             return;
         }
 
-        if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK ||
-            taskDealMode == TASK_DEAL_MODE::S2_END ||
-            taskDealMode == TASK_DEAL_MODE::SKIP_S1OUT) {
-            if (!SkipForS1OutSplit()) {
-                coreGS1Loops++;
-            }
+        // 当前BN2未处理完
+        s2Cur = 0;
+        uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
+        uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
+        if (taskDealMode == TASK_DEAL_MODE::SKIP_S1OUT) {
+            accGS1Loops++;
+        } else if (taskDealMode == TASK_DEAL_MODE::S2_END) {
+            coreGS1Loops++;
             accGS1Loops++;
         }
 
-        // 当前BN2未处理完
-        s2Cur = 0;
         if (gS1Cur + 1 < gS1LoopTimes) {
             gS1Cur++;
             return;

@@ -255,6 +255,7 @@ enum class TASK_DEAL_MODE : uint32_t
     SKIP_S1OUT = 3,
     SKIP_ZERO = 4,
     S2_END = 5,
+    NOT_START = 6,
 };
 
 template <FIA_LAYOUT LAYOUT_T>
