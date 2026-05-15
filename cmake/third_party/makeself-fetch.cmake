@@ -12,9 +12,6 @@ set(MAKESELF_NAME "makeself")
 set(MAKESELF_PATH ${CANN_3RD_LIB_PATH}/makeself)
 set(MAKESELF_VERSION_PKG makeself-release-2.5.0-patch1.tar.gz)
 
-message(STATUS "[DEBUGGING] Inside makeself-fetch.cmake, CANN_3RD_LIB_PATH: ${CANN_3RD_LIB_PATH}")
-
-
 if (POLICY CMP0135)
     cmake_policy(SET CMP0135 NEW)
 endif()
