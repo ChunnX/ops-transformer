@@ -50,7 +50,7 @@ const static int64_t DOUBLE_BUFFER_NUM = 2;
 const static int64_t UB_ALIGN_BYTES_MINUS_ONE = 31;
 const static int64_t UB_RESERVE_SPACE = 1024;
 const static int64_t NUM_TWO = 2;                       // 2 buffers with the same size
-const static int64_t NUM_SIX = 6;                      // 5 buffers with the same size
+const static int64_t NUM_SIX = 6;                      // 6 buffers with the same size
 
 // Tiling keys
 const static uint64_t TILING_KEY_RENORM_SIGMOID = 1;
@@ -71,13 +71,13 @@ const static int64_t DIM_ZERO = 0;
 const static int64_t DIM_ONE = 1;
 
 
-class MoeGatingTopKBackwardTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
+class MoeGatingTopKBackwardTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit MoeGatingTopKBackwardTilingBase(gert::TilingContext *context)
+    explicit MoeGatingTopKBackwardTiling(gert::TilingContext *context)
         : Ops::Transformer::OpTiling::TilingBaseClass(context)
     {
     }
-    ~MoeGatingTopKBackwardTilingBase() override = default;
+    ~MoeGatingTopKBackwardTiling() override = default;
 
 protected:
     bool IsCapable() override
@@ -147,7 +147,7 @@ inline int64_t AlignBytes_(int64_t x)
     return (x + UB_ALIGN_BYTES_MINUS_ONE) & ~UB_ALIGN_BYTES_MINUS_ONE;
 }
 
-ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckInputShape() // fqy
+ge::graphStatus MoeGatingTopKBackwardTiling::CheckInputShape()
 {
     OP_CHECK_IF(CheckXNorm() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "Check XNorm failed"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(CheckGradY() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "Check GradY failed"), return ge::GRAPH_FAILED);
@@ -156,7 +156,7 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckInputShape() // fqy
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckXNorm()
+ge::graphStatus MoeGatingTopKBackwardTiling::CheckXNorm()
 {
     const gert::StorageShape *xNormShapePtr = context_->GetInputShape(X_NORM_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, xNormShapePtr);
@@ -182,7 +182,7 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckXNorm()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckGradY()
+ge::graphStatus MoeGatingTopKBackwardTiling::CheckGradY()
 {
     const gert::StorageShape *gradYShapePtr = context_->GetInputShape(GRAD_Y_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, gradYShapePtr);
@@ -215,7 +215,7 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckGradY()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckExpertIdx()
+ge::graphStatus MoeGatingTopKBackwardTiling::CheckExpertIdx()
 {
     const gert::StorageShape *expertIdxShapePtr = context_->GetInputShape(EXPERT_IDX_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, expertIdxShapePtr);
@@ -245,7 +245,7 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckExpertIdx()
 }
 
 
-ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckAttr() // lc
+ge::graphStatus MoeGatingTopKBackwardTiling::CheckAttr()
 {
     auto attrs = context_->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
@@ -285,12 +285,12 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckAttr() // lc
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeGatingTopKBackwardTilingBase::GetShapeAttrsInfo()
+ge::graphStatus MoeGatingTopKBackwardTiling::GetShapeAttrsInfo()
 {
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeGatingTopKBackwardTilingBase::GetPlatformInfo() // fqy
+ge::graphStatus MoeGatingTopKBackwardTiling::GetPlatformInfo()
 {
     auto platformInfo = context_->GetPlatformInfo();
     if (platformInfo == nullptr) {
@@ -310,7 +310,7 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::GetPlatformInfo() // fqy
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckOutShape() // lc
+ge::graphStatus MoeGatingTopKBackwardTiling::CheckOutShape()
 {
     auto gradXShapePtr = context_->GetOutputShape(GRAD_X_OUTPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, gradXShapePtr);
@@ -321,18 +321,21 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckOutShape() // lc
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(gradXShapePtr->GetOriginShape().GetDim(DIM_ZERO) != tokenCount_,
-                OP_LOGE(context_, "gradX: Must match xNorm on dimension 0, but got %lu vs %ld.", gradXShapePtr->GetOriginShape().GetDim(DIM_ZERO), tokenCount_),
+                OP_LOGE(context_, "gradX: Must match xNorm on dimension 0, but got %lu vs %ld.",
+                        gradXShapePtr->GetOriginShape().GetDim(DIM_ZERO), tokenCount_),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(gradXShapePtr->GetOriginShape().GetDim(DIM_ONE) != expertCount_,
-                OP_LOGE(context_, "gradX: Must match xNorm on dimension 1, but got %lu vs %ld.", gradXShapePtr->GetOriginShape().GetDim(DIM_ONE), expertCount_),
+                OP_LOGE(context_, "gradX: Must match xNorm on dimension 1, but got %lu vs %ld.",
+                        gradXShapePtr->GetOriginShape().GetDim(DIM_ONE), expertCount_),
                 return ge::GRAPH_FAILED);
 
     auto gradXDesc = context_->GetOutputDesc(GRAD_X_OUTPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, gradXDesc);
     auto gradXDtype = gradXDesc->GetDataType();
 
-    OP_CHECK_IF(gradXDtype != gradYDtype_, OP_LOGE(context_, "expertIdx: Mismatched data type. Expected %s, but got %s.",
+    OP_CHECK_IF(gradXDtype != gradYDtype_,
+                OP_LOGE(context_, "expertIdx: Mismatched data type. Expected %s, but got %s.",
                         ge::TypeUtils::DataTypeToSerialString(gradYDtype_).c_str(),
                         ge::TypeUtils::DataTypeToSerialString(gradXDtype).c_str()),
                 return ge::GRAPH_FAILED);
@@ -340,7 +343,7 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckOutShape() // lc
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeGatingTopKBackwardTilingBase::CalcMaxRows()
+ge::graphStatus MoeGatingTopKBackwardTiling::CalcMaxRows()
 {
     int64_t gradYQuePerTokenSpace = k_ * gradYDtypeSize_;
     int64_t indicesQuePerTokenSpace = k_ * SIZE_OF_FLOAT32;
@@ -364,17 +367,18 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CalcMaxRows()
         bufk0PerTokenSpace + bufk1PerTokenSpace + bufn2PerTokenSpace + bufn3PerTokenSpace + bufk4AddPerTokenSpace +
         bufk4IndexPerTokenSpace + bufk4RecipSumPerTokenSpace + bufk4MaskPerTokenSpace + bufsPerTokenSpace;
     int64_t maxRows = available_space / (quePerTokenSpace + bufPerTokenSpace);
-    int64_t kAligned = AlignBytes_(k_ * SIZE_OF_FLOAT32) >> NUM_TWO;  // "x >> NUM_TWO" == "x / SIZE_OF_FLOAT32"
+    int64_t kAligned = AlignBytes_(k_ * SIZE_OF_FLOAT32) >> NUM_TWO;
     while (maxRows > 0) {
         // queSpace: gradYQueSpace; indicesQueSpace; xQueSpace; outQueSpace
         // bufSpace: bufk1Space == bufk4AddSpace == bufk4IndexSpace == bufk4RecipSumSpace == bufk4MaskSpace;
         //           bufn2Space == bufn3Space; bufsSpace
-        int64_t queSpace =
-            DOUBLE_BUFFER_NUM * maxRows * AlignBytes_(gradYQuePerTokenSpace) + DOUBLE_BUFFER_NUM * maxRows * AlignBytes_(indicesQuePerTokenSpace) + DOUBLE_BUFFER_NUM * AlignBytes_(maxRows * xQuePerTokenSpace) +
-            AlignBytes_(maxRows * outQuePerTokenSpace);
-        int64_t bufSpace =
-            NUM_SIX * maxRows * AlignBytes_(bufk1PerTokenSpace) + NUM_TWO * AlignBytes_(maxRows * bufn2PerTokenSpace) +
-            maxRows * AlignBytes_(bufsPerTokenSpace);
+        int64_t queSpace = DOUBLE_BUFFER_NUM * maxRows * AlignBytes_(gradYQuePerTokenSpace) +
+                           DOUBLE_BUFFER_NUM * maxRows * AlignBytes_(indicesQuePerTokenSpace) +
+                           DOUBLE_BUFFER_NUM * AlignBytes_(maxRows * xQuePerTokenSpace) +
+                           AlignBytes_(maxRows * outQuePerTokenSpace);
+        int64_t bufSpace = NUM_SIX * maxRows * AlignBytes_(bufk1PerTokenSpace) +
+                           NUM_TWO * AlignBytes_(maxRows * bufn2PerTokenSpace) +
+                           maxRows * AlignBytes_(bufsPerTokenSpace);
 
         uint32_t reduceSumTmpBuffSpace = 0;
         uint32_t tmpMaxValue = 0;
@@ -384,7 +388,7 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CalcMaxRows()
 
         auto srcShape = ge::Shape({1, kAligned});
         auto platformInfo = context_->GetPlatformInfo();
-        auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo); // ut可能无法获取
+        auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
         uint32_t broadcastTmpBuffSpace = 0;
         AscendC::GetBroadCastMaxMinTmpSize(ascendcPlatform, srcShape, shape, SIZE_OF_FLOAT32, false, tmpMaxValue,
                                            broadcastTmpBuffSpace);
@@ -404,7 +408,7 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CalcMaxRows()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeGatingTopKBackwardTilingBase::SplitRows() // lc
+ge::graphStatus MoeGatingTopKBackwardTiling::SplitRows()
 {
     perCoreRows_ = Ops::Base::CeilDiv(tokenCount_, static_cast<int64_t>(aicoreParams_.numBlocks));
     needCoreNum_ = Ops::Base::CeilDiv(tokenCount_, perCoreRows_);
@@ -426,7 +430,7 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::SplitRows() // lc
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeGatingTopKBackwardTilingBase::DoOpTiling()
+ge::graphStatus MoeGatingTopKBackwardTiling::DoOpTiling()
 {
     auto ret = CheckInputShape();
     if (ret != ge::GRAPH_SUCCESS) {
@@ -470,19 +474,18 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeGatingTopKBackwardTilingBase::DoLibApiTiling()
+ge::graphStatus MoeGatingTopKBackwardTiling::DoLibApiTiling()
 {
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeGatingTopKBackwardTilingBase::GetWorkspaceSize()
+ge::graphStatus MoeGatingTopKBackwardTiling::GetWorkspaceSize()
 {
-    // 计算workspace大小
     workspaceSize_ = DEFAULT_WORKSPACE_SIZE;
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeGatingTopKBackwardTilingBase::PostTiling()
+ge::graphStatus MoeGatingTopKBackwardTiling::PostTiling()
 {
     context_->SetBlockDim(MoeGatingTopKBackwardTilingData_.get_needCoreNum());
     size_t *currentWorkspace = context_->GetWorkspaceSizes(1);
@@ -493,12 +496,12 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-uint64_t MoeGatingTopKBackwardTilingBase::GetTilingKey() const
+uint64_t MoeGatingTopKBackwardTiling::GetTilingKey() const
 {
     return TILING_KEY_RENORM_SIGMOID;
 }
 
-void MoeGatingTopKBackwardTilingBase::DumpTiling()
+void MoeGatingTopKBackwardTiling::DumpTiling()
 {
     OP_LOGD(context_, "ubSize:  %ld", aicoreParams_.ubSize);
     OP_LOGD(context_, "numBlocks:  %ld", aicoreParams_.numBlocks);
@@ -521,5 +524,5 @@ void MoeGatingTopKBackwardTilingBase::DumpTiling()
     return;
 }
 
-REGISTER_OPS_TILING_TEMPLATE(MoeGatingTopKBackward, MoeGatingTopKBackwardTilingBase, 2000);
+REGISTER_OPS_TILING_TEMPLATE(MoeGatingTopKBackward, MoeGatingTopKBackwardTiling, 2000);
 } // namespace optiling

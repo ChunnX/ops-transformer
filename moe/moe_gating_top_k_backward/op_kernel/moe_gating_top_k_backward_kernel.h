@@ -24,18 +24,19 @@ template <typename T>
 class MoeGatingTopKBackwardKernel {
 public:
     __aicore__ inline MoeGatingTopKBackwardKernel(){};
-    __aicore__ inline void Init(GM_ADDR xNorm, GM_ADDR gradY, GM_ADDR expertIdx, GM_ADDR gradX, const MoeGatingTopKBackwardTilingData *tilingData, TPipe *tPipe);
+    __aicore__ inline void Init(GM_ADDR xNorm, GM_ADDR gradY, GM_ADDR expertIdx, GM_ADDR gradX,
+                                const MoeGatingTopKBackwardTilingData *tilingData, TPipe *tPipe);
     __aicore__ inline void Process();
 
 private:
-    __aicore__ inline void GetGatherOffsetIndex(); // fqy
-    __aicore__ inline void CopyInGradY(int64_t loopIdx); // lc
-    __aicore__ inline void CopyInXNorm(int64_t loopIdx); // fqy
-    __aicore__ inline void CopyInExpertIdx(int64_t loopIdx); // fqy
-    __aicore__ inline void Sigmoid(); // fqy
-    __aicore__ inline void GetGradXNorm(); // lc
-    __aicore__ inline void GetGradX(); // lc
-    __aicore__ inline void CopyOut(int64_t loopIdx);  // lc
+    __aicore__ inline void GetGatherOffsetIndex();
+    __aicore__ inline void CopyInGradY(int64_t loopIdx);
+    __aicore__ inline void CopyInXNorm(int64_t loopIdx);
+    __aicore__ inline void CopyInExpertIdx(int64_t loopIdx);
+    __aicore__ inline void Sigmoid();
+    __aicore__ inline void GetGradXNorm();
+    __aicore__ inline void GetGradX();
+    __aicore__ inline void CopyOut(int64_t loopIdx);
 
 private:
     TPipe *pipe_;
@@ -72,26 +73,22 @@ private:
 
     int64_t elementCountPerLoop_ = 0;
     int64_t curRowsByKAlign_ = 0;
-    int64_t kAlign_ = 0; // fp32的k 32字节对齐后的元素个数
+    int64_t kAlign_ = 0;   // fp32的k 32字节对齐后的元素个数
     int64_t kAlign16_ = 0; // 16位的k 32字节对齐后的元素个数
-    // int64_t blockIdx_ = 0;
-    // int64_t perCoreRowCount_ = 0;
-    // int64_t curCoreRowCount_ = 0;
-    // int64_t expertCount_ = 0;
-
     const MoeGatingTopKBackwardTilingData *tilingData_;
 };
 
 template <typename T>
-__aicore__ inline void MoeGatingTopKBackwardKernel<T>::Init(GM_ADDR xNorm, GM_ADDR gradY, GM_ADDR expertIdx, GM_ADDR gradX, const MoeGatingTopKBackwardTilingData *tilingData, TPipe *tPipe)
+__aicore__ inline void
+MoeGatingTopKBackwardKernel<T>::Init(GM_ADDR xNorm, GM_ADDR gradY, GM_ADDR expertIdx, GM_ADDR gradX,
+                                     const MoeGatingTopKBackwardTilingData *tilingData, TPipe *tPipe)
 {
     tilingData_ = tilingData;
     pipe_ = tPipe;
     blockIdx_ = GetBlockIdx();
     kAlign_ = Align(tilingData_->k, SIZE_OF_INT32);
     kAlign16_ = Align(tilingData_->k, NUM_TWO);
-    // 获得当前核所需要的处理的loop次数、尾loop搬入的token数。
-    if (blockIdx_ ==  tilingData_->needCoreNum - 1) {
+    if (blockIdx_ == tilingData_->needCoreNum - 1) {
         loopTimes_ = tilingData_->lastLoopTimes;
         tailRows_ = tilingData_->lastTailRows;
     } else {
@@ -106,11 +103,13 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::Init(GM_ADDR xNorm, GM_AD
     gradXGm_.SetGlobalBuffer((__gm__ T *)gradX + tilingData_->perCoreRows * tilingData_->expertCount * blockIdx_);
 
     // init que
-    pipe_->InitBuffer(gradYQue_, NUM_TWO, tilingData_->baseRows * AlignBytes(tilingData_->k, tilingData_->gradYDtypeSize));
+    pipe_->InitBuffer(gradYQue_, NUM_TWO,
+                      tilingData_->baseRows * AlignBytes(tilingData_->k, tilingData_->gradYDtypeSize));
     pipe_->InitBuffer(indicesQue_, NUM_TWO, tilingData_->baseRows * AlignBytes(tilingData_->k, SIZE_OF_INT32));
     pipe_->InitBuffer(xQue_, NUM_TWO, AlignBytes(tilingData_->baseRows * tilingData_->expertCount, SIZE_OF_FLOAT32));
-    pipe_->InitBuffer(outQue_, NUM_ONE, AlignBytes(tilingData_->baseRows * tilingData_->expertCount, tilingData_->gradYDtypeSize));
-    
+    pipe_->InitBuffer(outQue_, NUM_ONE,
+                      AlignBytes(tilingData_->baseRows * tilingData_->expertCount, tilingData_->gradYDtypeSize));
+
     pipe_->InitBuffer(bufk4Mask_, tilingData_->baseRows * AlignBytes(tilingData_->k, SIZE_OF_FLOAT32));
     pipe_->InitBuffer(bufk0_, tilingData_->baseRows * AlignBytes(tilingData_->k, SIZE_OF_FLOAT32));
     pipe_->InitBuffer(bufk1_, tilingData_->baseRows * AlignBytes(tilingData_->k, SIZE_OF_FLOAT32));
@@ -120,24 +119,23 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::Init(GM_ADDR xNorm, GM_AD
     pipe_->InitBuffer(bufn2_, AlignBytes(tilingData_->baseRows * tilingData_->expertCount, SIZE_OF_FLOAT32));
     pipe_->InitBuffer(bufn3_, AlignBytes(tilingData_->baseRows * tilingData_->expertCount, SIZE_OF_FLOAT32));
     pipe_->InitBuffer(bufs_, AlignBytes(tilingData_->baseRows * 1, SIZE_OF_FLOAT32));
-    
 }
 
 template <typename T>
 __aicore__ inline void MoeGatingTopKBackwardKernel<T>::Process()
 {
-    GetGatherOffsetIndex(); // fqy
-    for(int64_t loopIdx = 0; loopIdx < loopTimes_; loopIdx++) {
+    GetGatherOffsetIndex();
+    for (int64_t loopIdx = 0; loopIdx < loopTimes_; loopIdx++) {
         curRows_ = loopIdx == loopTimes_ - 1 ? tailRows_ : tilingData_->baseRows;
-        elementCountPerLoop_ = curRows_ * tilingData_->expertCount; // curRows_ * n api count的数量
+        elementCountPerLoop_ = curRows_ * tilingData_->expertCount;
         curRowsByKAlign_ = curRows_ * kAlign_;
-        CopyInGradY(loopIdx); // lc
-        CopyInXNorm(loopIdx); // fqy
-        CopyInExpertIdx(loopIdx); // fqy
-        Sigmoid(); // fqy
-        GetGradXNorm(); // lc
-        GetGradX(); // lc
-        CopyOut(loopIdx);  // lc
+        CopyInGradY(loopIdx);
+        CopyInXNorm(loopIdx);
+        CopyInExpertIdx(loopIdx);
+        Sigmoid();
+        GetGradXNorm();
+        GetGradX();
+        CopyOut(loopIdx);
     }
 }
 
@@ -155,13 +153,15 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::GetGatherOffsetIndex()
     PipeBarrier<PIPE_V>();
     uint32_t dstShape[NUM_TWO] = {static_cast<uint32_t>(tilingData_->baseRows), static_cast<uint32_t>(kAlign_)};
     uint32_t srcShape[NUM_TWO] = {1, static_cast<uint32_t>(kAlign_)};
-    BroadCast<float, NUM_TWO, 0>(bufk4Mask, bufk4Tmp, dstShape, srcShape); // k非32字节对齐的时候会出现
+    BroadCast<float, NUM_TWO, 0>(bufk4Mask, bufk4Tmp, dstShape, srcShape);
 
-    Arange(bufk1Fp32, static_cast<float>(0), static_cast<float>(tilingData_->expertCount), static_cast<int32_t>(tilingData_->baseRows));
+    Arange(bufk1Fp32, static_cast<float>(0), static_cast<float>(tilingData_->expertCount),
+           static_cast<int32_t>(tilingData_->baseRows));
     SetWaitFlag<HardEvent::S_V>(HardEvent::S_V); // Arange中存在S和V，不同count结束的操作流不一样
     PipeBarrier<PIPE_V>();
     uint32_t srcShapeAdd[NUM_TWO] = {static_cast<uint32_t>(tilingData_->baseRows), 1};
-    BroadCast<float, NUM_TWO, 1>(bufk4AddFp32, bufk1Fp32, dstShape, srcShapeAdd); // broadcast不支持int32类型，因此先生成fp32再转换为int32
+    BroadCast<float, NUM_TWO, 1>(bufk4AddFp32, bufk1Fp32, dstShape,
+                                 srcShapeAdd); // broadcast不支持int32类型，因此先生成fp32再转换为int32
     PipeBarrier<PIPE_V>();
     LocalTensor<int32_t> bufk4Add = bufk4AddFp32.ReinterpretCast<int32_t>();
     Cast(bufk4Add, bufk4AddFp32, RoundMode::CAST_RINT, tilingData_->baseRows * kAlign_);
@@ -185,11 +185,10 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::CopyInGradY(int64_t loopI
         Muls(bufk0, gradYLocal_, tilingData_->routedScalingFactor, curRowsByKAlign_);
         PipeBarrier<PIPE_V>();
     } else {
-        if(kAlign16_ == kAlign_) {
+        if (kAlign16_ == kAlign_) {
             Cast(bufk0, gradYLocal_, RoundMode::CAST_NONE, curRowsByKAlign_);
-        }
-        else {
-            for(int64_t i = 0; i < curRows_; i++) {
+        } else {
+            for (int64_t i = 0; i < curRows_; i++) {
                 Cast(bufk0[i * kAlign_], gradYLocal_[i * kAlign16_], RoundMode::CAST_NONE, kAlign_);
             }
         }
@@ -210,7 +209,8 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::CopyInXNorm(int64_t loopI
     copyParams.srcStride = static_cast<uint32_t>(0);
     copyParams.dstStride = static_cast<uint32_t>(0);
     DataCopyPadExtParams<float> padParams{false, 0, 0, 0};
-    DataCopyPad(xNormLocal_, xNormGm_[loopIdx * tilingData_->baseRows * tilingData_->expertCount], copyParams, padParams);
+    DataCopyPad(xNormLocal_, xNormGm_[loopIdx * tilingData_->baseRows * tilingData_->expertCount], copyParams,
+                padParams);
 
     xQue_.EnQue(xNormLocal_);
     xNormLocal_ = xQue_.DeQue<float>();
@@ -242,7 +242,7 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::Sigmoid()
     LocalTensor<float> bufs = bufs_.Get<float>();
     LocalTensor<float> bufk4RecipSumW = bufk4RecipSumW_.Get<float>();
     LocalTensor<float> bufk4Mask = bufk4Mask_.Get<float>();
-    
+
     Add(bufk4Index, expertIdxLocal_, bufk4Add, curRowsByKAlign_);
     indicesQue_.FreeTensor(expertIdxLocal_);
     PipeBarrier<PIPE_V>();
@@ -280,7 +280,7 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::GetGradXNorm()
     LocalTensor<float> bufk4Mask = bufk4Mask_.Get<float>();
     Mul(bufk1, bufk1, bufk4Mask, curRowsByKAlign_);
     PipeBarrier<PIPE_V>();
-    
+
     uint32_t reduceSumShape[NUM_TWO] = {static_cast<uint32_t>(curRows_), static_cast<uint32_t>(kAlign_)};
     ReduceSum<float, Pattern::Reduce::AR, true>(bufs, bufk1, reduceSumShape, true);
 
@@ -309,7 +309,7 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::GetGradXNorm()
 
 template <typename T>
 __aicore__ inline void MoeGatingTopKBackwardKernel<T>::GetGradX()
-{   
+{
     LocalTensor<float> bufn2 = bufn2_.Get<float>();
     Duplicate<float>(bufn2, 1.0f, elementCountPerLoop_);
     PipeBarrier<PIPE_V>();
@@ -326,8 +326,7 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::GetGradX()
         Mul(bufn2, bufn2, bufn3, elementCountPerLoop_);
         PipeBarrier<PIPE_V>();
         Cast(gradXOutTensor_, bufn2, RoundMode::CAST_RINT, elementCountPerLoop_);
-    }
-    else {
+    } else {
         Mul(gradXOutTensor_, bufn2, bufn3, elementCountPerLoop_);
     }
     outQue_.EnQue(gradXOutTensor_);

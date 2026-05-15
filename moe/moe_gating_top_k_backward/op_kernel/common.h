@@ -42,7 +42,6 @@ __aicore__ inline int64_t Ceil(int64_t a, int64_t b)
 __aicore__ inline int64_t AlignBytes(int64_t elementNum, int64_t bytes)
 {
     return (elementNum * bytes + BLOCK_BYTES_MINUS_ONE) & ~BLOCK_BYTES_MINUS_ONE;
-    //return (elementNum * bytes + BLOCK_BYTES - 1) / BLOCK_BYTES * BLOCK_BYTES;
 }
 
 __aicore__ inline int64_t Align(int64_t elementNum, int64_t bytes)
@@ -51,7 +50,6 @@ __aicore__ inline int64_t Align(int64_t elementNum, int64_t bytes)
         return 0;
     }
     return AlignBytes(elementNum, bytes) / bytes;
-    //return (elementNum * bytes + BLOCK_BYTES - 1) / BLOCK_BYTES * BLOCK_BYTES / bytes;
 }
 
 template <typename T>
