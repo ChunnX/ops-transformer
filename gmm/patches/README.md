@@ -36,7 +36,7 @@
 | EZ0039 | `OP_LOGE_FOR_MEMCPY_FAILED` | memcpy失败（兼容宏） | - |
 | EZ0040 | `OP_LOGE_FOR_CUBE_INNER_ERROR` | Cube内部错误 | opName, reason |
 | EZ0041 | `OP_LOGE_FOR_FUNCTION_FAILED` | 函数执行失败 | opName, functionName |
-| EZ0042 | `OP_LOGE_FOR_INTERNAL_ERROR` | 内部检查失败 | opName, reason |
+| EZ0042 | `OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED` | 内部检查失败 | opName, reason |
 | EZ0043 | `OP_LOGE_FOR_PLATFORM_ERROR` | 平台错误 | opName, reason |
 
 ## 兼容性宏
@@ -44,11 +44,11 @@
 为了兼容旧代码，提供了以下兼容性宏：
 
 ```cpp
-#define OP_LOGE_FOR_CHECK_FAILED(opName, reason) OP_LOGE_FOR_INTERNAL_ERROR(opName, reason)
-#define OP_LOGE_FOR_TILING_FAIL(opName, reason) OP_LOGE_FOR_TILING_FAILED(opName, reason)
-#define OP_LOGE_FOR_VALIDATION_FAIL(opName, reason) OP_LOGE_FOR_VALIDATION_FAILED(opName, reason)
-#define OP_LOGE_FOR_MEMCPY_FAIL(opName, ret) OP_LOGE_FOR_MEMORY_OP_FAILED(opName, ret)
-#define OP_LOGE_FOR_CUBE_INNER_ERR(opName, reason) OP_LOGE_FOR_CUBE_INNER_ERROR(opName, reason)
+#define OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(opName, reason) OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(opName, reason)
+#define OP_LOGE_FOR_TILING_FAILED(opName, reason) OP_LOGE_FOR_TILING_FAILED(opName, reason)
+#define OP_LOGE_FOR_VALIDATION_FAILED(opName, reason) OP_LOGE_FOR_VALIDATION_FAILED(opName, reason)
+#define OP_LOGE_FOR_MEMORY_OP_FAILED(opName, ret) OP_LOGE_FOR_MEMORY_OP_FAILED(opName, ret)
+#define OP_LOGE_FOR_CUBE_INNER_ERROR(opName, reason) OP_LOGE_FOR_CUBE_INNER_ERROR(opName, reason)
 ```
 
 ## 整改统计

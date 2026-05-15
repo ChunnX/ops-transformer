@@ -43,7 +43,7 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckCoreNum(const gert::TilingContext
 
 bool GroupedWeightQuantBatchMatmulTiling::SetTiling(gert::TilingContext *context)
 {
-    OP_CHECK_IF(!AnalyzeAttr(context), OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(), "Invalid attr param"),
+    OP_CHECK_IF(!AnalyzeAttr(context), OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(), "Invalid attr param"),
                 return false);
     OP_CHECK_IF(!CalcResplitTiling(context),
                 OP_LOGE_FOR_TILING_FAILED(context->GetNodeName(), "Unable to calculate resplit-tiling"), return false);
@@ -55,7 +55,7 @@ bool GroupedWeightQuantBatchMatmulTiling::SetTiling(gert::TilingContext *context
     SetMatMulTiling();
     SetTilingKey(context);
     OP_CHECK_IF(!SetCustomParam(context),
-                OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(), "Unable to set custom param"), return false);
+                OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(), "Unable to set custom param"), return false);
     PrintTilingResult(context);
     return true;
 }
@@ -64,10 +64,10 @@ bool GroupedWeightQuantBatchMatmulTiling::SetShapeList(const gert::TilingContext
 {
     if (isSingleX_ && isSingleWeight_ && isSingleY_) {
         OP_CHECK_IF(!SetShapeListSplitMSingleXSingleWeightSingleY(context),
-                    OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(), "Unable to get shape list"), return false);
+                    OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(), "Unable to get shape list"), return false);
     } else if (!isSingleX_ && !isSingleWeight_ && !isSingleY_) {
         OP_CHECK_IF(!SetShapeListMultiXMultiWeightMultiY(context),
-                    OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(), "Unable to get MMM shape list"), return false);
+                    OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(), "Unable to get MMM shape list"), return false);
     } else {
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context->GetNodeName(), "groupType, isSingleX, isSingleWeight, isSingleY",
                                                std::to_string(groupType_) + ", " + (isSingleX_ ? "true" : "false") + ", " +
@@ -233,34 +233,34 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckTensorDimSingleXSingleWeightSingl
     }
     if (IsA16W4ND()) {
         OP_CHECK_IF(!CheckTensorDimEqualTarget(context, ANTIQUANT_SCALE_IDX, idx, 2, "antiquantScale"),
-                    OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(),
+                    OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(),
                                                "When x-weight is bf16/fp16-int4/int32 and grouptype is 0, the "
                                                "dimension of antiquantScale does not match the expected value"),
                     return false);
         if (hasBias_) {
             OP_CHECK_IF(!CheckTensorDimEqualTarget(context, BIAS_IDX, idx, 2, "bias"),
-                        OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(),
+                        OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(),
                                                    "When x-weight is bf16/fp16-int4/int32 and grouptype is 0, the "
                                                    "dimension of bias does not match the expected value"),
                         return false);
         }
     } else {
         OP_CHECK_IF(!CheckTensorDimEqualTarget(context, ANTIQUANT_SCALE_IDX, idx, 4, "antiquantScale"),
-                    OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(),
+                    OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(),
                                                "When x-weight is float8_e8m0-float4_e2m1 and grouptype is 0, the "
                                                "dimension of antiquantScale does not match the expected value"),
                     return false);
     }
     if (hasBias_) {
         OP_CHECK_IF(!CheckTensorDimEqualTarget(context, BIAS_IDX, idx, 2, "bias"),
-                    OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(),
+                    OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(),
                                                "When x-weight is bf16/fp16-int4/int32 and grouptype is 0, the "
                                                "dimension of bias does not match the expected value"),
                     return false);
     }
     if (hasAntiquantOffset_) {
         OP_CHECK_IF(!CheckTensorDimEqualTarget(context, ANTIQUANT_OFFSET_IDX, idx, 2, "antiquantOffset"),
-                    OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(),
+                    OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(),
                                                "When x-weight is bf16/fp16-int4/int32 and grouptype is 0, the "
                                                "dimension of antiquantOffset does not match the expected value"),
                     return false);
@@ -305,11 +305,11 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckTensorDim(const gert::TilingConte
     if (groupType_ == static_cast<int64_t>(GroupType::SPLIT_M)) {
         OP_CHECK_IF(
             !CheckTensorDimSingleXSingleWeightSingleY(context, idx),
-            OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(), "CheckTensorDimSingleXSingleWeightSingleY failed"),
+            OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(), "CheckTensorDimSingleXSingleWeightSingleY failed"),
             return false);
     } else {
         OP_CHECK_IF(!CheckTensorDimMultiXMultiWeightMultiY(context, idx),
-                    OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(), "CheckTensorDimMultiXMultiWeightMultiY failed"),
+                    OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(), "CheckTensorDimMultiXMultiWeightMultiY failed"),
                     return false);
     }
     return true;
@@ -407,43 +407,43 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckEveryTensor(const gert::TilingCon
 {
     for (size_t i = 0; i < numX_; i++) {
         OP_CHECK_IF(!CheckNotNull(context, i),
-                    OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(), "CheckTensorNotNull failed"), return false);
+                    OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(), "CheckTensorNotNull failed"), return false);
         OP_CHECK_IF(!CheckTensorDim(context, i),
-                    OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(), "CheckTensorDim failed"), return false);
+                    OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(), "CheckTensorDim failed"), return false);
         OP_CHECK_IF(!CheckDimValue(context, i),
-                    OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(), "CheckDimValue failed"), return false);
+                    OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(), "CheckDimValue failed"), return false);
         OP_CHECK_IF(!CheckXAndWeightFormat(context, i),
-                    OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(), "Check X And Weight Format failed"),
+                    OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(), "Check X And Weight Format failed"),
                     return false);
         OP_CHECK_IF(!CheckTensorDtype(context, X_IDX, i, xDType_, "x"),
-                    OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(), "Check Tensor x Dtype failed"), return false);
+                    OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(), "Check Tensor x Dtype failed"), return false);
         OP_CHECK_IF(!CheckTensorDtype(context, WEIGHT_IDX, i, weightDtype_, "weight"),
-                    OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(), "Check Tensor weight Dtype failed"),
+                    OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(), "Check Tensor weight Dtype failed"),
                     return false);
         OP_CHECK_IF(!CheckTensorDtype(context, ANTIQUANT_SCALE_IDX, i, antiquantScaleDtype_, "antiquantScale"),
-                    OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(), "Check Tensor antiquantScale Dtype failed"),
+                    OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(), "Check Tensor antiquantScale Dtype failed"),
                     return false);
         OP_CHECK_IF(!CheckTensorShape(context, ANTIQUANT_SCALE_IDX, i, "antiquantScale"),
-                    OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(), "Check antiquantScale tensor shape failed"),
+                    OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(), "Check antiquantScale tensor shape failed"),
                     return false);
         if (hasAntiquantOffset_) {
             OP_CHECK_IF(!CheckTensorDtype(context, ANTIQUANT_OFFSET_IDX, i, antiquantOffsetDtype_, "antiquantOffset"),
-                        OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(), "Check Tensor antiquantOffset Dtype failed"),
+                        OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(), "Check Tensor antiquantOffset Dtype failed"),
                         return false);
             OP_CHECK_IF(!CheckTensorShape(context, ANTIQUANT_OFFSET_IDX, i, "antiquantOffset"),
-                        OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(), "Check antiquantOffset tensor shape failed"),
+                        OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(), "Check antiquantOffset tensor shape failed"),
                         return false);
         }
         if (hasBias_) {
             OP_CHECK_IF(!CheckTensorDtype(context, BIAS_IDX, i, biasDtype_, "bias"),
-                        OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(), "Check Tensor bias Dtype failed"),
+                        OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(), "Check Tensor bias Dtype failed"),
                         return false);
             OP_CHECK_IF(!CheckTensorShape(context, BIAS_IDX, i, "bias"),
-                        OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(), "Check bias tensor shape failed"),
+                        OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(), "Check bias tensor shape failed"),
                         return false);
         }
         OP_CHECK_IF(!CheckWeightInnerAxisEven(context, i),
-                    OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(), "CheckWeightInnerAxisEven failed"),
+                    OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(), "CheckWeightInnerAxisEven failed"),
                     return false);
     }
     return true;
@@ -503,7 +503,7 @@ bool GroupedWeightQuantBatchMatmulTiling::AnalyzeAttr(const gert::TilingContext 
     isSingleY_ = (splitItem_ == 2 || splitItem_ == 3);
     GetNumOfInputs(context);
     // 获取weight format和各参数类型
-    OP_CHECK_IF(!AnalyzeInput(context), OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(), "Invalid Input param"),
+    OP_CHECK_IF(!AnalyzeInput(context), OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(), "Invalid Input param"),
                 return false);
 
     // 参数校验
@@ -514,32 +514,32 @@ bool GroupedWeightQuantBatchMatmulTiling::AnalyzeAttr(const gert::TilingContext 
                                                "aicNum and aivNum must be greater than 0 and ratio must be 1:2"),
         return false);
     OP_CHECK_IF(!CheckUnsupportDataFlow(context),
-                OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(), "Input data contains unsupported dtype or format"),
+                OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(), "Input data contains unsupported dtype or format"),
                 return false);
     OP_CHECK_IF(!CheckTransposeStatus(context),
-                OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(), "CheckTransposeStatus failed"), return false);
+                OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(), "CheckTransposeStatus failed"), return false);
     OP_CHECK_IF(!CheckGroupTypeAndSplitItem(context),
-                OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(), "CheckParam failed"), return false);
+                OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(), "CheckParam failed"), return false);
     OP_CHECK_IF(!CheckTensorListSize(context),
-                OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(), "CheckTensorListSize failed"), return false);
+                OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(), "CheckTensorListSize failed"), return false);
     OP_CHECK_IF(!CheckEmptyTensor(context),
-                OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(), "CheckEmptyTensor failed"), return false);
+                OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(), "CheckEmptyTensor failed"), return false);
     OP_CHECK_IF(!CheckAntiQuantDtype(context),
-                OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(), "CheckAntiQuantDtype failed"), return false);
-    OP_CHECK_IF(!CheckBiasDtype(context), OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(), "CheckBiasDtype failed"),
+                OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(), "CheckAntiQuantDtype failed"), return false);
+    OP_CHECK_IF(!CheckBiasDtype(context), OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(), "CheckBiasDtype failed"),
                 return false);
-    OP_CHECK_IF(!CheckGroupList(context), OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(), "CheckGroupList failed"),
+    OP_CHECK_IF(!CheckGroupList(context), OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(), "CheckGroupList failed"),
                 return false);
     OP_CHECK_IF(!CheckEveryTensor(context),
-                OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(), "CheckEveryTensor failed"), return false);
+                OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(), "CheckEveryTensor failed"), return false);
 
     // 参数设置
-    OP_CHECK_IF(!SetShapeList(context), OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(), "SetShapeList failed"),
+    OP_CHECK_IF(!SetShapeList(context), OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(), "SetShapeList failed"),
                 return false);
     OP_CHECK_IF(!SetAntiquantGroupSize(context),
-                OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(), "Unable to get antiquant groupSize"), return false);
+                OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(), "Unable to get antiquant groupSize"), return false);
     OP_CHECK_IF(!CheckPerTokenScale(context),
-                OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(), "CheckPerTokenScale failed"), return false);
+                OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(), "CheckPerTokenScale failed"), return false);
     PrintInputParam(context);
     return true;
 }
@@ -614,7 +614,7 @@ bool GroupedWeightQuantBatchMatmulTiling::CalcResplitTiling(const gert::TilingCo
 
     uint64_t c0Size = 0;
     OP_CHECK_IF(!GetC0Size(context, xDType_, c0Size),
-                OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(), "Get C0 size failed"), return false);
+                OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(), "Get C0 size failed"), return false);
     OP_CHECK_IF((weightNzFlag_ && !transB_ && nSize_ % c0Size > 0),
                 OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
                     context->GetNodeName(), "C0_size, N_size", std::to_string(c0Size) + ", " + std::to_string(nSize_),
@@ -637,7 +637,7 @@ bool GroupedWeightQuantBatchMatmulTiling::CalcResplitTiling(const gert::TilingCo
         CalcNoFullNumBlocksResplitTiling(c0Size);
     }
     OP_CHECK_IF(!CheckResplitTilingResult(context),
-                OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(), "Invalid resplit tiling result"), return false);
+                OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(), "Invalid resplit tiling result"), return false);
     return true;
 }
 
@@ -925,18 +925,18 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckGroupTypeAndSplitItem(const gert:
         OP_CHECK_IF(
             (groupType_ != static_cast<int64_t>(GroupType::NO_SPLIT)) &&
                 (groupType_ != static_cast<int64_t>(GroupType::SPLIT_M)),
-            OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(),
+            OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(),
                                        "when x-weight is bf16/fp16-int32/int4, grouptype only supports -1 or 0"),
             return false);
         if (groupType_ == static_cast<int64_t>(GroupType::NO_SPLIT)) {
             OP_CHECK_IF((splitItem_ != 0 && splitItem_ != 1),
-                        OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(),
+                        OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(),
                                                    "When grouptype is -1. splititem can only be 0 or 1"),
                         return false);
         } else {
             OP_CHECK_IF(
                 (splitItem_ != 2 && splitItem_ != 3),
-                OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(), "When grouptype is 0. splititem can only be 2 or 3"),
+                OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(), "When grouptype is 0. splititem can only be 2 or 3"),
                 return false);
         }
     }
@@ -945,7 +945,7 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckGroupTypeAndSplitItem(const gert:
 
 bool GroupedWeightQuantBatchMatmulTiling::CheckTransposeStatus(const gert::TilingContext *context) const
 {
-    OP_CHECK_IF(transA_, OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(), "Transposed A is not supported"),
+    OP_CHECK_IF(transA_, OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(), "Transposed A is not supported"),
                 return false);
     return true;
 }
@@ -1145,7 +1145,7 @@ bool GroupedWeightQuantBatchMatmulTiling::SetAntiquantGroupSize(const gert::Tili
         groupSize_ = groupNum > 0 ? kSize_ / static_cast<uint64_t>(groupNum) : 0;
     }
 
-    OP_CHECK_IF(!CheckGroupSize(context), OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(), "CheckGroupSize failed"),
+    OP_CHECK_IF(!CheckGroupSize(context), OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(context->GetNodeName(), "CheckGroupSize failed"),
                 return false);
 
     return true;

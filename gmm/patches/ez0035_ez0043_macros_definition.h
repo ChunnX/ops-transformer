@@ -145,7 +145,7 @@
  * reason:string - Check failure reason
  * errMessage: Op [opName] internal check failed. Reason: [reason].
  */
-#define OP_LOGE_FOR_INTERNAL_ERROR(opName, reason)                                                      \
+#define OP_LOGE_FOR_INTERNAL_FUNCTION_FAILED(opName, reason)                                                      \
     do {                                                                                                \
         std::string _safe_opName_(opName);                                                              \
         std::string _safe_reason_(reason);                                                              \
@@ -174,12 +174,5 @@
         const std::vector<const char*> msgvalue = {_safe_opName_.c_str(), _safe_reason_.c_str()}; \
         REPORT_PREDEFINED_ERR_MSG("EZ0043", msgKey, msgvalue);                                    \
     } while (0)
-
-// Legacy compatibility macros (deprecated)
-#define OP_LOGE_FOR_CHECK_FAILED(opName, reason) OP_LOGE_FOR_INTERNAL_ERROR(opName, reason)
-#define OP_LOGE_FOR_TILING_FAIL(opName, reason) OP_LOGE_FOR_TILING_FAILED(opName, reason)
-#define OP_LOGE_FOR_VALIDATION_FAIL(opName, reason) OP_LOGE_FOR_VALIDATION_FAILED(opName, reason)
-#define OP_LOGE_FOR_MEMCPY_FAIL(opName, ret) OP_LOGE_FOR_MEMORY_OP_FAILED(opName, ret)
-#define OP_LOGE_FOR_CUBE_INNER_ERR(opName, reason) OP_LOGE_FOR_CUBE_INNER_ERROR(opName, reason)
 
 #endif // EZ0035_EZ0043_MACROS_H
