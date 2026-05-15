@@ -4,6 +4,7 @@
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
+|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
 |<term>Atlas A3 推理系列产品</term>|      ×     |
 |<term>Atlas A3 训练系列产品</term>|      √     |
 |<term>Atlas A2 训练系列产品</term>|      √     |
@@ -133,7 +134,7 @@ aclnnStatus aclnnLightningIndexerGrad(
       <td>输入</td>
       <td>公式中的sparseIndices。</td>
       <td>shape支持[B, S1, K]/[T1, K]。</td>
-      <td>INT64</td>
+      <td>INT32</td>
       <td>ND</td>
       <td>2-3</td>
       <td>√</td>
@@ -153,7 +154,7 @@ aclnnStatus aclnnLightningIndexerGrad(
       <td>输入</td>
       <td>表示query每个Batch S的累加和长度。</td>
       <td>TND排布时需要输入，其余场景输入nullptr。</td>
-      <td>INT64</td>
+      <td>INT32</td>
       <td>ND</td>
       <td>1</td>
       <td>√</td>
@@ -163,7 +164,7 @@ aclnnStatus aclnnLightningIndexerGrad(
       <td>输入</td>
       <td>表示key每个Batch S的累加和长度。</td>
       <td>TND排布时需要输入，其余场景输入nullptr。</td>
-      <td>INT64</td>
+      <td>INT32</td>
       <td>ND</td>
       <td>1</td>
       <td>√</td>
