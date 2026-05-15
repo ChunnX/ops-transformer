@@ -13,10 +13,10 @@
 
 ## 功能说明
 
-- 算子功能：该算子为AICPU算子，是aclnnLightningIndexerV2算子的前置算子。根据aclnnLightningIndexerV2算子的输入信息，计算并输出负载均衡结果。输出结果可以作为aclnnLightningIndexerV2算子的输入，减少aclnnLightningIndexerV2算子的执行耗时。
+- 接口功能：该接口为AICPU算子接口，是aclnnLightningIndexerV2算子的前置算子接口。根据aclnnLightningIndexerV2算子接口的输入信息，计算并输出负载均衡结果。输出结果可以作为aclnnLightningIndexerV2算子接口的输入，减少aclnnLightningIndexerV2算子接口的执行耗时。
 
   **该算子不建议单独使用，建议与aclnnLightningIndexerV2算子配合使用，形成完整的工作流。**
-    1. 接受aclnnLightningIndexerV2算子输入数据shape信息，包含batchSize，qSeqlen，kSeqlen, mask。通过对输入分块并模拟计算耗时，均匀分配分块到可用核上，以降低aclnnLightningIndexerV2算子的整体计算耗时，并提高硬件利用率。
+    1. 接受aclnnLightningIndexerV2算子接口输入数据shape信息，包含batchSize、qSeqlen、kSeqlen、mask。通过对输入分块并模拟计算耗时，均匀分配分块到可用核上，以降低aclnnLightningIndexerV2算子的整体计算耗时，并提高硬件利用率。
     2. 分配结果输出后，后续作为输入供aclnnLightningIndexerV2算子使用。
     3. 分配结果包含每个AIC核基本块的起始点和终止点，已经每个AIV核的FD任务信息。详细内容可以参考[调用示例](#调用示例)。
 
@@ -25,25 +25,26 @@
 
 ``` cpp
 aclnnStatus aclnnLightningIndexerV2MetadataGetWorkspaceSize(
-    const aclTensor *cuSeqlensQOptional,
-    const aclTensor *cuSeqlensKOptional,
-    const aclTensor *sequsedQOptional,
-    const aclTensor *sequsedKOptional,
-    const aclTensor *cmpResidualKOptional,
-    int64_t numHeadsQ,
-    int64_t numHeadsK,
-    int64_t headDim,
-    int64_t topk,
-    int64_t batchSizeOptional,
-    int64_t maxSeqlenQOptional,
-    int64_t maxSeqlenKOptional,
-    char *layoutQOptional,
-    char *layoutKOptional,
-    int64_t maskModeOptional,
-    int64_t cmpRatioOptional,
-    const aclTensor *metaData,
-    uint64_t *workspaceSize,
-    aclOpExecutor **executor);
+    const aclTensor*   cuSeqlensQOptional,
+    const aclTensor*   cuSeqlensKOptional,
+    const aclTensor*   sequsedQOptional,
+    const aclTensor*   sequsedKOptional,
+    const aclTensor*   cmpResidualKOptional,
+    int64_t            numHeadsQ,
+    int64_t            numHeadsK,
+    int64_t            headDim,
+    int64_t            topk,
+
+    int64_t            batchSizeOptional,
+    int64_t            maxSeqlenQOptional,
+    int64_t            maxSeqlenKOptional,
+    char *             layoutQOptional,
+    char *             layoutKOptional,
+    int64_t            maskModeOptional,
+    int64_t            cmpRatioOptional,
+    const aclTensor*   metaData,
+    uint64_t*          workspaceSize,
+    aclOpExecutor**    executor);
 ```
 
 ``` cpp
@@ -55,15 +56,13 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
 ```
 
 ## aclnnLightingIndexerV2MetadataGetWorkspaceSize
-## 参数说明
-
 - **参数说明**
 
   <table style="undefined;table-layout: fixed; width: 1600px"><colgroup>
   <col style="width: 150px">
   <col style="width: 100px">
   <col style="width: 350px">
-  <col style="width: 150px">
+  <col style="width: 200px">
   <col style="width: 70px">
   <col style="width: 70px">
   <col style="width: 190px">
@@ -88,8 +87,8 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>支持空Tensor</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape固定为(B+1,)</td>
-      <td>×</td>
+      <td>1维，shape固定为(B+1，)</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>cuSeqlensKOptional</td>
@@ -98,8 +97,8 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>支持空Tensor</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape固定为(B+1,)</td>
-      <td>×</td>
+      <td>1维，shape固定为(B+1，)</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>sequsedQOptional</td>
@@ -108,8 +107,8 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>支持空Tensor</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape固定为(B,)</td>
-      <td>×</td>
+      <td>1维，shape固定为(B，)</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>sequsedKOptional</td>
@@ -118,8 +117,8 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>支持空Tensor</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape固定为(B,)</td>
-      <td>×</td>
+      <td>1维，shape固定为(B，)</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>cmpResidualKOptional</td>
@@ -128,15 +127,15 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>支持空Tensor</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape固定为(B,)</td>
-      <td>×</td>
+      <td>1维，shape固定为(B，)</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>numHeadsQ</td>
       <td>输入</td>
       <td>表示query的head个数</td>
       <td>支持非负数</td>
-      <td>INT32</td>
+      <td>INT64</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -146,7 +145,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>输入</td>
       <td>表示key的head个数</td>
       <td>支持非负数</td>
-      <td>INT32</td>
+      <td>INT64</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -154,9 +153,9 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
     <tr>
       <td>headDim</td>
       <td>输入</td>
-      <td>表示toekn数</td>
+      <td>表示token数</td>
       <td>支持非负数</td>
-      <td>INT32</td>
+      <td>INT64</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -166,7 +165,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>输入</td>
       <td>表示从query中筛选出的关键稀疏token的个数</td>
       <td>支持非负数</td>
-      <td>INT32</td>
+      <td>INT64</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -176,7 +175,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>输入</td>
       <td>表示batch数量</td>
       <td>支持非负数</br>建议值为0</td>
-      <td>INT32</td>
+      <td>INT64</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -186,7 +185,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>输入</td>
       <td>表示query的最长seqlen</td>
       <td>支持非负数</br>建议值为0</td>
-      <td>INT32</td>
+      <td>INT64</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -196,7 +195,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>输入</td>
       <td>表示key的最长seqlen</td>
       <td>支持非负数</br>建议值为0</td>
-      <td>INT32</td>
+      <td>INT64</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -205,8 +204,8 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>layoutQOptional</td>
       <td>输入</td>
       <td>表示query的排列格式</td>
-      <td>支持 BSND/TND</br>建议值为BSND</td>
-      <td>INT32</td>
+      <td>支持 BSND、TND</br>建议值为BSND</td>
+      <td>INT64</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -215,8 +214,8 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>layoutKOptional</td>
       <td>输入</td>
       <td>表示key的排列格式</td>
-      <td>支持 BSND/TND/PA_BBND</br>建议值为BSND</td>
-      <td>INT32</td>
+      <td>支持 BSND、TND、PA_BBND</br>建议值为BSND</td>
+      <td>INT64</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -225,8 +224,8 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>maskModeOptional</td>
       <td>输入</td>
       <td>表示sparse模式</td>
-      <td>0: No mask</br>3: Causal </br>建议值为0 </td>
-      <td>INT32</td>
+      <td>0: No mask</br>3: rightDownCausal模式的mask，对应以右顶点为划分的下三角场景 </br>建议值为0 </td>
+      <td>INT64</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -234,9 +233,9 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
     <tr>
       <td>cmpRatioOptional</td>
       <td>输入</td>
-      <td>预留接口参数,表示key的压缩率</td>
-      <td>取值范围[1, 128]</td>
-      <td>INT32</td>
+      <td>预留接口参数，表示key的压缩率</td>
+      <td>取值范围[1，128]</td>
+      <td>INT64</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -291,27 +290,28 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
         <th>参数名</th>
         <th>输入/输出</th>
         <th>描述</th>
-        </tr></thead>
+        </tr>
+    </thead>
     <tbody>
         <tr>
         <td>workspace</td>
         <td>输入</td>
-        <td>在Device侧申请的workspace内存地址。</td>
+            <td>在Device侧申请的workspace内存地址</td>
         </tr>
         <tr>
         <td>workspaceSize</td>
         <td>输入</td>
-        <td>在Device侧申请的workspace大小，由第一段接口aclnnLightingIndexerV2MetadataGetWorkspaceSize获取。</td>
+        <td>在Device侧申请的workspace大小，由第一段接口aclnnLightingIndexerV2MetadataGetWorkspaceSize获取</td>
         </tr>
         <tr>
         <td>executor</td>
         <td>输入</td>
-        <td>op执行器，包含了算子计算流程。</td>
+            <td>op执行器，包含了算子计算流程</td>
         </tr>
         <tr>
         <td>stream</td>
         <td>输入</td>
-        <td>指定执行任务的Stream。</td>
+            <td>指定执行任务的Stream</td>
         </tr>
     </tbody>
     </table>
@@ -321,44 +321,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
-  - aclnnLightingIndexerV2Metadata默认为确定性实现，暂不支持非确定性实现，确定性计算配置也不会生效。
-
-  - BSND场景
-    - 必传batchSizeOptional，maxSeqlenQOptional，maxSeqlenKOptional参数，已获取shape信息
-  - TND场景
-    - 必传cuSeqlensQOptional, cuSeqlensKOptional参数，已获取正确shape信息
-
-<details>
-<summary><a id="Mask"></a>Mask</summary>
-    &nbsp;&nbsp;<table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
-        <col style="width: 165px">
-        <col style="width: 625px">
-        <col style="width: 360px">
-        </colgroup>
-        <thead>
-            <tr>
-                <th>mask_mode</th>
-                <th>含义</th>
-                <th>备注</th>
-            </tr>
-        </thead>
-        <tbody>
-        <tr>
-            <td>0</td>
-            <td>无mask</td>
-            <td>-</td>
-        </tr>
-        <tr>
-            <td>3</td>
-            <td>rightDownCausal模式的mask，对应以右顶点为划分的下三角场景，需要传入优化后的attenmask矩阵</td>
-            <td>-</td>
-        </tr>
-        </tbody>
-    </table>
-</details>
-
-<details>
-<summary><a id="特殊约束"></a>特殊约束</summary>
+  - aclnnLightingIndexerV2Metadata默认确定性实现
 
   - Batch取值规则
     - 优先获取sequsedKOptional中的batch的shape信息
@@ -376,8 +339,12 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
   - layout约束
     - 当layoutKOptional为PA_BBND时，layoutQOptional可以任意取值
     - 除上所述，layoutQOptional必须与layoutKOptional保持一致
-
-</details>
+  - BSND场景
+    - 当传入的layoutQOptional为"BSND"时，视为使用BSND场景
+    - 在未传入cuSeqlensQOptional和sequsedQOptional的情况下，必传batchSizeOptional、maxSeqlenQOptional、maxSeqlenKOptional参数
+  - TND场景
+    - 当传入的layoutQOptional为"TND"时，视为使用TND场景
+    - 必传cuSeqlensQOptional、cuSeqlensKOptional参数
 
 ## 调用示例
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
