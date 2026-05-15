@@ -16,10 +16,93 @@
 #define LIGHTNING_INDEXER_TOPK_H
 
 #include "kernel_operator.h"
-#include "common/lightning_indexer_topk_base.h"
-#include "common/vf_topk_16_gather.h"
+#include "vf_topk.h"
+#include "vf_topk_gather.h"
+#include "vf_topk_16_gather.h"
 
 namespace topk {
+template<typename T>
+class LITopk {
+public:
+    __aicore__ inline void operator()(LocalTensor<uint32_t>& outputIdxLocal,
+                                      LocalTensor<T>& inputLocal,
+                                      uint32_t s2SeqLen)
+    {
+    }
+};
+
+template<>
+class LITopk<uint32_t> {
+public:
+    __aicore__ inline uint32_t GetSharedTmpBufferSize()
+    {
+        // 2 * LICommon::Align(topK, (uint32_t)256): 两块hisIndexLocal
+        // 5 * 256：histogramsLocal + idxLocal[0-3]
+        // 64：nkValueLocal
+        uint64_t bufferSize1 = (2 * LICommon::Align(topK, (uint32_t)256) + 5 * 256 + 64)  * sizeof(uint32_t);
+        // LICommon::Align(topK, (uint32_t)256) + trunkLen：tmpIndexLocal
+        uint64_t bufferSize2 = (LICommon::Align(topK, (uint32_t)256) + trunkLen)  * sizeof(uint32_t);
+        return bufferSize1 + bufferSize2;
+    }
+
+    __aicore__ inline void Init(uint32_t topK, uint32_t trunkLen)
+    {
+        this->topK = topK;
+        this->trunkLen = trunkLen;
+    }
+    
+    __aicore__ inline void InitBuffers(LocalTensor<uint32_t>& sharedTmpBuffer)
+    {
+        LocalTensor<uint32_t> hisIndexLocal1 = sharedTmpBuffer[0];
+        LocalTensor<uint32_t> hisIndexLocal2 = hisIndexLocal1[LICommon::Align(topK, (uint32_t)256)];
+        hisIndexLocal[0] = hisIndexLocal1;
+        hisIndexLocal[1] = hisIndexLocal2;
+        histogramsLocal = hisIndexLocal2[LICommon::Align(topK, (uint32_t)256)];
+        idx0Local = histogramsLocal[256]; // 256: 本地内存对齐基线
+        idx1Local = idx0Local[256]; // 256: 同上
+        idx2Local = idx1Local[256]; // 256: 同上
+        idx3Local = idx2Local[256]; // 256: 同上
+        nkValueLocal = idx3Local[256]; // 256: 同上
+        tmpIndexLocal = nkValueLocal[64]; // 64: 单核/单线程输出元素容量（G维度切分阈值）
+    }
+
+    __aicore__ inline void operator()(LocalTensor<uint32_t>& mrgValueLocal, LocalTensor<uint32_t>& indicesOutLocal,
+                                      LocalTensor<uint32_t>& hisValueLocal, uint32_t s2SeqLen, uint32_t loopIdx, uint32_t s2LoopNum, bool returnValueFlag)
+    {
+        if (s2LoopNum == 1) {
+            topkb32gather::LiTopKVF<false>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idx0Local, idx1Local, idx2Local, idx3Local, nkValueLocal, topK, s2SeqLen);
+            PipeBarrier<PIPE_V>();
+            AscendC::DataCopy(indicesOutLocal, tmpIndexLocal, topK);
+        } else {
+            if (loopIdx == 0) {
+                topkb32gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idx0Local, idx1Local, idx2Local, idx3Local, nkValueLocal, topK, s2SeqLen);
+                PipeBarrier<PIPE_V>();
+                AscendC::DataCopy(hisIndexLocal[(loopIdx + 1) % 2], tmpIndexLocal, topK);
+            } else {
+                topkb32gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idx0Local, idx1Local, idx2Local, idx3Local, nkValueLocal, topK, s2SeqLen);
+                PipeBarrier<PIPE_V>();
+                topkb32gather::LiTopKGatherVF(hisIndexLocal[(loopIdx + 1) % 2], hisValueLocal, mrgValueLocal, tmpIndexLocal, hisIndexLocal[loopIdx % 2], 
+                                            topK, loopIdx * trunkLen - LICommon::Align(topK, (uint32_t)256), s2SeqLen);
+                if (loopIdx == s2LoopNum - 1) {
+                    PipeBarrier<PIPE_V>();
+                    AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2], LICommon::Align(topK, (uint32_t)256));
+                }
+            }
+        }
+    }
+private:
+    LocalTensor<uint32_t> hisIndexLocal[2]; // 每trunkLen长度的s2选出的topK个索引
+    LocalTensor<uint32_t> histogramsLocal;  // 直方图的临时Buf 256 * 4B
+    LocalTensor<uint32_t> idx0Local;        // 输入数据第1个8位Buf 256 * 4B
+    LocalTensor<uint32_t> idx1Local;        // 输入数据第2个8位Buf 256 * 4B
+    LocalTensor<uint32_t> idx2Local;        // 输入数据第3个8位Buf 256 * 4B
+    LocalTensor<uint32_t> idx3Local;        // 输入数据第4个8位Buf 256 * 4B
+    LocalTensor<uint32_t> nkValueLocal;     // next_k 暂存Buf 64 * 4B
+    LocalTensor<uint32_t> tmpIndexLocal;    // 每trunkLen + topK的临时index
+    uint32_t topK = 512;
+    uint32_t trunkLen = 8192;
+};
+
 template<>
 class LITopk<uint16_t> {
 public:
