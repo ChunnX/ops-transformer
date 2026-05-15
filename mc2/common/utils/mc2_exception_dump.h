@@ -261,11 +261,11 @@ inline int ProcessArgs910B(const char* groupName, std::vector<uint8_t> &winBuf)
     uint64_t size;
     void* winAddr = nullptr;
     Mc2Hcom::MC2HcomTopology::CommGetHcclBufferByGroup(groupName, &winAddr, &size);
-    OP_LOGE(OP_NAME, "HCCL BUFFER SIZE=%luMB. WindowInAddr=%p.", size / (1 * 1024 * 1024) / 2, winAddr);
     if (winAddr == nullptr) {
         OP_LOGE(OP_NAME, "Get win addr failed.");
         return -1;
     }
+    OP_LOGE(OP_NAME, "HCCL BUFFER SIZE=%luMB. WindowInAddr=%p.", size / (1 * 1024 * 1024) / 2, winAddr);
     auto ret = aclrtMemcpy(winBuf.data(), WIN_SIZE, winAddr, WIN_SIZE, ACL_MEMCPY_DEVICE_TO_HOST);
     if (ret != ACL_SUCCESS) {
         OP_LOGE(OP_NAME, "aclrtMemcpy win from device to host failed. ret = %d", ret);
