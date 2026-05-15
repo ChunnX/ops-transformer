@@ -960,7 +960,7 @@ static uint64_t LiCalcWorkspaceSize(const platform_ascendc::PlatformAscendC &liP
         constexpr uint32_t li3510S2Base = 128;
         liWorkspaceSize +=
             li3510S1Base * ((liS2Size + li3510S2Base - 1) / li3510S2Base) * li3510S2Base *
-            sizeof(uint16_t) * liAicNum;
+            sizeof(uint32_t) * liAicNum;
     } else {
         constexpr uint32_t liMm1ResSize = liMBaseSize * liS2BaseSize;
         liWorkspaceSize += liMm1ResSize * liMm1ResElemSize * liDoubleBuffer * liAicNum;
