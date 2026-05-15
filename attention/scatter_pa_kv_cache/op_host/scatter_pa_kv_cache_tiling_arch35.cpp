@@ -381,7 +381,6 @@ ge::graphStatus ScatterPaKvCacheTiling::TemplateNZ()
 
 ge::graphStatus ScatterPaKvCacheTiling::TemplateRope()
 {
-    
     if (inOutMode_ == SINGLE_IN_OUT &&
         (inputDtype_ == ge::DT_HIFLOAT8 || inputDtype_ == ge::DT_FLOAT8_E5M2 || inputDtype_ == ge::DT_FLOAT8_E4M3FN ||
          inputDtype_ == ge::DT_FLOAT4_E2M1 || inputDtype_ == ge::DT_FLOAT4_E1M2)) {
@@ -757,7 +756,6 @@ ge::graphStatus ScatterPaKvCacheTiling::GetTemplateType(int64_t inputKeyDimNum)
 
 ge::graphStatus ScatterPaKvCacheTiling::GetShapeAttrsInfo()
 {
-    
     SetInputPos();
     auto inputKey = context_->GetRequiredInputTensor(inputKey_);
     OP_CHECK_NULL_WITH_CONTEXT(context_, inputKey);

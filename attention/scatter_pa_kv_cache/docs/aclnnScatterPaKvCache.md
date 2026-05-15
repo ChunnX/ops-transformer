@@ -27,10 +27,14 @@
     valueCache:[num_blocks, num_head * v_head_size // last_dim_v, block_size, last_dim_v]/[num_blocks, num_head, v_head_size // last_dim_v, block_size, last_dim_v]
     slotMapping:[batch * seq_len]
     cacheMode:"PA_NZ"
+
+    last_dim_k = 32 / sizeof(dtypeKey)
+    last_dim_v = 32 / sizeof(dtypeValue)
+    (k_head_size * sizeof(dtypeKey)) % 32 == 0
+    (v_head_size * sizeof(dtypeValue)) % 32 == 0
     ```
 
-    其中:last_dim_k = 32 / sizeof(dtypeKey), last_dim_v = 32 / sizeof(dtypeValue)
-         (k_head_size * sizeof(dtypeKey)) % 32 == 0, (v_head_size * sizeof(dtypeValue)) % 32 == 0
+    其中key和value的type可以相同，也可以不同
 
   - 场景二：
 
