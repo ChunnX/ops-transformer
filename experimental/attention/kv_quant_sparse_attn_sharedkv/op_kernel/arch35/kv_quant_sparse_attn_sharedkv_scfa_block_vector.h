@@ -213,9 +213,9 @@ __aicore__ inline int64_t SCFABlockVec<TEMPLATE_ARGS>::GetkeyOffset(int64_t s2Id
     } else {    
         if constexpr (LAYOUT_T == SFA_LAYOUT::BSND) {
             realkeyOffset = runInfo.boIdx * constInfo.s2Size + s2Idx; // BSN(1)D
-        } else if constexpr (LAYOUT_T == SFA_LAYOUT::TND) {
-            int64_t batchKvStart = (runInfo.boIdx == 0) ? 0 : actualSeqLengthsKVGm.GetValue(runInfo.boIdx - 1);
-            realkeyOffset = (batchKvStart + s2Idx);
+        } else if (LAYOUT_T == SFA_LAYOUT::TND) {
+            int64_t batchKvStart = cuSeqlensKvGm.GetValue(runInfo.boIdx);
+            realkeyOffset = (cuSeqlensKvGm.GetValue(runInfo.boIdx) + s2Idx) * constInfo.n2Size;
         }
     }
     return realkeyOffset;
@@ -570,8 +570,10 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CopyInKvNotSparse(LocalTenso
             copyFinishElmenCnt += copyElmenCnt;
             curSequence += copyElmenCnt;
         }
-    } else {
+    } else if (KV_LAYOUT_T == SAS_LAYOUT::TND) {
         DataCopyPad(kvMergUb, keyGm[(cuSeqlensKvGm.GetValue(runInfo.boIdx) + s2Idx) * constInfo.n2Size * combineDim], intriParams, padParams);
+    } else { // BSND
+        DataCopyPad(kvMergUb, keyGm[(runInfo.boIdx * constInfo.s2Size + s2Idx) * constInfo.n2Size * combineDim], intriParams, padParams);
     }
 }
 
@@ -620,13 +622,13 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec0(
     bool isCmp = runInfo.s2LoopCount >= runInfo.oriKvLoopEndIdx;
     if (isCmp) {
         keyGm = cmpKVGm;
-        cuSeqlensKvGm = cuSeqlensOriKvGm;
+        cuSeqlensKvGm = cuSeqlensCmpKvGm;
         blockTableGm = cmpBlockTableGm;
         blockSize = constInfo.cmpBlockSize;
         maxBlockNumPerBatch = constInfo.cmpMaxBlockNumPerBatch;
     } else {
         keyGm = oriKVGm;
-        cuSeqlensKvGm = cuSeqlensCmpKvGm;
+        cuSeqlensKvGm = cuSeqlensOriKvGm;
         blockTableGm = oriBlockTableGm;
         blockSize = constInfo.oriBlockSize;
         maxBlockNumPerBatch = constInfo.oriMaxBlockNumPerBatch;
