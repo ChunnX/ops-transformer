@@ -287,7 +287,7 @@ aclnnStatus Mc2Context::GetHcclCommResource(const HcclComm &hcclHandle, const Co
         HcclResult hcclRet;
 
         if (i == rankId) {
-            continue;
+            hcclRet = HcclGetHcclBufferCleared(hcclHandle, &tempBuffer, &hcclBuffSize_);
         } else {
             uint32_t idx = (i < rankId) ? i : (i - 1);
             hcclRet = HcclChannelGetHcclBuffer(hcclHandle, channels[idx], &tempBuffer, &bufSize);
@@ -331,12 +331,12 @@ aclnnStatus Mc2Context::CreatMc2Context(const HcclComm &hcclHandle, const std::s
     }
     OP_LOGD("Get rank size success, rankSize is: %u", epRankSize_);
 
-    void *tempBuffer = nullptr;
-    hcclRet = HcclGetHcclBufferCleared(hcclHandle, &tempBuffer, &hcclBuffSize_);
-    if (hcclRet != HCCL_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER, "Get HCCL Buffer Cleared failed");
-        return ACLNN_ERR_INNER;
-    }
+    // void *tempBuffer = nullptr;
+    // hcclRet = HcclGetHcclBufferCleared(hcclHandle, &tempBuffer, &hcclBuffSize_);
+    // if (hcclRet != HCCL_SUCCESS) {
+    //     OP_LOGE(ACLNN_ERR_INNER, "Get HCCL Buffer Cleared failed");
+    //     return ACLNN_ERR_INNER;
+    // }
     mc2ContextStruct->epHcclBuffer_[mc2ContextStruct->epRankId] = reinterpret_cast<uint64_t>(tempBuffer);
     OP_LOGD("Get HCCL Buffer Cleared success, hcclBuffSize is: %u", hcclBuffSize_);
 
