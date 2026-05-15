@@ -29,6 +29,15 @@
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #endif
+
+#if __has_include("../moe_distribute_dispatch_v2/moe_distribute_a2_adump.h")
+#include "../moe_distribute_dispatch_v2/moe_distribute_a2_adump.h"
+#include "../moe_distribute_dispatch_v2/moe_distribute_a2_constant.h"
+#else
+#include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_a2_adump.h"
+#include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_a2_constant.h"
+#endif
+
 namespace MoeDistributeCombineA2Impl {
 // 缓冲区相关常量
 constexpr uint8_t BUFFER_NUM = 2; // 多缓冲区数量
@@ -52,6 +61,7 @@ constexpr uint32_t U64_PER_ITEM = BATCH_WRITE_ITEM_SIZE / sizeof(uint64_t); // B
 constexpr uint32_t U32_PER_ITEM = BATCH_WRITE_ITEM_SIZE / sizeof(uint32_t); // BatchWriteItem结构体占32位整数数量
 
 // 其他常量
+constexpr uint32_t TOKEN_OFFSET = 32;                // 标志位与开头TokenNum之间的偏移量
 constexpr uint32_t SKIP_OFFSET = 32;                 // 数据区与收发标志位之间的跳过字节数
 constexpr uint32_t FLAG_VALUE = 0xFFFFFFFF;          // 标志值
 constexpr uint32_t A2_RANK_NUM_PER_SERVER = 8;       // A2单节点Rank数量
@@ -179,6 +189,7 @@ private:
     LocalTensor<bool> expertMaskLocal_;
     LocalTensor<int32_t> performanceInfoI32Local_;
     LocalTensor<uint32_t> numRecvTokensPerRankLocal_;
+    LocalTensor<uint8_t> aDumpTensor_;
 
     GM_ADDR windowInGM_;
     GM_ADDR windowOutGM_;
@@ -212,6 +223,7 @@ private:
 
     Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;
     __gm__ HcclOpResParam *winContext_{nullptr};
+    Mc2A2Kernel::MoeDistributeA2ADump aDump_;
 };
 
 template <TemplateMC2TypeA2Class>
@@ -264,6 +276,14 @@ __aicore__ inline void MoeDistributeCombineA2<TemplateMC2TypeA2Func>::Init(
     axisHExpandXTypeSize_ = axisH_ * sizeof(ExpandXType);
     needPerformanceInfo_ = performanceInfo != nullptr;
     worldSizeTaskInfo_.SplitCore(worldSize_, aivNum_, coreIdx_);
+    uint32_t aDumpSize = Std::max(RoundUp(Mc2A2Kernel::H_POS + 1U, B32_PER_BLOCK),
+                                  B32_PER_BLOCK * 2U) * sizeof(uint32_t);
+    uint32_t aDumpUbAddr = AscendC::TOTAL_UB_SIZE - aDumpSize;
+    aDumpTensor_ = LocalTensor<uint8_t>{TPosition::LCM, aDumpUbAddr, aDumpSize};
+    GM_ADDR aDumpAddr = hccl_.GetWindowsInAddr(rankId_) + halfWinSize_ - Mc2A2Kernel::BUFFER_ADUMP_WIN_SIZE * 1UL;
+    aDump_.Init(aDumpAddr, coreIdx_, rankId_, worldSize_, rankId_, moeExpertNum_, worldSize_,
+        tilingData->moeDistributeCombineInfo.globalBs, bufferId_,
+        Mc2A2Kernel::IS_FULLMESH, aivNum_, aDumpTensor_, axisH_);
 }
 
 template <TemplateMC2TypeA2Class>
@@ -360,13 +380,23 @@ __aicore__ inline void
 MoeDistributeCombineA2<TemplateMC2TypeA2Func>::SingleServerDispatch(LocalTensor<ExpandIdxType> &sendCountInfo)
 {
     int32_t eventId = 0;
+    GlobalTensor<uint32_t> tokenNumInWindow;
+    LocalTensor<uint32_t> tokenNumTensor = aDumpTensor_.ReinterpretCast<uint32_t>();
     for (uint32_t dstRankId = worldSizeTaskInfo_.startTaskId; dstRankId < worldSizeTaskInfo_.endTaskId; ++dstRankId) {
-        localOutWindow_.SetGlobalBuffer((__gm__ ExpandXType *)(windowOutGM_ + dstRankId * rankSizeOnWin_));
+        localOutWindow_.SetGlobalBuffer((__gm__ ExpandXType *)(windowOutGM_ + dstRankId * rankSizeOnWin_ +
+                                                               TOKEN_OFFSET));
+        tokenNumInWindow.SetGlobalBuffer((__gm__ uint32_t *)(hccl_.GetWindowsInAddr(dstRankId) +
+            halfWinSize_ * bufferId_ + dataOffsetOnWin_));
 
         uint32_t rankTokenNum = GetRankTokenNumAndDataCopy2WindowOut(sendCountInfo, localOutWindow_, dstRankId);
+        SyncFunc<HardEvent::MTE3_S>();
+        tokenNumTensor(B32_PER_BLOCK) = rankTokenNum;
+        SyncFunc<HardEvent::S_MTE3>();
+        CopyUb2Gm(tokenNumInWindow, tokenNumTensor[B32_PER_BLOCK], 1);
         GlobalTensor<ExpandXType> dstGlobal;
         dstGlobal.SetGlobalBuffer(
-            (__gm__ ExpandXType *)(hccl_.GetWindowsInAddr(dstRankId) + halfWinSize_ * bufferId_ + dataOffsetOnWin_));
+            (__gm__ ExpandXType *)(hccl_.GetWindowsInAddr(dstRankId) + halfWinSize_ * bufferId_ + dataOffsetOnWin_ +
+                                   TOKEN_OFFSET));
         SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
         SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID1);
         for (uint32_t tokenId = 0; tokenId < rankTokenNum; ++tokenId) {
@@ -385,6 +415,8 @@ MoeDistributeCombineA2<TemplateMC2TypeA2Func>::SingleServerDispatch(LocalTensor<
         flagGlobal_.SetGlobalBuffer(
             (__gm__ uint32_t *)dstGlobal.GetPhyAddr(rankTokenNum * axisH_ + SKIP_OFFSET / sizeof(ExpandXType)));
         CopyUb2Gm(flagGlobal_, flagLocal_, 1);
+        aDump_.UpdateFullmeshEpRankSendOrRecv(dstRankId, Mc2A2Kernel::IS_SEND);
+        aDump_.UpdateFullmeshTokenSendOrRecv(dstRankId, rankTokenNum, Mc2A2Kernel::IS_SEND);
     }
 }
 
@@ -392,10 +424,17 @@ template <TemplateMC2TypeA2Class>
 __aicore__ inline void
 MoeDistributeCombineA2<TemplateMC2TypeA2Func>::ConstructBatchWriteInfo(LocalTensor<ExpandIdxType> &sendCountInfo)
 {
+    GlobalTensor<uint32_t> tokenNumOutWindow;
+    LocalTensor<uint32_t> tokenNumTensor = aDumpTensor_.ReinterpretCast<uint32_t>();
     for (uint32_t dstRankId = worldSizeTaskInfo_.startTaskId; dstRankId < worldSizeTaskInfo_.endTaskId; ++dstRankId) {
-        localOutWindow_.SetGlobalBuffer((__gm__ ExpandXType *)(windowOutGM_ + dstRankId * rankSizeOnWin_));
+        localOutWindow_.SetGlobalBuffer((__gm__ ExpandXType *)(windowOutGM_ + dstRankId * rankSizeOnWin_ +
+                                                               TOKEN_OFFSET));
+        tokenNumOutWindow.SetGlobalBuffer((__gm__ uint32_t *)(windowOutGM_ + dstRankId * rankSizeOnWin_));
         uint32_t rankTokenNum = GetRankTokenNumAndDataCopy2WindowOut(sendCountInfo, localOutWindow_, dstRankId);
-
+        SyncFunc<HardEvent::MTE3_S>();
+        tokenNumTensor(B32_PER_BLOCK) = rankTokenNum;
+        SyncFunc<HardEvent::S_MTE3>();
+        CopyUb2Gm(tokenNumOutWindow, tokenNumTensor[B32_PER_BLOCK], 1);
         flagGlobal_.SetGlobalBuffer(
             (__gm__ uint32_t *)(localOutWindow_.GetPhyAddr(rankTokenNum * axisH_) + SKIP_OFFSET / sizeof(ExpandXType)));
         flagGlobal_(0) = FLAG_VALUE;
@@ -403,13 +442,15 @@ MoeDistributeCombineA2<TemplateMC2TypeA2Func>::ConstructBatchWriteInfo(LocalTens
             flagGlobal_);
 
         uint32_t rankIdOffset = dstRankId - worldSizeTaskInfo_.startTaskId;
-        batchWriteU64Local_(rankIdOffset * U64_PER_ITEM) = (uint64_t)(localOutWindow_.GetPhyAddr());
+        batchWriteU64Local_(rankIdOffset * U64_PER_ITEM) = (uint64_t)(tokenNumOutWindow.GetPhyAddr());
         batchWriteU64Local_(rankIdOffset * U64_PER_ITEM + 1) =
             (uint64_t)(hccl_.GetWindowsInAddr(dstRankId) + halfWinSize_ * bufferId_ + dataOffsetOnWin_);
         batchWriteU64Local_(rankIdOffset * U64_PER_ITEM + 2) =
-            rankTokenNum * axisH_ + SKIP_OFFSET / sizeof(ExpandXType) + 2;
+            rankTokenNum * axisH_ + (SKIP_OFFSET + TOKEN_OFFSET) / sizeof(ExpandXType) + 2;
         batchWriteU32Local_(rankIdOffset * U32_PER_ITEM + 6) = HcclDataType::HCCL_DATA_TYPE_FP16;
         batchWriteU32Local_(rankIdOffset * U32_PER_ITEM + 7) = dstRankId;
+        aDump_.UpdateFullmeshEpRankSendOrRecv(dstRankId, Mc2A2Kernel::IS_SEND);
+        aDump_.UpdateFullmeshTokenSendOrRecv(dstRankId, rankTokenNum, Mc2A2Kernel::IS_SEND);
     }
     SyncFunc<HardEvent::S_MTE3>();
     DataCopy(workspaceGlobal_[worldSizeTaskInfo_.startTaskId * U64_PER_ITEM], batchWriteU64Local_,
@@ -426,11 +467,18 @@ MoeDistributeCombineA2<TemplateMC2TypeA2Func>::MultiServerDispatch(LocalTensor<E
         bufferIdGlobal_(0) = bufferId_ ^ 1;
     }
     if (rankId_ >= worldSizeTaskInfo_.startTaskId && rankId_ < worldSizeTaskInfo_.endTaskId) {
-        localOutWindow_.SetGlobalBuffer((__gm__ ExpandXType *)(windowOutGM_ + dataOffsetOnWin_));
-        localInWindow_.SetGlobalBuffer((__gm__ ExpandXType *)(windowInGM_ + dataOffsetOnWin_));
+        localOutWindow_.SetGlobalBuffer((__gm__ ExpandXType *)(windowOutGM_ + dataOffsetOnWin_ + TOKEN_OFFSET));
+        localInWindow_.SetGlobalBuffer((__gm__ ExpandXType *)(windowInGM_ + dataOffsetOnWin_ + TOKEN_OFFSET));
+        GlobalTensor<uint32_t> tokenNumInWindow;
+        LocalTensor<uint32_t> tokenNumTensor = aDumpTensor_.ReinterpretCast<uint32_t>();
+        tokenNumInWindow.SetGlobalBuffer((__gm__ uint32_t *)(windowInGM_ + dataOffsetOnWin_));
         uint32_t rankIdOffset = rankId_ - worldSizeTaskInfo_.startTaskId;
-        uint64_t rankTokenNum =
-            (batchWriteU64Local_(rankIdOffset * 4 + 2) - SKIP_OFFSET / sizeof(ExpandXType) - 2) / axisH_;
+        uint64_t rankTokenNum = (batchWriteU64Local_(rankIdOffset * 4 + 2) -
+                                 (SKIP_OFFSET + TOKEN_OFFSET) / sizeof(ExpandXType) - 2) / axisH_;
+        SyncFunc<HardEvent::MTE3_S>();
+        tokenNumTensor(B32_PER_BLOCK) = rankTokenNum;
+        SyncFunc<HardEvent::S_MTE3>();
+        CopyUb2Gm(tokenNumInWindow, tokenNumTensor[B32_PER_BLOCK], 1);
         int32_t eventId = 0;
         SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
         SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID1);
@@ -456,6 +504,7 @@ MoeDistributeCombineA2<TemplateMC2TypeA2Func>::MultiServerDispatch(LocalTensor<E
 template <TemplateMC2TypeA2Class>
 __aicore__ inline void MoeDistributeCombineA2<TemplateMC2TypeA2Func>::AlltoAllDispatch()
 {
+    aDump_.UpdateFullmeshRankTaskInfo(worldSizeTaskInfo_.startTaskId, worldSizeTaskInfo_.taskNum, Mc2A2Kernel::IS_SEND);
     if (worldSizeTaskInfo_.taskNum == 0) {
         SyncAll<true>();
         return;
@@ -535,6 +584,7 @@ __aicore__ inline void MoeDistributeCombineA2<TemplateMC2TypeA2Func>::CalRecvCou
 template <TemplateMC2TypeA2Class>
 __aicore__ inline void MoeDistributeCombineA2<TemplateMC2TypeA2Func>::WaitDispatch()
 {
+    aDump_.UpdateFullmeshRankTaskInfo(worldSizeTaskInfo_.startTaskId, worldSizeTaskInfo_.taskNum, Mc2A2Kernel::IS_RECV);
     if (unlikely(needPerformanceInfo_) && worldSizeTaskInfo_.taskNum > 0) {
         Duplicate<int32_t>(performanceInfoI32Local_, 0, worldSize_ * sizeof(int64_t) / sizeof(int32_t));
         SyncFunc<HardEvent::V_S>();
@@ -543,7 +593,7 @@ __aicore__ inline void MoeDistributeCombineA2<TemplateMC2TypeA2Func>::WaitDispat
     int64_t startTime = GetCurrentTimestampUs();
     while (waitFlagNum < worldSizeTaskInfo_.taskNum) {
         for (uint32_t rankId = worldSizeTaskInfo_.startTaskId; rankId < worldSizeTaskInfo_.endTaskId; ++rankId) {
-            GM_ADDR wAddr = windowInGM_ + rankSizeOnWin_ * rankId + SKIP_OFFSET +
+            GM_ADDR wAddr = windowInGM_ + rankSizeOnWin_ * rankId + SKIP_OFFSET + TOKEN_OFFSET +
                             numRecvTokensPerRankLocal_(rankId - worldSizeTaskInfo_.startTaskId) * axisHExpandXTypeSize_;
             flagGlobal_.SetGlobalBuffer((__gm__ uint32_t *)wAddr);
             DataCacheCleanAndInvalid<uint32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(flagGlobal_);
@@ -551,6 +601,7 @@ __aicore__ inline void MoeDistributeCombineA2<TemplateMC2TypeA2Func>::WaitDispat
             if (flag != FLAG_VALUE) {
                 continue;
             }
+
             waitFlagNum++;
             flagGlobal_(0) = 0;
             // 重要：要下DCCI保证清零写进去，避免下一次判断时又判断生效，重复累计waitFlagNum
@@ -558,6 +609,9 @@ __aicore__ inline void MoeDistributeCombineA2<TemplateMC2TypeA2Func>::WaitDispat
             if (unlikely(needPerformanceInfo_)) {
                 RecordRankCommDuration(performanceInfoI32Local_, rankId, startTime);
             }
+            aDump_.UpdateFullmeshEpRankSendOrRecv(rankId, Mc2A2Kernel::IS_RECV);
+            aDump_.UpdateFullmeshTokenSendOrRecv(rankId,
+                numRecvTokensPerRankLocal_(rankId - worldSizeTaskInfo_.startTaskId), Mc2A2Kernel::IS_RECV);
         }
     }
     if (unlikely(needPerformanceInfo_) && worldSizeTaskInfo_.taskNum > 0) {
@@ -576,10 +630,13 @@ __aicore__ inline void MoeDistributeCombineA2<TemplateMC2TypeA2Func>::Process()
         AllocTensorForComm();
         CalTokenActiveMask();
         AlltoAllDispatch();
+        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_FULLMESH_COMBINE_SEND);
         CalRecvCountsAndOffsets();
         WaitDispatch();
+        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_FULLMESH_COMBINE_RECV);
         AllocTensorForWindowCopy();
         LocalWindowCopy();
+        aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_END);
         hccl_.Finalize();
     }
 }
@@ -675,7 +732,7 @@ __aicore__ inline void MoeDistributeCombineA2<TemplateMC2TypeA2Func>::ProcessMoe
     int32_t expertId = expertIdsLocal_(expertOffset);
     if (expertId < moeExpertNum_) {
         uint32_t rank = expertId / localMoeExpertNum_;
-        wAddr = (__gm__ uint8_t *)(windowInGM_) + rankSizeOnWin_ * rank +
+        wAddr = (__gm__ uint8_t *)(windowInGM_) + rankSizeOnWin_ * rank + TOKEN_OFFSET +
                 (expertWindowOffsetLocal_(expertId) + expandIdxLocal_(expertOffset)) * axisHExpandXTypeSize_;
     } else {
         wAddr = (__gm__ uint8_t *)(oriXGM_) + tokenIdx * axisHExpandXTypeSize_;
