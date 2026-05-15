@@ -54,6 +54,7 @@ struct GroupedMatmulSwigluQuantParamsBase {
     bool transposeWeight = false;
     bool isA8W4 = false;
     bool isA4W4 = false;
+    bool isMxA8W4 = false;
 };
 
 class GroupedMatmulSwigluQuantParamsBuilder {
@@ -146,6 +147,8 @@ public:
                     ((*this->p_.weight)[0])->GetDataType() == DataType::DT_INT4) ||
                     (this->p_.x->GetDataType() == DataType::DT_INT32 &&
                     ((*this->p_.weight)[0])->GetDataType() == DataType::DT_INT32));
+        p_.isMxA8W4 = (this->p_.x->GetDataType() == DataType::DT_FLOAT8_E4M3FN &&
+                       ((*this->p_.weight)[0])->GetDataType() == DataType::DT_FLOAT4_E2M1);
         return *this;
     }
 
