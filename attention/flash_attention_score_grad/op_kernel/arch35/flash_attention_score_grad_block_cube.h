@@ -129,7 +129,8 @@ public:
     constexpr static bool IS_L1_PRELOAD = GET_IS_L1_PRELOAD<INPUT_TYPE>(
         HEAD_DIM_ALIGN, SPLIT_AXIS, IS_DETER_OLD(DETER_SPARSE_TYPE), IS_TND, FP8_OPEN_TSCM, IS_ROPE);
     constexpr static SyncType SYNC_TYPE = IS_L1_PRELOAD ? SyncType::NO_SYNC : SyncType::INNER_CORE_SYNC;
-    constexpr static bool IS_DKV_RESIDENT_L0C = IS_DKV_RESIDENT_L0C(CUBE_BASEM, CUBE_BASEN, HEAD_DIM_ALIGN) && !IS_FP8_INPUT;
+    constexpr static bool IS_DKV_RESIDENT_L0C = IS_DKV_RESIDENT_L0C(CUBE_BASEM, CUBE_BASEN, HEAD_DIM_ALIGN) &&
+                                                !IS_FP8_INPUT && !IS_FP32_INPUT;
     constexpr static bool IS_FP32_D_EXCEED_256 = IS_FP32_INPUT && HEAD_DIM_ALIGN > 256;
  
     constexpr static uint32_t DQ_L0_SPLIT_K = GET_DQ_L0_SPLIT_K<INPUT_TYPE, CUBE_BASEM, HEAD_DIM_ALIGN>();
@@ -276,7 +277,7 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::InitCubeBuffer(FagConstInfo &constInfo)
 {
     isDkvL0CResidentForD192Dv128 =
-        ((SPLIT_AXIS == BN2GS1S2 || SPLIT_AXIS == BN2S2) &&
+        !IS_FP32_INPUT && ((SPLIT_AXIS == BN2GS1S2 || SPLIT_AXIS == BN2S2) &&
          (HEAD_DIM_ALIGN == static_cast<uint32_t>(DTemplateType::Aligned192) &&
           constInfo.commonConstInfo.dSizeV <= static_cast<uint32_t>(DTemplateType::Aligned128))) ||
         IS_ROPE;
