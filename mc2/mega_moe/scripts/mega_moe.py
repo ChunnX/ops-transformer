@@ -172,6 +172,276 @@ class ComparedOutput(Enum):
     Y1 = 'y1'
     Y1_SCALE = 'y1_scale'
 
+
+# ============================================================================
+# Timestamp 解析 + CSV 持久化（与 op_kernel/mega_moe_base.h 的 MegaMoeTrace 对齐）
+# ============================================================================
+# Kernel 端把 us 时间戳写入 y2GmAddr 前 (TOTAL_CORES * POINTS_PER_CORE * 8) 字节，
+# layout = (globalCoreIdx, pointIdx) row-major：
+#   AIC[0..36) 在 row [0..36)
+#   AIV[0..72) 在 row [36..108)（AIV0=偶数行, AIV1=奇数行，与 cube pair 一一对应）
+#
+# 重要：cube/vec 之间的 cycle 不同时钟域，**只在同 pair 内做减法**（AIC[p] / AIV[2p] / AIV[2p+1]）。
+TRACE_ENABLED = True
+
+# 必须与 op_kernel/mega_moe_base.h MegaMoeTrace 保持一致
+TRACE_POINTS_PER_CORE = 260
+TRACE_MAX_AIC = 36
+TRACE_MAX_AIV = 72
+TRACE_TOTAL_CORES = TRACE_MAX_AIC + TRACE_MAX_AIV  # 108
+
+# Stage 级
+P_KERNEL_ENTRY = 0
+P_ROUTING_DONE = 1
+P_CROSSRANK_DONE = 2
+P_EXPERT_LOOP_END = 3
+P_PROCESS_END = 4
+P_STAGE_NUM = 5
+STAGE_NAMES = ['KERNEL_ENTRY', 'ROUTING_DONE', 'CROSSRANK_DONE', 'EXPERT_LOOP_END', 'PROCESS_END']
+
+# Dispatch (AIV1 only)
+P_DISPATCH_BASE = 5
+MAX_EXPERTS_TRACED = 8
+DISPATCH_PTS_PER_EXPERT = 2  # 0=begin, 1=end
+
+# Wave
+P_WAVE_BASE = P_DISPATCH_BASE + MAX_EXPERTS_TRACED * DISPATCH_PTS_PER_EXPERT  # 21
+WAVE_POINTS_PER_ITER = 12
+MAX_WAVES_TRACED = (TRACE_POINTS_PER_CORE - P_WAVE_BASE) // WAVE_POINTS_PER_ITER  # 19
+
+SP_WAVE_ENTRY = 0
+SP_GMM1_BEGIN = 1
+SP_GMM1_FIRST_WAIT_DONE = 2
+SP_GMM1_FIRST_TILE_DONE = 3
+SP_GMM1_LAST_TILE_DONE = 4
+SP_GMM1_END = 5
+SP_GMM2_BEGIN = 6
+SP_GMM2_FIRST_WAIT_DONE = 7
+SP_GMM2_FIRST_TILE_DONE = 8
+SP_GMM2_LAST_TILE_DONE = 9
+SP_GMM2_END = 10
+SP_WAVE_END = 11
+SP_NAMES = [
+    'WAVE_ENTRY', 'GMM1_BEGIN', 'GMM1_FIRST_WAIT_DONE', 'GMM1_FIRST_TILE_DONE',
+    'GMM1_LAST_TILE_DONE', 'GMM1_END', 'GMM2_BEGIN', 'GMM2_FIRST_WAIT_DONE',
+    'GMM2_FIRST_TILE_DONE', 'GMM2_LAST_TILE_DONE', 'GMM2_END', 'WAVE_END',
+]
+
+# 关心的 sub-phase（每条三元组 (from_sp, to_sp, label)）—— 仅同核做减法
+AIC_PHASES = [
+    (SP_WAVE_ENTRY,           SP_GMM1_BEGIN,            'enter -> GMM1 call'),
+    (SP_GMM1_BEGIN,           SP_GMM1_FIRST_WAIT_DONE,  'GMM1 wait dispatch flag'),
+    (SP_GMM1_FIRST_WAIT_DONE, SP_GMM1_FIRST_TILE_DONE,  'GMM1 first tile mmad'),
+    (SP_GMM1_FIRST_TILE_DONE, SP_GMM1_LAST_TILE_DONE,   'GMM1 mid+last tiles'),
+    (SP_GMM1_LAST_TILE_DONE,  SP_GMM1_END,              'GMM1 end-drain (EndSync)'),
+    (SP_GMM1_END,             SP_GMM2_BEGIN,            'between GMM1 & GMM2'),
+    (SP_GMM2_BEGIN,           SP_GMM2_FIRST_WAIT_DONE,  'GMM2 wait swiglu flag'),
+    (SP_GMM2_FIRST_WAIT_DONE, SP_GMM2_FIRST_TILE_DONE,  'GMM2 first tile mmad'),
+    (SP_GMM2_FIRST_TILE_DONE, SP_GMM2_LAST_TILE_DONE,   'GMM2 mid+last tiles'),
+    (SP_GMM2_LAST_TILE_DONE,  SP_GMM2_END,              'GMM2 end-drain'),
+    (SP_GMM2_END,             SP_WAVE_END,              'GMM2 end -> wave end'),
+    (SP_WAVE_ENTRY,           SP_WAVE_END,              'TOTAL wave (AIC)'),
+]
+AIV0_PHASES = [
+    (SP_WAVE_ENTRY,           SP_GMM1_BEGIN,            'enter -> GMM1 call'),
+    (SP_GMM1_BEGIN,           SP_GMM1_FIRST_WAIT_DONE,  'epi wait cube'),
+    (SP_GMM1_FIRST_WAIT_DONE, SP_GMM1_FIRST_TILE_DONE,  'epi first tile'),
+    (SP_GMM1_FIRST_TILE_DONE, SP_GMM1_LAST_TILE_DONE,   'epi mid+last tiles'),
+    (SP_GMM1_LAST_TILE_DONE,  SP_GMM1_END,              'epi end-drain'),
+    (SP_GMM1_END,             SP_WAVE_END,              'GMM1 end -> wave end (sub0 idle)'),
+    (SP_WAVE_ENTRY,           SP_WAVE_END,              'TOTAL wave (AIV0)'),
+]
+AIV1_PHASES = [
+    (SP_WAVE_ENTRY,           SP_GMM2_BEGIN,            'enter -> GMM2 call (idle on sub1)'),
+    (SP_GMM2_BEGIN,           SP_GMM2_FIRST_WAIT_DONE,  'combine wait rowReady'),
+    (SP_GMM2_FIRST_WAIT_DONE, SP_GMM2_FIRST_TILE_DONE,  'combine first tile'),
+    (SP_GMM2_FIRST_TILE_DONE, SP_GMM2_LAST_TILE_DONE,   'combine mid+last tiles'),
+    (SP_GMM2_LAST_TILE_DONE,  SP_GMM2_END,              'combine end -> GMM2 end'),
+    (SP_GMM2_END,             SP_WAVE_END,              'GMM2 end -> wave end'),
+    (SP_WAVE_ENTRY,           SP_WAVE_END,              'TOTAL wave (AIV1)'),
+]
+
+
+def _y_tensor_to_uint64(y_tensor):
+    """按 user 建议：bf16 张量字节直接 view 成 uint64。"""
+    y_cpu = y_tensor.cpu().contiguous()
+    # torch.uint64 在新版才支持；先尝试 view，失败回退到 numpy 字节路径
+    try:
+        return y_cpu.view(torch.uint64).flatten().numpy()
+    except Exception:
+        return np.frombuffer(y_cpu.view(torch.uint8).numpy().tobytes(), dtype=np.uint64)
+
+
+def _csv_header():
+    """生成 CSV 列名：rank,side,core_idx + 260 个 named points。"""
+    cols = ['rank', 'side', 'core_idx']
+    # 0..4 stage
+    cols += [f'p{P_KERNEL_ENTRY}_KERNEL_ENTRY',
+             f'p{P_ROUTING_DONE}_ROUTING_DONE',
+             f'p{P_CROSSRANK_DONE}_CROSSRANK_DONE',
+             f'p{P_EXPERT_LOOP_END}_EXPERT_LOOP_END',
+             f'p{P_PROCESS_END}_PROCESS_END']
+    # 5..20 dispatch
+    for e in range(MAX_EXPERTS_TRACED):
+        cols.append(f'p{P_DISPATCH_BASE + e*2}_disp_e{e}_begin')
+        cols.append(f'p{P_DISPATCH_BASE + e*2 + 1}_disp_e{e}_end')
+    # 21..(260) wave
+    for w in range(MAX_WAVES_TRACED):
+        for sp in range(WAVE_POINTS_PER_ITER):
+            cols.append(f'p{P_WAVE_BASE + w*WAVE_POINTS_PER_ITER + sp}_w{w}_{SP_NAMES[sp]}')
+    # 剩余尾巴若 layout 没填满到 260，补 raw 列保证总宽 = POINTS_PER_CORE + 3
+    expected = 3 + TRACE_POINTS_PER_CORE
+    while len(cols) < expected:
+        cols.append(f'p{len(cols) - 3}_raw')
+    return cols
+
+
+def _write_csv_for_rank(rank_id, ts_matrix, csv_path):
+    """ts_matrix: (TOTAL_CORES, POINTS_PER_CORE) uint64 → 追加写入 csv_path。"""
+    header = _csv_header()
+    file_exists = os.path.exists(csv_path)
+    with open(csv_path, 'a', encoding='utf-8', newline='') as f:
+        w = csv.writer(f)
+        if not file_exists:
+            w.writerow(header)
+        for ci in range(TRACE_TOTAL_CORES):
+            if ci < TRACE_MAX_AIC:
+                side = 'AIC'
+                core_idx = ci
+            else:
+                aiv_idx = ci - TRACE_MAX_AIC
+                side = 'AIV0' if (aiv_idx % 2 == 0) else 'AIV1'
+                core_idx = aiv_idx
+            row = [rank_id, side, core_idx] + [int(x) for x in ts_matrix[ci].tolist()]
+            w.writerow(row)
+
+
+def _summarize(diffs, hotspot_thresh_us=2):
+    if diffs.size == 0:
+        return "<no data>"
+    mn = int(diffs.min()); mx = int(diffs.max()); avg = int(diffs.mean())
+    hot = '  <-- HOT' if avg > hotspot_thresh_us else ''
+    return f"n={diffs.size:>4}  min={mn:>8}  avg={avg:>8}  max={mx:>8}  (us){hot}"
+
+
+def parse_timestamps_from_y(y_tensor, rank_id, csv_path='megamoe_trace.csv'):
+    """解析一 rank 的 y trace。
+       1) 落 CSV（追加）
+       2) 屏幕打印 stage / dispatch / wave / pair-aware 统计
+       约束：cube 与 vec 时钟域不同，**只在同核内（或同 pair 内）做减法**。
+    """
+    if not TRACE_ENABLED:
+        return
+    needed_u64 = TRACE_TOTAL_CORES * TRACE_POINTS_PER_CORE
+    arr = _y_tensor_to_uint64(y_tensor)
+    if arr.size < needed_u64:
+        print(f"[TRACE rank {rank_id}] y too small: have {arr.size} u64, need {needed_u64}")
+        return
+
+    ts_u64 = arr[:needed_u64].reshape(TRACE_TOTAL_CORES, TRACE_POINTS_PER_CORE)
+    # 持久化（uint64 原值，单位 us）
+    try:
+        _write_csv_for_rank(rank_id, ts_u64, csv_path)
+        print(f"[TRACE rank {rank_id}] dumped {TRACE_TOTAL_CORES}×{TRACE_POINTS_PER_CORE} timestamps -> {csv_path}")
+    except Exception as e:
+        print(f"[TRACE rank {rank_id}] csv write failed: {e}")
+
+    # 用 int64 做差值（避免 uint64 减法 wrap）
+    ts = ts_u64.astype(np.int64)
+    aic  = ts[:TRACE_MAX_AIC]                                # (36, 260)
+    aiv  = ts[TRACE_MAX_AIC:TRACE_MAX_AIC + TRACE_MAX_AIV]   # (72, 260)
+    aiv0 = aiv[0::2]   # (36, 260)
+    aiv1 = aiv[1::2]   # (36, 260)
+
+    # ---- 脏值过滤辅助 ----
+    # 一个 sp 的值合法当且仅当它 >= KERNEL_ENTRY 且 <= PROCESS_END * 2（留余量），且 > 0
+    def valid_mask_block(block, sp_idx):
+        entry = block[:, P_KERNEL_ENTRY]
+        end   = block[:, P_PROCESS_END]
+        col   = block[:, sp_idx]
+        upper = np.where(end > 0, end + (end - entry), np.int64(0))  # 留 1x 余量
+        return (entry > 0) & (col > 0) & (col >= entry) & (col <= upper)
+
+    print(f"\n========== [rank {rank_id}] MegaMoe TIMESTAMPS (unit = us) ==========")
+    print(f"  active AIC: {(aic[:, P_KERNEL_ENTRY]>0).sum()}/{TRACE_MAX_AIC}, "
+          f"active AIV0: {(aiv0[:, P_KERNEL_ENTRY]>0).sum()}/{TRACE_MAX_AIC}, "
+          f"active AIV1: {(aiv1[:, P_KERNEL_ENTRY]>0).sum()}/{TRACE_MAX_AIC}")
+
+    # ---------- A) Stage 级 ----------
+    def stage_report(name, block):
+        print(f"\n  --- [{name}] STAGE durations (per-core delta) ---")
+        for i in range(1, P_STAGE_NUM):
+            a = block[:, i-1]; b = block[:, i]
+            valid = valid_mask_block(block, i-1) & valid_mask_block(block, i)
+            if not valid.any():
+                continue
+            diffs = b[valid] - a[valid]
+            print(f"    {STAGE_NAMES[i-1]} -> {STAGE_NAMES[i]:<22}{_summarize(diffs)}")
+    stage_report('AIC',  aic)
+    stage_report('AIV0', aiv0)
+    stage_report('AIV1', aiv1)
+
+    # ---------- B) Per-expert dispatch (AIV1) ----------
+    print(f"\n  --- [AIV1] per-expert DISPATCH duration (sub1 owns dispatch) ---")
+    for e in range(MAX_EXPERTS_TRACED):
+        bi = P_DISPATCH_BASE + e * DISPATCH_PTS_PER_EXPERT
+        ei = bi + 1
+        valid = valid_mask_block(aiv1, bi) & valid_mask_block(aiv1, ei)
+        if not valid.any():
+            continue
+        diffs = aiv1[valid, ei] - aiv1[valid, bi]
+        print(f"    expert[{e}] dispatch  {_summarize(diffs)}")
+
+    # ---------- C) Wave 内 sub-phase（聚合 all cores × all waves） ----------
+    def wave_phase_report(name, block, phase_list):
+        print(f"\n  --- [{name}] WAVE sub-phase (aggregated over cores × waves) ---")
+        for (from_sp, to_sp, lbl) in phase_list:
+            diffs_all = []
+            for w in range(MAX_WAVES_TRACED):
+                ofs = P_WAVE_BASE + w * WAVE_POINTS_PER_ITER
+                v_from = valid_mask_block(block, ofs + from_sp)
+                v_to   = valid_mask_block(block, ofs + to_sp)
+                valid  = v_from & v_to
+                if not valid.any():
+                    continue
+                diffs_all.append(block[valid, ofs + to_sp] - block[valid, ofs + from_sp])
+            if not diffs_all:
+                print(f"    sp{from_sp:>2}->sp{to_sp:<2} {lbl:<40}<no data>")
+                continue
+            diffs = np.concatenate(diffs_all)
+            print(f"    sp{from_sp:>2}->sp{to_sp:<2} {lbl:<40}{_summarize(diffs)}")
+    wave_phase_report('AIC',  aic,  AIC_PHASES)
+    wave_phase_report('AIV0', aiv0, AIV0_PHASES)
+    wave_phase_report('AIV1', aiv1, AIV1_PHASES)
+
+    # ---------- D) pair[0] 头几个 wave 的 timeline 示例 ----------
+    print(f"\n  --- pair[0] timeline (relative to each core's KERNEL_ENTRY, within-core deltas only) ---")
+    for w in range(min(MAX_WAVES_TRACED, 4)):
+        ofs = P_WAVE_BASE + w * WAVE_POINTS_PER_ITER
+        if aic[0, ofs + SP_WAVE_ENTRY] <= aic[0, P_KERNEL_ENTRY]:
+            continue
+        def rel(block, sp):
+            v = block[0, ofs + sp]
+            e = block[0, P_KERNEL_ENTRY]
+            if v <= e:
+                return None
+            return v - e
+        parts = [f"    wave {w:>2}:"]
+        for tag, sp in [('ENTRY', SP_WAVE_ENTRY),
+                        ('G1_BEG', SP_GMM1_BEGIN),
+                        ('G1_WAIT', SP_GMM1_FIRST_WAIT_DONE),
+                        ('G1_END', SP_GMM1_END),
+                        ('G2_BEG', SP_GMM2_BEGIN),
+                        ('G2_WAIT', SP_GMM2_FIRST_WAIT_DONE),
+                        ('G2_END', SP_GMM2_END),
+                        ('EXIT', SP_WAVE_END)]:
+            ar = rel(aic, sp); v0r = rel(aiv0, sp); v1r = rel(aiv1, sp)
+            def fmt(x): return f"{x:>6}" if x is not None else '  ---'
+            parts.append(f" {tag}[A{fmt(ar)} V0{fmt(v0r)} V1{fmt(v1r)}]")
+        print('  '.join(parts))
+
+    print(f"========== [rank {rank_id}] END TIMESTAMPS ==========\n")
+
 # dispatch_profiling_path = './Profiling_Result_mc2_dispatch_16p'
 # combine_profiling_path = './Profiling_Result_mc2_combine_16p'
 cascade_profiling_path = './Profiling_Result_mc2_cascade_16p'
@@ -798,6 +1068,19 @@ if __name__ == "__main__":
     for category_id in range(category_num):
         specific_category_output = [rank_output[category_id] for rank_output in rank_outputs]
         category_outputs.append(specific_category_output)
+
+    # ====== 打点解析（先于 compare，因为 trace 模式下 y 不再是真实结果） ======
+    if TRACE_ENABLED:
+        trace_stamp = time.strftime('%Y%m%d_%H%M%S')
+        trace_csv_path = f'megamoe_trace_{trace_stamp}.csv'
+        for local_rank_id in range(rank_per_dev):
+            global_rank_id = server_index * rank_per_dev + local_rank_id
+            try:
+                parse_timestamps_from_y(category_outputs[1][local_rank_id],
+                                        global_rank_id, csv_path=trace_csv_path)
+            except Exception as e:
+                print(f"[TRACE rank {global_rank_id}] parse failed: {e}")
+        print(f"[TRACE] all-rank raw timestamps saved to {trace_csv_path}")
 
     result_dispatch_ffn_combine = {}
     # 比较y
