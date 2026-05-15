@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software; you can redistribute it and/or modify it under the terms and conditions of
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
@@ -23,12 +23,11 @@
 #include "base_checker.h"
 
 #include "./seq_len_checker.h"
-#include "./layout_checker.h"
+#include "./common_checker.h"
 #include "./mask_checker.h"
 #include "./metadata_checker.h"
 #include "./paged_attention_checker.h"
 #include "./sinks_checker.h"
-#include "./shape_checker.h"
 #include "./softmax_lse_checker.h"
 
 namespace optiling {

@@ -14,6 +14,7 @@
 #include <cstdint>
 
 namespace optiling {
+namespace flash_attn {
 namespace fa_tiling_util {
 
 // layout 枚举值，与 FaLayout 一致，供外部算子使用
@@ -87,6 +88,7 @@ inline void AdjustSinnerAndSouter(uint32_t vHeadDim, uint32_t s1Size, int64_t s2
 }
 
 }  // namespace fa_tiling_util
+}  // namespace flash_attn
 }  // namespace optiling
 
 #endif  // FLASH_ATTN_FA_ADJUST_SINNER_SOUTER_H
