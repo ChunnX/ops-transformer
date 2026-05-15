@@ -382,7 +382,6 @@ ge::graphStatus ScatterPaKvCacheTiling::TemplateNZ()
 ge::graphStatus ScatterPaKvCacheTiling::TemplateRope()
 {
     
-    printf("get in TemplateRope  1\n");
     if (inOutMode_ == SINGLE_IN_OUT &&
         (inputDtype_ == ge::DT_HIFLOAT8 || inputDtype_ == ge::DT_FLOAT8_E5M2 || inputDtype_ == ge::DT_FLOAT8_E4M3FN ||
          inputDtype_ == ge::DT_FLOAT4_E2M1 || inputDtype_ == ge::DT_FLOAT4_E1M2)) {
@@ -392,10 +391,8 @@ ge::graphStatus ScatterPaKvCacheTiling::TemplateRope()
     if (CheckDimValid() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    printf("get in TemplateRope  2\n");
     GetCommonTilingInfo();
     // check whether tail dim can fully load.
-    printf("get in TemplateRope  3\n");
     int64_t compressSeqOffsetSize = inputKeyShape_.GetDim(DIM0) * inputKeyShape_.GetDim(DIM2);
     int64_t alignKHead = RoundUp(kHeadSize_, dtypeByteSize_);
     int64_t alignVHead = RoundUp(vHeadSize_, dtypeByteSize_);
@@ -429,7 +426,6 @@ ge::graphStatus ScatterPaKvCacheTiling::TemplateRope()
         kLoopNum_--;
     }
 
-    printf("get in TemplateRope  4\n");
     if (inOutMode_ == DUAL_IN_OUT) {
         vHandleNumPerLoop_ = MAX_HANLDE_BYTE_SIZE_PER_LOOP / dtypeByteSize_;
         vLoopNum_ = Ops::Base::CeilDiv<int64_t>(vHeadSize_, vHandleNumPerLoop_);
@@ -439,7 +435,6 @@ ge::graphStatus ScatterPaKvCacheTiling::TemplateRope()
         }
     }
 
-    printf("get in TemplateRope  5\n");
     return ge::GRAPH_SUCCESS;
 }
 
@@ -607,7 +602,6 @@ ge::graphStatus ScatterPaKvCacheTiling::CheckNz()
 
 ge::graphStatus ScatterPaKvCacheTiling::CheckRope()
 {
-    printf("get in CheckRope  1\n");
     OP_CHECK_IF(inputKeyShape_.GetDim(DIM0) != slotMappingShape_.GetDim(DIM0) ||
                     inputKeyShape_.GetDim(DIM0) != compressLensShape_.GetDim(DIM0) ||
                     inputKeyShape_.GetDim(DIM0) != seqLensShape_.GetDim(DIM0),
@@ -629,7 +623,6 @@ ge::graphStatus ScatterPaKvCacheTiling::CheckRope()
                                   "multiplied by the dim 1 of the compress_lens."),
                 return ge::GRAPH_FAILED;);
 
-    printf("get in CheckRope  2\n");
     OP_CHECK_IF(inOutMode_ != DUAL_IN_OUT, , return ge::GRAPH_SUCCESS;); // 卫语句
     OP_CHECK_IF(inputKeyShape_.GetDim(DIM0) != inputValueShape_.GetDim(DIM0),
                 OP_LOGE(context_, "the dim 0 of key and value must be equal."), return ge::GRAPH_FAILED;);
@@ -714,7 +707,6 @@ ge::graphStatus ScatterPaKvCacheTiling::GetTemplateType(int64_t inputKeyDimNum)
     auto attrs = context_->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
     auto cacheMode = attrs->GetStr(INPUT_CACHE_MODE_INDEX);
-    printf("get in TEMPLATE_ROPE GetShapeAttrsInfo for  cacheMode scatter pa cache 1\n");
     auto scatterMode = attrs->GetStr(INPUT_SCATTER_MODE_INDEX);
     scatterMode = (scatterMode == nullptr) ? "" : scatterMode;
     if (strcmp(cacheMode, "PA_NZ") == 0) {
@@ -745,7 +737,6 @@ ge::graphStatus ScatterPaKvCacheTiling::GetTemplateType(int64_t inputKeyDimNum)
             if (compressLens != nullptr && compressSeqOffset != nullptr && seqLens != nullptr) {
                 // entering template rope
                 templateType_ = TEMPLATE_ROPE;
-                printf("get in TEMPLATE_ROPE GetShapeAttrsInfo for scatter pa cache 2\n");
             } else if (compressLens != nullptr && compressSeqOffset == nullptr && seqLens != nullptr) {
                 // entering template alibi
                 templateType_ = TEMPLATE_ALIBI;
@@ -767,7 +758,6 @@ ge::graphStatus ScatterPaKvCacheTiling::GetTemplateType(int64_t inputKeyDimNum)
 ge::graphStatus ScatterPaKvCacheTiling::GetShapeAttrsInfo()
 {
     
-    printf("get in GetShapeAttrsInfo for scatter pa cache\n");
     SetInputPos();
     auto inputKey = context_->GetRequiredInputTensor(inputKey_);
     OP_CHECK_NULL_WITH_CONTEXT(context_, inputKey);
@@ -836,12 +826,10 @@ ge::graphStatus ScatterPaKvCacheTiling::GetShapeAttrsInfo()
         return ge::GRAPH_SUCCESS;
     }
     // else: inputKeyDimNum is 4
-    printf("get in GetShapeAttrsInfo for scatter pa cache 1\n");
     auto compressLens = context_->GetOptionalInputTensor(inputCompressLens_);
     auto compressSeqOffset = context_->GetOptionalInputTensor(inputCompressSeqOffset_);
     auto seqLens = context_->GetOptionalInputTensor(inputSeqLens_);
 
-    printf("get in GetShapeAttrsInfo for scatter pa cache 2\n");
     auto inputSlotMappingDesc = context_->GetInputDesc(inputSlotMapping_);
     OP_CHECK_NULL_WITH_CONTEXT(context_, inputSlotMappingDesc);
     ge::DataType inputSlotMappingDtype = inputSlotMappingDesc->GetDataType();
@@ -1016,7 +1004,6 @@ ge::graphStatus Tiling4ScatterPaKvCache(gert::TilingContext *context_)
 
 ge::graphStatus Tiling4ScatterPaCache(gert::TilingContext *context_)
 {
-    printf("get in tiling for scatter pa cache\n");
     ScatterPaKvCacheTiling tiling(context_, SINGLE_IN_OUT);
     return tiling.DoTiling();
 }
