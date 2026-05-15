@@ -863,19 +863,15 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     // 让 wavesParallel 提到 blockNum/(tileNumGmm1/MAX_TILES_PER_CORE_GMM1)。cube mmad 在 wave 内
     // 多 tile 是 back-to-back 流水的，per-iter 时间不会线性放大。
     // MAX_TILES_PER_CORE_GMM1 可调：值越大并行 wave 越多但单 iter 时间越长，2 是常用甜区。
-    constexpr uint32_t MAX_TILES_PER_CORE_GMM1 = 2U;
+    constexpr uint32_t MAX_TILES_PER_CORE_GMM1 = 4U;
     uint32_t minCoresPerWaveGmm1 = (tileNumGmm1 + MAX_TILES_PER_CORE_GMM1 - 1U) / MAX_TILES_PER_CORE_GMM1;
     if (minCoresPerWaveGmm1 < 1U) {
         minCoresPerWaveGmm1 = 1U;
     }
 
-    // === Dispatch 流水化 ===
-    // sub1 用独立的 dispatchBaseOffset_/dispatchProblemShape_/dispatchPreOffset_ 维护自己的
-    // expert 0..N-1 推进进度，与主线 baseOffset_ 等成员完全隔离。
-    //   - expert loop 之前预 dispatch expert 0
-    //   - expert k loop body 内 (在主线 UpdateGroupParams(k) 之后) 预 dispatch expert k+1
-    // 这样 cube 进 expert k+1 wave 0 时 dispatch flag 已 ready，wDsp ≈ 0us。
-    // sub1 自身的 groupFlagListGm2_ 被 prefetch 改但 sub1 后续不读它（DispatchTokens 内才用）。
+    // === Dispatch 流水化（砍1 路径，sub1 prefetch overlap）===
+    // pre-loop sub1 dispatch expert 0；进 expert k loop body 后 sub1 提前 prefetch expert k+1 dispatch。
+    // 用独立的 dispatchBaseOffset_/dispatchProblemShape_/dispatchPreOffset_，不污染主线 baseOffset_ 等。
     if constexpr(g_coreType == AscendC::AIV) {
         if (subBlockIdx_ == 1 && expertPerRank_ > 0U) {
             if (UpdateGroupParamsForDispatch(0)) {
@@ -893,8 +889,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
         bool valid = UpdateGroupParams(expertIdx);
 
-        // sub1 在当前 expert k loop body 内预 dispatch expert k+1：
-        // 用独立的 dispatch 状态，与上面 UpdateGroupParams(k) 改的主线 baseOffset_ 等无关。
+        // sub1 在 expert k loop body 内 prefetch expert k+1 dispatch
         if constexpr(g_coreType == AscendC::AIV) {
             if (subBlockIdx_ == 1 && expertIdx + 1U < expertPerRank_) {
                 if (UpdateGroupParamsForDispatch(expertIdx + 1U)) {
@@ -914,7 +909,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         uint64_t m_i = Get<M_VALUE>(problemShape_);
         uint64_t waveCnt = (m_i + L1_TILE_M - 1) / L1_TILE_M;
 
-        // 按本 expert 的 waveCnt 决定分组：让 wavesParallel 尽量等于 waveCnt
         uint32_t maxGroups = blockNum_ / minCoresPerWaveGmm1;
         if (maxGroups < 1U) {
             maxGroups = 1U;
@@ -928,22 +922,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         coreGroupId_ = blockIdx_ / coresPerWave_;
         coreActive_ = (coreGroupId_ < wavesParallel_);
 
-        // 为当前 expert 配置 cube 用的 gmmAddrInfo（dispatch 不在这里发了，已经被前一轮预 dispatch 了）
         UpdateGlobalBuffer(gmmAddrInfo, 0);
         gmmAddrInfo.groupFlagList2 = (__gm__ int32_t*)params_.workspaceInfo.ptrFlagDispatchToGmm1 + expertIdx;
         groupFlagListGm2_.SetGlobalBuffer(gmmAddrInfo.groupFlagList2);
 
-        // Wave loop: 本核所在组负责 waveIdx ∈ {coreGroupId_, coreGroupId_ + wavesParallel_, ...}
-        // 子块分工（每个 cube + 2 个 vec subBlock 一组）：
-        //   - AIC      ：GMM1 mmad，GMM2 mmad
-        //   - subBlock 0：GMM1 epilogue (swiglu+quant)
-        //   - subBlock 1：dispatch（每 expert 一次，wave loop 之前）+ GMM2 combine（每 wave）
-        // GMM1 epilogue 和 GMM2 combine 跑在不同 vec subBlock，sub0/sub1 UB 物理上独立，
-        // wave 之间不需要 cube↔vec 屏障——cube/vec 可以跨 wave 直接流水。
         uint64_t waveStart = coreActive_ ? static_cast<uint64_t>(coreGroupId_) : waveCnt;
         for (uint64_t waveIdx = waveStart; waveIdx < waveCnt; waveIdx += wavesParallel_) {
-
-            // [TRACE] sp0: wave loop iteration 入口
             MegaMoeTrace::RecordWavePoint(params_.y2GmAddr, waveTraceIdx_, MegaMoeTrace::SP_WAVE_ENTRY);
 
             uint64_t waveM = (waveIdx == waveCnt - 1 && m_i % L1_TILE_M != 0) ?
@@ -954,10 +938,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             UpdateGlobalBuffer(waveGmmInfo, 0, waveIdx);
             groupFlagListGm_.SetGlobalBuffer(waveGmmInfo.groupFlagList);
 
-            // [TRACE] sp1: GMM1 函数调用前
             MegaMoeTrace::RecordWavePoint(params_.y2GmAddr, waveTraceIdx_, MegaMoeTrace::SP_GMM1_BEGIN);
 
-            // GMM1 + SwiGLUQuant for this wave
             if (subBlockIdx_ == 0) {
                 MegaMoeImpl::GroupMatmulSwigluQuant<
                     QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType, IsInterleaved>(
@@ -967,22 +949,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             EndSync();
             vecSetSyncCom_ = 0;
 
-            // [TRACE] sp5: GMM1 + EndSync 完成
             MegaMoeTrace::RecordWavePoint(params_.y2GmAddr, waveTraceIdx_, MegaMoeTrace::SP_GMM1_END);
 
             waveGmmInfo = gmmAddrInfo;
             UpdateGlobalBuffer(waveGmmInfo, 1, waveIdx);
             groupFlagListGm_.SetGlobalBuffer(waveGmmInfo.groupFlagList);
 
-            // [TRACE] sp6: GMM2 函数调用前
             MegaMoeTrace::RecordWavePoint(params_.y2GmAddr, waveTraceIdx_, MegaMoeTrace::SP_GMM2_BEGIN);
 
-            // GMM2 + Combine for this wave（GMM2 不用 cube/vec 信号，靠 rowReadyFlags 每核计数器）
-            // AIC 始终参与（mmad），combine 这次切到 AIV subBlock 1：
-            //   - subBlock 0 专心做 GMM1 epilogue (swiglu+quant)
-            //   - subBlock 1 在 dispatch 之外还接管 GMM2 combine
-            // AIC 与 AIV 的配对仍按 blockIdx 一致（AIV 的 GetTaskRation()=2，所以 AIV index 1
-            // 与 AIC 0 同 pair，AIV index 3 与 AIC 1 同 pair…），rowReadyFlags 用 blockIdx 索引也对得上。
             if constexpr(g_coreType == AscendC::AIC) {
                 MegaMoeImpl::GroupMatmul2<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
                                           IsInterleaved>(
@@ -995,10 +969,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                     static_cast<uint64_t>(waveIdx) * static_cast<uint64_t>(L1_TILE_M), waveTraceIdx_);
             }
 
-            // [TRACE] sp10: GMM2 函数返回后
             MegaMoeTrace::RecordWavePoint(params_.y2GmAddr, waveTraceIdx_, MegaMoeTrace::SP_GMM2_END);
-
-            // [TRACE] sp11: wave loop iteration 出口
             MegaMoeTrace::RecordWavePoint(params_.y2GmAddr, waveTraceIdx_, MegaMoeTrace::SP_WAVE_END);
             waveTraceIdx_++;
         }
