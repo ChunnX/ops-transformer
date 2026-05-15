@@ -172,6 +172,109 @@ class ComparedOutput(Enum):
     Y1 = 'y1'
     Y1_SCALE = 'y1_scale'
 
+
+# ============================================================================
+# Timestamp 解析（与 op_kernel/mega_moe_base.h 的 MegaMoeTrace 对齐）
+# ============================================================================
+# 跑测时 kernel 把 timestamp 写到 y2GmAddr（原 y 输出）的前 N*8 字节，按 uint64 排布。
+# layout:
+#   [0,            MAX_AIC * POINTS_PER_CORE)               -> AIC core i 的 9 个点位
+#   [MAX_AIC * PPC, (MAX_AIC + MAX_AIV) * POINTS_PER_CORE)  -> AIV core i 的 9 个点位
+# 使能时，y 的数值不再是 unpermute 结果，对比精度会 FAIL；这是预期。
+TRACE_ENABLED = True
+TRACE_POINTS_PER_CORE = 9
+TRACE_MAX_AIC = 36
+TRACE_MAX_AIV = 72
+TRACE_TOTAL_CORES = TRACE_MAX_AIC + TRACE_MAX_AIV  # 108
+
+# point idx → (AIC含义, AIV含义)
+TRACE_POINT_DESC = [
+    ('KERNEL_ENTRY',          'KERNEL_ENTRY'),
+    ('ROUTING_DONE',          'ROUTING_DONE'),
+    ('CROSSRANK_DONE',        'CROSSRANK_DONE'),
+    ('E0_WAVE_LOOP_ENTRY',    'E0_DISP_BEGIN (sub1)'),
+    ('E0_GMM1_END',           'E0_DISP_END (sub1) / E0_GMM1_EPI_END (sub0)'),
+    ('E0_GMM2_END',           'E0_COMBINE_END (sub1)'),
+    ('LAST_WAVE_DONE',        'LAST_WAVE_DONE'),
+    ('EXPERT_LOOP_END',       'EXPERT_LOOP_END'),
+    ('PROCESS_END',           'PROCESS_END'),
+]
+
+
+def _y_tensor_to_uint64(y_tensor):
+    """把 bfloat16 张量按字节重新解释为 uint64 数组（不发生数值转换）。"""
+    # bfloat16 → int16（同样 2 字节）→ numpy → view uint64
+    y_int16 = y_tensor.cpu().contiguous().view(torch.int16)
+    arr_int16 = y_int16.numpy()
+    n_bytes = arr_int16.nbytes
+    n_u64 = n_bytes // 8
+    arr_u64 = arr_int16.view(np.uint64).reshape(-1)[:n_u64]
+    return arr_u64
+
+
+def parse_timestamps_from_y(y_tensor, rank_id):
+    """从一个 rank 的 y 张量解析时间戳，打印每段耗时统计。"""
+    if not TRACE_ENABLED:
+        return
+    needed_u64 = TRACE_TOTAL_CORES * TRACE_POINTS_PER_CORE
+    arr = _y_tensor_to_uint64(y_tensor)
+    if arr.size < needed_u64:
+        print(f"[TRACE rank {rank_id}] y too small: have {arr.size} u64, need {needed_u64}; "
+              f"set bs >= ceil({needed_u64 * 8} / (h*2)) or shrink POINTS_PER_CORE")
+        return
+    ts = arr[:needed_u64].reshape(TRACE_TOTAL_CORES, TRACE_POINTS_PER_CORE).astype(np.int64)
+    aic_ts = ts[:TRACE_MAX_AIC]                                    # (36, 9)
+    aiv_ts = ts[TRACE_MAX_AIC:TRACE_MAX_AIC + TRACE_MAX_AIV]       # (72, 9)
+
+    def _report(side_name, ts_block, label_idx):
+        labels = [d[label_idx] for d in TRACE_POINT_DESC]
+        # 用 KERNEL_ENTRY (point 0) 当每个核独立的原点
+        entry = ts_block[:, 0:1]
+        # 不活跃的核（没打过 KERNEL_ENTRY）全是 0；排掉
+        active_mask = entry.flatten() > 0
+        rel = ts_block - entry
+        active = rel[active_mask]
+        print(f"\n----- [rank {rank_id}] {side_name}  active cores: {active_mask.sum()}/{len(ts_block)} -----")
+        if active.size == 0:
+            return
+        print(f"  {'point':<3}{'name':<48}{'min(cyc)':>12}{'avg(cyc)':>12}{'max(cyc)':>12}")
+        for i, lbl in enumerate(labels):
+            col = active[:, i]
+            mn = int(col.min())
+            mx = int(col.max())
+            avg = int(col.mean())
+            warn = ''
+            # 缺失点（依然是 0 但前后有时间戳）：表示该核没走到这个 point
+            zero_cnt = int((col == 0).sum()) if i > 0 else 0
+            if zero_cnt > 0:
+                warn = f'  [{zero_cnt} cores missed]'
+            print(f"  {i:<3}{lbl:<48}{mn:>12}{avg:>12}{mx:>12}{warn}")
+
+        print(f"\n  phase durations ({side_name}):")
+        print(f"  {'phase':<60}{'min(cyc)':>12}{'avg(cyc)':>12}{'max(cyc)':>12}")
+        # 阶段：连续两个 point 都不为 0 的核才参与统计
+        for i in range(1, len(labels)):
+            prev_col = active[:, i-1]
+            curr_col = active[:, i]
+            # 排除任意端为 0 的核（除非是 point 0，那是原点必然为 0）
+            valid_mask = (curr_col > 0)
+            if i > 1:
+                valid_mask = valid_mask & (prev_col > 0)
+            if valid_mask.sum() == 0:
+                continue
+            diffs = (curr_col - prev_col)[valid_mask]
+            mn = int(diffs.min())
+            mx = int(diffs.max())
+            avg = int(diffs.mean())
+            hotspot = '   <-- HOTSPOT' if avg > 5000 else ''
+            phase = f"{labels[i-1]} -> {labels[i]}"
+            print(f"  {phase:<60}{mn:>12}{avg:>12}{mx:>12}{hotspot}")
+
+    print(f"\n========== [rank {rank_id}] MegaMoe TIMESTAMPS (raw cycles, ≈1GHz → 1000 cyc=1us) ==========")
+    _report('AIC', aic_ts, 0)
+    _report('AIV', aiv_ts, 1)
+    print(f"========== [rank {rank_id}] END TIMESTAMPS ==========\n")
+
 # dispatch_profiling_path = './Profiling_Result_mc2_dispatch_16p'
 # combine_profiling_path = './Profiling_Result_mc2_combine_16p'
 cascade_profiling_path = './Profiling_Result_mc2_cascade_16p'
@@ -798,6 +901,15 @@ if __name__ == "__main__":
     for category_id in range(category_num):
         specific_category_output = [rank_output[category_id] for rank_output in rank_outputs]
         category_outputs.append(specific_category_output)
+
+    # ====== 打点解析（先于 compare，因为 trace 模式下 y 不再是真实结果） ======
+    if TRACE_ENABLED:
+        for local_rank_id in range(rank_per_dev):
+            global_rank_id = server_index * rank_per_dev + local_rank_id
+            try:
+                parse_timestamps_from_y(category_outputs[1][local_rank_id], global_rank_id)
+            except Exception as e:
+                print(f"[TRACE rank {global_rank_id}] parse failed: {e}")
 
     result_dispatch_ffn_combine = {}
     # 比较y
