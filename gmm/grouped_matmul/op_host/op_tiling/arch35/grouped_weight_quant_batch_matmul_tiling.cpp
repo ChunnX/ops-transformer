@@ -69,8 +69,10 @@ bool GroupedWeightQuantBatchMatmulTiling::SetShapeList(const gert::TilingContext
         OP_CHECK_IF(!SetShapeListMultiXMultiWeightMultiY(context),
                     OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(), "Unable to get MMM shape list"), return false);
     } else {
-        OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(),
-                                   "Only support single-single-single or multi-multi-multi mode");
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(context->GetNodeName(), "groupType, isSingleX, isSingleWeight, isSingleY",
+                                               std::to_string(groupType_) + ", " + (isSingleX_ ? "true" : "false") + ", " +
+                                                   (isSingleWeight_ ? "true" : "false") + ", " + (isSingleY_ ? "true" : "false"),
+                                               "Only support single-single-single or multi-multi-multi mode");
         return false;
     }
     return true;
@@ -148,12 +150,12 @@ bool GroupedWeightQuantBatchMatmulTiling::IsNzFormat(const gert::TilingContext *
 bool GroupedWeightQuantBatchMatmulTiling::CheckXAndWeightFormat(const gert::TilingContext *context, size_t idx) const
 {
     bool xNzFlag = IsNzFormat(context, X_IDX, idx);
-    OP_CHECK_IF(xNzFlag, OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(context->GetNodeName(), "x[" + std::to_string(idx) + "]", "FORMAT_FRACTAL_NZ", "format must be ND"),
+    OP_CHECK_IF(xNzFlag, OP_LOGE_FOR_INVALID_FORMAT_WITH_REASON(context->GetNodeName(), "x[" + std::to_string(idx) + "]", "FORMAT_FRACTAL_NZ", "FORMAT_ND"),
                 return false);
     if (IsA16W4ND()) {
         bool weightNzFlag = IsNzFormat(context, WEIGHT_IDX, idx);
         OP_CHECK_IF(weightNzFlag,
-                    OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(context->GetNodeName(), "weight[" + std::to_string(idx) + "]", "FORMAT_FRACTAL_NZ", "format must be ND"),
+                    OP_LOGE_FOR_INVALID_FORMAT_WITH_REASON(context->GetNodeName(), "weight[" + std::to_string(idx) + "]", "FORMAT_FRACTAL_NZ", "FORMAT_ND"),
                     return false);
         return true;
     }
@@ -808,7 +810,7 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckUnsupportDataFlow(const gert::Til
         (weightDtype_ == ge::DT_INT8 || weightDtype_ == ge::DT_INT32 || weightDtype_ == ge::DT_INT4)) {
         OP_CHECK_IF(
             weightNzFlag_,
-            OP_LOGE_FOR_INTERNAL_ERROR(
+            OP_LOGE_FOR_VALIDATION_FAILED(
                 context->GetNodeName(),
                 "In weight quant case, when x-weight is bf16/fp16-int8/int4/int32, weight only supports ND-format"),
             return false);
@@ -816,7 +818,7 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckUnsupportDataFlow(const gert::Til
                (weightDtype_ == ge::DT_FLOAT8_E4M3FN || weightDtype_ == ge::DT_FLOAT8_E5M2 ||
                 weightDtype_ == ge::DT_HIFLOAT8)) {
         OP_CHECK_IF(!(!weightNzFlag_ && transB_),
-                    OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(),
+                    OP_LOGE_FOR_VALIDATION_FAILED(context->GetNodeName(),
                                                "In weight quant case, when x-weight is bf16/fp16-fp8/hif8, weight only "
                                                "supports transposed and ND-format"),
                     return false);
@@ -825,13 +827,13 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckUnsupportDataFlow(const gert::Til
                 weightDtype_ == ge::DT_FLOAT) &&
                antiquantScaleDtype_ == ge::DT_FLOAT8_E8M0) {
         OP_CHECK_IF(!(weightNzFlag_ && !transB_),
-                    OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(),
+                    OP_LOGE_FOR_VALIDATION_FAILED(context->GetNodeName(),
                                                "In weight quant case, when x-weight is bf16/fp16-fp4/fp16, weight only "
                                                "supports untransposed and FRACTAL_NZ-format"),
                     return false);
     } else if (xDType_ == ge::DT_INT8 && weightDtype_ == ge::DT_INT4) {
         OP_CHECK_IF(!(weightNzFlag_ && !transB_),
-                    OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(),
+                    OP_LOGE_FOR_VALIDATION_FAILED(context->GetNodeName(),
                                                "In weight quant case, when x-weight is int8-int4, weight only supports "
                                                "untransposed and FRACTAL_NZ-format"),
                     return false);
@@ -839,7 +841,7 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckUnsupportDataFlow(const gert::Til
                (weightDtype_ == ge::DT_FLOAT4_E2M1 || weightDtype_ == ge::DT_FLOAT) &&
                antiquantScaleDtype_ == ge::DT_FLOAT8_E8M0) {
         OP_CHECK_IF(!(weightNzFlag_ && transB_),
-                    OP_LOGE_FOR_INTERNAL_ERROR(context->GetNodeName(),
+                    OP_LOGE_FOR_VALIDATION_FAILED(context->GetNodeName(),
                                                "In weight quant case, when x-weight is float8_e4m3fn-float4_e2m1/fp32, "
                                                "weight only supports transposed weight and FRACTAL_NZ-format"),
                     return false);

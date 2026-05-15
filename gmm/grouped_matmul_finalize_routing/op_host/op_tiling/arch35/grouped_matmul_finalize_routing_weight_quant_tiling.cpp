@@ -203,7 +203,11 @@ bool GMMFRWeightQuantTiling::InferScenario()
         return true;
     }
 
-    OP_LOGE_FOR_INTERNAL_ERROR(context_->GetNodeName(), "Only support MX-A8W4-WEIGHT-NZ mode");
+    OP_LOGE_FOR_VALIDATION_FAILED(context_->GetNodeName(),
+                                  "Only support MX-A8W4-WEIGHT-NZ mode. Current xDtype: " +
+                                      ge::TypeUtils::DataTypeToSerialString(xDtype) + ", wDtype: " +
+                                      ge::TypeUtils::DataTypeToSerialString(wDtype) + ", scaleDtype: " +
+                                      ge::TypeUtils::DataTypeToSerialString(scaleDtype));
     return false;
 }
 
