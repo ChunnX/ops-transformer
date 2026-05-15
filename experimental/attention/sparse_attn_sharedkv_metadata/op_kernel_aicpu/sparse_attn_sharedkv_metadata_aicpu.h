@@ -25,7 +25,7 @@
 
 namespace aicpu {
 
-constexpr int64_t FA_TOLERANCE_RATIO = 2;
+constexpr int64_t FA_TOLERANCE_RATIO = 8;
 
 enum BlockType : uint32_t {
     WIN_NORMAL_BLOCK = 0,
