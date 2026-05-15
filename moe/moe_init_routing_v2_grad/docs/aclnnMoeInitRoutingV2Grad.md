@@ -193,8 +193,8 @@ aclnnStatus aclnnMoeInitRoutingV2Grad(
         <td>输入和输出的数据类型不在支持的范围内。</td>
       </tr>
       <tr>
-        <td rowspan="8">ACLNN_ERR_INNER_TILING_ERROR</td>
-        <td rowspan="8">561002</td>
+        <td rowspan="8">ACLNN_ERR_INNER_NULLPTR</td>
+        <td rowspan="8">561103</td>
         <td>dropPadMode的属性值不是0或1。</td>
       </tr>
       <tr>

@@ -13,7 +13,7 @@
  * \brief
  */
 
-#include "../op_kernel/arch32/flash_attention_score_grad_tiling.h"
+#include "../op_kernel/arch22/flash_attention_score_grad_tiling.h"
 #include <register/op_impl_registry.h>
 #include "log/log.h"
 #include "op_host/data_copy_transpose_tiling.h"

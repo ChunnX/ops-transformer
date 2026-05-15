@@ -1150,10 +1150,10 @@ __aicore__ inline void FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBloc
                         // DeterCompute
                         this->vecBlock.DeterCompute(mm1ResTensor, mm2ResTensor, this->constInfo, dqIsNeedDeter, dkDvIsNeedDeter, 
                                                     false, maxValidBBLen - remainLoopNum, remainLoopNum, &deterPpFlag);
-                        if ASCEND_IS_AIV {
-                            CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_DETER_FIX_FLAG);
-                        }
                         remainLoopNum--;
+                    }
+                    if ASCEND_IS_AIV {
+                        CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_DETER_FIX_FLAG);
                     }
                 }
                 if (this->isLastLoop && taskId > 0) {

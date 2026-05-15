@@ -213,9 +213,8 @@ __aicore__ inline void DenseLISoftmaxLseVector<T>::ProcessVec(const DenseLISoftm
                 scaleBuf_.EnQue<float>(mmInUb);
                 mmInUb = scaleBuf_.DeQue<float>();
                 weightsInUb = mmInUb[procGnum * s2BaseSize_];
-                LocalTensor<float> brcUb = mmInUb[groupInner_ * s2BaseSize_ + s2BaseSize_];
-                DenseLISoftmaxLseServiceVec::DoScale(reduceCacheUb[REDUCE_BANK_CONFLICT_NUM], mmInUb, weightsInUb,
-                                                  weightsInTUb, brcUb, procGnum, s2BaseSize_, outerGidx);
+                DoScaleVfWrapper<W_T>(reduceCacheUb[REDUCE_BANK_CONFLICT_NUM], mmInUb, weightsInUb, weightsInTUb,
+                               procGnum, s2BaseSize_, outerGidx);
                 scaleBuf_.FreeTensor(mmInUb);
             }
 
@@ -362,15 +361,8 @@ __aicore__ inline void DenseLISoftmaxLseVector<T>::ProcessReduceSum(uint32_t pin
                 SOFTMAX_MIN_NUM, REDUCE_BASE_BLOCK_SIZE - DenseLISoftmaxLseCommon::Align(curBlockSize, uint32_t(8)));
             AscendC::PipeBarrier<PIPE_V>();
         }
-
-        AscendC::Sub(reduceSumSrc0, reduceSumSrc0, subMaxTensor, REDUCE_BASE_BLOCK_SIZE);
-        AscendC::PipeBarrier<PIPE_V>();
-        
-        AscendC::Exp(reduceSumSrc0, reduceSumSrc0, REDUCE_BASE_BLOCK_SIZE);
-        AscendC::PipeBarrier<PIPE_V>();
-
-        AscendC::Add(reduceSumDstTensor, reduceSumSrc0, reduceSumSrc1, REDUCE_BASE_BLOCK_SIZE);
-        AscendC::PipeBarrier<PIPE_V>();
+        DoReduceSumBlockVfWrapper(reduceSumDstTensor, reduceSumSrc0, subMaxTensor,
+            reduceSumSrc1, REDUCE_BASE_BLOCK_SIZE);
         SetFlag<HardEvent::V_S>(EVENT_ID4);
     }
     WaitFlag<HardEvent::V_S>(EVENT_ID4);

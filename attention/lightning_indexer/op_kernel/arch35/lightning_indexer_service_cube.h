@@ -183,7 +183,7 @@ __aicore__ inline void LightningIndexerServiceCube<LIT>::ComputeMm1(const LIComm
                 queryL1Mte2BufIdx_++;
                 queryL1Mte1BufIdx_ = queryL1Mte2BufIdx_;
                 WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + queryL1Mte2BufIdx_ % QUERY_BUF_NUM);
-                QueryNd2Nz(s1gL1SizeAlign2G, s1gGmOffset, runInfo);
+                QueryNd2Nz(s1gL1RealSize, s1gGmOffset, runInfo);
                 SetFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
                 WaitFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
             } else {
@@ -303,12 +303,13 @@ template <typename LIT>
 __aicore__ inline void LightningIndexerServiceCube<LIT>::QueryNd2Nz(uint64_t s1gL1RealSize, uint64_t s1gGmOffset,
                                                  const LICommon::RunInfo &runInfo)
 {
+    uint64_t dstNzC0Stride = CeilAlign(s1gL1RealSize, 2 * constInfo_.gSize);
     Nd2NzParams nd2nzPara;
     nd2nzPara.ndNum = 1;
     nd2nzPara.nValue = s1gL1RealSize; // 行数
     nd2nzPara.dValue = constInfo_.headDim;
     nd2nzPara.srcDValue = constInfo_.headDim;
-    nd2nzPara.dstNzC0Stride = CeilAlign(s1gL1RealSize, (uint64_t)BLOCK_CUBE); // 对齐到16 单位block
+    nd2nzPara.dstNzC0Stride = CeilAlign(dstNzC0Stride, (uint64_t)BLOCK_CUBE); // 对齐到16 单位block
     nd2nzPara.dstNzNStride = 1;
     nd2nzPara.srcNdMatrixStride = 0;
     nd2nzPara.dstNzMatrixStride = 0;

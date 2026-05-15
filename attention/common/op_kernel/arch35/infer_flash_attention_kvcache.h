@@ -606,7 +606,15 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr<isInfer>& runParam, cons
                     runParam.sOuterOffset;
             }
         } else {
-            if (constInfo.isGqa) {
+            if (constInfo.isGqa && constInfo.s1Size > 1) {
+                if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND) {
+                    runParam.softmaxLseOffset = softmaxLseSeqOffset + runParam.queryLeftPaddingSize * constInfo.n2G +
+                        runParam.sOuterOffset / constInfo.gSize * constInfo.n2G + runParam.n2oIdx * constInfo.gSize;
+                } else {
+                    runParam.softmaxLseOffset = softmaxLseSeqOffset +
+                        runParam.n2oIdx * constInfo.gSize * actualSeqLen + runParam.sOuterOffset;
+                }
+            } else if (constInfo.isGqa) {
                 runParam.softmaxLseOffset = softmaxLseSeqOffset + runParam.n2oIdx * constInfo.gSize * actualSeqLen +
                     runParam.sOuterOffset;
             } else {
