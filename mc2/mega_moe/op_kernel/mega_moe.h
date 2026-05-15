@@ -172,6 +172,9 @@ private:
     bool coreActive_ = true;
     bool anyWaveDone_ = false;  // 本核是否做过任意 wave，决定 expert loop 结束后是否需消费最后一发 NotifyCube
 
+    // [TRACE] 本核连续累计的 wave iteration 序号（跨 expert 累加），用于 RecordWavePoint。
+    int waveTraceIdx_ = 0;
+
     // 把 IsInterleaved 透传给 epilogue：true 时 epilogue 在同 UB 内读 gate / up 半，输出宽 = singleN_
     using BlockEpilogue = BlockEpilogueSwigluMxQuant<QuantOutType, float, QuantScaleOutType, QuantScaleOutType,
                                                     true, IsInterleaved>;
@@ -737,6 +740,10 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 {
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
+
+    // [TRACE] Process 入口（最早可打的点，y2GmAddr 是输入 yOut 指针，未被使用前）
+    MegaMoeTrace::RecordTimestampAt(params_.y2GmAddr, MegaMoeTrace::P_KERNEL_ENTRY);
+
     // 1. moe_init_routing_v3 + 量化
     moe_init_routing_v3<bfloat16_t, QuantOutType>(params_.aGmAddr, params_.expertIdxGmAddr, nullptr, nullptr,
             params_.peermemInfo.ptrA0, params_.workspaceInfo.expandedRowIdx, tokenPerExpertCurRankAddr_, nullptr,
@@ -744,6 +751,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             params_.tilingData->moeInitRoutingTilingData.tilingKey);
     PipeBarrier<PIPE_ALL>();
     SyncAll<true>();
+
+    // [TRACE] init_routing + SyncAll 完成
+    MegaMoeTrace::RecordTimestampAt(params_.y2GmAddr, MegaMoeTrace::P_ROUTING_DONE);
 
     // 2. buffer申请 & workspace Init
     TPipe firstPipe;
@@ -758,6 +768,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     //     firstPipe.Destroy();
     // }
     SyncAll<false>();
+
+    // [TRACE] CrossRankSync + buffer init 完成
+    MegaMoeTrace::RecordTimestampAt(params_.y2GmAddr, MegaMoeTrace::P_CROSSRANK_DONE);
 
     // 4. for循环: per-expert Dispatch + 并行 wave GMM1→GMM2 流水
     //    分核策略（每 expert 重新决定一次，因 waveCnt 取决于 m_i）：
@@ -820,9 +833,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         UpdateGlobalBuffer(gmmAddrInfo, 0);
         gmmAddrInfo.groupFlagList2 = (__gm__ int32_t*)params_.workspaceInfo.ptrFlagDispatchToGmm1 + expertIdx;
         groupFlagListGm2_.SetGlobalBuffer(gmmAddrInfo.groupFlagList2);
+
         if constexpr(g_coreType == AscendC::AIV) {
             if (subBlockIdx_ == 1) {
+                // [TRACE] per-expert dispatch begin（AIV1）
+                MegaMoeTrace::RecordDispatchPoint(params_.y2GmAddr, expertIdx, false);
                 DispatchTokens(gmmAddrInfo, expertIdx);
+                // [TRACE] per-expert dispatch end
+                MegaMoeTrace::RecordDispatchPoint(params_.y2GmAddr, expertIdx, true);
             }
         }
 
@@ -844,13 +862,16 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         uint64_t waveStart = coreActive_ ? static_cast<uint64_t>(coreGroupId_) : waveCnt;
         constexpr uint16_t WAVE_BARRIER_FLAG = 1U;
         for (uint64_t waveIdx = waveStart; waveIdx < waveCnt; waveIdx += wavesParallel_) {
-            // [EXP-A] 关闭 wave-end 屏障 AIC 等待端，用于 profile 定位 AIC wait 是否主要来自这里。
-            // 关闭后 UB race 会让精度挂掉，正确性会丢，**只用于 timeline 分析**。
-            // if (anyWaveDone_) {
-            //     if constexpr(g_coreType == AIC) {
-            //         WaitForVectorFromAIV1(WAVE_BARRIER_FLAG);
-            //     }
-            // }
+            // wave 起点的 AIC 等待端：上一 wave subBlock1 combine MTE3 完成后才能复用 UB。
+            // [EXP-A] 之前为 timeline 实验注释过，但关掉会让 UB race 破坏精度 —— 现在恢复。
+            if (anyWaveDone_) {
+                if constexpr(g_coreType == AIC) {
+                    WaitForVectorFromAIV1(WAVE_BARRIER_FLAG);
+                }
+            }
+
+            // [TRACE] sp0: wave loop iteration 入口
+            MegaMoeTrace::RecordWavePoint(params_.y2GmAddr, waveTraceIdx_, MegaMoeTrace::SP_WAVE_ENTRY);
 
             uint64_t waveM = (waveIdx == waveCnt - 1 && m_i % L1_TILE_M != 0) ?
                              m_i % L1_TILE_M : L1_TILE_M;
@@ -860,19 +881,28 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             UpdateGlobalBuffer(waveGmmInfo, 0, waveIdx);
             groupFlagListGm_.SetGlobalBuffer(waveGmmInfo.groupFlagList);
 
+            // [TRACE] sp1: GMM1 函数调用前
+            MegaMoeTrace::RecordWavePoint(params_.y2GmAddr, waveTraceIdx_, MegaMoeTrace::SP_GMM1_BEGIN);
+
             // GMM1 + SwiGLUQuant for this wave
             if (subBlockIdx_ == 0) {
                 MegaMoeImpl::GroupMatmulSwigluQuant<
                     QuantOutType, QuantOutType, float, QuantScaleOutType, QuantScaleOutType, IsInterleaved>(
                     epilogueOp_, params_, problemShape_, waveGmmInfo, coreInGroup_, coresPerWave_,
-                    vecSetSyncCom_);
+                    vecSetSyncCom_, waveTraceIdx_);
             }
             EndSync();
             vecSetSyncCom_ = 0;
 
+            // [TRACE] sp5: GMM1 + EndSync 完成
+            MegaMoeTrace::RecordWavePoint(params_.y2GmAddr, waveTraceIdx_, MegaMoeTrace::SP_GMM1_END);
+
             waveGmmInfo = gmmAddrInfo;
             UpdateGlobalBuffer(waveGmmInfo, 1, waveIdx);
             groupFlagListGm_.SetGlobalBuffer(waveGmmInfo.groupFlagList);
+
+            // [TRACE] sp6: GMM2 函数调用前
+            MegaMoeTrace::RecordWavePoint(params_.y2GmAddr, waveTraceIdx_, MegaMoeTrace::SP_GMM2_BEGIN);
 
             // GMM2 + Combine for this wave（GMM2 不用 cube/vec 信号，靠 rowReadyFlags 每核计数器）
             // AIC 始终参与（mmad），combine 这次切到 AIV subBlock 1：
@@ -884,34 +914,45 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                 MegaMoeImpl::GroupMatmul2<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
                                           IsInterleaved>(
                     params_, problemShape_, waveGmmInfo, coreInGroup_, coresPerWave_, expertIdx, rankId_,
-                    static_cast<uint64_t>(waveIdx) * static_cast<uint64_t>(L1_TILE_M));
+                    static_cast<uint64_t>(waveIdx) * static_cast<uint64_t>(L1_TILE_M), waveTraceIdx_);
             } else if (subBlockIdx_ == 1) {
                 MegaMoeImpl::GroupMatmul2<QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
                                           IsInterleaved>(
                     params_, problemShape_, waveGmmInfo, coreInGroup_, coresPerWave_, expertIdx, rankId_,
-                    static_cast<uint64_t>(waveIdx) * static_cast<uint64_t>(L1_TILE_M));
+                    static_cast<uint64_t>(waveIdx) * static_cast<uint64_t>(L1_TILE_M), waveTraceIdx_);
             }
 
-            // [EXP-A] 关闭 wave-end 屏障 AIV1 发送端，与 AIC 等待端配对一起关。
-            // 留着 anyWaveDone_=true 不动（drain 也需要看这个，下面 drain 也要一起关）。
-            // if constexpr(g_coreType == AscendC::AIV) {
-            //     if (subBlockIdx_ == 1) {
-            //         SyncFunc<AscendC::HardEvent::MTE3_V>();
-            //         NotifyCube(WAVE_BARRIER_FLAG);
-            //     }
-            // }
+            // [TRACE] sp10: GMM2 函数返回后
+            MegaMoeTrace::RecordWavePoint(params_.y2GmAddr, waveTraceIdx_, MegaMoeTrace::SP_GMM2_END);
+
+            // wave 末的 AIV1 发送端：等到 subBlock1 combine MTE3 完成才告诉 AIC 可以进下一 wave。
+            // 与上面 AIC WaitForVectorFromAIV1 配对。
+            if constexpr(g_coreType == AscendC::AIV) {
+                if (subBlockIdx_ == 1) {
+                    SyncFunc<AscendC::HardEvent::MTE3_V>();
+                    NotifyCube(WAVE_BARRIER_FLAG);
+                }
+            }
+
+            // [TRACE] sp11: wave loop iteration 出口
+            MegaMoeTrace::RecordWavePoint(params_.y2GmAddr, waveTraceIdx_, MegaMoeTrace::SP_WAVE_END);
+            waveTraceIdx_++;
             anyWaveDone_ = true;
         }
+
         Get<M_VALUE>(problemShape_) = m_i;
     }
 
-    // [EXP-A] 关闭 wave-end 屏障 drain，与上面发送端 + 等待端配对关。
-    // if (anyWaveDone_) {
-    //     if constexpr(g_coreType == AIC) {
-    //         constexpr uint16_t WAVE_BARRIER_FLAG = 1U;
-    //         WaitForVectorFromAIV1(WAVE_BARRIER_FLAG);
-    //     }
-    // }
+    // [TRACE] expert loop 整体结束
+    MegaMoeTrace::RecordTimestampAt(params_.y2GmAddr, MegaMoeTrace::P_EXPERT_LOOP_END);
+
+    // expert loop 结束后 drain：消费最后一发 wave-end 屏障 NotifyCube，与上面配对。
+    if (anyWaveDone_) {
+        if constexpr(g_coreType == AIC) {
+            constexpr uint16_t WAVE_BARRIER_FLAG = 1U;
+            WaitForVectorFromAIV1(WAVE_BARRIER_FLAG);
+        }
+    }
 
     if (subBlockIdx_ == 0) {
         PipeBarrier<PIPE_ALL>();
@@ -927,14 +968,20 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         }
     }
     SyncAll<true>();
-    // 6. unpermute & 清理win区上放置token的位置
+
+    // [TRACE] 最终 SyncAll<true> 之后（最后一个时间戳）
+    MegaMoeTrace::RecordTimestampAt(params_.y2GmAddr, MegaMoeTrace::P_PROCESS_END);
+
+    // [TRACE-DISABLE] 6. unpermute & 清理win区上放置token的位置
+    //   时间戳分析期间这些会写 y2GmAddr 覆盖打点数据，全部关掉。
+    //   恢复正常运行时把整段 if constexpr(AIV) {...} 解除注释、删掉本块上面的 P_PROCESS_END 打点。
     if constexpr(g_coreType == AIV) {
         ArgSortExpandedRowIdx();
         TPipe secondPipe;
         SecondBuffInit(&secondPipe);
         ResetTokenPerExpert();
         CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
-        Unpermute();
+        // Unpermute();
         PipeBarrier<PIPE_ALL>();
         secondPipe.Destroy();
     }
