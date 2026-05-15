@@ -818,8 +818,7 @@ public:
             return;
         }
 
-        if ((taskDealMode == TASK_DEAL_MODE::DEAL_ZERO ||
-             taskDealMode == TASK_DEAL_MODE::SKIP_ZERO)) {
+        if (taskDealMode == TASK_DEAL_MODE::DEAL_ZERO) {
             if (!SkipForS1OutSplit()) {
                 coreGS1Loops++;
             }
