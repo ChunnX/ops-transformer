@@ -215,13 +215,13 @@ ge::graphStatus IFATilingArch38::DoSubOpTiling(IncreFlashAttentionContext &ifaCo
     TilingGetTempCompileInfo(ascendcPlatform, compileInfo);
     PromptFlashAttentionTilingArch38 flashTilingArch38(context_);
     ContextParamsForPFATiling contextParamsForPFATiling;
-    auto ret = PFAConvertContext(contextParamsForPFATiling, context_);
-    contextParamsForPFATiling.compileInfoPtr = &compileInfo;
-    OP_CHECK_IF(ret == ge::GRAPH_FAILED,
-                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "fail to convert to PFAParams"),
-                return ge::GRAPH_FAILED);
-    PromptFlashAttentionTilingData tilingData;
-    ret = flashTilingArch38.DoSubOpTiling(tilingData, contextParamsForPFATiling);
+    // auto ret = PFAConvertContext(contextParamsForPFATiling, context_);
+    // contextParamsForPFATiling.compileInfoPtr = &compileInfo;
+    // OP_CHECK_IF(ret == ge::GRAPH_FAILED,
+    //             OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "fail to convert to PFAParams"),
+    //             return ge::GRAPH_FAILED);
+    // PromptFlashAttentionTilingData tilingData;
+    // ret = flashTilingArch38.DoSubOpTiling(tilingData, contextParamsForPFATiling);
     return ret;
 }
 
