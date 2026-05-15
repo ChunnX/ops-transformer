@@ -42,14 +42,13 @@ public:
 
 private:
     __aicore__ inline void Init(const TILING_CLASS *__restrict tilingData);
-    __aicore__ inline void GetActualSeqLen(GM_ADDR actual_seq_qlen, GM_ADDR actual_seq_kvlen);
     __aicore__ inline void CubeCompute(CubeOp<SFAGT> &cubeOp);
     __aicore__ inline void VecCompute(VecOp<SFAGT> &vecOp,
         const GM_ADDR actual_seq_qlen, const GM_ADDR actual_seq_kvlen);
     __aicore__ inline void UpdateGmOffset(int64_t task, bool validflag);
     __aicore__ inline void SaveLastInfo();
     __aicore__ inline void GetTndSeqLen(const GM_ADDR actual_seq_qlen_addr, const GM_ADDR actual_seq_kvlen_addr,
-                                        const int64_t t1Idx, int64_t &bIdx, bool &isNeedCompute);
+                                        const int64_t t1Idx, int64_t &bIdx);
     __aicore__ inline void GetActualSelCount(const int64_t t1Idx, const int64_t n2Idx, int32_t &actSelBlkCount);
 
     __aicore__ inline void UpdateScatterInfo(int64_t t1ScatterIndex);
@@ -85,7 +84,6 @@ private:
     int64_t dimS1;
     int64_t totalS1{0};
     int64_t validT1{0};
-    int64_t validT2{0};
     bool deterministic = false;
     // attr
     uint32_t selectedBlockCount;
@@ -212,7 +210,9 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::Process(
 {
     Init(tilingData);
     topkIndicesGm.SetGlobalBuffer((__gm__ int32_t *)topk_indices);
-    GetActualSeqLen(actual_seq_qlen, actual_seq_kvlen);
+    if constexpr (IS_BSND == false) {
+        validT1 = ((__gm__ int32_t *)actual_seq_qlen)[dimB - 1];
+    }
 
     // AIC Process
     if ASCEND_IS_AIC {
@@ -226,11 +226,10 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::Process(
         for (int32_t i = 0; i < processBS1ByCore; i++) {
             scatterTaskId = i % 2;
             int32_t t1Index = cubeBlockIdx + usedCoreNum * i;
-            bool isNeedCompute = true;
-            GetTndSeqLen(actual_seq_qlen, actual_seq_kvlen, t1Index, bIndex, isNeedCompute);
-            if (!isNeedCompute) {
+            if (t1Index >= validT1) {
                 break;
             }
+            GetTndSeqLen(actual_seq_qlen, actual_seq_kvlen, t1Index, bIndex);
             for (n2Index = 0; n2Index < dimN2; n2Index++) {
                 isLastBlockSelected = false;
                 GetActualSelCount(t1Index, n2Index, actualSelectedBlockCount);
@@ -305,11 +304,10 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::Process(
         for (int32_t i = 0; i < processBS1ByCore; i++) {
             scatterTaskId = i % 2;
             int32_t t1Index = cubeBlockIdx + usedCoreNum * i;
-            bool isNeedCompute = true;
-            GetTndSeqLen(actual_seq_qlen, actual_seq_kvlen, t1Index, bIndex, isNeedCompute);
-            if (!isNeedCompute) {
+            if (t1Index >= validT1) {
                 break;
             }
+            GetTndSeqLen(actual_seq_qlen, actual_seq_kvlen, t1Index, bIndex);
             for (n2Index = 0; n2Index < dimN2; n2Index++) {
                 isLastBlockSelected = false;
                 GetActualSelCount(t1Index, n2Index, actualSelectedBlockCount);
@@ -611,26 +609,6 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::SaveLastInfo()
     loopCnt++;
 }
 
-template <typename SFAGT>
-__aicore__ inline void SelectedAttentionGradBasic<SFAGT>::GetActualSeqLen(GM_ADDR actual_seq_qlen,
-                                                                        GM_ADDR actual_seq_kvlen)
-{
-    if constexpr (IS_BSND == false) {
-        for (int64_t i = 0; i < dimB; i++) {
-            int64_t seqS1Len = 0;
-            int64_t seqS2Len = 0;
-            if (unlikely(i == 0)) {
-                seqS1Len = ((__gm__ int32_t *)actual_seq_qlen)[i];
-                seqS2Len = ((__gm__ int32_t *)actual_seq_kvlen)[i];
-            } else {
-                seqS1Len = ((__gm__ int32_t *)actual_seq_qlen)[i] - ((__gm__ int32_t *)actual_seq_qlen)[i - 1];
-                seqS2Len = ((__gm__ int32_t *)actual_seq_kvlen)[i] - ((__gm__ int32_t *)actual_seq_kvlen)[i - 1];
-            }
-            validT1 += (int64_t)seqS1Len;
-            validT2 += (int64_t)seqS2Len;
-        }
-    }
-}
 
 template <typename SFAGT>
 __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::GetTndSeqLenScatter(const GM_ADDR actual_seq_qlen_addr,
@@ -666,8 +644,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::GetTndSeqLenScatter(co
 template <typename SFAGT>
 __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::GetTndSeqLen(const GM_ADDR actual_seq_qlen_addr,
                                                                        const GM_ADDR actual_seq_kvlen_addr,
-                                                                       const int64_t t1Idx, int64_t &bIdx,
-                                                                       bool &isNeedCompute)
+                                                                       const int64_t t1Idx, int64_t &bIdx)
 {
     if constexpr (IS_BSND == false) {
         int64_t curT1 = ((__gm__ int32_t *)actual_seq_qlen_addr)[bIndex];
@@ -688,9 +665,6 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::GetTndSeqLen(const GM_
         }
 
         s1Index = t1Idx - t1Offset;
-        if (unlikely(t1Idx >= validT1)) {
-            isNeedCompute = false;
-        }
     } else {
         t1Offset = t1Idx;
         bIdx = t1Idx / curS1;
