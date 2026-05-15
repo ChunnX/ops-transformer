@@ -94,9 +94,8 @@ private:
     static constexpr uint64_t MX_A8W4_L1_K_CONFIG_256 = 256;
     static constexpr uint64_t MX_A8W4_L1_K_CONFIG_512 = 512;
     static constexpr uint64_t MX_A8W4_L1_K_DYNAMIC_CONFIG_N_THRESHOLD = 128;
-    static constexpr uint64_t MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD_256 = 256;
-    static constexpr uint64_t MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD_240 = 240;
-    uint64_t mxA8W4L1KDynamicConfigMThreshold_; // m轴依赖空间划分，无法静态配置
+    static constexpr uint64_t mxA8W4L1KDynamicConfigMThreshold_ =
+        (MX_A8W4_A_L1_RESERVED_KB * GetKBUnit<xType>() / MX_A8W4_L1_K_CONFIG_512 / BLOCK_CUBE) * BLOCK_CUBE;
 };
 
 GMM_WQ_RESPLIT_CONTROLLER_TEMPLATE_PARAM
@@ -122,8 +121,7 @@ __aicore__ inline void GMM_WQ_RESPLIT_CONTROLLER_CLASS::Init(
     }
     basicBlock_.Init(gmmBaseTiling_->hasBias, gmmBaseTiling_->groupSize, 0, mmTiling_,
                      tPipe);  // gmm场景不确定group是否激活，Init中的prefetch size设定为0，在Process中做prefetch
-    mxA8W4L1KDynamicConfigMThreshold_ = gmmBaseTiling_->hasBias ? MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD_240 :
-                                                                  MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD_256;
+
 }
 
 GMM_WQ_RESPLIT_CONTROLLER_TEMPLATE_PARAM
