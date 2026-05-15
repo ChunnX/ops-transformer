@@ -2471,14 +2471,14 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::M3AndM4(AicOffset &aicOffset)
         if constexpr (std::is_same<mmQcQrInputType, FP8E4M3>::value && isFp8E8m0) {
             if (isAFullLoad) {
                 MatmulSplitK<rmsNormCqOutputType, float, dequantScaleType, true, true, false, DataFormat::NZ,
-                             false>({}, rmsNormCqResGm_[aicOffset.rmsNormCqResOffset],
+                             false, MLAPT::isSplitKn>({}, rmsNormCqResGm_[aicOffset.rmsNormCqResOffset],
                                     weightUqQrGm_[aicOffset.weightUqQrOffset], mmQcQrParam_, bufParam_,
                                     nL1 * nL1SplitSize, nL1SplitSize, nL1 * nL1SplitSize, mmQcQrParam_.orgKc,
                                     dequantTool_.deQuantScaleCqGm_[aicOffset.dequantScaleCqOffset],
                                     deqScaleQcQrW_[aicOffset.dequantScaleWuqqrOffset]);
             } else {
                 MatmulSplitK<rmsNormCqOutputType, float, dequantScaleType, false, true, false,
-                             DataFormat::NZ, false>(
+                             DataFormat::NZ, false, MLAPT::isSplitKn>(
                     {}, rmsNormCqResGm_[aicOffset.rmsNormCqResOffset], weightUqQrGm_[aicOffset.weightUqQrOffset],
                     mmQcQrParam_, bufParam_, nL1 * nL1SplitSize, nL1SplitSize, nL1 * nL1SplitSize, mmQcQrParam_.orgKc,
                     dequantTool_.deQuantScaleCqGm_[aicOffset.dequantScaleCqOffset],
@@ -2487,12 +2487,12 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::M3AndM4(AicOffset &aicOffset)
         } else {
             if (isAFullLoad) {
                 MatmulSplitK<rmsNormCqOutputType, float, dequantScaleType, true, false, false,
-                             DataFormat::NZ, false>(
+                             DataFormat::NZ, false, MLAPT::isSplitKn>(
                     {}, rmsNormCqResGm_[aicOffset.rmsNormCqResOffset], weightUqQrGm_[aicOffset.weightUqQrOffset],
                     mmQcQrParam_, bufParam_, nL1 * nL1SplitSize, nL1SplitSize, nL1 * nL1SplitSize, mmQcQrParam_.orgKc);
             } else {
                 MatmulSplitK<rmsNormCqOutputType, float, dequantScaleType, false, false, false,
-                             DataFormat::NZ, false>(
+                             DataFormat::NZ, false, MLAPT::isSplitKn>(
                     {}, rmsNormCqResGm_[aicOffset.rmsNormCqResOffset], weightUqQrGm_[aicOffset.weightUqQrOffset],
                     mmQcQrParam_, bufParam_, nL1 * nL1SplitSize, nL1SplitSize, nL1 * nL1SplitSize, mmQcQrParam_.orgKc);
             }
