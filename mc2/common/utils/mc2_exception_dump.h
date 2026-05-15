@@ -56,7 +56,7 @@ public:
     void SetGroupNameFor910B(const char* groupName)
     {
         if (groupName == nullptr || strnlen(groupName, MAX_GROUP_NAME_LENGTH) == 0 ||
-            strnlen(groupName, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH) {    
+            strnlen(groupName, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH) {
             OP_LOGE(OP_NAME, "groupName is invalid.");
             return;
         }
@@ -277,7 +277,7 @@ inline int ProcessArgs910B(const char* groupName, std::vector<uint8_t> &winBuf)
 inline void Mc2ExceptionImpl(aclrtExceptionInfo *args, void *userdata, const char *op)
 {
     const char* socName = aclrtGetSocName();
-    if((std::strstr(socName, "Ascend950") == nullptr) && (std::strstr(socName, "Ascend910_93") == nullptr) &&
+    if((std::strstr(socName, "Ascend950") == nullptr) && (std::strstr(socName, "Ascend910_93") == nullptr) && 
        (std::strstr(socName, "Ascend910B") == nullptr)) {
         OP_LOGE(OP_NAME, "The soc version is %s, skip dump process", socName);
         return;
