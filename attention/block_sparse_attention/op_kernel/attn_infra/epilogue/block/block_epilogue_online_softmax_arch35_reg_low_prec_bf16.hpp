@@ -516,6 +516,7 @@ private:
             Add<float, MaskMergeMode::MERGING>(expSumVreg, expSumVreg, expDstFloatVreg0, pregtailNEven);
             Add<float, MaskMergeMode::MERGING>(expSumVreg, expSumVreg, expDstFloatVreg1, pregtailNOdd);
             if constexpr (AscendC::IsSameType<ElementOutput, fp8_e4m3fn_t>::value) {
+                AscendC::printf("tkd ComputeExpSubSum16 Mul 448 STAGE ONE\n");
                 constexpr float staticScale = 448.0f;
                 Muls(expDstFloatVreg0, expDstFloatVreg0, staticScale, pregtailNEven);
                 Muls(expDstFloatVreg1, expDstFloatVreg1, staticScale, pregtailNOdd);
@@ -526,6 +527,7 @@ private:
                 (RegTensor<uint16_t>&)expDstVreg0, (RegTensor<uint16_t>&)expDstVreg1,
                 pregFull);
             if constexpr (AscendC::IsSameType<ElementOutput, fp8_e4m3fn_t>::value) {
+                AscendC::printf("tkd ComputeExpSubSum16 Cast FP8 STAGE ONE\n");
                 Cast<ElementOutput, ElementInput, castTraitZeroDown>(pVreg, expDstVreg, pregTailN);
                 StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(expUb + i * ELE_NUM_PER_C0_FLOAT8, pVreg,
                                                                          blockStride, pregTailN);
@@ -621,6 +623,7 @@ private:
             Add<float, MaskMergeMode::MERGING>(expSumVreg, expSumVreg, expDstFloatVreg2, pregtailNEven);
             Add<float, MaskMergeMode::MERGING>(expSumVreg, expSumVreg, expDstFloatVreg3, pregtailNOdd);
             if constexpr (AscendC::IsSameType<ElementOutput, fp8_e4m3fn_t>::value) {
+                AscendC::printf("tkd ComputeExpSubSum16 Mul 448 STAGE TWO\n");
                 constexpr float staticScale = 448.0f;
                 Muls(expDstFloatVreg0, expDstFloatVreg0, staticScale, pregFloatFull);
                 Muls(expDstFloatVreg1, expDstFloatVreg1, staticScale, pregFloatFull);
@@ -638,6 +641,7 @@ private:
                 (RegTensor<uint16_t>&)expDstVreg2, (RegTensor<uint16_t>&)expDstVreg3,
                 pregFull);
             if constexpr (AscendC::IsSameType<ElementOutput, fp8_e4m3fn_t>::value) {
+                AscendC::printf("tkd ComputeExpSubSum16 Cast FP8 STAGE TWO\n");
                 Cast<ElementOutput, ElementInput, castTraitZeroDown>(pVreg0, expOutVreg0, pregFull);
                 Cast<ElementOutput, ElementInput, castTraitZeroDown>(pVreg1, expOutVreg1, pregTailN);
                 StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY>(expUb + i * ELE_NUM_PER_C0_FLOAT8, pVreg0,

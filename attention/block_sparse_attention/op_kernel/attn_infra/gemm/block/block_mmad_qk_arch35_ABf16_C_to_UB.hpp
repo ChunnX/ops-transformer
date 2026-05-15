@@ -551,7 +551,9 @@ public:
                         tla::MakeCoord(0, 0), tla::MakeShape(mPerSubCore, l0TileNAct));
                 auto l0CTensorTlaTileSub1 = GetTile(l0CTensorTla,
                         tla::MakeCoord(mPerSubCore, 0), tla::MakeShape(mPerSubCore, l0TileNAct));
+                AscendC::printf("tkd mmad_qk start copyL0CToDstSub0\n");
                 copyL0CToDstSub0(ubCTensorTlaTile, l0CTensorTlaTileSub0, deqScalar, false);
+                AscendC::printf("tkd mmad_qk start copyL0CToDstSub1\n");
                 copyL0CToDstSub1(ubCTensorTlaTile, l0CTensorTlaTileSub1, deqScalar, true);
                 AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
             }

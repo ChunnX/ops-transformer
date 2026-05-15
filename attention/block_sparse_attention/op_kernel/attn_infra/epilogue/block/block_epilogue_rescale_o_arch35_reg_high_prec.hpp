@@ -255,6 +255,7 @@ public:
         // release lo buf
         SetCrossCoreSync<4, PIPE_V>(mm2ToReFlag);
         if (isLastKvSTile) {
+            AscendC::printf("tkd isLastKvSTile\n");
             AscendC::PipeBarrier<PIPE_V>();
             if (dStages == 1) {
                 ScaleO<DRegSplitStages::ONE>(goUb, rowNumCurSubCore, colStrideCurSubCore, colTail, vlElemNum,
@@ -493,6 +494,7 @@ public:
     __simd_vf__ inline void ScaleO<DRegSplitStages::ONE>(__ubuf__ ElementOTmp *goUb, uint32_t row, uint32_t colStride,
                                                          uint32_t colTail, uint32_t vlElemNum, float deqScalar)
     {
+        AscendC::printf("tkd ScaleO STAGE ONE\n");
         using namespace AscendC::MicroAPI;
         RegTensor<ElementOTmp> oVreg;
         MaskReg pregTail = UpdateMask<float>(colTail);
@@ -508,6 +510,7 @@ public:
     __simd_vf__ inline void ScaleO<DRegSplitStages::TWO>(__ubuf__ ElementOTmp *goUb, uint32_t row, uint32_t colStride,
                                                          uint32_t colTail, uint32_t vlElemNum, float deqScalar)
     {
+        AscendC::printf("tkd ScaleO STAGE TWO\n");
         using namespace AscendC::MicroAPI;
         RegTensor<ElementOTmp> oVreg0;
         RegTensor<ElementOTmp> oVreg1;

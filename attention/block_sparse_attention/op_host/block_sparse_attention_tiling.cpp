@@ -521,8 +521,6 @@ ge::graphStatus BSATiling::ParseSparsePattern(gert::TilingContext *bsaContext)
 ge::graphStatus BSATiling::ParseAttenMask(gert::TilingContext *bsaContext)
 {
     const auto *attenMaskTensor = bsaContext->GetOptionalInputTensor(ATTEN_MASK_INDEX);
-    printf("tkd ATTEN_MASK_INDEX: %d\n", ATTEN_MASK_INDEX);
-    printf("tkd attenMask is null: %d\n", static_cast<int>(attenMaskTensor == nullptr));
     if (attenMaskTensor != nullptr) {
         OP_LOGE(bsaContext->GetNodeName(), "AttenMask is NOT YET supported.");
         return ge::GRAPH_FAILED;
@@ -533,8 +531,6 @@ ge::graphStatus BSATiling::ParseAttenMask(gert::TilingContext *bsaContext)
 ge::graphStatus BSATiling::ParseBlockTable(gert::TilingContext *bsaContext)
 {
     const auto *blockTableTensor = bsaContext->GetOptionalInputTensor(BLOCK_TABLE_INDEX);
-    printf("tkd BLOCK_TABLE_INDEX: %d\n", BLOCK_TABLE_INDEX);
-    printf("tkd blockTable is null: %d\n", static_cast<int>(blockTableTensor == nullptr));
     if (blockTableTensor != nullptr) {
         OP_LOGE(bsaContext->GetNodeName(),
             "Paged cache is NOT YET supported, therefore blockTable should be nullptr.");
