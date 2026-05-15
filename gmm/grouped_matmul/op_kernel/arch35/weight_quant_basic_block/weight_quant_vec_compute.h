@@ -291,12 +291,14 @@ __aicore__ inline void GMM_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::InitMx()
         uint64_t highBitOffset = UB_BUFFER_INFO.weightInputLowbitUbTotalSize;
         ubHighBitTotalBuffer_ = LocalTensor<xType>(TPosition::LCM, highBitOffset, UB_BUFFER_INFO.highBitDataUbTotalSize);
         uint64_t biasOffset = highBitOffset + UB_BUFFER_INFO.highBitDataUbTotalSize;
+        uint64_t currentOffset = biasOffset;
         if (hasBias_) {
-            ubBiasTotalBuffer_ = LocalTensor<biasType>(TPosition::LCM, biasOffset, UB_BUFFER_INFO.biasUbTotalSize);
-            uint64_t biasOutOffset = biasOffset + UB_BUFFER_INFO.biasUbTotalSize;
-            ubBiasOutTotalBuffer_ = LocalTensor<biasType>(TPosition::LCM, biasOutOffset, UB_BUFFER_INFO.biasReducedUbTotalSize);
+            ubBiasTotalBuffer_ = LocalTensor<biasType>(TPosition::LCM, currentOffset, UB_BUFFER_INFO.biasUbTotalSize);
+            currentOffset += UB_BUFFER_INFO.biasUbTotalSize * sizeof(biasType);
+            ubBiasOutTotalBuffer_ = LocalTensor<biasType>(TPosition::LCM, currentOffset, UB_BUFFER_INFO.biasReducedUbTotalSize);
+            currentOffset += UB_BUFFER_INFO.biasReducedUbTotalSize * sizeof(biasType);
         }
-        uint64_t transIdOffset = biasOffset + UB_BUFFER_INFO.biasUbTotalSize + UB_BUFFER_INFO.biasReducedUbTotalSize;
+        uint64_t transIdOffset = currentOffset;
         transIdBuffer_ = LocalTensor<uint16_t>(TPosition::LCM, transIdOffset, GetKBUnit<uint16_t>());
         for (uint64_t i = 0; i < 8; i++) {
             for(uint64_t j = 0; j < 16; j++){
