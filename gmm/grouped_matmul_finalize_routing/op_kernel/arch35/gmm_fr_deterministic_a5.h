@@ -74,15 +74,17 @@ __aicore__ inline void FRDeterministicA5(
     SyncAll();  // Ensure workspace writes complete
 
     uint64_t totalM = syncConfig.curM;
-    uint64_t coreNumVec = coreNum * GetTaskRation();
+    // On A5, AIC is subBlock 0, AIV is subBlock 1. This function only runs on AIV.
+    // Use blockIdx directly (not * GetTaskRation + GetSubBlockIdx) to distribute
+    // output rows across all 36 physical cores evenly.
+    uint64_t myVecId = static_cast<uint64_t>(GetBlockIdx());
 
     // Read workspace by mOffset, AtomicAdd to yGm by outRow (one writer per outRow)
     for (uint64_t mOffset = 0; mOffset < totalM; mOffset++) {
         auto outRow = static_cast<uint64_t>(tokenRanksGm.GetValue(globalRowOffset + mOffset));
 
-        // Row ownership: only the core matching outRow % coreNumVec handles this row
-        uint64_t myVecId = GetBlockIdx() * GetTaskRation() + GetSubBlockIdx();
-        if (outRow % coreNumVec != myVecId) {
+        // Row ownership: only the core matching outRow % coreNum handles this row
+        if (static_cast<uint64_t>(outRow % coreNum) != myVecId) {
             continue;
         }
 
