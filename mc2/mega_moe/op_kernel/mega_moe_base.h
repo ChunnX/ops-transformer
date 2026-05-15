@@ -20,8 +20,13 @@
 #include "mega_moe_tiling.h"
 #include "moe_init_routing_v3/arch35/moe_init_routing_v3_apt.h"
 #include "mega_moe_workspace_info.h"
+#include "quantize_functions.h"
 
 using namespace AscendC;
+
+namespace {
+constexpr int64_t PEERMEM_TOPK_IDS_OFFSET = 1024 * 52;
+}
 
 struct Mc2MoeContext {
     uint32_t epRankId;
@@ -43,6 +48,7 @@ struct GMMAddrInfo {
 struct PeermemInfo {
     GM_ADDR ptrBase;
     GM_ADDR ptrTokenPerExpert;
+    GM_ADDR ptrTopkIds;
     GM_ADDR ptrA0;      // initrouting结果，包括data+scale
     GM_ADDR ptrTriplet; // 与ptrA0逐行对齐的(to_rank, token_id, topk_id)
     GM_ADDR ptrD;
@@ -50,6 +56,7 @@ struct PeermemInfo {
     __aicore__ inline PeermemInfo(GM_ADDR base, const MegaMoeTilingData *tilingData)
     {
         ptrBase = base;
+        ptrTopkIds = base + PEERMEM_TOPK_IDS_OFFSET;
         int64_t offset = PEERMEM_DATA_OFFSET;
         ptrTokenPerExpert = base + offset;
         offset += tilingData->epWorldSize * Ops::Base::CeilAlign(
