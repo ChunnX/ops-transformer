@@ -368,10 +368,21 @@ __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::Iterate(int6
                 x2ScaleGlobal_[Get<IDX_X2SCALE_OFFSET>(blockOffset_)], biasGlobal_[Get<IDX_BIAS_OFFSET>(blockOffset_)],
                 yGlobal_[Get<IDX_C_OFFSET>(blockOffset_)], blockShape);
     } else {
+
+        AscendC::printf("====begin====\n");
+        for (int i = 0; i < g_oomAddrArange.count; ++i) {
+            AscendC::printf("gm addr: %p, gm len: %ld\n", g_oomAddrArange.addr[i], g_oomAddrArange.len[i]);
+        }
+        AscendC::printf("====begin====\n");
         mmadOp_(aGlobal_[Get<IDX_A_OFFSET>(blockOffset_)], bGlobal_[Get<IDX_B_OFFSET>(blockOffset_)],
                 x1ScaleGlobal_[Get<IDX_X1SCALE_OFFSET>(blockOffset_)],
                 x2ScaleGlobal_[Get<IDX_X2SCALE_OFFSET>(blockOffset_)], yGlobal_[Get<IDX_C_OFFSET>(blockOffset_)],
                 blockShape);
+        AscendC::printf("====end====\n");
+        for (int i = 0; i < g_oomAddrArange.count; ++i) {
+            AscendC::printf("gm addr: %p, gm len: %ld\n", g_oomAddrArange.addr[i], g_oomAddrArange.len[i]);
+        }
+        AscendC::printf("====end====\n");
     }
 }
 
