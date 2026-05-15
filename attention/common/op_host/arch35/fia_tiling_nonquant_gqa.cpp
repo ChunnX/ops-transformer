@@ -370,7 +370,10 @@ void FiaTilingNonQuantArch35::FixParamWithRowInvalid(int64_t &actualSeqLength, i
  */
 int64_t FiaTilingNonQuantArch35::CalcRequiredL2Size()
 {
-    const int64_t dataTypeSize = 2U;
+    int64_t dataTypeSize = 2;
+    if ((fiaInfo_->inputKvType == ge::DT_INT8) || (fiaInfo_->inputKvType == ge::DT_INT4)) {
+        dataTypeSize = 1;
+    }
     // 按actualSeqLenKV降序排列，每个batch最多分配n2Size个核，累加到aicNum核为止
     std::vector<int64_t> sortedSeqLenKV = actualSeqLengthsKV_;
     std::sort(sortedSeqLenKV.begin(), sortedSeqLenKV.end(), std::greater<int64_t>());
@@ -387,8 +390,7 @@ int64_t FiaTilingNonQuantArch35::CalcRequiredL2Size()
 
 bool FiaTilingNonQuantArch35::CheckS1OutSplit()
 {
-    if (fiaInfo_->antiQuantFlag || fiaInfo_->quantFlag || fiaInfo_->isOutQuantEnable ||
-       fiaInfo_->quantMode == FiaQuantMode::FULL_QUANT) {
+    if (fiaInfo_->isOutQuantEnable) {
         return false;
     }
 
