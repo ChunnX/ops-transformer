@@ -372,7 +372,7 @@ int64_t SparseAttnSharedkvMetadataCpuKernel::CmpCalcCost(uint32_t basicM, uint32
     //    }
     //}
     if (isSCFA && querySeqSize_ == kvSeqSize_) {
-        return static_cast<int64_t>(6U * cmpAlignBasicM + 10U * cmpAlignBasicS2 + 20U);                 // 6：M轴系数，10：S2轴系数
+        return static_cast<int64_t>(6U * cmpAlignBasicM + 10U * cmpAlignBasicS2 + 50U);                 // 6：M轴系数，10：S2轴系数
     } else {
         return static_cast<int64_t>(6U * cmpAlignBasicM + 10U * cmpAlignBasicS2);                 // 6：M轴系数，10：S2轴系数
     }
@@ -866,7 +866,7 @@ void SparseAttnSharedkvMetadataCpuKernel::AssignBlocksToCore(const SplitContext 
         assignContext.coreCache.costLimit = avgCost;
     }
     if (assignContext.curCoreIdx == 0 && isSCFA && querySeqSize_ == kvSeqSize_) {
-        assignContext.coreCache.costLimit = static_cast<int64_t>(assignContext.coreCache.costLimit * 1.29);
+        assignContext.coreCache.costLimit = static_cast<int64_t>(assignContext.coreCache.costLimit * 1.44);
     }
     // 1、按整batch分配
     AssignByBatch(splitContext, assignContext);
