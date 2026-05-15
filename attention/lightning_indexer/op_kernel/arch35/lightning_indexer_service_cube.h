@@ -62,7 +62,7 @@ public:
     static constexpr uint64_t S2_BASIC_BLOCK_L0 = 128;
 
     static constexpr uint64_t FP16_BLOCK_CUBE = 16;
-    static constexpr FixpipeConfig QLI_CFG_ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR, true};// QLI_CFG_ROW_MAJOR_UB？
+    static constexpr FixpipeConfig LI_CFG_ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR, true};
     
     static constexpr uint64_t QUERY_BUFFER_OFFSET = M_BASIC_BLOCK * D_BASIC_BLOCK;
     static constexpr uint64_t KEY_BUFFER_OFFSET = S2_BASIC_BLOCK * D_BASIC_BLOCK;
@@ -398,18 +398,25 @@ __aicore__ inline void LightningIndexerServiceCube<LIT>::Fixp(uint64_t s1gGmOffs
     WaitFlag<HardEvent::M_FIX>(M_FIX_EVENT + l0BufIdx_ % L0_BUF_NUM);
 
     if constexpr (std::is_same<SCORE_T, uint32_t>::value) {
-        FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams; // L0C->UB
-        fixpipeParams.nSize = (s2L0RealSize + 7) >> 3 << 3; // L0C上的bmm1结果矩阵N方向的size大小；同mmadParams.n；8个元素（32B)对齐
-        fixpipeParams.mSize = (s1gL0RealSize + 1) >> 1 << 1; // 有效数据不足16行，只需输出部分行即可;L0C上的bmm1结果矩阵M方向的size大小必须是偶数
-        fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16; // L0C上matmul结果相邻连续数据片断间隔（前面一个数据块的头与后面数据块的头的间隔），单位为16 *sizeof(T) //源NZ矩阵中相邻Z排布的起始地址偏移
-        fixpipeParams.dstStride = constInfo_.s2BaseSize; // mmResUb上两行之间的间隔，单位：element。 // 128：根据比对dump文件得到，ND方案(S1 * S2)时脏数据用mask剔除
-        fixpipeParams.dualDstCtl = 1; // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
+        FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
+        // L0C上的bmm1结果矩阵N方向的size大小；同mmadParams.n；8个元素（32B)对齐
+        fixpipeParams.nSize = (s2L0RealSize + 7) >> 3 << 3;
+        // 有效数据不足16行，只需输出部分行即可;L0C上的bmm1结果矩阵M方向的size大小必须是偶数
+        fixpipeParams.mSize = (s1gL0RealSize + 1) >> 1 << 1;
+        // 源NZ矩阵中相邻Z排布的起始地址偏移
+        // L0C上matmul结果相邻连续数据片断间隔（前面一个数据块的头与后面数据块的头的间隔），单位为16 *sizeof(T)
+        fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16;
+        // mmResUb上两行之间的间隔，单位：element
+        fixpipeParams.dstStride = constInfo_.s2BaseSize;
+        // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
+        fixpipeParams.dualDstCtl = 1;
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
-        Fixpipe<float, float, QLI_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop % 2) * CeilDiv(constInfo_.mBaseSize, 2) * constInfo_.s2BaseSize + 
+        Fixpipe<float, float, LI_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop % 2) *
+                                                    CeilDiv(constInfo_.mBaseSize, 2) * constInfo_.s2BaseSize +
                                                     CeilDiv(s1gGmOffset, 2) * fixpipeParams.dstStride + s2GmOffset],
-                                            cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET], fixpipeParams); // 将matmul结果从L0C搬运到UB
+                                            cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET], fixpipeParams);
     }
 }
 
