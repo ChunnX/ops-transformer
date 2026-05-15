@@ -843,9 +843,9 @@ __aicore__ inline void MatMulKTensorAPI(const TensorAL1 &aL1Tensor,
         uint64_t loopNum = param.isRightTranspose ? 1 : kLoops;
         auto L0BLayout = AscendC::Te::MakeFrameLayout<AscendC::Te::NZLayoutPtn, AscendC::Std::Int<AscendC::Te::C0_SIZE<L0BDType>>>(tileK, param.singleN);
         auto L0BTensor = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::L0B, L0BDType>(k * L1Boffset), L0BLayout);
-        auto sliceAL1Tensor = AscendC::Te::Slice(aL1Tensor, AscendC::Te::MakeCoord(0, k * L1Aoffset), AscendC::Te::MakeShape(tileK, param.singleN));
+        auto sliceBL1Tensor = AscendC::Te::Slice(bL1Tensor, AscendC::Te::MakeCoord(0, k * L1Boffset), AscendC::Te::MakeShape(tileK, param.singleN));
         auto CopyL12L0B = AscendC::Te::MakeCopy(AscendC::Te::CopyL12L0B{});
-        AscendC::Te::Copy(CopyL12L0B, L0BTensor, sliceAL1Tensor);
+        AscendC::Te::Copy(CopyL12L0B, L0BTensor, sliceBL1Tensor);
 
         // mte1搬运完后，通知可以开始matmul
         AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(2);
