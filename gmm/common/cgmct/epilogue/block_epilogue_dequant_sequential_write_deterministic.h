@@ -550,8 +550,13 @@ BlockEpilogueDequantSequentialWriteDeterministic<GMM_BLOCK_EPILOGUE_DEQUANT_SEQU
 
     vlForFloatNumber_ = DET_SEQ_BLOCKS_BYTES / sizeof(DataTypeOut);
     auto repeatTimesRe = CeilDiv(singleN_, vlForFloatNumber_);
+    // Dynamic chunk size: outUb must hold maxRowsPerChunk * alignN_ elements
+    uint64_t maxRowsPerChunk = DET_SEQ_HALF_DB_MAX_SINGLE_MNS / alignN_;
+    if (maxRowsPerChunk == 0) { maxRowsPerChunk = 1; }
+    uint16_t chunkSize = static_cast<uint16_t>(maxRowsPerChunk < DET_SEQ_MAX_OUTPUT_M_UBS
+                                               ? maxRowsPerChunk : DET_SEQ_MAX_OUTPUT_M_UBS);
     uint16_t remainRepeatTimesLogit =
-        (singleMInVec % DET_SEQ_MAX_OUTPUT_M_UBS != 0) ? singleMInVec % DET_SEQ_MAX_OUTPUT_M_UBS : DET_SEQ_MAX_OUTPUT_M_UBS;
+        (singleMInVec % chunkSize != 0) ? singleMInVec % chunkSize : chunkSize;
     blockCoord_ = blockCoord;
     auto logitUb = logitPingPongID_ == 0 ? logitUbPing_ : logitUbPong_;
     auto x2ScaleUb = logitPingPongID_ == 0 ? x2ScaleUbPing_ : x2ScaleUbPong_;
@@ -569,13 +574,13 @@ BlockEpilogueDequantSequentialWriteDeterministic<GMM_BLOCK_EPILOGUE_DEQUANT_SEQU
     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(logitPingPongID_);
     VFDoDequantWithX1X2Scale(x2ScaleUb, x1ScaleUb, biasUb, singleMInVec);
     logitPingPongID_ = (logitPingPongID_ + 1) & 1;
-    uint32_t loopNumY = CeilDiv(singleMInVec, DET_SEQ_MAX_OUTPUT_M_UBS);
+    uint32_t loopNumY = CeilDiv(singleMInVec, chunkSize);
     for (uint32_t i = 0; i < loopNumY; i++) {
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(yPingPongID_);
-        repeatTimesLine_ = (i == loopNumY - 1) ? remainRepeatTimesLogit : DET_SEQ_MAX_OUTPUT_M_UBS;
+        repeatTimesLine_ = (i == loopNumY - 1) ? remainRepeatTimesLogit : chunkSize;
         __ubuf__ DataTypeOut *outUbAddr = yPingPongID_ == 0 ? (__ubuf__ DataTypeOut *)outUbPing_.GetPhyAddr() :
                                                                    (__ubuf__ DataTypeOut *)outUbPong_.GetPhyAddr();
-        VFDoLogitMuls(i * DET_SEQ_MAX_OUTPUT_M_UBS * alignN_, i * DET_SEQ_MAX_OUTPUT_M_UBS, repeatTimesLine_, repeatTimesRe, outUbAddr,
+        VFDoLogitMuls(i * chunkSize * alignN_, i * chunkSize, repeatTimesLine_, repeatTimesRe, outUbAddr,
                       logitUb);
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(yPingPongID_);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(yPingPongID_);
@@ -584,7 +589,7 @@ BlockEpilogueDequantSequentialWriteDeterministic<GMM_BLOCK_EPILOGUE_DEQUANT_SEQU
         //   + logitBase (tile's row offset within group)
         //   + mOffset (sub-block offset within tile)
         //   + chunk offset within sub-block
-        uint64_t wsWriteOffset = workspaceBaseRow + logitBase + mOffset + i * DET_SEQ_MAX_OUTPUT_M_UBS;
+        uint64_t wsWriteOffset = workspaceBaseRow + logitBase + mOffset + i * chunkSize;
         VectorSequentialWrite(singleN_, repeatTimesLine_, wsWriteOffset, yOffset, yLocal);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(yPingPongID_);
         yPingPongID_ = (yPingPongID_ + 1) & 1;
