@@ -20,7 +20,6 @@
 #include "err/ops_err.h"
 #include "log/log.h"
 #include "tiling/platform/platform_ascendc.h"
-#include "../op_kernel/selected/stage1_selected_config.h"
 
 namespace optiling {
 REGISTER_OPS_TILING_TEMPLATE(ChunkGatedDeltaRuleNeumann, ChunkGatedDeltaRuleNeumannTiling, 0);
@@ -51,6 +50,7 @@ const size_t DIM_3 = 3;
 constexpr int64_t SYS_WORKSPACE_SIZE = 16777216;
 
 // Matmul tiling 相关常量
+constexpr int64_t STAGE_ONE_CHUNK_SIZE = 64;
 constexpr uint32_t MATMUL_BASE_M = 128;
 constexpr uint32_t MATMUL_BASE_K = 128;
 constexpr uint32_t MATMUL_BASE_N = 128;
@@ -112,7 +112,7 @@ ge::graphStatus ChunkGatedDeltaRuleNeumannTiling::GetShapeAttrsInfo()
 
 ge::graphStatus ChunkGatedDeltaRuleNeumannTiling::DoOpTiling()
 {
-    int64_t c = CGDR_NEUMANN_SELECTED_CHUNK_SIZE;
+    int64_t c = STAGE_ONE_CHUNK_SIZE;
     int64_t p = P_NUM; // 一个 chunk 组中，单核最大处理 chunk 数
     tilingData_.chunkSize = c;
     tilingData_.maxGroupLength = p * tilingData_.aiCoreNum * tilingData_.chunkSize;

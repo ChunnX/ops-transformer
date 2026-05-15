@@ -12,13 +12,10 @@ Chunk Gated Delta Rule Neumann attention operator for Ascend NPU. This file is a
 - 你目前的性能小shape已经1.x但是大shape只有2.x这证明肯定有一些冗余操作导致在大shape堆积越来越多进而显现，看看有什么能够应该长周期复用的没有复用，应该搬运的却选择了计算加搬运，有没有多余写入写出计算。如果没有想法可以采用仿真分析或者msprof分析流水。你定位出来后必须正向解决
 ## Current Scope
 
-Current focus is strict packed64 `packed64local/C64_1616_FP16` with host `chunkSize=64`.
+Current focus is strict packed64 `C64_1616_FP16` merged into the official Stage1 with host `chunkSize=64`.
 
-- Active selector:
-  - `op_kernel/selected/stage1_selected.h`
-  - `op_kernel/selected/stage1_selected_config.h`
 - Active Stage1 file:
-  - `op_kernel/packed64local/chunk_gated_delta_rule_neumann_stage1.h`
+  - `op_kernel/chunk_gated_delta_rule_neumann_stage1.h`
 - Current allowed modification area:
   - Stage1 inverse path only: FP16 `L/INV`, diagonal inverse, compose, inverse writeback.
 - Do not modify:
@@ -28,7 +25,7 @@ Current focus is strict packed64 `packed64local/C64_1616_FP16` with host `chunkS
   - RHS operands remain `gBKHalfWsGm_` / `vBetaHalfWsGm_`
   - do not change Stage2/Stage3/QK/`gBK/vBeta` generation or final RHS math while optimizing inverse/writeback
 
-For the current packed64 inverse phase, test only 64-aligned sequence lengths. Tail/non-64 cases may stay in files, but should remain commented until tail support is explicitly restored.
+Tail/non-64 support is restored on the packed64 path. For tail-related or Stage1 inverse/resident changes, keep both tail and aligned gates active.
 
 ## Target Discipline
 
@@ -72,7 +69,7 @@ Required gate before moving to the next optimization:
 
 If precision fails, stop on that optimization and solve it forward on the target path. Do not stack the next optimization on a failing path. If a baseline restore is needed to recover a clean workspace, record the failed candidate, root-cause hypothesis, and next forward-fix entry before continuing. If a bounded optimization is proven blocked by a hardware/API boundary, it may be moved later in the queue with that boundary recorded; this is not a correctness pass.
 
-After all planned phases pass, save a fresh baseline before searching for new optimization points. New candidates may come from `msprof` real profiling or simulator analysis, and each new candidate starts again as one gated phase.
+After all planned phases pass, record the exact source hash and gate evidence in dated docs before searching for new optimization points. New candidates may come from `msprof` real profiling or simulator analysis, and each new candidate starts again as one gated phase.
 
 Useful commands from repo root context:
 
@@ -85,27 +82,23 @@ CGDR_GOLDEN_CHUNK_SIZE=64 TORCH_EXTENSIONS_DIR=/tmp/cgdr_torch_ext ASCEND_CUSTOM
 
 ## Key Files
 
-- Active selector:
-  - `op_kernel/selected/stage1_selected.h`
-  - `op_kernel/selected/stage1_selected_config.h`
 - Active C64 FP16 Stage1:
-  - `op_kernel/packed64local/chunk_gated_delta_rule_neumann_stage1.h`
-- Saved baselines:
-  - `op_kernel/baseline/chunk_gated_delta_rule_neumann_stage1_C64_1616_FP16_packed64_phaseA116_dead_resident_rowprefix_cleanup_baseline.h`
+  - `op_kernel/chunk_gated_delta_rule_neumann_stage1.h`
 - Reference code:
   - `ref/ref.cpp`
   - `ref/ref.md`
-- Current plan:
-  - `docs/2026-05-13/PACKED64_LIFECYCLE_AND_REDUNDANCY_PLAN.md`
+- Current plan / status:
+  - `docs/2026-05-15/PACKED64_TAIL_PADDING_NEXT_STEP_PLAN.md`
+  - `todo.md`
 - Daily status should be recorded in:
   - `docs/YYYY-MM-DD/WORK_LOG.md`
   - `docs/YYYY-MM-DD/PROGRESS_AND_ISSUES.md`
 
 ## Stage1 Version Policy
 
-- `op_kernel/baseline/`: only precision-passed clean baselines.
-- `op_kernel/packed64local/`: current active strict packed64 Stage1 implementation.
-- `op_kernel/selected/`: only selector entrypoint. Do not include concrete variants directly from the generic Stage1 header.
+- Active Stage1 implementation lives directly in `op_kernel/chunk_gated_delta_rule_neumann_stage1.h`.
+- Retired directories `op_kernel/baseline/`, `op_kernel/packed64local/`, and `op_kernel/selected/` should not be recreated for normal packed64 work.
+- Historical phase evidence belongs in `docs/YYYY-MM-DD/` and operator `SKILL/` references, not in duplicate baseline headers.
 
 未通过精度的实验文件不得保存为 baseline；未通过的 helper 可以保留为诊断代码，但不能被描述成 active 目标完成。
 
@@ -120,12 +113,11 @@ CGDR_GOLDEN_CHUNK_SIZE=64 TORCH_EXTENSIONS_DIR=/tmp/cgdr_torch_ext ASCEND_CUSTOM
 
 Operator-specific skills live under `SKILL/`.
 
-Use `SKILL/fulllocal-compose-precision-debugging/SKILL.md` first for fulllocal, compose, resident/L1/TSCM, GM fallback, boundary-shape precision failures, or baseline restoration.
+Use `SKILL/precision-debugging/SKILL.md` first for precision failures, fulllocal/compose, resident/L1/TSCM, GM fallback, boundary-shape failures, or baseline restoration.
 
 Other useful skill folders:
 
-- `SKILL/kernel-debugging/`
-- `SKILL/neumann-scheme-summary/`
-- `SKILL/performance-profiling-msprof/`
-- `SKILL/matmul-tiling-performance/`
-- `SKILL/workspace-tiling-checklist/`
+- `SKILL/kernel-debugging/`：运行环境、package 加载、hang/timeout、selector/同步问题。
+- `SKILL/kernel-optimization-discipline/`：DataCopy/LoadData/Fixpipe/MMAD-copy、resident materialization、cache clean/DCCI、同步边界、tiny-MMAD 性能判断。
+- `SKILL/performance-profiling-msprof/`：msprof 性能采集与结果汇总。
+- `SKILL/workspace-tiling-checklist/`：workspace、tiling、offset、golden 口径一致性检查。
