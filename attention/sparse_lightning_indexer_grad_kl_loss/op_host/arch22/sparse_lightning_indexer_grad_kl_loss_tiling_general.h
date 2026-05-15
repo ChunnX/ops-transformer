@@ -21,8 +21,8 @@
 #include "op_host/tiling_base.h"
 #include "op_host/tiling_type.h"
 #include "../sparse_lightning_indexer_grad_kl_loss_tiling_common.h"
-#include "../../op_kernel/arch32/sparse_lightning_indexer_grad_kl_loss_template_tiling_key.h"
-#include "../../op_kernel/arch32/sparse_lightning_indexer_grad_kl_loss_tiling.h"
+#include "../../op_kernel/arch22/sparse_lightning_indexer_grad_kl_loss_template_tiling_key.h"
+#include "../../op_kernel/arch22/sparse_lightning_indexer_grad_kl_loss_tiling.h"
 #include "err/ops_err.h"
 
 using namespace ge;

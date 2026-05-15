@@ -49,8 +49,8 @@ endif()
 if(NOT BUILD_OPS_RTY_KERNEL)
     add_tiling_modules()
     target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
-        ./arch32/sparse_lightning_indexer_grad_kl_loss_tiling_general.cpp
-        ./arch32/sparse_lightning_indexer_grad_kl_loss_tiling_general.h
+        ./arch22/sparse_lightning_indexer_grad_kl_loss_tiling_general.cpp
+        ./arch22/sparse_lightning_indexer_grad_kl_loss_tiling_general.h
         ./arch35/sparse_lightning_indexer_grad_kl_loss_tiling_general_regbase.cpp
         ./arch35/sparse_lightning_indexer_grad_kl_loss_tiling_general_regbase.h
     )

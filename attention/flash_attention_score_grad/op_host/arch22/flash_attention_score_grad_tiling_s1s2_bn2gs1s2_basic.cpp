@@ -17,8 +17,8 @@
 #include "op_host/data_copy_transpose_tiling.h"
 #include "op_host/tiling_templates_registry.h"
 #include "op_host/tiling_type.h"
-#include "../../op_kernel/arch32/flash_attention_score_grad_tiling.h"
-#include "../../op_kernel/arch32/flash_attention_score_grad_template_tiling_key.h"
+#include "../../op_kernel/arch22/flash_attention_score_grad_tiling.h"
+#include "../../op_kernel/arch22/flash_attention_score_grad_template_tiling_key.h"
 
 using namespace ge;
 using namespace AscendC;
