@@ -417,7 +417,7 @@ ge::fusion::GraphUniqPtr QuantGroupedMatMulAlltoAllvTransposeFusionPass::Replace
         mmXQuantMode, mmWeightQuantMode, commQuantMode,
         groupSize, yDtype, mmDtype, commQuantDtype);
 
-    auto replaceGraph = replaceGraphBuilder.BuildAndReset({mc2});
+    auto replaceGraph = replaceGraphBuilder.BuildAndReset({mc2.y});
     if (replaceGraph == nullptr) {
         OPS_LOG_E(FUSION_PASS_NAME.c_str(), "Build replace graph failed.");
         return nullptr;
@@ -428,6 +428,7 @@ ge::fusion::GraphUniqPtr QuantGroupedMatMulAlltoAllvTransposeFusionPass::Replace
         return nullptr;
     }
 
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "=== Replacement SUCCESS ===");
     return std::move(replaceGraph);
 }
 
