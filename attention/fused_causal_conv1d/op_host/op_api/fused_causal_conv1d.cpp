@@ -39,7 +39,7 @@ bool FusedCausalConv1d(
            initialStateMode, bias, numAcceptedTokens, numComputedTokens,
            blockIdxFirstScheduledToken, blockIdxLastScheduledToken,
            initialStateIdx, activationMode, padSlotId, runMode, maxQueryLen,
-           residualConnection, blockSize, convMode, inplace, y, convStates);
+           residualConnection, blockSize, convMode, inplace, y);
 
     // When inplace=true, the result is written back to x; y may be nullptr from legacy
     // callers. Use x as the effective output tensor to keep OP_OUTPUT registration valid.
@@ -51,7 +51,7 @@ bool FusedCausalConv1d(
                  initialStateMode, bias, numAcceptedTokens, numComputedTokens,
                  blockIdxFirstScheduledToken, blockIdxLastScheduledToken,
                  initialStateIdx),
-        OP_OUTPUT(outY, convStates),
+        OP_OUTPUT(convStates, outY),
         OP_ATTR(activationMode, padSlotId, runMode, maxQueryLen,
                 residualConnection, blockSize, convMode, inplace));
 
