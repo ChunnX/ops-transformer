@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file npu_flash_attn.cpp
+ * \file npu_sparse_flash_mla.cpp
  * \brief
  */
 
