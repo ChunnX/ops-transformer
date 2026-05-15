@@ -21,16 +21,18 @@ using namespace ge;
 
 namespace ops {
 
-// 属性索引 对其def注册索引  
-static constexpr size_t ATTR_IDX_SOFTMAX_SCALE    = 0;
-static constexpr size_t ATTR_IDX_MASK_MODE        = 1;
-static constexpr size_t ATTR_IDX_WIN_LEFT         = 2;
-static constexpr size_t ATTR_IDX_WIN_RIGHT        = 3;
-static constexpr size_t ATTR_IDX_LAYOUT_Q         = 4;
-static constexpr size_t ATTR_IDX_LAYOUT_KV        = 5;
-static constexpr size_t ATTR_IDX_LAYOUT_OUT       = 6;
-static constexpr size_t ATTR_IDX_RETURN_SOFTMAX_LSE = 7;
-static constexpr size_t ATTR_IDX_DETERMINISTIC    = 8;
+// 属性索引 对其def注册索引   
+static constexpr size_t ATTR_IDX_SOFTMAX_SCALE      = 0;
+static constexpr size_t ATTR_IDX_MASK_MODE          = 1;
+static constexpr size_t ATTR_IDX_WIN_LEFT           = 2;
+static constexpr size_t ATTR_IDX_WIN_RIGHT          = 3;
+static constexpr size_t ATTR_IDX_MAX_SEQLEN_Q       = 4;
+static constexpr size_t ATTR_IDX_MAX_SEQLEN_KV      = 5;
+static constexpr size_t ATTR_IDX_LAYOUT_Q           = 6;
+static constexpr size_t ATTR_IDX_LAYOUT_KV          = 7;
+static constexpr size_t ATTR_IDX_LAYOUT_OUT         = 8;
+static constexpr size_t ATTR_IDX_RETURN_SOFTMAX_LSE = 9;
+static constexpr size_t ATTR_IDX_DETERMINISTIC      = 10;
 
 // 输入索引
 static constexpr size_t INPUT_IDX_Q               = 0;
@@ -76,6 +78,7 @@ ge::graphStatus InferShapeFlashAttn(gert::InferShapeContext *context)
 
     // 转为大写以便统一比较
     for (auto &c : layoutQStr)   { c = static_cast<char>(toupper(static_cast<unsigned char>(c))); }
+    for (auto &c : layoutKvStr)  { c = static_cast<char>(toupper(static_cast<unsigned char>(c))); }
     for (auto &c : layoutOutStr) { c = static_cast<char>(toupper(static_cast<unsigned char>(c))); }
 
     OP_LOGI(context, "FlashAttn InferShape: layoutQ=%s, layoutKv=%s, layoutOut=%s, returnLSE=%ld.",
@@ -120,7 +123,7 @@ ge::graphStatus InferShapeFlashAttn(gert::InferShapeContext *context)
     }
 
     int64_t headDimV = headDim;
-    if (layoutKvStr == "BSND" && vShape->GetDimNum() >= 4) {
+    if ((layoutKvStr == "BSND" || layoutKvStr == "BNSD") && vShape->GetDimNum() >= 4) {
         headDimV = vShape->GetDim(3);
     } else if (layoutKvStr == "TND" && vShape->GetDimNum() >= 3) {
         headDimV = vShape->GetDim(2);
