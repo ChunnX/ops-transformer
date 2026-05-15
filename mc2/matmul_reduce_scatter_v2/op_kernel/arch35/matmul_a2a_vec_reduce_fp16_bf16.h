@@ -27,8 +27,9 @@
 #include "matmul_reduce_scatter_v2_c_tiling.h"
 #include "../../common/op_kernel/reduce_sum_cast_fp32.h"
 
-#define TEMPLATE_CLASS_PARAMS template <typename AType, typename BType, typename BiasType, typename CType>
-#define TEMPLATE_FUNC_PARAMS AType, BType, BiasType, CType
+#define TEMPLATE_CLASS_PARAMS \
+    template <typename AType, typename BType, typename BiasType, typename CType, int TPL_COMM_MODE>
+#define TEMPLATE_FUNC_PARAMS AType, BType, BiasType, CType, TPL_COMM_MODE
 
 namespace MatmulReduceScatterV2Impl {
 using namespace AscendC;
@@ -43,8 +44,8 @@ TEMPLATE_CLASS_PARAMS
 class MatmulA2AVecReduceFP16BF16 {
 public:
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR contextGM,
-                                GM_ADDR workspaceGM, Mc2Tiling::MatmulReduceScatterV2TilingData* tilingData, 
-                                __gm__ void* mc2InitTiling, __gm__ void* mc2CcTiling, TPipe* tpipe);
+                                GM_ADDR workspaceGM, Mc2Tiling::MatmulReduceScatterV2TilingData* tilingData,
+                                TPipe* tpipe);
     __aicore__ inline void Process();
 
 private:
@@ -74,7 +75,7 @@ private:
     __gm__ HcclCombinOpParam* context_;
     AscendC::HcclDataType dataType_;
     uint8_t debugMode_;
-    Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;  // CCU模式
+    typename HcclTypeSelector<TPL_COMM_MODE>::type hccl_;
     AscendC::HcclHandle handles_[MAX_HANDLE];          // 最大支持64个handleId
     GM_ADDR sendBuf_;    // 存放 MatMul 输出（All2All send buffer）
     GM_ADDR recvBuf_;    // 存放 All2All 接收的 slices（内容为 [slice_r_from_rank0][slice_r_from_rank1]...[slice_r_from_rankR-1]）
@@ -86,17 +87,19 @@ private:
 
 TEMPLATE_CLASS_PARAMS
 __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Init(
-    GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR cGM, 
+    GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR cGM,
     GM_ADDR contextGM, GM_ADDR workspaceGM,
-    Mc2Tiling::MatmulReduceScatterV2TilingData* tilingData, 
-    __gm__ void* mc2InitTiling, __gm__ void* mc2CcTiling, TPipe* tPipe)
+    Mc2Tiling::MatmulReduceScatterV2TilingData* tilingData,
+    TPipe* tPipe)
 {
     tilingData_ = tilingData;
     auto&& cfg = tilingData_->param;
 
     // 初始化 HCCL
-    hccl_.Init(contextGM, mc2InitTiling);
-    hccl_.SetCcTiling(mc2CcTiling);
+    const void* hcclInitTilingV2 = &(tilingData_->mc2InitTiling);
+    uint64_t hcclCcTilingOffset = offsetof(Mc2Tiling::MatmulReduceScatterV2TilingData, mc2CcTiling);
+    hccl_.InitV2(contextGM, hcclInitTilingV2);
+    hccl_.SetCcTilingV2(hcclCcTilingOffset);
 
     // 读取上下文和配置
     context_ = (__gm__ HcclCombinOpParam *)(contextGM);
@@ -226,7 +229,7 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Execute
 
     // --- Prologue: 启动第 0 轮通信 ---
     VecWaitCube(); // 确保依赖的 MatMul 已完成
-    handles_[0 + handleShift] = hccl_.AlltoAll<true>(
+    handles_[0 + handleShift] = hccl_.template AlltoAll<true>(
         currSendPtr, currRecvPtr, rankSliceElems, dataType_, stride, repeat
     );
     
@@ -245,7 +248,7 @@ __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::Execute
 
         // 2. 启动下一轮 (i+1) 通信
         VecWaitCube(); 
-        handles_[i + 1 + handleShift] = hccl_.AlltoAll<true>(
+        handles_[i + 1 + handleShift] = hccl_.template AlltoAll<true>(
             currSendPtr, currRecvPtr, rankSliceElems, dataType_, stride, repeat
         );
 

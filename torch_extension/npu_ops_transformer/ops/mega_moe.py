@@ -144,7 +144,7 @@ def npu_get_mega_moe_ccl_buffer_size(
     dispatch_token_per_expert = ep_world_size * \
         inline_align(ep_world_size * local_moe_expert_num, 128) * 4
     quant_token_scales = inline_align(num_max_tokens_per_rank * num_topk * (hidden + hidden // 32), 512)
-    combine_out = inline_align(num_max_tokens_per_rank * num_topk * y_out_dtype_size, 512)
+    combine_out = inline_align(num_max_tokens_per_rank * hidden * num_topk * y_out_dtype_size, 512)
     ccl_buffer_size = peermem_data_offset + dispatch_token_per_expert + quant_token_scales + combine_out
     ccl_buffer_size = inline_align(inline_align(ccl_buffer_size, mb_conversion) // mb_conversion, 2) // 2
     return ccl_buffer_size

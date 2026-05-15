@@ -186,7 +186,7 @@ aclnnStatus aclnnRotaryPositionEmbeddingV2(
       <td>与x数据类型一致。</td>
       <td>BFLOAT16、FLOAT16、FLOAT32</td>
       <td>ND</td>
-      <td>4</td>
+      <td>3或4</td>
       <td>x</td>
     </tr>
     <tr>
@@ -325,7 +325,7 @@ aclnnStatus aclnnRotaryPositionEmbeddingV2(
 
 - <term>Ascend 950PR/Ascend 950DT</term>：
 
-  输入张量x仅支持四维，不支持辅助矩阵输入，各参数的shape约束可以描述下：
+  输入张量x支持BNSD、BSND、SBND、TND排布，不支持辅助矩阵输入。各参数的shape约束可以描述如下：
   - 输入张量x、cos、sin及输出张量y的最后一维大小必须相同，且小于等1024。对于half、interleave和interleave-half模式，最后一维必须能被2除，对于quarter模式，最后一维必须能被4整除。
   - 输入张量x和输出张量y的shape必须完全相同。
   - 输入张量cos和sin的shape必须完全相同，cos和sin的shape需要与x满[broadcast关系](../../../docs/zh/context/broadcast关系.md)，且广播的shape必须等于x的shape。

@@ -439,11 +439,11 @@ __aicore__ inline void QLIPreload<QLIT>::Init(__gm__ uint8_t *query, __gm__ uint
     scoreGm.SetGlobalBuffer((__gm__ SCORE_T *)(workspace + aiCoreIdx * singleCoreScoreSize));
     offset += GetBlockNum() * singleCoreScoreSize;
     // vec 存储需要LD的s1对应的s2的score与index，大小为s1BaseSize * sparseCount * 2，一个核内最多有两个s1BaseSize需要LD
-    GlobalTensor<SCORE_T> LDScoreGm; // 存放进行LD的s2 score
-    LDScoreGm.SetGlobalBuffer((__gm__ SCORE_T *)(workspace + offset));
+    GlobalTensor<SCORE_T> ldScoreGm; // 存放进行LD的s2 score
+    ldScoreGm.SetGlobalBuffer((__gm__ SCORE_T *)(workspace + offset));
     offset += GetBlockNum() * constInfo.s1BaseSize * topkCountAlign16_ * 2 * sizeof(SCORE_T);
-    GlobalTensor<int32_t> LDIndexGm; // 存放进行LD的s2 Index
-    LDIndexGm.SetGlobalBuffer((__gm__ int32_t *)(workspace + offset));
+    GlobalTensor<int32_t> ldIndexGm; // 存放进行LD的s2 Index
+    ldIndexGm.SetGlobalBuffer((__gm__ int32_t *)(workspace + offset));
     offset += GetBlockNum() * constInfo.s1BaseSize * topkCountAlign16_ * 2 * sizeof(int32_t);
 
     if ASCEND_IS_AIV {
@@ -454,7 +454,7 @@ __aicore__ inline void QLIPreload<QLIT>::Init(__gm__ uint8_t *query, __gm__ uint
         kScaleGm.SetGlobalBuffer((__gm__ float *)keyScale);
         blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
         vectorService.InitVecInputTensor(weightsGm, qScaleGm, kScaleGm, indiceOutGm, blockTableGm);
-        vectorService.InitVecWorkspaceTensor(scoreGm, LDScoreGm, LDIndexGm);
+        vectorService.InitVecWorkspaceTensor(scoreGm, ldScoreGm, ldIndexGm);
     } else {
         matmulService.InitParams(constInfo);
         queryGm.SetGlobalBuffer((__gm__ Q_T *)query);

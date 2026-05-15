@@ -996,7 +996,7 @@ endforeach(    )
     install(DIRECTORY ${OPBASE_SOURCE_PATH}/pkg_inc/op_common/atvoss
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
     )
-    install(DIRECTORY ${OPBASE_SOURCE_PATH}/pkg_inc/op_common/op_kernel
+    install(DIRECTORY ${OPBASE_SOURCE_PATH}/include/op_common/op_kernel
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
     )
 
@@ -1068,7 +1068,7 @@ if (ALL_COMMON_SRC_DIRS)
         list(APPEND COMMON_COPY_COMMANDS
             COMMAND ${CMAKE_COMMAND} -E copy_directory ${SRC_DIR} ${_COMMON_OUT_SRC_DIR}
         )
-        if (SRC_DIR MATCHES "mc2/common$")
+        if (SRC_DIR MATCHES "mc2/common$" AND NOT ENABLE_EXPERIMENTAL)
             list(APPEND COMMON_COPY_COMMANDS
                 COMMAND ${CMAKE_COMMAND} -E copy_directory ${SRC_DIR}/op_kernel ${_COMMON_OUT_SRC_DIR}
             )

@@ -28,6 +28,8 @@
 #include <vector>
 #include "version/runtime_version.h"
 #include "version/metadef_version.h"
+#include <dlfcn.h>
+#include <cstring>
 
 // 支持 9.0.0 版本（90000000）, 当版本带着 beta, alpha, rc 时, rts 接口获取到的版本号会在 90000000 基础上减去一个对应的 weight 值
 // 其下限为 9.0.0-alpha, 对应版本号 90000000 - 300 = 89999700
@@ -41,6 +43,54 @@ const uint32_t WIN_SIZE = 1024U * 1024U;
 const uint32_t MS_WIDTH = 3U;
 const uint32_t MS_PER_S = 1000U;
 const mode_t FILE_MODE = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
+
+// 函数指针类型定义
+typedef aclError (*aclrtGetArgsFromExceptionInfo_t)(aclrtExceptionInfo *info, void **args, uint32_t *argsSize);
+typedef const char* (*acldumpGetPath_t)(acldumpType dumpType);
+
+// 动态加载clrtGetArgsFromExceptionInfo函数
+inline aclrtGetArgsFromExceptionInfo_t GetAclrtGetArgsFromExceptionInfoFunc()
+{
+    static aclrtGetArgsFromExceptionInfo_t func = nullptr;
+    static bool initialized = false;
+    if (!initialized) {
+        initialized = true;
+        // 直接从 libacl_rt.so 加载符号
+        void *handle = dlopen("libacl_rt.so", RTLD_NOLOAD | RTLD_LAZY);
+        if (handle != nullptr) {
+            func = (aclrtGetArgsFromExceptionInfo_t)dlsym(handle, "aclrtGetArgsFromExceptionInfo");
+            if (func == nullptr) {
+                OP_LOGE(OP_NAME, "dlsym aclrtGetArgsFromExceptionInfo failed: %s", dlerror());
+            }
+        } else {
+            OP_LOGE(OP_NAME, "dlopen failed: %s", dlerror());
+        }
+    }
+    return func;
+}
+
+// 动态加载acldumpGetPath函数
+inline acldumpGetPath_t GetAcldumpGetPathFunc()
+{
+    static acldumpGetPath_t func = nullptr;
+    static bool initialized = false;
+    if (!initialized) {
+        initialized = true;
+        // 尝试加载ascend_dump.so
+        void *handle = dlopen("libascend_dump.so", RTLD_NOLOAD | RTLD_LAZY);
+        if (handle != nullptr) {
+            func = (acldumpGetPath_t)dlsym(handle, "acldumpGetPath");
+            if (func == nullptr) {
+                OP_LOGE(OP_NAME, "dlsym acldumpGetPath failed: %s", dlerror());
+            } else {
+                OP_LOGD(OP_NAME, "Successfully loaded acldumpGetPath function");
+            }
+        } else {
+            OP_LOGE(OP_NAME, "dlopen libascend_dump.so failed: %s", dlerror());
+        }
+    }
+    return func;
+}
 
 inline std::string GetTimestampWithMilliseconds()
 {
@@ -186,11 +236,19 @@ inline void Mc2ExceptionImpl(aclrtExceptionInfo *args, void *userdata, const cha
     // Get addr of hccl context from ExceptionInfo
     void* devArgsPtr = nullptr;
     uint32_t devArgsLen = 0;
-    auto ret = aclrtGetArgsFromExceptionInfo(args, &devArgsPtr, &devArgsLen);
+
+    auto aclrtGetArgsFromExceptionInfoFunc = GetAclrtGetArgsFromExceptionInfoFunc();
+    if (aclrtGetArgsFromExceptionInfoFunc == nullptr) {
+        OP_LOGE(OP_NAME, "Failed to load aclrtGetArgsFromExceptionInfo function.");
+        return;
+    }
+
+    auto ret = aclrtGetArgsFromExceptionInfoFunc(args, &devArgsPtr, &devArgsLen);
     if (ret != ACL_SUCCESS) {
         OP_LOGE(OP_NAME, "aclrtGetArgsFromExceptionInfo failed. ret=%d", ret);
         return;
     }
+
     uint32_t deviceId = aclrtGetDeviceIdFromExceptionInfo(args);
     if (ret != ACL_SUCCESS) {
         OP_LOGE(OP_NAME, "aclrtGetDeviceIdFromExceptionInfo failed. ret=%d", ret);
@@ -225,8 +283,22 @@ inline void Mc2ExceptionImpl(aclrtExceptionInfo *args, void *userdata, const cha
         }
     }
 
+    // 获取acldumpGetPath函数指针
+    auto acldumpGetPathFunc = GetAcldumpGetPathFunc();
+    if (acldumpGetPathFunc == nullptr) {
+        OP_LOGE(OP_NAME, "Failed to load acldumpGetPath function, skip dump");
+        return;
+    }
+    
+    // 获取dump路径
+    const char* dumpPath = acldumpGetPathFunc(acldumpType::AIC_ERR_BRIEF_DUMP);
+    if (dumpPath == nullptr) {
+        OP_LOGE(OP_NAME, "acldumpGetPath returned NULL");
+        return;
+    }
+
     // Write to bin file
-    if (DumpToFile(std::string(acldumpGetPath(acldumpType::AIC_ERR_BRIEF_DUMP)), GenDumpFileName(args, op), deviceId,
+    if (DumpToFile(std::string(dumpPath), GenDumpFileName(args, op), deviceId,
                    winContent.data()) != 0) {
         OP_LOGE(OP_NAME, "Failed to get win content.");
     }

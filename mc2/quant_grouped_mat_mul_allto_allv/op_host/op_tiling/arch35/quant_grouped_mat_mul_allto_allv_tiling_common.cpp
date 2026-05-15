@@ -19,6 +19,7 @@
 #include "quant_grouped_mat_mul_allto_allv_tiling_adapter.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include <tiling/tiling_api.h>
+#include "mc2_comm_utils.h"
 #include <numeric>
 
 using namespace Mc2Log;
@@ -807,11 +808,15 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::SetHcclTiling()
 
     Mc2CcTilingConfig hcclCcTilingConfig(groupEpPtr, alltoAllvCmd, alltoAllvConfig, alltoAllvReduceType,
                                          alltoAllvDstDataType, alltoAllvSrcDataType);
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    if (commMode == Mc2Comm::COMM_MODE_AICPU) {
+        hcclCcTilingConfig.SetCommEngine(Mc2Comm::ENGINE_AICPU);
+    }
     OP_TILING_CHECK(hcclCcTilingConfig.GetTiling(localTilingData_.hcclA2avTiling.hcclInitTiling) != 0,
-                    OP_LOGE(opName_, "mc2CcTilingConfig mc2tiling GetTiling hcclInitTiling failed"),
+                    OP_LOGE(opName_, "mc2CcTilingConfig GetTiling hcclInitTiling failed"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(hcclCcTilingConfig.GetTiling(localTilingData_.hcclA2avTiling.a2avCcTiling) != 0,
-                    OP_LOGE(opName_, "mc2CcTilingConfig mc2tiling GetTiling alltoAllvCcTiling failed"),
+                    OP_LOGE(opName_, "mc2CcTilingConfig GetTiling alltoAllvCcTiling failed"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -949,12 +954,11 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::GetWorkspaceSize()
 
 uint64_t QuantGroupedMatmulAllToAllvTilingCommon::GetTilingKey() const
 {
-    const uint64_t tilingKey =
-        GET_TPL_TILING_KEY(localParams_.hasSharedMm, localParams_.isGmmWeightTrans, localParams_.isMmWeightTrans,
-                           localParams_.gmmQuantSuit, localParams_.mmQuantSuit);
-    OP_LOGD(opName_, "GET_TPL_TILING_KEY: [%d,%d,%d,%d,%d], TilingKey is [%lu].", localParams_.hasSharedMm,
-            localParams_.isGmmWeightTrans, localParams_.isMmWeightTrans, localParams_.gmmQuantSuit,
-            localParams_.mmQuantSuit, tilingKey);
+    uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(localParams_.hasSharedMm, localParams_.isGmmWeightTrans,
+        localParams_.isMmWeightTrans, commMode);
+    OP_LOGD(opName_, "GET_TPL_TILING_KEY: [%d,%d,%d,%d], TilingKey is [%lu].", localParams_.hasSharedMm,
+        localParams_.isGmmWeightTrans, localParams_.isMmWeightTrans, commMode, tilingKey);
     return tilingKey;
 }
 

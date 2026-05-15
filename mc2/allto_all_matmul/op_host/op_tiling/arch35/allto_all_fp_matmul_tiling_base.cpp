@@ -13,6 +13,7 @@
  * \brief
  */
 #include "common/utils/op_mc2.h"
+#include "common/utils/mc2_comm_utils.h"
 #include "mc2_log.h"
 #include "allto_all_fp_matmul_tiling_base.h"
 
@@ -77,6 +78,22 @@ ge::graphStatus AllToAllFpMatmulTilingBase::InitTilingContextParameters()
     return ge::GRAPH_SUCCESS;
 }
 
+CutResult AllToAllFpMatmulTilingBase::GetCutResOfCommAndCompute()
+{
+    constexpr uint32_t COMM_RANKDIM_FOUR = 4;
+    constexpr uint32_t COMM_RANKDIM_EIGHT = 8;
+    if (contextInfo_.args_.rankDim == COMM_RANKDIM_FOUR || contextInfo_.args_.rankDim == COMM_RANKDIM_EIGHT) {
+        TopoType topoType =
+            contextInfo_.args_.rankDim == COMM_RANKDIM_FOUR ? TopoType::STANDARD_CARD : TopoType::EIGHT_P;
+        // 950的4卡和8卡形态使用基于拟合数据的公式化tiling
+        AlltoAllMatmulFitBalanceTiling tiling(matmulQuantType_, contextInfo_.args_, topoType, SocVersion::SOC950);
+        return tiling.GetTiling();
+    } else {
+        // 调用父类的通用实现
+        return AllToAllMatmulTilingBase::GetCutResOfCommAndCompute();
+    }
+}
+
 /**
  * @brief 主要处理逻辑，设置hccl参数；进行通算切分, 获取mm tiling等
  *
@@ -89,7 +106,6 @@ ge::graphStatus AllToAllFpMatmulTilingBase::DoOpTiling()
     // 参数校验通过后赋值给全局上下文变量
     GE_ASSERT_GRAPH_SUCCESS(InitTilingContextParameters());
     // 进行通算切分
-    matmulQuantType_ = QuantType::FP_QUANT;
     GE_ASSERT_GRAPH_SUCCESS(TileCommAndCompute());
     // 调用非量化Matmul的tiling方法进行切分
     GE_ASSERT_GRAPH_SUCCESS(DoMMTiling());
@@ -172,9 +188,12 @@ ge::graphStatus AllToAllFpMatmulTilingBase::SetHcclTiling()
         Mc2CcTilingConfigBuilder::create(contextInfo_.group, mc2tiling::AicpuComType::HCCL_CMD_ALLTOALL,
                                          Mc2CcTilingConfigBuilder::AlgConfigType::ALL_TO_ALL);
 
+    // 根据环境变量判断使用的通信引擎的类型
+    uint8_t hcclServerEngine = Mc2Comm::GetCommModeFromEnv() == Mc2Comm::COMM_MODE_CCU ?
+                                Mc2Comm::ENGINE_CCU : Mc2Comm::ENGINE_AICPU;
     // reducetype接口附带的数据类型优先于调用通信接口传入的数据类型，因此这里需要设置
     AscendC::Mc2CcTilingConfig allToAllTilingConfig =
-        allToAllBuilder.withCommEngine(mc2tiling::A5_CCU_ENGINE)
+        allToAllBuilder.withCommEngine(hcclServerEngine)
             .withReduceType(opName_, AscendC::HcclReduceOp::HCCL_REDUCE_SUM, contextInfo_.args_.geAType,
                             contextInfo_.args_.geAType)
             .build();
@@ -196,14 +215,15 @@ uint64_t AllToAllFpMatmulTilingBase::GetTilingKey() const
 {
     // 按照量化组合模式，是否转置，bias数据类型进行展开
     // 0代表数据类型和x一致(FP16 OR BF16)，1代表FP32
-    uint32_t biasDType = DTYPE_BIAS_SAME_WITH_X;
+    uint8_t biasDType = DTYPE_BIAS_SAME_WITH_X;
     if (contextInfo_.args_.geBiasType != contextInfo_.args_.geAType) {
         biasDType = DTYPE_BIAS_FP32;
     }
     bool x2TransposeFlag = contextInfo_.args_.isBTrans ? true : false;
-    const uint64_t tilingKey = GET_TPL_TILING_KEY(NON_QUANT_MODE, x2TransposeFlag, biasDType, false);
-    OP_LOGD(opName_, "QUANTMODE,X2TRANSPOSE,DTYPEBIAS,ISSMALLK is: [%d,%d,%d,0], and tilingKey is [%lu].",
-            NON_QUANT_MODE, x2TransposeFlag, biasDType, tilingKey);
+    uint8_t hcclServerType = Mc2Comm::GetCommModeFromEnv();
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(NON_QUANT_MODE, x2TransposeFlag, biasDType, false, hcclServerType);
+    OP_LOGD(opName_, "QUANTMODE,X2TRANSPOSE,DTYPEBIAS,ISSMALLK,COMMTYPE is: [%d,%d,%d,0,%d], and tilingKey is [%lu].",
+            NON_QUANT_MODE, x2TransposeFlag, biasDType, hcclServerType, tilingKey);
     return tilingKey;
 }
 
