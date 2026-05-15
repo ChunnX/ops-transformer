@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef FLASH_ATTN_TILING_REGBASE_H_
-#define FLASH_ATTN_TILING_REGBASE_H_
+#ifndef FLASH_ATTN_TILING_DATA_H_
+#define FLASH_ATTN_TILING_DATA_H_
 
 
 namespace optiling {
@@ -57,8 +57,10 @@ struct FlashAttnBaseParams {
     uint32_t dSize;
     uint32_t dSizeV;
     uint32_t dSizeRope;
-    uint32_t cuSeqLengthsQSize;
-    uint32_t cuSeqLengthsKVSize;
+    uint32_t cuSeqLensQSize;
+    uint32_t cuSeqLensKVSize;
+    uint32_t seqUsedQSize;
+    uint32_t seqUsedKvSize;
     float scaleValue;
     uint8_t iscuSeqLengthsNull;
     uint8_t iscuSeqLengthsKVNull;
@@ -75,7 +77,6 @@ struct FlashAttnAttenMaskParams {
     uint32_t attenMaskBatch = 0;
     uint32_t attenMaskS1Size;
     uint32_t attenMaskS2Size;
-    uint8_t isRowInvalidOpen = 0;
     uint8_t isExistRowInvalid = 0;
 };
 
