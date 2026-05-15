@@ -1393,19 +1393,19 @@ PerLoopParams MoeInitRoutingV3Arch35TilingClass::GetPerLoopParams(MultipleParams
         perLoopParams.perLoopMaxIndicesElements =
             std::min(perLoopParams.perLoopMaxIndicesElements, perCoreIndicesElements);
 
-        int64_t rowIdxQueueSize = AlignBytes(perLoopParams.perLoopMaxIndicesElements, sizeof(int32_t));
-        int64_t xQueueSize = perLoopParams.perLoopMaxIndicesElements * AlignBytes(perLoopParams.perLoopCols, inputXDtypeSize_);
-        int64_t scaleQueueSize = perLoopParams.perLoopMaxIndicesElements * AlignBytes(1, sizeof(float));
-
-        int64_t baseMemory = rowIdxQueueSize * NUM_TWO + xQueueSize * NUM_TWO + scaleQueueSize * NUM_TWO;
-
-        int64_t remainingSpace = availUbSize_ - baseMemory;
-        int64_t maxAdditionalRows = remainingSpace / xQueueSize;
-        if (maxAdditionalRows > 0) {
-            perLoopParams.xCopyInQueueBufferNum = std::min(maxAdditionalRows + NUM_TWO, MAX_QUEUE_BUFFER_NUM);
-        } else {
-            perLoopParams.xCopyInQueueBufferNum = NUM_TWO;
-        }
+        // int64_t rowIdxQueueSize = AlignBytes(perLoopParams.perLoopMaxIndicesElements, sizeof(int32_t));
+        // int64_t xQueueSize = perLoopParams.perLoopMaxIndicesElements * AlignBytes(perLoopParams.perLoopCols, inputXDtypeSize_);
+        // int64_t scaleQueueSize = perLoopParams.perLoopMaxIndicesElements * AlignBytes(1, sizeof(float));
+        //
+        // int64_t baseMemory = rowIdxQueueSize * NUM_TWO + xQueueSize * NUM_TWO + scaleQueueSize * NUM_TWO;
+        //
+        // int64_t remainingSpace = availUbSize_ - baseMemory;
+        // int64_t maxAdditionalRows = remainingSpace / xQueueSize;
+        // if (maxAdditionalRows > 0) {
+        //     perLoopParams.xCopyInQueueBufferNum = std::min(maxAdditionalRows + NUM_TWO, MAX_QUEUE_BUFFER_NUM);
+        // } else {
+        //     perLoopParams.xCopyInQueueBufferNum = NUM_TWO;
+        // }
     }
     return perLoopParams;
 }
