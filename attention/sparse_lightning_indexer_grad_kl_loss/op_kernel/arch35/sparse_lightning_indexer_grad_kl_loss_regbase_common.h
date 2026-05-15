@@ -212,8 +212,9 @@ __aicore__ inline T AlignTo(const T n, const T alignSize)
 }
 
 #define CUBE_BLOCK_TRAITS_TYPE_FIELDS(X)                                                                               \
-    X(INPUT_T)                                                                                                            \
-    X(OUT_T)                                                                                                            \
+    X(INPUT_T)                                                                                                         \
+    X(OUT_T)                                                                                                           \
+    X(WEIGHT_T)                                                                                                        \
     X(T)
 
 #define CUBE_BLOCK_TRAITS_CONST_FIELDS(X)                                                                              \

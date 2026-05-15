@@ -612,7 +612,7 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
     constInfo.syKBaseSize = tilingData->multiCoreParams.syKTotalSize / (constInfo.n2Size * constInfo.gSizeQueryIndex);
     constInfo.pKBaseSize = tilingData->multiCoreParams.pKTotalSize / (constInfo.n2Size * constInfo.gSizeQuery);
     constInfo.syKBaseSize = Min(1024, constInfo.syKBaseSize);
-    constInfo.pKBaseSize = Min(1024, constInfo.pKBaseSize);
+    constInfo.pKBaseSize = Min(256, constInfo.pKBaseSize);
     constInfo.pScaler = 1.0f / static_cast<float>(static_cast<int64_t>(constInfo.gSizeQuery));
     if constexpr (IS_DETER) {
         constInfo.bmm3BaseOffset = constInfo.aicIdx * constInfo.kSize * constInfo.dSizeQueryIndex * MODE_NUM_2;
