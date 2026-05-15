@@ -624,7 +624,7 @@ ge::graphStatus MatmulAlltoAllTiling910B::CheckShapeInfo(MatmulAlltoAllInfo &inf
     }
 
     OP_TILING_CHECK(info.M == 0, OP_LOGE(opName_, "Invalid x1 shape: dim 0(m) cannot be 0."), return ge::GRAPH_FAILED);
-    // 校验K, K的范围应该在[1, 65535]
+    // 校验K,K的范围应该在[1, 65535]
     OP_TILING_CHECK(info.K > K_MAX_VALUE, OP_LOGE(opName_, "X1 dim 1(k) exceeds max value 65535, got %u.", info.K),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(info.N == 0, OP_LOGE(opName_, "Invalid x2 shape: N cannot be 0."), return ge::GRAPH_FAILED);
