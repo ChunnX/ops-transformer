@@ -15,11 +15,77 @@
 #include "common/op_api_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "aclnn_kernels/contiguous.h"
+#include "external/aclnn_kernels/aclnn_platform.h"
 #include "opdev/tensor_view_utils.h"
 #include "opdev/op_log.h"
 #include "moe_finalize_routing_v2_grad.h"
 
 using namespace op;
+
+namespace MoeFinalizeRoutingV2GradCheck {
+
+static const std::initializer_list<op::DataType> MOE_FINALIZE_ROUTING_V2_GRAD_DTYPE_SUPPORT_LIST_X = {
+    DataType::DT_FLOAT16, DataType::DT_BF16, DataType::DT_FLOAT};
+static const std::initializer_list<op::DataType> MOE_FINALIZE_ROUTING_V2_GRAD_DTYPE_SUPPORT_LIST_ROW_IDX = {
+    DataType::DT_INT32};
+
+static inline bool CheckNotNull(const aclTensor *gradY, const aclTensor *expandedRowIdx,
+                                const aclTensor *gradExpandedXOut, const aclTensor *gradScalesOut)
+{
+    OP_CHECK_NULL(gradY, return false);
+    OP_CHECK_NULL(expandedRowIdx, return false);
+    OP_CHECK_NULL(gradExpandedXOut, return false);
+    OP_CHECK_NULL(gradScalesOut, return false);
+    return true;
+}
+
+static inline bool CheckDtypeValid(const aclTensor *gradY, const aclTensor *expandedRowIdx,
+                                   const aclTensor *expandedXOptional, const aclTensor *scalesOptional,
+                                   const aclTensor *expertIdxOptional, const aclTensor *biasOptional,
+                                   const aclTensor *gradExpandedXOut, const aclTensor *gradScalesOut)
+{
+    if (gradY != nullptr && gradY->GetViewShape().GetShapeSize() != 0) {
+        OP_CHECK_DTYPE_NOT_SUPPORT(gradY, MOE_FINALIZE_ROUTING_V2_GRAD_DTYPE_SUPPORT_LIST_X, return false);
+    }
+    if (expandedRowIdx != nullptr && expandedRowIdx->GetViewShape().GetShapeSize() != 0) {
+        OP_CHECK_DTYPE_NOT_SUPPORT(expandedRowIdx, MOE_FINALIZE_ROUTING_V2_GRAD_DTYPE_SUPPORT_LIST_ROW_IDX,
+                                   return false);
+    }
+    if (expandedXOptional != nullptr && expandedXOptional->GetViewShape().GetShapeSize() != 0) {
+        OP_CHECK_DTYPE_NOT_SUPPORT(expandedXOptional, MOE_FINALIZE_ROUTING_V2_GRAD_DTYPE_SUPPORT_LIST_X, return false);
+    }
+    if (scalesOptional != nullptr && scalesOptional->GetViewShape().GetShapeSize() != 0) {
+        OP_CHECK_DTYPE_NOT_SUPPORT(scalesOptional, MOE_FINALIZE_ROUTING_V2_GRAD_DTYPE_SUPPORT_LIST_X, return false);
+    }
+    if (expertIdxOptional != nullptr && expertIdxOptional->GetViewShape().GetShapeSize() != 0) {
+        OP_CHECK_DTYPE_NOT_SUPPORT(expertIdxOptional, MOE_FINALIZE_ROUTING_V2_GRAD_DTYPE_SUPPORT_LIST_ROW_IDX,
+                                   return false);
+    }
+    if (biasOptional != nullptr && biasOptional->GetViewShape().GetShapeSize() != 0) {
+        OP_CHECK_DTYPE_NOT_SUPPORT(biasOptional, MOE_FINALIZE_ROUTING_V2_GRAD_DTYPE_SUPPORT_LIST_X, return false);
+    }
+    if (gradExpandedXOut != nullptr && gradExpandedXOut->GetViewShape().GetShapeSize() != 0) {
+        OP_CHECK_DTYPE_NOT_SUPPORT(gradExpandedXOut, MOE_FINALIZE_ROUTING_V2_GRAD_DTYPE_SUPPORT_LIST_X, return false);
+    }
+    if (gradScalesOut != nullptr && gradScalesOut->GetViewShape().GetShapeSize() != 0) {
+        OP_CHECK_DTYPE_NOT_SUPPORT(gradScalesOut, MOE_FINALIZE_ROUTING_V2_GRAD_DTYPE_SUPPORT_LIST_X, return false);
+    }
+    return true;
+}
+
+static aclnnStatus CheckParams(const aclTensor *gradY, const aclTensor *expandedRowIdx,
+                               const aclTensor *expandedXOptional, const aclTensor *scalesOptional,
+                               const aclTensor *expertIdxOptional, const aclTensor *biasOptional,
+                               const aclTensor *gradExpandedXOut, const aclTensor *gradScalesOut)
+{
+    CHECK_RET(CheckNotNull(gradY, expandedRowIdx, gradExpandedXOut, gradScalesOut), ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(CheckDtypeValid(gradY, expandedRowIdx, expandedXOptional, scalesOptional, expertIdxOptional, biasOptional,
+                              gradExpandedXOut, gradScalesOut),
+              ACLNN_ERR_PARAM_INVALID);
+    return ACLNN_SUCCESS;
+}
+
+} // namespace MoeFinalizeRoutingV2GradCheck
 
 #ifdef __cplusplus
 extern "C" {
@@ -34,19 +100,17 @@ ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV2GradGetWorkspaceSize(
 {
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
     L2_DFX_PHASE_1(aclnnMoeFinalizeRoutingV2Grad,
-        DFX_IN(gradY, expandedRowIdx, expandedXOptional, scalesOptional,
-            expertIdxOptional, biasOptional, dropPadMode, activeNum, expertNum, expertCapacity),
-        DFX_OUT(gradExpandedXOut, gradScalesOut));
+                   DFX_IN(gradY, expandedRowIdx, expandedXOptional, scalesOptional, expertIdxOptional, biasOptional,
+                          dropPadMode, activeNum, expertNum, expertCapacity),
+                   DFX_OUT(gradExpandedXOut, gradScalesOut));
 
-    // 参数检查
-    OP_CHECK_NULL(gradY, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(expandedRowIdx, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(gradExpandedXOut, return ACLNN_ERR_PARAM_NULLPTR);
-    OP_CHECK_NULL(gradScalesOut, return ACLNN_ERR_PARAM_NULLPTR);
-
-    // 创建OpExecutor
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+
+    aclnnStatus ret =
+        MoeFinalizeRoutingV2GradCheck::CheckParams(gradY, expandedRowIdx, expandedXOptional, scalesOptional,
+                                                   expertIdxOptional, biasOptional, gradExpandedXOut, gradScalesOut);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     // 固定写法，将输入转换成连续的tensor
     auto gradYContiguous = l0op::Contiguous(gradY, uniqueExecutor.get());
