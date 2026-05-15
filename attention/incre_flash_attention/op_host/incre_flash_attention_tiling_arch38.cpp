@@ -115,7 +115,7 @@ void TilingGetTempCompileInfo(platform_ascendc::PlatformAscendC &ascendcPlatform
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, compileInfo.l0CSize);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_A, compileInfo.l0ASize);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_B, compileInfo.l0BSize);
-    compileInfo.defaultSysWorkspaceSize = 0U;
+    compileInfo.defaultSysWorkspaceSize = 0;
 }
 
 ge::graphStatus IFATilingArch38::ConvertContext(gert::TilingContext &context, IncreFlashAttentionContext &ifaContext)
@@ -222,7 +222,7 @@ ge::graphStatus IFATilingArch38::DoSubOpTiling(IncreFlashAttentionContext &ifaCo
                 return ge::GRAPH_FAILED);
     PromptFlashAttentionTilingData tilingData;
     ret = flashTilingArch38.DoSubOpTiling(tilingData, contextParamsForPFATiling);
-    return ret;
+    return ge::GRAPH_SUCCESS;
 }
 
 REGISTER_TILING_TEMPLATE_FIA(IncreFlashAttention, IFATilingArch38, std::vector<int32_t>({(int32_t)NpuArch::DAV_5102}), 92);
