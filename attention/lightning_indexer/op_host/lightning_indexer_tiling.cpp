@@ -214,14 +214,22 @@ ge::graphStatus LIInfoParser::GetAndCheckInOutDataType()
     outputType_ = opParamInfo_.attenOut.desc->GetDataType();
     valuesOutType_ = opParamInfo_.valuesOut.desc->GetDataType();
 
-    bool inDTypeAllEqual = (inputQType_ == inputKType_) && (inputKType_ == weightsType_);
+    bool inDTypeAllEqual = (inputQType_ == inputKType_);
     OP_CHECK_IF(!inDTypeAllEqual,
-               OP_LOGE(opName_, "The data types of the input query, key, and weights must be the same."),
-               return ge::GRAPH_FAILED);
-
+            OP_LOGE(opName_, "The data types of the input query and key must be the same."),
+            return ge::GRAPH_FAILED);
     OP_CHECK_IF(((inputQType_ != ge::DT_FLOAT16) && (inputQType_ != ge::DT_BF16)),
-               OP_LOGE(opName_, "The data types of the input query, key, and weights must be float16 or bfloat16."),
+               OP_LOGE(opName_, "The data types of the input query, key must be float16 or bfloat16."),
                return ge::GRAPH_FAILED);
+    if (weightsType_ != ge::DT_FLOAT) {
+        OP_CHECK_IF((inputQType_ != weightsType_),
+                OP_LOGE(opName_, "The data types of the input query, key, and weights must be the same."),
+                return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF((weightsType_ != ge::DT_FLOAT),
+               OP_LOGE(opName_, "The data types of the input weights must be float32."),
+               return ge::GRAPH_FAILED);
+    }
 
     OP_CHECK_IF(outputType_ != ge::DT_INT32,
                OP_LOGE(opName_, "The data types of the output sparse_indices must be int32."),
