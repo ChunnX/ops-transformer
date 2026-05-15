@@ -1341,9 +1341,9 @@ void FusedInferAttentionScoreTilingImpl::UpdateTilingKeyQuantMode(const FiaTilin
         } else if (*fiaInfo.opParamInfo.keyAntiquantMode == 7 && *fiaInfo.opParamInfo.valueAntiquantMode == 7 &&
                    *fiaInfo.opParamInfo.queryQuantMode == 7) {
             tilingKeyInfo_.quantMode = PerBlock;
-        } else if(*fiaInfo.opParamInfo.keyAntiquantMode == 6 && *fiaInfo.opParamInfo.valueAntiquantMode == 8 &&
+        } else if (*fiaInfo.opParamInfo.keyAntiquantMode == 6 && *fiaInfo.opParamInfo.valueAntiquantMode == 8 &&
                    *fiaInfo.opParamInfo.queryQuantMode == 6){ // 6: per_token_group, 8: per_channel_group
-            tilingKeyInfo_.quantMode = FULLQUANT_MODE_MXFP8;
+            tilingKeyInfo_.quantMode = FULLQUANT_MODE_MXFP8_PREFILL;
         } else {
             tilingKeyInfo_.quantMode = FullQuantMode;
         }
