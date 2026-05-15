@@ -9,12 +9,16 @@
 # -----------------------------------------------------------------------------------------------------------
 
 cmake_minimum_required(VERSION 3.16)
-
+include(cmake/fetch_cann_cmake.cmake)
 project(cann_ops-transformer)
 
 set(CMAKE_C_FLAGS_RELEASE "")
 set(CMAKE_CXX_FLAGS_RELEASE "")
 
+init_cann_project()
+if(NOT ASCEND_INSTALL_PATH AND DEFINED ENV{ASCEND_HOME_PATH})
+    set(ASCEND_INSTALL_PATH $ENV{ASCEND_HOME_PATH})
+endif()
 
 option(BUILD_OPEN_PROJECT         "Build open ascend ops project."  ON)
 option(BUILD_OPS_RTY_KERNEL       "Build return yellow kernel."     OFF)
@@ -67,9 +71,9 @@ include(cmake/func.cmake)
 
 include(version.cmake)
 if (BUILD_OPEN_PROJECT)
-    check_pkg_build_deps(${CANN_VERSION_PACKAGES})
+    check_cann_pkg_build_deps(${CANN_VERSION_PACKAGES})
 endif()
-add_version_info_targets()
+add_cann_version_info_targets()
 
 foreach(SOC_VERSION ${ASCEND_COMPUTE_UNIT})
   list(FIND SOC_VERSION_LIST ${SOC_VERSION} INDEX)
@@ -149,7 +153,6 @@ if (BUILD_OPEN_PROJECT)
         include(cmake/third_party/abseil-cpp.cmake)
         include(cmake/third_party/ascend_protobuf.cmake)
 
-        include(cmake/third_party/makeself-fetch.cmake)
         include(cmake/custom_build.cmake)
         message(STATUS "End building custom package.")
         include(cmake/opbuild.cmake)
