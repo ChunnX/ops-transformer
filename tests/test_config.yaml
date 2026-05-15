@@ -435,6 +435,18 @@ attention:
       ut: True
     options:
       - kv_quant_sparse_flash_attention
+  flash_attn:
+    module: True
+    src:
+      - attention/flash_attn
+    ut_cov_exclude:
+      - attention/flash_attn/tests
+      - attention/common
+      - attention/fused_infer_attention_score
+      - attention/prompt_flash_attention
+      - attention/incre_flash_attention
+    options:
+      - flash_attn
 
 gmm:
   grouped_matmul:
@@ -504,7 +516,6 @@ gmm:
       - gmm/grouped_matmul_finalize_routing/op_kernel
     options:
       - grouped_matmul_finalize_routing
-
 ffn:
   ffn:
     module: True
