@@ -29,7 +29,7 @@ is_independent_group_buffersize = 1
 ep_buffersize = 6000
 tp_buffersize = 1000
 
-is_performance = 0  # 是否进行性能检测
+is_performance = 1  # 是否进行性能检测
 loop = 105  # 性能检测时的性能采集轮数
 repeat = 1  # 性能采集分为几个批次
 warmup = 0  # 每批次的热身轮数
@@ -49,7 +49,7 @@ shared_expert_num = 0
 rank_num_per_shared_expert = 0  # 每个共享专家占据的卡数
 
 # 赋值给原来的变量名，后面的代码无需改动
-bs = 1
+bs = 512
 local_moe_expert_num = 4
 is_cloud = False  # 是否在云上环境进行测试，使用云上环境时设置为True，使用物理机时设为False
 if not is_cloud:
@@ -74,8 +74,8 @@ is_shared = (shared_expert_rank_num > 0)
 
 
 h = 4096  # 每个token的长度
-n = 1024
-k = 6
+n = 4096
+k = 8
 comm_alg = ''
 
 transpose_weight = 1
@@ -171,6 +171,79 @@ class ComparedOutput(Enum):
     X = "x"
     Y1 = 'y1'
     Y1_SCALE = 'y1_scale'
+
+
+# ============================================================================
+# Timestamp CSV 写出（解析逻辑全在 scripts/parse_trace.py 里，独立可用）
+# ============================================================================
+# Kernel 端把 us 时间戳写入 y2GmAddr 前 (TOTAL_CORES * POINTS_PER_CORE * 8) 字节，
+# layout = (globalCoreIdx, pointIdx) row-major：
+#   AIC[0..36) 在 row [0..36)
+#   AIV[0..72) 在 row [36..108)（AIV0=偶数行, AIV1=奇数行，对应同 pair 的 sub0/sub1）
+#
+# 本文件只负责"读 y → 写 csv"，每 rank 一个 csv（megamoe_trace_rank<N>_<ts>.csv）。
+# 解析在 scripts/parse_trace.py，可以离线对已有 csv 重复跑，不必 re-run kernel。
+TRACE_ENABLED = True
+
+# 复用 parse_trace 的 layout 常量 + header 定义（保持单一来源）。
+# 若 parse_trace.py 不可用（极少见），退回到本文件内的最小常量。
+try:
+    import parse_trace as _ptr
+    TRACE_POINTS_PER_CORE = _ptr.POINTS_PER_CORE
+    TRACE_MAX_AIC = _ptr.MAX_AIC
+    TRACE_MAX_AIV = _ptr.MAX_AIV
+    TRACE_TOTAL_CORES = _ptr.TOTAL_CORES
+    _trace_csv_header = _ptr.trace_csv_header
+    _analyze_csv = _ptr.analyze_csv
+except ImportError:
+    _ptr = None
+    TRACE_POINTS_PER_CORE = 260
+    TRACE_MAX_AIC = 36
+    TRACE_MAX_AIV = 72
+    TRACE_TOTAL_CORES = TRACE_MAX_AIC + TRACE_MAX_AIV
+    def _trace_csv_header():
+        return ['rank', 'side', 'core_idx'] + [f'p{i}' for i in range(TRACE_POINTS_PER_CORE)]
+    _analyze_csv = None
+
+
+def _y_tensor_to_uint64(y_tensor):
+    """bf16 张量字节直接 view 成 uint64（torch.uint64 在新版才支持，旧版回退）。"""
+    y_cpu = y_tensor.cpu().contiguous()
+    try:
+        return y_cpu.view(torch.uint64).flatten().numpy()
+    except Exception:
+        return np.frombuffer(y_cpu.view(torch.uint8).numpy().tobytes(), dtype=np.uint64)
+
+
+def dump_trace_csv_for_rank(y_tensor, rank_id, csv_path):
+    """单 rank 写 csv，覆盖模式（每跑一次生成新文件名所以不会冲突）。
+       返回 True 表示成功写入。
+    """
+    if not TRACE_ENABLED:
+        return False
+    needed_u64 = TRACE_TOTAL_CORES * TRACE_POINTS_PER_CORE
+    arr = _y_tensor_to_uint64(y_tensor)
+    if arr.size < needed_u64:
+        print(f"[TRACE rank {rank_id}] y too small: have {arr.size} u64, need {needed_u64}; "
+              f"set bs >= ceil({needed_u64 * 8} / (h*2)) or shrink POINTS_PER_CORE")
+        return False
+    ts = arr[:needed_u64].reshape(TRACE_TOTAL_CORES, TRACE_POINTS_PER_CORE)
+    header = _trace_csv_header()
+    with open(csv_path, 'w', encoding='utf-8', newline='') as f:
+        w = csv.writer(f)
+        w.writerow(header)
+        for ci in range(TRACE_TOTAL_CORES):
+            if ci < TRACE_MAX_AIC:
+                side = 'AIC'
+                core_idx = ci
+            else:
+                aiv_idx = ci - TRACE_MAX_AIC
+                side = 'AIV0' if (aiv_idx % 2 == 0) else 'AIV1'
+                core_idx = aiv_idx
+            row = [rank_id, side, core_idx] + [int(x) for x in ts[ci].tolist()]
+            w.writerow(row)
+    print(f"[TRACE rank {rank_id}] wrote {csv_path}  ({TRACE_TOTAL_CORES}×{TRACE_POINTS_PER_CORE})")
+    return True
 
 # dispatch_profiling_path = './Profiling_Result_mc2_dispatch_16p'
 # combine_profiling_path = './Profiling_Result_mc2_combine_16p'
@@ -798,6 +871,31 @@ if __name__ == "__main__":
     for category_id in range(category_num):
         specific_category_output = [rank_output[category_id] for rank_output in rank_outputs]
         category_outputs.append(specific_category_output)
+
+    # ====== 打点：每 rank 一个 csv；解析委托给 parse_trace.py ======
+    if TRACE_ENABLED:
+        trace_stamp = time.strftime('%Y%m%d_%H%M%S')
+        csv_paths = []
+        for local_rank_id in range(rank_per_dev):
+            global_rank_id = server_index * rank_per_dev + local_rank_id
+            csv_path = f'megamoe_trace_rank{global_rank_id}_{trace_stamp}.csv'
+            try:
+                if dump_trace_csv_for_rank(category_outputs[1][local_rank_id],
+                                           global_rank_id, csv_path):
+                    csv_paths.append(csv_path)
+            except Exception as e:
+                print(f"[TRACE rank {global_rank_id}] dump failed: {e}")
+        # 立即跑一遍解析（如果 parse_trace 可用）
+        if _analyze_csv is not None:
+            for p in csv_paths:
+                try:
+                    _analyze_csv(p)
+                except Exception as e:
+                    print(f"[TRACE] parse {p} failed: {e}")
+        else:
+            print(f"[TRACE] parse_trace.py 不可用；离线解析请运行:")
+            if csv_paths:
+                print(f"        python parse_trace.py {' '.join(csv_paths)}")
 
     result_dispatch_ffn_combine = {}
     # 比较y

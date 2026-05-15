@@ -60,7 +60,8 @@ template <typename ElementA, typename ElementB, typename ElementC, typename Elem
 __aicore__ inline void GroupMatmulSwigluQuant(
     BlockEpilogueSwigluMxQuant<ElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true, IsInterleaved>& epilogueOp,
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
-    const GMMAddrInfo& gmmAddrInfo, uint32_t coreInGroup, uint32_t coresPerWave, int32_t& vecSetSyncCom)
+    const GMMAddrInfo& gmmAddrInfo, uint32_t coreInGroup, uint32_t coresPerWave, int32_t& vecSetSyncCom,
+    int waveTraceIdx)
 {
     uint32_t m = Get<M_VALUE>(problemShape);
     uint32_t n = Get<N_VALUE>(problemShape);
@@ -170,6 +171,9 @@ __aicore__ inline void GroupMatmulSwigluQuant(
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
         uint32_t kLoc = Get<K_VALUE>(blockCoord);
 
+        bool isFirstTile = (loopIdx == coreInGroup);
+        bool isLastTile = (loopIdx + coresPerWave >= tileNum);
+
         if constexpr (g_coreType == AscendC::AIC) {
             if (loopIdx == coreInGroup) {
                 uint32_t targetValue = params.tilingData->epWorldSize * dispatchBlockNumPerEP;
@@ -179,6 +183,9 @@ __aicore__ inline void GroupMatmulSwigluQuant(
                     while (AscendC::GetSystemCycle() - st < 100) {
                     }
                 }
+                // [TRACE] sp2: AIC 第一个 tile 等 dispatch flag 完成
+                MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
+                                              MegaMoeTrace::SP_GMM1_FIRST_WAIT_DONE);
             }
 
             // 等 AIV 释放对应 pingpong 槽：交织+pingpong 第 3 次起才等；非交织从第 2 次起每次等
@@ -240,6 +247,16 @@ __aicore__ inline void GroupMatmulSwigluQuant(
             } else {
                 NotifyVector();
             }
+
+            // [TRACE] sp3 / sp4: AIC GMM1 first / last tile 完成（mmad+NotifyVector 后）
+            if (isFirstTile) {
+                MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
+                                              MegaMoeTrace::SP_GMM1_FIRST_TILE_DONE);
+            }
+            if (isLastTile) {
+                MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
+                                              MegaMoeTrace::SP_GMM1_LAST_TILE_DONE);
+            }
         }
 
         // 计数器：交织模式下每 iter 递增（用于 EndSync 判断 drain 1 还是 2 个 NotifyCube）；非交织置 1
@@ -271,14 +288,34 @@ __aicore__ inline void GroupMatmulSwigluQuant(
                 0, mLoc, 0, 0};
             if constexpr (IsInterleaved) {
                 WaitForCube(pingpongIdx);
+                // [TRACE] sp2: AIV0 第一个 tile WaitForCube 完成
+                if (isFirstTile) {
+                    MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
+                                                  MegaMoeTrace::SP_GMM1_FIRST_WAIT_DONE);
+                }
                 AscendC::SetCtrlSpr<60, 60>(0);
                 epilogueOp(epilogueShape, epilogueOffset, pingpongIdx);
                 NotifyCube(pingpongIdx);
             } else {
                 WaitForCube();
+                // [TRACE] sp2: AIV0 第一个 tile WaitForCube 完成
+                if (isFirstTile) {
+                    MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
+                                                  MegaMoeTrace::SP_GMM1_FIRST_WAIT_DONE);
+                }
                 AscendC::SetCtrlSpr<60, 60>(0);
                 epilogueOp(epilogueShape, epilogueOffset);
                 NotifyCube();
+            }
+
+            // [TRACE] sp3 / sp4: AIV0 GMM1 epi first / last tile 完成（epi+NotifyCube 后）
+            if (isFirstTile) {
+                MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
+                                              MegaMoeTrace::SP_GMM1_FIRST_TILE_DONE);
+            }
+            if (isLastTile) {
+                MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
+                                              MegaMoeTrace::SP_GMM1_LAST_TILE_DONE);
             }
         }
 
@@ -299,7 +336,8 @@ template <typename ElementA, typename ElementB, typename ElementC, typename Elem
 __aicore__ inline void GroupMatmul2(
     const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
     const GMMAddrInfo& gmmAddrInfo, uint32_t coreInGroup, uint32_t coresPerWave,
-    uint32_t groupIdx, int32_t rankId, uint64_t waveRowOffset)
+    uint32_t groupIdx, int32_t rankId, uint64_t waveRowOffset,
+    int waveTraceIdx)
 {
     GlobalTensor<uint8_t> gmAGt, gmBGt, gmScaleAGt, gmScaleBGt;
     gmAGt.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(gmmAddrInfo.aGlobal));
@@ -397,6 +435,9 @@ __aicore__ inline void GroupMatmul2(
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
         uint32_t kLoc = Get<K_VALUE>(blockCoord);
 
+        bool isFirstTile = (loopIdx == coreInGroup);
+        bool isLastTile = (loopIdx + coresPerWave >= tileNum);
+
         if constexpr (g_coreType == AscendC::AIC) {
             // AIC: 执行gmm2计算
             if (loopIdx == coreInGroup) {
@@ -418,6 +459,9 @@ __aicore__ inline void GroupMatmul2(
                     while (AscendC::GetSystemCycle() - st < 100) {
                     }
                 }
+                // [TRACE] sp7: AIC 第一个 tile 等到 GMM1 swiglu flag
+                MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
+                                              MegaMoeTrace::SP_GMM2_FIRST_WAIT_DONE);
             }
 
             auto gmBlockA = gmA.Slice(
@@ -442,11 +486,26 @@ __aicore__ inline void GroupMatmul2(
             SetFlag<HardEvent::FIX_S>(eventIdFIX_S);
             WaitFlag<HardEvent::FIX_S>(eventIdFIX_S);
             AscendC::AtomicAdd((__gm__ int32_t*)rowReadyFlags.GetPhyAddr() + blockIdx, int32_t(1));
+
+            // [TRACE] sp8 / sp9: AIC GMM2 first / last tile 完成（mmad+atomic_add 后）
+            if (isFirstTile) {
+                MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
+                                              MegaMoeTrace::SP_GMM2_FIRST_TILE_DONE);
+            }
+            if (isLastTile) {
+                MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
+                                              MegaMoeTrace::SP_GMM2_LAST_TILE_DONE);
+            }
         } else {
             // AIV: 等待对应C核完成并combine发送
             while (ReadGmByPassDCache((__gm__ int32_t*)rowReadyFlags.GetPhyAddr() + blockIdx) < 1) {
                 int64_t st = GetSystemCycle();
                 while (GetSystemCycle() - st < 100) {}
+            }
+            // [TRACE] sp7: AIV1 第一个 tile 等到 rowReady flag
+            if (isFirstTile) {
+                MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
+                                              MegaMoeTrace::SP_GMM2_FIRST_WAIT_DONE);
             }
             AscendC::AtomicAdd((__gm__ int32_t*)rowReadyFlags.GetPhyAddr() + blockIdx, int32_t(-1));
             // 裸分配UB用于GM→UB→远端GM（与gmm1串行，offset 0不冲突）
@@ -455,6 +514,16 @@ __aicore__ inline void GroupMatmul2(
             MegaMoeCombineImpl::CombineTile<bfloat16_t, decltype(actualShape)>(
                 groupIdx, mLoc, nLoc, n, rankId,
                 gmmAddrInfo.gmm2OutGlobal, params, ubBuffer, actualShape, waveRowOffset);
+
+            // [TRACE] sp8 / sp9: AIV1 GMM2 combine first / last tile 完成（CombineTile 返回后）
+            if (isFirstTile) {
+                MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
+                                              MegaMoeTrace::SP_GMM2_FIRST_TILE_DONE);
+            }
+            if (isLastTile) {
+                MegaMoeTrace::RecordWavePoint(params.y2GmAddr, waveTraceIdx,
+                                              MegaMoeTrace::SP_GMM2_LAST_TILE_DONE);
+            }
         }
     }
 }
