@@ -109,7 +109,7 @@ def block_sparse_attention(query,
                            mask_type=0,
                            scale_value=1.0,
                            inner_precise=0,
-                           block_size=128,
+                           block_size=0,
                            pre_tokens=2147483647,
                            next_tokens=2147483647,
                            softmax_lse_flag=False):
@@ -126,7 +126,8 @@ def block_sparse_attention(query,
         mask_type: 0 = no mask (default).
         scale_value: softmax scale (typically 1/sqrt(D)).
         inner_precise: 0 = fp32 softmax (high precision), 1 = fp16.
-        block_size: paged-attention block size (unused; 128).
+        block_size: paged-attention block size. Must be 0 — kernel does not
+            yet support paged cache (see block_sparse_attention_tiling.cpp:528).
         pre_tokens, next_tokens: 2147483647 = no causal window (default).
         softmax_lse_flag: if True, return [B, N, S, 1] float32 LSE; else
             an empty {0} placeholder.

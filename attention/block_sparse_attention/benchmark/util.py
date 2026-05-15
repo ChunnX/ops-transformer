@@ -474,7 +474,10 @@ def sabi_to_block_sparse_mask(sabi: torch.Tensor, mask_shape: tuple,
     valid = (sabi_i32 != 0xFFFF)
     sabi_long = sabi_i32.long()
     # For padding entries set the index to 0; src=0 there so scatter_add is a no-op.
-    sabi_safe = torch.where(valid, sabi_long, torch.zeros_like(sabi_long))
+    # Use torch.zeros (not zeros_like) so torch_npu doesn't try to inherit the
+    # source's internal memory format and warn under allow_internal_format=False.
+    zeros = torch.zeros(sabi_long.shape, dtype=sabi_long.dtype, device=sabi_long.device)
+    sabi_safe = torch.where(valid, sabi_long, zeros)
 
     mask_int = torch.zeros(*mask_shape, dtype=torch.int32, device=sabi.device)
     mask_int.scatter_add_(3, sabi_safe, valid.to(torch.int32))

@@ -75,8 +75,10 @@ std::tuple<at::Tensor, at::Tensor> npu_block_sparse_attention(
     TORCH_CHECK(kv_input_layout == "BNSD" || kv_input_layout == "TND",
                 "kv_input_layout must be 'BNSD' or 'TND'");
 
-    // Pre-allocate outputs (same convention as moe_distribute_dispatch_v3.cpp).
-    at::Tensor attention_out = at::empty_like(query);
+    // Pre-allocate outputs. Use at::empty with explicit sizes+options instead
+    // of empty_like so torch_npu doesn't attempt to inherit `query`'s memory
+    // format and warn under allow_internel_format=False.
+    at::Tensor attention_out = at::empty(query.sizes(), query.options());
 
     // LSE shape: [B, N, S, 1] float32 when enabled (kernel's infershape hardcodes
     // LSE_DIM_D=1, see attention/block_sparse_attention/op_host/block_sparse_attention_infershape.cpp).
