@@ -249,13 +249,13 @@ struct MSplitInfo {
 
 enum class TASK_DEAL_MODE : uint32_t
 {
-    DEAL_ZERO = 0,
-    SKIP = 1,
-    CREATE_TASK = 2,
-    SKIP_S1OUT = 3,
-    SKIP_ZERO = 4,
-    S2_END = 5,
-    NOT_START = 6,
+    DEAL_ZERO = 0,      // actualSeqLen为0，需清零输出
+    SKIP = 1,           // 有效行中整行S2区间为空，跳过
+    CREATE_TASK = 2,    // 正常创建任务
+    SKIP_S1OUT = 3,     // 跳过不属于当前核的任务，仅S1外切分场景
+    SKIP_ZERO = 4,      // actualSeqLen为0且非首(gS1=0,s2=0)，跳过
+    S2_END = 5,         // 有效行且S2已全部计算完
+    NOT_START = 6,      // 有效行且S2还未开始计算
 };
 
 template <FIA_LAYOUT LAYOUT_T>
