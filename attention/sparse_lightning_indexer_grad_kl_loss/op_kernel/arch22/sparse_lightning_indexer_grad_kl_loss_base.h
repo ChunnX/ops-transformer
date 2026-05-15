@@ -177,6 +177,38 @@ __aicore__ inline void SparseLightningIndexerGradKLLossBase<SLIT>::Init(
     dWeightGm.SetGlobalBuffer((__gm__ W_T *)dWeight);
     lossGm.SetGlobalBuffer((__gm__ T *)loss);
     lossGm.SetValue(0, 0.0F);
+    if constexpr (LAYOUT_T == SLILayout::TND) {
+        auto &baseInfo = tilingData->baseParams;
+        int64_t t1Size = baseInfo.t1Size;
+        int64_t t2Size = baseInfo.t2Size;
+        int64_t actualLen = actualSeqLengthsQueryGm.GetValue(constInfo.bSize - 1);
+        int64_t actuaKlLen = actualSeqLengthsKeyGm.GetValue(constInfo.bSize - 1);
+        int64_t totalAivNum = baseInfo.totalAivNum;
+        if (t1Size > actualLen) {
+            // init dq dw
+            int64_t t1PadLen = t1Size - actualLen;
+            int64_t splitT1PadLen = t1PadLen / totalAivNum;
+            int64_t remainT1PadLen = t1PadLen % totalAivNum;
+            int64_t currentCoreT1PadLen = splitT1PadLen + (constInfo.aivIdx < remainT1PadLen ? 1 : 0);
+            int64_t t1PadLenSum = constInfo.aivIdx * splitT1PadLen + Min(constInfo.aivIdx, remainT1PadLen);
+            int64_t dQOutputOffset = (t1PadLenSum + actualLen) * constInfo.gSizeQueryIndex * constInfo.dSizeQueryIndex;
+            int64_t dWOutputOffset = (t1PadLenSum + actualLen) * constInfo.gSizeQueryIndex;
+
+            AscendC::InitOutput<OUT_T>(dQueryIndexGm[dQOutputOffset], currentCoreT1PadLen * constInfo.gSizeQueryIndex * constInfo.dSizeQueryIndex, 0);
+            AscendC::InitOutput<W_T>(dWeightGm[dWOutputOffset], currentCoreT1PadLen * constInfo.gSizeQueryIndex, 0);
+        }
+        if (t2Size > actuaKlLen) {
+            // init dk
+            int64_t t2PadLen = t2Size - actuaKlLen;
+            int64_t splitT2PadLen = t2PadLen / totalAivNum;
+            int64_t remainT2PadLen = t2PadLen % totalAivNum;
+            int64_t currentCoreT2PadLen = splitT2PadLen + (constInfo.aivIdx < remainT2PadLen ? 1 : 0);
+            int64_t t2PadLenSum = constInfo.aivIdx * splitT2PadLen + Min(constInfo.aivIdx, remainT2PadLen);
+            int64_t dKOutputOffset = (t2PadLenSum + actuaKlLen) * constInfo.dSizeQueryIndex;
+
+            AscendC::InitOutput<OUT_T>(dKeyIndexGm[dKOutputOffset], currentCoreT2PadLen * constInfo.dSizeQueryIndex, 0);
+        }
+    }
     AscendC::DataCacheCleanAndInvalid<T, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(lossGm);
     InitWorkspace(workspace);
     InitBuffer(pipe);
