@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- 接口功能：该接口为AICPU算子接口，是aclnnLightningIndexerV2算子的前置算子接口。根据aclnnLightningIndexerV2算子接口的输入信息，计算并输出负载均衡结果。输出结果可以作为aclnnLightningIndexerV2算子接口的输入，减少aclnnLightningIndexerV2算子接口的执行耗时。
+- 接口功能：该接口为AI CPU算子接口，是aclnnLightningIndexerV2算子的前置算子接口。根据aclnnLightningIndexerV2算子接口的输入信息，计算并输出负载均衡结果。输出结果可以作为aclnnLightningIndexerV2算子接口的输入，减少aclnnLightningIndexerV2算子接口的执行耗时。
 
   **该算子不建议单独使用，建议与aclnnLightningIndexerV2算子配合使用，形成完整的工作流。**
     1. 接受aclnnLightningIndexerV2算子接口输入数据shape信息，包含batchSize、qSeqlen、kSeqlen、mask。通过对输入分块并模拟计算耗时，均匀分配分块到可用核上，以降低aclnnLightningIndexerV2算子的整体计算耗时，并提高硬件利用率。
@@ -25,34 +25,33 @@
 
 ``` cpp
 aclnnStatus aclnnLightningIndexerV2MetadataGetWorkspaceSize(
-    const aclTensor*   cuSeqlensQOptional,
-    const aclTensor*   cuSeqlensKOptional,
-    const aclTensor*   sequsedQOptional,
-    const aclTensor*   sequsedKOptional,
-    const aclTensor*   cmpResidualKOptional,
+    const aclTensor   *cuSeqlensQOptional,
+    const aclTensor   *cuSeqlensKOptional,
+    const aclTensor   *sequsedQOptional,
+    const aclTensor   *sequsedKOptional,
+    const aclTensor   *cmpResidualKOptional,
     int64_t            numHeadsQ,
     int64_t            numHeadsK,
     int64_t            headDim,
     int64_t            topk,
-
-    int64_t            batchSizeOptional,
-    int64_t            maxSeqlenQOptional,
-    int64_t            maxSeqlenKOptional,
-    char *             layoutQOptional,
-    char *             layoutKOptional,
-    int64_t            maskModeOptional,
-    int64_t            cmpRatioOptional,
-    const aclTensor*   metaData,
-    uint64_t*          workspaceSize,
-    aclOpExecutor**    executor);
+    int64_t            batchSize,
+    int64_t            maxSeqlenQ,
+    int64_t            maxSeqlenK,
+    char              *layoutQOptional,
+    char              *layoutKOptional,
+    int64_t            maskMode,
+    int64_t            cmpRatio,
+    const aclTensor   *metaData,
+    uint64_t          *workspaceSize,
+    aclOpExecutor    **executor)
 ```
 
 ``` cpp
 aclnnStatus aclnnLightningIndexerV2Metadata(
-    void *workspace,
-    uint64_t workspaceSize,
-    aclOpExecutor *executor,
-    aclrtStream stream);
+    void              *workspace,
+    uint64_t           workspaceSize,
+    aclOpExecutor     *executor,
+    aclrtStream        stream)
 ```
 
 ## aclnnLightingIndexerV2MetadataGetWorkspaceSize
@@ -83,7 +82,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
     <tr>
       <td>cuSeqlensQOptional</td>
       <td>输入</td>
-      <td>表示不同batch中query的有效Sequence Length</br>TND场景下必传，以该入参的数量作为Batch值</br>第一个值为额外值并固定为0。</td>
+      <td>表示不同Batch中Query的有效Sequence Length</br>TND场景下必传，以该入参的数量作为Batch值</br>第一个值为额外值并固定为0。</td>
       <td>支持空Tensor</td>
       <td>INT32</td>
       <td>ND</td>
@@ -93,7 +92,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
     <tr>
       <td>cuSeqlensKOptional</td>
       <td>输入</td>
-      <td>表示不同batch中key的有效Sequence Length</br>TND场景下必传，以该入参的数量作为Batch值</br>第一个值为额外值并固定为0</td>
+      <td>表示不同Batch中Key的有效Sequence Length</br>TND场景下必传，以该入参的数量作为Batch值</br>第一个值为额外值并固定为0。</td>
       <td>支持空Tensor</td>
       <td>INT32</td>
       <td>ND</td>
@@ -103,7 +102,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
     <tr>
       <td>sequsedQOptional</td>
       <td>输入</td>
-      <td>表示不同Batch中query实际参与运算的Sequence Length</td>
+      <td>表示不同Batch中Query实际参与运算的Sequence Length。</td>
       <td>支持空Tensor</td>
       <td>INT32</td>
       <td>ND</td>
@@ -113,7 +112,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
     <tr>
       <td>sequsedKOptional</td>
       <td>输入</td>
-      <td>表示不同Batch中key实际参与运算的Sequence Length</td>
+      <td>表示不同Batch中Key实际参与运算的Sequence Length。</td>
       <td>支持空Tensor</td>
       <td>INT32</td>
       <td>ND</td>
@@ -123,7 +122,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
     <tr>
       <td>cmpResidualKOptional</td>
       <td>输入</td>
-      <td>预留接口参数。表示不同Batch中key的Sequence Length的余数</td>
+      <td>预留参数，表示不同Batch中Key的Sequence Length的余数，当前不影响算子计算效果。</br>如果cmpRatio不为1，且mask为3，则必须传入cmpResidualKOptional。</td>
       <td>支持空Tensor</td>
       <td>INT32</td>
       <td>ND</td>
@@ -133,7 +132,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
     <tr>
       <td>numHeadsQ</td>
       <td>输入</td>
-      <td>表示query的head个数</td>
+      <td>表示Query的head个数。</td>
       <td>支持非负数</td>
       <td>INT64</td>
       <td>-</td>
@@ -143,7 +142,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
     <tr>
       <td>numHeadsK</td>
       <td>输入</td>
-      <td>表示key的head个数</td>
+      <td>表示Key的head个数。</td>
       <td>支持非负数</td>
       <td>INT64</td>
       <td>-</td>
@@ -153,7 +152,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
     <tr>
       <td>headDim</td>
       <td>输入</td>
-      <td>表示token数</td>
+      <td>表示token数。</td>
       <td>支持非负数</td>
       <td>INT64</td>
       <td>-</td>
@@ -163,7 +162,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
     <tr>
       <td>topk</td>
       <td>输入</td>
-      <td>表示从query中筛选出的关键稀疏token的个数</td>
+      <td>表示从Query中筛选出的关键稀疏token的个数。</td>
       <td>支持非负数</td>
       <td>INT64</td>
       <td>-</td>
@@ -171,9 +170,9 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>-</td>
     </tr>
     <tr>
-      <td>batchSizeOptional</td>
+      <td>batchSize</td>
       <td>输入</td>
-      <td>表示batch数量</td>
+      <td>表示Batch数量。</td>
       <td>支持非负数</br>建议值为0</td>
       <td>INT64</td>
       <td>-</td>
@@ -181,9 +180,9 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>-</td>
     </tr>
     <tr>
-      <td>maxSeqlenQOptional</td>
+      <td>maxSeqlenQ</td>
       <td>输入</td>
-      <td>表示query的最长seqlen</td>
+      <td>表示Query的最长Sequence Length。</td>
       <td>支持非负数</br>建议值为0</td>
       <td>INT64</td>
       <td>-</td>
@@ -191,9 +190,9 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>-</td>
     </tr>
     <tr>
-      <td>maxSeqlenKOptional</td>
+      <td>maxSeqlenK</td>
       <td>输入</td>
-      <td>表示key的最长seqlen</td>
+      <td>表示Key的最长Sequence Length。</td>
       <td>支持非负数</br>建议值为0</td>
       <td>INT64</td>
       <td>-</td>
@@ -203,7 +202,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
     <tr>
       <td>layoutQOptional</td>
       <td>输入</td>
-      <td>表示query的排列格式</td>
+      <td>表示Query的排列格式。</td>
       <td>支持 BSND、TND</br>建议值为BSND</td>
       <td>INT64</td>
       <td>-</td>
@@ -213,7 +212,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
     <tr>
       <td>layoutKOptional</td>
       <td>输入</td>
-      <td>表示key的排列格式</td>
+      <td>表示Key的排列格式。</td>
       <td>支持 BSND、TND、PA_BBND</br>建议值为BSND</td>
       <td>INT64</td>
       <td>-</td>
@@ -221,19 +220,19 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
       <td>-</td>
     </tr>
     <tr>
-      <td>maskModeOptional</td>
+      <td>maskMode</td>
       <td>输入</td>
-      <td>表示sparse模式</td>
-      <td>0: No mask</br>3: rightDownCausal模式的mask，对应以右顶点为划分的下三角场景 </br>建议值为0 </td>
+      <td>表示sparse模式。</td>
+      <td>0: No mask</br>3: rightDownCausal模式的mask，对应以右顶点为划分的下三角场景 </br>建议值为0</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>cmpRatioOptional</td>
+      <td>cmpRatio</td>
       <td>输入</td>
-      <td>预留接口参数，表示key的压缩率</td>
+      <td>预留参数，表示Key的压缩率，当前不影响算子计算效果。</br>建议值1，表示无压缩。</td>
       <td>取值范围[1，128]</td>
       <td>INT64</td>
       <td>-</td>
@@ -243,7 +242,7 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
     <tr>
       <td>metaData</td>
       <td>输出</td>
-      <td>表示负载均衡结果输出</td>
+      <td>表示负载均衡结果输出。</td>
       <td>-</td>
       <td>INT32</td>
       <td>ND</td>
@@ -324,24 +323,21 @@ aclnnStatus aclnnLightningIndexerV2Metadata(
   - aclnnLightingIndexerV2Metadata默认确定性实现
 
   - Batch取值规则
-    - 优先获取sequsedKOptional中的batch的shape信息
-    - 如果未传入sequsedKOptional，优先获取cuSeqlensQOptional中的batch的shape信息
-    - 如果未传入sequsedKOptional，且layoutQOptional为TND，则必获取cuSeqlensQOptional中的batch的shape信息
-    - 除上所述，使用batchSizeOptional
-  - Seqlen取值规则
-    - 优先获取sequsedKOptional中的seqlen的shape信息
-    - 如果未传入sequsedKOptional，且layoutKOptional为TND，则必获取cuSeqlensQOptional中的batch的shape信息
-    - 除上所述，使用maxSeqlenQOptional
-    - key与query的获取规则一致
-  - cmpResidualKOptional启用规则
-    - 预留参数，暂无效果，只做约束
-    - 如果cmpRatioOptional不为1，且mask为3，则必须传入cmpResidualKOptional
+    - 优先获取sequsedKOptional中的Batch信息
+    - 如果未传入sequsedKOptional，优先获取cuSeqlensQOptional中的Batch信息
+    - 如果未传入sequsedKOptional，且layoutQOptional为TND，则必获取cuSeqlensQOptional中的Batch信息
+    - 除上所述，使用batchSize
+  - Sequence Length取值规则
+    - 优先获取sequsedKOptional中的seqence信息
+    - 如果未传入sequsedKOptional，且layoutKOptional为TND，则必获取cuSeqlensQOptional中的Batch信息
+    - 除上所述，使用maxSeqlenQ
+    - Key与Query的获取规则一致
   - layout约束
     - 当layoutKOptional为PA_BBND时，layoutQOptional可以任意取值
     - 除上所述，layoutQOptional必须与layoutKOptional保持一致
   - BSND场景
     - 当传入的layoutQOptional为"BSND"时，视为使用BSND场景
-    - 在未传入cuSeqlensQOptional和sequsedQOptional的情况下，必传batchSizeOptional、maxSeqlenQOptional、maxSeqlenKOptional参数
+    - 在未传入cuSeqlensQOptional和sequsedQOptional的情况下，必传batchSize、maxSeqlenQ、maxSeqlenK参数
   - TND场景
     - 当传入的layoutQOptional为"TND"时，视为使用TND场景
     - 必传cuSeqlensQOptional、cuSeqlensKOptional参数
@@ -445,13 +441,13 @@ struct ArgContext {
     Tensor sequsedQOptional {};
     Tensor sequsedKOptional {};
     Tensor cmpResidualKOptional {};
-    int64_t batchSizeOptional { 0 };
-    int64_t maxSeqlenQOptional { 0 };
-    int64_t maxSeqlenKOptional { 0 };
+    int64_t batchSize { 0 };
+    int64_t maxSeqlenQ { 0 };
+    int64_t maxSeqlenK { 0 };
     char *layoutQOptional { nullptr };
     char *layoutKOptional { nullptr };
-    int64_t maskModeOptional { 0 };
-    int64_t cmpRatioOptional { 0 };
+    int64_t maskMode { 0 };
+    int64_t cmpRatio { 0 };
     // output
     Tensor metaData {};
 };
@@ -552,17 +548,17 @@ aclnnStatus CreateArgs(const ArgScenario &scenario, ArgContext &context)
     ret = CreateTensor(aclDataType::ACL_INT32, { 1024 }, context.metaData);     // 1024: Fix size
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create meta failed. Error: %d", ret);
 
-    context.maskModeOptional = 0;                   // 0: no mask, 3: causal
-    context.cmpRatioOptional = 1;                   // [1, 128], 1: no compress
+    context.maskMode = 0;                   // 0: no mask, 3: causal
+    context.cmpRatio = 1;                   // [1, 128], 1: no compress
     context.layoutQOptional = (char *)malloc(sizeof(char) * 16);
     context.layoutKOptional = (char *)malloc(sizeof(char) * 16);
     strcpy(context.layoutQOptional, "BSND");                // BSND,TND
     strcpy(context.layoutKOptional, "BSND");                // BSND,TND,PA_BBND
 
     if (!scenario.hasCuSeq && !scenario.hasSeqused) {
-        context.batchSizeOptional = batchSize;
-        context.maxSeqlenKOptional = 1024;
-        context.maxSeqlenQOptional = 1024;
+        context.batchSize = batchSize;
+        context.maxSeqlenK = 1024;
+        context.maxSeqlenQ = 1024;
         return ACL_SUCCESS;
     }
 
@@ -613,8 +609,8 @@ int main() {
         context.cuSeqlensQOptional.data, context.cuSeqlensKOptional.data, context.sequsedQOptional.data,
         context.sequsedKOptional.data, context.cmpResidualKOptional.data,
         context.numHeadsQ, context.numHeadsK, context.headDim, context.topk,
-        context.batchSizeOptional, context.maxSeqlenQOptional, context.maxSeqlenKOptional, context.layoutQOptional,
-        context.layoutKOptional, context.maskModeOptional, context.cmpRatioOptional,
+        context.batchSize, context.maxSeqlenQ, context.maxSeqlenK, context.layoutQOptional,
+        context.layoutKOptional, context.maskMode, context.cmpRatio,
         context.metaData.data, &workspaceSize, &executor);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclnnLightningIndexerV2MetadataGetWorkspaceSize failed. ERROR: %d\n", ret);
 

@@ -30,16 +30,15 @@ const aclTensor *QuantLightningIndexerV2Metadata(
     const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKOptional, const aclTensor *sequsedQOptional,
     const aclTensor *sequsedKOptional, const aclTensor *cmpResidualKOptional,
     int64_t numHeadsQ, int64_t numHeadsK, int64_t headDim, int64_t topk, int64_t qQuantMode, int64_t kQuantMode,
-    int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t maxSeqlenKOptional, char *layoutQOptional,
-    char *layoutKOptional, int64_t maskModeOptional, int64_t cmpRatioOptional,
+    int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenK, char *layoutQOptional,
+    char *layoutKOptional, int64_t maskMode, int64_t cmpRatio,
     int64_t aicCoreNum, int64_t aivCoreNum, const char *socVersion,
     const aclTensor *metaData, aclOpExecutor *executor)
 {
     L0_DFX(QuantLightningIndexerV2Metadata, cuSeqlensQOptional, cuSeqlensKOptional, sequsedQOptional, sequsedKOptional,
         cmpResidualKOptional,
         numHeadsQ, numHeadsK, headDim, topk, qQuantMode, kQuantMode,
-        batchSizeOptional, maxSeqlenQOptional, maxSeqlenKOptional, layoutQOptional, layoutKOptional, maskModeOptional,
-        cmpRatioOptional,
+        batchSize, maxSeqlenQ, maxSeqlenK, layoutQOptional, layoutKOptional, maskMode, cmpRatio,
         aicCoreNum, aivCoreNum, socVersion, metaData);
 
     static internal::AicpuTaskSpace space("QuantLightningIndexerV2Metadata");
@@ -51,8 +50,8 @@ const aclTensor *QuantLightningIndexerV2Metadata(
                         "aic_core_num", "aiv_core_num", "soc_version" }),
         OP_INPUT(cuSeqlensQOptional, cuSeqlensKOptional, sequsedQOptional, sequsedKOptional, cmpResidualKOptional),
         OP_OUTPUT(metaData),
-        OP_ATTR(numHeadsQ, numHeadsK, headDim, topk, qQuantMode, kQuantMode, batchSizeOptional, maxSeqlenQOptional,
-                maxSeqlenKOptional, layoutQOptional, layoutKOptional, maskModeOptional, cmpRatioOptional,
+        OP_ATTR(numHeadsQ, numHeadsK, headDim, topk, qQuantMode, kQuantMode, batchSize, maxSeqlenQ,
+                maxSeqlenK, layoutQOptional, layoutKOptional, maskMode, cmpRatio,
                 aicCoreNum, aivCoreNum, socVersion));
 
     OP_CHECK(ret == ACL_SUCCESS,
