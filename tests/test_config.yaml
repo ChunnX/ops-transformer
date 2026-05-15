@@ -989,7 +989,7 @@ posembedding:
     options:
       - rope_with_sin_cos_cache
     test:
-      examples: False
+      examples: True
 
   rotary_position_embedding:
     module: True
