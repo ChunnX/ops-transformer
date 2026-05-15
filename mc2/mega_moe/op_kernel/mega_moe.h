@@ -66,6 +66,10 @@ private:
     __aicore__ inline void DispatchTokens(GMMAddrInfo &gmmAddrInfo, uint32_t expertIdx);
     __aicore__ inline bool UpdateGroupParams(uint32_t expertIdx);
     __aicore__ inline void UpdateGlobalBuffer(GMMAddrInfo &gmmAddrInfo, uint32_t gmmIndex, uint64_t waveIdx = 0);
+    // Dispatch 流水专用：操作的是 dispatchBaseOffset_ / dispatchProblemShape_ / dispatchPreOffset_，
+    // 不动 baseOffset_ / problemShape_ / preOffset_ 那条主线。
+    __aicore__ inline bool UpdateGroupParamsForDispatch(uint32_t expertIdx);
+    __aicore__ inline void UpdateGlobalBufferForDispatch(GMMAddrInfo &gmmAddrInfo, uint32_t expertIdx);
     __aicore__ inline void ArgSortExpandedRowIdx();
     __aicore__ inline void ResetTokenPerExpert();
     __aicore__ inline void Unpermute();
@@ -129,6 +133,13 @@ private:
     Params params_{};
     TupleShape problemShape_{};
     BlockOffset baseOffset_{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+    // === Dispatch 自己独立用的 state，与主线 baseOffset_/problemShape_/preOffset_ 完全隔离 ===
+    // 只有 AIV1 sub1 在 dispatch 流水（预 dispatch + per-expert prefetch）里使用，
+    // 避免污染 cube/sub0 主线 wave 用的 baseOffset_ 等成员。
+    BlockOffset dispatchBaseOffset_{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    TupleShape dispatchProblemShape_{};
+    uint64_t dispatchPreOffset_ = 0;
 
     GM_ADDR tokenPerExpertCurRankAddr_;
 
@@ -198,6 +209,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     maxWavesPerExpert_ = (tilingData->maxOutputSize + L1_TILE_M - 1) / L1_TILE_M;
     Get<N_VALUE>(problemShape_) = tilingData->n;
     Get<K_VALUE>(problemShape_) = k_;
+    // dispatch 流水的独立 problem shape，N/K 与主线一致
+    Get<N_VALUE>(dispatchProblemShape_) = tilingData->n;
+    Get<K_VALUE>(dispatchProblemShape_) = k_;
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext*>(context);
     rankId_ = mc2Context_->epRankId;
     for (int i = 0; i < worldSize_; i++) {
@@ -633,6 +647,43 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMA
     groupFlagListGm_.SetGlobalBuffer(gmmAddrInfo.groupFlagList);
 }
 
+// Dispatch 流水专用：用 dispatchBaseOffset_ / dispatchProblemShape_ / dispatchPreOffset_，
+// 与主线 baseOffset_ 等成员完全隔离。只 sub1 调用。
+// 只维护 A / AScale 的 offset（dispatch 只写这两个），B / C / Y2 等不动。
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGroupParamsForDispatch(uint32_t expertIdx)
+{
+    if (expertIdx != 0) {
+        uint64_t m = Get<M_VALUE>(dispatchProblemShape_);
+        uint64_t k = Get<K_VALUE>(dispatchProblemShape_);
+        auto scaleK = Ops::Base::CeilDiv(k, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
+        Get<IDX_A_OFFSET>(dispatchBaseOffset_) += m * k;
+        Get<IDX_A_SCALE_OFFSET>(dispatchBaseOffset_) += m * scaleK;
+    }
+    int32_t splitValue = 0;
+    if (groupListType_ == 0) {
+        int32_t offset = static_cast<int32_t>(groupList_.GetValue(expertIdx));
+        splitValue = offset - static_cast<int32_t>(dispatchPreOffset_);
+        dispatchPreOffset_ = static_cast<uint64_t>(offset);
+    } else {
+        splitValue = static_cast<int32_t>(groupList_.GetValue(expertIdx));
+    }
+    Get<M_VALUE>(dispatchProblemShape_) = splitValue;
+    return (splitValue != 0);
+}
+
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBufferForDispatch(
+    GMMAddrInfo &gmmAddrInfo, uint32_t expertIdx)
+{
+    gmmAddrInfo.aGlobal = params_.workspaceInfo.ptrA +
+        Get<IDX_A_OFFSET>(dispatchBaseOffset_) * sizeof(QuantOutType);
+    gmmAddrInfo.aScaleGlobal = params_.workspaceInfo.ptrAScale +
+        Get<IDX_A_SCALE_OFFSET>(dispatchBaseOffset_) * sizeof(QuantScaleOutType);
+    gmmAddrInfo.groupFlagList2 =
+        (__gm__ int32_t*)params_.workspaceInfo.ptrFlagDispatchToGmm1 + expertIdx;
+}
+
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ArgSortExpandedRowIdx()
 {
@@ -806,9 +857,46 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         tileNumGmm1 = 1U;
     }
 
+    // === Dispatch 流水化 ===
+    // sub1 用独立的 dispatchBaseOffset_/dispatchProblemShape_/dispatchPreOffset_ 维护自己的
+    // expert 0..N-1 推进进度，与主线 baseOffset_ 等成员完全隔离。
+    //   - expert loop 之前预 dispatch expert 0
+    //   - expert k loop body 内 (在主线 UpdateGroupParams(k) 之后) 预 dispatch expert k+1
+    // 这样 cube 进 expert k+1 wave 0 时 dispatch flag 已 ready，wDsp ≈ 0us。
+    // sub1 自身的 groupFlagListGm2_ 被 prefetch 改但 sub1 后续不读它（DispatchTokens 内才用）。
+    if constexpr(g_coreType == AscendC::AIV) {
+        if (subBlockIdx_ == 1 && expertPerRank_ > 0U) {
+            if (UpdateGroupParamsForDispatch(0)) {
+                GMMAddrInfo prefetchInfo;
+                UpdateGlobalBufferForDispatch(prefetchInfo, 0);
+                groupFlagListGm2_.SetGlobalBuffer(prefetchInfo.groupFlagList2);
+                MegaMoeTrace::RecordDispatchPoint(params_.y2GmAddr, 0, false);
+                DispatchTokens(prefetchInfo, 0);
+                MegaMoeTrace::RecordDispatchPoint(params_.y2GmAddr, 0, true);
+            }
+        }
+    }
+
     GMMAddrInfo gmmAddrInfo;
     for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
-        if (!UpdateGroupParams(expertIdx)) {
+        bool valid = UpdateGroupParams(expertIdx);
+
+        // sub1 在当前 expert k loop body 内预 dispatch expert k+1：
+        // 用独立的 dispatch 状态，与上面 UpdateGroupParams(k) 改的主线 baseOffset_ 等无关。
+        if constexpr(g_coreType == AscendC::AIV) {
+            if (subBlockIdx_ == 1 && expertIdx + 1U < expertPerRank_) {
+                if (UpdateGroupParamsForDispatch(expertIdx + 1U)) {
+                    GMMAddrInfo prefetchInfo;
+                    UpdateGlobalBufferForDispatch(prefetchInfo, expertIdx + 1U);
+                    groupFlagListGm2_.SetGlobalBuffer(prefetchInfo.groupFlagList2);
+                    MegaMoeTrace::RecordDispatchPoint(params_.y2GmAddr, expertIdx + 1, false);
+                    DispatchTokens(prefetchInfo, expertIdx + 1U);
+                    MegaMoeTrace::RecordDispatchPoint(params_.y2GmAddr, expertIdx + 1, true);
+                }
+            }
+        }
+
+        if (!valid) {
             continue;
         }
         uint64_t m_i = Get<M_VALUE>(problemShape_);
@@ -828,20 +916,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         coreGroupId_ = blockIdx_ / coresPerWave_;
         coreActive_ = (coreGroupId_ < wavesParallel_);
 
-        // Dispatch (per-expert, skip wave pipelining for dispatch→GMM1)
+        // 为当前 expert 配置 cube 用的 gmmAddrInfo（dispatch 不在这里发了，已经被前一轮预 dispatch 了）
         UpdateGlobalBuffer(gmmAddrInfo, 0);
         gmmAddrInfo.groupFlagList2 = (__gm__ int32_t*)params_.workspaceInfo.ptrFlagDispatchToGmm1 + expertIdx;
         groupFlagListGm2_.SetGlobalBuffer(gmmAddrInfo.groupFlagList2);
-
-        if constexpr(g_coreType == AscendC::AIV) {
-            if (subBlockIdx_ == 1) {
-                // [TRACE] per-expert dispatch begin（AIV1）
-                MegaMoeTrace::RecordDispatchPoint(params_.y2GmAddr, expertIdx, false);
-                DispatchTokens(gmmAddrInfo, expertIdx);
-                // [TRACE] per-expert dispatch end
-                MegaMoeTrace::RecordDispatchPoint(params_.y2GmAddr, expertIdx, true);
-            }
-        }
 
         // Wave loop: 本核所在组负责 waveIdx ∈ {coreGroupId_, coreGroupId_ + wavesParallel_, ...}
         // 子块分工（每个 cube + 2 个 vec subBlock 一组）：
