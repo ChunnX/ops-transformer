@@ -197,7 +197,7 @@ def {}({}, kernel_name="{}"{}):
     bisheng = os.environ.get('BISHENG_REAL_PATH')
     if bisheng is None:
         bisheng = shutil.which("bisheng")
-    if bisheng != None:
+    if bisheng is not None:
         bisheng_path = os.path.dirname(bisheng)
         tikcpp_path = os.path.realpath(os.path.join(bisheng_path, "..", "..", "tikcpp"))
     else:
@@ -552,7 +552,7 @@ class AdpBuilder(opdesc_parser.OpDesc):
         fd.write('def _build_args({}):\n'.format(args))
         fd.write('    __inputs__ = []\n')
         fd.write('    for arg in [{}]:\n'.format(', '.join(self.input_name)))
-        fd.write('        if arg != None:\n')
+        fd.write('        if arg is not None:\n')
         fd.write('            if isinstance(arg, (list, tuple)):\n')
         fd.write('                if len(arg) == 0:\n')
         fd.write('                    continue\n')
@@ -563,7 +563,7 @@ class AdpBuilder(opdesc_parser.OpDesc):
         fd.write('            __inputs__.append(arg)\n')
         fd.write('    __outputs__ = []\n')
         fd.write('    for arg in [{}]:\n'.format(', '.join(self.output_name)))
-        fd.write('        if arg != None:\n')
+        fd.write('        if arg is not None:\n')
         fd.write('            if isinstance(arg, (list, tuple)):\n')
         fd.write('                if len(arg) == 0:\n')
         fd.write('                    continue\n')
@@ -574,7 +574,7 @@ class AdpBuilder(opdesc_parser.OpDesc):
         fd.write('            __outputs__.append(arg)\n')
         fd.write('    __attrs__ = []\n')
         for attr in self.attr_list:
-            fd.write('    if {} != None:\n'.format(attr))
+            fd.write('    if {} is not None:\n'.format(attr))
             fd.write('        attr = {}\n')
             fd.write('        attr["name"] = "{}"\n'.format(attr))
             fd.write('        attr["dtype"] = "{}"\n'.format(self.attr_val.get(attr).get('type')))

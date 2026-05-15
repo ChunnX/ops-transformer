@@ -75,20 +75,20 @@ def check_duplicate_per_row(expert_ids_reshape_func):
     batch_size, topk = expert_ids_reshape_func.shape
 
     for row_idx in range(batch_size):
-        per_experids = expert_ids_reshape_func[row_idx]
+        per_expertids = expert_ids_reshape_func[row_idx]
         # 检查这一行是否有重复数字
-        if len(np.unique(per_experids)) == len(per_experids):
+        if len(np.unique(per_expertids)) == len(per_expertids):
             continue  # 无重复，直接跳过
 
         # 有重复
         has_duplicate = True
         seen = set()
         duplicates = set()
-        for num in per_experids:
+        for num in per_expertids:
             if num in seen:
                 duplicates.add(num)
             seen.add(num)
-        logging.error("1.3 第[%s]行出现重复expert_id: %s, 重复的值=%s", row_idx, list(per_experids), list(duplicates))
+        logging.error("1.3 第[%s]行出现重复expert_id: %s, 重复的值=%s", row_idx, list(per_expertids), list(duplicates))
     
     if not has_duplicate:
         logging.info('1.3 所有行均无重复expert_id')
@@ -185,13 +185,13 @@ def check_epsendcnt(epsendcnt_count_func, epsendcnt_dump_func):
         logging.info("卡%s 计算得出的epsendcnt为:%s", card, epsendcnt_count_func[card])
         logging.info("卡%s dump数据获取的epsendcnt为:%s", card, epsendcnt_dump_func[card])
         if len(epsendcnt_count_func[card]) != len(epsendcnt_dump_func[card]):
-            logging.error('7. 该卡根据输入experids计算得到的epsendcnt的大小:%d与dump数据取得的epsendcnt的大小:%d不同', 
+            logging.error('7. 该卡根据输入expertids计算得到的epsendcnt的大小:%d与dump数据取得的epsendcnt的大小:%d不同', 
                 len(epsendcnt_count_func[card]), len(epsendcnt_dump_func[card]))
             continue
         if epsendcnt_count_func[card] != epsendcnt_dump_func[card]:
-            logging.error('7 该卡根据输入experids计算得到的epsendcnt的值与dump数据取得的epsendcnt的值不同')
+            logging.error('7 该卡根据输入expertids计算得到的epsendcnt的值与dump数据取得的epsendcnt的值不同')
         else:
-            logging.info('7. 该卡根据输入experids计算得到的epsendcnt的值与dump数据取得的epsendcnt的值相同')
+            logging.info('7. 该卡根据输入expertids计算得到的epsendcnt的值与dump数据取得的epsendcnt的值相同')
 
 
 #从input.3.bin中获取epsendcnt

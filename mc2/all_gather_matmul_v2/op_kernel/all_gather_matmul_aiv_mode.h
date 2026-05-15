@@ -48,7 +48,6 @@ constexpr static uint32_t B32_PER_BLOCK = 8U;
 constexpr static uint32_t B64_PER_BLOCK = 4U;
 constexpr static int32_t CUBE_MATRIX_SIZE_B16 = 256;        // 16 * 16
 constexpr static int32_t L0AB_PINGPONG_BUFFER_SIZE = 32768; // 32 KB
-constexpr static int32_t MAX_BLOCK_COUNT = 2;
 constexpr static int32_t FLAG_ZERO_IDX = 0;
 constexpr static int32_t FLAG_ONE_IDX = 1;
 constexpr static int32_t FLAG_VALUE = 1;
@@ -194,6 +193,7 @@ private:
     DequantType dequantType;
     bool needPerChannel;
     bool needPerToken;
+    bool accumWorkSpacePingPong{false};
 
     __gm__ supportX1Type* gm_peer_mem;
 
@@ -295,7 +295,10 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Init(
         }
     }
 
-    uint64_t gm_scale_workspace_st = aAlignSize + bAlignSize + m * n * worldSize * sizeof(int32_t);
+    accumWorkSpacePingPong = tilingData.allGatherMatmulInfo.accumWorkSpacePingPong;
+    int32_t workspaceM = accumWorkSpacePingPong ? m : MAX_BLOCK_COUNT * m0 * pValue;
+    uint64_t gm_scale_workspace_st = static_cast<uint64_t>(aAlignSize) + bAlignSize
+                                    + workspaceM * n * worldSize * sizeof(int32_t);
  	gm_scale_workspace = needPerToken ? workspaceGM + gm_scale_workspace_st : 0;
 
     AllGatherMatmulAIVMode<TemplateAGMMFunc>::AICInit();
@@ -422,7 +425,7 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::CatlassMatmul()
                                                      layoutPeerMem, reinterpret_cast<GM_ADDR>(gm_accum),
                                                      pValue,        swizzlCount,
                                                      swizzlDirect,  rankId,
-                                                     worldSize,     need_fixpipe};
+                                                     worldSize,     need_fixpipe, accumWorkSpacePingPong};
                 MatmulKernel matmul_op;
                 matmul_op(params);
             } else {
@@ -439,7 +442,7 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::CatlassMatmul()
                                                      layoutPeerMem, reinterpret_cast<GM_ADDR>(gm_accum),
                                                      pValue,        swizzlCount,
                                                      swizzlDirect,  rankId,
-                                                     worldSize,     need_fixpipe};
+                                                     worldSize,     need_fixpipe, accumWorkSpacePingPong};
                 MatmulKernel matmul_op;
                 matmul_op(params);
             }
@@ -475,7 +478,7 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::CatlassMatmul()
                                                      layoutPeerMem, reinterpret_cast<GM_ADDR>(gm_accum),
                                                      pValue,        swizzlCount,
                                                      swizzlDirect,  rankId,
-                                                     worldSize,     need_fixpipe};
+                                                     worldSize,     need_fixpipe, accumWorkSpacePingPong};
                 MatmulKernel matmul_op;
                 matmul_op(params);
             } else {
@@ -492,7 +495,7 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::CatlassMatmul()
                                                      layoutPeerMem, reinterpret_cast<GM_ADDR>(gm_accum),
                                                      pValue,        swizzlCount,
                                                      swizzlDirect,  rankId,
-                                                     worldSize,     need_fixpipe};
+                                                     worldSize,     need_fixpipe, accumWorkSpacePingPong};
                 MatmulKernel matmul_op;
                 matmul_op(params);
             }
@@ -584,8 +587,16 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Dequant(int32_t
     uint32_t colNum = n;
     uint32_t tileM0 = m0;
     uint32_t tileN0 = n0;
+
     uint64_t blockSt = cal_idx * m0 * pValue * n;
- 	uint64_t blockSize = m * n;
+    uint64_t blockSize = m * n;
+    uint64_t blockStInWorkspace = (cal_idx % MAX_BLOCK_COUNT) * worldSize * m0 * pValue * n;
+    uint64_t blockSizeInWorkspace = m0 * pValue * n;
+
+    if (accumWorkSpacePingPong) {
+        blockStInWorkspace = blockSt;
+        blockSizeInWorkspace = blockSize;
+    }
 
     __gm__ float32_t* perChannelScale = needPerChannel ? reinterpret_cast<__gm__ float32_t*>(x2ScaleGM_) : nullptr;
     __gm__ float32_t* perTokenScale = needPerToken ? reinterpret_cast<__gm__ float32_t*>(gm_scale_workspace) : nullptr;
@@ -866,6 +877,11 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Process()
                 }
             }
 
+            // dequant
+            if (cal_idx >= MAX_BLOCK_COUNT) {
+                Dequant(cal_idx - MAX_BLOCK_COUNT);
+            }
+
             if (cal_idx < cal_count) {
                 SetAndWaitAivSync(flag_idx);
                 CrossRankSyncV2(FLAG_ONE_IDX, cal_idx + 1);
@@ -873,12 +889,6 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Process()
                 // 发送aic同步
                 SetAicSync(flag_idx);
             }
-
-            // dequant
- 	        if (cal_idx >= MAX_BLOCK_COUNT) {
- 	            Dequant(cal_idx - MAX_BLOCK_COUNT);
-                SetAndWaitAivSync(FLAG_VALUE);
- 	        }
         }
 
         for (int32_t idx = 0; idx < num_flags; ++idx) {

@@ -199,6 +199,48 @@ __aicore__ inline void UIntToFloatReturnValue(const LocalTensor<bfloat16_t> &out
     }
 }
 
+__aicore__ inline void UIntToFloatReturnValue(const LocalTensor<half> &out_,
+                                              const LocalTensor<uint16_t> &in,
+                                              const uint32_t topK)
+{
+    auto outBuf = (__local_mem__ half*)out_.GetPhyAddr();
+    auto inBuf = (__local_mem__ uint16_t*)in.GetPhyAddr();
+
+    const uint16_t repeatSize16 = 128;
+    uint16_t topkLoopNum = (topK + repeatSize16 - 1) / repeatSize16;
+
+    __VEC_SCOPE__
+    {
+        AscendC::MicroAPI::RegTensor<uint16_t> regIn;
+        AscendC::MicroAPI::RegTensor<bfloat16_t> regOut;
+        AscendC::MicroAPI::RegTensor<half> regOutHalf;
+        AscendC::MicroAPI::MaskReg maskAllB16 =
+                                    AscendC::MicroAPI::CreateMask<bfloat16_t, AscendC::MicroAPI::MaskPattern::ALL>();
+        AscendC::MicroAPI::MaskReg maskAllHalf =
+                                    AscendC::MicroAPI::CreateMask<half, AscendC::MicroAPI::MaskPattern::ALL>();
+        constexpr static MicroAPI::CastTrait castTraitBF16ToHalf =
+                                    {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::NO_SAT,
+                                     MicroAPI::MaskMergeMode::ZEROING,
+                                     RoundMode::CAST_RINT};
+        
+        for (uint16_t i = 0; i < topkLoopNum; ++i) {
+            AscendC::MicroAPI::LoadAlign<uint16_t>(regIn, inBuf + i * repeatSize16);
+
+            UIntSortConstCtx<bfloat16_t> uint16Ctx;
+            InitUIntSortConstCtx(uint16Ctx, maskAllB16);
+
+            UIntToSortableKey<bfloat16_t>(regOut, regIn, uint16Ctx, maskAllB16);
+
+            AscendC::MicroAPI::Cast<half, bfloat16_t, castTraitBF16ToHalf>(regOutHalf, regOut, maskAllB16);
+
+            AscendC::MicroAPI::StoreAlign<half, AscendC::MicroAPI::StoreDist::DIST_NORM>(
+                outBuf + i * repeatSize16,
+                regOutHalf,
+                maskAllHalf);
+        }
+    }
+}
+
 template <typename FloatT>
 __simd_callee__ inline void FloatX2ToSortableKey(AscendC::MicroAPI::RegTensor<typename FloatSortTraits<FloatT>::UInt>&
                                                      outKey0,

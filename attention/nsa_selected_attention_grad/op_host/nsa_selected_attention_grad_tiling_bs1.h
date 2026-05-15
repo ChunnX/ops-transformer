@@ -16,8 +16,8 @@
 #pragma once
 
 #include "nsa_selected_attention_grad_tiling_common.h"
-#include "tiling_base/tiling_base.h"
-#include "tiling_base/tiling_type.h"
+#include "op_host/tiling_base.h"
+#include "op_host/tiling_type.h"
 #include "nsa_selected_attention_grad_tiling.h"
 namespace optiling {
 namespace nsa {

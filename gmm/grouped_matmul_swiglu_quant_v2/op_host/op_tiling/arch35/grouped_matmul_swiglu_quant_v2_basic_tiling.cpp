@@ -16,8 +16,8 @@
 #include <alog_pub.h>
 #include <climits>
 #include "log/log.h"
-#include "tiling_base/tiling_templates_registry.h"
-#include "tiling_base/tiling_type.h"
+#include "op_host/tiling_templates_registry.h"
+#include "op_host/tiling_type.h"
 #include "register/op_impl_registry.h"
 #include "grouped_matmul_swiglu_quant_v2_basic_tiling.h"
 #include "../../../op_kernel/arch35/grouped_matmul_swiglu_quant_v2_tiling_key.h"
@@ -166,9 +166,6 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeDtype()
     auto weightFormat = wDesc->GetFormat().GetStorageFormat();
     if (weightFormat == ge::FORMAT_FRACTAL_NZ) {
         const gert::Shape &wStorageShapeNz = wStorageShape->GetStorageShape();
-        OP_CHECK_IF(wStorageShapeNz.GetDimNum() != 5,
-                    OP_LOGE(context_->GetNodeName(), "NZ weight storage shape must be 5."),
-                    return false);
 
         OP_CHECK_IF(!(inputParams_.aDtype == ge::DT_FLOAT8_E4M3FN &&
                     inputParams_.bDtype == ge::DT_FLOAT8_E4M3FN),

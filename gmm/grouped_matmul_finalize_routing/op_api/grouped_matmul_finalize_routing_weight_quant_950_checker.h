@@ -159,7 +159,7 @@ public:
         if (!CheckRequiredShapes(m, k, n, e, outputBS)) {
             return false;
         }
-        if (!CheckOptionalShapes(m, k, e, n)) {
+        if (!CheckOptionalShapes(e, n)) {
             return false;
         }
         return true;
@@ -189,7 +189,7 @@ public:
         return true;
     }
 
-    bool CheckOptionalShapes(int64_t m, int64_t k, int64_t e, int64_t n)
+    bool CheckOptionalShapes(int64_t e, int64_t n)
     {
         if (gmmParams_.bias != nullptr) {
             op::Shape biasExpectShape = {e, n};

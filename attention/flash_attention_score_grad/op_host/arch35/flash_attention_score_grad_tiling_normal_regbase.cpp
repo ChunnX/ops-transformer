@@ -13,8 +13,8 @@
  * \brief
  */
 #include "flash_attention_score_grad_tiling_normal_regbase.h"
-#include "tiling_base/tiling_templates_registry.h"
-#include "tiling_base/tiling_type.h"
+#include "op_host/tiling_templates_registry.h"
+#include "op_host/tiling_type.h"
 #include "err/ops_err.h"
 
 using namespace Ops::Transformer::OpTiling;
@@ -169,6 +169,7 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::GetShapeAttrsInfo()
         fBaseParams.d1 = valueShape->GetStorageShape().GetDim(INPUT_DIM_2);
         qRopeD = fBaseParams.hasRope ? queryRopeShape->GetDim(INPUT_DIM_2) : 0;
         kRopeD = fBaseParams.hasRope ? keyRopeShape->GetDim(INPUT_DIM_2) : 0;
+        fBaseParams.b -= fBaseParams.tailZeroCount;
     } else {
         OP_LOGD(context_, "inputLayout == BSND queryShape");
         // inputLayout = "BSND"
@@ -1586,7 +1587,7 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::SaveToTilingData()
 {
     s1s2BNGS1S2BaseParams_->set_coreNum(fBaseParams.coreNum);
     // set tilingdata baseinfo
-    s1s2BNGS1S2BaseParams_->set_b(fBaseParams.b - fBaseParams.tailZeroCount);
+    s1s2BNGS1S2BaseParams_->set_b(fBaseParams.b);
     s1s2BNGS1S2BaseParams_->set_n2(fBaseParams.n2);
     s1s2BNGS1S2BaseParams_->set_g(fBaseParams.g);
     s1s2BNGS1S2BaseParams_->set_s1(fBaseParams.s1);
