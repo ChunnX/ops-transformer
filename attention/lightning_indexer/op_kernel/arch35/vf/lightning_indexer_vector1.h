@@ -112,6 +112,14 @@ struct UIntSortTraits<bfloat16_t> {
     static constexpr UInt ALL_ONE   = 0xFFFF;
 };
 
+struct UIntSortTraits<float> {
+    using UInt = uint32_t;
+    static constexpr UInt ZERO      = 0x00000000;
+    static constexpr UInt SIGN_MASK = 0x80000000;
+    static constexpr UInt NAN_MASK  = 0x7FC00000;
+    static constexpr UInt ALL_ONE   = 0xFFFFFFFF;
+};
+
 template <typename FloatT>
 struct UIntSortConstCtx {
     using Traits = UIntSortTraits<FloatT>;
@@ -167,34 +175,82 @@ __simd_callee__ inline void UIntToSortableKey(AscendC::MicroAPI::RegTensor<Float
 }
 
 __aicore__ inline void UIntToFloatReturnValue(const LocalTensor<bfloat16_t> &out_,
-                                              const LocalTensor<uint16_t> &in,
+                                              const LocalTensor<uint32_t> &in,
                                               const uint32_t topK)
 {
     auto outBuf = (__local_mem__ bfloat16_t*)out_.GetPhyAddr();
-    auto inBuf = (__local_mem__ uint16_t*)in.GetPhyAddr();
+    auto inBuf = (__local_mem__ uint32_t*)in.GetPhyAddr();
 
-    const uint16_t repeatSize16 = 128;
-    uint16_t topkLoopNum = (topK + repeatSize16 - 1) / repeatSize16;
+    const uint16_t repeatSize32 = 64;
+    uint16_t topkLoopNum = (topK + repeatSize32 - 1) / repeatSize32;
 
     __VEC_SCOPE__
     {
-        AscendC::MicroAPI::RegTensor<uint16_t> regIn;
-        AscendC::MicroAPI::RegTensor<bfloat16_t> regOut;
+        AscendC::MicroAPI::RegTensor<uint32_t> regIn;
+        AscendC::MicroAPI::RegTensor<float> regOut;
+        AscendC::MicroAPI::RegTensor<bfloat16_t> regOutBF16;
+        AscendC::MicroAPI::MaskReg maskAllFP32 =
+                                    AscendC::MicroAPI::CreateMask<uint32_t, AscendC::MicroAPI::MaskPattern::ALL>();
         AscendC::MicroAPI::MaskReg maskAllB16 =
                                     AscendC::MicroAPI::CreateMask<bfloat16_t, AscendC::MicroAPI::MaskPattern::ALL>();
-
+        constexpr static MicroAPI::CastTrait castTraitFP32ToBF16 =
+                                    {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::NO_SAT,
+                                     MicroAPI::MaskMergeMode::ZEROING,
+                                     RoundMode::CAST_RINT};
         for (uint16_t i = 0; i < topkLoopNum; ++i) {
-            AscendC::MicroAPI::LoadAlign<uint16_t>(regIn, inBuf + i * 128);
+            AscendC::MicroAPI::LoadAlign<uint32_t>(regIn, inBuf + i * repeatSize32);
+            UIntSortConstCtx<float> uint32Ctx;
+            InitUIntSortConstCtx(uint32Ctx, maskAllFP32);
+            UIntToSortableKey<float>(regOut, regIn, uint32Ctx, maskAllFP32);
 
-            UIntSortConstCtx<bfloat16_t> uint16Ctx;
-            InitUIntSortConstCtx(uint16Ctx, maskAllB16);
-
-            UIntToSortableKey<bfloat16_t>(regOut, regIn, uint16Ctx, maskAllB16);
+            AscendC::MicroAPI::Cast<bfloat16_t, float, castTraitFP32ToBF16>(regOutBF16, regOut, maskAllFP32);
 
             AscendC::MicroAPI::StoreAlign<bfloat16_t, AscendC::MicroAPI::StoreDist::DIST_NORM>(
-                outBuf + i * 128,
-                regOut,
+                outBuf + i * repeatSize32,
+                regOutBF16,
                 maskAllB16);
+        }
+    }
+}
+
+__aicore__ inline void UIntToFloatReturnValue(const LocalTensor<half> &out_,
+                                              const LocalTensor<uint32_t> &in,
+                                              const uint32_t topK)
+{
+    auto outBuf = (__local_mem__ half*)out_.GetPhyAddr();
+    auto inBuf = (__local_mem__ uint32_t*)in.GetPhyAddr();
+
+    const uint16_t repeatSize32 = 64;
+    uint16_t topkLoopNum = (topK + repeatSize32 - 1) / repeatSize32;
+
+    __VEC_SCOPE__
+    {
+        AscendC::MicroAPI::RegTensor<uint32_t> regIn;
+        AscendC::MicroAPI::RegTensor<float> regOut;
+        AscendC::MicroAPI::RegTensor<half> regOutHalf;
+        AscendC::MicroAPI::MaskReg maskAllFP32 =
+                                    AscendC::MicroAPI::CreateMask<uint32_t, AscendC::MicroAPI::MaskPattern::ALL>();
+        AscendC::MicroAPI::MaskReg maskAllHalf =
+                                    AscendC::MicroAPI::CreateMask<half, AscendC::MicroAPI::MaskPattern::ALL>();
+        constexpr static MicroAPI::CastTrait castTraitFP32ToHalf =
+                                    {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::NO_SAT,
+                                     MicroAPI::MaskMergeMode::ZEROING,
+                                     RoundMode::CAST_RINT};
+        
+        for (uint16_t i = 0; i < topkLoopNum; ++i) {
+            AscendC::MicroAPI::LoadAlign<uint32_t>(regIn, inBuf + i * repeatSize32);
+
+            UIntSortConstCtx<float> uint32Ctx;
+            InitUIntSortConstCtx(uint32Ctx, maskAllFP32);
+
+            UIntToSortableKey<float>(regOut, regIn, uint32Ctx, maskAllFP32);
+
+            AscendC::MicroAPI::Cast<half, float, castTraitBF16ToHalf>(regOutHalf, regOut, maskAllFP32);
+
+            AscendC::MicroAPI::StoreAlign<half, AscendC::MicroAPI::StoreDist::DIST_NORM>(
+                outBuf + i * repeatSize32,
+                regOutHalf,
+                maskAllHalf);
         }
     }
 }

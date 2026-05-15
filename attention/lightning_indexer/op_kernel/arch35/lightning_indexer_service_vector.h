@@ -151,7 +151,7 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::InitBuffers(TPipe *pi
     pipe->InitBuffer(resMm1Buf_, 2 * CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_ * sizeof(float));
     resMm1UB_ = resMm1Buf_.Get<float>();
     
-    pipe->InitBuffer(weightBuf_, 2 * CeilDiv(s1BaseSize_, 2) * LICommon::Align((uint64_t)gSize_, (uint64_t)32) * sizeof(W_T));
+    pipe->InitBuffer(weightBuf_, 2 * CeilDiv(s1BaseSize_, 2) * LICommon::Align((uint64_t)gSize_, (uint64_t)16) * sizeof(W_T));
     weightUB_ = weightBuf_.Get<W_T>();
     pipe->InitBuffer(weightFloatBuf_, 2 * CeilDiv(s1BaseSize_, 2) * LICommon::Align((uint64_t)gSize_, (uint64_t)32) * sizeof(float));
     weightFloatUB_ = weightFloatBuf_.Get<float>();
@@ -297,15 +297,15 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec1(const LIC
         }
         WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + (info.loop % 2));
         //weightsGm --> weightUB_ 
-        uint64_t gSizeAlign32 = LICommon::Align((uint64_t)gSize_, (uint64_t)32);
+        uint64_t gSizeAlign16 = LICommon::Align((uint64_t)gSize_, (uint64_t)16);
         int64_t weightGmOffset = info.tensorWeightsOffset + curAivS1Idx * kHeadNum_ * gSize_;
-        DataCopyPadExtParams<W_T> padWeightsParams{false, 0, 0, 0};
+        DataCopyPadExtParams<W_T> padWeightsParams{true, 0, 0, 0};
         DataCopyExtParams qwDataCopyExtParams;
         qwDataCopyExtParams.blockCount = curAivS1ProcNum;
-        qwDataCopyExtParams.blockLen = gSize_* sizeof(W_T);
+        qwDataCopyExtParams.blockLen = gSize_ * sizeof(W_T);
         qwDataCopyExtParams.srcStride = 0;
-        qwDataCopyExtParams.dstStride = (gSizeAlign32 - gSize_) * sizeof(W_T);
-        DataCopyPad(weightUB_[(info.loop % 2) * CeilDiv(s1BaseSize_, 2) * gSizeAlign32], 
+        qwDataCopyExtParams.dstStride = (gSizeAlign16 - gSize_) * sizeof(W_T) / 32;
+        DataCopyPad(weightUB_[(info.loop % 2) * CeilDiv(s1BaseSize_, 2) * gSizeAlign16], 
                     weightsGm[weightGmOffset], qwDataCopyExtParams, padWeightsParams);
 
         SetFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + (info.loop % 2));
@@ -314,7 +314,7 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec1(const LIC
         for (int64_t s1IdxTmp = 0; s1IdxTmp < curAivS1ProcNum; s1IdxTmp++) {
             vector1::MulWeightAndReduceSum(vec1OutUB_[(info.loop % 2) * CeilDiv(s1BaseSize_, 2) * s2BaseSize_ + s1IdxTmp * s2BaseSize_], 
                                     resMm1UB_[(info.loop % 2) * CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_ + s1IdxTmp * gSize_ * s2BaseSize_], 
-                                    weightUB_[(info.loop % 2) * CeilDiv(s1BaseSize_, 2) * gSizeAlign32 + s1IdxTmp * gSizeAlign32], 
+                                    weightUB_[(info.loop % 2) * CeilDiv(s1BaseSize_, 2) * gSizeAlign16 + s1IdxTmp * gSizeAlign16], 
                                     gSize_);
         }
         SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + (info.loop % 2));
@@ -518,43 +518,43 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessTopK(const LIC
 
         
         // // 是否返回Value值
-        // if (returnValueFlag) {
-        //     WaitFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
-        //     // uint16_t -> bfloat16
-        //     if (std::is_same_v<K_T, bfloat16_t>) {
-        //         vector1::UIntToFloatReturnValue(valueOutLocal_.template ReinterpretCast<bfloat16_t>(),
-        //             scoreOutLocal_, topkCountAlign256_);
-        //     } else {
-        //         vector1::UIntToFloatReturnValue(valueOutLocal_.template ReinterpretCast<half>(),
-        //             scoreOutLocal_, topkCountAlign256_);
-        //     }
+        if (returnValueFlag) {
+            WaitFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
+            // uint16_t -> bfloat16
+            if (std::is_same_v<K_T, bfloat16_t>) {
+                vector1::UIntToFloatReturnValue(valueOutLocal_.template ReinterpretCast<bfloat16_t>(),
+                    scoreOutLocal_, topkCountAlign256_);
+            } else {
+                vector1::UIntToFloatReturnValue(valueOutLocal_.template ReinterpretCast<half>(),
+                    scoreOutLocal_, topkCountAlign256_);
+            }
 
-        //     if (validS2Len < topkCount_) {
-        //         uint64_t mask[1];
-        //         mask[0] = ~0;
-        //         mask[0] = mask[0] << (validS2Len % 16);
-        //         PipeBarrier<PIPE_V>();
-        //         Duplicate(valueOutLocal_.template ReinterpretCast<uint16_t>()[validS2Len / 16 * 16],
-        //                     constInfo_.INVALID_VAL, mask, 1, 1, 0);
-        //     }
-        //     if (validS2Len / 16 * 16 + 64 < topkCount_) {
-        //         PipeBarrier<PIPE_V>();
-        //         Duplicate(valueOutLocal_.template ReinterpretCast<uint16_t>()[validS2Len / 16 * 16 + 64],
-        //                     constInfo_.INVALID_VAL, topkCount_ - (validS2Len / 16 * 16 + 64));
-        //     }
-        //     SetFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
-        //     SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-        //     WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-        //     AscendC::DataCopyParams copyOutValueParams;
-        //     copyOutValueParams.blockCount = 1;
-        //     copyOutValueParams.blockLen = topkCount_ * sizeof(K_T); // bytes
-        //     copyOutValueParams.srcStride = 0;
-        //     copyOutValueParams.dstStride = 0;
-        //     // 搬运到GM
-        //     AscendC::DataCopyPad(
-        //         valueOutGm[info.valueOutOffset + (curS1Idx + rowIdx) * topkCount_],
-        //         valueOutLocal_, copyOutValueParams);
-        // }
+            if (validS2Len < topkCount_) {
+                uint64_t mask[1];
+                mask[0] = ~0;
+                mask[0] = mask[0] << (validS2Len % 16);
+                PipeBarrier<PIPE_V>();
+                Duplicate(valueOutLocal_.template ReinterpretCast<uint16_t>()[validS2Len / 16 * 16],
+                            constInfo_.INVALID_VAL, mask, 1, 1, 0);
+            }
+            if (validS2Len / 16 * 16 + 64 < topkCount_) {
+                PipeBarrier<PIPE_V>();
+                Duplicate(valueOutLocal_.template ReinterpretCast<uint16_t>()[validS2Len / 16 * 16 + 64],
+                            constInfo_.INVALID_VAL, topkCount_ - (validS2Len / 16 * 16 + 64));
+            }
+            SetFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
+            SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+            WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+            AscendC::DataCopyParams copyOutValueParams;
+            copyOutValueParams.blockCount = 1;
+            copyOutValueParams.blockLen = topkCount_ * sizeof(K_T); // bytes
+            copyOutValueParams.srcStride = 0;
+            copyOutValueParams.dstStride = 0;
+            // 搬运到GM
+            AscendC::DataCopyPad(
+                valueOutGm[info.valueOutOffset + (curS1Idx + rowIdx) * topkCount_],
+                valueOutLocal_, copyOutValueParams);
+        }
         SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
     }
 }
