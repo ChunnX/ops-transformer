@@ -13,7 +13,6 @@
 #include <array>
 #include <vector>
 
-#include <gmock/gmock.h>
 #include "gtest/gtest.h"
 
 #include "op_api_ut_common/tensor_desc.h"
@@ -71,16 +70,24 @@ TEST_F(L2AclnnMoeDistributeCombineV5Test, TestAclnnMoeDistributeCombineExecuteAp
 
     TensorDesc x = TensorDesc({32, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
 
+    constexpr int64_t cclBufferSize = 0;
+    constexpr int64_t zeroExpertNum = 0;
+    constexpr int64_t copyExpertNum = 0;
+    constexpr int64_t constExpertNum = 0;
+    aclTensor *optionalNullTensor = nullptr;
+
     auto ut = OP_API_UT(aclnnMoeDistributeCombineV5,
                         INPUT(context, expandX, expertIds, expandIdx, epSendCounts, expertScales, tpSendCounts,
                               xActiveMask, activationScale, weightScale, groupList, expandScales, sharedExpertX,
-                              "test_moe_distribute_combine_ep", epWorldSize, epRankId, moeExpertNum,
-                              "test_moe_distribute_combine_tp", tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
-                              sharedExpertRankNum, globalBs, outDtype, commQuantMode, groupListType, "test"),
+                              optionalNullTensor, optionalNullTensor, optionalNullTensor, optionalNullTensor,
+                              optionalNullTensor, optionalNullTensor, epWorldSize, epRankId, moeExpertNum,
+                              cclBufferSize, tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
+                              sharedExpertRankNum, globalBs, outDtype, commQuantMode, groupListType, "test",
+                              zeroExpertNum, copyExpertNum, constExpertNum),
                         OUTPUT(x));
     uint64_t workspace_size = 0;
     aclOpExecutor *executor = nullptr;
-    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 } // namespace MoeDistributeCombineV3
