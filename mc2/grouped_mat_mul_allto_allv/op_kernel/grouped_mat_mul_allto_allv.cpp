@@ -22,12 +22,15 @@
 
 using namespace AscendC;
 
-template <typename X_T, const bool IS_OPT_MM, const bool IS_GMM_WEIGHT_TRANS, const bool IS_OPT_WEIGHT_TRANS>
+template <
+    typename X_T, const bool IS_OPT_MM, const bool IS_GMM_WEIGHT_TRANS,
+    const bool IS_OPT_WEIGHT_TRANS, int TILINGKEY_COMM_MODE>
 struct GMMATAVType { // Grouped_Mat_Mul_All_To_Allv_Type
     using xType = X_T;
     static constexpr bool isOptionalMm = IS_OPT_MM;
     static constexpr bool isGmmWeightTrans = IS_GMM_WEIGHT_TRANS;
     static constexpr bool isOptWeightTrans = IS_OPT_WEIGHT_TRANS;
+    static constexpr int commMode = TILINGKEY_COMM_MODE;
 };
 
 #define INVOKE_GMMATAV_OP_IMPL_A5(templateClass, ...)                                                   \
@@ -53,7 +56,7 @@ struct GMMATAVType { // Grouped_Mat_Mul_All_To_Allv_Type
 
 template <
     bool TILINGKEY_COMPUTE_MATMUL, bool TILINGKEY_GROUPED_MATMUL_TRANS, 
-    bool TILINGKEY_MATMUL_TRANS>
+    bool TILINGKEY_MATMUL_TRANS, int TILINGKEY_COMM_MODE>
 __global__ __aicore__ void grouped_mat_mul_allto_allv(
     GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR sendCountsTensorOptionalGM, GM_ADDR recvCountsTensorOptionalGM,
     GM_ADDR mmxOptionalGM, GM_ADDR mmweightOptionalGM, GM_ADDR yGM, GM_ADDR mmyOptionalGM, GM_ADDR workspaceGM,
@@ -77,12 +80,12 @@ __global__ __aicore__ void grouped_mat_mul_allto_allv(
 #if (ORIG_DTYPE_GMM_X == DT_FLOAT16)
     using X_TYPE = half;
     INVOKE_GMMATAV_OP_IMPL(GroupedMatmulAlltoAllv, X_TYPE, TILINGKEY_COMPUTE_MATMUL,
-                            TILINGKEY_GROUPED_MATMUL_TRANS, TILINGKEY_MATMUL_TRANS);
+                            TILINGKEY_GROUPED_MATMUL_TRANS, TILINGKEY_MATMUL_TRANS, TILINGKEY_COMM_MODE);
 #endif
 
 #if (ORIG_DTYPE_GMM_X == DT_BF16)
     using X_TYPE = bfloat16_t;
     INVOKE_GMMATAV_OP_IMPL(GroupedMatmulAlltoAllv, X_TYPE, TILINGKEY_COMPUTE_MATMUL,
-                            TILINGKEY_GROUPED_MATMUL_TRANS, TILINGKEY_MATMUL_TRANS);
+                            TILINGKEY_GROUPED_MATMUL_TRANS, TILINGKEY_MATMUL_TRANS, TILINGKEY_COMM_MODE);
 #endif
 }

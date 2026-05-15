@@ -17,9 +17,11 @@
 #define __DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_VECTOR_H__
 
 #include "kernel_operator.h"
+#include "dense_lightning_indexer_softmax_lse_vector_vf.h"
 
 namespace DenseLISoftmaxLseServiceVec {
 using namespace AscendC;
+using namespace DenseLISoftmaxLseVF;
 
 constexpr uint8_t B32_BLOCK_ALIGN_NUM = 8;
 constexpr uint8_t B32_VEC_REPEAT_STRIDE = 8;
@@ -85,12 +87,11 @@ __aicore__ inline void DoScale(const LocalTensor<float> &reduceCacheBuf, LocalTe
         } else {
             AscendC::Mul(mmOutUb[i * s2Inner], mmOutUb[i * s2Inner], tmpBuff[i * B32_BLOCK_ALIGN_NUM], countPerRepeat,
                          repeatTimes, {1, 1, 0, B32_VEC_REPEAT_STRIDE, B32_VEC_REPEAT_STRIDE, 0});
-        }
-    }
 
-    if (outerGidx != 0) {
-        AscendC::PipeBarrier<PIPE_V>();
-        AscendC::Add(reduceCacheBuf, mmOutUb, reduceCacheBuf, groupInner * s2Inner);
+            AscendC::PipeBarrier<PIPE_V>();
+
+            AscendC::Add(reduceCacheBuf[i * s2Inner], mmOutUb[i * s2Inner], reduceCacheBuf[i * s2Inner], s2Inner);
+        }
     }
     AscendC::PipeBarrier<PIPE_V>();
 }
@@ -128,6 +129,44 @@ __aicore__ inline void DoReduce(const LocalTensor<float> &srcTensor, LocalTensor
     }
     AscendC::Add(dstTensor, srcTensor, srcTensor[aNum], aNum);
     AscendC::PipeBarrier<PIPE_V>();
+}
+
+template <typename T>
+__aicore__ inline void DoScaleVfWrapper(const LocalTensor<float>& reduceCacheBuf,
+                                         const LocalTensor<float>& mmOutUb,
+                                         const LocalTensor<float>& weightsUb,
+                                         const LocalTensor<T>& weightsTUb,
+                                         int64_t groupInner, int64_t s2Inner, int32_t outerGidx)
+{
+    __ubuf__ float *reduceCacheBufUb = (__ubuf__ float *)reduceCacheBuf.GetPhyAddr();
+    __ubuf__ float *mmOutUbAddr = (__ubuf__ float *)mmOutUb.GetPhyAddr();
+    __ubuf__ float *weightsUbAddr = (__ubuf__ float *)weightsUb.GetPhyAddr();
+    __ubuf__ T *weightsTUbAddr = (__ubuf__ T *)weightsTUb.GetPhyAddr();
+
+    uint64_t countPerRepeat = VEC_REPEAT_BYTES / sizeof(float);
+    uint64_t repeatTimes = s2Inner / countPerRepeat;
+    
+    if (outerGidx == 0) {
+        DoScaleVF<T, true>(reduceCacheBufUb, mmOutUbAddr, weightsUbAddr, weightsTUbAddr,
+                groupInner, s2Inner, repeatTimes, countPerRepeat);
+    } else {
+        DoScaleVF<T, false>(reduceCacheBufUb, mmOutUbAddr, weightsUbAddr, weightsTUbAddr,
+                    groupInner, s2Inner, repeatTimes, countPerRepeat);
+    }
+}
+
+__aicore__ inline void DoReduceSumBlockVfWrapper(const LocalTensor<float>& dstTensor,
+                                                 const LocalTensor<float>& srcTensor,
+                                                 const LocalTensor<float>& maxValueTensor,
+                                                 const LocalTensor<float>& prevSumTensor,
+                                                 uint32_t count)
+{
+    __ubuf__ float *dstTensorUb = (__ubuf__ float *)dstTensor.GetPhyAddr();
+    __ubuf__ float *srcTensorUb = (__ubuf__ float *)srcTensor.GetPhyAddr();
+    __ubuf__ float *maxValueTensorUb = (__ubuf__ float *)maxValueTensor.GetPhyAddr();
+    __ubuf__ float *prevSumTensorUb = (__ubuf__ float *)prevSumTensor.GetPhyAddr();
+    
+    DoReduceSumBlockVF(dstTensorUb, srcTensorUb, maxValueTensorUb, prevSumTensorUb, count);
 }
 }
 
