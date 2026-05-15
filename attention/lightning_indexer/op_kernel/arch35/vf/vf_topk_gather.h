@@ -18,7 +18,8 @@
 
 namespace topkb32gather {
 template<typename T>
-__simd_vf__ void HistogramsFirstVFImpl(__ubuf__ uint32_t* histogramsBuf, __ubuf__ uint32_t* inputBuf, uint16_t vfLoop, bool init)
+__simd_vf__ void HistogramsFirstVFImpl(__ubuf__ uint32_t* histogramsBuf,
+                                       __ubuf__ uint32_t* inputBuf, uint16_t vfLoop, bool init)
 {
     MicroAPI::MaskReg pregB32 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
     MicroAPI::MaskReg pregB16 = MicroAPI::CreateMask<uint16_t, MicroAPI::MaskPattern::ALL>();
@@ -55,9 +56,12 @@ __simd_vf__ void HistogramsFirstVFImpl(__ubuf__ uint32_t* histogramsBuf, __ubuf_
 
     for (uint16_t i = 0; i < vfLoop; ++i) {
         MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B16>(vreg1U16, vreg0U16, inputBuf + i * 256);
-        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B16>(vreg3U16, vreg2U16, inputBuf + (i * 256) + 128);
+        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B16>(vreg3U16,
+                                                                                vreg2U16, inputBuf + (i * 256) + 128);
 
-        MicroAPI::DeInterleave(vreg1, vreg0, (MicroAPI::RegTensor<uint8_t>&)vreg0U16, (MicroAPI::RegTensor<uint8_t>&)vreg2U16);
+        MicroAPI::DeInterleave(vreg1, vreg0,
+                                        (MicroAPI::RegTensor<uint8_t>&)vreg0U16,
+                                        (MicroAPI::RegTensor<uint8_t>&)vreg2U16);
 
         MicroAPI::Histograms<uint8_t, uint16_t, MicroAPI::HistogramsBinType::BIN0,
                              MicroAPI::HistogramsType::ACCUMULATE>(cout0, vreg0, pregB8);
@@ -668,6 +672,8 @@ __aicore__ inline void LiTopKVF(const LocalTensor<uint32_t>& tmpIdxLocal,
     FindKthVFImpl(nkValueBuf, histogramsBuf, idx0Buf, idx1Buf, idx2Buf, idx3Buf);
 
     // filter
+    int32_t count = LICommon::Align(topK, (uint32_t)64) - topK / 64 * 64;
+    AscendC::Duplicate(tmpIdxLocal[topK / 64 * 64], (uint32_t)(0), count);
     // 输出大于k-value的值idx
     FindIdxGTOutputVFImpl(tmpIdxBuf, inputValueBuf, (uint32_t)(0), nkValueBuf, inputLoopNum);
     // 输出等于k-value的值idx
