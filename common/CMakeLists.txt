@@ -96,6 +96,8 @@ if (BUILD_OPEN_PROJECT)
       ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc
       ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/op_common
       ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include
+      ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include/op_common
+      ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include/op_common/log
       ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/profiling
     )
 
