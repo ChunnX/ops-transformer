@@ -128,7 +128,7 @@
     <tr>
       <td>returnValues</td>
       <td>输入</td>
-      <td>表示是否输出sparseValuesOut。True表示输出，但图模式下不支持；False表示不输出，默认值为False。仅在训练且layout_key不为PA_BSND场景支持。</td>
+      <td>表示是否输出sparseValuesOut。True表示输出，False表示不输出，默认值为False。仅在训练且layout_key不为PA_BSND场景支持。</td>
       <td>BOOL</td>
       <td>-</td>
     </tr>
@@ -161,6 +161,7 @@ Ascend 950PR/Ascend 950DT：
 - block_size取值为16的倍数，最大支持1024。
 - 参数query、key的数据类型应保持一致。
 - 参数weights不为`float32`时，参数query、key、weights的数据类型应保持一致。
+- return_value仅在Ascend 950PR/Ascend 950DT支持图模式。
 
 ## 调用示例
 
