@@ -115,12 +115,7 @@ void TilingGetTempCompileInfo(platform_ascendc::PlatformAscendC &ascendcPlatform
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, compileInfo.l0CSize);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_A, compileInfo.l0ASize);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_B, compileInfo.l0BSize);
-    compileInfo.socShortName = ascendcPlatform.GetSocVersion();
-    if (compileInfo.socShortName == platform_ascendc::SocVersion::ASCEND310P) {
-        compileInfo.defaultSysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
-    } else {
-        compileInfo.defaultSysWorkspaceSize = 0U;
-    }
+    compileInfo.defaultSysWorkspaceSize = 0U;
 }
 
 ge::graphStatus IFATilingArch38::ConvertContext(gert::TilingContext &context, IncreFlashAttentionContext &ifaContext)
