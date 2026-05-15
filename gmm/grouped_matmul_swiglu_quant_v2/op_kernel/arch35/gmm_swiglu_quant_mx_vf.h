@@ -59,9 +59,9 @@ __simd_vf__ inline void GmmSwigluVf(__ubuf__ DataTypeIn *firstSrc, __ubuf__ Data
         uint32_t elementNum = nSize;
         AscendC::MicroAPI::MaskReg mask = AscendC::MicroAPI::UpdateMask<DataTypeIn>(elementNum);
         for (uint16_t vfBlockIdx = 0; vfBlockIdx < oneRowRepeatTimes; vfBlockIdx++) {
-            AscendC::MicroAPI::RegTensor<bfloat16_t> verg7;
+            AscendC::MicroAPI::RegTensor<bfloat16_t> verg4;
             AscendC::MicroAPI::RegTensor<float> swishInput, gateInput;
-            AscendC::MicroAPI::RegTensor<float> verg2, verg3, verg4, verg6, swishOutput;
+            AscendC::MicroAPI::RegTensor<float> verg0, verg1, verg2, verg3, swishOutput;
 
             uint32_t l0cOutOffset = mIdx * nSrcUbAligned + vfBlockIdx * sizePerRepeat;
 
@@ -69,22 +69,22 @@ __simd_vf__ inline void GmmSwigluVf(__ubuf__ DataTypeIn *firstSrc, __ubuf__ Data
             AscendC::MicroAPI::DataCopy(swishInput, firstSrc + l0cOutOffset);
 
             // 2. Swish: x / (1 + exp(-x))
-            AscendC::MicroAPI::Muls(verg2, swishInput, -(scalarOne), mask);
-            AscendC::MicroAPI::Exp(verg3, verg2, mask);
-            AscendC::MicroAPI::Adds(verg4, verg3, scalarOne, mask);
-            AscendC::MicroAPI::Div<float, &DIV_MODE>(swishOutput, swishInput, verg4, mask);
+            AscendC::MicroAPI::Muls(verg0, swishInput, -(scalarOne), mask);
+            AscendC::MicroAPI::Exp(verg1, verg0, mask);
+            AscendC::MicroAPI::Adds(verg2, verg1, scalarOne, mask);
+            AscendC::MicroAPI::Div<float, &DIV_MODE>(swishOutput, swishInput, verg2, mask);
 
             // 3. Load Gate branch
             AscendC::MicroAPI::DataCopy(gateInput, secondSrc + l0cOutOffset);
 
             // 4. SwiGLU: Swish(x) * gate
-            AscendC::MicroAPI::Mul(verg6, swishOutput, gateInput, mask);
+            AscendC::MicroAPI::Mul(verg3, swishOutput, gateInput, mask);
 
             // 5. Cast to BF16 and store
-            AscendC::MicroAPI::Cast<bfloat16_t, float, CAST_FP32_TO_BF16>(verg7, verg6, mask);
+            AscendC::MicroAPI::Cast<bfloat16_t, float, CAST_FP32_TO_BF16>(verg4, verg3, mask);
             uint32_t dstUbOffset = mIdx * nDstUbAligned + vfBlockIdx * sizePerRepeat;
             AscendC::MicroAPI::DataCopy<bfloat16_t, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(
-                gluResAddr + dstUbOffset, verg7, mask);
+                gluResAddr + dstUbOffset, verg4, mask);
         }
     }
 }
