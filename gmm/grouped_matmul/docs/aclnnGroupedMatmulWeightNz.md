@@ -110,7 +110,7 @@
 
         其中antiquant\_scale_i为weight矩阵pergroup量化参数，scale_i为weight矩阵perchannel量化参数，per\_token\_scale_i为
         pertoken量化参数。
-        
+
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnGroupedMatmulWeightNzGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnGroupedMatmulWeightNz”接口执行计算。
@@ -663,12 +663,12 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
       |:---------:|:---------:| :------ |
       |0|x单tensor|pertoken场景：每个tensor 1维，shape为（M,）|
   - 动态量化（mx量化）场景支持的输入类型与shape为：
-    - 以下入参为空：offsetOptional、biasOptional、antiquantScaleOptional、antiquantOffsetOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional、activationFeatureOutOptional
+    - 以下入参为空：offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional、activationFeatureOutOptional
     - 不为空的参数支持的数据类型组合要满足下表：
-        |groupType| x       | weight  | scaleOptional |  perTokenScaleOptional |out     |
-        |:-------:|:-------:|:-------:|:-------:| :-------    | :------ |
-        |0|FLOAT8_E4M3FN  |FLOAT8_E4M3FN|   FLOAT8_E8M0    | FLOAT8_E8M0    | BFLOAT16/FLOAT16/FLOAT32 |
-        |0|FLOAT4_E2M1/FLOAT4_E1M2 |FLOAT4_E2M1/FLOAT4_E1M2 |   FLOAT8_E8M0    | FLOAT8_E8M0    | BFLOAT16/FLOAT16/FLOAT32 |
+        |groupType| x       | weight  | biasOptional | scaleOptional |  perTokenScaleOptional |out     |
+        |:-------:|:-------:|:-------:|:-------:|:-------:| :-------    | :------ |
+        |0|FLOAT8_E4M3FN  |FLOAT8_E4M3FN| null|   FLOAT8_E8M0    | FLOAT8_E8M0    | BFLOAT16/FLOAT16/FLOAT32 |
+        |0|FLOAT4_E2M1/FLOAT4_E1M2 |FLOAT4_E2M1/FLOAT4_E1M2 | FLOAT32/null |   FLOAT8_E8M0    | FLOAT8_E8M0    | BFLOAT16/FLOAT16/FLOAT32 |
     - scaleOptional要满足下表（其中g为matmul组数即分组数，g\_i为第i个分组（下标从0开始））：
         |groupType| 使用场景 | shape限制 |
         |:---------:|:---------:| :------ |
