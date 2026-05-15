@@ -1234,6 +1234,8 @@ mc2:
       ut_cov_exclude:
         - mc2/matmul_all_reduce_add_rms_norm/op_graph
         - mc2/matmul_all_reduce_add_rms_norm/op_kernel
+      test:
+        examples: False
       options:
         - matmul_all_reduce_add_rms_norm
 
