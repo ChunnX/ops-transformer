@@ -1029,7 +1029,7 @@ mc2:
       ut_cov_exclude:
         - mc2/all_gather_matmul
       test:
- 	      examples: False
+        examples: False
       options:
         - all_gather_matmul
 
@@ -1256,7 +1256,7 @@ mc2:
         - mc2/matmul_reduce_scatter/op_graph
         - mc2/matmul_reduce_scatter/op_kernel
       test:
- 	      examples: False
+        examples: False
       options:
         - matmul_reduce_scatter
 
@@ -1272,7 +1272,7 @@ mc2:
       ut_cov_exclude:
         - mc2/matmul_allto_all
       test:
- 	      examples: False
+        examples: False
       options:
         - matmul_allto_all
 
