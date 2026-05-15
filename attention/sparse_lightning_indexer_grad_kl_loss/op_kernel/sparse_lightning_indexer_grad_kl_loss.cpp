@@ -16,9 +16,9 @@
 using namespace AscendC;
 
 #if __CCE_AICORE__ != 310
-#include "arch32/sparse_lightning_indexer_grad_kl_loss_template_tiling_key.h"
-#include "arch32/sparse_lightning_indexer_grad_kl_loss_base.h"
-#include "arch32/sparse_lightning_indexer_grad_kl_loss_common.h"
+#include "arch22/sparse_lightning_indexer_grad_kl_loss_template_tiling_key.h"
+#include "arch22/sparse_lightning_indexer_grad_kl_loss_base.h"
+#include "arch22/sparse_lightning_indexer_grad_kl_loss_common.h"
 #define SLI_OP_IMPL(templateClass, tilingdataClass, ...)                                                               \
     do {                                                                                                               \
         templateClass<SLIType<__VA_ARGS__>> op;                                                                        \
