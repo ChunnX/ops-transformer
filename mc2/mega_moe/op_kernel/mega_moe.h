@@ -858,6 +858,16 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     if (tileNumGmm1 < 1U) {
         tileNumGmm1 = 1U;
     }
+    // 旧版策略 maxGroups = blockNum/tileNumGmm1 强制 "每 wave 内每核只跑 1 个 GMM1 tile"，
+    // 在 tileNumGmm1 大、waveCnt 也大时把 wavesParallel 卡死。改成允许 GMM1 内每核跑多 tile，
+    // 让 wavesParallel 提到 blockNum/(tileNumGmm1/MAX_TILES_PER_CORE_GMM1)。cube mmad 在 wave 内
+    // 多 tile 是 back-to-back 流水的，per-iter 时间不会线性放大。
+    // MAX_TILES_PER_CORE_GMM1 可调：值越大并行 wave 越多但单 iter 时间越长，2 是常用甜区。
+    constexpr uint32_t MAX_TILES_PER_CORE_GMM1 = 2U;
+    uint32_t minCoresPerWaveGmm1 = (tileNumGmm1 + MAX_TILES_PER_CORE_GMM1 - 1U) / MAX_TILES_PER_CORE_GMM1;
+    if (minCoresPerWaveGmm1 < 1U) {
+        minCoresPerWaveGmm1 = 1U;
+    }
 
     // === Dispatch 流水化 ===
     // sub1 用独立的 dispatchBaseOffset_/dispatchProblemShape_/dispatchPreOffset_ 维护自己的
@@ -905,7 +915,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         uint64_t waveCnt = (m_i + L1_TILE_M - 1) / L1_TILE_M;
 
         // 按本 expert 的 waveCnt 决定分组：让 wavesParallel 尽量等于 waveCnt
-        uint32_t maxGroups = blockNum_ / tileNumGmm1;
+        uint32_t maxGroups = blockNum_ / minCoresPerWaveGmm1;
         if (maxGroups < 1U) {
             maxGroups = 1U;
         }
