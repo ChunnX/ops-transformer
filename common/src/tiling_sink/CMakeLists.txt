@@ -104,6 +104,7 @@ if (BUILD_OPEN_PROJECT)
 else ()
   target_include_directories(opmaster PRIVATE
     ${TOP_DIR}/ops-base/include
+    ${TOP_DIR}/ops-base/include/op_common
     ${TOP_DIR}/ops-base/pkg_inc
     ${TOP_DIR}/ops-base/pkg_inc/op_common
     ${TOP_DIR}/ops-base/include/base
