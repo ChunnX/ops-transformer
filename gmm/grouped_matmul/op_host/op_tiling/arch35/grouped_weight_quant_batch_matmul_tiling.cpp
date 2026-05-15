@@ -1145,6 +1145,7 @@ void GroupedWeightQuantBatchMatmulTiling::CalcNoFullNumBlocksResplitTiling(uint6
         resplitParam_.firstTailBlockCount = mainBlkCount;
         resplitParam_.secondTailBlockSize = 0;
         resplitParam_.secondTailBlockCount = 0;
+        cubeNumBlocksN_ = static_cast<uint8_t>(mainBlkCount);
         return;
     }
 
