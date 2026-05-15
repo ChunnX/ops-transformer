@@ -222,7 +222,7 @@ enum class QUANT_SCALE_REPO_MODE:uint8_t {
 struct MlaPrologScenarioInfo {
     bool isV1Flag_;
     bool batchSeqFusedFlag_;
-    uint8_t splitMFlag_;
+    uint8_t splitMode_;
     QUANT_MODE quantMode_;
     CACHE_MODE cacheMode_;
     EMPTY_TENSOR_MODE emptyTensorMode_;

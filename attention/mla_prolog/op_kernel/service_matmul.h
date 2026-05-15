@@ -709,7 +709,8 @@ __aicore__ inline void MatmulL1(const LocalTensor<O_L0C> &cL0, const LocalTensor
  * @param tensorBScaleGm BScale矩阵在GM的位置
  */
 template <typename T, typename O, typename S, bool hasL1ALoaded = false, bool scaleSrcPadFlag = false,
-          bool enUnitFlag = false, DataFormat bLoadFormat = DataFormat::NZ, bool enableFixPipe = true>
+          bool enUnitFlag = false, DataFormat bLoadFormat = DataFormat::NZ, bool enableFixPipe = true,
+          bool IsSplitKn = false>
 __aicore__ inline void MatmulSplitK(const GlobalTensor<O> &tensorCGm, const GlobalTensor<T> &tensorAGm,
                                     const GlobalTensor<T> &tensorBGm, const MMParams &para, MMBufParams &bufParam,
                                     const uint32_t nL1Offset, const uint32_t nL1Size, const uint64_t ouputOffset,

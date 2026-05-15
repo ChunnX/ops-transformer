@@ -93,9 +93,10 @@ enum class ACTUAL_SEQ_MODE : std::uint8_t {
     EN_Q_LEN = static_cast<std::uint8_t>(1),
 };
 
-enum class SPLIT_M_MODE : std::uint8_t {
-    DISABLED = static_cast<std::uint8_t>(0),
-    ENABLED  = static_cast<std::uint8_t>(1),
+enum class SPLIT_MODE : std::uint8_t {
+    SPLIT_N  = static_cast<std::uint8_t>(0),
+    SPLIT_M  = static_cast<std::uint8_t>(1),
+    SPLIT_KN = static_cast<std::uint8_t>(2),
 };
 
 enum class ROPE_MODE : std::uint8_t {
