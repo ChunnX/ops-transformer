@@ -715,7 +715,6 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::Process()
             }
             CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE3>(SYNC_MODE_CUBE_VEC);
         }
-        SyncAll();
 
         if ASCEND_IS_AIC {
             AicProcess<needQnDynamicQuant>(aicOffset, mOffset, mmQnLoops);
