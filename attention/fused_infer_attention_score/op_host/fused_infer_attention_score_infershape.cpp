@@ -127,7 +127,11 @@ static ge::graphStatus GetQueryBSND(const gert::Shape *queryShape,
         b = (*queryShape)[FIA_LAYOUT_DIM0];
         s1 = (*queryShape)[FIA_LAYOUT_DIM1];
         n1 = (*numHeadsPtr);
-        d1 = (*queryShape)[FIA_LAYOUT_DIM2] / (*numHeadsPtr);
+        if ((*queryShape)[FIA_LAYOUT_DIM2] == -1) {
+            d1 = (*queryShape)[FIA_LAYOUT_DIM2];
+        } else {
+            d1 = (*queryShape)[FIA_LAYOUT_DIM2] / (*numHeadsPtr);
+        }
     } else if (queryLayout == "BSND") {
         b = (*queryShape)[FIA_LAYOUT_DIM0];
         s1 = (*queryShape)[FIA_LAYOUT_DIM1];

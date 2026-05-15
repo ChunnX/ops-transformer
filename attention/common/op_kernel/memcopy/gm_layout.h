@@ -46,7 +46,8 @@ enum class GmFormat {
     SBNGD = 19,
     SBND = 20,
     NTGD = 21,
-    PA_NZ_K_SCALE = 22,
+    TND2 = 22, // VSCALE, 尾轴2
+    PA_NZ_K_SCALE = 23,
 };
 
 template <GmFormat FORMAT>
@@ -210,6 +211,21 @@ struct GmLayout<GmFormat::NTD> {
         uint64_t dStride = 1;
         uint64_t tStride = dStride * d;
         uint64_t nStride = tStride * t;
+        stride = AscendC::MakeStride(tStride, nStride, dStride);
+    }
+};
+
+template <>
+struct GmLayout<GmFormat::TND2> {
+    AscendC::Shape<uint32_t, uint32_t, uint32_t> shape;
+    AscendC::Stride<uint64_t, uint64_t, uint64_t> stride;
+ 
+    __aicore__ inline GmLayout() = default;
+    __aicore__ inline void MakeLayout(uint32_t t, uint32_t n, uint32_t d) {
+        shape = AscendC::MakeShape(t, n, d);
+        uint64_t dStride = 1;
+        uint64_t nStride = dStride * d;
+        uint64_t tStride = nStride * n;
         stride = AscendC::MakeStride(tStride, nStride, dStride);
     }
 };
