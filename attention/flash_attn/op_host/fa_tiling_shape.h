@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@
 #include "fa_tiling_info.h"
 
 namespace optiling {
+namespace flash_attn {
 template <typename T>
 using CompareFunc = bool (*)(const T &, const T &);
 
@@ -219,5 +220,6 @@ public:
                                    const std::string &funcName) const;
     ge::graphStatus CompareShape(FaTilingShapeCompareParam &param, const std::string &funcName) const;
 };
+} // namespace flash_attn
 } // namespace optiling
 #endif // FLASH_ATTN_FA_TILING_SHAPE_H
