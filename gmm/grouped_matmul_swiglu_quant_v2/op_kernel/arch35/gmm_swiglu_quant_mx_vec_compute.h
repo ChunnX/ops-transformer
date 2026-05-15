@@ -136,7 +136,7 @@ public:
     __aicore__ inline void VFDoSwigluAndQuantForMX(AscendC::LocalTensor<DataTypeIn> &l0cOutUbFirst,
                                                    AscendC::LocalTensor<DataTypeIn> &l0cOutUbSecond,
                                                    uint16_t halfMSize, uint16_t halfNSize);
-    __aicore__ inline void TransMxScaleLayoutVf(uint16_t mSize, uint16_t scaleBlockN);
+    __aicore__ inline void TransMxScaleLayout(uint16_t mSize, uint16_t scaleBlockN);
     __aicore__ inline void CopyOutputFromUb2Gm(uint64_t blockCount, uint64_t offset);
     __aicore__ inline void CopyScaleFromUb2Gm(uint64_t blockCount, uint64_t offset);
 
@@ -244,27 +244,13 @@ __aicore__ inline void GMM_SWIGLU_QUANT_MX_VEC_COMPUTE_CLASS::UpdateOutputShape(
  * \param[in] scaleBlockN Number of scale elements per block.
  */
 GMM_SWIGLU_QUANT_MX_VEC_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void GMM_SWIGLU_QUANT_MX_VEC_COMPUTE_CLASS::TransMxScaleLayoutVf(uint16_t mSize,
+__aicore__ inline void GMM_SWIGLU_QUANT_MX_VEC_COMPUTE_CLASS::TransMxScaleLayout(uint16_t mSize,
                                                                                     uint16_t scaleBlockN)
 {
     __ubuf__ int8_t *quantScaleOutputInUbAddr = (__ubuf__ int8_t *)quantScaleOutput_.GetPhyAddr();
     __ubuf__ int8_t *quantScaleBlockOutputInUbAddr = (__ubuf__ int8_t *)quantScaleBlockOutput_.GetPhyAddr();
 
-    for (uint16_t mIdx = 0; mIdx < mSize; ++mIdx) {
-        uint32_t elemNum = scaleBlockN;
-        AscendC::MicroAPI::MaskReg maskScaleN = AscendC::MicroAPI::UpdateMask<int8_t>(elemNum);
-        AscendC::MicroAPI::RegTensor<int8_t> vreg0;
-        AscendC::MicroAPI::UnalignReg u0;
-
-        auto srcUb = quantScaleOutputInUbAddr + mIdx * scaleBlockN;
-        AscendC::MicroAPI::DataCopyUnAlignPre(u0, srcUb);
-        AscendC::MicroAPI::DataCopyUnAlign(vreg0, u0, srcUb);
-
-        auto dstUb = quantScaleBlockOutputInUbAddr + mIdx * AscendC::ONE_BLK_SIZE;
-        AscendC::MicroAPI::DataCopy<int8_t,
-                                    AscendC::MicroAPI::StoreDist::DIST_NORM_B8>(
-            dstUb, vreg0, maskScaleN);
-    }
+    TransMxScaleLayoutVf(quantScaleOutputInUbAddr, quantScaleBlockOutputInUbAddr, mSize, scaleBlockN);
 }
 
 /*!

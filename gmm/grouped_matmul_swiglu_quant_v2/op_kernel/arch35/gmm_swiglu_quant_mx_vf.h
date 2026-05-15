@@ -202,6 +202,34 @@ __simd_vf__ inline void ComputeScaleVf(__ubuf__ uint16_t *maxExpAddr, __ubuf__ u
 }
 
 /*!
+ * \brief Transposes MX scale layout from interleaved to block format per row.
+ *
+ * \param[in] srcAddr     Source UB address for scale data.
+ * \param[in] dstAddr     Destination UB address for transposed scale block.
+ * \param[in] mSize       M dimension size.
+ * \param[in] scaleBlockN Number of scale elements per block.
+ */
+__simd_vf__ inline void TransMxScaleLayoutVf(__ubuf__ int8_t *srcAddr, __ubuf__ int8_t *dstAddr,
+                                             uint16_t mSize, uint16_t scaleBlockN)
+{
+    for (uint16_t mIdx = 0; mIdx < mSize; ++mIdx) {
+        uint32_t elemNum = scaleBlockN;
+        AscendC::MicroAPI::MaskReg maskScaleN = AscendC::MicroAPI::UpdateMask<int8_t>(elemNum);
+        AscendC::MicroAPI::RegTensor<int8_t> vreg0;
+        AscendC::MicroAPI::UnalignReg u0;
+
+        auto srcUb = srcAddr + mIdx * scaleBlockN;
+        AscendC::MicroAPI::DataCopyUnAlignPre(u0, srcUb);
+        AscendC::MicroAPI::DataCopyUnAlign(vreg0, u0, srcUb);
+
+        auto dstUb = dstAddr + mIdx * AscendC::ONE_BLK_SIZE;
+        AscendC::MicroAPI::DataCopy<int8_t,
+                                    AscendC::MicroAPI::StoreDist::DIST_NORM_B8>(
+            dstUb, vreg0, maskScaleN);
+    }
+}
+
+/*!
  * \brief Quantizes FP8 data using computed half-scale.
  *
  * \param[in] srcAddr             Source UB address (bfloat16_t).
