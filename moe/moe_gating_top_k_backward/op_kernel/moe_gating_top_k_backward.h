@@ -45,6 +45,7 @@ private:
     TQue<QuePosition::VECOUT, 1> outQue_;
 
     TBuf<TPosition::VECCALC> bufk4Mask_;
+    TBuf<TPosition::VECCALC> bufk0_;
     TBuf<TPosition::VECCALC> bufk1_;
     TBuf<TPosition::VECCALC> bufn2_;
     TBuf<TPosition::VECCALC> bufn3_;
@@ -59,7 +60,7 @@ private:
     GlobalTensor<T> gradXGm_;
 
     LocalTensor<float> xNormLocal_;
-    LocalTensor<float> gradYLocal_;
+    LocalTensor<T> gradYLocal_;
     LocalTensor<int32_t> expertIdxLocal_;
     LocalTensor<uint32_t> expertIdxLocalUint32_;
     LocalTensor<T> gradXOutTensor_;
@@ -71,7 +72,8 @@ private:
 
     int64_t elementCountPerLoop_ = 0;
     int64_t curRowsByKAlign_ = 0;
-    int64_t kAlign_ = 0; // fp32的k32字节对齐后的元素个数
+    int64_t kAlign_ = 0; // fp32的k 32字节对齐后的元素个数
+    int64_t kAlign16_ = 0; // 16位的k 32字节对齐后的元素个数
     // int64_t blockIdx_ = 0;
     // int64_t perCoreRowCount_ = 0;
     // int64_t curCoreRowCount_ = 0;
@@ -87,6 +89,7 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::Init(GM_ADDR xNorm, GM_AD
     pipe_ = tPipe;
     blockIdx_ = GetBlockIdx();
     kAlign_ = Align(tilingData_->k, SIZE_OF_INT32);
+    kAlign16_ = Align(tilingData_->k, NUM_TWO);
     // 获得当前核所需要的处理的loop次数、尾loop搬入的token数。
     if (blockIdx_ ==  tilingData_->needCoreNum - 1) {
         loopTimes_ = tilingData_->lastLoopTimes;
@@ -103,12 +106,13 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::Init(GM_ADDR xNorm, GM_AD
     gradXGm_.SetGlobalBuffer((__gm__ T *)gradX + tilingData_->perCoreRows * tilingData_->expertCount * blockIdx_);
 
     // init que
-    pipe_->InitBuffer(gradYQue_, NUM_TWO, tilingData_->baseRows * AlignBytes(tilingData_->k, SIZE_OF_INT32));
+    pipe_->InitBuffer(gradYQue_, NUM_TWO, tilingData_->baseRows * AlignBytes(tilingData_->k, tilingData_->gradYDtypeSize));
     pipe_->InitBuffer(indicesQue_, NUM_TWO, tilingData_->baseRows * AlignBytes(tilingData_->k, SIZE_OF_INT32));
     pipe_->InitBuffer(xQue_, NUM_TWO, AlignBytes(tilingData_->baseRows * tilingData_->expertCount, SIZE_OF_FLOAT32));
     pipe_->InitBuffer(outQue_, NUM_ONE, AlignBytes(tilingData_->baseRows * tilingData_->expertCount, tilingData_->gradYDtypeSize));
     
     pipe_->InitBuffer(bufk4Mask_, tilingData_->baseRows * AlignBytes(tilingData_->k, SIZE_OF_FLOAT32));
+    pipe_->InitBuffer(bufk0_, tilingData_->baseRows * AlignBytes(tilingData_->k, SIZE_OF_FLOAT32));
     pipe_->InitBuffer(bufk1_, tilingData_->baseRows * AlignBytes(tilingData_->k, SIZE_OF_FLOAT32));
     pipe_->InitBuffer(bufk4Add_, tilingData_->baseRows * AlignBytes(tilingData_->k, SIZE_OF_FLOAT32));
     pipe_->InitBuffer(bufk4Index_, tilingData_->baseRows * AlignBytes(tilingData_->k, SIZE_OF_FLOAT32));
@@ -166,28 +170,34 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::GetGatherOffsetIndex()
 template <typename T>
 __aicore__ inline void MoeGatingTopKBackwardKernel<T>::CopyInGradY(int64_t loopIdx)
 {
-    gradYLocal_ = gradYQue_.AllocTensor<float>();
-    
+    gradYLocal_ = gradYQue_.AllocTensor<T>();
+    LocalTensor<float> bufk0 = bufk0_.Get<float>();
     DataCopyExtParams copyParams;
     copyParams.blockCount = static_cast<uint16_t>(curRows_);
     copyParams.blockLen = static_cast<uint32_t>(tilingData_->k) * static_cast<uint32_t>(sizeof(T));
     copyParams.srcStride = static_cast<uint32_t>(0);
     copyParams.dstStride = static_cast<uint32_t>(0);
     DataCopyPadExtParams<T> padParams{true, 0, static_cast<uint8_t>(kAlign_ - tilingData_->k), 0};
+    DataCopyPad(gradYLocal_, gradYGm_[loopIdx * tilingData_->baseRows * tilingData_->k], copyParams, padParams);
+    gradYQue_.EnQue(gradYLocal_);
+    gradYLocal_ = gradYQue_.DeQue<T>();
     if constexpr (IsSameType<T, float>::value) {
-        DataCopyPad(gradYLocal_, gradYGm_[loopIdx * tilingData_->baseRows * tilingData_->k], copyParams, padParams);
-        gradYQue_.EnQue(gradYLocal_);
-        gradYLocal_ = gradYQue_.DeQue<float>();
+        Muls(bufk0, gradYLocal_, tilingData_->routedScalingFactor, curRowsByKAlign_);
+        PipeBarrier<PIPE_V>();
     } else {
-        DataCopyPad(gradYLocal_[tilingData_->baseRows * kAlign_ / NUM_TWO].ReinterpretCast<T>(),
-                    gradYGm_[loopIdx * tilingData_->baseRows * tilingData_->k], copyParams, padParams);
-        
-        gradYQue_.EnQue(gradYLocal_);
-        gradYLocal_ = gradYQue_.DeQue<float>();
-        Cast(gradYLocal_, gradYLocal_[tilingData_->baseRows * kAlign_ / NUM_TWO].ReinterpretCast<T>(), RoundMode::CAST_NONE,
-             curRowsByKAlign_);
+        if(kAlign16_ == kAlign_) {
+            Cast(bufk0, gradYLocal_, RoundMode::CAST_NONE, curRowsByKAlign_);
+        }
+        else {
+            for(int64_t i = 0; i < curRows_; i++) {
+                Cast(bufk0[i * kAlign_], gradYLocal_[i * kAlign16_], RoundMode::CAST_NONE, kAlign_);
+            }
+        }
+        PipeBarrier<PIPE_V>();
+        Muls(bufk0, bufk0, tilingData_->routedScalingFactor, curRowsByKAlign_);
         PipeBarrier<PIPE_V>();
     }
+    gradYQue_.FreeTensor(gradYLocal_);
 }
 
 template <typename T>
@@ -261,10 +271,9 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::Sigmoid()
 template <typename T>
 __aicore__ inline void MoeGatingTopKBackwardKernel<T>::GetGradXNorm()
 {
-    Muls(gradYLocal_, gradYLocal_, tilingData_->routedScalingFactor, curRowsByKAlign_);
-    PipeBarrier<PIPE_V>();
     LocalTensor<float> bufk1 = bufk1_.Get<float>();
-    Mul(bufk1, gradYLocal_, bufk1, curRowsByKAlign_);
+    LocalTensor<float> bufk0 = bufk0_.Get<float>();
+    Mul(bufk1, bufk0, bufk1, curRowsByKAlign_);
     PipeBarrier<PIPE_V>();
 
     LocalTensor<float> bufs = bufs_.Get<float>();
@@ -279,10 +288,10 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::GetGradXNorm()
     uint32_t srcShape[NUM_TWO] = {static_cast<uint32_t>(curRows_), 1};
     Broadcast<float, NUM_TWO, 1>(bufk1, bufs, dstShape, srcShape);
     PipeBarrier<PIPE_V>();
-    Sub(gradYLocal_, gradYLocal_, bufk1, curRowsByKAlign_);
+    Sub(bufk0, bufk0, bufk1, curRowsByKAlign_);
     PipeBarrier<PIPE_V>();
     LocalTensor<float> bufk4RecipSumW = bufk4RecipSumW_.Get<float>();
-    Div(gradYLocal_, gradYLocal_, bufk4RecipSumW, curRowsByKAlign_);
+    Div(bufk0, bufk0, bufk4RecipSumW, curRowsByKAlign_);
     PipeBarrier<PIPE_V>();
     LocalTensor<float> bufn3 = bufn3_.Get<float>();
     Duplicate<float>(bufn3, 0.0f, elementCountPerLoop_);
@@ -292,7 +301,7 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::GetGradXNorm()
     for (int64_t i = 0; i < curRowsByKAlign_; ++i) {
         if (i % kAlign_ < tilingData_->k) {
             uint32_t index = static_cast<uint32_t>(bufk4Index.GetValue(i) / SIZE_OF_INT32);
-            float value = gradYLocal_.GetValue(i);
+            float value = bufk0.GetValue(i);
             bufn3.SetValue(index, value);
         }
     }
@@ -312,7 +321,6 @@ __aicore__ inline void MoeGatingTopKBackwardKernel<T>::GetGradX()
     LocalTensor<float> bufn3 = bufn3_.Get<float>();
 
     SetWaitFlag<HardEvent::S_V>(HardEvent::S_V);
-    gradYQue_.FreeTensor(gradYLocal_);
     gradXOutTensor_ = outQue_.AllocTensor<T>();
     if constexpr (!IsSameType<T, float>::value) {
         Mul(bufn2, bufn2, bufn3, elementCountPerLoop_);

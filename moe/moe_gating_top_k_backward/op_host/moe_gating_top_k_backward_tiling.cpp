@@ -49,8 +49,8 @@ const static int64_t K_DIM_INDEX = 1;
 const static int64_t DOUBLE_BUFFER_NUM = 2;
 const static int64_t UB_ALIGN_BYTES_MINUS_ONE = 31;
 const static int64_t UB_RESERVE_SPACE = 1024;
-const static int64_t NUM_TWO = 2;  // 2 buffers with the same size
-const static int64_t NUM_FIVE = 5; // 5 buffers with the same size
+const static int64_t NUM_TWO = 2;                       // 2 buffers with the same size
+const static int64_t NUM_SIX = 6;                      // 5 buffers with the same size
 
 // Tiling keys
 const static uint64_t TILING_KEY_RENORM_SIGMOID = 1;
@@ -342,11 +342,12 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CheckOutShape() // lc
 
 ge::graphStatus MoeGatingTopKBackwardTilingBase::CalcMaxRows()
 {
-    int64_t gradYQuePerTokenSpace = k_ * SIZE_OF_FLOAT32;
+    int64_t gradYQuePerTokenSpace = k_ * gradYDtypeSize_;
     int64_t indicesQuePerTokenSpace = k_ * SIZE_OF_FLOAT32;
     int64_t xQuePerTokenSpace = expertCount_ * SIZE_OF_FLOAT32;
     int64_t outQuePerTokenSpace = expertCount_ * gradYDtypeSize_;
-
+    
+    int64_t bufk0PerTokenSpace = k_ * SIZE_OF_FLOAT32;
     int64_t bufk1PerTokenSpace = k_ * SIZE_OF_FLOAT32;
     int64_t bufn2PerTokenSpace = expertCount_ * SIZE_OF_FLOAT32;
     int64_t bufn3PerTokenSpace = expertCount_ * SIZE_OF_FLOAT32;
@@ -359,21 +360,21 @@ ge::graphStatus MoeGatingTopKBackwardTilingBase::CalcMaxRows()
     int64_t available_space = aicoreParams_.ubSize - UB_RESERVE_SPACE;
     int64_t quePerTokenSpace =
         DOUBLE_BUFFER_NUM * (gradYQuePerTokenSpace + indicesQuePerTokenSpace + xQuePerTokenSpace) + outQuePerTokenSpace;
-    int64_t bufPerTokenSpace = bufk1PerTokenSpace + bufn2PerTokenSpace + bufn3PerTokenSpace + bufk4AddPerTokenSpace +
-                               bufk4IndexPerTokenSpace + bufk4RecipSumPerTokenSpace + bufk4MaskPerTokenSpace +
-                               bufsPerTokenSpace;
+    int64_t bufPerTokenSpace =
+        bufk0PerTokenSpace + bufk1PerTokenSpace + bufn2PerTokenSpace + bufn3PerTokenSpace + bufk4AddPerTokenSpace +
+        bufk4IndexPerTokenSpace + bufk4RecipSumPerTokenSpace + bufk4MaskPerTokenSpace + bufsPerTokenSpace;
     int64_t maxRows = available_space / (quePerTokenSpace + bufPerTokenSpace);
     int64_t kAligned = AlignBytes_(k_ * SIZE_OF_FLOAT32) >> NUM_TWO;  // "x >> NUM_TWO" == "x / SIZE_OF_FLOAT32"
     while (maxRows > 0) {
-        // queSpace: gradYQueSpace(db) == indicesQueSpace(db); xQueSpace; outQueSpace
+        // queSpace: gradYQueSpace; indicesQueSpace; xQueSpace; outQueSpace
         // bufSpace: bufk1Space == bufk4AddSpace == bufk4IndexSpace == bufk4RecipSumSpace == bufk4MaskSpace;
         //           bufn2Space == bufn3Space; bufsSpace
-        int64_t queSpace = NUM_TWO * DOUBLE_BUFFER_NUM * maxRows * AlignBytes_(gradYQuePerTokenSpace) +
-                           DOUBLE_BUFFER_NUM * AlignBytes_(maxRows * xQuePerTokenSpace) +
-                           AlignBytes_(maxRows * outQuePerTokenSpace);
-        int64_t bufSpace = NUM_FIVE * maxRows * AlignBytes_(bufk1PerTokenSpace) +
-                           NUM_TWO * AlignBytes_(maxRows * bufn2PerTokenSpace) +
-                           maxRows * AlignBytes_(bufsPerTokenSpace);
+        int64_t queSpace =
+            DOUBLE_BUFFER_NUM * maxRows * AlignBytes_(gradYQuePerTokenSpace) + DOUBLE_BUFFER_NUM * maxRows * AlignBytes_(indicesQuePerTokenSpace) + DOUBLE_BUFFER_NUM * AlignBytes_(maxRows * xQuePerTokenSpace) +
+            AlignBytes_(maxRows * outQuePerTokenSpace);
+        int64_t bufSpace =
+            NUM_SIX * maxRows * AlignBytes_(bufk1PerTokenSpace) + NUM_TWO * AlignBytes_(maxRows * bufn2PerTokenSpace) +
+            maxRows * AlignBytes_(bufsPerTokenSpace);
 
         uint32_t reduceSumTmpBuffSpace = 0;
         uint32_t tmpMaxValue = 0;
