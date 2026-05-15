@@ -18,6 +18,7 @@
 #include "../matmul.h"
 #include "../FixpipeOut.h"
 #include "../memory_copy_arch35.h"
+#include "../../tensor_api/tensor_api/include/tensor_api/tensor.h"
 
 #include "infer_flash_attention_comm.h"
 #include "flash_attention_score_common_regbase.h"
@@ -255,6 +256,8 @@ public:
                                        __gm__ uint8_t *gm)
     {
         qGmTensor.gmTensor.SetGlobalBuffer((__gm__ Q_T *)gm);
+        /* --------------------------------- Tensor API ------------------------------------ */
+        // qGmTensor.gmTensor = MakeTensor(MakeGMmemPtr((__gm__ Q_T *)gm), MakeShape(batchSize, n2Size, gSize, qSeqSize, headDim));
         if constexpr (GmLayoutParams<Q_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_BNGSD) {
             qGmTensor.offsetCalculator.Init(batchSize, n2Size, gSize, qSeqSize, headDim, actualSeqLengthsGmQ,
                                             actualLenQDims, constInfo.isQHasLeftPadding,
@@ -270,6 +273,8 @@ public:
                                         FaGmTensor<KV_T, KV_FORMAT> &kvGmTensor, __gm__ uint8_t *gm)
     {
         kvGmTensor.gmTensor.SetGlobalBuffer((__gm__ KV_T *)gm);
+        /* --------------------------------- Tensor API ------------------------------------ */
+        // kvGmTensor.gmTensor = MakeTensor(MakeGMmemPtr((__gm__ KV_T *)gm), MakeShape(batchSize, n2Size, kvSeqSize, headDim));
 
         if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_BNBD) {
             kvGmTensor.offsetCalculator.Init(n2Size, kvCacheBlockSize, headDim, blockTableGm,
@@ -528,6 +533,7 @@ public:
 
     __aicore__ inline void IterateBmm1(MM1_DBUF_T &outputBuf, RunInfoX &runInfo)
     {
+        AscendC::printf("----------------------- entry of IterateBmm1 -----------------------\n");
         if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
             if (runInfo.isChangeBatch) {
                 UpdateKey(runInfo.bIdx);
@@ -535,19 +541,26 @@ public:
         }
 
         if constexpr (dBaseSize > 256) {
+            AscendC::printf("----------------------- entry of IterateBmm1NdL1SplitK, dBaseSize > 256 -----------------------\n");
             IterateBmm1NdL1SplitK(outputBuf, runInfo);
             return;
         }
 
         if constexpr (useDn) {
+            AscendC::printf("----------------------- entry of useDn -----------------------\n");
             if constexpr (dBaseSize > 128) {
+                AscendC::printf("----------------------- entry of IterateBmm1DnSplitK: dBaseSize > 128 -----------------------\n");
                 IterateBmm1DnSplitK(outputBuf, runInfo);
             } else {
+                AscendC::printf("----------------------- entry of IterateBmm1Dn -----------------------\n");
                 IterateBmm1Dn(outputBuf, runInfo);
             }
             return;
         }
+        // 切换Tensor API
+        AscendC::printf("----------------------- entry of IterateBmm1NdL0Split -----------------------\n");
         IterateBmm1NdL0Split(outputBuf, runInfo);
+        AscendC::printf("----------------------- end of IterateBmm1 -----------------------\n");
     }
 
     __aicore__ inline void FixpipeMm1(const LocalTensor<T> &dstTensor, const LocalTensor<T> &l0C, RunInfoX &runInfo)
@@ -567,6 +580,9 @@ public:
         fixpipeParams.params.dstNdStride = 0;
 
         Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(dstTensor, l0C, fixpipeParams);
+        /* --------------------------------- Tensor API ------------------------------------ */
+        // AscendC::Te::Copy(AscendC::Te::CopyAtom<AscendC::Te::CopyTraits<CopyL0C2UB, FixpipeTraitDefault>>{}, 
+        //                   dstTensor, l0C, fixpipeParams);
     }
 
     /* 针对S1Base=128, S2Base = 128, D > 128场景，L1全载，左矩阵驻留 + L0切D + L0Db*/
@@ -599,24 +615,38 @@ public:
         Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
         mm1ResL0C.Wait<HardEvent::FIX_M>();
 
+        AscendC::printf("-------------- In IterateBmm1NdL0Split: Start to use TensorAPI -------------------\n");
+        /* --------------------------------- Tensor API ------------------------------------ */
+        auto mm1ALayout = AscendC::Te::MakeFrameLayout<AscendC::Te::NZLayoutPtn, AscendC::Std::Int<AscendC::Te::C0_SIZE<Q_T>>>(128, 128);
+        auto mm1ATensorApi = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::L1, Q_T>(0), mm1ALayout);
+        auto mm1BLayout = AscendC::Te::MakeFrameLayout<AscendC::Te::NZLayoutPtn, AscendC::Std::Int<AscendC::Te::C0_SIZE<KV_T>>>(128, 128);
+        auto mm1BTensorApi = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::L1, KV_T>(0), mm1BLayout);
+        auto mm1ResL0CLayout = AscendC::Te::MakeFrameLayout<AscendC::Te::NZLayoutPtn, AscendC::Std::Int<AscendC::Te::C0_SIZE<T>>>(128, 128);
+        auto mm1ResL0CTensorApi = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::L0C, T>(0), mm1ResL0CLayout);
+
         MMParam param = MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)runInfo.actSingleLoopS2Size,
                                     (uint32_t)(constInfo.dSize + constInfo.dSizeRope), false, true);
         if constexpr (dBaseSize > 128) {
-            if constexpr (s2BaseSize == 256) {
-                MatmulN<Q_T, KV_T, T, 64, 128, 256, ABLayout::MK, ABLayout::KN>(
-                    mm1A.GetTensor<Q_T>(), mm1B.GetTensor<KV_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(),
-                    param);
-            } else {
-                MatmulK<Q_T, KV_T, T, 128, 128, 128, ABLayout::MK, ABLayout::KN>(
-                    mm1A.GetTensor<Q_T>(), mm1B.GetTensor<KV_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(),
-                    param);
-            }
-        } else {
-            // TODO 整改 内部IF分支太多
-            MatmulBase<Q_T, KV_T, T, 128, 128, dBaseSize, ABLayout::MK, ABLayout::KN>(
-                mm1A.GetTensor<Q_T>(), mm1B.GetTensor<KV_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(),
-                param);
-        }
+            AscendC::printf("-------------- dBaseSize > 128 then do MatMulK -------------------\n");
+            // if constexpr (s2BaseSize == 256) {
+            //     MatmulN<Q_T, KV_T, T, 64, 128, 256, ABLayout::MK, ABLayout::KN>(
+            //         mm1A.GetTensor<Q_T>(), mm1B.GetTensor<KV_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(),
+            //         param);
+            // } else {
+                /* --------------------------------- Tensor API ------------------------------------ */
+                // base(M = N = K) = 128.
+                // MatmulK<Q_T, KV_T, T, 128, 128, 128, ABLayout::MK, ABLayout::KN>(
+                //     mm1A.GetTensor<Q_T>(), mm1B.GetTensor<KV_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(),
+                //     param);
+            MatMulKTensorAPI<Q_T, KV_T, T>(mm1ATensorApi, mm1BTensorApi, mm1ResL0CTensorApi, param);
+            // }
+        } 
+        // else {
+        //     // TODO 整改 内部IF分支太多
+        //     MatmulBase<Q_T, KV_T, T, 128, 128, dBaseSize, ABLayout::MK, ABLayout::KN>(
+        //         mm1A.GetTensor<Q_T>(), mm1B.GetTensor<KV_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(),
+        //         param);
+        // }
 
         if (unlikely(runInfo.isLastS2Loop)) {
             mm1A.Set<HardEvent::MTE1_MTE2>();
@@ -627,7 +657,11 @@ public:
 
         outputBuf.WaitCrossCore();
 
-        FixpipeMm1(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(), runInfo);
+        // FixpipeMm1(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(), runInfo);
+        auto outputTensorLayout = AscendC::Te::MakeFrameLayout<AscendC::Te::NZLayoutPtn, AscendC::Std::Int<AscendC::Te::C0_SIZE<T>>>(128, 128);
+        auto outputTensorApi = AscendC::Te::MakeTensor(AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, T>(0), outputTensorLayout);
+        auto CopyL0C2UB = AscendC::Te::MakeCopy(AscendC::Te::CopyL0C2UB{});
+        AscendC::Te::Copy(CopyL0C2UB, outputTensorApi, mm1ResL0CTensorApi, AscendC::Te::FixpipeParams{0});
 
         mm1ResL0C.Set<HardEvent::FIX_M>();
         outputBuf.SetCrossCore();
@@ -904,6 +938,8 @@ public:
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
         Fixpipe<T, T, BMM2_FIXPIPE_CONFIG>(dstTensor, l0C, fixpipeParams);
+        /* --------------------------------- Tensor API ------------------------------------ */
+        // Copy(CopyAtom<CopyTraits<CopyL0C2UB, FixpipeTraitDefault>>{}, dstTensor, l0C, fixpipeParams);
     }
 
     __aicore__ inline void IterateBmm2l0Split(mm2ResPos &outputBuf, MM2_ABUF_POLICY_T &inputBuf, RunInfoX &runInfo)
