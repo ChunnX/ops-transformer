@@ -291,12 +291,6 @@ public:
             constInfo.bN2End = fiaMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FA_BN2_END_INDEX));
             constInfo.gS1OEnd = fiaMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FA_M_END_INDEX));
             constInfo.s2OEnd = fiaMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FA_S2_END_INDEX));
-            // printf("[LN] ############ constInfo.bN2Start: %d\n", constInfo.bN2Start);
-            // printf("[LN] ############ constInfo.bN2End: %d\n", constInfo.bN2End);
-            // printf("[LN] ############ constInfo.gS1OStart: %d\n", constInfo.gS1OStart);
-            // printf("[LN] ############ constInfo.gS1OEnd: %d\n", constInfo.gS1OEnd);
-            // printf("[LN] ############ constInfo.s2OStart: %d\n", constInfo.s2OStart);
-            // printf("[LN] ############ constInfo.s2OEnd: %d\n", constInfo.s2OEnd);
             constInfo.coreFirstTmpOutWsPos =
                 fiaMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX));
         }
@@ -749,15 +743,6 @@ public:
         uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
         uint64_t gS1Size = actSeqLensQ * constInfo.realGSize;
         uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
-        // printf("[LN] ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ UpdateAxisInfo start ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n");
-        // printf("[LN] s2LoopTimes: %d\n", s2LoopTimes);
-        // printf("[LN] actSeqLensKv: %d\n", actSeqLensKv);
-        // printf("[LN] s2BaseSize: %d\n", s2BaseSize);
-        // printf("[LN] gS1Size: %d\n", gS1Size);
-        // printf("[LN] actSeqLensQ: %d\n", actSeqLensQ);
-        // printf("[LN] mBaseSize: %d\n", mBaseSize);
-        // printf("[LN] gS1LoopTimes: %d\n", gS1LoopTimes);
-        // printf("[LN] ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ end ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n");
         // 当前S2未处理完
         if (s2Cur + 1 < s2LoopTimes) {
             s2Cur++;
