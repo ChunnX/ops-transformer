@@ -64,6 +64,7 @@ if (BUILD_OPEN_PROJECT)
       ${OPS_TRANSFORMER_DIR}/common/include
       ${ASCEND_CANN_PACKAGE_PATH}/include/experiment/runtime
       ${ASCEND_CANN_PACKAGE_PATH}/include/experiment/msprof
+      ${ASCEND_CANN_PACKAGE_PATH}/include/
       ${ASCEND_CANN_PACKAGE_PATH}/include/op_common
       ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc
       ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/op_common
@@ -96,6 +97,8 @@ if (BUILD_OPEN_PROJECT)
       ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc
       ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/op_common
       ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include
+      ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include/op_common
+      ${CANN_3RD_LIB_PATH}/opbase/include/op_common/log
       ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/profiling
     )
 
