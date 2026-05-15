@@ -27,7 +27,7 @@ extern "C" __global__ __aicore__ void rope_with_sin_cos_cache(
     GM_ADDR usrWorkspace = AscendC::GetUserWorkspace(workspace);
     TPipe pipe;
 #if ORIG_DTYPE_QUERYIN == DT_BF16
-    if (TILING_KEY_IS(20)) {
+    if (TILING_KEY_IS(20)) { 
         TPipe* ptr = &pipe;
         if (ptr != nullptr) {
             RopeWithSinCosCacheFP16<bfloat16_t> op;

@@ -27,7 +27,7 @@ using namespace AscendC;
 #define IS_8_BYTES_TYPE is_same<T, int64_t>::value || is_same<T, uint64_t>::value || is_same<T, double>::value
 
 constexpr int32_t BUFFER_NUM = 1;
-constexpr int32_t BLOCK_SIZE = 32;
+constexpr int32_t BLOCK_SIZE = 32; 
 constexpr int64_t BUFFER_32B_CALNUM = 32 / sizeof(float);
 constexpr int32_t HALf_INTERVAL = 2;
 constexpr int32_t MASK_LEN = 64;

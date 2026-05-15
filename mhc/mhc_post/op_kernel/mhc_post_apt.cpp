@@ -25,7 +25,7 @@ template <uint16_t usePermanentX>
 __global__ __aicore__ void mhc_post(GM_ADDR x, GM_ADDR hRes, GM_ADDR hOut, GM_ADDR hPost, GM_ADDR output,
                                     GM_ADDR workspace, GM_ADDR tiling)
 {
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY); 
     REGISTER_TILING_DEFAULT(MhcPostTilingData);
     GET_TILING_DATA_WITH_STRUCT(MhcPostTilingData, tilingData, tiling);
     TPipe tPipe;
