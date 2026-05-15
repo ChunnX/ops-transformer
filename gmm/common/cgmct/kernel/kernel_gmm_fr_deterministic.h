@@ -13,25 +13,24 @@
  * \brief Workspace cycling kernel for A5 GMMFR deterministic mode.
  *
  * Based on: common/cgmct/kernel/kernel_gmm_finalize_routing_pertoken_dequant.h
- * Key change: group-boundary workspace flow control with cycling.
- *   At each group boundary, checks if adding the group's M rows would overflow
- *   the workspace window. If so, aggregates workspace -> yGm via FRDeterministicA5,
- *   resets workspaceBaseRow to 0, and continues processing remaining groups.
+ * Key change: tile-level intra-group workspace flow control with cycling.
+ *   Each group is split into sub-chunks that fit the workspace window.
+ *   Before each sub-chunk: if workspace is full, aggregate workspace -> yGm
+ *   via FRDeterministicA5, reset workspaceBaseRow to 0, then continue.
  *
- * Why group-boundary (not tile-level) cycling:
+ * Why sub-chunk cycling is SyncAll-safe:
  *   SyncAll is a global barrier requiring ALL cores to call it simultaneously.
- *   Tile-level cycling checks are per-core (different cores process different tiles),
- *   causing cores to disagree on when to enter SyncAll -> deadlock.
- *   Group M is identical across all cores (from tiling data), so group-boundary
- *   checks are globally consistent -> all cores reach SyncAll together.
+ *   workspaceBaseRow and windowSizeRows are identical across all cores
+ *   (deterministic from tiling data and accumulated identically), so the
+ *   "workspace full" decision is uniform -> all cores reach SyncAll together.
  *
- * Address model (v3 -- group-boundary cycling):
- *   - LOGIT_OFFSETS: cumulative global offset for logit/rowIndex reads (never reset)
- *   - workspaceBaseRow: workspace window write offset (reset to 0 after each aggregation)
- *   - Epilogue elem[4]: group-inner mOffset (for logit/x1Scale reads)
+ * Address model (v4 -- tile-level intra-group cycling):
+ *   - LOGIT_OFFSETS: cumulative global offset for logit/rowIndex reads
+ *   - workspaceBaseRow: workspace window write offset (reset after each aggregation)
+ *   - Epilogue elem[4]: chunk-inner mOffset (for logit/x1Scale reads)
  *   - Epilogue elem[5]: workspaceBaseRow (for workspace write addressing)
- *   - Pre-group check ensures workspace never overflows before group processing
- *   - Prerequisite: single group M <= windowSizeRows
+ *   - Sub-chunk offsets: baseOffset_.A/LOGIT/X1SCALE adjusted by groupMProcessed,
+ *     saved/restored to keep baseOffset_ at group start for UpdateGroupParams
  */
 
 #ifndef KERNEL_GMM_FR_DETERMINISTIC_H
@@ -362,110 +361,126 @@ public:
                 params.cyclingParams.rowIndexAddr));
         }
 
-        // === Main loop: group-boundary cycling ===
-        // Cycling check is at group boundary, NOT tile level.
-        // Rationale: SyncAll is a global barrier requiring ALL cores to call it
-        // simultaneously. groupM is identical across all cores (from tiling data),
-        // so the overflow decision is globally consistent. Tile-level checks are
-        // per-core (different cores process different tiles) and cause SyncAll
-        // divergence -> deadlock.
-        // Prerequisite: single group M <= windowSizeRows.
+        // === Main loop: tile-level intra-group workspace cycling ===
+        // Each group is split into sub-chunks that fit the workspace window.
+        // Before each sub-chunk: check workspace capacity, aggregate if full.
+        // All cores agree on sub-chunk boundaries because workspaceBaseRow and
+        // windowSizeRows are identical across cores (deterministic from tiling).
         uint32_t groupNum = params.gmmParams.groupNum;
+        int32_t baseM = params.gmmParams.baseM;
         for (uint32_t groupIdx = 0; groupIdx < groupNum; groupIdx++) {
             if (!UpdateGroupParams(params, groupIdx)) {
                 continue;
             }
 
             int64_t groupM = Get<MNK_M>(problemShape_);
-
-            // === Group-boundary pre-write check ===
-            // All cores compute identical workspaceBaseRow + groupM, so the
-            // branch decision is uniform across all cores -> SyncAll is safe.
-            if (workspaceBaseRow + static_cast<uint64_t>(groupM) > windowSizeRows) {
-                // Drain pending pipeline before aggregation
-                if ASCEND_IS_AIC {
-                    if (isVecSetSyncCom_) {
-                        WaitForVector();
-                    }
-                }
-
-                SyncAll();
-                GMMFRDeterministic::SyncConfig syncConfig{};
-                syncConfig.curM = workspaceBaseRow;
-                syncConfig.lowBoundM = workspaceBaseRow;
-                syncConfig.windowSize = workspaceBaseRow;
-                syncConfig.baseN = params.cyclingParams.baseN;
-
-                GMMFRDeterministic::FRDeterministicA5<float,
-                    typename BlockEpilogueDequantFinalizeRouting::DataTypeRowIndex>(
-                    syncConfig, deterBufferGm, yGmAgg, rowIndexGm, aggQueBind,
-                    params.cyclingParams.coreNum, params.cyclingParams.n,
-                    globalRowOffset);
-                SyncAll();
-
-                globalRowOffset += workspaceBaseRow;
-                workspaceBaseRow = 0;
-                isVecSetSyncCom_ = false;
-            }
-
-            // --- Inline ProcessSingleGroup tile loop ---
             int64_t n = Get<MNK_N>(problemShape_);
             int64_t k = Get<MNK_K>(problemShape_);
-            TupleShape resProblemShape{groupM, n, k, 0};
-            bs.UpdateNextProblem(resProblemShape);
-            epilogueDequantOp_.UpdateNextProblem(resProblemShape);
-            UpdateGlobalBuffer(params, workspaceBaseRow);
-            CoordClass coord(groupM, n, k, params.gmmParams.baseM, params.gmmParams.baseN, params.gmmParams.baseK);
+            uint64_t groupMProcessed = 0;
 
-            BlockCoord tileIdx;
-            while (bs.GetTileIdx(tileIdx)) {
-                BlockShape singleShape = bs.GetBlockShape(tileIdx);
-                blockOffset_ = coord.template GetQuantOffset<
-                    GroupedMatmul::QuantMode::PERTOKEN_MODE>(
-                    Get<DET_IDX_M_TILEIDXS>(tileIdx), Get<DET_IDX_N_TILEIDXS>(tileIdx),
-                    Get<DET_IDX_M_TAIL_SPLIT_TILEIDXS>(singleShape),
-                    Get<DET_IDX_N_TAIL_SPLIT_TILEIDXS>(singleShape));
+            while (groupMProcessed < static_cast<uint64_t>(groupM)) {
+                uint64_t remaining = static_cast<uint64_t>(groupM) - groupMProcessed;
+                uint64_t available = (windowSizeRows > workspaceBaseRow)
+                                     ? (windowSizeRows - workspaceBaseRow) : 0;
 
-                // AIC: MMAD
-                if ASCEND_IS_AIC {
-                    if (isVecSetSyncCom_) {
-                        WaitForVector();
+                if (available == 0) {
+                    // Workspace full -- aggregate before processing more rows
+                    End();
+                    isVecSetSyncCom_ = false;
+                    SyncAll();
+                    {
+                        GMMFRDeterministic::SyncConfig syncConfig{};
+                        syncConfig.curM = workspaceBaseRow;
+                        syncConfig.lowBoundM = workspaceBaseRow;
+                        syncConfig.windowSize = workspaceBaseRow;
+                        syncConfig.baseN = params.cyclingParams.baseN;
+
+                        GMMFRDeterministic::FRDeterministicA5<float,
+                            typename BlockEpilogueDequantFinalizeRouting::DataTypeRowIndex>(
+                            syncConfig, deterBufferGm, yGmAgg, rowIndexGm, aggQueBind,
+                            params.cyclingParams.coreNum, params.cyclingParams.n,
+                            globalRowOffset);
                     }
-                    AscendC::Std::tuple<int32_t, int32_t, int32_t> mmSingleShape{
-                        Get<MNK_M>(singleShape), Get<MNK_N>(singleShape), k};
-                    mmadOp_(aGlobal_[Get<DET_IDX_A_OFFSETS>(blockOffset_)],
-                            bGlobal_[Get<DET_IDX_B_OFFSETS>(blockOffset_)],
-                            l0cOutUb_, mmSingleShape, transA, transB);
-                    NotifyVector();
-                }
-                isVecSetSyncCom_ = true;
+                    SyncAll();
 
-                // AIV: Epilogue -> workspace
-                if ASCEND_IS_AIV {
-                    AscendC::Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{
-                        Get<MNK_M>(singleShape), Get<MNK_N>(singleShape), 0, 0};
-                    int64_t y = Get<DET_IDX_C_OFFSETS>(blockOffset_);
-                    int64_t groupInnerMOffset = y / n;
-                    int64_t nOffset = y - groupInnerMOffset * n;
-                    // epilogueOffset:
-                    //   elem[4] = groupInnerMOffset (for logit/x1Scale reads)
-                    //   elem[5] = workspaceBaseRow (workspace write base row)
-                    AscendC::Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t>
-                        epilogueOffset{nOffset,
-                            Get<DET_IDX_BIAS_OFFSETS>(blockOffset_),
-                            Get<DET_IDX_X2SCALE_OFFSETS>(blockOffset_),
-                            Get<DET_IDX_X1SCALE_OFFSETS>(blockOffset_),
-                            groupInnerMOffset,
-                            static_cast<int64_t>(workspaceBaseRow)};
-                    WaitForCube();
-                    epilogueDequantOp_(epilogueShape, epilogueOffset);
-                    NotifyCube();
+                    globalRowOffset += workspaceBaseRow;
+                    workspaceBaseRow = 0;
+                    continue;
                 }
+
+                uint64_t chunkM = (remaining < available) ? remaining : available;
+
+                // Adjust baseOffset_ for sub-chunk position within group.
+                // Save/restore to keep baseOffset_ at group start for next UpdateGroupParams.
+                int64_t savedA = Get<DET_IDX_A_OFFSETS>(baseOffset_);
+                int64_t savedLogit = Get<DET_IDX_LOGIT_OFFSETS>(baseOffset_);
+                int64_t savedX1Scale = Get<DET_IDX_X1SCALE_OFFSETS>(baseOffset_);
+
+                Get<DET_IDX_A_OFFSETS>(baseOffset_) += static_cast<int64_t>(groupMProcessed) * k;
+                Get<DET_IDX_LOGIT_OFFSETS>(baseOffset_) += static_cast<int64_t>(groupMProcessed);
+                Get<DET_IDX_X1SCALE_OFFSETS>(baseOffset_) += static_cast<int64_t>(groupMProcessed);
+
+                // Initialize scheduler and epilogue for this sub-chunk
+                TupleShape resProblemShape{static_cast<int64_t>(chunkM), n, k, 0};
+                bs.UpdateNextProblem(resProblemShape);
+                epilogueDequantOp_.UpdateNextProblem(resProblemShape);
+                UpdateGlobalBuffer(params, workspaceBaseRow);
+                CoordClass coord(static_cast<int64_t>(chunkM), n, k,
+                                 baseM, params.gmmParams.baseN, params.gmmParams.baseK);
+
+                // --- Tile loop for this sub-chunk ---
+                BlockCoord tileIdx;
+                while (bs.GetTileIdx(tileIdx)) {
+                    BlockShape singleShape = bs.GetBlockShape(tileIdx);
+                    blockOffset_ = coord.template GetQuantOffset<
+                        GroupedMatmul::QuantMode::PERTOKEN_MODE>(
+                        Get<DET_IDX_M_TILEIDXS>(tileIdx), Get<DET_IDX_N_TILEIDXS>(tileIdx),
+                        Get<DET_IDX_M_TAIL_SPLIT_TILEIDXS>(singleShape),
+                        Get<DET_IDX_N_TAIL_SPLIT_TILEIDXS>(singleShape));
+
+                    // AIC: MMAD
+                    if ASCEND_IS_AIC {
+                        if (isVecSetSyncCom_) {
+                            WaitForVector();
+                        }
+                        AscendC::Std::tuple<int32_t, int32_t, int32_t> mmSingleShape{
+                            Get<MNK_M>(singleShape), Get<MNK_N>(singleShape), k};
+                        mmadOp_(aGlobal_[Get<DET_IDX_A_OFFSETS>(blockOffset_)],
+                                bGlobal_[Get<DET_IDX_B_OFFSETS>(blockOffset_)],
+                                l0cOutUb_, mmSingleShape, transA, transB);
+                        NotifyVector();
+                    }
+                    isVecSetSyncCom_ = true;
+
+                    // AIV: Epilogue -> workspace
+                    if ASCEND_IS_AIV {
+                        AscendC::Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{
+                            Get<MNK_M>(singleShape), Get<MNK_N>(singleShape), 0, 0};
+                        int64_t y = Get<DET_IDX_C_OFFSETS>(blockOffset_);
+                        int64_t groupInnerMOffset = y / n;
+                        int64_t nOffset = y - groupInnerMOffset * n;
+                        AscendC::Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t>
+                            epilogueOffset{nOffset,
+                                Get<DET_IDX_BIAS_OFFSETS>(blockOffset_),
+                                Get<DET_IDX_X2SCALE_OFFSETS>(blockOffset_),
+                                Get<DET_IDX_X1SCALE_OFFSETS>(blockOffset_),
+                                groupInnerMOffset,
+                                static_cast<int64_t>(workspaceBaseRow)};
+                        WaitForCube();
+                        epilogueDequantOp_(epilogueShape, epilogueOffset);
+                        NotifyCube();
+                    }
+                }
+                // --- tile loop end ---
+
+                // Restore offsets to group start
+                Get<DET_IDX_A_OFFSETS>(baseOffset_) = savedA;
+                Get<DET_IDX_LOGIT_OFFSETS>(baseOffset_) = savedLogit;
+                Get<DET_IDX_X1SCALE_OFFSETS>(baseOffset_) = savedX1Scale;
+
+                workspaceBaseRow += chunkM;
+                groupMProcessed += chunkM;
             }
-            // --- tile loop end ---
-
-            // Advance workspace offset by the full group M (identical across all cores)
-            workspaceBaseRow += static_cast<uint64_t>(groupM);
         }
 
         // === Final aggregation (remaining rows) ===
