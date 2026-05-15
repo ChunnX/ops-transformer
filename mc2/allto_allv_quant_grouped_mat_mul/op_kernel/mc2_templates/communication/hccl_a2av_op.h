@@ -64,16 +64,8 @@ public:
         }
     }
 
-    __aicore__ inline void Launch(uint32_t startExpertIdx, uint32_t expertNum)
+    __aicore__ inline void LaunchInit()
     {
-        if ASCEND_IS_AIC {
-            return;
-        }
-        if ASCEND_IS_AIV {
-            if (GetBlockIdx() != 0) {
-                return;
-            }
-        }
         // comm hccl datatype
         if constexpr (AscendC::IsSameType<hcclDataType, bfloat16_t>::value) {
             hcclDataType_ = HCCL_DATA_TYPE_BFP16;
@@ -86,11 +78,31 @@ public:
         } else {
             hcclDataType_ = HCCL_DATA_TYPE_INT8;
         }
+    }
+
+    __aicore__ inline void LaunchComm(uint32_t start, uint32_t expertNum, bool isScale)
+    {
+        if ASCEND_IS_AIC {
+            return;
+        }
+        if ASCEND_IS_AIV {
+            if (GetBlockIdx() != 0) {
+                return;
+            }
+        }
+        if (isScale) {
+            LaunchScaleBeforeCompute(start, expertNum);
+            return;
+        }
         // comm and compute order
         if constexpr (commBeforeComputeFlag) {
-            LaunchCommBeforeCompute(startExpertIdx, expertNum);
+            if (expertNum == 0) {
+                RankLaunchCommBeforeCompute(start);
+            } else {
+                ExpertLaunchCommBeforeCompute(start, expertNum);
+            }
         } else {
-            LaunchCommAfterCompute(startExpertIdx, expertNum);
+            LaunchCommAfterCompute(start, expertNum);
         }
     }
 
@@ -277,8 +289,13 @@ public:
         hccl_.Finalize();
     }
 
+    __aicore__ inline uint32_t GetRankId()
+    {
+        return hccl_.GetRankId();
+    }    
+
 private:
-    __aicore__ inline void LaunchCommBeforeCompute(uint32_t startExpertIdx, uint32_t expertNum)
+    __aicore__ inline void ExpertLaunchCommBeforeCompute(uint32_t startExpertIdx, uint32_t expertNum)
     {
         const auto *sendCnt = &taskTilingInfo_->sendCnt[0];
         // mxfp4 半字节需要除以2向上取整 (安全编码)
@@ -314,6 +331,11 @@ private:
         alltoAllvHandleId_[startExpertIdx] = hccl_.template AlltoAllV<true>(
             (__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), alltoAllvSendCnt, alltoAllvSendOffset, hcclDataType_,
             (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset, hcclDataType_);
+    }
+
+    __aicore__ inline void RankLaunchCommBeforeCompute(uint32_t start)
+    {   
+        return;
     }
 
     __aicore__ inline void LaunchCommAfterCompute(uint32_t startExpertIdx, uint32_t expertNum)

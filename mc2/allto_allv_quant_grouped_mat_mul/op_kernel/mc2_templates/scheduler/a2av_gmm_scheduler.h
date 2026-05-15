@@ -118,9 +118,10 @@ protected:
 private:
     __aicore__ inline void ProcessScaleCommBatchMode()
     {
-        commOp.LaunchScaleBeforeCompute(0, e_);
+        commOp.LaunchComm(0, e_, true);
+        commOp.LaunchInit();
         for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
-            commOp.Launch(expertIdx, 1);
+            commOp.LaunchComm(expertIdx, 1, false);
         }
         commOp.WaitScale(0);
         SyncAll<false>();
@@ -133,21 +134,44 @@ private:
         }
     }
 
+    // __aicore__ inline void ProcessCommRoundMode()
+    // {
+    //     for (uint32_t expertIdx = 0; expertIdx < e_; expertIdx++) {
+    //         if constexpr (MX_QUANT_MODE) {
+    //             commOp.LaunchScaleBeforeCompute(expertIdx, 1);
+    //         }
+    //         commOp.Launch(expertIdx, 1);
+    //     }
+    //     for (uint32_t expertIdx = 0; expertIdx < e_; expertIdx++) {
+    //         if constexpr (MX_QUANT_MODE) {
+    //             commOp.WaitScale(expertIdx);
+    //         }
+    //         commOp.Wait(expertIdx);
+    //         SyncAll<false>();
+    //         computeOp.Process(expertIdx);
+    //     }
+    // }
+
     __aicore__ inline void ProcessCommRoundMode()
     {
-        for (uint32_t expertIdx = 0; expertIdx < e_; expertIdx++) {
+        // 总循环次数
+        uint32_t totalCnt = e_ * cntCounts_;
+        uint32_t expertNum = totalCnt == e_ ? expertNum_ : 0;
+        commOp.LaunchInit();
+        for (uint32_t start = 0; start < totalCnt; start++) {
             if constexpr (MX_QUANT_MODE) {
-                commOp.LaunchScaleBeforeCompute(expertIdx, 1);
+                // Launch scale
+                commOp.LaunchComm(start, expertNum, true);
             }
-            commOp.Launch(expertIdx, 1);
+            commOp.LaunchComm(start, expertNum, false);
         }
-        for (uint32_t expertIdx = 0; expertIdx < e_; expertIdx++) {
+        for (uint32_t start = 0; start < totalCnt; start++) {
             if constexpr (MX_QUANT_MODE) {
-                commOp.WaitScale(expertIdx);
+                commOp.WaitScale(start);
             }
-            commOp.Wait(expertIdx);
+            commOp.Wait(start);
             SyncAll<false>();
-            computeOp.Process(expertIdx);
+            computeOp.Process(start);
         }
     }
 
@@ -162,6 +186,8 @@ private:
     GM_ADDR computeWorkspaceGm_ = nullptr;
     const TilingDataType *tilingData_ = nullptr;
     uint32_t e_ = 0U;
+    uint32_t cntCounts_ = 1;
+    uint32_t expertNum_ = 1;
     bool isScaleBatchMode_ = false;
 };
 }; // namespace MC2KernelTemplate
