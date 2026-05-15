@@ -129,7 +129,6 @@ ASCENDC_TPL_ARGS_DECL(FusedInferAttentionScore,
 );
 
 ASCENDC_TPL_SEL(
-/*
  // ifa
 #if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_INT8 && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16)
     ASCENDC_TPL_ARGS_SEL(
@@ -3566,7 +3565,6 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
 #endif
-*/
 
 #if (ORIG_DTYPE_QUERY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_KEY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16)
     // mxfp8 decode
@@ -3588,24 +3586,24 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_BOOL_SEL(IsReconstructTemp, true),
         ASCENDC_TPL_TILING_STRUCT_SEL(FusedInferAttentionScoreFullQuantTilingData)
     ),
-    // // mxfp8 prefill
-    // ASCENDC_TPL_ARGS_SEL(
-    //     ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
-    //                          InOutLayoutType_TND_TND),
-    //     ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64,
-    //                          Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128),
-    //     ASCENDC_TPL_UINT_SEL(PseMode, ASCENDC_TPL_UI_LIST, PSE_MODE_PSE_NONE_TYPE),
-    //     ASCENDC_TPL_UINT_SEL(QuantMode, ASCENDC_TPL_UI_LIST, FULLQUANT_MODE_MXFP8_PREFILL),
-    //     ASCENDC_TPL_BOOL_SEL(HasAttenMask, 0, 1),
-    //     ASCENDC_TPL_BOOL_SEL(HasRope, 0),
-    //     ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KvLayoutType_NO_PA, KvLayoutType_ENABLE_PA),
-    //     ASCENDC_TPL_BOOL_SEL(IsFd, 0),
-    //     ASCENDC_TPL_BOOL_SEL(EmptyTensor, 0),
-    //     ASCENDC_TPL_BOOL_SEL(EnableKVPrefix, false),
-    //     ASCENDC_TPL_BOOL_SEL(EnableS1OutSplit, false),
-    //     ASCENDC_TPL_BOOL_SEL(IsReconstructTemp, false),
-    //     ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
-    // ),
+    // mxfp8 prefill
+    ASCENDC_TPL_ARGS_SEL(
+        ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
+                             InOutLayoutType_TND_TND),
+        ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64,
+                             Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128),
+        ASCENDC_TPL_UINT_SEL(PseMode, ASCENDC_TPL_UI_LIST, PSE_MODE_PSE_NONE_TYPE),
+        ASCENDC_TPL_UINT_SEL(QuantMode, ASCENDC_TPL_UI_LIST, FULLQUANT_MODE_MXFP8_PREFILL),
+        ASCENDC_TPL_BOOL_SEL(HasAttenMask, 0, 1),
+        ASCENDC_TPL_BOOL_SEL(HasRope, 0),
+        ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KvLayoutType_NO_PA, KvLayoutType_ENABLE_PA),
+        ASCENDC_TPL_BOOL_SEL(IsFd, 0),
+        ASCENDC_TPL_BOOL_SEL(EmptyTensor, 0),
+        ASCENDC_TPL_BOOL_SEL(EnableKVPrefix, false),
+        ASCENDC_TPL_BOOL_SEL(EnableS1OutSplit, false),
+        ASCENDC_TPL_BOOL_SEL(IsReconstructTemp, false),
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
+    ),
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_KEY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_ATTENTION_OUT == DT_BF16)
@@ -3628,24 +3626,24 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_BOOL_SEL(IsReconstructTemp, true),
         ASCENDC_TPL_TILING_STRUCT_SEL(FusedInferAttentionScoreFullQuantTilingData)
     ),
-    // // mxfp8 prefill
-    // ASCENDC_TPL_ARGS_SEL(
-    //     ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
-    //                          InOutLayoutType_TND_TND),
-    //     ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64,
-    //                          Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128),
-    //     ASCENDC_TPL_UINT_SEL(PseMode, ASCENDC_TPL_UI_LIST, PSE_MODE_PSE_NONE_TYPE),
-    //     ASCENDC_TPL_UINT_SEL(QuantMode, ASCENDC_TPL_UI_LIST, FULLQUANT_MODE_MXFP8_PREFILL),
-    //     ASCENDC_TPL_BOOL_SEL(HasAttenMask, 0, 1),
-    //     ASCENDC_TPL_BOOL_SEL(HasRope, 0),
-    //     ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KvLayoutType_NO_PA, KvLayoutType_ENABLE_PA),
-    //     ASCENDC_TPL_BOOL_SEL(IsFd, 0),
-    //     ASCENDC_TPL_BOOL_SEL(EmptyTensor, 0),
-    //     ASCENDC_TPL_BOOL_SEL(EnableKVPrefix, false),
-    //     ASCENDC_TPL_BOOL_SEL(EnableS1OutSplit, false),
-    //     ASCENDC_TPL_BOOL_SEL(IsReconstructTemp, false),
-    //     ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
-    // ),
+    // mxfp8 prefill
+    ASCENDC_TPL_ARGS_SEL(
+        ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH,
+                             InOutLayoutType_TND_TND),
+        ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64,
+                             Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128),
+        ASCENDC_TPL_UINT_SEL(PseMode, ASCENDC_TPL_UI_LIST, PSE_MODE_PSE_NONE_TYPE),
+        ASCENDC_TPL_UINT_SEL(QuantMode, ASCENDC_TPL_UI_LIST, FULLQUANT_MODE_MXFP8_PREFILL),
+        ASCENDC_TPL_BOOL_SEL(HasAttenMask, 0, 1),
+        ASCENDC_TPL_BOOL_SEL(HasRope, 0),
+        ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KvLayoutType_NO_PA, KvLayoutType_ENABLE_PA),
+        ASCENDC_TPL_BOOL_SEL(IsFd, 0),
+        ASCENDC_TPL_BOOL_SEL(EmptyTensor, 0),
+        ASCENDC_TPL_BOOL_SEL(EnableKVPrefix, false),
+        ASCENDC_TPL_BOOL_SEL(EnableS1OutSplit, false),
+        ASCENDC_TPL_BOOL_SEL(IsReconstructTemp, false),
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
+    ),
 #endif
 
 // 空tensor，必须要有一个使得列表不为空，否则会报无法推导模板参数的错误
