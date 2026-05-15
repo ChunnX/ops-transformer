@@ -337,8 +337,8 @@ aclnnStatus Mc2Context::CreatMc2Context(const HcclComm &hcclHandle, const std::s
     //     OP_LOGE(ACLNN_ERR_INNER, "Get HCCL Buffer Cleared failed");
     //     return ACLNN_ERR_INNER;
     // }
-    mc2ContextStruct->epHcclBuffer_[mc2ContextStruct->epRankId] = reinterpret_cast<uint64_t>(tempBuffer);
-    OP_LOGD("Get HCCL Buffer Cleared success, hcclBuffSize is: %u", hcclBuffSize_);
+    // mc2ContextStruct->epHcclBuffer_[mc2ContextStruct->epRankId] = reinterpret_cast<uint64_t>(tempBuffer);
+    // OP_LOGD("Get HCCL Buffer Cleared success, hcclBuffSize is: %u", hcclBuffSize_);
 
     auto ret = GetHcclCommResource(hcclHandle, engine, protocol, mc2ContextStruct);
     if (ret != ACLNN_SUCCESS) {
