@@ -28,11 +28,129 @@
 #include "opdev/tensor_view_utils.h"
 #include "opdev/make_op_executor.h"
 
-#include "../flash_attn_metadata_check.h"
-
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+static aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional,
+                               const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional, int64_t batchSize,
+                               int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv,
+                               int64_t headDim, int64_t maskMode, int64_t winLeft, int64_t winRight,
+                               const char *layoutQ, const char *layoutKv, const char *layoutOut,
+                               const aclTensor *metaData)
+{
+    if (maskMode != 0 && maskMode != 3 && maskMode != 4) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "maskMode only supports 0, 3, 4, but got %ld", maskMode);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+
+    if (winLeft < -1) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "winLeft must be >= -1, but got %ld", winLeft);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+
+    if (winRight < -1) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "winRight must be >= -1, but got %ld", winRight);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+
+    if (maxSeqlenQ < -1) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "maxSeqlenQ must be >= -1, but got %ld", maxSeqlenQ);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+
+    if (maxSeqlenKv < -1) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "maxSeqlenKv must be >= -1, but got %ld", maxSeqlenKv);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+
+    bool layoutQValid = (strcmp(layoutQ, "BSND") == 0 || strcmp(layoutQ, "TND") == 0 || strcmp(layoutQ, "BNSD") == 0);
+    if (!layoutQValid) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "layoutQ only supports BSND, TND, BNSD, but got %s", layoutQ);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+
+    bool layoutOutValid =
+        (strcmp(layoutOut, "BSND") == 0 || strcmp(layoutOut, "TND") == 0 || strcmp(layoutOut, "BNSD") == 0);
+    if (!layoutOutValid) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "layoutOut only supports BSND, TND, BNSD, but got %s", layoutOut);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+
+    bool layoutKvValid =
+        (strcmp(layoutKv, "BSND") == 0 || strcmp(layoutKv, "TND") == 0 || strcmp(layoutKv, "BNSD") == 0 ||
+         strcmp(layoutKv, "PA_BNBD") == 0 || strcmp(layoutKv, "PA_BBND") == 0 || strcmp(layoutKv, "PA_NZ") == 0);
+    if (!layoutKvValid) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "layoutKv only supports BSND, TND, BNSD, PA_BNBD, PA_BBND, PA_NZ, but got %s",
+                layoutKv);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+
+    if (batchSize != 0) {
+        if (cuSeqlensQOptional != nullptr) {
+            if (cuSeqlensQOptional->GetViewShape().GetDimNum() != 1) {
+                OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "cuSeqlensQOptional must be 1D tensor, but got %ld dims",
+                        cuSeqlensQOptional->GetViewShape().GetDimNum());
+                return ACLNN_ERR_PARAM_INVALID;
+            }
+            if (cuSeqlensQOptional->GetViewShape().GetDim(0) != batchSize + 1) {
+                OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "cuSeqlensQOptional shape must be (batchSize+1,), but got %ld",
+                        cuSeqlensQOptional->GetViewShape().GetDim(0));
+                return ACLNN_ERR_PARAM_INVALID;
+            }
+        }
+
+        if (cuSeqlensKvOptional != nullptr) {
+            if (cuSeqlensKvOptional->GetViewShape().GetDimNum() != 1) {
+                OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "cuSeqlensKvOptional must be 1D tensor, but got %ld dims",
+                        cuSeqlensKvOptional->GetViewShape().GetDimNum());
+                return ACLNN_ERR_PARAM_INVALID;
+            }
+            if (cuSeqlensKvOptional->GetViewShape().GetDim(0) != batchSize + 1) {
+                OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "cuSeqlensKvOptional shape must be (batchSize+1,), but got %ld",
+                        cuSeqlensKvOptional->GetViewShape().GetDim(0));
+                return ACLNN_ERR_PARAM_INVALID;
+            }
+        }
+
+        if (sequsedQOptional != nullptr) {
+            if (sequsedQOptional->GetViewShape().GetDimNum() != 1) {
+                OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sequsedQOptional must be 1D tensor, but got %ld dims",
+                        sequsedQOptional->GetViewShape().GetDimNum());
+                return ACLNN_ERR_PARAM_INVALID;
+            }
+            if (sequsedQOptional->GetViewShape().GetDim(0) != batchSize) {
+                OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sequsedQOptional shape must be (batchSize,), but got %ld",
+                        sequsedQOptional->GetViewShape().GetDim(0));
+                return ACLNN_ERR_PARAM_INVALID;
+            }
+        }
+
+        if (sequsedKvOptional != nullptr) {
+            if (sequsedKvOptional->GetViewShape().GetDimNum() != 1) {
+                OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sequsedKvOptional must be 1D tensor, but got %ld dims",
+                        sequsedKvOptional->GetViewShape().GetDimNum());
+                return ACLNN_ERR_PARAM_INVALID;
+            }
+            if (sequsedKvOptional->GetViewShape().GetDim(0) != batchSize) {
+                OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "sequsedKvOptional shape must be (batchSize,), but got %ld",
+                        sequsedKvOptional->GetViewShape().GetDim(0));
+                return ACLNN_ERR_PARAM_INVALID;
+            }
+        }
+    }
+
+    if (numHeadsKv != 0) {
+        if (numHeadsQ % numHeadsKv != 0) {
+            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR,
+                    "numHeadsQ must be divisible by numHeadsKv, but got numHeadsQ=%ld, numHeadsKv=%ld", numHeadsQ,
+                    numHeadsKv);
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+    }
+
+    return ACLNN_SUCCESS;
+}
 
 aclnnStatus aclnnFlashAttnMetadataGetWorkspaceSize(
     const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional, const aclTensor *sequsedQOptional,

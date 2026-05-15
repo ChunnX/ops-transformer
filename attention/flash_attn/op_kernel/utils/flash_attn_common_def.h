@@ -128,6 +128,12 @@ static constexpr  inferPFALayoutTypeEnum InOutLayoutPFATypeValue[5][2] ={
 #define InOutLayoutType_BNSD_BSND 3
 #define InOutLayoutType_NTD_NTD 4
 
+// KvLayoutType
+#define KvLayoutType_NO_PA 0
+#define KvLayoutType_PA_BBH 1
+#define KvLayoutType_PA_BNBD 2
+#define KvLayoutType_PA_NZ 3
+
 struct ConfigParams {
     inferS1TemplateType s1;
     inferS2TemplateType s2;
@@ -305,8 +311,10 @@ struct CommonConstInfo {
     uint32_t n2Size;
     uint64_t s1Size; /* s1总大小 */
     uint64_t s2Size; /* s2总大小 */
-    uint64_t actualSeqLenSize;   /* 用户输入的actualseq的长度 */
-    uint64_t actualSeqLenKVSize; /* 用户输入的actualseq_kv的长度 */
+    uint64_t cuSeqLensQSize;     /* 用户输入的actualseq的长度 */
+    uint64_t cuSeqLensKVSize;    /* 用户输入的actualseq_kv的长度 */
+    uint64_t seqUsedQSize;       /* 用户输入的seq used q的长度 */
+    uint64_t seqUsedKvSize;      /* 用户输入的seq used kv的长度 */
 
     /* FA kernel meta */
     uint32_t bN2Start;
@@ -323,7 +331,6 @@ struct CommonConstInfo {
     uint32_t attenMaskS2Size;
     int64_t preTokens;
     int64_t nextTokens;
-    bool isRowInvalidOpen;
     bool isExistRowInvalid;
     float scaleValue;
 

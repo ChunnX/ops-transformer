@@ -10,15 +10,12 @@
 # ======================================================================================================================
 
 import torch
-import torch_npu
 import math
-import numpy as np
-import random
 from test_utils import *
 
 
 def tsoftmax(x):
-    x_max = torch.max(x, dim=-1, keepdims=True)[0]
+    x_max = x.max(dim=-1, keepdim=True).values
     x_sub = x.sub(x_max)
     y = torch.exp(x_sub)
     x_sum = y.sum(dim=-1, keepdims=True)
@@ -26,7 +23,8 @@ def tsoftmax(x):
     return res, x_max, x_sum
 
 
-def skip_invalid_row(b, n, sq, softmax_res, x_max, x_sum):
+def _fix_invalid_rows(softmax_res, x_max, x_sum):
+    b, n, sq, _ = softmax_res.shape
     for i in range(b):
         for j in range(n):
             for k in range(sq):
@@ -37,36 +35,34 @@ def skip_invalid_row(b, n, sq, softmax_res, x_max, x_sum):
     return softmax_res, x_max, x_sum
 
 
-def forward(q, k, v, drop_mask, atten_mask, pse_type, pse, scale, keep_prob, skip_invalid_row=False):
+def _attend(q, k, v, drop_mask, atten_mask, scale, keep_prob, need_fix_invalid):
     q = q.float()
     k = k.float()
     v = v.float()
 
-    qk = torch.matmul(q, k.permute(0, 1, 3, 2))
-    if pse is None:
-        qk = qk.mul(scale)
-    else:
-        if pse_type == 1:
-            qk = qk.add(pse).mul(scale)
-        else:
-            qk = qk.mul(scale).add(pse)
+    qk = torch.matmul(q, k.permute(0, 1, 3, 2)).mul(scale)
     if atten_mask is not None:
         qk = qk.masked_fill_(atten_mask.cpu().bool(), value=torch.tensor(-40000))
-    softmax_res, x_max, x_sum = tsoftmax(qk)
+    
+    if qk.shape[-1] == 0:
+        b, n, sq, _ = qk.shape
+        softmax_res = torch.zeros((b, n, sq, 0), dtype=qk.dtype)
+        x_max       = torch.zeros(b, n, sq, 1)  # torch.finfo(torch.float).min
+        x_sum       = torch.zeros(b, n, sq, 1)  # torch.finfo(torch.float).max
+    else:
+        softmax_res, x_max, x_sum = tsoftmax(qk)
 
-    if skip_invalid_row:
-        b, n, sq, _ = softmax_res.shape
-        softmax_res, x_max, x_sum = skip_invalid_row(b, n, sq, softmax_res, x_max, x_sum)
+    # softmax_res, x_max, x_sum = tsoftmax(qk)
+
+    if need_fix_invalid:
+        softmax_res, x_max, x_sum = _fix_invalid_rows(softmax_res, x_max, x_sum)
 
     if drop_mask is not None and keep_prob > 0:
-        drop_res = softmax_res * drop_mask * (1.0 / keep_prob)
-    else:
-        drop_res = softmax_res
+        softmax_res = softmax_res * drop_mask * (1.0 / keep_prob)
 
-    out = torch.matmul(drop_res, v)
-
-    x_max = x_max.broadcast_to(-1, -1, -1, 8)
-    x_sum = x_sum.broadcast_to(-1, -1, -1, 8)
+    out = torch.matmul(softmax_res, v)
+    x_max = x_max
+    x_sum = x_sum
     return out, x_max, x_sum
 
 
@@ -90,146 +86,122 @@ def broadcastKV(n1, n2, kv_tensor, dtype):
     return kv_res
 
 
-def tforward_normal(q, k, v, pse, **kwargs):
-    b = kwargs.get("B")
-    n1 = kwargs.get("N1")
-    n2 = kwargs.get("N2", n1)
-    s1 = kwargs.get("S1")
-    s2 = kwargs.get("S2", s1)
-    d = kwargs.get("D")
-    sparse_mode = kwargs.get("sparse_mode", None)
-    pre_tokens = kwargs.get("pre_tokens", 2147483647)
-    next_tokens = kwargs.get("next_tokens", 2147483647)
-    prefix = kwargs.get("prefix", [])
-    seed = kwargs.get("seed", 0)
-    offset = kwargs.get("offset", 0)
-
-    scale = kwargs.get("scale", 1 / (d ** 0.5))
-    pse_type = kwargs.get("pse_type", 1)
-    keep_prob = kwargs.get("keep_prob", 1)
-
-    if abs(1 - keep_prob) < 2e-14:
-        drop_mask = None
-    else:
-        drop_mask = gen_dropmask(b, n1, s1, s2, keep_prob, seed, offset)
-
-    atten_mask = generate_cpu_mask(b, s1, s2, sparse_mode, pre_tokens, next_tokens, prefix)
-    skip_invalid_row = False
-    if atten_mask is not None:
-        if sparse_mode == 0:
-            skip_invalid_row = next_tokens < 0 or pre_tokens + s2 < s1
-        elif sparse_mode == 3:
-            skip_invalid_row = s1 > s2
-        elif sparse_mode == 4:
-            skip_invalid_row = pre_tokens < 0 or next_tokens + s2 < s1
-        elif sparse_mode in [5, 6]:
-            skip_invalid_row = True if 0 in prefix else False
-
-    if n1 != n2:
-        k = broadcastKV(n1, n2, k, k.dtype)
-        v = broadcastKV(n1, n2, v, v.dtype)
-    out, x_max, x_sum = forward(q, k, v, drop_mask, atten_mask, pse_type, pse, scale, keep_prob, skip_invalid_row)
-    return out, x_max, x_sum
+def _should_fix_invalid_rows(sparse_mode, pre_tokens, next_tokens, act_q_len, act_kv_len, prefix):
+    if sparse_mode is None:
+        return False
+    if sparse_mode == 0:
+        return next_tokens < 0 or pre_tokens + act_kv_len < act_q_len
+    if sparse_mode == 3:
+        return act_q_len > act_kv_len
+    if sparse_mode == 4:
+        return pre_tokens < 0 or next_tokens + act_kv_len < act_q_len
+    if sparse_mode in (5, 6):
+        return 0 in prefix
+    return False
 
 
-def tforward_tnd(q, k, v, pse, **kwargs):
-    actual_seq_qlen = list(kwargs.get("actual_seq_qlen"))
-    actual_seq_kvlen = list(kwargs.get("actual_seq_kvlen", actual_seq_qlen))
-    assert isinstance(actual_seq_qlen, list)
-    assert isinstance(actual_seq_kvlen, list)
-    seqlen_q_list = get_seqlen_list(actual_seq_qlen).numpy()
-    seqlen_k_list = get_seqlen_list(actual_seq_kvlen).numpy()
-    actual_seq_qlen.insert(0, 0)
-    actual_seq_kvlen.insert(0, 0)
-    input_layout = kwargs.get("input_layout")
-    sparse_mode = kwargs.get("sparse_mode", None)
-    pre_tokens = kwargs.get("pre_tokens", 2147483647)
-    next_tokens = kwargs.get("next_tokens", 2147483647)
-    prefix = kwargs.get("prefix", [])
-    seed = kwargs.get("seed", 0)
-    offset = kwargs.get("offset", 0)
-    max_seqlen_q = seqlen_q_list.max()
-    max_seqlen_k = seqlen_k_list.max()
-    qk_size = seqlen_q_list * [math.ceil(i / 16) * 16 for i in seqlen_k_list]
-    qk_pointer = get_cu_seqlens(qk_size).to(torch.int64)
+def tforward_tnd(q, k, v, **kwargs):
+    cu_q = kwargs["cu_seqlens_q"]
+    cu_kv = kwargs["cu_seqlens_kv"]
+    seqused_q = kwargs["seqused_q"]
+    seqused_kv = kwargs["seqused_kv"]
+    b = len(cu_q) - 1
 
-    b = len(seqlen_q_list)
     n1 = kwargs.get("N1")
     n2 = kwargs.get("N2", n1)
     d = kwargs.get("D")
     d_v = kwargs.get("DV", d)
-    s1 = max(actual_seq_qlen)
-    s2 = max(actual_seq_kvlen)
+    s1_total = cu_q[-1]
+
+    sparse_mode = kwargs.get("sparse_mode", None)
+    pre_tokens  = kwargs.get("pre_tokens", 2147483647)
+    next_tokens = kwargs.get("next_tokens", 2147483647)
+    prefix = kwargs.get("prefix", [])
+    seed = kwargs.get("seed", 0)
+    offset = kwargs.get("offset", 0)
 
     scale = kwargs.get("scale", 1 / (d ** 0.5))
-    pse_type = kwargs.get("pse_type", 1)
     keep_prob = kwargs.get("keep_prob", 1)
 
-    pse_s1 = max(1024, max_seqlen_q)
     band_index = 0
-    if sparse_mode == 7:
-        for index in range(b - 1, -1, -1):
-            if seqlen_q_list[index] != 0:
-                band_index = index
-                break
-    elif sparse_mode == 8:
-        for index in range(b):
-            if seqlen_k_list[index] != 0:
-                band_index = index
-                break
 
+    qk_size = [int(seqused_q[i] * math.ceil(seqused_kv[i] / 16) * 16) for i in range(b)]
+    qk_pointer = get_cu_seqlens(qk_size).to(torch.int64)
     if abs(1 - keep_prob) < 2e-14:
         drop_mask = None
     else:
         drop_mask = gen_dropmask_tnd(qk_pointer[-1].item() * n1, keep_prob, seed, offset)
 
-    out_golden = torch.zeros([1, n1, s1, d_v], dtype=q.dtype)
-    x_max = torch.empty(0)
-    x_sum = torch.empty(0)
+    out_golden = torch.zeros([1, n1, s1_total, d_v], dtype=q.dtype)
+    x_max = torch.zeros([n1, s1_total], dtype=torch.float32)
+    x_sum = torch.zeros([n1, s1_total], dtype=torch.float32)
     for i in range(b):
-        if seqlen_q_list[i] != 0 and seqlen_k_list[i] != 0:
-            qi = q[:, :, actual_seq_qlen[i]:actual_seq_qlen[i + 1]]
-            ki = k[:, :, actual_seq_kvlen[i]:actual_seq_kvlen[i + 1]]
-            vi = v[:, :, actual_seq_kvlen[i]:actual_seq_kvlen[i + 1]]
+        act_q_len = seqused_q[i]
+        act_kv_len = seqused_kv[i]
+        if act_q_len == 0 or act_kv_len == 0:
+            continue
 
-            if n1 != n2:
-                ki = broadcastKV(n1, n2, ki, ki.dtype)
-                vi = broadcastKV(n1, n2, vi, vi.dtype)
+        q_start = cu_q[i]
+        kv_start = cu_kv[i]
 
-            if pse is None:
-                psei = None
-            else:
-                pse_layout = kwargs.get("pse_layout").lower()
-                assert pse_layout in ["bn", "n", "bnhs", "1nhs"]
-                if pse_layout == "bn":
-                    psei = pse[i:i + 1, :, -seqlen_q_list[i]:, -seqlen_k_list[i]:]
-                elif pse_layout == "n":
-                    psei = pse[:, :, -seqlen_q_list[i]:, -seqlen_k_list[i]:]
-                elif pse_layout == "bnhs":
-                    psei = pse[i:i + 1, :, pse_s1 - seqlen_q_list[i]:pse_s1, max_seqlen_k - seqlen_k_list[i]:max_seqlen_k]
-                elif pse_layout == "1nhs":
-                    psei = pse[:, :, pse_s1 - seqlen_q_list[i]:pse_s1, max_seqlen_k - seqlen_k_list[i]:max_seqlen_k]
+        qi = q[:, :, q_start:q_start + act_q_len]
+        ki = k[:, :, kv_start:kv_start + act_kv_len]
+        vi = v[:, :, kv_start:kv_start + act_kv_len]
 
-            if drop_mask is None:
-                drop_maski = None
-            else:
-                drop_maski = drop_mask[(qk_pointer[i] * n1):(qk_pointer[i + 1] * n1)].reshape(n1, seqlen_q_list[i], math.ceil(seqlen_k_list[i] / 16) * 16)[:, :, :seqlen_k_list[i]]
-            
-            if sparse_mode is None:
-                atten_maski = None
-            else:
-                atten_maski = generate_cpu_mask(1, seqlen_q_list[i], seqlen_k_list[i], sparse_mode, pre_tokens, next_tokens, prefix, i, band_index)
+        if n1 != n2:
+            ki = broadcastKV(n1, n2, ki, ki.dtype)
+            vi = broadcastKV(n1, n2, vi, vi.dtype)
 
-            outi, x_maxi, x_sumi = forward(qi, ki, vi, drop_maski, atten_maski, pse_type, psei, scale, keep_prob)
-            out_golden[:, :, actual_seq_qlen[i]:actual_seq_qlen[i + 1]] = outi
-            x_max = torch.cat((x_max, x_maxi.contiguous().view(-1)))
-            x_sum = torch.cat((x_sum, x_sumi.contiguous().view(-1)))
+        if drop_mask is None:
+            drop_maski = None
+        else:
+            drop_maski = drop_mask[(qk_pointer[i] * n1):(qk_pointer[i + 1] * n1)].reshape(
+                n1, act_q_len, math.ceil(act_kv_len / 16) * 16)[:, :, :act_kv_len]
+
+        if sparse_mode is None:
+            atten_maski = None
+        else:
+            atten_maski = generate_cpu_mask(1, act_q_len, act_kv_len, sparse_mode, pre_tokens, next_tokens, prefix, i, band_index)
+
+        need_fix = _should_fix_invalid_rows(sparse_mode, pre_tokens, next_tokens, act_q_len, act_kv_len, prefix)
+
+        outi, x_maxi, x_sumi = _attend(qi, ki, vi, drop_maski, atten_maski, scale, keep_prob, need_fix)
+        out_golden[:, :, q_start:q_start + act_q_len] = outi
+        x_max[:, q_start:q_start + act_q_len] = x_maxi.squeeze(0).squeeze(-1)	 
+        x_sum[:, q_start:q_start + act_q_len] = x_sumi.squeeze(0).squeeze(-1)
     return out_golden, x_max, x_sum
 
 
-def tforward(q, k, v, pse, **kwargs):
-    input_layout=kwargs.get("input_layout")
-    if input_layout == "TND":
-        return tforward_tnd(q, k, v, pse, **kwargs)
-    else:
-        return tforward_normal(q, k, v, pse, **kwargs)
+def tforward(q, k, v, **kwargs):
+    input_layout = kwargs.get("input_layout")
+    if input_layout != "TND":
+        b = kwargs.get("B")
+        n1 = kwargs.get("N1")
+        n2 = kwargs.get("N2", n1)
+        s1 = kwargs.get("S1")
+        s2 = kwargs.get("S2", s1)
+
+        q = q.reshape(1, b, n1, s1, q.shape[-1]).transpose(1, 2).reshape(1, n1, b * s1, q.shape[-1])
+        k = k.reshape(1, b, n2, s2, k.shape[-1]).transpose(1, 2).reshape(1, n2, b * s2, k.shape[-1])
+        v = v.reshape(1, b, n2, s2, v.shape[-1]).transpose(1, 2).reshape(1, n2, b * s2, v.shape[-1])
+
+        cu_q = [i * s1 for i in range(b + 1)]
+        cu_kv = [i * s2 for i in range(b + 1)]
+
+        kwargs["cu_seqlens_q"] = cu_q
+        kwargs["cu_seqlens_kv"] = cu_kv
+        kwargs.setdefault("seqused_q", [s1] * b)
+        kwargs.setdefault("seqused_kv", [s2] * b)
+
+    out, x_max, x_sum = tforward_tnd(q, k, v, **kwargs)
+
+    if input_layout != "TND":
+        b = kwargs.get("B")
+        s1 = kwargs.get("S1")
+        n1 = kwargs.get("N1")
+        # 1 n t d  ->  b n s d 
+        out = out.reshape(n1, b, s1, out.shape[-1]).transpose(0, 1)
+        x_max = x_max.reshape(n1, b, s1).transpose(1, 0)
+        x_sum = x_sum.reshape(n1, b, s1).transpose(1, 0)
+
+    return out, x_max, x_sum
