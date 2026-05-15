@@ -178,14 +178,13 @@ public:
         worldSize_ = worldSize;
         serverNum_ = worldSize / SERVER_RANK_SIZE;
         halfWorldSize_ = worldSize / 2U;
-        aDumpAddrStart_ = winSize / 2U - Mc2A2Kernel::BUFFER_ADUMP_WIN_SIZE * 2UL;
         uint64_t maxTokenStructBytes =
             axisH * 2UL + EXTRA_TOKEN_INFO_NUM * RoundUp(axisK, B32_PER_BLOCK) * sizeof(uint32_t); // token的数据类型BF16或FP16，都是2B
         serverSizeOnRdmaData_ = RoundUp(maxBs * maxTokenStructBytes + UB_32B_ALIGN, BUFFER_ALIGN);
         rankSizeOnIpcData_ = RoundUp(maxBs * maxTokenStructBytes, BUFFER_ALIGN);
         // ipc addr
-        ipcFlagAddrStart_[0] = winSize / 2UL - IPC_HALF_NON_DATA_BYTES;
-        ipcFlagAddrStart_[1] = winSize - IPC_HALF_NON_DATA_BYTES;
+        ipcFlagAddrStart_[0] = winSize / 2UL - IPC_HALF_NON_DATA_BYTES + Mc2A2Kernel::ADUMP_WIN_SIZE;
+        ipcFlagAddrStart_[1] = winSize - IPC_HALF_NON_DATA_BYTES + Mc2A2Kernel::ADUMP_WIN_SIZE;
         uint64_t halfIpcDataSize = rankSizeOnIpcData_ * localMoeExpertNum_ * halfWorldSize_;
         ipcDataAddrStart_[0] = RoundUp(ipcFlagAddrStart_[0] - halfIpcDataSize, BUFFER_ALIGN);
         ipcDataAddrStart_[1] = RoundUp(ipcFlagAddrStart_[1] - halfIpcDataSize, BUFFER_ALIGN);
@@ -201,6 +200,7 @@ public:
         // Get BufferId
         uint64_t bufferId = (magicValue_ - 1UL) & 0x1;
         rdmaFlagAddrStart_ = (bufferId & 0x1) ? (winSize / 2UL) : 0UL;
+        rdmaFlagAddrStart_ += Mc2A2Kernel::ADUMP_WIN_SIZE;
         rdmaDataAddrStart_ = rdmaFlagAddrStart_ + RDMA_STATUS_SIZE;
     }
 
@@ -266,7 +266,6 @@ protected:
     uint64_t serverSizeOnRdmaData_{0UL};
     uint64_t rankSizeOnIpcData_{0UL};
     uint64_t magicValue_{0UL};
-    uint64_t aDumpAddrStart_{0UL};
 
     uint64_t ipcFlagAddrStart_[2]{0UL};
     uint64_t ipcDataAddrStart_[2]{0UL};
@@ -301,10 +300,16 @@ public:
         ipcTokenCntAddrStart_ = ipcFlagAddrStart_[1] + IPC_TOKEN_CNT_OFFSET;
     }
 
-    __aicore__ inline GM_ADDR GetIpcAdumpWinAddr() const
+    __aicore__ inline GM_ADDR GetAdumpDataAddr() const
     {
-        return context_.GetWindowsInAddr(curRankId_) + aDumpAddrStart_;
+        return context_.GetWindowsInAddr(curRankId_) + Mc2A2Kernel::ADUMP_DATA_DISPATCH_ADDR_START;
     }
+
+    __aicore__ inline GM_ADDR GetAdumpStatusAddr() const
+    {
+        return context_.GetWindowsInAddr(curRankId_) + Mc2A2Kernel::ADUMP_STATUS_DISPATCH_ADDR;
+    }
+
     // ===== Sender =====
     // Dispatch阶段：获取本地发送缓冲区数据地址
     // 待发送的Token数据是累加存放的，不需要区分目标卡
@@ -385,9 +390,14 @@ public:
         ipcTokenFlagAddrStart_ = ipcSyncFlagAddrStart_ + (SERVER_RANK_SIZE + 1) * UB_32B_ALIGN;
     }
 
-    __aicore__ inline GM_ADDR GetIpcAdumpWinAddr() const
+    __aicore__ inline GM_ADDR GetAdumpDataAddr() const
     {
-        return context_.GetWindowsInAddr(curRankId_) + aDumpAddrStart_ + Mc2A2Kernel::BUFFER_ADUMP_WIN_SIZE;
+        return context_.GetWindowsInAddr(curRankId_) + Mc2A2Kernel::ADUMP_DATA_COMBINE_ADDR_START;
+    }
+
+    __aicore__ inline GM_ADDR GetAdumpStatusAddr() const
+    {
+        return context_.GetWindowsInAddr(curRankId_) + Mc2A2Kernel::ADUMP_STATUS_COMBINE_ADDR;
     }
 
     // ===== Sender =====

@@ -382,10 +382,10 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
         DataCopyPad(readStateGlobal_, tempLocal, copyParam);
     }
     LocalTensor<uint8_t> aDumpTensor = aDumpBuf_.Get<uint8_t>();
-    GM_ADDR aDumpAddr = addrInfo_.GetIpcAdumpWinAddr();
+    GM_ADDR aDumpAddr = addrInfo_.GetAdumpDataAddr();
     aDump_.Init(aDumpAddr, coreIdx_, rankId_, worldSize_, rankId_, moeExpertNum_, worldSize_,
                 globalBs_, (magicValue_ - 1UL) & 0x1,
-                Mc2A2Kernel::IS_HIERARCHY, aivNum_, aDumpTensor, axisH_);
+                Mc2A2Kernel::IS_HIERARCHY, aivNum_, aDumpTensor, axisH_, axisBS_);
     PipeBarrier<PIPE_ALL>();
 }
 

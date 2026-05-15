@@ -326,10 +326,10 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
     // 每次调用magic++,用来区分不同轮次
     magicVal_ = addrInfo_.GetMagicValue();
     LocalTensor<uint8_t> aDumpTensor = aDumpBuf_.Get<uint8_t>();
-    GM_ADDR aDumpAddr = addrInfo_.GetIpcAdumpWinAddr();
+    GM_ADDR aDumpAddr = addrInfo_.GetAdumpDataAddr();
     aDump_.Init(aDumpAddr, aivId_, rankId_, worldSize_, rankId_, moeExpertNum_, worldSize_,
                 globalBs_, (magicVal_ - 1UL) & 0x1,
-                Mc2A2Kernel::IS_HIERARCHY, aivNum_, aDumpTensor, axisH_);
+                Mc2A2Kernel::IS_HIERARCHY, aivNum_, aDumpTensor, axisH_, axisBS_);
     AscendC::PipeBarrier<PIPE_ALL>();
 }
 
@@ -1353,6 +1353,7 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
             if(aivId_ != serverId_){
                 SendDataToServer(aivId_);
             }
+            aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_DISPATCH_INTER_SEND);
             CreateInnerReduceInfo(aivId_);
         } else if (aivId_ == serverNum) {
             CreateOuterReduceInfo();

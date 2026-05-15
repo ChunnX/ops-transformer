@@ -31,7 +31,7 @@ public:
                                 uint32_t epWorldSizeHccl, uint32_t epRankIdOriginal,
                                 uint32_t moeExpertNum, uint32_t epWorldSizeOriginal, uint32_t globalBs,
                                 uint32_t bufferId, uint32_t isLayered, uint32_t aivNum,
-                                LocalTensor<uint8_t> dataStateLocalTensor, uint32_t axisH)
+                                LocalTensor<uint8_t> dataStateLocalTensor, uint32_t axisH, uint32_t axisBS)
     {
         selfDataStatusGMTensor_.SetGlobalBuffer((__gm__ uint32_t*)(aDumpWinStartAddr + aivId * WIN_ADDR_ALIGN));
         selfTokenNumGMTensor_.SetGlobalBuffer((__gm__ uint32_t*)(aDumpWinStartAddr + (aivNum + 1) * WIN_ADDR_ALIGN));
@@ -51,6 +51,7 @@ public:
         dataStateLocalTensor_.SetValue(TILING_WORLDSIZE_POS, epWorldSizeOriginal);
         dataStateLocalTensor_.SetValue(GLOBALBS_POS, globalBs);
         dataStateLocalTensor_.SetValue(H_POS, axisH);
+        dataStateLocalTensor_.SetValue(BS_POS, axisBS);
         if ((epRankIdOriginal != epRankIdHccl) || (epWorldSizeOriginal != epWorldSizeHccl)) {
             dataStateLocalTensor_.SetValue(HCCL_DFX_POS + HCCL_EPRANKId_POS, epRankIdHccl);
             dataStateLocalTensor_.SetValue(HCCL_DFX_POS + HCCL_WORLDSIZE_POS, epWorldSizeHccl);
