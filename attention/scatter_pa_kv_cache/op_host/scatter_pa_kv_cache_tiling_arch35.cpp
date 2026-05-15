@@ -716,6 +716,7 @@ ge::graphStatus ScatterPaKvCacheTiling::GetTemplateType(int64_t inputKeyDimNum)
     auto cacheMode = attrs->GetStr(INPUT_CACHE_MODE_INDEX);
     printf("get in TEMPLATE_ROPE GetShapeAttrsInfo for  cacheMode scatter pa cache 1\n");
     auto scatterMode = attrs->GetStr(INPUT_SCATTER_MODE_INDEX);
+    scatterMode = (scatterMode == nullptr) ? "" : scatterMode;
     if (strcmp(cacheMode, "PA_NZ") == 0) {
         // entering template nz
         templateType_ = TEMPLATE_NZ;
@@ -744,7 +745,7 @@ ge::graphStatus ScatterPaKvCacheTiling::GetTemplateType(int64_t inputKeyDimNum)
             if (compressLens != nullptr && compressSeqOffset != nullptr && seqLens != nullptr) {
                 // entering template rope
                 templateType_ = TEMPLATE_ROPE;
-                printf("get in TEMPLATE_ROPE GetShapeAttrsInfo for scatter pa cache 1\n");
+                printf("get in TEMPLATE_ROPE GetShapeAttrsInfo for scatter pa cache 2\n");
             } else if (compressLens != nullptr && compressSeqOffset == nullptr && seqLens != nullptr) {
                 // entering template alibi
                 templateType_ = TEMPLATE_ALIBI;
