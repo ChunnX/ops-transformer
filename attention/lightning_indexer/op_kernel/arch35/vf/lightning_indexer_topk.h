@@ -72,12 +72,12 @@ public:
         if (s2LoopNum == 1) {
             topkb32gather::LiTopKVF<false>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idx0Local, idx1Local, idx2Local, idx3Local, nkValueLocal, topK, s2SeqLen);
             PipeBarrier<PIPE_V>();
-            AscendC::DataCopy(indicesOutLocal, tmpIndexLocal, topK);
+            AscendC::DataCopy(indicesOutLocal, tmpIndexLocal, LICommon::Align(topK, (uint32_t)256));
         } else {
             if (loopIdx == 0) {
                 topkb32gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idx0Local, idx1Local, idx2Local, idx3Local, nkValueLocal, topK, s2SeqLen);
                 PipeBarrier<PIPE_V>();
-                AscendC::DataCopy(hisIndexLocal[(loopIdx + 1) % 2], tmpIndexLocal, topK);
+                AscendC::DataCopy(hisIndexLocal[(loopIdx + 1) % 2], tmpIndexLocal, LICommon::Align(topK, (uint32_t)256));
             } else {
                 topkb32gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idx0Local, idx1Local, idx2Local, idx3Local, nkValueLocal, topK, s2SeqLen);
                 PipeBarrier<PIPE_V>();
