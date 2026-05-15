@@ -704,7 +704,7 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::Compute(int32_t batchLoop, int
             if (lastResetIdx > 0) {
                 lastResetIdx = lastResetIdx < curBatchSeq ? lastResetIdx : curBatchSeq;
                 if(isResidualConnection_ == 1)
-                    Adds(yLocal[yUbOffset], static_cast<T>(0), xLocal[yUbOffset],lastResetIdx * dimSizeInLoop_);
+                    DataCopy(yLocal[yUbOffset], xLocal[yUbOffset], cacheRowsCopied * dimSizeInLoop_);
                 else{
                     Duplicate(yLocal[yUbOffset], static_cast<T>(0), lastResetIdx * dimSizeInLoop_);
                 }
