@@ -24,14 +24,10 @@
  *   (deterministic from tiling data and accumulated identically), so the
  *   "workspace full" decision is uniform -> all cores reach SyncAll together.
  *
- * Address model (v5 -- baseM-granularity tile cycling with MTE3 drain):
- *   - LOGIT_OFFSETS: cumulative global offset for logit/rowIndex reads
- *   - workspaceBaseRow: workspace window write offset (reset after each aggregation)
- *   - Epilogue elem[4]: chunk-inner mOffset (for logit/x1Scale reads)
- *   - Epilogue elem[5]: workspaceBaseRow (for workspace write addressing)
- *   - Sub-chunk offsets: baseOffset_.A/LOGIT/X1SCALE adjusted by groupMProcessed,
- *     saved/restored to keep baseOffset_ at group start for UpdateGroupParams
- *   - MTE3 drain: WaitFlag+SetFlag MTE3_V(0,1) before each SyncAll aggregation
+ * Init order (v5): Uses raw-offset LocalTensor (aggVecout_) at VECOUT offset 200KB
+ *   instead of TPipe-managed TQueBind, to avoid UB memory overlap with the epilogue's
+ *   l0cOutUbFloat_ buffer (128KB at offset 0). The epilogue uses raw-offset tensors
+ *   starting from UB 0, so TPipe InitBuffer at offset 0 would corrupt epilogue data.
  */
 
 #ifndef KERNEL_GMM_FR_DETERMINISTIC_H
@@ -86,6 +82,24 @@ constexpr uint32_t DET_WEIGHT_TILE_CAPACITY = 512U;
 constexpr uint32_t DET_DETER_UB_SIZE = 12 * 1024;
 constexpr uint32_t DET_BUFFER_NUM = 2;
 } // namespace
+
+// Debug checkpoint: write value to debugGm[blockIdx * 16 + cpIdx]
+// Host reads debugGm after kernel to see which cores reached which points.
+// Set DET_DEBUG_ENABLE to 0 to strip all checkpoints.
+#ifndef DET_DEBUG_ENABLE
+#define DET_DEBUG_ENABLE 1
+#endif
+#if DET_DEBUG_ENABLE
+#define DET_DEBUG_CP(debugGm, cpIdx, val)                                          \
+    do {                                                                            \
+        if (debugGm != nullptr) {                                                   \
+            auto __dbgGm = reinterpret_cast<__gm__ uint32_t *>(debugGm);            \
+            __dbgGm[static_cast<uint64_t>(GetBlockIdx()) * 16 + (cpIdx)] = (val);   \
+        }                                                                           \
+    } while (0)
+#else
+#define DET_DEBUG_CP(debugGm, cpIdx, val) ((void)0)
+#endif
 
 using namespace AscendC;
 template <class ProblemShape_, class BlockMmadBuilder_, class BlockPrologue_,
@@ -161,8 +175,12 @@ public:
     AscendC::LocalTensor<CType> l0cOutUb_;
     bool isVecSetSyncCom_ = false;
 
-    // Aggregation queue for FRDeterministicA5 (allocated through GetTPipePtr() to avoid UB overlap)
-    TQueBind<TPosition::VECIN, TPosition::VECOUT, 1> aggQueBind;
+    // Aggregation buffer for FRDeterministicA5: raw-offset LocalTensors placed
+    // AFTER the epilogue's UB usage (~198KB) to avoid overlap.
+    // UB total = 248KB; epilogue uses ~198KB; free space ~50KB; need 12KB.
+    static constexpr uint32_t DET_AGG_UB_BYTES = 12 * 1024;
+    static constexpr uint32_t DET_AGG_VECOUT_OFFSET = 200 * 1024;  // after epilogue's outUbPong_
+    AscendC::LocalTensor<float> aggVecout_;
 
     struct GMMTiling {
         uint32_t groupNum;
@@ -191,6 +209,7 @@ public:
         uint32_t n;
         uint64_t baseN;
         uint64_t windowSizeRows;
+        GM_ADDR debugGmAddr;  // host-allocated uint32_t[36*16] for checkpoint writes
     };
 
     struct Arguments {
@@ -322,20 +341,31 @@ public:
 
     __aicore__ inline void operator()(const Params &params)
     {
+        auto dbgGm = params.cyclingParams.debugGmAddr;
+        DET_DEBUG_CP(dbgGm, 0, 1);  // CP0: operator() entry
+
         if ASCEND_IS_AIV {
             prologueOp_.Init(params.prologueParams);
             prologueOp_();
-            GetTPipePtr()->InitBuffer(aggQueBind, DET_BUFFER_NUM, DET_DETER_UB_SIZE);
+            DET_DEBUG_CP(dbgGm, 1, 1);  // CP1: prologue done
         }
         if ASCEND_IS_AIC {
             mmadOp_.Init(const_cast<TCubeTiling *__restrict>(params.gmmParams.matmulTiling), GetTPipePtr());
             l0cOutUb_ = epilogueDequantOp_.GetL0c2UbTensor();
+            DET_DEBUG_CP(dbgGm, 1, 2);  // CP1: mmadInit done (AIC uses value 2)
         }
         InitParamsAndTensor(params);
         BlockSchedulerOp bs(params.gmmParams.baseM, params.gmmParams.baseN, params.gmmParams.baseK);
+        DET_DEBUG_CP(dbgGm, 2, 1);  // CP2: before first SyncAll
         SyncAll<false>();
+        DET_DEBUG_CP(dbgGm, 3, 1);  // CP3: after first SyncAll
         if ASCEND_IS_AIV {
             epilogueDequantOp_.Init(params.epilogueParams);
+            // Raw-offset aggregation buffer at VECOUT offset 200KB (after epilogue's ~198KB usage)
+            aggVecout_ = AscendC::LocalTensor<float>(
+                AscendC::TPosition::VECOUT, DET_AGG_VECOUT_OFFSET,
+                DET_AGG_UB_BYTES / sizeof(float));
+            DET_DEBUG_CP(dbgGm, 4, 1);  // CP4: epilogue+aggBuf init done
         }
 
         if constexpr (formatB == CubeFormat::NZ) {
@@ -372,6 +402,7 @@ public:
         // all DMA writes have landed. Otherwise hardware data hazard -> hang.
         uint32_t groupNum = params.gmmParams.groupNum;
         int32_t baseM = params.gmmParams.baseM;
+        DET_DEBUG_CP(dbgGm, 5, 1);  // CP5: before group loop
         for (uint32_t groupIdx = 0; groupIdx < groupNum; groupIdx++) {
             if (!UpdateGroupParams(params, groupIdx)) {
                 continue;
@@ -381,10 +412,12 @@ public:
             int64_t n = Get<MNK_N>(problemShape_);
             int64_t k = Get<MNK_K>(problemShape_);
             uint64_t groupMProcessed = 0;
+            DET_DEBUG_CP(dbgGm, 6, groupIdx + 1);  // CP6: group start (1-based)
 
             while (groupMProcessed < static_cast<uint64_t>(groupM)) {
                 // Proactive check: can workspace fit one more matmul M-tile?
                 if (workspaceBaseRow + static_cast<uint64_t>(baseM) > windowSizeRows) {
+                    DET_DEBUG_CP(dbgGm, 7, static_cast<uint32_t>(workspaceBaseRow));  // CP7: before aggregation
                     // Drain AIC-AIV pipeline
                     End();
                     isVecSetSyncCom_ = false;
@@ -396,6 +429,7 @@ public:
                         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(1);
                     }
                     SyncAll();
+                    DET_DEBUG_CP(dbgGm, 8, static_cast<uint32_t>(workspaceBaseRow));  // CP8: after SyncAll pre-agg
                     {
                         GMMFRDeterministic::SyncConfig syncConfig{};
                         syncConfig.curM = workspaceBaseRow;
@@ -404,11 +438,12 @@ public:
                         syncConfig.baseN = params.cyclingParams.baseN;
                         GMMFRDeterministic::FRDeterministicA5<float,
                             typename BlockEpilogueDequantFinalizeRouting::DataTypeRowIndex>(
-                            syncConfig, deterBufferGm, yGmAgg, rowIndexGm, aggQueBind,
+                            syncConfig, deterBufferGm, yGmAgg, rowIndexGm, aggVecout_,
                             params.cyclingParams.coreNum, params.cyclingParams.n,
                             globalRowOffset);
                     }
                     SyncAll();
+                    DET_DEBUG_CP(dbgGm, 9, static_cast<uint32_t>(globalRowOffset));  // CP9: after aggregation SyncAll
                     globalRowOffset += workspaceBaseRow;
                     workspaceBaseRow = 0;
                     continue;
@@ -489,10 +524,12 @@ public:
 
                 workspaceBaseRow += chunkM;
                 groupMProcessed += chunkM;
+                DET_DEBUG_CP(dbgGm, 10, static_cast<uint32_t>(groupMProcessed));  // CP10: sub-chunk done
             }
         }
 
         // === Final aggregation (remaining rows) ===
+        DET_DEBUG_CP(dbgGm, 11, static_cast<uint32_t>(workspaceBaseRow));  // CP11: before final agg
         // Consume remaining CrossCore flags (matches original kernel's End() after group loop)
         End();
         isVecSetSyncCom_ = false;
@@ -507,6 +544,7 @@ public:
 
         // Final aggregation: all cores must participate (SyncAll is global barrier).
         SyncAll();
+        DET_DEBUG_CP(dbgGm, 12, 1);  // CP12: after final SyncAll pre-agg
         {
             GMMFRDeterministic::SyncConfig syncConfig{};
             syncConfig.curM = workspaceBaseRow;
@@ -516,11 +554,12 @@ public:
 
             GMMFRDeterministic::FRDeterministicA5<float,
                 typename BlockEpilogueDequantFinalizeRouting::DataTypeRowIndex>(
-                syncConfig, deterBufferGm, yGmAgg, rowIndexGm, aggQueBind,
+                syncConfig, deterBufferGm, yGmAgg, rowIndexGm, aggVecout_,
                 params.cyclingParams.coreNum, params.cyclingParams.n,
                 globalRowOffset);
         }
         SyncAll();
+        DET_DEBUG_CP(dbgGm, 13, 1);  // CP13: kernel complete
     }
 };
 } // namespace Kernel

@@ -125,7 +125,8 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
             y, row_index,
             static_cast<uint32_t>(matmulTiling_.usedCoreNum),
             static_cast<uint32_t>(matmulTiling_.N),
-            baseN, windowSizeRows};
+            baseN, windowSizeRows,
+            nullptr};  // debugGmAddr: host should pass a uint32_t[36*16] buffer here for hang debugging
 
         CyclingParams params = {
             {1, 1, 1, 1},
