@@ -18,12 +18,15 @@
 #include <vector>
 #include <torch/all.h>
 
+#include "acl/acl_prof.h"
 #include "acl/acl.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "kernel_operator.h"
 #include "moe_distribute_dispatch_v2_entry.h"
 #include "op_kernel/moe_distribute_dispatch_v2_tiling.h"
 #include "moe_distribute_dispatch_v2_torch.h"
+#include "moe_distribute_dispatch_v2_torch_validate.h"
+#include "../../common/inc/kernel/mc2_profiling.h"
 
 #include "torch_npu/csrc/core/npu/NPUStream.h"
 #include "torch_npu/csrc/framework/OpCommand.h"
@@ -50,6 +53,7 @@ constexpr uint32_t TILINGKEY_XTYPE = 10;
 constexpr uint32_t TILINGKEY_SCALES = 100;
 constexpr uint32_t TILINGKEY_COMM_ALG = 1000;
 constexpr uint32_t WORKSPACESIZE = 16 * 1024 *1024;
+constexpr uint32_t MIX_AIV = 5;
 
 static void calculate_tilingkey(int32_t &tilingKey, at::ScalarType xType, const bool isScales, const uint32_t quantMode,
     const bool isSetCommAlg)
@@ -115,12 +119,23 @@ void moe_distribute_dispatch_v2_api(
         get_first_tensor_address<at::Tensor>(assist_info_forcombine.scalar_type(), assist_info_forcombine, false);
     int32_t tilingKey = 10000;
     calculate_tilingkey(tilingKey, x.scalar_type(), scales.has_value(), tilingData.quantMode, is_fullmesh_v2);
+
+    aclProfTensorInfo tensorInfo;
+    INIT_ACL_PROF_TENSOR_INFO("moe_distribute_dispatch_v2", "MoeDistributeDispatchV2", tilingData.aivNum, MIX_AIV, tensorInfo, stream,
+        INPUT(x), INPUT(expert_ids),
+        OUTPUT(expand_x), OUTPUT(dynamic_scales), OUTPUT(assist_info_forcombine),
+        OUTPUT(expert_token_nums), OUTPUT(ep_recv_counts), OUTPUT(expand_scales));
+    aclprofEventAttributes attrs = {1, sizeof(aclprofEventAttributes::message), 0, &tensorInfo};
+    aclprofRangePushEx(&attrs);
+
     moe_distribute_dispatch_v2_entry(tilingKey, tilingData.aivNum, (void*)stream, (GM_ADDR)x_ptr,
         (GM_ADDR)expertIds_ptr, (GM_ADDR)scales_ptr, (GM_ADDR)xActiveMask_ptr,
         (GM_ADDR)expertScales_ptr, (GM_ADDR)performanceInfo_ptr,
         (GM_ADDR)expandXOut_ptr, (GM_ADDR)dynamicScalesOut_ptr, (GM_ADDR)assistInfoOut_ptr,
         (GM_ADDR)expertTokenNumsOut_ptr, (GM_ADDR)epSendCountsOut_ptr,
         (GM_ADDR)expandScalesOut_ptr, (GM_ADDR)workspace_ptr, (GM_ADDR)mc2Context_ptr, tilingData);
+    
+    aclprofRangePop();
 }
 
 void calculate_tilingdata(MoeDistributeDispatchV2Info &tilingData, int64_t ep_world_size, int64_t ep_rank_id,
@@ -186,39 +201,26 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tenso
     int64_t expert_token_nums_type, c10::string_view comm_alg,
     int64_t zero_expert_num, int64_t copy_expert_num, int64_t const_expert_num)
 {
-    TORCH_CHECK((x.dim() == DIM_TWO) && (expert_ids.dim() == DIM_TWO), "The x and expert_ids should be 2D");
-    TORCH_CHECK(x.scalar_type() == at::kBFloat16 || x.scalar_type() == at::kHalf,
-                "dtype of x should be BFloat16 or Half, but got " + std::string(c10::toString(x.scalar_type())));
-    TORCH_CHECK(expert_ids.scalar_type() == at::kInt,
-                "dtype of expert_ids should be Int, but got " + std::string(c10::toString(expert_ids.scalar_type())));
-    TORCH_CHECK((ep_rank_id >= 0) && (ep_rank_id < ep_world_size),
-                "ep_rank_id should be in [0, ep_world_size), but got",
-                " ep_world_size: ", ep_world_size,
-                ", ep_rank_id: ", ep_rank_id);
-    TORCH_CHECK((shared_expert_rank_num >= 0) && (shared_expert_rank_num < ep_world_size),
-                "shared_expert_rank_num should be in [0, ep_world_size), but got",
-                " ep_world_size: ", ep_world_size,
-                ", shared_expert_rank_num: ", shared_expert_rank_num);
-    bool is_shared_default = ((shared_expert_num == 1) && (shared_expert_rank_num == 0));
-    bool is_no_shared = ((shared_expert_num == 0) && (shared_expert_rank_num == 0));
-    bool is_valid_shared = ((shared_expert_num > 0)
-        && ((shared_expert_rank_num / shared_expert_num) > 0)
-        && ((shared_expert_rank_num % shared_expert_num) == 0));
-    TORCH_CHECK(is_shared_default || is_no_shared || is_valid_shared,
-                "shared_expert_num and shared_expertrank_num have obvious value situations: "
-                "1. shared_expert_num is 1, shared_expert_rank_num is 0; 2. shared_expert num is 0, "
-                "shared_expert_rank_num is 0; 3. shared_expert_num in (0, shared_expert_rank_num] and "
-                "shared_expert_rank_num % shared_expert_num = 0. but the current input value is ",
-                " shared_expert_num: ", shared_expert_num,
-                ", shared_expert_rank_num: ", shared_expert_rank_num);
-    TORCH_CHECK((expert_token_nums_type == 0) || (expert_token_nums_type == 1),
-                "The expert_token_nums_type should be 0 or 1.");
-    auto x_size = x.sizes();
-    auto expert_ids_size = expert_ids.sizes();
-
-    int64_t bs = x_size[0];
-    int64_t h = x_size[1];
-    int64_t k = expert_ids_size[1];
+    MoeDistributeDispatchV2ValidateParams validate_params;
+    validate_params.ep_world_size = ep_world_size;
+    validate_params.ep_rank_id = ep_rank_id;
+    validate_params.moe_expert_num = moe_expert_num;
+    validate_params.shared_expert_num = shared_expert_num;
+    validate_params.shared_expert_rank_num = shared_expert_rank_num;
+    validate_params.quant_mode = quant_mode;
+    validate_params.global_bs = global_bs;
+    validate_params.expert_token_nums_type = expert_token_nums_type;
+    validate_params.comm_alg = std::string(comm_alg);
+    validate_params.zero_expert_num = zero_expert_num;
+    validate_params.copy_expert_num = copy_expert_num;
+    validate_params.const_expert_num = const_expert_num;
+    
+    ValidateMoeDistributeDispatchV2Input(x, expert_ids, scales, x_active_mask, expert_scales, 
+                                         performance_info, validate_params);
+    
+    int64_t bs = validate_params.bs;
+    int64_t h = validate_params.h;
+    int64_t k = validate_params.k;
 
     bool shared_front = (expert_shard_type == 0);
     int64_t local_moe_expert_num = 1;

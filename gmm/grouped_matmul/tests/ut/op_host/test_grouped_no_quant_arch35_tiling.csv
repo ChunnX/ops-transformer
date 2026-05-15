@@ -21,3 +21,7 @@ Ascend950,split_m_sss_4,true,split_m_sss_4,,7,1555,1333,1,false,false,0,3,ND,FLO
 Ascend950,split_m_sss_5,true,split_m_sss_5,,1777,5,1333,1,false,false,0,3,ND,FLOAT16,FLOAT16,FLOAT,FLOAT16,false,true,32,0,1 32 1 1 1 0 0 0 3 1 0 0 32 1777 1333 5 5 1777 256 5 256 256 64 8 8 1 1 0 0 0 0 0 0 0 0 0 0 0 4 4 0 0 2 2 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
 Ascend950,split_m_sss_6,true,split_m_sss_6,,1777,1555,3,1,false,false,0,3,ND,FLOAT16,FLOAT16,FLOAT,FLOAT16,false,true,28,0,1 28 1 1 1 0 0 0 1 1 0 0 28 1777 3 1555 1555 1777 16 1555 64 16 256 8 32 1 1 0 0 0 0 0 0 0 0 0 0 0 4 16 0 0 2 2 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
 Ascend950,split_m_sss_7,true,split_m_sss_7,,32,32,32,1,false,false,0,3,ND,FLOAT16,FLOAT16,FLOAT,FLOAT16,false,true,4,0,1 4 1 1 1 0 0 0 1 1 0 0 4 32 32 32 32 32 16 32 16 16 32 256 256 1 1 0 0 0 0 0 0 0 0 0 0 0 128 128 0 0 2 2 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+Ascend950,split_m_single_single_multi_y_invalid,true,split_m_single_single_multi_y_invalid,,256,1024,512,2,false,false,0,0,ND,FLOAT16,FLOAT16,FLOAT,FLOAT16,false,false,0,0,
+Ascend950,split_k_single_single_multi_y_invalid,true,split_k_single_single_multi_y_invalid,,256,1024,512,2,false,false,2,0,ND,FLOAT16,FLOAT16,FLOAT,FLOAT16,false,false,0,0,
+Ascend950,nz_unaligned_k_invalid,true,nz_unaligned_k_invalid,,256,1025,512,2,false,false,0,3,NZ,FLOAT16,FLOAT16,FLOAT,FLOAT16,false,false,0,0,
+Ascend950,k_zero_invalid,true,k_zero_invalid,,256,0,512,2,false,false,0,3,ND,FLOAT16,FLOAT16,FLOAT,FLOAT16,false,false,0,0,

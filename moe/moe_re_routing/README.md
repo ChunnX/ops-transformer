@@ -58,7 +58,7 @@
         <td>表示待重新排布的token。</td>
         <td>
         通用：FLOAT16、BF16、INT8<br>
-        <term>Ascend 950PR/Ascend 950DT</term>：FLOAT16、BF16、INT8、FLOAT8_E5M2、FLOAT8_E4M3FN
+        <term>Ascend 950PR/Ascend 950DT</term>：FLOAT16、BF16、INT8、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8、FLOAT4_E2M1、FLOAT4_E1M2
         </td>
         <td>ND</td>
       </tr>
@@ -85,7 +85,7 @@
         <td>表示重新排布后的token。</td>
         <td>
         通用：FLOAT16、BF16、INT8<br>
-        <term>Ascend 950PR/Ascend 950DT</term>：FLOAT16、BF16、INT8、FLOAT8_E5M2、FLOAT8_E4M3FN
+        <term>Ascend 950PR/Ascend 950DT</term>：FLOAT16、BF16、INT8、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8、FLOAT4_E2M1、FLOAT4_E1M2
         </td>
         <td>ND</td>
       </tr>

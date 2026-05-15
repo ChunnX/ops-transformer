@@ -287,7 +287,7 @@ aclnnStatus aclnnNsaCompressAttentionInfer(
       <td>输入</td>
       <td>输入query、key、value的数据排布格式。</td>
       <td>当前支持取值“TND”和“BSND”。</td>
-      <td>CHAR</td>
+      <td>STRING</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -537,7 +537,7 @@ int main() {
     int64_t compressStride = 16;
     double scaleValue = 0.088388;
   string sLayerOut = "TND";
-  char layOut[sLayerOut.length()];
+  char layOut[sLayerOut.length()+1];
   strcpy(layOut, sLayerOut.c_str());
     int64_t pageBlockSize = 128;
     int64_t sparseMod = 0;

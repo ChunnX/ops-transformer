@@ -16,6 +16,8 @@
 #include <iostream>
 #include <vector>
 #include <thread>
+#include <memory>
+#include <cstdio>
 #include "hccl/hccl.h"
 #include "aclnn/opdev/fp16_t.h"
 #include "aclnnop/aclnn_matmul_all_reduce_add_rms_norm.h"

@@ -62,7 +62,7 @@ m = max(sink, max(S))
 $$
 
 $$
-Attention = \frac{e^{S - m} @ V}{\sum e^{S-m} + S^{sink - m}}
+Attention = \frac{e^{S - m} @ V}{\sum e^{S-m} + e^{sink - m}}
 $$
 
 $$
@@ -206,7 +206,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV3(
       </tr>
       <tr>
         <td>paddingMaskOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>预留参数，暂未使用。</td>
         <td>-</td>
         <td>-</td>
@@ -216,7 +216,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV3(
       </tr>
       <tr>
         <td>qStartIdxOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>代表外切场景，当前分块的query的sequence在全局中的起始索引。</td>
         <td>-</td>
         <td>INT64</td>
@@ -226,7 +226,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV3(
       </tr>
       <tr>
         <td>kvStartIdxOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>代表外切场景，当前分块的key和value的sequence在全局中的起始索引。</td>
         <td>-</td>
         <td>INT64</td>
@@ -236,7 +236,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV3(
       </tr>
       <tr>
         <td>attenMaskOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>公式中的atten_mask。</td>
         <td>取值为1代表该位不参与计算，为0代表该位参与计算。</td>
         <td>BOOL、UINT8</td>
@@ -266,7 +266,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV3(
       </tr>
       <tr>
         <td>softmaxInOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>注意力正向计算的中间输出。</td>
         <td>预留参数，暂未使用。</td>
         <td>-</td>
@@ -306,7 +306,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV3(
       </tr>
       <tr>
         <td>scaleValue</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>公式中的scale缩放系数。</td>
         <td>-</td>
         <td>DOUBLE</td>
@@ -316,7 +316,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV3(
       </tr>
       <tr>
         <td>keepProb</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>dropMask中1的比例。</td>
         <td>-</td>
         <td>DOUBLE</td>
@@ -326,7 +326,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV3(
       </tr>
       <tr>
         <td>preTokens</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>稀疏计算窗口左边界。</td>
         <td>-</td>
         <td>INT64</td>
@@ -336,7 +336,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV3(
       </tr>
       <tr>
         <td>nextTokens</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>稀疏计算窗口右边界。</td>
         <td>-</td>
         <td>INT64</td>
@@ -366,7 +366,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV3(
       </tr>
       <tr>
         <td>innerPrecise</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>内部计算精度控制。</td>
         <td>保留参数，暂未使用。</td>
         <td>INT64</td>
@@ -376,7 +376,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV3(
       </tr>
       <tr>
         <td>sparseMode</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>稀疏模式。</td>
         <td>支持配置值0~6。</td>
         <td>INT64</td>
@@ -386,7 +386,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV3(
       </tr>
       <tr>
         <td>pseType</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>pse类型。</td>
         <td>支持配置值0~3。</td>
         <td>INT64</td>
@@ -441,7 +441,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV3(
         <td>-</td>
         <td>FLOAT32</td>
         <td>ND</td>
-        <td>1</td>
+        <td>[headNum]</td>
         <td>√</td>
       </tr>
       <tr>
@@ -590,7 +590,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV3(
 - prefixOptional稀疏计算场景即sparseMode=5或者sparseMode=6，当Sq > Skv时，prefix的N值取值范围\[0, Skv\]，当Sq <=
   Skv时，prefix的N值取值范围\[Skv-Sq, Skv\]。
 - pseShiftOptional中的Sq在大于1024场景下，且此时shape取值为BNHS或1NHS时，需要满足Sq和Skv等长。
-- sinkInOptional维度为1，长度需要与query的headnum相同。
+- sinkInOptional维度为1，长度需要与query的headNum相同。
 
 ## 调用示例
 

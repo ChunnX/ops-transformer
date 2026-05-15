@@ -43,14 +43,15 @@ def test_qli_process(filepath, device_id=0):
     key_dequant_scale = test_data['key_dequant_scale'].npu()
     actual_seq_lengths_query = test_data['actual_seq_lengths_query'].npu()
     actual_seq_lengths_key = test_data['actual_seq_lengths_key'].npu()
-    block_table = test_data['block_table'].npu()
+    block_table = test_data['block_table']
+    if isinstance(block_table, torch.Tensor):
+        block_table = block_table.npu()
     query_quant_mode = test_data['query_quant_mode']
     key_quant_mode = test_data['key_quant_mode']
     layout_query = test_data['layout_query']
     layout_key = test_data['layout_key']
     sparse_count = test_data['sparse_count']
     sparse_mode = test_data['sparse_mode']
-    cmp_ratio = test_data['cmp_ratio']
 
     #调用SFA算子
     npu_result = torch_npu.npu_quant_lightning_indexer(query, key, weights, 

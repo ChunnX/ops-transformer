@@ -295,6 +295,14 @@ def cpu_recurrent_gated_delta_rule(
 def rand_range(shape, data_range=[-10, 10], dtype=torch.bfloat16, device=None):
     return data_range[0] + (data_range[1] - data_range[0]) * torch.rand(shape, dtype=dtype, device=device)
 
+def adjust_range(datarange):
+    left, right = datarange
+    if right < 0:
+        return [left, right]
+    if left > 0:
+        return [-right, -left]
+    return [left, 0]
+
 def run_recurrent_gated_delta_rule_eager(B, mtp, nk, nv, dk, dv, actual_seq_lengths=None,
                          ssm_state_indices=None, has_gamma='False', has_gamma_k='False',
                          has_num_accepted_tokens='False', scale_value=None, num_accepted_tokens=None,
@@ -303,16 +311,16 @@ def run_recurrent_gated_delta_rule_eager(B, mtp, nk, nv, dk, dv, actual_seq_leng
                          beta_datarange=[0, 1], state_datarange=[-10, 10]):
     torch_npu.npu.set_device(int(DEVICE_ID))
     # ======================== set input params finish ========================
-    block_num = B * mtp if block_num == None else block_num
-    if scale_value == None:
+    block_num = B * mtp if block_num is None else block_num
+    if scale_value is None:
         scale_value = dk ** -0.5
-    if actual_seq_lengths == None:
+    if actual_seq_lengths is None:
         actual_seq_lengths = [mtp] * B
-    if has_num_accepted_tokens == True and num_accepted_tokens == None:
+    if has_num_accepted_tokens == True and num_accepted_tokens is None:
         num_accepted_tokens = torch.tensor([torch.randint(0, h, (1,)) for h in actual_seq_lengths]) + 1
     T = int(sum(actual_seq_lengths))
     actual_seq_lengths = torch.tensor(actual_seq_lengths)
-    if ssm_state_indices == None:
+    if ssm_state_indices is None:
         ssm_state_indices = torch.arange(T, dtype=torch.int32)
     # ======================== set input params finish ========================
     # ======================== check input params start ========================
@@ -345,13 +353,19 @@ def run_recurrent_gated_delta_rule_eager(B, mtp, nk, nv, dk, dv, actual_seq_leng
     query = rand_range((T, nk, dk), query_datarange, data_type)
     key = rand_range((T, nk, dk), key_datarange, data_type)
     value = rand_range((T, nv, dv), value_datarange, data_type)
-    g = rand_range((T, nv), gamma_datarange, dtype=torch.float32) if has_gamma == True else None
-    gk = rand_range((T, nv, dk), gamma_k_datarange, dtype=torch.float32) if has_gamma_k == True else None
+    g = rand_range((T, nv), adjust_range(gamma_datarange), dtype=torch.float32) if has_gamma == True else None
+    gk = rand_range((T, nv, dk), adjust_range(gamma_k_datarange), dtype=torch.float32) if has_gamma_k == True else None
     beta = rand_range((T, nv), beta_datarange, data_type)
     num_accepted_tokens = torch.tensor(num_accepted_tokens, dtype=torch.int32) if has_num_accepted_tokens == True else None
     state = rand_range((block_num, nv, dv, dk), state_datarange, data_type)
     act_seq_len = torch.tensor(actual_seq_lengths, dtype=torch.int32)
     ssm_state_indices = torch.tensor(ssm_state_indices, dtype=torch.int32)
+
+    # 对于query和key数据范围大于[-1, 1]的情况加入归一化处理，避免数据过大导致计算结果全为inf或者nan的情况
+    if query_datarange[0] < -1 or query_datarange[1] > 1:
+        query = torch.nn.functional.normalize(query, p=2, dim=-1)
+    if key_datarange[0] < -1 or key_datarange[1] > 1:
+        key = torch.nn.functional.normalize(key, p=2, dim=-1)
 
     # ======================== gen input data finish =============================
 

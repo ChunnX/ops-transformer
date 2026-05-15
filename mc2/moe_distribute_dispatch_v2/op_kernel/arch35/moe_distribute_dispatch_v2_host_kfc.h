@@ -629,6 +629,11 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
     expertIdsCnt_ = axisBS_ * axisK_;
 
     uint32_t hFp32Size = axisH_ * sizeof(float);
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    if constexpr ((QuantMode == PERGROUP_DYNAMIC_QUANT) && IsSmoothScaleExist) {
+        hFp32Size = Align128(axisH_) * sizeof(float);
+    }
+#endif
     uint32_t expertIdsSize = expertIdsCnt_ * sizeof(int32_t);
     uint32_t xActivateMaskSize = axisBS_ * (Ceil(axisK_ * sizeof(bool), UB_ALIGN) * UB_ALIGN) * sizeof(half);
     uint32_t expertCntAlign = Ceil(moeExpertNum_ * sizeof(int32_t), SPLIT_BLOCK_DATA_SIZE) * SPLIT_BLOCK_DATA_SIZE;

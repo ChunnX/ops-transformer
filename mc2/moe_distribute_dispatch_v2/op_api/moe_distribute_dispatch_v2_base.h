@@ -35,30 +35,33 @@ enum NnopbaseHcclServerType {
 };
 
 // check nullptr
-ACLNN_API bool DispatchCheckNotNull(const aclTensor* x, const aclTensor* expertIds, const char* groupEp,
-                                    [[maybe_unused]] const char* groupTp, aclTensor* expandX, [[maybe_unused]] aclTensor* dynamicScales,
-                                    aclTensor* assistInfoForCombine, aclTensor* expertTokensNums,
-                                    aclTensor* epRecvCounts, aclTensor* tpRecvCounts);
+ACLNN_API bool DispatchCheckNotNull(const aclTensor *x, const aclTensor *expertIds, const char *groupEp,
+                                    [[maybe_unused]] const char *groupTp, aclTensor *expandX,
+                                    [[maybe_unused]] aclTensor *dynamicScales, aclTensor *assistInfoForCombine,
+                                    aclTensor *expertTokensNums, aclTensor *epRecvCounts, aclTensor *tpRecvCounts);
 
 // 入参教验
-ACLNN_API aclnnStatus DispatchCheckParams(const aclTensor* x, const aclTensor* expertIds,
-                                          const char* groupEp, const char* groupTp, int64_t quantMode,
-                                          aclTensor* expandX, aclTensor* dynamicScales, aclTensor* assistInfoForCombine,
-                                          aclTensor* expertTokensNums, aclTensor* epRecvCounts, aclTensor* tpRecvCounts);
+ACLNN_API aclnnStatus DispatchCheckParams(const aclTensor *x, const aclTensor *expertIds, const char *groupEp,
+                                          const char *groupTp, int64_t quantMode, aclTensor *expandX,
+                                          aclTensor *dynamicScales, aclTensor *assistInfoForCombine,
+                                          aclTensor *expertTokensNums, aclTensor *epRecvCounts,
+                                          aclTensor *tpRecvCounts);
+
+ACLNN_API aclnnStatus aclnnMoeDistributeDispatchBase(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                                     aclrtStream stream);
 
 ACLNN_API aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
-    const aclTensor* x, const aclTensor* expertIds, const aclTensor* scalesOptional,
-    const aclTensor* xActiveMaskOptional, const aclTensor* expertScalesOptional,
-    const aclTensor* elasticInfoOptional, const aclTensor* performanceInfoOptional, const char* groupEp,
-    int64_t epWorldSize, int64_t epRankId, int64_t moeExpertNum, const char* groupTp, int64_t tpWorldSize,
-    int64_t tpRankId, int64_t expertShardType, int64_t sharedExpertNum, int64_t sharedExpertRankNum,
-    int64_t quantMode, int64_t globalBs, int64_t expertTokenNumsType, const char* commAlg,
-    int64_t zeroExpertNum, int64_t copyExpertNum, int64_t constExpertNum, aclTensor* expandXOut,
-    aclTensor* dynamicScalesOut, aclTensor* assistInfoForCombineOut, aclTensor* expertTokenNumsOut, aclTensor* epRecvCountsOut,
-    aclTensor* tpRecvCountsOut, aclTensor* expandScalesOut,
-    uint64_t* workspaceSize, aclOpExecutor** executor);
+    const aclTensor *x, const aclTensor *expertIds, const aclTensor *scalesOptional,
+    const aclTensor *xActiveMaskOptional, const aclTensor *expertScalesOptional, const aclTensor *elasticInfoOptional,
+    const aclTensor *performanceInfoOptional, const char *groupEp, int64_t epWorldSize, int64_t epRankId,
+    int64_t moeExpertNum, const char *groupTp, int64_t tpWorldSize, int64_t tpRankId, int64_t expertShardType,
+    int64_t sharedExpertNum, int64_t sharedExpertRankNum, int64_t quantMode, int64_t globalBs,
+    int64_t expertTokenNumsType, const char *commAlg, int64_t zeroExpertNum, int64_t copyExpertNum,
+    int64_t constExpertNum, aclTensor *expandXOut, aclTensor *dynamicScalesOut, aclTensor *assistInfoForCombineOut,
+    aclTensor *expertTokenNumsOut, aclTensor *epRecvCountsOut, aclTensor *tpRecvCountsOut, aclTensor *expandScalesOut,
+    uint64_t *workspaceSize, aclOpExecutor **executor);
 
 #ifdef __cplusplus
 }
 #endif
-#endif //MOE_DISTRIBUTE_DISPATCH_V2_BASE_
+#endif // MOE_DISTRIBUTE_DISPATCH_V2_BASE_

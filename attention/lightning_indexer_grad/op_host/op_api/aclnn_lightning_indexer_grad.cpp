@@ -120,14 +120,79 @@ aclnnStatus ContiguousAndLightningIndexerGrad(const LightningIndexerGradParams &
     return ACLNN_SUCCESS;
 }
 
+static bool CheckDataType(const aclTensor *query,
+                          const aclTensor *key,
+                          const aclTensor *dy,
+                          const aclTensor *weights)
+{
+    const DataType qDtype = query->GetDataType();
+    const DataType kDtype = key->GetDataType();
+    const DataType dyDtype = dy->GetDataType();
+    const DataType weightsDtype = weights->GetDataType();
+
+    static const std::unordered_map<DataType, std::vector<DataType>> validKvType = {
+        {DataType::DT_FLOAT16, {DataType::DT_FLOAT16}},
+        {DataType::DT_BF16, {DataType::DT_BF16}},
+    };
+
+    auto iter = validKvType.find(qDtype);
+    if (iter == validKvType.end()) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Unsupported query datatype %d.", static_cast<int>(qDtype));
+        return false;
+    }
+
+    if (std::find(iter->second.begin(), iter->second.end(), kDtype) == iter->second.end() ||
+        std::find(iter->second.begin(), iter->second.end(), dyDtype) == iter->second.end() ||
+        std::find(iter->second.begin(), iter->second.end(), weightsDtype) == iter->second.end()) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Key/Dy/Weights datatype mismatch with query.");
+        return false;
+    }
+
+    return true;
+}
+
+static aclnnStatus ValidateParams(const aclTensor *query,
+                                  const aclTensor *key,
+                                  const aclTensor *dy,
+                                  const aclTensor *sparseIndices,
+                                  const aclTensor *weights,
+                                  const aclTensor *actualSeqQLenOptional,
+                                  const aclTensor *actualSeqKvLenOptional,
+                                  int64_t headNum,
+                                  char *inputLayout,
+                                  int64_t sparseMode,
+                                  int64_t preTokens,
+                                  int64_t nextTokens,
+                                  bool deterministic)
+{
+    CHECK_RET(query != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(key != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(dy != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(sparseIndices != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(weights != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+
+    if (!CheckDataType(query, key, dy, weights)) {
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+
+    return ACLNN_SUCCESS;
+}
+
 aclnnStatus aclnnLightningIndexerGradGetWorkspaceSize(
     const aclTensor *query, const aclTensor *key, const aclTensor *dy, const aclTensor *sparseIndices,
     const aclTensor *weights, const aclTensor *actualSeqQLenOptional, const aclTensor *actualSeqKvLenOptional,
     int64_t headNum, char *inputLayout, int64_t sparseMode, int64_t preTokens, int64_t nextTokens, bool deterministic, 
     const aclTensor *dqOut, const aclTensor *dkOut, const aclTensor *dweightsOut, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
+    aclnnStatus validateRet = ValidateParams(query, key, dy, sparseIndices, weights,
+                                             actualSeqQLenOptional, actualSeqKvLenOptional,
+                                             headNum, inputLayout, sparseMode, preTokens, nextTokens, deterministic);
+    if (validateRet != ACLNN_SUCCESS) {
+        return validateRet;
+    }
+
     L2_DFX_PHASE_1(aclnnLightningIndexerGrad,
-                   DFX_IN(query, key, dy, sparseIndices, weights, actualSeqQLenOptional, actualSeqKvLenOptional, 
+                   DFX_IN(query, key, dy, sparseIndices, weights, actualSeqQLenOptional, actualSeqKvLenOptional,
                             headNum, inputLayout, sparseMode, preTokens, nextTokens, deterministic),
                    DFX_OUT(dqOut, dkOut, dweightsOut));
     LightningIndexerGradParams params{query,

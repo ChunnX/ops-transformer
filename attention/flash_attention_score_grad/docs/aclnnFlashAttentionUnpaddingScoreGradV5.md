@@ -63,7 +63,7 @@ m = max(sink, max(S))
 $$
 
 $$
-Attention = \frac{e^{S - m} @ V}{\sum e^{S-m} + S^{sink - m}}
+Attention = \frac{e^{S - m} @ V}{\sum e^{S-m} + e^{sink - m}}
 $$
 
 $$
@@ -162,7 +162,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
       </tr>
     <tr>
         <td>queryRope</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>Q的rope部分（旋转位置编码）。</td>
         <td>数据类型与query一致。</td>
         <td>BFLOAT16</td>
@@ -182,7 +182,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
       </tr>
       <tr>
         <td>keyInRope</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>K的rope部分。</td>
         <td>数据类型与keyIn一致。</td>
         <td>BFLOAT16</td>
@@ -232,7 +232,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
       </tr>
       <tr>
         <td>paddingMaskOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>预留参数，暂未使用。</td>
         <td>调用时需传空。</td>
         <td>-</td>
@@ -242,7 +242,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
       </tr>
       <tr>
         <td>qStartIdxOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>代表外切场景，当前分块的query的sequence在全局中的起始索引。</td>
         <td>-</td>
         <td>INT64</td>
@@ -252,7 +252,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
       </tr>
       <tr>
         <td>kvStartIdxOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>代表外切场景，当前分块的key和value的sequence在全局中的起始索引。</td>
         <td>-</td>
         <td>INT64</td>
@@ -262,7 +262,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
       </tr>
       <tr>
         <td>attenMaskOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>公式中的atten_mask。</td>
         <td>取值为1代表该位不参与计算，为0代表该位参与计算。</td>
         <td>BOOL、UINT8</td>
@@ -292,7 +292,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
       </tr>
       <tr>
         <td>softmaxInOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>正向softmax的中间输出。</td>
         <td>预留参数，暂未使用。</td>
         <td>-</td>
@@ -302,7 +302,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
       </tr>
       <tr>
         <td>attentionInOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>正向注意力输出。</td>
         <td>与query数据类型、shape一致。</td>
         <td>FLOAT16、BFLOAT16、FLOAT32</td>
@@ -332,7 +332,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
       </tr>
       <tr>
         <td>actualSeqQLenOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>实际Query序列长度。</td>
         <td>-</td>
         <td>INT64</td>
@@ -342,7 +342,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
       </tr>
       <tr>
         <td>actualSeqKvLenOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>实际Key/Value序列长度。</td>
         <td>-</td>
         <td>INT64</td>
@@ -352,7 +352,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
       </tr>
       <tr>
         <td>scaleValue</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>scale缩放系数。</td>
         <td>一般设置为D^-0.5。</td>
         <td>DOUBLE</td>
@@ -362,7 +362,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
       </tr>
       <tr>
         <td>keepProb</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>dropMaskOptional中1的比例。</td>
         <td>一般设置为1.0。</td>
         <td>DOUBLE</td>
@@ -372,7 +372,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
       </tr>
       <tr>
         <td>preTokens</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>稀疏计算时滑窗左边界。</td>
         <td>不特意指定建议2147483647。</td>
         <td>INT64</td>
@@ -382,7 +382,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
       </tr>
       <tr>
         <td>nextTokens</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>稀疏计算时滑窗右边界。</td>
         <td>不特意指定建议2147483647。</td>
         <td>INT64</td>
@@ -412,17 +412,17 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
       </tr>
       <tr>
         <td>innerPrecise</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>内部计算精度控制。</td>
         <td>保留参数，暂未使用。</td>
-        <td>INT32</td>
+        <td>INT64</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
       </tr>
       <tr>
         <td>sparseMode</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>稀疏模式。</td>
         <td>支持配置0~8，不支持5。传入rope时，不支持6。</td>
         <td>INT64</td>
@@ -432,7 +432,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
       </tr>
       <tr>
         <td>pseType</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>pse类型。</td>
         <td>支持配置值0~3。</td>
         <td>INT64</td>
@@ -442,9 +442,9 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
       </tr>
       <tr>
         <td>softmaxInLayout</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>控制softmaxMax、softmaxSum的实际数据排布。</td>
-        <td>TND时传"same_as_input"，NTD时传""。</td>
+        <td>shape为TND，实际数据排布需要NTD时传"same_as_input"，TND时传""。</td>
         <td>String</td>
         <td>-</td>
         <td>-</td>
@@ -622,6 +622,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
 - pseShiftOptional：如果Sq大于1024且每个batch的Sq与Skv等长且是sparseMode为0、2、3的下三角掩码场景，可使能alibi位置编码压缩，此时只需要输入原始PSE最后1024行，实现内存优化，即alibi_compress = ori_pse[:, :, -1024:, :]，具体如下：
   - 参数每个batch不相同时，shape为BNHSkv(H=1024)。
   - 每个batch相同时，shape为1NHSkv(H=1024)。
+  - TND场景下，每个batch段内部仍按[N, Sq_i, Skv_i]生成，但存储与传参时统一flatten。若第i个batch段的真实query长度为Sq_i、真实key/value长度为Skv_i，则该段PSE元素个数为N * Sq_i * Skv_i，整段PSE总长度pseTotalLen为sum_i(N * Sq_i * Skv_i)。
   - 如果pseType为2或3的时候，数据类型需为FLOAT32, 对应shape支持范围是[B,N]或[N]。
   - 如果不使能该参数，pseShiftOptional需要传入nullptr，pseType需要传入1。
 - pseType 各个取值含义
@@ -648,7 +649,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
 - 关于softmaxMax与softmaxSum参数的约束：输入格式固定为\[B, N, S, 8\]，TND的输入格式除外，此时为\[T, N, 8\]，注：T=B*S。
 - headNum的取值必须和传入的Query中的N值保持一致。
 - softmaxSum、softmaxMax数据排布为TND时，softmaxInLayout需要为"same_as_input"。
-- sinkInOptional维度为1，长度需要与query的headnum相同。
+- sinkInOptional维度为1，长度需要与query的headNum相同。
 
 ## 调用示例
 

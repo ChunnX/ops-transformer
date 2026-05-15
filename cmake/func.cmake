@@ -11,11 +11,18 @@
 function(filter_copy_files SELECTED_FILES SELECTED_DIRS)
     set(_selected_files "")
     set(_selected_dirs "")
+    set(OP_ARCH_DIRECTORY ${ARCH_DIRECTORY})
+    foreach (_COMPUTE_UNIT ${ASCEND_COMPUTE_UNIT})
+        if (DEFINED ${_op_name}_${_COMPUTE_UNIT}_arch_directory)
+            list(APPEND OP_ARCH_DIRECTORY ${${_op_name}_${_COMPUTE_UNIT}_arch_directory})
+        endif()
+    endforeach ()
+    list(REMOVE_DUPLICATES OP_ARCH_DIRECTORY)
     foreach(item ${KERNEL_SUB_DIRS})
         set(path "${CURRENT_KERNEL_DIR}/${item}")
         if(IS_DIRECTORY "${path}")
             if(item MATCHES "^arch")
-                list(FIND ARCH_DIRECTORY "${item}" idx)
+                list(FIND OP_ARCH_DIRECTORY "${item}" idx)
                 if(idx EQUAL -1)
                     continue()
                 endif()
@@ -71,10 +78,17 @@ function(op_add_subdirectory OP_LIST OP_DIR_LIST)
         file(GLOB OP_HOST_CMAKE_FILES
         "${CMAKE_CURRENT_SOURCE_DIR}/experimental/ffn/**/op_host/CMakeLists.txt"
         "${CMAKE_CURRENT_SOURCE_DIR}/experimental/gmm/**/op_host/CMakeLists.txt"
-        "${CMAKE_CURRENT_SOURCE_DIR}/experimental/mc2/**/op_host/CMakeLists.txt"
         "${CMAKE_CURRENT_SOURCE_DIR}/experimental/moe/**/op_host/CMakeLists.txt"
         "${CMAKE_CURRENT_SOURCE_DIR}/experimental/posembedding/**/op_host/CMakeLists.txt"
         )
+        if(NOT (ASCEND_COMPUTE_UNIT STREQUAL "kirinx90" OR 
+                ASCEND_COMPUTE_UNIT STREQUAL "kirin9030" OR 
+                ASCEND_COMPUTE_UNIT STREQUAL "mc62cm12a"))
+            file(GLOB MC2_OP_HOST_CMAKE_FILES
+            "${CMAKE_CURRENT_SOURCE_DIR}/experimental/mc2/**/op_host/CMakeLists.txt"
+            )
+            List(APPEND OP_HOST_CMAKE_FILES ${MC2_OP_HOST_CMAKE_FILES})
+        endif()
     else()
         file(GLOB OP_HOST_CMAKE_FILES
         "${CMAKE_CURRENT_SOURCE_DIR}/gmm/**/op_host/CMakeLists.txt"
@@ -85,12 +99,19 @@ function(op_add_subdirectory OP_LIST OP_DIR_LIST)
                 "${CMAKE_CURRENT_SOURCE_DIR}/posembedding/**/op_host/CMakeLists.txt"
                 "${CMAKE_CURRENT_SOURCE_DIR}/moe/**/op_host/CMakeLists.txt"
                 "${CMAKE_CURRENT_SOURCE_DIR}/ffn/**/op_host/CMakeLists.txt"
-                "${CMAKE_CURRENT_SOURCE_DIR}/mc2/**/op_host/CMakeLists.txt"
                 "${CMAKE_CURRENT_SOURCE_DIR}/posembedding/**/framework/CMakeLists.txt"
                 "${CMAKE_CURRENT_SOURCE_DIR}/moe/**/framework/CMakeLists.txt"
                 "${CMAKE_CURRENT_SOURCE_DIR}/ffn/**/framework/CMakeLists.txt"
-                "${CMAKE_CURRENT_SOURCE_DIR}/mc2/**/framework/CMakeLists.txt"
             )
+            if(NOT (ASCEND_COMPUTE_UNIT STREQUAL "kirinx90" OR 
+                ASCEND_COMPUTE_UNIT STREQUAL "kirin9030" OR 
+                ASCEND_COMPUTE_UNIT STREQUAL "mc62cm12a"))
+                file(GLOB MC2_CANNDEV_OPS_HOST_CMAKE_FILES
+                "${CMAKE_CURRENT_SOURCE_DIR}/mc2/**/op_host/CMakeLists.txt"
+                "${CMAKE_CURRENT_SOURCE_DIR}/mc2/**/framework/CMakeLists.txt"
+                )
+                List(APPEND CANNDEV_OPS_HOST_CMAKE_FILES ${MC2_CANNDEV_OPS_HOST_CMAKE_FILES})
+            endif()
             List(APPEND OP_HOST_CMAKE_FILES ${CANNDEV_OPS_HOST_CMAKE_FILES})
         endif()
     endif()
@@ -276,7 +297,7 @@ function(add_ops_info_target)
 
     if (ENABLE_BUILT_IN)
         install(FILES ${OPS_INFO_JSON}
-                DESTINATION ops_transformer/built-in/op_impl/ai_core/tbe/config/${OPINFO_COMPUTE_UNIT} OPTIONAL
+                DESTINATION opp/built-in/op_impl/ai_core/tbe/config/${OPINFO_COMPUTE_UNIT} OPTIONAL
         )
     else()
         install(FILES ${OPS_INFO_JSON}
@@ -361,7 +382,8 @@ function(add_opc_config)
 
     if(ENABLE_OOM)
         list(APPEND _OPC_CONFIG "--oom")
-        list(APPEND _OPC_CONFIG "-ffunction-sections -fdata-sections")
+        list(APPEND _OPC_CONFIG "-ffunction-sections")
+        list(APPEND _OPC_CONFIG "-fdata-sections")
     endif()
 
     if(_OPC_CONFIG)
@@ -376,19 +398,27 @@ function(add_ops_src_copy)
     cmake_parse_arguments(SRC_COPY "" "TARGET_NAME;SRC;DST;BE_RELIED;COMPUTE_UNIT" "" ${ARGN})
 
     set(OPS_UTILS_INC_KERNEL_TARGET ops_utils_inc_kernel_${SRC_COPY_COMPUTE_UNIT})
-    if (EXISTS ${OPS_ADV_UTILS_KERNEL_INC})
+    if (DEFINED OPS_ADV_UTILS_KERNEL_INC AND EXISTS "${OPS_ADV_UTILS_KERNEL_INC}")
         if (NOT TARGET ${OPS_UTILS_INC_KERNEL_TARGET})
             get_filename_component(_ROOT_OPS_SRC_DIR    "${SRC_COPY_DST}" DIRECTORY)
             set(OPS_UTILS_INC_KERNEL_DIR ${_ROOT_OPS_SRC_DIR}/ascendc/common)
-            add_custom_command(OUTPUT ${OPS_UTILS_INC_KERNEL_DIR}
-                    COMMAND mkdir -p ${OPS_UTILS_INC_KERNEL_DIR}/regbase
-                    COMMAND mkdir -p ${OPS_UTILS_INC_KERNEL_DIR}/cgmct
-                    COMMAND cp -rf ${OPS_ADV_UTILS_KERNEL_INC}/*.* ${OPS_UTILS_INC_KERNEL_DIR}
-                    COMMAND cp -rf ${OPS_CGMCT}/* ${OPS_UTILS_INC_KERNEL_DIR}/cgmct
+            set(UTILS_COPY_STAMP "${OPS_UTILS_INC_KERNEL_DIR}/.utils_copy.stamp")
+            file(GLOB_RECURSE UTILS_FILES CONFIGURE_DEPENDS 
+                ${OPS_ADV_UTILS_KERNEL_INC}/* 
+                ${OPS_CGMCT}/*
+            )
+            add_custom_command(OUTPUT ${UTILS_COPY_STAMP}
+                COMMAND ${CMAKE_COMMAND} -E make_directory ${OPS_UTILS_INC_KERNEL_DIR}/regbase
+                COMMAND ${CMAKE_COMMAND} -E make_directory ${OPS_UTILS_INC_KERNEL_DIR}/cgmct
+                COMMAND ${CMAKE_COMMAND} -E copy_directory ${OPS_ADV_UTILS_KERNEL_INC} ${OPS_UTILS_INC_KERNEL_DIR}
+                COMMAND ${CMAKE_COMMAND} -E copy_directory ${OPS_CGMCT} ${OPS_UTILS_INC_KERNEL_DIR}/cgmct
+                COMMAND ${CMAKE_COMMAND} -E touch ${UTILS_COPY_STAMP}
+                DEPENDS ${UTILS_FILES}
+                VERBATIM
             )
 
             add_custom_target(${OPS_UTILS_INC_KERNEL_TARGET}
-                    DEPENDS ${OPS_UTILS_INC_KERNEL_DIR}
+                DEPENDS ${UTILS_COPY_STAMP}
             )
         endif ()
     endif ()
@@ -403,6 +433,7 @@ function(add_ops_src_copy)
         "allto_allv_quant_grouped_mat_mul;"
         "allto_all_all_gather_batch_mat_mul;"
         "distribute_barrier;"
+        "distribute_barrier_extend;"
         "moe_distribute_combine_add_rms_norm;"
         "moe_distribute_dispatch;"
         "moe_distribute_combine;"
@@ -427,15 +458,12 @@ function(add_ops_src_copy)
 
     get_filename_component(FOLDER_NAME "${SRC_COPY_DST}" NAME_WE)
     list(FIND MC2_OPS_LIST "${FOLDER_NAME}" INDEX)
+    set(BELONG_MC2_OPS FALSE)
     if(NOT INDEX EQUAL -1)
         set(BELONG_MC2_OPS TRUE)
     endif()
 
-    if(NOT BUILD_OPS_RTY_KERNEL AND BELONG_MC2_OPS)
-        file(GLOB SRC_FILES ${SRC_COPY_SRC}/* ${SRC_COPY_SRC}/op_kernel/*)
-    else()
-        file(GLOB SRC_FILES ${SRC_COPY_SRC}/*)
-    endif()
+    file(GLOB_RECURSE CONFIGURE_DEPENDS SRC_FILES ${SRC_COPY_SRC}/*)
     list(FILTER SRC_FILES EXCLUDE REGEX "op_host")
 
     get_filename_component(PARENT_PTH "${SRC_COPY_SRC}" DIRECTORY)
@@ -449,20 +477,23 @@ function(add_ops_src_copy)
 
     if (NOT TARGET ${DOING_TARGET_NAME})
         set(_BUILD_FLAG ${SRC_COPY_DST}/${DOING_TARGET_NAME}.done)
-        if (NOT BUILD_OPS_RTY_KERNEL AND BELONG_MC2_OPS)
-            add_custom_command(OUTPUT ${_BUILD_FLAG}
-                    COMMAND mkdir -p ${SRC_COPY_DST}
-                    COMMAND cp -rf ${SRC_FILES} ${SRC_COPY_DST}
-                    COMMAND rm -rf ${SRC_COPY_DST}/op_kernel/
-                    COMMAND touch ${_BUILD_FLAG}
-            )
-        else()
-            add_custom_command(OUTPUT ${_BUILD_FLAG}
-                    COMMAND mkdir -p ${SRC_COPY_DST}
-                    COMMAND cp -rf ${SRC_FILES} ${SRC_COPY_DST}
-                    COMMAND touch ${_BUILD_FLAG}
+        set(SYNC_COMMANDS
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${SRC_COPY_DST}
+            COMMAND ${CMAKE_COMMAND} -E copy_directory ${SRC_COPY_SRC} ${SRC_COPY_DST}
+        )
+        if (BELONG_MC2_OPS)
+            list(APPEND SYNC_COMMANDS
+                COMMAND ${CMAKE_COMMAND} -E copy_directory "${SRC_COPY_SRC}/op_kernel" "${SRC_COPY_DST}"
+                COMMAND ${CMAKE_COMMAND} -E remove_directory "${SRC_COPY_DST}/op_kernel"
             )
         endif()
+        list(APPEND SYNC_COMMANDS COMMAND ${CMAKE_COMMAND} -E touch ${_BUILD_FLAG})
+        add_custom_command(
+            OUTPUT ${_BUILD_FLAG}
+            ${SYNC_COMMANDS}
+            DEPENDS ${SRC_FILES}
+            VERBATIM
+        )
 
         add_custom_target(${DOING_TARGET_NAME}
                 DEPENDS ${_BUILD_FLAG}
@@ -483,7 +514,7 @@ function(add_bin_compile_target)
     cmake_parse_arguments(BINARY "" "COMPUTE_UNIT" "OP_INFO" ${ARGN})
 
     if (ENABLE_BUILT_IN)
-        set(_INSTALL_DIR ops_transformer/built-in/op_impl/ai_core/tbe/kernel)
+        set(_INSTALL_DIR opp/built-in/op_impl/ai_core/tbe/kernel)
     else()
         set(_INSTALL_DIR packages/vendors/${VENDOR_NAME}_transformer/op_impl/ai_core/tbe/kernel)
     endif()
@@ -552,6 +583,9 @@ function(add_bin_compile_target)
  	                endif()
                     get_filename_component(_depend_op_name "${depend_info}" NAME)
                     set(_depend_op_target ${_depend_op_name}_${BINARY_COMPUTE_UNIT}_src_copy)
+                    if("${_depend_op_name}" STREQUAL "common")
+                        continue()
+                    endif()
                     add_ops_src_copy(
                             TARGET_NAME
                             ${_depend_op_target}
@@ -677,6 +711,10 @@ function(add_bin_compile_target)
                 add_dependencies(${OP_TARGET_NAME}_${op_index} optiling_compat generate_ops_info)
             endif ()
             add_dependencies(${OP_TARGET_NAME}_${op_index} ${OP_TARGET_NAME}_src_copy ${OP_TARGET_NAME}_py_copy ${OP_TARGET_NAME}_mkdir)
+            add_dependencies(${OP_TARGET_NAME}_${op_index} generate_compile_cmd)
+            if(TARGET common_src_copy)
+                add_dependencies(${OP_TARGET_NAME}_${op_index} common_src_copy)
+            endif()
             add_dependencies(${OP_TARGET_NAME} ${OP_TARGET_NAME}_${op_index})
         endif ()
     endforeach()
@@ -822,7 +860,7 @@ function(pack_tiling_sink)
 
   if(ENABLE_BUILT_IN)
     set(TRANSFORMER_OPMASTER_SO ${BINARY_DIR}/libtiling_device_transformer.so)
-    set(INSTALL_DIR "ops_transformer/built-in/op_impl/ai_core/tbe/op_tiling_device/lib")
+    set(INSTALL_DIR "opp/built-in/op_impl/ai_core/tbe/op_tiling_device/lib")
   else()
     set(TRANSFORMER_OPMASTER_SO ${BINARY_DIR}/libcust_opmaster.so)
     set(INSTALL_DIR "packages/vendors/${VENDOR_NAME}_transformer/op_impl/ai_core/tbe/op_master_device/lib")

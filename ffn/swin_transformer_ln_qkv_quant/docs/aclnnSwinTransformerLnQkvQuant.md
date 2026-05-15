@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- 接口功能：Swin Transformer 网络模型 完成 Q、K、V 的计算。  
+- 接口功能：Swin Transformer网络模型完成 Q、K、V 的计算。  
 - 计算公式：  
 
   q/k/v = (Quant(Layernorm(x).transpose)  * weight).dequant.transpose.split

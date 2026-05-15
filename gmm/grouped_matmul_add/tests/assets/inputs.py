@@ -12,7 +12,7 @@
 __input__ = {
         "kernel": {
             "grouped_matmul_add": "grouped_matmul_add_inputs"
-        }
+        },
 }
 
 import numpy as np

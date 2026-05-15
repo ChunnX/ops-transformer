@@ -10,8 +10,8 @@
 |<term>Atlas A2 训练系列产品</term>|      √     |
 |<term>Atlas A2 推理系列产品</term>|      ×     |
 |<term>Atlas 200I/500 A2 推理产品</term>                                         |    ×    |
-|<term> Atlas 推理系列产品</term>                                                 |    ×    |
-|<term> Atlas 训练系列产品</term>                                                 |    ×    |
+|<term>Atlas 推理系列产品</term>                                                 |    ×    |
+|<term>Atlas 训练系列产品</term>                                                 |    ×    |
 
 ## 功能说明
 
@@ -122,11 +122,11 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
   const aclrtStream stream)
 ```
 
-### aclnnBlockSparseAttentionGradGetWorkspaceSize
+## aclnnBlockSparseAttentionGradGetWorkspaceSize
 
 * **参数说明：**
 
-<table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
+  <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
     <col style="width: 170px">
     <col style="width: 120px">
     <col style="width: 271px">
@@ -135,8 +135,8 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
     <col style="width: 101px">
     <col style="width: 190px">
     <col style="width: 145px">
-</colgroup>
-<thead>
+  </colgroup>
+  <thead>
     <tr>
     <th>参数名</th>
     <th>输入/输出</th>
@@ -147,8 +147,8 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
     <th>维度(shape)</th>
     <th>非连续Tensor</th>
     </tr>
-</thead>
-<tbody>
+  </thead>
+  <tbody>
     <tr>
     <td>dout（aclTensor*）</td>
     <td>输入</td>
@@ -391,8 +391,8 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
     <td>-</td>
     <td>-</td>
     </tr>
-</tbody>
-</table>
+  </tbody>
+  </table>
 
 * **返回值**：
 
@@ -434,7 +434,7 @@ aclnnStatus aclnnBlockSparseAttentionGrad(
     </tr>
   </tbody></table>
 
-### aclnnBlockSparseAttentionGrad 
+## aclnnBlockSparseAttentionGrad 
 
 * **参数说明：**
 

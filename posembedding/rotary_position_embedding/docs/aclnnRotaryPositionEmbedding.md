@@ -238,42 +238,6 @@ aclnnStatus aclnnRotaryPositionEmbedding(
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-  第一段接口完成入参校验，出现以下场景时报错：
-
-  <table style="undefined;table-layout: fixed; width: 1155px"><colgroup>
-  <col style="width: 288px">
-  <col style="width: 125px">
-  <col style="width: 742px">
-  </colgroup>
-  <thead>
-    <tr>
-      <th>返回值</th>
-      <th>错误码</th>
-      <th>描述</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>ACLNN_ERR_PARAM_NULLPTR</td>
-      <td>161001</td>
-      <td>传入的x、cos、sin或out是空指针。</td>
-    </tr>
-    <tr>
-      <td>ACLNN_ERR_PARAM_INVALID</td>
-      <td>161002</td>
-      <td>传入的x、cos、sin、out的数据类型和格式不在支持的范围内。</td>
-    </tr>
-    <tr>
-      <td rowspan="2">ACLNN_ERR_INNER_TILING_ERROR</td>
-      <td rowspan="2">561002</td>
-      <td>传入的x、cos、sin、out的shape不匹配。</td>
-    </tr>
-    <tr>
-      <td>传入的mode参数不在0、1、2、3范围内。 </td>
-    </tr>
-  </tbody>
-  </table>
-
 ## aclnnRotaryPositionEmbedding
 
 - **参数说明：**
@@ -324,11 +288,11 @@ aclnnStatus aclnnRotaryPositionEmbedding(
 
 - <term>Ascend 950PR/Ascend 950DT</term>：
 
-  输入张量x共有四维，各参数的shape约束可以描述如下：
+  输入张量x支持BNSD、BSND、SBND、TND排布。各参数的shape约束可以描述如下：
   - 输入张量x、cos、sin及输出张量y的最后一维大小必须相同，且小于等于1024。对于half、interleave和interleave-half模式，最后一维必须能被2整除，对于quarter模式，最后一维必须能被4整除。
   - 输入张量x和输出张量y的shape必须完全相同。
   - 输入张量cos和sin的shape必须完全相同，cos和sin的shape需要与x满足[broadcast关系](../../../docs/zh/context/broadcast关系.md)，且广播后的shape必须等于x的shape。
-
+  - 当x为TND时，cos、sin支持T1D、TND。
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     
   输入张量x支持BNSD、BSND、SBND、TND排布。
