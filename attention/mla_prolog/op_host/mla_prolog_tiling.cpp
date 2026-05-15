@@ -324,8 +324,8 @@ ge::graphStatus MlaPrologTiling::SetScenarioInfo()
     scenarioInfo_.splitMode_ = static_cast<uint8_t>(SPLIT_MODE::SPLIT_N);
     
     // 切KN条件：Ascend950 + 24核以上 + CV1:2 + D=128 + Hcq=1536
-    // 仅非量化和MXFP8全量化场景支持；不与dequant/group compute opt兼容，优先走切KN
-    if (GetCurNpuArch() == NpuArch::DAV_3510 && aicNum_ >= 24 && !enableGroupComputeOpt_ &&
+    // 仅非量化和MXFP8全量化场景支持；优先走切KN，强制关闭dequant/group compute opt
+    if (GetCurNpuArch() == NpuArch::DAV_3510 && aicNum_ >= 24 &&
         cvRatio == 2 && baseShapeInfo_.dSize == 128 && baseShapeInfo_.hcqSize == 1536 &&
         (scenarioInfo_.quantMode_ == QUANT_MODE::NO_QUANT ||
          scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_NO_QUANT ||
