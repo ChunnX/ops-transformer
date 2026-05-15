@@ -893,7 +893,7 @@ uint64_t BSATiling::GenerateTilingKey(gert::TilingContext *bsaContext)
     }
 
     constexpr uint64_t V_DTYPE_OFFSET = 10000000000ULL;  // 10^10
-    if (vDataType_ == ge::DT_FLOAT8_E4M3FN) {
+    if (vDataType_ == ge::DT_FLOAT8_E4M3FN || vDataType_ == ge::DT_INT8) {
         tilingKey += V_DTYPE_OFFSET * 1ULL;
     } else if (vDataType_ == ge::DT_FLOAT8_E5M2) {
         tilingKey += V_DTYPE_OFFSET * 2ULL;

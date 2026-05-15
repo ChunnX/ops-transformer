@@ -90,9 +90,9 @@ public:
         AscendC::GlobalTensor<float> queryScale;
         queryScale.SetGlobalBuffer((__gm__ float *)(params.query_scale));
         AscendC::GlobalTensor<float> keyScale;
-        queryScale.SetGlobalBuffer((__gm__ float *)(params.key_scale));
+        keyScale.SetGlobalBuffer((__gm__ float *)(params.key_scale));
         AscendC::GlobalTensor<uint64_t> valueScale;
-        queryScale.SetGlobalBuffer((__gm__ float *)(params.value_scale));
+        valueScale.SetGlobalBuffer((__gm__ uint64_t *)(params.value_scale));
         
         // cross core data move dst buffers
         AscendC::LocalTensor<ElementP> l1PTensor[MAX_CROSS_CORE_BUF_STAGES];
@@ -304,7 +304,7 @@ public:
                         gatheredKvSTileIdx, kvSeqlen,
                         kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
                         prefixSumL0AStages, prefixSumL0BStages,
-                        mm1ToSmFlag);
+                        mm1ToSmFlag, 1.0f);
                     if (gatheredKvSTileIdx == kvSLoopNum - 1)
                     AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID0);
 #endif
@@ -352,7 +352,7 @@ public:
                         l1PBufId,
                         mm1ToSmFlag,
                         smToMm2Flag,
-                        gSparseIdx[gmOffsetSparseIdx],
+                        gSparseIdx[sparseTableStartOffset],
                         CeilDiv(kvSTileSizeAct, blockShapeY_)
                         );
                     } else {
