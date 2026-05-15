@@ -385,6 +385,8 @@ namespace BSA {
             uint64_t gSOffset = coreIdx * WORKSPACE_BLOCK_SIZE_DB;
             uint32_t mmadFlag = 0;
 
+            AscendC::SyncAll<false>();
+
             SetFlag();
             uint32_t vec2CubeFlag = 0;
             for (uint32_t i = 0; i < taskLength; i++) {
@@ -561,12 +563,13 @@ namespace BSA {
             __gm__ BlockSparseAttentionGradTilingData *tilingData = reinterpret_cast<__gm__ BlockSparseAttentionGradTilingData *>(params.tiling);
             // pre
             VecPre(params);
+            AscendC::SyncAll<false>();
 
             // simply softmax
             VecOp(params);
 
             AscendC::WaitEvent(CUBE2POST);
-            AscendC::SyncAll();
+            AscendC::SyncAll<true>();
 
             // post
             VecPost(params);
@@ -628,7 +631,6 @@ namespace BSA {
             EpilogueFAGSfmg vecSftmg(SfmgParams);
             EpilogueFAGOp sStmOp;
 
-            PipeBarrier<PIPE_ALL>(); // 等待上一步vec完成
             for (uint32_t i = 0; i < taskLengthVec; i++) {
                 TaskInfo curInfo = taskInfoVec[i % 2];
                 uint64_t beginKVOffset = curInfo.kvOffset;
