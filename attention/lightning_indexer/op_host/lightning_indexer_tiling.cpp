@@ -763,7 +763,7 @@ ge::graphStatus LightningIndexerTiling::DoTiling(LITilingInfo *tilingInfo)
         constexpr uint32_t s1BaseSize = 4;
         constexpr uint32_t s2BaseSize = 128;
         workspaceSize +=
-            s1BaseSize * ((tilingInfo->s2Size + s2BaseSize - 1) / s2BaseSize) * s2BaseSize * sizeof(uint16_t) * aicNum;
+            s1BaseSize * ((tilingInfo->s2Size + s2BaseSize - 1) / s2BaseSize) * s2BaseSize * sizeof(uint32_t) * aicNum;
     } else {
         constexpr uint32_t mm1ResSize = M_BASE_SIZE * S2_BASE_SIZE;
         workspaceSize += mm1ResSize * MM1_RES_ELEM_SIZE * DOUBLE_BUFFER * aicNum;
