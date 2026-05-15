@@ -30,14 +30,16 @@
 
 namespace MatmulAllReduceImpl {
 using namespace AscendC;
-template <typename XType, typename WType, typename YType, class MmType, Mc2CoreType CoreType, bool basedA2aRsAg>
-class MatmulAllReduceQuant : public MatmulAllReduceBase<XType, YType, CoreType, basedA2aRsAg>
+template <typename XType, typename WType, typename YType,
+            class MmType, Mc2CoreType CoreType, bool basedA2aRsAg, int commMode>
+class MatmulAllReduceQuant : public MatmulAllReduceBase<XType, YType, CoreType, basedA2aRsAg, commMode>
 {
 public:
     __aicore__ inline MatmulAllReduceQuant(
         MC2GmAddrs* addrs, QuantGmAddrs* quantAddrs, ArnGmAddrs* arnAddrs, MC2TilingHeader* tilingData, TPipe* tPipe,
         bool isMX)
-        : MatmulAllReduceBase<XType, YType, CoreType, basedA2aRsAg>(addrs, quantAddrs, arnAddrs, tilingData, tPipe)
+        : MatmulAllReduceBase<
+            XType, YType, CoreType, basedA2aRsAg, commMode>(addrs, quantAddrs, arnAddrs, tilingData, tPipe)
     {
         mc2TilingData_ = (Mc2Tiling::QuantMatmulAllReduceTilingDataA5*)tilingData;
         this->tileInfo_.mmTiling = &mc2TilingData_->tilematmulTiling.matmulTiling;
@@ -97,20 +99,20 @@ private:
     bool isMXScene_ = false;
 };
 
-#define INVOKE_MC2_QUANT_910_OP_IMPL(templateClass, coreType, basedA2aRsAg, scaleType, ...)                     \
+#define INVOKE_MC2_QUANT_910_OP_IMPL(templateClass, coreType, basedA2aRsAg, commMode, scaleType, ...)        \
     do {                                                                                                     \
         GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::QuantMatmulAllReduceTilingDataA5, tilingData, tilingGM);      \
         MC2GmAddrs addrs = {aGM, bGM, biasGM, addGM, cGM, workspaceGM, cGM};                                 \
         QuantGmAddrs quantAddrs = {nullptr, nullptr, nullptr, dequantGM, pertokenGM};                        \
         using OpType = templateClass<                                                                        \
             DTYPE_X1, DTYPE_X2, scaleType, DTYPE_BIAS, DTYPE_Y, X1_FORMAT, X2_FORMAT, Y_FORMAT, __VA_ARGS__>; \
-        MatmulAllReduceQuant<DTYPE_X1, DTYPE_X2, DTYPE_Y, OpType, coreType, basedA2aRsAg> op(                   \
+        MatmulAllReduceQuant<DTYPE_X1, DTYPE_X2, DTYPE_Y, OpType, coreType, basedA2aRsAg, commMode> op(      \
             &addrs, &quantAddrs, nullptr, (MC2TilingHeader*)&tilingData, &tPipe, false);                     \
         op.Init();                                                                                           \
         op.Process();                                                                                        \
     } while (0)
 
-#define INVOKE_MC2_QUANT_MXFP_910_OP_IMPL(templateClass, coreType, basedA2aRsAg, ...)                        \
+#define INVOKE_MC2_QUANT_MXFP_910_OP_IMPL(templateClass, coreType, basedA2aRsAg, commMode, ...)           \
     do {                                                                                                  \
         GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::QuantMatmulAllReduceTilingDataA5, tilingData, tilingGM);    \
         MC2GmAddrs addrs = {aGM, bGM, biasGM, addGM, cGM, workspaceGM, cGM};                              \
@@ -118,7 +120,7 @@ private:
         using OpType = templateClass<                                                                     \
             DTYPE_X1, DTYPE_X2, AscendC::fp8_e8m0_t, DTYPE_BIAS, DTYPE_Y, X1_FORMAT, X2_FORMAT, Y_FORMAT, \
             __VA_ARGS__>;                                                                                 \
-        MatmulAllReduceQuant<DTYPE_X1, DTYPE_X2, DTYPE_Y, OpType, coreType, basedA2aRsAg> op(                \
+        MatmulAllReduceQuant<DTYPE_X1, DTYPE_X2, DTYPE_Y, OpType, coreType, basedA2aRsAg, commMode> op(   \
             &addrs, &quantAddrs, nullptr, (MC2TilingHeader*)&tilingData, &tPipe, true);                   \
         op.Init();                                                                                        \
         op.Process();                                                                                     \
