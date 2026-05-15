@@ -137,15 +137,16 @@ def npu_get_mega_moe_ccl_buffer_size(
     torch._check(((num_topk >= 1) and (num_topk <= 16)),
                      lambda: (f"num_topk only support in [1, 16], but got {num_topk=}."))
     local_moe_expert_num = moe_expert_num // ep_world_size
-    # 全卡软同步使用
-    peermem_data_offset = 60 * 1024
+    peermem_data_offset = 80 * 1024
     y_out_dtype_size = 2
     mb_conversion = 1024 * 1024
     dispatch_token_per_expert = ep_world_size * \
         inline_align(ep_world_size * local_moe_expert_num, 128) * 4
-    quant_token_scales = inline_align(num_max_tokens_per_rank * num_topk * (hidden + hidden // 32), 512)
+    triplet_region = ep_world_size * inline_align(num_max_tokens_per_rank * num_topk * 4, 512)
+    token_bytes = inline_align(hidden, 256) + hidden // 32
+    quant_token_scales = inline_align(num_max_tokens_per_rank * token_bytes, 512)
     combine_out = inline_align(num_max_tokens_per_rank * hidden * num_topk * y_out_dtype_size, 512)
-    ccl_buffer_size = peermem_data_offset + dispatch_token_per_expert + quant_token_scales + combine_out
+    ccl_buffer_size = peermem_data_offset + dispatch_token_per_expert + triplet_region + quant_token_scales + combine_out
     ccl_buffer_size = inline_align(inline_align(ccl_buffer_size, mb_conversion) // mb_conversion, 2) // 2
     return ccl_buffer_size
 
@@ -217,5 +218,4 @@ def mega_moe(
         weight1_type,
         weight2_type
     )
-
 

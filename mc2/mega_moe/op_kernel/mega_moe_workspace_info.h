@@ -74,6 +74,7 @@ struct WorkspaceInfo {
     GM_ADDR ptrSumBeforeRank;
     GM_ADDR ptrFlagSwiGluToGmm2;
     GM_ADDR ptrFlagDispatchToGmm1;
+    GM_ADDR ptrRouteFlatIdx;
     int64_t workspaceSize;
     HOST_DEVICE WorkspaceInfo() = default;
     HOST_DEVICE WorkspaceInfo(GM_ADDR base, const MegaMoeTilingData *tilingData)
@@ -105,6 +106,8 @@ struct WorkspaceInfo {
         workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * INT_CACHELINE;
         ptrFlagDispatchToGmm1 = base + workspaceSize;
         workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * INT_CACHELINE;
+        ptrRouteFlatIdx = base + workspaceSize;
+        workspaceSize += Ops::Base::CeilAlign(SIZE_INT_32 * tilingData->maxOutputSize, ALIGN_512);
         expandedRowIdxGather = ptrA;
     }
 };
