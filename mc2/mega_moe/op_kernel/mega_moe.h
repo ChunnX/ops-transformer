@@ -806,9 +806,64 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         tileNumGmm1 = 1U;
     }
 
+    // === Dispatch 流水化 ===
+    // 期望时序：sub1 在 expert loop 之前先 dispatch expert 0（提前一轮），
+    // 进 expert k 的 loop body 后，sub1 立刻在做完 UpdateGroupParams(k) 之后 prefetch
+    // dispatch expert k+1（用当前 baseOffset_ + 当前 m 推算 next expert 的 A workspace
+    // 偏移，不调用 UpdateGroupParams，避免污染 baseOffset_/preOffset_/problemShape_ 的成员状态）。
+    // 这样 cube 进 expert k+1 wave 0 时 dispatch flag 已 ready，wDsp ≈ 0us。
+    //
+    // skip 的 expert（m=0）也按同样规则补发 next dispatch（current m=0 → next_a_offset 不变）。
+    if constexpr(g_coreType == AscendC::AIV) {
+        if (subBlockIdx_ == 1 && expertPerRank_ > 0U) {
+            // expert 0 的 dispatch addr：baseOffset_ 初始全 0，A workspace 起点
+            GMMAddrInfo prefetchInfo{};
+            prefetchInfo.aGlobal = params_.workspaceInfo.ptrA;
+            prefetchInfo.aScaleGlobal = params_.workspaceInfo.ptrAScale;
+            prefetchInfo.groupFlagList2 =
+                (__gm__ int32_t*)params_.workspaceInfo.ptrFlagDispatchToGmm1;
+            groupFlagListGm2_.SetGlobalBuffer(prefetchInfo.groupFlagList2);
+            MegaMoeTrace::RecordDispatchPoint(params_.y2GmAddr, 0, false);
+            DispatchTokens(prefetchInfo, 0);
+            MegaMoeTrace::RecordDispatchPoint(params_.y2GmAddr, 0, true);
+        }
+    }
+
     GMMAddrInfo gmmAddrInfo;
     for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
-        if (!UpdateGroupParams(expertIdx)) {
+        bool valid = UpdateGroupParams(expertIdx);
+
+        // sub1 prefetch expert (k+1) dispatch ——
+        // 注意：用 *当前* baseOffset_/problemShape_ 推算 next addr，不要调 UpdateGroupParams(k+1)
+        //   * valid:  m = splitValue_k；next_a_offset = curr.IDX_A_OFFSET + m * k_orig
+        //   * skip:   m = 0；next_a_offset = curr.IDX_A_OFFSET（baseOffset_ 没增量，等同 expert k）
+        if constexpr(g_coreType == AscendC::AIV) {
+            if (subBlockIdx_ == 1 && expertIdx + 1U < expertPerRank_) {
+                uint64_t curr_m = Get<M_VALUE>(problemShape_);
+                uint64_t k_orig = Get<K_VALUE>(problemShape_);
+                auto scaleK = Ops::Base::CeilDiv(k_orig, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) *
+                              MXFP_MULTI_BASE_SIZE;
+                int64_t next_a_offset = Get<IDX_A_OFFSET>(baseOffset_) +
+                                        static_cast<int64_t>(curr_m * k_orig);
+                int64_t next_aScale_offset = Get<IDX_A_SCALE_OFFSET>(baseOffset_) +
+                                             static_cast<int64_t>(curr_m * scaleK);
+
+                GMMAddrInfo prefetchInfo{};
+                prefetchInfo.aGlobal = params_.workspaceInfo.ptrA +
+                                       next_a_offset * sizeof(QuantOutType);
+                prefetchInfo.aScaleGlobal = params_.workspaceInfo.ptrAScale +
+                                            next_aScale_offset * sizeof(QuantScaleOutType);
+                prefetchInfo.groupFlagList2 =
+                    (__gm__ int32_t*)params_.workspaceInfo.ptrFlagDispatchToGmm1 +
+                    (expertIdx + 1U);
+                groupFlagListGm2_.SetGlobalBuffer(prefetchInfo.groupFlagList2);
+                MegaMoeTrace::RecordDispatchPoint(params_.y2GmAddr, expertIdx + 1, false);
+                DispatchTokens(prefetchInfo, expertIdx + 1U);
+                MegaMoeTrace::RecordDispatchPoint(params_.y2GmAddr, expertIdx + 1, true);
+            }
+        }
+
+        if (!valid) {
             continue;
         }
         uint64_t m_i = Get<M_VALUE>(problemShape_);
@@ -828,20 +883,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         coreGroupId_ = blockIdx_ / coresPerWave_;
         coreActive_ = (coreGroupId_ < wavesParallel_);
 
-        // Dispatch (per-expert, skip wave pipelining for dispatch→GMM1)
+        // 为当前 expert 配置 cube 用的 gmmAddrInfo（dispatch 不在这里发了，已经被前一轮预 dispatch 了）
         UpdateGlobalBuffer(gmmAddrInfo, 0);
         gmmAddrInfo.groupFlagList2 = (__gm__ int32_t*)params_.workspaceInfo.ptrFlagDispatchToGmm1 + expertIdx;
         groupFlagListGm2_.SetGlobalBuffer(gmmAddrInfo.groupFlagList2);
-
-        if constexpr(g_coreType == AscendC::AIV) {
-            if (subBlockIdx_ == 1) {
-                // [TRACE] per-expert dispatch begin（AIV1）
-                MegaMoeTrace::RecordDispatchPoint(params_.y2GmAddr, expertIdx, false);
-                DispatchTokens(gmmAddrInfo, expertIdx);
-                // [TRACE] per-expert dispatch end
-                MegaMoeTrace::RecordDispatchPoint(params_.y2GmAddr, expertIdx, true);
-            }
-        }
 
         // Wave loop: 本核所在组负责 waveIdx ∈ {coreGroupId_, coreGroupId_ + wavesParallel_, ...}
         // 子块分工（每个 cube + 2 个 vec subBlock 一组）：
