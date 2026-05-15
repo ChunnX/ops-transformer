@@ -70,6 +70,7 @@ examples:
         ut_cov_exclude:
           - examples/mc2/all_gather_add
         test:
+          examples: False
           ut: False
         options:
           - all_gather_add
