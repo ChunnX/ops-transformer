@@ -19,7 +19,6 @@
 #include "cgmct/kernel/kernel_gmm_finalize_routing_pertoken_dequant.h"
 #include "cgmct/block/block_mmad_builder.h"
 #include "cgmct/block/block_scheduler_gmm_aswt_with_tail_split.h"
-#include "cgmct/epilogue/block_epilogue_dequant_sequential_write.h"
 #include "cgmct/epilogue/block_epilogue_dequant_sequential_write_deterministic.h"
 #include "gmm_fr_deterministic_a5.h"
 #include "grouped_matmul_finalize_routing_tiling_data.h"
@@ -68,21 +67,11 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
         Cgmct::Gemm::Block::BlockEpilogueDequantFinalizeRouting<CType, C1Type, weightscaleType, xscaleType, BiasType,
                                                                 rowIndexType>;
 
-    // Deterministic: sequential write by mOffset, no scatter/AtomicAdd
-    using BlockEpilogueDequantSeq =
-        Cgmct::Gemm::Block::BlockEpilogueDequantSequentialWrite<CType, C1Type, weightscaleType, xscaleType, BiasType,
-                                                                 rowIndexType>;
-
     using GmmKernel =
         Cgmct::Gemm::Kernel::KernelGmmFinalizeRoutingPertokenDequant<ProblemShape, BlockMmadBuilder, BlockPrologue,
                                                                      BlockEpilogueDequant, BlockScheduler>;
 
-    // Deterministic kernel variant using SequentialWrite epilogue
-    using GmmKernelDeterministic =
-        Cgmct::Gemm::Kernel::KernelGmmFinalizeRoutingPertokenDequant<ProblemShape, BlockMmadBuilder, BlockPrologue,
-                                                                      BlockEpilogueDequantSeq, BlockScheduler>;
-
-    // Deterministic cycling epilogue (separate compilation unit for cycling-aware addressing)
+    // Deterministic cycling epilogue
     using BlockEpilogueDequantSeqDeterministic =
         Cgmct::Gemm::Block::BlockEpilogueDequantSequentialWriteDeterministic<CType, C1Type, weightscaleType, xscaleType, BiasType,
                                                                               rowIndexType>;
@@ -94,7 +83,6 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
 
     using Params = typename GmmKernel::Params;
     using GMMTiling = typename GmmKernel::GMMTiling;
-    using ParamsDeterministic = typename GmmKernelDeterministic::Params;
     using CyclingGMMTiling = typename CyclingKernel::GMMTiling;
     using CyclingParams = typename CyclingKernel::Params;
 
