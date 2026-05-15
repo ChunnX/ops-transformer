@@ -17,6 +17,7 @@
 #define FLASH_ATTN_TILING_UTILS_H
 
 namespace optiling {
+namespace flash_attn {
 template <typename T>
 inline auto CeilDivision(T num1, T num2) -> T
 {
@@ -49,7 +50,7 @@ inline auto AlignUp(T num1, T num2) -> T
 }
 
 template <typename T>
-inline auto increGcd(T a, T b) -> T
+inline auto IncreGcd(T a, T b) -> T
 {
     if (b == 0) {
         return a;
@@ -57,9 +58,10 @@ inline auto increGcd(T a, T b) -> T
     if (a % b == 0) {
         return b;
     }
-    return increGcd(b, a % b);
+    return IncreGcd(b, a % b);
 }
 
+} // namespace flash_attn
 } // namespace optiling
 
 #endif // FLASH_ATTN_TILING_UTILS_H
