@@ -13,10 +13,10 @@
  * \brief Workspace cycling kernel for A5 GMMFR deterministic mode.
  *
  * Based on: common/cgmct/kernel/kernel_gmm_finalize_routing_pertoken_dequant.h
- * Key change: tile-level intra-group workspace flow control with cycling.
- *   Each group is split into sub-chunks that fit the workspace window.
- *   Before each sub-chunk: if workspace is full, aggregate workspace -> yGm
- *   via FRDeterministicA5, reset workspaceBaseRow to 0, then continue.
+ * Key change: tile-level workspace flow control with baseM granularity.
+ *   Each sub-chunk is at most baseM rows (one matmul M-tile).
+ *   Before each sub-chunk: if workspace can't fit one more tile, aggregate first.
+ *   MTE3 DMA drain before aggregation to avoid hardware data hazard.
  *
  * Why sub-chunk cycling is SyncAll-safe:
  *   SyncAll is a global barrier requiring ALL cores to call it simultaneously.
@@ -24,13 +24,14 @@
  *   (deterministic from tiling data and accumulated identically), so the
  *   "workspace full" decision is uniform -> all cores reach SyncAll together.
  *
- * Address model (v4 -- tile-level intra-group cycling):
+ * Address model (v5 -- baseM-granularity tile cycling with MTE3 drain):
  *   - LOGIT_OFFSETS: cumulative global offset for logit/rowIndex reads
  *   - workspaceBaseRow: workspace window write offset (reset after each aggregation)
  *   - Epilogue elem[4]: chunk-inner mOffset (for logit/x1Scale reads)
  *   - Epilogue elem[5]: workspaceBaseRow (for workspace write addressing)
  *   - Sub-chunk offsets: baseOffset_.A/LOGIT/X1SCALE adjusted by groupMProcessed,
  *     saved/restored to keep baseOffset_ at group start for UpdateGroupParams
+ *   - MTE3 drain: WaitFlag+SetFlag MTE3_V(0,1) before each SyncAll aggregation
  */
 
 #ifndef KERNEL_GMM_FR_DETERMINISTIC_H
@@ -361,11 +362,14 @@ public:
                 params.cyclingParams.rowIndexAddr));
         }
 
-        // === Main loop: tile-level intra-group workspace cycling ===
-        // Each group is split into sub-chunks that fit the workspace window.
-        // Before each sub-chunk: check workspace capacity, aggregate if full.
-        // All cores agree on sub-chunk boundaries because workspaceBaseRow and
-        // windowSizeRows are identical across cores (deterministic from tiling).
+        // === Main loop: tile-level workspace cycling ===
+        // Each sub-chunk is at most baseM rows (one matmul M-tile).
+        // Before each sub-chunk: if workspace can't fit one more tile, aggregate first.
+        // All cores agree because workspaceBaseRow advances identically on all cores.
+        //
+        // MTE3 DMA drain: epilogue's VectorSequentialWrite (DataCopyPad) is asynchronous.
+        // Before aggregation reads workspace, must drain MTE3 pipeline to ensure
+        // all DMA writes have landed. Otherwise hardware data hazard -> hang.
         uint32_t groupNum = params.gmmParams.groupNum;
         int32_t baseM = params.gmmParams.baseM;
         for (uint32_t groupIdx = 0; groupIdx < groupNum; groupIdx++) {
@@ -379,14 +383,18 @@ public:
             uint64_t groupMProcessed = 0;
 
             while (groupMProcessed < static_cast<uint64_t>(groupM)) {
-                uint64_t remaining = static_cast<uint64_t>(groupM) - groupMProcessed;
-                uint64_t available = (windowSizeRows > workspaceBaseRow)
-                                     ? (windowSizeRows - workspaceBaseRow) : 0;
-
-                if (available == 0) {
-                    // Workspace full -- aggregate before processing more rows
+                // Proactive check: can workspace fit one more matmul M-tile?
+                if (workspaceBaseRow + static_cast<uint64_t>(baseM) > windowSizeRows) {
+                    // Drain AIC-AIV pipeline
                     End();
                     isVecSetSyncCom_ = false;
+                    // Drain MTE3: ensure all epilogue DMA writes to workspace complete
+                    if ASCEND_IS_AIV {
+                        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
+                        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(1);
+                        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
+                        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(1);
+                    }
                     SyncAll();
                     {
                         GMMFRDeterministic::SyncConfig syncConfig{};
@@ -394,7 +402,6 @@ public:
                         syncConfig.lowBoundM = workspaceBaseRow;
                         syncConfig.windowSize = workspaceBaseRow;
                         syncConfig.baseN = params.cyclingParams.baseN;
-
                         GMMFRDeterministic::FRDeterministicA5<float,
                             typename BlockEpilogueDequantFinalizeRouting::DataTypeRowIndex>(
                             syncConfig, deterBufferGm, yGmAgg, rowIndexGm, aggQueBind,
@@ -402,13 +409,15 @@ public:
                             globalRowOffset);
                     }
                     SyncAll();
-
                     globalRowOffset += workspaceBaseRow;
                     workspaceBaseRow = 0;
                     continue;
                 }
 
-                uint64_t chunkM = (remaining < available) ? remaining : available;
+                // One matmul M-tile per sub-chunk
+                uint64_t remaining = static_cast<uint64_t>(groupM) - groupMProcessed;
+                uint64_t chunkM = (remaining < static_cast<uint64_t>(baseM))
+                                  ? remaining : static_cast<uint64_t>(baseM);
 
                 // Adjust baseOffset_ for sub-chunk position within group.
                 // Save/restore to keep baseOffset_ at group start for next UpdateGroupParams.
@@ -487,6 +496,14 @@ public:
         // Consume remaining CrossCore flags (matches original kernel's End() after group loop)
         End();
         isVecSetSyncCom_ = false;
+
+        // Drain MTE3: ensure all epilogue DMA writes to workspace complete
+        if ASCEND_IS_AIV {
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(1);
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(1);
+        }
 
         // Final aggregation: all cores must participate (SyncAll is global barrier).
         SyncAll();
