@@ -67,7 +67,7 @@ struct RunInfo {
 struct ConstInfo {
     // CUBE与VEC核间同步的模式
     static constexpr uint32_t FIA_SYNC_MODE2 = 2;
-    static constexpr uint32_t QLI_SYNC_MODE4 = 4;
+    static constexpr uint32_t LI_SYNC_MODE4 = 4;
     static constexpr uint32_t AIV0_AIV1_OFFSET = 16;
     static constexpr uint32_t CROSS_VC_EVENT = 0;
     static constexpr uint32_t CROSS_CV_EVENT = 2;
