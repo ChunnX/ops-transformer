@@ -342,6 +342,40 @@ int CompareResult(const std::vector<float> &expected,
     return mismatchCount == 0 ? ACL_SUCCESS : 1;
 }
 
+int RunSlidingTileAttentionOnce(aclTensor *q, aclTensor *k, aclTensor *v, aclTensor *y, aclIntArray *windowSize,
+                                const TestCase &testCase, const std::string &seqShape, aclrtStream stream,
+                                const char *stage)
+{
+    uint64_t workspaceSize = 0;
+    void *workspaceAddr = nullptr;
+    aclOpExecutor *executor = nullptr;
+    auto ret = aclnnSlidingTileAttentionGetWorkspaceSize(q, k, v, windowSize, testCase.textLength, testCase.hasText,
+                                                         const_cast<char *>(seqShape.c_str()), y, &workspaceSize,
+                                                         &executor);
+    CHECK_RET(ret == ACL_SUCCESS,
+              LOG_PRINT("%s aclnnSlidingTileAttentionGetWorkspaceSize failed. ERROR: %d\n", stage, ret); return ret);
+
+    if (workspaceSize > 0) {
+        ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("%s allocate workspace failed. ERROR: %d\n", stage, ret); return ret);
+    }
+
+    ret = aclnnSlidingTileAttention(workspaceAddr, workspaceSize, executor, stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("%s aclnnSlidingTileAttention failed. ERROR: %d\n", stage, ret);
+              if (workspaceAddr != nullptr) { aclrtFree(workspaceAddr); } return ret);
+
+    ret = aclrtSynchronizeStream(stream);
+    CHECK_RET(ret == ACL_SUCCESS,
+              LOG_PRINT("%s aclrtSynchronizeStream failed. ERROR: %d\n[ERROR msg]%s\n", stage, ret,
+                        aclGetRecentErrMsg());
+              if (workspaceAddr != nullptr) { aclrtFree(workspaceAddr); } return ret);
+
+    if (workspaceAddr != nullptr) {
+        aclrtFree(workspaceAddr);
+    }
+    return ACL_SUCCESS;
+}
+
 std::vector<TestCase> BuildTestCases()
 {
     return {
@@ -439,7 +473,6 @@ int RunTestCaseWithDtype(const TestCase &testCase, aclrtStream stream)
     void *kDeviceAddr = nullptr;
     void *vDeviceAddr = nullptr;
     void *yDeviceAddr = nullptr;
-    void *workspaceAddr = nullptr;
     aclTensor *q = nullptr;
     aclTensor *k = nullptr;
     aclTensor *v = nullptr;
@@ -458,26 +491,12 @@ int RunTestCaseWithDtype(const TestCase &testCase, aclrtStream stream)
     windowSize = aclCreateIntArray(testCase.windowSize.data(), testCase.windowSize.size());
     std::string seqShape = SeqShapeString(testCase);
 
-    uint64_t workspaceSize = 0;
-    aclOpExecutor *executor = nullptr;
-    ret = aclnnSlidingTileAttentionGetWorkspaceSize(q, k, v, windowSize, testCase.textLength, testCase.hasText,
-                                                    const_cast<char *>(seqShape.c_str()), y, &workspaceSize,
-                                                    &executor);
-    CHECK_RET(ret == ACL_SUCCESS,
-              LOG_PRINT("aclnnSlidingTileAttentionGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
+    LOG_PRINT("Warm up %s...\n", testCase.name.c_str());
+    ret = RunSlidingTileAttentionOnce(q, k, v, y, windowSize, testCase, seqShape, stream, "warm up");
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-    if (workspaceSize > 0) {
-        ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
-    }
-
-    ret = aclnnSlidingTileAttention(workspaceAddr, workspaceSize, executor, stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnSlidingTileAttention failed. ERROR: %d\n", ret); return ret);
-
-    ret = aclrtSynchronizeStream(stream);
-    CHECK_RET(ret == ACL_SUCCESS,
-              LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n[ERROR msg]%s\n", ret, aclGetRecentErrMsg());
-              return ret);
+    ret = RunSlidingTileAttentionOnce(q, k, v, y, windowSize, testCase, seqShape, stream, "run");
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     if (testCase.checkGolden) {
         std::vector<Storage> actual(tensorSize, Traits::FromFloat(0.0F));
@@ -500,9 +519,6 @@ int RunTestCaseWithDtype(const TestCase &testCase, aclrtStream stream)
     aclrtFree(kDeviceAddr);
     aclrtFree(vDeviceAddr);
     aclrtFree(yDeviceAddr);
-    if (workspaceSize > 0) {
-        aclrtFree(workspaceAddr);
-    }
     return ACL_SUCCESS;
 }
 
