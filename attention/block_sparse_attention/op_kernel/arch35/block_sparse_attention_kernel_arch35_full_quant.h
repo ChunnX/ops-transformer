@@ -330,6 +330,8 @@ public:
                     blockMmadQK(gmKTensorTla, ubSTensorTla, gSparseIdx[gmOffsetSparseIdx], actualBlockShapeQK,
                                 gatheredKvSTileIdx, kvSeqlen, kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
                                 prefixSumL0AStages, prefixSumL0BStages, mm1ToSmFlag, deqScalar);
+                    AscendC::printf("tkd print ubSTensorTla (S matrix)\n");
+                    AscendC::DumpTensor(ubSTensorTla, 0, 128);
                     if (gatheredKvSTileIdx == kvSLoopNum - 1) {
                         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID0);
                     }
@@ -352,6 +354,8 @@ public:
                         l1PBufId,
                         mm1ToSmFlag,
                         smToMm2Flag);
+                    AscendC::printf("tkd print l1PTensorTla (P matrix)\n");
+                    AscendC::DumpTensor(l1PTensorTla, 0, 128);
 #endif
                 }
                 if (gatheredKvSTileIdx >= PRE_LAUNCH) {
@@ -382,6 +386,8 @@ public:
                     blockMmadPV(gmVTensorTla, ubOTmpTensorTla, gSparseIdx[gmOffsetSparseIdx], actualBlockShapePV,
                                 gatheredKvSTileIdxDe, kvSeqlen, kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
                                 prefixSumL0AStages, prefixSumL0BStages, smToMm2Flag, mm2ToReFlag);
+                    AscendC::printf("tkd print ubOTmpTensorTla (OTmp matrix, PV matrix)\n");
+                    AscendC::DumpTensor(ubOTmpTensorTla, 0, 128);
 #endif
 #ifdef __DAV_VEC__
                     // rescale O
@@ -408,6 +414,8 @@ public:
                         (gatheredKvSTileIdxDe == kvSLoopNum - 1),
                         mm2ToReFlag,
                         deqScalar);
+                    AscendC::printf("tkd print gmOTensorTla (O matrix, final result)\n");
+                    AscendC::DumpTensor(gmOTensorTla, 0, 128);
 #endif
                 }
             }
