@@ -66,7 +66,7 @@ private:
     __aicore__ inline void EndSync();
     __aicore__ inline void EndGMM2Sync();
     __aicore__ inline void CrossRankSyncInWorldSize();
-    __aicore__ inline void CopyGMToGMPerTokenV2(GlobalTensor<QuantOutType> dst,
+    __aicore__ inline void CopyGMToGMPerToken(GlobalTensor<QuantOutType> dst,
                 GlobalTensor<QuantScaleOutType> dstScale, GlobalTensor<QuantOutType> src,
                 int32_t rows, int32_t hiddenSize, int32_t& pingpongId);
 
@@ -119,6 +119,7 @@ private:
     TBuf<> DataResFp32Buf_;
     TBuf<> ResetTokenBuf_;
     TBuf<> topKWeightsBuf_;
+    TBuf<> tempBuf_;
 
     __gm__ Mc2MoeContext* mc2Context_{nullptr};
     Params params_{};
@@ -230,6 +231,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::FirstBuffInit(TPipe *tP
     uint32_t maxResetBufAlign = Ops::Base::CeilDiv(
         static_cast<int32_t>(expertPerRank_ * INT_CACHELINE * sizeof(int32_t) * 2), static_cast<int32_t>(ALIGN_32));
     tPipe->InitBuffer(ResetFlagBuf_, maxResetBufAlign);
+    tPipe->InitBuffer(tempBuf_, ALIGN_32);
 }
 
 template <TemplateMegaMoeTypeClass>
@@ -288,9 +290,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetWorkSpaceFlagList(
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GetCumsumForMMAIV()
 {
-    int32_t expertPerRankAligned = (expertPerRank_ + 8 - 1) / 8 * 8;
-    LocalTensor<int32_t> tmpBuffer1 = CumsumBuf_.Get<int32_t>();
-    DataCopyPad(tmpBuffer1, tokenPerExpertWin_[rankId_ * expertPerRank_],
+    uint32_t expertPerRankAligned = (expertPerRank_ + 8 - 1) / 8 * 8;
+    LocalTensor<int32_t> tmpTensor = CumsumBuf_.Get<int32_t>();
+    DataCopyPad(tmpTensor, tokenPerExpertWin_[rankId_ * expertPerRank_],
         {static_cast<uint16_t>(worldSize_), static_cast<uint16_t>(expertPerRank_ * sizeof(int32_t)),
          static_cast<uint16_t>((AlignUp(worldSize_ * expertPerRank_, ALIGN_128)
              - expertPerRank_) * sizeof(int32_t)), 0},
@@ -298,13 +300,26 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GetCumsumForMMAIV()
     SyncFunc<AscendC::HardEvent::MTE2_V>();
 
     for (uint32_t i = 1; i < worldSize_; ++i) {
-        Add(tmpBuffer1[i * expertPerRankAligned], tmpBuffer1[i * expertPerRankAligned],
-            tmpBuffer1[(i - 1) * expertPerRankAligned], expertPerRank_);
+        Add(tmpTensor[i * expertPerRankAligned], tmpTensor[i * expertPerRankAligned],
+            tmpTensor[(i - 1) * expertPerRankAligned], expertPerRank_);
         PipeBarrier<PIPE_V>();
     }
     SyncFunc<AscendC::HardEvent::V_MTE3>();
-    DataCopyPad(cumsumInWorkSpace_, tmpBuffer1,
+    DataCopyPad(cumsumInWorkSpace_, tmpTensor,
         {static_cast<uint16_t>(worldSize_), static_cast<uint16_t>((expertPerRank_) * sizeof(int32_t)), 0, 0});
+
+    LocalTensor<float> sumOutTensor = tempBuf_.Get<float>();
+    LocalTensor<float> tmpFloatTensor = tmpTensor.template ReinterpretCast<float>();
+    SumParams sumParams{1, expertPerRankAligned, expertPerRank_};
+    Sum(sumOutTensor, tmpFloatTensor[(worldSize_ - 1) * expertPerRankAligned], sumParams);
+
+    SyncFunc<AscendC::HardEvent::V_S>();
+
+    LocalTensor<int64_t> resTensor = sumOutTensor.template ReinterpretCast<int64_t>();
+    int64_t totalCnt = resTensor.GetValue(0);
+
+    SyncFunc<AscendC::HardEvent::S_V>();
+    assert(totalCnt <= static_cast<int64_t>(maxOutputSize_));
 }
 
 template <TemplateMegaMoeTypeClass>
@@ -416,13 +431,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CrossRankSyncCntPerExpe
 }
 
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CopyGMToGMPerTokenV2(
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(
     GlobalTensor<QuantOutType> dst, GlobalTensor<QuantScaleOutType> dstScale, GlobalTensor<QuantOutType> src,
     int32_t rows, int32_t hiddenSize, int32_t& pingpongId)
 {
     constexpr int32_t BufferNum = 2;
-    LocalTensor<QuantOutType> tmpBuffer1 = CopyTempBuf_.Get<QuantOutType>();
-    LocalTensor<QuantOutType> tmpBuffer2 = tmpBuffer1[96 * 1024];
+    LocalTensor<QuantOutType> tmpTensor1 = CopyTempBuf_.Get<QuantOutType>();
+    LocalTensor<QuantOutType> tmpTensor2 = tmpTensor1[96 * 1024];
     uint32_t scaleLen = Ops::Base::CeilDiv(static_cast<int32_t>(hiddenSize),
         static_cast<int32_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
     uint32_t copyInNum = hiddenSize + scaleLen;
@@ -430,7 +445,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CopyGMToGMPerTokenV2(
     for (uint32_t processIndex = 0; processIndex < processCount; ++processIndex) {
         pingpongId = (pingpongId + 1) % BufferNum;
         TEventID EVENT_ID = pingpongId == 0 ? EVENT_ID0 : EVENT_ID1;
-        LocalTensor<QuantOutType> buf = pingpongId == 0 ? tmpBuffer1 : tmpBuffer2;
+        LocalTensor<QuantOutType> buf = pingpongId == 0 ? tmpTensor1 : tmpTensor2;
         LocalTensor<QuantScaleOutType> bufScale = buf[hiddenSize].template ReinterpretCast<QuantScaleOutType>();
 
         auto inputOffset = processIndex * dispatchRows_ * copyInNum;
@@ -492,7 +507,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchTokens(GMMAddrI
                 aGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ QuantOutType*>(gmmAddrInfo.aGlobal));
                 aScaleGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ QuantScaleOutType *>(
                     gmmAddrInfo.aScaleGlobal));
-                CopyGMToGMPerTokenV2(aGlobalTensor[gmOffsetA], aScaleGlobalTensor[gmOffsetAScale],
+                CopyGMToGMPerToken(aGlobalTensor[gmOffsetA], aScaleGlobalTensor[gmOffsetAScale],
                     gmRemoteA[gmOffsetPeer], rowsPerCore, widthA, pingpongId);
             }
         }
@@ -603,7 +618,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetTokenPerExpert()
     SyncFunc<AscendC::HardEvent::MTE3_V>();
     LocalTensor<int32_t> tmp = ResetTokenBuf_.Get<int32_t>();
     Duplicate(tmp, 0, num);
-    SyncFunc<AscendC::HardEvent::V_MTE3>();
+    PipeBarrier<PIPE_ALL>(); // 保证前侧combine做完了再清理
     DataCopy(tokenPerExpertWin_, tmp, num);
 }
 
@@ -750,8 +765,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         }
     }
     EndGMM2Sync();
-    PipeBarrier<PIPE_ALL>();
     SyncAll<true>();
+
     // 6. unpermute & 清理win区上放置token的位置
     if constexpr(g_coreType == AIV) {
         ArgSortExpandedRowIdx();
