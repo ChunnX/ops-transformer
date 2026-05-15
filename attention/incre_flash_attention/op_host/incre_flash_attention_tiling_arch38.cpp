@@ -212,17 +212,17 @@ ge::graphStatus IFATilingArch38::DoSubOpTiling(IncreFlashAttentionContext &ifaCo
                 return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
     PromptFlashAttentionCompileInfo compileInfo = {0, 0, 0, 0, 0, 0, 0, 0, ascendcPlatform.GetSocVersion()};
-    TilingGetTempCompileInfo(ascendcPlatform, compileInfo);
-    PromptFlashAttentionTilingArch38 flashTilingArch38(context_);
-    ContextParamsForPFATiling contextParamsForPFATiling;
-    auto ret = PFAConvertContext(contextParamsForPFATiling, context_);
-    contextParamsForPFATiling.compileInfoPtr = &compileInfo;
-    OP_CHECK_IF(ret == ge::GRAPH_FAILED,
-                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "fail to convert to PFAParams"),
-                return ge::GRAPH_FAILED);
-    PromptFlashAttentionTilingData tilingData;
-    ret = flashTilingArch38.DoSubOpTiling(tilingData, contextParamsForPFATiling);
-    return ret;
+    // TilingGetTempCompileInfo(ascendcPlatform, compileInfo);
+    // PromptFlashAttentionTilingArch38 flashTilingArch38(context_);
+    // ContextParamsForPFATiling contextParamsForPFATiling;
+    // auto ret = PFAConvertContext(contextParamsForPFATiling, context_);
+    // contextParamsForPFATiling.compileInfoPtr = &compileInfo;
+    // OP_CHECK_IF(ret == ge::GRAPH_FAILED,
+    //             OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "fail to convert to PFAParams"),
+    //             return ge::GRAPH_FAILED);
+    // PromptFlashAttentionTilingData tilingData;
+    // ret = flashTilingArch38.DoSubOpTiling(tilingData, contextParamsForPFATiling);
+    return ge::GRAPH_FAILED;
 }
 
 REGISTER_TILING_TEMPLATE_FIA(IncreFlashAttention, IFATilingArch38, std::vector<int32_t>({(int32_t)NpuArch::DAV_5102}), 92);
