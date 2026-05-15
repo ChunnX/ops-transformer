@@ -395,6 +395,7 @@ void FiaTilingFullQuantMxArch35::CreateSplitInput(split_core_v2::BaseInfo &baseI
     baseInfo.bSize = fiaInfo_->bSize;
     baseInfo.n2Size = decodeS1GMerge_ ? fiaInfo_->n2Size : fiaInfo_->n1Size;
     baseInfo.gSize = decodeS1GMerge_ ? fiaInfo_->gSize : 1;
+    baseInfo.s1Size = fiaInfo_->s1Size;
     baseInfo.s2Size = fiaInfo_->s2Size;
     baseInfo.actualLenQDims = fiaInfo_->actualLenQDims;
     baseInfo.actualLenKvDims = fiaInfo_->actualLenDims;
