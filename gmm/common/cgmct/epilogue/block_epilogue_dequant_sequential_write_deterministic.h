@@ -141,8 +141,8 @@ private:
     AscendC::GlobalTensor<DataTypeOut> yGlobal_;
 
     // UB ADDR
-    AscendC::LocalTensor<DataTypeIn> l0cOutUb_{AscendC::TPosition::VECIN, DET_SEQ_AGG_RESERVED, DET_SEQ_MAX_SINGLE_MNS};
-    AscendC::LocalTensor<float> l0cOutUbFloat_{AscendC::TPosition::VECIN, DET_SEQ_AGG_RESERVED, DET_SEQ_MAX_SINGLE_MNS};
+    AscendC::LocalTensor<DataTypeIn> l0cOutUb_{AscendC::TPosition::VECIN, 0, DET_SEQ_MAX_SINGLE_MNS};
+    AscendC::LocalTensor<float> l0cOutUbFloat_{AscendC::TPosition::VECIN, 0, DET_SEQ_MAX_SINGLE_MNS};
     AscendC::LocalTensor<float> logitUbPing_;
     AscendC::LocalTensor<float> logitUbPong_;
     AscendC::LocalTensor<DataTypeX2Scale> x2ScaleUbPing_;
@@ -203,7 +203,7 @@ BlockEpilogueDequantSequentialWriteDeterministic<GMM_BLOCK_EPILOGUE_DEQUANT_SEQU
     }
     params_ = &params;
     yGlobal_.SetGlobalBuffer((__gm__ DataTypeOut *)params_->yGMAddr);
-    uint32_t afterFirstIn = DET_SEQ_AGG_RESERVED + DET_SEQ_MAX_SINGLE_MNS * sizeof(DataTypeOut);
+    uint32_t afterFirstIn = DET_SEQ_MAX_SINGLE_MNS * sizeof(DataTypeOut);
     logitUbPing_ = AscendC::LocalTensor<float>(AscendC::TPosition::VECIN, afterFirstIn, DET_SEQ_BLOCKS_BYTES);
     uint32_t afterSecondIn = afterFirstIn + DET_SEQ_BLOCKS_BYTES * sizeof(float);
     logitUbPong_ = AscendC::LocalTensor<float>(AscendC::TPosition::VECIN, afterSecondIn, DET_SEQ_BLOCKS_BYTES);
@@ -580,10 +580,11 @@ BlockEpilogueDequantSequentialWriteDeterministic<GMM_BLOCK_EPILOGUE_DEQUANT_SEQU
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(yPingPongID_);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(yPingPongID_);
         auto yLocal = yPingPongID_ == 0 ? outUbPing_ : outUbPong_;
-        // Workspace write offset uses cyclingRowOffset base, not logitOffset.
-        // Add mOffset (subBlockIdx * halfSingleM) so subBlock0 and subBlock1
-        // write to distinct workspace row ranges within the same tile.
-        uint64_t wsWriteOffset = workspaceBaseRow + mOffset + i * DET_SEQ_MAX_OUTPUT_M_UBS;
+        // Workspace write offset = workspaceBaseRow (cycling window base)
+        //   + logitBase (tile's row offset within group)
+        //   + mOffset (sub-block offset within tile)
+        //   + chunk offset within sub-block
+        uint64_t wsWriteOffset = workspaceBaseRow + logitBase + mOffset + i * DET_SEQ_MAX_OUTPUT_M_UBS;
         VectorSequentialWrite(singleN_, repeatTimesLine_, wsWriteOffset, yOffset, yLocal);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(yPingPongID_);
         yPingPongID_ = (yPingPongID_ + 1) & 1;

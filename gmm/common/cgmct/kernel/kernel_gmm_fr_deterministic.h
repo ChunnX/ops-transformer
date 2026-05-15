@@ -1,4 +1,5 @@
-/**
+/
+*
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -161,8 +162,7 @@ public:
     AscendC::LocalTensor<CType> l0cOutUb_;
     bool isVecSetSyncCom_ = false;
 
-    // Aggregation pipe and queue for FRDeterministicA5
-    TPipe aggPipe;
+    // Aggregation queue for FRDeterministicA5 (allocated through GetTPipePtr() to avoid UB overlap)
     TQueBind<TPosition::VECIN, TPosition::VECOUT, 1> aggQueBind;
 
     struct GMMTiling {
@@ -326,7 +326,7 @@ public:
         if ASCEND_IS_AIV {
             prologueOp_.Init(params.prologueParams);
             prologueOp_();
-            aggPipe.InitBuffer(aggQueBind, DET_BUFFER_NUM, DET_DETER_UB_SIZE);
+            GetTPipePtr()->InitBuffer(aggQueBind, DET_BUFFER_NUM, DET_DETER_UB_SIZE);
         }
         if ASCEND_IS_AIC {
             mmadOp_.Init(const_cast<TCubeTiling *__restrict>(params.gmmParams.matmulTiling), GetTPipePtr());
@@ -391,10 +391,6 @@ public:
                 }
 
                 SyncAll();
-                // FRDeterministicA5 is called without ASCEND_IS_AIV guard so that
-                // both AIC and AIV enter the function. Inside, AIC executes 1x SyncAll
-                // and returns; AIV performs the actual aggregation with 2x SyncAll
-                // (AIV cores are 2x AIC due to GetTaskRation).
                 GMMFRDeterministic::SyncConfig syncConfig{};
                 syncConfig.curM = workspaceBaseRow;
                 syncConfig.lowBoundM = workspaceBaseRow;
@@ -479,7 +475,6 @@ public:
         isVecSetSyncCom_ = false;
 
         // Final aggregation: all cores must participate (SyncAll is global barrier).
-        // FRDeterministicA5 handles curM=0 gracefully (AIV inner loop body is skipped).
         SyncAll();
         {
             GMMFRDeterministic::SyncConfig syncConfig{};
