@@ -221,7 +221,7 @@ ge::graphStatus IFATilingArch38::DoSubOpTiling(IncreFlashAttentionContext &ifaCo
                 OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "fail to convert to PFAParams"),
                 return ge::GRAPH_FAILED);
     PromptFlashAttentionTilingData tilingData;
-    ret = flashTilingArch38.DoSubOpTiling(tilingData, contextParamsForPFATiling);
+    // ret = flashTilingArch38.DoSubOpTiling(tilingData, contextParamsForPFATiling);
     return ret;
 }
 
