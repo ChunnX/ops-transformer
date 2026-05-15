@@ -31,6 +31,7 @@ template<uint32_t quantReduceScatterCommMode>
 __global__ __aicore__ void quant_reduce_scatter(GM_ADDR x, GM_ADDR scales, GM_ADDR output, GM_ADDR workspaceGM,
                                                            GM_ADDR tilingGM)
 {
+    AscendC::PRINTF("===== XYF quant_reduce_scatter.cpp =====");
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
     REGISTER_TILING_DEFAULT(QuantReduceScatterTilingData);
     GET_TILING_DATA_WITH_STRUCT(QuantReduceScatterTilingData, tilingData, tilingGM);

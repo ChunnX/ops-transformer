@@ -294,6 +294,8 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::Process()
         return;
     }
 
+    AscendC::PRINTF("===== XYF quant_all_reduce_mte_one_shot.h =====");
+
     // 一次性拷贝完所有数据到本地卡win区
     mteComm_.CopyDataToWin();
     // 写入状态到状态区
