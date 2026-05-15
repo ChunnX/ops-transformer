@@ -269,28 +269,28 @@ __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::SetL2CacheDi
     // Mirrors `QuantMmBatchMX::SetL2Cache` in kernel_qbmm_mx.h (FormatB / transB branches).
     if constexpr (formatB != CubeFormat::ND) {
         if (curBaseM >= mSize) {
-            bGlobal_.SetL2CacheHint(AscendC::Te::CacheMode::CACHE_MODE_DISABLE);
-            x2ScaleGlobal_.SetL2CacheHint(AscendC::Te::CacheMode::CACHE_MODE_DISABLE);
+            bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+            x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
         } else {
-            bGlobal_.SetL2CacheHint(AscendC::Te::CacheMode::CACHE_MODE_NORMAL);
-            x2ScaleGlobal_.SetL2CacheHint(AscendC::Te::CacheMode::CACHE_MODE_NORMAL);
+            bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+            x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
         }
     } else {
         if constexpr (transB) {
             if (curBaseM >= mSize && (Get<MNK_K>(problemShape_) & 0xff) == 0) {
-                bGlobal_.SetL2CacheHint(AscendC::Te::CacheMode::CACHE_MODE_DISABLE);
-                x2ScaleGlobal_.SetL2CacheHint(AscendC::Te::CacheMode::CACHE_MODE_DISABLE);
+                bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+                x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
             } else {
-                bGlobal_.SetL2CacheHint(AscendC::Te::CacheMode::CACHE_MODE_NORMAL);
-                x2ScaleGlobal_.SetL2CacheHint(AscendC::Te::CacheMode::CACHE_MODE_NORMAL);
+                bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+                x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
             }
         } else {
             if (curBaseM >= mSize && (Get<MNK_N>(problemShape_) & 0xff) == 0 && (baseN & 0xff) == 0) {
-                bGlobal_.SetL2CacheHint(AscendC::Te::CacheMode::CACHE_MODE_DISABLE);
-                x2ScaleGlobal_.SetL2CacheHint(AscendC::Te::CacheMode::CACHE_MODE_DISABLE);
+                bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+                x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
             } else {
-                bGlobal_.SetL2CacheHint(AscendC::Te::CacheMode::CACHE_MODE_NORMAL);
-                x2ScaleGlobal_.SetL2CacheHint(AscendC::Te::CacheMode::CACHE_MODE_NORMAL);
+                bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+                x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
             }
         }
     }
