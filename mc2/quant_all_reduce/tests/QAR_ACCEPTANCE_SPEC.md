@@ -21,7 +21,7 @@ QAR 算子基于 MTE 引擎直读 Win 区（`SetCommEngine(3)`），kernel 时�
 T_kernel = T_sync + T_data
 
 T_sync  = 5 + 2N                 (us)    kernel 启动 + 等待 N 个 rank 完成
-T_data  = V × N / (56 × η)       (us)    MTE 跨卡搬运
+T_data  = V × N / (56 × log₂N)   (us)    MTE 跨卡搬运
 ```
 
 参数定义：
@@ -31,9 +31,9 @@ T_data  = V × N / (56 × η)       (us)    MTE 跨卡搬运
 | V | 有效载荷 `bs × h × 1B`（MB） | 测试 shape |
 | N | 卡数（world_size） | 部署配置 |
 | 56 GB/s | MTE 单口峰值带宽 | 硬件规格 |
-| η(N) | 流水线等效深度 | N=2→1, N=4→2, N=8→3 |
+| η(N) | 流水线等效深度 | η(N) = log₂N（N=2→1, N=4→2, N=8→3） |
 
-η 的物理含义：MTE 读和 AIV 反量化/规约计算通过 double/triple buffer 流水重叠。N 越大，Win 区越多，计算窗口越大，掩盖 MTE 读延迟的能力越强。
+η = log₂N 的物理含义：每多读一个 Win 区，计算和 MTE 搬运之间就多一层流水重叠。代码用 double-buffer，N 个 Win 区的读操作可在 log₂N 层流水深度内完成。
 
 ---
 
@@ -42,19 +42,19 @@ T_data  = V × N / (56 × η)       (us)    MTE 跨卡搬运
 合并后：
 
 ```
-T_budget(V, N) = (5 + 2N) + V × N / (56 × η(N))
+T_budget(V, N) = (5 + 2N) + V × N / (56 × log₂N)
                = (5 + 2N) + V / BW(N)
 
-BW(N) = 56 × η(N) / N
+BW(N) = 56 × log₂N / N
 ```
 
-| N | η | BW(N) | T_budget |
-|---|----|--------|----------|
+| N | log₂N | BW(N) | T_budget |
+|---|-------|--------|----------|
 | 2 | 1 | **28 GB/s** | `9 + V / 28` |
 | 4 | 2 | **28 GB/s** | `13 + V / 28` |
 | 8 | 3 | **21 GB/s** | `21 + V / 21` |
 
-> N=2 和 N=4 时 BW 同为 28 GB/s，因为 η 和 N 同步增长（2/1 = 4/2），流量放大被流水线深度抵消。
+> N=2 和 N=4 时 BW 同为 28 GB/s，因为 log₂N 和 N 同步增长（log₂4/4 = log₂2/2），流量放大被流水线深度抵消。N=8 时 N 的增长快于 log₂N，BW 降至 21 GB/s。
 
 ---
 
@@ -71,6 +71,7 @@ T_actual  > T_budget(V, N) × 1.10  →  REJECT（性能退化）
 
 ```
 T_budget(V) = 21 + V / 21      (V: MB, T: us)
+BW(8) = 56 × log₂8 / 8 = 21 GB/s
 
 判定: T_actual ≤ T_budget × 1.10 → ACCEPT
 ```
