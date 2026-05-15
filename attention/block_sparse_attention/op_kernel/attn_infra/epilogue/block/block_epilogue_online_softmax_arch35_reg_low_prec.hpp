@@ -803,7 +803,7 @@ private:
         MaskReg pregTailHalf = UpdateMask<ElementS>(tailNtmp);
 
         // 外层按M方向循环，每64行共享同一个query scale
-        for (uint16_t i = 0; i < m;) {
+        for (uint16_t i = 0; i < m; ++i) {
             // queryScaleUb按64粒度组织，每64行取1个scale值
             float query_scale = qscale;
             Duplicate<float, float>(queryScaleReg, query_scale);
@@ -812,65 +812,63 @@ private:
             float curScale0 = valueScale0;
             float curScale1 = valueScale1;
             float tmp0, tmp1;
-            // 内层每64行为一个粒度组，处理当前query scale作用范围内的所有行
-            for(uint16_t k = 0; i < m && k < 64; ++i, ++k) {
-                // 处理N方向完整的128元素循环（每个循环体处理128个half元素）
-                for (uint16_t j = 0; j < nLoops; ++j) {
-                    // valueScaleUb按N方向64粒度组织，每64列共享一个scale
-                    // 每个128元素循环包含2个64粒度，因此每个循环取2个key scale
-                    float key_scale1 = curScale0;
-                    float key_scale2 = curScale1;
-                    LoadAlign<ElementS>(srcReg, srcUb + i * S2BaseSize + j * HALF_REP_SIZE);
-                    // Step1: half -> float转换（RegLayout::ZERO/ONE分别取低64和高64元素）
-                    Cast<float, ElementS, castTraitHalf2FloatZero>(floatReg0, srcReg, pregHalfFull);
-                    Cast<float, ElementS, castTraitHalf2FloatOne>(floatReg1, srcReg, pregHalfFull);
-                    // Step2: Interleave将float数据重排，使floatReg2对应key_scale1作用的数据，floatReg3对应key_scale2
-                    Interleave(floatReg2, floatReg3, floatReg0, floatReg1);
-                    // Step3: 先乘以key scale，再乘以query scale，完成反量化
-                    Duplicate(keyScaleReg, key_scale1);
-                    Mul(floatReg2, keyScaleReg, floatReg2, pregFull);
-                    Mul(floatReg2, queryScaleReg, floatReg2, pregFull);
-                    Duplicate(keyScaleReg, key_scale2);
-                    Mul(floatReg3, keyScaleReg, floatReg3, pregFull);
-                    Mul(floatReg3, queryScaleReg, floatReg3, pregFull);
-                    // Step4: DeInterleave将数据还原回原来的布局
-                    DeInterleave(floatReg0, floatReg1, floatReg2, floatReg3);
-                    // Step5: float -> half转换回写（RegLayout::ZERO/ONE分别写入低64和高64元素）
-                    Cast<ElementS, float, castTraitFloat2HalfZero>(halfReg0, floatReg0, pregFull);
-                    Cast<ElementS, float, castTraitFloat2HalfOne>(halfReg1, floatReg1, pregFull);
-                    Or((RegTensor<uint8_t>&)halfReg, (RegTensor<uint8_t>&)halfReg0, (RegTensor<uint8_t>&)halfReg1, pregAllFp8);
-                    
-                    StoreAlign<ElementS, StoreDist::DIST_NORM_B16>(
-                        srcUb + i * S2BaseSize + j * HALF_REP_SIZE, halfReg, pregHalfFull);
-                    tmp0 = curScale0;
-                    tmp1 = curScale1;
-                    curScale0 = lastScale0;
-                    curScale1 = lastScale1;
-                    lastScale0 = tmp0;
-                    lastScale1 = tmp1;
-                }
-                // 处理N方向尾部不足128个元素的情况
-                if (tailN > 0) {
-                    float key_scale1 = curScale0;
-                    float key_scale2 = curScale1;
-                    LoadAlign<ElementS>(srcReg, srcUb + i * S2BaseSize + nLoops * HALF_REP_SIZE);
-                    Cast<float, ElementS, castTraitHalf2FloatZero>(floatReg0, srcReg, pregHalfFull);
-                    Cast<float, ElementS, castTraitHalf2FloatOne>(floatReg1, srcReg, pregHalfFull);
-                    Interleave(floatReg2, floatReg3, floatReg0, floatReg1);
-                    Duplicate(keyScaleReg, key_scale1);
-                    Mul(floatReg2, keyScaleReg, floatReg2, pregTailFloat);
-                    Mul(floatReg2, queryScaleReg, floatReg2, pregTailFloat);
-                    Duplicate(keyScaleReg, key_scale2);
-                    Mul(floatReg3, keyScaleReg, floatReg3, pregTailFloat);
-                    Mul(floatReg3, queryScaleReg, floatReg3, pregTailFloat);
-                    DeInterleave(floatReg0, floatReg1, floatReg2, floatReg3);
-                    Cast<ElementS, float, castTraitFloat2HalfZero>(halfReg0, floatReg0, pregTailFloat);
-                    Cast<ElementS, float, castTraitFloat2HalfOne>(halfReg1, floatReg1, pregTailFloat);
-                    Or((RegTensor<uint8_t>&)halfReg, (RegTensor<uint8_t>&)halfReg0, (RegTensor<uint8_t>&)halfReg1, pregAllFp8);
-                    StoreAlign<ElementS, StoreDist::DIST_NORM_B16>(
-                        srcUb + i * S2BaseSize + nLoops * HALF_REP_SIZE, halfReg, pregTailHalf);
-                }
+            // 处理N方向完整的128元素循环（每个循环体处理128个half元素）
+            for (uint16_t j = 0; j < nLoops; ++j) {
+                // valueScaleUb按N方向64粒度组织，每64列共享一个scale
+                // 每个128元素循环包含2个64粒度，因此每个循环取2个key scale
+                float key_scale1 = curScale0;
+                float key_scale2 = curScale1;
+                LoadAlign<ElementS>(srcReg, srcUb + i * S2BaseSize + j * HALF_REP_SIZE);
+                // Step1: half -> float转换（RegLayout::ZERO/ONE分别取低64和高64元素）
+                Cast<float, ElementS, castTraitHalf2FloatZero>(floatReg0, srcReg, pregHalfFull);
+                Cast<float, ElementS, castTraitHalf2FloatOne>(floatReg1, srcReg, pregHalfFull);
+                // Step2: Interleave将float数据重排，使floatReg2对应key_scale1作用的数据，floatReg3对应key_scale2
+                Interleave(floatReg2, floatReg3, floatReg0, floatReg1);
+                // Step3: 先乘以key scale，再乘以query scale，完成反量化
+                Duplicate(keyScaleReg, key_scale1);
+                Mul(floatReg2, keyScaleReg, floatReg2, pregFull);
+                Mul(floatReg2, queryScaleReg, floatReg2, pregFull);
+                Duplicate(keyScaleReg, key_scale2);
+                Mul(floatReg3, keyScaleReg, floatReg3, pregFull);
+                Mul(floatReg3, queryScaleReg, floatReg3, pregFull);
+                // Step4: DeInterleave将数据还原回原来的布局
+                DeInterleave(floatReg0, floatReg1, floatReg2, floatReg3);
+                // Step5: float -> half转换回写（RegLayout::ZERO/ONE分别写入低64和高64元素）
+                Cast<ElementS, float, castTraitFloat2HalfZero>(halfReg0, floatReg0, pregFull);
+                Cast<ElementS, float, castTraitFloat2HalfOne>(halfReg1, floatReg1, pregFull);
+                Or((RegTensor<uint8_t>&)halfReg, (RegTensor<uint8_t>&)halfReg0, (RegTensor<uint8_t>&)halfReg1, pregAllFp8);
+                
+                StoreAlign<ElementS, StoreDist::DIST_NORM_B16>(
+                    srcUb + i * S2BaseSize + j * HALF_REP_SIZE, halfReg, pregHalfFull);
+                tmp0 = curScale0;
+                tmp1 = curScale1;
+                curScale0 = lastScale0;
+                curScale1 = lastScale1;
+                lastScale0 = tmp0;
+                lastScale1 = tmp1;
             }
+            // 处理N方向尾部不足128个元素的情况
+            if (tailN > 0) {
+                float key_scale1 = curScale0;
+                float key_scale2 = curScale1;
+                LoadAlign<ElementS>(srcReg, srcUb + i * S2BaseSize + nLoops * HALF_REP_SIZE);
+                Cast<float, ElementS, castTraitHalf2FloatZero>(floatReg0, srcReg, pregHalfFull);
+                Cast<float, ElementS, castTraitHalf2FloatOne>(floatReg1, srcReg, pregHalfFull);
+                Interleave(floatReg2, floatReg3, floatReg0, floatReg1);
+                Duplicate(keyScaleReg, key_scale1);
+                Mul(floatReg2, keyScaleReg, floatReg2, pregTailFloat);
+                Mul(floatReg2, queryScaleReg, floatReg2, pregTailFloat);
+                Duplicate(keyScaleReg, key_scale2);
+                Mul(floatReg3, keyScaleReg, floatReg3, pregTailFloat);
+                Mul(floatReg3, queryScaleReg, floatReg3, pregTailFloat);
+                DeInterleave(floatReg0, floatReg1, floatReg2, floatReg3);
+                Cast<ElementS, float, castTraitFloat2HalfZero>(halfReg0, floatReg0, pregTailFloat);
+                Cast<ElementS, float, castTraitFloat2HalfOne>(halfReg1, floatReg1, pregTailFloat);
+                Or((RegTensor<uint8_t>&)halfReg, (RegTensor<uint8_t>&)halfReg0, (RegTensor<uint8_t>&)halfReg1, pregAllFp8);
+                StoreAlign<ElementS, StoreDist::DIST_NORM_B16>(
+                    srcUb + i * S2BaseSize + nLoops * HALF_REP_SIZE, halfReg, pregTailHalf);
+            }
+            
         }
     }
     
