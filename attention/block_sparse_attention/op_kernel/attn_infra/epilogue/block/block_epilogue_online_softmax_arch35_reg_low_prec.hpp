@@ -420,7 +420,7 @@ private:
             Exp(expDstVregResult, expDstVreg, pregTailN);
             // Exp(expDstVreg, expDstVreg, pregTailN);
             if constexpr (AscendC::IsSameType<ElementOutput, fp8_e4m3fn_t>::value) {
-                AscendC::printf("tkd ComputeExpSubSum16 STAGE ONE\n");
+                // AscendC::printf("tkd ComputeExpSubSum16 STAGE ONE\n");
                 constexpr half staticScale = static_cast<half>(448.0f);
                 Muls(expDstVreg, expDstVreg, staticScale, pregTailN);
                 Cast<ElementOutput, ElementInput, castTraitZero>(pVreg, expDstVreg, pregTailN);
@@ -477,7 +477,7 @@ private:
             Exp(expDstVreg1, expDstVreg1, pregTailN);
             Add<ElementInput, MaskMergeMode::MERGING>(expDstVregResult, expDstVreg0, expDstVreg1, pregTailN);
             if constexpr (AscendC::IsSameType<ElementOutput, fp8_e4m3fn_t>::value) {
-                AscendC::printf("tkd ComputeExpSubSum16 STAGE TWO\n");
+                // AscendC::printf("tkd ComputeExpSubSum16 STAGE TWO\n");
                 constexpr half staticScale = static_cast<half>(448.0f);
                 Muls(expDstVreg0, expDstVreg0, staticScale, pregFull);
                 Muls(expDstVreg1, expDstVreg1, staticScale, pregTailN);

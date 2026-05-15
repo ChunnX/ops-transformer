@@ -494,7 +494,7 @@ public:
     __simd_vf__ inline void ScaleO<DRegSplitStages::ONE>(__ubuf__ ElementOTmp *goUb, uint32_t row, uint32_t colStride,
                                                          uint32_t colTail, uint32_t vlElemNum, float deqScalar)
     {
-        AscendC::printf("tkd ScaleO STAGE ONE\n");
+        // AscendC::printf("tkd ScaleO STAGE ONE\n");
         using namespace AscendC::MicroAPI;
         RegTensor<ElementOTmp> oVreg;
         MaskReg pregTail = UpdateMask<float>(colTail);
@@ -510,7 +510,7 @@ public:
     __simd_vf__ inline void ScaleO<DRegSplitStages::TWO>(__ubuf__ ElementOTmp *goUb, uint32_t row, uint32_t colStride,
                                                          uint32_t colTail, uint32_t vlElemNum, float deqScalar)
     {
-        AscendC::printf("tkd ScaleO STAGE TWO\n");
+        // AscendC::printf("tkd ScaleO STAGE TWO\n");
         using namespace AscendC::MicroAPI;
         RegTensor<ElementOTmp> oVreg0;
         RegTensor<ElementOTmp> oVreg1;
