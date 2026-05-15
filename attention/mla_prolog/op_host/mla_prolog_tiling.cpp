@@ -323,19 +323,17 @@ ge::graphStatus MlaPrologTiling::SetScenarioInfo()
     // 切分模式判定优先级：切KN > 切M > 切N(默认)
     scenarioInfo_.splitMode_ = static_cast<uint8_t>(SPLIT_MODE::SPLIT_N);
     
-    // 切KN条件：Ascend950 + 24核以上 + CV1:2 + D=128 + Hcq=1536 + 非量化或MXFP8量化
-    // 不与dequant/group compute opt兼容，优先走切KN
+    // 切KN条件：Ascend950 + 24核以上 + CV1:2 + D=128 + Hcq=1536
+    // 仅非量化和MXFP8全量化场景支持；不与dequant/group compute opt兼容，优先走切KN
     if (GetCurNpuArch() == NpuArch::DAV_3510 && aicNum_ >= 24 && !enableGroupComputeOpt_ &&
-        aivNum_ == 2 * aicNum_ && baseShapeInfo_.dSize == 128 && baseShapeInfo_.hcqSize == 1536 &&
-        cvRatio == 2) {
-        if (scenarioInfo_.quantMode_ == QUANT_MODE::NO_QUANT ||
-            scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_NO_QUANT ||
-            scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR ||
-            scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TILE) {
-            scenarioInfo_.splitMode_ = static_cast<uint8_t>(SPLIT_MODE::SPLIT_KN);
-            enableDequantOpt_ = false;
-            enableGroupComputeOpt_ = false;
-        }
+        cvRatio == 2 && baseShapeInfo_.dSize == 128 && baseShapeInfo_.hcqSize == 1536 &&
+        (scenarioInfo_.quantMode_ == QUANT_MODE::NO_QUANT ||
+         scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_NO_QUANT ||
+         scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR ||
+         scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TILE)) {
+        scenarioInfo_.splitMode_ = static_cast<uint8_t>(SPLIT_MODE::SPLIT_KN);
+        enableDequantOpt_ = false;
+        enableGroupComputeOpt_ = false;
     }
     // 切M条件：MXFP8 + BS>=8K + CV1:2 + He=7168/7680 + N=128
     if (scenarioInfo_.splitMode_ == static_cast<uint8_t>(SPLIT_MODE::SPLIT_N)) {
