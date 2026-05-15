@@ -27,7 +27,7 @@ constexpr int32_t BUFFER_NUM = 1;
 constexpr int32_t BLOCK_SIZE = 32;
 constexpr int64_t BUFFER_32B_CALNUM = 32 / sizeof(float);
 
-template <typename Tp, Tp v>
+template <typename Tp, Tp v> 
 struct integral_constant {
     static constexpr Tp value = v;
 };

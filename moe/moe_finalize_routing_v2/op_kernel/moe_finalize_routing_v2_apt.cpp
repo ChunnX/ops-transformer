@@ -252,7 +252,7 @@ extern "C" __global__ __aicore__ void moe_finalize_routing_v2(
     } else if (TILING_KEY_IS(TILING_KEY_K_H_FULL_LOAD_DROP_PAD_ROW_FP32)) {
         MOE_FINALIZE_ROUTING_V2_KH_FULLLOAD_IMPL(DTYPE_EXPANDED_X, float, DROP_PAD_ROW);
         return;
-    } else if (TILING_KEY_IS(TILING_KEY_K_H_FULL_LOAD_DROP_PAD_ROW_FP16)) {
+    } else if (TILING_KEY_IS(TILING_KEY_K_H_FULL_LOAD_DROP_PAD_ROW_FP16)) { 
         MOE_FINALIZE_ROUTING_V2_KH_FULLLOAD_IMPL(DTYPE_EXPANDED_X, half, DROP_PAD_ROW);
         return;
     } else if (TILING_KEY_IS(TILING_KEY_K_H_FULL_LOAD_DROP_PAD_ROW_BF16)) {
