@@ -410,8 +410,7 @@ ge::graphStatus MlaPrologTiling::FillMatmul1Tiling()
             CalcSingleCoreN(baseShapeInfo_.hcqSize, aicNum_, BLOCK_SIZE / DTYPE_TO_SIZE.at(dataType));
         singlecoreHeadSizeCq_ = std::max(singlecoreHeadSizeCq_, 64U); // 64：最大使用24核
         mm1BlockNum_ = CeilDiv(baseShapeInfo_.hcqSize, singlecoreHeadSizeCq_);
-        if (GetCurNpuArch() == NpuArch::DAV_3510 && aicNum_ >= 24 && !enableGroupComputeOpt_ &&
-            aivNum_ == 2 * aicNum_ && baseShapeInfo_.dSize == 128 && baseShapeInfo_.hcqSize == 1536) {
+        if (scenarioInfo_.splitMode_ == static_cast<uint8_t>(SPLIT_MODE::SPLIT_KN)) {
             mm1KnNGroupSize_ = 8;
             mm1KnKGroupSize_ = aicNum_ / mm1KnNGroupSize_;
         } else {
@@ -447,8 +446,7 @@ ge::graphStatus MlaPrologTiling::FillMatmul2Tiling()
                                                        BLOCK_SIZE / DTYPE_TO_SIZE.at(dataType));
             mm2BlockNum_ = CeilDiv(baseShapeInfo_.hckvSize + baseShapeInfo_.drSize, singlecoreHeadSizeCkvKr_);
         }
-        if (GetCurNpuArch() == NpuArch::DAV_3510 && aicNum_ >= 24 && !enableGroupComputeOpt_ &&
-            aivNum_ == 2 * aicNum_ && baseShapeInfo_.dSize == 128 && baseShapeInfo_.hcqSize == 1536) {
+        if (scenarioInfo_.splitMode_ == static_cast<uint8_t>(SPLIT_MODE::SPLIT_KN)) {
             mm2KnNGroupSize_ = 3;
             mm2KnKGroupSize_ = aicNum_ / mm2KnNGroupSize_;
         } else {
@@ -681,15 +679,15 @@ ge::graphStatus MlaPrologTiling::CalcWorkSpace()
     if (enableGroupComputeOpt_ || enableDequantOpt_) {
         workspaceSize_ += static_cast<size_t>(stepBatchSize_) * dequantScaleMult * static_cast<size_t>(BLOCK_SIZE);
     }
-    // Split-KN workspace: partial sum buffers for Ascend 950
-    if (GetCurNpuArch() == NpuArch::DAV_3510 && baseParams_->mm1KnKGroupSize > 0) {
+    // Split-KN workspace: partial sum buffers
+    if (scenarioInfo_.splitMode_ == static_cast<uint8_t>(SPLIT_MODE::SPLIT_KN)) {
         // MM1 Cq partials: k_groups × stepBS × Hcq × sizeof(float)
-        workspaceSize_ += static_cast<uint64_t>(baseParams_->mm1KnKGroupSize)
+        workspaceSize_ += static_cast<uint64_t>(mm1KnKGroupSize_)
                         * stepBatchSize_ * baseShapeInfo_.hcqSize * sizeof(float);
     }
-    if (GetCurNpuArch() == NpuArch::DAV_3510 && baseParams_->mm2KnKGroupSize > 0) {
+    if (scenarioInfo_.splitMode_ == static_cast<uint8_t>(SPLIT_MODE::SPLIT_KN)) {
         // MM2 CkvKr partials: k_groups × stepBS × (Hckv+Dr) × sizeof(float)
-        workspaceSize_ += static_cast<uint64_t>(baseParams_->mm2KnKGroupSize)
+        workspaceSize_ += static_cast<uint64_t>(mm2KnKGroupSize_)
                         * stepBatchSize_
                         * (baseShapeInfo_.hckvSize + baseShapeInfo_.drSize) * sizeof(float);
     }
