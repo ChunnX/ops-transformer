@@ -24,7 +24,7 @@ using namespace AscendC;
 using namespace matmul;
 #ifdef GMM_SWIGLU_QUANT_A8W4_MSD
 
-namespace GROUPED_MATMUL_SWIGLU_QUANT {
+namespace GROUPED_MATMUL_SWIGLU_QUANT { 
 
 template <class mmType>
 class GMMSwigluQuantPipelineSchedule {

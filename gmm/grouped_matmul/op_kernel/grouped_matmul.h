@@ -18,7 +18,7 @@
 #include "grouped_matmul_utils.h"
 #include "kernel_operator.h"
 
-namespace GROUPED_MATMUL {
+namespace GROUPED_MATMUL { 
 
 constexpr uint32_t thresholdBlockNum = 8;   // 8 is obtained by tests, indicating the threshold of basic block numbers
                                             // in both directions when assigning data blocks to cube cores when using
