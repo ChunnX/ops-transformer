@@ -195,7 +195,7 @@ aclnnStatus CheckConsistencyQliV2(int64_t batchSize, const aclTensor *cuSeqlensQ
 int64_t dimNum = -1;
     aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
 
-    int64_t batchSize = GetQueryBatchSizeQliV2(batchSize, cuSeqlensQOptional, sequsedQOptional,
+    int64_t batch = GetQueryBatchSizeQliV2(batchSize, cuSeqlensQOptional, sequsedQOptional,
         layoutQOptional);
     // 校验 cu_seqlens_q
     if (IsTensorExistQliV2(cuSeqlensQOptional)) {
@@ -245,11 +245,11 @@ int64_t dimNum = -1;
     }
 
     // 校验batch
-    int64_t keyBatchSize = GetKeyBatchSizeQliV2(batchSize, cuSeqlensKOptional, sequsedKOptional,
+    int64_t keyBatch = GetKeyBatchSizeQliV2(batchSize, cuSeqlensKOptional, sequsedKOptional,
         layoutKOptional);
-    CHECK_COND(batchSize == keyBatchSize, ACLNN_ERR_PARAM_INVALID,
+    CHECK_COND(batch == keyBatch, ACLNN_ERR_PARAM_INVALID,
         "The batch_size obtained from q Tensor should be the same as that obtained from k tensor, but got %ld and %ld",
-        batchSize, keyBatchSize);
+        batch, keyBatch);
     return ACLNN_SUCCESS;
 }
 
