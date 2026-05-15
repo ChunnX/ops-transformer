@@ -27,6 +27,7 @@
 #else
 #include "../../common/op_kernel/moe_distribute_base.h"
 #endif
+#include "moe_distribute_a2_constant.h"
 namespace MoeDistributeA2Base {
 class MoeDistributeA2Context {
 public:
@@ -170,6 +171,7 @@ public:
         // Get Hccl Buffer Size
         auto hcclContext = AscendC::GetHcclContext<AscendC::HCCL_GROUP_ID_0>();
         context_.Init(hcclContext);
+
         auto winSize = ((__gm__ HcclA2CombineOpParam *)hcclContext)->winSize;
         aivId_ = AscendC::GetBlockIdx();
         localMoeExpertNum_ = localMoeExpertNum;
@@ -181,8 +183,8 @@ public:
         serverSizeOnRdmaData_ = RoundUp(maxBs * maxTokenStructBytes + UB_32B_ALIGN, BUFFER_ALIGN);
         rankSizeOnIpcData_ = RoundUp(maxBs * maxTokenStructBytes, BUFFER_ALIGN);
         // ipc addr
-        ipcFlagAddrStart_[0] = winSize / 2UL - IPC_HALF_NON_DATA_BYTES;
-        ipcFlagAddrStart_[1] = winSize - IPC_HALF_NON_DATA_BYTES;
+        ipcFlagAddrStart_[0] = winSize / 2UL - IPC_HALF_NON_DATA_BYTES + Mc2A2Kernel::ADUMP_WIN_SIZE;
+        ipcFlagAddrStart_[1] = winSize - IPC_HALF_NON_DATA_BYTES + Mc2A2Kernel::ADUMP_WIN_SIZE;
         uint64_t halfIpcDataSize = rankSizeOnIpcData_ * localMoeExpertNum_ * halfWorldSize_;
         ipcDataAddrStart_[0] = RoundUp(ipcFlagAddrStart_[0] - halfIpcDataSize, BUFFER_ALIGN);
         ipcDataAddrStart_[1] = RoundUp(ipcFlagAddrStart_[1] - halfIpcDataSize, BUFFER_ALIGN);
@@ -196,8 +198,9 @@ public:
         // rdma addr
         UpdateMagicValue();
         // Get BufferId
-        uint64_t bufferId = magicValue_ & 0x1;
+        uint64_t bufferId = (magicValue_ - 1UL) & 0x1;
         rdmaFlagAddrStart_ = (bufferId & 0x1) ? (winSize / 2UL) : 0UL;
+        rdmaFlagAddrStart_ += Mc2A2Kernel::ADUMP_WIN_SIZE;
         rdmaDataAddrStart_ = rdmaFlagAddrStart_ + RDMA_STATUS_SIZE;
     }
 
@@ -297,6 +300,16 @@ public:
         ipcTokenCntAddrStart_ = ipcFlagAddrStart_[1] + IPC_TOKEN_CNT_OFFSET;
     }
 
+    __aicore__ inline GM_ADDR GetAdumpDataAddr() const
+    {
+        return context_.GetWindowsInAddr(curRankId_) + Mc2A2Kernel::ADUMP_DATA_DISPATCH_ADDR_START;
+    }
+
+    __aicore__ inline GM_ADDR GetAdumpStatusAddr() const
+    {
+        return context_.GetWindowsInAddr(curRankId_) + Mc2A2Kernel::ADUMP_STATUS_DISPATCH_ADDR;
+    }
+
     // ===== Sender =====
     // Dispatch阶段：获取本地发送缓冲区数据地址
     // 待发送的Token数据是累加存放的，不需要区分目标卡
@@ -375,6 +388,16 @@ public:
         // 这里使用aivNum是为了添加冗余，确保处理不同server的token级flag不重叠
         ipcTokenFlagSize_ = RoundUp(static_cast<uint32_t>((maxBs + aivNum / serverNum_ + 1U) * sizeof(uint64_t)), UB_32B_ALIGN);
         ipcTokenFlagAddrStart_ = ipcSyncFlagAddrStart_ + (SERVER_RANK_SIZE + 1) * UB_32B_ALIGN;
+    }
+
+    __aicore__ inline GM_ADDR GetAdumpDataAddr() const
+    {
+        return context_.GetWindowsInAddr(curRankId_) + Mc2A2Kernel::ADUMP_DATA_COMBINE_ADDR_START;
+    }
+
+    __aicore__ inline GM_ADDR GetAdumpStatusAddr() const
+    {
+        return context_.GetWindowsInAddr(curRankId_) + Mc2A2Kernel::ADUMP_STATUS_COMBINE_ADDR;
     }
 
     // ===== Sender =====
