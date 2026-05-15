@@ -688,9 +688,11 @@ void MoeInitRoutingV2TilingBase::Tiling4GatherOutCompute()
         int64_t actualPerCorePerLoopRows = std::min(perCoreRows, maxRowsPerLoop);
         int64_t actualLastCorePerLoopRows = std::min(lastCoreRows, maxRowsPerLoop);
         tilingData->set_perCorePerLoopRows(actualPerCorePerLoopRows);
-        tilingData->set_perCoreLastLoopRows(GetPerOrLastValue(perCoreRows, maxRowsPerLoop));
+        int64_t perCoreLastLoopRows = GetPerOrLastValue(perCoreRows, maxRowsPerLoop);
+        tilingData->set_perCoreLastLoopRows(perCoreLastLoopRows == 0 ? maxRowsPerLoop : perCoreLastLoopRows);
         tilingData->set_lastCorePerLoopRows(actualLastCorePerLoopRows);
-        tilingData->set_lastCoreLastLoopRows(GetPerOrLastValue(lastCoreRows, maxRowsPerLoop));
+        int64_t lastCoreLastLoopRows = GetPerOrLastValue(lastCoreRows, maxRowsPerLoop);
+        tilingData->set_lastCoreLastLoopRows(lastCoreLastLoopRows == 0 ? maxRowsPerLoop : lastCoreLastLoopRows);
         tilingData->set_perCoreLoops(CeilDiv(perCoreRows, actualPerCorePerLoopRows));
         tilingData->set_lastCoreLoops(CeilDiv(lastCoreRows, actualLastCorePerLoopRows));
         tilingData->set_perLoopCols(ubRows);
