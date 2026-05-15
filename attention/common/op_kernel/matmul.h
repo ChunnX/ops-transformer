@@ -17,6 +17,19 @@
 #include "buffers_policy.h"
 using namespace AscendC;
 
+#if defined(__DAV_C310__) || defined(__DAV_310R6__)
+__aicore__ inline void set_mark(uint64_t v)
+{
+#if defined(__CCE_KT_TEST__) && __CCE_KT_TEST__ == 1
+
+#else
+    __asm__ __volatile__("");
+    asm volatile("MOV COND, %0\n" : "+l"(v));
+    __asm__ __volatile__("");
+#endif
+}
+#endif
+
 namespace fa_base_matmul {
 
 constexpr uint32_t UNITFLAG_DISABLE = 0;
@@ -669,18 +682,17 @@ __aicore__ inline void MatmulFull(const LocalTensor<A> &aL1Tensor,
     Buffer<BufferType::L0A> l0aBuffer = aL0BuffsDb.Get();
     l0aBuffer.Wait<HardEvent::M_MTE1>();
     LocalTensor<L0ADType> L0ATensor = l0aBuffer.GetTensor<L0ADType>();
-#if ((__CCE_AICORE__ == 310) || (defined __DAV_310R6__) || (__NPU_ARCH__ == 5102))
+#if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
     if constexpr (IsSameType<L0ADType, mx_fp8_e4m3_t>::value) {
-        LoadDataToL0AMx<A, L0ADType>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, 0, param.singleK, param.singleM); // d,s2
+        LoadDataToL0AMx<A, L0ADType>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, 0, param.singleK, param.singleM);
     } else
 #endif
     {
         LoadDataToL0A(L0ATensor, aL1Tensor, param, 0, param.singleK, param.singleM); // s2*d,d,s2
     }
-    l0aBuffer.Set<HardEvent::MTE1_M>();
 
     Buffer<BufferType::L0B> l0bBuffer = bL0BuffsDb.Get();
-    l0bBuffer.Wait<HardEvent::M_MTE1>();
+    // l0bBuffer.Wait<HardEvent::M_MTE1>();
     LocalTensor<L0BDType> L0BTensor = l0bBuffer.GetTensor<L0BDType>();
 #if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
     if constexpr (IsSameType<L0BDType, mx_fp8_e4m3_t>::value) {
@@ -690,10 +702,11 @@ __aicore__ inline void MatmulFull(const LocalTensor<A> &aL1Tensor,
     {
         LoadDataToL0B(L0BTensor, bL1Tensor, param, 0, param.singleK, param.singleN);
     }
-    l0bBuffer.Set<HardEvent::MTE1_M>();
+    // l0bBuffer.Set<HardEvent::MTE1_M>();
+    l0aBuffer.Set<HardEvent::MTE1_M>();
 
     l0aBuffer.Wait<HardEvent::MTE1_M>();
-    l0bBuffer.Wait<HardEvent::MTE1_M>();
+    // l0bBuffer.Wait<HardEvent::MTE1_M>();
 
     MmadParams mmadParams;
     mmadParams.m = param.singleM;
@@ -712,7 +725,7 @@ __aicore__ inline void MatmulFull(const LocalTensor<A> &aL1Tensor,
     Mmad(cL0Tensor, L0ATensor, L0BTensor, mmadParams);
  
     l0aBuffer.Set<HardEvent::M_MTE1>();
-    l0bBuffer.Set<HardEvent::M_MTE1>();
+    // l0bBuffer.Set<HardEvent::M_MTE1>();
 }
 
 // 切K
