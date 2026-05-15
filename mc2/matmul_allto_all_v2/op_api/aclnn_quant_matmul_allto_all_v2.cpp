@@ -25,7 +25,14 @@
 #include "opdev/format_utils.h"
 #include "aclnn_kernels/transdata.h"
 #include "common/utils/hccl_util.h"
-#include "mc2_comm_utils.h"
+
+#ifdef BUILD_OPEN_PROJECT
+#include "version/hcomm_version.h"
+#define HCCL_CHANNEL_SUPPORT_VERSION 90000000
+#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+#include "common/op_api/mc2_context.h"
+#endif
+#endif
 
 namespace {
 
@@ -416,7 +423,7 @@ extern "C" aclnnStatus aclnnInnerMatmulAlltoAllV2GetWorkspaceSize(const aclTenso
                                                                 char* group, int64_t worldSize, const aclIntArray* all2allAxesOptional,
                                                                 int64_t yDtype, int64_t x1QuantMode, int64_t x2QuantMode,
                                                                 int64_t commQuantMode, int64_t commQuantDtype,
-                                                                bool transposeX1, bool transposeX2, int64_t groupSize,
+                                                                bool transposeX1, bool transposeX2, int64_t groupSize, char* commModeOptional,
                                                                 const aclTensor* out, uint64_t *workspaceSize, aclOpExecutor **executor);
 extern "C" aclnnStatus aclnnInnerMatmulAlltoAllV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
@@ -427,16 +434,19 @@ extern "C" aclnnStatus aclnnQuantMatmulAlltoAllV2GetWorkspaceSize(const aclTenso
                                                                 const aclTensor* commScaleOptional,
                                                                 const aclTensor* x1OffsetOptional, const aclTensor* x2OffsetOptional,
                                                                 const aclIntArray* alltoAllAxesOptional, const char* group,
-                                                                int64_t x1QuantMode, int64_t x2QuantMode,
+                                                                const char* commMode, int64_t x1QuantMode, int64_t x2QuantMode,
                                                                 int64_t commQuantMode, int64_t commQuantDtype, int64_t groupSize,
                                                                 bool transposeX1, bool transposeX2, const aclTensor* output,
                                                                 uint64_t *workspaceSize, aclOpExecutor **executor)
 {
+    OP_LOGD("enter to the aclnnQuantMatmulAlltoAllV2GetWorkspaceSize");
+    const static bool is950 = GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
+
     // 处理非连续Tensor，目前只有支持转置的x2涉及该处理
     aclnnStatus checkX2Ret = CheckX2Valid(x2);
     CHECK_RET(checkX2Ret == ACLNN_SUCCESS, checkX2Ret); // 先检查x2是否合法，避免非法操作
     auto transX2 = x2;    // 复制一个x2
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {    // 只有当非连续时，才会涉及到转连续等情况
+    if (is950) {    // 只有当非连续时，才会涉及到转连续等情况
         bool notContiguous = IsTransposeLastTwoDims(x2);    // notContiguous标识x2是否是非连续的，通常在pytorch经过.t()会导致x2非连续
         OP_LOGI("The notContiguous is: %d , and transposeX2 is: %d", notContiguous, transposeX2);
         if (notContiguous && transposeX2) {    // 当非连续和转置同时生效时，判断为错误用法，直接报错
@@ -460,6 +470,7 @@ extern "C" aclnnStatus aclnnQuantMatmulAlltoAllV2GetWorkspaceSize(const aclTenso
                     "The x2 must be contiguous, but it is non-contiguous.");
             return ACLNN_ERR_PARAM_INVALID;});
     }
+    
     aclnnStatus retParam = CheckAndHandleParams(x1, transX2, biasOptional, x1Scale, x2Scale, group,
         alltoAllAxesOptional, x1QuantMode, x2QuantMode, transposeX1, transposeX2, output);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
@@ -479,34 +490,65 @@ extern "C" aclnnStatus aclnnQuantMatmulAlltoAllV2GetWorkspaceSize(const aclTenso
     } else if (yDtype == op::DataType::DT_BF16) {
         enumYDtype = 27;
     }
+
+    if (!is950) {
+        // TODO A2A3转调V1接口
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    
     aclnnStatus ret = aclnnInnerMatmulAlltoAllV2GetWorkspaceSize(
         x1, transX2, biasOptional, x1Scale, x2Scale, commScaleOptional, x1OffsetOptional, x2OffsetOptional,
         str_group, worldSize, alltoAllAxesOptional, enumYDtype, x1QuantMode, x2QuantMode, commQuantMode, commQuantDtype,
-        transposeX1, transposeX2, groupSize, out, workspaceSize, executor);
+        transposeX1, transposeX2, groupSize, commMode, out, workspaceSize, executor);
     OP_LOGD("QuantMatmulAlltoAllV2, aclnnnInnerGetWorkspaceSize ret %d.", ret);
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER,
                 "This is an error in launch aicore, aclnnQuantMatmulAlltoAllV2GetWorkspaceSize interface call failed.");
     }
+
+    // 获取卡数
+    uint32_t rankSize = 0;
+#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
+    auto aclnnRet = Mc2Aclnn::Mc2Context::GetMc2RankSize(group, rankSize);
+    CHECK_RET(aclnnRet == ACLNN_SUCCESS, aclnnRet);
+#endif
+
+    // 设置通信引擎
+    if (*executor != nullptr && (NnopbaseSetHcclServerType)) {
+        OP_LOGD("[QuantMatmulAlltoAllV2] Execute commMode=%s", commMode);
+        auto hcclServerType = NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU;
+        if (std::strcmp(commMode, "aicpu") == 0) {
+            hcclServerType = NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU;
+        } else if (std::strcmp(commMode, "ccu") == 0) {
+        } else {
+            // default：小于等于8P走CCU，否则走AICPU
+            if (rankSize <= 8) {
+            } else {
+                hcclServerType = NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU;
+            }
+        }
+        NnopbaseSetHcclServerType(executor, hcclServerType);
+    }
+
     return ret;
 }
 
 extern "C" aclnnStatus aclnnQuantMatmulAlltoAllV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
 {
-    if (NnopbaseSetHcclServerType) {
-        if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
-            if (commMode == Mc2Comm::COMM_MODE_CCU) {
-                OP_LOGD("aclnnQuantMatmulAlltoAllV2: ENV_MC2_COMM_MODE_AICPU not set, use CCU mode");
-                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
-            } else {
-                OP_LOGD("aclnnQuantMatmulAlltoAllV2: ENV_MC2_COMM_MODE_AICPU set, use AICPU mode");
-                NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
-            }
-        } else {
-            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
-        }
-    }
+    // if (NnopbaseSetHcclServerType) {
+    //     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+    //         uint8_t commMode = Mc2Comm::GetCommModeFromEnv();
+    //         if (commMode == Mc2Comm::COMM_MODE_CCU) {
+    //             OP_LOGD("aclnnQuantMatmulAlltoAllV2: ENV_MC2_COMM_MODE_AICPU not set, use CCU mode");
+    //             NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
+    //         } else {
+    //             OP_LOGD("aclnnQuantMatmulAlltoAllV2: ENV_MC2_COMM_MODE_AICPU set, use AICPU mode");
+    //             NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+    //         }
+    //     } else {
+    //         NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
+    //     }
+    // }
     aclnnStatus ret = aclnnInnerMatmulAlltoAllV2(workspace, workspaceSize, executor, stream);
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER,
